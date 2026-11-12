@@ -363,6 +363,11 @@ archery_range=$!
 timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab-walk.coax" "$here/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
 bitcoin_lab_walk=$!
+# /worlds/nostr-lab (unlisted): Nostr Lab, a key pair, an event, its ID and its signature as a walk on the Grid, on
+# the same lab walk (verse/lab-walk.coax). It signs its event at run time: secp256k1's tables need the larger budget.
+COAXIAL_RUN_STEPS=250000000 timed nostr-lab-walk "$here/../../coax/web/wasm.sh" "$here/nostr-lab-walk.coax" "$here/nostr-lab-walk-face.c" "$here/build/nostr-lab-walk.wasm" \
+  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
+nostr_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
@@ -502,6 +507,7 @@ wait "$watchtower"
 wait "$fivelab"
 wait "$archery_range"
 wait "$bitcoin_lab_walk"
+wait "$nostr_lab_walk"
 wait "$everglade2"
 # Everglade II's admin mode is a dev build's only (everglade2-admin.coax, wasm.sh's --build-profile):
 # a release everglade2.wasm holding its panel's words or its room lines is refused.

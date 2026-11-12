@@ -1,0 +1,458 @@
+// A lab walk: a book chapter as a short walk on the Grid (Bitcoin Lab, Nostr Lab). You walk your own
+// Everglade character down one lit lane past numbered stations; each station is a slab of dark glass
+// beside the lane, its number and name along its top, and the world draws its own lesson on its face.
+// This module is everything the walks share: the walking, the camera, the HUD, WORLDS, the stations'
+// slabs and where they stand, the skyline, the Grid's sky and floor, and the pixel-face text and lit
+// shapes a world draws its lessons with. A world (apps/openagents-web/bitcoin-lab-walk.coax,
+// nostr-lab-walk.coax) holds a LabWalk, names its stations (lab_conf), and each frame lists its own
+// quads between lab_list_begin and lab_list_end. Its C face is lab-walk-face.h.
+//
+// The walk is an Everglade zone (everglade/zone.coax), as the Archery Range is: the zone walks you on
+// Everglade's controller with the follow camera and draws your figure with Character Create's passes.
+// The zone is level (Creator.flat: no meadow, the ground at 0) and bare (EgZone.bare: no class bar,
+// no monsters). The Grid, its sky and every station are lit quads listed each frame, far to near, for
+// the engine's quad world (aethyr/fx/gpu-quads.coax, drawn as the page's particles by
+// bitcoin-lab-fx.wgsl after your figure and depth-tested against it). The HUD is the world's name,
+// the station you are at with one line, and WORLDS.
+//   coax/remote/remote.sh run -- coax/bin/coax test verse/lab-walk.coax --library
+#load "../everglade/zone.coax";
+#load "../aethyr/fx/pixel-font.coax";
+
+// The quads: 16 floats each (aethyr/fx/gpu-quads.coax QuadRow), in groups sorted far to near.
+LAB_QUADS :: 4096; LAB_GROUPS :: 128; LAB_QF :: 16;
+QK_SKY :: 0.0f32; QK_FLOOR :: 1.0f32; QK_PANEL :: 2.0f32; QK_GLYPH :: 3.0f32; QK_GLOW :: 4.0f32; QK_BEAM :: 5.0f32;
+LAB_MAX :: 8;                 // the most stations a walk has
+LAB_EXTRA :: 8;               // the most boxes a world stands beside them (Bitcoin Lab's block cubes)
+LAB_PANEL_W :: 7.6f32; LAB_PANEL_H :: 4.4f32; LAB_PANEL_D :: 0.3f32;
+LAB_LANE :: 2.5f32;           // the lane's half width (the floor's rails, gpu-quads.coax qfx_floor)
+
+// The Grid's colours (linear light).
+LabRgb :: struct { r: f32; g: f32; b: f32; }
+LAB_CYAN :: LabRgb.{r = 0.25, g = 0.85, b = 1.2};
+LAB_ICE :: LabRgb.{r = 0.75, g = 0.92, b = 1.1};
+LAB_DIM :: LabRgb.{r = 0.035, g = 0.085, b = 0.12};
+LAB_ORANGE :: LabRgb.{r = 1.35, g = 0.52, b = 0.08};
+LAB_GOLD :: LabRgb.{r = 1.2, g = 0.85, b = 0.32};
+LAB_GREEN :: LabRgb.{r = 0.35, g = 1.25, b = 0.55};
+LAB_RED :: LabRgb.{r = 1.45, g = 0.18, b = 0.12};
+LAB_VIOLET :: LabRgb.{r = 0.75, g = 0.45, b = 1.25};
+LAB_GLASS :: LabRgb.{r = 0.005, g = 0.014, b = 0.024};
+LAB_WHITE :: LabRgb.{r = 1.6, g = 1.6, b = 1.6};
+
+LabQuads :: struct {
+  q: [LAB_QUADS * LAB_QF] f32; n: int;
+  g_at: [LAB_GROUPS] int; g_d: [LAB_GROUPS] f32; g_n: int;
+}
+LabWalk :: struct {
+  z: [1] EgZone;
+  // what the world names (lab_conf)
+  n: int;                             // its stations
+  at_z: [LAB_MAX] f32;                // each station's z down the lane (toward -z)
+  side: [LAB_MAX] f32;                // and its side: -1 left, 1 right
+  name: [LAB_MAX] string;             // along its top
+  line: [LAB_MAX] string;             // the HUD's one line at it
+  title: string;                      // the HUD's title: "BITCOIN LAB"
+  intro: string;                      // the HUD's line before the first station
+  chapter: string; chapter_short: string;   // the HUD's second row before the first station, and when that runs past the panel
+  start_z: f32 = 6;                   // where you come in, facing down the lane
+  // the walk's own
+  on: bool; stood: bool;
+  build: [1] LabQuads;                // this frame's quads in groups, as they are listed
+  quads: [LAB_QUADS * LAB_QF] f32; quad_n: int;   // ... far to near, for the host (lab-walk-face.h)
+  eye: [3] f32;
+  station: int = -1;                  // the station you are at, -1 none
+  near_at: [LAB_MAX] f32;             // when you came to each station (its animation starts then), -100 not there
+  worlds_id: int = -1;                // the finger or button on WORLDS
+  worlds_box: cc.Box;
+  in_app: bool;                       // in the Everglade apps (Aethyr's page host): the app draws its own Worlds button, at the top's middle
+  framed: bool;                       // the camera's first frame set: further back on an upright screen, where the stations are off to the sides
+}
+// A world names its walk: its title, the HUD's words before the first station, and its stations.
+lab_conf :: (w: [] LabWalk, title: string, intro: string, chapter: string, chapter_short: string, at_z: [] const f32, side: [] const f32, name: [] const string, line: [] const string) {
+  n := at_z.count; if n > LAB_MAX { n = LAB_MAX; }
+  w[0].n = n; w[0].title = title; w[0].intro = intro; w[0].chapter = chapter; w[0].chapter_short = chapter_short;
+  for i: 0..<n { w[0].at_z[i] = at_z[i]; w[0].side[i] = side[i]; w[0].name[i] = name[i]; w[0].line[i] = line[i]; }
+}
+lab_clock :: (w: [] LabWalk) -> f32 { return w[0].z[0].creator[0].clock; }
+
+// ---- the quad list
+lab_group :: (w: [] LabWalk, x: f32, y: f32, z: f32) {
+  l := w[0].build[..]; if l[0].g_n >= LAB_GROUPS { return; }
+  dx := x - w[0].eye[0]; dy := y - w[0].eye[1]; dz := z - w[0].eye[2];
+  l[0].g_at[l[0].g_n] = l[0].n; l[0].g_d[l[0].g_n] = dx * dx + dy * dy + dz * dz; l[0].g_n += 1;
+}
+lab_quad :: (w: [] LabWalk, kind: f32, cx: f32, cy: f32, cz: f32, ax: [3] f32, n1: f32, ay: [3] f32, n2: f32, c: LabRgb, n3: f32) {
+  l := w[0].build[..]; if l[0].n >= LAB_QUADS { return; }
+  o := l[0].n * LAB_QF; q := l[0].q[..];
+  q[o] = cx; q[o + 1] = cy; q[o + 2] = cz; q[o + 3] = kind;
+  q[o + 4] = ax[0]; q[o + 5] = ax[1]; q[o + 6] = ax[2]; q[o + 7] = n1;
+  q[o + 8] = ay[0]; q[o + 9] = ay[1]; q[o + 10] = ay[2]; q[o + 11] = n2;
+  q[o + 12] = c.r; q[o + 13] = c.g; q[o + 14] = c.b; q[o + 15] = n3;
+  l[0].n += 1;
+}
+lab_v :: (x: f32, y: f32, z: f32) -> [3] f32 { return [3] f32.[x, y, z]; }
+lab_scale :: (c: LabRgb, k: f32) -> LabRgb { return LabRgb.{r = c.r * k, g = c.g * k, b = c.b * k}; }
+lab_mix :: (a: LabRgb, b: LabRgb, t: f32) -> LabRgb { return LabRgb.{r = a.r + (b.r - a.r) * t, g = a.g + (b.g - a.g) * t, b = a.b + (b.b - a.b) * t}; }
+lab_clamp :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b { return b; } return v; }
+lab_ease :: (t0: f32) -> f32 { t := lab_clamp(t0, 0, 1); return t * t * (3 - 2 * t); }
+
+// A face facing +z (a station's front): centre, half width and height, its glass, how much it shines, its rim.
+lab_face_z :: (w: [] LabWalk, cx: f32, cy: f32, cz: f32, hw: f32, hh: f32, c: LabRgb, shine: f32, rim: f32, opaque: f32) {
+  lab_quad(w, QK_PANEL, cx, cy, cz, lab_v(hw, 0, 0), shine, lab_v(0, hh, 0), rim, c, opaque);
+}
+// A face facing +x or -x (a cube's side): centre, half depth (along z) and height.
+lab_face_x :: (w: [] LabWalk, cx: f32, cy: f32, cz: f32, hd: f32, hh: f32, c: LabRgb, shine: f32, rim: f32, opaque: f32) {
+  lab_quad(w, QK_PANEL, cx, cy, cz, lab_v(0, 0, hd), shine, lab_v(0, hh, 0), rim, c, opaque);
+}
+// A solid box: its faces that look toward the eye (it is convex and opaque, so they never overlap).
+lab_box :: (w: [] LabWalk, cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32, c: LabRgb, shine: f32, rim: f32) {
+  e := w[0].eye;
+  if e[2] > cz + hz { lab_face_z(w, cx, cy, cz + hz, hx, hy, c, shine, rim, 1); }
+  if e[2] < cz - hz { lab_face_z(w, cx, cy, cz - hz, hx, hy, c, shine, rim, 1); }
+  if e[0] > cx + hx { lab_face_x(w, cx + hx, cy, cz, hz, hy, c, shine, rim, 1); }
+  if e[0] < cx - hx { lab_face_x(w, cx - hx, cy, cz, hz, hy, c, shine, rim, 1); }
+  if e[1] > cy + hy { lab_quad(w, QK_PANEL, cx, cy + hy, cz, lab_v(hx, 0, 0), shine, lab_v(0, 0, hz), rim, c, 1); }
+}
+// A soft round light lying on the floor.
+lab_pool :: (w: [] LabWalk, x: f32, z: f32, r: f32, c: LabRgb, k: f32) {
+  lab_quad(w, QK_GLOW, x, 0.02, z, lab_v(r, 0, 0), 0, lab_v(0, 0, r), 0, c, k);
+}
+// A soft round light standing up, facing +z.
+lab_lamp :: (w: [] LabWalk, x: f32, y: f32, z: f32, r: f32, c: LabRgb, k: f32) {
+  lab_quad(w, QK_GLOW, x, y, z, lab_v(r, 0, 0), 0, lab_v(0, r, 0), 0, c, k);
+}
+// A bar of light from a to b, `wide` metres across, lying in the plane facing +z or, when side, +x.
+lab_beam :: (w: [] LabWalk, a: [3] f32, b: [3] f32, wide: f32, c: LabRgb, k: f32, side: bool) {
+  hx := (b[0] - a[0]) * 0.5; hy := (b[1] - a[1]) * 0.5; hz := (b[2] - a[2]) * 0.5;
+  span := sqrt(hx * hx + hy * hy + hz * hz); if span < 0.0001 { return; }
+  // across: square to the bar in the face's plane
+  ux := ifx side then 0.0f32 else -hy / span; uy := ifx side then -hz / span else hx / span; uz := ifx side then hy / span else 0.0f32;
+  m := sqrt(ux * ux + uy * uy + uz * uz); if m < 0.0001 { ux = 0; uy = 1; uz = 0; m = 1; }
+  lab_quad(w, QK_BEAM, a[0] + hx, a[1] + hy, a[2] + hz, lab_v(hx, hy, hz), 0, lab_v(ux / m * wide, uy / m * wide, uz / m * wide), 0, c, k);
+}
+
+// ---- the pixel face: a line of lamps on a plane, along `right` (unit, in the floor's plane) with up +y
+lab_text_w :: (count: int, h: f32) -> f32 { return f32(pf_cells(count)) * h / f32(PF_ROWS); }
+lab_text :: (w: [] LabWalk, t: string, x: f32, y: f32, z: f32, rx: f32, rz: f32, h: f32, c: LabRgb, light: f32) {
+  cw := h * f32(PF_COLS) / f32(PF_ROWS); adv := h * f32(PF_COLS + 1) / f32(PF_ROWS);
+  for i: 0..<t.count {
+    g := pf_glyph(t[i]); if g == 0 { continue; }
+    at := f32(i) * adv + cw * 0.5;
+    lab_quad(w, QK_GLYPH, x + rx * at, y + h * 0.5, z + rz * at, lab_v(rx * cw * 0.5, 0, rz * cw * 0.5), pf_top(g), lab_v(0, h * 0.5, 0), pf_foot(g), c, light);
+  }
+}
+// On a station's face (facing +z at depth z): from its left (u) and floor (v).
+lab_say :: (w: [] LabWalk, t: string, x0: f32, z: f32, u: f32, v: f32, h: f32, c: LabRgb, light: f32) {
+  lab_text(w, t, x0 + u, v, z + 0.02, 1, 0, h, c, light);
+}
+lab_say_mid :: (w: [] LabWalk, t: string, x0: f32, z: f32, u: f32, v: f32, h: f32, c: LabRgb, light: f32) {
+  lab_say(w, t, x0, z, u - lab_text_w(t.count, h) * 0.5, v, h, c, light);
+}
+
+// ---- small text
+lab_hex2 :: (b: [] u8, v: int) { d := "0123456789ABCDEF"; b[0] = d[(v >> 4) & 15]; b[1] = d[v & 15]; }
+lab_bits :: (b: [] u8, n0: int, v: int, from: int, count: int) -> int { n := n0; for i: 0..<count { b[n] = ifx (v >> (from - 1 - i)) & 1 == 1 then '1' else '0'; n += 1; } return n; }
+// A number's decimal digits into out from n0; the count after.
+lab_int :: (out: [] u8, n0: int, v0: int) -> int {
+  v := v0; n := n0; if v < 0 { if n < out.count { out[n] = '-'; n += 1; } v = -v; }
+  d: [20] u8; k := 0; if v == 0 { d[0] = '0'; k = 1; }
+  while v > 0 && k < 20 { d[k] = cast,trunc(u8) ('0' + v % 10); v = v / 10; k += 1; }
+  while k > 0 && n < out.count { k -= 1; out[n] = d[k]; n += 1; }
+  return n;
+}
+lab_str :: (out: [] u8, n0: int, t: string) -> int { n := n0; for i: 0..<t.count { if n < out.count { out[n] = t[i]; n += 1; } } return n; }
+
+// ---- the stations
+// Where a station's face is: its left edge's x, the face's z.
+lab_left :: (w: [] LabWalk, i: int) -> f32 { return ifx w[0].side[i] < 0 then -LAB_LANE - 0.6 - LAB_PANEL_W else LAB_LANE + 0.6; }
+lab_face :: (w: [] LabWalk, i: int) -> f32 { return w[0].at_z[i] + LAB_PANEL_D * 0.5; }
+// How far into its animation a station is: 0 until you come to it.
+lab_anim :: (w: [] LabWalk, i: int) -> f32 { t := lab_clock(w) - w[0].near_at[i]; return ifx w[0].near_at[i] < -50 then 0.0f32 else t; }
+// Whether you are at station i: 1 or 0.
+lab_lit :: (w: [] LabWalk, i: int) -> f32 { return ifx w[0].station == i then 1.0f32 else 0.0f32; }
+// The slab every station stands on: dark glass, its rim lit, its number and name along the top.
+lab_slab :: (w: [] LabWalk, i: int, lit: f32) {
+  x0 := lab_left(w, i); cz := w[0].at_z[i];
+  lab_box(w, x0 + LAB_PANEL_W * 0.5, LAB_PANEL_H * 0.5, cz, LAB_PANEL_W * 0.5, LAB_PANEL_H * 0.5, LAB_PANEL_D * 0.5, LAB_GLASS, 0.25 + 0.25 * lit, 0.55 + 0.6 * lit);
+  b: [24] u8; n := lab_int(b[..], 0, i + 1);
+  lab_say(w, cast(string) b[0..<n], x0, lab_face(w, i), 0.35, LAB_PANEL_H - 0.72, 0.42, LAB_ORANGE, 1.4 + lit);
+  lab_say(w, w[0].name[i], x0, lab_face(w, i), 0.35 + lab_text_w(n + 1, 0.42), LAB_PANEL_H - 0.72, 0.42, LAB_ICE, 1.1 + lit);
+}
+// A station's start: the light on the floor before it (listed first: it is further than the slab's
+// face from where you come), then its slab, in a group the world's lesson for it is listed in.
+// The world draws the face's lesson next; this gives back whether you are at it.
+lab_station :: (w: [] LabWalk, i: int) -> f32 {
+  lit := lab_lit(w, i); x0 := lab_left(w, i);
+  lab_group(w, x0 + LAB_PANEL_W * 0.5, 0, w[0].at_z[i] + 2.0);
+  lab_pool(w, x0 + LAB_PANEL_W * 0.5, w[0].at_z[i] + 1.6, 3.2 + lit, ifx lit > 0 then LAB_ORANGE else LAB_CYAN, 0.18 + 0.22 * lit);
+  lab_group(w, x0 + LAB_PANEL_W * 0.5, LAB_PANEL_H * 0.5, w[0].at_z[i]);
+  lab_slab(w, i, lit);
+  return lit;
+}
+
+// The skyline: towers of stacked blocks far off on both sides, dim in the haze, for a sense of place
+// and scale. Where each stands and how tall it is comes from its number alone, so it never moves.
+LAB_TOWERS :: 16;   // each a box you walk round too (lab_stand): with the slabs and the world's boxes, within aethyr/world/props.coax PROPS
+lab_hash :: (k: int, salt: int) -> f32 { h := (k * 374761393 + salt * 668265263) & 0x7fffffff; h = ((h ^ (h >> 13)) * 1274126177) & 0x7fffffff; return f32(h & 0xffff) / 65535.0; }
+// A tower: its x and z, a storey's size and how many storeys.
+lab_tower :: (k: int) -> [4] f32 {
+  side := ifx k % 2 == 0 then -1.0f32 else 1.0f32;
+  return [4] f32.[side * (80 + 140 * lab_hash(k, 1)), 40 - 300 * lab_hash(k, 2), 10 + 14 * lab_hash(k, 3), f32(1 + cast(int) (5 * lab_hash(k, 4)))];
+}
+lab_skyline :: (w: [] LabWalk) {
+  for k: 0..<LAB_TOWERS {
+    t := lab_tower(k);
+    lab_group(w, t[0], t[2] * t[3] * 0.5, t[1]);
+    storeys := cast(int) t[3];
+    for f: 0..<storeys {
+      cy := t[2] * (f32(f) + 0.5); hs := t[2] * 0.5 * (1 - 0.06 * f32(f));
+      lab_box(w, t[0], cy, t[1], hs, t[2] * 0.49, hs, LabRgb.{r = 0.003, g = 0.009, b = 0.017}, 0.06, ifx f == storeys - 1 then 0.5 else 0.22);
+    }
+  }
+}
+
+// ---- the frame's quads: the world lists its own between these two. The sky and the floor go
+// first, then every group far to near.
+lab_list_begin :: (w: [] LabWalk, u: [] f32) {
+  l := w[0].build[..]; l[0].n = 0; l[0].g_n = 0;
+  w[0].eye = [3] f32.[u[16], u[17], u[18]];
+  lab_skyline(w);
+}
+lab_list_end :: (w: [] LabWalk) {
+  l := w[0].build[..];
+  cr := w[0].z[0].creator[0]; now := cr.clock; px := cr.player_x; pz := cr.player_z;
+  // the lane's start: a ring of light where you come in
+  lab_group(w, 0, 0, w[0].start_z); lab_pool(w, 0, w[0].start_z, 2.2, LAB_CYAN, 0.25);
+  // far to near: the groups' order by distance (insertion; there are few)
+  order: [LAB_GROUPS] int; for g: 0..<l[0].g_n { order[g] = g; }
+  for g: 1..<l[0].g_n { v := order[g]; j := g; while j > 0 && l[0].g_d[order[j - 1]] < l[0].g_d[v] { order[j] = order[j - 1]; j -= 1; } order[j] = v; }
+  q := w[0].quads[..]; n := 0;
+  sky := [LAB_QF] f32.[0, 0, 0, QK_SKY, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, now];
+  for k: 0..<LAB_QF { q[k] = sky[k]; } n = 1;
+  floor_q := [LAB_QF] f32.[px, 0, pz, QK_FLOOR, 400, 0, 0, px, 0, 0, 400, pz, 0, 0, 0, now];
+  for k: 0..<LAB_QF { q[n * LAB_QF + k] = floor_q[k]; } n += 1;
+  for g: 0..<l[0].g_n {
+    a := l[0].g_at[order[g]]; e := ifx order[g] + 1 < l[0].g_n then l[0].g_at[order[g] + 1] else l[0].n;
+    for j: a..<e { if n >= LAB_QUADS { break; } for k: 0..<LAB_QF { q[n * LAB_QF + k] = l[0].q[j * LAB_QF + k]; } n += 1; }
+  }
+  w[0].quad_n = n;
+}
+
+// ---- where you are: the station whose stretch of the lane you are on
+lab_at :: (w: [] LabWalk, z: f32) -> int {
+  // a station's stretch is the lane before it, where you see it coming, to just past its face
+  for i: 0..<w[0].n { if z < w[0].at_z[i] + 13 && z > w[0].at_z[i] - 2 { return i; } }
+  if w[0].n > 0 && z <= w[0].at_z[w[0].n - 1] - 2 { return w[0].n - 1; }   // past the last: still its
+  return -1;
+}
+lab_track :: (w: [] LabWalk) {
+  cr := w[0].z[0].creator[0]; at := lab_at(w, cr.player_z);
+  if at != w[0].station {
+    if at >= 0 { w[0].near_at[at] = cr.clock; }
+    w[0].station = at;
+  }
+}
+
+// On an upright phone the view is narrow and the stations stand beside the lane, out of it: the
+// camera turns round you, gently, toward the station ahead, and back to the lane past it.
+LAB_TURN_MAX :: 0.55f32; LAB_TURN_SIGN :: -1.0f32;
+lab_turn_to :: (w: [] LabWalk, x: f32, z: f32, st: int) -> f32 {
+  if st < 0 || st >= w[0].n { return 0; }
+  ahead := z - w[0].at_z[st]; if ahead < -1 { return 0; }
+  dx := lab_left(w, st) + LAB_PANEL_W * 0.5 - x;
+  return lab_clamp(LAB_TURN_SIGN * 0.9 * dx / hi(ahead + 4, 4), -LAB_TURN_MAX, LAB_TURN_MAX);
+}
+lab_turn :: (w: [] LabWalk, upright: bool, dt: f32) {
+  cr := w[0].z[0].creator[..];
+  want := ifx upright then lab_turn_to(w, cr[0].player_x, cr[0].player_z, w[0].station) else 0.0f32;
+  k := lab_clamp(dt * 1.5, 0, 1);
+  cr[0].orbit += (want - cr[0].orbit) * k;
+}
+
+// ---- standing the world: the towers, the slabs and the world's own boxes (x0 y0 z0 x1 y1 z1 each)
+// are things you walk round (aethyr/world/props.coax)
+lab_stand :: (w: [] LabWalk, extra: [] const f32, extra_n: int) {
+  boxes: [(LAB_MAX + LAB_EXTRA + LAB_TOWERS) * 6] f32; n := 0;
+  for k: 0..<LAB_TOWERS {
+    t := lab_tower(k); hs := t[2] * 0.5; o := n * 6;
+    boxes[o] = t[0] - hs; boxes[o + 1] = -0.4; boxes[o + 2] = t[1] - hs; boxes[o + 3] = t[0] + hs; boxes[o + 4] = t[2] * t[3]; boxes[o + 5] = t[1] + hs; n += 1;
+  }
+  for i: 0..<w[0].n {
+    x0 := lab_left(w, i); o := n * 6;
+    boxes[o] = x0; boxes[o + 1] = -0.4; boxes[o + 2] = w[0].at_z[i] - LAB_PANEL_D * 0.5; boxes[o + 3] = x0 + LAB_PANEL_W; boxes[o + 4] = LAB_PANEL_H; boxes[o + 5] = w[0].at_z[i] + LAB_PANEL_D * 0.5; n += 1;
+  }
+  for k: 0..<extra_n { if k >= LAB_EXTRA { break; } for c: 0..<6 { boxes[n * 6 + c] = extra[k * 6 + c]; } n += 1; }
+  _ := wprops.props_set(w[0].z[0].creator[0].props[..], boxes[..], n);
+  for i: 0..<LAB_MAX { w[0].near_at[i] = -100; }
+  w[0].stood = true;
+}
+// The page: the level Grid, you at the lane's start looking down it, nothing to fight.
+lab_enter :: (w: [] LabWalk) {
+  s := w[0].z[..]; cr := s[0].creator[..];
+  cr[0].field = true; cr[0].flat = true; s[0].bare = true;
+  if w[0].on { return; }
+  w[0].on = true; s[0].xc[0].open = false;
+  s[0].put_on = true; s[0].put_x = 0; s[0].put_y = 0; s[0].put_z = w[0].start_z; s[0].put_face = 3.1415927;
+}
+
+// ---- the HUD: the world's name, the station you are at and its line, WORLDS
+LAB_HUD_W :: 300.0f32;
+lab_worlds :: (w: [] LabWalk) -> cc.Box {
+  cr := w[0].z[0].creator[0]; k := cr.scale;
+  return cc.Box.{x0 = cr.width - 108 * k, y0 = 14 * k, x1 = cr.width - 12 * k, y1 = 46 * k};
+}
+lab_hud :: (w: [] LabWalk, out: [] f32, n0: int, wd: f32, ht: f32, k: f32) -> int {
+  s := w[0].z[..]; ui := s[0].creator[0].ui;
+  t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui;
+  room := lab_clamp(wd / k - 136, 180, LAB_HUD_W);   // leave WORLDS its corner on a phone
+  if w[0].in_app && wd / k >= 600 { room = lab_clamp(wd / k * 0.5 - 70, 180, LAB_HUD_W); }   // clear of the app's Worlds button
+  st := w[0].station; line := ifx st >= 0 then w[0].line[st] else w[0].intro;
+  // the line, wrapped at a word to two rows when it is too wide
+  cap := 8.5 * k; width := room * k - 24 * k; cut := line.count;
+  if cc.face_width(line, cap, cc.HUD_FACE_BODY) > width {
+    best := -1; for j: 0..<line.count { if line[j] == ' ' && cc.face_width(line[0..<j], cap, cc.HUD_FACE_BODY) <= width { best = j; } }
+    if best > 0 { cut = best; }
+  }
+  rows := ifx cut < line.count then 2 else 1;
+  box := cc.Box.{x0 = 12 * k, y0 = 14 * k, x1 = (12 + room) * k, y1 = (14 + 52 + 14 * f32(rows)) * k};
+  cc.hud_panel(l[..], t, cc.hud_box(box.x0, box.y0, box.x1, box.y1), k);
+  ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, box.x0, box.y0, box.x1, box.y1, w[0].title);
+  left := box.x0 + 12 * k; y := box.y0 + 22 * k;
+  cc.hud_word(ws[..], w[0].title, left, y, 11 * k, cc.HUD_TEXT_TITLE, false); y += 18 * k;
+  b: [48] u8; m := 0;
+  if st >= 0 { m = lab_int(b[..], 0, st + 1); m = lab_str(b[..], m, " / "); m = lab_int(b[..], m, w[0].n); m = lab_str(b[..], m, "   "); m = lab_str(b[..], m, w[0].name[st]); }
+  else { m = lab_str(b[..], 0, ifx cc.face_width(w[0].chapter, 8.5 * k, cc.HUD_FACE_TITLE) > width + 12 * k then w[0].chapter_short else w[0].chapter); }
+  cc.hud_word_ink(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_LABEL, false, true, cc.hud_rgba(1.0, 0.62, 0.2, 1)); y += 15 * k;
+  cc.hud_word(ws[..], line[0..<cut], left, y, cap, cc.HUD_TEXT_NUMBER, false);
+  if rows == 2 { y += 14 * k; cc.hud_word(ws[..], line[cut + 1..<line.count], left, y, cap, cc.HUD_TEXT_NUMBER, false); }
+  s[0].zt_top = box.y1 + 8 * k;   // a phone's thumb works under the panel (everglade/zone-touch.coax)
+  if w[0].in_app { w[0].worlds_box = cc.Box.{}; return cc.hud_draw(out, n0, l[..], ws[..], 1, k); }
+  // WORLDS
+  q := lab_worlds(w); wb := cc.hud_box(q.x0, q.y0, q.x1, q.y1); w[0].worlds_box = q;
+  cc.hud_button(l[..], t, wb, k, w[0].worlds_id != -1);
+  ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_BUTTON, wb.x0, wb.y0, wb.x1, wb.y1, "WORLDS");
+  cc.hud_word(ws[..], "WORLDS", (wb.x0 + wb.x1) * 0.5, (wb.y0 + wb.y1) * 0.5 + 4.75 * k, 9.5 * k, cc.HUD_TEXT_TITLE, true);
+  ws[0].parent = cc.UIT_NONE;
+  return cc.hud_draw(out, n0, l[..], ws[..], 1, k);
+}
+lab_has :: (text: string, part: string) -> bool { if part.count > text.count { return false; } for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } } return false; }
+lab_on_worlds :: (w: [] LabWalk, x: f32, y: f32) -> bool { if w[0].in_app { return false; } b := w[0].worlds_box; return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+lab_leave :: (w: [] LabWalk) { s := w[0].z[..]; s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; }
+// A press on WORLDS: it goes when let go over it.
+lab_press :: (w: [] LabWalk, x: f32, y: f32, phase: int, id: int) -> bool {
+  if !w[0].on { return false; }
+  if phase == 0 { if lab_on_worlds(w, x, y) { w[0].worlds_id = id; return true; } return false; }
+  if w[0].worlds_id != id { return false; }
+  if phase == 2 || phase == 3 { w[0].worlds_id = -1; if phase == 2 && lab_on_worlds(w, x, y) { lab_leave(w); } }
+  return true;
+}
+
+// ---- the realm: what the world's exports hand on (lab-walk-face.h calls the world's, which call these)
+coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_lab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_lab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+// The frame up to the world's quads: the zone, where you are, the camera's turn and the HUD. The
+// world stands its boxes first (lab_stand) and lists its quads after (lab_list_begin ... lab_list_end).
+lab_frame :: (w: [] LabWalk, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int {
+  s := w[0].z[..];
+  if !w[0].framed && width > 0 && height > 0 { w[0].framed = true; if width < height { s[0].creator[0].dist = 7; s[0].creator[0].pitch = 0.3; } }
+  zone_begin(s);
+  n := zone_draw(s, out, u, width, height, dpr, dt, still);
+  if zone_world(s) { lab_track(w); lab_turn(w, width < height, dt); n = lab_hud(w, out, n, width, height, hi(dpr, 0.5)); }
+  return zone_finish(s, out, u, n, dt, still);
+}
+lab_pointer :: (w: [] LabWalk, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  s := w[0].z[..];
+  if s[0].creator[0].on && lab_press(w, x, y, phase, id) { s[0].zt_thumb = false; return true; }
+  return zone_pointer(s, x, y, phase, kind, id);
+}
+lab_pointer_buttons :: (w: [] LabWalk, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool {
+  s := w[0].z[..];
+  if s[0].creator[0].on && lab_press(w, x, y, phase, id) { return true; }
+  return zone_pointer_buttons(s, x, y, phase, kind, id, button);
+}
+// The page's message; true when it was the page's facts (the world may stage its own places then).
+lab_message :: (w: [] LabWalk, kind: int, t: string) -> bool {
+  s := w[0].z[..];
+  if zone_message(s, kind, t) { return false; }
+  if kind != HOST_PAGE { return false; }
+  lab_enter(w); zone_enter(s, t); w[0].in_app = lab_has(t, "ua=AethyrPageHost");
+  v := lab_staged(w, t);
+  if v >= 1 && v <= w[0].n { s[0].put_z = w[0].at_z[v - 1] + 9; s[0].put_x = w[0].side[v - 1] * 0.8; }
+  return true;
+}
+// On a local page, ?at=N names a place for shots and clips: 1 to n stands you before station N (the
+// world reads lab_staged itself for places past the last). 0 when there is none.
+lab_staged :: (w: [] LabWalk, facts: string) -> int {
+  if !cc.dev_local(facts) { return 0; }
+  key := "at="; i := 0;
+  while i + 1 + key.count < facts.count {
+    if (facts[i] == '?' || facts[i] == '&') && facts[i + 1..<i + 1 + key.count] == key {
+      j := i + 1 + key.count; v := 0;
+      while j < facts.count && facts[j] >= '0' && facts[j] <= '9' && v < 100 { v = v * 10 + cast(int) (facts[j] - '0'); j += 1; }
+      return v;
+    }
+    i += 1;
+  }
+  return 0;
+}
+
+// ---- checks: a walk of three stations
+LAB_TEST_Z :: [3] f32.[-10, -25, -40];
+LAB_TEST_SIDE :: [3] f32.[-1, 1, -1];
+LAB_TEST_NAME :: [3] string.["ONE", "TWO", "THREE"];
+LAB_TEST_LINE :: [3] string.["The first.", "The second.", "The third."];
+lab_test_walk :: (w: [] LabWalk) {
+  lab_conf(w, "TEST LAB", "Walk the lane.", "CHAPTER 1: A LONG NAME FOR THE TEST", "CHAPTER 1", LAB_TEST_Z[..], LAB_TEST_SIDE[..], LAB_TEST_NAME[..], LAB_TEST_LINE[..]);
+  w[0].z[0].creator[0].width = 1280; w[0].z[0].creator[0].height = 720; w[0].z[0].creator[0].scale = 1;
+  _ := lab_message(w, HOST_PAGE, "url=https://openagents.com/worlds/test-lab\n");
+}
+#test "lab walk: the page stands a level, bare zone and puts you at the lane's start facing down it" #steps 400000000 {
+  w: [1] LabWalk; lab_test_walk(w[..]); s := w[0].z[..];
+  #assert w[0].n == 3 && w[0].name[2] == "THREE" && w[0].title == "TEST LAB";
+  #assert w[0].on && s[0].creator[0].field && s[0].creator[0].flat && s[0].bare && s[0].creator[0].on;
+  #assert s[0].put_on && s[0].put_z == w[0].start_z && abs(s[0].put_face - 3.1415927) < 0.001;
+}
+#test "lab walk: every slab, tower and world box is a box you walk round, and none stands on the lane" #steps 400000000 {
+  w: [1] LabWalk; lab_test_walk(w[..]);
+  extra := [6] f32.[-6.6, -0.4, -60, -4.2, 2.4, -57.6];
+  lab_stand(w[..], extra[..], 1);
+  p := w[0].z[0].creator[0].props[0]; #assert p.n == 3 + 1 + LAB_TOWERS && p.n <= wprops.PROPS;
+  for i: 0..<p.n { o := i * 6; #assert p.box[o + 3] <= -LAB_LANE || p.box[o] >= LAB_LANE; #assert p.box[o + 4] > 2; }
+  #assert !wprops.props_inside(p, 0, 1, LAB_TEST_Z[0]) && wprops.props_inside(p, lab_left(w[..], 0) + 1, 1, LAB_TEST_Z[0]);
+  #assert wprops.props_inside(p, -5, 1, -59) && w[0].stood && w[0].near_at[0] == -100;
+}
+#test "lab walk: the stations come in order down the lane, the last held past it" #steps 400000000 {
+  w: [1] LabWalk; lab_test_walk(w[..]);
+  #assert lab_at(w[..], w[0].start_z) == -1 && lab_at(w[..], -2) == 0 && lab_at(w[..], -24) == 1 && lab_at(w[..], -27.5) == 2 && lab_at(w[..], -90) == 2;
+  #assert lab_left(w[..], 0) + LAB_PANEL_W <= -LAB_LANE && lab_left(w[..], 1) >= LAB_LANE;
+}
+#test "lab walk: the frame's quads begin with the sky and the floor and run far to near, in budget" #steps 400000000 {
+  w: [1] LabWalk; lab_test_walk(w[..]); none: [6] f32; lab_stand(w[..], none[..], 0);
+  u: [64] f32; u[16] = 0; u[17] = 2.5; u[18] = w[0].start_z + 4; w[0].z[0].creator[0].player_z = w[0].start_z;
+  lab_list_begin(w[..], u[..]);
+  for i: 0..<w[0].n { _ := lab_station(w[..], i); }
+  lab_list_end(w[..]);
+  q := w[0].quads[..]; n := w[0].quad_n;
+  #assert n > 100 && n < LAB_QUADS && q[3] == QK_SKY && q[LAB_QF + 3] == QK_FLOOR && w[0].build[0].g_n < LAB_GROUPS;
+  // the first group after the floor is the furthest: its distance is no less than the last's
+  l := w[0].build[0]; far := -1.0f32; near := 1e9f32;
+  for g: 0..<l.g_n { if l.g_d[g] > far { far = l.g_d[g]; } if l.g_d[g] < near { near = l.g_d[g]; } }
+  #assert far > near;
+}
+#test "lab walk: WORLDS goes to the worlds when let go over it, and not when dragged off" #steps 400000000 {
+  w: [1] LabWalk; lab_test_walk(w[..]); w[0].worlds_box = cc.Box.{x0 = 1100, y0 = 10, x1 = 1200, y1 = 40};
+  #assert lab_press(w[..], 1150, 20, 0, 7) && lab_press(w[..], 600, 300, 2, 7) && w[0].z[0].action == 0;
+  #assert lab_press(w[..], 1150, 20, 0, 7) && lab_press(w[..], 1150, 20, 2, 7) && w[0].z[0].action == ACT_NAVIGATE;
+  #assert cast(string) w[0].z[0].outbox[0..<w[0].z[0].out_n] == "/worlds";
+  #assert !lab_press(w[..], 600, 300, 0, 8);
+  // in the apps the host draws its own Worlds button: the page's is gone and takes no press
+  #assert lab_has("tab=1\nua=AethyrPageHost/1 (macOS)", "ua=AethyrPageHost") && !lab_has("ua=Mozilla", "ua=AethyrPageHost");
+  w[0].in_app = true; #assert !lab_press(w[..], 1150, 20, 0, 9);
+}
+#test "lab walk: numbers and hex for the faces" {
+  b: [24] u8; n := lab_int(b[..], 0, 102); #assert cast(string) b[0..<n] == "102"; n = lab_int(b[..], 0, 0); #assert cast(string) b[0..<n] == "0";
+  n = lab_int(b[..], 0, -7); #assert cast(string) b[0..<n] == "-7";
+  lab_hex2(b[0..<2], 0x4e); #assert cast(string) b[0..<2] == "4E";
+  n = lab_bits(b[..], 0, 0x4e, 8, 4); #assert cast(string) b[0..<n] == "0100";
+}

@@ -5,7 +5,7 @@
 // to the host's HTTP import, the save (action 4), the pack's catalog (asset 0) and the scene drawn
 // from it.
 // The page is also an Everglade zone (worldbuilder-walk.coax, everglade/zone.coax): your character
-// walks the world on Everglade's controller, stepped here each frame in bitcoin-lab-walk-face.c's
+// walks the world on Everglade's controller, stepped here each frame in lab-walk-face.h's
 // order, its figure's instances and the baked clips two more stores, its parts' draws after
 // WorldBuilder's own on the people's index buffer (the page's second pack).
 #include "worldbuilder-walk.h"
@@ -72,7 +72,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   now += dt;
   width = w; height = h; dpr = scale;
   zone_quality_frame(zone(state), dt, w, h, scale, golden);
-  // your body's step on Everglade's controller, in bitcoin-lab-walk-face.c's order; in the overview it stands
+  // your body's step on Everglade's controller, in lab-walk-face.h's order; in the overview it stands
   coax_t_ZoneWalk zw = zone_walk(zone(state));
   if (zw.put) player = verse_player_place(zw.x, zw.y, zw.z, zw.face);
   if (zw.on && wbw_walks(walk(state))) {

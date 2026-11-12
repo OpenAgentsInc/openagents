@@ -7,7 +7,7 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 
 // Source inspectors and the fivelab animation palette need the larger
 // bounded Wasm ceiling. Other producers retain the 64 MiB ceiling.
-render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="archery-range" || app=="bitcoin-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" || app=="nights" then 4096 else 1024;}
+render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="archery-range" || app=="bitcoin-lab-walk" || app=="nostr-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" || app=="nights" then 4096 else 1024;}
 #test "the source inspectors request the bounded larger Wasm memory" {
   #assert render_memory_pages("animationlab")==4096 && render_memory_pages("ocarinalab")==4096 && render_memory_pages("fivelab")==4096;
   for app:[4]string.["", "animationla", "animelab", "valleycanyon"] {#assert render_memory_pages(app)==1024;}
@@ -106,6 +106,8 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("bitcoin-lab","newland").tracked_legacy;
   #assert !render_adoption("bitcoin-la","bitcoin-lab").tracked_legacy;
   #assert render_adoption("bitcoin-lab","bitcoin-lab-walk").tracked_legacy && !render_adoption("bitcoin-lab","bitcoin-lab-walk").shared;
+  #assert render_adoption("nostr-lab","nostr-lab-walk").tracked_legacy && !render_adoption("nostr-lab","nostr-lab-walk").shared;
+  #assert !render_adoption("nostr-lab","bitcoin-lab-walk").tracked_legacy && render_memory_pages("nostr-lab-walk")==4096;
 }
 // Audio Lab (Everglade's sounds, #12832) draws the projects list's HUD passes: no 3D, no catalog profile.
 #test "Audio Lab is a tracked legacy consumer" {
@@ -157,6 +159,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab-walk" { return RenderAdoption.{tracked_legacy = true}; }   // the walk: an Everglade zone on Character Create's passes
+  if slug == "nostr-lab" && app == "nostr-lab-walk" { return RenderAdoption.{tracked_legacy = true}; }   // the same lab walk (verse/lab-walk.coax)
   if slug == "portal-lab" && app == "portallab" { return RenderAdoption.{tracked_legacy = true}; }
   index := render_catalog_find(slug);
   if index >= 0 {

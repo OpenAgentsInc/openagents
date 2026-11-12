@@ -620,6 +620,18 @@
         "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/bitcoin-lab-fx.wgsl",
           "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg"]
       } },
+    { "id": "nostr-lab", "name": "NOSTR LAB", "kind": "open", "listed": false,
+      "orbit": { "r": 0.47, "a": 2.75, "size": 0.018 },
+      "realm": {
+        "slug": "nostr-lab", "title": "Nostr Lab",
+        "description": "An unlisted walk on the Grid through Nostr's basics: a key pair, an event taking shape, its bytes into SHA-256 for the ID, and a BIP-340 signature that one changed letter breaks.",
+        "alt": "Your Everglade character on a glowing Grid lane beside lit stations showing a public key and npub, a Nostr event's fields and its ID out of SHA-256",
+        "module": "nostr-lab-walk", "slot": "nostr-lab", "style": "painterly", "clock": "fixed:0.5",
+        "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
+        "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
+        "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/bitcoin-lab-fx.wgsl",
+          "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg"]
+      } },
     { "id": "frontier", "name": "PENULTIMATE FRONTIER", "kind": "open", "listed": false, "orbit": { "r": 0.32, "a": 1.4, "size": 0.026 },
       "realm": {
         "slug": "penultimate-frontier",

@@ -205,6 +205,16 @@ test("unlisted realms keep direct routes and noindex, outside the public catalog
   expect(html).toContain('<caption>All 125 chapters</caption>')
   expect(listMarkdown(worlds())).not.toContain("bitcoin-lab")
   expect(listPage(worlds())).not.toContain("bitcoin-lab")
+  // Nostr Lab: the same lab walk, unlisted, its page the name and one link
+  const n = worlds().find(w => w.id === "nostr-lab")!
+  expect(n.listed).toBe(false)
+  const nostr = page(n.realm!, false)
+  expect(nostr).toContain('<meta name="robots" content="noindex, nofollow">')
+  expect(nostr).toContain('data-app="nostr-lab-walk"')
+  expect(nostr).toContain('data-slot="nostr-lab"')
+  expect(nostr).toContain('<main>\n<h1>Nostr Lab</h1><p><a href="/worlds/nostr-lab/index.md">Nostr Lab</a></p>\n</main>')
+  expect(listMarkdown(worlds())).not.toContain("nostr-lab")
+  expect(listPage(worlds())).not.toContain("nostr-lab")
 })
 test("refuses an unknown ruleset", () => expect(check((r) => (r.ruleset = "pathfinder"))).toThrow(/ruleset is one of/))
 

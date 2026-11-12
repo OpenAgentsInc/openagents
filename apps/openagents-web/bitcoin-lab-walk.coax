@@ -11,29 +11,17 @@
 //     previous-block hash
 // Every number is worked out at run time by the book's own Coax (bitcoin-lab-lesson.coax).
 //
-// The module is an Everglade zone (everglade/zone.coax), as the Archery Range is: the zone walks you
-// on Everglade's controller with the follow camera and draws your figure with Character Create's
-// passes. The zone is level (Creator.flat: no meadow, the ground at 0) and bare (EgZone.bare: no
-// class bar, no monsters). The Grid, its sky and every station are lit quads this module lists each
-// frame, far to near, for the engine's quad world (aethyr/fx/gpu-quads.coax, drawn as the page's
-// particles by gpu/bitcoin-lab-fx.coax after your figure and depth-tested against it). Its HUD is
-// the world's name, the station you are at with one line, and WORLDS.
+// The walking, the camera, the HUD, WORLDS, the slabs, the skyline and the Grid are the lab walk's
+// (verse/lab-walk.coax), shared with Nostr Lab; this module names the stations and draws their
+// lessons and the chain's cubes. Its C face is bitcoin-lab-walk-face.c over lab-walk-face.h.
 //   coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/bitcoin-lab-walk.coax --only "bitcoin lab walk"
-#load "../../everglade/zone.coax";
-#load "../../aethyr/fx/pixel-font.coax";
+#load "../../verse/lab-walk.coax";
 #load "bitcoin-lab-lesson.coax";
 
 BW_PATHS :: [2] string.["/worlds/bitcoin-lab", "/worlds/bitcoin-lab/"];
-// The quads: 16 floats each (aethyr/fx/gpu-quads.coax QuadRow), in groups sorted far to near.
-BW_QUADS :: 4096; BW_GROUPS :: 128; BW_QF :: 16;
-QK_SKY :: 0.0f32; QK_FLOOR :: 1.0f32; QK_PANEL :: 2.0f32; QK_GLYPH :: 3.0f32; QK_GLOW :: 4.0f32; QK_BEAM :: 5.0f32;
-
-// The walk: you start at BW_START_Z facing down the lane (toward -z). Stations stand beside the lane,
+// The walk: you start at the lane's start facing down it (toward -z). Stations stand beside the lane,
 // their faces toward you as you come, on alternate sides.
-BW_START_Z :: 6.0f32;
 BW_STATIONS :: 7;
-BW_PANEL_W :: 7.6f32; BW_PANEL_H :: 4.4f32; BW_PANEL_D :: 0.3f32;
-BW_LANE :: 2.5f32;           // the lane's half width (the floor's rails, gpu-quads.coax qfx_floor)
 BW_STATION_Z :: [BW_STATIONS] f32.[-10, -25, -40, -55, -70, -85, -100];
 BW_STATION_SIDE :: [BW_STATIONS] f32.[-1, 1, -1, 1, -1, 1, 1];
 BW_NAME :: [BW_STATIONS] string.["A BYTE", "HEX", "BASE64", "BYTE ORDER", "SHA-256", "SHA-256D", "THE CHAIN"];
@@ -51,563 +39,274 @@ BW_INTRO :: "Walk the lane: chapter 1, then the hash, then the chain.";
 BW_LINK_Y :: 2.0f32;   // the links' height: over the hash on the faces
 BW_CUBE :: 2.4f32; BW_CHAIN_X :: -5.4f32; BW_CHAIN_Z0 :: -108.0f32; BW_CHAIN_STEP :: 10.0f32;
 BW_WORD :: "BITCOIN";
-
-// The Grid's colours (linear light).
-BwRgb :: struct { r: f32; g: f32; b: f32; }
-BW_CYAN :: BwRgb.{r = 0.25, g = 0.85, b = 1.2};
-BW_ICE :: BwRgb.{r = 0.75, g = 0.92, b = 1.1};
-BW_DIM :: BwRgb.{r = 0.035, g = 0.085, b = 0.12};
-BW_ORANGE :: BwRgb.{r = 1.35, g = 0.52, b = 0.08};
-BW_GOLD :: BwRgb.{r = 1.2, g = 0.85, b = 0.32};
-BW_GREEN :: BwRgb.{r = 0.35, g = 1.25, b = 0.55};
-BW_VIOLET :: BwRgb.{r = 0.75, g = 0.45, b = 1.25};
-BW_GLASS :: BwRgb.{r = 0.005, g = 0.014, b = 0.024};
-BW_FIELD_INK :: [BL_FIELDS] BwRgb.[BwRgb.{r = 0.35, g = 0.95, b = 1.25}, BwRgb.{r = 0.32, g = 0.40, b = 0.48}, BwRgb.{r = 0.55, g = 0.85, b = 1.1}, BwRgb.{r = 1.35, g = 0.6, b = 0.12}, BwRgb.{r = 0.8, g = 0.5, b = 1.3}, BwRgb.{r = 0.4, g = 1.25, b = 0.6}];
+BW_FIELD_INK :: [BL_FIELDS] LabRgb.[LabRgb.{r = 0.35, g = 0.95, b = 1.25}, LabRgb.{r = 0.32, g = 0.40, b = 0.48}, LabRgb.{r = 0.55, g = 0.85, b = 1.1}, LabRgb.{r = 1.35, g = 0.6, b = 0.12}, LabRgb.{r = 0.8, g = 0.5, b = 1.3}, LabRgb.{r = 0.4, g = 1.25, b = 0.6}];
 BW_FIELD_SHORT :: [BL_FIELDS] string.["VERSION", "PREV HASH", "MERKLE ROOT", "TIME", "BITS", "NONCE"];
 
-BwQuads :: struct {
-  q: [BW_QUADS * BW_QF] f32; n: int;
-  g_at: [BW_GROUPS] int; g_d: [BW_GROUPS] f32; g_n: int;
-}
 BitcoinWalk :: struct {
-  z: [1] EgZone;
+  w: [1] LabWalk;
   lesson: [1] Lesson;
-  on: bool; stood: bool;
-  build: [1] BwQuads;                 // this frame's quads in groups, as they are listed
-  quads: [BW_QUADS * BW_QF] f32; quad_n: int;   // ... far to near, for the host (bitcoin-lab-walk-face.c)
-  eye: [3] f32;
-  station: int = -1;                  // the station you are at, -1 none
-  near_at: [BW_STATIONS] f32;         // when you came to each station (its animation starts then), -100 not there
-  worlds_id: int = -1;                // the finger or button on WORLDS
-  worlds_box: cc.Box;
-  in_app: bool;                       // in the Everglade apps (Aethyr's page host): the app draws its own Worlds button, at the top's middle
-  framed: bool;                       // the camera's first frame set: further back on an upright screen, where the stations are off to the sides
 }
-
 bw_page :: (facts: string) -> bool { for p: BW_PATHS { if cc.page_path(facts, p) { return true; } } return false; }
-
-// ---- the quad list
-bw_group :: (w: [] BitcoinWalk, x: f32, y: f32, z: f32) {
-  l := w[0].build[..]; if l[0].g_n >= BW_GROUPS { return; }
-  dx := x - w[0].eye[0]; dy := y - w[0].eye[1]; dz := z - w[0].eye[2];
-  l[0].g_at[l[0].g_n] = l[0].n; l[0].g_d[l[0].g_n] = dx * dx + dy * dy + dz * dz; l[0].g_n += 1;
-}
-bw_quad :: (w: [] BitcoinWalk, kind: f32, cx: f32, cy: f32, cz: f32, ax: [3] f32, n1: f32, ay: [3] f32, n2: f32, c: BwRgb, n3: f32) {
-  l := w[0].build[..]; if l[0].n >= BW_QUADS { return; }
-  o := l[0].n * BW_QF; q := l[0].q[..];
-  q[o] = cx; q[o + 1] = cy; q[o + 2] = cz; q[o + 3] = kind;
-  q[o + 4] = ax[0]; q[o + 5] = ax[1]; q[o + 6] = ax[2]; q[o + 7] = n1;
-  q[o + 8] = ay[0]; q[o + 9] = ay[1]; q[o + 10] = ay[2]; q[o + 11] = n2;
-  q[o + 12] = c.r; q[o + 13] = c.g; q[o + 14] = c.b; q[o + 15] = n3;
-  l[0].n += 1;
-}
-bw_v :: (x: f32, y: f32, z: f32) -> [3] f32 { return [3] f32.[x, y, z]; }
-bw_scale :: (c: BwRgb, k: f32) -> BwRgb { return BwRgb.{r = c.r * k, g = c.g * k, b = c.b * k}; }
-bw_mix :: (a: BwRgb, b: BwRgb, t: f32) -> BwRgb { return BwRgb.{r = a.r + (b.r - a.r) * t, g = a.g + (b.g - a.g) * t, b = a.b + (b.b - a.b) * t}; }
-bw_clamp :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b { return b; } return v; }
-bw_ease :: (t0: f32) -> f32 { t := bw_clamp(t0, 0, 1); return t * t * (3 - 2 * t); }
-
-// A face facing +z (a station's front): centre, half width and height, its glass, how much it shines, its rim.
-bw_face_z :: (w: [] BitcoinWalk, cx: f32, cy: f32, cz: f32, hw: f32, hh: f32, c: BwRgb, shine: f32, rim: f32, opaque: f32) {
-  bw_quad(w, QK_PANEL, cx, cy, cz, bw_v(hw, 0, 0), shine, bw_v(0, hh, 0), rim, c, opaque);
-}
-// A face facing +x or -x (a cube's side): centre, half depth (along z) and height.
-bw_face_x :: (w: [] BitcoinWalk, cx: f32, cy: f32, cz: f32, hd: f32, hh: f32, c: BwRgb, shine: f32, rim: f32, opaque: f32) {
-  bw_quad(w, QK_PANEL, cx, cy, cz, bw_v(0, 0, hd), shine, bw_v(0, hh, 0), rim, c, opaque);
-}
-// A solid box: its faces that look toward the eye (it is convex and opaque, so they never overlap).
-bw_box :: (w: [] BitcoinWalk, cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32, c: BwRgb, shine: f32, rim: f32) {
-  e := w[0].eye;
-  if e[2] > cz + hz { bw_face_z(w, cx, cy, cz + hz, hx, hy, c, shine, rim, 1); }
-  if e[2] < cz - hz { bw_face_z(w, cx, cy, cz - hz, hx, hy, c, shine, rim, 1); }
-  if e[0] > cx + hx { bw_face_x(w, cx + hx, cy, cz, hz, hy, c, shine, rim, 1); }
-  if e[0] < cx - hx { bw_face_x(w, cx - hx, cy, cz, hz, hy, c, shine, rim, 1); }
-  if e[1] > cy + hy { bw_quad(w, QK_PANEL, cx, cy + hy, cz, bw_v(hx, 0, 0), shine, bw_v(0, 0, hz), rim, c, 1); }
-}
-// A soft round light lying on the floor.
-bw_pool :: (w: [] BitcoinWalk, x: f32, z: f32, r: f32, c: BwRgb, k: f32) {
-  bw_quad(w, QK_GLOW, x, 0.02, z, bw_v(r, 0, 0), 0, bw_v(0, 0, r), 0, c, k);
-}
-// A soft round light standing up, facing +z.
-bw_lamp :: (w: [] BitcoinWalk, x: f32, y: f32, z: f32, r: f32, c: BwRgb, k: f32) {
-  bw_quad(w, QK_GLOW, x, y, z, bw_v(r, 0, 0), 0, bw_v(0, r, 0), 0, c, k);
-}
-// A bar of light from a to b, `wide` metres across, lying in the plane facing +z or, when side, +x.
-bw_beam :: (w: [] BitcoinWalk, a: [3] f32, b: [3] f32, wide: f32, c: BwRgb, k: f32, side: bool) {
-  hx := (b[0] - a[0]) * 0.5; hy := (b[1] - a[1]) * 0.5; hz := (b[2] - a[2]) * 0.5;
-  span := sqrt(hx * hx + hy * hy + hz * hz); if span < 0.0001 { return; }
-  // across: square to the bar in the face's plane
-  ux := ifx side then 0.0f32 else -hy / span; uy := ifx side then -hz / span else hx / span; uz := ifx side then hy / span else 0.0f32;
-  m := sqrt(ux * ux + uy * uy + uz * uz); if m < 0.0001 { ux = 0; uy = 1; uz = 0; m = 1; }
-  bw_quad(w, QK_BEAM, a[0] + hx, a[1] + hy, a[2] + hz, bw_v(hx, hy, hz), 0, bw_v(ux / m * wide, uy / m * wide, uz / m * wide), 0, c, k);
+// The walk's stations and words: set on every call in, so a fresh state has them.
+bw_conf :: (bk: [] BitcoinWalk) -> [] LabWalk {
+  w := bk[0].w[..];
+  if w[0].n == 0 { lab_conf(w, "BITCOIN LAB", BW_INTRO, "CHAPTER 1: BYTES, HEX AND BASE64", "CHAPTER 1", BW_STATION_Z[..], BW_STATION_SIDE[..], BW_NAME[..], BW_LINE[..]); }
+  return w;
 }
 
-// ---- the pixel face: a line of lamps on a plane, along `right` (unit, in the floor's plane) with up +y
-bw_text_w :: (count: int, h: f32) -> f32 { return f32(pf_cells(count)) * h / f32(PF_ROWS); }
-bw_text :: (w: [] BitcoinWalk, t: string, x: f32, y: f32, z: f32, rx: f32, rz: f32, h: f32, c: BwRgb, light: f32) {
-  cw := h * f32(PF_COLS) / f32(PF_ROWS); adv := h * f32(PF_COLS + 1) / f32(PF_ROWS);
-  for i: 0..<t.count {
-    g := pf_glyph(t[i]); if g == 0 { continue; }
-    at := f32(i) * adv + cw * 0.5;
-    bw_quad(w, QK_GLYPH, x + rx * at, y + h * 0.5, z + rz * at, bw_v(rx * cw * 0.5, 0, rz * cw * 0.5), pf_top(g), bw_v(0, h * 0.5, 0), pf_foot(g), c, light);
-  }
-}
-// On a station's face (facing +z at depth z): from its left (u) and floor (v).
-bw_say :: (w: [] BitcoinWalk, t: string, x0: f32, z: f32, u: f32, v: f32, h: f32, c: BwRgb, light: f32) {
-  bw_text(w, t, x0 + u, v, z + 0.02, 1, 0, h, c, light);
-}
-bw_say_mid :: (w: [] BitcoinWalk, t: string, x0: f32, z: f32, u: f32, v: f32, h: f32, c: BwRgb, light: f32) {
-  bw_say(w, t, x0, z, u - bw_text_w(t.count, h) * 0.5, v, h, c, light);
-}
-
-// ---- small text
-bw_hex2 :: (b: [] u8, v: int) { d := "0123456789ABCDEF"; b[0] = d[(v >> 4) & 15]; b[1] = d[v & 15]; }
-bw_bits :: (b: [] u8, n0: int, v: int, from: int, count: int) -> int { n := n0; for i: 0..<count { b[n] = ifx (v >> (from - 1 - i)) & 1 == 1 then '1' else '0'; n += 1; } return n; }
-
-// ---- the stations
-// Where a station's face is: its left edge's x, the face's z.
-bw_left :: (i: int) -> f32 { return ifx BW_STATION_SIDE[i] < 0 then -BW_LANE - 0.6 - BW_PANEL_W else BW_LANE + 0.6; }
-bw_face :: (i: int) -> f32 { return BW_STATION_Z[i] + BW_PANEL_D * 0.5; }
-// How far into its animation a station is: 0 until you come to it.
-bw_anim :: (w: [] BitcoinWalk, i: int) -> f32 { t := w[0].z[0].creator[0].clock - w[0].near_at[i]; return ifx w[0].near_at[i] < -50 then 0.0f32 else t; }
-// The slab every station stands on: dark glass, its rim lit, a light on the floor before it.
-bw_slab :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); cz := BW_STATION_Z[i];
-  bw_box(w, x0 + BW_PANEL_W * 0.5, BW_PANEL_H * 0.5, cz, BW_PANEL_W * 0.5, BW_PANEL_H * 0.5, BW_PANEL_D * 0.5, BW_GLASS, 0.25 + 0.25 * lit, 0.55 + 0.6 * lit);
-  // its number and name along the top
-  b: [24] u8; n := bl_int(b[..], 0, i + 1);
-  bw_say(w, cast(string) b[0..<n], x0, bw_face(i), 0.35, BW_PANEL_H - 0.72, 0.42, BW_ORANGE, 1.4 + lit);
-  bw_say(w, BW_NAME[i], x0, bw_face(i), 0.35 + bw_text_w(n + 1, 0.42), BW_PANEL_H - 0.72, 0.42, BW_ICE, 1.1 + lit);
-}
-
+// ---- the stations' lessons
 // 1 a byte: the letters of BW_WORD in turn once you are there.
-bw_byte :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); z := bw_face(i); t := bw_anim(w, i);
+bw_byte :: (bk: [] BitcoinWalk, i: int, lit: f32) {
+  w := bk[0].w[..];
+  x0 := lab_left(w, i); z := lab_face(w, i); t := lab_anim(w, i);
   k := ifx t > 0 then (cast(int) (t / 1.6)) % BW_WORD.count else 0; v := cast(int) BW_WORD[k];
-  cell := 0.72f32; gap := 0.12f32; u0 := (BW_PANEL_W - (8 * cell + 7 * gap)) * 0.5;
+  cell := 0.72f32; gap := 0.12f32; u0 := (LAB_PANEL_W - (8 * cell + 7 * gap)) * 0.5;
   pv := [8] string.["128", "64", "32", "16", "8", "4", "2", "1"];
   for bit: 0..<8 {
     on := bl_bit(cast,trunc(u8) v, bit); cx := x0 + u0 + f32(bit) * (cell + gap) + cell * 0.5;
-    bw_face_z(w, cx, 2.25, z + 0.01, cell * 0.5, 0.48, ifx on then BW_ORANGE else BW_DIM, ifx on then 0.55 else 0.12, ifx on then 1.4 else 0.6, 1);
-    bw_say_mid(w, ifx on then "1" else "0", x0, z + 0.01, cx - x0, 2.0, 0.5, ifx on then BwRgb.{r = 1.6, g = 1.2, b = 0.7} else BW_CYAN, ifx on then 1.6 else 0.6);
-    bw_say_mid(w, pv[bit], x0, z, cx - x0, 1.42, 0.17, BW_CYAN, 0.7);
+    lab_face_z(w, cx, 2.25, z + 0.01, cell * 0.5, 0.48, ifx on then LAB_ORANGE else LAB_DIM, ifx on then 0.55 else 0.12, ifx on then 1.4 else 0.6, 1);
+    lab_say_mid(w, ifx on then "1" else "0", x0, z + 0.01, cx - x0, 2.0, 0.5, ifx on then LabRgb.{r = 1.6, g = 1.2, b = 0.7} else LAB_CYAN, ifx on then 1.6 else 0.6);
+    lab_say_mid(w, pv[bit], x0, z, cx - x0, 1.42, 0.17, LAB_CYAN, 0.7);
   }
-  b: [48] u8; n := bl_int(b[..], 0, v); n = bl_str(b[..], n, "  =  0x"); bw_hex2(b[n..<n + 2], v); n += 2; n = bl_str(b[..], n, "  =  '"); b[n] = cast,trunc(u8) v; n += 1; n = bl_str(b[..], n, "'");
-  bw_say_mid(w, cast(string) b[0..<n], x0, z, BW_PANEL_W * 0.5, 0.5, 0.42, BW_GOLD, 1.3 + lit);
+  b: [48] u8; n := bl_int(b[..], 0, v); n = bl_str(b[..], n, "  =  0x"); lab_hex2(b[n..<n + 2], v); n += 2; n = bl_str(b[..], n, "  =  '"); b[n] = cast,trunc(u8) v; n += 1; n = bl_str(b[..], n, "'");
+  lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 0.5, 0.42, LAB_GOLD, 1.3 + lit);
 }
 // 2 hex: the header's bytes, five rows of sixteen, coloured by field; one byte at a time shows its nibbles.
-bw_hex :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); z := bw_face(i); l := w[0].lesson[0]; t := bw_anim(w, i);
-  h := 0.2f32; adv := h * 6 / 7; pitch := 2 * adv + 0.07; u0 := (BW_PANEL_W - (16 * pitch - 0.07)) * 0.5;
+bw_hex :: (bk: [] BitcoinWalk, i: int, lit: f32) {
+  w := bk[0].w[..];
+  x0 := lab_left(w, i); z := lab_face(w, i); l := bk[0].lesson[0]; t := lab_anim(w, i);
+  h := 0.2f32; adv := h * 6 / 7; pitch := 2 * adv + 0.07; u0 := (LAB_PANEL_W - (16 * pitch - 0.07)) * 0.5;
   // the byte shown up close: the header's bytes that aren't zero, one after another
   pick := BL_TIME_AT;
   if t > 0 { live := 0; for a: 0..<BL_HEADER { if l.header[a] != 0 { live += 1; } } want := (cast(int) (t * 1.25)) % (ifx live > 0 then live else 1); for a: 0..<BL_HEADER { if l.header[a] != 0 { if want == 0 { pick = a; break; } want -= 1; } } }
   for r: 0..<5 { for c: 0..<16 {
     at := r * 16 + c; f := bl_field(at); u := u0 + f32(c) * pitch; v := 3.05 - f32(r) * 0.4;
     ink := BW_FIELD_INK[f]; light := 0.9f32;
-    if at == pick { bw_face_z(w, x0 + u + adv - 0.02, v + h * 0.5, z + 0.01, adv + 0.03, h * 0.75, ink, 0.35, 1.2, 0.85); ink = BwRgb.{r = 1.6, g = 1.6, b = 1.6}; light = 1.8; }
-    bw_say(w, cast(string) l.header_hex[at * 2..<at * 2 + 2], x0, z + 0.01, u, v, h, ink, light);
+    if at == pick { lab_face_z(w, x0 + u + adv - 0.02, v + h * 0.5, z + 0.01, adv + 0.03, h * 0.75, ink, 0.35, 1.2, 0.85); ink = LabRgb.{r = 1.6, g = 1.6, b = 1.6}; light = 1.8; }
+    lab_say(w, cast(string) l.header_hex[at * 2..<at * 2 + 2], x0, z + 0.01, u, v, h, ink, light);
   } }
   // the legend: each field's name in its colour
   lu := 0.35f32; lh := 0.13f32;
-  for f: 0..<BL_FIELDS { bw_say(w, BW_FIELD_SHORT[f], x0, z, lu, 1.12, lh, BW_FIELD_INK[f], 0.9); lu += bw_text_w(BW_FIELD_SHORT[f].count + 2, lh); }
+  for f: 0..<BL_FIELDS { lab_say(w, BW_FIELD_SHORT[f], x0, z, lu, 1.12, lh, BW_FIELD_INK[f], 0.9); lu += lab_text_w(BW_FIELD_SHORT[f].count + 2, lh); }
   // the picked byte: two hex digits, two nibbles of four bits
-  b: [48] u8; v := cast(int) l.header[pick]; n := 0; bw_hex2(b[0..<2], v); n = 2; n = bl_str(b[..], n, "  =  ");
-  n = bw_bits(b[..], n, v, 8, 4); n = bl_str(b[..], n, " "); n = bw_bits(b[..], n, v, 4, 4);
-  bw_say_mid(w, cast(string) b[0..<n], x0, z, BW_PANEL_W * 0.5, 0.45, 0.36, BW_GOLD, 1.3 + lit);
+  b: [48] u8; v := cast(int) l.header[pick]; n := 0; lab_hex2(b[0..<2], v); n = 2; n = bl_str(b[..], n, "  =  ");
+  n = lab_bits(b[..], n, v, 8, 4); n = bl_str(b[..], n, " "); n = lab_bits(b[..], n, v, 4, 4);
+  lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 0.45, 0.36, LAB_GOLD, 1.3 + lit);
 }
 // 3 base64: three bytes, their 24 bits regrouping from bytes into sextets as you arrive, four letters.
-bw_b64 :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); z := bw_face(i); l := w[0].lesson[0]; t := bw_anim(w, i);
-  g := bw_ease((t - 0.8) / 1.6);   // 0: grouped as bytes, 1: as sextets
-  cell := 0.19f32; step := 0.235f32; gap := 0.22f32; u0 := (BW_PANEL_W - (24 * step + 3 * gap)) * 0.5;
+bw_b64 :: (bk: [] BitcoinWalk, i: int, lit: f32) {
+  w := bk[0].w[..];
+  x0 := lab_left(w, i); z := lab_face(w, i); l := bk[0].lesson[0]; t := lab_anim(w, i);
+  g := lab_ease((t - 0.8) / 1.6);   // 0: grouped as bytes, 1: as sextets
+  cell := 0.19f32; step := 0.235f32; gap := 0.22f32; u0 := (LAB_PANEL_W - (24 * step + 3 * gap)) * 0.5;
   for k: 0..<24 {
     on := bl_b64_bit(l, k); gb := f32(k / 8) * 1.5; gs := f32(k / 6); u := u0 + f32(k) * step + (gb + (gs - gb) * g) * gap;
-    col := bw_mix(BW_CYAN, ifx (k / 6) % 2 == 0 then BW_ORANGE else BW_GOLD, g);
-    bw_face_z(w, x0 + u + cell * 0.5, 2.3, z + 0.01, cell * 0.5, 0.28, ifx on then bw_scale(col, 0.55) else BW_DIM, ifx on then 0.35 else 0.06, 0.8, 1);
-    bw_say_mid(w, ifx on then "1" else "0", x0, z + 0.01, u + cell * 0.5, 2.21, 0.18, ifx on then bw_mix(col, BwRgb.{r = 1.6, g = 1.6, b = 1.6}, 0.5) else BW_CYAN, ifx on then 1.3 else 0.45);
+    col := lab_mix(LAB_CYAN, ifx (k / 6) % 2 == 0 then LAB_ORANGE else LAB_GOLD, g);
+    lab_face_z(w, x0 + u + cell * 0.5, 2.3, z + 0.01, cell * 0.5, 0.28, ifx on then lab_scale(col, 0.55) else LAB_DIM, ifx on then 0.35 else 0.06, 0.8, 1);
+    lab_say_mid(w, ifx on then "1" else "0", x0, z + 0.01, u + cell * 0.5, 2.21, 0.18, ifx on then lab_mix(col, LabRgb.{r = 1.6, g = 1.6, b = 1.6}, 0.5) else LAB_CYAN, ifx on then 1.3 else 0.45);
   }
   b: [8] u8;
   for k: 0..<3 {   // the bytes over their eight bits, fading as the sextets take over
-    bw_hex2(b[0..<2], cast(int) l.header[BL_B64_AT + k]); mid := u0 + (f32(k) * 8 + 4) * step + f32(k) * 1.5 * gap - step * 0.5 + cell * 0.5;
-    bw_say_mid(w, cast(string) b[0..<2], x0, z, mid, 2.95, 0.34, BW_CYAN, 1.2 * (1 - g) + 0.15);
+    lab_hex2(b[0..<2], cast(int) l.header[BL_B64_AT + k]); mid := u0 + (f32(k) * 8 + 4) * step + f32(k) * 1.5 * gap - step * 0.5 + cell * 0.5;
+    lab_say_mid(w, cast(string) b[0..<2], x0, z, mid, 2.95, 0.34, LAB_CYAN, 1.2 * (1 - g) + 0.15);
   }
   alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   for k: 0..<4 {   // the sextets' values and their letters, rising as they form
     v := bl_sextet(l, k); mid := u0 + (f32(k) * 6 + 3) * step + f32(k) * gap - step * 0.5 + cell * 0.5; n := bl_int(b[..], 0, v);
-    bw_say_mid(w, cast(string) b[0..<n], x0, z, mid, 1.55, 0.26, BW_GOLD, 1.2 * g + 0.1);
-    b[0] = alphabet[v]; bw_say_mid(w, cast(string) b[0..<1], x0, z, mid, 0.45, 0.62, BW_ORANGE, 1.9 * g + 0.15);
+    lab_say_mid(w, cast(string) b[0..<n], x0, z, mid, 1.55, 0.26, LAB_GOLD, 1.2 * g + 0.1);
+    b[0] = alphabet[v]; lab_say_mid(w, cast(string) b[0..<1], x0, z, mid, 0.45, 0.62, LAB_ORANGE, 1.9 * g + 0.15);
   }
 }
 // 4 byte order: the time field's four bytes as they are on the wire move into the order of the number.
-bw_order :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); z := bw_face(i); l := w[0].lesson[0]; t := bw_anim(w, i);
-  g := bw_ease((t - 0.8) / 1.8);
-  cell := 1.1f32; gap := 0.25f32; u0 := (BW_PANEL_W - (4 * cell + 3 * gap)) * 0.5;
-  bw_say_mid(w, "ON THE WIRE", x0, z, BW_PANEL_W * 0.5, 3.0, 0.17, BW_CYAN, 0.9 * (1 - g) + 0.2);
-  bw_say_mid(w, "AS THE NUMBER", x0, z, BW_PANEL_W * 0.5, 1.15, 0.17, BW_GOLD, 0.9 * g + 0.2);
+bw_order :: (bk: [] BitcoinWalk, i: int, lit: f32) {
+  w := bk[0].w[..];
+  x0 := lab_left(w, i); z := lab_face(w, i); l := bk[0].lesson[0]; t := lab_anim(w, i);
+  g := lab_ease((t - 0.8) / 1.8);
+  cell := 1.1f32; gap := 0.25f32; u0 := (LAB_PANEL_W - (4 * cell + 3 * gap)) * 0.5;
+  lab_say_mid(w, "ON THE WIRE", x0, z, LAB_PANEL_W * 0.5, 3.0, 0.17, LAB_CYAN, 0.9 * (1 - g) + 0.2);
+  lab_say_mid(w, "AS THE NUMBER", x0, z, LAB_PANEL_W * 0.5, 1.15, 0.17, LAB_GOLD, 0.9 * g + 0.2);
   b: [48] u8;
   for k: 0..<4 {
     from := u0 + f32(k) * (cell + gap); to := u0 + f32(3 - k) * (cell + gap); u := from + (to - from) * g;
     v := 2.05 + sin(g * 3.14159) * (ifx k < 2 then 0.55f32 else -0.55f32);
-    col := bw_mix(BW_CYAN, BW_ORANGE, g);
-    bw_face_z(w, x0 + u + cell * 0.5, v, z + 0.01, cell * 0.5, 0.42, col, 0.3, 1.2, 1);
-    bw_hex2(b[0..<2], cast(int) l.header[BL_TIME_AT + k]); bw_say_mid(w, cast(string) b[0..<2], x0, z + 0.01, u + cell * 0.5, v - 0.2, 0.4, BwRgb.{r = 1.5, g = 1.5, b = 1.5}, 1.4);
+    col := lab_mix(LAB_CYAN, LAB_ORANGE, g);
+    lab_face_z(w, x0 + u + cell * 0.5, v, z + 0.01, cell * 0.5, 0.42, col, 0.3, 1.2, 1);
+    lab_hex2(b[0..<2], cast(int) l.header[BL_TIME_AT + k]); lab_say_mid(w, cast(string) b[0..<2], x0, z + 0.01, u + cell * 0.5, v - 0.2, 0.4, LabRgb.{r = 1.5, g = 1.5, b = 1.5}, 1.4);
   }
-  n := bl_str(b[..], 0, "0x"); for k: 0..<4 { bw_hex2(b[n..<n + 2], cast(int) l.header[BL_TIME_AT + 3 - k]); n += 2; } n = bl_str(b[..], n, " = "); n = bl_int(b[..], n, l.time);
-  bw_say_mid(w, cast(string) b[0..<n], x0, z, BW_PANEL_W * 0.5, 0.78, 0.26, BW_GOLD, 1.3 * g + 0.15);
-  n = bl_date(b[..], l.time); bw_say_mid(w, cast(string) b[0..<n], x0, z, BW_PANEL_W * 0.5, 0.33, 0.26, BW_ICE, 1.1 * g + 0.1);
+  n := bl_str(b[..], 0, "0x"); for k: 0..<4 { lab_hex2(b[n..<n + 2], cast(int) l.header[BL_TIME_AT + 3 - k]); n += 2; } n = bl_str(b[..], n, " = "); n = bl_int(b[..], n, l.time);
+  lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 0.78, 0.26, LAB_GOLD, 1.3 * g + 0.15);
+  n = bl_date(b[..], l.time); lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 0.33, 0.26, LAB_ICE, 1.1 * g + 0.1);
 }
 // 5 SHA-256: the header's bytes flow into the hash and its 32 bytes come out.
-bw_sha :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); z := bw_face(i); l := w[0].lesson[0]; t := bw_anim(w, i); now := w[0].z[0].creator[0].clock;
+bw_sha :: (bk: [] BitcoinWalk, i: int, lit: f32) {
+  w := bk[0].w[..];
+  x0 := lab_left(w, i); z := lab_face(w, i); l := bk[0].lesson[0]; t := lab_anim(w, i); now := lab_clock(w);
   // in: the 80 bytes, small
-  h := 0.085f32; for r: 0..<10 { bw_say(w, cast(string) l.header_hex[r * 16..<r * 16 + 16], x0, z, 0.35, 3.0 - f32(r) * 0.17, h, BW_CYAN, 0.8); }
-  bw_say(w, "80 BYTES", x0, z, 0.35, 1.0, 0.17, BW_CYAN, 1.0);
+  h := 0.085f32; for r: 0..<10 { lab_say(w, cast(string) l.header_hex[r * 16..<r * 16 + 16], x0, z, 0.35, 3.0 - f32(r) * 0.17, h, LAB_CYAN, 0.8); }
+  lab_say(w, "80 BYTES", x0, z, 0.35, 1.0, 0.17, LAB_CYAN, 1.0);
   // the hash: a lit box
-  bx := x0 + 3.55; bw_face_z(w, bx, 2.25, z + 0.01, 0.7, 0.6, BW_ORANGE, 0.35 + 0.15 * lit, 1.5, 1);
-  bw_say_mid(w, "SHA", x0, z + 0.01, 3.55, 2.32, 0.24, BwRgb.{r = 1.6, g = 1.5, b = 1.3}, 1.6);
-  bw_say_mid(w, "256", x0, z + 0.01, 3.55, 1.95, 0.24, BwRgb.{r = 1.6, g = 1.5, b = 1.3}, 1.6);
+  bx := x0 + 3.55; lab_face_z(w, bx, 2.25, z + 0.01, 0.7, 0.6, LAB_ORANGE, 0.35 + 0.15 * lit, 1.5, 1);
+  lab_say_mid(w, "SHA", x0, z + 0.01, 3.55, 2.32, 0.24, LabRgb.{r = 1.6, g = 1.5, b = 1.3}, 1.6);
+  lab_say_mid(w, "256", x0, z + 0.01, 3.55, 1.95, 0.24, LabRgb.{r = 1.6, g = 1.5, b = 1.3}, 1.6);
   // the flow: a beam in and a beam out, a light running along each
-  bw_beam(w, bw_v(x0 + 1.95, 2.25, z + 0.015), bw_v(bx - 0.72, 2.25, z + 0.015), 0.06, BW_CYAN, 1.6, false);
-  bw_beam(w, bw_v(bx + 0.72, 2.25, z + 0.015), bw_v(x0 + 4.75, 2.25, z + 0.015), 0.06, BW_ORANGE, 1.6, false);
+  lab_beam(w, lab_v(x0 + 1.95, 2.25, z + 0.015), lab_v(bx - 0.72, 2.25, z + 0.015), 0.06, LAB_CYAN, 1.6, false);
+  lab_beam(w, lab_v(bx + 0.72, 2.25, z + 0.015), lab_v(x0 + 4.75, 2.25, z + 0.015), 0.06, LAB_ORANGE, 1.6, false);
   run := now * 0.7 - floor(now * 0.7);
-  bw_lamp(w, x0 + 1.95 + (bx - 0.72 - x0 - 1.95) * run, 2.25, z + 0.02, 0.16, BW_CYAN, 2.2);
-  bw_lamp(w, bx + 0.72 + (x0 + 4.75 - bx - 0.72) * run, 2.25, z + 0.02, 0.16, BW_ORANGE, 2.2);
+  lab_lamp(w, x0 + 1.95 + (bx - 0.72 - x0 - 1.95) * run, 2.25, z + 0.02, 0.16, LAB_CYAN, 2.2);
+  lab_lamp(w, bx + 0.72 + (x0 + 4.75 - bx - 0.72) * run, 2.25, z + 0.02, 0.16, LAB_ORANGE, 2.2);
   // out: the digest, four rows of sixteen digits, appearing as you arrive
-  shown := cast(int) bw_clamp((t - 0.5) * 40, 0, 64);
-  for r: 0..<4 { a := r * 16; e := a + 16; if e > shown { e = shown; } if e > a { bw_say(w, cast(string) l.first_hex[a..<e], x0, z, 4.85, 2.75 - f32(r) * 0.3, 0.15, BW_GOLD, 1.2); } }
-  bw_say(w, "32 BYTES", x0, z, 4.85, 1.0, 0.17, BW_GOLD, 1.0);
-  bw_say_mid(w, "THE SAME BYTES IN, THE SAME HASH OUT", x0, z, BW_PANEL_W * 0.5, 0.42, 0.16, BW_ICE, 0.9);
+  shown := cast(int) lab_clamp((t - 0.5) * 40, 0, 64);
+  for r: 0..<4 { a := r * 16; e := a + 16; if e > shown { e = shown; } if e > a { lab_say(w, cast(string) l.first_hex[a..<e], x0, z, 4.85, 2.75 - f32(r) * 0.3, 0.15, LAB_GOLD, 1.2); } }
+  lab_say(w, "32 BYTES", x0, z, 4.85, 1.0, 0.17, LAB_GOLD, 1.0);
+  lab_say_mid(w, "THE SAME BYTES IN, THE SAME HASH OUT", x0, z, LAB_PANEL_W * 0.5, 0.42, 0.16, LAB_ICE, 0.9);
 }
 // 6 SHA-256d: SHA-256 of the digest, shown reversed as a block's hash, its zeros against the target.
-bw_target :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); z := bw_face(i); l := w[0].lesson[0]; t := bw_anim(w, i);
-  h := 0.19f32; adv := h * 6 / 7; u0 := (BW_PANEL_W - bw_text_w(32, h)) * 0.5;
-  bw_say(w, "BLOCK HASH", x0, z, u0, 3.1, 0.15, BW_ICE, 0.9);
-  bw_say(w, "TARGET", x0, z, u0, 1.85, 0.15, BW_ICE, 0.9);
-  zeros := l.zeros; glow := bw_ease((t - 0.6) / 1.2);
+bw_target :: (bk: [] BitcoinWalk, i: int, lit: f32) {
+  w := bk[0].w[..];
+  x0 := lab_left(w, i); z := lab_face(w, i); l := bk[0].lesson[0]; t := lab_anim(w, i);
+  h := 0.19f32; adv := h * 6 / 7; u0 := (LAB_PANEL_W - lab_text_w(32, h)) * 0.5;
+  lab_say(w, "BLOCK HASH", x0, z, u0, 3.1, 0.15, LAB_ICE, 0.9);
+  lab_say(w, "TARGET", x0, z, u0, 1.85, 0.15, LAB_ICE, 0.9);
+  zeros := l.zeros; glow := lab_ease((t - 0.6) / 1.2);
   for r: 0..<2 { for c: 0..<32 {
     at := r * 32 + c; ch := l.hash_hex[at..<at + 1];
     zero := at < zeros;
-    bw_say(w, cast(string) ch, x0, z, u0 + f32(c) * adv, 2.75 - f32(r) * 0.3, h, ifx zero then bw_mix(BW_CYAN, BW_GREEN, glow) else BW_CYAN, ifx zero then 1.0 + glow else 0.9);
+    lab_say(w, cast(string) ch, x0, z, u0 + f32(c) * adv, 2.75 - f32(r) * 0.3, h, ifx zero then lab_mix(LAB_CYAN, LAB_GREEN, glow) else LAB_CYAN, ifx zero then 1.0 + glow else 0.9);
     tc := l.target_hex[at..<at + 1]; tz := tc[0] == '0';
-    bw_say(w, cast(string) tc, x0, z, u0 + f32(c) * adv, 1.5 - f32(r) * 0.3, h, ifx tz then BW_DIM else BW_VIOLET, ifx tz then 0.8 else 1.1);
+    lab_say(w, cast(string) tc, x0, z, u0 + f32(c) * adv, 1.5 - f32(r) * 0.3, h, ifx tz then LAB_DIM else LAB_VIOLET, ifx tz then 0.8 else 1.1);
   } }
   b: [64] u8; n := bl_int(b[..], 0, zeros); n = bl_str(b[..], n, " LEADING ZEROS:  HASH  <  TARGET");
-  bw_say_mid(w, cast(string) b[0..<n], x0, z, BW_PANEL_W * 0.5, 0.42, 0.22, ifx l.valid then BW_GREEN else BW_ORANGE, 0.6 + 1.0 * glow);
+  lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 0.42, 0.22, ifx l.valid then LAB_GREEN else LAB_ORANGE, 0.6 + 1.0 * glow);
 }
 // 7 the chain's sign: which blocks they are.
-bw_chain_sign :: (w: [] BitcoinWalk, i: int, lit: f32) {
-  x0 := bw_left(i); z := bw_face(i); l := w[0].lesson[0];
+bw_chain_sign :: (bk: [] BitcoinWalk, i: int, lit: f32) {
+  w := bk[0].w[..];
+  x0 := lab_left(w, i); z := lab_face(w, i); l := bk[0].lesson[0];
   if l.chain_n == 0 { return; }
   first := LAB_BLOCKS[l.chain[0]].height; last := LAB_BLOCKS[l.chain[l.chain_n - 1]].height;
   b: [48] u8; n := bl_str(b[..], 0, "REGTEST BLOCKS "); n = bl_int(b[..], n, first); n = bl_str(b[..], n, " TO "); n = bl_int(b[..], n, last);
-  bw_say_mid(w, cast(string) b[0..<n], x0, z, BW_PANEL_W * 0.5, 2.55, 0.26, BW_ICE, 1.1);
-  bw_say_mid(w, "EACH NAMES THE HASH", x0, z, BW_PANEL_W * 0.5, 1.75, 0.3, BW_ORANGE, 1.3 + lit);
-  bw_say_mid(w, "OF THE ONE BEFORE", x0, z, BW_PANEL_W * 0.5, 1.25, 0.3, BW_ORANGE, 1.3 + lit);
-  bw_say_mid(w, "RECORDED FROM BITCOIN CORE", x0, z, BW_PANEL_W * 0.5, 0.45, 0.16, BW_CYAN, 0.8);
-}
-bw_station :: (w: [] BitcoinWalk, i: int) {
-  lit := ifx w[0].station == i then 1.0f32 else 0.0f32;
-  x0 := bw_left(i);
-  // the light on the floor before it first: it is further than the slab's face from where you come
-  bw_group(w, x0 + BW_PANEL_W * 0.5, 0, BW_STATION_Z[i] + 2.0);
-  bw_pool(w, x0 + BW_PANEL_W * 0.5, BW_STATION_Z[i] + 1.6, 3.2 + lit, ifx lit > 0 then BW_ORANGE else BW_CYAN, 0.18 + 0.22 * lit);
-  bw_group(w, x0 + BW_PANEL_W * 0.5, BW_PANEL_H * 0.5, BW_STATION_Z[i]);
-  bw_slab(w, i, lit);
-  if i == 0 { bw_byte(w, i, lit); } else if i == 1 { bw_hex(w, i, lit); } else if i == 2 { bw_b64(w, i, lit); }
-  else if i == 3 { bw_order(w, i, lit); } else if i == 4 { bw_sha(w, i, lit); } else if i == 5 { bw_target(w, i, lit); } else { bw_chain_sign(w, i, lit); }
+  lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 2.55, 0.26, LAB_ICE, 1.1);
+  lab_say_mid(w, "EACH NAMES THE HASH", x0, z, LAB_PANEL_W * 0.5, 1.75, 0.3, LAB_ORANGE, 1.3 + lit);
+  lab_say_mid(w, "OF THE ONE BEFORE", x0, z, LAB_PANEL_W * 0.5, 1.25, 0.3, LAB_ORANGE, 1.3 + lit);
+  lab_say_mid(w, "RECORDED FROM BITCOIN CORE", x0, z, LAB_PANEL_W * 0.5, 0.45, 0.16, LAB_CYAN, 0.8);
 }
 // The chain: a lit cube for each block, its height and hash on the faces you see, and from each to
 // the one before a bar of light labelled with the hash it names.
 bw_cube_z :: (k: int) -> f32 { return BW_CHAIN_Z0 - f32(k) * BW_CHAIN_STEP; }
-bw_chain :: (w: [] BitcoinWalk) {
-  l := w[0].lesson[0]; now := w[0].z[0].creator[0].clock; hc := BW_CUBE * 0.5; e := w[0].eye;
+bw_chain :: (bk: [] BitcoinWalk) {
+  w := bk[0].w[..];
+  l := bk[0].lesson[0]; now := lab_clock(w); hc := BW_CUBE * 0.5; e := w[0].eye;
   for k: 0..<l.chain_n {
     row := LAB_BLOCKS[l.chain[k]]; cz := bw_cube_z(k); cx := f32(BW_CHAIN_X); tip := k == l.chain_n - 1;
     // the link to the block before: behind this cube, toward where you came from
     if k > 0 {
-      a := bw_v(cx, BW_LINK_Y, cz + hc); b := bw_v(cx, BW_LINK_Y, cz + BW_CHAIN_STEP - hc);
-      bw_group(w, cx, BW_LINK_Y, cz + BW_CHAIN_STEP * 0.5);
-      bw_box(w, cx, BW_LINK_Y, cz + BW_CHAIN_STEP * 0.5, 0.05, 0.05, (BW_CHAIN_STEP - BW_CUBE) * 0.5, bw_scale(BW_ORANGE, 0.22), 0.5, 0.5);
-      bw_beam(w, a, b, 0.2, BW_ORANGE, 0.3, true);
+      a := lab_v(cx, BW_LINK_Y, cz + hc); b := lab_v(cx, BW_LINK_Y, cz + BW_CHAIN_STEP - hc);
+      lab_group(w, cx, BW_LINK_Y, cz + BW_CHAIN_STEP * 0.5);
+      lab_box(w, cx, BW_LINK_Y, cz + BW_CHAIN_STEP * 0.5, 0.05, 0.05, (BW_CHAIN_STEP - BW_CUBE) * 0.5, lab_scale(LAB_ORANGE, 0.22), 0.5, 0.5);
+      lab_beam(w, a, b, 0.2, LAB_ORANGE, 0.3, true);
       run := now * 0.45 + f32(k) * 0.13; run = run - floor(run);
-      bw_quad(w, QK_GLOW, cx + 0.02, BW_LINK_Y, cz + hc + (BW_CHAIN_STEP - BW_CUBE) * run, bw_v(0, 0, 0.22), 0, bw_v(0, 0.22, 0), 0, BW_ORANGE, 2.0);
+      lab_quad(w, QK_GLOW, cx + 0.02, BW_LINK_Y, cz + hc + (BW_CHAIN_STEP - BW_CUBE) * run, lab_v(0, 0, 0.22), 0, lab_v(0, 0.22, 0), 0, LAB_ORANGE, 2.0);
       pb: [24] u8; pn := bl_str(pb[..], 0, "PREV "); for c: 0..<8 { ch := row.previous[c]; pb[pn] = ifx ch >= 'a' && ch <= 'f' then ch - 32 else ch; pn += 1; }
       // along the bar, read from the lane (+x), first letter nearest you
-      tw := bw_text_w(pn, 0.2); mid := cz + BW_CHAIN_STEP * 0.5;
-      bw_text(w, cast(string) pb[0..<pn], cx + 0.03, BW_LINK_Y + 0.22, mid + tw * 0.5, 0, -1, 0.2, BW_GOLD, 1.2);
+      tw := lab_text_w(pn, 0.2); mid := cz + BW_CHAIN_STEP * 0.5;
+      lab_text(w, cast(string) pb[0..<pn], cx + 0.03, BW_LINK_Y + 0.22, mid + tw * 0.5, 0, -1, 0.2, LAB_GOLD, 1.2);
     }
-    bw_group(w, cx, hc, cz);
-    bw_pool(w, cx + 1.2, cz, 2.6, ifx tip then BW_ORANGE else BW_CYAN, 0.16);
-    bw_box(w, cx, hc, cz, hc, hc, hc, BwRgb.{r = 0.035, g = 0.08, b = 0.12}, 0.35, ifx tip then 1.9 else 1.2);
+    lab_group(w, cx, hc, cz);
+    lab_pool(w, cx + 1.2, cz, 2.6, ifx tip then LAB_ORANGE else LAB_CYAN, 0.16);
+    lab_box(w, cx, hc, cz, hc, hc, hc, LabRgb.{r = 0.035, g = 0.08, b = 0.12}, 0.35, ifx tip then 1.9 else 1.2);
     hb: [24] u8; hn := bl_str(hb[..], 0, "#"); hn = bl_int(hb[..], hn, row.height);
     xb: [16] u8; for c: 0..<8 { ch := row.hash[c]; xb[c] = ifx ch >= 'a' && ch <= 'f' then ch - 32 else ch; }
     // the face toward you (+z), and the face toward the lane (+x)
     if e[2] > cz + hc {
-      bw_text(w, cast(string) hb[0..<hn], cx - bw_text_w(hn, 0.42) * 0.5, 1.45, cz + hc + 0.02, 1, 0, 0.42, ifx tip then BW_ORANGE else BW_ICE, 1.5);
-      bw_text(w, cast(string) xb[0..<8], cx - bw_text_w(8, 0.22) * 0.5, 0.75, cz + hc + 0.02, 1, 0, 0.22, BW_GOLD, 1.2);
+      lab_text(w, cast(string) hb[0..<hn], cx - lab_text_w(hn, 0.42) * 0.5, 1.45, cz + hc + 0.02, 1, 0, 0.42, ifx tip then LAB_ORANGE else LAB_ICE, 1.5);
+      lab_text(w, cast(string) xb[0..<8], cx - lab_text_w(8, 0.22) * 0.5, 0.75, cz + hc + 0.02, 1, 0, 0.22, LAB_GOLD, 1.2);
     }
     if e[0] > cx + hc {
-      bw_text(w, cast(string) hb[0..<hn], cx + hc + 0.02, 1.45, cz + bw_text_w(hn, 0.42) * 0.5, 0, -1, 0.42, ifx tip then BW_ORANGE else BW_ICE, 1.5);
-      bw_text(w, cast(string) xb[0..<8], cx + hc + 0.02, 0.75, cz + bw_text_w(8, 0.22) * 0.5, 0, -1, 0.22, BW_GOLD, 1.2);
+      lab_text(w, cast(string) hb[0..<hn], cx + hc + 0.02, 1.45, cz + lab_text_w(hn, 0.42) * 0.5, 0, -1, 0.42, ifx tip then LAB_ORANGE else LAB_ICE, 1.5);
+      lab_text(w, cast(string) xb[0..<8], cx + hc + 0.02, 0.75, cz + lab_text_w(8, 0.22) * 0.5, 0, -1, 0.22, LAB_GOLD, 1.2);
     }
-    if tip { bw_text(w, "TIP", cx - bw_text_w(3, 0.3) * 0.5, BW_CUBE + 0.35, cz, 1, 0, 0.3, BW_ORANGE, 1.6); }
+    if tip { lab_text(w, "TIP", cx - lab_text_w(3, 0.3) * 0.5, BW_CUBE + 0.35, cz, 1, 0, 0.3, LAB_ORANGE, 1.6); }
   }
 }
-
-// The skyline: towers of stacked blocks far off on both sides, dim in the haze, for a sense of place
-// and scale. Where each stands and how tall it is comes from its number alone, so it never moves.
-BW_TOWERS :: 16;   // each a box you walk round too (bw_stand): with the slabs and cubes, within aethyr/world/props.coax PROPS
-bw_hash :: (k: int, salt: int) -> f32 { h := (k * 374761393 + salt * 668265263) & 0x7fffffff; h = ((h ^ (h >> 13)) * 1274126177) & 0x7fffffff; return f32(h & 0xffff) / 65535.0; }
-bw_skyline :: (w: [] BitcoinWalk) {
-  for k: 0..<BW_TOWERS {
-    t := bw_tower(k);
-    bw_group(w, t[0], t[2] * t[3] * 0.5, t[1]);
-    storeys := cast(int) t[3];
-    for f: 0..<storeys {
-      cy := t[2] * (f32(f) + 0.5); hs := t[2] * 0.5 * (1 - 0.06 * f32(f));
-      bw_box(w, t[0], cy, t[1], hs, t[2] * 0.49, hs, BwRgb.{r = 0.003, g = 0.009, b = 0.017}, 0.06, ifx f == storeys - 1 then 0.5 else 0.22);
-    }
-  }
+bw_station :: (bk: [] BitcoinWalk, i: int) {
+  lit := lab_station(bk[0].w[..], i);
+  if i == 0 { bw_byte(bk, i, lit); } else if i == 1 { bw_hex(bk, i, lit); } else if i == 2 { bw_b64(bk, i, lit); }
+  else if i == 3 { bw_order(bk, i, lit); } else if i == 4 { bw_sha(bk, i, lit); } else if i == 5 { bw_target(bk, i, lit); } else { bw_chain_sign(bk, i, lit); }
 }
-// A tower: its x and z, a storey's size and how many storeys.
-bw_tower :: (k: int) -> [4] f32 {
-  side := ifx k % 2 == 0 then -1.0f32 else 1.0f32;
-  return [4] f32.[side * (80 + 140 * bw_hash(k, 1)), 40 - 300 * bw_hash(k, 2), 10 + 14 * bw_hash(k, 3), f32(1 + cast(int) (5 * bw_hash(k, 4)))];
+bw_list :: (bk: [] BitcoinWalk, u: [] f32) {
+  w := bw_conf(bk);
+  lab_list_begin(w, u);
+  for i: 0..<BW_STATIONS { bw_station(bk, i); }
+  bw_chain(bk);
+  lab_list_end(w);
 }
-
-// ---- the frame's quads: the sky and the floor, then every group far to near
-bw_list :: (w: [] BitcoinWalk, u: [] f32) {
-  l := w[0].build[..]; l[0].n = 0; l[0].g_n = 0;
-  w[0].eye = [3] f32.[u[16], u[17], u[18]];
-  cr := w[0].z[0].creator[0]; now := cr.clock; px := cr.player_x; pz := cr.player_z;
-  // the stations, the chain
-  bw_skyline(w);
-  for i: 0..<BW_STATIONS { bw_station(w, i); }
-  bw_chain(w);
-  // the lane's start: a ring of light where you come in
-  bw_group(w, 0, 0, BW_START_Z); bw_pool(w, 0, BW_START_Z, 2.2, BW_CYAN, 0.25);
-  // far to near: the groups' order by distance (insertion; there are few)
-  order: [BW_GROUPS] int; for g: 0..<l[0].g_n { order[g] = g; }
-  for g: 1..<l[0].g_n { v := order[g]; j := g; while j > 0 && l[0].g_d[order[j - 1]] < l[0].g_d[v] { order[j] = order[j - 1]; j -= 1; } order[j] = v; }
-  q := w[0].quads[..]; n := 0;
-  sky := [BW_QF] f32.[0, 0, 0, QK_SKY, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, now];
-  for k: 0..<BW_QF { q[k] = sky[k]; } n = 1;
-  floor_q := [BW_QF] f32.[px, 0, pz, QK_FLOOR, 400, 0, 0, px, 0, 0, 400, pz, 0, 0, 0, now];
-  for k: 0..<BW_QF { q[n * BW_QF + k] = floor_q[k]; } n += 1;
-  for g: 0..<l[0].g_n {
-    a := l[0].g_at[order[g]]; e := ifx order[g] + 1 < l[0].g_n then l[0].g_at[order[g] + 1] else l[0].n;
-    for j: a..<e { if n >= BW_QUADS { break; } for k: 0..<BW_QF { q[n * BW_QF + k] = l[0].q[j * BW_QF + k]; } n += 1; }
-  }
-  w[0].quad_n = n;
-}
-
-// ---- where you are: the station whose stretch of the lane you are on
-bw_at :: (z: f32) -> int {
-  // a station's stretch is the lane before it, where you see it coming, to just past its face
-  for i: 0..<BW_STATIONS { if z < BW_STATION_Z[i] + 13 && z > BW_STATION_Z[i] - 2 { return i; } }
-  if z <= BW_STATION_Z[BW_STATIONS - 1] - 2 { return BW_STATIONS - 1; }   // along the chain
-  return -1;
-}
-bw_track :: (w: [] BitcoinWalk) {
-  cr := w[0].z[0].creator[0]; at := bw_at(cr.player_z);
-  if at != w[0].station {
-    if at >= 0 { w[0].near_at[at] = cr.clock; }
-    w[0].station = at;
-  }
-}
-
-// On an upright phone the view is narrow and the stations stand beside the lane, out of it: the
-// camera turns round you, gently, toward the station ahead, and back to the lane past it.
-BW_TURN_MAX :: 0.55f32; BW_TURN_SIGN :: -1.0f32;
-bw_turn_to :: (x: f32, z: f32, st: int) -> f32 {
-  if st < 0 || st >= BW_STATIONS { return 0; }
-  ahead := z - BW_STATION_Z[st]; if ahead < -1 { return 0; }
-  dx := bw_left(st) + BW_PANEL_W * 0.5 - x;
-  return bw_clamp(BW_TURN_SIGN * 0.9 * dx / hi(ahead + 4, 4), -BW_TURN_MAX, BW_TURN_MAX);
-}
-bw_turn :: (w: [] BitcoinWalk, upright: bool, dt: f32) {
-  cr := w[0].z[0].creator[..];
-  want := ifx upright then bw_turn_to(cr[0].player_x, cr[0].player_z, w[0].station) else 0.0f32;
-  k := bw_clamp(dt * 1.5, 0, 1);
-  cr[0].orbit += (want - cr[0].orbit) * k;
-}
-
-// ---- standing the world: the slabs and the cubes are things you walk round (aethyr/world/props.coax)
-bw_stand :: (w: [] BitcoinWalk) {
-  _ := bl_ready(w[0].lesson[..]);
-  boxes: [(BW_STATIONS + BL_CHAIN + BW_TOWERS) * 6] f32; n := 0;
-  for k: 0..<BW_TOWERS {
-    t := bw_tower(k); hs := t[2] * 0.5; o := n * 6;
-    boxes[o] = t[0] - hs; boxes[o + 1] = -0.4; boxes[o + 2] = t[1] - hs; boxes[o + 3] = t[0] + hs; boxes[o + 4] = t[2] * t[3]; boxes[o + 5] = t[1] + hs; n += 1;
-  }
-  for i: 0..<BW_STATIONS {
-    x0 := bw_left(i); o := n * 6;
-    boxes[o] = x0; boxes[o + 1] = -0.4; boxes[o + 2] = BW_STATION_Z[i] - BW_PANEL_D * 0.5; boxes[o + 3] = x0 + BW_PANEL_W; boxes[o + 4] = BW_PANEL_H; boxes[o + 5] = BW_STATION_Z[i] + BW_PANEL_D * 0.5; n += 1;
-  }
-  for k: 0..<w[0].lesson[0].chain_n {
+// Standing the world: the slabs and the towers (lab_stand), and the chain's cubes.
+bw_stand :: (bk: [] BitcoinWalk) {
+  w := bw_conf(bk);
+  _ := bl_ready(bk[0].lesson[..]);
+  boxes: [LAB_EXTRA * 6] f32; n := 0;
+  for k: 0..<bk[0].lesson[0].chain_n {
+    if n >= LAB_EXTRA { break; }
     o := n * 6; hc := BW_CUBE * 0.5; cz := bw_cube_z(k);
     boxes[o] = BW_CHAIN_X - hc; boxes[o + 1] = -0.4; boxes[o + 2] = cz - hc; boxes[o + 3] = BW_CHAIN_X + hc; boxes[o + 4] = BW_CUBE; boxes[o + 5] = cz + hc; n += 1;
   }
-  _ := wprops.props_set(w[0].z[0].creator[0].props[..], boxes[..], n);
-  for i: 0..<BW_STATIONS { w[0].near_at[i] = -100; }
-  w[0].stood = true;
-}
-// The page: the level Grid, you at the lane's start looking down it, nothing to fight.
-bw_enter :: (w: [] BitcoinWalk) {
-  s := w[0].z[..]; cr := s[0].creator[..];
-  cr[0].field = true; cr[0].flat = true; s[0].bare = true;
-  if w[0].on { return; }
-  w[0].on = true; s[0].xc[0].open = false;
-  s[0].put_on = true; s[0].put_x = 0; s[0].put_y = 0; s[0].put_z = BW_START_Z; s[0].put_face = 3.1415927;
+  lab_stand(w, boxes[..], n);
 }
 
-// ---- the HUD: the world's name, the station you are at and its line, WORLDS
-BW_HUD_W :: 300.0f32;
-bw_worlds :: (w: [] BitcoinWalk) -> cc.Box {
-  cr := w[0].z[0].creator[0]; k := cr.scale;
-  return cc.Box.{x0 = cr.width - 108 * k, y0 = 14 * k, x1 = cr.width - 12 * k, y1 = 46 * k};
-}
-bw_hud :: (w: [] BitcoinWalk, out: [] f32, n0: int, wd: f32, ht: f32, k: f32) -> int {
-  s := w[0].z[..]; ui := s[0].creator[0].ui;
-  t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui;
-  room := bw_clamp(wd / k - 136, 180, BW_HUD_W);   // leave WORLDS its corner on a phone
-  if w[0].in_app && wd / k >= 600 { room = bw_clamp(wd / k * 0.5 - 70, 180, BW_HUD_W); }   // clear of the app's Worlds button
-  st := w[0].station; line := ifx st >= 0 then BW_LINE[st] else BW_INTRO;
-  // the line, wrapped at a word to two rows when it is too wide
-  cap := 8.5 * k; width := room * k - 24 * k; cut := line.count;
-  if cc.face_width(line, cap, cc.HUD_FACE_BODY) > width {
-    best := -1; for j: 0..<line.count { if line[j] == ' ' && cc.face_width(line[0..<j], cap, cc.HUD_FACE_BODY) <= width { best = j; } }
-    if best > 0 { cut = best; }
-  }
-  rows := ifx cut < line.count then 2 else 1;
-  box := cc.Box.{x0 = 12 * k, y0 = 14 * k, x1 = (12 + room) * k, y1 = (14 + 52 + 14 * f32(rows)) * k};
-  cc.hud_panel(l[..], t, cc.hud_box(box.x0, box.y0, box.x1, box.y1), k);
-  ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, box.x0, box.y0, box.x1, box.y1, "BITCOIN LAB");
-  left := box.x0 + 12 * k; y := box.y0 + 22 * k;
-  cc.hud_word(ws[..], "BITCOIN LAB", left, y, 11 * k, cc.HUD_TEXT_TITLE, false); y += 18 * k;
-  b: [48] u8; m := 0;
-  if st >= 0 { m = bl_int(b[..], 0, st + 1); m = bl_str(b[..], m, " / "); m = bl_int(b[..], m, BW_STATIONS); m = bl_str(b[..], m, "   "); m = bl_str(b[..], m, BW_NAME[st]); }
-  else { m = bl_str(b[..], 0, ifx cc.face_width("CHAPTER 1: BYTES, HEX AND BASE64", 8.5 * k, cc.HUD_FACE_TITLE) > width + 12 * k then "CHAPTER 1" else "CHAPTER 1: BYTES, HEX AND BASE64"); }
-  cc.hud_word_ink(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_LABEL, false, true, cc.hud_rgba(1.0, 0.62, 0.2, 1)); y += 15 * k;
-  cc.hud_word(ws[..], line[0..<cut], left, y, cap, cc.HUD_TEXT_NUMBER, false);
-  if rows == 2 { y += 14 * k; cc.hud_word(ws[..], line[cut + 1..<line.count], left, y, cap, cc.HUD_TEXT_NUMBER, false); }
-  s[0].zt_top = box.y1 + 8 * k;   // a phone's thumb works under the panel (everglade/zone-touch.coax)
-  if w[0].in_app { w[0].worlds_box = cc.Box.{}; return cc.hud_draw(out, n0, l[..], ws[..], 1, k); }
-  // WORLDS
-  q := bw_worlds(w); wb := cc.hud_box(q.x0, q.y0, q.x1, q.y1); w[0].worlds_box = q;
-  cc.hud_button(l[..], t, wb, k, w[0].worlds_id != -1);
-  ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_BUTTON, wb.x0, wb.y0, wb.x1, wb.y1, "WORLDS");
-  cc.hud_word(ws[..], "WORLDS", (wb.x0 + wb.x1) * 0.5, (wb.y0 + wb.y1) * 0.5 + 4.75 * k, 9.5 * k, cc.HUD_TEXT_TITLE, true);
-  ws[0].parent = cc.UIT_NONE;
-  s[0].zt_top = box.y1 + 8 * k;   // a phone's thumb works under the panel (everglade/zone-touch.coax)
-  return cc.hud_draw(out, n0, l[..], ws[..], 1, k);
-}
-bw_has :: (text: string, part: string) -> bool { if part.count > text.count { return false; } for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } } return false; }
-bw_on_worlds :: (w: [] BitcoinWalk, x: f32, y: f32) -> bool { if w[0].in_app { return false; } b := w[0].worlds_box; return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
-bw_leave :: (w: [] BitcoinWalk) { s := w[0].z[..]; s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; }
-// A press on WORLDS: it goes when let go over it.
-bw_press :: (w: [] BitcoinWalk, x: f32, y: f32, phase: int, id: int) -> bool {
-  if !w[0].on { return false; }
-  if phase == 0 { if bw_on_worlds(w, x, y) { w[0].worlds_id = id; return true; } return false; }
-  if w[0].worlds_id != id { return false; }
-  if phase == 2 || phase == 3 { w[0].worlds_id = -1; if phase == 2 && bw_on_worlds(w, x, y) { bw_leave(w); } }
-  return true;
-}
-
-// ---- the realm: what bitcoin-lab-walk-face.c calls that isn't the zone's alone
-coaxial_btc_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
-coaxial_btc_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
-coaxial_btc_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
-btc_frame :: (w: [] BitcoinWalk, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
-  s := w[0].z[..];
+// ---- the realm: what bitcoin-lab-walk-face.c calls
+btc_frame :: (bk: [] BitcoinWalk, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  w := bw_conf(bk); s := w[0].z[..];
   if !s[0].creator[0].on { w[0].quad_n = 0; return 0; }
-  if !w[0].stood { bw_stand(w); }
-  if !w[0].framed && width > 0 && height > 0 { w[0].framed = true; if width < height { s[0].creator[0].dist = 7; s[0].creator[0].pitch = 0.3; } }
-  zone_begin(s);
-  n := zone_draw(s, out, u, width, height, dpr, dt, still);
-  if zone_world(s) { bw_track(w); bw_turn(w, width < height, dt); n = bw_hud(w, out, n, width, height, hi(dpr, 0.5)); }
-  n = zone_finish(s, out, u, n, dt, still);
-  if u.count >= 32 { bw_list(w, u); }
+  if !w[0].stood { bw_stand(bk); }
+  n := lab_frame(w, out, u, width, height, dpr, dt, still);
+  if u.count >= 32 { bw_list(bk, u); }
   return n;
 }
-btc_pointer :: (w: [] BitcoinWalk, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
-  s := w[0].z[..];
-  if s[0].creator[0].on && bw_press(w, x, y, phase, id) { s[0].zt_thumb = false; return true; }
-  return zone_pointer(s, x, y, phase, kind, id);
-}
-btc_pointer_buttons :: (w: [] BitcoinWalk, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) {
-  s := w[0].z[..];
-  if s[0].creator[0].on && bw_press(w, x, y, phase, id) { return true; }
-  return zone_pointer_buttons(s, x, y, phase, kind, id, button);
-}
-btc_message :: (w: [] BitcoinWalk, kind: int, t: string) #export_c #effects(all) {
-  s := w[0].z[..];
-  if zone_message(s, kind, t) { return; }
-  if kind == HOST_PAGE { bw_enter(w); zone_enter(s, t); bw_staged(w, t); w[0].in_app = bw_has(t, "ua=AethyrPageHost"); }
-}
+btc_pointer :: (bk: [] BitcoinWalk, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) { return lab_pointer(bw_conf(bk), x, y, phase, kind, id); }
+btc_pointer_buttons :: (bk: [] BitcoinWalk, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) { return lab_pointer_buttons(bw_conf(bk), x, y, phase, kind, id, button); }
 // On a local page, ?at=N stands you before station N (1 to 7; 8 the chain's tip) for shots and clips.
-bw_staged :: (w: [] BitcoinWalk, facts: string) {
-  if !cc.dev_local(facts) { return; }
-  key := "at="; i := 0;
-  while i + 1 + key.count < facts.count {
-    if (facts[i] == '?' || facts[i] == '&') && facts[i + 1..<i + 1 + key.count] == key {
-      j := i + 1 + key.count; v := 0;
-      while j < facts.count && facts[j] >= '0' && facts[j] <= '9' && v < 100 { v = v * 10 + cast(int) (facts[j] - '0'); j += 1; }
-      s := w[0].z[..];
-      if v >= 1 && v <= BW_STATIONS { s[0].put_z = BW_STATION_Z[v - 1] + 9; s[0].put_x = BW_STATION_SIDE[v - 1] * 0.8; }
-      if v == BW_STATIONS + 1 { s[0].put_z = bw_cube_z(BL_CHAIN - 1) + 9; s[0].put_x = -1.5; }
-      return;
-    }
-    i += 1;
-  }
+btc_message :: (bk: [] BitcoinWalk, kind: int, t: string) #export_c #effects(all) {
+  w := bw_conf(bk);
+  if !lab_message(w, kind, t) { return; }
+  if lab_staged(w, t) == BW_STATIONS + 1 { s := w[0].z[..]; s[0].put_z = bw_cube_z(BL_CHAIN - 1) + 9; s[0].put_x = -1.5; }
 }
 
 // ---- checks
-bw_test_lab :: (w: [] BitcoinWalk) {
+bw_test_lab :: (bk: [] BitcoinWalk) {
+  w := bw_conf(bk);
   w[0].z[0].creator[0].width = 1280; w[0].z[0].creator[0].height = 720; w[0].z[0].creator[0].scale = 1;
-  btc_message(w, HOST_PAGE, "url=https://openagents.com/worlds/bitcoin-lab\n");
+  btc_message(bk, HOST_PAGE, "url=https://openagents.com/worlds/bitcoin-lab\n");
 }
 #test "bitcoin lab walk: the page stands a level, bare zone and puts you at the lane's start facing down it" #steps 400000000 {
-  w: [1] BitcoinWalk; bw_test_lab(w[..]); s := w[0].z[..];
+  bk: [1] BitcoinWalk; bw_test_lab(bk[..]); w := bk[0].w[..]; s := w[0].z[..];
   #assert w[0].on && s[0].creator[0].field && s[0].creator[0].flat && s[0].bare && s[0].creator[0].on;
-  #assert s[0].put_on && s[0].put_z == BW_START_Z && abs(s[0].put_face - 3.1415927) < 0.001;
+  #assert s[0].put_on && s[0].put_z == w[0].start_z && abs(s[0].put_face - 3.1415927) < 0.001;
+  #assert w[0].n == BW_STATIONS && w[0].name[4] == "SHA-256" && w[0].title == "BITCOIN LAB";
   #assert bw_page("url=x\npath=/worlds/bitcoin-lab\n") || !bw_page("path=/worlds/archery-range\n");
 }
 #test "bitcoin lab walk: every slab and cube is a box you walk round, and none stands on the lane" #steps 400000000 {
-  w: [1] BitcoinWalk; bw_test_lab(w[..]); bw_stand(w[..]);
-  p := w[0].z[0].creator[0].props[0]; #assert p.n == BW_STATIONS + BL_CHAIN + BW_TOWERS && p.n <= wprops.PROPS;
-  for i: 0..<p.n { o := i * 6; #assert p.box[o + 3] <= -BW_LANE || p.box[o] >= BW_LANE; #assert p.box[o + 4] > 2; }
+  bk: [1] BitcoinWalk; bw_test_lab(bk[..]); bw_stand(bk[..]); w := bk[0].w[..];
+  p := w[0].z[0].creator[0].props[0]; #assert p.n == BW_STATIONS + BL_CHAIN + LAB_TOWERS && p.n <= wprops.PROPS;
+  for i: 0..<p.n { o := i * 6; #assert p.box[o + 3] <= -LAB_LANE || p.box[o] >= LAB_LANE; #assert p.box[o + 4] > 2; }
   // you stand in the lane's middle with nothing round you; beside a slab, you are inside it
-  #assert !wprops.props_inside(p, 0, 1, BW_STATION_Z[0]) && wprops.props_inside(p, bw_left(0) + 1, 1, BW_STATION_Z[0]);
+  #assert !wprops.props_inside(p, 0, 1, BW_STATION_Z[0]) && wprops.props_inside(p, lab_left(w, 0) + 1, 1, BW_STATION_Z[0]);
 }
-#test "bitcoin lab walk: the stations come in order down the lane, the chain after the last" {
-  #assert bw_at(BW_START_Z) == -1 && bw_at(BW_STATION_Z[0] + 8) == 0 && bw_at(BW_STATION_Z[3] + 2) == 3 && bw_at(BW_STATION_Z[3] - 3) == 4 && bw_at(bw_cube_z(5)) == BW_STATIONS - 1;
+#test "bitcoin lab walk: the stations come in order down the lane, the chain after the last" #steps 400000000 {
+  bk: [1] BitcoinWalk; w := bw_conf(bk[..]);
+  #assert lab_at(w, w[0].start_z) == -1 && lab_at(w, BW_STATION_Z[0] + 8) == 0 && lab_at(w, BW_STATION_Z[3] + 2) == 3 && lab_at(w, BW_STATION_Z[3] - 3) == 4 && lab_at(w, bw_cube_z(5)) == BW_STATIONS - 1;
   for i: 1..<BW_STATIONS { #assert BW_STATION_Z[i] < BW_STATION_Z[i - 1] - 10; #assert BW_STATION_SIDE[i] == 1 || BW_STATION_SIDE[i] == -1; }
   #assert BW_CHAIN_Z0 < BW_STATION_Z[BW_STATIONS - 1];
 }
 #test "bitcoin lab walk: the frame's quads begin with the sky and the floor and run far to near, in budget" #steps 400000000 {
-  w: [1] BitcoinWalk; bw_test_lab(w[..]); bw_stand(w[..]);
-  u: [64] f32; u[16] = 0; u[17] = 2.5; u[18] = BW_START_Z + 4; w[0].z[0].creator[0].player_z = BW_START_Z;
-  bw_list(w[..], u[..]);
+  bk: [1] BitcoinWalk; bw_test_lab(bk[..]); bw_stand(bk[..]); w := bk[0].w[..];
+  u: [64] f32; u[16] = 0; u[17] = 2.5; u[18] = w[0].start_z + 4; w[0].z[0].creator[0].player_z = w[0].start_z;
+  bw_list(bk[..], u[..]);
   q := w[0].quads[..]; n := w[0].quad_n;
-  #assert n > 200 && n < BW_QUADS && q[3] == QK_SKY && q[BW_QF + 3] == QK_FLOOR && w[0].build[0].g_n < BW_GROUPS;
+  #assert n > 200 && n < LAB_QUADS && q[3] == QK_SKY && q[LAB_QF + 3] == QK_FLOOR && w[0].build[0].g_n < LAB_GROUPS;
   // the first group listed after the floor is further than the last
   l := w[0].build[0]; far := -1.0f32; near := 1e9f32;
   for g: 0..<l.g_n { if l.g_d[g] > far { far = l.g_d[g]; } if l.g_d[g] < near { near = l.g_d[g]; } }
   #assert far > near;
   // the lesson's numbers are on the faces: the genesis hash's first digits are among the glyphs
-  #assert w[0].lesson[0].ready && cast(string) w[0].lesson[0].hash_hex[0..<4] == "0000";
-}
-#test "bitcoin lab walk: WORLDS goes to the worlds when let go over it, and not when dragged off" #steps 400000000 {
-  w: [1] BitcoinWalk; bw_test_lab(w[..]); w[0].worlds_box = cc.Box.{x0 = 1100, y0 = 10, x1 = 1200, y1 = 40};
-  #assert bw_press(w[..], 1150, 20, 0, 7) && bw_press(w[..], 600, 300, 2, 7) && w[0].z[0].action == 0;
-  #assert bw_press(w[..], 1150, 20, 0, 7) && bw_press(w[..], 1150, 20, 2, 7) && w[0].z[0].action == ACT_NAVIGATE;
-  #assert cast(string) w[0].z[0].outbox[0..<w[0].z[0].out_n] == "/worlds";
-  #assert !bw_press(w[..], 600, 300, 0, 8);
-  // in the apps the host draws its own Worlds button: the page's is gone and takes no press
-  #assert bw_has("tab=1\nua=AethyrPageHost/1 (macOS)", "ua=AethyrPageHost") && !bw_has("ua=Mozilla", "ua=AethyrPageHost");
-  w[0].in_app = true; #assert !bw_press(w[..], 1150, 20, 0, 9);
+  #assert bk[0].lesson[0].ready && cast(string) bk[0].lesson[0].hash_hex[0..<4] == "0000";
 }

@@ -108,6 +108,10 @@ archery-range 2850000
 # Bitcoin Lab's walk (bitcoin-lab-walk.coax): an Everglade zone as the range's, bare and level, with the
 # lesson (the book's SHA-256, hex and base64), the pixel face and the stations' quads. Measured below.
 bitcoin-lab-walk 2950000
+# Nostr Lab's walk (nostr-lab-walk.coax): the same lab walk (verse/lab-walk.coax) with the Nostr
+# lesson, which signs its event at run time (event_sign.coax, secp256k1's tables): 2,941,282 bytes
+# measured on the remote hosts; about 3% headroom.
+nostr-lab-walk 3030000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.

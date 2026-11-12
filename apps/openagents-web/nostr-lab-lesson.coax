@@ -1,0 +1,127 @@
+// Nostr Lab's lesson (nostr-lab-walk.coax draws it): the values the walk shows, each worked out here at
+// run time by the Nostr book's own code (coax/lib/nostr/ and the shared crypto), never written down as
+// an answer.
+//
+//   the key pair (nostr/book ch016, Bitcoin From Scratch's BIP-340): the public key the secret key
+//   makes, as hex and as an npub (coax/lib/nostr/nip19-core.coax);
+//   the event (ch017, ch021): one kind 1 note signed by coax/lib/nostr/event_sign.coax;
+//   its ID: the event's NIP-01 serialization as event.coax writes it, and SHA-256 of those bytes;
+//   its signature: BIP-340 over the ID, verified, and the same event with one letter of its content
+//   changed, whose bytes hash to another ID the signature does not verify against.
+// The secret key is BIP-340's published test vector 1, the one the book's examples sign with: never a
+// real key. The walk never shows it.
+//   coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/nostr-lab-lesson.coax
+#module "openagents.nostrlab.lesson";
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+
+NL_KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";   // BIP-340 vector 1: a published test key
+NL_AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+NL_CREATED :: 1794441600;   // 12 November 2026, 00:00 UTC
+NL_KIND :: 1;
+NL_TAGS :: "[]";
+NL_CONTENT :: "hello nostr";
+NL_CHANGE_AT :: 10;         // the letter of the content the walk changes: the last
+NL_EVENT :: 512;
+
+NostrLesson :: struct {
+  ready: bool;
+  pub: [32] u8; pub_hex: [64] u8;          // the public key, and as lowercase hex
+  npub: [80] u8; npub_n: int;              // and as NIP-19's npub
+  pre: [256] u8; pre_n: int;               // the event's serialization: the bytes its ID is the hash of
+  id: [32] u8; id_hex: [64] u8;            // SHA-256 of those bytes
+  sig: [64] u8; sig_hex: [128] u8;         // the BIP-340 signature over the ID
+  event: [NL_EVENT] u8; event_n: int;      // the signed event, as it would go to a relay
+  valid: bool;                             // the event verifies
+  changed: [NL_EVENT] u8; changed_n: int;  // the same event with one letter of the content changed
+  changed_content: [32] u8; changed_content_n: int;
+  changed_id_hex: [64] u8;                 // what the changed event's bytes hash to now
+  changed_claim: bool;                     // the changed event still claims the old ID: verify refuses it there
+  changed_sig: bool;                       // the signature against the new ID: false
+  stopped: int;                            // where nl_ready stopped (nl_stop), 0 when it finished
+}
+
+nl_hex :: (bytes: [] u8, out: [] u8) -> bool {
+  r := hex_encode_checked(cast(string) bytes, out, false);
+  return r.error == 0 && r.written == bytes.count * 2;
+}
+// Copy text into out; the count, or -1 when it doesn't fit.
+nl_put :: (out: [] u8, t: string) -> int { if t.count > out.count { return -1; } for i: 0..<t.count { out[i] = t[i]; } return t.count; }
+// The event with its content's letter at NL_CHANGE_AT changed (lower case to upper), byte for byte otherwise.
+nl_change :: (l: [] NostrLesson) -> bool {
+  e := cast(string) l[0].event[0..<l[0].event_n]; key := "\"content\":\"";
+  at := -1; for i: 0..<e.count - key.count + 1 { if at < 0 && e[i..<i + key.count] == key { at = i + key.count; } }
+  if at < 0 || at + NL_CHANGE_AT >= e.count { return false; }
+  for i: 0..<e.count { l[0].changed[i] = e[i]; } l[0].changed_n = e.count;
+  c := l[0].changed[at + NL_CHANGE_AT]; if c < 'a' || c > 'z' { return false; }
+  l[0].changed[at + NL_CHANGE_AT] = c - 32;
+  n := nl_put(l[0].changed_content[..], NL_CONTENT); if n < 0 { return false; }
+  l[0].changed_content[NL_CHANGE_AT] = c - 32; l[0].changed_content_n = n;
+  return true;
+}
+// Works the lesson out, once: the key, the signed event, its bytes and ID, and the changed copy.
+// Where the working out stopped, 0 when it didn't: a failed step names itself.
+nl_stop :: (l: [] NostrLesson, at: int) -> bool { l[0].stopped = at; return false; }
+nl_ready :: (l: [] NostrLesson) -> bool {
+  if l[0].ready { return true; }
+  key: [32] u8; aux: [32] u8;
+  d := hex_decode_checked(NL_KEY_HEX, key[..], false); if d.error != NC_OK || d.written != 32 { return nl_stop(l, 1); }
+  d = hex_decode_checked(NL_AUX_HEX, aux[..], false); if d.error != NC_OK || d.written != 32 { return nl_stop(l, 2); }
+  // sign: the key, the ID, the BIP-340 signature over several calls, the event's JSON
+  work: [1] NostrSignWork; scratch: [1024] u8; result := EVENT_MORE; calls := 0;
+  while result == EVENT_MORE && calls < 256 {
+    result = nostr_event_sign_step(key[..], aux[..], NL_CREATED, NL_KIND, NL_TAGS, NL_CONTENT, work[..], scratch[..], l[0].event[..], false);
+    calls += 1;
+  }
+  for i: 0..<32 { key[i] = 0; }
+  if result <= 0 { return nl_stop(l, 3); }
+  l[0].event_n = result;
+  // the event read back (the signer clears its work): its key, its signature, and its bytes as the
+  // reader serializes them
+  event := cast(string) l[0].event[0..<l[0].event_n];
+  r := nostr_event_read(event, l[0].pre[..], false);
+  if r.error != NE_OK || r.written <= 0 { return nl_stop(l, 6); } l[0].pre_n = r.written;
+  l[0].pub = r.public_key; l[0].sig = r.signature;
+  if !nl_hex(l[0].pub[..], l[0].pub_hex[..]) || !nl_hex(l[0].sig[..], l[0].sig_hex[..]) { return nl_stop(l, 4); }
+  np := nip19_encode_checked(N19_NPUB, cast(string) l[0].pub[..], l[0].npub[..], false);
+  if np.error != NC_OK { return nl_stop(l, 5); } l[0].npub_n = np.written;
+  // SHA-256 of the bytes: the ID the event claims
+  if sha256_hash_checked(l[0].pre[0..<l[0].pre_n], l[0].id[..], false) != 0 { return nl_stop(l, 7); }
+  for i: 0..<32 { if l[0].id[i] != r.id[i] { return nl_stop(l, 8); } }
+  if !nl_hex(l[0].id[..], l[0].id_hex[..]) { return nl_stop(l, 9); }
+  scratch2: [512] u8;
+  l[0].valid = nostr_event_verify_vartime(event, scratch2[..], false).verified;
+  // the changed copy: its bytes hash to a new ID, and the signature is not over that one
+  if !nl_change(l) { return nl_stop(l, 10); }
+  changed := cast(string) l[0].changed[0..<l[0].changed_n];
+  c := nostr_event_read(changed, scratch2[..], false); if c.error != NE_OK && c.error != NE_ID { return nl_stop(l, 11); }
+  if !nl_hex(c.computed_id[..], l[0].changed_id_hex[..]) { return nl_stop(l, 12); }
+  l[0].changed_claim = nostr_event_verify_vartime(changed, scratch2[..], false).verified;
+  l[0].changed_sig = nostr_verify_vartime(c.computed_id[..], l[0].pub[..], l[0].sig[..]);
+  l[0].ready = true; return true;
+}
+
+#test "nostr lab lesson: the key makes BIP-340 vector 1's public key, shown as an npub" #steps 2000000000 {
+  l: [1] NostrLesson; #assert nl_ready(l[..]) && nl_ready(l[..]) && l[0].stopped == 0;
+  #assert cast(string) l[0].pub_hex[..] == "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+  #assert l[0].npub_n == 63 && cast(string) l[0].npub[0..<5] == "npub1";
+  // the npub decodes back to the same 32 bytes
+  back: [32] u8; d := nip19_decode_checked(cast(string) l[0].npub[0..<l[0].npub_n], back[..], false);
+  #assert d.error == NC_OK; for i: 0..<32 { #assert back[i] == l[0].pub[i]; }
+}
+#test "nostr lab lesson: the ID is SHA-256 of the event's NIP-01 bytes, and the signature verifies" #steps 2000000000 {
+  l: [1] NostrLesson; #assert nl_ready(l[..]);
+  pre := cast(string) l[0].pre[0..<l[0].pre_n];
+  #assert pre == "[0,\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",1794441600,1,[],\"hello nostr\"]";
+  again: [32] u8; #assert sha256_hash_checked(l[0].pre[0..<l[0].pre_n], again[..], false) == 0;
+  for i: 0..<32 { #assert again[i] == l[0].id[i]; }
+  #assert l[0].valid && nostr_verify_vartime(l[0].id[..], l[0].pub[..], l[0].sig[..]);
+}
+#test "nostr lab lesson: one letter changed gives another ID, and the signature fails" #steps 2000000000 {
+  l: [1] NostrLesson; #assert nl_ready(l[..]);
+  #assert cast(string) l[0].changed_content[0..<l[0].changed_content_n] == "hello nostR";
+  #assert l[0].changed_n == l[0].event_n && !l[0].changed_claim && !l[0].changed_sig;
+  differ := 0; for i: 0..<64 { if l[0].changed_id_hex[i] != l[0].id_hex[i] { differ += 1; } }
+  #assert differ > 32;
+}
