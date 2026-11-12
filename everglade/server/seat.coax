@@ -267,7 +267,6 @@ EgRoom :: struct {
   // each player's n entry with its hash
   cache_tick: int = -1;
   hist: [1] WireHist;
-  ab_slot: [EG_SEATS * RA_ABS] int;   // the table slot each seat's ability's entity has, + 1 (0 none)
   fx_slot: [EG_SEATS * WE_WATCH] int;  // and each seat's watch effect's (SS * WE_WATCH + cause), from the same pool
   cn: [EG_SEATS * EG_ENT] u8; cn_n: [EG_SEATS] int; cn_h: [EG_SEATS] int;
   // who may receive what (room-interest.coax, #12789), and each seat's blocks by player id (K)

@@ -71,7 +71,6 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     im_clear(v[0].eg[q].im[..]);   // its interest from nothing: a slot's last room's entities and picks are not this one's (#13178)
     // its entities' lives numbered its own (a restart, or this slot's last room, never repeats one: #12835)
     wire_hist_scope(v[0].eg[q].hist[..], v[0].wall_ms + r * 7919);
-    for a: 0..<EG_SEATS * RA_ABS { v[0].eg[q].ab_slot[a] = 0; }
     // the cosmetic seed (weather, cast looks): it goes to every seat in W and casts derive from it,
     // so the rules' dice never do (they come from the host's OS random key: rm_dice_draw, #13258)
     v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
@@ -97,8 +96,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].guard[0] = E2Guard.{};
     v[0].eg[q].monsters[0] = E2Monsters.{};
     v[0].eg[q].arrows[0] = E2Arrows.{};
-    ra_fresh(v, q);   // its abilities (room-abilities.coax)
-    ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
+    ev_fresh(v, q);   // its XP, rises and rests (progress.coax)
     v[0].eg[q].initialized=true;
     return q;
   }

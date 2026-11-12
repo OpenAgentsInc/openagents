@@ -43,7 +43,4 @@ rm_eg_strike_current :: (v:[]RmServer,k:int,q:int)->bool #export_c #effects(all)
   v[0].eg[k].strikes[0].by= -1;#assert rm_eg_strike_current(v[..],k,0);
   #assert !rm_eg_strike_current(v[..],-1,0) && !rm_eg_strike_current(v[..],EG_ROOMS,0);
   #assert !rm_eg_strike_current(v[..],k,-1) && !rm_eg_strike_current(v[..],k,1);
-  v[0].ab[k].q_n=1;v[0].ab[k].q[0]=RaCast.{by=0,owner=old};#assert !rm_ra_cast_current(v[..],k,0);
-  v[0].ab[k].q[0].owner=fresh;#assert rm_ra_cast_current(v[..],k,0);
-  #assert !rm_ra_cast_current(v[..],k,-1) && !rm_ra_cast_current(v[..],k,1) && !rm_ra_cast_current(v[..],-1,0);
 }

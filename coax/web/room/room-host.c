@@ -432,15 +432,16 @@ static const char *drain_word(void) {
 static void drain_begin(int64_t wait_ms) {
   if (drain_phase != DRAIN_NONE) return;
   drain_phase = DRAIN_WAITING; drain_asked = now_ms(); drain_wait_ms = wait_ms;
-  printf("room: drain asked: no new seats; waiting up to %lld s for %lld world events\n", (long long)(wait_ms / 1000), (long long)rm_events_running(view()));
+  printf("room: drain asked: no new seats (up to %lld s)\n", (long long)(wait_ms / 1000));
 }
 static void drain_step(void) {
   int64_t now = now_ms();
-  if (drain_phase == DRAIN_WAITING && (rm_events_running(view()) == 0 || now - drain_asked >= drain_wait_ms)) {
+  /* no world event to wait for: v1's raid left with v1 (#13346) */
+  if (drain_phase == DRAIN_WAITING) {
     drain_told = rm_drain_tell(view());
     relay_flush();   /* the word goes out before the main loop closes the kicked sockets */
     drain_phase = DRAIN_TELLING; drain_step_at = now;
-    printf("room: drain: told %lld pages restarting after %lld ms (%lld world events still running)\n", (long long)drain_told, (long long)(now - drain_asked), (long long)rm_events_running(view()));
+    printf("room: drain: told %lld pages restarting after %lld ms\n", (long long)drain_told, (long long)(now - drain_asked));
   } else if (drain_phase == DRAIN_TELLING && now - drain_step_at >= 500) {
     /* their sockets closed, their seats ended: every seat's vitals noted and sent */
     rm_vitals_flush(view());
@@ -500,28 +501,6 @@ static void opening(int i) {
       if ((p == c->in || p[-1] == '\n') && !strncasecmp((char *)p, "Content-Length:", 15)) want = (size_t)strtoul((char *)p + 15, NULL, 10);
     if (len + want > c->n && len + want < IN_CAP) return;   /* the rest of the body is still coming */
     coax_string whole = {(const char *)c->in, (int64_t)(len + want <= c->n ? len + want : c->n)};
-    /* Coax proposes the floor probes and consumes the actual world's answers. */
-    /* the floor probes were v1's city's (world_forge_open): Everglade II's rooms have no forge floor, so none is open (#13267) */
-    int64_t probes = rm_forge_probe(view(), whole);
-    for (int64_t p = 0; p < probes; p++) rm_forge_probe_open(view(), p, false);
-    int fs = (int)rm_forge_api(view(), whole);
-    if (fs > 0) {
-      if (fs == 200 && server->forge.pending) {
-        int64_t nn = rm_forge_save(view());
-        char path[1024], tmp[1100];
-        snprintf(path, sizeof path, "%s/forge-npcs.json", dev_dir); snprintf(tmp, sizeof tmp, "%s.new", path);
-        FILE *f = nn > 0 ? fopen(tmp, "wb") : NULL;
-        bool saved = f && fwrite(server->forge.out.e, 1, (size_t)nn, f) == (size_t)nn;
-        if (f) { saved = fflush(f) == 0 && saved; saved = fsync(fileno(f)) == 0 && saved; saved = fclose(f) == 0 && saved; }
-        if (saved) saved = rename(tmp, path) == 0;
-        if (!saved) { unlink(tmp); rm_forge_abort(view()); http(i, "500 Internal Server Error", "application/json", "{\"ok\":false,\"error\":\"NPC document was not saved.\"}"); return; }
-        rm_forge_commit(view());
-      }
-      static char body[32769]; size_t nn = (size_t)server->forge.n;
-      if (nn >= sizeof body) { http(i, "500 Internal Server Error", "application/json", "{\"ok\":false}"); return; }
-      memcpy(body, server->forge.out.e, nn); body[nn] = 0;
-      http(i, fs == 200 ? "200 OK" : fs == 409 ? "409 Conflict" : fs == 403 ? "403 Forbidden" : "400 Bad Request", "application/json", body); return;
-    }
     if (!strncmp((char *)c->in, "POST /api/playtest/room-ticket/", 31)) dev_store_read();   /* another shard's captures (a drain's) */
     int64_t an = rm_dev_api(view(), whole);
     dev_store_save();   /* a v4 ticket's owner generation, before its answer goes */
@@ -573,9 +552,9 @@ static void opening(int i) {
       if ((int64_t)conns[j].on > wait_most) wait_most = (int64_t)conns[j].on;
       if (t_now - conns[j].since > wait_ms) wait_ms = t_now - conns[j].since;
     }
-    char body[1024]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %lld world events running, %s",
+    char body[1024]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks, waiting %lld bytes most, %lld ms oldest, %s",
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
-                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, (long long)rm_events_running(view()), drain_word());
+                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, drain_word());
     snprintf(body+strlen(body),sizeof body-strlen(body),"checkpoints pending %lld, flying %d, refused %lld, applied %lld, duplicates %lld\n",(long long)rm_checkpoint_pending(view()),server->ck.fly?1:0,(long long)server->ck.refused,(long long)server->ck.applied,(long long)server->ck.duplicates);
     int pending=0;for(int lane=0;lane<6;lane++)if(server->bg.e[0].slot.e[lane].id>0)pending++;
     snprintf(body+strlen(body),sizeof body-strlen(body),"background pending %d/6, offered %lld, refused %lld, expired %lld, late %lld, failed %lld\n",pending,(long long)server->bg.e[0].offered,(long long)server->bg.e[0].refused,(long long)server->bg.e[0].expired,(long long)server->bg.e[0].late,(long long)server->bg.e[0].failed);
@@ -988,11 +967,6 @@ int main(int argc, char **argv) {
     fprintf(stderr,"room: --native-local requires --dev and --listen 127.0.0.1\n");return 1;
   }
   world_ask();   /* the realm's published world, for every room's plan (room-world.c world_edits) */
-  if (dev_dir) {
-    size_t nn = 0; char *doc = dev_read("forge-npcs.json", &nn);
-    if (doc && !rm_forge_load(view(), (coax_string){doc, (int64_t)nn})) { fprintf(stderr, "room: invalid saved forge-npcs.json; retained for recovery\n"); free(doc); return 1; }
-    free(doc);
-  }
   /* the seat-ticket key (Secret Manager oa-room-ticket-key): set, an everglade join needs a ticket (room-ticket.coax) */
   const char *tkey = getenv("OA_ROOM_TICKET_KEY");
   const char *must = getenv("OA_ROOM_TICKET_REQUIRED");   /* "0": a join without a ticket sits with no id (while pages roll out) */

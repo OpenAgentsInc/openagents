@@ -8,7 +8,7 @@ EG_REVEAL_TICKS :: 90;   // a hidden player who starts a cast is seen within EG_
 // Room k's table this tick (eg_table) into its grid, once: each slot's entity by its wire ID, tagged
 // with the slot. A player rides on its own seat, and is hidden while its COND has RS_INVISIBLE; an
 // effect rides on, stands with and hides with the player it is on. Darian, the ward stones and the
-// zones no player made are room-wide; a player's spells are heard near them, as everything else. The raid's state goes to everyone in its own entries (ev_send).
+// zones no player made are room-wide; a player's spells are heard near them, as everything else.
 eg_im_table :: (v: [] RmServer, k: int) {
   rm := v[0].eg[k..<k + 1];
   h := rm[0].hist[..]; im := rm[0].im[..];

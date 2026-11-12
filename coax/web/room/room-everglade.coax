@@ -36,4 +36,5 @@
 #load "../../../everglade/server/casts.coax";
 #load "../../../everglade/server/tick.coax";
 #load "../../../everglade/server/send.coax";
+#load "../../../everglade/server/progress.coax";
 #load "../../../everglade/server/room-checks.coax";

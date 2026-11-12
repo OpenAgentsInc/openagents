@@ -14,7 +14,6 @@ RC_WAIT :: 1; RC_BAR :: 2; RC_FLIGHT :: 3;
 // and familiar ask whether one sees another. How many.
 rm_eg_sights :: (v: [] RmServer, k: int) -> int #export_c #effects(all) {
   if !rm_eg_live(v, k) { return 0; }
-  fg_sync(v,k);   // resolve changed NPC orders before sampling reaction sight
   return e2_familiar_sights(v,k,e2_monster_sights(v,k,e2_aid_sights(v,k)));   // the familiar's last
 }
 // Question q: the caster's feet (FX FY FZ) and where the cast lands (AX AY AZ).

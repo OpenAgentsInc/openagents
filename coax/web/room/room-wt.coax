@@ -140,6 +140,16 @@ wt_test_seen :: (box: [] EgInbox, c: int, s: [] WtSeen) {
     if (d.f & 1) != 0 { s[0].snaps += 1; }
   }
 }
+// The other seats of a full room (conns 2 to EG_SEATS - 1), each a player walking: Everglade II's own
+// load on a seat's frames (v1's townsfolk filled them before, #13346).
+wt_test_crowd :: (v: [] RmServer, code: string) {
+  ask: [96] u8; m := put(ask[..], 0, "GET /api/room/relay/everglade/"); m = put(ask[..], m, code); m = put(ask[..], m, " HTTP/1.1\r\n\r\n");
+  for c: 2..<EG_SEATS { _ := rm_join(v, c, cast(string) ask[0..<m]); rm_heard(v, c, "H 5 ranger.0.0.0 druid 0 -"); }
+}
+wt_test_walk :: (v: [] RmServer, t: int) {
+  b: [96] u8;
+  for c: 2..<EG_SEATS { n := wire_put_in(b[..], 0, WireIn.{seq = t, kx = ifx (c + t / 30) % 2 == 0 then 100 else -100, px = 40, heard = t - 1}); rm_heard(v, c, cast(string) b[0..<n]); }
+}
 wt_test_live :: (m: [] WireMirror) -> int { n := 0; for e: 0..<WIRE_MIRROR { if m[0].ents[e].live { n += 1; } } return n; }
 #test "webtransport: a seat's state is one datagram a tick within NET_DATAGRAM_MAX, the rest waiting by priority, its outcomes out of band; its page holds what a WebSocket page holds" #steps 8000000000 {
   v: [1] RmServer; box: [1] EgInbox;
@@ -149,10 +159,11 @@ wt_test_live :: (m: [] WireMirror) -> int { n := 0; for e: 0..<WIRE_MIRROR { if 
   #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-wt-state HTTP/1.1\r\n\r\n") == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  wt_test_crowd(v[..], "pair-e2-wt-state");
   b: [96] u8; seen: [2] WtSeen; ws_most := 0;
   for t: 1..<91 {
-    // the town's people walking near: more rows a tick than one datagram holds
-    for i: 0..<40 { f := [7] f32.[f32(i % 8) * 3 - 12 + f32(t) * 0.05, 0, f32(i / 8) * 3 - 6, 0, 1, 0, 1]; rm_eg_folk(v[..], k, i, f[..]); }
+    // a full room's players walking near: more rows a tick than one datagram holds
+    wt_test_walk(v[..], t);
     for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, px = 40, heard = box[0].m[c].heard}); rm_heard(v[..], c, cast(string) b[0..<n]); }
     eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
     wt_test_seen(box[..], 0, seen[0..<1]); wt_test_seen(box[..], 1, seen[1..<2]);
@@ -233,10 +244,11 @@ wt_sim_run :: (loss: int, rtt: int, jitter: int, seed: int, ticks: int, out: [] 
   _ := rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-sim HTTP/1.1\r\n\r\n"); _2 := rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-wt-sim HTTP/1.1\r\n\r\n");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  wt_test_crowd(v[..], "pair-e2-wt-sim");
   b: [96] u8; age: [2] [1200] int; an := 0;
   for t: 1..<ticks + 1 {
     now := t * 1000 / EG_HZ;
-    for i: 0..<12 { f := [7] f32.[f32(i % 4) * 3 - 6 + f32(t) * 0.05, 0, f32(i / 4) * 3 - 3, 0, 1, 0, 1]; rm_eg_folk(v[..], k, i, f[..]); }
+    wt_test_walk(v[..], t);   // a full room's players walking
     // the pages' inputs reach the room at once (the model is the room's sending)
     for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, px = 40, heard = m[c].heard}); rm_heard(v[..], c, cast(string) b[0..<n]); }
     eg_test_tick(v[..], k);

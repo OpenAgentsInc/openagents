@@ -40,7 +40,6 @@
 #load "room-casts.coax";   // casts under latency: their phases and a tick's order (#12790)
 #load "room-effects.coax"; // physical effects own capacity before cast resources
 #load "../../../apps/openagents-web/everglade-cast-rules.coax";
-#load "room-abilities.coax";
 #load "room-sky.coax";
 #load "room-ticket.coax";
 #load "room-write.coax";   // this shard's own write key (#13260)
@@ -62,12 +61,9 @@
 #load "room-travel.coax";   // a player's travel between two rooms (#12850)
 #load "native-local-policy.coax";
 #load "room-directory.coax";
-#load "room-events.coax";
 #load "../../../apps/openagents-web/player-name.coax";   // a chosen name's shape, as the API's (the dev stand-in's player/name)
 #load "../api/checkpoint-policy.coax";   // the API's checkpoint ordering, which the dev stand-in's store keeps too (#13057)
 #load "room-dev.coax";
-#load "room-forge.coax";
-#load "room-forge-raid.coax";
 #load "room-stats.coax";   // what the server counts of its own work, for the admins' room view (#12791)
 #load "room-work.coax";
 #load "../../../aethyr/net/latency.coax";
@@ -104,7 +100,6 @@ RmRoom :: struct {
 RmServer :: struct {
   orbit_generation:SeatGeneration;
   bg:[1]BgBudget;
-  forge:RmForge;
   quick_n: int;      // quick matches made: each gets its own room name
   conns: [CONNS] RmConn;
   wt: [CONNS] RmWt;         // which sockets are WebTransport sessions, and their counts (room-wt.coax)
@@ -120,7 +115,6 @@ RmServer :: struct {
   dropped: int;             // frames the rate limits dropped
   jout: [RELAY_JSON] u8;    // rm_rooms' answer
   eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)
-  ab: [EG_ROOMS] RaRoom;    // their abilities the world runs (room-abilities.coax)
   tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
   tkey_must: bool;
   tkeys: TicketKeys;   // the API's public keys for v5 tickets (rm_ticket_pubkeys, #13260): one, or two during a rotation
@@ -132,8 +126,8 @@ RmServer :: struct {
   dir: RmDirectory;                      // what it last told the API's instance directory
   drain: bool;                           // draining: no new seats, the directory told (room-directory.coax rm_drain_ask, #12797)
   dir_gen: bool;                         // the directory report names this process's generation (OA_ROOM_DIR_GEN=1, #12797)
-  evc: RmEvents;                         // the realm's world-event dials (room-events.coax)
-  ev: [EG_ROOMS] EvRoom;                 // each everglade room's event, XP and levels (room-events.coax)
+  evc: RmEvents;                         // the realm's XP reward dial (everglade/server/progress.coax)
+  ev: [EG_ROOMS] EvRoom;                 // each everglade room's XP, rises and rests (everglade/server/progress.coax)
   dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)
   adm: RmE2Admin;                        // Everglade II's admin lines, a local room's only (everglade/server/admin.coax)
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
@@ -174,14 +168,11 @@ rm_dice_draw :: (v: [] RmServer) -> u64 { return rs_next(v[0].dice_pool[..]); }
 // fails the build, not a room.
 rm_start_check :: (v: [] RmServer) -> int #export_c #effects(all) {
   bad := 0;
-  d := EvDials.{}; e := RmEvents.{}; r := EvRoom.{}; c := RmConn.{}; t := Ticket.{};
-  if v[0].evc.d.cap != d.cap || v[0].evc.d.levels != d.levels || v[0].evc.d.waves != d.waves || v[0].evc.d.size != d.size { bad += 1; }
-  if v[0].evc.d.gates != d.gates || v[0].evc.d.arch != d.arch || v[0].evc.d.aggr != d.aggr || v[0].evc.d.harm != d.harm { bad += 1; }
-  if v[0].evc.d.reward != d.reward || v[0].evc.d.minutes != d.minutes || v[0].evc.d.wl != d.wl || v[0].evc.d.wlmax != d.wlmax { bad += 1; }
-  if v[0].evc.cap != e.cap || v[0].evc.levels != e.levels || v[0].evc.slot != e.slot { bad += 1; }
+  d := EvDials.{}; c := RmConn.{}; t := Ticket.{};
+  if v[0].evc.d.reward != d.reward { bad += 1; }
   if v[0].shard != 1 { bad += 1; }
   for k: 0..<EG_ROOMS {
-    if v[0].ev[k].g_tick != r.g_tick || v[0].eg[k].relay != -1 { bad += 1; }
+    if v[0].eg[k].relay != -1 { bad += 1; }
   }
   for i: 0..<CONNS {
     x := v[0].conns[i];
@@ -195,11 +186,11 @@ rm_start_check :: (v: [] RmServer) -> int #export_c #effects(all) {
   #assert EG_SEATS == WIRE_SEATS && RELAY_SEATS == WIRE_SEATS;
 }
 
-#test "start: rm_init keeps every declared default (cap 2, levels on, seats -1)" {
+#test "start: rm_init keeps every declared default (the reward 100, seats -1)" {
   v: [1] RmServer;
   rm_init(v[..]);
   #assert rm_start_check(v[..]) == 0;
-  #assert v[0].evc.d.cap == 2 && v[0].evc.d.levels && v[0].conns[3].seat == -1;
+  #assert v[0].evc.d.reward == 100 && v[0].conns[3].seat == -1;
 }
 
 // The seat-ticket key (the host's OA_ROOM_TICKET_KEY): from then on an everglade join's ticket must

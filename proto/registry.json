@@ -1,7 +1,6 @@
 {
   "about": "Every wire and stored shape: its id, its owning context, its schema, the one codec file that may write it, and the command that checks it. coax/web/tool.sh wire-check holds the tree to this file. How to add a row: proto/README.md, \"Register a wire shape\". Plan: docs/protocol/2026-11-11-compliance-plan.md.",
   "no_frames": [
-    "coax/web/room/room-abilities.coax",
     "coax/web/room/room-casts.coax",
     "everglade/server/arrows.coax",
     "everglade/server/rest.coax",

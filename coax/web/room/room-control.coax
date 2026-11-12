@@ -149,7 +149,6 @@ rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
     }
   }
   v[0].ctl.kicks = kicks;
-  ev_control_done(v);
   v[0].ctl.pvp = pvp;
   for k: 0..<EG_ROOMS { v[0].eg[k].rules[0].pvp = pvp; v[0].eg[k].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v); }
   // the board or world changed: every page asks for it again

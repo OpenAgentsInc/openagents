@@ -173,16 +173,14 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   // (the creatures' turns); then stops, releases and harm
   eg_ends_due(v, k);
   rc_tick_first(v, k);
-  fg_sync(v,k);
   e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); e2_arrows_tick(v,k);
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   e2_admin_after(v,k);
   e2_guard_after(v,k); e2_monsters_after(v,k);
   e2_rest_tell_all(v, k); e2_kit_tell_all(v, k);
-  fg_hits(v,k);
   eg_engine_events(v, k);
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
-  ev_tick(v, k);       // its world event (room-events.coax)
+  ev_tick(v, k);       // once a second: the rises and the calm (progress.coax)
 }
 rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
@@ -212,9 +210,6 @@ eg_engine_events :: (v: [] RmServer, k: int) {
     kind := cast(int) ev[o]; by := cast(int) ev[o + 2]; who := cast(int) ev[o + 3];
     at := eg_where(v, k, who, ev[o + 6], ev[o + 7]);
     b: [96] u8; m := 0;
-    if kind == RS_EV_DAMAGE { eg_crime(v, k, by, who, at.x, at.z); }
-    if kind == RS_EV_SAVE { eg_folk_saved(v, k, cast(int) ev[o + 1], by, who, ev[o + 5] > 0.5); }
-    ev_engine(v, k, kind, by, who, cast(int) ev[o + 4]);   // a raider's harm, the XP's, the siege's help (room-events.coax)
     if kind == RS_EV_DAMAGE { m = wire_put_hit(b[..], 0, WireHit.{who = who, by = by, amt = cast(int) ev[o + 4], kind = cast(int) ev[o + 5]}); }
     else if kind == RS_EV_HEAL { m = wire_put_heal(b[..], 0, who, cast(int) ev[o + 4]); }
     else if kind == RS_EV_DEATH { m = wire_put_die(b[..], 0, who); }
@@ -222,43 +217,6 @@ eg_engine_events :: (v: [] RmServer, k: int) {
   }
 }
 
-// The rules rolled townsperson `who`'s save against spell `sp` of seat `by` (a TGT code): where it is
-// an ability the world runs too (Thunderwave's push, Gust of Wind's), the world's copy takes this save
-// (rm_eg_folk_save) rather than rolling a second one of its own (#12874).
-eg_folk_saved :: (v: [] RmServer, k: int, sp: int, by: int, who: int, saved: bool) {
-  if who < 0 || who >= E5R_FOLK || sp < 0 || by < EG_TGT_SEAT || by >= EG_TGT_SEAT + EG_SEATS { return; }
-  r := v[0].eg[k].rules[..];
-  for slot: EG_SP_SLOTS..<FB_EG_SLOTS {
-    if r[0].bar[slot].kind != FB_SPELL || r[0].bar[slot].sp != sp || !ra_world_slot(slot) { continue; }
-    v[0].eg[k].folk_save[who] = eg_save_code(slot - EG_SP_SLOTS, SeatId.{value = by - EG_TGT_SEAT}, saved);
-    return;
-  }
-}
-// A save's code: 1 + (ability * EG_SEATS + seat) * 2 + 1 if it succeeded (0: none).
-eg_save_code :: (ab: int, seat_id: SeatId, saved: bool) -> int { seat := seat_id.value; return 1 + (ab * EG_SEATS + seat) * 2 + (ifx saved then 1 else 0); }
-// Person j's save the rules rolled since the world last heard: its ABILITY SEAT SAVED (1 a success),
-// once (it is heard as it is read). Whether there was one.
-rm_eg_folk_save :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c #effects(all) {
-  if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || out.count < 3 || v[0].eg[k].folk_save[j] == 0 { return false; }
-  c := v[0].eg[k].folk_save[j] - 1;
-  v[0].eg[k].folk_save[j] = 0;
-  out[0] = f32(c / 2 / EG_SEATS); out[1] = f32(c / 2 % EG_SEATS); out[2] = f32(c % 2);
-  return true;
-}
-
-// Seat harm (by a seat, or a creature a seat summoned) to a townsperson `who` is a crime the world hears.
-eg_crime :: (v: [] RmServer, k: int, by: int, who: int, x: f32, z: f32) {
-  if who < 0 || who >= E5R_FOLK { return; }
-  seat := -1;
-  if by >= EG_TGT_SEAT && by < EG_TGT_SEAT + EG_SEATS { seat = by - EG_TGT_SEAT; }
-  else if by > E5RR_TGT_BEAST {
-    i := e5rr_beast_of_tgt(v[0].eg[k].rules[..], by);
-    if i >= 0 { seat = v[0].eg[k].rules[0].beasts[i - E5RR_BEAST0].by; }
-  }
-  if seat < 0 || seat >= EG_SEATS { return; }
-  v[0].eg[k].folk_by[who] = seat;
-  if v[0].eg[k].crime_n < EG_CRIMES { v[0].eg[k].crimes[v[0].eg[k].crime_n] = EgCrime.{by = seat, x = x, z = z}; v[0].eg[k].crime_n += 1; }
-}
 // Seat s moved in one jump this tick (room-world.c world_cut_take: placed, teleported, into or out of a
 // boat): its next row is a WARP, so no page draws it between (#12835).
 rm_eg_cut :: (v: [] RmServer, k: int, s_id: SeatId) #export_c #effects(all) { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].cut = true; } }

@@ -278,7 +278,6 @@ context coax/web/project/landing-nostr.coax -> coax/lib/nostr/filter_read.coax  
 context coax/web/project/landing-nostr.coax -> coax/lib/nostr/message.coax  # seeded (#13317)
 context coax/web/project/landing-nostr.coax -> coax/lib/nostr/nip19-core.coax  # seeded (#13317)
 context coax/web/project/landing-nostr.coax -> psionic/lib/pylon/beacon.coax  # seeded (#13317)
-context coax/web/room/room-forge.coax -> aethyr/forge/raid-command.coax  # seeded (#13317)
 context coax/web/room/room-write.coax -> coax/lib/nostr/hex.coax  # seeded (#13317)
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/event_sign.coax  # seeded (#13317)
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/nip44-key.coax  # seeded (#13317)

@@ -71,24 +71,10 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat :=
     if (st[0].w_bits[q] & bit) != 0 && heard >= st[0].w_t[q] - WIRE_ACKS + 1 { st[0].w_ok[q] = true; }
   }
 }
-// E SEQ 5 SLOT, ending what bar slot SLOT holds up: the world's (room-abilities.coax), and the rules'
-// concentration; nothing held up, refused.
-#test "overload: a full ordered end queue refuses before ending an ability ahead of its inputs (#12841)" #steps 2000000000 {
-  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-e2-end-budget",2,false);b:[128]u8;
-  slot:=RA_REVERSE+EG_SP_SLOTS;v[0].ab[k].live[RA_REVERSE].on=true;
-  rm_heard(v[..],0,"I 1 100 0 0 0 0 0 0");
-  for i:0..<EG_ENDS+1{n:=wire_put_use(b[..],0,WireUse.{seq=i+2,kind=WE_END,id=slot});rm_heard(v[..],0,cast(string)b[0..<n]);}
-  #assert v[0].eg[k].seat[0].ends_n==EG_ENDS&&v[0].ab[k].q_n==0;
-  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 6 busy");
-  v[0].eg[k].seat[0].q_n=0;eg_ends_due(v[..],k);#assert v[0].eg[k].seat[0].ends_n==0&&v[0].ab[k].q_n==EG_ENDS;
-}
 
 
 eg_end_now :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, slot: int) { seat := seat_id.value;
-  if ra_world_slot(slot)&&v[0].ab[k].live[seat*RA_ABS+slot-EG_SP_SLOTS].on&&!ra_may_queue(v,k, seat_id,false){eg_refuse(v,k, seat_id,seq,"busy");return;}
-  world := ra_end(v, k, seat_id, slot);
-  if ra_whole(slot) { return; }
-  if !e5rr_end(v[0].eg[k].rules[..], seat, slot) && !world { eg_refuse(v, k, seat_id, seq, "nothing"); }
+  if !e5rr_end(v[0].eg[k].rules[..], seat, slot) { eg_refuse(v, k, seat_id, seq, "nothing"); }
 }
 // The ends that waited for the inputs before them (eg_heard): each once those are stepped.
 eg_ends_due :: (v: [] RmServer, k: int) {
@@ -326,7 +312,6 @@ eg_seat_kind :: (v: [] RmServer, k: int, seat_id: SeatId, kind: string) { seat :
     if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,ifx st[0].familiar_incense_used then 0 else 1); }
     if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,st[0].protection_water_used); }
     if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,st[0].revivify_diamond_used); }
-    ev_class(v, k, seat_id);
   }
 }
 // C SEQ SLOT AX AY AZ TGT: a cast at the aim. The checks that need no place here (the slot, the class,
@@ -338,13 +323,13 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
   if !r[0].ok || (nf != 7 && nf != 8) { return; }   // (a mode last, or none)
   eg_e2_cast(v, k, seat_id, wc); return;   // Everglade II: shared rules under its harmless social profile
 }
-// L SEQ: a Long Rest. Between raids and out of combat only (room-events.coax ev_rest_ok); then the seat
+// L SEQ: a Long Rest. Out of combat only (progress.coax ev_rest_ok); then the seat
 // is whole again and hears e rest SEAT, its page its own rest (everglade-rest.coax).
 eg_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   seq := wire_num(text, r[..]);
   if !r[0].ok { return; }
-  if !ev_rest_ok(v, k, seat_id) { eg_refuse(v, k, seat_id, seq, ifx v[0].ev[k].phase != EV_IDLE && v[0].ev[k].phase != EV_AFTER then "raid" else "combat"); return; }
+  if !ev_rest_ok(v, k, seat_id) { eg_refuse(v, k, seat_id, seq, "combat"); return; }
   ev_long_rest(v, k, seat_id);
   b: [32] u8;
   p := v[0].eg[k].seat[seat].pose;

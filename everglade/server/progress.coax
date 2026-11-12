@@ -1,0 +1,197 @@
+#load "../../aethyr/ids.coax";
+// Everglade II's progress in a room: XP and its awards, the hello's demo flag, a fallen player's
+// rise, and the Long Rest (#12801). Moved from coax/web/room/room-events.coax, whose world events
+// (the Cultist Raid and its standing siege, the g and v entries, levels 1 to 3 by the SRD kits) were
+// v1's and left the room with it (docs/decisions/0005-production-room-runs-everglade-ii.md, #13346).
+//
+// The dial is the realm's, an admin's from the events pane: the API keeps it (verse.room_events,
+// coax/web/api/player.c room_event) and room-control.coax's poll hears it every 2 s. Of the event
+// line's sixteen numbers (ON EVERY WAVES SIZE CULT FAN WL WLMAX GATES ARCH AGGR HARM REWARD MINUTES
+// START STOP) the room reads REWARD only: the percent of each XP award (50 to 300).
+//
+// What a seat hears:
+//   e xp SS AMOUNT, e level SS LEVEL   a gain, a level-up: aimed at seat SS, so its page always hears
+//       them, past a tick full of cues (#12907); the seats near it hear them as cues
+// Everglade II's classes level by the SRD table, to 6 (eg_level_up). XP counts and saves: the vitals
+// report carries it (room-vitals.coax) and the seat ticket brings it back (room-ticket.coax).
+
+EV_DEMO_FLAG :: 64;             // the hello's FLAGS bit: an admin plays Everglade's own character, the demo
+EV_XP_MAX :: 9999999;
+EV_RISE_S :: 10;                // s a fallen player lies before standing again, whole, where they fell
+EV_CALM_S :: 30;                // s since a seat last cast or lost Hit Points before it may take a Long Rest
+
+// The dial (spec 8.2), clamped to its range as it is heard.
+EvDials :: struct { reward: int = 100; }
+RmEvents :: struct { d: EvDials; }
+EvRoom :: struct {
+  earned: [EG_SEATS] bool;             // the seats that earned XP here
+  xp: [EG_SEATS] int;
+  demo: [EG_SEATS] bool;               // an admin asked for Everglade's own character (EV_DEMO_FLAG)
+  down: [EG_SEATS] int;                // each seat: the seconds it has lain dead (ev_rise)
+  fought: [EG_SEATS] int;              // each seat: the tick + 1 it last cast or lost Hit Points (0 never), for the Long Rest
+  hp_was: [EG_SEATS] int;              // its Hit Points at the last second (ev_calm)
+}
+
+ev_clamp :: (v: int, a: int, b: int) -> int { return ifx v < a then a else (ifx v > b then b else v); }
+// One line of room-control's answer (room-control.coax rm_control hands each one here): the event
+// line's REWARD (its thirteenth number), when the line is whole.
+ev_control_line :: (v: [] RmServer, line: string) {
+  if line.count < 7 || line[0..<6] != "event " { return; }
+  f: [16] int; n := 0; at := 6;
+  while at < line.count && n < 16 {
+    w := rc_word(line, at);
+    x := rc_num(w);
+    if x < 0 { return; }
+    f[n] = x; n += 1; at += w.count + 1;
+  }
+  if n != 16 { return; }
+  v[0].evc.d.reward = ev_clamp(f[12], 50, 300);
+}
+
+// Seat s's hello (input.coax eg_heard_hello): whether it asks for the demo character.
+ev_hello :: (v: [] RmServer, k: int, s_id: SeatId, flags: int) { s := s_id.value;
+  v[0].ev[k].demo[s] = (flags & EV_DEMO_FLAG) != 0;
+}
+// XP for seat s (times the reward dial), its gain heard by everyone near it, a level-up by everyone.
+ev_award :: (v: [] RmServer, k: int, s_id: SeatId, base: int) { s := s_id.value;
+  if base <= 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
+  amount := rs_max(base * v[0].evc.d.reward / 100, 1);
+  v[0].ev[k].xp[s] = rs_min(v[0].ev[k].xp[s] + amount, EV_XP_MAX);
+  v[0].ev[k].earned[s] = true;
+  p := v[0].eg[k].seat[s].pose;
+  b: [64] u8;
+  // its class's level from the same table, up to 6 (seats.coax eg_level_up, #13259)
+  was := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]); _ := eg_level_up(v, k, s_id);
+  // aimed at the seat (ev_who): the gainer always hears its own gain and level-up, however busy the
+  // tick (the outcomes' room, no cue allowance); the seats near it hear them as cues
+  n := wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e xp"), s), amount);
+  eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, false, 1 << s);
+  now := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]);
+  if now > was {
+    n = wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e level"), s), now);
+    eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, true, 1 << s);
+  }
+}
+
+// A new room in slot k: no XP.
+ev_fresh :: (v: [] RmServer, k: int) {
+  if k < 0 || k >= EG_ROOMS { return; }
+  v[0].ev[k] = EvRoom.{};
+}
+// Seat s sat (after its HP came back, rv_join): its XP from this server's note or its ticket.
+ev_join :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  v[0].ev[k].xp[s] = 0; v[0].ev[k].earned[s] = false; v[0].ev[k].demo[s] = false;
+  tk := eg_ticket(v, k, s_id);
+  if tk.ok {
+    xp := tk.xp;
+    i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
+    if i >= 0 && v[0].vit.v[i].xp > xp { xp = v[0].vit.v[i].xp; }
+    v[0].ev[k].xp[s] = ev_clamp(xp, 0, EV_XP_MAX);
+  }
+  // a returning player's HP is theirs at the new level too
+  rv_hp_back(v, k, s_id);
+}
+ev_xp_of :: (v: [] RmServer, k: int, s_id: SeatId) -> int { s := s_id.value; return ifx k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS then v[0].ev[k].xp[s] else 0; }
+
+// Once a second (tick.coax): the rises and the calm.
+ev_tick :: (v: [] RmServer, k: int) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
+  if v[0].eg[k].tick % EG_HZ == 0 { ev_rise(v, k); ev_calm(v, k); }
+}
+// Once a second: a player down (dead, or at 0 Hit Points) EV_RISE_S stands again where they fell,
+// with all their Hit Points (as a page on its own stands you up after YOU DIED).
+ev_rise :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  b := v[0].eg[k].rules[0].b[..];
+  for s: 0..<EG_SEATS {
+    i := E5RR_SEAT + s;
+    if !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] || (!b[0].c[i].dead && b[0].c[i].hp > 0) { e[0].down[s] = 0; continue; }
+    e[0].down[s] += 1;
+    if e[0].down[s] < EV_RISE_S { continue; }
+    e[0].down[s] = 0;
+    b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].temp = 0; b[0].c[i].dead = false; b[0].c[i].cond = 0;
+    b[0].c[i].death_ok = 0; b[0].c[i].death_fail = 0; b[0].c[i].stable = false;
+  }
+}
+// ---- the Long Rest (#12801). SRD 5.2.1's eight hours of no fighting, taken at the inn's hearth. A
+// seat may take it out of combat: EV_CALM_S since it last cast or lost Hit Points. The server checks
+// on the ask (input.coax e2_heard_old_rest).
+// Once a second: a seat that lost Hit Points since the last is fighting.
+ev_calm :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  b := v[0].eg[k].rules[0].b[..];
+  for s: 0..<EG_SEATS {
+    if !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] { e[0].fought[s] = 0; e[0].hp_was[s] = 0; continue; }
+    hp := b[0].c[E5RR_SEAT + s].hp;
+    if hp < e[0].hp_was[s] { e[0].fought[s] = v[0].eg[k].tick + 1; }
+    e[0].hp_was[s] = hp;
+  }
+}
+// Whether seat s may take a Long Rest now: alive, and EV_CALM_S out of combat.
+ev_rest_ok :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value;
+  if s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] { return false; }
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
+  if c.dead || c.hp <= 0 { return false; }
+  f := v[0].ev[k].fought[s];
+  return f == 0 || v[0].eg[k].tick + 1 - f >= EV_CALM_S * EG_HZ;
+}
+// Seat s's Long Rest: every Hit Point back, every condition gone, every spell slot and use back.
+ev_long_rest :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
+  c[0].hp = c[0].hp_max; c[0].cond = 0; c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
+  for l: 0..<10 { c[0].slots[l] = c[0].slots_max[l]; }
+  for u: 0..<RS_USES { c[0].uses[u] = c[0].uses_max[u]; }
+  v[0].ev[k].hp_was[s] = c[0].hp;
+}
+
+#test "progress: the event line's REWARD scales each award; a short or bad line changes nothing" #steps 4000000000 {
+  v: [1] RmServer; k := rc_test_room(v[..], "pair-e2-reward", 1, false);
+  #assert v[0].evc.d.reward == 100;
+  rm_control(v[..], "event 1 0 3 12 6 1 3 3 31 1 2 1 200 15 0 0\n");
+  #assert v[0].evc.d.reward == 200;
+  rm_control(v[..], "event 1 0 3 12 6 1 3 3 31 1 2 1 900 15 0 0\n");
+  #assert v[0].evc.d.reward == 300;
+  rm_control(v[..], "event 1 0 3 12 6 1 3 3 31 1 2 1 10 15 0 0\n");
+  #assert v[0].evc.d.reward == 50;
+  rm_control(v[..], "event 1 0 3 12 6 1 3 3 31 1 2 1 200 15 0\n");   // fifteen numbers: not whole
+  #assert v[0].evc.d.reward == 50;
+  rm_control(v[..], "event 1 0 3 12 6 1 3 3 31 1 2 1 200 15 0 x\n");
+  #assert v[0].evc.d.reward == 50;
+  rm_control(v[..], "events 1 0 3 12 6 1 3 3 31 1 2 1 200 15 0 0\n");
+  #assert v[0].evc.d.reward == 50;
+  xp := v[0].ev[k].xp[0];
+  ev_award(v[..], k, SeatId.{value = 0}, 10);
+  #assert v[0].ev[k].xp[0] == xp + 5 && v[0].ev[k].earned[0];
+  ev_award(v[..], k, SeatId.{value = 0}, 1);   // at least 1
+  #assert v[0].ev[k].xp[0] == xp + 6;
+  ev_award(v[..], k, SeatId.{value = 0}, 0);
+  ev_award(v[..], k, SeatId.{value = 1}, 10);   // no seat 1
+  #assert v[0].ev[k].xp[0] == xp + 6;
+  v[0].ev[k].xp[0] = EV_XP_MAX - 1; ev_award(v[..], k, SeatId.{value = 0}, 100);
+  #assert v[0].ev[k].xp[0] == EV_XP_MAX && ev_xp_of(v[..], k, SeatId.{value = 0}) == EV_XP_MAX;
+  #assert ev_xp_of(v[..], -1, SeatId.{value = 0}) == 0 && ev_xp_of(v[..], k, SeatId.{value = EG_SEATS}) == 0;
+}
+#test "progress: the hello's demo flag; a fallen seat rises whole after EV_RISE_S; a Long Rest waits EV_CALM_S after harm" #steps 4000000000 {
+  v: [1] RmServer; k := rc_test_room(v[..], "pair-e2-rise", 1, false);
+  ev_hello(v[..], k, SeatId.{value = 0}, EV_DEMO_FLAG | 1); #assert v[0].ev[k].demo[0];
+  ev_hello(v[..], k, SeatId.{value = 0}, 1); #assert !v[0].ev[k].demo[0];
+  b := v[0].eg[k].rules[0].b[..]; i := E5RR_SEAT;
+  b[0].c[i].hp = 0; b[0].c[i].dead = true; b[0].c[i].cond = 1; b[0].c[i].death_fail = 2;
+  for q: 0..<EV_RISE_S - 1 { ev_rise(v[..], k); }
+  #assert b[0].c[i].dead && v[0].ev[k].down[0] == EV_RISE_S - 1;
+  #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
+  ev_rise(v[..], k);
+  #assert !b[0].c[i].dead && b[0].c[i].hp == b[0].c[i].hp_max && b[0].c[i].cond == 0 && b[0].c[i].death_fail == 0 && v[0].ev[k].down[0] == 0;
+  ev_rise(v[..], k); #assert v[0].ev[k].down[0] == 0;
+  ev_calm(v[..], k); #assert v[0].ev[k].hp_was[0] == b[0].c[i].hp_max && v[0].ev[k].fought[0] == 0;
+  #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
+  b[0].c[i].hp -= 1; ev_calm(v[..], k);
+  #assert v[0].ev[k].fought[0] == v[0].eg[k].tick + 1 && !ev_rest_ok(v[..], k, SeatId.{value = 0});
+  v[0].eg[k].tick += EV_CALM_S * EG_HZ - 1; #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
+  v[0].eg[k].tick += 1; #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
+  b[0].c[i].slots[1] = 0; b[0].c[i].cond = 3;
+  ev_long_rest(v[..], k, SeatId.{value = 0});
+  #assert b[0].c[i].hp == b[0].c[i].hp_max && b[0].c[i].cond == 0 && b[0].c[i].slots[1] == b[0].c[i].slots_max[1] && v[0].ev[k].hp_was[0] == b[0].c[i].hp_max;
+  #assert !ev_rest_ok(v[..], k, SeatId.{value = EG_SEATS}) && !ev_rest_ok(v[..], k, SeatId.{value = 1});
+  ev_fresh(v[..], k); #assert v[0].ev[k].xp[0] == 0 && v[0].ev[k].down[0] == 0;
+}

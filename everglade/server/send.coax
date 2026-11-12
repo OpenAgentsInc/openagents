@@ -86,27 +86,6 @@ eg_table :: (v: [] RmServer, k: int) {
                                     flags = other[0].flags, name = ifx other[0].name_n > 0 then cast(string) other[0].name[0..<other[0].name_n] else "-"});
     rm[0].cn_n[q] = n; rm[0].cn_h[q] = eg_hash(cast(string) rm[0].cn[a..<a + n]);
   }
-  // the townsfolk outdoors: G their mode, CLIP their clip, P1 who, COND what holds them, Y how high the world's abilities
-  // hold them over their feet (Reverse Gravity), FORM a responder's rank + 1 (0 the town's own), MAX
-  // their most Hit Points
-  if rm[0].folk_on {
-    for i: 0..<E5R_FOLK {
-      fo := i * EG_FOLK_FLOATS;
-      fl := rm[0].folk[fo..<fo + EG_FOLK_FLOATS];
-      if fl[6] < 0.5 { continue; }
-      // T0 the tick its mode began; casting, P2 its spell (MS_* + 1), DUR the tick it began, OWNER the seat it is for
-      casting := fl[7] >= 0;
-      foe := cast(int) fl[9];
-      fo4: [E5RR_OUT_FLOATS] f32;
-      e5rr_folk_out(rm[0].rules[..], i, fo4[..]);   // COND: the conditions the rules have on them
-      wire_hist_put(h, EG_SLOT_FOLK + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = fl[0], y = f32(v[0].ab[k].air[i]) / 100, z = fl[1], yaw = fl[2],
-                                                 clip = cast(int) fl[3], g = cast(int) fl[4], hp = cast(int) fl[5], p1 = i,
-                                                 t0 = ifx cast(int) fl[4] == 0 then 0 else rm[0].folk_since[i],
-                                                 p2 = ifx casting then cast(int) fl[8] + 1 else 0, dur = ifx casting then rm[0].folk_cast[i] else 0,
-                                                 owner = ifx casting && foe >= 0 then WIRE_TGT_SEAT + foe else -1, cond = cast(int) fo4[3],
-                                                 form = cast(int) fl[10], max = cast(int) fl[11]}, wire_rel(WK_FOLK), false, true);
-    }
-  }
   // summoned creatures (raiders among them) once their ground is known: G 1 while it runs (a raider's
   // level in bits 8 and up), P1 its form, MAX its most Hit Points
   bf: [E5RR_BEAST_FLOATS] f32;
@@ -114,7 +93,7 @@ eg_table :: (v: [] RmServer, k: int) {
     id := e5rr_beast(rm[0].rules[..], q, bf[..]);
     if id <= 0 || bf[9] < 0.5 { continue; }
     wire_hist_put(h, EG_SLOT_BEAST + q, WireS.{id = WIRE_ID_MADE + id, kind = WK_BEAST, x = bf[0], y = bf[1], z = bf[2], yaw = bf[3], hp = cast(int) bf[4], max = cast(int) bf[5],
-                                                g = cast(int) bf[8] + ev_beast_f(v, k, q), owner = cast(int) bf[6], p1 = cast(int) bf[7]}, wire_rel(WK_BEAST), false, true);
+                                                g = cast(int) bf[8], owner = cast(int) bf[6], p1 = cast(int) bf[7]}, wire_rel(WK_BEAST), false, true);
   }
   // the rules' lasting areas: P1 the ability a zone is from, P2 its radius in cm
   zf: [E5RR_ZONE_FLOATS] f32;
@@ -130,7 +109,6 @@ eg_table :: (v: [] RmServer, k: int) {
   // each seat's watch effects (Hold Person, Earthbind, Ray of Frost): OWNER the seat's TGT code, P1
   // the cause, P2 its WC_* bit, T0 the tick it started, DUR its ticks (no place: the same row all along)
   used: [EG_SLOT_ABS] bool;
-  for q: 0..<EG_SEATS * RA_ABS { if rm[0].ab_slot[q] > 0 { used[rm[0].ab_slot[q] - 1] = true; } }
   for q: 0..<EG_SEATS {
     st := rm[0].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
     for c: 0..<WE_WATCH {
@@ -151,7 +129,6 @@ eg_table :: (v: [] RmServer, k: int) {
                                                            owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st[0].fx[c].t0, dur = st[0].fx[c].dur}, wire_rel(WK_EFFECT), true, false);
     }
   }
-  ra_table(v, k);   // what the world's abilities hold up (room-abilities.coax)
   // the town's doors as the world has them, every seat's however far (late joiners' snapshots have them open)
   wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = rm[0].doors[0], p2 = rm[0].doors[1], form = rm[0].gates}, wire_rel(WK_DOORS), true, false);
   // the rowboats where the world has them, every seat's (OWNER the rower's seat, -1 moored; P1 the float; P2 the oars' stroke in thousandths, -1 shipped)
@@ -331,7 +308,6 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
     }
   }
   v[0].st.meta_b += meta;
-  ev_send(v, k, s_id, full, unseen, o[..]);   // the world event and the level of everyone in view (room-events.coax)
   // the events since the last state, near you: cues from EG_CUE_BUDGET, outcomes and what is aimed at you without
   cue := 0; ob := 0;
   for q: 0..<v[0].eg[k].ev_n {
