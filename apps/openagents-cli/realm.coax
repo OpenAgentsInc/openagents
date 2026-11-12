@@ -3,6 +3,7 @@
 // base, sends that revision, and refuses a server without the fence capability.
 #load "commands.coax";
 #load "../../aethyr/forge/doc.coax";   // the realm document and its bodies (realm.proto): one codec
+#load "../../aethyr/forge/change.coax";   // the edits' bodies (edits.proto): one codec
 #load "../../aethyr/forge/board.coax";   // the plan's and the make's bodies and the board's lines: one codec
 #load "../../aethyr/forge/made.coax";   // a made or forked realm's answer and a fork's body (made.proto): one codec
 #load "../../aethyr/forge/record.coax";   // mine, visibility, publish and the publish record (record.proto): one codec
@@ -60,11 +61,6 @@ realm_edit_tail :: (verb: string, id: string, out: [] u8) -> string {
     return ifx n < 0 then "" else cast(string) out[0..<n];
   }
   return c.route;
-}
-
-realm_edit_cm_json :: (o: [] Jo, key: string, cm: int) {
-  b: [24] u8; n := forge_put_cm(b[..],0,cm);
-  jo_key(o,key); jo_raw(o,cast(string) b[0..<n]);
 }
 
 realm_edit_doc :: (a: [] Args, profile: string, slug: string, rev: int, out: [] u8) -> ApiAnswer {
@@ -145,43 +141,43 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
     if n < 0 { return realm_edit_refuse(400,"the visibility is private, unlisted or public",rev,out); }
     return api_call(a,profile,"POST",realm_path(slug,ifx verb == "visibility" then "/edit-v1/visibility" else "/publish",path[..]),cast(string) buf[0..<n],out);
   }
-  o: [1] Jo; jo_start(o[..],buf[..]); jo_obj(o[..]); jo_key(o[..],"rev"); jo_int(o[..],rev);
+  // edits.proto's bodies, the revision first (aethyr/forge/change.coax writes each)
   v := rc_pos(a,verb,3);
-  if verb == "switch" { jo_key(o[..],"row"); jo_str(o[..],v); jo_key(o[..],"on"); jo_bool(o[..],cli_onoff(rc_pos(a,verb,4)) == 1); }
-  if verb == "revise" || verb == "ask" { jo_key(o[..],ifx verb == "ask" then "words" else "prompt"); jo_str(o[..],v); }
-  if verb == "ask-done" { jo_key(o[..],"commit"); jo_str(o[..],rc_option(a,verb,"--commit","")); }
-  if verb == "place" {
-    jo_key(o[..],"thing"); jo_str(o[..],v);
-    realm_edit_cm_json(o[..],"x",cli_edit_cm(rc_pos(a,verb,4))); realm_edit_cm_json(o[..],"z",cli_edit_cm(rc_pos(a,verb,5)));
+  bn := -1;
+  if verb == "switch" { bn = forge_switch_body(rev,v,cli_onoff(rc_pos(a,verb,4)) == 1,false,buf[..]); }
+  else if verb == "revise" { bn = forge_words_body(rev,"prompt",v,false,buf[..]); }
+  else if verb == "ask" { bn = forge_words_body(rev,"words",v,false,buf[..]); }
+  else if verb == "ask-done" { bn = forge_words_body(rev,"commit",rc_option(a,verb,"--commit",""),false,buf[..]); }
+  else if verb == "place" {
+    xb: [24] u8; zb: [24] u8; yb: [24] u8;
+    xn := forge_put_cm(xb[..],0,cli_edit_cm(rc_pos(a,verb,4))); zn := forge_put_cm(zb[..],0,cli_edit_cm(rc_pos(a,verb,5)));
     y := rc_option(a,verb,"--yaw","0");
     neg := y.count > 0 && y[0] == '-';
     amount := cli_count(ifx neg then y[1..<y.count] else y,0,360);
-    jo_key(o[..],"yaw"); jo_int(o[..],ifx neg then -amount else amount);
+    yn := forge_put_int(yb[..],0,ifx neg then -amount else amount);
+    bn = forge_place_body(rev,v,cast(string) xb[0..<xn],cast(string) zb[0..<zn],cast(string) yb[0..<yn],false,buf[..]);
   }
-  if verb == "settings" {
-    enabled := rc_option(a,verb,"--tools",""); tools := "build|fly|jump|map|talk|voice";
-    jo_key(o[..],"tools"); jo_obj(o[..]);
+  else if verb == "settings" {
+    enabled := rc_option(a,verb,"--tools",""); names := [6] string.["build","fly","jump","map","talk","voice"]; tools_on: [6] bool;
     for i: 0..<6 {
-      name := cli_field(tools,i); on := false; at := 0;
-      for end: 0..<enabled.count+1 { if end == enabled.count || enabled[end] == ',' { if enabled[at..<end] == name { on=true; } at=end+1; } }
-      jo_key(o[..],name); jo_bool(o[..],on);
+      at := 0;
+      for end: 0..<enabled.count+1 { if end == enabled.count || enabled[end] == ',' { if enabled[at..<end] == names[i] { tools_on[i]=true; } at=end+1; } }
     }
-    jo_end(o[..]);
+    bn = forge_settings_body(rev,names[..],tools_on[..],buf[..]);
   }
-  if verb == "lore" { jo_key(o[..],"who"); jo_str(o[..],v); jo_key(o[..],"text"); jo_str(o[..],rc_pos(a,verb,4)); }
-  if verb == "quest" {
-    jo_key(o[..],"giver"); jo_str(o[..],v); jo_key(o[..],"ask"); jo_str(o[..],rc_option(a,verb,"--ask",""));
-    jo_key(o[..],"steps"); jo_arr(o[..]);
-    for i: 0..<3 { if rc_option_index(a,verb,"--step",i) >= 0 { jo_str(o[..],rc_option_at(a,verb,"--step",i)); } }
-    jo_end(o[..]); jo_key(o[..],"reward"); jo_str(o[..],rc_option(a,verb,"--reward",""));
+  else if verb == "lore" { bn = forge_lore_body(rev,v,rc_pos(a,verb,4),false,buf[..]); }
+  else if verb == "quest" {
+    steps: [3] string; sn := 0;
+    for i: 0..<3 { if rc_option_index(a,verb,"--step",i) >= 0 { steps[sn] = rc_option_at(a,verb,"--step",i); sn += 1; } }
+    bn = forge_quest_body(rev,v,rc_option(a,verb,"--ask",""),steps[0..<sn],rc_option(a,verb,"--reward",""),false,buf[..]);
   }
-  if verb == "publish" && rc_has(a,verb,"--listed") { jo_key(o[..],"listed"); jo_bool(o[..],true); }
-  jo_end(o[..]);
-  if o[0].bad { return realm_edit_refuse(400,"the edit body is too large",rev,out); }
+  else if verb == "publish" && rc_has(a,verb,"--listed") { bn = forge_publish_body(rev,true,buf[..]); }   // a fork's publish, listed
+  else { bn = forge_rev_body(rev,buf[..]); }   // accept, decline, the two deletes, a fork's publish: {"rev":N}
+  if bn < 0 { return realm_edit_refuse(400,"the edit body is too large",rev,out); }
   tailbuf: [128] u8; tail := realm_edit_tail(verb,v,tailbuf[..]);
   fenced: [160] u8;
   if verb != "undo" && verb != "redo" && (verb != "publish" || fork_publish) { n := forge_put(fenced[..],0,"/edit-v1"); n = forge_put(fenced[..],n,tail); tail = cast(string) fenced[0..<n]; }
-  return api_call(a,profile,"POST",realm_path(slug,tail,path[..]),jo_text(o[..]),out);
+  return api_call(a,profile,"POST",realm_path(slug,tail,path[..]),cast(string) buf[0..<bn],out);
 }
 
 realm_edit :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {

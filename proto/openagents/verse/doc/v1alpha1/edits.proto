@@ -1,0 +1,151 @@
+syntax = "proto3";
+package openagents.verse.doc.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// A realm's edits (compliance plan step E11, GitHub #13250): the bodies that
+// change a realm through coax/web/api/realms.c and what the server answers.
+//
+//   POST /api/playtest/realms/<slug>/settings   SettingsRequest -> SettingsReply
+//   POST .../<slug>/switch                      SwitchRequest   -> SwitchReply
+//   POST .../<slug>/revise                      ReviseRequest   -> ReviseReply
+//   POST .../<slug>/asks                        AskRequest      -> text lines
+//   POST .../<slug>/asks/<id>/done              AskDoneRequest  -> DeleteReply
+//   POST .../<slug>/asks/<id>/delete, .../rows/<key>/delete   -> DeleteReply
+//   POST .../<slug>/describe                    DescribeRequest -> DescribeReply
+//   POST .../<slug>/place                       PlaceRequest    -> PlaceReply
+//   POST .../<slug>/proposals/<id>/accept|decline             -> DecideReply
+//   POST .../<slug>/lore                        LoreRequest     -> LoreReply
+//   POST .../<slug>/quest                       QuestRequest    -> QuestReply
+//
+// Under .../<slug>/edit-v1/ a request also names the revision it was made
+// from (`rev`, its first member), the answer says the realm's revision now,
+// and a realm changed since is a Conflict (realm.proto). A request that
+// carries nothing else is realm.proto's RevRequest. SQL builds every answer
+// as jsonb's text; a refusal is record.proto's RouteError.
+//
+// aethyr/forge/change.coax is the one writer of the requests: the realm edit
+// layer, My Realm and the CLI call it. proto/verse/realm-edits-v1.json pins
+// the bytes, checked through the codec (aethyr/forge/change-goldens.coax)
+// and through the routes (coax/web/api/tests/realm_record_checks.coax).
+
+// The tools a realm can give its visitors, each on or off.
+message Tools {
+  optional bool build = 1 [json_name = "build"];
+  optional bool fly = 2 [json_name = "fly"];
+  optional bool jump = 3 [json_name = "jump"];
+  optional bool map = 4 [json_name = "map"];
+  optional bool talk = 5 [json_name = "talk"];
+  optional bool voice = 6 [json_name = "voice"];
+}
+
+message SettingsRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  Tools tools = 2 [json_name = "tools"];
+}
+message SettingsReply {
+  Tools tools = 1 [json_name = "tools"];
+  optional int64 rev = 2 [json_name = "rev"];
+}
+
+// One row of the board switched on or off.
+message SwitchRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string row = 2 [json_name = "row", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional bool on = 3 [json_name = "on"];
+}
+message SwitchReply {
+  optional string row = 1 [json_name = "row"];
+  optional bool on = 2 [json_name = "on"];
+  optional int64 rev = 3 [json_name = "rev"];
+}
+
+// Words for the planner to revise the board with.
+message ReviseRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string prompt = 2 [json_name = "prompt"];
+}
+// 200 from .../revise: the new plan's number and whether the board changed.
+message ReviseReply {
+  optional int64 plan = 1 [json_name = "plan"];
+  optional bool changed = 2 [json_name = "changed"];
+  optional int64 rev = 3 [json_name = "rev"];
+}
+
+// An ask for the feature list.
+message AskRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string words = 2 [json_name = "words"];
+}
+// A site admin marks an ask's code done: the commit that built it.
+message AskDoneRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string commit = 2 [json_name = "commit", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+// 200 from a deletion: the row or ask is gone (`deleted`, and whether what
+// it changed was put back), or it is only switched off until its code comes
+// out (`ask` and `state`).
+message DeleteReply {
+  optional bool deleted = 1 [json_name = "deleted"];
+  optional bool reverted = 2 [json_name = "reverted"];
+  optional int64 ask = 3 [json_name = "ask"];
+  optional string state = 4 [json_name = "state"];
+  optional int64 rev = 5 [json_name = "rev"];
+}
+
+// The realm's one line for its link preview.
+message DescribeRequest {
+  optional string description = 1 [json_name = "description"];
+}
+message DescribeReply {
+  optional string description = 1 [json_name = "description"];
+}
+
+// A thing placed: metres, and the way it faces (the pages send radians with
+// two decimals, the CLI whole degrees).
+message PlaceRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string thing = 2 [json_name = "thing"];
+  optional double x = 3 [json_name = "x"];
+  optional double z = 4 [json_name = "z"];
+  optional double yaw = 5 [json_name = "yaw"];
+}
+// 200 from .../place: placed (its owner's or an admin's), or proposed to the
+// owner (a visitor's).
+message PlaceReply {
+  optional bool placed = 1 [json_name = "placed"];
+  optional bool proposed = 2 [json_name = "proposed"];
+  optional int64 rev = 3 [json_name = "rev"];
+}
+// 200 from accepting or declining a proposal.
+message DecideReply {
+  optional string state = 1 [json_name = "state"];
+  optional int64 rev = 2 [json_name = "rev"];
+}
+
+// A character's lore; an empty text forgets it. `who` is the character's key.
+message LoreRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string who = 2 [json_name = "who", (openagents.options.v1alpha1.max_bytes) = 32];
+  optional string text = 3 [json_name = "text"];
+}
+message LoreReply {
+  optional string who = 1 [json_name = "who"];
+  optional bool saved = 2 [json_name = "saved"];
+  optional int64 rev = 3 [json_name = "rev"];
+}
+
+// A giver's quest: what it asks, up to three steps, and its reward; an empty
+// ask takes the quest away.
+message QuestRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string giver = 2 [json_name = "giver", (openagents.options.v1alpha1.max_bytes) = 32];
+  optional string ask = 3 [json_name = "ask"];
+  repeated string steps = 4 [json_name = "steps", (openagents.options.v1alpha1.max_count) = 3];
+  optional string reward = 5 [json_name = "reward"];
+}
+message QuestReply {
+  optional string giver = 1 [json_name = "giver"];
+  optional bool saved = 2 [json_name = "saved"];
+  optional int64 rev = 3 [json_name = "rev"];
+}

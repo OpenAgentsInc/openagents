@@ -43,6 +43,7 @@
 #load "../../aethyr/forge/record.coax";   // a publish's reply (record.proto)
 #load "../../aethyr/forge/made.coax";   // a fork's body and its answer (made.proto)
 #load "../../aethyr/forge/spec.coax";   // the spec's lines (GET /api/playtest/realms/<slug>)
+#load "../../aethyr/forge/change.coax";   // a placed thing's body (edits.proto)
 #load "../../aethyr/forge/doc.coax";   // the realm document and its edits (aethyr/forge/edit.coax): a move, undo, the bodies and replies (realm.proto)
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
@@ -1862,11 +1863,10 @@ go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[.
 place_thing :: (s: [] MyRealm, t: [] Track, thing: int) {
   if !can_build(s) || busy(s) || thing < 0 || thing >= THINGS { return; }
   x := s[0].x + 2.2 * sin(s[0].yaw); z := s[0].z - 2.2 * cos(s[0].yaw);
-  n := put(s[0].req_body[..], 0, "{\"thing\":\""); n = put(s[0].req_body[..], n, THING_NAMES[thing]);
-  n = put(s[0].req_body[..], n, "\",\"x\":"); n = put_cm(s[0].req_body[..], n, x);
-  n = put(s[0].req_body[..], n, ",\"z\":"); n = put_cm(s[0].req_body[..], n, z);
-  n = put(s[0].req_body[..], n, ",\"yaw\":"); n = put_cm(s[0].req_body[..], n, s[0].yaw - 6.2831853 * floor_f(s[0].yaw / 6.2831853));
-  n = put(s[0].req_body[..], n, "}");
+  xb: [24] u8; zb: [24] u8; yb: [24] u8;
+  xn := put_cm(xb[..], 0, x); zn := put_cm(zb[..], 0, z); yn := put_cm(yb[..], 0, s[0].yaw - 6.2831853 * floor_f(s[0].yaw / 6.2831853));
+  n := forge_place_body(0, THING_NAMES[thing], cast(string) xb[0..<xn], cast(string) zb[0..<zn], cast(string) yb[0..<yn], false, s[0].req_body[..]);   // edits.proto's PlaceRequest (aethyr/forge/change.coax)
+  if n < 0 { return; }
   ask(s, REQ_PLACE, "/place", n, true);
 }
 floor_f :: (v: f32) -> f32 { i := cast(f32) (cast(int) v); return ifx i > v then i - 1 else i; }

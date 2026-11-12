@@ -1,0 +1,355 @@
+{
+ "about": "A realm's edits (edits.proto, GitHub #13250): the bodies that change a realm through coax/web/api/realms.c, as the realm edit layer and My Realm send them (no revision) and as the CLI sends them under .../edit-v1/ (the revision first), with the status and body the server answers today. \"rev\" names the realm whose revision the body's \"rev\":41 stands for: the check reads it from the realm's spec, and the revision in the answer is the run's (\"vary\"). \"bodies\" are requests the planner's model answers (an ask, a revision, an ask marked done): only their bodies are held here. aethyr/forge/change.coax writes every body; aethyr/forge/change-goldens.coax holds them and the answers' keys; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "schema": "proto/openagents/verse/doc/v1alpha1/edits.proto",
+ "realm": {
+  "slug": "edit-fixture",
+  "player_key": "edit-fixture-player-key-0001",
+  "stranger_key": "edit-fixture-stranger-key-0002",
+  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-edit-fixture', encode(sha256(convert_to('edit-fixture-player-key-0001', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-edit-fixture', 'p-edit-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms) VALUES ('edit-fixture', 'made-edit-fixture', 'Edit Fixture', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"variant\":\"pine\",\"count\":6},{\"feature\":\"character\",\"name\":\"Old Mott\",\"role\":\"the ferryman\"}]', '{\"fly\":true,\"jump\":true}', 1);",
+  "clean": "CREATE TEMP TABLE ef AS SELECT m.slug FROM verse.made_realms m JOIN verse.worlds w ON w.id = m.world WHERE w.owner_player = 'p-edit-fixture'; DELETE FROM verse.realm_publications WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_revisions WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_proposals WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_lore WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.realm_quests WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.made_realms WHERE slug IN (SELECT slug FROM ef); DELETE FROM verse.worlds WHERE owner_player = 'p-edit-fixture'; DELETE FROM verse.players WHERE id = 'p-edit-fixture';"
+ },
+ "steps": [
+  {
+   "name": "the page sets the tools",
+   "method": "POST",
+   "path": "/edit-fixture/settings",
+   "as": "owner",
+   "body": "{\"tools\":{\"build\":true,\"fly\":false,\"jump\":true,\"map\":false,\"talk\":false,\"voice\":false}}",
+   "status": 200,
+   "reply": "{\"tools\": {\"fly\": false, \"map\": false, \"jump\": true, \"talk\": false, \"build\": true, \"voice\": false}}",
+   "message": "SettingsReply",
+   "request": "SettingsRequest"
+  },
+  {
+   "name": "the page places a barrel",
+   "method": "POST",
+   "path": "/edit-fixture/place",
+   "as": "owner",
+   "body": "{\"thing\":\"barrel\",\"x\":0.00,\"z\":3.80,\"yaw\":0.00}",
+   "status": 200,
+   "reply": "{\"placed\": true}",
+   "message": "PlaceReply",
+   "request": "PlaceRequest"
+  },
+  {
+   "name": "a thing the realm has not",
+   "method": "POST",
+   "path": "/edit-fixture/place",
+   "as": "owner",
+   "body": "{\"thing\":\"dragon\",\"x\":0.00,\"z\":3.80,\"yaw\":0.00}",
+   "status": 400,
+   "reply": "{\"error\": \"not a thing here\"}",
+   "message": "RouteError",
+   "request": "PlaceRequest"
+  },
+  {
+   "name": "lore for a name that is no key",
+   "method": "POST",
+   "path": "/edit-fixture/lore",
+   "as": "owner",
+   "body": "{\"who\":\"Old Mott\",\"text\":\"He kept the \\\"bridge\\\".\"}",
+   "status": 400,
+   "reply": "{\"error\": \"say whose lore\"}",
+   "message": "RouteError",
+   "request": "LoreRequest"
+  },
+  {
+   "name": "a quest from a name that is no key",
+   "method": "POST",
+   "path": "/edit-fixture/quest",
+   "as": "owner",
+   "body": "{\"giver\":\"Old Mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\",\"\",\"\"],\"reward\":\"A lantern\"}",
+   "status": 400,
+   "reply": "{\"error\": \"say who gives it\"}",
+   "message": "RouteError",
+   "request": "QuestRequest"
+  },
+  {
+   "name": "the page writes a character's lore",
+   "method": "POST",
+   "path": "/edit-fixture/lore",
+   "as": "owner",
+   "body": "{\"who\":\"old-mott\",\"text\":\"He kept the \\\"bridge\\\".\"}",
+   "status": 200,
+   "reply": "{\"who\": \"old-mott\", \"saved\": true}",
+   "message": "LoreReply",
+   "request": "LoreRequest"
+  },
+  {
+   "name": "the page gives a quest",
+   "method": "POST",
+   "path": "/edit-fixture/quest",
+   "as": "owner",
+   "body": "{\"giver\":\"old-mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\",\"\",\"\"],\"reward\":\"A lantern\"}",
+   "status": 200,
+   "reply": "{\"giver\": \"old-mott\", \"saved\": true}",
+   "message": "QuestReply",
+   "request": "QuestRequest"
+  },
+  {
+   "name": "the page clears the lore",
+   "method": "POST",
+   "path": "/edit-fixture/lore",
+   "as": "owner",
+   "body": "{\"who\":\"old-mott\",\"text\":\"\"}",
+   "status": 200,
+   "reply": "{\"who\": \"old-mott\", \"saved\": false}",
+   "message": "LoreReply",
+   "request": "LoreRequest"
+  },
+  {
+   "name": "its line for a link preview",
+   "method": "POST",
+   "path": "/edit-fixture/describe",
+   "as": "owner",
+   "body": "{\"description\":\"A drowned marsh where Old Mott waits\"}",
+   "status": 200,
+   "reply": "{\"description\": \"A drowned marsh where Old Mott waits\"}",
+   "message": "DescribeReply",
+   "request": "DescribeRequest"
+  },
+  {
+   "name": "a row the board has not",
+   "method": "POST",
+   "path": "/edit-fixture/switch",
+   "as": "owner",
+   "body": "{\"row\":\"night\",\"on\":true}",
+   "status": 404,
+   "reply": "{\"error\": \"no such row\"}",
+   "message": "RouteError",
+   "request": "SwitchRequest"
+  },
+  {
+   "name": "a stranger changes nothing",
+   "method": "POST",
+   "path": "/edit-fixture/settings",
+   "as": "stranger",
+   "body": "{\"tools\":{\"build\":true}}",
+   "status": 404,
+   "reply": "{\"error\":\"no such world\"}",
+   "message": "ErrorReply",
+   "request": "SettingsRequest"
+  },
+  {
+   "name": "a proposal that is not there",
+   "method": "POST",
+   "path": "/edit-fixture/proposals/999/accept",
+   "as": "owner",
+   "body": "{}",
+   "status": 404,
+   "reply": "{\"error\": \"no such proposal\"}",
+   "message": "RouteError"
+  },
+  {
+   "name": "an ask that is not there",
+   "method": "POST",
+   "path": "/edit-fixture/asks/999/delete",
+   "as": "owner",
+   "body": "{}",
+   "status": 404,
+   "reply": "{\"error\": \"no such ask\"}",
+   "message": "RouteError"
+  },
+  {
+   "name": "a row that is not there",
+   "method": "POST",
+   "path": "/edit-fixture/rows/nothing/delete",
+   "as": "owner",
+   "body": "{}",
+   "status": 404,
+   "reply": "{\"error\": \"no such row\"}",
+   "message": "RouteError"
+  },
+  {
+   "name": "an edit that is none",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/nothing",
+   "as": "owner",
+   "body": "{\"rev\":41}",
+   "status": 404,
+   "reply": "{\"error\":\"unknown edit\"}",
+   "message": "ErrorReply",
+   "rev": "edit-fixture",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "the CLI sets the tools from the revision read",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/settings",
+   "as": "owner",
+   "body": "{\"rev\":41,\"tools\":{\"build\":false,\"fly\":true,\"jump\":true,\"map\":true,\"talk\":false,\"voice\":false}}",
+   "status": 200,
+   "reply": "{\"rev\": 4, \"tools\": {\"fly\": true, \"map\": true, \"jump\": true, \"talk\": false, \"build\": false, \"voice\": false}}",
+   "message": "SettingsReply",
+   "request": "SettingsRequest",
+   "rev": "edit-fixture",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "the CLI places a crate",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/place",
+   "as": "owner",
+   "body": "{\"rev\":41,\"thing\":\"crate\",\"x\":-2.25,\"z\":1.00,\"yaw\":-90}",
+   "status": 200,
+   "reply": "{\"rev\": 5, \"placed\": true}",
+   "message": "PlaceReply",
+   "request": "PlaceRequest",
+   "rev": "edit-fixture",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "the CLI's lore for a name that is no key",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/lore",
+   "as": "owner",
+   "body": "{\"rev\":41,\"who\":\"Old Mott\",\"text\":\"He lost his oar.\"}",
+   "status": 400,
+   "reply": "{\"error\": \"say whose lore\"}",
+   "message": "RouteError",
+   "request": "LoreRequest",
+   "rev": "edit-fixture",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "the CLI's quest from a name that is no key",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/quest",
+   "as": "owner",
+   "body": "{\"rev\":41,\"giver\":\"Old Mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\"],\"reward\":\"\"}",
+   "status": 400,
+   "reply": "{\"error\": \"say who gives it\"}",
+   "message": "RouteError",
+   "request": "QuestRequest",
+   "rev": "edit-fixture",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "the CLI writes lore",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/lore",
+   "as": "owner",
+   "body": "{\"rev\":41,\"who\":\"old-mott\",\"text\":\"He lost his oar.\"}",
+   "status": 200,
+   "reply": "{\"rev\": 9, \"who\": \"old-mott\", \"saved\": true}",
+   "message": "LoreReply",
+   "request": "LoreRequest",
+   "rev": "edit-fixture",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "the CLI gives a quest with one step",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/quest",
+   "as": "owner",
+   "body": "{\"rev\":41,\"giver\":\"old-mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\"],\"reward\":\"\"}",
+   "status": 200,
+   "reply": "{\"rev\": 10, \"giver\": \"old-mott\", \"saved\": true}",
+   "message": "QuestReply",
+   "request": "QuestRequest",
+   "rev": "edit-fixture",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "an edit from a stale revision",
+   "method": "POST",
+   "path": "/edit-fixture/edit-v1/lore",
+   "as": "owner",
+   "body": "{\"rev\":1,\"who\":\"Old Mott\",\"text\":\"x\"}",
+   "status": 409,
+   "reply": "{\"rev\": 5, \"error\": \"changed since\"}",
+   "message": "Conflict",
+   "request": "LoreRequest",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "its owner forks Everglade",
+   "method": "POST",
+   "path": "/everglade/fork?as=lines",
+   "as": "owner",
+   "body": "{\"rules\":[],\"name\":\"Edit Glade\"}",
+   "status": 200,
+   "reply": "slug edit-glade\npath /worlds/edit-glade\npage 0\n",
+   "message": "MadeLines",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "the page switches a rule on",
+   "method": "POST",
+   "path": "/edit-glade/switch",
+   "as": "owner",
+   "body": "{\"row\":\"night\",\"on\":true}",
+   "status": 200,
+   "reply": "{\"on\": true, \"row\": \"night\"}",
+   "message": "SwitchReply",
+   "request": "SwitchRequest"
+  },
+  {
+   "name": "the CLI switches it off from the revision read",
+   "method": "POST",
+   "path": "/edit-glade/edit-v1/switch",
+   "as": "owner",
+   "body": "{\"rev\":41,\"row\":\"night\",\"on\":false}",
+   "status": 200,
+   "reply": "{\"on\": false, \"rev\": 3, \"row\": \"night\"}",
+   "message": "SwitchReply",
+   "request": "SwitchRequest",
+   "rev": "edit-glade",
+   "vary": [
+    "rev"
+   ]
+  },
+  {
+   "name": "the CLI deletes a row that is not there",
+   "method": "POST",
+   "path": "/edit-glade/edit-v1/rows/nothing/delete",
+   "as": "owner",
+   "body": "{\"rev\":41}",
+   "status": 404,
+   "reply": "{\"error\": \"no such row\"}",
+   "message": "RouteError",
+   "rev": "edit-glade",
+   "vary": [
+    "rev"
+   ]
+  }
+ ],
+ "bodies": [
+  {
+   "name": "the page asks for a change",
+   "request": "AskRequest",
+   "body": "{\"words\":\"more bats\"}"
+  },
+  {
+   "name": "the CLI asks for a change",
+   "request": "AskRequest",
+   "body": "{\"rev\":41,\"words\":\"more \\\"bats\\\"\"}"
+  },
+  {
+   "name": "the CLI asks the planner to revise",
+   "request": "ReviseRequest",
+   "body": "{\"rev\":41,\"prompt\":\"no lanterns\"}"
+  },
+  {
+   "name": "an admin marks an ask's code done",
+   "request": "AskDoneRequest",
+   "body": "{\"rev\":41,\"commit\":\"abcdef0\"}"
+  }
+ ]
+}

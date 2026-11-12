@@ -2,7 +2,8 @@
 // proto/verse/realm-record-v1.json names a made realm and a run of calls to coax/web/api/realms.c's
 // record routes (mine, visibility, publish, published), and proto/verse/realm-made-v1.json a realm
 // and its forks (made.proto), and proto/verse/realm-spec-v1.json a realm's spec lines as its owner,
-// a visitor and a fork read them. For each fixture this seeds that realm, makes each call as
+// a visitor and a fork read them, and proto/verse/realm-edits-v1.json the edits (edits.proto) as
+// the pages and the CLI send them. For each fixture this seeds that realm, makes each call as
 // the fixture's owner, a stranger or nobody, and requires the server's status and body byte for
 // byte; a step with "sql" runs that statement instead (the publish that pins an engine: this run's
 // API has a bucket with no engine page) and requires its one value. A key named in a step's "vary"
@@ -19,7 +20,7 @@
 #load "../../../lib/net/http.coax";
 #load "../../../lib/json/json.coax";
 
-RRC_FIXTURES :: [3] string.["proto/verse/realm-record-v1.json", "proto/verse/realm-made-v1.json", "proto/verse/realm-spec-v1.json"];
+RRC_FIXTURES :: [4] string.["proto/verse/realm-record-v1.json", "proto/verse/realm-made-v1.json", "proto/verse/realm-spec-v1.json", "proto/verse/realm-edits-v1.json"];
 RRC_BYTES :: 262144;
 Rrc :: struct { api: [256] u8; api_n: int; psql: [1024] u8; psql_n: int; db: [1024] u8; db_n: int; pass: int; fail: int; }
 
@@ -106,6 +107,25 @@ rrc_run :: (t: [] Rrc, fixture: string) -> bool {
       pb: [256] u8; path := rrc_str(f[0], s, "path", pb[..]);
       ab: [16] u8; who := rrc_str(f[0], s, "as", ab[..]);
       bb: [4096] u8; body := rrc_str(f[0], s, "body", bb[..]);
+      // "rev": the body's "rev":41 is the revision of the realm the step names, read from its spec now
+      vb2: [4096] u8; rs: [64] u8; rslug := rrc_str(f[0], s, "rev", rs[..]);
+      if rslug != "" {
+        sp: [RRC_BYTES] u8; pp: [128] u8; pn := rrc_put(pp[..], 0, "/"); pn = rrc_put(pp[..], pn, rslug);
+        sg := rrc_call(t[..], "GET", cast(string) pp[0..<pn], key, "", sp[..]);
+        spec := ifx sg.code == 200 then cast(string) sp[0..<sg.n] else "";
+        now := ""; mark := "\nrev ";
+        for q: 0..<spec.count - mark.count + 1 {
+          if spec[q..<q + mark.count] == mark { e := q + mark.count; while e < spec.count && spec[e] != '\n' { e += 1; } now = spec[q + mark.count..<e]; }
+        }
+        old := "\"rev\":41";
+        for q: 0..<body.count - old.count + 1 {
+          if body[q..<q + old.count] == old && now != "" {
+            bn := rrc_put(vb2[..], 0, body[0..<q]); bn = rrc_put(vb2[..], bn, "\"rev\":"); bn = rrc_put(vb2[..], bn, now); bn = rrc_put(vb2[..], bn, body[q + old.count..<body.count]);
+            if bn > 0 { body = cast(string) vb2[0..<bn]; }
+            break;
+          }
+        }
+      }
       r := rrc_call(t[..], method, path, ifx who == "owner" then key else ifx who == "stranger" then stranger else "", body, out[..]);
       sc: [16] u8; sn := 0; code := r.code;
       if code < 0 { sc[0] = '-'; sn = 1; code = 1; }

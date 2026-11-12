@@ -43,6 +43,7 @@
 //   coax/bin/coax test verse/edit/agent_test.coax
 
 #load "../../aethyr/forge/spec.coax";   // the spec's lines (GET /api/playtest/realms/<slug>): one reader
+#load "../../aethyr/forge/change.coax";   // the edits' bodies (edits.proto): one writer
 #load "computer.coax";
 #load "agent.coax";
 
@@ -479,6 +480,12 @@ redit_ask :: (e: [] RealmEdit, what: int, tail: string, body_n: int, p_post: boo
   e[0].req_flags = (ifx p_post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
   e[0].req_what = what; e[0].req_ready = true; e[0].req_at = e[0].time;
 }
+// An edit's body from aethyr/forge/change.coax (edits.proto) goes out; one too long for the page's
+// buffer is not sent.
+redit_send :: (e: [] RealmEdit, what: int, tail: string, body_n: int) {
+  if body_n < 0 { redit_note(e, "That's too long. Say it shorter."); return; }
+  redit_ask(e, what, tail, body_n, true);
+}
 // A JSON string, its quotes and backslashes escaped, control bytes dropped.
 redit_quote :: (buf: [] u8, at: int, text: string) -> int {
   n := redit_put(buf, at, "\"");
@@ -518,39 +525,25 @@ redit_next :: (e: [] RealmEdit) {
   }
   if e[0].save_due == REQ_E_LORE {
     e[0].save_due = 0;
-    n := redit_put(b, 0, "{\"who\":"); n = redit_quote(b, n, cast(string) e[0].focus[0..<e[0].focus_n]);
-    n = redit_put(b, n, ",\"text\":"); n = redit_quote(b, n, redit_draft(e, RF_LORE));
-    redit_ask(e, REQ_E_LORE, "/lore", redit_put(b, n, "}"), true);
+    redit_send(e, REQ_E_LORE, "/lore", forge_lore_body(0, cast(string) e[0].focus[0..<e[0].focus_n], redit_draft(e, RF_LORE), true, b));
     return;
   }
   if e[0].save_due == REQ_E_QUEST {
     e[0].save_due = 0;
-    n := redit_put(b, 0, "{\"giver\":"); n = redit_quote(b, n, cast(string) e[0].focus[0..<e[0].focus_n]);
-    n = redit_put(b, n, ",\"ask\":"); n = redit_quote(b, n, redit_draft(e, RF_ASK));
-    n = redit_put(b, n, ",\"steps\":[");
-    for t: 0..<3 { if t > 0 { n = redit_put(b, n, ","); } n = redit_quote(b, n, redit_draft(e, RF_STEP + t)); }
-    n = redit_put(b, n, "],\"reward\":"); n = redit_quote(b, n, redit_draft(e, RF_REWARD));
-    redit_ask(e, REQ_E_QUEST, "/quest", redit_put(b, n, "}"), true);
+    steps: [3] string; for t: 0..<3 { steps[t] = redit_draft(e, RF_STEP + t); }
+    redit_send(e, REQ_E_QUEST, "/quest", forge_quest_body(0, cast(string) e[0].focus[0..<e[0].focus_n], redit_draft(e, RF_ASK), steps[..], redit_draft(e, RF_REWARD), true, b));
     return;
   }
   if e[0].switch_row >= 0 {
     r := e[0].switch_row; e[0].switch_row = -1;
-    n := redit_put(b, 0, "{\"row\":"); n = redit_quote(b, n, redit_key_of(e, r));
-    n = redit_put(b, n, ifx e[0].switch_on then ",\"on\":true}" else ",\"on\":false}");
-    redit_ask(e, REQ_E_SWITCH, "/switch", n, true);
+    redit_send(e, REQ_E_SWITCH, "/switch", forge_switch_body(0, redit_key_of(e, r), e[0].switch_on, true, b));
     return;
   }
   if e[0].settings_due {
     e[0].settings_due = false;
-    n := redit_put(b, 0, "{\"tools\":{");
-    first := true;
-    for i: 0..<REDIT_TOOLS {
-      if !e[0].tool_has[i] { continue; }
-      if !first { n = redit_put(b, n, ","); }
-      first = false;
-      n = redit_quote(b, n, REDIT_TOOL_NAMES[i]); n = redit_put(b, n, ifx e[0].tool_on[i] then ":true" else ":false");
-    }
-    redit_ask(e, REQ_E_SETTINGS, "/settings", redit_put(b, n, "}}"), true);
+    names: [REDIT_TOOLS] string; tools_on: [REDIT_TOOLS] bool; k := 0;
+    for i: 0..<REDIT_TOOLS { if e[0].tool_has[i] { names[k] = REDIT_TOOL_NAMES[i]; tools_on[k] = e[0].tool_on[i]; k += 1; } }
+    redit_send(e, REQ_E_SETTINGS, "/settings", forge_settings_body(0, names[0..<k], tools_on[0..<k], b));
     return;
   }
   if e[0].del_row >= 0 || e[0].del_ask > 0 {
@@ -564,18 +557,17 @@ redit_next :: (e: [] RealmEdit) {
   }
   if e[0].revise_n > 0 {
     // every ask goes on the list (an ADD): the board's revision through the model, kept with what it changed
-    n := redit_put(b, 0, "{\"words\":"); n = redit_quote(b, n, cast(string) e[0].revise[0..<e[0].revise_n]);
+    n := forge_words_body(0, "words", cast(string) e[0].revise[0..<e[0].revise_n], true, b);
     e[0].revise_n = 0;
-    redit_ask(e, REQ_E_ADD, "/asks", redit_put(b, n, "}"), true);
+    redit_send(e, REQ_E_ADD, "/asks", n);
     return;
   }
   if e[0].place_thing_n > 0 {
-    n := redit_put(b, 0, "{\"thing\":"); n = redit_quote(b, n, cast(string) e[0].place_thing[0..<e[0].place_thing_n]);
-    n = redit_put(b, n, ",\"x\":"); n = redit_put_cm(b, n, e[0].place_x);
-    n = redit_put(b, n, ",\"z\":"); n = redit_put_cm(b, n, e[0].place_z);
-    n = redit_put(b, n, ",\"yaw\":"); n = redit_put_cm(b, n, e[0].place_yaw);
+    xb: [24] u8; zb: [24] u8; yb: [24] u8;
+    xn := redit_put_cm(xb[..], 0, e[0].place_x); zn := redit_put_cm(zb[..], 0, e[0].place_z); yn := redit_put_cm(yb[..], 0, e[0].place_yaw);
+    n := forge_place_body(0, cast(string) e[0].place_thing[0..<e[0].place_thing_n], cast(string) xb[0..<xn], cast(string) zb[0..<zn], cast(string) yb[0..<yn], true, b);
     e[0].place_thing_n = 0;
-    redit_ask(e, REQ_E_PLACE, "/place", redit_put(b, n, "}"), true);
+    redit_send(e, REQ_E_PLACE, "/place", n);
     return;
   }
   if e[0].decide_due != 0 && e[0].card_n > 0 {
@@ -665,7 +657,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
   }
   if what == REQ_E_ASKS { if status == 200 { redit_read_asks(e, p_body); } return; }
   if what == REQ_E_DELETE {
-    if status == 200 { redit_note(e, ifx redit_has(p_body, "\"deleted\"") then "Deleted." else "Off now; its code comes out next."); }
+    if status == 200 { redit_note(e, ifx forge_change_deleted(p_body) then "Deleted." else "Off now; its code comes out next."); }
     else if status == 403 { redit_note(e, "Only its owner and admins change it."); }
     else { redit_note(e, "Not deleted. Try again."); }
     e[0].spec_due = true; e[0].asks_due = true;
