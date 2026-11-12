@@ -116,9 +116,18 @@ csr_scan_dir :: (scan: [] CsrScan, dir: string, cwd: string, within: int) {
   if count < 0 { return; }
   if entries[0].full || count > CSR_FILES { scan[0].incomplete = true; }
   count = ifx count > CSR_FILES then CSR_FILES else count;
+  // Newest first, so the read budget (CSR_SCAN_BYTES) is spent on the conversations a list shows:
+  // in directory order a folder with a few hundred transcripts ran out before its newest ones.
+  order: [CSR_FILES] int; when: [CSR_FILES] int; no := 0;
   for i: 0..<count {
     name := fs_entry(entries[..], i);
     if !csr_suffix(name, ".jsonl") { continue; }
+    pb: [2048] u8; m := fs_mtime_ns(fs_join(dir, name, pb[..]));
+    k := no; while k > 0 && when[k - 1] < m { order[k] = order[k - 1]; when[k] = when[k - 1]; k -= 1; }
+    order[k] = i; when[k] = m; no += 1;
+  }
+  for o: 0..<no {
+    name := fs_entry(entries[..], order[o]);
     id := cast(string) name[0..<name.count - 6]; if !csr_uuid(id) { continue; }
     pb: [2048] u8; path := fs_join(dir, name, pb[..]);
     if !csr_direct_file(path, dir) { continue; }

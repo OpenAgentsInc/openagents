@@ -190,6 +190,34 @@ cd_local_sessions :: (now_us: int, out: [] u8, ok: [] bool) -> string {
 // Whether target is one of the local routes.
 cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop" || path == "/claude" || path == "/import"; }
 // A Claude Code conversation's ID: 36 characters of lowercase hex and dashes.
+// The Claude Code conversations open now in this folder: each running `claude` keeps
+// CLAUDE_DIR/sessions/PID.json with the conversation it has open, its folder and whether it is busy,
+// and removes it when it exits. A file whose process is gone is left over from a crash and skipped.
+// Written as "live":[{"id":ID,"busy":true|false},...] for the /claude answer.
+CD_LIVE_MAX :: 32;
+cd_local_live :: (root: string, here: string, out: [] u8, at: int) -> int {
+  n := cd_cat(out, at, "\"live\":[");
+  sb: [2048] u8; dir := fs_join(root, "sessions", sb[..]);
+  l: [1] FsList; count := fs_list(dir, l[..]);
+  kept := 0;
+  for i: 0..<(ifx count < 0 then 0 else count) {
+    name := fs_entry(l[..], i);
+    if name.count < 6 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
+    digits := true; for c: name[0..<name.count - 5] { if c < '0' || c > '9' { digits = false; } }
+    if !digits || kept >= CD_LIVE_MAX { continue; }
+    pb: [2048] u8; fb: [8192] u8; k := fs_read(fs_join(dir, name, pb[..]), fb[..]);
+    if k <= 0 { continue; }
+    text := cast(string) fb[0..<k];
+    ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    pid := cl_int(text, "pid"); id := cl_str(ar[..], text, "sessionId"); cwd := cl_str(ar[..], text, "cwd");
+    if !pid.ok || cxproc_pid_alive(pid.value) != 1 || cwd != here || !cd_local_ref_ok(id) { continue; }
+    if kept > 0 { n = cd_cat(out, n, ","); }
+    n = cd_cat(out, n, "{\"id\":\""); n = cd_cat(out, n, id); n = cd_cat(out, n, "\",\"busy\":");
+    n = cd_cat(out, n, ifx cl_str(ar[..], text, "status") == "busy" then "true}" else "false}");
+    kept += 1;
+  }
+  return cd_cat(out, n, "]");
+}
 cd_local_ref_ok :: (ref: string) -> bool {
   if ref.count != 36 { return false; }
   for c: ref { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == '-') { return false; } }
@@ -209,7 +237,15 @@ cd_local_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
   if path == "/claude" {
     cb: [1100] u8; here := fs_cwd(cb[..]);
     a[0] = "session-read"; a[1] = "list"; a[2] = "--cwd"; a[3] = here;
-    r.body = cd_mcp_coder(a[0..<4], out, ok[..]); r.status = ifx ok[0] then 200 else 500; return r;
+    list := cd_mcp_coder(a[0..<4], out, ok[..]);
+    if !ok[0] || list.count < 2 || list[0] != '{' { r.body = list; r.status = 500; return r; }
+    // the list, with the conversations open now in front of it: {"live":[...],"schema":...}
+    rb: [2048] u8; root := csr_root(rb[..]);
+    lb: [8192] u8; ln := cd_local_live(root, here, lb[..], 0);
+    if ln + list.count + 2 > out.count { r.body = list; r.status = 200; return r; }
+    for j: 0..<list.count - 1 { out[list.count - 1 - j + ln + 1] = list[list.count - 1 - j]; }   // back to front: list is in out
+    out[0] = '{'; for j: 0..<ln { out[1 + j] = lb[j]; } out[ln + 1] = ',';
+    r.body = cast(string) out[0..<list.count + ln + 1]; r.status = 200; return r;
   }
   if path == "/import" {
     ref := cl_str(ar[..], body, "ref");

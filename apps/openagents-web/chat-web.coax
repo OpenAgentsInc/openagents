@@ -91,7 +91,7 @@ CW_LM_IDS :: [20] string.["", "claude-fable-5-2", "claude-opus-5-5", "claude-son
 CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
-CW_CL_EVERY :: 15.0;   // seconds between reads of them
+CW_CL_EVERY :: 5.0;    // seconds between reads of them
 CW_LOCAL_WAIT :: 12.0; // seconds a request to Coder on this machine may go unanswered before it is given up, so one that hangs can't stop the page
 CW_CL_LIVE :: 3.0;     // seconds between fresh copies of the one shown, so turns made elsewhere (a terminal) appear   // Coder on this machine: its sessions, one's log, a new one, a message, Stop
 CW_LIST_EVERY :: 3.0;  // seconds between reads of the sessions
@@ -137,6 +137,7 @@ ChatWeb :: struct {
   seng: [CW_SESS] [12] u8; seng_n: [CW_SESS] int; srun: [CW_SESS] bool;
   stask: [CW_SESS] [96] u8; stask_n: [CW_SESS] int;
   nc: int; cid: [CW_CL] [40] u8; cid_n: [CW_CL] int; ctitle: [CW_CL] [96] u8; ctitle_n: [CW_CL] int;   // this folder's Claude Code conversations, newest first
+  copen: [CW_CL] int;               // whether a claude on this machine has it open: 0 no, 1 open and waiting, 2 busy
   cl_at: f32; cl_asked: bool;
   import_due: int;                   // a conversation chosen there (its place + 1): Coder is asked for it as a session
   csel: [40] u8; csel_n: int;        // the one shown
@@ -264,21 +265,28 @@ cw_side_row :: (s: [] ChatWeb, k: int) {
   title := cast(string) s[0].stask[k][0..<s[0].stask_n[k]];
   r := k_row_busy(t, u, tr_join(buf[..], "s.", k), ifx title.count > 0 then title else "(no message)", cast(string) s[0].seng[k][0..<s[0].seng_n[k]], cast(string) s[0].sid[k][0..<s[0].sid_n[k]] == cw_sel(s), s[0].srun[k]);
 }
+// A Claude Code conversation: busy ones turn; one open and waiting says so.
+cw_claude_row :: (s: [] ChatWeb, k: int) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8;
+  title := cast(string) s[0].ctitle[k][0..<s[0].ctitle_n[k]];
+  shown := s[0].csel_n > 0 && cast(string) s[0].cid[k][0..<s[0].cid_n[k]] == cast(string) s[0].csel[0..<s[0].csel_n];
+  r := k_row_busy(t, u, tr_join(buf[..], "c.", k), ifx title.count > 0 then title else "(untitled)", ifx s[0].copen[k] == 1 then "waiting" else "", shown, s[0].copen[k] == 2);
+}
 cw_side :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   side := tr_open(t, "side", TG_NAV, "side");
   tr_attr(t, side, AT_LABEL, "Chats");
   fresh := k_row(t, u, "side.new", "New chat", "", s[0].sel_n == 0);
-  running := 0;
+  running := 0; open := 0;
   for k: 0..<s[0].ns { if s[0].srun[k] { running += 1; } }
-  if running > 0 { h := k_meta(t, "side.run", "Running"); }
+  for k: 0..<s[0].nc { if s[0].copen[k] > 0 { open += 1; } }
+  // running: Coder's sessions, and the Claude Code conversations open in a terminal here
+  if running + open > 0 { h := k_meta(t, "side.run", "Running"); }
   for k: 0..<s[0].ns { if s[0].srun[k] { cw_side_row(s, k); } }
-  if s[0].nc > 0 { h := k_meta(t, "side.claude", "Claude Code"); }
-  cbuf: [UI_ID] u8;
-  for k: 0..<s[0].nc {
-    title := cast(string) s[0].ctitle[k][0..<s[0].ctitle_n[k]];
-    r := k_row(t, u, tr_join(cbuf[..], "c.", k), ifx title.count > 0 then title else "(untitled)", "", s[0].csel_n > 0 && cast(string) s[0].cid[k][0..<s[0].cid_n[k]] == cast(string) s[0].csel[0..<s[0].csel_n]);
-  }
+  for k: 0..<s[0].nc { if s[0].copen[k] > 0 { cw_claude_row(s, k); } }
+  if s[0].nc > open { h := k_meta(t, "side.claude", "Claude Code"); }
+  for k: 0..<s[0].nc { if s[0].copen[k] == 0 { cw_claude_row(s, k); } }
   recent := 0;
   for k: 0..<s[0].ns {
     if s[0].srun[k] || recent >= CW_RECENT { continue; }
@@ -540,9 +548,18 @@ cw_claude_read :: (s: [] ChatWeb, body: string) {
     title := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "sessions.", n), ".title"));
     e := 0; while e < title.count && e < 96 && title[e] != '\n' { e += 1; }
     s[0].ctitle_n[n] = cw_put(s[0].ctitle[n][..], 0, cast(string) title[0..<e]);
+    s[0].copen[n] = 0;
     n += 1;
   }
   s[0].nc = n;
+  // the ones a claude on this machine has open now ({"live": [{id, busy}, ...]})
+  for j: 0..<32 {
+    ar[0].at = 0; ar[0].full = false;
+    id := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "live.", j), ".id"));
+    if id.count == 0 { break; }
+    busy := cl_bool(body, tr_cat(path[..], tr_join(part[..], "live.", j), ".busy"));
+    for k: 0..<n { if cast(string) s[0].cid[k][0..<s[0].cid_n[k]] == id { s[0].copen[k] = ifx busy.ok && busy.value then 2 else 1; } }
+  }
 }
 // A piece of the shown session's log: a line saying where the next piece starts, then the log's own
 // lines (coax/lib/agent/session/writer.coax). A message of the person's, a tool call, an edit, a reply
@@ -1378,7 +1395,7 @@ cw_test_local :: (s: [] ChatWeb, sessions: string) {
   if cw_test_door(s) == "/local/claude" { cw_test_answer(s, 200, CW_T_CLAUDE); }
   b = coaxial_chatweb_frame(s, 0.016, true);
 }
-CW_T_CLAUDE :: "{\"sessions\":[{\"session_id\":\"7fe255eb-ec54-4f77-b7b3-64252ee8d7ff\",\"path\":\"/p\",\"title\":\"Show notes\"},{\"session_id\":\"0bf9aebd-0000-4f77-b7b3-64252ee8d7ff\",\"title\":\"Everglade\"}]}";
+CW_T_CLAUDE :: "{\"live\":[{\"id\":\"7fe255eb-ec54-4f77-b7b3-64252ee8d7ff\",\"busy\":true},{\"id\":\"ffffffff-0000-4f77-b7b3-64252ee8d7ff\",\"busy\":false}],\"sessions\":[{\"session_id\":\"7fe255eb-ec54-4f77-b7b3-64252ee8d7ff\",\"path\":\"/p\",\"title\":\"Show notes\"},{\"session_id\":\"0bf9aebd-0000-4f77-b7b3-64252ee8d7ff\",\"title\":\"Everglade\"}]}";
 CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state\":\"running\",\"turns\":1,\"steps\":4,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"fix the build\\nand more\"},{\"id\":\"20261111-010101-001\",\"engine\":\"microcoder\",\"state\":\"finished\",\"turns\":2,\"steps\":9,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"add a test\"}]";
 
 #test "where Coder answers, its sessions are listed beside the chat and its agents are in the menu; elsewhere neither shows" {
@@ -1398,6 +1415,9 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   #assert l[0].local == 1 && l[0].ns == 2 && tr_find(t, "side") >= 0 && tr_find(t, "side.new") >= 0;
   #assert tr_text_of(t, tr_find(t, "s.0.t")) == "fix the build" && tr_text_of(t, tr_find(t, "s.0.m")) == "claude" && tr_text_of(t, tr_find(t, "s.1.m")) == "microcoder";
   #assert tr_text_of(t, tr_find(t, "side.run")) == "Running" && tr_text_of(t, tr_find(t, "side.recent")) == "Coder" && tr_attr_of(t, tr_find(t, "s.0"), AT_STATE) == "busy" && tr_find(t, "s.0.busy") >= 0 && tr_find(t, "s.1.busy") < 0;
+  // a Claude Code conversation open in a terminal here is running too, and turns while it is busy; one not open is under Claude Code
+  #assert l[0].nc == 2 && l[0].copen[0] == 2 && l[0].copen[1] == 0 && tr_find(t, "c.0.busy") >= 0 && tr_find(t, "c.1.busy") < 0;
+  #assert tr_find(t, "c.0") < tr_find(t, "side.claude") && tr_find(t, "side.claude") < tr_find(t, "c.1");
   // two short menus: the agent, and that agent's models
   cw_test_press(l, "agent"); b = coaxial_chatweb_frame(l, 0.016, true);
   #assert tr_find(t, "agent.0") >= 0 && tr_find(t, "agent.4") >= 0 && tr_text_of(t, tr_find(t, "agent.4.t")) == "Microcoder" && tr_find(t, "model.0") < 0;
