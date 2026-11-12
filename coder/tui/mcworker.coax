@@ -142,7 +142,6 @@ mw_embed :: (k: [] MkKeys, text: string, query: bool, o: [] u8) {
 tool_main :: () -> int #export_c #effects(all) {
   run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
   plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
-  rplan: [1] GwPlan; rpb: [1] GwPlanBuffers;      // the fresh reader's (mk_plan_reader)
   k: [1] MkKeys; h: [1] MkTurns;
   facts: [32768] u8;
   line: [MW_LINE] u8; nl := 0;
@@ -262,9 +261,6 @@ tool_main :: () -> int #export_c #effects(all) {
     mk_plan_limits(plan[..], effort);
     // before the first call, what the task names is looked up: its files viewed, its code names found (GitHub #13325)
     run[0].seed = !(local.ok && local.value);
-    // a coding run's finish is read once by a fresh reader on Flash before it is taken (GitHub #13325)
-    run[0].rp = rplan[0..<0];
-    if !(local.ok && local.value) && mk_plan_reader(k[..], rplan[..], rpb[..]) { rplan[0].journal = journal[..]; run[0].rp = rplan[..]; run[0].l[0].reader = true; }
     mc_run_start(run[..], plan[..], bench[..], cd, effort);
     running = true;
   }

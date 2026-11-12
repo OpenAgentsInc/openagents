@@ -118,36 +118,6 @@ mc_run_command_profile :: (cwd: string, command: string, seconds: int, o: [] McO
   return r;
 }
 
-// A command's stdout into out, whole up to out.count and cut there: how many bytes (0 when it
-// could not start). For what the loop reads itself and hands on (the fresh reader's diff),
-// where a head and a tail won't do. Killed after seconds, with what it printed so far kept.
-mc_capture :: (cwd: string, command: string, seconds: int, out: [] u8, profile: string) -> int {
-  h := cxproc_new();
-  if h < 0 { return 0; }
-  ok := mc_profile_args(h, cwd, profile);
-  ok = ok && mc_proc_arg(h, CL_FIELD_ARG, "/bin/sh") && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, command);
-  if cwd.count > 0 { ok = ok && mc_proc_arg(h, CL_FIELD_CWD, cwd); }
-  if !ok || cxproc_spawn(h) != 0 { x := cxproc_release(h); return 0; }
-  if !mc_profile_input(h, profile) { k := cxproc_kill(h, 9); x := cxproc_release(h); return 0; }
-  x := cxproc_close_stdin(h);
-  deadline := cxproc_now_ms() + seconds * 1000;
-  n := 0; timed := false;
-  while true {
-    left := deadline - cxproc_now_ms();
-    if left <= 0 { timed = true; break; }
-    k := cxproc_read_line(h, left);
-    if k == CL_TIMEOUT { timed = true; break; }
-    if k == CL_TOO_LONG { continue; }
-    if k < 0 { break; }
-    for i: 0..<k { if n < out.count { out[n] = cast(u8) cxproc_line_byte(h, i); n += 1; } }
-    if n < out.count { out[n] = '\n'; n += 1; }
-  }
-  if timed { k := cxproc_kill(h, 9); w := cxproc_wait(h, 2000); }
-  else { w := cxproc_wait(h, 5000); if w < 0 { k := cxproc_kill(h, 9); } }
-  y := cxproc_release(h);
-  return n;
-}
-
 // Whether path stays under the working directory: relative with no ".."
 // part, or absolute under cwd.
 mc_path_inside :: (cwd: string, path: string) -> bool {

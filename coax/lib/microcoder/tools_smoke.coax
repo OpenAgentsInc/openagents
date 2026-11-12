@@ -1,7 +1,6 @@
 // The tools against a real folder (tools_smoke.sh makes it): a command's
 // output, a command past its timeout killed and recorded, views inside and
-// outside the working directory, exact edits, a loop step's tools recorded in state, and a
-// command's output captured whole.
+// outside the working directory, exact edits, and a loop step's tools recorded in state.
 
 #import "Basic";
 #load "tools.coax";
@@ -64,15 +63,5 @@ main :: () {
   j = mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ar[0].at = 0;
   ok = ok && cl_bool(j, "actions.1.results.0.applied").value && cl_str(ar[..], j, "actions.1.results.1.output") == "print(\"b2\")\n";
-  // a capture keeps a command's output whole (past a result's head and tail), cut at its buffer
-  cb: [40000] u8;
-  nc := mc_capture(dir, "cat long.txt; echo; echo end", 30, cb[..], "danger-full-access");
-  print("capture: % bytes\n", nc);
-  ok = ok && nc == 40000 && cb[0] == 'x' && cb[39999] == 'x';
-  nc = mc_capture(dir, "printf 'one\\ntwo\\n'; echo err 1>&2", 30, cb[..], "danger-full-access");
-  ok = ok && cast(string) cb[0..<nc] == "one\ntwo\n";
-  t0 = cxproc_now_ms();
-  nc = mc_capture(dir, "echo started; sleep 20", 1, cb[..], "danger-full-access");
-  ok = ok && cast(string) cb[0..<nc] == "started\n" && cxproc_now_ms() - t0 < 4000;
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }
