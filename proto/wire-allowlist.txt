@@ -35,9 +35,8 @@ proto proto/openagents/cli/local/v1/inventory.proto  # C7, wave 2 (#13250)
 proto proto/openagents/cli/dictation/v1/stream.proto  # C7, wave 2 (#13250)
 
 # Area 2: Everglade
-shape aethyr.player.appearance.v1  # E9, wave 2: a golden for each version before sync stores it (#13250)
-id aethyr.player.appearance.v1 aethyr/host/apple/PageHost.m  # the iOS store names the record; E9, wave 2 (#13250)
-id aethyr.player.appearance.v1 coax/web/host.js  # the page host names the record for localStorage; E9, wave 2 (#13250)
+id aethyr.player.appearance.v1 aethyr/host/apple/PageHost.m  # the iOS host keeps the text under the id as its storage key and passes it unread; no parser here, and wire-check has no rule for a key yet (#13250)
+id aethyr.player.appearance.v1 coax/web/host.js  # the page host keeps the text under the id as its localStorage key and passes it unread; no parser here, and wire-check has no rule for a key yet (#13250)
 shape relay-frames  # y j l t m and the rooms JSON: no shared codec, five page parsers; E2 (#13245)
 shape seat-ticket  # v2 and v3: written by C snprintf in player.c and by tk_sign in room-ticket.coax; E5 (#13248). v5 is not here: one codec, aethyr/session/seat-ticket.coax (registry row seat-ticket-v5, #13260)
 shape resume-envelope-v4  # signed, shared, exported to C; E5 adds fixtures (#13248)

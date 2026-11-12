@@ -1,0 +1,114 @@
+{
+ "identity": "aethyr.player.appearance.v1",
+ "check": "coax/web/tool.sh aethyr/tools/appearance-profile.coax proto/aethyr/player-appearance-v1.json",
+ "codec": "aethyr/character-appearance.coax",
+ "doc": "docs/protocol/player-appearance-v1.md",
+ "scope": "A player's chosen look, class and level as ASCII text. Kept on the player's device under the key aethyr.player.appearance.v1 (localStorage on the web, the page host's store on iOS) and sent as the profile of a room's hello.",
+ "layout": [
+  {"at": 0, "bytes": 3, "field": "version", "values": "CC2, CC3 or CC4 written; CC1 read"},
+  {"at": 3, "bytes": 1, "field": "female", "max": 1},
+  {"at": 4, "bytes": 1, "field": "outfit", "max": 4},
+  {"at": 5, "bytes": 1, "field": "hood", "max": 1},
+  {"at": 6, "bytes": 1, "field": "hair", "max": 3},
+  {"at": 7, "bytes": 1, "field": "beard", "max": 1},
+  {"at": 8, "bytes": 1, "field": "dye", "max": 8},
+  {"at": 9, "bytes": 1, "field": "skin", "max": 5},
+  {"at": 10, "bytes": 1, "field": "hair_color", "max": 5},
+  {"at": 11, "bytes": 1, "field": "variant", "max": 2},
+  {"at": 12, "bytes": 1, "field": "pose", "max": 3},
+  {"at": 13, "bytes": 2, "field": "piece", "max": 39},
+  {"at": 15, "bytes": 40, "field": "worn", "values": "one 0 or 1 for each part 0 to 39"},
+  {"at": 55, "bytes": 1, "field": "eye_color", "max": 5},
+  {"at": 56, "bytes": 1, "field": "klass", "values": "CC3 and CC4: a letter, a for class 0 (Barbarian) to l for class 11 (Wizard)"},
+  {"at": 57, "bytes": 1, "field": "level", "values": "CC4: a digit 2 to 6"}
+ ],
+ "sizes": {
+  "CC1": 54,
+  "CC2": 56,
+  "CC3": 57,
+  "CC4": 58
+ },
+ "classes": 12,
+ "levels": 6,
+ "rules": [
+  "A record with no class is CC2; with a class at level 1, CC3; with a class above level 1, CC4. No version writes more than it needs, so the bytes of an older record never change.",
+  "hood is 1 exactly when part 26 or part 39 is worn.",
+  "A man's hair is 0 to 2.",
+  "The reader keeps only worn parts that can be chosen, and a piece that cannot be chosen reads as 18.",
+  "The reader takes a record whole or not at all: a refused record leaves the kept character as it was."
+ ],
+ "records": [
+  {"version": "CC2", "values": { "female": 0, "outfit": 2, "hood": 0, "hair": 0, "beard": 0, "dye": 8, "skin": 1, "hair_color": 0, "variant": 0, "pose": 0, "piece": 18, "worn": "0000000000000000000000000000111100000110", "eye_color": 0, "klass": -1, "level": 1},
+   "text": "CC202000810001800000000000000000000000000001111000001100"
+  },
+  {"version": "CC2", "values": { "female": 0, "outfit": 1, "hood": 1, "hair": 2, "beard": 1, "dye": 3, "skin": 4, "hair_color": 5, "variant": 2, "pose": 3, "piece": 22, "worn": "0000000000000000000000111111000000110000", "eye_color": 4, "klass": -1, "level": 1},
+   "text": "CC201121345232200000000000000000000001111110000001100004"
+  },
+  {"version": "CC2", "values": { "female": 1, "outfit": 2, "hood": 0, "hair": 3, "beard": 0, "dye": 1, "skin": 0, "hair_color": 3, "variant": 1, "pose": 2, "piece": 29, "worn": "0000000000000000000000000000111100000110", "eye_color": 5, "klass": -1, "level": 1},
+   "text": "CC212030103122900000000000000000000000000001111000001105"
+  },
+  {"version": "CC3", "values": { "female": 0, "outfit": 2, "hood": 0, "hair": 0, "beard": 0, "dye": 8, "skin": 1, "hair_color": 0, "variant": 0, "pose": 0, "piece": 18, "worn": "0000000000000000000000000000111100000110", "eye_color": 2, "klass": 11, "level": 1},
+   "text": "CC302000810001800000000000000000000000000001111000001102l"
+  },
+  {"version": "CC3", "values": { "female": 1, "outfit": 2, "hood": 0, "hair": 3, "beard": 0, "dye": 1, "skin": 0, "hair_color": 3, "variant": 1, "pose": 2, "piece": 29, "worn": "0000000000000000000000000000111100000110", "eye_color": 5, "klass": 0, "level": 1},
+   "text": "CC312030103122900000000000000000000000000001111000001105a"
+  },
+  {"version": "CC4", "values": { "female": 0, "outfit": 1, "hood": 1, "hair": 2, "beard": 1, "dye": 3, "skin": 4, "hair_color": 5, "variant": 2, "pose": 3, "piece": 22, "worn": "0000000000000000000000111111000000110000", "eye_color": 4, "klass": 4, "level": 6},
+   "text": "CC401121345232200000000000000000000001111110000001100004e6"
+  },
+  {"version": "CC4", "values": { "female": 0, "outfit": 2, "hood": 0, "hair": 0, "beard": 0, "dye": 8, "skin": 1, "hair_color": 0, "variant": 0, "pose": 0, "piece": 18, "worn": "0000000000000000000000000000111100000110", "eye_color": 0, "klass": 7, "level": 2},
+   "text": "CC402000810001800000000000000000000000000001111000001100h2"
+  }
+ ],
+ "read_only": [
+  {"version": "CC1", "note": "54 bytes: 39 worn parts and no eye colour; read as eye colour 0", "text": "CC1020008100018000000000000000000000000000011110000011", "values": { "female": 0, "outfit": 2, "hood": 0, "hair": 0, "beard": 0, "dye": 8, "skin": 1, "hair_color": 0, "variant": 0, "pose": 0, "piece": 18, "worn": "0000000000000000000000000000111100000110", "eye_color": 0, "klass": -1, "level": 1},
+   "rewritten": "CC202000810001800000000000000000000000000001111000001100"
+  },
+  {"version": "CC1", "note": "the old outfit 3 (knight) reads as outfit 0 wearing parts 18 to 21", "text": "CC1030008100018000000000000000000000000000011110000011", "values": { "female": 0, "outfit": 0, "hood": 0, "hair": 0, "beard": 0, "dye": 8, "skin": 1, "hair_color": 0, "variant": 0, "pose": 0, "piece": 18, "worn": "0000000000000000001111000000000000000000", "eye_color": 0, "klass": -1, "level": 1},
+   "rewritten": "CC200000810001800000000000000000011110000000000000000000"
+  },
+  {"version": "CC1", "note": "the old outfit 4 reads as outfit 3", "text": "CC1041213452322000000000000000000000011111100000011000", "values": { "female": 0, "outfit": 3, "hood": 1, "hair": 2, "beard": 1, "dye": 3, "skin": 4, "hair_color": 5, "variant": 2, "pose": 3, "piece": 22, "worn": "0000000000000000000000111111000000110000", "eye_color": 0, "klass": -1, "level": 1},
+   "rewritten": "CC203121345232200000000000000000000001111110000001100000"
+  },
+  {"version": "CC2", "note": "outfit 4 (retired) reads as outfit 2 wearing the wizard parts, no hood", "text": "CC204000810001800000000000000000000000000000000000000000", "values": { "female": 0, "outfit": 2, "hood": 0, "hair": 0, "beard": 0, "dye": 8, "skin": 1, "hair_color": 0, "variant": 0, "pose": 0, "piece": 18, "worn": "0000000000000000000000000000111100000110", "eye_color": 0, "klass": -1, "level": 1},
+   "rewritten": "CC202000810001800000000000000000000000000001111000001100"
+  },
+  {"version": "CC2", "note": "a part that cannot be chosen (16) is not worn, and such a piece falls back to 18", "text": "CC202000810001600000000000000001000000000001111000001100", "values": { "female": 0, "outfit": 2, "hood": 0, "hair": 0, "beard": 0, "dye": 8, "skin": 1, "hair_color": 0, "variant": 0, "pose": 0, "piece": 18, "worn": "0000000000000000000000000000111100000110", "eye_color": 0, "klass": -1, "level": 1},
+   "rewritten": "CC202000810001800000000000000000000000000001111000001100"
+  }
+ ],
+ "malformed": [
+  {"why": "empty", "text": ""},
+  {"why": "one byte short", "text": "CC20200081000180000000000000000000000000000111100000110"},
+  {"why": "one byte long", "text": "CC2020008100018000000000000000000000000000011110000011000"},
+  {"why": "an unknown version", "text": "CC502000810001800000000000000000000000000001111000001100"},
+  {"why": "CC0", "text": "CC002000810001800000000000000000000000000001111000001100"},
+  {"why": "lower-case magic", "text": "cc202000810001800000000000000000000000000001111000001100"},
+  {"why": "CC2 bytes under a CC3 name", "text": "CC302000810001800000000000000000000000000001111000001100"},
+  {"why": "CC3 bytes under a CC2 name", "text": "CC202000810001800000000000000000000000000001111000001102l"},
+  {"why": "CC4 bytes under a CC3 name", "text": "CC301121345232200000000000000000000001111110000001100004e6"},
+  {"why": "female above 1", "text": "CC222000810001800000000000000000000000000001111000001100"},
+  {"why": "outfit above 4", "text": "CC205000810001800000000000000000000000000001111000001100"},
+  {"why": "hood above 1", "text": "CC202200810001800000000000000000000000000001111000001100"},
+  {"why": "hair above 3", "text": "CC212040103122900000000000000000000000000001111000001105"},
+  {"why": "a man's hair above 2", "text": "CC202030810001800000000000000000000000000001111000001100"},
+  {"why": "beard above 1", "text": "CC202002810001800000000000000000000000000001111000001100"},
+  {"why": "dye above 8", "text": "CC202000910001800000000000000000000000000001111000001100"},
+  {"why": "skin above 5", "text": "CC202000860001800000000000000000000000000001111000001100"},
+  {"why": "hair colour above 5", "text": "CC202000816001800000000000000000000000000001111000001100"},
+  {"why": "variant above 2", "text": "CC202000810301800000000000000000000000000001111000001100"},
+  {"why": "pose above 3", "text": "CC202000810041800000000000000000000000000001111000001100"},
+  {"why": "piece 40", "text": "CC202000810004000000000000000000000000000001111000001100"},
+  {"why": "a piece digit that is a letter", "text": "CC202000810001x00000000000000000000000000001111000001100"},
+  {"why": "a worn mark that is neither 0 nor 1", "text": "CC202000810001800000200000000000000000000001111000001100"},
+  {"why": "a hood with no hood part worn", "text": "CC202100810001800000000000000000000000000001111000001100"},
+  {"why": "a hood part worn with no hood", "text": "CC201021345232200000000000000000000001111110000001100004"},
+  {"why": "eye colour above 5", "text": "CC202000810001800000000000000000000000000001111000001106"},
+  {"why": "a class past Wizard", "text": "CC302000810001800000000000000000000000000001111000001102m"},
+  {"why": "a class in upper case", "text": "CC302000810001800000000000000000000000000001111000001102L"},
+  {"why": "level 1 in a CC4 record", "text": "CC401121345232200000000000000000000001111110000001100004e1"},
+  {"why": "level 7", "text": "CC401121345232200000000000000000000001111110000001100004e7"},
+  {"why": "a level that is a letter", "text": "CC401121345232200000000000000000000001111110000001100004ea"},
+  {"why": "a legacy record one byte long", "text": "CC10200081000180000000000000000000000000000111100000110"}
+ ]
+}

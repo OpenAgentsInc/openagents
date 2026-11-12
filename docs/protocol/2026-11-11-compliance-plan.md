@@ -164,7 +164,7 @@ and `verse/home.coax`. None is Everglade's.
 | Room reports to the API (vitals, directory, stats, the checkpoint post and its receipt; signed) and the control poll reply | `room-vitals.coax`, `room-directory.coax`, `room-stats.h` (the body; `room-stats.coax` signs it), `room-checkpoint.coax:221-246`, `room-control.coax`; `player.c`, `rooms.c` | Coax room, C API | none | Pin: wave 2 (E8) |
 | Item ledger op | Route `room_items` at `player.c:706`. `aethyr/session/ledger.coax` is a store model with no codec for the op; only a test loads it | No room sends it | none | Wave 2: wire it or delete it |
 | `room-state {look,class}` | `player.c:624-652` (`room_state`) | Kept: look and class go into `verse.room_vitals` and come back in the ticket reply (`:543`); only `wanted` is refused. Sent by `everglade-net.coax` and `everglade5e-face.c:82`. Only the local stand-in drops it (`room-dev.coax:214`) | none | Move: wave 2 (E11), with the other player routes |
-| Player appearance `aethyr.player.appearance.v1` (CC2, CC3, CC4 text) | `aethyr/character-appearance.coax:59,72` (the reader also takes `CC1`) | Stored in localStorage (`coax/web/host.js:570`) and the iOS store (`aethyr/host/apple/PageHost.m`) | none | Move: wave 2 (E9), before sync stores it on the server. Golden for each version |
+| Player appearance `aethyr.player.appearance.v1` (CC2, CC3, CC4 text) | `aethyr/character-appearance.coax:59,72` (the reader also takes `CC1`) | Stored in localStorage (`coax/web/host.js:570`) and the iOS store (`aethyr/host/apple/PageHost.m`) | `proto/aethyr/player-appearance-v1.json` | Pinned: E9. [player-appearance-v1.md](player-appearance-v1.md) |
 | Realm save AESV (CRC-32), stored in IndexedDB and `verse.progress` | `apps/openagents-web/save.coax`; a second validator in C (`container_ok`, `player.c:94`) | Page, API | none | Pin: wave 2 (E10). Golden |
 | Realm document `aethyr.realm` v1 (SHA-256 per revision) | Built in SQL (`0093`, `0109`, `0111`). `aethyr/forge/doc.coax` reads it, but only examples, the book and `coax/web/api/tests/realm_walkthrough.coax` load that file | `apps/openagents-cli/realm.coax:108-122` parses `/doc` with its own JSON reads; `myrealm.coax:436` reads the spec's text lines, not the document; API | `verse-doc` | Done: E6. `doc.coax` is the one reader and writer; `realm-document-v1.json` |
 | Edit operations and the undo log `{to,card,ops:[{slot,before,after}]}`; save body `{rev,moved,shaped}` | `aethyr/forge/edit.coax:339-514` holds the operations in memory and builds the save body (`forge_save_body`, `:479`). The undo log JSON is built only in plpgsql (`0111:181`) | Aethyrforge, My Realm, API | `verse-doc` | Done: E6. `edit.coax` writes the bodies; `doc.coax` applies the logged steps |
@@ -200,6 +200,12 @@ record; E10 realm save; E11 realm, player and seat routes on the `api.v1`
 envelope; E12 WorldBuilder operations (after #13226); then packs, city edits
 and presence.
 
+Wave 2 steps done:
+
+| Step | Work | Done |
+| --- | --- | --- |
+| E9 | Appearance record | `proto/aethyr/player-appearance-v1.json` holds golden records for CC2, CC3 and CC4, CC1 and corrected records with the bytes they are written back as, and malformed records. `aethyr/tools/appearance-profile.coax` runs `ca_save` and `ca_restore` on each and holds the layout to the bytes. Every page reads and writes the record through `aethyr/character-appearance.coax`. The two page hosts keep the text under the ID as a storage key and never parse it; their two `id` lines stay until `wire-check` has a rule for a key |
+
 ## Golden tests
 
 A golden pins exact bytes. These shapes need one before any codec change,
@@ -217,7 +223,7 @@ because a signature, a hash or a stored file depends on the bytes.
 | Character checkpoint; room reports | HMAC, stored | wave 2 |
 | Realm document, undo log, engine pin | SHA-256 per revision; two languages | E6 |
 | Realm save, VPK3 packs | CRC-32, SHA-256 | wave 2 |
-| Appearance record | Stored on players' devices | wave 2 |
+| Appearance record | Stored on players' devices | E9 |
 
 ## What to delete
 
