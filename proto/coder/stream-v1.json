@@ -1,0 +1,169 @@
+{                                                                                               
+  "profile": "coder-stream",
+  "description": "Golden wire lines for Coder stream records (C3, #13240): observability v1/v2, reply-stream v1, and route v2.",
+  "goldens": [
+    {
+      "name": "codex-model",
+      "record": "model",
+      "schema": "coder.observability.v1",
+      "values": {
+        "model": "test-model",
+        "effort": "high"
+      },
+      "line": "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":\"test-model\",\"effort\":\"high\",\"cost_usd\":null}"
+    },
+    {
+      "name": "codex-model-null",
+      "record": "model",
+      "schema": "coder.observability.v1",
+      "values": {
+        "model": "",
+        "effort": ""
+      },
+      "line": "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":null,\"effort\":null,\"cost_usd\":null}"
+    },
+    {
+      "name": "codex-usage-thread-total",
+      "record": "usage",
+      "schema": "coder.observability.v1",
+      "values": {
+        "scope": "thread_total",
+        "engine": "codex",
+        "client": true,
+        "thread_id": "thr_1",
+        "turn_id": "turn_2",
+        "usage": "{\"total\":{\"totalTokens\":120,\"inputTokens\":80,\"cachedInputTokens\":20,\"cacheWriteInputTokens\":0,\"outputTokens\":30,\"reasoningOutputTokens\":10}}"
+      },
+      "line": "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"scope\":\"thread_total\",\"thread_id\":\"thr_1\",\"turn_id\":\"turn_2\",\"totalTokens\":120,\"inputTokens\":80,\"cachedInputTokens\":20,\"cacheWriteInputTokens\":0,\"outputTokens\":30,\"reasoningOutputTokens\":10}"
+    },
+    {
+      "name": "acp-usage-turn",
+      "record": "usage",
+      "schema": "coder.observability.v1",
+      "values": {
+        "scope": "turn",
+        "engine": "antigravity",
+        "usage": "{\"inputTokens\":10579,\"outputTokens\":361,\"cachedReadTokens\":6289,\"cachedWriteTokens\":0,\"thoughtTokens\":213,\"totalTokens\":17229}"
+      },
+      "line": "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"antigravity\",\"scope\":\"turn\",\"totalTokens\":17229,\"inputTokens\":10579,\"cachedReadTokens\":6289,\"cachedWriteTokens\":0,\"outputTokens\":361,\"thoughtTokens\":213,\"cost_usd\":null}"
+    },
+    {
+      "name": "acp-usage-turn-partial",
+      "record": "usage",
+      "schema": "coder.observability.v1",
+      "values": {
+        "scope": "turn",
+        "engine": "antigravity",
+        "usage": "{\"inputTokens\":5}"
+      },
+      "line": "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"antigravity\",\"scope\":\"turn\",\"totalTokens\":null,\"inputTokens\":5,\"cachedReadTokens\":null,\"cachedWriteTokens\":null,\"outputTokens\":null,\"thoughtTokens\":null,\"cost_usd\":null}"
+    },
+    {
+      "name": "provider-availability",
+      "record": "availability",
+      "schema": "coder.observability.v1",
+      "values": {
+        "engine": "claude",
+        "retry_after_s": 60,
+        "persisted": true
+      },
+      "line": "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":\"claude\",\"cause\":\"provider\",\"retry_after_s\":60,\"persisted\":true}"
+    },
+    {
+      "name": "micro-attempt-engine",
+      "record": "attempt",
+      "schema": "coder.observability.v2",
+      "values": {
+        "engine": "micro",
+        "gateway": "g",
+        "model": "model",
+        "requested_effort": "low",
+        "outcome": "done",
+        "status": 200,
+        "input_tokens": 10,
+        "output_tokens": 2,
+        "cached_tokens": 0,
+        "reasoning_tokens": -1,
+        "cache_write_tokens": -1,
+        "provider_cost_usd_micros": -1,
+        "card_estimate_usd_micros": 12
+      },
+      "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":\"micro\",\"gateway\":\"g\",\"model\":\"model\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":10,\"output_tokens\":2,\"cached_tokens\":0,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":12,\"usd_micros\":12}"
+    },
+    {
+      "name": "psionic-attempt-relay",
+      "record": "attempt",
+      "schema": "coder.observability.v2",
+      "values": {
+        "engine": "psionic",
+        "gateway": "g",
+        "model": "m",
+        "requested_effort": "",
+        "outcome": "done",
+        "status": 200,
+        "input_tokens": 4,
+        "output_tokens": 0,
+        "cached_tokens": -1,
+        "reasoning_tokens": -1,
+        "cache_write_tokens": -1,
+        "provider_cost_usd_micros": -1,
+        "card_estimate_usd_micros": -1
+      },
+      "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":\"psionic\",\"gateway\":\"g\",\"model\":\"m\",\"model_source\":\"attempt_configuration\",\"requested_effort\":null,\"outcome\":\"done\",\"status\":200,\"input_tokens\":4,\"output_tokens\":0,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+      "name": "reply-stream-delta",
+      "record": "reply_delta",
+      "schema": "coder.reply-stream.v1",
+      "values": {
+        "segment": 0,
+        "text": "hello world"
+      },
+      "line": "{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0,\"text\":\"hello world\"}"
+    },
+    {
+      "name": "reply-stream-end",
+      "record": "reply_end",
+      "schema": "coder.reply-stream.v1",
+      "values": {
+        "segment": 0
+      },
+      "line": "{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0}"
+    },
+    {
+      "name": "route-v2-decision",
+      "record": "route",
+      "schema": "coder.route.v2",
+      "values": {
+        "ok": true,
+        "source": "local-elephant",
+        "model": "",
+        "engine": "codex",
+        "probability_e3": 50,
+        "difficulty": 1,
+        "effort": "low",
+        "eligible_mask": 4,
+        "blocked_mask": 0,
+        "allowed_mask": 15,
+        "ran": "codex"
+      },
+      "line": "{\"kind\":\"route\",\"ok\":true,\"schema\":\"coder.route.v2\",\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability\":0.050,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"}"
+    },
+    {
+      "name": "route-v2-failed",
+      "record": "route",
+      "schema": "coder.route.v2",
+      "values": {
+        "ok": false,
+        "source": "baseten-elephant",
+        "model": "elephant-1",
+        "text": "no key",
+        "eligible_mask": 4,
+        "blocked_mask": 0,
+        "allowed_mask": 15,
+        "ran": ""
+      },
+      "line": "{\"kind\":\"route\",\"ok\":false,\"schema\":\"coder.route.v2\",\"source\":\"baseten-elephant\",\"model\":\"elephant-1\",\"text\":\"no key\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15}"
+    }
+  ]
+}

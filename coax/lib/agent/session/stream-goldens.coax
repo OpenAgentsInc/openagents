@@ -1,0 +1,187 @@
+// Golden wire fixture check for Coder stream records (C3, #13240):
+// proto/coder/stream-v1.json holds golden JSON lines for model, usage, availability
+// (coder.observability.v1), attempt (coder.observability.v2), reply_delta/reply_end
+// (coder.reply-stream.v1), and route (coder.route.v2), and verifies that the encoders
+// write each line byte for byte.
+
+#import "Basic";
+#load "writer.coax";
+#load "../engine/micro-observation.coax";
+#load "../engine/route.coax";
+#load "../../json/json.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+SG_LINE :: 8192;
+SG_FIXTURE_PATH :: "proto/coder/stream-v1.json";
+SG_RECORDS :: [7] string.["model", "usage", "availability", "attempt", "reply_delta", "reply_end", "route"];
+
+SgPool :: struct { buf: [131072] u8; n: int; }
+
+sg_s :: (p: [] SgPool, d: Jv, obj: int, key: string) -> string {
+  w := jv_str(d, jv_get(d, obj, key), p[0].buf[p[0].n..<p[0].buf.count]);
+  if w < 0 { return ""; }
+  at := p[0].n; p[0].n += w;
+  return cast(string) p[0].buf[at..<at + w];
+}
+
+sg_i :: (d: Jv, obj: int, key: string, fallback: int) -> int { return jv_int(d, jv_get(d, obj, key), fallback); }
+sg_b :: (d: Jv, obj: int, key: string) -> bool { return jv_bool(d, jv_get(d, obj, key)); }
+
+sg_strip_nl :: (s: string) -> string {
+  n := s.count;
+  while n > 0 && (s[n - 1] == 10 || s[n - 1] == 13) { n -= 1; }
+  return cast(string) s[0..<n];
+}
+
+sg_copy_line :: (s: string, out: [] u8) -> int {
+  clean := sg_strip_nl(s);
+  if clean.count > out.count { return -1; }
+  for i: 0..<clean.count { out[i] = clean[i]; }
+  return clean.count;
+}
+
+sg_availability_current :: (engine: string, retry: int, persisted: bool, out: [] u8) -> int {
+  n := json_raw(out, 0, "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":");
+  n = json_write_string(out, n, engine);
+  n = json_raw(out, n, ",\"cause\":\"provider\",\"retry_after_s\":");
+  n = json_write_int(out, n, retry);
+  n = json_raw(out, n, ",\"persisted\":");
+  n = json_raw(out, n, ifx persisted then "true}" else "false}");
+  return n;
+}
+
+sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
+  rec := sg_s(p[..], d, item, "record");
+  vs := jv_get(d, item, "values");
+  if rec == "model" {
+    l: [1] SwLog; ob: [SG_LINE] u8; l[0].out = ob[..]; l[0].json = true;
+    sw_cx_model(l[..], sg_s(p[..], d, vs, "model"), sg_s(p[..], d, vs, "effort"));
+    got: [SG_LINE] u8; n := sw_take(l[..], got[..]);
+    return sg_copy_line(cast(string) got[0..<n], out);
+  }
+  if rec == "usage" {
+    l: [1] SwLog; ob: [SG_LINE] u8; l[0].out = ob[..]; l[0].json = true;
+    scope := sg_s(p[..], d, vs, "scope");
+    if scope == "thread_total" {
+      sw_cx_usage(l[..], sg_s(p[..], d, vs, "usage"), sg_b(d, vs, "client"), sg_s(p[..], d, vs, "thread_id"), sg_s(p[..], d, vs, "turn_id"));
+    } else {
+      sw_acp_usage(l[..], sg_s(p[..], d, vs, "engine"), sg_s(p[..], d, vs, "usage"));
+    }
+    got: [SG_LINE] u8; n := sw_take(l[..], got[..]);
+    return sg_copy_line(cast(string) got[0..<n], out);
+  }
+  if rec == "availability" {
+    return sg_availability_current(sg_s(p[..], d, vs, "engine"), sg_i(d, vs, "retry_after_s", 0), sg_b(d, vs, "persisted"), out);
+  }
+  if rec == "attempt" {
+    vals: [7] int;
+    vals[0] = sg_i(d, vs, "input_tokens", -1);
+    vals[1] = sg_i(d, vs, "output_tokens", -1);
+    vals[2] = sg_i(d, vs, "cached_tokens", -1);
+    vals[3] = sg_i(d, vs, "reasoning_tokens", -1);
+    vals[4] = sg_i(d, vs, "cache_write_tokens", -1);
+    vals[5] = sg_i(d, vs, "provider_cost_usd_micros", -1);
+    vals[6] = sg_i(d, vs, "card_estimate_usd_micros", -1);
+    mb: [SG_LINE] u8;
+    n := mo_attempt(sg_s(p[..], d, vs, "engine"), sg_s(p[..], d, vs, "gateway"), sg_s(p[..], d, vs, "model"), sg_s(p[..], d, vs, "requested_effort"), sg_s(p[..], d, vs, "outcome"), sg_i(d, vs, "status", 0), vals[..], mb[..]);
+    if n < 0 { return -1; }
+    return sg_copy_line(cast(string) mb[0..<n], out);
+  }
+  if rec == "reply_delta" {
+    l: [1] SwLog; rb: [SG_LINE] u8;
+    l[0].live_segment = sg_i(d, vs, "segment", 0);
+    text := sg_s(p[..], d, vs, "text");
+    for c: text { if l[0].nreply < l[0].reply.count { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; } }
+    line := sw_live_line(l[..], true, rb[..]);
+    return sg_copy_line(line, out);
+  }
+  if rec == "reply_end" {
+    l: [1] SwLog; ob: [SG_LINE] u8; l[0].out = ob[..]; l[0].json = true; l[0].live = true;
+    l[0].live_segment = sg_i(d, vs, "segment", 0);
+    l[0].reply[0] = 'x'; l[0].nreply = 1; l[0].live_sent = 1;
+    sw_reply_flush(l[..]);
+    got: [SG_LINE] u8; n := sw_take(l[..], got[..]);
+    return sg_copy_line(cast(string) got[0..<n], out);
+  }
+  if rec == "route" {
+    r: [1] AgRoute;
+    r[0].ok = sg_b(d, vs, "ok");
+    r[0].nsource = agr_cat(r[0].source[..], 0, sg_s(p[..], d, vs, "source"));
+    r[0].nmodel = agr_cat(r[0].model[..], 0, sg_s(p[..], d, vs, "model"));
+    r[0].nengine = agr_cat(r[0].engine[..], 0, sg_s(p[..], d, vs, "engine"));
+    r[0].probability = cast(f64) sg_i(d, vs, "probability_e3", 0) / 1000.0;
+    r[0].difficulty = sg_i(d, vs, "difficulty", 0);
+    r[0].neffort = agr_cat(r[0].effort[..], 0, sg_s(p[..], d, vs, "effort"));
+    r[0].nwhy = agr_cat(r[0].why[..], 0, sg_s(p[..], d, vs, "text"));
+    r[0].eligible = sg_i(d, vs, "eligible_mask", 0);
+    r[0].blocked = sg_i(d, vs, "blocked_mask", 0);
+    r[0].allowed = sg_i(d, vs, "allowed_mask", 0);
+    rb: [SG_LINE] u8;
+    line := agr_json(r[..], sg_s(p[..], d, vs, "ran"), rb[..]);
+    return sg_copy_line(line, out);
+  }
+  return -1;
+}
+
+sg_check :: (raw: string, quiet: bool) -> int {
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], raw, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT {
+    if !quiet { print("FAIL  cannot parse fixture JSON\n"); }
+    return 1;
+  }
+  d := j[0];
+  goldens := jv_get(d, 0, "goldens");
+  if jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 {
+    if !quiet { print("FAIL  missing goldens array\n"); }
+    return 1;
+  }
+  seen: [7] bool;
+  recs := SG_RECORDS;
+  p: [1] SgPool;
+  bad := 0;
+  for i: 0..<jv_len(d, goldens) {
+    p[0].n = 0;
+    item := jv_at(d, goldens, i);
+    name := sg_s(p[..], d, item, "name");
+    rec := sg_s(p[..], d, item, "record");
+    for k: 0..<7 { if recs[k] == rec { seen[k] = true; } }
+    want := sg_s(p[..], d, item, "line");
+    out: [SG_LINE] u8;
+    wn := sg_encode(p[..], d, item, out[..]);
+    got := ifx wn < 0 then "" else cast(string) out[0..<wn];
+    same := wn >= 0 && got == want;
+    lnodes: [256] JvNode; lj: [1] Jv;
+    parsed := same && jv_parse(lj[..], got, lnodes[..]) && jv_kind(lj[0], 0) == JV_OBJECT;
+    if !same {
+      if !quiet { print("FAIL  % (%):\n  want: %\n  got:  %\n", name, rec, want, got); }
+      bad += 1;
+    } else if !parsed {
+      if !quiet { print("FAIL  % (%): invalid JSON object\n", name, rec); }
+      bad += 1;
+    } else if !quiet {
+      print("ok    % (%)\n", name, rec);
+    }
+  }
+  for k: 0..<7 {
+    if !seen[k] { if !quiet { print("FAIL  record % has no golden\n", recs[k]); } bad += 1; }
+  }
+  if !quiet { print("%\n", ifx bad == 0 then "stream goldens hold" else "stream goldens fail"); }
+  return ifx bad == 0 then 0 else 1;
+}
+
+#test "stream-v1 goldens match encoders byte for byte across all stream records" {
+  sample := "{\"goldens\":[{\"name\":\"m\",\"record\":\"model\",\"values\":{\"model\":\"test-model\",\"effort\":\"high\"},\"line\":\"{\\\"kind\\\":\\\"model\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"codex\\\",\\\"source\\\":\\\"thread/start\\\",\\\"model\\\":\\\"test-model\\\",\\\"effort\\\":\\\"high\\\",\\\"cost_usd\\\":null}\"},{\"name\":\"u\",\"record\":\"usage\",\"values\":{\"scope\":\"turn\",\"engine\":\"antigravity\",\"usage\":\"{\\\"inputTokens\\\":5}\"},\"line\":\"{\\\"kind\\\":\\\"usage\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"antigravity\\\",\\\"scope\\\":\\\"turn\\\",\\\"totalTokens\\\":null,\\\"inputTokens\\\":5,\\\"cachedReadTokens\\\":null,\\\"cachedWriteTokens\\\":null,\\\"outputTokens\\\":null,\\\"thoughtTokens\\\":null,\\\"cost_usd\\\":null}\"},{\"name\":\"av\",\"record\":\"availability\",\"values\":{\"engine\":\"claude\",\"retry_after_s\":60,\"persisted\":true},\"line\":\"{\\\"kind\\\":\\\"availability\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"claude\\\",\\\"cause\\\":\\\"provider\\\",\\\"retry_after_s\\\":60,\\\"persisted\\\":true}\"},{\"name\":\"at\",\"record\":\"attempt\",\"values\":{\"engine\":\"micro\",\"gateway\":\"g\",\"model\":\"model\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":10,\"output_tokens\":2,\"cached_tokens\":0,\"reasoning_tokens\":-1,\"cache_write_tokens\":-1,\"provider_cost_usd_micros\":-1,\"card_estimate_usd_micros\":12},\"line\":\"{\\\"kind\\\":\\\"attempt\\\",\\\"schema\\\":\\\"coder.observability.v2\\\",\\\"scope\\\":\\\"request_attempt\\\",\\\"engine\\\":\\\"micro\\\",\\\"gateway\\\":\\\"g\\\",\\\"model\\\":\\\"model\\\",\\\"model_source\\\":\\\"attempt_configuration\\\",\\\"requested_effort\\\":\\\"low\\\",\\\"outcome\\\":\\\"done\\\",\\\"status\\\":200,\\\"input_tokens\\\":10,\\\"output_tokens\\\":2,\\\"cached_tokens\\\":0,\\\"reasoning_tokens\\\":null,\\\"cache_write_tokens\\\":null,\\\"provider_cost_usd_micros\\\":null,\\\"card_estimate_usd_micros\\\":12,\\\"usd_micros\\\":12}\"},{\"name\":\"rd\",\"record\":\"reply_delta\",\"values\":{\"segment\":0,\"text\":\"hi\"},\"line\":\"{\\\"kind\\\":\\\"reply_delta\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0,\\\"text\\\":\\\"hi\\\"}\"},{\"name\":\"re\",\"record\":\"reply_end\",\"values\":{\"segment\":0},\"line\":\"{\\\"kind\\\":\\\"reply_end\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0}\"},{\"name\":\"rt\",\"record\":\"route\",\"values\":{\"ok\":true,\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability_e3\":50,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"},\"line\":\"{\\\"kind\\\":\\\"route\\\",\\\"ok\\\":true,\\\"schema\\\":\\\"coder.route.v2\\\",\\\"source\\\":\\\"local-elephant\\\",\\\"model\\\":\\\"\\\",\\\"engine\\\":\\\"codex\\\",\\\"probability\\\":0.050,\\\"difficulty\\\":1,\\\"effort\\\":\\\"low\\\",\\\"eligible_mask\\\":4,\\\"blocked_mask\\\":0,\\\"allowed_mask\\\":15,\\\"ran\\\":\\\"codex\\\"}\"}]}";
+  #assert sg_check(sample, true) == 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else SG_FIXTURE_PATH;
+  buf: [131072] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("stream-goldens: cannot read fixture"); return 2; }
+  return sg_check(cast(string) buf[0..<n], false);
+}
