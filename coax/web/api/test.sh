@@ -236,6 +236,13 @@ OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
 # The answer came from this run's server, not from another run's that took the port first.
 kill -0 "$api_pid" 2>/dev/null || { echo "test.sh: the API didn't start" >&2; cat "$work/api.log"; exit 1; }
+# The migrations (#13301, migrations/README.md): one number each, none edited once landed, and
+# schema.sql the schema the API's own runner just made (dumped before any check writes to it).
+if [[ $serve == 0 && -x "$cli_coax" ]] && runs checks; then
+  (cd "$repo_root" && COAX="$cli_coax" coax/web/tool.sh coax/web/api/migration-check.coax) || exit 1
+  (cd "$repo_root" && COAX="$cli_coax" coax/web/tool.sh coax/web/api/migration-check.coax --schema --pgbin "$pgbin" --host "$work" --port "$port") || exit 1
+  lap "the migration checks"
+fi
 if [[ $serve == 1 ]]; then
   # /chat's Claude turns: the real runner and its real engine (coax/web/agent/chat.coax, the Coax Claude
   # Agent SDK) on CHAT_PORT, with the Claude CLI on this machine, when there is one. A turn runs on the

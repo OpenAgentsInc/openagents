@@ -186,8 +186,10 @@ wc_test_path :: (path: string) -> bool {
   return false;
 }
 // Whether ids in path are judged: a code file that is not a document, a schema, this tool or a test.
+// coax/web/api/schema.sql is pg_dump's output after every migration (#13301): the migrations it
+// comes from are judged.
 wc_scanned :: (path: string) -> bool {
-  if wc_style(path) < 0 || path == WC_SELF { return false; }
+  if wc_style(path) < 0 || path == WC_SELF || path == "coax/web/api/schema.sql" { return false; }
   if wc_starts(path, "docs/") || wc_starts(path, "proto/") || wc_starts(path, "projects/") { return false; }
   return !wc_test_path(path);
 }
@@ -667,7 +669,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
 }
 #test "paths: what is scanned, what is a test, what each rule covers" {
   #assert wc_scanned("coder/tui/coder.coax") && wc_scanned("coax/web/api/chat.c") && wc_scanned("coax/web/api/migrations/0001_x.sql") && wc_scanned("a/b.py");
-  #assert !wc_scanned("docs/x.py") && !wc_scanned("proto/tools/x.py") && !wc_scanned("a/b.md") && !wc_scanned("a/b.json") && !wc_scanned(WC_SELF);
+  #assert !wc_scanned("docs/x.py") && !wc_scanned("proto/tools/x.py") && !wc_scanned("a/b.md") && !wc_scanned("a/b.json") && !wc_scanned(WC_SELF) && !wc_scanned("coax/web/api/schema.sql");
   #assert !wc_scanned("apps/x/Sources/checks.m") && !wc_scanned("coder/tests/qualify.coax") && !wc_scanned("coax/web/api/test_zchat.py") && !wc_scanned("apps/x/fixtures/a.py") && !wc_scanned("coder/tui/observability-checks.coax") && !wc_scanned("a/dictate-check.coax");
   #assert wc_scanned("coder/tui/latest.coax") && wc_scanned("a/contest/b.coax") && wc_scanned("a/checker.coax");
   #assert wc_has_route("#include <x.h>\nstatic void chat_route(Req *r) {\n}\n") && wc_has_route("void a_route(void);\n") && !wc_has_route("  x = chat_route(r);\n// the a_route( function\n");

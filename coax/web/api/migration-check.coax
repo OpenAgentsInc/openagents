@@ -1,0 +1,620 @@
+// The API's migrations, checked (GitHub #13301; audit docs/audits/2026-11-11-everglade-aethyr-aaa-audit.md, G11).
+// The API applies coax/web/api/migrations/*.sql once each, in name order, and remembers them by name
+// (api.c, migrate()); it keeps no checksum. So two files with one number run in an order nobody chose,
+// a renamed file runs again, and an edit to an applied file never reaches production. This tool fails
+// on each of those before they land, and after landing on the commit that caused them:
+//   coax/web/tool.sh coax/web/api/migration-check.coax              (from the repository root)
+//   coax/web/tool.sh coax/web/api/migration-check.coax --base REV   compare with REV (default: where
+//                      HEAD's history meets origin/main, so a commit behind main is judged by what main had then)
+//   coax/web/tool.sh coax/web/api/migration-check.coax --write      add the lines new migrations need
+//   coax/web/tool.sh coax/web/api/migration-check.coax --schema [--write]
+//                      apply every migration to a throwaway Postgres and compare its schema (pg_dump
+//                      --schema-only) with coax/web/api/schema.sql (--write: replace it). Needs a
+//                      Postgres 16 server (initdb, pg_ctl, psql, pg_dump; --pgbin DIR names their folder),
+//                      so run it on a build host: coax/remote/remote.sh run -- coax/web/tool.sh ...
+//   ... --schema --host DIR --port N   dump the database a running server already migrated (test.sh)
+//   coax/bin/coax test coax/web/api/migration-check.coax --library
+//
+// The rules (coax/web/api/migrations/README.md):
+//   name      a file is NNNN_lowercase_words.sql
+//   number    a migration REV lacks takes a number above every number REV has, and no other file's
+//   shared    two files may share a number only when the manifest marks both "shared": the numbers
+//             taken twice before this check, kept as they are because production applied them
+//   manifest  coax/web/api/migrations.sha256 has one line per file, "NAME SHA256 [shared]"
+//   applied   a file REV's manifest lists keeps that hash and its line, and is never removed or renamed
+// Exits 0 when the migrations keep the rules, 1 when they do not, 2 when they can't be read.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/crypto/sha256-memory.coax";
+
+MC_DIR :: "coax/web/api/migrations";
+MC_MANIFEST :: "coax/web/api/migrations.sha256";
+MC_SCHEMA :: "coax/web/api/schema.sql";
+MC_HOW :: "coax/web/api/migrations/README.md";
+MC_TOOL :: "coax/web/tool.sh coax/web/api/migration-check.coax";
+MC_FIX_SCHEMA :: "coax/remote/remote.sh run -- coax/web/tool.sh coax/web/api/migration-check.coax --schema --write";
+MC_MAX :: 2048;          // migrations
+MC_TEXT :: 1048576;      // a manifest, a listing, a migration
+MC_DUMP :: 16777216;     // pg_dump's schema
+// api.c's own table, made the way migrate() makes it
+MC_RUNNER_TABLE :: "CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied timestamptz NOT NULL DEFAULT now())";
+
+McRun :: struct { quiet: bool; }
+// A migration: its file name, its SHA-256 in hex and, in a manifest, whether its number is shared.
+McFile :: struct { name: string; hash: string; shared: bool; }
+
+// ---- text
+
+mc_starts :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[0..<p.count] == p; }
+mc_ends :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[s.count - p.count..<s.count] == p; }
+mc_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+mc_hex :: (c: u8) -> bool { return mc_digit(c) || (c >= 'a' && c <= 'f'); }
+mc_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+// Word k of s split by runs of spaces, or "".
+mc_word :: (s: string, k: int) -> string {
+  n := 0; i := 0;
+  while i < s.count {
+    while i < s.count && s[i] == ' ' { i += 1; }
+    if i >= s.count { break; }
+    e := i;
+    while e < s.count && s[e] != ' ' { e += 1; }
+    if n == k { return cast(string) s[i..<e]; }
+    n += 1; i = e;
+  }
+  return "";
+}
+// The part after the last slash.
+mc_base :: (path: string) -> string {
+  i := path.count;
+  while i > 0 && path[i - 1] != '/' { i -= 1; }
+  return cast(string) path[i..<path.count];
+}
+// Appends s to out at at[0] (cut when out is full).
+mc_put :: (out: [] u8, at: [] int, s: string) {
+  for c: s { if at[0] < out.count { out[at[0]] = c; at[0] += 1; } }
+}
+
+// ---- names and numbers
+
+// A file name's number (its first four digits, then "_"), or -1.
+mc_number :: (name: string) -> int {
+  if name.count < 5 || name[4] != '_' { return -1; }
+  n := 0;
+  for k: 0..<4 { if !mc_digit(name[k]) { return -1; } n = n * 10 + cast(int) (name[k] - '0'); }
+  return n;
+}
+// Whether a name is NNNN_words.sql, the words lowercase letters, digits and "_".
+mc_name_ok :: (name: string) -> bool {
+  if mc_number(name) < 0 || !mc_ends(name, ".sql") || name.count < 10 { return false; }
+  for k: 5..<name.count - 4 {
+    c := name[k];
+    if !((c >= 'a' && c <= 'z') || mc_digit(c) || c == '_') { return false; }
+  }
+  return true;
+}
+// n as four digits, a file name's prefix ("0163").
+mc_pad4 :: (n: int, out: [] u8) -> string {
+  v := n;
+  for k: 0..<4 { out[3 - k] = cast(u8) ('0' + v % 10); v /= 10; }
+  return cast(string) out[0..<4];
+}
+// The index of name in files, or -1.
+mc_find :: (files: [] McFile, n: int, name: string) -> int {
+  for k: 0..<n { if files[k].name == name { return k; } }
+  return -1;
+}
+// The highest number among files, or -1.
+mc_highest :: (files: [] McFile, n: int) -> int {
+  m := -1;
+  for k: 0..<n { v := mc_number(files[k].name); if v > m { m = v; } }
+  return m;
+}
+// Whether another of files has file k's number.
+mc_number_shared :: (files: [] McFile, n: int, k: int) -> bool {
+  v := mc_number(files[k].name);
+  for j: 0..<n { if j != k && mc_number(files[j].name) == v { return true; } }
+  return false;
+}
+
+// ---- reading lists and the manifest
+
+// Names, one a line (a directory listing or git ls-tree's paths): the .sql ones, by their base
+// name, into out; their count.
+mc_parse_names :: (text: string, out: [] McFile) -> int {
+  n := 0; i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    name := mc_base(mc_trim(cast(string) text[i..<j])); i = j + 1;
+    if mc_ends(name, ".sql") && n < out.count { out[n].name = name; out[n].hash = ""; out[n].shared = false; n += 1; }
+  }
+  return n;
+}
+// A manifest into out: its count, or -1 when a line is not "NAME SHA256 [shared]" or names a file twice.
+mc_parse_manifest :: (text: string, out: [] McFile, run: McRun) -> int {
+  n := 0; i := 0; line_no := 0; bad := false;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    line := cast(string) text[i..<j]; i = j + 1; line_no += 1;
+    e := 0;
+    while e < line.count && line[e] != '#' { e += 1; }
+    entry := mc_trim(cast(string) line[0..<e]);
+    if entry.count == 0 { continue; }
+    name := mc_word(entry, 0); hash := mc_word(entry, 1); mark := mc_word(entry, 2);
+    ok := mc_ends(name, ".sql") && hash.count == 64 && (mark == "" || mark == "shared") && mc_word(entry, 3) == "";
+    if ok { for c: hash { if !mc_hex(c) { ok = false; } } }
+    if !ok {
+      if !run.quiet { print("FAIL manifest: % line % is not \"NAME SHA256\" or \"NAME SHA256 shared\": \"%\"\n", MC_MANIFEST, line_no, entry); }
+      bad = true; continue;
+    }
+    if mc_find(out, n, name) >= 0 {
+      if !run.quiet { print("FAIL manifest: % lists % twice (line %)\n", MC_MANIFEST, name, line_no); }
+      bad = true; continue;
+    }
+    if n >= out.count { bad = true; break; }
+    out[n].name = name; out[n].hash = hash; out[n].shared = mark == "shared"; n += 1;
+  }
+  return ifx bad then -1 else n;
+}
+
+// ---- the judgment
+
+// The tree's migrations (tree: names and hashes) against the manifest (man) and, when there is
+// one, the base: its migrations (base, names only) and its manifest (bman). The number of
+// failures; each is printed unless run.quiet.
+mc_judge :: (tree: [] McFile, tn: int, man: [] McFile, mn: int, base: [] McFile, bn: int, has_base: bool,
+             bman: [] McFile, bmn: int, has_bman: bool, base_rev: string, run: McRun) -> int {
+  bad := 0;
+  for k: 0..<tn {
+    f := tree[k];
+    if !mc_name_ok(f.name) {
+      bad += 1;
+      if !run.quiet { print("FAIL name: %/% is not NNNN_lowercase_words.sql (%)\n", MC_DIR, f.name, MC_HOW); }
+    }
+    b := ifx has_bman then mc_find(bman, bmn, f.name) else -1;
+    m := mc_find(man, mn, f.name);
+    if b >= 0 && bman[b].hash != f.hash {
+      bad += 1;
+      if !run.quiet { print("FAIL applied: %/% changed after it reached %. Production applied it by name and will not run it again. Fix: restore it (git checkout % -- %/%) and put the change in a new migration (%).\n", MC_DIR, f.name, base_rev, base_rev, MC_DIR, f.name, MC_HOW); }
+    } else if m < 0 {
+      bad += 1;
+      if !run.quiet { print("FAIL manifest: %/% has no line in %. Fix: % --write\n", MC_DIR, f.name, MC_MANIFEST, MC_TOOL); }
+    } else if man[m].hash != f.hash {
+      bad += 1;
+      if b >= 0 { if !run.quiet { print("FAIL applied: %'s line for % changed after it reached %. Fix: restore the line (% --write puts it back).\n", MC_MANIFEST, f.name, base_rev, MC_TOOL); } }
+      else if !run.quiet { print("FAIL manifest: %/% does not match its line in %. A migration that has not landed may still change. Fix: % --write\n", MC_DIR, f.name, MC_MANIFEST, MC_TOOL); }
+    }
+  }
+  // a manifest line with no file
+  for k: 0..<mn {
+    if mc_find(tree, tn, man[k].name) >= 0 { continue; }
+    if (has_base && mc_find(base, bn, man[k].name) >= 0) || (has_bman && mc_find(bman, bmn, man[k].name) >= 0) { continue; }
+    bad += 1;
+    if !run.quiet { print("FAIL manifest: % lists %, and there is no such file. Fix: % --write\n", MC_MANIFEST, man[k].name, MC_TOOL); }
+  }
+  // an applied migration removed or renamed
+  for pass: 0..<2 {
+    list := ifx pass == 0 then base else bman;
+    n := ifx pass == 0 then (ifx has_base then bn else 0) else (ifx has_bman then bmn else 0);
+    for k: 0..<n {
+      name := list[k].name;
+      if mc_find(tree, tn, name) >= 0 { continue; }
+      if pass == 1 && has_base && mc_find(base, bn, name) >= 0 { continue; }
+      bad += 1;
+      if !run.quiet { print("FAIL applied: %/% is on % and not here. Production applied it by name: removing it does nothing there, and a renamed file runs again. Fix: bring it back unchanged; if this branch is behind %, rebase onto it (%).\n", MC_DIR, name, base_rev, base_rev, MC_HOW); }
+    }
+  }
+  // "shared" marks only the numbers already taken twice
+  if has_bman {
+    for k: 0..<mn {
+      if !man[k].shared { continue; }
+      b := mc_find(bman, bmn, man[k].name);
+      if b >= 0 && bman[b].shared { continue; }
+      bad += 1;
+      if !run.quiet { print("FAIL shared: % marks % shared, and %'s copy does not. Only the numbers taken twice before this check share. Fix: give the new migration the next free number (%).\n", MC_MANIFEST, man[k].name, base_rev, MC_HOW); }
+    }
+  }
+  // one number, one file
+  for k: 0..<tn {
+    v := mc_number(tree[k].name);
+    if v < 0 { continue; }
+    for j: k + 1..<tn {
+      if mc_number(tree[j].name) != v { continue; }
+      mk := mc_find(man, mn, tree[k].name); mj := mc_find(man, mn, tree[j].name);
+      if mk >= 0 && mj >= 0 && man[mk].shared && man[mj].shared { continue; }
+      bad += 1;
+      if !run.quiet { print("FAIL number: % and % both take number %. Fix: rebase onto % and give the new one the next free number (%).\n", tree[k].name, tree[j].name, v, base_rev, MC_HOW); }
+    }
+  }
+  // a new migration goes after every migration the base has
+  if has_base {
+    top := mc_highest(base, bn);
+    next: [4] u8;
+    for k: 0..<tn {
+      if mc_find(base, bn, tree[k].name) >= 0 { continue; }
+      v := mc_number(tree[k].name);
+      if v < 0 || v > top { continue; }
+      bad += 1;
+      if !run.quiet { print("FAIL number: %/% is new, and its number % is not above %'s highest, %. Migrations run in name order, so it would run before ones production already applied. Fix: rebase onto % and rename it to %_... (%).\n", MC_DIR, tree[k].name, v, base_rev, top, base_rev, mc_pad4(top + 1, next[..]), MC_HOW); }
+    }
+  }
+  return bad;
+}
+
+// The manifest for the tree: each file's line from the base's manifest when it has one (an
+// applied migration keeps its hash and mark), else its hash now. Without a base manifest (the
+// commit that seeds it) a number two files share is marked shared. Its text in out.
+MC_HEADER :: "# The API's migrations (coax/web/api/migrations), one line each: NAME SHA256 [shared].\n# Production applies a migration once, by name (api.c, migrate()), so a migration that\n# reached main never changes and is never renamed: put a change in a new migration.\n# \"shared\": a number two files took before this check (#13301), kept as they are.\n# New migrations' lines: coax/web/tool.sh coax/web/api/migration-check.coax --write\n# How to pick a number: coax/web/api/migrations/README.md\n";
+mc_manifest_text :: (tree: [] McFile, tn: int, bman: [] McFile, bmn: int, has_bman: bool, out: [] u8) -> string {
+  at: [1] int;
+  mc_put(out, at[..], MC_HEADER);
+  for k: 0..<tn {
+    b := ifx has_bman then mc_find(bman, bmn, tree[k].name) else -1;
+    hash := ifx b >= 0 then bman[b].hash else tree[k].hash;
+    shared := ifx has_bman then b >= 0 && bman[b].shared else mc_number_shared(tree, tn, k);
+    mc_put(out, at[..], tree[k].name); mc_put(out, at[..], " "); mc_put(out, at[..], hash);
+    if shared { mc_put(out, at[..], " shared"); }
+    mc_put(out, at[..], "\n");
+  }
+  return cast(string) out[0..<at[0]];
+}
+
+// ---- the schema
+
+// pg_dump's text with what changes from one run or version to the next taken out (its version
+// lines, PG 16.10's \restrict lines and their random keys, PG 17's transaction_timeout, and the
+// client encoding, which follows the cluster's), under a header; into out.
+MC_SCHEMA_HEADER :: "-- The API's database schema after every migration in coax/web/api/migrations, from a fresh\n-- Postgres 16 (pg_dump --schema-only --no-owner --no-privileges). Generated: do not edit.\n-- A function's or table's live definition is here, whichever migration last changed it.\n-- Regenerate: coax/remote/remote.sh run -- coax/web/tool.sh coax/web/api/migration-check.coax --schema --write\n";
+mc_normalize :: (dump: string, out: [] u8) -> string {
+  at: [1] int;
+  mc_put(out, at[..], MC_SCHEMA_HEADER);
+  i := 0;
+  while i < dump.count {
+    j := i;
+    while j < dump.count && dump[j] != '\n' { j += 1; }
+    line := cast(string) dump[i..<j]; i = j + 1;
+    if mc_starts(line, "-- Dumped from database version") || mc_starts(line, "-- Dumped by pg_dump version") ||
+       mc_starts(line, "\\restrict") || mc_starts(line, "\\unrestrict") || mc_starts(line, "SET transaction_timeout") ||
+       mc_starts(line, "SET client_encoding") { continue; }
+    mc_put(out, at[..], line); mc_put(out, at[..], "\n");
+  }
+  return cast(string) out[0..<at[0]];
+}
+// The first line where a and b differ (1-based), or 0 when they are the same.
+mc_first_diff :: (a: string, b: string) -> int {
+  line := 1;
+  n := ifx a.count < b.count then a.count else b.count;
+  for k: 0..<n {
+    if a[k] != b[k] { return line; }
+    if a[k] == '\n' { line += 1; }
+  }
+  return ifx a.count == b.count then 0 else line;
+}
+// Line k (1-based) of s, or "".
+mc_line :: (s: string, k: int) -> string {
+  n := 1; i := 0;
+  while i <= s.count {
+    j := i;
+    while j < s.count && s[j] != '\n' { j += 1; }
+    if n == k { return cast(string) s[i..<j]; }
+    n += 1; i = j + 1;
+  }
+  return "";
+}
+
+// A path joined into its own buffer row.
+McPath :: struct { b: [4096] u8; }
+mc_join :: (p: [] McPath, dir: string, name: string) -> string { return fs_join(dir, name, p[0].b[..]); }
+
+// Runs argv to its end; false (with its stderr) when it could not start or did not exit 0.
+mc_exec :: (what: string, argv: [] string) -> bool {
+  out: [65536] u8; err: [8192] u8;
+  r := proc_run(argv, 600000, out[..], err[..]);
+  if r.started == 0 && r.status == 0 && !r.timed_out { return true; }
+  tool_err("migration-check: "); tool_err(what); tool_err(" failed");
+  if r.started != 0 { tool_err(" (could not start "); tool_err(argv[0]); tool_err(")"); }
+  tool_errln(":");
+  tool_errln(cast(string) err[0..<r.err_n]);
+  return false;
+}
+
+// --schema: the schema a fresh database has after every migration, or the schema of the database
+// at --host/--port, against coax/web/api/schema.sql (--write: written there).
+mc_schema :: (args: [] Args, tree: [] McFile, tn: int) -> int {
+  pin: [1] McPath; pinit: [1] McPath; pctl: [1] McPath; psql: [1] McPath; pdump: [1] McPath;
+  pgbin := args_value(args, "--pgbin", "");
+  if pgbin == "" {
+    homes := [2] string.["/usr/lib/postgresql/16/bin", "/opt/homebrew/opt/postgresql@16/bin"];
+    for h: homes { if pgbin == "" && fs_exists(mc_join(pin[..], h, "initdb")) { pgbin = h; } }
+    if pgbin == "" { tool_errln("migration-check --schema: no Postgres 16 here (/usr/lib/postgresql/16/bin, /opt/homebrew/opt/postgresql@16/bin; --pgbin DIR). Run it on a build host: coax/remote/remote.sh run -- coax/web/tool.sh coax/web/api/migration-check.coax --schema"); return 2; }
+  }
+  initdb := mc_join(pinit[..], pgbin, "initdb"); pg_ctl := mc_join(pctl[..], pgbin, "pg_ctl");
+  psql_bin := mc_join(psql[..], pgbin, "psql"); pg_dump := mc_join(pdump[..], pgbin, "pg_dump");
+  cwd_buf: [4096] u8;
+  cwd := fs_cwd(cwd_buf[..]);
+  tmp_buf: [4096] u8;
+  tmp := fs_temp("oa-schema", tmp_buf[..]);
+  if tmp == "" { tool_errln("migration-check: no temporary directory"); return 2; }
+  pdb: [1] McPath; plog: [1] McPath; papply: [1] McPath; pout: [1] McPath;
+  db := mc_join(pdb[..], tmp, "db"); pglog := mc_join(plog[..], tmp, "pg.log");
+  apply := mc_join(papply[..], tmp, "apply.sql"); dump_path := mc_join(pout[..], tmp, "schema.sql");
+  host := args_value(args, "--host", ""); port := args_value(args, "--port", "5432");
+  own := host == "";
+  ok := true;
+  if own {
+    host = tmp;
+    i := [11] string.[initdb, "-D", db, "-U", "postgres", "-A", "trust", "-N", "--locale=C", "-E", "UTF8"];
+    ok = mc_exec("initdb", i[..]);
+    opts: [8192] u8; at: [1] int;
+    mc_put(opts[..], at[..], "-p "); mc_put(opts[..], at[..], port); mc_put(opts[..], at[..], " -k "); mc_put(opts[..], at[..], tmp);
+    mc_put(opts[..], at[..], " -c listen_addresses=''");
+    s := [9] string.[pg_ctl, "-D", db, "-o", cast(string) opts[0..<at[0]], "-l", pglog, "-w", "start"];
+    ok = ok && mc_exec("pg_ctl start", s[..]);
+    r2 := [15] string.[psql_bin, "-X", "-q", "-v", "ON_ERROR_STOP=1", "-h", tmp, "-p", port, "-U", "postgres", "-c", "CREATE ROLE oa_analytics LOGIN", "-c", "CREATE DATABASE oa_analytics OWNER oa_analytics"];
+    ok = ok && mc_exec("psql (the role and database)", r2[..]);
+    // every migration as migrate() applies it: each in its own transaction, named in oa.allow_ddl
+    script: [MC_TEXT] u8; sat: [1] int;
+    mc_put(script[..], sat[..], MC_RUNNER_TABLE); mc_put(script[..], sat[..], ";\n");
+    for k: 0..<tn {
+      mc_put(script[..], sat[..], "BEGIN;\nSELECT set_config('oa.allow_ddl', '"); mc_put(script[..], sat[..], tree[k].name);
+      mc_put(script[..], sat[..], "', true);\n\\i '"); mc_put(script[..], sat[..], cwd); mc_put(script[..], sat[..], "/");
+      mc_put(script[..], sat[..], MC_DIR); mc_put(script[..], sat[..], "/"); mc_put(script[..], sat[..], tree[k].name);
+      mc_put(script[..], sat[..], "'\nCOMMIT;\n");
+    }
+    ok = ok && sat[0] < script.count && fs_write(apply, cast(string) script[0..<sat[0]]);
+    a := [17] string.[psql_bin, "-X", "-q", "-o", "/dev/null", "-v", "ON_ERROR_STOP=1", "-h", tmp, "-p", port, "-U", "oa_analytics", "-d", "oa_analytics", "-f", apply];
+    ok = ok && mc_exec("applying the migrations", a[..]);
+  }
+  d := [14] string.[pg_dump, "-h", host, "-p", port, "-U", "postgres", "-d", "oa_analytics", "--schema-only", "--no-owner", "--no-privileges", "-f", dump_path];
+  ok = ok && mc_exec("pg_dump", d[..]);
+  raw: [MC_DUMP] u8; norm: [MC_DUMP] u8; have: [MC_DUMP] u8;
+  rn := ifx ok then fs_read(dump_path, raw[..]) else -1;
+  if own {
+    st := [6] string.[pg_ctl, "-D", db, "-m", "immediate", "stop"];
+    stopped := mc_exec("pg_ctl stop", st[..]);
+    rm := [3] string.["rm", "-rf", tmp];
+    removed := mc_exec("removing the temporary cluster", rm[..]);
+  } else {
+    rm := [3] string.["rm", "-rf", tmp];
+    removed := mc_exec("removing the temporary folder", rm[..]);
+  }
+  if !ok || rn < 0 { tool_errln("migration-check --schema: no schema (above)"); return 2; }
+  got := mc_normalize(cast(string) raw[0..<rn], norm[..]);
+  if args_has(args, "--write") {
+    if !fs_write(MC_SCHEMA, got) { print("migration-check: could not write %\n", MC_SCHEMA); return 2; }
+    print("migration-check: wrote % (% bytes, % migrations)\n", MC_SCHEMA, got.count, tn);
+    return 0;
+  }
+  hn := fs_read(MC_SCHEMA, have[..]);
+  if hn < 0 { print("FAIL schema: there is no %. Fix: %\n", MC_SCHEMA, MC_FIX_SCHEMA); return 1; }
+  line := mc_first_diff(cast(string) have[0..<hn], got);
+  if line != 0 {
+    print("FAIL schema: % is out of date: from line % it differs from the schema % gives.\n  committed: %\n  fresh:     %\nFix: %\n",
+          MC_SCHEMA, line, ifx own then "a fresh database after every migration" else "the API's migrated database",
+          mc_line(cast(string) have[0..<hn], line), mc_line(got, line), MC_FIX_SCHEMA);
+    return 1;
+  }
+  print("migration-check --schema: % matches % (% migrations)\n", MC_SCHEMA, ifx own then "a fresh database" else "the API's database", tn);
+  return 0;
+}
+
+// ---- the program
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh coax/web/api/migration-check.coax [--base REV] [--write] [--schema [--write] [--pgbin DIR] [--host DIR --port N]]"); return 2; }
+  run: McRun;
+  err: [8192] u8;
+
+  // the tree: every .sql file in the folder, with its hash
+  listing: [1] FsList;
+  ln := fs_list(MC_DIR, listing[..]);
+  if ln < 0 || listing[0].full { print("migration-check: can't list %; run from the repository root\n", MC_DIR); return 2; }
+  tree: [MC_MAX] McFile; tn := 0;
+  hashes: [MC_MAX * 64] u8;
+  body: [MC_TEXT] u8;
+  path: [1] McPath;
+  digits := "0123456789abcdef";
+  for k: 0..<ln {
+    name := fs_entry(listing[..], k);
+    if !mc_ends(name, ".sql") { continue; }
+    if tn >= MC_MAX { print("migration-check: more than % migrations\n", MC_MAX); return 2; }
+    n := fs_read(mc_join(path[..], MC_DIR, name), body[..]);
+    if n < 0 { print("migration-check: can't read %/%\n", MC_DIR, name); return 2; }
+    raw: [32] u8;
+    if sha256_hash_checked(body[0..<n], raw[..], false) != SHA_OK { print("migration-check: can't hash %\n", name); return 2; }
+    for i: 0..<32 { hashes[tn * 64 + i * 2] = digits[cast(int) (raw[i] >> 4)]; hashes[tn * 64 + i * 2 + 1] = digits[cast(int) (raw[i] & 15)]; }
+    tree[tn].name = name; tree[tn].hash = cast(string) hashes[tn * 64..<tn * 64 + 64]; tn += 1;
+  }
+
+  if args_has(args[..], "--schema") { return mc_schema(args[..], tree[..], tn); }
+
+  // the manifest
+  mtext: [MC_TEXT] u8;
+  man: [MC_MAX] McFile;
+  mlen := fs_read(MC_MANIFEST, mtext[..]);
+  mn := 0;
+  if mlen >= 0 { mn = mc_parse_manifest(cast(string) mtext[0..<mlen], man[..], run); }
+
+  // the base: its migrations and its manifest
+  // the default base is where this tree's history meets origin/main: a commit behind main is
+  // judged against what main had then, not against migrations that landed after it
+  mb_buf: [256] u8;
+  base_rev := args_value(args[..], "--base", "");
+  if base_rev == "" {
+    base_rev = "origin/main";
+    mb := [4] string.["git", "merge-base", "HEAD", "origin/main"];
+    r := proc_run(mb[..], 60000, mb_buf[..], err[..]);
+    if r.started == 0 && r.status == 0 && !r.cut && r.out_n >= 40 { base_rev = mc_trim(cast(string) mb_buf[0..<r.out_n]); }
+  }
+  base: [MC_MAX] McFile; bn := 0; has_base := false;
+  bman: [MC_MAX] McFile; bmn := 0; has_bman := false;
+  btext: [MC_TEXT] u8; bmtext: [MC_TEXT] u8;
+  commit: [1024] u8; cn := 0;
+  for c: base_rev { if cn < 1000 { commit[cn] = c; cn += 1; } }
+  for c: "^{commit}" { commit[cn] = c; cn += 1; }
+  rp := [5] string.["git", "rev-parse", "--verify", "--quiet", cast(string) commit[0..<cn]];
+  v := proc_run(rp[..], 60000, btext[..], err[..]);
+  if v.started != 0 || v.status != 0 {
+    print("note: % is not a commit here, so new migrations were not compared with it; pass --base REV\n", base_rev);
+  } else {
+    lt := [6] string.["git", "ls-tree", "--name-only", cast(string) commit[0..<cn], "--", "coax/web/api/migrations/"];
+    t := proc_run(lt[..], 60000, btext[..], err[..]);
+    if t.started != 0 || t.status != 0 || t.cut { tool_errln("migration-check: git ls-tree failed"); return 2; }
+    bn = mc_parse_names(cast(string) btext[0..<t.out_n], base[..]); has_base = true;
+    spec: [1024] u8; sn := 0;
+    for c: base_rev { if sn < 900 { spec[sn] = c; sn += 1; } }
+    spec[sn] = ':'; sn += 1;
+    for c: MC_MANIFEST { spec[sn] = c; sn += 1; }
+    show := [3] string.["git", "show", cast(string) spec[0..<sn]];
+    s := proc_run(show[..], 60000, bmtext[..], err[..]);
+    if s.started == 0 && s.status == 0 && !s.cut {
+      bmn = mc_parse_manifest(cast(string) bmtext[0..<s.out_n], bman[..], McRun.{quiet = true});
+      if bmn < 0 { print("FAIL manifest: %'s % does not parse\n", base_rev, MC_MANIFEST); return 1; }
+      has_bman = true;
+    } else {
+      print("note: % has no %, so this is its seed: numbers two files share now are marked shared\n", base_rev, MC_MANIFEST);
+    }
+  }
+
+  if args_has(args[..], "--write") {
+    out: [MC_TEXT] u8;
+    text := mc_manifest_text(tree[..], tn, bman[..], bmn, has_bman, out[..]);
+    if !fs_write(MC_MANIFEST, text) { print("migration-check: could not write %\n", MC_MANIFEST); return 2; }
+    mlen = fs_read(MC_MANIFEST, mtext[..]);
+    mn = mc_parse_manifest(cast(string) mtext[0..<mlen], man[..], run);
+    print("migration-check: wrote % (% migrations)\n", MC_MANIFEST, tn);
+  }
+  if mlen < 0 { print("FAIL manifest: there is no %. Fix: % --write\n", MC_MANIFEST, MC_TOOL); return 1; }
+  if mn < 0 { return 1; }
+
+  bad := mc_judge(tree[..], tn, man[..], mn, base[..], bn, has_base, bman[..], bmn, has_bman, base_rev, run);
+  shared := 0;
+  for k: 0..<mn { if man[k].shared { shared += 1; } }
+  top := mc_highest(tree[..], tn);
+  print("migration-check: % migrations, highest number %, % of them on numbers taken twice before #13301; % failed\n", tn, top, shared, bad);
+  return ifx bad == 0 then 0 else 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+MC_T_QUIET :: McRun.{quiet = true};
+MC_H1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+MC_H2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+MC_H3 :: "3333333333333333333333333333333333333333333333333333333333333333";
+MC_H4 :: "4444444444444444444444444444444444444444444444444444444444444444";
+// main: three migrations, two of them on a number taken twice before the check
+MC_T_MAIN :: "0017_a.sql 1111111111111111111111111111111111111111111111111111111111111111 shared\n0017_b.sql 2222222222222222222222222222222222222222222222222222222222222222 shared\n0018_c.sql 3333333333333333333333333333333333333333333333333333333333333333\n";
+
+mc_t_files :: (out: [] McFile, names: [] string, hashes: [] string) -> int {
+  for k: 0..<names.count { out[k].name = names[k]; out[k].hash = hashes[k]; out[k].shared = false; }
+  return names.count;
+}
+// The tree (names and hashes) judged against a manifest and main (MC_T_MAIN, its files the base).
+mc_t_judge :: (names: [] string, hashes: [] string, manifest: string) -> int {
+  tree: [16] McFile; man: [16] McFile; base: [16] McFile; bman: [16] McFile;
+  tn := mc_t_files(tree[..], names, hashes);
+  mn := mc_parse_manifest(manifest, man[..], MC_T_QUIET);
+  bmn := mc_parse_manifest(MC_T_MAIN, bman[..], MC_T_QUIET);
+  bn := 0;
+  for k: 0..<bmn { base[k].name = bman[k].name; bn += 1; }
+  if mn < 0 || bmn < 0 { return -1; }
+  return mc_judge(tree[..], tn, man[..], mn, base[..], bn, true, bman[..], bmn, true, "main", MC_T_QUIET);
+}
+
+#test "names and numbers" {
+  #assert mc_number("0162_chat_record_log.sql") == 162 && mc_number("0017_a.sql") == 17 && mc_number("162_a.sql") == -1 && mc_number("01a2_a.sql") == -1 && mc_number("0162-a.sql") == -1;
+  #assert mc_name_ok("0162_chat_record_log.sql") && mc_name_ok("0001_a2.sql");
+  #assert !mc_name_ok("0162_Chat.sql") && !mc_name_ok("0162_a-b.sql") && !mc_name_ok("0162_.sql") && !mc_name_ok("0162_a.txt") && !mc_name_ok("162_a.sql");
+  p: [4] u8;
+  #assert mc_pad4(163, p[..]) == "0163" && mc_pad4(7, p[..]) == "0007";
+  #assert mc_word("a  b c", 1) == "b" && mc_word("a b", 2) == "" && mc_base("coax/web/api/migrations/0001_a.sql") == "0001_a.sql";
+  l: [4] McFile;
+  #assert mc_parse_names("coax/web/api/migrations/0001_a.sql\ncoax/web/api/migrations/README.md\ncoax/web/api/migrations/0002_b.sql\n", l[..]) == 2 && l[1].name == "0002_b.sql";
+}
+#test "the manifest: NAME SHA256 [shared], once a name" {
+  m: [8] McFile;
+  #assert mc_parse_manifest(MC_T_MAIN, m[..], MC_T_QUIET) == 3 && m[0].shared && m[1].shared && !m[2].shared && m[2].hash == MC_H3;
+  #assert mc_parse_manifest("# a comment\n\n0001_a.sql 1111111111111111111111111111111111111111111111111111111111111111  # why\n", m[..], MC_T_QUIET) == 1;
+  #assert mc_parse_manifest("0001_a.sql 11\n", m[..], MC_T_QUIET) == -1;
+  #assert mc_parse_manifest("0001_a.sql 1111111111111111111111111111111111111111111111111111111111111111 old\n", m[..], MC_T_QUIET) == -1;
+  #assert mc_parse_manifest("0001_a.sql 111111111111111111111111111111111111111111111111111111111111111G\n", m[..], MC_T_QUIET) == -1;
+  #assert mc_parse_manifest("0001_a.sql 1111111111111111111111111111111111111111111111111111111111111111\n0001_a.sql 1111111111111111111111111111111111111111111111111111111111111111\n", m[..], MC_T_QUIET) == -1;
+}
+#test "main as it is passes, and a new migration on the next number passes" {
+  names := [3] string.["0017_a.sql", "0017_b.sql", "0018_c.sql"];
+  hashes := [3] string.[MC_H1, MC_H2, MC_H3];
+  #assert mc_t_judge(names[..], hashes[..], MC_T_MAIN) == 0;
+  more := [4] string.["0017_a.sql", "0017_b.sql", "0018_c.sql", "0019_d.sql"];
+  mh := [4] string.[MC_H1, MC_H2, MC_H3, MC_H4];
+  manifest: [4096] u8; at: [1] int;
+  mc_put(manifest[..], at[..], MC_T_MAIN); mc_put(manifest[..], at[..], "0019_d.sql "); mc_put(manifest[..], at[..], MC_H4); mc_put(manifest[..], at[..], "\n");
+  #assert mc_t_judge(more[..], mh[..], cast(string) manifest[0..<at[0]]) == 0;
+  // with no line for it, it fails until --write adds one
+  #assert mc_t_judge(more[..], mh[..], MC_T_MAIN) == 1;
+}
+#test "a deliberately duplicated number fails" {
+  // 0018 again (the 0162 clash of 2026-11-11): one failure for the shared number, one for not being above main's highest
+  names := [4] string.["0017_a.sql", "0017_b.sql", "0018_c.sql", "0018_d.sql"];
+  hashes := [4] string.[MC_H1, MC_H2, MC_H3, MC_H4];
+  manifest: [4096] u8; at: [1] int;
+  mc_put(manifest[..], at[..], MC_T_MAIN); mc_put(manifest[..], at[..], "0018_d.sql "); mc_put(manifest[..], at[..], MC_H4); mc_put(manifest[..], at[..], "\n");
+  #assert mc_t_judge(names[..], hashes[..], cast(string) manifest[0..<at[0]]) == 2;
+  // marking it shared to get through fails too
+  at[0] = 0;
+  mc_put(manifest[..], at[..], "0017_a.sql "); mc_put(manifest[..], at[..], MC_H1); mc_put(manifest[..], at[..], " shared\n0017_b.sql "); mc_put(manifest[..], at[..], MC_H2);
+  mc_put(manifest[..], at[..], " shared\n0018_c.sql "); mc_put(manifest[..], at[..], MC_H3); mc_put(manifest[..], at[..], " shared\n0018_d.sql "); mc_put(manifest[..], at[..], MC_H4); mc_put(manifest[..], at[..], " shared\n");
+  #assert mc_t_judge(names[..], hashes[..], cast(string) manifest[0..<at[0]]) == 3;
+  // a new number below main's highest, unused: still fails (it would run before applied ones)
+  low := [4] string.["0016_z.sql", "0017_a.sql", "0017_b.sql", "0018_c.sql"];
+  lh := [4] string.[MC_H4, MC_H1, MC_H2, MC_H3];
+  at[0] = 0;
+  mc_put(manifest[..], at[..], "0016_z.sql "); mc_put(manifest[..], at[..], MC_H4); mc_put(manifest[..], at[..], "\n"); mc_put(manifest[..], at[..], MC_T_MAIN);
+  #assert mc_t_judge(low[..], lh[..], cast(string) manifest[0..<at[0]]) == 1;
+}
+#test "an edited old migration fails, whether or not its line was edited too" {
+  names := [3] string.["0017_a.sql", "0017_b.sql", "0018_c.sql"];
+  edited := [3] string.[MC_H1, MC_H2, MC_H4];
+  #assert mc_t_judge(names[..], edited[..], MC_T_MAIN) == 1;
+  manifest: [4096] u8; at: [1] int;
+  mc_put(manifest[..], at[..], "0017_a.sql "); mc_put(manifest[..], at[..], MC_H1); mc_put(manifest[..], at[..], " shared\n0017_b.sql "); mc_put(manifest[..], at[..], MC_H2);
+  mc_put(manifest[..], at[..], " shared\n0018_c.sql "); mc_put(manifest[..], at[..], MC_H4); mc_put(manifest[..], at[..], "\n");
+  #assert mc_t_judge(names[..], edited[..], cast(string) manifest[0..<at[0]]) == 1;
+  // removed, or renamed (the runner would apply it again under its new name)
+  gone := [2] string.["0017_a.sql", "0017_b.sql"];
+  gh := [2] string.[MC_H1, MC_H2];
+  #assert mc_t_judge(gone[..], gh[..], MC_T_MAIN) >= 1;
+  renamed := [3] string.["0017_a.sql", "0017_b.sql", "0019_c.sql"];
+  rh := [3] string.[MC_H1, MC_H2, MC_H3];
+  #assert mc_t_judge(renamed[..], rh[..], MC_T_MAIN) >= 2;
+}
+#test "--write keeps applied lines, adds new ones, and marks shared numbers only in the seed" {
+  tree: [4] McFile; bman: [4] McFile;
+  names := [4] string.["0017_a.sql", "0017_b.sql", "0018_c.sql", "0019_d.sql"];
+  hashes := [4] string.[MC_H1, MC_H2, MC_H4, MC_H4];
+  tn := mc_t_files(tree[..], names[..], hashes[..]);
+  bmn := mc_parse_manifest(MC_T_MAIN, bman[..], MC_T_QUIET);
+  out: [8192] u8;
+  text := mc_manifest_text(tree[..], tn, bman[..], bmn, true, out[..]);
+  m: [8] McFile;
+  #assert mc_parse_manifest(text, m[..], MC_T_QUIET) == 4 && m[0].shared && m[1].shared && !m[3].shared;
+  // the edited 0018 keeps main's hash, so the check still fails on it
+  #assert m[2].hash == MC_H3 && m[3].hash == MC_H4;
+  seed := mc_manifest_text(tree[..], tn, bman[..], 0, false, out[..]);
+  #assert mc_parse_manifest(seed, m[..], MC_T_QUIET) == 4 && m[0].shared && m[1].shared && !m[2].shared && m[2].hash == MC_H4;
+}
+#test "the schema: pg_dump's run-to-run lines go, and the first different line is found" {
+  out: [8192] u8;
+  s := mc_normalize("--\n-- Dumped from database version 16.10\n-- Dumped by pg_dump version 16.10\n\\restrict abc\nSET x = 0;\nSET transaction_timeout = 0;\nSET client_encoding = 'UTF8';\nCREATE TABLE t (a int);\n\\unrestrict abc\n", out[..]);
+  #assert mc_starts(s, MC_SCHEMA_HEADER) && cast(string) s[MC_SCHEMA_HEADER.count..<s.count] == "--\nSET x = 0;\nCREATE TABLE t (a int);\n";
+  #assert mc_first_diff("a\nb\nc\n", "a\nb\nc\n") == 0 && mc_first_diff("a\nb\nc\n", "a\nx\nc\n") == 2 && mc_first_diff("a\n", "a\nb\n") == 2;
+  #assert mc_line("a\nb\nc", 2) == "b" && mc_line("a\nb", 3) == "";
+}
