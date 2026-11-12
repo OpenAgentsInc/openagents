@@ -12,7 +12,7 @@
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,
-// verse/, aethyr/, everglade/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
+// verse/, aethyr/, everglade/, rules/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
 // whose header (its first 80 lines) names itself in a `coax test` line. That
 // line is how it runs: `coax test apps/openagents-web/everglade.coax --steps
 // 2000000000` gives each of its tests 2,000,000,000 steps, and --library,
@@ -231,9 +231,11 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
   return n;
 }
 
-// Under apps/openagents-web/, verse/, aethyr/ (the engine core), everglade/ (the game), coax/web/ or coax/lib/, and not in a hidden folder (.dev scratch).
+// Under apps/openagents-web/, verse/, aethyr/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
+// check files ran as suites under aethyr/rules/srd/ and stopped when the folder moved, #13270), coax/web/ or coax/lib/,
+// and not in a hidden folder (.dev scratch).
 su_in :: (path: string) -> bool {
-  roots := [6] string.["apps/openagents-web/", "verse/", "aethyr/", "everglade/", "coax/web/", "coax/lib/"];
+  roots := [7] string.["apps/openagents-web/", "verse/", "aethyr/", "everglade/", "rules/", "coax/web/", "coax/lib/"];
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }
@@ -255,7 +257,7 @@ su_input :: (path: string) -> bool {
 su_web_input :: (path: string, faces: bool) -> bool {
   if su_input(path) { return true; }
   if faces && path.count > 2 && (su_starts(path, path.count - 2, ".c") || su_starts(path, path.count - 2, ".h")) { return false; }
-  roots := [10] string.["coax/platform/", "coax/lib/", "coax/web/", "apps/openagents-web/", "verse/", "aethyr/", "everglade/", "psionic/", "proto/", "protocol/"];
+  roots := [11] string.["coax/platform/", "coax/lib/", "coax/web/", "apps/openagents-web/", "verse/", "aethyr/", "everglade/", "rules/", "psionic/", "proto/", "protocol/"];
   for r: roots { if su_starts(path, 0, r) { return true; } }
   return false;
 }
