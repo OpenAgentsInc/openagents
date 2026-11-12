@@ -1,0 +1,69 @@
+// What the live checks of our own auth share (passkey-live.coax #13215, wallet-live.coax #13217):
+// the page's helpers (base64url, hex, fetch with this site's cookies), reading an evaluated
+// {s, t}, and making a new test account from a throwaway Nostr key signed here (NIP-98). Never the
+// owner's account: the key is made in the page and forgotten.
+#import "Basic";
+#load "../../lib/net/cdp.coax";
+#load "../../lib/nostr/event_sign.coax";
+#load "../../lib/sys/proc.coax";
+
+// The page's helpers: base64url both ways, hex, and fetch with this site's cookies.
+PL_JS :: "window.__pk={b64u:b=>{let s='';for(const x of new Uint8Array(b))s+=String.fromCharCode(x);return btoa(s).split('+').join('-').split('/').join('_').split('=').join('')},unb64u:s=>Uint8Array.from(atob(s.split('-').join('+').split('_').join('/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0)),hex:b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''),call:async(m,p,b,h)=>{const r=await fetch(p,{method:m,credentials:'same-origin',headers:Object.assign({'Content-Type':'application/json'},h||{}),body:m==='GET'?undefined:b});const t=await r.text();let j={};try{j=JSON.parse(t)}catch(e){}return {s:r.status,j,t:t.slice(0,400)}}};'ready'";
+PL_KEY :: "(async()=>{const k=__pk.hex(crypto.getRandomValues(new Uint8Array(32)));const c=await __pk.call('POST','/api/auth/nostr/challenge','{}');if(c.s!==200)return {s:c.s,t:c.t};window.__body=JSON.stringify({challenge:c.j.challenge,label:window.__label||'live-check'});const pay=__pk.hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(window.__body)));return {s:200,k,tags:JSON.stringify([['u',location.origin+'/api/auth/nostr'],['method','POST'],['payload',pay]]),at:Math.floor(Date.now()/1000)}})()";
+
+pl_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+pl_hexval :: (c: u8) -> int { if c >= '0' && c <= '9' { return cast(int) (c - '0'); } if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; } return -1; }
+pl_ok :: (what: string, good: bool, said: string) -> bool {
+  print("% %  %\n", ifx good then "ok  " else "FAIL", what, ifx good then "" else said);
+  return good;
+}
+// Evaluates js and answers its {s, t}: the status (0 when none) and the text into out.
+pl_eval :: (c: [] Cdp, js: string, text: [] u8) -> int {
+  v := cdp_evaluate(c, js);
+  if v < 0 { n := pl_put(text, 0, cdp_error(c)); return 0; }
+  d := c[0].doc[0];
+  for i: 0..<text.count { text[i] = 0; }
+  n := jv_str(d, jv_get(d, v, "t"), text[0..<text.count - 1]);
+  s := jv_raw(d, jv_get(d, v, "s")); st := 0;
+  for ch: s { if ch >= '0' && ch <= '9' { st = st * 10 + cast(int) (ch - '0'); } }
+  return st;
+}
+pl_text :: (t: [] u8) -> string { n := 0; while n < t.count && t[n] != 0 { n += 1; } return cast(string) t[0..<n]; }
+pl_has :: (s: string, want: string) -> bool {
+  if want.count > s.count { return false; }
+  for i: 0..<s.count - want.count + 1 { if s[i..<i + want.count] == want { return true; } }
+  return false;
+}
+
+// Logs a new test account in with a throwaway key, labelled label. false: it said why.
+pl_new_account :: (c: [] Cdp, label: string, t: [] u8) -> bool {
+  lj: [200] u8; ln := pl_put(lj[..], 0, "window.__label='"); ln = pl_put(lj[..], ln, label); ln = pl_put(lj[..], ln, "';'ok'");
+  if ln < 0 || cdp_evaluate(c, cast(string) lj[0..<ln]) < 0 { return false; }
+  v := cdp_evaluate(c, PL_KEY);
+  d := c[0].doc[0];
+  secret: [32] u8; tags: [512] u8; tn := 0; at := 0; signed := false;
+  if v >= 0 && jv_raw(d, jv_get(d, v, "s")) == "200" {
+    k := jv_raw(d, jv_get(d, v, "k"));
+    for i: 0..<32 { secret[i] = cast(u8) (pl_hexval(k[2*i]) * 16 + pl_hexval(k[2*i+1])); }
+    tn = jv_str(d, jv_get(d, v, "tags"), tags[..]);
+    for ch: jv_raw(d, jv_get(d, v, "at")) { if ch >= '0' && ch <= '9' { at = at * 10 + cast(int) (ch - '0'); } }
+    aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; ev: [4096] u8;
+    r := EVENT_MORE; steps := 0;
+    while r == EVENT_MORE && steps < 4096 { r = nostr_event_sign_step(secret[..], aux[..], at, 27235, cast(string) tags[0..<tn], "", work[..], scratch[..], ev[..], false); steps += 1; }
+    for i: 0..<32 { secret[i] = 0; }
+    if r > 0 {
+      js: [12000] u8; digits := "0123456789abcdef";
+      n := pl_put(js[..], 0, "(async()=>{const ev=new TextDecoder().decode(Uint8Array.from('");
+      for i: 0..<r { js[n] = digits[ev[i] >> 4]; js[n + 1] = digits[ev[i] & 15]; n += 2; }
+      n = pl_put(js[..], n, "'.match(/../g),h=>parseInt(h,16)));const r=await __pk.call('POST','/api/auth/nostr',window.__body,{Authorization:'Nostr '+btoa(ev)});return {s:r.s,t:r.t}})()");
+      st := pl_eval(c, cast(string) js[0..<n], t);
+      signed = pl_ok("a new test account logs in with a throwaway key", st == 200, pl_text(t));
+    }
+  }
+  if !signed { print("no test account (%)\n", ifx v >= 0 then jv_raw(d, jv_get(d, v, "t")) else cdp_error(c)); }
+  return signed;
+}

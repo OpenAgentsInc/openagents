@@ -10,6 +10,7 @@
 #define bip39_encode_ct arc_x_bip39_encode_ct
 #define bip39_entropy arc_x_bip39_entropy
 #define bip39_entropy_len arc_x_bip39_entropy_len
+#define bip39_normal24 arc_x_bip39_normal24
 #define bip39_seed arc_x_bip39_seed
 #define bip39_seed_ct arc_x_bip39_seed_ct
 #define bip39_words arc_x_bip39_words

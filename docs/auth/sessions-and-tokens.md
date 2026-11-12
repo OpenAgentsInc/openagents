@@ -102,8 +102,9 @@ alias. The shared code is `apps/shared/host/apple/DeviceKey.swift` and
 **A device key is not a way to log in.** It binds its own login's refresh
 tokens and nothing else. It doesn't count as a stronger way in, and it
 doesn't raise a session's level: an email-only person who logs in on a
-phone keeps a full session on the web. A device key becomes an L2 proof
-when spend step-up uses it (#13217).
+phone keeps a full session on the web. Spend step-up (#13217) asks for the
+passkey, which the phone's system verifies with Face ID and our server
+checks; a device key proves which phone a login is on, not who holds it.
 
 **Threats and their checks** (`coax/web/api/tests/auth_device_checks.coax`,
 and the rules' own checks in `auth-device-policy.coax`):

@@ -1,0 +1,49 @@
+// The wallet backup at its real scrypt cost, natively (#13217): coax test runs the recovery
+// secret at log_n 4 only (N = 2^17 needs 128 MiB), so this tool runs it at 16 and 17 and holds
+// the answers to two independent implementations:
+//   OpenSSL's scrypt, through Python's hashlib (coax/tests/nostr/vault_wallet_reference.py's
+//   vectors): the recovery secret at log_n 17, then the whole first backup made from the words
+//   the earlier Rust implementation's vector (0b401561a0^:fixtures/nips/vault/vectors.json):
+//   the recovery secret at log_n 16, and its slot opened with it
+//   coax/web/tool.sh coax/tests/nostr/vault_wallet_native.coax
+#load "../../lib/sys/tool.coax";
+#load "../../lib/nostr/vault-wallet.coax";
+
+vwn_say :: (ok: bool, what: string) -> int {
+  tool_err(ifx ok then "  ok    " else "  FAIL  "); tool_err(what); tool_err("\n");
+  return ifx ok then 0 else 1;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  memory: [134217728] u8; failed := 0;
+  work: [BIP39_WORK_BYTES] u8; words: [BIP39_MAX_TEXT] u8; tb: [400] u8;
+  // ---- OpenSSL's answer at log_n 17, from the words as a person would type them
+  typed := "Legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth  TITLE ";
+  n := wb_code_normal(vt_u8(typed, tb[..]), work[..], words[..]);
+  salt: [16] u8; secret: [32] u8; want: [32] u8;
+  ok := n == WBT_CODE.count && wb_recovery_params(WBT_SLOT_RECOVERY, salt[..]) == 17 && wb_recovery_secret(words[0..<n], salt[..], memory[..], 17, secret[..]);
+  failed += vwn_say(ok && wbt_same(secret[..], WBT_CODE_SECRET), "the recovery secret at N = 2^17 is OpenSSL's scrypt of the same words and salt");
+  // ---- the whole first backup from those words: the reference's bytes, and it verifies
+  fresh: [WB_FRESH] u8; vt_hex_test(WBT_FRESH, fresh[..]); prf: [32] u8; vt_hex_test(WBT_PRF_SECRET, prf[..]); cred: [20] u8; seed: [16] u8;
+  slots: [WB_SLOTS_TEXT_MAX] u8; object: [WB_OBJECT_MAX] u8; j: [8192] u8; ob: [WB_OBJECT_MAX] u8;
+  ok = vt_b64(WBT_CREDENTIAL, cred[..], 20);
+  m := wb_make(slots[..], object[..], WBT_ACCOUNT, 1, WBT_T0, seed[..], prf[..], cred[..], "openagents.com", "iPhone (test)", secret[..], salt[..], 17, fresh[..]);
+  blob := vt_blob_test(WBT_OBJECT_1, ob[..]);
+  failed += vwn_say(ok && m.code == WB_OK && cast(string) slots[0..<m.slots] == wbt_join(j[..], WBT_SLOT_PRF, WBT_SLOT_RECOVERY, "") && cast(string) object[0..<m.object] == blob,
+                    "a first backup made from the words is the reference's slots and object, byte for byte");
+  failed += vwn_say(wb_verify(object[0..<m.object], cast(string) slots[0..<m.slots], WBT_ACCOUNT, 1, prf[..], cred[..], secret[..], seed[..]) == WB_OK,
+                    "it opens to the seed through the passkey's slot and through the recovery code's");
+  secret[0] ^= 1;
+  failed += vwn_say(wb_verify(object[0..<m.object], cast(string) slots[0..<m.slots], WBT_ACCOUNT, 1, prf[..], cred[..], secret[..], seed[..]) == WB_SECRET,
+                    "one wrong bit of the recovery secret opens nothing");
+  // ---- the Rust implementation's vector at log_n 16
+  n = wb_code_normal(vt_u8(VT_RUST_RECOVERY_WORDS, tb[..]), work[..], words[..]);
+  rs: [16] u8; vmk: [32] u8;
+  ok = n == VT_RUST_RECOVERY_WORDS.count && wb_recovery_params(VT_RUST_SLOT_RECOVERY, rs[..]) == 16 && wb_recovery_secret(words[0..<n], rs[..], memory[0..<67108864], 16, secret[..]);
+  failed += vwn_say(ok && wbt_same(secret[..], VT_RUST_SECRET_RECOVERY), "the recovery secret at N = 2^16 is the Rust implementation's for its words and salt");
+  failed += vwn_say(wb_vmk(VT_RUST_SLOT_RECOVERY, secret[..], vmk[..]) && wbt_same(vmk[..], VT_RUST_VMK), "and it opens the Rust implementation's recovery slot to its vault key");
+  e: [32] u8; vt_hex_test(VT_RUST_RECOVERY_ENTROPY, e[..]);
+  n = wb_code_words(e[..], work[..], words[..]);
+  failed += vwn_say(n == VT_RUST_RECOVERY_WORDS.count && cast(string) words[0..<n] == VT_RUST_RECOVERY_WORDS, "a recovery code's 24 words are the Rust implementation's for the same 32 bytes");
+  tool_err(ifx failed == 0 then "wallet backup, native: every check passed\n" else "wallet backup, native: FAILED\n");
+  return ifx failed == 0 then 0 else 1;
+}

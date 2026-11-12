@@ -1,0 +1,753 @@
+// The wallet seed's backup (#13217; docs/auth/wallets-and-custody.md; NIP-VAULT "Wallet seed
+// backup"). A person's device seals its wallet seed in a NIP-VAULT tier user vault of one object,
+// and we store the bytes. Nothing we store opens it:
+//
+//   the object    the record below under a random data key (DEK), AES-256-GCM
+//   its one wrap  the DEK under K_user_wrap, which comes from the vault master key (VMK)
+//   each slot     the VMK under one secret that never leaves the person:
+//                   passkey-prf  the passkey's PRF output for WB_PRF_INPUT (32 bytes made inside
+//                                the authenticator; a server sees neither it nor anything of it)
+//                   recovery     scrypt(the 24 words, salt, N = 2^17, r = 8, p = 1); the words are
+//                                256 random bits made on the device, shown once, never sent
+//                   nostr        32 random bytes sealed with NIP-44 to the person's own key
+//
+// The record is the plaintext, exactly its JCS form:
+//   {"account","created_at","entropy","epoch","requires":[],"slots":[ids],"v":WB_V,"vault"}
+// Its account, epoch and slot list are inside the seal, so they hold or the tag fails. wb_open
+// refuses a record for another account (WB_ACCOUNT), one whose epoch isn't the one the server
+// named (WB_EPOCH), one older than this device has seen (WB_ROLLBACK), and one opened through a
+// slot the record doesn't list (WB_UNLISTED: a removed slot handed back).
+//
+// A backup counts with a recovery slot and a passkey-prf slot (wb_enough); the server runs the
+// same rule on the same slot texts (coax/web/api/wallet-vault.coax). Every random byte is the
+// caller's, so the checks make coax/tests/nostr/vault_wallet_reference.py's vectors byte for byte.
+//   coax/bin/coax test coax/lib/nostr/vault-wallet.coax
+//   coax/bin/coax mutate coax/lib/nostr/vault-wallet.coax --root-only
+#load "vault-seal.coax";
+#load "../crypto/scrypt_nip49.coax";
+#load "../crypto/bip39-phrase.coax";
+#authority;
+
+WB_V :: "openagents.wallet-backup.v1";
+WB_PRF_INPUT :: "openagents.wallet-backup.v1/prf";   // the PRF input is the SHA-256 of these bytes
+WB_SLOTS_MAX :: 8;
+WB_CHUNK :: 1024;        // the record is one chunk
+WB_OBJECT_MAX :: 4096;   // an object's bytes at most
+WB_SLOTS_TEXT_MAX :: 24576;   // every slot's text, a newline between them
+WB_LOG_N :: 17;          // the recovery slot's scrypt cost (128 MiB)
+WB_FRESH :: 235;         // wb_make's random bytes
+WB_FRESH_OBJECT :: 83;   // wb_object's: the DEK, the object id, the wrap's nonce, the chunk prefix
+
+WB_OK :: 0;
+WB_SLOT :: 1;            // a slot isn't a NIP-VAULT slot this backup takes
+WB_VAULT :: 2;           // slots or the record name different vaults
+WB_DUPLICATE :: 3;       // two slots with one id
+WB_TOO_MANY :: 4;        // more than WB_SLOTS_MAX slots, or none
+WB_NEEDS_RECOVERY :: 5;  // no recovery-code slot
+WB_NEEDS_PASSKEY :: 6;   // no passkey slot
+WB_OBJECT :: 7;          // the object isn't one this backup makes
+WB_SECRET :: 8;          // the slot didn't open: another secret, or a changed slot
+WB_RECORD :: 9;          // it opened, and what is inside isn't a record
+WB_ACCOUNT :: 10;        // a record for another account
+WB_EPOCH :: 11;          // the record's epoch isn't the one named
+WB_ROLLBACK :: 12;       // an older backup than this device has seen
+WB_UNLISTED :: 13;       // opened through a slot the record doesn't list
+WB_ROOM :: 14;
+WB_INPUT :: 15;          // a caller's value of the wrong size
+WB_MISMATCH :: 16;       // it opens, to another seed
+
+WbSet :: struct {code:int;count:int;prf:int;recovery:int;nostr:int;vault:string;ids:[WB_SLOTS_MAX]string;}
+WbRecord :: struct {code:int;account:string;vault:string;entropy:string;epoch:int;created_at:int;count:int;ids:[WB_SLOTS_MAX]string;}
+WbOpened :: struct {code:int;n:int;epoch:int;}
+WbMade :: struct {code:int;slots:int;object:int;}
+WbSpan :: struct {from:int = -1;to:int = -1;}
+WbPlain :: struct {record:[WB_CHUNK]u8;vmk:[32]u8;}
+WbFresh :: struct {b:[WB_FRESH_OBJECT]u8;plain:[1]WbPlain;}
+WbNostr :: struct {p:[1]VtPlain;hexed:[64]u8;}
+WbVerify :: struct {plain:[1]WbPlain;back:[32]u8;}
+
+#load "../../tests/nostr/vault_wallet_fixtures.coax";
+
+// ---------------------------------------------------------------- for the checks
+wbt_join :: (out:[]u8,a:string,b:string,c:string)->string #effects(all) {
+  n:=json_raw(out,0,a);if b.count>0 {n=json_raw(out,n,"\n");n=json_raw(out,n,b);}if c.count>0 {n=json_raw(out,n,"\n");n=json_raw(out,n,c);}
+  return cast(string)out[0..<n];
+}
+wbt_same :: (a:[]u8,hex:string)->bool #effects(all) {
+  if a.count*2!=hex.count {return false;}
+  b:[64]u8;vt_bytes(hex,b[..]);for i:0..<a.count {if a[i]!=b[i] {return false;}}
+  return true;
+}
+#test "the checks' helpers" {
+  b:[64]u8;x:=[2]u8.[1,171];
+  #assert wbt_join(b[..],"a","","")=="a" && wbt_join(b[..],"a","b","")=="a\nb" && wbt_join(b[..],"a","b","c")=="a\nb\nc" && wbt_join(b[..],"a","","c")=="a\nc";
+  #assert wbt_same(x[..],"01ab") && !wbt_same(x[..],"01ac") && !wbt_same(x[..],"02ab") && !wbt_same(x[..],"01") && !wbt_same(x[0..<1],"01ab") && wbt_same(x[0..<1],"01");
+}
+
+#test "hex at a place in a buffer: the next place, or -1 when it doesn't fit or there is no place" {
+  out:[8]u8;x:=[3]u8.[1,171,255];
+  #assert wb_put_hex(out[0..<4],0,x[0..<2])==4 && cast(string)out[0..<4]=="01ab" && wb_put_hex(out[0..<3],0,x[0..<2])==-1;
+  #assert wb_put_hex(out[0..<5],1,x[0..<2])==5 && cast(string)out[1..<5]=="01ab" && wb_put_hex(out[0..<4],1,x[0..<2])==-1;
+  #assert wb_put_hex(out[0..<6],0,x[..])==6 && cast(string)out[0..<6]=="01abff" && wb_put_hex(out[0..<5],0,x[..])==-1;
+  #assert wb_put_hex(out[..],-1,x[0..<1])==-1 && wb_put_hex(out[..],0,x[0..<0])==0 && wb_put_hex(out[..],8,x[0..<0])==8;
+}
+#test "the PRF input is the SHA-256 of its name" {
+  out:[33]u8;out[32]=9;#assert wb_prf_input(out[0..<32]) && wbt_same(out[0..<32],WBT_PRF_INPUT) && out[32]==9;
+  #assert !wb_prf_input(out[0..<31]) && !wb_prf_input(out[..]);
+  #assert WB_PRF_INPUT=="openagents.wallet-backup.v1/prf";
+}
+#test "the recovery secret is scrypt of the words (OpenSSL's answer, at log_n 4)" #steps 900000000 {
+  salt:[17]u8;#assert vt_b64(WBT_CODE_SALT,salt[0..<16],16);memory:[16384]u8;out:[33]u8;pw:[16]u8;
+  #assert wb_recovery_secret(vt_u8("pleaseletmein",pw[..]),salt[0..<16],memory[..],4,out[0..<32]) && wbt_same(out[0..<32],WBT_SMALL_SECRET);
+  #assert !wb_recovery_secret(vt_u8("pleaseletmein",pw[..]),salt[0..<15],memory[..],4,out[0..<32]);
+  #assert !wb_recovery_secret(vt_u8("pleaseletmein",pw[..]),salt[..],memory[..],4,out[0..<32]);
+  #assert !wb_recovery_secret(vt_u8("pleaseletmein",pw[..]),salt[0..<16],memory[0..<16383],4,out[0..<32]);
+  #assert !wb_recovery_secret(vt_u8("pleaseletmein",pw[..]),salt[0..<16],memory[..],4,out[0..<31]);
+  #assert !wb_recovery_secret(vt_u8("pleaseletmein",pw[..]),salt[0..<16],memory[..],4,out[..]);
+  #assert !wb_recovery_secret(vt_u8("pleaseletmein",pw[..]),salt[0..<16],memory[..],5,out[0..<32]);
+  #assert wb_recovery_secret(vt_u8("pleaseletmeim",pw[..]),salt[0..<16],memory[..],4,out[0..<32]) && !wbt_same(out[0..<32],WBT_SMALL_SECRET);
+}
+#test "a recovery code is 24 words from 32 random bytes, and a typed one is made normal" #steps 900000000 {
+  e:[32]u8;for i:0..<32 {e[i]=0x7f;}work:[BIP39_WORK_BYTES]u8;out:[BIP39_MAX_TEXT]u8;tb:[400]u8;
+  n:=wb_code_words(e[..],work[..],out[..]);#assert n==WBT_CODE.count && cast(string)out[0..<n]==WBT_CODE;
+  #assert wb_code_words(e[0..<16],work[..],out[..])==-1 && wb_code_words(e[0..<31],work[..],out[..])==-1;
+  typed:="  LEGAL winner thank year wave sausage worth useful\nlegal winner thank year wave sausage worth useful legal winner thank year wave sausage worth title ";
+  n=wb_code_normal(vt_u8(typed,tb[..]),work[..],out[..]);#assert n==WBT_CODE.count && cast(string)out[0..<n]==WBT_CODE;
+  #assert wb_code_normal(vt_u8("legal winner thank year wave sausage worth useful legal winner thank yellow",tb[..]),work[..],out[..])==-1;
+}
+#test "the slots the reference made: the same bytes from the same inputs" #steps 900000000 {
+  vmk:[32]u8;vt_hex_test(WBT_VMK,vmk[..]);fresh:[WB_FRESH]u8;vt_hex_test(WBT_FRESH,fresh[..]);out:[VT_SLOT_MAX]u8;
+  prf:[32]u8;vt_hex_test(WBT_PRF_SECRET,prf[..]);cred:[20]u8;#assert vt_b64(WBT_CREDENTIAL,cred[..],20);
+  S1:="13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ed";S2:="bf606a09fb0c113c3f4b46bb787ad5694c8714f59d8ee8b07b31898589239a6a";
+  n:=wb_slot_prf(out[..],WBT_VAULT,S1,cred[..],"openagents.com","iPhone (test)",WBT_T0,prf[..],vmk[..],fresh[192..<204]);
+  #assert n==WBT_SLOT_PRF.count && cast(string)out[0..<n]==WBT_SLOT_PRF;
+  #assert wb_slot_prf(out[..],WBT_VAULT,S1,cred[0..<0],"openagents.com","iPhone (test)",WBT_T0,prf[..],vmk[..],fresh[192..<204])==-1;
+  big:[1024]u8;
+  #assert wb_slot_prf(out[..],WBT_VAULT,S1,big[0..<1023],"openagents.com","iPhone (test)",WBT_T0,prf[..],vmk[..],fresh[192..<204])>0;
+  #assert wb_slot_prf(out[..],WBT_VAULT,S1,big[..],"openagents.com","iPhone (test)",WBT_T0,prf[..],vmk[..],fresh[192..<204])==-1;
+  #assert wb_slot_prf(out[..],WBT_VAULT,S1,cred[..],"open agents.com","iPhone (test)",WBT_T0,prf[..],vmk[..],fresh[192..<204])==-1;
+  huge:[1300]u8;#assert wb_slot_prf(out[..],WBT_VAULT,S1,huge[..],"openagents.com","iPhone (test)",WBT_T0,prf[..],vmk[..],fresh[192..<204])==-1;
+  sec:[32]u8;vt_hex_test(WBT_CODE_SECRET,sec[..]);salt:[17]u8;#assert vt_b64(WBT_CODE_SALT,salt[0..<16],16);
+  n=wb_slot_recovery(out[..],WBT_VAULT,S2,salt[0..<16],17,"Recovery code",WBT_T0,sec[..],vmk[..],fresh[204..<216]);
+  #assert n==WBT_SLOT_RECOVERY.count && cast(string)out[0..<n]==WBT_SLOT_RECOVERY;
+  #assert wb_slot_recovery(out[..],WBT_VAULT,S2,salt[0..<15],17,"Recovery code",WBT_T0,sec[..],vmk[..],fresh[204..<216])==-1;
+  #assert wb_slot_recovery(out[..],WBT_VAULT,S2,salt[..],17,"Recovery code",WBT_T0,sec[..],vmk[..],fresh[204..<216])==-1;
+  #assert wb_slot_recovery(out[..],WBT_VAULT,S2,salt[0..<16],15,"Recovery code",WBT_T0,sec[..],vmk[..],fresh[204..<216])==-1;
+  ck:[32]u8;vt_hex_test(WBT_CK,ck[..]);n44:[32]u8;vt_hex_test(WBT_NIP44_NONCE,n44[..]);ns:[32]u8;vt_hex_test(WBT_NOSTR_SECRET,ns[..]);nn:[12]u8;#assert vt_b64(WBT_NOSTR_NONCE,nn[..],12);
+  S3:="2a10d7a9fad2f5c4ee0a3b4dd2e4b1c7ce9c95c9ad6c8ec60ff0c7f01c0bb1d1";
+  aad:[VT_SLOT_MAX]u8;want:=vt_slot_read(WBT_SLOT_NOSTR,aad[..]);#assert want.code==VtCode.ok;
+  n=wb_slot_nostr(out[..],WBT_VAULT,want.slot,WBT_NPUB,ck[..],n44[..],"Nostr key (test)",WBT_T0+60,ns[..],vmk[..],nn[..]);
+  #assert n==WBT_SLOT_NOSTR.count && cast(string)out[0..<n]==WBT_SLOT_NOSTR;
+  #assert wb_slot_nostr(out[..],WBT_VAULT,S3,WBT_NPUB,ck[0..<31],n44[..],"Nostr key (test)",WBT_T0+60,ns[..],vmk[..],nn[..])==-1;
+  #assert wb_slot_nostr(out[..],WBT_VAULT,S3,WBT_NPUB,ck[..],n44[0..<31],"Nostr key (test)",WBT_T0+60,ns[..],vmk[..],nn[..])==-1;
+  #assert wb_slot_nostr(out[..],WBT_VAULT,S3,WBT_NPUB,ck[..],n44[..],"Nostr key (test)",WBT_T0+60,ns[0..<31],vmk[..],nn[..])==-1;
+  #assert wb_slot_nostr(out[..],WBT_VAULT,S3,"C6",ck[..],n44[..],"Nostr key (test)",WBT_T0+60,ns[..],vmk[..],nn[..])==-1;
+  ns33:[33]u8;for i:0..<33 {ns33[i]=cast(u8)(i+1);}
+  #assert wb_slot_nostr(out[..],WBT_VAULT,S3,WBT_NPUB,ck[..],n44[..],"Nostr key (test)",WBT_T0+60,ns33[..],vmk[..],nn[..])==-1;
+  #assert wb_slot_nostr(out[..],WBT_VAULT,S3,WBT_NPUB,ck[..],n44[..],"Nostr key (test)",WBT_T0+60,ns33[0..<32],vmk[..],nn[..])>0;
+  longpk:[320]u8;for i:0..<320 {longpk[i]='a';}
+  #assert wb_slot_nostr(out[..],WBT_VAULT,S3,cast(string)longpk[..],ck[..],n44[..],"Nostr key (test)",WBT_T0+60,ns[..],vmk[..],nn[..])==-1;
+  nw:[1]WbNostr;
+  #assert wb_slot_nostr_work(out[..],WBT_VAULT,S3,WBT_NPUB,ck[..],n44[..],"Nostr key (test)",WBT_T0+60,ns[..],vmk[..],nn[..],nw[..])>0 && wb_nostr_zero_test(nw[0]);
+  #assert wb_slot_nostr_work(out[..],WBT_VAULT,S3,WBT_NPUB,ck[0..<31],n44[..],"Nostr key (test)",WBT_T0+60,ns[..],vmk[..],nn[..],nw[..])==-1 && wb_nostr_zero_test(nw[0]);
+  nw[0].hexed[63]=1;#assert !wb_nostr_zero_test(nw[0]);nw[0].hexed[63]=0;nw[0].p[0].work[0]=1;#assert !wb_nostr_zero_test(nw[0]);
+  // the nostr slot's secret comes back out of its seal with the person's own conversation key
+  got:[32]u8;#assert vt_nostr_secret(want.sealed,ck[..],got[..]) && wbt_same(got[..],WBT_NOSTR_SECRET);
+}
+#test "a first backup: wb_make gives the reference's slots and object, and both secrets open them" #steps 2000000000 {
+  fresh:[WB_FRESH+1]u8;vt_hex_test(WBT_FRESH,fresh[0..<WB_FRESH]);prf:[32]u8;vt_hex_test(WBT_PRF_SECRET,prf[..]);cred:[20]u8;#assert vt_b64(WBT_CREDENTIAL,cred[..],20);
+  sec:[32]u8;vt_hex_test(WBT_CODE_SECRET,sec[..]);salt:[16]u8;#assert vt_b64(WBT_CODE_SALT,salt[..],16);seed:[32]u8;
+  slots:[WB_SLOTS_TEXT_MAX]u8;object:[WB_OBJECT_MAX]u8;j:[4096]u8;ob:[WB_OBJECT_MAX]u8;
+  m:=wb_make(slots[..],object[..],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]);
+  #assert m.code==WB_OK && cast(string)slots[0..<m.slots]==wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,"");
+  want:=vt_blob_test(WBT_OBJECT_1,ob[..]);#assert m.object==want.count && cast(string)object[0..<m.object]==want;
+  out:[32]u8;
+  for which:0..<2 {
+    for i:0..<32 {out[i]=9;}
+    o:=wb_open(object[0..<m.object],ifx which==0 then WBT_SLOT_PRF else WBT_SLOT_RECOVERY,ifx which==0 then prf[..] else sec[..],WBT_ACCOUNT,1,0,out[..]);
+    #assert o.code==WB_OK && o.n==16 && o.epoch==1;
+    for i:0..<16 {#assert out[i]==0;}
+    for i:16..<32 {#assert out[i]==9;}
+  }
+  // sizes and values wb_make refuses, and nothing is left in either output
+  #assert wb_make(slots[..],object[..],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[..]).code==WB_INPUT;
+  #assert wb_make(slots[..],object[..],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH-1]).code==WB_INPUT;
+  #assert wb_make(slots[..],object[..],WBT_ACCOUNT,1,WBT_T0,seed[0..<15],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_INPUT;
+  #assert wb_make(slots[..],object[..],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[0..<31],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_SLOT;
+  #assert wb_make(slots[..],object[..],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[0..<31],salt[..],17,fresh[0..<WB_FRESH]).code==WB_SLOT;
+  #assert wb_make(slots[..],object[..],"acct_x",1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_INPUT;
+  #assert wb_make(slots[..],object[..],WBT_ACCOUNT,0,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_INPUT;
+  #assert wb_make(slots[0..<m.slots-1],object[..],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_ROOM;
+  #assert wb_make(slots[..],object[0..<m.object-1],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_ROOM;
+  for i:0..<WB_SLOTS_TEXT_MAX {#assert slots[i]==0;}
+  for i:0..<WB_OBJECT_MAX {#assert object[i]==0;}
+  #assert wb_make(slots[0..<m.slots],object[0..<m.object],WBT_ACCOUNT,1,WBT_T0,seed[0..<16],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_OK;
+  // a 24-word seed
+  for i:0..<32 {seed[i]=cast(u8)(i+1);}
+  m=wb_make(slots[..],object[..],WBT_ACCOUNT,7,WBT_T0,seed[..],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]);
+  #assert m.code==WB_OK;o:=wb_open(object[0..<m.object],WBT_SLOT_RECOVERY,sec[..],WBT_ACCOUNT,7,7,out[..]);
+  #assert o.code==WB_OK && o.n==32 && o.epoch==7;
+  for i:0..<32 {#assert out[i]==cast(u8)(i+1);}
+  #assert wb_open(object[0..<m.object],WBT_SLOT_RECOVERY,sec[..],WBT_ACCOUNT,7,7,out[0..<31]).code==WB_ROOM;
+  #assert wb_make(slots[..],object[..],WBT_ACCOUNT,7,WBT_T0,seed[0..<20],prf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[0..<WB_FRESH]).code==WB_INPUT;
+}
+#test "what wb_open refuses: a wrong secret, another account, a named epoch that isn't the record's, a rollback, an unlisted slot" #steps 2000000000 {
+  ob:[WB_OBJECT_MAX]u8;object:=vt_u8(vt_blob_test(WBT_OBJECT_1,ob[..]),ob[..]);prf:[32]u8;vt_hex_test(WBT_PRF_SECRET,prf[..]);sec:[32]u8;vt_hex_test(WBT_CODE_SECRET,sec[..]);
+  out:[32]u8;for i:0..<32 {out[i]=9;}
+  #assert wb_open(object,WBT_SLOT_PRF,sec[..],WBT_ACCOUNT,1,0,out[..]).code==WB_SECRET;
+  bad:=wb_open(object,WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,2,0,out[..]);#assert bad.code==WB_EPOCH && bad.n==0 && bad.epoch==0;
+  #assert wb_open(object,WBT_SLOT_PRF,prf[..],"acct_bbbbbbbbbbbbbbbbbbbbbbbbbb",1,0,out[..]).code==WB_ACCOUNT;
+  #assert wb_open(object,WBT_SLOT_PRF,prf[..],"",1,0,out[..]).code==WB_ACCOUNT;
+  #assert wb_open(object,WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,2,0,out[..]).code==WB_EPOCH;
+  #assert wb_open(object,WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,0,0,out[..]).code==WB_EPOCH;
+  #assert wb_open(object,WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,2,out[..]).code==WB_ROLLBACK;
+  #assert wb_open(object,WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,1,out[..]).code==WB_OK;
+  for i:0..<32 {out[i]=9;}
+  // the epoch-2 object lists three slots; epoch 1 listed two. The Nostr slot opens the VMK, and
+  // epoch 1's record doesn't list it: a slot added by someone who could only write to our database
+  ns:[32]u8;vt_hex_test(WBT_NOSTR_SECRET,ns[..]);
+  #assert wb_open(object,WBT_SLOT_NOSTR,ns[..],WBT_ACCOUNT,1,0,out[..]).code==WB_UNLISTED;
+  ob2:[WB_OBJECT_MAX]u8;object2:=vt_u8(vt_blob_test(WBT_OBJECT_2,ob2[..]),ob2[..]);
+  o:=wb_open(object2,WBT_SLOT_NOSTR,ns[..],WBT_ACCOUNT,2,1,out[..]);#assert o.code==WB_OK && o.n==16 && o.epoch==2;
+  for i:0..<32 {out[i]=9;}
+  // a changed byte anywhere in the object, a truncated one, one too large, another vault's slot
+  x:[WB_OBJECT_MAX]u8;
+  for at:[5]int.[3,20,object.count-40,object.count-17,object.count-1] {
+    for i:0..<object.count {x[i]=object[i];}x[at]^=1;
+    #assert wb_open(x[0..<object.count],WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_OBJECT;
+  }
+  #assert wb_open(object[0..<object.count-1],WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_OBJECT;
+  big:[WB_OBJECT_MAX+1]u8;#assert wb_open(big[..],WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_OBJECT;
+  #assert wb_open(object,VT_RUST_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_OBJECT;
+  #assert wb_open(object,"{}",prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_OBJECT;
+  // a changed label is a changed slot
+  c:[VT_SLOT_MAX]u8;
+  #assert wb_open(object,vt_case(c[..],WBT_SLOT_PRF,"iPhone (test)","iPhone (best)"),prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_SECRET;
+  for i:0..<32 {#assert out[i]==9;}
+  // the VMK alone, for adding a slot
+  vmk:[33]u8;#assert wb_vmk(WBT_SLOT_PRF,prf[..],vmk[0..<32]) && wbt_same(vmk[0..<32],WBT_VMK);
+  for i:0..<32 {vmk[i]=3;}
+  #assert !wb_vmk(WBT_SLOT_PRF,sec[..],vmk[0..<32]) && vmk[0]==3 && !wb_vmk(WBT_SLOT_PRF,prf[..],vmk[0..<31]) && !wb_vmk(WBT_SLOT_PRF,prf[..],vmk[..]);
+}
+#test "an object that opens and isn't this backup's record: not a record, or a record naming another vault" #steps 2000000000 {
+  prf:[32]u8;vt_hex_test(WBT_PRF_SECRET,prf[..]);vmk:[32]u8;#assert wb_vmk(WBT_SLOT_PRF,prf[..],vmk[..]);
+  f:[WB_FRESH_OBJECT]u8;vt_hex_test(WBT_FRESH_2,f[..]);out:[32]u8;object:[WB_OBJECT_MAX]u8;pb:[WB_CHUNK]u8;
+  O:="2222222222222222222222222222222222222222222222222222222222222222";
+  n:=vt_object_seal(object[..],WBT_VAULT,O,5,WB_CHUNK,f[76..<83],vmk[..],f[0..<32],f[64..<76],vt_u8("Test data only: 21000 sat.",pb[..]));
+  #assert n>0 && wb_open(object[0..<n],WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_RECORD;
+  // the reference's record, sealed in this vault while it names another
+  c:[WB_CHUNK]u8;other:=vt_case(c[..],WBT_RECORD_1,"\"vault\":\"7c95","\"vault\":\"7c96");
+  n=vt_object_seal(object[..],WBT_VAULT,O,5,WB_CHUNK,f[76..<83],vmk[..],f[0..<32],f[64..<76],vt_u8(other,pb[..]));
+  #assert n>0 && wb_open(object[0..<n],WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_VAULT;
+  n=vt_object_seal(object[..],WBT_VAULT,O,5,WB_CHUNK,f[76..<83],vmk[..],f[0..<32],f[64..<76],vt_u8(WBT_RECORD_1,pb[..]));
+  #assert n>0 && wb_open(object[0..<n],WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_OK;
+  // a plaintext longer than a record
+  long:[WB_CHUNK+1]u8;
+  n=vt_object_seal(object[..],WBT_VAULT,O,5,WB_CHUNK+1,f[76..<83],vmk[..],f[0..<32],f[64..<76],long[..]);
+  #assert n>0 && wb_open(object[0..<n],WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..]).code==WB_OBJECT;
+}
+#test "adding a slot seals the record again at the next epoch: the reference's epoch 2" #steps 2000000000 {
+  prf:[32]u8;vt_hex_test(WBT_PRF_SECRET,prf[..]);vmk:[32]u8;#assert wb_vmk(WBT_SLOT_PRF,prf[..],vmk[..]);
+  f:[WB_FRESH_OBJECT+1]u8;vt_hex_test(WBT_FRESH_2,f[0..<WB_FRESH_OBJECT]);seed:[16]u8;j:[8192]u8;object:[WB_OBJECT_MAX]u8;ob:[WB_OBJECT_MAX]u8;
+  three:=wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR);
+  n:=wb_object(object[..],three,WBT_ACCOUNT,2,WBT_T0+60,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT]);
+  want:=vt_blob_test(WBT_OBJECT_2,ob[..]);#assert n==want.count && cast(string)object[0..<n]==want;
+  #assert wb_object(object[..],three,WBT_ACCOUNT,2,WBT_T0+60,seed[..],vmk[..],f[..])==-WB_INPUT;
+  #assert wb_object(object[..],three,WBT_ACCOUNT,2,WBT_T0+60,seed[..],vmk[0..<31],f[0..<WB_FRESH_OBJECT])==-WB_INPUT;
+  #assert wb_object(object[..],three,WBT_ACCOUNT,2,-1,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT])==-WB_INPUT;
+  #assert wb_object(object[..],three,WBT_ACCOUNT,2,0,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT])>0;
+  #assert wb_object(object[..],three,WBT_ACCOUNT,1,WBT_T0+60,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT])>0;
+  #assert wb_object(object[0..<n-1],three,WBT_ACCOUNT,2,WBT_T0+60,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT])==-WB_ROOM;
+  // a set that isn't enough is never sealed
+  j2:[8192]u8;
+  #assert wb_object(object[..],wbt_join(j2[..],WBT_SLOT_PRF,WBT_SLOT_NOSTR,""),WBT_ACCOUNT,2,WBT_T0+60,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT])==-WB_NEEDS_RECOVERY;
+  #assert wb_object(object[..],wbt_join(j2[..],WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR,""),WBT_ACCOUNT,2,WBT_T0+60,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT])==-WB_NEEDS_PASSKEY;
+  #assert wb_object(object[..],"",WBT_ACCOUNT,2,WBT_T0+60,seed[..],vmk[..],f[0..<WB_FRESH_OBJECT])==-WB_TOO_MANY;
+  for i:0..<WB_OBJECT_MAX {#assert object[i]==0;}
+}
+#test "a set of slots: one vault, distinct ids, at most eight, only the three methods, the fixed PRF input, scrypt we can run" #steps 900000000 {
+  j:[WB_SLOTS_TEXT_MAX]u8;c:[VT_SLOT_MAX]u8;c2:[VT_SLOT_MAX]u8;
+  s:=wb_slots_read(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR));
+  #assert s.code==WB_OK && s.count==3 && s.prf==1 && s.recovery==1 && s.nostr==1 && s.vault==WBT_VAULT;
+  #assert s.ids[0]=="13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ed" && s.ids[1]=="bf606a09fb0c113c3f4b46bb787ad5694c8714f59d8ee8b07b31898589239a6a";
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR))==WB_OK;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,""))==WB_OK;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_RECOVERY,WBT_SLOT_PRF,""))==WB_OK;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,"",""))==WB_NEEDS_RECOVERY;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_RECOVERY,"",""))==WB_NEEDS_PASSKEY;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_NOSTR,WBT_SLOT_RECOVERY,""))==WB_NEEDS_PASSKEY;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_NOSTR,WBT_SLOT_PRF,""))==WB_NEEDS_RECOVERY;
+  #assert wb_slots_check("")==WB_TOO_MANY;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_PRF))==WB_DUPLICATE;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_PRF,""))==WB_DUPLICATE;
+  // a trailing newline, a blank line, a slot that isn't one, a device slot, another vault's slot
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,"\n"))==WB_SLOT;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,"{}",WBT_SLOT_RECOVERY))==WB_SLOT;
+  one:=wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,"");j[one.count]='\n';
+  #assert wb_slots_check(cast(string)j[0..<one.count+1])==WB_SLOT && wb_slots_check(cast(string)j[0..<one.count])==WB_OK;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,vt_case(c2[..],WBT_SLOT_RECOVERY,"\"log_n\":17","\"log_n\":19"),""))==WB_SLOT;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,VT_SLOT_DEVICE))==WB_SLOT;
+  #assert wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,VT_RUST_SLOT_NOSTR))==WB_VAULT;
+  #assert wb_slots_check(wbt_join(j[..],VT_RUST_SLOT_NOSTR,WBT_SLOT_PRF,WBT_SLOT_RECOVERY))==WB_VAULT;
+  // a passkey slot with another PRF input (the reader takes it; this backup doesn't)
+  #assert wb_slots_check(wbt_join(j[..],vt_case(c[..],WBT_SLOT_PRF,"\"prf_salt\":\"","\"prf_salt\":\"UVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVE=\",\"q\":\""),WBT_SLOT_RECOVERY,""))==WB_SLOT;
+  other:=vt_case(c[..],WBT_SLOT_PRF,"\"prf_salt\":\"qZP+v3Ddk33QaJfsv3Bfn3wm8r09W/eGapo+CVyUXy8=\"","\"prf_salt\":\"UVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVE=\"");
+  aad:[VT_SLOT_MAX]u8;#assert vt_slot_read(other,aad[..]).code==VtCode.ok;
+  #assert wb_slots_check(wbt_join(j[..],other,WBT_SLOT_RECOVERY,""))==WB_SLOT;
+  // scrypt costs: 16, 17 and 18 are ones this code runs; 19 isn't
+  for v:[4]int.[16,17,18,19] {
+    to:[32]u8;m:=json_raw(to[..],0,"\"log_n\":");m=json_write_int(to[..],m,v);
+    #assert (wb_slots_check(wbt_join(j[..],WBT_SLOT_PRF,vt_case(c2[..],WBT_SLOT_RECOVERY,"\"log_n\":17",cast(string)to[0..<m]),""))==WB_OK)==(v<=18);
+  }
+  // eight slots are the most: ids 0 to 7 read, a ninth doesn't
+  n:=0;ids:="0123456789";
+  for i:0..<9 {
+    id:[80]u8;k:=json_raw(id[..],0,"\"slot\":\"");id[k]=ids[i];k+=1;
+    text:=vt_case(c[..],ifx i==0 then WBT_SLOT_RECOVERY else WBT_SLOT_PRF,ifx i==0 then "\"slot\":\"b" else "\"slot\":\"1",cast(string)id[0..<k]);
+    if i>0 {j[n]='\n';n+=1;}
+    for b:text {j[n]=b;n+=1;}
+    #assert wb_slots_check(cast(string)j[0..<n])==(ifx i==0 then WB_NEEDS_PASSKEY else ifx i<8 then WB_OK else WB_TOO_MANY);
+  }
+  #assert WB_SLOTS_MAX==8;
+  // text past the bound
+  for i:0..<WB_SLOTS_TEXT_MAX {j[i]='a';}
+  wide:[WB_SLOTS_TEXT_MAX+1]u8;#assert wb_slots_check(cast(string)wide[..])==WB_TOO_MANY && wb_slots_check(cast(string)j[..])==WB_SLOT;
+}
+#test "the lines of a set: one span for each, an empty one after a newline at the end, and no more than there is room for" {
+  sp:[3]WbSpan;
+  #assert wb_lines("ab",sp[..])==1 && sp[0].from==0 && sp[0].to==2;
+  #assert wb_lines("ab\ncde",sp[..])==2 && sp[0].from==0 && sp[0].to==2 && sp[1].from==3 && sp[1].to==6;
+  #assert wb_lines("ab\n",sp[..])==2 && sp[1].from==3 && sp[1].to==3;
+  #assert wb_lines("\nab",sp[..])==2 && sp[0].from==0 && sp[0].to==0 && sp[1].from==1 && sp[1].to==3;
+  #assert wb_lines("",sp[..])==1 && sp[0].from==0 && sp[0].to==0;
+  #assert wb_lines("a\nb\nc",sp[..])==3 && sp[2].from==4 && sp[2].to==5 && wb_lines("a\nb\nc\nd",sp[..])==-1 && wb_lines("a\nb\nc\n",sp[..])==-1;
+  #assert wb_lines("a",sp[0..<0])==-1;
+}
+#test "enough: a recovery code and a passkey, whatever else" {
+  for p:0..<3 {for r:0..<3 {
+    #assert wb_enough(p,r)==(ifx r==0 then WB_NEEDS_RECOVERY else ifx p==0 then WB_NEEDS_PASSKEY else WB_OK);
+  }}
+  #assert wb_enough(-1,1)==WB_NEEDS_PASSKEY && wb_enough(1,-1)==WB_NEEDS_RECOVERY;
+}
+#test "the record: exactly its members in order, an account id, an epoch from 1, 16 or 32 bytes, listed ids" #steps 900000000 {
+  r:=wb_record_read(WBT_RECORD_1);
+  #assert r.code==WB_OK && r.account==WBT_ACCOUNT && r.vault==WBT_VAULT && r.epoch==1 && r.created_at==WBT_T0 && r.entropy=="00000000000000000000000000000000" && r.count==2;
+  #assert wb_record_lists(r,"13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ed") && wb_record_lists(r,"bf606a09fb0c113c3f4b46bb787ad5694c8714f59d8ee8b07b31898589239a6a");
+  #assert !wb_record_lists(r,"13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ee") && !wb_record_lists(r,"");
+  r2:=wb_record_read(WBT_RECORD_2);#assert r2.code==WB_OK && r2.epoch==2 && r2.count==3 && r2.created_at==WBT_T0+60;
+  c:[2048]u8;R:=WBT_RECORD_1;
+  from:=[22]string.["\"epoch\":1","\"epoch\":1","\"epoch\":1","acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "\"entropy\":\"00000000000000000000000000000000\"","\"entropy\":\"00000000000000000000000000000000\"","\"entropy\":\"00000000000000000000000000000000\"","\"entropy\":\"00000000000000000000000000000000\"",
+    "\"requires\":[]","wallet-backup.v1","\"slots\":[\"13eb","\"slots\":[\"13eb","\"created_at\":1794000000","\"created_at\":1794000000","\"vault\":\"7c","\"vault\":\"7c95","{\"account\"","\"epoch\":1"];
+  to:=[22]string.["\"epoch\":0","\"epoch\":\"1\"","\"epoch\":9007199254740991","acct_aaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaa1","Acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaa27",
+    "\"entropy\":\"000000000000000000000000000000\"","\"entropy\":\"0000000000000000000000000000000000000000000000000000000000000000\"","\"entropy\":\"0000000000000000000000000000000000000000\"","\"entropy\":\"0000000000000000000000000000000G\"",
+    "\"requires\":[1]","wallet-backup.v2","\"slots\":[\"X3eb","\"slots\":[7,\"13eb","\"created_at\":-1","\"created_at\":0","\"vault\":\"7C","\"vault\":\"7c96","{ \"account\"","\"epoch\":1,\"extra\":1"];
+  want:=[22]bool.[false,false,true,false,false,false,false,true,false,true,false,false,false,false,false,false,false,true,false,true,false,false];
+  for i:0..<22 {#assert (wb_record_read(vt_case(c[..],R,from[i],to[i])).code==WB_OK)==want[i];}
+  #assert wb_record_read(vt_case(c[..],R,"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_zzzzzzzzzzzzzzzzzzzzzzzz27")).code==WB_OK;
+  #assert wb_record_read(vt_case(c[..],R,"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaa8")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaa`")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaa{")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"account\":\"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa\"","\"account\":7")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_1aaaaaaaaaaaaaaaaaaaaaaaaa")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa","acct_aaaaaaaaaaaaaaaaaaaaaaaaa1")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"e556a845\"}","e556a845\",\"zz\":1}")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"entropy\":\"00000000000000000000000000000000\"","\"entropy\":7")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"v\":\"openagents.wallet-backup.v1\"","\"v\":7")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"vault\":\"7c952b756eb12f1c1ed5f876e4a94d97e5b554b7fc1373c1ce3fc4d7e556a845\"","\"vault\":7")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"requires\":[]","\"requires\":7")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"slots\":[","\"slots\":{\"a\":")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,",\"vault\":\"7c952b756eb12f1c1ed5f876e4a94d97e5b554b7fc1373c1ce3fc4d7e556a845\"","")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"created_at\":1794000000,","")).code==WB_RECORD;
+  #assert wb_record_read(vt_case(c[..],R,"\"slots\":[\"13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ed\",\"bf606a09fb0c113c3f4b46bb787ad5694c8714f59d8ee8b07b31898589239a6a\"]","\"slots\":[]")).code==WB_RECORD;
+  #assert wb_record_read("[]").code==WB_RECORD && wb_record_read("").code==WB_RECORD && wb_record_read("{}").code==WB_RECORD;
+  // nine listed ids are past the bound
+  nine:[1400]u8;n:=json_raw(nine[..],0,"\"slots\":[");
+  for i:0..<9 {if i>0 {n=json_raw(nine[..],n,",");}n=json_raw(nine[..],n,"\"13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ed\"");}
+  n=json_raw(nine[..],n,"]");
+  #assert wb_record_read(vt_case(c[..],R,"\"slots\":[\"13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ed\",\"bf606a09fb0c113c3f4b46bb787ad5694c8714f59d8ee8b07b31898589239a6a\"]",cast(string)nine[0..<n])).code==WB_RECORD;
+  eight:=cast(string)nine[0..<n-68];e8:[1400]u8;k:=json_raw(e8[..],0,eight);k=json_raw(e8[..],k,"]");
+  r8:=wb_record_read(vt_case(c[..],R,"\"slots\":[\"13eb40b448f23ee894672ef5cab2ad78898337bbde15c01fcbae3eb523d719ed\",\"bf606a09fb0c113c3f4b46bb787ad5694c8714f59d8ee8b07b31898589239a6a\"]",cast(string)e8[0..<k]));
+  #assert r8.code==WB_OK && r8.count==8;
+}
+#test "finding a slot: by method, and a passkey's by its credential id; the recovery slot's scrypt salt and cost" #steps 900000000 {
+  j:[WB_SLOTS_TEXT_MAX]u8;text:=wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR);cred:[21]u8;#assert vt_b64(WBT_CREDENTIAL,cred[0..<20],20);
+  p:=wb_pick(text,VT_M_PRF,cred[0..<20]);#assert p.from==0 && p.to==WBT_SLOT_PRF.count && text[p.from..<p.to]==WBT_SLOT_PRF;
+  any:=wb_pick(text,VT_M_PRF,cred[0..<0]);#assert any.from==0 && any.to==WBT_SLOT_PRF.count;
+  cred[3]^=1;#assert wb_pick(text,VT_M_PRF,cred[0..<20]).from==-1 && wb_pick(text,VT_M_PRF,cred[0..<20]).to==-1;cred[3]^=1;
+  cred[0]^=1;#assert wb_pick(text,VT_M_PRF,cred[0..<20]).from==-1;cred[0]^=1;
+  cred[19]^=128;#assert wb_pick(text,VT_M_PRF,cred[0..<20]).from==-1;cred[19]^=128;
+  tb:[20]u8;#assert vt_b64(WBT_CREDENTIAL,tb[..],20) && wb_same_credential(WBT_CREDENTIAL,tb[..]) && !wb_same_credential(WBT_CREDENTIAL,tb[0..<19]) && !wb_same_credential("",tb[..]) && wb_same_credential("",tb[0..<0]);
+  // a slot after an empty first line is found where it is
+  j8:[WB_SLOTS_TEXT_MAX]u8;j8[0]='\n';for i:0..<WBT_SLOT_PRF.count {j8[1+i]=WBT_SLOT_PRF[i];}
+  pl:=wb_pick(cast(string)j8[0..<1+WBT_SLOT_PRF.count],VT_M_PRF,cred[0..<20]);#assert pl.from==1 && pl.to==1+WBT_SLOT_PRF.count;
+  // a trailing newline, or a line that isn't a slot, is passed over
+  j9:[WB_SLOTS_TEXT_MAX]u8;odd:=wbt_join(j9[..],"{}",WBT_SLOT_PRF,"");j9[odd.count]='\n';
+  po:=wb_pick(cast(string)j9[0..<odd.count+1],VT_M_PRF,cred[0..<20]);#assert po.from==3 && po.to==3+WBT_SLOT_PRF.count;
+  #assert wb_pick(text,VT_M_PRF,cred[0..<19]).from==-1 && wb_pick(text,VT_M_PRF,cred[..]).from==-1;
+  r:=wb_pick(text,VT_M_RECOVERY,cred[0..<0]);#assert text[r.from..<r.to]==WBT_SLOT_RECOVERY;
+  n:=wb_pick(text,VT_M_NOSTR,cred[0..<0]);#assert text[n.from..<n.to]==WBT_SLOT_NOSTR && n.to==text.count;
+  #assert wb_pick(text,VT_M_DEVICE,cred[0..<0]).from==-1 && wb_pick("",VT_M_PRF,cred[0..<0]).from==-1 && wb_pick("{}",VT_M_PRF,cred[0..<0]).from==-1;
+  two:=wbt_join(j[..],WBT_SLOT_RECOVERY,WBT_SLOT_PRF,"");q:=wb_pick(two,VT_M_PRF,cred[0..<20]);#assert two[q.from..<q.to]==WBT_SLOT_PRF && q.from==WBT_SLOT_RECOVERY.count+1;
+  salt:[17]u8;salt[16]=9;want:[16]u8;#assert vt_b64(WBT_CODE_SALT,want[..],16);
+  #assert wb_recovery_params(WBT_SLOT_RECOVERY,salt[0..<16])==17 && salt[16]==9;
+  for i:0..<16 {#assert salt[i]==want[i];}
+  #assert wb_recovery_params(WBT_SLOT_RECOVERY,salt[0..<15])==-1 && wb_recovery_params(WBT_SLOT_RECOVERY,salt[..])==-1;
+  #assert wb_recovery_params(WBT_SLOT_PRF,salt[0..<16])==-1 && wb_recovery_params("{}",salt[0..<16])==-1;
+}
+#test "wb_verify: the backup opens to the seed through the passkey and through the recovery code, or says why not" #steps 2000000000 {
+  ob:[WB_OBJECT_MAX]u8;object:=vt_u8(vt_blob_test(WBT_OBJECT_1,ob[..]),ob[..]);prf:[32]u8;vt_hex_test(WBT_PRF_SECRET,prf[..]);sec:[32]u8;vt_hex_test(WBT_CODE_SECRET,sec[..]);
+  cred:[21]u8;#assert vt_b64(WBT_CREDENTIAL,cred[0..<20],20);seed:[32]u8;j:[WB_SLOTS_TEXT_MAX]u8;slots:=wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,"");
+  #assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_OK;
+  // the recovery slot first in the set, and a third slot, change nothing
+  j2:[WB_SLOTS_TEXT_MAX]u8;
+  #assert wb_verify(object,wbt_join(j2[..],WBT_SLOT_RECOVERY,WBT_SLOT_PRF,""),WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_OK;
+  // a secret that isn't the slot's: the PRF output, then the words' secret
+  #assert wb_verify(object,slots,WBT_ACCOUNT,1,sec[..],cred[0..<20],sec[..],seed[0..<16])==WB_SECRET;
+  #assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<20],prf[..],seed[0..<16])==WB_SECRET;
+  // another seed, of the same length and of another; the last byte alone
+  seed[0]=1;#assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_MISMATCH;seed[0]=0;
+  seed[15]=1;#assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_MISMATCH;seed[15]=0;
+  #assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[..])==WB_MISMATCH;
+  #assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<15])==WB_MISMATCH;
+  // another passkey's credential id, or none; another account; another epoch; a set that isn't enough
+  cred[2]^=1;#assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_NEEDS_PASSKEY;cred[2]^=1;
+  #assert wb_verify(object,slots,WBT_ACCOUNT,1,prf[..],cred[0..<0],sec[..],seed[0..<16])==WB_INPUT;
+  #assert wb_verify(object,slots,"acct_bbbbbbbbbbbbbbbbbbbbbbbbbb",1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_ACCOUNT;
+  #assert wb_verify(object,slots,WBT_ACCOUNT,2,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_EPOCH;
+  #assert wb_verify(object,WBT_SLOT_PRF,WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_NEEDS_RECOVERY;
+  #assert wb_verify(object,"",WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[0..<16])==WB_TOO_MANY;
+  // the work memory is zero again, whether it opened or not (a backup of a seed that isn't zeros)
+  w:[1]WbVerify;fresh:[WB_FRESH]u8;vt_hex_test(WBT_FRESH,fresh[..]);salt:[16]u8;#assert vt_b64(WBT_CODE_SALT,salt[..],16);
+  for i:0..<32 {seed[i]=cast(u8)(i+1);}
+  sl:[WB_SLOTS_TEXT_MAX]u8;oj:[WB_OBJECT_MAX]u8;
+  m:=wb_make(sl[..],oj[..],WBT_ACCOUNT,1,WBT_T0,seed[..],prf[..],cred[0..<20],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[..]);#assert m.code==WB_OK;
+  #assert wb_verify_work(oj[0..<m.object],cast(string)sl[0..<m.slots],WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[..],w[..])==WB_OK && wb_verify_zero_test(w[0]);
+  seed[31]^=1;
+  #assert wb_verify_work(oj[0..<m.object],cast(string)sl[0..<m.slots],WBT_ACCOUNT,1,prf[..],cred[0..<20],sec[..],seed[..],w[..])==WB_MISMATCH && wb_verify_zero_test(w[0]);
+  w[0].back[31]=1;#assert !wb_verify_zero_test(w[0]);w[0].back[31]=0;w[0].plain[0].vmk[0]=1;#assert !wb_verify_zero_test(w[0]);
+}
+wb_verify_zero_test :: (w:WbVerify)->bool #effects(all) {p:=w.plain;b:=w.back;return wb_plain_zero_test(p[0]) && vt_zero_test(b[..]);}
+#test "what leaves wb_open and wb_make holds no key: the working memory is zero again" #steps 2000000000 {
+  fresh:[WB_FRESH]u8;vt_hex_test(WBT_FRESH,fresh[..]);cred:[20]u8;#assert vt_b64(WBT_CREDENTIAL,cred[..],20);pf:[32]u8;vt_hex_test(WBT_PRF_SECRET,pf[..]);
+  sec:[32]u8;vt_hex_test(WBT_CODE_SECRET,sec[..]);salt:[16]u8;#assert vt_b64(WBT_CODE_SALT,salt[..],16);sd:[16]u8;sl:[WB_SLOTS_TEXT_MAX]u8;oj:[WB_OBJECT_MAX]u8;f:[1]WbFresh;
+  #assert wb_make_work(sl[..],oj[..],WBT_ACCOUNT,1,WBT_T0,sd[..],pf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[..],f[..]).code==WB_OK && vt_zero_test(f[0].b[..]);
+  #assert wb_make_work(sl[..],oj[..],"acct_x",1,WBT_T0,sd[..],pf[..],cred[..],"openagents.com","iPhone (test)",sec[..],salt[..],17,fresh[..],f[..]).code==WB_INPUT && vt_zero_test(f[0].b[..]);
+  f[0].b[82]=1;#assert !vt_zero_test(f[0].b[..]);f[0].b[82]=0;
+  p:=f[0].plain;#assert wb_plain_zero_test(p[0]);
+  // sealing the next epoch leaves nothing of the record either
+  pw:[1]WbPlain;vmk:[32]u8;fo:[WB_FRESH_OBJECT]u8;#assert wb_vmk(WBT_SLOT_PRF,pf[..],vmk[..]);j:[WB_SLOTS_TEXT_MAX]u8;
+  for i:0..<16 {sd[i]=cast(u8)(i+9);}
+  #assert wb_object_made(oj[..],wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,""),WBT_ACCOUNT,2,WBT_T0,sd[..],vmk[..],fo[..],pw[..]).code==WB_OK && wb_plain_zero_test(pw[0]);
+  #assert wb_object_made(oj[0..<100],wbt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,""),WBT_ACCOUNT,2,WBT_T0,sd[..],vmk[..],fo[..],pw[..]).code==WB_ROOM && wb_plain_zero_test(pw[0]);
+  ob:[WB_OBJECT_MAX]u8;object:=vt_u8(vt_blob_test(WBT_OBJECT_1,ob[..]),ob[..]);prf:[32]u8;vt_hex_test(WBT_PRF_SECRET,prf[..]);out:[32]u8;w:[1]WbPlain;
+  #assert wb_open_work(object,WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,1,0,out[..],w[..]).code==WB_OK && wb_plain_zero_test(w[0]);
+  #assert wb_open_work(object,WBT_SLOT_PRF,prf[..],WBT_ACCOUNT,2,0,out[..],w[..]).code==WB_EPOCH && wb_plain_zero_test(w[0]);
+  w[0].record[5]=1;#assert !wb_plain_zero_test(w[0]);w[0].record[5]=0;w[0].vmk[31]=1;#assert !wb_plain_zero_test(w[0]);
+}
+wb_nostr_zero_test :: (w:WbNostr)->bool #effects(all) {p:=w.p;h:=w.hexed;return vt_plain_zero_test(p[0]) && vt_zero_test(h[..]);}
+wb_plain_zero_test :: (w:WbPlain)->bool #effects(all) {a:=w.record;b:=w.vmk;return vt_zero_test(a[..]) && vt_zero_test(b[..]);}
+
+// ---------------------------------------------------------------- secrets a slot is opened with
+// The passkey's PRF input: every wallet backup uses this one, so the passkey prompt that logs a
+// person in on a new phone can also open their backup (the input must be known before the prompt,
+// when we don't yet know whose passkey answers). The slot's wrapping key still differs per slot:
+// its HKDF salt is the slot id.
+wb_prf_input :: (out:[]u8)->bool #export_c #effects(all) {
+  if out.count!=32 {return false;}
+  name:[31]u8;for i:0..<31 {name[i]=WB_PRF_INPUT[i];}
+  return sha256_hash_checked(name[..],out,false)==SHA_OK;
+}
+// scrypt(words, salt, N = 2^log_n, r = 8, p = 1), 32 bytes. memory: 1024 << log_n bytes. words is
+// the normal phrase (wb_code_normal).
+wb_recovery_secret :: (words:[]u8,salt:[]u8,memory:[]u8,log_n:int,out:[]u8)->bool #export_c #effects(all) {
+  if out.count!=32 || salt.count!=16 {return false;}
+  state:[1]Nip49Scrypt;
+  if !nip49_scrypt_start(state[..],words,salt,memory,log_n,false) {return false;}
+  while nip49_scrypt_step(state[..],memory,ROMIX_MAX_STEP,false) && state[0].romix[0].phase!=ROMIX_DONE {}
+  return nip49_scrypt_finish(state[..],out,false);
+}
+// A new recovery code: 32 random bytes as 24 words. The count written, or -1.
+wb_code_words :: (entropy:[]u8,work:[]u8,out:[]u8)->int #export_c #effects(all) {
+  if entropy.count!=32 {return -1;}
+  return bip39_encode_ct(entropy,work,out);
+}
+// What a person typed, as the recovery slot hashes it; -1 unless it is a whole 24-word phrase.
+wb_code_normal :: (typed:[]u8,work:[]u8,out:[]u8)->int #export_c #effects(all) {return bip39_normal24(typed,work,out);}
+
+// ---------------------------------------------------------------- slots
+wb_put_hex :: (out:[]u8,at:int,b:[]u8)->int #effects(all) {
+  if at<0 || at+2*b.count>out.count {return -1;}
+  hex:="0123456789abcdef";
+  for i:0..<b.count {out[at+2*i]=hex[cast(int)b[i]>>4];out[at+2*i+1]=hex[cast(int)b[i]&15];}
+  return at+2*b.count;
+}
+// The passkey's slot: the VMK under the PRF output. The bytes written, or -1.
+wb_slot_prf :: (out:[]u8,vault:string,slot:string,credential:[]u8,rp:string,label:string,created_at:int,prf:[]u8,vmk:[]u8,nonce:[]u8)->int #export_c #effects(all) {
+  input:[32]u8;if !wb_prf_input(input[..]) {return vt_wipe(out);}
+  // params has room for the longest credential id the reader takes; a longer one doesn't fit and is refused
+  params:[1700]u8;n:=json_raw(params[..],0,"{\"credential_id\":\"");n=vt_put_b64(params[..],n,credential);
+  n=json_raw(params[..],n,"\",\"prf_salt\":\"");n=vt_put_b64(params[..],n,input[..]);n=json_raw(params[..],n,"\",\"rp_id\":\"");n=json_raw(params[..],n,rp);n=json_raw(params[..],n,"\"}");
+  if n==-1 {return vt_wipe(out);}
+  return vt_slot_seal(out,vault,slot,"passkey-prf",cast(string)params[0..<n],label,created_at,prf,vmk,nonce);
+}
+// The recovery code's slot: the VMK under wb_recovery_secret of the words with this salt and cost.
+wb_slot_recovery :: (out:[]u8,vault:string,slot:string,salt:[]u8,log_n:int,label:string,created_at:int,secret:[]u8,vmk:[]u8,nonce:[]u8)->int #export_c #effects(all) {
+  if salt.count!=16 {return vt_wipe(out);}
+  // 64 bytes hold the longest: {"log_n": and 20 characters of a number, ,"salt":" and 24 of base64, "}
+  params:[64]u8;n:=json_raw(params[..],0,"{\"log_n\":");n=json_write_int(params[..],n,log_n);n=json_raw(params[..],n,",\"salt\":\"");n=vt_put_b64(params[..],n,salt);n=json_raw(params[..],n,"\"}");
+  return vt_slot_seal(out,vault,slot,"recovery",cast(string)params[0..<n],label,created_at,secret,vmk,nonce);
+}
+// The Nostr key's slot: secret is 32 random bytes, sealed as 64 hex digits with NIP-44 to the
+// person's own key (ck: that key's conversation key with itself; nip44_nonce: 32 random bytes).
+wb_slot_nostr :: (out:[]u8,vault:string,slot:string,pubkey:string,ck:[]u8,nip44_nonce:[]u8,label:string,created_at:int,secret:[]u8,vmk:[]u8,nonce:[]u8)->int #export_c #effects(all) {
+  w:[1]WbNostr;return wb_slot_nostr_work(out,vault,slot,pubkey,ck,nip44_nonce,label,created_at,secret,vmk,nonce,w[..]);
+}
+wb_slot_nostr_work :: (out:[]u8,vault:string,slot:string,pubkey:string,ck:[]u8,nip44_nonce:[]u8,label:string,created_at:int,secret:[]u8,vmk:[]u8,nonce:[]u8,w:[]WbNostr)->int #effects(all) {
+  if secret.count!=32 {return vt_wipe(out);}
+  sealed:[256]u8;h:=wb_put_hex(w[0].hexed[..],0,secret);
+  r:=nip44_encrypt_checked(NIP44_COMPAT,ck,nip44_nonce,w[0].hexed[0..<h],w[0].p[0].work[..],sealed[..],false);
+  w[0]=WbNostr.{};
+  if r.error!=NIP44_OK {return vt_wipe(out);}
+  params:[400]u8;n:=json_raw(params[..],0,"{\"pubkey\":\"");n=json_raw(params[..],n,pubkey);n=json_raw(params[..],n,"\",\"sealed\":\"");
+  n=json_raw(params[..],n,cast(string)sealed[0..<r.written]);n=json_raw(params[..],n,"\"}");
+  if n==-1 {return vt_wipe(out);}
+  return vt_slot_seal(out,vault,slot,"nostr",cast(string)params[0..<n],label,created_at,secret,vmk,nonce);
+}
+// A recovery slot's scrypt cost, and its salt in out (16 bytes); -1 when the slot isn't one.
+wb_recovery_params :: (slot:string,salt:[]u8)->int #export_c #effects(all) {
+  aad:[VT_SLOT_MAX]u8;s:=vt_slot_read(slot,aad[..]);
+  if s.code!=VtCode.ok {return -1;}
+  if vt_method(s.method)!=VT_M_RECOVERY || salt.count!=16 {return -1;}
+  _=base64_decode_checked(s.salt,salt,false);   // 16 bytes: the reader took the slot
+  return s.log_n;
+}
+
+// ---------------------------------------------------------------- a set of slots
+// A backup counts with a recovery code and a passkey: the passkey restores with one prompt, and
+// the code is there when no passkey can do PRF (NIP-VAULT, "Enough slots").
+wb_enough :: (prf:int,recovery:int)->int #export_c #effects(all) {
+  if recovery<1 {return WB_NEEDS_RECOVERY;}
+  if prf<1 {return WB_NEEDS_PASSKEY;}
+  return WB_OK;
+}
+// slots: each slot's text, one newline between them. One vault, distinct ids, 1 to WB_SLOTS_MAX,
+// and only what this backup takes: recovery (a cost we can run), passkey-prf (the fixed input)
+// and nostr.
+wb_slots_read :: (slots:string)->WbSet #effects(all) {
+  s:=[1]WbSet.[WbSet.{}];
+  if slots.count==0 || slots.count>WB_SLOTS_TEXT_MAX {return WbSet.{code=WB_TOO_MANY};}
+  input:[32]u8;want:[44]u8;_=wb_prf_input(input[..]);_=vt_put_b64(want[..],0,input[..]);
+  lines:[WB_SLOTS_MAX]WbSpan;n:=wb_lines(slots,lines[..]);
+  if n==-1 {return WbSet.{code=WB_TOO_MANY};}
+  for k:0..<n {
+    aad:[VT_SLOT_MAX]u8;one:=vt_slot_read(slots[lines[k].from..<lines[k].to],aad[..]);
+    if one.code!=VtCode.ok {return WbSet.{code=WB_SLOT};}
+    m:=vt_method(one.method);
+    if m==VT_M_PRF {if one.prf_salt!=cast(string)want[..] {return WbSet.{code=WB_SLOT};}s[0].prf+=1;}
+    else if m==VT_M_RECOVERY {if one.log_n>18 {return WbSet.{code=WB_SLOT};}s[0].recovery+=1;}
+    else if m==VT_M_NOSTR {s[0].nostr+=1;}
+    else {return WbSet.{code=WB_SLOT};}
+    if k==0 {s[0].vault=one.vault;} else if one.vault!=s[0].vault {return WbSet.{code=WB_VAULT};}
+    for i:0..<k {if s[0].ids[i]==one.slot {return WbSet.{code=WB_DUPLICATE};}}
+    s[0].ids[k]=one.slot;
+  }
+  s[0].count=n;
+  return s[0];
+}
+// The lines of a set of slots (a newline between them) into spans: how many, or -1 when there are
+// more than spans holds. A newline at the end leaves an empty last line.
+wb_lines :: (slots:string,spans:[]WbSpan)->int #effects(all) {
+  n:=0;from:=0;
+  while true {
+    to:=from;while to<slots.count && slots[to]!='\n' {to+=1;}
+    if n==spans.count {return -1;}
+    spans[n]=WbSpan.{from=from,to=to};n+=1;
+    if to==slots.count {break;}
+    from=to+1;
+  }
+  return n;
+}
+// WB_OK when the set is one a backup may be stored with.
+wb_slots_check :: (slots:string)->int #export_c #effects(all) {
+  s:=wb_slots_read(slots);if s.code!=WB_OK {return s.code;}
+  return wb_enough(s.prf,s.recovery);
+}
+// The first slot of this method in the set (VT_M_*), and for a passkey the one whose credential id
+// is credential (any passkey slot when credential is empty). from is -1 when there is none.
+wb_pick :: (slots:string,method:int,credential:[]u8)->WbSpan #export_c #effects(all) {
+  lines:[WB_SLOTS_MAX]WbSpan;n:=wb_lines(slots,lines[..]);
+  for k:0..<n {
+    aad:[VT_SLOT_MAX]u8;one:=vt_slot_read(slots[lines[k].from..<lines[k].to],aad[..]);
+    if one.code==VtCode.ok && vt_method(one.method)==method
+      && (method!=VT_M_PRF || credential.count==0 || wb_same_credential(one.credential,credential)) {return lines[k];}
+  }
+  return WbSpan.{};
+}
+// Whether a slot's credential id (base64) is these bytes.
+wb_same_credential :: (b64:string,credential:[]u8)->bool #effects(all) {
+  if base64_decode_size(b64)!=credential.count {return false;}
+  id:[VT_CREDENTIAL_MAX]u8;_=base64_decode_checked(b64,id[0..<credential.count],false);
+  diff:u8=0;for i:0..<credential.count {diff|=id[i]^credential[i];}
+  return diff==0;
+}
+
+// ---------------------------------------------------------------- the record
+wb_account_ok :: (a:string)->bool #effects(all) {
+  if a.count!=31 || a[0..<5]!="acct_" {return false;}
+  for c:a[5..<31] {if !((c>='a' && c<='z') || (c>='2' && c<='7')) {return false;}}
+  return true;
+}
+// The record's text in out: the bytes written, or -1.
+wb_record_write :: (out:[]u8,account:string,vault:string,epoch:int,created_at:int,entropy:[]u8,set:WbSet)->int #effects(all) {
+  n:=json_raw(out,0,"{\"account\":\"");n=json_raw(out,n,account);n=json_raw(out,n,"\",\"created_at\":");n=json_write_int(out,n,created_at);
+  n=json_raw(out,n,",\"entropy\":\"");n=wb_put_hex(out,n,entropy);n=json_raw(out,n,"\",\"epoch\":");n=json_write_int(out,n,epoch);
+  n=json_raw(out,n,",\"requires\":[],\"slots\":[");
+  ids:=set.ids;
+  for k:0..<set.count {if k>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"\"");n=json_raw(out,n,ids[k]);n=json_raw(out,n,"\"");}
+  n=json_raw(out,n,"],\"v\":\"");n=json_raw(out,n,WB_V);n=json_raw(out,n,"\",\"vault\":\"");n=json_raw(out,n,vault);n=json_raw(out,n,"\"}");
+  return n;
+}
+wb_record_read :: (text:string)->WbRecord #effects(all) {
+  bad:=WbRecord.{code=WB_RECORD};r:=[1]WbRecord.[WbRecord.{}];
+  if !vt_canonical(text) {return bad;}
+  j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return bad;}
+  names:=[8]string.["account","created_at","entropy","epoch","requires","slots","v","vault"];k:=0;
+  while true {
+    t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+    if k==8 || !json_is(json_text(j[..]),names[k]) {return bad;}
+    t=json_next(j[..]);
+    if k==0 {if t!=JSON_STRING || !wb_account_ok(json_text(j[..])) {return bad;}r[0].account=json_text(j[..]);}
+    else if k==1 {r[0].created_at=vt_uint(j[..],t);if r[0].created_at<0 {return bad;}}
+    else if k==2 {
+      e:=json_text(j[..]);if t!=JSON_STRING || !(vt_hex(e,32) || vt_hex(e,64)) {return bad;}
+      r[0].entropy=e;
+    }
+    else if k==3 {r[0].epoch=vt_uint(j[..],t);if r[0].epoch<1 {return bad;}}
+    else if k==4 {if t!=JSON_ARRAY || json_next(j[..])!=JSON_ARRAY_END {return bad;}}
+    else if k==5 {
+      if t!=JSON_ARRAY {return bad;}
+      v:=json_next(j[..]);
+      while v!=JSON_ARRAY_END {
+        if v!=JSON_STRING || r[0].count==WB_SLOTS_MAX || !vt_hex64(json_text(j[..])) {return bad;}
+        r[0].ids[r[0].count]=json_text(j[..]);r[0].count+=1;v=json_next(j[..]);
+      }
+      if r[0].count==0 {return bad;}
+    }
+    else if k==6 {if t!=JSON_STRING || !json_is(json_text(j[..]),WB_V) {return bad;}}
+    else {if t!=JSON_STRING || !vt_hex64(json_text(j[..])) {return bad;}r[0].vault=json_text(j[..]);}
+    k+=1;
+  }
+  if k!=8 {return bad;}
+  return r[0];
+}
+wb_record_lists :: (r:WbRecord,slot:string)->bool #effects(all) {
+  ids:=r.ids;
+  for k:0..<r.count {if ids[k]==slot {return true;}}
+  return false;
+}
+
+// ---------------------------------------------------------------- sealing and opening
+// The object for this set of slots: the record (account, epoch, the slots' ids, the seed's
+// entropy) under a new DEK, wrapped under the VMK. fresh: WB_FRESH_OBJECT random bytes (the DEK,
+// the object id, the wrap's nonce, the chunk prefix). The bytes written, or minus a WB_ code.
+wb_object :: (out:[]u8,slots:string,account:string,epoch:int,created_at:int,entropy:[]u8,vmk:[]u8,fresh:[]u8)->int #export_c #effects(all) {
+  w:[1]WbPlain;r:=wb_object_made(out,slots,account,epoch,created_at,entropy,vmk,fresh,w[..]);
+  return ifx r.code==WB_OK then r.n else -r.code;
+}
+wb_object_made :: (out:[]u8,slots:string,account:string,epoch:int,created_at:int,entropy:[]u8,vmk:[]u8,fresh:[]u8,w:[]WbPlain)->WbOpened #effects(all) {
+  _=vt_wipe(out);
+  if fresh.count!=WB_FRESH_OBJECT || vmk.count!=32 || !(entropy.count==16 || entropy.count==32) || !wb_account_ok(account) || epoch<1 || created_at<0 {return WbOpened.{code=WB_INPUT};}
+  set:=wb_slots_read(slots);if set.code!=WB_OK {return WbOpened.{code=set.code};}
+  enough:=wb_enough(set.prf,set.recovery);if enough!=WB_OK {return WbOpened.{code=enough};}
+  n:=wb_record_write(w[0].record[..],account,set.vault,epoch,created_at,entropy,set);
+  object:[64]u8;h:=wb_put_hex(object[..],0,fresh[32..<64]);
+  made:=vt_object_seal(out,set.vault,cast(string)object[0..<h],created_at,WB_CHUNK,fresh[76..<83],vmk,fresh[0..<32],fresh[64..<76],w[0].record[0..<n]);
+  w[0]=WbPlain.{};
+  if made==-1 {return WbOpened.{code=WB_ROOM};}
+  return WbOpened.{code=WB_OK,n=made,epoch=epoch};
+}
+// Opens the backup through one slot: the seed's entropy in out (16 or 32 bytes; out needs 32).
+// account: the account that is logged in. epoch: the epoch the server named. seen: the highest
+// epoch this device has opened or made (0 on a new device).
+wb_open :: (object:[]u8,slot:string,secret:[]u8,account:string,epoch:int,seen:int,out:[]u8)->WbOpened #export_c #effects(all) {
+  w:[1]WbPlain;return wb_open_work(object,slot,secret,account,epoch,seen,out,w[..]);
+}
+wb_open_work :: (object:[]u8,slot:string,secret:[]u8,account:string,epoch:int,seen:int,out:[]u8,w:[]WbPlain)->WbOpened #effects(all) {
+  if out.count<32 {return WbOpened.{code=WB_ROOM};}
+  aad:[VT_SLOT_MAX]u8;s:=vt_slot_read(slot,aad[..]);if s.code!=VtCode.ok {return WbOpened.{code=WB_OBJECT};}
+  o:=vt_open(object,slot,secret,w[0].record[..]);   // nothing is left in the record unless it opened
+  if o.code!=VtCode.ok {return WbOpened.{code=ifx o.code==VtCode.slot then WB_SECRET else WB_OBJECT};}
+  r:=wb_record_read(cast(string)w[0].record[0..<o.written]);
+  code:=WB_OK;
+  if r.code!=WB_OK {code=WB_RECORD;}
+  else if r.vault!=s.vault {code=WB_VAULT;}
+  else if r.account!=account {code=WB_ACCOUNT;}
+  else if r.epoch!=epoch {code=WB_EPOCH;}
+  else if r.epoch<seen {code=WB_ROLLBACK;}
+  else if !wb_record_lists(r,s.slot) {code=WB_UNLISTED;}
+  if code!=WB_OK {w[0]=WbPlain.{};return WbOpened.{code=code};}
+  n:=r.entropy.count/2;vt_bytes(r.entropy,out[0..<n]);
+  w[0]=WbPlain.{};
+  return WbOpened.{code=WB_OK,n=n,epoch=epoch};
+}
+// The VMK through one slot, to add a slot or seal the next epoch. false when it doesn't open.
+wb_vmk :: (slot:string,secret:[]u8,vmk:[]u8)->bool #export_c #effects(all) {
+  return vmk.count==32 && vt_slot_open(slot,secret,vmk)==VtCode.ok;
+}
+// A first backup, or a whole new one: a new vault with a passkey slot and a recovery-code slot,
+// and the object. fresh: WB_FRESH random bytes, read in this order: the vault id, the VMK, the
+// DEK, the object id, the passkey slot's id, the recovery slot's id, their nonces, the wrap's
+// nonce, the chunk prefix. slots gets the two slot texts with a newline between them. Each slot
+// was opened again with its secret before it was written (vt_slot_seal); wb_verify then proves
+// the whole backup opens to the seed. On any refusal both outputs are zeros.
+wb_make :: (slots:[]u8,object:[]u8,account:string,epoch:int,created_at:int,entropy:[]u8,prf:[]u8,credential:[]u8,rp:string,prf_label:string,
+            recovery_secret:[]u8,recovery_salt:[]u8,log_n:int,fresh:[]u8)->WbMade #export_c #effects(all) {
+  f:[1]WbFresh;return wb_make_work(slots,object,account,epoch,created_at,entropy,prf,credential,rp,prf_label,recovery_secret,recovery_salt,log_n,fresh,f[..]);
+}
+wb_make_work :: (slots:[]u8,object:[]u8,account:string,epoch:int,created_at:int,entropy:[]u8,prf:[]u8,credential:[]u8,rp:string,prf_label:string,
+                 recovery_secret:[]u8,recovery_salt:[]u8,log_n:int,fresh:[]u8,f:[]WbFresh)->WbMade #effects(all) {
+  _=vt_wipe(slots);_=vt_wipe(object);
+  if fresh.count!=WB_FRESH {return WbMade.{code=WB_INPUT};}
+  ids:[192]u8;a0:=wb_put_hex(ids[..],0,fresh[0..<32]);a1:=wb_put_hex(ids[..],a0,fresh[128..<192]);
+  vault:=cast(string)ids[0..<64];vmk:=fresh[32..<64];
+  one:[VT_SLOT_MAX]u8;two:[VT_SLOT_MAX]u8;
+  a:=wb_slot_prf(one[..],vault,cast(string)ids[64..<128],credential,rp,prf_label,created_at,prf,vmk,fresh[192..<204]);
+  b:=wb_slot_recovery(two[..],vault,cast(string)ids[128..<a1],recovery_salt,log_n,"Recovery code",created_at,recovery_secret,vmk,fresh[204..<216]);
+  if a==-1 || b==-1 {return WbMade.{code=WB_SLOT};}
+  if a+1+b>slots.count {return WbMade.{code=WB_ROOM};}
+  for i:0..<a {slots[i]=one[i];}
+  slots[a]='\n';
+  for i:0..<b {slots[a+1+i]=two[i];}
+  // wb_object's random bytes: the DEK and the object id, then the wrap's nonce and the prefix
+  for i:0..<WB_FRESH_OBJECT {f[0].b[i]=ifx i<64 then fresh[64+i] else fresh[152+i];}
+  r:=wb_object_made(object,cast(string)slots[0..<a+1+b],account,epoch,created_at,entropy,vmk,f[0].b[..],f[0].plain[..]);
+  f[0]=WbFresh.{};
+  if r.code!=WB_OK {_=vt_wipe(slots);return WbMade.{code=r.code};}
+  return WbMade.{code=WB_OK,slots=a+1+b,object=r.n};
+}
+// The backup opens to this seed through its passkey slot (the one for credential, with the PRF
+// output) and through its recovery slot (with the secret made again from the words the person
+// was shown): WB_OK, or why not. The app runs this before it stores a backup and before it tells
+// anyone they are backed up.
+wb_verify :: (object:[]u8,slots:string,account:string,epoch:int,prf:[]u8,credential:[]u8,recovery_secret:[]u8,entropy:[]u8)->int #export_c #effects(all) {
+  w:[1]WbVerify;return wb_verify_work(object,slots,account,epoch,prf,credential,recovery_secret,entropy,w[..]);
+}
+wb_verify_work :: (object:[]u8,slots:string,account:string,epoch:int,prf:[]u8,credential:[]u8,recovery_secret:[]u8,entropy:[]u8,w:[]WbVerify)->int #effects(all) {
+  if credential.count==0 {return WB_INPUT;}
+  code:=wb_slots_check(slots);
+  if code==WB_OK {code=wb_verify_one(object,slots,VT_M_PRF,credential,prf,account,epoch,entropy,w);}
+  if code==WB_OK {code=wb_verify_one(object,slots,VT_M_RECOVERY,credential,recovery_secret,account,epoch,entropy,w);}
+  w[0]=WbVerify.{};
+  return code;
+}
+// The backup through its first slot of this method (a passkey's: the one for credential) opens to entropy.
+wb_verify_one :: (object:[]u8,slots:string,method:int,credential:[]u8,secret:[]u8,account:string,epoch:int,entropy:[]u8,w:[]WbVerify)->int #effects(all) {
+  p:=wb_pick(slots,method,credential);
+  if p.from==-1 {return WB_NEEDS_PASSKEY;}
+  o:=wb_open_work(object,slots[p.from..<p.to],secret,account,epoch,epoch,w[0].back[..],w[0].plain[..]);
+  if o.code!=WB_OK {return o.code;}
+  if o.n!=entropy.count {return WB_MISMATCH;}
+  diff:u8=0;for i:0..<o.n {diff|=w[0].back[i]^entropy[i];}
+  return ifx diff==0 then WB_OK else WB_MISMATCH;
+}

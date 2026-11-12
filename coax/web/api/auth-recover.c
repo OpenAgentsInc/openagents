@@ -130,15 +130,17 @@ static void methods_json(PGconn *db, const char *acct, char *out, size_t cap) {
 // ---------------------------------------------------------------- notices
 // Sends one notice to every email and key of the account, and to also_email / also_pubkey (a way
 // just removed). Every delivery is counted on the notice row and in the audit log.
+// A notice's cancel link: the line above it and where it goes (the recovery's, a limit raise's).
+typedef struct { const char *lead, *url; } notice_link;
 static void deliver(PGconn *db, long long notice_id, const char *acct, const char *what, const char *subject, const char *words,
-                    const char *cancel_token, const char *also_email, const char *also_pubkey) {
+                    const notice_link *cancel, const char *also_email, const char *also_pubkey) {
   char freeze_tok[65] = "", freeze_url[300] = "", cancel_url[300] = "";
   if (auth_freeze_link(db, acct, freeze_tok)) snprintf(freeze_url, sizeof freeze_url, "%s/settings/security#freeze=%s", auth_origin(), freeze_tok);
-  if (cancel_token && *cancel_token) snprintf(cancel_url, sizeof cancel_url, "%s/settings/security#cancel=%s", auth_origin(), cancel_token);
+  if (cancel && cancel->url && *cancel->url) snprintf(cancel_url, sizeof cancel_url, "%s", cancel->url);
   char text[1400];
-  snprintf(text, sizeof text, "%s\n\n%s%s%s%s%s%sThis is a security notice from OpenAgents. We send one for every change to how you log in.\n",
+  snprintf(text, sizeof text, "%s\n\n%s%s%s%s%s%s%sThis is a security notice from OpenAgents. We send one for every change to how you log in or to your wallet's limit and backup.\n",
            words,
-           cancel_url[0] ? "Cancel the recovery:\n" : "", cancel_url, cancel_url[0] ? "\n\n" : "",
+           cancel_url[0] ? cancel->lead : "", cancel_url[0] ? "\n" : "", cancel_url, cancel_url[0] ? "\n\n" : "",
            freeze_url[0] ? "If this wasn't you, freeze your account (every login ends):\n" : "", freeze_url, freeze_url[0] ? "\n\n" : "");
   int emailed = 0, nostr_sent = 0, failed = 0;
   // ---- email: each address, opened from its seal
@@ -209,17 +211,17 @@ static void deliver(PGconn *db, long long notice_id, const char *acct, const cha
 }
 // The notice's row now, its delivery from a child (inline under OA_AUTH_NOTICE_SYNC=1).
 static void notify(PGconn *db, const char *acct, const char *what, const char *subject, const char *words,
-                   const char *cancel_token, const char *also_email, const char *also_pubkey) {
+                   const notice_link *cancel, const char *also_email, const char *also_pubkey) {
   const char *v[3] = {acct, what, words};
   char idb[24];
   if (!one(db, "SELECT auth.notice_add($1, $2, $3)", 3, v, idb, sizeof idb) || !idb[0]) return;
   long long id = atoll(idb);
-  if (!strcmp(env_or("OA_AUTH_NOTICE_SYNC", "0"), "1")) { deliver(db, id, acct, what, subject, words, cancel_token, also_email, also_pubkey); return; }
+  if (!strcmp(env_or("OA_AUTH_NOTICE_SYNC", "0"), "1")) { deliver(db, id, acct, what, subject, words, cancel, also_email, also_pubkey); return; }
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid != 0) return;   // the parent, or no child: the row says nothing was sent
   PGconn *c = api_db_new();
-  if (c) { deliver(c, id, acct, what, subject, words, cancel_token, also_email, also_pubkey); PQfinish(c); }
+  if (c) { deliver(c, id, acct, what, subject, words, cancel, also_email, also_pubkey); PQfinish(c); }
   _exit(0);
 }
 static void short_key(const char *pk, char *out, size_t cap) { snprintf(out, cap, "%.8s…%.4s", pk, pk + 60); }
@@ -300,6 +302,11 @@ bool auth_proof_key(const request *q, PGconn *db, const auth_principal *p, const
 // For auth-life.c: a notice of freezing, deletion or merging to every email and key of acct.
 void auth_notice(PGconn *db, const char *acct, const char *what, const char *subject, const char *words) {
   notify(db, acct, what, subject, words, NULL, NULL, NULL);
+}
+// For wallet.c: the same notice with a link under it (lead: the line above the link).
+void auth_notice_link(PGconn *db, const char *acct, const char *what, const char *subject, const char *words, const char *lead, const char *url) {
+  notice_link link = {lead, url};
+  notify(db, acct, what, subject, words, &link, NULL, NULL);
 }
 static int key_owner(PGconn *db, const char *pk, const char *acct) {
   const char *v[2] = {pk, acct};
@@ -602,7 +609,10 @@ static void recovery_start(const request *q, PGconn *db, const auth_principal *p
   snprintf(words, sizeof words, "Someone logged in to your OpenAgents account with its email and asked to recover it. "
            "If nothing stops it, after %s a new key they choose replaces every key and passkey on the account. "
            "Logging in with your key or passkey cancels it, and so does the link below.", when);
-  notify(db, p->account, "recovery.start", "someone asked to recover your account", words, tok, NULL, NULL);
+  char cancel_url[300]; snprintf(cancel_url, sizeof cancel_url, "%s/settings/security#cancel=%s", auth_origin(), tok);
+  notice_link cancel = {"Cancel the recovery:", cancel_url};
+  notify(db, p->account, "recovery.start", "someone asked to recover your account", words, &cancel, NULL, NULL);
+  memset(cancel_url, 0, sizeof cancel_url);
   memset(tok, 0, sizeof tok);
   char json[300], lines[200];
   snprintf(json, sizeof json, "{\"state\":\"pending\",\"asked_ms\":%lld,\"ready_ms\":%lld,\"wait_hours\":72}", asked, ready);

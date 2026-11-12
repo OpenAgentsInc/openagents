@@ -1,0 +1,134 @@
+// What the API checks of a wallet backup before it stores one (#13217): the slots and the object
+// are the forms coax/lib/nostr/vault-wallet.coax makes, read by the same code the apps seal and
+// open with. The API holds no secret that opens any of it, so these checks read public fields
+// only: a slot's method, ids, label and parameters, and an object's header.
+//
+//   wv_slots       wb_slots_check of the set: 0, or why not (WB_ codes; wallet-policy.coax's
+//                  WP_SLOTS_ numbers are these)
+//   wv_object      the object is a tier user vault object of one chunk and one wrap, for the
+//                  slots' vault, small enough to be a wallet backup
+//   wv_vault       the set's vault id
+//   wv_count, wv_slot, wv_credential   one slot's public fields, for the list people see and
+//                  for matching a passkey slot to the account's passkeys
+//   wv_b64, wv_unb64                   the object's bytes as the JSON carries them
+#run_steps 250000000;
+#load "../../lib/nostr/vault-wallet.coax";
+#authority;
+
+WV_PRF :: 1; WV_RECOVERY :: 2; WV_NOSTR :: 3;
+WvSlot :: struct {from:int = -1;to:int = -1;method:int;created_at:int;label_from:int;label_to:int;}
+
+wvt_join :: (out:[]u8,a:string,b:string,c:string)->[]u8 #effects(all) {s:=wbt_join(out,a,b,c);return out[0..<s.count];}
+
+#test "the set of slots: the library's answer, unchanged" #steps 900000000 {
+  j:[WB_SLOTS_TEXT_MAX]u8;
+  #assert wv_slots(wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,""))==0 && wv_slots(wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR))==0;
+  #assert wv_slots(wvt_join(j[..],WBT_SLOT_PRF,"",""))==WB_NEEDS_RECOVERY && wv_slots(wvt_join(j[..],WBT_SLOT_RECOVERY,"",""))==WB_NEEDS_PASSKEY;
+  #assert WB_NEEDS_RECOVERY==5 && WB_NEEDS_PASSKEY==6 && WB_OK==0;
+  #assert wv_slots(wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,VT_SLOT_DEVICE))==WB_SLOT && wv_slots(j[0..<0])==WB_TOO_MANY;
+  v:[65]u8;v[64]=9;
+  #assert wv_vault(wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,""),v[0..<64]) && cast(string)v[0..<64]==WBT_VAULT && v[64]==9;
+  #assert !wv_vault(wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,""),v[0..<63]) && !wv_vault(wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,""),v[..]);
+  #assert !wv_vault(wvt_join(j[..],WBT_SLOT_PRF,"{}",""),v[0..<64]);
+  #assert wv_count(wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR))==3 && wv_count(wvt_join(j[..],WBT_SLOT_PRF,"",""))==1 && wv_count(wvt_join(j[..],"{}","",""))==0;
+}
+#test "the object: this vault's, one chunk, one wrap, at most 4096 bytes" #steps 2000000000 {
+  j:[WB_SLOTS_TEXT_MAX]u8;slots:=wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,"");ob:[WB_OBJECT_MAX]u8;object:=vt_u8(vt_blob_test(WBT_OBJECT_1,ob[..]),ob[..]);
+  #assert wv_object(object,slots);
+  x:[WB_OBJECT_MAX]u8;for i:0..<object.count {x[i]=object[i];}
+  x[3]^=1;#assert !wv_object(x[0..<object.count],slots);x[3]^=1;
+  #assert !wv_object(object[0..<40],slots) && !wv_object(object[0..<0],slots);
+  // another vault's slots, or slots that aren't a set
+  j2:[WB_SLOTS_TEXT_MAX]u8;
+  #assert !wv_object(object,wvt_join(j2[..],VT_RUST_SLOT_PRF,"","")) && !wv_object(object,wvt_join(j2[..],"{}","",""));
+  // another vault's object, with one wrap and one chunk
+  vmk0:[32]u8;dek0:[32]u8;wn0:[12]u8;prefix0:[7]u8;plain0:[8]u8;other:[1024]u8;
+  on:=vt_object_seal(other[..],"1111111111111111111111111111111111111111111111111111111111111111","2222222222222222222222222222222222222222222222222222222222222222",9,1024,prefix0[..],vmk0[..],dek0[..],wn0[..],plain0[..]);
+  #assert on>0 && !wv_object(other[0..<on],slots);
+  // this vault's object with its wrap taken out of the header (the reader takes that; a backup carries its wrap)
+  mine:[1024]u8;mn:=vt_object_seal(mine[..],WBT_VAULT,"2222222222222222222222222222222222222222222222222222222222222222",9,1024,prefix0[..],vmk0[..],dek0[..],wn0[..],plain0[..]);
+  #assert mn>0 && wv_object(mine[0..<mn],slots);
+  mo:=vt_object_read(mine[0..<mn]);head:=cast(string)mine[12..<mo.body];at:=0;while head[at..<at+9]!="\"wraps\":[" {at+=1;}
+  hb:[1024]u8;hn:=json_raw(hb[..],0,head[0..<at]);hn=json_raw(hb[..],hn,"\"wraps\":[]}");rb:[1024]u8;
+  bare:=vt_rebuild(cast(string)hb[0..<hn],cast(string)mine[mo.body..<mn],rb[..]);ub:[1024]u8;
+  #assert vt_object_read(vt_u8(bare,ub[..])).code==VtCode.ok && vt_object_read(vt_u8(bare,ub[..])).count==0 && !wv_object(vt_u8(bare,ub[..]),slots);
+  // objects the reader takes and a backup isn't: two chunks, too large
+  vmk:[32]u8;dek:[32]u8;wn:[12]u8;prefix:[7]u8;plain:[5000]u8;big:[8192]u8;
+  O:="2222222222222222222222222222222222222222222222222222222222222222";
+  n:=vt_object_seal(big[..],WBT_VAULT,O,9,1024,prefix[..],vmk[..],dek[..],wn[..],plain[0..<1024]);#assert n>0 && wv_object(big[0..<n],slots);
+  n=vt_object_seal(big[..],WBT_VAULT,O,9,1024,prefix[..],vmk[..],dek[..],wn[..],plain[0..<1025]);#assert n>0 && !wv_object(big[0..<n],slots);
+  base:=vt_object_seal(big[..],WBT_VAULT,O,9,8192,prefix[..],vmk[..],dek[..],wn[..],plain[0..<3000]);fits:=3000+WB_OBJECT_MAX-base;
+  n=vt_object_seal(big[..],WBT_VAULT,O,9,8192,prefix[..],vmk[..],dek[..],wn[..],plain[0..<fits]);#assert n==WB_OBJECT_MAX && wv_object(big[0..<n],slots);
+  n=vt_object_seal(big[..],WBT_VAULT,O,9,8192,prefix[..],vmk[..],dek[..],wn[..],plain[0..<fits+1]);#assert n==WB_OBJECT_MAX+1 && !wv_object(big[0..<n],slots);
+  b:[1024]u8;nowrap:=vt_blob_test(VT_RUST_OBJECT,big[..]);r:=vt_object_read(big[0..<nowrap.count]);#assert r.code==VtCode.ok && r.count==0;
+  #assert !wv_object(big[0..<nowrap.count],wvt_join(j2[..],VT_RUST_SLOT_PRF,"",""));
+}
+#test "one slot's public fields: its span, method, time, label and credential id" #steps 900000000 {
+  j:[WB_SLOTS_TEXT_MAX]u8;slots:=wvt_join(j[..],WBT_SLOT_PRF,WBT_SLOT_RECOVERY,WBT_SLOT_NOSTR);
+  a:=wv_slot(slots,0);#assert a.from==0 && a.to==WBT_SLOT_PRF.count && a.method==WV_PRF && a.created_at==WBT_T0 && cast(string)slots[a.label_from..<a.label_to]=="iPhone (test)";
+  b:=wv_slot(slots,1);#assert b.from==WBT_SLOT_PRF.count+1 && cast(string)slots[b.from..<b.to]==WBT_SLOT_RECOVERY && b.method==WV_RECOVERY && cast(string)slots[b.label_from..<b.label_to]=="Recovery code";
+  c:=wv_slot(slots,2);#assert cast(string)slots[c.from..<c.to]==WBT_SLOT_NOSTR && c.to==slots.count && c.method==WV_NOSTR && c.created_at==WBT_T0+60 && cast(string)slots[c.label_from..<c.label_to]=="Nostr key (test)";
+  #assert wv_slot(slots,3).from==-1 && wv_slot(slots,-1).from==-1 && wv_slot(slots,3).method==0;
+  cred:[VT_CREDENTIAL_MAX]u8;want:[20]u8;#assert vt_b64(WBT_CREDENTIAL,want[..],20);
+  #assert wv_credential(slots,0,cred[..])==20;for i:0..<20 {#assert cred[i]==want[i];}
+  #assert wv_credential(slots,0,cred[0..<20])==20 && wv_credential(slots,0,cred[0..<19])==-1;
+  #assert wv_credential(slots,1,cred[..])==0 && wv_credential(slots,2,cred[..])==0 && wv_credential(slots,3,cred[..])==-1;
+  // a credential id of one byte
+  e1:[VT_SLOT_MAX]u8;j3:[WB_SLOTS_TEXT_MAX]u8;short:=wvt_join(j3[..],vt_case(e1[..],WBT_SLOT_PRF,WBT_CREDENTIAL,"/w=="),"","");
+  cred[0]=0;#assert wv_credential(short,0,cred[..])==1 && cred[0]==255 && wv_credential(short,0,cred[0..<1])==1 && wv_credential(short,0,cred[0..<0])==-1;
+  #assert wv_slot(slots,2).from==WBT_SLOT_PRF.count+WBT_SLOT_RECOVERY.count+2 && wv_slot(short,1).from==-1 && wv_slot(slots[0..<0],0).from==-1;
+  // an empty label
+  e:[VT_SLOT_MAX]u8;j2:[WB_SLOTS_TEXT_MAX]u8;one:=wvt_join(j2[..],vt_case(e[..],WBT_SLOT_RECOVERY,"\"label\":\"Recovery code\"","\"label\":\"\""),"","");
+  z:=wv_slot(one,0);#assert z.from==0 && z.label_from==z.label_to && z.method==WV_RECOVERY;
+}
+#test "base64, as the JSON carries the object" {
+  t:[16]u8;b:[8]u8;x:=[3]u8.[1,2,255];
+  #assert wv_b64(x[..],t[..])==4 && cast(string)t[0..<4]=="AQL/" && wv_b64(x[0..<2],t[..])==4 && cast(string)t[0..<4]=="AQI=" && wv_b64(x[..],t[0..<3])==-1;
+  #assert wv_unb64(vt_u8("AQL/",t[..]),b[..])==3 && b[0]==1 && b[1]==2 && b[2]==255 && wv_unb64(vt_u8("AQL/",t[..]),b[0..<2])==-1;
+  b[0]=0;#assert wv_unb64(vt_u8("AQL/",t[..]),b[0..<3])==3 && b[0]==1;
+  #assert wv_unb64(vt_u8("AQL",t[..]),b[..])==-1 && wv_unb64(vt_u8("AQ-_",t[..]),b[..])==-1 && wv_unb64(t[0..<0],b[..])==0;
+}
+
+wv_slots :: (slots:[]u8)->int #export_c #effects(all) {return wb_slots_check(cast(string)slots);}
+wv_vault :: (slots:[]u8,out:[]u8)->bool #export_c #effects(all) {
+  s:=wb_slots_read(cast(string)slots);if s.code!=WB_OK || out.count!=64 {return false;}
+  for i:0..<64 {out[i]=s.vault[i];}
+  return true;
+}
+wv_count :: (slots:[]u8)->int #export_c #effects(all) {
+  s:=wb_slots_read(cast(string)slots);return ifx s.code==WB_OK then s.count else 0;
+}
+wv_object :: (object:[]u8,slots:[]u8)->bool #export_c #effects(all) {
+  s:=wb_slots_read(cast(string)slots);if s.code!=WB_OK || object.count>WB_OBJECT_MAX {return false;}
+  o:=vt_object_read(object);if o.code!=VtCode.ok {return false;}
+  return o.vault==s.vault && o.count==1 && o.chunks==1;
+}
+// The i-th slot of a set that wv_slots took (from 0). from is -1 when there is no such slot.
+wv_slot :: (slots:[]u8,i:int)->WvSlot #export_c #effects(all) {
+  text:=cast(string)slots;from:=0;k:=0;
+  if i<0 {return WvSlot.{};}
+  while k<i && from<text.count {if text[from]=='\n' {k+=1;}from+=1;}
+  to:=from;while to<text.count && text[to]!='\n' {to+=1;}
+  aad:[VT_SLOT_MAX]u8;one:=vt_slot_read(text[from..<to],aad[..]);if one.code!=VtCode.ok {return WvSlot.{};}
+  m:=vt_method(one.method);
+  // canonical: {"created_at":N,"label":"...", so the label's bytes follow the first two names
+  j:[1]Json;json_start(j[..],text[from..<to]);t:=json_next(j[..]);t=json_next(j[..]);t=json_next(j[..]);
+  created:=vt_uint(j[..],t);t=json_next(j[..]);t=json_next(j[..]);
+  return WvSlot.{from=from,to=to,method=ifx m==VT_M_PRF then WV_PRF else ifx m==VT_M_RECOVERY then WV_RECOVERY else WV_NOSTR,
+    created_at=created,label_from=from+j[0].from,label_to=from+j[0].to};
+}
+// The i-th slot's credential id in out: its length, 0 when the slot isn't a passkey's, -1 when
+// there is no such slot or no room.
+wv_credential :: (slots:[]u8,i:int,out:[]u8)->int #export_c #effects(all) {
+  s:=wv_slot(slots,i);if s.from<0 {return -1;}
+  if s.method!=WV_PRF {return 0;}
+  aad:[VT_SLOT_MAX]u8;one:=vt_slot_read(cast(string)slots[s.from..<s.to],aad[..]);
+  n:=base64_decode_size(one.credential);   // 1 to 1023: the reader took the slot
+  if n>out.count {return -1;}
+  return base64_decode_checked(one.credential,out[0..<n],false).written;
+}
+wv_b64 :: (b:[]u8,out:[]u8)->int #export_c #effects(all) {return vt_put_b64(out,0,b);}
+wv_unb64 :: (text:[]u8,out:[]u8)->int #export_c #effects(all) {
+  n:=base64_decode_size(cast(string)text);if n<0 || n>out.count {return -1;}
+  return base64_decode_checked(cast(string)text,out[0..<n],false).written;
+}

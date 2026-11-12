@@ -1,0 +1,82 @@
+{
+ "profile": "openagents.vault",
+ "version": 1,
+ "spec": "nostr/nips/openagents/NIP-VAULT.md",
+ "encoding": "RFC 8785 (JCS) JSON, integers only; binary values standard base64 with padding; ids and digests lowercase hex",
+ "shapes": [
+  {
+   "id": "openagents.vault-slot.v1",
+   "what": "a key slot: the vault master key under one unlock method's secret",
+   "fields": [
+    "created_at",
+    "label",
+    "method",
+    "nonce",
+    "params",
+    "requires",
+    "slot",
+    "v",
+    "vault",
+    "vmk"
+   ],
+   "methods": {
+    "device": [
+     "key_ref",
+     "platform"
+    ],
+    "nostr": [
+     "pubkey",
+     "sealed"
+    ],
+    "passkey-prf": [
+     "credential_id",
+     "prf_salt",
+     "rp_id"
+    ],
+    "recovery": [
+     "log_n",
+     "salt"
+    ]
+   },
+   "associated_data": "the slot's JCS bytes without nonce and vmk",
+   "wrap": "HKDF-SHA256(ikm = the method secret, salt = the slot id's 32 bytes, info = \"openagents.vault.v1/slot\" 0 method), then AES-256-GCM"
+  },
+  {
+   "id": "openagents.vault-object.v1",
+   "what": "a sealed object: OAVAULT1, be32(header length), the header, the chunks",
+   "fields": [
+    "core",
+    "requires",
+    "v",
+    "wraps"
+   ],
+   "core": [
+    "content",
+    "created_at",
+    "media",
+    "object",
+    "tier",
+    "vault"
+   ],
+   "content": [
+    "alg",
+    "chunk_bytes",
+    "chunks",
+    "nonce_prefix"
+   ],
+   "wrap": [
+    "dek",
+    "key",
+    "mode",
+    "nonce"
+   ],
+   "associated_data": "\"openagents.vault.v1/chunk\" 0 SHA-256(JCS(core)) for a chunk; \"openagents.vault.v1/wrap-user\" 0 the same digest for the user wrap"
+  }
+ ],
+ "fixtures": [
+  "coax/tests/nostr/vault_fixtures.coax",
+  "proto/nostr/fixtures/wallet-backup-v1.vectors.json"
+ ],
+ "reads": "coax/lib/nostr/vault.coax",
+ "writes": "coax/lib/nostr/vault-seal.coax"
+}

@@ -100,6 +100,18 @@ static const auth_rule RULES[] = {
   // ---- device keys (auth-device.c, auth-device-policy.coax, #13216)
   R("GET",  "/api/auth/devices", false, AP_HUMAN, "the device keys that hold your logins"),
   R("POST", "/api/auth/devices/", true, AP_HUMAN, "remove one device: its key is revoked and its logins end"),
+  // ---- the wallet's encrypted backup and daily limit (wallet.c, wallet-policy.coax, #13217):
+  // reading, storing and deleting the backup and raising the limit are L2-fresh here and in the
+  // policy; a payment past the limit is L2-fresh in the policy; the cancel link needs no login
+  R("GET",  "/api/wallet", false, AP_HUMAN, "the daily limit, what the last 24 hours counted, a waiting raise, the backup's public facts"),
+  R("POST", "/api/wallet/backup/export", false, AP_L2_FRESH, "the encrypted backup itself: ciphertext we can't open (L2-fresh)"),
+  R("POST", "/api/wallet/backup", false, AP_L2_FRESH, "store an encrypted backup at the next epoch (L2-fresh)"),
+  R("POST", "/api/wallet/backup/delete", false, AP_L2_FRESH, "delete the backup (L2-fresh)"),
+  R("POST", "/api/wallet/limit", false, AP_L2_FRESH, "set the daily limit: a raise counts in 24 hours (L2-fresh)"),
+  R("POST", "/api/wallet/limit/lower", false, AP_HUMAN, "lower the daily limit: it counts at once"),
+  R("POST", "/api/wallet/limit/cancel", false, AP_PUBLIC, "cancel a waiting raise: a notice's link token, or the session's account"),
+  R("POST", "/api/wallet/spend", false, AP_HUMAN, "the app asks before it pays: go, or a fresh L2 first"),
+  R("POST", "/api/wallet/spend/void", false, AP_HUMAN, "a payment that didn't go no longer counts"),
   // ---- an account's life (auth-life.c, auth-life-policy.coax, #13214): its own proof rules inside
   R("GET",  "/api/auth/life", false, AP_RECOVER, "frozen or waiting to be deleted, until when, and what the account holds"),
   R("POST", "/api/auth/unfreeze", false, AP_RECOVER, "lift a freeze (L2-fresh, or a fresh email code with nothing stronger)"),
@@ -154,8 +166,6 @@ static const auth_rule RULES[] = {
   R("POST", "/api/auth/passkeys/", true, AP_HUMAN, "rename a passkey; mark the offer shown"),
   // ---- reserved: these routes are built in other issues and must keep L2-fresh (#13212)
   R("POST", "/api/auth/delete", false, AP_RECOVER, "delete the account: frozen now, purged in 30 days (L2-fresh, or a fresh email code; auth-life-policy.coax)"),
-  R("POST", "/api/wallet/backup/export", false, AP_L2_FRESH, "export the wallet's encrypted backup (#13217)"),
-  R("POST", "/api/wallet/limit", false, AP_L2_FRESH, "raise a spend limit (#13217)"),
   R("POST", "/api/lnaddr/destination", false, AP_L2_FRESH, "change a Lightning Address's destination (#13209)"),
   // ---- admins (admin.c, email.c, makers.c' and upgrades' admin pages)
   R("GET",  "/api/admin/login", false, AP_PUBLIC, "an admin's NIP-98 signature logs in"),
@@ -736,7 +746,7 @@ void auth_init(void) {
          && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
          && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
          && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401;
-  if (!ok || !auth_recover_init() || !auth_life_init() || !passkeys_init() || !auth_device_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
+  if (!ok || !auth_recover_init() || !auth_life_init() || !passkeys_init() || !auth_device_init() || !wallet_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
 // Start of each request (api.c): nothing carries over from the last.

@@ -300,6 +300,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (auth_api_route(&q)) return;
   if (agents_route(&q)) return;   // agents, grants and `openagents login` (agents.c)
   if (lnaddr_route(&q)) return;
+  if (wallet_route(&q)) return;   // the wallet's encrypted backup and daily limit (wallet.c)
   if (!strcmp(q.path, "/api/playtest/old-link") && !strcmp(q.method, "GET")) { old_link(&q); return; }
   if (analytics_route(&q)) return;
   if (access_route(&q)) return;   // before the admin routes and /api/auth (access.c)

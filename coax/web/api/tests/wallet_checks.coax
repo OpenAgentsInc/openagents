@@ -1,0 +1,338 @@
+// The wallet's encrypted backup and daily limit (wallet.c, wallet-policy.coax, wallet-vault.coax,
+// migration 0163; #13217), run by test.sh after auth_device_checks.coax. Backups are made here by
+// the code the apps use (coax/lib/nostr/vault-wallet.coax) from TEST SECRETS ONLY; a software
+// passkey (passkey_soft.coax) stands in for a phone's, and its "PRF output" is a fixed test value
+// (the server never sees one, so nothing here needs a real one).
+// Each threat in #13217's threat list has its checks here, named for it:
+//   our database stolen           the backup's row holds only ciphertext and public fields; no
+//                                 secret that opens it is in any table, the audit log or a notice
+//   a swapped vault               another account's backup, or a slot we were handed back, doesn't
+//                                 open as this account's (the apps' checks, on what the API serves)
+//   a rollback                    an old epoch can't be written back, by the API or in the database
+//   a slot added without step-up  storing, changing and deleting a backup need a fresh L2
+//   limit raising by a session thief   a raise needs a fresh L2, waits 24 hours (the database
+//                                 refuses sooner), tells every way in, and anyone on the account
+//                                 or the notice's link cancels it
+//   an inbox thief                an email login on an account with a stronger way in can't spend,
+//                                 store or raise
+//   a lost passkey                a backup whose passkey left the account no longer counts
+//   API=... PGURL=... PSQL=... SIGN=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/wallet_checks.coax
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+#load "passkey_ceremony.coax";
+#load "../../../lib/nostr/vault-wallet.coax";
+
+Wk :: struct { slots: [WB_SLOTS_TEXT_MAX] u8; slots_n: int; object: [WB_OBJECT_MAX] u8; object_n: int; }
+wk_slots :: (w: [] Wk) -> string { return cast(string) w[0].slots[0..<w[0].slots_n]; }
+// Test values: a "PRF output", a recovery secret and wb_make's random bytes, from one seed byte.
+wk_fill :: (seed: int, out: [] u8) -> [] u8 { for i: 0..<out.count { out[i] = cast,trunc(u8) (seed * 17 + i * 5 + 3); } return out; }
+// A first backup for acct with passkey key: wb_make's slots and object.
+wk_make :: (acct: string, epoch: int, key: Ps, rp: string, seed: int, w: [] Wk) -> bool {
+  prf: [32] u8; rec: [32] u8; salt: [16] u8; fresh: [WB_FRESH] u8; entropy: [16] u8; k := key;
+  m := wb_make(w[0].slots[..], w[0].object[..], acct, epoch, 1794000000, wk_fill(seed + 4, entropy[..]), wk_fill(seed, prf[..]), k.id[..], rp, "Test phone",
+               wk_fill(seed + 1, rec[..]), wk_fill(seed + 2, salt[..]), 17, wk_fill(seed + 3, fresh[..]));
+  w[0].slots_n = m.slots; w[0].object_n = m.object;
+  return m.code == WB_OK;
+}
+wk_b64 :: (out: [] Sb, b: [] u8) {
+  t: [40000] u8; n := vt_put_b64(t[..], 0, b);
+  if n > 0 { sb(out, cast(string) t[0..<n]); }
+}
+// The body of POST /api/wallet/backup.
+wk_body :: (out: [] Sb, after: int, slots: [] u8, object: [] u8) -> string {
+  sb_clear(out); sb(out, "{\"after\":\""); sb_int(out, after); sb(out, "\",\"slots\":\""); wk_b64(out, slots); sb(out, "\",\"object\":\""); wk_b64(out, object); sb(out, "\"}");
+  return sb_text(out);
+}
+wk_store :: (t: [] Ap, session: string, after: int, w: [] Wk) -> int {
+  b: [1] Sb;
+  return pc_with(t, "POST", "/api/wallet/backup", wk_body(b[..], after, w[0].slots[0..<w[0].slots_n], w[0].object[0..<w[0].object_n]), session);
+}
+wk_spend :: (t: [] Ap, session: string, sats: string, id: string, new_destination: bool) -> int {
+  b: [1] Sb; sb(b[..], "{\"sats\":\""); sb(b[..], sats); sb(b[..], "\",\"payment_id\":\""); sb(b[..], id); sb(b[..], "\"");
+  if new_destination { sb(b[..], ",\"new_destination\":\"1\""); }
+  sb(b[..], "}");
+  return pc_with(t, "POST", "/api/wallet/spend", sb_text(b[..]), session);
+}
+// Sets the limit (L2-fresh at the gate: a raise), or lowers it (no prompt).
+wk_limit :: (t: [] Ap, session: string, sats: string) -> int {
+  b: [1] Sb; sb(b[..], "{\"daily_sat\":\""); sb(b[..], sats); sb(b[..], "\"}");
+  return pc_with(t, "POST", "/api/wallet/limit", sb_text(b[..]), session);
+}
+wk_lower :: (t: [] Ap, session: string, sats: string) -> int {
+  b: [1] Sb; sb(b[..], "{\"daily_sat\":\""); sb(b[..], sats); sb(b[..], "\"}");
+  return pc_with(t, "POST", "/api/wallet/limit/lower", sb_text(b[..]), session);
+}
+wk_old :: (t: [] Ap, acct: string) { q: [1] Sb; ap_do(t, pc_q(q[..], "UPDATE auth.sessions SET l2_at = now() - interval '6 minutes' WHERE account = '", acct, "'")); }
+// The cancel link's token in the last mail a notice sent ("#cancel=" and 64 hex digits).
+wk_cancel_token :: (dir: string, out: [] u8) -> string {
+  lb: [1100] u8; m: [16384] u8; n := fs_read(fs_join(dir, "last", lb[..]), m[..]);
+  if n <= 0 { return ""; }
+  text := cast(string) m[0..<n]; at := ac_find(text, "/settings/wallet#cancel=");
+  if at < 0 || at + 24 + 64 > text.count { return ""; }
+  for i: 0..<64 { out[i] = text[at + 24 + i]; }
+  return cast(string) out[0..<64];
+}
+wk_hex :: (b: [] u8, out: [] u8) -> string { n := wb_put_hex(out, 0, b); return cast(string) out[0..<n]; }
+
+wk_checks :: (t: [] Ap, dir: string) {
+  out: [65536] u8; q: [1] Sb; b: [1] Sb; mb: [128] u8;
+  P1 := ps_new(41); P2 := ps_new(42); P9 := ps_new(49);
+  plain := pc_plain(t);
+  k1b: [1100] u8; K1 := fs_join(dir, "wk1.key", k1b[..]); pk1b: [128] u8; pk1 := ac_newkey(t, K1, pk1b[..]);
+  k2b: [1100] u8; K2 := fs_join(dir, "wk2.key", k2b[..]); pk2b: [128] u8; pk2 := ac_newkey(t, K2, pk2b[..]);
+  sAb: [160] u8; SA := pc_key(t, K1, sAb[..]);
+  sBb: [160] u8; SB := pc_key(t, K2, sBb[..]);
+  ab: [64] u8; acct := ap_sql(t, pc_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk1, "'"), ab[..]);
+  a2b: [64] u8; acct2 := ap_sql(t, pc_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk2, "'"), a2b[..]);
+  ap_check(t, "two people log in with keys and add a passkey each", ap_starts(SA, "oas_") && ap_starts(SB, "oas_") && acct != acct2
+           && pc_register(t, SA, P1, plain) == 200 && pc_register(t, SB, P2, plain) == 200, ap_body(t));
+
+  // ---- what a new account sees
+  st := pc_with(t, "GET", "/api/wallet", "", SA);
+  ap_check(t, "a new account: the default limit of 20,000 sats a day is shown, nothing spent, no raise, no backup", st == 200
+           && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 20000 && ap_member_int(ap_body(t), "limit.default_sat", -1) == 20000
+           && ap_member_int(ap_body(t), "limit.spent_sat", -1) == 0 && ap_member(ap_body(t), "limit.raise", mb[..]) == "null"
+           && ap_member(ap_body(t), "backup", mb[..]) == "null" && ap_member(ap_body(t), "limit.enforced_by", mb[..]) == "app"
+           && ap_member_int(ap_body(t), "limit.new_destination_sat", -1) == 100000, ap_body(t));
+  ap_check(t, "nobody, and an agent's key, get nothing of a wallet", pc_with(t, "GET", "/api/wallet", "", "") == 401
+           && pc_with(t, "POST", "/api/wallet/backup/export", "{}", "") == 401 && pc_with(t, "POST", "/api/wallet/spend", "{}", "") == 401, ap_body(t));
+
+  // ---- storing a backup
+  w1: [1] Wk; made := wk_make(acct, 1, P1, "127.0.0.1", 60, w1[..]);
+  wk_old(t, acct);
+  st = wk_store(t, SA, 0, w1[..]);
+  sb1: [64] u8;
+  ap_check(t, "a slot added without step-up: a backup isn't stored, or its ciphertext read, by a session whose L2 is older than five minutes", made && st == 401
+           && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh" && pc_with(t, "POST", "/api/wallet/backup/export", "{}", SA) == 401
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.wallet_backups WHERE account = '", acct, "'"), out[..]) == "0", ap_body(t));
+  ap_check(t, "the passkey's prompt is the step-up: then the backup is stored at epoch 1", pc_stepup(t, SA, P1, plain) == 200
+           && wk_store(t, SA, 0, w1[..]) == 200 && ap_member_int(ap_body(t), "epoch", -1) == 1, ap_body(t));
+  st = pc_with(t, "POST", "/api/wallet/backup/export", "{}", SA);
+  s64: [40000] u8; o64: [8192] u8; gs: [WB_SLOTS_TEXT_MAX] u8; go: [WB_OBJECT_MAX] u8;
+  gslots := ap_member(ap_body(t), "backup.slots", s64[..]); gobj := ap_member(ap_body(t), "backup.object", o64[..]);
+  gsn := base64_decode_checked(gslots, gs[..], false).written; gon := base64_decode_checked(gobj, go[..], false).written;
+  ap_check(t, "what the API serves is byte for byte what the device sealed", st == 200 && ap_member_int(ap_body(t), "backup.epoch", -1) == 1
+           && ap_member(ap_body(t), "backup.account", mb[..]) == acct && cast(string) gs[0..<gsn] == wk_slots(w1[..])
+           && gon == w1[0].object_n && cast(string) go[0..<gon] == cast(string) w1[0].object[0..<w1[0].object_n], "");
+  prf: [32] u8; rec: [32] u8; seed: [32] u8; want: [16] u8; cred: [16] u8; k1 := P1;
+  pick := wb_pick(cast(string) gs[0..<gsn], VT_M_PRF, k1.id[..]);
+  o := wb_open(go[0..<gon], cast(string) gs[pick.from..<pick.to], wk_fill(60, prf[..]), acct, 1, 0, seed[..]);
+  same := o.code == WB_OK && o.n == 16; wf := wk_fill(64, want[..]);
+  for i: 0..<16 { if seed[i] != wf[i] { same = false; } }
+  rpick := wb_pick(cast(string) gs[0..<gsn], VT_M_RECOVERY, cred[0..<0]);
+  ap_check(t, "restore: the passkey's slot, found by its credential id, opens it to the seed; so does the recovery code's", same && pick.from == 0
+           && wb_open(go[0..<gon], cast(string) gs[rpick.from..<rpick.to], wk_fill(61, rec[..]), acct, 1, 0, seed[..]).code == WB_OK, "");
+
+  // ---- our database stolen
+  ap_check(t, "our database stolen: the backup's row is the vault id, the epoch, the slots, the object and two times; no other column",
+           ap_sql(t, "SELECT string_agg(column_name, ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema = 'auth' AND table_name = 'wallet_backups'", out[..])
+           == "account,created_at,epoch,object,slots,updated_at,vault", cast(string) out[0..<200]);
+  hx: [64] u8; hx2: [64] u8; hx3: [64] u8; hx4: [64] u8; fresh: [WB_FRESH] u8; ff := wk_fill(63, fresh[..]);
+  sq: [1] Sb;
+  sb(sq[..], "SELECT count(*) FROM (SELECT slots || encode(object, 'hex') || encode(object, 'base64') AS x FROM auth.wallet_backups UNION ALL SELECT coalesce(detail::text, '') FROM auth.audit ");
+  sb(sq[..], "UNION ALL SELECT words FROM auth.notices) r WHERE ");
+  secrets := [4] string.[wk_hex(wk_fill(60, prf[..]), hx[..]), wk_hex(wk_fill(61, rec[..]), hx2[..]), wk_hex(wk_fill(64, want[..]), hx3[..]), wk_hex(ff[32..<64], hx4[..])];
+  for i: 0..<4 { if i > 0 { sb(sq[..], " OR "); } sb(sq[..], "position('"); sb(sq[..], secrets[i]); sb(sq[..], "' in r.x) > 0"); }
+  ap_check(t, "our database stolen: the PRF output, the recovery secret, the seed and the vault key are in no row of the backup, the audit log or a notice",
+           ap_sql(t, sb_text(sq[..]), out[..]) == "0", cast(string) out[0..<40]);
+  ap_check(t, "our database stolen: the stored object holds the seed nowhere in the clear",
+           ap_sql(t, pc_q(q[..], "SELECT position(decode('", secrets[2], "', 'hex') in object) FROM auth.wallet_backups"), out[..]) == "0", "");
+  ap_check(t, "the backup's slots are listed by their public fields only: method, label, when, whether its passkey is still here",
+           pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member(ap_body(t), "backup.slots[0].method", mb[..]) == "passkey"
+           && ap_member(ap_body(t), "backup.slots[0].label", mb[..]) == "Test phone" && ap_member(ap_body(t), "backup.slots[1].method", mb[..]) == "recovery-code"
+           && ap_member(ap_body(t), "backup.slots[1].label", mb[..]) == "Recovery code" && ap_member(ap_body(t), "backup.counts", mb[..]) == "true"
+           && !ap_has(ap_body(t), "vmk") && !ap_has(ap_body(t), "nonce"), ap_body(t));
+
+  // ---- a swapped vault
+  w2: [1] Wk; made2 := wk_make(acct2, 1, P2, "127.0.0.1", 60, w2[..]);
+  ap_check(t, "another account stores its own backup, and each sees only its own", made2 && pc_stepup(t, SB, P2, plain) == 200 && wk_store(t, SB, 0, w2[..]) == 200
+           && pc_with(t, "POST", "/api/wallet/backup/export", "{}", SB) == 200 && ap_member(ap_body(t), "backup.account", mb[..]) == acct2, ap_body(t));
+  p2 := wb_pick(wk_slots(w2[..]), VT_M_PRF, cred[0..<0]);
+  ap_check(t, "a swapped vault: another account's backup, made with the very same secrets, doesn't open as this account's",
+           wb_open(w2[0].object[0..<w2[0].object_n], wk_slots(w2[..])[p2.from..<p2.to], wk_fill(60, prf[..]), acct, 1, 0, seed[..]).code == WB_ACCOUNT
+           && wb_open(w2[0].object[0..<w2[0].object_n], wk_slots(w2[..])[p2.from..<p2.to], wk_fill(60, prf[..]), acct2, 1, 0, seed[..]).code == WB_OK, "");
+  w9: [1] Wk; m9 := wk_make(acct, 2, P9, "127.0.0.1", 70, w9[..]); p9 := wb_pick(wk_slots(w9[..]), VT_M_PRF, cred[0..<0]);
+  ap_check(t, "a swapped vault: this account's object with another vault's slot (and that slot's own secret) opens nothing", m9
+           && wb_open(go[0..<gon], wk_slots(w9[..])[p9.from..<p9.to], wk_fill(70, prf[..]), acct, 1, 0, seed[..]).code == WB_OBJECT, "");
+
+  // ---- what isn't stored
+  none: [1] Wk; bad: [1] Wk;
+  for i: 0..<w1[0].object_n { bad[0].object[i] = w1[0].object[i]; }
+  bad[0].object_n = w1[0].object_n;
+  // only the passkey's slot, only the recovery code's
+  for i: 0..<pick.to { bad[0].slots[i] = w1[0].slots[i]; }
+  bad[0].slots_n = pick.to;
+  st = wk_store(t, SA, 1, bad[..]); e1 := ap_has(ap_body(t), "needs a recovery code");
+  rs := rpick.to - rpick.from; for i: 0..<rs { bad[0].slots[i] = w1[0].slots[rpick.from + i]; }
+  bad[0].slots_n = rs;
+  st2 := wk_store(t, SA, 1, bad[..]); e2 := ap_has(ap_body(t), "needs a passkey");
+  ap_check(t, "a backup that can't restore: one without a recovery code, or without a passkey, isn't stored", st == 400 && e1 && st2 == 400 && e2, ap_body(t));
+  // a passkey this account doesn't have, and another account's
+  st = wk_store(t, SA, 1, w9[..]); e9 := ap_has(ap_body(t), "passkey this account doesn't have");
+  wx: [1] Wk; mx := wk_make(acct, 2, P2, "127.0.0.1", 70, wx[..]);
+  ap_check(t, "a backup naming a passkey that isn't on the account, or one on another account, isn't stored", m9 && st == 400 && e9 && mx && wk_store(t, SA, 1, wx[..]) == 400, ap_body(t));
+  // slots for one vault with an object for another; bytes that aren't an object; a device slot; nothing at all
+  for i: 0..<w1[0].slots_n { bad[0].slots[i] = w1[0].slots[i]; }
+  bad[0].slots_n = w1[0].slots_n;
+  for i: 0..<w9[0].object_n { bad[0].object[i] = w9[0].object[i]; }
+  bad[0].object_n = w9[0].object_n;
+  st = wk_store(t, SA, 1, bad[..]); eo := ap_has(ap_body(t), "isn't a wallet backup");
+  for i: 0..<64 { bad[0].object[i] = cast,trunc(u8) i; }
+  bad[0].object_n = 64;
+  st2 = wk_store(t, SA, 1, bad[..]);
+  n := json_raw(bad[0].slots[..], 0, wk_slots(w1[..])); n = json_raw(bad[0].slots[..], n, "\n"); n = json_raw(bad[0].slots[..], n, VT_SLOT_DEVICE);
+  bad[0].slots_n = n;
+  st3 := wk_store(t, SA, 1, bad[..]); ed := ap_has(ap_body(t), "aren't ones we can keep");
+  ap_check(t, "an object for another vault, bytes that aren't an object, a slot of a kind a wallet backup doesn't take, and an empty body are refused",
+           st == 400 && eo && st2 == 400 && st3 == 400 && ed && wk_store(t, SA, 1, none[..]) == 400
+           && pc_with(t, "POST", "/api/wallet/backup", "{}", SA) == 400 && pc_with(t, "POST", "/api/wallet/backup", "{\"after\":\"1\",\"slots\":\"!!!\",\"object\":\"!!!\"}", SA) == 400, ap_body(t));
+
+  // ---- a rollback
+  st = wk_store(t, SA, 0, w1[..]); st2 = wk_store(t, SA, 2, w1[..]);
+  ap_check(t, "a rollback: a backup written against an epoch that isn't the stored one is refused (409), whoever asks", st == 409 && st2 == 409
+           && ap_sql(t, pc_q(q[..], "SELECT epoch FROM auth.wallet_backups WHERE account = '", acct, "'"), out[..]) == "1", ap_body(t));
+  ap_check(t, "a rollback: the database's own function stores nothing against an old epoch",
+           ap_sql(t, pc_q(q[..], "SELECT coalesce(auth.wallet_backup_put('", acct, "', 0, repeat('a', 64), 'x', '\\x00')::text, 'none')"), out[..]) == "none", cast(string) out[0..<60]);
+  ap_do(t, pc_q(q[..], "UPDATE auth.wallet_backups SET epoch = 1, slots = 'old' WHERE account = '", acct, "'"));
+  ap_do(t, pc_q(q[..], "UPDATE auth.wallet_backups SET epoch = 5 WHERE account = '", acct, "'"));
+  t[0].sql_bad = 0;
+  ap_check(t, "a rollback: a row's epoch only ever goes up by one, whatever writes it",
+           ap_sql(t, pc_q(q[..], "SELECT epoch::text || (slots <> 'old')::text FROM auth.wallet_backups WHERE account = '", acct, "'"), out[..]) == "1true", cast(string) out[0..<40]);
+  // the next epoch: a Nostr key's slot is added, and the record is sealed again
+  vmk: [32] u8; ck: [32] u8; n44: [32] u8; ns: [32] u8; nn: [12] u8; fo: [WB_FRESH_OBJECT] u8; slot3: [VT_SLOT_MAX] u8;
+  ok3 := wb_vmk(cast(string) gs[pick.from..<pick.to], wk_fill(60, prf[..]), vmk[..]);
+  s3 := wb_slot_nostr(slot3[..], cast(string) pick_vault(cast(string) gs[0..<gsn], out[..]), "abababababababababababababababababababababababababababababababab", pk1, wk_fill(80, ck[..]), wk_fill(81, n44[..]),
+                      "My Nostr key", 1794000060, wk_fill(82, ns[..]), vmk[..], wk_fill(83, nn[..]));
+  w3: [1] Wk; n = json_raw(w3[0].slots[..], 0, wk_slots(w1[..])); n = json_raw(w3[0].slots[..], n, "\n"); n = json_raw(w3[0].slots[..], n, cast(string) slot3[0..<ifx s3 > 0 then s3 else 0]);
+  w3[0].slots_n = n;
+  w3[0].object_n = wb_object(w3[0].object[..], wk_slots(w3[..]), acct, 2, 1794000060, wk_fill(64, want[..]), vmk[..], wk_fill(84, fo[..]));
+  st = wk_store(t, SA, 1, w3[..]);
+  ap_check(t, "adding a slot seals the record again at the next epoch, and the API stores it as epoch 2", ok3 && s3 > 0 && w3[0].object_n > 0 && st == 200
+           && ap_member_int(ap_body(t), "epoch", -1) == 2 && pc_with(t, "GET", "/api/wallet", "", SA) == 200
+           && ap_member(ap_body(t), "backup.slots[2].method", mb[..]) == "nostr" && ap_member(ap_body(t), "backup.slots[2].label", mb[..]) == "My Nostr key", ap_body(t));
+  ap_check(t, "a rollback: the old object served as the new epoch is refused by the app, and so is anything older than the device has seen",
+           wb_open(w1[0].object[0..<w1[0].object_n], cast(string) gs[pick.from..<pick.to], wk_fill(60, prf[..]), acct, 2, 0, seed[..]).code == WB_EPOCH
+           && wb_open(w1[0].object[0..<w1[0].object_n], cast(string) gs[pick.from..<pick.to], wk_fill(60, prf[..]), acct, 1, 2, seed[..]).code == WB_ROLLBACK
+           && wb_open(w3[0].object[0..<w3[0].object_n], cast(string) gs[pick.from..<pick.to], wk_fill(60, prf[..]), acct, 2, 2, seed[..]).code == WB_OK
+           && wb_open(w1[0].object[0..<w1[0].object_n], cast(string) slot3[0..<s3], wk_fill(82, ns[..]), acct, 1, 0, seed[..]).code == WB_UNLISTED, "");
+  ap_check(t, "every change to the backup told every way in", ap_sql(t, pc_q(q[..], "SELECT string_agg(what, ',' ORDER BY id) FROM auth.notices WHERE account = '", acct, "' AND what LIKE 'wallet.backup%'"), out[..])
+           == "wallet.backup,wallet.backup.change", cast(string) out[0..<80]);
+
+  // ---- an inbox thief: an email login on an account with a stronger way in
+  ap_check(t, "the owner links an email", pc_link_email(t, dir, SA, "wallet@example.com") == 200, ap_body(t));
+  sEb: [160] u8; SE := pc_email(t, dir, "wallet@example.com", sEb[..]);
+  ap_check(t, "an inbox thief: an email login on this account can read, and can't spend, store, delete or raise", ap_starts(SE, "oas_")
+           && pc_with(t, "GET", "/api/wallet", "", SE) == 200 && wk_spend(t, SE, "1", "thief-pay-0001", false) == 401
+           && wk_store(t, SE, 2, w3[..]) == 401 && pc_with(t, "POST", "/api/wallet/backup/delete", "{}", SE) == 401 && wk_limit(t, SE, "500000") == 401
+           && wk_lower(t, SE, "1") == 401 && pc_with(t, "POST", "/api/wallet/backup/export", "{}", SE) == 401
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.wallet_spends WHERE account = '", acct, "'"), out[..]) == "0", ap_body(t));
+
+  // ---- the daily limit
+  wk_old(t, acct);
+  ap_check(t, "under the limit a payment goes with no prompt, and counts; the same payment asked twice counts once", wk_spend(t, SA, "15000", "pay-00000001", false) == 200
+           && ap_member_int(ap_body(t), "spent_sat", -1) == 15000 && wk_spend(t, SA, "15000", "pay-00000001", false) == 200 && ap_member_int(ap_body(t), "spent_sat", -1) == 15000
+           && wk_spend(t, SA, "5000", "pay-00000002", false) == 200 && ap_member_int(ap_body(t), "spent_sat", -1) == 20000, ap_body(t));
+  st = wk_spend(t, SA, "1", "pay-00000003", false);
+  ap_check(t, "a stolen session spends past the limit: one sat over needs a fresh L2, and isn't counted", st == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh"
+           && ap_sql(t, pc_q(q[..], "SELECT coalesce(sum(sats), 0) FROM auth.wallet_spends WHERE account = '", acct, "'"), out[..]) == "20000", ap_body(t));
+  ap_check(t, "with the passkey's prompt the payment over the limit goes, and is in the audit log", pc_stepup(t, SA, P1, plain) == 200
+           && wk_spend(t, SA, "1", "pay-00000003", false) == 200 && ap_member_int(ap_body(t), "spent_sat", -1) == 20001
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE account = '", acct, "' AND action = 'wallet.spend' AND result = 'ok'"), out[..]) == "1", ap_body(t));
+  ap_check(t, "a payment id asked again with another amount is refused; a payment that didn't go no longer counts", wk_spend(t, SA, "2", "pay-00000003", false) == 409
+           && pc_with(t, "POST", "/api/wallet/spend/void", "{\"payment_id\":\"pay-00000002\"}", SA) == 200 && ap_has(ap_body(t), "voided")
+           && pc_with(t, "POST", "/api/wallet/spend/void", "{\"payment_id\":\"pay-00000002\"}", SA) == 200 && ap_has(ap_body(t), "nothing")
+           && pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member_int(ap_body(t), "limit.spent_sat", -1) == 15001, ap_body(t));
+  ap_check(t, "amounts that aren't sats and payments with no name are refused", wk_spend(t, SA, "0", "pay-00000009", false) == 400 && wk_spend(t, SA, "-5", "pay-00000009", false) == 400
+           && wk_spend(t, SA, "1.5", "pay-00000009", false) == 400 && wk_spend(t, SA, "2100000000000001", "pay-00000009", false) == 400
+           && wk_spend(t, SA, "5", "short", false) == 400 && wk_spend(t, SA, "5", "bad id with spaces", false) == 400, ap_body(t));
+  ap_do(t, pc_q(q[..], "UPDATE auth.wallet_spends SET at = now() - interval '25 hours' WHERE payment_id = 'pay-00000001' AND account = '", acct, "'"));
+  ap_check(t, "payments older than 24 hours no longer count", pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member_int(ap_body(t), "limit.spent_sat", -1) == 1, ap_body(t));
+
+  // ---- lowering and raising
+  wk_old(t, acct);
+  ap_check(t, "lowering the limit counts at once and needs no prompt", wk_lower(t, SA, "5000") == 200 && ap_has(ap_body(t), "lowered")
+           && pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 5000
+           && wk_spend(t, SA, "5000", "pay-00000010", false) == 401, ap_body(t));
+  st = wk_limit(t, SA, "50000");
+  ap_check(t, "limit raising by a session thief: a raise without a fresh L2 is refused, by the route for raising and by the one for lowering, and nothing waits",
+           st == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh" && wk_lower(t, SA, "50000") == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh"
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.wallet_limits WHERE account = '", acct, "' AND pending_sat IS NOT NULL"), out[..]) == "0", ap_body(t));
+  ap_check(t, "a limit that isn't a number of sats is refused, and the same limit changes nothing", wk_lower(t, SA, "-1") == 400 && wk_lower(t, SA, "abc") == 400
+           && wk_lower(t, SA, "2100000000000001") == 400 && wk_lower(t, SA, "5000") == 200 && ap_has(ap_body(t), "same"), ap_body(t));
+  ap_check(t, "with a fresh L2 a raise waits 24 hours: the limit in force stays, and the raise is shown with its time", pc_stepup(t, SA, P1, plain) == 200
+           && wk_limit(t, SA, "50000") == 200 && ap_has(ap_body(t), "waiting") && pc_with(t, "GET", "/api/wallet", "", SA) == 200
+           && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 5000 && ap_member_int(ap_body(t), "limit.raise.sat", -1) == 50000
+           && ap_member_int(ap_body(t), "limit.raise.at_ms", 0) - ap_member_int(ap_body(t), "limit.raise.asked_ms", 0) == 86400000, ap_body(t));
+  tokb: [64] u8; tok := wk_cancel_token(dir, tokb[..]);
+  ap_check(t, "the raise told every way in, with a link that cancels it, and its token is kept only as a digest", tok.count == 64
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.notices WHERE account = '", acct, "' AND what = 'wallet.limit.raise' AND position('cancel=' in words) = 0"), out[..]) == "1"
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.wallet_limits WHERE cancel_sha256 = '", tok, "'"), out[..]) == "0", "");
+  ap_do(t, pc_q(q[..], "UPDATE auth.wallet_limits SET pending_at = now() WHERE account = '", acct, "'"));
+  ap_do(t, pc_q(q[..], "UPDATE auth.wallet_limits SET pending_sat = 1 WHERE account = '", acct, "'"));
+  t[0].sql_bad = 0;
+  ap_check(t, "no override: the database refuses a raise that counts sooner than 24 hours, or one that isn't a raise",
+           ap_sql(t, pc_q(q[..], "SELECT (pending_at - pending_asked_at >= interval '24 hours')::text || pending_sat::text FROM auth.wallet_limits WHERE account = '", acct, "'"), out[..]) == "true50000", cast(string) out[0..<40]);
+  cb: [1] Sb; sb(cb[..], "{\"t\":\""); sb(cb[..], tok); sb(cb[..], "\"}");
+  ap_check(t, "someone else's login cancels nothing; a wrong link cancels nothing", pc_with(t, "POST", "/api/wallet/limit/cancel", "{}", SB) == 404
+           && pc_with(t, "POST", "/api/wallet/limit/cancel", "{\"t\":\"0000000000000000000000000000000000000000000000000000000000000000\"}", "") == 403
+           && pc_with(t, "POST", "/api/wallet/limit/cancel", "{}", "") == 403, ap_body(t));
+  ap_check(t, "the notice's link cancels the raise with no login, once", pc_with(t, "POST", "/api/wallet/limit/cancel", sb_text(cb[..]), "") == 200
+           && pc_with(t, "POST", "/api/wallet/limit/cancel", sb_text(cb[..]), "") == 403 && pc_with(t, "GET", "/api/wallet", "", SA) == 200
+           && ap_member(ap_body(t), "limit.raise", mb[..]) == "null" && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 5000, ap_body(t));
+  ap_check(t, "any login of the account cancels a raise too, the email one as well", wk_limit(t, SA, "60000") == 200 && pc_with(t, "POST", "/api/wallet/limit/cancel", "{}", SE) == 200
+           && pc_with(t, "POST", "/api/wallet/limit/cancel", "{}", SA) == 404, ap_body(t));
+  ap_check(t, "lowering while a raise waits ends the raise", wk_limit(t, SA, "70000") == 200 && wk_lower(t, SA, "4000") == 200 && pc_with(t, "GET", "/api/wallet", "", SA) == 200
+           && ap_member(ap_body(t), "limit.raise", mb[..]) == "null" && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 4000, ap_body(t));
+  st = wk_limit(t, SA, "300000");
+  ap_do(t, pc_q(q[..], "UPDATE auth.wallet_limits SET pending_asked_at = now() - interval '25 hours', pending_at = now() - interval '1 hour' WHERE account = '", acct, "'"));
+  ap_check(t, "after 24 hours the raise is the limit", st == 200 && pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 300000 && ap_member(ap_body(t), "limit.raise", mb[..]) == "null", ap_body(t));
+  wk_old(t, acct);
+  ap_check(t, "somewhere new: a payment over 100,000 sats to a new destination asks first, even under the limit; 100,000 doesn't", wk_spend(t, SA, "100001", "pay-00000020", true) == 401
+           && wk_spend(t, SA, "100001", "pay-00000020", false) == 200 && wk_spend(t, SA, "100000", "pay-00000021", true) == 200, ap_body(t));
+  ap_check(t, "every change to the limit told every way in, and is in the audit log",
+           ap_sql(t, pc_q(q[..], "SELECT count(*)::text || ',' || count(DISTINCT what)::text FROM auth.notices WHERE account = '", acct, "' AND what LIKE 'wallet.limit%'"), out[..]) == "8,3"
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE account = '", acct, "' AND action IN ('wallet.limit', 'wallet.limit.cancel') AND result = 'ok'"), out[..]) == "8", cast(string) out[0..<40]);
+
+  // ---- a lost passkey; deleting the backup
+  ub: [1] Sb; pid: [24] u8;
+  kid := ap_sql(t, pc_q(q[..], "SELECT id FROM auth.passkeys WHERE account = '", acct, "'"), pid[..]);
+  sb(ub[..], "{\"kind\":\"passkey\",\"id\":"); sb(ub[..], kid); sb(ub[..], "}");
+  sKb: [160] u8; SK := pc_key(t, K1, sKb[..]);
+  ap_check(t, "a lost passkey: once its passkey leaves the account, the backup no longer counts and its slot says so", pc_with(t, "POST", "/api/auth/unlink", sb_text(ub[..]), SK) == 200
+           && pc_with(t, "GET", "/api/wallet", "", SK) == 200 && ap_member(ap_body(t), "backup.counts", mb[..]) == "false"
+           && ap_member(ap_body(t), "backup.slots[0].live", mb[..]) == "false" && ap_member(ap_body(t), "backup.slots[1].live", mb[..]) == "true", ap_body(t));
+  wk_old(t, acct);
+  st = pc_with(t, "POST", "/api/wallet/backup/delete", "{}", SK);
+  SK2b: [160] u8; SK2 := pc_key(t, K1, SK2b[..]);
+  ap_check(t, "deleting the backup needs a fresh L2; then it is gone, every way in is told, and the next one starts at epoch 1", st == 401
+           && pc_with(t, "POST", "/api/wallet/backup/delete", "{}", SK2) == 200 && pc_with(t, "POST", "/api/wallet/backup/export", "{}", SK2) == 200
+           && ap_member(ap_body(t), "backup", mb[..]) == "null" && pc_with(t, "POST", "/api/wallet/backup/delete", "{}", SK2) == 404
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.notices WHERE account = '", acct, "' AND what = 'wallet.backup.delete'"), out[..]) == "1", ap_body(t));
+  ap_check(t, "every wallet table is in the registry that deletion, merging and export read", ap_sql(t, "SELECT count(*) FROM auth.life_unlisted()", out[..]) == "0"
+           && ap_sql(t, "SELECT string_agg(tbl || ':' || on_merge || ':' || on_purge, ',' ORDER BY tbl) FROM auth.life_columns WHERE tbl LIKE 'auth.wallet%'", out[..])
+           == "auth.wallet_backups:keep:delete,auth.wallet_limits:move:delete,auth.wallet_spends:move:delete", cast(string) out[0..<200]);
+  ap_check(t, "nothing of a slot or an object is in the audit log", !ap_has(ap_sql(t, "SELECT coalesce(string_agg(detail::text, ' '), '') FROM auth.audit WHERE action LIKE 'wallet%'", out[..]), "openagents.vault"), "");
+}
+// The vault id of a set of slots, in out.
+pick_vault :: (slots: string, out: [] u8) -> [] u8 {
+  s := wb_slots_read(slots);
+  for i: 0..<s.vault.count { out[i] = s.vault[i]; }
+  return out[0..<s.vault.count];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "mail" {
+    if args_count(a[..]) != 3 { tool_errln("wallet_checks mail PORT DIR"); return 2; }
+    return am_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  wb: [4096] u8; work := fs_temp("wallet-mail", wb[..]);
+  h := ac_mail_start(t[..], "coax/web/api/tests/wallet_checks.coax", work);
+  if h < 0 { return ap_done(t[..], "wallet checks"); }
+  wk_checks(t[..], work);
+  ac_mail_stop(h, work);
+  return ap_done(t[..], "wallet checks");
+}

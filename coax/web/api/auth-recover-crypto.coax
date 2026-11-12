@@ -13,7 +13,7 @@
 // auth-recover.c brings the randomness, the scratch memory (1 KiB times 2^log_n for scrypt) and
 // the keys; this file keeps none of them.
 #run_steps 250000000;
-#load "../../lib/crypto/bip39.coax";
+#load "../../lib/crypto/bip39-phrase.coax";
 #load "../../lib/crypto/scrypt_nip49.coax";
 #load "../../lib/nostr/nip59.coax";
 #authority;
@@ -187,27 +187,10 @@ arc_words :: (entropy: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects
   return bip39_encode_ct(entropy, work, out);
 }
 
-// The normal phrase in out and its length, or -1.
+// The normal phrase in out and its length, or -1 (coax/lib/crypto/bip39-phrase.coax, which the
+// wallet backup's recovery code shares, #13217).
 arc_normal :: (typed: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
-  if work.count < ARC_WORK { return -1; }
-  buf: [ARC_PHRASE_MAX] u8;
-  n := 0; words := 0; gap := true;   // gap: a space came last (or nothing yet)
-  for i: 0..<typed.count {
-    c := typed[i];
-    if c == ' ' || c == '\t' || c == '\n' || c == '\r' { gap = true; continue; }
-    if c >= 'A' && c <= 'Z' { c = ARC_LOWER[cast(int) (c - 'A')]; }
-    if gap {
-      if words > 0 { if n >= ARC_PHRASE_MAX { return -1; } buf[n] = ' '; n += 1; }
-      words += 1; gap = false;
-    }
-    if n >= ARC_PHRASE_MAX { return -1; }
-    buf[n] = c; n += 1;
-  }
-  if words != ARC_WORDS || n > out.count { return -1; }
-  // BIP-39 checks each word and the checksum. The entropy lands in work, which it hands back zeroed.
-  if bip39_decode_ct(cast(string) buf[0..<n], work, work[..]) != ARC_ENTROPY { return -1; }
-  for i: 0..<n { out[i] = buf[i]; }
-  return n;
+  return bip39_normal24(typed, work, out);
 }
 
 // memory: 1024 << log_n bytes. False when an input is the wrong size.

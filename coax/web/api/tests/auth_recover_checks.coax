@@ -136,7 +136,7 @@ ar_checks :: (t: [] Ap, dir: string) {
   st = ar_with(t, "POST", "/api/auth/delete", "{}", SK);
   ap_check(t, "deleting the account is held at L2-fresh before it exists (#13214)", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
   st = ar_with(t, "POST", "/api/wallet/backup/export", "{}", SK);
-  ap_check(t, "a seed export is held at L2-fresh", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  ap_check(t, "reading the wallet's encrypted backup is held at L2-fresh (#13217)", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
   st = ar_prove(t, SK, K1, "stepup", "");
   ap_check(t, "a fresh signature brings the session back to L2-fresh", st == 200, ap_body(t));
 

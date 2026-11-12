@@ -48,6 +48,7 @@ bool auth_recover_may_link(const request *q, PGconn *db, const auth_principal *p
 // refusal), and a notice to every email and key of acct.
 bool auth_proof_key(const request *q, PGconn *db, const auth_principal *p, const char *purpose, const char *body, char pk[65]);
 void auth_notice(PGconn *db, const char *acct, const char *what, const char *subject, const char *words);
+void auth_notice_link(PGconn *db, const char *acct, const char *what, const char *subject, const char *words, const char *lead, const char *url);
 
 // ---- auth-life.c (freeze, merge, export and deletion, #13214)
 bool auth_life_init(void);
@@ -87,3 +88,6 @@ bool auth_device_refresh(const request *q, PGconn *db, const char *rt_sha, const
 void auth_device_refuse_unproved(const request *q);
 // Answers /api/auth/devices and /api/auth/devices/<id>/remove; false when op isn't one.
 bool auth_device_route(const request *q, PGconn *db, const char *op);
+
+// ---- wallet.c (the encrypted seed backup and the daily limit, #13217)
+bool wallet_init(void);

@@ -37,7 +37,7 @@ collect phone numbers (decision D3).
 | 7 | **Recovery and account life** | Recovery codes, the 72-hour delayed recovery, freeze, merge, export, deletion with the 30-day purge | A recovery started by email alone can be cancelled from a Nostr key; a purged account's id is never reused | 3 |
 | 8 | **Passkeys** (built, #13215) | Web registration and login, conditional UI, PRF salt per credential, the devices and security settings pages; native passkeys with Associated Domains and `assetlinks.json` | A CDP virtual authenticator (ES256, with PRF) registers, logs out and logs back in; the iOS app uses the same passkey | 3 |
 | 9 | **Device keys** (built, #13216) | Secure Enclave and Keystore device keys, device-bound refresh (`OA-Device-Proof`), the devices list | A copied refresh token fails from another device | 2 |
-| 10 | **Wallet backup and spend step-up** | NIP-VAULT passkey-PRF and recovery slots for the wallet seed, spend limits and step-up in the app | Delete the app, reinstall, restore the wallet with one passkey prompt | 3 |
+| 10 | **Wallet backup and spend step-up** (built, #13217) | NIP-VAULT passkey-PRF and recovery slots for the wallet seed, spend limits and step-up in the app | A new phone with no wallet logs in with its passkey and has the wallet back after that one prompt (unit-tested in the Simulator with a software passkey; one run on a real iPhone is in `NEEDS_OWNER.md`) | 3 |
 
 Steps 0 and 1 have no dependencies on each other and start first. Step 3
 needs 0 and 2; step 2 needs the base32 and CRC-32 codec from step 1, not

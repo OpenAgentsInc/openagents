@@ -262,6 +262,87 @@ Slots are stored by the service, and copied between the person's devices as
 self-addressed `3188` artifacts. A service that holds all slots holds no
 method secret, so it cannot open any of them.
 
+## Wallet seed backup
+
+A wallet seed is the smallest vault: one object, no key index, and slots a
+person can still use after losing every device. This profile is what
+OpenAgents stores for a person's wallet (decision D4,
+[wallets and custody](../../../docs/auth/wallets-and-custody.md)). The
+service holds the slots and the object, and nothing that opens either.
+
+**The object** is a tier `user` object of one chunk (`chunk_bytes` 1024)
+that carries its one `user` wrap in its own header. Its plaintext is the
+record, exactly its JCS form:
+
+```json
+{
+  "v": "openagents.wallet-backup.v1",
+  "requires": [],
+  "account": "acct_...",
+  "vault": "<id>",
+  "epoch": 1,
+  "created_at": 0,
+  "entropy": "<the seed's BIP-39 entropy, 32 or 64 hex characters>",
+  "slots": ["<slot id>"]
+}
+```
+
+- `account` is the account the backup was made for. A reader refuses a
+  record whose `account` isn't the account that is logged in.
+- `epoch` starts at 1. Every change to the slots seals the record again,
+  under a new `DEK` and a new object id, with `epoch + 1`. The `VMK` stays
+  unless the person replaces the whole backup.
+- `slots` lists the id of every slot that may open this epoch. A reader
+  refuses a record opened through a slot it doesn't list, so a slot the
+  service kept after it was removed opens nothing current.
+
+The account, the epoch and the slot list are inside the seal. They are
+authenticated by the chunk's tag, whose associated data is the core
+digest (the vault and object ids); each slot's associated data is its own
+public fields.
+
+**Slots.** A backup counts only with a `recovery` slot and a `passkey-prf`
+slot. A `nostr` slot is optional. `device` and `pairing` slots are not
+taken: a secret kept on the phone doesn't survive losing it. At most 8.
+
+- `passkey-prf`: `prf_salt` is the SHA-256 of the ASCII bytes
+  `openagents.wallet-backup.v1/prf`, the same for every wallet backup. A
+  new phone must name the PRF input before it knows whose passkey will
+  answer, so the passkey prompt that logs the person in also opens their
+  backup. The wrapping key still differs for each slot: its HKDF salt is
+  the slot id. The PRF output never leaves the device.
+- `recovery`: the words are a code made on the device for this backup,
+  from 32 bytes of the system's randomness, shown once. `log_n` is 17. It
+  is never the code a service uses to log a person in: a service sees that
+  one when it is typed.
+
+**Reader checks**, in this order, each a refusal:
+
+1. the slot and the object read, and name one vault;
+2. the slot opens with the secret and the object opens with the `VMK`
+   (any changed byte of either fails a tag);
+3. the plaintext is a record, and names that vault;
+4. `account` is the logged-in account;
+5. `epoch` is the epoch the service named;
+6. `epoch` is not lower than the highest this device has opened or made;
+7. `slots` lists the slot that opened it.
+
+**Service rules.** The service stores a backup only when its slots are
+[enough](#key-slots) as above, the object's header is a tier `user`
+object of one chunk and one wrap for the slots' vault, and the write
+names the epoch it follows (compare-and-swap; the stored epoch becomes
+that plus one). It replaces the row in place and keeps no earlier epoch.
+
+A device with no memory (a new phone) can't tell the newest epoch from an
+older one the service kept against these rules. What it restores then is
+the same seed under an older set of slots. A slot is removed for good
+only by replacing the backup (a new `VMK`), and money is safe from a
+leaked slot secret only in a new wallet.
+
+Vectors: `proto/nostr/fixtures/wallet-backup-v1.vectors.json`, written by an
+independent implementation (`coax/tests/nostr/vault_wallet_reference.py`).
+`coax/lib/nostr/vault-wallet.coax` makes and opens each byte for byte.
+
 ## Key index
 
 The key index is a per-person object of tier `user` or `sealed`. It holds
@@ -489,6 +570,18 @@ Tier `user` is implemented (#11240):
 - Vectors: `fixtures/nips/vault/vectors.json` (the content scheme, the
   `user` wrap, each slot method, the recovery code, a sealed index, and the
   refusal cases below). `cargo test -p oa-vault` checks them.
+
+The wallet seed backup is implemented in Coax (#13217), after the reset
+removed the Rust crates above from the tree:
+
+- `coax/lib/nostr/vault.coax` reads slots (`device`, `nostr`,
+  `passkey-prf`, `recovery`) and tier `user` objects;
+  `coax/lib/nostr/vault-seal.coax` writes them, and its checks make the
+  Rust implementation's slot vectors and the Python reference's object
+  byte for byte.
+- `coax/lib/nostr/vault-wallet.coax` is the [wallet seed backup](#wallet-seed-backup).
+- The service is `coax/web/api/wallet.c` (`GET` and `POST
+  /api/wallet/backup`), with its rules in `wallet-policy.coax`.
 
 Tier `sealed` is implemented in Rust (#11743):
 

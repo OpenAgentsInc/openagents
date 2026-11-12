@@ -160,6 +160,7 @@ bool agents_route(const request *q);                        // /api/agents*, /ap
 
 void auth_notice(PGconn *db, const char *acct, const char *what, const char *subject, const char *words);   // auth-recover.c: every email and key of acct
 bool lnaddr_route(const request *q);       // /.well-known/lnurlp/*, /lnurlp/*, /api/lightning/address* (lnaddr.c)
+bool wallet_route(const request *q);       // /api/wallet* (wallet.c): the encrypted seed backup and the daily limit
 void lnaddr_print_limits(FILE *out);      // api --limits: the Lightning Address section of /docs/limits
 void lnaddr_init(void);                   // checks lnaddr.c's numbers against the Coax
 // Paying a maker's own Lightning Address (makers.c, #13210): the address's invoice for msat, asked by

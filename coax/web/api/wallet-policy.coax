@@ -1,0 +1,289 @@
+// The wallet's rules on the server (docs/auth/wallets-and-custody.md "Step-up for spends" and
+// "Recommendation"; decision D4; #13217): the daily spend limit, and what may be stored as the
+// encrypted backup of a wallet seed. wallet.c gathers the facts (the session's level and how long
+// ago it proved L2, the limit's row, what was spent, what wallet-vault.coax said of the slots and
+// the object) and moves them in; this file decides; wallet.c moves the answer out and never
+// decides alone.
+//
+// The wallet is the person's own: its keys are on their device and never reach us. So this file
+// can't stop a payment. What it decides is what the app is told before one (pay, or prove it is
+// you first), who may change the limit and when the change counts, and what we agree to store.
+//
+//   wp_spend        a payment the app is about to make: within the limit, or a fresh L2 first
+//   wp_limit        a new daily limit: lower now, or higher after 24 hours with a fresh L2
+//   wp_in_force     the limit that counts now, given a raise that is waiting
+//   wp_cancel       who may cancel a waiting raise
+//   wp_store        a backup to store: enough slots, the next epoch, a fresh L2
+//   wp_read         reading the backup's ciphertext: a fresh L2
+//   wp_remove       deleting the backup: a fresh L2
+//   wp_counts       whether the stored backup would bring the wallet back
+//
+// The threats, each with its check below and in tests/wallet_checks.coax:
+//   a stolen session raises the limit        wp_limit: WP_STEP_UP without a fresh L2; with one, WP_RAISE_LATER
+//                                            (24 hours, every way in is told, anyone on the account cancels)
+//   a stolen session spends past the limit   wp_spend: WP_STEP_UP; an old L2 doesn't count
+//   an inbox thief spends                    wp_spend: WP_LIMITED for an email login on an account with a stronger way in
+//   a stolen session swaps or drops a slot   wp_store, wp_remove: WP_STEP_UP without a fresh L2
+//   a stolen session takes the ciphertext    wp_read: WP_STEP_UP without a fresh L2 (and it opens nothing)
+//   an old backup is written back            wp_store: WP_CONFLICT unless it follows the stored epoch
+//   a backup that can't restore is stored    wp_store: WP_BAD_SLOTS, WP_NEEDS_RECOVERY, WP_NEEDS_PASSKEY, WP_BAD_OBJECT
+#authority;
+
+WP_MAX_SAT :: 2_100_000_000_000_000;      // all the bitcoin there will ever be
+WP_DEFAULT_DAILY :: 20000;                // sats in any 24 hours, until the person changes it
+WP_NEW_DESTINATION :: 100000;             // a payment over this to somewhere new asks first, whatever the limit
+WP_FRESH_MS :: 300000;                    // a fresh L2: proved in the last 5 minutes (auth-policy.coax's AP_FRESH_MS)
+WP_RAISE_WAIT_MS :: 86400000;             // a raise counts 24 hours after it was asked
+WP_DAY_MS :: 86400000;                    // the limit's window: the last 24 hours
+
+// Verdicts.
+WP_OK :: 0; WP_STEP_UP :: 1; WP_LIMITED :: 2; WP_BAD_AMOUNT :: 3; WP_REPLAY :: 4; WP_BAD_LIMIT :: 5; WP_SAME :: 6;
+WP_LOWER_NOW :: 7; WP_RAISE_LATER :: 8; WP_NO_RAISE :: 9; WP_CONFLICT :: 10; WP_BAD_SLOTS :: 11; WP_NEEDS_RECOVERY :: 12;
+WP_NEEDS_PASSKEY :: 13; WP_BAD_OBJECT :: 14; WP_NOT_YOUR_PASSKEY :: 15; WP_NO_BACKUP :: 16; WP_NOT_YOURS :: 17;
+// What wallet-vault.coax says of a set of slots (coax/lib/nostr/vault-wallet.coax's WB_ codes).
+WP_SLOTS_OK :: 0; WP_SLOTS_NEED_RECOVERY :: 5; WP_SLOTS_NEED_PASSKEY :: 6;
+
+#test "the numbers people are shown" {
+  #assert WP_DEFAULT_DAILY == 20000 && WP_NEW_DESTINATION == 100000 && WP_FRESH_MS == 5 * 60 * 1000;
+  #assert WP_RAISE_WAIT_MS == 24 * 60 * 60 * 1000 && WP_DAY_MS == 24 * 60 * 60 * 1000 && WP_MAX_SAT == 21_000_000 * 100_000_000;
+  #assert wp_default_daily() == 20000 && wp_new_destination() == 100000 && wp_raise_wait_ms() == 86400000 && wp_day_ms() == 86400000;
+}
+#test "a fresh L2 is one proved in the last five minutes" {
+  #assert wp_fresh(0) && wp_fresh(1) && wp_fresh(300000) && !wp_fresh(300001) && !wp_fresh(-1) && !wp_fresh(86400000);
+}
+#forall "a payment: within the limit it goes; past it, or large and somewhere new, a fresh L2 first" amount: 0..<8, spent: 0..<6, limit: 0..<6, age: -1..<3 {
+  v := wp_spend(amount, spent, limit, false, age * 200000, false, 0);
+  if amount == 0 { #assert v == WP_BAD_AMOUNT; }
+  else if spent + amount <= limit { #assert v == WP_OK; }
+  else if age == 0 || age == 1 { #assert v == WP_OK; }
+  else { #assert v == WP_STEP_UP; }
+}
+#test "a payment: amounts, a new destination, an inbox thief, the same payment asked twice" {
+  #assert wp_spend(-1, 0, 20000, false, 0, false, 0) == WP_BAD_AMOUNT && wp_spend(0, 0, 20000, false, 0, false, 0) == WP_BAD_AMOUNT;
+  #assert wp_spend(WP_MAX_SAT, 0, WP_MAX_SAT, false, -1, false, 0) == WP_OK && wp_spend(WP_MAX_SAT + 1, 0, WP_MAX_SAT, false, 0, false, 0) == WP_BAD_AMOUNT;
+  #assert wp_spend(1, -1, 20000, false, 0, false, 0) == WP_BAD_AMOUNT && wp_spend(1, 0, -1, false, 0, false, 0) == WP_BAD_AMOUNT;
+  // the default limit: 20,000 goes, one more sat asks
+  #assert wp_spend(20000, 0, 20000, false, -1, false, 0) == WP_OK && wp_spend(20001, 0, 20000, false, -1, false, 0) == WP_STEP_UP;
+  #assert wp_spend(1, 19999, 20000, false, -1, false, 0) == WP_OK && wp_spend(1, 20000, 20000, false, -1, false, 0) == WP_STEP_UP;
+  #assert wp_spend(1, 20000, 20000, false, 300000, false, 0) == WP_OK && wp_spend(1, 20000, 20000, false, 300001, false, 0) == WP_STEP_UP;
+  // a limit of zero: every payment asks
+  #assert wp_spend(1, 0, 0, false, -1, false, 0) == WP_STEP_UP && wp_spend(1, 0, 0, false, 0, false, 0) == WP_OK;
+  // somewhere new: over 100,000 asks even under a high limit; exactly 100,000 doesn't
+  #assert wp_spend(100000, 0, 500000, true, -1, false, 0) == WP_OK && wp_spend(100001, 0, 500000, true, -1, false, 0) == WP_STEP_UP;
+  #assert wp_spend(100001, 0, 500000, false, -1, false, 0) == WP_OK && wp_spend(100001, 0, 500000, true, 1000, false, 0) == WP_OK;
+  // an email login on an account with a stronger way in spends nothing, however small, whatever L2 it claims
+  #assert wp_spend(1, 0, 20000, false, -1, true, 0) == WP_LIMITED && wp_spend(1, 0, 20000, false, 0, true, 0) == WP_LIMITED;
+  #assert wp_spend(0, 0, 20000, false, 0, true, 0) == WP_BAD_AMOUNT;
+  // the same payment id: the same amount is the same payment (counted once); another amount is refused
+  #assert wp_spend(5, 0, 20000, false, -1, false, 5) == WP_OK && wp_spend(5, 0, 20000, false, -1, false, 6) == WP_REPLAY;
+  #assert wp_spend(5, 20000, 20000, false, -1, false, 5) == WP_OK && wp_spend(5, 0, 20000, false, -1, true, 5) == WP_LIMITED;
+  #assert wp_counted(WP_OK, 0) && !wp_counted(WP_OK, 5) && !wp_counted(WP_STEP_UP, 0) && !wp_counted(WP_LIMITED, 0) && !wp_counted(WP_REPLAY, 6) && !wp_counted(WP_BAD_AMOUNT, 0);
+}
+#forall "a new limit: lower counts now, higher waits and needs a fresh L2, the same is nothing" new: -1..<5, current: 0..<5, age: -1..<3, limited: bool {
+  v := wp_limit(new, current, age * 200000, limited);
+  if new < 0 { #assert v == WP_BAD_LIMIT; }
+  else if limited { #assert v == WP_LIMITED; }
+  else if new == current { #assert v == WP_SAME; }
+  else if new < current { #assert v == WP_LOWER_NOW; }
+  else if age == 0 || age == 1 { #assert v == WP_RAISE_LATER; }
+  else { #assert v == WP_STEP_UP; }
+}
+#test "a new limit at the edges" {
+  #assert wp_limit(WP_MAX_SAT, 20000, 0, false) == WP_RAISE_LATER && wp_limit(WP_MAX_SAT + 1, 20000, 0, false) == WP_BAD_LIMIT;
+  #assert wp_limit(0, 20000, -1, false) == WP_LOWER_NOW && wp_limit(20001, 20000, 300000, false) == WP_RAISE_LATER;
+  #assert wp_limit(20001, 20000, 300001, false) == WP_STEP_UP && wp_limit(19999, 20000, 300001, false) == WP_LOWER_NOW;
+  #assert wp_limit(5, -1, 0, false) == WP_BAD_LIMIT;
+}
+#test "a raise counts 24 hours after it was asked, not a millisecond sooner" {
+  now := 1800000000000;
+  #assert wp_raise_at(now) == now + 86400000;
+  #assert wp_in_force(20000, 50000, now + 86400000, now) == 20000 && wp_in_force(20000, 50000, now + 1, now) == 20000;
+  #assert wp_in_force(20000, 50000, now, now) == 50000 && wp_in_force(20000, 50000, now - 1, now) == 50000;
+  // no raise waiting
+  #assert wp_in_force(20000, 0, 0, now) == 20000 && wp_in_force(20000, 50000, 0, now) == 20000 && wp_in_force(20000, 0, now - 5, now) == 20000;
+  // no waiting value, or one with no time, changes nothing; the smallest of each counts
+  #assert wp_in_force(20000, 0, now - 1, now) == 20000 && wp_in_force(20000, -5, now - 1, now) == 20000 && wp_in_force(20000, 1, now - 1, now) == 1;
+  #assert wp_in_force(20000, 50000, 1, now) == 50000 && wp_in_force(20000, 50000, -1, now) == 20000 && wp_in_force(0, 50000, 1, 1) == 50000 && wp_in_force(0, 50000, 2, 1) == 0;
+  #assert wp_waiting(50000, now + 1, now) && !wp_waiting(50000, now, now) && !wp_waiting(0, now + 1, now) && !wp_waiting(50000, 0, now) && !wp_waiting(-1, now + 1, now);
+  #assert wp_waiting(1, now + 1, now) && wp_waiting(1, 1, 0) && !wp_waiting(1, 0, 0);
+}
+#test "a waiting raise is cancelled by anyone on the account, or by its notice's link; nobody else" {
+  #assert wp_cancel(true, true, false) == WP_OK && wp_cancel(true, false, true) == WP_OK && wp_cancel(true, true, true) == WP_OK;
+  #assert wp_cancel(true, false, false) == WP_NOT_YOURS && wp_cancel(false, true, false) == WP_NO_RAISE && wp_cancel(false, false, true) == WP_NO_RAISE;
+  #assert wp_cancel(false, false, false) == WP_NOT_YOURS;
+}
+#forall "a backup is stored only with enough slots, a good object, the next epoch and a fresh L2" slots: 0..<8, object: bool, mine: bool, step: -1..<3, age: -1..<3, limited: bool {
+  v := wp_store(slots, object, mine, 4 + step, 4, age * 200000, limited);
+  if limited { #assert v == WP_LIMITED; }
+  else if !(age == 0 || age == 1) { #assert v == WP_STEP_UP; }
+  else if slots == 5 { #assert v == WP_NEEDS_RECOVERY; }
+  else if slots == 6 { #assert v == WP_NEEDS_PASSKEY; }
+  else if slots != 0 { #assert v == WP_BAD_SLOTS; }
+  else if !object { #assert v == WP_BAD_OBJECT; }
+  else if !mine { #assert v == WP_NOT_YOUR_PASSKEY; }
+  else if step != 0 { #assert v == WP_CONFLICT; }
+  else { #assert v == WP_OK; }
+}
+#test "a backup's epoch: the first is 1 after 0, each next one follows the stored one; a replay or a skip conflicts" {
+  #assert wp_store(0, true, true, 0, 0, 0, false) == WP_OK && wp_next_epoch(0) == 1 && wp_next_epoch(7) == 8;
+  #assert wp_store(0, true, true, 1, 0, 0, false) == WP_CONFLICT && wp_store(0, true, true, 0, 1, 0, false) == WP_CONFLICT;
+  #assert wp_store(0, true, true, -1, 0, 0, false) == WP_CONFLICT && wp_store(0, true, true, 3, 3, 300000, false) == WP_OK;
+  #assert wp_store(0, true, true, 3, 3, 300001, false) == WP_STEP_UP;
+}
+#test "reading the backup's ciphertext needs a fresh L2, and an inbox thief gets none of it" {
+  #assert wp_read(0, false) == WP_OK && wp_read(300000, false) == WP_OK && wp_read(300001, false) == WP_STEP_UP && wp_read(-1, false) == WP_STEP_UP;
+  #assert wp_read(0, true) == WP_LIMITED && wp_read(-1, true) == WP_LIMITED;
+}
+#test "deleting the backup needs a fresh L2 and a backup" {
+  #assert wp_remove(true, 0, false) == WP_OK && wp_remove(true, 300000, false) == WP_OK && wp_remove(true, 300001, false) == WP_STEP_UP;
+  #assert wp_remove(true, -1, false) == WP_STEP_UP && wp_remove(true, 0, true) == WP_LIMITED && wp_remove(false, 0, false) == WP_NO_BACKUP;
+  #assert wp_remove(false, -1, false) == WP_STEP_UP && wp_remove(false, 0, true) == WP_LIMITED;
+}
+#test "a stored backup counts while one of its passkeys is still on the account" {
+  #assert wp_counts(true, 1) && wp_counts(true, 3) && !wp_counts(true, 0) && !wp_counts(false, 1) && !wp_counts(false, 0) && !wp_counts(true, -1);
+}
+#test "each verdict has its status and words" {
+  #assert wp_status(WP_OK) == 200 && wp_status(WP_LOWER_NOW) == 200 && wp_status(WP_RAISE_LATER) == 200 && wp_status(WP_SAME) == 200;
+  #assert wp_status(WP_STEP_UP) == 401 && wp_status(WP_LIMITED) == 401 && wp_status(WP_CONFLICT) == 409 && wp_status(WP_REPLAY) == 409;
+  #assert wp_status(WP_NO_RAISE) == 404 && wp_status(WP_NO_BACKUP) == 404 && wp_status(WP_NOT_YOURS) == 403;
+  for v: [7] int.[WP_BAD_AMOUNT, WP_BAD_LIMIT, WP_BAD_SLOTS, WP_NEEDS_RECOVERY, WP_NEEDS_PASSKEY, WP_BAD_OBJECT, WP_NOT_YOUR_PASSKEY] { #assert wp_status(v) == 400; }
+  #assert wp_status(99) == 500 && wp_status(-1) == 500;
+  #assert wp_words(WP_STEP_UP) == "Confirm it's you with your passkey or key to do this.";
+  #assert wp_words(WP_LIMITED) == "This login came from email alone. Log in with your passkey or key to use your wallet.";
+  #assert wp_words(WP_BAD_AMOUNT) == "That isn't an amount in sats.";
+  #assert wp_words(WP_REPLAY) == "That payment was already asked about with another amount.";
+  #assert wp_words(WP_BAD_LIMIT) == "A daily limit is a whole number of sats, zero or more.";
+  #assert wp_words(WP_SAME) == "That is already your daily limit.";
+  #assert wp_words(WP_LOWER_NOW) == "Your daily limit is lower now.";
+  #assert wp_words(WP_RAISE_LATER) == "Your daily limit goes up in 24 hours. We told every way you log in. You can cancel until then.";
+  #assert wp_words(WP_NO_RAISE) == "No raise is waiting.";
+  #assert wp_words(WP_CONFLICT) == "Your backup changed somewhere else. Load it again.";
+  #assert wp_words(WP_BAD_SLOTS) == "That backup's keys aren't ones we can keep.";
+  #assert wp_words(WP_NEEDS_RECOVERY) == "A backup needs a recovery code.";
+  #assert wp_words(WP_NEEDS_PASSKEY) == "A backup needs a passkey.";
+  #assert wp_words(WP_BAD_OBJECT) == "That isn't a wallet backup.";
+  #assert wp_words(WP_NOT_YOUR_PASSKEY) == "That backup names a passkey this account doesn't have.";
+  #assert wp_words(WP_NO_BACKUP) == "This account has no wallet backup.";
+  #assert wp_words(WP_NOT_YOURS) == "That link isn't for a raise that is waiting.";
+  #assert wp_words(WP_OK) == "" && wp_words(99) == "That didn't work. Try again.";
+}
+
+wp_default_daily :: () -> int #export_c #effects(all) { return WP_DEFAULT_DAILY; }
+wp_new_destination :: () -> int #export_c #effects(all) { return WP_NEW_DESTINATION; }
+wp_raise_wait_ms :: () -> int #export_c #effects(all) { return WP_RAISE_WAIT_MS; }
+wp_day_ms :: () -> int #export_c #effects(all) { return WP_DAY_MS; }
+
+// l2_age_ms: since this session last proved L2 (a passkey, a key, a recovery code), or -1.
+wp_fresh :: (l2_age_ms: int) -> bool #export_c #effects(all) {
+  return l2_age_ms >= 0 && l2_age_ms <= WP_FRESH_MS;
+}
+
+// A payment the app is about to make. amount: its sats. spent: sats already counted in the last
+// 24 hours. limit: the daily limit in force. new_destination: the app hasn't paid there before.
+// limited: an email login on an account with a stronger way in. seen: the sats already recorded
+// under this payment id (0: none).
+wp_spend :: (amount: int, spent: int, limit: int, new_destination: bool, l2_age_ms: int, limited: bool, seen: int) -> int #export_c #effects(all) {
+  if amount <= 0 || amount > WP_MAX_SAT || spent < 0 || limit < 0 { return WP_BAD_AMOUNT; }
+  if limited { return WP_LIMITED; }
+  if seen == amount { return WP_OK; }
+  if seen != 0 { return WP_REPLAY; }
+  over := amount > limit - spent || (new_destination && amount > WP_NEW_DESTINATION);
+  if over && !wp_fresh(l2_age_ms) { return WP_STEP_UP; }
+  return WP_OK;
+}
+// Whether this answer adds the payment to what was spent: a new payment that may go.
+wp_counted :: (verdict: int, seen: int) -> bool #export_c #effects(all) {
+  return verdict == WP_OK && seen == 0;
+}
+
+// A new daily limit.
+wp_limit :: (new: int, current: int, l2_age_ms: int, limited: bool) -> int #export_c #effects(all) {
+  if new < 0 || new > WP_MAX_SAT || current < 0 { return WP_BAD_LIMIT; }
+  if limited { return WP_LIMITED; }
+  if new < current { return WP_LOWER_NOW; }
+  if new == current { return WP_SAME; }
+  if !wp_fresh(l2_age_ms) { return WP_STEP_UP; }
+  return WP_RAISE_LATER;
+}
+wp_raise_at :: (now_ms: int) -> int #export_c #effects(all) { return now_ms + WP_RAISE_WAIT_MS; }
+// Whether a raise to pending is still waiting (pending_at_ms: when it counts; 0: none).
+wp_waiting :: (pending: int, pending_at_ms: int, now_ms: int) -> bool #export_c #effects(all) {
+  return pending > 0 && pending_at_ms > now_ms;
+}
+// The limit that counts now: the waiting value once its time has come. The database holds only
+// raises there (raise_is_more); a value below the limit could only lower it.
+wp_in_force :: (current: int, pending: int, pending_at_ms: int, now_ms: int) -> int #export_c #effects(all) {
+  if pending > 0 && pending_at_ms > 0 && pending_at_ms <= now_ms { return pending; }
+  return current;
+}
+// has_raise: a raise is waiting. mine: the session is this account's. by_link: the notice's link
+// token is this raise's.
+wp_cancel :: (has_raise: bool, mine: bool, by_link: bool) -> int #export_c #effects(all) {
+  if !mine && !by_link { return WP_NOT_YOURS; }
+  if !has_raise { return WP_NO_RAISE; }
+  return WP_OK;
+}
+
+// A backup to store. slots: wallet-vault.coax's answer for the set of slots (0 good). object: the
+// object is one for those slots' vault. mine: every passkey slot names a passkey of this account.
+// after: the epoch the writer saw. epoch: the stored one (0: no backup yet).
+wp_store :: (slots: int, object: bool, mine: bool, after: int, epoch: int, l2_age_ms: int, limited: bool) -> int #export_c #effects(all) {
+  if limited { return WP_LIMITED; }
+  if !wp_fresh(l2_age_ms) { return WP_STEP_UP; }
+  if slots == WP_SLOTS_NEED_RECOVERY { return WP_NEEDS_RECOVERY; }
+  if slots == WP_SLOTS_NEED_PASSKEY { return WP_NEEDS_PASSKEY; }
+  if slots != WP_SLOTS_OK { return WP_BAD_SLOTS; }
+  if !object { return WP_BAD_OBJECT; }
+  if !mine { return WP_NOT_YOUR_PASSKEY; }
+  if after != epoch { return WP_CONFLICT; }
+  return WP_OK;
+}
+wp_next_epoch :: (epoch: int) -> int #export_c #effects(all) { return epoch + 1; }
+wp_read :: (l2_age_ms: int, limited: bool) -> int #export_c #effects(all) {
+  if limited { return WP_LIMITED; }
+  if !wp_fresh(l2_age_ms) { return WP_STEP_UP; }
+  return WP_OK;
+}
+wp_remove :: (exists: bool, l2_age_ms: int, limited: bool) -> int #export_c #effects(all) {
+  if limited { return WP_LIMITED; }
+  if !wp_fresh(l2_age_ms) { return WP_STEP_UP; }
+  if !exists { return WP_NO_BACKUP; }
+  return WP_OK;
+}
+// exists: a backup is stored (it was only ever stored with enough slots). live_passkeys: how many
+// of its passkey slots name a passkey still on the account.
+wp_counts :: (exists: bool, live_passkeys: int) -> bool #export_c #effects(all) {
+  return exists && live_passkeys > 0;
+}
+
+wp_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == WP_OK || verdict == WP_LOWER_NOW || verdict == WP_RAISE_LATER || verdict == WP_SAME { return 200; }
+  if verdict == WP_STEP_UP || verdict == WP_LIMITED { return 401; }
+  if verdict == WP_CONFLICT || verdict == WP_REPLAY { return 409; }
+  if verdict == WP_NO_RAISE || verdict == WP_NO_BACKUP { return 404; }
+  if verdict == WP_NOT_YOURS { return 403; }
+  if verdict == WP_BAD_AMOUNT || verdict == WP_BAD_LIMIT || verdict == WP_BAD_SLOTS || verdict == WP_NEEDS_RECOVERY || verdict == WP_NEEDS_PASSKEY
+     || verdict == WP_BAD_OBJECT || verdict == WP_NOT_YOUR_PASSKEY { return 400; }
+  return 500;
+}
+wp_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == WP_OK { return ""; }
+  if verdict == WP_STEP_UP { return "Confirm it's you with your passkey or key to do this."; }
+  if verdict == WP_LIMITED { return "This login came from email alone. Log in with your passkey or key to use your wallet."; }
+  if verdict == WP_BAD_AMOUNT { return "That isn't an amount in sats."; }
+  if verdict == WP_REPLAY { return "That payment was already asked about with another amount."; }
+  if verdict == WP_BAD_LIMIT { return "A daily limit is a whole number of sats, zero or more."; }
+  if verdict == WP_SAME { return "That is already your daily limit."; }
+  if verdict == WP_LOWER_NOW { return "Your daily limit is lower now."; }
+  if verdict == WP_RAISE_LATER { return "Your daily limit goes up in 24 hours. We told every way you log in. You can cancel until then."; }
+  if verdict == WP_NO_RAISE { return "No raise is waiting."; }
+  if verdict == WP_CONFLICT { return "Your backup changed somewhere else. Load it again."; }
+  if verdict == WP_BAD_SLOTS { return "That backup's keys aren't ones we can keep."; }
+  if verdict == WP_NEEDS_RECOVERY { return "A backup needs a recovery code."; }
+  if verdict == WP_NEEDS_PASSKEY { return "A backup needs a passkey."; }
+  if verdict == WP_BAD_OBJECT { return "That isn't a wallet backup."; }
+  if verdict == WP_NOT_YOUR_PASSKEY { return "That backup names a passkey this account doesn't have."; }
+  if verdict == WP_NO_BACKUP { return "This account has no wallet backup."; }
+  if verdict == WP_NOT_YOURS { return "That link isn't for a raise that is waiting."; }
+  return "That didn't work. Try again.";
+}

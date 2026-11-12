@@ -2748,6 +2748,188 @@ $_$;
 
 
 --
+-- Name: wallet_backup_drop(text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_backup_drop(acct text) RETURNS integer
+    LANGUAGE sql
+    AS $$
+  WITH d AS (DELETE FROM auth.wallet_backups WHERE account = acct RETURNING 1) SELECT count(*)::int FROM d
+$$;
+
+
+--
+-- Name: wallet_backup_forward(); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_backup_forward() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.epoch <> OLD.epoch + 1 THEN
+    RAISE EXCEPTION 'auth.wallet_backups: an epoch goes up by one' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+
+
+--
+-- Name: wallet_backup_of(text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_backup_of(acct text) RETURNS TABLE(vault text, epoch bigint, slots text, object_hex text, created_ms bigint, updated_ms bigint)
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT b.vault, b.epoch, b.slots, encode(b.object, 'hex'), (extract(epoch FROM b.created_at) * 1000)::bigint, (extract(epoch FROM b.updated_at) * 1000)::bigint
+    FROM auth.wallet_backups b WHERE b.account = acct
+$$;
+
+
+--
+-- Name: wallet_backup_put(text, bigint, text, text, bytea); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_backup_put(acct text, after bigint, vault_ text, slots_ text, object_ bytea) RETURNS bigint
+    LANGUAGE plpgsql
+    AS $$
+DECLARE cur bigint;
+BEGIN
+  PERFORM 1 FROM auth.accounts a WHERE a.id = acct FOR UPDATE;
+  SELECT b.epoch INTO cur FROM auth.wallet_backups b WHERE b.account = acct;
+  IF coalesce(cur, 0) <> after THEN RETURN NULL; END IF;
+  IF cur IS NULL THEN
+    INSERT INTO auth.wallet_backups (account, vault, epoch, slots, object) VALUES (acct, vault_, 1, slots_, object_);
+    RETURN 1;
+  END IF;
+  UPDATE auth.wallet_backups SET vault = vault_, epoch = cur + 1, slots = slots_, object = object_, updated_at = now() WHERE account = acct;
+  RETURN cur + 1;
+END $$;
+
+
+--
+-- Name: wallet_limit_by_link(text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_limit_by_link(sha text) RETURNS text
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT l.account FROM auth.wallet_limits l WHERE l.cancel_sha256 = sha AND l.pending_at > now()
+$$;
+
+
+--
+-- Name: wallet_limit_cancel(text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_limit_cancel(acct text) RETURNS bigint
+    LANGUAGE sql
+    AS $$
+  WITH old AS (SELECT l.pending_sat FROM auth.wallet_limits l WHERE l.account = acct AND l.pending_at > now() FOR UPDATE),
+       u AS (UPDATE auth.wallet_limits l SET pending_sat = NULL, pending_asked_at = NULL, pending_at = NULL, cancel_sha256 = NULL, updated_at = now()
+              WHERE l.account = acct AND EXISTS (SELECT 1 FROM old) RETURNING 1)
+  SELECT (SELECT pending_sat FROM old) FROM (SELECT count(*) FROM u) done
+$$;
+
+
+--
+-- Name: wallet_limit_lower(text, bigint); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_limit_lower(acct text, sat bigint) RETURNS void
+    LANGUAGE sql
+    AS $$
+  INSERT INTO auth.wallet_limits (account, daily_sat) VALUES (acct, sat)
+  ON CONFLICT (account) DO UPDATE SET daily_sat = EXCLUDED.daily_sat, pending_sat = NULL, pending_asked_at = NULL, pending_at = NULL, cancel_sha256 = NULL, updated_at = now()
+$$;
+
+
+--
+-- Name: wallet_limit_of(text, bigint); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_limit_of(acct text, default_sat bigint, OUT daily_sat bigint, OUT pending_sat bigint, OUT pending_asked_ms bigint, OUT pending_ms bigint, OUT now_ms bigint) RETURNS record
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  UPDATE auth.wallet_limits l SET daily_sat = l.pending_sat, pending_sat = NULL, pending_asked_at = NULL, pending_at = NULL, cancel_sha256 = NULL, updated_at = now()
+   WHERE l.account = acct AND l.pending_at IS NOT NULL AND l.pending_at <= now();
+  SELECT l.daily_sat, coalesce(l.pending_sat, 0), coalesce((extract(epoch FROM l.pending_asked_at) * 1000)::bigint, 0),
+         coalesce((extract(epoch FROM l.pending_at) * 1000)::bigint, 0)
+    INTO daily_sat, pending_sat, pending_asked_ms, pending_ms FROM auth.wallet_limits l WHERE l.account = acct;
+  IF daily_sat IS NULL THEN daily_sat := default_sat; pending_sat := 0; pending_asked_ms := 0; pending_ms := 0; END IF;
+  now_ms := (extract(epoch FROM now()) * 1000)::bigint;
+END $$;
+
+
+--
+-- Name: wallet_limit_raise(text, bigint, bigint, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_limit_raise(acct text, current bigint, sat bigint, cancel text) RETURNS bigint
+    LANGUAGE sql
+    AS $$
+  INSERT INTO auth.wallet_limits (account, daily_sat, pending_sat, pending_asked_at, pending_at, cancel_sha256)
+  VALUES (acct, current, sat, now(), now() + interval '24 hours', cancel)
+  ON CONFLICT (account) DO UPDATE SET pending_sat = EXCLUDED.pending_sat, pending_asked_at = now(), pending_at = now() + interval '24 hours',
+                                      cancel_sha256 = EXCLUDED.cancel_sha256, updated_at = now()
+  RETURNING (extract(epoch FROM pending_at) * 1000)::bigint
+$$;
+
+
+--
+-- Name: wallet_spend_add(text, text, bigint); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_spend_add(acct text, pid text, sats_ bigint) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+DECLARE n int;
+BEGIN
+  INSERT INTO auth.wallet_spends (account, payment_id, sats) VALUES (acct, pid, sats_) ON CONFLICT DO NOTHING;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n = 1;
+END $$;
+
+
+--
+-- Name: wallet_spend_void(text, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_spend_void(acct text, pid text) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+DECLARE n int;
+BEGIN
+  UPDATE auth.wallet_spends SET voided_at = now() WHERE account = acct AND payment_id = pid AND voided_at IS NULL;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n = 1;
+END $$;
+
+
+--
+-- Name: wallet_spends_sweep(); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_spends_sweep() RETURNS integer
+    LANGUAGE sql
+    AS $$
+  WITH d AS (DELETE FROM auth.wallet_spends WHERE at < now() - interval '30 days' RETURNING 1) SELECT count(*)::int FROM d
+$$;
+
+
+--
+-- Name: wallet_spent(text, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.wallet_spent(acct text, pid text, OUT spent bigint, OUT seen bigint) RETURNS record
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT coalesce((SELECT sum(s.sats) FROM auth.wallet_spends s WHERE s.account = acct AND s.voided_at IS NULL AND s.at > now() - interval '24 hours'), 0)::bigint,
+         coalesce((SELECT s.sats FROM auth.wallet_spends s WHERE s.account = acct AND s.payment_id = pid), 0)::bigint
+$$;
+
+
+--
 -- Name: ways_of(text); Type: FUNCTION; Schema: auth; Owner: -
 --
 
@@ -19775,6 +19957,60 @@ CREATE TABLE auth.sessions (
 
 
 --
+-- Name: wallet_backups; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.wallet_backups (
+    account text NOT NULL,
+    vault text NOT NULL,
+    epoch bigint NOT NULL,
+    slots text NOT NULL,
+    object bytea NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT wallet_backups_epoch_check CHECK ((epoch >= 1)),
+    CONSTRAINT wallet_backups_object_check CHECK (((length(object) >= 28) AND (length(object) <= 4096))),
+    CONSTRAINT wallet_backups_slots_check CHECK (((length(slots) >= 1) AND (length(slots) <= 24576))),
+    CONSTRAINT wallet_backups_vault_check CHECK ((vault ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
+-- Name: wallet_limits; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.wallet_limits (
+    account text NOT NULL,
+    daily_sat bigint NOT NULL,
+    pending_sat bigint,
+    pending_asked_at timestamp with time zone,
+    pending_at timestamp with time zone,
+    cancel_sha256 text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT raise_is_more CHECK (((pending_sat IS NULL) OR ((pending_sat > daily_sat) AND (pending_sat <= '2100000000000000'::bigint)))),
+    CONSTRAINT raise_waits_24_hours CHECK (((pending_at IS NULL) OR (pending_at >= (pending_asked_at + '24:00:00'::interval)))),
+    CONSTRAINT raise_whole CHECK ((((pending_sat IS NULL) = (pending_at IS NULL)) AND ((pending_sat IS NULL) = (pending_asked_at IS NULL)) AND ((pending_sat IS NOT NULL) OR (cancel_sha256 IS NULL)))),
+    CONSTRAINT wallet_limits_cancel_sha256_check CHECK ((cancel_sha256 ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT wallet_limits_daily_sat_check CHECK (((daily_sat >= 0) AND (daily_sat <= '2100000000000000'::bigint)))
+);
+
+
+--
+-- Name: wallet_spends; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.wallet_spends (
+    account text NOT NULL,
+    payment_id text NOT NULL,
+    sats bigint NOT NULL,
+    at timestamp with time zone DEFAULT now() NOT NULL,
+    voided_at timestamp with time zone,
+    CONSTRAINT wallet_spends_payment_id_check CHECK ((payment_id ~ '^[A-Za-z0-9_-]{8,64}$'::text)),
+    CONSTRAINT wallet_spends_sats_check CHECK (((sats >= 1) AND (sats <= '2100000000000000'::bigint)))
+);
+
+
+--
 -- Name: conversations; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -22722,6 +22958,30 @@ ALTER TABLE ONLY auth.sessions
 
 
 --
+-- Name: wallet_backups wallet_backups_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.wallet_backups
+    ADD CONSTRAINT wallet_backups_pkey PRIMARY KEY (account);
+
+
+--
+-- Name: wallet_limits wallet_limits_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.wallet_limits
+    ADD CONSTRAINT wallet_limits_pkey PRIMARY KEY (account);
+
+
+--
+-- Name: wallet_spends wallet_spends_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.wallet_spends
+    ADD CONSTRAINT wallet_spends_pkey PRIMARY KEY (account, payment_id);
+
+
+--
 -- Name: conversations conversations_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -24097,6 +24357,13 @@ CREATE INDEX sessions_prev ON auth.sessions USING btree (prev_sha256) WHERE (pre
 
 
 --
+-- Name: wallet_spends_recent; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX wallet_spends_recent ON auth.wallet_spends USING btree (account, at) WHERE (voided_at IS NULL);
+
+
+--
 -- Name: conversations_owner; Type: INDEX; Schema: chat; Owner: -
 --
 
@@ -24608,6 +24875,13 @@ CREATE TRIGGER session_device_fixed BEFORE UPDATE OF device ON auth.sessions FOR
 
 
 --
+-- Name: wallet_backups wallet_backup_forward; Type: TRIGGER; Schema: auth; Owner: -
+--
+
+CREATE TRIGGER wallet_backup_forward BEFORE UPDATE OF epoch, slots, object, vault ON auth.wallet_backups FOR EACH ROW EXECUTE FUNCTION auth.wallet_backup_forward();
+
+
+--
 -- Name: payouts payout_wall; Type: TRIGGER; Schema: makers; Owner: -
 --
 
@@ -24946,6 +25220,30 @@ ALTER TABLE ONLY auth.sessions
 
 ALTER TABLE ONLY auth.sessions
     ADD CONSTRAINT sessions_device_fkey FOREIGN KEY (device) REFERENCES auth.devices(id);
+
+
+--
+-- Name: wallet_backups wallet_backups_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.wallet_backups
+    ADD CONSTRAINT wallet_backups_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: wallet_limits wallet_limits_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.wallet_limits
+    ADD CONSTRAINT wallet_limits_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: wallet_spends wallet_spends_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.wallet_spends
+    ADD CONSTRAINT wallet_spends_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
 
 
 --

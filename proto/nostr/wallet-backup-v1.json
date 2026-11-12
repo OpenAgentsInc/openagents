@@ -1,0 +1,70 @@
+{
+ "profile": "openagents.wallet-backup",
+ "version": 1,
+ "id": "openagents.wallet-backup.v1",
+ "spec": "nostr/nips/openagents/NIP-VAULT.md#wallet-seed-backup",
+ "what": "the plaintext of a wallet seed backup's one vault object (tier user, one chunk of 1024 bytes, its user wrap in its own header): sealed on the person's device, never seen by the service",
+ "encoding": "exactly its RFC 8785 (JCS) form",
+ "fields": [
+  {
+   "name": "account",
+   "type": "string",
+   "rule": "acct_ and 26 characters of a-z2-7: the account the backup was made for"
+  },
+  {
+   "name": "created_at",
+   "type": "integer",
+   "rule": "seconds, 0 or more"
+  },
+  {
+   "name": "entropy",
+   "type": "string",
+   "rule": "the seed's BIP-39 entropy: 32 or 64 lowercase hex characters"
+  },
+  {
+   "name": "epoch",
+   "type": "integer",
+   "rule": "1 or more; each change to the slots seals the record again at epoch + 1"
+  },
+  {
+   "name": "requires",
+   "type": "array",
+   "rule": "empty"
+  },
+  {
+   "name": "slots",
+   "type": "array of strings",
+   "rule": "1 to 8 slot ids (64 lowercase hex characters): every slot that may open this epoch"
+  },
+  {
+   "name": "v",
+   "type": "string",
+   "rule": "openagents.wallet-backup.v1"
+  },
+  {
+   "name": "vault",
+   "type": "string",
+   "rule": "the vault id, 64 lowercase hex characters"
+  }
+ ],
+ "slots": {
+  "needed": [
+   "recovery",
+   "passkey-prf"
+  ],
+  "optional": [
+   "nostr"
+  ],
+  "most": 8,
+  "passkey_prf_input": "SHA-256 of the ASCII bytes openagents.wallet-backup.v1/prf",
+  "recovery_log_n": 17
+ },
+ "service": {
+  "store": "POST /api/wallet/backup {after, slots, object}",
+  "read": "POST /api/wallet/backup/export",
+  "slots": "base64 of every slot's text, a newline between them",
+  "object": "base64 of the object's bytes"
+ },
+ "fixture": "proto/nostr/fixtures/wallet-backup-v1.vectors.json",
+ "reference": "coax/tests/nostr/vault_wallet_reference.py"
+}

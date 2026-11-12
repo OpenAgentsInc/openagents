@@ -1,0 +1,245 @@
+// The wallet's encrypted backup and daily limit against a live site (#13217): headless Chrome with
+// a CDP virtual authenticator that does WebAuthn's PRF extension (hmac-secret) on WALLET_LIVE_BASE
+// (https://staging.openagents.com or https://openagents.com). Every request is the page's own
+// fetch; the sealing and opening are done here by the code the apps use
+// (coax/lib/nostr/vault-wallet.coax). A new test account each run, made by a throwaway Nostr key.
+// TEST SECRETS ONLY: the "seed" is a fixed pattern that has never held money.
+//   1. a new account adds a passkey that says it can do PRF
+//   2. one passkey answer steps the session up and evaluates the wallet backup's PRF input
+//   3. the backup is sealed here (the PRF output, a new recovery code) and stored: epoch 1; what was
+//      sent holds no seed, PRF output or recovery word
+//   4. log out; LOG IN WITH A PASSKEY, the same answer evaluating PRF: that one prompt reads the
+//      backup and opens it to the seed (a new phone's restore)
+//   5. the recovery code's words, typed, open it too; another account's id, an older epoch than
+//      seen, and a wrong code don't
+//   6. the daily limit: 20,000 shown; lower counts at once; a raise waits 24 hours and is shown;
+//      cancel; a payment within the limit goes, counts once, and is voided
+//   7. /settings/wallet shows the limit and the backup (WALLET_LIVE_SHOTS=DIR keeps pictures)
+//   8. the backup and the test account are deleted
+// Never the owner's account or wallet: every key is made here and forgotten.
+// tool.sh: run-steps 250000000
+//
+//   WALLET_LIVE_BASE=https://staging.openagents.com coax/web/tool.sh coax/tests/auth/wallet-live.coax
+#run_steps 250000000;
+#load "live-page.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/nostr/vault-wallet.coax";
+
+WL_REGISTER :: "(async()=>{const o=await __pk.call('POST','/api/auth/passkey/register/options','{}');if(o.s!==200)return {s:o.s,t:o.t};const c=await navigator.credentials.create({publicKey:{challenge:__pk.unb64u(o.j.challenge),rp:{id:o.j.rp_id,name:'OpenAgents'},user:{id:__pk.unb64u(o.j.user_id),name:'wallet-live',displayName:'wallet-live'},pubKeyCredParams:[{type:'public-key',alg:-7}],authenticatorSelection:{residentKey:'required',userVerification:'required'},attestation:'none',extensions:{prf:{}}}});const x=c.getClientExtensionResults();const prf=!!(x.prf&&x.prf.enabled);const r=await __pk.call('POST','/api/auth/passkey/register',JSON.stringify({challenge:o.j.challenge,attestation:__pk.b64u(c.response.attestationObject),client_data:__pk.b64u(c.response.clientDataJSON),user_id:o.j.user_id,name:'Wallet live check',prf:prf?'1':'0'}));return {s:r.s,t:(prf?'prf ':'noprf ')+r.t}})().catch(e=>({s:0,t:String(e)}))";
+// One passkey answer for kind (login or step-up) that also evaluates the PRF input (hex): the PRF
+// output stays in the page (window.__prf) for this check to read; it is in no request.
+WL_ASSERT_JS :: "window.__prfask=async(kind,input)=>{const o=await __pk.call('POST','/api/auth/passkey/'+kind+'/options','{}');if(o.s!==200)return {s:o.s,t:o.t};const c=await navigator.credentials.get({publicKey:{challenge:__pk.unb64u(o.j.challenge),rpId:o.j.rp_id,userVerification:'required',allowCredentials:(o.j.publicKey&&o.j.publicKey.allowCredentials||[]).map(x=>({type:'public-key',id:__pk.unb64u(x.id)})),extensions:{prf:{eval:{first:Uint8Array.from(input.match(/../g),h=>parseInt(h,16))}}}}});const x=c.getClientExtensionResults();window.__prf=x.prf&&x.prf.results&&x.prf.results.first?__pk.hex(x.prf.results.first):'';window.__cred=__pk.hex(c.rawId);window.__rp=o.j.rp_id;const r=c.response;const body=JSON.stringify({challenge:o.j.challenge,id:c.id,auth_data:__pk.b64u(r.authenticatorData),client_data:__pk.b64u(r.clientDataJSON),signature:__pk.b64u(r.signature),user_handle:r.userHandle?__pk.b64u(r.userHandle):''});window.__sent=(window.__sent||'')+body;const a=await __pk.call('POST','/api/auth/passkey/'+kind,body);return {s:a.s,t:a.t}};'ready'";
+
+wl_hex :: (b: [] u8, out: [] u8) -> string { n := wb_put_hex(out, 0, b); return cast(string) out[0..<n]; }
+wl_unhex :: (h: string, out: [] u8) -> int {
+  if h.count % 2 != 0 || h.count / 2 > out.count { return -1; }
+  for i: 0..<h.count / 2 { a := pl_hexval(h[2*i]); b := pl_hexval(h[2*i+1]); if a < 0 || b < 0 { return -1; } out[i] = cast(u8) (a * 16 + b); }
+  return h.count / 2;
+}
+// A page value (a string expression) into out.
+wl_page :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js);
+  if v < 0 { return ""; }
+  n := jv_str(c[0].doc[0], v, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// A JSON member of the last answer's text (t), by its name: digits or a quoted value.
+wl_member :: (text: string, name: string, out: [] u8) -> string {
+  key: [80] u8; k := pl_put(key[..], 0, "\""); k = pl_put(key[..], k, name); k = pl_put(key[..], k, "\":");
+  for i: 0..<text.count {
+    if i + k > text.count || text[i..<i + k] != cast(string) key[0..<k] { continue; }
+    at := i + k; n := 0;
+    if at < text.count && text[at] == '"' { at += 1; while at < text.count && text[at] != '"' && n < out.count { out[n] = text[at]; n += 1; at += 1; } }
+    else { while at < text.count && text[at] != ',' && text[at] != '}' && n < out.count { out[n] = text[at]; n += 1; at += 1; } }
+    return cast(string) out[0..<n];
+  }
+  return "";
+}
+wl_shot :: (c: [] Cdp, dir: string, name: string) {
+  if dir.count == 0 { return; }
+  png: [4194304] u8; n := cdp_screenshot(c, png[..]);
+  pb: [1100] u8; path := fs_join(dir, name, pb[..]);
+  if n > 0 { _ = fs_write(path, cast(string) png[0..<n]); }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  bb: [256] u8; base := proc_getenv("WALLET_LIVE_BASE", bb[..]);
+  sb: [600] u8; shots := proc_getenv("WALLET_LIVE_SHOTS", sb[..]);
+  if base.count == 0 { print("wallet-live: set WALLET_LIVE_BASE (https://staging.openagents.com or https://openagents.com)\n"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], 900, 1400, "wallet-live-") { print("wallet-live: %\n", cdp_error(c[..])); return 1; }
+  url: [400] u8; un := pl_put(url[..], 0, "{\"url\":\""); un = pl_put(url[..], un, base); un = pl_put(url[..], un, "/docs/limits\"}");
+  ok := un > 0 && cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) >= 0 && cdp_send(c[..], "Page.navigate", cast(string) url[0..<un]) >= 0;
+  loaded := false;
+  while ok && !loaded {
+    if cdp_poll(c[..], 30000) != CDP_GOT { ok = false; break; }
+    if cdp_event_method(c[0].doc[0]) == "Page.loadEventFired" { loaded = true; }
+  }
+  ok = ok && cdp_call(c[..], "WebAuthn.enable", "{\"enableUI\":false}", CDP_CALL_MS) >= 0;
+  ok = ok && cdp_call(c[..], "WebAuthn.addVirtualAuthenticator", "{\"options\":{\"protocol\":\"ctap2\",\"ctap2Version\":\"ctap2_1\",\"transport\":\"internal\",\"hasResidentKey\":true,\"hasUserVerification\":true,\"isUserVerified\":true,\"automaticPresenceSimulation\":true,\"hasPrf\":true}}", CDP_CALL_MS) >= 0;
+  ok = ok && cdp_evaluate(c[..], PL_JS) >= 0 && cdp_evaluate(c[..], WL_ASSERT_JS) >= 0;
+  if !ok { print("wallet-live: setup failed: %\n", cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  ob: [200] u8; origin := wl_page(c[..], "location.origin", ob[..]);
+  print("wallet-live on %\n", origin);
+  good := true; t: [1200] u8; mb: [200] u8;
+
+  // 1. a new test account, and a passkey that can do PRF
+  if !pl_new_account(c[..], "wallet-live", t[..]) { cdp_close(c[..]); return 1; }
+  st := pl_eval(c[..], "__pk.call('GET','/api/auth/account').then(r=>({s:r.s,t:r.j.account||''}))", t[..]);
+  acct: [64] u8; an := 0; for ch: pl_text(t[..]) { if an < 64 { acct[an] = ch; an += 1; } }
+  account := cast(string) acct[0..<an];
+  good = pl_ok("the test account is logged in", st == 200 && an == 31, pl_text(t[..])) && good;
+  print("     test account %\n", account);
+  st = pl_eval(c[..], WL_REGISTER, t[..]);
+  good = pl_ok("a passkey is added, and the authenticator says it can do PRF", st == 200 && pl_has(pl_text(t[..]), "prf ") && pl_has(pl_text(t[..]), "\"added\""), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/wallet').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("a new account: the default limit of 20,000 sats is shown, nothing spent, no backup", st == 200 && pl_has(pl_text(t[..]), "\"daily_sat\":20000")
+               && pl_has(pl_text(t[..]), "\"spent_sat\":0") && pl_has(pl_text(t[..]), "\"backup\":null") && pl_has(pl_text(t[..]), "\"enforced_by\":\"app\""), pl_text(t[..])) && good;
+
+  // 2. one passkey answer: the step-up, and the PRF output for the wallet backup's input
+  input: [32] u8; ih: [64] u8; js: [70000] u8;
+  _ = wb_prf_input(input[..]);
+  n := pl_put(js[..], 0, "__prfask('step-up','"); n = pl_put(js[..], n, wl_hex(input[..], ih[..])); n = pl_put(js[..], n, "').catch(e=>({s:0,t:String(e)}))");
+  st = pl_eval(c[..], cast(string) js[0..<n], t[..]);
+  ph: [80] u8; ch2: [2100] u8; rb: [300] u8;
+  prf: [32] u8; pn := wl_unhex(wl_page(c[..], "window.__prf", ph[..]), prf[..]);
+  cred: [VT_CREDENTIAL_MAX] u8; cn := wl_unhex(wl_page(c[..], "window.__cred", ch2[..]), cred[..]);
+  rp := wl_page(c[..], "window.__rp", rb[..]);
+  good = pl_ok("one passkey answer steps the session up and gives a 32-byte PRF output, which is in no request", st == 200 && pn == 32 && cn > 0 && rp.count > 0
+               && wl_page(c[..], "String((window.__sent||'').includes(window.__prf))", mb[..]) == "false", pl_text(t[..])) && good;
+  if pn != 32 || cn <= 0 { print("wallet-live: no PRF output; stopping\n"); cdp_close(c[..]); return 1; }
+
+  // 3. seal the backup here, as the app does, and store it
+  rh: [800] u8; rnd: [300] u8;
+  rn := wl_unhex(wl_page(c[..], "__pk.hex(crypto.getRandomValues(new Uint8Array(300)))", rh[..]), rnd[..]);
+  seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8) (i * 13 + 7); }
+  work: [BIP39_WORK_BYTES] u8; words: [BIP39_MAX_TEXT] u8; memory: [134217728] u8; secret: [32] u8;
+  wn := wb_code_words(rnd[235..<267], work[..], words[..]);
+  made_secret := rn == 300 && wn > 0 && wb_recovery_secret(words[0..<wn], rnd[267..<283], memory[..], WB_LOG_N, secret[..]);
+  slots: [WB_SLOTS_TEXT_MAX] u8; object: [WB_OBJECT_MAX] u8;
+  m := wb_make(slots[..], object[..], account, 1, 1794000000, seed[..], prf[..], cred[0..<cn], rp, "Wallet live check", secret[..], rnd[267..<283], WB_LOG_N, rnd[0..<WB_FRESH]);
+  verified := made_secret && m.code == WB_OK && wb_verify(object[0..<m.object], cast(string) slots[0..<m.slots], account, 1, prf[..], cred[0..<cn], secret[..], seed[..]) == WB_OK;
+  good = pl_ok("the backup is sealed here and opens to the seed through the passkey's slot and the recovery code's", verified, "") && good;
+  n = pl_put(js[..], 0, "(async()=>{window.__store=JSON.stringify({after:'0',slots:'");
+  n = vt_put_b64(js[..], n, slots[0..<m.slots]); n = pl_put(js[..], n, "',object:'"); n = vt_put_b64(js[..], n, object[0..<m.object]);
+  n = pl_put(js[..], n, "'});const r=await __pk.call('POST','/api/wallet/backup',window.__store);return {s:r.s,t:r.t}})()");
+  st = pl_eval(c[..], cast(string) js[0..<n], t[..]);
+  good = pl_ok("the server stores it at epoch 1", st == 200 && pl_has(pl_text(t[..]), "\"epoch\":1"), pl_text(t[..])) && good;
+  // what was sent: no seed, no PRF output, no recovery word of five letters or more
+  sh: [40] u8; leak := wl_page(c[..], "String(window.__store.includes(window.__prf)||atob(JSON.parse(window.__store).slots).includes(window.__prf))", mb[..]) != "false";
+  n = pl_put(js[..], 0, "String(['"); n = pl_put(js[..], n, wl_hex(seed[..], sh[..])); n = pl_put(js[..], n, "'");
+  from := 0;
+  for i: 0..<wn + 1 {
+    if i != wn && words[i] != ' ' { continue; }
+    if i - from >= 5 { n = pl_put(js[..], n, ",'"); n = pl_put(js[..], n, cast(string) words[from..<i]); n = pl_put(js[..], n, "'"); }
+    from = i + 1;
+  }
+  n = pl_put(js[..], n, "].some(x=>window.__store.includes(x)||atob(JSON.parse(window.__store).slots).includes(x)||atob(JSON.parse(window.__store).object).includes(x)))");
+  leak = leak || wl_page(c[..], cast(string) js[0..<n], mb[..]) != "false";
+  good = pl_ok("what was sent holds no seed, no PRF output and no recovery word", !leak, "") && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/backup',window.__store).then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("a rollback: the same write again, against the old epoch, is refused", st == 409, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/wallet').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the account shows it: a passkey slot and a recovery-code slot, and it counts", st == 200 && pl_has(pl_text(t[..]), "\"epoch\":1")
+               && pl_has(pl_text(t[..]), "\"method\":\"passkey\",\"label\":\"Wallet live check\"") && pl_has(pl_text(t[..]), "\"method\":\"recovery-code\"") && pl_has(pl_text(t[..]), "\"counts\":true"), pl_text(t[..])) && good;
+
+  // 7 (while logged in at this session). the page
+  nav: [400] u8; nn := pl_put(nav[..], 0, "{\"url\":\""); nn = pl_put(nav[..], nn, base); nn = pl_put(nav[..], nn, "/settings/wallet\"}");
+  shown := cdp_send(c[..], "Page.navigate", cast(string) nav[0..<nn]) >= 0;
+  loaded = false;
+  while shown && !loaded { if cdp_poll(c[..], 30000) != CDP_GOT { shown = false; break; } if cdp_event_method(c[0].doc[0]) == "Page.loadEventFired" { loaded = true; } }
+  probe := "";
+  for tries: 0..<40 {
+    probe = wl_page(c[..], "String(window.coaxial&&coaxial.probe?coaxial.probe():-1)", mb[..]);
+    if probe.count > 0 && probe != "-1" && probe != "0" { break; }
+    proc_sleep(250);
+  }
+  good = pl_ok("/settings/wallet loads for the logged-in account", shown && probe.count > 0 && probe != "-1" && probe != "0", probe) && good;
+  print("     page probe %\n", probe);
+  proc_sleep(1500);
+  wl_shot(c[..], shots, "wallet-page.png");
+  // back to a plain page for the rest
+  shown = cdp_send(c[..], "Page.navigate", cast(string) url[0..<un]) >= 0; loaded = false;
+  while shown && !loaded { if cdp_poll(c[..], 30000) != CDP_GOT { break; } if cdp_event_method(c[0].doc[0]) == "Page.loadEventFired" { loaded = true; } }
+  ok = cdp_evaluate(c[..], PL_JS) >= 0 && cdp_evaluate(c[..], WL_ASSERT_JS) >= 0;
+
+  // 4. a new phone: log out, then one passkey answer logs in, evaluates PRF, and that opens the backup
+  st = pl_eval(c[..], "__pk.call('POST','/api/auth/logout','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("logged out", ok && st == 200, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/backup/export','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("nobody reads a backup without a login", st == 401, pl_text(t[..])) && good;
+  n = pl_put(js[..], 0, "__prfask('login','"); n = pl_put(js[..], n, wl_hex(input[..], ih[..])); n = pl_put(js[..], n, "').catch(e=>({s:0,t:String(e)}))");
+  st = pl_eval(c[..], cast(string) js[0..<n], t[..]);
+  prf2: [32] u8; pn2 := wl_unhex(wl_page(c[..], "window.__prf", ph[..]), prf2[..]);
+  cred2: [VT_CREDENTIAL_MAX] u8; cn2 := wl_unhex(wl_page(c[..], "window.__cred", ch2[..]), cred2[..]);
+  same := pn2 == 32; for i: 0..<32 { if prf2[i] != prf[i] { same = false; } }
+  good = pl_ok("LOG IN WITH A PASSKEY: the same answer gives the same PRF output", st == 200 && same && cn2 == cn, pl_text(t[..])) && good;
+  v := cdp_evaluate(c[..], "__pk.call('POST','/api/wallet/backup/export','{}').then(r=>({s:r.s,a:(r.j.backup||{}).account||'',e:String((r.j.backup||{}).epoch||0),sl:(r.j.backup||{}).slots||'',ob:(r.j.backup||{}).object||''}))");
+  d := c[0].doc[0];
+  es: [WB_SLOTS_TEXT_MAX] u8; eo: [WB_OBJECT_MAX] u8; s64: [40000] u8; o64: [8000] u8; back: [32] u8;
+  esn := -1; eon := -1; got_account := false;
+  if v >= 0 {
+    sn := jv_str(d, jv_get(d, v, "sl"), s64[..]); on := jv_str(d, jv_get(d, v, "ob"), o64[..]);
+    ab: [64] u8; gn := jv_str(d, jv_get(d, v, "a"), ab[..]);
+    got_account = gn == an && cast(string) ab[0..<gn] == account;
+    if sn > 0 { esn = base64_decode_checked(cast(string) s64[0..<sn], es[..], false).written; }
+    if on > 0 { eon = base64_decode_checked(cast(string) o64[0..<on], eo[..], false).written; }
+  }
+  bytes_same := esn == m.slots && eon == m.object && cast(string) es[0..<esn] == cast(string) slots[0..<m.slots] && cast(string) eo[0..<eon] == cast(string) object[0..<m.object];
+  good = pl_ok("that login reads the backup back, byte for byte what was sealed", got_account && bytes_same, "") && good;
+  pick := wb_pick(cast(string) es[0..<esn], VT_M_PRF, cred2[0..<cn2]);
+  o := wb_open(eo[0..<eon], cast(string) es[pick.from..<pick.to], prf2[..], account, 1, 0, back[..]);
+  seed_back := o.code == WB_OK && o.n == 16; for i: 0..<16 { if back[i] != seed[i] { seed_back = false; } }
+  good = pl_ok("RESTORE: the passkey's slot, found by its credential id, opens it to the seed: one prompt, wallet back", pick.from >= 0 && seed_back, "") && good;
+
+  // 5. the recovery code, typed; and what doesn't open it
+  typed: [400] u8; tn := pl_put(typed[..], 0, "  "); for i: 0..<wn { ch := words[i]; if ch >= 'a' && ch <= 'z' && i % 7 == 0 { ch = ch - 32; } typed[tn] = ch; tn += 1; }
+  typed[tn] = '\n'; tn += 1;
+  normal: [BIP39_MAX_TEXT] u8; nn2 := wb_code_normal(typed[0..<tn], work[..], normal[..]);
+  rpick := wb_pick(cast(string) es[0..<esn], VT_M_RECOVERY, cred2[0..<0]);
+  salt: [16] u8; logn := wb_recovery_params(cast(string) es[rpick.from..<rpick.to], salt[..]);
+  s2: [32] u8; again := nn2 > 0 && logn == WB_LOG_N && wb_recovery_secret(normal[0..<nn2], salt[..], memory[..], logn, s2[..]);
+  o = wb_open(eo[0..<eon], cast(string) es[rpick.from..<rpick.to], s2[..], account, 1, 1, back[..]);
+  good = pl_ok("the recovery code's 24 words, typed back, open it too", again && o.code == WB_OK && o.n == 16 && back[0] == seed[0] && back[15] == seed[15], "") && good;
+  s2[0] ^= 1;
+  refuse := wb_open(eo[0..<eon], cast(string) es[rpick.from..<rpick.to], s2[..], account, 1, 0, back[..]).code == WB_SECRET
+         && wb_open(eo[0..<eon], cast(string) es[pick.from..<pick.to], prf2[..], "acct_aaaaaaaaaaaaaaaaaaaaaaaaaa", 1, 0, back[..]).code == WB_ACCOUNT
+         && wb_open(eo[0..<eon], cast(string) es[pick.from..<pick.to], prf2[..], account, 1, 2, back[..]).code == WB_ROLLBACK
+         && wb_open(eo[0..<eon], cast(string) es[pick.from..<pick.to], prf2[..], account, 2, 0, back[..]).code == WB_EPOCH;
+  good = pl_ok("a wrong code, another account, an older epoch than seen and a misnamed epoch open nothing", refuse, "") && good;
+
+  // 6. the daily limit
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/limit/lower','{\"daily_sat\":\"5000\"}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("lowering the limit to 5,000 counts at once", st == 200 && pl_has(pl_text(t[..]), "lowered"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/spend','{\"sats\":\"4000\",\"payment_id\":\"live-pay-0001\"}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("a payment within the limit goes", st == 200 && pl_has(pl_text(t[..]), "\"spent_sat\":4000"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/spend','{\"sats\":\"4000\",\"payment_id\":\"live-pay-0001\"}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("asked again, it counts once", st == 200 && pl_has(pl_text(t[..]), "\"spent_sat\":4000"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/spend','{\"sats\":\"5\",\"payment_id\":\"live-pay-0001\"}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the same payment with another amount is refused", st == 409, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/limit','{\"daily_sat\":\"50000\"}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("a raise to 50,000 waits 24 hours (this login is fresh)", st == 200 && pl_has(pl_text(t[..]), "waiting") && pl_has(pl_text(t[..]), "\"daily_sat\":5000"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/wallet').then(r=>({s:r.s,t:JSON.stringify(r.j.limit)}))", t[..]);
+  a1: [24] u8; a2: [24] u8; asked := wl_member(pl_text(t[..]), "asked_ms", a1[..]); at_ms := wl_member(pl_text(t[..]), "at_ms", a2[..]);
+  wait := 0; x := 0; for ch: at_ms { x = x * 10 + cast(int) (ch - '0'); } y := 0; for ch: asked { y = y * 10 + cast(int) (ch - '0'); } wait = x - y;
+  good = pl_ok("the limit in force is still 5,000 and the raise is shown, 24 hours out", st == 200 && pl_has(pl_text(t[..]), "\"daily_sat\":5000") && pl_has(pl_text(t[..]), "\"sat\":50000") && wait == 86400000, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/limit/cancel','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the raise is cancelled from a login", st == 200 && pl_has(pl_text(t[..]), "cancelled"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/spend/void','{\"payment_id\":\"live-pay-0001\"}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("a payment that didn't go no longer counts", st == 200 && pl_has(pl_text(t[..]), "voided"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/auth/notices').then(r=>({s:r.s,t:JSON.stringify((r.j.notices||[]).map(n=>n.what))}))", t[..]);
+  good = pl_ok("each change was told: the backup, the lower limit, the raise and its cancel", st == 200 && pl_has(pl_text(t[..]), "wallet.backup") && pl_has(pl_text(t[..]), "wallet.limit.lower")
+               && pl_has(pl_text(t[..]), "wallet.limit.raise") && pl_has(pl_text(t[..]), "wallet.limit.cancel"), pl_text(t[..])) && good;
+
+  // 8. the backup and the test account go
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/backup/delete','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the backup is deleted", st == 200 && pl_has(pl_text(t[..]), "deleted"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/wallet/backup/export','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("and nothing is left to read", st == 200 && pl_has(pl_text(t[..]), "\"backup\":null"), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/auth/delete','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the test account is deleted (frozen; purged in 30 days)", st == 200 && pl_has(pl_text(t[..]), "deleting"), pl_text(t[..])) && good;
+
+  cdp_close(c[..]);
+  print("wallet-live: %\n", ifx good then "ok" else "FAILED");
+  return ifx good then 0 else 1;
+}

@@ -51,6 +51,11 @@ checked before every build.
   account `seed-v1`, this device only. It is reused, never regenerated or
   overwritten. It stays in memory only, is never logged, and is shown once
   behind a warning.
+- The only way a seed gets onto a phone that has none is the person's own
+  encrypted backup (#13217): the app opens it with their passkey or
+  recovery code and adds the seed where none is stored. We hold the
+  ciphertext and can't open it
+  ([docs/auth](../auth/wallets-and-custody.md#what-is-built)).
 - Tests never move the owner's money. Live tests use a throwaway seed and a
   few sats.
 - Treasury, payouts and provider settlement stay off a person's Spark

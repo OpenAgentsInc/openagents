@@ -35,8 +35,8 @@ routes ask for a level ([sessions](sessions-and-tokens.md#middleware)):
 | Level | Reached by | Enough for |
 | --- | --- | --- |
 | `L1` | email code | Reading and ordinary writes |
-| `L2` | passkey, Nostr key or recovery code (a device key once spend step-up uses it, #13217) | Spending above the free limit, adding an authenticator, creating agent grants |
-| `L2-fresh` | L2 within the last 5 minutes | Seed export, removing an authenticator, raising a spend limit, deleting the account |
+| `L2` | passkey, Nostr key or recovery code | Adding an authenticator, creating agent grants |
+| `L2-fresh` | L2 within the last 5 minutes | A wallet payment past the daily limit, reading or changing the wallet's encrypted backup, removing an authenticator, raising a spend limit, deleting the account |
 
 This follows NIST SP 800-63B rev. 4 in spirit: syncable passkeys count at
 AAL2 ([NIST SP 800-63B-4](https://csrc.nist.gov/pubs/sp/800/63/b/4/final)).
@@ -273,9 +273,10 @@ pubkey, words}` (5 tries an hour per account, 10 per network address).
 
 **Recovery codes** are 24 BIP-39 words, shown once when you add your
 first strong factor and again on request at `L2-fresh`. We store
-`scrypt(words, salt, N=2^17, r=8, p=1)`, the same parameters as NIP-VAULT's
-recovery slot, so one code can also open a wallet backup
-([wallets](wallets-and-custody.md#encrypted-backups-we-cant-open)).
+`scrypt(words, salt, N=2^17, r=8, p=1)`. This code logs you in; it can't
+open a wallet backup. We make it and we see it when you type it, so the
+wallet backup has a code of its own, made on the phone and never sent to
+us ([wallets](wallets-and-custody.md#what-is-built), #13217).
 
 ## Merging accounts
 
