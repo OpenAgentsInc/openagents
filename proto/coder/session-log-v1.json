@@ -1,0 +1,589 @@
+{
+  "profile": "openagents.session.log",
+  "id": "openagents.session.v1",
+  "package": "openagents.session.log.v1alpha1",
+  "proto": "proto/openagents/session/log/v1alpha1/log.proto",
+  "source": "coax/lib/agent/session/log.coax",
+  "check": "coax/web/tool.sh coax/lib/agent/session/log-profile.coax proto/coder/session-log-v1.json",
+  "spec": "docs/protocol/session-log-v1.md",
+  "transport": "a file, ~/.openagents/coder/sessions/ID.jsonl: one JSON object a line, each ended by \\n; compact (no spaces), keys in the order below; strings escaped as NIP-01 serializes an event",
+  "about": "Each line's values, written through log.coax, are its line byte for byte; the line read back has exactly those fields. The lines were written by hand from what Coder, coder import, the desktop app and the turn runner wrote before this file (C1, #13238).",
+  "lines": [
+    {
+      "kind": "session",
+      "note": "Coder's header (session/writer.coax sw_open): a detached fork with a policy, a report and a deadline",
+      "always": true,
+      "values": {
+        "id": "20261111-120000-417",
+        "version": "0.1.0",
+        "engine": "claude",
+        "cwd": "/w/app",
+        "started_us": 1794398400417000,
+        "parent": "20261110-090000-001",
+        "at": 2,
+        "pid": 4242,
+        "report_to": "20261110-080000-002",
+        "resume": "5f1c-resume",
+        "allow": "write",
+        "ceiling": "run",
+        "deadline_s": 600
+      },
+      "line": "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"20261111-120000-417\",\"version\":\"0.1.0\",\"engine\":\"claude\",\"cwd\":\"/w/app\",\"started_us\":1794398400417000,\"parent\":\"20261110-090000-001\",\"at\":2,\"pid\":4242,\"report_to\":\"20261110-080000-002\",\"resume\":\"5f1c-resume\",\"allow\":\"write\",\"ceiling\":\"run\",\"deadline_s\":600}"
+    },
+    {
+      "kind": "session",
+      "note": "Coder's header, a plain run",
+      "always": true,
+      "values": {
+        "id": "20261111-120000-418",
+        "version": "0.1.0",
+        "engine": "codex",
+        "cwd": "/w",
+        "started_us": 1794398400418000
+      },
+      "line": "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"20261111-120000-418\",\"version\":\"0.1.0\",\"engine\":\"codex\",\"cwd\":\"/w\",\"started_us\":1794398400418000}"
+    },
+    {
+      "kind": "session",
+      "note": "coder import claude (coder/tui/import.coax)",
+      "always": true,
+      "values": {
+        "id": "20261102-120000-000",
+        "version": "0.1.0",
+        "engine": "claude",
+        "cwd": "/w",
+        "started_us": 1793620800000000,
+        "imported": "claude"
+      },
+      "line": "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"20261102-120000-000\",\"version\":\"0.1.0\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":1793620800000000,\"imported\":\"claude\"}"
+    },
+    {
+      "kind": "session",
+      "note": "the desktop app's header (log.coax sl_header)",
+      "values": {
+        "id": "20261110-120000-001",
+        "engine": "claude",
+        "cwd": "/w",
+        "started_us": 1794000000000000
+      },
+      "line": "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"20261110-120000-001\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":1794000000000000}"
+    },
+    {
+      "kind": "session",
+      "note": "the desktop app's header with no folder or start time",
+      "values": {
+        "id": "chat-7",
+        "engine": "claude"
+      },
+      "line": "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"chat-7\",\"engine\":\"claude\"}"
+    },
+    {
+      "kind": "session",
+      "note": "a /chat conversation's header (chat.record, pinned in C2)",
+      "values": {
+        "id": "41",
+        "engine": "claude",
+        "cwd": "/w",
+        "started_us": 1794000000000000,
+        "title": "Fix the sidebar",
+        "model": "claude-sonnet-4-5"
+      },
+      "line": "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"41\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":1794000000000000,\"title\":\"Fix the sidebar\",\"model\":\"claude-sonnet-4-5\"}"
+    },
+    {
+      "kind": "user",
+      "values": {
+        "text": "Fix the \"sidebar\" width\nplease"
+      },
+      "line": "{\"kind\":\"user\",\"text\":\"Fix the \\\"sidebar\\\" width\\nplease\"}"
+    },
+    {
+      "kind": "thinking",
+      "values": {
+        "text": "Looking at desk.coax"
+      },
+      "line": "{\"kind\":\"thinking\",\"text\":\"Looking at desk.coax\"}"
+    },
+    {
+      "kind": "reply",
+      "note": "UTF-8 is written as it is",
+      "values": {
+        "text": "Done: the sidebar is 240 px. ✓"
+      },
+      "line": "{\"kind\":\"reply\",\"text\":\"Done: the sidebar is 240 px. ✓\"}"
+    },
+    {
+      "kind": "ask",
+      "values": {
+        "text": "Allow Bash(rm -rf build)?"
+      },
+      "line": "{\"kind\":\"ask\",\"text\":\"Allow Bash(rm -rf build)?\"}"
+    },
+    {
+      "kind": "answer",
+      "values": {
+        "text": "yes, from now on"
+      },
+      "line": "{\"kind\":\"answer\",\"text\":\"yes, from now on\"}"
+    },
+    {
+      "kind": "agent",
+      "values": {
+        "engine": "codex"
+      },
+      "line": "{\"kind\":\"agent\",\"engine\":\"codex\"}"
+    },
+    {
+      "kind": "context",
+      "values": {
+        "text": "Issue #7: the sidebar is too narrow."
+      },
+      "line": "{\"kind\":\"context\",\"text\":\"Issue #7: the sidebar is too narrow.\"}"
+    },
+    {
+      "kind": "keys",
+      "values": {
+        "text": "\\x1b[Z"
+      },
+      "line": "{\"kind\":\"keys\",\"text\":\"\\\\x1b[Z\"}"
+    },
+    {
+      "kind": "note",
+      "note": "control bytes: \\t, and \\u00XX for the rest",
+      "values": {
+        "text": "a\tb\u0001c\\d"
+      },
+      "line": "{\"kind\":\"note\",\"text\":\"a\\tb\\u0001c\\\\d\"}"
+    },
+    {
+      "kind": "tool",
+      "note": "Coder's tool line: only its label",
+      "values": {
+        "label": "Bash(ls -la)"
+      },
+      "line": "{\"kind\":\"tool\",\"label\":\"Bash(ls -la)\"}"
+    },
+    {
+      "kind": "tool",
+      "note": "the desktop app's tool line",
+      "values": {
+        "label": "Edit(/w/desk.coax)",
+        "tool": "edit",
+        "name": "Edit",
+        "id": "t1",
+        "arg": "/w/desk.coax",
+        "old": "220",
+        "new": "240",
+        "input": "{\"file_path\":\"/w/desk.coax\"}"
+      },
+      "line": "{\"kind\":\"tool\",\"label\":\"Edit(/w/desk.coax)\",\"tool\":\"edit\",\"name\":\"Edit\",\"id\":\"t1\",\"arg\":\"/w/desk.coax\",\"old\":\"220\",\"new\":\"240\",\"input\":\"{\\\"file_path\\\":\\\"/w/desk.coax\\\"}\"}"
+    },
+    {
+      "kind": "tool",
+      "values": {
+        "label": "github · create_issue",
+        "tool": "mcp",
+        "name": "mcp__github__create_issue",
+        "id": "t3",
+        "arg": "{\"title\":\"x\"}",
+        "detail": "github · create_issue",
+        "input": "{\"title\":\"x\"}"
+      },
+      "line": "{\"kind\":\"tool\",\"label\":\"github · create_issue\",\"tool\":\"mcp\",\"name\":\"mcp__github__create_issue\",\"id\":\"t3\",\"arg\":\"{\\\"title\\\":\\\"x\\\"}\",\"detail\":\"github · create_issue\",\"input\":\"{\\\"title\\\":\\\"x\\\"}\"}"
+    },
+    {
+      "kind": "result",
+      "note": "Coder's result",
+      "values": {
+        "text": "notes.txt",
+        "error": false
+      },
+      "line": "{\"kind\":\"result\",\"text\":\"notes.txt\",\"error\":false}"
+    },
+    {
+      "kind": "result",
+      "note": "Coder's cut result: its whole size",
+      "values": {
+        "text": "abcd",
+        "error": false,
+        "bytes": 5000
+      },
+      "line": "{\"kind\":\"result\",\"text\":\"abcd\",\"error\":false,\"bytes\":5000}"
+    },
+    {
+      "kind": "result",
+      "values": {
+        "text": "denied",
+        "error": true,
+        "id": "t2"
+      },
+      "line": "{\"kind\":\"result\",\"text\":\"denied\",\"error\":true,\"id\":\"t2\"}"
+    },
+    {
+      "kind": "result",
+      "note": "the desktop app's cut result keeps the whole; a call still running is open",
+      "values": {
+        "text": "abcd",
+        "error": true,
+        "bytes": 6,
+        "output": "abcdef",
+        "id": "t4",
+        "open": true
+      },
+      "line": "{\"kind\":\"result\",\"text\":\"abcd\",\"error\":true,\"bytes\":6,\"output\":\"abcdef\",\"id\":\"t4\",\"open\":true}"
+    },
+    {
+      "kind": "routed",
+      "values": {
+        "text": "Routed to Claude Code · Sonnet 5.5",
+        "tool": "route",
+        "id": "lab-route",
+        "detail": "elephant-1 · 1900 ms",
+        "output": "harness  claude_code 0.9",
+        "resolved": true
+      },
+      "line": "{\"kind\":\"routed\",\"text\":\"Routed to Claude Code · Sonnet 5.5\",\"tool\":\"route\",\"id\":\"lab-route\",\"detail\":\"elephant-1 · 1900 ms\",\"output\":\"harness  claude_code 0.9\",\"resolved\":true}"
+    },
+    {
+      "kind": "routed",
+      "values": {
+        "text": "Loading the model",
+        "tool": "load",
+        "arg": "elephant-1",
+        "error": true
+      },
+      "line": "{\"kind\":\"routed\",\"text\":\"Loading the model\",\"tool\":\"load\",\"arg\":\"elephant-1\",\"error\":true}"
+    },
+    {
+      "kind": "notice",
+      "values": {
+        "notice": "limit",
+        "text": "Limit reached"
+      },
+      "line": "{\"kind\":\"notice\",\"notice\":\"limit\",\"text\":\"Limit reached\"}"
+    },
+    {
+      "kind": "notice",
+      "values": {
+        "notice": "stopped",
+        "text": ""
+      },
+      "line": "{\"kind\":\"notice\",\"notice\":\"stopped\",\"text\":\"\"}"
+    },
+    {
+      "kind": "approval",
+      "values": {
+        "tool": "Write(a.txt)",
+        "effect": "write",
+        "inside": true,
+        "verdict": "run",
+        "why": "inside the folder, allowed up to write"
+      },
+      "line": "{\"kind\":\"approval\",\"tool\":\"Write(a.txt)\",\"effect\":\"write\",\"inside\":true,\"verdict\":\"run\",\"why\":\"inside the folder, allowed up to write\"}"
+    },
+    {
+      "kind": "approval",
+      "values": {
+        "tool": "Bash(touch b.txt)",
+        "effect": "run",
+        "inside": false,
+        "verdict": "refuse",
+        "why": "above the ceiling"
+      },
+      "line": "{\"kind\":\"approval\",\"tool\":\"Bash(touch b.txt)\",\"effect\":\"run\",\"inside\":false,\"verdict\":\"refuse\",\"why\":\"above the ceiling\"}"
+    },
+    {
+      "kind": "memory",
+      "values": {
+        "text": "The person prefers tabs.",
+        "withheld": 2
+      },
+      "line": "{\"kind\":\"memory\",\"text\":\"The person prefers tabs.\",\"withheld\":2}"
+    },
+    {
+      "kind": "memory",
+      "values": {
+        "text": "The person prefers tabs."
+      },
+      "line": "{\"kind\":\"memory\",\"text\":\"The person prefers tabs.\"}"
+    },
+    {
+      "kind": "engine_session",
+      "values": {
+        "engine": "claude",
+        "id": "00729a50-295f-4dcd-b0ff-64cc1956bded"
+      },
+      "line": "{\"kind\":\"engine_session\",\"engine\":\"claude\",\"id\":\"00729a50-295f-4dcd-b0ff-64cc1956bded\"}"
+    },
+    {
+      "kind": "diff",
+      "note": "legacy: C2 stops writing it",
+      "values": {
+        "path": "/w/notes.txt",
+        "adds": 1,
+        "dels": 1,
+        "old": "bred",
+        "new": "bread"
+      },
+      "line": "{\"kind\":\"diff\",\"path\":\"/w/notes.txt\",\"adds\":1,\"dels\":1,\"old\":\"bred\",\"new\":\"bread\"}"
+    },
+    {
+      "kind": "diff",
+      "note": "a Write: no old text",
+      "values": {
+        "path": "/w/new.txt",
+        "adds": 2,
+        "dels": 0,
+        "old": "",
+        "new": "a\nb"
+      },
+      "line": "{\"kind\":\"diff\",\"path\":\"/w/new.txt\",\"adds\":2,\"dels\":0,\"old\":\"\",\"new\":\"a\\nb\"}"
+    },
+    {
+      "kind": "diff",
+      "note": "a delete, or text too long to keep",
+      "values": {
+        "path": "/w/gone.txt",
+        "adds": 0,
+        "dels": 0
+      },
+      "line": "{\"kind\":\"diff\",\"path\":\"/w/gone.txt\",\"adds\":0,\"dels\":0}"
+    },
+    {
+      "kind": "hook",
+      "values": {
+        "on": "tool_call",
+        "plugin": "guard",
+        "run": "sh guard.sh",
+        "tool": "Bash(rm x)",
+        "ok": false,
+        "text": "no rm here"
+      },
+      "line": "{\"kind\":\"hook\",\"on\":\"tool_call\",\"plugin\":\"guard\",\"run\":\"sh guard.sh\",\"tool\":\"Bash(rm x)\",\"ok\":false,\"text\":\"no rm here\"}"
+    },
+    {
+      "kind": "hook",
+      "values": {
+        "on": "turn_end",
+        "plugin": "notify",
+        "run": "say done",
+        "ok": true,
+        "text": ""
+      },
+      "line": "{\"kind\":\"hook\",\"on\":\"turn_end\",\"plugin\":\"notify\",\"run\":\"say done\",\"ok\":true,\"text\":\"\"}"
+    },
+    {
+      "kind": "goal",
+      "values": {
+        "check": "make test",
+        "turn": 3,
+        "met": false,
+        "text": "1 failed"
+      },
+      "line": "{\"kind\":\"goal\",\"check\":\"make test\",\"turn\":3,\"met\":false,\"text\":\"1 failed\"}"
+    },
+    {
+      "kind": "job",
+      "values": {
+        "id": "20261111-120000-418",
+        "ending": "finished",
+        "text": "Done."
+      },
+      "line": "{\"kind\":\"job\",\"id\":\"20261111-120000-418\",\"ending\":\"finished\",\"text\":\"Done.\"}"
+    },
+    {
+      "kind": "end",
+      "note": "Coder's end",
+      "values": {
+        "ending": "finished",
+        "ms": 900,
+        "steps": 3
+      },
+      "line": "{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":900,\"steps\":3}"
+    },
+    {
+      "kind": "end",
+      "note": "Coder's failed end: why, and its cause",
+      "values": {
+        "ending": "failed",
+        "ms": 5,
+        "steps": 1,
+        "text": "login needed",
+        "cause": "provider"
+      },
+      "line": "{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":5,\"steps\":1,\"text\":\"login needed\",\"cause\":\"provider\"}"
+    },
+    {
+      "kind": "end",
+      "note": "coder stop, for a job whose process it ended",
+      "values": {
+        "ending": "stopped",
+        "ms": 0,
+        "steps": 0,
+        "text": "coder stop ended the job's process"
+      },
+      "line": "{\"kind\":\"end\",\"ending\":\"stopped\",\"ms\":0,\"steps\":0,\"text\":\"coder stop ended the job's process\"}"
+    },
+    {
+      "kind": "end",
+      "note": "the Router's watchdog",
+      "values": {
+        "ending": "lost",
+        "ms": 0,
+        "steps": 0,
+        "text": "the worker's process is gone"
+      },
+      "line": "{\"kind\":\"end\",\"ending\":\"lost\",\"ms\":0,\"steps\":0,\"text\":\"the worker's process is gone\"}"
+    },
+    {
+      "kind": "end",
+      "note": "the desktop app's end, with the cost",
+      "values": {
+        "ending": "failed",
+        "ms": 12500,
+        "steps": 3,
+        "cost_usd_e6": 31000
+      },
+      "line": "{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":12500,\"steps\":3,\"cost_usd_e6\":31000}"
+    },
+    {
+      "kind": "end",
+      "note": "a cost of 0 is still written",
+      "values": {
+        "ending": "finished",
+        "ms": 70,
+        "steps": 0,
+        "cost_usd_e6": 0
+      },
+      "line": "{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":70,\"steps\":0,\"cost_usd_e6\":0}"
+    }
+  ],
+  "request": {
+    "prompt": "Fix the sidebar width",
+    "sha256": "fe20ab7a152e4cb2f6ada58cd46eb14ef8728257e8c8a7c6edae9ed0564d8eb3",
+    "bytes": 21,
+    "line": "{\"kind\":\"request\",\"sha256\":\"fe20ab7a152e4cb2f6ada58cd46eb14ef8728257e8c8a7c6edae9ed0564d8eb3\",\"bytes\":21}",
+    "note": "coder replay rebuilds the prompt and compares this SHA-256 and length; the digest is of the prompt's bytes"
+  },
+  "legacy": [
+    {
+      "name": "Coder before C1: a header with no schema, a tool line with only its label, a result with only text, an edit's own diff line, failed and expired ends with their text",
+      "lines": [
+        "{\"kind\":\"session\",\"id\":\"20261102-153012-417\",\"version\":\"0.1\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":5}",
+        "{\"kind\":\"user\",\"text\":\"fix it\"}",
+        "{\"kind\":\"request\",\"sha256\":\"ab\",\"bytes\":6}",
+        "{\"kind\":\"tool\",\"label\":\"Bash(ls -la)\"}",
+        "{\"kind\":\"result\",\"text\":\"notes.txt\",\"error\":false}",
+        "{\"kind\":\"tool\",\"label\":\"Edit(/w/notes.txt)\"}",
+        "{\"kind\":\"result\",\"text\":\"updated\",\"error\":false}",
+        "{\"kind\":\"diff\",\"path\":\"/w/notes.txt\",\"adds\":1,\"dels\":1,\"old\":\"bred\",\"new\":\"bread\"}",
+        "{\"kind\":\"tool\",\"label\":\"mcp__coder__status\"}",
+        "{\"kind\":\"result\",\"text\":\"no\",\"error\":true}",
+        "{\"kind\":\"reply\",\"text\":\"Fixed.\"}",
+        "{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":900,\"steps\":3,\"text\":\"Fixed.\"}",
+        "{\"kind\":\"user\",\"text\":\"again\"}",
+        "{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":5,\"steps\":0,\"text\":\"login needed\",\"cause\":\"provider\"}",
+        "{\"kind\":\"user\",\"text\":\"later\"}",
+        "{\"kind\":\"end\",\"ending\":\"expired\",\"ms\":7,\"steps\":0}"
+      ],
+      "parts": [
+        {
+          "part": "user",
+          "text": "fix it"
+        },
+        {
+          "part": "tool",
+          "tk": "exec",
+          "arg": "ls -la",
+          "output": "notes.txt",
+          "resolved": true,
+          "failed": false
+        },
+        {
+          "part": "tool",
+          "tk": "edit",
+          "arg": "/w/notes.txt",
+          "before": "bred",
+          "after": "bread",
+          "output": "updated"
+        },
+        {
+          "part": "tool",
+          "tk": "tool",
+          "detail": "mcp__coder__status",
+          "output": "no",
+          "failed": true
+        },
+        {
+          "part": "text",
+          "text": "Fixed."
+        },
+        {
+          "part": "user",
+          "text": "again"
+        },
+        {
+          "part": "notice",
+          "notice": "error",
+          "text": "login needed"
+        },
+        {
+          "part": "user",
+          "text": "later"
+        },
+        {
+          "part": "notice",
+          "notice": "error",
+          "text": "The job passed its deadline."
+        }
+      ]
+    },
+    {
+      "name": "the desktop app's first format ({\"k\":...,\"t\":...})",
+      "lines": [
+        "{\"k\":\"user\",\"t\":\"hi\"}",
+        "{\"k\":\"think\",\"t\":\"hm\"}",
+        "{\"k\":\"tool\",\"tk\":3,\"id\":\"t1\",\"arg\":\"/w/a\",\"before\":\"1\",\"after\":\"2\",\"input\":\"{}\",\"output\":\"ok\",\"resolved\":true}",
+        "{\"k\":\"route\",\"t\":\"Routed\",\"tk\":13,\"id\":\"r1\",\"detail\":\"d\",\"resolved\":true}",
+        "{\"k\":\"text\",\"t\":\"Done.\"}",
+        "{\"k\":\"notice\",\"t\":\"\",\"notice\":4}",
+        "{\"k\":\"end\",\"ms\":70,\"cost\":2500e-6}"
+      ],
+      "parts": [
+        {
+          "part": "user",
+          "text": "hi"
+        },
+        {
+          "part": "think",
+          "text": "hm"
+        },
+        {
+          "part": "tool",
+          "tk": "edit",
+          "arg": "/w/a",
+          "before": "1",
+          "after": "2",
+          "output": "ok",
+          "resolved": true
+        },
+        {
+          "part": "route",
+          "tk": "route",
+          "text": "Routed",
+          "detail": "d",
+          "resolved": true
+        },
+        {
+          "part": "text",
+          "text": "Done."
+        },
+        {
+          "part": "notice",
+          "notice": "stopped",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

@@ -78,13 +78,15 @@ fgn_launch :: (s:[]ForgeNative,text:string)->bool {
   if !ok {return false;}
   s[0].turn=1;s[0].ended=false;return true;
 }
+// The turn's end when Coder's own line never came (stopped here, or its process exited), built by the session log's writer.
+fgn_ended :: (s:[]ForgeNative,ending:string) {b:[128]u8;n:=sl_end(b[..],0,ending,0,0,-1,"","");if n>0 {fgn_event(s,cast(string)b[0..<n]);}}
 fgn_tick :: (s:[]ForgeNative) {
   if s[0].hud[0].pending {
     r:=fgl_request(cast(string)s[0].hud[0].request[0..<s[0].hud[0].request_n],FGN_EPOCH,s[0].last,s[0].turn>=0);
     if r.ok {
       s[0].last=r.ticket;
       if r.op==1 {s[0].hud[0].busy=fgn_launch(s,cast(string)r.text[0..<r.n]);fgl_status(s[0].hud[..],ifx s[0].turn>=0 then "Coder is running" else "Coder could not start");}
-      else if r.op==2 {fgn_stop(s);fgn_event(s,"{\"kind\":\"end\",\"ending\":\"stopped\"}");}
+      else if r.op==2 {fgn_stop(s);fgn_ended(s,"stopped");}
       else if r.op==3 {s[0].sn=0;}
       else if r.op==4 {lr_select(s[0].lab[0].remote[..],0,0);lab_blur(s[0].lab[..]);s[0].lab[0].ready=false;s[0].lab[0].explorer[0]=LabExplore.{};}
       else if r.op==5 {s[0].quit=true;}
@@ -100,7 +102,7 @@ fgn_tick :: (s:[]ForgeNative) {
     fgn_event(s,cast(string)line[0..<n]);
   }
   if !alive {
-    if !s[0].ended {fgn_event(s,"{\"kind\":\"end\",\"ending\":\"exited\"}");}
+    if !s[0].ended {fgn_ended(s,"exited");}
     fgn_stop(s);
   }
   if s[0].turn>=0 {s[0].hud[0].busy=true;}

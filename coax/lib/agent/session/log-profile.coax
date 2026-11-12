@@ -1,0 +1,212 @@
+// The session log's fixture check (C1, #13238): proto/coder/session-log-v1.json names each line
+// kind, the values of its fields and the exact line those values make. This program holds the one
+// writer (log.coax) to that file:
+//   - every line's values, written through log.coax, are its line byte for byte;
+//   - every line read back has exactly the fields its values name, with the same values;
+//   - every kind of proto/openagents/session/log/v1alpha1/log.proto's Line has a line;
+//   - the request line: the prompt's SHA-256 and length, as `coder replay` compares them;
+//   - each legacy log (lines written before this format) reads through sl_load into the parts it names.
+// The file is the independent expected result: its lines are written by hand, not by this codec.
+// Prints a line per check and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
+//   coax/web/tool.sh coax/lib/agent/session/log-profile.coax proto/coder/session-log-v1.json
+#import "Basic";
+#load "log.coax";
+#load "../../json/json.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+LP_LINE :: 16384;
+// The Line oneof's members, in its order (log.proto).
+LP_KINDS :: [23] string.["session", "user", "thinking", "reply", "tool", "result", "routed", "notice", "ask", "answer", "approval", "agent",
+                         "context", "keys", "note", "memory", "request", "engine_session", "diff", "hook", "goal", "job", "end"];
+
+// Strings taken out of the profile, each kept while a line is checked.
+LpPool :: struct { buf: [65536] u8; n: int; }
+lp_has :: (d: Jv, vs: int, key: string) -> bool { return jv_get(d, vs, key) >= 0; }
+lp_s :: (p: [] LpPool, d: Jv, vs: int, key: string) -> string {
+  w := jv_str(d, jv_get(d, vs, key), p[0].buf[p[0].n..<p[0].buf.count]);
+  if w < 0 { return ""; }
+  at := p[0].n; p[0].n += w;
+  return cast(string) p[0].buf[at..<at + w];
+}
+lp_i :: (d: Jv, vs: int, key: string, fallback: int) -> int { return jv_int(d, jv_get(d, vs, key), fallback); }
+lp_b :: (d: Jv, vs: int, key: string) -> bool { return jv_bool(d, jv_get(d, vs, key)); }
+
+// The line kind's values through log.coax's writer: its length, or -1.
+lp_write :: (kind: string, d: Jv, vs: int, always: bool, p: [] LpPool, out: [] u8) -> int {
+  if kind == "session" {
+    return sl_session(out, 0, SlHeader.{id = lp_s(p, d, vs, "id"), version = lp_s(p, d, vs, "version"), engine = lp_s(p, d, vs, "engine"), cwd = lp_s(p, d, vs, "cwd"),
+      started_us = lp_i(d, vs, "started_us", -1), title = lp_s(p, d, vs, "title"), model = lp_s(p, d, vs, "model"), imported = lp_s(p, d, vs, "imported"),
+      parent = lp_s(p, d, vs, "parent"), at = lp_i(d, vs, "at", 0), pid = lp_i(d, vs, "pid", 0), report_to = lp_s(p, d, vs, "report_to"),
+      resume = lp_s(p, d, vs, "resume"), allow = lp_s(p, d, vs, "allow"), ceiling = lp_s(p, d, vs, "ceiling"), deadline_s = lp_i(d, vs, "deadline_s", 0), always = always});
+  }
+  if kind == "user" || kind == "thinking" || kind == "reply" || kind == "ask" || kind == "answer" || kind == "context" || kind == "keys" || kind == "note" {
+    return sl_text(out, 0, kind, "text", lp_s(p, d, vs, "text"));
+  }
+  if kind == "agent" { return sl_text(out, 0, kind, "engine", lp_s(p, d, vs, "engine")); }
+  if kind == "tool" {
+    return sl_tool(out, 0, SlTool.{label = lp_s(p, d, vs, "label"), tool = lp_s(p, d, vs, "tool"), name = lp_s(p, d, vs, "name"), id = lp_s(p, d, vs, "id"),
+      arg = lp_s(p, d, vs, "arg"), detail = lp_s(p, d, vs, "detail"), old = lp_s(p, d, vs, "old"), next = lp_s(p, d, vs, "new"), input = lp_s(p, d, vs, "input")});
+  }
+  if kind == "result" {
+    return sl_result(out, 0, lp_s(p, d, vs, "text"), lp_b(d, vs, "error"), lp_i(d, vs, "bytes", 0), lp_s(p, d, vs, "output"), lp_s(p, d, vs, "id"), lp_b(d, vs, "open"));
+  }
+  if kind == "routed" {
+    return sl_routed(out, 0, lp_s(p, d, vs, "text"), lp_s(p, d, vs, "tool"), lp_s(p, d, vs, "id"), lp_s(p, d, vs, "arg"), lp_s(p, d, vs, "detail"),
+                     lp_s(p, d, vs, "output"), lp_b(d, vs, "error"), lp_b(d, vs, "resolved"));
+  }
+  if kind == "notice" { return sl_notice(out, 0, lp_s(p, d, vs, "notice"), lp_s(p, d, vs, "text")); }
+  if kind == "approval" {
+    return sl_approval(out, 0, lp_s(p, d, vs, "tool"), lp_s(p, d, vs, "effect"), lp_b(d, vs, "inside"), lp_s(p, d, vs, "verdict"), lp_s(p, d, vs, "why"));
+  }
+  if kind == "memory" { return sl_memory(out, 0, lp_s(p, d, vs, "text"), lp_i(d, vs, "withheld", 0)); }
+  if kind == "engine_session" { return sl_engine_session(out, 0, lp_s(p, d, vs, "engine"), lp_s(p, d, vs, "id")); }
+  if kind == "diff" {
+    return sl_diff(out, 0, lp_s(p, d, vs, "path"), lp_i(d, vs, "adds", 0), lp_i(d, vs, "dels", 0), lp_has(d, vs, "old") || lp_has(d, vs, "new"),
+                   lp_s(p, d, vs, "old"), lp_s(p, d, vs, "new"));
+  }
+  if kind == "hook" {
+    return sl_hook(out, 0, lp_s(p, d, vs, "on"), lp_s(p, d, vs, "plugin"), lp_s(p, d, vs, "run"), lp_s(p, d, vs, "tool"), lp_b(d, vs, "ok"), lp_s(p, d, vs, "text"));
+  }
+  if kind == "goal" { return sl_goal(out, 0, lp_s(p, d, vs, "check"), lp_i(d, vs, "turn", 0), lp_b(d, vs, "met"), lp_s(p, d, vs, "text")); }
+  if kind == "job" { return sl_job(out, 0, lp_s(p, d, vs, "id"), lp_s(p, d, vs, "ending"), lp_s(p, d, vs, "text")); }
+  if kind == "end" {
+    return sl_end(out, 0, lp_s(p, d, vs, "ending"), lp_i(d, vs, "ms", 0), lp_i(d, vs, "steps", 0), lp_i(d, vs, "cost_usd_e6", -1), lp_s(p, d, vs, "text"), lp_s(p, d, vs, "cause"));
+  }
+  return -1;
+}
+
+// Two JSON values the same: strings unescaped, numbers and literals as written.
+lp_same :: (a: Jv, x: int, b: Jv, y: int) -> bool {
+  if jv_kind(a, x) != jv_kind(b, y) { return false; }
+  if jv_kind(a, x) != JV_STRING { return jv_raw(a, x) == jv_raw(b, y); }
+  ab: [LP_LINE] u8; bb: [LP_LINE] u8;
+  an := jv_str(a, x, ab[..]); bn := jv_str(b, y, bb[..]);
+  return an >= 0 && bn >= 0 && cast(string) ab[0..<an] == cast(string) bb[0..<bn];
+}
+
+// The written line read back: kind first (and the header's schema), then exactly the values' fields.
+lp_reads :: (kind: string, line: string, d: Jv, vs: int) -> bool {
+  nodes: [512] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], line, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("      the line isn't a JSON object\n"); return false; }
+  r := j[0];
+  first := jv_at(r, 0, 0);
+  kb: [32] u8; kn := jv_str(r, first, kb[..]);
+  if jv_key(r, first) != "kind" || kn < 0 || cast(string) kb[0..<kn] != kind { print("      kind isn't the first key, or isn't %\n", kind); return false; }
+  from := 1;
+  if kind == "session" {
+    sc := jv_at(r, 0, 1);
+    sb: [64] u8; sn := jv_str(r, sc, sb[..]);
+    if jv_key(r, sc) != "schema" || sn < 0 || cast(string) sb[0..<sn] != SL_SCHEMA { print("      the header's second key isn't its schema\n"); return false; }
+    from = 2;
+  }
+  if jv_len(r, 0) - from != jv_len(d, vs) { print("      the line has % fields, the values %\n", jv_len(r, 0) - from, jv_len(d, vs)); return false; }
+  for k: from..<jv_len(r, 0) {
+    m := jv_at(r, 0, k);
+    v := jv_get(d, vs, jv_key(r, m));
+    if v < 0 || !lp_same(r, m, d, v) { print("      field % reads %\n", jv_key(r, m), jv_raw(r, m)); return false; }
+  }
+  return true;
+}
+
+// A part of a loaded record against the profile's description of it: only the fields it names.
+lp_part :: (s: [] Session, k: int, d: Jv, e: int, p: [] LpPool) -> bool {
+  names := [6] string.["user", "text", "think", "tool", "notice", "route"];
+  tools := SL_TOOLS; notices := SL_NOTICES;
+  q := s[0].parts[k];
+  ok := lp_s(p, d, e, "part") == names[q.kind];
+  if lp_has(d, e, "text") { ok = ok && s_text_of(s, k) == lp_s(p, d, e, "text"); }
+  if lp_has(d, e, "tk") { ok = ok && q.tk >= 0 && q.tk < 15 && tools[q.tk] == lp_s(p, d, e, "tk"); }
+  if lp_has(d, e, "notice") { ok = ok && q.notice >= 0 && q.notice < 10 && notices[q.notice] == lp_s(p, d, e, "notice"); }
+  if lp_has(d, e, "arg") { ok = ok && q.arg == lp_s(p, d, e, "arg"); }
+  if lp_has(d, e, "detail") { ok = ok && q.detail == lp_s(p, d, e, "detail"); }
+  if lp_has(d, e, "before") { ok = ok && q.before == lp_s(p, d, e, "before"); }
+  if lp_has(d, e, "after") { ok = ok && q.after == lp_s(p, d, e, "after"); }
+  if lp_has(d, e, "output") { ok = ok && q.output == lp_s(p, d, e, "output"); }
+  if lp_has(d, e, "failed") { ok = ok && q.failed == lp_b(d, e, "failed"); }
+  if lp_has(d, e, "resolved") { ok = ok && q.resolved == lp_b(d, e, "resolved"); }
+  return ok;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("log-profile PROFILE.json"); return 2; }
+  text: [262144] u8;
+  n := fs_read(args_at(a[..], 0), text[..]);
+  if n <= 0 { tool_errln("log-profile: can't read the profile"); return 2; }
+  nodes: [8192] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], cast(string) text[0..<n], nodes[..]) { tool_errln("log-profile: the profile isn't JSON"); return 2; }
+  d := j[0];
+  bad := 0;
+  pa: [1] LpPool; p := pa[..];
+  // the id on disk
+  ib: [64] u8; idn := jv_str(d, jv_get(d, 0, "id"), ib[..]);
+  same := idn >= 0 && cast(string) ib[0..<idn] == SL_SCHEMA;
+  print("%  id: %\n", ifx same then "ok  " else "FAIL", SL_SCHEMA);
+  if !same { bad += 1; }
+  // every line
+  seen: [23] bool;
+  ls := jv_get(d, 0, "lines");
+  for m: 0..<jv_len(d, ls) {
+    p[0].n = 0;
+    e := jv_at(d, ls, m);
+    kind := lp_s(p, d, e, "kind");
+    lb: [LP_LINE] u8; ln := jv_str(d, jv_get(d, e, "line"), lb[..]);
+    if ln < 0 { print("FAIL  line %: no line\n", m); bad += 1; continue; }
+    line := cast(string) lb[0..<ln];
+    kinds := LP_KINDS;
+    for q: 0..<23 { if kinds[q] == kind { seen[q] = true; } }
+    vs := jv_get(d, e, "values");
+    out: [LP_LINE] u8;
+    wn := lp_write(kind, d, vs, lp_b(d, e, "always"), p, out[..]);
+    wrote := wn >= 0 && cast(string) out[0..<wn] == line;
+    if !wrote { print("      the writer makes %\n", ifx wn < 0 then "nothing" else cast(string) out[0..<wn]); }
+    read := wrote && lp_reads(kind, line, d, vs);
+    print("%  % %\n", ifx wrote && read then "ok  " else "FAIL", kind, line);
+    if !wrote || !read { bad += 1; }
+  }
+  // every kind of the schema's Line
+  kinds := LP_KINDS;
+  for q: 0..<23 {
+    if seen[q] || kinds[q] == "request" { continue; }
+    print("FAIL  kind % has no line\n", kinds[q]); bad += 1;
+  }
+  // the request line: the prompt's digest and length, which `coder replay` compares
+  p[0].n = 0;
+  rq := jv_get(d, 0, "request");
+  prompt := lp_s(p, d, rq, "prompt");
+  rb: [LP_LINE] u8; rn := jv_str(d, jv_get(d, rq, "line"), rb[..]);
+  out: [LP_LINE] u8; wn := sl_request(out[..], 0, prompt);
+  hb: [64] u8;
+  golden := rn >= 0 && wn >= 0 && cast(string) out[0..<wn] == cast(string) rb[0..<rn]
+            && sl_sha256_hex(prompt, hb[..]) == lp_s(p, d, rq, "sha256") && prompt.count == lp_i(d, rq, "bytes", -1);
+  print("%  request: % bytes, sha256 %\n", ifx golden then "ok  " else "FAIL", prompt.count, sl_sha256_hex(prompt, hb[..]));
+  if !golden { bad += 1; }
+  // what was written before: each legacy log reads into the parts it names
+  lg := jv_get(d, 0, "legacy");
+  for m: 0..<jv_len(d, lg) {
+    p[0].n = 0;
+    e := jv_at(d, lg, m);
+    file: [65536] u8; fn := 0;
+    lines := jv_get(d, e, "lines");
+    for k: 0..<jv_len(d, lines) {
+      w := jv_str(d, jv_at(d, lines, k), file[fn..<file.count - 1]);
+      if w < 0 { break; }
+      fn += w; file[fn] = 10; fn += 1;
+    }
+    s: [1] Session; pool: [65536] u8; s_init(s[..], pool[..]);
+    sl_load(s[..], cast(string) file[0..<fn]);
+    parts := jv_get(d, e, "parts");
+    held := s[0].n == jv_len(d, parts);
+    if !held { print("      % parts, the profile names %\n", s[0].n, jv_len(d, parts)); }
+    for k: 0..<jv_len(d, parts) {
+      if !held { break; }
+      if !lp_part(s[..], k, d, jv_at(d, parts, k), p) { held = false; print("      part % differs\n", k); }
+    }
+    print("%  legacy: %\n", ifx held then "ok  " else "FAIL", lp_s(p, d, e, "name"));
+    if !held { bad += 1; }
+  }
+  print("%\n", ifx bad == 0 then "profile holds" else "profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

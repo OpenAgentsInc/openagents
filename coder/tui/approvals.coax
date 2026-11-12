@@ -51,13 +51,7 @@ CD_PATH_FIELDS :: [4] string.["file_path", "path", "notebook_path", "cwd"];
 // One approval verdict: a line in the session log and a row in the transcript.
 cd_approval_note :: (a: [] App, label: string, effect: int, inside: bool, verdict: int, why: string) {
   effects := CD_EFFECTS; verdicts := CD_VERDICTS;
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"approval\",\"tool\":"); n = json_write_string(o, n, label);
-  n = json_raw(o, n, ",\"effect\":"); n = json_write_string(o, n, effects[effect]);
-  n = json_raw(o, n, ",\"inside\":"); n = json_raw(o, n, ifx inside then "true" else "false");
-  n = json_raw(o, n, ",\"verdict\":"); n = json_write_string(o, n, verdicts[verdict]);
-  n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, why);
-  n = json_raw(o, n, "}");
+  n := sl_approval(a[0].log[0].line[..], 0, label, effects[effect], inside, verdicts[verdict], why);
   if a[0].log[0].nid > 0 && n > 0 { cs_put(a, n); }
   if verdict == CD_VERDICT_ASK { return; }       // the prompt shows it
   rb: [1400] u8;

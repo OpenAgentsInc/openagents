@@ -159,6 +159,9 @@
     ],
     "lightning-address": [
       "openagents/payment/v1alpha1/lightning_address.proto"
+    ],
+    "session-log": [
+      "openagents/session/log/v1alpha1/log.proto"
     ]
   },
   "profile_namespaces": {
@@ -276,6 +279,10 @@
     ],
     "lightning-address": [
       "openagents.payment.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "session-log": [
+      "openagents.session.log.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

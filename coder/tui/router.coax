@@ -1377,7 +1377,7 @@ rt_tend_set :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, 
     pb: [1300] u8;
     if pid > 0 && cxproc_pid_alive(pid) == 0 {
       lb: [256] u8;
-      n := json_raw(lb[..], 0, "{\"kind\":\"end\",\"ending\":\"lost\",\"ms\":0,\"steps\":0,\"text\":\"the worker's process is gone\"}\n");
+      n := sl_nl(lb[..], sl_end(lb[..], 0, "lost", 0, 0, -1, "the worker's process is gone", ""));
       x := cs_append_after(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
       y := fs_remove(cd_sibling(id, ".pid", pb[..]));
       rt_log(p, t, "worker lost: ended", id, "", json);

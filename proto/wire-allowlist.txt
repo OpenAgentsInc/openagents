@@ -11,7 +11,6 @@
 #   shape NAME     a shape that is not compliant yet: a pending row's id, or one with no row
 
 # Area 1: Coder, Microcoder, Golemancy
-shape openagents.session.v1  # C1: one writer, schema and golden lines (#13238)
 shape coder.reply-stream.v1  # C3: stream records get one codec and a profile (#13240)
 shape coder.observability.v1  # C3: stream records get one codec and a profile (#13240)
 shape coder.observability.v2  # C3: stream records get one codec and a profile (#13240)
@@ -37,7 +36,6 @@ id openagents.models.v1 apps/aethyrforge-desktop/setup.coax  # Aethyrforge's set
 id openagents.dictation.v1 coder/tui/dictate.coax  # Coder reads it with its own parser; C7, wave 2 (#13250)
 id coder.session-reader.v1 coder/tui/session-reader.coax  # a second writer file; C10, wave 2 (#13250)
 id coder.router.v1 apps/aethyrforge-desktop/chat.coax  # Aethyrforge writes router.json's default; wave 2, with the spec's name clash (#13250)
-shape session-lines  # C1: the other session lines (request, memory, engine_session, agent, hook, goal, job, answer, approval, diff) move with the log (#13238)
 shape chat-record  # C2: the session log from SQL, pinned against C1's fixtures (#13239)
 shape hosted-runner-lines  # C5: turn, event, call, reply, done, stop between the runner and the engine (#13242)
 shape runner-api-bodies  # C5: event batches, end bodies and the next answer; openagents.agent.managed.v1alpha1 (#13242)

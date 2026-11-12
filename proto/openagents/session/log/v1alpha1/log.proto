@@ -1,0 +1,178 @@
+syntax = "proto3";
+package openagents.session.log.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// The session log: one conversation on disk, one JSON object a line
+// (~/.openagents/coder/sessions/ID.jsonl). Its id on disk is
+// openagents.session.v1, the header's "schema"; that id names this log, not
+// the spec's NIP-SESS (section 18.3), which is a different thing. The JSON
+// lines are the definition and this file names their fields: each message is
+// one line kind, its fields the line's keys after "kind", in the order the
+// writer puts them. Every field is optional: a reader takes what a line has.
+// The one writer is coax/lib/agent/session/log.coax; the exact bytes are
+// pinned in proto/coder/session-log-v1.json. Doc: docs/protocol/session-log-v1.md.
+// Stream records that ride in the same file (coder.reply-stream.v1,
+// coder.observability.v1/v2, coder.route.v2) have schemas of their own.
+
+// {"kind":"session","schema":"openagents.session.v1",...}: the first line.
+message Session {
+  option (openagents.options.v1alpha1.contract) = "openagents.session.v1";
+  optional string schema = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string id = 2 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional string version = 3 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string engine = 4 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string cwd = 5 [(openagents.options.v1alpha1.max_bytes) = 4096];
+  optional int64 started_us = 6;
+  optional string title = 7 [(openagents.options.v1alpha1.max_bytes) = 4096];     // a /chat conversation's (chat.record)
+  optional string model = 8 [(openagents.options.v1alpha1.max_bytes) = 128];      // a /chat conversation's (chat.record)
+  optional string imported = 9 [(openagents.options.v1alpha1.max_bytes) = 64];    // coder import: the engine it came from
+  optional string parent = 10 [(openagents.options.v1alpha1.max_bytes) = 128];    // a fork's parent session
+  optional int64 at = 11;                                                         // and the turns it kept
+  optional int64 pid = 12;                                                        // a detached run's process
+  optional string report_to = 13 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional string resume = 14 [(openagents.options.v1alpha1.max_bytes) = 256];    // the engine session a fork resumes
+  optional string allow = 15 [(openagents.options.v1alpha1.max_bytes) = 16];      // read, network, write or run
+  optional string ceiling = 16 [(openagents.options.v1alpha1.max_bytes) = 16];
+  optional int64 deadline_s = 17;
+}
+
+// A line of one text field: user, thinking, reply, ask, answer, context, keys, note.
+message Text { optional string text = 1; }
+// {"kind":"agent","engine":E}: the person switched agent.
+message Agent { optional string engine = 1 [(openagents.options.v1alpha1.max_bytes) = 64]; }
+
+// A tool call. Coder's own line has only its label.
+message Tool {
+  optional string label = 1 [(openagents.options.v1alpha1.max_bytes) = 1400];
+  optional string tool = 2 [(openagents.options.v1alpha1.max_bytes) = 16];       // the kind: exec, read, edit, ...
+  optional string name = 3 [(openagents.options.v1alpha1.max_bytes) = 256];      // the engine's own name for it
+  optional string id = 4 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional string arg = 5;
+  optional string detail = 6;
+  optional string old = 7;
+  optional string new = 8;
+  optional string input = 9;
+}
+
+// A call's result: text is its first 4000 bytes.
+message Result {
+  optional string text = 1;
+  optional bool error = 2;
+  optional int64 bytes = 3;           // the whole size, when text was cut
+  optional string output = 4;         // the whole, when it is kept
+  optional string id = 5 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional bool open = 6;             // the call still runs
+}
+
+// A routing or loading step (the Lab's decision).
+message Routed {
+  optional string text = 1;
+  optional string tool = 2 [(openagents.options.v1alpha1.max_bytes) = 16];
+  optional string id = 3 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional string arg = 4;
+  optional string detail = 5;
+  optional string output = 6;
+  optional bool error = 7;
+  optional bool resolved = 8;
+}
+
+message Notice {
+  optional string notice = 1 [(openagents.options.v1alpha1.max_bytes) = 32];   // error, signed_out, limit, install, stopped, ...
+  optional string text = 2;
+}
+
+// A policy verdict on a call.
+message Approval {
+  optional string tool = 1 [(openagents.options.v1alpha1.max_bytes) = 1400];
+  optional string effect = 2 [(openagents.options.v1alpha1.max_bytes) = 16];    // read, network, write, run
+  optional bool inside = 3;
+  optional string verdict = 4 [(openagents.options.v1alpha1.max_bytes) = 16];   // refuse, run, ask
+  optional string why = 5;
+}
+
+message Memory {
+  optional string text = 1;
+  optional int64 withheld = 2;
+}
+
+// The digest and length of what a turn sent its engine; `coder replay` rebuilds the prompt and compares.
+message Request {
+  optional string sha256 = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional int64 bytes = 2;
+}
+
+message EngineSession {
+  optional string engine = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string id = 2 [(openagents.options.v1alpha1.max_bytes) = 256];
+}
+
+// An edit's counts and its own text (legacy: the tool line's old and new carry an edit).
+message Diff {
+  optional string path = 1 [(openagents.options.v1alpha1.max_bytes) = 4096];
+  optional int64 adds = 2;
+  optional int64 dels = 3;
+  optional string old = 4;
+  optional string new = 5;
+}
+
+message Hook {
+  optional string on = 1 [(openagents.options.v1alpha1.max_bytes) = 32];
+  optional string plugin = 2 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional string run = 3 [(openagents.options.v1alpha1.max_bytes) = 4096];
+  optional string tool = 4 [(openagents.options.v1alpha1.max_bytes) = 1400];
+  optional bool ok = 5;
+  optional string text = 6 [(openagents.options.v1alpha1.max_bytes) = 4000];
+}
+
+message Goal {
+  optional string check = 1 [(openagents.options.v1alpha1.max_bytes) = 4096];
+  optional int64 turn = 2;
+  optional bool met = 3;
+  optional string text = 4 [(openagents.options.v1alpha1.max_bytes) = 2000];
+}
+
+// A job this session started ended (--report-to).
+message Job {
+  optional string id = 1 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional string ending = 2 [(openagents.options.v1alpha1.max_bytes) = 16];
+  optional string text = 3 [(openagents.options.v1alpha1.max_bytes) = 8000];
+}
+
+// The turn's end: finished, stopped, failed, expired, redirected or lost.
+message End {
+  optional string ending = 1 [(openagents.options.v1alpha1.max_bytes) = 16];
+  optional int64 ms = 2;
+  optional int64 steps = 3;
+  optional int64 cost_usd_e6 = 4;
+  optional string text = 5;
+  optional string cause = 6 [(openagents.options.v1alpha1.max_bytes) = 32];
+}
+
+// One line: its "kind" names the member.
+message Line {
+  oneof kind {
+    Session session = 1;
+    Text user = 2;
+    Text thinking = 3;
+    Text reply = 4;
+    Tool tool = 5;
+    Result result = 6;
+    Routed routed = 7;
+    Notice notice = 8;
+    Text ask = 9;
+    Text answer = 10;
+    Approval approval = 11;
+    Agent agent = 12;
+    Text context = 13;
+    Text keys = 14;
+    Text note = 15;
+    Memory memory = 16;
+    Request request = 17;
+    EngineSession engine_session = 18;
+    Diff diff = 19;
+    Hook hook = 20;
+    Goal goal = 21;
+    Job job = 22;
+    End end = 23;
+  }
+}

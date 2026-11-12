@@ -133,19 +133,14 @@ ci_put :: (st: [] CiState, rec: [] u8, n: int) {
 
 ci_text_line :: (st: [] CiState, kind: string, key: string, text: string) {
   rec: [CI_TEXT_MAX * 6 + 64] u8;
-  n := json_raw(rec[..], 0, "{\"kind\":"); n = json_write_string(rec[..], n, kind);
-  n = json_raw(rec[..], n, ",\""); n = json_raw(rec[..], n, key); n = json_raw(rec[..], n, "\":");
-  n = json_write_string(rec[..], n, text); n = json_raw(rec[..], n, "}");
-  ci_put(st, rec[..], n);
+  ci_put(st, rec[..], sl_text(rec[..], 0, kind, key, text));
 }
 
 ci_end_turn :: (st: [] CiState) {
   if !st[0].in_turn { return; }
   rec: [256] u8;
   ms := ifx st[0].last_us > st[0].turn_us then (st[0].last_us - st[0].turn_us) / 1000 else 0;
-  n := json_raw(rec[..], 0, "{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":"); n = json_write_int(rec[..], n, ms);
-  n = json_raw(rec[..], n, ",\"steps\":"); n = json_write_int(rec[..], n, st[0].steps); n = json_raw(rec[..], n, "}");
-  ci_put(st, rec[..], n);
+  ci_put(st, rec[..], sl_end(rec[..], 0, "finished", ms, st[0].steps, -1, "", ""));
   st[0].in_turn = false;
 }
 
@@ -194,18 +189,15 @@ ci_line :: (st: [] CiState, ar: [] ClArena, line: string) {
       bad := cl_bool(item, "is_error");
       rec: [CI_RESULT_MAX * 6 + 128] u8;
       shown := ci_cut(text, CI_RESULT_MAX);
-      n := json_raw(rec[..], 0, "{\"kind\":\"result\",\"text\":"); n = json_write_string(rec[..], n, shown);
-      n = json_raw(rec[..], n, ifx bad.ok && bad.value then ",\"error\":true" else ",\"error\":false");
-      if shown.count < text.count { n = json_raw(rec[..], n, ",\"bytes\":"); n = json_write_int(rec[..], n, text.count); }
-      n = json_raw(rec[..], n, "}");
-      ci_put(st, rec[..], n);
+      ci_put(st, rec[..], sl_result(rec[..], 0, shown, bad.ok && bad.value, ifx shown.count < text.count then text.count else 0, "", "", false));
     } else if kind == "assistant" && t == "text" {
       text := cl_str(ar, item, "text");
       if text.count > 0 { ci_text_line(st, "reply", "text", ci_cut(text, CI_TEXT_MAX)); }
     } else if kind == "assistant" && t == "tool_use" {
       lb: [1200] u8;
       label := ci_label(ar, cast(string) st[0].cwd[0..<st[0].ncwd], cl_str(ar, item, "name"), cl_raw(item, "input"), lb[..]);
-      ci_text_line(st, "tool", "label", label);
+      rec: [1400 * 6 + 64] u8;
+      ci_put(st, rec[..], sl_tool(rec[..], 0, SlTool.{label = label}));
       st[0].steps += 1;
     }
   }
@@ -256,12 +248,9 @@ ci_import_claude :: (cwd: string, sid_in: string, idout: [] u8, nid_out: [] int,
   ib: [32] u8; id := cs_make_id(ifx st[0].first_us > 0 then st[0].first_us else cxproc_wall_us(), ib[..]);
   nid_out[0] = cd_cat(idout, 0, id);
   hb: [3000] u8;
-  hn := json_raw(hb[..], 0, "{\"kind\":\"session\",\"id\":"); hn = json_write_string(hb[..], hn, id);
-  hn = json_raw(hb[..], hn, ",\"version\":"); hn = json_write_string(hb[..], hn, CODER_VERSION);
-  hn = json_raw(hb[..], hn, ",\"engine\":\"claude\",\"cwd\":"); hn = json_write_string(hb[..], hn, ifx st[0].ncwd > 0 then cast(string) st[0].cwd[0..<st[0].ncwd] else cwd);
-  hn = json_raw(hb[..], hn, ",\"started_us\":"); hn = json_write_int(hb[..], hn, st[0].first_us);
-  hn = json_raw(hb[..], hn, ",\"imported\":\"claude\"}\n{\"kind\":\"engine_session\",\"engine\":\"claude\",\"id\":"); hn = json_write_string(hb[..], hn, sid);
-  hn = json_raw(hb[..], hn, "}\n");
+  hn := sl_nl(hb[..], sl_session(hb[..], 0, SlHeader.{id = id, version = CODER_VERSION, engine = "claude", cwd = ifx st[0].ncwd > 0 then cast(string) st[0].cwd[0..<st[0].ncwd] else cwd,
+                                                     started_us = st[0].first_us, imported = "claude", always = true}));
+  hn = sl_nl(hb[..], sl_engine_session(hb[..], hn, "claude", sid));
   sb: [1100] u8; sdir := cs_dir(sb[..]);
   if sdir.count == 0 { nwhy[0] = cd_cat(why_out, 0, "no $HOME"); return -1; }
   fp: [1400] u8; fn := cd_cat(fp[..], 0, sdir); fn = cd_cat(fp[..], fn, "/"); fn = cd_cat(fp[..], fn, id); fn = cd_cat(fp[..], fn, ".jsonl");

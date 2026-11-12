@@ -1,38 +1,60 @@
 // The session log: one conversation on disk, one JSON object a line, the
 // same for every program that keeps or reads a conversation
-// (docs/apps/2026-11-10-apps-roadmap.md, Step 2). It is Coder's session log
-// (coder/tui/session.coax, ~/.openagents/coder/sessions/ID.jsonl), which
-// `coder ls`, `coder status`, `coder log`, Aethyrforge's chat and the agent
-// boards already read, with the keys a session record (session.coax) needs to
-// come back whole. A reader that knows only Coder's keys still reads every
-// line: the new keys ride on Coder's lines and the new kinds are ones it
-// skips.
+// (docs/apps/2026-11-10-apps-roadmap.md, Step 2; docs/protocol/session-log-v1.md).
+// It is Coder's session log (~/.openagents/coder/sessions/ID.jsonl), which
+// Coder's terminal and runs, the turn runner, `coder import`, the desktop app,
+// Aethyrforge's chat and the agent boards write and read. This file is its one
+// writer: every line of every kind is built here (sl_session ... sl_job), and
+// the shape is pinned by proto/coder/session-log-v1.json (the check:
+// coax/web/tool.sh coax/lib/agent/session/log-profile.coax proto/coder/session-log-v1.json)
+// and described by proto/openagents/session/log/v1alpha1/log.proto. A reader
+// that knows only some keys still reads every line: a key it does not know
+// rides along, and a kind it does not know it skips.
 //
-// The lines, in the order a turn writes them:
-//   {"kind":"session","schema":"openagents.session.v1","id":ID,"engine":E,"cwd":DIR[,"started_us":T]}
+// The lines ([ ] is left out when empty or 0):
+//   {"kind":"session","schema":"openagents.session.v1","id":ID[,"version":V][,"engine":E][,"cwd":DIR][,"started_us":T]
+//     [,"title":T][,"model":M][,"imported":"claude"][,"parent":P,"at":N][,"pid":N][,"report_to":ID][,"resume":R]
+//     [,"allow":A,"ceiling":C][,"deadline_s":N]}       the first line; Coder always writes version, engine, cwd and started_us
 //   {"kind":"user","text":T}                 a message the person sent
 //   {"kind":"thinking","text":T}             the model's thinking
-//   {"kind":"reply","text":T}                the answer's text (Markdown); a turn has one per stretch of text
-//   {"kind":"tool","label":"Bash(ls)","tool":K[,"name":NAME],"id":ID[,"arg":A][,"detail":D][,"old":O][,"new":N][,"input":I]}
+//   {"kind":"reply","text":T}                the answer's text (Markdown); one per stretch of text
+//   {"kind":"tool","label":"Bash(ls)"[,"tool":K][,"name":NAME][,"id":ID][,"arg":A][,"detail":D][,"old":O][,"new":N][,"input":I]}
 //                                            a tool call: K is its kind (SL_TOOLS), old and new an edit's text,
 //                                            input the call's JSON or a file change's unified diff
-//   {"kind":"result","text":T,"error":B[,"bytes":N,"output":WHOLE],"id":ID}
-//                                            its result: text is the first 4000 bytes as Coder logs it; a longer
-//                                            one says its size and carries the whole in output
-//   {"kind":"routed","text":T,"tool":K[,"detail":D][,"output":O]}   a routing or loading step (the Lab's decision)
+//   {"kind":"result","text":T,"error":B[,"bytes":N][,"output":WHOLE][,"id":ID][,"open":true]}
+//                                            its result: text is the first 4000 bytes; a longer one says its size
+//                                            (and the desktop app keeps the whole in output)
+//   {"kind":"routed","text":T[,"tool":K][,"id":ID][,"arg":A][,"detail":D][,"output":O][,"error":true][,"resolved":true]}
+//                                            a routing or loading step (the Lab's decision)
 //   {"kind":"notice","notice":K,"text":T}    K is SL_NOTICES: error, signed_out, limit, install, stopped, ...
 //   {"kind":"ask","text":T}                  an approval waiting on the person
-//   {"kind":"end","ending":E,"ms":N,"steps":N[,"cost_usd_e6":N]}   E: finished, stopped or failed
+//   {"kind":"answer","text":T}               the person's answer to it
+//   {"kind":"approval","tool":L,"effect":E,"inside":B,"verdict":V,"why":W}   a policy verdict on a call
+//   {"kind":"agent","engine":E}              the person switched agent
+//   {"kind":"context","text":T} {"kind":"keys","text":T} {"kind":"note","text":T}   what a turn added to its prompt, keys typed, a note
+//   {"kind":"memory","text":T[,"withheld":N]}    the remembered facts a first message carried
+//   {"kind":"request","sha256":H,"bytes":N}  the digest and length of what a turn sent its engine (`coder replay` checks it)
+//   {"kind":"engine_session","engine":E,"id":ID}   the engine's own session, for a fork that resumes it
+//   {"kind":"diff","path":P,"adds":N,"dels":N[,"old":T,"new":T]}   an edit's own text (Coder; legacy, see C2)
+//   {"kind":"hook","on":EV,"plugin":P,"run":CMD[,"tool":L],"ok":B,"text":OUT}   a plugin hook ran
+//   {"kind":"goal","check":CMD,"turn":N,"met":B,"text":OUT}   a goal's check ran
+//   {"kind":"job","id":ID,"ending":E,"text":T}   a job this session started ended (--report-to)
+//   {"kind":"end","ending":E,"ms":N,"steps":N[,"cost_usd_e6":N][,"text":T][,"cause":C]}
+//                                            E: finished, stopped, failed, expired, redirected or lost
+// Stream records ride in the same file under their own schemas (coder.reply-stream.v1,
+// coder.observability.v1/v2, coder.route.v2); they are not this file's.
 //
 // Reading (sl_load) rebuilds the record. It also reads what was written
 // before this format: Coder's own lines (a tool line with only its label, a
 // result with only text, an edit's separate {"kind":"diff","path","old","new"}
-// line, an end whose text is the failure) and the desktop app's first format
-// ({"k":"user","t":T} ...), so no saved conversation is lost. Lines of any
-// other kind are skipped. No transcript field can run anything.
+// line, an end whose text is the failure, a header with no schema) and the
+// desktop app's first format ({"k":"user","t":T} ...), so no saved
+// conversation is lost. Lines of any other kind are skipped. No transcript
+// field can run anything.
 
 #load "session.coax";
 #load "../claude/fields.coax";
+#load "../../crypto/sha256.coax";   // the request line's digest
 
 SL_SCHEMA :: "openagents.session.v1";
 SL_RESULT_TEXT :: 4000;           // Coder's cut for a result's text
@@ -45,49 +67,182 @@ SL_LABELS :: [15] string.["Thought", "Bash", "Read", "Edit", "Grep", "WebFetch",
 // A notice kind's name on disk, by N_* (N_ASK is its own line, "ask").
 SL_NOTICES :: [10] string.["error", "signed_out", "limit", "install", "stopped", "ask", "busy", "offline", "meta", "codex_install"];
 
-SlOut :: struct { buf: [] u8; n: int; failed: bool; }
-sl_raw :: (o: [] SlOut, text: string) {
-  if o[0].failed { return; }
-  n := json_raw(o[0].buf, o[0].n, text);
-  if n < 0 { o[0].failed = true; return; }
-  o[0].n = n;
-}
-sl_str :: (o: [] SlOut, text: string) {
-  if o[0].failed { return; }
-  n := json_write_string(o[0].buf, o[0].n, text);
-  if n < 0 { o[0].failed = true; return; }
-  o[0].n = n;
-}
-sl_num :: (o: [] SlOut, v: int) {
-  if o[0].failed { return; }
-  n := json_write_int(o[0].buf, o[0].n, v);
-  if n < 0 { o[0].failed = true; return; }
-  o[0].n = n;
-}
-// ,"key":"value" when there is a value.
-sl_field :: (o: [] SlOut, key: string, v: string) { if v.count > 0 { sl_raw(o, ",\""); sl_raw(o, key); sl_raw(o, "\":"); sl_str(o, v); } }
-
 sl_index :: (names: [] const string, name: string) -> int { for i: 0..<names.count { if names[i] == name { return i; } } return -1; }
 
-// The file's first line. Its length (0 when it did not fit).
+// ---------------------------------------------------------------- the writer
+// Each call appends one line's JSON to out from n, with no newline, and returns the new length,
+// or -1 when it does not fit (and -1 stays -1 down a chain of calls). sl_nl ends the line.
+
+sl_nl :: (out: [] u8, n: int) -> int { return json_raw(out, n, "\n"); }
+// ,"key":"value", always; and only when there is a value.
+sl_key_str :: (out: [] u8, n: int, key: string, v: string) -> int {
+  m := json_raw(out, n, ",\""); m = json_raw(out, m, key); m = json_raw(out, m, "\":"); return json_write_string(out, m, v);
+}
+sl_opt_str :: (out: [] u8, n: int, key: string, v: string) -> int { return ifx v.count > 0 then sl_key_str(out, n, key, v) else n; }
+sl_key_int :: (out: [] u8, n: int, key: string, v: int) -> int {
+  m := json_raw(out, n, ",\""); m = json_raw(out, m, key); m = json_raw(out, m, "\":"); return json_write_int(out, m, v);
+}
+sl_key_bool :: (out: [] u8, n: int, key: string, v: bool) -> int {
+  m := json_raw(out, n, ",\""); m = json_raw(out, m, key); m = json_raw(out, m, "\":"); return json_raw(out, m, ifx v then "true" else "false");
+}
+// {"kind":"K"
+sl_open :: (out: [] u8, n: int, kind: string) -> int { m := json_raw(out, n, "{\"kind\":"); return json_write_string(out, m, kind); }
+sl_close :: (out: [] u8, n: int) -> int { return json_raw(out, n, "}"); }
+
+// The header's fields. A string left empty and a number left 0 (started_us: below 0) are left out;
+// always writes version, engine, cwd and started_us whatever they hold, as Coder's header does.
+SlHeader :: struct {
+  id: string; version: string; engine: string; cwd: string;
+  started_us: int = -1;
+  title: string; model: string;     // a /chat conversation's (chat.record)
+  imported: string;                 // coder import: the engine the conversation came from
+  parent: string; at: int;          // a fork's parent session and the turns it kept
+  pid: int;                         // a detached run's process
+  report_to: string;                // --report-to: the session a job's result goes to
+  resume: string;                   // the engine session a fork resumes
+  allow: string; ceiling: string;   // the approval policy
+  deadline_s: int;                  // --deadline
+  always: bool;
+}
+sl_session :: (out: [] u8, n: int, h: SlHeader) -> int {
+  m := sl_open(out, n, "session"); m = sl_key_str(out, m, "schema", SL_SCHEMA); m = sl_key_str(out, m, "id", h.id);
+  if h.always { m = sl_key_str(out, m, "version", h.version); m = sl_key_str(out, m, "engine", h.engine); m = sl_key_str(out, m, "cwd", h.cwd); }
+  else { m = sl_opt_str(out, m, "version", h.version); m = sl_opt_str(out, m, "engine", h.engine); m = sl_opt_str(out, m, "cwd", h.cwd); }
+  if h.always || h.started_us >= 0 { m = sl_key_int(out, m, "started_us", ifx h.started_us >= 0 then h.started_us else 0); }
+  m = sl_opt_str(out, m, "title", h.title); m = sl_opt_str(out, m, "model", h.model); m = sl_opt_str(out, m, "imported", h.imported);
+  if h.parent.count > 0 { m = sl_key_str(out, m, "parent", h.parent); m = sl_key_int(out, m, "at", h.at); }
+  if h.pid > 0 { m = sl_key_int(out, m, "pid", h.pid); }
+  m = sl_opt_str(out, m, "report_to", h.report_to); m = sl_opt_str(out, m, "resume", h.resume);
+  if h.allow.count > 0 { m = sl_key_str(out, m, "allow", h.allow); m = sl_key_str(out, m, "ceiling", h.ceiling); }
+  if h.deadline_s > 0 { m = sl_key_int(out, m, "deadline_s", h.deadline_s); }
+  return sl_close(out, m);
+}
+
+// A line of one text field: {"kind":"user","text":T}, and so reply, thinking, ask, answer,
+// context, keys and note ("text"), and agent ("engine").
+sl_text :: (out: [] u8, n: int, kind: string, key: string, text: string) -> int {
+  return sl_close(out, sl_key_str(out, sl_open(out, n, kind), key, text));
+}
+
+// A tool call. Coder's own line has only its label.
+SlTool :: struct { label: string; tool: string; name: string; id: string; arg: string; detail: string; old: string; next: string; input: string; }
+sl_tool :: (out: [] u8, n: int, t: SlTool) -> int {
+  m := sl_key_str(out, sl_open(out, n, "tool"), "label", t.label);
+  m = sl_opt_str(out, m, "tool", t.tool); m = sl_opt_str(out, m, "name", t.name); m = sl_opt_str(out, m, "id", t.id);
+  m = sl_opt_str(out, m, "arg", t.arg); m = sl_opt_str(out, m, "detail", t.detail);
+  m = sl_opt_str(out, m, "old", t.old); m = sl_opt_str(out, m, "new", t.next); m = sl_opt_str(out, m, "input", t.input);
+  return sl_close(out, m);
+}
+
+// Where text is cut to at most most bytes, never inside a character.
+sl_cut :: (text: string, most: int) -> int {
+  cut := ifx text.count > most then most else text.count;
+  while cut > 0 && cut < text.count && (text[cut] & 0xC0) == 0x80 { cut -= 1; }
+  return cut;
+}
+// A call's result: shown is its text as logged (cut), bytes its whole size when cut (0: not cut),
+// output the whole when it is kept, open while the call still runs.
+sl_result :: (out: [] u8, n: int, shown: string, failed: bool, bytes: int, output: string, id: string, open: bool) -> int {
+  m := sl_key_str(out, sl_open(out, n, "result"), "text", shown); m = sl_key_bool(out, m, "error", failed);
+  if bytes > 0 { m = sl_key_int(out, m, "bytes", bytes); }
+  m = sl_opt_str(out, m, "output", output); m = sl_opt_str(out, m, "id", id);
+  if open { m = json_raw(out, m, ",\"open\":true"); }
+  return sl_close(out, m);
+}
+
+sl_routed :: (out: [] u8, n: int, text: string, tool: string, id: string, arg: string, detail: string, output: string, failed: bool, resolved: bool) -> int {
+  m := sl_key_str(out, sl_open(out, n, "routed"), "text", text);
+  m = sl_opt_str(out, m, "tool", tool); m = sl_opt_str(out, m, "id", id); m = sl_opt_str(out, m, "arg", arg);
+  m = sl_opt_str(out, m, "detail", detail); m = sl_opt_str(out, m, "output", output);
+  if failed { m = json_raw(out, m, ",\"error\":true"); }
+  if resolved { m = json_raw(out, m, ",\"resolved\":true"); }
+  return sl_close(out, m);
+}
+
+sl_notice :: (out: [] u8, n: int, notice: string, text: string) -> int {
+  return sl_close(out, sl_key_str(out, sl_key_str(out, sl_open(out, n, "notice"), "notice", notice), "text", text));
+}
+
+// One approval verdict: effect and verdict are CD_EFFECTS and CD_VERDICTS names.
+sl_approval :: (out: [] u8, n: int, tool: string, effect: string, inside: bool, verdict: string, why: string) -> int {
+  m := sl_key_str(out, sl_open(out, n, "approval"), "tool", tool); m = sl_key_str(out, m, "effect", effect);
+  m = sl_key_bool(out, m, "inside", inside); m = sl_key_str(out, m, "verdict", verdict);
+  return sl_close(out, sl_key_str(out, m, "why", why));
+}
+
+// SHA-256 of s (its first 64 KiB) as 64 lowercase hex digits.
+sl_sha256_hex :: (s: string, out: [] u8) -> string {
+  ib: [65536] u8; n := ifx s.count <= ib.count then s.count else ib.count;
+  for i: 0..<n { ib[i] = s[i]; }
+  d: [32] u8; x := sha256_hash_checked(ib[0..<n], d[..], false);
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = digits[cast(int) (d[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (d[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+// The digest and length of what a turn sent its engine (`coder replay` rebuilds it).
+sl_request :: (out: [] u8, n: int, sent: string) -> int {
+  hb: [64] u8; h := sl_sha256_hex(sent, hb[..]);
+  return sl_close(out, sl_key_int(out, sl_key_str(out, sl_open(out, n, "request"), "sha256", h), "bytes", sent.count));
+}
+
+// The remembered facts a first message carried, and how many the consent gate held back.
+sl_memory :: (out: [] u8, n: int, text: string, withheld: int) -> int {
+  m := sl_key_str(out, sl_open(out, n, "memory"), "text", text);
+  if withheld > 0 { m = sl_key_int(out, m, "withheld", withheld); }
+  return sl_close(out, m);
+}
+
+sl_engine_session :: (out: [] u8, n: int, engine: string, id: string) -> int {
+  return sl_close(out, sl_key_str(out, sl_key_str(out, sl_open(out, n, "engine_session"), "engine", engine), "id", id));
+}
+
+// An edit's counts, and its own text when texts is set.
+sl_diff :: (out: [] u8, n: int, path: string, adds: int, dels: int, texts: bool, old: string, next: string) -> int {
+  m := sl_key_str(out, sl_open(out, n, "diff"), "path", path); m = sl_key_int(out, m, "adds", adds); m = sl_key_int(out, m, "dels", dels);
+  if texts { m = sl_key_str(out, m, "old", old); m = sl_key_str(out, m, "new", next); }
+  return sl_close(out, m);
+}
+
+sl_hook :: (out: [] u8, n: int, on: string, plugin: string, run: string, tool: string, ok: bool, text: string) -> int {
+  m := sl_key_str(out, sl_open(out, n, "hook"), "on", on); m = sl_key_str(out, m, "plugin", plugin); m = sl_key_str(out, m, "run", run);
+  m = sl_opt_str(out, m, "tool", tool); m = sl_key_bool(out, m, "ok", ok);
+  return sl_close(out, sl_key_str(out, m, "text", text));
+}
+
+sl_goal :: (out: [] u8, n: int, check: string, turn: int, met: bool, text: string) -> int {
+  m := sl_key_str(out, sl_open(out, n, "goal"), "check", check); m = sl_key_int(out, m, "turn", turn); m = sl_key_bool(out, m, "met", met);
+  return sl_close(out, sl_key_str(out, m, "text", text));
+}
+
+sl_job :: (out: [] u8, n: int, id: string, ending: string, text: string) -> int {
+  return sl_close(out, sl_key_str(out, sl_key_str(out, sl_key_str(out, sl_open(out, n, "job"), "id", id), "ending", ending), "text", text));
+}
+
+// The turn's end. cost_e6 below 0 is left out; so are an empty text and cause.
+sl_end :: (out: [] u8, n: int, ending: string, ms: int, steps: int, cost_e6: int, text: string, cause: string) -> int {
+  m := sl_key_str(out, sl_open(out, n, "end"), "ending", ending); m = sl_key_int(out, m, "ms", ms); m = sl_key_int(out, m, "steps", steps);
+  if cost_e6 >= 0 { m = sl_key_int(out, m, "cost_usd_e6", cost_e6); }
+  m = sl_opt_str(out, m, "text", text); m = sl_opt_str(out, m, "cause", cause);
+  return sl_close(out, m);
+}
+
+// ---------------------------------------------------------------- a record as lines
+
+// The file's first line, for a record (the desktop app). Its length (0 when it did not fit).
 sl_header :: (out: [] u8, id: string, engine: string, cwd: string, started_us: int) -> int {
-  o: [1] SlOut; o[0].buf = out;
-  sl_raw(o[..], "{\"kind\":\"session\",\"schema\":\""); sl_raw(o[..], SL_SCHEMA); sl_raw(o[..], "\",\"id\":"); sl_str(o[..], id);
-  sl_field(o[..], "engine", engine); sl_field(o[..], "cwd", cwd);
-  if started_us > 0 { sl_raw(o[..], ",\"started_us\":"); sl_num(o[..], started_us); }
-  sl_raw(o[..], "}\n");
-  return ifx o[0].failed then 0 else o[0].n;
+  n := sl_nl(out, sl_session(out, 0, SlHeader.{id = id, engine = engine, cwd = cwd, started_us = ifx started_us > 0 then started_us else -1}));
+  return ifx n < 0 then 0 else n;
 }
 
 // A tool part as Coder labels a call: "Bash(ls -la)", "Edit(/w/notes.txt)".
-sl_label :: (o: [] SlOut, s: [] Session, k: int) {
+sl_label :: (s: [] Session, k: int, buf: [] u8) -> string {
   p := s[0].parts[k];
   names := SL_LABELS;
   name := ifx p.tk >= 0 && p.tk < 15 then names[p.tk] else "";
   inside := ifx p.detail.count > 0 && name.count > 0 then p.detail else p.arg;
   if name.count == 0 { name = ifx p.detail.count > 0 then p.detail else "Tool"; inside = ""; }
   // one line, and short: the label is what a list shows
-  buf: [200] u8; n := 0;
+  n := 0;
   for c: name { if n < 60 { buf[n] = c; n += 1; } }
   if inside.count > 0 {
     buf[n] = '('; n += 1;
@@ -96,7 +251,7 @@ sl_label :: (o: [] SlOut, s: [] Session, k: int) {
     if n > 0 && buf[n - 1] >= 0xC0 { n -= 1; }
     buf[n] = ')'; n += 1;
   }
-  sl_str(o, cast(string) buf[0..<n]);
+  return cast(string) buf[0..<n];
 }
 
 // The turn's ending, read from the record: stopped, failed (it has an error notice) or finished.
@@ -113,58 +268,35 @@ sl_ending :: (s: [] Session, from: int, to: int) -> string {
 
 // Parts from..<to as lines, then the turn's end when it is over. Its length (0 when it did not fit).
 sl_lines :: (s: [] Session, from: int, to: int, ended: bool, out: [] u8) -> int {
-  o: [1] SlOut; o[0].buf = out;
   tools := SL_TOOLS; notices := SL_NOTICES;
-  steps := 0;
+  steps := 0; n := 0;
   for k: from..<to {
     p := s[0].parts[k];
     text := s_text_of(s, k);
-    if p.kind == P_USER { sl_raw(o[..], "{\"kind\":\"user\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
-    else if p.kind == P_TEXT { sl_raw(o[..], "{\"kind\":\"reply\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
-    else if p.kind == P_THINK { sl_raw(o[..], "{\"kind\":\"thinking\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
+    if p.kind == P_USER { n = sl_nl(out, sl_text(out, n, "user", "text", text)); }
+    else if p.kind == P_TEXT { n = sl_nl(out, sl_text(out, n, "reply", "text", text)); }
+    else if p.kind == P_THINK { n = sl_nl(out, sl_text(out, n, "thinking", "text", text)); }
     else if p.kind == P_NOTICE {
-      if p.notice == N_ASK { sl_raw(o[..], "{\"kind\":\"ask\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
-      else {
-        sl_raw(o[..], "{\"kind\":\"notice\",\"notice\":"); sl_str(o[..], ifx p.notice >= 0 && p.notice < 10 then notices[p.notice] else "error");
-        sl_raw(o[..], ",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n");
-      }
+      if p.notice == N_ASK { n = sl_nl(out, sl_text(out, n, "ask", "text", text)); }
+      else { n = sl_nl(out, sl_notice(out, n, ifx p.notice >= 0 && p.notice < 10 then notices[p.notice] else "error", text)); }
     }
     else if p.kind == P_ROUTE {
-      sl_raw(o[..], "{\"kind\":\"routed\",\"text\":"); sl_str(o[..], text);
-      sl_field(o[..], "tool", ifx p.tk >= 0 && p.tk < 15 then tools[p.tk] else "route");
-      sl_field(o[..], "id", p.id); sl_field(o[..], "arg", p.arg); sl_field(o[..], "detail", p.detail); sl_field(o[..], "output", p.output);
-      if p.failed { sl_raw(o[..], ",\"error\":true"); }
-      if p.resolved { sl_raw(o[..], ",\"resolved\":true"); }
-      sl_raw(o[..], "}\n");
+      n = sl_nl(out, sl_routed(out, n, text, ifx p.tk >= 0 && p.tk < 15 then tools[p.tk] else "route", p.id, p.arg, p.detail, p.output, p.failed, p.resolved));
     }
     else if p.kind == P_TOOL {
       steps += 1;
-      sl_raw(o[..], "{\"kind\":\"tool\",\"label\":"); sl_label(o[..], s, k);
-      sl_field(o[..], "tool", ifx p.tk >= 0 && p.tk < 15 then tools[p.tk] else "tool");
-      sl_field(o[..], "name", p.name);
-      sl_field(o[..], "id", p.id); sl_field(o[..], "arg", p.arg); sl_field(o[..], "detail", p.detail);
-      sl_field(o[..], "old", p.before); sl_field(o[..], "new", p.after); sl_field(o[..], "input", p.input);
-      sl_raw(o[..], "}\n");
+      lb: [200] u8;
+      n = sl_nl(out, sl_tool(out, n, SlTool.{label = sl_label(s, k, lb[..]), tool = ifx p.tk >= 0 && p.tk < 15 then tools[p.tk] else "tool", name = p.name,
+                                            id = p.id, arg = p.arg, detail = p.detail, old = p.before, next = p.after, input = p.input}));
       if p.resolved || p.failed || p.output.count > 0 {
-        cut := ifx p.output.count > SL_RESULT_TEXT then SL_RESULT_TEXT else p.output.count;
-        while cut > 0 && cut < p.output.count && (p.output[cut] & 0xC0) == 0x80 { cut -= 1; }
-        sl_raw(o[..], "{\"kind\":\"result\",\"text\":"); sl_str(o[..], cast(string) p.output[0..<cut]);
-        sl_raw(o[..], ifx p.failed then ",\"error\":true" else ",\"error\":false");
-        if cut < p.output.count { sl_raw(o[..], ",\"bytes\":"); sl_num(o[..], p.output.count); sl_field(o[..], "output", p.output); }
-        sl_field(o[..], "id", p.id);
-        if !p.resolved { sl_raw(o[..], ",\"open\":true"); }
-        sl_raw(o[..], "}\n");
+        cut := sl_cut(p.output, SL_RESULT_TEXT);
+        whole := cut < p.output.count;
+        n = sl_nl(out, sl_result(out, n, cast(string) p.output[0..<cut], p.failed, ifx whole then p.output.count else 0, ifx whole then p.output else "", p.id, !p.resolved));
       }
     }
   }
-  if ended {
-    sl_raw(o[..], "{\"kind\":\"end\",\"ending\":"); sl_str(o[..], sl_ending(s, from, to));
-    sl_raw(o[..], ",\"ms\":"); sl_num(o[..], s[0].turn_ms);
-    sl_raw(o[..], ",\"steps\":"); sl_num(o[..], steps);
-    sl_raw(o[..], ",\"cost_usd_e6\":"); sl_num(o[..], cast(int) (s[0].cost * 1000000.0));
-    sl_raw(o[..], "}\n");
-  }
-  return ifx o[0].failed then 0 else o[0].n;
+  if ended { n = sl_nl(out, sl_end(out, n, sl_ending(s, from, to), s[0].turn_ms, steps, cast(int) (s[0].cost * 1000000.0), "", "")); }
+  return ifx n < 0 then 0 else n;
 }
 
 // A Coder label back into a tool part: "Bash(ls -la)" is an exec whose argument is "ls -la".

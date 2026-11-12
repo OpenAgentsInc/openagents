@@ -1548,14 +1548,7 @@ cd_hooks_run :: (a: [] App, event: string, ending: string, tool: string, input: 
       cd_commit(a, TUI_DIM, cast(string) hb[0..<hn]);
       if out.count > 0 { cd_commit_prefixed(a, ifx ok[0] then TUI_FAINT else TUI_RED, "  ⎿ ", "    ", cast(string) out[0..<ifx out.count > 2000 then 2000 else out.count]); }
     }
-    o := a[0].log[0].line[..];
-    n := json_raw(o, 0, "{\"kind\":\"hook\",\"on\":"); n = json_write_string(o, n, event);
-    n = json_raw(o, n, ",\"plugin\":"); n = json_write_string(o, n, owner);
-    n = json_raw(o, n, ",\"run\":"); n = json_write_string(o, n, run);
-    if tool.count > 0 { n = json_raw(o, n, ",\"tool\":"); n = json_write_string(o, n, tool); }
-    n = json_raw(o, n, ifx ok[0] then ",\"ok\":true" else ",\"ok\":false");
-    n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, cast(string) out[0..<ifx out.count > 4000 then 4000 else out.count]);
-    n = json_raw(o, n, "}");
+    n := sl_hook(a[0].log[0].line[..], 0, event, owner, run, tool, ok[0], cast(string) out[0..<ifx out.count > 4000 then 4000 else out.count]);
     if n > 0 { cs_put(a, n); }
   }
   return all_ok;
@@ -1575,12 +1568,7 @@ cd_goal_check :: (a: [] App, check: string, turn: int, msg: [] u8, nmsg: [] int)
   hb: [4400] u8; hn := cd_cat(hb[..], 0, "Goal("); hn = cd_cat(hb[..], hn, check); hn = cd_cat(hb[..], hn, ifx ok[0] then ") met" else ") not met yet");
   cd_commit(a, ifx ok[0] then TUI_FAINT else TUI_DIM, cast(string) hb[0..<hn]);
   if !ok[0] && tail.count > 0 { cd_commit_prefixed(a, TUI_FAINT, "  ⎿ ", "    ", tail); }
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"goal\",\"check\":"); n = json_write_string(o, n, check);
-  n = json_raw(o, n, ",\"turn\":"); n = json_write_int(o, n, turn);
-  n = json_raw(o, n, ifx ok[0] then ",\"met\":true" else ",\"met\":false");
-  n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, tail);
-  n = json_raw(o, n, "}");
+  n := sl_goal(a[0].log[0].line[..], 0, check, turn, ok[0], tail);
   if n > 0 { cs_put(a, n); }
   if !ok[0] {
     m := cd_cat(msg, 0, "The goal is not met yet: its check `"); m = cd_cat(msg, m, check); m = cd_cat(msg, m, "` failed");
@@ -1998,10 +1986,7 @@ cd_report_job :: (a: [] App) {
   ending := ifx l[0].nending > 0 then cast(string) l[0].ending[0..<l[0].nending] else "failed";
   text := cast(string) l[0].last[0..<l[0].nlast];
   jb: [16384] u8;
-  n := json_raw(jb[..], 0, "{\"kind\":\"job\",\"id\":"); n = json_write_string(jb[..], n, cs_id(l));
-  n = json_raw(jb[..], n, ",\"ending\":"); n = json_write_string(jb[..], n, ending);
-  n = json_raw(jb[..], n, ",\"text\":"); n = json_write_string(jb[..], n, cast(string) text[0..<ifx text.count > 8000 then 8000 else text.count]);
-  n = json_raw(jb[..], n, "}\n");
+  n := sl_nl(jb[..], sl_job(jb[..], 0, cs_id(l), ending, cast(string) text[0..<ifx text.count > 8000 then 8000 else text.count]));
   pb: [1300] u8; path := cd_sibling(to, ".jsonl", pb[..]);
   if n > 0 && path.count > 0 { x := fs_append(path, cast(string) jb[0..<n]); }
   mb: [16384] u8;
@@ -2479,7 +2464,7 @@ cd_cmd_stop :: (id_in: string, json: bool) -> int {
   if pid > 0 && cxproc_pid_alive(pid) == 1 {
     x := cxproc_pid_signal(pid, 9);
     pb: [1300] u8; lb: [256] u8;
-    n := json_raw(lb[..], 0, "{\"kind\":\"end\",\"ending\":\"stopped\",\"ms\":0,\"steps\":0,\"text\":\"coder stop ended the job's process\"}\n");
+    n := sl_nl(lb[..], sl_end(lb[..], 0, "stopped", 0, 0, -1, "coder stop ended the job's process", ""));
     y := cs_append_after(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
     z := fs_remove(stop_file);
     cd_outln(ifx json then "{\"stopped\":true,\"killed\":true}" else "Stopped (the job's process was ended).");

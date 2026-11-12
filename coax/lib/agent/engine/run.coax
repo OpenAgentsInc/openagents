@@ -952,13 +952,8 @@ tr_note :: (r: [] TrRun, text: string) { sw_text(r[0].log, "note", "text", text)
 // One approval verdict, as a line in the session log.
 tr_approval :: (r: [] TrRun, label: string, effect: int, inside: bool, verdict: int, why: string) {
   effects := CD_EFFECTS; verdicts := CD_VERDICTS;
-  l := r[0].log; o := l[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"approval\",\"tool\":"); n = json_write_string(o, n, label);
-  n = json_raw(o, n, ",\"effect\":"); n = json_write_string(o, n, effects[effect]);
-  n = json_raw(o, n, ",\"inside\":"); n = json_raw(o, n, ifx inside then "true" else "false");
-  n = json_raw(o, n, ",\"verdict\":"); n = json_write_string(o, n, verdicts[verdict]);
-  n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, why);
-  n = json_raw(o, n, "}");
+  l := r[0].log;
+  n := sl_approval(l[0].line[..], 0, label, effects[effect], inside, verdicts[verdict], why);
   if l[0].nid > 0 && n > 0 { sw_put(l, n); }
 }
 

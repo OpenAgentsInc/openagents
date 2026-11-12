@@ -607,7 +607,9 @@ Mutation of `harness/log.coax` leaves no survivors.
 
 Coder's session log, `~/.openagents/coder/sessions/ID.jsonl`, is one JSON
 event a line, appended by the session's own process
-([session.coax](../../coder/tui/session.coax)). It isn't hash-chained
+([session.coax](../../coder/tui/session.coax)). Every line is built by one
+writer, [log.coax](../../coax/lib/agent/session/log.coax); its kinds and
+fields are in [session-log-v1.md](../../docs/protocol/session-log-v1.md). It isn't hash-chained
 like this chapter's log, but it has the same problem at its end: a crash
 during an append, or a reader that looks during one, finds a last line with
 no newline.
