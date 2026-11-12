@@ -37,6 +37,7 @@ RlmModel :: struct {
   gateway: string = "vertex";    // the card's gateway name for both roles
   root_gw: Gateway; root_model: string = "gemini-4-argon"; root_effort: string = "low";
   sub_gw: Gateway; sub_model: string = "gemini-3.8-flash"; sub_effort: string = "low";
+  root_schema: string = "";      // when set, the root answers as this JSON schema (run.coax: RLM_ROOT_SCHEMA); Gemini then writes no native function call
   plans: [] GwPlan; pbufs: [] GwPlanBuffers;   // RLM_SLOTS of each when live
   bench: [1] GwBench;
   reply: [] u8;                  // RLM_SLOTS slots of reply.count / RLM_SLOTS bytes (RLM_REPLY_MAX each when live)
@@ -101,6 +102,7 @@ rm_start :: (m: [] RlmModel, slot: int, role: int, system: string, msgs: [] GwMe
   p[0].retries = 3; p[0].backoff_ms = 2000;
   p[0].first_limit_ms = 240000; p[0].idle_limit_ms = 120000;
   req := GwRequest.{model = rm_model(m, role), system = system, messages = msgs, effort = ifx role == RLM_ROOT then m[0].root_effort else m[0].sub_effort};
+  if role == RLM_ROOT && m[0].root_schema.count > 0 { req.schema = m[0].root_schema; req.schema_name = "rlm_step"; }
   gw_plan_start(p, m[0].bench[..], req);
 }
 

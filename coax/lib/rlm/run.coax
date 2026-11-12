@@ -18,6 +18,7 @@
 // Memory: every arena is the caller's (RlmArenas); nothing is allocated.
 
 #load "model.coax";
+#load "../json/json.coax";
 #load "script.coax";
 
 RLM_MSGS :: 256;                 // messages of the root and every child at once
@@ -277,6 +278,36 @@ rlm_bytes :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> int {
   return n;
 }
 
+// A root that answers in a schema (Gemini Argon asked for free text with code in it often writes a
+// native function call instead, which Vertex refuses as MALFORMED_FUNCTION_CALL after 8 to 14 s):
+// {"code": the Python for this turn, "final": the final answer once the work is done}.
+RLM_ROOT_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"code\":{\"type\":\"string\"},\"final\":{\"type\":\"string\"}},\"required\":[\"code\",\"final\"]}";
+
+// A schema reply as the text the driver reads: its code as one repl block, or, with no code, its
+// final as a FINAL line. Text that is not that JSON is returned as it came.
+rlm_unwrap :: (r: [] Rs, raw: string) -> string {
+  nodes: [16] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) { return rs_copy(r, raw); }
+  ci := jv_get(d[0], 0, "code"); fi := jv_get(d[0], 0, "final");
+  at := r[0].nh;
+  if !rs_put(r, "```repl\n") { return rs_copy(r, raw); }
+  n := jv_str(d[0], ci, r[0].heap[r[0].nh..<r[0].heap.count]);
+  blank := true;
+  if n > 0 { for i: 0..<n { c := r[0].heap[r[0].nh + i]; if c != ' ' && c != 10 && c != 13 && c != 9 { blank = false; } } }
+  if !blank {
+    r[0].nh += n;
+    if !rs_put(r, "\n```\n") { r[0].nh = at; return rs_copy(r, raw); }
+    return rs_take(r, at);
+  }
+  r[0].nh = at;
+  if !rs_put(r, "FINAL(") { return rs_copy(r, raw); }
+  m := jv_str(d[0], fi, r[0].heap[r[0].nh..<r[0].heap.count]);
+  if m <= 0 { r[0].nh = at; return rs_copy(r, raw); }
+  r[0].nh += m;
+  if !rs_put(r, ")\n") { r[0].nh = at; return rs_copy(r, raw); }
+  return rs_take(r, at);
+}
+
 // One root (or child) call over the messages from base; its answer in the heap, or "" with
 // run.failed set.
 rlm_root_call :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> string {
@@ -286,6 +317,7 @@ rlm_root_call :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> strin
   rm_call(m, RLM_ROOT, system, st[0].msgs[base..<st[0].nm]);
   rlm_count(st, RLM_ROOT, 0);
   if !m[0].slots[0].ok { st[0].failed = rs_copy(r, rm_why(m, 0)); st[0].model_refused = true; return ""; }
+  if m[0].root_schema.count > 0 { return rlm_unwrap(r, rm_text(m, 0)); }
   return rs_copy(r, rm_text(m, 0));
 }
 
