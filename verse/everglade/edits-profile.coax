@@ -1,0 +1,147 @@
+// Holds the Everglade city edits profile (proto/verse/everglade-edits-v1.json, #13250) to the one
+// codec the pages and Aethyrforge load, edits.coax:
+//   - each "lists" entry: eg_edits_text writes exactly its text from its things, hidden buildings
+//     and people taken away, and eg_edits_read gives them back from the text;
+//   - each "read_only" text is read, and written back as its "rewritten" text, which reads the same;
+//   - each "malformed" text is refused, and a refused list leaves the one held as it was;
+//   - the publish body is eg_edits_body's, and each answer reads as eg_edits_answer's version and list;
+//   - the head, the counts and the limits are the codec's.
+// Usage: coax/web/tool.sh verse/everglade/edits-profile.coax proto/verse/everglade-edits-v1.json
+#import "Basic";
+#load "edits.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+EDP_FILE :: 65536;
+EDP_NODES :: 4096;
+EDP_BUF :: 4096;
+EDP_NONE :: -999999999;
+
+edp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+edp_fail :: (what: string, text: string) -> bool #effects(all) { print("edits-profile: %: %\n", what, text); return false; }
+
+// A "lists" entry's values as the codec's list. Its numbers are the text's: centimetres, degrees, percent.
+edp_list :: (d: Jv, row: int, out: [] EgEdits) -> bool {
+  e: EgEdits;
+  things := jv_get(d, row, "things"); hidden := jv_get(d, row, "hidden"); gone := jv_get(d, row, "gone");
+  if jv_kind(d, things) != JV_ARRAY || jv_kind(d, hidden) != JV_ARRAY || jv_kind(d, gone) != JV_ARRAY || jv_len(d, things) > EG_EDIT_MAX { return false; }
+  for i: 0..<jv_len(d, things) {
+    r := jv_at(d, things, i);
+    if jv_kind(d, r) != JV_ARRAY || jv_len(d, r) != 8 { return false; }
+    v: [8] int;
+    for k: 0..<8 { v[k] = jv_int(d, jv_at(d, r, k), EDP_NONE); if v[k] == EDP_NONE { return false; } }
+    t: EgThing;
+    t.kind = v[0]; t.x = f32(v[1]) / 100; t.z = f32(v[2]) / 100; t.yaw = f32(v[3]) * f32(PI) / 180; t.size = f32(v[4]) / 100;
+    t.group = v[5]; t.lift = f32(v[6]) / 100; t.tint = v[7];
+    e.things[i] = t;
+  }
+  e.n = jv_len(d, things);
+  for i: 0..<jv_len(d, hidden) { b := jv_int(d, jv_at(d, hidden, i), -1); if b < 0 || b >= EG_BUILDINGS { return false; } e.hidden |= cast(u32) 1 << cast(u32) b; }
+  for i: 0..<jv_len(d, gone) { s := jv_int(d, jv_at(d, gone, i), -1); if s < 0 || s >= EG_SPOTS { return false; } e.gone |= cast(u32) 1 << cast(u32) s; }
+  out[0] = e;
+  return true;
+}
+edp_same :: (a: EgEdits, b: EgEdits) -> bool {
+  if a.n != b.n || a.gone != b.gone || a.hidden != b.hidden { return false; }
+  for i: 0..<a.n {
+    x := a.things[i]; y := b.things[i];
+    if x.kind != y.kind || x.x != y.x || x.z != y.z || x.yaw != y.yaw || x.size != y.size || x.group != y.group || x.lift != y.lift || x.tint != y.tint { return false; }
+  }
+  return true;
+}
+// A list no reader has touched: what a refusal must leave.
+edp_held :: () -> EgEdits { e: EgEdits; e.n = 1; e.things[0] = EgThing.{kind = 3, x = 6, z = -12, size = 1}; e.gone = 5; e.hidden = 2; return e; }
+
+edp_check :: (raw: string) -> bool #effects(all) {
+  nodes: [EDP_NODES] JvNode; doc: [1] Jv;
+  if !jv_parse(doc[..], raw, nodes[..]) { return edp_fail("not JSON", ""); }
+  d := doc[0];
+  tb: [EDP_BUF] u8; rb: [EDP_BUF] u8; out: [EDP_BUF] u8;
+  if edp_str(d, jv_get(d, 0, "identity"), tb[..]) != "everglade-edits-v1" || edp_str(d, jv_get(d, 0, "codec"), tb[..]) != "verse/everglade/edits.coax" { return edp_fail("identity or codec", ""); }
+  if edp_str(d, jv_get(d, 0, "head"), tb[..]) != EG_EDIT_HEAD { return edp_fail("head", ""); }
+  if jv_int(d, jv_get(d, 0, "kinds"), -1) != EG_EDIT_ITEMS || jv_int(d, jv_get(d, 0, "max_things"), -1) != EG_EDIT_MAX ||
+     jv_int(d, jv_get(d, 0, "buildings"), -1) != EG_BUILDINGS || jv_int(d, jv_get(d, 0, "spots"), -1) != EG_SPOTS { return edp_fail("kinds, max_things, buildings or spots", ""); }
+  sp := jv_get(d, 0, "size_percent");
+  if jv_int(d, jv_get(d, sp, "min"), -1) != eg_round(f32(EG_EDIT_SIZE_MIN) * 100) || jv_int(d, jv_get(d, sp, "max"), -1) != eg_round(f32(EG_EDIT_SIZE_MAX) * 100) { return edp_fail("size_percent", ""); }
+  cols := jv_get(d, 0, "colours");
+  if jv_kind(d, cols) != JV_ARRAY || jv_len(d, cols) != EG_COLOURS { return edp_fail("colours", ""); }
+  for i: 0..<EG_COLOURS { if edp_str(d, jv_at(d, cols, i), tb[..]) != EG_COLOUR_NAME[i] { return edp_fail("a colour's name", EG_COLOUR_NAME[i]); } }
+
+  lists := jv_get(d, 0, "lists");
+  if jv_kind(d, lists) != JV_ARRAY || jv_len(d, lists) < 3 { return edp_fail("lists", ""); }
+  for i: 0..<jv_len(d, lists) {
+    r := jv_at(d, lists, i);
+    text := edp_str(d, jv_get(d, r, "text"), tb[..]);
+    want: [1] EgEdits;
+    if text.count == 0 || !edp_list(d, r, want[..]) { return edp_fail("a list entry is not whole", text); }
+    n := eg_edits_text(want[0], out[..]);
+    if n <= 0 || cast(string) out[0..<n] != text { return edp_fail("eg_edits_text writes another text", cast(string) out[0..<n]); }
+    got: [1] EgEdits; got[0] = edp_held();
+    if !eg_edits_read(text, got[..]) || !edp_same(got[0], want[0]) { return edp_fail("eg_edits_read reads another list", text); }
+  }
+
+  olds := jv_get(d, 0, "read_only");
+  if jv_kind(d, olds) != JV_ARRAY || jv_len(d, olds) < 4 { return edp_fail("read_only", ""); }
+  for i: 0..<jv_len(d, olds) {
+    r := jv_at(d, olds, i);
+    text := edp_str(d, jv_get(d, r, "text"), tb[..]);
+    again := edp_str(d, jv_get(d, r, "rewritten"), rb[..]);
+    got: [1] EgEdits; got[0] = edp_held();
+    if again.count == 0 || again == text || !eg_edits_read(text, got[..]) { return edp_fail("eg_edits_read refused a list it should correct", text); }
+    n := eg_edits_text(got[0], out[..]);
+    if n <= 0 || cast(string) out[0..<n] != again { return edp_fail("eg_edits_text rewrites it as another text", cast(string) out[0..<n]); }
+    back: [1] EgEdits;
+    if !eg_edits_read(again, back[..]) || !edp_same(back[0], got[0]) { return edp_fail("the rewritten list reads differently", again); }
+  }
+
+  bad := jv_get(d, 0, "malformed");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 10 { return edp_fail("malformed", ""); }
+  for i: 0..<jv_len(d, bad) {
+    r := jv_at(d, bad, i);
+    if jv_kind(d, jv_get(d, r, "text")) == 0 { return edp_fail("a malformed entry with no text", ""); }
+    text := edp_str(d, jv_get(d, r, "text"), tb[..]);
+    got: [1] EgEdits; got[0] = edp_held();
+    if eg_edits_read(text, got[..]) { return edp_fail("eg_edits_read took a malformed list", text); }
+    if !edp_same(got[0], edp_held()) { return edp_fail("a refused list changed the one held", text); }
+  }
+
+  // the publish body
+  pub := jv_get(d, 0, "publish");
+  sb: [128] u8;
+  which := jv_int(d, jv_get(d, pub, "list"), -1);
+  body := edp_str(d, jv_get(d, pub, "body"), tb[..]);
+  e: [1] EgEdits;
+  if which < 0 || which >= jv_len(d, lists) || !edp_list(d, jv_at(d, lists, which), e[..]) { return edp_fail("publish names no list", ""); }
+  n := eg_edits_body(e[0], edp_str(d, jv_get(d, pub, "summary"), sb[..]), out[..]);
+  if n <= 0 || cast(string) out[0..<n] != body { return edp_fail("eg_edits_body writes another body", cast(string) out[0..<n]); }
+
+  // the answers
+  answers := jv_get(d, 0, "answers");
+  if jv_kind(d, answers) != JV_ARRAY || jv_len(d, answers) < 3 { return edp_fail("answers", ""); }
+  for i: 0..<jv_len(d, answers) {
+    r := jv_at(d, answers, i);
+    answer := edp_str(d, jv_get(d, r, "answer"), tb[..]);
+    version := jv_int(d, jv_get(d, r, "version"), EDP_NONE);
+    got: [1] EgEdits; got[0] = edp_held();
+    if version == EDP_NONE || eg_edits_answer(answer, got[..]) != version { return edp_fail("eg_edits_answer reads another version", answer); }
+    if version < 0 { if !edp_same(got[0], edp_held()) { return edp_fail("a refused answer changed the list held", answer); } continue; }
+    li := jv_int(d, jv_get(d, r, "list"), -1);
+    want: [1] EgEdits;
+    if li < 0 || li >= jv_len(d, lists) || !edp_list(d, jv_at(d, lists, li), want[..]) || !edp_same(got[0], want[0]) { return edp_fail("eg_edits_answer reads another list", answer); }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: edits-profile FILE.json"); return 2; }
+  raw: [EDP_FILE] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("edits-profile: cannot read JSON"); return 2; }
+  if !edp_check(cast(string) raw[0..<n]) { print("everglade-edits-v1: profile fails\n"); return 1; }
+  print("everglade-edits-v1: profile holds\n");
+  return 0;
+}

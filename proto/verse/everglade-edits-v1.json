@@ -1,0 +1,121 @@
+{
+ "identity": "everglade-edits-v1",
+ "check": "coax/web/tool.sh verse/everglade/edits-profile.coax proto/verse/everglade-edits-v1.json",
+ "codec": "verse/everglade/edits.coax",
+ "doc": "docs/protocol/everglade-edits-v1.md",
+ "scope": "What an admin adds to Everglade's designed city: the list as text, stored as the string doc.edits of the realm's published world (verse.published) and sent in POST and GET /api/playtest/world/everglade",
+ "head": "eg-edit 1\n",
+ "lines": {
+  "thing": "t KIND X Z YAW SIZE [GROUP [LIFT TINT]]",
+  "building": "b BUILDING",
+  "person": "p SPOT"
+ },
+ "units": {
+  "X Z": "centimetres",
+  "YAW": "degrees",
+  "SIZE": "percent, 25 to 400",
+  "GROUP": "the row it was placed in; 0 or left out: on its own",
+  "LIFT": "centimetres up on another's top, 0 to 1000",
+  "TINT": "a colour, 0 none"
+ },
+ "order": "the things in the list's order, then the hidden buildings by number, then the people taken away by number; each line ends with a line feed",
+ "kinds": 34,
+ "max_things": 64,
+ "colours": [
+  "none",
+  "purple",
+  "blue",
+  "red",
+  "pink",
+  "yellow",
+  "white",
+  "orange"
+ ],
+ "buildings": 16,
+ "spots": 28,
+ "size_percent": {
+  "min": 25,
+  "max": 400
+ },
+ "max_lift_cm": 1000,
+ "lists": [
+  {
+   "note": "Everglade's published world, version 21 (2026-10-31): benches, a barrel, rows of crates and barrels, two stalls",
+   "text": "eg-edit 1\nt 2 -122 1181 73 100\nt 2 -27 867 73 100\nt 1 242 -2393 107 100 1\nt 0 -1265 -911 173 100 2\nt 0 -1398 -927 173 100 2\nt 0 -1531 -943 173 100 2\nt 0 -1664 -959 173 100 2\nt 1 -1336 -201 -180 100 3\nt 1 -1456 -201 -180 100 3\nt 4 -1453 349 17 100 4\nt 4 -1257 294 77 100 5\n",
+   "things": [
+    [2, -122, 1181, 73, 100, 0, 0, 0],
+    [2, -27, 867, 73, 100, 0, 0, 0],
+    [1, 242, -2393, 107, 100, 1, 0, 0],
+    [0, -1265, -911, 173, 100, 2, 0, 0],
+    [0, -1398, -927, 173, 100, 2, 0, 0],
+    [0, -1531, -943, 173, 100, 2, 0, 0],
+    [0, -1664, -959, 173, 100, 2, 0, 0],
+    [1, -1336, -201, -180, 100, 3, 0, 0],
+    [1, -1456, -201, -180, 100, 3, 0, 0],
+    [4, -1453, 349, 17, 100, 4, 0, 0],
+    [4, -1257, 294, 77, 100, 5, 0, 0]
+   ],
+   "hidden": [],
+   "gone": []
+  },
+  {
+   "note": "no edits: the designed city",
+   "text": "eg-edit 1\n",
+   "things": [],
+   "hidden": [],
+   "gone": []
+  },
+  {
+   "note": "a colour with no row and no lift; a row; a pot on a crate's top (a row, a lift in cm and a colour); buildings 0 and 15 hidden; people 0, 3 and 27 taken away",
+   "text": "eg-edit 1\nt 0 400 -1200 0 100 0 0 2\nt 0 600 -1200 90 150 7\nt 9 600 -1200 -45 25 7 140 3\nt 2 600 -5150 0 100\nb 0\nb 15\np 0\np 3\np 27\n",
+   "things": [
+    [0, 400, -1200, 0, 100, 0, 0, 2],
+    [0, 600, -1200, 90, 150, 7, 0, 0],
+    [9, 600, -1200, -45, 25, 7, 140, 3],
+    [2, 600, -5150, 0, 100, 0, 0, 0]
+   ],
+   "hidden": [0, 15],
+   "gone": [0, 3, 27]
+  }
+ ],
+ "read_only": [
+  {"note": "a size past the limits reads as the limit", "text": "eg-edit 1\nt 0 600 -1200 0 1000\nt 0 400 -1200 0 1\n", "rewritten": "eg-edit 1\nt 0 600 -1200 0 400\nt 0 400 -1200 0 25\n"},
+  {"note": "a row of 0 said, and a lift and colour of 0 said, are left out", "text": "eg-edit 1\nt 0 600 -1200 0 100 0\nt 0 400 -1200 0 100 4 0 0\n", "rewritten": "eg-edit 1\nt 0 600 -1200 0 100\nt 0 400 -1200 0 100 4\n"},
+  {"note": "a negative row is none; a lift over 1000 cm is 1000; an unknown colour is none", "text": "eg-edit 1\nt 0 600 -1200 0 100 -3 5000 9\n", "rewritten": "eg-edit 1\nt 0 600 -1200 0 100 0 1000 0\n"},
+  {"note": "a kind the catalogue does not have is dropped", "text": "eg-edit 1\nt 34 600 -1200 0 100\nt -1 600 -1200 0 100\nt 1 600 -1200 0 100\n", "rewritten": "eg-edit 1\nt 1 600 -1200 0 100\n"},
+  {"note": "a thing in the south wall, in the fountain, in the woods or past the edge is dropped", "text": "eg-edit 1\nt 1 2000 -5600 0 100\nt 1 100 100 0 100\nt 1 -15000 -4000 0 100\nt 4 0 -16740 0 100\nt 0 600 -1200 0 100\n", "rewritten": "eg-edit 1\nt 0 600 -1200 0 100\n"},
+  {"note": "a building or a person the plan does not have is ignored; a line said twice counts once", "text": "eg-edit 1\nb 16\nb -1\np 28\np 4\np 4\n", "rewritten": "eg-edit 1\np 4\n"},
+  {"note": "lines in another order, empty lines and no last line feed", "text": "eg-edit 1\n\np 2\nb 1\n\nt 0 600 -1200 0 100", "rewritten": "eg-edit 1\nt 0 600 -1200 0 100\nb 1\np 2\n"},
+  {"note": "spaces run together between numbers", "text": "eg-edit 1\nt 0   600  -1200 0 100\n", "rewritten": "eg-edit 1\nt 0 600 -1200 0 100\n"}
+ ],
+ "malformed": [
+  {"why": "empty", "text": ""},
+  {"why": "no head", "text": "t 0 600 -1200 0 100\n"},
+  {"why": "another version", "text": "eg-edit 2\nt 0 600 -1200 0 100\n"},
+  {"why": "the head without its line feed", "text": "eg-edit 1"},
+  {"why": "a line of another kind", "text": "eg-edit 1\nx 1\n"},
+  {"why": "a line with no space after its letter", "text": "eg-edit 1\nt0 600 -1200 0 100\n"},
+  {"why": "a thing with four numbers", "text": "eg-edit 1\nt 0 600 -1200 0\n"},
+  {"why": "a number that is a word", "text": "eg-edit 1\nt 0 six -1200 0 100\n"},
+  {"why": "a decimal", "text": "eg-edit 1\nt 0 6.00 -12.00 0 100\n"},
+  {"why": "a number of ten digits", "text": "eg-edit 1\nt 0 6000000000 -1200 0 100\n"},
+  {"why": "a lift with no colour", "text": "eg-edit 1\nt 0 600 -1200 0 100 1 50\n"},
+  {"why": "a number after the colour", "text": "eg-edit 1\nt 0 600 -1200 0 100 1 50 2 7\n"},
+  {"why": "a row that is a word", "text": "eg-edit 1\nt 0 600 -1200 0 100 x\n"},
+  {"why": "a person with two numbers", "text": "eg-edit 1\np 1 2\n"},
+  {"why": "a person with no number", "text": "eg-edit 1\np \n"},
+  {"why": "a building that is a word", "text": "eg-edit 1\nb inn\n"},
+  {"why": "a carriage return before the line feed", "text": "eg-edit 1\nt 0 600 -1200 0 100\r\n"}
+ ],
+ "publish": {
+  "list": 0,
+  "summary": "Edited by hand",
+  "body": "{\"doc\":{\"everglade\":1,\"edits\":\"eg-edit 1\\nt 2 -122 1181 73 100\\nt 2 -27 867 73 100\\nt 1 242 -2393 107 100 1\\nt 0 -1265 -911 173 100 2\\nt 0 -1398 -927 173 100 2\\nt 0 -1531 -943 173 100 2\\nt 0 -1664 -959 173 100 2\\nt 1 -1336 -201 -180 100 3\\nt 1 -1456 -201 -180 100 3\\nt 4 -1453 349 17 100 4\\nt 4 -1257 294 77 100 5\\n\"},\"summary\":\"Edited by hand\"}"
+ },
+ "answers": [
+  {"note": "the published world as the API answers it: status, a line feed, the JSON", "answer": "200\n{\"doc\": {\"edits\": \"eg-edit 1\\nt 2 -122 1181 73 100\\nt 2 -27 867 73 100\\nt 1 242 -2393 107 100 1\\nt 0 -1265 -911 173 100 2\\nt 0 -1398 -927 173 100 2\\nt 0 -1531 -943 173 100 2\\nt 0 -1664 -959 173 100 2\\nt 1 -1336 -201 -180 100 3\\nt 1 -1456 -201 -180 100 3\\nt 4 -1453 349 17 100 4\\nt 4 -1257 294 77 100 5\\n\", \"everglade\": 1}, \"version\": 21, \"publishedAt\": 1793654002.959784, \"publishedBy\": \"owner\"}", "version": 21, "list": 0},
+  {"note": "nothing published: the designed city", "answer": "200\n{\"doc\": null, \"version\": 0}", "version": 0, "list": 1},
+  {"note": "not a 200", "answer": "404\n{\"error\":\"no such world\"}", "version": -1},
+  {"note": "a published list that is not one", "answer": "200\n{\"doc\": {\"edits\": \"eg-edit 2\\n\", \"everglade\": 1}, \"version\": 3}", "version": -1}
+ ]
+}

@@ -40,7 +40,6 @@ id aethyr.player.appearance.v1 coax/web/host.js  # the page host keeps the text 
 shape relay-frames  # y j l t m and the rooms JSON: no shared codec, five page parsers; E2 (#13245)
 shape seat-ticket  # v2 and v3: written by C snprintf in player.c and by tk_sign in room-ticket.coax; E5 (#13248). v5 is not here: one codec, aethyr/session/seat-ticket.coax (registry row seat-ticket-v5, #13260)
 shape resume-envelope-v4  # signed, shared, exported to C; E5 adds fixtures (#13248)
-shape everglade-city-edits  # wave 2: eg-edit 1 in verse/everglade/edits.coax (#13250)
 room coax/web/room/room-relay.coax  # y j l m, the t pong and the rooms JSON; E2 (#13245)
 shape everglade2-familiar-page-codec  # the page writes M1 M3-M7 U1 and reads m1-m8 u1 with its own code in everglade/client/net.coax; the room's codec (everglade/server/familiar.coax, aid.coax) is the one the profiles check; E2 (#13245), or #13276 deletes the familiar frames
 room coax/web/room/room-ticket.coax  # parses and signs seat tickets v2 and v3; E5 (#13248); v5 it reads through aethyr/session/seat-ticket.coax (#13260)
@@ -89,6 +88,7 @@ proto proto/openagents/options/v1alpha2/numeric.proto  # in no profile by name; 
 codec everglade-session-v5 everglade/shared/everglade-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
 codec everglade-link-input-v1 everglade/shared/everglade-link-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
 codec realm-save-aesv-v1 apps/openagents-web/save.coax  # engine codec still lives in apps/openagents-web/; the Aethyr book's chapter 81 plans its move to aethyr/save.coax (#13250)
+codec everglade-edits-v1 verse/everglade/edits.coax  # world codec still lives in verse/everglade/ with the city's plan (#13250)
 codec orbit-session-v2 apps/openagents-web/orbit-session.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
 codec openagents.account.v1alpha1 coax/web/api/agent-wire.coax  # identity codec outside coax/web/api/auth* (#13316)
 codec openagents.metareal.haunt.v1alpha1 verse/haunt.coax  # engine codec still lives in verse/ (#13316)
