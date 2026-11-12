@@ -222,9 +222,9 @@ tour you recorded.
 - **Numbers** (104 chapters, 102 implemented, 204 runs, 10,000 signatures,
   300 events) come from the handoff note of 2026-11-02. Check them again
   before recording.
-- **The Episode 294 transcript** isn't in the repo yet, so these notes
-  follow its show notes. Fix anything here that the recorded episode
-  changed.
+- **The Episode 294 transcript** ([294.md](294.md)) was added after these notes
+  were drafted from its show notes. The recording is shorter: fix anything
+  here that it changed.
 
 ## Sources
 
