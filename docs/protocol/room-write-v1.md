@@ -1,7 +1,7 @@
 # Room writes v1
 
 A room shard writes to the API: vitals, checkpoints, items, its directory
-report, its stats and its control ask. A deploy asks a shard to drain. Before
+report, its stats, its control ask and its moderators' actions. A deploy asks a shard to drain. Before
 version 1 (#13260) every shard signed these with the one shared
 `OA_ROOM_TICKET_KEY`, so any shard's key could write as every shard. In
 version 1 each shard holds its own key, the shard is part of the signed bytes,
@@ -49,6 +49,7 @@ with its key (HMAC-SHA256) and sends:
 | `directory` | `POST /api/playtest/room-directory` | the post's body |
 | `stats` | `POST /api/playtest/room-stats` | the post's body |
 | `control` | `POST /api/playtest/room-control` | `t AT`, where AT is the `X-Room-At` header |
+| `moderation` | `POST /api/playtest/room-mod-log` | the post's body ([moderation v1](moderation-v1.md)) |
 | `drain` | `POST /api/room/sK/drain` (deploy to room) | `drain K AT WAIT` |
 
 A drain goes from a deploy to the shard, so the shard checks it with its own

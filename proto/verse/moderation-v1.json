@@ -1,0 +1,260 @@
+{
+  "profile": "openagents.moderation",
+  "version": 1,
+  "spec": "docs/protocol/moderation-v1.md",
+  "codec": "aethyr/session/moderation.coax",
+  "check": "coax/web/tool.sh coax/web/room/moderation-profile.coax proto/verse/moderation-v1.json",
+  "note": "A moderator's record, a room's report of its moderators' actions, the API's receipt, and the room's answer to the moderator's seat. Text, one space between fields; whole numbers with no leading zero.",
+  "verbs": [
+    "look",
+    "move",
+    "kick",
+    "mute",
+    "ban",
+    "unkick",
+    "unmute",
+    "unban"
+  ],
+  "limits": {
+    "pid": 40,
+    "room": 24,
+    "reason": 120,
+    "minutes": 525600,
+    "kick_ms": 86400000,
+    "line": 272
+  },
+  "record": "VERB PID MINUTES REASON",
+  "command": {
+    "text": "X ban p-0123456789abcdef 0 spam in chat, twice",
+    "note": "a seat's frame to its room: X and the record; taken only from a seat whose signed ticket has the moderator bit"
+  },
+  "records": [
+    {
+      "text": "ban p-0123456789abcdef 0 spam in chat, twice",
+      "verb": "ban",
+      "pid": "p-0123456789abcdef",
+      "minutes": 0,
+      "reason": "spam in chat, twice"
+    },
+    {
+      "text": "mute p-0123456789abcdef 30 spam in chat",
+      "verb": "mute",
+      "pid": "p-0123456789abcdef",
+      "minutes": 30,
+      "reason": "spam in chat"
+    },
+    {
+      "text": "kick p-0123456789abcdef 0 griefing at the gate",
+      "verb": "kick",
+      "pid": "p-0123456789abcdef",
+      "minutes": 0,
+      "reason": "griefing at the gate"
+    },
+    {
+      "text": "look p-0123456789abcdef 0 -",
+      "verb": "look",
+      "pid": "p-0123456789abcdef",
+      "minutes": 0,
+      "reason": "-"
+    },
+    {
+      "text": "move p-0123456789abcdef 0 -",
+      "verb": "move",
+      "pid": "p-0123456789abcdef",
+      "minutes": 0,
+      "reason": "-"
+    },
+    {
+      "text": "unban p-0123456789abcdef 0 an appeal",
+      "verb": "unban",
+      "pid": "p-0123456789abcdef",
+      "minutes": 0,
+      "reason": "an appeal"
+    },
+    {
+      "text": "unmute p-01 0 -",
+      "verb": "unmute",
+      "pid": "p-01",
+      "minutes": 0,
+      "reason": "-"
+    },
+    {
+      "text": "unkick p-01 0 -",
+      "verb": "unkick",
+      "pid": "p-01",
+      "minutes": 0,
+      "reason": "-"
+    },
+    {
+      "text": "ban p-01 525600 a year",
+      "verb": "ban",
+      "pid": "p-01",
+      "minutes": 525600,
+      "reason": "a year"
+    }
+  ],
+  "report": {
+    "at": 1762190000000,
+    "shard": 3,
+    "gen": 1762180000000,
+    "batch": 7,
+    "lines": [
+      {
+        "seq": 12,
+        "by": "p-00aa",
+        "room": "everglade-2",
+        "record": "mute p-0123456789abcdef 30 spam in chat"
+      },
+      {
+        "seq": 13,
+        "by": "p-00aa",
+        "room": "everglade-2",
+        "record": "look p-0123456789abcdef 0 -"
+      }
+    ],
+    "text": "t 1762190000000\no 3 1762180000000 7\n12 p-00aa everglade-2 mute p-0123456789abcdef 30 spam in chat\n13 p-00aa everglade-2 look p-0123456789abcdef 0 -\n"
+  },
+  "receipt": {
+    "gen": 1762180000000,
+    "batch": 7,
+    "text": "receipt 1762180000000 7\n"
+  },
+  "replies": [
+    {
+      "done": true,
+      "verb": "look",
+      "pid": "p-01",
+      "detail": "seat 3 hp 14/20 at 5000 -40000",
+      "text": "q ok look p-01 0 seat 3 hp 14/20 at 5000 -40000"
+    },
+    {
+      "done": false,
+      "verb": "ban",
+      "pid": "p-01",
+      "detail": "not on yourself",
+      "text": "q no ban p-01 0 not on yourself"
+    }
+  ],
+  "judge": [
+    {
+      "verb": "ban",
+      "moderator": true,
+      "self": false,
+      "minutes": 0,
+      "reason": "spam",
+      "answer": "ok"
+    },
+    {
+      "verb": "ban",
+      "moderator": false,
+      "self": false,
+      "minutes": 0,
+      "reason": "spam",
+      "answer": "not_moderator"
+    },
+    {
+      "verb": "unban",
+      "moderator": true,
+      "self": true,
+      "minutes": 0,
+      "reason": "-",
+      "answer": "self"
+    },
+    {
+      "verb": "look",
+      "moderator": true,
+      "self": true,
+      "minutes": 0,
+      "reason": "-",
+      "answer": "ok"
+    },
+    {
+      "verb": "ban",
+      "moderator": true,
+      "self": false,
+      "minutes": 0,
+      "reason": "-",
+      "answer": "bad"
+    },
+    {
+      "verb": "kick",
+      "moderator": true,
+      "self": false,
+      "minutes": 5,
+      "reason": "spam",
+      "answer": "bad"
+    },
+    {
+      "verb": "mute",
+      "moderator": true,
+      "self": false,
+      "minutes": 525601,
+      "reason": "spam",
+      "answer": "bad"
+    }
+  ],
+  "until": [
+    {
+      "verb": "kick",
+      "minutes": 0,
+      "now": 1762190000000,
+      "until": 1762276400000
+    },
+    {
+      "verb": "mute",
+      "minutes": 30,
+      "now": 1762190000000,
+      "until": 1762191800000
+    },
+    {
+      "verb": "ban",
+      "minutes": 0,
+      "now": 1762190000000,
+      "until": 0
+    }
+  ],
+  "malformed": {
+    "records": [
+      "",
+      "ban",
+      "ban p-01",
+      "ban p-01 0",
+      "ban p-01 0 ",
+      "bam p-01 0 why",
+      "ban P-01 0 why",
+      "ban p-01 x why",
+      "ban p-01 00 why",
+      "ban p-01 525601 why",
+      "ban p-01 0  why",
+      "ban  p-01 0 why",
+      "ban p-01 0 why "
+    ],
+    "lines": [
+      "12 p-00aa everglade-2",
+      "0 p-00aa everglade-2 look p-01 0 -",
+      "12 P everglade-2 look p-01 0 -",
+      "12 p-00aa Everglade look p-01 0 -",
+      "12 p-00aa everglade-2 lock p-01 0 -",
+      "012 p-00aa everglade-2 look p-01 0 -"
+    ],
+    "heads": [
+      "",
+      "t 9",
+      "t 9\no 3 5 7",
+      "x 9\no 3 5 7\n",
+      "t 0\no 3 5 7\n",
+      "t 9\no 0 5 7\n",
+      "t 9\no 100 5 7\n",
+      "t 9\no 3 0 7\n",
+      "t 9\no 3 5 0\n",
+      "t 9 o 3 5 7\n"
+    ],
+    "receipts": [
+      "receipt 1762180000000 7",
+      "receipt 1762180000000 8\n",
+      "receipt 1762180000001 7\n",
+      ""
+    ]
+  },
+  "log": "coax/web/api/migrations/0170_moderation.sql verse.mod_log: one row an action, by (shard, gen, seq) once; UPDATE, DELETE and TRUNCATE raise"
+}

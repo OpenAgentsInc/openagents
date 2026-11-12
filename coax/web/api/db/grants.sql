@@ -44,3 +44,8 @@ WHERE c.relkind IN ('r', 'p') AND c.relowner = 'oa_analytics'::regrole
 -- table UPDATE and DELETE; its trigger refuses them anyway.
 SELECT format('REVOKE UPDATE, DELETE, TRUNCATE ON auth.audit FROM %I', :'runtime')
 WHERE to_regclass('auth.audit') IS NOT NULL \gexec
+
+-- The moderation log is append-only too (0170_moderation.sql, #13302): its triggers refuse every
+-- UPDATE, DELETE and TRUNCATE, and the runtime role is not given them.
+SELECT format('REVOKE UPDATE, DELETE, TRUNCATE ON verse.mod_log FROM %I', :'runtime')
+WHERE to_regclass('verse.mod_log') IS NOT NULL \gexec

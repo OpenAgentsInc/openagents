@@ -216,15 +216,15 @@ bc_stress::(dir:string,port:int,room:int,secs:int,control:bool,casters:int)->int
     ignored_stress_line:=proc_line(room,0,out[..]);proc_sleep(2);
   }
   ignored_healthy_fixture:=bc_file(dir,"mode","publication");until:=rs_now()+12000;recovered:=false;
-  while opened&&rs_now()<until{for i:0..<10{bc_poll(p[i..<i+1],false);}n:=bc_get(port,"/health",out[..]);if n>0&&bc_has(cast(string)out[0..<n],"background pending 0/6"){recovered=true;break;}proc_sleep(20);}
+  while opened&&rs_now()<until{for i:0..<10{bc_poll(p[i..<i+1],false);}n:=bc_get(port,"/health",out[..]);if n>0&&bc_has(cast(string)out[0..<n],"background pending 0/7"){recovered=true;break;}proc_sleep(20);}
   n:=bc_get(port,"/health",out[..]);if n>0{print("stress health:\n%",cast(string)out[0..<n]);}
   vn:=bc_get(port,"/api/room/vitals",out[..]);vitals:=ifx vn>0 then cast(string)out[0..<vn] else "";
   print("stress observed report:\n%",vitals);
   observed:=bc_observation_ok(vitals,control);print("stress report profile: % accepted=%\n",ifx control then "legacy-control" else "exact-observer",observed);
   busy:=0;closed:=0;for i:0..<10{busy+=p[i].busy;if p[i].closed{closed+=1;}ignored_stress_close:=relay_conn_close(p[i].c[..],1000);}
   print("stress: seconds=% opened=% active_casters=% raid_size_dial=% casts_sent=% busy=% peak_pets=% peak_zones=% peak_raiders=% break_frames=% raid_cast_frames=%\n",secs,opened,casters,casters*3,casts,busy,p[0].pets,p[0].zones,p[0].raiders,p[0].break_frames,p[0].raid_cast_frames);
-  print("stress: healthy_frames=% healthy_gap_max_ms=% slow_tick_before=% slow_tick_after=% slow_closed=% slow_rejoined=% waiting_max_bytes=% closed=% health_ok=% health_failed=% pending_max=%/6 recovered=% publication=%\n",p[8].frames,p[8].gap,slow_before,slow_after,slow_closed,slow_rejoined,waiting_max,closed,health_ok,bad,pending_max,recovered,publication);
-  return ifx observed&&opened&&burst&&stalled&&released&&publication&&recovered&&bad==0&&health_ok>100&&pending_max>0&&pending_max<=6&&p[8].frames>secs*20&&p[8].gap<250&&closed==0&&slow_after>slow_before+30&&busy>0&&bc_effect_peaks(casters,p[0].pets,p[0].zones)&&p[0].raiders>=6&&p[0].break_frames>0&&p[0].raid_cast_frames>0 then 0 else 1;
+  print("stress: healthy_frames=% healthy_gap_max_ms=% slow_tick_before=% slow_tick_after=% slow_closed=% slow_rejoined=% waiting_max_bytes=% closed=% health_ok=% health_failed=% pending_max=%/7 recovered=% publication=%\n",p[8].frames,p[8].gap,slow_before,slow_after,slow_closed,slow_rejoined,waiting_max,closed,health_ok,bad,pending_max,recovered,publication);
+  return ifx observed&&opened&&burst&&stalled&&released&&publication&&recovered&&bad==0&&health_ok>100&&pending_max>0&&pending_max<=7&&p[8].frames>secs*20&&p[8].gap<250&&closed==0&&slow_after>slow_before+30&&busy>0&&bc_effect_peaks(casters,p[0].pets,p[0].zones)&&p[0].raiders>=6&&p[0].break_frames>0&&p[0].raid_cast_frames>0 then 0 else 1;
 }
 // One extra process owns the sixteenth gameplay socket. The parent's sixteen
 // SDK slots retain room for HTTP health probes; the socket contract is unchanged.
@@ -302,14 +302,14 @@ tool_main::()->int #export_c #effects(all) {
   }
   if warm{n:=bc_get(port,"/health",out[..]);if n>0{print("warm native health:\n%",cast(string)out[0..<n]);}}
   ignored_24:=bc_file(dir,"mode",ifx warm then "publication" else "healthy");recovered:=false;until=rs_now()+12000;
-  while opened&&rs_now()<until{for i:0..<2{bc_poll(page[i..<i+1],true);}n:=bc_get(port,"/health",out[..]);if n>0&&bc_has(cast(string)out[0..<n],"background pending 0/6"){recovered=true;break;}proc_sleep(20);}
+  while opened&&rs_now()<until{for i:0..<2{bc_poll(page[i..<i+1],true);}n:=bc_get(port,"/health",out[..]);if n>0&&bc_has(cast(string)out[0..<n],"background pending 0/7"){recovered=true;break;}proc_sleep(20);}
   pub_seen:=bc_read(dir,"world_seen",pb[..])=="2";
   warmed:=true;local_pages:=ifx pages==16 then 15 else pages;
   for i:0..<local_pages{if page[i].frames<30||page[i].closed{warmed=false;}if opened&&!page[i].closed{ignored_25:=relay_conn_close(page[i].c[..],1000);}}
   if peer>=0{exit:=proc_wait(peer,5000);if exit!=0{warmed=false;}line:[4096]u8;got:=proc_line(peer,0,line[..]);if got>0{print("%\n",cast(string)line[0..<got]);}if exit==PROC_RUNNING{bc_stop(peer);}else{ignored_peer_release:=proc_release(peer);}}
   bc_stop(room);ignored_26:=bc_file(dir,"stop","1");bc_stop(fixture);ignored_27:=fs_remove(dir);
-  print("background native: ready=% opened=% outage_s=% health_ok=% health_failed=% pending_max=%/6 recovered=%\n",ready,opened,secs,health_ok,bad,pending_max,recovered);
+  print("background native: ready=% opened=% outage_s=% health_ok=% health_failed=% pending_max=%/7 recovered=%\n",ready,opened,secs,health_ok,bad,pending_max,recovered);
   print("background native: busy_room_frames=% healthy_room_frames=% healthy_gap_max_ms=% busy_refusals=% closed=%/%\n",page[0].frames,page[1].frames,page[1].gap,page[0].busy,page[0].closed,page[1].closed);
   if warm{print("warm native: rooms=% publication_requested=% publication_served=% all_streaming=% capacity_observed=%\n",pages,publication,pub_seen,warmed,capacity_seen);}
-  return ifx opened&&bad==0&&health_ok>20&&(warm||pending_max>0)&&pending_max<=6&&recovered&&page[1].frames>secs*20&&page[1].gap<250&&!page[1].closed&&(!warm||(pages==16&&publication&&pub_seen&&warmed&&capacity_seen)) then 0 else 1;
+  return ifx opened&&bad==0&&health_ok>20&&(warm||pending_max>0)&&pending_max<=7&&recovered&&page[1].frames>secs*20&&page[1].gap<250&&!page[1].closed&&(!warm||(pages==16&&publication&&pub_seen&&warmed&&capacity_seen)) then 0 else 1;
 }

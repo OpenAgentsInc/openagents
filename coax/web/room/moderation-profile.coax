@@ -1,0 +1,128 @@
+// Moderation v1's profile check (#13302, aethyr/session/moderation.coax, docs/protocol/moderation-v1.md):
+// every fixture of proto/verse/moderation-v1.json is written and read through the one codec, the rules
+// answer as the file says, and every malformed text is refused.
+//   coax/web/tool.sh coax/web/room/moderation-profile.coax proto/verse/moderation-v1.json
+#import "Basic";
+#load "../../../aethyr/session/moderation.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/json/json.coax";
+
+MP_FILE :: 65536;
+
+mp_text :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(d, jv_get(d, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+mp_num :: (d: Jv, at: int, key: string) -> int { return jv_int(d, jv_get(d, at, key), -1); }
+mp_fail :: (what: string, text: string) -> int { tool_err("moderation: "); tool_err(what); tool_err(": "); tool_errln(text); return 1; }
+mp_answer :: (st: int) -> string {
+  words := [4] string.["ok", "not_moderator", "self", "bad"];
+  return ifx st >= 0 && st < 4 then words[st] else "";
+}
+mp_profile :: (path: string) -> int #effects(all) {
+  text: [MP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [4096] JvNode; d: [1] Jv;
+  if n < 1 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("moderation: not JSON"); return 2; }
+  pb: [64] u8;
+  if mp_text(d[0], 0, "profile", pb[..]) != "openagents.moderation" || mp_num(d[0], 0, "version") != 1 { tool_errln("moderation: not the v1 profile"); return 1; }
+  failed := 0;
+  // the verbs, in their order, and the limits
+  verbs := jv_get(d[0], 0, "verbs");
+  if jv_len(d[0], verbs) != MOD_UNBAN { failed += mp_fail("the verbs", "not eight"); }
+  for i: 0..<jv_len(d[0], verbs) {
+    wb: [16] u8; m := jv_str(d[0], jv_at(d[0], verbs, i), wb[..]);
+    w := ifx m < 0 then "" else cast(string) wb[0..<m];
+    if moderation_verb(w) != i + 1 || moderation_word(i + 1) != w { failed += mp_fail("a verb's number", w); }
+  }
+  lim := jv_get(d[0], 0, "limits");
+  if mp_num(d[0], lim, "pid") != MOD_PID || mp_num(d[0], lim, "room") != MOD_ROOM || mp_num(d[0], lim, "reason") != MOD_REASON || mp_num(d[0], lim, "minutes") != MOD_MINUTES
+     || mp_num(d[0], lim, "kick_ms") != MOD_KICK_MS || mp_num(d[0], lim, "line") != MOD_LINE { failed += mp_fail("the limits", "not the codec's"); }
+  // records: written as the file says, and read back
+  records := jv_get(d[0], 0, "records");
+  for i: 0..<jv_len(d[0], records) {
+    row := jv_at(d[0], records, i); tb: [4][512] u8; o: [MOD_LINE] u8;
+    want := mp_text(d[0], row, "text", tb[0][..]); pid := mp_text(d[0], row, "pid", tb[1][..]); reason := mp_text(d[0], row, "reason", tb[2][..]);
+    verb := moderation_verb(mp_text(d[0], row, "verb", tb[3][..])); minutes := mp_num(d[0], row, "minutes");
+    m := moderation_write(o[..], 0, verb, pid, minutes, reason);
+    r := moderation_read(want, 0);
+    ok := m == want.count && cast(string) o[0..<want.count] == want && r.ok && r.verb == verb && r.minutes == minutes;
+    ok = ok && want[r.pid_at..<r.pid_at + r.pid_n] == pid && want[r.reason_at..<r.reason_at + r.reason_n] == reason;
+    if !ok { failed += mp_fail("a record", want); }
+  }
+  // a seat's command: X and the record
+  cm := jv_get(d[0], 0, "command"); cmb: [512] u8; cmo: [MOD_LINE + 2] u8;
+  cw := mp_text(d[0], cm, "text", cmb[..]);
+  cr := moderation_read(cw, 2);
+  ck := ifx cr.ok then moderation_command_write(cmo[..], cr.verb, cw[cr.pid_at..<cr.pid_at + cr.pid_n], cr.minutes, cw[cr.reason_at..<cr.reason_at + cr.reason_n]) else -1;
+  if ck != cw.count || cast(string) cmo[0..<cw.count] != cw { failed += mp_fail("the command", cw); }
+  // a report: its head, each line, and the whole text
+  rep := jv_get(d[0], 0, "report"); rb: [4096] u8; ob: [4096] u8;
+  want := mp_text(d[0], rep, "text", rb[..]);
+  on := moderation_head_write(ob[..], mp_num(d[0], rep, "at"), mp_num(d[0], rep, "shard"), mp_num(d[0], rep, "gen"), mp_num(d[0], rep, "batch"));
+  h := moderation_head_read(want);
+  if !h.ok || h.at != mp_num(d[0], rep, "at") || h.shard != mp_num(d[0], rep, "shard") || h.gen != mp_num(d[0], rep, "gen") || h.batch != mp_num(d[0], rep, "batch") || h.lines != on {
+    failed += mp_fail("the report's head", want);
+  }
+  lines := jv_get(d[0], rep, "lines"); at := h.lines;
+  for i: 0..<jv_len(d[0], lines) {
+    row := jv_at(d[0], lines, i); tb: [3][512] u8;
+    by := mp_text(d[0], row, "by", tb[0][..]); room := mp_text(d[0], row, "room", tb[1][..]); rec := mp_text(d[0], row, "record", tb[2][..]);
+    r := moderation_read(rec, 0);
+    if h.ok && r.ok { on = moderation_entry_write(ob[..], on, mp_num(d[0], row, "seq"), by, room, r.verb, rec[r.pid_at..<r.pid_at + r.pid_n], r.minutes, rec[r.reason_at..<r.reason_at + r.reason_n]); }
+    e := at; while e < want.count && want[e] != '\n' { e += 1; }
+    line := want[at..<e]; at = e + 1;
+    g := moderation_entry_read(line);
+    ok := r.ok && g.ok && g.seq == mp_num(d[0], row, "seq") && line[g.by_at..<g.by_at + g.by_n] == by && line[g.room_at..<g.room_at + g.room_n] == room && line[g.rec_at..<line.count] == rec;
+    if !ok { failed += mp_fail("a report's line", line); }
+  }
+  if on != want.count || cast(string) ob[0..<want.count] != want { failed += mp_fail("the report", "not the file's bytes"); }
+  // the receipt
+  rc := jv_get(d[0], 0, "receipt"); cb: [64] u8; wb: [64] u8;
+  rwant := mp_text(d[0], rc, "text", wb[..]);
+  cn := moderation_receipt_write(cb[..], mp_num(d[0], rc, "gen"), mp_num(d[0], rc, "batch"));
+  if cn != rwant.count || cast(string) cb[0..<rwant.count] != rwant || !moderation_receipt_ok(rwant, mp_num(d[0], rc, "gen"), mp_num(d[0], rc, "batch")) { failed += mp_fail("the receipt", rwant); }
+  // the room's answers to a moderator
+  replies := jv_get(d[0], 0, "replies");
+  for i: 0..<jv_len(d[0], replies) {
+    row := jv_at(d[0], replies, i); tb: [4][512] u8; o: [MOD_LINE] u8;
+    w := mp_text(d[0], row, "text", tb[0][..]);
+    m := moderation_reply_write(o[..], jv_bool(d[0], jv_get(d[0], row, "done")), moderation_verb(mp_text(d[0], row, "verb", tb[1][..])), mp_text(d[0], row, "pid", tb[2][..]), mp_text(d[0], row, "detail", tb[3][..]));
+    if m != w.count || cast(string) o[0..<w.count] != w { failed += mp_fail("a reply", w); }
+  }
+  // the rules
+  judge := jv_get(d[0], 0, "judge");
+  for i: 0..<jv_len(d[0], judge) {
+    row := jv_at(d[0], judge, i); tb: [3][512] u8;
+    st := moderation_judge(moderation_verb(mp_text(d[0], row, "verb", tb[0][..])), jv_bool(d[0], jv_get(d[0], row, "moderator")), jv_bool(d[0], jv_get(d[0], row, "self")),
+                           mp_num(d[0], row, "minutes"), mp_text(d[0], row, "reason", tb[1][..]));
+    if mp_answer(st) != mp_text(d[0], row, "answer", tb[2][..]) { failed += mp_fail("the judge", mp_answer(st)); }
+  }
+  until := jv_get(d[0], 0, "until");
+  for i: 0..<jv_len(d[0], until) {
+    row := jv_at(d[0], until, i); tb: [1][64] u8;
+    if moderation_until(moderation_verb(mp_text(d[0], row, "verb", tb[0][..])), mp_num(d[0], row, "minutes"), mp_num(d[0], row, "now")) != mp_num(d[0], row, "until") { failed += mp_fail("an end", "not the file's"); }
+  }
+  // what is refused
+  bad := jv_get(d[0], 0, "malformed"); refused := 0;
+  for kind: 0..<4 {
+    list := jv_get(d[0], bad, [4] string.["records", "lines", "heads", "receipts"][kind]);
+    for i: 0..<jv_len(d[0], list) {
+      tb: [512] u8; m := jv_str(d[0], jv_at(d[0], list, i), tb[..]);
+      t := ifx m < 0 then "" else cast(string) tb[0..<m];
+      taken := (kind == 0 && moderation_read(t, 0).ok) || (kind == 1 && moderation_entry_read(t).ok) || (kind == 2 && moderation_head_read(t).ok)
+               || (kind == 3 && moderation_receipt_ok(t, mp_num(d[0], rc, "gen"), mp_num(d[0], rc, "batch")));
+      if taken { failed += mp_fail("taken, though malformed", t); }
+      refused += 1;
+    }
+  }
+  if failed > 0 { print("moderation v1: % fixture(s) failed\n", failed); return 1; }
+  print("moderation v1: % records, a report of % lines, its receipt, % replies and % rules as the file says, % refused\n",
+        jv_len(d[0], records), jv_len(d[0], lines), jv_len(d[0], replies), jv_len(d[0], judge) + jv_len(d[0], until), refused);
+  return 0;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/moderation-profile.coax proto/verse/moderation-v1.json"); return 2; }
+  return mp_profile(args_at(a[..], 0));
+}

@@ -108,6 +108,15 @@
       "body": "",
       "signer": "1 13754e49",
       "mac": "3cb1d2a9c866351f2e65a1a4480f76e9945537f4d78fdb36c62c0085fa0b2d59"
+    },
+    {
+      "why": "shard 3's report of its moderators' actions (#13302, moderation-v1)",
+      "key": "13754e49:3bc2b25d49cc95751d3269c460dbd113834b057d14d82be14ca258354a9530fd",
+      "purpose": "moderation",
+      "shard": 3,
+      "body": "t 1762190000000\no 3 1762180000000 7\n12 p-00aa everglade-2 mute p-0123456789abcdef 30 spam in chat\n13 p-00aa everglade-2 look p-0123456789abcdef 0 -\n",
+      "signer": "3 13754e49",
+      "mac": "9ed676c0dc70ce6b8744cfcdaa77826c1afa52c98e38e722944cbcbe24c1d9de"
     }
   ],
   "refused": [

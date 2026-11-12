@@ -16,6 +16,7 @@
 //
 // The demo's /api/presence/<room> and /api/chat/<room> answer the same.
 #include "api.h"
+#include "moderation-policy.generated.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,30 @@ static char *body_of(const request *q) {
   if (!body) return NULL;
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   return body;
+}
+
+// A banned or muted player says no line (#13302; moderation-policy.coax decides from the rows of
+// migrations/0170_moderation.sql): their chat line or inbox message is refused, 403
+// {"error": "muted" | "banned", "until": MS} (0: no end). True when it was answered.
+static bool speak_refused(const request *q, PGconn *db, const char *key) {
+  if (!key || !key[0]) return false;
+  const char *v[1] = {key};
+  PGresult *r = PQexecParams(db,
+    "SELECT (SELECT s.until_ms FROM verse.mod_sanctions s WHERE s.who = coalesce(p.account, p.id) AND s.kind = 'ban'), "
+    "(SELECT s.until_ms FROM verse.mod_sanctions s WHERE s.who = coalesce(p.account, p.id) AND s.kind = 'mute'), verse.now_ms() "
+    "FROM verse.players p WHERE p.id = verse.player_of($1)", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("speak: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return true; }
+  if (PQntuples(r) != 1) { PQclear(r); return false; }   /* no such player: the route's own answer */
+  bool ban = !PQgetisnull(r, 0, 0), mute = !PQgetisnull(r, 0, 1);
+  long long ban_until = ban ? atoll(PQgetvalue(r, 0, 0)) : 0, mute_until = mute ? atoll(PQgetvalue(r, 0, 1)) : 0;
+  int64_t stop = mod_speak(ban, ban_until, mute, mute_until, atoll(PQgetvalue(r, 0, 2)));
+  PQclear(r);
+  if (!stop) return false;
+  coax_string w = mod_kind_word(stop);
+  char out[96];
+  snprintf(out, sizeof out, "{\"error\":\"%.*s\",\"until\":%lld}", (int)w.count, w.data, stop == 2 ? mute_until : ban_until);   /* 2: MOD_KIND_MUTE */
+  api_json(q->fd, 403, out);
+  return true;
 }
 
 // Answers a verse.* function's {status, body}; a bad body is the asker's (400).
@@ -79,6 +104,7 @@ static bool social_route(const request *q) {
   } else {
     char key[160] = "";
     api_header(q, "X-Verse-Player", key, sizeof key);
+    if (!strcmp(what, "inbox") && !strcmp(q->method, "POST") && speak_refused(q, db, key)) { free(body); return true; }   // a muted player sends none
     const char *v[5] = {q->method, what, body, key, admin ? "true" : "false"};
     r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.social($1, $2, $3::jsonb, $4, $5::boolean) x", 5, NULL, v, NULL, NULL, 0);
   }
@@ -129,6 +155,7 @@ bool room_route(const request *q) {
     char who[65]; admin = sig > 0 ? admin_is(signer) : admin_who(q, db, who) == 0;
     if (!strcmp(kind, "presence") && !strcmp(q->method, "POST")) seats_sweep(db);   // an idle seat's key dies (seat-policy.coax)
   }
+  if (!strcmp(kind, "chat") && !strcmp(q->method, "POST") && speak_refused(q, db, key)) { free(body); return true; }   // a muted player says none
   const char *v[10] = {q->method, kind, room, body, key, after, mark, ua, sig > 0 ? "true" : "false", admin ? "true" : "false"};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.room($1, $2, $3, $4::jsonb, $5, $6::int, $7, $8, $9::boolean, $10::boolean) x",
                              10, NULL, v, NULL, NULL, 0);

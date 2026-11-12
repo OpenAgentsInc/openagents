@@ -13223,6 +13223,18 @@ END $$;
 
 
 --
+-- Name: mod_log_frozen(); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.mod_log_frozen() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'verse.mod_log is append-only (docs/protocol/moderation-v1.md)' USING ERRCODE = 'insufficient_privilege';
+END $$;
+
+
+--
 -- Name: name_ok(text); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -18607,6 +18619,10 @@ BEGIN
   IF ref_ !~ '^[0-9a-f]{16}$' OR NOT EXISTS (SELECT 1 FROM verse.players WHERE id = 'p-' || ref_) THEN RETURN false; END IF;
   INSERT INTO verse.room_kicks (player, by_who, until_ms, at_ms) VALUES ('p-' || ref_, 'report', verse.now_ms() + 86400000, verse.now_ms())
   ON CONFLICT (player) DO UPDATE SET by_who = 'report', until_ms = EXCLUDED.until_ms, at_ms = EXCLUDED.at_ms;
+  INSERT INTO verse.mod_log (at_ms, by_who, verb, whom, who, minutes, until_ms, reason, source, outcome, team)
+  SELECT verse.now_ms(), 'report', 'kick', p.id, coalesce(p.account, p.id), 0, verse.now_ms() + 86400000, 'a report hidden', 'report', 'ok',
+         EXISTS (SELECT 1 FROM analytics.team t WHERE t.kind = 'player' AND t.value = p.id)
+  FROM verse.players p WHERE p.id = 'p-' || ref_;
   RETURN true;
 END $_$;
 
@@ -18683,6 +18699,12 @@ BEGIN
   IF kind_ <> 'player' THEN RETURN villa.report_restore_0034(kind_, ref_); END IF;
   DELETE FROM verse.room_kicks WHERE ref_ ~ '^[0-9a-f]{16}$' AND player = 'p-' || ref_;
   GET DIAGNOSTICS n = ROW_COUNT;
+  IF n > 0 THEN
+    INSERT INTO verse.mod_log (at_ms, by_who, verb, whom, who, minutes, until_ms, reason, source, outcome, team)
+    SELECT verse.now_ms(), 'report', 'unkick', p.id, coalesce(p.account, p.id), 0, 0, 'a report restored', 'report', 'ok',
+           EXISTS (SELECT 1 FROM analytics.team t WHERE t.kind = 'player' AND t.value = p.id)
+    FROM verse.players p WHERE p.id = 'p-' || ref_;
+  END IF;
   RETURN n > 0;
 END $_$;
 
@@ -21396,6 +21418,75 @@ ALTER SEQUENCE verse.log_id_seq OWNED BY verse.log.id;
 
 
 --
+-- Name: mod_log; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.mod_log (
+    n bigint NOT NULL,
+    at_ms bigint NOT NULL,
+    by_who text NOT NULL,
+    verb text NOT NULL,
+    whom text NOT NULL,
+    who text NOT NULL,
+    minutes integer NOT NULL,
+    until_ms bigint NOT NULL,
+    reason text NOT NULL,
+    source text NOT NULL,
+    room text,
+    shard integer,
+    gen bigint,
+    seq bigint,
+    outcome text NOT NULL,
+    team boolean DEFAULT false NOT NULL,
+    CONSTRAINT mod_log_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT mod_log_by_who_check CHECK ((by_who ~ '^[a-z0-9-]{1,40}$'::text)),
+    CONSTRAINT mod_log_minutes_check CHECK (((minutes >= 0) AND (minutes <= 525600))),
+    CONSTRAINT mod_log_outcome_check CHECK ((outcome = ANY (ARRAY['ok'::text, 'self'::text, 'no_player'::text]))),
+    CONSTRAINT mod_log_reason_check CHECK (((length(reason) >= 1) AND (length(reason) <= 120))),
+    CONSTRAINT mod_log_room_op CHECK (((source = 'room'::text) = ((shard IS NOT NULL) AND (gen IS NOT NULL) AND (seq IS NOT NULL) AND (room IS NOT NULL)))),
+    CONSTRAINT mod_log_source_check CHECK ((source = ANY (ARRAY['room'::text, 'api'::text, 'report'::text]))),
+    CONSTRAINT mod_log_until_ms_check CHECK ((until_ms >= 0)),
+    CONSTRAINT mod_log_verb_check CHECK ((verb = ANY (ARRAY['look'::text, 'move'::text, 'kick'::text, 'mute'::text, 'ban'::text, 'unkick'::text, 'unmute'::text, 'unban'::text]))),
+    CONSTRAINT mod_log_whom_check CHECK ((whom ~ '^[a-z0-9-]{1,40}$'::text))
+);
+
+
+--
+-- Name: mod_log_n_seq; Type: SEQUENCE; Schema: verse; Owner: -
+--
+
+CREATE SEQUENCE verse.mod_log_n_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: mod_log_n_seq; Type: SEQUENCE OWNED BY; Schema: verse; Owner: -
+--
+
+ALTER SEQUENCE verse.mod_log_n_seq OWNED BY verse.mod_log.n;
+
+
+--
+-- Name: mod_sanctions; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.mod_sanctions (
+    who text NOT NULL,
+    kind text NOT NULL,
+    until_ms bigint NOT NULL,
+    reason text NOT NULL,
+    by_who text NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT mod_sanctions_kind_check CHECK ((kind = ANY (ARRAY['ban'::text, 'mute'::text]))),
+    CONSTRAINT mod_sanctions_until_ms_check CHECK ((until_ms >= 0))
+);
+
+
+--
 -- Name: nostr_seen; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -22594,6 +22685,13 @@ ALTER TABLE ONLY verse.items ALTER COLUMN id SET DEFAULT nextval('verse.items_id
 --
 
 ALTER TABLE ONLY verse.log ALTER COLUMN id SET DEFAULT nextval('verse.log_id_seq'::regclass);
+
+
+--
+-- Name: mod_log n; Type: DEFAULT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.mod_log ALTER COLUMN n SET DEFAULT nextval('verse.mod_log_n_seq'::regclass);
 
 
 --
@@ -23837,6 +23935,30 @@ ALTER TABLE ONLY verse.made_realms
 
 
 --
+-- Name: mod_log mod_log_op; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.mod_log
+    ADD CONSTRAINT mod_log_op UNIQUE (shard, gen, seq);
+
+
+--
+-- Name: mod_log mod_log_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.mod_log
+    ADD CONSTRAINT mod_log_pkey PRIMARY KEY (n);
+
+
+--
+-- Name: mod_sanctions mod_sanctions_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.mod_sanctions
+    ADD CONSTRAINT mod_sanctions_pkey PRIMARY KEY (who, kind);
+
+
+--
 -- Name: nostr_seen nostr_seen_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -24851,6 +24973,13 @@ CREATE INDEX made_realms_made ON verse.made_realms USING btree (made_ms DESC);
 
 
 --
+-- Name: mod_log_whom; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX mod_log_whom ON verse.mod_log USING btree (whom, n);
+
+
+--
 -- Name: npc_log_memory; Type: INDEX; Schema: verse; Owner: -
 --
 
@@ -24890,6 +25019,13 @@ CREATE INDEX pack_sessions_ip ON verse.pack_sessions USING btree (ip_sha256, at)
 --
 
 CREATE INDEX party_members_party ON verse.party_members USING btree (party);
+
+
+--
+-- Name: players_account; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX players_account ON verse.players USING btree (account);
 
 
 --
@@ -25275,6 +25411,20 @@ CREATE TRIGGER made_realms_seen BEFORE INSERT OR UPDATE ON verse.made_realms FOR
 --
 
 CREATE TRIGGER made_realms_undo BEFORE UPDATE ON verse.made_realms FOR EACH ROW EXECUTE FUNCTION verse.made_realms_undo();
+
+
+--
+-- Name: mod_log mod_log_frozen; Type: TRIGGER; Schema: verse; Owner: -
+--
+
+CREATE TRIGGER mod_log_frozen BEFORE DELETE OR UPDATE ON verse.mod_log FOR EACH ROW EXECUTE FUNCTION verse.mod_log_frozen();
+
+
+--
+-- Name: mod_log mod_log_kept; Type: TRIGGER; Schema: verse; Owner: -
+--
+
+CREATE TRIGGER mod_log_kept BEFORE TRUNCATE ON verse.mod_log FOR EACH STATEMENT EXECUTE FUNCTION verse.mod_log_frozen();
 
 
 --

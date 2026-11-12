@@ -444,10 +444,10 @@ static void drain_step(void) {
     printf("room: drain: told %lld pages restarting after %lld ms\n", (long long)drain_told, (long long)(now - drain_asked));
   } else if (drain_phase == DRAIN_TELLING && now - drain_step_at >= 500) {
     /* their sockets closed, their seats ended: every seat's vitals noted and sent */
-    rm_vitals_flush(view());
+    rm_vitals_flush(view()); rm_mod_flush(view());
     drain_phase = DRAIN_SAVING; drain_step_at = now;
   } else if (drain_phase == DRAIN_SAVING) {
-    int64_t left = rm_vitals_pending(view());
+    int64_t left = rm_vitals_pending(view()) + rm_mod_pending(view());   /* and moderators' actions with no receipt (#13302) */
     if ((left == 0 && !server->vit.fly && rm_checkpoint_clean(view())) || now - drain_step_at >= DRAIN_SAVE_MS) {
       drain_phase = left == 0 && !server->vit.fly && rm_checkpoint_clean(view()) ? DRAIN_DONE : DRAIN_FAILED;
       printf("room: %s after %lld ms: %lld legacy saves, %lld checkpoints with no receipt\n",drain_phase==DRAIN_DONE?"drain done":"drain failed", (long long)(now - drain_asked), (long long)left,(long long)rm_checkpoint_pending(view()));
@@ -556,8 +556,8 @@ static void opening(int i) {
                              (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
                              (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn, (long long)wait_most, (long long)wait_ms, drain_word());
     snprintf(body+strlen(body),sizeof body-strlen(body),"checkpoints pending %lld, flying %d, refused %lld, applied %lld, duplicates %lld\n",(long long)rm_checkpoint_pending(view()),server->ck.fly?1:0,(long long)server->ck.refused,(long long)server->ck.applied,(long long)server->ck.duplicates);
-    int pending=0;for(int lane=0;lane<6;lane++)if(server->bg.e[0].slot.e[lane].id>0)pending++;
-    snprintf(body+strlen(body),sizeof body-strlen(body),"background pending %d/6, offered %lld, refused %lld, expired %lld, late %lld, failed %lld\n",pending,(long long)server->bg.e[0].offered,(long long)server->bg.e[0].refused,(long long)server->bg.e[0].expired,(long long)server->bg.e[0].late,(long long)server->bg.e[0].failed);
+    int pending=0;for(int lane=0;lane<7;lane++)if(server->bg.e[0].slot.e[lane].id>0)pending++;
+    snprintf(body+strlen(body),sizeof body-strlen(body),"background pending %d/7, offered %lld, refused %lld, expired %lld, late %lld, failed %lld\n",pending,(long long)server->bg.e[0].offered,(long long)server->bg.e[0].refused,(long long)server->bg.e[0].expired,(long long)server->bg.e[0].late,(long long)server->bg.e[0].failed);
     int64_t work[8];rm_work_stats(view(),(coax_v_s64){work,8});
     snprintf(body+strlen(body),sizeof body-strlen(body),"work process rooms %lld, lowest credit %lld us, largest last tick %lld us room %lld, deferred ticks %lld, refused new work %lld, retired rooms %lld\n",(long long)work[0],(long long)work[1],(long long)work[2],(long long)work[7],(long long)work[3],(long long)work[4],(long long)work[5]);
     int64_t warm=0;int warm_room=-1;for(int k=0;k<WORLD_ROOMS;k++)if(room_prepare_us[k]>warm){warm=room_prepare_us[k];warm_room=k;}
@@ -622,13 +622,13 @@ static void frames(int i) {
    curl, its config on stdin (so the MAC is in no argument list). The curls are started by a small
    poster process forked before the server's memory is taken (a fork of the full server can fail on
    Cloud Run). The main loop offers an atomic local datagram and never waits. */
-/* The six lanes mirror background-budget.coax. Each has one serial SDK
+/* The seven lanes mirror background-budget.coax. Each has one serial SDK
    helper, one Coax-owned request identity and an atomic, bounded nonblocking
    datagram transport. A full SDK queue cannot stop the simulation, a control
    outage cannot queue behind saves, and no response prefix is published. */
-enum { POST_CONTROL, POST_WORLD, POST_VITALS, POST_CHECKPOINT, POST_DIRECTORY, POST_STATS, POST_LANES };
+enum { POST_CONTROL, POST_WORLD, POST_VITALS, POST_CHECKPOINT, POST_DIRECTORY, POST_STATS, POST_MOD, POST_LANES };
 #define POST_CAP 16640
-static int poster_fd[POST_LANES] = {-1,-1,-1,-1,-1,-1};
+static int poster_fd[POST_LANES] = {-1,-1,-1,-1,-1,-1,-1};
 static coax_v_t_BgBudget background(void) { return (coax_v_t_BgBudget){server->bg.e,1}; }
 static void poster_run(int fd, pid_t owner) {
   signal(SIGTERM,SIG_IGN); /* final saves continue during a process-group drain */
@@ -785,6 +785,19 @@ static void vitals_post(void) {
   if (!post_report(POST_VITALS,api_url("OA_ROOM_VITALS_URL", "/api/playtest/room-vitals", buf, sizeof buf), server->vit.mac.e, server->vit.out.e, n, batch))
     rm_vitals_answer(view(), batch, 0, (coax_string){"", 0});
 }
+/* Moderators' actions (room-mod.coax, #13302): the log's outbox goes to the API on its own lane, and
+   an action leaves it only on the API's receipt. --dev posts only when OA_ROOM_MOD_URL names an API;
+   otherwise the stand-in takes each post as logged. */
+static void mod_post(void) {
+  int64_t n = rm_mod_due(view());
+  if (n <= 0) return;
+  const char *dev_url = getenv("OA_ROOM_MOD_URL");
+  if (dev_dir && !(dev_url && *dev_url)) { rm_mod_local(view()); return; }
+  char buf[512];
+  int64_t batch = server->mod.batch;
+  if (!post_report(POST_MOD, api_url("OA_ROOM_MOD_URL", "/api/playtest/room-mod-log", buf, sizeof buf), server->mod.mac.e, server->mod.out.e, n, batch))
+    rm_mod_answer(view(), batch, 0, (coax_string){"", 0});
+}
 static void checkpoint_post(void) {
   const char *dev_url=getenv("OA_ROOM_CHECKPOINT_URL");
   /* --dev with no API: the stand-in's store answers, as production's API does (#13057) */
@@ -808,6 +821,7 @@ static void poster_hear(void) {
     coax_string body={buf+head,(int64_t)len};
     if(lane==POST_CHECKPOINT)rm_checkpoint_answer(view(),batch,status,body);
     else if(lane==POST_VITALS)rm_vitals_answer(view(),batch,status,body);
+    else if(lane==POST_MOD)rm_mod_answer(view(),batch,status,body);
     else if(lane==POST_WORLD&&ok){int64_t preparing=now_us();world_edits(body.data,body.count);world_publication_us=now_us()-preparing;warm_rooms();printf("room: the realm's world (%zu bytes) laid over the rooms\n",len);}
     else if(lane==POST_CONTROL&&ok){
       rm_control(view(),body);
@@ -1028,11 +1042,11 @@ int main(int argc, char **argv) {
     if (term_asked && !drain_at) {
       drain_at = now_ms();
       if (drain_phase < DRAIN_TELLING) { int64_t told = rm_drain_tell(view()); relay_flush(); printf("room: SIGTERM before a drain: told %lld pages restarting\n", (long long)told); }
-      rm_vitals_flush(view()); last_vitals = 0;
+      rm_vitals_flush(view()); rm_mod_flush(view()); last_vitals = 0;
       printf("room: SIGTERM: saving %lld players' vitals before exit\n", (long long)rm_vitals_pending(view()));
     }
     if (drain_at) {
-      int64_t left = rm_vitals_pending(view());
+      int64_t left = rm_vitals_pending(view()) + rm_mod_pending(view());
       if ((left == 0 && !server->vit.fly && rm_checkpoint_clean(view())) || now_ms() - drain_at > DRAIN_MS) {
         printf("room: exit after %lld ms, %lld players' vitals with no receipt\n", (long long)(now_ms() - drain_at), (long long)left);
         fprintf(stderr,"room: exit: %lld unacknowledged character checkpoints\n",(long long)rm_checkpoint_pending(view()));
@@ -1102,7 +1116,7 @@ int main(int argc, char **argv) {
       }
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); wt_note(); }
       if (now - last_stats >= ST_WINDOW_MS) { stats_window((now - last_stats) / 1000.0); last_stats = now; }
-      control_ask();poster_hear();if(!dev_dir)world_ask();checkpoint_post();
+      control_ask();poster_hear();if(!dev_dir)world_ask();checkpoint_post();mod_post();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
         printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; }
         printf(", %lld events with no room in their tick\n", (long long)rm_eg_dropped(view()));

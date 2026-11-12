@@ -60,6 +60,7 @@
 #include "nostr.h"
 #include "progress-policy.generated.h"
 #include "item-policy.generated.h"
+#include "moderation-policy.generated.h"
 #include "character-policy.generated.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -233,6 +234,14 @@ static const char *legacy(const char *path) {
   return NULL;
 }
 
+/* aethyr/session/moderation.coax's answers (#13302) */
+#define MOD_OK 0
+#define MOD_SELF 2
+#define MOD_KICK 3
+#define MOD_UNKICK 6
+#define MOD_KIND_KICK 1
+#define MOD_KIND_MUTE 2
+#define MOD_KIND_BAN 3
 // A seat ticket (#12712, spec 4.4): who the X-Verse-Player key is, for one room's socket, for
 // TICKET_MS. aethyr/session/seat-ticket.coax writes every byte of it (docs/protocol/everglade-session-v5.md
 // "The seat ticket"): v5 signed with OA_ROOM_TICKET_SIGNING_KEY (#13260), else v2/v3, or the v4 envelope
@@ -423,9 +432,12 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   PGresult *r = PQexecParams(db, "SELECT p.id, p.account IS NOT NULL, verse.player_name(p.id), "
                                  "CASE WHEN rv.hp_at > extract(epoch FROM clock_timestamp()) * 1000 - 600000 THEN rv.hp END, "
                                  "CASE WHEN rv.wanted_by IS NOT NULL AND rv.wanted_at > extract(epoch FROM clock_timestamp()) * 1000 - 300000 THEN rv.wanted END, rv.look, rv.class, "
-                                 "EXISTS (SELECT 1 FROM verse.room_kicks k WHERE k.player = p.id AND k.until_ms > extract(epoch FROM clock_timestamp()) * 1000), "
+                                 "(SELECT k.until_ms FROM verse.room_kicks k WHERE k.player = p.id), "
                                  "(SELECT string_agg(b.blocked, ',' ORDER BY b.at_ms DESC) FROM (SELECT * FROM verse.player_blocks WHERE player = p.id ORDER BY at_ms DESC LIMIT 32) b), "
-                                 "coalesce(rv.xp, 0), rv.character_class "
+                                 "coalesce(rv.xp, 0), rv.character_class, "
+                                 /* the kept ban, the clock and whether they are one of the team's (#13302, migrations/0170) */
+                                 "(SELECT s.until_ms FROM verse.mod_sanctions s WHERE s.who = coalesce(p.account, p.id) AND s.kind = 'ban'), verse.now_ms(), "
+                                 "EXISTS (SELECT 1 FROM analytics.team t WHERE t.kind = 'player' AND t.value = p.id) "
                                  "FROM verse.players p LEFT JOIN verse.accounts a ON a.id = p.account "
                                  "LEFT JOIN verse.room_vitals rv ON rv.who = coalesce(p.account, p.id) "
                                  "WHERE p.key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0);
@@ -443,7 +455,24 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
   bool account = PQgetvalue(r, 0, 1)[0] == 't';
   ticket_name(name, sizeof name, PQgetvalue(r, 0, 2));
-  if (PQgetvalue(r, 0, 7)[0] == 't') { PQclear(r); room_count(db, "kicked"); api_json(q->fd, 403, "{\"error\":\"kicked\"}"); return; }   /* an admin's kick, 24 hours (#12714) */
+  {
+    /* no ticket for a banned or kicked player (#13302, #12714): moderation-policy.coax decides from the kept
+       rows; a refusal is counted unless they are one of the team's */
+    bool ban = !PQgetisnull(r, 0, 11), kick = !PQgetisnull(r, 0, 7);
+    long long ban_until = ban ? atoll(PQgetvalue(r, 0, 11)) : 0, kick_until = kick ? atoll(PQgetvalue(r, 0, 7)) : 0;
+    int stop = (int)mod_ticket(ban, ban_until, kick, kick_until, atoll(PQgetvalue(r, 0, 12)));
+    if (stop) {
+      bool team = PQgetvalue(r, 0, 13)[0] == 't';
+      coax_string w = mod_kind_word(stop);
+      char word[16], out[96];
+      snprintf(word, sizeof word, "%.*s", (int)w.count, w.data);
+      PQclear(r);
+      if (!team) room_count(db, word);
+      snprintf(out, sizeof out, "{\"error\":\"%s\",\"until\":%lld}", word, stop == MOD_KIND_BAN ? ban_until : kick_until);
+      api_json(q->fd, 403, out);
+      return;
+    }
+  }
   int hp = PQgetisnull(r, 0, 3) ? -1 : atoi(PQgetvalue(r, 0, 3));
   int wanted = PQgetisnull(r, 0, 4) ? -1 : atoi(PQgetvalue(r, 0, 4));
   int xp = atoi(PQgetvalue(r, 0, 9));   /* XP, which only rises (#12739); the ticket's HP field carries it as HPxXP */
@@ -1091,34 +1120,205 @@ static void room_control(const request *q, PGconn *db) {
     0, NULL, NULL, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-control: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"no control\"}"); return; }
   const char *t = PQgetvalue(r, 0, 0);
-  api_respond(q->fd, 200, "text/plain", NULL, t, strlen(t));
+  /* the banned go too (#13302): the 64 newest bans' players, each a kick line while moderation-policy.coax
+     says the ban holds. A room drops their sockets; the ticket refuses them from then on. */
+  size_t kn = strlen(t), cap = kn + 64 * 48 + 1;
+  char *out = malloc(cap);
+  if (!out) { PQclear(r); api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  memcpy(out, t, kn); out[kn] = 0;
   PQclear(r);
+  r = PQexecParams(db,
+    "SELECT p.id, s.until_ms, verse.now_ms() FROM (SELECT who, until_ms FROM verse.mod_sanctions WHERE kind = 'ban' ORDER BY at_ms DESC LIMIT 64) s "
+    "JOIN LATERAL (SELECT id FROM verse.players WHERE id = s.who UNION SELECT id FROM verse.players WHERE account = s.who) p ON true LIMIT 64",
+    0, NULL, NULL, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("room-control: %s", PQerrorMessage(db)); PQclear(r); free(out); api_json(q->fd, 500, "{\"error\":\"no control\"}"); return; }
+  for (int i = 0; i < PQntuples(r); i++) {
+    const char *pid = PQgetvalue(r, i, 0);
+    if (strlen(pid) > 40 || !mod_in_force(true, atoll(PQgetvalue(r, i, 1)), atoll(PQgetvalue(r, i, 2)))) continue;
+    kn += (size_t)snprintf(out + kn, cap - kn, "kick %s\n", pid);
+  }
+  PQclear(r);
+  api_respond(q->fd, 200, "text/plain", NULL, out, kn);
+  free(out);
 }
-// An Everglade admin's kick (#12714): {"player": "p-...", "on": false to let them back}. 24 hours, every room.
+// Moderation (#13302; docs/protocol/moderation-v1.md, migrations/0170_moderation.sql). The rules and the
+// record's codec are Coax's (moderation-policy.coax over aethyr/session/moderation.coax); this reads the
+// facts and writes what they answer. Every action a moderator takes is one row of verse.mod_log, which
+// no one can change, written in the same statement as the ban, mute or kick it sets or lifts.
+typedef struct { int verb; long long until; char outcome[12]; char pid[48]; bool logged; } mod_done;
+/* One action of moderator `by` (a player id, or "site"): judged, then its log row and what it sets or
+   lifts in one statement. source "room" carries the room's code and operation ID (shard, gen, seq), kept
+   once: a repeat changes nothing (logged false). False on a database failure. done->outcome: ok, self or
+   no_player (each logged); bad when the rules say it is no action, "" when rec is no record (nothing is written). */
+static bool room_mod_apply(PGconn *db, coax_string rec, const char *by, const char *source, const char *room, int shard, long long gen, long long seq, mod_done *done) {
+  int64_t f[6];
+  memset(done, 0, sizeof *done);
+  if (!mod_record(rec, 0, (coax_v_s64){f, 6}) || f[3] >= (int64_t)sizeof done->pid || f[5] > 120) return true;
+  char reason[128];
+  snprintf(done->pid, sizeof done->pid, "%.*s", (int)f[3], rec.data + f[2]);
+  snprintf(reason, sizeof reason, "%.*s", (int)f[5], rec.data + f[4]);
+  done->verb = (int)f[0];
+  const char *pv[1] = {done->pid};
+  PGresult *r = PQexecParams(db, "SELECT coalesce(p.account, p.id), EXISTS (SELECT 1 FROM analytics.team t WHERE t.kind = 'player' AND t.value = p.id), verse.now_ms() "
+                                 "FROM (SELECT $1::text AS pid) x LEFT JOIN verse.players p ON p.id = x.pid", 1, NULL, pv, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); return false; }
+  bool known = !PQgetisnull(r, 0, 0), team = PQgetvalue(r, 0, 1)[0] == 't';
+  char who[96]; snprintf(who, sizeof who, "%s", known ? PQgetvalue(r, 0, 0) : done->pid);
+  long long now = atoll(PQgetvalue(r, 0, 2));
+  PQclear(r);
+  int64_t status = mod_judge(f[0], true, !strcmp(by, done->pid), f[1], (coax_string){reason, (int64_t)strlen(reason)});
+  if (status != MOD_OK && status != MOD_SELF) { snprintf(done->outcome, sizeof done->outcome, "bad"); return true; }   /* no action: nothing to log */
+  const char *outcome = status == MOD_SELF ? "self" : known ? "ok" : "no_player";
+  bool apply = !strcmp(outcome, "ok");
+  int64_t kind = mod_kind(f[0]);
+  bool lifts = mod_lifts(f[0]);
+  done->until = apply ? (long long)mod_until(f[0], f[1], now) : 0;
+  coax_string vw = mod_verb_word(f[0]);
+  char verb[12], at_s[24], min_s[12], until_s[24], shard_s[12], gen_s[24], seq_s[24];
+  snprintf(verb, sizeof verb, "%.*s", (int)vw.count, vw.data);
+  snprintf(at_s, sizeof at_s, "%lld", now); snprintf(min_s, sizeof min_s, "%lld", (long long)f[1]); snprintf(until_s, sizeof until_s, "%lld", done->until);
+  snprintf(shard_s, sizeof shard_s, "%d", shard); snprintf(gen_s, sizeof gen_s, "%lld", gen); snprintf(seq_s, sizeof seq_s, "%lld", seq);
+  bool op = !strcmp(source, "room");
+  const char *v[18] = {at_s, by, verb, done->pid, who, min_s, until_s, reason, source, op ? room : NULL, op ? shard_s : NULL, op ? gen_s : NULL, op ? seq_s : NULL,
+                       outcome, team ? "t" : "f", kind == MOD_KIND_BAN ? "ban" : kind == MOD_KIND_MUTE ? "mute" : kind == MOD_KIND_KICK ? "kick" : "",
+                       apply && kind && !lifts ? "t" : "f", apply && kind && lifts ? "t" : "f"};
+  r = PQexecParams(db,
+    "WITH log AS (INSERT INTO verse.mod_log (at_ms, by_who, verb, whom, who, minutes, until_ms, reason, source, room, shard, gen, seq, outcome, team) "
+    "  VALUES ($1::bigint, $2::text, $3::text, $4::text, $5::text, $6::int, $7::bigint, $8::text, $9::text, $10::text, $11::int, $12::bigint, $13::bigint, $14::text, $15::boolean) "
+    "  ON CONFLICT ON CONSTRAINT mod_log_op DO NOTHING RETURNING n), "
+    "sanction AS (INSERT INTO verse.mod_sanctions (who, kind, until_ms, reason, by_who, at_ms) "
+    "  SELECT $5::text, $16::text, $7::bigint, $8::text, $2::text, $1::bigint FROM log WHERE $17::boolean AND $16::text IN ('ban', 'mute') "
+    "  ON CONFLICT (who, kind) DO UPDATE SET until_ms = EXCLUDED.until_ms, reason = EXCLUDED.reason, by_who = EXCLUDED.by_who, at_ms = EXCLUDED.at_ms RETURNING 1), "
+    "lifted AS (DELETE FROM verse.mod_sanctions WHERE $18::boolean AND who = $5::text AND kind = $16::text AND EXISTS (SELECT 1 FROM log) RETURNING 1), "
+    "kick AS (INSERT INTO verse.room_kicks (player, by_who, until_ms, at_ms) SELECT $4::text, $2::text, $7::bigint, $1::bigint FROM log WHERE $17::boolean AND $16::text = 'kick' "
+    "  ON CONFLICT (player) DO UPDATE SET by_who = EXCLUDED.by_who, until_ms = EXCLUDED.until_ms, at_ms = EXCLUDED.at_ms RETURNING 1), "
+    "unkick AS (DELETE FROM verse.room_kicks WHERE $18::boolean AND $16::text = 'kick' AND player = $4::text AND EXISTS (SELECT 1 FROM log) RETURNING 1) "
+    "SELECT (SELECT count(*) FROM log), (SELECT count(*) FROM sanction) + (SELECT count(*) FROM kick) + (SELECT count(*) FROM lifted) + (SELECT count(*) FROM unkick)",
+    18, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); return false; }
+  done->logged = atoi(PQgetvalue(r, 0, 0)) > 0;
+  PQclear(r);
+  snprintf(done->outcome, sizeof done->outcome, "%s", outcome);
+  return true;
+}
+/* A moderator's action over the API, the record already written by the codec (rec, n bytes; n < 0: not
+   one): the caller must be one of Everglade's admins. True when done (out is filled); else answered. */
+static bool room_mod_asked(const request *q, PGconn *db, const char *key, bool site, const char *rec, int64_t n, mod_done *done) {
+  const char *v[2] = {key ? key : "", site ? "t" : "f"};
+  PGresult *r = PQexecParams(db, "SELECT verse.edit_may('everglade', $1, $2::boolean), coalesce(verse.player_of($1), 'site')", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return false; }
+  bool may = PQgetvalue(r, 0, 0)[0] == 't';
+  char by[64]; snprintf(by, sizeof by, "%s", PQgetvalue(r, 0, 1));
+  PQclear(r);
+  if (!may) { api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return false; }
+  if (n < 0) { api_json(q->fd, 400, "{\"error\":\"not a record\"}"); return false; }
+  if (!room_mod_apply(db, (coax_string){rec, n}, by, "api", NULL, 0, 0, 0, done)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return false; }
+  if (!strcmp(done->outcome, "no_player")) { api_json(q->fd, 404, "{\"error\":\"no such player\"}"); return false; }
+  if (!strcmp(done->outcome, "self")) { api_json(q->fd, 403, "{\"error\":\"not on yourself\"}"); return false; }
+  if (strcmp(done->outcome, "ok")) { api_json(q->fd, 400, "{\"error\":\"not a record\"}"); return false; }
+  return true;
+}
+// An Everglade admin's kick (#12714): {"player": "p-...", "on": false to let them back}. 24 hours, every
+// room. The same action as "kick PID 0 REASON" to /room-mod, logged alike.
 static void room_kick(const request *q, PGconn *db, const char *key, bool site, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a kick\"}"); return; }
-  const char *v[3] = {key ? key : "", body, site ? "t" : "f"};
-  PGresult *r = PQexecParams(db,
-    "WITH b AS (SELECT $2::jsonb AS j), may AS (SELECT verse.edit_may('everglade', $1, $3::boolean) AS ok), "
-    "them AS (SELECT id FROM verse.players, b WHERE id = j->>'player'), "
-    "del AS (DELETE FROM verse.room_kicks WHERE (SELECT ok FROM may) AND (SELECT j->'on' = 'false'::jsonb FROM b) AND player = (SELECT id FROM them) RETURNING 1), "
-    "ins AS (INSERT INTO verse.room_kicks (player, by_who, until_ms, at_ms) SELECT id, coalesce(verse.player_of($1), 'site'), verse.now_ms() + 86400000, verse.now_ms() "
-    "  FROM them, b WHERE (SELECT ok FROM may) AND j->'on' IS DISTINCT FROM 'false'::jsonb "
-    "  ON CONFLICT (player) DO UPDATE SET by_who = EXCLUDED.by_who, until_ms = EXCLUDED.until_ms, at_ms = EXCLUDED.at_ms RETURNING 1) "
-    "SELECT (SELECT ok FROM may), EXISTS (SELECT 1 FROM them), (SELECT count(*) FROM ins), (SELECT count(*) FROM del)",
-    3, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK) {
+  const char *v[1] = {body};
+  PGresult *r = PQexecParams(db, "SELECT coalesce(j->>'player', ''), j->'on' = 'false'::jsonb FROM (SELECT $1::jsonb AS j) s", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-kick: %s", PQerrorMessage(db));
     PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no kick\"}"); return;
   }
-  bool may = PQgetvalue(r, 0, 0)[0] == 't', them = PQgetvalue(r, 0, 1)[0] == 't';
-  bool in = atoi(PQgetvalue(r, 0, 2)) > 0;
+  char pid[64]; snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
+  bool back = !PQgetisnull(r, 0, 1) && PQgetvalue(r, 0, 1)[0] == 't';
   PQclear(r);
-  if (!may) { api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return; }
-  if (!them) { api_json(q->fd, 404, "{\"error\":\"no such player\"}"); return; }
-  api_json(q->fd, 200, in ? "{\"kicked\":true,\"hours\":24}" : "{\"kicked\":false}");
+  char rec[272];
+  const char *why = back ? "-" : "an admin's kick";
+  int64_t n = mod_record_write((coax_v_u8){(uint8_t *)rec, sizeof rec}, back ? MOD_UNKICK : MOD_KICK, (coax_string){pid, (int64_t)strlen(pid)}, 0, (coax_string){why, (int64_t)strlen(why)});
+  mod_done done;
+  if (n < 0) {   /* no player has such an id: as before, an admin is told so and anyone else that it is the admins' */
+    const char *av[2] = {key ? key : "", site ? "t" : "f"};
+    r = PQexecParams(db, "SELECT verse.edit_may('everglade', $1, $2::boolean)", 2, NULL, av, NULL, NULL, 0);
+    bool may = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && PQgetvalue(r, 0, 0)[0] == 't';
+    PQclear(r);
+    api_json(q->fd, may ? 404 : 403, may ? "{\"error\":\"no such player\"}" : "{\"error\":\"Everglade's admins only\"}");
+    return;
+  }
+  if (!room_mod_asked(q, db, key, site, rec, n, &done)) return;
+  api_json(q->fd, 200, back ? "{\"kicked\":false}" : "{\"kicked\":true,\"hours\":24}");
+}
+// POST /api/playtest/room-mod: one of Everglade's admins acts on a player. The body is the record's line,
+// "VERB PID MINUTES REASON" (kick, mute, ban, unkick, unmute, unban; look and move are a room's). The
+// answer names what was done and when it ends: {"ok":true,"verb":V,"player":PID,"until":MS} (0: no end).
+// 403 not an admin, or on yourself; 404 no such player; 400 not a record.
+// GET /api/playtest/room-mod[?player=PID]: the log for one of Everglade's admins, the newest 200 actions
+// (about that player), oldest first: {"log":[{n, at_ms, by_who, verb, whom, minutes, until_ms, reason,
+// source, room, shard, gen, seq, outcome, team}]}. 403 for anyone else.
+static void room_mod(const request *q, PGconn *db, const char *key, bool site, const char *body) {
+  if (!strcmp(q->method, "GET")) {
+    char whom[64] = "";
+    if (!api_query(q, "player", whom, sizeof whom)) whom[0] = 0;
+    const char *v[3] = {key ? key : "", site ? "t" : "f", whom};
+    PGresult *r = PQexecParams(db,
+      "SELECT verse.edit_may('everglade', $1, $2::boolean), '{\"log\":' || coalesce((SELECT json_agg(row_to_json(x) ORDER BY x.n) FROM "
+      "(SELECT n, at_ms, by_who, verb, whom, minutes, until_ms, reason, source, room, shard, gen, seq, outcome, team FROM verse.mod_log "
+      " WHERE ($3::text = '' OR whom = $3::text) ORDER BY n DESC LIMIT 200) x), '[]')::text || '}'", 3, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not read\"}"); return; }
+    if (PQgetvalue(r, 0, 0)[0] != 't') { PQclear(r); api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return; }
+    api_json(q->fd, 200, PQgetvalue(r, 0, 1));
+    PQclear(r);
+    return;
+  }
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a record\"}"); return; }
+  int64_t n = (int64_t)strlen(body);
+  while (n > 0 && (body[n - 1] == '\n' || body[n - 1] == '\r')) n--;
+  int64_t f[6];
+  if (!mod_record((coax_string){body, n}, 0, (coax_v_s64){f, 6}) || !mod_kind(f[0])) n = -1;
+  mod_done done;
+  if (!room_mod_asked(q, db, key, site, body, n, &done)) return;
+  coax_string vw = mod_verb_word(done.verb);
+  char out[192];
+  snprintf(out, sizeof out, "{\"ok\":true,\"verb\":\"%.*s\",\"player\":\"%s\",\"until\":%lld}", (int)vw.count, vw.data, done.pid, done.until);
+  api_json(q->fd, 200, out);
+}
+// POST /api/playtest/room-mod-log: a room's report of what its moderators did (room-mod.coax; a seat
+// whose signed ticket has the moderator bit), signed with the shard's write key for the purpose
+// "moderation" (or the shared key), within two minutes of now:
+//   t MS\no SHARD GEN BATCH\nSEQ BY ROOM RECORD\n...
+// Each line is logged once by (SHARD, GEN, SEQ) and applied with its log row. The answer, text/plain:
+// "receipt GEN BATCH". A database failure is a 500 with no receipt: the room sends the post again.
+static void room_mod_log(const request *q, PGconn *db) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a report\"}"); return; }
+  if (q->body_len == 0 || q->body_len > 8192) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  int signer = room_write_signed(q, "moderation", q->body, q->body_len);
+  if (signer < 0) return;
+  int64_t h[5];
+  coax_string body = {q->body, (int64_t)q->body_len};
+  if (!mod_head(body, (coax_v_s64){h, 5})) { api_json(q->fd, 400, "{\"error\":\"not a report\"}"); return; }
+  struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+  long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+  if (h[0] < now - 120000 || h[0] > now + 120000) { api_json(q->fd, 400, "{\"error\":\"stale\"}"); return; }
+  if (signer > 0 && h[1] != signer) { api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
+  for (int64_t at = h[4]; at < body.count; ) {
+    int64_t e = at;
+    while (e < body.count && body.data[e] != '\n') e++;
+    coax_string line = {body.data + at, e - at};
+    int64_t f[6];
+    at = e + 1;
+    if (!mod_entry(line, (coax_v_s64){f, 6}) || f[2] > 40 || f[4] > 24) { api_log("room-mod-log: a line that is no action"); continue; }
+    char by[48], room[32];
+    snprintf(by, sizeof by, "%.*s", (int)f[2], line.data + f[1]);
+    snprintf(room, sizeof room, "%.*s", (int)f[4], line.data + f[3]);
+    mod_done done;
+    if (!room_mod_apply(db, (coax_string){line.data + f[5], line.count - f[5]}, by, "room", room, (int)h[1], (long long)h[2], (long long)f[0], &done)) {
+      api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return;
+    }
+  }
+  char out[64];
+  int64_t n = mod_receipt((coax_v_u8){(uint8_t *)out, sizeof out}, h[2], h[3]);
+  if (n < 0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  api_respond(q->fd, 200, "text/plain", NULL, out, (size_t)n);
 }
 
 // Everglade's world event (#12738; migrations/0118_room_events.sql; spec section 8):
@@ -1183,6 +1383,7 @@ bool player_route(const request *q) {
   if (!strcmp(rest, "room-checkpoint-v2")) { room_checkpoint(q,db,2); return true; }
   if (!strcmp(rest, "room-checkpoint")) { room_checkpoint(q, db, 1); return true; } // character-checkpoint-v1 (#12838)
   if (!strcmp(rest, "room-control")) { room_control(q, db); return true; }
+  if (!strcmp(rest, "room-mod-log")) { room_mod_log(q, db); return true; }   // a room's moderator actions (#13302)
   // the Everglade instance directory (rooms.c, #12717): a shard's report, and the instances' list
   if (rooms_route(q, db, rest)) return true;
 
@@ -1239,6 +1440,7 @@ bool player_route(const request *q) {
     return true;
   }
   if (!strcmp(rest, "room-kick")) { room_kick(q, db, key, site, body); free(body); return true; }
+  if (!strcmp(rest, "room-mod")) { room_mod(q, db, key, site, body); free(body); return true; }
   if (!strcmp(rest, "room-event")) { room_event(q, db, key, site, body); free(body); return true; }
 
   // A progress save: its bytes decoded and checked here, where CRC-32 is cheap.

@@ -20,11 +20,12 @@
 // two answers past the room's timeout; the API's XP must end exactly the XP each seat earned.
 //   ROOM_BIN=coax/web/room/bin/room coax/web/api/test.sh
 //   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... [ROOM_KEY=...] [ROOM_BIN=...] \
-//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|parties|items|stats|vitals|owner|travel|builds ...]
+//     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|moderation|invites|parties|items|stats|vitals|owner|travel|builds ...]
 // (from the repository root; no names runs them all, in that order).
 #load "api_harness.coax";
 #load "../../room/raid-identity.coax";
 #load "../../room/room-write.coax";   // a shard's own write key (#13260)
+#load "../../../../aethyr/session/moderation.coax";   // moderation's codec (#13302)
 
 cxproc_wall_us :: () -> int #foreign #effects(all);
 rc_wall_ms :: () -> int { return cxproc_wall_us() / 1000; }
@@ -380,6 +381,203 @@ rc_write_keys :: (t: [] Ap) {
   d: [1] Sb; sb(d[..], "t "); sb_int(d[..], now); sb(d[..], "\ns 3 2\n");
   st = rc_write_post(t, "/api/playtest/room-directory", "directory", 2, 2, sb_text(d[..]));
   ap_check(t, "room write: shard 2's key can't report shard 3's rooms", st == 403, ap_body(t));
+}
+
+// Moderation (#13302; docs/protocol/moderation-v1.md, migrations/0170_moderation.sql).
+// A player's call with its key: a text body to a route.
+md_call :: (t: [] Ap, route: string, body: string, key: string) -> int {
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  h := [2] string.["Content-Type: text/plain", sb_text(ph[..])];
+  return ap_call(t, "POST", route, body, h[..]);
+}
+// A record's line through the codec.
+md_record :: (o: [] Sb, verb: int, pid: string, minutes: int, reason: string) -> string {
+  b: [MOD_LINE] u8; n := moderation_write(b[..], 0, verb, pid, minutes, reason);
+  sb_clear(o); if n > 0 { sb(o, cast(string) b[0..<n]); }
+  return sb_text(o);
+}
+md_ticket :: (t: [] Ap, key: string) -> int { return md_call(t, "/api/playtest/room-ticket/everglade-9", "{}", key); }
+md_say :: (t: [] Ap, key: string) -> int {
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  return ap_call(t, "POST", RC, "{\"text\": \"a line\"}", h[..]);
+}
+// The log's rows about pid, as "VERB:OUTCOME:SOURCE VERB:OUTCOME:SOURCE ..." in order.
+md_log :: (t: [] Ap, pid: string, out: [] u8) -> string {
+  q: [1] Sb; sb(q[..], "select coalesce(string_agg(verb || ':' || outcome || ':' || source, ' ' order by n), '') from verse.mod_log where whom = '"); sb(q[..], pid); sb(q[..], "'");
+  return ap_sql(t, sb_text(q[..]), out);
+}
+md_count :: (t: [] Ap, reason: string) -> int {
+  out: [64] u8; q: [1] Sb; sb(q[..], "select coalesce((select n from verse.room_admission where reason = '"); sb(q[..], reason); sb(q[..], "'), 0)");
+  return rc_num(ap_sql(t, sb_text(q[..]), out[..]));
+}
+// Whether a statement on the log raises "append-only" (insufficient_privilege) and changes nothing. One
+// that runs fails the SQL, and so the run.
+md_frozen :: (t: [] Ap, statement: string) -> bool {
+  out: [64] u8; q: [1] Sb;
+  sb(q[..], "do $$ begin "); sb(q[..], statement); sb(q[..], "; raise exception 'the log was edited'; exception when insufficient_privilege then null; end $$; select 'raised'");
+  return ap_has(ap_sql(t, sb_text(q[..]), out[..]), "raised");   // (psql prints DO's tag first)
+}
+rc_moderation :: (t: [] Ap) {
+  out: [4096] u8; q: [1] Sb; rec: [1] Sb;
+  m: [1] Player; b: [1] Player; c: [1] Player;
+  r := ap_player(t, m[..]) && ap_player(t, b[..]) && ap_player(t, c[..]);
+  // m is one of Everglade's admins: a moderator
+  sb(q[..], "insert into verse.accounts (id, created_ms) values ('mod-test-account', 1) on conflict do nothing; update verse.players set account = 'mod-test-account' where id = '"); sb(q[..], pl_id(m[..]));
+  sb(q[..], "'; update verse.realm_rights set admins = array_append(admins, 'mod-test-account') where slug = 'everglade'");
+  ap_do(t, sb_text(q[..]));
+  ap_check(t, "moderation: before any action a player gets a ticket and says a line", md_ticket(t, pl_key(b[..])) == 200 && md_say(t, pl_key(b[..])) == 200, ap_body(t));
+  // only a moderator acts, and what a player tries is not logged
+  st := md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_BAN, pl_id(b[..]), 0, "a grudge"), pl_key(c[..]));
+  ap_check(t, "moderation: a player can't ban anyone, and nothing is logged", st == 403 && md_log(t, pl_id(b[..]), out[..]) == "" && md_ticket(t, pl_key(b[..])) == 200, ap_body(t));
+  // a ban: no ticket, no chat line
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_BAN, pl_id(b[..]), 0, "spam in chat, twice"), pl_key(m[..]));
+  ap_check(t, "moderation: a moderator bans a player for good", st == 200 && rc_is(ap_body(t), "ok", "true") && rc_is(ap_body(t), "verb", "ban") && rc_is(ap_body(t), "until", "0") && rc_is(ap_body(t), "player", pl_id(b[..])), ap_body(t));
+  before := md_count(t, "banned");
+  st = md_ticket(t, pl_key(b[..]));
+  ap_check(t, "moderation: a banned account gets no ticket, and the refusal is counted", st == 403 && rc_is(ap_body(t), "error", "banned") && rc_is(ap_body(t), "until", "0") && md_count(t, "banned") == before + 1, ap_body(t));
+  st = md_say(t, pl_key(b[..]));
+  ap_check(t, "moderation: nor a chat line", st == 403 && rc_is(ap_body(t), "error", "banned"), ap_body(t));
+  ap_check(t, "moderation: another player is untouched", md_ticket(t, pl_key(c[..])) == 200 && md_say(t, pl_key(c[..])) == 200, ap_body(t));
+  // the rooms hear it: room-control's kick lines name the banned
+  now: [1] Sb; sb_int(now[..], rc_wall_ms());
+  signed: [1] Sb; sb(signed[..], "t "); sb(signed[..], sb_text(now[..]));
+  mac: [64] u8; mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], ap_room_mac(t, sb_text(signed[..]), mac[..]));
+  ah: [1] Sb; sb(ah[..], "X-Room-At: "); sb(ah[..], sb_text(now[..]));
+  hc := [2] string.[sb_text(mh[..]), sb_text(ah[..])];
+  kl: [1] Sb; sb(kl[..], "\nkick "); sb(kl[..], pl_id(b[..])); sb(kl[..], "\n");
+  st = ap_call(t, "GET", "/api/playtest/room-control", "", hc[..]);
+  text: [1] Sb; sb(text[..], "\n"); sb(text[..], ap_body(t));
+  ap_check(t, "moderation: room-control tells the rooms to drop a banned player", st == 200 && ap_has(sb_text(text[..]), sb_text(kl[..])), ap_body(t));
+  // a timed ban that has ended holds no more (the row stays; the rules say it is over)
+  sb_clear(q[..]); sb(q[..], "update verse.mod_sanctions set until_ms = verse.now_ms() - 1 where who = '"); sb(q[..], pl_id(b[..])); sb(q[..], "' and kind = 'ban'");
+  ap_do(t, sb_text(q[..]));
+  ap_check(t, "moderation: a ban that ended lets them back", md_ticket(t, pl_key(b[..])) == 200 && md_say(t, pl_key(b[..])) == 200, ap_body(t));
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_BAN, pl_id(b[..]), 60, "an hour off"), pl_key(m[..]));
+  ap_check(t, "moderation: a ban of 60 minutes ends an hour from now", st == 200 && ap_member_int(ap_body(t), "until", 0) > rc_wall_ms() + 3500000 && ap_member_int(ap_body(t), "until", 0) < rc_wall_ms() + 3700000
+           && md_ticket(t, pl_key(b[..])) == 403, ap_body(t));
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_UNBAN, pl_id(b[..]), 0, "-"), pl_key(m[..]));
+  ap_check(t, "moderation: an unban lets them back", st == 200 && md_ticket(t, pl_key(b[..])) == 200, ap_body(t));
+  // a mute: no chat line and no inbox message, but a ticket
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_MUTE, pl_id(b[..]), 30, "spam in chat"), pl_key(m[..]));
+  ap_check(t, "moderation: a moderator mutes a player for 30 minutes", st == 200 && ap_member_int(ap_body(t), "until", 0) > rc_wall_ms(), ap_body(t));
+  st = md_say(t, pl_key(b[..]));
+  ap_check(t, "moderation: a muted account's chat line is refused, and it is told until when", st == 403 && rc_is(ap_body(t), "error", "muted") && ap_member_int(ap_body(t), "until", 0) > rc_wall_ms(), ap_body(t));
+  ib: [1] Sb; sb(ib[..], "{\"to\": \""); sb(ib[..], pl_id(c[..])); sb(ib[..], "\", \"text\": \"hello\"}");
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], pl_key(b[..]));
+  hj := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  st = ap_call(t, "POST", "/api/playtest/inbox", sb_text(ib[..]), hj[..]);
+  ap_check(t, "moderation: and its inbox message", st == 403 && rc_is(ap_body(t), "error", "muted"), ap_body(t));
+  ap_check(t, "moderation: a muted account still gets a ticket", md_ticket(t, pl_key(b[..])) == 200, ap_body(t));
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_UNMUTE, pl_id(b[..]), 0, "-"), pl_key(m[..]));
+  ap_check(t, "moderation: an unmute lets them speak", st == 200 && md_say(t, pl_key(b[..])) == 200, ap_body(t));
+  // a moderator is sanctioned like anyone, and can't lift their own
+  st = rc_signed(t, "POST", "/api/playtest/room-mod", md_record(rec[..], MOD_BAN, pl_id(m[..]), 0, "a rogue moderator"), t[0].admin_key);
+  ap_check(t, "moderation: a site admin bans a moderator", st == 200 && md_ticket(t, pl_key(m[..])) == 403, ap_body(t));
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_UNBAN, pl_id(m[..]), 0, "-"), pl_key(m[..]));
+  ap_check(t, "moderation: a self-unban is refused, and the ban holds", st == 403 && rc_is(ap_body(t), "error", "not on yourself") && md_ticket(t, pl_key(m[..])) == 403, ap_body(t));
+  ap_check(t, "moderation: the refused self-unban is in the log", md_log(t, pl_id(m[..]), out[..]) == "ban:ok:api unban:self:api", md_log(t, pl_id(m[..]), out[..]));
+  st = rc_signed(t, "POST", "/api/playtest/room-mod", md_record(rec[..], MOD_UNBAN, pl_id(m[..]), 0, "-"), t[0].admin_key);
+  ap_check(t, "moderation: another moderator lifts it", st == 200 && md_ticket(t, pl_key(m[..])) == 200, ap_body(t));
+  // what is no action
+  st = md_call(t, "/api/playtest/room-mod", "ban p-0000000000000000 0 a ghost", pl_key(m[..]));
+  ap_check(t, "moderation: no such player", st == 404, ap_body(t));
+  ap_check(t, "moderation: a ban with no reason, a look over the API and a line that is no record are refused",
+           md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_BAN, pl_id(b[..]), 0, "-"), pl_key(m[..])) == 400
+           && md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_LOOK, pl_id(b[..]), 0, "-"), pl_key(m[..])) == 400
+           && md_call(t, "/api/playtest/room-mod", "ban everyone", pl_key(m[..])) == 400 && md_ticket(t, pl_key(b[..])) == 200, ap_body(t));
+  // every action is a row: who, what, whom, why, when
+  ap_check(t, "moderation: every action on the player is in the log, in order", md_log(t, pl_id(b[..]), out[..]) == "ban:ok:api ban:ok:api unban:ok:api mute:ok:api unmute:ok:api", md_log(t, pl_id(b[..]), out[..]));
+  sb_clear(q[..]); sb(q[..], "select by_who || '|' || reason || '|' || minutes || '|' || (at_ms > 0) || '|' || (until_ms = 0) from verse.mod_log where whom = '"); sb(q[..], pl_id(b[..])); sb(q[..], "' order by n limit 1");
+  want: [1] Sb; sb(want[..], pl_id(m[..])); sb(want[..], "|spam in chat, twice|0|true|true");
+  ap_check(t, "moderation: a row says who, why and when", ap_sql(t, sb_text(q[..]), out[..]) == sb_text(want[..]), ap_sql(t, sb_text(q[..]), out[..]));
+  // a moderator reads the log; a player doesn't
+  lp: [1] Sb; sb(lp[..], "/api/playtest/room-mod?player="); sb(lp[..], pl_id(b[..]));
+  pm: [1] Sb; sb(pm[..], "X-Verse-Player: "); sb(pm[..], pl_key(m[..]));
+  hpm := [1] string.[sb_text(pm[..])];
+  st = ap_call(t, "GET", sb_text(lp[..]), "", hpm[..]);
+  ap_check(t, "moderation: a moderator reads the player's log", st == 200 && rc_count(ap_body(t), "log") == 5 && rc_is(ap_body(t), "log[0].verb", "ban") && rc_is(ap_body(t), "log[0].reason", "spam in chat, twice")
+           && rc_is(ap_body(t), "log[4].verb", "unmute") && rc_is(ap_body(t), "log[0].by_who", pl_id(m[..])) && rc_is(ap_body(t), "log[0].outcome", "ok"), ap_body(t));
+  pc: [1] Sb; sb(pc[..], "X-Verse-Player: "); sb(pc[..], pl_key(c[..]));
+  hpc := [1] string.[sb_text(pc[..])];
+  ap_check(t, "moderation: a player can't read the log", ap_call(t, "GET", sb_text(lp[..]), "", hpc[..]) == 403, ap_body(t));
+  // the log can't be edited: no update, delete or truncate
+  rows := rc_num(ap_sql(t, "select count(*) from verse.mod_log", out[..]));
+  ap_check(t, "moderation: UPDATE, DELETE and TRUNCATE on the log each raise", md_frozen(t, "update verse.mod_log set reason = 'rewritten'") && md_frozen(t, "delete from verse.mod_log")
+           && md_frozen(t, "truncate verse.mod_log"), "");
+  ap_check(t, "moderation: and every row is as it was", rows > 0 && rc_num(ap_sql(t, "select count(*) from verse.mod_log", out[..])) == rows
+           && ap_sql(t, "select count(*) from verse.mod_log where reason = 'rewritten'", out[..]) == "0", ap_sql(t, "select count(*) from verse.mod_log", out[..]));
+  // the old kick route is the same action, logged
+  kb: [1] Sb; sb(kb[..], "{\"player\": \""); sb(kb[..], pl_id(c[..])); sb(kb[..], "\"}");
+  phm: [1] Sb; sb(phm[..], "X-Verse-Player: "); sb(phm[..], pl_key(m[..]));
+  hm := [2] string.["Content-Type: application/json", sb_text(phm[..])];
+  kicked := md_count(t, "kicked");
+  st = ap_call(t, "POST", "/api/playtest/room-kick", sb_text(kb[..]), hm[..]);
+  ap_check(t, "moderation: room-kick keeps its answer", st == 200 && rc_is(ap_body(t), "kicked", "true") && rc_is(ap_body(t), "hours", "24"), ap_body(t));
+  st = md_ticket(t, pl_key(c[..]));
+  ap_check(t, "moderation: a kicked player gets no ticket", st == 403 && rc_is(ap_body(t), "error", "kicked") && ap_member_int(ap_body(t), "until", 0) > rc_wall_ms() && md_count(t, "kicked") == kicked + 1, ap_body(t));
+  sb_clear(kb[..]); sb(kb[..], "{\"player\": \""); sb(kb[..], pl_id(c[..])); sb(kb[..], "\", \"on\": false}");
+  st = ap_call(t, "POST", "/api/playtest/room-kick", sb_text(kb[..]), hm[..]);
+  ap_check(t, "moderation: and is let back", st == 200 && rc_is(ap_body(t), "kicked", "false") && md_ticket(t, pl_key(c[..])) == 200 && md_log(t, pl_id(c[..]), out[..]) == "kick:ok:api unkick:ok:api", ap_body(t));
+  hv: [1] Sb; sb(hv[..], "X-Verse-Player: "); sb(hv[..], pl_key(b[..]));
+  hb := [2] string.["Content-Type: application/json", sb_text(hv[..])];
+  ap_check(t, "moderation: room-kick is the admins' only, and a missing player is 404 for them", ap_call(t, "POST", "/api/playtest/room-kick", sb_text(kb[..]), hb[..]) == 403
+           && ap_call(t, "POST", "/api/playtest/room-kick", "{\"player\": \"p-0000000000000000\"}", hm[..]) == 404 && ap_call(t, "POST", "/api/playtest/room-kick", "{}", hm[..]) == 404
+           && ap_call(t, "POST", "/api/playtest/room-kick", "not json", hm[..]) == 400, ap_body(t));
+  // one of the team's: logged with the mark, and its refusals are not counted
+  sb_clear(q[..]); sb(q[..], "insert into analytics.team (kind, value) values ('player', '"); sb(q[..], pl_id(c[..])); sb(q[..], "')");
+  ap_do(t, sb_text(q[..]));
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_BAN, pl_id(c[..]), 0, "a test of the ban"), pl_key(m[..]));
+  before = md_count(t, "banned");
+  sb_clear(q[..]); sb(q[..], "select team from verse.mod_log where whom = '"); sb(q[..], pl_id(c[..])); sb(q[..], "' order by n desc limit 1");
+  ap_check(t, "moderation: a ban on one of the team's is marked, and its refused ticket is not counted", st == 200 && md_ticket(t, pl_key(c[..])) == 403 && md_count(t, "banned") == before
+           && ap_sql(t, sb_text(q[..]), out[..]) == "t", ap_body(t));
+  st = md_call(t, "/api/playtest/room-mod", md_record(rec[..], MOD_UNBAN, pl_id(c[..]), 0, "-"), pl_key(m[..]));
+  sb_clear(q[..]); sb(q[..], "delete from analytics.team where kind = 'player' and value = '"); sb(q[..], pl_id(c[..])); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  // a room's report: each action logged once by its operation ID, and applied with its row
+  if t[0].room_key == "" { return; }
+  gen := rc_wall_ms() - 60000;
+  rb: [4096] u8;
+  n := moderation_head_write(rb[..], rc_wall_ms(), 3, gen, 1);
+  n = moderation_entry_write(rb[..], n, 1, pl_id(m[..]), "everglade-9", MOD_KICK, pl_id(b[..]), 0, "griefing at the gate");
+  n = moderation_entry_write(rb[..], n, 2, pl_id(m[..]), "everglade-9", MOD_MUTE, pl_id(c[..]), 10, "spam in chat");
+  n = moderation_entry_write(rb[..], n, 3, pl_id(m[..]), "everglade-9", MOD_LOOK, pl_id(b[..]), 0, "-");
+  body := cast(string) rb[0..<n];
+  st = rc_write_post(t, "/api/playtest/room-mod-log", "moderation", 3, 3, body);
+  wr: [48] u8; wn := moderation_receipt_write(wr[..], gen, 1);
+  ops: [1] Sb; sb(ops[..], "select count(*) || ' ' || coalesce(string_agg(seq || ':' || verb || ':' || room || ':' || by_who, ' ' order by seq), '') from verse.mod_log where shard = 3 and gen = "); sb_int(ops[..], gen);
+  wl: [1] Sb; sb(wl[..], "3 1:kick:everglade-9:"); sb(wl[..], pl_id(m[..])); sb(wl[..], " 2:mute:everglade-9:"); sb(wl[..], pl_id(m[..])); sb(wl[..], " 3:look:everglade-9:"); sb(wl[..], pl_id(m[..]));
+  ap_check(t, "moderation: a shard's report answers a receipt, each action a row", st == 200 && ap_body(t) == cast(string) wr[0..<wn] && ap_sql(t, sb_text(ops[..]), out[..]) == sb_text(wl[..]), ap_body(t));
+  ap_check(t, "moderation: what the room's moderator did holds: the kicked player has no ticket, the muted one no line", md_ticket(t, pl_key(b[..])) == 403 && md_say(t, pl_key(c[..])) == 403 && md_ticket(t, pl_key(c[..])) == 200, ap_body(t));
+  // sent again (its receipt was lost), with a fourth action: the three are logged once, and a lifted kick is not set again
+  sb_clear(kb[..]); sb(kb[..], "{\"player\": \""); sb(kb[..], pl_id(b[..])); sb(kb[..], "\", \"on\": false}");
+  st = ap_call(t, "POST", "/api/playtest/room-kick", sb_text(kb[..]), hm[..]);
+  n = moderation_head_write(rb[..], rc_wall_ms(), 3, gen, 2);
+  n = moderation_entry_write(rb[..], n, 1, pl_id(m[..]), "everglade-9", MOD_KICK, pl_id(b[..]), 0, "griefing at the gate");
+  n = moderation_entry_write(rb[..], n, 2, pl_id(m[..]), "everglade-9", MOD_MUTE, pl_id(c[..]), 10, "spam in chat");
+  n = moderation_entry_write(rb[..], n, 3, pl_id(m[..]), "everglade-9", MOD_LOOK, pl_id(b[..]), 0, "-");
+  n = moderation_entry_write(rb[..], n, 4, pl_id(m[..]), "everglade-9", MOD_UNMUTE, pl_id(c[..]), 0, "-");
+  st = rc_write_post(t, "/api/playtest/room-mod-log", "moderation", 3, 3, cast(string) rb[0..<n]);
+  wn = moderation_receipt_write(wr[..], gen, 2);
+  sb_clear(ops[..]); sb(ops[..], "select count(*) from verse.mod_log where shard = 3 and gen = "); sb_int(ops[..], gen);
+  ap_check(t, "moderation: a shard's report sent again is logged exactly once, and only its new action is applied", st == 200 && ap_body(t) == cast(string) wr[0..<wn] && ap_sql(t, sb_text(ops[..]), out[..]) == "4"
+           && md_ticket(t, pl_key(b[..])) == 200 && md_say(t, pl_key(c[..])) == 200, ap_body(t));
+  // signed as itself only, for this purpose, and fresh
+  ap_check(t, "moderation: shard 2's key can't report shard 3's actions", rc_write_post(t, "/api/playtest/room-mod-log", "moderation", 2, 2, body) == 403, ap_body(t));
+  ap_check(t, "moderation: a MAC made for another purpose does not check", rc_write_post(t, "/api/playtest/room-mod-log", "vitals", 3, 3, body) == 401, ap_body(t));
+  n = moderation_head_write(rb[..], rc_wall_ms() - 600000, 3, gen, 3);
+  n = moderation_entry_write(rb[..], n, 9, pl_id(m[..]), "everglade-9", MOD_BAN, pl_id(b[..]), 0, "an old report");
+  ap_check(t, "moderation: a stale report is refused", rc_write_post(t, "/api/playtest/room-mod-log", "moderation", 3, 3, cast(string) rb[0..<n]) == 400 && md_ticket(t, pl_key(b[..])) == 200, ap_body(t));
+  ap_check(t, "moderation: a body that is no report is refused", rc_write_post(t, "/api/playtest/room-mod-log", "moderation", 3, 3, "t x\n") == 400, ap_body(t));
+  // a room's line whose moderator names themselves is logged as refused, and nothing is set
+  n = moderation_head_write(rb[..], rc_wall_ms(), 3, gen, 4);
+  n = moderation_entry_write(rb[..], n, 5, pl_id(m[..]), "everglade-9", MOD_BAN, pl_id(m[..]), 0, "oops");
+  st = rc_write_post(t, "/api/playtest/room-mod-log", "moderation", 3, 3, cast(string) rb[0..<n]);
+  sb_clear(ops[..]); sb(ops[..], "select outcome from verse.mod_log where shard = 3 and seq = 5 and gen = "); sb_int(ops[..], gen);
+  ap_check(t, "moderation: a report's action on the moderator themselves is logged as refused and sets nothing", st == 200 && ap_sql(t, sb_text(ops[..]), out[..]) == "self" && md_ticket(t, pl_key(m[..])) == 200, ap_body(t));
+  sb_clear(q[..]); sb(q[..], "update verse.realm_rights set admins = array_remove(admins, 'mod-test-account') where slug = 'everglade'");
+  ap_do(t, sb_text(q[..]));
 }
 
 // One item grant for PID at owner generation GEN and inventory version VER, signed with shard SHARD's
@@ -2264,7 +2462,7 @@ tool_main :: () -> int #export_c #effects(all) {
     print("fault-profile % slice=% elapsed_ms=%\n",profile,fault,proc_now_ms()-at);
     return ap_done(t[..],"MMO fault slice");
   }
-  names := [15] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints", "region", "drain", "deploy"];
+  names := [16] string.["admission", "chat", "events", "moderation", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints", "region", "drain", "deploy"];
   for name: names {
     run := args_count(a[..]) == 0;
     for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
@@ -2274,6 +2472,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if name == "admission" { rc_admission(t[..]); }
     if name == "chat" { rc_chat(t[..]); }
     if name == "events" { rc_events(t[..]); }
+    if name == "moderation" { rc_moderation(t[..]); }
     if name == "invites" { rc_invites(t[..]); }
     if name == "parties" {
       rc_parties(t[..]);

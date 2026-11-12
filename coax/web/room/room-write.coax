@@ -1,5 +1,5 @@
 // Room writes v1 (#13260, docs/protocol/room-write-v1.md): what a room shard posts to the API (vitals,
-// checkpoints, items, directory, stats, control) and what a deploy asks of a shard (drain), signed with
+// checkpoints, items, directory, stats, control, moderation) and what a deploy asks of a shard (drain), signed with
 // that shard's own key, so one shard's key writes for that shard only.
 //
 // The API holds a write master (one, or two while it rotates). Shard S's key is
@@ -53,7 +53,7 @@ rw_key32 :: (text: string, out: [] u8) -> bool #effects(all) {
   return r.error == NC_OK && r.written == 32 && out.count == 32;
 }
 rw_purpose_ok :: (p: string) -> bool #effects(all) {
-  return p == "vitals" || p == "checkpoint" || p == "items" || p == "directory" || p == "stats" || p == "control" || p == "drain";
+  return p == "vitals" || p == "checkpoint" || p == "items" || p == "directory" || p == "stats" || p == "control" || p == "drain" || p == "moderation";
 }
 // HMAC-SHA256 of input under key into out (32 bytes). It can't fail for its callers (a 32-byte key and out,
 // input within SHA-256's limit, buffers apart); were it to, out is zeros, which no check takes.
@@ -223,7 +223,7 @@ rw_test_mac :: (key_text: string, purpose: string, shard: int, body: string, out
   f[0] = 'G'; #assert !rw_key(cast(string) f[0..<73]).ok; f[0] = key[0];
   f[72] = 'A'; #assert !rw_key(cast(string) f[0..<73]).ok;
   #assert rw_purpose_ok("vitals") && rw_purpose_ok("checkpoint") && rw_purpose_ok("items") && rw_purpose_ok("directory");
-  #assert rw_purpose_ok("stats") && rw_purpose_ok("control") && rw_purpose_ok("drain") && !rw_purpose_ok("") && !rw_purpose_ok("Vitals");
+  #assert rw_purpose_ok("stats") && rw_purpose_ok("control") && rw_purpose_ok("drain") && rw_purpose_ok("moderation") && !rw_purpose_ok("") && !rw_purpose_ok("Vitals");
   #assert rw_lower_hex("09af") && !rw_lower_hex("/") && !rw_lower_hex(":") && !rw_lower_hex("`") && !rw_lower_hex("g") && !rw_lower_hex("A");
 }
 #test "room write: the MAC refuses bad keys, shards and lengths" {

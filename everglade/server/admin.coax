@@ -2,7 +2,9 @@
 // a seat, taken only by a room on this machine. rm_admin_local turns them on, and only for a room
 // started with --dev (the API's local stand-in) and listening on 127.0.0.1 (room-host.c; Cloud Run's
 // PORT binds 0.0.0.0, and production has no --dev). Every other room drops every X line unread, so
-// a crafted one to production does nothing.
+// a crafted one to production does nothing. The one exception is a moderator's command (#13302,
+// coax/web/room/room-mod.coax): "X " and a moderation record, taken by any room from a seat whose
+// signed ticket has the moderator bit, and logged.
 //   X heal            your Hit Points full, up from 0 too
 //   X god 0|1         nothing takes your Hit Points (they are put back full each tick)
 //   X ko 0|1          KNOCK OUT: the guard you drop stays at 1 HP, Unconscious (SRD p.17)
@@ -30,6 +32,8 @@ e2_admin_allowed :: (dev: bool, address: string) -> bool { return dev && address
 // A seat's X line (room-everglade.coax eg_heard), read with everglade-wire.coax wire_read_admin.
 e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   s := seat_id.value;
+  // a moderator's command (#13302): any room takes it, from a seat whose signed ticket has the moderator bit (coax/web/room/room-mod.coax)
+  if rm_mod_line(text) { rm_mod_heard(v, k, seat_id, text); return; }
   if !v[0].adm.local || s < 0 || s >= EG_SEATS { v[0].adm.dropped += 1; return; }
   v[0].adm.heard += 1;
   bit := 1 << s;
@@ -85,6 +89,7 @@ e2_admin_after :: (v: [] RmServer, k: int) {
 // The host's tick (room-tick.c everglade2_room_tick): a teleport asked for seat s, taken once, into out (x, z, yaw).
 rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #export_c #effects(all) {
   s := s_id.value;
+  if rm_mod_warp(v, k, s, out) { return true; }   // a moderator's move, in any room (coax/web/room/room-mod.coax, #13302)
   if !v[0].adm.local || k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < 3 { return false; }
   if v[0].adm.warp[k] != (1 << s) { return false; }
   v[0].adm.warp[k] = 0;

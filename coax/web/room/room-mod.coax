@@ -1,0 +1,300 @@
+// A moderator's commands in a room (#13302, AAA P5.8; docs/protocol/moderation-v1.md). A seat whose
+// signed ticket has the moderator bit (ACCT 2: one of the realm's admins, seat-ticket.coax) sends
+// "X " and a record, "VERB PID MINUTES REASON" (aethyr/session/moderation.coax, the one codec and the
+// rules):
+//   X look PID 0 -          the player's seat, Hit Points and place in this room, told to the moderator only
+//   X move PID 0 -          the player in this room is put where the moderator stands
+//   X kick PID 0 REASON     out of every room for 24 hours
+//   X mute PID MIN REASON   no chat line or inbox message for MIN minutes (0: no end)
+//   X ban PID MIN REASON    no seat ticket for MIN minutes (0: no end)
+//   X unkick|unmute|unban PID 0 -
+// Production's rooms take these; every other X line is still a local room's only (everglade/server/
+// admin.coax). A line from a seat that is not a moderator's does nothing and is told nothing.
+//
+// Every action taken is logged. The room writes the action's line into its outbox first, and takes the
+// action only when the line fits: a full outbox refuses the command, so nothing a moderator does goes
+// unlogged. The host posts the outbox to the API (POST /api/playtest/room-mod-log, signed for the
+// purpose "moderation", its own lane), which writes each line once into the append-only log and sets or
+// lifts the kick, mute or ban with it. A kick or ban reaches the rooms through the control poll's kick
+// lines (room-control.coax) within its two seconds. A line leaves the outbox only on the API's receipt.
+//   coax test --library coax/web/room/room.coax --steps 4000000000 --only "moderation"
+MOD_OUTBOX :: 32;                 // actions waiting for a receipt
+MOD_BATCH :: 16;                  // lines a post
+MOD_BODY :: 4608;                 // a post: its head and MOD_BATCH lines of MOD_LINE always fit
+MOD_RECEIPT_MS :: 15000;          // a post with no answer by then failed
+MOD_BACKOFF_MS :: 1000;           // the first retry's wait; it doubles each failure
+MOD_BACKOFF_MAX_MS :: 30000;
+
+RmModLine :: struct { live: bool; seq: int; n: int; text: [MOD_LINE] u8; }
+RmMod :: struct {
+  e: [MOD_OUTBOX] RmModLine;
+  seq: int;                       // the last action's number in this process
+  batch: int;                     // the last post's number (its receipt names it)
+  fly: bool; fly_at: int; fly_hi: int;   // the post in flight, and the newest action it carries
+  tries: int; retry_at: int;
+  out: [MOD_BODY] u8; out_n: int; mac: [64] u8;
+  // a moderator's move: each room's seat (as a bit; 0 none) to put at (x, z) facing yaw on the host's next tick
+  warp: [EG_ROOMS] int; warp_x: [EG_ROOMS] f32; warp_z: [EG_ROOMS] f32; warp_yaw: [EG_ROOMS] f32;
+  // counted since start
+  heard: int; dropped: int; refused: int; full: int; posts: int; failed: int; logged: int; late: int;
+}
+
+// Whether an X line is a moderator's record (else a local room's admin line).
+rm_mod_line :: (text: string) -> bool { return moderation_read(text, 2).ok; }
+// The live seat in everglade room k whose ticket names player pid (-1 none).
+rm_mod_seat :: (v: [] RmServer, k: int, pid: string) -> int {
+  for s: 0..<EG_SEATS {
+    if !v[0].eg[k].seat[s].live { continue; }
+    tk := eg_ticket(v, k, SeatId.{value = s});
+    if tk.ok && cast(string) tk.pid[0..<tk.pid_n] == pid { return s; }
+  }
+  return -1;
+}
+// The action's line into the outbox: false when it is full, or the line is not one (nothing is taken).
+rm_mod_offer :: (v: [] RmServer, by: string, room: string, verb: int, pid: string, minutes: int, reason: string) -> bool {
+  slot := -1;
+  for i: 0..<MOD_OUTBOX { if !v[0].mod.e[i].live && slot < 0 { slot = i; } }
+  if slot < 0 { v[0].mod.full += 1; return false; }
+  e := v[0].mod.e[slot..<slot + 1];
+  n := moderation_entry_write(e[0].text[..], 0, v[0].mod.seq + 1, by, room, verb, pid, minutes, reason);
+  if n < 0 { return false; }
+  v[0].mod.seq += 1;
+  e[0].live = true; e[0].seq = v[0].mod.seq; e[0].n = n;
+  return true;
+}
+rm_mod_reply :: (v: [] RmServer, k: int, seat: int, done: bool, verb: int, pid: string, detail: string) {
+  conn := v[0].eg[k].seat[seat].conn;
+  if conn < 0 { return; }
+  b: [MOD_LINE] u8;
+  n := moderation_reply_write(b[..], done, verb, pid, detail);
+  if n > 0 { rl_queue(v, v[0].eg[k].relay, conn, -1, cast(string) b[0..<n], ""); }
+}
+// A whole number of thousandths onto b (a place, in the look's answer).
+rm_mod_milli :: (b: [] u8, at: int, x: f32) -> int {
+  m := cast(int) (x * 1000);
+  n := at;
+  if m < 0 { n = tk_add(b, n, "-"); m = -m; }
+  return rv_int(b, n, m);
+}
+// A seat's X line that is a record (rm_mod_line), in everglade room k.
+rm_mod_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
+  seat := seat_id.value;
+  r := moderation_read(text, 2);
+  tk := eg_ticket(v, k, seat_id);
+  by := cast(string) tk.pid[0..<tk.pid_n];
+  pid := text[r.pid_at..<r.pid_at + r.pid_n]; reason := text[r.reason_at..<r.reason_at + r.reason_n];
+  st := moderation_judge(r.verb, tk.ok && tk.admin, by == pid, r.minutes, reason);
+  if st == MOD_NOT_MODERATOR { v[0].mod.dropped += 1; return; }
+  v[0].mod.heard += 1;
+  if st != MOD_OK { v[0].mod.refused += 1; rm_mod_reply(v, k, seat, false, r.verb, pid, ifx st == MOD_SELF then "not on yourself" else "not a command"); return; }
+  // look and move are about a player seated in this room
+  target := rm_mod_seat(v, k, pid);
+  here := r.verb == MOD_LOOK || r.verb == MOD_MOVE;
+  if here && target < 0 { v[0].mod.refused += 1; rm_mod_reply(v, k, seat, false, r.verb, pid, "not in this room"); return; }
+  // logged first: the action is taken only when its line is in the outbox
+  m := v[0].relays[v[0].eg[k].relay];
+  if !rm_mod_offer(v, by, cast(string) m.code[0..<m.code_n], r.verb, pid, r.minutes, reason) {
+    v[0].mod.refused += 1; rm_mod_reply(v, k, seat, false, r.verb, pid, "the log is full: try again"); return;
+  }
+  if r.verb == MOD_MOVE {
+    p := v[0].eg[k].seat[seat].pose;
+    v[0].mod.warp[k] = 1 << target; v[0].mod.warp_x[k] = p.x; v[0].mod.warp_z[k] = p.z; v[0].mod.warp_yaw[k] = p.yaw;
+  }
+  if r.verb == MOD_LOOK {
+    c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + target]; p := v[0].eg[k].seat[target].pose;
+    d: [96] u8;
+    n := tk_add(d[..], 0, "seat "); n = rv_int(d[..], n, target); n = tk_add(d[..], n, " hp "); n = rv_int(d[..], n, c.hp);
+    n = tk_add(d[..], n, "/"); n = rv_int(d[..], n, c.hp_max); n = tk_add(d[..], n, " at "); n = rm_mod_milli(d[..], n, p.x);
+    n = tk_add(d[..], n, " "); n = rm_mod_milli(d[..], n, p.z);
+    rm_mod_reply(v, k, seat, true, r.verb, pid, cast(string) d[0..<n]);
+    return;
+  }
+  rm_mod_reply(v, k, seat, true, r.verb, pid, ifx here then "done" else "logged: it holds within seconds");
+}
+// The host's tick (room-tick.c, through rm_e2_admin_warp): a moderator's move of seat s, taken once, into out (x, z, yaw).
+rm_mod_warp :: (v: [] RmServer, k: int, s: int, out: [] f32) -> bool {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < 3 || v[0].mod.warp[k] != (1 << s) { return false; }
+  v[0].mod.warp[k] = 0;
+  out[0] = v[0].mod.warp_x[k]; out[1] = v[0].mod.warp_z[k]; out[2] = v[0].mod.warp_yaw[k];
+  return true;
+}
+
+// Actions no receipt covers yet.
+rm_mod_pending :: (v: [] RmServer) -> int #export_c #effects(all) {
+  n := 0;
+  for i: 0..<MOD_OUTBOX { if v[0].mod.e[i].live { n += 1; } }
+  return n;
+}
+// The outbox's next post into mod.out, its MAC in mod.mac: its length, or 0 when nothing is due. One
+// post flies at a time; a failed one is sent again after a backoff.
+rm_mod_due :: (v: [] RmServer) -> int #export_c #effects(all) {
+  v[0].mod.out_n = 0;
+  if !rm_writes(v) || rm_mod_pending(v) == 0 { return 0; }
+  if v[0].vit.gen == 0 { v[0].vit.gen = v[0].wall_ms; }   // this process's generation, the vitals' too
+  if v[0].mod.fly {
+    if v[0].wall_ms - v[0].mod.fly_at < MOD_RECEIPT_MS { return 0; }
+    rm_mod_failed(v);
+  }
+  if v[0].wall_ms < v[0].mod.retry_at { return 0; }
+  o := v[0].mod.out[..];
+  batch := v[0].mod.batch + 1;
+  n := moderation_head_write(o, v[0].wall_ms, v[0].shard, v[0].vit.gen, batch);
+  if n < 0 { return 0; }
+  // the oldest MOD_BATCH actions, in order
+  m := 0; hi := 0; last := 0;
+  while m < MOD_BATCH {
+    best := -1;
+    for i: 0..<MOD_OUTBOX { c := v[0].mod.e[i]; if c.live && c.seq > last && (best < 0 || c.seq < v[0].mod.e[best].seq) { best = i; } }
+    if best < 0 { break; }
+    e := v[0].mod.e[best];
+    for i: 0..<e.n { o[n + i] = e.text[i]; }
+    n += e.n; last = e.seq; hi = e.seq; m += 1;
+  }
+  if !rm_write_mac(v, "moderation", cast(string) o[0..<n], v[0].mod.mac[..]) { return 0; }
+  v[0].mod.batch = batch;
+  v[0].mod.fly = true; v[0].mod.fly_at = v[0].wall_ms; v[0].mod.fly_hi = hi;
+  v[0].mod.posts += 1;
+  v[0].mod.out_n = n;
+  return n;
+}
+rm_mod_failed :: (v: [] RmServer) {
+  v[0].mod.fly = false;
+  v[0].mod.failed += 1;
+  v[0].mod.tries += 1;
+  d := MOD_BACKOFF_MS;
+  for t: 1..<v[0].mod.tries { if d < MOD_BACKOFF_MAX_MS { d *= 2; } }
+  if d > MOD_BACKOFF_MAX_MS { d = MOD_BACKOFF_MAX_MS; }
+  v[0].mod.retry_at = v[0].wall_ms + d;
+}
+// The API's answer to post BATCH (the host's: STATUS the HTTP status, 0 none in time, and its body). A
+// 2xx "receipt GEN BATCH" of this process's post takes its actions out of the outbox; anything else is
+// a failure, and they are sent again.
+rm_mod_answer :: (v: [] RmServer, batch: int, status: int, body: string) #export_c #effects(all) {
+  if !v[0].mod.fly || batch != v[0].mod.batch { v[0].mod.late += 1; return; }
+  if status < 200 || status >= 300 || !moderation_receipt_ok(body, v[0].vit.gen, batch) { rm_mod_failed(v); return; }
+  for i: 0..<MOD_OUTBOX {
+    if v[0].mod.e[i].live && v[0].mod.e[i].seq <= v[0].mod.fly_hi { v[0].mod.e[i].live = false; v[0].mod.logged += 1; }
+  }
+  v[0].mod.fly = false; v[0].mod.tries = 0; v[0].mod.retry_at = 0;
+}
+// --dev with no API to post to: the stand-in takes the post in flight as logged.
+rm_mod_local :: (v: [] RmServer) #export_c #effects(all) {
+  if !v[0].mod.fly { return; }
+  b: [48] u8;
+  n := moderation_receipt_write(b[..], v[0].vit.gen, v[0].mod.batch);
+  rm_mod_answer(v, v[0].mod.batch, 200, cast(string) b[0..<n]);
+}
+// The room is draining: the outbox goes at the next call, without waiting out a backoff.
+rm_mod_flush :: (v: [] RmServer) #export_c #effects(all) { v[0].mod.retry_at = 0; }
+
+// A moderator's seat and a player's, each on a signed ticket, in one room: conn 0 the moderator (ACCT 2),
+// conn 1 the player. The room's slot.
+rm_mod_test_room :: (v: [] RmServer, key: string, now: int, admin_pid: string, pid: string) -> int {
+  rm_init(v); rm_clock(v, 0, now);
+  rm_ticket_key(v, key, true);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign_admin_wanted(key, admin_pid, "", "pair-e2-tk", 0, now + 600000, 0, t[..]);
+  #assert rm_join(v, 0, tk_test_ask(r[..], t[..], n)) == 0;
+  n = tk_sign_xp(key, pid, false, "", "pair-e2-tk", 0, now + 600000, -1, 0, t[..]);
+  #assert rm_join(v, 1, tk_test_ask(r[..], t[..], n)) == 1;   // the second seat
+  rm_heard(v, 0, "H 5 ranger.0.0.0 srd-fighter 0 -"); rm_heard(v, 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  k := eg_room_at(v, v[0].conns[0].relay);
+  eg_test_tick(v, k);
+  return k;
+}
+// The frames waiting for conn c, each on its own line, into out; the queue is emptied.
+rm_mod_test_told :: (v: [] RmServer, c: int, out: [] u8) -> string {
+  n := 0;
+  while true {
+    m := rm_relay_next(v);
+    if m == 0 { break; }
+    if !v[0].rto[c] || m < 2 || v[0].rout[0] != 'q' || v[0].rout[1] != ' ' { continue; }
+    for i: 0..<m { out[n + i] = v[0].rout[i]; }
+    out[n + m] = '\n'; n += m + 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "moderation: a moderator's seat looks, moves, kicks, mutes and bans, each logged before it is done; a player's line does nothing" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; o: [2048] u8; w: [3] f32;
+  now := 1762190000000;
+  k := rm_mod_test_room(v[..], "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", now, "p-00000000000000aa", "p-00000000000000bb");
+  _ := rm_mod_test_told(v[..], 0, o[..]);
+  // the player's own commands, and a player naming the moderator: dropped unread, nothing told, nothing logged
+  for line: [4] string.["X ban p-00000000000000aa 0 a grudge", "X look p-00000000000000aa 0 -", "X unban p-00000000000000bb 0 -", "X kick p-00000000000000bb 0 why"] { rm_heard(v[..], 1, line); }
+  #assert v[0].mod.dropped == 4 && v[0].mod.heard == 0 && rm_mod_pending(v[..]) == 0 && v[0].mod.seq == 0;
+  #assert rm_mod_test_told(v[..], 1, o[..]) == "" && v[0].adm.heard == 0;
+  // the moderator looks
+  c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + 1..<EGB_SEAT + 2]; c[0].hp = 7;
+  rm_heard(v[..], 0, "X look p-00000000000000bb 0 -");
+  told := rm_mod_test_told(v[..], 0, o[..]);
+  #assert v[0].conns[1].seat == 1 && told.count > 43 && told[0..<43] == "q ok look p-00000000000000bb 0 seat 1 hp 7/" && rm_mod_pending(v[..]) == 1 && v[0].mod.heard == 1;
+  #assert rm_mod_test_told(v[..], 1, o[..]) == "";   // the moderator only
+  // moves the player to where the moderator stands: the host's tick takes it once
+  rm_heard(v[..], 0, "X move p-00000000000000bb 0 -");
+  me := v[0].eg[k].seat[0].pose;
+  #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, w[..]) && rm_e2_admin_warp(v[..], k, SeatId.{value = 1}, w[..]) && w[0] == me.x && w[1] == me.z && w[2] == me.yaw;
+  #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 1}, w[..]) && rm_mod_test_told(v[..], 0, o[..]) == "q ok move p-00000000000000bb 0 done\n";
+  // kicks, mutes, bans and lifts: logged for the API, which sets them
+  rm_heard(v[..], 0, "X kick p-00000000000000bb 0 spam in chat");
+  rm_heard(v[..], 0, "X mute p-00000000000000bb 30 spam in chat");
+  rm_heard(v[..], 0, "X ban p-00000000000000cc 0 a cheat, twice");   // someone not in this room
+  rm_heard(v[..], 0, "X unmute p-00000000000000bb 0 -");
+  told = rm_mod_test_told(v[..], 0, o[..]);
+  #assert told == "q ok kick p-00000000000000bb 0 logged: it holds within seconds\nq ok mute p-00000000000000bb 0 logged: it holds within seconds\nq ok ban p-00000000000000cc 0 logged: it holds within seconds\nq ok unmute p-00000000000000bb 0 logged: it holds within seconds\n";
+  #assert rm_mod_pending(v[..]) == 6 && v[0].mod.seq == 6;
+  // refused, told why, never logged: on themselves, a look at someone not here, a ban with no reason, minutes on a kick
+  for line: [5] string.["X ban p-00000000000000aa 0 oops", "X unban p-00000000000000aa 0 -", "X look p-00000000000000cc 0 -", "X ban p-00000000000000bb 0 -", "X kick p-00000000000000bb 5 why"] { rm_heard(v[..], 0, line); }
+  told = rm_mod_test_told(v[..], 0, o[..]);
+  #assert told == "q no ban p-00000000000000aa 0 not on yourself\nq no unban p-00000000000000aa 0 not on yourself\nq no look p-00000000000000cc 0 not in this room\nq no ban p-00000000000000bb 0 not a command\nq no kick p-00000000000000bb 0 not a command\n";
+  #assert rm_mod_pending(v[..]) == 6 && v[0].mod.refused == 5;
+  // a moderator may look at themselves
+  rm_heard(v[..], 0, "X look p-00000000000000aa 0 -");
+  #assert rm_mod_pending(v[..]) == 7 && rm_mod_test_told(v[..], 0, o[..]).count > 30;
+  // a local room's admin lines are still a local room's only
+  rm_heard(v[..], 0, "X heal"); rm_heard(v[..], 0, "X god 1");
+  #assert v[0].adm.dropped == 2 && v[0].adm.heard == 0 && v[0].adm.god[k] == 0;
+  // the report: every action, in order, signed for the purpose "moderation"
+  n := rm_mod_due(v[..]);
+  body := cast(string) v[0].mod.out[0..<n];
+  h := moderation_head_read(body);
+  gen := v[0].vit.gen;
+  want := "1 p-00000000000000aa pair-e2-tk look p-00000000000000bb 0 -\n2 p-00000000000000aa pair-e2-tk move p-00000000000000bb 0 -\n3 p-00000000000000aa pair-e2-tk kick p-00000000000000bb 0 spam in chat\n4 p-00000000000000aa pair-e2-tk mute p-00000000000000bb 30 spam in chat\n5 p-00000000000000aa pair-e2-tk ban p-00000000000000cc 0 a cheat, twice\n6 p-00000000000000aa pair-e2-tk unmute p-00000000000000bb 0 -\n7 p-00000000000000aa pair-e2-tk look p-00000000000000aa 0 -\n";
+  #assert n > 0 && h.ok && h.at == v[0].wall_ms && h.shard == 1 && h.gen == gen && gen > 0 && h.batch == 1 && body[h.lines..<n] == want;
+  #assert v[0].mod.fly && v[0].mod.batch == 1 && rm_mod_due(v[..]) == 0;
+  // a failure sends it again after the backoff; the receipt empties the outbox
+  rb: [48] u8; r3: [48] u8;
+  rm_mod_answer(v[..], 1, 500, "");
+  #assert rm_mod_pending(v[..]) == 7 && v[0].mod.failed == 1 && rm_mod_due(v[..]) == 0;
+  rm_clock(v[..], v[0].mono_ms + 1000, v[0].wall_ms + 1000);
+  #assert rm_mod_due(v[..]) > 0 && v[0].mod.batch == 2;
+  rm_mod_answer(v[..], 1, 200, cast(string) rb[0..<moderation_receipt_write(rb[..], gen, 1)]); #assert rm_mod_pending(v[..]) == 7 && v[0].mod.late == 1;   // the first post's, late
+  rm_mod_answer(v[..], 2, 200, cast(string) r3[0..<moderation_receipt_write(r3[..], gen, 3)]); #assert rm_mod_pending(v[..]) == 7 && v[0].mod.failed == 2;   // another post's receipt
+  rm_clock(v[..], v[0].mono_ms + 3000, v[0].wall_ms + 3000);
+  #assert rm_mod_due(v[..]) > 0 && v[0].mod.batch == 3;
+  rm_heard(v[..], 0, "X look p-00000000000000bb 0 -");   // taken while the post flies: it waits for the next
+  rm_mod_answer(v[..], 3, 200, cast(string) r3[0..<moderation_receipt_write(r3[..], gen, 3)]);
+  #assert rm_mod_pending(v[..]) == 1 && v[0].mod.logged == 7 && !v[0].mod.fly;
+  n = rm_mod_due(v[..]);
+  h = moderation_head_read(cast(string) v[0].mod.out[0..<n]);
+  #assert n > 0 && h.ok && h.batch == 4 && cast(string) v[0].mod.out[h.lines..<n] == "8 p-00000000000000aa pair-e2-tk look p-00000000000000bb 0 -\n";
+  rm_mod_local(v[..]); #assert rm_mod_pending(v[..]) == 0 && v[0].mod.logged == 8 && rm_mod_due(v[..]) == 0;
+}
+#test "moderation: a full log refuses the command: no action goes unlogged" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; o: [8192] u8; w: [3] f32;
+  now := 1762190000000;
+  k := rm_mod_test_room(v[..], "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", now, "p-00000000000000aa", "p-00000000000000bb");
+  for i: 0..<MOD_OUTBOX { rm_heard(v[..], 0, "X look p-00000000000000bb 0 -"); _ := rm_mod_test_told(v[..], 0, o[..]); rm_clock(v[..], v[0].mono_ms + 100, v[0].wall_ms + 100); }
+  #assert rm_mod_pending(v[..]) == MOD_OUTBOX && v[0].mod.full == 0;
+  rm_heard(v[..], 0, "X move p-00000000000000bb 0 -");
+  #assert rm_mod_test_told(v[..], 0, o[..]) == "q no move p-00000000000000bb 0 the log is full: try again\n";
+  #assert v[0].mod.full == 1 && !rm_e2_admin_warp(v[..], k, SeatId.{value = 1}, w[..]) && rm_mod_pending(v[..]) == MOD_OUTBOX && v[0].mod.seq == MOD_OUTBOX;
+  // a post carries MOD_BATCH lines; its receipt makes room
+  n := rm_mod_due(v[..]);
+  lines := 0; for i: 0..<n { if v[0].mod.out[i] == '\n' { lines += 1; } }
+  #assert lines == MOD_BATCH + 2 && n <= MOD_BODY;
+  rm_mod_local(v[..]);
+  #assert rm_mod_pending(v[..]) == MOD_OUTBOX - MOD_BATCH;
+  rm_heard(v[..], 0, "X move p-00000000000000bb 0 -");
+  #assert rm_e2_admin_warp(v[..], k, SeatId.{value = 1}, w[..]) && v[0].mod.seq == MOD_OUTBOX + 1;
+}

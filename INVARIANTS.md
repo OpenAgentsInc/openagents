@@ -1489,6 +1489,27 @@ holds game items only, never money. Checks: `aethyr/session/ledger.coax` and
 `coax/web/api/item-policy.coax` tests with `coax mutate` at zero survivors,
 and `coax/web/api/tests/room_checks.coax` items.
 
+## Every moderator action is logged before it is done, and the log is never edited
+
+A ban, a mute, a kick and a moderator's look or move have one set of rules
+and one codec, `aethyr/session/moderation.coax` (`#authority`; #13302,
+[moderation v1](docs/protocol/moderation-v1.md)). A room asks them, and the
+API asks them through `coax/web/api/moderation-policy.coax`; SQL decides
+nothing (migration 0170). Only a moderator acts: a seat whose signed ticket
+has the moderator bit, or a caller the API finds among the realm's admins.
+A moderator never acts on themselves, so none lifts their own sanction. A
+banned or kicked account gets no seat ticket, and a banned or muted one
+says no chat line and sends no inbox message, while the kept row holds. A
+room takes an action only after its line is in the log's outbox, and
+refuses the command when the outbox is full. The API writes the log row in
+the same statement as the sanction it sets or lifts, once for each
+operation ID (shard, generation, sequence). `verse.mod_log` is append-only:
+`UPDATE`, `DELETE` and `TRUNCATE` raise for every role. Checks:
+`aethyr/session/moderation.coax` and `coax/web/api/moderation-policy.coax`
+tests with `coax mutate` at zero survivors, `room.coax` "moderation",
+`coax/web/api/tests/room_checks.coax` moderation, and the profile check
+`coax/web/room/moderation-profile.coax`.
+
 ## A critical counter moves only through a named integer operation
 
 Owner generations, the ledger's inventory versions, entity slot generations,

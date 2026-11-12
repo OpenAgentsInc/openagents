@@ -1,8 +1,8 @@
 // Independent bounded lanes for platform HTTP effects. The SDK moves one
 // datagram per offer and one complete response; Coax owns admission/retirement.
 #authority;
-BG_LANES::6;
-BG_CONTROL::0;BG_WORLD::1;BG_VITALS::2;BG_CHECKPOINT::3;BG_DIRECTORY::4;BG_STATS::5;
+BG_LANES::7;
+BG_CONTROL::0;BG_WORLD::1;BG_VITALS::2;BG_CHECKPOINT::3;BG_DIRECTORY::4;BG_STATS::5;BG_MOD::6;
 BG_DEADLINE::15000;
 BgFlight::struct{id:int;at:int;revision:int;}
 BgBudget::struct{
@@ -13,18 +13,18 @@ BgBudget::struct{
 #test "background lanes reserve independently and refuse an occupied lane" {
   b:[1]BgBudget;
   for k:0..<BG_LANES{#assert bg_offer(b[..],k,100)==k+1;}
-  #assert bg_offer(b[..],0,101)==0&&b[0].refused==1&&b[0].offered==6;
+  #assert bg_offer(b[..],0,101)==0&&b[0].refused==1&&b[0].offered==7;
   #assert !bg_ready(b[..],0,15099)&&bg_ready(b[..],0,15100);
-  #assert bg_offer(b[..],0,15100)==7&&b[0].expired==1;
+  #assert bg_offer(b[..],0,15100)==8&&b[0].expired==1;
   #assert !bg_finish(b[..],0,1,true,15100)&&b[0].late==1;
-  #assert bg_finish(b[..],0,7,false,15100)&&b[0].failed==1;
-  #assert !bg_ready(b[..],0,16099)&&bg_offer(b[..],0,16100)==8;
+  #assert bg_finish(b[..],0,8,false,15100)&&b[0].failed==1;
+  #assert !bg_ready(b[..],0,16099)&&bg_offer(b[..],0,16100)==9;
   for k:1..<BG_LANES{#assert b[0].slot[k].id==k+1;}
 }
 #test "background admission rejects invalid clocks lanes and exhausted identity without changing owners" {
-  b:[1]BgBudget;#assert !bg_ready(b[..],-1,0)&&!bg_ready(b[..],6,0)&&!bg_ready(b[..],0,-1);
-  #assert bg_offer(b[..],-1,0)==0&&bg_offer(b[..],6,0)==0&&bg_offer(b[..],0,-1)==0;
-  #assert !bg_finish(b[..],-1,1,true,0)&&!bg_finish(b[..],6,1,true,0)&&!bg_finish(b[..],0,0,true,0);
+  b:[1]BgBudget;#assert !bg_ready(b[..],-1,0)&&!bg_ready(b[..],7,0)&&!bg_ready(b[..],0,-1);
+  #assert bg_offer(b[..],-1,0)==0&&bg_offer(b[..],7,0)==0&&bg_offer(b[..],0,-1)==0;
+  #assert !bg_finish(b[..],-1,1,true,0)&&!bg_finish(b[..],7,1,true,0)&&!bg_finish(b[..],0,0,true,0);
   #assert bg_offer(b[..],0,300)==1&&!bg_ready(b[..],0,299);
   b[0].next=9223372036854775807;#assert bg_offer(b[..],1,300)==0&&b[0].slot[1].id==0;
   #assert !bg_finish(b[..],0,1,true,299)&&b[0].slot[0].id==1&&b[0].late==4;

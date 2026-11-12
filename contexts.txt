@@ -10,7 +10,7 @@ world folders: everglade/world/ everglade/server/ everglade/server/legacy/ everg
 creatures folders: everglade/model/ everglade/server/ may load: combat-rules world engine toolchain
 items folders: everglade/model/ aethyr/session/ledger.coax coax/web/api/item-policy.coax may load: characters protocol toolchain
 quests folders: everglade/model/ may load: characters world items combat-rules toolchain
-room-session folders: aethyr/session/ aethyr/net/ coax/web/room/ may load: engine protocol combat-rules characters world creatures items identity toolchain
+room-session folders: aethyr/session/ aethyr/net/ coax/web/room/ coax/web/api/moderation-policy.coax may load: engine protocol combat-rules characters world creatures items identity toolchain
 realm-authoring folders: aethyr/forge/ apps/aethyrforge-desktop/ apps/openagents-web/worldbuilder coax/web/api/worldbuilder.c coax/web/api/realms.c may load: engine protocol toolchain
 identity folders: coax/web/api/auth may load: nostr toolchain
 payments folders: pay/ coax/lib/bitcoin/ coax/lib/lightning/ coax/lib/lnaddr/ coax/lib/nostr/nipkeys nostr/examples/agent-treasury.coax nostr/examples/checks/agent-treasury.coax nostr/tools/treasury.coax may load: nostr identity toolchain
