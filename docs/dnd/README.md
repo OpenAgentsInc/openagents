@@ -198,7 +198,7 @@ separate rule set.
 
 ### 4. World tweaks
 
-Implemented timing subset: [timing-profiles.md](timing-profiles.md). Strict
+Implemented timing subset: [timing-profiles.md](timing-profiles.md). Time to kill for every class at levels 1 to 6 in the room's rules: [encounter-ttk.md](encounter-ttk.md) (`coax/web/room/encounter-sim.coax`, #13288). Strict
 and action-combat presets now replace direct battle beat/recharge assignments.
 The broader profile syntax and all overrides below remain implementation work.
 

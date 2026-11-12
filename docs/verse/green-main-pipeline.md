@@ -273,7 +273,11 @@ and runs only what the commits between them can have changed:
   and the committed shaders against their Coax;
 - the room build, when the change reaches one of its units, as its own job
   (one to two minutes with its cache), and in it Everglade II against
-  production ("The comparing gates", below);
+  production ("The comparing gates", below) and the encounter table
+  (`coax/web/room/encounter-sim.coax --check docs/dnd/encounter-ttk.md`,
+  #13288): a change that moves a class's time to kill, damage a second or
+  wins by more than 25% is red, its log naming each moved row; a change
+  meant to move them writes the table again (`--write`) in the same commit;
 - the allowlist counts against `main-green`, with `git` alone on the watcher;
 - `coax/tests/run.sh` in eight parts, when compiler sources changed.
 

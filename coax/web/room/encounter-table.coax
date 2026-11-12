@@ -1,0 +1,187 @@
+// The encounter simulator's table (encounter-sim.coax, #13288): one row for each encounter, class and
+// level, written as a Markdown table row, read back from the pinned table (docs/dnd/encounter-ttk.md),
+// and compared with it. A row moved more than a set share is a balance change the after-landing check
+// flags (coax/remote/check.sh room): rerun the simulator with --write in the same commit when it is meant.
+//   coax test coax/web/room/encounter-table.coax --library
+//
+// Every number is kept in tenths (TTK 12.3 s is 123), so a row read back is the row written.
+
+ES_ENCOUNTERS :: 2;
+ES_WOLVES :: 0; ES_GUARD :: 1;
+ES_ENC_NAME :: [2] string.["wolves", "guard"];
+ES_CLASS_NAME :: [12] string.["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"];
+ES_LEVELS :: 6;
+ES_ROWS :: ES_ENCOUNTERS * 12 * ES_LEVELS;
+ES_SHARE :: 25;   // percent: a row whose TTK, damage a second or wins move more than this is flagged
+ES_DPS_FLOOR :: 10;   // tenths: a damage rate this small or smaller moves by at least a whole point before it counts
+ES_TTK_FLOOR :: 10;   // tenths: a time to kill this short or shorter moves by at least a quarter second before it counts
+
+// One encounter, class and level over n fights (seeds): wins (every foe down before the player),
+// downs (the player at 0 Hit Points), the mean time to kill of the wins (-1: none won), and per fight
+// the mean damage dealt a second of fighting, healing, damage taken, Hit Points left and resources left
+// (spell slots, limited uses and Focus), the last two in percent.
+EsRow :: struct {
+  enc: int; klass: int; level: int;
+  n: int; wins: int; downs: int;
+  ttk: int = -1; dps: int; healed: int; taken: int;
+  hp: int; res: int;
+}
+
+// ---- writing
+es_put :: (out: [] u8, at: int, t: string) -> int {
+  n := at;
+  for ch: t { if n >= out.count { break; } out[n] = ch; n += 1; }
+  return n;
+}
+es_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  if x < 0 { n = es_put(out, n, "-"); x = -x; }
+  digits: [20] u8; c := 0;
+  while true { digits[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; if x == 0 || c >= 20 { break; } }
+  while c > 0 && n < out.count { c -= 1; out[n] = digits[c]; n += 1; }
+  return n;
+}
+// A number in tenths, as "12.3" (-1 or less: "-").
+es_tenths :: (out: [] u8, at: int, v: int) -> int {
+  if v < 0 { return es_put(out, at, "-"); }
+  n := es_int(out, at, v / 10); n = es_put(out, n, "."); return es_int(out, n, v % 10);
+}
+ES_HEAD :: "| Encounter | Class | Level | Wins | TTK s | Damage/s | Healed | Taken | Downs | HP left % | Resources left % |\n|---|---|---|---|---|---|---|---|---|---|---|\n";
+es_row_put :: (out: [] u8, at: int, r: EsRow) -> int {
+  n := es_put(out, at, "| "); n = es_put(out, n, ES_ENC_NAME[r.enc]); n = es_put(out, n, " | "); n = es_put(out, n, ES_CLASS_NAME[r.klass]);
+  n = es_put(out, n, " | "); n = es_int(out, n, r.level); n = es_put(out, n, " | "); n = es_int(out, n, r.wins); n = es_put(out, n, "/"); n = es_int(out, n, r.n);
+  n = es_put(out, n, " | "); n = es_tenths(out, n, r.ttk); n = es_put(out, n, " | "); n = es_tenths(out, n, r.dps);
+  n = es_put(out, n, " | "); n = es_tenths(out, n, r.healed); n = es_put(out, n, " | "); n = es_tenths(out, n, r.taken);
+  n = es_put(out, n, " | "); n = es_int(out, n, r.downs); n = es_put(out, n, " | "); n = es_int(out, n, r.hp); n = es_put(out, n, " | "); n = es_int(out, n, r.res);
+  return es_put(out, n, " |\n");
+}
+
+// ---- reading
+// Field f of a table row (between its f-th and f+1-th '|'), its spaces trimmed.
+es_field :: (line: string, f: int) -> string {
+  at := 0; k := -1;
+  for i: 0..<line.count { if line[i] == '|' { k += 1; if k == f { at = i + 1; break; } } }
+  if k != f { return ""; }
+  end := at; while end < line.count && line[end] != '|' { end += 1; }
+  while at < end && line[at] == ' ' { at += 1; }
+  while end > at && line[end - 1] == ' ' { end -= 1; }
+  return line[at..<end];
+}
+// A whole number's value (-1: none there); "12.3" in tenths with es_read_tenths.
+es_read_int :: (t: string) -> int {
+  if t.count == 0 { return -1; }
+  v := 0;
+  for ch: t { if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int) (ch - '0'); }
+  return v;
+}
+es_read_tenths :: (t: string) -> int {
+  if t == "-" { return -1; }
+  dot := -1; for i: 0..<t.count { if t[i] == '.' { dot = i; } }
+  if dot < 0 { w := es_read_int(t); return ifx w < 0 then -1 else w * 10; }
+  w := es_read_int(t[0..<dot]); f := es_read_int(t[dot + 1..<t.count]);
+  if w < 0 || f < 0 || t.count - dot != 2 { return -2; }
+  return w * 10 + f;
+}
+es_enc_at :: (t: string) -> int { for i: 0..<ES_ENCOUNTERS { if ES_ENC_NAME[i] == t { return i; } } return -1; }
+es_class_at :: (t: string) -> int { for i: 0..<12 { if ES_CLASS_NAME[i] == t { return i; } } return -1; }
+es_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
+// A table row read back: ok false for any other line (the header, its rule, prose).
+EsRead :: struct { ok: bool; row: EsRow; }
+es_row_read :: (line: string) -> EsRead {
+  r := EsRow.{};
+  r.enc = es_enc_at(es_field(line, 0)); r.klass = es_class_at(es_field(line, 1));
+  r.level = es_read_int(es_field(line, 2));
+  w := es_field(line, 3); slash := -1; for i: 0..<w.count { if w[i] == '/' { slash = i; } }
+  if r.enc < 0 || r.klass < 0 || r.level < 1 || slash < 0 { return EsRead.{}; }
+  r.wins = es_read_int(w[0..<slash]); r.n = es_read_int(w[slash + 1..<w.count]);
+  r.ttk = es_read_tenths(es_field(line, 4)); r.dps = es_read_tenths(es_field(line, 5));
+  r.healed = es_read_tenths(es_field(line, 6)); r.taken = es_read_tenths(es_field(line, 7));
+  r.downs = es_read_int(es_field(line, 8)); r.hp = es_read_int(es_field(line, 9)); r.res = es_read_int(es_field(line, 10));
+  if r.wins < 0 || r.n <= 0 || r.ttk < -1 || r.dps < 0 || r.healed < 0 || r.taken < 0 || r.downs < 0 || r.hp < 0 || r.res < 0 { return EsRead.{}; }
+  return EsRead.{ok = true, row = r};
+}
+// Every table row of a pinned table's text into rows: how many (lines that aren't rows are passed over).
+es_table_read :: (text: string, rows: [] EsRow) -> int {
+  n := 0; at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    got := es_row_read(text[at..<end]);
+    if got.ok && n < rows.count { rows[n] = got.row; n += 1; }
+    at = end + 1;
+  }
+  return n;
+}
+
+// ---- comparing
+// Whether b moved from a by more than share percent: TTK (or a win where there was none, or none where
+// there were some), damage a second (at least ES_DPS_FLOOR tenths; TTK ES_TTK_FLOOR), or the share of fights won.
+es_moved :: (a: EsRow, b: EsRow, share: int) -> bool {
+  if (a.ttk < 0) != (b.ttk < 0) { return true; }
+  if a.ttk >= 0 && es_abs(b.ttk - a.ttk) * 100 > share * (ifx a.ttk > ES_TTK_FLOOR then a.ttk else ES_TTK_FLOOR) { return true; }
+  if es_abs(b.dps - a.dps) * 100 > share * (ifx a.dps > ES_DPS_FLOOR then a.dps else ES_DPS_FLOOR) { return true; }
+  if es_abs(b.wins * a.n - a.wins * b.n) * 100 > share * a.n * b.n { return true; }
+  return false;
+}
+// The pinned row for b's encounter, class and level, -1 none.
+es_find :: (rows: [] EsRow, n: int, b: EsRow) -> int {
+  for i: 0..<n { if rows[i].enc == b.enc && rows[i].klass == b.klass && rows[i].level == b.level { return i; } }
+  return -1;
+}
+
+#test "encounter table: a row written reads back the same, and a line that is no row reads as none" {
+  out: [512] u8;
+  r := EsRow.{enc = ES_GUARD, klass = 11, level = 6, n = 8, wins = 7, downs = 1, ttk = 123, dps = 41, healed = 0, taken = 95, hp = 55, res = 100};
+  n := es_row_put(out[..], 0, r);
+  #assert cast(string) out[0..<n] == "| guard | Wizard | 6 | 7/8 | 12.3 | 4.1 | 0.0 | 9.5 | 1 | 55 | 100 |\n";
+  got := es_row_read(cast(string) out[0..<n - 1]);
+  #assert got.ok && got.row.enc == ES_GUARD && got.row.klass == 11 && got.row.level == 6 && got.row.n == 8 && got.row.wins == 7;
+  #assert got.row.downs == 1 && got.row.ttk == 123 && got.row.dps == 41 && got.row.healed == 0 && got.row.taken == 95 && got.row.hp == 55 && got.row.res == 100;
+  none := r; none.ttk = -1; none.enc = ES_WOLVES; none.klass = 0; none.level = 1;
+  n = es_row_put(out[..], 0, none);
+  #assert cast(string) out[0..<n] == "| wolves | Barbarian | 1 | 7/8 | - | 4.1 | 0.0 | 9.5 | 1 | 55 | 100 |\n";
+  #assert es_row_read(cast(string) out[0..<n]).row.ttk == -1 && es_row_read(cast(string) out[0..<n]).ok;
+  #assert !es_row_read("| Encounter | Class | Level | Wins |").ok && !es_row_read("|---|---|").ok && !es_row_read("prose").ok && !es_row_read("").ok;
+  #assert !es_row_read("| wolves | Bard | 1 | 7 | 1.0 | 1.0 | 0.0 | 0.0 | 0 | 1 | 1 |").ok;     // wins without their fights
+  #assert !es_row_read("| wolves | Bard | 0 | 7/8 | 1.0 | 1.0 | 0.0 | 0.0 | 0 | 1 | 1 |").ok;   // no level 0
+  #assert !es_row_read("| wolves | Bard | 1 | 7/8 | 1.25 | 1.0 | 0.0 | 0.0 | 0 | 1 | 1 |").ok;  // tenths only
+  #assert !es_row_read("| ogres | Bard | 1 | 7/8 | 1.0 | 1.0 | 0.0 | 0.0 | 0 | 1 | 1 |").ok && !es_row_read("| wolves | Bard | 1 | 7/8 | 1.0 | x | 0.0 | 0.0 | 0 | 1 | 1 |").ok;
+  #assert es_read_tenths("7") == 70 && es_read_tenths("0.5") == 5 && es_read_tenths("-") == -1 && es_read_tenths("") == -1 && es_read_int("") == -1 && es_read_int("12") == 12;
+}
+#test "encounter table: a pinned table's rows read from its text, past its prose and header" {
+  out: [2048] u8;
+  n := es_put(out[..], 0, "# Encounters\n\nSome prose | with a bar.\n\n"); n = es_put(out[..], n, ES_HEAD);
+  a := EsRow.{enc = ES_WOLVES, klass = 4, level = 3, n = 8, wins = 8, ttk = 90, dps = 33, taken = 40, hp = 70, res = 80};
+  b := a; b.enc = ES_GUARD; b.wins = 0; b.downs = 8; b.ttk = -1;
+  n = es_row_put(out[..], n, a); n = es_row_put(out[..], n, b);
+  rows: [4] EsRow;
+  #assert es_table_read(cast(string) out[0..<n], rows[..]) == 2 && rows[0].ttk == 90 && rows[1].enc == ES_GUARD && rows[1].downs == 8;
+  #assert es_find(rows[..], 2, b) == 1 && es_find(rows[..], 2, a) == 0;
+  c := a; c.level = 4;
+  #assert es_find(rows[..], 2, c) == -1;
+  one: [1] EsRow;
+  #assert es_table_read(cast(string) out[0..<n], one[..]) == 1;   // no more than it holds
+}
+#test "encounter table: a row moved more than the share is flagged; one within it is not" {
+  a := EsRow.{n = 8, wins = 8, ttk = 100, dps = 40};
+  b := a;
+  #assert !es_moved(a, b, ES_SHARE);
+  b.ttk = 125; #assert !es_moved(a, b, ES_SHARE);
+  b.ttk = 126; #assert es_moved(a, b, ES_SHARE);
+  b.ttk = 75; #assert !es_moved(a, b, ES_SHARE);
+  b.ttk = 74; #assert es_moved(a, b, ES_SHARE);
+  b.ttk = -1; #assert es_moved(a, b, ES_SHARE) && es_moved(b, a, ES_SHARE);
+  // a short time moves by a quarter second at least
+  q := a; q.ttk = 0; r := q; r.ttk = 2; #assert !es_moved(q, r, ES_SHARE);
+  r.ttk = 3; #assert es_moved(q, r, ES_SHARE);
+  b = a; b.dps = 50; #assert !es_moved(a, b, ES_SHARE);
+  b.dps = 51; #assert es_moved(a, b, ES_SHARE);
+  b.dps = 29; #assert es_moved(a, b, ES_SHARE);
+  // a small rate moves by a whole point at least
+  s := a; s.dps = 2; t := s; t.dps = 4; #assert !es_moved(s, t, ES_SHARE);
+  t.dps = 5; #assert es_moved(s, t, ES_SHARE);
+  // wins: 2 of 8 is the share, 3 of 8 more; another count of fights compares shares
+  b = a; b.wins = 6; #assert !es_moved(a, b, ES_SHARE);
+  b.wins = 5; #assert es_moved(a, b, ES_SHARE);
+  b = a; b.n = 16; b.wins = 12; #assert !es_moved(a, b, ES_SHARE);
+  b.wins = 11; #assert es_moved(a, b, ES_SHARE);
+}

@@ -1,0 +1,260 @@
+// Everglade II's encounter simulator (#13288): time to kill for every class and level, headless, from a
+// seed. Each fight is a fresh room of the real server (room.coax: its tick, its creatures and guard,
+// its casts, the shared SRD rules), with one scripted player and no network: the checks' host part
+// (room-casts.coax rc_test_tick, every line of sight clear), the room's dice from the host's own key
+// (rm_dice_key) made from the seed, and the player's casts through the room's handler (everglade/server/
+// casts.coax eg_e2_cast), refused or taken exactly as a page's. Nothing here rolls a die or deals harm.
+//
+// The encounters: the third wolf pack in the woods (three SRD Wolves, everglade/server/creatures.coax),
+// and the path's guard (an SRD level 10 Fighter, everglade/server/guard.coax). The player stands on the
+// path near them and doesn't move; the wolves notice and come, and the guard turns on the player's first
+// blow. The scripted player, each time the room would take a cast (EG_E2_GAP): below half its Hit Points,
+// a heal on itself; else, once a fight, each buff on itself (Rage, Innate Sorcery, Wild Shape, a levelled
+// spell on itself); else its harmful abilities, levelled spells highest first, then the rest in its bar's
+// order, at the nearest foe (a Concentration spell not while it concentrates, nor a spell for
+// Humanoids at a Beast). The first the room takes
+// is its press. A fight ends when every foe is down (a win), the player is at 0 Hit Points (a down), or
+// at ES_CAP_S.
+//
+// It prints the table (encounter-table.coax). --write FILE puts it in FILE with its header;
+// --check FILE compares it with FILE's rows and fails on any moved more than ES_SHARE percent
+// (the after-landing check runs that against docs/dnd/encounter-ttk.md: coax/remote/check.sh room).
+//   coax/web/tool.sh coax/web/room/encounter-sim.coax [--seeds N] [--write FILE] [--check FILE]
+//                                                      [--class NAME] [--level L] [--encounter wolves|guard]
+#import "Basic";
+#run_steps 250000000;   // secp256k1's tables: the room loads the seat ticket's v5 check
+#load "room.coax";
+#load "encounter-table.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+ES_CAP_S :: 120;        // s a fight lasts at most
+ES_RETRY :: 3;          // ticks before a player that pressed nothing the room took tries again
+ES_PACK :: 5;           // the third pack: monsters 5, 6 and 7 (creatures.coax e2mo_group)
+ES_PACK_N :: 3;
+ES_CLOCK0 :: 1762190000000;
+
+// One fight's numbers, in whole Hit Points and ticks.
+EsFight :: struct { win: bool; down: bool; ticks: int; first: int = -1; end: int; dealt: int; healed: int; taken: int; hp: int; hp_max: int; res: int; res_max: int; }
+
+es_heals :: (a: FbAb) -> bool {
+  if a.kind == FB_WIND || a.kind == FB_LAY || a.kind == FB_WHOLE || a.kind == FB_PRESERVE { return true; }
+  if a.kind != FB_SPELL { return false; }
+  s := rs_spell(a.sp);
+  for q: 0..<s.step_n { if s.steps[q].kind == RS_S_HEAL { return true; } }
+  return false;
+}
+es_buff :: (a: FbAb) -> bool {
+  if a.kind == FB_RAGE || a.kind == FB_INNATE || a.kind == FB_WILD || a.kind == FB_SURGE { return true; }
+  return a.kind == FB_SPELL && a.tg == FB_SELF && a.lvl > 0 && !es_heals(a);
+}
+// Whether the player presses a for harm: not a help, not a check or move, never Zone of Truth.
+es_harms :: (a: FbAb) -> bool {
+  if egb_helps(a) { return false; }
+  if a.kind == FB_SKILL || a.kind == FB_GRAPPLE || a.kind == FB_SHOVE || a.kind == FB_DASH || a.kind == FB_CDASH || a.kind == FB_HIDE { return false; }
+  if a.kind == FB_READY || a.kind == FB_WORLD || a.kind == FB_RITUAL || a.kind == FB_INSPIRE || a.kind == FB_TURN { return false; }
+  return !(a.kind == FB_SPELL && a.sp == SP_ZONE_OF_TRUTH);
+}
+// Resources a creature holds: spell slots, limited uses and Focus (into r[0] now, r[1] most).
+es_res :: (c: RsCreature, r: [] int) {
+  r[0] = c.focus; r[1] = c.focus_max;
+  for l: 1..<10 { r[0] += c.slots[l]; r[1] += c.slots_max[l]; }
+  for u: 0..<RS_USES { r[0] += c.uses[u]; r[1] += c.uses_max[u]; }
+}
+
+// The foes' creatures (-1: down or gone) into f: how many still stand.
+es_foes :: (v: [] RmServer, k: int, enc: int, f: [] int) -> int {
+  n := 0;
+  b := v[0].eg[k].rules[0].b[..];
+  for j: 0..<f.count { f[j] = -1; }
+  if enc == ES_GUARD {
+    g := v[0].eg[k].guard[0];
+    if g.q >= 0 && b[0].c[EGB_BEAST0 + g.q].hp > 0 { f[0] = EGB_BEAST0 + g.q; n = 1; }
+    return n;
+  }
+  for j: 0..<ES_PACK_N {
+    mo := v[0].eg[k].monsters[0].mon[ES_PACK + j];
+    if mo.q >= 0 && (mo.state == E2M_IDLE || mo.state == E2M_CHASE || mo.state == E2M_RETURN) && b[0].c[EGB_BEAST0 + mo.q].hp > 0 { f[j] = EGB_BEAST0 + mo.q; n += 1; }
+  }
+  return n;
+}
+// Where creature i stands (metres).
+es_at :: (v: [] RmServer, k: int, i: int) -> [2] f32 {
+  g := v[0].eg[k].guard[0];
+  if g.q >= 0 && i == EGB_BEAST0 + g.q { return [2] f32.[g.x, g.z]; }
+  bt := v[0].eg[k].rules[0].beasts[i - EGB_BEAST0];
+  return [2] f32.[bt.x, bt.z];
+}
+es_place :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x = x; v[0].eg[k].seat[0].pose.z = z; egb_place(v[0].eg[k].rules[..], 0, x, z); }
+es_tick :: (v: [] RmServer, k: int) { rc_test_tick(v, k, true); while rm_relay_next(v) > 0 { } }
+
+// One press: the bar's entry at catalogue index i at (ax, az). Whether the room took it.
+es_press :: (v: [] RmServer, k: int, c: int, i: int, seq: int, ax: f32, az: f32) -> bool {
+  t := v[0].eg[k].tick;
+  eg_e2_cast(v, k, SeatId.{value = 0}, WireCast.{seq = seq, slot = xk_slot(c, i), ax = ax, az = az});
+  return v[0].eg[k].seat[0].last_cast == t;
+}
+
+// Class c at `level` against encounter enc, from seed (trace: each press the room took, and the foes'
+// Hit Points as it was pressed).
+es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: bool) -> EsFight {
+  out := EsFight.{};
+  rm_init(v); rm_clock(v, 0, ES_CLOCK0);
+  rm_dice_key(v, seed * 2654435 + enc * 7919 + 17, c * 1000 + level * 31 + 5);
+  if rm_join(v, 0, "GET /api/room/relay/everglade/pair-e2-encounter-sim HTTP/1.1\r\n\r\n") != 0 { return out; }
+  k := eg_room_at(v, v[0].conns[0].relay);
+  hello: [64] u8; word: [32] u8;
+  n := es_put(hello[..], 0, "H 5 ranger.0.0.0 "); n = es_put(hello[..], n, cast(string) word[0..<fb_cl_kind_at(c, level, word[..])]); n = es_put(hello[..], n, " 0 -");
+  rm_heard(v, 0, cast(string) hello[0..<n]);
+  es_tick(v, k);
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;
+  if r[0].klass[0] != EGB_CL0 + c || b[0].c[me].level != level { return out; }
+  // where the player stands: on the path by the pack's middle wolf, or beside the guard
+  px: f32 = 0; pz: f32 = 0;
+  if enc == ES_GUARD {
+    g := v[0].eg[k].guard[0];
+    if g.q < 0 { return out; }
+    px = g.x + 1.0; pz = g.z;
+  } else {
+    w := v[0].eg[k].monsters[0].mon[ES_PACK + 1];
+    pz = w.hz; px = e2_road_x(pz);
+  }
+  es_place(v, k, px, pz);
+  // the bar at this level, each entry's catalogue index
+  bar: [XC_SLOTS] FbAb; nb := xk_bar_at(c, level, bar[..]);
+  cat: [XC_SLOTS] FbAb; nc := xk_catalog(c, cat[..]);
+  at: [XC_SLOTS] int;
+  for i: 0..<nb { at[i] = -1; for j: 0..<nc { if at[i] < 0 && xc_id(cat[j]) == xc_id(bar[i]) { at[i] = j; } } }
+  used: [XC_SLOTS] bool;
+  foes: [ES_PACK_N] int; hp_was: [ES_PACK_N] int;
+  _ := es_foes(v, k, enc, foes[..]);
+  for j: 0..<ES_PACK_N { hp_was[j] = ifx foes[j] >= 0 then b[0].c[foes[j]].hp else 0; }
+  my_was := b[0].c[me].hp;
+  seq := 0; next := 0; t0 := v[0].eg[k].tick;
+  cap := ES_CAP_S * EG_HZ;
+  while v[0].eg[k].tick - t0 < cap {
+    t := v[0].eg[k].tick;
+    standing := es_foes(v, k, enc, foes[..]);
+    if standing == 0 { out.win = true; break; }
+    if b[0].c[me].hp <= 0 || b[0].c[me].dead { out.down = true; break; }
+    if t >= next && t - v[0].eg[k].seat[0].last_cast >= EG_E2_GAP {
+      // the nearest foe
+      fx := px; fz := pz; best: f32 = 1000000; near := -1;
+      for j: 0..<ES_PACK_N { if foes[j] >= 0 { p := es_at(v, k, foes[j]); d := (p[0] - px) * (p[0] - px) + (p[1] - pz) * (p[1] - pz); if d < best { best = d; fx = p[0]; fz = p[1]; near = foes[j]; } } }
+      took := false;
+      hurt := b[0].c[me].hp * 2 < b[0].c[me].hp_max;
+      for i: 0..<nb {
+        if took || !hurt || at[i] < 0 || !es_heals(bar[i]) { continue; }
+        seq += 1; took = es_press(v, k, c, at[i], seq, px, pz);
+        if took && trace { print("  t % heal %: me %\n", t - t0, bar[i].name, b[0].c[me].hp); }
+      }
+      for i: 0..<nb {
+        if took || used[i] || at[i] < 0 || !es_buff(bar[i]) { continue; }
+        seq += 1; took = es_press(v, k, c, at[i], seq, px, pz); used[i] = took;
+        if took && trace { print("  t % buff %\n", t - t0, bar[i].name); }
+      }
+      // levelled harm, highest first; then the rest in the bar's order
+      for lv: 0..<10 {
+        for i: 0..<nb {
+          a := bar[i];
+          if took || at[i] < 0 || !es_harms(a) { continue; }
+          if lv < 9 && (a.kind != FB_SPELL || a.lvl != 9 - lv) { continue; }
+          if lv == 9 && a.kind == FB_SPELL && a.lvl > 0 { continue; }
+          if a.kind == FB_SPELL && rs_spell(a.sp).concentration && b[0].c[me].conc >= 0 { continue; }
+          if a.kind == FB_SPELL && rs_spell(a.sp).humanoid_only && near >= 0 && !b[0].c[near].humanoid { continue; }   // Hold Person on a Wolf
+          seq += 1; took = es_press(v, k, c, at[i], seq, fx, fz);
+          if took && out.first < 0 { out.first = t; }
+          if took && trace { print("  t % harm %: foes", t - t0, a.name); for j: 0..<ES_PACK_N { print(" %", ifx foes[j] >= 0 then b[0].c[foes[j]].hp else -1); } print(" me %\n", b[0].c[me].hp); }
+        }
+      }
+      if !took { next = t + ES_RETRY; }
+    }
+    es_place(v, k, px, pz);
+    es_tick(v, k);
+    // what the tick did: harm to the foes, the player's Hit Points down and up
+    for j: 0..<ES_PACK_N {
+      if foes[j] < 0 { continue; }
+      now := rs_max(b[0].c[foes[j]].hp, 0);
+      if now < hp_was[j] { out.dealt += hp_was[j] - now; }
+      hp_was[j] = now;
+    }
+    my := rs_max(b[0].c[me].hp, 0);
+    if my < my_was { out.taken += my_was - my; } else { out.healed += my - my_was; }
+    my_was = my;
+  }
+  out.end = v[0].eg[k].tick;
+  out.ticks = out.end - (ifx out.first >= 0 then out.first else t0);
+  out.hp = rs_max(b[0].c[me].hp, 0); out.hp_max = rs_max(b[0].c[me].hp_max, 1);
+  rr: [2] int; es_res(b[0].c[me], rr[..]); out.res = rr[0]; out.res_max = rr[1];
+  return out;
+}
+
+// A row: class c at `level` against enc over seeds 1 to n (32 unless --seeds says).
+es_row :: (v: [] RmServer, enc: int, c: int, level: int, n: int, trace: bool) -> EsRow {
+  row := EsRow.{enc = enc, klass = c, level = level, n = n};
+  win_ticks := 0; fight_ticks := 0; dealt := 0; healed := 0; taken := 0; hp := 0; res := 0;
+  for s: 1..<n + 1 {
+    f := es_fight(v, enc, c, level, s, trace);
+    if f.win { row.wins += 1; win_ticks += f.ticks; }
+    if f.down { row.downs += 1; }
+    fight_ticks += rs_max(f.ticks, EG_HZ);   // at least a second: a one-press kill isn't a rate
+    dealt += f.dealt; healed += f.healed; taken += f.taken;
+    hp += f.hp * 100 / f.hp_max;
+    res += ifx f.res_max > 0 then f.res * 100 / f.res_max else 100;
+  }
+  // tenths: seconds are ticks / EG_HZ
+  row.ttk = ifx row.wins > 0 then (win_ticks * 10 + row.wins * EG_HZ / 2) / (row.wins * EG_HZ) else -1;
+  row.dps = (dealt * EG_HZ * 10 + fight_ticks / 2) / fight_ticks;
+  row.healed = (healed * 10 + n / 2) / n; row.taken = (taken * 10 + n / 2) / n;
+  row.hp = (hp + n / 2) / n; row.res = (res + n / 2) / n;
+  return row;
+}
+
+ES_TEXT :: 262144;
+ES_TITLE :: "# Encounter time to kill\n\nWritten by `coax/web/tool.sh coax/web/room/encounter-sim.coax --write docs/dnd/encounter-ttk.md` (#13288): every\nclass at levels 1 to 6, alone, against the third wolf pack (three Wolves) and the path's guard (a level 10 Fighter),\nin the real room's rules, 32 fights (seeds 1 to 32) a row. Wins: fights where every foe fell first. TTK: the mean seconds from\nthe player's first harmful press to the last foe's fall, over the wins. Damage/s, healed and taken: per fight.\nDowns: fights where the player fell. HP and resources (spell slots, limited uses, Focus) left: at the fight's end.\nA fight lasts at most 120 s. The after-landing check fails a change that moves a row's TTK, damage a second or\nwins by more than 25%; run this again with --write in the same commit when the change is meant.\n\n";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: encounter-sim [--seeds N] [--write FILE] [--check FILE] [--class NAME] [--level L] [--encounter wolves|guard]"); return 2; }
+  seeds := es_read_int(args_value(a[..], "--seeds", "32"));
+  only_class := es_class_at(args_value(a[..], "--class", ""));
+  only_level := es_read_int(args_value(a[..], "--level", ""));
+  only_enc := es_enc_at(args_value(a[..], "--encounter", ""));
+  trace := args_has(a[..], "--trace");
+  if seeds < 1 { tool_errln("encounter-sim: --seeds wants a whole number"); return 2; }
+  pinned: [ES_TEXT] u8; old: [ES_ROWS] EsRow; old_n := 0;
+  check := args_value(a[..], "--check", "");
+  if check.count > 0 {
+    m := fs_read(check, pinned[..]);
+    if m <= 0 { tool_err("encounter-sim: cannot read "); tool_errln(check); return 2; }
+    old_n = es_table_read(cast(string) pinned[0..<m], old[..]);
+  }
+  v: [1] RmServer;
+  text: [ES_TEXT] u8; n := es_put(text[..], 0, ES_TITLE); n = es_put(text[..], n, ES_HEAD);
+  print("%", ES_HEAD);
+  moved := 0; rows := 0;
+  for enc: 0..<ES_ENCOUNTERS { for c: 0..<12 { for l: 1..<ES_LEVELS + 1 {
+    if (only_enc >= 0 && enc != only_enc) || (only_class >= 0 && c != only_class) || (only_level >= 1 && l != only_level) { continue; }
+    row := es_row(v[..], enc, c, l, seeds, trace);
+    line: [256] u8; ln := es_row_put(line[..], 0, row);
+    print("%", cast(string) line[0..<ln]);
+    n = es_put(text[..], n, cast(string) line[0..<ln]);
+    rows += 1;
+    if check.count > 0 {
+      i := es_find(old[..], old_n, row);
+      if i < 0 { print("moved: no pinned row for this one\n"); moved += 1; }
+      else if es_moved(old[i], row, ES_SHARE) {
+        was: [256] u8; wn := es_row_put(was[..], 0, old[i]);
+        print("moved: was %", cast(string) was[0..<wn]); moved += 1;
+      }
+    }
+  } } }
+  write := args_value(a[..], "--write", "");
+  if write.count > 0 && !fs_write(write, cast(string) text[0..<n]) { tool_err("encounter-sim: cannot write "); tool_errln(write); return 2; }
+  if check.count > 0 {
+    print("encounter-sim: % rows, % moved more than % percent from %\n", rows, moved, ES_SHARE, check);
+    if moved > 0 { return 1; }
+  }
+  return 0;
+}

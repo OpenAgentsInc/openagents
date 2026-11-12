@@ -267,10 +267,13 @@ generated() {
 # one, so it shows at landing, not at release.
 cards() { step realm-cards bun coax/web/og.ts --cards apps/openagents-web || status=1; }
 # and the WebTransport stack's check (#13175): wt-echo against a headless Chrome, where there is one;
+# the encounter table (#13288): every class and level's time to kill in the room's rules against the
+# pinned docs/dnd/encounter-ttk.md, failing on a row moved more than its share (the log names each);
 # with PROD, Everglade II's pair against production's (e2_gate)
 room() {
   step room-build coax/web/room/build.sh || { status=1; return; }
   step room-webtransport coax/web/room/wt-check.sh 9441 || status=1
+  step encounter-ttk coax/web/tool.sh coax/web/room/encounter-sim.coax --check docs/dnd/encounter-ttk.md || status=1
   [[ -z "${1:-}" ]] || e2_gate "$1" || status=1
 }
 # Everglade II against production (#13266, docs/verse/green-main-pipeline.md "Everglade II against
