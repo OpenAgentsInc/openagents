@@ -21,7 +21,7 @@ chapters 86 to 100, at the scale it runs.
 
 ## The room
 
-<!-- source: coax/web/room/room-everglade.coax room-size -->
+<!-- source: everglade/server/seat.coax room-size -->
 ```jai
 EG_ROOMS :: 16;                 // simulated rooms at once (256 players)
 EG_SEATS :: 16;

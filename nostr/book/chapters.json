@@ -906,8 +906,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "apps/openagents-cli/main.coax",
-    "coax/lib/nostr/weblogin.coax"
+    "apps/openagents-cli/main.coax"
    ]
   },
   {
@@ -970,7 +969,6 @@
    "source": [
     "coax/lib/nostr/nip98-observe.coax",
     "coax/lib/nostr/nip98-tags.coax",
-    "coax/lib/nostr/weblogin.coax",
     "coax/lib/nostr/nip98_sign.coax",
     "coax/web/api/nip98.coax",
     "nostr/examples/checks/http-auth.coax",
@@ -1790,7 +1788,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "apps/openagents-desktop/zeron/microcoder.coax"
+    "coax/lib/agent/engine/microcoder.coax"
    ]
   },
   {

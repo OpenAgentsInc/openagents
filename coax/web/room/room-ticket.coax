@@ -9,7 +9,7 @@
 // the display name in unpadded base64url ("-" none), ROOM the relay code,
 // EXPIRES wall-clock milliseconds, HP the hit points the player left with in the last 10 minutes
 // ("-" none: full; #12715, room-vitals.coax), optionally followed by "x" and the XP the player has
-// (#12739, room-events.coax: "14x320", "-x320"; none, 0 XP), then optionally "w" and the WANTED level
+// (#12739, everglade/server/progress.coax: "14x320", "-x320"; none, 0 XP), then optionally "w" and the WANTED level
 // the room saved in the last 5 minutes (#12794, room-vitals.coax: "14x320w3"; none, 0), then optionally "g" and the
 // character's owner generation the API issued with this ticket (#12834, migrations/0127: "14x320w3g12"; none, 0),
 // which the room's vitals lines carry so an older owner's can't overwrite a newer one's, and MAC the lowercase hex HMAC-SHA256 of
@@ -42,12 +42,12 @@ Ticket :: struct {
   ok: bool;
   pid: [TICKET_PID] u8; pid_n: int;
   account: bool;
-  admin: bool;            // ACCT 2: an account who is one of the realm's admins (its demo character, room-events.coax)
+  admin: bool;            // ACCT 2: an account who is one of the realm's admins (its demo character, everglade/server/progress.coax)
   name: [TICKET_NAME] u8; name_n: int;
   expires: int;
   hp: int = -1;           // the HP it brings back (-1 none)
   shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
-  xp: int;                // the XP it brings back (room-events.coax)
+  xp: int;                // the XP it brings back (everglade/server/progress.coax)
   wanted: int;            // the WANTED level it brings back (1 to 5; 0 none; #12794)
   owner: int;             // the character's owner generation the API issued with it (#12834; 0 none): its vitals lines carry it
   schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
@@ -255,7 +255,7 @@ tk_sign_admin :: (key: string, pid: string, room: string, expires: int, out: [] 
   return tk_sign_admin_on(key, pid, "", room, 0, expires, out);
 }
 // The same with a name and a shard: the checks sit as an admin, who may play Everglade's own
-// character (the hello's EV_DEMO_FLAG, room-events.coax) whatever the levels switch says.
+// character (the hello's EV_DEMO_FLAG, everglade/server/progress.coax) whatever the levels switch says.
 tk_sign_admin_on :: (key: string, pid: string, name: string, room: string, shard: int, expires: int, out: [] u8) -> int {
   return tk_sign_admin_wanted(key, pid, name, room, shard, expires, 0, out);
 }

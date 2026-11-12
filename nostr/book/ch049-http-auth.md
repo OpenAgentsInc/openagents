@@ -31,7 +31,6 @@ with single-use event IDs.
 | | `n98_parse`, `n98_id`, `n98_rules`, `nip98_error_text` | The reader, the ID check, the rules after the signature, and the words for each refusal code |
 | [nostr.c](../../coax/web/api/nostr.c) | `nip98_check` | The C shim that the API's routes call; it passes the request to `nip98_check_coax` |
 | [private.c](../../coax/web/api/private.c), [drops.c](../../coax/web/api/drops.c), [admin.c](../../coax/web/api/admin.c) | `first_use` | Replay: inserts the event ID into a Postgres table and accepts only when the row is new |
-| [weblogin.coax](../../coax/lib/nostr/weblogin.coax) | `weblogin_sign(hex, url, created_at, body, aux, out)` | The website's client side: a signed `POST` login with `u`, `method` and `payload`, as `Nostr <base64>` |
 | [nip98-tags.coax](../../coax/lib/nostr/nip98-tags.coax), [nip98-observe.coax](../../coax/lib/nostr/nip98-observe.coax) | `n98_source_tags`, `n98_observe` | A stricter tag reader and field comparison (one `u`, one `method`, at most one `payload`), compared with the API but not used by it |
 
 `nip98.coax` is a port of the API's former C check, decision for decision.
@@ -599,9 +598,7 @@ and
 [2026-10-29-nip98-observation.md](../../docs/verification/2026-10-29-nip98-observation.md),
 with the event verifier comparison in
 [2026-10-29-api-event-parity.md](../../docs/verification/2026-10-29-api-event-parity.md).
-[weblogin_vectors.coax](../../coax/tests/nostr/weblogin_vectors.coax) checks
-`weblogin.coax`'s chain from words to a signed login. These were not rerun
-today.
+These were not rerun today.
 
 ## Summary
 

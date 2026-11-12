@@ -58,6 +58,8 @@ Ticket :: struct {
   schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
   capture: CharacterCapture;     // ticket v4's signed durable resume profile (schema 2)
   rest: CharacterRest;           // and a profile 3 capture's rest (#13046)
+  ext: [TK5_EXT] u8; ext_n: int; // v5's signed EXT items ("" none): tk5_ext(cast(string) t.ext[0..<t.ext_n], NAME)
+  key: int = -1;                 // v5: which of the room's public keys checked it (-1: v2, v3 or v4, the HMAC key)
 }
 ```
 

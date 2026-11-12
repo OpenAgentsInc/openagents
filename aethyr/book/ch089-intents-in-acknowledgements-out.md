@@ -3,7 +3,7 @@
 > **Status: partly implemented.** A page sends one input frame per 30 Hz
 > step, numbered; oa-room queues at most 16 a seat, drops old and repeated
 > ones, and acknowledges the last one it stepped in every state frame
-> (`room-everglade.coax`, #12731). A seat earns its steps by the server's
+> (`everglade/server/input.coax`, #12731). A seat earns its steps by the server's
 > clock since it sat, at most `EG_BANK` (15) owed and `EG_TICK_STEPS` (4) a
 > tick, so ticks that run late don't leave its queue standing full
 > (commit d14d704b62). Since wire 4 the heading `THETA` is sent in 0.1 mrad
@@ -44,7 +44,7 @@ one stepped, or no newer than the last one queued, is dropped. Past 16, the
 oldest goes. Every field is clamped before it is stored, so a page can't
 send a stick of 500.
 
-<!-- source: coax/web/room/room-everglade.coax intent-queue -->
+<!-- source: everglade/server/input.coax intent-queue -->
 ```jai
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
@@ -55,6 +55,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   if !r[0].ok || eg_fields(text) != 9 || (link && !wire_link_input_ok(w.b)) { return; }
   eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
+  if w.theta == w.theta { v[0].eg[k].seat[seat].cam = w.theta; v[0].eg[k].seat[seat].cam_on = true; }   // where it looks: its rows' view (#13178)
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;

@@ -78,6 +78,7 @@ rm_init :: (v: [] RmServer) #export_c #effects(all) {
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
+  v[0].dice_pool[0] = RsDice.{};
 }
 ```
 

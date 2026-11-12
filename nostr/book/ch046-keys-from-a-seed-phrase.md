@@ -547,16 +547,10 @@ PBKDF2-HMAC-SHA512 at 1 and 2 rounds.
 master and two children, every test vector 5 key, each refusal and the
 older procedures' answers;
 [Bitcoin chapter 32](../../bitcoin/book/ch032-hierarchical-deterministic-keys.md)
-describes them. The slower vectors, two more Trezor
-seeds, BIP-32 test vectors 1 and 2 and the chain to a signed NIP-98 login,
-are in [weblogin_vectors.coax](../../coax/tests/nostr/weblogin_vectors.coax):
-
-```shell
-coax/bin/coax test --library coax/tests/nostr/weblogin_vectors.coax --steps 8000000000 --run-steps 250000000
-```
-
-That file was not rerun for this chapter; its BIP-32 vectors are published
-and unchanged.
+describes them. The slower vectors (two more Trezor seeds, BIP-32 test
+vectors 1 and 2 and the chain to a signed NIP-98 login) lived in
+`coax/tests/nostr/weblogin_vectors.coax`, which went with the website's words
+account (#13207).
 
 ## Summary
 
