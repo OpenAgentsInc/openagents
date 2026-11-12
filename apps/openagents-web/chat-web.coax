@@ -82,6 +82,7 @@ CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
 CW_CL_EVERY :: 15.0;   // seconds between reads of them
+CW_LOCAL_WAIT :: 12.0; // seconds a request to Coder on this machine may go unanswered before it is given up, so one that hangs can't stop the page
 CW_CL_LIVE :: 3.0;     // seconds between fresh copies of the one shown, so turns made elsewhere (a terminal) appear   // Coder on this machine: its sessions, one's log, a new one, a message, Stop
 CW_LIST_EVERY :: 3.0;  // seconds between reads of the sessions
 CW_LOG_EVERY :: 1.0;   // and of the shown session's log while it runs
@@ -109,6 +110,7 @@ ChatWeb :: struct {
   key: [CW_KEY] u8; key_n: int;      // a key being typed in Settings, wiped once sent
   note: [CW_ERROR] u8; note_n: int;  // what Settings last said (a key that didn't work, Connected, Removed)
   flight: int;                       // the request in flight (CF_*)
+  flight_at: f32;                    // when it went
   resp: [CW_RESP] u8; resp_n: int;   // its answer so far, when it isn't a stream
   conv: int; turn: int;              // the hosted agent's conversation and the turn running in it
   asked_at: f32;                     // when the turn was last read
@@ -189,7 +191,7 @@ cw_go :: (s: [] ChatWeb, kind: int, url: string, body: string) -> bool {
   if s[0].flight != CF_NONE { return false; }
   s[0].door_n = cw_put(s[0].door[..], 0, url);
   s[0].request_n = cw_put(s[0].request[..], 0, body);
-  s[0].flight = kind; s[0].ask = true; s[0].resp_n = 0; s[0].status = 0;
+  s[0].flight = kind; s[0].ask = true; s[0].resp_n = 0; s[0].status = 0; s[0].flight_at = s[0].time;
   return true;
 }
 // The sessions beside the chat: a new chat, the Coder sessions running on this machine now (whoever
@@ -199,8 +201,7 @@ cw_side_row :: (s: [] ChatWeb, k: int) {
   t := s[0].tree[..]; u := s[0].ui[..];
   buf: [UI_ID] u8;
   title := cast(string) s[0].stask[k][0..<s[0].stask_n[k]];
-  r := k_row(t, u, tr_join(buf[..], "s.", k), ifx title.count > 0 then title else "(no message)", cast(string) s[0].seng[k][0..<s[0].seng_n[k]], cast(string) s[0].sid[k][0..<s[0].sid_n[k]] == cw_sel(s));
-  if s[0].srun[k] { tr_attr(t, r, AT_STATE, "running"); }
+  r := k_row_busy(t, u, tr_join(buf[..], "s.", k), ifx title.count > 0 then title else "(no message)", cast(string) s[0].seng[k][0..<s[0].seng_n[k]], cast(string) s[0].sid[k][0..<s[0].sid_n[k]] == cw_sel(s), s[0].srun[k]);
 }
 cw_side :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
@@ -781,6 +782,13 @@ cw_end :: (s: [] ChatWeb, status: int) {
 }
 // What a frame sends for a Claude turn at work: Stop once, then a read each CW_POLL seconds.
 cw_tick :: (s: [] ChatWeb) {
+  if s[0].flight >= CF_LIST && s[0].time - s[0].flight_at > CW_LOCAL_WAIT {
+    // Coder didn't answer: the request is ended, and what it was for is asked again in its turn
+    if s[0].flight == CF_LOG || s[0].flight == CF_IMPORT { s[0].log_due = s[0].sel_n > 0; }
+    if s[0].flight == CF_RUN || s[0].flight == CF_LSEND { s[0].lrun = false; s[0].echo = false; cw_say(s, "Coder on this computer didn't answer. Send it again."); }
+    s[0].stop = true; s[0].ask = false; s[0].flight = CF_NONE; s[0].dirty = true;
+    return;
+  }
   if s[0].flight != CF_NONE { return; }
   if s[0].local == 1 && !s[0].live {
     // Coder on this machine: Stop once, the shown session's log while it runs, and the sessions now and then
@@ -1285,7 +1293,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   t := l[0].tree[..];
   #assert l[0].local == 1 && l[0].ns == 2 && tr_find(t, "side") >= 0 && tr_find(t, "side.new") >= 0;
   #assert tr_text_of(t, tr_find(t, "s.0.t")) == "fix the build" && tr_text_of(t, tr_find(t, "s.0.m")) == "claude" && tr_text_of(t, tr_find(t, "s.1.m")) == "microcoder";
-  #assert tr_text_of(t, tr_find(t, "side.run")) == "Running" && tr_text_of(t, tr_find(t, "side.recent")) == "Coder" && tr_attr_of(t, tr_find(t, "s.0"), AT_STATE) == "running";
+  #assert tr_text_of(t, tr_find(t, "side.run")) == "Running" && tr_text_of(t, tr_find(t, "side.recent")) == "Coder" && tr_attr_of(t, tr_find(t, "s.0"), AT_STATE) == "busy" && tr_find(t, "s.0.busy") >= 0 && tr_find(t, "s.1.busy") < 0;
   cw_test_press(l, "model"); b = coaxial_chatweb_frame(l, 0.016, true);
   #assert tr_find(t, "model.6") >= 0 && tr_find(t, "model.9") >= 0 && tr_find(t, "model.3") < 0;
   cw_test_press(l, "model.7"); b = coaxial_chatweb_frame(l, 0.016, true);
@@ -1423,4 +1431,17 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   cw_test_press(f, "c.1"); b = coaxial_chatweb_frame(f, 0.016, true);
   cw_test_answer(f, 500, "no");
   #assert f[0].error_n > 0 && f[0].csel_n == 0 && f[0].sel_n == 0;
+}
+
+#test "a request to Coder that is never answered is given up, and the page goes on" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_local(s, CW_T_SESSIONS);
+  cw_test_press(s, "s.0");
+  b := coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].flight == CF_LOG;
+  coaxial_chatweb_asked(s);
+  for i: 0..<130 { b = coaxial_chatweb_frame(s, 0.1, true); if s[0].flight != CF_LOG { break; } }
+  #assert s[0].flight == CF_NONE && coaxial_chatweb_stop(s) && s[0].log_due;
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].flight == CF_LOG && cw_test_door(s) == "/local/log?id=20261112-042601-123&after=-1";
 }

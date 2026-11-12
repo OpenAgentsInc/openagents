@@ -383,7 +383,7 @@ static void draft_child(int fd, const char *drop, const char *request) {
   char url[512], tok[4096], auth[4200], http[16], took[16];
   const char *given = getenv("OA_DRAFT_URL");
   if (given && *given) snprintf(url, sizeof url, "%s", given);
-  else snprintf(url, sizeof url, "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/google/models/%s:generateContent", model);
+  else snprintf(url, sizeof url, "https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/publishers/google/models/%s:generateContent", model);
   long status = 0;
   buf b = {0};
   double t0 = api_now_ms();

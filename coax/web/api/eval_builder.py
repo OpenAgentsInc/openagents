@@ -111,7 +111,7 @@ JUDGE_SCHEMA = {
 
 
 def judge(prompt, board):
-    url = f"https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/google/models/{JUDGE}:generateContent"
+    url = f"https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/publishers/google/models/{JUDGE}:generateContent"
     req = {"systemInstruction": {"parts": [{"text": JUDGE_SAYS}]},
            "contents": [{"role": "user", "parts": [{"text": "The visitor said: " + json.dumps(prompt) + "\nThe board: " + json.dumps(board)}]}],
            "generationConfig": {"responseMimeType": "application/json", "responseSchema": JUDGE_SCHEMA, "temperature": 0}}

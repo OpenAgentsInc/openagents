@@ -328,8 +328,10 @@ k_notice :: (t: [] Tree, u: [] Ui, id: string, kind: string, text: string) -> in
   return i;
 }
 // Row: a conversation in a list or a choice in a menu. The current one has an underline.
-k_row :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current: bool) -> int {
-  ida: [UI_ID] u8; idb: [UI_ID] u8;
+k_row :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current: bool) -> int { return k_row_busy(t, u, id, title, meta, current, false); }
+// The same, with a turning mark at its right while what the row names is at work.
+k_row_busy :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current: bool, busy: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
   i := tr_open(t, id, TG_BUTTON, "row");
   if current {
     tr_frame(t, i, mono_kind(MF_ROW), MF_ROW, ui_progress(u, tr_cat(ida[..], id, ".on"), MONO_ENTER));
@@ -337,6 +339,7 @@ k_row :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current
   }
   a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "row-t", title);
   if meta.count > 0 { b := tr_leaf(t, tr_cat(idb[..], id, ".m"), TG_SPAN, "meta", meta); }
+  if busy { tr_attr(t, i, AT_STATE, "busy"); c := k_icon(t, tr_cat(idc[..], id, ".busy"), IC_SPIN); }
   tr_close(t);
   return i;
 }

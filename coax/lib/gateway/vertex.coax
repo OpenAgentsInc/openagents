@@ -1,7 +1,7 @@
 // Vertex AI Gemini, the first choice (docs/coder/microcoder.md, row 3):
 // Vertex's OpenAI-compatible endpoint (Chat Completions through chat.coax,
 // strict json_schema) at aiplatform.googleapis.com, project
-// openagentsgemini, location global, with a bearer token minted for an hour
+// openagentsgemini, location us (the multi-region), with a bearer token minted for an hour
 // and cached until a few minutes before it lapses. From the old
 // crates/inference upstream/vertex.rs and google.rs (TokenSource).
 //
@@ -25,7 +25,9 @@
 #load "gateway.coax";
 
 GW_VERTEX_PROJECT :: "openagentsgemini";
-GW_VERTEX_LOCATION :: "global";
+// The us multi-region, not global (owner rule, 2026-11-11): the same five-step Microcoder task on
+// Gemini 4 Carbon took 313 s through global and 19 s through us that night.
+GW_VERTEX_LOCATION :: "us";
 GW_VERTEX_KEY_ENV :: "GW_VERTEX_TOKEN";
 GW_VERTEX_FLASH :: "google/gemini-3.8-flash";     // the OpenAI endpoint's name; the native one drops "google/"
 GW_VERTEX_TOKEN_TTL_MS :: 3000000;                 // tokens live an hour: mint again after 50 minutes
@@ -154,6 +156,8 @@ gw_vertex_token :: (v: [] GwVertex) -> string {
 
 #test "Vertex URLs: the OpenAI endpoint and the native stream, global, the us and eu multi-regions, and regional" {
   v: [1] GwVertex;
+  #assert gw_vertex_chat_url(v[..]) == "https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions";
+  v[0].location = "global";
   #assert gw_vertex_chat_url(v[..]) == "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi/chat/completions";
   #assert gw_vertex_native_url(v[..], GW_VERTEX_FLASH) == "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/google/models/gemini-3.8-flash:streamGenerateContent?alt=sse";
   v[0].location = "us-central1";

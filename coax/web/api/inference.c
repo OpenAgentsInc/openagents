@@ -50,7 +50,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#define VERTEX_CHAT "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi/chat/completions"
+// The us multi-region, not global: global was many times slower on Gemini 4 Carbon (2026-11-11).
+#define VERTEX_CHAT "https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions"
 
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
 

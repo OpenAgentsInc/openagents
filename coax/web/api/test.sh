@@ -215,7 +215,7 @@ infer_url="http://127.0.0.1:$INFER_PORT/chat/completions" infer_token=test-token
 if [[ $serve == 1 ]]; then
   api_origin="$serve_origin"
   if [[ -n "${OA_SERVE_INFERENCE_TOKEN:-}" ]]; then
-    infer_url="https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi/chat/completions"
+    infer_url="https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions"
     infer_token="$OA_SERVE_INFERENCE_TOKEN" infer_daily=500
   fi
 fi

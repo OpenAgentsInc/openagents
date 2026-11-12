@@ -158,7 +158,7 @@ static void agent(const request *q, PGconn *db, answer a) {
   char url[512], tok[4096], auth[4200], http[16], took[16];
   const char *given = getenv("OA_VILLA_URL");
   if (given && *given) snprintf(url, sizeof url, "%s", given);
-  else snprintf(url, sizeof url, "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/google/models/%s:generateContent", model);
+  else snprintf(url, sizeof url, "https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/publishers/google/models/%s:generateContent", model);
   long status = 0; buf b = {0};
   double t0 = api_now_ms();
   if (drops_token(tok, sizeof tok)) {

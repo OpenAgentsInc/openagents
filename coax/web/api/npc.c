@@ -86,7 +86,7 @@ static long ask_model_in(const char *url_env, const char *model, const char *req
   char url[512];
   const char *given = getenv(url_env);
   if (given && *given) snprintf(url, sizeof url, "%s", given);
-  else snprintf(url, sizeof url, "https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/google/models/%s:generateContent",
+  else snprintf(url, sizeof url, "https://aiplatform.us.rep.googleapis.com/v1/projects/%s/locations/us/publishers/google/models/%s:generateContent",
                 PROJECT, model);
   char tok[4096], auth[4200];
   long status = 0;
