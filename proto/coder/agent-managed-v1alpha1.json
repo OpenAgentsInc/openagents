@@ -104,6 +104,16 @@
       "line": "{\"t\":\"repo\",\"id\":2,\"body\":{\"repo\":\"openagents\",\"op\":\"search\",\"at\":\"311a870f1fa709cb41f33d1e6180c642d4f149bc\",\"pattern\":\"rg_mint ::\"}}"
     },
     {
+      "name": "model",
+      "message": "ModelLine",
+      "writer": "model",
+      "values": {
+        "id": 3,
+        "body": "{\"model\":\"google/gemini-3.8-flash\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+      },
+      "line": "{\"t\":\"model\",\"id\":3,\"body\":{\"model\":\"google/gemini-3.8-flash\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}}"
+    },
+    {
       "name": "done-project",
       "message": "DoneLine",
       "writer": "done",

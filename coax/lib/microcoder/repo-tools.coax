@@ -142,6 +142,7 @@ MRT_PLAIN :: 0;                  // the answer as it is
 MRT_TAIL :: 1;                   // read the line count first, then the last `lines`
 MRT_WC :: 2;                     // read the line count, answer "N PATH"
 MRT_LIST :: 3;                   // a search's paths, each once
+MRT_TAIL_READ :: 4;              // the tail's second read: its answer as it is
 
 // One command, parsed: a request to make, or a line to answer with (say).
 MrtCmd :: struct { say: string; exit: int; q: RpRequest; post: int; lines: int; }
@@ -456,51 +457,86 @@ mrt_output :: (b: [] McRepoBuffers, text: string) -> string {
   return mc_output_text(o);
 }
 
-// One command against the snapshot: its exit (0, 1 when the repository could not answer it,
-// 2 when it is not one this host takes) and its output, kept as the local host keeps it.
-mrt_run_command :: (m: RpMirror, snapshot: string, command: string, b: [] McRepoBuffers) -> McCommandResult {
+// One command or view as steps, so the caller makes each repository call itself: from a mirror
+// (mrt_run_command, mrt_run_view, mc_run_repo_tools below) or through the repo service, where a
+// call leaves the process (/chat's Microcoder engine, coax/web/agent/chat-micro.coax). mrt_*_begin
+// gives either the result (done) or a request to answer; mrt_*_answer takes the answer and gives
+// the result, or (tail) one more request.
+MrtStep :: struct { done: bool; q: RpRequest; c: MrtCmd; view: string; exit: int; text: string; found: bool; }
+mrt_done :: (exit: int, text: string) -> MrtStep { return MrtStep.{done = true, exit = exit, text = text}; }
+
+mrt_command_begin :: (snapshot: string, command: string, b: [] McRepoBuffers) -> MrtStep {
   c := mrt_parse(command, b[0].words[..]);
-  if c.say.count > 0 { return McCommandResult.{exit = c.exit, output = mrt_output(b, c.say)}; }
+  if c.say.count > 0 { return mrt_done(c.exit, c.say); }
   q := c.q; q.at = snapshot;
-  a := rp_call(m, q, b[0].work[..], b[0].answer[..]);
-  if !a.ok { return McCommandResult.{exit = 1, output = mrt_output(b, a.error)}; }
-  text := cast(string) b[0].answer[0..<a.n];
+  return MrtStep.{q = q, c = c};
+}
+// a: the repository's answer to st.q; text its answer's text (a.ok), which b may hold.
+mrt_command_answer :: (st: MrtStep, a: RpAnswer, text: string, b: [] McRepoBuffers) -> MrtStep {
+  if !a.ok { return mrt_done(1, a.error); }
+  c := st.c; q := st.q;
+  if c.post == MRT_TAIL_READ { return mrt_done(0, text); }
   if q.op == RP_READ && !mrt_has_break(q.path) {
     lines := mrt_header_lines(text, q.path);
-    if lines < 0 { return McCommandResult.{exit = 1, output = mrt_output(b, text)}; }
+    if lines < 0 { return mrt_done(1, text); }
     if c.post == MRT_WC {
       k := rp_put_int(b[0].extra[..], 0, lines); k = rp_put(b[0].extra[..], k, " "); k = rp_put(b[0].extra[..], k, q.path); k = rp_put(b[0].extra[..], k, "\n");
-      return McCommandResult.{output = mrt_output(b, cast(string) b[0].extra[0..<k])};
+      return mrt_done(0, cast(string) b[0].extra[0..<k]);
     }
     if c.post == MRT_TAIL {
+      // the last lines: one more read, answered as a plain one
       q.from = ifx lines - c.lines + 1 < 1 then 1 else lines - c.lines + 1;
       q.to = ifx lines < 1 then 1 else lines;
-      a = rp_call(m, q, b[0].work[..], b[0].answer[..]);
-      if !a.ok { return McCommandResult.{exit = 1, output = mrt_output(b, a.error)}; }
-      text = cast(string) b[0].answer[0..<a.n];
+      c.post = MRT_TAIL_READ;
+      return MrtStep.{q = q, c = c};
     }
   }
   if c.post == MRT_LIST {
     k := mrt_list(text, b[0].extra[..]);
-    text = cast(string) b[0].extra[0..<k];
+    return mrt_done(0, cast(string) b[0].extra[0..<k]);
   }
-  return McCommandResult.{output = mrt_output(b, text)};
+  return mrt_done(0, text);
+}
+// The command's result as the loop keeps it (the local host's head and tail).
+mrt_command_result :: (st: MrtStep, b: [] McRepoBuffers) -> McCommandResult {
+  return McCommandResult.{exit = st.exit, output = mrt_output(b, st.text)};
+}
+
+mrt_view_begin :: (snapshot: string, view: string, b: [] McRepoBuffers) -> MrtStep {
+  path := mrt_path(view);
+  if mrt_has_break(path) { return MrtStep.{done = true, view = path, text = "not shown: the path holds a line break"}; }
+  return MrtStep.{q = RpRequest.{op = RP_READ, at = snapshot, path = path}, view = path};
+}
+mrt_view_answer :: (st: MrtStep, a: RpAnswer, text: string, b: [] McRepoBuffers) -> MrtStep {
+  why := "";
+  if !a.ok { why = a.error; }
+  else {
+    if mrt_header_lines(text, st.view) >= 0 { return MrtStep.{done = true, found = true, view = st.view, text = text}; }
+    why = mrt_named(text, st.view);
+  }
+  k := rp_put(b[0].extra[..], 0, "not shown: "); k = rp_put(b[0].extra[..], k, why);
+  return MrtStep.{done = true, view = st.view, text = cast(string) b[0].extra[0..<k]};
+}
+
+// One command against the snapshot of a mirror: its exit (0, 1 when the repository could not answer
+// it, 2 when it is not one this host takes) and its output, kept as the local host keeps it.
+mrt_run_command :: (m: RpMirror, snapshot: string, command: string, b: [] McRepoBuffers) -> McCommandResult {
+  st := mrt_command_begin(snapshot, command, b);
+  while !st.done {
+    a := rp_call(m, st.q, b[0].work[..], b[0].answer[..]);
+    st = mrt_command_answer(st, a, ifx a.ok then cast(string) b[0].answer[0..<a.n] else "", b);
+  }
+  return mrt_command_result(st, b);
 }
 
 // One view: the file read at the snapshot, numbered, or why it isn't shown.
 mrt_run_view :: (m: RpMirror, snapshot: string, view: string, b: [] McRepoBuffers) -> McViewResult {
-  path := mrt_path(view);
-  if mrt_has_break(path) { return McViewResult.{content = "not shown: the path holds a line break"}; }
-  a := rp_call(m, RpRequest.{op = RP_READ, at = snapshot, path = path}, b[0].work[..], b[0].answer[..]);
-  why := "";
-  if !a.ok { why = a.error; }
-  else {
-    text := cast(string) b[0].answer[0..<a.n];
-    if mrt_header_lines(text, path) >= 0 { return McViewResult.{found = true, content = text}; }
-    why = mrt_named(text, path);
+  st := mrt_view_begin(snapshot, view, b);
+  if !st.done {
+    a := rp_call(m, st.q, b[0].work[..], b[0].answer[..]);
+    st = mrt_view_answer(st, a, ifx a.ok then cast(string) b[0].answer[0..<a.n] else "", b);
   }
-  k := rp_put(b[0].extra[..], 0, "not shown: "); k = rp_put(b[0].extra[..], k, why);
-  return McViewResult.{content = cast(string) b[0].extra[0..<k]};
+  return McViewResult.{found = st.found, content = st.text};
 }
 
 // Runs the pending action against snapshot (a commit id) of the mirror, into the loop, in the local

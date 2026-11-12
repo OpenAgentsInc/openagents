@@ -19,6 +19,8 @@
 //   GET  /api/chat/account         {"claude": {kind, last4, expired} or null}: the saved credential, never the key
 //   GET  /api/chat/turn?t=ID       one turn as JSON: {status, answer, error, working, model, credential, cost_usd,
 //                                  tools: [{name, detail}]}, for a page that asks about the turn it sent
+//   POST /api/chat/runner/complete?t=TURN   the runner, signed: a model call of running turn TURN (a Gemini
+//                                  turn's Microcoder engine), answered as complete answers its asker
 //   POST /api/chat/complete        a Chat Completions request (model, messages, stream): our inference
 //                                  route's answer (inference.c), for the rebuilt page (chat-web.coax)
 //   POST /api/chat/runner/next|event|end   the runner (NIP-98, a key in OA_AGENT_RUNNER_PUBKEYS)
@@ -306,7 +308,7 @@ bool chat_route(const request *q) {
   bool runner = !strncmp(op, "runner/", 7);
   if (runner) op += 7;
   static const char *const member_ops[] = {"state", "new", "send", "model", "stop", "tab", "record", "key", "key_remove", "complete", "account", "turn", NULL};
-  static const char *const runner_ops[] = {"next", "event", "end", NULL};
+  static const char *const runner_ops[] = {"next", "event", "end", "complete", NULL};
   bool known = false;
   for (const char *const *o = runner ? runner_ops : member_ops; *o; o++) if (!strcmp(*o, op)) known = true;
   // Anything else under /api/chat/ is the Verse demo's room chat (room.c, /api/chat/<room>).
@@ -315,7 +317,8 @@ bool chat_route(const request *q) {
   if (!post && strcmp(q->method, "GET")) { reply(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
   bool get_op = !strcmp(op, "state") || !strcmp(op, "record") || !strcmp(op, "account") || !strcmp(op, "turn");
   if (get_op == post) { reply(q->fd, 405, post ? "{\"error\":\"GET this\"}" : "{\"error\":\"POST this\"}"); return true; }
-  if (q->body_len > 64 * 1024) { reply(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
+  // a Microcoder step's request carries its state, up to 256 KB (coax/lib/microcoder/loop.coax MC_REQUEST_MAX)
+  if (q->body_len > (runner && !strcmp(op, "complete") ? 384 * 1024 : 64 * 1024)) { reply(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
   PGconn *db = api_db();
   if (!db) { reply(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
 
@@ -336,6 +339,22 @@ bool chat_route(const request *q) {
     }
   }
 
+  // A model call of a running /chat turn on a Gemini model (coax/web/agent/chat-micro.coax, #13326): the
+  // runner relays the engine's Chat Completions request, and our inference route answers it for the
+  // turn's asker, under that admin's caps and metering, as the page's own complete does.
+  if (runner && !strcmp(op, "complete")) {
+    char t[24]; api_query(q, "t", t, sizeof t);
+    bool digits = t[0] != 0;
+    for (const char *p = t; *p; p++) if (!isdigit((unsigned char)*p)) digits = false;
+    if (!digits || strlen(t) > 18) { reply(q->fd, 400, "{\"error\":\"t is a turn's number\"}"); return true; }
+    const char *v[1] = {t};
+    PGresult *r = PQexecParams(db, "SELECT owner FROM chat.turns WHERE id = $1::bigint AND status = 'running'", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); reply(q->fd, 409, "{\"error\":\"that turn is not running\"}"); return true; }
+    char owner[65]; snprintf(owner, sizeof owner, "%s", PQgetvalue(r, 0, 0));
+    PQclear(r);
+    if (!admin_is(owner)) { reply(q->fd, 403, "{\"error\":\"admins only\"}"); return true; }
+    return inference_ask(q, owner, true);
+  }
   if (!strcmp(op, "key")) { chat_key(q, pubkey, false); return true; }
   // The rebuilt /chat page (apps/openagents-web/chat-web.coax): a Chat Completions request, answered by
   // our inference route's own ask (inference.c: Vertex, its caps and its metering) as it comes.

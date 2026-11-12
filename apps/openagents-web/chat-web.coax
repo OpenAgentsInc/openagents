@@ -17,6 +17,11 @@
 //   credential. It reads the public openagents repository and the web, and
 //   its tools show while it works. Its answer comes whole when the turn ends,
 //   and it remembers its own turns of this visit, not Gemini's.
+// - Microcoder on Gemini 3.8 Flash (offered once the repo service is live,
+//   CW_REPO_LIVE): a turn of the same hosted agent with no account needed, run by Microcoder's loop with the repo tool host
+//   (coax/web/agent/chat-micro.coax): it reads the public openagents
+//   repository at one commit through the repo service (oa-repo), with no
+//   checkout, and its commands show while it works.
 // The gear opens Settings in the transcript's place: connected accounts,
 // where an Anthropic API key or a Claude subscription token is pasted,
 // checked and sealed by the runner (POST /api/chat/key), and never shown again.
@@ -69,13 +74,18 @@ CW_CHAT :: 0; CW_SETTINGS :: 1;
 // The models, Gemini's first: a Claude one is offered only while a Claude account is connected.
 // The models: Google's, Claude's on the connected account (the hosted agent), and the agents on this
 // machine through Coder (`coder mcp --http`, coder/tui/mcp_http.coax), offered only where Coder answers.
-CW_MODELS :: 10; CW_GEMINIS :: 3; CW_HOSTED :: 6;
-CW_MODEL_IDS :: [10] string.["google/gemini-3.8-flash", "google/gemini-4-argon", "google/gemini-4-carbon", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
+CW_MODELS :: 11; CW_GEMINIS :: 3; CW_GEMINI_AGENT :: 6; CW_HOSTED :: 7;
+// Microcoder on Gemini reads the code through the repo service (oa-repo, #13326); it is offered once that is live.
+CW_REPO_LIVE :: false;
+CW_MODEL_IDS :: [11] string.["google/gemini-3.8-flash", "google/gemini-4-argon", "google/gemini-4-carbon", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
+  "google/gemini-3.8-flash",
   "claude", "codex", "antigravity", "micro"];
-CW_MODEL_NAMES :: [10] string.["Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5",
+CW_MODEL_NAMES :: [11] string.["Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5",
+  "Microcoder on Gemini 3.8 Flash",
   "Claude Code", "Codex", "Antigravity", "Microcoder"];
-CW_MODEL_NOTES :: [10] string.["Google. Answers from what it knows", "Google. Answers from what it knows", "Google. Answers from what it knows",
+CW_MODEL_NOTES :: [11] string.["Google. Answers from what it knows", "Google. Answers from what it knows", "Google. Answers from what it knows",
   "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web",
+  "Our own agent on Google's model. Reads our code",
   "On this computer, through Coder. Your login, your files, a shell", "On this computer, through Coder. Your login, your files, a shell",
   "On this computer, through Coder. Google's agent, your files, a shell", "On this computer, through Coder. Our own agent, your files, a shell"];
 // The agents: OpenAgents (a model answers, on the web), and the four on this machine through Coder.
@@ -231,7 +241,7 @@ cw_has_words :: (s: [] ChatWeb) -> bool {
 }
 cw_text :: (s: [] ChatWeb, k: int) -> string { return cast(string) s[0].pool[s[0].at[k]..<s[0].at[k] + s[0].len[k]]; }
 
-cw_claude_model :: (model: int) -> bool { return model >= CW_GEMINIS && model < CW_HOSTED; }
+cw_claude_model :: (model: int) -> bool { return model >= CW_GEMINIS && model < CW_GEMINI_AGENT; }
 cw_local_model :: (model: int) -> bool { return model >= CW_HOSTED; }
 cw_connected :: (s: [] ChatWeb) -> bool { return s[0].claude != CA_NONE && !s[0].expired; }
 // The model the next message goes to: the one chosen, unless it is Claude's and no account is connected.
@@ -430,6 +440,7 @@ cw_build :: (s: [] ChatWeb) {
   if s[0].menu && agent == 0 {
     for m: 0..<CW_HOSTED {
       if cw_claude_model(m) && !cw_connected(s) { continue; }
+      if m == CW_GEMINI_AGENT && !CW_REPO_LIVE { continue; }
       r := k_row(t, u, tr_join(buf[..], "model.", m), names[m], "", m == cw_model(s));
     }
     if !cw_connected(s) { hint := k_meta(t, "model.hint", "Connect a Claude account in Settings to choose Claude models."); }
@@ -700,7 +711,7 @@ cw_send :: (s: [] ChatWeb) {
     return;
   }
   cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, CW_ANSWER);
-  sent := ifx cw_claude_model(model) then cw_turn_send(s, model, cw_text(s, s[0].count - 1)) else cw_complete(s, model);
+  sent := ifx cw_claude_model(model) || model == CW_GEMINI_AGENT then cw_turn_send(s, model, cw_text(s, s[0].count - 1)) else cw_complete(s, model);
   cw_add(s, "", CW_AGENT, CW_ANSWER);
   names := CW_MODEL_NAMES;
   k := s[0].count - 1;
@@ -1066,7 +1077,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_CLICK && cw_index(id, "model.") >= 0 {
     m := cw_index(id, "model.");
-    if m < CW_HOSTED && (!cw_claude_model(m) || cw_connected(s)) { s[0].model = m; }
+    if m < CW_HOSTED && (!cw_claude_model(m) || cw_connected(s)) && (m != CW_GEMINI_AGENT || CW_REPO_LIVE) { s[0].model = m; }
     s[0].menu = false;
     dm_focus(s[0].dom[..], "composer");   // a model chosen: the caret is back in the field
   }
@@ -1331,6 +1342,22 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert !c[0].known && tr_find(c[0].tree[..], "claude.key") < 0 && cw_test_has(tr_text_of(c[0].tree[..], tr_find(c[0].tree[..], "claude.status")), "Log in as an admin");
 }
 
+#test "Microcoder on Gemini needs no account: its message is a turn of the hosted agent, offered once the repo service is live" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_press(s, "model");
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert (tr_find(t, "model.6") >= 0) == CW_REPO_LIVE && tr_find(t, "model.3") < 0;
+  cw_test_press(s, "model.6");
+  #assert (s[0].model == CW_GEMINI_AGENT) == CW_REPO_LIVE;
+  s[0].model = CW_GEMINI_AGENT;
+  #assert cw_model(s) == CW_GEMINI_AGENT && cw_agent(s) == 0 && !cw_claude_model(CW_GEMINI_AGENT);
+  cw_test_type(s, "composer", "where is rg_mint defined?");
+  cw_test_enter(s, "composer");
+  #assert cw_test_door(s) == "/api/chat/send" && cw_test_body(s) == "{\"text\":\"where is rg_mint defined?\",\"model\":\"google/gemini-3.8-flash\"}";
+}
+
 #test "a Claude message is a turn of the hosted agent: sent, read each second with its tools, then answered" {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":{\"kind\":\"oauth\",\"last4\":\"wxyz\",\"expired\":false}}");
@@ -1419,7 +1446,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   for i: 0..<40 { b := coaxial_chatweb_frame(s, 0.1, true); }
   #assert s[0].local == -1 && !coaxial_chatweb_asking(s) && tr_find(s[0].tree[..], "side") < 0;
   cw_test_press(s, "model"); b := coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_find(s[0].tree[..], "model.0") >= 0 && tr_find(s[0].tree[..], "model.6") < 0 && tr_find(s[0].tree[..], "agent") < 0;
+  #assert tr_find(s[0].tree[..], "model.0") >= 0 && tr_find(s[0].tree[..], "model.6") < 0 && tr_find(s[0].tree[..], "model.7") < 0 && tr_find(s[0].tree[..], "agent") < 0;
 
   tl: [1] CwTest; l := tl[0].s[..];
   cw_test_local(l, CW_T_SESSIONS);
@@ -1434,7 +1461,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   cw_test_press(l, "agent"); b = coaxial_chatweb_frame(l, 0.016, true);
   #assert tr_find(t, "agent.0") >= 0 && tr_find(t, "agent.4") >= 0 && tr_text_of(t, tr_find(t, "agent.4.t")) == "Microcoder" && tr_find(t, "model.0") < 0;
   cw_test_press(l, "agent.4"); b = coaxial_chatweb_frame(l, 0.016, true);
-  #assert l[0].model == 9 && cw_agent(l) == 4 && !l[0].amenu && tr_text_of(t, tr_find(t, "agent.l")) == "Microcoder" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 3.8 Flash";
+  #assert l[0].model == 10 && cw_agent(l) == 4 && !l[0].amenu && tr_text_of(t, tr_find(t, "agent.l")) == "Microcoder" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 3.8 Flash";
   cw_test_press(l, "model"); b = coaxial_chatweb_frame(l, 0.016, true);
   #assert tr_find(t, "lm.0") >= 0 && tr_find(t, "lm.2") >= 0 && tr_find(t, "lm.3") < 0 && tr_find(t, "model.0") < 0;
   cw_test_press(l, "lm.2"); b = coaxial_chatweb_frame(l, 0.016, true);
@@ -1449,7 +1476,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   cw_test_press(m, "model"); b = coaxial_chatweb_frame(m, 0.016, true);
   cw_test_press(m, "model.2");
   cw_test_press(m, "agent"); b = coaxial_chatweb_frame(m, 0.016, true); cw_test_press(m, "agent.2");
-  #assert m[0].model == 7 && cw_agent(m) == 2;
+  #assert m[0].model == 8 && cw_agent(m) == 2;
   cw_test_press(m, "agent"); b = coaxial_chatweb_frame(m, 0.016, true); cw_test_press(m, "agent.0");
   #assert m[0].model == 2 && cw_agent(m) == 0;
   #assert cw_number("s.12", "s.") == 12 && cw_number("s.0", "s.") == 0 && cw_number("s.", "s.") == -1 && cw_number("s.1x", "s.") == -1 && cw_number("side.new", "s.") == -1 && cw_number("s.1234", "s.") == -1;
@@ -1458,7 +1485,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
 #test "a message to an agent on this machine starts a Coder session, and its log fills the transcript" {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
-  s[0].model = 6;
+  s[0].model = 7;
   cw_test_type(s, "composer", "fix it");
   cw_test_enter(s, "composer");
   #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"fix it\",\"engine\":\"claude\",\"model\":\"claude-opus-5-5\"}";
@@ -1517,14 +1544,14 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
   // Microcoder doesn't run goals: nothing is sent, and the page says where they run
-  s[0].model = 9;
+  s[0].model = 10;
   cw_test_type(s, "composer", "/goal all tests pass");
   cw_test_enter(s, "composer");
   #assert !coaxial_chatweb_asking(s) && s[0].count == 0 && s[0].goal_n == 0 && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "Only Claude Code runs /goal");
   b0 := coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_find(s[0].tree[..], "failed") >= 0;
   // Claude Code gets it word for word
-  s[0].model = 6;
+  s[0].model = 7;
   cw_test_enter(s, "composer");
   if cw_test_door(s) != "/local/run" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
   #assert cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"/goal all tests pass\",\"engine\":\"claude\",\"model\":\"claude-opus-5-5\"}";
@@ -1554,7 +1581,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
   cw_test_press(s, "s.0");
-  #assert cw_sel(s) == "20261112-042601-123" && s[0].model == 6 && s[0].count == 0;
+  #assert cw_sel(s) == "20261112-042601-123" && s[0].model == 7 && s[0].count == 0;
   b := coaxial_chatweb_frame(s, 0.016, true);
   #assert cw_test_door(s) == "/local/log?id=20261112-042601-123&after=-1";
   cw_test_answer(s, 200, "{\"next\":90,\"size\":90}\n{\"kind\":\"user\",\"text\":\"fix the build\"}\n{\"kind\":\"reply\",\"text\":\"On it.\"}\n");
@@ -1570,7 +1597,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   #assert !s[0].lrun && s[0].error_n == 0;
   // the microcoder session picks Microcoder; a new chat empties the transcript
   cw_test_press(s, "s.1");
-  #assert s[0].model == 9 && cw_sel(s) == "20261111-010101-001";
+  #assert s[0].model == 10 && cw_sel(s) == "20261111-010101-001";
   cw_test_answer(s, 200, "x");
   cw_test_press(s, "side.new");
   #assert s[0].sel_n == 0 && s[0].count == 0;

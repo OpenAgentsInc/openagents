@@ -9,7 +9,7 @@ import "openagents/options/v1alpha1/json.proto";
 //
 //   runner <-> engine   one JSON object a line on the engine's stdin and stdout:
 //                       ProjectTurnLine or ChatTurnLine first, then ReplyLine and
-//                       StopLine in; EventLine, CallLine, RepoLine and DoneLine out
+//                       StopLine in; EventLine, CallLine, RepoLine, ModelLine and DoneLine out
 //   runner -> API       EventBatch (POST .../event) and TurnEnd (POST .../end),
 //                       each with the "nonce" member the signed request adds
 //   API -> runner       NextTurn (POST .../next)
@@ -74,6 +74,16 @@ message CallLine {
 // (openagents.repo.v1alpha1), raw; the runner posts it to oa-repo with the
 // turn's grant and answers with a ReplyLine whose body is the RepoAnswer.
 message RepoLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  int64 id = 1 [json_name = "id"];
+  string body = 2 [json_name = "body"];
+}
+
+// Out: /chat's Microcoder engine asks a model (GitHub #13326). body is a
+// Chat Completions request, raw; the runner asks our inference route for the
+// turn's asker (POST /api/chat/runner/complete) and answers with a ReplyLine
+// whose body is the model's whole answer.
+message ModelLine {
   option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
   int64 id = 1 [json_name = "id"];
   string body = 2 [json_name = "body"];

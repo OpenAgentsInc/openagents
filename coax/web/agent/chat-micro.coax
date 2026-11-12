@@ -1,0 +1,279 @@
+// /chat's Microcoder engine (docs/repos/2026-11-11-indexed-repos.md, "The web chat"; GitHub #13326):
+// a /chat turn on a Gemini model, answered by Microcoder's loop (coax/lib/microcoder) with the repo
+// tool host (repo-tools.coax) over the indexed repo, with no checkout and no shell. The runner
+// (runner.c, chat-runner.c) starts it with the turn's first line, as it starts chat.coax for a Claude
+// turn, and it holds no credential of its own: each model call goes to the runner as a ModelLine (a
+// Chat Completions request, answered by our inference route for the turn's asker), and each
+// repository read as a RepoLine (answered by oa-repo with the turn's grant). It reads one commit,
+// resolved as the turn starts, so every answer of the turn reads the same code.
+//
+// What the page sees: a tool event per command and view, the working line, and the answer at the
+// end. The turn's cost is the inference route's usage at the rates card's price for our route.
+//
+//   coax/bin/coax test coax/web/agent/chat-micro.coax
+
+#import "Basic";
+#load "../../lib/microcoder/repo-tools.coax";
+#load "../../lib/gateway/rates.coax";
+#load "../../lib/gateway/card.coax";
+#load "engine-line.coax";
+#load "repo-line.coax";
+
+TURN_LINE :: 1048576;
+MODEL_REPLY :: 2097152;          // one model call's whole answer, at most
+CM_MODELS :: [3] string.["gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon"];
+
+// The model a turn names, as our inference route names it ("google/gemini-4-carbon"), or "" when
+// it isn't one this engine runs.
+cm_model :: (name: string, out: [] u8) -> string {
+  short := ifx name.count > 7 && name[0..<7] == "google/" then cast(string) name[7..<name.count] else name;
+  for m: CM_MODELS {
+    if m == short {
+      n := rp_put(out, 0, "google/"); n = rp_put(out, n, m);
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+
+// What the model is told about where it works: the repository, the commit, the command forms.
+cm_environment :: (repo: string, commit: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"repository\":");
+  n = json_write_string(out, n, repo);
+  n = json_raw(out, n, ",\"source\":\"github.com/OpenAgentsInc/openagents\",\"commit\":");
+  n = json_write_string(out, n, commit);
+  n = json_raw(out, n, ",\"tools\":");
+  n = json_write_string(out, n, "There is no shell and no working directory: the repository is read at this commit only, and nothing can be changed. Each command is one of these forms, and nothing else runs: ls PATH, find GLOB, cat PATH, head [-n N] PATH, tail [-n N] PATH, sed -n FROM,TOp PATH, wc -l PATH, grep [-i] [-E] [-n] [-r] [-l] [-C N] PATTERN [PATH...], git log [-n N] [--oneline] [PATH], git show COMMIT, git blame PATH -L FROM,TO. Paths are relative to the repository's root. When you answer about the code, name the files and lines you read (for example coax/web/release.sh#L10-L42) and the commit.");
+  n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The task: this message, after the conversation so far when there is one (as chat.coax writes it).
+cm_task :: (line: string, text: string, out: [] u8) -> string {
+  p: [1] ClOut; p[0].buf = out;
+  history := cl_raw(line, "history");
+  turns := cl_count(history);
+  start := ifx turns > 10 then turns - 10 else 0;
+  har: [131072] u8; harg: [1] ClArena; harg[0].buf = har[..];
+  said_any := false;
+  for i: start..<turns {
+    raw := cl_json(history, cl_item(history, i));
+    harg[0].at = 0; harg[0].full = false;
+    if !said_any { cl_put(p[..], "The conversation so far:\n\n"); said_any = true; }
+    t := cl_str(harg[..], raw, "text");
+    a := cl_str(harg[..], raw, "answer");
+    cl_put(p[..], "Me: "); cl_put(p[..], ifx t.count > 3000 then t[0..<3000] else t); cl_put(p[..], "\n");
+    if a.count > 0 { cl_put(p[..], "You: "); cl_put(p[..], ifx a.count > 4000 then a[0..<4000] else a); cl_put(p[..], "\n"); }
+    cl_put(p[..], "\n");
+  }
+  if said_any { cl_put(p[..], "Now:\n"); }
+  cl_put(p[..], text);
+  return ifx p[0].failed then "" else cast(string) out[0..<p[0].len];
+}
+
+// What the page shows for a command: its first word is the tool, the rest the detail.
+CmShown :: struct { name: string; detail: string; }
+cm_shown :: (command: string) -> CmShown {
+  s := 0;
+  while s < command.count && command[s] == ' ' { s += 1; }
+  e := s;
+  while e < command.count && command[e] != ' ' { e += 1; }
+  d := e;
+  while d < command.count && command[d] == ' ' { d += 1; }
+  name := cast(string) command[s..<e];
+  detail := cast(string) command[d..<command.count];
+  if name == "git" {
+    // "git log -n 3" shows as "git log", "-n 3"
+    f := d;
+    while f < command.count && command[f] != ' ' { f += 1; }
+    name = cast(string) command[s..<f];
+    g := f;
+    while g < command.count && command[g] == ' ' { g += 1; }
+    detail = cast(string) command[g..<command.count];
+  }
+  return CmShown.{name = ifx name.count > 40 then name[0..<40] else name, detail = ifx detail.count > 400 then detail[0..<400] else detail};
+}
+
+// The working line for a step: what it reads.
+cm_working :: (buf: [] u8, verb: string, what: string) {
+  wb: [600] u8; w: [1] ClOut; w[0].buf = wb[..];
+  cl_put(w[..], verb); cl_put(w[..], ifx what.count > 400 then what[0..<400] else what);
+  if !w[0].failed { el_event(buf, "working", "text", cast(string) wb[0..<w[0].len]); }
+}
+
+// The model's answer to one call as the loop's events: the whole body, or a refusal with the
+// route's status and error.
+cm_events :: (ar: [] ClArena, status: int, body: string, out: [] GwEvent) -> int {
+  if status == 200 { return gw_parse_whole(GW_WIRE_CHAT, ar, body, out); }
+  why := cl_str(ar, body, "error");
+  if why.count == 0 { why = ifx status == 0 then "the model could not be reached" else "the model refused the request"; }
+  out[0] = GwEvent.{kind = GW_EV_REFUSED, status = status, reason = why};
+  return 1;
+}
+
+// A Chat Completions request for the loop's next step, not streamed, into out.
+cm_request :: (l: [] McLoop, model: string, out: [] u8, why: [] string) -> string {
+  req := mc_request(l);
+  req.model = model; req.stream = false; req.effort = "low";
+  return gw_translate(Gateway.{name = "ours", wire = GW_WIRE_CHAT}, req, out, why);
+}
+
+#test "the models this engine runs, as our route names them" {
+  b: [64] u8;
+  #assert cm_model("gemini-4-carbon", b[..]) == "google/gemini-4-carbon";
+  #assert cm_model("google/gemini-3.8-flash", b[..]) == "google/gemini-3.8-flash";
+  #assert cm_model("claude-opus-5-5", b[..]) == "" && cm_model("google/", b[..]) == "" && cm_model("", b[..]) == "";
+}
+#test "a command shows as its tool and the rest" {
+  a := cm_shown("grep -n rg_mint coax/web/repo");
+  #assert a.name == "grep" && a.detail == "-n rg_mint coax/web/repo";
+  b := cm_shown("git log -n 3 README.md");
+  #assert b.name == "git log" && b.detail == "-n 3 README.md";
+  c := cm_shown("  ls");
+  #assert c.name == "ls" && c.detail == "";
+}
+#test "the environment names the commit and the forms, as JSON" {
+  b: [4096] u8;
+  e := cm_environment("openagents", "0123456789012345678901234567890123456789", b[..]);
+  #assert json_valid(e) && cl_raw(e, "commit") == "\"0123456789012345678901234567890123456789\"";
+}
+#test "a refusal carries the route's error; a whole answer is the model's text and done" {
+  ar: [4096] u8; a: [1] ClArena; a[0].buf = ar[..];
+  ev: [8] GwEvent;
+  n := cm_events(a[..], 429, "{\"error\":\"the day's requests are used up\"}", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "the day's requests are used up" && ev[0].status == 429;
+  n = cm_events(a[..], 0, "{}", ev[..]);
+  #assert n == 1 && ev[0].reason == "the model could not be reached";
+  n = cm_events(a[..], 200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":1}}", ev[..]);
+  text := false; done := false;
+  for i: 0..<n { if ev[i].kind == GW_EV_TEXT && ev[i].text == "hi" { text = true; } if ev[i].kind == GW_EV_DONE { done = true; } }
+  #assert text && done;
+}
+#test "the loop's request goes out as a Chat Completions body, not streamed, with the schema" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "where is rg_mint defined?", "{\"local_work\":0.9}", 0.9);
+  out: [65536] u8; why: [1] string;
+  body := cm_request(l[..], "google/gemini-3.8-flash", out[..], why[..]);
+  #assert body.count > 0 && json_valid(body);
+  #assert cl_raw(body, "model") == "\"google/gemini-3.8-flash\"" && cl_raw(body, "stream") == "false";
+  #assert cl_raw(body, "response_format").count > 0;
+}
+
+main :: () {
+  first: [TURN_LINE] u8;
+  n := eio_read_line(60000);
+  out: [131072] u8;
+  if n <= 0 || n > TURN_LINE { el_done(out[..], RW_DONE_CHAT, "failed", "", "the agent got no turn", 0.0, false); return; }
+  for i: 0..<n { first[i] = cast(u8) eio_line_byte(i); }
+  line := cast(string) first[0..<n];
+  tar: [262144] u8; targ: [1] ClArena; targ[0].buf = tar[..];
+  text := cl_str(targ[..], line, "turn.text");
+  mb: [64] u8;
+  model := cm_model(cl_str(targ[..], line, "model"), mb[..]);
+  repo_name := cl_str(targ[..], line, "repo.name");
+  repo_at := cl_str(targ[..], line, "repo.at");
+  if text.count == 0 { el_done(out[..], RW_DONE_CHAT, "failed", "", "the turn has no message", 0.0, false); return; }
+  if model.count == 0 { el_done(out[..], RW_DONE_CHAT, "failed", "", "this agent runs only the Gemini models", 0.0, false); return; }
+  if cl_raw(line, "repo.service") != "true" || repo_name.count == 0 { el_done(out[..], RW_DONE_CHAT, "failed", "", "this agent reads the code through the repository service, which isn't set up here", 0.0, false); return; }
+  if repo_at.count == 0 { repo_at = "main"; }
+
+  // the commit this turn reads
+  rst: [1] ElRepoState; calls := 0;
+  calls += 1;
+  rr := el_repo(rst[..], repo_name, RpRequest.{op = RP_RESOLVE, at = repo_at}, calls);
+  if rr.stopped { el_done(out[..], RW_DONE_CHAT, "stopped", "", "", 0.0, false); return; }
+  if !rr.a.ok { el_done(out[..], RW_DONE_CHAT, "failed", "", "We couldn't read our copy of the code. Send your message again in a minute.", 0.0, false); return; }
+  commit_buf: [40] u8;
+  for i: 0..<40 { commit_buf[i] = rr.a.commit[i]; }
+  commit := cast(string) commit_buf[..];
+
+  envb: [4096] u8; taskb: [196608] u8;
+  env := cm_environment(repo_name, commit, envb[..]);
+  task := cm_task(line, text, taskb[..]);
+  if env.count == 0 || task.count == 0 { el_done(out[..], RW_DONE_CHAT, "failed", "", "the conversation is too long for one turn", 0.0, false); return; }
+
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], env, task, "{\"route\":\"repository\",\"local_work\":0.9}", 0.9);
+  b: [1] McRepoBuffers;
+  reqb: [MC_REQUEST_MAX + 65536] u8; msg: [MC_REQUEST_MAX + 65600] u8;
+  reply_line: [MODEL_REPLY + 4096] u8; rar: [512] u8;
+  evar: [262144] u8; ear: [1] ClArena;
+  ev: [64] GwEvent;
+  rate := gw_rate("vertex", model);   // our route bills at Vertex's price
+  cost_micros := 0;
+  status := "failed"; err := "the agent stopped before it finished";
+  el_event(out[..], "working", "text", "thinking");
+  stopped := false;
+  while true {
+    if el_stop_waiting(0) { stopped = true; break; }
+    why: [1] string;
+    body := cm_request(l[..], model, reqb[..], why[..]);
+    if body.count == 0 { err = "the conversation is too long for one step"; break; }
+    calls += 1;
+    o: [1] ClOut; o[0].buf = msg[..];
+    rw_model(o[..], calls, body);
+    if o[0].failed { err = "the conversation is too long for one step"; break; }
+    el_send(o[..]);
+    w := el_wait_reply(reply_line[..], rar[..], calls, 300000);
+    if w.stopped { stopped = true; break; }
+    ear[0] = ClArena.{buf = evar[..]};
+    k := 0;
+    if w.late { ev[0] = GwEvent.{kind = GW_EV_REFUSED, reason = "the model did not answer in time"}; k = 1; }
+    else { k = cm_events(ear[..], w.status, w.body, ev[..]); }
+    r := MC_WAIT;
+    for i: 0..<k {
+      if ev[i].kind == GW_EV_DONE && rate.ok { cost_micros += gw_cost(rate.rate, ev[i].usage); }
+      r = mc_feed(l[..], ev[i]);
+    }
+    if r == MC_WAIT { r = mc_feed(l[..], GwEvent.{kind = GW_EV_DONE}); }   // a body with no done of its own
+    if r == MC_TOOLS {
+      a := mc_pending(l[..]);
+      for i: 0..<a.ne { mc_edited(l[..], a.edits[i].path, false, MRT_NO_EDITS); }
+      for i: 0..<a.nc {
+        if stopped { break; }
+        shown := cm_shown(a.commands[i]);
+        el_tool(out[..], shown.name, shown.detail);
+        cm_working(out[..], ifx shown.name == "grep" then "searching for " else "reading ", shown.detail);
+        st := mrt_command_begin(commit, a.commands[i], b[..]);
+        while !st.done {
+          calls += 1;
+          got := el_repo(rst[..], repo_name, st.q, calls);
+          if got.stopped { stopped = true; break; }
+          st = mrt_command_answer(st, got.a, got.text, b[..]);
+        }
+        if stopped { break; }
+        res := mrt_command_result(st, b[..]);
+        mc_command(l[..], a.commands[i], res.exit, false, res.output);
+      }
+      for i: 0..<a.nv {
+        if stopped { break; }
+        el_tool(out[..], "view", a.view[i]);
+        cm_working(out[..], "reading ", a.view[i]);
+        st := mrt_view_begin(commit, a.view[i], b[..]);
+        if !st.done {
+          calls += 1;
+          got := el_repo(rst[..], repo_name, st.q, calls);
+          if got.stopped { stopped = true; break; }
+          st = mrt_view_answer(st, got.a, got.text, b[..]);
+        }
+        mc_view(l[..], a.view[i], st.found, st.text);
+      }
+      if stopped { break; }
+      r = mc_tools_done(l[..]);
+      el_event(out[..], "working", "text", "thinking");
+    }
+    if r == MC_ENDED {
+      e := l[0].ending;
+      if e == MC_END_FINISHED || e == MC_END_ASKED { status = "done"; err = ""; }
+      else if e == MC_END_NO_CAPACITY { err = ifx l[0].why.count > 0 then l[0].why else "the model could not be reached"; }
+      else if e == MC_END_BAD_REPLIES { err = "the model's answers could not be read; send your message again"; }
+      else if e == MC_END_IDLE { err = "the agent stopped without an answer; ask again more plainly"; }
+      break;
+    }
+  }
+  cost := cast(f64) cost_micros / 1000000.0;
+  if stopped { el_done(out[..], RW_DONE_CHAT, "stopped", "", "", cost, false); return; }
+  reply := l[0].reply;
+  if status == "done" { el_event(out[..], "agent.message", "text", ifx reply.count > 4000 then reply[0..<4000] else reply); }
+  el_done(out[..], RW_DONE_CHAT, status, ifx status == "done" then reply else "", err, cost, false);
+}

@@ -487,6 +487,28 @@ s, b = cpage("POST", "complete", _ask)
 check("chat complete: an admin's cookie reaches the inference route: the model's answer (200), its day used up (429), or the model not reached (502)",
       s in (200, 429, 502), (s, b[:160]))
 
+# ---- POST /api/chat/runner/complete?t=TURN: a Gemini turn's model call (coax/web/agent/chat-micro.coax, #13326),
+# relayed by the runner and answered by the same inference route for the turn's asker, while the turn runs.
+def runner_complete(turn, body, key=None, n=[0]):
+    n[0] += 1
+    path = f"/api/chat/runner/complete?t={turn}&n={n[0]}-{int(time.time() * 1000)}"
+    raw = json.dumps(body).encode()
+    s, b, _ = call("POST", path, raw, {"Authorization": chat_signed(key or os.environ["RUN_KEY_FILE"], "POST", path, raw), "Content-Type": "application/json"})
+    return s, b.decode()
+GT = sql(f"insert into chat.turns (conv, owner, text, model, status, asked_ms) select id, owner, 'gemini', 'google/gemini-3.8-flash', 'running', 0 "
+         f"from chat.conversations where id = {C} returning id").split("\n")[0]
+s, b = runner_complete(GT, _ask)
+check("chat runner complete: a running Gemini turn's model call reaches the inference route for its asker (200, 429 or 502)", s in (200, 429, 502), (s, b[:160]))
+s, b = runner_complete(GT, _ask, key=os.environ["ADMIN_KEY"])
+check("chat runner complete: only the runner may relay a turn's model call", s == 403, (s, b[:120]))
+s, b = runner_complete("abc", _ask)
+check("chat runner complete: t must be a turn's number", s == 400, (s, b[:120]))
+sql(f"update chat.turns set status = 'done' where id = {GT}")
+s, b = runner_complete(GT, _ask)
+check("chat runner complete: a turn that has ended asks nothing", s == 409, (s, b[:120]))
+check("chat: the Gemini models are offered for hosted turns (chat.model_ok)",
+      sql("select chat.model_ok('google/gemini-4-carbon') and chat.model_ok('google/gemini-3.8-flash') and not chat.model_ok('google/gemini-2')") == "t")
+
 # ---- GET /api/chat/account and /api/chat/turn?t=ID: what the rebuilt page reads, as JSON.
 s, b = cpage("GET", "account")
 check("chat account: an admin with no saved credential reads claude null, and no key", s == 200 and json.loads(b) == {"claude": None}, (s, b[:160]))

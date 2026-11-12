@@ -117,6 +117,12 @@ rw_repo :: (o: [] ClOut, id: int, body: string) {
   cl_put(o, "{\"t\":\"repo\",\"id\":"); cl_put_int(o, id);
   cl_put(o, ",\"body\":"); rw_raw(o, body, "{}"); cl_put(o, "}");
 }
+// Out: /chat's Microcoder engine asks a model (chat-micro.coax): body is a Chat Completions request,
+// raw. The runner asks our inference route for the turn's asker and answers with a reply.
+rw_model :: (o: [] ClOut, id: int, body: string) {
+  cl_put(o, "{\"t\":\"model\",\"id\":"); cl_put_int(o, id);
+  cl_put(o, ",\"body\":"); rw_raw(o, body, "{}"); cl_put(o, "}");
+}
 // Where credential_expired goes in a done line: last for the project engine, before cost_usd
 // for /chat's.
 RW_DONE_PROJECT :: 0;

@@ -25,6 +25,7 @@
 //          project_get → state; project_note, project_plan → note; milestone_status, checklist_status → status;
 //          milestone_edit, goal_propose → the op of that name; document_patch → patch
 //        {"t":"repo", "id":K, "body":{...}}               /chat: a RepoRequest, posted to oa-repo (OA_REPO_URL) with the turn's grant
+//        {"t":"model", "id":K, "body":{...}}              /chat on Gemini: a Chat Completions request, asked of oa-api for the turn's asker
 //        {"t":"event", "type":T, "data":{...}}            working, agent.message, agent.tool_use, session.error
 //        {"t":"done", "status":"done"|"failed"|"stopped", "answer":A, "error":E, "cost_usd":C}
 // The runner adds the turn to every call and signs it; events go to oa-api in
@@ -507,6 +508,29 @@ static long repo_post(const char *body, text *out) {
   return status;
 }
 
+// A model call of /chat turn `turn` (a ModelLine from chat-micro.coax, #13326): the engine's Chat
+// Completions request, posted as it is to oa-api's /api/chat/runner/complete?t=TURN, signed, which our
+// inference route answers for the turn's asker. The nonce goes in the query, so the body reaches the
+// model unchanged. The answer's body in *out; its status.
+static long model_post(long long turn, const char *body, text *out) {
+  char url[1024], auth[8192];
+  snprintf(url, sizeof url, "%s/api/chat/runner/complete?t=%lld&n=%lu-%lld", env("OA_API_ORIGIN", "https://openagents.com"), turn, ++nonce, (long long)now_ms());
+  nip98("POST", url, body, auth, sizeof auth);
+  CURL *h = curl_easy_init();
+  struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: application/json");
+  long status = 0;
+  curl_easy_setopt(h, CURLOPT_URL, url);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDS, body);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, out);
+  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, 10L);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 280L);
+  if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  curl_slist_free_all(hd); curl_easy_cleanup(h);
+  return status;
+}
+
 // Runs the engine for an ask in dir; fills the end's fields. Returns its status word.
 static void run_engine(const char *slug, const char *turn_json, long long turn, const char *dir, const char *home,
                        text *answer, text *error, double *cost, char status[16]) {
@@ -571,6 +595,16 @@ static void run_engine(const char *slug, const char *turn_json, long long turn, 
           engine_send(&e, reply.p);
           say("turn %lld tool %s %ld", turn, op ? op : "?", st);
           free(reply.p); free(out.p); free(b.p); free(id); free(tool); free(args);
+        } else if (!strcmp(t, "model")) {
+          // a model call of /chat's Microcoder engine: our inference route answers it for the turn's asker
+          char *id = jraw(l, "id", "0"), *body = jraw(l, "body", "{}");
+          text out = {0}, reply = {0};
+          double t0 = now_ms();
+          long st = model_post(turn, body, &out);
+          WIRE(&reply, rw_reply_write(cs(id), (int64_t)st, cs(out.n ? out.p : ""), room));
+          engine_send(&e, reply.p);
+          say("turn %lld model %ld %.0f ms %zu bytes", turn, st, now_ms() - t0, out.n);
+          free(reply.p); free(out.p); free(id); free(body);
         } else if (!strcmp(t, "repo")) {
           // a read of the indexed repo: the body goes to oa-repo as it is, with this turn's grant
           char *id = jraw(l, "id", "0"), *body = jraw(l, "body", "{}");

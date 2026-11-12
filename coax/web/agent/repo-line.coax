@@ -1,0 +1,49 @@
+// The engines' calls that leave through the runner (GitHub #13326): a read of the indexed repo
+// (RepoLine, answered by oa-repo with the turn's grant) and, for /chat's Microcoder engine, a
+// model call (ModelLine, answered by our inference route for the turn's asker). Each goes out as
+// one line and comes back as a ReplyLine with its id; a stop that comes first ends the turn.
+// chat.coax and chat-micro.coax load this, after engine-line.coax.
+#load "../../lib/repo/wire.coax";
+
+// The next reply to call id, read into line: its status and raw body, or why there is none.
+ElReply :: struct { ok: bool; stopped: bool; late: bool; status: int; body: string; }
+el_wait_reply :: (line: [] u8, ar: [] u8, id: int, timeout_ms: int) -> ElReply {
+  r: ElReply;
+  while true {
+    k := eio_read_line(timeout_ms);
+    if k == -1 { r.stopped = true; return r; }   // the runner is gone
+    if k == -2 { r.late = true; return r; }
+    if k > line.count { continue; }
+    for i: 0..<k { line[i] = cast(u8) eio_line_byte(i); }
+    l := cast(string) line[0..<k];
+    a: [1] ClArena; a[0].buf = ar;
+    kind := cl_str(a[..], l, "t");
+    if kind == "stop" { r.stopped = true; return r; }
+    if kind != "reply" || cl_int(l, "id").value != id { continue; }
+    r.ok = true; r.status = cl_int(l, "status").value; r.body = cl_raw(l, "body");
+    return r;
+  }
+  return r;
+}
+
+// One read through the repo service: text borrows st.wire.
+ElRepo :: struct { a: RpAnswer; text: string; stopped: bool; }
+ElRepoState :: struct { msg: [RW_REQUEST_MAX + 64] u8; line: [RW_ANSWER_MAX + 256] u8; wire: [RP_ANSWER + 1024] u8; nodes: [256] JvNode; ar: [512] u8; }
+el_repo :: (st: [] ElRepoState, repo: string, q: RpRequest, id: int) -> ElRepo {
+  r: ElRepo;
+  o: [1] ClOut; o[0].buf = st[0].msg[..];
+  body: [RW_REQUEST_MAX] u8;
+  bn := rw_request_write(repo, q, body[..]);
+  if bn == 0 { r.a = rp_fail("that request is too long to send"); return r; }
+  rw_repo(o[..], id, cast(string) body[0..<bn]);
+  if o[0].failed { r.a = rp_fail("that request is too long to send"); return r; }
+  el_send(o[..]);
+  w := el_wait_reply(st[0].line[..], st[0].ar[..], id, 60000);
+  if w.stopped { r.stopped = true; return r; }
+  if w.late { r.a = rp_fail("the repository did not answer in time"); return r; }
+  got := rw_answer_read(w.body, st[0].nodes[..], st[0].wire[..]);
+  if !got.ok { r.a = rp_fail(ifx w.status == 0 then "the repository could not be reached" else "the repository's answer could not be read"); return r; }
+  r.a = got.a; r.text = got.text;
+  if !got.a.ok && got.a.error.count == 0 { r.a.error = "the repository refused that"; }
+  return r;
+}

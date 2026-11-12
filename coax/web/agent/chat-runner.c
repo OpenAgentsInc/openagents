@@ -418,8 +418,12 @@ static void chat_end(long long id, const char *status, const char *answer, const
   free(body.p); free(out.p);
 }
 
+// A Gemini model: the turn runs Microcoder with the repo tool host (chat-micro.coax), which needs the repo service.
+static bool chat_gemini(const char *m) {
+  return !strcmp(m, "google/gemini-3.8-flash") || !strcmp(m, "google/gemini-4-argon") || !strcmp(m, "google/gemini-4-carbon");
+}
 static const char *chat_model(const char *m) {
-  return !strcmp(m, "claude-haiku-5-5") || !strcmp(m, "claude-sonnet-5-5") ? m : "claude-opus-5-5";
+  return !strcmp(m, "claude-haiku-5-5") || !strcmp(m, "claude-sonnet-5-5") || chat_gemini(m) ? m : "claude-opus-5-5";
 }
 
 // A turn's credential from next's answer (oa-api's "credential": {kind, owner,
@@ -483,7 +487,9 @@ static void chat_turn(const char *next) {
   }
   if (mkdir(dir, 0700) || mkdir(home, 0700) || mkdir(cfg, 0700)) { chat_end(id, "failed", "\"\"", "\"the runner could not make a work directory\"", 0, false); goto out; }
   // the credential: the asker's own, else ours
-  if (!turn_credential(next)) { chat_end(id, "failed", "\"\"", "\"Your saved key could not be opened. Save it again under KEY.\"", 0, false); goto out; }
+  bool gemini = chat_gemini(model);
+  if (gemini && !chat_service()) { chat_end(id, "failed", "\"\"", "\"The Gemini agent reads the code through the repository service, which isn't connected yet. Pick a Claude model.\"", 0, false); goto out; }
+  if (!gemini && !turn_credential(next)) { chat_end(id, "failed", "\"\"", "\"Your saved key could not be opened. Save it again under KEY.\"", 0, false); goto out; }
   // the session: put back where the CLI looks for it
   snprintf(kept, sizeof kept, "%s/%s.jsonl", store, sid);
   session_dir(cfg, repo, sdir, sizeof sdir);
@@ -502,7 +508,7 @@ static void chat_turn(const char *next) {
     char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
     WIRE(&first, rw_chat_turn_write(cs(turn_json), cs(chat_model(model)), budget > 0 ? budget : (atof(cap) > 0 ? 0.0001 : 0), resumed, cs(sid),
                                     cs(resumed ? "[]" : history), cs(repo), cs(chat_service() ? "" : chat_mirror()), chat_service(), cs(today), room));
-    engine_bin = env("OA_CHAT_ENGINE", "/usr/local/bin/oa-chat-turn");
+    engine_bin = gemini ? env("OA_CHAT_MICRO_ENGINE", "/usr/local/bin/oa-chat-micro") : env("OA_CHAT_ENGINE", "/usr/local/bin/oa-chat-turn");
     snprintf(engine_cfg, sizeof engine_cfg, "%s", cfg);
     run_engine("runner", first.p, id, repo, home, &answer, &error, &cost, status);
     engine_cfg[0] = 0; engine_bin = NULL;

@@ -36,7 +36,7 @@
 #load "../../lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "confine-host.coax";
 #load "engine-line.coax";      // the runner's lines, written by runner-wire.coax
-#load "../../lib/repo/wire.coax";   // the indexed repo's read operations and their wire (docs/repos/, #13326)
+#load "repo-line.coax";       // the indexed repo's reads, through the runner or from a mirror (docs/repos/, #13326)
 
 TURN_LINE :: 1048576;
 RECORD_POOL :: 524288;      // the session record's text for the parts not yet written to the wire
@@ -104,42 +104,6 @@ ch_repo_tool :: (name: string) -> int {
   tools := REPO_TOOLS;
   for k: 0..<tools.count { if tools[k] == short { return k; } }
   return -1;
-}
-
-// One read through the repo service (OA_REPO_URL; the turn line's "repo": {"service": true}): the
-// request goes to the runner as {"t":"repo","id","body"} (a RepoRequest, wire.coax), the runner posts
-// it with the turn's grant, and its reply {"t":"reply","id","status","body"} carries the RepoAnswer.
-// text borrows st.wire. A stop that comes first ends the turn.
-ChRemote :: struct { a: RpAnswer; text: string; stopped: bool; }
-ChRemoteState :: struct { msg: [RW_REQUEST_MAX + 64] u8; line: [RW_ANSWER_MAX + 256] u8; wire: [RP_ANSWER + 1024] u8; nodes: [256] JvNode; ar: [512] u8; }
-ch_repo_remote :: (st: [] ChRemoteState, repo: string, q: RpRequest, id: int) -> ChRemote {
-  r: ChRemote;
-  o: [1] ClOut; o[0].buf = st[0].msg[..];
-  body: [RW_REQUEST_MAX] u8;
-  bn := rw_request_write(repo, q, body[..]);
-  if bn == 0 { r.a = rp_fail("that request is too long to send"); return r; }
-  rw_repo(o[..], id, cast(string) body[0..<bn]);
-  if o[0].failed { r.a = rp_fail("that request is too long to send"); return r; }
-  el_send(o[..]);
-  while true {
-    k := eio_read_line(60000);
-    if k == -1 { r.stopped = true; return r; }
-    if k == -2 { r.a = rp_fail("the repository did not answer in time"); return r; }
-    if k > st[0].line.count { continue; }
-    for i: 0..<k { st[0].line[i] = cast(u8) eio_line_byte(i); }
-    line := cast(string) st[0].line[0..<k];
-    ar: [1] ClArena; ar[0].buf = st[0].ar[..];
-    kind := cl_str(ar[..], line, "t");
-    if kind == "stop" { r.stopped = true; return r; }
-    if kind != "reply" || cl_int(line, "id").value != id { continue; }
-    status := cl_int(line, "status").value;
-    got := rw_answer_read(cl_raw(line, "body"), st[0].nodes[..], st[0].wire[..]);
-    if !got.ok { r.a = rp_fail(ifx status == 0 then "the repository could not be reached" else "the repository's answer could not be read"); return r; }
-    r.a = got.a; r.text = got.text;
-    if !got.a.ok && got.a.error.count == 0 { r.a.error = "the repository refused that"; }
-    return r;
-  }
-  return r;
 }
 
 READ_TOOLS :: [3] string.["Read", "Glob", "Grep"];
@@ -217,13 +181,13 @@ main :: () {
   indexed := mirror_dir.count > 0 || remote;
   mirror := RpMirror.{git = "git", dir = mirror_dir};
   commit_buf: [40] u8;
-  rst: [1] ChRemoteState; calls := 0;
+  rst: [1] ElRepoState; calls := 0;
   if indexed {
     if repo_at.count == 0 { repo_at = "main"; }
     resolved := false;
     if remote {
       calls += 1;
-      rr := ch_repo_remote(rst[..], repo_name, RpRequest.{op = RP_RESOLVE, at = repo_at}, calls);
+      rr := el_repo(rst[..], repo_name, RpRequest.{op = RP_RESOLVE, at = repo_at}, calls);
       if rr.stopped { el_done(out[..], RW_DONE_CHAT, "stopped", "", "", 0.0, false); return; }
       resolved = rr.a.ok;
       for i: 0..<40 { commit_buf[i] = rr.a.commit[i]; }
@@ -342,7 +306,7 @@ main :: () {
       ch_working(out[..], ifx rq.op == RP_READ then "reading " else ifx rq.op == RP_SEARCH then "searching for " else ifx rq.op == RP_FIND then "looking for " else "looking at ", ch_repo_detail(rq));
       if remote {
         calls += 1;
-        rr := ch_repo_remote(rst[..], repo_name, rq, calls);
+        rr := el_repo(rst[..], repo_name, rq, calls);
         if rr.stopped { stopped = true; break; }
         if rr.a.ok { cl_tool_text(q, rr.text, false); } else { cl_tool_text(q, rr.a.error, true); }
         continue;
