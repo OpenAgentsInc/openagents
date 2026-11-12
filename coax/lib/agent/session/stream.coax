@@ -1,0 +1,208 @@
+// Codec for Coder's stream records (docs/protocol/coder-observability-v1.md,
+// coder-observability-v2.md, coder-reply-stream-v1.md, proto/coder/stream-v1.json):
+//   coder.observability.v1   model, usage (thread_total and turn), availability
+//   coder.observability.v2   attempt
+//   coder.reply-stream.v1    reply_delta, reply_end
+//   coder.route.v2           route
+
+#load "../claude/fields.coax";
+#load "../../nostr/json-f64.coax";
+
+CST_OBSERVABILITY_V1 :: "coder.observability.v1";
+CST_OBSERVABILITY_V2 :: "coder.observability.v2";
+CST_REPLY_STREAM_V1 :: "coder.reply-stream.v1";
+CST_ROUTE_V2 :: "coder.route.v2";
+
+CST_ATTEMPT_COUNTS :: [7] string.["input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "cache_write_tokens", "provider_cost_usd_micros", "card_estimate_usd_micros"];
+
+// ---- coder.observability.v1
+
+cst_cx_model :: (out: [] u8, model: string, effort: string) -> int {
+  n := json_raw(out, 0, "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":");
+  n = ifx model.count > 0 then json_write_string(out, n, model) else json_raw(out, n, "null");
+  n = json_raw(out, n, ",\"effort\":"); n = ifx effort.count > 0 then json_write_string(out, n, effort) else json_raw(out, n, "null");
+  return json_raw(out, n, ",\"cost_usd\":null}");
+}
+
+// thread and turn: "" when there is no Codex client (null).
+cst_cx_usage :: (out: [] u8, usage: string, client: bool, thread: string, turn: string) -> int {
+  total := cl_raw(usage, "total");
+  n := json_raw(out, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"scope\":\"thread_total\"");
+  n = json_raw(out, n, ",\"thread_id\":");
+  n = ifx client then json_write_string(out, n, thread) else json_raw(out, n, "null");
+  n = json_raw(out, n, ",\"turn_id\":");
+  n = ifx client then json_write_string(out, n, turn) else json_raw(out, n, "null");
+  for key: [6] string.["totalTokens", "inputTokens", "cachedInputTokens", "cacheWriteInputTokens", "outputTokens", "reasoningOutputTokens"] {
+    n = json_raw(out, n, ","); n = json_write_string(out, n, key); n = json_raw(out, n, ":");
+    v := cl_int(total, key); n = ifx v.ok && v.value >= 0 then json_write_int(out, n, v.value) else json_raw(out, n, "null");
+  }
+  return json_raw(out, n, "}");
+}
+
+cst_acp_usage :: (out: [] u8, engine: string, usage: string) -> int {
+  n := json_raw(out, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(out, n, engine);
+  n = json_raw(out, n, ",\"scope\":\"turn\"");
+  for key: [6] string.["totalTokens", "inputTokens", "cachedReadTokens", "cachedWriteTokens", "outputTokens", "thoughtTokens"] {
+    n = json_raw(out, n, ","); n = json_write_string(out, n, key); n = json_raw(out, n, ":");
+    v := cl_int(usage, key); n = ifx v.ok && v.value >= 0 then json_write_int(out, n, v.value) else json_raw(out, n, "null");
+  }
+  return json_raw(out, n, ",\"cost_usd\":null}");
+}
+
+cst_availability :: (out: [] u8, engine: string, retry_after_s: int, persisted: bool) -> int {
+  n := json_raw(out, 0, "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(out, n, engine);
+  n = json_raw(out, n, ",\"retry_after_s\":"); n = json_write_int(out, n, retry_after_s);
+  n = json_raw(out, n, ",\"persisted\":"); return json_raw(out, n, ifx persisted then "true}" else "false}");
+}
+
+// ---- coder.observability.v2
+
+cst_attempt :: (out: [] u8, engine: string, gateway: string, model: string, effort: string, outcome: string, status: int, values: [] int) -> int {
+  if values.count < 7 { return -1; }
+  n := json_raw(out, 0, "{\"kind\":\"attempt\",\"schema\":"); n = json_write_string(out, n, CST_OBSERVABILITY_V2);
+  n = json_raw(out, n, ",\"scope\":\"request_attempt\",\"engine\":");
+  n = ifx engine.count > 0 then json_write_string(out, n, engine) else json_raw(out, n, "null");
+  n = json_raw(out, n, ",\"gateway\":"); n = json_write_string(out, n, gateway);
+  n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, model);
+  n = json_raw(out, n, ",\"model_source\":\"attempt_configuration\",\"requested_effort\":");
+  n = ifx effort.count > 0 then json_write_string(out, n, effort) else json_raw(out, n, "null");
+  n = json_raw(out, n, ",\"outcome\":"); n = json_write_string(out, n, outcome);
+  n = json_raw(out, n, ",\"status\":"); n = json_write_int(out, n, status);
+  keys := CST_ATTEMPT_COUNTS;
+  for i: 0..<7 {
+    n = json_raw(out, n, ","); n = json_write_string(out, n, keys[i]); n = json_raw(out, n, ":");
+    n = ifx values[i] >= 0 then json_write_int(out, n, values[i]) else json_raw(out, n, "null");
+  }
+  usd := ifx values[5] >= 0 then values[5] else values[6];
+  n = json_raw(out, n, ",\"usd_micros\":"); n = json_write_int(out, n, usd);
+  return json_raw(out, n, "}");
+}
+
+// ---- coder.reply-stream.v1
+
+cst_reply_delta :: (out: [] u8, segment: int, text: string) -> int {
+  n := json_raw(out, 0, "{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
+  n = json_write_int(out, n, segment); n = json_raw(out, n, ",\"text\":");
+  n = json_write_string(out, n, text); return json_raw(out, n, "}");
+}
+
+cst_reply_end :: (out: [] u8, segment: int) -> int {
+  n := json_raw(out, 0, "{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
+  n = json_write_int(out, n, segment); return json_raw(out, n, "}");
+}
+
+// ---- coder.route.v2
+
+// 0.962: three places are what a decision carries.
+cst_prob3 :: (out: [] u8, n: int, p: f64) -> int {
+  pm := cast(int) (p * 1000.0 + 0.5);
+  k := json_write_int(out, n, pm / 1000); k = json_raw(out, k, ".");
+  k = json_raw(out, k, ifx pm % 1000 < 10 then "00" else ifx pm % 1000 < 100 then "0" else "");
+  return json_write_int(out, k, pm % 1000);
+}
+
+cst_route :: (out: [] u8, ok: bool, source: string, model: string, engine: string, probability: f64, difficulty: int, effort: string, text: string, eligible: int, blocked: int, allowed: int, ran: string) -> int {
+  n := json_raw(out, 0, "{\"kind\":\"route\",\"ok\":"); n = json_raw(out, n, ifx ok then "true" else "false");
+  if source.count > 0 {
+    n = json_raw(out, n, ",\"schema\":\"coder.route.v2\",\"source\":"); n = json_write_string(out, n, source);
+    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, model);
+  }
+  if ok {
+    n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, engine);
+    n = json_raw(out, n, ",\"probability\":"); n = cst_prob3(out, n, probability);
+    n = json_raw(out, n, ",\"difficulty\":"); n = json_write_int(out, n, difficulty);
+    n = json_raw(out, n, ",\"effort\":"); n = json_write_string(out, n, effort);
+  } else { n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, text); }
+  n = json_raw(out, n, ",\"eligible_mask\":"); n = json_write_int(out, n, eligible);
+  n = json_raw(out, n, ",\"blocked_mask\":"); n = json_write_int(out, n, blocked);
+  n = json_raw(out, n, ",\"allowed_mask\":"); n = json_write_int(out, n, allowed);
+  if ran.count > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, ran); }
+  return json_raw(out, n, "}");
+}
+
+// ---- reader (stream records beside the session log's lines)
+
+CST_KIND_NONE :: 0;
+CST_KIND_REPLY_DELTA :: 1;
+CST_KIND_REPLY_END :: 2;
+CST_KIND_MODEL :: 3;
+CST_KIND_ROUTE :: 4;
+
+CstEvent :: struct {
+  kind: int;
+  segment: int;
+  ok: bool;
+  has_probability: bool;
+  probability: JsonF64;
+  difficulty: int;
+  source: string;
+  ran: string;
+  text: string;
+  effort: string;
+  model: string;
+}
+
+cst_read :: (ar: [] ClArena, line: string, ev: [] CstEvent) -> int {
+  ev[0] = CstEvent.{difficulty = -1};
+  if !json_valid(line) { return CST_KIND_NONE; }
+  k := cl_str(ar, line, "kind");
+  if ar[0].full { return CST_KIND_NONE; }
+  if k == "reply_delta" || k == "reply_end" {
+    if cl_str(ar, line, "schema") != CST_REPLY_STREAM_V1 { return CST_KIND_NONE; }
+    seg := cl_int(line, "segment");
+    ev[0].segment = ifx seg.ok then seg.value else 0;
+    if k == "reply_end" { ev[0].kind = CST_KIND_REPLY_END; return CST_KIND_REPLY_END; }
+    if cl_at(line, "text").tok != JSON_STRING { return CST_KIND_NONE; }
+    ev[0].text = cl_str(ar, line, "text");
+    if ar[0].full { return CST_KIND_NONE; }
+    ev[0].kind = CST_KIND_REPLY_DELTA;
+    return CST_KIND_REPLY_DELTA;
+  }
+  if k == "model" {
+    if cl_at(line, "model").tok != JSON_STRING { return CST_KIND_NONE; }
+    ev[0].model = cl_str(ar, line, "model");
+    ev[0].effort = cl_str(ar, line, "effort");
+    if ar[0].full { return CST_KIND_NONE; }
+    ev[0].kind = CST_KIND_MODEL;
+    return CST_KIND_MODEL;
+  }
+  if k == "route" {
+    b := cl_bool(line, "ok");
+    ev[0].ok = b.ok && b.value;
+    ev[0].source = cl_str(ar, line, "source");
+    ev[0].ran = cl_str(ar, line, "ran");
+    ev[0].text = cl_str(ar, line, "text");
+    pt := cl_at(line, "probability");
+    if pt.ok { ev[0].has_probability = true; ev[0].probability = json_f64(cl_raw(line, "probability")); }
+    d := cl_int(line, "difficulty");
+    ev[0].difficulty = ifx d.ok then d.value else -1;
+    ev[0].effort = cl_str(ar, line, "effort");
+    ev[0].model = cl_str(ar, line, "model");
+    if ar[0].full { return CST_KIND_NONE; }
+    ev[0].kind = CST_KIND_ROUTE;
+    return CST_KIND_ROUTE;
+  }
+  return CST_KIND_NONE;
+}
+
+#test "stream codec writes and reads reply-stream, observability and route records" {
+  b: [1024] u8;
+  n := cst_reply_delta(b[..], 0, "Hello ");
+  #assert cast(string) b[0..<n] == "{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0,\"text\":\"Hello \"}";
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; ev: [1] CstEvent;
+  #assert cst_read(ar[..], cast(string) b[0..<n], ev[..]) == CST_KIND_REPLY_DELTA && ev[0].text == "Hello " && ev[0].segment == 0;
+  n = cst_reply_end(b[..], 0);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0}";
+  ar[0] = ClArena.{buf = ab[..]};
+  #assert cst_read(ar[..], cast(string) b[0..<n], ev[..]) == CST_KIND_REPLY_END && ev[0].segment == 0;
+  n = cst_cx_model(b[..], "gpt-5", "high");
+  #assert cast(string) b[0..<n] == "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":\"gpt-5\",\"effort\":\"high\",\"cost_usd\":null}";
+  ar[0] = ClArena.{buf = ab[..]};
+  #assert cst_read(ar[..], cast(string) b[0..<n], ev[..]) == CST_KIND_MODEL && ev[0].model == "gpt-5" && ev[0].effort == "high";
+  n = cst_availability(b[..], "claude", 300, true);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":\"claude\",\"retry_after_s\":300,\"persisted\":true}";
+  n = cst_route(b[..], true, "local-elephant", "", "codex", 0.05, 1, "low", "", 4, 0, 15, "codex");
+  #assert cast(string) b[0..<n] == "{\"kind\":\"route\",\"ok\":true,\"schema\":\"coder.route.v2\",\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability\":0.050,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"}";
+  ar[0] = ClArena.{buf = ab[..]};
+  #assert cst_read(ar[..], cast(string) b[0..<n], ev[..]) == CST_KIND_ROUTE && ev[0].ok && ev[0].has_probability && ev[0].probability.ok && ev[0].difficulty == 1 && ev[0].ran == "codex";
+}

@@ -31,6 +31,7 @@
 #load "log.coax";                       // the lines themselves
 #load "../engine/route.coax";           // cxproc_wall_us (availability.coax)
 #load "reply-stream-policy.coax";
+#load "stream.coax";
 
 SW_DIR :: "/.openagents/coder/sessions";      // under $CODER_HOME, else $HOME
 SW_LINE :: 262144;
@@ -337,11 +338,7 @@ sw_line :: (l: [] SwLog, line: string) { sw_put(l, line.count); }
 
 // Observability v1 for Codex: snapshots, not estimates or additive accounting.
 sw_cx_model :: (l: [] SwLog, model: string, effort: string) {
-  o := l[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":");
-  n = ifx model.count > 0 then json_write_string(o, n, model) else json_raw(o, n, "null");
-  n = json_raw(o, n, ",\"effort\":"); n = ifx effort.count > 0 then json_write_string(o, n, effort) else json_raw(o, n, "null");
-  n = json_raw(o, n, ",\"cost_usd\":null}"); sw_put(l, n);
+  sw_put(l, cst_cx_model(l[0].line[..], model, effort));
 }
 // thread and turn: "" when there is no Codex client (null).
 sw_cx_usage :: (l: [] SwLog, usage: string, client: bool, thread: string, turn: string) {
