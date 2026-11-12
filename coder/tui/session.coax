@@ -96,33 +96,30 @@ CsSummary :: struct {
 cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
   s[0] = CsSummary.{};
   open := false;
-  at := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at..<e];
-    at = e + 1;
-    if line.count == 0 { continue; }
-    ar[0].at = 0; ar[0].full = false;
-    kind := cl_str(ar, line, "kind");
-    if kind == "session" {
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar, l[..]);
+    kind := l[0].kind;
+    if kind == SK_SESSION {
       s[0].ok = true;
-      s[0].nengine = cd_cat(s[0].engine[..], 0, cl_str(ar, line, "engine"));
-      s[0].ncwd = cd_cat(s[0].cwd[..], 0, cl_str(ar, line, "cwd"));
-      st := cl_int(line, "started_us"); if st.ok { s[0].started_us = st.value; }
-    } else if kind == "user" {
+      s[0].nengine = cd_cat(s[0].engine[..], 0, l[0].header.engine);
+      s[0].ncwd = cd_cat(s[0].cwd[..], 0, l[0].header.cwd);
+      if l[0].header.started_us >= 0 { s[0].started_us = l[0].header.started_us; }
+    } else if kind == SK_USER {
       s[0].turns += 1; open = true;
-      if s[0].ntask == 0 { s[0].ntask = cd_cat(s[0].task[..], 0, cl_str(ar, line, "text")); }
-    } else if kind == "agent" {
-      s[0].nengine = cd_cat(s[0].engine[..], 0, cl_str(ar, line, "engine"));
-    } else if kind == "end" {
+      if s[0].ntask == 0 { s[0].ntask = cd_cat(s[0].task[..], 0, l[0].text); }
+    } else if kind == SK_AGENT {
+      s[0].nengine = cd_cat(s[0].engine[..], 0, l[0].engine);
+    } else if kind == SK_END {
       open = false;
-      s[0].nending = cd_cat(s[0].ending[..], 0, cl_str(ar, line, "ending"));
-      s[0].ncause = cd_cat(s[0].cause[..], 0, cl_str(ar, line, "cause"));
-      st := cl_int(line, "steps"); if st.ok { s[0].steps += st.value; }
+      s[0].nending = cd_cat(s[0].ending[..], 0, l[0].ending);
+      s[0].ncause = cd_cat(s[0].cause[..], 0, l[0].cause);
+      s[0].steps += l[0].steps;
     }
-    if kind != "session" {
-      t := cl_str(ar, line, ifx kind == "tool" then "label" else ifx kind == "agent" || kind == "end" then (ifx kind == "end" then "ending" else "engine") else "text");
-      s[0].nlast = cd_cat(s[0].last[..], 0, kind); s[0].nlast = cd_cat(s[0].last[..], s[0].nlast, ": ");
+    if kind != SK_SESSION {
+      // the last line's kind and what it says: a call's label, the agent switched to, the ending, else its text
+      t := ifx kind == SK_TOOL then l[0].label else ifx kind == SK_AGENT then l[0].engine else ifx kind == SK_END then l[0].ending else l[0].text;
+      s[0].nlast = cd_cat(s[0].last[..], 0, l[0].name); s[0].nlast = cd_cat(s[0].last[..], s[0].nlast, ": ");
       e2 := 0; while e2 < t.count && t[e2] != 10 { e2 += 1; }
       s[0].nlast = cd_cat(s[0].last[..], s[0].nlast, cast(string) t[0..<e2]);
     }

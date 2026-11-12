@@ -1416,28 +1416,25 @@ cd_sessions_here :: (cwd: string, ids: [] [64] u8, nids: [] int) -> int {
 // A session's earlier turns on screen, drawn as they were: messages, replies, tool calls and endings.
 cd_show_past :: (a: [] App, text: string) {
   ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  at := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at..<e];
-    at = e + 1;
-    ar[0].at = 0; ar[0].full = false;
-    kind := cl_str(ar[..], line, "kind");
-    if kind == "user" { cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", cl_str(ar[..], line, "text")); }
-    else if kind == "reply" {
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar[..], l[..]);
+    kind := l[0].kind;
+    if kind == SK_USER { cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", l[0].text); }
+    else if kind == SK_REPLY {
       a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0; a[0].md[0] = TuiMd.{};
-      cd_reply_add(a, cl_str(ar[..], line, "text"));
+      cd_reply_add(a, l[0].text);
       cd_reply_commit(a, true);
       a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0;
     }
-    else if kind == "tool" { cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", cl_str(ar[..], line, "label")); }
-    else if kind == "result" { bad := cl_bool(line, "error"); cd_result_show(a, cl_str(ar[..], line, "text"), bad.ok && bad.value); }
-    else if kind == "end" {
+    else if kind == SK_TOOL { cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", l[0].label); }
+    else if kind == SK_RESULT { cd_result_show(a, l[0].text, l[0].error); }
+    else if kind == SK_END {
       sb: [256] u8; tb: [32] u8;
-      ending := cl_str(ar[..], line, "ending"); ms := cl_int(line, "ms"); st := cl_int(line, "steps");
+      ending := l[0].ending; ms := l[0].ms; st := l[0].steps;
       n := cd_cat(sb[..], 0, "  └ "); n = cd_cat(sb[..], n, ending);
-      n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(ms.value, tb[..]));
-      if st.value > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(st.value, tb[..])); n = cd_cat(sb[..], n, ifx st.value == 1 then " step" else " steps"); }
+      n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(ms, tb[..]));
+      if st > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(st, tb[..])); n = cd_cat(sb[..], n, ifx st == 1 then " step" else " steps"); }
       cd_commit(a, ifx ending == "finished" then TUI_FAINT else TUI_RED, cast(string) sb[0..<n]);
     }
   }
@@ -1925,52 +1922,51 @@ cd_cmd_log :: (id: string, json: bool) -> int {
 // A session log's lines as `coder log` shows them.
 cd_render :: (text: string) {
   ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  at := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at..<e];
-    at = e + 1;
-    ar[0].at = 0; ar[0].full = false;
-    kind := cl_str(ar[..], line, "kind");
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar[..], l[..]);
+    kind := l[0].kind;
     ob: [8192] u8; n := 0;
-    if kind == "session" { n = cd_cat(ob[..], 0, "Coder "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "version")); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "cwd")); }
-    else if kind == "user" { n = cd_cat(ob[..], 0, "› "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "text")); }
-    else if kind == "route" {
+    if kind == SK_SESSION { h := l[0].header; n = cd_cat(ob[..], 0, "Coder "); n = cd_cat(ob[..], n, h.version); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, h.engine); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, h.cwd); }
+    else if kind == SK_USER { n = cd_cat(ob[..], 0, "› "); n = cd_cat(ob[..], n, l[0].text); }
+    else if kind == SK_OTHER && l[0].name == "route" {
+      // the route record rides in the log under its own schema (C3's, #13240), not one of the log's kinds
+      line := l[0].line;
       n = cd_cat(ob[..], 0, "  Engine: "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "ran"));
       ok := cl_bool(line, "ok");
       if ok.ok && ok.value { n = cd_cat(ob[..], n, ", System One said "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); }
-      else { n = cd_cat(ob[..], n, ", the default; no decision: "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "text")); }
+      else { n = cd_cat(ob[..], n, ", the default; no decision: "); n = cd_cat(ob[..], n, l[0].text); }
     }
-    else if kind == "agent" { n = cd_cat(ob[..], 0, "  Agent: "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); }
-    else if kind == "tool" { n = cd_cat(ob[..], 0, "  ⏺ "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "label")); }
-    else if kind == "result" {
-      t := cl_str(ar[..], line, "text"); f := 0; while f < t.count && t[f] != 10 { f += 1; }
+    else if kind == SK_AGENT { n = cd_cat(ob[..], 0, "  Agent: "); n = cd_cat(ob[..], n, l[0].engine); }
+    else if kind == SK_TOOL { n = cd_cat(ob[..], 0, "  ⏺ "); n = cd_cat(ob[..], n, l[0].label); }
+    else if kind == SK_RESULT {
+      t := l[0].text; f := 0; while f < t.count && t[f] != 10 { f += 1; }
       n = cd_cat(ob[..], 0, "    └ "); n = cd_cat(ob[..], n, cast(string) t[0..<f]);
-      bad := cl_bool(line, "error"); if bad.ok && bad.value { n = cd_cat(ob[..], n, "  (error)"); }
+      if l[0].error { n = cd_cat(ob[..], n, "  (error)"); }
     }
-    else if kind == "diff" {
+    else if kind == SK_DIFF {
       tb: [16] u8;
-      n = cd_cat(ob[..], 0, "    └ "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "path"));
-      n = cd_cat(ob[..], n, " (+"); ad := cl_int(line, "adds"); n = cd_cat(ob[..], n, cd_itoa(ad.value, tb[..]));
-      n = cd_cat(ob[..], n, " -"); de := cl_int(line, "dels"); n = cd_cat(ob[..], n, cd_itoa(de.value, tb[..])); n = cd_cat(ob[..], n, ")");
+      n = cd_cat(ob[..], 0, "    └ "); n = cd_cat(ob[..], n, l[0].path);
+      n = cd_cat(ob[..], n, " (+"); n = cd_cat(ob[..], n, cd_itoa(l[0].adds, tb[..]));
+      n = cd_cat(ob[..], n, " -"); n = cd_cat(ob[..], n, cd_itoa(l[0].dels, tb[..])); n = cd_cat(ob[..], n, ")");
     }
-    else if kind == "reply" {
-      t := cl_str(ar[..], line, "text");
+    else if kind == SK_REPLY {
+      t := l[0].text;
       n = cd_cat(ob[..], 0, "● ");
       for c: t { n = cd_cat(ob[..], n, ifx c == 10 then "\n  " else ""); if c != 10 && n < ob.count { ob[n] = c; n += 1; } }
     }
-    else if kind == "job" {
-      n = cd_cat(ob[..], 0, "  ◆ job "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "id")); n = cd_cat(ob[..], n, " ");
-      n = cd_cat(ob[..], n, cl_str(ar[..], line, "ending"));
-      jt := cl_str(ar[..], line, "text"); if jt.count > 0 { n = cd_cat(ob[..], n, ": "); n = cd_cat(ob[..], n, cast(string) jt[0..<tui_fit(jt, 200)]); }
+    else if kind == SK_JOB {
+      n = cd_cat(ob[..], 0, "  ◆ job "); n = cd_cat(ob[..], n, l[0].id); n = cd_cat(ob[..], n, " ");
+      n = cd_cat(ob[..], n, l[0].ending);
+      jt := l[0].text; if jt.count > 0 { n = cd_cat(ob[..], n, ": "); n = cd_cat(ob[..], n, cast(string) jt[0..<tui_fit(jt, 200)]); }
     }
-    else if kind == "end" {
+    else if kind == SK_END {
       tb: [32] u8;
-      ms := cl_int(line, "ms"); st := cl_int(line, "steps");
-      n = cd_cat(ob[..], 0, "  └ "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "ending"));
-      n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_seconds_text(ms.value, tb[..]));
-      if st.value > 0 { n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_itoa(st.value, tb[..])); n = cd_cat(ob[..], n, ifx st.value == 1 then " step" else " steps"); }
-      why := cl_str(ar[..], line, "text"); if why.count > 0 { n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, why); }
+      st := l[0].steps;
+      n = cd_cat(ob[..], 0, "  └ "); n = cd_cat(ob[..], n, l[0].ending);
+      n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_seconds_text(l[0].ms, tb[..]));
+      if st > 0 { n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_itoa(st, tb[..])); n = cd_cat(ob[..], n, ifx st == 1 then " step" else " steps"); }
+      why := l[0].text; if why.count > 0 { n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, why); }
     }
     if n > 0 { cd_outln(cast(string) ob[0..<n]); }
   }
@@ -2248,30 +2244,29 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
   mb: [MEM_BRIEF_MAX] u8; mn := 0;
   xcb: [CD_CONTEXT_MAX] u8; xcn := 0;
   requests := 0; matched := 0; tb: [24] u8;
-  pos := 0;
   if json { cd_out("{\"requests\":["); }
-  while pos < text.count {
-    e := pos; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[pos..<e];
-    pos = e + 1;
-    ab: [131072] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-    kind := cl_str(ar[..], line, "kind");
-    if kind == "session" {
-      pn = cd_cat(pb[..], 0, cl_str(ar[..], line, "parent"));
-      if cl_str(ar[..], line, "resume").count > 0 { pn = 0; }     // a resumed fork sent no earlier turns as text
-      a2 := cl_int(line, "at"); at = ifx a2.ok then a2.value else 0;
+  ab: [131072] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar[..], l[..]);
+    kind := l[0].kind;
+    if kind == SK_SESSION {
+      h := l[0].header;
+      pn = cd_cat(pb[..], 0, h.parent);
+      if h.resume.count > 0 { pn = 0; }     // a resumed fork sent no earlier turns as text
+      at = h.at;
       // nor did a fork that resumed its parent's Cursor or Antigravity session (fork.coax decides it the same way)
-      if pn > 0 && cd_is_acp_name(cl_str(ar[..], line, "engine")) && cd_acp_forked(cast(string) pb[0..<pn], at, cl_str(ar[..], line, "engine"), cl_str(ar[..], line, "cwd")) { pn = 0; }
-    } else if kind == "user" {
-      un = cd_cat(ub[..], 0, cl_str(ar[..], line, "text")); have_user = true; users += 1;
+      if pn > 0 && cd_is_acp_name(h.engine) && cd_acp_forked(cast(string) pb[0..<pn], at, h.engine, h.cwd) { pn = 0; }
+    } else if kind == SK_USER {
+      un = cd_cat(ub[..], 0, l[0].text); have_user = true; users += 1;
       first = users == 1;
-    } else if kind == "memory" {
-      mn = cd_cat(mb[..], 0, cl_str(ar[..], line, "text"));
-    } else if kind == "context" {
-      xcn = cd_cat(xcb[..], 0, cl_str(ar[..], line, "text"));
-    } else if kind == "request" {
+    } else if kind == SK_MEMORY {
+      mn = cd_cat(mb[..], 0, l[0].text);
+    } else if kind == SK_CONTEXT {
+      xcn = cd_cat(xcb[..], 0, l[0].text);
+    } else if kind == SK_REQUEST {
       requests += 1;
-      want := cl_str(ar[..], line, "sha256"); wb := cl_int(line, "bytes");
+      want := l[0].sha256; wbytes := l[0].bytes;
       rb: [131072] u8; hb: [64] u8;
       sent := ifx have_user then cd_rebuild(cast(string) ub[0..<un], cast(string) pb[0..<pn], at, first, rb[..]) else "";
       wx: [CD_CONTEXT_MAX + 131100] u8;
@@ -2281,7 +2276,7 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
       if have_user && mn > 0 { k := cd_cat(wb2[..], 0, cast(string) mb[0..<mn]); k = cd_cat(wb2[..], k, "\n\n"); k = cd_cat(wb2[..], k, sent); sent = cast(string) wb2[0..<k]; }
       mn = 0;
       got := cd_sha256_hex(sent, hb[..]);
-      same := have_user && got == want && wb.ok && wb.value == sent.count;
+      same := have_user && got == want && wbytes >= 0 && wbytes == sent.count;
       if same { matched += 1; }
       have_user = false;
       if json {

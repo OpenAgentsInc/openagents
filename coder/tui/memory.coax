@@ -48,7 +48,6 @@ MEM_ORIGIN_NONE :: 0;      // no session named: written from the command line
 MEM_ORIGIN_HELD :: 1;      // the session's line still has the digest the fact carries
 MEM_ORIGIN_CHANGED :: 2;   // the line is there with other bytes: not served
 MEM_ORIGIN_GONE :: 3;      // the session or the line is gone
-MEM_USER_LINE :: "{\"kind\":\"user\"";
 
 // Where line number line (from 1) of text starts; its end in end[0]. -1 when there is no such line.
 mem_line_at :: (text: string, line: int, end: [] int) -> int {
@@ -62,18 +61,6 @@ mem_line_at :: (text: string, line: int, end: [] int) -> int {
 mem_nth_line :: (text: string, line: int) -> string {
   e: [1] int; a := mem_line_at(text, line, e[..]);
   return ifx a < 0 then "" else cast(string) text[a..<e[0]];
-}
-
-// The number of the last line a person typed in a session log, or 0.
-mem_last_user :: (text: string) -> int {
-  k := 1; at := 0; last := 0; u := MEM_USER_LINE;
-  for i: 0..<text.count {
-    if text[i] == 10 {
-      if i - at >= u.count && cast(string) text[at..<at + u.count] == u { last = k; }
-      k += 1; at = i + 1;
-    }
-  }
-  return last;
 }
 
 // Whether f's session still holds the line it was said in. sbuf holds the log.
@@ -90,8 +77,8 @@ mem_origin :: (f: MmFact, sbuf: [] u8) -> int {
 
 #test "memory: a fact's line in its session, by number and the last one typed" {
   sl := "{\"kind\":\"session\"}\n{\"kind\":\"user\",\"text\":\"a\"}\n{\"kind\":\"reply\"}\n{\"kind\":\"user\",\"text\":\"b\"}\n{\"kind\":\"end\"}\n";
-  #assert mem_last_user(sl) == 4 && mem_nth_line(sl, 4) == "{\"kind\":\"user\",\"text\":\"b\"}";
-  #assert mem_nth_line(sl, 1) == "{\"kind\":\"session\"}" && mem_nth_line(sl, 6) == "" && mem_last_user("{\"kind\":\"end\"}\n") == 0;
+  #assert sl_last_user(sl) == 4 && mem_nth_line(sl, 4) == "{\"kind\":\"user\",\"text\":\"b\"}";
+  #assert mem_nth_line(sl, 1) == "{\"kind\":\"session\"}" && mem_nth_line(sl, 6) == "" && sl_last_user("{\"kind\":\"end\"}\n") == 0;
 }
 
 mem_origin_name :: (o: int) -> string { return ifx o == MEM_ORIGIN_HELD then "held" else ifx o == MEM_ORIGIN_CHANGED then "changed" else ifx o == MEM_ORIGIN_GONE then "gone" else "none"; }
@@ -399,7 +386,7 @@ cd_cmd_memory :: (verb: string, key: string, text: string, project: bool, days: 
       sid: [128] u8;
       if session.count > 0 {     // where it was said: that line of the session's log, by digest (chapter 2)
         text_s := cd_session_file(session, mem_sbuf[..], sid[..]);
-        line := ifx at > 0 then at else mem_last_user(text_s);
+        line := ifx at > 0 then at else sl_last_user(text_s);    // the session log's reader (log.coax)
         e: [1] int; a := ifx line > 0 then mem_line_at(text_s, line, e[..]) else -1;
         if text_s.count == 0 { tool_err("coder: no session "); tool_errln(session); return 6; }
         if a < 0 || e[0] == a { tool_errln(ifx at > 0 then "coder: the session has no such line" else "coder: nothing was typed in that session"); return 1; }

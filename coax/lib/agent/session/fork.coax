@@ -1,7 +1,7 @@
 // Fork and context, for any owner of a session (Coder book chapters 14 and 17).
 //
 // A fork is a new session that carries a parent's turns, read from the
-// parent's session log (log.coax; Coder's lines are the same): either the
+// parent's session log through log.coax's reader (Coder's lines are the same): either the
 // engine resumes the parent's own conversation (Claude Code's session on its
 // server, Cursor's session/load), or the parent's first turns ride ahead of
 // the fork's first message as text ("Earlier in this conversation: ...
@@ -18,6 +18,7 @@
 // Moved from coder/tui/coder.coax and session.coax without a change in behaviour.
 
 #load "../claude/fields.coax";
+#load "log.coax";                      // the session log's reader
 #load "../claude/transport.coax";       // cl_getenv
 #load "../../sys/fs.coax";
 #load "../../tui/tui.coax";              // tui_fit: each carried text is cut at a display width
@@ -34,27 +35,23 @@ SfFork :: struct {
 }
 
 sf_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
-sf_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
 
 // The conversation a fork carries: the parent's first `at` turns (all when
 // at is 0) as text for the new session's first message. How many turns.
 sf_turns_text :: (text: string, at: int, ar: [] ClArena, out: [] u8, n_out: [] int) -> int {
-  n := 0; turns := 0; at_line := 0; inreply := false;
-  while at_line < text.count {
-    e := at_line; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at_line..<e];
-    at_line = e + 1;
-    if line.count == 0 { continue; }
-    ar[0].at = 0; ar[0].full = false;
-    kind := cl_str(ar, line, "kind");
-    if kind == "user" {
+  n := 0; turns := 0; inreply := false;
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    if l[0].kind != SK_USER && l[0].kind != SK_REPLY { continue; }
+    sl_read(ar, l[..]);
+    if l[0].kind == SK_USER {
       if at > 0 && turns == at { break; }
       turns += 1; inreply = false;
-      t := cl_str(ar, line, "text");
+      t := l[0].text;
       n = sf_cat(out, n, ifx turns == 1 then "User: " else "\n\nUser: ");
       n = sf_cat(out, n, cast(string) t[0..<tui_fit(t, SF_FORK_TURN)]);
-    } else if kind == "reply" && turns > 0 {
-      t := cl_str(ar, line, "text");
+    } else if l[0].kind == SK_REPLY && turns > 0 {
+      t := l[0].text;
       n = sf_cat(out, n, ifx inreply then "\n" else "\nYou: ");
       inreply = true;
       n = sf_cat(out, n, cast(string) t[0..<tui_fit(t, SF_FORK_TURN)]);
@@ -67,14 +64,11 @@ sf_turns_text :: (text: string, at: int, ar: [] ClArena, out: [] u8, n_out: [] i
 // The last session ID engine logged in a session's text ({"kind":"engine_session",...}), or "".
 sf_engine_session :: (text: string, engine: string, ar: [] ClArena) -> string {
   found := "";
-  at := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at..<e];
-    at = e + 1;
-    if !sf_prefix(line, "{\"kind\":\"engine_session\"") { continue; }
-    ar[0].at = 0; ar[0].full = false;
-    if cl_str(ar, line, "engine") == engine { found = cl_str(ar, line, "id"); }
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    if l[0].kind != SK_ENGINE_SESSION { continue; }
+    sl_read(ar, l[..]);
+    if l[0].engine == engine { found = l[0].id; }
   }
   return found;
 }

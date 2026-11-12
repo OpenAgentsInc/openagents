@@ -317,7 +317,7 @@
     },
     {
       "kind": "diff",
-      "note": "legacy: C2 stops writing it",
+      "note": "legacy: Coder still writes it (wave 2, #13250)",
       "values": {
         "path": "/w/notes.txt",
         "adds": 1,

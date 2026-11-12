@@ -39,6 +39,7 @@
 #load "host_grants.coax";
 #load "../../apps/openagents-cli/relay.coax";
 #load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/agent/session/log.coax";   // the session log's reader
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 cxproc_wall_us :: () -> int #foreign #effects(all);
@@ -357,41 +358,38 @@ hs_job_start :: (realm: string, text: string, engine: string, out: [] u8) -> str
 
 // A session line as a step: its kind, and what the person reads. "" kind for lines a browser is not shown.
 hs_step :: (line: string, kind: [] u8, nkind: [] int, text: [] u8) -> int {
+  r: [1] SlReader; r[0] = SlReader.{text = line}; l: [1] SlLine;
+  ab: [SL_ARENA] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   nkind[0] = 0;
-  nodes: [256] JvNode; dv: [1] Jv;
-  if !jv_parse(dv[..], line, nodes[..]) || jv_kind(dv[0], 0) != JV_OBJECT { return 0; }
-  d := dv[0];
-  kb: [32] u8; kn := jv_str(d, jv_get(d, 0, "kind"), kb[..]);
-  if kn <= 0 { return 0; }
-  k := cast(string) kb[0..<kn];
-  shown := [7] string.["user", "tool", "result", "reply", "end", "approval", "diff"];
-  if hb_index(shown[..], k) < 0 { return 0; }
-  nkind[0] = hs_set(kind, k);
+  if !sl_next(r[..], l[..]) { return 0; }
+  sl_read(ar[..], l[..]);
+  return hs_step_of(l[0], kind, nkind, text);
+}
+// The same for a line read through the session log's reader (log.coax).
+hs_step_of :: (l: SlLine, kind: [] u8, nkind: [] int, text: [] u8) -> int {
+  nkind[0] = 0;
+  k := l.kind;
+  if k != SK_USER && k != SK_TOOL && k != SK_RESULT && k != SK_REPLY && k != SK_END && k != SK_APPROVAL && k != SK_DIFF { return 0; }
+  nkind[0] = hs_set(kind, l.name);
   tb: [65536] u8; n := 0;
-  if k == "tool" { n = jv_str(d, jv_get(d, 0, "label"), tb[..]); }
-  else if k == "approval" {
-    a := jv_str(d, jv_get(d, 0, "tool"), tb[..]); n = ifx a < 0 then 0 else a;
-    vb: [64] u8; v := jv_str(d, jv_get(d, 0, "verdict"), vb[..]);
-    if v > 0 { n = hs_cat(tb[..], n, ": "); n = hs_cat(tb[..], n, cast(string) vb[0..<v]); }
-  } else if k == "diff" {
-    a := jv_str(d, jv_get(d, 0, "path"), tb[..]); n = ifx a < 0 then 0 else a;
-  } else if k == "end" {
-    eb: [32] u8; e := jv_str(d, jv_get(d, 0, "ending"), eb[..]);
-    n = ifx e > 0 then hs_cat(tb[..], 0, cast(string) eb[0..<e]) else 0;
-    xb: [8192] u8; x := jv_str(d, jv_get(d, 0, "text"), xb[..]);
-    if x > 0 { n = hs_cat(tb[..], n, ": "); n = hs_cat(tb[..], n, cast(string) xb[0..<x]); }
-  } else { n = jv_str(d, jv_get(d, 0, "text"), tb[..]); }
-  if n < 0 { n = 0; }
+  if k == SK_TOOL { n = hs_cat(tb[..], 0, l.label); }
+  else if k == SK_APPROVAL {
+    n = hs_cat(tb[..], 0, l.tool);
+    if l.verdict.count > 0 { n = hs_cat(tb[..], n, ": "); n = hs_cat(tb[..], n, l.verdict); }
+  } else if k == SK_DIFF { n = hs_cat(tb[..], 0, l.path); }
+  else if k == SK_END {
+    n = hs_cat(tb[..], 0, l.ending);
+    if l.text.count > 0 && l.text.count <= 8192 { n = hs_cat(tb[..], n, ": "); n = hs_cat(tb[..], n, l.text); }
+  } else { n = hs_cat(tb[..], 0, l.text); }
   return hs_set(text, hs_cut(cast(string) tb[0..<n], HB_STEP_TEXT_MAX));
 }
 // The ending of the session's last end line ("" when none).
 hs_ending :: (line: string, out: [] u8) -> int {
-  nodes: [64] JvNode; dv: [1] Jv;
-  if !jv_parse(dv[..], line, nodes[..]) { return 0; }
-  kb: [16] u8; kn := jv_str(dv[0], jv_get(dv[0], 0, "kind"), kb[..]);
-  if kn != 3 || cast(string) kb[0..<3] != "end" { return 0; }
-  n := jv_str(dv[0], jv_get(dv[0], 0, "ending"), out);
-  return ifx n < 0 then 0 else n;
+  r: [1] SlReader; r[0] = SlReader.{text = line}; l: [1] SlLine;
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  if !sl_next(r[..], l[..]) || l[0].kind != SK_END { return 0; }
+  sl_read(ar[..], l[..]);
+  return ifx l[0].kind == SK_END then hs_set(out, l[0].ending) else 0;
 }
 #test "host: session lines as steps" {
   kind: [32] u8; nk: [1] int; text: [4096] u8;
@@ -416,18 +414,18 @@ hs_steps :: (session: string, alive: bool, started: int, now: int, after: int, f
   if n < 0 { n = 0; }
   text := cast(string) file[0..<n];
   r[0].nsteps = 0; r[0].next = after;
-  at := 0; seq := 0; used := 0; full := false;
+  used := 0; full := false;
   ending: [16] u8; nending := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    if e >= text.count { break; }             // a line still being written
-    seq += 1;
-    line := cast(string) text[at..<e];
-    en := hs_ending(line, ending[..]);
-    if en > 0 { nending = en; }
+  rd: [1] SlReader; rd[0] = SlReader.{text = text}; l: [1] SlLine;
+  ab: [SL_ARENA] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  while sl_next(rd[..], l[..]) {
+    if !l[0].whole { break; }                 // a line still being written
+    seq := l[0].no;                           // the line's number in the file
+    sl_read(ar[..], l[..]);
+    if l[0].kind == SK_END { nending = hs_set(ending[..], l[0].ending); }
     if seq > after && !full {
       kind: [32] u8; nk: [1] int; tb: [HB_STEP_TEXT_MAX] u8;
-      tn := hs_step(line, kind[..], nk[..], tb[..]);
+      tn := hs_step_of(l[0], kind[..], nk[..], tb[..]);
       if nk[0] > 0 && (r[0].nsteps == HB_STEPS_MAX || used + tn + nk[0] > store.count || used + tn > HS_STEPS_BYTES) { full = true; }
       if !full {
         if nk[0] > 0 {
@@ -442,7 +440,6 @@ hs_steps :: (session: string, alive: bool, started: int, now: int, after: int, f
         r[0].next = seq;
       }
     }
-    at = e + 1;
   }
   ed := cast(string) ending[0..<nending];
   if alive { r[0].state = HB_RUNNING; }

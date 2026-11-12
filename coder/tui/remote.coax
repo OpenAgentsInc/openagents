@@ -136,9 +136,13 @@ cd_r2_argv :: (r: [] CdRoute2, line: string, argv: [] string, bufs: [] [1200] u8
 // A session ID in one line of a remote verb's output, or "".
 cd_r2_session_of :: (line: string, ar: [] ClArena) -> string {
   if line.count > 0 && line[0] == '{' {
-    k := cl_str(ar, line, "kind");
-    if k == "session" || k.count == 0 { return cl_str(ar, line, "id"); }
-    return "";
+    r: [1] SlReader; r[0] = SlReader.{text = line}; l: [1] SlLine;
+    if sl_next(r[..], l[..]) {
+      sl_read(ar, l[..]);
+      if l[0].kind == SK_SESSION { return l[0].header.id; }
+      if l[0].name.count > 0 { return ""; }
+    }
+    return cl_str(ar, line, "id");     // not a log line: `coder status --json`'s object, which names its session
   }
   t := line; while t.count > 0 && t[0] == ' ' { t = cast(string) t[1..<t.count]; }
   if t.count > 8 && cast(string) t[0..<8] == "session " { t = cast(string) t[8..<t.count]; }

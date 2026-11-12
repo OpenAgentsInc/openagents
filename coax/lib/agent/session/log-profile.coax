@@ -7,8 +7,13 @@
 //   - the request line: the prompt's SHA-256 and length, as `coder replay` compares them;
 //   - each legacy log (lines written before this format) reads through sl_load into the parts it names.
 // The file is the independent expected result: its lines are written by hand, not by this codec.
+//   - every line, read through log.coax's reader (sl_next, sl_read), has its kind and writes the line again (C2, #13239);
+//   - every line of each legacy log has a kind the reader knows.
 // Prints a line per check and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
 //   coax/web/tool.sh coax/lib/agent/session/log-profile.coax proto/coder/session-log-v1.json
+// With --read LOG it holds a log another program wrote to the same rule: every line is a kind of
+// this log and reads back into the line byte for byte (coax/web/api/test_zchat.py: chat.record's SQL).
+//   coax/web/tool.sh coax/lib/agent/session/log-profile.coax --read LOG
 #import "Basic";
 #load "log.coax";
 #load "../../json/json.coax";
@@ -129,9 +134,57 @@ lp_part :: (s: [] Session, k: int, d: Jv, e: int, p: [] LpPool) -> bool {
   return ok;
 }
 
+// The line through the reader (sl_next, sl_read): its kind, and its fields write it again byte for byte.
+lp_typed :: (line: string, kind: string) -> bool {
+  r: [1] SlReader; r[0] = SlReader.{text = line}; l: [1] SlLine;
+  ab: [LP_LINE] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  kinds := SL_KINDS;
+  if !sl_next(r[..], l[..]) || l[0].kind < 0 || kinds[l[0].kind] != kind { print("      the reader takes it for %\n", l[0].name); return false; }
+  sl_read(ar[..], l[..]);
+  out: [LP_LINE] u8; n := sl_rewrite(l[..], out[..]);
+  if n < 0 || cast(string) out[0..<n] != line { print("      read and written again: %\n", ifx n < 0 then "nothing" else cast(string) out[0..<n]); return false; }
+  return true;
+}
+
+// Whether every line of a log has a kind the reader knows (the first format's too).
+lp_known :: (text: string) -> bool {
+  r: [1] SlReader; r[0] = SlReader.{text = text, first = true}; l: [1] SlLine;
+  ab: [LP_LINE] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  while sl_next(r[..], l[..]) { sl_read(ar[..], l[..]); if l[0].kind < 0 { print("      line %: %\n", l[0].no, l[0].line); return false; } }
+  return true;
+}
+
+// --read LOG: every line of a log another program wrote (GET /api/chat/record) is a kind of this
+// log, and its fields, written through log.coax, are the line byte for byte. Exit 0, or 1 with the
+// first line that isn't.
+lp_read_log :: (path: string) -> int {
+  text: [4194304] u8;
+  n := fs_read(path, text[..]);
+  if n < 0 { tool_errln("log-profile: can't read the log"); return 2; }
+  r: [1] SlReader; r[0] = SlReader.{text = cast(string) text[0..<n]}; l: [1] SlLine;
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  lines := 0; bad := 0;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar[..], l[..]);
+    lines += 1;
+    out: [262144] u8; w := sl_rewrite(l[..], out[..]);
+    same := l[0].whole && w >= 0 && cast(string) out[0..<w] == l[0].line;
+    if !same {
+      bad += 1;
+      print("FAIL  line %: %\n", l[0].no, l[0].line);
+      print("      %\n", ifx l[0].kind < 0 then "no kind of this log" else ifx !l[0].whole then "no line end" else ifx w < 0 then "the writer makes nothing" else cast(string) out[0..<w]);
+    }
+  }
+  if r[0].no != lines { bad += 1; print("FAIL  % empty lines\n", r[0].no - lines); }
+  print("% lines, % read as the writer writes them\n", lines, lines - bad);
+  return ifx bad == 0 && lines > 0 then 0 else 1;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("log-profile PROFILE.json"); return 2; }
+  loaded := args_load(a[..]);
+  if loaded && args_count(a[..]) == 2 && args_at(a[..], 0) == "--read" { return lp_read_log(args_at(a[..], 1)); }
+  if !loaded || args_count(a[..]) != 1 { tool_errln("log-profile PROFILE.json | --read LOG"); return 2; }
   text: [262144] u8;
   n := fs_read(args_at(a[..], 0), text[..]);
   if n <= 0 { tool_errln("log-profile: can't read the profile"); return 2; }
@@ -163,8 +216,10 @@ tool_main :: () -> int #export_c #effects(all) {
     wrote := wn >= 0 && cast(string) out[0..<wn] == line;
     if !wrote { print("      the writer makes %\n", ifx wn < 0 then "nothing" else cast(string) out[0..<wn]); }
     read := wrote && lp_reads(kind, line, d, vs);
-    print("%  % %\n", ifx wrote && read then "ok  " else "FAIL", kind, line);
-    if !wrote || !read { bad += 1; }
+    // and through log.coax's reader: the kind, and fields that write the line again
+    typed := read && lp_typed(line, kind);
+    print("%  % %\n", ifx wrote && read && typed then "ok  " else "FAIL", kind, line);
+    if !wrote || !read || !typed { bad += 1; }
   }
   // every kind of the schema's Line
   kinds := LP_KINDS;
@@ -197,6 +252,8 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     s: [1] Session; pool: [65536] u8; s_init(s[..], pool[..]);
     sl_load(s[..], cast(string) file[0..<fn]);
+    // every line of it has a kind the reader knows
+    known := lp_known(cast(string) file[0..<fn]);
     parts := jv_get(d, e, "parts");
     held := s[0].n == jv_len(d, parts);
     if !held { print("      % parts, the profile names %\n", s[0].n, jv_len(d, parts)); }
@@ -204,8 +261,9 @@ tool_main :: () -> int #export_c #effects(all) {
       if !held { break; }
       if !lp_part(s[..], k, d, jv_at(d, parts, k), p) { held = false; print("      part % differs\n", k); }
     }
-    print("%  legacy: %\n", ifx held then "ok  " else "FAIL", lp_s(p, d, e, "name"));
-    if !held { bad += 1; }
+    if !known { print("      a line reads as no kind of this log\n"); }
+    print("%  legacy: %\n", ifx held && known then "ok  " else "FAIL", lp_s(p, d, e, "name"));
+    if !held || !known { bad += 1; }
   }
   print("%\n", ifx bad == 0 then "profile holds" else "profile fails");
   return ifx bad == 0 then 0 else 1;

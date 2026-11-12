@@ -4,7 +4,8 @@
 // It is Coder's session log (~/.openagents/coder/sessions/ID.jsonl), which
 // Coder's terminal and runs, the turn runner, `coder import`, the desktop app,
 // Aethyrforge's chat and the agent boards write and read. This file is its one
-// writer: every line of every kind is built here (sl_session ... sl_job), and
+// writer and its one reader: every line of every kind is built here (sl_session ...
+// sl_job) and read here (sl_next, sl_read: "the reader" below; C2, #13239), and
 // the shape is pinned by proto/coder/session-log-v1.json (the check:
 // coax/web/tool.sh coax/lib/agent/session/log-profile.coax proto/coder/session-log-v1.json)
 // and described by proto/openagents/session/log/v1alpha1/log.proto. A reader
@@ -35,7 +36,7 @@
 //   {"kind":"memory","text":T[,"withheld":N]}    the remembered facts a first message carried
 //   {"kind":"request","sha256":H,"bytes":N}  the digest and length of what a turn sent its engine (`coder replay` checks it)
 //   {"kind":"engine_session","engine":E,"id":ID}   the engine's own session, for a fork that resumes it
-//   {"kind":"diff","path":P,"adds":N,"dels":N[,"old":T,"new":T]}   an edit's own text (Coder; legacy, see C2)
+//   {"kind":"diff","path":P,"adds":N,"dels":N[,"old":T,"new":T]}   an edit's own text (Coder; legacy: wave 2, #13250, moves it to the tool line)
 //   {"kind":"hook","on":EV,"plugin":P,"run":CMD[,"tool":L],"ok":B,"text":OUT}   a plugin hook ran
 //   {"kind":"goal","check":CMD,"turn":N,"met":B,"text":OUT}   a goal's check ran
 //   {"kind":"job","id":ID,"ending":E,"text":T}   a job this session started ended (--report-to)
@@ -44,7 +45,7 @@
 // Stream records ride in the same file under their own schemas (coder.reply-stream.v1,
 // coder.observability.v1/v2, coder.route.v2); they are not this file's.
 //
-// Reading (sl_load) rebuilds the record. It also reads what was written
+// Reading the record back (sl_load, through the reader) rebuilds it. It also reads what was written
 // before this format: Coder's own lines (a tool line with only its label, a
 // result with only text, an edit's separate {"kind":"diff","path","old","new"}
 // line, an end whose text is the failure, a header with no schema) and the
@@ -226,6 +227,233 @@ sl_end :: (out: [] u8, n: int, ending: string, ms: int, steps: int, cost_e6: int
   return sl_close(out, m);
 }
 
+// ---------------------------------------------------------------- the reader
+// Every program that reads a session log reads it here (C2, #13239): no other file looks up a
+// line's key. sl_next walks a log's lines and names each one's kind cheaply (the writer puts
+// "kind" first, so most lines need no parse; the memory scan reads only that), and sl_read gives a
+// line's fields, typed, as its kind has them. A field the line leaves out reads empty, 0 or false
+// (bytes, started_us and cost_e6: -1). A kind this log does not have (the stream records,
+// Microcoder's journal, attempt) reads as SK_OTHER with its name; a line that isn't a JSON object
+// reads as SK_OTHER with no name once sl_read has run.
+//
+//   r: [1] SlReader; r[0] = SlReader.{text = log}; l: [1] SlLine; ar: [1] ClArena; ar[0] = ClArena.{buf = ...};
+//   while sl_next(r[..], l[..]) { sl_read(ar[..], l[..]); if l[0].kind == SK_USER { ... l[0].text ... } }
+
+// The kinds, by SK_* (log.proto's Line, in its order).
+SL_KINDS :: [23] string.["session", "user", "thinking", "reply", "tool", "result", "routed", "notice", "ask", "answer", "approval", "agent",
+                         "context", "keys", "note", "memory", "request", "engine_session", "diff", "hook", "goal", "job", "end"];
+SK_OTHER :: -1;
+SK_SESSION :: 0; SK_USER :: 1; SK_THINKING :: 2; SK_REPLY :: 3; SK_TOOL :: 4; SK_RESULT :: 5; SK_ROUTED :: 6; SK_NOTICE :: 7;
+SK_ASK :: 8; SK_ANSWER :: 9; SK_APPROVAL :: 10; SK_AGENT :: 11; SK_CONTEXT :: 12; SK_KEYS :: 13; SK_NOTE :: 14; SK_MEMORY :: 15;
+SK_REQUEST :: 16; SK_ENGINE_SESSION :: 17; SK_DIFF :: 18; SK_HOOK :: 19; SK_GOAL :: 20; SK_JOB :: 21; SK_END :: 22;
+// The desktop app's first format's kinds ({"k":K,...}), and the kinds they are now.
+SL_FIRST_KINDS :: [7] string.["user", "text", "think", "tool", "notice", "route", "end"];
+SL_FIRST_AS :: [7] int.[SK_USER, SK_REPLY, SK_THINKING, SK_TOOL, SK_NOTICE, SK_ROUTED, SK_END];
+
+// first: read the desktop app's first format as the kinds it is now (the record, sl_load, does);
+// else such a line is SK_OTHER, as every reader that never wrote it had it.
+SlReader :: struct { text: string; at: int; no: int; first: bool; }
+
+// One line and, once sl_read has run, its fields. Strings borrow the line, or the arena sl_read had.
+SlLine :: struct {
+  kind: int = SK_OTHER;
+  name: string;            // the kind as written ("attempt", "journal" ... for one this log does not have)
+  line: string;            // the line's bytes, without its \n
+  no: int;                 // its line number in the file, from 1 (empty lines count)
+  whole: bool;             // it ends with \n (a last line without one may still be being written)
+  first: bool;             // the desktop app's first format ({"k":"user","t":T})
+  header: SlHeader;        // session
+  text: string;            // user, thinking, reply, ask, answer, context, keys, note, memory, result, routed, notice, hook, goal, job, end
+  label: string; tool: string; tool_name: string;   // tool (tool_name is its "name"); tool is also approval's, routed's and hook's
+  id: string; arg: string; detail: string;          // tool and routed; id is also result's, engine_session's and job's
+  old: string; next: string; input: string;         // tool, and diff's old and new
+  has_old: bool; has_new: bool;                     // diff: the line carries old, new (either may be "")
+  output: string; error: bool; open: bool; resolved: bool;   // result and routed
+  bytes: int = -1;                                  // result (when cut, its whole size) and request
+  sha256: string;                                   // request
+  notice: string;                                   // notice: an SL_NOTICES name (an ask is its own kind)
+  effect: string; inside: bool; verdict: string; why: string;   // approval
+  engine: string;                                   // agent and engine_session
+  withheld: int;                                    // memory
+  path: string; adds: int; dels: int;               // diff
+  on: string; plugin: string; run: string; ok: bool;   // hook
+  check: string; turn: int; met: bool;              // goal
+  ending: string; ms: int; steps: int; cost_e6: int = -1; cause: string;   // end; ending is also job's
+  timed: bool;                                      // end: the line has its ms
+  cost: f64 = -1.0;                                 // the first format's end: dollars
+  tk: int = -1; notice_index: int = -1;             // the first format's tool kind and notice, by TK_* and N_*
+}
+
+sl_starts :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
+
+// A string value's bytes when it has no escape (a kind's name never has one), else "".
+sl_plain :: (line: string, v: ClSlice) -> string {
+  if !v.ok || v.tok != JSON_STRING { return ""; }
+  raw := cast(string) line[v.from..<v.to];
+  for c: raw { if c == '\\' { return ""; } }
+  return raw;
+}
+
+// A line's kind: from its first bytes when the writer wrote it (no parse), else from its "kind",
+// or the first format's "k". Sets kind, name and first.
+sl_kind_of :: (l: [] SlLine) {
+  line := l[0].line;
+  l[0].kind = SK_OTHER; l[0].name = ""; l[0].first = false;
+  p := "{\"kind\":\"";
+  name := "";
+  if sl_starts(line, p) {
+    e := p.count; while e < line.count && line[e] != '"' && line[e] != '\\' { e += 1; }
+    if e < line.count && line[e] == '"' { name = cast(string) line[p.count..<e]; }
+  }
+  if name.count == 0 {
+    k := sl_plain(line, cl_at(line, "k"));
+    if k.count > 0 {
+      fk := SL_FIRST_KINDS; fa := SL_FIRST_AS;
+      i := sl_index(fk[..], k);
+      l[0].first = true; l[0].name = k;
+      if i >= 0 { l[0].kind = fa[i]; }
+      return;
+    }
+    name = sl_plain(line, cl_at(line, "kind"));
+  }
+  l[0].name = name;
+  kinds := SL_KINDS;
+  l[0].kind = sl_index(kinds[..], name);
+}
+
+// The next line of r with anything on it, its kind named; false at the end of the text.
+sl_next :: (r: [] SlReader, l: [] SlLine) -> bool {
+  t := r[0].text;
+  while r[0].at < t.count {
+    q := r[0].at; e := q;
+    while e < t.count && t[e] != '\n' { e += 1; }
+    r[0].at = e + 1; r[0].no += 1;
+    if e - q < 2 { continue; }
+    l[0] = SlLine.{line = cast(string) t[q..<e], no = r[0].no, whole = e < t.count};
+    sl_kind_of(l);
+    if l[0].first && !r[0].first { l[0].kind = SK_OTHER; l[0].name = ""; l[0].first = false; }
+    return true;
+  }
+  return false;
+}
+
+sl_s :: (ar: [] ClArena, line: string, key: string) -> string { return cl_str(ar, line, key); }
+sl_i :: (line: string, key: string, missing: int) -> int { v := cl_int(line, key); return ifx v.ok then cast(int) v.value else missing; }
+sl_b :: (line: string, key: string) -> bool { v := cl_bool(line, key); return v.ok && v.value; }
+
+// The line's fields, as its kind has them. Its strings live in ar, which this empties first, until
+// the next sl_read with ar. A line that isn't a JSON object becomes SK_OTHER with no name.
+sl_read :: (ar: [] ClArena, l: [] SlLine) {
+  ar[0].at = 0; ar[0].full = false;
+  line := l[0].line; k := l[0].kind;
+  root := cl_root(line);
+  if !root.ok || root.tok != JSON_OBJECT { l[0].kind = SK_OTHER; l[0].name = ""; l[0].first = false; return; }
+  if l[0].first {
+    l[0].text = sl_s(ar, line, "t");
+    if k == SK_END { l[0].ms = sl_i(line, "ms", 0); l[0].timed = cl_at(line, "ms").ok; c := cl_num(line, "cost"); if c.ok { l[0].cost = c.value; } }
+    if k == SK_NOTICE { l[0].notice_index = sl_i(line, "notice", -1); }
+    if k == SK_TOOL || k == SK_ROUTED {
+      l[0].tk = sl_i(line, "tk", -1);
+      l[0].id = sl_s(ar, line, "id"); l[0].arg = sl_s(ar, line, "arg"); l[0].detail = sl_s(ar, line, "detail");
+      l[0].old = sl_s(ar, line, "before"); l[0].next = sl_s(ar, line, "after"); l[0].input = sl_s(ar, line, "input");
+      l[0].output = sl_s(ar, line, "output"); l[0].error = sl_b(line, "failed"); l[0].resolved = sl_b(line, "resolved");
+    }
+    return;
+  }
+  if k == SK_SESSION {
+    l[0].header = SlHeader.{id = sl_s(ar, line, "id"), version = sl_s(ar, line, "version"), engine = sl_s(ar, line, "engine"), cwd = sl_s(ar, line, "cwd"),
+      started_us = sl_i(line, "started_us", -1), title = sl_s(ar, line, "title"), model = sl_s(ar, line, "model"), imported = sl_s(ar, line, "imported"),
+      parent = sl_s(ar, line, "parent"), at = sl_i(line, "at", 0), pid = sl_i(line, "pid", 0), report_to = sl_s(ar, line, "report_to"),
+      resume = sl_s(ar, line, "resume"), allow = sl_s(ar, line, "allow"), ceiling = sl_s(ar, line, "ceiling"), deadline_s = sl_i(line, "deadline_s", 0)};
+    // a header that names what it always writes (Coder's) is written again the same way
+    l[0].header.always = cl_at(line, "version").ok && cl_at(line, "engine").ok && cl_at(line, "cwd").ok && cl_at(line, "started_us").ok;
+    return;
+  }
+  if k == SK_AGENT { l[0].engine = sl_s(ar, line, "engine"); return; }
+  if k == SK_TOOL {
+    l[0].label = sl_s(ar, line, "label"); l[0].tool = sl_s(ar, line, "tool"); l[0].tool_name = sl_s(ar, line, "name");
+    l[0].id = sl_s(ar, line, "id"); l[0].arg = sl_s(ar, line, "arg"); l[0].detail = sl_s(ar, line, "detail");
+    l[0].old = sl_s(ar, line, "old"); l[0].next = sl_s(ar, line, "new"); l[0].input = sl_s(ar, line, "input");
+    return;
+  }
+  if k == SK_APPROVAL {
+    l[0].tool = sl_s(ar, line, "tool"); l[0].effect = sl_s(ar, line, "effect"); l[0].inside = sl_b(line, "inside");
+    l[0].verdict = sl_s(ar, line, "verdict"); l[0].why = sl_s(ar, line, "why");
+    return;
+  }
+  if k == SK_REQUEST { l[0].sha256 = sl_s(ar, line, "sha256"); l[0].bytes = sl_i(line, "bytes", -1); return; }
+  if k == SK_ENGINE_SESSION { l[0].engine = sl_s(ar, line, "engine"); l[0].id = sl_s(ar, line, "id"); return; }
+  if k == SK_DIFF {
+    l[0].path = sl_s(ar, line, "path"); l[0].adds = sl_i(line, "adds", 0); l[0].dels = sl_i(line, "dels", 0);
+    l[0].has_old = cl_at(line, "old").ok; l[0].has_new = cl_at(line, "new").ok;
+    l[0].old = sl_s(ar, line, "old"); l[0].next = sl_s(ar, line, "new");
+    return;
+  }
+  // every other kind, and one this log does not have, may carry a text
+  l[0].text = sl_s(ar, line, "text");
+  if k == SK_RESULT || k == SK_ROUTED {
+    l[0].error = sl_b(line, "error"); l[0].id = sl_s(ar, line, "id"); l[0].output = sl_s(ar, line, "output");
+    if k == SK_RESULT { l[0].bytes = sl_i(line, "bytes", -1); l[0].open = sl_b(line, "open"); }
+    else { l[0].tool = sl_s(ar, line, "tool"); l[0].arg = sl_s(ar, line, "arg"); l[0].detail = sl_s(ar, line, "detail"); l[0].resolved = sl_b(line, "resolved"); }
+  }
+  else if k == SK_NOTICE { l[0].notice = sl_s(ar, line, "notice"); }
+  else if k == SK_MEMORY { l[0].withheld = sl_i(line, "withheld", 0); }
+  else if k == SK_HOOK {
+    l[0].on = sl_s(ar, line, "on"); l[0].plugin = sl_s(ar, line, "plugin"); l[0].run = sl_s(ar, line, "run");
+    l[0].tool = sl_s(ar, line, "tool"); l[0].ok = sl_b(line, "ok");
+  }
+  else if k == SK_GOAL { l[0].check = sl_s(ar, line, "check"); l[0].turn = sl_i(line, "turn", 0); l[0].met = sl_b(line, "met"); }
+  else if k == SK_JOB { l[0].id = sl_s(ar, line, "id"); l[0].ending = sl_s(ar, line, "ending"); }
+  else if k == SK_END {
+    l[0].ending = sl_s(ar, line, "ending"); l[0].ms = sl_i(line, "ms", 0); l[0].timed = cl_at(line, "ms").ok; l[0].steps = sl_i(line, "steps", 0);
+    l[0].cost_e6 = sl_i(line, "cost_usd_e6", -1); l[0].cause = sl_s(ar, line, "cause");
+  }
+}
+
+// The line written again from its fields, through the writer. A line the writer wrote comes back
+// byte for byte; log-profile.coax --read holds chat.record's SQL to that. Its length, or -1.
+sl_rewrite :: (l: [] SlLine, out: [] u8) -> int {
+  k := l[0].kind;
+  if l[0].first || k == SK_OTHER { return -1; }
+  if k == SK_SESSION { return sl_session(out, 0, l[0].header); }
+  if k == SK_AGENT { return sl_text(out, 0, "agent", "engine", l[0].engine); }
+  if k == SK_TOOL {
+    return sl_tool(out, 0, SlTool.{label = l[0].label, tool = l[0].tool, name = l[0].tool_name, id = l[0].id, arg = l[0].arg, detail = l[0].detail,
+                                   old = l[0].old, next = l[0].next, input = l[0].input});
+  }
+  if k == SK_RESULT { return sl_result(out, 0, l[0].text, l[0].error, ifx l[0].bytes > 0 then l[0].bytes else 0, l[0].output, l[0].id, l[0].open); }
+  if k == SK_ROUTED { return sl_routed(out, 0, l[0].text, l[0].tool, l[0].id, l[0].arg, l[0].detail, l[0].output, l[0].error, l[0].resolved); }
+  if k == SK_NOTICE { return sl_notice(out, 0, l[0].notice, l[0].text); }
+  if k == SK_APPROVAL { return sl_approval(out, 0, l[0].tool, l[0].effect, l[0].inside, l[0].verdict, l[0].why); }
+  if k == SK_MEMORY { return sl_memory(out, 0, l[0].text, l[0].withheld); }
+  if k == SK_REQUEST { return sl_close(out, sl_key_int(out, sl_key_str(out, sl_open(out, 0, "request"), "sha256", l[0].sha256), "bytes", l[0].bytes)); }
+  if k == SK_ENGINE_SESSION { return sl_engine_session(out, 0, l[0].engine, l[0].id); }
+  if k == SK_DIFF { return sl_diff(out, 0, l[0].path, l[0].adds, l[0].dels, l[0].has_old || l[0].has_new, l[0].old, l[0].next); }
+  if k == SK_HOOK { return sl_hook(out, 0, l[0].on, l[0].plugin, l[0].run, l[0].tool, l[0].ok, l[0].text); }
+  if k == SK_GOAL { return sl_goal(out, 0, l[0].check, l[0].turn, l[0].met, l[0].text); }
+  if k == SK_JOB { return sl_job(out, 0, l[0].id, l[0].ending, l[0].text); }
+  if k == SK_END { return sl_end(out, 0, l[0].ending, l[0].ms, l[0].steps, l[0].cost_e6, l[0].text, l[0].cause); }
+  kinds := SL_KINDS;
+  return sl_text(out, 0, kinds[k], "text", l[0].text);
+}
+
+// The number of the last line a person typed (from 1, as sl_next counts), or 0. The memory scan:
+// it needs only each line's kind, so nothing is parsed.
+sl_last_user :: (text: string) -> int {
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine; last := 0;
+  while sl_next(r[..], l[..]) { if l[0].kind == SK_USER && l[0].whole { last = l[0].no; } }
+  return last;
+}
+
+// The header on a log's first line; its id is "" when the first line isn't one.
+sl_first_header :: (text: string, ar: [] ClArena) -> SlHeader {
+  e := 0; while e < text.count && text[e] != '\n' { e += 1; }
+  r: [1] SlReader; r[0] = SlReader.{text = cast(string) text[0..<e]}; l: [1] SlLine;
+  if !sl_next(r[..], l[..]) { return SlHeader.{}; }
+  sl_read(ar, l[..]);
+  return ifx l[0].kind == SK_SESSION then l[0].header else SlHeader.{};
+}
+
 // ---------------------------------------------------------------- a record as lines
 
 // The file's first line, for a record (the desktop app). Its length (0 when it did not fit).
@@ -338,102 +566,96 @@ sl_turn_noticed :: (s: [] Session) -> bool {
 }
 
 // The desktop app's first format, one line: {"k":"tool","t":T,"tk":N,...} (apps/openagents-desktop/zeron/store.coax before this file).
-sl_load_first :: (s: [] Session, ar: [] ClArena, line: string, name: string) -> bool {
-  if name == "end" {
-    ms := cl_int(line, "ms"); if ms.ok { s[0].turn_ms = cast(int) ms.value; }
-    c := cl_num(line, "cost"); if c.ok { s[0].cost = c.value; }
+sl_load_first :: (s: [] Session, l: SlLine) -> bool {
+  if l.kind == SK_END {
+    if l.timed { s[0].turn_ms = l.ms; }
+    if l.cost >= 0.0 { s[0].cost = l.cost; }
     return true;
   }
-  kinds := [6] string.["user", "text", "think", "tool", "notice", "route"];
-  kind := sl_index(kinds[..], name);
+  kind := ifx l.kind == SK_USER then P_USER else ifx l.kind == SK_REPLY then P_TEXT else ifx l.kind == SK_THINKING then P_THINK
+          else ifx l.kind == SK_TOOL then P_TOOL else ifx l.kind == SK_NOTICE then P_NOTICE else ifx l.kind == SK_ROUTED then P_ROUTE else -1;
   if kind < 0 { return true; }
   k := s_part(s, kind);
   if k < 0 { return false; }
-  s_append(s, k, cl_str(ar, line, "t"));
+  s_append(s, k, l.text);
   if kind == P_USER { s[0].turns += 1; }
-  if kind == P_NOTICE { v := cl_int(line, "notice"); if v.ok { s[0].parts[k].notice = cast(int) v.value; } }
+  if kind == P_NOTICE && l.notice_index >= 0 { s[0].parts[k].notice = l.notice_index; }
   if kind == P_TOOL || kind == P_ROUTE {
     p := s[0].parts[k];
-    v := cl_int(line, "tk"); if v.ok { p.tk = cast(int) v.value; }
-    p.id = s_put(s, cl_str(ar, line, "id")); p.arg = s_put(s, cl_str(ar, line, "arg"));
-    p.detail = s_put(s, cl_str(ar, line, "detail")); p.before = s_put(s, cl_str(ar, line, "before"));
-    p.after = s_put(s, cl_str(ar, line, "after")); p.input = s_put(s, cl_str(ar, line, "input"));
-    p.output = s_put(s, cl_str(ar, line, "output"));
-    p.failed = cl_bool(line, "failed").value; p.resolved = cl_bool(line, "resolved").value;
+    if l.tk >= 0 { p.tk = l.tk; }
+    p.id = s_put(s, l.id); p.arg = s_put(s, l.arg); p.detail = s_put(s, l.detail); p.before = s_put(s, l.old);
+    p.after = s_put(s, l.next); p.input = s_put(s, l.input); p.output = s_put(s, l.output);
+    p.failed = l.error; p.resolved = l.resolved;
     s[0].parts[k] = p;
   }
   return true;
 }
 
-// One line into the record. False when the record is full (reading stops).
-sl_load_line :: (s: [] Session, ar: [] ClArena, line: string) -> bool {
-  first := cl_str(ar, line, "k");
-  if first.count > 0 { return sl_load_first(s, ar, line, first); }
-  kind := cl_str(ar, line, "kind");
+// One line, read, into the record. False when the record is full (reading stops).
+sl_load_line :: (s: [] Session, l: SlLine) -> bool {
+  if l.first { return sl_load_first(s, l); }
+  kind := l.kind;
   tools := SL_TOOLS; notices := SL_NOTICES;
-  if kind == "user" || kind == "reply" || kind == "thinking" {
-    k := s_part(s, ifx kind == "user" then P_USER else ifx kind == "reply" then P_TEXT else P_THINK);
+  if kind == SK_USER || kind == SK_REPLY || kind == SK_THINKING {
+    k := s_part(s, ifx kind == SK_USER then P_USER else ifx kind == SK_REPLY then P_TEXT else P_THINK);
     if k < 0 { return false; }
-    s_append(s, k, cl_str(ar, line, "text"));
-    if kind == "user" { s[0].turns += 1; }
+    s_append(s, k, l.text);
+    if kind == SK_USER { s[0].turns += 1; }
     return true;
   }
-  if kind == "tool" || kind == "routed" {
-    k := s_part(s, ifx kind == "tool" then P_TOOL else P_ROUTE);
+  if kind == SK_TOOL || kind == SK_ROUTED {
+    k := s_part(s, ifx kind == SK_TOOL then P_TOOL else P_ROUTE);
     if k < 0 { return false; }
-    if kind == "routed" { s_append(s, k, cl_str(ar, line, "text")); }
-    name := cl_str(ar, line, "tool");
-    if name.count == 0 && kind == "tool" { sl_from_label(s, k, cl_str(ar, line, "label")); return true; }   // Coder's own line
+    if kind == SK_ROUTED { s_append(s, k, l.text); }
+    if l.tool.count == 0 && kind == SK_TOOL { sl_from_label(s, k, l.label); return true; }   // Coder's own line
     p := s[0].parts[k];
-    tk := sl_index(tools[..], name);
-    p.tk = ifx tk >= 0 then tk else ifx kind == "tool" then TK_TOOL else TK_ROUTE;
-    p.id = s_put(s, cl_str(ar, line, "id")); p.arg = s_put(s, cl_str(ar, line, "arg")); p.detail = s_put(s, cl_str(ar, line, "detail"));
-    p.before = s_put(s, cl_str(ar, line, "old")); p.after = s_put(s, cl_str(ar, line, "new")); p.input = s_put(s, cl_str(ar, line, "input"));
-    p.name = s_put(s, cl_str(ar, line, "name"));
-    if kind == "routed" { p.output = s_put(s, cl_str(ar, line, "output")); p.failed = cl_bool(line, "error").value; p.resolved = cl_bool(line, "resolved").value; }
+    tk := sl_index(tools[..], l.tool);
+    p.tk = ifx tk >= 0 then tk else ifx kind == SK_TOOL then TK_TOOL else TK_ROUTE;
+    p.id = s_put(s, l.id); p.arg = s_put(s, l.arg); p.detail = s_put(s, l.detail);
+    p.before = s_put(s, l.old); p.after = s_put(s, l.next); p.input = s_put(s, l.input);
+    p.name = s_put(s, l.tool_name);
+    if kind == SK_ROUTED { p.output = s_put(s, l.output); p.failed = l.error; p.resolved = l.resolved; }
     s[0].parts[k] = p;
     return true;
   }
-  if kind == "result" {
-    k := sl_tool_for(s, cl_str(ar, line, "id"));
+  if kind == SK_RESULT {
+    k := sl_tool_for(s, l.id);
     if k < 0 { return true; }
-    whole := cl_at(line, "output");
-    s[0].parts[k].output = s_put(s, ifx whole.ok then cl_text(ar, line, whole) else cl_str(ar, line, "text"));
-    s[0].parts[k].failed = cl_bool(line, "error").value;
-    s[0].parts[k].resolved = !cl_bool(line, "open").value;
+    s[0].parts[k].output = s_put(s, ifx l.output.count > 0 then l.output else l.text);
+    s[0].parts[k].failed = l.error;
+    s[0].parts[k].resolved = !l.open;
     return true;
   }
-  if kind == "diff" {
+  if kind == SK_DIFF {
     // Coder logs an edit's text on its own line, after the call
-    path := cl_str(ar, line, "path");
     k := sl_tool_for(s, "");
     if k < 0 || (s[0].parts[k].tk != TK_EDIT && s[0].parts[k].tk != TK_WRITE) || s[0].parts[k].before.count > 0 || s[0].parts[k].after.count > 0 {
       k = s_part(s, P_TOOL);
       if k < 0 { return false; }
       s[0].parts[k].tk = TK_EDIT; s[0].parts[k].resolved = true;
     }
-    if s[0].parts[k].arg.count == 0 { s[0].parts[k].arg = s_put(s, path); }
-    s[0].parts[k].before = s_put(s, cl_str(ar, line, "old")); s[0].parts[k].after = s_put(s, cl_str(ar, line, "new"));
+    if s[0].parts[k].arg.count == 0 { s[0].parts[k].arg = s_put(s, l.path); }
+    s[0].parts[k].before = s_put(s, l.old); s[0].parts[k].after = s_put(s, l.next);
     return true;
   }
-  if kind == "notice" || kind == "ask" {
+  if kind == SK_NOTICE || kind == SK_ASK {
     k := s_part(s, P_NOTICE);
     if k < 0 { return false; }
-    n := ifx kind == "ask" then N_ASK else sl_index(notices[..], cl_str(ar, line, "notice"));
+    n := ifx kind == SK_ASK then N_ASK else sl_index(notices[..], l.notice);
     s[0].parts[k].notice = ifx n >= 0 then n else N_ERROR;
-    s_append(s, k, cl_str(ar, line, "text"));
+    s_append(s, k, l.text);
     return true;
   }
-  if kind == "end" {
-    ms := cl_int(line, "ms"); if ms.ok { s[0].turn_ms = cast(int) ms.value; }
-    c := cl_int(line, "cost_usd_e6"); if c.ok { s[0].cost = cast(f64) c.value / 1000000.0; }
+  if kind == SK_END {
+    if l.timed { s[0].turn_ms = l.ms; }
+    if l.cost_e6 >= 0 { s[0].cost = cast(f64) l.cost_e6 / 1000000.0; }
     // a log that names its ending without a notice (Coder's): the record shows it the same way
-    ending := cl_str(ar, line, "ending");
+    ending := l.ending;
     if (ending == "stopped" || ending == "failed" || ending == "expired") && !sl_turn_noticed(s) {
       k := s_part(s, P_NOTICE);
       if k < 0 { return false; }
       s[0].parts[k].notice = ifx ending == "stopped" then N_STOPPED else N_ERROR;
-      if ending != "stopped" { why := cl_str(ar, line, "text"); s_append(s, k, ifx why.count > 0 then why else ifx ending == "expired" then "The job passed its deadline." else "The turn failed."); }
+      if ending != "stopped" { s_append(s, k, ifx l.text.count > 0 then l.text else ifx ending == "expired" then "The job passed its deadline." else "The turn failed."); }
     }
     return true;
   }
@@ -442,15 +664,11 @@ sl_load_line :: (s: [] Session, ar: [] ClArena, line: string) -> bool {
 
 // A log back into a fresh record: the same parts, its turns, cost and last turn's time.
 sl_load :: (s: [] Session, text: string) {
-  abuf: [SL_ARENA] u8; ar: [1] ClArena;
-  q := 0;
-  while q < text.count {
-    e := q; while e < text.count && text[e] != '\n' { e += 1; }
-    line := cast(string) text[q..<e];
-    q = e + 1;
-    if line.count < 2 { continue; }
-    ar[0].buf = abuf[..]; ar[0].at = 0; ar[0].full = false;
-    if !sl_load_line(s, ar[..], line) { break; }
+  abuf: [SL_ARENA] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  r: [1] SlReader; r[0] = SlReader.{text = text, first = true}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar[..], l[..]);
+    if !sl_load_line(s, l[0]) { break; }
   }
   s[0].changed = true;
 }
@@ -572,4 +790,42 @@ sl_test_tool :: (s: [] Session, id: string, tk: int, arg: string, detail: string
   sl_load(s[..], "{\"kind\":\"user\",\"text\":\"two\"}\n{\"kind\":\"user\",\"text\":\"three\"}\n");
   #assert s[0].n == S_PARTS && s[0].turns == 1;
   #assert sl_ending(s[..], 0, 0) == "finished";
+}
+
+#test "the reader names each line's kind, counts every line, reads a line's fields and writes it again the same" {
+  text := "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"x\",\"version\":\"0.1\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":5}\n\n{\"kind\":\"user\",\"text\":\"fix \\\"it\\\"\"}\n{\"seq\":1,\"kind\":\"attempt\",\"text\":\"t\"}\nnot json\n{\"k\":\"user\",\"t\":\"old\"}\n{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":9,\"steps\":2,\"text\":\"why\",\"cause\":\"provider\"}\n{\"kind\":\"user\",\"text\":\"partial";
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert sl_next(r[..], l[..]) && l[0].kind == SK_SESSION && l[0].no == 1 && l[0].whole;
+  sl_read(ar[..], l[..]);
+  #assert l[0].header.id == "x" && l[0].header.engine == "claude" && l[0].header.started_us == 5 && l[0].header.always;
+  out: [4096] u8; n := sl_rewrite(l[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == l[0].line;
+  #assert sl_next(r[..], l[..]) && l[0].kind == SK_USER && l[0].no == 3;
+  sl_read(ar[..], l[..]);
+  #assert l[0].text == "fix \"it\"";
+  n = sl_rewrite(l[..], out[..]);
+  #assert cast(string) out[0..<n] == l[0].line;
+  #assert sl_next(r[..], l[..]) && l[0].kind == SK_OTHER && l[0].name == "attempt" && l[0].no == 4;
+  sl_read(ar[..], l[..]);
+  #assert l[0].text == "t" && sl_rewrite(l[..], out[..]) == -1;
+  #assert sl_next(r[..], l[..]) && l[0].kind == SK_OTHER && l[0].name == "";
+  #assert sl_next(r[..], l[..]) && !l[0].first && l[0].kind == SK_OTHER;   // the first format: only for a reader that asks
+  fr: [1] SlReader; fr[0] = SlReader.{text = l[0].line, first = true}; fl: [1] SlLine;
+  #assert sl_next(fr[..], fl[..]) && fl[0].first && fl[0].kind == SK_USER;
+  sl_read(ar[..], fl[..]);
+  #assert fl[0].text == "old";
+  #assert sl_next(r[..], l[..]) && l[0].kind == SK_END;
+  sl_read(ar[..], l[..]);
+  #assert l[0].ending == "failed" && l[0].ms == 9 && l[0].timed && l[0].steps == 2 && l[0].text == "why" && l[0].cause == "provider" && l[0].cost_e6 == -1;
+  n = sl_rewrite(l[..], out[..]);
+  #assert cast(string) out[0..<n] == l[0].line;
+  // a last line still being written: its kind from its first bytes, then no fields
+  #assert sl_next(r[..], l[..]) && l[0].kind == SK_USER && !l[0].whole && l[0].no == 8;
+  sl_read(ar[..], l[..]);
+  #assert l[0].kind == SK_OTHER && !sl_next(r[..], l[..]);
+  // the memory scan: the last whole line a person typed, by number
+  #assert sl_last_user(text) == 3 && sl_last_user("{\"kind\":\"end\"}\n") == 0;
+  h := sl_first_header(text, ar[..]);
+  #assert h.id == "x" && h.cwd == "/w" && sl_first_header("{\"kind\":\"user\",\"text\":\"a\"}\n", ar[..]).id == "";
 }

@@ -87,18 +87,25 @@ cd_acp_kind :: (label: string) -> string {
 
 // One line of the running turn's log, as ACP updates.
 cd_acp_line :: (s: [] CdAcpSession, line: string, ar: [] ClArena) {
-  ar[0].at = 0; ar[0].full = false;
-  kind := cl_str(ar, line, "kind");
+  r: [1] SlReader; r[0] = SlReader.{text = line}; ll: [1] SlLine;
+  if !sl_next(r[..], ll[..]) { return; }
+  sl_read(ar, ll[..]);
+  cd_acp_read(s, ll[0]);
+}
+
+// One line of the log, read (log.coax), as ACP updates.
+cd_acp_read :: (s: [] CdAcpSession, l: SlLine) {
+  kind := l.kind;
   tb: [24] u8;
-  if kind == "session" {
-    s[0].nlast = cd_cat(s[0].last[..], 0, cl_str(ar, line, "id"));
+  if kind == SK_SESSION {
+    s[0].nlast = cd_cat(s[0].last[..], 0, l.header.id);
     pb: [1300] u8; x := fs_write(cd_sibling(cast(string) s[0].id[0..<s[0].nid], ".acp", pb[..]), cast(string) s[0].last[0..<s[0].nlast]);
     return;
   }
-  if kind == "reply" { cd_acp_text_update(s, "agent_message_chunk", cl_str(ar, line, "text")); return; }
-  if kind == "tool" {
+  if kind == SK_REPLY { cd_acp_text_update(s, "agent_message_chunk", l.text); return; }
+  if kind == SK_TOOL {
     s[0].tools += 1;
-    label := cl_str(ar, line, "label");
+    label := l.label;
     ub: [8192] u8;
     n := json_raw(ub[..], 0, "{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t");
     n = json_raw(ub[..], n, cd_itoa(s[0].tools, tb[..]));
@@ -108,35 +115,32 @@ cd_acp_line :: (s: [] CdAcpSession, line: string, ar: [] ClArena) {
     if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
     return;
   }
-  if kind == "result" && s[0].tools > 0 {
-    bad := cl_bool(line, "error");
+  if kind == SK_RESULT && s[0].tools > 0 {
     ub: [270000] u8;
     n := json_raw(ub[..], 0, "{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"t");
     n = json_raw(ub[..], n, cd_itoa(s[0].tools, tb[..]));
-    n = json_raw(ub[..], n, ifx bad.ok && bad.value then "\",\"status\":\"failed\"" else "\",\"status\":\"completed\"");
+    n = json_raw(ub[..], n, ifx l.error then "\",\"status\":\"failed\"" else "\",\"status\":\"completed\"");
     n = json_raw(ub[..], n, ",\"content\":[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":");
-    n = json_write_string(ub[..], n, cl_str(ar, line, "text")); n = json_raw(ub[..], n, "}}]}");
+    n = json_write_string(ub[..], n, l.text); n = json_raw(ub[..], n, "}}]}");
     if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
     return;
   }
-  if kind == "diff" && s[0].tools > 0 {
+  if kind == SK_DIFF && s[0].tools > 0 {
     // an edit's own text, as ACP diff content on the tool call that made it
-    nt := cl_raw(line, "new");
-    if nt.count == 0 { return; }
-    ot := cl_raw(line, "old");
-    old := cl_str(ar, line, "old");
+    if !l.has_new { return; }
+    old := l.old;
     ub: [40000] u8;
     n := json_raw(ub[..], 0, "{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"t");
     n = json_raw(ub[..], n, cd_itoa(s[0].tools, tb[..]));
-    n = json_raw(ub[..], n, "\",\"content\":[{\"type\":\"diff\",\"path\":"); n = json_write_string(ub[..], n, cl_str(ar, line, "path"));
+    n = json_raw(ub[..], n, "\",\"content\":[{\"type\":\"diff\",\"path\":"); n = json_write_string(ub[..], n, l.path);
     n = json_raw(ub[..], n, ",\"oldText\":");
-    if ot.count == 0 || old.count == 0 { n = json_raw(ub[..], n, "null"); } else { n = json_write_string(ub[..], n, old); }
-    n = json_raw(ub[..], n, ",\"newText\":"); n = json_write_string(ub[..], n, cl_str(ar, line, "new"));
+    if !l.has_old || old.count == 0 { n = json_raw(ub[..], n, "null"); } else { n = json_write_string(ub[..], n, old); }
+    n = json_raw(ub[..], n, ",\"newText\":"); n = json_write_string(ub[..], n, l.next);
     n = json_raw(ub[..], n, "}]}");
     if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
     return;
   }
-  if kind == "ask" {
+  if kind == SK_ASK {
     // the turn waits for the person: ask the editor, and write its answer when it comes (cd_acp_answer)
     ub: [8192] u8;
     n := json_raw(ub[..], 0, "{\"jsonrpc\":\"2.0\",\"id\":\"perm-");
@@ -145,14 +149,14 @@ cd_acp_line :: (s: [] CdAcpSession, line: string, ar: [] ClArena) {
     n = json_write_string(ub[..], n, cast(string) s[0].id[0..<s[0].nid]);
     n = json_raw(ub[..], n, ",\"toolCall\":{\"toolCallId\":\"ask-");
     n = json_raw(ub[..], n, cd_itoa(s[0].tools + 1, tb[..]));
-    n = json_raw(ub[..], n, "\",\"title\":"); n = json_write_string(ub[..], n, cl_str(ar, line, "text"));
+    n = json_raw(ub[..], n, "\",\"title\":"); n = json_write_string(ub[..], n, l.text);
     n = json_raw(ub[..], n, ",\"status\":\"pending\"},\"options\":[{\"optionId\":\"allow_once\",\"name\":\"Allow\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_always\",\"name\":\"Allow from now on\",\"kind\":\"allow_always\"},{\"optionId\":\"reject_once\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]}}");
     if n > 0 { cd_acp_send(cast(string) ub[0..<n]); }
     return;
   }
-  if kind == "end" {
-    s[0].nending = cd_cat(s[0].ending[..], 0, cl_str(ar, line, "ending"));
-    why := cl_str(ar, line, "text");
+  if kind == SK_END {
+    s[0].nending = cd_cat(s[0].ending[..], 0, l.ending);
+    why := l.text;
     if s[0].nending > 0 && cast(string) s[0].ending[0..<s[0].nending] == "failed" && why.count > 0 { cd_acp_text_update(s, "agent_message_chunk", why); }
   }
 }
@@ -176,22 +180,16 @@ cd_acp_replay :: (s: [] CdAcpSession, last: string) {
   while nc > 0 && n < 64 {
     nchain[n] = cd_cat(chain[n][..], 0, cast(string) cur[0..<nc]); n += 1;
     text := cd_session_file(cast(string) cur[0..<nc], fb[..], ib[..]);
-    e := 0; while e < text.count && text[e] != 10 { e += 1; }
-    ar[0].at = 0; ar[0].full = false;
-    nc = cd_cat(cur[..], 0, cl_str(ar[..], cast(string) text[0..<e], "parent"));
+    nc = cd_cat(cur[..], 0, sl_first_header(text, ar[..]).parent);
   }
   k := n - 1;
   while k >= 0 {
     text := cd_session_file(cast(string) chain[k][0..<nchain[k]], fb[..], ib[..]);
-    at := 0;
-    while at < text.count {
-      e := at; while e < text.count && text[e] != 10 { e += 1; }
-      line := cast(string) text[at..<e];
-      at = e + 1;
-      ar[0].at = 0; ar[0].full = false;
-      kind := cl_str(ar[..], line, "kind");
-      if kind == "user" { cd_acp_text_update(s, "user_message_chunk", cl_str(ar[..], line, "text")); }
-      else if kind != "ask" && kind != "session" { cd_acp_line(s, line, ar[..]); }
+    r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+    while sl_next(r[..], l[..]) {
+      sl_read(ar[..], l[..]);
+      if l[0].kind == SK_USER { cd_acp_text_update(s, "user_message_chunk", l[0].text); }
+      else if l[0].kind != SK_ASK && l[0].kind != SK_SESSION { cd_acp_read(s, l[0]); }
     }
     k -= 1;
   }

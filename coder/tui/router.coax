@@ -153,18 +153,14 @@ rt_threads_text :: (th: [] RtThreads, out: [] u8) -> string {
 // The last turn's replies, joined; the last command output when the turn has no reply.
 rt_last_turn :: (text: string, ar: [] ClArena, out: [] u8) -> string {
   n := 0; rb: [8192] u8; rn := 0;
-  at := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at..<e];
-    at = e + 1;
-    if line.count == 0 { continue; }
-    ar[0].at = 0; ar[0].full = false;
-    kind := cl_str(ar, line, "kind");
-    if kind == "user" { n = 0; rn = 0; }
-    else if kind == "reply" { if n > 0 { n = cd_cat(out, n, "\n"); } n = cd_cat(out, n, cl_str(ar, line, "text")); }
-    else if kind == "result" { rn = cd_cat(rb[..], 0, cl_str(ar, line, "text")); }
-    else if kind == "end" && rn == 0 { rn = cd_cat(rb[..], 0, cl_str(ar, line, "text")); }    // why a turn with no reply ended
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar, l[..]);
+    kind := l[0].kind;
+    if kind == SK_USER { n = 0; rn = 0; }
+    else if kind == SK_REPLY { if n > 0 { n = cd_cat(out, n, "\n"); } n = cd_cat(out, n, l[0].text); }
+    else if kind == SK_RESULT { rn = cd_cat(rb[..], 0, l[0].text); }
+    else if kind == SK_END && rn == 0 { rn = cd_cat(rb[..], 0, l[0].text); }    // why a turn with no reply ended
   }
   if n == 0 { n = cd_cat(out, 0, cast(string) rb[0..<rn]); }
   while n > 0 && (out[n - 1] == 10 || out[n - 1] == ' ') { n -= 1; }
@@ -174,18 +170,14 @@ rt_last_turn :: (text: string, ar: [] ClArena, out: [] u8) -> string {
 // How many times in a row, at the end of the last turn, the Worker ran the same step.
 rt_repeats :: (text: string, ar: [] ClArena) -> int {
   lb: [512] u8; ln := 0; run := 0;
-  at := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at..<e];
-    at = e + 1;
-    if line.count == 0 { continue; }
-    ar[0].at = 0; ar[0].full = false;
-    kind := cl_str(ar, line, "kind");
-    if kind == "user" { run = 0; ln = 0; }
-    else if kind == "reply" { run = 0; }
-    else if kind == "tool" {
-      label := cl_str(ar, line, "label");
+  r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar, l[..]);
+    kind := l[0].kind;
+    if kind == SK_USER { run = 0; ln = 0; }
+    else if kind == SK_REPLY { run = 0; }
+    else if kind == SK_TOOL {
+      label := l[0].label;
       if run > 0 && label == cast(string) lb[0..<ln] { run += 1; } else { run = 1; ln = cd_cat(lb[..], 0, label); }
     }
   }
@@ -218,16 +210,12 @@ RT_SPILL_WORDS :: 6;        // the chat pointer's words, kept inside the cap
 RT_PR_CHECKS :: 10;
 rt_checks :: (wlog: string, ar: [] ClArena, out: [] u8) -> string {
   labels: [RT_PR_CHECKS] [512] u8; nl: [RT_PR_CHECKS] int; good: [RT_PR_CHECKS] int; k := 0; open := -1;
-  at := 0;
-  while at < wlog.count {
-    e := at; while e < wlog.count && wlog[e] != 10 { e += 1; }
-    line := cast(string) wlog[at..<e];
-    at = e + 1;
-    if line.count == 0 { continue; }
-    ar[0].at = 0; ar[0].full = false;
-    kind := cl_str(ar, line, "kind");
-    if kind == "tool" {
-      lb := cl_str(ar, line, "label");
+  r: [1] SlReader; r[0] = SlReader.{text = wlog}; l: [1] SlLine;
+  while sl_next(r[..], l[..]) {
+    sl_read(ar, l[..]);
+    kind := l[0].kind;
+    if kind == SK_TOOL {
+      lb := l[0].label;
       open = -1;
       // Bash(CMD) from an engine, or "$ CMD · exit N" from a command typed in the session
       cf := -1; ct := -1;
@@ -242,9 +230,8 @@ rt_checks :: (wlog: string, ar: [] ClArena, out: [] u8) -> string {
         nl[slot] = cd_cat(labels[slot][..], 0, cast(string) lb[cf..<ct]); good[slot] = -1;
         open = slot; k += 1;
       }
-    } else if kind == "result" && open >= 0 {
-      bad := cl_bool(line, "error");
-      good[open] = ifx bad.ok && bad.value then 0 else 1;
+    } else if kind == SK_RESULT && open >= 0 {
+      good[open] = ifx l[0].error then 0 else 1;
       open = -1;
     }
   }

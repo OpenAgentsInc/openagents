@@ -176,13 +176,14 @@ tr_session_file :: (id: string, buf: [] u8, idout: [] u8) -> string {
 tr_fork :: (r: [] TrRun, parent: string, pid: string, at: int, want: string) -> int {
   if want.count == 0 {
     // the parent's engine: its first line's, or the last agent it switched to
-    eb: [32] u8; en := 0; pos := 0;
-    while pos < parent.count {
-      e := pos; while e < parent.count && parent[e] != 10 { e += 1; }
-      line := cast(string) parent[pos..<e]; pos = e + 1;
-      ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-      kind := cl_str(ar[..], line, "kind");
-      if kind == "session" || kind == "agent" { en = tr_cat(eb[..], 0, cl_str(ar[..], line, "engine")); }
+    eb: [32] u8; en := 0;
+    ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    pr: [1] SlReader; pr[0] = SlReader.{text = parent}; l: [1] SlLine;
+    while sl_next(pr[..], l[..]) {
+      if l[0].kind != SK_SESSION && l[0].kind != SK_AGENT { continue; }
+      sl_read(ar[..], l[..]);
+      if l[0].kind == SK_SESSION { en = tr_cat(eb[..], 0, l[0].header.engine); }
+      else if l[0].kind == SK_AGENT { en = tr_cat(eb[..], 0, l[0].engine); }
     }
     pe := cast(string) eb[0..<en];
     r[0].engine = ifx pe == "codex" then TR_CODEX else ifx pe == "cursor" then TR_CURSOR else ifx pe == "antigravity" then TR_ANTIGRAVITY else ifx pe == "microcoder" then TR_MICRO else ifx pe == "psionic" then TR_PSIONIC else ifx pe == "echo" then TR_ECHO else TR_CLAUDE;

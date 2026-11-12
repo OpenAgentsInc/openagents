@@ -15,6 +15,8 @@ on disk does not change.
 | | |
 | --- | --- |
 | Writer | [`coax/lib/agent/session/log.coax`](../../coax/lib/agent/session/log.coax): every line of every kind is built there |
+| Reader | The same file: `sl_next` walks the lines and names each kind from its first bytes, `sl_read` gives a line's fields typed (`SlLine`), `sl_load` rebuilds the desktop app's record. Every program that reads the log reads it there |
+| SQL | `chat.record` ([0139](../../coax/web/api/migrations/0139_chat_folders_tabs.sql), [0162](../../coax/web/api/migrations/0162_chat_record_log.sql)) writes a `/chat` conversation; [`test_zchat.py`](../../coax/web/api/test_zchat.py) reads every line it returns through the reader and requires it back byte for byte (`log-profile.coax --read LOG`) |
 | Schema | [`proto/openagents/session/log/v1alpha1/log.proto`](../../proto/openagents/session/log/v1alpha1/log.proto), profile `session-log` |
 | Fixtures | [`proto/coder/session-log-v1.json`](../../proto/coder/session-log-v1.json): each kind's values and its exact line |
 | Check | `coax/web/tool.sh coax/lib/agent/session/log-profile.coax proto/coder/session-log-v1.json` |
@@ -41,7 +43,7 @@ shown; a reader looks a key up by name and skips a kind it does not know.
 | `memory` | `text`, [`withheld`] | The remembered facts a first message carried |
 | `request` | `sha256`, `bytes` | The SHA-256 and length of what a turn sent its engine. `coder replay` rebuilds the prompt and compares both |
 | `engine_session` | `engine`, `id` | The engine's own session, for a fork that resumes it |
-| `diff` | `path`, `adds`, `dels`, [`old`, `new`] | An edit's counts and text. Legacy: C2 stops writing it |
+| `diff` | `path`, `adds`, `dels`, [`old`, `new`] | An edit's counts and text. Legacy: Coder still writes it; wave 2 (#13250) moves an edit's text to the `tool` line |
 | `hook` | `on`, `plugin`, `run`, [`tool`], `ok`, `text` | A plugin hook ran |
 | `goal` | `check`, `turn`, `met`, `text` | A goal's check ran |
 | `job` | `id`, `ending`, `text` | A job this session started ended (`--report-to`) |

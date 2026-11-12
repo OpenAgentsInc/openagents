@@ -222,6 +222,23 @@ check("chat: each turn is its message, its tools and their results, its answer a
       and rec[4]["text"].startswith("## Answer") and rec[5]["ending"] == "finished" and rec[5]["steps"] == 1, rec[:7])
 check("chat: a stopped turn ends stopped", any(r.get("ending") == "stopped" for r in rec) and kinds.count("user") == kinds.count("end") == 4, kinds)
 check("chat: the record's first line is written the way the log reader expects it", b.startswith('{"kind":"session","schema":"openagents.session.v1"'), b[:80])
+# chat.record is the session log written in SQL; log.coax is its writer and reader in Coax (C2, #13239).
+# Every line the route returns reads through log.coax's reader and, written again through its writer,
+# is the same bytes (log-profile.coax --read), so the two can't drift; and the header has the fields of
+# the C1 fixture's /chat header (proto/coder/session-log-v1.json), in its order. C2 has no message yet:
+# its title is empty, which the writer leaves out.
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+fx = next(l for l in json.load(open(os.path.join(REPO, "proto", "coder", "session-log-v1.json")))["lines"] if "chat.record" in l.get("note", ""))
+check("chat: the record's header has the fields of the fixture's /chat header, in its order",
+      rec and list(rec[0]) == ["kind", "schema"] + list(fx["values"]), (list(rec[0]) if rec else None, list(fx["values"])))
+for cid in (C, C2):
+    s, rb = cpage("GET", "record", query=f"?c={cid}")
+    rpath = os.path.join(cwork, f"record-{cid}.jsonl")
+    open(rpath, "w").write(rb if s == 200 else "")
+    rd = subprocess.run([os.path.join(REPO, "coax", "web", "tool.sh"), "coax/lib/agent/session/log-profile.coax", "--read", rpath],
+                        cwd=REPO, capture_output=True, text=True, timeout=1200)
+    check(f"chat: every line of conversation {cid}'s record reads through log.coax and is written back byte for byte",
+          s == 200 and rd.returncode == 0, (s, rd.stdout[-2000:], rd.stderr[-800:]))
 
 # ---- the cap on our key ($1 here)
 s, b = cpage("POST", "send", {"c": str(C), "text": "costly"})
