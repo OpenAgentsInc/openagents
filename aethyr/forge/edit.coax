@@ -658,29 +658,29 @@ forge_scene_drop_oldest :: (s: ForgeScene) -> bool {
   return true;
 }
 
-// Start a compound edit step (`scatter`, multi-object `move`/`delete`, `clear`). Redo past `done` goes.
+// Start a compound edit step (`scatter`, multi-object `move`/`delete`, `clear`). The redo branch
+// past `done` goes only when the step's first change lands (forge_scene_push), so an edit that
+// changes nothing ("delete the rocks" in a world with none) leaves redo as it was.
 forge_scene_begin :: (s: ForgeScene, kind: int) {
   if s.st[0].open { return; }
-  if s.st[0].done < s.st[0].step_n {
-    if s.st[0].saved > s.st[0].done { s.st[0].saved = -1; }
-    s.st[0].op_n = ifx s.st[0].done > 0 then s.steps[s.st[0].done - 1].first + s.steps[s.st[0].done - 1].count else 0;
-    s.st[0].step_n = s.st[0].done;
-  }
   s.st[0].open = true;
   s.st[0].open_kind = kind;
-  s.st[0].open_first = s.st[0].op_n;
+  s.st[0].open_first = ifx s.st[0].done > 0 then s.steps[s.st[0].done - 1].first + s.steps[s.st[0].done - 1].count else 0;
+}
+// The open step's changes so far (none while the redo branch still stands: nothing was pushed).
+forge_scene_open_count :: (s: ForgeScene) -> int {
+  return ifx s.st[0].done < s.st[0].step_n then 0 else s.st[0].op_n - s.st[0].open_first;
 }
 
 // Commit the open step as one undo entry; an edit that changed nothing leaves no undo entry.
 forge_scene_end :: (s: ForgeScene) -> bool {
   if !s.st[0].open { return false; }
-  count := s.st[0].op_n - s.st[0].open_first;
+  count := forge_scene_open_count(s);
   if count <= 0 { s.st[0].open = false; return false; }
   if s.steps.count <= 0 { return false; }
   while s.st[0].step_n >= s.steps.count {
     if !forge_scene_drop_oldest(s) { return false; }
   }
-  count = s.st[0].op_n - s.st[0].open_first;
   s.steps[s.st[0].step_n] = ForgeStep.{kind = s.st[0].open_kind, first = s.st[0].open_first, count = count};
   s.st[0].step_n += 1;
   s.st[0].done = s.st[0].step_n;
@@ -690,6 +690,7 @@ forge_scene_end :: (s: ForgeScene) -> bool {
 
 forge_scene_cancel :: (s: ForgeScene) {
   if !s.st[0].open { return; }
+  if forge_scene_open_count(s) == 0 { s.st[0].open = false; return; }
   k := s.st[0].op_n;
   while k > s.st[0].open_first {
     k -= 1;
@@ -704,15 +705,21 @@ forge_scene_push :: (s: ForgeScene, o: ForgeItemOp) -> bool {
   if s.ops.count <= 0 || s.steps.count <= 0 { return false; }
   grouped := s.st[0].open;
   if !grouped { forge_scene_begin(s, o.kind); }
-  while s.st[0].op_n >= s.ops.count {
-    if !forge_scene_drop_oldest(s) {
-      if !grouped { s.st[0].open = false; }
-      return false;
-    }
-  }
   if !forge_scene_apply(s, o) {
     if !grouped { s.st[0].open = false; }
     return false;
+  }
+  if s.st[0].done < s.st[0].step_n {   // the first change of a step made after an undo: the redo branch goes
+    if s.st[0].saved > s.st[0].done { s.st[0].saved = -1; }
+    s.st[0].step_n = s.st[0].done;
+    s.st[0].op_n = s.st[0].open_first;
+  }
+  while s.st[0].op_n >= s.ops.count {
+    if !forge_scene_drop_oldest(s) {   // one step bigger than the whole log: take the change back
+      _ = forge_scene_apply(s, forge_item_inverse(o));
+      if !grouped { forge_scene_cancel(s); }
+      return false;
+    }
   }
   s.ops[s.st[0].op_n] = o;
   s.st[0].op_n += 1;
@@ -1124,8 +1131,11 @@ forge_test_scene :: (t: [] ForgeTestScene) -> ForgeScene {
   #assert forge_scene_undo(s) && forge_scene_undo(s) && forge_scene_undo(s);
   #assert s.st[0].n == 3 && s.items[2].z == -5.0 && s.items[2].yaw == 0.0 && s.items[2].scale == 1.0;
 
-  // a new edit after undo drops the redo branch
+  // an edit that changes nothing keeps the redo branch; a new edit after undo drops it
   #assert forge_scene_can_redo(s);
+  forge_scene_begin(s, FORGE_SCENE_DELETE);
+  #assert !forge_scene_delete(s, 999) && !forge_scene_end(s) && forge_scene_can_redo(s);
+  #assert !forge_scene_move(s, tree, 2.0, 0.0, -5.0) && forge_scene_can_redo(s);
   #assert forge_scene_scale(s, tree, 2.0);
   #assert !forge_scene_can_redo(s) && s.items[0].scale == 2.0;
 }
