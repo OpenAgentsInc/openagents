@@ -1,31 +1,65 @@
 syntax = "proto3";
 package openagents.coder.observability.v1;
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/options/v1alpha1/json.proto";
 
-// JSONL mapping and scope: docs/protocol/coder-observability-v1.md.
+// Coder's local observation records, one compact JSON object a line, with
+// "schema": "coder.observability.v1" (docs/protocol/coder-observability-v1.md).
+// Each json_name is the key on the wire. The one writer is
+// coax/lib/agent/session/stream.coax; golden lines are in
+// proto/coder/stream-v1.json, and its check holds every key to a json_name here.
+
+// kind "model": the Codex model and effort resolved by thread/start. Written
+// as {"kind":"model","schema":"coder.observability.v1", then engine, source,
+// model, effort and cost_usd; a missing model or effort, and the unobserved
+// cost, are null. Not on the JSON mapper: cost_usd is a double, which the
+// mapper refuses (coax/proto.md, "JSON mapper"), so stream.coax writes it by hand.
 message Model {
-  string engine = 1;
-  optional string model = 2;
-  optional string effort = 3;
-  optional double cost_usd = 4;
-}
-message Usage {
-  string engine = 1;
-  string scope = 2;
-  optional int64 total_tokens = 3;
-  optional int64 input_tokens = 4;
-  optional int64 cached_input_tokens = 5;
-  optional int64 cache_write_input_tokens = 6;
-  optional int64 output_tokens = 7;
-  optional int64 reasoning_output_tokens = 8;
-  optional string thread_id = 9;
-  optional string turn_id = 10;
-}
-message Availability {
-  string engine = 1;
-  int64 retry_after_s = 2;
-  bool persisted = 3;
+  option (openagents.options.v1alpha1.contract) = "coder.observability.v1";
+  string engine = 1 [json_name = "engine"];       // "codex"
+  optional string model = 2 [json_name = "model"];
+  optional string effort = 3 [json_name = "effort"];
+  optional double cost_usd = 4 [json_name = "cost_usd"];  // always null today
+  string source = 5 [json_name = "source"];       // "thread/start"
 }
 
+// kind "usage": token counts. Written as {"kind":"usage","schema":"coder.observability.v1",
+// then engine and scope. scope "thread_total" (Codex) is a cumulative snapshot
+// with thread_id, turn_id (null with no Codex client) and Codex's six counts;
+// scope "turn" (ACP engines) has the ACP counts and cost_usd. Counts keep the
+// upstream camelCase names; a missing or negative count is null. Not on the
+// JSON mapper: cost_usd is a double, so stream.coax writes it by hand.
+message Usage {
+  option (openagents.options.v1alpha1.contract) = "coder.observability.v1";
+  string engine = 1 [json_name = "engine"];
+  string scope = 2 [json_name = "scope"];         // "thread_total" or "turn"
+  optional int64 total_tokens = 3 [json_name = "totalTokens"];
+  optional int64 input_tokens = 4 [json_name = "inputTokens"];
+  optional int64 cached_input_tokens = 5 [json_name = "cachedInputTokens"];            // thread_total
+  optional int64 cache_write_input_tokens = 6 [json_name = "cacheWriteInputTokens"];   // thread_total
+  optional int64 output_tokens = 7 [json_name = "outputTokens"];
+  optional int64 reasoning_output_tokens = 8 [json_name = "reasoningOutputTokens"];    // thread_total
+  optional string thread_id = 9 [json_name = "thread_id"];                             // thread_total
+  optional string turn_id = 10 [json_name = "turn_id"];                                // thread_total
+  optional int64 cached_read_tokens = 11 [json_name = "cachedReadTokens"];             // turn
+  optional int64 cached_write_tokens = 12 [json_name = "cachedWriteTokens"];           // turn
+  optional int64 thought_tokens = 13 [json_name = "thoughtTokens"];                    // turn
+  optional double cost_usd = 14 [json_name = "cost_usd"];                              // turn; always null today
+}
+
+// kind "availability": a typed terminal provider failure and the local retry
+// time in Unix seconds. On the JSON mapper; the goldens check writes and reads
+// each golden through it as well as through stream.coax.
+message Availability {
+  option (openagents.options.v1alpha1.contract) = "coder.observability.v1";
+  option (openagents.options.v1alpha1.json) = "kind=availability;schema=coder.observability.v1";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  optional string engine = 1 [json_name = "engine"];
+  optional int64 retry_after_s = 2 [json_name = "retry_after_s"];
+  optional bool persisted = 3 [json_name = "persisted"];
+}
+
+// A session summary's hint, not a stream record.
 message SummaryHint {
   string effect_outcome = 1; // unknown while a durable turn has no end record.
 }

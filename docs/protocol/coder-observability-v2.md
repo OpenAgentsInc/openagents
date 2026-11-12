@@ -1,7 +1,9 @@
 # Coder attempt observations v2
 
-`proto/openagents/coder/observability/v2/events.proto` declares the new
-`kind: "attempt"`, `schema: "coder.observability.v2"` event. Existing v1
+`proto/openagents/coder/observability/v2/events.proto` (profile `coder-stream`)
+declares the new `kind: "attempt"`, `schema: "coder.observability.v2"` event;
+each `json_name` is the key on the wire. `coax/lib/agent/session/stream.coax`
+writes it, and `proto/coder/stream-v1.json` pins its lines. Existing v1
 events and snapshots retain their identity. This event records one finished
 Microcoder request attempt, including fallback failures and skipped attempts;
 it is neither a cumulative snapshot nor an invoice.

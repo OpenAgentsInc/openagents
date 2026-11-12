@@ -11,16 +11,11 @@
 #   shape NAME     a shape that is not compliant yet: a pending row's id, or one with no row
 
 # Area 1: Coder, Microcoder, Golemancy
-shape coder.reply-stream.v1  # C3: stream records get one codec and a profile (#13240)
-shape coder.observability.v1  # C3: stream records get one codec and a profile (#13240)
-shape coder.observability.v2  # C3: stream records get one codec and a profile (#13240)
-shape coder.route.v2  # C3: stream records get one codec and a profile (#13240)
 shape openagents.coder.agents.v1  # C7, wave 2: local inventory (#13250)
 shape openagents.models.v1  # C7, wave 2: local inventory (#13250)
 shape openagents.dictation.v1  # C7, wave 2: dictation (#13250)
 shape openagents.dictation.stream.v1  # C7, wave 2: dictation (#13250)
 shape coder.session-reader.v1  # C10, wave 2: the session-reader envelope (#13250)
-id coder.reply-stream.v1 apps/aethyrforge-desktop/chat.coax  # the Aethyrforge chat reads the stream with its own parser; C3 (#13240)
 id openagents.coder.agents.v1 apps/aethyrforge-desktop/setup.coax  # Aethyrforge's setup reads it with its own parser; C7, wave 2 (#13250)
 id openagents.models.v1 apps/aethyrforge-desktop/setup.coax  # Aethyrforge's setup reads it with its own parser; C7, wave 2 (#13250)
 id openagents.dictation.v1 coder/tui/dictate.coax  # Coder reads it with its own parser; C7, wave 2 (#13250)
@@ -39,8 +34,6 @@ shape external-format-fixtures  # C13, wave 2: every external row gets a fixture
 shape nip98-events-in-c  # C14, wave 2: runner.c builds NIP-98 events by hand; use coax/lib/nostr (#13250)
 shape systemone-request-json  # the System One request JSON in coax/lib/systemone/request.coax is hand-written; pin it with the contract's fixtures (#13250)
 route coax/web/api/chat.c  # C9, wave 2: the /chat routes, after C5 (#13250)
-proto proto/openagents/coder/observability/v1/events.proto  # C3: fix the proto to the JSON and put it in a profile (#13240)
-proto proto/openagents/coder/observability/v2/events.proto  # C3: fix the proto to the JSON and put it in a profile (#13240)
 proto proto/openagents/cli/local/v1/inventory.proto  # C7, wave 2 (#13250)
 proto proto/openagents/cli/dictation/v1/stream.proto  # C7, wave 2 (#13250)
 

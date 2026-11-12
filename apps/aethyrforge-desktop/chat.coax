@@ -34,30 +34,26 @@ fc_cat :: (out:[]u8,n:int,text:string)->int {
   if n<0 || n+text.count>out.count {return -1;}
   for i:0..<text.count {out[n+i]=text[i];} return n+text.count;
 }
-fc_route_text :: (v:Jv,out:[]u8)->int {
-  b:[1024]u8; n:=0;
-  ok:=jv_bool(v,jv_get(v,0,"ok"));
+// A route record (read by stream.coax, the codec) as the line the chat shows.
+fc_route_text :: (e:CstEvent,out:[]u8)->int {
+  n:=0;
   // The route has an explicit selected engine even on a default/failure.
-  k:=jv_str(v,jv_get(v,0,"source"),b[..]);
-  if ok {n=fc_cat(out,n,ifx k>0 then cast(string)b[0..<k] else "Automatic");}
+  if e.ok {n=fc_cat(out,n,ifx e.source.count>0 then e.source else "Automatic");}
   else {n=fc_cat(out,n,"Fallback");}
-  k=jv_str(v,jv_get(v,0,"ran"),b[..]);
-  if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);}
-  if !ok {
-    k=jv_str(v,jv_get(v,0,"text"),b[..]);if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);} return n;
+  if e.ran.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,e.ran);}
+  if !e.ok {
+    if e.text.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,e.text);} return n;
   }
   // Low confidence is explicitly an eligible default, never a smart-pick claim.
-  at:=jv_get(v,0,"probability");
-  p:=json_f64(jv_raw(v,at));
-  if at>=0 && (!p.ok || p.value<0.5) {
-    n=fc_cat(out,0,"Fallback"); k=jv_str(v,jv_get(v,0,"ran"),b[..]);
-    if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);}
+  if e.has_probability && (!e.probability.ok || e.probability.value<0.5) {
+    n=fc_cat(out,0,"Fallback");
+    if e.ran.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,e.ran);}
     return fc_cat(out,n," · low-confidence decision");
   }
   levels:=[5]string.["trivial","easy","moderate","hard","very hard"];
-  d:=jv_int(v,jv_get(v,0,"difficulty"),-1);
+  d:=e.difficulty;
   if d>=0 && d<5 {n=fc_cat(out,n," · ");n=fc_cat(out,n,levels[d]);}
-  for field:[2]string.["effort","model"] {k=jv_str(v,jv_get(v,0,field),b[..]);if k>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,cast(string)b[0..<k]);}}
+  for field:[2]string.[e.effort,e.model] {if field.count>0 {n=fc_cat(out,n," · ");n=fc_cat(out,n,field);}}
   return n;
 }
 
@@ -163,19 +159,18 @@ fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c #effects(all) {
   }
   return s[0].kind;
 }
-// The stream records Coder prints beside the log's lines.
+// The stream records Coder prints beside the log's lines, read by their codec
+// (coax/lib/agent/session/stream.coax, cst_read).
 fc_read_stream :: (s:[]ForgeChatEvent,line:string)->int {
-  nodes:[128]JvNode; d:[1]Jv;
-  if !jv_parse(d[..],line,nodes[..]) {return 0;}
-  v:=d[0]; k:=jv_raw(v,jv_get(v,0,"kind"));
-  if k=="reply_delta" || k=="reply_end" {
-    if jv_raw(v,jv_get(v,0,"schema"))!="coder.reply-stream.v1" {return 0;}
-    if k=="reply_end" {was:=s[0].live;s[0].live=false;return ifx was then 13 else 0;}
-    n:=jv_str(v,jv_get(v,0,"text"),s[0].text[..]);if n<=0 {return 0;}
-    s[0].tn=n;kind:=ifx s[0].live then 12 else 11;s[0].live=true;return kind;
+  ab:[SL_ARENA+4096]u8; ar:[1]ClArena; ar[0]=ClArena.{buf=ab[..]}; ev:[1]CstEvent;
+  k:=cst_read(ar[..],line,ev[..]);
+  if k==CST_KIND_REPLY_END {was:=s[0].live;s[0].live=false;return ifx was then 13 else 0;}
+  if k==CST_KIND_REPLY_DELTA {
+    t:=ev[0].text; if t.count==0 || t.count>s[0].text.count {return 0;}
+    s[0].tn=fc_cat(s[0].text[..],0,t);kind:=ifx s[0].live then 12 else 11;s[0].live=true;return kind;
   }
-  if k=="model" {n:=jv_str(v,jv_get(v,0,"model"),s[0].text[..]); if n<0 {return 0;} s[0].tn=n;s[0].kind=9;return 9;}
-  if k=="route" {s[0].tn=fc_route_text(v,s[0].text[..]);s[0].kind=10;return 10;}
+  if k==CST_KIND_MODEL {t:=ev[0].model; if t.count>s[0].text.count {return 0;} s[0].tn=fc_cat(s[0].text[..],0,t);s[0].kind=9;return 9;}
+  if k==CST_KIND_ROUTE {s[0].tn=fc_route_text(ev[0],s[0].text[..]);s[0].kind=10;return 10;}
   return 0;
 }
 // Shared point-space boxes: native text controls and the GPU frames use these.

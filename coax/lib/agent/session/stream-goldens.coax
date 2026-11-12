@@ -1,19 +1,96 @@
 // Golden wire fixture check for Coder stream records (C3, #13240):
 // proto/coder/stream-v1.json holds golden JSON lines for model, usage, availability
 // (coder.observability.v1), attempt (coder.observability.v2), reply_delta/reply_end
-// (coder.reply-stream.v1), and route (coder.route.v2), and verifies that the encoders
-// write each line byte for byte.
+// (coder.reply-stream.v1), and route (coder.route.v2). For each line it checks that
+//   - stream.coax writes it byte for byte and its reader takes it;
+//   - every key is a json_name of the record's message in proto/descriptors/coder-stream.pb
+//     (kind is the record, schema the message's contract option), and a message on the
+//     JSON mapper names the same kind and schema as its constants;
+//   - a message on the JSON mapper (availability, attempt, reply_delta, reply_end) reads
+//     the line and writes it back byte for byte.
 
 #import "Basic";
+#import_proto "../../../../proto/descriptors/coder-stream.pb" as CSW;
 #load "stream.coax";
 #load "../../json/json.coax";
+#load "../../proto/json.coax";
+#load "../../proto/importer.coax";
 #load "../../sys/tool.coax";
 #load "../../sys/args.coax";
 #load "../../sys/fs.coax";
 
 SG_LINE :: 8192;
 SG_FIXTURE_PATH :: "proto/coder/stream-v1.json";
+SG_DESCRIPTOR_PATH :: "proto/descriptors/coder-stream.pb";
 SG_RECORDS :: [7] string.["model", "usage", "availability", "attempt", "reply_delta", "reply_end", "route"];
+// The message each record's line is, in SG_RECORDS's order.
+SG_MESSAGES :: [7] string.[".openagents.coder.observability.v1.Model", ".openagents.coder.observability.v1.Usage", ".openagents.coder.observability.v1.Availability", ".openagents.coder.observability.v2.Attempt", ".openagents.coder.stream.v1.ReplyDelta", ".openagents.coder.stream.v1.ReplyEnd", ".openagents.coder.route.v2.Route"];
+SG_CONTRACT :: 6;  // openagents.options.v1alpha1.contract, as the importer numbers message options
+SG_JSON :: 10;     // openagents.options.v1alpha1.json
+
+// The parsed descriptor: the importer's own parser (coax/lib/proto/importer.coax) over the profile's bytes.
+SgDescriptor :: struct {
+  types: [256] D_Type; enums: [64] D_Type; fields: [2048] D_Field; values: [1024] D_Value; groups: [4096] string;
+  files: [64] string; deps: [256] string; arena: [4194304] u8; output: [1] u8; symbols: [8192] string;
+  state: [1] D_State;
+}
+
+sg_descriptor_load :: (g: [] SgDescriptor, raw: string) -> string {
+  g[0].state[0] = D_State.{types = g[0].types[..], enums = g[0].enums[..], fields = g[0].fields[..], values = g[0].values[..], groups = g[0].groups[..],
+    files = g[0].files[..], deps = g[0].deps[..], arena = g[0].arena[..], output = g[0].output[..], symbols = g[0].symbols[..]};
+  D_parse(g[0].state[..], raw, "SG");
+  return g[0].state[0].error;
+}
+
+// Whether line's keys are the message's: "" when they are, else what is wrong.
+sg_keys :: (st: [] D_State, rec: string, message: string, line: string) -> string {
+  m := -1;
+  for i: 0..<st[0].nt { if st[0].types[i].full == message { m = i; } }
+  if m < 0 { return "the descriptor has no such message"; }
+  t := st[0].types[m];
+  if !D_has_option(t.opts, SG_CONTRACT) { return "the message has no contract option"; }
+  contract := t.opts.text[SG_CONTRACT];
+  if D_has_option(t.opts, SG_JSON) {
+    parts := [4] string.["kind=", rec, ";schema=", contract];
+    want: [256] u8; n := 0;
+    for p: parts { for c: p { if n < want.count { want[n] = c; n += 1; } } }
+    if t.opts.text[SG_JSON] != cast(string) want[0..<n] { return "the json option's constants are not this kind and schema"; }
+  }
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return "not a JSON object"; }
+  for i: 0..<jv_len(d[0], 0) {
+    at := jv_at(d[0], 0, i); k := jv_key(d[0], at);
+    if k == "kind" { if jv_raw(d[0], at) != rec { return "kind is not the record"; } continue; }
+    if k == "schema" { if jv_raw(d[0], at) != contract { return "schema is not the message's contract"; } continue; }
+    found := false;
+    for j: t.first..<t.first + t.count { if st[0].fields[j].json == k { found = true; } }
+    if !found { return "a key is no json_name of the message"; }
+  }
+  return "";
+}
+
+// Whether the JSON mapper reads line and writes it back byte for byte (true for a record off the mapper).
+// Run only by the tool: the mapper's alias check does not run at compile time, where #test runs.
+sg_mapper :: (rec: string, line: string) -> bool {
+  nodes: [1024] JvNode; wire: [SG_LINE] u8; out: [SG_LINE] u8;
+  if rec == "availability" {
+    m := CSW_Availability_from_json(line, nodes[..], wire[..]); if m.error != 0 { return false; }
+    v := CSW_Availability_to_json(m, out[..]); return v.error == 0 && cast(string) v.wire == line;
+  }
+  if rec == "attempt" {
+    m := CSW_Attempt_from_json(line, nodes[..], wire[..]); if m.error != 0 { return false; }
+    v := CSW_Attempt_to_json(m, out[..]); return v.error == 0 && cast(string) v.wire == line;
+  }
+  if rec == "reply_delta" {
+    m := CSW_ReplyDelta_from_json(line, nodes[..], wire[..]); if m.error != 0 { return false; }
+    v := CSW_ReplyDelta_to_json(m, out[..]); return v.error == 0 && cast(string) v.wire == line;
+  }
+  if rec == "reply_end" {
+    m := CSW_ReplyEnd_from_json(line, nodes[..], wire[..]); if m.error != 0 { return false; }
+    v := CSW_ReplyEnd_to_json(m, out[..]); return v.error == 0 && cast(string) v.wire == line;
+  }
+  return true;
+}
 
 SgPool :: struct { buf: [131072] u8; n: int; }
 
@@ -79,7 +156,7 @@ sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
   return -1;
 }
 
-sg_check :: (raw: string, quiet: bool) -> int {
+sg_check :: (raw: string, st: [] D_State, quiet: bool) -> int {
   nodes: [4096] JvNode; j: [1] Jv;
   if !jv_parse(j[..], raw, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT {
     if !quiet { print("FAIL  cannot parse fixture JSON\n"); }
@@ -106,13 +183,26 @@ sg_check :: (raw: string, quiet: bool) -> int {
     wn := sg_encode(p[..], d, item, out[..]);
     got := ifx wn < 0 then "" else cast(string) out[0..<wn];
     same := wn >= 0 && got == want;
-    lnodes: [256] JvNode; lj: [1] Jv; ar: [1] ClArena; ev: [1] CstEvent;
-    parsed := same && jv_parse(lj[..], got, lnodes[..]) && jv_kind(lj[0], 0) == JV_OBJECT && cst_read(ar[..], got, ev[..]) != CST_KIND_NONE;
+    lnodes: [256] JvNode; lj: [1] Jv; ab: [SG_LINE] u8; ar: [1] ClArena; ev: [1] CstEvent;
+    ar[0] = ClArena.{buf = ab[..]};
+    // The reader takes what Coder's readers use (replies, routes, a model with a name) and leaves the rest.
+    reads := CST_KIND_NONE;
+    if rec == "reply_delta" { reads = CST_KIND_REPLY_DELTA; } else if rec == "reply_end" { reads = CST_KIND_REPLY_END; }
+    else if rec == "route" { reads = CST_KIND_ROUTE; } else if rec == "model" && sg_s(p[..], d, jv_get(d, item, "values"), "model") != "" { reads = CST_KIND_MODEL; }
+    parsed := same && jv_parse(lj[..], got, lnodes[..]) && jv_kind(lj[0], 0) == JV_OBJECT && cst_read(ar[..], got, ev[..]) == reads;
+    keys := "";
+    if st.count > 0 { for k: 0..<7 { if recs[k] == rec { keys = sg_keys(st, rec, SG_MESSAGES[k], want); } } }
     if !same {
       if !quiet { print("FAIL  % (%):\n  want: %\n  got:  %\n", name, rec, want, got); }
       bad += 1;
     } else if !parsed {
-      if !quiet { print("FAIL  % (%): invalid JSON object\n", name, rec); }
+      if !quiet { print("FAIL  % (%): not a JSON object, or the reader does not take it as its record\n", name, rec); }
+      bad += 1;
+    } else if keys != "" {
+      if !quiet { print("FAIL  % (%): %\n", name, rec, keys); }
+      bad += 1;
+    } else if st.count > 0 && !sg_mapper(rec, want) {
+      if !quiet { print("FAIL  % (%): the JSON mapper does not write the line back byte for byte\n", name, rec); }
       bad += 1;
     } else if !quiet {
       print("ok    % (%)\n", name, rec);
@@ -127,7 +217,8 @@ sg_check :: (raw: string, quiet: bool) -> int {
 
 #test "stream-v1 goldens match encoders byte for byte across all stream records" {
   sample := "{\"goldens\":[{\"name\":\"m\",\"record\":\"model\",\"values\":{\"model\":\"test-model\",\"effort\":\"high\"},\"line\":\"{\\\"kind\\\":\\\"model\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"codex\\\",\\\"source\\\":\\\"thread/start\\\",\\\"model\\\":\\\"test-model\\\",\\\"effort\\\":\\\"high\\\",\\\"cost_usd\\\":null}\"},{\"name\":\"u\",\"record\":\"usage\",\"values\":{\"scope\":\"turn\",\"engine\":\"antigravity\",\"usage\":\"{\\\"inputTokens\\\":5}\"},\"line\":\"{\\\"kind\\\":\\\"usage\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"antigravity\\\",\\\"scope\\\":\\\"turn\\\",\\\"totalTokens\\\":null,\\\"inputTokens\\\":5,\\\"cachedReadTokens\\\":null,\\\"cachedWriteTokens\\\":null,\\\"outputTokens\\\":null,\\\"thoughtTokens\\\":null,\\\"cost_usd\\\":null}\"},{\"name\":\"av\",\"record\":\"availability\",\"values\":{\"engine\":\"claude\",\"retry_after_s\":60,\"persisted\":true},\"line\":\"{\\\"kind\\\":\\\"availability\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"claude\\\",\\\"retry_after_s\\\":60,\\\"persisted\\\":true}\"},{\"name\":\"at\",\"record\":\"attempt\",\"values\":{\"engine\":\"micro\",\"gateway\":\"g\",\"model\":\"model\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":10,\"output_tokens\":2,\"cached_tokens\":0,\"reasoning_tokens\":-1,\"cache_write_tokens\":-1,\"provider_cost_usd_micros\":-1,\"card_estimate_usd_micros\":12},\"line\":\"{\\\"kind\\\":\\\"attempt\\\",\\\"schema\\\":\\\"coder.observability.v2\\\",\\\"scope\\\":\\\"request_attempt\\\",\\\"engine\\\":\\\"micro\\\",\\\"gateway\\\":\\\"g\\\",\\\"model\\\":\\\"model\\\",\\\"model_source\\\":\\\"attempt_configuration\\\",\\\"requested_effort\\\":\\\"low\\\",\\\"outcome\\\":\\\"done\\\",\\\"status\\\":200,\\\"input_tokens\\\":10,\\\"output_tokens\\\":2,\\\"cached_tokens\\\":0,\\\"reasoning_tokens\\\":null,\\\"cache_write_tokens\\\":null,\\\"provider_cost_usd_micros\\\":null,\\\"card_estimate_usd_micros\\\":12,\\\"usd_micros\\\":12}\"},{\"name\":\"rd\",\"record\":\"reply_delta\",\"values\":{\"segment\":0,\"text\":\"hi\"},\"line\":\"{\\\"kind\\\":\\\"reply_delta\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0,\\\"text\\\":\\\"hi\\\"}\"},{\"name\":\"re\",\"record\":\"reply_end\",\"values\":{\"segment\":0},\"line\":\"{\\\"kind\\\":\\\"reply_end\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0}\"},{\"name\":\"rt\",\"record\":\"route\",\"values\":{\"ok\":true,\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability_e3\":50,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"},\"line\":\"{\\\"kind\\\":\\\"route\\\",\\\"ok\\\":true,\\\"schema\\\":\\\"coder.route.v2\\\",\\\"source\\\":\\\"local-elephant\\\",\\\"model\\\":\\\"\\\",\\\"engine\\\":\\\"codex\\\",\\\"probability\\\":0.050,\\\"difficulty\\\":1,\\\"effort\\\":\\\"low\\\",\\\"eligible_mask\\\":4,\\\"blocked_mask\\\":0,\\\"allowed_mask\\\":15,\\\"ran\\\":\\\"codex\\\"}\"}]}";
-  #assert sg_check(sample, true) == 0;
+  none: [] D_State;
+  #assert sg_check(sample, none, true) == 0;
 }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -137,5 +228,18 @@ tool_main :: () -> int #export_c #effects(all) {
   buf: [131072] u8;
   n := fs_read(path, buf[..]);
   if n <= 0 { tool_errln("stream-goldens: cannot read fixture"); return 2; }
-  return sg_check(cast(string) buf[0..<n], false);
+  pb: [65536] u8;
+  pn := fs_read(SG_DESCRIPTOR_PATH, pb[..]);
+  if pn <= 0 { tool_errln("stream-goldens: cannot read the descriptor"); return 2; }
+  g: [1] SgDescriptor;
+  err := sg_descriptor_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  // The key check bites: a key the message lacks, and a schema that is not its contract, fail.
+  if sg_keys(st, "reply_end", SG_MESSAGES[5], "{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segmnt\":0}") == "" ||
+     sg_keys(st, "reply_end", SG_MESSAGES[5], "{\"kind\":\"reply_end\",\"schema\":\"x\",\"segment\":0}") == "" ||
+     sg_keys(st, "route", SG_MESSAGES[6], "{\"kind\":\"route\",\"ok\":true,\"probabilty\":0.5}") == "" {
+    print("FAIL  the key check takes a line it should refuse\n"); return 1;
+  }
+  return sg_check(cast(string) buf[0..<n], st, false);
 }

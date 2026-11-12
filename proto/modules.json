@@ -169,6 +169,12 @@
     ],
     "golemancy": [
       "openagents/coder/golemancy/v1alpha1/records.proto"
+    ],
+    "coder-stream": [
+      "openagents/coder/observability/v1/events.proto",
+      "openagents/coder/observability/v2/events.proto",
+      "openagents/coder/stream/v1/reply.proto",
+      "openagents/coder/route/v2/route.proto"
     ]
   },
   "profile_namespaces": {
@@ -298,6 +304,13 @@
     ],
     "golemancy": [
       "openagents.coder.golemancy.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "coder-stream": [
+      "openagents.coder.observability.v1",
+      "openagents.coder.observability.v2",
+      "openagents.coder.stream.v1",
+      "openagents.coder.route.v2",
       "openagents.options.v1alpha1"
     ]
   }

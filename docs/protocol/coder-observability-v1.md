@@ -2,7 +2,10 @@
 
 New local JSONL events carry `schema: "coder.observability.v1"` and `kind`
 `model`, `usage` or `availability`. Their typed fields are declared in
-`proto/openagents/coder/observability/v1/events.proto`. Existing session
+`proto/openagents/coder/observability/v1/events.proto` (profile `coder-stream`),
+where each `json_name` is the key on the wire.
+`coax/lib/agent/session/stream.coax` writes all three, and
+`proto/coder/stream-v1.json` pins their lines. Existing session
 events retain their identity. Readers may ignore these additional kinds.
 
 `model` records the Codex model and effort resolved by `thread/start`, with

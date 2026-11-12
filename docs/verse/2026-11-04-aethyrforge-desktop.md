@@ -234,7 +234,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   task projection and 256 bytes of recent conversation; the worker retains full
   prompt/history. Failure/low confidence uses only an eligible default and logs
   the reason, without a hosted-model substitution. New `coder.route.v2` records
-  have a [separate schema](../../proto/coder/route-v2.schema.json); legacy route
+  have a [separate proto](../../proto/openagents/coder/route/v2/route.proto); legacy route
   records and the System One network protocol remain unchanged. Native automatic
   chat checks exercise two routed turns and retained context, both with Codex
   candidates and with the full shared eligibility (which selected Microcoder

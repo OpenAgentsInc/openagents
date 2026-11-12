@@ -168,7 +168,7 @@ Sonnet, hard/very hard to Opus. Codex keeps its configured model and uses the
 decided effort. No absent or cooled-down engine can become eligible from a
 model answer. New local/Pylon routing records identify `coder.route.v2` and its
 source/model profile; the legacy record and System One wire are unchanged.
-See [the schema](../../proto/coder/route-v2.schema.json) and
+See [the proto](../../proto/openagents/coder/route/v2/route.proto) and
 [desktop instructions](../../apps/aethyrforge-desktop/README.md).
 
 Finite live probes distinguished a typo (Codex/low) from a multi-service

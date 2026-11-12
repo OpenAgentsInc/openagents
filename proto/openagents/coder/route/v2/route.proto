@@ -1,0 +1,31 @@
+syntax = "proto3";
+package openagents.coder.route.v2;
+import "openagents/options/v1alpha1/options.proto";
+
+// coder.route.v2: Coder's automatic route decision, one JSON line in the
+// session's output (coder/book/ch013-choose-an-engine.md). Each json_name is
+// the key on the wire, and fields are numbered in the order they are written.
+// The one writer is coax/lib/agent/session/stream.coax; golden lines are in
+// proto/coder/stream-v1.json, and its check holds every key to a json_name here.
+//
+// The line is {"kind":"route","ok":..., then "schema":"coder.route.v2", source
+// and model when a router answered (source is not empty). When ok, engine,
+// probability (three places), difficulty and effort follow; otherwise text,
+// the reason. The three masks always follow, and ran when an engine ran.
+// Not on the JSON mapper: probability is a double, which the mapper refuses
+// (coax/proto.md, "JSON mapper"), and schema is written after ok.
+message Route {
+  option (openagents.options.v1alpha1.contract) = "coder.route.v2";
+  bool ok = 1 [json_name = "ok"];
+  optional string source = 2 [json_name = "source"];          // local-elephant, pylon-elephant, baseten-elephant
+  optional string model = 3 [json_name = "model"];            // the router's tier model; may be empty
+  optional string engine = 4 [json_name = "engine"];          // claude, codex, micro, psionic
+  optional double probability = 5 [json_name = "probability"];  // 0 to 1
+  optional int32 difficulty = 6 [json_name = "difficulty"];   // 0 (trivial) to 4 (very hard)
+  optional string effort = 7 [json_name = "effort"];          // low, medium, high
+  optional string text = 8 [json_name = "text"];              // why the route failed
+  uint32 eligible_mask = 9 [json_name = "eligible_mask"];     // bits 0..3: Claude, Codex, Microcoder, Psionic
+  uint32 blocked_mask = 10 [json_name = "blocked_mask"];
+  uint32 allowed_mask = 11 [json_name = "allowed_mask"];
+  optional string ran = 12 [json_name = "ran"];               // claude, codex, microcoder, psionic
+}

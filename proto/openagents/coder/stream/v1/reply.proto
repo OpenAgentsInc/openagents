@@ -1,0 +1,26 @@
+syntax = "proto3";
+package openagents.coder.stream.v1;
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/options/v1alpha1/json.proto";
+
+// coder.reply-stream.v1: the live reply on --stream-json stdout
+// (docs/protocol/coder-reply-stream-v1.md). Each json_name is the key on the
+// wire. The one writer and reader is coax/lib/agent/session/stream.coax;
+// golden lines are in proto/coder/stream-v1.json, and the goldens check
+// writes and reads each one through the JSON mapper as well.
+
+// kind "reply_delta": a chunk of one segment's text, at most 8,192 unescaped
+// UTF-8 bytes. Concatenate the chunks of a segment in pipe order.
+message ReplyDelta {
+  option (openagents.options.v1alpha1.contract) = "coder.reply-stream.v1";
+  option (openagents.options.v1alpha1.json) = "kind=reply_delta;schema=coder.reply-stream.v1";
+  optional uint32 segment = 1 [json_name = "segment"];
+  optional string text = 2 [json_name = "text"];
+}
+
+// kind "reply_end": the segment is closed; a later segment takes the next number.
+message ReplyEnd {
+  option (openagents.options.v1alpha1.contract) = "coder.reply-stream.v1";
+  option (openagents.options.v1alpha1.json) = "kind=reply_end;schema=coder.reply-stream.v1";
+  optional uint32 segment = 1 [json_name = "segment"];
+}

@@ -10,8 +10,10 @@ and end records, and replaces stdout's whole `reply` records with:
 {"kind":"reply_end","schema":"coder.reply-stream.v1","segment":0}
 ```
 
-The [schema](../../proto/coder/reply-stream-v1.schema.json) defines the new
-record identity. Concatenate deltas in pipe order for one segment. End closes
+The [proto](../../proto/openagents/coder/stream/v1/reply.proto) (`ReplyDelta`,
+`ReplyEnd`, profile `coder-stream`) defines the new record identity; each
+`json_name` is the key on the wire. `coax/lib/agent/session/stream.coax` writes
+and reads both, and `proto/coder/stream-v1.json` pins their lines. Concatenate deltas in pipe order for one segment. End closes
 that segment; a later tool/answer segment uses the next number. Delta text
 contains at most 8,192 unescaped UTF-8 bytes, without splitting a code point.
 Providers supply their native chunk sizes; a provider which buffers an answer
