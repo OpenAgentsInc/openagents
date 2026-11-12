@@ -94,6 +94,33 @@ the trap. Frames above it have no line numbers.
 They follow the same path as every service alert: production mails the owner,
 and staging reaches only the log, `/status` and the agents' inbox.
 
+## A GitHub issue for each production bucket
+
+While a `crash:` alert is open on production, the green-main watcher
+(`coax/remote/pipeline-lib.sh` `pl_crash_issues`, run each minute by
+`pl_service_watch`) files one GitHub issue for each bucket the alert covers
+(#13379):
+
+- `crash:BUCKET` covers that room bucket.
+- `crash:page` covers every page bucket heard in the last hour.
+
+The issue's title is `Production crash (bucket XXXXXXXXXXXX): SIGNATURE`, and its
+body is the bucket's newest report from `GET /api/playtest/crashes`.
+
+A bucket never gets two open issues:
+
+1. The watcher looks for an open issue whose title names the bucket. If it
+   finds one, it files nothing.
+2. If GitHub can't be asked, it files nothing and asks again the next minute.
+3. It remembers each bucket it handled in `~/.openagents/pipeline/crash-issues`,
+   so GitHub is asked once for each bucket.
+4. When a bucket's alert opens again after its issue was closed, the bucket
+   gets a new issue.
+
+Staging files no issues. `OA_PIPELINE_ISSUES=0` turns them off.
+`coax/remote/test-after.sh` (case 13) checks these rules with stand-ins for the
+API and GitHub.
+
 ## Symbols for each release
 
 | What | Where | Kept |

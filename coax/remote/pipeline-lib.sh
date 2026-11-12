@@ -131,7 +131,8 @@ pl_message() {   # agent text
 # The service alerts (#13297, docs/deployment/service-levels.md). The API opens and resolves them
 # every minute (coax/web/api/service.c) and mails the owner; the watcher passes each one opened or
 # resolved on to the agents' coordinator as a message (its inbox and OA_PIPELINE_NOTIFY), and says
-# so when a site's service health stops answering for 3 minutes. Run each minute beside the
+# so when a site's service health stops answering for 3 minutes; a production crash alert's buckets
+# also become GitHub issues (pl_crash_issues). Run each minute beside the
 # heartbeat, on the watcher's machine only. Its memory: OA_PIPELINE_DIR/service-ENV (key TAB title).
 pl_service_watch() {
   local origin env f j open n key title agent="${OA_SERVICE_AGENT:-foreman}"
@@ -155,8 +156,55 @@ pl_service_watch() {
       [[ -n "$key" ]] || continue
       printf '%s\n' "$open" | cut -f1 | grep -qxF -- "$key" || pl_message "$agent" "Service alert ($env) resolved: $title."
     done < "$f"
+    [[ "$env" != production ]] || pl_crash_issues "$origin" "$open" "$f"
     printf '%s\n' "$open" | sed '/^$/d' > "$f"
   done
+}
+
+# Production's crash buckets as GitHub issues (#13379, docs/deployment/crash-reports.md): while a
+# `crash:` alert is open on production, each bucket it covers (a room's own alert `crash:BUCKET8`;
+# every page bucket heard in the last hour under `crash:page`) gets one issue with its newest report
+# from GET /api/playtest/crashes. A bucket never gets two: an open issue naming the bucket is looked
+# for first, and when GitHub can't be asked nothing is filed until it can. A bucket handled is
+# remembered in OA_PIPELINE_DIR/crash-issues (bucket TAB issue) so GitHub is asked once; an alert
+# that opens again forgets its buckets, so a bucket whose issue was closed gets a new one.
+# OA_PIPELINE_ISSUES=0 files nothing.
+pl_crash_issues() {   # origin, the open alerts (key TAB title lines), the file of the alerts open a minute ago
+  local origin="$1" open="$2" was="$3" mem="$pl_dir/crash-issues" j b src sig reports key tag n url newest
+  [[ "$pl_issues" == 1 ]] || return 0
+  grep -q '^crash:' <<< "$open" || return 0
+  j="$(curl -fsS --max-time 20 "$origin/api/playtest/crashes" 2> /dev/null)" || return 0
+  touch "$mem"
+  while IFS=$'\t' read -r b src sig reports; do
+    [[ "$b" =~ ^[0-9a-f]{32}$ ]] || continue
+    if [[ "$src" == room ]]; then key="crash:${b:0:8}"; else key="crash:page"; fi
+    cut -f1 <<< "$open" | grep -qxF -- "$key" || continue
+    if ! cut -f1 "$was" 2> /dev/null | grep -qxF -- "$key"; then   # the alert opened this minute
+      grep -v "^$b	" "$mem" > "$mem.new" || true; mv "$mem.new" "$mem"
+    fi
+    ! cut -f1 "$mem" | grep -qxF -- "$b" || continue
+    tag="bucket ${b:0:12}"
+    n="$(gh issue list --repo "$pl_repo" --state open --search "\"$tag\" in:title" --json number,title --jq "[.[] | select(.title | contains(\"$tag\"))][0].number // empty" 2> /dev/null)" ||
+      { pl_say "crash $tag: GitHub could not be asked for its issue; nothing filed this minute"; continue; }
+    if [[ -z "$n" ]]; then
+      newest="$(jq -r --arg b "$b" '.buckets[] | select(.bucket == $b) | .newest // ""' <<< "$j" | head -c 6000)"
+      sig="$(printf '%s' "$sig" | tr -cd '[:print:]' | cut -c1-90)"
+      url="$(gh issue create --repo "$pl_repo" --title "Production crash ($tag): $sig" --body "A new crash bucket on production (\`$src\`), $reports report(s) so far. Its newest report:
+
+\`\`\`
+$newest
+\`\`\`
+
+- Bucket \`$b\`, signature \`$sig\`.
+- Every report and the buckets now: $origin/api/playtest/crashes
+- How to read a report, resolve a frame to its line and roll back: docs/deployment/crash-reports.md
+
+Filed by the service watch (\`coax/remote/pipeline-lib.sh pl_crash_issues\`, #13379). One issue for each bucket: later reports of this bucket add no issue while this one is open." 2> /dev/null)" && n="${url##*/}" ||
+        { pl_say "crash $tag: could not open its issue"; continue; }
+      pl_message "${OA_SERVICE_AGENT:-foreman}" "Production crash $tag ($sig) is filed as #$n."
+    fi
+    printf '%s\t%s\n' "$b" "$n" >> "$mem"
+  done < <(jq -r '.now_ms as $now | .buckets[] | select(.last_ms > $now - 3600000) | [.bucket, .source, (.sig | gsub("[\t\n]"; " ")), (.reports | tostring)] | @tsv' <<< "$j" 2> /dev/null)
 }
 
 # A night's capacity record (#13296, docs/deployment/soak.md) to each API in OA_SOAK_PUBLISH

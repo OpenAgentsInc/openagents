@@ -59,7 +59,8 @@ and on production. It does four things:
 Separately, the green-main watcher (`coax/remote/after.sh --watch`,
 `pipeline-lib.sh pl_service_watch`) reads the service health every minute. It
 passes each alert it sees open or resolve to the Foreman inbox and to
-`OA_PIPELINE_NOTIFY`.
+`OA_PIPELINE_NOTIFY`. For a production `crash:` alert it also files one GitHub
+issue for each crash bucket ([crash reports](crash-reports.md)).
 
 | Alert | Fires when | Runbook |
 | --- | --- | --- |

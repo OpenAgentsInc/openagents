@@ -22,6 +22,10 @@
 #  11. a check that fails on one host and passes on another (#13327): not the commit's; nothing filed
 #  12. a full run that finds a culprit the fast runs passed: main-green goes back to just before
 #      the culprit, not to the last full green run
+# And the service watch (#13379):
+#  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
+#      none for staging, no second when the watcher's memory is gone, a new one after its alert
+#      opens again with the issue closed
 set -uo pipefail
 export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -183,6 +187,49 @@ s="$(run)"; green_is "$c11b" || { bad "12: the fast run did not pass: $s"; cat "
 rm -f "$w/pl/releases/after/last-full"
 s="$(run)"; e="$(open_entry "suite lib/a.coax")"
 [[ "$s" == red && "$e" == "$c11" ]] && green_is "$c11a" && ok "12: a full run's culprit sets main-green back to just before it (${c11a:0:10}), not to the last full green run (${c10b:0:10})" || { bad "12: status $s, culprit ${e:-none}, main-green $(git -C "$w/origin.git" rev-parse main-green | cut -c1-10)"; cat "$w/run.log"; }
+
+# 13: a production crash alert's bucket becomes one GitHub issue (#13379), with stand-ins for curl
+# (the service health and the crashes) and gh (its calls logged; an issue it made is open after).
+mkdir -p "$w/fake" "$w/pl13"
+cat > "$w/fake/curl" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do url="$a"; done
+case "$url" in
+  https://openagents.com/*service-health) cat "$OA_TEST_W/health" ;;
+  https://openagents.com/*crashes) echo '{"env":"production","now_ms":5000000,"buckets":[{"bucket":"a2dd7180bb5f3e4a78467bd7b64950aa","source":"room","sig":"SIGABRT|rm_x|main","last_ms":4999000,"reports":1,"newest":"crash 1\nsig SIGABRT|rm_x|main\n"},{"bucket":"01163983a18bf7ff2acacbf70025a95a","source":"page","sig":"trap|frame","last_ms":4999000,"reports":2,"newest":"crash 1\n"}]}' ;;
+  *service-health) echo '{"alerts":[{"key":"crash:page","title":"a staging page crash"}]}' ;;
+  *) exit 22 ;;
+esac
+EOF
+cat > "$w/fake/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" | head -1 >> "$OA_TEST_W/gh.log"
+[[ ! -e "$OA_TEST_W/gh-down" ]] || exit 1
+case "$1 $2" in
+  "issue list") tag="$(printf '%s\n' "$@" | grep -o 'bucket [0-9a-f]*' | head -1)"; grep -F -- "$tag" "$OA_TEST_W/gh-open" 2> /dev/null | cut -f1 | head -1 ;;
+  "issue create") n=$((900 + $(grep -c '^issue create' "$OA_TEST_W/gh.log")))
+    while [[ $# -gt 0 ]]; do [[ "$1" != --title ]] || t="$2"; shift; done
+    printf '%s\t%s\n' "$n" "$t" >> "$OA_TEST_W/gh-open"; echo "https://github.com/x/y/issues/$n" ;;
+esac
+exit 0
+EOF
+chmod +x "$w/fake/curl" "$w/fake/gh"
+watch13() { (export PATH="$w/fake:$PATH" OA_PIPELINE_DIR="$w/pl13" OA_SERVICE_ORIGINS="https://openagents.com https://staging.openagents.com"
+  source "$here/pipeline-lib.sh"; pl_issues=1; pl_service_watch) > "$w/watch13.log" 2>&1; }
+made13() { grep -c '^issue create' "$w/gh.log" 2> /dev/null || true; }
+echo '{"alerts":[{"key":"crash:a2dd7180","title":"a room crash"}]}' > "$w/health"
+touch "$w/gh-down"; watch13; rm -f "$w/gh-down"
+[[ "$(made13)" == 0 && ! -s "$w/pl13/crash-issues" ]] && ok "13: with GitHub unreachable nothing is filed or remembered" || { bad "13: filed with GitHub down"; cat "$w/watch13.log"; }
+watch13; watch13
+[[ "$(made13)" == 1 ]] && grep -q "bucket a2dd7180bb5f" "$w/gh-open" && grep -q "filed as #901" "$w/pl13/inbox/foreman.log" &&
+  ok "13: a production room bucket under its open alert gets one issue; the page bucket (no page alert) and staging get none" || { bad "13: $(made13) issue(s) made"; cat "$w/watch13.log" "$w/gh.log"; }
+rm -f "$w/pl13/crash-issues"; watch13
+[[ "$(made13)" == 1 ]] && ok "13: a watcher with no memory finds the open issue and files no second" || { bad "13: a second issue for one bucket"; cat "$w/gh.log"; }
+echo '{"alerts":[{"key":"crash:a2dd7180","title":"a room crash"},{"key":"crash:page","title":"a page crash"}]}' > "$w/health"; watch13; watch13
+[[ "$(made13)" == 2 ]] && grep -q "bucket 01163983a18b" "$w/gh-open" && ok "13: the page alert files the page bucket's issue once" || { bad "13: $(made13) issue(s) after the page alert"; cat "$w/gh.log"; }
+echo '{"alerts":[]}' > "$w/health"; watch13; : > "$w/gh-open"
+echo '{"alerts":[{"key":"crash:a2dd7180","title":"a room crash"}]}' > "$w/health"; watch13; watch13
+[[ "$(made13)" == 3 ]] && ok "13: a bucket whose issue was closed gets a new one when its alert opens again" || { bad "13: $(made13) issue(s) after the alert opened again"; cat "$w/gh.log"; }
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))
