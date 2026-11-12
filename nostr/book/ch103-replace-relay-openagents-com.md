@@ -726,7 +726,7 @@ Part VI are wired into it, and what the rest still need.
 | `nip29.coax` | 59 | Wired with `--groups` | Up to 64 groups (`G29Group` in `RyWork`); `ry_event` puts every EVENT to `g29_admit` on a copy of its group (`rr_group_slot` picks it by `h` tag, or a free slot for a 9007), and the copy replaces the group only when the store takes the event. Refusals are `OK` false (`rr_group_prefix`, `rr_group_text`). With `--store` a restart rebuilds the groups from the stored events (`ry_groups_replay`, `rr_group_keep`), else in memory; no relay key, so no 39000 to 39003 events (`g29_write_*` unused). NIP-11 lists 29 only with `--groups` (`rr_nip11_nip`) |
 
 The served NIP-11 document lists what is wired: `supported_nips` is
-`[1,9,11,40,42,45,50,62,70,77]` in `RR_NIP11` (and its copy `RS_NIP11`);
+`[1,9,11,17,40,42,45,50,59,62,70,77]` in `RR_NIP11` (and its copy `RS_NIP11`);
 with `--admin` the relay serves `RR_NIP11_ADMIN`, which adds 86;
 `rr_nip11_pow` adds 13 when `--pow` is above 0 (chapter 37), and
 `rr_nip11_nip` adds 29 with `--groups`.

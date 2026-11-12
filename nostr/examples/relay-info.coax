@@ -153,14 +153,16 @@ enforced :: () -> [9] int {
 // The NIPs the relay implements, each with the code that implements it.
 // NIP-13 is not here: proof of work is off unless the relay starts with
 // --pow, and then rr_nip11_pow adds 13 to the served list.
-RELAY_NIPS :: [10] int.[
+RELAY_NIPS :: [12] int.[
   1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
   9,     // store_delete.coax in rd_admit: a stored kind 5 retires what it names
   11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
+  17,    // relay_private.coax's rp_visible: a NIP-17 message's gift wrap goes only to its recipient
   40,    // rs_expiration and rs_live: expired events refused and never served
   42,    // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
   45,    // nip45.coax through rd_count: COUNT answered with an exact count
   50,    // rd_req and rd_req_filter: "search" read, answered by nip50.coax's n50_scan
+  59,    // relay_private.coax: kinds 1059 and 21059 only to their authenticated p recipient
   62,    // store_delete.coax in rd_admit: a kind 62 retires its author's events
   70,    // nip70.coax's nip70_admit: a "-" event only from its authenticated author
   77     // nip77.coax through rr_neg_route and rd_neg_items: NEG-OPEN, NEG-MSG, NEG-CLOSE

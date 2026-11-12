@@ -96,26 +96,26 @@ The example's requests, and what the rules above give:
 | `Accept: text/html` | `WSS_UPGRADE` | 400 | `HTTP/1.1 400 Bad Request` |
 
 The NIP-11 answer is the head and then the document. The document,
-`RR_NIP11`, is 523 bytes, so the head says `Content-Length: 523`. Each
+`RR_NIP11`, is 483 bytes, so the head says `Content-Length: 483`. Each
 header line ends in CRLF, two bytes:
 
 | Line | Bytes |
 | --- | --- |
 | `HTTP/1.1 200 OK` | 15 + 2 = 17 |
 | `Content-Type: application/nostr+json` | 36 + 2 = 38 |
-| `Content-Length: 523` | 19 + 2 = 21 |
+| `Content-Length: 483` | 19 + 2 = 21 |
 | `Access-Control-Allow-Origin: *` | 30 + 2 = 32 |
 | `Access-Control-Allow-Headers: *` | 31 + 2 = 33 |
 | `Access-Control-Allow-Methods: GET` | 33 + 2 = 35 |
 | `Connection: close` | 17 + 2 = 19 |
 | the empty line | 2 |
 
-That is 197 bytes of head, and 197 + 523 = 720 bytes in all.
+That is 197 bytes of head, and 197 + 483 = 680 bytes in all.
 
 The `400` answer has the same header lines with three values changed:
 `400 Bad Request` is 9 bytes longer than `200 OK`, `text/plain` is 12 bytes
 shorter than `application/nostr+json`, and the body is the 83-byte text,
-so `83` is one digit shorter than `523`. Its head is 197 + 9 − 12 − 1 = 193
+so `83` is one digit shorter than `483`. Its head is 197 + 9 − 12 − 1 = 193
 bytes, and the answer is 193 + 83 = 276 bytes.
 
 ## The document
@@ -125,9 +125,9 @@ it is sent):
 
 ```text
 {
- "name": "OpenAgents Coax relay (R1)",
- "description": "A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.",
- "supported_nips": [1, 9, 11, 40, 42, 45, 50, 62, 70, 77],
+ "name": "OpenAgents Relay",
+ "description": "OpenAgents-owned Nostr relay, written in Coax. Publishing needs NIP-42 AUTH; reading is open.",
+ "supported_nips": [1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77],
  "software": "https://github.com/OpenAgentsInc/openagents",
  "version": "r1",
  "limitation": {
@@ -385,14 +385,16 @@ enforced :: () -> [9] int {
 // The NIPs the relay implements, each with the code that implements it.
 // NIP-13 is not here: proof of work is off unless the relay starts with
 // --pow, and then rr_nip11_pow adds 13 to the served list.
-RELAY_NIPS :: [10] int.[
+RELAY_NIPS :: [12] int.[
   1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
   9,     // store_delete.coax in rd_admit: a stored kind 5 retires what it names
   11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
+  17,    // relay_private.coax's rp_visible: a NIP-17 message's gift wrap goes only to its recipient
   40,    // rs_expiration and rs_live: expired events refused and never served
   42,    // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
   45,    // nip45.coax through rd_count: COUNT answered with an exact count
   50,    // rd_req and rd_req_filter: "search" read, answered by nip50.coax's n50_scan
+  59,    // relay_private.coax: kinds 1059 and 21059 only to their authenticated p recipient
   62,    // store_delete.coax in rd_admit: a kind 62 retires its author's events
   70,    // nip70.coax's nip70_admit: a "-" event only from its authenticated author
   77     // nip77.coax through rr_neg_route and rd_neg_items: NEG-OPEN, NEG-MSG, NEG-CLOSE
@@ -572,14 +574,16 @@ enforced :: () -> [9] int {
 // The NIPs the relay implements, each with the code that implements it.
 // NIP-13 is not here: proof of work is off unless the relay starts with
 // --pow, and then rr_nip11_pow adds 13 to the served list.
-RELAY_NIPS :: [10] int.[
+RELAY_NIPS :: [12] int.[
   1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
   9,     // store_delete.coax in rd_admit: a stored kind 5 retires what it names
   11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
+  17,    // relay_private.coax's rp_visible: a NIP-17 message's gift wrap goes only to its recipient
   40,    // rs_expiration and rs_live: expired events refused and never served
   42,    // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
   45,    // nip45.coax through rd_count: COUNT answered with an exact count
   50,    // rd_req and rd_req_filter: "search" read, answered by nip50.coax's n50_scan
+  59,    // relay_private.coax: kinds 1059 and 21059 only to their authenticated p recipient
   62,    // store_delete.coax in rd_admit: a kind 62 retires its author's events
   70,    // nip70.coax's nip70_admit: a "-" event only from its authenticated author
   77     // nip77.coax through rr_neg_route and rd_neg_items: NEG-OPEN, NEG-MSG, NEG-CLOSE
@@ -824,16 +828,16 @@ routing: one request head, one answer
 7. OPTIONS: METHOD -> 400, answer "HTTP/1.1 400 Bad Request"
 8. head not finished: MORE -> wait, answer ""
 
-the NIP-11 answer: 720 bytes, head 197 and body 523
+the NIP-11 answer: 680 bytes, head 197 and body 483
   HTTP/1.1 200 OK\r\n
   Content-Type: application/nostr+json\r\n
-  Content-Length: 523\r\n
+  Content-Length: 483\r\n
   Access-Control-Allow-Origin: *\r\n
   Access-Control-Allow-Headers: *\r\n
   Access-Control-Allow-Methods: GET\r\n
   Connection: close\r\n
   \r\n
-  {"name":"OpenAgents Coax relay (R1)","description":"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.","supported_nips":[1,9,11,40,42,45,50,62,70,77],"software":"https://github.com/OpenAgentsInc/openagents","version":"r1","limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127}}
+  {"name":"OpenAgents Relay","description":"OpenAgents-owned Nostr relay, written in Coax. Publishing needs NIP-42 AUTH; reading is open.","supported_nips":[1,9,11,17,40,42,45,50,59,62,70,77],"software":"https://github.com/OpenAgentsInc/openagents","version":"r1","limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127}}
 
 the 400 answer: 276 bytes
   HTTP/1.1 400 Bad Request\r\n
@@ -847,7 +851,7 @@ the 400 answer: 276 bytes
   This is a Nostr relay: connect with a WebSocket, or ask for application/nostr+json.
 
 the client reads the document
-  error: ok, name "OpenAgents Coax relay (R1)", software "https://github.com/OpenAgentsInc/openagents", version "r1"
+  error: ok, name "OpenAgents Relay", software "https://github.com/OpenAgentsInc/openagents", version "r1"
   supported_nips: 1 9 11 40 42 45 50 62 70 77
   NIP-45 COUNT listed: true, NIP-50 search listed: true, NIP-77 Negentropy listed: true
 advertised against enforced
@@ -860,7 +864,7 @@ advertised against enforced
   default_limit: advertised 127, enforced 127 ok
   auth_required: advertised 0, enforced 0 ok
   restricted_writes: advertised 1, enforced 1 ok
-  supported_nips: 10 listed, relay implements 1, 9, 11, 40, 42, 45, 50, 62, 70, 77 ok
+  supported_nips: 10 listed, relay implements 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77 ok
   0 mismatches
 
 each limit, at the limit and one past it
@@ -936,7 +940,7 @@ which loads the example, so running the example doesn't run them:
 
 - the served answer equals, byte for byte, a head and document written out
   by hand from NIP-11's field list and the limits traced in chapter 34: 197
-  + 523 = 720 bytes;
+  + 483 = 680 bytes;
 - `relay_server.coax`'s `RS_NIP11` equals `RR_NIP11`, the document
   `relay.coax` serves;
 - with proof of work at 8 bits, `rr_nip11_pow` adds 13 as the fourth NIP
@@ -960,21 +964,21 @@ which loads the example, so running the example doesn't run them:
 // limits chapter 34 traced (frames of 131072 bytes, 256 tags, 900 s ahead)
 // and the REQ limits in relay_server.coax's header comment (32
 // subscriptions, sub ids 1..64, max_limit and default_limit 127).
-HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+HAND_DOC :: "{\"name\":\"OpenAgents Relay\",\"description\":\"OpenAgents-owned Nostr relay, written in Coax. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,17,40,42,45,50,59,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 // The head counted by hand: 17 + 38 + 21 + 32 + 33 + 35 + 19 + 2 = 197 bytes.
-HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 523\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
+HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 483\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
 
 #test "the served answer is the hand-written head and document, byte for byte" {
   out: [1024] u8;
   a := http_answer(NIP11_GET, out[..]);
   #assert a.status == WSS_NIP11 && a.action == RR_H_NIP11;
-  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 523 && a.n == 720;
-  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<720] == HAND_DOC;
+  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 483 && a.n == 680;
+  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<680] == HAND_DOC;
 }
 #test "relay_server.coax's copy of the document is the one relay.coax serves" {
   #assert RS_NIP11 == RR_NIP11;
   out: [1024] u8;
-  #assert rs_nip11(out[..]) == 720;
+  #assert rs_nip11(out[..]) == 680;
 }
 // RFC 6455 section 1.3's key and accept value.
 // With --pow, the served list gains 13 in order and the limitation object
@@ -1003,10 +1007,10 @@ HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent
 // HAND_DOC; the integers and booleans below were copied from its output).
 #test "the client reads every field the document states" {
   i := info_read(HAND_DOC);
-  #assert i.error == INFO_OK && i.name == "OpenAgents Coax relay (R1)" && i.version == "r1";
-  nips := [10] int.[1, 9, 11, 40, 42, 45, 50, 62, 70, 77];
-  #assert i.nips_n == 10;
-  for k: 0..<10 { #assert i.nips[k] == nips[k]; }
+  #assert i.error == INFO_OK && i.name == "OpenAgents Relay" && i.version == "r1";
+  nips := [12] int.[1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77];
+  #assert i.nips_n == 12;
+  for k: 0..<12 { #assert i.nips[k] == nips[k]; }
   want := [9] int.[131072, 32, 127, 64, 256, 900, 127, 0, 1];
   for k: 0..<9 { #assert i.limit[k] == want[k]; }
   #assert info_compare(i, false) == 0;
@@ -1137,10 +1141,10 @@ was not rerun.
   `Accept: application/nostr+json`, the WebSocket handshake for
   `Upgrade: websocket` (which wins when both are present), and `400`
   otherwise.
-- The answer is 720 bytes: a 197-byte head with `Content-Length: 523`, the
+- The answer is 680 bytes: a 197-byte head with `Content-Length: 483`, the
   three CORS headers and `Connection: close`, then the document.
-- `supported_nips` lists 1, 9, 11, 40, 42, 45, 50, 62, 70 and 77, the
-  relay-side NIPs the relay implements, and 13 when `--pow` is set.
+- `supported_nips` lists 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70 and 77,
+  the relay-side NIPs the relay implements, and 13 when `--pow` is set.
 - Every `limitation` value is read from the code that enforces it, and
   each is hit at its value and refused one past it.
 

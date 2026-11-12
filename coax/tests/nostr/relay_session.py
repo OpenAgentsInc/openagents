@@ -622,7 +622,7 @@ def admin(exe, log):
                          stdout=subprocess.PIPE, stderr=log, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
     try:
         port = int(p.stdout.readline().split()[-1])
-        check(info(port)['supported_nips'] == [1, 9, 11, 40, 42, 45, 50, 62, 70, 77, 86], 'NIP-86: with --admin NIP-11 lists 86')
+        check(info(port)['supported_nips'] == [1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77, 86], 'NIP-86: with --admin NIP-11 lists 86')
         body = '{"method":"supportedmethods","params":[]}'
         code, r = post(port, body, nip98(port, body))
         check(code == 200 and 'banpubkey' in r['result'] and 'supportedmethods' not in r['result'], 'NIP-86: supportedmethods from the admin key')
@@ -675,7 +675,7 @@ def groups(exe, log):
                          stdout=subprocess.PIPE, stderr=log, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
     try:
         port = int(p.stdout.readline().split()[-1])
-        check(info(port)['supported_nips'] == [1, 9, 11, 29, 40, 42, 45, 50, 62, 70, 77], 'NIP-29: with --groups NIP-11 lists 29')
+        check(info(port)['supported_nips'] == [1, 9, 11, 17, 29, 40, 42, 45, 50, 59, 62, 70, 77], 'NIP-29: with --groups NIP-11 lists 29')
         now = int(time.time())
         b_key = 'coax relay r1 second test key'
         bk = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}], b_key)[0]['pubkey']
@@ -828,7 +828,7 @@ def proof_of_work(exe, log):
     try:
         port = int(p.stdout.readline().split()[-1])
         check(info(port)['limitation'].get('min_pow_difficulty') == 8, 'pow: --pow 8 is advertised as min_pow_difficulty')
-        check(info(port)['supported_nips'] == [1, 9, 11, 13, 40, 42, 45, 50, 62, 70, 77], 'pow: --pow 8 lists NIP-13')
+        check(info(port)['supported_nips'] == [1, 9, 11, 13, 17, 40, 42, 45, 50, 59, 62, 70, 77], 'pow: --pow 8 lists NIP-13')
         w = Ws(port)
         check(w.auth()[2] is True, 'pow: AUTH')
         now = int(time.time())
@@ -877,7 +877,7 @@ def nip11(port):
     check(head.startswith(b'HTTP/1.1 200') and b'Access-Control-Allow-Origin: *' in head, 'NIP-11: 200 with CORS')
     lim = doc['limitation']
     check(lim['max_message_length'] == 131072 and lim['max_subscriptions'] == 32 and lim['max_limit'] == 127
-          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 40, 42, 45, 50, 62, 70, 77], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 40, 42, 45, 50, 62, 70, 77')
+          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77')
     check(lim['auth_required'] is False and lim['restricted_writes'] is True, 'NIP-11: reads open, writes need AUTH')
 
 

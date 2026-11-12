@@ -11,21 +11,21 @@
 // limits chapter 34 traced (frames of 131072 bytes, 256 tags, 900 s ahead)
 // and the REQ limits in relay_server.coax's header comment (32
 // subscriptions, sub ids 1..64, max_limit and default_limit 127).
-HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+HAND_DOC :: "{\"name\":\"OpenAgents Relay\",\"description\":\"OpenAgents-owned Nostr relay, written in Coax. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,17,40,42,45,50,59,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 // The head counted by hand: 17 + 38 + 21 + 32 + 33 + 35 + 19 + 2 = 197 bytes.
-HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 523\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
+HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 483\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
 
 #test "the served answer is the hand-written head and document, byte for byte" {
   out: [1024] u8;
   a := http_answer(NIP11_GET, out[..]);
   #assert a.status == WSS_NIP11 && a.action == RR_H_NIP11;
-  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 523 && a.n == 720;
-  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<720] == HAND_DOC;
+  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 483 && a.n == 680;
+  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<680] == HAND_DOC;
 }
 #test "relay_server.coax's copy of the document is the one relay.coax serves" {
   #assert RS_NIP11 == RR_NIP11;
   out: [1024] u8;
-  #assert rs_nip11(out[..]) == 720;
+  #assert rs_nip11(out[..]) == 680;
 }
 // RFC 6455 section 1.3's key and accept value.
 // With --pow, the served list gains 13 in order and the limitation object
@@ -54,10 +54,10 @@ HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent
 // HAND_DOC; the integers and booleans below were copied from its output).
 #test "the client reads every field the document states" {
   i := info_read(HAND_DOC);
-  #assert i.error == INFO_OK && i.name == "OpenAgents Coax relay (R1)" && i.version == "r1";
-  nips := [10] int.[1, 9, 11, 40, 42, 45, 50, 62, 70, 77];
-  #assert i.nips_n == 10;
-  for k: 0..<10 { #assert i.nips[k] == nips[k]; }
+  #assert i.error == INFO_OK && i.name == "OpenAgents Relay" && i.version == "r1";
+  nips := [12] int.[1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77];
+  #assert i.nips_n == 12;
+  for k: 0..<12 { #assert i.nips[k] == nips[k]; }
   want := [9] int.[131072, 32, 127, 64, 256, 900, 127, 0, 1];
   for k: 0..<9 { #assert i.limit[k] == want[k]; }
   #assert info_compare(i, false) == 0;
