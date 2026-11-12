@@ -1,0 +1,83 @@
+// Checks proto/aethyrforge/raid-command-v1.schema.json against aethyr/forge/raid-command.coax.
+// Usage: coax/web/tool.sh aethyr/tools/raid-command-profile.coax proto/aethyrforge/raid-command-v1.schema.json
+#import "Basic";
+#load "../forge/raid-command.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+RCP_FILE :: 65536;
+RCP_NODES :: 2048;
+
+rcp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+rcp_write :: (buf: [] u8, c: FrCommand, emit_count: bool) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_obj(o[..]);
+  jo_key(o[..], "op"); jo_str(o[..], c.op);
+  jo_key(o[..], "base"); jo_int(o[..], c.base);
+  if emit_count { jo_key(o[..], "count"); jo_int(o[..], c.count); }
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+rcp_bounds :: () -> bool #effects(all) {
+  if !fr_fit(1, 67) || !fr_fit(60, 8) || fr_fit(0, 0) || fr_fit(61, 0) || fr_fit(60, 9) { return false; }
+  if !fr_phase("start", 0) || !fr_phase("start", 5) || !fr_phase("start", 6) || fr_phase("start", 7) { return false; }
+  if !fr_phase("stop", 0) || !fr_phase("stop", 7) || !fr_phase("double", 7) || fr_phase("double", 0) { return false; }
+  if fr_target("double", 30, 0) != 60 || fr_target("wave", 30, 12) != 42 || fr_target("set", 30, 1) != 1 { return false; }
+  return true;
+}
+
+rcp_fixture :: (d: Jv, fx: int) -> bool #effects(all) {
+  wbuf: [512] u8; obuf: [64] u8; out: [512] u8;
+  text := rcp_str(d, jv_get(d, fx, "wire"), wbuf[..]);
+  op := rcp_str(d, jv_get(d, fx, "op"), obuf[..]);
+  if text.count == 0 || op.count == 0 { return false; }
+  c: [1] FrCommand;
+  if !fr_parse(text, c[..]) { return false; }
+  if c[0].op != op || c[0].base != jv_int(d, jv_get(d, fx, "base"), -1) { return false; }
+  if c[0].count != jv_int(d, jv_get(d, fx, "count"), -1) { return false; }
+  emit_count := jv_bool(d, jv_get(d, fx, "has_count"));
+  n := rcp_write(out[..], c[0], emit_count);
+  return n >= 0 && cast(string) out[0..<n] == text;
+}
+
+rcp_check :: (profile_json: string) -> bool #effects(all) {
+  nodes: [RCP_NODES] JvNode; d_arr: [1] Jv;
+  if !jv_parse(d_arr[..], profile_json, nodes[..]) { return false; }
+  d := d_arr[0];
+  nbuf: [64] u8; rbuf: [512] u8;
+  if rcp_str(d, jv_get(d, 0, "profile"), nbuf[..]) != "raid-command-v1" { return false; }
+  if jv_int(d, jv_get(d, 0, "version"), 0) != 1 { return false; }
+  fxs := jv_get(d, 0, "fixtures");
+  if jv_kind(d, fxs) != JV_ARRAY || jv_len(d, fxs) < 5 { return false; }
+  for i: 0..<jv_len(d, fxs) { if !rcp_fixture(d, jv_at(d, fxs, i)) { return false; } }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 5 { return false; }
+  for i: 0..<jv_len(d, rej) {
+    bad := rcp_str(d, jv_at(d, rej, i), rbuf[..]);
+    c: [1] FrCommand;
+    if bad.count == 0 || fr_parse(bad, c[..]) { return false; }
+  }
+  return rcp_bounds();
+}
+
+#test "Raid command v1 profile tool checks round-trips, admission bounds, and rejects drift" {
+  doc := "{\"profile\":\"raid-command-v1\",\"version\":1,\"fixtures\":[{\"wire\":\"{\\\"op\\\":\\\"start\\\",\\\"base\\\":0}\",\"op\":\"start\",\"base\":0,\"count\":30,\"has_count\":false},{\"wire\":\"{\\\"op\\\":\\\"wave\\\",\\\"base\\\":1000000}\",\"op\":\"wave\",\"base\":1000000,\"count\":12,\"has_count\":false},{\"wire\":\"{\\\"op\\\":\\\"set\\\",\\\"base\\\":1,\\\"count\\\":1}\",\"op\":\"set\",\"base\":1,\"count\":1,\"has_count\":true},{\"wire\":\"{\\\"op\\\":\\\"stop\\\",\\\"base\\\":2}\",\"op\":\"stop\",\"base\":2,\"count\":0,\"has_count\":false},{\"wire\":\"{\\\"op\\\":\\\"double\\\",\\\"base\\\":3}\",\"op\":\"double\",\"base\":3,\"count\":0,\"has_count\":false}],\"rejected\":[\"{}\",\"{\\\"op\\\":\\\"set\\\",\\\"base\\\":0}\",\"{\\\"op\\\":\\\"stop\\\",\\\"base\\\":0,\\\"count\\\":1}\",\"{\\\"op\\\":\\\"wave\\\",\\\"base\\\":0,\\\"count\\\":61}\",\"{\\\"op\\\":\\\"fly\\\",\\\"base\\\":0}\"]}";
+  #assert rcp_check(doc);
+  #assert !rcp_check("{}");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: raid-command-profile FILE.json"); return 2; }
+  raw: [RCP_FILE] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("raid-command-profile: cannot read JSON"); return 2; }
+  if !rcp_check(cast(string) raw[0..<n]) { print("raid-command-v1: profile fails\n"); return 1; }
+  print("raid-command-v1: profile holds\n");
+  return 0;
+}

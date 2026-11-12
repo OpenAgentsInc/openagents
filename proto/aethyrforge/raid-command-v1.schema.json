@@ -1,6 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openagents.com/proto/aethyrforge/raid-command-v1.schema.json",
+  "profile": "raid-command-v1",
+  "version": 1,
+  "codec": "aethyr/forge/raid-command.coax",
+  "check": "coax/web/tool.sh aethyr/tools/raid-command-profile.coax proto/aethyrforge/raid-command-v1.schema.json",
   "title": "Local Aethyrforge cultist event command v1",
   "type": "object",
   "additionalProperties": false,
@@ -13,5 +17,65 @@
   "allOf": [
     {"if": {"properties": {"op": {"const": "set"}}}, "then": {"required": ["count"]}},
     {"if": {"properties": {"op": {"enum": ["stop", "double"]}}}, "then": {"not": {"required": ["count"]}}}
+  ],
+  "fixtures": [
+    {
+      "name": "start-default-count",
+      "wire": "{\"op\":\"start\",\"base\":0}",
+      "op": "start",
+      "base": 0,
+      "count": 30,
+      "has_count": false
+    },
+    {
+      "name": "start-max-count",
+      "wire": "{\"op\":\"start\",\"base\":1,\"count\":60}",
+      "op": "start",
+      "base": 1,
+      "count": 60,
+      "has_count": true
+    },
+    {
+      "name": "wave-default-count",
+      "wire": "{\"op\":\"wave\",\"base\":1000000}",
+      "op": "wave",
+      "base": 1000000,
+      "count": 12,
+      "has_count": false
+    },
+    {
+      "name": "set-explicit-count",
+      "wire": "{\"op\":\"set\",\"base\":2,\"count\":1}",
+      "op": "set",
+      "base": 2,
+      "count": 1,
+      "has_count": true
+    },
+    {
+      "name": "stop-event",
+      "wire": "{\"op\":\"stop\",\"base\":3}",
+      "op": "stop",
+      "base": 3,
+      "count": 0,
+      "has_count": false
+    },
+    {
+      "name": "double-army",
+      "wire": "{\"op\":\"double\",\"base\":4}",
+      "op": "double",
+      "base": 4,
+      "count": 0,
+      "has_count": false
+    }
+  ],
+  "rejected": [
+    "{}",
+    "{\"op\":\"set\",\"base\":0}",
+    "{\"op\":\"stop\",\"base\":0,\"count\":1}",
+    "{\"op\":\"double\",\"base\":0,\"count\":1}",
+    "{\"op\":\"wave\",\"base\":0,\"count\":0}",
+    "{\"op\":\"wave\",\"base\":0,\"count\":61}",
+    "{\"op\":\"start\",\"base\":1000001}",
+    "{\"op\":\"fly\",\"base\":0}"
   ]
 }

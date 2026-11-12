@@ -114,7 +114,6 @@ profile proto/verse/everglade-find-familiar-v1.json  # no check; E1, then one co
 profile proto/verse/everglade-healers-kit-v1.json  # no check; E1, then one codec in E2 (#13244)
 profile proto/verse/character-checkpoint-v2.schema.json  # no check; E1, golden in E7 (#13244)
 profile proto/verse/character-checkpoint-v3.schema.json  # no check; E1, golden in E7 (#13244)
-profile proto/aethyrforge/raid-command-v1.schema.json  # no check; E1 (#13244)
 profile proto/aethyr/physics-lab-v1.json  # no check; aethyr/lab/physics-record.coax pins its own literals, not this file; outside the plan's inventory (#13250)
 
 # Outside the two audited areas. No step owns these yet; the tracker does.
