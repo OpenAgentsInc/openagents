@@ -1,5 +1,13 @@
 # Owner actions
 
+## Episode 295: Nostr Lab's 42 stations (#13366, 2026-11-12)
+
+- **Production still shows four stations.** The 42 are on `main` (`95254c49d0`). Releases ship `main-green`, which is 80 commits behind: the build hosts are over the $25 a day limit and can't finish a check, and `main`'s red list has two open failures that are not this work's (`after.sh red`). I did not release `main`'s head myself. When `main-green` passes `46d5c84108`, `e00ec2bb17` and `95254c49d0`, run `coax/web/release.sh`, then check `openagents.com/worlds/nostr-lab` says `1 / 42` at the first station.
+- **Until then, record from a local build.** In a checkout at `origin/main`: `COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/nostr-lab-walk.coax apps/openagents-web/nostr-lab-walk-face.c apps/openagents-web/build/nostr-lab-walk.wasm everglade/shared/everglade-step.coax aethyr/sticks.coax`, then `coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9123` and open `/worlds/nostr-lab`. On a local page `?at=N` stands you before station N.
+- **A recorded walk of all 42 is on `coderos-4080`:** `~/.openagents/episodes/295/nostr-lab/nostr-lab-walkthrough.mp4` (5 min 16 s, 1920x1080, from the page's own frames), `segment-1.mp4` to `segment-6.mp4` (seven stations each), `stations/station-01.png` to `station-42.png`, and `all-42-stations.png`. The show notes (`docs/transcripts/295-show-notes.md`, section 7) give the station for each thing cut 1 names.
+- **Say if a pull request's tip should move for maintainers too.** NIP-34 doesn't say whose update counts; `nip34-pr.coax` counts only the pull request's author's.
+- **The device login routes don't record event IDs.** Chapter 99's rewrite found that `agents.c`'s device start and poll check a NIP-98 signature and its 60-second window but, unlike the key login, don't refuse a replayed event inside that window. Say if that is intended.
+
 ## Microcoder's read budget (#13325, 2026-11-12)
 
 - **Say if this should be undone.** `coax/lib/agent/native-profile.coax` is an `#authority` file. A journaled Microcoder run could make 128 effects, and a file view counted as one. It now counts views apart: 512 views a run, with commands and edits still at 128, model calls at 64 and the 15-minute limit unchanged. The cause was a real run (issue #13263 on Carbon) that read 75 files and ran 53 commands, all searching, and was refused before its first edit. The coordinator asked for the change and said the owner was being told; no owner sign-off is recorded. `coax mutate` on the file: 146 mutants, 146 killed. To undo it, revert the commit titled "Microcoder: file views are counted apart from commands".
