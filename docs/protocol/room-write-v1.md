@@ -64,9 +64,14 @@ another. The API then binds the body to the signer:
 - Directory: every `s SHARD` line names the signer.
 - Stats: every `shard=N` line names the signer.
 - Vitals: the `o SHARD GEN BATCH` line is present and names the signer.
-- Items, checkpoints: these are per player. The owner generation in the body
-  binds them, and the signature names the shard. Binding the player to the
-  shard that seated them is open work (see #13260).
+- Items, checkpoints: these are per player. Each seat ticket takes the
+  player's next owner generation and notes the shard it seats with it
+  (`verse.room_owners.shard`, migration 0156). A write whose generation (`gen`,
+  `owner`) is the newest or above must come from that shard, or the API answers
+  403. A write for an older generation goes on to the fence, which refuses it
+  as before (`stale`, `fenced`). Travel, a drain's re-seat and a failover each
+  take a new ticket, so the new shard writes and the old one's late writes stay
+  fenced. A generation from before 0156 names no shard and is not bound.
 - Control: the answer is the realm's, so the signature is enough.
 
 A write without `X-Room-Signer` is checked the old way: the shared key's MAC

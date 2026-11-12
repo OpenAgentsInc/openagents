@@ -60,6 +60,10 @@ openssl rand -hex 32 | tr -d '\n' | gcloud secrets create oa-room-write-master -
 
 Deploy the API (`coax/web/api/deploy.sh`). It now checks a shard's own key
 when a write names one, and still takes writes signed with the shared key.
+Its migration 0156 runs with the deploy: each new seat ticket now notes the
+shard it seats, and an item or checkpoint write signed with another shard's own
+key for that player is refused (403). Nothing is refused yet, because no shard
+signs with its own key until step 3.
 
 ### 3. Give each shard its write key and deploy the rooms
 

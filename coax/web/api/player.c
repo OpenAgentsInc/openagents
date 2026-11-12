@@ -327,8 +327,9 @@ static void room_count(PGconn *db, const char *reason) {
 }
 // SDK transaction adapter: choose the checked profile, lock identity/owner,
 // read the complete accepted capture, and issue its successor before COMMIT.
-static int ticket_resume(const request *q, PGconn *db, const char *pid, char saved[2049], int *xp, long long *owner) {
-  const char *pv[1]={pid}; PGresult *r=NULL; char who[96], asked[8];
+static int ticket_resume(const request *q, PGconn *db, const char *pid, int seat, char saved[2049], int *xp, long long *owner) {
+  char seat_s[12]; snprintf(seat_s,sizeof seat_s,"%d",seat);
+  const char *pv[1]={pid}, *sv[2]={pid,seat_s}; PGresult *r=NULL; char who[96], asked[8];
   const char *enabled=getenv("OA_ROOM_CHECKPOINTS");
   bool wants=api_query(q,"checkpoint",asked,sizeof asked)&&!strcmp(asked,"2");
   // rest=1 (character-checkpoint-v3): a profile 3 capture as it is; otherwise its profile 2 part
@@ -347,7 +348,7 @@ static int ticket_resume(const request *q, PGconn *db, const char *pid, char sav
   if (profile==2) goto fail;
   if (profile==1) {
     if (!progress_run(db,"SET LOCAL synchronous_commit=on")) goto fail;
-    r=PQexecParams(db,"SELECT verse.room_owner_next($1),current_setting('fsync')='on'",1,NULL,pv,NULL,NULL,0);
+    r=PQexecParams(db,"SELECT verse.room_owner_next($1,$2::int),current_setting('fsync')='on'",2,NULL,sv,NULL,NULL,0);   /* the generation and its shard (0156) */
     if (PQresultStatus(r)!=PGRES_TUPLES_OK||PQntuples(r)!=1||PQgetisnull(r,0,0)||PQgetvalue(r,0,1)[0]!='t') goto fail;
     *owner=atoll(PQgetvalue(r,0,0));PQclear(r);r=NULL;
     r=PQexecParams(db,"INSERT INTO verse.character_profiles_v2(who) VALUES($1) ON CONFLICT DO NOTHING",1,NULL,wv,NULL,NULL,0);
@@ -499,7 +500,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long expires = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + TICKET_MS;
   char saved[2049]="-"; long long checkpoint_owner=0;
-  int resume=ticket_resume(q,db,pid,saved,&xp,&checkpoint_owner);
+  int seat_shard = shard > 0 ? shard : 1;   /* the shard this ticket seats (a v2 ticket: shard 1); room_owners notes it (0156) */
+  int resume=ticket_resume(q,db,pid,seat_shard,saved,&xp,&checkpoint_owner);
   if (resume<0) {api_json(q->fd,503,"{\"error\":\"character recovery unavailable\"}");return;}
   if (resume==1) {
     coax_string cls=checkpoint2_class((coax_string){saved,(int64_t)strlen(saved)});
@@ -517,8 +519,9 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   long long owner_gen = 0;   /* the same generation, for the v5 writer */
   if (resume==1) { snprintf(hps+strlen(hps),sizeof hps-strlen(hps),"g%lld",checkpoint_owner); owner_gen = checkpoint_owner; }
   else if (og && !strcmp(og, "1")) {
-    const char *gv[1] = {pid};
-    PGresult *gr = PQexecParams(db, "SELECT verse.room_owner_next($1)", 1, NULL, gv, NULL, NULL, 0);
+    char ss[12]; snprintf(ss, sizeof ss, "%d", seat_shard);
+    const char *gv[2] = {pid, ss};
+    PGresult *gr = PQexecParams(db, "SELECT verse.room_owner_next($1, $2::int)", 2, NULL, gv, NULL, NULL, 0);   /* and its shard (0156) */
     if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0)) {
       snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "g%s", PQgetvalue(gr, 0, 0));
       owner_gen = atoll(PQgetvalue(gr, 0, 0));
@@ -536,7 +539,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   char resumed[4097]; const char *ticket=text;
   if (v5) {
     /* the one v5 writer (ticket-sign-unit.c): shard 0 (no directory) is shard 1's, as a v2 ticket is */
-    if (!stk_write_c(v5_key, pid, acct, name, room, shard > 0 ? shard : 1, expires, hp, xp, wanted, owner_gen, "-", resume == 1 ? 2 : 1, saved, resumed, sizeof resumed)) {
+    if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, "-", resume == 1 ? 2 : 1, saved, resumed, sizeof resumed)) {
       api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
     }
     ticket = resumed;
@@ -723,12 +726,30 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
 // The inventory and reward ledger (#12849, migrations/0130_item_ledger.sql): one mutation, signed with
 // the seat-ticket key as vitals are, as JSON {id, op, pid, gen, ver, item, to, kind, sent}; the answer
 // is verse.item_apply's: {"status":..., "item":..., "replay":...}. Game items only.
+// An item or checkpoint write signed with shard SIGNER's own key (#13260): refused (403, and true)
+// when the player's newest owner generation is another shard's and the write's generation (the
+// JSON field GEN) is not older (verse.room_owner_shard_ok, 0156). An older one is left to the fence
+// (stale, fenced), as before. A shared-key write (SIGNER 0) is not bound.
+static bool room_write_owner(const request *q, PGconn *db, int signer, const char *gen) {
+  if (signer <= 0) return false;
+  char *b = malloc(q->body_len + 1);
+  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
+  char sh[12]; snprintf(sh, sizeof sh, "%d", signer);
+  const char *v[3] = {b, gen, sh};
+  PGresult *r = PQexecParams(db, "SELECT verse.room_owner_shard_ok(j->>'pid', (j->>$2)::bigint, $3::int) FROM (SELECT $1::jsonb j) s", 3, NULL, v, NULL, NULL, 0);
+  free(b);
+  bool ok = PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetvalue(r, 0, 0)[0] != 'f';   /* not JSON: the write's own check answers */
+  PQclear(r);
+  if (!ok) api_json(q->fd, 403, "{\"error\":\"another shard's player\"}");
+  return !ok;
+}
 static void room_items(const request *q, PGconn *db) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a mutation\"}"); return; }
   if (q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
   int signer = room_write_signed(q, "items", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
   if (signer < 0) return;
-  (void)signer;   /* a per-player write: bound to the owner generation, not to a shard (docs/deployment/room-keys.md) */
+  if (room_write_owner(q, db, signer, "gen")) return;   /* the shard that holds the player's seat (0156) */
   char *b = malloc(q->body_len + 1);
   if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
@@ -756,7 +777,7 @@ static void room_checkpoint(const request *q, PGconn *db, int version) {
   if (q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
   int signer = room_write_signed(q, "checkpoint", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
   if (signer < 0) return;
-  (void)signer;   /* a per-player write: bound to the owner generation, not to a shard (docs/deployment/room-keys.md) */
+  if (room_write_owner(q, db, signer, "owner")) return;   /* the shard that holds the player's seat (0156) */
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   if (!(version == 2 ? checkpoint2_input((coax_string){(const char *)q->body, q->body_len}, now) : room_checkpoint_input((coax_string){(const char *)q->body, q->body_len}, now))) {

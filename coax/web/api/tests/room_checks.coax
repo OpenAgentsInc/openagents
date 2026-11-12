@@ -382,6 +382,69 @@ rc_write_keys :: (t: [] Ap) {
   ap_check(t, "room write: shard 2's key can't report shard 3's rooms", st == 403, ap_body(t));
 }
 
+// One item grant for PID at owner generation GEN and inventory version VER, signed with shard SHARD's
+// own key: its status word in out, or "403" (another shard's player), or "http".
+rc_owner_item :: (t: [] Ap, id: string, pid: string, gen: int, ver: int, shard: int, out: [] u8) -> string {
+  b: [1] Sb;
+  sb(b[..], "{\"id\":\""); sb(b[..], id); sb(b[..], "\",\"op\":\"grant\",\"pid\":\""); sb(b[..], pid);
+  sb(b[..], "\",\"gen\":"); sb_int(b[..], gen); sb(b[..], ",\"ver\":"); sb_int(b[..], ver);
+  sb(b[..], ",\"kind\":5,\"sent\":"); sb_int(b[..], rc_wall_ms()); sb(b[..], "}");
+  st := rc_write_post(t, "/api/playtest/room-items", "items", shard, shard, sb_text(b[..]));
+  if st == 403 { return "403"; }
+  if st != 200 { return "http"; }
+  return ap_member(ap_body(t), "status", out);
+}
+// One checkpoint for PID at owner generation GEN, signed with shard SHARD's own key: its status word,
+// "403" or "http".
+rc_owner_checkpoint :: (t: [] Ap, pid: string, gen: int, process: int, rev: int, xp: int, shard: int, out: [] u8) -> string {
+  b: [4096] u8; now := rc_wall_ms();
+  st := rc_write_post(t, "/api/playtest/room-checkpoint", "checkpoint", shard, shard, rc_checkpoint_body(b[..], pid, OwnerGeneration.{value = gen}, process, rev, now, now, xp, 1200));
+  if st == 403 { return "403"; }
+  if st != 200 { return "http"; }
+  return ap_member(ap_body(t), "status", out);
+}
+// The shard that holds a player's seat (#13260, migrations/0156): its ticket notes the shard with the
+// owner generation, and another shard's own key can't write that player's items or checkpoints. A
+// hand-over (travel, a drain's re-seat, a failover) is a new ticket for the new shard: the new shard
+// writes, and the old one's late writes are fenced as before.
+rc_write_owners :: (t: [] Ap) {
+  out: [4096] u8; w: [64] u8; q: [1] Sb;
+  p: [1] Player; ok := ap_player(t, p[..]); pid := pl_id(p[..]);
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], pl_key(p[..]));
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  st := ap_call(t, "POST", "/api/playtest/room-ticket/checkpoint-test?checkpoint=2", "{}", h[..]);
+  sb(q[..], "select o.shard from verse.room_owners o join verse.players p on o.who = coalesce(p.account, p.id) where p.id = '"); sb(q[..], pid); sb(q[..], "'");
+  ap_check(t, "room write: a ticket notes the shard it seats with the owner generation (shard 1: no directory)", st == 200 && ap_sql(t, sb_text(q[..]), out[..]) == "1", ap_body(t));
+  // the API seats the player on shard 4 (what a ticket from the directory does)
+  sb_clear(q[..]); sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "', 4)");
+  g := ap_whole(ap_sql(t, sb_text(q[..]), out[..]));
+  s := rc_owner_item(t, "wo-1", pid, g, 0, 4, w[..]);
+  ap_check(t, "room write: the shard holding the seat grants the player's item", s == "ok", ap_body(t));
+  s = rc_owner_item(t, "wo-2", pid, g, 1, 2, w[..]);
+  ap_check(t, "room write: another shard's own key can't write this player's items (403)", s == "403", ap_body(t));
+  s = rc_owner_checkpoint(t, pid, g, 1000, 1, 100, 4, w[..]);
+  ap_check(t, "room write: the shard holding the seat saves the player's checkpoint", s == "applied", ap_body(t));
+  s = rc_owner_checkpoint(t, pid, g, 1000, 2, 101, 2, w[..]);
+  ap_check(t, "room write: another shard's own key can't save this player's checkpoint (403)", s == "403", ap_body(t));
+  ib: [1] Sb; sb(ib[..], "{\"id\":\"wo-3\",\"op\":\"grant\",\"pid\":\""); sb(ib[..], pid); sb(ib[..], "\",\"gen\":"); sb_int(ib[..], g);
+  sb(ib[..], ",\"ver\":1,\"kind\":5,\"sent\":"); sb_int(ib[..], rc_wall_ms()); sb(ib[..], "}");
+  st = rc_room_post(t, "/api/playtest/room-items", sb_text(ib[..]), "");
+  ap_check(t, "room write: a write with the shared key is not bound until it is turned off", st == 200 && rc_is(ap_body(t), "status", "ok"), ap_body(t));
+  // a hand-over to shard 6: the new ticket's generation and shard
+  sb_clear(q[..]); sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "', 6)");
+  g2 := ap_whole(ap_sql(t, sb_text(q[..]), out[..]));
+  s = rc_owner_item(t, "wo-4", pid, g2, 2, 6, w[..]);
+  ap_check(t, "room write: after a hand-over the new shard writes the player's items", g2 == g + 1 && s == "ok", ap_body(t));
+  s = rc_owner_checkpoint(t, pid, g2, 2000, 1, 102, 6, w[..]);
+  ap_check(t, "room write: after a hand-over the new shard saves the checkpoint", s == "applied", ap_body(t));
+  s = rc_owner_item(t, "wo-5", pid, g, 3, 4, w[..]);
+  ap_check(t, "room write: the old shard's late item write is refused by the fence (stale), as before", s == "stale", ap_body(t));
+  s = rc_owner_checkpoint(t, pid, g, 1000, 3, 103, 4, w[..]);
+  ap_check(t, "room write: the old shard's late final checkpoint is fenced, as before", s == "fenced", ap_body(t));
+  s = rc_owner_item(t, "wo-6", pid, g2, 3, 4, w[..]);
+  ap_check(t, "room write: the old shard can't claim the new generation (403)", s == "403", ap_body(t));
+}
+
 // ---- invites ------------------------------------------------------------------------------------------
 
 ri_ticket :: (t: [] Ap, key: string, room: string, via: string) -> int {
@@ -870,6 +933,7 @@ rc_stats :: (t: [] Ap) {
   st = rc_room_post(t, "/api/playtest/room-stats", sb_text(b[..]), "");
   ap_check(t, "room-stats: the next is kept beside it", st == 200 && ap_sql(t, "select count(*) from verse.room_stats where shard = 2", out[..]) == "2", ap_body(t));
   rc_write_keys(t);
+  rc_write_owners(t);
 
   st = ap_call(t, "GET", "/api/admin/rooms", "", none[0..<0]);
   ap_check(t, "room view: signed out, a 401 and no numbers", st == 401 && !ap_has(ap_body(t), "tick"), ap_body(t));

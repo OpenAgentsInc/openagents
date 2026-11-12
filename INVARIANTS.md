@@ -1014,13 +1014,15 @@ when the key its ID names verifies its BIP-340 signature over every byte
 before the signature, so a room can't mint a seat, the admin bit included. A
 room write (`coax/web/room/room-write.coax`) checks only under the key the API
 derives for the shard it names, over its purpose, shard and body, and the API
-refuses a directory report, stats or vitals post that names another shard.
-Two keys of each kind overlap only during a rotation. Until the shared
+refuses a directory report, stats or vitals post that names another shard,
+and an item or checkpoint write for a player whose newest owner generation
+another shard's ticket holds (`verse.room_owners.shard`, migration 0156; an
+older generation is fenced as before). Two keys of each kind overlap only during a rotation. Until the shared
 `OA_ROOM_TICKET_KEY` is removed (the rollout's last step) the older forms are
 still taken. Checks: `seat-ticket.coax` and `room-write.coax` (`#authority`,
 mutation-clean), their fixture profiles (`proto/verse/seat-ticket-v5.json`,
 `room-write-v1.json`) and `coax/web/api/tests/room_checks.coax`
-`rc_write_keys`.
+`rc_write_keys` and `rc_write_owners`.
 
 ## A made realm's document changes only from the revision it was read at
 
