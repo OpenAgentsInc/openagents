@@ -77,17 +77,7 @@ McLoop :: struct {
   ending: int;
   why: string;                   // no_capacity: the gateways' last reason
   reply: string;                 // finished or asked: what the user sees
-  // Models mixed inside one run (GitHub #13325, item 3): with mix set, the call after a clean
-  // working step (edits that all applied, every command exit 0, every view found) may go to
-  // the owner's fast model; the first call, a call after reading only and a call after
-  // anything failed go to the run's own model.
-  mix: bool;
-  fast: bool;                    // the next call may go to the fast model
-  step_edit: bool; step_bad: bool;   // the step being run: an edit applied; something failed
 }
-
-// Whether the next call may go to the fast model (the owner sends it there, or not).
-mc_next_fast :: (l: [] McLoop) -> bool { return l[0].mix && l[0].fast; }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
 mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environment: string, task: string, route: string, local_work: f64) {
@@ -149,7 +139,6 @@ mc_feed :: (l: [] McLoop, ev: GwEvent) -> int {
 }
 
 mc_bad :: (l: [] McLoop, why: string) -> int {
-  l[0].fast = false;
   l[0].steps += 1;
   l[0].bad += 1;
   if l[0].bad >= MC_BAD_LIMIT { return mc_end(l, MC_END_BAD_REPLIES); }
@@ -173,7 +162,6 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   if why.count > 0 { return mc_bad(l, why); }
   l[0].steps += 1;
   l[0].bad = 0;
-  l[0].fast = false; l[0].step_edit = false; l[0].step_bad = false;
   // a finish that carries edits, commands or views is a working step: they are run, not
   // dropped, and the run finishes in a turn of its own, once it has seen their results
   if l[0].pending[0].finished && (l[0].pending[0].nc > 0 || l[0].pending[0].ne > 0 || l[0].pending[0].nv > 0) { l[0].pending[0].finished = false; }
@@ -192,7 +180,6 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     for i: 0..<a.ne { mc_action_edit(l[0].st[..], a.edits[i].path, false, "this request is not local work: answer without edits"); }
     for i: 0..<a.nc { mc_action_refused(l[0].st[..], a.commands[i], "this request is not local work: answer without commands"); }
     mc_note(l[0].st[..], "Your commands were refused: this request is not local work. Answer from what you know.");
-    l[0].step_bad = true;
     l[0].pending[0].nc = 0; l[0].pending[0].ne = 0;
     if a.nv == 0 { mc_action_end(l[0].st[..]); return MC_AGAIN; }
   }
@@ -279,25 +266,19 @@ mc_pending :: (l: [] McLoop) -> McAction { return l[0].pending[0]; }
 
 // A command's result, in order.
 mc_command :: (l: [] McLoop, command: string, exit: int, timed_out: bool, output: string) {
-  if exit != 0 || timed_out { l[0].step_bad = true; }
   mc_action_command(l[0].st[..], command, exit, timed_out, output);
 }
 
 // An edit's result: applied, or why not.
-mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) {
-  if ok { l[0].step_edit = true; } else { l[0].step_bad = true; }
-  mc_action_edit(l[0].st[..], path, ok, why);
-}
+mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) { mc_action_edit(l[0].st[..], path, ok, why); }
 
 // A viewed file's content, or found false with why.
 mc_view :: (l: [] McLoop, path: string, found: bool, content: string) {
-  if !found { l[0].step_bad = true; }
   mc_file(l[0].st[..], path, found, content);
 }
 
 mc_tools_done :: (l: [] McLoop) -> int {
   mc_action_end(l[0].st[..]);
-  l[0].fast = l[0].step_edit && !l[0].step_bad;
   if l[0].ending != MC_END_NONE { return MC_ENDED; }
   return MC_AGAIN;
 }
@@ -318,14 +299,11 @@ McScript :: struct {
   replies: [] string;
   at: int;
   calls: int;                    // requests sent
-  fastc: [16] bool;              // each request: whether it may go to the fast model
-  fail: string;                  // a command with this text exits 1
   ran: [16] string; nran: int;   // commands run, in order (copies in rb: the loop reuses its buffers each step)
   rb: [2048] u8; nrb: int;
 }
 
 mc_script_step :: (l: [] McLoop, s: [] McScript) -> int {
-  if s[0].calls < 16 { s[0].fastc[s[0].calls] = mc_next_fast(l); }
   req := mc_request(l);
   #assert req.schema == MC_SCHEMA && req.system == MC_SYSTEM && json_valid(req.messages[0].text);
   s[0].calls += 1;
@@ -356,9 +334,8 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
           for c: a.commands[i] { s[0].rb[s[0].nrb] = c; s[0].nrb += 1; }
           s[0].ran[s[0].nran] = cast(string) s[0].rb[at..<s[0].nrb]; s[0].nran += 1;
         }
-        mc_command(l, a.commands[i], ifx s[0].fail.count > 0 && a.commands[i] == s[0].fail then 1 else 0, false, "3\n");
+        mc_command(l, a.commands[i], 0, false, "3\n");
       }
-      for i: 0..<a.ne { mc_edited(l, a.edits[i].path, true, ""); }
       for i: 0..<a.nv { mc_view(l, a.view[i], true, "contents"); }
       r = mc_tools_done(l);
     }
@@ -413,32 +390,6 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   // more names than it keeps: the first ones stay
   mc_seed_scan("aa_1x bb_2x cc_3x dd_4x ee_5x ff_6x gg_7x hh_8x", s[..]);
   #assert s[0].nn == MC_SEED_NAMES && s[0].names[5] == "ff_6x";
-}
-
-#test "mixed models: only the call after a clean working step may go to the fast model; the plan, a call after reading, and a call after a failure do not" {
-  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
-  look := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[\"grep x\"],\"view\":[\"a.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-  edit := "{\"rationale\":\"x\",\"edits\":[{\"path\":\"a.txt\",\"old\":\"a\",\"new\":\"b\"}],\"commands\":[\"make check\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-  broke := "{\"rationale\":\"x\",\"edits\":[{\"path\":\"a.txt\",\"old\":\"b\",\"new\":\"c\"}],\"commands\":[\"make broken\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-  fin := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}";
-  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0); l[0].mix = true;
-  // plan, [look] strong, [broke: a command failed] strong, [edit: clean] strong, then fast, [look] ..., strong, [fin]
-  r: [6] string; r[0] = look; r[1] = broke; r[2] = edit; r[3] = look; r[4] = "not json"; r[5] = fin;
-  s: [1] McScript; s[0] = McScript.{replies = r[..], fail = "make broken"};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 6;
-  #assert !s[0].fastc[0] && !s[0].fastc[1] && !s[0].fastc[2] && s[0].fastc[3] && !s[0].fastc[4] && !s[0].fastc[5];
-  // off: never
-  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
-  r2: [2] string; r2[0] = edit; r2[1] = fin;
-  s[0] = McScript.{replies = r2[..]};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && !s[0].fastc[0] && !s[0].fastc[1];
-  // on: the finish after a clean edit is the fast model's
-  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0); l[0].mix = true;
-  s[0] = McScript.{replies = r2[..]};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && !s[0].fastc[0] && s[0].fastc[1];
 }
 
 #test "the system prompt says where a command's time limit is given" {

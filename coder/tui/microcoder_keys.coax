@@ -35,7 +35,6 @@ MK_TURN_TEXT :: 1200;            // bytes of each task and reply kept
 MkKeys :: struct {
   read: bool;
   vx: [1] GwVertex;
-  vf: [1] GwVertex;              // the fast model's copy: a gateway's URL lives in its GwVertex
   or_key: [512] u8; nor: int;
   gm_key: [512] u8; ngm: int;
   keyfile: [1200] u8; nkf: int;
@@ -186,18 +185,6 @@ mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, model: string) -> 
     x := gw_plan_add(p, g, GW_OPENROUTER_FLASH, k[0].orh[..]);
   }
   return p[0].n;
-}
-
-// The fast model's plan for a run that mixes models (GitHub #13325, item 3; the loop's
-// mc_next_fast says which calls): Flash on Vertex, when the run's own plan has a Vertex token
-// (mk_plan first) and its own model is not Flash already. False when there is none.
-MK_FAST_MODEL :: "gemini-3.8-flash";
-mk_plan_fast :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, model: string) -> bool {
-  gw_plan_init(p, pb);
-  rb: [1024] u8;
-  if gw_env("GW_REPLAY", rb[..]).count > 0 || k[0].vx[0].nt == 0 || mk_vertex_model(model) == MK_FAST_MODEL { return false; }
-  k[0].vf[0] = k[0].vx[0];
-  return gw_plan_add(p, gw_vertex_native(k[0].vf[..], MK_FAST_MODEL), MK_FAST_MODEL, k[0].none[0..<0]);
 }
 
 // The psionic engine's plan: one keyless gateway, the Chat Completions server

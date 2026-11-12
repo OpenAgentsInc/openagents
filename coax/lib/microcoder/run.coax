@@ -139,8 +139,6 @@ McRun :: struct {
   ask_ticket:int;
   asking: bool; ask_i: int;      // the pending action's command waiting for an answer
   command_seconds: int;          // a command's time limit; 0 is MC_COMMAND_SECONDS (an unattended owner gives more, and tells the model in the facts)
-  sp: [] GwPlan;                 // the run's own plan; p is the plan of the call that is out
-  fp: [] GwPlan;                 // the fast model's plan, for the calls the loop lets go there (mc_next_fast); none: one model
   seed: bool;                    // before the first call, look up what the task names (mc_run_seed)
   seeded: bool;
   rbuf: [4096] u8;               // this poll's reply bytes
@@ -165,7 +163,7 @@ MC_RUN_MS :: 900000;
 // Starts a run of the loop already set up in r.l (mc_init) through plan p
 // (gw_plan_add its attempts first); effort "" leaves it to the provider.
 mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
-  r[0].p = p; r[0].sp = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
+  r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
   r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;r[0].reads=0;r[0].refused="";
   r[0].seeded = false;
   if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
@@ -220,7 +218,6 @@ mc_run_call :: (r: [] McRun) {
   req := mc_request(r[0].l[..]);
   if r[0].effort.count > 0 { req.effort = r[0].effort; }
   mc_rs_reset(r[0].rs[..]);
-  r[0].p = ifx r[0].fp.count > 0 && mc_next_fast(r[0].l[..]) then r[0].fp else r[0].sp;
   r[0].logged = 0;
   gw_plan_start(r[0].p, r[0].bench, req);
   r[0].calling = true;
