@@ -21,8 +21,9 @@
 // pictures. The session carries the automation mark (the cookie verse-automation), so analytics
 // leaves it out and the realms it makes are unlisted (realms.c unlist_if_automated). They are named
 // "Aethyrforge Journey Test <hex>" and "... Fork". --phone is 390x844 at 2x with touch; the default
-// is 1440x900. It prints each step and exits 1 on the first that fails. Nothing opens on screen and
-// no sound plays.
+// is 1440x900. It prints each step and exits 1 on the first that fails. On an invite-only site (the
+// access route says make 0) it prints one "skip" line and exits 0: not walked. Nothing opens on screen
+// and no sound plays.
 #import "Basic";
 #load "../lib/net/cdp.coax";
 
@@ -114,6 +115,26 @@ why_n :: (r: [] Run, what: string, v: int) -> bool { b: [1] Buf; bput(b[..], wha
 js_int :: (c: [] Cdp, js: string, fallback: int) -> int {
   v := cdp_evaluate(c, js);
   return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+// Whether the site tells this visitor that realm making is invite only: a 200 from the access route
+// with a line `make 0`. Any other answer (no route, a failed fetch, make 1) is no.
+invite_only :: (c: [] Cdp) -> bool {
+  b: [512] u8;
+  t := js_str(c, "fetch('/api/playtest/access',{credentials:'same-origin'}).then(r=>r.ok?r.text():'').catch(()=>'')", b[..]);
+  return access_says_no(t);
+}
+access_says_no :: (t: string) -> bool {
+  i := 0;
+  while i < t.count {
+    e := i; while e < t.count && t[e] != 10 { e += 1; }
+    if t[i..<e] == "make 0" { return true; }
+    i = e + 1;
+  }
+  return false;
+}
+#test "the access route's answer: invite only is a line that says make 0" {
+  #assert access_says_no("invites 1\nmake 0\nin 0\ncreator 0\nasked none\n") && access_says_no("make 0");
+  #assert !access_says_no("invites 1\nmake 1\nin 1\n") && !access_says_no("") && !access_says_no("{\"error\":\"not found\"}") && !access_says_no("remake 0") && !access_says_no("make 01");
 }
 js_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
   v := cdp_evaluate(c, js);
@@ -541,6 +562,14 @@ tool_main :: () -> int #export_c #effects(all) {
   print("forge-journey % at %x% (%), mark aethyrforge-journey\n", origin, r[0].w, r[0].h, ifx r[0].phone then "phone, touch" else "desktop");
   status := 0;
   if !open_page(r[..], c[..], btext(u[..])) { tool_err("forge-journey: opening /worlds/new: "); tool_errln(cdp_error(c[..])); status = 1; }
+  // An invite-only site (docs/auth/2026-10-31-realm-invites-and-auth.md): /api/playtest/access tells this
+  // visitor `make 0`, the builder shows its invite screen, and the journey, which has no invite, cannot
+  // make a realm. That is the site's rule and no fault of the build: the journey says it was not walked
+  // (a "skip" line, status 0) so a release's JOURNEY report doesn't read as a failure for it.
+  if status == 0 && invite_only(c[..]) {
+    print("skip 1 generate a courtyard from a sentence: realm making is invite only on this site (/api/playtest/access: make 0) and the journey has no invite; not walked\n");
+    cdp_close(c[..]); return 0;
+  }
   png: [FJ_SHOT] u8;
   i := 0;
   while status == 0 && i < STEPS {

@@ -37,7 +37,7 @@ compiler "$tree" > /dev/null || { echo "after: no compiler for the remaining rep
 
 for size in desktop phone; do
   phone=(); [[ "$size" == phone ]] && phone=(--phone)
-  step=$(cd "$tree" && limit 600 coax/web/tool.sh forge-journey "$site" ${phone[@]+"${phone[@]}"} 2>&1 | grep -E '^(ok|FAIL) ' | tail -1)
+  step=$(cd "$tree" && limit 600 coax/web/tool.sh forge-journey "$site" ${phone[@]+"${phone[@]}"} 2>&1 | grep -E '^(ok|FAIL|skip) ' | tail -1)
   echo "journey $size: ${step:-did not run}"
 done > "$work/journey"
 put "$work/journey" JOURNEY
