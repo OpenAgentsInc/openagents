@@ -34,6 +34,7 @@
 #load "../../coax/web/analytics.coax";
 #load "access.coax";
 #load "../../aethyr/core/budget.coax";
+#load "../../aethyr/forge/made.coax";   // a made realm's answer (made.proto)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 30000;
@@ -594,20 +595,12 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
     return;
   }
   if what == REQ_MAKE {
-    // "slug S", "path P", "page 1|0": without a page (a dev server) the template opens it by its hash
-    slug := ""; path := ""; page := false;
-    i := 0;
-    while i < body.count {
-      e := line_end(body, i); line := body[i..<e]; i = e + 1;
-      if starts(line, "slug ") { slug = line[5..<line.count]; }
-      if starts(line, "path ") { path = line[5..<line.count]; }
-      if line == "page 1" { page = true; }
-    }
-    if slug.count == 0 || slug.count > 60 { fail(s, "The world wasn't made. Try again."); return; }
-    if track_begin(t, "realm-made") { track_str(t, "slug", slug); track_bool(t, "page", page); track_end(t); }
-    n := 0;
-    if page && (starts(path, "/worlds/") || starts(path, "/realms/")) { n = put(s[0].outbox[..], 0, "/worlds/"); n = put(s[0].outbox[..], n, path[8..<path.count]); }   // an API from before worlds says /realms/
-    else { n = put(s[0].outbox[..], 0, "/worlds/built#"); n = put(s[0].outbox[..], n, slug); }
+    // made.proto's lines, "slug S", "path P", "page 1|0" (aethyr/forge/made.coax): without a page
+    // (a dev server, a private realm) the template opens it by its hash
+    m: [1] ForgeMade; m[0] = forge_read_made(body);
+    if !m[0].ok { fail(s, "The world wasn't made. Try again."); return; }
+    if track_begin(t, "realm-made") { track_str(t, "slug", forge_made_slug(m[..])); track_bool(t, "page", m[0].page); track_end(t); }
+    n := forge_made_goes(m[..], s[0].outbox[..]);
     s[0].out_n = n; s[0].action = ACT_NAVIGATE; s[0].phase = PH_GOING;
   }
 }

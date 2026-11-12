@@ -1,0 +1,246 @@
+// A realm made or forked, on the wire (compliance plan step E11, GitHub #13250;
+// proto/openagents/verse/doc/v1alpha1/made.proto): what POST /api/playtest/realms (the builder's
+// make) and POST /api/playtest/realms/<slug>/fork answer, and the body that asks for a fork. The
+// one reader of the answer in both its forms, and the one writer of the fork's body: the builder,
+// My Realm and the CLI call it.
+//   ?as=lines   "slug SLUG\npath /worlds/SLUG\npage 0|1\n"   (coax/web/api/realm-wire.coax writes it)
+//   JSON        {"name": "N", "path": "/worlds/SLUG", "slug": "SLUG","page":false}: SQL's object
+//               as jsonb's text, and `page` added by realms.c with no spaces. A made realm's fork
+//               adds "rev" and "from"; a built-in realm's fork adds "base", "from" and "rules".
+// proto/verse/realm-made-v1.json holds what the server answers, held through this file by
+// made-goldens.coax and through the routes by coax/web/api/tests/realm_record_checks.coax.
+//   coax/bin/coax test aethyr/forge/made.coax --library
+
+#module "aethyr.forge.made";
+#load "doc.coax";
+
+FORGE_MADE_NAME :: 160;   // a realm's name, at most (the server keeps 40 characters)
+FORGE_MADE_PATH :: 80;    // "/worlds/" and a slug
+FORGE_MADE_RULES :: 16;   // a fork's rules, at most (the server's bound)
+FORGE_MADE_RULE :: 24;    // a rule's id: [a-z0-9-]
+
+// What a make or a fork answered. path is the realm's page as the answer names it ("/worlds/SLUG", or
+// "/realms/SLUG" from an API before worlds), "" when it names none or another
+// realm's; page is whether that page was written. The JSON form also says name, and for a fork
+// the realm it came from (from, with rev for a made realm's, base and rules for a built-in one's).
+ForgeMade :: struct {
+  ok: bool; slug: [FORGE_SLUG] u8; slug_n: int; path: [FORGE_MADE_PATH] u8; path_n: int; page: bool; page_said: bool;
+  name: [FORGE_MADE_NAME] u8; name_n: int; from: [FORGE_SLUG] u8; from_n: int; base: [FORGE_SLUG] u8; base_n: int; rev: int;
+  rules: [FORGE_MADE_RULES * FORGE_MADE_RULE] u8; rule_n: [FORGE_MADE_RULES] int; rules_n: int; rules_said: bool;
+}
+forge_made_slug :: (m: [] ForgeMade) -> string { return cast(string) m[0].slug[0..<m[0].slug_n]; }
+forge_made_path :: (m: [] ForgeMade) -> string { return cast(string) m[0].path[0..<m[0].path_n]; }
+forge_made_name :: (m: [] ForgeMade) -> string { return cast(string) m[0].name[0..<m[0].name_n]; }
+forge_made_from :: (m: [] ForgeMade) -> string { return cast(string) m[0].from[0..<m[0].from_n]; }
+forge_made_base :: (m: [] ForgeMade) -> string { return cast(string) m[0].base[0..<m[0].base_n]; }
+forge_made_rule :: (m: [] ForgeMade, k: int) -> string { return cast(string) m[0].rules[k * FORGE_MADE_RULE..<k * FORGE_MADE_RULE + m[0].rule_n[k]]; }
+// Whether path is slug's page: "/worlds/SLUG" or "/realms/SLUG".
+forge_made_path_ok :: (path: string, slug: string) -> bool {
+  return path.count == slug.count + 8 && (path[0..<8] == "/worlds/" || path[0..<8] == "/realms/") && path[8..<path.count] == slug;
+}
+forge_rule_ok :: (id: string) -> bool {
+  if id.count < 1 || id.count > FORGE_MADE_RULE { return false; }
+  for c: id { if !(forge_lower(c) || forge_digit(c) || c == '-') { return false; } }
+  return true;
+}
+// Where the page goes after a make or a fork: the realm's own page when it was written, else the
+// built page with the slug as its hash (a private realm, or a server with no bucket). Its length
+// in out, or -1.
+forge_made_goes :: (m: [] ForgeMade, out: [] u8) -> int {
+  if !m[0].ok { return -1; }
+  if m[0].page && m[0].path_n > 0 { return forge_put(out, forge_put(out, 0, "/worlds/"), forge_made_slug(m)); }
+  return forge_put(out, forge_put(out, 0, "/worlds/built#"), forge_made_slug(m));
+}
+
+// The ?as=lines answer read: ok when it names a slug. A line it doesn't know is passed over.
+forge_read_made :: (text: string) -> ForgeMade {
+  m: [1] ForgeMade;
+  path := ""; at := 0;
+  for end: 0..<text.count + 1 {
+    if end < text.count && text[end] != '\n' { continue; }
+    line := text[at..<end]; at = end + 1;
+    if line.count > 5 && line[0..<5] == "slug " {
+      slug := line[5..<line.count];
+      if !forge_slug_ok(slug) { return ForgeMade.{}; }
+      for i: 0..<slug.count { m[0].slug[i] = slug[i]; } m[0].slug_n = slug.count;
+    }
+    if line.count > 5 && line[0..<5] == "path " { path = line[5..<line.count]; }
+    if line == "page 1" { m[0].page = true; m[0].page_said = true; }
+    if line == "page 0" { m[0].page = false; m[0].page_said = true; }
+  }
+  if m[0].slug_n == 0 { return ForgeMade.{}; }
+  if forge_made_path_ok(path, forge_made_slug(m[..])) { for i: 0..<path.count { m[0].path[i] = path[i]; } m[0].path_n = path.count; }
+  m[0].ok = true;
+  return m[0];
+}
+// The JSON answer read: ok when it has a slug, a name and that slug's path; a member of another
+// kind refuses it whole.
+forge_read_made_json :: (body: string) -> ForgeMade {
+  none: ForgeMade; m: [1] ForgeMade;
+  nodes: [96] JvNode; j: [1] Jv; pb: [FORGE_MADE_PATH] u8;
+  if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return none; }
+  m[0].slug_n = jv_str(j[0], jv_get(j[0], 0, "slug"), m[0].slug[..]);
+  m[0].name_n = jv_str(j[0], jv_get(j[0], 0, "name"), m[0].name[..]);
+  pn := jv_str(j[0], jv_get(j[0], 0, "path"), pb[..]);
+  if m[0].slug_n < 0 || m[0].name_n < 0 || pn < 0 || !forge_slug_ok(forge_made_slug(m[..])) || !forge_made_path_ok(cast(string) pb[0..<pn], forge_made_slug(m[..])) { return none; }
+  for i: 0..<pn { m[0].path[i] = pb[i]; } m[0].path_n = pn;
+  page := jv_get(j[0], 0, "page");
+  if page >= 0 {
+    if jv_kind(j[0], page) != JV_TRUE && jv_kind(j[0], page) != JV_FALSE { return none; }
+    m[0].page = jv_kind(j[0], page) == JV_TRUE; m[0].page_said = true;
+  }
+  if jv_get(j[0], 0, "from") >= 0 {
+    m[0].from_n = jv_str(j[0], jv_get(j[0], 0, "from"), m[0].from[..]);
+    if m[0].from_n < 0 || !forge_slug_ok(forge_made_from(m[..])) { return none; }
+  }
+  if jv_get(j[0], 0, "base") >= 0 {
+    m[0].base_n = jv_str(j[0], jv_get(j[0], 0, "base"), m[0].base[..]);
+    if m[0].base_n < 0 || !forge_slug_ok(forge_made_base(m[..])) { return none; }
+  }
+  if jv_get(j[0], 0, "rev") >= 0 {
+    m[0].rev = forge_whole(forge_num(j[0], jv_get(j[0], 0, "rev")), 1, FORGE_REV_MOST);
+    if m[0].rev < 1 { return none; }
+  }
+  rules := jv_get(j[0], 0, "rules");
+  if rules >= 0 {
+    if jv_kind(j[0], rules) != JV_ARRAY || jv_len(j[0], rules) > FORGE_MADE_RULES { return none; }
+    for k: 0..<jv_len(j[0], rules) {
+      n := jv_str(j[0], jv_at(j[0], rules, k), m[0].rules[k * FORGE_MADE_RULE..<(k + 1) * FORGE_MADE_RULE]);
+      if n < 0 || !forge_rule_ok(cast(string) m[0].rules[k * FORGE_MADE_RULE..<k * FORGE_MADE_RULE + n]) { return none; }
+      m[0].rule_n[k] = n;
+    }
+    m[0].rules_n = jv_len(j[0], rules); m[0].rules_said = true;
+  }
+  m[0].ok = true;
+  return m[0];
+}
+// The JSON answer written: SQL's object (keys by length, then by bytes: rev, base, from, name,
+// path, slug, rules, each only when it has one) and, when page was said, realms.c's `page` after
+// it with no spaces. Its length, or -1.
+forge_made_json :: (m: [] ForgeMade, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_byte(o[..], '{');
+  if m[0].rev >= 1 { jo_put(o[..], "\"rev\": "); forge_jo_int(o[..], m[0].rev); jo_put(o[..], ", "); }
+  if m[0].base_n > 0 { jo_put(o[..], "\"base\": "); jo_quoted(o[..], forge_made_base(m)); jo_put(o[..], ", "); }
+  if m[0].from_n > 0 { jo_put(o[..], "\"from\": "); jo_quoted(o[..], forge_made_from(m)); jo_put(o[..], ", "); }
+  jo_put(o[..], "\"name\": "); jo_quoted(o[..], forge_made_name(m));
+  jo_put(o[..], ", \"path\": "); jo_quoted(o[..], forge_made_path(m));
+  jo_put(o[..], ", \"slug\": "); jo_quoted(o[..], forge_made_slug(m));
+  if m[0].rules_said {
+    jo_put(o[..], ", \"rules\": [");
+    for k: 0..<m[0].rules_n { if k > 0 { jo_put(o[..], ", "); } jo_quoted(o[..], forge_made_rule(m, k)); }
+    jo_byte(o[..], ']');
+  }
+  if m[0].page_said { jo_put(o[..], ifx m[0].page then ",\"page\":true" else ",\"page\":false"); }
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// POST .../<slug>/fork's body. A made realm's fork: {} or {"name":"N"} (with_rules false). A
+// built-in realm's: {"rules":["a","b"]} with the rules switched on, then the name when there is
+// one. Its length, or -1 when a rule is no rule's id or buf is short.
+forge_fork_body :: (with_rules: bool, rules: [] string, name: string, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_byte(o[..], '{');
+  if with_rules {
+    if rules.count > FORGE_MADE_RULES { return -1; }
+    jo_put(o[..], "\"rules\":[");
+    for k: 0..<rules.count {
+      if !forge_rule_ok(rules[k]) { return -1; }
+      if k > 0 { jo_byte(o[..], ','); }
+      jo_quoted(o[..], rules[k]);
+    }
+    jo_byte(o[..], ']');
+  }
+  if name != "" { if with_rules { jo_byte(o[..], ','); } jo_put(o[..], "\"name\":"); jo_quoted(o[..], name); }
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "the lines of a made realm: its slug, its own path and whether its page was written" {
+  m: [1] ForgeMade; out: [96] u8;
+  m[0] = forge_read_made("slug moonlit-marsh\npath /worlds/moonlit-marsh\npage 1\n");
+  #assert m[0].ok && forge_made_slug(m[..]) == "moonlit-marsh" && forge_made_path(m[..]) == "/worlds/moonlit-marsh" && m[0].page && m[0].page_said;
+  n := forge_made_goes(m[..], out[..]);
+  #assert cast(string) out[0..<n] == "/worlds/moonlit-marsh";
+  m[0] = forge_read_made("slug moonlit-marsh\npath /worlds/moonlit-marsh\npage 0\n");
+  #assert m[0].ok && !m[0].page && m[0].page_said;
+  n = forge_made_goes(m[..], out[..]);
+  #assert cast(string) out[0..<n] == "/worlds/built#moonlit-marsh" && forge_made_goes(m[..], out[0..<26]) == -1;
+  // an API from before worlds says /realms/; the page still goes to /worlds/
+  m[0] = forge_read_made("slug a\npath /realms/a\npage 1");
+  #assert m[0].ok && forge_made_path(m[..]) == "/realms/a";
+  n = forge_made_goes(m[..], out[..]);
+  #assert cast(string) out[0..<n] == "/worlds/a" && forge_made_goes(m[..], out[0..<8]) == -1;
+  // another realm's path, or none, is no path: the page goes to the built page
+  m[0] = forge_read_made("slug a\npath /worlds/b\npage 1\n");
+  #assert m[0].ok && m[0].path_n == 0;
+  n = forge_made_goes(m[..], out[..]);
+  #assert cast(string) out[0..<n] == "/worlds/built#a";
+  m[0] = forge_read_made("slug a\npath /elsewhere/a\npage 1\n");
+  #assert m[0].ok && m[0].path_n == 0;
+  m[0] = forge_read_made("slug a\npage 1\n");
+  #assert m[0].ok && m[0].path_n == 0 && m[0].page;
+  m[0] = forge_read_made("note x\nslug a\n");
+  #assert m[0].ok && !m[0].page && !m[0].page_said && forge_made_slug(m[..]) == "a";
+  // no slug, or one that is none, refuses it; so does asking where a refused one goes
+  #assert !forge_read_made("").ok && !forge_read_made("path /worlds/a\npage 1\n").ok && !forge_read_made("slug A b\npath /worlds/a\n").ok && !forge_read_made("slug \n").ok && !forge_read_made("slugs a\n").ok;
+  m[0] = forge_read_made("");
+  #assert forge_made_goes(m[..], out[..]) == -1;
+  #assert forge_made_path_ok("/worlds/a", "a") && forge_made_path_ok("/realms/a", "a") && !forge_made_path_ok("/worlds/ab", "a") && !forge_made_path_ok("/worlds/a", "ab") && !forge_made_path_ok("/realmz/a", "a") && !forge_made_path_ok("", "a");
+}
+#test "the JSON answer of a make and of both forks is read and written back; a wrong kind refuses it" {
+  m: [1] ForgeMade; buf: [512] u8;
+  made := "{\"name\": \"Moonlit Marsh\", \"path\": \"/realms/moonlit-marsh\", \"slug\": \"moonlit-marsh\",\"page\":true}";
+  m[0] = forge_read_made_json(made);
+  #assert m[0].ok && forge_made_slug(m[..]) == "moonlit-marsh" && forge_made_name(m[..]) == "Moonlit Marsh" && forge_made_path(m[..]) == "/realms/moonlit-marsh" && m[0].page && m[0].page_said && m[0].rev == 0 && m[0].from_n == 0 && !m[0].rules_said;
+  n := forge_made_json(m[..], buf[..]);
+  #assert cast(string) buf[0..<n] == made && forge_made_json(m[..], buf[0..<n - 1]) == -1;
+  fork := "{\"rev\": 3, \"from\": \"moonlit-marsh\", \"name\": \"Moonlit Marsh Fork\", \"path\": \"/realms/moonlit-marsh-fork\", \"slug\": \"moonlit-marsh-fork\",\"page\":false}";
+  m[0] = forge_read_made_json(fork);
+  #assert m[0].ok && m[0].rev == 3 && forge_made_from(m[..]) == "moonlit-marsh" && !m[0].page && m[0].page_said;
+  n = forge_made_json(m[..], buf[..]);
+  #assert cast(string) buf[0..<n] == fork;
+  rules := "{\"base\": \"everglade\", \"from\": \"everglade\", \"name\": \"Doomglade\", \"path\": \"/realms/doomglade\", \"slug\": \"doomglade\", \"rules\": [\"night\", \"waves\"],\"page\":true}";
+  m[0] = forge_read_made_json(rules);
+  #assert m[0].ok && forge_made_base(m[..]) == "everglade" && m[0].rules_said && m[0].rules_n == 2 && forge_made_rule(m[..], 0) == "night" && forge_made_rule(m[..], 1) == "waves";
+  n = forge_made_json(m[..], buf[..]);
+  #assert cast(string) buf[0..<n] == rules;
+  none := "{\"base\": \"everglade\", \"from\": \"everglade\", \"name\": \"E\", \"path\": \"/realms/e\", \"slug\": \"e\", \"rules\": []}";
+  m[0] = forge_read_made_json(none);
+  #assert m[0].ok && m[0].rules_said && m[0].rules_n == 0 && !m[0].page_said;
+  n = forge_made_json(m[..], buf[..]);
+  #assert cast(string) buf[0..<n] == none;
+  #assert !forge_read_made_json("[]").ok && !forge_read_made_json("{").ok && !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/s\"}").ok && !forge_read_made_json("{\"path\": \"/realms/s\", \"slug\": \"s\"}").ok && !forge_read_made_json("{\"name\": \"N\", \"slug\": \"s\"}").ok;
+  #assert !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/t\", \"slug\": \"s\"}").ok && !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/S\", \"slug\": \"S\"}").ok && !forge_read_made_json("{\"name\": 4, \"path\": \"/realms/s\", \"slug\": \"s\"}").ok;
+  #assert !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\",\"page\":1}").ok && !forge_read_made_json("{\"rev\": 0, \"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\"}").ok && !forge_read_made_json("{\"rev\": \"3\", \"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\"}").ok;
+  #assert !forge_read_made_json("{\"from\": \"S!\", \"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\"}").ok && !forge_read_made_json("{\"from\": 1, \"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\"}").ok && !forge_read_made_json("{\"base\": \"B\", \"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\"}").ok && !forge_read_made_json("{\"base\": 2, \"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\"}").ok;
+  #assert !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\", \"rules\": {}}").ok && !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\", \"rules\": [\"Night\"]}").ok && !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\", \"rules\": [4]}").ok;
+  #assert !forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\", \"rules\": [\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\"]}").ok;
+  m[0] = forge_read_made_json("{\"name\": \"N\", \"path\": \"/realms/s\", \"slug\": \"s\", \"rules\": [\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\",\"a\"]}");
+  #assert m[0].ok && m[0].rules_n == 16 && forge_made_rule(m[..], 15) == "a";
+  #assert forge_rule_ok("night") && forge_rule_ok("no-destroy2") && !forge_rule_ok("") && !forge_rule_ok("Night") && !forge_rule_ok("a b") && forge_rule_ok("abcdefghijklmnopqrstuvwx") && !forge_rule_ok("abcdefghijklmnopqrstuvwxy");
+}
+#test "a fork's body: a made realm's with or without a name, a built-in realm's with its rules" {
+  buf: [256] u8; no: [1] string;
+  n := forge_fork_body(false, no[0..<0], "", buf[..]);
+  #assert cast(string) buf[0..<n] == "{}";
+  n = forge_fork_body(false, no[0..<0], "My \"Fork\"", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"name\":\"My \\\"Fork\\\"\"}" && forge_fork_body(false, no[0..<0], "My \"Fork\"", buf[0..<n - 1]) == -1;
+  n = forge_fork_body(true, no[0..<0], "", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rules\":[]}";
+  n = forge_fork_body(true, no[0..<0], "Doomglade", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rules\":[],\"name\":\"Doomglade\"}";
+  two := [2] string.["night", "waves"];
+  n = forge_fork_body(true, two[..], "", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rules\":[\"night\",\"waves\"]}";
+  n = forge_fork_body(true, two[0..<1], "D", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rules\":[\"night\"],\"name\":\"D\"}";
+  // rules are not sent for a made realm's fork, and a rule that is no id refuses the body
+  n = forge_fork_body(false, two[..], "", buf[..]);
+  #assert cast(string) buf[0..<n] == "{}";
+  bad := [2] string.["night", "No"];
+  #assert forge_fork_body(true, bad[..], "", buf[..]) == -1;
+  many: [17] string; for k: 0..<17 { many[k] = "a"; }
+  #assert forge_fork_body(true, many[..], "", buf[..]) == -1 && forge_fork_body(true, many[0..<16], "", buf[..]) > 0;
+}

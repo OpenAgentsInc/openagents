@@ -1,0 +1,49 @@
+syntax = "proto3";
+package openagents.verse.doc.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// A realm made or forked (compliance plan step E11, GitHub #13250): what
+// coax/web/api/realms.c answers when it makes one, and the body that asks
+// for a fork.
+//
+//   POST /api/playtest/realms                 (the builder's make) -> MadeReply
+//   POST /api/playtest/realms/<slug>/fork     ForkRequest -> MadeReply
+//
+// SQL builds the answer as jsonb's text and realms.c adds `page` at its end
+// with no spaces (route.proto's Paged): {"name": "N", "path": "/worlds/s",
+// "slug": "s","page":false}. A caller that asks ?as=lines gets the same
+// realm as text, written by coax/web/api/realm-wire.coax:
+//
+//   slug SLUG
+//   path /worlds/SLUG
+//   page 0|1
+//
+// aethyr/forge/made.coax is the one reader of both and the one writer of
+// ForkRequest; the builder, My Realm and the CLI call it.
+// proto/verse/realm-made-v1.json pins the bytes, checked through the codec
+// (aethyr/forge/made-goldens.coax) and through the routes
+// (coax/web/api/tests/realm_record_checks.coax).
+
+// POST .../<slug>/fork: a made realm takes an optional name; a built-in
+// realm with rule sets (Everglade) also takes the rules switched on.
+message ForkRequest {
+  repeated string rules = 1 [json_name = "rules", (openagents.options.v1alpha1.max_count) = 16];
+  optional string name = 2 [json_name = "name"];
+}
+
+// 200 from a make or a fork. `path` is the realm's page as SQL names it;
+// `page` is whether that page was written to the site bucket (a private
+// realm has none). A made realm's fork also says the realm and revision it
+// was copied from (`from`, `rev`); a built-in realm's fork says its base,
+// the realm forked (`from`) and the rules on.
+message MadeReply {
+  optional string slug = 1 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string path = 2 [json_name = "path"];
+  optional string name = 3 [json_name = "name"];
+  optional bool page = 4 [json_name = "page"];
+  optional string from = 5 [json_name = "from", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional int32 rev = 6 [json_name = "rev"];
+  optional string base = 7 [json_name = "base", (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated string rules = 8 [json_name = "rules", (openagents.options.v1alpha1.max_count) = 16];
+}

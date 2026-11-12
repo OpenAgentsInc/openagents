@@ -1,6 +1,7 @@
 // The realm record's fixture through the API's routes (compliance plan step E11, GitHub #13250):
 // proto/verse/realm-record-v1.json names a made realm and a run of calls to coax/web/api/realms.c's
-// record routes (mine, visibility, publish, published). This seeds that realm, makes each call as
+// record routes (mine, visibility, publish, published), and proto/verse/realm-made-v1.json a realm
+// and its forks (made.proto). For each fixture this seeds that realm, makes each call as
 // the fixture's owner, a stranger or nobody, and requires the server's status and body byte for
 // byte; a step with "sql" runs that statement instead (the publish that pins an engine: this run's
 // API has a bucket with no engine page) and requires its one value. A key named in a step's "vary"
@@ -17,7 +18,7 @@
 #load "../../../lib/net/http.coax";
 #load "../../../lib/json/json.coax";
 
-RRC_FIXTURE :: "proto/verse/realm-record-v1.json";
+RRC_FIXTURES :: [2] string.["proto/verse/realm-record-v1.json", "proto/verse/realm-made-v1.json"];
 RRC_BYTES :: 262144;
 Rrc :: struct { api: [256] u8; api_n: int; psql: [1024] u8; psql_n: int; db: [1024] u8; db_n: int; pass: int; fail: int; }
 
@@ -78,24 +79,18 @@ rrc_vary :: (got: string, want: string, key: string, out: [] u8) -> string {
   return ifx n < 0 then got else cast(string) out[0..<n];
 }
 
-tool_main :: () -> int #export_c #effects(all) {
-  t: [1] Rrc;
-  base := proc_getenv("API", t[0].api[..]); t[0].api_n = base.count;
-  psql := proc_getenv("PSQL", t[0].psql[..]); t[0].psql_n = psql.count;
-  db := proc_getenv("PGURL", t[0].db[..]); t[0].db_n = db.count;
-  if base.count < 18 || base[0..<17] != "http://127.0.0.1:" || db == "" || psql == "" {
-    tool_errln("set local API=http://127.0.0.1:PORT, PGURL and PSQL"); return 2;
-  }
-  text: [RRC_BYTES] u8; tn := fs_read(RRC_FIXTURE, text[..]);
+// One fixture: its realm seeded, each step made and held, its realm cleaned away. False when it could not run.
+rrc_run :: (t: [] Rrc, fixture: string) -> bool {
+  text: [RRC_BYTES] u8; tn := fs_read(fixture, text[..]);
   nodes: [4096] JvNode; f: [1] Jv;
-  if tn <= 0 || !jv_parse(f[..], cast(string) text[0..<tn], nodes[..]) { tool_errln("realm_record_checks: the fixture did not read"); return 2; }
+  if tn <= 0 || !jv_parse(f[..], cast(string) text[0..<tn], nodes[..]) { tool_errln("realm_record_checks: the fixture did not read"); return false; }
   realm := jv_get(f[0], 0, "realm");
   kb: [64] u8; key := rrc_str(f[0], realm, "player_key", kb[..]);
   sk: [64] u8; stranger := rrc_str(f[0], realm, "stranger_key", sk[..]);
   out: [RRC_BYTES] u8; seed: [8192] u8; cl: [1024] u8;
-  if key == "" || stranger == "" { tool_errln("realm_record_checks: the fixture names no keys"); return 2; }
+  if key == "" || stranger == "" { tool_errln("realm_record_checks: the fixture names no keys"); return false; }
   _ := rrc_sql(t[..], rrc_str(f[0], realm, "clean", cl[..]), out[..]);   // a run that stopped early left its realm
-  if rrc_sql(t[..], rrc_str(f[0], realm, "seed", seed[..]), out[..]) < 0 { tool_errln("realm_record_checks: the seed did not run"); return 1; }
+  if rrc_sql(t[..], rrc_str(f[0], realm, "seed", seed[..]), out[..]) < 0 { tool_errln("realm_record_checks: the seed did not run"); return false; }
   steps := jv_get(f[0], 0, "steps");
   for i: 0..<jv_len(f[0], steps) {
     s := jv_at(f[0], steps, i);
@@ -127,6 +122,19 @@ tool_main :: () -> int #export_c #effects(all) {
     print("ok %\n", name);
   }
   if rrc_sql(t[..], rrc_str(f[0], realm, "clean", cl[..]), out[..]) < 0 { t[0].fail += 1; }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Rrc;
+  base := proc_getenv("API", t[0].api[..]); t[0].api_n = base.count;
+  psql := proc_getenv("PSQL", t[0].psql[..]); t[0].psql_n = psql.count;
+  db := proc_getenv("PGURL", t[0].db[..]); t[0].db_n = db.count;
+  if base.count < 18 || base[0..<17] != "http://127.0.0.1:" || db == "" || psql == "" {
+    tool_errln("set local API=http://127.0.0.1:PORT, PGURL and PSQL"); return 2;
+  }
+  paths := RRC_FIXTURES;
+  for k: 0..<paths.count { if !rrc_run(t[..], paths[k]) { return 2; } }
   print("% realm record checks passed, % failed\n", t[0].pass, t[0].fail);
   return ifx t[0].fail == 0 then 0 else 1;
 }

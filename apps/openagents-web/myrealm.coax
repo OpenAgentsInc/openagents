@@ -41,6 +41,7 @@
 #load "../../aethyr/anim/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../aethyr/forge/record.coax";   // a publish's reply (record.proto)
+#load "../../aethyr/forge/made.coax";   // a fork's body and its answer (made.proto)
 #load "../../aethyr/forge/doc.coax";   // the realm document and its edits (aethyr/forge/edit.coax): a move, undo, the bodies and replies (realm.proto)
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
@@ -767,7 +768,8 @@ publish_press :: (s: [] MyRealm) {
 }
 fork_press :: (s: [] MyRealm) {
   if !may_fork(s) || held(s, BTN_FORK) { return; }
-  ask(s, REQ_FORK, "/fork?as=lines", put(s[0].req_body[..], 0, "{}"), true);
+  no: [1] string;
+  ask(s, REQ_FORK, "/fork?as=lines", forge_fork_body(false, no[0..<0], "", s[0].req_body[..]), true);   // made.proto's ForkRequest, {}
 }
 forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
   s[0].forge_status = status; s[0].forge_what = what;
@@ -804,19 +806,9 @@ forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
   // FORK: "slug S", "path P", "page 0|1"; the page goes there. A new fork is private (0099) and has
   // no page of its own (page 0): its owner opens it at /worlds/built#S, as MAKE IT does (builder.coax).
   if status == 200 {
-    slug := ""; path := ""; page := false;
-    i := 0;
-    while i < body.count {
-      e := line_end(body, i); line := body[i..<e]; i = e + 1;
-      if word_of(line, 0) == "slug" && line.count > 5 { slug = line[5..<line.count]; }
-      if word_of(line, 0) == "path" && line.count > 5 { path = line[5..<line.count]; }
-      if line == "page 1" { page = true; }
-    }
-    if s[0].action == 0 && slug.count > 0 && slug.count <= 60 {
-      n := 0;
-      if page && (starts(path, "/worlds/") || starts(path, "/realms/")) { n = put(s[0].outbox[..], 0, "/worlds/"); n = put(s[0].outbox[..], n, path[8..<path.count]); }   // an API from before worlds says /realms/
-      else { n = put(s[0].outbox[..], 0, "/worlds/built#"); n = put(s[0].outbox[..], n, slug); }
-      s[0].out_n = n; s[0].action = ACT_NAVIGATE; return;
+    m: [1] ForgeMade; m[0] = forge_read_made(body);   // made.proto's lines (aethyr/forge/made.coax)
+    if s[0].action == 0 && m[0].ok {
+      s[0].out_n = forge_made_goes(m[..], s[0].outbox[..]); s[0].action = ACT_NAVIGATE; return;
     }
   }
   set_note(s, ifx status == 429 then "That's today's worlds. Fork it tomorrow." else ifx status == 403 then "Making worlds is by invite for now." else "Not forked. Try again.");

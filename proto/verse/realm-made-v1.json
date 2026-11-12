@@ -1,0 +1,111 @@
+{
+ "about": "A realm forked, on the wire (made.proto, GitHub #13250), taken from what the server answers today: seed the realm, make each call under /api/playtest/realms as its owner or a stranger (a key no player has), and the server answers with this status and body. \"message\" names the body: MadeReply (made.proto: SQL's object and the page realms.c adds), MadeLines (the ?as=lines text), RouteError (record.proto), ErrorReply (the API's own refusal) and ErrorWords (a refusal's words alone, for a caller that reads lines). \"request\" names the request's message. aethyr/forge/made-goldens.coax reads every answer and writes every fork's body through aethyr/forge/made.coax; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "schema": "proto/openagents/verse/doc/v1alpha1/made.proto",
+ "realm": {
+  "slug": "fork-fixture",
+  "player_key": "fork-fixture-player-key-0001",
+  "stranger_key": "fork-fixture-stranger-key-0002",
+  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-fork-fixture', encode(sha256(convert_to('fork-fixture-player-key-0001', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-fork-fixture', 'p-fork-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms) VALUES ('fork-fixture', 'made-fork-fixture', 'Fork Fixture', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"count\":4}]', '{\"fly\":false,\"jump\":true}', 1);",
+  "clean": "CREATE TEMP TABLE ff AS SELECT slug FROM verse.made_realms WHERE forked_from = 'fork-fixture' OR slug = 'fork-fixture'; DELETE FROM verse.realm_publications WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.realm_revisions WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.made_realms WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.worlds WHERE id IN (SELECT 'made-' || slug FROM ff); DELETE FROM verse.players WHERE id = 'p-fork-fixture';"
+ },
+ "steps": [
+  {
+   "name": "its owner forks it",
+   "method": "POST",
+   "path": "/fork-fixture/fork",
+   "as": "owner",
+   "body": "{}",
+   "status": 200,
+   "reply": "{\"rev\": 1, \"from\": \"fork-fixture\", \"name\": \"Fork Fixture Fork\", \"path\": \"/worlds/fork-fixture-fork\", \"slug\": \"fork-fixture-fork\",\"page\":false}",
+   "message": "MadeReply",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a fork with a name, as lines",
+   "method": "POST",
+   "path": "/fork-fixture/fork?as=lines",
+   "as": "owner",
+   "body": "{\"name\":\"Second Court\"}",
+   "status": 200,
+   "reply": "slug second-court\npath /worlds/second-court\npage 0\n",
+   "message": "MadeLines",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "the CLI's fork: no rules and a name",
+   "method": "POST",
+   "path": "/fork-fixture/fork",
+   "as": "owner",
+   "body": "{\"rules\":[],\"name\":\"Third Court\"}",
+   "status": 200,
+   "reply": "{\"rev\": 1, \"from\": \"fork-fixture\", \"name\": \"Third Court\", \"path\": \"/worlds/third-court\", \"slug\": \"third-court\",\"page\":false}",
+   "message": "MadeReply",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a name that is no words",
+   "method": "POST",
+   "path": "/fork-fixture/fork",
+   "as": "owner",
+   "body": "{\"name\":\"<>\"}",
+   "status": 400,
+   "reply": "{\"error\": \"a name of plain words\"}",
+   "message": "RouteError",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a name that is no words, as lines",
+   "method": "POST",
+   "path": "/fork-fixture/fork?as=lines",
+   "as": "owner",
+   "body": "{\"name\":\"<>\"}",
+   "status": 400,
+   "reply": "a name of plain words",
+   "message": "ErrorWords",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a body that is not JSON",
+   "method": "POST",
+   "path": "/fork-fixture/fork",
+   "as": "owner",
+   "body": "{\"name\"",
+   "status": 400,
+   "reply": "{\"error\":\"not json\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "a private realm is not there for a stranger",
+   "method": "POST",
+   "path": "/fork-fixture/fork",
+   "as": "stranger",
+   "body": "{}",
+   "status": 404,
+   "reply": "{\"error\":\"no such world\"}",
+   "message": "ErrorReply",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a realm that is not there",
+   "method": "POST",
+   "path": "/no-such-fixture/fork",
+   "as": "owner",
+   "body": "{}",
+   "status": 404,
+   "reply": "{\"error\": \"this world can't be forked\"}",
+   "message": "RouteError",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a realm that is not there, as lines",
+   "method": "POST",
+   "path": "/no-such-fixture/fork?as=lines",
+   "as": "owner",
+   "body": "{}",
+   "status": 404,
+   "reply": "this world can't be forked",
+   "message": "ErrorWords",
+   "request": "ForkRequest"
+  }
+ ]
+}

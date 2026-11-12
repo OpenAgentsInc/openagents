@@ -3,6 +3,7 @@
 // base, sends that revision, and refuses a server without the fence capability.
 #load "commands.coax";
 #load "../../aethyr/forge/doc.coax";   // the realm document and its bodies (realm.proto): one codec
+#load "../../aethyr/forge/made.coax";   // a made or forked realm's answer and a fork's body (made.proto): one codec
 #load "../../aethyr/forge/record.coax";   // mine, visibility, publish and the publish record (record.proto): one codec
 #load "../../coax/lib/text/base64.coax";
 
@@ -479,8 +480,9 @@ realm_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
   res := api_call(a, profile, "POST", "/api/playtest/realms?as=lines", jo_text(o[..]), out[..]);
   made := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, made); }
-  slug := cli_spec_value(made, "slug");
-  if !cli_slug_ok(slug) { return fail(r, EXIT_FAIL, "the server made no realm"); }
+  mm: [1] ForgeMade; mm[0] = forge_read_made(made);   // made.proto's lines
+  slug := forge_made_slug(mm[..]);
+  if !mm[0].ok || !cli_slug_ok(slug) { return fail(r, EXIT_FAIL, "the server made no realm"); }
   pg: [400] u8;
   rep_int(r, "plan", plan);
   rep_str(r, "slug", slug);
@@ -536,16 +538,15 @@ realm_fork :: (a: [] Args, r: [] Rep, profile: string) -> int {
   slug := positional(a, 2);
   if !cli_slug_ok(slug) { return fail(r, EXIT_USAGE, "realm fork SLUG [--name NAME]"); }
   out: [API_OUT] u8; p: [128] u8; buf: [512] u8; pg: [400] u8;
-  o: [1] Jo; jo_start(o[..], buf[..]);
-  jo_obj(o[..]); jo_key(o[..], "rules"); jo_arr(o[..]); jo_end(o[..]);
-  if args_has(a, "--name") { jo_key(o[..], "name"); jo_str(o[..], args_value(a, "--name", "")); }
-  jo_end(o[..]);
-  if o[0].bad { return fail(r, EXIT_USAGE, "--name is too long"); }
-  res := api_call(a, profile, "POST", realm_path(slug, "/fork?as=lines", p[..]), jo_text(o[..]), out[..]);
+  no: [1] string;
+  bn := forge_fork_body(true, no[0..<0], ifx args_has(a, "--name") then args_value(a, "--name", "") else "", buf[..]);   // made.proto's ForkRequest
+  if bn < 0 { return fail(r, EXIT_USAGE, "--name is too long"); }
+  res := api_call(a, profile, "POST", realm_path(slug, "/fork?as=lines", p[..]), cast(string) buf[0..<bn], out[..]);
   made := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, made); }
-  fork := cli_spec_value(made, "slug");
-  if !cli_slug_ok(fork) { return fail(r, EXIT_FAIL, "the server made no fork"); }
+  mm: [1] ForgeMade; mm[0] = forge_read_made(made);   // made.proto's lines
+  fork := forge_made_slug(mm[..]);
+  if !mm[0].ok || !cli_slug_ok(fork) { return fail(r, EXIT_FAIL, "the server made no fork"); }
   rep_str(r, "slug", fork);
   rep_str(r, "from", slug);
   rep_str(r, "visibility", "private");
