@@ -20,6 +20,9 @@ tool_main :: ()->int #export_c #effects(all) {
   if cg_run(create[..],output[..])<0 {gone:=fs_remove(temporary);return 2;}
   defer {remove_tree:=[5]string.["git","worktree","remove","--force",oldtree];removed:=cg_run(remove_tree[..],output[..]);gone:=fs_remove(temporary);}
   modules:=[2]string.["everglade/shared/everglade-wire.coax","aethyr/session/character-checkpoint.coax"];
+  // Where a module was before it moved ("" when it never did): production's tree may still have it
+  // there. f3fe9a3a2d (#13346) moved the wire module, and production (582fe6415f) is older than that.
+  former:=[2]string.["apps/openagents-web/everglade-wire.coax",""];
   facades:=[2]string.["coax/web/compat/everglade-wire.coax","coax/web/compat/character-checkpoint.coax"];
   names:=[2]string.["everglade-wire.surface","character-checkpoint.surface"];
   for module,i:modules {
@@ -31,6 +34,8 @@ tool_main :: ()->int #export_c #effects(all) {
     actual:[4194304]u8;saved:[4194304]u8;an:=fs_read(candidate,actual[..]);sn:=fs_read(retained,saved[..]);
     if an<0 || sn<0 || an!=sn || cast(string)actual[0..<an]!=cast(string)saved[0..<sn] {tool_errln("compat gate: regenerate the candidate's committed manifest");return 1;}
 
+    formerbuf:[4096]u8;
+    if !fs_exists(source) && former[i]!="" {source=fs_join(oldtree,former[i],formerbuf[..]);}
     if !fs_exists(source) {tool_errln("compat gate: production contract source is missing");return 1;}
     if !cg_contract_emit(compiler,source,facades[i],baseline,true) {return 1;}
     // Releases before the manifest profile existed have source as their retained
