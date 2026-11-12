@@ -17,7 +17,16 @@
 #   coax/remote/after.sh health     whether the watcher is running (status 1: it is not)
 #   coax/remote/after.sh red        the red list: failures on main and who owns them
 #   coax/remote/after.sh history [NAME]
-#                                   compile-limit use and wasm sizes per commit
+#                                   compile-limit use, wasm sizes and allowlist counts per commit
+#   coax/remote/after.sh flaky      the flaky checks: owner, issue, age (over 7 days: failing)
+#
+# Gates that compare (#13266): the allowlist counts (coax/remote/counts.sh: a
+# head that raises one over the baseline since main-green is red, the culprit
+# is the commit that raised it, found with git alone), and Everglade II against
+# production (check.sh e2: the room's protocol pair on the head's room and on
+# production's, OA_AFTER_PRODUCTION or the newest PASSED release in the bucket;
+# a head worse than production beyond the noise margins is red, and when
+# main-green is as bad the failure is reported, not red).
 #
 # Two runs, each a set of jobs side by side on host slots (coax/remote/check.sh):
 #
@@ -87,6 +96,7 @@ set -uo pipefail
 export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
 source "$here/pipeline-lib.sh"
+source "$here/counts.sh"
 parts="${OA_AFTER_PARTS:-6}"
 module_parts="${OA_AFTER_MODULE_PARTS:-3}"
 fast_parts="${OA_AFTER_FAST_PARTS:-3}"
@@ -113,7 +123,94 @@ watcher_health() {
   return 1
 }
 
+# Production's commit (the newest release that passed, as release.sh reads it), at most every
+# 10 minutes from the bucket; OA_AFTER_PRODUCTION names one instead, and OA_AFTER_E2=0 turns
+# Everglade II's comparison off. "" when it can't be read.
+prod_bucket="${OA_AFTER_PROD_BUCKET:-openagentsgemini-openagents-web}"
+production() {
+  [[ "${OA_AFTER_E2:-1}" != 0 ]] || { echo ""; return; }
+  if [[ -n "${OA_AFTER_PRODUCTION:-}" ]]; then git rev-parse -q --verify "${OA_AFTER_PRODUCTION}^{commit}" 2> /dev/null | tee "$results/production"; return; fi
+  local f="$results/production" newest c
+  if [[ ! -s "$f" ]] || (( $(date +%s) - $(stat -f %m "$f" 2> /dev/null || stat -c %Y "$f") > 600 )); then
+    local cfg=(); [[ -n "${CLOUDSDK_CONFIG:-}" || ! -d "$HOME/work/.secrets/gcloud-sa-config" ]] || cfg=(env CLOUDSDK_CONFIG="$HOME/work/.secrets/gcloud-sa-config")
+    newest="$(${cfg[@]+"${cfg[@]}"} gcloud storage ls "gs://$prod_bucket/releases/" 2> /dev/null | grep -E '/releases/[0-9]{8}T[0-9]{6}Z/$' | sort | tail -1)"
+    c="$([[ -z "$newest" ]] || ${cfg[@]+"${cfg[@]}"} gcloud storage cat "${newest}PASSED" 2> /dev/null | awk 'NR == 1 { print $1 }')"
+    if [[ "$c" =~ ^[0-9a-f]{40}$ ]]; then echo "$c" > "$f"; else touch "$f"; fi
+  fi
+  c="$(cat "$f" 2> /dev/null)"
+  git rev-parse -q --verify "$c^{commit}" > /dev/null 2>&1 && echo "$c" || echo ""
+}
+# The flaky list (OA_PIPELINE_DIR/releases/after/flaky.tsv, on the watcher's machine): one line a
+# check that failed and passed when run again, "KEY FIRST-HEAD SINCE LAST TIMES OWNER ISSUE".
+# KEY is the check with its base commit taken out. The owner is the agent of the last commit that
+# changed the check's file (a suite or a compiler unit), else "pipeline"; the issue is one GitHub
+# issue a key. An entry older than OA_AFTER_FLAKY_DAYS (7) counts as a failure in state. It leaves
+# when its issue is closed (checked once an hour). The list before it, flaky.txt (HEAD and check,
+# no owner), is kept as flaky-before-13266.txt.
+flaky_tsv="$results/flaky.tsv"
+[[ ! -f "$results/flaky.txt" || -e "$results/flaky-before-13266.txt" ]] || mv "$results/flaky.txt" "$results/flaky-before-13266.txt"
+flaky_days="${OA_AFTER_FLAKY_DAYS:-7}"
+flaky_key() { sed -E 's/[0-9a-f]{40}/BASE/g' <<< "$1"; }
+flaky_owner() {   # item
+  local path="" c
+  case "$1" in
+    suite\ *) path="${1#suite }" ;;
+    compiler\ *) path="$(git ls-tree -r --name-only HEAD -- "coax/tests/${1#compiler }"* 2> /dev/null | head -1)" ;;
+  esac
+  [[ -n "$path" ]] && c="$(git log -1 --format=%H "$main_ref" -- "$path" 2> /dev/null)" && [[ -n "$c" ]] && pl_agent_of "$c" | grep . || echo pipeline
+}
+flaky_add() {   # head item: a flaky failure, its entry opened (with an owner and an issue) or stamped
+  local key now owner issue="" url
+  key="$(flaky_key "$2")"; now=$(date +%s)
+  touch "$flaky_tsv"
+  if awk -F'\t' -v k="$key" '$1 == k { f = 1 } END { exit !f }' "$flaky_tsv"; then
+    awk -F'\t' -v OFS='\t' -v k="$key" -v t="$now" '$1 == k { $4 = t; $5 = $5 + 1 } { print }' "$flaky_tsv" > "$flaky_tsv.new" && mv "$flaky_tsv.new" "$flaky_tsv"
+    return 0
+  fi
+  owner="$(flaky_owner "$2")"
+  if [[ "$pl_issues" == 1 ]]; then
+    url="$(gh issue create --repo "$pl_repo" --title "Flaky check: $key" --body "The after-landing check \`$2\` failed at ${1:0:10} and passed when run again on the same commit, so it has no culprit (docs/verse/green-main-pipeline.md, \"Flaky checks\").
+
+Owner: \`$owner\` (the agent of the last commit that changed the check's file; \`pipeline\` when it has none). Make the check deterministic, or say here why it can't be. The entry counts as a failure in \`coax/remote/after.sh state\` $flaky_days days after it opened; it leaves the flaky list when this issue is closed." 2> /dev/null)" && issue="${url##*/}"
+  fi
+  printf '%s\t%s\t%s\t%s\t1\t%s\t%s\n' "$key" "${1:0:10}" "$now" "$now" "$owner" "${issue:--}" >> "$flaky_tsv"
+  pl_message "$owner" "The check \`$2\` is flaky on $pl_main (it failed at ${1:0:10} and passed when run again). You own its entry on the flaky list${issue:+: https://github.com/$pl_repo/issues/$issue}. After $flaky_days days it counts as a failure."
+}
+flaky_prune() {   # once an hour: entries whose issue is closed leave
+  [[ -s "$flaky_tsv" && "$pl_issues" == 1 ]] || return 0
+  due last-flaky-prune 3600 || return 0
+  date +%s > "$results/last-flaky-prune"
+  local key issue keep=""
+  while IFS=$'\t' read -r key _ _ _ _ _ issue; do
+    [[ "$issue" =~ ^[0-9]+$ ]] || continue
+    [[ "$(gh issue view "$issue" --repo "$pl_repo" --json state --jq .state 2> /dev/null)" == CLOSED ]] || continue
+    awk -F'\t' -v k="$key" '$1 != k' "$flaky_tsv" > "$flaky_tsv.new" && mv "$flaky_tsv.new" "$flaky_tsv"
+    pl_say "after: $key left the flaky list (#$issue is closed)"
+  done < "$flaky_tsv"
+}
+flaky_show() {   # the entries, oldest first; status 1 when one is older than flaky_days
+  [[ -s "$flaky_tsv" ]] || { echo "flaky list: empty"; return 0; }
+  local now; now=$(date +%s)
+  awk -F'\t' -v now="$now" -v days="$flaky_days" '
+    { age = (now - $3) / 86400; over = age >= days; bad += over
+      line[NR] = sprintf("  %s%s: owner %s, %s, %.1f days, %d time(s), last at %s", over ? "FAILING (over " days " days) " : "", $1, $6, ($7 == "-" ? "no issue" : "#" $7), age, $5, $2) }
+    END { printf "flaky list: %d entr(ies), %d over %d days (each counts as a failure)\n", NR, bad, days; for (i = 1; i <= NR; i++) print line[i]; exit bad > 0 }' "$flaky_tsv"
+}
+# main-green's lag behind main (the oldest commit after it, in minutes), sampled every 5 minutes by
+# the watcher into lag.tsv: state prints now, the last 7 days' worst and the share under 30 minutes.
+lag_now() {   # head green: seconds
+  local first; [[ -n "$2" && "$1" != "$2" ]] || { echo 0; return; }
+  first="$(git rev-list --reverse --first-parent "$2..$1" | head -1)"
+  [[ -n "$first" ]] || { echo 0; return; }
+  echo $(( $(date +%s) - $(git log -1 --format=%ct "$first") ))
+}
+lag_show() {
+  [[ -s "$results/lag.tsv" ]] || return 0
+  awk -F'\t' -v since="$(( $(date +%s) - 7 * 86400 ))" '$1 >= since { n++; if ($2 > worst) worst = $2; if ($2 <= 1800) ok++ }
+    END { if (n) printf "main-green lag, last 7 days: worst %d min, under 30 min in %d of %d samples (%.0f%%)\n", worst / 60, ok, n, ok * 100 / n }' "$results/lag.tsv"
+}
 case "${1:-}" in
+  flaky) flaky_show; exit $? ;;
   state)
     git fetch -q "$pl_remote" "+refs/heads/$pl_main:refs/remotes/$pl_remote/$pl_main" 2> /dev/null
     git fetch -q "$pl_remote" "+refs/heads/$pl_green:refs/remotes/$pl_remote/$pl_green" 2> /dev/null || git update-ref -d "refs/remotes/$pl_remote/$pl_green" 2> /dev/null
@@ -123,7 +220,20 @@ case "${1:-}" in
     [[ ! -s "$pl_dir/ALARM" ]] || { echo "alarms (time, kind, what):"; tail -n 5 "$pl_dir/ALARM" | sed 's/^/  /'; }
     echo "$pl_main        ${h:0:10} $(git log -1 --format='%s' "$h" 2> /dev/null | cut -c1-70)"
     if [[ -z "$g" ]]; then echo "$pl_green  none: no run has passed yet"
-    else echo "$pl_green  ${g:0:10} $(git log -1 --format='%cd' --date=format-local:'%Y-%m-%d %H:%M' "$g"), $(git rev-list --count "$g..$h" 2> /dev/null) commit(s) behind $pl_main"; fi
+    else echo "$pl_green  ${g:0:10} $(git log -1 --format='%cd' --date=format-local:'%Y-%m-%d %H:%M' "$g"), $(git rev-list --count "$g..$h" 2> /dev/null) commit(s) behind $pl_main, lag $(( $(lag_now "$h" "$g") / 60 )) min"; fi
+    lag_show
+    # The allowlist counts (#13266): main's, main-green's (the baseline) and what a commit raised.
+    if [[ -n "$h" ]]; then
+      echo "allowlist counts ($pl_main, $pl_green; a head that raises one is red, coax/remote/counts.sh):"
+      join -a 1 <(cn_show "$h" | sort) <( [[ -z "$g" ]] || cn_show "$g" | sort) | awk '{ printf "  %-20s %6s %6s%s\n", $1, $2, ($3 == "" ? "-" : $3), ($3 != "" && $2 > $3 ? "  RAISED" : "") }'
+      [[ -z "$g" ]] || cn_check "$g" "$h" 2> /dev/null | awk '{ printf "  raised: %s by %s (baseline %s, now %s)\n", $2, substr($3, 1, 10), $4, $5 }'
+    fi
+    # Everglade II against production: the last run's numbers.
+    p="$(cat "$results/production" 2> /dev/null)"
+    e2="$(ls -t "$results"/*/*/build/pipeline/e2.tsv 2> /dev/null | head -1)"
+    echo "Everglade II against production${p:+ (${p:0:10})}: $([[ -n "$e2" ]] && echo "last measured on ${e2#"$results/"}" | cut -c1-80 || echo "not measured yet")"
+    [[ -z "$e2" ]] || awk -F'\t' '{ h[$1] = h[$1] $3; a[$1] = a[$1] " " $4; b[$1] = b[$1] " " $5; t[$1] = t[$1] " " $6 }
+      END { for (s in h) printf "  %-4s holds %s  ack p95%s ms  bytes/s%s  tick p95%s us\n", s, h[s], a[s], b[s], t[s] }' "$e2" | sort
     if [[ -s "$results/runs.tsv" ]]; then
       echo "last runs (time, commit, kind, status, seconds, slot-seconds, jobs):"
       tail -n 5 "$results/runs.tsv" | awk -F'\t' '{ printf "  %s  %s  %-4s  %-10s %5s s  %6s slot-s  %s job(s)\n", $1, $2, $3, $4, $5, $6, $7 }'
@@ -131,6 +241,7 @@ case "${1:-}" in
     n="$(jq '[.[] | select(.status == "open")] | length' "$pl_red")"
     echo "red list: $n open"
     jq -r '.[] | select(.status == "open") | "  \(.check): \(if .culprit == "" then "no culprit" else .culprit[0:10] + " by " + .agent end)\(if .issue then " (#" + .issue + ")" else "" end)"' "$pl_red" | head -n 40
+    flaky_show
     exit 0 ;;
   health) watcher_health; exit $? ;;
   install)
@@ -284,9 +395,10 @@ args_for() {   # item job-args...
     module\ *) echo "module ${item#module }" ;;
     compiler\ *) echo "unit ${item#compiler }" ;;
     job\ *) echo "${item#job }" ;;
-    step\ tools-check|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
+    step\ tools-check|step\ after-gates|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
     step\ check-visuals) echo "visuals" ;;
+    e2\ *) echo "e2 $(cat "$results/production" 2> /dev/null)" ;;
     *) echo "$*" ;;   # the whole job again
   esac
 }
@@ -297,7 +409,7 @@ args_for() {   # item job-args...
 # enough.
 confirm() {   # dir head item check-args...
   local dir="$1" head="$2" item="$3" tries=1 t; shift 3
-  ! cut -f2 "$results/flaky.txt" 2> /dev/null | grep -qxF "$item" || tries="${OA_AFTER_FLAKY_TRIES:-3}"
+  ! cut -f1 "$flaky_tsv" 2> /dev/null | grep -qxF "$(flaky_key "$item")" || tries="${OA_AFTER_FLAKY_TRIES:-3}"
   for (( t = 1; t <= tries; t++ )); do
     check "$head" "$dir/c$t-${head:0:10}" "$@"
     case $? in 0) echo flaky; return 0 ;; 97) echo infra; return 0 ;; esac
@@ -477,13 +589,15 @@ run_head() {
   local base="$ref"
   if [[ "$kind" == full ]]; then base="$green"; known=""; [[ -z "$full_green" ]] || base="$full_green"; fi
   # The jobs.
-  local jobs=() i changed=""
+  local jobs=() i changed="" prod
+  # Production's commit, for Everglade II's comparison ("" leaves it out).
+  prod="$(production)"
   if [[ "$kind" == fast ]]; then
     changed="$(git diff --name-only "$ref" "$head")"
     if [[ -n "$changed" ]] && grep -qvE '(\.md$|^docs/)' <<< "$changed"; then
       for (( i = 1; i <= fast_parts; i++ )); do jobs+=("since $ref $i/$fast_parts"); done
     fi
-    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref" "room-since $ref")
+    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref" "room-since $ref${prod:+ $prod}")
     # The last full run's failures, each as its own check.
     if [[ -n "$known" ]]; then
       local item a j
@@ -496,7 +610,7 @@ run_head() {
   else
     for (( i = 1; i <= parts; i++ )); do jobs+=("suites $i/$parts"); done
     for (( i = 1; i <= module_parts; i++ )); do jobs+=("modules $i/$module_parts"); done
-    jobs+=("tools")
+    jobs+=("tools${prod:+ $prod}")
   fi
   local compiler=0
   case "$compiler_mode" in
@@ -545,6 +659,18 @@ run_head() {
          else failed+=("job ${names[$k]}|${names[$k]}"); fi ;;
     esac
   done
+  # The allowlist counts (#13266), here with git alone: against main-green (with none, what the
+  # run compares against). A raised count is a failure whose culprit is already known.
+  local cbase="${green:-$ref}"
+  : > "$dir/count-culprits"
+  cn_show "$head" | awk -v c="${head:0:10}" -v t="$now" '{ printf "%s\t%s\tcount\t%s\t%s\t-\n", c, t, $1, $2 }' >> "$history"
+  if [[ -n "$cbase" && "$cbase" != "$head" ]]; then
+    cn_check "$cbase" "$head" > "$dir/count-culprits" 2> /dev/null
+    while read -r _ x c _; do
+      [[ -n "$x" ]] || continue
+      failed+=("count $x|counts")
+    done < "$dir/count-culprits"
+  fi
   # Entries this run shows fixed: their check ran and passed. A fast run runs
   # every check an entry names, since the entry's culprit changed its inputs
   # after main-green; the compiler's units run only when its sources changed.
@@ -554,6 +680,8 @@ run_head() {
   while IFS='|' read -r id chk issue; do
     [[ -n "$id" ]] && (( infra == 0 )) || continue   # an unfinished job may be its check
     [[ "$chk" != compiler\ * ]] || (( compiler == 1 )) || { [[ -n "$known" ]] && grep -qxF "$chk" "$known"; } || continue
+    # Everglade II's entries are judged only by a run that compared with production.
+    [[ "$chk" != e2\ * ]] || [[ -n "$prod" ]] || continue
     local still=0
     for x in ${failed[@]+"${failed[@]}"}; do [[ "${x%%|*}" == "$chk" ]] && still=1; done
     (( still == 1 )) || printf '%s\t%s\t%s\n' "$id" "$chk" "$issue" >> "$dir/fixed.tsv"
@@ -621,22 +749,36 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
     if jq -e --arg c "$item" '.[] | select(.status == "open" and .check == $c)' "$pl_red" > /dev/null; then
       pl_say "after: $item is already on the red list"; owned=1; continue
     fi
-    if (( n < bisect_checks )); then
+    if [[ "$item" == count\ * ]]; then
+      # A raised count: its culprit is the commit that raised it (counts.sh), no bisect.
+      awk -v x="${item#count }" '$2 == x { print $3; exit }' "$dir/count-culprits" > "$dir/bisect-$n.culprit"
+      bpids+=(0); bitems+=("$item"); n=$((n + 1))
+    elif (( n < bisect_checks )); then
       args="$(args_for "$item" "$job")"
       # shellcheck disable=SC2086
       ( c="$(confirm "$dir/bisect-$n" "$head" "$item" $args)"
+        # Worse than production at main-green too: it was already there (it shipped, or will), so
+        # it is reported, not red, and no commit of this run is blamed for it.
+        if [[ "$c" == red && "$item" == e2\ * ]]; then
+          check "$base" "$dir/bisect-$n/base-${base:0:10}" $args
+          case $? in 1) c=prior ;; 97) c=infra ;; esac
+        fi
         [[ "$c" != red ]] || c="$(bisect "$dir/bisect-$n" "$base" "$head" $args)"
         echo "$c" > "$dir/bisect-$n.culprit" ) & bpids+=($!); bitems+=("$item"); n=$((n + 1))
     else rest+=("$item"); fi
   done
   (( ${#rest[@]} == 0 )) || pl_say "after: left for the next run (OA_BISECT_CHECKS=$bisect_checks): ${rest[*]}"
+  local counted=0
   for k in "${!bpids[@]}"; do
-    wait "${bpids[$k]}"
+    [[ "${bpids[$k]}" == 0 ]] || wait "${bpids[$k]}"
     item="${bitems[$k]}"
     local culprit; culprit="$(cat "$dir/bisect-$k.culprit")"
     case "$culprit" in
       flaky) pl_say "after: $item failed at ${head:0:10} and passed when run again: flaky"
-             printf '%s\t%s\n' "${head:0:10}" "$item" >> "$results/flaky.txt"; flaky_n=$((flaky_n + 1)); continue ;;
+             flaky_add "$head" "$item"; flaky_n=$((flaky_n + 1)); continue ;;
+      prior) pl_say "after: $item: worse than production at ${base:0:10} too, so no commit of this run caused it; reported, not red"
+             printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M')" "${head:0:10}" "${base:0:10}" "$item" >> "$results/e2-reports.tsv"
+             flaky_n=$((flaky_n + 1)); continue ;;
       infra) pl_say "after: the hosts could not finish the bisect of $item"; infra_b=$((infra_b + 1)); continue ;;
       "") pl_say "after: the bisect of $item found no culprit after ${base:0:10}"
           continue ;;
@@ -658,7 +800,8 @@ Fixing it comes before new work. If it still fails 30 minutes from now, the inte
       [[ "$r" == "$issue" ]] || pl_issue_comment "$r" "The after-landing check \`$item\` fails on \`$pl_main\` since ${culprit:0:10} (\"$subject\"), by agent \`$agent\`${issue:+: #$issue}. If it still fails 30 minutes from now, the integrator queues a revert of ${culprit:0:10}; a fix on \`$pl_main\` before then means nothing is reverted. Run the check alone with \`coax/remote/remote.sh run -- $([[ "$(args_for "$item" "$job")" == visuals ]] && echo "coax/web/check-visuals.sh apps/openagents-web" || echo "coax/remote/check.sh $(args_for "$item" "$job")")\`."
     done
     pl_say "after: $item: culprit ${culprit:0:10} by $agent${issue:+ (#$issue)}"
-    found=$((found + 1))
+    # A count's baseline is main-green, not the last full green run: it never moves main-green back.
+    if [[ "$item" == count\ * ]]; then counted=$((counted + 1)); else found=$((found + 1)); fi
   done
   # Every failure passed when run again on H: H is green.
   if (( infra == 0 && infra_b == 0 && owned == 0 && ${#rest[@]} == 0 && flaky_n == ${#failed[@]} )); then
@@ -716,6 +859,12 @@ if (( watch == 1 )); then
   while true; do
     once
     stale_check
+    # main-green's lag, every 5 minutes (state's week of it), and the flaky list's closed issues.
+    if due last-lag 300; then
+      date +%s > "$results/last-lag"
+      printf '%s\t%s\n' "$(date +%s)" "$(lag_now "$(git rev-parse -q --verify "$main_ref")" "$(git rev-parse -q --verify "$green_ref" 2> /dev/null)")" >> "$results/lag.tsv"
+    fi
+    flaky_prune
     # Under launchd (after.sh install): new pipeline scripts on main are taken
     # by stopping here; launchd starts the watcher again on them.
     if [[ -n "${OA_AFTER_SUPERVISED:-}" ]] && ! git diff --quiet HEAD "$main_ref" -- coax/remote 2> /dev/null; then

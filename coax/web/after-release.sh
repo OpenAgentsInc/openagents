@@ -3,7 +3,9 @@
 # Reports on a release that is already live (release.sh starts it in the
 # background). Nothing here stops or rolls back a release. Each report goes to
 # gs://openagentsgemini-openagents-web/releases/STAMP/:
-#   AFTER       the golden walk and Everglade's 60 FPS check
+#   AFTER       the golden walk and Everglade II's 60 FPS check (perf.ts)
+#   PAIR        Everglade II's two-browser pair on production (everglade2-latency: two
+#               headless Chromes in one pair-e2 room; the numbers are the report)
 #   JOURNEY     the maker journey, desktop and phone
 #   REALMS.tsv  every world at dpr 1 and 2 and as a phone (realm-perf.coax, #12649),
 #   REALMS.txt  compared with the last release's
@@ -39,6 +41,13 @@ for size in desktop phone; do
   echo "journey $size: ${step:-did not run}"
 done > "$work/journey"
 put "$work/journey" JOURNEY
+
+# Everglade II's two-browser pair on production (#13266): the browser half of the pair check.
+# The main-green pipeline gates on its protocol half (check.sh e2) on the build hosts, which can't
+# draw Everglade II (docs/verse/green-main-pipeline.md, "Everglade II against production").
+( cd "$tree" && limit 600 coax/web/tool.sh everglade2-latency "$site/worlds/character-creator" --trials 4 ) > "$work/pair" 2>&1 ||
+  echo "after: the Everglade II pair failed" >> "$work/pair"
+put "$work/pair" PAIR
 
 prev_url="$(gcloud storage ls "gs://$prod_bucket/releases/*/REALMS.tsv" 2>/dev/null | sort | tail -1)"
 [[ -z "$prev_url" ]] || gcloud storage cp "$prev_url" "$work/before.tsv" --quiet > /dev/null 2>&1 || true

@@ -15,9 +15,10 @@
 #                                         changed since BASE (after.sh's fast run)
 #   coax/remote/check.sh web BASE         the web modules the change since BASE touched,
 #                                         and the report checks (a fast run)
-#   coax/remote/check.sh room-since BASE  the room build, when the change since BASE
-#                                         reaches it (a fast run; its own job: it takes
-#                                         25 minutes)
+#   coax/remote/check.sh room-since BASE [PROD]
+#                                         the room build, when the change since BASE
+#                                         reaches it (a fast run; its own job), and with
+#                                         PROD Everglade II's pair against production (e2)
 #   coax/remote/check.sh suites I/N       the I-th of N parts of every suite
 #   coax/remote/check.sh only PATH,PATH   these suites (a bisect)
 #   coax/remote/check.sh compiler I/N     the I-th of N parts of coax/tests/run.sh
@@ -26,13 +27,16 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, test-remote.sh, everglade-parity, wire-check, layer-check, the pre-push replay, the committed
+#   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, everglade-parity, wire-check, layer-check, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
 #   coax/remote/check.sh visuals          check-visuals alone (the web build's first stop:
 #                                         a page or the host building visible UI)
-#   coax/remote/check.sh room             the room build
-#   coax/remote/check.sh tools            reports and room
+#   coax/remote/check.sh room [PROD]      the room build (and with PROD, e2 PROD)
+#   coax/remote/check.sh tools [PROD]     reports and room
+#   coax/remote/check.sh e2 PROD          the room build and Everglade II's pair: this commit
+#                                         against production's commit PROD (#13266)
+#   coax/remote/check.sh counts BASE      no allowlist count raised since BASE (coax/remote/counts.sh)
 #
 # It writes build/pipeline/: MODE.log (the output), status, failed (one line
 # per failing suite or step), limits.txt (each compile-time limit note:
@@ -205,6 +209,7 @@ changed_since() {   # the files changed since $arg, in $out/changed
 reports() {
   step tools-check coax/web/tool.sh tools-check || status=1
   step remote-cleanup coax/remote/test-remote.sh || status=1
+  step after-gates coax/remote/test-after.sh || status=1
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   step wire-check coax/web/tool.sh wire-check || status=1
   step layer-check coax/web/tool.sh layer-check || status=1
@@ -225,8 +230,106 @@ generated() {
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.
 cards() { step realm-cards bun coax/web/og.ts --cards apps/openagents-web || status=1; }
-# and the WebTransport stack's check (#13175): wt-echo against a headless Chrome, where there is one
-room() { step room-build coax/web/room/build.sh || status=1; step room-webtransport coax/web/room/wt-check.sh 9441 || status=1; }
+# and the WebTransport stack's check (#13175): wt-echo against a headless Chrome, where there is one;
+# with PROD, Everglade II's pair against production's (e2_gate)
+room() {
+  step room-build coax/web/room/build.sh || { status=1; return; }
+  step room-webtransport coax/web/room/wt-check.sh 9441 || status=1
+  [[ -z "${1:-}" ]] || e2_gate "$1" || status=1
+}
+# Everglade II against production (#13266, docs/verse/green-main-pipeline.md "Everglade II against
+# production"): two bots (load.coax everglade2: the real socket protocol, a hello, inputs at 30 Hz, a
+# cast every 5 s, pings) in one Everglade II room of a local room server, for OA_E2_SECONDS (10),
+# OA_E2_ROUNDS (3) times on this commit's room and production's commit PROD's, in turn on this host.
+# Production's room and client are built once per host in ~/oa-e2/PROD from its own tree. Each side's
+# medians; this commit is worse than production when:
+#   it fails the load's own checks in most rounds and production holds in most (both failing: a report)
+#   the room's tick p95 is over production's by more than OA_E2_TICK_US (300 µs) and half of it
+#   the input-to-ACK p95 is over production's by more than OA_E2_ACK_MS (25 ms)
+#   the bytes a player hears a second are over production's by more than OA_E2_BYTES_PCT (25%)
+# The margins come from the noise measured on 2026-11-11 (the doc). Each failing measure is a line
+# "e2 NAME" in failed; e2.tsv has every round's numbers.
+e2_gate() {   # prod
+  local prod="$1" w="$out/e2" pt key="local-development-room-ticket-key-not-a-secret"
+  local rounds="${OA_E2_ROUNDS:-3}" secs="${OA_E2_SECONDS:-10}" players="${OA_E2_PLAYERS:-2}" r side t0
+  mkdir -p "$w"; t0=$(date +%s)
+  echo "== e2-pair against production ${prod:0:10}" >> "$log"
+  git rev-parse -q --verify "$prod^{commit}" > /dev/null 2>&1 || git -C "$HOME/oa" fetch -q origin main 2> /dev/null
+  git rev-parse -q --verify "$prod^{commit}" > /dev/null 2>&1 || { echo "e2-pair: production's commit $prod is not here; not judged" >> "$log"; return 0; }
+  [[ -x coax/web/room/bin/room ]] || { echo "e2 room" >> "$out/failed"; return 1; }
+  pt="$HOME/oa-e2/${prod:0:12}"
+  # Production's room, its client and its compiler, once a host (the clone's lock: one checkout at a time).
+  (
+    flock 9
+    [[ -x "$pt/room" ]] && exit 0
+    rm -rf "$pt"; mkdir -p "$HOME/oa-e2"
+    git -C "$HOME/oa" worktree prune 2> /dev/null
+    flock "$HOME/oa/.oa-remote.lock" git -C "$HOME/oa" worktree add -q --detach -f "$pt/tree" "$prod" || exit 1
+    # its compiler in the host's release toolchain, as host-job.sh builds a slot's
+    local tc=()
+    command -v nix > /dev/null && tc=(nix shell nixpkgs#pkgsStatic.stdenv.cc nixpkgs#python3 nixpkgs#gnumake --command
+      env CC="$(uname -m)-unknown-linux-musl-gcc" CXX="$(uname -m)-unknown-linux-musl-g++" COAX_LDFLAGS=-static)
+    (cd "$pt/tree" && ${tc[@]+"${tc[@]}"} coax/build.sh > "$pt/compiler.log" 2>&1) || exit 1
+    (cd "$pt/tree" && coax/web/room/build.sh "$pt/room.new" > "$pt/build.log" 2>&1) || exit 1
+    mv "$pt/room.new" "$pt/room"
+    # The two newest productions stay.
+    local old
+    for old in $(ls -td "$HOME"/oa-e2/*/ 2> /dev/null | tail -n +3); do
+      git -C "$HOME/oa" worktree remove --force "$old/tree" 2> /dev/null; rm -rf "$old"
+    done
+  ) 9> "$HOME/oa-e2.lock" >> "$log" 2>&1 || { echo "e2-pair: production's room did not build on this host; not judged" >> "$log"; return 0; }
+  e2_one() {   # side room tree round: one load run on its own port; its numbers on one line of e2.tsv
+    local side="$1" bin="$2" tree="$3" r="$4" port pid n
+    # a port nothing answers on (another slot's room may be on one)
+    for n in 1 2 3 4 5 6 7 8; do port=$(( 20000 + RANDOM % 20000 )); curl -s -m 1 -o /dev/null "http://127.0.0.1:$port/" 2> /dev/null || break; done
+    OA_ROOM_TICKET_KEY="$key" "$bin" --port "$port" --dev "$tree/coax/web/room/dev" > "$w/$side-$r.room.log" 2>&1 & pid=$!
+    for n in $(seq 1 100); do curl -fs "http://127.0.0.1:$port/health" > /dev/null 2>&1 && break; read -r -t 0.1 < /dev/zero || true; done
+    (cd "$tree" && OA_ROOM_TICKET_KEY="$key" coax/web/tool.sh coax/web/room/load.coax everglade2 "ws://localhost:$port" "$players" "$secs") > "$w/$side-$r.load" 2>&1
+    curl -fs "http://127.0.0.1:$port/health" > "$w/$side-$r.health" 2>&1
+    kill "$pid" 2> /dev/null; wait "$pid" 2> /dev/null
+    # side round holds ack_p95 bytes tick_p95
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$side" "$r" "$(tail -1 "$w/$side-$r.load" | grep -qx holds && echo 1 || echo 0)" \
+      "$(grep -o '"ack_p95_ms":-\{0,1\}[0-9]*' "$w/$side-$r.load" | head -1 | cut -d: -f2)" \
+      "$(grep -o '"bytes_per_s":[0-9]*' "$w/$side-$r.load" | head -1 | cut -d: -f2)" \
+      "$(sed -nE 's/.*everglade tick p50 [0-9]+ us at the 95th ([0-9]+) us.*/\1/p' "$w/$side-$r.health" | head -1)" >> "$w/e2.tsv"
+  }
+  : > "$w/e2.tsv"
+  for (( r = 1; r <= rounds; r++ )); do
+    e2_one head coax/web/room/bin/room "$root" "$r"
+    e2_one prod "$pt/room" "$pt/tree" "$r"
+  done
+  cp "$w/e2.tsv" "$out/e2.tsv"
+  sed 's/^/  /' "$w/e2.tsv" >> "$log"
+  awk -F'\t' -v tick="${OA_E2_TICK_US:-300}" -v ack="${OA_E2_ACK_MS:-25}" -v pct="${OA_E2_BYTES_PCT:-25}" -v prod="${prod:0:10}" '
+    function med(s, k,   n, a, i, j, t) { n = split(s, a, " "); for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (a[j] + 0 < a[i] + 0) { t = a[i]; a[i] = a[j]; a[j] = t }; return n ? a[int((n + 1) / 2)] + 0 : -1 }
+    { holds[$1] += $3; runs[$1]++; if ($4 != "" && $4 >= 0) a[$1] = a[$1] " " $4; if ($5 != "") b[$1] = b[$1] " " $5; if ($6 != "") t[$1] = t[$1] " " $6 }
+    END {
+      hh = holds["head"] * 2 > runs["head"]; ph = holds["prod"] * 2 > runs["prod"]
+      printf "e2 holds: this commit %d of %d rounds, production %s %d of %d\n", holds["head"], runs["head"], prod, holds["prod"], runs["prod"] > "/dev/stderr"
+      if (!hh && ph) print "e2 holds"
+      else if (!hh) print "e2-pair: both fail the load'"'"'s checks: a report, not a regression" > "/dev/stderr"
+      ht = med(t["head"]); pt = med(t["prod"]); m = tick; if (pt / 2 > m) m = pt / 2
+      printf "e2 tick-p95: this commit %d us, production %d us (margin %d)\n", ht, pt, m > "/dev/stderr"
+      if (ht >= 0 && pt >= 0 && ht > pt + m) print "e2 tick-p95"
+      ha = med(a["head"]); pa = med(a["prod"])
+      printf "e2 ack-p95: this commit %d ms, production %d ms (margin %d)\n", ha, pa, ack > "/dev/stderr"
+      if (ha >= 0 && pa >= 0 && ha > pa + ack) print "e2 ack-p95"
+      hb = med(b["head"]); pb = med(b["prod"])
+      printf "e2 bytes: this commit %d B/s, production %d B/s (margin %d%%)\n", hb, pb, pct > "/dev/stderr"
+      if (hb >= 0 && pb > 0 && hb * 100 > pb * (100 + pct)) print "e2 bytes"
+    }' "$w/e2.tsv" > "$w/worse" 2>> "$log"
+  echo "== e2-pair: $( [[ -s "$w/worse" ]] && echo "WORSE than production: $(paste -sd, "$w/worse")" || echo "not worse than production"), $(( $(date +%s) - t0 )) s" >> "$log"
+  [[ ! -s "$w/worse" ]] || { cat "$w/worse" >> "$out/failed"; return 1; }
+}
+# The allowlist counts (coax/remote/counts.sh, #13266): none that a commit since BASE raised. Each
+# raised count is a line "count NAME" in failed.
+counts_since() {
+  echo "== counts since ${1:0:10}" >> "$log"
+  local raised; raised="$(coax/remote/counts.sh check "$1" HEAD 2>> "$log")"
+  coax/remote/counts.sh show HEAD | sed 's/^/  /' >> "$log"
+  [[ -n "$raised" ]] || return 0
+  echo "$raised" >> "$log"; awk '{ print "count " $2 }' <<< "$raised" >> "$out/failed"; status=1
+}
 # The web build for a change: all of it, its touched modules, or nothing.
 web_since() {
   if grep -Eq "$web_whole" "$out/changed"; then
@@ -241,7 +344,11 @@ web_since() {
 # The report checks for a change: a tool file or a zone's source can be any
 # file but a document; the shaders follow the web build's inputs.
 reports_since() {
-  if grep -q '^coax/remote/' "$out/changed"; then step remote-cleanup coax/remote/test-remote.sh || status=1; fi
+  if grep -q '^coax/remote/' "$out/changed"; then
+    step remote-cleanup coax/remote/test-remote.sh || status=1
+    # after.sh's comparing gates in a scratch repository (#13266)
+    step after-gates coax/remote/test-after.sh || status=1
+  fi
   if grep -qv '\.md$' "$out/changed"; then
     step tools-check coax/web/tool.sh tools-check || status=1
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
@@ -290,8 +397,13 @@ run() {   # mode arg: one check
       cat "$out"/module-*.log >> "$log" 2> /dev/null ;;
     reports) reports ;;
     visuals) visuals ;;
-    room) room ;;
-    tools) reports; room ;;
+    room) room "$arg" ;;
+    tools) reports; room "$arg" ;;
+    e2) [[ -n "$arg" ]] || return 2
+        step room-build coax/web/room/build.sh || { status=1; return 0; }
+        e2_gate "$arg" || status=1 ;;
+    counts) [[ -n "$arg" ]] || return 2
+        counts_since "$arg" ;;
     *) return 2 ;;
   esac
   return 0
@@ -316,9 +428,9 @@ case "$mode" in
     reports_since ;;
   room-since)
     changed_since
-    if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room
+    if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,35p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,39p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 # tool.sh suites refused the compiler: the host's compiler doesn't match this

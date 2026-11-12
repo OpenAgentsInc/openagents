@@ -11,7 +11,8 @@ that wrote it, and reverts the commit if it still fails 30 minutes later.
 To see the state of `main`:
 
 ```sh
-coax/remote/after.sh state    # the watcher, main, main-green, the last runs, the red list
+coax/remote/after.sh state    # the watcher, main, main-green and its lag, the allowlist counts,
+                              # Everglade II against production, the last runs, the red list, the flaky list
 ```
 
 The first line says whether the watcher is running. When it is not, no head
@@ -270,7 +271,9 @@ and runs only what the commits between them can have changed:
   `proto/registry.json`; the allowlist is compared with `G`'s copy, #13236)
   and the committed shaders against their Coax;
 - the room build, when the change reaches one of its units, as its own job
-  (it takes about 25 minutes);
+  (one to two minutes with its cache), and in it Everglade II against
+  production ("The comparing gates", below);
+- the allowlist counts against `main-green`, with `git` alone on the watcher;
 - `coax/tests/run.sh` in eight parts, when compiler sources changed.
 
 Every other check passed at `G` and reads no file that changed, so it passes
@@ -299,7 +302,8 @@ and agents fetch them with `coax/remote/pages.sh`
 turns this off.
 
 Results go under `releases/after/<commit>/`. The per-commit history of
-compile-time totals and wasm sizes shows which commit made a unit grow.
+compile-time totals, wasm sizes and allowlist counts (`after.sh history`)
+shows which commit made a unit grow.
 
 A job whose host stops under it (the hosts are spot machines) runs again, up
 to two more times, before the run counts as unfinished.
@@ -330,8 +334,10 @@ round, and the other commits still narrow the range. It then:
    session working on that issue hears of the failure before any revert.
 
 A check that fails at the head and passes when run again is flaky. It is
-recorded in `releases/after/flaky.txt` and has no culprit. A check that is
-already in that file gets three runs on the head, and one pass is enough.
+recorded on the flaky list and has no culprit. A check that is already on the
+list gets three runs on the head, and one pass is enough. Each entry has an
+owner and an issue, and counts as a failure after seven days ("Flaky checks",
+below).
 
 Each later run that still sees the failure stamps the red-list entry. When a
 run sees it 30 minutes or more after the entry opened, the integrator lands a
@@ -341,6 +347,161 @@ revert, so a wrong culprit is never reverted. That check must also still fail
 on the head the revert lands on: when a fix landed first, the revert is
 dropped and the entry closes. The revert's message says which
 check failed, and the agent gets a message that names the revert.
+
+### The comparing gates
+
+Issue [#13266](https://github.com/OpenAgentsInc/openagents/issues/13266).
+Two gates judge a head by comparing it, not by pass or fail alone: the
+allowlist counts against `main-green`, and Everglade II against production.
+`after.sh state` prints both, the flaky list, and `main-green`'s lag.
+
+`coax/remote/test-after.sh` checks them in a scratch repository with a
+stand-in for `check.sh` (no host, no network, no GitHub, about 9 seconds):
+an ordinary head stays green; a head that raises `tools-port` is red and the
+red list names the commit; taking the line out again is green and closes
+the entry; a raise with a `Rebaseline:` trailer is green; a commit worse than
+production in Everglade II, under two later commits, is red and the bisect
+names it; a `main-green` as bad as the head against production is reported,
+not red; a suite that fails once is flaky with an owned entry, which fails
+`after.sh flaky` once it is eight days old. `check.sh reports`, and any fast
+run that changes `coax/remote/`, runs it.
+
+#### The allowlist counts
+
+Five checks pass while an allowlist excuses what they would refuse. The
+lists are meant to shrink, so their sizes are counted on every run
+(`coax/remote/counts.sh show REV`, with `git show` alone, no host):
+
+| Count | What it counts |
+| --- | --- |
+| `parity-known`, `parity-gaps` | `EF_KNOWN` and `EF_GAPS` in `everglade/features.coax` (`everglade-parity`) |
+| `components-to-move` | `CC_TO_MOVE` in `coax/web/components-check.coax` |
+| `wire-allowlist` | the lines of `proto/wire-allowlist.txt` (`wire-check`) |
+| `tools-port` | the lines of `coax/tools-port.txt` (`tools-check`) |
+| `layer-aethyr-up`, `layer-everglade-up`, `layer-tests` | the lines of `aethyr/layer-allowlist.txt` per rule (`layer-check`) |
+
+As of 2026-11-11 22:00 on `main`: 117, 4, 22, 143, 1,238, 57, 7 and 126.
+
+The rule (`counts.sh check BASE REV`). Walking the commits from `main-green`
+to the head, a count's baseline starts at its value at `main-green` and
+falls with it: it is the lowest value since. A head whose count is above the
+baseline is red, and the culprit is the first commit after the lowest point
+that went above it. The culprit is known from `git` alone, so a count needs
+no bisect; it goes on the red list as `count NAME`, with an issue and a
+message to its agent, and is reverted after 30 minutes like any failure (the
+revert's check is `check.sh counts BASE`). A count that falls lowers the
+baseline, and once `main-green` moves past it, so does the next run's start.
+
+**A legitimate rise says why.** `tools-port` went from 755 to 1,243 lines on
+2026-11-02 in `45bdff5358`: `tools-check` began to name every tracked tool
+with no `Firm reason:` line, and the 488 it found were already in the tree.
+That was wider coverage, not new tools, and the list has only shrunk since
+(1,238 now). Such a commit carries a trailer in its message:
+
+```
+Rebaseline: tools-port: tools-check now reads the tools under lib/, which were all here before
+```
+
+The trailer names the count, and the reason after the second colon must be
+at least ten characters. The commit's own value becomes the baseline. Adding
+one allowlist line that `wire-check` or `layer-check` accept (with its reason
+and issue) also raises a count, so it needs the same trailer; otherwise the
+head is red. On `main` from 2026-11-11 19:26 the wire allowlist went 141, 142,
+143 with no trailer (`6e25356a99`, `5856a19006`): under this rule each would
+have been red until it said why.
+
+#### Everglade II against production
+
+The live game is Everglade II (`/worlds/everglade2`). The release's rule, a
+check that fails on staging and passes on production stops it, applies here
+one step earlier: a head that is worse than production beyond the check's
+noise does not move `main-green`, and the red list names the commit. When the
+head and production fail the same way, it is reported, not red.
+
+The gate is `check.sh e2 PROD`. It runs inside the room job (`room-since BASE
+PROD` in a fast run, when the change reaches the room; `tools PROD` in a full
+run), which builds the head's room server anyway, and adds about 80 seconds
+to it. On the host it builds production's room server and its client from
+production's own tree, once a host, in `~/oa-e2/PROD` (60 to 70 s the first
+time, nothing after). Then it plays the room's protocol pair on each, in turn:
+two bots (`load.coax everglade2`, the real socket protocol: a hello, inputs at
+30 Hz, a cast every 5 s, pings) in one Everglade II room of a local room
+server, 10 s, three rounds a side. A side's numbers are its medians. The head
+is worse than production when:
+
+| Measure | Worse when | Margin from |
+| --- | --- | --- |
+| The load's own checks (open, seated, seen, state at 28 Hz or more, ACKs, casts heard) | the head fails in most rounds and production holds in most | correctness |
+| The room's tick at the 95th percentile (`/health`, 100 µs steps) | over production's by more than 300 µs and half of production's | 22 rounds: 300 to 400 µs |
+| Input to ACK at the 95th percentile | over production's by more than 25 ms | 34 rounds: 11 to 36 ms; a side's median of 3 within 13 ms of the other's |
+| The room's bytes a player hears a second | over production's by more than 25% | 33 rounds: 3,165 to 3,359 B/s; medians within 1.5% |
+
+Production's commit is the newest release that passed (`PASSED` in the
+production bucket, as `release.sh` reads it), looked up at most every 10
+minutes into `releases/after/production`. `OA_AFTER_PRODUCTION` names another;
+`OA_AFTER_E2=0` turns the gate off. The settings are `OA_E2_ROUNDS` (3),
+`OA_E2_SECONDS` (10), `OA_E2_PLAYERS` (2), `OA_E2_TICK_US`, `OA_E2_ACK_MS` and
+`OA_E2_BYTES_PCT`.
+
+A failing measure is a line `e2 NAME` (`e2 holds`, `e2 tick-p95`, `e2
+ack-p95`, `e2 bytes`). It is run again on the head first, as every failure is,
+so a noisy round alone is flaky, not red. Then `main-green` itself is checked:
+if it is also worse than production, no commit of this run caused it, and the
+failure is written to `releases/after/e2-reports.tsv` and the log, not the red
+list. Otherwise the bisect finds the commit.
+
+Noise, measured 2026-11-11 on `oa-build-1`, `-2` and `-11` (34 rounds,
+production `4dd7b49d65` against heads a few commits later, so both sides ran
+nearly the same server): the numbers in the table above. One round of the 34
+failed the load's checks (one of the two bots was not seated in time), which
+is why `holds` goes by most rounds and a failure is run again before it
+counts. A gate takes 70 to 150 s on a host with production's room built, and
+about 60 s more the first time on a host.
+
+The seeded regression: 1.5 ms of busy work at the start of each Everglade
+tick in `room-host.c` (never committed). Its tick p95 was 1,800 µs in all
+three rounds against production's 300, and `check.sh e2` failed with `e2
+tick-p95`; the ACK and bytes stayed inside their margins (30 against 17 ms,
+3,297 against 3,290 B/s). The same check on the head without the seed passed
+(tick 300 against 300 µs, ACK 18 against 21 ms, bytes 3,246 against 3,287).
+
+**What stays a report, and why.** The 60 FPS check (`coax/web/perf.ts`, now
+four places down Everglade II's path, `--v1` for Everglade's old scenes) and
+the two-browser pair (`everglade2-latency`) need a page that draws. The build
+hosts have no GPU. With Chromium from nixpkgs on a host, WebGPU gives a
+SwiftShader adapter, but Everglade II never drew its first scene: `perf.ts`
+failed three times out of three at its 30-second wait, and a probe waited
+120 s twice without a scene. The frames it timed meanwhile were 16.7 ms each,
+the headless frame clock with nothing drawn, so a frame time from a host
+measures nothing. On the Mac a browser run would take one of its two heavy
+browser loops on every head. So both run after each release, on production:
+`after-release.sh` writes `AFTER` (goldens and `perf.ts`) and `PAIR`
+(`everglade2-latency`, two headless Chromes in a `pair-e2` room) to the
+release's folder in the bucket. A GPU host (`g2-standard-8` spot, about $0.30
+an hour) could gate on frames; that is not built.
+
+#### Flaky checks
+
+The flaky list is `releases/after/flaky.tsv` on the watcher's machine, as the
+red list is: one line a check, `KEY FIRST-HEAD SINCE LAST TIMES OWNER ISSUE`.
+The key is the check with its base commit taken out, so the same suite part
+is one entry from run to run. When a check first turns out flaky, the entry
+gets its owner, the agent of the last commit that changed the check's file (a
+suite's path, a compiler unit's), or `pipeline` when there is none, and one
+GitHub issue, "Flaky check: KEY". The owner gets a message. An entry older
+than seven days (`OA_AFTER_FLAKY_DAYS`) counts as a failure: `after.sh state`
+and `after.sh flaky` print it as FAILING, and `after.sh flaky` exits 1. An
+entry leaves the list when its issue is closed (the watcher looks once an
+hour). The list before this, `flaky.txt` (head and check, no owner), is kept as
+`flaky-before-13266.txt`.
+
+#### `main-green`'s lag
+
+The watcher writes the lag (the age of the oldest commit on `main` after
+`main-green`) to `releases/after/lag.tsv` every five minutes. `after.sh state`
+prints it now and, for the last seven days, the worst and the share of samples
+under 30 minutes. That line is where the week-long observation of #13255
+(under 30 minutes behind for a week) is read.
 
 ### 6. Releases ship `main-green`
 
@@ -386,8 +547,10 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | --- | --- |
 | Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
-| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room`, `tools`) |
-| The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`) |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`) |
+| The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`, `flaky`) |
+| The allowlist counts (#13266) | `coax/remote/counts.sh` (`show [REV]`, `check BASE [REV]`) |
+| The comparing gates' own check (#13266) | `coax/remote/test-after.sh` |
 | The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
 | Releases from `main-green` | `coax/web/release.sh` |
 | The pre-push check (#13265) | `coax/remote/hooks/pre-push`, `coax/web/prepush.coax` |
@@ -571,8 +734,8 @@ the room build and the compiler's units took 41 minutes on shared hosts and
   it or a file that includes it. Any other changed file under the trees the
   web build reads builds every module.
 - A failure that passes when run again on the same head is flaky: it is
-  recorded in `releases/after/flaky.txt`, and if every failure of a run was
-  flaky, `main-green` moves.
+  recorded on the flaky list (`releases/after/flaky.tsv`, with an owner and an
+  issue), and if every failure of a run was flaky, `main-green` moves.
 - Before the first green run there is no `main-green` to bisect against.
   Each failure of a full run goes on the red list owned by nobody, under one
   issue, so later runs don't bisect it, and it is never reverted. A fast run

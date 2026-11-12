@@ -1,11 +1,12 @@
-// Everglade's frame rate in headless Chrome: the check that keeps it at 60 FPS.
+// Everglade II's frame rate in headless Chrome: the check that keeps the live game at 60 FPS
+// (Everglade II, /worlds/everglade2, since #13266; Everglade v1's scenes are --v1).
 // Every other realm in realms.json is timed by coax/web/realm-perf.coax (#12649), a report after each release.
-//   bun coax/web/perf.ts [BASE_URL] [--dpr 1|2] [--seconds S] [--json] [--home-only]
+//   bun coax/web/perf.ts [BASE_URL] [--v1] [--dpr 1|2] [--seconds S] [--json] [--home-only]
 // BASE_URL defaults to https://staging.openagents.com. For each device pixel
 // ratio (1 and 2, at 1440x900, two Chromes side by side) it opens
-// /realms/everglade at four places and times of day (the road at noon, the
-// commons at dusk, the river at night, the market at dusk), waits for the
-// scene to draw and settle, then walks for about S seconds (default 13),
+// /worlds/everglade2 at four places down its path (the glade, 150 m, 300 m and
+// the clearing at 460 m; v1 with --v1: the road at noon, the commons at dusk,
+// the river at night, the market at dusk), waits for the scene to draw and settle, then walks for about S seconds (default 13),
 // casting a meteor every 6.7 s, and times every requestAnimationFrame. A case
 // fails when its 95th percentile frame is over 17.5 ms or any frame is over
 // 33 ms.
@@ -42,7 +43,13 @@ const dprs = flag("--dpr") ? [Number(flag("--dpr"))] : [1, 2]
 const asJson = args.includes("--json")
 const homeOnly = args.includes("--home-only")   // only the homepage's first seconds
 const W = 1440, H = 900, P95_MAX = 17.5, FRAME_MAX = 33, ATTEMPTS = 3, WAITS = 6
-const SCENES = [
+const v1 = args.includes("--v1")
+const SCENES = !v1 ? [
+  { name: "glade", path: "/worlds/everglade2" },
+  { name: "path, 150 m", path: "/worlds/everglade2?at=150" },
+  { name: "path, 300 m", path: "/worlds/everglade2?at=300" },
+  { name: "clearing", path: "/worlds/everglade2?at=460" },
+] : [
   { name: "road, noon", path: "/realms/everglade?clock=0.5#road" },
   { name: "commons, dusk", path: "/realms/everglade?clock=0.75#commons" },
   { name: "river, night", path: "/realms/everglade?clock=0#river" },
@@ -79,11 +86,11 @@ const WALK = (n: number) => `(async () => {
   stop = true; await sleep(20);
   return d;
 })()`
-// The control: production's Everglade (PERF_CONTROL names another page), standing at the market in
+// The control: production's Everglade II (v1's market with --v1; PERF_CONTROL names another page), standing in
 // its own Chrome while the page under test walks. A trivial WebGPU page holds 60 FPS through a model
 // deciding on the GPU when Everglade doesn't (it waits behind the model at each of its nine passes),
 // so the control is the same kind of page.
-const CONTROL = process.env.PERF_CONTROL ?? "https://openagents.com/worlds/everglade?clock=0.5#market"
+const CONTROL = process.env.PERF_CONTROL ?? (v1 ? "https://openagents.com/worlds/everglade?clock=0.5#market" : "https://openagents.com/worlds/everglade2?at=300")
 const TIMES = (ms: number) => `new Promise((ok) => { const d = []; let last = 0; const t0 = performance.now(); const f = (t) => { if (last) d.push(t - last); last = t; if (t - t0 < ${ms}) requestAnimationFrame(f); else ok(d); }; requestAnimationFrame(f); })`
 
 class Browser {
@@ -195,7 +202,7 @@ async function run(dpr: number): Promise<Result[]> {
   return out
 }
 
-if (!asJson) console.log(`perf: ${base}/realms/everglade and the homepage's first ${HOME_MS / 1000} s, ${W}x${H}, dpr ${dprs.join(" and ")}, ${seconds} s a scene, p95 <= ${P95_MAX} ms and every frame <= ${FRAME_MAX} ms`)
+if (!asJson) console.log(`perf: ${base}${v1 ? "/realms/everglade" : "/worlds/everglade2"} and the homepage's first ${HOME_MS / 1000} s, ${W}x${H}, dpr ${dprs.join(" and ")}, ${seconds} s a scene, p95 <= ${P95_MAX} ms and every frame <= ${FRAME_MAX} ms`)
 const controlBrowser = new Browser(1)
 let results: Result[]
 try {

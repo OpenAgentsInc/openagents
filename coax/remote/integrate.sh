@@ -131,9 +131,12 @@ also_for() {   # item
     module\ *) echo "module ${1#module }" ;;
     compiler\ *) echo "unit ${1#compiler }" ;;
     step\ wasm) echo "wasm" ;;
-    step\ tools-check|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
+    step\ tools-check|step\ after-gates|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
     step\ check-visuals) echo "visuals" ;;
+    # a raised allowlist count against main-green, Everglade II against production (#13266)
+    count\ *) echo "counts $(git rev-parse -q --verify "refs/remotes/$pl_remote/$pl_green" 2> /dev/null)" ;;
+    e2\ *) echo "e2 $(cat "$pl_dir/releases/after/production" 2> /dev/null)" ;;
   esac
 }
 # The revert step: a culprit that an after-landing run still saw failing

@@ -263,6 +263,13 @@ tests for what you touched, not everything.
   `main-green` (the newest head that passed the after-landing check), the last
   runs and the red list. When `main-green` is behind and you need a base that
   passes, start from it: `git worktree add ../oa-<topic> origin/main-green`.
+- The allowlist counts (`coax/remote/counts.sh show`: parity known and gaps,
+  components to move, the wire allowlist, `tools-port.txt`, layer-check per
+  rule) only fall: a head that raises one is red and names its commit. A
+  commit that must add a line also says why in a trailer,
+  `Rebaseline: NAME: why`. A head worse than production in Everglade II's
+  room pair (`check.sh e2`) is red too
+  ([the comparing gates](docs/verse/green-main-pipeline.md#the-comparing-gates)).
 - Before you investigate a failure on `main`, check the red list (in that
   output). A failure listed there is already owned. When an entry names your
   commit, fixing it comes before new work: a culprit still failing 30 minutes
