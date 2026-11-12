@@ -24,7 +24,7 @@ RS_DEV_FREE_PRESS :: 8;    // each press refills slots, uses, Focus, Rage and th
 RS_DEV_RATE_WALK :: 16;    // continuous walking is not paid from the turn's feet
 RS_DEV_NAMES :: [5] string.["1.5-second turns", "cooldown recovery", "caster spared by its own areas", "unlimited presses", "unpaid continuous walking"];
 
-rs_world_deviations :: (p: RsWorldProfile) -> int #effects(all) {
+rs_world_deviations :: (p: RsWorldProfile) -> int #effects(reads, writes, traps) {
   d := 0;
   if p.timing.kind == RS_TIME_ACTION { d = d + RS_DEV_BEATS + RS_DEV_RECHARGE; }
   if p.areas.kind == RS_AREA_SPARE_CASTER { d = d + RS_DEV_SPARE_CASTER; }
@@ -32,21 +32,21 @@ rs_world_deviations :: (p: RsWorldProfile) -> int #effects(all) {
   if p.walk == RS_WALK_RATE { d = d + RS_DEV_RATE_WALK; }
   return d;
 }
-rs_world_allowed :: (p: RsWorldProfile, sealed: bool) -> bool #effects(all) {
+rs_world_allowed :: (p: RsWorldProfile, sealed: bool) -> bool #effects(reads, writes, traps) {
   return rs_timing_allowed(p.timing,sealed) && rs_area_allowed(p.areas,sealed)
     && (p.press.kind == RS_PAID_PRESS.kind || p.press.kind == RS_UNLIMITED_PRESS.kind)
     && (p.walk == RS_WALK_PAID || p.walk == RS_WALK_RATE);
 }
 // All or nothing: a refused profile leaves every applied field as it was.
-rs_set_world :: (b: [] RsBattle, p: RsWorldProfile) -> bool #effects(all) {
+rs_set_world :: (b: [] RsBattle, p: RsWorldProfile) -> bool #effects(reads, writes, traps) {
   if !rs_world_allowed(p,b[0].timing_sealed) { return false; }
   b[0].timing = p.timing; b[0].areas = p.areas; b[0].press = p.press; b[0].walk = p.walk;
   return true;
 }
-rs_world_of :: (b: [] RsBattle) -> RsWorldProfile #effects(all) {
+rs_world_of :: (b: [] RsBattle) -> RsWorldProfile #effects(reads, writes, traps) {
   return RsWorldProfile.{timing=b[0].timing, areas=b[0].areas, press=b[0].press, walk=b[0].walk};
 }
-rs_reset_world :: (b: [] RsBattle) #effects(all) {
+rs_reset_world :: (b: [] RsBattle) #effects(reads, writes, traps) {
   rs_reset_timing(b); rs_reset_areas(b); b[0].press = RS_PAID_PRESS; b[0].walk = RS_WALK_PAID;
 }
 
