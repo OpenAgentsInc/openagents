@@ -138,9 +138,10 @@ def verbs(check):
         lines = [json.loads(l) for l in run.stdout.splitlines() if l.startswith("{")]
         kinds = [l["kind"] for l in lines]
         check("run --json exits 0", run.returncode == 0)
+        # attempt (coder.observability.v2) and journal (the worker's private journal, since 410e68f65b) ride beside the log's lines
         check("run --json: session, user, request, tool, result, reply, end",
-              [k for k in kinds if k != "attempt"] == ["session", "user", "request", "tool", "result", "reply", "end"]
-              and kinds.count("attempt") == 2)
+              [k for k in kinds if k not in ("attempt", "journal")] == ["session", "user", "request", "tool", "result", "reply", "end"]
+              and kinds.count("attempt") == 2 and kinds.count("journal") == 1)
         check("run --json: the local model answered", any(l.get("text") == "local-ok" for l in lines) and lines[-1].get("ending") == "finished")
         ls = subprocess.run([coder, "ls", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         rows = json.loads(ls.stdout) if ls.returncode == 0 else []
@@ -574,7 +575,8 @@ def verbs(check):
                 shutil.copy(os.path.join(fx, n), rd)
             r = subprocess.run([coder, "run", "Run `echo replay-check` and then tell me what it printed, in one short sentence.", "--engine", "micro", "--json", "--cwd", rw],
                                cwd=REPO, env=dict(renv, GW_REPLAY=rd), capture_output=True, text=True, timeout=300)
-            return r.returncode, re.sub(r'"(id|cwd)":"[^"]*"|"(ms|started_us)":[0-9]*', "", r.stdout)
+            # the journal line names the worker's journal file, a new one each run
+            return r.returncode, re.sub(r'"(id|cwd)":"[^"]*"|"(ms|started_us)":[0-9]*|"path":"[^"]*\.ajr"', "", r.stdout)
         ra, rb = replay(), replay()
         check("replay: recorded gateway streams run through the loop with no credentials, byte-identical each time",
               ra[0] == 0 and ra == rb and '"text":"It printed replay-check."' in ra[1] and '"label":"Bash(echo replay-check)"' in ra[1])
@@ -680,11 +682,13 @@ def verbs(check):
             ep = subprocess.run([coder, "run", "do it", "--engine", "micro", "--json", "--cwd", ed], cwd=REPO, env=dict(renv, GW_REPLAY=ed), capture_output=True, text=True, timeout=300)
             el = [json.loads(l) for l in ep.stdout.splitlines() if l.startswith("{")]
             endings[name] = (ep.returncode, el[-1].get("ending") if el else "", el[-1].get("text", "") if el else "", [l["text"] for l in el if l["kind"] == "reply"])
-        check("microcoder endings through coder run: asked, bad_replies, no_capacity and idle",
-              endings["asked"] == (0, "finished", "", ["Which file?"])
-              and endings["bad_replies"][:3] == (1, "failed", "The model's replies didn't fit Microcoder's schema three times in a row.")
-              and endings["no_capacity"][:3] == (1, "failed", "No model answered: overloaded")
-              and endings["idle"][:3] == (1, "failed", "The model gave nothing to do and no reply three times in a row."))
+        ends_ok = (endings["asked"] == (0, "finished", "", ["Which file?"])
+                   and endings["bad_replies"][:3] == (1, "failed", "The model's replies didn't fit Microcoder's schema three times in a row.")
+                   and endings["no_capacity"][:3] == (1, "failed", "No model answered: overloaded")
+                   and endings["idle"][:3] == (1, "failed", "The model gave nothing to do and no reply three times in a row."))
+        if not ends_ok:
+            print("     endings: %r" % (endings,))
+        check("microcoder endings through coder run: asked, bad_replies, no_capacity and idle", ends_ok)
         # goals (chapter 14): the check runs after each finished turn; its output is the next turn until it passes
         gw = tempfile.mkdtemp(prefix="coder-goal-")
         gm = subprocess.run([coder, "run", "$ echo working", "--engine", "echo", "--json", "--cwd", gw, "--goal", "test -f c || { touch c; echo c-missing; false; }"],

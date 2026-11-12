@@ -35,7 +35,8 @@
 # OA_AFTER_FAST_PARTS parts), the web modules the change touched and the
 # report checks (check.sh web G), the room build when the change reaches it
 # (check.sh room-since G), the API suite in OA_AFTER_API_PARTS parts when the
-# change reaches it (check.sh api-since G I/N), and coax/tests/run.sh in 8
+# change reaches it (check.sh api-since G I/N), Coder's checks and smoke when it
+# reaches Coder (check.sh coder-since G), and coax/tests/run.sh in 8
 # parts when compiler sources changed. Everything else
 # passed at G and reads no changed file, so it passes at H. A head that changes
 # only documents is green with no job. A head that changes the compiler
@@ -49,7 +50,7 @@
 # every OA_AFTER_GAP seconds after that: every suite in OA_AFTER_PARTS parts, every web module
 # against its budget in OA_AFTER_MODULE_PARTS parts, the report checks and the
 # room build (check.sh tools), the API suite in OA_AFTER_API_PARTS parts
-# (check.sh api I/N), and coax/tests/run.sh in 8 parts when compiler
+# (check.sh api I/N), Coder's checks and smoke (check.sh coder), and coax/tests/run.sh in 8 parts when compiler
 # sources changed since the last full green run (always, when there is none).
 #
 # Green: main-green moves to H, and the red-list entries H fixes close. Then,
@@ -407,6 +408,7 @@ args_for() {   # item job-args...
     job\ *) echo "${item#job }" ;;
     step\ tools-check|step\ after-gates|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
+    step\ coder-checks|step\ coder-smoke) echo "coder" ;;
     step\ check-visuals) echo "visuals" ;;
     e2\ *) echo "e2 $(cat "$results/production" 2> /dev/null)" ;;
     *) echo "$*" ;;   # the whole job again
@@ -607,7 +609,7 @@ run_head() {
     if [[ -n "$changed" ]] && grep -qvE '(\.md$|^docs/)' <<< "$changed"; then
       for (( i = 1; i <= fast_parts; i++ )); do jobs+=("since $ref $i/$fast_parts"); done
     fi
-    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref" "room-since $ref${prod:+ $prod}")
+    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref" "room-since $ref${prod:+ $prod}" "coder-since $ref")
     # The API suite's parts only when the change reaches it (check.sh's api_inputs; it checks again).
     if grep -v '\.md$' <<< "$changed" | grep -Eq '^(coax/web/api/|coax/web/agent/|coax/lib/|coax/platform/|coax/src/|coax/bootstrap/|apps/openagents-web/docs/limits/)'; then
       for (( i = 1; i <= api_parts; i++ )); do jobs+=("api-since $ref $i/$api_parts"); done
@@ -624,7 +626,7 @@ run_head() {
   else
     for (( i = 1; i <= parts; i++ )); do jobs+=("suites $i/$parts"); done
     for (( i = 1; i <= module_parts; i++ )); do jobs+=("modules $i/$module_parts"); done
-    jobs+=("tools${prod:+ $prod}")
+    jobs+=("tools${prod:+ $prod}" "coder")
     for (( i = 1; i <= api_parts; i++ )); do jobs+=("api $i/$api_parts"); done
   fi
   local compiler=0

@@ -547,7 +547,7 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | --- | --- |
 | Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
-| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`) |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `coder-since BASE`, `coder`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`) |
 | The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`, `flaky`) |
 | The allowlist counts (#13266) | `coax/remote/counts.sh` (`show [REV]`, `check BASE [REV]`) |
 | The comparing gates' own check (#13266) | `coax/remote/test-after.sh` |

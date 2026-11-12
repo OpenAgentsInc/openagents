@@ -43,6 +43,10 @@
 #   coax/remote/check.sh e2 PROD          the room build and Everglade II's pair: this commit
 #                                         against production's commit PROD (#13266)
 #   coax/remote/check.sh counts BASE      no allowlist count raised since BASE (coax/remote/counts.sh)
+#   coax/remote/check.sh coder            Coder's own checks (coax test coder/tui/coder.coax) and its
+#                                         offline smoke (coder/tui/smoke.py, about 10 minutes)
+#   coax/remote/check.sh coder-since BASE the same, when the change since BASE reaches Coder
+#                                         (a fast run; its own job)
 #
 # It writes build/pipeline/: MODE.log (the output), status, failed (one line
 # per failing suite or step), limits.txt (each compile-time limit note:
@@ -159,6 +163,18 @@ faces() {
 # project runner, the Coax library and platform it compiles with, the limits page it compares.
 api_inputs='^(coax/web/api/|coax/web/agent/|coax/lib/|coax/platform/|coax/src/|coax/bootstrap/|apps/openagents-web/docs/limits/)'
 api() { step api coax/web/api/test.sh --part "$1" || status=1; }
+# Coder (#13239): neither its checks nor its smoke is a suite (tool.sh suites reads only
+# apps/openagents-web, verse, aethyr, coax/web and coax/lib), so no check ran them after landing until
+# this job: the smoke failed on main for six days (the worker's journal line, 410e68f65b) unseen.
+coder() {
+  step coder-checks coax/bin/coax test coder/tui/coder.coax || status=1
+  step coder-smoke python3 coder/tui/smoke.py || status=1
+}
+coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
+  grep -Eq '^coder/' "$out/changed" && return 0
+  affected_files || return 0
+  grep -qxF coder/tui/coder.coax "$out/affected"
+}
 # The room server builds room.coax and Everglade's headless world (room/build.sh).
 room_units='coax/web/room/room.coax apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax'
 room_touched() {   # whether the change since $arg reaches the room build (yes when it can't tell)
@@ -415,6 +431,7 @@ run() {   # mode arg: one check
         e2_gate "$arg" || status=1 ;;
     counts) [[ -n "$arg" ]] || return 2
         counts_since "$arg" ;;
+    coder) coder ;;
     *) return 2 ;;
   esac
   return 0
@@ -441,6 +458,10 @@ case "$mode" in
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$api_inputs"; then api "${3:-1/1}"
     else echo "== api: skipped, the change doesn't reach the API suite" >> "$log"; fi ;;
+  coder-since)
+    changed_since
+    if grep -qvE '(\.md$|^docs/)' "$out/changed" && coder_touched; then coder
+    else echo "== coder: skipped, the change doesn't reach Coder" >> "$log"; fi ;;
   room-since)
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"
