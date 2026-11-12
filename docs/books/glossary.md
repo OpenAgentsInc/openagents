@@ -4,6 +4,7 @@ Shared vocabulary for the repository and the books. Each shared term has one
 meaning and one owning context; the Conflicts column names what the code does
 today and which move renames it. For Coax language terms, see the
 [Coax glossary](../../coax/book/appendix-e-glossary.md).
+For the bounded contexts that own these words, see [Bounded contexts and context map](../architecture/contexts.md).
 
 **Rule for new code:** a new identifier, table, registry ID or wire field uses
 the glossary's word. Old names are not swept; a rename lands only with a move
