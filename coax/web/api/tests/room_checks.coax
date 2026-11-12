@@ -26,6 +26,7 @@
 #load "../../room/raid-identity.coax";
 #load "../../room/room-write.coax";   // a shard's own write key (#13260)
 #load "../../../../aethyr/session/moderation.coax";   // moderation's codec (#13302)
+#load "../../../../everglade/model/events.coax";   // the domain events' codec (#13319)
 
 cxproc_wall_us :: () -> int #foreign #effects(all);
 rc_wall_ms :: () -> int { return cxproc_wall_us() / 1000; }
@@ -1193,6 +1194,26 @@ rc_item_ops :: (t: [] Ap) {
   ap_check(t, "item ops: the outbox has each applied change, a claim with item 0",
            ap_sql(t, "select string_agg(op || ':' || (item > 0)::text, ' ' order by seq) from (select * from verse.item_outbox order by seq limit 4) o", out[..]) == "grant:true claim:false claim:false consume:true", "");
   ap_check(t, "item ops: replaying the outbox gives the same items and versions (the ledger reconciles)", ap_sql(t, "select verse.item_reconcile()", out[..]) == "t", "");
+  // domain events (#13319): a level-up is one row in the characters' outbox, in the claim's transaction, once;
+  // each outbox row is its event's bytes through the one codec (everglade/model/events.coax)
+  ap_do(t, "truncate verse.character_outbox restart identity");
+  s = ri_op(t, "op-x1", "claim", pid, 4, 0, 0, "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":150,\"slot\":-1,\"wear\":0", w[..]);
+  ap_check(t, "events: XP short of the next level publishes nothing", s == "ok" && ap_sql(t, "select count(*) from verse.character_outbox", out[..]) == "0", ap_body(t));
+  s = ri_op(t, "op-x2", "claim", pid, 5, 0, 0, "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":60,\"slot\":-1,\"wear\":0", w[..]);
+  sb_clear(q[..]); sb(q[..], "select seq || ' ' || event || ' ' || level || ' ' || xp || ' ' || (who = '"); sb(q[..], pid); sb(q[..], "') from verse.character_outbox");
+  ap_check(t, "events: the claim that reaches level 2 publishes one levelled event, with the level and the XP", s == "ok" && ap_sql(t, sb_text(q[..]), out[..]) == "1 characters.character.levelled.v1 2 310 true", ap_body(t));
+  s = ri_op(t, "op-x2", "claim", pid, 5, 0, 0, "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":60,\"slot\":-1,\"wear\":0", w[..]);
+  s2 := ri_op(t, "op-x3", "claim", pid, 6, 0, 0, "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":5,\"slot\":-1,\"wear\":0", w[..]);
+  ap_check(t, "events: the same claim again, and XP within the level, publish nothing more", rc_is(ap_body(t), "status", "ok") && s == "ok" && s2 == "ok" && ap_sql(t, "select count(*) from verse.character_outbox", out[..]) == "1", ap_body(t));
+  ap_check(t, "events: a reader after sequence 0 gets the event, and after 1 nothing", ap_sql(t, "select count(*) from verse.character_outbox_since(0, 10)", out[..]) == "1" && ap_sql(t, "select count(*) from verse.character_outbox_since(1, 10)", out[..]) == "0", "");
+  eb: [EV_BODY] u8; at: [32] u8; at_ms := rc_num(ap_sql(t, "select at_ms from verse.character_outbox where seq = 1", at[..]));
+  le := ev_read(ev_text(EV_LEVELLED, 1, pid, 2, 310, at_ms, eb[..]));
+  ap_check(t, "events: the row is a levelled event through the codec", le.ok && le.what == EV_LEVELLED && le.a == 2 && le.b == 310 && ev_take(0, le) && !ev_take(1, le), "");
+  gs := rc_num(ap_sql(t, "select seq from verse.item_outbox where op = 'grant' order by seq limit 1", out[..]));
+  gi := rc_num(ap_sql(t, "select item from verse.item_outbox where op = 'grant' order by seq limit 1", out[..]));
+  gk := rc_num(ap_sql(t, "select kind from verse.item_outbox where op = 'grant' order by seq limit 1", out[..]));
+  ge := ev_read(ev_text(EV_GRANTED, gs, pid, gi, gk, at_ms, eb[..]));
+  ap_check(t, "events: the ledger's first grant row is a granted event through the codec: the item and its kind", ge.ok && ge.what == EV_GRANTED && ge.a == item && ge.b == 3 && ge.seq == gs, "");
 }
 
 // ---- stats --------------------------------------------------------------------------------------------

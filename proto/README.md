@@ -192,6 +192,23 @@ context slug, a `schema` and one `codec` file.
 - **Tick boundary.** Inside the tick, the rules' ring log stays; events cross
   a context boundary only at a checkpoint or outbox flush.
 
+### The first events
+
+Both are in [`verse/everglade-events-v1.json`](verse/everglade-events-v1.json),
+with one codec, `everglade/model/events.coax`.
+
+| Event | Outbox | Written when |
+| --- | --- | --- |
+| `items.item.granted.v1` | `verse.item_outbox` rows with `op = 'grant'` (`LedgerEntry` in `aethyr/session/ledger.coax`) | The item ledger applies a grant |
+| `characters.character.levelled.v1` | `verse.character_outbox` (migration 0176) | A stored character record's level rises: at a seat ticket, an accepted checkpoint, or a ledger operation's XP claim |
+
+To read an outbox, ask for the rows after the last sequence you took
+(`verse.item_outbox_since`, `verse.character_outbox_since`), and take a row
+only when its sequence is the next one (`ev_take`).
+
+An event's id begins with its owning context's slug (`items`, `characters`),
+not with the game's name.
+
 ## Check and generate
 
 The standalone tools use protoc 29.3 and Python protobuf 5.29.3, pinned in

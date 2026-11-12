@@ -349,6 +349,23 @@ fail:
 // kept once, the greatest XP (xp), the realm's starting level (start) and the item ledger's items. The
 // ticket's class and level are then the record's. 1 kept (rec holds it), 0 none for this player (its
 // identity is not a record's: the ticket signs as before), -1 the database failed.
+/* The characters' levelled event (#13319, migrations/0176): when a stored record's level rose, its row in
+   the characters' outbox, in the caller's transaction (everglade/model/events.coax ev_levelled decides).
+   before: the record as it was stored ("" none). False when the database failed. */
+static bool character_outbox(PGconn *db, const char *who, const char *before, const char *after) {
+  int64_t level = ev_levelled((coax_string){before, (int64_t)strlen(before)}, (coax_string){after, (int64_t)strlen(after)});
+  if (level <= 0) return true;
+  char ls[24], xs[24];
+  snprintf(ls, sizeof ls, "%lld", (long long)level);
+  snprintf(xs, sizeof xs, "%lld", (long long)character_xp((coax_string){after, (int64_t)strlen(after)}));
+  coax_string id = ev_id(1);   /* events.coax EV_LEVELLED: the id is the codec's */
+  char ids[64]; snprintf(ids, sizeof ids, "%.*s", (int)id.count, id.data);
+  const char *ov[4] = {who, ls, xs, ids};
+  PGresult *r = PQexecParams(db, "INSERT INTO verse.character_outbox (event, who, level, xp, at_ms) VALUES ($4, $1, $2::int, $3::bigint, verse.now_ms())", 4, NULL, ov, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
+  PQclear(r);
+  return ok;
+}
 static int ticket_character(PGconn *db, const char *pid, const char *klass, int xp, int start, char *rec, size_t cap) {
   const char *pv[1] = {pid}; PGresult *r = NULL; char who[96], kept[4097] = "", items[1024] = "[]"; long long inv = 0;
   if (!progress_run(db, "BEGIN")) return -1;
@@ -371,6 +388,7 @@ static int ticket_character(PGconn *db, const char *pid, const char *klass, int 
                        "ON CONFLICT (who) DO UPDATE SET body = EXCLUDED.body, at_ms = EXCLUDED.at_ms WHERE c.body IS DISTINCT FROM EXCLUDED.body", 2, NULL, bv, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_COMMAND_OK) goto fail;
   PQclear(r); r = NULL;
+  if (!character_outbox(db, who, kept, rec)) goto fail;
   if (!progress_run(db, "COMMIT")) goto fail;
   return 1;
 fail:
@@ -998,6 +1016,7 @@ static void room_items(const request *q, PGconn *db) {
       if (!(r = item_q(db, "INSERT INTO verse.characters AS c (who, body, at_ms) VALUES ($1, $2::jsonb, verse.now_ms()) "
                            "ON CONFLICT (who) DO UPDATE SET body = EXCLUDED.body, at_ms = EXCLUDED.at_ms WHERE c.body IS DISTINCT FROM EXCLUDED.body", 2, cv, PGRES_COMMAND_OK))) goto failed;
       PQclear(r); r = NULL;
+      if (!character_outbox(db, who, kept, next)) goto failed;
     } else if (claims || op == item_op((coax_string){"claim", 5})) {
       /* the record refused the claim: nothing of this operation is kept but its refusal */
       if (!progress_run(db, "ROLLBACK TO SAVEPOINT item_fx")) goto failed;
@@ -1096,6 +1115,7 @@ static void room_checkpoint(const request *q, PGconn *db, int version) {
           next_rec[made.count]=0;const char *cv[2]={who,next_rec};
           r=PQexecParams(db,"UPDATE verse.characters SET body=$2::jsonb,at_ms=verse.now_ms() WHERE who=$1",2,NULL,cv,NULL,NULL,0);
           if (PQresultStatus(r)!=PGRES_COMMAND_OK) {free(who);goto failed;}
+          if (!character_outbox(db,who,kept_rec,next_rec)) {free(who);goto failed;}
         }
       }
       PQclear(r);r=NULL;

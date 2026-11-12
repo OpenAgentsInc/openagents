@@ -11232,6 +11232,32 @@ CREATE FUNCTION verse.capacity_record(day_ date) RETURNS text
 
 
 --
+-- Name: character_outbox; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.character_outbox (
+    seq bigint NOT NULL,
+    event text NOT NULL,
+    who text NOT NULL,
+    level integer NOT NULL,
+    xp bigint NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT character_outbox_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT character_outbox_level_check CHECK (((level >= 1) AND (level <= 20))),
+    CONSTRAINT character_outbox_xp_check CHECK ((xp >= 0))
+);
+
+
+--
+-- Name: character_outbox_since(bigint, integer); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.character_outbox_since(after bigint, n integer) RETURNS SETOF verse.character_outbox
+    LANGUAGE sql STABLE
+    AS $$ SELECT * FROM verse.character_outbox WHERE seq > after ORDER BY seq LIMIT least(greatest(n, 0), 500) $$;
+
+
+--
 -- Name: character_xp_of(jsonb); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -21343,6 +21369,25 @@ CREATE TABLE verse.character_checkpoints_v2 (
 
 
 --
+-- Name: character_outbox_seq_seq; Type: SEQUENCE; Schema: verse; Owner: -
+--
+
+CREATE SEQUENCE verse.character_outbox_seq_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: character_outbox_seq_seq; Type: SEQUENCE OWNED BY; Schema: verse; Owner: -
+--
+
+ALTER SEQUENCE verse.character_outbox_seq_seq OWNED BY verse.character_outbox.seq;
+
+
+--
 -- Name: character_profiles_v2; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -22880,6 +22925,13 @@ ALTER TABLE ONLY projects.turns ALTER COLUMN id SET DEFAULT nextval('projects.tu
 
 
 --
+-- Name: character_outbox seq; Type: DEFAULT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.character_outbox ALTER COLUMN seq SET DEFAULT nextval('verse.character_outbox_seq_seq'::regclass);
+
+
+--
 -- Name: crash_reports id; Type: DEFAULT; Schema: verse; Owner: -
 --
 
@@ -24055,6 +24107,14 @@ ALTER TABLE ONLY verse.character_checkpoints_v1
 
 ALTER TABLE ONLY verse.character_checkpoints_v2
     ADD CONSTRAINT character_checkpoints_v2_pkey PRIMARY KEY (who);
+
+
+--
+-- Name: character_outbox character_outbox_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.character_outbox
+    ADD CONSTRAINT character_outbox_pkey PRIMARY KEY (seq);
 
 
 --

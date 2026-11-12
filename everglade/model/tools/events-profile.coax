@@ -1,0 +1,49 @@
+// Checks proto/verse/everglade-events-v1.json against everglade/model/events.coax, the domain events'
+// one codec (#13319): each event's values write its pinned bytes and read back the same; each
+// rejected body does not read; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh everglade/model/tools/events-profile.coax proto/verse/everglade-events-v1.json
+#import "Basic";
+#load "../events.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+EVP_CHECK :: "coax/web/tool.sh everglade/model/tools/events-profile.coax proto/verse/everglade-events-v1.json";
+
+evp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+evp_check :: (profile_json: string) -> bool #effects(all) {
+  nodes: [512] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], profile_json, nodes[..]) { return false; }
+  d := da[0];
+  nb: [128] u8; cb: [256] u8; ib: [64] u8; wb: [EV_BODY + 64] u8; ob: [EV_BODY] u8; who: [CHAR_WHO + 8] u8;
+  if evp_str(d, jv_get(d, 0, "profile"), nb[..]) != "everglade-events-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || evp_str(d, jv_get(d, 0, "check"), cb[..]) != EVP_CHECK { return false; }
+  evs := jv_get(d, 0, "events");
+  if jv_kind(d, evs) != JV_ARRAY || jv_len(d, evs) != 2 { return false; }
+  for i: 0..<2 {
+    e := jv_at(d, evs, i); v := jv_get(d, e, "values");
+    wire := evp_str(d, jv_get(d, e, "wire"), wb[..]);
+    if evp_str(d, jv_get(d, e, "id"), ib[..]) != EV_IDS[i] || jv_len(d, v) != 5 { return false; }
+    made := ev_text(i, jv_int(d, jv_at(d, v, 0), -1), evp_str(d, jv_at(d, v, 1), who[..]), jv_int(d, jv_at(d, v, 2), -1), jv_int(d, jv_at(d, v, 3), -1), jv_int(d, jv_at(d, v, 4), -1), ob[..]);
+    if wire.count == 0 || made != wire || !ev_read(wire).ok || ev_read(wire).what != i { return false; }
+  }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 4 { return false; }
+  for i: 0..<jv_len(d, rej) {
+    n := jv_str(d, jv_at(d, rej, i), wb[..]);
+    if n < 0 || ev_read(cast(string) wb[0..<n]).ok { return false; }
+  }
+  return true;
+}
+#test "events profile tool refuses a profile that is not one" { #assert !evp_check("{}") && !evp_check("bad"); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: events-profile FILE.json"); return 2; }
+  raw: [65536] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("events-profile: cannot read JSON"); return 2; }
+  if !evp_check(cast(string) raw[0..<n]) { print("everglade-events-v1: profile fails\n"); return 1; }
+  print("everglade-events-v1: profile holds\n");
+  return 0;
+}

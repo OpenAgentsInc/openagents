@@ -8,10 +8,13 @@
 //                     ledger; the ticket's class and level are the record's (character_class_word,
 //                     character_xp, character_floor).
 //   a checkpoint      an accepted capture's XP goes through the record's write rule (character_checkpoint).
+//   a level-up        when a stored record's level rises, its event's row goes in the characters' outbox in the
+//                     same transaction (player.c character_outbox; everglade/model/events.coax ev_levelled, #13319).
 //   coax/bin/coax test coax/web/api/character-policy.coax --library
 //   coax/bin/coax mutate coax/web/api/character-policy.coax --library --root-only
 #authority;
 #load "../../../everglade/model/character.coax";
+#load "../../../everglade/model/events.coax";   // the characters' domain events and their one codec (#13319)
 
 // The record to keep and sign at a seat ticket, into out ("" when it can't be kept: the stored body or
 // the facts break the record's rules). kept: the stored record's text, or "" for none (a new record for

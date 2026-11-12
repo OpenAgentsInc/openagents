@@ -1,0 +1,4 @@
+// The fixtures of everglade/model/events.coax's checks (proto/verse/everglade-events-v1.json holds the
+// same bytes).
+EV_GRANTED_WIRE :: "{\"id\":\"items.item.granted.v1\",\"seq\":41,\"who\":\"p-a\",\"item\":12,\"kind\":3,\"at\":1762190000000}";
+EV_LEVELLED_WIRE :: "{\"id\":\"characters.character.levelled.v1\",\"seq\":7,\"who\":\"p-a\",\"level\":3,\"xp\":900,\"at\":1762190000500}";

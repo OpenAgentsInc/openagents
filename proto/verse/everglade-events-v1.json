@@ -1,0 +1,58 @@
+{
+  "profile": "everglade-events-v1",
+  "version": 1,
+  "title": "Everglade domain events v1",
+  "check": "coax/web/tool.sh everglade/model/tools/events-profile.coax proto/verse/everglade-events-v1.json",
+  "spec": "proto/README.md#domain-events",
+  "events": [
+    {
+      "id": "items.item.granted.v1",
+      "owner": "items",
+      "outbox": "verse.item_outbox (op grant); aethyr/session/ledger.coax LedgerEntry",
+      "fields": [
+        "seq",
+        "who",
+        "item",
+        "kind",
+        "at"
+      ],
+      "values": [
+        41,
+        "p-a",
+        12,
+        3,
+        1762190000000
+      ],
+      "wire": "{\"id\":\"items.item.granted.v1\",\"seq\":41,\"who\":\"p-a\",\"item\":12,\"kind\":3,\"at\":1762190000000}"
+    },
+    {
+      "id": "characters.character.levelled.v1",
+      "owner": "characters",
+      "outbox": "verse.character_outbox",
+      "fields": [
+        "seq",
+        "who",
+        "level",
+        "xp",
+        "at"
+      ],
+      "values": [
+        7,
+        "p-a",
+        3,
+        900,
+        1762190000500
+      ],
+      "wire": "{\"id\":\"characters.character.levelled.v1\",\"seq\":7,\"who\":\"p-a\",\"level\":3,\"xp\":900,\"at\":1762190000500}"
+    }
+  ],
+  "rejected": [
+    "",
+    "{}",
+    "{\"id\":\"items.item.granted.v1\",\"seq\":41,\"who\":\"p-a\",\"item\":12,\"kind\":3,\"at\":1762190000000",
+    "{\"id\":\"items.item.granted.v2\",\"seq\":41,\"who\":\"p-a\",\"item\":12,\"kind\":3,\"at\":1762190000000}",
+    "{\"id\":\"items.item.granted.v1\",\"seq\":41,\"who\":\"p-a\",\"item\":12,\"kind\":3,\"text\":\"a sword\",\"at\":1762190000000}",
+    "{\"id\":\"characters.character.levelled.v1\",\"seq\":7,\"who\":\"p-a\",\"item\":3,\"xp\":900,\"at\":1762190000500}",
+    " {\"id\":\"characters.character.levelled.v1\",\"seq\":7,\"who\":\"p-a\",\"level\":3,\"xp\":900,\"at\":1762190000500}"
+  ]
+}

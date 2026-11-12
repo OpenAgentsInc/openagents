@@ -1,0 +1,119 @@
+// Everglade's first domain events (#13319, DDD.8; proto/README.md "Domain events"): what a context
+// publishes when its state changes, for other contexts to read. This file is the one codec of both.
+//
+//   items.item.granted.v1             an item was granted to a character (the item ledger's outbox:
+//                                     aethyr/session/ledger.coax LedgerEntry, SQL verse.item_outbox)
+//   characters.character.levelled.v1  a character's level rose (SQL verse.character_outbox, written
+//                                     with the record: coax/web/api/character-policy.coax)
+//
+// An event is one JSON object: its id, its sequence number in its outbox, the character (the
+// record's `who`), typed IDs and numbers, and the time in ms. No display text: a reader words it.
+//   {"id":"items.item.granted.v1","seq":N,"who":WHO,"item":ITEM,"kind":KIND,"at":MS}
+//   {"id":"characters.character.levelled.v1","seq":N,"who":WHO,"level":LEVEL,"xp":XP,"at":MS}
+// Each is written in the same transaction as the change it tells of. A reader takes events in
+// sequence and skips a sequence it has seen (ev_take; ledger.coax ledger_consume is the same rule).
+// The reader refuses any bytes but the ones the writer writes (it writes what it read and compares).
+//   coax/bin/coax test everglade/model/events.coax --library
+//   coax/bin/coax mutate everglade/model/events.coax --library --root-only
+#authority;
+#load "character.coax";
+#load "events-checks.coax";   // the checks' fixtures
+
+EV_GRANTED :: 0; EV_LEVELLED :: 1;
+EV_IDS :: [2] string.["items.item.granted.v1", "characters.character.levelled.v1"];
+EV_KEYS :: [4] string.["item", "kind", "level", "xp"];   // each event's two numbers, in order
+EV_BODY :: 320;
+
+// a, b: the item and its content kind (granted); the new level and the XP it was reached at (levelled).
+// who_ok: `who` holds a character's who (ev_make and ev_read set it; ev_write writes no other).
+DomainEvent :: struct { ok: bool; what: int; seq: int; who: [CHAR_WHO] u8; who_n: int; who_ok: bool; a: int; b: int; at: int; }
+
+// The event's bytes into out; "" for an event that is none, a who that is no character's, or when
+// out is too small.
+ev_write :: (e: DomainEvent, out: [] u8) -> string #export_c #effects(all) {
+  w := e.who;
+  if e.what < 0 || e.what > EV_LEVELLED || !e.who_ok { return ""; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "id"); jo_str(o[..], EV_IDS[e.what]);
+  jo_key(o[..], "seq"); jo_int(o[..], e.seq);
+  jo_key(o[..], "who"); jo_str(o[..], cast(string) w[0..<e.who_n]);
+  jo_key(o[..], EV_KEYS[e.what * 2]); jo_int(o[..], e.a);
+  jo_key(o[..], EV_KEYS[e.what * 2 + 1]); jo_int(o[..], e.b);
+  jo_key(o[..], "at"); jo_int(o[..], e.at);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// An event's id ("" for a number that is no event's).
+ev_id :: (what: int) -> string #export_c #effects(all) { return ifx what >= 0 && what <= EV_LEVELLED then EV_IDS[what] else ""; }
+// An event from its parts, for a store that holds them apart (C, a ledger entry).
+ev_make :: (what: int, seq: int, who: string, a: int, b: int, at: int) -> DomainEvent #effects(all) {
+  e := DomainEvent.{what = what, seq = seq, a = a, b = b, at = at};
+  e.who_ok = char_who_ok(who);
+  if e.who_ok { for i: 0..<who.count { e.who[i] = who[i]; } e.who_n = who.count; }
+  return e;
+}
+ev_text :: (what: int, seq: int, who: string, a: int, b: int, at: int, out: [] u8) -> string #export_c #effects(all) { return ev_write(ev_make(what, seq, who, a, b, at), out); }
+// The event in text; not ok for anything but an event in its one form.
+ev_read :: (text: string) -> DomainEvent #effects(all) {
+  e := DomainEvent.{what = EV_LEVELLED};
+  if text.count == 0 { return e; }
+  nodes: [24] JvNode; d: [1] Jv;
+  _ := jv_parse(d[..], text, nodes[..]);   // a failed parse leaves no nodes: no id
+  if jv_raw_eq(jv_raw(d[0], jv_get(d[0], 0, "id")), EV_IDS[EV_GRANTED]) { e.what = EV_GRANTED; }   // any other id writes back as levelled's, and so is refused
+  e.seq = jv_int(d[0], jv_get(d[0], 0, "seq"), e.seq);
+  e.who_ok = jv_kind(d[0], jv_get(d[0], 0, "who")) == JV_STRING && char_who_ok(jv_raw(d[0], jv_get(d[0], 0, "who")));   // (a who has nothing to escape: its raw bytes are its text)
+  if e.who_ok { e.who_n = jv_str(d[0], jv_get(d[0], 0, "who"), e.who[..]); }
+  e.a = jv_int(d[0], jv_get(d[0], 0, EV_KEYS[e.what * 2]), e.a);
+  e.b = jv_int(d[0], jv_get(d[0], 0, EV_KEYS[e.what * 2 + 1]), e.b);
+  e.at = jv_int(d[0], jv_get(d[0], 0, "at"), e.at);
+  ob: [EV_BODY] u8;
+  e.ok = ev_write(e, ob[..]) == text;
+  return e;
+}
+// A reader's place in an outbox: it takes the event after the last it took, and no other.
+ev_take :: (seen: int, e: DomainEvent) -> bool #effects(all) { return e.ok && e.seq == seen + 1; }
+// The level a record's change reached, when the level rose; 0 when it did not (the same level, a
+// record that is new, or a body that is no record). before, after: the stored record's bytes.
+ev_levelled :: (before: string, after: string) -> int #export_c #effects(all) {
+  b := char_read(before); a := char_read(after);
+  if !b.ok || !a.ok || char_level(a) <= char_level(b) { return 0; }
+  return char_level(a);
+}
+
+#test "events: each event writes its pinned bytes and reads back the same event" {
+  o: [EV_BODY] u8;
+  g := ev_make(EV_GRANTED, 41, "p-a", 12, 3, 1762190000000);
+  #assert ev_write(g, o[..]) == EV_GRANTED_WIRE && ev_text(EV_GRANTED, 41, "p-a", 12, 3, 1762190000000, o[..]) == EV_GRANTED_WIRE;
+  r := ev_read(EV_GRANTED_WIRE); w := r.who;
+  #assert r.ok && r.what == EV_GRANTED && r.seq == 41 && cast(string) w[0..<r.who_n] == "p-a" && r.a == 12 && r.b == 3 && r.at == 1762190000000;
+  l := ev_make(EV_LEVELLED, 7, "p-a", 3, 900, 1762190000500);
+  #assert ev_write(l, o[..]) == EV_LEVELLED_WIRE;
+  r = ev_read(EV_LEVELLED_WIRE); #assert r.ok && r.what == EV_LEVELLED && r.seq == 7 && r.a == 3 && r.b == 900 && r.at == 1762190000500;
+  short: [40] u8; #assert ev_write(g, short[..]) == "";
+  #assert ev_id(EV_GRANTED) == "items.item.granted.v1" && ev_id(EV_LEVELLED) == "characters.character.levelled.v1" && ev_id(2) == "" && ev_id(-1) == "";
+  bad := g; bad.what = 2; #assert ev_write(bad, o[..]) == ""; bad.what = -1; #assert ev_write(bad, o[..]) == "";
+  #assert ev_write(ev_make(EV_GRANTED, 1, "", 1, 1, 1), o[..]) == "" && ev_write(ev_make(EV_GRANTED, 1, "P A", 1, 1, 1), o[..]) == "";
+  long := "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij";
+  #assert ev_read(ev_write(ev_make(EV_LEVELLED, 1, long, 2, 300, 5), o[..])).ok && ev_make(EV_GRANTED, 1, "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk", 1, 1, 1).who_n == 0;
+  bad = g; bad.who_ok = false; #assert ev_write(bad, o[..]) == "";
+}
+#test "events: a reader refuses what is not an event in its one form, and takes each sequence once, in order" {
+  o: [EV_BODY + 64] u8; s := EV_GRANTED_WIRE;
+  #assert ev_read(s).ok && !ev_read("").ok && !ev_read("{}").ok && !ev_read(s[0..<s.count - 1]).ok;
+  #assert !ev_read(char_swap(s, "items.item.granted.v1", "items.item.granted.v2", o[..])).ok && !ev_read(char_swap(s, "\"seq\":41,", "", o[..])).ok;
+  #assert !ev_read(char_swap(s, "\"seq\":41", "\"seq\":\"41\"", o[..])).ok && !ev_read(char_swap(s, "\"who\":\"p-a\"", "\"who\":\"P A\"", o[..])).ok && !ev_read(char_swap(s, "\"who\":\"p-a\"", "\"who\":7", o[..])).ok;
+  #assert !ev_read(char_swap(s, "\"item\":12", "\"level\":12", o[..])).ok && !ev_read(char_swap(s, "\"kind\":3", "\"kind\":3,\"text\":\"a sword\"", o[..])).ok && !ev_read(char_swap(s, "\"at\":1762190000000", "\"at\":null", o[..])).ok;
+  #assert !ev_read(char_swap(EV_LEVELLED_WIRE, "\"level\":3", "\"item\":3", o[..])).ok && !ev_read(char_swap(EV_LEVELLED_WIRE, "\"xp\":900", "\"kind\":900", o[..])).ok && !ev_read(char_swap(s, "{", " {", o[..])).ok;
+  e := ev_read(s);
+  one: [EV_BODY] u8; #assert ev_read(ev_write(ev_make(EV_GRANTED, 1, "a", 1, 1, 1), one[..])).ok && !ev_read("x").ok;
+  #assert ev_take(40, e) && !ev_take(41, e) && !ev_take(39, e) && !ev_take(42, e) && !ev_take(40, DomainEvent.{seq = 41});
+}
+#test "events: levelled is told only when the level rises" {
+  a: [CHAR_BODY] u8; b: [CHAR_BODY] u8; c := char_new("p-a", 1); d := c;
+  d.xp = 300; #assert ev_levelled(char_write(c, a[..]), char_write(d, b[..])) == 2;
+  d.xp = 299; #assert ev_levelled(char_write(c, a[..]), char_write(d, b[..])) == 0;
+  c.xp = 300; d.xp = 900; #assert ev_levelled(char_write(c, a[..]), char_write(d, b[..])) == 3;
+  d.xp = 899; #assert ev_levelled(char_write(c, a[..]), char_write(d, b[..])) == 0 && ev_levelled(char_write(d, b[..]), char_write(c, a[..])) == 0;
+  d.xp = 14000; #assert ev_levelled(char_write(c, a[..]), char_write(d, b[..])) == 6;
+  #assert ev_levelled("", char_write(d, b[..])) == 0 && ev_levelled(char_write(c, a[..]), "") == 0 && ev_levelled("{}", "{}") == 0;
+}
