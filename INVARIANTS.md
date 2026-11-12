@@ -1234,8 +1234,9 @@ socket admission, including sharded relay paths. Other games retain their
 startup admission contract. A missing initial publication refuses new play;
 an already admitted room keeps its current world during dependency outages.
 
-Raid deaths reserve one authoritative outcome for each physical creature slot
-(`aethyr/session/outcome-slot.coax`, #12841). A pending death prevents raid
+Retired with v1's room (#13346; it builds frozen from `everglade/server/legacy/v1.sh`'s
+pin, and no production room runs a raid): raid deaths reserved one authoritative outcome
+for each physical creature slot (`aethyr/session/outcome-slot.coax`, #12841). A pending death prevents raid
 reuse of that slot until its XP/contribution result is consumed. All 96
 creatures may die in one step without a dropped result. If recording cannot
 reserve space, the dead source remains for retry instead of disappearing.
@@ -1243,8 +1244,8 @@ The room settles deaths before reinforcements, drains once and releases each
 reservation; deliberate event clear settles pending results first. Checks:
 outcome-slot's mutation gate and room-events' full-capacity death/reuse/XP case.
 
-The raid's protected player-spawn radius excludes hostile cult actors only
-(`everglade-raid-spawn-policy.coax`). Friendly watch actors may walk through
+Retired with v1's room (#13346, as above): the raid's protected player-spawn radius
+excluded hostile cult actors only (`everglade-raid-spawn-policy.coax`). Friendly watch actors may walk through
 the commons spawn without an artificial radius correction; ordinary world
 collision still applies. Routing, final placement and Dimension Door use the
 same faction policy. Checks cover Echo's bounded first step from (1, −16),
@@ -6456,7 +6457,7 @@ Everglade's ordinary input path (no teleport, no private movement), so the room
 moves the seat as for held keys and the drawn and room facings agree at the
 hand-off; its camera ends in the follow camera through `verse_orbit_toward`, and
 any key during it only skips. Checks: `fivebar-test.coax` "Character Create",
-`everglade5e-rules.coax`, `everglade5e-room-rules.coax` "#13024", room
+`everglade5e-rules.coax`, `everglade/server/battle.coax` "a seat's class", room
 `room.coax` "Character Create class", `everglade5e.coax` "create:" and "classes:".
 (Character Create now opens in Everglade II, #13023, so the browser walk into
 Everglade's Commons was removed.)
