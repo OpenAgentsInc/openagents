@@ -1455,16 +1455,25 @@ room process.
 
 Every item, each character's inventory version and every applied operation
 ID live in one store (`verse.items`, `verse.inventories`, `verse.item_ops`,
-migration 0130, #12849), the Postgres form of `aethyr/session/ledger.coax`.
-`verse.item_apply` checks and changes them in one transaction: the same ID
-and payload answer the recorded result (refusals too), another payload under
-an ID is `conflict`, a generation below the character's newest owner
-(`verse.room_owners`) is `stale`, a version other than the inventory's is
-`version`, and an escrowed item moves only by its settle or cancel. Each
+migration 0130, #12849). The rules have one owner, `aethyr/session/ledger.coax`
+(`#authority`; decision [0006](docs/decisions/0006-item-ledger-rules-in-coax.md),
+#13318): its in-memory store and the API's route (`player.c` `room_items`
+through `coax/web/api/item-policy.coax`) both ask `ledger_gate` and
+`ledger_rule`, and SQL decides nothing (`verse.item_apply` is gone, migration
+0165). The route reads the facts and writes the answer in one transaction,
+under one lock an operation ID, the item's row and the inventories' rows in
+one order: the same ID and payload answer the recorded result (refusals too),
+another payload under an ID is `conflict`, an ask first sent a day
+(`LEDGER_KEEP`, ms) ago or more is `expired`, a generation below the
+character's newest owner (`verse.room_owners`) is `stale`, a version other
+than the inventory's is `version`, a version with no next value is
+`exhausted`, and an escrowed item moves only by its settle or cancel. Each
 change appends its `verse.item_outbox` entry in the same transaction, and
 replaying the outbox gives the same items, owners and versions
 (`verse.item_reconcile`). Only a room-key-signed post reaches it. The ledger
-holds game items only, never money. Checks: `coax/web/api/tests/room_checks.coax` items.
+holds game items only, never money. Checks: `aethyr/session/ledger.coax` and
+`coax/web/api/item-policy.coax` tests with `coax mutate` at zero survivors,
+and `coax/web/api/tests/room_checks.coax` items.
 
 ## A critical counter moves only through a named integer operation
 

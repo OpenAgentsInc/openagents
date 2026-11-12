@@ -8,3 +8,4 @@ EntityGeneration :: struct @id(ordered) { value: int #counter; }
 CharacterId :: struct @id { value: int; }
 ItemId :: struct @id { value: int; }
 OwnerGeneration :: struct @id(ordered) { value: int #counter; }
+OperationId :: struct @id { value: int; }

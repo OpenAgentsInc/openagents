@@ -46,7 +46,7 @@ that already touches the file (#13267 to #13269, #13280).
 | Wire profile | A JSON file pinning a hand-packed frame's bytes (`proto/verse/*.json`) | Protocol | Shares "profile" with six other uses |
 | Checkpoint | A durable save of a character or a realm's simulation | Room session | Two different things today (character checkpoint vs simulation checkpoint); always qualify it |
 | Item | A game object in the ledger. Never money | Items | |
-| Operation ID | A caller-chosen key that makes a write idempotent | Items, Room session | Raw `int` in Coax, `text` in SQL |
+| Operation ID | A caller-chosen key that makes a write idempotent | Items, Room session | `OperationId` (`aethyr/ids.coax`) in Coax; `text`, 1 to 80 bytes, on the wire and in SQL ([0006](../decisions/0006-item-ledger-rules-in-coax.md)) |
 | Domain event | A past-tense fact a context publishes (`RsEvent`) | All | Shares "event" with world, analytics, Nostr, `chat.events` and `projects.events` |
 | World event | A scheduled in-world happening, such as a raid | Everglade | `verse.room_events` and `room-events.coax` |
 | Session (login) | An authenticated browser or app session (`auth.sessions`) | Identity | Six SQL tables named `sessions` (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`), plus `aethyr/session/` and `openagents.session.v1` |

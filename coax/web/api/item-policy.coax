@@ -1,0 +1,96 @@
+// The item ledger's route in Coax (#13318; docs/decisions/0006-item-ledger-rules-in-coax.md): what
+// player.c room_items asks the rules. The rules are aethyr/session/ledger.coax's, the same ones its
+// in-memory store runs; this file names them for C and holds the route's words. player.c reads the
+// facts under the database's locks (migrations/0130_item_ledger.sql, 0165) and writes what these
+// answers say; the database decides nothing.
+//   coax/bin/coax test coax/web/api/item-policy.coax --library
+//   coax/bin/coax mutate coax/web/api/item-policy.coax --library --root-only
+#authority;
+#load "../../../aethyr/session/ledger.coax";
+
+ITEM_ID_MAX :: 80;   // bytes in an operation ID on the wire
+
+// The operation a route word names, or 0 (none: the gate refuses it).
+item_op :: (word: string) -> int #export_c #effects(all) {
+  words := [5]string.["grant", "transfer", "escrow", "settle", "cancel"];
+  for i: 0..<5 { if word == words[i] { return i + 1; } }
+  return 0;
+}
+// A status's route word.
+item_word :: (status: int) -> string #export_c #effects(all) {
+  words := [9]string.["ok", "conflict", "stale", "version", "held", "full", "expired", "no_item", "exhausted"];
+  return ifx status >= 0 && status < 9 then words[status] else "held";
+}
+// The ask before any inventory is read (ledger_gate): ID, its operation and writer; the ID's
+// record, if any (seen, applied at `at`, and whether each payload field equals the ask's).
+item_gate :: (id: string, op: int, known: bool, seen: bool, at: int, op_eq: bool, c_eq: bool, item_eq: bool, to_eq: bool, kind_eq: bool,
+              sent: int, now: int) -> int #export_c #effects(all) {
+  ok := id.count >= 1 && id.count <= ITEM_ID_MAX;
+  return ledger_gate(op, ok && known, seen, at, ledger_same_payload(op_eq, c_eq, item_eq, to_eq, kind_eq), sent, now);
+}
+// The answer from the locked facts (ledger_rule). newest: the writer's newest owner generation (-1:
+// none); the versions of the writer, the receiver and the escrow party (0 for one that isn't there).
+item_rule :: (op: int, gen: int, newest: int, ver: int, version: int, live: bool, mine: bool, escrowed: bool, to_known: bool, to_self: bool,
+              to_version: int, escrow_version: int) -> int #export_c #effects(all) {
+  return ledger_rule(op, OwnerGeneration.{value = gen}, OwnerGeneration.{value = newest}, ver, version, live, mine, escrowed, to_known, to_self,
+                     ledger_next(version), ledger_next(to_version), ledger_next(escrow_version));
+}
+// What an applied operation changes (ledger.coax): a new item; the owner becomes the receiver (whose
+// version advances) or the escrow party (whose version advances, and whom the outbox names); the
+// escrow becomes the receiver or ends.
+item_creates :: (op: int) -> bool #export_c #effects(all) { return ledger_creates(op); }
+item_moves :: (op: int) -> bool #export_c #effects(all) { return ledger_moves(op); }
+item_settles :: (op: int) -> bool #export_c #effects(all) { return ledger_settles(op); }
+item_escrows :: (op: int) -> bool #export_c #effects(all) { return ledger_escrows(op); }
+item_clears :: (op: int) -> bool #export_c #effects(all) { return ledger_clears(op); }
+
+#test "item route: words" {
+  #assert item_op("grant") == LOP_GRANT && item_op("transfer") == LOP_TRANSFER && item_op("escrow") == LOP_ESCROW;
+  #assert item_op("settle") == LOP_SETTLE && item_op("cancel") == LOP_CANCEL && item_op("") == 0 && item_op("Grant") == 0 && item_op("grants") == 0;
+  #assert item_word(LEDGER_OK) == "ok" && item_word(LEDGER_CONFLICT) == "conflict" && item_word(LEDGER_STALE) == "stale";
+  #assert item_word(LEDGER_VERSION) == "version" && item_word(LEDGER_HELD) == "held" && item_word(LEDGER_FULL) == "full";
+  #assert item_word(LEDGER_EXPIRED) == "expired" && item_word(LEDGER_NO_ITEM) == "no_item" && item_word(LEDGER_EXHAUSTED) == "exhausted";
+  #assert item_word(-1) == "held" && item_word(9) == "held";
+}
+#test "item route: the gate" {
+  a: [80]u8; for i: 0..<80 { a[i] = 'a'; }
+  #assert item_gate("x", LOP_GRANT, true, false, 0, false, false, false, false, false, 9, 10) == LEDGER_GO;
+  #assert item_gate(cast(string)a[0..<80], LOP_GRANT, true, false, 0, false, false, false, false, false, 9, 10) == LEDGER_GO;
+  b: [81]u8; for i: 0..<81 { b[i] = 'a'; }
+  #assert item_gate(cast(string)b[0..<81], LOP_GRANT, true, false, 0, false, false, false, false, false, 9, 10) == LEDGER_HELD;
+  #assert item_gate("", LOP_GRANT, true, false, 0, false, false, false, false, false, 9, 10) == LEDGER_HELD;
+  #assert item_gate("x", LOP_GRANT, false, false, 0, false, false, false, false, false, 9, 10) == LEDGER_HELD;
+  #assert item_gate("x", 0, true, false, 0, false, false, false, false, false, 9, 10) == LEDGER_HELD;
+  #assert item_gate("x", LOP_GRANT, true, true, 9, true, true, true, true, true, 9, 10) == LEDGER_REPLAY;
+  #assert item_gate("x", LOP_GRANT, true, true, 9, true, true, true, true, false, 9, 10) == LEDGER_CONFLICT;
+  #assert item_gate("x", LOP_GRANT, true, true, 9, true, true, true, false, true, 9, 10) == LEDGER_CONFLICT;
+  #assert item_gate("x", LOP_GRANT, true, true, 9, true, true, false, true, true, 9, 10) == LEDGER_CONFLICT;
+  #assert item_gate("x", LOP_GRANT, true, true, 9, true, false, true, true, true, 9, 10) == LEDGER_CONFLICT;
+  #assert item_gate("x", LOP_GRANT, true, true, 9, false, true, true, true, true, 9, 10) == LEDGER_CONFLICT;
+  #assert item_gate("x", LOP_GRANT, true, false, 0, false, false, false, false, false, 10 - LEDGER_KEEP, 10) == LEDGER_EXPIRED;
+  #assert item_gate("x", LOP_GRANT, true, true, 10 - LEDGER_KEEP, false, false, false, false, false, 9, 10) == LEDGER_GO;
+}
+#test "item route: the rule" {
+  m := 9223372036854775807;
+  #assert item_rule(LOP_GRANT, -1, -1, 0, 0, false, false, false, false, false, 0, 0) == LEDGER_OK;   // no owner directory row
+  #assert item_rule(LOP_GRANT, -1, 3, 0, 0, false, false, false, false, false, 0, 0) == LEDGER_STALE;  // a generation of none, under a directory row
+  #assert item_rule(LOP_GRANT, 3, 3, 0, 0, false, false, false, false, false, 0, 0) == LEDGER_OK;
+  #assert item_rule(LOP_GRANT, 2, 3, 0, 0, false, false, false, false, false, 0, 0) == LEDGER_STALE;
+  #assert item_rule(LOP_GRANT, 3, 3, 1, 0, false, false, false, false, false, 0, 0) == LEDGER_VERSION;
+  #assert item_rule(LOP_GRANT, 3, 3, m, m, false, false, false, false, false, 0, 0) == LEDGER_EXHAUSTED;
+  #assert item_rule(LOP_TRANSFER, 0, 0, 4, 4, true, true, false, true, false, 6, 0) == LEDGER_OK;
+  #assert item_rule(LOP_TRANSFER, 0, 0, 4, 4, true, true, false, true, false, m, 0) == LEDGER_EXHAUSTED;
+  #assert item_rule(LOP_TRANSFER, 0, 0, 4, 4, true, true, false, false, false, 0, 0) == LEDGER_HELD;
+  #assert item_rule(LOP_TRANSFER, 0, 0, 4, 4, true, true, false, true, true, 4, 0) == LEDGER_HELD;
+  #assert item_rule(LOP_TRANSFER, 0, 0, 4, 4, false, false, false, true, false, 0, 0) == LEDGER_NO_ITEM;
+  #assert item_rule(LOP_SETTLE, 0, 0, 4, 4, true, true, true, false, false, 0, 7) == LEDGER_OK;
+  #assert item_rule(LOP_SETTLE, 0, 0, 4, 4, true, true, true, false, false, 0, m) == LEDGER_EXHAUSTED;
+  #assert item_rule(LOP_CANCEL, 0, 0, 4, 4, true, true, false, false, false, 0, 0) == LEDGER_HELD;
+}
+#test "item route: effects" {
+  for op: 0..<7 {
+    #assert item_creates(op) == ledger_creates(op) && item_moves(op) == ledger_moves(op) && item_settles(op) == ledger_settles(op);
+    #assert item_escrows(op) == ledger_escrows(op) && item_clears(op) == ledger_clears(op);
+  }
+  #assert item_creates(LOP_GRANT) && item_moves(LOP_TRANSFER) && item_escrows(LOP_ESCROW) && item_settles(LOP_SETTLE) && item_clears(LOP_CANCEL);
+}

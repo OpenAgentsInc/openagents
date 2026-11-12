@@ -12785,92 +12785,6 @@ CREATE FUNCTION verse.hex(n integer) RETURNS text
 
 
 --
--- Name: item_apply(text, text, text, bigint, integer, bigint, text, integer, bigint); Type: FUNCTION; Schema: verse; Owner: -
---
-
-CREATE FUNCTION verse.item_apply(p_id text, p_op text, p_pid text, p_gen bigint, p_ver integer, p_item bigint, p_to text, p_kind integer, p_sent bigint, OUT status text, OUT item bigint, OUT replay boolean) RETURNS record
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-  now bigint := (extract(epoch FROM clock_timestamp()) * 1000)::bigint;
-  who_ text := verse.item_who(p_pid);
-  to_ text := CASE WHEN p_to IS NULL OR p_to = '' THEN NULL ELSE verse.item_who(p_to) END;
-  o verse.item_ops;
-  m verse.items;
-  newest bigint;
-  v int;
-BEGIN
-  replay := false;
-  IF p_op NOT IN ('grant', 'transfer', 'escrow', 'settle', 'cancel') OR p_id IS NULL OR length(p_id) NOT BETWEEN 1 AND 80 THEN status := 'held'; RETURN; END IF;
-  IF who_ IS NULL THEN status := 'held'; RETURN; END IF;
-  -- one writer an operation ID at a time, and the character's inventory row locked (versions)
-  PERFORM pg_advisory_xact_lock(7731029, hashtext(p_id));
-  DELETE FROM verse.item_ops x WHERE x.id = p_id AND x.at_ms <= now - verse.item_keep_ms();
-  SELECT * INTO o FROM verse.item_ops x WHERE x.id = p_id;
-  IF FOUND THEN
-    IF o.op <> p_op OR o.who <> who_ OR o.item IS DISTINCT FROM p_item OR o.to_who IS DISTINCT FROM to_ OR o.kind IS DISTINCT FROM p_kind THEN
-      status := 'conflict'; RETURN;
-    END IF;
-    status := o.result; item := o.made; replay := true; RETURN;
-  END IF;
-  IF p_sent IS NULL OR now - p_sent >= verse.item_keep_ms() THEN status := 'expired'; RETURN; END IF;
-  INSERT INTO verse.inventories (who) VALUES (who_) ON CONFLICT DO NOTHING;
-  IF to_ IS NOT NULL THEN INSERT INTO verse.inventories (who) VALUES (to_) ON CONFLICT DO NOTHING; END IF;
-  -- lock both inventories in one order, so two transfers between the same pair can't deadlock
-  PERFORM 1 FROM verse.inventories x WHERE x.who IN (who_, to_) ORDER BY x.who FOR UPDATE;
-  SELECT x.version INTO v FROM verse.inventories x WHERE x.who = who_;
-  SELECT x.gen INTO newest FROM verse.room_owners x WHERE x.who = who_;
-  status := 'ok';
-  IF newest IS NOT NULL AND (p_gen IS NULL OR p_gen < newest) THEN status := 'stale';
-  ELSIF p_ver IS DISTINCT FROM v THEN status := 'version';
-  ELSIF p_op <> 'grant' THEN
-    SELECT * INTO m FROM verse.items x WHERE x.id = p_item FOR UPDATE;
-    IF NOT FOUND THEN status := 'no_item';
-    ELSIF m.owner <> who_ THEN status := 'held';
-    ELSIF p_op IN ('transfer', 'escrow') AND (m.escrow_to IS NOT NULL OR to_ IS NULL OR to_ = who_) THEN status := 'held';
-    ELSIF p_op IN ('settle', 'cancel') AND m.escrow_to IS NULL THEN status := 'held';
-    END IF;
-  END IF;
-  IF status = 'ok' THEN
-    IF p_op = 'grant' THEN
-      INSERT INTO verse.items (kind, owner) VALUES (coalesce(p_kind, 0), who_) RETURNING id INTO item;
-      UPDATE verse.inventories x SET version = x.version + 1 WHERE x.who = who_;
-    ELSIF p_op = 'transfer' THEN
-      item := p_item;
-      UPDATE verse.items x SET owner = to_ WHERE x.id = p_item;
-      UPDATE verse.inventories x SET version = x.version + 1 WHERE x.who IN (who_, to_);
-    ELSIF p_op = 'escrow' THEN
-      item := p_item;
-      UPDATE verse.items x SET escrow_to = to_ WHERE x.id = p_item;
-      UPDATE verse.inventories x SET version = x.version + 1 WHERE x.who = who_;
-    ELSIF p_op = 'settle' THEN
-      item := p_item; to_ := m.escrow_to;
-      UPDATE verse.items x SET owner = m.escrow_to, escrow_to = NULL WHERE x.id = p_item;
-      UPDATE verse.inventories x SET version = x.version + 1 WHERE x.who IN (who_, m.escrow_to);
-    ELSE
-      item := p_item;
-      UPDATE verse.items x SET escrow_to = NULL WHERE x.id = p_item;
-      UPDATE verse.inventories x SET version = x.version + 1 WHERE x.who = who_;
-    END IF;
-    INSERT INTO verse.item_outbox (op, who, item, to_who, kind, at_ms) VALUES (p_op, who_, item, to_, p_kind, now);
-  END IF;
-  -- a refusal is recorded too, so a retry hears the same answer; the payload as asked (to: its character)
-  INSERT INTO verse.item_ops (id, op, who, item, to_who, kind, result, made, at_ms)
-  VALUES (p_id, p_op, who_, p_item, CASE WHEN p_to IS NULL OR p_to = '' THEN NULL ELSE verse.item_who(p_to) END, p_kind, status,
-          CASE WHEN p_op = 'grant' AND status = 'ok' THEN item END, now);
-END $$;
-
-
---
--- Name: item_keep_ms(); Type: FUNCTION; Schema: verse; Owner: -
---
-
-CREATE FUNCTION verse.item_keep_ms() RETURNS bigint
-    LANGUAGE sql IMMUTABLE
-    AS $$ SELECT 86400000::bigint $$;
-
-
---
 -- Name: item_outbox; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -21157,7 +21071,7 @@ ALTER SEQUENCE verse.inbox_id_seq OWNED BY verse.inbox.id;
 
 CREATE TABLE verse.inventories (
     who text NOT NULL,
-    version integer DEFAULT 0 NOT NULL
+    version bigint DEFAULT 0 NOT NULL
 );
 
 

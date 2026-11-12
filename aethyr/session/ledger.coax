@@ -1,11 +1,14 @@
-// The inventory and reward ledger's transactional owner (GitHub #12849): one store owns every item,
-// every character's inventory version and every applied operation, and each mutation is one
-// all-or-nothing step on it. It holds game items only. Nothing in it is money or is redeemable for
+// The inventory and reward ledger's rules (GitHub #12849), and their one owner (#13318, decision
+// docs/decisions/0006-item-ledger-rules-in-coax.md): every store of items asks this file what an ask
+// does. This file's in-memory store (Ledger, below) asks it, and so does the API's Postgres store
+// (coax/web/api/item-policy.coax, player.c room_items, migrations/0130 and 0165): the database
+// keeps the rows, the version guard (locks), operation-ID uniqueness and the outbox insert, and
+// decides nothing. The ledger holds game items only. Nothing in it is money or is redeemable for
 // money; a feature that ever attaches value to an item settles on Bitcoin rails (Lightning, Spark,
 // Taproot Assets) through the wallet's own contract, never here.
 //
-// Every mutation names a stable operation ID chosen by its caller (a room: its shard, its process
-// generation, a counter) and is fenced by the character's owner generation (control.coax):
+// Every mutation names a stable operation ID (OperationId) chosen by its caller (a room: its shard,
+// its process generation, a counter) and is fenced by the character's owner generation (control.coax):
 //   - the same ID with the same payload returns the recorded result and changes nothing (a retry
 //     after a lost response, or a duplicate request);
 //   - the same ID with another payload is refused (LEDGER_CONFLICT) and changes nothing;
@@ -21,10 +24,14 @@
 // or cancels (returns it).
 // Each applied mutation appends an outbox entry in the same step. A consumer (a notification, a
 // view) applies entries in sequence order and skips a sequence it has seen, so redelivery is safe.
-// An operation is remembered LEDGER_KEEP ticks after it applied. An ask carries the tick it was first
-// sent; one first sent LEDGER_KEEP ticks ago or more is refused (LEDGER_EXPIRED) rather than applied,
-// since its first send may have applied and been forgotten. Restore: replaying the outbox from a snapshot rebuilds
-// the same items, owners and versions (ledger_reconcile).
+// Time is wall-clock milliseconds. An operation is remembered LEDGER_KEEP ms (a day) after it
+// applied. An ask carries the time it was first sent; one first sent LEDGER_KEEP ago or more is
+// refused (LEDGER_EXPIRED) rather than applied, since its first send may have applied and been
+// forgotten. Restore: replaying the outbox from a snapshot rebuilds the same items, owners and
+// versions (ledger_reconcile).
+// A character is compared only for equality. The in-memory store numbers its characters
+// (CharacterId, an index into its arrays); the database names them by account (coalesce(account,
+// id)). Each store says whether two of its characters are one; the rules never see either form.
 //   coax/bin/coax test aethyr/session/ledger.coax --library
 //   coax/bin/coax mutate aethyr/session/ledger.coax --library --root-only
 
@@ -37,7 +44,7 @@
 LEDGER_ITEMS :: 32;
 LEDGER_OPS :: 64;
 LEDGER_OUTBOX :: 64;
-LEDGER_KEEP :: 1000;   // ticks an operation ID is remembered
+LEDGER_KEEP :: 86400000;   // ms an operation ID is remembered: a day
 
 LEDGER_OK :: 0;
 LEDGER_CONFLICT :: 1;  // the ID was used for another payload
@@ -48,11 +55,13 @@ LEDGER_FULL :: 5;      // no room for another item or operation
 LEDGER_EXPIRED :: 6;   // the ID is older than LEDGER_KEEP
 LEDGER_NO_ITEM :: 7;
 LEDGER_EXHAUSTED :: 8; // a version the write would advance has no next value
+LEDGER_GO :: -1;       // ledger_gate: a new ID, in time: ledger_rule decides it
+LEDGER_REPLAY :: -2;   // ledger_gate: the ID is on record with this payload: its recorded answer
 
 LOP_GRANT :: 1; LOP_TRANSFER :: 2; LOP_ESCROW :: 3; LOP_SETTLE :: 4; LOP_CANCEL :: 5;
 
 LedgerItem :: struct { live: bool; kind: int; owner: CharacterId; escrow_to: CharacterId = CharacterId.{value = -1}; }
-LedgerOp :: struct { live: bool; id: int; op: int; c: CharacterId; item: ItemId; to: CharacterId; kind: int; at: int; result: int; made: ItemId; }
+LedgerOp :: struct { live: bool; id: OperationId; op: int; c: CharacterId; item: ItemId; to: CharacterId; kind: int; at: int; result: int; made: ItemId; }
 LedgerEntry :: struct { seq: int; op: int; c: CharacterId; item: ItemId; to: CharacterId; kind: int; }
 Ledger :: struct {
   fence: [1] ControlFence;
@@ -62,27 +71,101 @@ Ledger :: struct {
   out: [LEDGER_OUTBOX] LedgerEntry; out_n: int;
 }
 // What a caller asks: op, by character c under generation gen having read inventory version ver.
-// sent: the tick it was first sent (a retry keeps it).
-LedgerAsk :: struct { id: int; op: int; c: CharacterId; gen: OwnerGeneration; ver: int; item: ItemId = ItemId.{value = -1}; to: CharacterId = CharacterId.{value = -1}; kind: int; sent: int; }
+// sent: the time (ms) it was first sent (a retry keeps it).
+LedgerAsk :: struct { id: OperationId; op: int; c: CharacterId; gen: OwnerGeneration; ver: int; item: ItemId = ItemId.{value = -1}; to: CharacterId = CharacterId.{value = -1}; kind: int; sent: int; }
 LedgerAnswer :: struct { status: int; item: ItemId = ItemId.{value = -1}; replay: bool; }
 // book:end ledger-profile
 
-ledger_same :: (o: LedgerOp, a: LedgerAsk) -> bool #effects(reads, writes, traps) { return o.op == a.op && o.c == a.c && o.item == a.item && o.to == a.to && o.kind == a.kind; }
+// ---- the rules: every store's facts in, the answer out (nothing changes)
 
-// One mutation, all or nothing, at tick `now`.
-ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer #effects(reads, writes, traps) {
-  if a.c.value < 0 || a.c.value >= CONTROL_CHARACTERS { return LedgerAnswer.{status = LEDGER_HELD}; }
-  // the ID first: a retry gets its first answer, whatever changed since
-  free := -1;
-  for i: 0..<LEDGER_OPS {
-    o := l[0].ops[i];
-    if !o.live { if free == -1 { free = i; } continue; }
-    if now - o.at >= LEDGER_KEEP { l[0].ops[i].live = false; if free == -1 { free = i; } continue; }
-    if o.id != a.id { continue; }
-    if !ledger_same(o, a) { return LedgerAnswer.{status = LEDGER_CONFLICT}; }
-    return LedgerAnswer.{status = o.result, item = o.made, replay = true};
+// An operation the ledger knows.
+ledger_known_op :: (op: int) -> bool #effects(reads, writes, traps) { return op >= LOP_GRANT && op <= LOP_CANCEL; }
+// Whether an operation applied at `at` is still remembered at `now`.
+ledger_remembered :: (at: int, now: int) -> bool #effects(reads, writes, traps) { return now - at < LEDGER_KEEP; }
+// Whether a version can advance.
+ledger_next :: (version: int) -> bool #effects(reads, writes, traps) { return add_checked(version, 1) != null; }
+// A payload is the same when its operation, character, item, receiver and kind are.
+ledger_same_payload :: (op: bool, c: bool, item: bool, to: bool, kind: bool) -> bool #effects(reads, writes, traps) { return op && c && item && to && kind; }
+
+// The ask, before any inventory is read: an unknown operation or character is refused (not recorded);
+// a remembered ID answers from its record (LEDGER_REPLAY) or is a conflict; one first sent too long
+// ago is refused (LEDGER_EXPIRED); otherwise LEDGER_GO. seen: the ID has a record, applied at `at`;
+// same: its payload is the ask's.
+ledger_gate :: (op: int, known: bool, seen: bool, at: int, same: bool, sent: int, now: int) -> int #effects(reads, writes, traps) {
+  if !ledger_known_op(op) || !known { return LEDGER_HELD; }
+  if seen && ledger_remembered(at, now) { return ifx same then LEDGER_REPLAY else LEDGER_CONFLICT; }
+  if !ledger_remembered(sent, now) { return LEDGER_EXPIRED; }
+  return LEDGER_GO;
+}
+
+// The ask's answer from the store's facts, read under its locks; the store records it.
+//   newest      the character's newest owner generation; gen the writer's
+//   ver         the version the writer read; version the character's now
+//   live        the item exists; mine: it is the writer's; escrowed: it has an escrow party
+//   to_known    the receiver is a character; to_self: the receiver is the writer
+//   c_next, to_next, escrow_next   the writer's, the receiver's and the escrow party's versions can advance
+ledger_rule :: (op: int, gen: OwnerGeneration, newest: OwnerGeneration, ver: int, version: int, live: bool, mine: bool, escrowed: bool,
+                to_known: bool, to_self: bool, c_next: bool, to_next: bool, escrow_next: bool) -> int #effects(reads, writes, traps) {
+  if newest.value > gen.value { return LEDGER_STALE; }
+  if ver != version { return LEDGER_VERSION; }
+  if op != LOP_GRANT {
+    if !live { return LEDGER_NO_ITEM; }
+    if !mine { return LEDGER_HELD; }
+    if op == LOP_TRANSFER || op == LOP_ESCROW {
+      if escrowed || !to_known || to_self { return LEDGER_HELD; }
+    } else if !escrowed { return LEDGER_HELD; }
   }
-  if now - a.sent >= LEDGER_KEEP { return LedgerAnswer.{status = LEDGER_EXPIRED}; }
+  // every version the change advances must have a next one, or nothing changes
+  if !c_next { return LEDGER_EXHAUSTED; }
+  if op == LOP_TRANSFER && !to_next { return LEDGER_EXHAUSTED; }
+  if op == LOP_SETTLE && !escrow_next { return LEDGER_EXHAUSTED; }
+  return LEDGER_OK;
+}
+
+// What an applied operation changes. The writer's version always advances.
+ledger_creates :: (op: int) -> bool #effects(reads, writes, traps) { return op == LOP_GRANT; }      // a new item of the ask's kind, the writer's
+ledger_moves :: (op: int) -> bool #effects(reads, writes, traps) { return op == LOP_TRANSFER; }     // the owner becomes the receiver, whose version advances
+ledger_escrows :: (op: int) -> bool #effects(reads, writes, traps) { return op == LOP_ESCROW; }     // the item is escrowed to the receiver
+ledger_settles :: (op: int) -> bool #effects(reads, writes, traps) { return op == LOP_SETTLE; }     // the owner becomes the escrow party, whose version advances; the outbox names it
+ledger_clears :: (op: int) -> bool #effects(reads, writes, traps) { return op == LOP_SETTLE || op == LOP_CANCEL; }   // the escrow ends
+
+#test "ledger rules: the gate, on its own" {
+  #assert ledger_gate(0, true, false, 0, false, 5, 5) == LEDGER_HELD && ledger_gate(6, true, false, 0, false, 5, 5) == LEDGER_HELD;
+  #assert ledger_gate(LOP_GRANT, true, false, 0, false, 5, 5) == LEDGER_GO && ledger_gate(LOP_CANCEL, true, false, 0, false, 5, 5) == LEDGER_GO;
+  #assert ledger_gate(LOP_GRANT, false, true, 5, true, 5, 5) == LEDGER_HELD;
+  #assert ledger_gate(LOP_GRANT, true, true, 5, true, 5, 6) == LEDGER_REPLAY && ledger_gate(LOP_GRANT, true, true, 5, false, 5, 6) == LEDGER_CONFLICT;
+  // a record past its keep is forgotten: the ask is new again, or expired
+  #assert ledger_gate(LOP_GRANT, true, true, 5, false, 5 + LEDGER_KEEP, 5 + LEDGER_KEEP) == LEDGER_GO;
+  #assert ledger_gate(LOP_GRANT, true, true, 5, false, 5, 5 + LEDGER_KEEP) == LEDGER_EXPIRED && ledger_gate(LOP_GRANT, true, true, 6, false, 5, 5 + LEDGER_KEEP) == LEDGER_CONFLICT;
+  #assert ledger_gate(LOP_GRANT, true, false, 0, false, 6, 5 + LEDGER_KEEP) == LEDGER_GO;
+  #assert ledger_same_payload(true, true, true, true, true) && !ledger_same_payload(false, true, true, true, true) && !ledger_same_payload(true, true, true, true, false);
+}
+#test "ledger rules: each operation's effects" {
+  for op: 0..<7 {
+    #assert ledger_creates(op) == (op == 1) && ledger_moves(op) == (op == 2) && ledger_escrows(op) == (op == 3) && ledger_settles(op) == (op == 4);
+    #assert ledger_clears(op) == (op == 4 || op == 5);
+  }
+}
+
+// ---- the in-memory store
+
+ledger_same :: (o: LedgerOp, a: LedgerAsk) -> bool #effects(reads, writes, traps) { return ledger_same_payload(o.op == a.op, o.c == a.c, o.item == a.item, o.to == a.to, o.kind == a.kind); }
+ledger_character :: (c: CharacterId) -> bool #effects(reads, writes, traps) { return c.value >= 0 && c.value < CONTROL_CHARACTERS; }
+
+// One mutation, all or nothing, at time `now` (ms).
+ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer #effects(reads, writes, traps) {
+  // the ID first: a retry gets its first answer, whatever changed since; a forgotten slot frees
+  free := -1; seen := -1;
+  for i: 0..<LEDGER_OPS {
+    if l[0].ops[i].live && !ledger_remembered(l[0].ops[i].at, now) { l[0].ops[i].live = false; }
+    if !l[0].ops[i].live { if free == -1 { free = i; } continue; }
+    if l[0].ops[i].id == a.id { seen = i; }
+  }
+  o := LedgerOp.{};
+  if seen >= 0 { o = l[0].ops[seen]; }
+  g := ledger_gate(a.op, ledger_character(a.c), seen >= 0, o.at, ledger_same(o, a), a.sent, now);
+  if g == LEDGER_REPLAY { return LedgerAnswer.{status = o.result, item = o.made, replay = true}; }
+  if g != LEDGER_GO { return LedgerAnswer.{status = g}; }
   if free == -1 { return LedgerAnswer.{status = LEDGER_FULL}; }
   st := ledger_check(l, a);
   made := ItemId.{value = -1};
@@ -108,16 +191,17 @@ ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer #effects(
 // Refusal receipts belong to ledger_apply; durable service commits stay there.
 ledger_commit :: (l:[]Ledger,a:LedgerAsk,item:ItemId)->ItemId? #effects(reads, writes, traps) {
   #transaction {
+    to := ifx ledger_settles(a.op) then l[0].items[item.value].escrow_to else a.to;
     ledger_mutate(l,a.op,a.c,item,a.to,a.kind);
     if l[0].out_n>=LEDGER_OUTBOX {return null;}
-    l[0].out[l[0].out_n]=LedgerEntry.{seq=l[0].out_n+1,op=a.op,c=a.c,item=item,to=a.to,kind=a.kind};
+    l[0].out[l[0].out_n]=LedgerEntry.{seq=l[0].out_n+1,op=a.op,c=a.c,item=item,to=to,kind=a.kind};
     l[0].out_n+=1;
   }
   return some(item);
 }
 #test "ledger transaction: outbox refusal after the first state write restores items, versions and the outbox" {
   l:[1]Ledger;l[0].out_n=LEDGER_OUTBOX;l[0].out[0]=LedgerEntry.{seq=7,kind=99};
-  ask:=LedgerAsk.{id=1,op=LOP_GRANT,c=CharacterId.{value=0},gen=OwnerGeneration.{value=1},kind=3};
+  ask:=LedgerAsk.{id=OperationId.{value=1},op=LOP_GRANT,c=CharacterId.{value=0},gen=OwnerGeneration.{value=1},kind=3,sent=1};
   switch ledger_commit(l[..],ask,ItemId.{value=0}) {case none {} case some(wrong) {#assert false;}}
   #assert !l[0].items[0].live && l[0].items[0].kind==0 && l[0].version[0]==0;
   #assert l[0].out_n==LEDGER_OUTBOX && l[0].out[0].seq==7 && l[0].out[0].kind==99;
@@ -126,48 +210,37 @@ ledger_commit :: (l:[]Ledger,a:LedgerAsk,item:ItemId)->ItemId? #effects(reads, w
   invalid:=ask;invalid.op=LOP_TRANSFER;invalid.item=ItemId.{value=0};
   #assert ledger_apply(l[..],invalid,1).status==LEDGER_FULL && !l[0].ops[0].live;
 }
-// Whether a may apply now (nothing changes).
+// The in-memory store's facts for a, and the rules' answer (nothing changes).
 ledger_check :: (l: [] Ledger, a: LedgerAsk) -> int #effects(reads, writes, traps) {
-  st := ledger_allowed(l, a);
-  if st != LEDGER_OK { return st; }
-  // every version the change advances must have a next one, or nothing changes
-  if !ledger_has_next(l, a.c) { return LEDGER_EXHAUSTED; }
-  if a.op == LOP_TRANSFER && !ledger_has_next(l, a.to) { return LEDGER_EXHAUSTED; }
-  if a.op == LOP_SETTLE && !ledger_has_next(l, l[0].items[a.item.value].escrow_to) { return LEDGER_EXHAUSTED; }
-  return LEDGER_OK;
+  m := LedgerItem.{};
+  if a.item.value >= 0 && a.item.value < LEDGER_ITEMS { m = l[0].items[a.item.value]; }
+  e := m.escrow_to;
+  to_known := ledger_character(a.to);
+  return ledger_rule(a.op, a.gen, OwnerGeneration.{value = l[0].fence[0].gen[a.c.value]}, a.ver, l[0].version[a.c.value], m.live, m.owner == a.c,
+                     e.value >= 0, to_known, a.to == a.c, ledger_has_next(l, a.c), to_known && ledger_has_next(l, a.to), e.value >= 0 && ledger_has_next(l, e));
 }
 // Whether character c's inventory version can advance.
-ledger_has_next :: (l: [] Ledger, c: CharacterId) -> bool #effects(reads, writes, traps) { return add_checked(l[0].version[c.value], 1) != null; }
-// Character c's inventory version advances; at its last it stays (ledger_check refused the change first).
+ledger_has_next :: (l: [] Ledger, c: CharacterId) -> bool #effects(reads, writes, traps) { return ledger_next(l[0].version[c.value]); }
+// Character c's inventory version advances; at its last it stays (ledger_rule refused the change first).
 ledger_bump :: (l: [] Ledger, c: CharacterId) #effects(reads, writes, traps) {
   next := add_checked(l[0].version[c.value], 1);
   switch next { case none {} case some(v) { l[0].version[c.value] = v; } }
 }
-// The writer's generation, version, item and escrow rules (nothing changes).
-ledger_allowed :: (l: [] Ledger, a: LedgerAsk) -> int #effects(reads, writes, traps) {
-  if l[0].fence[0].gen[a.c.value] > a.gen.value { return LEDGER_STALE; }
-  if a.ver != l[0].version[a.c.value] { return LEDGER_VERSION; }
-  if a.op == LOP_GRANT { return LEDGER_OK; }
-  if a.item.value < 0 || a.item.value >= LEDGER_ITEMS || !l[0].items[a.item.value].live { return LEDGER_NO_ITEM; }
-  m := l[0].items[a.item.value];
-  if m.owner != a.c { return LEDGER_HELD; }
-  if a.op == LOP_TRANSFER || a.op == LOP_ESCROW {
-    if m.escrow_to.value >= 0 || a.to.value < 0 || a.to.value >= CONTROL_CHARACTERS || a.to == a.c { return LEDGER_HELD; }
-    return LEDGER_OK;
-  }
-  if a.op == LOP_SETTLE || a.op == LOP_CANCEL { return ifx m.escrow_to.value >= 0 then LEDGER_OK else LEDGER_HELD; }
-  return LEDGER_HELD;
-}
-// The change itself, shared by apply and replay.
+// The change itself, shared by apply and replay: the rules' effects on this store.
 ledger_mutate :: (l: [] Ledger, op: int, c: CharacterId, item: ItemId, to: CharacterId, kind: int) #effects(reads, writes, traps) {
-  if op == LOP_GRANT { l[0].items[item.value] = LedgerItem.{live = true, kind = kind, owner = c}; ledger_bump(l, c); return; }
-  if op == LOP_TRANSFER { l[0].items[item.value].owner = to; ledger_bump(l, c); ledger_bump(l, to); return; }
-  if op == LOP_ESCROW { l[0].items[item.value].escrow_to = to; ledger_bump(l, c); return; }
-  if op == LOP_SETTLE { t := l[0].items[item.value].escrow_to; l[0].items[item.value].owner = t; l[0].items[item.value].escrow_to = CharacterId.{value = -1}; ledger_bump(l, c); ledger_bump(l, t); return; }
-  if op == LOP_CANCEL { l[0].items[item.value].escrow_to = CharacterId.{value = -1}; ledger_bump(l, c); }
+  t := l[0].items[item.value].escrow_to;
+  if ledger_creates(op) { l[0].items[item.value] = LedgerItem.{live = true, kind = kind, owner = c}; }
+  if ledger_moves(op) { l[0].items[item.value].owner = to; }
+  if ledger_settles(op) { l[0].items[item.value].owner = t; }
+  if ledger_escrows(op) { l[0].items[item.value].escrow_to = to; }
+  if ledger_clears(op) { l[0].items[item.value].escrow_to = CharacterId.{value = -1}; }
+  ledger_bump(l, c);
+  if ledger_moves(op) { ledger_bump(l, to); }
+  if ledger_settles(op) { ledger_bump(l, t); }
 }
 // A new owner generation for character c reaches the store (control.coax): older writers are fenced.
 ledger_fence :: (l: [] Ledger, c: CharacterId, gen: OwnerGeneration) -> bool #effects(reads, writes, traps) { return control_fence(l[0].fence[..], c, gen.value) == CONTROL_OK; }
+
 
 // A consumer of the outbox: it takes entries in sequence and skips one it has seen; a gap waits for
 // the missing entry.
@@ -193,7 +266,7 @@ ledger_reconcile :: (l: [] Ledger, n: int) -> bool #effects(reads, writes, traps
 // ---- checks
 
 ledger_ask :: (id: int, op: int, c: CharacterId, gen: OwnerGeneration, ver: int, item: ItemId, to: CharacterId, kind: int) -> LedgerAsk #effects(reads, writes, traps) {
-  return LedgerAsk.{id = id, op = op, c = c, gen = gen, ver = ver, item = item, to = to, kind = kind};
+  return LedgerAsk.{id = OperationId.{value = id}, op = op, c = c, gen = gen, ver = ver, item = item, to = to, kind = kind};
 }
 
 ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk #effects(reads, writes, traps) { b := a; b.sent = t; return b; }
@@ -306,14 +379,15 @@ ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk #effects(reads, writes, traps
 #test "ledger: each mutation's exact versions, slots and outbox; a retry differing in any field is a conflict" {
   l: [1] Ledger;
   g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 6), 1);
-  #assert g.item.value == 0 && l[0].ops[0].id == 1 && l[0].ops[0].made.value == 0 && l[0].items[0].kind == 6 && l[0].items[0].owner.value == 3 && l[0].version[3] == 1;
+  #assert g.item.value == 0 && l[0].ops[0].id.value == 1 && l[0].ops[0].made.value == 0 && l[0].items[0].kind == 6 && l[0].items[0].owner.value == 3 && l[0].version[3] == 1;
   h := ledger_apply(l[..], ledger_ask(2, LOP_GRANT, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 1, ItemId.{value = -1}, CharacterId.{value = -1}, 6), 1);
-  #assert h.item.value == 1 && l[0].ops[1].id == 2 && l[0].version[3] == 2;
+  #assert h.item.value == 1 && l[0].ops[1].id.value == 2 && l[0].version[3] == 2;
   #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 0}, CharacterId.{value = 4}, 0), 2).status == LEDGER_OK && l[0].version[3] == 3 && l[0].version[4] == 1;
   e := l[0].out[2];
   #assert e.seq == 3 && e.op == LOP_TRANSFER && e.c.value == 3 && e.item.value == 0 && e.to.value == 4;
   #assert ledger_apply(l[..], ledger_ask(4, LOP_ESCROW, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 3, ItemId.{value = 1}, CharacterId.{value = 5}, 0), 3).status == LEDGER_OK && l[0].version[3] == 4 && l[0].version[5] == 0;
   #assert ledger_apply(l[..], ledger_ask(5, LOP_SETTLE, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 4, ItemId.{value = 1}, CharacterId.{value = -1}, 0), 4).status == LEDGER_OK && l[0].version[3] == 5 && l[0].version[5] == 1 && l[0].items[1].owner.value == 5;
+  #assert l[0].out[4].to.value == 5 && l[0].out[3].to.value == 5 && l[0].out[0].to.value == -1;   // a settle names its receiver, the escrow party
   #assert ledger_apply(l[..], ledger_ask(6, LOP_ESCROW, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 1, ItemId.{value = 1}, CharacterId.{value = 3}, 0), 5).status == LEDGER_OK && l[0].version[5] == 2;
   #assert ledger_apply(l[..], ledger_ask(7, LOP_CANCEL, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 1}, CharacterId.{value = -1}, 0), 6).status == LEDGER_OK && l[0].version[5] == 3 && l[0].version[3] == 5 && l[0].items[1].escrow_to.value == -1;
   // one ID, one payload: any field changed is a conflict
@@ -350,7 +424,7 @@ ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk #effects(reads, writes, traps
   for i: 0..<LEDGER_OPS { #assert ledger_apply(l[..], ledger_sent(ledger_ask(100 + i, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 9, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 20000), 20000).status == LEDGER_VERSION; }
   #assert ledger_apply(l[..], ledger_sent(ledger_ask(500, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 20000), 20000).status == LEDGER_FULL;
   b := ledger_ask(500, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1); b.sent = 20000 + LEDGER_KEEP;
-  #assert ledger_apply(l[..], b, 20000 + LEDGER_KEEP).status == LEDGER_OK && l[0].ops[0].id == 500;
+  #assert ledger_apply(l[..], b, 20000 + LEDGER_KEEP).status == LEDGER_OK && l[0].ops[0].id.value == 500;
 }
 #test "ledger: a full outbox refuses the next mutation" {
   l: [1] Ledger;

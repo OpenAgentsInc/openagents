@@ -8,7 +8,7 @@ combat-rules folders: rules/srd/ aethyr/rules/srd/ may load: engine toolchain
 characters folders: everglade/model/ may load: combat-rules items engine protocol toolchain
 world folders: everglade/world/ everglade/server/ everglade/server/legacy/ everglade/client/ may load: engine realm-authoring room-session toolchain
 creatures folders: everglade/model/ everglade/server/ may load: combat-rules world engine toolchain
-items folders: everglade/model/ aethyr/session/ledger.coax may load: characters protocol toolchain
+items folders: everglade/model/ aethyr/session/ledger.coax coax/web/api/item-policy.coax may load: characters protocol toolchain
 quests folders: everglade/model/ may load: characters world items combat-rules toolchain
 room-session folders: aethyr/session/ aethyr/net/ coax/web/room/ may load: engine protocol combat-rules characters world creatures items identity toolchain
 realm-authoring folders: aethyr/forge/ apps/aethyrforge-desktop/ apps/openagents-web/worldbuilder coax/web/api/worldbuilder.c coax/web/api/realms.c may load: engine protocol toolchain

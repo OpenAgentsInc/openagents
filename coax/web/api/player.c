@@ -59,6 +59,7 @@
 #include "api.h"
 #include "nostr.h"
 #include "progress-policy.generated.h"
+#include "item-policy.generated.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -762,30 +763,147 @@ static bool room_write_owner(const request *q, PGconn *db, int signer, const cha
   if (!ok) api_json(q->fd, 403, "{\"error\":\"another shard's player\"}");
   return !ok;
 }
+// The item ledger's route (#13318, docs/decisions/0006-item-ledger-rules-in-coax.md): SQL keeps the
+// rows, locks (one writer an operation ID, the item, then the inventories in one order), keeps each
+// ID once and writes the outbox; item-policy.coax (aethyr/session/ledger.coax's rules) decides.
+#define ITEM_GO (-1)       /* ledger.coax LEDGER_GO: a new ID, in time */
+#define ITEM_REPLAY (-2)   /* ledger.coax LEDGER_REPLAY: answer the ID's record */
+#define ITEM_OK 0          /* ledger.coax LEDGER_OK */
+static PGresult *item_q(PGconn *db, const char *sql, int n, const char *const *v, ExecStatusType want) {
+  PGresult *r = PQexecParams(db, sql, n, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) == want) return r;
+  PQclear(r);
+  return NULL;
+}
+static char *item_dup(const PGresult *r, int row, int col) {   /* a cell, or NULL for SQL NULL */
+  return PQgetisnull(r, row, col) ? NULL : strdup(PQgetvalue(r, row, col));
+}
+static bool item_same(const char *a, const char *b) { return a && b && !strcmp(a, b); }
+static int64_t item_int(const char *s, int64_t none) { return s ? atoll(s) : none; }
+static void item_answer(const request *q, const char *status, const char *item, bool replay) {
+  char out[160];
+  snprintf(out, sizeof out, "{\"status\":\"%s\",\"item\":%s,\"replay\":%s}", status, item ? item : "null", replay ? "true" : "false");
+  api_json(q->fd, 200, out);
+}
 static void room_items(const request *q, PGconn *db) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a mutation\"}"); return; }
   if (q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
   int signer = room_write_signed(q, "items", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
   if (signer < 0) return;
   if (room_write_owner(q, db, signer, "gen")) return;   /* the shard that holds the player's seat (0156) */
-  char *b = malloc(q->body_len + 1);
-  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
-  memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
-  const char *v[1] = {b};
-  PGresult *r = PQexecParams(db,
-    "WITH j AS (SELECT $1::jsonb AS j) SELECT format('{\"status\":%s,\"item\":%s,\"replay\":%s}', to_json(x.status), "
-    "coalesce(x.item::text, 'null'), CASE WHEN x.replay THEN 'true' ELSE 'false' END) FROM j, "
-    "verse.item_apply(j->>'id', j->>'op', j->>'pid', (j->>'gen')::bigint, (j->>'ver')::int, (j->>'item')::bigint, "
-    "j->>'to', (j->>'kind')::int, (j->>'sent')::bigint) x", 1, NULL, v, NULL, NULL, 0);
-  free(b);
+  char body[4097]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  const char *bv[1] = {body};
+  /* the ask's fields: {id, op, pid, gen, ver, item, to, kind, sent}; a body that isn't JSON is a 400 */
+  PGresult *r = PQexecParams(db, "SELECT j->>'id', j->>'op', verse.item_who(j->>'pid'), (j->>'gen')::bigint, (j->>'ver')::bigint, (j->>'item')::bigint, "
+    "CASE WHEN coalesce(j->>'to', '') = '' THEN NULL ELSE verse.item_who(j->>'to') END, (j->>'kind')::int, (j->>'sent')::bigint "
+    "FROM (SELECT $1::jsonb j) s", 1, NULL, bv, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-items: %s", PQerrorMessage(db));
     PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}"); return;
   }
-  api_json(q->fd, 200, PQgetvalue(r, 0, 0));
+  char *id = item_dup(r, 0, 0), *opw = item_dup(r, 0, 1), *who = item_dup(r, 0, 2), *gen = item_dup(r, 0, 3), *ver = item_dup(r, 0, 4);
+  char *item = item_dup(r, 0, 5), *to = item_dup(r, 0, 6), *kind = item_dup(r, 0, 7), *sent = item_dup(r, 0, 8);
+  PQclear(r); r = NULL;
+  char *owner = NULL, *escrow = NULL, *made = NULL, *result = NULL;
+  struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+  int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+  char now_s[24]; snprintf(now_s, sizeof now_s, "%lld", (long long)now);
+  coax_string id_s = {id ? id : "", id ? (int64_t)strlen(id) : 0};
+  int64_t op = item_op((coax_string){opw ? opw : "", opw ? (int64_t)strlen(opw) : 0});
+  if (!progress_run(db, "BEGIN")) goto failed;
+  /* one writer an operation ID at a time, and its record */
+  const char *iv[6] = {id ? id : "", opw, who, item, to, kind};
+  if (!(r = item_q(db, "SELECT pg_advisory_xact_lock(7731029, hashtext($1))", 1, iv, PGRES_TUPLES_OK))) goto failed;
   PQclear(r);
+  if (!(r = item_q(db, "SELECT at_ms, op = $2, who = $3, item IS NOT DISTINCT FROM $4::bigint, to_who IS NOT DISTINCT FROM $5, "
+                       "kind IS NOT DISTINCT FROM $6::int, result, made FROM verse.item_ops WHERE id = $1", 6, iv, PGRES_TUPLES_OK))) goto failed;
+  bool seen = PQntuples(r) == 1;
+  #define ITEM_T(c) (seen && PQgetvalue(r, 0, c)[0] == 't')
+  int64_t g = item_gate(id_s, op, who != NULL, seen, seen ? atoll(PQgetvalue(r, 0, 0)) : 0, ITEM_T(1), ITEM_T(2), ITEM_T(3), ITEM_T(4), ITEM_T(5),
+                        item_int(sent, 0), now);
+  #undef ITEM_T
+  if (seen) { result = strdup(PQgetvalue(r, 0, 6)); made = item_dup(r, 0, 7); }
+  PQclear(r); r = NULL;
+  if (g != ITEM_GO) {
+    if (!progress_run(db, "COMMIT")) goto failed;
+    if (g == ITEM_REPLAY) item_answer(q, result, made, true);
+    else { coax_string w = item_word(g); char ws[16]; snprintf(ws, sizeof ws, "%.*s", (int)w.count, w.data); item_answer(q, ws, NULL, false); }
+    goto done;
+  }
+  free(made); made = NULL;
+  /* the item, locked; then every inventory it touches, locked in one order */
+  bool live = false;
+  if (!item_creates(op) && item) {
+    const char *mv[1] = {item};
+    if (!(r = item_q(db, "SELECT owner, escrow_to FROM verse.items WHERE id = $1::bigint FOR UPDATE", 1, mv, PGRES_TUPLES_OK))) goto failed;
+    live = PQntuples(r) == 1;
+    if (live) { owner = item_dup(r, 0, 0); escrow = item_dup(r, 0, 1); }
+    PQclear(r); r = NULL;
+  }
+  const char *wv[3] = {who, to, escrow};
+  if (!(r = item_q(db, "INSERT INTO verse.inventories (who) SELECT w FROM unnest(ARRAY[$1, $2, $3]::text[]) w WHERE w IS NOT NULL ON CONFLICT DO NOTHING",
+                   3, wv, PGRES_COMMAND_OK))) goto failed;
+  PQclear(r);
+  if (!(r = item_q(db, "SELECT who, version FROM verse.inventories WHERE who IN ($1, $2, $3) ORDER BY who FOR UPDATE", 3, wv, PGRES_TUPLES_OK))) goto failed;
+  int64_t version = 0, to_version = 0, escrow_version = 0;
+  for (int i = 0; i < PQntuples(r); i++) {
+    const char *w = PQgetvalue(r, i, 0); int64_t v = atoll(PQgetvalue(r, i, 1));
+    if (item_same(w, who)) version = v;
+    if (item_same(w, to)) to_version = v;
+    if (item_same(w, escrow)) escrow_version = v;
+  }
+  PQclear(r);
+  if (!(r = item_q(db, "SELECT gen FROM verse.room_owners WHERE who = $1 FOR SHARE", 1, wv, PGRES_TUPLES_OK))) goto failed;
+  int64_t newest = PQntuples(r) == 1 ? atoll(PQgetvalue(r, 0, 0)) : -1;
+  PQclear(r); r = NULL;
+  int64_t st = item_rule(op, item_int(gen, -1), newest, item_int(ver, -1), version, live, item_same(owner, who), escrow != NULL,
+                         to != NULL, item_same(to, who), to_version, escrow_version);
+  if (st == ITEM_OK) {
+    /* the rules' effects on the rows, and the outbox entry, in this transaction */
+    if (item_creates(op)) {
+      const char *cv[2] = {kind, who};
+      if (!(r = item_q(db, "INSERT INTO verse.items (kind, owner) VALUES (coalesce($1::int, 0), $2) RETURNING id", 2, cv, PGRES_TUPLES_OK))) goto failed;
+      made = strdup(PQgetvalue(r, 0, 0));
+      PQclear(r);
+    } else {
+      const char *after_owner = item_moves(op) ? to : item_settles(op) ? escrow : owner;
+      const char *after_escrow = item_escrows(op) ? to : item_clears(op) ? NULL : escrow;
+      const char *uv[3] = {item, after_owner, after_escrow};
+      if (!(r = item_q(db, "UPDATE verse.items SET owner = $2, escrow_to = $3 WHERE id = $1::bigint", 3, uv, PGRES_COMMAND_OK))) goto failed;
+      PQclear(r);
+    }
+    const char *bump[3] = {who, item_moves(op) ? to : NULL, item_settles(op) ? escrow : NULL};
+    for (int i = 0; i < 3; i++) {
+      if (!bump[i]) continue;
+      if (!(r = item_q(db, "UPDATE verse.inventories SET version = version + 1 WHERE who = $1", 1, &bump[i], PGRES_COMMAND_OK))) goto failed;
+      PQclear(r);
+    }
+    const char *ov[6] = {opw, who, made ? made : item, item_settles(op) ? escrow : to, kind, now_s};
+    if (!(r = item_q(db, "INSERT INTO verse.item_outbox (op, who, item, to_who, kind, at_ms) VALUES ($1, $2, $3::bigint, $4, $5::int, $6::bigint)",
+                     6, ov, PGRES_COMMAND_OK))) goto failed;
+    PQclear(r);
+  }
+  /* the answer is recorded, a refusal too, so a retry hears the same; a forgotten record is replaced */
+  coax_string w = item_word(st); char ws[16]; snprintf(ws, sizeof ws, "%.*s", (int)w.count, w.data);
+  const char *rv[9] = {id, opw, who, item, to, kind, ws, made, now_s};   /* the payload as asked */
+  if (!(r = item_q(db, "INSERT INTO verse.item_ops (id, op, who, item, to_who, kind, result, made, at_ms) "
+                       "VALUES ($1, $2, $3, $4::bigint, $5, $6::int, $7, $8::bigint, $9::bigint) ON CONFLICT (id) DO UPDATE SET op = EXCLUDED.op, "
+                       "who = EXCLUDED.who, item = EXCLUDED.item, to_who = EXCLUDED.to_who, kind = EXCLUDED.kind, result = EXCLUDED.result, "
+                       "made = EXCLUDED.made, at_ms = EXCLUDED.at_ms", 9, rv, PGRES_COMMAND_OK))) goto failed;
+  PQclear(r); r = NULL;
+  if (!progress_run(db, "COMMIT")) goto failed;
+  item_answer(q, ws, st != ITEM_OK ? NULL : made ? made : item, false);
+  goto done;
+failed:
+  if (r) PQclear(r);
+  api_log("room-items: %s", PQerrorMessage(db));
+  progress_run(db, "ROLLBACK");
+  api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+done:
+  free(id); free(opw); free(who); free(gen); free(ver); free(item); free(to); free(kind); free(sent);
+  free(owner); free(escrow); free(made); free(result);
 }
 // character-checkpoint-v1: SDK authentication, locked database facts, then the
 // Coax policy's transaction effects. A receipt follows a WAL-flushed commit.

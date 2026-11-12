@@ -892,6 +892,18 @@ rc_items :: (t: [] Ap) {
   ap_check(t, "items: replaying the outbox gives the same items, owners and versions (restore)", ap_sql(t, "select verse.item_reconcile()", out[..]) == "t", "");
   ap_do(t, "update verse.items set owner = 'p-tampered' where id = (select max(id) from verse.items)");
   ap_check(t, "items: a row changed outside the ledger fails the reconciliation", ap_sql(t, "select verse.item_reconcile()", out[..]) == "f", "");
+  // the rules are ledger.coax's (#13318): a settle's outbox names the escrow party; a version with no
+  // next value refuses the change (exhausted) and changes nothing; an unknown operation is held, unrecorded
+  sb_clear(q[..]); sb(q[..], "select to_who from verse.item_outbox where op = 'settle'");
+  ap_check(t, "items: a settle's outbox entry names its receiver, the escrow party", ap_sql(t, sb_text(q[..]), out[..]) == pl_id(c[..]), "");
+  sb_clear(q[..]); sb(q[..], "update verse.inventories set version = 9223372036854775807 where who = '"); sb(q[..], pl_id(a[..])); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  s = ri_item(t, "it-n1", "grant", pl_id(a[..]), OwnerGeneration.{value = 0}, 9223372036854775807, ItemId.{value = 0}, "", 3, now, w[..]);
+  ap_check(t, "items: a version at the largest refuses the grant (exhausted), and nothing is granted",
+           s == "exhausted" && ap_sql(t, "select count(*) from verse.item_outbox", out[..]) == "5", ap_body(t));
+  s = ri_item(t, "it-n2", "melt", pl_id(b[..]), OwnerGeneration.{value = 0}, 0, ItemId.{value = 0}, "", 3, now, w[..]);
+  ap_check(t, "items: an unknown operation is held and not recorded",
+           s == "held" && ap_sql(t, "select count(*) from verse.item_ops where id = 'it-n2'", out[..]) == "0", ap_body(t));
 }
 
 // ---- stats --------------------------------------------------------------------------------------------
