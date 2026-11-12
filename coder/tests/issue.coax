@@ -1,5 +1,5 @@
 // Bounded issue driver. Qualification is a separate independent command.
-#load "process.coax";
+#load "evidence.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}
  e:=PeEnv.{repo=args_value(a[..],"--driver-repo",""),coder=args_value(a[..],"--driver",""),coax=args_value(a[..],"--coax",""),home=args_value(a[..],"--home",""),cwd=args_value(a[..],"--repo","")};
@@ -7,9 +7,7 @@ tool_main :: ()->int #export_c #effects(all) {
  run:=[10]string.[e.coder,"run",cast(string)taskb[0..<taskn],"--engine","codex","--deadline","180","--cwd",e.cwd,"--json"];
  r:[1]PeRun;pe_run(e,run[..],210000,r[..]);
  out:=args_value(a[..],"--out","");if out.count==0 || !fs_write(out,pe_text(r[..])) {return 2;}
- meta:[1024]u8;n:=json_raw(meta[..],0,"{\"schema\":\"coder.execution.v1\",\"engine_exit\":");n=json_write_int(meta[..],n,r[0].status);
- n=json_raw(meta[..],n,",\"elapsed_ms\":");n=json_write_int(meta[..],n,r[0].ms);n=json_raw(meta[..],n,",\"budget_ms\":180000,\"timeout\":");n=json_raw(meta[..],n,ifx r[0].timeout then "true" else "false");
- n=json_raw(meta[..],n,",\"cut\":");n=json_raw(meta[..],n,ifx r[0].cut then "true" else "false");h:[64]u8;n=json_raw(meta[..],n,",\"log_sha256\":");n=json_write_string(meta[..],n,pe_sha(pe_text(r[..]),h[..]));n=json_raw(meta[..],n,"}\n");
+ meta:[1024]u8;h:[64]u8;n:=qe_write_execution(r[0].status,r[0].ms,180000,r[0].timeout,r[0].cut,pe_sha(pe_text(r[..]),h[..]),meta[..]);
  path:[4096]u8;pn:=pe_cat(path[..],0,out);pn=pe_cat(path[..],pn,".execution.json");if n<0 || !fs_write(cast(string)path[0..<pn],cast(string)meta[0..<n]) {return 2;}
  pe_put("run recorded; exit ");b:[32]u8;pe_put(pe_num(r[0].status,b[..]));pe_put("\n");
  if r[0].timeout {return 124;}if r[0].cut {return 2;}return r[0].status;

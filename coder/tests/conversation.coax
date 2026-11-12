@@ -1,6 +1,5 @@
 // Eight-turn continuation with seven read-only byte checkpoints and independent qualification.
-#load "process.coax";
-#load "../../coax/lib/agent/claude/fields.coax";
+#load "evidence.coax";
 CV_TURNS :: [8]string.[
  "Read AGENTS.md and src.coax. The eventual span_count(lo,hi) contract counts IDs inclusively, valid endpoints 0 through 63. Any negative endpoint, endpoint above 63, or lo>hi returns -1. For now diagnose the stub only; do not edit any file.",
  "Still no edits. Describe the zero-width case lo==hi and how it differs from an empty invalid interval. Keep the public API.",
@@ -31,7 +30,7 @@ tool_main :: ()->int #export_c #effects(all) {
   n=pe_cat(ob[..],0,src);n=pe_cat(ob[..],n,"\n");n=pe_cat(ob[..],n,agents);n=pe_cat(ob[..],n,"\n");ok=ok && cv_write(root,"checkpoint-list.txt",cast(string)ob[0..<n]);
   plb:[4096]u8;pl:=pe_join(root,"protected-list.txt",plb[..]);psb:[4096]u8;ps:=pe_join(root,"protected.json",psb[..]);clb:[4096]u8;cl:=pe_join(root,"checkpoint-list.txt",clb[..]);
   ok=ok && cv_seal(e,gate,pl,ps,r[..]);if !ok {return 2;}
-  turns:=CV_TURNS;parent:[128]u8;np:=0;status:=0;elapsed:=0;timedout:=false;truncated:=false;chain:[524288]u8;cn:=json_raw(chain[..],0,"{\"schema\":\"coder.checkpoints.v1\",\"pairs\":[");
+  turns:=CV_TURNS;parent:[128]u8;np:=0;status:=0;elapsed:=0;timedout:=false;truncated:=false;chain:[524288]u8;cn:=qe_checkpoints_open(chain[..]);
   for i:0..<8 {
     num:[32]u8;number:=pe_num(i,num[..]);nameb:[64]u8;nn:=pe_cat(nameb[..],0,number);nn=pe_cat(nameb[..],nn,"-before.json");bp:[4096]u8;before:=pe_join(root,cast(string)nameb[0..<nn],bp[..]);
     nn=pe_cat(nameb[..],0,number);nn=pe_cat(nameb[..],nn,"-after.json");ap:[4096]u8;after:=pe_join(root,cast(string)nameb[0..<nn],ap[..]);
@@ -44,16 +43,16 @@ tool_main :: ()->int #export_c #effects(all) {
     if i<7 {
       if !cv_seal(e,gate,cl,after,r[..]) {return 2;}
       b:[32768]u8;bn:=fs_read(before,b[..]);d:[32768]u8;dn:=fs_read(after,d[..]);if bn<0 || dn<0 {return 2;}
-      if i>0 {cn=json_raw(chain[..],cn,",");}cn=json_raw(chain[..],cn,"{\"before\":");cn=json_raw(chain[..],cn,cast(string)b[0..<bn]);cn=json_raw(chain[..],cn,",\"after\":");cn=json_raw(chain[..],cn,cast(string)d[0..<dn]);cn=json_raw(chain[..],cn,"}");
+      cn=qe_checkpoints_pair(chain[..],cn,i,cast(string)b[0..<bn],cast(string)d[0..<dn]);
     }
     if status!=0 {break;}
   }
-  cn=json_raw(chain[..],cn,"]}");if cn<0 || !cv_write(root,"checkpoints.json",cast(string)chain[0..<cn]) {return 2;}
-  // The supervisor records actual aggregate process facts, not model claims.
-  n=json_raw(ob[..],0,"{\"schema\":\"coder.execution.v1\",\"engine_exit\":");n=json_write_int(ob[..],n,status);n=json_raw(ob[..],n,",\"elapsed_ms\":");n=json_write_int(ob[..],n,elapsed);n=json_raw(ob[..],n,",\"budget_ms\":600000,\"timeout\":");n=json_raw(ob[..],n,ifx timedout then "true" else "false");n=json_raw(ob[..],n,",\"cut\":");n=json_raw(ob[..],n,ifx truncated then "true" else "false");n=json_raw(ob[..],n,",\"log_sha256\":");
+  cn=qe_checkpoints_close(chain[..],cn);if cn<0 || !cv_write(root,"checkpoints.json",cast(string)chain[0..<cn]) {return 2;}
   // A separate summary log binds the eight transcript hashes without concatenation overflow.
   digestlog:[8192]u8;dl:=0;for i:0..<8 {b:[32]u8;number:=pe_num(i,b[..]);nb:[64]u8;nn:=pe_cat(nb[..],0,number);nn=pe_cat(nb[..],nn,".jsonl");fb:[262144]u8;text:=cv_read(root,cast(string)nb[0..<nn],fb[..]);hh:[64]u8;dl=pe_cat(digestlog[..],dl,pe_sha(text,hh[..]));dl=pe_cat(digestlog[..],dl,"\n");}
-  hh:[64]u8;n=json_write_string(ob[..],n,pe_sha(cast(string)digestlog[0..<dl],hh[..]));n=json_raw(ob[..],n,"}\n");ok=cv_write(root,"execution.json",cast(string)ob[0..<n]) && cv_write(root,"transcripts.sha256",cast(string)digestlog[0..<dl]);
+  // The supervisor records actual aggregate process facts, not model claims.
+  hh:[64]u8;n=qe_write_execution(status,elapsed,600000,timedout,truncated,pe_sha(cast(string)digestlog[0..<dl],hh[..]),ob[..]);
+  ok=n>=0 && cv_write(root,"execution.json",cast(string)ob[0..<n]) && cv_write(root,"transcripts.sha256",cast(string)digestlog[0..<dl]);
   eb:[4096]u8;execution:=pe_join(root,"execution.json",eb[..]);db:[4096]u8;digests:=pe_join(root,"transcripts.sha256",db[..]);chb:[4096]u8;checkpoints:=pe_join(root,"checkpoints.json",chb[..]);qb:[4096]u8;qualified:=pe_join(root,"qualification",qb[..]);
   check:=[22]string.[gate,"verify","--repo",work,"--coax",coax,"--accept",accept,"--unit",src,"--seal",ps,"--checkpoint-chain",checkpoints,"--execution",execution,"--run-log",digests,"--out",qualified,"--checkpoint-before",ps];
   if !ok {return 2;}pe_run(e,check[..],250000,r[..]);pe_put(pe_text(r[..]));pe_put("artifacts: ");pe_put(root);pe_put("\n");return r[0].status;

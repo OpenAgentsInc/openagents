@@ -1,0 +1,253 @@
+// Codec for Coder qualification evidence (docs/protocol/coder-qualification-v1.md).
+#load "process.coax";
+#load "../../coax/lib/agent/claude/fields.coax";
+
+QE_SEAL_SCHEMA :: "coder.seal.v1";
+QE_CHECKPOINTS_SCHEMA :: "coder.checkpoints.v1";
+QE_EXECUTION_SCHEMA :: "coder.execution.v1";
+QE_QUALIFICATION_SCHEMA :: "coder.qualification.v1";
+
+QeFileSeal :: struct { path: string; realpath: string; sha256: string; }
+QeCheckpointPair :: struct { before: string; after: string; }
+QeExecution :: struct {
+  ok: bool;
+  engine_exit: int;
+  elapsed_ms: int;
+  budget_ms: int;
+  timeout: bool;
+  cut: bool;
+  log_sha256: string;
+}
+QeQualification :: struct {
+  ok: bool;
+  qualified: bool;
+  engine_exit: int;
+  elapsed_ms: int;
+  budget_ms: int;
+  acceptance_exit: int;
+  mutation_exit: int;
+  mutants: int;
+  killed: int;
+  survivors: int;
+  acceptance: bool;
+  protected_ok: bool;
+  checkpoints: bool;
+  artifacts: bool;
+  no_exemptions: bool;
+}
+
+qe_hex64 :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+// A bounded coherent read; source files over 2 MiB refuse rather than truncate.
+qe_hash :: (path: string, out: []u8) -> string {
+  size := fs_size(path); stamp := fs_mtime_ns(path); b: [2097152]u8;
+  if size < 0 || size >= b.count || fs_kind(path) != FS_FILE { return ""; }
+  n := fs_read(path, b[..]); if n != size || fs_size(path) != size || fs_mtime_ns(path) != stamp { return ""; }
+  d: [32]u8; if sha256_hash(b[0..<n], d[..]) != SHA_OK { return ""; }
+  hex := "0123456789abcdef"; for i: 0..<32 { out[i * 2] = hex[cast(int)(d[i] >> 4)]; out[i * 2 + 1] = hex[cast(int)(d[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+
+// ---- coder.seal.v1
+
+qe_write_seal_files :: (files: []QeFileSeal, out: []u8) -> int {
+  if files.count < 1 || files.count > 64 { return -1; }
+  n := json_raw(out, 0, "{\"schema\":"); n = json_write_string(out, n, QE_SEAL_SCHEMA); n = json_raw(out, n, ",\"files\":[");
+  for i: 0..<files.count {
+    f := files[i];
+    if f.path.count == 0 || f.path[0] != '/' || f.realpath.count == 0 || f.realpath[0] != '/' || !qe_hex64(f.sha256) { return -1; }
+    if i > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "{\"path\":"); n = json_write_string(out, n, f.path);
+    n = json_raw(out, n, ",\"realpath\":"); n = json_write_string(out, n, f.realpath);
+    n = json_raw(out, n, ",\"sha256\":"); n = json_write_string(out, n, f.sha256);
+    n = json_raw(out, n, "}");
+  }
+  return json_raw(out, n, "]}");
+}
+
+qe_seal_list :: (list: string, out: []u8) -> int {
+  at := 0; count := 0;
+  paths: [64][4096]u8; plens: [64]int;
+  reals: [64][4096]u8; hashes: [64][64]u8;
+  rows: [64]QeFileSeal;
+  while at < list.count {
+    end := at; while end < list.count && list[end] != 10 { end += 1; } path := cast(string) list[at..<end]; at = end + 1;
+    if path.count == 0 { continue; }
+    if count == 64 || path[0] != '/' || path.count >= 4096 { return -1; }
+    for i: 0..<count { if path == cast(string) paths[i][0..<plens[i]] { return -1; } }
+    plens[count] = pe_cat(paths[count][..], 0, path);
+    real := fs_realpath(path, reals[count][..]); hash := qe_hash(path, hashes[count][..]);
+    if real.count == 0 || hash.count != 64 { return -1; }
+    rows[count] = QeFileSeal.{ path = cast(string) paths[count][0..<plens[count]], realpath = real, sha256 = hash };
+    count += 1;
+  }
+  if count == 0 { return -1; }
+  return qe_write_seal_files(rows[0..<count], out);
+}
+
+qe_read_seal :: (ar: []ClArena, manifest: string, out: []QeFileSeal) -> int {
+  if !json_valid(manifest) { return -1; }
+  if cl_str(ar, manifest, "schema") != QE_SEAL_SCHEMA || cl_at(manifest, "files").tok != JSON_ARRAY { return -1; }
+  files := cl_raw(manifest, "files"); count := cl_count(files);
+  if count < 1 || count > 64 || count > out.count { return -1; }
+  for i: 0..<count {
+    row := cl_json(files, cl_item(files, i));
+    path := cl_str(ar, row, "path"); real := cl_str(ar, row, "realpath"); h := cl_str(ar, row, "sha256");
+    if path.count == 0 || path[0] != '/' || real.count == 0 || real[0] != '/' || !qe_hex64(h) { return -1; }
+    out[i] = QeFileSeal.{ path = path, realpath = real, sha256 = h };
+  }
+  return ifx ar[0].full then -1 else count;
+}
+
+qe_valid_seal :: (manifest: string) -> bool {
+  ab: [32768]u8; ar: [1]ClArena; ar[0].buf = ab[..]; rows: [64]QeFileSeal;
+  return qe_read_seal(ar[..], manifest, rows[..]) > 0;
+}
+
+// ---- coder.checkpoints.v1
+
+qe_checkpoints_open :: (out: []u8) -> int {
+  n := json_raw(out, 0, "{\"schema\":"); n = json_write_string(out, n, QE_CHECKPOINTS_SCHEMA);
+  return json_raw(out, n, ",\"pairs\":[");
+}
+
+qe_checkpoints_pair :: (out: []u8, at: int, index: int, before: string, after: string) -> int {
+  n := at;
+  if index > 0 { n = json_raw(out, n, ","); }
+  n = json_raw(out, n, "{\"before\":"); n = json_raw(out, n, before);
+  n = json_raw(out, n, ",\"after\":"); n = json_raw(out, n, after);
+  return json_raw(out, n, "}");
+}
+
+qe_checkpoints_close :: (out: []u8, at: int) -> int {
+  return json_raw(out, at, "]}");
+}
+
+qe_write_checkpoints :: (pairs: []QeCheckpointPair, out: []u8) -> int {
+  n := qe_checkpoints_open(out);
+  for i: 0..<pairs.count { n = qe_checkpoints_pair(out, n, i, pairs[i].before, pairs[i].after); }
+  return qe_checkpoints_close(out, n);
+}
+
+qe_read_checkpoints :: (chain: string, out: []QeCheckpointPair) -> int {
+  if !json_valid(chain) { return -1; }
+  ab: [1024]u8; ar: [1]ClArena; ar[0].buf = ab[..];
+  if cl_str(ar[..], chain, "schema") != QE_CHECKPOINTS_SCHEMA || cl_at(chain, "pairs").tok != JSON_ARRAY || ar[0].full { return -1; }
+  pairs := cl_raw(chain, "pairs"); n := cl_count(pairs);
+  if n < 1 || n > 32 || n > out.count { return -1; }
+  for i: 0..<n {
+    row := cl_json(pairs, cl_item(pairs, i)); a := cl_raw(row, "before"); b := cl_raw(row, "after");
+    if !qe_valid_seal(a) || !qe_valid_seal(b) { return -1; }
+    out[i] = QeCheckpointPair.{ before = a, after = b };
+  }
+  return n;
+}
+
+qe_valid_checkpoints :: (chain: string) -> bool {
+  pairs: [32]QeCheckpointPair; n := qe_read_checkpoints(chain, pairs[..]);
+  if n < 1 { return false; }
+  for i: 0..<n { if pairs[i].before != pairs[i].after { return false; } }
+  return true;
+}
+
+// ---- coder.execution.v1
+
+qe_write_execution :: (engine_exit: int, elapsed_ms: int, budget_ms: int, timeout: bool, cut: bool, log_sha256: string, out: []u8) -> int {
+  n := json_raw(out, 0, "{\"schema\":"); n = json_write_string(out, n, QE_EXECUTION_SCHEMA);
+  n = json_raw(out, n, ",\"engine_exit\":"); n = json_write_int(out, n, engine_exit);
+  n = json_raw(out, n, ",\"elapsed_ms\":"); n = json_write_int(out, n, elapsed_ms);
+  n = json_raw(out, n, ",\"budget_ms\":"); n = json_write_int(out, n, budget_ms);
+  n = json_raw(out, n, ",\"timeout\":"); n = json_raw(out, n, ifx timeout then "true" else "false");
+  n = json_raw(out, n, ",\"cut\":"); n = json_raw(out, n, ifx cut then "true" else "false");
+  n = json_raw(out, n, ",\"log_sha256\":"); n = json_write_string(out, n, log_sha256);
+  return json_raw(out, n, "}\n");
+}
+
+qe_read_execution :: (ar: []ClArena, text: string) -> QeExecution {
+  res := QeExecution.{};
+  if !json_valid(text) || cl_str(ar, text, "schema") != QE_EXECUTION_SCHEMA { return res; }
+  ex := cl_int(text, "engine_exit"); elapsed := cl_int(text, "elapsed_ms"); budget := cl_int(text, "budget_ms");
+  late := cl_bool(text, "timeout"); cut := cl_bool(text, "cut"); sha := cl_str(ar, text, "log_sha256");
+  if ar[0].full || !ex.ok || !elapsed.ok || !budget.ok || !late.ok || !cut.ok || !qe_hex64(sha) { return res; }
+  return QeExecution.{ ok = true, engine_exit = ex.value, elapsed_ms = elapsed.value, budget_ms = budget.value, timeout = late.value, cut = cut.value, log_sha256 = sha };
+}
+
+// ---- coder.qualification.v1
+
+qe_write_qualification :: (q: QeQualification, out: []u8) -> int {
+  n := json_raw(out, 0, "{\"schema\":"); n = json_write_string(out, n, QE_QUALIFICATION_SCHEMA);
+  n = json_raw(out, n, ",\"qualified\":"); n = json_raw(out, n, ifx q.qualified then "true" else "false");
+  names := [8]string.["engine_exit", "elapsed_ms", "budget_ms", "acceptance_exit", "mutation_exit", "mutants", "killed", "survivors"];
+  values := [8]int.[q.engine_exit, q.elapsed_ms, q.budget_ms, q.acceptance_exit, q.mutation_exit, q.mutants, q.killed, q.survivors];
+  for i: 0..<8 {
+    n = json_raw(out, n, ","); n = json_write_string(out, n, names[i]);
+    n = json_raw(out, n, ":"); n = json_write_int(out, n, values[i]);
+  }
+  keys := [5]string.["acceptance", "protected", "checkpoints", "artifacts", "no_exemptions"];
+  flags := [5]bool.[q.acceptance, q.protected_ok, q.checkpoints, q.artifacts, q.no_exemptions];
+  for i: 0..<5 {
+    n = json_raw(out, n, ","); n = json_write_string(out, n, keys[i]);
+    n = json_raw(out, n, ifx flags[i] then ":true" else ":false");
+  }
+  return json_raw(out, n, "}\n");
+}
+
+qe_read_qualification :: (text: string) -> QeQualification {
+  res := QeQualification.{};
+  ab: [1024]u8; ar: [1]ClArena; ar[0].buf = ab[..];
+  if !json_valid(text) || cl_str(ar[..], text, "schema") != QE_QUALIFICATION_SCHEMA || ar[0].full { return res; }
+  qual := cl_bool(text, "qualified");
+  ex := cl_int(text, "engine_exit"); elapsed := cl_int(text, "elapsed_ms"); budget := cl_int(text, "budget_ms");
+  ac_exit := cl_int(text, "acceptance_exit"); mu_exit := cl_int(text, "mutation_exit");
+  mutants := cl_int(text, "mutants"); killed := cl_int(text, "killed"); survivors := cl_int(text, "survivors");
+  ac := cl_bool(text, "acceptance"); pr := cl_bool(text, "protected"); ch := cl_bool(text, "checkpoints");
+  art := cl_bool(text, "artifacts"); nex := cl_bool(text, "no_exemptions");
+  if !qual.ok || !ex.ok || !elapsed.ok || !budget.ok || !ac_exit.ok || !mu_exit.ok || !mutants.ok || !killed.ok || !survivors.ok || !ac.ok || !pr.ok || !ch.ok || !art.ok || !nex.ok { return res; }
+  return QeQualification.{
+    ok = true, qualified = qual.value, engine_exit = ex.value, elapsed_ms = elapsed.value, budget_ms = budget.value,
+    acceptance_exit = ac_exit.value, mutation_exit = mu_exit.value, mutants = mutants.value, killed = killed.value, survivors = survivors.value,
+    acceptance = ac.value, protected_ok = pr.value, checkpoints = ch.value, artifacts = art.value, no_exemptions = nex.value
+  };
+}
+
+#test "qualification evidence writers and readers preserve exact wire bytes" {
+  files := [1]QeFileSeal.[QeFileSeal.{ path = "/tmp/a.coax", realpath = "/private/tmp/a.coax", sha256 = "57230e5776c60a9074a621663cad179ca90cb7e541e718450c9a87dfac48a8ee" }];
+  sb: [512]u8; sn := qe_write_seal_files(files[..], sb[..]);
+  seal := cast(string) sb[0..<sn];
+  #assert seal == "{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/tmp/a.coax\",\"realpath\":\"/private/tmp/a.coax\",\"sha256\":\"57230e5776c60a9074a621663cad179ca90cb7e541e718450c9a87dfac48a8ee\"}]}";
+  #assert qe_valid_seal(seal);
+
+  pairs := [1]QeCheckpointPair.[QeCheckpointPair.{ before = seal, after = seal }];
+  cb: [1024]u8; cn := qe_write_checkpoints(pairs[..], cb[..]);
+  chain := cast(string) cb[0..<cn];
+  #assert qe_valid_checkpoints(chain);
+  parsed_pairs: [4]QeCheckpointPair;
+  #assert qe_read_checkpoints(chain, parsed_pairs[..]) == 1;
+  cb2: [1024]u8; cn2 := qe_write_checkpoints(parsed_pairs[0..<1], cb2[..]);
+  #assert cast(string) cb2[0..<cn2] == chain;
+
+  eb: [512]u8; en := qe_write_execution(0, 120840, 600000, false, false, "6074884743035813926b1d11dcc30f2639cecb696800436d73a825963d7525ec", eb[..]);
+  exec_json := cast(string) eb[0..<en];
+  #assert exec_json == "{\"schema\":\"coder.execution.v1\",\"engine_exit\":0,\"elapsed_ms\":120840,\"budget_ms\":600000,\"timeout\":false,\"cut\":false,\"log_sha256\":\"6074884743035813926b1d11dcc30f2639cecb696800436d73a825963d7525ec\"}\n";
+  ab: [512]u8; ar: [1]ClArena; ar[0].buf = ab[..];
+  ex := qe_read_execution(ar[..], exec_json);
+  #assert ex.ok && ex.budget_ms == 600000 && ex.elapsed_ms == 120840 && !ex.timeout && !ex.cut;
+
+  eb180: [512]u8; en180 := qe_write_execution(0, 64511, 180000, false, false, "c31ac339abb03c0e2cd881adf6722fa544ab5a9e8447269b869ea74a83839148", eb180[..]);
+  #assert cast(string) eb180[0..<en180] == "{\"schema\":\"coder.execution.v1\",\"engine_exit\":0,\"elapsed_ms\":64511,\"budget_ms\":180000,\"timeout\":false,\"cut\":false,\"log_sha256\":\"c31ac339abb03c0e2cd881adf6722fa544ab5a9e8447269b869ea74a83839148\"}\n";
+
+  q := QeQualification.{
+    qualified = true, engine_exit = 0, elapsed_ms = 120840, budget_ms = 600000,
+    acceptance_exit = 0, mutation_exit = 0, mutants = 15, killed = 15, survivors = 0,
+    acceptance = true, protected_ok = true, checkpoints = true, artifacts = true, no_exemptions = true
+  };
+  qb: [512]u8; qn := qe_write_qualification(q, qb[..]);
+  qjson := cast(string) qb[0..<qn];
+  #assert qjson == "{\"schema\":\"coder.qualification.v1\",\"qualified\":true,\"engine_exit\":0,\"elapsed_ms\":120840,\"budget_ms\":600000,\"acceptance_exit\":0,\"mutation_exit\":0,\"mutants\":15,\"killed\":15,\"survivors\":0,\"acceptance\":true,\"protected\":true,\"checkpoints\":true,\"artifacts\":true,\"no_exemptions\":true}\n";
+  qr := qe_read_qualification(qjson);
+  #assert qr.ok && qr.qualified && qr.mutants == 15 && qr.killed == 15 && qr.protected_ok;
+}
