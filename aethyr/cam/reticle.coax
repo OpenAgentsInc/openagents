@@ -4,7 +4,7 @@
 // centre ray, so what the reticle covers is what an arrow, a bolt or a pick goes toward.
 //
 // It only says where the strokes go: a realm draws each ReticleStroke with its own line primitive
-// (Experimental: charactercreator.coax lit, through experimental-combat.coax xc_crosshair).
+// (Experimental: charactercreator.coax lit, through everglade/zone-combat.coax xc_crosshair).
 //   coax/bin/coax test aethyr/cam/reticle.coax --library
 #module "aethyr.cam.reticle";
 

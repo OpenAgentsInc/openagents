@@ -1,5 +1,5 @@
 // Everglade II's mouse buttons, as Everglade Experimental's (fivelab.coax lab_pointer_buttons,
-// experimental-combat.coax xc_bow_*): while the mouse looks (aethyr/cam/mouselook.coax), the left
+// everglade/zone-combat.coax xc_bow_*): while the mouse looks (aethyr/cam/mouselook.coax), the left
 // button casts, and a Ranger's right button held draws the Longbow (aethyr/action/bow.coax) and its
 // release looses it at the reticle (docs/verse/bow-combat.md). The draw's frame is the engine's
 // archer (aethyr/action/archery.coax) and its sounds Everglade's Longbow (everglade/longbow.coax),

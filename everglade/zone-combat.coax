@@ -44,31 +44,31 @@
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-#load "../../everglade/shared/fivebar.coax";
-#load "../../aethyr/walk-substep-policy.coax" as xtravel;
-#load "../../aethyr/rules/srd/press-budget.coax";
-#load "../../everglade/shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
-#load "../../everglade/client/class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
-#load "../../everglade/client/class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
-#load "../../everglade/client/cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
-#load "../../everglade/client/class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
-#load "../../everglade/dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
-#load "../../aethyr/action/sprint.coax" as sprint;   // the sprint (engine): its pace and steering
-#load "../../verse/experimental-terrain.coax" as xmeadow;
-#load "../../verse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
-#load "../../aethyr/action/action.coax" as act;
-#load "../../aethyr/action/sensor.coax" as sense;
-#load "../../aethyr/query.coax" as aq;
-#load "../../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
-#load "../../aethyr/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
-#load "../../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, shared with Everglade II (#13104)
-#load "../../aethyr/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
-#load "../../aethyr/action/target.coax" as tg;   // static targets an arrow strikes: any zone may stand some (the Archery Range does)
-#load "../../aethyr/world/props.coax" as wprops;   // a zone's own standing things' boxes (the Creator keeps them)
-#load "../../aethyr/action/bow.coax" as bow;
-#load "../../aethyr/action/archery.coax" as arch;   // the archer: the sight line, the flight, what an arrow meets (engine)
-#load "../../everglade/longbow.coax";   // Everglade's Longbow: where the arrow leaves, its sounds and dust (game)
-#load "../../aethyr/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
+#load "shared/fivebar.coax";
+#load "../aethyr/walk-substep-policy.coax" as xtravel;
+#load "../aethyr/rules/srd/press-budget.coax";
+#load "shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
+#load "client/class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
+#load "client/class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
+#load "client/cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
+#load "client/class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
+#load "dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
+#load "../aethyr/action/sprint.coax" as sprint;   // the sprint (engine): its pace and steering
+#load "../verse/experimental-terrain.coax" as xmeadow;
+#load "../verse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
+#load "../aethyr/action/action.coax" as act;
+#load "../aethyr/action/sensor.coax" as sense;
+#load "../aethyr/query.coax" as aq;
+#load "../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
+#load "../aethyr/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
+#load "../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, shared with Everglade II (#13104)
+#load "../aethyr/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
+#load "../aethyr/action/target.coax" as tg;   // static targets an arrow strikes: any zone may stand some (the Archery Range does)
+#load "../aethyr/world/props.coax" as wprops;   // a zone's own standing things' boxes (the Creator keeps them)
+#load "../aethyr/action/bow.coax" as bow;
+#load "../aethyr/action/archery.coax" as arch;   // the archer: the sight line, the flight, what an arrow meets (engine)
+#load "longbow.coax";   // Everglade's Longbow: where the arrow leaves, its sounds and dust (game)
+#load "../aethyr/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
 
 XC_FOES :: hostile.HS_N;      // the village's six and the dungeon's (verse/experimental-hostiles.coax)
 XC_SIDE :: 48; XC_MID :: 24;   // the engine's grid round you, squares (73 m a side)
@@ -151,7 +151,7 @@ XcCombat :: struct {
   // pool slot + 1, 0 none) and what the rules said of yours
   ar: [1] arch.Archer;
   shot_arrow: [hostile.HS_SHOTS] int;
-  dr: XcDruid;                      // the druid's grove (druid-scene.coax), off elsewhere
+  dr: XcDruid;                      // the druid's grove (zone-shapechange.coax), off elsewhere
   own_kit: bool;                    // the page has one class of its own and no CLASSES picker (the Archery Range)
   bow_hits: int; bow_misses: int; bow_far: int;
 }
@@ -2075,7 +2075,7 @@ xc_pointer :: (s: [] EgZone, px: f32, py: f32, phase: int, id: int) -> bool {
     return true;
   }
   if over < 0 && x[0].dr.breath_touch != id && xd_pointer(s, px, py, phase, id) { return true; }   // a phone's thumbs in the grove
-  // Fire Breath: a finger held on its slot aims, lifting it breathes (druid-scene.coax)
+  // Fire Breath: a finger held on its slot aims, lifting it breathes (zone-shapechange.coax)
   if x[0].dr.breath_touch == id && (phase == 2 || phase == 3) { x[0].dr.breath_touch = -100; if phase == 3 { sh_aim_cancel(x[0].dr.sh[..]); x[0].dr.breath_slot = -1; } else { _ := xd_release(s); } return true; }
   if phase == 0 && over >= 0 && !s[0].shift && xd_aim(s, over) { x[0].dr.breath_touch = id; return true; }
   if phase == 0 {

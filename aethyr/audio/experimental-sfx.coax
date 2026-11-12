@@ -13,7 +13,7 @@ XSFX_PSYCHIC_CAST :: 0; XSFX_PSYCHIC_HIT :: 1; XSFX_CHOIR :: 2; XSFX_RAGE_ROAR :
 XSFX_SWING_HEAVY :: 5; XSFX_FIZZLE :: 6; XSFX_SECOND_WIND :: 7; XSFX_SURGE :: 8; XSFX_DASH :: 9;
 XSFX_FLURRY :: 10; XSFX_ENTANGLE :: 11; XSFX_IMP_HURT :: 12; XSFX_IMP_DEATH :: 13;
 XSFX_GREMLIN_HURT :: 14; XSFX_GREMLIN_DEATH :: 15;
-// the monsters' ranged attacks (experimental-combat.coax xc_shots_step): the release, the flight
+// the monsters' ranged attacks (everglade/zone-combat.coax xc_shots_step): the release, the flight
 // past you and the impact, for an arrow and for a thrown rock
 XSFX_BOW :: 16; XSFX_ARROW_WHIZ :: 17; XSFX_ARROW_HIT :: 18; XSFX_HURL :: 19; XSFX_ROCK_HIT :: 20;
 // the bow's own (docs/verse/bow-combat.md): the draw's creak, an arrow into a creature, and one into grass

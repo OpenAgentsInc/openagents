@@ -143,7 +143,7 @@ slot greys and nothing plays.
 | Engine | `aethyr/action/deed.coax` | The bar, the ask and the answer, the bearing type, the feel contract and the show |
 | Rules | `aethyr/rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
 | Game | `everglade/client/class-feel.coax` | Everglade's feel for every class ability and monster action |
-| Zone | `everglade/client/cast.coax`, `experimental-combat.coax`, `everglade-spells.coax` | Each zone wires its press, its authority's answer and its bar to the pipeline |
+| Zone | `everglade/client/cast.coax`, `everglade/zone-combat.coax`, `everglade-spells.coax` | Each zone wires its press, its authority's answer and its bar to the pipeline |
 
 A zone only wires the pipeline in. It holds no copy of it. Features that
 more than one zone needs belong in the engine or in the game's shared

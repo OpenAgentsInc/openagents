@@ -93,7 +93,7 @@ plus 1000) and `&turn=` stand it somewhere else. See [Gameplay clips](clips.md).
 ## Fight back
 
 You fight the monsters with your class's level 1 kit
-(`apps/openagents-web/experimental-combat.coax`, #13025).
+(`everglade/zone-combat.coax`, #13025).
 
 - The bar at the bottom holds your class's level 1 abilities, on keys 1 to N. Slot 1 is the
   ability from Character Create's CLASS row. The others are the class's cantrips, 1st-level
@@ -394,7 +394,7 @@ hits flashes at the monster's chest.
 
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
 
-Every ability has its own sounds (`xc_sound` in `apps/openagents-web/experimental-combat.coax`): a cast or launch sound as you use it (a blow's whoosh as its swing starts), often with a second layer under it, an impact where it lands on a monster, and a fizzle where a spell meets no one or misses. A spell without its own entry sounds like its damage type, or else its school. No two abilities a class has at once, at any level from 1 to 6, share a cast sound. The greataxe and greatsword swing slower and lower than the one-handed swords and land a heavier hit. Imps and gremlins have their own hurt and death sounds. Most sounds are the Everglade bank's picks; the ones it has no file for (Vicious Mockery's warble, Sacred Flame's choir, Rage's roar, the heavy swing, the fizzle, the monsters' voices and a few more) are synthesized from recipes in `aethyr/audio/experimental-sfx.coax` (see `aethyr/audio/SOURCES.md`). Each play takes one of the sound's picks at random and varies its pitch by up to 7% and its level by up to 15%, so a repeat never sounds identical.
+Every ability has its own sounds (`xc_sound` in `everglade/zone-combat.coax`): a cast or launch sound as you use it (a blow's whoosh as its swing starts), often with a second layer under it, an impact where it lands on a monster, and a fizzle where a spell meets no one or misses. A spell without its own entry sounds like its damage type, or else its school. No two abilities a class has at once, at any level from 1 to 6, share a cast sound. The greataxe and greatsword swing slower and lower than the one-handed swords and land a heavier hit. Imps and gremlins have their own hurt and death sounds. Most sounds are the Everglade bank's picks; the ones it has no file for (Vicious Mockery's warble, Sacred Flame's choir, Rage's roar, the heavy swing, the fizzle, the monsters' voices and a few more) are synthesized from recipes in `aethyr/audio/experimental-sfx.coax` (see `aethyr/audio/SOURCES.md`). Each play takes one of the sound's picks at random and varies its pitch by up to 7% and its level by up to 15%, so a repeat never sounds identical.
 
 The castle spans 56 by 54 metres, with nine towers surrounding four connected courtyards and a central keep. Its main arched entrance is at (34, -20). The walls and towers share a level foundation, with a smooth transition to the surrounding meadow. The walls and towers supply colliders to the player and camera.
 

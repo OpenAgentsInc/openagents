@@ -2,9 +2,9 @@
 // what it lists (you, the imps, gremlins and puglins by their slot in the hostiles' list, so an id
 // stays the same while that creature lives, and the horses and dragons by their mount slot), and
 // how its world operations turn into a player's input: walking is the keys' forward along the way drv_steer says, a use presses the bar's slot
-// as 1 to 9 would (experimental-combat.coax xc_press, a deed the local rules answer), and a mount
+// as 1 to 9 would (zone-combat.coax xc_press, a deed the local rules answer), and a mount
 // presses E beside the horse or dragon (zone-ride.coax zone_mount_key).
-// zone.coax loads this after experimental-combat.coax. The Drive lives in the face (zone_drive_attach),
+// zone.coax loads this after zone-combat.coax. The Drive lives in the face (zone_drive_attach),
 // not in the zone, so its checks stay inside the compile-time value budget;
 // with none attached (the checks) every call here does nothing.
 

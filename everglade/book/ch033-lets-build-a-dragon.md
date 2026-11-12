@@ -11,7 +11,7 @@
 > The body's change, flight and breath are
 > [`everglade/shapeshift.coax`](../../everglade/shapeshift.coax), and the
 > field at `/druid` is
-> [`apps/openagents-web/druid-scene.coax`](../../apps/openagents-web/druid-scene.coax).
+> [`everglade/zone-shapechange.coax`](../zone-shapechange.coax).
 > Riding the dragon as a mount is a design draft: see
 > [`everglade/docs/mounts-spec.md`](../docs/mounts-spec.md).
 
@@ -32,7 +32,7 @@ Each piece of that lives in one place, and every Everglade zone reuses it:
 | Shapechange and the dragon's actions | Engine (SRD rules) | `shapechange.coax`, `dragon-actions.coax` |
 | The change on screen, the breath's aim, the clip to play | Everglade | `everglade/shapeshift.coax` |
 | The change, breath, burning, sweep, buffet and roar effects | Engine | `aethyr/fx/dragon.coax` |
-| The druid, the field and the bar | Zone | `druid-scene.coax` |
+| The druid, the field and the bar | Zone | `everglade/zone-shapechange.coax` |
 
 The zone holds no rules. It places the druid and passes your keys to the
 shared layers.
@@ -226,7 +226,7 @@ before it spends a slot:
 The zone doesn't decide which body to draw. It reads the engine's creature and
 draws that:
 
-<!-- source: apps/openagents-web/druid-scene.coax druid-form -->
+<!-- source: everglade/zone-shapechange.coax druid-form -->
 ```jai
 // The engine's body, as the shapeshift layer's kinds.
 xd_form :: (c: RsCreature) -> int { return ifx c.shape_form == MON_ADULT_RED_DRAGON then SH_DRAGON else ifx c.wild_form != 0 then SH_WOLF else SH_DRUID; }
@@ -269,7 +269,7 @@ has the SRD's mounted-combat rules that the mounts follow.
   everything back; its Temporary Hit Points go"`.
 - `everglade/shapeshift.coax`, `#test "the fire cone: inside 18 m and its angle
   it hits, outside it misses; a flier aims down"`.
-- `apps/openagents-web/fivelab.coax` runs `druid-scene.coax`'s `#test "druid:
+- `apps/openagents-web/fivelab.coax` runs `everglade/zone-shapechange.coax`'s `#test "druid:
   Fire Breath held and let go burns the monsters in its cone and none behind"`
   and `#test "druid: the dragon takes off with Jump, flies faster than it walks,
   and glides down to land"`.

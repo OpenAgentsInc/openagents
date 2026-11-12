@@ -87,7 +87,7 @@ every level from 1 to 6, and every monster action Everglade fields.
 | Engine | `aethyr/action/deed.coax` | The bar, the ask and answer, the bearing type, the feel contract, the show |
 | Engine (SRD rules) | `aethyr/rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
 | Game | `everglade/client/class-feel.coax` | Everglade's feel for every class ability and monster action |
-| Zone | `everglade/client/cast.coax`, `experimental-combat.coax`, `everglade-spells.coax` | Each realm wires its press, its authority's answer and its bar to the pipeline |
+| Zone | `everglade/client/cast.coax`, `everglade/zone-combat.coax`, `everglade-spells.coax` | Each realm wires its press, its authority's answer and its bar to the pipeline |
 
 Zones only wire it in. They hold no copies of the pipeline.
 

@@ -53,7 +53,7 @@
 #load "../../aethyr/world/building.coax" as building;
 #load "../../everglade/world/housewright.coax" as hw;   // the housewright showcase's labels (lab_showcase_titles)
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
-#load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in experimental-combat.coax xc_sprint_frame)
+#load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in everglade/zone-combat.coax xc_sprint_frame)
 #load "../../everglade/hud/class-bar.coax";   // Everglade's class menus: rest, in the menu your portrait opens (#13092, #13147)
 #load "../../everglade/hud/lines.coax";   // Everglade's line HUD: the lab's lines, words, buttons, slots, sliders, log and corner (#13083)
 #load "../../everglade/zone.coax";   // an Everglade zone: Experimental's and the Druid's world (the scene, the class bar and its rules, the bow, riding, the agent driver)

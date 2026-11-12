@@ -421,7 +421,7 @@ cg_sun_veil :: (uv:V2)->V3 {
  #assert cg_health_panel(v2(1100,30),1280,1) && !cg_health_panel(v2(1000,30),1280,1) && !cg_health_panel(v2(1100,70),1280,1);
 }
 cg_health_panel :: (p:V2,w:f32,k:f32)->bool {return p.x>=w-214*k && p.x<=w-28*k && p.y>=20*k && p.y<=58*k;}
-// Experimental's CLASSES column (experimental-combat.coax): the dev panel's look, from top to bottom (device px).
+// Experimental's CLASSES column (everglade/zone-combat.coax): the dev panel's look, from top to bottom (device px).
 cg_column :: (p:V2,top:f32,bottom:f32,k:f32)->bool {return p.x>=12*k && p.x<=370*k && p.y>=top && p.y<=bottom;}
 cg_dev_panel :: (p:V2,h:f32,k:f32,collapsed:bool)->bool {return p.x>=12*k && p.x<=370*k && p.y>=20*k && p.y<=ifx collapsed then 52*k else h-20*k;}
 charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {

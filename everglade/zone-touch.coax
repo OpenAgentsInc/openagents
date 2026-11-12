@@ -33,7 +33,7 @@ zt_coarse :: (facts: string) -> bool {
 }
 // The touch controls are up: a finger has touched the page (or the host said it is a touch screen),
 // the world is up, you stand, and you aren't the druid's dragon, whose thumbs are its own
-// (apps/openagents-web/druid-scene.coax xd_pointer).
+// (everglade/zone-shapechange.coax xd_pointer).
 zt_on :: (s: [] EgZone) -> bool {
   h := s[0].creator[0].hostiles[0];
   return s[0].touch && zone_world(s) && !(h.ready && h.hp <= 0) && !s[0].xc[0].dr.on;
@@ -66,7 +66,7 @@ zt_up :: (s: [] EgZone) -> cc.Box {
   return cc.Box.{x0 = x0, y0 = y0, x1 = b[2], y1 = y0 + 48 * k};
 }
 // An upright phone (#13189): a touch screen's world, taller than it is wide and narrower than a
-// tablet. The world is the screen there: the bar is one row (experimental-combat.coax xc_slot), no
+// tablet. The world is the screen there: the bar is one row (zone-combat.coax xc_slot), no
 // second class plate, no debug lines unless ?net, and a realm folds its own panels to a line.
 ZT_COMPACT_W :: 700.0;   // CSS px: a page narrower than this, held upright
 zone_compact :: (s: [] EgZone) -> bool {

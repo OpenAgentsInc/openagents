@@ -88,15 +88,15 @@ Creator :: struct {
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
   klass:int = -1; level:int = 1;   // and its level (CC4, #13046)
   weapon_first:[7]int; weapon_count:[7]int;   // the pack's held weapons (glade/weapon0..4), the bow's string (5) and an arrow (6)
-  weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (experimental-combat.coax)
-  stride:f32;        // seconds the run's clip is ahead of the clock: a Dash's sprint quickens your stride (experimental-combat.coax xc_sprint_frame)
+  weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (everglade/zone-combat.coax)
+  stride:f32;        // seconds the run's clip is ahead of the clock: a Dash's sprint quickens your stride (everglade/zone-combat.coax xc_sprint_frame)
   backpedal:bool;    // mouselook with S held: the run plays backwards while you face the camera (no backpedal clip in the rig)
   aim:f32;           // a drawn bow's aim, 0 to 1 (aethyr/action/bow.coax bow_aim): the camera over your shoulder and the aiming pose
   draw:f32; loose_at:f32 = -100; nocked:bool;   // the draw's strength (bow_strength), the last loose, and an arrow on the string
   orbit:f32;         // a check's camera turn round you (radians), apart from your aim: side and back frames
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
   ml:[1]mlook.Mouselook;   // Experimental's mouselook (aethyr/cam/mouselook.coax); the studio never asks for it
-  dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
+  dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (everglade/zone-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
   crews:[CC_CREWS]CcCrew;   // the build sites' builders (charactercreator-crew.coax)
   pile_first:[hw.HW_STOCKS]int; pile_count:[hw.HW_STOCKS]int; pile_word:int; pile_n:int;   // their piles ("C glade/pile<row>")
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
@@ -294,7 +294,7 @@ look :: (s:Creator)->figs.BdLook {
 }
 // One preview, using the existing instance format and actual Quaternius skinned parts.
 // The local-only animation browser uses the Character Create font atlas.
-// dev_below: CSS px kept free under the browser (Experimental's CLASSES column, experimental-combat.coax)
+// dev_below: CSS px kept free under the browser (Experimental's CLASSES column, everglade/zone-combat.coax)
 dev_visible :: (s:Creator)->int {n:=cast(int)((s.height/s.scale-116-s.dev_below)/24);if n<1 {return 1;}if n>figs.PREVIEW_BAKED {return figs.PREVIEW_BAKED;}return n;}
 dev_scroll :: (s:[]Creator,dy:f32) {
  n:=s[0].preview_scroll+cast(int)(dy/32);if n==s[0].preview_scroll && dy!=0 {n+=ifx dy>0 then 1 else -1;}
@@ -321,7 +321,7 @@ dev_panel :: (s:Creator,out:[]f32,w:f32,h:f32,k:f32)->int {
 }
 // Like Everglade's watch HUD, keep HP legible and lift recent damage over the player.
 // Health, the fall and the damage you took (everglade/hud/screens.coax). Everglade Experimental's
-// health is on its portrait plate (experimental-combat.coax xc_frame).
+// health is on its portrait plate (everglade/zone-combat.coax xc_frame).
 combat_overlay :: (s:Creator,out:[]f32,u:[]f32,at:int,w:f32,k:f32)->int {
  n:=at;hp:=s.hostiles[0].hp;maximum:=ifx s.hostiles[0].max_hp>0 then s.hostiles[0].max_hp else 1;if hp<0 {hp=0;}if hp>maximum {hp=maximum;}
  ui:=s.ui;uit_part(ui,"health");
@@ -853,7 +853,7 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   if s[0].experimental && !s[0].scene_only && n>0 && n<43 {n=held_weapon(s[0],b,out,n);}
   // and what your hands hold, unless it is up in front of you (a drawn bow): carried at your side it would float, handless, across the view
   if b[0].self_n>0 && s[0].aim<0.3 {b[0].self_n=n;}
-  if s[0].scene_only || s[0].body_hidden {n=0;b[0].self_n=0;}   // body_hidden: a shape stands in for you (druid-scene.coax)
+  if s[0].scene_only || s[0].body_hidden {n=0;b[0].self_n=0;}   // body_hidden: a shape stands in for you (everglade/zone-shapechange.coax)
   // The open field (Creator.field, once its meadow is in the pack) stands in for the glade, its
   // village and its showcases: only the meadow, its grass and the creatures on it.
   open_field:=s[0].field && s[0].field_count>0;
@@ -1365,7 +1365,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
     ensure(s);creator_layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);build_review_frame(s);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
     for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=ifx s[0].experimental then 0.0f32 else 1.0f32;if s[0].stage_on && s[0].shadow[0].on {s[0].shadow[0].glade=true;}u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
     if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
-    cc_view(s[0],u,w,h,k);for i:0..<16 {s[0].view[i]=u[16+i];}s[0].view_w=w;s[0].view_h=h;s[0].view_ok=true;dx:=u[16]-s[0].player_x;dy:=u[17]-(cc_ground(s[0].flat,s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);if s[0].stage_on {u[11]=1;fps_count(s[0].fps[..],dt);return 0;}n:=ifx s[0].dev_animations then dev_panel(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_overlay(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);if s[0].experimental && !s[0].walk.on {return n;}   // Experimental's HUD places them over its bar (experimental-combat.coax xc_corner)
+    cc_view(s[0],u,w,h,k);for i:0..<16 {s[0].view[i]=u[16+i];}s[0].view_w=w;s[0].view_h=h;s[0].view_ok=true;dx:=u[16]-s[0].player_x;dy:=u[17]-(cc_ground(s[0].flat,s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);if s[0].stage_on {u[11]=1;fps_count(s[0].fps[..],dt);return 0;}n:=ifx s[0].dev_animations then dev_panel(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_overlay(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);if s[0].experimental && !s[0].walk.on {return n;}   // Experimental's HUD places them over its bar (everglade/zone-combat.coax xc_corner)
 if !s[0].flat {n=coord_draw(s[0],out,n,w,h,k);}return ifx s[0].experimental then eg_fps(s[0].ui,s[0].fps[0],out,n,w,h,k) else fps_draw(s[0].ui,s[0].fps[0],out,n,w,h,k);
   }
   ensure(s); creator_layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
@@ -1496,7 +1496,7 @@ stage_camera :: (s:Creator,u:[]f32,w:f32,h:f32) {
 cc_view :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.stage_on {stage_camera(s,u,w,h);return;}
   if s.experimental {
-    ck:=ifx s.cam_k>1 then s.cam_k else 1.0f32;   // a bigger body's camera: further out and higher (druid-scene.coax)
+    ck:=ifx s.cam_k>1 then s.cam_k else 1.0f32;   // a bigger body's camera: further out and higher (everglade/zone-shapechange.coax)
     target:=cc_ground(s.flat,s.player_x,s.player_z)+s.player_y+1.2+(ck-1)*1.6;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw+s.orbit); cz:=cos(s.yaw+s.orbit);
     ride:=egm.eg_ride_cam(s.mounts[0],s.clock);target+=egm.eg_ride_cam_up(s.mounts[0])*ride;   // riding, the camera pulls back and up to see the horse

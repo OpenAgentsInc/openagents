@@ -9,13 +9,11 @@
 //
 // It is built from the engine's and the game's modules and loads them:
 //   the scene: the meadow, your figure, the mounts, a zone's own standing things   everglade/scene/charactercreator.coax (cc)
-//   your class's bar and the SRD rules against the monsters                         apps/openagents-web/experimental-combat.coax
+//   your class's bar and the SRD rules against the monsters                         zone-combat.coax
 //   the bow: this zone's ground, walls and bodies for the engine's archer           zone-bow.coax (aethyr/action/archery.coax, longbow.coax)
 //   riding: E, the saddle, the dragon's Fire Breath                                 zone-ride.coax (mounts.coax, zone-mounts.coax)
-//   Shapechange                                                                     apps/openagents-web/druid-scene.coax (shapeshift.coax)
+//   Shapechange                                                                     zone-shapechange.coax (shapeshift.coax)
 //   the agent driver                                                                zone-drive.coax (aethyr/agent/drive.coax)
-// The scene and the class bar still live in the app directory; they move here when Character Create
-// and Experimental's combat are split from their pages.
 //   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax
 #load "scene/charactercreator.coax" as cc;
 #load "../verse/experimental-village.coax" as village;
@@ -33,13 +31,13 @@
 #load "sound.coax" as exsound;
 #load "../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held
 #load "../aethyr/cam/gyro.coax" as gy;          // a phone's turn looks and aims (#13189)
-#load "../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (dash.coax, wired in experimental-combat.coax xc_sprint_frame)
+#load "../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (dash.coax, wired in zone-combat.coax xc_sprint_frame)
 #load "hud/class-bar.coax";   // Everglade's class menus: rest, in the menu your portrait opens (#13092, #13147)
 #load "hud/lines.coax";       // Everglade's line HUD (#13083)
-#load "../apps/openagents-web/experimental-combat.coax";   // your class's level 1 bar against the monsters, and CLASSES (#13025)
+#load "zone-combat.coax";   // your class's level 1 bar against the monsters, and CLASSES (#13025)
 #load "zone-bow.coax";        // the bow in this zone: its ground and walls, its monsters as bodies, the SRD Longbow attack
-#load "../apps/openagents-web/druid-scene.coax";   // Shapechange into the Adult Red Dragon, flight and Fire Breath
-#load "../apps/openagents-web/experimental-objects.coax";
+#load "zone-shapechange.coax";   // Shapechange into the Adult Red Dragon, flight and Fire Breath
+#load "zone-objects.coax";
 #load "mounts.coax" as egm;   // Everglade's horse and red dragon (docs/mounts-spec.md)
 #load "zone-ride.coax";       // riding in a zone: E, the saddle, the dragon's Fire Breath
 #load "../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
@@ -69,7 +67,7 @@ put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text)
 put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
 
 // A zone's state. The Creator is the scene (everglade/scene/charactercreator.coax); XcCombat is
-// your class, its bar and the rules' battle (experimental-combat.coax).
+// your class, its bar and the rules' battle (zone-combat.coax).
 EgZone :: struct {
   xc: [1] XcCombat;
   creator: [1] cc.Creator;
@@ -98,7 +96,7 @@ EgZone :: struct {
   qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/quality-page.coax): the pixels drawn and the knobs; the finger on its control
   glade_cull: [1] mc.MeshCull;   // the glade's environment mesh's runs and their boxes, from the host (zone_mesh_cull; a face's coaxial_mesh_bounds_v1)
   gyro: [1] gy.Gyro; gyro_menu: bool; gyro_finger: int = -100;   // a phone's turn as look and aim, its menu open, the finger on its button (zone-touch.coax)
-  lines: bool;  // ?net: the coordinates, the graphics and the frame rate on an upright phone too (experimental-combat.coax xc_corner)
+  lines: bool;  // ?net: the coordinates, the graphics and the frame rate on an upright phone too (zone-combat.coax xc_corner)
   bare: bool;   // a zone with nothing to fight (Bitcoin Lab): no class bar, no monsters, no casting keys; you walk and look
   ghost: bool;  // your figure drawn as a ghost (aethyr/render/ghost.coax): see-through with a soft rim, as WorldBuilder's walk draws it
   bound: f32;   // metres from the middle your body may go each way, when the zone states its own ground (WorldBuilder's 128); 0: the meadow's edge
@@ -188,7 +186,7 @@ zone_keep :: (s: [] EgZone, x: f32, z: f32) -> P3 {
 zone_jump_plan :: (s:[] EgZone,origin:EgBody,intent:EgMotionIntent,pending:bool)->EgJump #export_c #effects(all) {
   x:=s[0].xc[..];
   if !s[0].creator[0].experimental || !x[0].started { return EgJump.{}; }
-  if xd_jump(s,pending) { return EgJump.{mode=EG_JUMP_DENIED}; }   // the dragon's wings take the jump (druid-scene.coax)
+  if xd_jump(s,pending) { return EgJump.{mode=EG_JUMP_DENIED}; }   // the dragon's wings take the jump (zone-shapechange.coax)
   if !origin.ground { return x[0].jump; }
   x[0].jump=EgJump.{};
   if !pending { return x[0].jump; }
@@ -407,7 +405,7 @@ zone_mesh_cull :: (s: [] EgZone, n0: int) -> int {
 // it draws fewer pixels, then less grass and understory, when frames run long, and more again when
 // they keep on time. A zone's face calls zone_quality_frame every frame and answers the host's
 // pixel budget with zone_pixel_budget; the tier shows beside the frame rate
-// (experimental-combat.coax xc_corner) and a tap there picks the next (zone_gfx_pointer).
+// (zone-combat.coax xc_corner) and a tap there picks the next (zone_gfx_pointer).
 ZONE_PIXELS :: 6400000;   // the most pixels a frame draws at any tier (3200 by 2000): the glade's sky and ground are traced per pixel
 zone_quality_frame :: (s: [] EgZone, dt: f32, w: f32, h: f32, dpr: f32, golden: bool) #export_c #effects(all) {
   cr := s[0].creator[..];

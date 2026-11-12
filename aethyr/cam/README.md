@@ -63,7 +63,7 @@ whole-mode/cinematic mutation coverage or complete camera frame-rate parity.
   cinematic (`cam_cut_*`): its end turns the orbit to the run's look (retain)
   and the hand-back eases from the run's framing, still on you, into the follow
   camera over 1.5 s.
-- **Everglade Experimental** (`experimental-combat.coax`): a single-target save
+- **Everglade Experimental** (`everglade/zone-combat.coax`): a single-target save
   spell's monster is the attention query (action capability, 30 degree cone,
   its range). Your target (its Hit Points over the bar and its gold name) is a
   lock-on held by `attn_step` (`xc_lock_step`): set only by a strike, never

@@ -48,7 +48,7 @@ zone_ride_body :: (s: [] EgZone, origin: EgBody, proposed: EgBody) -> EgBody {
 // read it from your body): the saddle less your pelvis.
 zone_ride_lift :: (s: [] EgZone) -> f32 { if !zone_riding(s) { return 0; } return cc.xh_lift(s[0].creator[..], s[0].creator[0].clock); }
 // The red dragon you ride as a creature of the battle, on your side: the SRD Adult Red Dragon, its
-// turns kept by its own seat (experimental-combat.coax xc_hostile_contacts steps it), so its breath
+// turns kept by its own seat (zone-combat.coax xc_hostile_contacts steps it), so its breath
 // recharges on the SRD's 5-6 and what it sets alight burns. Its index, or -1 when there's no room.
 zone_dragon_join :: (s: [] EgZone) -> int {
   x := s[0].xc[..]; b := x[0].b[..];

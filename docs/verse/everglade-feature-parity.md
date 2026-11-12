@@ -144,7 +144,7 @@ through `battle.coax` (`rs_dash`, `rs_cunning_dash`) and `fivebar.coax`
 | Zone | Where |
 | --- | --- |
 | Everglade II | Shared: `everglade/shared/cast-rules.coax:87-95` passes Dash to `fb_use`. Running is the walk toggle (`e2_pace` everglade/shared/move.coax:17). |
-| Experimental | The combat is shared (`fb_seat_use` experimental-combat.coax:1502). The 5E Lab keeps its own kinds and dispatch: `AB_DASH`, `AB_CDASH` fivelab.coax:1756-1757, `player_turn` :1714. |
+| Experimental | The combat is shared (`fb_seat_use` everglade/zone-combat.coax:1502). The 5E Lab keeps its own kinds and dispatch: `AB_DASH`, `AB_CDASH` fivelab.coax:1756-1757, `player_turn` :1714. |
 | Everglade v1 | Shared movement flag only: `eg_step_begin` everglade-step.coax:43 runs forward on link flag 512; the page never sets it. |
 
 ### Mounts
@@ -177,7 +177,7 @@ placed plates in FANTASY with `eg_plates` in `everglade/hud/parts.coax`.
 | Zone | Where |
 | --- | --- |
 | Everglade II | Wired: `e2_heads` everglade/client/client.coax adds the others, the familiars, the monsters (`e2mn_plate_add`) and the guard (`e2gd_plate_add`) and draws them with `eg_plates`. |
-| Experimental | Wired: `xc_frame` experimental-combat.coax adds the crates, the monsters and your familiar, and `lab_pack_titles` fivelab.coax the private packs' titles; both draw with `eg_plates`. The 5E Lab (`lab_heads3` fivelab.coax) places with the shared module and draws in its own strokes, because it keeps SCIFI's blend. |
+| Experimental | Wired: `xc_frame` everglade/zone-combat.coax adds the crates, the monsters and your familiar, and `lab_pack_titles` fivelab.coax the private packs' titles; both draw with `eg_plates`. The 5E Lab (`lab_heads3` fivelab.coax) places with the shared module and draws in its own strokes, because it keeps SCIFI's blend. |
 | Everglade v1 | Local: `Label` and `labels` everglade.coax:3734, `name_point` :3817, other players' plates (`remote_plate_at` everglade-rangers.coax:525, `rangers_labels` :543), `room_labels` everglade-room.coax:109, and the moderator's `md_plate` everglade-moderate.coax:86. |
 
 ### Spell effects
@@ -191,7 +191,7 @@ starts) and `verse/everglade/gpu-fx.coax`.
 | Zone | Where |
 | --- | --- |
 | Everglade II | Shared: `e2k_play` everglade/client/cast.coax:84 and `e2k_step` :154 start and emit puffs through `class-look.coax` and `puff.coax`. |
-| Experimental | Shared: the combat (`xc_look` experimental-combat.coax) through `class-look.coax`; the 5E Lab, its Siege and its Warlock hand each battle event to `fxe_event` (aethyr/fx/battle.coax) through `lab_effect` fivelab.coax, and the flat view draws the same causes with `fxf_of` (aethyr/fx/flat.coax). |
+| Experimental | Shared: the combat (`xc_look` everglade/zone-combat.coax) through `class-look.coax`; the 5E Lab, its Siege and its Warlock hand each battle event to `fxe_event` (aethyr/fx/battle.coax) through `lab_effect` fivelab.coax, and the flat view draws the same causes with `fxf_of` (aethyr/fx/flat.coax). |
 | Everglade v1 | Local: its own puff system in everglade-spells.coax (`SpPuff` :156, `sp_fx` :1097, `sp_glow` :1199) and net-drawn effects (`net_draw_*` everglade-net.coax:1766-1863). The Warlock uses `puff.coax` (everglade-warlock.coax:27). |
 
 ### Camera

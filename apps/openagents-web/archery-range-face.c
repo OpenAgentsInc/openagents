@@ -195,7 +195,7 @@ EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(cx_face_addr state) { r
 EXPORT("coaxial_outbox_capacity") uint32_t coaxial_outbox_capacity(cx_face_addr state) { return (uint32_t)sizeof zone_at(state)->outbox.e; }
 EXPORT("coaxial_action_done") void coaxial_action_done(cx_face_addr state) { zone_action_done(zone(state)); }
 
-// The bar: its pictures, cards and cooldowns for the host to draw (coax/web/host.js coaxial_media; experimental-combat.coax xc_frame).
+// The bar: its pictures, cards and cooldowns for the host to draw (coax/web/host.js coaxial_media; everglade/zone-combat.coax xc_frame).
 EXPORT("coaxial_media") cx_face_addr coaxial_media(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_at(state)->xc.e[0].media.e; }
 EXPORT("coaxial_media_len") uint32_t coaxial_media_len(cx_face_addr state) { coax_t_EgZone *l = zone_at(state); return l->creator.e[0].experimental && !l->creator.e[0].walk.on ? (uint32_t)l->xc.e[0].media_n : 0u; }
 EXPORT("coaxial_media_capacity") uint32_t coaxial_media_capacity(cx_face_addr state) { return (uint32_t)sizeof zone_at(state)->xc.e[0].media.e; }

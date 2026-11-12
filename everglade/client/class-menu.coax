@@ -1,4 +1,4 @@
-// Everglade Experimental's CLASSES column (experimental-combat.coax), shared with Everglade II's
+// Everglade Experimental's CLASSES column (everglade/zone-combat.coax), shared with Everglade II's
 // local admin mode (everglade/client/admin.coax): the twelve SRD 5.2.1 classes, LEVEL 1 to 6, and REST
 // (SHORT, SLEEP, WATCH, HIT DIE, END REST). This unit lays the column out, draws it
 // and says what a point in it is; each world applies the choice its own way (Experimental to its

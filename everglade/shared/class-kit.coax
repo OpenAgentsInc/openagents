@@ -1,6 +1,6 @@
 // The class kits (#13025, #13058): a Character Create class's hotbar at a level, how each of its
 // abilities aims (the way you face, nothing picked for you), and how each sounds. Everglade
-// Experimental plays them against its monsters (experimental-combat.coax), Everglade II through its
+// Experimental plays them against its monsters (everglade/zone-combat.coax), Everglade II through its
 // room (everglade/client/cast.coax), and the room takes Everglade II's casts by them
 // (coax/web/room/room-everglade.coax eg_e2_cast). Nothing here rolls or draws: the SRD 5e engine
 // (aethyr/rules/srd/, through fivebar.coax) says what each ability is.

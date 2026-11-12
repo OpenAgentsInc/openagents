@@ -180,7 +180,7 @@ in the range. The range's module is an Everglade zone with the range on it.
 | The butts' and faces' meshes | [`aethyr/world/build-site-mesh.coax`](../../aethyr/world/build-site-mesh.coax) | Engine |
 | The HUD panel and hit numbers | `aethyr/ui/hud-menu.coax`, `aethyr/action/floats.coax` | Engine |
 | **The zone**: one player's world. Its state (`EgZone`), your body's step, the keys and the pointer, the frame, the host's messages | [`everglade/zone.coax`](../zone.coax) | Game: moved out of `fivelab.coax` |
-| The bow in a zone: its ground and walls, its monsters as bodies, the SRD Longbow attack, the draw and the loose | [`everglade/zone-bow.coax`](../zone-bow.coax) | Game: moved out of `experimental-combat.coax` |
+| The bow in a zone: its ground and walls, its monsters as bodies, the SRD Longbow attack, the draw and the loose | [`everglade/zone-bow.coax`](../zone-bow.coax) | Game: moved out of `everglade/zone-combat.coax` |
 | Riding in a zone: E, the saddle, the dragon's Fire Breath | [`everglade/zone-ride.coax`](../zone-ride.coax) | Game: moved out of `experimental-ride.coax` |
 | The agent driver in a zone | [`everglade/zone-drive.coax`](../zone-drive.coax) | Game: moved from `fivelab-drive.coax` |
 | The Longbow's feel: where the arrow leaves, how far the reticle looks, the mouse buttons, the sounds and the dust | [`everglade/longbow.coax`](../longbow.coax) | Game |
@@ -188,7 +188,7 @@ in the range. The range's module is an Everglade zone with the range on it.
 | The horse and the red dragon, and the rider's keys | [`everglade/mounts.coax`](../mounts.coax) | Game |
 | The mounts standing in a zone: E, the saddle, the prompt | [`everglade/zone-mounts.coax`](../zone-mounts.coax) | Game |
 | The scene: the meadow, your Ranger, the mounts drawn | `everglade/scene/charactercreator.coax` | App directory (section 9) |
-| The Ranger's bar and the Longbow's rules | `apps/openagents-web/experimental-combat.coax`, `class-kit.coax`, `aethyr/rules/srd/` | App directory (section 9) |
+| The Ranger's bar and the Longbow's rules | `everglade/zone-combat.coax`, `class-kit.coax`, `aethyr/rules/srd/` | App directory (section 9) |
 | Where things are | [`everglade/range/layout.coax`](../range/layout.coax) | The range |
 | Ring points and the tally | [`everglade/range/score.coax`](../range/score.coax) | The range |
 | The pieces' meshes and colliders | [`everglade/range/place.coax`](../range/place.coax) | The range |
@@ -261,7 +261,7 @@ lines.
 
 - **The scene and the class bar still live in the app directory.**
   `everglade/scene/charactercreator.coax` (the meadow, your figure, the
-  mounts drawn) and `apps/openagents-web/experimental-combat.coax` (the class
+  mounts drawn) and `everglade/zone-combat.coax` (the class
   bar and the SRD rules against the monsters) are loaded by
   `everglade/zone.coax` from where they are. They belong in `everglade/`. Each
   is tied to a page: the scene to Character Create's studio, the combat to

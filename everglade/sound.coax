@@ -6,7 +6,7 @@
 // playSoundText). Each play takes one of the sound's picks at random and a small random pitch
 // (rate 0.93 to 1.07) and level (0.85 to 1.0), so a repeated sound never plays identically. The
 // bed is a looping ~NAME line. The host drains the lines once a frame (fivelab-face.c
-// coaxial_sounds_len); what combat plays comes from experimental-combat.coax (xc_cue).
+// coaxial_sounds_len); what combat plays comes from zone-combat.coax (xc_cue).
 #module "verse.experimentalsound";
 #load "../aethyr/audio/experimental-sfx.coax";
 #load "../aethyr/audio/everglade-bank.coax";

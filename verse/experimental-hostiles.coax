@@ -10,7 +10,7 @@
 #load "../aethyr/ai/steer.coax";   // the engine's NPC navigation and steering (#13074, docs/verse/navigation.md)
 #load "../aethyr/action/floats.coax" as hfl;   // the numbers over you as a blow lands (everglade/hud/numbers.coax draws them)
 
-// dead: felled (apps/openagents-web/experimental-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move;
+// dead: felled (everglade/zone-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move;
 // inactive: cannot begin or continue an attack, independently of movement
 // stopped: a scoped hit stop holds this one for the frame (its owner's react_held, aethyr/action/react.coax); the rest of the world goes on
 // kind: experimental-dungeon.coax's DG_KIND_*, scale its size; a sleeper waits where it stands until it sees you near
@@ -23,7 +23,7 @@ HS_N :: HC_MAX;
 // toward where you stood, (tx, ty, tz) (world metres), arriving `fly` seconds later. state:
 // HS_FLYING, then HS_LANDING (offered to the shared battle on arrival), then HS_LANDED with `hit`
 // known: a hit strikes you, a miss flies on past. `shown` and `ended`: the presenter
-// (experimental-combat.coax xc_shots_step) has drawn its flight and its end.
+// (everglade/zone-combat.coax xc_shots_step) has drawn its flight and its end.
 HS_FREE :: 0; HS_FLYING :: 1; HS_LANDING :: 2; HS_LANDED :: 3;
 HsShot :: struct {state:int;foe:int;kind:int;fx:f32;fy:f32;fz:f32;tx:f32;ty:f32;tz:f32;t0:f32;fly:f32;hit:bool;shown:bool;ended:bool;}
 HS_SHOTS :: 16;
@@ -136,7 +136,7 @@ hostile_bodies :: (s:[]Hostiles,x:f32,z:f32,out:[]f32)->int {
 // gremlin a Goblin Warrior, the brute an Ogre, the fiend a Quasit and the boss a Hill Giant.
 hostile_kind :: (i:int)->int {if i<6 {return ifx i<3 then dungeon.DG_KIND_IMP else dungeon.DG_KIND_GREMLIN;}return cast(int)dungeon.DG_SPAWN[i-6][2];}
 // What a kind's blow is when no shared battle runs (the body's own fixtures): its block's first
-// melee attack, the shared battle's (experimental-combat.coax) being the full Action.
+// melee attack, the shared battle's (everglade/zone-combat.coax) being the full Action.
 HS_IMP :: SrdCreature.{name = "Imp", ac = 13, hp = 21, dex = 3, attack = 5, dice = 1, sides = 6, bonus = 3, kind = DMG_PIERCING};
 HS_GOBLIN :: SrdCreature.{name = "Goblin Warrior", ac = 15, hp = 10, dex = 2, attack = 4, dice = 1, sides = 6, bonus = 2, kind = DMG_SLASHING};
 HS_FIEND :: SrdCreature.{name = "Quasit", ac = 13, hp = 25, dex = 3, attack = 5, dice = 1, sides = 4, bonus = 3, kind = DMG_SLASHING};
@@ -200,7 +200,7 @@ hostile_shot_result :: (s:[]Hostiles,foe:int,hit:bool) {
 // How far from home a monster follows you, metres: past it, or once you stand safe, it turns back and
 // walks home (by the doorways), starting nothing on the way, and sleeps there again.
 HS_LEASH :: 35.0;
-// Hit, shot at or spelled by you from wherever you stand (experimental-combat.coax xc_use_ab): it
+// Hit, shot at or spelled by you from wherever you stand (everglade/zone-combat.coax xc_use_ab): it
 // wakes and comes after you, out through the doorways if it must.
 hostile_provoke :: (s:[]Hostiles,i:int) {if i<0 || i>=HS_N || s[0].enemies[i].dead {return;}s[0].enemies[i].awake=true;s[0].enemies[i].returning=false;s[0].enemies[i].provoked=true;nav_engage(s[0].enemies[i].nav[..]);}
 // How a monster goes after you on the engine's steering service (aethyr/ai/steer.coax): its walk's
@@ -221,7 +221,7 @@ hostile_steer :: (s:[]Hostiles,i:int,px:f32,pz:f32,dt:f32,c:[]HsNear) {
  if !e[0].returning {a[0].returning=false;}   // the zone hasn't sent it home (hostile_nav_sync)
  g:=hostile_goal(e[0].x,e[0].z,px,pz);if g[0]!=px || g[1]!=pz {nav_via(a,g[0],g[1]);}
  if a[0].plan_s<=0 {
-  // its planning window, only while it plans: the page copies Hostiles each frame (experimental-combat.coax xc_hostile_tick)
+  // its planning window, only while it plans: the page copies Hostiles each frame (everglade/zone-combat.coax xc_hostile_tick)
   if nav_wants_window(a[0]) {win:[1]NavWindow;w:=win[..];nav_window_place(w,t,a[0]);hostile_window_fill(w,0.3*e[0].scale);nav_plan(a,t,w);}
   else {nav_direct(a,t);}
  }

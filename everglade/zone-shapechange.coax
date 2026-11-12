@@ -9,7 +9,7 @@
 //   Shift in the air: dive
 //   Fire Breath: hold its key (or finger) to aim, let go to breathe
 //   coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "druid"
-#load "../../everglade/shapeshift.coax";
+#load "shapeshift.coax";
 
 XD_LEVEL :: 17;
 XD_PATHS :: [4] string.["/worlds/druid", "/worlds/druid/", "/druid", "/druid/"];

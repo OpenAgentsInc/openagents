@@ -67,9 +67,6 @@ aethyr-up aethyr/world/stream-present-shader.coax -> verse/gpu/shader.coax
 aethyr-up aethyr/world/weather.coax -> verse/water-weather.coax
 
 # The game loads from the web app
-everglade-up everglade/zone.coax -> apps/openagents-web/druid-scene.coax
-everglade-up everglade/zone.coax -> apps/openagents-web/experimental-combat.coax
-everglade-up everglade/zone.coax -> apps/openagents-web/experimental-objects.coax
 
 # Product code loads test code
 tests aethyr/actors/behavior-plan.coax -> aethyr/actors/tests/behavior-plan.coax

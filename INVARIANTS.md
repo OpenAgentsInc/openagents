@@ -7890,5 +7890,5 @@ uses it for an arrow that reaches a monster and a blow already swung; the
 Everglade II room uses it for a cast in flight (RC_FLIGHT). A draw, a cast
 bar or a new press is still refused once the maker is down. Checks:
 `released:` in the SRD engine, the two `(#13120)` checks in
-`experimental-combat.coax`, and `casts: a cast released before its caster
+`everglade/zone-combat.coax`, and `casts: a cast released before its caster
 falls` in `room-casts.coax` (GitHub #13120).

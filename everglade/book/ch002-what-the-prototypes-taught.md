@@ -53,7 +53,7 @@ What Experimental settled, and Everglade II keeps:
 
 - **One declared rules profile.** Experimental calls
   `rs_set_world(b, RS_EVERGLADE_WORLD)` once
-  (`apps/openagents-web/experimental-combat.coax`). The profile names every way
+  (`everglade/zone-combat.coax`). The profile names every way
   the world departs from the SRD ([chapter 18](ch018-turns-become-time.md)).
   Everglade II uses the same profile.
 - **The jump's timing.** A jump plays its takeoff over 0.2 s, loops while you
@@ -100,7 +100,7 @@ can only react to an attack that you can see and hear coming. An attack with no
 arrow is a hidden die roll.
 
 The fix (`verse/experimental-hostiles.coax`,
-`apps/openagents-web/experimental-combat.coax`, `aethyr/fx/puff.coax`) makes
+`everglade/zone-combat.coax`, `aethyr/fx/puff.coax`) makes
 every shot a thing in the world:
 
 - A Shortbow looses an arrow (`FXR_SHAFT`). An Ogre's Javelin and a Hill

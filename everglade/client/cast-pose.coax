@@ -1,4 +1,4 @@
-// The body clip a cast plays, shared by Everglade Experimental (experimental-combat.coax xc_press)
+// The body clip a cast plays, shared by Everglade Experimental (everglade/zone-combat.coax xc_press)
 // and Everglade II (everglade/client/cast.coax e2k_play). A blow is the slash, or with a two-hander held
 // its owned cleave; a spell is the cast. (A drawn bow's aim pose is the held kit's:
 // everglade/held-kit.coax held_bow_layer.) Its loader loads charactercreator.coax as cc and

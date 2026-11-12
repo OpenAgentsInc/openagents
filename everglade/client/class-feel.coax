@@ -8,7 +8,7 @@
 // cp_feel_clip for Everglade II and Experimental). The effect and the sound are class-look.coax's and
 // class-kit.coax's, so what a feel declares is what plays.
 //
-// Game-wide: Everglade II (everglade/client/cast.coax) and Everglade Experimental (experimental-combat.coax)
+// Game-wide: Everglade II (everglade/client/cast.coax) and Everglade Experimental (everglade/zone-combat.coax)
 // load it; zones only wire it in.
 //   coax/bin/coax test everglade/client/class-feel.coax
 #load "class-look.coax";

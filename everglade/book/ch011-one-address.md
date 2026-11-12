@@ -106,7 +106,7 @@ In `everglade/client/client.coax`:
 - `#test "/play starts you where you stood, told to the room; never in the
   studio, the woods or a broken text"`.
 
-In `apps/openagents-web/experimental-combat.coax`:
+In `everglade/zone-combat.coax`:
 
 - `#test "experimental combat: every class's level 1 bar holds its Character
   Create ability first, each slot with its picture"`. It asserts that every

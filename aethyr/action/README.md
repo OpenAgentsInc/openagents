@@ -29,7 +29,7 @@ Interpolated drawing never senses.
 
 ## Adoption
 
-- **Everglade Experimental** (`apps/openagents-web/experimental-combat.coax`):
+- **Everglade Experimental** (`everglade/zone-combat.coax`):
   every weapon blow (the slash and the owned two-handed cleaves) is an action
   built from its clip (`xc_swing_def`, window ±6 ticks round the clip's
   impact). Each sensing tick samples the blade's actual pose (the swing clip's
@@ -74,7 +74,7 @@ Interpolated drawing never senses.
 - **Everglade II** (`everglade/client/cast.coax`): a press asks with your bearing from the room's row of
   you (`rs_bearing_of`) and plays only when the room's `e cast` for your seat comes back. A refusal
   or a timeout greys the slot. The bow's draw asks before it starts (`e2k_ready`).
-- **Everglade Experimental** (`experimental-combat.coax xc_press`): the local rules answer in the
+- **Everglade Experimental** (`everglade/zone-combat.coax xc_press`): the local rules answer in the
   same frame. A blow swings only once `fb_ready` takes it, and the bow draws only for a bearing
   that can act.
 - **Everglade v1** (`everglade-spells.coax sp_cast`): in a room, the cast bar and its sparks start
