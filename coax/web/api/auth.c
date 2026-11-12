@@ -1392,7 +1392,7 @@ static void me(const request *q, PGconn *db) {
 }
 
 // GET /api/auth/viewer and /api/auth/me: who is logged in, as the pages read it (coax/web/host.js
-// viewer(); auth.viewer_lines, migration 0157). The key is the one the principal acts as: a session's
+// viewer(); auth.viewer_lines, migration 0158). The key is the one the principal acts as: a session's
 // account key (none while limited or frozen) or a NIP-98 signer. An account with no such key is
 // U|account, so a page knows someone is logged in. Nobody: viewer is a 200 with an empty body (every
 // page asks it), me a 401.

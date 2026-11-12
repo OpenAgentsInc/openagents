@@ -6,7 +6,7 @@
 -- function that read the old sign-in's sessions reads our own (a session's key) instead.
 
 -- bech32 (BIP-173) of a 32-byte hex key under hrp, for npub (as signin.bech32, 0019).
-CREATE FUNCTION auth.bech32(hrp text, hex text) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION auth.bech32(hrp text, hex text) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
   cs constant text := 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
   g constant int[] := ARRAY[996825010, 642813549, 513874426, 1027748829, 705979059];
@@ -32,7 +32,7 @@ BEGIN
 END $$;
 
 -- The viewer's lines for a key (the session's account key, or a NIP-98 signer).
-CREATE FUNCTION auth.viewer_lines(pk text) RETURNS text LANGUAGE sql STABLE AS $$
+CREATE OR REPLACE FUNCTION auth.viewer_lines(pk text) RETURNS text LANGUAGE sql STABLE AS $$
   SELECT CASE WHEN coalesce(pk, '') ~ '^[0-9a-f]{64}$' THEN
     'K|' || auth.bech32('npub', pk) || E'\n'
       || coalesce((SELECT string_agg('J|' || d.slug, E'\n' ORDER BY d.slug) FROM projects.docs d WHERE projects.member_of(d.slug, pk) IS NOT NULL), '') || E'\n'
