@@ -326,8 +326,10 @@ total cost and median time across all tasks.
 | Total cost, H5–H8 | $8.79 | $10.61 | yes |
 | Median wall time, H5–H8 | 179 s | 157 s | **no** |
 
-**Verdict on Argon: not proven.** H8 fails every run of both harnesses (see
-H5–H8). Without it the passes are 34 to 35 of 39.
+**Verdict on Argon: not proven.** One Microcoder run (H6, second run) hit
+the 15-minute limit and passed its check. The Argon arm had no rule that a
+limit hit fails; under the Carbon arm's rule it would be 33 to 35. H8 fails
+every Argon run of both harnesses (see H5–H8). Without it the passes are 34 to 35 of 39.
 
 **What thinking by step adds per run:** averaged over the 14 tasks, against
 the round 2 build (78ab78f450, 2 runs a task):
