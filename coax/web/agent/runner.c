@@ -206,8 +206,7 @@ static bool load_key(void) {
   unsetenv("OA_RUNNER_KEY");
   if (!ok) return false;
   secp256k1_xonly_pubkey x; unsigned char pub[32];
-  secp256k1_keypair_xonly_pub(ctx, &x, NULL, &pair);
-  secp256k1_xonly_pubkey_serialize(ctx, pub, &x);
+  if (!secp256k1_keypair_xonly_pub(ctx, &x, NULL, &pair) || !secp256k1_xonly_pubkey_serialize(ctx, pub, &x)) return false;
   hex(pub, 32, pubhex);
   // the identity rule: the Coax signer must be the same key, or the runner doesn't start
   if (coax_signer && (!cok || memcmp(cpub, pub, 32))) { memset(coax_secret, 0, sizeof coax_secret); return false; }

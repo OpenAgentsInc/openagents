@@ -33,6 +33,12 @@
 #   coax/remote/check.sh visuals          check-visuals alone (the web build's first stop:
 #                                         a page or the host building visible UI)
 #   coax/remote/check.sh room [PROD]      the room build (and with PROD, e2 PROD)
+#   coax/remote/check.sh api I/N          the I-th of N parts of the API suite
+#                                         (coax/web/api/test.sh --part I/N: its own
+#                                         Postgres and API on the host)
+#   coax/remote/check.sh api-since BASE I/N
+#                                         the same, when the change since BASE reaches
+#                                         what the API suite builds or runs (a fast run)
 #   coax/remote/check.sh tools [PROD]     reports and room
 #   coax/remote/check.sh e2 PROD          the room build and Everglade II's pair: this commit
 #                                         against production's commit PROD (#13266)
@@ -149,6 +155,10 @@ faces() {
   done
   rm -f "$out/faces.new"
 }
+# What the API suite (coax/web/api/test.sh) builds and runs: its C and Coax, the
+# project runner, the Coax library and platform it compiles with, the limits page it compares.
+api_inputs='^(coax/web/api/|coax/web/agent/|coax/lib/|coax/platform/|coax/src/|coax/bootstrap/|apps/openagents-web/docs/limits/)'
+api() { step api coax/web/api/test.sh --part "$1" || status=1; }
 # The room server builds room.coax and Everglade's headless world (room/build.sh).
 room_units='coax/web/room/room.coax apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax'
 room_touched() {   # whether the change since $arg reaches the room build (yes when it can't tell)
@@ -398,6 +408,7 @@ run() {   # mode arg: one check
     reports) reports ;;
     visuals) visuals ;;
     room) room "$arg" ;;
+    api) api "${arg:-1/1}" ;;
     tools) reports; room "$arg" ;;
     e2) [[ -n "$arg" ]] || return 2
         step room-build coax/web/room/build.sh || { status=1; return 0; }
@@ -426,11 +437,15 @@ case "$mode" in
     changed_since
     web_since
     reports_since ;;
+  api-since)
+    changed_since
+    if grep -v '\.md$' "$out/changed" | grep -Eq "$api_inputs"; then api "${3:-1/1}"
+    else echo "== api: skipped, the change doesn't reach the API suite" >> "$log"; fi ;;
   room-since)
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,39p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,45p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 # tool.sh suites refused the compiler: the host's compiler doesn't match this

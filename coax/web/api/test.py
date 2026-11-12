@@ -47,7 +47,12 @@ check("an unknown path is a 404", call("GET", "/api/nothing")[0] == 404)
 
 # API_TESTS_ONLY=test_a.py,test_b.py runs only those files (a quick check of one route's tests).
 only = set(filter(None, os.environ.get("API_TESTS_ONLY", "").split(",")))
+# API_TEST_TIMES=1: each file's wall time on stderr (test.sh --part's table).
+import time
 for extra in sorted(f for f in os.listdir(os.path.dirname(os.path.abspath(__file__))) if f.startswith("test_") and f.endswith(".py") and (not only or f in only)):
+    t0 = time.monotonic()
     exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), extra)).read())
+    if os.environ.get("API_TEST_TIMES"):
+        print("  time  %s %.1f s" % (extra, time.monotonic() - t0), file=sys.stderr)
 
 sys.exit(1 if failed else 0)

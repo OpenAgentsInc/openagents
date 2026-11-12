@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# The API service's checks, on this Mac: builds api, starts a throwaway
-# Postgres (Homebrew postgresql@16) and the service on it, and runs the
-# checks in test.py against both (migrations, health, ingest, admin).
-#   coax/web/api/test.sh
+# The API service's checks: builds api, starts a throwaway Postgres 16 and the
+# service on it, and runs the checks in test.py, tests/*.coax and the rest
+# against both (migrations, health, ingest, admin, auth, rooms).
+#   coax/web/api/test.sh                    # every check
+#   coax/remote/remote.sh run -- coax/web/api/test.sh   # the same, on a build host (use this)
+#   coax/web/api/test.sh --part I/N         # the I-th of N parts (each its own API and Postgres)
 #   coax/web/api/test.sh --serve ORIGIN   for a page under development: the same build, database and
 #                           service, left running for the dev server at ORIGIN to send /api/ to
 #                           (coax/web/serve.sh APP --listen HOST:PORT --api API_PORT), with no checks run.
@@ -10,11 +12,59 @@
 #                           OA_SERVE_INFERENCE_TOKEN, when set, is a Google access token: /api/v1/inference
 #                           and /api/chat/complete then ask Vertex itself, not the checks' fake model.
 #                           Everything is gone when it is stopped.
+# On macOS it takes Apple's clang and Homebrew's postgresql@16, secp256k1 and
+# openssl@3; on a Linux build host the system's clang (else gcc, or CC),
+# libpq, libsecp256k1, OpenSSL, curl and zlib, and PGDG's postgresql-16
+# (coax/remote/host-startup.sh installs them). Each run makes its own
+# Postgres cluster in a temporary directory, listening only on a socket
+# there, and removes it at exit; it never uses a shared server.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 serve=0; serve_origin=""
 if [[ "${1:-}" == --serve ]]; then serve=1; serve_origin="${2:?test.sh --serve ORIGIN, for example http://127.0.0.1:9471}"; fi
-if [[ $serve == 0 ]]; then
+began=$SECONDS
+# --part I/N: every part builds the API and starts its own Postgres and server,
+# and runs its share of the checks below. A check's share is its time on a
+# build host (oa-build-1, 2026-11-11, seconds): longest first, each to the part
+# with the least so far, so the parts take about as long as each other.
+API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 auth_recover_checks:9 agent_checks:8
+  auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 cli-auth:17 anime:13 realms:8 audit:1"
+part=""
+if [[ "${1:-}" == --part ]]; then part="${2:-}"; shift 2 || true; fi
+if [[ -n "$part" ]]; then
+  [[ "$part" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && (( BASH_REMATCH[1] <= BASH_REMATCH[2] )) || { echo "test.sh: --part I/N, 1 <= I <= N" >&2; exit 2; }
+  mine=" $(printf '%s\n' $API_PARTS | sort -t: -k2,2nr -k1,1 | awk -F: -v i="${BASH_REMATCH[1]}" -v n="${BASH_REMATCH[2]}" '
+    { b = 1; for (k = 2; k <= n; k++) if (load[k] < load[b]) b = k; load[b] += $2; if (b == i) printf "%s ", $1 }') "
+  echo "api: part $part: $mine" >&2
+fi
+runs() { [[ -z "$part" || "$mine" == *" $1 "* ]]; }
+lap() { echo "api: $1 after $((SECONDS - began)) s" >&2; }
+if [[ "$(uname -s)" == Darwin ]]; then
+  pgbin=/opt/homebrew/opt/postgresql@16/bin
+  cc=/usr/bin/clang
+  pq_inc=(-I/opt/homebrew/opt/postgresql@16/include); pq_lib=(-L/opt/homebrew/opt/postgresql@16/lib)
+  secp="$(brew --prefix secp256k1 2>/dev/null || true)"
+  secp_inc=(${secp:+-I"$secp/include"}); secp_lib=(${secp:+-L"$secp/lib"})
+  ssl="$(brew --prefix openssl@3)"
+  ssl_inc=(-I"$ssl/include"); ssl_lib=(-L"$ssl/lib")
+else
+  # PGDG's postgresql-16 (Debian 12 ships 15), else the newest installed.
+  pgbin=/usr/lib/postgresql/16/bin
+  [[ -x "$pgbin/initdb" ]] || pgbin="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -n 1)"
+  [[ -x "$pgbin/initdb" ]] || { echo "test.sh: no Postgres server (initdb) in /usr/lib/postgresql; coax/remote/host-startup.sh installs postgresql-16" >&2; exit 1; }
+  cc="${CC:-}"; [[ -n "$cc" ]] || { command -v clang > /dev/null && cc=clang || cc=gcc; }
+  pq_inc=(-I"$(pg_config --includedir 2>/dev/null || echo /usr/include/postgresql)"); pq_lib=()
+  secp_inc=(); secp_lib=(); ssl_inc=(); ssl_lib=()
+  missing=""
+  for h in secp256k1_schnorrsig.h curl/curl.h zlib.h openssl/ssl.h libpq-fe.h; do
+    printf '#include <%s>\n' "$h" | "$cc" "${pq_inc[@]}" -E -x c - > /dev/null 2>&1 || missing+=" $h"
+  done
+  [[ -z "$missing" ]] || { echo "test.sh: no$missing; coax/remote/host-startup.sh installs libsecp256k1-dev libcurl4-openssl-dev zlib1g-dev libssl-dev libpq-dev" >&2; exit 1; }
+  # As on macOS, where AddressSanitizer looks for no leaks: the programs keep
+  # their contexts until exit (sign.c's secp256k1 context).
+  export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
+fi
+if [[ $serve == 0 ]] && runs checks; then
 "$here/mesh-policy.sh" --check-inputs
 "$here/caller-policy.sh" --check-inputs
 "$here/nip98.sh" --check-inputs
@@ -26,21 +76,19 @@ if [[ ! -x "$cli_coax" ]]; then
   common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
   [[ -n "$common" ]] && cli_coax="$(dirname "$common")/coax/bin/coax"
 fi
-if [[ -x "$cli_coax" && $serve == 0 ]]; then
+if [[ -x "$cli_coax" && $serve == 0 ]] && runs checks; then
   "$here/nip98.sh" --check || echo 'nip98: the C cache differs from this compiler'"'"'s output (the image builds from source; regenerate with nip98.sh --generate)' >&2
   (cd "$repo_root" && "$cli_coax" test coax/web/api/nip98.coax --run-steps 250000000 | tail -1)
   (cd "$repo_root" && "$cli_coax" test coax/web/api/nip98_checks.coax --steps 4000000000 --run-steps 250000000 | tail -1)
 fi
-if [[ $serve == 0 ]]; then
+if [[ $serve == 0 ]] && runs checks; then
 "$here/test-deploy-command.sh"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_verify_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_rollout_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_snapshot_test.py"
+lap "the policy, NIP-98 and deploy checks"
 fi
-pg=/opt/homebrew/opt/postgresql@16
-work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} 2>/dev/null || true; "$pg/bin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
-cc=/usr/bin/clang
-secp="$(brew --prefix secp256k1 2>/dev/null || true)"
+work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} 2>/dev/null || true; "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 "$cli_coax" c "$here/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
 "$cli_coax" c "$here/seat-policy.coax" --library --header "$work/seat-policy.generated.h" > "$work/seat-policy.generated.c"
 "$cli_coax" c "$here/progress-policy.coax" --library --header "$work/progress-policy.generated.h" > "$work/progress-policy.generated.c"
@@ -61,20 +109,23 @@ secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 "$cli_coax" c "$here/ticket-sign.coax" --run-steps 250000000 --library --header "$work/ticket-sign.generated.h" > "$work/ticket-sign.generated.c"
 # OA_LNADDR_TEST_FETCH: this build's Lightning Address fetches go to the fake services on SPARK_PORT
 # (test_makers_tips.py); the image is built without it and fetches only public https hosts.
-$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH -fsanitize=address,undefined \
-  -I"$work" -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH -fsanitize=address,undefined \
+  -I"$work" ${pq_inc[@]+"${pq_inc[@]}"} ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} \
   -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$work"/npc-personas.generated.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c "$here"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "$here"/auth.c "$work"/auth-policy.generated.c "$here"/auth-seal-unit.c "$here"/lnaddr.c "$here"/lnaddr-unit.c "$here"/agents.c "$here"/agent-wire-unit.c "$here"/agent-attest-unit.c "$here"/auth-recover.c "$work"/auth-recover-policy.generated.c "$here"/auth-life.c "$work"/auth-life-policy.generated.c "$here"/auth-recover-crypto-unit.c "$here"/auth-device.c "$work"/auth-device-policy.generated.c "$here"/auth-device-crypto-unit.c "$here"/passkeys.c "$work"/passkey-policy.generated.c "$here"/passkey-verify-unit.c "$here"/ticket-sign-unit.c \
-  -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
+  ${pq_lib[@]+"${pq_lib[@]}"} -lpq ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lssl -lcrypto -lcurl -lz -lm
+if runs checks; then
 # The gate's table (auth.c): an unknown route has no rule, and /docs/limits is the API's own limits table.
 [[ "$("$work/api" --rule GET /api/no-such-route || true)" == none && "$("$work/api" --rule POST /api/auth/logout-everywhere)" == L2 ]] || { echo "api --rule: the gate's table is wrong" >&2; exit 1; }
 "$work/api" --limits | diff - "$repo_root/apps/openagents-web/docs/limits/index.md" > /dev/null || { echo "apps/openagents-web/docs/limits/index.md is stale: run api --limits > it" >&2; exit 1; }
 # The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
-$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/nip98_diff" \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/nip98_diff" \
   "$here/nip98_diff.c" "$here/nip98_reference.c" "$here/nostr.c" "$here/nip98.generated.c" \
-  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
+  ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto
 [[ $serve == 1 ]] || "$work/nip98_diff" "$here/nip98_corpus.tsv" 400
-"$pg/bin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
+fi
+lap "the API built (and in the checks' part, its NIP-98 check)"
+"$pgbin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 # A free TCP port in [LOW, LOW + 1000) that this run hasn't taken. Agents run these checks side by
 # side, and a port another run's server holds would send this run's requests to that server.
 taken=" "
@@ -90,23 +141,23 @@ free_port() {
 }
 port=$((56000 + RANDOM % 1000))   # the database's: its socket is in $work, so no other run shares it
 api_port=$(free_port 57000); taken+="$api_port "
-"$pg/bin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null
-"$pg/bin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
+"$pgbin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null
+"$pgbin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
 export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analytics"
 # The signer (sign.c), and two throwaway keys: an admin and someone else.
-$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/sign" "$here/sign.c" \
-  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/sign" "$here/sign.c" \
+  ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto
 # The project agent's runner (coax/web/agent/runner.c), run by test_private_runner.py with a stand-in engine.
 # It links runner-sign.coax's C, compiled here as deploy.sh compiles it. The generated
 # signer sets a value it never reads (schnorr_sign.coax's ss_write result), so that
 # warning stays a warning for that file only.
 "$cli_coax" c "$here/../agent/runner-sign.coax" --library --run-steps 250000000 --header "$work/runner-sign.h" > "$work/runner-sign.c"
-$cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -c -o "$work/runner-sign.o" "$work/runner-sign.c"
-$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  -I"$work" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/oa-agent" "$here/../agent/runner.c" "$work/runner-sign.o" \
-  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto -lcurl -lm
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  -I"$work" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/oa-agent" "$here/../agent/runner.c" "$work/runner-sign.o" \
+  ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto -lcurl -lm
 export RUNNER_BIN="$work/oa-agent" RUNNER_BIN_SRC="$here/../agent/runner.c"
 export SIGN="$work/sign" ADMIN_KEY="$work/admin.key" OTHER_KEY="$work/other.key"
 export OA_ADMIN_PUBKEYS="$("$SIGN" --new "$ADMIN_KEY")"
@@ -194,7 +245,7 @@ if [[ $serve == 1 ]]; then
   claude_bin="$(command -v claude || true)"
   if [[ -n "$claude_bin" ]]; then
     "$cli_coax" c "$here/../agent/chat.coax" > "$work/chat-engine.c"
-    $cc -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" -o "$work/oa-chat-turn" "$work/chat-engine.c" \
+    "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" -o "$work/oa-chat-turn" "$work/chat-engine.c" \
       "$repo_root/coax/platform/process-native.c" "$here/../agent/engine-io.c" "$here/../agent/confine-native.c" -lm
     common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
     # An indexed repo for the agent to read (docs/repos/2026-11-11-indexed-repos.md, #13326): a bare mirror of
@@ -222,7 +273,11 @@ if [[ $serve == 1 ]]; then
   wait "$api_pid"
   exit 0
 fi
-API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
+lap "the database, the signer, the runner and the API up"
+if runs py; then
+API_TEST_TIMES=1 API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
+lap "test.py"
+fi
 # The CLI as a caller (NIP-98 callers, realms/mine, visibility, admin keys, device login), in Coax: tests/cli_auth.coax.
 # The CLI-caller checks are a Coax program: they need a compiler. A deploy's
 # fresh worktree has none of its own, so take the main checkout's.
@@ -234,8 +289,10 @@ if [[ -x "$cli_coax" ]]; then
   coax_failed=0
   for f in room_checks checkpoint2_checks verse_packs auth_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
-    (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" \
+    runs "$f" || continue
+    (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" \
       coax/web/tool.sh "coax/web/api/tests/$f.coax") || coax_failed=1
+    lap "tests/$f.coax"
   done
   [[ $coax_failed == 0 ]] || { cat "$work/api.log"; exit 1; }
   # A bounded character-recovery slice, including optional real native faults.
@@ -244,34 +301,53 @@ if [[ -x "$cli_coax" ]]; then
     echo "api: checkpoint2 checks passed"
     exit 0
   fi
+  if runs cli-auth; then
   ADMIN_SECRET_HEX="$(tr -d '\n' < "$ADMIN_KEY")" COAX="$cli_coax" "$here/cli-auth-test.sh" "http://127.0.0.1:$api_port" || { cat "$work/api.log"; exit 1; }
+  lap "cli-auth-test.sh"
+  fi
   # The shell only compiles platform entry points. Coax owns the selector,
   # all requests/assertions, bounded subprocesses and fixture cleanup.
+  if runs anime; then
   p="$repo_root/coax/platform"
   "$cli_coax" c "$repo_root/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
   for unit in anime_direct anime_direct_selector; do
     "$cli_coax" c "$here/tests/$unit.coax" --library --run-steps 250000000 > "$work/$unit.c"
-    "$cc" -std=c11 -O2 -fblocks -D_DARWIN_C_SOURCE -I"$work" -I"$p" -o "$work/$unit" "$work/$unit.c" \
-      "$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/socket-native.c" "$p/tls-native.c" \
-      "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" -framework Network -framework Security -framework CoreFoundation -lm
+    if [[ "$(uname -s)" == Darwin ]]; then
+      "$cc" -std=c11 -O2 -fblocks -D_DARWIN_C_SOURCE -I"$work" -I"$p" -o "$work/$unit" "$work/$unit.c" \
+        "$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/socket-native.c" "$p/tls-native.c" \
+        "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" -framework Network -framework Security -framework CoreFoundation -lm
+    else
+      # As coax/web/tool.sh links a tool on Linux: OpenSSL for tls-native.c from tls-env.sh.
+      # shellcheck source=/dev/null
+      source "$p/tls-env.sh"
+      "$cc" -std=c11 -O2 -D_DEFAULT_SOURCE -I"$work" -I"$p" -o "$work/$unit" "$work/$unit.c" \
+        "$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/socket-native.c" "$p/tls-native.c" \
+        "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" $CXTLS_CFLAGS $CXTLS_LIBS -lpthread -lm
+    fi
   done
-  API="http://127.0.0.1:$api_port" ORIGIN="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" \
+  API="http://127.0.0.1:$api_port" ORIGIN="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" \
     ANIME_ONLY= ANIME_ISOLATED_DB=oa_analytics ANIME_SELECTOR_BIN="$work/anime_direct_selector" "$work/anime_direct" || { cat "$work/api.log"; exit 1; }
+  lap "anime_direct"
+  fi
   # A made realm's engine pins, shapes and edit log, and Aethyrforge's whole route checked end to end (#12629).
   # (The built CLI against a local API is tests/realm_cli_api.coax; its publish needs an API with no
   # bucket or with OA_ENGINE_TEMPLATE, which this run's fake bucket isn't, so it runs on its own.)
+  if runs realms; then
   mkdir -p "$work/walk"
   for f in realm_engine_pin realm_shapes realm_edit_log; do
-    (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" PIN_SQL="coax/web/api/tests/$f.sql" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax) || exit 1
+    (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" PIN_SQL="coax/web/api/tests/$f.sql" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax) || exit 1
   done
-  (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" WORK="$work/walk" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax) || exit 1
+  (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" WORK="$work/walk" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax) || exit 1
+  lap "the realm checks"
+  fi
 else
   echo 'cli-auth: skipped, no Coax compiler (build coax/bin/coax, or set COAX)' >&2
 fi
 # The audit log is append-only (0144_auth_audit.sql, #13202): with db/grants.sql's grants (its guard
 # step aside), the API's role inserts and reads but can't change or delete a row, and a role
 # given UPDATE anyway is stopped by the table's trigger.
-asu() { "$pg/bin/psql" -h "$work" -p "$port" -d oa_analytics -XAtq -v ON_ERROR_STOP=1 "$@"; }
+if runs audit; then
+asu() { "$pgbin/psql" -h "$work" -p "$port" -d oa_analytics -XAtq -v ON_ERROR_STOP=1 "$@"; }
 asu -U postgres -c "CREATE ROLE oa_api_check; CREATE ROLE oa_api_loose; GRANT oa_api_check, oa_api_loose TO postgres"
 sed '/oa_guard.attach/,/\\gexec/d' "$here/db/grants.sql" | asu -U oa_analytics -v runtime=oa_api_check -v readers= -f - > /dev/null
 asu -U postgres -c "SET ROLE oa_api_check; SELECT auth.log(NULL, NULL, 'check.append', 'ok', '{}')" > /dev/null || { echo "audit: the API's role can't append" >&2; exit 1; }
@@ -280,5 +356,6 @@ if asu -U postgres -c "SET ROLE oa_api_check; DELETE FROM auth.audit" 2>/dev/nul
 asu -U oa_analytics -c "GRANT USAGE ON SCHEMA auth TO oa_api_loose; GRANT SELECT, UPDATE, DELETE ON auth.audit TO oa_api_loose"
 if asu -U postgres -c "SET ROLE oa_api_loose; UPDATE auth.audit SET result = 'failed'" 2>/dev/null; then echo "audit: the trigger let an update through" >&2; exit 1; fi
 echo "  ok    the audit log is append-only for the API's role, and its trigger stops anyone else"
+fi
 if grep -q "ERROR: AddressSanitizer\|runtime error" "$work/api.log"; then cat "$work/api.log"; exit 1; fi
-echo "api: checks passed"
+echo "api: checks passed in $((SECONDS - began)) s"

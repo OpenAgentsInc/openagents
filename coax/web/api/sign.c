@@ -83,8 +83,7 @@ int main(int argc, char **argv) {
   }
   secp256k1_xonly_pubkey xonly;
   unsigned char pub[32]; char pubhex[65];
-  secp256k1_keypair_xonly_pub(ctx, &xonly, NULL, &pair);
-  secp256k1_xonly_pubkey_serialize(ctx, pub, &xonly);
+  if (!secp256k1_keypair_xonly_pub(ctx, &xonly, NULL, &pair) || !secp256k1_xonly_pubkey_serialize(ctx, pub, &xonly)) die("cannot derive the public key");
   hex(pub, 32, pubhex);
   if (argc == 3 || !strcmp(argv[3], "--pubkey")) { printf("%s\n", pubhex); return 0; }
   if (argc < 5) die("METHOD URL needed");

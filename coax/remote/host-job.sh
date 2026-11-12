@@ -30,6 +30,22 @@ if ! command -v xxd > /dev/null 2>&1 || [[ ! -f /usr/include/openssl/ssl.h ]]; t
       { sudo -n apt-get update -q; sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -yq xxd libssl-dev; } > /dev/null 2>&1
   ) 9> ~/.oa-tools.lock || true
 fi
+# What coax/web/api/test.sh needs (#13323) and a host set up before it lacks:
+# clang, the API's libraries and PGDG's PostgreSQL 16 with no cluster of its
+# own (host-startup.sh installs the same on a new host). Once a host.
+api_ready() { [[ -x /usr/lib/postgresql/16/bin/initdb && -f /usr/include/secp256k1_schnorrsig.h && -f /usr/include/postgresql/libpq-fe.h && -f /usr/include/zlib.h ]] && command -v clang > /dev/null 2>&1 && ls /usr/include/*/curl/curl.h > /dev/null 2>&1; }
+if ! api_ready; then
+  ( flock 9
+    api_ready || {
+      sudo -n install -d /usr/share/postgresql-common/pgdg /etc/postgresql-common/createcluster.d
+      sudo -n curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+      echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" | sudo -n tee /etc/apt/sources.list.d/pgdg.list
+      echo "create_main_cluster = false" | sudo -n tee /etc/postgresql-common/createcluster.d/oa-no-main.conf
+      sudo -n apt-get update -q
+      sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -yq clang libsecp256k1-dev libpq-dev libcurl4-openssl-dev zlib1g-dev postgresql-16
+    } > /dev/null 2>&1
+  ) 9> ~/.oa-tools.lock || true
+fi
 # spec sets: key commit relcwd argv=(...) env_vars=(...), and shared_token: a
 # token for the shared build cache's bucket alone (shared-cache.sh), never part
 # of the key

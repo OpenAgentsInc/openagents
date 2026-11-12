@@ -53,8 +53,7 @@ static secp256k1_context *ctx(void) {
 bool nostr_pubkey(const unsigned char sk[32], char pubhex[65]) {
   secp256k1_keypair pair; secp256k1_xonly_pubkey x; unsigned char pub[32];
   if (!secp256k1_keypair_create(ctx(), &pair, sk)) return false;
-  secp256k1_keypair_xonly_pub(ctx(), &x, NULL, &pair);
-  secp256k1_xonly_pubkey_serialize(ctx(), pub, &x);
+  if (!secp256k1_keypair_xonly_pub(ctx(), &x, NULL, &pair) || !secp256k1_xonly_pubkey_serialize(ctx(), pub, &x)) return false;
   hex(pub, 32, pubhex);
   return true;
 }

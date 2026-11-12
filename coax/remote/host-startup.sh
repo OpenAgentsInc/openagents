@@ -19,6 +19,15 @@ meta() { curl -fsS -H 'Metadata-Flavor: Google' "http://metadata.google.internal
 if [[ ! -f /var/lib/oa-remote-ready ]]; then
   apt-get update -q
   DEBIAN_FRONTEND=noninteractive apt-get install -yq git curl xz-utils ca-certificates build-essential python3 rsync unzip jq util-linux xxd libssl-dev
+  # What coax/web/api/test.sh builds and runs (#13323): clang, the API's
+  # libraries, and PGDG's PostgreSQL 16 (Debian 12 ships 15), with no cluster
+  # of its own: every test run makes a throwaway one in a temporary directory.
+  install -d /usr/share/postgresql-common/pgdg /etc/postgresql-common/createcluster.d
+  curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+  echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+  echo "create_main_cluster = false" > /etc/postgresql-common/createcluster.d/oa-no-main.conf
+  apt-get update -q
+  DEBIAN_FRONTEND=noninteractive apt-get install -yq clang libsecp256k1-dev libpq-dev libcurl4-openssl-dev zlib1g-dev postgresql-16
   id "$user" > /dev/null 2>&1 || useradd -m -s /bin/bash "$user"
   mkdir -p /nix && chown "$user" /nix
   su - "$user" -c '[ -e ~/.nix-profile ] || curl -fsSL https://nixos.org/nix/install | sh -s -- --no-daemon'

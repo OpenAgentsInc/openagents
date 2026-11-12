@@ -126,6 +126,16 @@ sends the checkout's commit and uncommitted changes, streams the output, and
 brings the written files back; with no host it runs on the Mac's slots
 (docs/verse/remote-builds.md).
 
+The API suite (`coax/web/api/test.sh`: Postgres, ASan, every route) is one of
+them. Never run it on the Mac; run it on a host, whole or in two parts side
+by side (docs/verse/remote-builds.md, "The API suite"):
+
+```sh
+coax/remote/remote.sh run -- coax/web/api/test.sh            # the whole suite, about 16 minutes
+coax/remote/remote.sh run -- coax/web/api/test.sh --part 1/2 # and 2/2 in a second call at once: 13 minutes
+coax/remote/remote.sh run -- env API_TESTS_ONLY=auth_checks.coax coax/web/api/test.sh  # only that tests/ file (or test_X.py)
+```
+
 To serve or drive pages in a fresh worktree, fetch main's built pages
 (`coax/remote/pages.sh origin/main`, about 10 seconds) and rebuild only the
 module you changed with `wasm.sh`. Don't run a full

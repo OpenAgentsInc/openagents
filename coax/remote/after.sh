@@ -34,8 +34,9 @@
 # since main-green G. The suites whose sources changed (check.sh since G, in
 # OA_AFTER_FAST_PARTS parts), the web modules the change touched and the
 # report checks (check.sh web G), the room build when the change reaches it
-# (check.sh room-since G), and coax/tests/run.sh in 8 parts when compiler
-# sources changed. Everything else
+# (check.sh room-since G), the API suite in OA_AFTER_API_PARTS parts when the
+# change reaches it (check.sh api-since G I/N), and coax/tests/run.sh in 8
+# parts when compiler sources changed. Everything else
 # passed at G and reads no changed file, so it passes at H. A head that changes
 # only documents is green with no job. A head that changes the compiler
 # (coax/src, coax/bootstrap, coax/build.sh) gets a full run instead.
@@ -47,7 +48,8 @@
 # A full run, when there is no main-green (at most once an hour), and at most
 # every OA_AFTER_GAP seconds after that: every suite in OA_AFTER_PARTS parts, every web module
 # against its budget in OA_AFTER_MODULE_PARTS parts, the report checks and the
-# room build (check.sh tools), and coax/tests/run.sh in 8 parts when compiler
+# room build (check.sh tools), the API suite in OA_AFTER_API_PARTS parts
+# (check.sh api I/N), and coax/tests/run.sh in 8 parts when compiler
 # sources changed since the last full green run (always, when there is none).
 #
 # Green: main-green moves to H, and the red-list entries H fixes close. Then,
@@ -83,8 +85,8 @@
 # kind, status, seconds, slot-seconds, jobs) and red.json.
 #
 # Settings: OA_AFTER_PARTS (6), OA_AFTER_MODULE_PARTS (3), OA_AFTER_FAST_PARTS
-# (3), OA_AFTER_GAP (10800: seconds between full runs), OA_AFTER_FAST_GAP (0:
-# seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
+# (3), OA_AFTER_API_PARTS (2), OA_AFTER_GAP (10800: seconds between full
+# runs), OA_AFTER_FAST_GAP (0: seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
 # OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing checks bisected one by
 # one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job),
 # OA_AFTER_RETRIES (2), OA_AFTER_UNFINISHED (3), OA_AFTER_STALE (10800),
@@ -100,6 +102,7 @@ source "$here/counts.sh"
 parts="${OA_AFTER_PARTS:-6}"
 module_parts="${OA_AFTER_MODULE_PARTS:-3}"
 fast_parts="${OA_AFTER_FAST_PARTS:-3}"
+api_parts="${OA_AFTER_API_PARTS:-2}"   # coax/web/api/test.sh --part: see docs/verse/remote-builds.md, "The API suite"
 gap="${OA_AFTER_GAP:-10800}"   # a full run costs about $0.30 of host time (2026-11-09)
 fast_gap="${OA_AFTER_FAST_GAP:-0}"
 retries="${OA_AFTER_RETRIES:-2}"
@@ -605,6 +608,10 @@ run_head() {
       for (( i = 1; i <= fast_parts; i++ )); do jobs+=("since $ref $i/$fast_parts"); done
     fi
     [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref" "room-since $ref${prod:+ $prod}")
+    # The API suite's parts only when the change reaches it (check.sh's api_inputs; it checks again).
+    if grep -v '\.md$' <<< "$changed" | grep -Eq '^(coax/web/api/|coax/web/agent/|coax/lib/|coax/platform/|coax/src/|coax/bootstrap/|apps/openagents-web/docs/limits/)'; then
+      for (( i = 1; i <= api_parts; i++ )); do jobs+=("api-since $ref $i/$api_parts"); done
+    fi
     # The last full run's failures, each as its own check.
     if [[ -n "$known" ]]; then
       local item a j
@@ -618,6 +625,7 @@ run_head() {
     for (( i = 1; i <= parts; i++ )); do jobs+=("suites $i/$parts"); done
     for (( i = 1; i <= module_parts; i++ )); do jobs+=("modules $i/$module_parts"); done
     jobs+=("tools${prod:+ $prod}")
+    for (( i = 1; i <= api_parts; i++ )); do jobs+=("api $i/$api_parts"); done
   fi
   local compiler=0
   case "$compiler_mode" in

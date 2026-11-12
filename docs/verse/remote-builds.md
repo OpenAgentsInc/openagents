@@ -852,6 +852,55 @@ failed. `coax/web/toolchain.sh` now links clang 23 on Linux (23.1.3): fivelab
 is 2,719,737 bytes, as the Mac's 2,720,222. A toolchain linked for another
 clang major is linked again on first use.
 
+## The API suite (#13323)
+
+`coax/web/api/test.sh` builds the API with AddressSanitizer, starts Postgres,
+the signer, the runner and the API, and runs every route's tests. Run it on a
+host:
+
+```sh
+coax/remote/remote.sh run -- coax/web/api/test.sh             # the whole suite
+coax/remote/remote.sh run -- coax/web/api/test.sh --part 1/2  # and --part 2/2 in a second call at once
+coax/remote/remote.sh run -- env API_TESTS_ONLY=auth_checks.coax coax/web/api/test.sh   # one tests/ file or test_X.py
+```
+
+Each run makes its own Postgres cluster (`initdb` in a temporary directory,
+on a free port, with a Unix socket there) and removes it at exit, so slots
+and agents never share a database. On Linux it uses Debian's clang 14 and
+PGDG's Postgres 16 (`/usr/lib/postgresql/16/bin`); on the Mac, Homebrew's
+`postgresql@16`, `secp256k1` and `openssl@3`, as before. The hosts' packages:
+`clang libsecp256k1-dev libpq-dev libcurl4-openssl-dev zlib1g-dev
+postgresql-16`, with no default cluster. `host-startup.sh` installs them on a
+new host, and `host-job.sh` installs whatever is missing once on a running
+one (`sudo -n`, under `~/.oa-tools.lock`). The four running hosts got them by
+hand on 2026-11-11, with no restart. Linux runs ASan without its leak check,
+as the Mac does.
+
+Measured on oa-build-1 (c3d-highcpu-30), 2026-11-11, with other jobs in the
+other slots:
+
+| Run | Command time |
+|---|---|
+| Whole suite | 936 s (test.py 721 s of it) |
+| `--part 1/2` (test.py) | 771 s |
+| `--part 2/2` (everything else) | 205 s |
+| API build, the same in every part | about 70 s |
+
+The Python tests (`test.py` runs every `test_*.py` in one namespace, and the
+files use each other's helpers) are one unit, so test.py bounds a part at
+about 13 minutes: more than two parts buy nothing. Three files take most
+of it: test_realms.py 272 s, test_realm_rights_asks.py 128 s and
+test_realm_rights.py 95 s; making them faster is what would shorten it. Each part prints its
+units (`api: part I/N: ...`); the units and their seconds are `API_PARTS` in
+test.sh, and `API_TEST_TIMES=1` prints each Python file's time to measure
+them again.
+
+The after-landing check runs it: `check.sh api I/N` in every full run, and
+`check.sh api-since G I/N` in a fast run whose change reaches what the suite
+builds (`coax/web/api/`, `coax/web/agent/`, `coax/lib/`, `coax/platform/`,
+the compiler, the limits page), in `OA_AFTER_API_PARTS` (2) parts. That is
+two slots, 13 minutes for the longer, about $0.08 a run (782 s and 220 s of slot time).
+
 ## What stays on the Mac
 
 - **Shots** (`coax/web/tool.sh shot`, goldens, frame times). The hosts have no
