@@ -1,5 +1,11 @@
 # Microcoder against Antigravity on Gemini
 
+**Round 4 (2026-11-12): stopped at the cheap check, no verdict run.**
+Thinking by step (the plan and every finish at medium, the rest at low)
+turned H4 from fail to pass in its one run. It also raised T1's cost by 42%
+and its time by about 80%, past the agreed 30% limit. Round 2's verdict still
+stands.
+
 **Round 3 (2026-11-12): stopped at the cheap check, no verdict run.** One
 more look at the final diff and new files before a finish is taken
 (a08147fa7f) changed no outcome in four runs and cost 42% more on T1. The
@@ -55,6 +61,80 @@ one or two passes is within noise; the report gives counts, not rates.
   three-file change and a reading task. Nobody tuning Microcoder looked at
   them before the final runs.
 
+
+## Round 4
+
+After three rounds of better observations, AGENTS.md's rule meant changing
+approach: the same model (`gemini-4-argon`), with the harness choosing the
+thinking level by step. The budget was $50 more.
+
+### The changes
+
+- **0df590f5e7 reverts round 3's final look.** It had shown no gain and cost
+  42% more on T1.
+- **c2e1e45103 adds thinking by step.** At `--effort low`:
+  - **The first step**, which plans the work, goes out at medium.
+  - **Every other step** goes out at low.
+  - **A finish answered at low** is asked again, once, with the same prompt,
+    at medium, and that answer decides.
+  - **Medium calls** carry a whole-call limit of 90 s (`GwRequest.limit_ms`),
+    which the plan cuts with no retry. If one fails, the first step goes out
+    at low, or the low finish is taken.
+  - **Only a medium call's reply streams.**
+  - **Why medium, not high:** round 1 saw medium already think for minutes on
+    some calls, and high only longer.
+- **Checks first:**
+  - which steps go out at which level and limit;
+  - the re-ask happens once per finish, with the same prompt (same length and
+    hash);
+  - both fallbacks;
+  - nothing changes when thinking by step is off;
+  - on loopback, a call past the whole limit is cut once, with no retry.
+- **Same commit:** the definition's one added line ("three runs per task in
+  round 4") went in before any run.
+
+### The cheap check, one run each (Microcoder at c2e1e45103)
+
+| Task | Before (78ab78f450, round 2) | Thinking by step | Levels, call by call |
+| --- | --- | --- | --- |
+| T3 | 1 of 2 passed; $0.21, $0.36 | failed (no "warn" again); $0.42; 93 s | m l l l l m |
+| T4 | 1 of 2 passed; $0.64, $0.63 | passed; $0.41; 87 s | m l l l l m |
+| H4 | 0 of 2 passed (0 of 1 in round 3); $1.09, $1.62 | passed; $1.24; 255 s | m, then 14 × l, then m |
+| T1 | 2 of 2 passed; $0.12, $0.12; 19 s, 30 s | passed; $0.17; 44 s | m l l m |
+
+- **Medium calls stayed short:** no call hit its 90 s limit, and none failed.
+- **H4 went from fail to pass.** H4 is the task this change most plausibly
+  helps. But it was one run, and H4 passed 2 of 2 at an older build. T4
+  passed too, as it did in 3 of its 4 earlier runs.
+- **T3 still failed** the same way.
+- **The re-ask's cost is built in.** On T1, the plan call and the re-ask each
+  add a full call to a run that otherwise takes 3: cost rose 42% ($0.17
+  against $0.12) and time about 80% (44 s against 19 s and 30 s). That passes
+  the agreed 30% limit, and every short task will pay the same.
+- **So it stopped there**, as agreed. The 3-runs-per-task verdict (42 runs a
+  harness) wasn't spent.
+
+c2e1e45103 stays on `main` for the coordinator to decide: it is one commit to
+revert. Its gain was one H4 run, not measured beyond the cheap check, so by
+the owner's rule it shouldn't stay without a measurement.
+
+### What blocks the goal, and the next lever
+
+- **The blocker is still the round 2 verdict:** 22 against 24 of 28 runs.
+- **Spending thinking at the finish costs a call on every task**, which
+  breaks the cost and time budget on short ones.
+- **A cheaper variant to measure next:** keep the medium plan step but re-ask
+  only finishes of runs that wrote a file or ran more than a few steps. That
+  is a threshold on the harness's own counters, not on the task.
+  - Or skip the re-ask and put the plan at medium only. Its cost on T1 is one
+    medium call instead of two.
+- **More runs per task, needed either way.** The changes being judged are
+  within the noise of two runs per task.
+
+### Round 4 spend
+
+- **Round 4:** $2.24 of the $50, plus a few cents for one tiny test turn.
+- **All rounds:** $72.91.
 
 ## Round 3
 
