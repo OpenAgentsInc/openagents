@@ -6,7 +6,6 @@
 
 #import "Basic";
 #load "writer.coax";
-#load "../engine/micro-observation.coax";
 #load "../engine/route.coax";
 #load "../../json/json.coax";
 #load "../../sys/tool.coax";
@@ -67,10 +66,7 @@ sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
     vals[4] = sg_i(d, vs, "cache_write_tokens", -1);
     vals[5] = sg_i(d, vs, "provider_cost_usd_micros", -1);
     vals[6] = sg_i(d, vs, "card_estimate_usd_micros", -1);
-    mb: [SG_LINE] u8;
-    n := mo_attempt(sg_s(p[..], d, vs, "engine"), sg_s(p[..], d, vs, "gateway"), sg_s(p[..], d, vs, "model"), sg_s(p[..], d, vs, "requested_effort"), sg_s(p[..], d, vs, "outcome"), sg_i(d, vs, "status", 0), vals[..], mb[..]);
-    if n < 0 { return -1; }
-    return sg_copy_line(cast(string) mb[0..<n], out);
+    return cst_attempt(out, sg_s(p[..], d, vs, "engine"), sg_s(p[..], d, vs, "gateway"), sg_s(p[..], d, vs, "model"), sg_s(p[..], d, vs, "requested_effort"), sg_s(p[..], d, vs, "outcome"), sg_i(d, vs, "status", 0), vals[..]);
   }
   if rec == "reply_delta" {
     return cst_reply_delta(out, sg_i(d, vs, "segment", 0), sg_s(p[..], d, vs, "text"));

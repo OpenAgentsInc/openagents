@@ -1,7 +1,7 @@
 // Versioned, whitelisted observations shared by the worker and session writer.
-#load "../claude/fields.coax";
-MO_SCHEMA :: "coder.observability.v2";
-MO_COUNTS :: [7] string.["input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "cache_write_tokens", "provider_cost_usd_micros", "card_estimate_usd_micros"];
+#load "../session/stream.coax";
+MO_SCHEMA :: CST_OBSERVABILITY_V2;
+MO_COUNTS :: CST_ATTEMPT_COUNTS;
 
 #test "attempt observations preserve unknowns, zeros and cost provenance" {
   values:=[7]int.[10,2,0,-1,-1,-1,12]; b:[4096]u8;
@@ -24,20 +24,7 @@ MO_COUNTS :: [7] string.["input_tokens", "output_tokens", "cached_tokens", "reas
 }
 
 mo_attempt :: (engine:string,gateway:string,model:string,effort:string,outcome:string,status:int,values:[]int,out:[]u8)->int {
-  if values.count!=7 {return -1;}
-  n:=json_raw(out,0,"{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":");
-  n=ifx engine.count>0 then json_write_string(out,n,engine) else json_raw(out,n,"null");
-  n=json_raw(out,n,",\"gateway\":");n=json_write_string(out,n,gateway);
-  n=json_raw(out,n,",\"model\":");n=json_write_string(out,n,model);
-  n=json_raw(out,n,",\"model_source\":\"attempt_configuration\",\"requested_effort\":");
-  n=ifx effort.count>0 then json_write_string(out,n,effort) else json_raw(out,n,"null");
-  n=json_raw(out,n,",\"outcome\":");n=json_write_string(out,n,outcome);
-  n=json_raw(out,n,",\"status\":");n=json_write_int(out,n,status);
-  keys:=MO_COUNTS;
-  for i:0..<7 {n=json_raw(out,n,",");n=json_write_string(out,n,keys[i]);n=json_raw(out,n,":");n=ifx values[i]>=0 then json_write_int(out,n,values[i]) else json_raw(out,n,"null");}
-  // Existing worker clients use this card estimate for their status footer.
-  n=json_raw(out,n,",\"usd_micros\":");n=json_write_int(out,n,values[6]);
-  return json_raw(out,n,"}");
+  return cst_attempt(out,engine,gateway,model,effort,outcome,status,values);
 }
 mo_relay :: (line:string,engine:string,out:[]u8)->int {
   if (engine!="micro" && engine!="psionic") || line.count>8192 || !json_valid(line) {return -1;}

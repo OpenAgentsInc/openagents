@@ -58,9 +58,8 @@ cst_availability :: (out: [] u8, engine: string, retry_after_s: int, persisted: 
 // ---- coder.observability.v2
 
 cst_attempt :: (out: [] u8, engine: string, gateway: string, model: string, effort: string, outcome: string, status: int, values: [] int) -> int {
-  if values.count < 7 { return -1; }
-  n := json_raw(out, 0, "{\"kind\":\"attempt\",\"schema\":"); n = json_write_string(out, n, CST_OBSERVABILITY_V2);
-  n = json_raw(out, n, ",\"scope\":\"request_attempt\",\"engine\":");
+  if values.count != 7 { return -1; }
+  n := json_raw(out, 0, "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":");
   n = ifx engine.count > 0 then json_write_string(out, n, engine) else json_raw(out, n, "null");
   n = json_raw(out, n, ",\"gateway\":"); n = json_write_string(out, n, gateway);
   n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, model);
@@ -73,8 +72,8 @@ cst_attempt :: (out: [] u8, engine: string, gateway: string, model: string, effo
     n = json_raw(out, n, ","); n = json_write_string(out, n, keys[i]); n = json_raw(out, n, ":");
     n = ifx values[i] >= 0 then json_write_int(out, n, values[i]) else json_raw(out, n, "null");
   }
-  usd := ifx values[5] >= 0 then values[5] else values[6];
-  n = json_raw(out, n, ",\"usd_micros\":"); n = json_write_int(out, n, usd);
+  // Existing worker clients use this card estimate for their status footer.
+  n = json_raw(out, n, ",\"usd_micros\":"); n = json_write_int(out, n, values[6]);
   return json_raw(out, n, "}");
 }
 
