@@ -1,0 +1,44 @@
+// The fixture and helpers of everglade/model/character.coax's checks: a whole character, its
+// pinned bytes (proto/verse/everglade-character-v1.schema.json holds the same), and text splices.
+
+char_fixture :: () -> Character #effects(all) {
+  a: [1] Character; a[0] = char_new("p-a", 2);
+  _ := char_class_set(a[..], "srd-ranger");
+  c := a[0];
+  c.xp = 950;
+  c.known_n = 2; c.known[0] = 7; c.known[1] = 31;
+  c.bag_n = 3; c.bag[0] = 4; c.bag[1] = 9; c.bag[2] = 12; c.inv = 5;
+  c.worn[1] = 9; c.worn[7] = 4;
+  c.coin = 1250;
+  c.quest_n = 2; c.quest[0] = 3; c.stage[0] = 0; c.quest[1] = 8; c.stage[1] = 255;
+  return c;
+}
+CHAR_FIXTURE_WIRE :: "{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}";
+
+char_same :: (a: Character, b: Character) -> bool #effects(all) {
+  w := b.who; k := b.klass;
+  if a.ok != b.ok || !char_who_is(a, cast(string) w[0..<b.who_n]) || !char_class_is(a, cast(string) k[0..<b.klass_n]) { return false; }
+  if a.xp != b.xp || a.floor != b.floor || a.known_n != b.known_n || a.bag_n != b.bag_n || a.inv != b.inv || a.coin != b.coin || a.quest_n != b.quest_n { return false; }
+  for i: 0..<a.known_n { if a.known[i] != b.known[i] { return false; } }
+  for i: 0..<a.bag_n { if a.bag[i] != b.bag[i] { return false; } }
+  for s: 0..<CHAR_WORN { if a.worn[s] != b.worn[s] { return false; } }
+  for i: 0..<a.quest_n { if a.quest[i] != b.quest[i] || a.stage[i] != b.stage[i] { return false; } }
+  return true;
+}
+// A copy of `s` with bytes [from, to) replaced by `with`, into out.
+char_splice :: (s: string, from: int, to: int, with: string, out: [] u8) -> string #effects(all) {
+  n := 0;
+  for i: 0..<from { out[n] = s[i]; n += 1; }
+  for i: 0..<with.count { out[n] = with[i]; n += 1; }
+  for i: to..<s.count { out[n] = s[i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+char_find :: (s: string, w: string) -> int #effects(all) {
+  if w.count > s.count { return -1; }
+  for i: 0..<s.count - w.count + 1 { if s[i..<i + w.count] == w { return i; } }
+  return -1;
+}
+char_swap :: (s: string, was: string, with: string, out: [] u8) -> string #effects(all) {
+  at := char_find(s, was);
+  return ifx at < 0 then "" else char_splice(s, at, at + was.count, with, out);
+}
