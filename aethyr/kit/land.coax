@@ -183,6 +183,36 @@ kit_moon :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, at: Point, r: f32) {
   ellipsoid(buf, p, frame_at(at, 0), r, r, r, 24, 12, 0);
 }
 
+// A rock wall: a block from (x0, z0) to (x1, z1), h tall, with a darker strata band standing a
+// little proud of it part way up and a ragged cap of lumps along its top.
+kit_wall :: (buf: [] u32, p: [] Pen, obj: int, face: KitTint, band: KitTint, x0: f32, x1: f32, z0: f32, z1: f32, h: f32, seed: f32) {
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; hx := (x1 - x0) * 0.5; hz := (z1 - z0) * 0.5;
+  kit_pen(p, obj, MAT_WORLD, face);
+  block(buf, p, cx, 0, cz, hx, h, hz);
+  kit_pen(p, obj + 1, MAT_WORLD, band);
+  block(buf, p, cx, h * 0.36, cz, hx + 0.12, h * 0.1, hz + 0.12);
+  block(buf, p, cx, h * 0.72, cz, hx + 0.08, h * 0.05, hz + 0.08);
+  kit_pen(p, obj, MAT_WORLD, face);
+  n := cast(int) ((hx + hz) / 5) + 2;
+  for i: 0..<n {
+    k := seed + cast(f32) i;
+    x := x0 + kit_rand(k + 600) * (x1 - x0); z := z0 + kit_rand(k + 610) * (z1 - z0);
+    r := 1.5 + kit_rand(k + 620) * 2.5;
+    ellipsoid(buf, p, frame_at(v3(x, h, z), kit_rand(k + 630) * 6), r, r * 0.5, r, 8, 5, 0);
+  }
+}
+
+// A crate: a box with two bands and a lid light.
+kit_crate :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, wood: KitTint, band: KitTint, light: KitTint, w: f32) {
+  kit_pen(p, obj, MAT_WORLD, wood);
+  box(buf, p, kit_at(f, 0, w * 0.4, 0), w * 0.6, w * 0.4, w * 0.45);
+  kit_pen(p, obj + 1, MAT_CLOTH, band);
+  box(buf, p, kit_at(f, -w * 0.35, w * 0.4, 0), w * 0.06, w * 0.42, w * 0.47);
+  box(buf, p, kit_at(f, w * 0.35, w * 0.4, 0), w * 0.06, w * 0.42, w * 0.47);
+  kit_pen(p, obj + 2, MAT_GLOW, light);
+  box(buf, p, kit_at(f, 0, w * 0.82, 0), w * 0.12, w * 0.03, w * 0.12);
+}
+
 #test "land pieces are deterministic: the same seed writes the same triangles" {
   a: [60000] u32; b: [60000] u32;
   pa := [1] Pen.[Pen.{}]; pb := [1] Pen.[Pen.{}];

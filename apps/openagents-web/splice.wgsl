@@ -416,28 +416,20 @@ fn coax_p_fx_fs(p_v: coax_t14) -> vec4f {
   var l_tint: vec3f;
   var l_lod: f32;
   var l_sa: f32;
-  var l_c: vec3f;
   var l_along: f32;
   var l_d: f32;
   var l_core: f32;
-  var l_g: f32;
-  var l_halo: f32;
-  var l_c_13: vec3f;
   l_tint = coax_p_v3(l_v.w.x, l_v.w.y, l_v.w.z);
   if (((l_v.w.w > 0x1.c00000p1f) && (l_v.w.w < 0x1.200000p2f)))
   {
     l_lod = (coax_p_st_sat((coax_p_wg_log2((0x1.000000p6f / coax_p_fmax(l_v.z.x, 0x1.000000p0f))) / 0x1.000000p2f)) * 0x1.000000p2f);
     l_sa = coax_pow_bg_vs((textureSampleLevel(sans_atlas, sans_sampler, l_v.y, l_lod)).w, 0x1.b33334p-1f);
-    l_c = coax_p_al_scale3(l_tint, (l_sa * coax_p_fmin((l_v.z.z * 0x1.266666p0f), 0x1.000000p0f)));
-    return coax_p_v4(l_c.x, l_c.y, l_c.z, 0x1.000000p0f);
+    return coax_p_v4(l_tint.x, l_tint.y, l_tint.z, (l_sa * coax_p_fmin((l_v.z.z * 0x1.266666p0f), 0x1.000000p0f)));
   }
   l_along = coax_p_fmax(coax_p_fmax((-l_v.y.x), (l_v.y.x - l_v.z.x)), 0.0f);
   l_d = sqrt(((l_along * l_along) + (l_v.y.y * l_v.y.y)));
   l_core = (0x1.000000p0f - coax_p_smoothstep((l_v.z.y - 0x1.000000p-1f), (l_v.z.y + 0x1.333334p-1f), l_d));
-  l_g = (l_d / coax_p_fmax(l_v.z.w, 0x1.000000p0f));
-  l_halo = (exp((((-0x1.400000p2f) * l_g) * l_g)) * 0x1.c28f5cp-3f);
-  l_c_13 = coax_p_al_scale3(l_tint, ((l_core + l_halo) * l_v.z.z));
-  return coax_p_v4(l_c_13.x, l_c_13.y, l_c_13.z, 0x1.000000p0f);
+  return coax_p_v4(l_tint.x, l_tint.y, l_tint.z, (l_core * coax_p_fmin(l_v.z.z, 0x1.000000p0f)));
 }
 fn coax_p_al_bg_vs(p_i: u32, p__iid1: u32) -> vec4f {
   var l_i: u32 = p_i;

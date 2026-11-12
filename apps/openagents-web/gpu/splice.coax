@@ -2,4 +2,22 @@
 // post pass as Anime Lab, so this file loads Anime Lab's. build.sh writes apps/openagents-web/splice.wgsl
 // from it with coax/web/wgsl-module.coax (splice.module, and animelab.bindings, which the two share).
 // No WGSL is written by hand.
+//
+// One pass is Splice's own: the overlay (fx_fs). Anime Lab's overlay is light on dark (its blend
+// keeps the brighter colour). Splice's interface is ink on cream paper, so its overlay writes
+// straight alpha and the page asks the host for source-over blending (coaxial_fx_alpha_v1):
+// a stroke is a solid shape with no glow, and text takes its ink's colour.
 #load "animelab.coax";
+
+fx_fs :: (v:AnimelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  tint:V3=v3(v.tint.x,v.tint.y,v.tint.z);
+  if ((v.tint.w>3.5f32)&&(v.tint.w<4.5f32)) {
+    lod:f32=st_sat(wg_log2(64.0f32/fmax(v.shape.x,1.0f32))/4.0f32)*4.0f32;
+    sa:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return v4(tint.x,tint.y,tint.z,sa*fmin(v.shape.z*1.15f32,1.0f32));
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=sqrt((along*along)+(v.place.y*v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  return v4(tint.x,tint.y,tint.z,core*fmin(v.shape.z,1.0f32));
+}

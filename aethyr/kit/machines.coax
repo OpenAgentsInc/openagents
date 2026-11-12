@@ -221,6 +221,57 @@ kit_bird :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, c: KitTint) {
   box(buf, p, kit_at(frame_turn(f, 2, -0.35), 0.6 * s, 0, 0), 0.6 * s, 0.04 * s, 0.18 * s);
 }
 
+// The Digger: a squat body on two treads, a drill arm ahead and a battery on its back. Each part
+// is drawn only when the caller has it (arm, treads, battery), so a half-built Digger shows what
+// is missing. `spin` turns the drill; `glow` is the battery's and the eye's light. 1.6 m tall at s 1.
+kit_digger :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, body: KitTint, dark: KitTint, accent: KitTint, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32) {
+  kit_pen(p, obj, MAT_SKIN, body);
+  box(buf, p, kit_at(f, 0, 0.95 * s, 0), 0.62 * s, 0.42 * s, 0.8 * s);
+  box(buf, p, kit_at(f, 0, 1.52 * s, 0.25 * s), 0.4 * s, 0.2 * s, 0.4 * s);
+  kit_pen(p, obj + 1, MAT_WINDOW, dark);
+  box(buf, p, kit_at(f, 0, 1.55 * s, 0.66 * s), 0.3 * s, 0.09 * s, 0.02 * s);
+  if treads {
+    kit_pen(p, obj + 2, MAT_CLOTH, dark);
+    for side: 0..<2 {
+      sx := ifx side == 0 then -1.0f32 else 1.0f32;
+      box(buf, p, kit_at(f, sx * 0.8 * s, 0.3 * s, 0), 0.2 * s, 0.3 * s, 1.0 * s);
+      limb(buf, p, fp(f, sx * 0.6 * s, 0.3 * s, 0.95 * s), fp(f, sx * 1.0 * s, 0.3 * s, 0.95 * s), 0.3 * s, 0.3 * s, fd(f, 0, 1, 0), 10);
+      limb(buf, p, fp(f, sx * 0.6 * s, 0.3 * s, -0.95 * s), fp(f, sx * 1.0 * s, 0.3 * s, -0.95 * s), 0.3 * s, 0.3 * s, fd(f, 0, 1, 0), 10);
+    }
+  } else {
+    kit_pen(p, obj + 2, MAT_CLOTH, dark);
+    box(buf, p, kit_at(f, 0, 0.3 * s, 0), 0.5 * s, 0.25 * s, 0.6 * s);   // on blocks until it has treads
+  }
+  if arm {
+    kit_pen(p, obj + 3, MAT_FLAT, accent);
+    limb(buf, p, fp(f, 0, 1.0 * s, 0.7 * s), fp(f, 0, 0.95 * s, 1.35 * s), 0.2 * s, 0.24 * s, fd(f, 1, 0, 0), 8);
+    g := frame_turn(frame_along(fp(f, 0, 0.95 * s, 1.35 * s), fp(f, 0, 0.9 * s, 2.3 * s), fd(f, 1, 0, 0)), 1, spin);
+    kit_pen(p, obj + 4, MAT_SKIN, body);
+    tube(buf, p, g, 0.95 * s, 0.34 * s, 0.34 * s, 0.02 * s, 0.02 * s, 6, true);
+  }
+  if battery {
+    kit_pen(p, obj + 5, MAT_GLOW, glow);
+    box(buf, p, kit_at(f, 0, 1.25 * s, -0.55 * s), 0.34 * s, 0.3 * s, 0.2 * s);
+    box(buf, p, kit_at(f, 0, 1.55 * s, 0.675 * s), 0.2 * s, 0.03 * s, 0.01 * s);
+  }
+}
+
+// A cloaked figure: legs, a poncho cone, a head under a wide hat and a pack. `stride` (radians)
+// swings the legs as it walks. 1.8 m tall at s 1.
+kit_figure :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, cloak: KitTint, skin: KitTint, dark: KitTint, hat: KitTint, stride: f32) {
+  sw := sin(stride) * 0.28 * s;
+  kit_pen(p, obj, MAT_CLOTH, dark);
+  limb(buf, p, fp(f, -0.16 * s, 0.85 * s, 0), fp(f, -0.16 * s, 0.05 * s, sw), 0.11 * s, 0.09 * s, fd(f, 1, 0, 0), 6);
+  limb(buf, p, fp(f, 0.16 * s, 0.85 * s, 0), fp(f, 0.16 * s, 0.05 * s, -sw), 0.11 * s, 0.09 * s, fd(f, 1, 0, 0), 6);
+  box(buf, p, kit_at(f, 0, 1.15 * s, -0.3 * s), 0.22 * s, 0.26 * s, 0.12 * s);
+  kit_pen(p, obj + 1, MAT_CLOTH, cloak);
+  tube(buf, p, kit_at(f, 0, 0.7 * s, 0), 0.85 * s, 0.46 * s, 0.36 * s, 0.14 * s, 0.14 * s, 10, true);
+  kit_pen(p, obj + 2, MAT_SKIN, skin);
+  ball(buf, p, fp(f, 0, 1.66 * s, 0), 0.17 * s, 10);
+  kit_pen(p, obj + 3, MAT_CLOTH, hat);
+  tube(buf, p, kit_at(f, 0, 1.76 * s, 0), 0.16 * s, 0.4 * s, 0.4 * s, 0.1 * s, 0.1 * s, 12, true);
+}
+
 #test "a robot is written inside its store, at the scale it is given, and stops when full" {
   buf: [200000] u32;
   pen := [1] Pen.[Pen.{}];

@@ -58,12 +58,14 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, i
   return k == 0 ? (uint32_t)splice_world_version(at(state)) : frames;
 }
 
-// Splice has no controls yet: the page is a view.
-EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { (void)state; (void)key; (void)mods; return 0u; }
-EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { (void)state; (void)key; (void)mods; return 0u; }
+// Keys and the pointer go to the game (WASD, E, F, the edit bay's keys and buttons).
+EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { (void)mods; return splice_key(at(state), key, true) ? 1u : 0u; }
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { (void)mods; return splice_key(at(state), key, false) ? 1u : 0u; }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  (void)state; (void)x; (void)y; (void)phase; (void)kind; (void)id; return 0u;
+  (void)kind; (void)id; return splice_pointer(at(state), x, y, phase) ? 1u : 0u;
 }
+// The interface is ink on paper: the overlay blends source over (gpu/splice.coax fx_fs).
+EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 
 static uint8_t inbox[1024];   /* the page's facts (kind 600), read for ?scene= */
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }

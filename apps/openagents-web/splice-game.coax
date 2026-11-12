@@ -1,0 +1,846 @@
+// Splice, the vertical slice (openagents.com/worlds/splice): scavenge banned robot parts, splice
+// them in the rover's edit bay, and restore a scene the Emperor erased. One short run: day mine,
+// dusk, the raiders' party at night, the boss wall, the banned bot, the memory.
+//
+// This file is the game: its tuning, its world, its rules and its interface (ink on cream paper,
+// orange for danger, blue for banned tech). The engine draws it: the cel kits (aethyr/kit/), the
+// cel mesh writers and Anime Lab's uniform layout, style and shader.
+#load "animelab.coax";
+#load "../../aethyr/kit/land.coax";
+
+// ---- Tuning: every number the run is balanced with
+T_WALK :: 5.6f32; T_TURN :: 2.5f32; T_RADIUS :: 0.45f32;
+T_HEAT_PIECE :: 25.0f32; T_HEAT_MAX :: 100.0f32; T_HEAT_COOL :: 5.0f32; T_COOL_RANGE :: 6.0f32;
+T_HEARTS :: 3; T_HIT_COOL :: 1.0f32;
+T_NOTICE :: 5.0f32; T_NOTICE_HEAT :: 0.07f32; T_RAIDER_SPEED :: 3.5f32; T_RAIDER_WANDER :: 1.2f32; T_GIVE_UP :: 15.0f32; T_RAIDER_REACH :: 0.95f32;
+T_USE_RANGE :: 4.5f32; T_PICK_RANGE :: 1.3f32;
+T_CARD_TIME :: 2.4f32; T_DRILL_REACH :: 2.8f32; T_BAD_CUT :: 2.0f32;
+T_SWEEP_EVERY :: 4.6f32; T_SWEEP_TIME :: 1.3f32; T_SWEEP_WARN :: 0.9f32; T_ARM :: 6.2f32; T_STUN_RANGE :: 2.6f32;
+T_BANNER :: 2.4f32; T_MEMORY :: 15.0f32; T_BANNED_FOR_PLUS :: 3;
+
+// ---- Places
+ROVER_X :: 6.0f32; ROVER_Z :: 5.0f32; CRATE_X :: -11.5f32; CRATE_Z :: -57.0f32;
+START_X :: 0.0f32; START_Z :: 9.0f32;
+RUBBLE_Z :: -34.0f32; WALL_Z :: -62.0f32; BOSS_X :: 0.0f32; BOSS_Z :: -72.0f32;
+DECK_X :: 11.0f32; DECK_Z0 :: -60.0f32; DECK_Z1 :: -42.0f32; DECK_Y :: 0.7f32;
+BAY_X :: -100.0f32; BAY_Z :: 136.0f32; MEM_X :: 100.0f32; MEM_Z :: 132.0f32;   // two stages behind the mesas
+
+M_TITLE :: 0; M_PLAY :: 1; M_BAY :: 2; M_BANNER :: 3; M_MEMORY :: 4; M_RESTORED :: 5;
+PH_DAY :: 1; PH_DUSK :: 2; PH_NIGHT :: 3;
+// what you carry: hardware, cards, and the core
+H_ARM :: 0; H_TREADS :: 1; H_BATTERY :: 2; H_MOVE :: 3; H_DRILL :: 4; H_PLUS :: 5; H_CORE :: 6; HAVES :: 7;
+// the pickups on the ground: five day parts, four banned pieces
+PICKS :: 9; PICK_BANNED :: 5;
+RAIDERS :: 5; WALLS :: 24; BUTTONS :: 10;
+MSG_NONE :: 0; MSG_BAD_CUT :: 1; MSG_AIR :: 2; MSG_WEAK :: 3; MSG_OPEN :: 4; MSG_NEED :: 5; MSG_PLUS :: 6; MSG_BROKE :: 7; MSG_DOWN :: 8; MSG_HIT :: 9; MSG_STUN :: 10; MSG_PICK :: 11; MSG_BANNED :: 12; MSG_CORE :: 13;
+B_SWEEP :: 1; B_CUT :: 2;
+
+SpGame :: struct {
+  mode: int; phase: int; t: f32;
+  px: f32; pz: f32; yaw: f32; stride: f32;
+  fwd: bool; back: bool; left: bool; right: bool;
+  hearts: int; heat: f32; hit_cool: f32;
+  have: [HAVES] bool; taken: [PICKS] bool; banned: int;
+  strip: [3] int; strip_n: int;
+  rubble_gone: bool; wall_gone: bool; at_crate: bool;
+  bot: bool; bot_z: f32; bot_x: f32; bot_step: int; bot_t: f32; bot_near: bool; bot_fail: f32; bot_wall: bool; bot_spin: f32;
+  rx: [RAIDERS] f32; rz: [RAIDERS] f32; rchase: [RAIDERS] bool;
+  stunned: [3] bool; boss_t: f32; boss_down: bool; core_taken: bool;
+  banner: int; banner_t: f32; msg: int; msg_t: f32; mem_t: f32; flash: f32;
+  walls: [WALLS * 5] f32; wall_n: int;
+  btn: [BUTTONS * 4] f32; btn_key: [BUTTONS] int; btn_n: int;
+  panels: int; last_pick: int;
+}
+
+// ---- Colours (the Game UI board): paper, shade, ink, heat orange, glow blue
+PAPER :: () -> KitTint { return kit_tint(0.918, 0.859, 0.769); }
+SHADE :: () -> KitTint { return kit_tint(0.863, 0.788, 0.675); }
+INK :: () -> KitTint { return kit_tint(0.118, 0.106, 0.094); }
+HEAT :: () -> KitTint { return kit_tint(0.722, 0.263, 0.122); }
+GLOW :: () -> KitTint { return kit_tint(0.310, 0.702, 0.851); }
+GLOW_INK :: () -> KitTint { return kit_tint(0.122, 0.373, 0.502); }
+t3 :: (r: f32, g: f32, b: f32) -> KitTint { return kit_tint(r, g, b); }
+
+// ---- The world's walls: boxes x0, x1, z0, z1, height. They are drawn and they block.
+g_wall :: (g: [] SpGame, x0: f32, x1: f32, z0: f32, z1: f32, h: f32) {
+  n := g[0].wall_n;
+  if n >= WALLS { return; }
+  g[0].walls[n * 5] = x0; g[0].walls[n * 5 + 1] = x1; g[0].walls[n * 5 + 2] = z0; g[0].walls[n * 5 + 3] = z1; g[0].walls[n * 5 + 4] = h;
+  g[0].wall_n = n + 1;
+}
+g_layout :: (g: [] SpGame) {
+  g[0].wall_n = 0;
+  g_wall(g, -44, -4, -10, -2, 9); g_wall(g, 4, 44, -10, -2, 10);            // the mine mouth
+  g_wall(g, -44, -9, -24, -10, 11); g_wall(g, 9, 44, -24, -10, 10);         // the scrap room
+  g_wall(g, -44, -3, -40, -24, 12); g_wall(g, 3, 44, -40, -24, 12);         // the tunnel
+  g_wall(g, -44, -15, -62, -40, 13); g_wall(g, 15, 44, -62, -40, 13);       // the party mine
+  g_wall(g, -15, -4, -63, -61, 9); g_wall(g, 4, 15, -63, -61, 9);           // the boss wall's shoulders
+  g_wall(g, -44, -10, -82, -62, 14); g_wall(g, 10, 44, -82, -62, 14);       // the boss chamber
+  g_wall(g, -44, 44, -92, -82, 15);
+  g_wall(g, ROVER_X - 1.5, ROVER_X + 1.5, ROVER_Z - 2.4, ROVER_Z + 2.4, 0); // the rover (drawn apart)
+  g_wall(g, CRATE_X - 0.9, CRATE_X + 0.9, CRATE_Z - 0.7, CRATE_Z + 0.7, 0); // the stash crate
+  g_wall(g, -60, 60, 20, 24, 0); g_wall(g, -64, -44, -92, 24, 0); g_wall(g, 44, 64, -92, 24, 0);   // the edge of the map
+}
+pick_x :: (i: int) -> f32 { xs := [PICKS] f32.[-6, 6, -5, 5, 0, -10, -3, 7, 13]; return xs[i]; }
+pick_z :: (i: int) -> f32 { zs := [PICKS] f32.[-14, -13, -21, -20, -17, -46, -55, -50, -57]; return zs[i]; }
+pick_have :: (i: int) -> int { return i; }   // the five day parts are haves 0 to 4
+raider_hx :: (i: int) -> f32 { xs := [RAIDERS] f32.[-8, 0, 5, -4, 8]; return xs[i]; }
+raider_hz :: (i: int) -> f32 { zs := [RAIDERS] f32.[-48, -45, -56, -58, -47]; return zs[i]; }
+weak_at :: (i: int) -> Point { a := ifx i == 0 then 0.0f32 else ifx i == 1 then 2.2f32 else -2.2f32; return v3(BOSS_X + sin(a) * 2.7, 1.5, BOSS_Z + cos(a) * 2.7); }
+
+g_respawn :: (g: [] SpGame) {
+  g[0].px = START_X; g[0].pz = START_Z; g[0].yaw = PI; g[0].hearts = T_HEARTS; g[0].heat = 0; g[0].hit_cool = 0;
+  // banned pieces picked up since the checkpoint are lost and lie where they were (DRILL+ is kept: it is on the Digger)
+  if !g[0].have[H_PLUS] { g[0].banned = 0; for i: PICK_BANNED..<PICKS { g[0].taken[i] = false; } }
+  for i: 0..<RAIDERS { g[0].rx[i] = raider_hx(i); g[0].rz[i] = raider_hz(i); g[0].rchase[i] = false; }
+  g[0].bot = false;
+}
+g_reset :: (g: [] SpGame) {
+  g[0] = SpGame.{};
+  g_layout(g);
+  g[0].mode = M_TITLE; g[0].phase = PH_DAY;
+  g_respawn(g);
+}
+g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; }
+
+// ---- Collision: a circle against the boxes, and the two walls that can be opened
+g_push :: (g: [] SpGame, x0: f32, x1: f32, z0: f32, z1: f32, r: f32) {
+  cx := clamp(g[0].px, x0, x1); cz := clamp(g[0].pz, z0, z1);
+  dx := g[0].px - cx; dz := g[0].pz - cz; d := sqrt(dx * dx + dz * dz);
+  if d >= r { return; }
+  if d > 0.0001 { g[0].px = cx + dx / d * r; g[0].pz = cz + dz / d * r; return; }
+  // inside the box: out through its nearest side
+  l := g[0].px - x0; rr := x1 - g[0].px; f := g[0].pz - z0; b := z1 - g[0].pz;
+  m := lo(lo(l, rr), lo(f, b));
+  if m == l { g[0].px = x0 - r; } else if m == rr { g[0].px = x1 + r; } else if m == f { g[0].pz = z0 - r; } else { g[0].pz = z1 + r; }
+}
+g_collide :: (g: [] SpGame) {
+  for i: 0..<g[0].wall_n { o := i * 5; g_push(g, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], T_RADIUS); }
+  if !g[0].rubble_gone { g_push(g, -3, 3, RUBBLE_Z - 1, RUBBLE_Z + 1, T_RADIUS); }
+  if !g[0].wall_gone { g_push(g, -4, 4, WALL_Z - 1, WALL_Z + 1, T_RADIUS); }
+  if !g[0].boss_down || true { dx := g[0].px - BOSS_X; dz := g[0].pz - BOSS_Z; d := sqrt(dx * dx + dz * dz); if d < 2.1 && d > 0.001 { g[0].px = BOSS_X + dx / d * 2.1; g[0].pz = BOSS_Z + dz / d * 2.1; } }
+}
+g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
+  for i: 0..<g[0].wall_n { o := i * 5; if g[0].walls[o + 4] > 1 && x > g[0].walls[o] - 0.3 && x < g[0].walls[o + 1] + 0.3 && z > g[0].walls[o + 2] - 0.3 && z < g[0].walls[o + 3] + 0.3 { return true; } }
+  return false;
+}
+on_deck :: (x: f32, z: f32) -> bool { return x > DECK_X && z > DECK_Z0 && z < DECK_Z1; }
+ground_y :: (x: f32, z: f32) -> f32 { if z > DECK_Z0 && z < DECK_Z1 { return clamp((x - (DECK_X - 1.5)) / 1.5, 0, 1) * DECK_Y; } return 0; }
+dist2 :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz)); }
+near_rover :: (g: [] SpGame, r: f32) -> bool { return dist2(g[0].px, g[0].pz, ROVER_X, ROVER_Z) < r; }
+near_crate :: (g: [] SpGame, r: f32) -> bool { return dist2(g[0].px, g[0].pz, CRATE_X, CRATE_Z) < r; }
+
+// ---- The Digger's run: its cards in order, one every T_CARD_TIME
+g_deploy :: (g: [] SpGame) {
+  if !(g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY]) || g[0].strip_n == 0 { g_say(g, MSG_NEED); return; }
+  g[0].bot = true; g[0].bot_wall = g[0].rubble_gone; g[0].bot_x = 0;
+  g[0].bot_z = ifx g[0].bot_wall then -53.0f32 else -27.0f32;
+  g[0].bot_step = -1; g[0].bot_t = T_CARD_TIME - 0.8; g[0].bot_near = false; g[0].bot_fail = 0; g[0].mode = M_PLAY;
+}
+g_bot :: (g: [] SpGame, dt: f32) {
+  if !g[0].bot { return; }
+  goal := ifx g[0].bot_wall then WALL_Z + 2.6 else RUBBLE_Z + 2.6;
+  if g[0].bot_fail > 0 { g[0].bot_fail -= dt; if g[0].bot_fail <= 0 { g[0].bot = false; } return; }
+  cleared := ifx g[0].bot_wall then g[0].wall_gone else g[0].rubble_gone;
+  if cleared { return; }
+  card := ifx g[0].bot_step >= 0 && g[0].bot_step < g[0].strip_n then g[0].strip[g[0].bot_step] else -1;
+  if card == H_MOVE && g[0].bot_z > goal { g[0].bot_z = hi(goal, g[0].bot_z - dt * 4.2); if g[0].bot_z <= goal { g[0].bot_near = true; } }
+  if card == H_DRILL || card == H_PLUS { g[0].bot_spin += dt * 22; }
+  g[0].bot_t += dt;
+  if g[0].bot_t < T_CARD_TIME { return; }
+  g[0].bot_t = 0;
+  // the card that just finished decides what happened
+  if card == H_DRILL || card == H_PLUS {
+    if !g[0].bot_near { g_say(g, MSG_AIR); }
+    else if g[0].bot_wall && card == H_DRILL { g_say(g, MSG_WEAK); }
+    else if g[0].bot_wall { g[0].wall_gone = true; g[0].flash = 0.5; g_say(g, MSG_BROKE); return; }
+    else { g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].flash = 0.5; g_say(g, MSG_OPEN); return; }
+  }
+  g[0].bot_step += 1;
+  if g[0].bot_step >= g[0].strip_n { g[0].bot_fail = T_BAD_CUT; if g[0].msg == MSG_NONE || g[0].msg_t < 2.5 { g_say(g, MSG_BAD_CUT); } }
+}
+
+// ---- A step of the world
+g_hurt :: (g: [] SpGame) {
+  if g[0].hit_cool > 0 { return; }
+  g[0].hearts -= 1; g[0].hit_cool = T_HIT_COOL; g[0].flash = 0.35; g_say(g, MSG_HIT);
+  if g[0].hearts <= 0 { g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = T_BANNER; }
+}
+g_step :: (g: [] SpGame, dt: f32) {
+  g[0].t += dt;
+  if g[0].msg_t > 0 { g[0].msg_t -= dt; if g[0].msg_t <= 0 { g[0].msg = MSG_NONE; } }
+  if g[0].flash > 0 { g[0].flash = hi(0, g[0].flash - dt * 1.6); }
+  if g[0].mode == M_BANNER { g[0].banner_t -= dt; if g[0].banner_t <= 0 { g_respawn(g); g[0].mode = M_PLAY; } return; }
+  if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; } return; }
+  if g[0].mode == M_BAY {
+    if g[0].heat > 0 { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); }
+    return;
+  }
+  if g[0].mode != M_PLAY { return; }
+  // walk
+  turn := (ifx g[0].left then 1.0f32 else 0.0f32) - (ifx g[0].right then 1.0f32 else 0.0f32);
+  go := (ifx g[0].fwd then 1.0f32 else 0.0f32) - (ifx g[0].back then 0.6f32 else 0.0f32);
+  g[0].yaw += turn * T_TURN * dt;
+  g[0].px += sin(g[0].yaw) * go * T_WALK * dt; g[0].pz += cos(g[0].yaw) * go * T_WALK * dt;
+  if go != 0 { g[0].stride += dt * 9; }
+  g_collide(g);
+  if g[0].hit_cool > 0 { g[0].hit_cool -= dt; }
+  if g[0].phase == PH_DUSK && g[0].pz < -40.5 { g[0].phase = PH_NIGHT; }
+  // pick up what you walk over
+  for i: 0..<PICKS {
+    if g[0].taken[i] || dist2(g[0].px, g[0].pz, pick_x(i), pick_z(i)) > T_PICK_RANGE { continue; }
+    g[0].taken[i] = true; g[0].last_pick = i;
+    if i < PICK_BANNED { g[0].have[pick_have(i)] = true; g_say(g, MSG_PICK); }
+    else { g[0].banned += 1; g[0].heat = lo(T_HEAT_MAX, g[0].heat + T_HEAT_PIECE); g_say(g, MSG_BANNED); }
+  }
+  if g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, BOSS_X, BOSS_Z + 4.5) < T_PICK_RANGE { g[0].core_taken = true; g[0].have[H_CORE] = true; g_say(g, MSG_CORE); }
+  // Heat cools only by the rover or the stash crate; at the top the Emperor's sweep comes
+  if g[0].heat > 0 && (near_rover(g, T_COOL_RANGE) || near_crate(g, T_COOL_RANGE)) { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); }
+  if g[0].heat >= T_HEAT_MAX { g[0].mode = M_BANNER; g[0].banner = B_SWEEP; g[0].banner_t = T_BANNER; return; }
+  // raiders: wander at home, chase who they notice, give up at the catwalk or far away
+  safe := on_deck(g[0].px, g[0].pz) || g[0].pz > -40.5 || g[0].pz < WALL_Z;
+  for i: 0..<RAIDERS {
+    d := dist2(g[0].px, g[0].pz, g[0].rx[i], g[0].rz[i]);
+    if !g[0].rchase[i] && !safe && d < T_NOTICE + g[0].heat * T_NOTICE_HEAT { g[0].rchase[i] = true; }
+    if g[0].rchase[i] && (safe || d > T_GIVE_UP) { g[0].rchase[i] = false; }
+    tx := raider_hx(i) + sin(g[0].t * 0.5 + cast(f32) i * 1.9) * 2.5; tz := raider_hz(i) + cos(g[0].t * 0.4 + cast(f32) i * 2.3) * 2.0;
+    sp := T_RAIDER_WANDER;
+    if g[0].rchase[i] { tx = g[0].px; tz = g[0].pz; sp = T_RAIDER_SPEED; }
+    ex := tx - g[0].rx[i]; ez := tz - g[0].rz[i]; el := sqrt(ex * ex + ez * ez);
+    if el > 0.05 { g[0].rx[i] += ex / el * lo(sp * dt, el); g[0].rz[i] += ez / el * lo(sp * dt, el); }
+    g[0].rx[i] = clamp(g[0].rx[i], -14, DECK_X - 1.6); g[0].rz[i] = clamp(g[0].rz[i], -60.5, -41);
+    if g[0].rchase[i] && d < T_RAIDER_REACH { g_hurt(g); }
+  }
+  // the banned bot: its arm sweeps round every T_SWEEP_EVERY
+  if g[0].wall_gone && !g[0].boss_down {
+    g[0].boss_t += dt;
+    if g[0].boss_t > T_SWEEP_EVERY + T_SWEEP_TIME { g[0].boss_t = 0; }
+    if g[0].boss_t > T_SWEEP_EVERY {
+      a := boss_arm(g);
+      dx := g[0].px - BOSS_X; dz := g[0].pz - BOSS_Z; d := sqrt(dx * dx + dz * dz);
+      diff := atan2(dx, dz) - a;
+      while diff > PI { diff -= TAU; } while diff < -PI { diff += TAU; }
+      if d < T_ARM && abs(diff) < 0.4 { g_hurt(g); }
+    }
+  }
+  g_bot(g, dt);
+}
+boss_arm :: (g: [] SpGame) -> f32 { if g[0].boss_t <= T_SWEEP_EVERY { return 2.6; } return 2.6 + (g[0].boss_t - T_SWEEP_EVERY) / T_SWEEP_TIME * TAU; }
+
+// ---- Input
+g_open_bay :: (g: [] SpGame) {
+  if near_rover(g, T_USE_RANGE) { g[0].at_crate = false; g[0].mode = M_BAY; }
+  else if near_crate(g, T_USE_RANGE) { g[0].at_crate = true; g[0].mode = M_BAY; }
+}
+g_add_card :: (g: [] SpGame, c: int) { if g[0].have[c] && g[0].strip_n < 3 { g[0].strip[g[0].strip_n] = c; g[0].strip_n += 1; } }
+g_stun :: (g: [] SpGame) {
+  if !g[0].wall_gone || g[0].boss_down { return; }
+  for i: 0..<3 {
+    w := weak_at(i);
+    if !g[0].stunned[i] && dist2(g[0].px, g[0].pz, w.x, w.z) < T_STUN_RANGE { g[0].stunned[i] = true; g[0].flash = 0.25; g_say(g, MSG_STUN); break; }
+  }
+  if g[0].stunned[0] && g[0].stunned[1] && g[0].stunned[2] { g[0].boss_down = true; g_say(g, MSG_DOWN); }
+}
+// A key the page uses returns true (the browser then keeps it from scrolling or moving focus).
+g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
+  if key == 'w' || key == 'W' || key == -6 { g[0].fwd = down; return true; }
+  if key == 's' || key == 'S' || key == -7 { g[0].back = down; return true; }
+  if key == 'a' || key == 'A' || key == -4 { g[0].left = down; return true; }
+  if key == 'd' || key == 'D' || key == -5 { g[0].right = down; return true; }
+  if !down { return false; }
+  enter := key == -2 || key == ' ';
+  if g[0].mode == M_TITLE { if enter || key == 'e' || key == 'E' { g[0].mode = M_PLAY; return true; } return false; }
+  if g[0].mode == M_RESTORED { if enter || key == 'r' || key == 'R' { g_reset(g); g[0].mode = M_PLAY; return true; } return false; }
+  if g[0].mode == M_MEMORY { g[0].mode = M_RESTORED; return true; }
+  if g[0].mode == M_BAY {
+    if key == -15 || key == -1 || key == 'e' || key == 'E' { g[0].mode = M_PLAY; return true; }
+    if key == '1' { g_add_card(g, H_MOVE); return true; }
+    if key == '2' { g_add_card(g, H_DRILL); return true; }
+    if key == '3' { g_add_card(g, H_PLUS); return true; }
+    if key == 'c' || key == 'C' || key == -3 { g[0].strip_n = 0; return true; }
+    if key == 'x' || key == 'X' {
+      if g[0].have[H_CORE] { g[0].mode = M_MEMORY; g[0].mem_t = 0; }
+      else if g[0].banned >= T_BANNED_FOR_PLUS && !g[0].have[H_PLUS] { g[0].have[H_PLUS] = true; g_say(g, MSG_PLUS); }
+      return true;
+    }
+    if enter { g_deploy(g); return true; }
+    return false;
+  }
+  if g[0].mode == M_PLAY {
+    if key == 'e' || key == 'E' || key == -15 { g_open_bay(g); return true; }
+    if key == 'f' || key == 'F' { g_stun(g); return true; }
+  }
+  return false;
+}
+g_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
+  if phase != 0 { return false; }
+  if g[0].mode == M_TITLE || g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return g_key(g, -2, true); }
+  for i: 0..<g[0].btn_n { o := i * 4; if x >= g[0].btn[o] && x <= g[0].btn[o + 2] && y >= g[0].btn[o + 1] && y <= g[0].btn[o + 3] { return g_key(g, g[0].btn_key[i], true); } }
+  return false;
+}
+
+// A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
+g_stage :: (g: [] SpGame, n: int) {
+  g_reset(g); g[0].mode = M_PLAY;
+  if n >= 2 { for i: 0..<5 { g[0].have[i] = true; g[0].taken[i] = true; } g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2; }
+  if n == 2 { g[0].px = ROVER_X - 3; g[0].pz = ROVER_Z; g[0].mode = M_BAY; }
+  if n >= 3 { g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].px = 0; g[0].pz = -30; g[0].bot = true; g[0].bot_z = RUBBLE_Z + 2.6; }
+  if n >= 4 { g[0].phase = PH_NIGHT; g[0].px = 2; g[0].pz = -43; g[0].banned = 2; g[0].taken[5] = true; g[0].taken[6] = true; g[0].heat = 50; g[0].bot = false; }
+  if n >= 5 { g[0].banned = 3; g[0].taken[7] = true; g[0].have[H_PLUS] = true; g[0].heat = 75; g[0].px = CRATE_X + 3; g[0].pz = CRATE_Z; g[0].strip[1] = H_PLUS; }
+  if n == 5 { g[0].at_crate = true; g[0].mode = M_BAY; }
+  if n >= 6 { g[0].wall_gone = true; g[0].px = 3; g[0].pz = -64.5; g[0].heat = 40; g[0].boss_t = T_SWEEP_EVERY - 0.3; g[0].stunned[0] = true; }
+  if n == 7 { g[0].have[H_CORE] = true; g[0].mode = M_MEMORY; g[0].mem_t = 6; }
+  if n == 8 { g[0].mode = M_RESTORED; g[0].mem_t = T_MEMORY; }
+  if n == 9 { g[0].mode = M_BANNER; g[0].banner = B_SWEEP; g[0].banner_t = 100; }
+  if n == 10 { g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = 100; }
+  if n == 0 { g[0].mode = M_TITLE; }
+}
+
+// ---- The world, written once: the desert, the mine cut, the party, the boss chamber, two stages
+g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, t3(0.90, 0.68, 0.48), false);
+  kit_mesas(buf, p, 2, t3(0.72, 0.56, 0.74), 9, 40, 92, 26, 14, 30);
+  kit_dunes(buf, p, 3, t3(0.93, 0.74, 0.50), 12, 50, 40, 28, 60, 5, 11);
+  kit_rocks(buf, p, 4, t3(0.66, 0.36, 0.28), 14, 60, 0, 8, 5, 16, 0.3, 1.0);
+  for i: 0..<g[0].wall_n {
+    o := i * 5; h := g[0].walls[o + 4];
+    if h < 1 { continue; }
+    deep := g[0].walls[o + 3] <= -40;
+    face := ifx deep then t3(0.62, 0.42, 0.56) else t3(0.84, 0.46, 0.32);
+    band := ifx deep then t3(0.50, 0.32, 0.50) else t3(0.72, 0.34, 0.26);
+    kit_wall(buf, p, 6 + (i % 4) * 2, face, band, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], h, cast(f32) i * 17);
+  }
+  // the rover (the hidden edit bay), its checkpoint post, the stash crate
+  kit_rover(buf, p, frame_at(v3(ROVER_X, 0, ROVER_Z), 0.2), 1.5, 20, t3(0.93, 0.88, 0.76), t3(0.76, 0.34, 0.20), INK());
+  kit_pen(p, 24, MAT_CLOTH, t3(0.70, 0.52, 0.36));
+  box(buf, p, frame_at(v3(ROVER_X, 2.9, ROVER_Z - 0.9), 0.2), 1.1, 0.5, 1.3);
+  kit_pen(p, 25, MAT_SKIN, t3(0.93, 0.88, 0.76));
+  tube(buf, p, frame_at(v3(2.6, 0, 6.5), 0), 3.2, 0.14, 0.14, 0.1, 0.1, 8, true);
+  kit_pen(p, 26, MAT_GLOW, t3(1.0, 0.72, 0.30));
+  ball(buf, p, v3(2.6, 3.4, 6.5), 0.3, 10);
+  kit_crate(buf, p, frame_at(v3(CRATE_X, 0, CRATE_Z), 0), 27, t3(0.70, 0.52, 0.36), INK(), GLOW(), 1.5);
+  // scrap heaps in the scrap room
+  kit_rocks(buf, p, 30, t3(0.52, 0.36, 0.34), 14, 70, 0, -17, 5, 8.2, 0.4, 1.1);
+  // the party: the catwalk, its ramps and rail, strings of lights, speaker stacks
+  kit_pen(p, 32, MAT_WORLD, t3(0.48, 0.36, 0.44));
+  block(buf, p, 13, 0, (DECK_Z0 + DECK_Z1) * 0.5, 2, DECK_Y, (DECK_Z1 - DECK_Z0) * 0.5);
+  quad(buf, p, v3(DECK_X - 1.5, 0.02, DECK_Z0), v3(DECK_X - 1.5, 0.02, DECK_Z1), v3(DECK_X, DECK_Y, DECK_Z1), v3(DECK_X, DECK_Y, DECK_Z0));
+  kit_pen(p, 33, MAT_CLOTH, INK());
+  for i: 0..<10 { tube(buf, p, frame_at(v3(DECK_X + 0.1, DECK_Y, DECK_Z0 + 1 + cast(f32) i * 1.8), 0), 0.9, 0.06, 0.06, 0.06, 0.06, 6, true); }
+  for i: 0..<16 {
+    k := cast(f32) i;
+    kit_pen(p, 34, MAT_GLOW, ifx i % 2 == 0 then t3(1.0, 0.36, 0.62) else t3(0.36, 0.86, 0.96));
+    ball(buf, p, v3(-14 + k * 1.9, 6.5 + sin(k * 0.8) * 0.6, -41.5), 0.22, 8);
+    ball(buf, p, v3(-14.4, 6.0 + sin(k * 0.7) * 0.6, -42 - k * 1.2), 0.22, 8);
+  }
+  for i: 0..<2 {
+    x := ifx i == 0 then -13.0f32 else 9.0f32;
+    kit_pen(p, 35, MAT_CLOTH, INK());
+    block(buf, p, x, 0, -60, 1.1, 3.2, 0.8);
+    kit_pen(p, 36, MAT_GLOW, t3(1.0, 0.36, 0.62));
+    ball(buf, p, v3(x, 2.3, -59.1), 0.5, 10); ball(buf, p, v3(x, 0.9, -59.1), 0.6, 10);
+  }
+  // the blue glow: a beam over the boss chamber, seen from the tunnel's mouth
+  kit_pen(p, 37, MAT_GLOW, GLOW());
+  tube(buf, p, frame_at(v3(BOSS_X, 8, BOSS_Z), 0), 60, 0.5, 0.5, 0.2, 0.2, 8, false);
+  // the edit bay's stage: a paper floor and backdrop the Digger stands on
+  kit_pen(p, 40, MAT_FLAT, PAPER());
+  block(buf, p, BAY_X, 0, BAY_Z, 11, 0.05, 11);
+  kit_pen(p, 41, MAT_FLAT, SHADE());
+  block(buf, p, BAY_X, 0, BAY_Z - 6, 14, 12, 0.3); block(buf, p, BAY_X - 8, 0, BAY_Z, 0.3, 12, 14); block(buf, p, BAY_X + 8, 0, BAY_Z, 0.3, 12, 14);
+  // the memory's stage: the old world's factory floor
+  kit_pen(p, 42, MAT_FLAT, t3(0.05, 0.10, 0.20));
+  block(buf, p, MEM_X, 0, MEM_Z, 30, 0.05, 14);
+  kit_pen(p, 43, MAT_GLOW, GLOW_INK());
+  for i: 0..<9 { k := cast(f32) i; block(buf, p, MEM_X - 16 + k * 4, 0.05, MEM_Z, 0.04, 0.02, 13); block(buf, p, MEM_X, 0.05, MEM_Z - 12 + k * 3, 28, 0.02, 0.04); }
+  for i: 0..<4 { k := cast(f32) i; kit_pen(p, 44, MAT_GLOW, GLOW_INK()); block(buf, p, MEM_X - 12 + k * 8, 0, MEM_Z - 9, 1.2, 9, 1.2); }
+}
+
+// ---- What moves, written every frame
+g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  t := g[0].t; blue := GLOW();
+  if g[0].mode == M_MEMORY {
+    // robots and people working side by side, all hologram blue
+    for i: 0..<3 {
+      k := cast(f32) i; bob := sin(t * 2 + k * 2) * 0.08;
+      kit_digger(buf, p, frame_at(v3(MEM_X - 6 + k * 6, 0.05 + bob, MEM_Z - 2), 0.6 + k * 0.4), 1.2, 50, blue, GLOW_INK(), blue, blue, true, true, true, t * 6);
+      kit_figure(buf, p, frame_at(v3(MEM_X - 4 + k * 6, 0.05, MEM_Z + 0.5 + sin(t * 0.7 + k) * 0.6), 2.4 + k * 0.5), 1.1, 60, blue, blue, GLOW_INK(), blue, t * 4 + k);
+      p[0].mat = MAT_GLOW;
+    }
+    return;
+  }
+  if g[0].mode == M_BAY || g[0].mode == M_TITLE {
+    // the Digger on the bay's stage, with the parts you have found
+    kit_digger(buf, p, frame_at(v3(BAY_X, 0.05, BAY_Z), 0.7 + sin(t * 0.5) * 0.25), 1.15, 50, t3(0.93, 0.88, 0.76), INK(), HEAT(), ifx g[0].have[H_PLUS] then blue else t3(1.0, 0.72, 0.30),
+               g[0].have[H_ARM], g[0].have[H_TREADS], g[0].have[H_BATTERY], t * 3);
+  }
+  // the smuggler
+  y := ground_y(g[0].px, g[0].pz);
+  blink := g[0].hit_cool > 0 && fract(t * 8) < 0.5;
+  if !blink { kit_figure(buf, p, frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw), 1.0, 60, t3(0.76, 0.34, 0.20), t3(0.90, 0.72, 0.58), INK(), t3(0.93, 0.86, 0.70), g[0].stride); }
+  if g[0].have[H_CORE] { kit_pen(p, 66, MAT_GLOW, blue); ball(buf, p, v3(g[0].px - sin(g[0].yaw) * 0.45, y + 1.2, g[0].pz - cos(g[0].yaw) * 0.45), 0.24, 10); }
+  // pickups: hardware in sand and orange, cards as film frames, banned pieces glowing blue
+  for i: 0..<PICKS {
+    if g[0].taken[i] { continue; }
+    at := v3(pick_x(i), ground_y(pick_x(i), pick_z(i)) + 0.75 + sin(t * 2.2 + cast(f32) i) * 0.12, pick_z(i));
+    f := frame_at(at, t * 1.2 + cast(f32) i);
+    if i >= PICK_BANNED { kit_pen(p, 70 + i, MAT_GLOW, blue); box(buf, p, frame_turn(f, 0, 0.6), 0.28, 0.28, 0.28); }
+    else if i >= H_MOVE {
+      kit_pen(p, 70 + i, MAT_FLAT, INK()); box(buf, p, f, 0.42, 0.3, 0.03);
+      kit_pen(p, 80 + i, MAT_FLAT, PAPER()); box(buf, p, f, 0.3, 0.2, 0.04);
+    } else {
+      kit_pen(p, 70 + i, MAT_SKIN, ifx i == H_BATTERY then t3(1.0, 0.72, 0.30) else t3(0.93, 0.88, 0.76));
+      if i == H_ARM { tube(buf, p, frame_turn(f, 0, 1.2), 0.9, 0.3, 0.3, 0.02, 0.02, 6, true); }
+      else if i == H_TREADS { box(buf, p, f, 0.2, 0.28, 0.6); }
+      else { box(buf, p, f, 0.26, 0.34, 0.2); }
+    }
+  }
+  // the rubble and the boss wall, until the Digger opens them
+  if !g[0].rubble_gone {
+    kit_pen(p, 90, MAT_WORLD, t3(0.56, 0.36, 0.28));
+    for i: 0..<25 { k := cast(f32) i; ellipsoid(buf, p, frame_at(v3(-2.6 + cast(f32) (i % 5) * 1.3, 0.6 + cast(f32) (i / 5) * 1.25, RUBBLE_Z + (kit_rand(k) - 0.5) * 0.8), kit_rand(k + 5) * 6), 0.85, 0.72, 0.8, 7, 4, 0); }
+  }
+  if !g[0].wall_gone {
+    kit_pen(p, 92, MAT_WORLD, t3(0.34, 0.26, 0.40)); block(buf, p, 0, 0, WALL_Z, 4, 9, 1);
+    kit_pen(p, 93, MAT_GLOW, blue);
+    for i: 0..<3 { block(buf, p, -2.4 + cast(f32) i * 2.4, 1 + cast(f32) i * 1.6, WALL_Z + 1.02, 0.07, 2.4, 0.02); }
+  }
+  if g[0].bot {
+    shake := ifx g[0].bot_fail > 0 then sin(t * 40) * 0.06 else 0.0f32;
+    kit_digger(buf, p, frame_at(v3(g[0].bot_x + shake, 0, g[0].bot_z), PI), 1.2, 95, t3(0.93, 0.88, 0.76), INK(), HEAT(), ifx g[0].have[H_PLUS] then blue else t3(1.0, 0.72, 0.30), true, true, true, g[0].bot_spin);
+  }
+  // raiders: dark silhouettes with one hot eye
+  if g[0].phase != PH_DAY || true {
+    for i: 0..<RAIDERS {
+      face := atan2(g[0].px - g[0].rx[i], g[0].pz - g[0].rz[i]);
+      f := frame_at(v3(g[0].rx[i], 0, g[0].rz[i]), ifx g[0].rchase[i] then face else t * 0.4 + cast(f32) i);
+      kit_figure(buf, p, f, 1.15, 100 + i * 5, t3(0.16, 0.12, 0.18), t3(0.16, 0.12, 0.18), t3(0.10, 0.08, 0.12), t3(0.30, 0.14, 0.20), t * (ifx g[0].rchase[i] then 9.0f32 else 3.0f32));
+      kit_pen(p, 104 + i * 5, MAT_GLOW, ifx g[0].rchase[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62));
+      box(buf, p, kit_at(f, 0, 1.9, 0.19), 0.12, 0.03, 0.02);
+    }
+  }
+  // the banned bot, its arm and its three weak points
+  if g[0].wall_gone || true {
+    bf := frame_at(v3(BOSS_X, 0, BOSS_Z), 0);
+    body := ifx g[0].boss_down then t3(0.40, 0.40, 0.46) else t3(0.22, 0.34, 0.56);
+    kit_mech(buf, p, bf, 1.25, 130, body, ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue, t3(0.12, 0.14, 0.24), ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue);
+    if !g[0].boss_down && g[0].wall_gone {
+      a := boss_arm(g);
+      warn := g[0].boss_t > T_SWEEP_EVERY - T_SWEEP_WARN && g[0].boss_t <= T_SWEEP_EVERY && fract(t * 6) < 0.5;
+      kit_pen(p, 136, ifx warn then MAT_GLOW else MAT_SKIN, ifx warn then t3(1.0, 0.36, 0.14) else t3(0.22, 0.34, 0.56));
+      limb(buf, p, v3(BOSS_X, 3.4, BOSS_Z), v3(BOSS_X + sin(a) * T_ARM, 1.1, BOSS_Z + cos(a) * T_ARM), 0.5, 0.34, v3(0, 1, 0), 8);
+      ball(buf, p, v3(BOSS_X + sin(a) * T_ARM, 1.1, BOSS_Z + cos(a) * T_ARM), 0.6, 10);
+    }
+    for i: 0..<3 {
+      w := weak_at(i);
+      if g[0].stunned[i] { kit_pen(p, 140 + i, MAT_SKIN, t3(0.5, 0.5, 0.54)); } else { kit_pen(p, 140 + i, MAT_GLOW, blue); }
+      ball(buf, p, v3(w.x, w.y + (ifx g[0].stunned[i] then 0.0f32 else sin(t * 3 + cast(f32) i) * 0.1), w.z), 0.36, 12);
+    }
+    if g[0].boss_down && !g[0].core_taken { kit_pen(p, 145, MAT_GLOW, blue); ball(buf, p, v3(BOSS_X, 0.9 + sin(t * 2) * 0.15, BOSS_Z + 4.5), 0.4, 12); }
+  }
+}
+
+// ---- The camera and the look
+g_camera :: (g: [] SpGame) -> CamNow {
+  t := g[0].t;
+  if g[0].mode == M_BAY { return CamNow.{eye = v3(BAY_X + 3.4, 2.4, BAY_Z + 8.6), at = v3(BAY_X, 0.15, BAY_Z), fov = 0.62}; }
+  if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { k := g[0].mem_t / T_MEMORY; return CamNow.{eye = v3(MEM_X - 9 + k * 16, 2.0, MEM_Z + 9), at = v3(MEM_X - 3 + k * 6, 1.3, MEM_Z - 1), fov = 0.7}; }
+  if g[0].mode == M_TITLE { a := t * 0.12; return CamNow.{eye = v3(ROVER_X - 3 + sin(a) * 13, 3.2, ROVER_Z + 2 + cos(a) * 13), at = v3(ROVER_X - 3, 1.8, ROVER_Z - 2), fov = 0.7}; }
+  y := ground_y(g[0].px, g[0].pz);
+  head := v3(g[0].px, y + 1.7, g[0].pz);
+  back := v3(-sin(g[0].yaw), 0, -cos(g[0].yaw));
+  reach := 6.5f32;
+  for i: 1..<14 { d := cast(f32) i * 0.5; if g_inside(g, head.x + back.x * d, head.z + back.z * d) { reach = hi(0.8, d - 0.6); break; } }
+  eye := v3(head.x + back.x * reach, y + 1.9 + reach * 0.33, head.z + back.z * reach);
+  return CamNow.{eye = eye, at = v3(head.x - back.x * 3, y + 1.5, head.z - back.z * 3), fov = 0.82};
+}
+// The anime variant and clock for where the run is: a bright day, dusk, a neon night.
+g_variant :: (g: [] SpGame) -> int {
+  if g[0].mode == M_BAY { return 0; }
+  if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return 3; }
+  if g[0].mode == M_TITLE { return 2; }
+  return ifx g[0].phase == PH_DAY then 0 else ifx g[0].phase == PH_DUSK then 2 else 3;
+}
+g_clock :: (g: [] SpGame) -> f32 {
+  v := g_variant(g);
+  return ifx v == 0 then 0.5f32 else ifx v == 2 then 0.78f32 else 0.0f32;
+}
+g_key_light :: (g: [] SpGame) -> Point {
+  v := g_variant(g);
+  if v == 0 { return unit_or(v3(-0.45, 0.66, 0.6), v3(0, 1, 0)); }
+  if v == 2 { return unit_or(v3(-0.6, 0.3, 0.74), v3(0, 1, 0)); }
+  return unit_or(v3(0.4, 0.5, 0.77), v3(0, 1, 0));
+}
+
+// ---- The interface: ink on paper
+Ui :: struct { n: int; w: f32; h: f32; k: f32; }
+ui_panel :: (g: [] SpGame, u: [] f32, x0: f32, y0: f32, x1: f32, y1: f32, c: KitTint, a: f32) {
+  if g[0].panels >= PANELS { return; }
+  o := U_PANELS + g[0].panels * PANEL_FLOATS;
+  put4(u, o, x0, y0, x1, y1); put4(u, o + 4, c.r, c.g, c.b, a);
+  g[0].panels += 1;
+}
+ui_seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, half: f32, c: KitTint, a: f32) -> int {
+  if lit(out, n, ax, ay, bx + 0.01, by, half, a, 1.5, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+ui_box :: (out: [] f32, n: int, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: KitTint) -> int {
+  m := n;
+  m = ui_seg(out, m, x0, y0, x1, y0, w * 0.5, c, 1); m = ui_seg(out, m, x0, y1, x1, y1, w * 0.5, c, 1);
+  m = ui_seg(out, m, x0, y0, x0, y1, w * 0.5, c, 1); m = ui_seg(out, m, x1, y0, x1, y1, w * 0.5, c, 1);
+  return m;
+}
+ui_text :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, c: KitTint) -> int { return label(out, n, t, x, base, cap, ink_of(c.r, c.g, c.b, 1)); }
+ui_mid :: (out: [] f32, n: int, t: string, cx: f32, base: f32, cap: f32, c: KitTint) -> int { return ui_text(out, n, t, cx - text_w(t, cap) * 0.5, base, cap, c); }
+ui_right :: (out: [] f32, n: int, t: string, x1: f32, base: f32, cap: f32, c: KitTint) -> int { return ui_text(out, n, t, x1 - text_w(t, cap), base, cap, c); }
+// A key cap: a square with an ink border and a thicker bottom edge.
+ui_cap :: (out: [] f32, n: int, t: string, x: f32, y: f32, s: f32, c: KitTint) -> int {
+  m := ui_box(out, n, x, y, x + s, y + s, s * 0.09, c);
+  m = ui_seg(out, m, x, y + s + s * 0.07, x + s, y + s + s * 0.07, s * 0.08, c, 1);
+  return ui_mid(out, m, t, x + s * 0.5, y + s * 0.72, s * 0.44, c);
+}
+ui_heart :: (out: [] f32, n: int, cx: f32, cy: f32, s: f32, full: bool) -> int {
+  m := n;
+  for pass: 0..<2 {
+    c := ifx pass == 0 then INK() else ifx full then HEAT() else PAPER();
+    r := ifx pass == 0 then s * 0.30 else s * 0.30 - s * 0.07;
+    m = ui_seg(out, m, cx - s * 0.24, cy - s * 0.12, cx, cy + s * 0.3, r, c, 1);
+    m = ui_seg(out, m, cx + s * 0.24, cy - s * 0.12, cx, cy + s * 0.3, r, c, 1);
+  }
+  return m;
+}
+// A button: primary is ink with paper text, secondary an ink outline, special a blue outline.
+ui_button :: (g: [] SpGame, out: [] f32, n: int, t: string, x0: f32, y0: f32, x1: f32, y1: f32, kind: int, key: int) -> int {
+  m := n; cy := (y0 + y1) * 0.5; half := (y1 - y0) * 0.5;
+  line := ifx kind == 2 then GLOW_INK() else INK();
+  m = ui_seg(out, m, x0 + half, cy, x1 - half, cy, half, line, 1);
+  if kind != 0 { m = ui_seg(out, m, x0 + half, cy, x1 - half, cy, half - half * 0.14, PAPER(), 1); }
+  m = ui_mid(out, m, t, (x0 + x1) * 0.5, cy + half * 0.3, half * 0.62, ifx kind == 0 then PAPER() else line);
+  if g[0].btn_n < BUTTONS { o := g[0].btn_n * 4; g[0].btn[o] = x0; g[0].btn[o + 1] = y0; g[0].btn[o + 2] = x1; g[0].btn[o + 3] = y1; g[0].btn_key[g[0].btn_n] = key; g[0].btn_n += 1; }
+  return m;
+}
+// Film-strip sprocket holes along a bar.
+ui_sprockets :: (out: [] f32, n: int, x0: f32, x1: f32, y: f32, s: f32, c: KitTint) -> int {
+  m := n; x := x0 + s * 1.5;
+  while x < x1 - s { m = ui_seg(out, m, x, y, x + s * 0.5, y, s * 0.36, c, 1); x += s * 2.4; }
+  return m;
+}
+num :: (buf: [] u8, a: string, v: int, b: string) -> string { n := tput(buf, 0, a); n = tput_int(buf, n, v); n = tput(buf, n, b); return cast(string) buf[0..<n]; }
+card_name :: (c: int) -> string { return ifx c == H_MOVE then "MOVE" else ifx c == H_DRILL then "DRILL" else "DRILL+"; }
+msg_text :: (g: [] SpGame) -> string {
+  m := g[0].msg;
+  if m == MSG_BAD_CUT { return "BAD CUT. RE-EDIT AT THE ROVER."; }
+  if m == MSG_AIR { return "THE DIGGER DRILLED AIR. MOVE FIRST."; }
+  if m == MSG_WEAK { return "DRILL CAN'T BREAK THIS WALL. IT NEEDS DRILL+."; }
+  if m == MSG_OPEN { return "THE TUNNEL IS OPEN. DUSK FALLS."; }
+  if m == MSG_NEED { return "THE DIGGER NEEDS ARM, TREADS, BATTERY AND A CARD."; }
+  if m == MSG_PLUS { return "DRILL+ SPLICED FROM THREE BANNED PIECES."; }
+  if m == MSG_BROKE { return "THE WALL IS DOWN."; }
+  if m == MSG_DOWN { return "THE BANNED BOT POWERS DOWN. TAKE ITS CORE."; }
+  if m == MSG_HIT { return "HIT. ONE HEART LOST."; }
+  if m == MSG_STUN { return "WEAK POINT STUNNED."; }
+  if m == MSG_BANNED { return "BANNED PIECE. +25 HEAT."; }
+  if m == MSG_CORE { return "YOU HAVE THE CORE. GET IT TO THE CRATE OR THE ROVER."; }
+  if m == MSG_PICK {
+    i := g[0].last_pick;
+    return ifx i == H_ARM then "DRILL ARM FOUND." else ifx i == H_TREADS then "TREADS FOUND." else ifx i == H_BATTERY then "BATTERY FOUND." else ifx i == H_MOVE then "CARD FOUND: MOVE." else "CARD FOUND: DRILL.";
+  }
+  return "";
+}
+objective :: (g: [] SpGame) -> string {
+  if g[0].have[H_CORE] { return "CARRY THE CORE TO THE CRATE OR ROVER"; }
+  if g[0].boss_down { return "TAKE THE CORE"; }
+  if g[0].wall_gone { return "STUN THE 3 WEAK POINTS BETWEEN SWEEPS"; }
+  if g[0].have[H_PLUS] { return "DEPLOY MOVE, DRILL+ AT THE STASH CRATE"; }
+  if g[0].banned >= T_BANNED_FOR_PLUS { return "SPLICE DRILL+ AT THE STASH CRATE"; }
+  if g[0].phase == PH_NIGHT { return "FIND 3 BANNED PIECES. WATCH YOUR HEAT."; }
+  if g[0].rubble_gone { return "FIND THE BLUE GLOW"; }
+  if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return "SPLICE THE DIGGER AT THE ROVER"; }
+  return "SCAVENGE THE MINE FOR PARTS AND CARDS";
+}
+
+g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
+  n := 0; k := q.k; w := q.w; h := q.h; pad := 18 * k; ink := INK(); paper := PAPER();
+  buf: [96] u8;
+  // top left: hearts
+  ui_panel(g, u, pad, pad, pad + 150 * k, pad + 50 * k, paper, 0.96);
+  n = ui_box(out, n, pad, pad, pad + 150 * k, pad + 50 * k, 3 * k, ink);
+  for i: 0..<T_HEARTS { n = ui_heart(out, n, pad + (34 + cast(f32) i * 41) * k, pad + 23 * k, 30 * k, i < g[0].hearts); }
+  // top centre: the phase, four chips on an ink bar
+  bw := 330 * k; bx := w * 0.5 - bw * 0.5;
+  ui_panel(g, u, bx, pad, bx + bw, pad + 38 * k, ink, 0.97);
+  names := [4] string.["DAWN", "DAY", "DUSK", "NIGHT"];
+  for i: 0..<4 {
+    cx := bx + (cast(f32) i + 0.5) * bw / 4; on := i == g[0].phase;
+    if on { n = ui_seg(out, n, cx - 26 * k, pad + 19 * k, cx + 26 * k, pad + 19 * k, 13 * k, HEAT(), 1); n = ui_seg(out, n, cx - 26 * k, pad + 19 * k, cx + 26 * k, pad + 19 * k, 10.5 * k, SHADE(), 1); }
+    n = ui_mid(out, n, names[i], cx, pad + 24 * k, 10 * k, ifx on then ink else SHADE());
+  }
+  // top right: Heat, in three bands
+  hx := w - pad - 350 * k;
+  ui_panel(g, u, hx, pad, w - pad, pad + 86 * k, paper, 0.96);
+  n = ui_box(out, n, hx, pad, w - pad, pad + 86 * k, 3 * k, ink);
+  n = ui_text(out, n, num(buf[..], "HEAT ", cast(int) g[0].heat, " / 100"), hx + 14 * k, pad + 24 * k, 11 * k, ink);
+  band := ifx g[0].heat >= 66 then "WANTED" else ifx g[0].heat >= 33 then "WARM" else "COOL";
+  n = ui_right(out, n, band, w - pad - 14 * k, pad + 24 * k, 11 * k, ifx g[0].heat >= 33 then HEAT() else ink);
+  b0 := hx + 14 * k; b1 := w - pad - 14 * k; by := pad + 46 * k;
+  n = ui_box(out, n, b0, by - 9 * k, b1, by + 9 * k, 2 * k, ink);
+  if g[0].heat > 1 { n = ui_seg(out, n, b0 + 7 * k, by, b0 + 7 * k + (b1 - b0 - 14 * k) * g[0].heat / T_HEAT_MAX, by, 5.5 * k, HEAT(), 1); }
+  n = ui_seg(out, n, b0 + (b1 - b0) / 3, by - 9 * k, b0 + (b1 - b0) / 3, by + 9 * k, 1 * k, ink, 1);
+  n = ui_seg(out, n, b0 + (b1 - b0) * 2 / 3, by - 9 * k, b0 + (b1 - b0) * 2 / 3, by + 9 * k, 1 * k, ink, 1);
+  n = ui_text(out, n, "+25 PER BANNED PIECE · COOLS AT THE ROVER", b0, pad + 74 * k, 7.5 * k, ink);
+  // bottom left: the Digger's cards
+  cy0 := h - pad - 92 * k;
+  ui_panel(g, u, pad, cy0, pad + 330 * k, h - pad, paper, 0.96);
+  n = ui_box(out, n, pad, cy0, pad + 330 * k, h - pad, 3 * k, ink);
+  n = ui_text(out, n, "DIGGER · CARDS", pad + 14 * k, cy0 + 24 * k, 10 * k, ink);
+  for i: 0..<3 {
+    c := H_MOVE + i; x0 := pad + (14 + cast(f32) i * 102) * k; y0 := cy0 + 38 * k; has := g[0].have[c];
+    if has { n = ui_button(g, out, n, card_name(c), x0, y0, x0 + 94 * k, y0 + 38 * k, ifx c == H_PLUS then 2 else 0, 0); g[0].btn_n -= 1; }
+    else { n = ui_box(out, n, x0, y0, x0 + 94 * k, y0 + 38 * k, 1.5 * k, ifx c == H_PLUS then GLOW_INK() else ink); n = ui_mid(out, n, "NOT FOUND", x0 + 47 * k, y0 + 24 * k, 7.5 * k, ifx c == H_PLUS then GLOW_INK() else ink); }
+  }
+  // bottom right: the objective
+  ox := w - pad - 400 * k;
+  ui_panel(g, u, ox, cy0, w - pad, h - pad, paper, 0.96);
+  n = ui_box(out, n, ox, cy0, w - pad, h - pad, 3 * k, ink);
+  n = ui_text(out, n, "OBJECTIVE", ox + 14 * k, cy0 + 24 * k, 10 * k, ink);
+  n = ui_text(out, n, objective(g), ox + 14 * k, cy0 + 50 * k, 9 * k, ink);
+  parts := (ifx g[0].have[H_ARM] then 1 else 0) + (ifx g[0].have[H_TREADS] then 1 else 0) + (ifx g[0].have[H_BATTERY] then 1 else 0);
+  if g[0].phase == PH_NIGHT { n = ui_text(out, n, num(buf[..], "BANNED PIECES ", g[0].banned, " / 3"), ox + 14 * k, cy0 + 74 * k, 9 * k, GLOW_INK()); }
+  else { n = ui_text(out, n, num(buf[..], "PARTS ", parts, " / 3"), ox + 14 * k, cy0 + 74 * k, 9 * k, ink); n = ui_text(out, n, num(buf[..], "CARDS ", (ifx g[0].have[H_MOVE] then 1 else 0) + (ifx g[0].have[H_DRILL] then 1 else 0), " / 2"), ox + 150 * k, cy0 + 74 * k, 9 * k, ink); }
+  // bottom centre: the key prompt
+  prompt := "";  cap := "E";
+  if near_rover(g, T_USE_RANGE) || near_crate(g, T_USE_RANGE) { prompt = "OPEN THE EDIT BAY"; }
+  if g[0].wall_gone && !g[0].boss_down { for i: 0..<3 { wp := weak_at(i); if !g[0].stunned[i] && dist2(g[0].px, g[0].pz, wp.x, wp.z) < T_STUN_RANGE { prompt = "STUN THE WEAK POINT"; cap = "F"; } } }
+  if prompt != "" {
+    pw := text_w(prompt, 11 * k) + 84 * k; x0 := w * 0.5 - pw * 0.5; y0 := h - pad - 150 * k;
+    ui_panel(g, u, x0, y0, x0 + pw, y0 + 46 * k, paper, 0.96);
+    n = ui_box(out, n, x0, y0, x0 + pw, y0 + 46 * k, 3 * k, ink);
+    n = ui_cap(out, n, cap, x0 + 12 * k, y0 + 9 * k, 26 * k, ink);
+    n = ui_text(out, n, prompt, x0 + 54 * k, y0 + 29 * k, 11 * k, ink);
+  }
+  // centre: what just happened
+  m := msg_text(g);
+  if m != "" {
+    mw := text_w(m, 13 * k) + 48 * k; x0 := w * 0.5 - mw * 0.5; y0 := h * 0.3;
+    bad := g[0].msg == MSG_BAD_CUT || g[0].msg == MSG_AIR || g[0].msg == MSG_WEAK || g[0].msg == MSG_HIT || g[0].msg == MSG_NEED;
+    ui_panel(g, u, x0, y0, x0 + mw, y0 + 50 * k, ifx bad then HEAT() else ink, 0.96);
+    n = ui_mid(out, n, m, w * 0.5, y0 + 31 * k, 13 * k, paper);
+  }
+  return n;
+}
+
+g_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
+  n := 0; k := q.k; w := q.w; h := q.h; ink := INK(); paper := PAPER(); blue := GLOW_INK();
+  buf: [96] u8;
+  lx := 300 * k; rx := w - 300 * k; top := 66 * k; bot := h - 250 * k;
+  // paper round a window onto the Digger's stage
+  ui_panel(g, u, -20, -20, w + 20, top, ink, 1);
+  ui_panel(g, u, -20, top, lx, h + 20, paper, 1);
+  ui_panel(g, u, rx, top, w + 20, h + 20, paper, 1);
+  ui_panel(g, u, lx - 10, bot, rx + 10, h + 20, paper, 1);
+  // header
+  n = ui_text(out, n, "EDIT BAY", 24 * k, 42 * k, 18 * k, paper);
+  n = ui_text(out, n, ifx g[0].at_crate then "DIGGER · STASH CRATE" else "DIGGER · ROVER", 250 * k, 40 * k, 10 * k, SHADE());
+  n = ui_mid(out, n, num(buf[..], "HEAT ", cast(int) g[0].heat, ifx g[0].heat > 0 then " · COOLING" else " · COOL"), w * 0.5 + 90 * k, 40 * k, 10 * k, ifx g[0].heat > 0 then t3(0.95, 0.52, 0.30) else SHADE());
+  n = ui_right(out, n, "EXIT", w - 70 * k, 40 * k, 10 * k, paper);
+  n = ui_cap(out, n, "E", w - 56 * k, 18 * k, 26 * k, paper);
+  // left: parts
+  n = ui_text(out, n, "PARTS", 24 * k, top + 40 * k, 12 * k, ink);
+  pn := [3] string.["DRILL ARM", "TREADS", "BATTERY"];
+  for i: 0..<3 {
+    y := top + (62 + cast(f32) i * 58) * k;
+    n = ui_box(out, n, 24 * k, y, lx - 24 * k, y + 46 * k, 2 * k, ink);
+    n = ui_text(out, n, pn[i], 38 * k, y + 29 * k, 10 * k, ink);
+    n = ui_right(out, n, ifx g[0].have[i] then "INSTALLED" else "NOT FOUND", lx - 38 * k, y + 29 * k, 8 * k, ifx g[0].have[i] then ink else HEAT());
+  }
+  y := top + 250 * k;
+  n = ui_text(out, n, num(buf[..], "BANNED PIECES  ", g[0].banned, " / 3"), 24 * k, y, 9 * k, blue);
+  if g[0].have[H_CORE] { n = ui_text(out, n, "BANNED CORE · READY", 24 * k, y + 24 * k, 9 * k, blue); }
+  // the window: a REC mark and the splice buttons
+  n = ui_box(out, n, lx, top, rx, bot, 3 * k, ink);
+  if fract(g[0].t) < 0.6 { n = ui_seg(out, n, lx + 24 * k, top + 26 * k, lx + 24 * k, top + 26 * k, 7 * k, HEAT(), 1); }
+  n = ui_text(out, n, "REC", lx + 40 * k, top + 31 * k, 10 * k, ink);
+  mx := (lx + rx) * 0.5;
+  g[0].btn_n = 0;
+  if g[0].have[H_CORE] { n = ui_button(g, out, n, "X  SPLICE CORE", mx - 130 * k, bot - 60 * k, mx + 130 * k, bot - 16 * k, 2, 'x'); }
+  else if g[0].banned >= T_BANNED_FOR_PLUS && !g[0].have[H_PLUS] { n = ui_button(g, out, n, "X  SPLICE DRILL+", mx - 130 * k, bot - 60 * k, mx + 130 * k, bot - 16 * k, 2, 'x'); }
+  // right: cards
+  n = ui_text(out, n, "CARDS", rx + 24 * k, top + 40 * k, 12 * k, ink);
+  desc := [3] string.["FOLLOW THE PATH", "BREAKS RUBBLE", "BREAKS THE BOSS WALL"];
+  keys := [3] string.["1", "2", "3"];
+  for i: 0..<3 {
+    c := H_MOVE + i; y0 := top + (62 + cast(f32) i * 74) * k; has := g[0].have[c]; col := ifx c == H_PLUS then blue else ink;
+    n = ui_box(out, n, rx + 24 * k, y0, w - 24 * k, y0 + 62 * k, 2 * k, col);
+    n = ui_cap(out, n, keys[i], rx + 36 * k, y0 + 16 * k, 24 * k, col);
+    n = ui_text(out, n, card_name(c), rx + 74 * k, y0 + 27 * k, 11 * k, col);
+    n = ui_text(out, n, ifx has then desc[i] else "NOT FOUND", rx + 74 * k, y0 + 47 * k, 7.5 * k, ifx has then col else HEAT());
+    if has && g[0].btn_n < BUTTONS { o := g[0].btn_n * 4; g[0].btn[o] = rx + 24 * k; g[0].btn[o + 1] = y0; g[0].btn[o + 2] = w - 24 * k; g[0].btn[o + 3] = y0 + 62 * k; g[0].btn_key[g[0].btn_n] = '1' + i; g[0].btn_n += 1; }
+  }
+  // bottom: the film strip, three slots played left to right
+  sy := bot + 28 * k; sh := 150 * k; s0 := lx + 10 * k; s1 := rx - 10 * k;
+  ui_panel(g, u, s0, sy, s1, sy + sh, ink, 1);
+  n = ui_sprockets(out, n, s0, s1, sy + 13 * k, 10 * k, paper);
+  n = ui_sprockets(out, n, s0, s1, sy + sh - 13 * k, 10 * k, paper);
+  sw := (s1 - s0 - 40 * k) / 3;
+  nums := [3] string.["01", "02", "03"];
+  for i: 0..<3 {
+    x0 := s0 + 20 * k + cast(f32) i * sw + 6 * k; x1 := x0 + sw - 12 * k; y0 := sy + 28 * k; y1 := sy + sh - 28 * k;
+    if i < g[0].strip_n {
+      ui_panel(g, u, x0, y0, x1, y1, ifx g[0].strip[i] == H_PLUS then GLOW() else paper, 1);
+      n = ui_mid(out, n, card_name(g[0].strip[i]), (x0 + x1) * 0.5, (y0 + y1) * 0.5 + 8 * k, 17 * k, ink);
+    } else { n = ui_box(out, n, x0, y0, x1, y1, 1.5 * k, SHADE()); }
+    n = ui_text(out, n, nums[i], x0 + 8 * k, y0 + 18 * k, 8 * k, ifx i < g[0].strip_n then ink else SHADE());
+  }
+  by := sy + sh + 14 * k;
+  n = ui_button(g, out, n, "ENTER  DEPLOY", rx - 250 * k, by, rx - 10 * k, by + 44 * k, 0, -2);
+  n = ui_button(g, out, n, "C  CLEAR STRIP", lx + 10 * k, by, lx + 220 * k, by + 44 * k, 1, 'c');
+  n = ui_mid(out, n, "CARDS PLAY LEFT TO RIGHT. THE ORDER IS THE CUT.", mx, bot + 19 * k, 8 * k, ink);
+  m := msg_text(g);
+  if m != "" { n = ui_mid(out, n, m, mx, top + 70 * k, 11 * k, ifx g[0].msg == MSG_NEED then HEAT() else blue); }
+  return n;
+}
+
+g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
+  q := Ui.{w = w, h = h, k = lo(w / 1280, h / 800)}; k := q.k; n := 0;
+  ink := INK(); paper := PAPER();
+  g[0].panels = 0;
+  if g[0].mode == M_PLAY { g[0].btn_n = 0; return g_hud(g, out, u, q); }
+  if g[0].mode == M_BAY { return g_bay(g, out, u, q); }
+  g[0].btn_n = 0;
+  if g[0].mode == M_TITLE {
+    // sprocket bars top and bottom, SPLICE in an ink frame
+    ui_panel(g, u, -20, -20, w + 20, 64 * k, ink, 1); ui_panel(g, u, -20, h - 64 * k, w + 20, h + 20, ink, 1);
+    n = ui_sprockets(out, n, 0, w, 32 * k, 16 * k, paper); n = ui_sprockets(out, n, 0, w, h - 32 * k, 16 * k, paper);
+    fx0 := w * 0.5 - 330 * k; fy0 := h * 0.5 - 150 * k;
+    ui_panel(g, u, fx0, fy0, fx0 + 660 * k, fy0 + 300 * k, paper, 0.97);
+    n = ui_box(out, n, fx0, fy0, fx0 + 660 * k, fy0 + 300 * k, 6 * k, ink);
+    n = ui_box(out, n, fx0 + 14 * k, fy0 + 14 * k, fx0 + 646 * k, fy0 + 286 * k, 2 * k, ink);
+    n = ui_mid(out, n, "S P L I C E", w * 0.5, fy0 + 132 * k, 62 * k, ink);
+    n = ui_mid(out, n, "RESTORE WHAT THE EMPEROR ERASED", w * 0.5, fy0 + 178 * k, 12 * k, HEAT());
+    if fract(g[0].t * 0.8) < 0.7 { n = ui_button(g, out, n, "CLICK TO PLAY", w * 0.5 - 130 * k, fy0 + 206 * k, w * 0.5 + 130 * k, fy0 + 254 * k, 0, -2); }
+    n = ui_mid(out, n, "W A S D  MOVE AND TURN  ·  E  EDIT BAY  ·  F  STUN", w * 0.5, fy0 + 276 * k, 8 * k, ink);
+    return n;
+  }
+  if g[0].mode == M_BANNER {
+    sweep := g[0].banner == B_SWEEP;
+    ui_panel(g, u, -20, -20, w + 20, h + 20, ifx sweep then HEAT() else ink, 1);
+    if sweep {
+      n = ui_mid(out, n, "IMPERIAL SWEEP", w * 0.5, h * 0.46, 46 * k, paper);
+      n = ui_mid(out, n, "HEAT HIT 100. BACK TO THE CHECKPOINT OUTSIDE THE MINE.", w * 0.5, h * 0.56, 12 * k, paper);
+    } else {
+      for i: 0..<3 { n = ui_heart(out, n, w * 0.5 + (cast(f32) i - 1) * 70 * k, h * 0.32, 52 * k, false); }
+      n = ui_mid(out, n, "CUT. TAKE TWO.", w * 0.5, h * 0.5, 46 * k, paper);
+      n = ui_mid(out, n, "BACK AT THE ROVER. BANNED PIECES SINCE THE CHECKPOINT ARE LOST.", w * 0.5, h * 0.59, 12 * k, paper);
+    }
+    return n;
+  }
+  if g[0].mode == M_MEMORY {
+    // scanlines, a caption, click to skip
+    for i: 0..<40 { y := (cast(f32) i + fract(g[0].t * 0.4)) * h / 40; n = ui_seg(out, n, 0, y, w, y, 1 * k, t3(0.02, 0.05, 0.12), 0.35); }
+    ui_panel(g, u, -20, h - 150 * k, w + 20, h + 20, t3(0.02, 0.05, 0.12), 0.8);
+    c := cast(int) (g[0].mem_t / 5);
+    line := ifx c == 0 then "BEFORE THE EMPEROR, WE BUILT THEM TO DIG BESIDE US." else ifx c == 1 then "NOBODY OWNED THE WORK. WE SHARED IT." else "HE CUT THIS SCENE. YOU PUT IT BACK.";
+    n = ui_mid(out, n, line, w * 0.5, h - 86 * k, 16 * k, GLOW());
+    n = ui_mid(out, n, "MEMORY · CLICK TO SKIP", w * 0.5, h - 44 * k, 9 * k, GLOW());
+    return n;
+  }
+  // SCENE RESTORED
+  ui_panel(g, u, -20, -20, w + 20, h + 20, ink, 0.93);
+  n = ui_sprockets(out, n, 0, w, 32 * k, 16 * k, paper); n = ui_sprockets(out, n, 0, w, h - 32 * k, 16 * k, paper);
+  n = ui_mid(out, n, "SCENE RESTORED", w * 0.5, h * 0.46, 54 * k, paper);
+  n = ui_mid(out, n, "DIRECTOR'S CUT · 1 ERASED SCENE BACK IN THE RECORD", w * 0.5, h * 0.55, 12 * k, GLOW());
+  n = ui_button(g, out, n, "RESTART", w * 0.5 - 110 * k, h * 0.63, w * 0.5 + 110 * k, h * 0.63 + 48 * k, 1, -2);
+  return n;
+}
+
+#test "the right cut opens the rubble and the wrong cut does not" {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); g[0].mode = M_PLAY;
+  for i: 0..<5 { g[0].have[i] = true; }
+  g[0].strip[0] = H_DRILL; g[0].strip[1] = H_MOVE; g[0].strip_n = 2;
+  g_deploy(g[..]);
+  for i: 0..<400 { g_bot(g[..], 0.05); }
+  #assert !g[0].rubble_gone && !g[0].bot;
+  g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL;
+  g_deploy(g[..]);
+  for i: 0..<400 { g_bot(g[..], 0.05); }
+  #assert g[0].rubble_gone && g[0].phase == PH_DUSK;
+  // the boss wall needs DRILL+
+  g_deploy(g[..]);
+  for i: 0..<400 { g_bot(g[..], 0.05); }
+  #assert !g[0].wall_gone;
+  g[0].have[H_PLUS] = true; g[0].strip[1] = H_PLUS;
+  g_deploy(g[..]);
+  for i: 0..<400 { g_bot(g[..], 0.05); }
+  #assert g[0].wall_gone;
+}
+#test "four banned pieces bring the sweep, and the respawn gives them back" {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); g[0].mode = M_PLAY; g[0].phase = PH_NIGHT;
+  for i: PICK_BANNED..<PICKS { g[0].px = pick_x(i); g[0].pz = pick_z(i); g_step(g[..], 0.01); }
+  #assert g[0].mode == M_BANNER && g[0].banner == B_SWEEP;
+  for i: 0..<300 { g_step(g[..], 0.02); }
+  #assert g[0].mode == M_PLAY && g[0].heat == 0 && g[0].banned == 0 && !g[0].taken[PICK_BANNED] && g[0].pz == START_Z;
+}
+#test "walls stop the smuggler" {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); g[0].mode = M_PLAY;
+  g[0].px = -3.9; g[0].pz = -6; g_collide(g[..]);          // pressed against the mine mouth's left wall
+  #assert g[0].px >= -4 + T_RADIUS - 0.001;
+  g[0].px = 0; g[0].pz = RUBBLE_Z + 1.2; g_collide(g[..]);    // the rubble blocks the tunnel until it is drilled
+  #assert g[0].pz >= RUBBLE_Z + 1 + T_RADIUS - 0.001;
+  g[0].rubble_gone = true; g[0].pz = RUBBLE_Z; g_collide(g[..]);
+  #assert g[0].pz == RUBBLE_Z;
+}
+
+// Hold W from the start: through the mine mouth and the scrap room (over the DRILL card) to the rubble.
+#test "walking forward from the start reaches the rubble and stops there" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); g[0].mode = M_PLAY;
+  #assert g_key(g[..], 'w', true);
+  for i: 0..<600 { g_step(g[..], 0.02); }
+  #assert g[0].have[H_DRILL] && abs(g[0].px) < 0.01 && abs(g[0].pz - (RUBBLE_Z + 1 + T_RADIUS)) < 0.01;
+}
+// The whole run with the keys a player presses; walking is stood in for by placing the smuggler.
+#test "the run plays from the title to SCENE RESTORED" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]);
+  #assert g_key(g[..], -2, true) && g[0].mode == M_PLAY;
+  for i: 0..<5 { g[0].px = pick_x(i); g[0].pz = pick_z(i); g_step(g[..], 0.02); }
+  g[0].px = ROVER_X - 3; g[0].pz = ROVER_Z;
+  #assert g_key(g[..], 'e', true) && g[0].mode == M_BAY;
+  #assert g_key(g[..], '1', true); #assert g_key(g[..], '2', true); #assert g_key(g[..], -2, true);
+  for i: 0..<400 { g_step(g[..], 0.02); }
+  #assert g[0].rubble_gone && g[0].phase == PH_DUSK;
+  // the party: three banned pieces, never near a raider
+  for i: 0..<RAIDERS { g[0].rx[i] = -14; g[0].rz[i] = -41; }
+  g[0].px = 13; g[0].pz = -45; g_step(g[..], 0.02);
+  #assert g[0].phase == PH_NIGHT;
+  g[0].taken[5] = true; g[0].taken[6] = true; g[0].banned = 2; g[0].heat = 50;
+  g[0].px = pick_x(8); g[0].pz = pick_z(8); g_step(g[..], 0.02);
+  #assert g[0].banned == 3 && g[0].heat == 75;
+  g[0].px = CRATE_X + 2; g[0].pz = CRATE_Z;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert g[0].heat < 75;                       // Heat cools at the crate
+  #assert g_key(g[..], 'e', true); #assert g_key(g[..], 'x', true);
+  #assert g[0].have[H_PLUS];
+  #assert g_key(g[..], 'c', true); #assert g_key(g[..], '1', true); #assert g_key(g[..], '3', true); #assert g_key(g[..], -2, true);
+  g[0].px = 13; g[0].pz = -50;
+  for i: 0..<400 { g_step(g[..], 0.02); }
+  #assert g[0].wall_gone;
+  // the boss: a sweep costs a heart; three stuns power it down
+  g[0].px = BOSS_X + 4; g[0].pz = BOSS_Z;
+  for i: 0..<400 { g_step(g[..], 0.02); }
+  #assert g[0].hearts < T_HEARTS && g[0].hearts > 0;
+  for i: 0..<3 { w := weak_at(i); g[0].px = w.x; g[0].pz = w.z + 0.1; g_collide(g[..]); #assert g_key(g[..], 'f', true); }
+  #assert g[0].boss_down;
+  g[0].px = BOSS_X; g[0].pz = BOSS_Z + 4.5; g_step(g[..], 0.02);
+  #assert g[0].have[H_CORE];
+  g[0].px = CRATE_X + 2; g[0].pz = CRATE_Z;
+  #assert g_key(g[..], 'e', true); #assert g_key(g[..], 'x', true);
+  #assert g[0].mode == M_MEMORY;
+  for i: 0..<800 { g_step(g[..], 0.02); }
+  #assert g[0].mode == M_RESTORED;
+  #assert g_key(g[..], 'r', true);
+  #assert g[0].mode == M_PLAY && !g[0].rubble_gone && g[0].hearts == T_HEARTS;
+}
