@@ -2258,6 +2258,9 @@
    ],
    "source": [
     "coax/lib/nostr/nipkeys.coax",
+    "coax/lib/nostr/nipkeys_possess.coax",
+    "coax/lib/nostr/nipkeys_proof.coax",
+    "coax/lib/bitcoin/bip322.coax",
     "coax/lib/nostr/nipkeys_sign.coax",
     "coax/lib/crypto/ecdsa_sign.coax",
     "coax/lib/bitcoin/sighash.coax",

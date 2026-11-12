@@ -85,11 +85,19 @@ open, and how to check it.
 
 ### Not built or not run
 
-- **Chapter 104** is still partly implemented. Its "Done means" also needs:
-  - sending sign requests over a relay;
-  - a signet broadcast;
-  - recovery with another wallet tool (none is installed here);
-  - BIP-322 checks and `tr` wallets.
+- **Chapter 104** is still partly implemented. Its "Done means" needs one
+  more thing: the 2-of-3 spend broadcast on the public signet. Its coins
+  come only from a captcha-gated faucet, so someone has to claim them to the
+  treasury's receive 0,
+  `tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2`, or the
+  owner accepts the private signet run as the exit. Sign requests over a
+  relay, recovery with Bitcoin Core's wallet (regtest 2026-11-05; regtest
+  and a private signet 2026-11-12,
+  `docs/verification/2026-11-12-nostr-ch104-possession-and-private-signet/`)
+  and BIP-322 possession proofs at admission (2026-11-12) are done. Declared omissions,
+  not part of the exit: `tr` wallets, PSBT v2 and miniscript spends.
+  NIP-KEYS doesn't yet state the bytes a possession proof signs; the chapter
+  does, and the NIP should before the folder is re-pinned.
 - **`FILE.nip86`** isn't signed, so anyone who can write to it can change
   the relay's policy.
 - **The Rust relay differential's** expected COUNT reply and

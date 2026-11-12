@@ -3,7 +3,9 @@
 // signet tpubs into one 2-of-3 wallet. The wallet is admitted (descriptor
 // recomputed, composition rules), its scripts are derived from the
 // descriptor alone, and each signer checks one signing request against the
-// PSBT it names. A second PSBT pays someone the request doesn't name, and
+// PSBT it names. Admission also verifies each enrollment's BIP-322
+// possession proof, and alice makes hers again from her account key.
+// A second PSBT pays someone the request doesn't name, and
 // every signer refuses it. The records are the fixtures in
 // coax/tests/nostr/keys_fixtures.coax, written by an independent Python
 // reference (keys from SHA-256("chapter 104 <name>"), TEST ONLY); a 3188
@@ -12,13 +14,14 @@
 // their partial signatures into the final transaction; the account keys
 // are the fixtures in coax/tests/nostr/keys_sign_fixtures.coax (TEST ONLY).
 #load "../../coax/lib/nostr/nipkeys_sign.coax";
+#load "../../coax/lib/nostr/nipkeys_proof.coax";
 #import "Basic";
 
 // book:begin example
-KY_WORDS :: [43]string.["ok","json","version","field","wallet","holder","revision","network","descriptor","checksum","family","paths",
+KY_WORDS :: [44]string.["ok","json","version","field","wallet","holder","revision","network","descriptor","checksum","family","paths",
   "threshold","timelock","primary","enrollment","key_order","xpub","recipient","times","attestation","operator","sovereign","recovery",
   "attested_only","weakening","approval","psbt","inputs","outputs","amount","address","change","fee","ceiling","nonce","deadline","locked",
-  "retired","compromised","delay","hot","not_built"];
+  "retired","compromised","delay","hot","not_built","possession"];
 NAMES :: [3]string.["alice","keyco","enclave"];
 CEILING :: [3]int.[2000,1000,1500];   // each signer's fee ceiling, satoshis
 kw :: (c:KyCode)->string {return KY_WORDS[cast(int)c];}
@@ -52,11 +55,31 @@ main :: () {
   d:[4096]u8;n:=ky_descriptor(w,p.e[..],d[..]);
   print("recomputed descriptor (% bytes) ends %\n",n,cast(string)d[n-40..<n]);
   print("equal to the wallet's: %\n",cast(string)d[0..<n]==w.descriptor);
-  a:=ky_admit(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0);
+
+  print("possession proofs (BIP-322, the key at xpub/0/0)\n");
+  bx:[1]B322Work;mb:[KY_PROOF_TEXT]u8;ab:[90]u8;hp:[68]u8;
+  for i:0..<3 {
+    print("%: message %...\n",NAMES[i],ky_possession_message(p.e[i],mb[..])[0..<23]);
+    ch:=ky_possession_script(p.e[i]);
+    print("  challenge %, proof % characters: %\n",to_hex(ch.b[0..<22],hp[..]),p.e[i].possession.count,ky_possession(p.e[i],bx[..]));
+  }
+  a:=ky_admit_proven(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,bx[..]);
   print("admit: %, possession proven: %\n",kw(a.code),a.proven);
+  // alice makes her proof again: the key at account/0/0, chapter 96's signer.
+  pa:=account_of(0);pw:[1]KySignWork;made:[256]u8;none32:[32]u8;
+  ok:=ky_slot_key(pa[..],0,pw[..]);
+  mn:=bip322_sign_vartime(ky_possession_address(p.e[0],ab[..]),ky_possession_message(p.e[0],mb[..]),pw[0].k2[..],made[0..<0],B322_SIMPLE,0,0,0,none32[..],bx[..],made[..]);
+  ky_sign_clear(pw[..]);
+  print("alice signs hers again from her account key: equal to the enrollment's: %\n",ok && mn>0 && cast(string)made[0..<mn]==p.e[0].possession);
+  q:=p;q.e[1].possession=p.e[0].possession;
+  print("keyco's enrollment with alice's proof: %\n",kw(ky_admit_proven(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,bx[..]).code));
+  bad:=ky_enrollment_read(KY_AGENT1,KY_ENR1_BAD_PROOF);
+  print("keyco's enrollment with the proof its key made for wallet %...: read %, proven %\n",KY_OTHER_WALLET_ID[0..<8],kw(bad.code),ky_possession(bad,bx[..]));
+  bad.wallet=KY_OTHER_WALLET_ID;
+  print("  the same proof read against wallet %...: %\n",KY_OTHER_WALLET_ID[0..<8],ky_possession(bad,bx[..]));
 
   print("composition rule 1 and 2, by declaration\n");
-  q:=p;q.ind[2].op="keyco-llc";
+  q=p;q.ind[2].op="keyco-llc";
   print("enclave declares keyco-llc: %\n",kw(ky_admit(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code));
   q=p;q.ind[2].op="alice-agent";
   print("enclave declares alice-agent, holder a SOV agent: %\n",kw(ky_admit(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code));

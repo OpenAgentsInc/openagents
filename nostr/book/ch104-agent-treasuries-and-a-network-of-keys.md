@@ -1,22 +1,24 @@
 # 104. Agent treasuries and a network of keys
 
 > **Status: partly implemented.** The pure contracts (NIP-KEYS step 1) and
-> the signing loop (step 2) run: the signer's checks, ECDSA partial
+> the signing loop (step 2) run: admission with every enrollment's BIP-322
+> possession proof verified, the signer's checks, ECDSA partial
 > signatures over BIP-143 digests, the PSBT with them, and the coordinator's
 > 2-of-3 transaction, with worked examples, refusals and independent checks
 > (BIP-143's and BIP-341's published vectors, libsecp256k1, a Python
 > reference). Requests and receipts travel as 3188 artifacts over a Coax
 > relay between three key agents and a coordinator; Bitcoin Core accepts and
-> confirms the spend in regtest, and recovers the coins with its own
-> descriptor wallet ([Over the network](#over-the-network)). One part of
-> "Done means" is open: the spend has not been broadcast on signet, because
-> signet coins come only from a captcha-gated faucet. See
-> [Not built](#not-built).
+> confirms the spend in regtest and on a private signet, and recovers the
+> coins with its own descriptor wallet
+> ([Over the network](#over-the-network)). One part of "Done means" is
+> open: the spend has not been broadcast on the public signet, whose coins
+> come only from a captcha-gated faucet. See [Not built](#not-built).
 
 The chapter qualifies checking contracts on native CPU. It records no
 external treasury consumer and no Wasm qualification. Those claims stay
-separate from the missing signatures and signet recovery in the
-[completion route](COMPLETION.md#5-finish-treasury-signing-and-independent-recovery).
+separate from the public signet broadcast that the
+[completion route](COMPLETION.md#5-finish-treasury-signing-and-independent-recovery)
+still asks for.
 The OpenAgents NIP-KEYS source-pin review remains pending; this chapter does
 not approve a replacement digest.
 
@@ -29,8 +31,9 @@ them.
 
 Part VIII, Nostr in OpenAgents. Result: NIP-KEYS wallet, enrollment,
 independence and signing-request bodies read under closed schemas; a
-wallet admitted by recomputing its BIP-380 descriptor and applying the
-four composition rules; the wallet's P2WSH scripts derived from public keys
+wallet admitted by recomputing its BIP-380 descriptor, applying the
+four composition rules and verifying each enrollment's BIP-322 possession
+proof; the wallet's P2WSH scripts derived from public keys
 alone; and a signer that recomputes every output, the change and the fee
 from the PSBT before it would sign, with nonce idempotency, recovery
 timelocks, retired wallets, the attested co-signer's delay and the
@@ -52,6 +55,9 @@ checked, for the `tr` wallets that come next.
   primary quorum's approval.
 - BIP-32 public derivation (`CKDpub`) and the `wsh(sortedmulti(...))`
   witness script, so a signer derives the wallet's addresses from xpubs.
+- A possession proof: a BIP-322 signature by the key at `xpub/0/0` over the
+  digest of the wallet, the agent and the xpub, so nobody enrolls a key
+  they only saw, and a proof made for one wallet fails in another.
 - A signer that never trusts the request: it reads a PSBT v0, checks every
   input is the wallet's, compares every output with the request's
   statement, derives change from the descriptor and recomputes the fee.
@@ -62,14 +68,17 @@ checked, for the `tr` wallets that come next.
 - A key agent's partial signatures (BIP-174 `PSBT_IN_PARTIAL_SIG`) and the
   coordinator's witness: an empty item, a threshold of signatures in key
   order, the witness script.
-- What is not built, and why: BIP-322, `tr` wallets, PSBT v2, miniscript
-  spends, the relay round trip, signet and recovery with another wallet.
+- What is not built, and why: `tr` wallets, PSBT v2, miniscript spends
+  and a broadcast on the public signet.
 
 ## Where the code is
 
 | File | What |
 | --- | --- |
 | [coax/lib/nostr/nipkeys.coax](../../coax/lib/nostr/nipkeys.coax) | NIP-KEYS: the checksum, the readers, xpub decoding and public derivation, admission, scripts, the PSBT reader and the signer's checks. `#authority` |
+| [coax/lib/nostr/nipkeys_possess.coax](../../coax/lib/nostr/nipkeys_possess.coax) | Possession proofs, the rules: the message, the challenge, which answer counts, and admission with the answers. `#authority` |
+| [coax/lib/nostr/nipkeys_proof.coax](../../coax/lib/nostr/nipkeys_proof.coax) | Possession proofs verified: the rules joined to BIP-322's verifier, with no decisions of its own |
+| [coax/lib/bitcoin/bip322.coax](../../coax/lib/bitcoin/bip322.coax) | BIP-322 (Bitcoin chapter 96): the verifier possession proofs go through, and the signer a key agent makes one with. `#authority` |
 | [coax/lib/nostr/nipkeys_sign.coax](../../coax/lib/nostr/nipkeys_sign.coax) | The key agent's signatures, its PSBT, and the coordinator's transaction. `#authority` |
 | [coax/lib/crypto/ecdsa_sign.coax](../../coax/lib/crypto/ecdsa_sign.coax) | ECDSA: RFC 6979, low-S, DER. `#authority` |
 | [coax/lib/bitcoin/sighash.coax](../../coax/lib/bitcoin/sighash.coax) | The transaction reader, the BIP-143 and BIP-341 digests, the Taproot key path. `#authority` |
@@ -78,7 +87,7 @@ checked, for the `tr` wallets that come next.
 | [coax/tests/bitcoin/sighash_vectors.coax](../../coax/tests/bitcoin/sighash_vectors.coax) | BIP-143's examples and BIP-341's wallet vectors, copied by [make_sighash_vectors.py](../../coax/tests/bitcoin/make_sighash_vectors.py) |
 | [coax/lib/nostr/nipkeys_carry.coax](../../coax/lib/nostr/nipkeys_carry.coax) | KEYS records sealed into, and opened from, 3188 private artifacts. `#authority` |
 | [nostr/tools/treasury.coax](../tools/treasury.coax) | The key agent and the coordinator as a command-line tool over a relay |
-| [coax/tests/nostr/treasury_regtest.py](../../coax/tests/nostr/treasury_regtest.py) | The network run against Bitcoin Core in regtest |
+| [coax/tests/nostr/treasury_regtest.py](../../coax/tests/nostr/treasury_regtest.py) | The network run against Bitcoin Core, in regtest or on a private signet |
 | [nostr/examples/agent-treasury.coax](../examples/agent-treasury.coax) | The example |
 | [nostr/examples/checks/agent-treasury.coax](../examples/checks/agent-treasury.coax) | Its independent checks |
 
@@ -300,8 +309,9 @@ ky_wallet_read :: (content:string)->KyWallet #effects(all) {
 
 An enrollment is signed by its agent and offers one key to one wallet. Its
 digest is what the wallet's ArtifactRef names, so changing any byte of it
-breaks the wallet. The `possession` field is a BIP-322 signature; this
-build reads it and doesn't verify it.
+breaks the wallet. The `possession` field is a BIP-322 signature. The
+reader keeps it, and admission verifies it
+([Possession](#possession-proving-the-key-is-held)).
 
 <!-- source: coax/lib/nostr/nipkeys.coax enrollment -->
 ```jai
@@ -324,7 +334,7 @@ ky_enrollment_read :: (signer:string,content:string)->KyEnrollment #effects(all)
       if t!=JSON_STRING {return ky_efail(KyCode.xpub);}
       e.key=ky_origin(s);if !ky_ext_key(e.key).ok {return ky_efail(KyCode.xpub);}e.xpub=s;
     }
-    else if f==6 {if t!=JSON_STRING || s.count==0 {return ky_efail(KyCode.field);}}   // BIP-322: read, not verified
+    else if f==6 {if t!=JSON_STRING || s.count==0 {return ky_efail(KyCode.field);}e.possession=s;}   // BIP-322: verified by ky_possession
     else if f==7 {
       if t!=JSON_STRING || !(json_is(s,"software") || json_is(s,"hardware") || json_is(s,"attested") || json_is(s,"institutional")) {return ky_efail(KyCode.field);}
       cls=s;
@@ -351,7 +361,10 @@ operator; the rest is shown to the holder, never refused.
 
 ## Admission and the composition rules
 
-Admission binds the records together, then checks the rules:
+Admission binds the records together, then checks the rules. `ky_admit`
+is every rule except the possession proofs, which need the wallet's keys
+derived first and come in
+[Possession](#possession-proving-the-key-is-held):
 
 <!-- source: coax/lib/nostr/nipkeys.coax admit -->
 ```jai
@@ -359,8 +372,9 @@ Admission binds the records together, then checks the rules:
 // chain tip). e and ind are the enrollments in the wallet's order and each
 // one's independence declaration. sov: the holder is a NIP-SOV agent.
 // min_lock: the holder policy's shortest recovery timelock (KY_MIN_LOCK
-// unless the policy says otherwise). proven stays false: possession proofs
-// (BIP-322) are read and not verified in this build.
+// unless the policy says otherwise). proven stays false here: this is
+// every rule but the possession proofs, which need chapter 96's BIP-322
+// verifier. ky_admit_proven (nipkeys_possess.coax) runs this and then them.
 ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int)->KyAdmit #effects(all) {
   r:KyAdmit;r.code=w.code;
   if w.code!=KyCode.ok {return r;}
@@ -550,6 +564,206 @@ change 0 is
 `tb1qzzxa9gpdee47e9k7wp8h8ql9h8y5aray38h6z2unnhjhw74jqz0sr0utuy`. These
 come from the descriptor alone, which is the property that lets a key agent
 recover the coins without the coordinator.
+
+## Possession: proving the key is held
+
+An xpub is public. Without a proof, anyone who has seen keyco's xpub could
+enroll it under their own name, and a wallet would count a key whose
+"agent" can't sign. So an enrollment carries `possession`: a BIP-322
+signature by the key at the xpub's first receive derivation over the digest
+of `{wallet, agent, xpub}`. The digest names the wallet, so a proof made
+for one wallet fails in every other.
+
+BIP-322 (Bitcoin chapter 96) turns "sign this message" into a spend. A
+virtual transaction `to_spend` pays 0 to a challenge script and commits to
+the message's tagged hash; a second one, `to_sign`, spends it. The
+signature is `to_sign`'s witness, and verifying it means running the
+script. Nothing here is broadcast.
+
+NIP-KEYS names the signer and what is signed, and leaves the bytes open.
+This build fixes them, and the NIP should say the same before another
+implementation enrolls a key:
+
+- **The message** is the text `sha256:` and 64 lowercase hex digits: the
+  SHA-256 of the canonical JSON `{"agent":A,"wallet":W,"xpub":X}`, names in
+  order and no spaces, `X` the whole field with its origin. This is the form
+  every ArtifactRef digest in these records has.
+- **The key** is the xpub's public child at 0, then 0: the key this agent
+  contributes to the wallet's receive 0.
+- **The challenge** is that key's P2WPKH script, `0x00 0x14 HASH160(key)`,
+  and the signature is BIP-322's simple form: `smp` and the Base64 of the
+  witness stack, a signature and the public key.
+
+<!-- source: coax/lib/nostr/nipkeys_possess.coax message -->
+```jai
+// What the key signs: "sha256:" and the hex SHA-256 of the canonical JSON
+// {"agent":A,"wallet":W,"xpub":X}, written into out (at least
+// KY_PROOF_TEXT bytes). "" when out is too short or the JSON is longer
+// than KY_PROOF_JSON.
+ky_possession_message :: (e:KyEnrollment,out:[]u8)->string #effects(all) {
+  j:[KY_PROOF_JSON]u8;d:[32]u8;hx:="0123456789abcdef";
+  n:=json_write_string(j[..],json_raw(j[..],0,"{\"agent\":"),e.agent);
+  n=json_write_string(j[..],json_raw(j[..],n,",\"wallet\":"),e.wallet);
+  n=json_write_string(j[..],json_raw(j[..],n,",\"xpub\":"),e.xpub);
+  n=json_raw(j[..],n,"}");
+  if n==-1 || out.count<KY_PROOF_TEXT {return "";}
+  #assert ky_sha(cast(string)j[0..<n],d[..]) && json_raw(out,0,"sha256:")==7;
+  for k:0..<32 {out[7+2*k]=hx[cast(int)(d[k]>>4)];out[8+2*k]=hx[cast(int)(d[k]&15)];}
+  return cast(string)out[0..<KY_PROOF_TEXT];
+}
+```
+
+<!-- source: coax/lib/nostr/nipkeys_possess.coax script -->
+```jai
+// The challenge: the P2WPKH scriptPubKey of the key at the enrollment's
+// xpub/0/0, the wallet's first receive derivation for this key. n is 0
+// when the enrollment has no extended public key.
+ky_possession_script :: (e:KyEnrollment)->KyScript #effects(all) {
+  r:KyScript;
+  k:=ky_child(ky_child(ky_ext_key(e.key),0),0);
+  if !k.ok {return r;}
+  h:[20]u8;#assert hash160_checked(k.key[..],h[..],false)==RMD_OK;
+  r.b[1]=20;for i:0..<20 {r.b[2+i]=h[i];}                 // r.b[0] is OP_0
+  r.n=22;return r;
+}
+```
+
+Verification is chapter 96's `bip322_verify_vartime`, not a second copy of
+it. That verifier takes a mainnet address. BIP-322 signs the script, not
+the address text, so `ky_possession_address` writes the script's `bc1`
+form whatever the wallet's network, and the same signature verifies for
+the `tb1` form on signet. Only `valid` counts. BIP-322 also has an
+`inconclusive` answer, for scripts a verifier can't judge, and here that
+is a refusal.
+
+<!-- source: coax/lib/nostr/nipkeys_possess.coax address -->
+```jai
+// The challenge as the address chapter 96's signer and verifier take: the
+// script's mainnet form (42 characters, bc1q...), whatever the wallet's
+// network. "" when there is no script or out is too short.
+ky_possession_address :: (e:KyEnrollment,out:[]u8)->string #effects(all) {
+  s:=ky_possession_script(e);
+  if s.n==0 {return "";}
+  n:=segwit_encode_vartime(SW_MAINNET,0,s.b[2..<22],out);
+  return ifx n==KY_PROOF_ADDRESS then cast(string)out[0..<n] else "";
+}
+```
+
+<!-- source: coax/lib/nostr/nipkeys_possess.coax holds -->
+```jai
+// Does BIP-322's answer for an enrollment's possession field prove its
+// key? Only "valid" does, and only for a challenge and a message that
+// exist: an inconclusive answer is a refusal.
+ky_proof_holds :: (address:string,message:string,state:int)->bool #effects(all) {
+  return address.count>0 && message.count>0 && state==KY_PROOF_VALID;
+}
+```
+
+The rules above are in `nipkeys_possess.coax`, which is `#authority` and
+doesn't run BIP-322. `nipkeys_proof.coax` joins them to the verifier and
+decides nothing itself:
+
+<!-- source: coax/lib/nostr/nipkeys_proof.coax possession -->
+```jai
+// Does the enrollment's possession field prove its key? Chapter 96's
+// verification of the field as a signature of the message under the
+// challenge; ky_proof_holds judges the answer.
+ky_possession :: (e:KyEnrollment,x:[]B322Work)->bool #effects(all) {
+  m:[KY_PROOF_TEXT]u8;a:[KY_PROOF_ADDRESS]u8;
+  address:=ky_possession_address(e,a[..]);message:=ky_possession_message(e,m[..]);
+  return ky_proof_holds(address,message,bip322_verify_vartime(address,e.possession,message,x).state);
+}
+```
+
+`ky_admit` applies every admission rule except this one and leaves `proven`
+false. `ky_admit_proven` is the whole admission: `ky_admit`'s refusals
+first, as they are, then each enrollment's proof, and `proven` only when
+all of it holds. A bad proof refuses as `possession`. `ky_admit_proofs`
+holds that rule: one answer for each of the wallet's enrollments, all of
+them yes.
+
+<!-- source: coax/lib/nostr/nipkeys_possess.coax admit_proofs -->
+```jai
+// How many proofs ky_admit's result asks for: none after a refusal, else
+// one for each enrollment. More enrollments than a wallet has keys get
+// none, and ky_admit_proofs then refuses.
+ky_proofs_wanted :: (a:KyAdmit,e:[]KyEnrollment)->int #effects(all) {
+  if a.code!=KyCode.ok || e.count>KY_KEYS {return 0;}
+  return e.count;
+}
+// NIP-KEYS admission, whole: ky_admit's result a, then one answer for each
+// of the wallet's enrollments, in order. A refusal of ky_admit stays as it
+// is. proven is true only when all of it holds.
+ky_admit_proofs :: (a:KyAdmit,w:KyWallet,proven:[]bool)->KyAdmit #effects(all) {
+  r:=a;r.proven=false;
+  if r.code!=KyCode.ok {return r;}
+  r.code=KyCode.possession;
+  if proven.count!=w.nenroll {return r;}
+  for i:0..<proven.count {
+    if !proven[i] {return r;}
+  }
+  r.code=KyCode.ok;r.proven=true;return r;
+}
+```
+
+<!-- source: coax/lib/nostr/nipkeys_proof.coax admit_proven -->
+```jai
+// NIP-KEYS admission, whole: every rule of ky_admit, then every
+// enrollment's possession proof. ky_admit_proofs judges the answers.
+ky_admit_proven :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int,x:[]B322Work)->KyAdmit #effects(all) {
+  a:=ky_admit(w,e,ind,sov,min_lock,now,height);
+  proven:[KY_KEYS]bool;n:=ky_proofs_wanted(a,e);
+  for i:0..<n {proven[i]=ky_possession(e[i],x);}
+  return ky_admit_proofs(a,w,proven[0..<n]);
+}
+```
+
+A key agent makes its proof with chapter 96's signer,
+`bip322_sign_vartime`, given the address and message above and its private
+key at `account/0/0`. ECDSA here takes its nonce from RFC 6979, so the
+same key and message always give the same proof.
+
+### Worked example: alice's proof by hand
+
+alice's enrollment has agent `79be667e...16f81798`, wallet `7777...7777`
+and xpub `[78c16713/48h/1h/0h/2h]tpubDFBC6...emFm3Gd`.
+
+1. The JSON is
+   `{"agent":"79be667e...","wallet":"7777...","xpub":"[78c16713/48h/1h/0h/2h]tpubDFBC6...emFm3Gd"}`,
+   296 bytes. Its SHA-256 is `963a6edb...db1123a0`, so the message is
+   `sha256:963a6edba8240b48b5924d671b6fe9b0ad0696c10e513539c9662c45db1123a0`,
+   71 characters.
+2. The key at `xpub/0/0` is
+   `027ae41a7f786c8d6e8397a1a1b1f9099315fd201fa8afe680cadb206bacc39f74`.
+   It is the first key in receive 0's witness script, and the key alice
+   signs the spend's first input with later in this chapter.
+3. HASH160 of that key is `72369fbd9ef1c382297e34679259e782b224578a`, so
+   the challenge is `0014 72369fbd...b224578a`, 22 bytes. As an address it
+   is `tb1qwgmfl0v778pcy2t7x3neyk08s2ezg4u2zm4cyu` on signet and
+   `bc1qwgmfl0v778pcy2t7x3neyk08s2ezg4u2gawtl0` in the form the verifier
+   takes.
+4. The message's tagged hash, SHA-256 with the tag
+   `BIP0322-signed-message`, is `5c013660...e6338bc8`. `to_spend` is 116
+   bytes: version 0, one input from the all-zero outpoint with index
+   `ffffffff` and the scriptSig `00 20 5c013660...e6338bc8`, one output of 0
+   to the challenge, lock time 0. Its txid is
+   `a0dba5f17a5ee7327e0a3a7a6ac3663f9aa0ee9ea8065095ce2df3d371f18016`.
+5. `to_sign` spends output 0 of that txid and pays 0 to `OP_RETURN`. Its
+   BIP-143 digest is signed with the key from step 2. The witness is two
+   items: a 72-byte signature ending in hash type `01`, and the 33-byte
+   key. Written as a stack it is 108 bytes,
+   `02 48 3045022100c4526b2b...520ee2d901 21 027ae41a...acc39f74`.
+6. Base64 of those 108 bytes after `smp` is the field, 147 characters:
+   `smpAkgwRQIhAMRSayunavRoLmgt...IGusw590`.
+
+To verify, a reader repeats steps 1 to 4 from the enrollment alone, puts
+the witness on `to_sign`, and runs the P2WPKH script: the key must hash to
+the challenge and the signature must verify.
+
+Change one thing and it fails. The same key's proof for wallet
+`7878...7878` signs a different message, so in this wallet the signature
+doesn't verify. alice's proof in keyco's enrollment carries alice's key,
+which doesn't hash to keyco's challenge. Both are in the example.
 
 ## The signer
 
@@ -1094,12 +1308,33 @@ Core shares no code with the Coax signer, so the descriptor alone is enough
 to recover the coins. The run's record is
 [2026-11-05-nostr-ch104-treasury-network](../../docs/verification/2026-11-05-nostr-ch104-treasury-network/README.md).
 
+That run is from 2026-11-05, before the enrollments carried real
+possession proofs. The proofs change each enrollment's digest, and so the
+wallet record's digest and the request's wallet reference. On 2026-11-12
+the run was repeated with the new records and Bitcoin Core 31.1, twice,
+and passed both times
+([the record](../../docs/verification/2026-11-12-nostr-ch104-possession-and-private-signet/README.md)).
+
+The second time was on a private signet: `CHAIN=signet` starts Core with
+`-signet -signetchallenge=51`. Signet (BIP-325) is a chain whose blocks
+must satisfy a challenge script, and `51` is `OP_TRUE`, so this node signs
+its own blocks and needs no faucet. Core then works with the treasury's own
+`tb1` addresses, the ones the wallet record's `network: signet` means,
+where regtest needed them rewritten as `bcrt1`. The key agents sign, the
+PSBT with another payee is refused, Core confirms the spend, and its wallet
+recovers 79,000 sat from the descriptor, as in regtest. The script rules
+are the same on both chains, so this adds the addresses and nothing more.
+It is not the public signet: the node has no peers and nothing reaches
+anyone else.
+
 ## The example
 
 The example is
 [nostr/examples/agent-treasury.coax](../examples/agent-treasury.coax). It
 reads the three enrollments and the wallet, recomputes the descriptor,
-admits the wallet, tries the two broken declarations, derives receive 0
+verifies each possession proof and admits the wallet, makes alice's proof
+again from her account key, tries two bad proofs and the two broken
+declarations, derives receive 0
 and change 0, runs the request through all three signers, then the PSBT
 with a different payee, five broken requests, the ledger and the timelock,
 rotation, delay and hot-ceiling checks. Then each agent signs the spend
@@ -1109,10 +1344,10 @@ sign the PSBT with the other payee.
 
 <!-- source: nostr/examples/agent-treasury.coax example -->
 ```jai
-KY_WORDS :: [43]string.["ok","json","version","field","wallet","holder","revision","network","descriptor","checksum","family","paths",
+KY_WORDS :: [44]string.["ok","json","version","field","wallet","holder","revision","network","descriptor","checksum","family","paths",
   "threshold","timelock","primary","enrollment","key_order","xpub","recipient","times","attestation","operator","sovereign","recovery",
   "attested_only","weakening","approval","psbt","inputs","outputs","amount","address","change","fee","ceiling","nonce","deadline","locked",
-  "retired","compromised","delay","hot","not_built"];
+  "retired","compromised","delay","hot","not_built","possession"];
 NAMES :: [3]string.["alice","keyco","enclave"];
 CEILING :: [3]int.[2000,1000,1500];   // each signer's fee ceiling, satoshis
 kw :: (c:KyCode)->string {return KY_WORDS[cast(int)c];}
@@ -1147,11 +1382,31 @@ main :: () {
   d:[4096]u8;n:=ky_descriptor(w,p.e[..],d[..]);
   print("recomputed descriptor (% bytes) ends %\n",n,cast(string)d[n-40..<n]);
   print("equal to the wallet's: %\n",cast(string)d[0..<n]==w.descriptor);
-  a:=ky_admit(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0);
+
+  print("possession proofs (BIP-322, the key at xpub/0/0)\n");
+  bx:[1]B322Work;mb:[KY_PROOF_TEXT]u8;ab:[90]u8;hp:[68]u8;
+  for i:0..<3 {
+    print("%: message %...\n",NAMES[i],ky_possession_message(p.e[i],mb[..])[0..<23]);
+    ch:=ky_possession_script(p.e[i]);
+    print("  challenge %, proof % characters: %\n",to_hex(ch.b[0..<22],hp[..]),p.e[i].possession.count,ky_possession(p.e[i],bx[..]));
+  }
+  a:=ky_admit_proven(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,bx[..]);
   print("admit: %, possession proven: %\n",kw(a.code),a.proven);
+  // alice makes her proof again: the key at account/0/0, chapter 96's signer.
+  pa:=account_of(0);pw:[1]KySignWork;made:[256]u8;none32:[32]u8;
+  ok:=ky_slot_key(pa[..],0,pw[..]);
+  mn:=bip322_sign_vartime(ky_possession_address(p.e[0],ab[..]),ky_possession_message(p.e[0],mb[..]),pw[0].k2[..],made[0..<0],B322_SIMPLE,0,0,0,none32[..],bx[..],made[..]);
+  ky_sign_clear(pw[..]);
+  print("alice signs hers again from her account key: equal to the enrollment's: %\n",ok && mn>0 && cast(string)made[0..<mn]==p.e[0].possession);
+  q:=p;q.e[1].possession=p.e[0].possession;
+  print("keyco's enrollment with alice's proof: %\n",kw(ky_admit_proven(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,bx[..]).code));
+  bad:=ky_enrollment_read(KY_AGENT1,KY_ENR1_BAD_PROOF);
+  print("keyco's enrollment with the proof its key made for wallet %...: read %, proven %\n",KY_OTHER_WALLET_ID[0..<8],kw(bad.code),ky_possession(bad,bx[..]));
+  bad.wallet=KY_OTHER_WALLET_ID;
+  print("  the same proof read against wallet %...: %\n",KY_OTHER_WALLET_ID[0..<8],ky_possession(bad,bx[..]));
 
   print("composition rule 1 and 2, by declaration\n");
-  q:=p;q.ind[2].op="keyco-llc";
+  q=p;q.ind[2].op="keyco-llc";
   print("enclave declares keyco-llc: %\n",kw(ky_admit(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code));
   q=p;q.ind[2].op="alice-agent";
   print("enclave declares alice-agent, holder a SOV agent: %\n",kw(ky_admit(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code));
@@ -1252,7 +1507,18 @@ the wallet
 read ok, network signet, revision 0, 1 path: primary needs 2 of 3 keys, timelock none
 recomputed descriptor (457 bytes) ends PmBUisT1sfsHbJRSwJ8vg/<0;1>/*))#660mkcnk
 equal to the wallet's: true
-admit: ok, possession proven: false
+possession proofs (BIP-322, the key at xpub/0/0)
+alice: message sha256:963a6edba8240b48...
+  challenge 001472369fbd9ef1c382297e34679259e782b224578a, proof 147 characters: true
+keyco: message sha256:8e038bb18c14c3ef...
+  challenge 001447c3077aae94bb866ba6e743a75c2661b203b6c9, proof 147 characters: true
+enclave: message sha256:427f822bfcf1fd53...
+  challenge 0014b231386756fd222528db030b9e5afe6d67c2cde7, proof 147 characters: true
+admit: ok, possession proven: true
+alice signs hers again from her account key: equal to the enrollment's: true
+keyco's enrollment with alice's proof: possession
+keyco's enrollment with the proof its key made for wallet 78787878...: read ok, proven false
+  the same proof read against wallet 78787878...: true
 composition rule 1 and 2, by declaration
 enclave declares keyco-llc: operator
 enclave declares alice-agent, holder a SOV agent: sovereign
@@ -1305,9 +1571,12 @@ txid 101d9f23d34871c476143aa4d9f64cfd2ea71cada47c93ed4c654c0d58361347 (Python's:
 alice asked to sign the PSBT paying tb1qz5tpwxqe: outputs, 0 signatures
 ```
 
-The refusal to look at is the PSBT whose first output pays an address the
-request doesn't name: `outputs` from every signer, and no signature when
-alice is asked to sign it. The signatures that follow are the ones
+Two refusals to look at. The first is `possession`: keyco's enrollment
+carrying alice's proof is refused at admission, and the proof keyco's own
+key made for wallet `7878...` proves nothing in this wallet, though it
+verifies against the wallet it names. The second is the PSBT whose first
+output pays an address the request doesn't name: `outputs` from every
+signer, and no signature when alice is asked to sign it. The signatures that follow are the ones
 libsecp256k1 makes for the same keys and digests, and alice's and keyco's
 combine into the 675-byte transaction Python built; alice alone can't.
 
@@ -1345,6 +1614,37 @@ passed 345 checks (its own, `kept.coax`'s 6 and the loaded units'), all 20
 root-only shards merged to 1970 mutants, 1970 killed, 0 survived, none
 marked equivalent, and `kept.coax`'s own run killed all 173.
 `nipkeys_sign.coax` passed 509 checks and the example's checks file 512.
+On 2026-11-12 the reader began keeping `possession`, `KyCode` gained
+`possession`, and the fixtures' enrollments took real proofs, which changed
+every digest the checks quote. The file passed 375 checks, and 8 root-only
+shards merged to 1947 mutants, 1947 killed, 0 survived, none marked
+equivalent. `nipkeys_sign.coax` (525 checks) and `nipkeys_carry.coax`
+(456 checks) were not edited and pass with the new fixtures; their
+mutation runs were not repeated.
+
+`coax/lib/nostr/nipkeys_possess.coax` holds the possession rules and is
+`#authority`. It passed 394 checks (its own five and `nipkeys.coax`'s), and
+on 2026-11-12 six root-only shards merged to 84 mutants, 84 killed, 0
+survived, none marked equivalent. The pass before left 6 of 81 alive, each
+pointing at code with no effect: a second length test on the message
+buffer, a slice bound the hash never reached, an address length compared
+with 0 where only 42 or an error can come back, and a cap on the number of
+proofs that returned the same count either way. The buffer test is an
+assertion now, the hash goes through 20 bytes of its own, the length is
+compared with 42, and more enrollments than a wallet has keys ask for no
+proofs. Its checks hold the message against Python's for all three agents
+and at both buffer boundaries, the script against Python's key, the address
+against Python's bech32, BIP-322's three answers, and admission with one
+answer missing, one too many, and each one false.
+
+`coax/lib/nostr/nipkeys_proof.coax` joins those rules to BIP-322's verifier
+and is not `#authority`: it has no rule of its own, and a mutation run that
+loads `bip322.coax` did not finish a sixth of its mutants in 15 minutes
+here (Bitcoin chapter 96 records that `bip322.coax` itself has had no
+mutation run). Its 639 checks, the loaded units' included, run the real
+verifier: every agent's proof, the proof for another wallet, another key's
+proof, another agent's name, one changed character, and the whole
+admission.
 
 The signing files are `#authority` too. On 2026-11-01 root-only mutation
 left zero survivors in `coax/lib/crypto/ecdsa_sign.coax` (224 mutants,
@@ -1414,6 +1714,15 @@ compare the code with values it didn't produce:
   the final transaction and verifies every signature over its own digest
   and in the witness script's key order. The Coax signatures, PSBTs and
   transaction are equal to these bytes.
+- the possession proofs from `keys_reference.py`: Python derives each
+  agent's private key at `account/0/0`, builds the message and the P2WPKH
+  challenge, and signs and verifies with
+  [bip322_reference.py](../../coax/tests/bitcoin/bip322_reference.py), a
+  pure-Python BIP-322 with its own script interpreter. Coax verifies those
+  proofs, and Coax's signer, given the same keys, writes the same 147
+  characters;
+- BIP-322's published P2WPKH signature of `Hello World`, which passes
+  through the same verifier.
 
 RFC 6979 itself has no secp256k1 vectors (its appendix covers the NIST and
 binary curves), so the nonce is checked against an independent Python
@@ -1448,19 +1757,52 @@ HMAC-DRBG and through the libsecp256k1 equality above.
 }
 ```
 
+The possession proofs are checked in both directions, and the verifier
+against a vector neither side wrote:
+
+<!-- source: nostr/examples/checks/agent-treasury.coax possession_check -->
+```jai
+// Possession proofs in both directions. Python (keys_reference.py with
+// bip322_reference.py, pure integers) signed the proofs in the fixtures;
+// Coax verifies them. Then Coax signs: each agent's key at account/0/0,
+// derived from its account key, through chapter 96's BIP-322 signer, gives
+// the bytes Python wrote. The verifier is anchored outside both: BIP-322's
+// published P2WPKH signature of "Hello World" passes through it too.
+#test "possession: Python's proofs verify, Coax signs the same bytes, BIP-322's vector passes" #steps 20000000000 {
+  x:[1]B322Work;p:=ky_parties();
+  for i:0..<3 {
+    m:[KY_PROOF_TEXT]u8;a:[90]u8;out:[256]u8;aux:[32]u8;work:[1]KySignWork;acct:=account_of(i);
+    #assert ky_possession(p.e[i],x[..]);
+    #assert ky_possession_message(p.e[i],m[..])==KY_PROOF_MESSAGE[i];
+    #assert ky_slot_key(acct[..],0,work[..]);
+    n:=bip322_sign_vartime(ky_possession_address(p.e[i],a[..]),KY_PROOF_MESSAGE[i],work[0].k2[..],out[0..<0],B322_SIMPLE,0,0,0,aux[..],x[..],out[..]);
+    #assert n>0 && cast(string)out[0..<n]==p.e[i].possession;
+  }
+  v:=B322_CASES[2];
+  #assert v.source=="basic simple" && v.message=="Hello World" && v.state==B322_VALID && b322_case_passes(v,x[..]);
+  // The conformance fixture NIP-KEYS asks for: an enrollment with a bad
+  // possession proof reads, and admission of a wallet that names it stops
+  // at the proof.
+  bad:=ky_enrollment_read(KY_AGENT1,KY_ENR1_BAD_PROOF);
+  #assert bad.code==KyCode.ok && !ky_possession(bad,x[..]);
+  w:=ky_wallet_read(KY_WALLET);q:=p;q.e[1].possession=bad.possession;
+  r:=ky_admit_proven(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,x[..]);
+  #assert r.code==KyCode.possession && !r.proven;
+}
+```
+
 NIP-KEYS has no worked examples or JSON fixtures of its own, so there are no
 published record IDs to compare with; the record bytes and their digests
 come from the Python reference.
 
 ## Not built
 
-- **A broadcast on signet.** The spend and the recovery run in regtest,
-  where Bitcoin Core runs the script; signet needs signet coins, and the
-  public faucets hand them out only behind a captcha or a GitHub sign-in.
-  The same tools broadcast through a public signet explorer once a faucet
-  pays the treasury's receive address.
-- **BIP-322 possession proofs** are read and not verified: `ky_admit`
-  returns `proven: false`, and nothing here moves coins.
+- **A broadcast on the public signet.** The spend and the recovery run in
+  regtest and on a private signet, where Bitcoin Core runs the script. The
+  public signet needs signet coins, and the public faucets hand them out
+  only behind a captcha or a GitHub sign-in. The same tools broadcast
+  through a public signet node once a faucet pays the treasury's receive 0,
+  `tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2`.
 - **Miniscript spends.** Wallets with a recovery path are admitted (their
   descriptor is recomputed), but the signer refuses their spends as
   `not_built`; three or more paths refuse at admission.
@@ -1475,16 +1817,26 @@ come from the Python reference.
 - Showing the holder the attributes two keys in a quorum share
   (jurisdictions, vendors, hosts, affiliations).
 
+NIP-KEYS says a possession proof is a BIP-322 signature "by the key at its
+first receive derivation over the digest of `{wallet, agent, xpub}`" and
+stops there. The message text, the JSON it hashes and the P2WPKH challenge
+in [Possession](#possession-proving-the-key-is-held) are this chapter's
+reading, and the NIP doesn't state them yet.
+
 Adding `NIP-KEYS.md` changed the OpenAgents NIP folder digest pinned in
-`coax/tests/nostr/profiles.py` (now `fb7563e7…`, pinned `2fb1f51f…`). The
-owner reviews the NIP before it is re-pinned; this chapter doesn't re-pin
-it.
+`coax/lib/nostr/profiles.coax` and `profiles.json` (`2fb1f51f…`), and other
+NIPs in the folder have changed since, so the pin test in
+`coax/tests/nostr/profiles.py` fails. The owner reviews the NIP before it
+is re-pinned; this chapter doesn't re-pin it.
 
 ## Summary
 
 - A NIP-KEYS wallet is admitted only if its BIP-380 descriptor is the one
   its paths and enrollments describe, and only if no operator, and no
   sovereign holder, can meet a threshold alone.
+- Every enrollment proves its key: a BIP-322 signature by the key at
+  `xpub/0/0` over the digest of the wallet, the agent and the xpub. A proof
+  from another key, or for another wallet, refuses as `possession`.
 - A signer derives the wallet's scripts from xpubs, reads the PSBT, and
   refuses any input that isn't the wallet's, any output, amount or change
   that differs from the request, and any fee that differs or exceeds its
@@ -1497,7 +1849,8 @@ it.
   signatures for the same PSBT to build the transaction.
 - Requests and receipts travel as 3188 artifacts over a Coax relay; Bitcoin
   Core confirms the spend, and recovers the coins from the descriptor with
-  its own wallet. A signet broadcast is the step left.
+  its own wallet, in regtest and on a private signet. A broadcast on the
+  public signet is the step left.
 
 ## Dependencies
 

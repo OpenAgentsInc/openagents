@@ -30,3 +30,32 @@
   #assert sha256_hash_checked(ps,d[..],false)==SHA_OK && a3_hex_is(d[..],"4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812");
 }
 // book:end check
+// book:begin possession_check
+// Possession proofs in both directions. Python (keys_reference.py with
+// bip322_reference.py, pure integers) signed the proofs in the fixtures;
+// Coax verifies them. Then Coax signs: each agent's key at account/0/0,
+// derived from its account key, through chapter 96's BIP-322 signer, gives
+// the bytes Python wrote. The verifier is anchored outside both: BIP-322's
+// published P2WPKH signature of "Hello World" passes through it too.
+#test "possession: Python's proofs verify, Coax signs the same bytes, BIP-322's vector passes" #steps 20000000000 {
+  x:[1]B322Work;p:=ky_parties();
+  for i:0..<3 {
+    m:[KY_PROOF_TEXT]u8;a:[90]u8;out:[256]u8;aux:[32]u8;work:[1]KySignWork;acct:=account_of(i);
+    #assert ky_possession(p.e[i],x[..]);
+    #assert ky_possession_message(p.e[i],m[..])==KY_PROOF_MESSAGE[i];
+    #assert ky_slot_key(acct[..],0,work[..]);
+    n:=bip322_sign_vartime(ky_possession_address(p.e[i],a[..]),KY_PROOF_MESSAGE[i],work[0].k2[..],out[0..<0],B322_SIMPLE,0,0,0,aux[..],x[..],out[..]);
+    #assert n>0 && cast(string)out[0..<n]==p.e[i].possession;
+  }
+  v:=B322_CASES[2];
+  #assert v.source=="basic simple" && v.message=="Hello World" && v.state==B322_VALID && b322_case_passes(v,x[..]);
+  // The conformance fixture NIP-KEYS asks for: an enrollment with a bad
+  // possession proof reads, and admission of a wallet that names it stops
+  // at the proof.
+  bad:=ky_enrollment_read(KY_AGENT1,KY_ENR1_BAD_PROOF);
+  #assert bad.code==KyCode.ok && !ky_possession(bad,x[..]);
+  w:=ky_wallet_read(KY_WALLET);q:=p;q.e[1].possession=bad.possession;
+  r:=ky_admit_proven(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,x[..]);
+  #assert r.code==KyCode.possession && !r.proven;
+}
+// book:end possession_check

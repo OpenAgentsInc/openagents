@@ -18,14 +18,15 @@
 //   compromised agents in a sweep, the attested co-signer's large-spend
 //   delay and the hot-balance ceiling.
 //
-// Not built: producing any signature (ECDSA with BIP-143 sighashes for wsh,
-// Schnorr with BIP-341 sighashes for tr), BIP-322 possession proofs (read,
-// never verified: ky_admit reports proven=false), PSBT v2, Taproot tr()
+// Signatures are nipkeys_sign.coax's. An enrollment's BIP-322 possession
+// proof is kept here and verified by nipkeys_possess.coax: ky_admit applies
+// every admission rule but that one and reports proven=false, and
+// ky_admit_proven is the whole admission. Not built: PSBT v2, Taproot tr()
 // descriptors, miniscript script compilation for wallets with a recovery
 // path (their descriptors are recomputed, their spends refuse not_built),
-// receipt, liveness, rotation and agency-terms bodies, the 3188 transport,
-// and anything on signet. MuSig2 and FROST are out of scope in NIP-KEYS v1
-// and refuse as an unknown family.
+// and liveness, rotation and agency-terms bodies. The 3188 transport is
+// nipkeys_carry.coax's. MuSig2 and FROST are out of scope in NIP-KEYS v1 and
+// refuse as an unknown family.
 //
 // The caller verifies each 3188 artifact's signature and recipients first
 // and passes the signer and the decrypted body.
@@ -38,7 +39,7 @@
 #load "../kept.coax";
 #authority;
 
-KyCode :: enum u8 {ok;json;version;field;wallet;holder;revision;network;descriptor;checksum;family;paths;threshold;timelock;primary;enrollment;key_order;xpub;recipient;times;attestation;operator;sovereign;recovery;attested_only;weakening;approval;psbt;inputs;outputs;amount;address;change;fee;ceiling;nonce;deadline;locked;retired;compromised;delay;hot;not_built;}
+KyCode :: enum u8 {ok;json;version;field;wallet;holder;revision;network;descriptor;checksum;family;paths;threshold;timelock;primary;enrollment;key_order;xpub;recipient;times;attestation;operator;sovereign;recovery;attested_only;weakening;approval;psbt;inputs;outputs;amount;address;change;fee;ceiling;nonce;deadline;locked;retired;compromised;delay;hot;not_built;possession;}
 
 KY_PATHS :: 8;             // spending paths in one wallet
 KY_KEYS :: 16;             // enrollments in one wallet, keys in one path
@@ -57,7 +58,7 @@ KyWallet :: struct {
   npaths:int;paths:[KY_PATHS]KyPath;nenroll:int;enrollments:[KY_KEYS][32]u8;nrecip:int;recipients:[KY_KEYS][32]u8;
   starts_at:int;expires_at:int;
 }
-KyEnrollment :: struct {code:KyCode;digest:[32]u8;agent:string;wallet:string;xpub:string;key:string;attested:bool;independence:string;expires_at:int;}
+KyEnrollment :: struct {code:KyCode;digest:[32]u8;agent:string;wallet:string;xpub:string;key:string;possession:string;attested:bool;independence:string;expires_at:int;}
 KyIndependence :: struct {code:KyCode;digest:[32]u8;agent:string;op:string;}
 KyStated :: struct {address:string;amount:int;change:bool;}
 KyRequest :: struct {code:KyCode;digest:[32]u8;wallet:string;requester:string;psbt:string;nout:int;out:[KY_IO]KyStated;fee:int;nonce:string;deadline:int;}
@@ -392,7 +393,7 @@ ky_enrollment_read :: (signer:string,content:string)->KyEnrollment #effects(all)
       if t!=JSON_STRING {return ky_efail(KyCode.xpub);}
       e.key=ky_origin(s);if !ky_ext_key(e.key).ok {return ky_efail(KyCode.xpub);}e.xpub=s;
     }
-    else if f==6 {if t!=JSON_STRING || s.count==0 {return ky_efail(KyCode.field);}}   // BIP-322: read, not verified
+    else if f==6 {if t!=JSON_STRING || s.count==0 {return ky_efail(KyCode.field);}e.possession=s;}   // BIP-322: verified by ky_possession
     else if f==7 {
       if t!=JSON_STRING || !(json_is(s,"software") || json_is(s,"hardware") || json_is(s,"attested") || json_is(s,"institutional")) {return ky_efail(KyCode.field);}
       cls=s;
@@ -536,8 +537,9 @@ ky_recipient :: (w:KyWallet,key:string)->bool #effects(all) {b:=ky_bytes(key);fo
 // chain tip). e and ind are the enrollments in the wallet's order and each
 // one's independence declaration. sov: the holder is a NIP-SOV agent.
 // min_lock: the holder policy's shortest recovery timelock (KY_MIN_LOCK
-// unless the policy says otherwise). proven stays false: possession proofs
-// (BIP-322) are read and not verified in this build.
+// unless the policy says otherwise). proven stays false here: this is
+// every rule but the possession proofs, which need chapter 96's BIP-322
+// verifier. ky_admit_proven (nipkeys_possess.coax) runs this and then them.
 ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int)->KyAdmit #effects(all) {
   r:KyAdmit;r.code=w.code;
   if w.code!=KyCode.ok {return r;}
@@ -923,12 +925,12 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   #assert a3_hex_is(d[..],"23975c6df71a336f019e2a2b8b55f6046e62ab77c6aa9ace2bad65b94d54e44a");
   short:[31]u8;#assert !ky_sha("abc",short[..]);
   w:=ky_bytes(KY_WALLET_DIGEST);
-  ref:="sha256:2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323";
+  ref:="sha256:8b87901ecb1541c57e60cd8e73d29bfd2b80f4b79545a281e46db72be1fd3f88";
   #assert ky_digest_is(ref,w) && !ky_digest_is(ref[0..<70],w);
-  #assert !ky_digest_is(ky_case(c[..],ref,"2beb","3beb"),w);
-  #assert !ky_digest_is(ky_case(c[..],ref,"2beb","2ceb"),w);
-  #assert !ky_digest_is(ky_case(c[..],ref,"6323","6322"),w);
-  #assert !ky_digest_is(ky_case(c[..],ref,"6323","6333"),w);
+  #assert !ky_digest_is(ky_case(c[..],ref,"8b87","9b87"),w);
+  #assert !ky_digest_is(ky_case(c[..],ref,"8b87","8c87"),w);
+  #assert !ky_digest_is(ky_case(c[..],ref,"3f88","3f87"),w);
+  #assert !ky_digest_is(ky_case(c[..],ref,"3f88","3f98"),w);
   #assert ky_eq32(w,w) && !ky_eq32(w,b);
   v:=w;v[31]^=1;#assert !ky_eq32(w,v);
   #assert ky_nibble('0')==0 && ky_nibble('9')==9 && ky_nibble('a')==10 && ky_nibble('f')==15;
@@ -1043,10 +1045,10 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"threshold\":2","\"threshold\":2,\"threshold\":2")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"name\":\"primary\"","\"nom\":\"primary\"")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"keys\":[{","\"keys\":[1,{")).code==KyCode.paths;
-  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:1e1959c86c68ae20c27fdb36082562b0f754a47e6c4fa8f5f6db1924985283b5\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:04479e7fac2c45c7f116542d1b1ed8b7fe01098052e0e2303d437261603a782c\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":964}]","\"keys\":[]")).code==KyCode.paths;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":938},{\"digest\":\"sha256:0eea84201516d9b7f0f44a0ee59d7995cce850b213ee02431d4b73376070b908\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":938},{\"digest\":\"sha256:7627125aa0b164949da11968e2a4cae4a0ca3b98af0b56d5345258857d604084\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":1099}]","\"keys\":[]")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"timelock\":null","\"timelock\":{\"older\":4320}")).code==KyCode.primary;
-  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":{\"after\":9}},{")).paths[0].after==9;
-  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":{\"older\":9}},{")).paths[0].older==9;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":{\"after\":9}},{")).paths[0].after==9;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":{\"older\":9}},{")).paths[0].older==9;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"timelock\":null","\"timelock\":{\"older\":0}")).code==KyCode.timelock;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"timelock\":null","\"timelock\":{\"older\":1}")).code==KyCode.primary;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"timelock\":null","\"timelock\":{\"older\":\"1\"}")).code==KyCode.timelock;
@@ -1055,10 +1057,10 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"timelock\":null","\"timelock\":{}")).code==KyCode.timelock;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"timelock\":null","\"timelock\":7")).code==KyCode.timelock;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,",\"timelock\":null","")).code==KyCode.paths;
-  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"primary\",\"threshold\":1,\"timelock\":{\"older\":9}},{")).code==KyCode.paths;
-  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":{\"older\":9}},{")).npaths==2;
-  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":null},{")).code==KyCode.primary;
-  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":2,\"timelock\":null},{")).code==KyCode.threshold;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"a\",\"size\":1}],\"name\":\"primary\",\"threshold\":1,\"timelock\":{\"older\":9}},{")).code==KyCode.paths;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":{\"older\":9}},{")).npaths==2;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":1,\"timelock\":null},{")).code==KyCode.primary;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[{\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r\",\"threshold\":2,\"timelock\":null},{")).code==KyCode.threshold;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[],\"x\":[{")).code==KyCode.field;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[{","\"paths\":[],\"meta\":[{")).code!=KyCode.ok;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"enrollments\":[{","\"enrollments\":[1,{")).code==KyCode.enrollment;
@@ -1071,7 +1073,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   #assert ky_primary(w)==0;
   // one enrollment, one recipient
   c3:[4096]u8;
-  #assert ky_wallet_read(ky_case(c3[..],ky_case(c[..],KY_WALLET,"\"enrollments\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},","\"enrollments\":["),"{\"digest\":\"sha256:1e1959c86c68ae20c27fdb36082562b0f754a47e6c4fa8f5f6db1924985283b5\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},","")).nenroll==1;
+  #assert ky_wallet_read(ky_case(c3[..],ky_case(c[..],KY_WALLET,"\"enrollments\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":938},","\"enrollments\":["),"{\"digest\":\"sha256:0eea84201516d9b7f0f44a0ee59d7995cce850b213ee02431d4b73376070b908\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":938},","")).nenroll==1;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",","")).nrecip==1;
   pp:=w;pp.npaths=2;pp.paths[1]=w.paths[0];#assert ky_primary(pp)==0;   // the first path with no timelock
   pp.npaths=1;pp.paths[0].older=9;#assert ky_primary(pp)==0;   // none: 0
@@ -1080,7 +1082,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   many:[2048]u8;m:=json_raw(many[..],0,"\"paths\":[");
   for k:0..<KY_PATHS {
     if k==KY_PATHS-1 {big:=ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[",cast(string)many[0..<m]));#assert big.code==KyCode.ok && big.npaths==KY_PATHS;}
-    m=json_raw(many[..],m,"{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r");
+    m=json_raw(many[..],m,"{\"keys\":[{\"digest\":\"sha256:9d004f643025cbd222fc643a54b492f9a94a0167c4973161d92a8d57f0f50c7c\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r");
     many[m]=cast(u8)('a'+k);m+=1;
     m=json_raw(many[..],m,"\",\"threshold\":1,\"timelock\":{\"older\":9}},");
   }
@@ -1091,6 +1093,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   e:=ky_enrollment_read(KY_AGENT2,KY_ENR2);
   #assert e.code==KyCode.ok && e.agent==KY_AGENT2 && e.wallet==KY_WALLET_ID && e.attested && e.expires_at==1795000000;
   #assert e.key[0..<4]=="tpub" && e.xpub[0..<10]=="[66d2046a/";
+  #assert e.possession.count==147 && e.possession[0..<10]=="smpAkgwRQI" && e.possession[139..<147]=="W8E3M/m0";
   #assert e.independence=="sha256:33dc2fa6282283af7f8620d5335761fa6a79fefaa24012b71c3652fbabd668dd";
   w:=ky_wallet_read(KY_WALLET);#assert ky_eq32(e.digest,w.enrollments[2]);
   #assert !ky_enrollment_read(KY_AGENT0,KY_ENR0).attested;
@@ -1116,8 +1119,8 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"xpub\":\"[","\"xpub\":7,\"y\":\"[")).code==KyCode.xpub;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"JRSwJ8vg","JRSwJ8vh")).code==KyCode.xpub;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"[66d2046a/","[66d2046a]/")).code==KyCode.xpub;
-  #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"possession\":\"AkcwRAIgAAAA\"","\"possession\":\"\"")).code==KyCode.field;
-  #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"possession\":\"AkcwRAIgAAAA\"","\"possession\":1")).code==KyCode.field;
+  #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"possession\":\"smpAkgwRQIhAPKY0rsnltATxj8CGcUUB/pnAkre9wUD0yM9jIFzFLBlAiBhs9v7bR9BatLGStZnBcy/dGpRsu2IF+i2FW+QByODhgEhA+RzZN848chq7m4+FvrXZowvcO8120s0pwdsW8E3M/m0\"","\"possession\":\"\"")).code==KyCode.field;
+  #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"possession\":\"smpAkgwRQIhAPKY0rsnltATxj8CGcUUB/pnAkre9wUD0yM9jIFzFLBlAiBhs9v7bR9BatLGStZnBcy/dGpRsu2IF+i2FW+QByODhgEhA+RzZN848chq7m4+FvrXZowvcO8120s0pwdsW8E3M/m0\"","\"possession\":1")).code==KyCode.field;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"class\":\"attested\"","\"class\":\"cloud\"")).code==KyCode.field;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"class\":\"attested\"","\"class\":1")).code==KyCode.field;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"class\":\"attested\"","\"class\":\"software\"")).code==KyCode.attestation;
@@ -1509,12 +1512,12 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   #assert rq.code==KyCode.ok && rq.requester==KY_HOLDER && rq.deadline==1793200000 && rq.fee==1000;
   #assert rq.nonce=="9999999999999999999999999999999999999999999999999999999999999999";
   #assert rq.psbt=="sha256:4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812";
-  #assert rq.wallet=="sha256:2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323";
+  #assert rq.wallet=="sha256:8b87901ecb1541c57e60cd8e73d29bfd2b80f4b79545a281e46db72be1fd3f88";
   #assert rq.nout==2 && rq.out[1].address==KY_CHANGE0 && rq.out[1].amount==29000 && rq.out[1].change && !rq.out[0].change;
   #assert ky_request_read("[]").code==KyCode.json;
   #assert ky_request_read("{\"v\":\"openagents.keys-sign-request.v1\"").code==KyCode.json;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"{\"action\"","{1:2,\"action\"")).code==KyCode.json;
-  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"size\":2081}}","\"size\":2081}}x")).code==KyCode.json;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"size\":2083}}","\"size\":2083}}x")).code==KyCode.json;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"sign-request.v1","sign-request.v2")).code==KyCode.version;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"v\":\"openagents.keys-sign-request.v1\"","\"v\":1")).code==KyCode.version;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"v\":\"openagents.keys-sign-request.v1\",","")).code==KyCode.field;
@@ -1528,7 +1531,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"action\":null","\"action\":{\"a\":1}")).code==KyCode.ok;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"action\":null","\"action\":1")).code==KyCode.field;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"treasury\":null","\"treasury\":[]")).code==KyCode.field;
-  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"wallet\":{\"digest\":\"sha256:2b","\"wallet\":{\"digest\":\"sha256:2")).code==KyCode.wallet;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"wallet\":{\"digest\":\"sha256:8b","\"wallet\":{\"digest\":\"sha256:8")).code==KyCode.wallet;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"wallet\":{","\"wallet\":1,\"z\":{")).code==KyCode.wallet;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"psbt\":{\"digest\":\"sha256:4d","\"psbt\":{\"digest\":\"sha256:4")).code==KyCode.psbt;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"psbt\":{","\"psbt\":1,\"z\":{")).code==KyCode.psbt;
@@ -1656,7 +1659,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode #effects(all)
   p.after=0;#assert ky_path_open(p,5,0)==KyCode.ok;
   p.older=1;#assert ky_path_open(p,KY_H0+1,KY_H0)==KyCode.locked && ky_path_open(p,KY_H0,KY_H0)==KyCode.ok;
   p.older=0;p.after=1;#assert ky_path_open(p,0,0)==KyCode.locked && ky_path_open(p,0,1)==KyCode.ok;p.after=0;
-  d:=ky_bytes(KY_WALLET_DIGEST);sweeps:=[1]string.["sha256:2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323"];
+  d:=ky_bytes(KY_WALLET_DIGEST);sweeps:=[1]string.["sha256:8b87901ecb1541c57e60cd8e73d29bfd2b80f4b79545a281e46db72be1fd3f88"];
   none:[1]string;
   #assert ky_retired(false,d,none[0..<0])==KyCode.ok && ky_retired(true,d,sweeps[..])==KyCode.ok && ky_retired(true,d,none[0..<0])==KyCode.retired;
   o:=d;o[3]^=1;#assert ky_retired(true,o,sweeps[..])==KyCode.retired;

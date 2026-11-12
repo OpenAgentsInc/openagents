@@ -1,0 +1,200 @@
+// Chapter 104: NIP-KEYS possession proofs, the rules. An enrollment offers
+// one xpub to one wallet, and its `possession` field proves the key agent
+// holds the private key behind that xpub: a BIP-322 signature by the key at
+// the xpub's first receive derivation (xpub/0/0) over the digest of
+// {wallet, agent, xpub}. Admission verifies it, so nobody can enroll a key
+// they only saw.
+//
+// NIP-KEYS names the signer and what is signed and leaves the bytes open.
+// This file fixes them:
+//
+// - the message is the text "sha256:" and 64 lowercase hex digits, the
+//   SHA-256 of the canonical JSON {"agent":A,"wallet":W,"xpub":X} (names in
+//   order, no spaces, X the whole field with its origin), the form every
+//   ArtifactRef digest here has;
+// - the key is the public child of the xpub at 0, then 0;
+// - the challenge is that key's P2WPKH scriptPubKey, 0x00 0x14 HASH160(key).
+//
+// This file decides: what is signed, under which script, which of BIP-322's
+// answers counts, and what admission says once every proof has an answer.
+// It doesn't run BIP-322. nipkeys_proof.coax does, with chapter 96's
+// verifier (coax/lib/bitcoin/bip322.coax), and has no decisions of its own:
+// it hands each answer to ky_proof_holds and the list to ky_admit_proofs.
+// The split keeps this file's mutation run short: bip322.coax's checks run
+// the script interpreter over every published vector.
+//
+// BIP-322 signs the scriptPubKey, not the address text, and chapter 96's
+// signer and verifier take a mainnet address, so the challenge is written
+// in its mainnet form whatever the wallet's network; the same signature
+// verifies for the tb1 form.
+//
+// ky_admit (nipkeys.coax) applies every admission rule but this one.
+// Everything here is public data, so it runs in variable time. The
+// fixtures' proofs were signed and verified by an independent Python
+// reference (coax/tests/nostr/keys_reference.py with
+// coax/tests/bitcoin/bip322_reference.py).
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
+#load "nipkeys.coax";
+#load "../bitcoin/segwit.coax";
+#authority;
+
+KY_PROOF_TEXT :: 71;       // "sha256:" and 64 hex digits
+KY_PROOF_JSON :: 512;      // the longest {"agent":..,"wallet":..,"xpub":..} signed
+KY_PROOF_ADDRESS :: 42;    // a mainnet P2WPKH address
+KY_PROOF_VALID :: 0;       // BIP-322's "valid" (B322_VALID; nipkeys_proof.coax checks they are equal)
+
+// ---- checks
+// Agent i's enrollment, read.
+kp_enrollment :: (i:int)->KyEnrollment #effects(all) {return ky_parties().e[i];}
+#test "the message is Python's: sha256: and the digest of {agent, wallet, xpub}" {
+  m:[KY_PROOF_TEXT]u8;
+  for i:0..<3 {#assert ky_possession_message(kp_enrollment(i),m[..])==KY_PROOF_MESSAGE[i];}
+  e:=kp_enrollment(1);
+  #assert ky_possession_message(e,m[0..<70])=="";                       // one byte short
+  big:[80]u8;#assert ky_possession_message(e,big[..])==KY_PROOF_MESSAGE[1];
+  // Each of the three fields is in the digest.
+  q:=e;q.wallet=KY_OTHER_WALLET_ID;#assert ky_possession_message(q,m[..])!=KY_PROOF_MESSAGE[1] && ky_possession_message(q,m[..]).count==KY_PROOF_TEXT;
+  q=e;q.agent=KY_AGENT0;#assert ky_possession_message(q,m[..])!=KY_PROOF_MESSAGE[1];
+  q=e;q.xpub=e.key;#assert ky_possession_message(q,m[..])!=KY_PROOF_MESSAGE[1];
+  // The JSON signed is at most KY_PROOF_JSON bytes: 34 of names and
+  // punctuation, 128 of agent and wallet, and the xpub field.
+  long:[KY_PROOF_JSON]u8;for k:0..<long.count {long[k]='a';}
+  q=e;q.xpub=cast(string)long[0..<KY_PROOF_JSON-162];#assert ky_possession_message(q,m[..]).count==KY_PROOF_TEXT;
+  q.xpub=cast(string)long[0..<KY_PROOF_JSON-161];#assert ky_possession_message(q,m[..])=="";
+}
+#test "the challenge is the P2WPKH script of the key at xpub/0/0, Python's key" #steps 2000000000 {
+  for i:0..<3 {
+    s:=ky_possession_script(kp_enrollment(i));
+    key:[33]u8;h:[20]u8;
+    #assert hash160_checked(ky_unhex(KY_PROOF_KEY[i],key[..]),h[..],false)==RMD_OK;
+    #assert s.n==22 && s.b[0]==0 && s.b[1]==20;
+    for k:0..<20 {#assert s.b[2+k]==h[k];}
+    for k:22..<KY_SCRIPT {#assert s.b[k]==0;}
+  }
+  // An enrollment that didn't read has no key, and one whose key is not an
+  // extended public key has no script.
+  #assert ky_possession_script(ky_efail(KyCode.xpub)).n==0;
+  q:=kp_enrollment(0);q.key=KY_BIP32_BAD;#assert ky_possession_script(q).n==0;
+}
+#test "the challenge as an address: bc1q and 38 more, Python's script inside" #steps 2000000000 {
+  a:[KY_PROOF_ADDRESS]u8;
+  for i:0..<3 {
+    s:=ky_possession_address(kp_enrollment(i),a[..]);spk:[40]u8;
+    #assert s.count==KY_PROOF_ADDRESS && s[0..<4]=="bc1q";
+    d:=segwit_decode_vartime(s,spk[..]);want:=ky_possession_script(kp_enrollment(i));
+    #assert d.length==20 && d.network==SW_MAINNET && d.version==0;
+    for k:0..<20 {#assert spk[k]==want.b[2+k];}
+  }
+  // alice's, worked by hand in the chapter (Python's bech32).
+  #assert ky_possession_address(kp_enrollment(0),a[..])=="bc1qwgmfl0v778pcy2t7x3neyk08s2ezg4u2gawtl0";
+  #assert ky_possession_address(kp_enrollment(0),a[0..<41])=="";       // one byte short
+  big:[90]u8;#assert ky_possession_address(kp_enrollment(0),big[..]).count==KY_PROOF_ADDRESS;
+  #assert ky_possession_address(ky_efail(KyCode.xpub),a[..])=="";      // no script, no address
+}
+#test "only BIP-322's valid counts, and only for a challenge and a message that exist" {
+  a:="bc1qwgmfl0v778pcy2t7x3neyk08s2ezg4u2gawtl0";m:=KY_PROOF_MESSAGE[0];
+  #assert ky_proof_holds(a,m,KY_PROOF_VALID);
+  #assert !ky_proof_holds(a,m,1) && !ky_proof_holds(a,m,2) && !ky_proof_holds(a,m,-1);   // invalid, inconclusive, no answer
+  #assert !ky_proof_holds("",m,KY_PROOF_VALID) && !ky_proof_holds(a,"",KY_PROOF_VALID);
+  #assert ky_proof_holds("b","s",KY_PROOF_VALID);                       // one character is not none
+}
+#test "admission with the proofs' answers: refusals first, one answer each, all of them yes" #steps 2000000000 {
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();
+  a:=ky_admit(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0);
+  #assert a.code==KyCode.ok && !a.proven && ky_proofs_wanted(a,p.e[..])==3;
+  yes:=[4]bool.[true,true,true,true];
+  r:=ky_admit_proofs(a,w,yes[0..<3]);#assert r.code==KyCode.ok && r.proven;
+  // Any one proof bad: refused, not proven.
+  for i:0..<3 {
+    v:=yes;v[i]=false;r=ky_admit_proofs(a,w,v[0..<3]);
+    #assert r.code==KyCode.possession && !r.proven;
+  }
+  // An answer missing, or one too many: refused. No answers prove nothing.
+  r=ky_admit_proofs(a,w,yes[0..<2]);#assert r.code==KyCode.possession && !r.proven;
+  r=ky_admit_proofs(a,w,yes[0..<4]);#assert r.code==KyCode.possession && !r.proven;
+  r=ky_admit_proofs(a,w,yes[0..<0]);#assert r.code==KyCode.possession && !r.proven;
+  // ky_admit's refusal comes back as it is, whatever the proofs say, and
+  // asks for none. A result that claims proven already is not believed.
+  s:=ky_admit(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,1795000001,KY_H0);
+  #assert s.code==KyCode.times && ky_proofs_wanted(s,p.e[..])==0;
+  r=ky_admit_proofs(s,w,yes[0..<3]);#assert r.code==KyCode.times && !r.proven;
+  s.proven=true;r=ky_admit_proofs(s,w,yes[0..<3]);#assert r.code==KyCode.times && !r.proven;
+  a.proven=true;v:=yes;v[1]=false;r=ky_admit_proofs(a,w,v[0..<3]);#assert r.code==KyCode.possession && !r.proven;
+  // More enrollments than a wallet has keys: no answers are asked for.
+  many:[KY_KEYS+1]KyEnrollment;
+  #assert ky_proofs_wanted(a,many[..])==0 && ky_proofs_wanted(a,many[0..<KY_KEYS])==KY_KEYS && ky_proofs_wanted(a,many[0..<KY_KEYS-1])==KY_KEYS-1;
+  #assert ky_proofs_wanted(a,many[0..<0])==0;
+}
+
+// ---- the proof
+// book:begin message
+// What the key signs: "sha256:" and the hex SHA-256 of the canonical JSON
+// {"agent":A,"wallet":W,"xpub":X}, written into out (at least
+// KY_PROOF_TEXT bytes). "" when out is too short or the JSON is longer
+// than KY_PROOF_JSON.
+ky_possession_message :: (e:KyEnrollment,out:[]u8)->string #effects(all) {
+  j:[KY_PROOF_JSON]u8;d:[32]u8;hx:="0123456789abcdef";
+  n:=json_write_string(j[..],json_raw(j[..],0,"{\"agent\":"),e.agent);
+  n=json_write_string(j[..],json_raw(j[..],n,",\"wallet\":"),e.wallet);
+  n=json_write_string(j[..],json_raw(j[..],n,",\"xpub\":"),e.xpub);
+  n=json_raw(j[..],n,"}");
+  if n==-1 || out.count<KY_PROOF_TEXT {return "";}
+  #assert ky_sha(cast(string)j[0..<n],d[..]) && json_raw(out,0,"sha256:")==7;
+  for k:0..<32 {out[7+2*k]=hx[cast(int)(d[k]>>4)];out[8+2*k]=hx[cast(int)(d[k]&15)];}
+  return cast(string)out[0..<KY_PROOF_TEXT];
+}
+// book:end message
+// book:begin script
+// The challenge: the P2WPKH scriptPubKey of the key at the enrollment's
+// xpub/0/0, the wallet's first receive derivation for this key. n is 0
+// when the enrollment has no extended public key.
+ky_possession_script :: (e:KyEnrollment)->KyScript #effects(all) {
+  r:KyScript;
+  k:=ky_child(ky_child(ky_ext_key(e.key),0),0);
+  if !k.ok {return r;}
+  h:[20]u8;#assert hash160_checked(k.key[..],h[..],false)==RMD_OK;
+  r.b[1]=20;for i:0..<20 {r.b[2+i]=h[i];}                 // r.b[0] is OP_0
+  r.n=22;return r;
+}
+// book:end script
+// book:begin address
+// The challenge as the address chapter 96's signer and verifier take: the
+// script's mainnet form (42 characters, bc1q...), whatever the wallet's
+// network. "" when there is no script or out is too short.
+ky_possession_address :: (e:KyEnrollment,out:[]u8)->string #effects(all) {
+  s:=ky_possession_script(e);
+  if s.n==0 {return "";}
+  n:=segwit_encode_vartime(SW_MAINNET,0,s.b[2..<22],out);
+  return ifx n==KY_PROOF_ADDRESS then cast(string)out[0..<n] else "";
+}
+// book:end address
+// book:begin holds
+// Does BIP-322's answer for an enrollment's possession field prove its
+// key? Only "valid" does, and only for a challenge and a message that
+// exist: an inconclusive answer is a refusal.
+ky_proof_holds :: (address:string,message:string,state:int)->bool #effects(all) {
+  return address.count>0 && message.count>0 && state==KY_PROOF_VALID;
+}
+// book:end holds
+// book:begin admit_proofs
+// How many proofs ky_admit's result asks for: none after a refusal, else
+// one for each enrollment. More enrollments than a wallet has keys get
+// none, and ky_admit_proofs then refuses.
+ky_proofs_wanted :: (a:KyAdmit,e:[]KyEnrollment)->int #effects(all) {
+  if a.code!=KyCode.ok || e.count>KY_KEYS {return 0;}
+  return e.count;
+}
+// NIP-KEYS admission, whole: ky_admit's result a, then one answer for each
+// of the wallet's enrollments, in order. A refusal of ky_admit stays as it
+// is. proven is true only when all of it holds.
+ky_admit_proofs :: (a:KyAdmit,w:KyWallet,proven:[]bool)->KyAdmit #effects(all) {
+  r:=a;r.proven=false;
+  if r.code!=KyCode.ok {return r;}
+  r.code=KyCode.possession;
+  if proven.count!=w.nenroll {return r;}
+  for i:0..<proven.count {
+    if !proven[i] {return r;}
+  }
+  r.code=KyCode.ok;r.proven=true;return r;
+}
+// book:end admit_proofs

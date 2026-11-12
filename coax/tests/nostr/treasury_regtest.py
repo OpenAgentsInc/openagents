@@ -5,6 +5,10 @@ requests carried over a Coax relay, Bitcoin Core accepts and mines it, and a
 coordinator outage is recovered with Bitcoin Core's own descriptor wallet.
 
   BITCOIN_BIN=DIR COAX_RELAY=EXE TREASURY=EXE OUT=DIR python3 coax/tests/nostr/treasury_regtest.py
+  CHAIN=signet ... the same on a private signet (BIP-325): Bitcoin Core started with
+               -signet -signetchallenge=51, a chain of its own whose blocks anyone may
+               sign. Signet's rules, standardness and tb1 addresses, no faucet and no peers.
+               It is not the public signet: nothing is broadcast to anyone.
 
 BITCOIN_BIN holds the official bitcoind and bitcoin-cli (SHA256SUMS checked
 by the caller); COAX_RELAY is nostr/relay/build.sh's relay; TREASURY is
@@ -46,11 +50,15 @@ import keys_reference as K  # noqa: E402
 
 OUT = Path(os.environ['OUT'])
 BIN = Path(os.environ['BITCOIN_BIN'])
+CHAIN = os.environ.get('CHAIN', 'regtest')
+assert CHAIN in ('regtest', 'signet')
+CHAIN_ARGS = ['-regtest'] if CHAIN == 'regtest' else ['-signet', '-signetchallenge=51']
+HRP = 'bcrt' if CHAIN == 'regtest' else 'tb'
 H = 2**31
 PATH = [48 + H, 1 + H, 0 + H, 2 + H]
 NAMES = ('alice', 'keyco', 'enclave')
 RESULT = {}
-LOG = open(OUT / 'treasury-regtest.log', 'w')
+LOG = open(OUT / ('treasury-%s.log' % CHAIN), 'w')
 
 
 def say(*a):
@@ -73,7 +81,7 @@ class Core:
         self.dir = OUT / 'core'
         self.dir.mkdir(parents=True, exist_ok=True)
         self.port = free_port()
-        self.p = subprocess.Popen([str(BIN / 'bitcoind'), '-regtest', '-datadir=%s' % self.dir, '-rpcport=%d' % self.port,
+        self.p = subprocess.Popen([str(BIN / 'bitcoind')] + CHAIN_ARGS + ['-datadir=%s' % self.dir, '-rpcport=%d' % self.port,
                                    '-port=%d' % free_port(), '-listen=0', '-rpcuser=t', '-rpcpassword=t', '-fallbackfee=0.0001',
                                    '-txindex=1', '-server=1', '-printtoconsole=0'])
         for _ in range(100):
@@ -85,7 +93,7 @@ class Core:
         raise SystemExit('bitcoind did not start')
 
     def cli(self, *args, wallet=None):
-        cmd = [str(BIN / 'bitcoin-cli'), '-regtest', '-datadir=%s' % self.dir, '-rpcport=%d' % self.port,
+        cmd = [str(BIN / 'bitcoin-cli'), CHAIN_ARGS[0], '-datadir=%s' % self.dir, '-rpcport=%d' % self.port,
                '-rpcuser=t', '-rpcpassword=t']
         if wallet:
             cmd.append('-rpcwallet=%s' % wallet)
@@ -104,6 +112,14 @@ class Core:
         except subprocess.CalledProcessError:
             pass
         self.p.wait(timeout=60)
+
+
+def dig(core, n, address):
+    """n more blocks to address. Regtest finds each at once; signet's proof of
+    work takes about five million hashes a block, more than one call's tries."""
+    want = core.cli('getblockcount') + n
+    while core.cli('getblockcount') < want:
+        core.cli('generatetoaddress', want - core.cli('getblockcount'), address, 20000000)
 
 
 def agent_account(name):
@@ -159,17 +175,17 @@ def main():
     try:
         core.cli('createwallet', 'miner')
         mine = core.cli('getnewaddress', wallet='miner')
-        core.cli('generatetoaddress', 101, mine)
+        dig(core, 101, mine)
 
         # 1. fund receive 0 and 1
         coins = []
         for idx, amount in ((0, 60000), (1, 40000)):
             s = spk(0, idx)
-            txid = core.cli('sendtoaddress', K.segwit_addr('bcrt', 0, s[2:]), '%.8f' % (amount / 1e8), wallet='miner')
+            txid = core.cli('sendtoaddress', K.segwit_addr(HRP, 0, s[2:]), '%.8f' % (amount / 1e8), wallet='miner')
             tx = core.cli('getrawtransaction', txid, True)
             vout = next(o['n'] for o in tx['vout'] if o['scriptPubKey']['hex'] == s.hex())
             coins.append((txid, vout, amount, s))
-        core.cli('generatetoaddress', 1, mine)
+        dig(core, 1, mine)
         say('funded receive 0 and 1:', [(c[0][:16], c[1], c[2]) for c in coins])
 
         # 2. the requests and their PSBTs
@@ -230,7 +246,7 @@ def main():
         acc = core.cli('testmempoolaccept', json.dumps([tx]))[0] if tx else {}
         say('testmempoolaccept:', json.dumps(acc))
         txid = core.cli('sendrawtransaction', tx) if acc.get('allowed') else ''
-        core.cli('generatetoaddress', 1, mine)
+        dig(core, 1, mine)
         got = core.cli('getrawtransaction', txid, True) if txid else {}
         vouts = [(round(o['value'] * 1e8), o['scriptPubKey']['hex']) for o in got.get('vout', [])]
         RESULT['spend'] = {'txid': txid, 'accepted': bool(acc.get('allowed')), 'confirmations': got.get('confirmations', 0),
@@ -239,8 +255,8 @@ def main():
 
         # 5. recovery without the coordinator, with Core's own wallet
         s2 = spk(0, 2)
-        rtx = core.cli('sendtoaddress', K.segwit_addr('bcrt', 0, s2[2:]), '0.00050000', wallet='miner')
-        core.cli('generatetoaddress', 1, mine)
+        rtx = core.cli('sendtoaddress', K.segwit_addr(HRP, 0, s2[2:]), '0.00050000', wallet='miner')
+        dig(core, 1, mine)
         wallet = re.search(r'^KY_WALLET :: (".*");$', (ROOT / 'coax/tests/nostr/keys_fixtures.coax').read_text(), re.M)
         desc = json.loads(json.loads(wallet.group(1)))['descriptor'].split('#')[0]
         for n in ('alice', 'keyco'):
@@ -256,7 +272,7 @@ def main():
         bal = core.cli('getbalances', wallet='recovery')['mine']['trusted']
         dest = core.cli('getnewaddress', wallet='miner')
         sent = core.cli('sendall', json.dumps([dest]), wallet='recovery')
-        core.cli('generatetoaddress', 1, mine)
+        dig(core, 1, mine)
         st = core.cli('getrawtransaction', sent['txid'], True) if sent.get('complete') else {}
         ins = [(i['txid'], i['vout']) for i in st.get('vin', [])]
         RESULT['recovery'] = {'imported': all(x.get('success') for x in imp), 'found_sat': round(bal * 1e8),
@@ -266,13 +282,15 @@ def main():
                               'spent': sorted(t for t, _ in ins), 'spent_receive_2_and_change': sorted(t for t, _ in ins) == sorted([rtx, txid])}
         say('recovery:', json.dumps(RESULT['recovery']))
         RESULT['core'] = core.cli('getnetworkinfo')['subversion']
+        info = core.cli('getblockchaininfo')
+        RESULT['chain'] = {'chain': info['chain'], 'signet_challenge': info.get('signet_challenge'), 'blocks': info['blocks']}
     finally:
         core.stop()
     ok = (RESULT['agents_signed_first_refused_second'] and RESULT['coordinator'] == {'request_1_exit': 0, 'request_2_exit': 3}
           and RESULT['spend']['accepted'] and RESULT['spend']['confirmations'] >= 1 and RESULT['spend']['outputs_are_the_request']
           and RESULT['recovery']['complete'] and RESULT['recovery']['confirmations'] >= 1 and RESULT['recovery']['found_sat'] == 50000 + 29000 and RESULT['recovery']['spent_receive_2_and_change'])
     RESULT['passed'] = bool(ok)
-    (OUT / 'treasury-regtest.json').write_text(json.dumps(RESULT, indent=1))
+    (OUT / ('treasury-%s.json' % CHAIN)).write_text(json.dumps(RESULT, indent=1))
     say('PASSED' if ok else 'FAILED', json.dumps(RESULT))
     sys.exit(0 if ok else 1)
 

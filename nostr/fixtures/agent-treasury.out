@@ -6,7 +6,18 @@ the wallet
 read ok, network signet, revision 0, 1 path: primary needs 2 of 3 keys, timelock none
 recomputed descriptor (457 bytes) ends PmBUisT1sfsHbJRSwJ8vg/<0;1>/*))#660mkcnk
 equal to the wallet's: true
-admit: ok, possession proven: false
+possession proofs (BIP-322, the key at xpub/0/0)
+alice: message sha256:963a6edba8240b48...
+  challenge 001472369fbd9ef1c382297e34679259e782b224578a, proof 147 characters: true
+keyco: message sha256:8e038bb18c14c3ef...
+  challenge 001447c3077aae94bb866ba6e743a75c2661b203b6c9, proof 147 characters: true
+enclave: message sha256:427f822bfcf1fd53...
+  challenge 0014b231386756fd222528db030b9e5afe6d67c2cde7, proof 147 characters: true
+admit: ok, possession proven: true
+alice signs hers again from her account key: equal to the enrollment's: true
+keyco's enrollment with alice's proof: possession
+keyco's enrollment with the proof its key made for wallet 78787878...: read ok, proven false
+  the same proof read against wallet 78787878...: true
 composition rule 1 and 2, by declaration
 enclave declares keyco-llc: operator
 enclave declares alice-agent, holder a SOV agent: sovereign

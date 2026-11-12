@@ -1,0 +1,30 @@
+funded receive 0 and 1: [('4e10f250fff42c47', 0, 60000), ('196d4bf385229d46', 0, 40000)]
+coordinator, request 1 (the PSBT the request states):
+  request sealed to alice and accepted by the relay
+  request sealed to keyco and accepted by the relay
+  request sealed to enclave and accepted by the relay
+  receipt from alice: signed, its PSBT reads back
+  receipt from keyco: signed, its PSBT reads back
+  receipt from enclave: signed, its PSBT reads back
+  combined 3 signers' PSBTs into a 675 byte transaction
+coordinator, request 2 (a PSBT that pays someone the request does not name):
+  request sealed to alice and accepted by the relay
+  request sealed to keyco and accepted by the relay
+  request sealed to enclave and accepted by the relay
+  receipt from alice: refused (outputs)
+  receipt from keyco: refused (outputs)
+  receipt from enclave: refused (outputs)
+  fewer than 2 signatures: no transaction
+  [alice] alice (928ac30940ead321...) listening on ws://127.0.0.1:52235
+  [alice]   alice signed: ok
+  [alice]   alice refused: outputs
+  [keyco] keyco (5d3e754dcaff564c...) listening on ws://127.0.0.1:52235
+  [keyco]   keyco signed: ok
+  [keyco]   keyco refused: outputs
+  [enclave] enclave (656e2bce51100726...) listening on ws://127.0.0.1:52235
+  [enclave]   enclave signed: ok
+  [enclave]   enclave refused: outputs
+testmempoolaccept: {"txid": "170ae8bc8e5792bda39a27b7c08db691f2839b97ee37419155b3d8ed7bc8294f", "wtxid": "4d465699b485f40a48b2349ac54449ffcd349759becddcd0ae0fd47375b487fa", "allowed": true, "vsize": 294, "fees": {"base": 1e-05, "effective-feerate": 3.401e-05, "effective-includes": ["4d465699b485f40a48b2349ac54449ffcd349759becddcd0ae0fd47375b487fa"]}}
+spend: {"txid": "170ae8bc8e5792bda39a27b7c08db691f2839b97ee37419155b3d8ed7bc8294f", "accepted": true, "confirmations": 1, "outputs_are_the_request": true}
+recovery: {"imported": true, "found_sat": 79000, "complete": true, "txid": "c1530338ad4c72d01f1154eddf49e3b9461ca3d7af459263257d3dbbc18ad654", "confirmations": 1, "spent": ["170ae8bc8e5792bda39a27b7c08db691f2839b97ee37419155b3d8ed7bc8294f", "3895538048c49e8f00be2f94c87dffb60adb268e47e4a69158c619ed8c0bff06"], "spent_receive_2_and_change": true}
+PASSED {"agents_signed_first_refused_second": true, "coordinator": {"request_1_exit": 0, "request_2_exit": 3}, "spend": {"txid": "170ae8bc8e5792bda39a27b7c08db691f2839b97ee37419155b3d8ed7bc8294f", "accepted": true, "confirmations": 1, "outputs_are_the_request": true}, "recovery": {"imported": true, "found_sat": 79000, "complete": true, "txid": "c1530338ad4c72d01f1154eddf49e3b9461ca3d7af459263257d3dbbc18ad654", "confirmations": 1, "spent": ["170ae8bc8e5792bda39a27b7c08db691f2839b97ee37419155b3d8ed7bc8294f", "3895538048c49e8f00be2f94c87dffb60adb268e47e4a69158c619ed8c0bff06"], "spent_receive_2_and_change": true}, "core": "/Satoshi:31.1.0/", "chain": {"chain": "signet", "signet_challenge": "51", "blocks": 105}, "passed": true}

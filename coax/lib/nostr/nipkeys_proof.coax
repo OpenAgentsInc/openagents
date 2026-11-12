@@ -1,0 +1,93 @@
+// Chapter 104: NIP-KEYS possession proofs, verified. nipkeys_possess.coax
+// decides what a proof signs, under which script, and what admission says.
+// This file joins it to chapter 96's BIP-322 verifier
+// (coax/lib/bitcoin/bip322.coax) and decides nothing: ky_possession hands
+// the verifier's answer to ky_proof_holds, and ky_admit_proven hands
+// ky_admit's result and each enrollment's answer to ky_admit_proofs.
+//
+// A key agent makes its proof with the same library's signer:
+// bip322_sign_vartime(ky_possession_address(e), ky_possession_message(e),
+// its private key at account/0/0, ..., B322_SIMPLE). The example's checks
+// do that for all three agents and get the fixtures' bytes.
+//
+// It is not #authority: it has no rule to mutate, and a mutation run that
+// loads bip322.coax doesn't finish in a quarter of an hour (Bitcoin
+// chapter 96 records the same). Its checks run the real verifier over
+// proofs an independent Python reference signed.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
+#load "nipkeys_possess.coax";
+#load "../bitcoin/bip322.coax";
+
+// ---- checks
+#test "valid means BIP-322's valid" {#assert KY_PROOF_VALID==B322_VALID && B322_INVALID!=KY_PROOF_VALID && B322_INCONCLUSIVE!=KY_PROOF_VALID;}
+#test "each agent's proof verifies; another key's, another wallet's and a changed one don't" #steps 20000000000 {
+  x:[1]B322Work;
+  for i:0..<3 {#assert ky_possession(kp_enrollment(i),x[..]);}
+  // The conformance fixture: keyco's enrollment in this wallet with the
+  // proof its key made for wallet 78...78. It reads; the proof is bad here
+  // and good there.
+  bad:=ky_enrollment_read(KY_AGENT1,KY_ENR1_BAD_PROOF);
+  #assert bad.code==KyCode.ok && bad.wallet==KY_WALLET_ID && !ky_possession(bad,x[..]);
+  there:=bad;there.wallet=KY_OTHER_WALLET_ID;#assert ky_possession(there,x[..]);
+  // alice's proof in keyco's enrollment: another key, another message.
+  e:=kp_enrollment(1);q:=e;q.possession=kp_enrollment(0).possession;#assert !ky_possession(q,x[..]);
+  // keyco's proof, enclave's xpub: the key that signed isn't at xpub/0/0.
+  q=e;q.xpub=kp_enrollment(2).xpub;q.key=kp_enrollment(2).key;#assert !ky_possession(q,x[..]);
+  // The same proof under another agent's name.
+  q=e;q.agent=KY_AGENT2;#assert !ky_possession(q,x[..]);
+  // One character of the signature changed, no signature, not Base64.
+  c:[256]u8;
+  q=e;q.possession=ky_case(c[..],e.possession,"LxYmWqaI","LxYmWqaJ");#assert !ky_possession(q,x[..]);
+  q=e;q.possession="";#assert !ky_possession(q,x[..]);
+  q=e;q.possession="smp!";#assert !ky_possession(q,x[..]);
+  // No script, or no message: nothing is verified.
+  q=e;q.key=KY_BIP32_BAD;#assert !ky_possession(q,x[..]);
+  long:[KY_PROOF_JSON]u8;for k:0..<long.count {long[k]='a';}
+  q=e;q.xpub=cast(string)long[..];#assert !ky_possession(q,x[..]);
+  #assert !ky_possession(ky_efail(KyCode.json),x[..]);
+}
+#test "the whole admission: ky_admit's refusals first, then each proof, then proven" #steps 20000000000 {
+  x:[1]B322Work;
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();
+  a:=ky_admit_proven(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,x[..]);
+  #assert a.code==KyCode.ok && a.proven;
+  #assert !ky_admit(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).proven;
+  // Any one enrollment's proof replaced by another's: refused, not proven.
+  for i:0..<3 {
+    q:=p;q.e[i].possession=p.e[(i+1)%3].possession;
+    b:=ky_admit_proven(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,x[..]);
+    #assert b.code==KyCode.possession && !b.proven;
+  }
+  // ky_admit's refusals come back as they are, and nothing is proven: a
+  // missing enrollment, an expired one, two keys under one operator.
+  s:=ky_admit_proven(w,p.e[0..<2],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,x[..]);#assert s.code==KyCode.enrollment && !s.proven;
+  s=ky_admit_proven(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,1795000001,KY_H0,x[..]);#assert s.code==KyCode.times && !s.proven;
+  q:=p;q.ind[2].op="keyco-llc";
+  s=ky_admit_proven(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,x[..]);#assert s.code==KyCode.operator && !s.proven;
+  // A refusal of ky_admit wins over a bad proof.
+  q.e[0].possession=p.e[1].possession;
+  #assert ky_admit_proven(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0,x[..]).code==KyCode.operator;
+}
+
+
+// ---- the proof, verified
+// book:begin possession
+// Does the enrollment's possession field prove its key? Chapter 96's
+// verification of the field as a signature of the message under the
+// challenge; ky_proof_holds judges the answer.
+ky_possession :: (e:KyEnrollment,x:[]B322Work)->bool #effects(all) {
+  m:[KY_PROOF_TEXT]u8;a:[KY_PROOF_ADDRESS]u8;
+  address:=ky_possession_address(e,a[..]);message:=ky_possession_message(e,m[..]);
+  return ky_proof_holds(address,message,bip322_verify_vartime(address,e.possession,message,x).state);
+}
+// book:end possession
+// book:begin admit_proven
+// NIP-KEYS admission, whole: every rule of ky_admit, then every
+// enrollment's possession proof. ky_admit_proofs judges the answers.
+ky_admit_proven :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:int,now:int,height:int,x:[]B322Work)->KyAdmit #effects(all) {
+  a:=ky_admit(w,e,ind,sov,min_lock,now,height);
+  proven:[KY_KEYS]bool;n:=ky_proofs_wanted(a,e);
+  for i:0..<n {proven[i]=ky_possession(e[i],x);}
+  return ky_admit_proofs(a,w,proven[0..<n]);
+}
+// book:end admit_proven

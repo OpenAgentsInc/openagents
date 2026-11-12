@@ -1,0 +1,32 @@
+{
+ "agents_signed_first_refused_second": true,
+ "coordinator": {
+  "request_1_exit": 0,
+  "request_2_exit": 3
+ },
+ "spend": {
+  "txid": "14c7a9d8ced7a1992ef57ee0b3004b0e4984a528fb4fe7e6ed35beb5a9fed3c7",
+  "accepted": true,
+  "confirmations": 1,
+  "outputs_are_the_request": true
+ },
+ "recovery": {
+  "imported": true,
+  "found_sat": 79000,
+  "complete": true,
+  "txid": "eb0d9fc620a162d1291cabdcdc3c75ad356be61798f08e2a758271cb52e235b4",
+  "confirmations": 1,
+  "spent": [
+   "14c7a9d8ced7a1992ef57ee0b3004b0e4984a528fb4fe7e6ed35beb5a9fed3c7",
+   "178a0ace9f3be9f460c1722bfe6010edca5c1e3d6cb78a6cd3ce96190ae4e511"
+  ],
+  "spent_receive_2_and_change": true
+ },
+ "core": "/Satoshi:31.1.0/",
+ "chain": {
+  "chain": "regtest",
+  "signet_challenge": null,
+  "blocks": 105
+ },
+ "passed": true
+}

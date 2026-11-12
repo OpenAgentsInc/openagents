@@ -120,7 +120,32 @@ def ref(content, schema):
     return {"digest": "sha256:" + sha(content.encode()).hex(), "size": len(content), "media_type": "application/json", "schema": schema}
 def xonly(k): return mul(k)[0].to_bytes(32, "big").hex()
 
+# An enrollment's possession proof (NIP-KEYS, Enrollment): a BIP-322 simple
+# signature by the key at the xpub's first receive derivation (account/0/0)
+# over "sha256:" and the hex SHA-256 of the canonical JSON of
+# {agent, wallet, xpub}. The address is that key's P2WPKH. BIP-322 signs the
+# scriptPubKey, not the address text, so the mainnet form the reference
+# reader takes gives the same signature as the signet form. The signer and
+# its verifier are coax/tests/bitcoin/bip322_reference.py (pure Python).
+def possession_message(wallet, agent, xpub):
+    return "sha256:" + sha(body({"wallet": wallet, "agent": agent, "xpub": xpub}).encode()).hex()
+def possession_key(seed, path):
+    k, c = master(seed)
+    for idx in list(path) + [0, 0]: k, c = ckd_priv(k, c, idx)
+    return k
+def possession(seed, path, wallet, agent, xpub):
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bitcoin"))
+    import bip322_reference as B
+    k = possession_key(seed, path)
+    address = segwit_addr("bc", 0, h160(ser(mul(k))))
+    message = possession_message(wallet, agent, xpub)
+    sig = B.sign(address, [k], message, "smp")
+    assert B.verify(address, sig, message)[0] == B.VALID
+    return sig
+
 WALLET_ID = "77" * 32
+OTHER_WALLET_ID = "78" * 32
 def fixtures():
     H = 2**31
     path = [48 + H, 1 + H, 0 + H, 2 + H]
@@ -130,7 +155,7 @@ def fixtures():
     holder = xonly(1)
     put("KY_HOLDER", holder)
     put("KY_WALLET_ID", WALLET_ID)
-    enr, enr_refs = [], []
+    enr, enr_refs, proofs, proof_keys, proof_messages, bad = [], [], [], [], [], []
     for i, (n, op, jur) in enumerate(names):
         agent = xonly(i + 1)
         fp, tpub = account(sha(("chapter 104 " + n).encode()), path)
@@ -138,11 +163,17 @@ def fixtures():
                     "jurisdiction": jur, "custody": {"vendor": "software", "host": n + "-host", "region": jur[0].lower()},
                     "affiliations": [], "insurance": None, "observed_at": 1793000000})
         cls = "attested" if n == "enclave" else "software"
-        e = body({"v": "openagents.keys-enrollment.v1", "requires": [], "agent": agent, "wallet": WALLET_ID,
-                  "xpub": f"[{fp}/48h/1h/0h/2h]{tpub}", "possession": "AkcwRAIgAAAA", "class": cls,
+        seed = sha(("chapter 104 " + n).encode()); xpub = f"[{fp}/48h/1h/0h/2h]{tpub}"
+        proofs.append((possession(seed, path, WALLET_ID, agent, xpub), possession(seed, path, OTHER_WALLET_ID, agent, xpub)))
+        proof_keys.append(ser(mul(possession_key(seed, path))).hex())
+        proof_messages.append(possession_message(WALLET_ID, agent, xpub))
+        def enrollment(proof):
+            return body({"v": "openagents.keys-enrollment.v1", "requires": [], "agent": agent, "wallet": WALLET_ID,
+                  "xpub": xpub, "possession": proof, "class": cls,
                   "attestation": ({"digest": "sha256:" + "ab" * 32, "size": 100, "media_type": "application/json", "schema": "openagents.att-endpoint.v1"} if cls == "attested" else None),
                   "signing_policy": {"digest": "sha256:" + "cd" * 32, "size": 200, "media_type": "application/json", "schema": "openagents.pol-policy.v1"},
                   "independence": ref(ind, "openagents.keys-independence.v1"), "expires_at": 1795000000})
+        e = enrollment(proofs[i][0]); bad.append(enrollment(proofs[i][1]))
         put(f"KY_AGENT{i}", agent); put(f"KY_IND{i}", ind); put(f"KY_ENR{i}", e)
         enr.append((fp, tpub)); enr_refs.append(ref(e, "openagents.keys-enrollment.v1"))
     keys = ",".join(f"[{fp}/48h/1h/0h/2h]{t}/<0;1>/*" for fp, t in enr)
@@ -172,6 +203,13 @@ def fixtures():
     put("KY_EVIL_ADDRESS", segwit_addr("tb", 0, bytes(range(21, 41))))
     r2 = json.loads(req); r2["psbt"]["digest"] = "sha256:" + sha(evil).hex(); r2["nonce"] = "aa" * 32
     put("KY_REQUEST_EVIL", body(r2))
+    # Possession: each agent's message and its key at account/0/0, and
+    # keyco's enrollment in this wallet carrying the proof the same key made
+    # for another wallet (78...78): a bad possession proof.
+    lines.append("KY_PROOF_MESSAGE :: [3] string.[" + ",".join(json.dumps(m) for m in proof_messages) + "];")
+    lines.append("KY_PROOF_KEY :: [3] string.[" + ",".join(json.dumps(k) for k in proof_keys) + "];")
+    put("KY_ENR1_BAD_PROOF", bad[1])
+    put("KY_OTHER_WALLET_ID", OTHER_WALLET_ID)
     return lines
 
 SPK = {}
