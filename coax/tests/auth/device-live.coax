@@ -9,6 +9,11 @@
 //   5. the device is removed: its tokens are dead at once, even with a good proof
 //   6. the test account is deleted (frozen now, purged in 30 days)
 // Never the owner's account: both keys are made here and forgotten.
+//
+// With DEVICE_LIVE_SIGNER=PROGRAM and DEVICE_LIVE_SIGNER_DIR=DIR the device's key is a real one
+// instead: PROGRAM is apps/shared/host/apple/device-key-check.swift's binary, which keeps a
+// Secure Enclave key under DIR and signs each proof there (`PROGRAM proof DIR METHOD URL MS TOKEN`).
+// The copied-token checks still use a software key here: the other device.
 // tool.sh: tls
 // tool.sh: run-steps 250000000
 //
@@ -29,6 +34,8 @@ Dl :: struct {
   base: [200] u8; base_n: int;
   w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int;
   at: [160] u8; at_n: int; rt: [160] u8; rt_n: int;   // the app's pair
+  signer: [600] u8; signer_n: int; dir: [600] u8; dir_n: int;   // a real device key's program, or none
+  key: [130] u8; key_n: int; store: [16] u8; store_n: int;      // what it last said its key is
   failed: int;
 }
 dl_base :: (t: [] Dl) -> string { return cast(string) t[0].base[0..<t[0].base_n]; }
@@ -91,6 +98,31 @@ dl_proof :: (t: [] Dl, secret: [] u8, ts_ms: int, token: string, out: [] u8) -> 
   k := dl_put(out, 0, "OA-Device-Proof: "); k = dl_put(out, k, cast(string) h[0..<n]);
   return ifx k < 0 then "" else cast(string) out[0..<k];
 }
+// The real device key's program: its key, where it lives, and its proof for a refresh of token at ts.
+dl_signed :: (t: [] Dl, ts_ms: int, token: string, out: [] u8) -> string {
+  u: [600] u8; un := dl_put(u[..], 0, dl_base(t)); un = dl_put(u[..], un, "/api/auth/refresh");
+  d: [24] u8; dn := adc_digits(ts_ms, d[..]);
+  a := [7] string.[cast(string) t[0].signer[0..<t[0].signer_n], "proof", cast(string) t[0].dir[0..<t[0].dir_n], "POST", cast(string) u[0..<un], cast(string) d[0..<dn], token];
+  got: [1024] u8; err: [1024] u8;
+  r := proc_run(a[..], 60000, got[..], err[..]);
+  if r.status != 0 || dn == 0 { return ""; }
+  text := cast(string) got[0..<r.out_n]; at := 0; proof := "";
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    line := text[at..<end];
+    if line.count > 4 && line[0..<4] == "key " { k := line[4..<line.count]; for i: 0..<k.count { if i < 130 { t[0].key[i] = k[i]; } } t[0].key_n = ifx k.count <= 130 then k.count else 0; }
+    if line.count > 6 && line[0..<6] == "store " { v := line[6..<line.count]; for i: 0..<v.count { if i < 16 { t[0].store[i] = v[i]; } } t[0].store_n = ifx v.count <= 16 then v.count else 0; }
+    if line.count > 6 && line[0..<6] == "proof " { proof = line[6..<line.count]; }
+    at = end + 1;
+  }
+  k := dl_put(out, 0, "OA-Device-Proof: "); k = dl_put(out, k, proof);
+  return ifx k < 0 || proof.count == 0 then "" else cast(string) out[0..<k];
+}
+// The device's proof: the real key's when there is one, else the software key's.
+dl_device_proof :: (t: [] Dl, secret: [] u8, ts_ms: int, token: string, out: [] u8) -> string {
+  if t[0].signer_n > 0 { return dl_signed(t, ts_ms, token, out); }
+  return dl_proof(t, secret, ts_ms, token, out);
+}
 // A refresh of token with this proof header ("" for none): the status; a new pair is kept.
 dl_refresh :: (t: [] Dl, token: string, proof: string) -> int {
   b: [300] u8; n := dl_put(b[..], 0, "{\"refresh_token\":\""); n = dl_put(b[..], n, token); n = dl_put(b[..], n, "\"}");
@@ -106,7 +138,8 @@ dl_keep :: (t: [] Dl) {
   for i: 0..<rt.count { t[0].rt[i] = rt[i]; } t[0].rt_n = rt.count;
 }
 // Logs the app in with the Nostr key, sending device as its device key: the status.
-dl_login :: (t: [] Dl, nostr: [] u8, device: [] u8, name: string) -> int {
+// real: the device key is the signer program's (dl_signed has read it), not the software one.
+dl_login :: (t: [] Dl, nostr: [] u8, device: [] u8, name: string, real: bool) -> int {
   plain := [1] string.["Content-Type: application/json"];
   if dl_call(t, "POST", "/api/auth/nostr/challenge", "{\"client\":\"app\"}", plain[..]) != 200 { return 0; }
   cb: [80] u8; ch := dl_member(t, "challenge", cb[..]);
@@ -122,11 +155,14 @@ dl_login :: (t: [] Dl, nostr: [] u8, device: [] u8, name: string) -> int {
   if r <= 0 { return 0; }
   auth: [6200] u8; an := dl_put(auth[..], 0, "Authorization: Nostr ");
   an += b64_encode(cast(string) ev[0..<r], auth[an..<auth.count]);
-  public: [65] u8; kh: [130] u8; key: [160] u8; nm: [120] u8;
+  public: [65] u8; kh: [130] u8; key: [160] u8; nm: [120] u8; sh: [40] u8;
   if !p256_public_key(device, public[..]) { return 0; }
-  kn := dl_put(key[..], 0, "OA-Device-Key: "); kn = dl_put(key[..], kn, dl_hex(public[..], kh[..]));
+  kn := dl_put(key[..], 0, "OA-Device-Key: "); sn := dl_put(sh[..], 0, "OA-Device-Store: ");
+  if real {
+    kn = dl_put(key[..], kn, cast(string) t[0].key[0..<t[0].key_n]); sn = dl_put(sh[..], sn, cast(string) t[0].store[0..<t[0].store_n]);
+  } else { kn = dl_put(key[..], kn, dl_hex(public[..], kh[..])); sn = dl_put(sh[..], sn, "software"); }
   nn := dl_put(nm[..], 0, "OA-Device-Name: "); nn = dl_put(nm[..], nn, name);
-  h := [6] string.["Content-Type: application/json", cast(string) auth[0..<an], cast(string) key[0..<kn], "OA-Device-Platform: mac", "OA-Device-Store: software", cast(string) nm[0..<nn]];
+  h := [6] string.["Content-Type: application/json", cast(string) auth[0..<an], cast(string) key[0..<kn], "OA-Device-Platform: mac", cast(string) sh[0..<sn], cast(string) nm[0..<nn]];
   st := dl_call(t, "POST", "/api/auth/nostr", cast(string) body[0..<bn], h[..]);
   if st == 200 { dl_keep(t); }
   return st;
@@ -141,18 +177,23 @@ tool_main :: () -> int #export_c #effects(all) {
   if cxrand_draw(nostr[..], 32) != 0 || cxrand_draw(A[..], 32) != 0 || cxrand_draw(B[..], 32) != 0 || !p256_public_key(A[..], pub[..]) || !p256_public_key(B[..], pub[..]) {
     print("device-live: no randomness for the test keys\n"); return 1;
   }
+  sg := proc_getenv("DEVICE_LIVE_SIGNER", t[0].signer[..]); t[0].signer_n = sg.count;
+  sd := proc_getenv("DEVICE_LIVE_SIGNER_DIR", t[0].dir[..]); t[0].dir_n = sd.count;
+  real := sg.count > 0;
+  if real && (sd.count == 0 || dl_signed(t[..], 1, "oa_rt_none", ph[..]) == "" || t[0].key_n != 130) { print("device-live: the signer gave no key (DEVICE_LIVE_SIGNER, DEVICE_LIVE_SIGNER_DIR)\n"); return 1; }
   print("device-live on %\n", base);
+  if real { print("     the device key is real: key in %\n", cast(string) t[0].store[0..<t[0].store_n]); }
 
   // 1. the app logs in with its device key
-  st := dl_login(t[..], nostr[..], A[..], "device-live test");
+  st := dl_login(t[..], nostr[..], A[..], "device-live test", real);
   if !dl_ok(t[..], "a new test account's app login sends its device key and is bound to it", st == 200 && dl_member(t[..], "device_bound", eb[..]) == "true" && t[0].rt_n > 10) { return 1; }
   acct: [80] u8; ac := dl_member(t[..], "account", acct[..]);
   print("     test account %\n", ac);
   h2 := [1] string.[dl_bearer(t[..], bb[..])];
   st = dl_call(t[..], "GET", "/api/auth/devices", "", h2[..]);
   idb: [24] u8; id := dl_member(t[..], "devices[0].id", idb[..]);
-  _ = dl_ok(t[..], "the devices list shows it: its name, a Mac, a software key, this login's own", st == 200 && dl_member(t[..], "devices[0].name", eb[..]) == "device-live test"
-            && dl_member(t[..], "devices[0].platform", eb[..]) == "mac" && dl_member(t[..], "devices[0].store", eb[..]) == "software"
+  _ = dl_ok(t[..], "the devices list shows it: its name, a Mac, where its key is kept, this login's own", st == 200 && dl_member(t[..], "devices[0].name", eb[..]) == "device-live test"
+            && dl_member(t[..], "devices[0].platform", eb[..]) == "mac" && dl_member(t[..], "devices[0].store", eb[..]) == (ifx real then cast(string) t[0].store[0..<t[0].store_n] else "software")
             && dl_member(t[..], "devices[0].this", eb[..]) == "true" && dl_int(id) > 0);
 
   // 2. the refresh token copied to another device
@@ -167,19 +208,19 @@ tool_main :: () -> int #export_c #effects(all) {
   _ = dl_ok(t[..], "a copied refresh token with another device's proof is refused", st == 401 && dl_member(t[..], "device_proof", eb[..]) == "signature");
 
   // 3. a clock that is off
-  st = dl_refresh(t[..], RT0, dl_proof(t[..], A[..], now - 90000, RT0, ph[..]));
+  st = dl_refresh(t[..], RT0, dl_device_proof(t[..], A[..], now - 90000, RT0, ph[..]));
   server := dl_int(dl_member(t[..], "now_ms", eb[..]));
   _ = dl_ok(t[..], "a proof 90 seconds old is refused, with the server's time", st == 400 && dl_member(t[..], "device_proof", eb[..]) == "clock" && server > 1700000000000);
 
   // 4. the device's own proof, once
-  proof: [220] u8; good := dl_proof(t[..], A[..], server, RT0, proof[..]);
+  proof: [220] u8; good := dl_device_proof(t[..], A[..], server, RT0, proof[..]);
   st = dl_refresh(t[..], RT0, good);
   _ = dl_ok(t[..], "the device's own proof gets a new pair", st == 200 && t[0].rt_n > 10 && dl_rt(t[..]) != RT0);
   st = dl_refresh(t[..], RT0, good);
   _ = dl_ok(t[..], "the same proof again is refused as a replay", st == 409 && dl_member(t[..], "device_proof", eb[..]) == "replay");
   r1: [160] u8; r1n := t[0].rt_n; for i: 0..<r1n { r1[i] = t[0].rt[i]; }
   RT1 := cast(string) r1[0..<r1n];
-  st = dl_refresh(t[..], RT1, dl_proof(t[..], A[..], server + 1, RT1, ph[..]));
+  st = dl_refresh(t[..], RT1, dl_device_proof(t[..], A[..], server + 1, RT1, ph[..]));
   _ = dl_ok(t[..], "and the login lives: the device refreshes again", st == 200 && dl_rt(t[..]) != RT1);
   st = dl_refresh(t[..], dl_rt(t[..]), "");
   _ = dl_ok(t[..], "its newest token still needs the proof", st == 401 && dl_member(t[..], "device_proof", eb[..]) == "none");
@@ -193,11 +234,11 @@ tool_main :: () -> int #export_c #effects(all) {
   _ = dl_ok(t[..], "removing the device ends its login", st == 200 && dl_member(t[..], "state", eb[..]) == "removed" && dl_member(t[..], "ended", eb[..]) == "1");
   st = dl_call(t[..], "GET", "/api/auth/devices", "", h3[..]);
   _ = dl_ok(t[..], "its access token is dead at once", st == 401);
-  st = dl_refresh(t[..], RT2, dl_proof(t[..], A[..], server + 2, RT2, ph[..]));
+  st = dl_refresh(t[..], RT2, dl_device_proof(t[..], A[..], server + 2, RT2, ph[..]));
   _ = dl_ok(t[..], "and its refresh token is dead, even with a good proof", st == 401);
 
   // 6. the test account goes: a new login (a new device key), then delete
-  st = dl_login(t[..], nostr[..], B[..], "device-live cleanup");
+  st = dl_login(t[..], nostr[..], B[..], "device-live cleanup", false);
   h4 := [2] string.[dl_bearer(t[..], bb[..]), "Content-Type: application/json"];
   if st == 200 { st = dl_call(t[..], "POST", "/api/auth/delete", "{}", h4[..]); }
   _ = dl_ok(t[..], "the test account is deleted (frozen now, purged in 30 days)", st == 200);
