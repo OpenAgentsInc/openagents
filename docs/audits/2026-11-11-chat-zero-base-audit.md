@@ -10,8 +10,8 @@ chat surface in the repository. It says what each one does today, what limits
 and defects it has, what a new UI can keep, and what a new UI can't have until
 something under it changes.
 
-It doesn't design the new UI. It does settle how the web chat is drawn
-(section 10).
+It doesn't design the new UI's screens. It does settle how the web chat is
+drawn (section 10) and its look and component set (section 11).
 
 It builds on these and doesn't repeat them:
 
@@ -66,9 +66,13 @@ Nothing was built, run or deployed. No live state was read.
   hosts), uses the real DOM on the web and its own painter only where there
   is no standard. Our research declined that for worlds. Chat was not in
   scope when the canvas-only decision was made (section 10).
-- **Decided:** on the web the chat is drawn by the browser, from the same
-  Coax components, through a new DOM backend. Worlds stay on the GPU
+- **Decided:** on the web the chat is drawn by the browser, from Coax
+  components, through a new DOM backend. Worlds stay on the GPU
   (section 10).
+- **Decided:** the chat gets a new, small component set with a grayscale
+  ARWES look. The previous chat set is not carried over. We already ported
+  ARWES's frame geometry and motion to Coax; its frames become SVG behind
+  real text, which is how ARWES itself draws them (section 11).
 
 So "zero-base the chat UI" is really three decisions: what the page draws,
 what stream it reads, and which agent answers. The second and third decide
@@ -710,8 +714,8 @@ component system.
    flex and matches Chrome to 0.05 px (`components/layout/flex.coax`). The
    DOM backend hands the same properties to the browser as CSS. The GPU
    backend computes them itself. One description, two ways to resolve it.
-4. **Skins become custom properties.** A skin's tokens are written once as
-   CSS variables. Theme keeps working, with all four skins.
+4. **The skin is custom properties.** Its tokens are written once as CSS
+   variables. There is one skin, grayscale, and no Theme (section 11).
 5. **The composer is a real text field.** IME, paste, spell check, the phone
    keyboard and password managers come from the browser. The hidden field
    and the page's own caret go away on the web. `core/edit.coax` stays the
@@ -733,8 +737,8 @@ component system.
 **How we know the two backends agree.** Not by pictures. The check is the
 element tree as text, row by row, the same for the DOM, the GPU and the
 terminal: ids, roles, labels and order. Each backend then has its own small
-set of pictures. The Mac match stays a check of the GPU backend, on
-`/components`, where the `#demo` comparison moves.
+set of pictures. A frame's SVG path is checked point for point against
+what the GPU backend strokes (section 11).
 
 **What it costs.**
 
@@ -758,18 +762,227 @@ and they come first.
 - The chat inside a realm is drawn by the GPU, from the same components.
 - `coax/web.md` and `components/spec.md` now record this decision.
 
+## 11. The look: a grayscale ARWES set, and a new component set
+
+Added 2026-11-11 on the owner's direction: don't carry the previous chat
+components over, and give the chat a black-and-white ARWES look with a few
+components. For this I read our port (`aethyr/ui/arwes-*.coax`, its
+[porting report](../verse/2026-11-01-arwes-coax.md) and
+`aethyr/ui/arwes/SOURCES.md`) and the upstream source in
+`projects/repos/arwes` at the same commit our port pins (`bdbaa03`).
+
+### What ARWES is, and how it draws
+
+ARWES is not a React library at its core. Ten plain packages do the work,
+and the React and Solid packages only wrap them. On the web it draws three
+ways:
+
+- **Frames are SVG.** `createFrame` takes an `<svg>` laid behind an
+  element's content. Each frame is a short list of paths in three named
+  layers: `bg` (the fill), `line` (the border strokes) and `deco` (corner
+  ticks and accents). The paths are computed from the element's width and
+  height and recomputed by a `ResizeObserver`. Strokes don't scale
+  (`vector-effect: non-scaling-stroke`). Colour comes from CSS: the paths
+  read `currentcolor` and variables such as `--arwes-frames-bg-color`, and a
+  page styles `[data-name='bg']` and `[data-name='line']`.
+- **Animation is numbers over time.** An animator gives each node four
+  states (entering, entered, exiting, exited) and schedules children in
+  parallel, in sequence or staggered. A frame "assembles": the fill fades
+  in, the lines draw along their length (a dash offset), and the
+  decorations flicker in.
+- **Backgrounds are a 2D canvas** (dots, puffs, grid lines, moving lines),
+  and **text effects rewrite a hidden copy** of the element: the real text
+  is hidden and a clone is revealed a character at a time.
+
+There is no component library in ARWES. Its docs app builds its own Button,
+Card, CodeBlock, FrameAlert, Header, Menu, Modal, Nav and Table from a frame
+plus content (`apps/docs/src/ui/`). A button there is an octagon frame, an
+octagon clip and uppercase text. That is the model to copy: a small set of
+components, each a frame around content.
+
+### What we already ported
+
+All of the mathematics, none of the DOM (2026-11-01, 1,263 lines of Coax
+with checks):
+
+| File | What it holds |
+| --- | --- |
+| `aethyr/ui/arwes-frames.coax` | The nine frames (Underline, Lines, Corners, Octagon, Nero, Nefrex, Kranox, Header, Circle) as points with a layer, a fill flag, an alpha and a stroke; the shared assembly; each family's own transitions; the octagon and Kranox clips |
+| `aethyr/ui/arwes-motion.coax` | The 31 easings, steps, draw progress, flicker, the animator's states and its five child schedules, the text sequence and decipher effects, text duration |
+| `aethyr/ui/arwes-fx.coax` | Theme multipliers and colour math, the step, strip and separator patterns, the four backgrounds, the illuminator, keyed timers, the sound-cue model (no sound is played) |
+| `aethyr/ui/arwes-paint.coax` | 25 specimens painted as the component system's display list; `/components` shows them on the GPU |
+
+Time is supplied by the caller, randomness is seeded, and nothing allocates.
+The MIT notice is kept in `aethyr/ui/arwes/LICENSE`.
+
+So the frame geometry and the motion exist, are checked, and already draw on
+the GPU. What we never built is the thing ARWES itself does on the web: the
+frame as SVG behind real text. The browser backend decided in section 10 is
+exactly where that fits.
+
+### Decision: a new set, grayscale, frames as SVG
+
+1. **A new, small component set.** The web chat does not use
+   `components/zeron/` or its four skins. Theme goes away: there is one
+   look. The set is about ten components, listed below, each a frame around
+   content, written against the element table.
+2. **One set, two backends.** A frame's geometry comes from
+   `arwes-frames.coax` on both. The browser backend writes it as SVG paths;
+   the GPU backend strokes the same points, as `/components` does today. The
+   desktop app and the chat inside a realm can move to the new set later
+   without a second design. `components/zeron/` stays for the desktop app
+   until then and is deleted when it moves. It is not moved into `kit/`.
+3. **Grayscale only.** Black ground, white ink, a ramp of greys between. No
+   hue anywhere, including errors. State is carried by brightness, fill,
+   line style and words, never by colour alone, which is also what
+   accessibility rules ask for.
+4. **Keep the shared base.** The Markdown parser, the element table, the
+   flex layout and the session record stay. They are not the "component
+   library"; they are what any set stands on.
+
+### How a frame reaches the browser
+
+1. A component marks its element as framed: a frame kind and its settings
+   (corner size, stroke, padding).
+2. The browser lays the element out. The host reports the element's size by
+   id, once when it appears and again when it changes. This is the one
+   thing the host tells Coax about layout.
+3. Coax computes the frame's points for that size with the existing
+   `af_frame_family` and sends them as path data for the three layers, into
+   an `<svg>` the backend keeps behind the element's content.
+4. While a frame is entering or exiting, Coax sends its changing alpha, dash
+   offset and offsets each frame. When it has entered, nothing is sent. The
+   page reports itself busy only while something is animating, so an idle
+   chat still does no work.
+5. Colour is CSS variables on the three layers, as upstream does it.
+6. Clipped shapes (the octagon button) use the ported clip as a CSS
+   `clip-path`.
+
+The size report costs one frame: a frame's paths arrive the frame after its
+element is laid out. The entrance starts from nothing, so it doesn't show.
+
+### The tokens
+
+One skin, `mono`, written as CSS variables from Coax:
+
+| Role | Value | Use |
+| --- | --- | --- |
+| `ground` | #000 | The page |
+| `surface` | #0a0a0a | A frame's `bg` |
+| `raised` | #141414 | A hovered or pressed `bg` |
+| `line-dim` | #2a2a2a | A resting frame's lines, rules |
+| `line` | #6b6b6b | A frame's lines |
+| `line-bright` | #ffffff | Focus, the active item, decorations |
+| `ink` | #f2f2f2 | Body text |
+| `ink-muted` | #9a9a9a | Labels, meta lines |
+| `ink-faint` | #5c5c5c | Placeholders, disabled |
+| `inverse` | #ffffff ground, #000 ink | The primary action, a selected row's marker |
+
+Type: Geist for body text, Geist Mono in small capitals with wide tracking
+for labels, headers and buttons. Both are already built for the site.
+Strokes are 1 px; a frame's corner cut is 8 px on controls and 12 px on
+panels. These values are a starting point to tune on the first screen, not
+measured choices.
+
+How state is shown without colour:
+
+| State | How |
+| --- | --- |
+| Hover | `bg` goes to `raised`, lines to `line` |
+| Focus | Lines to `line-bright`, decorations drawn |
+| Active or selected | A bright underline or left bar; ink to white |
+| Primary action | Inverse: white fill, black ink |
+| Disabled | Faint ink, dashed lines |
+| Error | The Lines frame, bright, with the word "Error" and what failed; never red |
+| Running | The frame's decorations pulse; the answer streaming is the progress |
+
+### The components
+
+| Component | Frame | Notes |
+| --- | --- | --- |
+| Frame | any | The primitive: an element, its SVG, its state |
+| Text | none | A label that types in with the sequence effect. Short text only |
+| Button | Octagon, clipped | Uppercase label; a primary one is inverse |
+| Field and Composer | Underline at rest, Corners when focused | A real text field; Send is a Button |
+| Message | none for the agent; Corners, dim, for the person | The agent's answer is plain Markdown on the ground. Reading text gets no decoration |
+| Tool call | Corners | A header row (what, on what) that opens onto input and output |
+| Code block | Corners with a Header strip | Language and Copy in the strip |
+| Notice | Lines | Errors, the cap, an approval with its two Buttons |
+| Row | Underline when active | A conversation in the list; a menu item |
+| Header | Header | The page title and the conversation's title |
+| Menu | Corners | The model list, over the page |
+| Background | none | Grid lines and dots, faint and still, as one SVG pattern |
+
+Frames not used: Nero, Nefrex, Kranox and Circle. They stay in the port for
+realms.
+
+### What we take from ARWES, and what we leave
+
+**Take:**
+
+- The three-layer frame and its assembly on entrance.
+- The animator: a new message, a tool call and the list's rows enter
+  staggered, 20 to 40 ms apart, and the whole entrance is under 300 ms.
+- The text sequence for short labels: the page title, a header, the empty
+  screen's line.
+- Grid lines and dots as a still background.
+- The step and separator patterns for rules and dividers.
+
+**Leave:**
+
+- **Decipher and sequence on answers.** An answer streams in as it is
+  written. Animating it again delays reading.
+- **Flicker on anything a person reads.** Flicker stays on decorations.
+- **Sound.** The cue model stays unused; nothing plays.
+- **Moving backgrounds and puffs.** A chat is still. Motion behind text
+  costs battery and attention.
+- **The illuminator** (a glow that follows the pointer), at first. It needs
+  an update on every pointer move. Add it later to Buttons if it is missed.
+- **Colour.** Upstream's cyan and yellow, and our Verse skin's cyan.
+
+**Rules that keep it usable:**
+
+- With `prefers-reduced-motion`, every frame is entered at once and no text
+  types in.
+- The real text is always in the element. A text effect animates a copy
+  marked `aria-hidden`, as upstream does, so a screen reader and Find see
+  the whole text from the start.
+- Motion is only on entrance, exit and a change of state. Nothing loops
+  while the page is idle except a running turn's decoration.
+- The driver's agent clock steps these animations, since Coax computes them
+  from supplied time. `clock settle` waits for them.
+
+### Work this needs that isn't UI
+
+- **Move the port under `components/`.** A component may not load a file
+  outside `components/`, and the port lives in `aethyr/ui/` and loads
+  `hud.coax` for two small types (`HudBox`, `HudCoord`). Move
+  `arwes-frames`, `arwes-motion` and `arwes-fx` to `components/core/arwes/`
+  with their own box and point types, and have Aethyr load them from there.
+  The licence and source ledger move with them.
+- **A path writer** in the browser backend: frame points to SVG path data,
+  with a check that the path's points equal the GPU's.
+- **The size report** from the host, by element id.
+- **The `mono` skin** and its generated variables.
+
 ## What to keep, delete and replace
 
 **Keep.**
 
-- The layers: `components/core` (edit buffer, Markdown), `layout`, `paint`,
-  `skin`, `backend`, and the atlas in `gpui.js`.
+- The shared base: `components/core` (Markdown, the element table, the edit
+  buffer for the GPU and terminal), `layout` (flex) and `paint`.
+- The ARWES port (`aethyr/ui/arwes-*.coax`): frames, motion, patterns.
 - The session log as the thing a transcript is built from.
 - The credential path: checked before it is kept, sealed in the runner, never
   shown, one store for `/chat` and projects.
 - The confinement of Read, Glob and Grep, and the per-turn environment
   allowlist.
-- Golden mode and the `#demo` comparison against the Mac.
+- Golden mode.
+
+**Not carried into the web chat.** `components/zeron/` (composer,
+transcript, picker, tools, attachments, chrome), the four skins, Theme, the
+glyph atlas in `gpui.js` and the `#demo` comparison against the Mac. They
+stay for the desktop app until it moves.
 
 **Delete.**
 
@@ -808,9 +1021,10 @@ These are the owner's. Each one changes what the page is.
    browser, through a DOM backend under the same Coax components. The GPU
    backend draws it everywhere else. See
    [the decision](#decision-the-web-chat-is-drawn-by-the-browser).
-5. **Where the chat set lives.** Rebuilding the UI is the natural moment to
-   move `components/zeron/` into `kit/` as the spec says, with the sidebar
-   and tabs as components, so the desktop gets the same rebuild.
+5. **Where the chat set lives.** Decided 2026-11-11: a new, small set with
+   a grayscale ARWES look, frames drawn as SVG (section 11).
+   `components/zeron/` is not carried over and not moved into `kit/`; it
+   stays for the desktop app until that moves to the new set.
 6. **The model picker and the cap.** The book leaves the picker open (ch. 9)
    and says we set no limit for the user (ch. 20). Today's page has both.
 7. **One hosted agent or two.** `/chat` and the project agent share a runner
@@ -859,6 +1073,11 @@ desktop `screen.coax` and `desk.coax` bodies; `coax/lib/agent/claude/`
 internals; the auth gate's internals; the deploy scripts; `SUMMARY.md` and
 the book chapters outside those listed in section 8; the protocol spec
 outside sections 8, 17, 18 and 31.
+
+For section 11: upstream ARWES beyond `createFrame`, the octagon settings,
+the dots background, the text sequence and the docs app's Button and CSS;
+the bodies of our port's procedures beyond their headers and signatures.
+The token values are proposed, not tested on a screen.
 
 For section 10: Exact's source (every statement about Exact comes from
 `docs/research/exact/`, which read it at `94b8671`); the chat template's

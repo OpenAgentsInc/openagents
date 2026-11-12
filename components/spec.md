@@ -274,6 +274,11 @@ menu and popover, picker, button, toggle, slider, tabs, list with sections
 
 Everything in `components/zeron/` maps onto this list.
 
+Changed 2026-11-11: the web chat gets a new, small set with a grayscale
+ARWES look, on the browser backend, and `components/zeron/` is not moved
+into `kit/`. It stays for the desktop app until that moves to the new set
+([the chat audit, section 11](../docs/audits/2026-11-11-chat-zero-base-audit.md#11-the-look-a-grayscale-arwes-set-and-a-new-component-set)).
+
 ### The second set: game HUD
 
 Bars, slots and the action bar, portrait plate, map ring, nameplate, damage
