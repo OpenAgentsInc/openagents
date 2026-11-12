@@ -17,7 +17,9 @@ Coax), so a bug in the Coax client can't hide the same bug in the relay.
       NIP-01 object a line. Prints lines, SHA-256 and the newest created_at.
   relay_live_cutover.py ids URL OUT.txt
       The sorted ids an anonymous reader gets from URL (ws:// or wss://).
-  relay_live_cutover.py shadow LOCAL_PORT SECONDS LOG.jsonl [--url ...]
+  relay_live_cutover.py shadow LOCAL SECONDS LOG.jsonl [--url ...]
+      LOCAL is a port on 127.0.0.1 or the Coax relay's ws:// or wss:// URL;
+      AUTH_URL (environment) is the URL its NIP-42 answers name.
       The shadow period: every new event the live relay delivers is sent to
       the local relay too, and every PERIOD seconds the same REQs go to both;
       each answer pair is classified match, order, limit, known or
@@ -360,6 +362,8 @@ SHADOW_FILTERS = [
     {'kinds': [10002], 'limit': 20}, {'kinds': [30023], 'limit': 20}, {'kinds': [1111], 'limit': 50},
     {'kinds': [5000, 5001, 5050, 6000, 6001, 6050, 7000], 'limit': 50},
     {'kinds': [9, 10, 11, 12], 'limit': 50}, {'kinds': [30617, 1617, 1621], 'limit': 20},
+    # the project pages' kinds (coax/nostr.md section 17): projects, issues' statuses
+    {'kinds': [30621, 30623], 'limit': 20}, {'kinds': [1630, 1631, 1632, 1633], 'limit': 50},
 ]
 
 
@@ -380,15 +384,17 @@ def classify(a, b, limit):
     return 'unexplained', sorted(sa ^ sb)
 
 
-def shadow(port, seconds, log_path, url, period=300):
-    local = 'ws://127.0.0.1:%d' % port
+def shadow(local, seconds, log_path, url, period=300):
+    # LOCAL is a port on 127.0.0.1 or a ws:// or wss:// URL (the Coax relay on
+    # its VM); AUTH_URL is the relay URL its NIP-42 answers name (its --url).
+    local = local if '://' in local else 'ws://127.0.0.1:%d' % int(local)
     start = int(time.time())
     live = Ws(url)
     # From the export's newest created_at (SINCE), so what arrived between the
     # export and this start is mirrored too.
     live.send(['REQ', 'mirror', {'since': int(os.environ.get('SINCE', start))}])
     lw = Ws(local)
-    if not lw.auth(local):
+    if not lw.auth(os.environ.get('AUTH_URL', local)):
         raise SystemExit('the local relay refused NIP-42')
     log = open(log_path, 'a')
     stats = {'mirrored': 0, 'mirror_refused': 0, 'rounds': 0, 'match': 0, 'order': 0, 'limit': 0,
@@ -453,7 +459,7 @@ def main():
         ids(a[1], a[2])
     elif a[:1] == ['shadow']:
         period = int(os.environ.get('PERIOD', '300'))
-        shadow(int(a[1]), int(a[2]), a[3], url, period)
+        shadow(a[1], int(a[2]), a[3], url, period)
     else:
         sys.exit(__doc__)
 
