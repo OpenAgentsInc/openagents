@@ -75,12 +75,6 @@ route coax/web/api/makers.c  # makers and upgrades: hand-built bodies; the api.v
 route coax/web/api/mesh.c  # /v1/systemone, JSON parsed in mesh-policy.coax: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/private.c  # private projects: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/villa.c  # the villa: hand-built bodies; the api.v1 envelope (#13250)
-proto proto/openagents/bitcoin/explorer/v1alpha1/explorer.proto  # in no profile and no code imports it; add it to a profile or mark it no-consumer (#13250)
-proto proto/openagents/bitcoin/lab/v1alpha1/lab.proto  # in no profile and no code imports it; add it to a profile or mark it no-consumer (#13250)
-proto proto/openagents/bitcoin/mempool/v1alpha1/mempool.proto  # in no profile and no code imports it; add it to a profile or mark it no-consumer (#13250)
-proto proto/openagents/os/desk/v2/control.proto  # in no profile and no code imports it; add it to a profile or mark it no-consumer (#13250)
-proto proto/openagents/psionic/responses/v1alpha1/responses.proto  # in no profile and no code imports it; add it to a profile or mark it no-consumer (#13250)
-proto proto/openagents/options/v1alpha2/numeric.proto  # in no profile by name; nostr/event/v1alpha2/event.proto imports it; add it to a profile or mark it no-consumer (#13250)
 
 # Codecs outside their owning context's folders (#13316).
 codec everglade-session-v5 everglade/shared/everglade-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
