@@ -54,7 +54,7 @@ messages.
 5. **The weather schedule.** Ten-minute blocks draw clear, overcast, fog,
    rain or storm from a climate's weights (`weather_temperate`,
    `weather_coastal`), blend over 60 s, and vary rain and wind with seeded
-   smooth noise ([`verse/water-weather.coax`](../../verse/water-weather.coax)).
+   smooth noise ([`aethyr/world/water-weather.coax`](../world/water-weather.coax)).
    Strong wind starts at 9 m/s and disperses fog.
 6. **Weather on the ground.** Wetness and puddles integrate over the last
    hour on a 30 s grid fixed to the tick. Water rises by the mean rain over
@@ -75,7 +75,7 @@ messages.
 - [verse/style-preset.coax](../../verse/style-preset.coax) and
   [verse/style.coax](../../verse/style.coax): style keys per clock key, sun
   elevation, haze and light shafts.
-- [verse/water-weather.coax](../../verse/water-weather.coax): the weather
+- [aethyr/world/water-weather.coax](../world/water-weather.coax): the weather
   schedule, SRD effects, overlays, ground wetness and rising water.
 - [verse/fairy-forest/night.coax](../../verse/fairy-forest/night.coax): the
   three clock modes and resting to night or morning.

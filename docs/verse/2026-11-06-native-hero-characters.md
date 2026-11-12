@@ -41,7 +41,7 @@ describe the delivered implementation and its measured limits.
 | --- | --- | --- |
 | Rig, body pose, face playback | `aethyr/character/` (on `aethyr/anim/pose.coax` and `face.coax`); Echo's declarations in `verse/valley/echo.coax` | Moved out of Valley Lab in R2 (#12986): a `Character` record over a world's pack table, sizes under declared maximums, an idle face. Valley Lab runs on it with its TF0290 frames unchanged |
 | Skinning, morphs, groom, materials (GPU) | `apps/openagents-web/gpu/valleycanyon.coax` with `aethyr/render/hair-fiber.coax`, `aethyr/anim/morph-gpu.coax`, `aethyr/render/pbr-env.coax` | Works in the Valley page only. Character shading is branches inside that page's `scene_fs` |
-| Lights | `verse/valley/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
+| Lights | `aethyr/render/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
 | Post pass (depth of field, skin blur) | `vc_post_fs`, run by `coax/web/host.js` | Generic host feature; any page with a `post_fs` gets it |
 | Pack | `~/.openagents/verse/private-build/web/valley-slay.pack`, pinned by `verse/valley/canyon-pack-policy.coax` | 1,023,634,576 bytes, owner-local. Its 35 mipmapped 4K RGBA8 layers reserve about 3.13 GB of GPU memory |
 | Groom | Valley pack | 118,339 curves, drawn as strands at a share set by the head's size on screen |

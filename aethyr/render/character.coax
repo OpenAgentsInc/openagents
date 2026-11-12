@@ -21,8 +21,8 @@
 #load "scene-lights.coax";
 #load "../anim/morph-gpu.coax";
 #load "../character/detail.coax" as detail;
-#load "../../verse/valley/echo-materials.coax";
-#load "../../verse/valley/slay-lights.coax";
+#load "echo-materials.coax";
+#load "slay-lights.coax";
 
 cv_at :: (u:[]f32,at:int)->V3 {return v3(u[at],u[at+1],u[at+2]);}
 cv_add :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}

@@ -1,12 +1,12 @@
 // Valley Lab source pair: actual source normals/UV/paint, 4K maps and shared shadow effects.
 #load "splash.coax";
 #load "../../../aethyr/render/sampling.coax";
-#load "../../../verse/valley/echo-materials.coax";
+#load "../../../aethyr/render/echo-materials.coax";
 #load "../../../aethyr/render/pbr-env.coax";
 #load "../../../aethyr/render/filmic.coax";
 #load "../../../aethyr/anim/morph-gpu.coax";
 #load "../../../verse/valley/slay-orb.coax";
-#load "../../../verse/valley/slay-lights.coax";
+#load "../../../aethyr/render/slay-lights.coax";
 #load "../../../aethyr/render/hair-fiber.coax";
 #load "../../../aethyr/render/character.coax";
 cv_orb_rotate :: (p:V3,u:[]f32)->V3 {q:=cv_at(u,100);return cv_add(p,cv_scale(wg_cross3(q,cv_add(wg_cross3(q,p),cv_scale(p,u[103]))),2));}

@@ -135,7 +135,7 @@ POOL_X :: 88.0; POOL_Z :: -33.0; POOL_R :: 2.5;
 River :: struct {
   gills: bool;         // you breathe under water (the page's Water Breathing): your breath never runs short
   ready: bool;
-  rise: f32;            // m the rain has raised the river (verse/water-weather.coax, at most 0.15; W9)
+  rise: f32;            // m the rain has raised the river (aethyr/world/water-weather.coax, at most 0.15; W9)
   flow_boost: f32;      // and how much faster its current runs for it (0 to 0.6)
   n: int; cell: f32; west: f32; south: f32;      // the ground the bed is (aethyr/world/terrain.coax's grid)
   points: [RIVER_POINTS] D2; widths: [RIVER_POINTS] f64; lengths: [RIVER_POINTS] f64;
@@ -359,7 +359,7 @@ everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f3
 }
 
 // The rain's rise on the river (m, held to 0.15) and the current's gain for it (1 to 1.6), from
-// Everglade's weather each frame (verse/water-weather.coax weather_rise and weather_flow_gain).
+// Everglade's weather each frame (aethyr/world/water-weather.coax weather_rise and weather_flow_gain).
 everglade_river_weather :: (r: [] River, rise: f32, gain: f32) #export_c #effects(all) {
   r[0].rise = ifx rise == rise then clamp_f(rise, 0, 0.15) else 0.0f32;
   r[0].flow_boost = ifx gain == gain then clamp_f(gain - 1, 0, 0.6) else 0.0f32;

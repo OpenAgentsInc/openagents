@@ -11,17 +11,13 @@
 # Seeded when the check landed: aethyr-up 57, everglade-up 7, tests 126.
 
 # The engine loads from a realm, a page or the game
-aethyr-up aethyr/character/character-appearance.coax -> everglade/scene/charactercreator-parts.coax  # its target moved from apps/openagents-web/ to everglade/scene/; the load itself is as old (#13268)
 aethyr-up aethyr/fx/gpu-puff.coax -> verse/everglade/gpu-fx.coax
 aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
-aethyr-up aethyr/render/character.coax -> verse/valley/echo-materials.coax
-aethyr-up aethyr/render/character.coax -> verse/valley/slay-lights.coax
 aethyr-up rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
 aethyr-up rules/srd/hostile-permission-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
 aethyr-up aethyr/state/fixture.coax -> apps/openagents-web/save.coax
 aethyr-up aethyr/ui/draw.coax -> verse/hud/frame.coax
 aethyr-up aethyr/world/day.coax -> verse/style-preset.coax
-aethyr-up aethyr/world/weather.coax -> verse/water-weather.coax
 
 # The game loads from the web app
 

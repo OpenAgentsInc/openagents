@@ -267,8 +267,8 @@ ar_wardrobe :: (check:bool)->bool {
     for k:0..<8 {ix:=-1;if k<jv_len(d[0],ps) {keyb:[1024]u8;kn:=jv_str(d[0],jv_at(d[0],ps,k),keyb[..]);if kn<1 {return false;}key:=cast(string)keyb[0..<kn];for i:0..<40 {kb:[1024]u8;if ar_string(d[0],jv_at(d[0],slots,i),"key",kb[..])==key {ix=i;}}if ix<0 {return false;}}ar_num(t[..],ix);if k!=7 {ar_add(t[..],",");}}ar_add(t[..],"]");if f!=3 {ar_add(t[..],",");}}
   ar_add(t[..],"];\n");ar_add(pins[..],"]}");if t[0].bad || pins[0].bad {return false;}
   output:=cast(string)t[0].b[0..<t[0].n];lock:=cast(string)pins[0].b[0..<pins[0].n];
-  if check {old:[131072]u8;sz:=fs_read("everglade/scene/charactercreator-parts.coax",old[..]);if sz<0 || cast(string)old[0..<sz]!=output {return false;}sz=fs_read("assets/registry/collections/character-create.lock.json",old[..]);return sz>=0 && cast(string)old[0..<sz]==lock;}
-  return ar_file("everglade/scene/charactercreator-parts.coax",output) && ar_file("assets/registry/collections/character-create.lock.json",lock);
+  if check {old:[131072]u8;sz:=fs_read("aethyr/character/charactercreator-parts.coax",old[..]);if sz<0 || cast(string)old[0..<sz]!=output {return false;}sz=fs_read("assets/registry/collections/character-create.lock.json",old[..]);return sz>=0 && cast(string)old[0..<sz]==lock;}
+  return ar_file("aethyr/character/charactercreator-parts.coax",output) && ar_file("assets/registry/collections/character-create.lock.json",lock);
 }
 
 #test "registry verifies exact definition bytes and stable ID joins" {

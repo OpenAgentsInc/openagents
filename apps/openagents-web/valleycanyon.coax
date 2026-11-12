@@ -7,7 +7,7 @@
 #load "../../aethyr/core/assets.coax";
 #load "../../aethyr/core/sticks.coax";
 #load "../../verse/valley/slay-shot-play.coax";
-#load "../../verse/valley/slay-lights.coax";
+#load "../../aethyr/render/slay-lights.coax";
 #load "../../aethyr/move/locomotion.coax" as locomotion;
 #load "../../aethyr/move/walk.coax" as pc;
 #load "../../aethyr/cam/follow.coax" as camera;

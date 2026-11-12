@@ -7619,7 +7619,7 @@ world refuses a cycle or real clock whose source is the visitor's own page
 from its W header, so seats that joined at different ticks hold the same clock
 and resolve the same day. Its weather comes only from
 `aethyr/world/weather.coax`: a versioned `WeatherCondition` read from a copy
-of `verse/water-weather.coax`'s schedule and ground, with spell overlays a
+of `aethyr/world/water-weather.coax`'s schedule and ground, with spell overlays a
 separate local condition that never enters the global one. Applying it is
 Everglade's existing weather light; nothing here pins the schedule or changes
 gameplay weather, room authority, combat or simulation. A resolved value is

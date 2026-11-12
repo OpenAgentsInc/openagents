@@ -2086,7 +2086,7 @@ eg_water_under_view :: (c:V3,world:V3,d:V3,u:[]f32)->V3 {
   col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f3(v3(1.0f32,0.97f32,0.85f32),key),((eg_water_motes(o,d,fmin(path,6.0f32),u)*0.6f32)+eg_water_shafts(o,d,path,level,u))));
   return col;
 }
-// ---- the weather (W9: verse/water-weather.coax samples Everglade's schedule; everglade.coax
+// ---- the weather (W9: aethyr/world/water-weather.coax samples Everglade's schedule; everglade.coax
 // weather_frame writes u.weather). The light and the haze under cloud are set on the CPU; here the
 // sky greys under cloud and flashes with lightning, rain falls as wind-tilted streaks in layers
 // round the eye (2 on a phone, 4 on a desktop), rings on the water where drops land, and the

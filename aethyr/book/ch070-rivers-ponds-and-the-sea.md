@@ -90,7 +90,7 @@ module that any realm declares, instead of code that belongs to Everglade.
   fifteen of the old tests as `#test` checks.
 - [verse/everglade/river.coax](../../verse/everglade/river.coax): Everglade's
   4 m river, its current round the bridge piles, and its rowboats.
-- [verse/water-weather.coax](../../verse/water-weather.coax) and
+- [aethyr/world/water-weather.coax](../world/water-weather.coax) and
   [verse/water-spells.coax](../../verse/water-spells.coax): rising water in
   rain, and spells that act on water.
 

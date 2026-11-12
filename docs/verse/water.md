@@ -503,7 +503,7 @@ coax/bin/coax test --library verse/water-under.coax --steps 2000000000
 
 ## W9: weather (done)
 
-[`verse/water-weather.coax`](../../verse/water-weather.coax) ports the old
+[`aethyr/world/water-weather.coax`](../../aethyr/world/water-weather.coax) ports the old
 `physics::water::weather` with its tests. The weather is a pure function of
 the zone's climate, its seed and the world tick (120 Hz from the page's
 clock), so every visitor, a late joiner and a replay see the same sky with
@@ -549,7 +549,7 @@ on the phone tier (3.60 ms clear), and 12.5 ms at 1440x900 at device pixel
 ratio 2 (8.7 ms clear).
 
 ```sh
-coax/bin/coax test --library verse/water-weather.coax --steps 2000000000
+coax/bin/coax test --library aethyr/world/water-weather.coax --steps 2000000000
 ```
 
 ## W10: ocean and scale (done)

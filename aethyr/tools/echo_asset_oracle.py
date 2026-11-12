@@ -53,7 +53,7 @@ def main():
     ib = (echo/'echo.indices').read_bytes()
     rig = (echo/'echo.rig').read_bytes()
     slots = json.loads((source/'materials/slots.json').read_text())
-    symbols = dict(re.findall(r'(ECHO_\w+_SLOT) :: (\d+);', (repository/'verse/valley/echo-materials.coax').read_text()))
+    symbols = dict(re.findall(r'(ECHO_\w+_SLOT) :: (\d+);', (repository/'aethyr/render/echo-materials.coax').read_text()))
     for symbol, expected in [('ECHO_HEAD_SLOT','M_Head_Echo_Inst'),('ECHO_SKIN_SLOT','MI_Echo_Skin'),('ECHO_LASH_SLOT','M_Lashes_Inst'),('ECHO_EYE_LEFT_SLOT','M_EyeRefractive_Inst'),('ECHO_EYE_RIGHT_SLOT','M_EyeRefractive_Inst')]:
         assert slots['Echo'][int(symbols[symbol])]['asset'].split('.')[-1] == expected, symbol
     sections = json.loads((source/'settings.json').read_text())['sections']

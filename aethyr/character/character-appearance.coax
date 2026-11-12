@@ -1,6 +1,6 @@
 // Shared, versioned Quaternius player appearance. No UI, clocks, geometry or renderer owners.
 #module "aethyr.characterappearance";
-#load "../../everglade/scene/charactercreator-parts.coax";
+#load "charactercreator-parts.coax";
 CharacterAppearance :: struct {
  configured:bool;female:bool;worn:[40]bool;piece:int=18;outfit:int=2;hood:bool;hair:int;beard:bool;
  dye:int=8;skin:int=1;hair_color:int;eye_color:int;variant:int;pose:int;

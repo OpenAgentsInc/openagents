@@ -250,7 +250,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player.body = eg_step_put(player.body, moved);
   float show_vx = moved.show_vx, show_vz = moved.show_vz;
   // the river: what water you are in, on the bridge's deck none
-  // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
+  // the rain's rise on it and its current's gain (aethyr/world/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
   coax_v_f32 heights = {g->heights.e, 177 * 177};
   // Water Breathing (everglade-tide.coax): your breath never runs short under water

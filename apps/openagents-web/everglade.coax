@@ -70,7 +70,7 @@
 #load "../../verse/everglade/folk.coax";
 #load "../../verse/everglade/rumours.coax";
 #load "../../verse/everglade/watch.coax";
-#load "../../verse/water-weather.coax";
+#load "../../aethyr/world/water-weather.coax";
 #load "everglade-voice.coax";
 #load "everglade-place.coax";
 #load "everglade-spells.coax";
@@ -421,7 +421,7 @@ Everglade :: struct {
   cast_only: bool;          // another world poses the people (5E MMO, fivemmo.coax): the town's folk and watch stay out
   lift: f32;                // eased toward 1 in the map view, 0 at your shoulder
   sink: f32;                // eased toward 1 while you dive: the camera follows you under
-  // the weather (verse/water-weather.coax, W9): the zone's schedule at the world tick, from the
+  // the weather (aethyr/world/water-weather.coax, W9): the zone's schedule at the world tick, from the
   // page's clock; a ?weather=NAME pin; the sample now, the ground and the river's rise (each second)
   weather: [1] WeatherSchedule; weather_ready: bool; weather_pin: int;
   weather_ms: f64; weather_t0: f64; weather_at: f64;
@@ -3448,7 +3448,7 @@ trunks_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
 ABOVE_EYE :: [3] f32.[0, 150, -128];
 ABOVE_AT :: [3] f32.[0, 0, 6];
 
-// ---- the weather (W9, verse/water-weather.coax): Everglade's temperate schedule at the world
+// ---- the weather (W9, aethyr/world/water-weather.coax): Everglade's temperate schedule at the world
 // tick, so every visitor sees the same sky; ?weather=clear|overcast|fog|rain|storm pins it. A
 // still page (a golden) has a calm sky unless it is pinned, and a pinned still page holds one tick.
 
