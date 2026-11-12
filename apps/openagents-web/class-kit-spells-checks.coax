@@ -10,7 +10,7 @@
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-#load "class-kit.coax";
+#load "../../everglade/shared/class-kit.coax";
 #load "class-look.coax";
 #load "../../aethyr/rules/srd/catalog.coax";
 #load "../../aethyr/audio/experimental-sfx.coax";

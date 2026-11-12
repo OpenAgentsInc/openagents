@@ -31,7 +31,7 @@ RS_GRANT_SOURCES :: [27] RsGrantSource.[
   RsGrantSource.{klass = RS_CLERIC, from = 5, sp = SP_REVIVIFY, page = 40},
   RsGrantSource.{klass = RS_CLERIC, from = 5, sp = SP_MASS_HEALING_WORD, page = 40},
   RsGrantSource.{klass = RS_RANGER, from = 1, sp = SP_HUNTERS_MARK, page = 58}];
-// Consumed materials a world supplies one a visit (apps/openagents-web/fivebar.coax's
+// Consumed materials a world supplies one a visit (everglade/shared/fivebar.coax's
 // per-visit presets), so a spent one stays spent across preset changes: the Life Cleric's
 // 300 GP diamond for Revivify (p.159) and the Devotion Paladin's holy water for Protection
 // from Evil and Good (p.157).

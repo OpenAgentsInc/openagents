@@ -1,7 +1,7 @@
 // Everglade II's arrows (#13157), the zone's wiring of the shared ones: the Ranger's Longbow looses a real arrow here, as in Everglade
 // Experimental and the Archery Range (everglade/zone-bow.coax), and the room owns it. The flight
 // is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's (everglade/longbow.coax),
-// and this zone's ground, trunks, rocks and bodies are everglade2-archery.coax's, which the room flies with too.
+// and this zone's ground, trunks, rocks and bodies are everglade/shared/archery.coax's, which the room flies with too.
 //
 // Yours is drawn the frame you let go, from your bow hand toward where the crosshair rests: the page
 // doesn't wait for the room. It tells the room (aethyr/net/projectile.coax F, then the Attack's own
@@ -26,7 +26,7 @@ E2Bow :: struct {
   strength: f32 = 1;                   // the draw your next loose had (everglade2-mouse.coax e2m_loose)
   near: [1] E2ArNear;                  // the trunks and rocks round where an arrow or the crosshair last asked (#13166)
 }
-// The planting this page draws, which your step walks among too (everglade2-move.coax e2m_world).
+// The planting this page draws, which your step walks among too (everglade/shared/move.coax e2m_world).
 e2bw_land :: (s: [] E2) -> E2ArLand { return e2ar_land(s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_done); }
 
 // The bodies an arrow of yours may meet, as this page draws them: the monsters and the path's guard.

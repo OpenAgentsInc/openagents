@@ -1,7 +1,7 @@
 // Everglade II's room (#13054): the page's side of the server's world for the Everglade II realm.
 // From USE IN EVERGLADE on, the run down the path and the clearing are one room
 // (coax/web/room/room-everglade.coax eg_e2_code: everglade2-N, a check's pair-e2-*), whose world steps
-// you as this page does (everglade2-move.coax). This file holds the socket, the seat ticket, the
+// you as this page does (everglade/shared/move.coax). This file holds the socket, the seat ticket, the
 // clock, your inputs and the server's word on you, and the other players as the room says them,
 // drawn a jitter buffer behind (everglade-net-core.coax, which Everglade's page shares). The face
 // (everglade2-face.c) carries its pipe to the host and steps you at the room's rate.
@@ -13,8 +13,8 @@
 // comes back on a doubling, jittered wait, each open with a fresh ticket.
 #load "socket.coax";
 #load "everglade-net-core.coax";
-#load "player-name.coax";
-#load "class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
+#load "../../everglade/shared/player-name.coax";
+#load "../../everglade/shared/class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
 #load "analytics.coax";   // fact_of; and the page's Track (everglade2-track.coax)
 #load "../../aethyr/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
 #load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)

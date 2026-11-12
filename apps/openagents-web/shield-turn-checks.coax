@@ -1,6 +1,6 @@
 #load "../../aethyr/rules/srd/battle.coax";
 
-#load "fivebar.coax";
+#load "../../everglade/shared/fivebar.coax";
 #test "a saved-seat Shield retires at the actual next start despite an already advanced schedule" {
   b:[1]RsBattle; b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_wizard("Caster",0,3),2,2);

@@ -39,7 +39,7 @@ What v1 settled, and Everglade II keeps:
 What Everglade II leaves behind: v1's town, map and speeds. v1 runs at
 7.5 m/s and walks at 3.5 m/s. Everglade II jogs at 4.25 m/s and walks at
 1.5 m/s. It sets its own pace on the shared step (`e2_pace` in
-[`apps/openagents-web/everglade2-move.coax`](../../apps/openagents-web/everglade2-move.coax)),
+[`everglade/shared/move.coax`](../shared/move.coax)),
 so v1 keeps its speeds. v1 stays frozen.
 
 ## Everglade Experimental: the test bench
@@ -122,7 +122,7 @@ the hit, and you see and hear what you're rolling against.
   you can step out of its way, and one in the air lands where you stand"`.
 - `verse/experimental-hostiles.coax`, `#test "a safe spawn: nothing wakes or
   strikes you by the spawn or in your first seconds, and you see it coming"`.
-- `apps/openagents-web/everglade2-move.coax`, `#test "the run is a jog and the
+- `everglade/shared/move.coax`, `#test "the run is a jog and the
   walk a stroll"`: Everglade II's pace, apart from v1's.
 
 ## What comes next

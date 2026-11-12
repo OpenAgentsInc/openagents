@@ -4,7 +4,7 @@
 // The room moves them on its own tick, so every page sees the same monsters; their blows are the shared
 // rules' strikes (stat-attack.coax rs_stat_strike: the Wolf's Bite with Pack Tactics and its Prone rider,
 // the Goblin's Scimitar and Shortbow, each with the extra die on Advantage) and their Hit Points are the
-// battle's, which a player's cast takes through the shared rules (everglade2-rules.coax e2r_use_at_on).
+// battle's, which a player's cast takes through the shared rules (everglade/shared/cast-rules.coax e2r_use_at_on).
 //
 // A monster at home notices a player within E2M_NOTICE m whom it can see (the host world's line of sight,
 // rm_eg_sights), and its whole group (the pack, the camp) comes. A wolf runs in, circles its quarry while

@@ -59,7 +59,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
 // Whether a caster with feet at `me` sees the aim (ax, az) (#13262): v1's line (everglade-cast-sight.coax
 // cr_sight) from CR_EYE over the caster's land to EG_E2_SIGHT_UP over the aim's, ending CR_SHORT short,
 // and an aim within CR_NEAR always seen. What blocks it is what stops an arrow (#13166): the trunks and
-// rocks the walker meets (everglade2-archery.coax e2ar_in), from the room's planting. A piece lower
+// rocks the walker meets (everglade/shared/archery.coax e2ar_in), from the room's planting. A piece lower
 // than CR_LOW where the line meets it (a low rock) doesn't block, nor does the land (a bolt clears a rise).
 EG_E2_SIGHT_UP :: 1.0;     // m over the aim's land the line ends: a body's chest (the page's aim is its own y + 1)
 EG_E2_SIGHT_STEP :: 0.05;  // m between the points asked along the line: under a trunk's radius

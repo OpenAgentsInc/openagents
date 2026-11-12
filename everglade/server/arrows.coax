@@ -1,6 +1,6 @@
 // Everglade II's arrows, the room's (#13157): a Ranger's Attack looses a real arrow, and the room
 // flies it. The flight is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's
-// (everglade/longbow.coax) and this zone's ground and bodies everglade2-archery.coax's, which the page
+// (everglade/longbow.coax) and this zone's ground and bodies everglade/shared/archery.coax's, which the page
 // predicts with too (apps/openagents-web/everglade2-arrows.coax). What crosses the socket and how far
 // back the room rewinds are aethyr/net/projectile.coax and rewind.coax, any realm's.
 //
@@ -149,7 +149,7 @@ e2a_archer_ok :: (v: [] RmServer, k: int, tag: E2ArrowTag) -> bool {
   r := v[0].eg[k].rules[..];
   return xk_entry_at(r[0].klass[tag.seat] - EGB_CL0, r[0].b[0].c[EGB_SEAT + tag.seat].level, tag.slot).ok;
 }
-// An arrow reached body b: the SRD Attack on it, rolled now (everglade2-rules.coax). Whether it hit.
+// An arrow reached body b: the SRD Attack on it, rolled now (everglade/shared/cast-rules.coax). Whether it hit.
 e2a_strike :: (v: [] RmServer, k: int, tag: E2ArrowTag, b: int) -> bool {
   foe := e2a_creature(v, k, b);
   if foe < 0 || !e2a_archer_ok(v, k, tag) { return false; }

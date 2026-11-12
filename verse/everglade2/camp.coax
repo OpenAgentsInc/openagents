@@ -1,7 +1,7 @@
 // Everglade II's goblin camp (everglade/server/creatures.coax): where it stands at the clearing's
 // near edge, beside the path's last stretch, and its props. The pack tool
 // (verse/tools/assets/everglade2_pack.coax) places each prop's mesh from this list, and the movement
-// world (apps/openagents-web/everglade2-move.coax e2m_world, which the page and the room both step by)
+// world (everglade/shared/move.coax e2m_world, which the page and the room both step by)
 // gives each one a collider shaped as its mesh's own bounds, so no prop is walked through and nothing
 // stops you where no prop is drawn. Plain numbers only: no drawing.
 #load "forest.coax";

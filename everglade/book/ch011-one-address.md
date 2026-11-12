@@ -119,7 +119,7 @@ In `apps/openagents-web/experimental-combat.coax`:
 
 The class bar's spell pictures are shared with the 5E MMO realm. They load from
 `/worlds/5e-mmo/hotbar/` (`XC_MMO_URL` in
-[`apps/openagents-web/class-kit.coax`](../../apps/openagents-web/class-kit.coax)).
+[`everglade/shared/class-kit.coax`](../shared/class-kit.coax)).
 On openagents.com that path works. On everglade.world, the load balancer's
 matcher had no rewrite for `/worlds/5e-mmo/`, so each picture's request fell
 through to the catch-all rule and got Everglade's 404 page. The bar showed its

@@ -1,7 +1,7 @@
 # 8. If you can see it, you can walk to it
 
 > **Status: partly implemented.** Everglade II's colliders are built in
-> [`apps/openagents-web/everglade2-move.coax`](../../apps/openagents-web/everglade2-move.coax)
+> [`everglade/shared/move.coax`](../shared/move.coax)
 > from the same item list as the drawn pieces. Rock hulls are baked into
 > [`verse/everglade2/rock-hulls.coax`](../../verse/everglade2/rock-hulls.coax),
 > and Aethyr's [`aethyr/query.coax`](../../aethyr/query.coax) and
@@ -116,7 +116,7 @@ step:
 - `#test "you run the whole path, glade to clearing, down its middle, and nothing
   stops you"`, and the same a metre left and a metre right of the middle.
 
-In `apps/openagents-web/everglade2-move.coax`:
+In `everglade/shared/move.coax`:
 
 - `#test "each rock's hull is its mesh's: its bounds are the mesh's, every vertex
   inside every face"`.
@@ -133,7 +133,7 @@ In `verse/everglade2/forest.coax` and `apps/openagents-web/everglade2.coax`:
 
 ```sh
 coax/bin/coax test --library apps/openagents-web/everglade2-walk-test.coax
-coax/bin/coax test --library apps/openagents-web/everglade2-move.coax
+coax/bin/coax test --library everglade/shared/move.coax
 ```
 
 ## Mistakes

@@ -10,7 +10,7 @@
 #load "charactercreator.coax" as cc;
 #load "fivelab-bodies.coax" as figs;
 #load "../../everglade/shared/everglade-move-types.coax";
-#load "everglade2-move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
+#load "../../everglade/shared/move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
 #load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
 #load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)
 #load "experimental-sound.coax" as exsound;
@@ -45,7 +45,7 @@
 #load "class-feel.coax";        // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";        // a cast's body clip and the bow's aim pose: Experimental's
 #load "everglade2-mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws
-#load "everglade2-archery.coax";   // this zone's ground and bodies for an arrow, the room's too (#13157)
+#load "../../everglade/shared/archery.coax";   // this zone's ground and bodies for an arrow, the room's too (#13157)
 #load "../../aethyr/net/shots.coax";   // the room's word on each arrow (engine, #13157)
 #load "everglade2-arrows.coax";    // the arrows: yours drawn at once, everyone's the room's
 #load "class-menu.coax";        // Experimental's CLASSES column, for admin mode
@@ -95,7 +95,7 @@ E2 :: struct {
   shadow: [E2_DRAWS * 4] u32; shadow_n: int;
   frame: [16] f32;
   move_bodies: [E2_NEAR_BODIES * 7] f32;
-  move_hulls: [E2_HULL_ROOM] f32;   // the rocks' hulls round you this step (everglade2-move.coax e2m_world)
+  move_hulls: [E2_HULL_ROOM] f32;   // the rocks' hulls round you this step (everglade/shared/move.coax e2m_world)
   bake: [figs.BD_BAKE_FLOATS] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
   ml: [1] mlook.Mouselook;   // mouselook (aethyr/cam/mouselook.coax): in the world, not Character Create's studio
@@ -349,7 +349,7 @@ e2_query_at :: (t: string) -> int {
     if e2_may_stand(x, z) || e2_road_dist(x, z) < f32(E2_WALK) + 1 || stream_dist(e2_brook(), x, z) < 10 { continue; }
     #assert e2_forest(x, z) > 0.7; }
 }
-// Where the step leaves you, from where you stood (everglade2-move.coax e2m_keep).
+// Where the step leaves you, from where you stood (everglade/shared/move.coax e2m_keep).
 e2_keep :: (s: [] E2, x: f32, z: f32) -> figs.Point #export_c #effects(all) { k := e2m_keep(x, z, s[0].you_x, s[0].you_z); return figs.v3(k.x, 0, k.z); }
 // Kept where you may stand from where the step began (fx, fz): the room keeps you so (room-world.c world2_step).
 e2_keep_from :: (s: [] E2, x: f32, z: f32, fx: f32, fz: f32) -> figs.Point #export_c #effects(all) { k := e2m_keep(x, z, fx, fz); return figs.v3(k.x, 0, k.z); }
@@ -393,7 +393,7 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
                    theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
 }
-// The trunks and rocks round you (everglade2-move.coax e2m_world, which the room steps by too).
+// The trunks and rocks round you (everglade/shared/move.coax e2m_world, which the room steps by too).
 e2_move_world :: (s: [] E2, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w := e2m_world(s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_done, s[0].move_bodies[..], s[0].move_hulls[..], x, z);
   w.bodies = e2gd_body(s, w.bodies, x, z);   // the path's guard, where he is drawn

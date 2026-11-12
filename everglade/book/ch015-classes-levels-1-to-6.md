@@ -7,7 +7,7 @@
 > [`aethyr/rules/srd/class-features.coax`](../../aethyr/rules/srd/class-features.coax)
 > and checked one class at a time in `aethyr/rules/srd/class-<class>-checks.coax`
 > (#13044). Each class's bar in Everglade II is built by `xk_entry_at` in
-> [`apps/openagents-web/class-kit.coax`](../../apps/openagents-web/class-kit.coax).
+> [`everglade/shared/class-kit.coax`](../shared/class-kit.coax).
 > Other agents are extending these files now, so this chapter names functions
 > and has no source listings.
 
@@ -86,7 +86,7 @@ The class rules don't change. Two declared deviations in the world profile
   your Reaction or movement, and a refused press rolls everything back.
 
 Everglade II adds one more rule of its own, its social profile
-([`apps/openagents-web/everglade2-rules.coax`](../../apps/openagents-web/everglade2-rules.coax)).
+([`everglade/shared/cast-rules.coax`](../shared/cast-rules.coax)).
 In Everglade II today, no creature is selected for harm. A self or
 ally feature affects you. An offensive spell pays its costs and harms no one.
 An empty swing spends an Action. This is a named targeting rule, not a change
@@ -123,12 +123,12 @@ the wire, so the room knows exactly which feature you pressed.
   level 5, two attacks with the Attack action"`.
 - `aethyr/rules/srd/timing-checks.coax`, `#test "only the declared action
   profile recharges spent resources on the existing cooldown"`.
-- `apps/openagents-web/class-kit.coax`, `#test "class kits: a slot names one
+- `everglade/shared/class-kit.coax`, `#test "class kits: a slot names one
   ability at every level; a level's bar holds only its own"`.
 - `apps/openagents-web/everglade2.coax`, `#test "Everglade II's bar is your
   class's at your level: a level 5 Fighter's Action Surge goes by its own wire
   slot (#13046)"`.
-- `apps/openagents-web/everglade2-rules-checks.coax`, `#test "Everglade II takes
+- `everglade/shared/cast-rules-checks.coax`, `#test "Everglade II takes
   a slot only from the seat's own level's bar"`.
 
 There are 127 class checks across the twelve `class-<class>-checks.coax` files.

@@ -700,7 +700,7 @@ header:
 ```sh
 coax/remote/remote.sh run -- bash -c 'cd coax && web/tool.sh tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
   apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax \
-  apps/openagents-web/everglade2.coax:apps/openagents-web/everglade2-move.coax \
+  apps/openagents-web/everglade2.coax:everglade/shared/move.coax \
   apps/openagents-web/charactercreator.coax:verse/character-glade.coax'
 ```
 
@@ -714,7 +714,7 @@ Measured 2026-11-10 with `coax c UNIT --library --header`, wall time, each
 edit made two or three times. "First compile" is the first after the edit
 (each check is keyed and reused); "again" is the same sources once more (the
 whole pass is cached). The edited files are
-`verse/experimental-dungeon.coax` (fivelab), `apps/openagents-web/everglade2-move.coax`
+`verse/experimental-dungeon.coax` (fivelab), `everglade/shared/move.coax`
 (everglade2) and `verse/character-glade.coax` (Character Create).
 
 On a build host (oa-build-2 and oa-build-8, 30 cores, load 3 to 6). Before is

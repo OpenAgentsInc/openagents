@@ -15,7 +15,7 @@
 #load "creature-wire.coax";   // g2 and g3: the one codec the page reads them with (#13246)
 
 E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, fivelab-bodies.coax BD_RUN_FROM)
-E2G_CHASE :: E2_RUN_SPEED; // m/s: after the one who struck him, a run as fast as yours (everglade2-move.coax)
+E2G_CHASE :: E2_RUN_SPEED; // m/s: after the one who struck him, a run as fast as yours (everglade/shared/move.coax)
 E2G_REACH_FT :: 5;          // his Longsword's reach (feet), measured as the rules measure an Opportunity Attack
 E2G_NEAR :: 24;             // trunks round him, for his steering (room-tick.c E2G_NEAR_C)
 E2G_TURN :: 1.6;            // rad/s he turns at the path's ends: half round in two seconds
@@ -26,7 +26,7 @@ E2G_Z0 :: -18.0;            // the path's glade end (z): Everglade II's named gu
 #test "the guard's beat starts at Everglade II's named guard post (#13078)" { p := e2_point("guard-post"); #assert p.found && p.z == f32(E2G_Z0) && p.x == 0; }
 E2G_Z1 :: -455.0;           // its clearing end (E2_CLEAR_Z -470 + 15)
 E2G_AHEAD :: 1.5;           // m he looks ahead along the path
-E2G_BODY :: 0.35;           // m: his capsule's radius (everglade2-move.coax e2m_guard_body)
+E2G_BODY :: 0.35;           // m: his capsule's radius (everglade/shared/move.coax e2m_guard_body)
 E2G_CLEAR :: 0.8;           // m: no step of his ends nearer a player's middle than this
 E2G_BLOCK :: 1.7;           // m: a player this near ahead of him stops him
 E2G_SIDE_S :: 1.6;          // s stopped before he steps round
@@ -207,7 +207,7 @@ e2g_walk :: (v: [] RmServer, k: int, dt: f32) {
 }
 
 // One tick of his fight with `on` (a seat, or E2G_NAV_BEAST + a monster's creature) standing at
-// (tx, tz), on the steering service: his window filled from where one may stand (everglade2-move.coax
+// (tx, tz), on the steering service: his window filled from where one may stand (everglade/shared/move.coax
 // e2_may_stand), the players as bodies, and the room's slide (e2m_keep) the last word on his step.
 // He runs as fast as your run (E2G_CHASE), faster while he has taken the Dash action; he draws to the
 // side the one he fights faces away from (nav_facing, their yaw); the trunks and rocks round him

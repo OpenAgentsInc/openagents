@@ -217,7 +217,7 @@ egb_place :: (r: [] EgBattle, s: int, x: f32, z: f32) #effects(all) {
 }
 // The room's clock on to `clock` (seconds): the engine's tick, each seat's and familiar's step, each
 // creature's turn when due (a patrolling guard's strikes in it), then whatever ended goes. (v1's bar
-// zones never start in an Everglade II room: its casts are everglade2-rules.coax's, #13346.)
+// zones never start in an Everglade II room: its casts are everglade/shared/cast-rules.coax's, #13346.)
 egb_step :: (r: [] EgBattle, clock: f32) #effects(all) {
   if !r[0].started { return; }
   b := r[0].b[..];

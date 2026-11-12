@@ -74,7 +74,7 @@ e2gd_aim :: (s: [] E2, m: XcAim, p: [2] f32, fx: f32, fz: f32) -> [2] f32 {
   #assert e2gd_aim(s[..], XcAim.{kind = XC_AIM_SELF}, [2] f32.[0, 0], 0, -1)[1] == 0;
 }
 
-// His capsule among the bodies your step walks round (everglade2-move.coax e2m_guard_body).
+// His capsule among the bodies your step walks round (everglade/shared/move.coax e2m_guard_body).
 e2gd_body :: (s: [] E2, n: int, x: f32, z: f32) -> int {
   g := s[0].guard[0];
   if !g.up { return n; }

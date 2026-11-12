@@ -4,7 +4,7 @@
 // Everglade Experimental (experimental-combat.coax) and Everglade II (everglade2-cast.coax) draw the
 // same; what each ability is, how it aims and sounds is class-kit.coax's.
 //   coax/bin/coax test apps/openagents-web/class-look.coax
-#load "class-kit.coax";
+#load "../../everglade/shared/class-kit.coax";
 #load "../../aethyr/fx/puff.coax";
 #load "../../aethyr/fx/spell-light.coax";   // each spell's colour
 

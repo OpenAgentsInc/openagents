@@ -4,7 +4,7 @@
 CharacterAppearance :: struct {
  configured:bool;female:bool;worn:[40]bool;piece:int=18;outfit:int=2;hood:bool;hair:int;beard:bool;
  dye:int=8;skin:int=1;hair_color:int;eye_color:int;variant:int;pose:int;
- klass:int= -1;   // the SRD 5.2.1 class chosen (0 Barbarian ... 11 Wizard, apps/openagents-web/fivebar.coax FB_CL_*), -1 none: a CC1 or CC2 record
+ klass:int= -1;   // the SRD 5.2.1 class chosen (0 Barbarian ... 11 Wizard, everglade/shared/fivebar.coax FB_CL_*), -1 none: a CC1 or CC2 record
  level:int=1;     // its level, 1 to CA_LEVELS (CC4; a CC3 record is level 1)
  source_first:[80]int;source_count:[80]int;source_word:[80]int;source_n:int;
 }

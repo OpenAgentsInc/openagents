@@ -1,6 +1,6 @@
 // Everglade's class resource bar, for every Everglade zone (#13084): the Barbarian's Rages or the
 // Monk's Focus as one filled bar over the action bar, with its count. Plain facts in, vertices out.
-// The bar's slots come from the shared kit (apps/openagents-web/class-kit.coax xk_bar_at), the
+// The bar's slots come from the shared kit (everglade/shared/class-kit.coax xk_bar_at), the
 // counts from the room's word on them (xk_room_slot), the most from the rules (fb_cl_hero). A zone
 // loads this beside windows.coax, fills EgResource with eg_resource_of and draws it.
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "eg resource"

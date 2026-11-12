@@ -742,7 +742,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   for c: loads { joined[n] = c; n += 1; }
   for c: more { joined[n] = c; n += 1; }
   #assert lc_room_v1(cast(string) joined[0..<n], LC_ROOM, LC_T_QUIET) == 2;   // each named once, however reached
-  #assert lc_v1("apps/openagents-web/everglade5e.coax") && lc_v1("apps/openagents-web/everglade-wire.coax") && !lc_v1("apps/openagents-web/everglade2-move.coax") && !lc_v1("everglade/shared/everglade-wire.coax");
+  #assert lc_v1("apps/openagents-web/everglade5e.coax") && lc_v1("apps/openagents-web/everglade-wire.coax") && !lc_v1("everglade/shared/move.coax") && !lc_v1("everglade/shared/everglade-wire.coax");
 }
 #test "the allowlist stays true and only shrinks" {
   used: [8] bool;

@@ -143,7 +143,7 @@ through `battle.coax` (`rs_dash`, `rs_cunning_dash`) and `fivebar.coax`
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared: `everglade2-rules.coax:87-95` passes Dash to `fb_use`. Running is the walk toggle (`e2_pace` everglade2-move.coax:17). |
+| Everglade II | Shared: `everglade/shared/cast-rules.coax:87-95` passes Dash to `fb_use`. Running is the walk toggle (`e2_pace` everglade/shared/move.coax:17). |
 | Experimental | The combat is shared (`fb_seat_use` experimental-combat.coax:1502). The 5E Lab keeps its own kinds and dispatch: `AB_DASH`, `AB_CDASH` fivelab.coax:1756-1757, `player_turn` :1714. |
 | Everglade v1 | Shared movement flag only: `eg_step_begin` everglade-step.coax:43 runs forward on link flag 512; the page never sets it. |
 

@@ -13,7 +13,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "../../aethyr/rules/srd/battle.coax";
-#load "fivebar.coax";   // the hotbar on the engine, shared with Everglade 5E
+#load "../../everglade/shared/fivebar.coax";   // the hotbar on the engine, shared with Everglade 5E
 
 COLS :: 12; ROWS :: 12;
 LEVEL :: 6;

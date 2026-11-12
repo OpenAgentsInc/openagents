@@ -8,7 +8,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "../../aethyr/rules/srd/battle.coax";
-#load "fivebar.coax";
+#load "../../everglade/shared/fivebar.coax";
 #load "fivemmo-hotbar.coax";   // 5E MMO's hotbar pictures, by name
 #load "everglade-hotbar.coax";  // Everglade's
 

@@ -1,4 +1,4 @@
-#load "everglade2-rules.coax";
+#load "cast-rules.coax";
 
 #test "Everglade II shared casting heals and retains real class resources and spent Reactions" {
   b:[1] RsBattle; b[0].w=16; b[0].h=16; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD);

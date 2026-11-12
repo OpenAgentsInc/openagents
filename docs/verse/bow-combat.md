@@ -148,7 +148,7 @@ crosshair's ray and the arrows all read that one list.
 | SRD | Here |
 | --- | --- |
 | Longbow: 1d8 Piercing, Ammunition (150/600 ft), Heavy, Two-Handed, Slow mastery | `rs_weapon(W_LONGBOW)`. A hit deals 1d8 + your Dexterity modifier, and the attack roll adds Dexterity and your Proficiency Bonus (`rs_weapon_attack`) |
-| The Attack action with a ranged weapon | `FB_SHOOT`, which calls `rs_shoot` (`apps/openagents-web/fivebar.coax`). Extra Attack at level 5 makes its second attack too. A bow kit's Attack is this shot in every realm and in the room (`class-kit.coax` `xk_rules`), and it aims at the Longbow's range (`xk_weapon`) |
+| The Attack action with a ranged weapon | `FB_SHOOT`, which calls `rs_shoot` (`everglade/shared/fivebar.coax`). Extra Attack at level 5 makes its second attack too. A bow kit's Attack is this shot in every realm and in the room (`class-kit.coax` `xk_rules`), and it aims at the Longbow's range (`xk_weapon`) |
 | Which creature is attacked | The one the arrow physically reaches. The roll decides whether the attack hits |
 | Range: normal 150 ft, long 600 ft, Disadvantage past normal range | The target stands on the engine's line at its true distance, one 5 ft square to 1.524 m, the same scale as every other range in Experimental, so normal range is 45.7 m. Past it, `rs_strike`'s own long-range rule gives Disadvantage. The arrow's arc reaches about 183 m at 45°, the long range |
 | A ranged attack with an enemy within 5 ft | Disadvantage, from the same rule. The other monsters stand on their squares round you |

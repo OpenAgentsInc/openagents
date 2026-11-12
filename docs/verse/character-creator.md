@@ -201,7 +201,7 @@ the character record (`CC3`), so a reload keeps it, and Everglade restores it
 with the rest of your appearance.
 
 Each class is a level 1 character built by the SRD 5e engine
-(`apps/openagents-web/fivebar.coax` `fb_cl_hero`), with the class's Hit Points,
+(`everglade/shared/fivebar.coax` `fb_cl_hero`), with the class's Hit Points,
 Armor Class, ability scores and spell save DC. Its bar has one ability in slot 1
 (key 1) and Repair on R:
 

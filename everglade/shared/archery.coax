@@ -4,9 +4,9 @@
 // What only this zone knows is here: where its ground is, how big its monsters stand, and how near
 // where the room has an archer a launch must be. The page (everglade2-arrows.coax) predicts with these and
 // the room (everglade/server/arrows.coax) decides with them, so both fly the same arrow.
-//   coax/bin/coax test --library apps/openagents-web/everglade2-archery.coax
-#load "everglade2-move.coax";
-#load "../../everglade/longbow.coax";
+//   coax/bin/coax test --library everglade/shared/archery.coax
+#load "move.coax";
+#load "../longbow.coax";
 #load "../../aethyr/action/bow.coax" as bow;
 
 E2AR_MONSTERS :: 12;        // the room's monsters (everglade/server/creatures.coax E2M_N): bodies 0 to 11
@@ -16,7 +16,7 @@ E2AR_HAND_SLACK :: 3.0;     // m a launch may be from where the room has the arc
 E2AR_HAND_LOW :: 0.4; E2AR_HAND_HIGH :: 4.5;   // m over the land a launch may be (a jump's top)
 
 // What an arrow flies among is what you walk among (#13166): the trunks and rocks round a point are
-// the walker's own (everglade2-move.coax e2m_world), from the planting the page draws and the room
+// the walker's own (everglade/shared/move.coax e2m_world), from the planting the page draws and the room
 // steps by, so where an arrow stops is where a trunk or rock is drawn, on the page and in the room alike.
 // The planting: the page's (everglade2.coax) or the room's (E2MoveGround).
 E2ArLand :: struct { items: [] f32; kinds: [] u8; first: [] int; planted: bool; }   // E2ArLand.{}: none planted (the glade's own and the camp's only)

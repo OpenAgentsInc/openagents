@@ -1,4 +1,4 @@
-#load "everglade2-rules-checks.coax";
+#load "cast-rules-checks.coax";
 #load "../../coax/lib/sys/tool.coax";
 
 tool_main :: ()->int #export_c #effects(all) {

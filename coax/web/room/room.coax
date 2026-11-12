@@ -48,7 +48,7 @@
 #load "../../../everglade/server/guard.coax";   // Everglade II's path guard
 #load "../../../everglade/server/admin.coax";   // Everglade II's admin mode: a local room's only (--dev on 127.0.0.1)
 #load "../../../everglade/server/creatures.coax";   // Everglade II's wolves and goblins
-#load "../../../apps/openagents-web/everglade2-archery.coax";   // Everglade II's ground and bodies for an arrow, the page's too (#13157)
+#load "../../../everglade/shared/archery.coax";   // Everglade II's ground and bodies for an arrow, the page's too (#13157)
 #load "../../../aethyr/net/projectile.coax";   // projectiles over a room: the launch, the flight, the end, the bodies' past
 #load "../../../everglade/server/arrows.coax";   // Everglade II's arrows: the room flies each one
 
@@ -58,7 +58,7 @@
 #load "room-travel.coax";   // a player's travel between two rooms (#12850)
 #load "native-local-policy.coax";
 #load "room-directory.coax";
-#load "../../../apps/openagents-web/player-name.coax";   // a chosen name's shape, as the API's (the dev stand-in's player/name)
+#load "../../../everglade/shared/player-name.coax";   // a chosen name's shape, as the API's (the dev stand-in's player/name)
 #load "../api/checkpoint-policy.coax";   // the API's checkpoint ordering, which the dev stand-in's store keeps too (#13057)
 #load "room-dev.coax";
 #load "room-stats.coax";   // what the server counts of its own work, for the admins' room view (#12791)

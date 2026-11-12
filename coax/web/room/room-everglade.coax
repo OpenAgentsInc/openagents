@@ -1,10 +1,10 @@
 #load "../../../everglade/shared/everglade-link-wire.coax";
 #load "../../../aethyr/ids.coax";
-#load "../../../apps/openagents-web/everglade2-move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
-#load "../../../apps/openagents-web/class-kit.coax";
+#load "../../../everglade/shared/move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
+#load "../../../everglade/shared/class-kit.coax";
 #load "../../../aethyr/session/seat-class.coax";   // a seat's class and level: the ticket's, never a hello's level (#13259)
 #load "../../../aethyr/rules/srd/condition-display.coax";   // the conditions' words, icons and clocks, every zone's (#13082)
-#load "../../../apps/openagents-web/everglade2-rules.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
+#load "../../../everglade/shared/cast-rules.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
 // The room server's Everglade rooms: the server is the authority (spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
 // An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are

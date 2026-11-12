@@ -1,5 +1,5 @@
 // More SRD 5.2.1 spells as records, past spells.coax's first RS_SPELLS: the ones Everglade's bar
-// casts (apps/openagents-web/fivebar.coax) that the first records didn't hold. Loaded by
+// casts (everglade/shared/fivebar.coax) that the first records didn't hold. Loaded by
 // spells.coax, which answers for them through rs_spell. Each holds the SRD's level, school, casting
 // time, range, duration, concentration and area, and an effect program in the same closed set of
 // steps battle.coax runs. Canonical source words/page numbers are now in data/ through import.coax
@@ -26,7 +26,7 @@ SP_SPEAK_WITH_ANIMALS :: 50; SP_RAY_OF_FROST :: 51; SP_FOG_CLOUD :: 52; SP_CONE_
 SP_WIND_WALL :: 55; SP_LEVITATE :: 56; SP_FEATHER_FALL :: 57; SP_GUST_OF_WIND :: 58; SP_WALL_OF_STONE :: 59;
 SP_TELEKINESIS :: 60; SP_BLACK_TENTACLES :: 61; SP_WATER_WALK :: 62; SP_CONTROL_WATER :: 63; SP_CREATE_WATER :: 64;
 SP_WATER_BREATHING :: 65; SP_METEOR_SWARM :: 66;
-// the Warlock's (a level 17 Fiend Warlock's bar: apps/openagents-web/fivebar.coax fb_warlock_bar)
+// the Warlock's (a level 17 Fiend Warlock's bar: everglade/shared/fivebar.coax fb_warlock_bar)
 SP_BLIGHT :: 67; SP_CIRCLE_OF_DEATH :: 68; SP_FINGER_OF_DEATH :: 69; SP_DIMENSION_DOOR :: 70;
 // a Warlock's Reaction (battle.coax rs_hellish_rebuke runs it: a Reaction isn't cast on a turn)
 SP_HELLISH_REBUKE :: 71;

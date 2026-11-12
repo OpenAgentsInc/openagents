@@ -7175,7 +7175,7 @@ Evidence: `docs/verification/srd-room-press-2026-11-08/README.md`.
 ## Everglade II broadcasts accepted casts only after shared execution
 
 `eg_e2_cast` retains class-slot/aim/range/network-cooldown validation and calls
-the transactional `everglade2-rules.coax` executor before publishing acceptance.
+the transactional `everglade/shared/cast-rules.coax` executor before publishing acceptance.
 Self/ally entries affect the caster through shared rules. The declared social
 profile sends offensive spells through shared empty-target costs/lifecycle
 without damage or a harmful zone; empty swings spend an Action without a hit.

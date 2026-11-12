@@ -24,7 +24,7 @@ change one?"
 | The registry entry | [`apps/openagents-web/realms.json`](../../apps/openagents-web/realms.json), entry `everglade2` | Its address, title, module, assets, golden settings and domain |
 | The page | [`apps/openagents-web/everglade2.coax`](../../apps/openagents-web/everglade2.coax) | The frame, the camera, drawing, the class bar and the room's view |
 | The host face | `apps/openagents-web/everglade2-face.c` | The exports the browser host calls, such as `coaxial_frame` |
-| Movement | [`apps/openagents-web/everglade2-move.coax`](../../apps/openagents-web/everglade2-move.coax) | Where you may stand, the pace, trunks and rock hulls |
+| Movement | [`everglade/shared/move.coax`](../shared/move.coax) | Where you may stand, the pace, trunks and rock hulls |
 | Character Create | [`apps/openagents-web/everglade2-create.coax`](../../apps/openagents-web/everglade2-create.coax) | The studio, the arrival and the run into the world |
 | The GPU passes | [`apps/openagents-web/gpu/everglade2.coax`](../../apps/openagents-web/gpu/everglade2.coax) | The ground, kit pieces, grass and characters, in Coax compiled to WGSL |
 | The land | [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax) | Height, path, woods, clearing and colour, as pure functions |
@@ -83,7 +83,7 @@ Tests sit next to the code that they check. Run one file's tests:
 ```sh
 coax/bin/coax test --library verse/everglade2/forest.coax
 coax/bin/coax test --library verse/everglade2/plant.coax
-coax/bin/coax test --library apps/openagents-web/everglade2-move.coax
+coax/bin/coax test --library everglade/shared/move.coax
 coax/bin/coax test --library apps/openagents-web/everglade2-walk-test.coax
 ```
 

@@ -19,7 +19,7 @@ battle's applied fields. No world passes a literal profile any more.
 | `RS_ACTION_WORLD` | Everglade 5E single play, 5E MMO, 5E Lab action mode | 1.5-second turns; cooldown recovery; caster spared by its own areas |
 | `RS_EVERGLADE_WORLD` | Everglade Experimental, the Everglade 5E room, Everglade II | The above, plus unlimited presses and unpaid continuous walking |
 
-Everglade II's harmless social targeting (`everglade2-rules.coax`) is a
+Everglade II's harmless social targeting (`everglade/shared/cast-rules.coax`) is a
 targeting rule, not a timing deviation, and stays named in its own file.
 
 ## Continuous walking pays the turn's feet

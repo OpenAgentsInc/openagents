@@ -5,7 +5,7 @@
 // once and says the API's refusal for the rest. Names are not unique: the player id is who you are.
 // Loaded by everglade2-create.coax (Character Create's NAME) and coax/web/room/room-dev.coax (the
 // local API's stand-in), so the two say the same.
-//   coax/bin/coax test --library apps/openagents-web/player-name.coax
+//   coax/bin/coax test --library everglade/shared/player-name.coax
 
 PN_OK :: 0; PN_SHORT :: 1; PN_LONG :: 2; PN_CHARS :: 3; PN_ADDRESS :: 4;
 PN_MIN :: 3; PN_MAX :: 20;

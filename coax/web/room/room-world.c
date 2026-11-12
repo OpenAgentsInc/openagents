@@ -1,4 +1,4 @@
-/* The room server's Everglade world (GitHub #12705, #13053; apps/openagents-web/everglade2-move.coax):
+/* The room server's Everglade world (GitHub #12705, #13053; everglade/shared/move.coax):
    Everglade II's land, path and woods, one planting for every room, and each seat a controller
    (everglade-step.coax, the unit that carries aethyr/player.coax) stepped as the page steps it, so
    the page and the server put the player in the same place. Every room is Everglade II's
@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "everglade-step.h"
-#include "room.h"   /* Everglade II's movement world (apps/openagents-web/everglade2-move.coax, the room's unit) */
+#include "room.h"   /* Everglade II's movement world (everglade/shared/move.coax, the room's unit) */
 #include "room-world.h"
 
 static coax_t_Player seat_p[WORLD_ROOMS][WORLD_SEATS];
@@ -37,7 +37,7 @@ void world_edits(const char *text, int64_t n) { (void)text; edits_laid = n > 0; 
 /* Readiness (#12797): the published world is laid and Everglade II's land is planted. */
 bool world_ready(void) { return edits_laid && world2_prepare(); }
 
-/* ---- Everglade II's rooms (#13053; apps/openagents-web/everglade2-move.coax): its land, path and woods,
+/* ---- Everglade II's rooms (#13053; everglade/shared/move.coax): its land, path and woods,
    one planting for every room (a pure function of the land), and each seat a controller stepped as the
    page steps it (everglade2-face.c e2_step_once): the world round it, Everglade II's pace, the
    controller's two halves over the trunks and the rocks' hulls, then kept where it may stand. No town, river,

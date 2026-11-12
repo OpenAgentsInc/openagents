@@ -8,7 +8,7 @@
 > The server's side is
 > [`coax/web/room/room-everglade.coax`](../../coax/web/room/room-everglade.coax)
 > and `world2_*` in `coax/web/room/room-world.c`. Both step you with
-> [`everglade2-move.coax`](../../apps/openagents-web/everglade2-move.coax).
+> [`everglade/shared/move.coax`](../shared/move.coax).
 > The measurements below are from headless Chrome against a local room.
 > Real Chrome on two machines through the staging path is not checked yet.
 > This chapter names functions and has no source listings yet.
@@ -36,7 +36,7 @@ room.
 | Part | How it works | Where |
 | --- | --- | --- |
 | The room's world | Everglade II's land, path, woods, colliders and pace. The room picks it by the room code `everglade2-N`. | `eg_e2_code` in `room-everglade.coax`; `world2_prepare`, `world2_place`, `world2_step` in `room-world.c` |
-| The shared step | Where you may stand, the trunk and rock colliders, and the pace. The page and the room both load it. | `everglade2-move.coax` |
+| The shared step | Where you may stand, the trunk and rock colliders, and the pace. The page and the room both load it. | `everglade/shared/move.coax` |
 | Joining | The page asks the API for a seat ticket for the realm `everglade2`. The API places you in an instance on a shard. The socket opens with the ticket. | `everglade2-net.coax`; [Aethyr chapter 88](../../aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
 | The hello | The page sends its build and a hello with your Character Create record and your name. | `everglade2-net.coax` |
 | Your own movement | The page steps you at the room's rate, 30 steps a second, and sends each step's input. When the room's answer differs, the page re-runs your inputs from the room's position. | `everglade2-net.coax`, `everglade2-face.c` |

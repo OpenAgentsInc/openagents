@@ -96,7 +96,7 @@ the same spacing: you can't see far between the trunks.
 
 The scale check is a walk. The path is about 440 m long, and you jog at
 4.25 m/s (`E2_RUN_SPEED` in
-[`apps/openagents-web/everglade2-move.coax`](../../apps/openagents-web/everglade2-move.coax)):
+[`everglade/shared/move.coax`](../shared/move.coax)):
 
 ```text
 440 m / 4.25 m/s ≈ 104 s

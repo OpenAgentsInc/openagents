@@ -16,7 +16,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "../../aethyr/rules/srd/battle.coax";
-#load "fivebar.coax";
+#load "../../everglade/shared/fivebar.coax";
 #load "everglade5e-beasts.coax";   // what a spell summons, the room's rules too: Finger of Death's Zombies
 
 E5R_BEAT :: 1.5; E5R_RECHARGE :: 9.0;

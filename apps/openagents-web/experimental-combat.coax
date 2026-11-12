@@ -44,10 +44,10 @@
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-#load "fivebar.coax";
+#load "../../everglade/shared/fivebar.coax";
 #load "../../aethyr/walk-substep-policy.coax" as xtravel;
 #load "../../aethyr/rules/srd/press-budget.coax";
-#load "class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
+#load "../../everglade/shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
 #load "class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II

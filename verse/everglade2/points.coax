@@ -1,7 +1,7 @@
 // Everglade II's named points (GitHub #13078): where a new seat stands, and the places down the path
 // the scripted checks stand at or shoot from (the walk test, the cull check's views, the lighting
 // baseline's), by name (aethyr/world/points.coax). forest.coax loads this file: the clearing's z is
-// defined here alone (E2_CLEAR_Z), and apps/openagents-web/everglade2-move.coax's spawn (E2_SPAWN_*)
+// defined here alone (E2_CLEAR_Z), and everglade/shared/move.coax's spawn (E2_SPAWN_*)
 // too. A check reads them through e2_point; a tool refuses a name that isn't here
 // (coax/web/map-points.coax).
 // Metres, z north (the path runs south, to lower z), face 0 north. The spawn is a world place (the

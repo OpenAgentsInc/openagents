@@ -3,8 +3,8 @@
 // (everglade2.coax, everglade2-face.c) and the room server (coax/web/room/room-world.c, its
 // Everglade II rooms) both #load this file and step the same controller (everglade-step.coax) on it,
 // so the page's prediction and the room's word on you agree. Plain numbers only: no drawing.
-//   coax/bin/coax test --library apps/openagents-web/everglade2-move.coax
-#load "../../everglade/shared/everglade-move-types.coax";
+//   coax/bin/coax test --library everglade/shared/move.coax
+#load "everglade-move-types.coax";
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/rock-hulls.coax";
 #load "../../verse/everglade2/camp.coax";   // the goblin camp's props (everglade/server/creatures.coax)
@@ -154,7 +154,7 @@ e2_hulls_hold :: (hulls: [] f32, n: int, x: f32, z: f32) -> bool {
   #assert w.hulls == 0 && w.bodies == 0;
 }
 // A trunk's body, from its foot to its waist, as you brush past it (an arrow's flight takes it on up to
-// the crown: everglade2-archery.coax E2AR_CROWN).
+// the crown: everglade/shared/archery.coax E2AR_CROWN).
 E2_TRUNK_LOW :: 0.3; E2_TRUNK_HIGH :: 1.6;
 e2m_body :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32, r: f32) -> int {
   if n >= E2_NEAR_BODIES || (n + 1) * 7 > out.count { return n; }

@@ -531,7 +531,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   eg_test_drain(v[..], box[..]);
-  // the glade's first kept tree, as the walker and the arrows have it (everglade2-archery.coax)
+  // the glade's first kept tree, as the walker and the arrows have it (everglade/shared/archery.coax)
   tree := -1;
   for i: 0..<CG_ITEMS { gt := cg_item(i); if e2_glade_kept(gt) && gt.kind <= 1 && tree < 0 { tree = i; } }
   #assert tree >= 0;
