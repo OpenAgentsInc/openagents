@@ -15,9 +15,11 @@
 
 // The frames a component asks for, by role. Each is one of ARWES's kinds with its settings.
 MF_BUTTON :: 0; MF_PANEL :: 1; MF_FIELD :: 2; MF_NOTICE :: 3; MF_HEADER :: 4; MF_ROW :: 5; MF_BUBBLE :: 6;
-MF_COUNT :: 7;
-// ARWES's kinds (frames.coax af_frame_settings): 0 underline, 1 lines, 2 corners, 3 octagon, 7 header.
-MONO_KINDS :: [7] int.[3, 2, 0, 1, 7, 0, 2];
+// The stage's (components/kit/stage.coax): the stage itself, a card on it, a verdict's mark, a small box.
+MF_STAGE :: 7; MF_CARD :: 8; MF_MARK :: 9; MF_BOX :: 10;
+MF_COUNT :: 11;
+// ARWES's kinds (frames.coax af_frame_settings): 0 underline, 1 lines, 2 corners, 3 octagon, 5 nefrex, 7 header.
+MONO_KINDS :: [11] int.[3, 2, 0, 1, 7, 0, 2, 5, 3, 3, 3];
 mono_kind :: (role: int) -> int { kinds := MONO_KINDS; return ifx role >= 0 && role < MF_COUNT then kinds[role] else 2; }
 mono_frames :: (out: [] AfSettings) -> int {
   if out.count < MF_COUNT { return 0; }
@@ -29,6 +31,8 @@ mono_frames :: (out: [] AfSettings) -> int {
   out[MF_ROW].square = 6;
   out[MF_NOTICE].small_line_length = 12; out[MF_NOTICE].large_line_width = 1; out[MF_NOTICE].small_line_width = 2;
   out[MF_HEADER].deco_width = 3;
+  out[MF_STAGE].square = 14; out[MF_STAGE].small_line_length = 20; out[MF_STAGE].large_line_length = 96;
+  out[MF_CARD].square = 10; out[MF_MARK].square = 14; out[MF_BOX].square = 6;
   return MF_COUNT;
 }
 
@@ -205,13 +209,128 @@ mono_css :: (out: [] u8) -> int {
   return n;
 }
 
+// The stage's rules (components/kit/stage.coax), after mono_css's from `at`: a workbench of a
+// transcript beside a stage, as tall as the window; the rail, bytes, wire, packets, marks and the
+// rest. A page that has no stage doesn't send them. What moves reads --p, which the page computes
+// from its own time (k_var), so nothing here runs on the browser's clock but the running glyph's turn.
+// Bytes written in all.
+mono_stage_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  // the workbench: a top bar, then two panes
+  n = mc(out, n, "html:has(.wb),body:has(.wb){height:100%;overflow:hidden;overscroll-behavior:none}");
+  n = mc(out, n, ".wb{height:100dvh;max-width:1760px;margin:0 auto;padding:14px 20px 18px;display:flex;flex-direction:column;gap:12px}");
+  n = mc(out, n, ".wb-top{display:flex;align-items:center;gap:32px;min-height:50px;padding:0 6px}");
+  n = mc(out, n, ".wb-t{margin:0;font:600 17px/1 var(--mono);letter-spacing:.26em;text-transform:uppercase;white-space:nowrap;color:#fff}");
+  n = mc(out, n, ".wb-top .btn{flex:none}");
+  // the rail
+  n = mc(out, n, ".rail{flex:1;min-width:0;display:flex;gap:8px}");
+  n = mc(out, n, ".rail-s{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;color:var(--ink-faint)}");
+  n = mc(out, n, ".rail-h{display:flex;gap:8px;align-items:baseline;font:500 13px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;white-space:nowrap}");
+  n = mc(out, n, ".rail-n{opacity:.55}.rail-b{height:4px;background:var(--line-dim);display:flex;overflow:hidden}");
+  n = mc(out, n, ".rail-f{flex:1;background:currentColor;transform-origin:0 50%;transform:scaleX(var(--p,0))}");
+  n = mc(out, n, ".rail-s[data-state=done]{color:var(--ink-muted)}.rail-s[data-state=now]{color:#fff}.rail-s[data-state=now] .rail-h{font-weight:600}");
+  // the panes
+  n = mc(out, n, ".wb-body{flex:1;min-height:0;display:flex;gap:16px}");
+  n = mc(out, n, ".wb-chat{flex:0 0 39%;min-width:0;display:flex;flex-direction:column;padding:14px 18px 6px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".wb-stage{flex:1;min-width:0;display:flex;flex-direction:column;padding:20px 30px 16px;--frame-bg:#050505;--frame-line:var(--line);--frame-deco:#fff}");
+  n = mc(out, n, ".pane-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--line-dim)}");
+  n = mc(out, n, ".wb-chat .log{scrollbar-width:none}.wb-chat .log .thread{padding:14px 0 12px}");
+  n = mc(out, n, ".wb-chat .log .msg-user{margin-top:22px;max-width:86%}.wb-chat .msg-ai{margin-top:10px}.wb-chat .tools{margin:12px 0 4px;gap:4px}");
+  // a tool call as one line
+  n = mc(out, n, ".tl .tool-h{align-items:center;gap:10px;padding:8px 10px 8px 12px}");
+  n = mc(out, n, ".gl{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;flex:none;color:var(--ink-muted)}.gl .ic{width:16px;height:16px}");
+  n = mc(out, n, ".gl[data-state=run] .ic{animation:turn 1.8s linear infinite}.gl[data-state=ok]{color:#fff}.gl[data-state=no]{color:#000;background:#fff}");
+  n = mc(out, n, ".tl .tool-k{flex:none;font:500 14px/1.4 var(--mono);letter-spacing:.04em;text-transform:none;color:var(--ink-muted)}");
+  n = mc(out, n, ".tl .tool-d{font:15px/1.4 var(--mono);color:var(--ink);text-align:right}.tl[data-state=run] .tool-d{color:var(--ink-faint)}");
+  n = mc(out, n, ".tl[data-state=no]{--frame-line:var(--line);--frame-deco:#fff}.tl[data-state=no] .tool-d{color:#fff}");
+  n = mc(out, n, ".tl .tool-x{display:inline-flex;flex:none}.tl .tool-x .ic{width:12px;height:12px}.tl .tool-b{position:relative;padding-right:40px}.tl .tool-b .ib{position:absolute;top:6px;right:6px}");
+  n = mc(out, n, "@media (prefers-reduced-motion:reduce){.gl[data-state=run] .ic{animation:none}}");
+  // the stage: its head, its body, and a line that says what is happening
+  n = mc(out, n, ".st-h{display:flex;align-items:baseline;gap:16px;padding-bottom:14px;border-bottom:1px solid var(--line-dim)}");
+  n = mc(out, n, ".st-n{font:500 14px/1 var(--mono);letter-spacing:.2em;color:var(--ink-faint);white-space:nowrap}");
+  n = mc(out, n, ".st-t{margin:0;font:600 30px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:#fff;white-space:nowrap}");
+  n = mc(out, n, ".st-s{margin-left:auto;font:500 13px/1.3 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-muted);text-align:right}");
+  n = mc(out, n, ".st-b{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:16px 0;overflow:hidden}.st-tight{gap:12px}");
+  n = mc(out, n, ".st-cap{margin:0;padding-top:12px;border-top:1px solid var(--line-dim);min-height:38px;font:15px/1.5 var(--sans);color:var(--ink-muted)}");
+  // labels and values
+  n = mc(out, n, ".lb{margin:0;font:500 12px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-muted)}");
+  n = mc(out, n, ".lb-q{color:var(--ink-faint)}.lb-on{color:#fff;min-height:1.4em}.grp{display:flex;flex-direction:column;gap:8px;min-width:0}");
+  n = mc(out, n, ".val{margin:0;min-height:1.5em;font:16px/1.5 var(--mono);color:var(--ink);overflow-wrap:anywhere}.val-q{color:var(--ink-muted)}.val-2{min-height:3em}");
+  n = mc(out, n, ".big{margin:0;min-height:1.35em;font:500 24px/1.35 var(--mono);color:#fff;overflow-wrap:anywhere}.big-2{min-height:2.7em;font-size:27px}.dx{white-space:pre-wrap}");
+  n = mc(out, n, ".inv{background:#fff;color:#000;padding:0 4px;margin-left:1px}");
+  n = mc(out, n, ".rowx{display:flex;gap:16px;align-items:center;min-width:0}.rowx>.grp{flex:1}");
+  // bytes: a grid of cells, 16 to a row
+  n = mc(out, n, ".bytes{display:flex;flex-wrap:wrap;gap:3px;font:15px/1 var(--mono)}.bytes[data-state=large]{font-size:18px}.bytes[data-state=large] .by{padding:10px 0}");
+  n = mc(out, n, ".by{flex:0 0 calc((100% - 46px)/16);padding:6px 0;text-align:center;background:var(--raised);color:var(--ink)}");
+  n = mc(out, n, ".by-w{background:none;color:var(--line-dim);box-shadow:inset 0 0 0 1px #161616}.by-c{background:#fff;color:#000}");
+  n = mc(out, n, ".by-d{background:#d8d8d8;color:#000}.bytes[data-state=old] .by{background:none;box-shadow:inset 0 0 0 1px var(--line-dim);color:var(--ink-muted)}");
+  // a card, a box, a table of fields, a line that draws
+  n = mc(out, n, ".card-k{padding:24px 26px 26px;display:flex;flex-direction:column;gap:20px;min-width:0;--frame-line:var(--line);--frame-deco:#fff}");
+  n = mc(out, n, ".box{flex:none;padding:10px 16px;font:600 13px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;white-space:nowrap;color:var(--ink-muted);--frame-line:var(--line);--frame-bg:#000}");
+  n = mc(out, n, ".box[data-state=on]{color:#000;--frame-bg:#fff;--frame-line:#fff}");
+  n = mc(out, n, ".ft{display:flex;flex-direction:column}.ft-r{display:flex;gap:16px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--line-dim)}");
+  n = mc(out, n, ".ft-k{flex:0 0 124px;font:500 12px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-muted)}");
+  n = mc(out, n, ".ft-v{min-width:0;font:16px/1.4 var(--mono);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
+  n = mc(out, n, ".ln{display:block;flex:1;min-width:16px;height:1px;background:var(--ink-muted);transform-origin:0 50%;transform:scaleX(var(--p,0))}.ln-b{transform-origin:100% 50%}");
+  // two frames and the wire between them
+  n = mc(out, n, ".net{display:flex;align-items:stretch}");
+  n = mc(out, n, ".node{flex:0 0 28%;min-width:0;min-height:204px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;--frame-line:var(--line);--frame-deco:#fff}");
+  n = mc(out, n, ".node-t{margin:0;font:600 16px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:#fff}");
+  n = mc(out, n, ".net-s .node{min-height:0;padding:12px 16px}.duo .node{min-height:118px}.node-q{margin:0;font:13px/1.4 var(--mono);letter-spacing:.04em;color:var(--ink-faint)}.node .val{font-size:15px;margin-top:auto}");
+  n = mc(out, n, ".wire{flex:1;min-width:0;position:relative;display:flex;align-items:center}");
+  n = mc(out, n, ".pk{position:absolute;top:50%;left:calc(12% + var(--p,0)*76%);transform:translate(-50%,-50%);padding:8px 13px;font:600 14px/1 var(--mono);letter-spacing:.16em;white-space:nowrap;background:#fff;color:#000}");
+  n = mc(out, n, ".pk[data-state=back]{background:#000;color:#fff;box-shadow:inset 0 0 0 1px #fff}.pk[data-state=no]{background:#000;color:#fff;outline:1px dashed #fff;outline-offset:-1px}");
+  n = mc(out, n, ".fl{display:flex;flex-direction:column;gap:3px}.fl-5{min-height:132px}.fl-1{min-height:24px}.fl-r{display:flex;gap:12px;align-items:baseline;font:15px/1.6 var(--mono);white-space:nowrap}");
+  n = mc(out, n, ".fl-d{flex:0 0 68px;font:500 12px/1.6 var(--mono);letter-spacing:.14em;color:var(--ink-muted)}.fl-t{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}");
+  // a verdict
+  n = mc(out, n, ".mark{align-self:center;display:flex;align-items:center;gap:16px;padding:15px 34px 15px 28px;font:600 32px/1 var(--mono);letter-spacing:.3em;text-transform:uppercase;white-space:nowrap}");
+  n = mc(out, n, ".mark .ic{width:30px;height:30px}.mark[data-state=good]{color:#000;--frame-bg:#fff;--frame-line:#fff;--frame-deco:#fff}");
+  n = mc(out, n, ".mark[data-state=bad]{color:#fff;--frame-bg:#000;--frame-line:#fff}.mark[data-state=bad] .fr-line{stroke-dasharray:7 5}");
+  n = mc(out, n, ".mark-slot{min-height:96px;display:flex;justify-content:center;align-items:center}.mark-sm{min-height:40px;justify-content:flex-start}");
+  n = mc(out, n, ".mark-sm .mark{align-self:auto;font-size:17px;padding:10px 20px 10px 16px;letter-spacing:.22em;gap:10px}.mark-sm .mark .ic{width:18px;height:18px}");
+  // two people and the key between them; a block of ciphertext
+  n = mc(out, n, ".duo{display:flex;align-items:stretch}");
+  n = mc(out, n, ".duo-m{flex:1;min-width:0;display:flex;align-items:center}");
+  n = mc(out, n, ".cx{padding:12px 16px;font:15px/1.55 var(--mono);color:var(--ink);overflow-wrap:anywhere;min-height:96px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".cx[data-state=plain]{font:500 24px/72px var(--mono);color:#fff}.cx-q{color:var(--ink-faint)}.cx-n{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}");
+  n = mc(out, n, ".chips{display:flex;gap:10px;flex-wrap:wrap;min-height:34px}.chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;font:13px/1.3 var(--mono);color:var(--ink-muted);outline:1px dashed var(--line);outline-offset:-1px}.chip .gl{width:16px;height:16px}.chip .gl .ic{width:12px;height:12px}");
+  // one thing inside another: a wrap around a seal around a rumor
+  n = mc(out, n, ".nest{padding:16px 22px 22px;display:flex;flex-direction:column;gap:14px;min-width:0;--frame-bg:#050505;--frame-line:var(--line);--frame-deco:#fff}");
+  n = mc(out, n, ".nest .nest{--frame-bg:#0c0c0c}.nest[data-state=open]{--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".nest-h{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;min-height:20px}.nest-k{font:600 15px/1.3 var(--mono);letter-spacing:.18em;color:#fff;white-space:nowrap}");
+  n = mc(out, n, ".nest-n{font:500 12px/1.3 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink-muted);white-space:nowrap}");
+  n = mc(out, n, ".nest-by{margin-left:auto;font:15px/1.3 var(--mono);color:var(--ink)}");
+  n = mc(out, n, ".rumor{padding:16px 22px 18px;display:flex;flex-direction:column;gap:10px;outline:1px dashed var(--line);outline-offset:-1px}.rumor .big{font-size:27px}");
+  // the closing list
+  n = mc(out, n, ".fin{display:flex;flex-direction:column;min-height:330px}.fin-r{display:flex;align-items:center;gap:16px;padding:15px 0;border-bottom:1px solid var(--line-dim)}");
+  n = mc(out, n, ".fin-n{font:500 12px/1 var(--mono);letter-spacing:.2em;color:var(--ink-faint)}.fin-t{flex:0 0 100px;font:600 15px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:#fff}");
+  n = mc(out, n, ".fin-d{flex:1;min-width:0;font:16px/1.4 var(--sans);color:var(--ink)}.fin-v{font:15px/1.4 var(--mono);color:var(--ink-muted);white-space:nowrap}");
+  n = mc(out, n, ".fin-a{display:flex;align-items:center;gap:26px;padding-top:14px;min-height:76px}.fin-a .btn{flex:none;font-size:16px;padding:22px 46px;letter-spacing:.26em}.fin-a .val{font:15px/1.5 var(--sans);color:var(--ink-muted);max-width:44ch}");
+  // a phone: the stage over the transcript, bytes 8 to a row
+  n = mc(out, n, "@media (max-width:860px){html:has(.wb),body:has(.wb){height:auto;overflow:auto}");
+  n = mc(out, n, ".wb{height:auto;min-height:100dvh;padding:12px 16px 20px}.wb-top{flex-wrap:wrap;gap:10px 16px;justify-content:space-between}.wb-t{font-size:14px;letter-spacing:.2em}");
+  n = mc(out, n, ".rail{order:3;flex:1 0 100%;gap:4px}.rail-n{display:none}.rail-h{font-size:9px;letter-spacing:.08em}");
+  n = mc(out, n, ".wb-body{flex-direction:column;flex:none}.wb-stage{order:-1;flex:none;padding:16px 16px 14px;min-height:520px}.wb-chat{flex:none;height:44dvh;min-height:300px}.pane-h .lb-q{display:none}");
+  n = mc(out, n, ".st-h{flex-wrap:wrap;gap:8px 12px}.st-t{font-size:22px}.st-s{font-size:10px;letter-spacing:.12em}.big{font-size:17px}.cx[data-state=plain]{font-size:18px}");
+  n = mc(out, n, ".by{flex-basis:calc((100% - 22px)/8)}.ft-k{flex-basis:96px}.ft-v,.val{font-size:15px}");
+  n = mc(out, n, ".node{flex-basis:31%;padding:12px 10px;min-height:150px}.node-t{font-size:12px;letter-spacing:.12em}.pk{font-size:12px;padding:6px 8px;letter-spacing:.08em}");
+  n = mc(out, n, ".mark{font-size:20px;padding:12px 18px;letter-spacing:.2em;gap:10px}.mark .ic{width:20px;height:20px}");
+  n = mc(out, n, ".rowx{flex-wrap:wrap;gap:8px}.box{padding:8px 9px;font-size:11px;letter-spacing:.1em}.duo{flex-wrap:wrap;gap:8px}.duo .node{flex:1 1 40%}.duo-m{order:3;flex:1 0 100%}.nest{padding:12px}.nest-by{margin-left:0}.rumor{padding:10px 12px}.rumor .big{font-size:17px}");
+  n = mc(out, n, ".fin-t{flex-basis:76px;font-size:12px}.fin-v{display:none}.fin-a .btn{padding:16px 28px}}");
+  return n;
+}
+
 #test "every role has an ARWES kind and its settings, and the stylesheet fits and has no hue" {
   sets: [MF_COUNT] AfSettings;
   #assert mono_frames(sets[..]) == MF_COUNT && mono_frames(sets[0..<2]) == 0;
   #assert mono_kind(MF_BUTTON) == 3 && mono_kind(MF_PANEL) == 2 && mono_kind(MF_FIELD) == 0 && mono_kind(MF_NOTICE) == 1 && mono_kind(MF_HEADER) == 7;
   #assert sets[MF_BUTTON].square == 8 && sets[MF_PANEL].corner_length == 12;
-  css: [16384] u8; n := mono_css(css[..]);
+  css: [32768] u8; n := mono_css(css[..]);
   #assert n > 4000 && n < 16000;
+  // and the stage's rules after them
+  #assert mono_kind(MF_STAGE) == 5 && mono_kind(MF_MARK) == 3 && sets[MF_STAGE].square == 14 && sets[MF_BOX].square == 6;
+  n = mono_stage_css(css[..], n);
+  #assert n > 12000 && n < 32000;
   // every #rgb or #rrggbb in it is a grey: its channels are equal
   i := 0; greys := 0;
   while i < n {

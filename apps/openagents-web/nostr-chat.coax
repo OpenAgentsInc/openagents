@@ -1,12 +1,13 @@
-// openagents.com/nostr-chat (unlisted): Nostr from scratch as a chat. A scripted transcript plays on
-// its own: a question, then the tool calls that answer it, each with what it was given and what came
-// back, then a few plain words. It makes a key pair, builds and signs a note, sends it to a relay and
-// reads it back, checks it, breaks it by one letter, then sends a private message (NIP-44) and gift
-// wraps it (NIP-59). It is a demo, not an agent: the questions are fixed, and nothing is typed.
+// openagents.com/nostr-chat (unlisted): Nostr from scratch as a workbench. A scripted transcript plays on
+// its own on the left: a question, then the tool calls that answer it, one line each, then a few plain
+// words. On the right is the stage, which shows what each step does as it does it: a key card, an event's
+// fields and bytes and their hash and signature, packets on a wire to a relay and back, a changed letter
+// refused, a shared key and a ciphertext (NIP-44), and a rumor sealed and wrapped (NIP-59). A rail at the
+// top fills as the six steps go. It is a demo, not an agent: the questions are fixed, and nothing is typed.
 //
 // Every value on the page is worked out in the page, when its step comes, by our Nostr library: the
 // key, the note, its bytes, ID and signature (nostr-lab-lesson.coax), the relay (the library's own
-// relay code in process, nostr-lab-relays.coax's nlr_relay; the page says on screen that it is local),
+// relay code in process, nostr-lab-relays.coax's nlr_relay; the relay's frame says it runs in this page),
 // and the private message and the gift wrap (nostr-lab-private.coax). Those are Nostr Lab's lessons,
 // loaded here, not copied. A step the library refuses stops the script with a notice that says where;
 // nothing is ever shown that the library did not give.
@@ -14,60 +15,81 @@
 // The keys are published test keys (BIP-340's vector 1 is ours, secret 3 is Alice, 7 is Carol), and
 // where a client draws random bytes the lessons use fixed ones, so every replay reads the same.
 //
-// Limits, shown when met: the transcript holds NCH_BEATS entries in NCH_POOL bytes; a wrap's content is
-// shown by its first NCH_WRAP_SHOWN characters and its length.
+// Time is the page's own: the host says how long each frame took, and every moment on the stage (a
+// frame drawing, bytes filling in, a packet on its wire) is worked out from that, so a recording that
+// steps the page a thirtieth of a second at a time gets every frame (coax/web/dom-host.js, clip mode).
+// With reduced motion each step's stage is shown whole.
 //
-// The browser draws it: the frames set (components/kit/frames.coax) in the mono skin, through the
-// browser backend (components/backend/dom.coax) and coax/web/dom-host.js, as /chat is drawn. This is
-// its module for coax/web/wasm.sh, with nostr-chat-face.c.
+// Limits, shown when met: the transcript holds NCH_BEATS entries in NCH_POOL bytes; a wrap's content is
+// shown by its first NCH_WRAP_SHOWN characters and its length; a frame on the stage by its first
+// NCH_FRAME_SHOWN characters (a press on its tool call shows it whole).
+//
+// The browser draws it: the frames set and its stage (components/kit/frames.coax, stage.coax) in the
+// mono skin, through the browser backend (components/backend/dom.coax) and coax/web/dom-host.js, as
+// /chat is drawn. This is its module for coax/web/wasm.sh, with nostr-chat-face.c.
 //   coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/nostr-chat.coax
 #run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
-#load "../../components/kit/frames.coax";
+#load "../../components/kit/stage.coax";
 #load "../../components/backend/dom.coax";
 #load "nostr-lab-lesson.coax";    // the key, the note, its bytes, ID and signature, and a changed copy
 #load "nostr-lab-relays.coax";    // the lab relay: the library's relay, in process
 #load "nostr-lab-private.coax";   // NIP-44 between two keys, and NIP-59's gift wrap
 
 NCH_INBOX :: 1024;
-NCH_CSS :: 16384;
+NCH_CSS :: 40960;
 NCH_BEATS :: 48;          // entries in the transcript, at most
 NCH_POOL :: 32768;        // bytes of their text
 NCH_CLIP :: 4096;
 NCH_WRAP_SHOWN :: 64;     // a wrap's content: the first this many characters, then its length
+NCH_FRAME_SHOWN :: 120;   // a relay frame on the stage: its first this many characters
+NCH_NONCE_SHOWN :: 44;    // a NIP-44 payload's version and nonce, 33 bytes, as base64 letters: shown dim, or passed over
 NCH_USER :: 0; NCH_AGENT :: 1; NCH_TOOL :: 2; NCH_NOTICE :: 3;
 NCH_CLICK :: 1;
 NCH_ACTS :: 6;
 NCH_ASKS :: [6] string.["Make us a Nostr key pair from the demo seed.", "Write a short note and sign it.", "Send it to a relay and read it back.",
   "What if someone changes one letter?", "Alice wants to send us a private message. Show it.", "Can the relay see that it is from Alice?"];
 NCH_ACT_NAMES :: [6] string.["the key pair", "the note", "the relay", "the changed letter", "the private message", "the gift wrap"];
-// Pacing, in seconds: how long each entry holds before the next comes. An answer first waits, then
-// comes at the skin's rate (MONO_REPLY_WAIT, MONO_REPLY_RATE).
+NCH_RAIL :: [6] string.["Key", "Event", "Relay", "Tamper", "Private", "Wrap"];
+NCH_SUBS :: [6] string.["NIP-01 and NIP-19: a key pair", "NIP-01: a signed note", "NIP-01: EVENT, OK, REQ, EOSE", "One letter changed", "NIP-44: encrypted to one key", "NIP-59: the gift wrap"];
+NCH_DONE :: [6] string.["A key pair is the whole identity.", "A note is bytes, their hash and a signature.", "A relay stores it and sends it back.",
+  "One changed letter, and everyone refuses it.", "NIP-44: only the two of us can read it.", "NIP-59: the relay cannot see who sent it."];
+// Pacing, in seconds. A step is its question, its tool calls (each runs for its own time, which is how
+// long the stage takes to show what it does), and its answer, which first waits, then comes
+// NCH_REPLY_RATE letters a second, then holds. The stage's moments (nch_stage_*) are seconds from the
+// step's start and follow the same times: the first tool call starts at NCH_USER_HOLD.
 NCH_USER_HOLD :: 1.0;
-NCH_TOOL_RUN :: 0.6;      // a tool call shows as running this long, then its answer
-NCH_TOOL_HOLD :: 0.9;
-NCH_AGENT_HOLD :: 2.2;
+NCH_TOOL_HOLD :: 0.25;    // between a tool call's answer and the next entry
+NCH_AGENT_HOLD :: 1.2;
 NCH_NOTICE_HOLD :: 2.4;
-NCH_LEDE :: "We make a key, sign a note, send it to a relay, read it back and check it, then send a private message. Every value below is worked out in this page by our Nostr library, written from scratch in Coax.";
+NCH_REPLY_RATE :: 110.0;
+NCH_FIN :: 4.0;           // the closing list comes in over this long
+NCH_TICKS :: 18.0;        // a value still deciphering changes this many times a second
 
 // One entry: its kind and up to four texts in the pool. A person's or an answer's text is the first; a
-// tool call's are its name, its one-line summary, what it was given and what came back; a notice's are
-// its kind and its words.
-NchBeat :: struct { kind: int; at: [4] int; n: [4] int; }
+// tool call's are its name, its one-line result, what it was given and what came back, with how long it
+// runs and how it ended (TL_OK or TL_NO, a refusal); a notice's are its kind and its words.
+NchBeat :: struct { kind: int; at: [4] int; n: [4] int; run: f32; state: int; }
 NostrChat :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool; reduced: bool;
   beats: [NCH_BEATS] NchBeat; nbeats: int;
-  closed: [NCH_BEATS] bool;          // tool calls the person closed (they open by default)
+  open: [NCH_BEATS] bool;            // tool calls the person opened (they are one line until then)
   pool: [NCH_POOL] u8; pool_n: int;
   full: bool;                        // an entry didn't fit: the page says so
   asked: int;                        // questions put so far
   ran: int;                          // steps worked out so far
   shown: int;                        // entries wholly shown; the next is coming
   beat_at: f32;                      // when the coming one started
-  done: bool;
+  act: int;                          // the step on the stage
+  act_beat: int;                     // its question's place in the transcript; its tool calls follow
+  act_at: f32;                       // when it started
+  act_len: f32;                      // how long its entries take to show
+  done: bool; done_at: f32;
   stopped: int;                      // the library refused a step: its place + 1
   lesson: [1] NostrLesson;
   relay: [1] NlrRelay;
+  held: int;                         // events the relay holds, asked of it after ours went in
   p44: [1] Nlp44;
+  key_hex: [64] u8;                  // the NIP-44 conversation key, worked out on our side
   p59: [1] Nlp59;
   clip: [NCH_CLIP] u8; clip_n: int;  // text for the host to copy, until it has
   inbox: [NCH_INBOX] u8;
@@ -92,19 +114,17 @@ nch_add :: (s: [] NostrChat, kind: int, a: string, b: string, c: string, d: stri
   s[0].nbeats += 1;
   return true;
 }
-nch_tool :: (s: [] NostrChat, name: string, detail: string, input: string, output: string) -> bool { return nch_add(s, NCH_TOOL, name, detail, input, output); }
+nch_tool :: (s: [] NostrChat, name: string, detail: string, input: string, output: string, run: f32, state: int) -> bool {
+  if !nch_add(s, NCH_TOOL, name, detail, input, output) { return false; }
+  s[0].beats[s[0].nbeats - 1].run = run; s[0].beats[s[0].nbeats - 1].state = state;
+  return true;
+}
 nch_say :: (s: [] NostrChat, text: string) -> bool { return nch_add(s, NCH_AGENT, text, "", "", ""); }
 // Bytes as lowercase hex in out, as text; "" when they don't fit.
 nch_hex :: (bytes: [] u8, out: [] u8) -> string {
   r := hex_encode_checked(cast(string) bytes, out, false);
   if r.error != NC_OK || r.written != bytes.count * 2 { return ""; }
   return cast(string) out[0..<r.written];
-}
-// The first `keep` letters of a value and "...", for a one-line summary.
-nch_short :: (text: string, keep: int, out: [] u8) -> string {
-  if text.count <= keep { return text; }
-  n := json_raw(out, 0, text[0..<keep]); n = json_raw(out, n, "...");
-  return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 nch_str :: (out: [] u8, n: int) -> string { return ifx n < 0 then "" else cast(string) out[0..<n]; }
 // The library refused a step: the script stops here, and says where.
@@ -139,41 +159,39 @@ nch_keys :: (s: [] NostrChat) -> bool {
   o := json_raw(ob[..], 0, "nsec    "); o = json_raw(ob[..], o, cast(string) nsec[0..<e.written]);
   o = json_raw(ob[..], o, "\nnpub    "); o = json_raw(ob[..], o, npub);
   o = json_raw(ob[..], o, "\npubkey  "); o = json_raw(ob[..], o, cast(string) l[0].pub_hex[..]);
-  ok := nch_tool(s, "nostr.keygen", npub, nch_str(ib[..], i), nch_str(ob[..], o));
-  ok = ok && nch_say(s, "That is a Nostr identity, and it is just a key pair. The **npub** is who we are: anyone may see it. The **nsec** signs for us, so it stays in this page. Nobody issued it, and nobody can take it away.\n\nThis one comes from a published test seed, so it is public. Never use it for anything real.");
-  return ok;
+  mb: [48] u8;
+  ok := nch_tool(s, "nostr.keygen", k_mid(mb[..], npub, 10, 8), nch_str(ib[..], i), nch_str(ob[..], o), 5.2, TL_OK);
+  return ok && nch_say(s, "A Nostr identity is just a key pair: the **npub** is who we are, and the **nsec** signs for us and stays in this page. This one is a published test key, so never use it for anything real.");
 }
 // 2. The note: its bytes, their SHA-256 (the ID), and the signature over the ID.
 nch_note :: (s: [] NostrChat) -> bool {
   l := s[0].lesson[..];
   if !l[0].ready { return nch_fail(s, 1, 1); }
   id := cast(string) l[0].id_hex[..]; sig := cast(string) l[0].sig_hex[..];
-  ib: [256] u8; ob: [512] u8; db: [64] u8; num: [24] u8;
+  ib: [256] u8; ob: [512] u8; db: [64] u8; num: [48] u8;
   i := json_raw(ib[..], 0, "kind        "); i = text_put_int(ib[..], i, NLB_KIND);
   i = json_raw(ib[..], i, "\ncreated_at  "); i = text_put_int(ib[..], i, NLB_CREATED);
   i = json_raw(ib[..], i, "\ntags        "); i = json_raw(ib[..], i, NLB_TAGS);
   i = json_raw(ib[..], i, "\ncontent     "); i = json_write_string(ib[..], i, NLB_CONTENT);
   o := json_raw(ob[..], 0, "bytes   "); o = json_raw(ob[..], o, cast(string) l[0].pre[0..<l[0].pre_n]);
   o = json_raw(ob[..], o, "\nsha256  "); o = json_raw(ob[..], o, id);
-  ok := nch_tool(s, "nostr.event", tr_cat(db[..], "id ", nch_short(id, 16, num[..])), nch_str(ib[..], i), nch_str(ob[..], o));
-  ib2: [256] u8; ob2: [256] u8; db2: [64] u8;
+  ok := nch_tool(s, "nostr.event", tr_cat(db[..], "id ", k_mid(num[..], id, 8, 8)), nch_str(ib[..], i), nch_str(ob[..], o), 3.6, TL_OK);
+  ib2: [256] u8; ob2: [1024] u8; db2: [64] u8;
   i = json_raw(ib2[..], 0, "id      "); i = json_raw(ib2[..], i, id);
   i = json_raw(ib2[..], i, "\nkey     our nsec, which stays in this page");
   // the 64 bytes as two lines of 32, so the value lines up under its label
   o = json_raw(ob2[..], 0, "sig     "); o = json_raw(ob2[..], o, sig[0..<64]); o = json_raw(ob2[..], o, "\n        "); o = json_raw(ob2[..], o, sig[64..<128]);
   o = json_raw(ob2[..], o, "\n        64 bytes, BIP-340 Schnorr");
-  ok = ok && nch_tool(s, "nostr.sign", tr_cat(db2[..], "sig ", nch_short(sig, 16, num[..])), nch_str(ib2[..], i), nch_str(ob2[..], o));
-  tb: [1024] u8;
-  t := json_raw(tb[..], 0, "The ID is the SHA-256 of those exact bytes, the same hash as last episode. The signature is a BIP-340 Schnorr signature over the ID, the kind Bitcoin's Taproot uses. Here is the whole event, ready to send:\n\n```json\n");
-  t = json_raw(tb[..], t, cast(string) l[0].event[0..<l[0].event_n]); t = json_raw(tb[..], t, "\n```");
-  if t < 0 { return nch_fail(s, 1, 2); }
-  return ok && nch_say(s, nch_str(tb[..], t));
+  // the whole signed event, as it goes to a relay
+  o = json_raw(ob2[..], o, "\nevent   "); o = json_raw(ob2[..], o, cast(string) l[0].event[0..<l[0].event_n]);
+  if o < 0 { return nch_fail(s, 1, 2); }
+  ok = ok && nch_tool(s, "nostr.sign", tr_cat(db2[..], "sig ", k_mid(num[..], sig, 8, 8)), nch_str(ib2[..], i), nch_str(ob2[..], o), 2.4, TL_OK);
+  return ok && nch_say(s, "The ID is the SHA-256 of the note's exact bytes, and the signature is BIP-340 Schnorr over that ID, the kind Bitcoin's Taproot uses. Together they say the note is ours and has not been changed.");
 }
 // 3. To the relay and back: EVENT and OK, REQ and the stored event and EOSE, then our own check.
 nch_relay :: (s: [] NostrChat) -> bool {
   l := s[0].lesson[..]; r := s[0].relay[..];
   if !l[0].ready { return nch_fail(s, 2, 1); }
-  ok := nch_add(s, NCH_NOTICE, "Local relay", "This relay runs inside this page. It is our library's own relay code with the socket left out, so nothing goes over the network. What it stores is gone when you leave the page.", "", "");
   nlr_relay_init(r);
   event := cast(string) l[0].event[0..<l[0].event_n];
   ends: [4] int;
@@ -183,7 +201,10 @@ nch_relay :: (s: [] NostrChat) -> bool {
   m := nostr_message_read(ok_frame);
   if m.error != NM_OK || m.type != NM_ACCEPT || !m.accepted { return nch_fail(s, 2, 4); }
   for i: 0..<32 { if m.id[i] != l[0].id[i] { return nch_fail(s, 2, 5); } }
-  ok = ok && nch_tool(s, "relay.EVENT", "OK true", sent, ok_frame);
+  // what the relay holds now, asked of it
+  idx: [10] int; s[0].held = nlr_held(r, NLB_KIND, NLB_CREATED, idx[..]);
+  if s[0].held != 1 { return nch_fail(s, 2, 12); }
+  ok := nch_tool(s, "relay.EVENT", "OK true", sent, ok_frame, 2.0, TL_OK);
   qb: [128] u8; ask := nlr_ask(qb[..]); if ask.count == 0 { return nch_fail(s, 2, 6); }
   ab: [1024] u8; if nlr_relay(r, ask, NLB_CREATED, ab[..], ends[..]) != 2 { return nch_fail(s, 2, 7); }
   back := cast(string) ab[0..<ends[0]]; eose := cast(string) ab[ends[0]..<ends[1]];
@@ -191,7 +212,7 @@ nch_relay :: (s: [] NostrChat) -> bool {
   if bm.error != NM_OK || bm.type != NM_EVENT || back[bm.event.from..<bm.event.to] != event { return nch_fail(s, 2, 8); }
   em := nostr_message_read(eose); if em.error != NM_OK || em.type != NM_EOSE { return nch_fail(s, 2, 9); }
   ob: [1280] u8; o := json_raw(ob[..], 0, back); o = json_raw(ob[..], o, "\n"); o = json_raw(ob[..], o, eose);
-  ok = ok && nch_tool(s, "relay.REQ", "1 event, then EOSE", ask, nch_str(ob[..], o));
+  ok = ok && nch_tool(s, "relay.REQ", "1 event, then EOSE", ask, nch_str(ob[..], o), 2.6, TL_OK);
   // we trust no relay: the signature of what came back is checked here
   scratch: [1024] u8; v := nostr_message_event_verify_vartime(back, scratch[..], false);
   if v.error != NE_OK || !v.verified { return nch_fail(s, 2, 10); }
@@ -200,8 +221,8 @@ nch_relay :: (s: [] NostrChat) -> bool {
   i := json_raw(ib[..], 0, "event   "); i = json_raw(ib[..], i, cast(string) l[0].id_hex[..]);
   i = json_raw(ib[..], i, "\nby      "); i = json_raw(ib[..], i, cast(string) l[0].npub[0..<l[0].npub_n]);
   o2 := json_raw(vb[..], 0, "id      matches the SHA-256 of its bytes\nsig     valid");
-  ok = ok && nch_tool(s, "nostr.verify", "valid", nch_str(ib[..], i), nch_str(vb[..], o2));
-  return ok && nch_say(s, "Signed JSON in a few frames: `EVENT` to send it, `OK` back, `REQ` to ask, and `EOSE` when the relay has sent all it holds. That is the whole protocol. We don't trust the relay: we checked the signature ourselves, and it holds.");
+  ok = ok && nch_tool(s, "nostr.verify", "valid", nch_str(ib[..], i), nch_str(vb[..], o2), 1.3, TL_OK);
+  return ok && nch_say(s, "That is the whole protocol: `EVENT` and `OK` to send, then `REQ`, `EVENT` and `EOSE` to read. We don't trust the relay, so we checked the signature ourselves, and it holds.");
 }
 // 4. One letter changed: our check refuses it, and so does the relay.
 nch_break :: (s: [] NostrChat) -> bool {
@@ -215,7 +236,7 @@ nch_break :: (s: [] NostrChat) -> bool {
   i = json_raw(ib[..], i, "   one letter changed\nclaims  "); i = json_raw(ib[..], i, cast(string) l[0].id_hex[..]);
   o := json_raw(ob[..], 0, "bytes   now hash to "); o = json_raw(ob[..], o, cast(string) l[0].changed_id_hex[..]);
   o = json_raw(ob[..], o, "\nsig     not valid for that hash\nresult  refused");
-  ok := nch_tool(s, "nostr.verify", "refused", nch_str(ib[..], i), nch_str(ob[..], o));
+  ok := nch_tool(s, "nostr.verify", "refused", nch_str(ib[..], i), nch_str(ob[..], o), 3.6, TL_NO);
   changed := cast(string) l[0].changed[0..<l[0].changed_n];
   ends: [4] int;
   fb: [640] u8; sent := nlr_text(fb[..], nostr_message_write_event(changed, fb[..], false)); if sent.count == 0 { return nch_fail(s, 3, 4); }
@@ -224,8 +245,8 @@ nch_break :: (s: [] NostrChat) -> bool {
   no := nostr_message_read(no_frame);
   if no.error != NM_OK || no.type != NM_ACCEPT || no.accepted { return nch_fail(s, 3, 6); }
   if no.prefix < 1 || no.prefix > 8 || NM_PREFIXES[no.prefix - 1] != "invalid" { return nch_fail(s, 3, 7); }
-  ok = ok && nch_tool(s, "relay.EVENT", "OK false", sent, no_frame);
-  return ok && nch_say(s, "One letter changed, so the bytes hash to a different ID, and the signature no longer fits. Our check refuses it, and the relay refuses it too. Nobody can edit a note and keep its author's signature.");
+  ok = ok && nch_tool(s, "relay.EVENT", "OK false", sent, no_frame, 2.2, TL_NO);
+  return ok && nch_say(s, "One changed letter gives the bytes a different hash, so the signature no longer fits. Our check refuses it and so does the relay: nobody can edit a note and keep its author's signature.");
 }
 // 5. NIP-44: Alice encrypts to us; we decrypt; a changed letter and another key are refused.
 nch_44 :: (s: [] NostrChat) -> bool {
@@ -234,18 +255,24 @@ nch_44 :: (s: [] NostrChat) -> bool {
   back := cast(string) f[0].back[0..<f[0].back_n];
   if !f[0].same || back != NLP_MESSAGE || f[0].changed != NIP44_MAC || f[0].outsider != NIP44_MAC { return nch_fail(s, 4, 20); }
   payload := cast(string) f[0].payload[0..<f[0].payload_n];
+  // the conversation key on our side, from our secret and Alice's public key: what the stage shows
+  ours: [32] u8; ox: [32] u8; ck: [32] u8; work: [1] EcdhScratch;
+  if !nlp_secret(NLB_KEY_HEX, ours[..], ox[..]) { return nch_fail(s, 4, 21); }
+  made := nip44_conversation_key_from_keys_checked(ours[..], f[0].alice_x[..], work[..], ck[..], false);
+  for q: 0..<32 { ours[q] = 0; }
+  if made != NIP44_OK || nch_hex(ck[..], s[0].key_hex[..]).count != 64 { return nch_fail(s, 4, 22); }
   ha: [64] u8; hb: [64] u8; ib: [320] u8; ob: [320] u8; db: [64] u8;
   i := json_raw(ib[..], 0, "from    Alice  "); i = json_raw(ib[..], i, nch_hex(f[0].alice_x[..], ha[..]));
   i = json_raw(ib[..], i, "\nto      us     "); i = json_raw(ib[..], i, nch_hex(f[0].bob_x[..], hb[..]));
   i = json_raw(ib[..], i, "\ntext    "); i = json_write_string(ib[..], i, NLP_MESSAGE);
   o := json_raw(ob[..], 0, "payload "); o = json_raw(ob[..], o, payload);
-  ok := nch_tool(s, "nip44.encrypt", nch_short(payload, 24, db[..]), nch_str(ib[..], i), nch_str(ob[..], o));
+  ok := nch_tool(s, "nip44.encrypt", k_mid(db[..], payload, 10, 8), nch_str(ib[..], i), nch_str(ob[..], o), 4.0, TL_OK);
   ib2: [320] u8; ob2: [256] u8; db2: [64] u8;
   i = json_raw(ib2[..], 0, "payload "); i = json_raw(ib2[..], i, payload); i = json_raw(ib2[..], i, "\nkey     ours, with Alice's public key");
   o = json_raw(ob2[..], 0, "text    "); o = json_write_string(ob2[..], o, back);
   o = json_raw(ob2[..], o, "\none letter changed: refused, the MAC fails\nCarol's key:        refused, the MAC fails");
-  ok = ok && nch_tool(s, "nip44.decrypt", nch_str(db2[..], json_write_string(db2[..], 0, back)), nch_str(ib2[..], i), nch_str(ob2[..], o));
-  return ok && nch_say(s, "That is NIP-44. Alice and we each work out the same shared key, from our own secret and the other's public key, and it never travels. A relay sees only the payload. Change one letter of it, or try someone else's key, and it does not open.\n\nWhere a client draws random bytes, like this message's nonce, the page uses fixed ones so it reads the same every time. A real message never does that.");
+  ok = ok && nch_tool(s, "nip44.decrypt", nch_str(db2[..], json_write_string(db2[..], 0, back)), nch_str(ib2[..], i), nch_str(ob2[..], o), 2.0, TL_OK);
+  return ok && nch_say(s, "That is NIP-44. Alice and we each work out the same key from our own secret and the other's public key, so it never travels, and a relay sees only the scramble.");
 }
 // 6. NIP-59: the message sealed by Alice, then wrapped by a key used once; we open it.
 nch_59 :: (s: [] NostrChat) -> bool {
@@ -266,15 +293,15 @@ nch_59 :: (s: [] NostrChat) -> bool {
   out = json_raw(ob[..], out, "\ncontent "); out = json_raw(ob[..], out, ifx cipher.count > NCH_WRAP_SHOWN then cipher[0..<NCH_WRAP_SHOWN] else cipher);
   if cipher.count > NCH_WRAP_SHOWN { out = json_raw(ob[..], out, "... ("); out = text_put_int(ob[..], out, cipher.count); out = json_raw(ob[..], out, " characters in all)"); }
   kb: [24] u8;
-  ok := nch_tool(s, "nip59.wrap", nch_str(kb[..], text_put_int(kb[..], json_raw(kb[..], 0, "kind "), f[0].wrap_kind)), nch_str(ib[..], i), nch_str(ob[..], out));
+  ok := nch_tool(s, "nip59.wrap", nch_str(kb[..], text_put_int(kb[..], json_raw(kb[..], 0, "kind "), f[0].wrap_kind)), nch_str(ib[..], i), nch_str(ob[..], out), 3.8, TL_OK);
   ib2: [128] u8; ob2: [512] u8;
   i = json_raw(ib2[..], 0, "wrap    from "); i = json_raw(ib2[..], i, wrap_by); i = json_raw(ib2[..], i, "\nkey     ours");
   out = json_raw(ob2[..], 0, "seal    by Alice "); out = json_raw(ob2[..], out, nch_hex(o.author[..], ha[..]));
   out = json_raw(ob2[..], out, "\nrumor   kind "); out = text_put_int(ob2[..], out, o.kind); out = json_raw(ob2[..], out, ": "); out = json_write_string(ob2[..], out, text);
   out = json_raw(ob2[..], out, "\nid      "); out = json_raw(ob2[..], out, nch_hex(o.rumor_id[..], hr[..]));
   out = json_raw(ob2[..], out, "\nCarol's key: cannot open it");
-  ok = ok && nch_tool(s, "nip59.unwrap", nch_str(db[..], json_write_string(db[..], json_raw(db[..], 0, "from Alice: "), text)), nch_str(ib2[..], i), nch_str(ob2[..], out));
-  return ok && nch_say(s, "With NIP-44 alone, a relay still sees who wrote to whom. A gift wrap (NIP-59, which NIP-17 direct messages use) hides that too. Alice seals the message with her key, then wraps the seal with a key used once. The relay sees a kind 1059 event from a stranger, addressed to us. Only we can open it, and only then do we see it is from Alice.");
+  ok = ok && nch_tool(s, "nip59.unwrap", nch_str(db[..], json_write_string(db[..], json_raw(db[..], 0, "from Alice: "), text)), nch_str(ib2[..], i), nch_str(ob2[..], out), 2.6, TL_OK);
+  return ok && nch_say(s, "A gift wrap (NIP-59) hides who wrote to whom: Alice seals the message, then wraps the seal with a key used once. The relay sees a stranger's kind 1059 event, and only we can open it and see Alice.");
 }
 nch_run :: (s: [] NostrChat, act: int) -> bool {
   if act == 0 { return nch_keys(s); }
@@ -291,39 +318,478 @@ nch_run :: (s: [] NostrChat, act: int) -> bool {
 nch_hold :: (s: [] NostrChat, k: int) -> f32 {
   kind := s[0].beats[k].kind;
   if kind == NCH_USER { return NCH_USER_HOLD; }
-  if kind == NCH_TOOL { return NCH_TOOL_RUN + NCH_TOOL_HOLD; }
+  if kind == NCH_TOOL { return s[0].beats[k].run + NCH_TOOL_HOLD; }
   if kind == NCH_NOTICE { return NCH_NOTICE_HOLD; }
   if s[0].reduced { return NCH_AGENT_HOLD; }
-  return MONO_REPLY_WAIT + cast(f32) s[0].beats[k].n[0] / MONO_REPLY_RATE + NCH_AGENT_HOLD;
+  return MONO_REPLY_WAIT + cast(f32) s[0].beats[k].n[0] / NCH_REPLY_RATE + NCH_AGENT_HOLD;
 }
 // How many letters of answer k show at this moment: all once it is past, and with reduced motion.
 nch_letters :: (s: [] NostrChat, k: int) -> int {
   whole := s[0].beats[k].n[0];
   if k < s[0].shown || s[0].reduced { return whole; }
-  n := cast(int) ((s[0].time - s[0].beat_at - MONO_REPLY_WAIT) * MONO_REPLY_RATE);
+  n := cast(int) ((s[0].time - s[0].beat_at - MONO_REPLY_WAIT) * NCH_REPLY_RATE);
   return ifx n < 0 then 0 else ifx n > whole then whole else n;
 }
 // The script moves on: the entry coming is shown whole once its time is up; when every entry is shown,
-// the step asked about is worked out, or the next question is put, or the script ends.
+// the next question is put and its step worked out there and then (the stage starts on it), or the
+// script ends and the closing list comes.
 nch_tick :: (s: [] NostrChat) {
   if s[0].done { return; }
-  s[0].dirty = true;   // an answer comes letter by letter, and a tool call turns from running to answered
+  s[0].dirty = true;   // the stage moves, an answer comes letter by letter, a tool call turns from running to answered
   if s[0].shown < s[0].nbeats {
     if s[0].time - s[0].beat_at >= nch_hold(s, s[0].shown) { s[0].shown += 1; s[0].beat_at = s[0].time; }
     return;
   }
-  if s[0].full { s[0].done = true; return; }
-  if s[0].ran < s[0].asked { act := s[0].ran; s[0].ran += 1; ok := nch_run(s, act); s[0].beat_at = s[0].time; return; }
-  if s[0].asked < NCH_ACTS { asks := NCH_ASKS; ok := nch_add(s, NCH_USER, asks[s[0].asked], "", "", ""); s[0].asked += 1; s[0].beat_at = s[0].time; return; }
-  s[0].done = true;
+  if !s[0].full && s[0].asked < NCH_ACTS {
+    asks := NCH_ASKS; act := s[0].asked;
+    if nch_add(s, NCH_USER, asks[act], "", "", "") {
+      s[0].act = act; s[0].act_beat = s[0].nbeats - 1; s[0].act_at = s[0].time; s[0].beat_at = s[0].time;
+      s[0].asked += 1;
+      ok := nch_run(s, act);
+      s[0].ran = s[0].asked;
+      s[0].act_len = 0;
+      for k: s[0].act_beat..<s[0].nbeats { s[0].act_len += nch_hold(s, k); }
+      return;
+    }
+  }
+  s[0].done = true; s[0].done_at = s[0].time;
 }
 // Replay: the transcript empties and everything is worked out again, from nothing.
 nch_replay :: (s: [] NostrChat) {
   s[0].nbeats = 0; s[0].pool_n = 0; s[0].full = false; s[0].asked = 0; s[0].ran = 0; s[0].shown = 0;
-  s[0].done = false; s[0].stopped = 0; s[0].beat_at = s[0].time;
-  for k: 0..<NCH_BEATS { s[0].closed[k] = false; }
+  s[0].done = false; s[0].stopped = 0; s[0].beat_at = s[0].time; s[0].act = 0; s[0].act_beat = 0; s[0].act_at = s[0].time; s[0].act_len = 0; s[0].held = 0;
+  for k: 0..<NCH_BEATS { s[0].open[k] = false; }
   s[0].lesson[0] = NostrLesson.{}; s[0].p44[0] = Nlp44.{}; s[0].p59[0] = Nlp59.{};
+  for k: 0..<64 { s[0].key_hex[k] = 0; }
   ui_replay(s[0].ui[..]);
+}
+// The step under way for the rail: 0 to 5, and NCH_ACTS once the script has ended.
+nch_now :: (s: [] NostrChat) -> int { return ifx s[0].done then NCH_ACTS else s[0].act; }
+
+// ---------------------------------------------------------------- the stage
+
+// How far a moment from a to b has come at st, 0 to 1; nch_e is the same, eased in and out.
+nch_p :: (st: f32, a: f32, b: f32) -> f32 {
+  if st <= a { return 0; }
+  if st >= b { return 1; }
+  return (st - a) / (b - a);
+}
+nch_e :: (st: f32, a: f32, b: f32) -> f32 { return ar_ease(6, nch_p(st, a, b)); }
+// A value's paragraph: empty until its moment a, then it deciphers in until b.
+nch_val :: (t: [] Tree, id: string, cls: string, text: string, st: f32, a: f32, b: f32, tick: int) -> int {
+  if st < a { return tr_leaf(t, id, TG_P, cls, ""); }
+  return k_decipher(t, id, TG_P, cls, text, nch_p(st, a, b), tick);
+}
+// A small box naming what works on a value; inverted while it is at work.
+nch_box :: (t: [] Tree, id: string, label: string, p: f32, on: bool) {
+  ida: [UI_ID] u8;
+  i := k_frame_at(t, id, TG_DIV, "box", MF_BOX, p);
+  if on { tr_attr(t, i, AT_STATE, "on"); }
+  l := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "", label);
+  tr_close(t);
+}
+// One end of a wire: its name, a quiet word about it (with its own id, so a check can find it), and what it holds now.
+nch_node :: (t: [] Tree, id: string, title: string, quiet_id: string, quiet: string, value: string, p: f32) {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := k_frame_at(t, id, TG_DIV, "node", MF_CARD, p);
+  a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_P, "node-t", title);
+  if quiet.count > 0 { b := tr_leaf(t, quiet_id, TG_P, "node-q", quiet); }
+  c := tr_leaf(t, tr_cat(idb[..], id, ".v"), TG_P, "val", value);
+  tr_close(t);
+}
+// A frame as it went over the wire, on one line: which way, then its first NCH_FRAME_SHOWN characters.
+nch_frame_row :: (t: [] Tree, id: string, recv: bool, text: string) {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "fl-r");
+  a := tr_leaf(t, tr_cat(ida[..], id, ".d"), TG_SPAN, "fl-d", ifx recv then "← recv" else "send →");
+  b := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_SPAN, "fl-t", ifx text.count > NCH_FRAME_SHOWN then cast(string) text[0..<NCH_FRAME_SHOWN] else text);
+  tr_close(t);
+}
+// Something tried and refused, in a few words beside a cross.
+nch_chip :: (t: [] Tree, id: string, text: string) {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "chip");
+  g := k_glyph(t, tr_cat(ida[..], id, ".g"), TL_NO);
+  b := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_SPAN, "", text);
+  tr_close(t);
+}
+// Line k of a text (0 is the first), or "".
+nch_line :: (text: string, k: int) -> string {
+  begin := 0; line := 0;
+  for i: 0..<text.count + 1 {
+    if i == text.count || text[i] == '\n' {
+      if line == k { return cast(string) text[begin..<i]; }
+      line += 1; begin = i + 1;
+    }
+  }
+  return "";
+}
+// "KIND 1059".
+nch_kind :: (out: [] u8, kind: int) -> string { return nch_str(out, text_put_int(out, json_raw(out, 0, "KIND "), kind)); }
+
+// 1. The key card: the secret key masked, the public key's 32 bytes filling in, then the npub.
+nch_stage_key :: (s: [] NostrChat, st: f32, tick: int) {
+  t := s[0].tree[..]; l := s[0].lesson[..];
+  // what is made from what, the one being made inverted
+  fl := tr_open(t, "k.flow", TG_DIV, "rowx");
+  nch_box(t, "k.f0", "Seed", nch_p(st, 0.2, 0.9), st < 1.0);
+  l0 := k_line(t, "k.l0", nch_p(st, 0.9, 1.2));
+  nch_box(t, "k.f1", "Secret key", nch_p(st, 0.3, 1.0), st >= 1.0 && st < 1.6);
+  l1 := k_line(t, "k.l1", nch_p(st, 1.5, 1.8));
+  nch_box(t, "k.f2", "Public key", nch_p(st, 0.4, 1.1), st >= 1.6 && st < 4.2);
+  l2 := k_line(t, "k.l2", nch_p(st, 4.1, 4.4));
+  nch_box(t, "k.f3", "npub", nch_p(st, 0.5, 1.2), st >= 4.2 && st < 6.2);
+  tr_close(t);
+  card := k_frame_at(t, "k.card", TG_DIV, "card-k", MF_CARD, nch_p(st, 0.1, 0.9));
+  g := k_group(t, "k.npub", "npub: who we are, as NIP-19 writes it");
+  v := nch_val(t, "k.npub.v", "big big-2", cast(string) l[0].npub[0..<l[0].npub_n], st, 4.2, 6.0, tick);
+  tr_close(t);
+  mb: [128] u8; m := json_raw(mb[..], 0, "nsec1 ");
+  for i: 0..<28 { m = json_raw(mb[..], m, "•"); if i % 4 == 3 { m = json_raw(mb[..], m, " "); } }
+  g2 := k_group(t, "k.nsec", "nsec: the secret key. It stays in this page");
+  v2 := nch_val(t, "k.nsec.v", "val val-q", nch_str(mb[..], m), st, 1.0, 1.7, tick);
+  tr_close(t);
+  g3 := k_group(t, "k.pub", "Public key: 32 bytes, x-only, secp256k1");
+  b := k_bytes(t, "k.pub.b", cast(string) l[0].pub_hex[..], nch_p(st, 1.6, 4.3), tick, "");
+  tr_attr(t, b, AT_STATE, "large");
+  tr_close(t);
+  tr_close(t);
+  n := tr_leaf(t, "k.note", TG_P, "lb lb-q", "Seed: BIP-340 test vector 1. Public: never use it for anything real.");
+}
+// 2. The event: its fields row by row, the bytes that are hashed, SHA-256, the ID, then the signature.
+nch_stage_event :: (s: [] NostrChat, st: f32, tick: int) {
+  t := s[0].tree[..]; l := s[0].lesson[..];
+  names := [5] string.["pubkey", "created_at", "kind", "tags", "content"];
+  pb: [48] u8; cb: [24] u8; kb: [8] u8; qb: [48] u8;
+  values: [5] string;
+  values[0] = k_mid(pb[..], cast(string) l[0].pub_hex[..], 16, 16);
+  values[1] = nch_str(cb[..], text_put_int(cb[..], 0, NLB_CREATED));
+  values[2] = nch_str(kb[..], text_put_int(kb[..], 0, NLB_KIND));
+  values[3] = NLB_TAGS;
+  values[4] = nch_str(qb[..], json_write_string(qb[..], 0, NLB_CONTENT));
+  ft := tr_open(t, "e.ft", TG_DIV, "ft");
+  buf: [UI_ID] u8;
+  for k: 0..<5 {
+    start := 1.0f32 + 0.3f32 * cast(f32) k;
+    shown := st >= start;
+    r := k_field_row(t, tr_join(buf[..], "e.f.", k), names[k], ifx shown then values[k] else "", ifx shown then nch_p(st, start, start + 0.5) else 1.0f32, tick);
+  }
+  tr_close(t);
+  g := k_group(t, "e.pre", "Serialized: the exact bytes, as NIP-01 orders them");
+  v := nch_val(t, "e.pre.v", "val val-2", cast(string) l[0].pre[0..<l[0].pre_n], st, 2.6, 3.3, tick);
+  tr_close(t);
+  fl := tr_open(t, "e.flow", TG_DIV, "rowx");
+  l1 := k_line(t, "e.l1", nch_p(st, 3.2, 3.5));
+  nch_box(t, "e.sha", "SHA-256", nch_p(st, 0.2, 0.9), st >= 3.4 && st < 4.6);
+  l2 := k_line(t, "e.l2", nch_p(st, 3.5, 3.8));
+  tr_close(t);
+  g2 := k_group(t, "e.id", "ID: 32 bytes");
+  b := k_bytes(t, "e.id.b", cast(string) l[0].id_hex[..], nch_p(st, 3.6, 4.55), tick, "");
+  tr_close(t);
+  g3 := k_group(t, "e.sig", "Signature: 64 bytes, BIP-340 Schnorr over the ID");
+  c := k_bytes(t, "e.sig.b", cast(string) l[0].sig_hex[..], nch_p(st, 4.95, 7.2), tick, "");
+  tr_close(t);
+}
+// 3. The relay: a client and a relay joined by a wire, the frames travelling in order, then our own check.
+nch_stage_relay :: (s: [] NostrChat, st: f32, tick: int) {
+  t := s[0].tree[..]; l := s[0].lesson[..];
+  first := s[0].act_beat + 1;
+  if first + 1 >= s[0].nbeats { return; }
+  sent := nch_text(s, first, 2); ok_frame := nch_text(s, first, 3); ask := nch_text(s, first + 1, 2);
+  back := nch_line(nch_text(s, first + 1, 3), 0); eose := nch_line(nch_text(s, first + 1, 3), 1);
+  mb: [48] u8; cb: [64] u8; hb: [48] u8;
+  holds := ifx st >= 6.1 then (ifx st >= 7.3 then "signature valid" else "checking the signature") else tr_cat(cb[..], "note ", k_mid(mb[..], cast(string) l[0].id_hex[..], 4, 4));
+  n := text_put_int(hb[..], 0, ifx st >= 1.95 then s[0].held else 0);
+  n = json_raw(hb[..], n, ifx st >= 1.95 && s[0].held == 1 then " stored event" else " stored events");
+  net := tr_open(t, "r.net", TG_DIV, "net");
+  nch_node(t, "r.c", "Client", "r.c.q", "this page", holds, nch_p(st, 0.1, 0.8));
+  w := k_wire(t, "r.w", nch_p(st, 0.4, 1.0));
+  p0 := k_packet(t, "r.p0", "EVENT →", nch_e(st, 1.05, 1.95), PK_OUT);
+  p1 := k_packet(t, "r.p1", "← OK", nch_e(st, 2.05, 2.95), PK_BACK);
+  p2 := k_packet(t, "r.p2", "REQ →", nch_e(st, 3.3, 4.1), PK_OUT);
+  p3 := k_packet(t, "r.p3", "← EVENT", nch_e(st, 4.15, 4.95), PK_BACK);
+  p4 := k_packet(t, "r.p4", "← EOSE", nch_e(st, 5.0, 5.8), PK_BACK);
+  tr_close(t);
+  nch_node(t, "r.r", "Relay", "relay.note", "Runs in this page. No network.", nch_str(hb[..], n), nch_p(st, 0.2, 0.9));
+  tr_close(t);
+  fl := tr_open(t, "r.fl", TG_DIV, "fl fl-5");
+  if st >= 1.05 { nch_frame_row(t, "r.f0", false, sent); }
+  if st >= 2.05 { nch_frame_row(t, "r.f1", true, ok_frame); }
+  if st >= 3.3 { nch_frame_row(t, "r.f2", false, ask); }
+  if st >= 4.15 { nch_frame_row(t, "r.f3", true, back); }
+  if st >= 5.0 { nch_frame_row(t, "r.f4", true, eose); }
+  tr_close(t);
+  mk := tr_open(t, "r.mk", TG_DIV, "mark-slot");
+  if st >= 6.4 { m := k_mark(t, "r.mark", "Verified", true, nch_p(st, 6.5, 7.3), tick); }
+  tr_close(t);
+}
+// 4. One letter changed: the letter inverted, the ID it claims over the hash it has now, refused, and the relay's no.
+nch_stage_tamper :: (s: [] NostrChat, st: f32, tick: int) {
+  t := s[0].tree[..]; l := s[0].lesson[..];
+  first := s[0].act_beat + 1;
+  if first + 1 >= s[0].nbeats { return; }
+  changed := cast(string) l[0].changed_content[0..<l[0].changed_content_n];
+  old := cast(string) l[0].id_hex[..]; hashed := cast(string) l[0].changed_id_hex[..];
+  g := k_group(t, "x.c", ifx st >= 1.0 then "Content: one letter changed" else "Content: as it was signed");
+  p := tr_open(t, "x.c.v", TG_P, "big");
+  if st < 1.0 || NLB_CHANGE_AT >= changed.count {
+    qb: [48] u8;
+    a := tr_leaf(t, "x.c.a", TG_SPAN, "", nch_str(qb[..], json_write_string(qb[..], 0, NLB_CONTENT)));
+  } else {
+    ab: [48] u8; n := json_raw(ab[..], 0, "\""); n = json_raw(ab[..], n, cast(string) changed[0..<NLB_CHANGE_AT]);
+    a := tr_leaf(t, "x.c.a", TG_SPAN, "", nch_str(ab[..], n));
+    b := tr_leaf(t, "x.c.b", TG_SPAN, "inv", cast(string) changed[NLB_CHANGE_AT..<NLB_CHANGE_AT + 1]);
+    zb: [48] u8; z := json_raw(zb[..], 0, cast(string) changed[NLB_CHANGE_AT + 1..<changed.count]); z = json_raw(zb[..], z, "\"");
+    c := tr_leaf(t, "x.c.z", TG_SPAN, "", nch_str(zb[..], z));
+  }
+  tr_close(t);
+  tr_close(t);
+  g2 := k_group(t, "x.old", "The ID the event still claims");
+  b1 := k_bytes(t, "x.old.b", old, 1, tick, "");
+  tr_attr(t, b1, AT_STATE, "old");
+  tr_close(t);
+  lb: [96] u8; n2 := json_raw(lb[..], 0, "SHA-256 of the changed bytes");
+  if st >= 3.4 { n2 = json_raw(lb[..], n2, ": "); n2 = text_put_int(lb[..], n2, k_bytes_differ(old, hashed)); n2 = json_raw(lb[..], n2, " of 32 bytes differ"); }
+  g3 := k_group(t, "x.new", nch_str(lb[..], n2));
+  b2 := k_bytes(t, "x.new.b", hashed, nch_p(st, 1.5, 3.4), tick, old);
+  tr_close(t);
+  mk := tr_open(t, "x.mk", TG_DIV, "mark-slot");
+  if st >= 3.5 { m := k_mark(t, "x.mark", "Refused", false, nch_p(st, 3.6, 4.4), tick); }
+  tr_close(t);
+  hb: [48] u8; hn := text_put_int(hb[..], 0, s[0].held); hn = json_raw(hb[..], hn, ifx s[0].held == 1 then " stored event" else " stored events");
+  net := tr_open(t, "x.net", TG_DIV, "net net-s");
+  nch_node(t, "x.cl", "Client", "", "", ifx st >= 4.85 then "sends it anyway" else "", nch_p(st, 0.1, 0.8));
+  w := k_wire(t, "x.w", nch_p(st, 0.4, 1.0));
+  p0 := k_packet(t, "x.p0", "EVENT →", nch_e(st, 4.95, 5.85), PK_OUT);
+  p1 := k_packet(t, "x.p1", "← OK FALSE", nch_e(st, 5.95, 6.85), PK_NO);
+  tr_close(t);
+  nch_node(t, "x.r", "Relay", "", "", ifx st >= 5.85 then "refused: invalid" else nch_str(hb[..], hn), nch_p(st, 0.2, 0.9));
+  tr_close(t);
+  fl := tr_open(t, "x.fl", TG_DIV, "fl fl-1");
+  if st >= 5.95 { nch_frame_row(t, "x.f0", true, nch_text(s, first + 1, 3)); }
+  tr_close(t);
+}
+// 5. NIP-44: Alice and us, the key both work out, her words scrambled into what the relay sees, and opened again.
+nch_stage_private :: (s: [] NostrChat, st: f32, tick: int) {
+  t := s[0].tree[..]; f := s[0].p44[..];
+  ha: [64] u8; hb: [64] u8; ma: [48] u8; mb: [48] u8; qb: [48] u8;
+  said := nch_str(qb[..], json_write_string(qb[..], 0, cast(string) f[0].back[0..<f[0].back_n]));
+  duo := tr_open(t, "p.duo", TG_DIV, "duo");
+  nch_node(t, "p.a", "Alice", "p.a.q", "her public key", k_mid(ma[..], nch_hex(f[0].alice_x[..], ha[..]), 6, 6), nch_p(st, 0.1, 0.8));
+  m := tr_open(t, "p.m", TG_DIV, "duo-m");
+  l1 := k_line(t, "p.l1", nch_p(st, 1.0, 1.5));
+  nch_box(t, "p.key", "Shared key", nch_p(st, 0.2, 0.9), st >= 1.5);
+  l2 := tr_leaf(t, "p.l2", TG_SPAN, "ln ln-b", ""); tr_attr(t, l2, AT_HIDDEN, "true"); k_var(t, l2, nch_p(st, 1.0, 1.5));
+  tr_close(t);
+  nch_node(t, "p.b", "Us", "p.b.q", "our public key", k_mid(mb[..], nch_hex(f[0].bob_x[..], hb[..]), 6, 6), nch_p(st, 0.1, 0.8));
+  tr_close(t);
+  g := k_group(t, "p.k", "Conversation key: the same on both sides. It never travels");
+  b := k_bytes(t, "p.k.b", cast(string) s[0].key_hex[..], nch_p(st, 1.5, 3.0), tick, "");
+  tr_close(t);
+  g2 := k_group(t, "p.c", ifx st >= 3.1 then "Alice encrypts: NIP-44" else "Alice writes");
+  cx := k_frame_at(t, "p.cx", TG_DIV, "cx", MF_PANEL, nch_p(st, 0.2, 0.9));
+  if st < 3.1 {
+    tr_attr(t, cx, AT_STATE, "plain");
+    if st >= 0.5 { v := k_decipher(t, "p.cx.v", TG_SPAN, "", said, nch_p(st, 0.5, 1.1), tick); }
+  } else if st < 4.8 || f[0].payload_n <= NCH_NONCE_SHOWN { v := k_decipher(t, "p.cx.d", TG_SPAN, "", cast(string) f[0].payload[0..<f[0].payload_n], nch_p(st, 3.1, 4.8), tick); }
+  else {
+    // the payload's first 33 bytes are its version and nonce (44 letters of base64): dim, the ciphertext and MAC after them bright
+    vn := tr_leaf(t, "p.cx.n", TG_SPAN, "cx-q", cast(string) f[0].payload[0..<NCH_NONCE_SHOWN]);
+    vc := tr_leaf(t, "p.cx.c", TG_SPAN, "", cast(string) f[0].payload[NCH_NONCE_SHOWN..<f[0].payload_n]);
+  }
+  tr_close(t);
+  nb: [96] u8; nn := text_put_int(nb[..], 0, f[0].payload_n); nn = json_raw(nb[..], nn, " characters. Dim: the nonce, fixed for the demo");
+  cn := tr_open(t, "p.cn", TG_DIV, "cx-n");
+  sees := tr_leaf(t, "p.sees", TG_P, "lb lb-on", ifx st >= 4.8 then "The relay sees only this" else "");
+  note := tr_leaf(t, "p.note", TG_P, "lb lb-q", nch_str(nb[..], nn));
+  tr_close(t);
+  tr_close(t);
+  g3 := k_group(t, "p.o", "We open it with the same key");
+  o := nch_val(t, "p.o.v", "big", said, st, 5.4, 6.3, tick);
+  tr_close(t);
+  chips := tr_open(t, "p.chips", TG_DIV, "chips");
+  if st >= 6.5 { nch_chip(t, "p.x0", "One letter changed: the MAC fails"); }
+  if st >= 6.8 { nch_chip(t, "p.x1", "Carol's key: the MAC fails"); }
+  tr_close(t);
+}
+// 6. NIP-59: a rumor, sealed by Alice, wrapped by a key used once, each closing over the last; what the
+// relay sees; then opened again with our key.
+nch_stage_wrap :: (s: [] NostrChat, st: f32, tick: int) {
+  t := s[0].tree[..]; f := s[0].p59[..];
+  o := f[0].opened;
+  hw: [64] u8; ha: [64] u8; mw: [48] u8; ma: [48] u8; kb: [24] u8; qb: [160] u8; bb: [96] u8; rb: [128] u8; cb: [128] u8;
+  wrap_by := k_mid(mw[..], nch_hex(f[0].wrap_signer[..], hw[..]), 6, 6);
+  said := nch_str(qb[..], json_write_string(qb[..], 0, cast(string) f[0].text[0..<f[0].text_n]));
+  // the rumor's words: they come, are hidden when the seal closes, and come back when we open it
+  pr := ifx st < 2.0 then nch_p(st, 1.0, 1.5) else ifx st < 6.1 then 1 - nch_p(st, 2.0, 2.6) else nch_p(st, 6.1, 6.9);
+  // the seal's signer: comes, is hidden when the wrap closes, and comes back
+  ps := ifx st < 3.0 then nch_p(st, 1.8, 2.3) else ifx st < 5.3 then 1 - nch_p(st, 3.0, 3.6) else nch_p(st, 5.3, 6.0);
+  slow := tick / 6;
+  w := k_frame_at(t, "w.wrap", TG_DIV, "nest", MF_CARD, nch_p(st, 2.8, 3.6));
+  if st >= 5.2 { tr_attr(t, w, AT_STATE, "open"); } else if st >= 3.6 { tr_attr(t, w, AT_STATE, "shut"); }
+  h := tr_open(t, "w.wrap.h", TG_DIV, "nest-h");
+  if st >= 2.8 {
+    a := tr_leaf(t, "w.wrap.k", TG_SPAN, "nest-k", nch_kind(kb[..], f[0].wrap_kind));
+    b := tr_leaf(t, "w.wrap.n", TG_SPAN, "nest-n", "Gift wrap");
+    c := k_decipher(t, "w.wrap.by", TG_SPAN, "nest-by", tr_cat(bb[..], "signed by a key used once: ", wrap_by), nch_p(st, 2.8, 3.4), tick);
+  }
+  tr_close(t);
+  sl := k_frame_at(t, "w.seal", TG_DIV, "nest", MF_CARD, nch_p(st, 1.8, 2.6));
+  if st >= 6.0 { tr_attr(t, sl, AT_STATE, "open"); } else if st >= 2.6 { tr_attr(t, sl, AT_STATE, "shut"); }
+  h2 := tr_open(t, "w.seal.h", TG_DIV, "nest-h");
+  if st >= 1.8 {
+    a := tr_leaf(t, "w.seal.k", TG_SPAN, "nest-k", nch_kind(kb[..], NIP59_SEAL_KIND));
+    b := tr_leaf(t, "w.seal.n", TG_SPAN, "nest-n", "Seal");
+    c := k_decipher(t, "w.seal.by", TG_SPAN, "nest-by", tr_cat(rb[..], "signed by Alice: ", k_mid(ma[..], nch_hex(o.author[..], ha[..]), 6, 6)), ps, ifx ps > 0 then tick else slow);
+  }
+  tr_close(t);
+  r := tr_open(t, "w.rumor", TG_DIV, "rumor");
+  h3 := tr_open(t, "w.rumor.h", TG_DIV, "nest-h");
+  if st >= 1.0 {
+    a := tr_leaf(t, "w.rumor.k", TG_SPAN, "nest-k", nch_kind(kb[..], o.kind));
+    b := tr_leaf(t, "w.rumor.n", TG_SPAN, "nest-n", "Rumor");
+    c := tr_leaf(t, "w.rumor.by", TG_SPAN, "nest-by", "not signed, to us");
+  }
+  tr_close(t);
+  if st >= 1.0 { v := k_decipher(t, "w.rumor.v", TG_P, "big", said, pr, ifx pr > 0 then tick else slow); }
+  else { v := tr_leaf(t, "w.rumor.v", TG_P, "big", ""); }
+  tr_close(t);
+  tr_close(t);
+  tr_close(t);
+  cipher := cast(string) f[0].wrap[f[0].cipher_from..<f[0].cipher_to];
+  n := json_raw(rb[..], 0, "kind "); n = text_put_int(rb[..], n, f[0].wrap_kind); n = json_raw(rb[..], n, ", from "); n = json_raw(rb[..], n, wrap_by); n = json_raw(rb[..], n, ", to us");
+  // its content, past the version and nonce: 40 letters of the ciphertext, and how long it is
+  c2 := 0;
+  if cipher.count > NCH_NONCE_SHOWN + 40 {
+    c2 = json_raw(cb[..], 0, "…"); c2 = json_raw(cb[..], c2, cast(string) cipher[NCH_NONCE_SHOWN..<NCH_NONCE_SHOWN + 40]);
+    c2 = json_raw(cb[..], c2, "… ("); c2 = text_put_int(cb[..], c2, cipher.count); c2 = json_raw(cb[..], c2, " characters)");
+  } else { c2 = json_raw(cb[..], 0, cipher); }
+  g := k_group(t, "w.sees", "What the relay sees");
+  v1 := nch_val(t, "w.sees.a", "val", nch_str(rb[..], n), st, 3.7, 4.3, tick);
+  v2 := nch_val(t, "w.sees.b", "val val-q", nch_str(cb[..], c2), st, 3.9, 4.7, tick);
+  tr_close(t);
+  e := tr_open(t, "w.end", TG_DIV, "rowx mark-slot mark-sm");
+  if st >= 6.9 { m := k_mark(t, "w.mark", "From Alice", true, nch_p(st, 6.9, 7.5), tick); }
+  if st >= 7.2 { nch_chip(t, "w.x0", "Carol's key: cannot open it"); }
+  tr_close(t);
+}
+// The closing list: the six things done, each with a check and one of its values, and Replay.
+nch_stage_fin :: (s: [] NostrChat, st: f32, tick: int) {
+  t := s[0].tree[..]; u := s[0].ui[..]; l := s[0].lesson[..];
+  rail := NCH_RAIL; said := NCH_DONE;
+  va: [48] u8; vb: [48] u8; vc: [48] u8; vd: [48] u8; ve: [48] u8; vf: [48] u8;
+  values: [6] string;
+  values[0] = k_mid(va[..], cast(string) l[0].npub[0..<l[0].npub_n], 10, 6);
+  values[1] = tr_cat(vb[..], "id ", k_mid(vf[..], cast(string) l[0].id_hex[..], 6, 6));
+  n := text_put_int(vc[..], 0, s[0].held); n = json_raw(vc[..], n, " stored, verified");
+  values[2] = nch_str(vc[..], n);
+  values[3] = "OK false";
+  values[4] = k_mid(vd[..], cast(string) s[0].p44[0].payload[0..<s[0].p44[0].payload_n], 8, 6);
+  values[5] = nch_str(ve[..], text_put_int(ve[..], json_raw(ve[..], 0, "kind "), s[0].p59[0].wrap_kind));
+  fin := tr_open(t, "f.list", TG_DIV, "fin");
+  ida: [UI_ID] u8; idb: [UI_ID] u8; num: [2] u8;
+  for k: 0..<NCH_ACTS {
+    if st < 0.3f32 + 0.4f32 * cast(f32) k { break; }
+    rid := tr_join(ida[..], "f.", k);
+    r := tr_open(t, rid, TG_DIV, "fin-r");
+    g := k_glyph(t, tr_cat(idb[..], rid, ".g"), TL_OK);
+    num[0] = cast(u8) 48; num[1] = cast(u8) (49 + k);
+    a := tr_leaf(t, tr_cat(idb[..], rid, ".n"), TG_SPAN, "fin-n", cast(string) num[..]);
+    b := tr_leaf(t, tr_cat(idb[..], rid, ".t"), TG_SPAN, "fin-t", rail[k]);
+    c := tr_leaf(t, tr_cat(idb[..], rid, ".d"), TG_SPAN, "fin-d", said[k]);
+    d := k_decipher(t, tr_cat(idb[..], rid, ".v"), TG_SPAN, "fin-v", values[k], nch_p(st, 0.3f32 + 0.4f32 * cast(f32) k, 0.9f32 + 0.4f32 * cast(f32) k), tick);
+    tr_close(t);
+  }
+  tr_close(t);
+  act := tr_open(t, "f.act", TG_DIV, "fin-a");
+  if st >= 2.8 {
+    rp := k_button(t, u, "again", "Replay", BS_PRIMARY);
+    note := tr_leaf(t, "f.note", TG_P, "val", "Every value was worked out in this page by our Nostr library, written from scratch in Coax.");
+  }
+  tr_close(t);
+}
+// What is happening on the stage now, in a sentence.
+nch_caption :: (act: int, st: f32) -> string {
+  if act == 0 {
+    if st < 1.0 { return "A Nostr identity is a key pair. Nothing else."; }
+    if st < 1.6 { return "The secret key comes from the demo seed."; }
+    if st < 4.2 { return "The public key is worked out from the secret key on the curve secp256k1."; }
+    if st < 6.2 { return "NIP-19 writes those 32 bytes as an npub, with a checksum."; }
+    return "Anyone may see the npub. The nsec never leaves this page.";
+  }
+  if act == 1 {
+    if st < 2.6 { return "A note is five fields: who, when, what kind, its tags and its content."; }
+    if st < 3.4 { return "NIP-01 puts them in one fixed order, so everyone hashes the same bytes."; }
+    if st < 4.6 { return "SHA-256 of those bytes is the event's ID."; }
+    if st < 7.25 { return "Our secret key signs the ID: 64 bytes, a BIP-340 Schnorr signature."; }
+    return "The ID and the signature travel with the note, so anyone can check it.";
+  }
+  if act == 2 {
+    if st < 1.05 { return "A relay is a server that stores events and sends them back."; }
+    if st < 3.0 { return "EVENT sends the note. The relay checks it, stores it, and answers OK."; }
+    if st < 5.9 { return "REQ asks for notes. The relay sends what it holds, then EOSE: that is all."; }
+    if st < 7.4 { return "We don't trust the relay. We check the signature of what came back ourselves."; }
+    return "Five frames of JSON. That is the whole protocol.";
+  }
+  if act == 3 {
+    if st < 1.0 { return "The same note, as it was signed."; }
+    if st < 1.5 { return "Someone changes one letter of the content."; }
+    if st < 3.5 { return "The changed bytes hash to a different ID."; }
+    if st < 4.85 { return "The signature was made over the old ID. It does not fit the new one."; }
+    if st < 7.05 { return "Sent to the relay anyway, it is refused there too."; }
+    return "Nobody can edit a note and keep its author's signature.";
+  }
+  if act == 4 {
+    if st < 1.0 { return "Alice wants to tell us something only we can read."; }
+    if st < 3.1 { return "Each side makes the same key from its own secret and the other's public key."; }
+    if st < 5.0 { return "That key scrambles her words. This is all a relay ever holds."; }
+    if st < 7.25 { return "We make the same key and open it. A changed letter or another key does not."; }
+    return "The key never travelled, and the relay read nothing.";
+  }
+  if st < 1.8 { return "The message itself is a rumor: an event nobody has signed."; }
+  if st < 2.8 { return "Alice seals it: encrypted to us, signed by her."; }
+  if st < 3.7 { return "Then she wraps the seal with a key she uses once and throws away."; }
+  if st < 5.05 { return "The relay sees a kind 1059 event from a stranger. Nothing says Alice."; }
+  if st < 7.65 { return "Our key opens the wrap, then the seal. Only now do we see it is from Alice."; }
+  return "The relay stored it and sent it on without learning who wrote to whom.";
+}
+// The stage: its head (which step, its name, its NIPs), what the step shows, and the line under it.
+nch_stage :: (s: [] NostrChat) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  rail := NCH_RAIL; subs := NCH_SUBS; names := NCH_ACT_NAMES;
+  fin := s[0].done && s[0].stopped == 0;
+  act := ifx s[0].act < 0 || s[0].act >= NCH_ACTS then 0 else s[0].act;
+  st := ifx s[0].reduced then 1000.0f32 else s[0].time - (ifx fin then s[0].done_at else s[0].act_at);
+  tick := cast(int) (s[0].time * NCH_TICKS);
+  buf: [UI_ID] u8; bufb: [UI_ID] u8; nb: [16] u8; cap: [160] u8;
+  h := tr_open(t, "st.h", TG_DIV, "st-h");
+  n := json_raw(nb[..], 0, "0"); n = text_put_int(nb[..], n, act + 1); n = json_raw(nb[..], n, " / 06");
+  a := tr_leaf(t, "st.n", TG_SPAN, "st-n", ifx fin then "06 / 06" else nch_str(nb[..], n));
+  b := k_text(t, u, tr_join(buf[..], "st.t.", ifx fin then NCH_ACTS else act), TG_H2, "st-t", ifx fin then "Done" else rail[act]);
+  c := tr_leaf(t, "st.s", TG_SPAN, "st-s", ifx fin then "Six steps, one library" else subs[act]);
+  tr_close(t);
+  body := tr_open(t, tr_join(bufb[..], "st.b.", ifx fin then NCH_ACTS else act), TG_DIV, ifx act == 1 && !fin then "st-b st-tight" else "st-b");
+  words := "";
+  if s[0].stopped > 0 {
+    // the library refused this step: nothing of it is shown
+    cn := json_raw(cap[..], 0, "Stopped at "); cn = json_raw(cap[..], cn, names[s[0].stopped - 1]); cn = json_raw(cap[..], cn, ". The page shows only what the library gives.");
+    words = nch_str(cap[..], cn);
+    m := k_notice(t, u, "st.stop", "Error", words); tr_close(t);
+  } else if fin {
+    nch_stage_fin(s, st, tick);
+    words = "Done: six steps, every value worked out in this page.";
+  } else if s[0].ran > act {
+    if act == 0 { nch_stage_key(s, st, tick); }
+    else if act == 1 { nch_stage_event(s, st, tick); }
+    else if act == 2 { nch_stage_relay(s, st, tick); }
+    else if act == 3 { nch_stage_tamper(s, st, tick); }
+    else if act == 4 { nch_stage_private(s, st, tick); }
+    else { nch_stage_wrap(s, st, tick); }
+    words = nch_caption(act, st);
+  }
+  tr_close(t);
+  status := tr_leaf(t, "status", TG_P, "st-cap", words);
+  tr_attr(t, status, AT_ROLE, "status");
 }
 
 // ---------------------------------------------------------------- the page
@@ -331,9 +797,23 @@ nch_replay :: (s: [] NostrChat) {
 nch_build :: (s: [] NostrChat) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
-  page := tr_open(t, "nostr", TG_MAIN, "chat");
-  hd := k_header(t, u, "title", "Nostr from scratch");
-  lede := tr_leaf(t, "lede", TG_P, "lede", NCH_LEDE);
+  rail := NCH_RAIL;
+  now := nch_now(s);
+  sb: [16] u8;
+  page := tr_open(t, "nostr", TG_MAIN, "wb");
+  tr_attr(t, page, AT_STATE, ifx s[0].stopped > 0 then "stopped" else ifx s[0].done then "done" else tr_join(sb[..], "step-", s[0].act + 1));
+  top := tr_open(t, "top", TG_HEADER, "wb-top");
+  title := k_text(t, u, "title", TG_H1, "wb-t", "Nostr from scratch");
+  along := ifx s[0].reduced || !(s[0].act_len > 0) then 0.0f32 else nch_p(s[0].time - s[0].act_at, 0, s[0].act_len);
+  r := k_rail(t, "rail", rail[..], now, along);
+  // Replay is always here; when the script has ended the stage has a large one too, unless it stopped
+  rp := k_button(t, u, "replay", "Replay", ifx s[0].stopped > 0 then BS_PRIMARY else BS_PLAIN);
+  tr_close(t);
+  body := tr_open(t, "body", TG_DIV, "wb-body");
+  chat := k_frame(t, u, "chat", TG_SECTION, "wb-chat", MF_PANEL);
+  ph := tr_open(t, "chat.h", TG_DIV, "pane-h");
+  pa := tr_leaf(t, "chat.t", TG_P, "lb", "Transcript");
+  pb := tr_leaf(t, "chat.q", TG_P, "lb lb-q", "Scripted. Nothing is typed");
   tr_close(t);
   lg := tr_open(t, "log", TG_DIV, "log");
   th := tr_open(t, "thread", TG_DIV, "thread");
@@ -347,9 +827,10 @@ nch_build :: (s: [] NostrChat) {
       // a run of tool calls, together
       g := tr_open(t, tr_join(bufb[..], "g.", k), TG_DIV, "tools");
       while k < visible && s[0].beats[k].kind == NCH_TOOL {
-        running := k == s[0].shown && s[0].time - s[0].beat_at < NCH_TOOL_RUN;
+        running := k == s[0].shown && s[0].time - s[0].beat_at < s[0].beats[k].run;
         tid := tr_join(bufc[..], "b.", k);
-        r := k_tool(t, u, tid, nch_text(s, k, 0), ifx running then "running" else nch_text(s, k, 1), !s[0].closed[k], nch_text(s, k, 2), ifx running then "" else nch_text(s, k, 3));
+        row := k_tool_line(t, u, tid, nch_text(s, k, 0), ifx running then "running" else nch_text(s, k, 1), ifx running then TL_RUN else s[0].beats[k].state,
+          s[0].open[k], nch_text(s, k, 2), ifx running then "" else nch_text(s, k, 3));
         k += 1;
       }
       tr_close(t);
@@ -360,7 +841,7 @@ nch_build :: (s: [] NostrChat) {
     else {
       text := nch_text(s, k, 0); shown := nch_letters(s, k);
       a := k_reply_open(t, id, shown < text.count, shown == 0);
-      if shown > 0 { body := k_agent_text(t, u, tr_cat(bufb[..], id, ".md"), s[0].doc[..], cast(string) text[0..<shown]); }
+      if shown > 0 { md := k_agent_text(t, u, tr_cat(bufb[..], id, ".md"), s[0].doc[..], cast(string) text[0..<shown]); }
       tr_close(t);
     }
     k += 1;
@@ -372,16 +853,10 @@ nch_build :: (s: [] NostrChat) {
   }
   tr_close(t);
   tr_close(t);
-  foot := tr_open(t, "foot", TG_DIV, "rowf");
-  names := NCH_ACT_NAMES; st: [128] u8; sn := 0;
-  if s[0].stopped > 0 { sn = json_raw(st[..], 0, "Stopped at "); sn = json_raw(st[..], sn, names[s[0].stopped - 1]); }
-  else if s[0].done { sn = json_raw(st[..], 0, "Done: six steps, every value worked out in this page"); }
-  else if s[0].asked > 0 {
-    sn = json_raw(st[..], 0, "Step "); sn = text_put_int(st[..], sn, s[0].asked); sn = json_raw(st[..], sn, " of ");
-    sn = text_put_int(st[..], sn, NCH_ACTS); sn = json_raw(st[..], sn, ": "); sn = json_raw(st[..], sn, names[s[0].asked - 1]);
-  }
-  rp := k_button(t, u, "replay", "Replay", ifx s[0].done then BS_PRIMARY else BS_PLAIN);
-  if sn > 0 { m := k_meta(t, "status", nch_str(st[..], sn)); tr_attr(t, m, AT_ROLE, "status"); }
+  tr_close(t);
+  stage := k_frame(t, u, "stage", TG_SECTION, "wb-stage", MF_STAGE);
+  nch_stage(s);
+  tr_close(t);
   tr_close(t);
   tr_close(t);
 }
@@ -394,13 +869,13 @@ nch_beat_of :: (id: string) -> int {
   return n;
 }
 nch_click :: (s: [] NostrChat, id: string) {
-  if id == "replay" { nch_replay(s); return; }
+  if id == "replay" || id == "again" { nch_replay(s); return; }
   k := nch_beat_of(id);
-  if k >= 0 && k < s[0].nbeats && s[0].beats[k].kind == NCH_TOOL { s[0].closed[k] = !s[0].closed[k]; return; }
+  if k >= 0 && k < s[0].nbeats && s[0].beats[k].kind == NCH_TOOL { s[0].open[k] = !s[0].open[k]; return; }
   if id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" {
-    // a code block's Copy: the code beside it, as the page shows it
-    pre: [UI_ID] u8;
-    at := tr_find(s[0].tree[..], tr_cat(pre[..], cast(string) id[0..<id.count - 5], ".pre"));
+    // an open tool call's Copy: what came back, as the page shows it
+    out: [UI_ID] u8;
+    at := tr_find(s[0].tree[..], tr_cat(out[..], cast(string) id[0..<id.count - 5], ".out"));
     if at >= 0 {
       code := tr_text_of(s[0].tree[..], at);
       n := ifx code.count > NCH_CLIP then NCH_CLIP else code.count;
@@ -412,7 +887,7 @@ nch_click :: (s: [] NostrChat, id: string) {
 
 // ---------------------------------------------------------------- the face's calls
 
-// One frame: the script moves on, and the page is built and flushed if anything changed or is entering.
+// One frame: the script moves on, and the page is built and flushed if anything changed or is moving.
 // Bytes of commands to apply, 0 for none, -1 to clear the page and ask again.
 coaxial_nostrchat_frame :: (s: [] NostrChat, dt: f32, reduced: bool) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
@@ -423,22 +898,24 @@ coaxial_nostrchat_frame :: (s: [] NostrChat, dt: f32, reduced: bool) -> int #exp
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step; s[0].reduced = reduced;
   nch_tick(s);
-  if !s[0].dirty && !s[0].animating { return 0; }
+  // the closing list comes in on the page's clock after the script has ended
+  closing := s[0].done && s[0].stopped == 0 && !reduced && s[0].time - s[0].done_at < NCH_FIN;
+  if !s[0].dirty && !s[0].animating && !closing { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := mono_css(s[0].css[..]);
+    n := mono_stage_css(s[0].css[..], mono_css(s[0].css[..]));
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
   nch_build(s);
   ui_end(s[0].ui[..]);
-  s[0].animating = s[0].ui[0].busy;
+  s[0].animating = s[0].ui[0].busy || closing;
   s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
   if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
   return bytes;
 }
-// Whether the host is to call again next frame: the script is playing, or something changed or is entering.
+// Whether the host is to call again next frame: the script is playing, or something changed or is moving.
 coaxial_nostrchat_busy :: (s: [] NostrChat) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].done || s[0].dirty || s[0].animating); }
 // A press (1) on the node in this slot. The page has no fields.
 coaxial_nostrchat_event :: (s: [] NostrChat, kind: int, slot: int, length: int) #export_c #effects(all) {
@@ -466,6 +943,15 @@ nch_test_play :: (s: [] NostrChat, reduced: bool) -> int {
   }
   return -1;
 }
+// The script played, with motion, a twentieth of a second a frame, until step `act` is `st` seconds in. False when it never got there.
+nch_test_until :: (s: [] NostrChat, act: int, st: f32) -> bool {
+  for f: 0..<2400 {
+    n := coaxial_nostrchat_frame(s, 0.05, false);
+    if !s[0].done && s[0].asked == act + 1 && s[0].time - s[0].act_at >= st { return true; }
+    if s[0].done { return false; }
+  }
+  return false;
+}
 nch_test_has :: (s: string, part: string) -> bool {
   i := 0;
   while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
@@ -474,6 +960,14 @@ nch_test_has :: (s: string, part: string) -> bool {
 // The tool calls' names in order, and the text of the one called `name` (its field f) the first time.
 nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
   for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && nch_text(s, k, 0) == name { return nch_text(s, k, f); } }
+  return "";
+}
+// The line of a text that starts with `label`, without the label; "" when there is none.
+nch_test_line :: (text: string, label: string) -> string {
+  for k: 0..<64 {
+    line := nch_line(text, k);
+    if line.count >= label.count && cast(string) line[0..<label.count] == label { return cast(string) line[label.count..<line.count]; }
+  }
   return "";
 }
 
@@ -485,14 +979,17 @@ nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
     kind := s[0].beats[k].kind;
     if kind == NCH_USER { users += 1; } else if kind == NCH_AGENT { agents += 1; } else if kind == NCH_TOOL { tools += 1; } else { notices += 1; }
   }
-  #assert users == 6 && agents == 6 && tools == 12 && notices == 1 && s[0].shown == s[0].nbeats;
+  #assert users == 6 && agents == 6 && tools == 12 && notices == 0 && s[0].shown == s[0].nbeats;
   names := [12] string.["nostr.keygen", "nostr.event", "nostr.sign", "relay.EVENT", "relay.REQ", "nostr.verify", "nostr.verify", "relay.EVENT", "nip44.encrypt", "nip44.decrypt", "nip59.wrap", "nip59.unwrap"];
   q := 0;
   for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && q < 12 { #assert nch_text(s, k, 0) == names[q]; q += 1; } }
-  // every entry is on the page, the tool calls open, and the page is still once it ends
+  // every entry is on the page, each tool call one line, and the page is still once it ends
   t := s[0].tree[..];
-  #assert t[0].lost == 0 && t[0].depth == 0 && tr_find(t, "title") > 0 && tr_find(t, "b.1.out") > 0 && tr_find(t, "replay") > 0;
-  #assert tr_attr_of(t, tr_find(t, "replay"), AT_STATE) == "primary" && nch_test_has(tr_text_of(t, tr_find(t, "status")), "Done");
+  #assert t[0].lost == 0 && t[0].depth == 0 && tr_find(t, "title") > 0 && tr_find(t, "b.1") > 0 && tr_find(t, "b.1.out") < 0 && tr_find(t, "replay") > 0;
+  #assert tr_attr_of(t, tr_find(t, "again"), AT_STATE) == "primary" && !tr_has(t, tr_find(t, "replay"), AT_STATE) && nch_test_has(tr_text_of(t, tr_find(t, "status")), "Done");
+  // the rail is full, the stage lists the six steps, and Replay is on the stage
+  #assert tr_attr_of(t, tr_find(t, "nostr"), AT_STATE) == "done" && tr_attr_of(t, tr_find(t, "rail.5"), AT_STATE) == "done" && tr_find(t, "f.5") > 0;
+  #assert tr_class(t, t[0].nodes[tr_find(t, "again")].parent) == "fin-a" && tr_text_of(t, tr_find(t, "again.l")) == "Replay" && tr_text_of(t, tr_find(t, "f.3.v")) == "OK false";
   #assert coaxial_nostrchat_frame(s, 0.1, true) == 0;
 }
 #test "nostr chat: the key pair is BIP-340 vector 1's, its npub and nsec read back to it through NIP-19" #steps 4000000000 {
@@ -501,14 +998,15 @@ nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
   out := nch_test_tool(s, "nostr.keygen", 3);
   #assert nch_test_has(out, "pubkey  dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659");
   // the nsec as shown decodes to the published secret, and the npub to the published public key
-  at := 0; while at + 5 <= out.count && cast(string) out[at..<at + 5] != "nsec1" { at += 1; }
-  e := at; while e < out.count && out[e] != '\n' { e += 1; }
-  key: [32] u8; d := nip19_decode_checked(cast(string) out[at..<e], key[..], false);
+  key: [32] u8; d := nip19_decode_checked(nch_test_line(out, "nsec    "), key[..], false);
   hx: [64] u8; #assert d.error == NC_OK && d.type == N19_NSEC && nch_hex(key[..], hx[..]) == NLB_KEY_HEX;
-  npub := nch_test_tool(s, "nostr.keygen", 1);
+  npub := nch_test_line(out, "npub    ");
   #assert npub.count == 63 && cast(string) npub[0..<5] == "npub1";
   pub: [32] u8; p := nip19_decode_checked(npub, pub[..], false);
   #assert p.error == NC_OK && p.type == N19_NPUB && nch_hex(pub[..], hx[..]) == "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+  // the tool call's one line is that npub, shortened around its middle
+  line := nch_test_tool(s, "nostr.keygen", 1);
+  #assert line.count == 21 && cast(string) line[0..<10] == cast(string) npub[0..<10] && cast(string) line[13..<21] == cast(string) npub[55..<63];
 }
 #test "nostr chat: the ID shown is SHA-256 of the bytes shown, and the signature shown verifies over it" #steps 4000000000 {
   h: [1] NchTest; s := h[0].s[..];
@@ -527,19 +1025,26 @@ nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
   #assert d.error == NC_OK && e.error == NC_OK && nostr_verify_vartime(id[..], pub[..], sig[..]);
   sig[0] = ifx sig[0] == 0 then cast(u8) 1 else cast(u8) 0;
   #assert !nostr_verify_vartime(id[..], pub[..], sig[..]);
+  // the whole signed event is under the signature, and it verifies as the library reads it
+  event := nch_test_line(sig_line, "event   ");
+  scratch: [1024] u8; v := nostr_event_verify_vartime(event, scratch[..], false);
+  #assert cast(string) event[0..<6] == "{\"id\":" && v.error == NE_OK && v.verified;
 }
 #test "nostr chat: the relay stores the note and sends it back; the changed copy is refused by our check and by the relay" #steps 4000000000 {
   h: [1] NchTest; s := h[0].s[..];
   #assert nch_test_play(s, true) > 0;
   ok_frame := nch_test_tool(s, "relay.EVENT", 3);
-  #assert ok_frame.count > 6 && cast(string) ok_frame[0..<6] == "[\"OK\"," && nch_test_has(ok_frame, ",true,");
+  #assert ok_frame.count > 6 && cast(string) ok_frame[0..<6] == "[\"OK\"," && nch_test_has(ok_frame, ",true,") && s[0].held == 1;
   req := nch_test_tool(s, "relay.REQ", 3);
   #assert nch_test_has(req, "[\"EVENT\",\"lab\",") && nch_test_has(req, "[\"EOSE\",\"lab\"]") && nch_test_has(req, "hello nostr");
   #assert nch_test_tool(s, "nostr.verify", 1) == "valid";
-  // the second relay.EVENT: false, invalid
-  seen := 0; refused := "";
-  for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && nch_text(s, k, 0) == "relay.EVENT" { seen += 1; if seen == 2 { refused = nch_text(s, k, 3); } } }
-  #assert nch_test_has(refused, ",false,\"invalid") && nch_test_has(nch_test_tool(s, "relay.EVENT", 2), "hello nostR") == false;
+  // the second relay.EVENT: false, invalid; both refusals end as refusals
+  seen := 0; refused := ""; no := 0;
+  for k: 0..<s[0].nbeats {
+    if s[0].beats[k].kind == NCH_TOOL && s[0].beats[k].state == TL_NO { no += 1; }
+    if s[0].beats[k].kind == NCH_TOOL && nch_text(s, k, 0) == "relay.EVENT" { seen += 1; if seen == 2 { refused = nch_text(s, k, 3); #assert s[0].beats[k].state == TL_NO; } }
+  }
+  #assert no == 2 && nch_test_has(refused, ",false,\"invalid") && nch_test_has(nch_test_tool(s, "relay.EVENT", 2), "hello nostR") == false;
   found := false;
   for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && nch_text(s, k, 1) == "refused" { found = nch_test_has(nch_text(s, k, 2), "hello nostR"); } }
   #assert found;
@@ -557,12 +1062,15 @@ nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
   nw: [512] u8; plain: [64] u8;
   dd := nip44_decrypt_checked(NIP44_COMPAT, ck[..], cast(string) enc[8..<enc.count], nw[..], plain[..], false);
   #assert dd.error == NIP44_OK && cast(string) plain[0..<dd.written] == "Meet at nine.";
+  // the key the stage shows is that key, and Alice's side makes the same one
+  hx: [64] u8; ka: [32] u8;
+  #assert nch_hex(ck[..], hx[..]) == cast(string) s[0].key_hex[..];
+  #assert nip44_conversation_key_from_keys_checked(key[..], ox[..], work[..], ka[..], false) == NIP44_OK && nlp_same(ka[..], ck[..]);
   wrap := nch_test_tool(s, "nip59.wrap", 3);
-  hx: [64] u8;
   #assert nch_test_has(wrap, "relay sees kind 1059 from ") && !nch_test_has(wrap, nch_hex(ax[..], hx[..]));
   #assert nch_test_has(wrap, "characters in all)") && nch_test_has(nch_test_tool(s, "nip59.unwrap", 3), nch_hex(ax[..], hx[..]));
 }
-#test "nostr chat: an answer comes letter by letter, marked as coming, then whole" #steps 4000000000 {
+#test "nostr chat: an answer comes letter by letter, marked as coming, then whole, and is two sentences at most" #steps 4000000000 {
   h: [1] NchTest; s := h[0].s[..];
   agent := -1;
   for f: 0..<400 {
@@ -577,30 +1085,126 @@ nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
   n := coaxial_nostrchat_frame(s, 0.05, false);
   t = s[0].tree[..]; at = tr_find(t, tr_join(buf[..], "b.", agent));
   #assert at > 0 && !tr_has(t, at, AT_STATE) && nch_letters(s, agent) == s[0].beats[agent].n[0];
+  #assert nch_test_play(s, true) > 0;
+  for k: 0..<s[0].nbeats {
+    if s[0].beats[k].kind != NCH_AGENT { continue; }
+    text := nch_text(s, k, 0); ends := 0;
+    for i: 0..<text.count { if text[i] == '.' && (i + 1 == text.count || text[i + 1] == ' ') { ends += 1; } }
+    #assert ends >= 1 && ends <= 3 && text.count < 260 && !nch_test_has(text, "```") && !nch_test_has(text, "\n");
+  }
 }
-#test "nostr chat: a tool call closes and opens; Replay starts over and works everything out again" #steps 4000000000 {
+#test "nostr chat: a tool call is one line that opens and closes; Copy copies what came back; Replay starts over and works everything out again" #steps 4000000000 {
   h: [1] NchTest; s := h[0].s[..];
   #assert nch_test_play(s, true) > 0;
   d := s[0].dom[..];
-  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "b.1"), 0);
+  // nostr.sign is entry 5 (a question, keygen, an answer, a question, nostr.event, then it): one line, shortened, with a check
+  t := s[0].tree[..];
+  #assert tr_find(t, "b.5.out") < 0 && tr_attr_of(t, tr_find(t, "b.5.frame"), AT_STATE) == "ok" && tr_text_of(t, tr_find(t, "b.5.what")) == "nostr.sign";
+  line := tr_text_of(t, tr_find(t, "b.5.detail"));
+  #assert line.count == 4 + 8 + 3 + 8 && cast(string) line[0..<4] == "sig " && nch_test_has(line, "…");
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "b.5"), 0);
   n := coaxial_nostrchat_frame(s, 0.1, true);
-  #assert s[0].closed[1] && tr_find(s[0].tree[..], "b.1.out") < 0;
-  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "b.1"), 0);
-  n = coaxial_nostrchat_frame(s, 0.1, true);
-  #assert !s[0].closed[1] && tr_find(s[0].tree[..], "b.1.out") > 0;
-  // a code block's Copy copies its code: the signed event
-  copy := "";
-  for k: 0..<s[0].tree[0].n { id := tr_id(s[0].tree[..], k); if id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" { copy = id; } }
-  #assert copy.count > 0;
-  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, copy), 0);
-  #assert coaxial_nostrchat_clip(s) > 100 && cast(string) s[0].clip[0..<6] == "{\"id\":";
+  #assert s[0].open[5] && tr_find(s[0].tree[..], "b.5.out") > 0 && tr_attr_of(s[0].tree[..], tr_find(s[0].tree[..], "b.5"), AT_EXPANDED) == "true";
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "b.5.copy"), 0);
+  #assert coaxial_nostrchat_clip(s) > 300 && cast(string) s[0].clip[0..<8] == "sig     ";
   coaxial_nostrchat_clip_done(s);
+  #assert coaxial_nostrchat_clip(s) == 0;
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "b.5"), 0);
+  n = coaxial_nostrchat_frame(s, 0.1, true);
+  #assert !s[0].open[5] && tr_find(s[0].tree[..], "b.5.out") < 0;
+  // a refused one says so with its state
+  no := -1;
+  for k: 0..<s[0].nbeats { if no < 0 && s[0].beats[k].kind == NCH_TOOL && s[0].beats[k].state == TL_NO { no = k; } }
+  buf: [UI_ID] u8; bufb: [UI_ID] u8;
+  #assert no > 0 && tr_attr_of(s[0].tree[..], tr_find(s[0].tree[..], tr_cat(bufb[..], tr_join(buf[..], "b.", no), ".frame")), AT_STATE) == "no";
   before := nch_test_tool(s, "nostr.sign", 3);
-  sig: [256] u8; sn := ifx before.count > 256 then 256 else before.count;
+  sig: [1024] u8; sn := ifx before.count > 1024 then 1024 else before.count;
   for i: 0..<sn { sig[i] = before[i]; }
   coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "replay"), 0);
   #assert s[0].nbeats == 0 && !s[0].done && !s[0].lesson[0].ready && coaxial_nostrchat_busy(s);
   #assert nch_test_play(s, true) > 0 && nch_test_tool(s, "nostr.sign", 3) == cast(string) sig[0..<sn] && sn == before.count;
+}
+#test "nostr chat: a tool call turns while it runs, and the rail shows the step under way part filled" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_until(s, 0, 2.0);
+  t := s[0].tree[..];
+  #assert tr_attr_of(t, tr_find(t, "b.1.frame"), AT_STATE) == "run" && tr_text_of(t, tr_find(t, "b.1.detail")) == "running" && tr_attr_of(t, tr_find(t, "b.1.g"), AT_STATE) == "run";
+  #assert tr_attr_of(t, tr_find(t, "nostr"), AT_STATE) == "step-1" && tr_attr_of(t, tr_find(t, "rail.0"), AT_STATE) == "now" && tr_attr_of(t, tr_find(t, "rail.1"), AT_STATE) == "next";
+  fill := tr_attr_of(t, tr_find(t, "rail.0.f"), AT_VARS);
+  #assert fill.count == 9 && cast(string) fill[0..<7] == "--p:0.2" && tr_text_of(t, tr_find(t, "st.n")) == "01 / 06";
+  // the key card: the secret key is masked, the public key's bytes are part filled, and the npub has not come
+  #assert !nch_test_has(tr_text_of(t, tr_find(t, "k.nsec.v")), "kls4") && tr_text_of(t, tr_find(t, "k.npub.v")) == "";
+  #assert tr_class(t, tr_find(t, "k.pub.b.0")) == "by" && tr_text_of(t, tr_find(t, "k.pub.b.0")) == "df" && tr_class(t, tr_find(t, "k.pub.b.31")) == "by by-w";
+  #assert nch_test_until(s, 0, 6.5);
+  t = s[0].tree[..];
+  #assert tr_attr_of(t, tr_find(t, "b.1.frame"), AT_STATE) == "ok" && tr_text_of(t, tr_find(t, "k.npub.v")).count == 63 && tr_text_of(t, tr_find(t, "k.pub.b.31")) == "59";
+}
+#test "nostr chat: the stage shows the relay's frames in order on a wire, says the relay runs in this page, and marks the changed note refused" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_until(s, 2, 1.5);
+  t := s[0].tree[..];
+  #assert nch_test_has(tr_text_of(t, tr_find(t, "relay.note")), "Runs in this page") && tr_attr_of(t, tr_find(t, "nostr"), AT_STATE) == "step-3";
+  // EVENT is on its way out, nothing else is, and the relay holds nothing yet
+  #assert tr_attr_of(t, tr_find(t, "r.p0"), AT_STATE) == "out" && tr_find(t, "r.p1") < 0 && tr_find(t, "r.f0") > 0 && tr_find(t, "r.f1") < 0;
+  #assert tr_text_of(t, tr_find(t, "r.r.v")) == "0 stored events" && cast(string) tr_text_of(t, tr_find(t, "r.f0.t"))[0..<9] == "[\"EVENT\",";
+  #assert nch_test_until(s, 2, 5.4);
+  t = s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "r.r.v")) == "1 stored event" && tr_attr_of(t, tr_find(t, "r.p4"), AT_STATE) == "back" && tr_find(t, "r.p0") < 0 && tr_find(t, "r.mark") < 0;
+  #assert cast(string) tr_text_of(t, tr_find(t, "r.f1.t"))[0..<5] == "[\"OK\"" && cast(string) tr_text_of(t, tr_find(t, "r.f2.t"))[0..<6] == "[\"REQ\"" && cast(string) tr_text_of(t, tr_find(t, "r.f4.t"))[0..<7] == "[\"EOSE\"";
+  #assert nch_test_until(s, 2, 7.6);
+  t = s[0].tree[..];
+  #assert tr_attr_of(t, tr_find(t, "r.mark"), AT_STATE) == "good" && tr_text_of(t, tr_find(t, "r.mark.w")) == "Verified";
+  // the changed note: its letter inverted, every differing byte marked, refused, and the relay's no on the wire
+  #assert nch_test_until(s, 3, 6.4);
+  t = s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "x.c.b")) == "R" && tr_class(t, tr_find(t, "x.c.b")) == "inv" && tr_attr_of(t, tr_find(t, "x.mark"), AT_STATE) == "bad";
+  differ := 0; for k: 0..<32 { buf: [UI_ID] u8; if tr_class(t, tr_find(t, tr_join(buf[..], "x.new.b.", k))) == "by by-d" { differ += 1; } }
+  #assert differ >= 28 && differ == k_bytes_differ(cast(string) s[0].lesson[0].id_hex[..], cast(string) s[0].lesson[0].changed_id_hex[..]);
+  #assert tr_attr_of(t, tr_find(t, "x.p1"), AT_STATE) == "no" && nch_test_has(tr_text_of(t, tr_find(t, "x.f0.t")), ",false,\"invalid");
+}
+#test "nostr chat: the stage hides the rumor as the seal closes and the seal's signer as the wrap closes, and shows both again when we open it" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  // NIP-44 first: the shared key, then the ciphertext and nothing of the plain text
+  #assert nch_test_until(s, 4, 5.1);
+  t := s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "p.k.b.0")).count == 2 && tr_attr_of(t, tr_find(t, "p.k.b"), AT_LABEL) == cast(string) s[0].key_hex[..];
+  shown: [256] u8; pay := tr_cat(shown[..], tr_text_of(t, tr_find(t, "p.cx.n")), tr_text_of(t, tr_find(t, "p.cx.c")));
+  #assert pay == cast(string) s[0].p44[0].payload[0..<s[0].p44[0].payload_n] && tr_text_of(t, tr_find(t, "p.cx.n")).count == NCH_NONCE_SHOWN && tr_find(t, "p.cx.v") < 0 && tr_text_of(t, tr_find(t, "p.sees")) == "The relay sees only this";
+  #assert nch_test_until(s, 5, 4.9);
+  t = s[0].tree[..];
+  // closed: the words and Alice's name are present for a reader, and what shows is scrambled
+  #assert tr_attr_of(t, tr_find(t, "w.wrap"), AT_STATE) == "shut" && tr_text_of(t, tr_find(t, "w.rumor.v.all")) == "\"Meet at nine.\"" && tr_text_of(t, tr_find(t, "w.rumor.v.dx")) != "\"Meet at nine.\"";
+  #assert tr_find(t, "w.seal.by.dx") > 0 && !nch_test_has(tr_text_of(t, tr_find(t, "w.seal.by.dx")), "Alice") && nch_test_has(tr_text_of(t, tr_find(t, "w.sees.a")), "kind 1059, from ");
+  #assert tr_text_of(t, tr_find(t, "w.wrap.k")) == "KIND 1059" && tr_text_of(t, tr_find(t, "w.seal.k")) == "KIND 13" && tr_text_of(t, tr_find(t, "w.rumor.k")) == "KIND 14";
+  #assert nch_test_until(s, 5, 7.8);
+  t = s[0].tree[..];
+  #assert tr_attr_of(t, tr_find(t, "w.wrap"), AT_STATE) == "open" && tr_text_of(t, tr_find(t, "w.rumor.v")) == "\"Meet at nine.\"" && nch_test_has(tr_text_of(t, tr_find(t, "w.seal.by")), "signed by Alice: ");
+  #assert tr_attr_of(t, tr_find(t, "w.mark"), AT_STATE) == "good" && tr_find(t, "w.x0") > 0;
+}
+#test "nostr chat: each step takes 9 to 12 seconds, the script 60 to 70, and the closing list then comes and the page goes still" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  starts: [NCH_ACTS] f32; seen := 0; ended := 0.0f32;
+  for f: 0..<1600 {
+    n := coaxial_nostrchat_frame(s, 0.05, false);
+    if s[0].asked > seen { starts[seen] = s[0].time; seen = s[0].asked; }
+    if s[0].done { ended = s[0].time; break; }
+  }
+  #assert seen == NCH_ACTS && s[0].done && starts[0] < 0.2;
+  for k: 0..<NCH_ACTS {
+    took := (ifx k + 1 < NCH_ACTS then starts[k + 1] else ended) - starts[k];
+    #assert took >= 9.0 && took <= 12.0;
+  }
+  #assert ended >= 60.0 && ended <= 70.0;
+  // the list is not all there at once, then it is, with Replay, and nothing moves
+  n := 0; for f: 0..<8 { n = coaxial_nostrchat_frame(s, 0.05, false); }
+  t := s[0].tree[..];
+  #assert tr_find(t, "f.0") > 0 && tr_find(t, "f.5") < 0 && tr_find(t, "again") < 0 && coaxial_nostrchat_busy(s);
+  for f: 0..<200 { n = coaxial_nostrchat_frame(s, 0.05, false); }
+  t = s[0].tree[..];
+  #assert tr_find(t, "f.5") > 0 && tr_attr_of(t, tr_find(t, "again"), AT_STATE) == "primary" && !coaxial_nostrchat_busy(s) && coaxial_nostrchat_frame(s, 0.05, false) == 0;
+  // the stage's Replay starts it over, as the top bar's does
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(s[0].dom[..], "again"), 0);
+  #assert s[0].nbeats == 0 && !s[0].done && coaxial_nostrchat_busy(s);
 }
 #test "nostr chat: a full transcript says so and the script ends" {
   h: [1] NchTest; s := h[0].s[..];
@@ -611,4 +1215,12 @@ nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
   n = coaxial_nostrchat_frame(s, 0.1, true);
   t := s[0].tree[..];
   #assert s[0].done && tr_find(t, "full") > 0 && nch_test_has(tr_text_of(t, tr_find(t, "full.t")), "48 entries in 32 KB");
+}
+#test "nostr chat: the page's stylesheet fits, and a line of a text is found by its place" {
+  css: [NCH_CSS] u8;
+  n := mono_stage_css(css[..], mono_css(css[..]));
+  #assert n > 12000 && n < NCH_CSS - 64;
+  #assert nch_line("a\nbb\n\nccc", 0) == "a" && nch_line("a\nbb\n\nccc", 1) == "bb" && nch_line("a\nbb\n\nccc", 2) == "" && nch_line("a\nbb\n\nccc", 3) == "ccc" && nch_line("a", 4) == "";
+  #assert nch_p(1, 2, 4) == 0 && nch_p(3, 2, 4) == 0.5 && nch_p(9, 2, 4) == 1 && nch_e(3, 2, 4) == 0.5;
+  kb: [24] u8; #assert nch_kind(kb[..], 1059) == "KIND 1059";
 }

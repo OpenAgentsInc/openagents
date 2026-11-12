@@ -15,8 +15,10 @@
 // screen reader and for Find; the typed copy is hidden from both.
 //
 // The components: frame, text, icon, icon button, button, link, select, secret, card, field, composer, the person's
-// message, the agent's message (Markdown), meta line, tool call, code block,
-// notice, row, header, menu.
+// message, the agent's message (Markdown), meta line, tool call, tool line, code block,
+// notice, row, header, menu; and three a page that stages its own moments builds with: a frame it
+// draws at its own time (k_frame_at), a measure for the stylesheet (k_var) and a value that deciphers
+// in (k_decipher). The stage's own pieces are in stage.coax.
 //   coax/bin/coax test components/kit/frames.coax
 
 #load "../core/tree.coax";
@@ -332,6 +334,82 @@ k_tool :: (t: [] Tree, u: [] Ui, id: string, what: string, detail: string, open:
   tr_close(t);
   return i;
 }
+// A frame the caller draws: its assembly is `progress`, 0 to 1, at the caller's own moments (a stage
+// that closes one frame after another). Close it with tr_close.
+k_frame_at :: (t: [] Tree, id: string, tag: int, cls: string, role: int, progress: f32) -> int {
+  i := tr_open(t, id, tag, cls);
+  tr_frame(t, i, mono_kind(role), role, am_unit(progress));
+  return i;
+}
+// A measure the stylesheet reads as --p on the node, 0 to 1 in thousandths: how far a line is drawn, a
+// bar filled, a packet along its wire. The page computes it from its own time, so a recording steps it.
+KV_PARTS :: 1000;      // a measure is written in thousandths
+KV_TEN :: 10;
+KD_SEED :: 2147483647; // a decipher's seed is 31 bits of its id's hash
+k_var :: (t: [] Tree, i: int, p: f32) {
+  v := ifx !(p > 0) then 0 else ifx p >= 1 then KV_PARTS else cast(int) (p * cast(f32) KV_PARTS + 0.5);
+  b: [12] u8; n := 0;
+  for c: "--p:" { b[n] = c; n += 1; }
+  if v >= KV_PARTS { b[n] = '1'; n += 1; }
+  else {
+    b[n] = '0'; b[n + 1] = '.'; n += 2;
+    d := KV_PARTS / KV_TEN;
+    while d > 0 { b[n] = cast(u8) (cast(int) '0' + (v / d) % KV_TEN); n += 1; d /= KV_TEN; }
+  }
+  tr_attr(t, i, AT_VARS, cast(string) b[0..<n]);
+}
+// A value that deciphers in (ARWES's decipher, motion.coax): its letters settle in a seeded order as
+// `progress` goes 0 to 1, the rest changing every `tick`. The whole value is in the node from the
+// start for a screen reader and Find; the changing copy is hidden from both. At 1 it is plain text.
+k_decipher :: (t: [] Tree, id: string, tag: int, cls: string, text: string, progress: f32, tick: int) -> int {
+  part: [AM_MAX_TEXT_BYTES] u8;
+  n := ifx progress >= 1 then -1 else ar_text_decipher(text, progress, true, tr_hash(id) & KD_SEED, tick, part[..]);
+  if n < 0 { return tr_leaf(t, id, tag, cls, text); }
+  i := tr_open(t, id, tag, cls);
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  whole := tr_leaf(t, tr_cat(ida[..], id, ".all"), TG_SPAN, "sr", text);
+  copy := tr_leaf(t, tr_cat(idb[..], id, ".dx"), TG_SPAN, "dx", cast(string) part[0..<n]);
+  tr_attr(t, copy, AT_HIDDEN, "true");
+  tr_close(t);
+  return i;
+}
+// Glyph: a small mark for how a piece of work stands: turning while it runs, a check when it held, a
+// cross (inverted) when it was refused. The words beside it say the same.
+TL_RUN :: 0; TL_OK :: 1; TL_NO :: 2;
+k_glyph :: (t: [] Tree, id: string, state: int) -> int {
+  ida: [UI_ID] u8;
+  g := tr_open(t, id, TG_SPAN, "gl");
+  tr_attr(t, g, AT_STATE, ifx state == TL_RUN then "run" else ifx state == TL_NO then "no" else "ok");
+  ic := k_icon(t, tr_cat(ida[..], id, ".ic"), ifx state == TL_RUN then IC_CIRCLE_DASHED else ifx state == TL_NO then IC_X else IC_CHECK);
+  tr_close(t);
+  return g;
+}
+// Tool line: a tool call as one line: its glyph, its name, and a short result at the right. It opens on a
+// press onto what it sent and what came back, with Copy for what came back (the caller copies the
+// text of id.out when id.copy is pressed).
+k_tool_line :: (t: [] Tree, u: [] Ui, id: string, what: string, detail: string, state: int, open: bool, input: string, output: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8; idf: [UI_ID] u8; idg: [UI_ID] u8; idh: [UI_ID] u8; idi: [UI_ID] u8; idj: [UI_ID] u8;
+  i := k_frame(t, u, tr_cat(ida[..], id, ".frame"), TG_DIV, "tool tl", MF_PANEL);
+  tr_attr(t, i, AT_STATE, ifx state == TL_RUN then "run" else ifx state == TL_NO then "no" else "ok");
+  h := tr_open(t, id, TG_BUTTON, "tool-h");
+  tr_attr(t, h, AT_EXPANDED, ifx open then "true" else "false");
+  g := k_glyph(t, tr_cat(idb[..], id, ".g"), state);
+  a := tr_leaf(t, tr_cat(idc[..], id, ".what"), TG_SPAN, "tool-k", what);
+  b := tr_leaf(t, tr_cat(idd[..], id, ".detail"), TG_SPAN, "tool-d", detail);
+  x := tr_open(t, tr_cat(ide[..], id, ".x"), TG_SPAN, "tool-x");
+  c := k_icon(t, tr_cat(idf[..], id, ".x.ic"), ifx open then IC_CHEVRON_UP else IC_CHEVRON_DOWN);
+  tr_close(t);
+  tr_close(t);
+  if open {
+    body := tr_open(t, tr_cat(idg[..], id, ".body"), TG_DIV, "tool-b");
+    m := tr_leaf(t, tr_cat(idh[..], id, ".in"), TG_PRE, "", input);
+    o := tr_leaf(t, tr_cat(idi[..], id, ".out"), TG_PRE, "", output);
+    cp := k_icon_button(t, tr_cat(idj[..], id, ".copy"), IC_COPY, "Copy what came back");
+    tr_close(t);
+  }
+  tr_close(t);
+  return i;
+}
 // Notice: something the person must see, between two lines: its kind in words, then what happened. Close it with tr_close.
 k_notice :: (t: [] Tree, u: [] Ui, id: string, kind: string, text: string) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8;
@@ -461,4 +539,29 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   q := k_row(t, u, "row.2", "Other", "", false);
   #assert t[0].nodes[r].frame > 0 && tr_attr_of(t, r, AT_CURRENT) == "true" && t[0].nodes[q].frame == 0 && tr_find(t, "row.2.m") < 0;
   #assert t[0].depth == 0;
+}
+
+#test "a tool line is one row with a glyph that opens onto its input and output; a value deciphers with its whole text present" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  tr_begin(t); ui_begin(u, 0, true);
+  a := k_tool_line(t, u, "tl.1", "nostr.sign", "sig 6d2a", TL_RUN, false, "in", "out");
+  #assert tr_find(t, "tl.1.body") < 0 && tr_attr_of(t, a, AT_STATE) == "run" && tr_attr_of(t, tr_find(t, "tl.1.g"), AT_STATE) == "run";
+  #assert t[0].nodes[tr_find(t, "tl.1")].tag == TG_BUTTON && tr_attr_of(t, tr_find(t, "tl.1"), AT_EXPANDED) == "false" && tr_text_of(t, tr_find(t, "tl.1.detail")) == "sig 6d2a";
+  tr_begin(t);
+  a = k_tool_line(t, u, "tl.1", "nostr.verify", "refused", TL_NO, true, "in", "out");
+  #assert tr_attr_of(t, a, AT_STATE) == "no" && tr_text_of(t, tr_find(t, "tl.1.out")) == "out" && tr_find(t, "tl.1.copy") > 0 && t[0].depth == 0;
+  tr_begin(t);
+  d := k_decipher(t, "v", TG_P, "val", "npub1mlcawle2", 0.5, 3);
+  #assert t[0].n == 3 && tr_text_of(t, d + 1) == "npub1mlcawle2" && tr_class(t, d + 1) == "sr" && tr_attr_of(t, d + 2, AT_HIDDEN) == "true";
+  half := tr_text_of(t, d + 2); same := 0;
+  for k: 0..<half.count { if half[k] == "npub1mlcawle2"[k] { same += 1; } }
+  #assert half.count == 13 && same >= 6 && same < 13;
+  tr_begin(t);
+  d = k_decipher(t, "v", TG_P, "val", "npub1mlcawle2", 1, 3);
+  #assert t[0].n == 1 && tr_text_of(t, d) == "npub1mlcawle2";
+  f := k_frame_at(t, "f", TG_DIV, "x", MF_PANEL, 0.25);
+  k_var(t, f, 0.4236); tr_close(t);
+  #assert t[0].nodes[f].progress == 0.25 && t[0].nodes[f].frame == mono_kind(MF_PANEL) + 1 && tr_attr_of(t, f, AT_VARS) == "--p:0.424";
+  g := tr_leaf(t, "g", TG_SPAN, "", ""); k_var(t, g, 2); #assert tr_attr_of(t, g, AT_VARS) == "--p:1";
+  k_var(t, g, -1); #assert tr_attr_of(t, g, AT_VARS) == "--p:0.000";
 }

@@ -7,6 +7,11 @@
 // It holds no logic: what is on the page, and what a press does, is the
 // module's. It needs no WebGPU.
 //   <script type="module" src="/coaxial/dom-host.js" data-app="kit" data-root="coaxial-root"></script>
+// Clip mode, as host.js has it for pages the GPU draws (coax/web/clip.coax sets coaxialClip before the
+// page loads; ?clip in the address does the same, for a picture at an exact moment): the page moves
+// only when coaxialClipStep(frames, fps) says so, each frame exactly 1/fps of the module's time, its
+// commands applied, its frames drawn for the sizes the page then has, and the stylesheet's own
+// animations held at that same moment. A recording then has every frame however slowly it is captured.
 const script = document.querySelector("script[data-app]");
 const app = script.dataset.app;
 const root = document.getElementById(script.dataset.root || "coaxial-root");
@@ -14,6 +19,9 @@ const NONE = 0xffff, SVG = "http://www.w3.org/2000/svg", LAYERS = ["fr-bg", "fr-
 const text = new TextDecoder(), bytes = new TextEncoder();
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 let memory, x, state = 0, els = [], frames = new Map(), asked = false, last = 0;
+const clipping = globalThis.coaxialClip === true || new URLSearchParams(location.search).has("clip");
+let clipNow = 0, clipReady = false;
+const clipBorn = new WeakMap();
 
 const sizes = new ResizeObserver((entries) => {
   for (const e of entries) {
@@ -29,7 +37,7 @@ function frameOf(el) {
     svg = document.createElementNS(SVG, "svg");
     svg.setAttribute("class", "fr"); svg.setAttribute("aria-hidden", "true");
     el.insertBefore(svg, el.firstChild);
-    frames.set(el, svg); sizes.observe(el);
+    frames.set(el, svg); if (!clipping) sizes.observe(el);
   }
   return svg;
 }
@@ -103,7 +111,7 @@ function fit(el) { if (!grows && el.tagName === "TEXTAREA") { el.style.height = 
 function clear() { root.replaceChildren(); els = []; for (const el of [...frames.keys()]) unframe(el); }
 
 // A frame is drawn only when one was asked for: by a press, typing, a size, or the module still moving.
-function ask() { if (!asked) { asked = true; requestAnimationFrame(frame); } }
+function ask() { if (!asked && !clipping) { asked = true; requestAnimationFrame(frame); } }
 function frame(now) {
   asked = false;
   const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
@@ -115,6 +123,32 @@ function frame(now) {
   if (copy) { navigator.clipboard?.writeText(text.decode(new Uint8Array(memory.buffer, x.dom_clip(state), copy))).catch(() => {}); x.dom_clip_done(state); }
   if (x.dom_busy(state)) ask(); else last = 0;
 }
+// Clip mode. One step of the module's time, applied. Then the size of every framed node as the page
+// lays it out now (reading it lays the page out) and, with no time passing, the frames for those sizes.
+function clipFrame(dt) {
+  const n = x.dom_frame(state, dt, reduced.matches ? 1 : 0);
+  if (n < 0) { clear(); clipFrame(0); } else if (n > 0) apply(x.dom_out(state), n);
+}
+function clipSizes() {
+  for (const el of frames.keys()) { const box = el.getBoundingClientRect(); x.dom_size(state, Number(el.dataset.slot), box.width, box.height); }
+}
+// The stylesheet's animations and transitions run on the clip's clock: each is held, at the time since it began.
+function clipAnimations() {
+  for (const a of document.getAnimations()) {
+    if (!clipBorn.has(a)) { clipBorn.set(a, clipNow); a.pause(); }
+    a.currentTime = clipNow - clipBorn.get(a);
+  }
+}
+if (clipping) globalThis.coaxialClipStep = async (count = 1, fps = 30) => {
+  if (!clipReady) return 0;
+  for (let k = 0; k < count; k++) {
+    clipNow += 1000 / fps;
+    clipFrame(1 / fps);
+    clipSizes(); clipFrame(0);
+    clipAnimations();
+  }
+  return 1;
+};
 function slotOf(target, selector) { const el = target.closest?.(selector); return el && root.contains(el) ? Number(el.dataset.slot) : -1; }
 function send(kind, slot, value) {
   let n = 0;
@@ -196,6 +230,15 @@ async function start() {
   });
   reduced.addEventListener("change", ask);
   globalThis.coaxialDom = { ask, state: () => state, exports: () => x };
+  if (clipping) {
+    // the first nodes and the stylesheet, then every face it names, so no text is measured in a fallback face
+    clipFrame(0); clipSizes(); clipFrame(0);
+    await Promise.all([...document.fonts].map((face) => face.load().catch(() => {})));
+    await document.fonts.ready;
+    clipSizes(); clipFrame(0);
+    clipReady = true;
+    return;
+  }
   ask();
   // development: the dev server says when a module was rebuilt
   if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {

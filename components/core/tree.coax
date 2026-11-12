@@ -33,9 +33,10 @@ AT_FOCUS :: 14;      // the field the page opens with the caret in
 AT_TITLE :: 15;      // what shows when the pointer rests on it
 AT_TYPE :: 16;       // an input's kind
 AT_COMPLETE :: 17;   // whether the browser may offer to fill a field ("off" for a pasted key)
-AT_COUNT :: 18;
-AT_NAMES :: [18] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
-  "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus", "title", "type", "autocomplete"];
+AT_VARS :: 18;       // numbers the stylesheet reads as custom properties ("--p:0.42": how far a line is drawn or a bar filled); a measure, never a look
+AT_COUNT :: 19;
+AT_NAMES :: [19] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
+  "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus", "title", "type", "autocomplete", "style"];
 
 TrNode :: struct {
   id_at: int; id_n: int;

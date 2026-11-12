@@ -1,0 +1,204 @@
+// The stage: the frames set's pieces for showing work as it happens, beside a transcript or alone
+// (docs/audits/2026-11-11-chat-zero-base-audit.md, section 11): a rail of steps that fill, bytes as a
+// grid that fills in, a wire between two frames with packets travelling along it, a line that draws,
+// a large mark for a verdict, and a value shortened around its middle. Each builds nodes in the tree
+// and nothing else; every look is the skin's (components/skin/mono.coax, mono_stage_css).
+//
+// Nothing here keeps time. The page says how far each piece has come, 0 to 1, from its own clock, so
+// a recording that steps the page steps these too, and with reduced motion the page passes 1.
+//   coax/bin/coax test components/kit/stage.coax
+
+#load "frames.coax";
+
+SG_FRONT :: 3;        // cells at the front of a filling grid that are still changing
+SG_CELL :: 7919;      // two primes that spread a changing cell's letters over its place and the tick
+SG_TICK :: 104729;
+
+// A long value as its first `head` and last `tail` letters around an ellipsis (43be1fad…481e4b38), for
+// one line. A value that already fits is itself.
+k_mid :: (out: [] u8, text: string, head: int, tail: int) -> string {
+  if head < 0 || tail < 0 || text.count <= head + tail + 1 || out.count < head + tail + "…".count { return text; }
+  n := 0;
+  for i: 0..<head { out[n] = text[i]; n += 1; }
+  for c: "…" { out[n] = c; n += 1; }
+  for i: text.count - tail..<text.count { out[n] = text[i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// Rail: the steps of a script, in order. Those before `now` are done and full, `now` is bright and
+// filled as far as `p`, the rest wait. now == labels.count: all done.
+k_rail :: (t: [] Tree, id: string, labels: [] string, now: int, p: f32) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8; idf: [UI_ID] u8; idg: [UI_ID] u8;
+  i := tr_open(t, id, TG_NAV, "rail");
+  tr_attr(t, i, AT_LABEL, "Steps");
+  base := tr_cat(ida[..], id, ".");
+  for k: 0..<labels.count {
+    sid := tr_join(idb[..], base, k);
+    s := tr_open(t, sid, TG_DIV, "rail-s");
+    tr_attr(t, s, AT_STATE, ifx k < now then "done" else ifx k == now then "now" else "next");
+    if k == now { tr_attr(t, s, AT_CURRENT, "step"); }
+    h := tr_open(t, tr_cat(idc[..], sid, ".h"), TG_DIV, "rail-h");
+    num: [2] u8; num[0] = cast(u8) (cast(int) '0' + ((k + 1) / KV_TEN) % KV_TEN); num[1] = cast(u8) (cast(int) '0' + (k + 1) % KV_TEN);
+    a := tr_leaf(t, tr_cat(idd[..], sid, ".n"), TG_SPAN, "rail-n", cast(string) num[..]);
+    b := tr_leaf(t, tr_cat(ide[..], sid, ".l"), TG_SPAN, "rail-l", labels[k]);
+    tr_close(t);
+    bar := tr_open(t, tr_cat(idf[..], sid, ".b"), TG_DIV, "rail-b");
+    f := tr_leaf(t, tr_cat(idg[..], sid, ".f"), TG_SPAN, "rail-f", "");
+    k_var(t, f, ifx k < now then 1.0f32 else ifx k == now then p else 0.0f32);
+    tr_close(t);
+    tr_close(t);
+  }
+  tr_close(t);
+  return i;
+}
+
+// Bytes: lowercase hex as a grid of two-letter cells that fills in order as `p` goes 0 to 1. A cell
+// not reached yet is a pair of dots, the SG_FRONT at the front change every `tick`, the rest are the
+// bytes. `other`, when it is hex of the same length, is what to compare with: a cell whose byte
+// differs from it is marked. The grid is one image to a screen reader, whose label is the whole value.
+k_bytes :: (t: [] Tree, id: string, hex: string, p: f32, tick: int, other: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  n := hex.count / 2;
+  i := tr_open(t, id, TG_DIV, "bytes");
+  tr_attr(t, i, AT_ROLE, "img"); tr_attr(t, i, AT_LABEL, hex);
+  edge := cast(int) (am_unit(p) * cast(f32) (n + SG_FRONT));
+  base := tr_cat(ida[..], id, ".");
+  seed := tr_hash(id) & KD_SEED;
+  digits := "0123456789abcdef";
+  for k: 0..<n {
+    cid := tr_join(idb[..], base, k);
+    if p >= 1 || k < edge - SG_FRONT {
+      differs := other.count == hex.count && (other[k * 2] != hex[k * 2] || other[k * 2 + 1] != hex[k * 2 + 1]);
+      c := tr_leaf(t, cid, TG_SPAN, ifx differs then "by by-d" else "by", cast(string) hex[k * 2..<k * 2 + 2]);
+    } else if k < edge {
+      r := am_random(seed + k * SG_CELL + (tick & 0xFFFF) * SG_TICK);
+      two: [2] u8; two[0] = digits[r % digits.count]; two[1] = digits[(r / digits.count) % digits.count];
+      c := tr_leaf(t, cid, TG_SPAN, "by by-c", cast(string) two[..]);
+    } else { c := tr_leaf(t, cid, TG_SPAN, "by by-w", "··"); }
+  }
+  tr_close(t);
+  return i;
+}
+// How many bytes of two hex values of one length differ; -1 when the lengths differ.
+k_bytes_differ :: (a: string, b: string) -> int {
+  if a.count != b.count { return -1; }
+  n := 0;
+  for k: 0..<a.count / 2 { if a[k * 2] != b[k * 2] || a[k * 2 + 1] != b[k * 2 + 1] { n += 1; } }
+  return n;
+}
+
+// A line that draws from its start as `p` goes 0 to 1 (between two things one of which feeds the other).
+k_line :: (t: [] Tree, id: string, p: f32) -> int {
+  i := tr_leaf(t, id, TG_SPAN, "ln", "");
+  tr_attr(t, i, AT_HIDDEN, "true");
+  k_var(t, i, p);
+  return i;
+}
+// Wire: the line between two frames, which packets travel along. Close it with tr_close.
+k_wire :: (t: [] Tree, id: string, p: f32) -> int {
+  ida: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "wire");
+  l := k_line(t, tr_cat(ida[..], id, ".l"), p);
+  return i;
+}
+// Packet: a labelled message on its way along the wire it is built in, `p` of the way (0 to 1, eased
+// by the caller). One going out is the inverse; one coming back is outlined; a refusal coming back
+// is dashed. It is on the page only while it travels. Its index, or -1 when it isn't.
+PK_OUT :: 0; PK_BACK :: 1; PK_NO :: 2;
+k_packet :: (t: [] Tree, id: string, label: string, p: f32, way: int) -> int {
+  if !(p > 0) || p >= 1 { return -1; }
+  i := tr_leaf(t, id, TG_SPAN, "pk", label);
+  tr_attr(t, i, AT_STATE, ifx way == PK_OUT then "out" else ifx way == PK_NO then "no" else "back");
+  k_var(t, i, ifx way == PK_OUT then p else 1 - p);
+  return i;
+}
+
+// Mark: a verdict in large letters in a frame that draws as `p` goes 0 to 1, its word deciphering in.
+// A good one is the inverse with a check; a bad one is outlined and dashed with a cross.
+k_mark :: (t: [] Tree, id: string, word: string, good: bool, p: f32, tick: int) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := k_frame_at(t, id, TG_DIV, "mark", MF_MARK, p);
+  tr_attr(t, i, AT_STATE, ifx good then "good" else "bad"); tr_attr(t, i, AT_ROLE, "status");
+  g := k_icon(t, tr_cat(ida[..], id, ".ic"), ifx good then IC_CHECK else IC_X);
+  w := k_decipher(t, tr_cat(idb[..], id, ".w"), TG_SPAN, "mark-w", word, p, tick);
+  tr_close(t);
+  return i;
+}
+
+// A label over a value: small capitals, then what it names. Close it with tr_close after adding the value.
+k_group :: (t: [] Tree, id: string, label: string) -> int {
+  ida: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "grp");
+  l := tr_leaf(t, tr_cat(ida[..], id, ".lb"), TG_P, "lb", label);
+  return i;
+}
+// One row of a table of fields: its name, then its value deciphering in.
+k_field_row :: (t: [] Tree, id: string, name: string, value: string, p: f32, tick: int) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "ft-r");
+  a := tr_leaf(t, tr_cat(ida[..], id, ".k"), TG_SPAN, "ft-k", name);
+  b := k_decipher(t, tr_cat(idb[..], id, ".v"), TG_SPAN, "ft-v", value, p, tick);
+  tr_close(t);
+  return i;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a value shortens around its middle, and one that fits is itself" {
+  b: [48] u8;
+  #assert k_mid(b[..], "43be1fad0c1d2e3f481e4b38", 8, 8) == "43be1fad…481e4b38";
+  #assert k_mid(b[..], "short", 8, 8) == "short" && k_mid(b[..], "0123456789abcdefg", 8, 8) == "0123456789abcdefg" && k_mid(b[..], "0123456789abcdefgh", 8, 8) == "01234567…abcdefgh";
+  small: [8] u8;
+  #assert k_mid(small[..], "43be1fad0c1d2e3f481e4b38", 8, 8) == "43be1fad0c1d2e3f481e4b38";
+}
+
+#test "the rail's steps are done, now or next, and only the one under way is part filled" {
+  ts: [1] Tree; t := ts[..];
+  names := [3] string.["KEY", "EVENT", "RELAY"];
+  tr_begin(t);
+  r := k_rail(t, "rail", names[..], 1, 0.5);
+  #assert tr_attr_of(t, tr_find(t, "rail.0"), AT_STATE) == "done" && tr_attr_of(t, tr_find(t, "rail.1"), AT_STATE) == "now" && tr_attr_of(t, tr_find(t, "rail.2"), AT_STATE) == "next";
+  #assert tr_attr_of(t, tr_find(t, "rail.1"), AT_CURRENT) == "step" && !tr_has(t, tr_find(t, "rail.0"), AT_CURRENT);
+  #assert tr_attr_of(t, tr_find(t, "rail.0.f"), AT_VARS) == "--p:1" && tr_attr_of(t, tr_find(t, "rail.1.f"), AT_VARS) == "--p:0.500" && tr_attr_of(t, tr_find(t, "rail.2.f"), AT_VARS) == "--p:0.000";
+  #assert tr_text_of(t, tr_find(t, "rail.2.n")) == "03" && tr_text_of(t, tr_find(t, "rail.2.l")) == "RELAY" && t[0].depth == 0;
+  tr_begin(t);
+  r = k_rail(t, "rail", names[..], 3, 0);
+  #assert tr_attr_of(t, tr_find(t, "rail.2"), AT_STATE) == "done";
+}
+
+#test "bytes fill in order: dots ahead, a changing front, then the bytes; a byte that differs is marked" {
+  ts: [1] Tree; t := ts[..];
+  hex := "00112233445566778899aabbccddeeff";
+  tr_begin(t);
+  g := k_bytes(t, "id", hex, 0, 0, "");
+  #assert t[0].n == 17 && tr_class(t, g + 1) == "by by-w" && tr_class(t, g + 16) == "by by-w" && tr_attr_of(t, g, AT_LABEL) == hex;
+  tr_begin(t);
+  g = k_bytes(t, "id", hex, 0.5, 4, "");
+  // 16 cells and a front of 3: half way is 9 reached, 6 settled
+  #assert tr_class(t, g + 6) == "by" && tr_text_of(t, g + 6) == "55" && tr_class(t, g + 7) == "by by-c" && tr_class(t, g + 9) == "by by-c" && tr_class(t, g + 10) == "by by-w";
+  front := tr_text_of(t, g + 8);
+  #assert front.count == 2;
+  tr_begin(t);
+  g = k_bytes(t, "id", hex, 1, 4, "00112233445566778899aabbccddee00");
+  #assert tr_class(t, g + 1) == "by" && tr_text_of(t, g + 16) == "ff" && tr_class(t, g + 16) == "by by-d" && tr_class(t, g + 15) == "by";
+  #assert k_bytes_differ(hex, "00112233445566778899aabbccddee00") == 1 && k_bytes_differ(hex, hex) == 0 && k_bytes_differ(hex, "00") == -1;
+}
+
+#test "a packet is on its wire only while it travels, from the far end when it comes back; a mark says its verdict" {
+  ts: [1] Tree; t := ts[..];
+  tr_begin(t);
+  w := k_wire(t, "wire", 1);
+  #assert k_packet(t, "pk.0", "EVENT", 0, PK_OUT) < 0 && k_packet(t, "pk.0", "EVENT", 1, PK_OUT) < 0;
+  a := k_packet(t, "pk.0", "EVENT", 0.25, PK_OUT);
+  b := k_packet(t, "pk.1", "OK", 0.25, PK_BACK);
+  c := k_packet(t, "pk.2", "OK", 0.5, PK_NO);
+  tr_close(t);
+  #assert tr_attr_of(t, a, AT_VARS) == "--p:0.250" && tr_attr_of(t, a, AT_STATE) == "out" && tr_attr_of(t, b, AT_VARS) == "--p:0.750" && tr_attr_of(t, b, AT_STATE) == "back";
+  #assert tr_attr_of(t, c, AT_STATE) == "no" && t[0].nodes[a].parent == w && tr_attr_of(t, tr_find(t, "wire.l"), AT_VARS) == "--p:1";
+  m := k_mark(t, "mark", "VERIFIED", true, 1, 0);
+  n := k_mark(t, "mark2", "REFUSED", false, 0.5, 0);
+  #assert tr_attr_of(t, m, AT_STATE) == "good" && tr_text_of(t, tr_find(t, "mark.w")) == "VERIFIED" && t[0].nodes[m].frame == mono_kind(MF_MARK) + 1;
+  #assert tr_attr_of(t, n, AT_STATE) == "bad" && t[0].nodes[n].progress == 0.5 && tr_text_of(t, tr_find(t, "mark2.w.all")) == "REFUSED" && t[0].depth == 0;
+  r := k_field_row(t, "row", "kind", "1", 1, 0);
+  #assert tr_text_of(t, tr_find(t, "row.k")) == "kind" && tr_text_of(t, tr_find(t, "row.v")) == "1";
+}
