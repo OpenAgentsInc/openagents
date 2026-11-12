@@ -749,6 +749,8 @@ static int finish_profile(int status) {
   if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
 }
 
+static std::string compiler_hash();
+static std::string executable_path();
 // The coax.evidence.v1 record (see Evidence in verify.cpp). Every claim is
 // bound to the source units, compiler, evaluator target, profile, selection
 // and budgets; the verdict is EV_verdict over the claims' outcomes, so a run
@@ -785,20 +787,20 @@ static int write_evidence(const std::string &cmd, const std::string &input, cons
   std::string sources;
   for (const auto &unit : src->units)
     sources += std::string(sources.empty() ? "" : ",") + "{\"path\":" + json_string(unit->canonical) + ",\"sha256\":" + json_string(unit_text_sha(*unit)) + "}";
-  std::string compiler_hash;
-  {
-    char self[4096];
-    uint32_t size = sizeof self;
-#ifdef __APPLE__
-    if (_NSGetExecutablePath(self, &size) == 0) compiler_hash = profile_file_hash(self);
+  // The client's binary, never /proc/self/exe: a request a resident forked
+  // (serve.cpp) runs the resident's image, and when the file the resident
+  // started from was replaced since (another checkout installing the same
+  // bytes), /proc/self/exe names "PATH (deleted)" and nothing can be read
+  // there, so the evidence named no compiler (#13335, #13336, #13342).
+  // compiler_hash() is the resident's memo of these bytes, or the hash of the
+  // client's path (executable_path()).
+#ifndef COAX_BOOTSTRAP_IMPORTER
+  const std::string compiler_hash_value = compiler_hash();
 #else
-    ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
-    if (n > 0) { self[n] = 0; compiler_hash = profile_file_hash(self); }
+  const std::string compiler_hash_value = profile_file_hash(executable_path());
 #endif
-    (void)size;
-  }
   std::string text = "{\"schema\":\"coax.evidence.v1\",\"command\":" + json_string(cmd) + ",\"input\":" + json_string(input) +
-      ",\"compiler\":{\"version\":" + json_string(VERSION) + ",\"sha256\":" + (compiler_hash.empty() ? "null" : json_string(compiler_hash)) + "}" +
+      ",\"compiler\":{\"version\":" + json_string(VERSION) + ",\"sha256\":" + (compiler_hash_value.empty() ? "null" : json_string(compiler_hash_value)) + "}" +
       ",\"target\":{\"name\":\"coax-evaluator\",\"note\":\"checks run in the compile-time evaluator, not generated code\"}" +
       ",\"profile\":{\"arithmetic\":\"checked\",\"selected_runtime_arithmetic\":" + json_string(opts.wrapping ? "wrapping" : "checked") + ",\"library\":" + (opts.library ? "true" : "false") + "}" +
       ",\"selection\":{\"only\":" + (only ? json_string(only) : "null") + ",\"list\":" + (list ? "true" : "false") +

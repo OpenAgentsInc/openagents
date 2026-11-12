@@ -402,10 +402,15 @@ def verbs(check):
         badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
         # deadlines and reports (chapter 14): a job past its deadline expires; a job's result reaches the session that started it
-        par = subprocess.run([coder, "run", "$ sleep 5", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.strip()
+        # The parent works until both jobs have reported (the gate file), not for a fixed time: a
+        # parent that ended first left the child's report unread on a loaded host (#13334).
+        gate = os.path.join(home, "report-gate")
+        par = subprocess.run([coder, "run", "$ i=0; while [ ! -e " + gate + " ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i + 1)); done", "--engine", "echo", "--detach"],
+                             cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.strip()
         exp = subprocess.run([coder, "run", "$ sleep 30", "--engine", "echo", "--deadline", "2", "--report-to", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("--deadline: the job expires, exit 124", exp.returncode == 124 and '"ending":"expired"' in exp.stdout)
         subprocess.run([coder, "run", "child says hi", "--engine", "echo", "--report-to", par], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        open(gate, "w").close()
         for _ in range(100):
             st = subprocess.run([coder, "status", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
             if '"running"' not in st.stdout:

@@ -88,7 +88,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_rollout_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_snapshot_test.py"
 lap "the policy, NIP-98 and deploy checks"
 fi
-work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} 2>/dev/null || true; "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} 2>/dev/null || true; "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 "$cli_coax" c "$here/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
 "$cli_coax" c "$here/seat-policy.coax" --library --header "$work/seat-policy.generated.h" > "$work/seat-policy.generated.c"
 "$cli_coax" c "$here/progress-policy.coax" --library --header "$work/progress-policy.generated.h" > "$work/progress-policy.generated.c"
@@ -129,21 +129,20 @@ if runs checks; then
 fi
 lap "the API built (and in the checks' part, its NIP-98 check)"
 "$pgbin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
-# A free TCP port in [LOW, LOW + 1000) that this run hasn't taken. Agents run these checks side by
-# side, and a port another run's server holds would send this run's requests to that server.
-taken=" "
-free_port() {
-  local p
-  for _ in $(seq 200); do
-    p=$(($1 + RANDOM % 1000))
-    [[ "$taken" == *" $p "* ]] && continue
-    python3 -I -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', $p)); s.close()" 2>/dev/null || continue
-    echo "$p"; return 0
-  done
-  echo "test.sh: no free port from $1" >&2; return 1
-}
+# The run's TCP ports (port_locks.coax, #13331): one block for each service below, free when taken
+# and locked for this run until it ends, so neither another run beside it nor an outgoing connection
+# (the ranges are under the kernels' ephemeral ports) takes one before its server binds it. WAKE's
+# block is 8 wide (test_private_runner.py's runner on WAKE_PORT + 1, test_room.py's on + 7), CHAT's 3
+# (test_zchat.py's fake on CHAT_PORT + 1 and runner on + 2).
+"$here/../tool.sh" "$here/port_locks.coax" "$work/ports" $$ API_PORT:7000:1 NPC_PORT:7800:1 PIECE_PORT:8600:1 BUILDER_PORT:9400:1 \
+  GCS_PORT:10200:1 RELAY_PORT:11000:1 NOTICE_RELAY_PORT:11800:1 WAKE_PORT:12600:8 INFER_PORT:13400:1 SPARK_PORT:14200:1 \
+  RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 VERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 \
+  > /dev/null 2> "$work/ports.err" & ports_pid=$!
+for _ in $(seq 1200); do [[ -s "$work/ports" ]] && break; kill -0 "$ports_pid" 2>/dev/null || break; sleep 0.1; done
+[[ -s "$work/ports" ]] || { echo "test.sh: no ports for the fake services" >&2; cat "$work/ports.err" >&2; exit 1; }
+while IFS='=' read -r name value; do printf -v "$name" '%s' "$value"; done < "$work/ports"
 port=$((56000 + RANDOM % 1000))   # the database's: its socket is in $work, so no other run shares it
-api_port=$(free_port 57000); taken+="$api_port "
+api_port=$API_PORT
 "$pgbin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null
 "$pgbin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
 export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analytics"
@@ -184,35 +183,34 @@ export OA_TEAM="player:p-7ea0000000000001,player:kiki-7ea0000000000002,email_sha
 export RUN_KEY_FILE="$work/runner.key" OA_AGENT_RUNNER_PUBKEYS="$("$SIGN" --new "$work/runner.key")"
 "$SIGN" --new "$OTHER_KEY" >/dev/null
 # Character chat asks a fake model (test_npc.py serves it) with a test token.
-NPC_PORT=$(free_port 58000); taken+="$NPC_PORT "; export NPC_PORT
+export NPC_PORT
 # The Sandbox's set pieces ask their own fake model (test_sandbox_pieces.py serves it).
-PIECE_PORT=$(free_port 53000); taken+="$PIECE_PORT "; export PIECE_PORT
+export PIECE_PORT
 # Build your own realm asks its own fake model (test_realm_builder.py serves it).
-BUILDER_PORT=$(free_port 51000); taken+="$BUILDER_PORT "; export BUILDER_PORT
+export BUILDER_PORT
 # Drops go to a fake bucket (test_project_drops.py serves it).
-GCS_PORT=$(free_port 55000); taken+="$GCS_PORT "; export GCS_PORT
+export GCS_PORT
 # Publishing a project from a drop (rc-publish): a fake relay (test_project_drops.py) and the fake bucket.
-RELAY_PORT=$(free_port 52000); taken+="$RELAY_PORT "; export RELAY_PORT
+export RELAY_PORT
 # Security notices as NIP-17 messages (auth-recover.c): a fake relay of their own, which keeps
 # each event in $work/notices.jsonl (tests/auth_recover_checks.coax).
-NOTICE_RELAY_PORT=$(free_port 52500); taken+="$NOTICE_RELAY_PORT "
 python3 -I "$here/fake_relay.py" "$NOTICE_RELAY_PORT" "$work/notices.jsonl" 2>"$work/notice-relay.log" & notice_relay_pid=$!
 # The project agent: only the fixture project "agent-proj" is approved; wakes go to test_private_agent.py's fake runner.
-WAKE_PORT=$(free_port 59000); taken+="$WAKE_PORT "; export WAKE_PORT
+export WAKE_PORT
 # /api/v1/inference (test_inference.py): a fake Vertex on INFER_PORT, a key that may use the route, five requests a day.
-INFER_PORT=$(free_port 50000); taken+="$INFER_PORT "; export INFER_PORT INFER_KEY="$work/infer.key"
+export INFER_PORT INFER_KEY="$work/infer.key"
 export OA_INFERENCE_PUBKEYS="$("$SIGN" --new "$INFER_KEY")"
 # /api/v1/inference/credit (test_inference.py): a fake Spark wallet on SPARK_PORT.
-SPARK_PORT=$(free_port 49000); taken+="$SPARK_PORT "; export SPARK_PORT
+export SPARK_PORT
 # Email (test_email.py): a fake Resend on RESEND_PORT; staging's allowlist is one address.
-RESEND_PORT=$(free_port 48000); taken+="$RESEND_PORT "; export RESEND_PORT
+export RESEND_PORT
 # Scheduled jobs (test_jobs.py): a fake Google tokeninfo on TOKENINFO_PORT, and the scheduler's account.
-TOKENINFO_PORT=$(free_port 47000); taken+="$TOKENINFO_PORT "; export TOKENINFO_PORT
+export TOKENINFO_PORT
 # /chat (test_zchat.py): its own runner on CHAT_PORT, a $1 daily cap.
-CHAT_PORT=$(free_port 54000); taken+="$CHAT_PORT "; export CHAT_PORT
+export CHAT_PORT
 # Private human packs (tests/verse_packs.coax): a made-up pack, gzipped and stored under a key of its own
 # as upload_packs.coax does, served by a fake bucket on VERSE_GCS_PORT; three sessions an address an hour.
-VERSE_GCS_PORT=$(free_port 45000); taken+="$VERSE_GCS_PORT "; export VERSE_GCS_PORT VERSE_PACK_DIR="$work/verse-pack"
+export VERSE_GCS_PORT VERSE_PACK_DIR="$work/verse-pack"
 mkdir -p "$VERSE_PACK_DIR"; head -c 300000 /dev/urandom > "$VERSE_PACK_DIR/plain"
 gzip -9 -n -c "$VERSE_PACK_DIR/plain" > "$VERSE_PACK_DIR/plain.gz"
 vk="$(openssl rand -hex 32)" viv="$(openssl rand -hex 8)0000000000000000" vsha="$(shasum -a 256 "$VERSE_PACK_DIR/plain" | cut -c1-64)"
@@ -221,7 +219,7 @@ export OA_VERSE_PACKS="master $(openssl rand -hex 32)
 pack test-human $vsha $(wc -c < "$VERSE_PACK_DIR/plain" | tr -d ' ') $(wc -c < "$VERSE_PACK_DIR/object" | tr -d ' ') packs/$vsha $vk $viv"
 export OA_VERSE_PACKS_GCS="http://127.0.0.1:$VERSE_GCS_PORT" OA_VERSE_PACKS_BUCKET=verse-test OA_VERSE_PACK_PER_HOUR=3
 # Anime's checks own a separate Coax selector; it has no model credentials.
-ANIME_PORT=$(free_port 46000); taken+="$ANIME_PORT "; export ANIME_PORT
+export ANIME_PORT
 # The checks ask a fake model on INFER_PORT, five requests a day. Serving a page with a token, the model is Vertex's.
 infer_url="http://127.0.0.1:$INFER_PORT/chat/completions" infer_token=test-token infer_daily=5 api_origin="http://127.0.0.1:$api_port"
 if [[ $serve == 1 ]]; then

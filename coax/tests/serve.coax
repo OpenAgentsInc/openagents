@@ -102,6 +102,13 @@ GONE :: "pid=$(cat \"$S\"/*/pid); COAX_SERVE_TEST_HOLD_MS=30000 \"$C\" check \"$
 // start), finishes the one it runs, and leaves.
 LIMITS :: "sleep 0.3; COAX_SERVE_TIMEOUT=1 \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; up > /dev/null; COAX_SERVE_TEST_HOLD_MS=20000 \"$C\" check \"$D/w/main.coax\" > /dev/null 2> \"$D/limit.err\"; echo \"limited=$?\"; grep -c COAX_SERVE_TIMEOUT \"$D/limit.err\"; \"$C\" serve stop > /dev/null 2>&1; sleep 0.3; cp \"$C\" \"$D/coax-copy\"; X=\"$D/coax-copy\"; COAX_SERVE_IDLE=2 \"$X\" check \"$D/w/main.coax\" > /dev/null 2>&1; i=0; while ! \"$X\" serve status > /dev/null 2>&1 && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; COAX_SERVE_TEST_HOLD_MS=6000 \"$X\" check \"$D/w/main.coax\" > \"$D/drain.out\" 2>&1 & cpid=$!; sleep 0.5; rm -f \"$X\"; i=0; while \"$C\" serve status > /dev/null 2>&1 && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done; \"$C\" serve status > /dev/null 2>&1 || echo drained; wait $cpid; echo \"drain-client=$?\"; cmp -s \"$D/drain.out\" \"$D/cap.cold\" && echo drain-output=same; \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; up";
 
+// Evidence names the client's compiler (#13335): a resident started from a
+// file that was then replaced by a copy of the same bytes (another checkout
+// installing the same compiler) keeps serving, and on Linux its requests'
+// /proc/self/exe is "PATH (deleted)". coax test --evidence in such a request
+// names the client's binary by its SHA-256, as a cold one does.
+EVIDENCE :: "\"$C\" serve stop > /dev/null 2>&1; sleep 0.3; X=\"$D/coax-installed\"; cp \"$C\" \"$X\"; \"$X\" check \"$D/w/main.coax\" > /dev/null 2>&1; i=0; while ! \"$X\" serve status > /dev/null 2>&1 && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; cp \"$C\" \"$D/coax-again\" && mv \"$D/coax-again\" \"$X\"; \"$C\" serve status > /dev/null 2>&1 && echo replaced-resident-up; \"$C\" test \"$D/w/main.coax\" --evidence \"$D/evidence.json\" > /dev/null 2>&1; want=$( { sha256sum \"$C\" 2> /dev/null || shasum -a 256 \"$C\"; } | cut -c1-64); grep -F -q \"$want\" \"$D/evidence.json\" && echo evidence-compiler=same; \"$C\" serve stop > /dev/null 2>&1; sleep 0.3; \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; up";
+
 // a + b + c in buffer.
 join3 :: (buffer: [] u8, a: string, b: string, c: string) -> string {
   n := 0;
@@ -281,6 +288,11 @@ tool_main :: () -> int #export_c #effects(all) {
   bad += check(has(t, "limited=124\n1\n"), "a request past COAX_SERVE_TIMEOUT is stopped, and its client exits 124 with a note");
   bad += check(has(t, "drained\ndrain-client=0\ndrain-output=same\nup"), "a resident whose binary is removed takes no new request and finishes the one it runs");
   if !has(t, "limited=124\n1\n") || !has(t, "drained\ndrain-client=0\ndrain-output=same\nup") { print("%", t); }
+
+  r = run(compiler, dir, serve, EVIDENCE, out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "replaced-resident-up\nevidence-compiler=same\nup"), "evidence from a resident whose file was replaced by the same bytes names the client's compiler");
+  if !has(t, "replaced-resident-up\nevidence-compiler=same\nup") { print("%", t); }
 
   // Stopped, and off.
   r = run(compiler, dir, serve, "\"$C\" serve stop | tail -n 1; sleep 0.3; \"$C\" serve status; COAX_SERVE=0 \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; echo \"off=$?\"; sleep 0.3; \"$C\" serve status", out[..]);
