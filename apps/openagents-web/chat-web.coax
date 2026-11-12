@@ -40,7 +40,7 @@ cw_build :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
   page := tr_open(t, "chat", TG_MAIN, "chat");
-  f := k_composer(t, u, "composer", "Ask anything", "Enter to send", "Send", cw_has_words(s));
+  f := k_composer(t, u, "composer", "Ask anything", "", "Send", cw_has_words(s));
   tr_attr(t, f, AT_FOCUS, "");
   tr_close(t);
 }
@@ -100,7 +100,7 @@ CwTest :: struct { s: [1] ChatWeb; }
   h: [1] CwTest; s := h[0].s[..];
   n := coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert n > 0 && t[0].n == 7 && t[0].lost == 0 && tr_class(t, 0) == "chat";
+  #assert n > 0 && t[0].n == 6 && t[0].lost == 0 && tr_class(t, 0) == "chat";
   #assert t[0].nodes[tr_find(t, "composer")].tag == TG_TEXTAREA && tr_has(t, tr_find(t, "composer"), AT_FOCUS);
   #assert tr_has(t, tr_find(t, "composer.send"), AT_DISABLED) && coaxial_chatweb_frame(s, 0.016, true) == 0;
   d := s[0].dom[..];
