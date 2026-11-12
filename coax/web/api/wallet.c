@@ -16,6 +16,12 @@
 //                                       prove it is you first (a fresh L2); a payment id counts once
 //   POST /api/wallet/spend/void {payment_id}   that payment didn't go: it no longer counts
 //
+// Service credit counts too (#13330): a model call paid from credit adds its msat to the account
+// that holds its key (inference.finish, 0164), and the last 24 hours' count is the wallet's sats
+// plus the credit's (wp_total). Before such a call, inference.c asks wallet_credit_refused: past the
+// limit the call gets the same step-up answer as a payment here, until a login of the account
+// proves L2 again (wp_credit). This part we enforce ourselves: the credit is in our ledger.
+//
 // slots is the base64 of every slot's text with a newline between them; object is the base64 of the
 // object's bytes; numbers in a body are strings of digits.
 //
@@ -57,7 +63,8 @@ bool wallet_init(void) {
       && wp_store(0, true, true, 1, 0, 0, false) == WP_CONFLICT && wp_store(1, true, true, 0, 0, 0, false) == WP_BAD_SLOTS
       && wp_store(5, true, true, 0, 0, 0, false) == WP_NEEDS_RECOVERY && wp_store(6, true, true, 0, 0, 0, false) == WP_NEEDS_PASSKEY
       && wp_store(0, false, true, 0, 0, 0, false) == WP_BAD_OBJECT && wp_store(0, true, false, 0, 0, 0, false) == WP_NOT_YOUR_PASSKEY
-      && wp_remove(false, 0, false) == WP_NO_BACKUP && wp_read(-1, false) == WP_STEP_UP && wp_read(0, false) == WP_OK && wp_status(WP_CONFLICT) == 409 && wp_status(WP_STEP_UP) == 401;
+      && wp_remove(false, 0, false) == WP_NO_BACKUP && wp_read(-1, false) == WP_STEP_UP && wp_read(0, false) == WP_OK && wp_status(WP_CONFLICT) == 409 && wp_status(WP_STEP_UP) == 401
+      && wp_total(5, 1001) == 7 && wp_credit(true, 20000, 20000, -1) == WP_STEP_UP && wp_credit(true, 19999, 20000, -1) == WP_OK && wp_credit(false, 9, 0, -1) == WP_OK;
 }
 
 // ---------------------------------------------------------------- small pieces
@@ -121,11 +128,16 @@ static bool limit_of(PGconn *db, const char *acct, limit_facts *f) {
   f->waiting = wp_waiting(f->pending, f->pending_ms, f->now_ms);
   return ok;
 }
-static bool spent_of(PGconn *db, const char *acct, const char *pid, long long *spent, long long *seen) {
+// spent: the last 24 hours' count (the wallet's payments and service credit, wp_total); credit: the
+// credit's part of it in sats; seen: the sats already recorded under pid.
+static bool spent_of(PGconn *db, const char *acct, const char *pid, long long *spent, long long *seen, long long *credit) {
   const char *v[2] = {acct, pid};
-  PGresult *r = PQexecParams(db, "SELECT spent, seen FROM auth.wallet_spent($1, $2)", 2, NULL, v, NULL, NULL, 0);
+  PGresult *r = PQexecParams(db, "SELECT spent, seen, auth.credit_spent($1) FROM auth.wallet_spent($1, $2)", 2, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
-  if (ok) { *spent = atoll(PQgetvalue(r, 0, 0)); *seen = atoll(PQgetvalue(r, 0, 1)); }
+  if (ok) {
+    long long wallet = atoll(PQgetvalue(r, 0, 0)), msat = atoll(PQgetvalue(r, 0, 2));
+    *spent = wp_total(wallet, msat); *seen = atoll(PQgetvalue(r, 0, 1)); *credit = *spent - wallet;
+  }
   PQclear(r);
   return ok;
 }
@@ -193,18 +205,18 @@ static int slots_rows(PGconn *db, const char *acct, const char *slots, size_t n,
 // ---------------------------------------------------------------- GET /api/wallet
 static void summary(const request *q, PGconn *db, const auth_principal *p) {
   limit_facts f; backup_row b;
-  long long spent = 0, seen = 0;
-  if (!limit_of(db, p->account, &f) || !spent_of(db, p->account, "", &spent, &seen) || !backup_of(db, p->account, &b)) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
+  long long spent = 0, seen = 0, credit = 0;
+  if (!limit_of(db, p->account, &f) || !spent_of(db, p->account, "", &spent, &seen, &credit) || !backup_of(db, p->account, &b)) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
   size_t cap = 6000;
   char *json = malloc(cap), *lines = malloc(cap);
   if (!json || !lines) { free(json); free(lines); backup_free(&b); auth_refuse(q, 500, "Out of memory."); return; }
   char raise[120] = "null";
   if (f.waiting) snprintf(raise, sizeof raise, "{\"sat\":%lld,\"asked_ms\":%lld,\"at_ms\":%lld}", f.pending, f.asked_ms, f.pending_ms);
-  size_t j = (size_t)snprintf(json, cap, "{\"limit\":{\"daily_sat\":%lld,\"default_sat\":%lld,\"spent_sat\":%lld,\"window_hours\":24,\"new_destination_sat\":%lld,"
-                              "\"raise\":%s,\"raise_wait_hours\":24,\"now_ms\":%lld,\"enforced_by\":\"app\"},\"level\":\"L%d\",\"l2_age_ms\":%lld,\"backup\":",
-                              f.in_force, (long long)wp_default_daily(), spent, (long long)wp_new_destination(), raise, f.now_ms, p->level, p->l2_age_ms);
-  size_t l = (size_t)snprintf(lines, cap, "daily_sat %lld\ndefault_sat %lld\nspent_sat %lld\nnew_destination_sat %lld\nraise_sat %lld\nraise_asked_ms %lld\nraise_at_ms %lld\nnow_ms %lld\nlevel L%d\nl2_age_ms %lld\n",
-                              f.in_force, (long long)wp_default_daily(), spent, (long long)wp_new_destination(), f.waiting ? f.pending : 0,
+  size_t j = (size_t)snprintf(json, cap, "{\"limit\":{\"daily_sat\":%lld,\"default_sat\":%lld,\"spent_sat\":%lld,\"credit_sat\":%lld,\"window_hours\":24,\"new_destination_sat\":%lld,"
+                              "\"raise\":%s,\"raise_wait_hours\":24,\"now_ms\":%lld,\"enforced_by\":\"app\",\"credit_enforced_by\":\"server\"},\"level\":\"L%d\",\"l2_age_ms\":%lld,\"backup\":",
+                              f.in_force, (long long)wp_default_daily(), spent, credit, (long long)wp_new_destination(), raise, f.now_ms, p->level, p->l2_age_ms);
+  size_t l = (size_t)snprintf(lines, cap, "daily_sat %lld\ndefault_sat %lld\nspent_sat %lld\ncredit_sat %lld\nnew_destination_sat %lld\nraise_sat %lld\nraise_asked_ms %lld\nraise_at_ms %lld\nnow_ms %lld\nlevel L%d\nl2_age_ms %lld\n",
+                              f.in_force, (long long)wp_default_daily(), spent, credit, (long long)wp_new_destination(), f.waiting ? f.pending : 0,
                               f.waiting ? f.asked_ms : 0, f.waiting ? f.pending_ms : 0, f.now_ms, p->level, p->l2_age_ms);
   if (!b.found) {
     j += (size_t)snprintf(json + j, cap - j, "null}");
@@ -437,8 +449,8 @@ static void spend(const request *q, PGconn *db, const auth_principal *p, const c
   auth_json_str(body, strlen(body), "new_destination", nd, sizeof nd);
   long long sats = number(body, "sats");
   if (!payment_id_ok(pid)) { auth_refuse(q, 400, "Name the payment: 8 to 64 letters, digits, - or _."); return; }
-  limit_facts f; long long spent = 0, seen = 0;
-  if (!limit_of(db, p->account, &f) || !spent_of(db, p->account, pid, &spent, &seen)) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
+  limit_facts f; long long spent = 0, seen = 0, credit = 0;
+  if (!limit_of(db, p->account, &f) || !spent_of(db, p->account, pid, &spent, &seen, &credit)) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
   bool new_destination = !strcmp(nd, "1") || !strcmp(nd, "true");
   int verdict = (int)wp_spend(sats, spent, f.in_force, new_destination, p->l2_age_ms, p->limited, seen);
   if (wp_counted(verdict, seen)) {
@@ -472,6 +484,37 @@ static void spend_void(const request *q, PGconn *db, const auth_principal *p, co
   one(db, "SELECT auth.wallet_spend_void($1, $2)", 2, v, done, sizeof done);
   bool voided = !strcmp(done, "t");
   auth_answer(q, 200, NULL, voided ? "{\"state\":\"voided\"}" : "{\"state\":\"nothing\"}", voided ? "state voided\n" : "state nothing\n");
+}
+
+// ---------------------------------------------------------------- a model call paid from credit
+// inference.c asks this before a model call that service credit pays for (#13330), with the key
+// that signed it: true when it answered (the call is refused), false when the call may go. One
+// read: the key's account, its limit, the last 24 hours' count and its freshest L2.
+bool wallet_credit_refused(const request *q, PGconn *db, const char *pubkey) {
+  char def[24]; snprintf(def, sizeof def, "%lld", (long long)wp_default_daily());
+  const char *v[2] = {pubkey, def};
+  PGresult *r = PQexecParams(db, "SELECT account, daily_sat, pending_sat, pending_ms, now_ms, wallet_sat, credit_msat, l2_age_ms "
+                                 "FROM auth.credit_limit_facts($1, $2::bigint)", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) {   // the limit can't be read: the call doesn't go
+    api_log("wallet: credit limit: %s", PQerrorMessage(db));
+    PQclear(r);
+    api_json(q->fd, 500, "{\"error\":\"That didn't work. Try again.\"}");
+    return true;
+  }
+  bool held = PQntuples(r) == 1;
+  long long in_force = 0, spent = 0, l2_age = -1;
+  if (held) {
+    in_force = wp_in_force(atoll(PQgetvalue(r, 0, 1)), atoll(PQgetvalue(r, 0, 2)), atoll(PQgetvalue(r, 0, 3)), atoll(PQgetvalue(r, 0, 4)));
+    spent = wp_total(atoll(PQgetvalue(r, 0, 5)), atoll(PQgetvalue(r, 0, 6)));
+    l2_age = atoll(PQgetvalue(r, 0, 7));
+  }
+  PQclear(r);
+  int verdict = (int)wp_credit(held, spent, in_force, l2_age);
+  if (verdict == WP_OK) return false;
+  const auth_principal *p = auth_principal_of(q);
+  if (p) refuse_wp(q, db, p, verdict);
+  else { char w[200]; words_of(wp_words(verdict), w, sizeof w); auth_refuse(q, (int)wp_status(verdict), w); }
+  return true;
 }
 
 // ---------------------------------------------------------------- dispatch

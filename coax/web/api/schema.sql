@@ -1167,6 +1167,34 @@ $$;
 
 
 --
+-- Name: credit_limit_facts(text, bigint); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.credit_limit_facts(pk text, default_sat bigint, OUT account text, OUT daily_sat bigint, OUT pending_sat bigint, OUT pending_ms bigint, OUT now_ms bigint, OUT wallet_sat bigint, OUT credit_msat bigint, OUT l2_age_ms bigint) RETURNS SETOF record
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT a.id, coalesce(l.daily_sat, default_sat), coalesce(l.pending_sat, 0), coalesce((extract(epoch FROM l.pending_at) * 1000)::bigint, 0),
+         (extract(epoch FROM now()) * 1000)::bigint,
+         (SELECT w.spent FROM auth.wallet_spent(a.id, '') w), auth.credit_spent(a.id),
+         coalesce(((extract(epoch FROM now()) - extract(epoch FROM (SELECT max(s.l2_at) FROM auth.sessions s WHERE s.account = a.id))) * 1000)::bigint, -1)
+    FROM auth.nostr_keys k JOIN auth.accounts a ON a.id = k.account AND a.kind = 'person' AND a.deleted_at IS NULL
+    LEFT JOIN auth.wallet_limits l ON l.account = a.id
+   WHERE k.pubkey = pk
+$$;
+
+
+--
+-- Name: credit_spent(text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.credit_spent(acct text) RETURNS bigint
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT coalesce(sum(c.msat), 0)::bigint FROM auth.credit_spends c WHERE c.account = acct AND c.hour > now() - interval '25 hours'
+$$;
+
+
+--
 -- Name: delete_ask(text); Type: FUNCTION; Schema: auth; Owner: -
 --
 
@@ -2913,7 +2941,9 @@ END $$;
 CREATE FUNCTION auth.wallet_spends_sweep() RETURNS integer
     LANGUAGE sql
     AS $$
-  WITH d AS (DELETE FROM auth.wallet_spends WHERE at < now() - interval '30 days' RETURNING 1) SELECT count(*)::int FROM d
+  WITH d AS (DELETE FROM auth.wallet_spends WHERE at < now() - interval '30 days' RETURNING 1),
+       c AS (DELETE FROM auth.credit_spends WHERE hour < now() - interval '30 days' RETURNING 1)
+  SELECT ((SELECT count(*) FROM d) + (SELECT count(*) FROM c))::int
 $$;
 
 
@@ -5468,6 +5498,12 @@ BEGIN
     m := CASE WHEN coalesce(rate, 0) > 0 THEN (cost * 100000 + rate - 1) / rate ELSE 0 END;
     UPDATE inference.credit SET msat = msat - m, updated = now() WHERE pubkey = who;
     UPDATE inference.calls SET msat = m WHERE id = (SELECT max(id) FROM inference.calls WHERE pubkey = who);
+    IF m > 0 THEN
+      INSERT INTO auth.credit_spends AS c (account, hour, msat)
+      SELECT k.account, date_trunc('hour', now()), m FROM auth.nostr_keys k JOIN auth.accounts a ON a.id = k.account AND a.kind = 'person'
+       WHERE k.pubkey = who
+      ON CONFLICT (account, hour) DO UPDATE SET msat = c.msat + EXCLUDED.msat;
+    END IF;
   END IF;
   RETURN m;
 END $$;
@@ -19476,6 +19512,18 @@ ALTER SEQUENCE auth.connections_id_seq OWNED BY auth.connections.id;
 
 
 --
+-- Name: credit_spends; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.credit_spends (
+    account text NOT NULL,
+    hour timestamp with time zone NOT NULL,
+    msat bigint NOT NULL,
+    CONSTRAINT credit_spends_msat_check CHECK ((msat > 0))
+);
+
+
+--
 -- Name: device_logins; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -22734,6 +22782,14 @@ ALTER TABLE ONLY auth.connections
 
 
 --
+-- Name: credit_spends credit_spends_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.credit_spends
+    ADD CONSTRAINT credit_spends_pkey PRIMARY KEY (account, hour);
+
+
+--
 -- Name: device_logins device_logins_code_sha256_key; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -25092,6 +25148,14 @@ ALTER TABLE ONLY auth.agent_spends
 
 ALTER TABLE ONLY auth.connections
     ADD CONSTRAINT connections_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: credit_spends credit_spends_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.credit_spends
+    ADD CONSTRAINT credit_spends_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
 
 
 --

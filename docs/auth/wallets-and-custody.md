@@ -248,7 +248,19 @@ card), so one backup holds an agent's identity and its coins.
 | Agent spend | Within its grant's per-payment and per-day caps; refills by the ch122 rule |
 | Any spend from a session that came from email alone on an account with stronger factors | Refused until the 72-hour recovery completes |
 
-Spending service credit (model D) follows the same daily limit.
+Spending service credit (model D) follows the same daily limit, and the server
+enforces it (#13330): the credit is in our ledger. Each model call paid from
+credit adds its msat to the 24-hour count of the account that holds the
+signing key (`auth.credit_spends`, an hourly running sum written in the same
+transaction as the debit, migration 0164); the count is the wallet's sats plus
+the credit's msat rounded up to the sat (`wp_total`). Before a paid call, the
+API reads the account's limit, count and freshest L2 in one query: once the
+count reaches the limit, the call gets the wallet's step-up answer (401,
+`step_up: L2-fresh`) until a login of the account proves L2 again
+(`wp_credit` in `coax/web/api/wallet-policy.coax`). A call's cost is known only
+after it is answered, so the last call under the limit can pass it by its own
+cost. A key that no person's account holds, and an agent's key, aren't held to
+a person's limit; an agent spends within its grant.
 
 ## Recovery when the device is lost
 

@@ -11,7 +11,10 @@
 // Who: a key in OA_INFERENCE_PUBKEYS (comma separated) or an admin's
 // (OA_ADMIN_PUBKEYS), free; or any signed key with credit above zero, which
 // pays: each call is debited in msat at the kept BTC/USD rate, and with no
-// credit the answer is 402 pointing at the top-up route below. The account
+// credit the answer is 402 pointing at the top-up route below. A key a person's
+// account holds is also held to that account's daily limit (wallet.c, #13330):
+// past it, the same step-up answer as a wallet payment (401, step_up L2-fresh)
+// until a login of the account proves L2. The account
 // is the signing key: the request, its caps and its metering are SQL's
 // (migrations/0059_inference.sql, 0066_inference_credit.sql
 // inference.request, inference.finish), at the card's rates. The daily caps
@@ -397,7 +400,11 @@ bool inference_route(const request *q) {
 bool inference_ask(const request *q, const char *pubkey, bool free_key) {
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
-  if (!free_key) rate_refresh(db);
+  if (!free_key) {
+    // The wallet's daily limit holds for credit too (wallet.c, wallet-policy.coax's wp_credit; #13330).
+    if (wallet_credit_refused(q, db, pubkey)) return true;
+    rate_refresh(db);
+  }
   char *body = malloc(q->body_len + 1);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;

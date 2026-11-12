@@ -16,6 +16,9 @@
 //   an inbox thief                an email login on an account with a stronger way in can't spend,
 //                                 store or raise
 //   a lost passkey                a backup whose passkey left the account no longer counts
+//   credit spent past the limit   a model call paid from service credit counts for the account that
+//                                 holds its key; past the limit it gets the same step-up answer, and
+//                                 goes after a fresh L2 (#13330, migration 0164)
 //   API=... PGURL=... PSQL=... SIGN=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/wallet_checks.coax
 // tool.sh: tls
 // tool.sh: run-steps 250000000
@@ -62,6 +65,17 @@ wk_lower :: (t: [] Ap, session: string, sats: string) -> int {
   b: [1] Sb; sb(b[..], "{\"daily_sat\":\""); sb(b[..], sats); sb(b[..], "\"}");
   return pc_with(t, "POST", "/api/wallet/limit/lower", sb_text(b[..]), session);
 }
+// A model call signed by keyfile (NIP-98), as the Mac app makes one: its status.
+wk_infer :: (t: [] Ap, keyfile: string) -> int {
+  body := "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"What is the capital of France?\"}]}";
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/v1/inference");
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), body, true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  h := [2] string.["Content-Type: application/json", sb_text(ah[..])];
+  return ap_call(t, "POST", "/api/v1/inference", body, h[..]);
+}
+// A call that went past the limit's gate: the model was asked (this run serves none: 502) or answered.
+wk_went :: (st: int) -> bool { return st == 502 || st == 200; }
 wk_old :: (t: [] Ap, acct: string) { q: [1] Sb; ap_do(t, pc_q(q[..], "UPDATE auth.sessions SET l2_at = now() - interval '6 minutes' WHERE account = '", acct, "'")); }
 // The cancel link's token in the last mail a notice sent ("#cancel=" and 64 hex digits).
 wk_cancel_token :: (dir: string, out: [] u8) -> string {
@@ -292,6 +306,41 @@ wk_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "every change to the limit told every way in, and is in the audit log",
            ap_sql(t, pc_q(q[..], "SELECT count(*)::text || ',' || count(DISTINCT what)::text FROM auth.notices WHERE account = '", acct, "' AND what LIKE 'wallet.limit%'"), out[..]) == "8,3"
            && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE account = '", acct, "' AND action IN ('wallet.limit', 'wallet.limit.cancel') AND result = 'ok'"), out[..]) == "8", cast(string) out[0..<40]);
+
+  // ---- service credit (#13330): the second account's key pays for model calls from its credit
+  ap_do(t, "SELECT inference.rate_set(1000)");   // $1,000 a bitcoin: a call's msat is its micros times 100
+  ap_do(t, pc_q(q[..], "INSERT INTO inference.credit (pubkey, msat) VALUES ('", pk2, "', 1000000000000)"));
+  wk_old(t, acct2);
+  st = wk_infer(t, K2);
+  ap_check(t, "under the limit a model call paid from credit goes with no prompt", wk_went(st) && !ap_has(ap_body(t), "step_up"), ap_body(t));
+  m1 := ap_whole(ap_sql(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-3.8-flash', 200, 1000, 200, 10, false)"), out[..]));
+  ap_check(t, "credit counts: a call's debit is added to the account that holds the key, in msat, and the day's count shows it in sats", m1 > 0
+           && ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..])) == m1
+           && pc_with(t, "GET", "/api/wallet", "", SB) == 200 && ap_member_int(ap_body(t), "limit.credit_sat", -1) == (m1 + 999) / 1000
+           && ap_member_int(ap_body(t), "limit.spent_sat", -1) == (m1 + 999) / 1000 && ap_member(ap_body(t), "limit.credit_enforced_by", mb[..]) == "server", ap_body(t));
+  ap_check(t, "a free call counts nothing, and another account's key counts nothing here",
+           ap_sql(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-3.8-flash', 200, 1000, 200, 10, true)"), out[..]) == "0"
+           && ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..])) == m1
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.credit_spends WHERE account = '", acct, "'"), out[..]) == "0", cast(string) out[0..<40]);
+  // a big day: its calls' credit passes the 20,000-sat limit
+  ap_do(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-3.8-flash', 200, 1000000, 0, 10, false)"));
+  ap_do(t, pc_q(q[..], "UPDATE inference.credit SET msat = 1000000000000 WHERE pubkey = '", pk2, "'"));
+  n0 := ap_sql(t, pc_q(q[..], "SELECT coalesce(sum(n), 0) FROM inference.account_day WHERE pubkey = '", pk2, "'"), out[..]);
+  day0: [16] u8; for i: 0..<n0.count { day0[i] = n0[i]; }
+  st = wk_infer(t, K2);
+  ap_check(t, "past the limit a model call paid from credit gets the wallet's step-up answer, and never reaches the model", st == 401
+           && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh" && ap_has(ap_body(t), "Confirm it's you with your passkey or key")
+           && ap_sql(t, pc_q(q[..], "SELECT coalesce(sum(n), 0) FROM inference.account_day WHERE pubkey = '", pk2, "'"), out[..]) == cast(string) day0[0..<n0.count], ap_body(t));
+  ap_check(t, "the day's count is the account's: the wallet's own payment asks too, since credit used up the limit",
+           wk_spend(t, SB, "1", "pay-c0000001", false) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh"
+           && pc_with(t, "GET", "/api/wallet", "", SB) == 200 && ap_member_int(ap_body(t), "limit.spent_sat", -1) >= 20000, ap_body(t));
+  ap_check(t, "after a fresh L2 on a login of the account (the passkey's prompt), the call past the limit goes", pc_stepup(t, SB, P2, plain) == 200
+           && wk_went(wk_infer(t, K2)) && !ap_has(ap_body(t), "step_up"), ap_body(t));
+  wk_old(t, acct2);
+  ap_check(t, "an L2 older than five minutes doesn't count: the next call asks again", wk_infer(t, K2) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh", ap_body(t));
+  ap_check(t, "a raise counts for credit too: under a higher limit in force, the call goes with no prompt",
+           ap_sql(t, pc_q(q[..], "SELECT auth.wallet_limit_lower('", acct2, "', 900000000000)::text"), out[..]) == "" && wk_went(wk_infer(t, K2)), ap_body(t));
+  ap_do(t, pc_q(q[..], "DELETE FROM auth.wallet_limits WHERE account = '", acct2, "'"));
 
   // ---- a lost passkey; deleting the backup
   ub: [1] Sb; pid: [24] u8;
