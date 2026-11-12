@@ -140,7 +140,7 @@ production() {
   [[ "${OA_AFTER_E2:-1}" != 0 ]] || { echo ""; return; }
   if [[ -n "${OA_AFTER_PRODUCTION:-}" ]]; then git rev-parse -q --verify "${OA_AFTER_PRODUCTION}^{commit}" 2> /dev/null | tee "$results/production"; return; fi
   local f="$results/production" newest c
-  if [[ ! -s "$f" ]] || (( $(date +%s) - $(stat -f %m "$f" 2> /dev/null || stat -c %Y "$f") > 600 )); then
+  if [[ ! -s "$f" ]] || (( $(date +%s) - $(stat -c %Y "$f" 2> /dev/null || stat -f %m "$f") > 600 )); then
     local cfg=(); [[ -n "${CLOUDSDK_CONFIG:-}" || ! -d "$HOME/work/.secrets/gcloud-sa-config" ]] || cfg=(env CLOUDSDK_CONFIG="$HOME/work/.secrets/gcloud-sa-config")
     newest="$(${cfg[@]+"${cfg[@]}"} gcloud storage ls "gs://$prod_bucket/releases/" 2> /dev/null | grep -E '/releases/[0-9]{8}T[0-9]{6}Z/$' | sort | tail -1)"
     c="$([[ -z "$newest" ]] || ${cfg[@]+"${cfg[@]}"} gcloud storage cat "${newest}PASSED" 2> /dev/null | awk 'NR == 1 { print $1 }')"
