@@ -32,7 +32,6 @@ RmControl :: struct {
   asked: int;                    // wall ms it was last asked (rm_control_due)
   ask: [64] u8; ask_n: int;      // the ask's "t MS" and its MAC, for the host's request
   mac: [64] u8;
-  old_shut: bool;                // "oldwire 0": old pages' hellos refused before WIRE_OLD_UNTIL_MS (room-oldwire.coax)
   hold_stamp: int;               // the last "hold" line's STAMP (0 none yet): each is laid once
   local: bool;                   // the browser's local host (room-worker.c): its own player's offline game
   dice_fixed: bool;              // "dice fixed": the rooms' dice land on half their faces (a local room's only)
@@ -137,7 +136,6 @@ rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
     at = e + 1;
     ev_control_line(v, line);   // world events and levels (room-events.coax)
     if line.count > 4 && line[0..<4] == "pvp " { pvp = line[4..<line.count] == "1"; }
-    if line == "oldwire 0" { v[0].ctl.old_shut = true; }
     if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
     if line.count > 5 && line[0..<5] == "hold " { rc_hold(v, line); }
     if line.count > 12 && line[0..<12] == "hold-person " {rc_hold_named(v,line);}

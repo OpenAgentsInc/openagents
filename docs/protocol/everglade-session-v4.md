@@ -1,11 +1,9 @@
 # Everglade session profile v4
 
-Status: the profile Everglade rooms and pages speak today (GitHub #12844).
+Status: superseded by [v5](everglade-session-v5.md) (`WIRE_MIN` is 5; `proto/verse/everglade-session-v4.json` removed in #13244). Kept as history from GitHub #12844.
 
-The profile is the text wire between an Everglade page and its room server.
-Its machine-readable form is
-[`proto/verse/everglade-session-v4.json`](../../proto/verse/everglade-session-v4.json).
-The codec that implements it is `apps/openagents-web/everglade-wire.coax`,
+The profile was the text wire between an Everglade page and its room server.
+The codec that implemented it is `apps/openagents-web/everglade-wire.coax`,
 which both the page and the room server load.
 
 ## Identity
@@ -53,13 +51,9 @@ of the same version that doesn't know it ignores. The outcome count `o N`, the
 page's `O N` and `e town` (#12902) were added that way: a room or page from
 before them never sends them and drops them when it hears them.
 
-## Check
+## What the v4 check held
 
-```sh
-coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v4.json
-```
-
-The check holds the codec to the file:
+While v4 was active (`WIRE_MIN` <= 4), `everglade-wire-profile.coax` held the codec to `proto/verse/everglade-session-v4.json`:
 
 - The file's version, oldest version, pins and frame limits are the codec's
   constants.

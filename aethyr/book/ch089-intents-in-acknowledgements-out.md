@@ -49,7 +49,6 @@ send a stick of 500.
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
 eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
-  if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat_id, text); return; }   // (room-oldwire.coax)
   r: [1] WireRd; link:=wire_is(text,"J1");
   r[0] = wire_rd(text,ifx link then 2 else 1);
   w := wire_read_in(text, r[..]);

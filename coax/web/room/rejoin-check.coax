@@ -9,10 +9,8 @@
 // the grace (EG_GRACE_MS, 15 s) B still sees A where A stood with A's HP and conditions, and hears no
 // l; A's rejoin 3 s on takes the same seat again, with the same HP and conditions and no second body.
 // Last A closes for good: once the grace is over B hears A leave and A is gone.
-// Then a page on another wire (#12788): a socket whose hello says wire 2 hears "r 0 version" and is
-// closed. Last, a page from before wire 3 (hello "H 1", room-oldwire.coax): until WIRE_OLD_UNTIL_MS
-// (by the clock in the room's y) it is seated, its D's are the old wire's ("D TICK ACK F " and its own
-// p) and its inputs without HEARD are acknowledged; after it, it is refused as wire 2 is.
+// Then a page on another wire (#12788): sockets whose hellos say wire 2 or wire 1 hear "r 0 version"
+// and are closed.
 // It needs the seat-ticket key (OA_ROOM_TICKET_KEY): run it as deploy.sh does, or against a local
 // room server started with the same key (room-proof.coax raid's way).
 //   coax/web/tool.sh coax/web/room/rejoin-check.coax [ws://localhost:8830]
@@ -166,29 +164,16 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   pg: [1] RelayConn; pg[0].h = -1;
   up: [1024] u8; url_p := rs_ticketed(up[..], url, "p-rejoincheck-page2", "Rejoin Page2");
-  window := false; plays := false; acked := false; told := false; shut := false; me := -1;
+  told := false; shut := false;
   if url_p.count > 0 && relay_conn_open(pg[..], url_p) && relay_conn_send(pg[..], "H 1 ranger.0.0.0 druid 0 Page2") {
-    t4 := rs_now(); seq := 0;
+    t4 := rs_now();
     while !shut && rs_now() - t4 < 3000 {
-      if rs_now() - t4 >= seq * 100 {
-        seq += 1;
-        m: [64] u8; k := rs_put(m[..], rs_int(m[..], rs_put(m[..], 0, "I "), seq), " 0 0 0 0 0 0");
-        _ := relay_conn_send(pg[..], cast(string) m[0..<k]);
-      }
       r := relay_conn_poll(pg[..], 20);
       if r == RC_CLOSED || r == RC_FAIL { shut = true; }
-      if r != RC_TEXT { continue; }
-      t := cast(string) pg[0].text[0..<pg[0].text_n];
-      if rs_starts(t, "y ") { me = rs_num(rs_field(t, 1)); window = rs_num(rs_field(t, 3)) < WIRE_OLD_UNTIL_MS; }
-      if rj_has(t, "r 0 version") { told = true; }
-      // "D TICK ACK F p ME ...": its own p first after the three-field header
-      if me >= 0 && rs_starts(t, "D ") && rs_field(t, 4) == "p" && rs_num(rs_field(t, 5)) == me {
-        plays = true;
-        if rs_num(rs_field(t, 2)) >= 1 { acked = true; }
-      }
+      if r == RC_TEXT && rj_has(cast(string) pg[0].text[0..<pg[0].text_n], "r 0 version") { told = true; }
     }
   }
-  page2 := ifx window then plays && acked && !told && !shut else told && shut;
+  page2 := told && shut;
   ok := sent && walked && opened && h[2].first_ok && back_m >= 0 && back_m < 1 && where_b >= 0 && where_b < 1 && same && once && held && regained && left && refused && closed && page2;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
@@ -212,8 +197,6 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_key(o[..], "sent"); jo_bool(o[..], sent);
   jo_key(o[..], "old_wire_refused"); jo_bool(o[..], refused);
   jo_key(o[..], "old_wire_closed"); jo_bool(o[..], closed);
-  jo_key(o[..], "page2_window"); jo_bool(o[..], window);
-  jo_key(o[..], "page2_plays"); jo_bool(o[..], plays && acked);
   jo_key(o[..], "page2_refused"); jo_bool(o[..], told && shut);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));

@@ -8,8 +8,6 @@
 > page acknowledged (`HEARD`). Rows carry `LIFE` and `WARP` (commit
 > 67b4f62448): an id gone a tick and back is a new life, and a move of more
 > than `WIRE_WARP_M` (3 m) in a tick is a jump, so neither is drawn between.
-> Pages from before wire 3 play on the old per-kind entries until
-> `WIRE_OLD_UNTIL_MS`, 2026-11-12 (`room-oldwire.coax`, commit 0e96c34284).
 > The record is Everglade's; a shared schema for other realms is #12845.
 
 The server has a state for every entity. Every client needs part of it,

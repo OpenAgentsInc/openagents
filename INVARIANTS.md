@@ -1282,8 +1282,7 @@ A room admits a hello only when the page's engine, rules and world numbers
 wire is in `WIRE_MIN..WIRE_VERSION`, and the saved data its ticket brings
 back is a format the room reads (`Ticket.schema` up to `RV_SCHEMA`). Any
 other hello gets `r 0 version`, its socket is closed, and the refusal is
-counted by its reason; the old-wire window (`room-oldwire.coax`) is the
-only exception. One encounter never mixes two rule sets or worlds, and a room
+counted by its reason. One encounter never mixes two rule sets or worlds, and a room
 rolled back below newer saved data reads none of it. The rule is
 `aethyr/session/compat.coax` (`#authority`, mutation-checked) applied by
 `coax/web/room/room-everglade.coax` `eg_admit`. Checks: compat.coax and
@@ -1309,8 +1308,7 @@ tree damage or spread. Forest records have a separate reserved table
 range; boats, doors and abilities retain their capacity. Record reuse
 advances LIFE, and an acknowledged old removal cannot erase a tree now
 held by another record. Whole-tick ACK, retransmission and absolute/delta
-baselines remain shared with other entities. The published v4 profile
-retains its identity. Suite, wire and two-page observations are in
+baselines remain shared with other entities. Suite, wire and two-page observations are in
 `docs/verification/everglade-forest-2026-11-05/`.
 
 ## A room host runs each realm by its declared profile
