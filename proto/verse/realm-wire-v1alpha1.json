@@ -1,0 +1,357 @@
+{
+ "profile": "realm-wire-v1alpha1",
+ "packages": [
+  "openagents.verse.doc.v1alpha1",
+  "openagents.api.v1alpha1"
+ ],
+ "description": "What coax/web/api/realms.c writes itself (route.proto, GitHub #13250), byte for byte as its C wrote it before coax/web/api/realm-wire.coax: every refusal the route decides (the API's ErrorReply), `page` added to an SQL answer (a visibility's as jsonb spells it, a make's and a fork's with no spaces), the card's answer, a made realm's lines and a refusal's words for a caller that reads lines. Each golden is a writer of realm-wire.coax, its arguments and the body.",
+ "check": "coax/web/tool.sh coax/web/api/realm-wire-goldens.coax proto/verse/realm-wire-v1alpha1.json",
+ "goldens": [
+  {
+   "name": "refusal: GET the document",
+   "writer": "error",
+   "values": {
+    "text": "GET the document"
+   },
+   "body": "{\"error\":\"GET the document\"}"
+  },
+  {
+   "name": "refusal: GET the panes",
+   "writer": "error",
+   "values": {
+    "text": "GET the panes"
+   },
+   "body": "{\"error\":\"GET the panes\"}"
+  },
+  {
+   "name": "refusal: GET the proposals",
+   "writer": "error",
+   "values": {
+    "text": "GET the proposals"
+   },
+   "body": "{\"error\":\"GET the proposals\"}"
+  },
+  {
+   "name": "refusal: GET the record",
+   "writer": "error",
+   "values": {
+    "text": "GET the record"
+   },
+   "body": "{\"error\":\"GET the record\"}"
+  },
+  {
+   "name": "refusal: GET the rows",
+   "writer": "error",
+   "values": {
+    "text": "GET the rows"
+   },
+   "body": "{\"error\":\"GET the rows\"}"
+  },
+  {
+   "name": "refusal: GET the world",
+   "writer": "error",
+   "values": {
+    "text": "GET the world"
+   },
+   "body": "{\"error\":\"GET the world\"}"
+  },
+  {
+   "name": "refusal: GET your worlds",
+   "writer": "error",
+   "values": {
+    "text": "GET your worlds"
+   },
+   "body": "{\"error\":\"GET your worlds\"}"
+  },
+  {
+   "name": "refusal: POST a board",
+   "writer": "error",
+   "values": {
+    "text": "POST a board"
+   },
+   "body": "{\"error\":\"POST a board\"}"
+  },
+  {
+   "name": "refusal: POST a document",
+   "writer": "error",
+   "values": {
+    "text": "POST a document"
+   },
+   "body": "{\"error\":\"POST a document\"}"
+  },
+  {
+   "name": "refusal: POST a prompt",
+   "writer": "error",
+   "values": {
+    "text": "POST a prompt"
+   },
+   "body": "{\"error\":\"POST a prompt\"}"
+  },
+  {
+   "name": "refusal: POST an edit",
+   "writer": "error",
+   "values": {
+    "text": "POST an edit"
+   },
+   "body": "{\"error\":\"POST an edit\"}"
+  },
+  {
+   "name": "refusal: POST it",
+   "writer": "error",
+   "values": {
+    "text": "POST it"
+   },
+   "body": "{\"error\":\"POST it\"}"
+  },
+  {
+   "name": "refusal: POST {visibility}",
+   "writer": "error",
+   "values": {
+    "text": "POST {visibility}"
+   },
+   "body": "{\"error\":\"POST {visibility}\"}"
+  },
+  {
+   "name": "refusal: a 1200x630 JPEG",
+   "writer": "error",
+   "values": {
+    "text": "a 1200x630 JPEG"
+   },
+   "body": "{\"error\":\"a 1200x630 JPEG\"}"
+  },
+  {
+   "name": "refusal: a card is under 300 KB",
+   "writer": "error",
+   "values": {
+    "text": "a card is under 300 KB"
+   },
+   "body": "{\"error\":\"a card is under 300 KB\"}"
+  },
+  {
+   "name": "refusal: busy",
+   "writer": "error",
+   "values": {
+    "text": "busy"
+   },
+   "body": "{\"error\":\"busy\"}"
+  },
+  {
+   "name": "refusal: cross-site",
+   "writer": "error",
+   "values": {
+    "text": "cross-site"
+   },
+   "body": "{\"error\":\"cross-site\"}"
+  },
+  {
+   "name": "refusal: memory",
+   "writer": "error",
+   "values": {
+    "text": "memory"
+   },
+   "body": "{\"error\":\"memory\"}"
+  },
+  {
+   "name": "refusal: no bucket here",
+   "writer": "error",
+   "values": {
+    "text": "no bucket here"
+   },
+   "body": "{\"error\":\"no bucket here\"}"
+  },
+  {
+   "name": "refusal: no database",
+   "writer": "error",
+   "values": {
+    "text": "no database"
+   },
+   "body": "{\"error\":\"no database\"}"
+  },
+  {
+   "name": "refusal: no such world",
+   "writer": "error",
+   "values": {
+    "text": "no such world"
+   },
+   "body": "{\"error\":\"no such world\"}"
+  },
+  {
+   "name": "refusal: not asked",
+   "writer": "error",
+   "values": {
+    "text": "not asked"
+   },
+   "body": "{\"error\":\"not asked\"}"
+  },
+  {
+   "name": "refusal: not forked",
+   "writer": "error",
+   "values": {
+    "text": "not forked"
+   },
+   "body": "{\"error\":\"not forked\"}"
+  },
+  {
+   "name": "refusal: not json",
+   "writer": "error",
+   "values": {
+    "text": "not json"
+   },
+   "body": "{\"error\":\"not json\"}"
+  },
+  {
+   "name": "refusal: not kept",
+   "writer": "error",
+   "values": {
+    "text": "not kept"
+   },
+   "body": "{\"error\":\"not kept\"}"
+  },
+  {
+   "name": "refusal: not made",
+   "writer": "error",
+   "values": {
+    "text": "not made"
+   },
+   "body": "{\"error\":\"not made\"}"
+  },
+  {
+   "name": "refusal: not read",
+   "writer": "error",
+   "values": {
+    "text": "not read"
+   },
+   "body": "{\"error\":\"not read\"}"
+  },
+  {
+   "name": "refusal: only its owner and admins",
+   "writer": "error",
+   "values": {
+    "text": "only its owner and admins"
+   },
+   "body": "{\"error\":\"only its owner and admins\"}"
+  },
+  {
+   "name": "refusal: this world can't be forked",
+   "writer": "error",
+   "values": {
+    "text": "this world can't be forked"
+   },
+   "body": "{\"error\":\"this world can't be forked\"}"
+  },
+  {
+   "name": "refusal: unknown",
+   "writer": "error",
+   "values": {
+    "text": "unknown"
+   },
+   "body": "{\"error\":\"unknown\"}"
+  },
+  {
+   "name": "refusal: unknown edit",
+   "writer": "error",
+   "values": {
+    "text": "unknown edit"
+   },
+   "body": "{\"error\":\"unknown edit\"}"
+  },
+  {
+   "name": "a visibility's answer, its page not written",
+   "writer": "paged-spaced",
+   "values": {
+    "answer": "{\"was\": \"private\", \"slug\": \"record-fixture\", \"visibility\": \"unlisted\"}",
+    "paged": false
+   },
+   "body": "{\"was\": \"private\", \"slug\": \"record-fixture\", \"visibility\": \"unlisted\", \"page\": false}"
+  },
+  {
+   "name": "a fenced visibility's answer, its page written",
+   "writer": "paged-spaced",
+   "values": {
+    "answer": "{\"rev\": 2, \"was\": \"unlisted\", \"slug\": \"record-fixture\", \"visibility\": \"public\"}",
+    "paged": true
+   },
+   "body": "{\"rev\": 2, \"was\": \"unlisted\", \"slug\": \"record-fixture\", \"visibility\": \"public\", \"page\": true}"
+  },
+  {
+   "name": "a made realm's answer, its page written",
+   "writer": "paged",
+   "values": {
+    "answer": "{\"name\": \"Moonlit Marsh\", \"path\": \"/worlds/moonlit-marsh\", \"slug\": \"moonlit-marsh\"}",
+    "paged": true
+   },
+   "body": "{\"name\": \"Moonlit Marsh\", \"path\": \"/worlds/moonlit-marsh\", \"slug\": \"moonlit-marsh\",\"page\":true}"
+  },
+  {
+   "name": "a made realm's answer, no page written",
+   "writer": "paged",
+   "values": {
+    "answer": "{\"name\": \"Moonlit Marsh\", \"path\": \"/worlds/moonlit-marsh\", \"slug\": \"moonlit-marsh\"}",
+    "paged": false
+   },
+   "body": "{\"name\": \"Moonlit Marsh\", \"path\": \"/worlds/moonlit-marsh\", \"slug\": \"moonlit-marsh\",\"page\":false}"
+  },
+  {
+   "name": "a card kept, the page written again",
+   "writer": "card",
+   "values": {
+    "slug": "moonlit-marsh",
+    "at": "1762190000123",
+    "paged": true
+   },
+   "body": "{\"image\":\"/worlds/moonlit-marsh/card.jpg?v=1762190000123\",\"page\":true}"
+  },
+  {
+   "name": "a card kept with no time read, no page",
+   "writer": "card",
+   "values": {
+    "slug": "moonlit-marsh",
+    "at": "0",
+    "paged": false
+   },
+   "body": "{\"image\":\"/worlds/moonlit-marsh/card.jpg?v=0\",\"page\":false}"
+  },
+  {
+   "name": "a made realm as lines, its page written",
+   "writer": "lines",
+   "values": {
+    "slug": "moonlit-marsh",
+    "paged": true
+   },
+   "body": "slug moonlit-marsh\npath /worlds/moonlit-marsh\npage 1\n"
+  },
+  {
+   "name": "a forked realm as lines, no page",
+   "writer": "lines",
+   "values": {
+    "slug": "moonlit-marsh-2",
+    "paged": false
+   },
+   "body": "slug moonlit-marsh-2\npath /worlds/moonlit-marsh-2\npage 0\n"
+  },
+  {
+   "name": "a refusal's words for a lines caller",
+   "writer": "words",
+   "values": {
+    "answer": "{\"error\": \"say what to make\"}"
+   },
+   "body": "say what to make"
+  },
+  {
+   "name": "a fenced refusal's words",
+   "writer": "words",
+   "values": {
+    "answer": "{\"rev\": 2, \"error\": \"changed since\"}"
+   },
+   "body": "changed since"
+  },
+  {
+   "name": "the API's own refusal has no words a lines caller reads",
+   "writer": "words",
+   "values": {
+    "answer": "{\"error\":\"not asked\"}"
+   },
+   "body": "error"
+  }
+ ]
+}

@@ -80,6 +80,7 @@
 //   OA_BUILDER_DAILY_CAP  plans a day across the server (3000)
 //   OA_BUILDER_PER_DAY    realms a player makes a day (12)
 #include "api.h"
+#include "realm-wire.generated.h"
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -90,6 +91,27 @@
 
 #define PREFIX "/api/playtest/realms"
 
+// The bytes this file writes itself go through realm-wire.coax (realm-wire.generated.c): a
+// refusal (the API's ErrorReply), `page` on a visibility's, a make's and a fork's answer, the
+// card's answer, a made realm's lines and a refusal's words for a caller that reads lines.
+static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
+static void refuse(int fd, int status, const char *why) {
+  char out[160];
+  int64_t n = rlw_error_write(cs(why), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  out[n < 0 ? 0 : n] = 0;
+  api_json(fd, status, out);
+}
+static void text(int fd, int status, const char *t, size_t n) { api_respond(fd, status, "text/plain; charset=utf-8", NULL, t, n); }
+// An SQL answer (an object) with `page` added: spaced as jsonb's text (a visibility), or not (a make).
+static void answer_with_page(int fd, const char *json, bool paged, bool spaced) {
+  size_t cap = strlen(json) + 32;
+  char *out = malloc(cap);
+  int64_t n = out ? rlw_paged_write(cs(json), paged, spaced, (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1}) : -1;
+  if (n < 0) { free(out); refuse(fd, 503, "memory"); return; }
+  out[n] = 0;
+  api_json(fd, 200, out);
+  free(out);
+}
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
 
 static char *body_of(const request *q) {
@@ -107,7 +129,7 @@ static bool sql_json(const request *q, PGconn *db, const char *sql, int n, const
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("realms: %s: %s", what, PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return false;
   }
   api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
@@ -116,7 +138,7 @@ static bool sql_json(const request *q, PGconn *db, const char *sql, int n, const
 }
 
 static void text_answer(int fd, PGresult *r) {
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) { api_json(fd, 404, "{\"error\":\"no such world\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) { refuse(fd, 404, "no such world"); return; }
   const char *t = PQgetvalue(r, 0, 0);
   api_respond(fd, 200, "text/plain; charset=utf-8", NULL, t, strlen(t));
 }
@@ -132,10 +154,9 @@ static void answer_lines(int fd, int status, const char *json_text, const char *
   if (status == 200 && lines) { api_respond(fd, 200, "text/plain; charset=utf-8", NULL, lines, strlen(lines)); return; }
   // A fenced refusal retains the current revision even for callers that request lines.
   if (status == 409 && strstr(json_text, "\"rev\"")) { api_json(fd, status, json_text); return; }
-  const char *e = strstr(json_text, "\"error\": \"");
-  char out[200] = "error";
-  if (e) { e += 10; size_t n = 0; while (e[n] && e[n] != '"' && n + 1 < sizeof out) { out[n] = e[n]; n++; } out[n] = 0; }
-  api_respond(fd, status, "text/plain; charset=utf-8", NULL, out, strlen(out));
+  char out[200];
+  int64_t n = rlw_error_words(cs(json_text), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  text(fd, status, out, n < 0 ? 0 : (size_t)n);
 }
 
 // The model's answer, held by SQL: builder_answer for a plan, builder_pick_answer for a pick. A
@@ -176,7 +197,7 @@ static void plan_answer(int fd, const char *asked, const char *request, bool lin
     if (lines) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
     else api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   }
-  else { api_log("realms: plan: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  else { api_log("realms: plan: %s", db ? PQerrorMessage(db) : "no database"); refuse(fd, 503, "not kept"); }
   if (status != 200) api_log("realms: model answered %ld", status);
   if (r) PQclear(r);
   if (db) PQfinish(db);
@@ -185,11 +206,11 @@ static void plan_answer(int fd, const char *asked, const char *request, bool lin
 
 static void plan(const request *q, PGconn *db, const char *key, bool pick) {
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { refuse(q->fd, 503, "memory"); return; }
   const char *v[3] = {body, env_or("OA_BUILDER_DAILY_CAP", "3000"), key};
-  PGresult *r = PQexecParams(db, pick ? "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, (x - 'request' - 'status')::text "
+  PGresult *r = PQexecParams(db, pick ? "SELECT (x->>'status')::int, jsonb_build_object('error', coalesce(x->>'error', ''))::text, (x->'request')::text, (x - 'request' - 'status')::text "
                                         "FROM verse.builder_pick_ask($1::jsonb, $2::int, $3) x"
-                                      : "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, (x - 'request' - 'status')::text "
+                                      : "SELECT (x->>'status')::int, jsonb_build_object('error', coalesce(x->>'error', ''))::text, (x->'request')::text, (x - 'request' - 'status')::text "
                                         "FROM verse.builder_ask($1::jsonb, $2::int, $3) x", 3, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
@@ -197,15 +218,14 @@ static void plan(const request *q, PGconn *db, const char *key, bool pick) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("realms: ask: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not asked");
     return;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
   bool lines = as_lines(q);
   if (status != 200) {
-    char out[200]; snprintf(out, sizeof out, "{\"error\": \"%s\"}", PQgetvalue(r, 0, 1));
+    if (lines) answer_lines(q->fd, status, PQgetvalue(r, 0, 1), NULL); else api_json(q->fd, status, PQgetvalue(r, 0, 1));   // {"error": "WORDS"}, SQL's
     PQclear(r);
-    if (lines) answer_lines(q->fd, status, out, NULL); else api_json(q->fd, status, out);
     return;
   }
   char *request = strdup(PQgetvalue(r, 0, 2)), *asked = strdup(PQgetvalue(r, 0, 3));
@@ -213,7 +233,7 @@ static void plan(const request *q, PGconn *db, const char *key, bool pick) {
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { plan_answer(q->fd, asked, request, lines, pick); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) refuse(q->fd, 503, "busy");
   free(request); free(asked);
 }
 
@@ -352,7 +372,7 @@ static void card(const request *q, PGconn *db, const char *slug, const char *key
   const char *v[3] = {slug, key, admin};
   if (!post) {
     char *want = sql_one(db, "SELECT verse.builder_card_want($1, $2, $3::boolean)", 3, v);
-    if (!want) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return; }
+    if (!want) { refuse(q->fd, 404, "no such world"); return; }
     api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, want, strlen(want));
     free(want);
     return;
@@ -360,25 +380,26 @@ static void card(const request *q, PGconn *db, const char *slug, const char *key
   char *may = sql_one(db, "SELECT verse.builder_card_may($1, $2, $3::boolean)", 3, v);
   int status = may ? atoi(may) : 500;
   free(may);
-  if (status == 404) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return; }
-  if (status != 200) { api_json(q->fd, status == 403 ? 403 : 500, status == 403 ? "{\"error\":\"only its owner and admins\"}" : "{\"error\":\"not kept\"}"); return; }
-  if (q->body_len > CARD_MAX) { api_json(q->fd, 413, "{\"error\":\"a card is under 300 KB\"}"); return; }
-  if (!jpeg_1200x630((const unsigned char *)q->body, q->body_len)) { api_json(q->fd, 400, "{\"error\":\"a 1200x630 JPEG\"}"); return; }
-  if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) { api_json(q->fd, 503, "{\"error\":\"no bucket here\"}"); return; }
+  if (status == 404) { refuse(q->fd, 404, "no such world"); return; }
+  if (status != 200) { refuse(q->fd, status == 403 ? 403 : 500, status == 403 ? "only its owner and admins" : "not kept"); return; }
+  if (q->body_len > CARD_MAX) { refuse(q->fd, 413, "a card is under 300 KB"); return; }
+  if (!jpeg_1200x630((const unsigned char *)q->body, q->body_len)) { refuse(q->fd, 400, "a 1200x630 JPEG"); return; }
+  if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) { refuse(q->fd, 503, "no bucket here"); return; }
   // the bucket's part in a child, as making one is
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid < 0) { api_json(q->fd, 503, "{\"error\":\"busy\"}"); return; }
+  if (pid < 0) { refuse(q->fd, 503, "busy"); return; }
   if (pid > 0) return;
   char name[120], kb[16], out[200];
   snprintf(name, sizeof name, "realms/%s/card.jpg", slug);
   snprintf(kb, sizeof kb, "%zu", (q->body_len + 1023) / 1024);
   PGconn *c = api_db_new();
-  if (!c || !drops_site_write_bytes(name, "image/jpeg", (const unsigned char *)q->body, q->body_len)) { api_json(q->fd, 502, "{\"error\":\"not kept\"}"); _exit(0); }
+  if (!c || !drops_site_write_bytes(name, "image/jpeg", (const unsigned char *)q->body, q->body_len)) { refuse(q->fd, 502, "not kept"); _exit(0); }
   const char *w[2] = {slug, kb};
   char *at = sql_one(c, "SELECT verse.builder_card_kept($1, $2::int)", 2, w);
   bool paged = at && write_page(c, slug);
-  snprintf(out, sizeof out, "{\"image\":\"/worlds/%s/card.jpg?v=%s\",\"page\":%s}", slug, at ? at : "0", paged ? "true" : "false");
+  int64_t on = rlw_card_write(cs(slug), cs(at ? at : "0"), paged, (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  out[on < 0 ? 0 : on] = 0;
   api_json(q->fd, 200, out);
   _exit(0);
 }
@@ -417,22 +438,16 @@ static void make_answer(int fd, const char *answer, const char *slug, bool lines
   }
   if (lines) {
     char out[200];
-    snprintf(out, sizeof out, "slug %s\npath /worlds/%s\npage %d\n", slug, slug, paged ? 1 : 0);
-    api_respond(fd, 200, "text/plain; charset=utf-8", NULL, out, strlen(out));
+    int64_t n = rlw_made_lines_write(cs(slug), paged, (coax_v_u8){(uint8_t *)out, sizeof out});
+    text(fd, 200, out, n < 0 ? 0 : (size_t)n);
     return;
   }
-  size_t n = strlen(answer);
-  char *out = malloc(n + 32);
-  if (!out) { api_json(fd, 503, "{\"error\":\"memory\"}"); return; }
-  memcpy(out, answer, n - 1);   // the answer is an object: its closing brace last
-  snprintf(out + n - 1, 32, ",\"page\":%s}", paged ? "true" : "false");
-  api_json(fd, 200, out);
-  free(out);
+  answer_with_page(fd, answer, paged, false);
 }
 
 static void make(const request *q, PGconn *db, const char *key) {
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { refuse(q->fd, 503, "memory"); return; }
   const char *v[3] = {body, key, env_or("OA_BUILDER_PER_DAY", "12")};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'slug' FROM verse.builder_make($1::jsonb, $2, $3::int) x",
                              3, NULL, v, NULL, NULL, 0);
@@ -442,7 +457,7 @@ static void make(const request *q, PGconn *db, const char *key) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("realms: make: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not made\"}");
+    refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not made");
     return;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
@@ -467,7 +482,7 @@ static void make(const request *q, PGconn *db, const char *key) {
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { make_answer(q->fd, answer, slug, lines); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) refuse(q->fd, 503, "busy");
   free(answer); free(slug);
 }
 
@@ -479,13 +494,13 @@ static void fork_realm(const request *q, PGconn *db, const char *slug, const cha
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.fork_info($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"this world can't be forked\"}");
-    else { api_log("realms: fork info: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else if (PQresultStatus(r) == PGRES_TUPLES_OK) refuse(q->fd, 404, "this world can't be forked");
+    else { api_log("realms: fork info: %s", PQerrorMessage(db)); refuse(q->fd, 500, "not read"); }
     PQclear(r);
     return;
   }
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { refuse(q->fd, 503, "memory"); return; }
   const char *v[4] = {slug, body, key, env_or("OA_BUILDER_PER_DAY", "12")};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'slug' FROM verse.fork_make($1, $2::jsonb, $3, $4::int) x",
                              4, NULL, v, NULL, NULL, 0);
@@ -495,7 +510,7 @@ static void fork_realm(const request *q, PGconn *db, const char *slug, const cha
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("realms: fork: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not forked\"}");
+    refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not forked");
     return;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
@@ -511,7 +526,7 @@ static void fork_realm(const request *q, PGconn *db, const char *slug, const cha
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { make_answer(q->fd, answer, made, lines); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) refuse(q->fd, 503, "busy");
   free(answer); free(made);
 }
 
@@ -533,7 +548,7 @@ static void revise_answer(int fd, const char *asked, const char *request, bool l
     if (lines) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
     else api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   }
-  else { api_log("realms: revise: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  else { api_log("realms: revise: %s", db ? PQerrorMessage(db) : "no database"); refuse(fd, 503, "not kept"); }
   if (status != 200) api_log("realms: model answered %ld", status);
   if (r) PQclear(r);
   if (db) PQfinish(db);
@@ -544,7 +559,7 @@ static void revise_answer(int fd, const char *asked, const char *request, bool l
 // ask with what it changed; it always answers lines.
 static void revise(const request *q, PGconn *db, const char *slug, const char *key, const char *admin, bool ask) {
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { refuse(q->fd, 503, "memory"); return; }
   const char *v[6] = {slug, body, env_or("OA_BUILDER_DAILY_CAP", "3000"), key, admin, ask ? "ask" : "revise"};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'request' - 'status' - 'lines')::text, (x->'request')::text, "
                                 "(x - 'request' - 'status' - 'error' - 'lines')::text, x->>'lines' "
@@ -555,7 +570,7 @@ static void revise(const request *q, PGconn *db, const char *slug, const char *k
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("realms: revise ask: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not asked");
     return;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
@@ -576,7 +591,7 @@ static void revise(const request *q, PGconn *db, const char *slug, const char *k
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { revise_answer(q->fd, asked, request, lines, ask); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) refuse(q->fd, 503, "busy");
   free(request); free(asked);
 }
 
@@ -711,7 +726,7 @@ static void doc_answer(int fd, const char *asked, const char *request, bool made
                                                  : "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.realm_edit_finish($1::jsonb, $2::int, $3, $4, $5::int, 'ask-doc') x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
-  else { api_log("realms: doc: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  else { api_log("realms: doc: %s", db ? PQerrorMessage(db) : "no database"); refuse(fd, 503, "not kept"); }
   if (status != 200) api_log("realms: model answered %ld", status);
   if (r) PQclear(r);
   if (db) PQfinish(db);
@@ -721,11 +736,11 @@ static void doc_answer(int fd, const char *asked, const char *request, bool made
 // slug NULL: the builder's plan from the document; else an edit-mode list's.
 static void doc(const request *q, PGconn *db, const char *slug, const char *key, const char *admin) {
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { refuse(q->fd, 503, "memory"); return; }
   int st = 0; const char *why = "";
   char *d = doc_read(db, body, &st, &why);
   free(body);
-  if (!d) { char out[160]; snprintf(out, sizeof out, "{\"error\": \"%s\"}", why); answer_lines(q->fd, st, out, NULL); return; }
+  if (!d) { text(q->fd, st, why, strlen(why)); return; }   // the words alone, as a caller that reads lines gets every refusal
   const char *v[5] = {slug ? slug : "", d, env_or("OA_BUILDER_DAILY_CAP", "3000"), key, admin};
   PGresult *r = PQexecParams(db, slug ? "SELECT (x->>'status')::int, (x - 'request' - 'status' - 'lines')::text, (x->'request')::text, (x - 'request' - 'status' - 'error' - 'lines')::text FROM verse.realm_edit_start($1, $2::jsonb, $3::int, $4, $5::boolean, 'ask-doc') x"
                                       : "SELECT (x->>'status')::int, jsonb_build_object('error',x->'error')::text, (x->'request')::text, jsonb_build_object('id', x->'id', 'setup', x->'setup')::text FROM verse.builder_doc_ask($2::jsonb, $3::int, $4) x WHERE $1::text IS NOT NULL AND $5::boolean IS NOT NULL",
@@ -734,7 +749,7 @@ static void doc(const request *q, PGconn *db, const char *slug, const char *key,
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     api_log("realms: doc ask: %s", PQerrorMessage(db));
     PQclear(r);
-    answer_lines(q->fd, 500, "{\"error\":\"not asked\"}", NULL);
+    text(q->fd, 500, "error", 5);   // as it always answered here: the lines' refusal with no words of its own
     return;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
@@ -748,7 +763,7 @@ static void doc(const request *q, PGconn *db, const char *slug, const char *key,
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { doc_answer(q->fd, asked, request, !slug); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) refuse(q->fd, 503, "busy");
   free(request); free(asked);
 }
 
@@ -764,18 +779,12 @@ static bool slug_ok(const char *s, size_t n) {
 static void answer_paged(int fd, const char *slug, const char *json) {
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid < 0) { api_json(fd, 503, "{\"error\":\"busy\"}"); return; }
+  if (pid < 0) { refuse(fd, 503, "busy"); return; }
   if (pid > 0) return;
   PGconn *c = api_db_new();
   bool paged = c && write_page_or_remove(c, slug, true);
   if (c) PQfinish(c);
-  size_t n = strlen(json);
-  char *out = malloc(n + 32);
-  if (!out) { api_json(fd, 503, "{\"error\":\"memory\"}"); _exit(0); }
-  memcpy(out, json, n - 1);   // an object: its closing brace last
-  snprintf(out + n - 1, 32, ", \"page\": %s}", paged ? "true" : "false");
-  api_json(fd, 200, out);
-  free(out);
+  answer_with_page(fd, json, paged, true);
   _exit(0);
 }
 
@@ -788,8 +797,8 @@ static bool realm_hidden(const request *q, PGconn *db, const char *slug, const c
   bool hidden = ok && !strcmp(PQgetvalue(r, 0, 0), "t");
   if (!ok) api_log("realms: hidden: %s", PQerrorMessage(db));
   PQclear(r);
-  if (!ok) { api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
-  if (hidden) api_json(q->fd, 404, "{\"error\":\"no such world\"}");
+  if (!ok) { refuse(q->fd, 500, "not read"); return true; }
+  if (hidden) refuse(q->fd, 404, "no such world");
   return hidden;
 }
 
@@ -797,7 +806,7 @@ static bool realm_hidden(const request *q, PGconn *db, const char *slug, const c
 static void realm_edit_call(const request *q, PGconn *db, const char *slug, const char *key,
                             const char *admin, const char *op, const char *id) {
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { refuse(q->fd, 503, "memory"); return; }
   const char *v[6] = {slug, body, key, admin, op, id};
   sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_edit_call($1, $2::jsonb, $3, $4::boolean, $5, $6) x",
            6, v, op);
@@ -809,12 +818,12 @@ bool realms_route(const request *q) {
   const char *rest = q->path + sizeof PREFIX - 1;
   if (*rest == '/') rest++;
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { refuse(q->fd, 503, "no database"); return true; }
   char key[160] = "", from[256];
   api_header(q, "X-Verse-Player", key, sizeof key);
   bool post = !strcmp(q->method, "POST");
   if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, env_or("OA_API_ORIGIN", "https://openagents.com"))) {
-    api_json(q->fd, 403, "{\"error\":\"cross-site\"}");
+    refuse(q->fd, 403, "cross-site");
     return true;
   }
   // A NIP-98 signature (a CLI or an agent) is its key's account: its player key comes from SQL
@@ -823,56 +832,56 @@ bool realms_route(const request *q) {
   char signer[65] = "";
   int sig = access_signed(q, db, signer);
   if (sig < 0) return true;
-  if (sig > 0 && !access_caller_key(db, signer, key)) { api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
+  if (sig > 0 && !access_caller_key(db, signer, key)) { refuse(q->fd, 500, "not read"); return true; }
   const char *by = sig > 0 ? signer : NULL;
   if (!*rest) {
-    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a board\"}"); return true; }
+    if (!post) { refuse(q->fd, 405, "POST a board"); return true; }
     if (access_refused(q, db, key, by)) return true;   // realm_invites on: approved creators only
     make(q, db, key);
     return true;
   }
   if (!strcmp(rest, "plan/doc")) {
-    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a document\"}"); return true; }
+    if (!post) { refuse(q->fd, 405, "POST a document"); return true; }
     if (access_refused(q, db, key, by)) return true;
     doc(q, db, NULL, key, "false");
     return true;
   }
   if (!strcmp(rest, "plan") || !strcmp(rest, "pick")) {
-    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a prompt\"}"); return true; }
+    if (!post) { refuse(q->fd, 405, "POST a prompt"); return true; }
     if (access_refused(q, db, key, by)) return true;
     plan(q, db, key, !strcmp(rest, "pick"));
     return true;
   }
   if (!strcmp(rest, "mine")) {   // the caller's realms (0098): "realm SLUG|REV|PUBLISHED|LISTED|NAME" lines, or JSON
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET your worlds\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET your worlds"); return true; }
     const char *v[1] = {key};
     PGresult *r = PQexecParams(db, "SELECT x->>'lines', (x->'body')::text FROM verse.realms_mine($1) x", 1, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("realms: mine: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("realms: mine: %s", PQerrorMessage(db)); refuse(q->fd, 500, "not read"); }
     else if (as_lines(q)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
     else api_json(q->fd, 200, PQgetvalue(r, 0, 1));
     PQclear(r);
     return true;
   }
   if (!strcmp(rest, "made")) {   // /og's rows ("made" is a reserved address: no realm has it)
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the rows\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET the rows"); return true; }
     char *rows = sql_one(db, "SELECT verse.builder_og_rows(60)", 0, NULL);
     if (rows) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, rows, strlen(rows));
-    else api_json(q->fd, 500, "{\"error\":\"not read\"}");
+    else refuse(q->fd, 500, "not read");
     free(rows);
     return true;
   }
   if (!strcmp(rest, "listed")) {   // /realms' rows of public made realms (0101; "listed" is reserved too)
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the rows\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET the rows"); return true; }
     char *rows = sql_one(db, "SELECT verse.realm_list_rows(60)", 0, NULL);
     if (rows) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, rows, strlen(rows));
-    else api_json(q->fd, 500, "{\"error\":\"not read\"}");
+    else refuse(q->fd, 500, "not read");
     free(rows);
     return true;
   }
   const char *slash = strchr(rest, '/');
   size_t n = slash ? (size_t)(slash - rest) : strlen(rest);
   char slug[49];
-  if (!slug_ok(rest, n)) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return true; }
+  if (!slug_ok(rest, n)) { refuse(q->fd, 404, "no such world"); return true; }
   memcpy(slug, rest, n); slug[n] = 0;
   const char *what = slash ? slash + 1 : "";
   // A site admin (admins.conf, by site login or NIP-98) is an admin of every realm; SQL decides the rest.
@@ -889,15 +898,15 @@ bool realms_route(const request *q) {
               || !strcmp(what, "lore") || !strcmp(what, "quest") || !strcmp(what, "visibility") || !strcmp(what, "publish")
               || !strcmp(what, "revise") || !strcmp(what, "asks") || !strncmp(what, "asks/", 5)
               || !strncmp(what, "rows/", 5) || !strncmp(what, "proposals/", 10);
-    if (!known) { api_json(q->fd, 404, "{\"error\":\"unknown edit\"}"); return true; }
-    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST an edit\"}"); return true; }
+    if (!known) { refuse(q->fd, 404, "unknown edit"); return true; }
+    if (!post) { refuse(q->fd, 405, "POST an edit"); return true; }
     char *body = body_of(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    if (!body) { refuse(q->fd, 503, "memory"); return true; }
     const char *v[1] = {body};
     PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_edit_required($1::jsonb) x", 1, NULL, v, NULL, NULL, 0);
     free(body);
     if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
-      PQclear(r); api_json(q->fd, 400, "{\"error\":\"not json\"}"); return true;
+      PQclear(r); refuse(q->fd, 400, "not json"); return true;
     }
     int status = atoi(PQgetvalue(r, 0, 0));
     if (status != 200) api_json(q->fd, status, PQgetvalue(r, 0, 1));
@@ -905,9 +914,9 @@ bool realms_route(const request *q) {
     if (status != 200) return true;
   }
   if (!strcmp(what, "visibility")) {   // who sees it (0099): its owner when an approved creator, or a site admin
-    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST {visibility}\"}"); return true; }
+    if (!post) { refuse(q->fd, 405, "POST {visibility}"); return true; }
     char *body = body_of(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    if (!body) { refuse(q->fd, 503, "memory"); return true; }
     const char *v[4] = {slug, body, key, admin};
     PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_edit_call($1, $2::jsonb, $3, $4::boolean, 'visibility', '') x", 4, NULL, v, NULL, NULL, 0);
     free(body);
@@ -919,13 +928,13 @@ bool realms_route(const request *q) {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
       if (!theirs) api_log("realms: visibility: %s", PQerrorMessage(db));
-      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+      refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     }
     PQclear(r);
     return true;
   }
   if (!*what) {
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the world\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET the world"); return true; }
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.realm_edit_spec($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     text_answer(q->fd, r);
@@ -933,33 +942,33 @@ bool realms_route(const request *q) {
     return true;
   }
   if (!strcmp(what, "doc")) {   // the document now and its hash (0093)
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the document\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET the document"); return true; }
     const char *v[3] = {slug, key, admin};   // the owner's now, anyone else's the revision published (0094)
     sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_doc_of($1, $2, $3::boolean) x", 3, v, "doc");
     return true;
   }
   if (!strcmp(what, "published")) {   // the publish record: revision, document hash, engine and its hash (0107)
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the record\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET the record"); return true; }
     const char *v[1] = {slug};
     sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_published_of($1) x", 1, v, "published");
     return true;
   }
   if (!strcmp(what, "panes")) {
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the panes\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET the panes"); return true; }
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.edit_panes($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"no such world\"}");
-    else { api_log("realms: panes: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else if (PQresultStatus(r) == PGRES_TUPLES_OK) refuse(q->fd, 404, "no such world");
+    else { api_log("realms: panes: %s", PQerrorMessage(db)); refuse(q->fd, 500, "not read"); }
     PQclear(r);
     return true;
   }
   if (!strcmp(what, "proposals")) {
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the proposals\"}"); return true; }
+    if (post) { refuse(q->fd, 405, "GET the proposals"); return true; }
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.edit_proposals($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else { api_log("realms: proposals: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else { api_log("realms: proposals: %s", PQerrorMessage(db)); refuse(q->fd, 500, "not read"); }
     PQclear(r);
     return true;
   }
@@ -967,7 +976,7 @@ bool realms_route(const request *q) {
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.ask_list($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else { api_log("realms: asks: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else { api_log("realms: asks: %s", PQerrorMessage(db)); refuse(q->fd, 500, "not read"); }
     PQclear(r);
     return true;
   }
@@ -977,10 +986,10 @@ bool realms_route(const request *q) {
     fork_realm(q, db, slug, key, admin, post);
     return true;
   }
-  if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
+  if (!post) { refuse(q->fd, 405, "POST it"); return true; }
   if (!strcmp(what, "describe")) {
     char *body = body_of(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    if (!body) { refuse(q->fd, 503, "memory"); return true; }
     const char *v[4] = {slug, body, key, admin};
     PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.builder_describe($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
     free(body);
@@ -993,14 +1002,14 @@ bool realms_route(const request *q) {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
       if (!theirs) api_log("realms: describe: %s", PQerrorMessage(db));
-      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+      refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     }
     PQclear(r);
     return true;
   }
   if (!strcmp(what, "publish")) {   // a fork listed, its page written again (0075); a made realm's engine pinned (0107)
     char *body = body_of(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    if (!body) { refuse(q->fd, 503, "memory"); return true; }
     char *template = engine_template();
     const char *v[6] = {slug, body, key, admin, edit_v1 ? "true" : "false", template};
     PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_publish_pinned($1, $2::jsonb, $3, $4::boolean, $5::boolean, $6) x",
@@ -1015,14 +1024,14 @@ bool realms_route(const request *q) {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
       if (!theirs) api_log("realms: publish: %s", PQerrorMessage(db));
-      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+      refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     }
     PQclear(r);
     return true;
   }
   if (!strcmp(what, "save") || !strcmp(what, "undo") || !strcmp(what, "redo")) {   // only from the revision there now (0093, 0094, 0111)
     char *body = body_of(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    if (!body) { refuse(q->fd, 503, "memory"); return true; }
     const char *v[4] = {slug, body, key, admin};
     PGresult *r = PQexecParams(db, !strcmp(what, "save") ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_save($1, $2::jsonb, $3, $4::boolean) x"
                                  : !strcmp(what, "undo") ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_undo($1, $2::jsonb, $3, $4::boolean) x"
@@ -1035,7 +1044,7 @@ bool realms_route(const request *q) {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
       if (!theirs) api_log("realms: %s: %s", what, PQerrorMessage(db));
-      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+      refuse(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     }
     PQclear(r);
     return true;
@@ -1061,7 +1070,7 @@ bool realms_route(const request *q) {
     bool done = end && !row && !strcmp(end, "/done");
     bool ok = end && k > 0 && k < (row ? sizeof name : 19) && (done || !strcmp(end, "/delete"));
     for (size_t i = 0; ok && i < k; i++) ok = row ? ((id[i] >= 'a' && id[i] <= 'z') || (id[i] >= '0' && id[i] <= '9') || id[i] == '-' || id[i] == ':') : (id[i] >= '0' && id[i] <= '9');
-    if (!ok) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+    if (!ok) { refuse(q->fd, 404, "unknown"); return true; }
     memcpy(name, id, k); name[k] = 0;
     if (done) {
       realm_edit_call(q, db, slug, key, admin, "ask-done", name);
@@ -1077,11 +1086,11 @@ bool realms_route(const request *q) {
     size_t k = end ? (size_t)(end - id) : 0;
     bool ok = end && k > 0 && k < 19 && (!strcmp(end, "/accept") || !strcmp(end, "/decline"));
     for (size_t i = 0; ok && i < k; i++) ok = id[i] >= '0' && id[i] <= '9';
-    if (!ok) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+    if (!ok) { refuse(q->fd, 404, "unknown"); return true; }
     memcpy(num, id, k); num[k] = 0;
     realm_edit_call(q, db, slug, key, admin, !strcmp(end, "/accept") ? "accept" : "decline", num);
     return true;
   }
-  api_json(q->fd, 404, "{\"error\":\"unknown\"}");
+  refuse(q->fd, 404, "unknown");
   return true;
 }

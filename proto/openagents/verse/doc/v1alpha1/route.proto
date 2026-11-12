@@ -1,0 +1,35 @@
+syntax = "proto3";
+package openagents.verse.doc.v1alpha1;
+
+// What coax/web/api/realms.c writes itself (compliance plan step E11, GitHub
+// #13250). Every other body of the realm routes is built in SQL and carried
+// as it came; these are the bytes the route adds after the site bucket or
+// the caller's form decides something. coax/web/api/realm-wire.coax is the
+// one writer, and realms.c calls it through realm-wire.generated.c.
+// proto/verse/realm-wire-v1alpha1.json holds the bytes realms.c wrote before
+// that file; coax/web/api/realm-wire-goldens.coax writes each through the
+// codec.
+//
+// A refusal the route decides is the API's ErrorReply
+// (openagents/api/v1alpha1/error.proto), written through the same file.
+//
+// Two bodies here are text, not JSON, for a caller that asks ?as=lines:
+//   a made or forked realm    "slug SLUG\npath /worlds/SLUG\npage 0|1\n"
+//   a refusal                 its words alone (the text after "error": in
+//                             SQL's answer, up to 199 bytes; "error" when
+//                             the answer has none)
+
+// The member realms.c adds to an SQL answer once the realm's page in the
+// site bucket was written or removed: at the end of a visibility's answer
+// as jsonb spells it (`, "page": true}`), and at the end of a make's and a
+// fork's with no spaces (`,"page":true}`).
+message Paged {
+  optional bool page = 1 [json_name = "page"];
+}
+
+// 200 from POST .../<slug>/card: the picture's path with the time it was
+// kept, and whether the realm's page was written again.
+message CardReply {
+  optional string image = 1 [json_name = "image"];
+  optional bool page = 2 [json_name = "page"];
+}

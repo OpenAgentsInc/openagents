@@ -13,10 +13,10 @@ import "openagents/options/v1alpha1/json.proto";
 // new version, never by changing these bytes.
 //
 // The one writer is coax/web/api/api-wire.coax (aw_error). A route file's
-// own codec loads it (coax/web/api/service-wire.coax, seat-wire.coax) and
+// own codec loads it (coax/web/api/service-wire.coax, realm-wire.coax) and
 // the C route calls that codec's export. Goldens:
 // proto/verse/service-health-v1alpha1.json and
-// proto/verse/realm-seats-v1alpha1.json, each checked through the codec and
+// proto/verse/realm-wire-v1alpha1.json, each checked through the codec and
 // through the JSON mapper.
 message ErrorReply {
   option (openagents.options.v1alpha1.json) = "";

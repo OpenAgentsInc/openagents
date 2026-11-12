@@ -1,0 +1,123 @@
+// What coax/web/api/realms.c writes itself, one codec (Protocol E11, GitHub #13250):
+// proto/openagents/verse/doc/v1alpha1/route.proto (profile verse-doc) names the members. realms.c
+// calls the #export_c writers below through realm-wire.generated.c (deploy.sh, test.sh,
+// realm-gate.sh) and builds no body of its own:
+//   rlw_error_write        a refusal the route decides (api-wire.coax, ErrorReply)
+//   rlw_paged_write        an SQL answer with `page` added: a visibility's (spaced, as jsonb's
+//                          text) and a make's or a fork's (not spaced)
+//   rlw_card_write         POST .../<slug>/card, 200
+//   rlw_made_lines_write   a made or forked realm for a caller that reads lines
+//   rlw_error_words        a refusal's words alone, for a caller that reads lines
+// The bytes are the ones realms.c wrote before this file: proto/verse/realm-wire-v1alpha1.json
+// holds them and realm-wire-goldens.coax writes each one through here. What SQL built is JSON
+// carried as it came. A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/realm-wire.coax --library
+#load "api-wire.coax";
+
+RLW_WORDS :: 199;   // a refusal's words for a lines caller, at most
+
+rlw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], text); return aw_len(o[..]);
+}
+// answer is an object as SQL wrote it (its closing brace last); `page` goes on before the brace:
+// `, "page": true}` when spaced, `,"page":true}` when not. -1 when answer is no object.
+rlw_paged_write :: (answer: string, paged: bool, spaced: bool, out: [] u8) -> int #export_c #effects(all) {
+  if answer.count < 2 || answer[0] != '{' || answer[answer.count - 1] != '}' { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], answer[0..<answer.count - 1]);
+  jo_put(o[..], ifx spaced then ", \"page\": " else ",\"page\":");
+  jo_put(o[..], ifx paged then "true}" else "false}");
+  return aw_len(o[..]);
+}
+// {"image":"/worlds/SLUG/card.jpg?v=AT","page":true}: slug is a realm's slug and at the time the
+// card was kept (digits), written as they are.
+rlw_card_write :: (slug: string, at: string, paged: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"image\":\"/worlds/"); jo_put(o[..], slug); jo_put(o[..], "/card.jpg?v="); jo_put(o[..], at);
+  jo_put(o[..], ifx paged then "\",\"page\":true}" else "\",\"page\":false}");
+  return aw_len(o[..]);
+}
+// "slug SLUG\npath /worlds/SLUG\npage 1\n"
+rlw_made_lines_write :: (slug: string, paged: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "slug "); jo_put(o[..], slug); jo_put(o[..], "\npath /worlds/"); jo_put(o[..], slug);
+  jo_put(o[..], ifx paged then "\npage 1\n" else "\npage 0\n");
+  return aw_len(o[..]);
+}
+// A refusal's words for a caller that reads lines: the text after `"error": "` in SQL's answer up
+// to the next quote, at most RLW_WORDS bytes; "error" when the answer has none (the API's own
+// ErrorReply has no space there, and always read so).
+rlw_error_words :: (answer: string, out: [] u8) -> int #export_c #effects(all) {
+  mark := "\"error\": \"";
+  o: [1] Jo; aw_at(o[..], out, 0);
+  at := -1;
+  for i: 0..<answer.count - mark.count + 1 { if at < 0 && answer[i..<i + mark.count] == mark { at = i + mark.count; } }
+  if at < 0 { jo_put(o[..], "error"); return aw_len(o[..]); }
+  n := 0;
+  while at + n < answer.count && answer[at + n] != '"' && n < RLW_WORDS { n += 1; }
+  jo_put(o[..], answer[at..<at + n]);
+  return aw_len(o[..]);
+}
+
+#test "a refusal is the API's ErrorReply" {
+  b: [64] u8;
+  n := rlw_error_write("no such world", b[..]);
+  #assert n == 25 && cast(string) b[0..<n] == "{\"error\":\"no such world\"}" && rlw_error_write("no such world", b[0..<24]) == -1;
+  n = rlw_error_write("this world can't be forked", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"this world can't be forked\"}";
+}
+#test "page goes on the end of an SQL answer, spaced for a visibility and not for a make" {
+  b: [128] u8;
+  n := rlw_paged_write("{\"was\": \"private\", \"slug\": \"s\", \"visibility\": \"public\"}", true, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"was\": \"private\", \"slug\": \"s\", \"visibility\": \"public\", \"page\": true}";
+  n = rlw_paged_write("{\"was\": \"private\", \"slug\": \"s\", \"visibility\": \"public\"}", false, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"was\": \"private\", \"slug\": \"s\", \"visibility\": \"public\", \"page\": false}";
+  n = rlw_paged_write("{\"name\": \"N\", \"path\": \"/worlds/s\", \"slug\": \"s\"}", true, false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\": \"N\", \"path\": \"/worlds/s\", \"slug\": \"s\",\"page\":true}";
+  n = rlw_paged_write("{\"name\": \"N\", \"path\": \"/worlds/s\", \"slug\": \"s\"}", false, false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\": \"N\", \"path\": \"/worlds/s\", \"slug\": \"s\",\"page\":false}" && rlw_paged_write("{\"name\": \"N\", \"path\": \"/worlds/s\", \"slug\": \"s\"}", false, false, b[0..<n - 1]) == -1;
+  n = rlw_paged_write("{}", true, false, b[..]);
+  #assert cast(string) b[0..<n] == "{,\"page\":true}";
+  #assert rlw_paged_write("", true, true, b[..]) == -1 && rlw_paged_write("}", true, true, b[..]) == -1 && rlw_paged_write("[]", true, true, b[..]) == -1 && rlw_paged_write("{\"a\": 1", true, true, b[..]) == -1 && rlw_paged_write("x}", true, true, b[..]) == -1;
+}
+#test "the card's answer and a made realm's lines" {
+  b: [128] u8;
+  n := rlw_card_write("moonlit-marsh", "1762190000123", true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"image\":\"/worlds/moonlit-marsh/card.jpg?v=1762190000123\",\"page\":true}";
+  n = rlw_card_write("s", "0", false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"image\":\"/worlds/s/card.jpg?v=0\",\"page\":false}" && rlw_card_write("s", "0", false, b[0..<n - 1]) == -1;
+  n = rlw_made_lines_write("moonlit-marsh", true, b[..]);
+  #assert cast(string) b[0..<n] == "slug moonlit-marsh\npath /worlds/moonlit-marsh\npage 1\n";
+  n = rlw_made_lines_write("s", false, b[..]);
+  #assert cast(string) b[0..<n] == "slug s\npath /worlds/s\npage 0\n" && rlw_made_lines_write("s", false, b[0..<n - 1]) == -1;
+}
+#test "a refusal's words for a lines caller: SQL's spelling, cut at 199 bytes, and error when there are none" {
+  b: [256] u8;
+  n := rlw_error_words("{\"error\": \"say what to make\"}", b[..]);
+  #assert cast(string) b[0..<n] == "say what to make";
+  n = rlw_error_words("{\"rev\": 2, \"error\": \"changed since\", \"x\": \"y\"}", b[..]);
+  #assert cast(string) b[0..<n] == "changed since";
+  n = rlw_error_words("{\"error\":\"not asked\"}", b[..]);
+  #assert cast(string) b[0..<n] == "error";
+  n = rlw_error_words("", b[..]);
+  #assert cast(string) b[0..<n] == "error";
+  n = rlw_error_words("{\"error\": \"", b[..]);
+  #assert n == 0;
+  n = rlw_error_words("{\"error\": \"\"}", b[..]);
+  #assert n == 0;
+  n = rlw_error_words("{\"error\": \"unclosed", b[..]);
+  #assert cast(string) b[0..<n] == "unclosed";
+  n = rlw_error_words("{\"error\": \"a\", \"error\": \"b\"}", b[..]);
+  #assert cast(string) b[0..<n] == "a";
+  long: [260] u8; mark := "{\"error\": \"";
+  for i: 0..<mark.count { long[i] = mark[i]; }
+  for i: mark.count..<258 { long[i] = 'w'; }
+  long[258] = '"'; long[259] = '}';
+  n = rlw_error_words(cast(string) long[..], b[..]);
+  #assert n == 199 && b[198] == 'w';
+  n = rlw_error_words(cast(string) long[0..<mark.count + 199], b[..]);
+  #assert n == 199;
+  n = rlw_error_words(cast(string) long[0..<mark.count + 198], b[..]);
+  #assert n == 198;
+  #assert rlw_error_words("{\"error\": \"say what to make\"}", b[0..<15]) == -1 && rlw_error_words("x", b[0..<4]) == -1 && RLW_WORDS == 199;
+}
