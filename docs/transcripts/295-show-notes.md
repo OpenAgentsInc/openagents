@@ -399,7 +399,7 @@ tour you recorded.
 - **Pick the tour.** Both work. Tour B is 42 stations; section 7 says what
   each shows.
 - **Production:** `openagents.com/worlds/nostr-lab` has all 42 stations
-  (released 2026-11-12, `c2aceaca28`). The first station's HUD reads
+  (released 2026-11-12, `813edb9bd4`). The first station's HUD reads
   `1 / 42`.
 - **Tour A, steps 1 to 7:** choose the commands. The book's runnable
   examples are in `nostr/examples/` (`events.coax`, `filters.coax`,
