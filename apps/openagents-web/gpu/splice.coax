@@ -1,0 +1,5 @@
+// Splice's shaders (splice.coax, docs/verse/art-styles.md, Anime): the same anime scene, ink and
+// post pass as Anime Lab, so this file loads Anime Lab's. build.sh writes apps/openagents-web/splice.wgsl
+// from it with coax/web/wgsl-module.coax (splice.module, and animelab.bindings, which the two share).
+// No WGSL is written by hand.
+#load "animelab.coax";

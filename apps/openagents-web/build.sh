@@ -309,6 +309,9 @@ valleyworld=$!
 # anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads verse/style.coax in gpu/animelab.coax.)
 timed animelab "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
 animelab=$!
+# /worlds/splice (unlisted): Mars at dusk on Anime Lab's shading (splice.coax, splice-face.c, gpu/splice.coax).
+timed splice "$here/../../coax/web/wasm.sh" "$here/splice.coax" "$here/splice-face.c" "$here/build/splice.wasm" "$here/animelab-style.coax" &
+splice=$!
 # /worlds/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 timed droprealm "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
@@ -525,6 +528,7 @@ wait "$room_latency"
 wait "$fairy"
 wait "$villa"
 wait "$animelab"
+wait "$splice"
 wait "$changelog"
 
 wait "$state_lab"

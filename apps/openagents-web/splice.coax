@@ -1,0 +1,129 @@
+// Splice, openagents.com/worlds/splice (unlisted): a robot stands on Mars at dusk, drawn in the
+// anime style (docs/verse/art-styles.md, Anime: cel bands, coloured ink, the vivid dusk sky).
+//
+// Everything that draws is Aethyr's and Anime Lab's: the mesh writers (animelab-mesh.coax), the
+// uniform layout and camera rows (animelab.coax), the anime style block (animelab-style.coax), and
+// the anime shader (gpu/splice.coax loads gpu/animelab.coax). Only the world is new here: the
+// dune floor, the mesas, the rocks and the robot. Nothing about the academy, the stage or the
+// director is used.
+//   coax/bin/coax test apps/openagents-web/splice.coax
+#load "animelab.coax";
+
+SP_WORLD_WORDS :: 150000;
+
+// The state the page keeps: the world is written once, the clock runs while the page is open.
+Splice :: struct {
+  started: bool;
+  world_built: bool;
+  world_n: int;
+  live_n: int;
+  time: f32;
+  over: bool;
+  draws: [4] u32;
+}
+
+// A deterministic value in [0, 1) for a seed.
+sp_rand :: (k: f32) -> f32 { return wh(k * 1.37 + 3.1, k * 0.71 + 9.7); }
+
+// A frame placed at local (x, y, z) of f, keeping its axes.
+sp_at :: (f: Frame, x: f32, y: f32, z: f32) -> Frame { return frame_move(f, fp(f, x, y, z)); }
+
+// The robot, original: cream plates, a dark chassis, a red band, a teal eye and chest light.
+sp_robot :: (buf: [] u32, p: [] Pen, f: Frame) {
+  pen_set(p, 20, MAT_CLOTH, 0.23, 0.16, 0.21);
+  box(buf, p, sp_at(f, -0.28, 0.42, 0), 0.14, 0.42, 0.14);      // left leg
+  box(buf, p, sp_at(f, 0.28, 0.42, 0), 0.14, 0.42, 0.14);       // right leg
+  box(buf, p, sp_at(f, -0.00, 1.02, 0), 0.42, 0.14, 0.32);      // hips
+  pen_set(p, 21, MAT_SKIN, 0.95, 0.90, 0.78);
+  box(buf, p, sp_at(f, -0.28, 0.07, 0.06), 0.20, 0.07, 0.26);  // feet
+  box(buf, p, sp_at(f, 0.28, 0.07, 0.06), 0.20, 0.07, 0.26);
+  box(buf, p, sp_at(f, 0, 1.55, 0), 0.50, 0.45, 0.36);          // torso
+  pen_set(p, 22, MAT_FLAT, 0.83, 0.27, 0.23);
+  box(buf, p, sp_at(f, 0, 1.2, 0), 0.52, 0.07, 0.37);           // red band
+  pen_set(p, 21, MAT_SKIN, 0.95, 0.90, 0.78);
+  box(buf, p, sp_at(f, 0, 2.30, 0), 0.36, 0.30, 0.32);          // head
+  pen_set(p, 23, MAT_WINDOW, 0.23, 0.16, 0.21);
+  box(buf, p, sp_at(f, 0, 2.33, 0.33), 0.28, 0.10, 0.02);       // visor
+  pen_set(p, 24, MAT_GLOW, 0.25, 0.84, 0.76);
+  ball(buf, p, fp(f, 0, 1.6, 0.42), 0.11, 12);                  // chest light
+  box(buf, p, sp_at(f, 0, 2.33, 0.345), 0.20, 0.03, 0.01);      // eye glow strip
+  pen_set(p, 25, MAT_CLOTH, 0.23, 0.16, 0.21);
+  tube(buf, p, frame_at(fp(f, 0.14, 2.62, 0), 0), 0.55, 0.03, 0.03, 0.03, 0.03, 6, true);   // antenna
+  pen_set(p, 26, MAT_FLAT, 0.83, 0.27, 0.23);
+  ball(buf, p, fp(f, 0.14, 3.2, 0), 0.08, 10);                  // antenna tip
+  pen_set(p, 21, MAT_SKIN, 0.95, 0.90, 0.78);
+  limb(buf, p, fp(f, -0.62, 1.9, 0), fp(f, -0.80, 1.22, 0.10), 0.11, 0.09, fd(f, 0, 0, 1), 8);   // left arm, hanging
+  limb(buf, p, fp(f, 0.62, 1.9, 0), fp(f, 1.05, 2.72, 0.10), 0.11, 0.09, fd(f, 0, 0, 1), 8);     // right arm, raised
+  ball(buf, p, fp(f, 1.12, 2.88, 0.10), 0.14, 10);              // the raised hand
+}
+
+// The world: a dune floor, lavender mesas on the horizon, coral and ochre rocks, and the robot.
+sp_build_world :: (buf: [] u32, p: [] Pen) {
+  pen_set(p, 1, MAT_FLOOR, 0.86, 0.50, 0.37);
+  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
+  // dune swells: flat ochre blobs across the basin, kept off the robot's square
+  for i: 0..<18 {
+    k := cast(f32) i;
+    x := (sp_rand(k + 1) * 2 - 1) * 46;
+    z := -22 - sp_rand(k + 40) * 48;   // well behind the robot: no dune reaches the camera
+    if abs(x) < 6 && abs(z) < 6 { z -= 9; }
+    r := 4 + sp_rand(k + 80) * 7;
+    pen_set(p, 2, MAT_FLOOR, 0.89, 0.66, 0.35);
+    ellipsoid(buf, p, frame_at(v3(x, -0.25 * r * 0.3, z), sp_rand(k + 9) * 6), r, r * 0.3, r * 0.8, 12, 6, 0);
+  }
+  // mesas: lavender cones on the far horizon
+  for i: 0..<9 {
+    k := cast(f32) i;
+    x := (k - 4) * 22 + (sp_rand(k + 120) - 0.5) * 8;
+    z := -70 - sp_rand(k + 130) * 40;
+    h := 14 + sp_rand(k + 140) * 22;
+    pen_set(p, 3, MAT_WORLD, 0.64, 0.55, 0.80);
+    tube(buf, p, frame_at(v3(x, -0.5, z), 0), h, 12 + sp_rand(k + 150) * 10, 12 + sp_rand(k + 150) * 10, 4 + sp_rand(k + 160) * 4, 4 + sp_rand(k + 160) * 4, 7, true);
+  }
+  // rocks: coral and dark ochre, scattered near the robot
+  for i: 0..<22 {
+    k := cast(f32) i;
+    a := sp_rand(k + 200) * 6.2832;
+    d := 3.5 + sp_rand(k + 210) * 14;
+    r := 0.25 + sp_rand(k + 220) * 0.7;
+    pen_set(p, 4, MAT_WORLD, 0.60, 0.30, 0.24);
+    ellipsoid(buf, p, frame_at(v3(cos(a) * d, r * 0.2, sin(a) * d), sp_rand(k + 230) * 6), r, r * 0.7, r * 0.9, 8, 5, 0);
+  }
+  sp_robot(buf, p, frame_at(v3(0, 0, 0), -0.35));
+}
+
+// The frame: the anime look over the world, one fixed camera and the dusk key light.
+splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+                 world: [] u32, live: [] u32, style: [] f32) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
+  if !s[0].started { s[0].started = true; s[0].time = 0; }
+  if !s[0].world_built {
+    pen := [1] Pen.[Pen.{}];
+    sp_build_world(world, pen[..]);
+    s[0].world_n = pen[0].n; s[0].world_built = true; s[0].over = pen[0].over;
+  }
+  if !still { s[0].time += clamp(dt, 0, 0.1); }
+  t := s[0].time;
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  for i: 0..<lo_i(style.count, STYLE_FLOATS) { u[U_STYLE + i] = style[i]; }
+  cam := CamNow.{eye = v3(-5.6, 2.6, 13.0), at = v3(0.5, 1.7, 0), fov = 0.52};
+  view_rows(u, cam, width / height);
+  key := unit_or(v3(-0.5, 0.27, -0.82), v3(0, 1, 0));
+  if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
+  shadow_rows(u, key);
+  put4(u, U_SIZE, width, height, t, dpr);
+  ink := hi(1, lo(width, height) / 720);
+  put4(u, U_FX, 0, 0, 0, ink);   // no impact, flash or speed lines: a still world
+  put4(u, U_DRAW, 0, 0, 0, -1);
+  put4(u, U_MISC, ifx animelab_phone(width, dpr) then 1.0f32 else 0.0f32, 0.5, 0.45, 1);
+  s[0].live_n = 0;
+  s[0].draws[0] = 0; s[0].draws[1] = cast(u32) s[0].world_n; s[0].draws[2] = 0x80000000; s[0].draws[3] = 1;
+  return 0;   // no overlay: the world is the whole page
+}
+
+coaxial_splice_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_splice_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_splice_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+splice_world_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_n; }
+splice_live_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].live_n; }
+splice_draw_count :: (s: [] Splice) -> int #export_c #effects(all) { return ifx s[0].world_built then 1 else 0; }
