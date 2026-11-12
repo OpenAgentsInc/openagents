@@ -93,7 +93,7 @@ tool_main :: () -> int #export_c #effects(all) {
     }
   }
   if !signed { print("passkey-live: no test account (%)\n", ifx v >= 0 then jv_raw(d, jv_get(d, v, "t")) else cdp_error(c[..])); cdp_close(c[..]); return 1; }
-  st := pl_eval(c[..], "__pk.call('GET','/api/auth/me').then(r=>({s:r.s,t:r.j.account||''}))", t[..]);
+  st := pl_eval(c[..], "__pk.call('GET','/api/auth/account').then(r=>({s:r.s,t:r.j.account||''}))", t[..]);
   acct: [80] u8; an := 0; for ch: pl_text(t[..]) { if an < 80 { acct[an] = ch; an += 1; } }
   good = pl_ok("the test account is logged in", st == 200 && an > 5, pl_text(t[..])) && good;
   print("     test account %\n", cast(string) acct[0..<an]);
@@ -106,11 +106,11 @@ tool_main :: () -> int #export_c #effects(all) {
   // 2. log out, then log in with the passkey
   st = pl_eval(c[..], "__pk.call('POST','/api/auth/logout','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
   good = pl_ok("logged out", st == 200, pl_text(t[..])) && good;
-  st = pl_eval(c[..], "__pk.call('GET','/api/auth/me').then(r=>({s:r.s,t:r.t}))", t[..]);
-  good = pl_ok("nobody is logged in", st == 401, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/auth/account').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("nobody is logged in", st == 200 && pl_has(pl_text(t[..]), "\"logged_in\":false"), pl_text(t[..])) && good;
   st = pl_eval(c[..], "__assert('login').catch(e=>({s:0,t:String(e)}))", t[..]);
   good = pl_ok("LOG IN WITH A PASSKEY logs in", st == 200, pl_text(t[..])) && good;
-  st = pl_eval(c[..], "__pk.call('GET','/api/auth/me').then(r=>({s:r.s,t:(r.j.account||'')+' '+(r.j.via||'')+' '+(r.j.level||'')}))", t[..]);
+  st = pl_eval(c[..], "__pk.call('GET','/api/auth/account').then(r=>({s:r.s,t:(r.j.account||'')+' '+(r.j.via||'')+' '+(r.j.level||'')}))", t[..]);
   me := pl_text(t[..]);
   good = pl_ok("the same account, by passkey, at L2", st == 200 && an > 0 && pl_has(me, cast(string) acct[0..<an]) && pl_has(me, "passkey") && pl_has(me, "L2"), me) && good;
 
