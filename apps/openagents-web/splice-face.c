@@ -55,7 +55,7 @@ EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32
 }
 // The world is written once and copied to the GPU once.
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)splice_world_n(at(state)) : frames;
+  return k == 0 ? (uint32_t)splice_world_version(at(state)) : frames;
 }
 
 // Splice has no controls yet: the page is a view.
@@ -65,7 +65,10 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   (void)state; (void)x; (void)y; (void)phase; (void)kind; (void)id; return 0u;
 }
 
-static uint8_t inbox[1024];
+static uint8_t inbox[1024];   /* the page's facts (kind 600), read for ?scene= */
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) { (void)state; (void)kind; (void)length; }
+EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
+  if (length > sizeof inbox) length = sizeof inbox;
+  splice_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
+}

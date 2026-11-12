@@ -20,6 +20,9 @@ Splice :: struct {
   time: f32;
   over: bool;
   draws: [4] u32;
+  scene: int;                 // ?scene=N in the page's URL: which scene (SP_SCENES)
+  built_scene: int = -1;
+  world_gen: int;             // counts the world's writes: the page copies the store when it changes
 }
 
 // A deterministic value in [0, 1) for a seed.
@@ -57,8 +60,8 @@ sp_robot :: (buf: [] u32, p: [] Pen, f: Frame) {
   ball(buf, p, fp(f, 1.12, 2.88, 0.10), 0.14, 10);              // the raised hand
 }
 
-// The world: a dune floor, lavender mesas on the horizon, coral and ochre rocks, and the robot.
-sp_build_world :: (buf: [] u32, p: [] Pen) {
+// Scene 0, Dunes: a dune floor, lavender mesas on the horizon, coral and ochre rocks, and the robot.
+sp_dunes :: (buf: [] u32, p: [] Pen) {
   pen_set(p, 1, MAT_FLOOR, 0.86, 0.50, 0.37);
   quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
   // dune swells: flat ochre blobs across the basin, kept off the robot's square
@@ -92,21 +95,158 @@ sp_build_world :: (buf: [] u32, p: [] Pen) {
   sp_robot(buf, p, frame_at(v3(0, 0, 0), -0.35));
 }
 
+
+// Scene 1, Arch (Pinterest: a red sandstone arch over a plain, a small figure beneath it): the robot
+// stands in the arch's shadow, and mesas stand off across the sand.
+sp_arch :: (buf: [] u32, p: [] Pen) {
+  pen_set(p, 1, MAT_FLOOR, 0.93, 0.72, 0.42);
+  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
+  pen_set(p, 2, MAT_WORLD, 0.84, 0.44, 0.30);
+  block(buf, p, -4.6, 0, -4, 2.3, 9.0, 2.4);     // left pier
+  block(buf, p, 4.6, 0, -4, 2.3, 9.0, 2.4);      // right pier
+  pen_set(p, 3, MAT_WORLD, 0.78, 0.36, 0.26);
+  block(buf, p, 0, 7.6, -4, 7.6, 2.8, 2.6);      // the lintel, over the span
+  for i: 0..<6 {
+    k := cast(f32) i;
+    pen_set(p, 4, MAT_WORLD, 0.80, 0.42, 0.28);
+    ellipsoid(buf, p, frame_at(v3(-16 + k * 6.4, 0.6, -18 - sp_rand(k + 300) * 8), 0), 1.6 + sp_rand(k + 310) * 1.8, 1.4, 1.5, 10, 5, 0);
+  }
+  pen_set(p, 5, MAT_WORLD, 0.64, 0.55, 0.80);
+  for i: 0..<7 {
+    k := cast(f32) i;
+    tube(buf, p, frame_at(v3(-50 + k * 16, -0.5, -70 - sp_rand(k + 330) * 20), 0), 16 + sp_rand(k + 340) * 14, 12, 12, 5, 5, 7, true);
+  }
+  sp_robot(buf, p, frame_at(v3(0, 0, 0.5), 0.15));
+}
+
+// The red scissor crabs of the Pinterest sheet: a red body on splayed legs, two pincers, a rear fold.
+sp_crab :: (buf: [] u32, p: [] Pen, f: Frame) {
+  pen_set(p, 30, MAT_FLAT, 0.80, 0.20, 0.18);
+  ellipsoid(buf, p, frame_at(fp(f, 0, 0.75, 0), 0), 1.15, 0.5, 0.9, 12, 6, 0);
+  pen_set(p, 31, MAT_FLAT, 0.84, 0.26, 0.22);
+  for side: 0..<2 {
+    sx := ifx side == 0 then -1.0f32 else 1.0f32;
+    limb(buf, p, fp(f, sx * 0.8, 0.9, 0.7), fp(f, sx * 1.7, 0.95, 1.5), 0.13, 0.11, fd(f, 0, 1, 0), 8);
+    ball(buf, p, fp(f, sx * 1.85, 0.95, 1.75), 0.34, 10);
+  }
+  pen_set(p, 32, MAT_CLOTH, 0.23, 0.16, 0.21);
+  for side: 0..<2 {
+    sx := ifx side == 0 then -1.0f32 else 1.0f32;
+    for j: 0..<3 {
+      z := -0.4 + cast(f32) j * 0.45;
+      limb(buf, p, fp(f, sx * 0.9, 0.6, z), fp(f, sx * 1.8, 0.05, z + 0.1), 0.07, 0.05, fd(f, 0, 0, 1), 6);
+    }
+  }
+}
+
+// Scene 2, Scissors (Pinterest: two red crab-bots with pincers, on a coral plain).
+sp_crabs :: (buf: [] u32, p: [] Pen) {
+  pen_set(p, 1, MAT_FLOOR, 0.86, 0.56, 0.40);
+  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
+  for i: 0..<14 {
+    k := cast(f32) i;
+    a := sp_rand(k + 400) * 6.2832;
+    d := 6 + sp_rand(k + 410) * 18;
+    r := 0.4 + sp_rand(k + 420) * 1.1;
+    pen_set(p, 4, MAT_WORLD, 0.66, 0.34, 0.26);
+    ellipsoid(buf, p, frame_at(v3(cos(a) * d, r * 0.2, sin(a) * d), sp_rand(k + 430) * 6), r, r * 0.6, r * 0.9, 8, 5, 0);
+  }
+  sp_crab(buf, p, frame_at(v3(-2.7, 0, 0.5), 0.5));
+  sp_crab(buf, p, frame_at(v3(2.9, 0, -1.8), -0.45));
+}
+
+// Scene 3, Walker (Pinterest: the white and orange legged machine striding over pale ground): a
+// white body on four long jointed legs with orange bands and dark feet.
+sp_walker :: (buf: [] u32, p: [] Pen) {
+  pen_set(p, 1, MAT_FLOOR, 0.93, 0.82, 0.62);
+  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
+  pen_set(p, 2, MAT_SKIN, 0.97, 0.96, 0.92);
+  ellipsoid(buf, p, frame_at(v3(0, 4.0, 0), 0), 1.25, 1.0, 1.05, 14, 8, 0);
+  pen_set(p, 3, MAT_FLAT, 0.95, 0.45, 0.15);
+  box(buf, p, frame_at(v3(0, 4.6, 1.0), 0), 0.95, 0.12, 0.05);
+  box(buf, p, frame_at(v3(0, 3.5, 1.0), 0), 0.95, 0.10, 0.05);
+  pen_set(p, 4, MAT_CLOTH, 0.23, 0.16, 0.21);
+  for i: 0..<4 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32;
+    sz := ifx i < 2 then -1.0f32 else 1.0f32;
+    hip := v3(sx * 0.8, 3.4, sz * 0.6);
+    knee := v3(sx * 2.3, 2.2, sz * 1.6);
+    foot := v3(sx * 2.7, 0.2, sz * 2.1);
+    limb(buf, p, hip, knee, 0.24, 0.17, v3(1, 0, 0), 8);
+    limb(buf, p, knee, foot, 0.17, 0.12, v3(1, 0, 0), 8);
+    ball(buf, p, foot, 0.28, 10);
+  }
+}
+
+// Scene 4, Terraces (Pinterest: a lavender city cut into stepped terraces, a tower, a small robot
+// at its foot): stacked blocks, a dome, a sage-green tower.
+sp_terraces :: (buf: [] u32, p: [] Pen) {
+  pen_set(p, 1, MAT_FLOOR, 0.66, 0.56, 0.82);
+  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
+  for lvl: 0..<5 {
+    k := cast(f32) lvl;
+    if lvl % 2 == 0 { pen_set(p, 2, MAT_WORLD, 0.62, 0.52, 0.80); } else { pen_set(p, 2, MAT_WORLD, 0.86, 0.74, 0.68); }
+    block(buf, p, 0, k * 2.2, 0, 8.0 - k * 1.4, 2.2, 6.0 - k * 0.9);
+    pen_set(p, 5, MAT_WINDOW, 0.24, 0.20, 0.36);
+    for w: 0..<4 {
+      wx := (cast(f32) w - 1.5) * (8.0 - k * 1.4) * 0.42;   // spaced across this terrace's own width
+      box(buf, p, frame_at(v3(wx, k * 2.2 + 1.2, 6.0 - k * 0.9 + 0.02), 0), 0.5, 0.45, 0.02);
+    }
+  }
+  pen_set(p, 6, MAT_SKIN, 0.90, 0.86, 0.80);
+  ellipsoid(buf, p, frame_at(v3(0, 11.0, 0), 0), 1.9, 1.3, 1.9, 14, 7, 0);
+  pen_set(p, 7, MAT_WORLD, 0.55, 0.66, 0.50);
+  tube(buf, p, frame_at(v3(9.5, 0, -4), 0), 15, 1.3, 1.0, 0.8, 0.6, 8, true);
+  sp_robot(buf, p, frame_at(v3(-6.5, 0, 10), 0.5));
+}
+
+// Each scene's world, written once when the scene is chosen.
+sp_build_world :: (buf: [] u32, p: [] Pen, scene: int) {
+  if scene == 1 { sp_arch(buf, p); } else if scene == 2 { sp_crabs(buf, p); } else if scene == 3 { sp_walker(buf, p); } else if scene == 4 { sp_terraces(buf, p); } else { sp_dunes(buf, p); }
+}
+// Each scene's camera (one fixed view per scene).
+sp_camera :: (scene: int) -> CamNow {
+  if scene == 1 { return CamNow.{eye = v3(0, 2.2, 21.0), at = v3(0, 4.2, -1), fov = 0.62}; }
+  if scene == 2 { return CamNow.{eye = v3(0, 2.6, 12.0), at = v3(0, 1.2, 0), fov = 0.6}; }
+  if scene == 3 { return CamNow.{eye = v3(-9.0, 3.2, 17.0), at = v3(0, 4.2, 0), fov = 0.62}; }
+  if scene == 4 { return CamNow.{eye = v3(-14.0, 7.0, 34.0), at = v3(0, 6.0, 0), fov = 0.6}; }
+  return CamNow.{eye = v3(-5.6, 2.6, 13.0), at = v3(0.5, 1.7, 0), fov = 0.52};
+}
+SP_SCENES :: 5;
+
+// The page's facts (kind 600) carry the URL: ?scene=N picks the scene, 0 to 4; anything else is 0.
+splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
+  if kind != 600 || s.count < 1 { return; }
+  target := "scene=";
+  for i: 0..<body.count {
+    hit := true;
+    for j: 0..<target.count {
+      if i + j >= body.count || body[i + j] != target[j] { hit = false; break; }
+    }
+    if hit && i + target.count < body.count {
+      d := cast(int) body[i + target.count] - 48;
+      s[0].scene = ifx d >= 0 && d < SP_SCENES then d else 0;
+      return;
+    }
+  }
+}
+
 // The frame: the anime look over the world, one fixed camera and the dusk key light.
 splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                  world: [] u32, live: [] u32, style: [] f32) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
   if !s[0].started { s[0].started = true; s[0].time = 0; }
-  if !s[0].world_built {
+  if !s[0].world_built || s[0].built_scene != s[0].scene {
     pen := [1] Pen.[Pen.{}];
-    sp_build_world(world, pen[..]);
-    s[0].world_n = pen[0].n; s[0].world_built = true; s[0].over = pen[0].over;
+    sp_build_world(world, pen[..], s[0].scene);
+    s[0].world_n = pen[0].n; s[0].world_built = true; s[0].built_scene = s[0].scene;
+    s[0].over = pen[0].over; s[0].world_gen += 1;
   }
   if !still { s[0].time += clamp(dt, 0, 0.1); }
   t := s[0].time;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   for i: 0..<lo_i(style.count, STYLE_FLOATS) { u[U_STYLE + i] = style[i]; }
-  cam := CamNow.{eye = v3(-5.6, 2.6, 13.0), at = v3(0.5, 1.7, 0), fov = 0.52};
+  cam := sp_camera(s[0].scene);
   view_rows(u, cam, width / height);
   key := unit_or(v3(-0.5, 0.27, -0.82), v3(0, 1, 0));
   if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
@@ -125,5 +265,6 @@ coaxial_splice_max_vertices :: () -> int #export_c #effects(all) { return MAX_VE
 coaxial_splice_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 coaxial_splice_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 splice_world_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_n; }
+splice_world_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_gen; }
 splice_live_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].live_n; }
 splice_draw_count :: (s: [] Splice) -> int #export_c #effects(all) { return ifx s[0].world_built then 1 else 0; }
