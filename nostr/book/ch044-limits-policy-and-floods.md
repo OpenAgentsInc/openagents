@@ -54,7 +54,7 @@ refusal is the exact text the relay sends.
 
 | Limit | Value | Enforced by | What a client receives past it |
 | --- | --- | --- | --- |
-| Connections | 16 slots (`RY_CONNS`) | `rr_free_slot` | the socket is closed without a `101` |
+| Connections | 256 slots (`RY_CONNS`) | `rr_free_slot` | the socket is closed without a `101` |
 | HTTP head | 10 s from accept (`RR_HEAD_S`) | `rr_deadline` | the socket is dropped |
 | Part of a frame held | 30 s with no complete frame (`RR_FRAME_S`) | `rr_deadline` | close 1008 |
 | Frame or message | 131,072 bytes (`RS_MAX_MESSAGE`) | `wss_frame_read`, `ws_take`, `rr_frame_read` | close 1009, before any payload byte |
@@ -274,8 +274,9 @@ relay buffer more than one frame and one read: `RY_IN` is `RS_MAX_MESSAGE +
 
 ### Connections and slow clients
 
-Sixteen connections take all 16 slots. `rr_free_slot` gives the 17th −1,
-and the relay closes it without a `101`. Slots come back through
+`RY_CONNS` connections (256) take every slot. `rr_free_slot` gives the next
+one −1, and the relay closes it without a `101` (the example shows it with
+16 handles). Slots come back through
 `rr_deadline`, which the relay calls for every connection at most a second
 apart:
 
@@ -285,8 +286,10 @@ apart:
 | part of a frame held (last frame at 1000) | keep at 1029 | close 1008 at 1030 |
 | idle WebSocket, nothing buffered | keep, however long | keep |
 
-An idle WebSocket is kept because a Pylon waits for jobs that way. So
-sixteen idle but valid connections still hold every slot; no deadline can
+An idle WebSocket is kept because a Pylon waits for jobs that way. The host
+turns on TCP keepalive (60 s idle, then 4 probes 15 s apart), so a peer that
+vanished without closing loses its slot in about two minutes. Still, 256
+idle but valid connections hold every slot; no deadline can
 tell them from honest clients. Per-address connection limits would, and
 they need the peer address from the host.
 

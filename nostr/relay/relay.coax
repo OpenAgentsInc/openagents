@@ -169,7 +169,11 @@ ry_journal_truncate :: (n: int) -> int #foreign #effects(all);
 // RY_IN holds one partial frame (at most RS_MAX_MESSAGE + 14 bytes) plus one
 // transport read (socket-server-native.h's CXSRV_MAX_IN, 65536), so a client
 // that pipelines a full-size frame and the next one is never cut off.
-RY_CONNS :: 16; RY_IN :: RS_MAX_MESSAGE + 14 + 65536; RY_OUT :: 140000; RY_IO_MS :: 2000;
+// Connections at once: production's relay.openagents.com held up to 37
+// WebSockets at its hourly 99th percentile (Cloud Run, 2026-11-09 to 11-12),
+// so 256 leaves room; socket-server-native.h's CXSRV_MAX is above it, so the
+// relay, not the host, refuses the 257th.
+RY_CONNS :: 256; RY_IN :: RS_MAX_MESSAGE + 14 + 65536; RY_OUT :: 140000; RY_IO_MS :: 2000;
 RY_SENT :: 2032;   // 16 filters x 127 events
 // Room past the frame limit for the one range neg_reconcile writes before it
 // cuts (16 fingerprints with their bounds, or an IdList of 31 ids).

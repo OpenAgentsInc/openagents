@@ -5,17 +5,17 @@ Builds coax/relay (release, or ASan+UBSan with --sanitize), starts it with a
 tailnet address with --listen), and drives it past every limit the R1 record
 names, sampling VmRSS and VmHWM from /proc/PID/status every 0.2 s:
 
-  connections   16 WebSockets, then EXTRA more (each closed, no 101)
-  subscriptions 32 per connection on all 16 (each about 8 KiB of filters),
+  connections   CONNS (256, relay.coax's RY_CONNS) WebSockets, then EXTRA more (each closed, no 101)
+  subscriptions 32 per connection on all CONNS (each about 8 KiB of filters),
                 the 33rd refused; 17 filters, over 8192 bytes, an 8-open-
                 filter query cost, all refused
   frames        a 131074-byte text frame (close 1009), a header claiming
-                2^40 bytes (close 1009), 16 connections each holding 140 KiB
+                2^40 bytes (close 1009), CONNS connections each holding 140 KiB
                 of an unfinished frame
   events        EVENTS valid signed events (a TEST-ONLY key, the sha256 of a
-                fixed label), fanned out live to 16 subscriptions, until the
+                fixed label), fanned out live to FANOUT (16) connections, until the
                 store answers "relay storage is full"; then more are refused
-  slowloris     16 connections trickling an HTTP head or a frame one byte at
+  slowloris     CONNS connections trickling an HTTP head or a frame one byte at
                 a time; a fresh client meanwhile
 
 Never touches a public relay: the only relay is the one started here.
@@ -42,6 +42,11 @@ def check(ok, what):
 # --- BIP-340, for test keys only -------------------------------------------
 P = 2**256 - 2**32 - 977
 N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+CONNS = 256   # relay.coax's RY_CONNS: the WebSockets the relay holds at once
+# The events phase fans each event out to FANOUT connections' 32 subscriptions, not to all
+# CONNS: at 255 x 32 matches an event the sanitized relay took over 40 minutes (#13361), and
+# the fan-out path is the same at 16 as at 255.
+FANOUT = 16
 G = (0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
      0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8)
 
@@ -324,11 +329,11 @@ def run(a, relay, port, url, out):
     check(body.startswith(b'HTTP/1.1 200') and lim.get('max_subscriptions') == 32 and lim.get('max_message_length') == 131072,
           'NIP-11 on %s:%d: max_subscriptions 32, max_message_length 131072' % (addr, port))
 
-    # Connections: 16, then EXTRA more.
+    # Connections: CONNS, then EXTRA more.
     rss.mark('connections')
-    conns = [Ws(addr, port, addr) for _ in range(16)]
+    conns = [Ws(addr, port, addr) for _ in range(CONNS)]
     for c in conns: c.wait(lambda m: m[0] == 'AUTH', 10)
-    check(all(c.challenge and len(c.challenge) == 64 for c in conns), '16 WebSockets accepted, each with its own NIP-42 challenge')
+    check(all(c.challenge and len(c.challenge) == 64 for c in conns), '%d WebSockets accepted, each with its own NIP-42 challenge' % CONNS)
     refused = 0
     t = time.time()
     for i in range(a.extra):
@@ -336,8 +341,9 @@ def run(a, relay, port, url, out):
             Ws(addr, port, addr, read=False, timeout=5).close()
         except (ConnectionError, OSError):
             refused += 1
-    check(refused == a.extra, 'connections 17 to %d: %d of %d closed without a 101 (%.1f s)' % (16 + a.extra, refused, a.extra, time.time() - t))
-    # A burst of raw sockets held open at once (beyond the C host's 32 handles).
+    check(refused == a.extra, 'connections %d to %d: %d of %d closed without a 101 (%.1f s)' % (CONNS + 1, CONNS + a.extra, refused, a.extra, time.time() - t))
+    # A burst of raw sockets held open at once: past CONNS the relay closes
+    # them, past the C host's CXSRV_MAX handles the host does.
     held = []
     for i in range(100):
         try: held.append(socket.create_connection((addr, port), 5))
@@ -354,7 +360,7 @@ def run(a, relay, port, url, out):
     check(eofs == len(held), '100 raw sockets held open past the limit: %d of %d closed by the relay' % (eofs, len(held)))
     for c in conns: c.s.sendall(c.frame(9, b'still-here'))
     time.sleep(1)
-    check(all(not c.closed for c in conns), 'the 16 accepted WebSockets still work after the burst')
+    check(all(not c.closed for c in conns), 'the %d accepted WebSockets still work after the burst' % CONNS)
 
     # Subscriptions: 32 per connection, sub 0 live on kind 1, 1..31 ~8 KiB of ids each.
     rss.mark('subscriptions')
@@ -365,13 +371,13 @@ def run(a, relay, port, url, out):
         for k in range(1, 32):
             c.send(['REQ', 's%d' % k, {'ids': ids[:60], 'limit': 1}, {'ids': ids[60:], 'limit': 1}])
     eose = sum(1 for c in conns for k in range(32) if c.wait(lambda m, k=k: m[0] == 'EOSE' and m[1] == 's%d' % k, 30))
-    if eose != 512:
+    if eose != 32 * CONNS:
         print('     closed connections: %s' % [(i, c.close_code) for i, c in enumerate(conns) if c.closed], flush=True)
-    check(eose == 512, '32 subscriptions on each of 16 connections, about 8 KiB of filters each: %d of 512 EOSE (%.1f s)' % (eose, time.time() - t))
+    check(eose == 32 * CONNS, '32 subscriptions on each of %d connections, about 8 KiB of filters each: %d of %d EOSE (%.1f s)' % (CONNS, eose, 32 * CONNS, time.time() - t))
     for c in conns:
         c.send(['REQ', 's32', {'kinds': [1]}])
     over = sum(1 for c in conns if c.wait(lambda m: m[0] == 'CLOSED' and m[1] == 's32' and 'too many active subscriptions' in m[2], 15))
-    check(over == 16, 'a 33rd subscription on each connection: %d of 16 CLOSED "restricted: too many active subscriptions"' % over)
+    check(over == CONNS, 'a 33rd subscription on each connection: %d of %d CLOSED "restricted: too many active subscriptions"' % (over, CONNS))
     c = conns[0]
     c.send(['CLOSE', 's31'])
     cases = [
@@ -396,7 +402,7 @@ def run(a, relay, port, url, out):
 
     # Frames past the limit, on fresh connections (a slot is freed first).
     rss.mark('frames')
-    conns[15].close(); time.sleep(1.5)
+    conns[CONNS - 1].close(); time.sleep(1.5)
     f = Ws(addr, port, addr)
     f.s.sendall(f.frame(1, b'[' + b' ' * 131072 + b']'))
     check(f.wait_closed(20) and f.close_code == 1009, 'a 131074-byte text frame: close %s' % f.close_code)
@@ -410,22 +416,25 @@ def run(a, relay, port, url, out):
     f.s.sendall(f.frame(0, b' ' * 200 + b']', fin=True))
     check(f.wait_closed(20) and f.close_code == 1009, 'fragments adding up past 131072 bytes: close %s' % f.close_code)
     f.close(); time.sleep(1.5)
-    # 1 connection now free (conns[15] gone): hold 140 KiB of an unfinished frame on it.
+    # 1 connection now free (conns[CONNS - 1] gone): hold 140 KiB of an unfinished frame on it.
     f = Ws(addr, port, addr)
     big = f.frame(1, b' ' * 131000)
     f.s.sendall(big[:-1])
     time.sleep(2)
     check(not f.closed, 'an unfinished 131000-byte frame is held (%d of %d bytes)' % (len(big) - 1, len(big)))
-    for cc in conns[:15]: cc.s.sendall(cc.frame(9, b'p'))
+    for cc in conns[:CONNS - 1]: cc.s.sendall(cc.frame(9, b'p'))
     time.sleep(1)
-    check(all(not cc.closed for cc in conns[:15]), 'other connections are served while it waits')
+    check(all(not cc.closed for cc in conns[:CONNS - 1]), 'other connections are served while it waits')
     f.s.sendall(big[-1:])
     r = f.wait(lambda m: m[0] == 'NOTICE', 15)
     check(r is not None, 'its last byte completes the frame (NOTICE "%s")' % (r[1] if r else None))
-    conns[15] = f
+    conns[CONNS - 1] = f
     rss.mark('frames done')
 
-    # Events: authenticate, then publish until the store is full.
+    # Events: authenticate, then publish until the store is full, fanned out to
+    # FANOUT connections (the others close first; conns[CONNS - 1] holds the frame).
+    for cc in conns[FANOUT:CONNS - 1]: cc.close()
+    time.sleep(1.5)
     rss.mark('events')
     w = conns[0]
     auth = sign(22242, [['relay', url], ['challenge', w.challenge]], '', int(time.time()))
@@ -461,7 +470,7 @@ def run(a, relay, port, url, out):
     if a.events > 2048 or a.big:
         check(full > 0 and first_full == stored, 'past the store bound every further event is refused (stored %d)' % stored)
     time.sleep(1)
-    live = [cc.count(lambda m: m[0] == 'EVENT' and m[1] == 's0') for cc in conns[1:15]]
+    live = [cc.count(lambda m: m[0] == 'EVENT' and m[1] == 's0') for cc in conns[1:FANOUT]]
     print('     live deliveries in the last window per connection: %s' % live, flush=True)
     rss.mark('events done')
 
@@ -473,7 +482,7 @@ def run(a, relay, port, url, out):
     idle = conns[0]
     silent = [socket.create_connection((addr, port), 5) for _ in range(3)]
     heads = [socket.create_connection((addr, port), 5) for _ in range(4)]
-    frames = [Ws(addr, port, addr) for _ in range(8)]
+    frames = [Ws(addr, port, addr) for _ in range(CONNS - 8)]
     head = b'GET / HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Pad: ' + b'a' * 400
     payload = frames[0].frame(1, b'["REQ","q",{"kinds":[1]}]' + b' ' * 400)
     t = time.time(); i = 0
@@ -502,7 +511,7 @@ def run(a, relay, port, url, out):
         sk.settimeout(2)
         try: gone += sk.recv(1) == b''
         except OSError: gone += 1
-    check(early is False, 'at 4 s, with all 16 slots held, a fresh client is refused')
+    check(early is False, 'at 4 s, with all %d slots held, a fresh client is refused' % CONNS)
     check(head_cut is not None and gone == 3, 'silent sockets and trickled heads are dropped at the 10 s head deadline (3 of 3 silent; first trickled write failed at %s s)' % (None if head_cut is None else '%.1f' % head_cut))
     check(late is True, 'at 13 s, after those drops, a fresh client is served')
     codes = [fr.close_code for fr in frames]

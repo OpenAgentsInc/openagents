@@ -128,6 +128,16 @@ int64_t cxsrv_accept(void) {
     if (nonblocking(fd) != 0) break;
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    /* Keepalive: a peer that vanished without a FIN (a phone that lost its
+       network) is found and its handle errors out within about two minutes,
+       so idle WebSockets that will never speak again don't hold slots. */
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof one);
+#ifdef TCP_KEEPIDLE
+    { int idle = 60, intvl = 15, cnt = 4;
+      setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof idle);
+      setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl, sizeof intvl);
+      setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof cnt); }
+#endif
     conns[i].out = malloc(CXSRV_MAX_OUT);
     if (!conns[i].out) break;
     conns[i].tls = NULL; conns[i].hs_deadline = 0;

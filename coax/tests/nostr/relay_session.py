@@ -634,7 +634,8 @@ def admin(exe, log):
         check(code == 401 and r['error'] == 'the NIP-98 event has no payload tag', 'NIP-86: no payload tag is 401')
         code, r = post(port, body, nip98(port, body), ctype='application/json')
         check(code == 415, 'NIP-86: another Content-Type is 415')
-        auth = nip98(port, body)
+        # 30 s back, so it can't be the same event (same second, same id) as the first POST above
+        auth = nip98(port, body, at=int(time.time()) - 30)
         check(post(port, body, auth)[0] == 200 and post(port, body, auth) == (401, {'result': None, 'error': 'event id already used'}),
               'NIP-86: a NIP-98 event is good once')
         code, _ = post(port, 'x' * 4097, 'Nostr x')

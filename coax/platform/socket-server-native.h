@@ -35,7 +35,7 @@ extern "C" {
 #define CXSRV_EOF (-1)
 #define CXSRV_ERROR (-3)
 #define CXSRV_FULL (-6)
-#define CXSRV_MAX (32)
+#define CXSRV_MAX (288)
 #define CXSRV_MAX_IN (65536)
 #define CXSRV_MAX_OUT (4194304)
 #define CXSRV_TLS_HANDSHAKE_MS (10000)
