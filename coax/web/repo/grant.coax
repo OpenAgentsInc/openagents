@@ -1,0 +1,190 @@
+// oa-repo's grants (docs/repos/2026-11-11-indexed-repos.md, "Who may do
+// what"; GitHub #13326): what one session may do with one repository, for a
+// short time. oa-api decides who gets one and signs it; the repo service
+// accepts a call only with a grant that covers it. The model never sees one:
+// the runner attaches it to each call.
+//
+// A grant is one line of six parts joined by dots:
+//   v1.REPO.MODE.EXPIRES.SESSION.MAC
+// REPO is the repository's slug, MODE is read, propose or fetch, EXPIRES is
+// a Unix time in seconds, SESSION names the turn it was given to (for the
+// log), and MAC is HMAC-SHA256, in hex, of everything before its dot, under
+// the key oa-api and the service share. This file decides what a grant's
+// words allow; serve.coax checks the MAC before it asks.
+//   coax/bin/coax test coax/web/repo/grant.coax
+#authority;
+
+RG_READ :: 1; RG_PROPOSE :: 2; RG_FETCH :: 3;
+// What a call wants: to read (any read operation), to change, or to bring the mirror up to date.
+RG_WANT_READ :: 1; RG_WANT_CHANGE :: 2; RG_WANT_FETCH :: 3;
+RG_OK :: 0; RG_MALFORMED :: 1; RG_EXPIRED :: 2; RG_OTHER_REPO :: 3; RG_NOT_ALLOWED :: 4;
+RG_SLUG :: 40; RG_SESSION :: 64; RG_MAC :: 64;
+RG_LIFE :: 3600;        // a grant lives an hour at most: one whose expiry is further off than that is refused
+
+RgGrant :: struct {
+  ok: bool;
+  repo: string;
+  mode: int;
+  expires: int;
+  session: string;
+  covered: string;      // what the MAC covers: the token up to the last dot
+  mac: string;          // 64 lowercase hex digits
+}
+
+rg_lower_hex :: (c: u8) -> bool #effects(all) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
+// A slug: lowercase letters, digits and -, not starting or ending with -.
+rg_slug_ok :: (s: string) -> bool #effects(all) {
+  if s.count == 0 || s.count > RG_SLUG { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return s[0] != '-' && s[s.count - 1] != '-';
+}
+// A session's name: letters, digits, _ and -.
+rg_session_ok :: (s: string) -> bool #effects(all) {
+  if s.count == 0 || s.count > RG_SESSION { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') { return false; } }
+  return true;
+}
+rg_mode :: (s: string) -> int #effects(all) {
+  if s == "read" { return RG_READ; }
+  if s == "propose" { return RG_PROPOSE; }
+  if s == "fetch" { return RG_FETCH; }
+  return 0;
+}
+// A Unix time in seconds: one to eleven digits with no leading zero. 0 otherwise.
+rg_time :: (s: string) -> int #effects(all) {
+  if s.count == 0 || s.count > 11 || s[0] == '0' { return 0; }
+  n := 0;
+  for c: s { if c < '0' || c > '9' { return 0; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+rg_mac_ok :: (s: string) -> bool #effects(all) {
+  if s.count != RG_MAC { return false; }
+  for c: s { if !rg_lower_hex(c) { return false; } }
+  return true;
+}
+// How many dots a token has, and its part k (the text between dot k - 1 and dot k), "" past the last.
+rg_dots :: (token: string) -> int #effects(all) {
+  n := 0;
+  for c: token { if c == '.' { n += 1; } }
+  return n;
+}
+rg_part :: (token: string, k: int) -> string #effects(all) {
+  from := 0; seen := 0;
+  for i: 0..<token.count {
+    if token[i] == '.' {
+      if seen == k { return cast(string) token[from..<i]; }
+      seen += 1; from = i + 1;
+    }
+  }
+  if seen == k { return cast(string) token[from..<token.count]; }
+  return "";
+}
+// The token's parts, or !ok: exactly six, each well formed.
+rg_parse :: (token: string) -> RgGrant #effects(all) {
+  none: RgGrant;
+  if rg_dots(token) != 5 { return none; }
+  g: RgGrant;
+  g.repo = rg_part(token, 1);
+  g.mode = rg_mode(rg_part(token, 2));
+  g.expires = rg_time(rg_part(token, 3));
+  g.session = rg_part(token, 4);
+  g.mac = rg_part(token, 5);
+  g.ok = rg_part(token, 0) == "v1" && rg_slug_ok(g.repo) && g.mode != 0 && g.expires != 0 && rg_session_ok(g.session) && rg_mac_ok(g.mac);
+  if !g.ok { return none; }
+  g.covered = cast(string) token[0..<token.count - RG_MAC - 1];
+  return g;
+}
+// Whether two MACs in hex are the same, looking at every digit whatever the first difference is.
+rg_mac_same :: (a: string, b: string) -> bool #effects(all) {
+  if a.count != RG_MAC || b.count != RG_MAC { return false; }
+  differ := 0;
+  for i: 0..<RG_MAC { differ = differ | (cast(int) a[i] - cast(int) b[i]); }
+  return differ == 0;
+}
+// What a grant whose MAC is good allows: RG_OK, or why not. A read grant reads; a propose grant reads
+// and changes; a fetch grant only brings the mirror up to date. Any grant is for one repository and
+// ends at its expiry, which may be no further off than RG_LIFE.
+rg_allows :: (g: RgGrant, repo: string, want: int, now: int) -> int #effects(all) {
+  if !g.ok { return RG_MALFORMED; }
+  if now >= g.expires || g.expires - now > RG_LIFE { return RG_EXPIRED; }
+  if g.repo != repo { return RG_OTHER_REPO; }
+  if want == RG_WANT_READ && (g.mode == RG_READ || g.mode == RG_PROPOSE) { return RG_OK; }
+  if want == RG_WANT_CHANGE && g.mode == RG_PROPOSE { return RG_OK; }
+  if want == RG_WANT_FETCH && g.mode == RG_FETCH { return RG_OK; }
+  return RG_NOT_ALLOWED;
+}
+rg_why :: (verdict: int) -> string #effects(all) {
+  if verdict == RG_OK { return ""; }
+  if verdict == RG_EXPIRED { return "the grant has expired"; }
+  if verdict == RG_OTHER_REPO { return "the grant is for another repository"; }
+  if verdict == RG_NOT_ALLOWED { return "the grant does not allow that"; }
+  return "the grant is not one this service reads";
+}
+
+RG_T_MAC :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+#test "a grant is six well-formed parts, and nothing else parses" {
+  g := rg_parse("v1.openagents.read.1794450000.turn-31.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert g.ok && g.repo == "openagents" && g.mode == RG_READ && g.expires == 1794450000 && g.session == "turn-31";
+  #assert g.covered == "v1.openagents.read.1794450000.turn-31" && g.mac == RG_T_MAC;
+  #assert rg_parse("v1.a.propose.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").mode == RG_PROPOSE;
+  #assert rg_parse("v1.a.fetch.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").mode == RG_FETCH;
+  #assert !rg_parse("").ok && !rg_parse("v1.a.read.5.s").ok && !rg_parse("v1.a.read.5.s.x.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v2.a.read.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.A.read.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.a.write.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.a.read.05.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.a.read.5.s s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.a.read.5.s.0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.a.read.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde").ok;
+  #assert !rg_parse("v1.a.read.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0").ok;
+  #assert !rg_parse("v1.a.read.5..0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1..read.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.a.read..s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").ok;
+  #assert !rg_parse("v1.a.read.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.").ok;
+  #assert !rg_parse("v1.a.read.5.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.x.y").ok;
+  #assert rg_parse("v1.a.read.1.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").expires == 1;
+  #assert rg_dots("") == 0 && rg_dots(".a") == 1 && rg_dots("a.b.c") == 2 && rg_dots("..") == 2;
+  #assert rg_part(".a", 0) == "" && rg_part(".a", 1) == "a" && rg_part("a.b.c", 0) == "a" && rg_part("a.b.c", 1) == "b" && rg_part("a.b.c", 2) == "c" && rg_part("a.b.c", 3) == "" && rg_part("ab", 0) == "ab" && rg_part("ab", 1) == "" && rg_part("a.", 1) == "";
+}
+
+#test "a slug, a session, a time and a MAC, each at its edges" {
+  #assert rg_slug_ok("openagents") && rg_slug_ok("a") && rg_slug_ok("z9") && rg_slug_ok("a-b") && rg_slug_ok("0") && rg_slug_ok("9z");
+  #assert !rg_slug_ok("") && !rg_slug_ok("-a") && !rg_slug_ok("a-") && !rg_slug_ok("A") && !rg_slug_ok("a_b") && !rg_slug_ok("a.b") && !rg_slug_ok("a/b") && !rg_slug_ok("a{") && !rg_slug_ok("a`") && !rg_slug_ok("a:") && !rg_slug_ok("a/");
+  slug: [RG_SLUG + 2] u8; for i: 0..<slug.count { slug[i] = 'a'; }
+  #assert rg_slug_ok(cast(string) slug[0..<RG_SLUG]) && !rg_slug_ok(cast(string) slug[0..<RG_SLUG + 1]);
+  #assert rg_session_ok("turn-31") && rg_session_ok("a") && rg_session_ok("z") && rg_session_ok("A") && rg_session_ok("Z") && rg_session_ok("0") && rg_session_ok("9") && rg_session_ok("a_b");
+  #assert !rg_session_ok("") && !rg_session_ok("a b") && !rg_session_ok("a.b") && !rg_session_ok("a{") && !rg_session_ok("a`") && !rg_session_ok("a[") && !rg_session_ok("a@") && !rg_session_ok("a:") && !rg_session_ok("a/");
+  ses: [RG_SESSION + 2] u8; for i: 0..<ses.count { ses[i] = 'a'; }
+  #assert rg_session_ok(cast(string) ses[0..<RG_SESSION]) && !rg_session_ok(cast(string) ses[0..<RG_SESSION + 1]);
+  #assert rg_time("1") == 1 && rg_time("9") == 9 && rg_time("1794450000") == 1794450000 && rg_time("12345678901") == 12345678901 && rg_time("10") == 10;
+  #assert rg_time("") == 0 && rg_time("0") == 0 && rg_time("01") == 0 && rg_time("123456789012") == 0 && rg_time("1x") == 0 && rg_time("-1") == 0 && rg_time("1/") == 0 && rg_time("1:") == 0;
+  #assert rg_mode("read") == RG_READ && rg_mode("propose") == RG_PROPOSE && rg_mode("fetch") == RG_FETCH && rg_mode("") == 0 && rg_mode("Read") == 0;
+  #assert rg_lower_hex('0') && rg_lower_hex('9') && rg_lower_hex('a') && rg_lower_hex('f') && !rg_lower_hex('/') && !rg_lower_hex(':') && !rg_lower_hex('`') && !rg_lower_hex('g') && !rg_lower_hex('A');
+  #assert rg_mac_ok(RG_T_MAC) && !rg_mac_ok("") && !rg_mac_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg");
+}
+
+#test "two MACs are the same only when every digit is" {
+  #assert rg_mac_same(RG_T_MAC, RG_T_MAC);
+  #assert !rg_mac_same(RG_T_MAC, "1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !rg_mac_same(RG_T_MAC, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee");
+  #assert !rg_mac_same(RG_T_MAC, "0123456789abcdef0123456789abcdee0123456789abcdef0123456789abcdef");
+  #assert !rg_mac_same(RG_T_MAC, "") && !rg_mac_same("", "") && !rg_mac_same("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde");
+  #assert !rg_mac_same("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde", RG_T_MAC);
+}
+
+#test "a grant allows its repository, its mode, and its hour" {
+  r := rg_parse("v1.openagents.read.5000.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  p := rg_parse("v1.openagents.propose.5000.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  f := rg_parse("v1.openagents.fetch.5000.s.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  none: RgGrant;
+  #assert rg_allows(r, "openagents", RG_WANT_READ, 4000) == RG_OK && rg_allows(r, "openagents", RG_WANT_CHANGE, 4000) == RG_NOT_ALLOWED && rg_allows(r, "openagents", RG_WANT_FETCH, 4000) == RG_NOT_ALLOWED;
+  #assert rg_allows(p, "openagents", RG_WANT_READ, 4000) == RG_OK && rg_allows(p, "openagents", RG_WANT_CHANGE, 4000) == RG_OK && rg_allows(p, "openagents", RG_WANT_FETCH, 4000) == RG_NOT_ALLOWED;
+  #assert rg_allows(f, "openagents", RG_WANT_FETCH, 4000) == RG_OK && rg_allows(f, "openagents", RG_WANT_READ, 4000) == RG_NOT_ALLOWED && rg_allows(f, "openagents", RG_WANT_CHANGE, 4000) == RG_NOT_ALLOWED;
+  #assert rg_allows(r, "other", RG_WANT_READ, 4000) == RG_OTHER_REPO && rg_allows(none, "openagents", RG_WANT_READ, 4000) == RG_MALFORMED;
+  #assert rg_allows(r, "openagents", RG_WANT_READ, 4999) == RG_OK && rg_allows(r, "openagents", RG_WANT_READ, 5000) == RG_EXPIRED && rg_allows(r, "openagents", RG_WANT_READ, 5001) == RG_EXPIRED;
+  #assert rg_allows(r, "openagents", RG_WANT_READ, 5000 - RG_LIFE) == RG_OK && rg_allows(r, "openagents", RG_WANT_READ, 5000 - RG_LIFE - 1) == RG_EXPIRED;
+  #assert rg_allows(r, "openagents", 0, 4000) == RG_NOT_ALLOWED && rg_allows(r, "openagents", 4, 4000) == RG_NOT_ALLOWED;
+  #assert rg_why(RG_OK) == "" && rg_why(RG_EXPIRED) == "the grant has expired" && rg_why(RG_OTHER_REPO) == "the grant is for another repository";
+  #assert rg_why(RG_NOT_ALLOWED) == "the grant does not allow that" && rg_why(RG_MALFORMED) == "the grant is not one this service reads" && rg_why(99) == "the grant is not one this service reads";
+}
