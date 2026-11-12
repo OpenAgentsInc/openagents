@@ -19,6 +19,7 @@
 #load "../lib/sys/proc.coax";
 
 WM_PAGE :: 4194304;
+WM_TIMEOUT_MS :: 300000;   // each coax wgsl (wm_module)
 // Every page's module, as apps/openagents-web/build.sh writes them: Everglade's two from
 // verse/everglade/, then each apps/openagents-web/gpu/NAME.coax with NAME.module to
 // apps/openagents-web/NAME.wgsl. gpu/nip.coax is the NIP pages' (nip01.wgsl, generated
@@ -99,11 +100,16 @@ wm_module :: (file: string, into: string, options: string, check: bool) -> int {
   m := wm_words(cast(string) ob[0..<on], argv[3..<16]);
   if m < 0 { tool_errln("wgsl-module: too many options"); return WM_FAILED; }
   out: [WM_PAGE] u8; err: [65536] u8;
-  // ten minutes a module: on a busy Mac (load 60) the big ones took over two, and the release's build failed (2026-11-11)
-  r := proc_run(argv[0..<m + 3], 600000, out[..], err[..]);
-  if r.started != 0 || r.status != 0 || r.cut {
+  // Five minutes a module. A module takes about 1.4 s on a quiet Mac; the minutes
+  // releases saw on 2026-11-11 were each compile's exit walking the check cache
+  // (#13307), which no compile does now. A timeout says so, apart from a failure.
+  r := proc_run(argv[0..<m + 3], WM_TIMEOUT_MS, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut || r.timed_out {
     tool_err(cast(string) err[0..<r.err_n]);
-    tool_err("wgsl-module: coax wgsl failed on "); tool_err(file); tool_errln(" (run from the repo root)");
+    if r.timed_out {
+      tool_err("wgsl-module: coax wgsl on "); tool_err(file);
+      tool_errln(" ran past five minutes and was stopped (the machine's load, or a hang: time it alone with coax/bin/coax wgsl and its options)");
+    } else { tool_err("wgsl-module: coax wgsl failed on "); tool_err(file); tool_errln(" (run from the repo root)"); }
     return WM_FAILED;
   }
   page: [WM_PAGE] u8; pn := 0;
