@@ -1,30 +1,36 @@
 // WorldBuilder (openagents.com/create-world): an empty Grid and one line to type in, bottom
 // centre. What you type goes to /api/worldbuilder/act (coax/web/api/worldbuilder.c), which asks
-// the model for typed edits; worldbuilder-plan.coax carries them out on the world, drawn here from
-// the Quaternius pack (worldbuilder_pack.coax), each mesh one instanced draw. A tap or click on the
-// ground says where "here" is. The world is kept in this browser (the slot's save, host action 4).
+// the model for typed edits; worldbuilder-plan.coax carries them out on Aethyrforge's scene edit
+// log (aethyr/forge/edit.coax), drawn here from the Quaternius pack (worldbuilder_pack.coax), each
+// mesh one instanced draw. A tap or click on the ground says where "here" is. The chat box edits
+// components/core/edit.coax's EditBuf with the site's keys (textkeys.coax), and the HUD and its
+// buttons (SEND, UNDO, REDO) are drawn by components/kit/controls.coax in the Verse skin. The
+// world is kept in this browser (the slot's save, host action 4).
 //
 // The limits are shown, never hidden: the day's shared spend and its $50 cap, a visitor's pace
 // (4 at once, then one every 1.5 s), and how many things a world holds.
 //   coax/bin/coax test apps/openagents-web/worldbuilder.coax
 
-#load "font.coax";
-#load "ui.coax";
+#load "../../components/core/edit.coax";
+#load "../../components/kit/controls.coax";
+#load "../../components/skin/verse.coax";
+#load "../../components/backend/gpu.coax";
 #load "textkeys.coax";
 #load "worldbuilder-plan.coax";
 
-VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 24000;
-PLATES :: 16;
+VERTEX_FLOATS :: GP_VERTEX_FLOATS;
+MAX_VERTICES :: 8192;
 VIEW_AT :: 8; HERE_AT :: 24; EYE_AT :: 28; RAY_AT :: 32;
-PANEL_AT :: 44;
-UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
-MODE_STROKE :: 0.0;
-MODE_BAR :: 4.0;   // ui.coax's
+UNIFORM_FLOATS :: 44;
 
-MSG_DATA_TEXT :: 2;
+KEY_ESCAPE :: -1;   KEY_ENTER :: -2;    KEY_BACKSPACE :: -3; KEY_LEFT :: -4;
+KEY_RIGHT :: -5;    KEY_UP :: -6;       KEY_DOWN :: -7;      KEY_HOME :: -8;
+KEY_END :: -9;      KEY_DELETE :: -12;
+MOD_SHIFT :: 1; MOD_CTRL :: 2; MOD_ALT :: 4; MOD_META :: 8;
+POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
+
+MSG_TEXT :: 1;          // typed or pasted text, UTF-8
 MSG_SLOT :: 4;          // host.js: the slot's save, given back on a visit
-HOST_FACTS :: 600;
 MSG_PACK :: 605;
 MSG_HTTP :: 512;        // host.js: answer to request id as message 512 + id
 ACT_KEEP :: 4;
@@ -42,21 +48,31 @@ FOV :: 0.9;
 PITCH_LO :: 0.18; PITCH_HI :: 1.45;
 DIST_LO :: 3.0; DIST_HI :: 160.0;
 TAP_SLOP :: 8.0;        // CSS pixels a press may move and still be a tap
-BTN_SEND :: 0; BTN_UNDO :: 1; BTN_FIELD :: 2; BUTTONS :: 3;
+DOUBLE_S :: 0.35;       // seconds between clicks of a double or triple click
+
+HIT_BUTTON :: 1;
+HIT_FIELD :: 2;
+BTN_SEND :: 0; BTN_UNDO :: 1; BTN_REDO :: 2;
 REPLY_PLAIN :: 0; REPLY_NOTICE :: 1;
+
+WB_UNDER :: 256; WB_OVER :: 256; WB_LINES :: 32; WB_HITS :: 16; WB_POOL :: 2048;
 
 WorldBuilder :: struct {
   started: bool;
   time: f32; width: f32; height: f32; dpr: f32; still: bool; golden: bool;
   // the camera: it looks at (tx, tz) from dist away, turned yaw (0 looks along -z), pitch down
   tx: f32; tz: f32; gx: f32; gz: f32; yaw: f32; pitch: f32 = 0.6; dist: f32 = 26;
-  // pointers: one drags the view, two pinch it nearer
-  down: bool; down_id: int; down_x: f32; down_y: f32; last_x: f32; last_y: f32; moved: bool; on_ui: int = -1;
+  // pointers: one drags the view or selects in the chat box, two pinch the view nearer
+  down: bool; down_id: int; down_x: f32; down_y: f32; last_x: f32; last_y: f32; moved: bool;
+  down_kind: int; down_btn: int = -1; hover_kind: int; hover_btn: int = -1; press_btn: int = -1;
   two: bool; two_id: int; two_x: f32; two_y: f32; pinch: f32;
   // "here": the spot last tapped
   has_here: bool; here_x: f32; here_z: f32; here_at: f32;
-  // the line typed, the words sent (shown while the answer comes), the one line answered
-  typed: [TYPED] u8; typed_n: int; all: bool;   // all: Cmd+A selected everything typed (textkeys.coax)
+  // the chat box (components/core/edit.coax), the words sent while waiting, the one line answered
+  ed: [1] EditBuf;
+  ed_scroll: f32; ed_follow: bool; ed_text_x: f32; ed_text_w: f32;
+  text_undo_live: bool; caret_at: f32;
+  click_at: f32 = -10; click_x: f32; clicks: int; drag_unit: int; drag_from: int; drag_to: int;
   heard: [TYPED] u8; heard_n: int;
   reply: [REPLY] u8; reply_n: int; reply_kind: int; reply_at: f32;
   waiting: bool; act_id: int = -1; status_id: int = -1; want_status: bool = true;
@@ -72,8 +88,11 @@ WorldBuilder :: struct {
   draws: [WB_MESHES * 4] u32; draw_n: int;
   objects: [WB_INSTANCES * INSTANCE_FLOATS] f32; inst_n: int;
   view: [16] f32; eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32;
-  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
-  boxes: [BUTTONS] Box; shown: [BUTTONS] bool; press: int = -1; hover: int = -1;
+  // the glyph and icon atlas (coax/web/gpui.js) and the control kit's sheet
+  atlas: [1] Atlas;
+  scratch: [9800] f32; sbytes: [64] u8;
+  under: [WB_UNDER] Prim; over: [WB_OVER] Prim; lines: [WB_LINES] SheetLine; hits: [WB_HITS] SheetHit; pool: [WB_POOL] u8;
+  nu: int; no: int; nh: int;
   field: [4] f32;
 }
 REQ_ACT :: 1; REQ_STATUS :: 2;
@@ -82,44 +101,28 @@ lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+most_i :: (a: int, b: int) -> int { if a > b { return a; } return b; }
 
-// One stroke as a quad wide enough for its glow (droprealm.coax's).
-lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
-        red: f32, green: f32, blue: f32, mode: f32) -> bool {
-  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
-  dx := bx - ax; dy := by - ay;
-  length := sqrt(dx * dx + dy * dy);
-  if length <= 0 { return false; }
-  ux := dx / length; uy := dy / length;
-  nx := -uy; ny := ux;
-  r := glow + core;
-  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
-  c := [6] f32.[-r, -r, r, -r, r, r];
-  for v: 0..<6 {
-    o := (at + v) * VERTEX_FLOATS;
-    out[o] = ax + ux * a[v] + nx * c[v];
-    out[o + 1] = ay + uy * a[v] + ny * c[v];
-    out[o + 2] = a[v]; out[o + 3] = c[v];
-    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
-    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
-    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
-  }
-  return true;
+put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n >= buf.count { break; } buf[n] = text[i]; n += 1; }
+  return n;
 }
-
-// A round light: a disc of radius radius in a glow (droprealm.coax's).
-tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
-  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
-  r := radius + glow;
-  a := [6] f32.[-r, r, r, -r, r, -r];
-  c := [6] f32.[-r, -r, r, -r, r, r];
-  for v: 0..<6 {
-    o := (at + v) * VERTEX_FLOATS;
-    out[o] = x + a[v]; out[o + 1] = y + c[v];
-    out[o + 2] = a[v]; out[o + 3] = c[v];
-    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
-    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
-    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+put_int :: (buf: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; n := 0; x := most_i(v, 0);
+  while true { digits[n] = cast(u8) (48 + x % 10); n += 1; x /= 10; if x == 0 { break; } }
+  k := at;
+  while n > 0 && k < buf.count { n -= 1; buf[k] = digits[n]; k += 1; }
+  return k;
+}
+trim_from :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
+trim_to :: (text: string) -> int { j := text.count; while j > 0 && text[j - 1] == ' ' { j -= 1; } return j; }
+same_word :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    ca := ifx a[i] >= 'A' && a[i] <= 'Z' then a[i] + 32 else a[i];
+    cb := ifx b[i] >= 'A' && b[i] <= 'Z' then b[i] + 32 else b[i];
+    if ca != cb { return false; }
   }
   return true;
 }
@@ -140,10 +143,40 @@ body_of :: (t: string) -> string { e := 0; while e < t.count && t[e] != '\n' { e
 set_reply :: (s: [] WorldBuilder, text: string, kind: int) {
   s[0].reply_n = put(s[0].reply[..], 0, text); s[0].reply_kind = kind; s[0].reply_at = s[0].time;
 }
-// The words sent come back to the field when they weren't carried out, to send again.
+// The words sent come back to the edit buffer when they weren't carried out, to send again.
 give_back :: (s: [] WorldBuilder) {
-  if s[0].typed_n == 0 { s[0].typed_n = put(s[0].typed[..], 0, cast(string) s[0].heard[0..<s[0].heard_n]); }
+  if s[0].ed[0].n == 0 && s[0].heard_n > 0 {
+    eb_set(s[0].ed[..], cast(string) s[0].heard[0..<s[0].heard_n]);
+    s[0].ed_follow = true;
+  }
   s[0].heard_n = 0;
+}
+
+// Inserts or pastes single-line UTF-8 text into the edit buffer, capped at TYPED bytes on whole code points.
+ed_receive :: (s: [] WorldBuilder, text: string, paste_step: bool) {
+  e := s[0].ed[..];
+  e[0].clock = s[0].time;
+  clean: [TYPED] u8; n := 0;
+  room := TYPED - (e[0].n - (eb_sel_hi(e) - eb_sel_lo(e)));
+  if room <= 0 { return; }
+  i := 0;
+  while i < text.count {
+    r := rune_at(text, i);
+    if r.code == '\n' || r.code == '\r' || r.code == '\t' {
+      if n + 1 > room { break; }
+      clean[n] = ' '; n += 1;
+    } else if r.code >= 32 && r.code != 127 {
+      if n + r.len > room || n + r.len > clean.count { break; }
+      for k: 0..<r.len { clean[n + k] = text[i + k]; }
+      n += r.len;
+    }
+    i += r.len;
+  }
+  if n == 0 { return; }
+  piece := cast(string) clean[0..<n];
+  s[0].text_undo_live = true; s[0].ed_follow = true; s[0].caret_at = s[0].time;
+  if paste_step && !eb_one_char(piece) { _ = eb_paste(e, piece); }
+  else { _ = eb_insert(e, piece); }
 }
 
 wb_view :: (s: [] WorldBuilder) -> WbView {
@@ -156,6 +189,7 @@ take_act :: (s: [] WorldBuilder, text: string) {
   if st == 200 {
     sum := wb_answer(s[0].world[..], s[0].cat[..], wb_view(s), body);
     s[0].heard_n = 0;
+    s[0].text_undo_live = false;
     if sum.say_n > 0 { set_reply(s, cast(string) sum.say[0..<sum.say_n], REPLY_PLAIN); }
     else if sum.edits == 0 { set_reply(s, "Nothing changed.", REPLY_PLAIN); }
     else { s[0].reply_n = 0; }
@@ -201,8 +235,7 @@ worldbuilder_message :: (s: [] WorldBuilder, kind: int, text: string) #export_c 
     return;
   }
   if kind == MSG_TEXT {
-    if s[0].all { s[0].typed_n = 0; s[0].all = false; }   // typing or a paste replaces what's selected
-    for i: 0..<text.count { if s[0].typed_n < TYPED && text[i] >= 32 { s[0].typed[s[0].typed_n] = text[i]; s[0].typed_n += 1; } }
+    ed_receive(s, text, true);
     return;
   }
   if kind == MSG_SLOT {
@@ -294,17 +327,45 @@ worldbuilder_requested :: (s: [] WorldBuilder, id: int) #export_c #effects(all) 
 can_send :: (s: [] WorldBuilder) -> bool {
   return s[0].cat_ready && !s[0].waiting && !s[0].resting && s[0].time >= s[0].flood_until && !s[0].req_ready;
 }
+
+undo :: (s: [] WorldBuilder) {
+  if s[0].waiting { return; }
+  s[0].text_undo_live = false;
+  if wb_undo(s[0].world[..]) { s[0].reply_n = 0; } else { set_reply(s, "Nothing to undo.", REPLY_PLAIN); }
+}
+redo :: (s: [] WorldBuilder) {
+  if s[0].waiting { return; }
+  s[0].text_undo_live = false;
+  if wb_redo(s[0].world[..]) { s[0].reply_n = 0; } else { set_reply(s, "Nothing to redo.", REPLY_PLAIN); }
+}
+
 send_typed :: (s: [] WorldBuilder) {
-  a := trim_from(cast(string) s[0].typed[0..<s[0].typed_n]); z := trim_to(cast(string) s[0].typed[0..<s[0].typed_n]);
-  if z <= a || !can_send(s) { return; }
-  words := cast(string) s[0].typed[a..<z];
+  raw := eb_text(s[0].ed[..]);
+  a := trim_from(raw); z := trim_to(raw);
+  if z <= a { return; }
+  words := cast(string) raw[a..<z];
+  // "undo" and "redo" by chat run straight against the forge edit log: instant and free.
+  if same_word(words, "undo") {
+    if s[0].waiting { return; }
+    eb_clear(s[0].ed[..]); s[0].ed_scroll = 0;
+    undo(s);
+    return;
+  }
+  if same_word(words, "redo") {
+    if s[0].waiting { return; }
+    eb_clear(s[0].ed[..]); s[0].ed_scroll = 0;
+    redo(s);
+    return;
+  }
+  if !can_send(s) { return; }
   s[0].heard_n = put(s[0].heard[..], 0, words);
   n := build_act(s, words);
-  s[0].typed_n = 0;
+  eb_clear(s[0].ed[..]); s[0].ed_scroll = 0; s[0].text_undo_live = false;
   s[0].reply_n = 0;
   s[0].waiting = true;
   ask(s, ACT_URL, n, 1 | 4, REQ_ACT);
 }
+
 // Once a frame: ask for the day's spend when it is wanted and nothing else is going.
 pump :: (s: [] WorldBuilder) {
   if s[0].want_status && !s[0].req_ready && s[0].status_id < 0 {
@@ -323,51 +384,132 @@ worldbuilder_action :: (s: [] WorldBuilder) -> int #export_c #effects(all) { a :
 worldbuilder_action_done :: (s: [] WorldBuilder) #export_c #effects(all) { s[0].out_n = 0; }
 worldbuilder_wants_text :: (s: [] WorldBuilder) -> bool #export_c #effects(all) { return true; }
 
-undo :: (s: [] WorldBuilder) {
-  if s[0].waiting { return; }
-  if wb_undo(s[0].world[..]) { s[0].reply_n = 0; } else { set_reply(s, "Nothing to undo.", REPLY_PLAIN); }
-}
-
 // ---- keys and the pointer
+
+ed_step :: (s: [] WorldBuilder, to: int, extend: bool) {
+  if extend { eb_select_to(s[0].ed[..], to); } else { eb_move_to(s[0].ed[..], to); }
+  s[0].ed_follow = true; s[0].caret_at = s[0].time;
+}
 
 worldbuilder_key :: (s: [] WorldBuilder, key: int, down: bool, mods: int) -> bool #export_c #effects(all) {
   wb_begin(s);
   if !down { return false; }
+  e := s[0].ed[..];
+  e[0].clock = s[0].time;
+  shift := (mods & MOD_SHIFT) != 0;
+  meta := (mods & MOD_META) != 0;
+  word_mod := (mods & MOD_ALT) != 0 || ((mods & MOD_CTRL) != 0 && !meta);
+
+  // Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z and Cmd/Ctrl+Y: edit buffer undo/redo while editing text, else world undo/redo.
+  if key > 0 && (mods & (MOD_CTRL | MOD_META)) != 0 && (mods & MOD_ALT) == 0 {
+    lower := ifx key >= 'A' && key <= 'Z' then key + 32 else key;
+    if lower == 'z' && !shift {
+      if s[0].text_undo_live && eb_can_undo(e) { _ = eb_undo(e); s[0].ed_follow = true; s[0].caret_at = s[0].time; }
+      else { undo(s); }
+      return true;
+    }
+    if (lower == 'z' && shift) || (lower == 'y' && !shift) {
+      if s[0].text_undo_live && eb_can_redo(e) { _ = eb_redo(e); s[0].ed_follow = true; s[0].caret_at = s[0].time; }
+      else { redo(s); }
+      return true;
+    }
+  }
+
   // Cmd or Ctrl: the keys every typed box on the site shares (textkeys.coax)
   cmd := tk_command(key, mods);
-  if cmd == TK_ALL { s[0].all = s[0].typed_n > 0; return true; }
+  if cmd == TK_ALL {
+    eb_select_all(e);
+    s[0].text_undo_live = true; s[0].caret_at = s[0].time;
+    return true;
+  }
   if cmd == TK_COPY || cmd == TK_CUT {
-    // what's typed, or with nothing typed the line answered
-    text := ifx s[0].typed_n > 0 then cast(string) s[0].typed[0..<s[0].typed_n] else cast(string) s[0].reply[0..<s[0].reply_n];
+    has_sel := eb_sel_hi(e) > eb_sel_lo(e);
+    text := ifx has_sel then eb_selected(e) else ifx e[0].n > 0 then eb_text(e) else cast(string) s[0].reply[0..<s[0].reply_n];
     if text.count == 0 { return true; }
     if s[0].action == ACT_KEEP { s[0].saved_version = -1; }   // a save not yet taken is made again next frame
     s[0].out_n = tk_copy(s[0].outbox[..], text); s[0].action = TK_ACT_COPY;
-    if cmd == TK_CUT && s[0].typed_n > 0 { s[0].typed_n = 0; }
-    s[0].all = false;
+    if cmd == TK_CUT && e[0].n > 0 {
+      s[0].text_undo_live = true;
+      if !has_sel { eb_select_all(e); }
+      eb_cut_selection(e);
+      s[0].ed_follow = true; s[0].caret_at = s[0].time;
+    }
     return true;
   }
   if cmd == TK_BROWSER { return false; }   // Cmd+V pastes through the field; Cmd+R, Cmd+L stay the browser's
-  if key == KEY_ENTER { s[0].all = false; send_typed(s); return true; }
-  if key == KEY_BACKSPACE {
-    s[0].typed_n = ifx s[0].all then 0 else tk_back(cast(string) s[0].typed[0..<s[0].typed_n], mods);
-    s[0].all = false; return true;
-  }
-  if key == KEY_ESCAPE { s[0].typed_n = 0; s[0].all = false; return true; }
-  // a key typed before the field had the keyboard
-  if key >= 32 && key < 127 {
-    if s[0].all { s[0].typed_n = 0; s[0].all = false; }
-    if s[0].typed_n < TYPED { s[0].typed[s[0].typed_n] = cast(u8) key; s[0].typed_n += 1; }
+
+  if key == KEY_ENTER { send_typed(s); return true; }
+  if key == KEY_LEFT {
+    if !shift && e[0].anchor != e[0].caret && !meta && !word_mod { ed_step(s, eb_sel_lo(e), false); }
+    else if meta { ed_step(s, 0, shift); }
+    else if word_mod { ed_step(s, eb_prev_word(e, e[0].caret), shift); }
+    else { ed_step(s, eb_prev_boundary(e, e[0].caret), shift); }
     return true;
   }
-  s[0].all = false;
+  if key == KEY_RIGHT {
+    if !shift && e[0].anchor != e[0].caret && !meta && !word_mod { ed_step(s, eb_sel_hi(e), false); }
+    else if meta { ed_step(s, e[0].n, shift); }
+    else if word_mod { ed_step(s, eb_next_word(e, e[0].caret), shift); }
+    else { ed_step(s, eb_next_boundary(e, e[0].caret), shift); }
+    return true;
+  }
+  if key == KEY_HOME || key == KEY_UP { ed_step(s, 0, shift); return true; }
+  if key == KEY_END || key == KEY_DOWN { ed_step(s, e[0].n, shift); return true; }
+  if key == KEY_BACKSPACE {
+    s[0].text_undo_live = true; s[0].ed_follow = true; s[0].caret_at = s[0].time;
+    if e[0].anchor != e[0].caret { eb_delete_to(e, e[0].caret); }
+    else if meta { eb_delete_to(e, 0); }
+    else if word_mod { eb_delete_to(e, eb_prev_word(e, e[0].caret)); }
+    else { eb_delete_to(e, eb_prev_boundary(e, e[0].caret)); }
+    return true;
+  }
+  if key == KEY_DELETE {
+    s[0].text_undo_live = true; s[0].ed_follow = true; s[0].caret_at = s[0].time;
+    if e[0].anchor != e[0].caret { eb_delete_to(e, e[0].caret); }
+    else if meta { eb_delete_to(e, e[0].n); }
+    else if word_mod { eb_delete_to(e, eb_next_word(e, e[0].caret)); }
+    else { eb_delete_to(e, eb_next_boundary(e, e[0].caret)); }
+    return true;
+  }
+  if key == KEY_ESCAPE {
+    if e[0].n > 0 {
+      s[0].text_undo_live = true;
+      eb_select_all(e);
+      eb_delete_to(e, e[0].caret);
+      s[0].ed_scroll = 0;
+    }
+    return true;
+  }
+  // a key typed before the field had the keyboard
+  if key >= 32 && key < 127 {
+    one: [1] u8; one[0] = cast(u8) key;
+    ed_receive(s, cast(string) one[..], false);
+    return true;
+  }
   return false;
 }
-worldbuilder_blur :: (s: [] WorldBuilder) #export_c #effects(all) { s[0].down = false; s[0].two = false; s[0].press = -1; }
-
-button_at :: (s: [] WorldBuilder, x: f32, y: f32) -> int {
-  for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
-  return -1;
+worldbuilder_blur :: (s: [] WorldBuilder) #export_c #effects(all) {
+  s[0].down = false; s[0].two = false; s[0].press_btn = -1; s[0].down_kind = 0; s[0].down_btn = -1;
 }
+
+wb_scale :: (s: [] WorldBuilder) -> f32 { return hi(s[0].dpr, 0.5); }
+
+// The sheet hit under logical coordinates (lx, ly), or -1.
+hit_at :: (s: [] WorldBuilder, lx: f32, ly: f32) -> int {
+  best := -1;
+  for k: 0..<s[0].nh {
+    h := s[0].hits[k];
+    if lx >= h.x && lx < h.x + h.w && ly >= h.y && ly < h.y + h.h { best = k; }
+  }
+  return best;
+}
+
+field_offset :: (s: [] WorldBuilder, lx: f32) -> int {
+  sk := verse_skin();
+  tx := lx - s[0].ed_text_x + s[0].ed_scroll;
+  return text_offset(s[0].atlas[..], sk.body.face, eb_text(s[0].ed[..]), ifx tx < 0 then 0.0f32 else tx);
+}
+
 // Where a screen point's ray meets the ground.
 ground_at :: (s: [] WorldBuilder, x: f32, y: f32) -> WbSpot {
   nx := x / hi(s[0].width, 1) * 2 - 1; ny := 1 - y / hi(s[0].height, 1) * 2;
@@ -384,10 +526,24 @@ set_here :: (s: [] WorldBuilder, x: f32, y: f32) {
   if !g.ok { return; }
   s[0].has_here = true; s[0].here_x = g.x; s[0].here_z = g.z; s[0].here_at = s[0].time;
 }
+
+button_enabled :: (s: [] WorldBuilder, btn: int) -> bool {
+  if btn == BTN_SEND { return can_send(s) && s[0].ed[0].n > 0; }
+  if btn == BTN_UNDO { return wb_can_undo(s[0].world[..]) && !s[0].waiting; }
+  if btn == BTN_REDO { return wb_can_redo(s[0].world[..]) && !s[0].waiting; }
+  return false;
+}
+
 worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   wb_begin(s);
-  k := hi(s[0].dpr, 0.5);
-  if phase == POINTER_MOVE && !s[0].down { s[0].hover = button_at(s, x, y); return false; }
+  k := wb_scale(s);
+  lx := x / k; ly := y / k;
+  if phase == POINTER_MOVE && !s[0].down {
+    hi_idx := hit_at(s, lx, ly);
+    s[0].hover_kind = ifx hi_idx >= 0 then s[0].hits[hi_idx].kind else 0;
+    s[0].hover_btn = ifx hi_idx >= 0 && s[0].hits[hi_idx].kind == HIT_BUTTON then s[0].hits[hi_idx].a else -1;
+    return false;
+  }
   if phase == POINTER_DOWN {
     if s[0].down && !s[0].two && id != s[0].down_id {
       s[0].two = true; s[0].two_id = id; s[0].two_x = x; s[0].two_y = y;
@@ -396,14 +552,47 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
       return true;
     }
     s[0].down = true; s[0].down_id = id; s[0].down_x = x; s[0].down_y = y; s[0].last_x = x; s[0].last_y = y;
-    s[0].moved = false; s[0].on_ui = button_at(s, x, y); s[0].press = s[0].on_ui;
+    s[0].moved = false;
+    hi_idx := hit_at(s, lx, ly);
+    s[0].down_kind = ifx hi_idx >= 0 then s[0].hits[hi_idx].kind else 0;
+    s[0].down_btn = ifx hi_idx >= 0 && s[0].hits[hi_idx].kind == HIT_BUTTON then s[0].hits[hi_idx].a else -1;
+    s[0].press_btn = s[0].down_btn;
+    if s[0].down_kind == HIT_FIELD {
+      e := s[0].ed[..];
+      off := field_offset(s, lx);
+      s[0].text_undo_live = true; s[0].ed_follow = true; s[0].caret_at = s[0].time;
+      if s[0].time - s[0].click_at <= DOUBLE_S && abs(lx - s[0].click_x) <= 6 { s[0].clicks += 1; } else { s[0].clicks = 1; }
+      s[0].click_at = s[0].time; s[0].click_x = lx;
+      if s[0].clicks == 2 {
+        from := eb_word_from(e, off); to := eb_word_to(e, off);
+        eb_move_to(e, from); eb_select_to(e, to);
+        s[0].drag_unit = 1; s[0].drag_from = from; s[0].drag_to = to;
+      } else if s[0].clicks >= 3 {
+        eb_select_all(e);
+        s[0].drag_unit = 2; s[0].drag_from = 0; s[0].drag_to = e[0].n;
+      } else {
+        eb_move_to(e, off);
+        s[0].drag_unit = 0; s[0].drag_from = off; s[0].drag_to = off;
+      }
+    }
     return true;
   }
   if !s[0].down { return false; }
   if phase == POINTER_MOVE {
     if s[0].two && id == s[0].two_id { s[0].two_x = x; s[0].two_y = y; }
     else if id == s[0].down_id {
-      if s[0].on_ui < 0 {
+      if s[0].down_kind == HIT_FIELD && !s[0].two {
+        e := s[0].ed[..];
+        off := field_offset(s, lx);
+        if s[0].drag_unit == 1 {
+          from := eb_word_from(e, off); to := eb_word_to(e, off);
+          if from < s[0].drag_from { eb_move_to(e, s[0].drag_to); eb_select_to(e, from); }
+          else { eb_move_to(e, s[0].drag_from); eb_select_to(e, ifx to > s[0].drag_to then to else s[0].drag_to); }
+        } else if s[0].drag_unit == 0 {
+          eb_select_to(e, off);
+        }
+        s[0].ed_follow = true; s[0].caret_at = s[0].time;
+      } else if s[0].down_kind == 0 {
         dx := x - s[0].last_x; dy := y - s[0].last_y;
         if !s[0].moved && abs(x - s[0].down_x) + abs(y - s[0].down_y) > TAP_SLOP * k { s[0].moved = true; }
         if s[0].moved && !s[0].two {
@@ -424,13 +613,17 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
   // up or cancel
   if s[0].two && id == s[0].two_id { s[0].two = false; return true; }
   if id != s[0].down_id { return true; }
-  was := s[0].on_ui;
-  s[0].down = false; s[0].two = false; s[0].press = -1;
+  was_kind := s[0].down_kind; was_btn := s[0].down_btn;
+  s[0].down = false; s[0].two = false; s[0].press_btn = -1; s[0].down_kind = 0; s[0].down_btn = -1;
   if phase == POINTER_UP && !s[0].moved {
-    if was >= 0 && button_at(s, x, y) == was {
-      if was == BTN_SEND { send_typed(s); }
-      if was == BTN_UNDO { undo(s); }
-    } else if was < 0 { set_here(s, x, y); }
+    hi_idx := hit_at(s, lx, ly);
+    now_kind := ifx hi_idx >= 0 then s[0].hits[hi_idx].kind else 0;
+    now_btn := ifx hi_idx >= 0 && now_kind == HIT_BUTTON then s[0].hits[hi_idx].a else -1;
+    if was_kind == HIT_BUTTON && now_kind == HIT_BUTTON && now_btn == was_btn {
+      if was_btn == BTN_SEND { send_typed(s); }
+      else if was_btn == BTN_UNDO { undo(s); }
+      else if was_btn == BTN_REDO { redo(s); }
+    } else if was_kind == 0 && now_kind == 0 { set_here(s, x, y); }
   }
   return true;
 }
@@ -439,8 +632,9 @@ worldbuilder_wheel :: (s: [] WorldBuilder, dy: f32) -> bool #export_c #effects(a
   return true;
 }
 worldbuilder_cursor :: (s: [] WorldBuilder) -> int #export_c #effects(all) {
-  if s[0].hover == BTN_FIELD { return 3; }
-  return ifx s[0].hover >= 0 then 1 else 0;
+  if s[0].hover_kind == HIT_FIELD { return 3; }
+  if s[0].hover_kind == HIT_BUTTON && button_enabled(s, s[0].hover_btn) { return 1; }
+  return 0;
 }
 
 // ---- the camera
@@ -532,30 +726,8 @@ scene :: (s: [] WorldBuilder) {
 worldbuilder_draw_count :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return ifx s[0].cat_ready then s[0].draw_n else 0; }
 worldbuilder_store_bytes :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return s[0].inst_n * INSTANCE_FLOATS * 4; }
 
-// ---- the look
+// ---- the HUD: components/kit/controls.coax in the Verse skin (components/skin/verse.coax)
 
-GAP :: 0.5; SPACE :: 1.2;
-TEXT_R :: 0.86; TEXT_G :: 0.94; TEXT_B :: 1.0;
-CYAN_R :: 0.45; CYAN_G :: 0.85; CYAN_B :: 1.0;
-SUN_R :: 1.0; SUN_G :: 0.86; SUN_B :: 0.45;
-LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
-pale :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, TEXT_R, TEXT_G, TEXT_B); }
-cyan :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, CYAN_R, CYAN_G, CYAN_B); }
-warm :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, SUN_R, SUN_G, SUN_B); }
-plate :: (s: [] WorldBuilder, b: Box, alpha: f32, look: f32) {
-  n := s[0].plate_n;
-  if n >= PLATES { return; }
-  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
-}
-text_w :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
-centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
-  return write(d, out, at, text, x - text_w(text, cap) * 0.5, base, cap, GAP, SPACE, k, false, false);
-}
-fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
-look_of :: (s: [] WorldBuilder, b: int, on: bool) -> f32 {
-  if !on { return LOOK_PLAIN; }
-  return ifx s[0].hover == b || s[0].press == b then LOOK_LIT + LOOK_HOVER else LOOK_LIT;
-}
 // "$1.25"
 put_dollars :: (b: [] u8, at: int, micros: int) -> int {
   cents := (micros + 5000) / 10000;
@@ -563,133 +735,190 @@ put_dollars :: (b: [] u8, at: int, micros: int) -> int {
   if cents % 100 < 10 { n = put(b, n, "0"); }
   return put_int(b, n, cents % 100);
 }
-put_kb :: (b: [] u8, at: int, bytes: int) -> int { n := put_int(b, at, (bytes + 524288) / 1048576); return put(b, n, " MB"); }
+put_mb :: (b: [] u8, at: int, bytes: int) -> int { n := put_int(b, at, (bytes + 524288) / 1048576); return put(b, n, " MB"); }
 
-// The text after its last n characters' worth of room: what fits, from the end.
-tail_fit :: (text: string, cap: f32, room: f32) -> int {
-  from := 0;
-  while from < text.count && text_w(text[from..<text.count], cap) > room { from += 1; while from < text.count && (text[from] & 0xC0) == 0x80 { from += 1; } }
-  return from;
+wb_button :: (sh: [] Sheet, m: TextMeasure, sk: UiSkin, s: [] WorldBuilder, x: f32, y: f32, label: string, btn: int, primary: bool) -> f32 {
+  enabled := button_enabled(s, btn);
+  hot := enabled && ((s[0].hover_kind == HIT_BUTTON && s[0].hover_btn == btn) || s[0].press_btn == btn);
+  state := ifx primary && enabled then UISKIN_PRIMARY else ifx hot then UISKIN_HOVER else UISKIN_REST;
+  no0 := sh[0].no;
+  w := button(sh, m, sk, x, y, label, state, HIT_BUTTON, btn);
+  if !enabled && sh[0].no > no0 { sh[0].over[sh[0].no - 1].fill = sk.faint; }
+  return w;
+}
+
+wb_centred :: (sh: [] Sheet, m: TextMeasure, cx: f32, y: f32, line_h: f32, face: int, color: Rgba, text: string) -> f32 {
+  w := measure_width(m, face, text);
+  return sheet_text(sh, m, -1, cx - w * 0.5, y, line_h, face, color, text);
 }
 
 draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
-  k := s[0].dpr; w := s[0].width; h := s[0].height; d := k;
-  g := 16 * k;
-  phone := w < 640 * k;
-  vertices := 0;
+  a := s[0].atlas[..];
+  a[0].frame += 1;
+  d := wb_scale(s);
+  lw := s[0].width / d; lh := s[0].height / d;
+  g: f32 = 16;
+  phone := lw < 640;
+  sk := verse_skin();
+  m := measure_font(a);
+
+  sh: [1] Sheet;
+  sh[0] = Sheet.{under = s[0].under[..], over = s[0].over[..], lines = s[0].lines[..], hits = s[0].hits[..], pool = s[0].pool[..],
+                 hover_kind = s[0].hover_kind, hover_a = s[0].hover_btn};
+
   buf: [240] u8;
 
-  // the name, how full the world is, and the limits, top left
-  n := put(buf[..], 0, "WORLDBUILDER");
-  head := cast(string) buf[0..<n];
-  lb: [160] u8;
-  m := put_int(lb[..], 0, s[0].world[0].n); m = put(lb[..], m, " OF "); m = put_int(lb[..], m, WB_OBJECTS); m = put(lb[..], m, " THINGS");
-  count := cast(string) lb[0..<m];
-  lim: [200] u8;
-  q := 0;
-  if s[0].known { q = put_dollars(lim[..], 0, s[0].spent); q = put(lim[..], q, " OF "); q = put_dollars(lim[..], q, s[0].cap); q = put(lim[..], q, " SHARED AI USED TODAY"); }
-  else { q = put(lim[..], 0, "$50 OF AI A DAY, SHARED BY EVERYONE"); }
-  limits := cast(string) lim[0..<q];
-  pace := "4 COMMANDS AT ONCE, THEN 1 EVERY 1.5 S";
-  tw := hi(hi(text_w(head, 11 * k), text_w(limits, 6.5 * k)), text_w(pace, 6.5 * k)) + 28 * k;
-  ub := 92 * k;
-  tb := Box.{x0 = g, y0 = g, x1 = lo(g + tw, w - 2 * g - ub), y1 = g + 70 * k};
-  room := tb.x1 - tb.x0 - 28 * k;
-  plate(s, tb, 0.88, LOOK_PLAIN);
-  vertices = write(d, out, vertices, head, tb.x0 + 14 * k, tb.y0 + 22 * k, fit_cap(head, 11 * k, room), GAP, SPACE, pale(k, 0.97), false, false);
-  vertices = write(d, out, vertices, count, tb.x0 + 14 * k + text_w(head, fit_cap(head, 11 * k, room)) + 10 * k, tb.y0 + 22 * k, fit_cap(count, 6.5 * k, hi(room - text_w(head, 11 * k) - 10 * k, 10 * k)), GAP, SPACE, cyan(k, 0.8), false, false);
-  vertices = write(d, out, vertices, limits, tb.x0 + 14 * k, tb.y0 + 42 * k, fit_cap(limits, 6.5 * k, room), GAP, SPACE, cyan(k, 0.75), false, false);
-  vertices = write(d, out, vertices, pace, tb.x0 + 14 * k, tb.y0 + 58 * k, fit_cap(pace, 6.5 * k, room), GAP, SPACE, cyan(k, 0.75), false, false);
+  // UNDO and REDO side by side, top right: free, no model asked
+  uw := button_width(m, sk, "UNDO");
+  rw := button_width(m, sk, "REDO");
+  btns_w := uw + sk.space + rw;
+  ux := lw - g - btns_w;
+  _ = wb_button(sh[..], m, sk, s, ux, g, "UNDO", BTN_UNDO, false);
+  _ = wb_button(sh[..], m, sk, s, ux + uw + sk.space, g, "REDO", BTN_REDO, false);
 
-  // UNDO, top right: free, no model asked
-  can_undo := wb_can_undo(s[0].world[..]) && !s[0].waiting;
-  b := Box.{x0 = w - g - ub, y0 = g, x1 = w - g, y1 = g + 36 * k};
-  s[0].boxes[BTN_UNDO] = b; s[0].shown[BTN_UNDO] = can_undo;
-  if can_undo {
-    plate(s, b, 0.9, look_of(s, BTN_UNDO, true));
-    vertices = centred(d, out, vertices, "UNDO", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, pale(k, 0.95));
+  // WorldBuilder, how full the world is, and the shared limits, top left in a Verse panel
+  cn := put_int(buf[..], 0, s[0].world[0].n); cn = put(buf[..], cn, " of "); cn = put_int(buf[..], cn, WB_OBJECTS); cn = put(buf[..], cn, " things");
+  count := sheet_pool(sh[..], cast(string) buf[0..<cn]);
+  ln := 0;
+  if s[0].known {
+    ln = put_dollars(buf[..], 0, s[0].spent); ln = put(buf[..], ln, " of ");
+    ln = put_dollars(buf[..], ln, s[0].cap); ln = put(buf[..], ln, " shared AI used today");
+  } else { ln = put(buf[..], 0, "$50 of AI a day, shared by everyone"); }
+  limits := sheet_pool(sh[..], cast(string) buf[0..<ln]);
+  pace := "4 commands at once, then 1 every 1.5 s";
+
+  title_w := measure_width(m, sk.title.face, "WorldBuilder") + sk.space * 1.5 + measure_width(m, sk.small.face, count);
+  lim_w := measure_width(m, sk.small.face, limits);
+  pace_w := measure_width(m, sk.small.face, pace);
+  want_w := hi(hi(title_w, lim_w), pace_w) + 2 * sk.pad;
+  max_hud_w := hi(lw - 3 * g - btns_w, 160);
+  hud_w := lo(want_w, max_hud_w);
+  hud_body := sk.small.line * 2 + 4 + (ifx s[0].known then sk.bar_h + 6 else 0.0f32);
+  hud_h := panel_height(sk, hud_body, true);
+  inside := panel(sh[..], m, sk, g, g, hud_w, hud_h, "WorldBuilder");
+  count_x := g + sk.pad + measure_width(m, sk.title.face, "WorldBuilder") + sk.space * 1.5;
+  if count_x + measure_width(m, sk.small.face, count) <= g + hud_w - sk.pad {
+    _ = sheet_text(sh[..], m, -1, count_x, g + sk.pad + (sk.title.line - sk.small.line) * 0.5, sk.small.line, sk.small.face, sk.accent, count);
   }
+  cy := inside.y;
+  _ = sheet_text(sh[..], m, -1, inside.x, cy, sk.small.line, sk.small.face, sk.muted, limits);
+  cy += sk.small.line + 4;
+  if s[0].known && s[0].cap > 0 {
+    share := clamp(cast(f32) s[0].spent / cast(f32) s[0].cap, 0, 1);
+    cy += bar(sh[..], sk, inside.x, cy, inside.w, share, ifx s[0].resting then sk.warning else sk.accent) + 6;
+  }
+  _ = sheet_text(sh[..], m, -1, inside.x, cy, sk.small.line, sk.small.face, sk.faint, pace);
 
-  // the pack, while it comes
+  // the pack, while it comes: a panel and progress bar in the middle of the screen
   if !s[0].cat_ready {
     pn := 0;
-    if s[0].pack_failed { pn = put(buf[..], 0, "THE MODELS DIDN'T ARRIVE. RELOAD THE PAGE."); }
+    if s[0].pack_failed { pn = put(buf[..], 0, "The models didn't arrive. Reload the page."); }
     else {
-      pn = put(buf[..], 0, "BRINGING IN 785 MODELS");
-      if s[0].total > 0 { pn = put(buf[..], pn, " "); pn = put_kb(buf[..], pn, s[0].loaded); pn = put(buf[..], pn, " OF "); pn = put_kb(buf[..], pn, s[0].total); }
+      pn = put(buf[..], 0, "Bringing in 785 models");
+      if s[0].total > 0 { pn = put(buf[..], pn, " · "); pn = put_mb(buf[..], pn, s[0].loaded); pn = put(buf[..], pn, " of "); pn = put_mb(buf[..], pn, s[0].total); }
     }
-    line := cast(string) buf[0..<pn];
-    vertices = centred(d, out, vertices, line, w * 0.5, h * 0.45, fit_cap(line, 9 * k, w - 2 * g), pale(k, 0.9));
-    if s[0].total > 0 && !s[0].pack_failed {
-      share := clamp(cast(f32) s[0].loaded / cast(f32) s[0].total, 0, 1);
-      bw := lo(w - 4 * g, 320 * k); x0 := (w - bw) * 0.5; y := h * 0.45 + 16 * k;
-      if lit(out, vertices, x0, y, x0 + bw, y, 0.5 * k, 0.25, 1 * k, CYAN_R, CYAN_G, CYAN_B, MODE_STROKE) { vertices += 6; }
-      if share > 0 && lit(out, vertices, x0, y, x0 + bw * share, y, 1.2 * k, 1, 2.5 * k, CYAN_R, CYAN_G, CYAN_B, MODE_STROKE) { vertices += 6; }
+    pload := sheet_pool(sh[..], cast(string) buf[0..<pn]);
+    has_bar := s[0].total > 0 && !s[0].pack_failed;
+    pw := lo(lw - 2 * g, hi(measure_width(m, sk.body.face, pload) + 2 * sk.pad, 320));
+    pbody := sk.body.line + (ifx has_bar then sk.space + sk.bar_h else 0.0f32);
+    ph := panel_height(sk, pbody, false);
+    px := (lw - pw) * 0.5; py := lh * 0.44 - ph * 0.5;
+    pins := panel(sh[..], m, sk, px, py, pw, ph, "");
+    _ = wb_centred(sh[..], m, lw * 0.5, pins.y, sk.body.line, sk.body.face, ifx s[0].pack_failed then sk.danger else sk.ink, pload);
+    if has_bar {
+      pshare := clamp(cast(f32) s[0].loaded / cast(f32) s[0].total, 0, 1);
+      _ = bar(sh[..], sk, pins.x, pins.y + sk.body.line + sk.space, pins.w, pshare, sk.accent);
     }
   }
 
-  // the line to type in, bottom centre, and SEND
-  fw := lo(w - 2 * g, 680 * k); fh := 50 * k;
-  fx0 := (w - fw) * 0.5; fy1 := h - g - (ifx phone then 8 * k else 12 * k); fy0 := fy1 - fh;
-  sw := 78 * k;
-  fb := Box.{x0 = fx0, y0 = fy0, x1 = fx0 + fw - sw - 8 * k, y1 = fy1};
-  sb := Box.{x0 = fb.x1 + 8 * k, y0 = fy0, x1 = fx0 + fw, y1 = fy1};
-  s[0].boxes[BTN_FIELD] = fb; s[0].shown[BTN_FIELD] = true;
-  s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1;
-  plate(s, fb, 0.92, LOOK_LIT);
-  ready := can_send(s) && s[0].typed_n > 0;
-  s[0].boxes[BTN_SEND] = sb; s[0].shown[BTN_SEND] = ready;
-  plate(s, sb, ifx ready then 0.92f32 else 0.5f32, look_of(s, BTN_SEND, ready));
-  vertices = centred(d, out, vertices, "SEND", (sb.x0 + sb.x1) * 0.5, (sb.y0 + sb.y1) * 0.5 + 4.5 * k, 9 * k, pale(k, ifx ready then 0.95f32 else 0.35f32));
-  cap := 9 * k;
-  tx := fb.x0 + 16 * k; base := (fb.y0 + fb.y1) * 0.5 + 4.5 * k; troom := fb.x1 - fb.x0 - 32 * k;
-  if s[0].typed_n > 0 {
-    typed := cast(string) s[0].typed[0..<s[0].typed_n];
-    from := tail_fit(typed, cap, troom - 8 * k);
-    shown := typed[from..<typed.count];
-    // Cmd+A: a band behind everything typed, as any selected text
-    if s[0].all && lit(out, vertices, tx - 2 * k, base - cap * 0.5, tx + text_w(shown, cap) + 2 * k, base - cap * 0.5, cap + 6 * k, 0.45, 0, CYAN_R, CYAN_G, CYAN_B, MODE_STROKE) { vertices += 6; }
-    vertices = write(d, out, vertices, shown, tx, base, cap, GAP, SPACE, pale(k, 0.97), false, false);
-    cx := tx + text_w(shown, cap) + 3 * k;
-    blink := s[0].still || cast(int) (s[0].time * 2) % 2 == 0;
-    if blink && lit(out, vertices, cx, base + 2 * k, cx, base - cap - 2 * k, 0.6 * k, 0.9, 1.2 * k, CYAN_R, CYAN_G, CYAN_B, MODE_STROKE) { vertices += 6; }
+  // the chat box (EditBuf) and SEND, bottom centre
+  fw := lo(lw - 2 * g, 680);
+  fh := sk.control_h + 2 * sk.space;
+  fx0 := (lw - fw) * 0.5;
+  fy1 := lh - g - (ifx phone then 8.0f32 else 12.0f32);
+  fy0 := fy1 - fh;
+  send_w := button_width(m, sk, "SEND");
+  sx := fx0 + fw - sk.space - send_w;
+  sy := fy0 + sk.space;
+
+  _ = panel(sh[..], m, sk, fx0, fy0, fw, fh, "");
+  _ = wb_button(sh[..], m, sk, s, sx, sy, "SEND", BTN_SEND, true);
+
+  field_w := sx - sk.space - fx0;
+  sheet_hit(sh[..], HIT_FIELD, 0, 0, fx0, fy0, field_w, fh);
+  s[0].field[0] = fx0 * d; s[0].field[1] = fy0 * d; s[0].field[2] = (fx0 + field_w) * d; s[0].field[3] = fy1 * d;
+
+  tx := fx0 + sk.pad;
+  tw := hi(sx - sk.space - tx, 24);
+  ty := fy0 + (fh - sk.body.line) * 0.5;
+  s[0].ed_text_x = tx; s[0].ed_text_w = tw;
+
+  e := s[0].ed[..];
+  typed := eb_text(e);
+  total_w := text_width(a, sk.body.face, typed);
+  caret_x := text_x_at(a, sk.body.face, typed, e[0].caret);
+  max_scroll := hi(total_w + 4 - tw, 0);
+  if s[0].ed_follow {
+    if caret_x < s[0].ed_scroll { s[0].ed_scroll = caret_x; }
+    else if caret_x + 4 > s[0].ed_scroll + tw { s[0].ed_scroll = caret_x + 4 - tw; }
+    s[0].ed_follow = false;
+  }
+  s[0].ed_scroll = clamp(s[0].ed_scroll, 0, max_scroll);
+
+  sh[0].nu = prim_clip(sh[0].under, sh[0].nu, tx - 2, fy0 + 2, tx + tw + 2, fy1 - 2);
+  sh[0].no = prim_clip(sh[0].over, sh[0].no, tx - 2, fy0 + 2, tx + tw + 2, fy1 - 2);
+  pen_x := tx - s[0].ed_scroll;
+  sel_a := eb_sel_lo(e); sel_b := eb_sel_hi(e);
+  if e[0].n > 0 && sel_b > sel_a {
+    sa := text_x_at(a, sk.body.face, typed, sel_a);
+    sb := text_x_at(a, sk.body.face, typed, sel_b);
+    sheet_fill(sh[..], pen_x + sa, ty, hi(sb - sa, 2), sk.body.line, 2, sk.selection);
+  }
+  if e[0].n > 0 {
+    _ = sheet_text(sh[..], m, -1, pen_x, ty, sk.body.line, sk.body.face, sk.ink, typed);
   } else {
-    hint := ifx s[0].world[0].n == 0 then "PUT A TREE HERE" else "SAY WHAT TO BUILD";
-    vertices = write(d, out, vertices, hint, tx, base, fit_cap(hint, cap, troom), GAP, SPACE, pale(k, 0.32), false, false);
+    hint := ifx s[0].world[0].n == 0 then "Put a tree here" else "Say what to build";
+    _ = sheet_text(sh[..], m, -1, tx, ty, sk.body.line, sk.body.face, sk.faint, hint);
   }
+  blink := s[0].still || cast(int) floor((s[0].time - s[0].caret_at) * 2) % 2 == 0;
+  if sel_a == sel_b && blink {
+    sheet_fill(sh[..], pen_x + caret_x, ty + 2, 2, sk.body.line - 4, 0, sk.accent);
+  }
+  sheet_unclip(sh[..]);
 
-  // over the line: the words sent while their answer comes, or the one line answered
-  ry := fy0 - 16 * k;
-  rroom := w - 2 * g;
+  // over the chat box: the words sent while waiting, resting or flood notices, the model's reply, or the ground hint
+  ry := fy0 - sk.space - sk.body.line;
   if s[0].waiting && s[0].heard_n > 0 {
-    rn := put(buf[..], 0, "“"); rn = put(buf[..], rn, cast(string) s[0].heard[0..<s[0].heard_n]); rn = put(buf[..], rn, "”");
-    line := cast(string) buf[0..<rn];
-    pulse := ifx s[0].still then 0.7f32 else 0.55 + 0.35 * sin(s[0].time * 5);
-    vertices = centred(d, out, vertices, line, w * 0.5, ry, fit_cap(line, 8 * k, rroom), pale(k, pulse));
+    rn := put(buf[..], 0, "\""); rn = put(buf[..], rn, cast(string) s[0].heard[0..<s[0].heard_n]); rn = put(buf[..], rn, "\"");
+    line := sheet_pool(sh[..], cast(string) buf[0..<rn]);
+    pulse := ifx s[0].still then 0.85f32 else 0.55 + 0.35 * sin(s[0].time * 5);
+    _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.body.line, sk.body.face, opacity(sk.ink, pulse), line);
   } else if s[0].resting {
-    a := "WORLDBUILDER IS RESTING UNTIL MIDNIGHT, CHICAGO TIME";
-    bb := "TODAY'S SHARED $50 OF AI IS USED UP. YOUR WORLD IS KEPT.";
-    vertices = centred(d, out, vertices, a, w * 0.5, ry - 16 * k, fit_cap(a, 8.5 * k, rroom), warm(k, 0.95));
-    vertices = centred(d, out, vertices, bb, w * 0.5, ry, fit_cap(bb, 7 * k, rroom), pale(k, 0.75));
+    _ = wb_centred(sh[..], m, lw * 0.5, ry - sk.small.line - 2, sk.body.line, sk.strong.face, sk.warning, "WorldBuilder is resting until midnight, Chicago time.");
+    _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.small.line, sk.small.face, sk.muted, "Today's shared $50 of AI is used up. Your world is kept.");
   } else if s[0].time < s[0].flood_until {
     left := cast(int) ((s[0].flood_until - s[0].time) * 10 + 0.999);
-    rn := put(buf[..], 0, "TOO FAST FOR THE SHARED LINE: SEND AGAIN IN ");
-    rn = put_int(buf[..], rn, left / 10); rn = put(buf[..], rn, "."); rn = put_int(buf[..], rn, left % 10); rn = put(buf[..], rn, " S");
-    line := cast(string) buf[0..<rn];
-    vertices = centred(d, out, vertices, line, w * 0.5, ry, fit_cap(line, 8 * k, rroom), warm(k, 0.95));
+    rn := put(buf[..], 0, "Too fast for the shared line: send again in ");
+    rn = put_int(buf[..], rn, left / 10); rn = put(buf[..], rn, "."); rn = put_int(buf[..], rn, left % 10); rn = put(buf[..], rn, " s");
+    line := sheet_pool(sh[..], cast(string) buf[0..<rn]);
+    _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.body.line, sk.body.face, sk.warning, line);
   } else if s[0].reply_n > 0 {
-    rn := put(buf[..], 0, cast(string) s[0].reply[0..<s[0].reply_n]);
-    for i: 0..<rn { if buf[i] >= 'a' && buf[i] <= 'z' { buf[i] -= 32; } }
-    line := cast(string) buf[0..<rn];
-    vertices = centred(d, out, vertices, line, w * 0.5, ry, fit_cap(line, 8.5 * k, rroom), ifx s[0].reply_kind == REPLY_NOTICE then warm(k, 0.95) else pale(k, 0.92));
+    line := sheet_pool(sh[..], cast(string) s[0].reply[0..<s[0].reply_n]);
+    tone := ifx s[0].reply_kind == REPLY_NOTICE then sk.warning else sk.ink;
+    _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.body.line, sk.body.face, tone, line);
   } else if !s[0].has_here && s[0].cat_ready {
-    hint := ifx phone then "TAP THE GROUND TO SAY WHERE “HERE” IS · DRAG TO TURN · PINCH TO ZOOM" else "CLICK THE GROUND TO SAY WHERE “HERE” IS · DRAG TO TURN · SCROLL TO ZOOM";
-    vertices = centred(d, out, vertices, hint, w * 0.5, ry, fit_cap(hint, 7 * k, rroom), pale(k, 0.55));
+    hint := ifx phone then "Tap the ground to say where \"here\" is · drag to turn · pinch to zoom" else "Click the ground to say where \"here\" is · drag to turn · scroll to zoom";
+    _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.small.line, sk.small.face, sk.muted, hint);
   }
-  return vertices;
+
+  s[0].nu = sh[0].nu; s[0].no = sh[0].no; s[0].nh = sh[0].nh;
+  if !a[0].ready { return 0; }
+  v := gpu_draw(out, 0, a, d, s[0].under[0..<s[0].nu], 0, 0, -8, lh + 8);
+  v = gpu_draw(out, v, a, d, s[0].over[0..<s[0].no], 0, 0, -8, lh + 8);
+  return v;
 }
 
-// ---- the frame
+// ---- the frame and the atlas exports (coax/web/gpui.js)
 
 worldbuilder_frame :: (s: [] WorldBuilder, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
@@ -698,14 +927,13 @@ worldbuilder_frame :: (s: [] WorldBuilder, out: [] f32, uniforms: [] f32, width:
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = held;
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
+  s[0].ed[0].clock = s[0].time;
   // the view glides to the spot last tapped
   if s[0].has_here { s[0].gx = s[0].here_x; s[0].gz = s[0].here_z; }
   glide := ifx held then 1.0f32 else 1 - exp(-step * 4);
   s[0].tx += (s[0].gx - s[0].tx) * glide; s[0].tz += (s[0].gz - s[0].tz) * glide;
   pump(s);
   scene(s);
-  s[0].plate_n = 0;
-  for i: 0..<BUTTONS { s[0].shown[i] = false; }
   for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx held then 20.0f32 else s[0].time;
   uniforms[3] = ifx held then 1.0f32 else ease(s[0].time / 0.5);
@@ -721,40 +949,90 @@ worldbuilder_frame :: (s: [] WorldBuilder, out: [] f32, uniforms: [] f32, width:
     uniforms[EYE_AT + i] = s[0].eye[i]; uniforms[RAY_AT + i] = s[0].fwd[i];
     uniforms[RAY_AT + 4 + i] = s[0].right[i]; uniforms[RAY_AT + 8 + i] = s[0].up[i];
   }
-  n := draw_ui(s, out);
-  uniforms[5] = cast(f32) s[0].plate_n;
-  for i: 0..<s[0].plate_n {
-    o := PANEL_AT + i * 8; b := s[0].plates[i];
-    uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
-    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = s[0].plate_alpha[i]; uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = 0;
-  }
-  return n;
+  return draw_ui(s, out);
 }
 worldbuilder_golden :: (s: [] WorldBuilder, on: bool) #export_c #effects(all) { s[0].golden = on; }
 coaxial_worldbuilder_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
 coaxial_worldbuilder_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 coaxial_worldbuilder_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
+worldbuilder_glyph_count :: () -> int #export_c #effects(all) { return GP_GLYPHS; }
+worldbuilder_glyph_code :: (k: int) -> int #export_c #effects(all) {
+  if k < 95 { return k + 32; }
+  extra := GP_EXTRA;
+  return ifx k - 95 < 3 then cast(int) extra[k - 95] else 63;
+}
+worldbuilder_font_count :: () -> int #export_c #effects(all) { return GP_FONTS; }
+worldbuilder_font_size :: (k: int) -> f32 #export_c #effects(all) { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+worldbuilder_font_weight :: (k: int) -> int #export_c #effects(all) { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+worldbuilder_icon_count :: () -> int #export_c #effects(all) { return ICON_COUNT; }
+worldbuilder_icon_size :: (i: int) -> f32 #export_c #effects(all) { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
+worldbuilder_icon_name :: (s: [] WorldBuilder, i: int) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= ICON_COUNT { return 0; }
+  names := ICON_NAMES;
+  n := ifx names[i].count < 64 then names[i].count else 64;
+  for k: 0..<n { s[0].sbytes[k] = names[i][k]; }
+  return n;
+}
+worldbuilder_set_font :: (s: [] WorldBuilder, slot: int) #export_c #effects(all) {
+  if s.count < 1 || slot < 0 || slot >= GP_FONTS { return; }
+  sizes := FONT_SIZES;
+  gp_set_font(s[0].atlas[..], slot, sizes[slot], s[0].scratch[0..<7], s[0].scratch[7..<7 + GP_GLYPHS], s[0].scratch[7 + GP_GLYPHS..<7 + GP_GLYPHS + GP_GLYPHS * GP_GLYPHS]);
+}
+worldbuilder_set_icon :: (s: [] WorldBuilder, i: int, x: f32, y: f32, w: f32, h: f32) #export_c #effects(all) { if s.count > 0 { gp_set_icon(s[0].atlas[..], i, x, y, w, h); } }
+worldbuilder_set_atlas :: (s: [] WorldBuilder, width: f32, height: f32, levels: int) #export_c #effects(all) { if s.count > 0 { gp_set_atlas(s[0].atlas[..], width, height, levels); } }
+worldbuilder_set_dynamic :: (s: [] WorldBuilder, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c #effects(all) {
+  if s.count > 0 { gp_set_dynamic(s[0].atlas[..], size, pen_x, pen_y, y0, cols, color_cols, color_width, color_height); }
+}
+worldbuilder_next_cluster :: (s: [] WorldBuilder) -> int #export_c #effects(all) { if s.count < 1 { return -1; } return gp_next_cluster(s[0].atlas[..]); }
+worldbuilder_cluster :: (s: [] WorldBuilder, slot: int) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return gp_cluster(s[0].atlas[..], slot, s[0].sbytes[..]); }
+worldbuilder_measured :: (s: [] WorldBuilder, slot: int, advance: f32, color: bool) #export_c #effects(all) { if s.count > 0 { gp_measured(s[0].atlas[..], slot, advance, color); } }
+worldbuilder_next_cell :: (s: [] WorldBuilder) -> int #export_c #effects(all) { if s.count < 1 { return -1; } return gp_next_cell(s[0].atlas[..]); }
+worldbuilder_cell :: (s: [] WorldBuilder, cell: int) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return gp_cell(s[0].atlas[..], cell, s[0].scratch[0..<6]); }
+worldbuilder_cell_ready :: (s: [] WorldBuilder, cell: int) #export_c #effects(all) { if s.count > 0 { gp_cell_ready(s[0].atlas[..], cell); } }
+
 // ---- checks
 
 TEST_CAT :: WB_TEST_CAT;
-ready :: (s: [] WorldBuilder) { worldbuilder_catalog(s, TEST_CAT); }
+wb_test_atlas :: (a: [] Atlas) {
+  text_test_atlas(a);
+  gp_set_atlas(a, 4096, 4096, 2);
+  for k: 0..<ICON_COUNT { gp_set_icon(a, k, 0, 0, 32, 32); }
+}
+ready :: (s: [] WorldBuilder) {
+  wb_test_atlas(s[0].atlas[..]);
+  worldbuilder_catalog(s, TEST_CAT);
+}
 frame :: (s: [] WorldBuilder) -> int {
+  if !s[0].atlas[0].ready { wb_test_atlas(s[0].atlas[..]); }
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   return worldbuilder_frame(s, out[..], u[..], 1600, 1000, 2, 1.0 / 60.0, false);
 }
 type_in :: (s: [] WorldBuilder, t: string) { worldbuilder_message(s, MSG_TEXT, t); }
+typed_now :: (s: [] WorldBuilder) -> string { return eb_text(s[0].ed[..]); }
 body :: (s: [] WorldBuilder) -> string { return cast(string) s[0].req_body[0..<s[0].req_body_n]; }
 has :: (t: string, part: string) -> bool {
   if part.count > t.count { return false; }
   for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return true; } }
   return false;
 }
+btn_hit :: (s: [] WorldBuilder, btn: int) -> SheetHit {
+  for k: 0..<s[0].nh { if s[0].hits[k].kind == HIT_BUTTON && s[0].hits[k].a == btn { return s[0].hits[k]; } }
+  return SheetHit.{};
+}
+tap_btn :: (s: [] WorldBuilder, btn: int) -> bool {
+  h := btn_hit(s, btn);
+  if h.w <= 0 { return false; }
+  d := wb_scale(s);
+  cx := (h.x + h.w * 0.5) * d; cy := (h.y + h.h * 0.5) * d;
+  return worldbuilder_pointer(s, cx, cy, POINTER_DOWN, 0, 1) && worldbuilder_pointer(s, cx, cy, POINTER_UP, 0, 1);
+}
 
 #test "a typed line goes out as the page's JSON, with here, the camera and what the world holds" {
   s: [1] WorldBuilder;
   ready(s[..]);
   n := frame(s[..]);
+  #assert n > 0;
   // the status is asked for at load
   #assert s[0].req_ready && s[0].req_what == REQ_STATUS;
   worldbuilder_requested(s[..], 0);
@@ -765,7 +1043,7 @@ has :: (t: string, part: string) -> bool {
   #assert s[0].has_here && abs(s[0].here_x) < 0.5 && abs(s[0].here_z) < 0.5;
   type_in(s[..], "put a \"tree\" here");
   #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
-  #assert s[0].waiting && s[0].req_ready && s[0].req_what == REQ_ACT && s[0].typed_n == 0;
+  #assert s[0].waiting && s[0].req_ready && s[0].req_what == REQ_ACT && s[0].ed[0].n == 0;
   #assert has(body(s[..]), "{\"text\":\"put a \\\"tree\\\" here\",\"here\":[") && has(body(s[..]), "\"present\":{}");
   worldbuilder_requested(s[..], 1);
   // a second line can't go while one is out
@@ -786,14 +1064,14 @@ has :: (t: string, part: string) -> bool {
   #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
   worldbuilder_requested(s[..], 2);
   worldbuilder_message(s[..], MSG_HTTP + 2, "429\nflood 1200");
-  #assert !s[0].waiting && cast(string) s[0].typed[0..<s[0].typed_n] == "add rocks" && s[0].flood_until > s[0].time + 1.1;
+  #assert !s[0].waiting && typed_now(s[..]) == "add rocks" && s[0].flood_until > s[0].time + 1.1;
   #assert !can_send(s[..]);
   s[0].time += 1.3;
   #assert can_send(s[..]);
   #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
   worldbuilder_requested(s[..], 3);
   worldbuilder_message(s[..], MSG_HTTP + 3, "429\nresting");
-  #assert s[0].resting && !can_send(s[..]) && s[0].typed_n == 9;
+  #assert s[0].resting && !can_send(s[..]) && s[0].ed[0].n == 9;
 }
 #test "the scene draws one instanced draw a mesh, its rows folding in the mesh's box" {
   s: [1] WorldBuilder;
@@ -809,6 +1087,7 @@ has :: (t: string, part: string) -> bool {
 }
 #test "a building draws as its pieces, each turned and placed with it" {
   s: [1] WorldBuilder;
+  wb_test_atlas(s[0].atlas[..]);
   worldbuilder_catalog(s[..], WB_PIECES_CAT);
   sum := wb_answer(s[0].world[..], s[0].cat[..], wb_view(s[..]), "A place|house/cottage|1|||origin||at||||||\nA place|village/roof-roundtiles-4x4|1|||origin||right||||||\n");
   scene(s[..]);
@@ -819,19 +1098,44 @@ has :: (t: string, part: string) -> bool {
   // the cottage's roof stands 3 m up
   #assert abs(s[0].objects[s[0].draws[6 * 4 + 2] * INSTANCE_FLOATS + 7] - 3) < 0.001;
 }
-#test "UNDO takes back the last edit without asking the model; a drag turns the view and is no tap" {
+#test "UNDO and REDO buttons sit side by side, take back and put back without asking the model; a drag turns the view" {
   s: [1] WorldBuilder;
   ready(s[..]);
   sum := wb_answer(s[0].world[..], s[0].cat[..], wb_view(s[..]), "A place|nature/rock-1|3|||origin||at||||||\n");
   n := frame(s[..]);
-  b := s[0].boxes[BTN_UNDO];
-  #assert s[0].shown[BTN_UNDO];
-  #assert worldbuilder_pointer(s[..], b.x0 + 4, b.y0 + 4, POINTER_DOWN, 0, 1) && worldbuilder_pointer(s[..], b.x0 + 4, b.y0 + 4, POINTER_UP, 0, 1);
+  u := btn_hit(s[..], BTN_UNDO); r := btn_hit(s[..], BTN_REDO);
+  #assert u.w > 0 && r.w > 0 && r.x > u.x + u.w && abs(r.y - u.y) < 0.01;
+  #assert button_enabled(s[..], BTN_UNDO) && !button_enabled(s[..], BTN_REDO);
+  #assert tap_btn(s[..], BTN_UNDO);
   #assert s[0].world[0].n == 0 && s[0].req_what != REQ_ACT;
+  n = frame(s[..]);
+  #assert !button_enabled(s[..], BTN_UNDO) && button_enabled(s[..], BTN_REDO);
+  #assert tap_btn(s[..], BTN_REDO);
+  #assert s[0].world[0].n == 3 && s[0].req_what != REQ_ACT;
   yaw := s[0].yaw;
   #assert worldbuilder_pointer(s[..], 600, 500, POINTER_DOWN, 0, 1);
   #assert worldbuilder_pointer(s[..], 700, 520, POINTER_MOVE, 0, 1) && worldbuilder_pointer(s[..], 700, 520, POINTER_UP, 0, 1);
   #assert s[0].yaw != yaw && !s[0].has_here;
+}
+#test "Redo works by Cmd/Ctrl+Shift+Z, Cmd/Ctrl+Y, and 'redo' by chat" {
+  s: [1] WorldBuilder;
+  ready(s[..]);
+  _ = frame(s[..]);
+  worldbuilder_requested(s[..], 0);
+  _ = wb_answer(s[0].world[..], s[0].cat[..], wb_view(s[..]), "A place|nature/birch-1|2|||origin||at||||||\n");
+  _ = wb_answer(s[0].world[..], s[0].cat[..], wb_view(s[..]), "A place|nature/rock-1|1|||origin||right||||||\n");
+  #assert s[0].world[0].n == 3;
+  // Cmd+Z and Ctrl+Z undo both steps
+  #assert worldbuilder_key(s[..], 'z', true, MOD_META) && s[0].world[0].n == 2;
+  #assert worldbuilder_key(s[..], 'z', true, MOD_CTRL) && s[0].world[0].n == 0;
+  // Cmd+Shift+Z and Ctrl+Y redo them
+  #assert worldbuilder_key(s[..], 'Z', true, MOD_META | MOD_SHIFT) && s[0].world[0].n == 2;
+  #assert worldbuilder_key(s[..], 'y', true, MOD_CTRL) && s[0].world[0].n == 3;
+  // "undo" and "redo" typed in chat run locally without asking the model
+  type_in(s[..], "undo");
+  #assert worldbuilder_key(s[..], KEY_ENTER, true, 0) && !s[0].req_ready && s[0].world[0].n == 2;
+  type_in(s[..], "REDO");
+  #assert worldbuilder_key(s[..], KEY_ENTER, true, 0) && !s[0].req_ready && s[0].world[0].n == 3;
 }
 #test "a saved world comes back once the catalogue is in, whichever arrives first" {
   s: [1] WorldBuilder;
@@ -843,24 +1147,46 @@ has :: (t: string, part: string) -> bool {
   // loading isn't a change to keep again
   #assert worldbuilder_action(s[..]) == 0;
 }
-
-#test "the chat box keeps the site's keys: Cmd+A selects, Cmd+C copies, typing replaces, Cmd+V is the browser's" {
+#test "the chat box uses EditBuf and keeps the site's keys: arrows, click, drag, Shift, Cmd+A/C/X/V and text undo/redo" {
   s: [1] WorldBuilder;
   ready(s[..]);
+  _ = frame(s[..]);
   type_in(s[..], "put a tree here");
-  #assert worldbuilder_key(s[..], 'a', true, 8) && s[0].all;
-  #assert worldbuilder_key(s[..], 'c', true, 8);
+  #assert worldbuilder_key(s[..], 'a', true, MOD_META) && eb_selected(s[0].ed[..]) == "put a tree here";
+  #assert worldbuilder_key(s[..], 'c', true, MOD_META);
   #assert worldbuilder_action(s[..]) == TK_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "put a tree here";
-  #assert cast(string) s[0].typed[0..<s[0].typed_n] == "put a tree here";
+  #assert typed_now(s[..]) == "put a tree here";
   worldbuilder_action_done(s[..]);
-  #assert !worldbuilder_key(s[..], 'v', true, 8);   // the browser pastes into the field; its text comes as MSG_TEXT
-  #assert worldbuilder_key(s[..], 'a', true, 2) && s[0].all;   // Ctrl on Windows and Linux
+  #assert !worldbuilder_key(s[..], 'v', true, MOD_META);   // the browser pastes into the field; its text comes as MSG_TEXT
+  #assert worldbuilder_key(s[..], 'a', true, MOD_CTRL) && eb_selected(s[0].ed[..]) == "put a tree here";
   worldbuilder_message(s[..], MSG_TEXT, "add rocks");
-  #assert !s[0].all && cast(string) s[0].typed[0..<s[0].typed_n] == "add rocks";
-  #assert worldbuilder_key(s[..], 'x', true, 8) && worldbuilder_action(s[..]) == TK_ACT_COPY && s[0].typed_n == 0;
+  #assert eb_sel_lo(s[0].ed[..]) == eb_sel_hi(s[0].ed[..]) && typed_now(s[..]) == "add rocks";
+  // EditBuf's own undo and redo on the typed text
+  #assert worldbuilder_key(s[..], 'z', true, MOD_META) && typed_now(s[..]) == "put a tree here";
+  #assert worldbuilder_key(s[..], 'z', true, MOD_META | MOD_SHIFT) && typed_now(s[..]) == "add rocks";
+  // caret movement by arrows and Shift selection, then replacing the selection
+  #assert worldbuilder_key(s[..], KEY_LEFT, true, MOD_ALT) && s[0].ed[0].caret == 4;
+  #assert worldbuilder_key(s[..], KEY_RIGHT, true, MOD_SHIFT | MOD_ALT) && eb_selected(s[0].ed[..]) == "rocks";
+  type_in(s[..], "pines");
+  #assert typed_now(s[..]) == "add pines";
+  // click places the caret, drag selects across characters (test atlas advances 8 logical px a glyph, dpr = 2)
+  _ = frame(s[..]);
+  d := wb_scale(s[..]);
+  fy := (s[0].field[1] + s[0].field[3]) * 0.5;
+  x0 := (s[0].ed_text_x + 4 * 8) * d;
+  x1 := (s[0].ed_text_x + 9 * 8) * d;
+  #assert worldbuilder_pointer(s[..], x0, fy, POINTER_DOWN, 0, 1) && worldbuilder_pointer(s[..], x0, fy, POINTER_UP, 0, 1);
+  #assert s[0].ed[0].caret == 4 && s[0].ed[0].anchor == 4;
+  s[0].time += 1.0;   // past double-click window
+  #assert worldbuilder_pointer(s[..], x0, fy, POINTER_DOWN, 0, 1);
+  #assert worldbuilder_pointer(s[..], x1, fy, POINTER_MOVE, 0, 1) && worldbuilder_pointer(s[..], x1, fy, POINTER_UP, 0, 1);
+  #assert eb_selected(s[0].ed[..]) == "pines";
+  // Cmd+X cuts only the selection when selected, or the whole line when nothing is selected
+  #assert worldbuilder_key(s[..], 'x', true, MOD_META) && worldbuilder_action(s[..]) == TK_ACT_COPY && typed_now(s[..]) == "add ";
   worldbuilder_action_done(s[..]);
-  worldbuilder_message(s[..], MSG_TEXT, "one two");
-  #assert worldbuilder_key(s[..], KEY_BACKSPACE, true, 4) && cast(string) s[0].typed[0..<s[0].typed_n] == "one ";
-  #assert worldbuilder_key(s[..], 'a', true, 8) && worldbuilder_key(s[..], KEY_BACKSPACE, true, 0) && s[0].typed_n == 0;
-  #assert !worldbuilder_key(s[..], 'r', true, 8);   // Cmd+R stays the browser's
+  type_in(s[..], "two");
+  #assert typed_now(s[..]) == "add two";
+  #assert worldbuilder_key(s[..], KEY_BACKSPACE, true, MOD_ALT) && typed_now(s[..]) == "add ";
+  #assert worldbuilder_key(s[..], 'a', true, MOD_META) && worldbuilder_key(s[..], KEY_BACKSPACE, true, 0) && s[0].ed[0].n == 0;
+  #assert !worldbuilder_key(s[..], 'r', true, MOD_META);   // Cmd+R stays the browser's
 }

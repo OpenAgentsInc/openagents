@@ -1,54 +1,19 @@
 // WorldBuilder's shaders (openagents.com/create-world, worldbuilder.coax), the source of
 // apps/openagents-web/worldbuilder.wgsl: build with coax/web/wgsl-module.coax
-// (worldbuilder.module, worldbuilder.bindings beside it), as droprealm's are.
-#load "../../../aethyr/render/sampling.coax";
-#load "../../../verse/gpu/wgsl.coax";
-
+// (worldbuilder.module, worldbuilder.bindings beside it).
+//
 // Three passes: the sky and the Grid's floor behind (where each pixel's ray meets the ground, a
-// line a metre and a brighter one every ten, the tapped spot's ring on it, the plates over both);
-// the pack's meshes, instanced, a draw a mesh (scene_vs, scene_fs); and the strokes over all
-// (the words). Every place and size comes from worldbuilder.coax.
+// line a metre and a brighter one every ten, the tapped spot's ring on it); the pack's meshes,
+// instanced, a draw a mesh (scene_vs, scene_fs); and the shared component shader over all
+// (components/backend/gpu-shader.coax: panels, buttons, bars and chat box).
 // The uniform block, read from a []f32 at these offsets (floats):
-//   size 0, time 2, fade 3, still 4, panels 5, k 6
+//   size 0, time 2, fade 3, still 4
 //   the view's rows 8, 12, 16, 20 (clip = rows · world)
 //   here 24: x, 0, z, how strongly it is shown
 //   eye 28, ray 32 (forward), rx 36, uy 40 (a pixel's ray: fwd + ndc.x · rx + ndc.y · uy)
-//   per plate from 44: x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
-worldbuilder_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
-  if (s.y<=0.0f32) {
-    return under;
-  }
-  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
-  corner:f32=fmin(10.0f32*s.x,fmin(half.x,half.y));
-  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
-  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
-  if (d>1.0f32) {
-    return under;
-  }
-  over:bool=s.z>=2.0f32;
-  lit:bool=over||((s.z>=1.0f32)&&(s.z<2.0f32));
-  fill:V3=ifx over then v3(0.055f32,0.085f32,0.11f32) else v3(0.03f32,0.045f32,0.062f32);
-  line:V3=ifx lit then v3(0.45f32,0.85f32,1.0f32) else v3(0.2f32,0.38f32,0.48f32);
-  w:f32=1.25f32*s.x;
-  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
-  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
-  a:f32=clampf(s.y,0.0f32,1.0f32);
-  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,edge*fmin(1.0f32,a+0.1f32));
-}
-worldbuilder_panels :: (p:V2,under:V3,u:[]f32)->V3 {
-  c:V3=under;
-  {
-    k:s32=0;
-    while k<16 {
-      if ((cast(f32)(k))>=u[5]) {
-        break;
-      }
-      c=worldbuilder_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+44),wg_at4(u,(cast(int)((k*2)+1))*4+44));
-      k+=1;
-    }
-  }
-  return c;
-}
+#load "../../../aethyr/render/sampling.coax";
+#load "../../../components/backend/gpu-shader.coax";
+
 // Colour as the screen shows it: a rough sRGB encode of the linear light.
 worldbuilder_out :: (c:V3)->V3 {
   return v3(sqrt(fmax(c.x,0.0f32)),sqrt(fmax(c.y,0.0f32)),sqrt(fmax(c.z,0.0f32)));
@@ -94,7 +59,7 @@ worldbuilder_bg_fs :: (pos:V4,u:[]f32)->V4 {
   ground=wg_mix_f3f3f(sky,ground,fog*0.85f32+0.15f32);
   edge:f32=ifx down then smoothstep(0.0f32,0.02f32,-up) else 0.0f32;
   c:V3=wg_mul_f3f(wg_mix_f3f3f(sky,ground,edge),u[3]);
-  return wg_make_f4_f3f(worldbuilder_panels(p,worldbuilder_out(c),u),1.0f32);
+  return wg_make_f4_f3f(worldbuilder_out(c),1.0f32);
 }
 // ---- the pack's meshes (verse/tools/assets/worldbuilder_pack.coax): 16 bytes a vertex, its
 // position as unorm16 in its mesh's box (the instance's rows fold the box in), an octahedral
@@ -157,47 +122,21 @@ worldbuilder_scene_fs :: (s:WorldbuilderS,u:[]f32,sheets:Tex2DArray,sheet:Sample
   // far things sink into the night
   d:f32=wg_length3(wg_sub_f3f3(s.world,v3(u[28],u[29],u[30])));
   c=wg_mix_f3f3f(v3(0.004f32,0.008f32,0.02f32),c,exp((-d)*0.008f32));
-  return wg_make_f4_f3f(worldbuilder_panels(v2(s.pos.x,s.pos.y),worldbuilder_out(wg_mul_f3f(c,u[3])),u),1.0f32);
+  return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(c,u[3])),1.0f32);
 }
-// ---- the strokes: one quad per stroke or light (worldbuilder.coax lit, the words)
-WorldbuilderV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
-worldbuilder_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
-worldbuilder_fx_vs :: (_vid2:u32,_iid3:u32,in_:worldbuilder_fx_vs_in,u:[]f32)->WorldbuilderV {
-  a:V4=in_.a;
-  o:WorldbuilderV;
-  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
-  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
-  o.place=v2(a.z,a.w);
-  o.shape=in_.b;
-  o.tint=in_.c;
-  o.bar=in_.d;
-  return o;
+// ---- the shared component pass (components/backend/gpu-shader.coax)
+worldbuilder_fx_vs :: (_vid2:u32,_iid3:u32,v:ChatZIn,u:[]f32)->ChatZV {
+  return chat_fx_vs(_vid2,_iid3,v,u);
 }
-worldbuilder_fx_fs :: (v:WorldbuilderV,u:[]f32)->V4 {
-  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
-  d:f32=wg_length2(v2(along,v.place.y));
-  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
-  g:f32=d/fmax(v.shape.w,1.0f32);
-  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
-  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+worldbuilder_fx_fs :: (v:ChatZV,gpui_atlas:Tex2D,gpui_color:Tex2D)->V4 {
+  return chat_fx_fs(v,gpui_atlas,gpui_color);
 }
 
-// ---- the vector helpers this file calls
-wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
-wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
-wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
-wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
-wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+// ---- the vector helpers not already in gpu-shader.coax
 wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
-wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
-wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
 wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
 wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
-wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
-wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
 wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth_fine(p0.x),gpu_fwidth_fine(p0.y));}
 wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
 wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
-wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
-wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
 wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}

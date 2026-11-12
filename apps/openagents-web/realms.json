@@ -284,7 +284,15 @@
         "module": "worldbuilder",
         "slot": "create-world",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/create-world/assets/worldbuilder.pack.gz"]
+        "assets": [
+          "pack:/realms/create-world/assets/worldbuilder.pack.gz",
+          "font:/build/zeron/Geist.ttf",
+          "font:/build/zeron/Geist-Medium.ttf",
+          "font:/build/zeron/Geist-SemiBold.ttf",
+          "font:/build/zeron/GeistMono.ttf",
+          "icons:/build/zeron/icons.json",
+          "licence:/build/zeron/Geist-OFL.txt"
+        ]
       }
     },
     { "id": "built", "name": "A WORLD YOU BUILT", "kind": "open", "listed": false, "orbit": { "r": 0.24, "a": 4.6, "size": 0.024 },

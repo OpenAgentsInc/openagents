@@ -1,5 +1,8 @@
 # worldbuilder's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out.
-u 0 0 uniform 43
+u 0 0 uniform 11
+gpui_atlas 0 1
+gpui_color 0 2
+gpui_sampler 0 3
 vertices 1 0
 objects 1 1
 sheets 1 2
