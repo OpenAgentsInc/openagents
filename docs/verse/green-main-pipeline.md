@@ -160,8 +160,9 @@ and runs only what the commits between them can have changed:
 - the suites whose sources changed since `G` (`coax/web/tool.sh suites
   --since G`, from the `#load` graph), in three parts on three host slots;
 - the web modules the change touched, each against its budget;
-- `tools-check`, `everglade-parity` and the committed shaders against their
-  Coax;
+- `tools-check`, `everglade-parity`, `wire-check` (every wire shape is in
+  `proto/registry.json`; the allowlist is compared with `G`'s copy, #13236)
+  and the committed shaders against their Coax;
 - the room build, when the change reaches one of its units, as its own job
   (it takes about 25 minutes);
 - `coax/tests/run.sh` in eight parts, when compiler sources changed.
@@ -265,6 +266,7 @@ passes on production stops it) stays as it is.
 | Release from a chosen commit | `release.sh --ref COMMIT` |
 | Release checks that compare against production | `release.sh` |
 | Zone parity report | `coax/web/tool.sh everglade-parity` (#13075) |
+| Wire shape registry check | `coax/web/tool.sh wire-check` (#13236) |
 
 ## What is built
 

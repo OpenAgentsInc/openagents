@@ -31,6 +31,7 @@
 #
 # Everything else is a report and never stops a release: tools-check,
 # everglade-parity (no zone-local copy of a shared Everglade feature, #13075),
+# wire-check (every wire shape registered in proto/registry.json, #13236),
 # the committed shaders against their Coax (wgsl-module --site --check),
 # check-visuals, the release metadata check, the golden walk, 60 FPS, every
 # world's frame rate, the maker journey, the changed suites (after-release.sh,
@@ -224,6 +225,8 @@ compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-rel
   echo "  report     tools-check fails (not stopping): $(tail -1 "$reports/tools")"
 (cd "$tree" && bounded 300 coax/web/tool.sh everglade-parity) > "$reports/parity" 2>&1 ||
   echo "  report     everglade-parity fails (not stopping): $(grep -m1 '^FAIL' "$reports/parity" || tail -1 "$reports/parity")"
+(cd "$tree" && bounded 300 coax/web/tool.sh wire-check) > "$reports/wire" 2>&1 ||
+  echo "  report     wire-check fails (not stopping): $(grep -m1 '^FAIL' "$reports/wire" || tail -1 "$reports/wire")"
 # Before deploy.sh's build rewrites them: are the committed shaders what their Coax writes?
 (cd "$tree" && bounded 300 coax/web/tool.sh coax/web/wgsl-module.coax --site --check) > "$reports/wgsl" 2>&1 ||
   echo "  report     committed .wgsl drift from their Coax (not stopping): $(tail -1 "$reports/wgsl")"

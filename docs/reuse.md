@@ -42,7 +42,7 @@ undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |
 | Nostr events, NIPs, NIP-98, zaps | Coax Nostr | `coax/lib/nostr/` |
 | Bitcoin and Lightning | Coax Bitcoin and Lightning | `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` |
-| A wire format: messages between apps, the API, rooms or devices | The protocol's schemas, with generated Coax codecs | `proto/` (read its README); add a new package there rather than inventing JSON shapes in a page |
+| A wire format: messages between apps, the API, rooms or devices; a file or log line a program stores | The protocol's schemas and the one codec file each shape has | `proto/` (read its README). Look the shape up in `proto/registry.json` and load its `codec` file; never write its JSON, frame or id by hand in a second file. For a new shape, add the schema and a registry row ([how](../proto/README.md#register-a-wire-shape)). `coax/web/tool.sh wire-check` fails on an unregistered shape |
 | JSON, protobuf, base64, Unicode, regex | Coax formats | `coax/lib/json/`, `coax/lib/proto/`, `coax/lib/text/` |
 | HTTP, sockets, processes, files, time | Coax system | `coax/lib/net/`, `coax/lib/sys/`, `coax/lib/clock.coax` |
 | Browser storage | The host's byte storage | `coax/web/STORAGE.md` |

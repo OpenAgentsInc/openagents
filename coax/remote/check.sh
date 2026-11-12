@@ -26,7 +26,7 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, test-remote.sh, everglade-parity, the committed
+#   coax/remote/check.sh reports          tools-check, test-remote.sh, everglade-parity, wire-check, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
 #   coax/remote/check.sh visuals          check-visuals alone (the web build's first stop:
@@ -205,6 +205,7 @@ reports() {
   step tools-check coax/web/tool.sh tools-check || status=1
   step remote-cleanup coax/remote/test-remote.sh || status=1
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
+  step wire-check coax/web/tool.sh wire-check || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
   visuals
   generated
@@ -241,6 +242,8 @@ reports_since() {
   if grep -qv '\.md$' "$out/changed"; then
     step tools-check coax/web/tool.sh tools-check || status=1
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
+    # every wire shape registered (proto/registry.json, #13236); the allowlist against the base's copy
+    step wire-check coax/web/tool.sh wire-check --base "$arg" || status=1
   fi
   if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then
     step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1

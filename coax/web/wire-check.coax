@@ -1,0 +1,812 @@
+// Wire shapes, checked (docs/protocol/2026-11-11-compliance-plan.md, "Enforcement"; GitHub #13236).
+// proto/registry.json names every wire and stored shape: its id, its schema, the one codec file
+// that may write it and the command that checks it. proto/wire-allowlist.txt names what is not
+// compliant yet. This tool fails when the tree has a shape that neither knows. Run it before a push:
+//   coax/web/tool.sh wire-check                  (from the repository root)
+//   coax/web/tool.sh wire-check --base REV       compare the allowlist with REV's (default origin/main)
+//   coax/web/tool.sh wire-check --list           every schema id found, with its file, and pass or fail
+//   coax/bin/coax test coax/web/wire-check.coax --library
+//
+// It fails when:
+// 1. A schema id in code ("NAME.vN" after a `schema` key) is in no registry row.
+// 2. A registered id ("NAME.vN", after a `schema` key or as a whole quoted string) is in a file
+//    other than its row's codec, its tests, or SQL the row lists because a test holds it to the
+//    codec's fixtures. #test blocks, comments and test files don't count.
+// 3. A coax/web/api/*.c file with a *_route function, or a coax/web/room/room-*.coax file, is in
+//    no row (codec, schema or files), and for a room file not in the registry's no_frames list
+//    (the room files that build and read no wire bytes of their own).
+// 4. A file under proto/coder/, proto/verse/, proto/aethyrforge/ or proto/aethyr/ is in no row
+//    that has a check.
+// 5. A .proto under proto/openagents/ is in no proto/modules.json profile and no row marked
+//    "status": "no-consumer".
+// 6. proto/wire-allowlist.txt has a line that REV's copy lacks, and the line carries no reason and
+//    issue number ("# why (#1234)"). The allowlist shrinks: a line that no longer excuses anything
+//    fails too, so the list stays true.
+// The registry is checked as well: each row's fields, and that the files it names exist. A row
+// marked "status": "pending" names a shape and its intended codec before its schema and check
+// exist; it needs a "shape ID" line in the allowlist, and rule 2 already holds for it.
+// An allowlist line excuses one thing:
+//   id ID FILE      FILE carries ID though it is not ID's codec (rules 1 and 2)
+//   route FILE      rule 3, an API file            room FILE     rule 3, a room file
+//   profile FILE    rule 4                         proto FILE    rule 5
+//   shape NAME      a shape that is not compliant yet: a pending row's id, or a shape with no row
+// Exits 0 when the tree keeps the rules, 1 when it does not, 2 when it can't be read.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+
+WC_REGISTRY :: "proto/registry.json";
+WC_ALLOW :: "proto/wire-allowlist.txt";
+WC_MODULES :: "proto/modules.json";
+WC_SELF :: "coax/web/wire-check.coax";
+WC_HOW :: "proto/README.md, \"Register a wire shape\"";
+WC_FILE :: 8388608;        // the largest file read, and the file list
+WC_LINES :: 4096;          // allowlist lines tracked
+WC_NODES :: 65536;         // JSON nodes in the registry
+
+// Comment styles: // and /* (Coax, C, Swift, JavaScript), a leading # (Python, shell), -- (SQL).
+WC_SLASH :: 0; WC_HASH :: 1; WC_DASH :: 2;
+// What a tracked path must be accounted for as (0: nothing).
+WC_ROUTE :: 1; WC_ROOM :: 2; WC_PROFILE :: 3; WC_PROTO :: 4;
+
+WcRun :: struct { quiet: bool; list: bool; }
+WcHit :: struct { from: int = -1; to: int; keyed: bool; quoted: bool; }
+
+// ---- text
+
+wc_starts :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[0..<p.count] == p; }
+wc_ends :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[s.count - p.count..<s.count] == p; }
+wc_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+wc_letter :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+wc_alnum :: (c: u8) -> bool { return wc_letter(c) || wc_digit(c); }
+// A byte of an id: a letter, a digit, _ . or -.
+wc_tok :: (c: u8) -> bool { return wc_alnum(c) || c == '_' || c == '.' || c == '-'; }
+wc_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+// Whether path is `at`, or sits under it when `at` is a directory (ends in /).
+wc_under :: (path: string, at: string) -> bool {
+  if at.count == 0 { return false; }
+  if at[at.count - 1] == '/' { return wc_starts(path, at); }
+  return path == at;
+}
+// "a b c" (or "a b" when c is empty) into out.
+wc_join :: (a: string, b: string, c: string, out: [] u8) -> string {
+  n := 0;
+  for x: a { if n < out.count { out[n] = x; n += 1; } }
+  if n < out.count { out[n] = ' '; n += 1; }
+  for x: b { if n < out.count { out[n] = x; n += 1; } }
+  if c.count > 0 {
+    if n < out.count { out[n] = ' '; n += 1; }
+    for x: c { if n < out.count { out[n] = x; n += 1; } }
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- schema ids in a line
+
+// Whether t reads as a schema id: starts with a letter and ends ".vN".
+wc_id_shape :: (t: string) -> bool {
+  if t.count < 4 || !wc_letter(t[0]) { return false; }
+  e := t.count;
+  while e > 0 && wc_digit(t[e - 1]) { e -= 1; }
+  if e == t.count || e < 3 { return false; }
+  return t[e - 1] == 'v' && t[e - 2] == '.';
+}
+// The next schema id in line at or after `at` (from is -1 when there is none). quoted: it is a
+// whole string. keyed: a `schema` key comes before it, with only quotes, colons, spaces and the
+// like between, or it is a whole string and the line names a schema before it.
+wc_next_id :: (line: string, at: int) -> WcHit {
+  h: WcHit;
+  i := at;
+  while i < line.count {
+    if !wc_tok(line[i]) { i += 1; continue; }
+    j := i;
+    while j < line.count && wc_tok(line[j]) { j += 1; }
+    if wc_id_shape(cast(string) line[i..<j]) {
+      h.from = i; h.to = j;
+      h.quoted = i > 0 && (line[i - 1] == '"' || line[i - 1] == 39) && j < line.count && (line[j] == '"' || line[j] == 39 || line[j] == '\\');
+      b := i - 1; gap := 0;
+      while b >= 0 && !wc_alnum(line[b]) && gap < 12 { b -= 1; gap += 1; }
+      h.keyed = gap > 0 && b >= 5 && cast(string) line[b - 5..<b + 1] == "schema";
+      // or a whole string on a line that names a schema before it: jo_key(o, "schema"); jo_str(o, "a.v1");  A_SCHEMA :: "a.v1";
+      if h.quoted && !h.keyed && i >= 6 {
+        for k: 0..<i - 5 { w := cast(string) line[k..<k + 6]; if w == "schema" || w == "SCHEMA" || w == "Schema" { h.keyed = true; } }
+      }
+      return h;
+    }
+    i = j;
+  }
+  return h;
+}
+// Whether byte pos of line is in a comment.
+wc_commented :: (line: string, pos: int, style: int) -> bool {
+  s := 0;
+  while s < line.count && (line[s] == ' ' || line[s] == '\t') { s += 1; }
+  if s >= line.count { return false; }
+  if style == WC_HASH { return line[s] == '#'; }
+  if style == WC_DASH {
+    k := s;
+    while k + 1 < pos { if line[k] == '-' && line[k + 1] == '-' { return true; } k += 1; }
+    return false;
+  }
+  if line[s] == '*' { return true; }
+  quoted := false; k := s;
+  while k + 1 < pos {
+    c := line[k];
+    if quoted {
+      if c == '\\' { k += 2; continue; }
+      if c == '"' { quoted = false; }
+      k += 1; continue;
+    }
+    // a character ('"', '\\') is not a string's start
+    if c == 39 && k + 2 < line.count && line[k + 2] == 39 { k += 3; continue; }
+    if c == 39 && line[k + 1] == '\\' && k + 3 < line.count && line[k + 3] == 39 { k += 4; continue; }
+    if c == '"' { quoted = true; }
+    else if c == '/' && (line[k + 1] == '/' || line[k + 1] == '*') { return true; }
+    k += 1;
+  }
+  return false;
+}
+
+// ---- paths
+
+// The comment style of a code file, or -1 for a file that is not scanned for ids.
+wc_style :: (path: string) -> int {
+  if wc_ends(path, ".coax") || wc_ends(path, ".c") || wc_ends(path, ".h") || wc_ends(path, ".cpp") || wc_ends(path, ".m") || wc_ends(path, ".mm") { return WC_SLASH; }
+  if wc_ends(path, ".swift") || wc_ends(path, ".js") || wc_ends(path, ".cjs") || wc_ends(path, ".mjs") || wc_ends(path, ".ts") { return WC_SLASH; }
+  if wc_ends(path, ".py") || wc_ends(path, ".sh") { return WC_HASH; }
+  if wc_ends(path, ".sql") { return WC_DASH; }
+  return -1;
+}
+// Whether path is a test or a fixture: a tests/, test/, fixtures/ or testdata/ folder, or a file
+// named test_X, test-X, check.E, checks.E, X_test.E, X-test.E, X-check.E, X-checks.E or X_check.E.
+wc_test_path :: (path: string) -> bool {
+  i := 0;
+  while i < path.count {
+    j := i;
+    while j < path.count && path[j] != '/' { j += 1; }
+    seg := cast(string) path[i..<j];
+    if j < path.count {
+      if seg == "tests" || seg == "test" || seg == "fixtures" || seg == "testdata" { return true; }
+    } else {
+      if wc_starts(seg, "test_") || wc_starts(seg, "test-") || wc_starts(seg, "checks.") || wc_starts(seg, "check.") { return true; }
+      marks := [5] string.["_test.", "-test.", "-check.", "-checks.", "_check."];
+      for m: marks {
+        if m.count <= seg.count { for k: 0..<seg.count - m.count + 1 { if cast(string) seg[k..<k + m.count] == m { return true; } } }
+      }
+    }
+    i = j + 1;
+  }
+  return false;
+}
+// Whether ids in path are judged: a code file that is not a document, a schema, this tool or a test.
+wc_scanned :: (path: string) -> bool {
+  if wc_style(path) < 0 || path == WC_SELF { return false; }
+  if wc_starts(path, "docs/") || wc_starts(path, "proto/") || wc_starts(path, "projects/") { return false; }
+  return !wc_test_path(path);
+}
+// Whether path has no folder below dir.
+wc_directly :: (path: string, dir: string) -> bool {
+  if !wc_starts(path, dir) { return false; }
+  for k: dir.count..<path.count { if path[k] == '/' { return false; } }
+  return true;
+}
+// Whether a C file defines or declares a *_route function at the start of a line.
+wc_has_route :: (text: string) -> bool {
+  mark := "_route(";
+  i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if j > i && wc_letter(text[i]) && j - i >= mark.count {
+      for k: i..<j - mark.count + 1 { if cast(string) text[k..<k + mark.count] == mark { return true; } }
+    }
+    i = j + 1;
+  }
+  return false;
+}
+// What a tracked path must be accounted for as. An API file counts when has_route says so.
+wc_path_kind :: (path: string, has_route: bool) -> int {
+  // a NAME.generated.c is its Coax source's output: the source is what a row names
+  if wc_directly(path, "coax/web/api/") && wc_ends(path, ".c") { return ifx has_route && !wc_ends(path, ".generated.c") then WC_ROUTE else 0; }
+  if wc_directly(path, "coax/web/room/room-") && wc_ends(path, ".coax") { return WC_ROOM; }
+  if wc_starts(path, "proto/coder/") || wc_starts(path, "proto/verse/") || wc_starts(path, "proto/aethyrforge/") || wc_starts(path, "proto/aethyr/") { return WC_PROFILE; }
+  if wc_starts(path, "proto/openagents/") && wc_ends(path, ".proto") { return WC_PROTO; }
+  return 0;
+}
+
+// ---- the registry
+
+wc_first :: (d: Jv) -> int {
+  shapes := jv_get(d, 0, "shapes");
+  return ifx jv_kind(d, shapes) == JV_ARRAY then d.nodes[shapes].first else -1;
+}
+// A row's string field, or "".
+wc_field :: (d: Jv, row: int, key: string) -> string {
+  k := jv_get(d, row, key);
+  return ifx jv_kind(d, k) == JV_STRING then jv_raw(d, k) else "";
+}
+// A schema field's file: the part before "#Message".
+wc_schema_file :: (schema: string) -> string {
+  e := 0;
+  while e < schema.count && schema[e] != '#' { e += 1; }
+  return cast(string) schema[0..<e];
+}
+// Whether the array at key of node `at` has path, or a directory over it.
+wc_in_array :: (d: Jv, at: int, key: string, path: string) -> bool {
+  a := jv_get(d, at, key);
+  if jv_kind(d, a) != JV_ARRAY { return false; }
+  k := d.nodes[a].first;
+  while k != -1 {
+    if jv_kind(d, k) == JV_STRING && wc_under(path, jv_raw(d, k)) { return true; }
+    k = d.nodes[k].next;
+  }
+  return false;
+}
+// The row whose id is `id`, else the row whose family ("prefix*") holds it (the longest), else -1.
+wc_row :: (d: Jv, id: string) -> int {
+  best := -1; best_n := 0;
+  k := wc_first(d);
+  while k != -1 {
+    rid := wc_field(d, k, "id");
+    if rid == id { return k; }
+    if rid.count > 1 && rid[rid.count - 1] == '*' && rid.count > best_n && wc_starts(id, cast(string) rid[0..<rid.count - 1]) { best = k; best_n = rid.count; }
+    k = d.nodes[k].next;
+  }
+  return best;
+}
+// Whether a row lets path carry its id: its codec, one of its tests, or SQL that builds the shape
+// and is tested against the codec's fixtures.
+wc_row_allows :: (d: Jv, row: int, path: string) -> bool {
+  return wc_under(path, wc_field(d, row, "codec")) || wc_in_array(d, row, "tests", path) || (wc_ends(path, ".sql") && wc_in_array(d, row, "sql", path));
+}
+// Whether some row names path as its codec, its schema or one of its files. With need_check, only
+// a row that has a check; with no_consumer, only a row marked "status": "no-consumer".
+wc_covered :: (d: Jv, path: string, need_check: bool, no_consumer: bool) -> bool {
+  k := wc_first(d);
+  while k != -1 {
+    row := k; k = d.nodes[k].next;
+    if need_check && wc_field(d, row, "check").count == 0 { continue; }
+    if no_consumer != (wc_field(d, row, "status") == "no-consumer") { continue; }
+    if wc_under(path, wc_schema_file(wc_field(d, row, "schema"))) || wc_in_array(d, row, "files", path) { return true; }
+    // the codec file itself; a codec that is a folder (a family, a third party's adapter) accounts for no file
+    if !no_consumer && path == wc_field(d, row, "codec") { return true; }
+  }
+  return false;
+}
+// Whether a profile of proto/modules.json lists rel (a path below proto/).
+wc_in_profiles :: (m: Jv, rel: string) -> bool {
+  profiles := jv_get(m, 0, "profiles");
+  if jv_kind(m, profiles) != JV_OBJECT { return false; }
+  p := m.nodes[profiles].first;
+  while p != -1 {
+    k := ifx jv_kind(m, p) == JV_ARRAY then m.nodes[p].first else -1;
+    while k != -1 {
+      if jv_kind(m, k) == JV_STRING && jv_raw(m, k) == rel { return true; }
+      k = m.nodes[k].next;
+    }
+    p = m.nodes[p].next;
+  }
+  return false;
+}
+
+// ---- the allowlist
+
+// A line's entry: what stands before its #, trimmed ("" for a comment or an empty line).
+wc_entry :: (line: string) -> string {
+  e := 0;
+  while e < line.count && line[e] != '#' { e += 1; }
+  return wc_trim(cast(string) line[0..<e]);
+}
+// Whether a line carries a reason and an issue number after its #: "# why (#1234)".
+wc_reasoned :: (line: string) -> bool {
+  e := 0;
+  while e < line.count && line[e] != '#' { e += 1; }
+  if e >= line.count { return false; }
+  issue := false; letters := 0;
+  k := e + 1;
+  while k < line.count {
+    if line[k] == '#' {
+      n := k + 1;
+      while n < line.count && wc_digit(line[n]) { n += 1; }
+      if n - k - 1 >= 3 { issue = true; }
+    }
+    if wc_letter(line[k]) { letters += 1; }
+    k += 1;
+  }
+  return issue && letters >= 3;
+}
+// The number of the list's line whose entry is `entry`, or -1.
+wc_allow_find :: (list: string, entry: string) -> int {
+  if entry.count == 0 { return -1; }
+  i := 0; n := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    if wc_entry(cast(string) list[i..<j]) == entry { return n; }
+    i = j + 1; n += 1;
+  }
+  return -1;
+}
+// Whether the list excuses "kind a b"; marks its line used.
+wc_excused :: (list: string, used: [] bool, kind: string, a: string, b: string) -> bool {
+  buf: [2048] u8;
+  at := wc_allow_find(list, wc_join(kind, a, b, buf[..]));
+  if at < 0 { return false; }
+  if at < used.count { used[at] = true; }
+  return true;
+}
+// Word k of an entry (split by single spaces), or "".
+wc_word :: (s: string, k: int) -> string {
+  n := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == ' ' {
+      if n == k { return cast(string) s[from..<i]; }
+      n += 1; from = i + 1;
+    }
+  }
+  return "";
+}
+// Rule 6: the lines of list that base lacks and that carry no reason and issue number. added
+// counts every line base lacks.
+wc_grown :: (list: string, base: string, run: WcRun, added: [] int) -> int {
+  bad := 0; i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    line := cast(string) list[i..<j]; i = j + 1;
+    entry := wc_entry(line);
+    if entry.count == 0 || wc_allow_find(base, entry) >= 0 { continue; }
+    added[0] += 1;
+    if wc_reasoned(line) { continue; }
+    bad += 1;
+    if !run.quiet { print("FAIL rule 6: % has a new line with no reason and issue number: \"%\". The allowlist only shrinks. Fix: make the shape compliant and register it (%), or end the line with \"# why (#ISSUE)\".\n", WC_ALLOW, entry, WC_HOW); }
+  }
+  return bad;
+}
+
+// ---- the rules
+
+// Rules 1 and 2 for one scanned file: how many ids in text fail.
+wc_judge_text :: (d: Jv, allow: string, used: [] bool, run: WcRun, path: string, text: string) -> int {
+  style := wc_style(path);
+  if style < 0 { return 0; }
+  coax := wc_ends(path, ".coax");
+  bad := 0; in_test := false;
+  seen: [64] string; seen_n := 0;
+  i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    line := cast(string) text[i..<j]; i = j + 1;
+    if coax {
+      if wc_starts(line, "#test") || wc_starts(line, "#forall") { in_test = true; }
+      if in_test { if wc_starts(line, "}") { in_test = false; } continue; }
+    }
+    at := 0;
+    while at < line.count {
+      h := wc_next_id(line, at);
+      if h.from < 0 { break; }
+      at = h.to;
+      if (!h.keyed && !h.quoted) || wc_commented(line, h.from, style) { continue; }
+      id := cast(string) line[h.from..<h.to];
+      row := wc_row(d, id);
+      if row == -1 && !h.keyed { continue; }
+      again := false;
+      for q: 0..<seen_n { if seen[q] == id { again = true; } }
+      if again { continue; }
+      if seen_n < seen.count { seen[seen_n] = id; seen_n += 1; }
+      ok := row != -1 && wc_row_allows(d, row, path);
+      listed := !ok && wc_excused(allow, used, "id", id, path);
+      if run.list { print("%\t%\t%\n", id, path, ifx ok then "codec" else ifx listed then "allowlist" else ifx row == -1 then "UNREGISTERED" else "SECOND FILE"); }
+      if ok || listed { continue; }
+      bad += 1;
+      if run.quiet { continue; }
+      if row == -1 { print("FAIL rule 1: % writes schema id \"%\", which % does not list. Fix: add a row for it (id, kind, schema, codec, check, step): %.\n", path, id, WC_REGISTRY, WC_HOW); }
+      else { print("FAIL rule 2: % carries \"%\", whose one codec is %. Fix: call the codec from % and take the id out of it (tests and fixtures may name it).\n", path, id, wc_field(d, row, "codec"), path); }
+    }
+  }
+  return bad;
+}
+// Rules 3, 4 and 5 for one tracked path: 1 when it fails.
+wc_judge_path :: (d: Jv, modules: Jv, allow: string, used: [] bool, run: WcRun, path: string, has_route: bool) -> int {
+  kind := wc_path_kind(path, has_route);
+  if kind == 0 { return 0; }
+  if kind == WC_ROUTE {
+    if wc_covered(d, path, false, false) || wc_excused(allow, used, "route", path, "") { return 0; }
+    if !run.quiet { print("FAIL rule 3: % has a *_route function and is in neither % nor %. Fix: define its request and reply in proto/, give them one codec, and add the file to that row's \"files\": %.\n", path, WC_REGISTRY, WC_ALLOW, WC_HOW); }
+    return 1;
+  }
+  if kind == WC_ROOM {
+    if wc_covered(d, path, false, false) || wc_in_array(d, 0, "no_frames", path) || wc_excused(allow, used, "room", path, "") { return 0; }
+    if !run.quiet { print("FAIL rule 3: % is a room file in neither % nor %. Fix: if it builds or reads frames, move them into a shared codec with a profile and add the file to that row's \"files\" (%); if it holds no wire bytes of its own, add it to \"no_frames\" in %.\n", path, WC_REGISTRY, WC_ALLOW, WC_HOW, WC_REGISTRY); }
+    return 1;
+  }
+  if kind == WC_PROFILE {
+    if wc_covered(d, path, true, false) || wc_excused(allow, used, "profile", path, "") { return 0; }
+    if !run.quiet { print("FAIL rule 4: % has no row in % with a check. Fix: add a row whose \"schema\" is this file and whose \"check\" is the command that reads it and compares it with the codec's bytes, or delete the file: %.\n", path, WC_REGISTRY, WC_HOW); }
+    return 1;
+  }
+  rel := cast(string) path[6..<path.count];      // below proto/
+  if wc_in_profiles(modules, rel) || wc_covered(d, path, false, true) || wc_excused(allow, used, "proto", path, "") { return 0; }
+  if !run.quiet { print("FAIL rule 5: % is in no profile of % and no row marks it no-consumer. Fix: add it to the profile of the program that imports it, or add a row with \"status\": \"no-consumer\" in %: %.\n", path, WC_MODULES, WC_REGISTRY, WC_HOW); }
+  return 1;
+}
+// One row's own faults, as a sentence ("" when it has none). Files are not looked up here.
+wc_row_fault :: (d: Jv, row: int) -> string {
+  kind := wc_field(d, row, "kind"); status := wc_field(d, row, "status");
+  if wc_field(d, row, "id").count == 0 { return "has no id"; }
+  if kind != "proto" && kind != "profile" && kind != "external" && kind != "local" { return "has a kind that is not proto, profile, external or local"; }
+  if wc_field(d, row, "step").count == 0 { return "has no step"; }
+  if status.count > 0 && status != "no-consumer" && status != "pending" { return "has a status that is not \"no-consumer\" or \"pending\""; }
+  if status == "no-consumer" { return ifx wc_field(d, row, "schema").count == 0 then "has no schema" else ""; }
+  if wc_field(d, row, "codec").count == 0 { return "has no codec (the one file that writes it)"; }
+  if status == "pending" { return ""; }
+  if wc_field(d, row, "schema").count == 0 && (kind == "proto" || kind == "profile") { return "has no schema (or mark it \"status\": \"pending\" and list it in the allowlist)"; }
+  if wc_field(d, row, "check").count == 0 && (kind == "proto" || kind == "profile") { return "has no check, the command that ties the schema to the bytes (or mark it \"status\": \"pending\" and list it in the allowlist)"; }
+  return "";
+}
+// The registry's own faults: each row's fields, ids named twice, and files that are not there.
+wc_judge_registry :: (d: Jv, run: WcRun) -> int #effects(all) {
+  bad := 0;
+  k := wc_first(d);
+  if k == -1 { if !run.quiet { print("FAIL registry: % has no \"shapes\" array\n", WC_REGISTRY); } return 1; }
+  while k != -1 {
+    id := wc_field(d, k, "id");
+    fault := wc_row_fault(d, k);
+    if fault.count > 0 { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" in % %\n", id, WC_REGISTRY, fault); } }
+    o := d.nodes[k].next;
+    while o != -1 { if wc_field(d, o, "id") == id { bad += 1; if !run.quiet { print("FAIL registry: % has two rows with the id \"%\"\n", WC_REGISTRY, id); } } o = d.nodes[o].next; }
+    codec := wc_field(d, k, "codec"); schema := wc_schema_file(wc_field(d, k, "schema"));
+    if codec.count > 0 && !fs_exists(codec) { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" names a codec that is not there: % (correct the row in %)\n", id, codec, WC_REGISTRY); } }
+    if wc_starts(schema, "proto/") && !fs_exists(schema) { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" names a schema that is not there: % (correct the row in %)\n", id, schema, WC_REGISTRY); } }
+    // a check names the files it runs: each word with a / that is no flag or URL
+    check := wc_field(d, k, "check"); w := 0;
+    while true {
+      word := wc_word(check, w); w += 1;
+      if word.count == 0 { break; }
+      slash := false; plain := word[0] != '-' && word[0] != '/';
+      for c: word { if c == '/' { slash = true; } if c == '=' || c == ':' || c == '$' || c == '*' { plain = false; } }
+      if slash && plain && !fs_exists(word) { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" has a check that names a file that is not there: % (correct the row in %)\n", id, word, WC_REGISTRY); } }
+    }
+    f := jv_get(d, k, "files");
+    fk := ifx jv_kind(d, f) == JV_ARRAY then d.nodes[f].first else -1;
+    while fk != -1 {
+      if !fs_exists(jv_raw(d, fk)) { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" lists a file that is not there: % (take it out of the row in %)\n", id, jv_raw(d, fk), WC_REGISTRY); } }
+      fk = d.nodes[fk].next;
+    }
+    k = d.nodes[k].next;
+  }
+  nf := jv_get(d, 0, "no_frames");
+  nk := ifx jv_kind(d, nf) == JV_ARRAY then d.nodes[nf].first else -1;
+  while nk != -1 {
+    if !fs_exists(jv_raw(d, nk)) { bad += 1; if !run.quiet { print("FAIL registry: no_frames lists a file that is not there: % (take it out of %)\n", jv_raw(d, nk), WC_REGISTRY); } }
+    nk = d.nodes[nk].next;
+  }
+  return bad;
+}
+// The allowlist's own faults: a line of no known kind, a line that excused nothing this run (the
+// work landed: take it out), a shape line whose name a finished row now has, and a pending row
+// with no shape line (so the list counts everything that is not compliant yet).
+wc_judge_allow :: (d: Jv, allow: string, used: [] bool, run: WcRun) -> int {
+  bad := 0; i := 0; n := 0;
+  while i < allow.count {
+    j := i;
+    while j < allow.count && allow[j] != '\n' { j += 1; }
+    entry := wc_entry(cast(string) allow[i..<j]); i = j + 1; n += 1;
+    if entry.count == 0 { continue; }
+    kind := wc_word(entry, 0); a := wc_word(entry, 1); b := wc_word(entry, 2);
+    words := ifx kind == "id" then 3 else 2;
+    known := kind == "id" || kind == "route" || kind == "room" || kind == "profile" || kind == "proto" || kind == "shape";
+    if !known || a.count == 0 || (words == 3) != (b.count > 0) || wc_word(entry, words).count > 0 {
+      bad += 1;
+      if !run.quiet { print("FAIL allowlist: % has a line that is not \"id ID FILE\", \"route FILE\", \"room FILE\", \"profile FILE\", \"proto FILE\" or \"shape NAME\": \"%\"\n", WC_ALLOW, entry); }
+      continue;
+    }
+    if kind == "shape" {
+      row := wc_row(d, a);
+      if row != -1 && wc_field(d, row, "status") != "pending" { bad += 1; if !run.quiet { print("FAIL allowlist: \"%\" is registered and no longer pending. Fix: take the line \"%\" out of %.\n", a, entry, WC_ALLOW); } }
+      continue;
+    }
+    if n - 1 < used.count && !used[n - 1] {
+      bad += 1;
+      if !run.quiet { print("FAIL allowlist: the line \"%\" excuses nothing now (the file is gone, registered, or no longer carries the id). Fix: take it out of %.\n", entry, WC_ALLOW); }
+    }
+  }
+  buf: [1024] u8;
+  k := wc_first(d);
+  while k != -1 {
+    id := wc_field(d, k, "id");
+    if wc_field(d, k, "status") == "pending" && wc_allow_find(allow, wc_join("shape", id, "", buf[..])) < 0 {
+      bad += 1;
+      if !run.quiet { print("FAIL allowlist: the row \"%\" is pending and % has no line for it. Fix: add \"shape %  # why (#ISSUE)\", or finish the row (schema, check) and take its status out.\n", id, WC_ALLOW, id); }
+    }
+    k = d.nodes[k].next;
+  }
+  return bad;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh wire-check [--base REV] [--list]"); return 2; }
+  run: WcRun; run.list = args_has(args[..], "--list");
+  base := args_value(args[..], "--base", "origin/main");
+  err: [4096] u8;
+  rtext: [1048576] u8; rnodes: [WC_NODES] JvNode; rd: [1] Jv;
+  rn := fs_read(WC_REGISTRY, rtext[..]);
+  if rn < 0 { tool_errln("wire-check: run from the repository root (no proto/registry.json here)"); return 2; }
+  if !jv_parse(rd[..], cast(string) rtext[0..<rn], rnodes[..]) { print("wire-check: % is not JSON (it stops at byte %)\n", WC_REGISTRY, rd[0].err); return 2; }
+  d := rd[0];
+  mtext: [1048576] u8; mnodes: [16384] JvNode; md: [1] Jv;
+  mn := fs_read(WC_MODULES, mtext[..]);
+  if mn < 0 || !jv_parse(md[..], cast(string) mtext[0..<mn], mnodes[..]) { print("wire-check: % is missing or not JSON\n", WC_MODULES); return 2; }
+  atext: [1048576] u8;
+  an := fs_read(WC_ALLOW, atext[..]);
+  if an < 0 { print("wire-check: no % (an empty file is the goal; a missing one is not)\n", WC_ALLOW); return 2; }
+  allow := cast(string) atext[0..<an];
+  used: [WC_LINES] bool;
+
+  bad := wc_judge_registry(d, run);
+
+  // Every tracked path, for rules 3 to 5.
+  files: [WC_FILE] u8; body: [WC_FILE] u8;
+  ls := [2] string.["git", "ls-files"];
+  r := proc_run(ls[..], 60000, files[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { tool_errln("wire-check: git ls-files failed"); return 2; }
+  all := cast(string) files[0..<r.out_n];
+  routes := 0; rooms := 0; profiles := 0; protos := 0;
+  i := 0;
+  while i < all.count {
+    j := i;
+    while j < all.count && all[j] != '\n' { j += 1; }
+    path := cast(string) all[i..<j]; i = j + 1;
+    has_route := false;
+    if wc_directly(path, "coax/web/api/") && wc_ends(path, ".c") {
+      n := fs_read(path, body[..]);
+      has_route = n >= 0 && wc_has_route(cast(string) body[0..<n]);
+    }
+    kind := wc_path_kind(path, has_route);
+    if kind == WC_ROUTE { routes += 1; } else if kind == WC_ROOM { rooms += 1; } else if kind == WC_PROFILE { profiles += 1; } else if kind == WC_PROTO { protos += 1; }
+    bad += wc_judge_path(d, md[0], allow, used[..], run, path, has_route);
+  }
+
+  // The files that can hold a schema id (".vN" and a quote), for rules 1 and 2.
+  grep := [5] string.["git", "grep", "-lIE", "\\.v[0-9]+[\"'\\\\]", "--"];
+  g := proc_run(grep[..], 120000, files[..], err[..]);
+  if g.started != 0 || (g.status != 0 && g.status != 1) || g.cut { tool_errln("wire-check: git grep failed"); return 2; }
+  hits := cast(string) files[0..<g.out_n];
+  scanned := 0;
+  i = 0;
+  while i < hits.count {
+    j := i;
+    while j < hits.count && hits[j] != '\n' { j += 1; }
+    path := cast(string) hits[i..<j]; i = j + 1;
+    if !wc_scanned(path) { continue; }
+    n := fs_read(path, body[..]);
+    if n < 0 { continue; }
+    scanned += 1;
+    bad += wc_judge_text(d, allow, used[..], run, path, cast(string) body[0..<n]);
+  }
+
+  bad += wc_judge_allow(d, allow, used[..], run);
+
+  // Rule 6: the allowlist against the base's copy.
+  added: [1] int;
+  commit: [1024] u8; cn := 0;
+  for c: base { if cn < 1000 { commit[cn] = c; cn += 1; } }
+  for c: "^{commit}" { commit[cn] = c; cn += 1; }
+  rp := [5] string.["git", "rev-parse", "--verify", "--quiet", cast(string) commit[0..<cn]];
+  v := proc_run(rp[..], 60000, body[..], err[..]);
+  if v.started != 0 || v.status != 0 {
+    print("note: % is not a commit here, so the allowlist was not compared with it (rule 6); pass --base REV\n", base);
+  } else {
+    spec: [1024] u8; sn := 0;
+    for c: base { if sn < 900 { spec[sn] = c; sn += 1; } }
+    spec[sn] = ':'; sn += 1;
+    for c: WC_ALLOW { spec[sn] = c; sn += 1; }
+    show := [3] string.["git", "show", cast(string) spec[0..<sn]];
+    s := proc_run(show[..], 60000, body[..], err[..]);
+    // no file at the base: this is the commit that adds it, and every line is new
+    before := ifx s.started == 0 && s.status == 0 then cast(string) body[0..<s.out_n] else "";
+    bad += wc_grown(allow, before, run, added[..]);
+    if added[0] > 0 { print("note: % line% of % not in %'s copy; a new line needs a reason and an issue number\n", added[0], ifx added[0] == 1 then "" else "s", WC_ALLOW, base); }
+  }
+
+  lines := 0; rows := 0;
+  i = 0;
+  while i < allow.count {
+    j := i;
+    while j < allow.count && allow[j] != '\n' { j += 1; }
+    if wc_entry(cast(string) allow[i..<j]).count > 0 { lines += 1; }
+    i = j + 1;
+  }
+  k := wc_first(d);
+  while k != -1 { rows += 1; k = d.nodes[k].next; }
+  print("wire-check: % registry rows, % allowlist lines to burn down, % route files, % room files, % profile files, % protos, % files scanned for ids, % failed\n", rows, lines, routes, rooms, profiles, protos, scanned, bad);
+  return ifx bad == 0 then 0 else 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+// A registry for the checks: a compliant shape with an API file and a room file, a family of
+// evidence records, a profile, a proto folder nothing imports, and a pending shape.
+WC_T_REG :: "{\"no_frames\":[\"coax/web/room/room-math.coax\"],\"shapes\":[{\"id\":\"a.log.v1\",\"kind\":\"proto\",\"schema\":\"proto/openagents/a/v1/a.proto#Log\",\"codec\":\"lib/a/log.coax\",\"check\":\"coax/bin/coax test lib/a/log.coax\",\"step\":\"S1\",\"tests\":[\"lib/a/oracle.py\"],\"sql\":[\"db/0001_a.sql\",\"db/notsql.coax\"],\"files\":[\"coax/web/api/a.c\",\"coax/web/room/room-a.coax\"]},{\"id\":\"ev.*\",\"kind\":\"local\",\"codec\":\"tools/ev/\",\"step\":\"S1\"},{\"id\":\"prof-v1\",\"kind\":\"profile\",\"schema\":\"proto/verse/prof-v1.json\",\"codec\":\"lib/p.coax\",\"check\":\"coax/web/tool.sh lib/p-profile.coax\",\"step\":\"S1\"},{\"id\":\"old\",\"kind\":\"proto\",\"schema\":\"proto/openagents/old/\",\"status\":\"no-consumer\",\"step\":\"S1\"},{\"id\":\"b.v2\",\"kind\":\"proto\",\"schema\":\"proto/coder/b-v2.json\",\"codec\":\"lib/b.coax\",\"status\":\"pending\",\"step\":\"C1\"}]}";
+WC_T_MODULES :: "{\"profiles\":{\"one\":[\"openagents/a/v1/a.proto\"]}}";
+WC_T_QUIET :: WcRun.{quiet = true};
+
+#test "ids in a line: after a schema key, as a whole string, or neither" {
+  #assert wc_id_shape("openagents.session.v1") && wc_id_shape("anime.v12") && wc_id_shape("a.v1");
+  #assert !wc_id_shape("v1") && !wc_id_shape("everglade-session-v5") && !wc_id_shape("a.v") && !wc_id_shape("1.v1") && !wc_id_shape("a.v1alpha1") && !wc_id_shape("a.v1.json");
+  h := wc_next_id("  o := \"{\\\"schema\\\":\\\"coder.route.v2\\\",\\\"kind\\\":1}\";", 0);
+  #assert h.from > 0 && h.keyed && h.quoted;
+  h = wc_next_id("  jsonb_build_object('schema', 'openagents.session.v1', 'id', s.id)", 0);
+  #assert h.keyed && h.quoted;
+  h = wc_next_id("SL_SCHEMA :: \"openagents.session.v1\";", 0);
+  #assert h.keyed && h.quoted;
+  h = wc_next_id("  jo_key(o, \"schema\"); jo_str(o, \"coder.seal.v1\");", 0);
+  #assert h.keyed && h.quoted;
+  h = wc_next_id("  if id == \"coder.seal.v1\" { n += 1; }", 0);
+  #assert h.from > 0 && !h.keyed && h.quoted;
+  h = wc_next_id("  path := \"proto/coder.seal.v1/x\"; // the schema", 0);
+  #assert h.from > 0 && !h.keyed && !h.quoted;
+  #assert wc_next_id("  x := 1; y := v1;", 0).from == -1;
+  h = wc_next_id("\"a.v1\" \"b.v2\"", 0);
+  #assert cast(string) "\"a.v1\" \"b.v2\""[h.from..<h.to] == "a.v1" && wc_next_id("\"a.v1\" \"b.v2\"", h.to).from == 8;
+}
+#test "comments: an id after // or -- or on a # line is not code" {
+  #assert wc_commented("  x := 1;   // was \"a.v1\"", 18, WC_SLASH) && !wc_commented("  x := \"http://a.v1\";", 16, WC_SLASH);
+  #assert wc_commented(" * the \"a.v1\" record", 8, WC_SLASH) && !wc_commented("  if c == '\"' { s = \"a.v1\"; }", 21, WC_SLASH);
+  #assert wc_commented("# schema a.v1", 9, WC_HASH) && !wc_commented("x = 'a.v1'  # no", 5, WC_HASH);
+  #assert wc_commented("  -- 'schema', 'a.v1'", 16, WC_DASH) && !wc_commented("  'schema', 'a.v1' -- yes", 13, WC_DASH);
+}
+#test "paths: what is scanned, what is a test, what each rule covers" {
+  #assert wc_scanned("coder/tui/coder.coax") && wc_scanned("coax/web/api/chat.c") && wc_scanned("coax/web/api/migrations/0001_x.sql") && wc_scanned("a/b.py");
+  #assert !wc_scanned("docs/x.py") && !wc_scanned("proto/tools/x.py") && !wc_scanned("a/b.md") && !wc_scanned("a/b.json") && !wc_scanned(WC_SELF);
+  #assert !wc_scanned("apps/x/Sources/checks.m") && !wc_scanned("coder/tests/qualify.coax") && !wc_scanned("coax/web/api/test_zchat.py") && !wc_scanned("apps/x/fixtures/a.py") && !wc_scanned("coder/tui/observability-checks.coax") && !wc_scanned("a/dictate-check.coax");
+  #assert wc_scanned("coder/tui/latest.coax") && wc_scanned("a/contest/b.coax") && wc_scanned("a/checker.coax");
+  #assert wc_has_route("#include <x.h>\nstatic void chat_route(Req *r) {\n}\n") && wc_has_route("void a_route(void);\n") && !wc_has_route("  x = chat_route(r);\n// the a_route( function\n");
+  #assert wc_path_kind("coax/web/api/chat.c", true) == WC_ROUTE && wc_path_kind("coax/web/api/sign.c", false) == 0 && wc_path_kind("coax/web/api/tests/x.c", true) == 0 && wc_path_kind("coax/web/api/mesh-policy.generated.c", true) == 0;
+  #assert wc_path_kind("coax/web/room/room-relay.coax", false) == WC_ROOM && wc_path_kind("coax/web/room/load.coax", false) == 0 && wc_path_kind("coax/web/room/room-tick.c", false) == 0;
+  #assert wc_path_kind("proto/verse/a.json", false) == WC_PROFILE && wc_path_kind("proto/coder/x/b.schema.json", false) == WC_PROFILE && wc_path_kind("proto/aethyr/a.json", false) == WC_PROFILE && wc_path_kind("proto/aethyrforge/a.json", false) == WC_PROFILE;
+  #assert wc_path_kind("proto/openagents/a/v1/a.proto", false) == WC_PROTO && wc_path_kind("proto/openagents/a/v1/a.options", false) == 0 && wc_path_kind("proto/nostr/a.proto", false) == 0 && wc_path_kind("proto/README.md", false) == 0;
+  #assert wc_under("a/b.c", "a/b.c") && wc_under("a/b.c", "a/") && !wc_under("a/b.c", "a") && !wc_under("ab/c", "a/") && !wc_under("a", "");
+}
+#test "the registry: rows by id and by family, who may write an id, which files a row covers" {
+  nodes: [256] JvNode; r: [1] Jv;
+  #assert jv_parse(r[..], WC_T_REG, nodes[..]);
+  d := r[0];
+  a := wc_row(d, "a.log.v1");
+  #assert a != -1 && wc_field(d, a, "codec") == "lib/a/log.coax" && wc_row(d, "a.log.v2") == -1 && wc_row(d, "a.log") == -1;
+  #assert wc_field(d, wc_row(d, "ev.run.v1"), "id") == "ev.*" && wc_row(d, "eve.v1") == -1;
+  #assert wc_row_allows(d, a, "lib/a/log.coax") && wc_row_allows(d, a, "lib/a/oracle.py") && !wc_row_allows(d, a, "lib/a/other.coax") && !wc_row_allows(d, a, "coax/web/api/a.c");
+  #assert wc_row_allows(d, wc_row(d, "ev.run.v1"), "tools/ev/deep/run.py") && !wc_row_allows(d, wc_row(d, "ev.run.v1"), "tools/other/run.py");
+  #assert wc_covered(d, "coax/web/api/a.c", false, false) && wc_covered(d, "lib/a/log.coax", false, false) && wc_covered(d, "proto/openagents/a/v1/a.proto", false, false) && !wc_covered(d, "coax/web/api/b.c", false, false);
+  // a family's folder is where its ids may be written, not an account of the files in it
+  #assert !wc_covered(d, "tools/ev/run.py", false, false);
+  // a profile counts only under a row with a check; a pending row has none
+  #assert wc_covered(d, "proto/verse/prof-v1.json", true, false) && !wc_covered(d, "proto/coder/b-v2.json", true, false) && wc_covered(d, "proto/coder/b-v2.json", false, false);
+  #assert wc_covered(d, "proto/openagents/old/v1/x.proto", false, true) && !wc_covered(d, "proto/openagents/old/v1/x.proto", false, false) && !wc_covered(d, "proto/openagents/a/v1/a.proto", false, true);
+  #assert wc_schema_file("proto/a.proto#Log") == "proto/a.proto" && wc_schema_file("proto/a.json") == "proto/a.json";
+  m: [1] Jv; mnodes: [32] JvNode;
+  #assert jv_parse(m[..], WC_T_MODULES, mnodes[..]) && wc_in_profiles(m[0], "openagents/a/v1/a.proto") && !wc_in_profiles(m[0], "openagents/b/v1/b.proto");
+  for k: 0..<5 { #assert wc_row_fault(d, jv_at(d, jv_get(d, 0, "shapes"), k)) == ""; }
+}
+#test "a row's own faults: its kind, its step, its codec, and a schema and a check unless it is pending" {
+  nodes: [64] JvNode; r: [1] Jv;
+  rows := "[{\"kind\":\"proto\"},{\"id\":\"a\",\"kind\":\"json\",\"step\":\"S1\"},{\"id\":\"a\",\"kind\":\"local\"},{\"id\":\"a\",\"kind\":\"local\",\"step\":\"S1\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"S1\",\"codec\":\"c\"},{\"id\":\"a\",\"kind\":\"profile\",\"step\":\"S1\",\"codec\":\"c\",\"schema\":\"s\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"S1\",\"status\":\"no-consumer\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"S1\",\"status\":\"done\"},{\"id\":\"a\",\"kind\":\"external\",\"step\":\"S1\",\"codec\":\"c/\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"C1\",\"codec\":\"c\",\"status\":\"pending\"}]";
+  #assert jv_parse(r[..], rows, nodes[..]);
+  d := r[0];
+  for k: 0..<8 { #assert wc_row_fault(d, jv_at(d, 0, k)).count > 0; }
+  #assert wc_row_fault(d, jv_at(d, 0, 8)) == "" && wc_row_fault(d, jv_at(d, 0, 9)) == "";
+}
+#test "rule 1: a new schema id that the registry does not list fails" {
+  nodes: [256] JvNode; r: [1] Jv; used: [8] bool;
+  #assert jv_parse(r[..], WC_T_REG, nodes[..]);
+  d := r[0];
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/x.coax", "f :: () {\n  o := \"{\\\"schema\\\":\\\"new.thing.v1\\\"}\";\n}\n") == 1;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/x.c", "  snprintf(b, n, \"{\\\"schema\\\":\\\"new.thing.v1\\\"}\");\n") == 1;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/x.sql", "select jsonb_build_object('schema', 'new.thing.v1');\n") == 1;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/x.py", "doc = {\"schema\": \"new.thing.v1\"}\n") == 1;
+  // twice in a file is one failure; two ids are two
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/x.py", "a = {\"schema\": \"new.thing.v1\"}\nb = {\"schema\": \"new.thing.v1\"}\nc = {\"schema\": \"new.thing.v2\"}\n") == 2;
+  // not code: a comment, a #test block, a string that is not after a schema key, a file that is not scanned
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/x.coax", "// {\"schema\":\"new.thing.v1\"}\n#test \"t\" {\n  s := \"{\\\"schema\\\":\\\"new.thing.v1\\\"}\";\n}\nname := \"new.thing.v1\";\n") == 0;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/x.md", "{\"schema\":\"new.thing.v1\"}\n") == 0;
+  // the allowlist excuses that id in that file, and its line counts as used
+  allow := "# burn-down\nid new.thing.v1 app/x.py  # moves in C1 (#13238)\n";
+  #assert wc_judge_text(d, allow, used[..], WC_T_QUIET, "app/x.py", "doc = {\"schema\": \"new.thing.v1\"}\n") == 0 && used[1] && !used[0];
+  #assert wc_judge_text(d, allow, used[..], WC_T_QUIET, "app/y.py", "doc = {\"schema\": \"new.thing.v1\"}\n") == 1;
+}
+#test "rule 2: a second file that writes a registered id fails; its codec, its tests and a family's folder pass" {
+  nodes: [256] JvNode; r: [1] Jv; used: [8] bool;
+  #assert jv_parse(r[..], WC_T_REG, nodes[..]);
+  d := r[0];
+  line := "A_SCHEMA :: \"a.log.v1\";\n";
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "lib/a/log.coax", line) == 0;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "lib/a/oracle.py", "S = 'a.log.v1'\n") == 0;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/second.coax", line) == 1;
+  // SQL the row lists may build it; other SQL may not, and "sql" lists only SQL
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "db/0001_a.sql", "select jsonb_build_object('schema', 'a.log.v1');\n") == 0 && wc_judge_text(d, "", used[..], WC_T_QUIET, "db/0002_b.sql", "select jsonb_build_object('schema', 'a.log.v1');\n") == 1 && wc_judge_text(d, "", used[..], WC_T_QUIET, "db/notsql.coax", line) == 1;
+  // a reader that compares the id is a second file too, with or without a schema key
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/reader.coax", "  if v == \"a.log.v1\" { n += 1; }\n") == 1;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/second.c", "  o = \"{\\\"schema\\\":\\\"a.log.v1\\\"}\";\n") == 1;
+  // a pending row holds the rule already
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "lib/b.coax", "B :: \"b.v2\";\n") == 0 && wc_judge_text(d, "", used[..], WC_T_QUIET, "app/b2.coax", "B :: \"b.v2\";\n") == 1;
+  // a family: its folder, and nowhere else
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "tools/ev/run.py", "doc = {\"schema\": \"ev.run.v1\"}\n") == 0;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/run.py", "doc = {\"schema\": \"ev.run.v1\"}\n") == 1;
+  // a mention that is no string of its own, a comment and a #test block pass
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/second.coax", "// \"a.log.v1\"\np := \"see a.log.v1 in the log\";\n#test \"t\" {\n  #assert s == \"a.log.v1\";\n}\n") == 0;
+  allow := "id a.log.v1 app/second.coax  # the old encoder, C1 (#13238)\n";
+  #assert wc_judge_text(d, allow, used[..], WC_T_QUIET, "app/second.coax", line) == 0 && used[0];
+}
+#test "rule 3: a new API route file or room file fails until a row or the allowlist names it" {
+  nodes: [256] JvNode; r: [1] Jv; m: [1] Jv; mnodes: [32] JvNode; used: [8] bool;
+  #assert jv_parse(r[..], WC_T_REG, nodes[..]) && jv_parse(m[..], WC_T_MODULES, mnodes[..]);
+  d := r[0];
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "coax/web/api/new.c", true) == 1;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "coax/web/api/new.c", false) == 0;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "coax/web/api/a.c", true) == 0;
+  #assert wc_judge_path(d, m[0], "route coax/web/api/new.c  # C9 (#13250)\n", used[..], WC_T_QUIET, "coax/web/api/new.c", true) == 0 && used[0];
+  #assert wc_judge_path(d, m[0], "room coax/web/api/new.c  # C9 (#13250)\n", used[..], WC_T_QUIET, "coax/web/api/new.c", true) == 1;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "coax/web/room/room-new.coax", false) == 1;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "coax/web/room/room-a.coax", false) == 0;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "coax/web/room/room-math.coax", false) == 0;
+  #assert wc_judge_path(d, m[0], "x\nroom coax/web/room/room-new.coax  # E3 (#13246)\n", used[..], WC_T_QUIET, "coax/web/room/room-new.coax", false) == 0 && used[1];
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "coax/web/serve.coax", false) == 0;
+}
+#test "rules 4 and 5: a profile with no checked row fails; a proto in no profile and not marked no-consumer fails" {
+  nodes: [256] JvNode; r: [1] Jv; m: [1] Jv; mnodes: [32] JvNode; used: [8] bool;
+  #assert jv_parse(r[..], WC_T_REG, nodes[..]) && jv_parse(m[..], WC_T_MODULES, mnodes[..]);
+  d := r[0];
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "proto/verse/new-v1.json", false) == 1;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "proto/aethyrforge/new-v1.schema.json", false) == 1;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "proto/verse/prof-v1.json", false) == 0;
+  // a pending row has no check yet: its schema file still needs its line
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "proto/coder/b-v2.json", false) == 1;
+  #assert wc_judge_path(d, m[0], "profile proto/coder/b-v2.json  # C1 (#13238)\n", used[..], WC_T_QUIET, "proto/coder/b-v2.json", false) == 0 && used[0];
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "proto/openagents/a/v1/a.proto", false) == 0;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "proto/openagents/b/v1/b.proto", false) == 1;
+  #assert wc_judge_path(d, m[0], "", used[..], WC_T_QUIET, "proto/openagents/old/v1/x.proto", false) == 0;
+  #assert wc_judge_path(d, m[0], "proto proto/openagents/b/v1/b.proto  # C3 (#13240)\n", used[..], WC_T_QUIET, "proto/openagents/b/v1/b.proto", false) == 0;
+}
+#test "rule 6: the allowlist only shrinks; a new line needs a reason and an issue number" {
+  base := "# the list\nroute coax/web/api/a.c  # the envelope, C9 (#13250)\nid a.v1 x/y.coax\n";
+  added: [1] int;
+  // the same lines, fewer lines, and another order all pass
+  #assert wc_grown(base, base, WC_T_QUIET, added[..]) == 0 && wc_grown("id a.v1 x/y.coax   # reworded (#13250)\n", base, WC_T_QUIET, added[..]) == 0 && wc_grown("", base, WC_T_QUIET, added[..]) == 0 && added[0] == 0;
+  // a new line fails
+  #assert wc_grown("route coax/web/api/a.c\nroute coax/web/api/b.c\n", base, WC_T_QUIET, added[..]) == 1 && added[0] == 1;
+  #assert wc_grown("route coax/web/api/b.c  # later\n", base, WC_T_QUIET, added[..]) == 1 && wc_grown("route coax/web/api/b.c  # #13250\n", base, WC_T_QUIET, added[..]) == 1;
+  // unless it says why and names its issue
+  added[0] = 0;
+  #assert wc_grown("route coax/web/api/b.c  # the envelope lands in E11 (#13250)\n", base, WC_T_QUIET, added[..]) == 0 && added[0] == 1;
+  // no file at the base: every line is new
+  #assert wc_grown(base, "", WC_T_QUIET, added[..]) == 1;
+  #assert wc_reasoned("a  # why (#123)") && !wc_reasoned("a") && !wc_reasoned("a # why") && !wc_reasoned("a # (#12)") && !wc_reasoned("a # #1234");
+  #assert wc_entry("  route  a.c   # x") == "route  a.c" && wc_entry("# c") == "" && wc_entry("") == "" && wc_allow_find("a\nb c # r\n", "b c") == 1 && wc_allow_find("a\n", "") == -1;
+}
+#test "the allowlist stays true: an unknown line, a line that excuses nothing, a finished shape, a pending row with no line" {
+  nodes: [256] JvNode; r: [1] Jv; used: [8] bool;
+  #assert jv_parse(r[..], WC_T_REG, nodes[..]);
+  d := r[0];
+  ok := "shape b.v2  # C1 (#13238)\n";
+  #assert wc_judge_allow(d, ok, used[..], WC_T_QUIET) == 0;
+  // the pending row needs its line
+  #assert wc_judge_allow(d, "", used[..], WC_T_QUIET) == 1;
+  // a route line no file needed
+  #assert wc_judge_allow(d, "shape b.v2\nroute coax/web/api/gone.c  # C9 (#13250)\n", used[..], WC_T_QUIET) == 1;
+  used[1] = true;
+  #assert wc_judge_allow(d, "shape b.v2\nroute coax/web/api/gone.c  # C9 (#13250)\n", used[..], WC_T_QUIET) == 0;
+  // a shape with no row passes; a shape whose row is finished fails
+  #assert wc_judge_allow(d, "shape b.v2\nshape runner-lines\n", used[..], WC_T_QUIET) == 0 && wc_judge_allow(d, "shape b.v2\nshape a.log.v1\n", used[..], WC_T_QUIET) == 1;
+  // lines that are not one of the six kinds
+  #assert wc_judge_allow(d, "shape b.v2\nfile a.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nid a.v1\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute a.c b.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute\n", used[..], WC_T_QUIET) == 1;
+  #assert wc_word("id a b", 0) == "id" && wc_word("id a b", 2) == "b" && wc_word("id a b", 3) == "";
+}

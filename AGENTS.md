@@ -103,6 +103,9 @@ Character Create's frozen save keys. Do not add new app-private source copies.
   behind a warning. The committed Breez API key is a deliberate exception.
 - **Protocol changes** start in `proto/` and the spec. Published contracts
   keep their identity: change one only with a new version, never in place.
+  Every wire or stored shape has a row in `proto/registry.json` and one codec
+  file; `coax/web/tool.sh wire-check` fails on a shape with neither
+  ([how to register one](proto/README.md#register-a-wire-shape)).
 - **Downloaded and cloned code is untrusted.** Read it; don't run its
   scripts on this Mac.
 - **Three rounds per problem.** After three failed rounds on one problem
@@ -157,6 +160,7 @@ coax/web/serve.sh apps/openagents-web       # the website with hot reload: http:
 coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
 coax/web/tool.sh components-check           # the component system's layers, no looks in a component, one Markdown parser (components/spec.md, #13153)
+coax/web/tool.sh wire-check                 # every wire shape is in proto/registry.json with one codec; the allowlist only shrinks (proto/README.md, #13236)
 coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/verse/fast-shots.md)
 coax/web/tool.sh shot --compare A.png B.png  # how much two pictures differ
 coax/web/tool.sh shot URL OUT.png --eval "JSON.stringify(coaxial.loadMarks())"  # where a page's load time went (docs/verse/fast-loads.md)

@@ -72,4 +72,5 @@ It builds on what exists today:
 - **Also:**
   - [Nostr From Scratch](../../nostr/book/README.md)
   - [The OpenAgents NIPs](../../nostr/nips/openagents/README.md)
+- **Schemas:** [`proto/`](../../proto/README.md) defines every wire shape, by the [protocol specification](../../docs/protocol/openagents-protocol-spec.md); [`proto/registry.json`](../../proto/registry.json) lists each shape and its one codec
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P12

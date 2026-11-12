@@ -68,6 +68,7 @@ Planned paths: `openagents/api/`.
   - [Episode 242, *Khala, Collective Intelligence*](../../docs/transcripts/242.md): an API other tools can call
 - **Old code at `coder-v1.0.0`, crates:** `gateway`, `oa-auth`, `oa-tokens`, `push-gateway`, `tenancy`, `coder-sdk`, `coder-service`
 - **NIPs:** [NIP-CJ](../../nostr/nips/openagents/NIP-CJ.md), [NIP-AGENT](../../nostr/nips/openagents/NIP-AGENT.md), [NIP-KEYS](../../nostr/nips/openagents/NIP-KEYS.md)
+- **Schemas:** [`proto/`](../../proto/README.md) defines every wire shape, by the [protocol specification](../../docs/protocol/openagents-protocol-spec.md); [`proto/registry.json`](../../proto/registry.json) lists each shape and its one codec
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P13
 
 ## Open questions for the owner
