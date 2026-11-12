@@ -33,6 +33,9 @@ objects=()
 for unit in workshop model temple; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; objects+=("$work/c/$unit.o"); done
 for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; objects+=("$work/c/$face.o"); done
 "${cc[@]}" -c "$here/host.c" -o "$work/c/host.o"
+# The Keystore device key (#13216): no screen uses it until the app has an account login; host.c
+# runs its self-check when `adb shell setprop debug.oa.devicekey 1` is set.
+"${cc[@]}" -c "$repo/apps/shared/host/android/device-key.c" -o "$work/c/device-key.o"; objects+=("$work/c/device-key.o")
 "${cc[@]}" -c "$ndk/sources/android/native_app_glue/android_native_app_glue.c" -o "$work/c/glue.o"
 # The glue's entry point is only named in the manifest, so the linker is told to keep it.
 "${cc[@]}" -shared -u ANativeActivity_onCreate "$work/c/host.o" "$work/c/glue.o" "${objects[@]}" \

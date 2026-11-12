@@ -36,7 +36,7 @@ collect phone numbers (decision D3).
 | 6 | **Agents** | Agent accounts, grants, `oa_key_` keys, `openagents login` device approval, NIP-OA attestation, secret-scanning registration, step-up enforcement for human-only routes | An agent key gets 403 on every human-only route (a generated test over the rule table) | 3 |
 | 7 | **Recovery and account life** | Recovery codes, the 72-hour delayed recovery, freeze, merge, export, deletion with the 30-day purge | A recovery started by email alone can be cancelled from a Nostr key; a purged account's id is never reused | 3 |
 | 8 | **Passkeys** (built, #13215) | Web registration and login, conditional UI, PRF salt per credential, the devices and security settings pages; native passkeys with Associated Domains and `assetlinks.json` | A CDP virtual authenticator (ES256, with PRF) registers, logs out and logs back in; the iOS app uses the same passkey | 3 |
-| 9 | **Device keys** (later) | Secure Enclave and Keystore device keys, device-bound refresh (`OA-Device-Proof`) | A copied refresh token fails from another device | 2 |
+| 9 | **Device keys** (built, #13216) | Secure Enclave and Keystore device keys, device-bound refresh (`OA-Device-Proof`), the devices list | A copied refresh token fails from another device | 2 |
 | 10 | **Wallet backup and spend step-up** | NIP-VAULT passkey-PRF and recovery slots for the wallet seed, spend limits and step-up in the app | Delete the app, reinstall, restore the wallet with one passkey prompt | 3 |
 
 Steps 0 and 1 have no dependencies on each other and start first. Step 3

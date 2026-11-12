@@ -83,7 +83,10 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
     # /settings/data and /settings/delete: freeze, export, merge and deletion (life.coax loads login.coax).
     timed life "$here/../../coax/web/wasm.sh" "$here/life.coax" "$here/life-face.c" "$here/build/life.wasm" &
     life_page=$!
-    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$security_page"; wait "$life_page"
+    # /settings/devices: the device keys that hold app logins, with remove (devices.coax loads login.coax).
+    timed devices "$here/../../coax/web/wasm.sh" "$here/devices.coax" "$here/devices-face.c" "$here/build/devices.wasm" &
+    devices_page=$!
+    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$security_page"; wait "$life_page"; wait "$devices_page"
   ) &
   home=$!
   # The project pages: every projects/<slug>/project.json with a page, its tasks

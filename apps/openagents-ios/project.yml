@@ -22,6 +22,8 @@ targets:
     sources:
       - path: OpenAgents
         excludes: [Platform/Stages.metal, Info.plist, OpenAgents.entitlements]
+      # The device key that ties a login to this phone (#13216), shared with the Mac apps.
+      - path: ../shared/host/apple/DeviceKey.swift
       - path: Generated/Home.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Player.c

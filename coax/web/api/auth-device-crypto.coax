@@ -1,0 +1,372 @@
+// The device proof's bytes (docs/auth/sessions-and-tokens.md "Native: refresh tokens bound to a
+// device key"; #13216), for the API (auth-device.c) as C, and for the checks and the live check,
+// which sign with a software key where an app signs in its Secure Enclave or Keystore. The curve
+// and ECDSA are coax/lib/crypto's (p256.coax, p256_ecdsa.coax); what the facts mean is decided in
+// auth-device-policy.coax.
+//
+//   OA-Device-Key: <130 hex>                  the public key, SEC 1 uncompressed (04 || x || y)
+//   OA-Device-Proof: v1 <ms> <signature hex>  ES256 over the message below; the signature is
+//                                             r || s (64 bytes) or DER, as the hardware gives it
+//
+//   the message   "OA-Device-Proof-v1\n" METHOD "\n" URL "\n" <ms> "\n" <the refresh token's SHA-256, hex>
+//
+// METHOD is upper case, URL is the whole address the request went to (scheme, host and path, no
+// query), <ms> is the device's time in milliseconds since 1970 as decimal digits, and every part
+// is plain printable text with no spaces, so no two requests share a message.
+//
+//   adc_key      the header's key as 65 bytes, only when it is a point on P-256
+//   adc_check    the proof header against a method, URL, token hash and key: its time, whether it
+//                parsed, whether the signature verifies, and the SHA-256 of what was signed (the
+//                replay book's key)
+//   adc_sign     a proof header from a software key (the checks; never the API)
+#run_steps 250000000;
+#load "../../lib/crypto/p256_ecdsa.coax";
+#authority;
+
+ADC_KEY :: 65;
+ADC_KEY_TEXT :: 130;
+ADC_TAG :: "OA-Device-Proof-v1";
+ADC_METHOD_MAX :: 8;
+ADC_URL_MAX :: 512;
+ADC_TIME_MAX :: 15;        // digits: milliseconds until the year 33658
+ADC_BINDING :: 64;         // a SHA-256 in hex
+ADC_VERSION :: "v1 ";
+ADC_SIGNATURE_MIN :: 8;    // the shortest DER signature
+ADC_SIGNATURE_MAX :: 72;   // DER; r || s is 64
+ADC_MESSAGE_MAX :: 640;    // the tag, four line ends and the longest parts
+ADC_HEADER_MAX :: 164;     // "v1 ", 15 digits, a space, 144 hex
+
+AdcProof :: struct { ts_ms: int; well_formed: bool; verified: bool; }
+AdcParts :: struct { ts_at: int; ts_n: int; sig_n: int; ok: bool; }
+
+// ---------------------------------------------------------------- for the checks
+adc_text :: (s: string, out: [] u8) -> [] u8 #effects(all) { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+adc_is :: (a: [] u8, s: string) -> bool #effects(all) {
+  if a.count != s.count { return false; }
+  for i: 0..<a.count { if a[i] != s[i] { return false; } }
+  return true;
+}
+ADC_HEX :: "0123456789abcdef";
+adc_hex_write :: (bytes: [] u8, out: [] u8) -> int #effects(all) {
+  for i: 0..<bytes.count { out[2*i] = ADC_HEX[cast(int) (bytes[i] >> 4)]; out[2*i+1] = ADC_HEX[cast(int) (bytes[i] & 15)]; }
+  return 2 * bytes.count;
+}
+// RFC 6979 A.2.5's key (p256_ecdsa.coax's PE_X) and the token hash every check here signs over.
+ADC_TEST_METHOD :: "POST";
+ADC_TEST_URL :: "https://openagents.com/api/auth/refresh";
+ADC_TEST_BINDING :: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+ADC_TEST_TIME :: 1800000000000;
+
+#test "the checks' helpers" {
+  b: [8] u8; h: [8] u8;
+  #assert adc_is(adc_text("abc", b[..]), "abc") && !adc_is(adc_text("abc", b[..]), "abd") && !adc_is(adc_text("abc", b[..]), "ab") && !adc_is(adc_text("abc", b[..]), "abcd");
+  #assert !adc_is(adc_text("abc", b[..]), "xbc") && adc_is(b[0..<0], "");
+  #assert adc_starts(adc_text("v1 ", b[..]), "v1 ") && adc_starts(adc_text("v1 7", b[..]), "v1 ") && !adc_starts(adc_text("v1", b[..]), "v1 ");
+  #assert !adc_starts(adc_text("x1 7", b[..]), "v1 ") && !adc_starts(adc_text("v2 7", b[..]), "v1 ") && !adc_starts(adc_text("v1_7", b[..]), "v1 ") && adc_starts(b[0..<0], "");
+  two := [2] u8.[0x0f, 0xa5];
+  #assert adc_hex_write(two[..], h[..]) == 4 && adc_is(h[0..<4], "0fa5");
+}
+#test "hex reads lower case only, whole bytes, into exactly its size" {
+  out: [3] u8; b: [16] u8;
+  #assert adc_unhex(adc_text("00ff7a", b[..]), out[..]) && out[0] == 0 && out[1] == 0xff && out[2] == 0x7a;
+  #assert adc_unhex(adc_text("09af19", b[..]), out[..]) && out[0] == 9 && out[1] == 0xaf && out[2] == 0x19;
+  #assert !adc_unhex(adc_text("00FF7A", b[..]), out[..]) && !adc_unhex(adc_text("00ff7", b[..]), out[..]) && !adc_unhex(adc_text("00ff7a00", b[..]), out[..]);
+  #assert !adc_unhex(adc_text("00ff7g", b[..]), out[..]) && !adc_unhex(adc_text("0 ff7a", b[..]), out[..]) && !adc_unhex(adc_text("", b[..]), out[..]);
+  #assert !adc_unhex(adc_text("00ff/a", b[..]), out[..]) && !adc_unhex(adc_text("00ff:a", b[..]), out[..]) && !adc_unhex(adc_text("00ff`a", b[..]), out[..]);
+  #assert adc_unhex(adc_text("7a", b[..]), out[0..<1]) && out[0] == 0x7a && !adc_unhex(b[0..<0], out[0..<0]);
+  #assert adc_nibble('0') == 0 && adc_nibble('9') == 9 && adc_nibble('a') == 10 && adc_nibble('f') == 15;
+  #assert adc_nibble('/') == -1 && adc_nibble(':') == -1 && adc_nibble('`') == -1 && adc_nibble('g') == -1 && adc_nibble('A') == -1;
+}
+#test "a key is 130 hex of a point on the curve" #steps 4000000000 {
+  x: [32] u8; public: [65] u8; text: [140] u8; out: [65] u8;
+  #assert p256_public_key(pe_unhex(PE_X, x[..]), public[..]);
+  n := adc_hex_write(public[..], text[..]);
+  #assert n == 130 && adc_key(text[0..<130], out[..]);
+  for i: 0..<65 { #assert out[i] == public[i]; }
+  #assert !adc_key(text[0..<129], out[..]) && !adc_key(text[0..<128], out[..]) && !adc_key(text[0..<130], out[0..<64]);
+  text[130] = '0'; text[131] = '0'; #assert !adc_key(text[0..<132], out[..]);
+  // off the curve, compressed, and not a point at all
+  keep := text[129]; text[129] = ifx keep == '0' then '1' else '0'; #assert !adc_key(text[0..<130], out[..]); text[129] = keep;
+  text[1] = '2'; #assert !adc_key(text[0..<130], out[..]); text[1] = '4';
+  short: [33] u8; st: [70] u8;
+  #assert p2_encode_compressed(p2_decode(public[..]).point, short[..]);
+  sn := adc_hex_write(short[..], st[..]);
+  #assert sn == 66 && !adc_key(st[0..<66], out[0..<33]) && !adc_key(st[0..<66], out[..]);
+  for i: 0..<130 { text[i] = '0'; } #assert !adc_key(text[0..<130], out[..]);
+  text[0] = 'G'; #assert !adc_key(text[0..<130], out[..]);
+}
+#test "the message is the tag, the method, the URL, the time and the token hash, one a line" {
+  m: [8] u8; u: [64] u8; t: [16] u8; b: [64] u8; out: [ADC_MESSAGE_MAX] u8;
+  n := adc_message(adc_text("POST", m[..]), adc_text("https://openagents.com/api/auth/refresh", u[..]), adc_text("1800000000000", t[..]), adc_text(ADC_TEST_BINDING, b[..]), out[..]);
+  #assert n == 142 && adc_is(out[0..<n], "OA-Device-Proof-v1\nPOST\nhttps://openagents.com/api/auth/refresh\n1800000000000\n9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08");
+  // every part is checked: a method that isn't upper case letters, a URL with a space or a line
+  // end, a time that isn't digits or starts with 0, a hash that isn't 64 hex
+  #assert adc_message(adc_text("post", m[..]), u[0..<39], t[0..<13], b[..], out[..]) == 0;
+  #assert adc_message(adc_text("", m[..]), u[0..<39], t[0..<13], b[..], out[..]) == 0;
+  #assert adc_message(adc_text("POSTPOSTX", t[..]), u[0..<39], adc_text("1", m[..]), b[..], out[..]) == 0;
+  #assert adc_message(adc_text("PO T", m[..]), u[0..<39], t[0..<13], b[..], out[..]) == 0;
+  #assert adc_message(adc_text("A", m[..]), u[0..<39], adc_text("1800000000000", t[..]), b[..], out[..]) == 139;
+  #assert adc_message(adc_text("Z", m[..]), u[0..<39], t[0..<13], b[..], out[..]) == 139;
+  #assert adc_message(adc_text("@", m[..]), u[0..<39], t[0..<13], b[..], out[..]) == 0 && adc_message(adc_text("[", m[..]), u[0..<39], t[0..<13], b[..], out[..]) == 0;
+  #assert adc_message(adc_text("POSTPOST", m[..]), u[0..<39], t[0..<13], b[..], out[..]) == 146;
+  again := adc_text("POST", m[..]); #assert again.count == 4;
+  #assert adc_message(m[0..<4], u[0..<0], t[0..<13], b[..], out[..]) == 0;
+  u[5] = ' '; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 0;
+  u[5] = '\n'; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 0;
+  u[5] = 127; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 0;
+  u[5] = '!'; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 142;
+  u[5] = '~'; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 142;
+  u[5] = ':';
+  u[0] = ' '; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 0; u[0] = 'h';
+  #assert adc_message(m[0..<4], u[0..<1], t[0..<13], b[..], out[..]) == 104;
+  b[0] = 'A'; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 0; b[0] = '9';
+  b[63] = 'g'; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 0; b[63] = '8';
+  #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 142;
+  #assert adc_message(m[0..<4], u[0..<39], t[0..<0], b[..], out[..]) == 0;
+  #assert adc_message(m[0..<4], u[0..<39], adc_text("0180000000000", t[..]), b[..], out[..]) == 0;
+  #assert adc_message(m[0..<4], u[0..<39], adc_text("18000000000x0", t[..]), b[..], out[..]) == 0;
+  #assert adc_message(m[0..<4], u[0..<39], adc_text("1800000000000000", t[..]), b[..], out[..]) == 0;
+  #assert adc_message(m[0..<4], u[0..<39], adc_text("180000000000000", t[..]), b[..], out[..]) == 144;
+  #assert adc_message(m[0..<4], u[0..<39], adc_text("9", t[..]), b[..], out[..]) == 130;
+  #assert adc_message(m[0..<4], u[0..<39], adc_text("1800000000000", t[..]), b[0..<63], out[..]) == 0;
+  b[7] = 'A'; #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[..]) == 0; b[7] = '8';
+  #assert adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[0..<141]) == 0 && adc_message(m[0..<4], u[0..<39], t[0..<13], b[..], out[0..<142]) == 142;
+  long: [ADC_URL_MAX + 1] u8; for i: 0..<ADC_URL_MAX + 1 { long[i] = 'a'; }
+  big: [ADC_MESSAGE_MAX] u8;
+  #assert adc_message(m[0..<4], long[..], t[0..<13], b[..], big[..]) == 0 && adc_message(m[0..<4], long[0..<ADC_URL_MAX], t[0..<13], b[..], big[..]) == 615;
+}
+#test "a time reads as its digits" {
+  b: [16] u8;
+  #assert adc_time(adc_text("1800000000000", b[..])) == 1800000000000 && adc_time(adc_text("7", b[..])) == 7 && adc_time(adc_text("10", b[..])) == 10;
+  #assert adc_time(adc_text("999999999999999", b[..])) == 999999999999999;
+  #assert adc_time(adc_text("", b[..])) == 0 && adc_time(adc_text("0", b[..])) == 0 && adc_time(adc_text("07", b[..])) == 0 && adc_time(adc_text("1a", b[..])) == 0;
+  #assert adc_time(adc_text("1000000000000000", b[..])) == 0 && adc_time(adc_text("-1", b[..])) == 0 && adc_time(adc_text("1/", b[..])) == 0 && adc_time(adc_text("1:", b[..])) == 0;
+}
+#test "the header is v1, a time and a signature in hex, with one space between" {
+  h: [200] u8;
+  p := adc_parts(adc_text("v1 1800000000000 00112233445566778899", h[..]));
+  #assert p.ok && p.ts_at == 3 && p.ts_n == 13 && p.sig_n == 10;
+  #assert adc_parts(adc_text("v1 7 0011223344556677", h[..])).ok && adc_parts(adc_text("v1 7 0011223344556677", h[..])).sig_n == 8;
+  #assert !adc_parts(adc_text("v1 7 00112233445566", h[..])).ok;                      // a signature under 8 bytes
+  #assert !adc_parts(adc_text("v1 7 g011223344556677", h[..])).ok && !adc_parts(adc_text("v1 7 001122334455667g", h[..])).ok;
+  #assert !adc_parts(adc_text("v1 ", h[..])).ok && !adc_parts(adc_text("v1 7", h[..])).ok && !adc_parts(adc_text("v", h[..])).ok;
+  #assert !adc_parts(adc_text("v2 1800000000000 00112233445566778899", h[..])).ok;
+  #assert !adc_parts(adc_text("V1 1800000000000 00112233445566778899", h[..])).ok;
+  #assert !adc_parts(adc_text("v1  1800000000000 00112233445566778899", h[..])).ok;
+  #assert !adc_parts(adc_text("v1 1800000000000  00112233445566778899", h[..])).ok;
+  #assert !adc_parts(adc_text("v1 1800000000000 00112233445566778899 ", h[..])).ok;
+  #assert !adc_parts(adc_text("v1 1800000000000 0011223344556677889", h[..])).ok;      // half a byte
+  #assert !adc_parts(adc_text("v1 1800000000000", h[..])).ok && !adc_parts(adc_text("v1 1800000000000 ", h[..])).ok;
+  #assert !adc_parts(adc_text("v1 00112233445566778899", h[..])).ok && !adc_parts(adc_text("v1", h[..])).ok && !adc_parts(adc_text("", h[..])).ok;
+  #assert !adc_parts(adc_text("v1x1800000000000 00112233445566778899", h[..])).ok;
+  #assert !adc_parts(adc_text("v1 1800000000000000 00112233445566778899", h[..])).ok;   // 16 digits
+  #assert adc_parts(adc_text("v1 180000000000000 00112233445566778899", h[..])).ok;     // 15
+  // 72 bytes of signature is the most; 73 is refused
+  for i: 0..<200 { h[i] = '0'; }
+  h[0] = 'v'; h[1] = '1'; h[2] = ' '; h[3] = '7'; h[4] = ' ';
+  #assert adc_parts(h[0..<5 + 144]).ok && adc_parts(h[0..<5 + 144]).sig_n == 72 && !adc_parts(h[0..<5 + 146]).ok;
+}
+#test "a proof verifies only for its method, URL, time, token hash and key" #steps 4000000000 {
+  x: [32] u8; public: [65] u8; other: [65] u8; one: [32] u8; h: [ADC_HEADER_MAX] u8; digest: [32] u8; d2: [32] u8;
+  m: [8] u8; u: [64] u8; b: [64] u8;
+  key := pe_unhex(PE_X, x[..]);
+  #assert p256_public_key(key, public[..]);
+  method := adc_text(ADC_TEST_METHOD, m[..]); url := adc_text(ADC_TEST_URL, u[..]); binding := adc_text(ADC_TEST_BINDING, b[..]);
+  n := adc_sign(key, method, url, ADC_TEST_TIME, binding, h[..]);
+  #assert n == 3 + 13 + 1 + 128 && adc_is(h[0..<17], "v1 1800000000000 ");
+  got := adc_check(h[0..<n], method, url, binding, public[..], digest[..]);
+  #assert got.well_formed && got.verified && got.ts_ms == ADC_TEST_TIME;
+  // the digest is SHA-256 of the message: the same for the same request, whatever the signature's bytes
+  msg: [ADC_MESSAGE_MAX] u8; t: [16] u8;
+  mn := adc_message(method, url, adc_text("1800000000000", t[..]), binding, msg[..]);
+  #assert sha256_hash_checked(msg[0..<mn], d2[..], false) == SHA_OK;
+  for i: 0..<32 { #assert digest[i] == d2[i]; }
+  // another method, URL, token hash or key: well formed, not signed
+  g := adc_check(h[0..<n], adc_text("GET", m[..]), url, binding, public[..], digest[..]);
+  #assert g.well_formed && !g.verified && g.ts_ms == ADC_TEST_TIME;
+  method = adc_text(ADC_TEST_METHOD, m[..]);
+  u[38] = 'x'; #assert !adc_check(h[0..<n], method, url, binding, public[..], digest[..]).verified; u[38] = 'h';
+  b[0] = '8'; #assert !adc_check(h[0..<n], method, url, binding, public[..], digest[..]).verified; b[0] = '9';
+  one[31] = 1; #assert p256_public_key(one[..], other[..]);
+  #assert !adc_check(h[0..<n], method, url, binding, other[..], digest[..]).verified && adc_check(h[0..<n], method, url, binding, other[..], digest[..]).well_formed;
+  // another time in the header: the signature was over the first
+  keep := h[15]; h[15] = '1'; late := adc_check(h[0..<n], method, url, binding, public[..], digest[..]);
+  #assert late.well_formed && !late.verified && late.ts_ms == ADC_TEST_TIME + 1; h[15] = keep;
+  // a changed signature
+  h[n-1] = ifx h[n-1] == '0' then '1' else '0';
+  #assert !adc_check(h[0..<n], method, url, binding, public[..], digest[..]).verified;
+  // not a header, a method or a hash at all: nothing is claimed
+  bad := adc_check(h[0..<16], method, url, binding, public[..], digest[..]);
+  #assert !bad.well_formed && !bad.verified && bad.ts_ms == 0;
+  n = adc_sign(key, method, url, ADC_TEST_TIME, binding, h[..]);
+  #assert !adc_check(h[0..<n], method, url, binding[0..<63], public[..], digest[..]).well_formed;
+  #assert !adc_check(h[0..<n], method, url, binding, public[..], digest[0..<31]).well_formed;
+  #assert !adc_check(h[0..<n], method, url, binding, public[0..<64], digest[..]).verified;
+  #assert adc_check(h[0..<n], method, url, binding, public[..], digest[..]).verified;
+}
+#test "the hardware's DER signatures and either half of s verify" #steps 4000000000 {
+  x: [32] u8; public: [65] u8; h: [ADC_HEADER_MAX] u8; digest: [32] u8; m: [8] u8; u: [64] u8; b: [64] u8;
+  key := pe_unhex(PE_X, x[..]);
+  #assert p256_public_key(key, public[..]);
+  method := adc_text(ADC_TEST_METHOD, m[..]); url := adc_text(ADC_TEST_URL, u[..]); binding := adc_text(ADC_TEST_BINDING, b[..]);
+  n := adc_sign(key, method, url, ADC_TEST_TIME, binding, h[..]);
+  sig: [64] u8; der: [72] u8;
+  #assert adc_unhex(h[17..<n], sig[..]);
+  dn := pe_der_write(sig[..], der[..]);
+  hn := 17 + adc_hex_write(der[0..<dn], h[17..<ADC_HEADER_MAX]);
+  as_der := adc_check(h[0..<hn], method, url, binding, public[..], digest[..]);
+  #assert dn > 64 && as_der.well_formed && as_der.verified;
+  // the Secure Enclave and Keystore don't keep s low: n - s verifies too
+  s := p2_load(sig[32..<64], P2_N).value;
+  #assert p2_store(p2_neg(s, P2_N), sig[32..<64]);
+  hn = 17 + adc_hex_write(sig[..], h[17..<ADC_HEADER_MAX]);
+  #assert adc_check(h[0..<hn], method, url, binding, public[..], digest[..]).verified;
+  dn = pe_der_write(sig[..], der[..]);
+  dh := 17 + adc_hex_write(der[0..<dn], h[17..<ADC_HEADER_MAX]);
+  #assert adc_check(h[0..<dh], method, url, binding, public[..], digest[..]).verified;
+  hn = 17 + adc_hex_write(sig[..], h[17..<ADC_HEADER_MAX]);
+  // 65 bytes is neither form
+  h[hn] = '0'; h[hn+1] = '0';
+  odd := adc_check(h[0..<hn+2], method, url, binding, public[..], digest[..]);
+  #assert odd.well_formed && !odd.verified;
+}
+#test "signing refuses what it can't sign" #steps 4000000000 {
+  x: [32] u8; h: [ADC_HEADER_MAX] u8; m: [8] u8; u: [64] u8; b: [64] u8; zero: [32] u8;
+  key := pe_unhex(PE_X, x[..]);
+  method := adc_text(ADC_TEST_METHOD, m[..]); url := adc_text(ADC_TEST_URL, u[..]); binding := adc_text(ADC_TEST_BINDING, b[..]);
+  #assert adc_sign(key, method, url, 0, binding, h[..]) == -1 && adc_sign(key, method, url, -4, binding, h[..]) == -1;
+  #assert adc_sign(zero[..], method, url, ADC_TEST_TIME, binding, h[..]) == -1;
+  #assert adc_sign(key, method, url, ADC_TEST_TIME, binding[0..<10], h[..]) == -1;
+  #assert adc_sign(key, method, url, ADC_TEST_TIME, binding, h[0..<144]) == -1 && adc_sign(key, method, url, ADC_TEST_TIME, binding, h[0..<145]) == 145;
+  #assert adc_sign(key, method, url, 7, binding, h[..]) == 133 && adc_is(h[0..<5], "v1 7 ");
+  #assert adc_sign(key, method, url, 1000000000000000, binding, h[..]) == -1 && adc_sign(key, method, url, 999999999999999, binding, h[..]) == 147;
+  d: [16] u8;
+  #assert adc_digits(1800000000000, d[..]) == 13 && adc_is(d[0..<13], "1800000000000") && adc_digits(10, d[..]) == 2 && adc_is(d[0..<2], "10");
+  #assert adc_digits(9, d[..]) == 1 && adc_is(d[0..<1], "9") && adc_digits(0, d[..]) == 0 && adc_digits(-3, d[..]) == 0 && adc_digits(1234, d[0..<3]) == 0;
+  #assert adc_digits(1, d[..]) == 1 && adc_is(d[0..<1], "1");
+  #assert adc_digits(999, d[0..<3]) == 3;
+}
+
+// ---------------------------------------------------------------- reading
+adc_nibble :: (c: u8) -> int #effects(all) {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// text as exactly out.count bytes; false, with out untouched, for anything else.
+adc_unhex :: (text: [] u8, out: [] u8) -> bool #effects(all) {
+  if text.count != 2 * out.count || out.count == 0 { return false; }
+  for i: 0..<text.count { if adc_nibble(text[i]) < 0 { return false; } }
+  for i: 0..<out.count { out[i] = cast(u8) (adc_nibble(text[2*i]) * 16 + adc_nibble(text[2*i+1])); }
+  return true;
+}
+// The digits' value: 1 to 15 digits, no leading zero. 0 for anything else.
+adc_time :: (text: [] u8) -> int #effects(all) {
+  if text.count < 1 || text.count > ADC_TIME_MAX || text[0] == '0' { return 0; }
+  value := 0;
+  for i: 0..<text.count {
+    if text[i] < '0' || text[i] > '9' { return 0; }
+    value = value * 10 + cast(int) (text[i] - '0');
+  }
+  return value;
+}
+adc_starts :: (a: [] u8, s: string) -> bool #effects(all) {
+  if a.count < s.count { return false; }
+  for i: 0..<s.count { if a[i] != s[i] { return false; } }
+  return true;
+}
+// Where the header's time and signature are: "v1 <digits> <hex>".
+adc_parts :: (header: [] u8) -> AdcParts #effects(all) {
+  if !adc_starts(header, ADC_VERSION) { return AdcParts.{}; }
+  start := ADC_VERSION.count; end := start;
+  while end < header.count && header[end] != ' ' { end += 1; }
+  if adc_time(header[start..<end]) == 0 { return AdcParts.{}; }
+  hex := header.count - end - 1;
+  if hex % 2 != 0 { return AdcParts.{}; }
+  bytes := hex / 2;
+  if bytes < ADC_SIGNATURE_MIN || bytes > ADC_SIGNATURE_MAX { return AdcParts.{}; }
+  for i: end + 1..<header.count { if adc_nibble(header[i]) < 0 { return AdcParts.{}; } }
+  return AdcParts.{ts_at=start,ts_n=end-start,sig_n=bytes,ok=true};
+}
+
+// ---------------------------------------------------------------- the API's
+// The header's key (130 hex) as 65 bytes in out; false unless it is a point on P-256, uncompressed.
+adc_key :: (text: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if text.count != ADC_KEY_TEXT || out.count != ADC_KEY { return false; }
+  key: [ADC_KEY] u8;
+  if !adc_unhex(text, key[..]) { return false; }
+  if !p2_decode(key[..]).ok { return false; }
+  for i: 0..<ADC_KEY { out[i] = key[i]; }
+  return true;
+}
+
+// What a proof signs, into out: its length, or 0 when a part isn't what it must be or out is small.
+adc_message :: (method: [] u8, url: [] u8, time: [] u8, binding: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if method.count < 1 || method.count > ADC_METHOD_MAX { return 0; }
+  for i: 0..<method.count { if method[i] < 'A' || method[i] > 'Z' { return 0; } }
+  if url.count < 1 || url.count > ADC_URL_MAX { return 0; }
+  for i: 0..<url.count { if url[i] <= ' ' || url[i] >= 127 { return 0; } }
+  if adc_time(time) == 0 { return 0; }
+  if binding.count != ADC_BINDING { return 0; }
+  for i: 0..<binding.count { if adc_nibble(binding[i]) < 0 { return 0; } }
+  n := ADC_TAG.count + 1 + method.count + 1 + url.count + 1 + time.count + 1 + binding.count;
+  if out.count < n { return 0; }
+  at := 0;
+  for i: 0..<ADC_TAG.count { out[at] = ADC_TAG[i]; at += 1; }
+  out[at] = '\n'; at += 1;
+  for i: 0..<method.count { out[at] = method[i]; at += 1; }
+  out[at] = '\n'; at += 1;
+  for i: 0..<url.count { out[at] = url[i]; at += 1; }
+  out[at] = '\n'; at += 1;
+  for i: 0..<time.count { out[at] = time[i]; at += 1; }
+  out[at] = '\n'; at += 1;
+  for i: 0..<binding.count { out[at] = binding[i]; at += 1; }
+  return n;
+}
+
+// The OA-Device-Proof header against this request: method, url, the refresh token's SHA-256 in
+// hex (binding) and the session's key (65 bytes). digest (32 bytes) gets the SHA-256 of what was
+// signed whenever the header is well formed. Public input only, so it branches.
+adc_check :: (header: [] u8, method: [] u8, url: [] u8, binding: [] u8, key: [] u8, digest: [] u8) -> AdcProof #export_c #effects(all) {
+  if digest.count != 32 { return AdcProof.{}; }
+  parts := adc_parts(header);
+  if !parts.ok { return AdcProof.{}; }
+  time := header[parts.ts_at..<parts.ts_at + parts.ts_n];
+  message: [ADC_MESSAGE_MAX] u8;
+  n := adc_message(method, url, time, binding, message[..]);
+  if n == 0 { return AdcProof.{}; }
+  hash: [32] u8;
+  if sha256_hash_checked(message[0..<n], hash[..], false) != SHA_OK { return AdcProof.{}; }
+  for i: 0..<32 { digest[i] = hash[i]; }
+  signature: [ADC_SIGNATURE_MAX] u8;
+  if !adc_unhex(header[parts.ts_at + parts.ts_n + 1..<header.count], signature[0..<parts.sig_n]) { return AdcProof.{}; }
+  if parts.sig_n == 64 { return AdcProof.{ts_ms=adc_time(time),well_formed=true,verified=p256_verify(hash[..], key, signature[0..<64], false)}; }
+  return AdcProof.{ts_ms=adc_time(time),well_formed=true,verified=p256_verify_der(hash[..], key, signature[0..<parts.sig_n], false)};
+}
+
+// ---------------------------------------------------------------- the checks' software key
+// value as decimal digits in out: how many, or 0 when it isn't positive or doesn't fit.
+adc_digits :: (value: int, out: [] u8) -> int #effects(all) {
+  n := 0; rest := value;   // nothing to write for 0 or less: no digits
+  while rest > 0 { n += 1; rest = rest / 10; }
+  if n > out.count { return 0; }
+  rest = value;
+  for i: 0..<n { out[n - 1 - i] = cast(u8) ('0' + cast(u8) (rest % 10)); rest = rest / 10; }
+  return n;
+}
+// A proof header signed by a 32-byte software key, as an app's hardware would sign it: its length
+// in out, or -1. RFC 6979 nonces, r || s.
+adc_sign :: (secret: [] u8, method: [] u8, url: [] u8, ts_ms: int, binding: [] u8, out: [] u8) -> int #effects(all) {
+  digits: [ADC_TIME_MAX] u8;
+  dn := adc_digits(ts_ms, digits[..]);
+  if dn == 0 { return -1; }
+  message: [ADC_MESSAGE_MAX] u8;
+  n := adc_message(method, url, digits[0..<dn], binding, message[..]);
+  if n == 0 || out.count < 3 + dn + 1 + 128 { return -1; }
+  hash: [32] u8; signature: [64] u8;
+  if !(sha256_hash_checked(message[0..<n], hash[..], false) == SHA_OK && p256_sign(secret, hash[..], signature[..])) { return -1; }
+  out[0] = 'v'; out[1] = '1'; out[2] = ' ';
+  for i: 0..<dn { out[3 + i] = digits[i]; }
+  out[3 + dn] = ' ';
+  return 4 + dn + adc_hex_write(signature[..], out[4 + dn..<4 + dn + 128]);
+}

@@ -18,7 +18,7 @@ account (a unique index enforces it).
 | `email` | You read mail at an address | Possession of inbox (weak to medium) | Yes | 6-digit code and a link in one message |
 | `passkey` | You hold a WebAuthn credential and unlocked it | Phishing-resistant (strong) | Yes | RP ID `openagents.com`, user verification required |
 | `nostr` | You hold a secp256k1 key | Strong if the key is safe | Yes | NIP-98, NIP-07, NIP-46, phone QR |
-| `device` | This install holds a non-exportable P-256 key | Strong, bound to hardware | No, only linked by a logged-in session | Secure Enclave, Android Keystore, WebCrypto |
+| `device` | This install holds a non-exportable P-256 key | Binds its own login's refresh tokens; not a way to log in | No, made by the app at login | Secure Enclave, Android Keystore ([sessions](sessions-and-tokens.md#native-refresh-tokens-bound-to-a-device-key)) |
 | `agent_key` | An agent holds a Nostr key or `oa_key_` API key under a grant | Scoped | No, made by the owner | See [Agents](#agents) |
 | `recovery_code` | You kept the code we showed once | Strong, single use | No | 24 BIP-39 words, scrypt-stretched |
 | `oauth` (connection) | You control a GitHub or Google account | Not a login | No | Repository and file access only |
@@ -35,7 +35,7 @@ routes ask for a level ([sessions](sessions-and-tokens.md#middleware)):
 | Level | Reached by | Enough for |
 | --- | --- | --- |
 | `L1` | email code | Reading and ordinary writes |
-| `L2` | passkey, Nostr key, device key, or recovery code | Spending above the free limit, adding an authenticator, creating agent grants |
+| `L2` | passkey, Nostr key or recovery code (a device key once spend step-up uses it, #13217) | Spending above the free limit, adding an authenticator, creating agent grants |
 | `L2-fresh` | L2 within the last 5 minutes | Seed export, removing an authenticator, raising a spend limit, deleting the account |
 
 This follows NIST SP 800-63B rev. 4 in spirit: syncable passkeys count at
@@ -310,8 +310,8 @@ to be deleted, or an agent can't be merged.
 | Platform | First screen | Then | Session |
 | --- | --- | --- | --- |
 | Web | Email field (passkey autofill once passkeys ship); "Log in with a key" (NIP-07, NIP-46, phone QR) | Offer a passkey after the first email login, once passkeys ship | `__Host-oa_session` cookie |
-| iOS and Mac apps | **Email**, with "Log in with a key" beside it (NIP-46, or make a new key) | Once built: a Secure Enclave device key made silently; a passkey offered | Session token; device-bound refresh once device keys ship |
-| Android | Same as iOS, plus NIP-55 signer apps | Once built: Android Keystore device key (StrongBox when present); Credential Manager passkey | Same as iOS |
+| iOS and Mac apps | **Email**, with "Log in with a key" beside it (NIP-46, or make a new key) | A Secure Enclave device key made silently at login (#13216); a passkey offered | Access and refresh tokens; the refresh is bound to the device key |
+| Android | Same as iOS, plus NIP-55 signer apps | An Android Keystore device key (StrongBox when present); Credential Manager passkey | Same as iOS |
 | CLI (`openagents login`) | Prints a link and QR to `/login/device#code=...`; you approve in a logged-in browser | Its own Nostr key, linked as `cli:<machine>` | None: NIP-98 per request |
 | Agents | Made by the owner on `/settings/agents` or by `openagents agent create` | Grant shown and signed at L2 | NIP-98 per request, or `oa_key_` |
 | Everglade, Verse | Playable as a guest | Log in through any of the above | The page's session; rooms take signed seat tickets as today |

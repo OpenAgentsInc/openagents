@@ -28,7 +28,8 @@
 //   POST /api/auth/phone/start            the phone QR's challenge and the page's poll token
 //   POST /api/auth/phone/approve {challenge}   the app, NIP-98 signed by its account's key
 //   POST /api/auth/phone/poll {poll}      waiting | expired | logged in
-//   POST /api/auth/refresh {refresh_token}     an app's next pair; a reused one ends the family
+//   POST /api/auth/refresh {refresh_token}     an app's next pair; a reused one ends the family; a login
+//                                         bound to a device key needs OA-Device-Proof (auth-device.c, #13216)
 //   POST /api/auth/logout                 this session (with no session of ours, the old route's: private.c)
 //   POST /api/auth/logout-everywhere      every session of the account (L2)
 //   GET  /api/auth/sessions               the devices list; POST /api/auth/sessions/<id>/remove
@@ -90,6 +91,9 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/auth/sessions", false, AP_ACCOUNT, "the devices list"),
   R("POST", "/api/auth/sessions/", true, AP_ACCOUNT, "remove one device's session"),
   R("POST", "/api/auth/freeze", false, AP_PUBLIC, "a notice's link token, or the session's account"),
+  // ---- device keys (auth-device.c, auth-device-policy.coax, #13216)
+  R("GET",  "/api/auth/devices", false, AP_HUMAN, "the device keys that hold your logins"),
+  R("POST", "/api/auth/devices/", true, AP_HUMAN, "remove one device: its key is revoked and its logins end"),
   // ---- an account's life (auth-life.c, auth-life-policy.coax, #13214): its own proof rules inside
   R("GET",  "/api/auth/life", false, AP_RECOVER, "frozen or waiting to be deleted, until when, and what the account holds"),
   R("POST", "/api/auth/unfreeze", false, AP_RECOVER, "lift a freeze (L2-fresh, or a fresh email code with nothing stronger)"),
@@ -745,7 +749,7 @@ void auth_init(void) {
          && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
          && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
          && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401;
-  if (!ok || !auth_recover_init() || !auth_life_init() || !passkeys_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
+  if (!ok || !auth_recover_init() || !auth_life_init() || !passkeys_init() || !auth_device_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
 // Start of each request (api.c): nothing carries over from the last.
@@ -825,6 +829,9 @@ void auth_device_name(const request *q, char *out, size_t cap) { device_name(q, 
 void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
                     bool app, bool made, const char *action, const char *extra_json, const char *extra_lines) {
   char tok[160], dig[65], name[96], country[8] = "";
+  // An app's device key (#13216), checked before there is a session: one we can't hold refuses the login.
+  auth_device_ask device;
+  if (!auth_device_login(q, db, acct, app, &device)) return;
   device_name(q, name, sizeof name);
   api_header(q, "X-Client-Region", country, sizeof country);
   if (app) { if (!random_hex(tok, 32)) { refuse(q, 503, "No randomness here. Try again."); return; } sha_hex(tok, dig); }
@@ -851,7 +858,16 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
     if (PQresultStatus(x) == PGRES_TUPLES_OK && PQntuples(x) == 1 && !PQgetisnull(x, 0, 0)) snprintf(pjson, sizeof pjson, "%s", PQgetvalue(x, 0, 0));
     PQclear(x);
   }
-  char detail[200]; snprintf(detail, sizeof detail, "{\"via\":\"%s\",\"client\":\"%s\",\"new\":%s}", via_kind, app ? "app" : "web", made ? "true" : "false");
+  // The session is bound to its device key before any token is made, and never unbound.
+  if (device.bind && !auth_device_bind(db, acct, sid, &device)) {
+    const char *e[1] = {sid};
+    PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, e, NULL, NULL, 0));
+    audit(db, acct, NULL, action, "failed", "{\"why\":\"device\"}");
+    refuse(q, 500, "That didn't work. Try again.");
+    return;
+  }
+  char detail[200]; snprintf(detail, sizeof detail, "{\"via\":\"%s\",\"client\":\"%s\",\"new\":%s,\"device\":%s}", via_kind, app ? "app" : "web",
+                             made ? "true" : "false", device.bind ? "true" : "false");
   audit(db, acct, sid, action, "ok", detail);
   if (!strcmp(level, "L2")) auth_recover_strong_login(db, acct, sid);   // a pending recovery ends (#13213)
   if (!extra_json) extra_json = "";
@@ -862,9 +878,9 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
     if (!new_token("oa_rt_", rt, sizeof rt, rtd) || !new_token("oa_at_", at, sizeof at, atd) || !random_hex(fam, 16)) { refuse(q, 503, "No randomness here. Try again."); return; }
     const char *w[4] = {sid, fam, rtd, atd};
     PQclear(PQexecParams(db, "SELECT auth.app_pair($1, $2, $3, $4)", 4, NULL, w, NULL, NULL, 0));
-    snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"access_token\":\"%s\",\"refresh_token\":\"%s\",\"expires_in\":3600,\"player\":%s%s}",
-             acct, made ? "true" : "false", at, rt, pjson, extra_json);
-    snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\naccess_token %s\nrefresh_token %s\nexpires_in 3600\n%s", acct, made, at, rt, extra_lines);
+    snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"access_token\":\"%s\",\"refresh_token\":\"%s\",\"expires_in\":3600,\"device_bound\":%s,\"player\":%s%s}",
+             acct, made ? "true" : "false", at, rt, device.bind ? "true" : "false", pjson, extra_json);
+    snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\naccess_token %s\nrefresh_token %s\nexpires_in 3600\ndevice_bound %d\n%s", acct, made, at, rt, device.bind, extra_lines);
     answer(q, 200, NULL, json, lines);
     return;
   }
@@ -1229,13 +1245,16 @@ static void refresh(const request *q, PGconn *db, const char *body) {
   // Limit per family: the family is found from the token; a digest stands in until then.
   char nrt[160], nrtd[65], nat[160], natd[65];
   if (!new_token("oa_rt_", nrt, sizeof nrt, nrtd) || !new_token("oa_at_", nat, sizeof nat, natd)) { refuse(q, 503, "No randomness here. Try again."); return; }
-  const char *fv[1] = {dig};
-  PGresult *f = PQexecParams(db, "SELECT family FROM auth.refresh WHERE token_sha256 = $1", 1, NULL, fv, NULL, NULL, 0);
-  char fam[40] = ""; if (PQresultStatus(f) == PGRES_TUPLES_OK && PQntuples(f) == 1) snprintf(fam, sizeof fam, "%s", PQgetvalue(f, 0, 0));
-  PQclear(f);
-  if (fam[0] && !limit_hit(db, L_REFRESH, fam, &until)) { refuse_limit(q, L_REFRESH, until); return; }
-  const char *v[3] = {dig, nrtd, natd};
-  PGresult *r = PQexecParams(db, "SELECT state, coalesce(account, '') FROM auth.app_refresh($1, $2, $3)", 3, NULL, v, NULL, NULL, 0);
+  auth_refresh_facts facts;
+  char proved[24] = "";
+  if (auth_device_look(db, dig, &facts)) {
+    if (!limit_hit(db, L_REFRESH, facts.family, &until)) { refuse_limit(q, L_REFRESH, until); return; }
+    // A login bound to a device key (#13216): its own key's fresh proof, or nothing moves and
+    // the token stays good for the real device. auth-device-policy.coax decides.
+    if (!auth_device_refresh(q, db, dig, &facts, proved)) return;
+  }
+  const char *v[4] = {dig, nrtd, natd, proved[0] ? proved : NULL};
+  PGresult *r = PQexecParams(db, "SELECT state, coalesce(account, '') FROM auth.app_refresh($1, $2, $3, $4::bigint)", 4, NULL, v, NULL, NULL, 0);
   char state[16] = "", acct[40] = "";
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) { snprintf(state, sizeof state, "%s", PQgetvalue(r, 0, 0)); snprintf(acct, sizeof acct, "%s", PQgetvalue(r, 0, 1)); }
   PQclear(r);
@@ -1246,6 +1265,7 @@ static void refresh(const request *q, PGconn *db, const char *body) {
     answer(q, 200, NULL, json, lines);
     return;
   }
+  if (!strcmp(state, "proof")) { auth_device_refuse_unproved(q); return; }   // the database's own refusal: a bound token, no proved device
   if (!strcmp(state, "reused")) {
     // Someone copied a refresh token: the whole login ended. The notice to the account's other
     // ways in comes with linking notices (#13213); the audit row is here now.
@@ -1425,6 +1445,7 @@ bool auth_api_route(const request *q) {
   if (auth_recover_route(q, api_db(), op)) return true;
   if (auth_life_route(q, api_db(), op)) return true;
   if (passkeys_route(q, api_db(), op)) return true;
+  if (auth_device_route(q, api_db(), op)) return true;
   bool get = !strcmp(q->method, "GET");
   static const char *const posts[] = {"email/start", "email/verify", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve",
                                       "phone/poll", "refresh", "logout", "logout-everywhere", "freeze", NULL};

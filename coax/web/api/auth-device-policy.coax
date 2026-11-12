@@ -1,0 +1,262 @@
+// Device keys and device-bound refresh (docs/auth/sessions-and-tokens.md "Native: refresh tokens
+// bound to a device key"; #13216). An app makes a P-256 key its hardware won't export and sends
+// the public half with its login; from then on that login's refresh tokens move only with the
+// key's signature (OA-Device-Proof). auth-device.c gathers the facts (is the session bound, was
+// the key removed, did the header parse, its time, did the signature verify, was it seen before)
+// and moves them in; this file decides; auth-device.c moves the answer out and never decides alone.
+//
+//   dk_register   a login: bound to the key it sent, unbound when it sent none, refused when what
+//                 it sent isn't a key we can hold (never quietly unbound)
+//   dk_refresh    a refresh: a bound login needs its own live key's fresh, unused proof
+//   dk_allows     does this verdict let the tokens move
+//   dk_remove     may this account remove this device
+//
+// The threats, each with its check below and in tests/auth_device_checks.coax:
+//   a token copied to another device   no proof: DK_NEEDED; another key's proof: DK_BAD
+//   a proof replayed                   DK_REPLAY, and its token stays good for the real device
+//   a clock that is off                DK_CLOCK past 60 seconds either way, with our time to retry on
+//   a key that was removed             DK_REVOKED (its logins ended when it was removed)
+//   a downgrade to no proof            a bound login is never DK_UNBOUND; no input here unbinds one
+#authority;
+
+DK_WINDOW_MS :: 60000;   // a proof's time may be this far from ours, either way
+
+// Verdicts.
+DK_OK :: 0; DK_UNBOUND :: 1; DK_NEEDED :: 2; DK_MALFORMED :: 3; DK_CLOCK :: 4; DK_BAD :: 5; DK_REPLAY :: 6;
+DK_REVOKED :: 7; DK_BAD_KEY :: 8; DK_BAD_PLATFORM :: 9; DK_NOT_FOUND :: 10;
+// Platforms and where a key is kept.
+DK_IOS :: 1; DK_MAC :: 2; DK_ANDROID :: 3;
+DK_ENCLAVE :: 1; DK_STRONGBOX :: 2; DK_TEE :: 3; DK_SOFTWARE :: 4;
+
+#test "a proof is fresh for 60 seconds either way, and no longer" {
+  now := 1800000000000;
+  #assert DK_WINDOW_MS == 60000;
+  #assert dk_fresh(now, now) && dk_fresh(now, now - 60000) && dk_fresh(now, now + 60000);
+  #assert !dk_fresh(now, now - 60001) && !dk_fresh(now, now + 60001);
+  #assert dk_fresh(now, now - 1) && dk_fresh(now, now + 1);
+  #assert !dk_fresh(now, 0) && !dk_fresh(now, -5) && !dk_fresh(0, 0) && !dk_fresh(-1, -1);
+  #assert !dk_fresh(30000, 0) && dk_fresh(30000, 1) && !dk_fresh(30000, -1) && dk_fresh(30000, 90000) && !dk_fresh(30000, 90001);
+  #assert !dk_fresh(now, now * 2);
+}
+#test "an unbound login refreshes as before, whatever else is sent" {
+  now := 1800000000000;
+  #assert dk_refresh(false, false, false, false, 0, now, false, false) == DK_UNBOUND;
+  #assert dk_refresh(false, false, true, true, now, now, true, false) == DK_UNBOUND;
+  #assert dk_refresh(false, true, true, false, 0, now, false, true) == DK_UNBOUND;
+}
+#test "a token copied to another device: no proof, or another key's proof, is refused" {
+  now := 1800000000000;
+  #assert dk_refresh(true, false, false, false, 0, now, false, false) == DK_NEEDED;
+  #assert dk_refresh(true, false, false, true, now, now, true, false) == DK_NEEDED;
+  #assert dk_refresh(true, false, true, true, now, now, false, false) == DK_BAD;
+  #assert dk_refresh(true, false, true, false, now, now, true, false) == DK_MALFORMED;
+  #assert dk_refresh(true, false, true, false, 0, now, false, false) == DK_MALFORMED;
+}
+#test "the device's own fresh proof moves the tokens, once" {
+  now := 1800000000000;
+  #assert dk_refresh(true, false, true, true, now, now, true, false) == DK_OK;
+  #assert dk_refresh(true, false, true, true, now - 60000, now, true, false) == DK_OK;
+  #assert dk_refresh(true, false, true, true, now + 60000, now, true, false) == DK_OK;
+  #assert dk_refresh(true, false, true, true, now, now, true, true) == DK_REPLAY;
+}
+#test "a clock that is off is told so before anything else about the proof" {
+  now := 1800000000000;
+  #assert dk_refresh(true, false, true, true, now - 60001, now, true, false) == DK_CLOCK;
+  #assert dk_refresh(true, false, true, true, now + 60001, now, true, false) == DK_CLOCK;
+  #assert dk_refresh(true, false, true, true, now + 60001, now, false, false) == DK_CLOCK;
+  #assert dk_refresh(true, false, true, true, now - 60001, now, true, true) == DK_CLOCK;
+  #assert dk_refresh(true, false, true, true, 0, now, true, false) == DK_CLOCK;
+}
+#test "a removed key refreshes nothing, even with a good proof" {
+  now := 1800000000000;
+  #assert dk_refresh(true, true, true, true, now, now, true, false) == DK_REVOKED;
+  #assert dk_refresh(true, true, false, false, 0, now, false, false) == DK_REVOKED;
+}
+#test "a bad signature is refused before the replay book is asked" {
+  now := 1800000000000;
+  #assert dk_refresh(true, false, true, true, now, now, false, true) == DK_BAD;
+}
+#test "only a good proof or an unbound login lets the tokens move" {
+  #assert dk_allows(DK_OK) && dk_allows(DK_UNBOUND);
+  #assert !dk_allows(DK_NEEDED) && !dk_allows(DK_MALFORMED) && !dk_allows(DK_CLOCK) && !dk_allows(DK_BAD) && !dk_allows(DK_REPLAY);
+  #assert !dk_allows(DK_REVOKED) && !dk_allows(DK_BAD_KEY) && !dk_allows(DK_BAD_PLATFORM) && !dk_allows(DK_NOT_FOUND);
+  #assert !dk_allows(-1) && !dk_allows(11) && !dk_allows(99);
+}
+#test "only a verified proof names its device to the database" {
+  #assert dk_proved(DK_OK) && !dk_proved(DK_UNBOUND);
+  #assert !dk_proved(DK_NEEDED) && !dk_proved(DK_MALFORMED) && !dk_proved(DK_CLOCK) && !dk_proved(DK_BAD) && !dk_proved(DK_REPLAY);
+  #assert !dk_proved(DK_REVOKED) && !dk_proved(DK_BAD_KEY) && !dk_proved(DK_BAD_PLATFORM) && !dk_proved(DK_NOT_FOUND) && !dk_proved(-1) && !dk_proved(1);
+}
+#test "a login: an app that sends a key is bound to it; a web login and an app with no key aren't" {
+  #assert dk_register(true, true, true, DK_IOS, DK_ENCLAVE) == DK_OK;
+  #assert dk_register(true, true, true, DK_MAC, DK_ENCLAVE) == DK_OK;
+  #assert dk_register(true, true, true, DK_ANDROID, DK_STRONGBOX) == DK_OK;
+  #assert dk_register(true, true, true, DK_ANDROID, DK_TEE) == DK_OK;
+  #assert dk_register(true, true, true, DK_IOS, DK_SOFTWARE) == DK_OK && dk_register(true, true, true, DK_MAC, DK_SOFTWARE) == DK_OK
+       && dk_register(true, true, true, DK_ANDROID, DK_SOFTWARE) == DK_OK;
+  #assert dk_register(true, false, false, 0, 0) == DK_UNBOUND && dk_register(true, false, true, DK_IOS, DK_ENCLAVE) == DK_UNBOUND;
+  #assert dk_register(false, true, true, DK_IOS, DK_ENCLAVE) == DK_UNBOUND && dk_register(false, false, false, 0, 0) == DK_UNBOUND;
+  #assert dk_register(false, true, false, 0, 0) == DK_UNBOUND;
+}
+#test "a login that sends a key we can't hold is refused, never quietly unbound" {
+  #assert dk_register(true, true, false, DK_IOS, DK_ENCLAVE) == DK_BAD_KEY;
+  #assert dk_register(true, true, false, 0, 0) == DK_BAD_KEY;
+  #assert dk_register(true, true, true, 0, DK_ENCLAVE) == DK_BAD_PLATFORM && dk_register(true, true, true, 4, DK_SOFTWARE) == DK_BAD_PLATFORM;
+  #assert dk_register(true, true, true, -1, DK_SOFTWARE) == DK_BAD_PLATFORM;
+  #assert dk_register(true, true, true, DK_IOS, 0) == DK_BAD_PLATFORM && dk_register(true, true, true, DK_IOS, 5) == DK_BAD_PLATFORM;
+  #assert dk_register(true, true, true, DK_IOS, -1) == DK_BAD_PLATFORM;
+}
+#test "a key is kept where its platform can keep it" {
+  #assert dk_keeps(DK_IOS, DK_ENCLAVE) && dk_keeps(DK_MAC, DK_ENCLAVE) && !dk_keeps(DK_ANDROID, DK_ENCLAVE);
+  #assert dk_keeps(DK_ANDROID, DK_STRONGBOX) && !dk_keeps(DK_IOS, DK_STRONGBOX) && !dk_keeps(DK_MAC, DK_STRONGBOX);
+  #assert dk_keeps(DK_ANDROID, DK_TEE) && !dk_keeps(DK_IOS, DK_TEE) && !dk_keeps(DK_MAC, DK_TEE);
+  #assert dk_keeps(DK_IOS, DK_SOFTWARE) && dk_keeps(DK_MAC, DK_SOFTWARE) && dk_keeps(DK_ANDROID, DK_SOFTWARE);
+  #assert !dk_keeps(0, DK_SOFTWARE) && !dk_keeps(4, DK_SOFTWARE) && !dk_keeps(DK_IOS, 0) && !dk_keeps(DK_IOS, 5);
+  #assert dk_register(true, true, true, DK_ANDROID, DK_ENCLAVE) == DK_BAD_PLATFORM && dk_register(true, true, true, DK_IOS, DK_STRONGBOX) == DK_BAD_PLATFORM
+       && dk_register(true, true, true, DK_MAC, DK_TEE) == DK_BAD_PLATFORM;
+}
+#test "the platform and store names an app may send" {
+  #assert dk_platform("ios") == DK_IOS && dk_platform("mac") == DK_MAC && dk_platform("android") == DK_ANDROID;
+  #assert dk_platform("") == 0 && dk_platform("web") == 0 && dk_platform("iOS") == 0 && dk_platform("ios ") == 0 && dk_platform("windows") == 0;
+  #assert dk_store("enclave") == DK_ENCLAVE && dk_store("strongbox") == DK_STRONGBOX && dk_store("tee") == DK_TEE && dk_store("software") == DK_SOFTWARE;
+  #assert dk_store("") == 0 && dk_store("hardware") == 0 && dk_store("Enclave") == 0;
+  #assert dk_platform_name(DK_IOS) == "ios" && dk_platform_name(DK_MAC) == "mac" && dk_platform_name(DK_ANDROID) == "android" && dk_platform_name(0) == "" && dk_platform_name(4) == "";
+  #assert dk_store_name(DK_ENCLAVE) == "enclave" && dk_store_name(DK_STRONGBOX) == "strongbox" && dk_store_name(DK_TEE) == "tee" && dk_store_name(DK_SOFTWARE) == "software"
+       && dk_store_name(0) == "" && dk_store_name(5) == "";
+}
+#test "removing a device: only the account's own, and once" {
+  #assert dk_remove(true, true, false) == DK_OK;
+  #assert dk_remove(false, false, false) == DK_NOT_FOUND && dk_remove(true, false, false) == DK_NOT_FOUND;
+  #assert dk_remove(true, true, true) == DK_NOT_FOUND && dk_remove(false, true, false) == DK_NOT_FOUND;
+  #assert dk_remove(true, false, true) == DK_NOT_FOUND;
+}
+#test "each verdict has its status and words" {
+  #assert dk_status(DK_OK) == 200 && dk_status(DK_UNBOUND) == 200;
+  #assert dk_status(DK_NEEDED) == 401 && dk_status(DK_MALFORMED) == 401 && dk_status(DK_BAD) == 401 && dk_status(DK_REVOKED) == 401;
+  #assert dk_status(DK_CLOCK) == 400 && dk_status(DK_BAD_KEY) == 400 && dk_status(DK_BAD_PLATFORM) == 400;
+  #assert dk_status(DK_REPLAY) == 409 && dk_status(DK_NOT_FOUND) == 404 && dk_status(99) == 500 && dk_status(-1) == 500;
+  #assert dk_words(DK_NEEDED) == "This login only works on the device that made it. Log in again.";
+  #assert dk_words(DK_MALFORMED) == "That device proof isn't right. Log in again.";
+  #assert dk_words(DK_BAD) == "That device proof isn't right. Log in again.";
+  #assert dk_words(DK_CLOCK) == "This device's clock is off by more than a minute. Set the time and try again.";
+  #assert dk_words(DK_REPLAY) == "That device proof was already used. Try again.";
+  #assert dk_words(DK_REVOKED) == "This device was removed from the account. Log in again.";
+  #assert dk_words(DK_BAD_KEY) == "This app's device key isn't one we can use. Update the app and log in again.";
+  #assert dk_words(DK_BAD_PLATFORM) == "This app's device key isn't one we can use. Update the app and log in again.";
+  #assert dk_words(DK_NOT_FOUND) == "No such device.";
+  #assert dk_words(DK_OK) == "" && dk_words(DK_UNBOUND) == "" && dk_words(99) == "";
+  #assert dk_why(DK_NEEDED) == "none" && dk_why(DK_MALFORMED) == "malformed" && dk_why(DK_CLOCK) == "clock" && dk_why(DK_BAD) == "signature"
+       && dk_why(DK_REPLAY) == "replay" && dk_why(DK_REVOKED) == "removed" && dk_why(DK_BAD_KEY) == "key" && dk_why(DK_BAD_PLATFORM) == "platform"
+       && dk_why(DK_NOT_FOUND) == "unknown" && dk_why(DK_OK) == "" && dk_why(DK_UNBOUND) == "" && dk_why(99) == "";
+}
+
+// ts_ms: the proof's own time. Both in milliseconds since 1970.
+dk_fresh :: (now_ms: int, ts_ms: int) -> bool #export_c #effects(all) {
+  if ts_ms <= 0 { return false; }   // no time at all, however early our own clock
+  return ts_ms >= now_ms - DK_WINDOW_MS && ts_ms <= now_ms + DK_WINDOW_MS;
+}
+
+// bound: the session has a device key. revoked: that key was removed. has_proof: the request has
+// an OA-Device-Proof header. well_formed: it parsed. signed: its signature verifies under the
+// session's key over this method, URL, its time and this refresh token's hash. seen: that exact
+// proof was presented before.
+dk_refresh :: (bound: bool, revoked: bool, has_proof: bool, well_formed: bool, ts_ms: int, now_ms: int, signed: bool, seen: bool) -> int #export_c #effects(all) {
+  if !bound { return DK_UNBOUND; }
+  if revoked { return DK_REVOKED; }
+  if !has_proof { return DK_NEEDED; }
+  if !well_formed { return DK_MALFORMED; }
+  if !dk_fresh(now_ms, ts_ms) { return DK_CLOCK; }
+  if !signed { return DK_BAD; }
+  if seen { return DK_REPLAY; }
+  return DK_OK;
+}
+
+dk_allows :: (verdict: int) -> bool #export_c #effects(all) {
+  return verdict == DK_OK || verdict == DK_UNBOUND;
+}
+// The database takes the device's id only from a verified proof (auth.app_refresh's proved).
+dk_proved :: (verdict: int) -> bool #export_c #effects(all) {
+  return verdict == DK_OK;
+}
+
+dk_keeps :: (platform: int, store: int) -> bool #export_c #effects(all) {
+  if platform != DK_IOS && platform != DK_MAC && platform != DK_ANDROID { return false; }
+  if store == DK_SOFTWARE { return true; }
+  if store == DK_ENCLAVE { return platform == DK_IOS || platform == DK_MAC; }
+  if store == DK_STRONGBOX || store == DK_TEE { return platform == DK_ANDROID; }
+  return false;
+}
+
+// app: the login is an app's (a token pair). has_key: it sent OA-Device-Key. key_ok: that is a
+// P-256 point. platform, store: dk_platform and dk_store of what it sent (0: not a name we know).
+dk_register :: (app: bool, has_key: bool, key_ok: bool, platform: int, store: int) -> int #export_c #effects(all) {
+  if !app || !has_key { return DK_UNBOUND; }
+  if !key_ok { return DK_BAD_KEY; }
+  if !dk_keeps(platform, store) { return DK_BAD_PLATFORM; }
+  return DK_OK;
+}
+
+dk_platform :: (name: string) -> int #export_c #effects(all) {
+  if name == "ios" { return DK_IOS; }
+  if name == "mac" { return DK_MAC; }
+  if name == "android" { return DK_ANDROID; }
+  return 0;
+}
+dk_store :: (name: string) -> int #export_c #effects(all) {
+  if name == "enclave" { return DK_ENCLAVE; }
+  if name == "strongbox" { return DK_STRONGBOX; }
+  if name == "tee" { return DK_TEE; }
+  if name == "software" { return DK_SOFTWARE; }
+  return 0;
+}
+dk_platform_name :: (platform: int) -> string #export_c #effects(all) {
+  if platform == DK_IOS { return "ios"; }
+  if platform == DK_MAC { return "mac"; }
+  if platform == DK_ANDROID { return "android"; }
+  return "";
+}
+dk_store_name :: (store: int) -> string #export_c #effects(all) {
+  if store == DK_ENCLAVE { return "enclave"; }
+  if store == DK_STRONGBOX { return "strongbox"; }
+  if store == DK_TEE { return "tee"; }
+  if store == DK_SOFTWARE { return "software"; }
+  return "";
+}
+
+// found: the device exists. mine: it is this account's. removed: it was removed already.
+dk_remove :: (found: bool, mine: bool, removed: bool) -> int #export_c #effects(all) {
+  if !found || !mine || removed { return DK_NOT_FOUND; }
+  return DK_OK;
+}
+
+dk_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == DK_OK || verdict == DK_UNBOUND { return 200; }
+  if verdict == DK_NEEDED || verdict == DK_MALFORMED || verdict == DK_BAD || verdict == DK_REVOKED { return 401; }
+  if verdict == DK_CLOCK || verdict == DK_BAD_KEY || verdict == DK_BAD_PLATFORM { return 400; }
+  if verdict == DK_REPLAY { return 409; }
+  if verdict == DK_NOT_FOUND { return 404; }
+  return 500;
+}
+dk_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == DK_NEEDED { return "This login only works on the device that made it. Log in again."; }
+  if verdict == DK_MALFORMED || verdict == DK_BAD { return "That device proof isn't right. Log in again."; }
+  if verdict == DK_CLOCK { return "This device's clock is off by more than a minute. Set the time and try again."; }
+  if verdict == DK_REPLAY { return "That device proof was already used. Try again."; }
+  if verdict == DK_REVOKED { return "This device was removed from the account. Log in again."; }
+  if verdict == DK_BAD_KEY || verdict == DK_BAD_PLATFORM { return "This app's device key isn't one we can use. Update the app and log in again."; }
+  if verdict == DK_NOT_FOUND { return "No such device."; }
+  return "";
+}
+// The audit row's and the answer's short reason (never a secret).
+dk_why :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == DK_NEEDED { return "none"; }
+  if verdict == DK_MALFORMED { return "malformed"; }
+  if verdict == DK_CLOCK { return "clock"; }
+  if verdict == DK_BAD { return "signature"; }
+  if verdict == DK_REPLAY { return "replay"; }
+  if verdict == DK_REVOKED { return "removed"; }
+  if verdict == DK_BAD_KEY { return "key"; }
+  if verdict == DK_BAD_PLATFORM { return "platform"; }
+  if verdict == DK_NOT_FOUND { return "unknown"; }
+  return "";
+}

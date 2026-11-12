@@ -22,17 +22,99 @@ one API, so self-contained tokens would only buy us revocation delays.
 
 ### Native: refresh tokens bound to a device key
 
+Built in #13216 (`coax/web/api/auth-device.c`, rules in
+`auth-device-policy.coax`, the proof's bytes in `auth-device-crypto.coax`,
+migration 0153).
+
 On first login, the app makes a **device key**: P-256, non-exportable, in
 the Secure Enclave on iPhone and Mac, in Android Keystore (StrongBox when
 present). The Secure Enclave and Keystore support P-256 but not
 secp256k1, which is why the device key is a separate key from any Nostr
-key. The app registers the public key with the session.
+key. The key is made silently: it asks for no Face ID, passcode or
+password. One key lasts one login; logging out forgets it.
 
-Every refresh request carries a signature by the device key over the
-method, URL, a timestamp and the refresh token's hash (the shape of
-OAuth DPoP, RFC 9449, with our own header). A refresh token copied off the
-device, from a backup or a log, is useless without the key that never
-left the hardware.
+**At login** the app sends the public key with the request that logs it
+in, whichever way it logs in:
+
+```text
+OA-Device-Key: <130 hex>            04 || x || y
+OA-Device-Platform: ios | mac | android
+OA-Device-Store: enclave | strongbox | tee | software
+OA-Device-Name: iPhone 17 Pro       up to 80 printable ASCII characters
+```
+
+The session is bound to that key before any token is made, and the answer
+says `"device_bound": true`. A session's device is set once: the database
+refuses to change or clear it. A login that sends a key we can't hold (not
+a P-256 point, an unknown platform) is refused; it is never quietly left
+unbound. A login that sends no key (the web, an older build) is unbound and
+refreshes as before.
+
+**At every refresh** of a bound session, `POST /api/auth/refresh` must
+carry a signature by the device key (the shape of OAuth DPoP, RFC 9449,
+with our own header):
+
+```text
+OA-Device-Proof: v1 <ms> <signature hex>
+
+signed (ES256, SHA-256 inside), one part a line:
+  OA-Device-Proof-v1
+  POST
+  https://openagents.com/api/auth/refresh
+  <ms: the device's time, milliseconds since 1970>
+  <SHA-256 of the refresh token, hex>
+```
+
+The signature is `r || s` (64 bytes) or DER, as the hardware gives it. The
+time must be within 60 seconds of ours, and each proof works once. A
+refusal changes nothing: the token stays good for the real device, the
+audit log gets a `refresh.proof` row, and the answer says why in
+`device_proof`:
+
+| `device_proof` | Status | Means |
+| --- | --- | --- |
+| `none` | 401 | No proof: the token is somewhere other than its device |
+| `malformed`, `signature` | 401 | Not a proof, or not this session's key over this request and token |
+| `clock` | 400 | More than 60 seconds off; the answer carries our `now_ms`, and the app signs again with it |
+| `replay` | 409 | This exact proof was already used |
+| `removed` | 401 | The device was removed from the account |
+
+A refresh token copied off the device, from a backup or a log, is useless
+without the key that never left the hardware. The database enforces it
+too: `auth.app_refresh` moves a bound session's token only when told which
+device proved itself, and only if that is the session's own live device.
+
+**No hardware.** The iOS Simulator, an Intel Mac without a T2 chip and a
+virtual machine have no Secure Enclave. There the app makes an ordinary
+P-256 key and says `OA-Device-Store: software`, so the devices list never
+claims hardware that isn't there. We ask for no attestation, so the store
+is the app's word.
+
+**Where the app keeps it.** iOS keeps the Secure Enclave's wrapped blob in
+the Keychain beside the tokens. The Mac keeps it in a file only the user
+can read (`~/.openagents/<app>/device-key`, mode 0600), never in the
+Keychain: a rebuilt debug app has a new code signature, and a Keychain
+item would ask for the login password on every build. The blob only works
+in that Mac's own enclave. Android keeps the key in the Keystore under an
+alias. The shared code is `apps/shared/host/apple/DeviceKey.swift` and
+`apps/shared/host/android/device-key.c`.
+
+**A device key is not a way to log in.** It binds its own login's refresh
+tokens and nothing else. It doesn't count as a stronger way in, and it
+doesn't raise a session's level: an email-only person who logs in on a
+phone keeps a full session on the web. A device key becomes an L2 proof
+when spend step-up uses it (#13217).
+
+**Threats and their checks** (`coax/web/api/tests/auth_device_checks.coax`,
+and the rules' own checks in `auth-device-policy.coax`):
+
+| Threat | What happens | Check |
+| --- | --- | --- |
+| A token copied to another device | No proof, or another key's proof, refreshes nothing; the audit log records it; the real device's token still works | "a copied token: ..." |
+| A proof replayed | Refused as `replay`; the login lives | "a replayed proof is refused as a replay" |
+| A clock that is off | 61 seconds either way is refused with our time; 50 seconds passes | "a clock 61 seconds slow ..." |
+| A key that was removed | Removing a device ends its logins at once; a revoked key's good proof refreshes nothing | "removing a device ends its logins", "a revoked key's good proof ..." |
+| A downgrade to no proof | A bound login never refreshes without proof, through the API or the database's own function, and can't be unbound | "the database's own refresh refuses ...", "a session's device can't be cleared or changed" |
 
 **Reuse detection.** Refresh tokens form a family. If a spent refresh
 token is ever presented again, someone copied it: we end the whole family
@@ -48,7 +130,8 @@ script on our own origin, so the strict CSP stays the main defence.
 | Client | Where secrets live |
 | --- | --- |
 | Web | HttpOnly cookie only. No token in `localStorage`, IndexedDB or JavaScript memory. Keys from NIP-07 or NIP-46 stay in the extension or signer |
-| iOS, Mac | Keychain, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, not synced; device key in the Secure Enclave |
+| iOS | Keychain, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, not synced; device key in the Secure Enclave |
+| Mac | Device key in the Secure Enclave, its wrapped blob in a `0600` file under `~/.openagents/`; no Keychain, so a rebuilt app never asks for the login password |
 | Android | Device key in Keystore; tokens encrypted with a Keystore AES key in app-private storage |
 | CLI and dev tools | Files with mode `0600` under `~/.openagents/`. No Keychain by default, because a rebuilt unsigned binary triggers a Keychain password prompt on every build; `OPENAGENTS_KEYCHAIN=1` opts in |
 | Agents on servers | Secret Manager or a `0600` file; never an environment variable that ends up in a process listing or crash log, never a command-line flag |
@@ -60,8 +143,12 @@ script on our own origin, so the strict CSP stays the main defence.
   session and refresh family of the account and bumps the account's
   `session_epoch`. A checkbox, off by default, also suspends every agent
   grant.
-- **Devices list** shows each session and device with its name, platform,
-  last seen and coarse location; each has a remove button.
+- **Devices list** ([/settings/devices](https://openagents.com/settings/devices),
+  `GET /api/auth/devices`) shows each device key with its name, platform,
+  where the key is kept, when it was last used and how many logins it
+  holds. REMOVE (`POST /api/auth/devices/<id>/remove`) revokes the key and
+  ends every login bound to it at once. `GET /api/auth/sessions` lists
+  every login, browsers too, each with a remove.
 - **Freeze** ("This wasn't me" from any notice, or FREEZE MY ACCOUNT on
   `/settings/data` from any login, even email alone) ends every session,
   suspends every agent grant and blocks spends, at once (#13214). A frozen
@@ -89,7 +176,7 @@ SHA-256 of the whole string and show the token once.
 | Email code | 6 digits | Typed |
 | Recovery code | 24 BIP-39 words | Typed |
 | NIP-98 event | kind 27235 JSON, base64 | `Authorization: Nostr` |
-| Device proof | ES256 signature over method, URL, time, token hash | `OA-Device-Proof` header |
+| Device proof | `v1 <ms> <signature hex>`: ES256 over method, URL, time, token hash | `OA-Device-Proof` header |
 
 We register the `oa_key_` and `oa_rt_` patterns with GitHub's secret
 scanning partner program so a pushed key is reported to us and revoked.
@@ -140,7 +227,7 @@ refusal (`coax/web/api/auth-recover.c`, rules in `auth-policy.coax`):
 
 `step_up` is `L2` or `L2-fresh`, and `methods` lists what the account can
 confirm with. A **limited** session is an email login (L1) on an account
-with a strong way in (a key, passkey, live device or unspent recovery
+with a strong way in (a key, passkey or unspent recovery
 code). It reads and plays, but every write except recovery and logging
 out is refused, and it carries no key, so it owns nothing a key owns.
 

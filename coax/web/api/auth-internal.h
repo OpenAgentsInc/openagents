@@ -68,3 +68,22 @@ bool passkeys_init(void);
 bool passkeys_route(const request *q, PGconn *db, const char *op);
 // The account's passkeys appended to an answer (JSON objects, and "passkey ..." lines): the count.
 int passkeys_rows(PGconn *db, const char *acct, char *json, size_t jcap, size_t *j, char *lines, size_t lcap, size_t *l);
+
+// ---- auth-device.c (device keys and device-bound refresh, #13216)
+bool auth_device_init(void);
+// A login's device key, read from its headers before the session is made. bind: bind the new
+// session to key. false: it answered the refusal (a key we can't hold is never quietly dropped).
+typedef struct { bool bind; unsigned char key[65]; char platform[12], store[12], name[96]; } auth_device_ask;
+bool auth_device_login(const request *q, PGconn *db, const char *acct, bool app, auth_device_ask *ask);
+// Binds the new session to the key, for good. false: it didn't bind, and the login must not go on.
+bool auth_device_bind(PGconn *db, const char *acct, const char *sid, const auth_device_ask *ask);
+// What a refresh token is bound to (auth.refresh_look). false: no such token.
+typedef struct { bool found, bound, revoked; char family[40], session[32], account[40], device[24], key_hex[131]; long long now_ms; } auth_refresh_facts;
+bool auth_device_look(PGconn *db, const char *rt_sha, auth_refresh_facts *f);
+// The refresh's OA-Device-Proof against the policy. true: go on, with proved the device's id when
+// a proof was checked ("" for an unbound login). false: it answered and audited the refusal.
+bool auth_device_refresh(const request *q, PGconn *db, const char *rt_sha, const auth_refresh_facts *f, char proved[24]);
+// The database's own refusal of a bound token with no proved device (never reached through the above).
+void auth_device_refuse_unproved(const request *q);
+// Answers /api/auth/devices and /api/auth/devices/<id>/remove; false when op isn't one.
+bool auth_device_route(const request *q, PGconn *db, const char *op);

@@ -10,6 +10,13 @@ import Security
 /// The tokens are kept in the Keychain like the phone's key (NostrKey): a generic password,
 /// service `com.openagents.app.auth`, account `tokens-v1`, this device only, after first unlock.
 /// Nothing here logs a token or a code.
+///
+/// The login is tied to this phone (#13216, docs/auth "Native: refresh tokens bound to a device
+/// key"): every login request carries the public half of a device key (`DeviceKeys`, in the Secure
+/// Enclave; made silently, no prompt), the server binds the session to it, and each refresh then
+/// carries `OA-Device-Proof`, the key's signature over the request, the time and the refresh
+/// token's hash. A refresh token copied off the phone is useless without the key. One key lasts
+/// one login: logging out, or the server ending the login, forgets it.
 final class AppAuth: @unchecked Sendable {
     static let shared = AppAuth()
 
@@ -19,6 +26,8 @@ final class AppAuth: @unchecked Sendable {
         var refresh: String
         var accessUntil: Date
         var account: String
+        /// The server bound this login to the device key: its refreshes need a proof.
+        var deviceBound: Bool? = nil
     }
 
     /// What a request should do with the tokens it has (pure, for the unit tests).
@@ -50,12 +59,15 @@ final class AppAuth: @unchecked Sendable {
     }
 
     /// A refusal with its status, inside this file; callers see `Failure.said` with the same words.
-    struct Refused: Error { let status: Int; let words: String }
+    /// proof: why a device proof was refused (auth-device.c's "device_proof"); nowMs: the server's
+    /// clock, sent when ours is more than a minute off.
+    struct Refused: Error { let status: Int; let words: String; var proof: String? = nil; var nowMs: Int64? = nil }
 
     let origin: String
     private let send: Send
     private let store: TokenStore
     private let clock: @Sendable () -> Date
+    private let device: DeviceKeys?
     private var refreshing: Task<Tokens, Error>?
     private let lock = NSLock()
 
@@ -67,8 +79,13 @@ final class AppAuth: @unchecked Sendable {
         return "https://openagents.com"
     }
 
-    init(origin: String = AppAuth.defaultOrigin, send: @escaping Send = AppAuth.network, store: TokenStore = KeychainTokenStore(), clock: @escaping @Sendable () -> Date = { Date() }) {
-        self.origin = origin; self.send = send; self.store = store; self.clock = clock
+    /// The phone's device key: the Secure Enclave's wrapped blob in the Keychain beside the tokens
+    /// (a software key where there is no enclave, such as the Simulator).
+    static let phoneDevice = DeviceKeys(store: KeychainDeviceKeyStore())
+
+    init(origin: String = AppAuth.defaultOrigin, send: @escaping Send = AppAuth.network, store: TokenStore = KeychainTokenStore(), clock: @escaping @Sendable () -> Date = { Date() },
+         device: DeviceKeys? = AppAuth.phoneDevice) {
+        self.origin = origin; self.send = send; self.store = store; self.clock = clock; self.device = device
     }
 
     var tokens: Tokens? { store.load() }
@@ -137,6 +154,7 @@ final class AppAuth: @unchecked Sendable {
             _ = try? await post("/api/auth/logout", [:], authorization: "Bearer " + t.access)
         }
         store.clear()
+        device?.forget()   // one key lasts one login
     }
 
     // MARK: using it
@@ -164,10 +182,12 @@ final class AppAuth: @unchecked Sendable {
         let task = Task<Tokens, Error> { [self] in
             guard let t = store.load() else { throw Failure.said("Log in first.") }
             do {
-                return try keep(try await post("/api/auth/refresh", ["refresh_token": t.refresh]), account: t.account)
+                return try keep(try await renew(t), account: t.account, bound: t.deviceBound)
             } catch let r as Refused where r.status == 401 {
-                // The login ended (a reused token, idle, or logged out elsewhere): forget it.
+                // The login ended (a reused token, idle, logged out elsewhere, or its device was
+                // removed): forget it, and its device key with it.
                 store.clear()
+                device?.forget()
                 throw Failure.said(r.words)
             } catch let r as Refused {
                 throw Failure.said(r.words)   // a limit and the like: the login stays
@@ -177,6 +197,42 @@ final class AppAuth: @unchecked Sendable {
         lock.unlock()
         defer { lock.lock(); refreshing = nil; lock.unlock() }
         return try await task.value
+    }
+
+    // MARK: the device key
+
+    static let refreshPath = "/api/auth/refresh"
+    static func ms(_ date: Date) -> Int64 { Int64((date.timeIntervalSince1970 * 1000).rounded()) }
+    static var deviceName: String {
+        var info = utsname(); uname(&info)
+        let machine = withUnsafeBytes(of: &info.machine) { String(decoding: $0.prefix(while: { $0 != 0 }), as: UTF8.self) }
+        return machine.hasPrefix("iPad") ? "iPad" : machine.hasPrefix("iPhone") ? "iPhone" : "iPhone Simulator"
+    }
+
+    /// What a login request tells the server about this phone's key (auth-device.c): the session is
+    /// bound to it. Not sent with a refresh (which proves the key instead) or a logout.
+    func deviceHeaders(for path: String) -> [String: String] {
+        guard let device, path != AppAuth.refreshPath, path != "/api/auth/logout", let key = try? device.current() else { return [:] }
+        return ["OA-Device-Key": key.publicKeyHex, "OA-Device-Platform": "ios", "OA-Device-Store": key.store.rawValue, "OA-Device-Name": AppAuth.deviceName]
+    }
+
+    /// The refresh request for these tokens, signed at `ms` by the device key when the login is bound.
+    private func refresh(_ t: Tokens, ms: Int64) async throws -> [String: Any] {
+        var headers: [String: String] = [:]
+        if t.deviceBound == true, let key = device?.existing(),
+           let proof = try? DeviceKeys.proof(key: key, method: "POST", url: origin + AppAuth.refreshPath, ms: ms, token: t.refresh) {
+            headers["OA-Device-Proof"] = proof
+        }
+        return try await post(AppAuth.refreshPath, ["refresh_token": t.refresh], headers: headers)
+    }
+
+    /// A refresh; when the server says our clock is more than a minute off, once more on its time.
+    private func renew(_ t: Tokens) async throws -> [String: Any] {
+        do { return try await refresh(t, ms: AppAuth.ms(clock())) }
+        catch let r as Refused {
+            guard r.status == 400, r.proof == "clock", let now = r.nowMs else { throw r }
+            return try await refresh(t, ms: now)
+        }
     }
 
     // MARK: pieces
@@ -193,30 +249,37 @@ final class AppAuth: @unchecked Sendable {
 
     /// Keeps a logged-in answer's tokens; refresh answers carry no account, so it stays.
     @discardableResult
-    private func keep(_ answer: [String: Any], account: String? = nil) throws -> Tokens {
+    private func keep(_ answer: [String: Any], account: String? = nil, bound: Bool? = nil) throws -> Tokens {
         guard let access = answer["access_token"] as? String, access.hasPrefix("oa_at_"),
               let refresh = answer["refresh_token"] as? String, refresh.hasPrefix("oa_rt_") else { throw Failure.said("That didn't work. Try again.") }
         let seconds = (answer["expires_in"] as? NSNumber)?.doubleValue ?? 3600
         let t = Tokens(access: access, refresh: refresh, accessUntil: clock().addingTimeInterval(seconds),
-                       account: (answer["account"] as? String) ?? account ?? tokens?.account ?? "")
+                       account: (answer["account"] as? String) ?? account ?? tokens?.account ?? "",
+                       deviceBound: (answer["device_bound"] as? Bool) == true ? true : bound)
         store.save(t)
         return t
     }
 
-    private func post(_ path: String, _ json: [String: String], authorization: String? = nil) async throws -> [String: Any] {
+    private func post(_ path: String, _ json: [String: String], authorization: String? = nil, headers: [String: String] = [:]) async throws -> [String: Any] {
         let body = String(decoding: try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]), as: UTF8.self)
-        return try await post(path, raw: body, authorization: authorization)
+        return try await post(path, raw: body, authorization: authorization, headers: headers)
     }
-    private func post(_ path: String, raw body: String, authorization: String?) async throws -> [String: Any] {
+    private func post(_ path: String, raw body: String, authorization: String?, headers: [String: String] = [:]) async throws -> [String: Any] {
         guard let url = URL(string: origin + path) else { throw Failure.unreachable }
         var r = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20)
         r.httpMethod = "POST"
         r.httpBody = Data(body.utf8)
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let authorization { r.setValue(authorization, forHTTPHeaderField: "Authorization") }
+        for (name, value) in deviceHeaders(for: path) { r.setValue(value, forHTTPHeaderField: name) }
+        for (name, value) in headers { r.setValue(value, forHTTPHeaderField: name) }
         let data: Data, status: Int
         do { (data, status) = try await send(r) } catch { throw Failure.unreachable }
-        guard (200..<300).contains(status) else { throw Refused(status: status, words: AppAuth.errorWords(data) ?? "That didn't work. Try again.") }
+        guard (200..<300).contains(status) else {
+            let said = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            throw Refused(status: status, words: AppAuth.errorWords(data) ?? "That didn't work. Try again.",
+                          proof: said?["device_proof"] as? String, nowMs: (said?["now_ms"] as? NSNumber)?.int64Value)
+        }
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 }
@@ -250,6 +313,35 @@ struct KeychainTokenStore: TokenStore {
         if SecItemUpdate(base as CFDictionary, update as CFDictionary) == errSecItemNotFound {
             var item = base
             item[kSecValueData as String] = data
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            SecItemAdd(item as CFDictionary, nil)
+        }
+    }
+    func clear() { SecItemDelete(base as CFDictionary) }
+}
+
+/// The device key's Keychain item (see `DeviceKeys`): the Secure Enclave's wrapped blob, beside the
+/// tokens, this device only, after first unlock, never synced.
+struct KeychainDeviceKeyStore: DeviceKeyStore {
+    private var base: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "com.openagents.app.auth",
+         kSecAttrAccount as String: "device-key-v1",
+         kSecAttrSynchronizable as String: false]
+    }
+    func load() -> Data? {
+        var q = base
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
+        return out as? Data
+    }
+    func save(_ blob: Data) {
+        let update = [kSecValueData as String: blob]
+        if SecItemUpdate(base as CFDictionary, update as CFDictionary) == errSecItemNotFound {
+            var item = base
+            item[kSecValueData as String] = blob
             item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             SecItemAdd(item as CFDictionary, nil)
         }

@@ -47,6 +47,14 @@ source, emitted by `coax spirv` where iOS uses `coax metal`.
 
 ## Not done
 
+- **An account login.** The app has none yet. Its device key is ready for it
+  ([`../../shared/host/android/device-key.c`](../../shared/host/android/device-key.c):
+  a P-256 key in the Android Keystore, in StrongBox when the phone has it,
+  made with no prompt). To check it on an emulator or a phone, run
+  `adb shell setprop debug.oa.devicekey 1`, open the app and read
+  `adb logcat -d -s oa-device-key`: it makes a key, signs, verifies, reopens
+  and forgets it.
+
 - **Turning the phone to look.** iOS has it (the Gyro switch); the Android host doesn't read the gyro yet, so the switch isn't shown.
 
 - **A real phone.** Only the emulator has run it. A phone's GPU may differ:

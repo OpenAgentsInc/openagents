@@ -1,0 +1,314 @@
+// Device keys and device-bound refresh (auth-device.c, auth-device-policy.coax, migration 0153;
+// #13216), run by test.sh after auth_life_checks.coax. A software P-256 key
+// (auth-device-crypto.coax's adc_sign) stands in for an app's Secure Enclave or Keystore key.
+// Each threat in #13216's threat list has its checks here, named for it:
+//   a token copied to another device   no proof, or another key's proof, refreshes nothing, is in
+//                                      the audit log, and leaves the token good for the real device
+//   a proof replayed                   the same proof a second time is refused, and the login lives
+//   a clock that is off                61 seconds either way is refused with our time; 59 passes
+//   a key that was removed             removing a device ends its logins; a revoked key's good
+//                                      proof refreshes nothing
+//   a downgrade to no proof            a bound login never refreshes without proof, by the API or
+//                                      by the database's own functions, and can't be unbound
+//   API=... PGURL=... PSQL=... SIGN=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/auth_device_checks.coax
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+#load "auth_harness.coax";
+#load "../auth-device-crypto.coax";
+
+Dv :: struct { at: [160] u8; at_n: int; rt: [160] u8; rt_n: int; acct: [64] u8; acct_n: int; bound: bool; }
+dv_at :: (d: [] Dv) -> string { return cast(string) d[0].at[0..<d[0].at_n]; }
+dv_rt :: (d: [] Dv) -> string { return cast(string) d[0].rt[0..<d[0].rt_n]; }
+dv_acct :: (d: [] Dv) -> string { return cast(string) d[0].acct[0..<d[0].acct_n]; }
+dv_q :: (q: [] Sb, a: string, b: string, c: string) -> string { sb_clear(q); sb(q, a); sb(q, b); sb(q, c); return sb_text(q); }
+
+// A software key: 32 bytes of seed, never zero.
+dv_secret :: (seed: u8, out: [] u8) -> [] u8 { for i: 0..<32 { out[i] = cast,trunc(u8) (cast(int) seed + 3 * i + 1); } return out[0..<32]; }
+// "OA-Device-Key: <130 hex>" for a secret.
+dv_key_header :: (secret: [] u8, out: [] Sb) -> string {
+  public: [65] u8; hex: [130] u8;
+  sb_clear(out);
+  if !p256_public_key(secret, public[..]) { return ""; }
+  n := adc_hex_write(public[..], hex[..]);
+  sb(out, "OA-Device-Key: "); sb(out, cast(string) hex[0..<n]);
+  return sb_text(out);
+}
+// The API's clock, in milliseconds.
+dv_now :: (t: [] Ap) -> int { b: [64] u8; return ap_whole(ap_sql(t, "SELECT (extract(epoch FROM now()) * 1000)::bigint", b[..])); }
+// SHA-256 of a token, hex.
+dv_sha :: (text: string, out: [] u8) -> string {
+  copy: [200] u8; d: [32] u8;
+  for i: 0..<text.count { copy[i] = text[i]; }
+  if sha256_hash_checked(copy[0..<text.count], d[..], false) != SHA_OK { return ""; }
+  n := adc_hex_write(d[..], out);
+  return cast(string) out[0..<n];
+}
+// "OA-Device-Proof: v1 <ms> <hex>" by secret over method, path, ts and the token.
+dv_proof :: (t: [] Ap, secret: [] u8, method: string, path: string, ts_ms: int, token: string, out: [] Sb) -> string {
+  u: [1] Sb; sb(u[..], t[0].api); sb(u[..], path);
+  m: [8] u8; hb: [64] u8; h: [ADC_HEADER_MAX] u8; b: [64] u8; ub: [600] u8;
+  binding := dv_sha(token, hb[..]);
+  for i: 0..<binding.count { b[i] = binding[i]; }
+  url := sb_text(u[..]); for i: 0..<url.count { ub[i] = url[i]; }
+  n := adc_sign(secret, adc_text(method, m[..]), ub[0..<url.count], ts_ms, b[0..<binding.count], h[..]);
+  sb_clear(out);
+  if n < 0 { return ""; }
+  sb(out, "OA-Device-Proof: "); sb(out, cast(string) h[0..<n]);
+  return sb_text(out);
+}
+// An app's login by email code from ip, with these extra headers: the pair and whether it was bound.
+dv_login :: (t: [] Ap, dir: string, address: string, ip: string, h1: string, h2: string, h3: string, h4: string, d: [] Dv) -> int {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  pb: [128] u8; code: [6] u8; link: [64] u8; apb: [128] u8;
+  d[0].at_n = 0; d[0].rt_n = 0; d[0].acct_n = 0; d[0].bound = false;
+  st := ac_start(t, address, ip, true, pb[..]);
+  pend := ap_member(ap_body(t), "pending", apb[..]);
+  if st != 200 || !ac_mail(dir, code[..], link[..]) { return -1; }
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\",\"pending\":\""); sb(vb[..], pend); sb(vb[..], "\"}");
+  h: [5] string; n := 0;
+  h[n] = "Content-Type: application/json"; n += 1;
+  if h1 != "" { h[n] = h1; n += 1; }
+  if h2 != "" { h[n] = h2; n += 1; }
+  if h3 != "" { h[n] = h3; n += 1; }
+  if h4 != "" { h[n] = h4; n += 1; }
+  st = ap_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), h[0..<n]);
+  if st != 200 { return st; }
+  eb: [16] u8;
+  a := ap_member(ap_body(t), "access_token", d[0].at[..]); d[0].at_n = a.count;
+  r := ap_member(ap_body(t), "refresh_token", d[0].rt[..]); d[0].rt_n = r.count;
+  c := ap_member(ap_body(t), "account", d[0].acct[..]); d[0].acct_n = c.count;
+  d[0].bound = ap_member(ap_body(t), "device_bound", eb[..]) == "true";
+  return st;
+}
+// A refresh of token with this proof header ("" for none): the status; a new pair goes into d.
+dv_refresh :: (t: [] Ap, token: string, proof: string, d: [] Dv) -> int {
+  rq: [1] Sb; sb(rq[..], "{\"refresh_token\":\""); sb(rq[..], token); sb(rq[..], "\"}");
+  st := ac_call(t, "POST", "/api/auth/refresh", sb_text(rq[..]), proof, "", "");
+  if st == 200 {
+    nb: [160] u8; ab: [160] u8;
+    r := ap_member(ap_body(t), "refresh_token", nb[..]); a := ap_member(ap_body(t), "access_token", ab[..]);
+    for i: 0..<r.count { d[0].rt[i] = r[i]; } d[0].rt_n = r.count;
+    for i: 0..<a.count { d[0].at[i] = a[i]; } d[0].at_n = a.count;
+  }
+  return st;
+}
+dv_bearer :: (d: [] Dv, out: [] Sb) -> string { sb_clear(out); sb(out, "Authorization: Bearer "); sb(out, dv_at(d)); return sb_text(out); }
+
+dv_checks :: (t: [] Ap, dir: string) {
+  out: [8192] u8; eb: [1024] u8; q: [1] Sb; kh: [1] Sb; ph: [1] Sb; bh: [1] Sb;
+  sa: [32] u8; sbk: [32] u8;
+  A := dv_secret(7, sa[..]); B := dv_secret(91, sbk[..]);
+  path := "/api/auth/refresh";
+
+  // ---- a login with a device key is bound to it
+  d: [1] Dv;
+  key_a := dv_key_header(A, kh[..]);
+  st := dv_login(t, dir, "device-a@example.com", "203.0.113.70", key_a, "OA-Device-Platform: ios", "OA-Device-Store: enclave", "OA-Device-Name: Test iPhone", d[..]);
+  ap_check(t, "an app's login with a device key is bound to it", st == 200 && d[0].bound && ap_starts(dv_rt(d[..]), "oa_rt_"), ap_body(t));
+  acct: [64] u8; an := d[0].acct_n; for i: 0..<an { acct[i] = d[0].acct[i]; }
+  ACCT := cast(string) acct[0..<an];
+  ap_check(t, "the session holds its device, and the key is kept as the app sent it",
+           ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.sessions s JOIN auth.devices d ON d.id = s.device WHERE s.account = '", ACCT,
+                          "' AND d.platform = 'ios' AND d.store = 'enclave' AND d.name = 'Test iPhone' AND length(d.public_key) = 65 AND d.revoked_at IS NULL"), out[..]) == "1", "");
+  ap_check(t, "the login and the binding are in the audit log, with no key",
+           ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.audit WHERE account = '", ACCT, "' AND action = 'device.bind' AND result = 'ok' AND detail->>'platform' = 'ios'"), out[..]) == "1"
+           && ap_sql(t, "SELECT count(*) FROM auth.audit WHERE action LIKE 'device.%' AND detail::text ~ '04[0-9a-f]{128}'", out[..]) == "0", "");
+  ap_check(t, "a device key doesn't count as a stronger way in",
+           ap_sql(t, dv_q(q[..], "SELECT auth.strong_ways('", ACCT, "')"), out[..]) == "0"
+           && ap_sql(t, dv_q(q[..], "SELECT coalesce(array_length(auth.methods_of('", ACCT, "'), 1), 0)"), out[..]) == "0"
+           && ap_sql(t, dv_q(q[..], "SELECT strong FROM auth.life_of('", ACCT, "')"), out[..]) == "0", "");
+  st = ac_call(t, "GET", "/api/auth/devices", "", dv_bearer(d[..], bh[..]), "", "");
+  ap_check(t, "the devices list shows it: name, platform, where the key is kept, last used, this one", st == 200
+           && ap_member(ap_body(t), "devices[0].name", eb[..]) == "Test iPhone" && ap_member(ap_body(t), "devices[0].platform", eb[..]) == "ios"
+           && ap_member(ap_body(t), "devices[0].store", eb[..]) == "enclave" && ap_member(ap_body(t), "devices[0].this", eb[..]) == "true"
+           && ap_member(ap_body(t), "devices[0].sessions", eb[..]) == "1" && ap_member_int(ap_body(t), "devices[0].last_seen_ms", 0) > 0
+           && !ap_has(ap_body(t), "public_key"), ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/devices?as=lines", "", dv_bearer(d[..], bh[..]), "", "");
+  ap_check(t, "the same list as lines, for the settings page", st == 200 && ap_has(ap_body(t), "count 1\n") && ap_has(ap_body(t), " ios enclave ") && ap_has(ap_body(t), " 1 1 Test iPhone\n"), ap_body(t));
+  ap_check(t, "nobody: the devices list asks you to log in", ac_call(t, "GET", "/api/auth/devices", "", "", "", "") == 401, ap_body(t));
+
+  // ---- a token copied to another device
+  RT0b: [160] u8; rn := d[0].rt_n; for i: 0..<rn { RT0b[i] = d[0].rt[i]; }
+  RT0 := cast(string) RT0b[0..<rn];
+  x: [1] Dv;
+  st = dv_refresh(t, RT0, "", x[..]);
+  ap_check(t, "a copied token: a refresh with no proof is refused", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "none"
+           && ap_member(ap_body(t), "error", eb[..]) == "This login only works on the device that made it. Log in again.", ap_body(t));
+  now := dv_now(t);
+  st = dv_refresh(t, RT0, dv_proof(t, B, "POST", path, now, RT0, ph[..]), x[..]);
+  ap_check(t, "a copied token: another device's key proves nothing", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "signature", ap_body(t));
+  st = dv_refresh(t, RT0, dv_proof(t, A, "GET", path, now, RT0, ph[..]), x[..]);
+  ap_check(t, "a proof signed for another method is refused", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "signature", ap_body(t));
+  st = dv_refresh(t, RT0, dv_proof(t, A, "POST", "/api/auth/logout", now, RT0, ph[..]), x[..]);
+  ap_check(t, "a proof signed for another URL is refused", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "signature", ap_body(t));
+  st = dv_refresh(t, RT0, dv_proof(t, A, "POST", path, now, "oa_rt_some-other-token", ph[..]), x[..]);
+  ap_check(t, "a proof signed over another token is refused", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "signature", ap_body(t));
+  st = dv_refresh(t, RT0, "OA-Device-Proof: v1 soon 00", x[..]);
+  ap_check(t, "a proof that isn't one is refused", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "malformed", ap_body(t));
+  ap_check(t, "every refusal is in the audit log with its reason, and nothing of the proof",
+           ap_sql(t, dv_q(q[..], "SELECT string_agg(detail->>'why', ',' ORDER BY id) FROM auth.audit WHERE account = '", ACCT, "' AND action = 'refresh.proof' AND result = 'refused'"), out[..])
+             == "none,signature,signature,signature,signature,malformed", cast(string) out[0..<200]);
+  ap_check(t, "after all that the token is unspent and the login lives",
+           ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.refresh r JOIN auth.sessions s ON s.id = r.session WHERE s.account = '", ACCT, "' AND r.spent_at IS NULL"), out[..]) == "1", "");
+
+  // ---- a clock that is off
+  now = dv_now(t);
+  st = dv_refresh(t, RT0, dv_proof(t, A, "POST", path, now - 61000, RT0, ph[..]), x[..]);
+  told := ap_member_int(ap_body(t), "now_ms", 0);
+  ap_check(t, "a clock 61 seconds slow is refused, with our time to retry on", st == 400 && ap_member(ap_body(t), "device_proof", eb[..]) == "clock"
+           && told >= now && told < now + 30000, ap_body(t));
+  st = dv_refresh(t, RT0, dv_proof(t, A, "POST", path, now + 62000, RT0, ph[..]), x[..]);
+  ap_check(t, "a clock 61 seconds fast is refused", st == 400 && ap_member(ap_body(t), "device_proof", eb[..]) == "clock", ap_body(t));
+
+  // ---- the device's own proof moves the tokens
+  now = dv_now(t);
+  ap_do(t, dv_q(q[..], "UPDATE auth.devices SET last_seen_at = now() - interval '1 day' WHERE account = '", ACCT, "'"));
+  good: [1] Sb; proof0 := dv_proof(t, A, "POST", path, now - 50000, RT0, good[..]);
+  st = dv_refresh(t, RT0, proof0, d[..]);
+  ap_check(t, "the device's own proof (50 seconds old) gets a new pair", st == 200 && ap_starts(dv_rt(d[..]), "oa_rt_") && dv_rt(d[..]) != RT0, ap_body(t));
+  ap_check(t, "and the device was last used just now",
+           ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.devices WHERE account = '", ACCT, "' AND last_seen_at > now() - interval '1 minute'"), out[..]) == "1", "");
+  st = ac_call(t, "GET", "/api/auth/account", "", dv_bearer(d[..], bh[..]), "", "");
+  ap_check(t, "the new access token is the account", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
+
+  // ---- a proof replayed
+  st = dv_refresh(t, RT0, proof0, x[..]);
+  ap_check(t, "a replayed proof is refused as a replay", st == 409 && ap_member(ap_body(t), "device_proof", eb[..]) == "replay", ap_body(t));
+  ap_check(t, "and the replay didn't end the login",
+           ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", ACCT, "'"), out[..]) == "1", "");
+  now = dv_now(t);
+  RT1b: [160] u8; r1 := d[0].rt_n; for i: 0..<r1 { RT1b[i] = d[0].rt[i]; }
+  RT1 := cast(string) RT1b[0..<r1];
+  st = dv_refresh(t, RT1, dv_proof(t, A, "POST", path, now, RT1, ph[..]), d[..]);
+  ap_check(t, "the real device refreshes again with a new proof", st == 200 && dv_rt(d[..]) != RT1, ap_body(t));
+  ap_check(t, "a proof is remembered once, whatever asks", ap_sql(t, "SELECT auth.device_proof_once(repeat('ab', 32))::text || auth.device_proof_once(repeat('ab', 32))::text", out[..]) == "truefalse", "");
+
+  // ---- a downgrade to no proof
+  RT2b: [160] u8; r2 := d[0].rt_n; for i: 0..<r2 { RT2b[i] = d[0].rt[i]; }
+  RT2 := cast(string) RT2b[0..<r2];
+  hb: [64] u8; sha2 := dv_sha(RT2, hb[..]);
+  q2: [1] Sb; sb(q2[..], "SELECT (SELECT state FROM auth.app_refresh('"); sb(q2[..], sha2); sb(q2[..], "', repeat('a', 64), repeat('b', 64), NULL)) || ',' || (SELECT state FROM auth.app_refresh('");
+  sb(q2[..], sha2); sb(q2[..], "', repeat('a', 64), repeat('b', 64), 999999))");
+  ap_check(t, "the database's own refresh refuses a bound token with no proved device, or another device's", ap_sql(t, sb_text(q2[..]), out[..]) == "proof,proof", cast(string) out[0..<60]);
+  ap_check(t, "a session's device can't be cleared or changed",
+           ap_ends(ap_sql(t, dv_q(q[..], "DO $$ BEGIN BEGIN UPDATE auth.sessions SET device = NULL WHERE account = '", ACCT, "'; RAISE EXCEPTION 'unbound'; EXCEPTION WHEN check_violation THEN NULL; END; END $$; SELECT 'held'"), out[..]), "held")
+           && ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", ACCT, "' AND device IS NOT NULL"), out[..]) == "1", "");
+  q4: [1] Sb; sb(q4[..], "SELECT state FROM auth.app_refresh('"); sb(q4[..], sha2); sb(q4[..], "', repeat('a', 64), repeat('b', 64))");
+  ap_check(t, "nor does the older three-argument refresh an earlier API revision calls", ap_sql(t, sb_text(q4[..]), out[..]) == "proof", cast(string) out[0..<60]);
+  st = dv_refresh(t, RT2, "", x[..]);
+  ap_check(t, "after two good refreshes, no proof is still refused", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "none", ap_body(t));
+
+  // ---- a login that sends a key we can't hold is refused, never quietly unbound
+  u: [1] Dv;
+  st = dv_login(t, dir, "device-b@example.com", "203.0.113.71", "OA-Device-Key: 04abcdef", "OA-Device-Platform: ios", "OA-Device-Store: enclave", "", u[..]);
+  ap_check(t, "a login with a key that isn't a P-256 point is refused", st == 400 && ap_member(ap_body(t), "device_proof", eb[..]) == "key" && !ap_has(ap_body(t), "oa_rt_"), ap_body(t));
+  ap_check(t, "and it made no session", ap_sql(t, "SELECT count(*) FROM auth.sessions s JOIN auth.audit a ON a.account = s.account WHERE a.action = 'device.bind' AND a.result = 'refused' AND a.detail->>'why' = 'key'", out[..]) == "0"
+           && ap_sql(t, "SELECT count(*) FROM auth.audit WHERE action = 'device.bind' AND result = 'refused' AND detail->>'why' = 'key'", out[..]) == "1", "");
+  st = dv_login(t, dir, "device-b@example.com", "203.0.113.71", key_a, "OA-Device-Platform: windows", "OA-Device-Store: software", "", u[..]);
+  ap_check(t, "a platform we don't know is refused", st == 400 && ap_member(ap_body(t), "device_proof", eb[..]) == "platform", ap_body(t));
+  st = dv_login(t, dir, "device-b@example.com", "203.0.113.71", key_a, "OA-Device-Platform: android", "OA-Device-Store: enclave", "", u[..]);
+  ap_check(t, "a store its platform doesn't have is refused", st == 400 && ap_member(ap_body(t), "device_proof", eb[..]) == "platform", ap_body(t));
+
+  // ---- an app with no key (an older build) is unbound and refreshes as before
+  st = dv_login(t, dir, "device-b@example.com", "203.0.113.71", "", "", "", "", u[..]);
+  ap_check(t, "an app's login with no device key is not bound", st == 200 && !u[0].bound && ap_starts(dv_rt(u[..]), "oa_rt_"), ap_body(t));
+  ub: [160] u8; un := u[0].rt_n; for i: 0..<un { ub[i] = u[0].rt[i]; }
+  st = dv_refresh(t, cast(string) ub[0..<un], "", u[..]);
+  ap_check(t, "and it refreshes with no proof", st == 200, ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/devices", "", dv_bearer(u[..], bh[..]), "", "");
+  ap_check(t, "its devices list is empty", st == 200 && ap_has(ap_body(t), "\"devices\":[]"), ap_body(t));
+
+  // ---- the same key again on this account is the same device; on another account, a row of its own
+  st = dv_login(t, dir, "device-b@example.com", "203.0.113.71", key_a, "OA-Device-Platform: mac", "OA-Device-Store: software", "OA-Device-Name: Test Mac", u[..]);
+  ap_check(t, "another account may bind the same key (the same install, logged in again)", st == 200 && u[0].bound, ap_body(t));
+  ap_check(t, "each account has its own row for it", ap_sql(t, "SELECT count(DISTINCT account) FROM auth.devices d WHERE d.revoked_at IS NULL AND d.public_key = (SELECT public_key FROM auth.devices ORDER BY id LIMIT 1)", out[..]) == "2", "");
+  bacct: [64] u8; bn := u[0].acct_n; for i: 0..<bn { bacct[i] = u[0].acct[i]; }
+  BACCT := cast(string) bacct[0..<bn];
+  w: [1] Dv;
+  st = dv_login(t, dir, "device-b@example.com", "203.0.113.71", key_a, "OA-Device-Platform: mac", "OA-Device-Store: software", "OA-Device-Name: Test Mac", w[..]);
+  ap_check(t, "the same key on the same account is one device with two logins", st == 200 && w[0].bound
+           && ap_sql(t, dv_q(q[..], "SELECT count(*) || ',' || max((SELECT count(*) FROM auth.sessions s WHERE s.device = d.id)) FROM auth.devices d WHERE d.account = '", BACCT, "' AND d.revoked_at IS NULL"), out[..]) == "1,2", "");
+
+  // ---- a key that was removed
+  devb: [32] u8; dev := ap_sql(t, dv_q(q[..], "SELECT id FROM auth.devices WHERE account = '", ACCT, "' AND revoked_at IS NULL"), devb[..]);
+  rm: [1] Sb; sb(rm[..], "/api/auth/devices/"); sb(rm[..], dev); sb(rm[..], "/remove");
+  st = ac_call(t, "POST", sb_text(rm[..]), "", dv_bearer(u[..], bh[..]), "", "");
+  ap_check(t, "another account can't remove your device", st == 404 && ap_member(ap_body(t), "error", eb[..]) == "No such device.", ap_body(t));
+  ap_check(t, "nobody can remove a device", ac_call(t, "POST", sb_text(rm[..]), "", "", "", "") == 401, ap_body(t));
+  // revoked without its logins ended (the database changed under us): a good proof still refreshes nothing
+  ap_do(t, dv_q(q[..], "UPDATE auth.devices SET revoked_at = now() WHERE id = ", dev, ""));
+  now = dv_now(t);
+  st = dv_refresh(t, RT2, dv_proof(t, A, "POST", path, now, RT2, ph[..]), x[..]);
+  ap_check(t, "a revoked key's good proof refreshes nothing", st == 401 && ap_member(ap_body(t), "device_proof", eb[..]) == "removed"
+           && ap_member(ap_body(t), "error", eb[..]) == "This device was removed from the account. Log in again.", ap_body(t));
+  q3: [1] Sb; sb(q3[..], "SELECT state FROM auth.app_refresh('"); sb(q3[..], sha2); sb(q3[..], "', repeat('a', 64), repeat('b', 64), "); sb(q3[..], dev); sb(q3[..], ")");
+  ap_check(t, "nor does the database's own refresh, even told the device proved itself", ap_sql(t, sb_text(q3[..]), out[..]) == "proof", "");
+  ap_do(t, dv_q(q[..], "UPDATE auth.devices SET revoked_at = NULL WHERE id = ", dev, ""));
+  // removed from the devices list: the key is revoked and its logins end at once
+  st = ac_call(t, "POST", sb_text(rm[..]), "", dv_bearer(d[..], bh[..]), "", "");
+  ap_check(t, "removing a device ends its logins", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "removed" && ap_member(ap_body(t), "ended", eb[..]) == "1", ap_body(t));
+  ap_check(t, "its key is revoked and kept as history, and the removal is in the audit log",
+           ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.devices WHERE account = '", ACCT, "' AND revoked_at IS NOT NULL"), out[..]) == "1"
+           && ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", ACCT, "'"), out[..]) == "0"
+           && ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.audit WHERE account = '", ACCT, "' AND action = 'device.remove' AND result = 'ok' AND detail->>'ended' = '1'"), out[..]) == "1", "");
+  st = ac_call(t, "GET", "/api/auth/devices", "", dv_bearer(d[..], bh[..]), "", "");
+  ap_check(t, "the removed device's access token is dead at once", st == 401, ap_body(t));
+  now = dv_now(t);
+  st = dv_refresh(t, RT2, dv_proof(t, A, "POST", path, now, RT2, ph[..]), x[..]);
+  ap_check(t, "and its refresh token with a good proof is dead too", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "Log in again.", ap_body(t));
+  ap_check(t, "the other account's logins with the same key are untouched",
+           ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", BACCT, "' AND device IS NOT NULL"), out[..]) == "2", "");
+  // the same install logs in again: a new row, the removed one stays removed
+  st = dv_login(t, dir, "device-a@example.com", "203.0.113.70", key_a, "OA-Device-Platform: ios", "OA-Device-Store: enclave", "OA-Device-Name: Test iPhone", d[..]);
+  ap_check(t, "a removed device may log in again: a new row, and the removed one stays removed", st == 200 && d[0].bound
+           && ap_sql(t, dv_q(q[..], "SELECT count(*) FILTER (WHERE revoked_at IS NULL) || ',' || count(*) FILTER (WHERE revoked_at IS NOT NULL) FROM auth.devices WHERE account = '", ACCT, "'"), out[..]) == "1,1", "");
+
+  // ---- the web sends no key: a browser's login is never bound
+  pb: [128] u8; pend: [128] u8; c1: [1] Sb; code: [6] u8; link: [64] u8;
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ac_start(t, "device-a@example.com", "203.0.113.70", false, pb[..]);
+  p := ac_cookie(t, "__Host-oa_pending", pb[..]); for i: 0..<p.count { pend[i] = p[i]; }
+  got := ac_mail(dir, code[..], link[..]);
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), key_a, "OA-Device-Platform: ios");
+  sesb: [160] u8; ses := ac_cookie(t, "__Host-oa_session", sesb[..]);
+  ap_check(t, "a browser's login ignores a device key and is not limited by the app's", got && st == 200 && ap_starts(ses, "oas_")
+           && ap_sql(t, dv_q(q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", ACCT, "' AND client = 'web' AND device IS NULL"), out[..]) == "1", ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/devices", "", ac_cookie_header("__Host-oa_session", ses, c1[..]), "", "");
+  ap_check(t, "the web lists the account's devices, none of them this browser", st == 200 && ap_member(ap_body(t), "devices[0].name", eb[..]) == "Test iPhone"
+           && ap_member(ap_body(t), "devices[0].this", eb[..]) == "false", ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/sessions", "", ac_cookie_header("__Host-oa_session", ses, c1[..]), "", "");
+  ap_check(t, "the sessions list says which device a login is bound to", st == 200 && ap_has(ap_body(t), "\"device\": null") && ap_has(ap_body(t), "\"device\": "), ap_body(t));
+  devb2: [32] u8; dev2 := ap_sql(t, dv_q(q[..], "SELECT id FROM auth.devices WHERE account = '", ACCT, "' AND revoked_at IS NULL"), devb2[..]);
+  rm2: [1] Sb; sb(rm2[..], "/api/auth/devices/"); sb(rm2[..], dev2); sb(rm2[..], "/remove");
+  st = ac_call(t, "POST", sb_text(rm2[..]), "", ac_cookie_header("__Host-oa_session", ses, c1[..]), "Origin: https://evil.example", "");
+  ap_check(t, "another site can't remove a device with your cookie", st == 403, ap_body(t));
+  st = ac_call(t, "POST", sb_text(rm2[..]), "", ac_cookie_header("__Host-oa_session", ses, c1[..]), "", "");
+  ap_check(t, "the web removes the phone: its login ends, the browser's stays", st == 200
+           && ap_sql(t, dv_q(q[..], "SELECT count(*) FILTER (WHERE client = 'web') || ',' || count(*) FILTER (WHERE client = 'app') FROM auth.sessions WHERE account = '", ACCT, "'"), out[..]) == "1,0", ap_body(t));
+  st = ac_call(t, "POST", sb_text(rm2[..]), "", ac_cookie_header("__Host-oa_session", ses, c1[..]), "", "");
+  ap_check(t, "a device is removed once", st == 404, ap_body(t));
+
+  // ---- the registry still covers every column that points at an account, and a merge's moved device is history
+  ap_check(t, "every column pointing at an account is still in auth.life_columns", ap_sql(t, "SELECT count(*) FROM auth.life_unlisted()", out[..]) == "0", "");
+  mq: [1] Sb; sb(mq[..], "DO $$ BEGIN UPDATE auth.devices SET account = '"); sb(mq[..], ACCT); sb(mq[..], "' WHERE account = '"); sb(mq[..], BACCT);
+  sb(mq[..], "' AND revoked_at IS NULL; EXCEPTION WHEN foreign_key_violation THEN NULL; END $$; SELECT count(*) FROM auth.devices WHERE account = '"); sb(mq[..], ACCT); sb(mq[..], "' AND revoked_at IS NULL");
+  ap_check(t, "a device moved to another account (a merge) arrives revoked", ap_ends(ap_sql(t, sb_text(mq[..]), out[..]), "\n0"), "");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "mail" {
+    if args_count(a[..]) != 3 { tool_errln("auth_device_checks mail PORT DIR"); return 2; }
+    return am_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  wb: [4096] u8; work := fs_temp("auth-device-mail", wb[..]);
+  h := ac_mail_start(t[..], "coax/web/api/tests/auth_device_checks.coax", work);
+  if h < 0 { return ap_done(t[..], "auth device checks"); }
+  dv_checks(t[..], work);
+  ac_mail_stop(h, work);
+  return ap_done(t[..], "auth device checks");
+}

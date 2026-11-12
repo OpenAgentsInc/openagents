@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your devices · OpenAgents</title>
+<meta name="description" content="The phones and computers that hold your OpenAgents logins. Remove one and its logins end.">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/settings/devices/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#ededed}
+body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=text]{cursor:text}
+main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
+html:not(.gpu) body{overflow:auto}
+a{color:#b9e8e8}
+.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>Your devices</h1>
+<p><a href="/settings/devices/index.md">The devices that hold your logins</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="devices" data-wgsl="/newland.wgsl"></script>
+</body>
+</html>

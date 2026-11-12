@@ -1,0 +1,417 @@
+// /settings/devices: the phones and computers whose app logins are tied to a key that can't
+// leave them (docs/auth "Native: refresh tokens bound to a device key", #13216), drawn on the
+// homepage's Grid like /settings/data (login.coax's text and lines helpers; newland.coax's frames
+// and buttons).
+//
+// What it shows: each device's name, what it is, where the app says its key is kept, when it was
+// last used and how many logins it holds, with REMOVE. Removing asks once more (PRESS AGAIN TO
+// REMOVE), then the key is revoked and every login on that device ends at once. The list holds
+// the DV_MAX devices used most recently, and says so when the account has more.
+//
+// What it talks to (coax/web/api/auth-device.c), every answer as ?as=lines:
+//   GET  /api/auth/devices
+//   POST /api/auth/devices/<id>/remove
+//   coax/bin/coax test apps/openagents-web/devices.coax
+#load "login.coax";
+
+DV_MAX_VERTICES :: 120000;
+DV_MSG_PAGE :: 600; DV_MSG_HTTP :: 512;
+DV_ACT_GO :: 1;
+DV_POST :: 1; DV_WANTED :: 4;
+DV_MAX :: 8;   // devices shown (the ones used most recently); the page says when there are more
+
+// Screens.
+DV_LOADING :: 0; DV_MAIN :: 1; DV_OUT :: 2;
+// The one request in flight.
+DR_NONE :: 0; DR_LIST :: 1; DR_REMOVE :: 2;
+// What can be pressed. A row's REMOVE: DH_ROW + i.
+DH_NONE :: -1; DH_HOME :: 0; DH_LOGIN :: 1; DH_SECURITY :: 2; DH_ROW :: 3; DH_HITS :: 11;   // DH_ROW + DV_MAX
+
+DvRow :: struct { id: int; platform: int; store: int; seen_ms: int; logins: int; here: bool; name: [80] u8; n: int; }
+
+Dv :: struct {
+  ready: bool; w: f32; h: f32; dpr: f32; time: f32;
+  screen: int; req: int; req_id: int = -1;
+  want: bool; url: [120] u8; url_n: int; body: [8] u8; body_n: int; flags: int;
+  action: int; outbox: [200] u8; out_n: int;
+  rows: [DV_MAX] DvRow; count: int; total: int; now_ms: int;
+  armed: int = -1;                    // the row whose REMOVE was pressed once
+  error: [300] u8; error_n: int; said: [300] u8; said_n: int;
+  panel: Box; scroll: f32; hits: [DH_HITS] Box; field: [4] f32;
+  px: f32; py: f32; down: bool; pressed: int = -1; focus: int = -1;
+}
+
+// ---------------------------------------------------------------- small things
+dv_err :: (s: [] Dv, t: string) { s[0].error_n = lg_set(s[0].error[..], t); s[0].said_n = 0; }
+dv_say :: (s: [] Dv, t: string) { s[0].said_n = lg_set(s[0].said[..], t); s[0].error_n = 0; }
+dv_quiet :: (s: [] Dv) { s[0].error_n = 0; s[0].said_n = 0; }
+dv_go :: (s: [] Dv, path: string) { s[0].out_n = lg_set(s[0].outbox[..], path); s[0].action = DV_ACT_GO; }
+dv_ask :: (s: [] Dv, req: int, url: string, body: string, flags: int) {
+  s[0].req = req; s[0].req_id = -1; s[0].want = true; s[0].flags = flags | DV_WANTED;
+  s[0].url_n = lg_set(s[0].url[..], url); s[0].body_n = lg_set(s[0].body[..], body);
+}
+dv_sent :: (s: [] Dv, id: int) #export_c #effects(all) { if s.count < 1 { return; } if id >= 0 { s[0].want = false; s[0].req_id = id; } }
+dv_name :: (s: [] Dv, i: int) -> string { return cast(string) s[0].rows[i].name[0..<s[0].rows[i].n]; }
+
+// ---------------------------------------------------------------- requests
+dv_pump :: (s: [] Dv) {
+  if s[0].req != DR_NONE || s[0].want { return; }
+  if s[0].screen == DV_LOADING { dv_ask(s, DR_LIST, "/api/auth/devices?as=lines", "", 0); }
+}
+dv_refresh :: (s: [] Dv) { dv_ask(s, DR_LIST, "/api/auth/devices?as=lines", "", 0); }
+dv_remove :: (s: [] Dv, i: int) {
+  b: [80] u8; n := lg_add(b[..], 0, "/api/auth/devices/"); n = lg_add_int(b[..], n, s[0].rows[i].id); n = lg_add(b[..], n, "/remove?as=lines");
+  dv_quiet(s); dv_ask(s, DR_REMOVE, cast(string) b[0..<n], "{}", DV_POST);
+}
+
+// ---------------------------------------------------------------- answers
+dv_failed :: (s: [] Dv, status: int, lines: string) {
+  found: [1] bool; e := lg_value(lines, "error", found[..]);
+  if found[0] && e.count > 0 { dv_err(s, e); return; }
+  if status == 0 { dv_err(s, "We couldn't reach openagents.com. Check your connection and try again."); return; }
+  dv_err(s, "That didn't work. Try again.");
+}
+// A refusal for want of a stronger login: to the step-up, then back.
+dv_wants_login :: (s: [] Dv, status: int, lines: string) -> bool {
+  if status != 401 { return false; }
+  found: [1] bool; _ = lg_value(lines, "step_up", found[..]);
+  if !found[0] { return false; }
+  dv_go(s, "/settings/security?step=1&next=%2Fsettings%2Fdevices");
+  return true;
+}
+// The next space-separated word of line from at[0], which moves past it.
+dv_word :: (line: string, at: [] int) -> string {
+  a := at[0]; e := a;
+  while e < line.count && line[e] != ' ' { e += 1; }
+  at[0] = ifx e < line.count then e + 1 else e;
+  return line[a..<e];
+}
+// "device <id> <platform> <store> <last_seen_ms> <logins> <this> <name to the line's end>"
+dv_row :: (s: [] Dv, line: string) {
+  s[0].total += 1;
+  if s[0].count >= DV_MAX { return; }
+  at: [1] int; at[0] = 7;
+  r: DvRow;
+  r.id = lg_int(dv_word(line, at[..]));
+  pf := dv_word(line, at[..]); r.platform = ifx pf == "ios" then 1 else ifx pf == "mac" then 2 else ifx pf == "android" then 3 else 0;
+  st := dv_word(line, at[..]); r.store = ifx st == "enclave" then 1 else ifx st == "strongbox" then 2 else ifx st == "tee" then 3 else 4;
+  r.seen_ms = lg_int(dv_word(line, at[..]));
+  r.logins = lg_int(dv_word(line, at[..]));
+  r.here = dv_word(line, at[..]) == "1";
+  r.n = lg_set(r.name[..], line[at[0]..<line.count]);
+  s[0].rows[s[0].count] = r; s[0].count += 1;
+}
+dv_list :: (s: [] Dv, lines: string) {
+  found: [1] bool;
+  s[0].count = 0; s[0].total = 0; s[0].armed = -1;
+  s[0].now_ms = lg_int(lg_value(lines, "now_ms", found[..]));
+  at := 0;
+  while at < lines.count {
+    end := at; while end < lines.count && lines[end] != '\n' { end += 1; }
+    if lg_is(lines, at, "device ") { dv_row(s, lines[at..<end]); }
+    at = end + 1;
+  }
+}
+dv_answer :: (s: [] Dv, text: string) {
+  nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+  status := lg_int(text[0..<nl]);
+  lines := ifx nl < text.count then text[nl + 1..<text.count] else text[0..<0];
+  req := s[0].req; s[0].req = DR_NONE; s[0].req_id = -1;
+  ok := status >= 200 && status < 300;
+  if req == DR_LIST {
+    if status == 401 || status == 403 { s[0].screen = DV_OUT; return; }
+    if !ok { if s[0].screen == DV_LOADING { s[0].screen = DV_OUT; } dv_failed(s, status, lines); return; }
+    dv_list(s, lines); s[0].screen = DV_MAIN;
+    return;
+  }
+  s[0].armed = -1;
+  if !ok { if !dv_wants_login(s, status, lines) { dv_failed(s, status, lines); if status == 404 { dv_refresh(s); } } return; }
+  if req == DR_REMOVE { dv_say(s, "Removed. Every login on that device has ended."); dv_refresh(s); }
+}
+dv_message :: (s: [] Dv, kind: int, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if kind == DV_MSG_PAGE { dv_pump(s); return; }
+  if kind >= DV_MSG_HTTP && kind < DV_MSG_HTTP + 64 && kind - DV_MSG_HTTP == s[0].req_id && s[0].req != DR_NONE { dv_answer(s, text); }
+}
+dv_page :: (s: [] Dv) #export_c #effects(all) { if s.count < 1 { return; } dv_pump(s); }
+dv_done :: (s: [] Dv) #export_c #effects(all) { if s.count < 1 { return; } s[0].action = 0; s[0].out_n = 0; }
+
+// ---------------------------------------------------------------- pressing
+dv_press :: (s: [] Dv, h: int) {
+  if h < 0 { return; }
+  if h == DH_HOME { dv_go(s, "/"); return; }
+  if h == DH_LOGIN { dv_go(s, "/login?next=%2Fsettings%2Fdevices"); return; }
+  if h == DH_SECURITY { dv_go(s, "/settings/security"); return; }
+  if s[0].req != DR_NONE || s[0].screen != DV_MAIN { return; }
+  i := h - DH_ROW;
+  if i < 0 || i >= s[0].count { return; }
+  if s[0].armed != i { s[0].armed = i; dv_quiet(s); return; }
+  dv_remove(s, i);
+}
+dv_key_in :: (s: [] Dv, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if key == -2 { dv_press(s, s[0].focus); return s[0].focus >= 0; }
+  if key == -1 && s[0].armed >= 0 { s[0].armed = -1; return true; }
+  if key == -15 {
+    order: [DH_HITS] int; n := dv_order(s, order[..]);
+    if n == 0 { return false; }
+    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
+    s[0].focus = order[(k + 1) % n]; return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- words
+DV_PARA :: 7.8;
+DV_WORDS :: "When the OpenAgents app logs in on a phone or computer, it makes a key that can't leave that device, and its login only works with that key. A login copied off the device is useless anywhere else. Remove a device and every login on it ends at once.";
+DV_NONE_WORDS :: "No device holds a login with a device key yet. Log in with the OpenAgents app and it shows up here.";
+dv_platform_words :: (platform: int) -> string {
+  return ifx platform == 1 then "iPhone or iPad" else ifx platform == 2 then "Mac" else ifx platform == 3 then "Android" else "Device";
+}
+// Where the app says the key is kept. We don't ask the hardware to prove it.
+dv_store_words :: (store: int) -> string {
+  return ifx store == 1 then "key in the Secure Enclave" else ifx store == 2 then "key in StrongBox" else ifx store == 3 then "key in the Android Keystore" else "key in a file on the device";
+}
+dv_ago :: (b: [] u8, at: int, now_ms: int, seen_ms: int) -> int {
+  gone := (now_ms - seen_ms) / 60000;   // minutes
+  if seen_ms <= 0 || now_ms <= 0 { return lg_add(b, at, "not used yet"); }
+  if gone < 2 { return lg_add(b, at, "used just now"); }
+  n := lg_add(b, at, "used ");
+  if gone < 120 { n = lg_add_int(b, n, gone); return lg_add(b, n, " minutes ago"); }
+  if gone < 2880 { n = lg_add_int(b, n, gone / 60); return lg_add(b, n, " hours ago"); }
+  n = lg_add_int(b, n, gone / 1440); return lg_add(b, n, " days ago");
+}
+dv_detail :: (s: [] Dv, i: int, b: [] u8) -> string {
+  r := s[0].rows[i];
+  n := lg_add(b, 0, dv_platform_words(r.platform)); n = lg_add(b, n, ", "); n = lg_add(b, n, dv_store_words(r.store)); n = lg_add(b, n, ", ");
+  n = dv_ago(b, n, s[0].now_ms, r.seen_ms);
+  if r.logins != 1 { n = lg_add(b, n, ", "); n = lg_add_int(b, n, r.logins); n = lg_add(b, n, " logins"); }
+  return cast(string) b[0..<n];
+}
+dv_more_words :: (s: [] Dv, b: [] u8) -> string {
+  if s[0].total <= s[0].count { return ""; }
+  n := lg_add(b, 0, "Showing the "); n = lg_add_int(b, n, s[0].count); n = lg_add(b, n, " used most recently of "); n = lg_add_int(b, n, s[0].total);
+  n = lg_add(b, n, ". Remove one to see the next.");
+  return cast(string) b[0..<n];
+}
+
+// ---------------------------------------------------------------- layout
+dv_order :: (s: [] Dv, out: [] int) -> int {
+  n := 0;
+  if s[0].screen == DV_MAIN { for i: 0..<s[0].count { out[n] = DH_ROW + i; n += 1; } out[n] = DH_SECURITY; n += 1; }
+  if s[0].screen == DV_OUT { out[n] = DH_LOGIN; n += 1; }
+  out[n] = DH_HOME; n += 1;
+  return n;
+}
+dv_shown :: (s: [] Dv, h: int) -> bool { order: [DH_HITS] int; n := dv_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
+dv_tall :: (t: string, w: f32) -> f32 { return ifx t.count == 0 then 0.0f32 else lg_tall(t, w, DV_PARA); }
+// The page laid out (and drawn when draw): one walk for both, so what is pressed is where it is
+// drawn. Returns the vertex count.
+dv_walk :: (s: [] Dv, out: [] f32, at: int, p: Pen, draw: bool) -> int {
+  sw := hi(240, s[0].w); sh := hi(300, s[0].h);
+  pw := lo(520, sw - 32); px := (sw - pw) * 0.5;
+  top := (ifx sh > 720 then 110.0f32 else 80.0f32) - s[0].scroll;
+  x := px + 24; w := pw - 48; y := top + 66; d := p.d; v := at; b: [300] u8;
+  if !draw { for i: 0..<DH_HITS { s[0].hits[i] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; } s[0].hits[DH_HOME] = Box.{x0 = px + pw - 64, y0 = top - 56, x1 = px + pw, y1 = top - 20}; }
+  msg := ifx s[0].error_n > 0 then cast(string) s[0].error[0..<s[0].error_n] else cast(string) s[0].said[0..<s[0].said_n];
+  mk := ifx s[0].error_n > 0 then lg_red(p) else lg_text(p, INK_BRIGHT);
+  below: [1] f32;
+  if draw { v = put_fit(out, v, "YOUR DEVICES", x * d, (top + 44) * d, (ifx p.phone then 13.0f32 else 15.0f32) * d, chrome(ink(p, INK_WHITE)), w * d); }
+  sc := s[0].screen;
+  if sc == DV_LOADING { if draw { v = put(out, v, "LOADING", x * d, (y + 14) * d, 7.0 * d, ink(p, INK_DIM)); } y += 40; }
+  if msg.count > 0 && sc != DV_LOADING { if draw { v = lg_para(out, v, msg, x, y, w, DV_PARA, mk, d, below[..]); } y += dv_tall(msg, w) + 12; }
+  if sc == DV_OUT {
+    t := "Log in to see the devices that hold your logins, and to remove one.";
+    if draw { v = lg_para(out, v, t, x, y, w, DV_PARA, lg_text(p, INK_PALE), d, below[..]); } y += dv_tall(t, w) + 16;
+    v = dv_btn(s, out, v, p, draw, DH_LOGIN, "LOG IN", true, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 20;
+  }
+  if sc == DV_MAIN {
+    if draw { v = lg_para(out, v, DV_WORDS, x, y, w, DV_PARA, lg_text(p, INK_PALE), d, below[..]); } y += dv_tall(DV_WORDS, w) + 18;
+    if s[0].count == 0 { if draw { v = lg_para(out, v, DV_NONE_WORDS, x, y, w, DV_PARA, lg_text(p, INK_BRIGHT), d, below[..]); } y += dv_tall(DV_NONE_WORDS, w) + 16; }
+    for i: 0..<s[0].count {
+      armed := s[0].armed == i;
+      bw := ifx armed then 176.0f32 else 92.0f32;
+      if draw {
+        v = rule(out, v, x * d, y * d, (x + w) * d, y * d, ink(p, INK_DIM), 0.25);
+        v = put_fit(out, v, dv_name(s, i), x * d, (y + 24) * d, 8.2 * d, lg_text(p, ifx s[0].rows[i].here then INK_WHITE else INK_BRIGHT), (w - bw - 12) * d);
+      }
+      dt := dv_detail(s, i, b[..]);
+      if draw { v = lg_para(out, v, dt, x, y + 36, w - bw - 12, 6.4, lg_text(p, INK_PALE), d, below[..]); }
+      tall := hi(52, 36 + lg_tall(dt, w - bw - 12, 6.4) + 6);
+      v = dv_btn(s, out, v, p, draw, DH_ROW + i, ifx s[0].req == DR_REMOVE && armed then "REMOVING" else ifx armed then "PRESS AGAIN TO REMOVE" else "REMOVE", armed,
+                 Box.{x0 = x + w - bw, y0 = y + 10, x1 = x + w, y1 = y + 46});
+      y += tall + 10;
+    }
+    more := dv_more_words(s, b[..]);
+    if more.count > 0 { if draw { v = lg_para(out, v, more, x, y, w, DV_PARA, lg_text(p, INK_BRIGHT), d, below[..]); } y += dv_tall(more, w) + 12; }
+    y += 6;
+    if !draw { s[0].hits[DH_SECURITY] = Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 28}; }
+    else {
+      hot := dv_hover(s, DH_SECURITY);
+      v = put(out, v, "SECURITY", x * d, (y + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
+      v = put_fit(out, v, "How you log in", (x + 84) * d, (y + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 84) * d);
+    }
+    y += 28 + 14;
+  }
+  if !draw { s[0].panel = Box.{x0 = px, y0 = top, x1 = px + pw, y1 = y}; }
+  return v;
+}
+dv_btn :: (s: [] Dv, out: [] f32, at: int, p: Pen, draw: bool, h: int, text: string, main: bool, box: Box) -> int {
+  if !draw { s[0].hits[h] = box; return at; }
+  b := s[0].hits[h]; if b.x1 <= b.x0 || !dv_shown(s, h) { return at; }
+  return button(out, at, lg_box(b, p.d), text, main, dv_hover(s, h), true, p, ifx s[0].req != DR_NONE then 0.55f32 else 1.0f32);
+}
+dv_pen :: (s: [] Dv, still: bool) -> Pen { d := hi(1, s[0].dpr); return Pen.{d = d, fade = 1, time = 5 + s[0].time, still = still, phone = s[0].w < 760}; }
+dv_layout :: (s: [] Dv) { none: [1] f32; _ = dv_walk(s, none[0..<0], 0, dv_pen(s, true), false); }
+dv_most :: (s: [] Dv) -> f32 { return hi(0, s[0].panel.y1 + s[0].scroll + 40 - s[0].h); }
+dv_wheel :: (s: [] Dv, dy: f32) #export_c #effects(all) { if s.count < 1 { return; } s[0].scroll = clamp(s[0].scroll + dy, 0, dv_most(s)); dv_layout(s); }
+dv_hit :: (s: [] Dv, x: f32, y: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return DH_NONE; }
+  for i: 0..<DH_HITS { b := s[0].hits[i]; if b.x1 > b.x0 && dv_shown(s, i) && inside(b, x, y) { return i; } }
+  return DH_NONE;
+}
+dv_hover :: (s: [] Dv, h: int) -> bool { return dv_hit(s, s[0].px, s[0].py) == h || s[0].focus == h; }
+dv_pointer :: (s: [] Dv, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  d := hi(1, s[0].dpr); px := x / d; py := y / d;
+  if phase == 1 && s[0].down && s[0].pressed < 0 { s[0].scroll = clamp(s[0].scroll - (py - s[0].py), 0, dv_most(s)); dv_layout(s); }   // a drag scrolls
+  s[0].px = px; s[0].py = py;
+  if phase == 0 { s[0].down = true; s[0].pressed = dv_hit(s, px, py); if s[0].pressed < 0 { s[0].armed = -1; } return true; }
+  if phase == 2 || phase == 3 {
+    was := s[0].down; s[0].down = false;
+    if was && phase == 2 && s[0].pressed >= 0 && dv_hit(s, px, py) == s[0].pressed { dv_press(s, s[0].pressed); dv_layout(s); }
+    return true;
+  }
+  return phase == 1 && s[0].down;
+}
+dv_cursor :: (s: [] Dv) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return ifx dv_hit(s, s[0].px, s[0].py) >= 0 then 1 else 0;
+}
+
+// ---------------------------------------------------------------- drawing
+dv_frame :: (s: [] Dv, world: [] LandState, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  d := hi(1, dpr); s[0].w = width / d; s[0].h = height / d; s[0].dpr = d; s[0].time += clamp(dt, 0, 0.1);
+  if !s[0].ready { s[0].ready = true; dv_pump(s); }
+  dv_layout(s);
+  if s[0].scroll > dv_most(s) { s[0].scroll = dv_most(s); dv_layout(s); }
+  p := dv_pen(s, still);
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still then 20.0f32 else 20 + s[0].time; u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  look := fv(0, 0, 0); c := cam(look, 0.785, 0.74, 40, width * 0.5, height * 0.62, width, Box.{x0 = 0, y0 = 0, x1 = width, y1 = height}, width, height);
+  v := floor_grid(out, 0, world, c, look, p);
+  b := s[0].panel; paper := lg_box(b, d);
+  for i: 0..<v { out[i * VERTEX_FLOATS + 6] *= ifx inside(paper, out[i * VERTEX_FLOATS], out[i * VERTEX_FLOATS + 1]) then 0.18f32 else 0.75f32; }
+  glass(u, 0, paper, 10 * d, 0.86, 0); u[5] = 1;
+  v = frame(out, v, paper, 10 * d, ink(p, INK_DIM), 0.55, p);
+  v = put(out, v, "OPENAGENTS", b.x0 * d, (b.y0 - 32) * d, 6.8 * d, ink(p, INK_DIM));
+  hb := s[0].hits[DH_HOME];
+  v = button(out, v, lg_box(hb, d), "HOME", false, dv_hover(s, DH_HOME), true, p, 1.0);
+  return dv_walk(s, out, v, p, true);
+}
+dv_max_vertices :: () -> int #export_c #effects(all) { return DV_MAX_VERTICES; }
+
+// ---------------------------------------------------------------- tests
+dv_new :: (s: [] Dv) { s[0].w = 390; s[0].h = 844; s[0].dpr = 1; dv_message(s, DV_MSG_PAGE, "now=1794000000000\nurl=https://openagents.com/settings/devices"); dv_layout(s); }
+dv_reply :: (s: [] Dv, id: int, text: string) { dv_sent(s, id); dv_message(s, DV_MSG_HTTP + id, text); dv_layout(s); }
+dv_url :: (s: [] Dv) -> string { return cast(string) s[0].url[0..<s[0].url_n]; }
+dv_out :: (s: [] Dv) -> string { return cast(string) s[0].outbox[0..<s[0].out_n]; }
+dv_error_of :: (s: [] Dv) -> string { return cast(string) s[0].error[0..<s[0].error_n]; }
+dv_said_of :: (s: [] Dv) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+DV_T_TWO :: "200\nnow_ms 1794000000000\ncount 2\ndevice 12 ios enclave 1793999990000 1 0 Chris's iPhone\ndevice 7 mac software 1793740800000 2 0 Mac\n";
+
+#test "devices: the page asks for the list and shows each device with what it is and when it was used" {
+  s: [1] Dv; dv_new(s[..]);
+  #assert s[0].req == DR_LIST && dv_url(s[..]) == "/api/auth/devices?as=lines" && s[0].flags == DV_WANTED;
+  dv_reply(s[..], 1, DV_T_TWO);
+  #assert s[0].screen == DV_MAIN && s[0].count == 2 && s[0].total == 2 && s[0].now_ms == 1794000000000;
+  #assert s[0].rows[0].id == 12 && s[0].rows[0].platform == 1 && s[0].rows[0].store == 1 && s[0].rows[0].logins == 1 && !s[0].rows[0].here && dv_name(s[..], 0) == "Chris's iPhone";
+  #assert s[0].rows[1].id == 7 && s[0].rows[1].platform == 2 && s[0].rows[1].store == 4 && s[0].rows[1].logins == 2 && dv_name(s[..], 1) == "Mac";
+  b: [300] u8;
+  #assert dv_detail(s[..], 0, b[..]) == "iPhone or iPad, key in the Secure Enclave, used just now";
+  #assert dv_detail(s[..], 1, b[..]) == "Mac, key in a file on the device, used 3 days ago, 2 logins";
+  #assert dv_shown(s[..], DH_ROW) && dv_shown(s[..], DH_ROW + 1) && !dv_shown(s[..], DH_ROW + 2) && dv_shown(s[..], DH_SECURITY) && !dv_shown(s[..], DH_LOGIN);
+  #assert dv_more_words(s[..], b[..]) == "";
+}
+#test "devices: how long ago, in the words a person uses" {
+  b: [60] u8; now := 1794000000000;
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, now - 119000)] == "used just now";
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, now - 120000)] == "used 2 minutes ago";
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, now - 119 * 60000)] == "used 119 minutes ago";
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, now - 120 * 60000)] == "used 2 hours ago";
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, now - 47 * 3600000)] == "used 47 hours ago";
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, now - 48 * 3600000)] == "used 2 days ago";
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, 0)] == "not used yet" && cast(string) b[0..<dv_ago(b[..], 0, 0, 5)] == "not used yet";
+  #assert cast(string) b[0..<dv_ago(b[..], 0, now, now + 5000)] == "used just now";
+  #assert dv_platform_words(3) == "Android" && dv_platform_words(0) == "Device";
+  #assert dv_store_words(2) == "key in StrongBox" && dv_store_words(3) == "key in the Android Keystore";
+}
+#test "devices: REMOVE asks once more, then the device goes and the list is asked again" {
+  s: [1] Dv; dv_new(s[..]); dv_reply(s[..], 1, DV_T_TWO);
+  dv_press(s[..], DH_ROW + 1);
+  #assert s[0].armed == 1 && s[0].req == DR_NONE;
+  dv_press(s[..], DH_ROW);
+  #assert s[0].armed == 0 && s[0].req == DR_NONE;
+  dv_press(s[..], DH_ROW);
+  #assert s[0].req == DR_REMOVE && dv_url(s[..]) == "/api/auth/devices/12/remove?as=lines" && s[0].flags == (DV_POST | DV_WANTED);
+  dv_press(s[..], DH_ROW + 1);
+  #assert s[0].req == DR_REMOVE && dv_url(s[..]) == "/api/auth/devices/12/remove?as=lines";   // one request at a time
+  dv_reply(s[..], 2, "200\nstate removed\nended 1\n");
+  #assert dv_said_of(s[..]) == "Removed. Every login on that device has ended." && s[0].req == DR_LIST && s[0].armed == -1;
+  dv_reply(s[..], 3, "200\nnow_ms 1794000000000\ncount 1\ndevice 7 mac software 1793740800000 2 0 Mac\n");
+  #assert s[0].count == 1 && s[0].rows[0].id == 7 && !dv_shown(s[..], DH_ROW + 1);
+  // Escape, or a press anywhere else, takes the question back
+  dv_press(s[..], DH_ROW); #assert s[0].armed == 0;
+  #assert dv_key_in(s[..], -1, 0) && s[0].armed == -1;
+  dv_press(s[..], DH_ROW); _ = dv_pointer(s[..], 2, 2, 0); _ = dv_pointer(s[..], 2, 2, 2);
+  #assert s[0].armed == -1 && s[0].req == DR_NONE;
+}
+#test "devices: refusals say why; a limited login goes to confirm it's you and comes back; nobody is asked to log in" {
+  s: [1] Dv; dv_new(s[..]); dv_reply(s[..], 1, DV_T_TWO);
+  dv_press(s[..], DH_ROW); dv_press(s[..], DH_ROW);
+  dv_reply(s[..], 2, "404\nerror No such device.\ndevice_proof unknown\n");
+  #assert dv_error_of(s[..]) == "No such device." && s[0].req == DR_LIST && s[0].armed == -1;
+  dv_reply(s[..], 3, DV_T_TWO);
+  dv_press(s[..], DH_ROW); dv_press(s[..], DH_ROW);
+  dv_reply(s[..], 4, "401\nerror Log in again with your key or passkey to do this.\nstep_up L2\nmethods nostr\n");
+  #assert s[0].action == DV_ACT_GO && dv_out(s[..]) == "/settings/security?step=1&next=%2Fsettings%2Fdevices";
+  dv_done(s[..]);
+  dv_press(s[..], DH_ROW); dv_press(s[..], DH_ROW);
+  dv_reply(s[..], 5, "0\n");
+  #assert dv_error_of(s[..]) == "We couldn't reach openagents.com. Check your connection and try again.";
+  t: [1] Dv; dv_new(t[..]); dv_reply(t[..], 1, "401\nerror Log in first.\n");
+  #assert t[0].screen == DV_OUT && dv_shown(t[..], DH_LOGIN) && !dv_shown(t[..], DH_SECURITY);
+  dv_press(t[..], DH_LOGIN);
+  #assert t[0].action == DV_ACT_GO && dv_out(t[..]) == "/login?next=%2Fsettings%2Fdevices";
+  a: [1] Dv; dv_new(a[..]); dv_reply(a[..], 1, "403\nerror Only a person can do this, not an agent.\n");
+  #assert a[0].screen == DV_OUT;
+}
+#test "devices: no devices says so; more than the page holds says how many" {
+  s: [1] Dv; dv_new(s[..]); dv_reply(s[..], 1, "200\nnow_ms 1794000000000\ncount 0\n");
+  #assert s[0].screen == DV_MAIN && s[0].count == 0 && !dv_shown(s[..], DH_ROW);
+  t: [1] Dv; dv_new(t[..]);
+  dv_reply(t[..], 1, "200\nnow_ms 1794000000000\ncount 10\ndevice 10 ios enclave 5 1 0 a\ndevice 9 ios enclave 5 1 0 b\ndevice 8 ios enclave 5 1 0 c\ndevice 7 ios enclave 5 1 0 d\ndevice 6 ios enclave 5 1 0 e\ndevice 5 ios enclave 5 1 0 f\ndevice 4 ios enclave 5 1 0 g\ndevice 3 ios enclave 5 1 0 h\ndevice 2 ios enclave 5 1 0 i\ndevice 1 ios enclave 5 1 0 j\n");
+  b: [300] u8;
+  #assert t[0].count == 8 && t[0].total == 10 && dv_more_words(t[..], b[..]) == "Showing the 8 used most recently of 10. Remove one to see the next.";
+  #assert dv_name(t[..], 7) == "h" && t[0].rows[7].id == 3;
+}
+#test "devices: every shown control has a box inside the panel, on a phone and a desktop, and the page draws within its vertex budget" #steps 900000000 {
+  out: [DV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  for k: 0..<2 {
+    for screen: 1..<3 {
+      s: [1] Dv; dv_new(s[..]);
+      s[0].w = ifx k == 0 then 390.0f32 else 1280.0f32; s[0].h = ifx k == 0 then 844.0f32 else 800.0f32;
+      dv_reply(s[..], 1, DV_T_TWO);
+      s[0].screen = screen; s[0].armed = ifx screen == DV_MAIN then 0 else -1; dv_layout(s[..]);
+      order: [DH_HITS] int; n := dv_order(s[..], order[..]);
+      for i: 0..<n {
+        b := s[0].hits[order[i]];
+        #assert b.x1 > b.x0 && b.x0 >= s[0].panel.x0 && b.x1 <= s[0].panel.x1 + 1 && (order[i] == DH_HOME || (b.y0 >= s[0].panel.y0 && b.y1 <= s[0].panel.y1));
+        #assert dv_hit(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == order[i];
+      }
+      v := dv_frame(s[..], world[0..<0], out[..], u[..], s[0].w, s[0].h, 1, 0, true);
+      #assert v > 0 && v < DV_MAX_VERTICES;
+    }
+  }
+}

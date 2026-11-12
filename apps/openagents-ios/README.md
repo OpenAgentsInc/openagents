@@ -98,6 +98,18 @@ staging.openagents.com, opened as `openagents://HOST/…`, a universal link,
 a scan or a paste. Every one asks first; Approve sends a NIP-98 signed POST
 to `/api/auth/approve` or `/api/private/<slug>/claim`.
 
+A login to your account (an email code, a passkey or the phone's key;
+`OpenAgents/SignIn/AppAuth.swift`) is tied to this phone. At login the app
+makes a device key in the Secure Enclave, silently, with no Face ID or
+passcode prompt (`apps/shared/host/apple/DeviceKey.swift`, shared with the
+Mac apps), and sends its public half; the server binds the login to it. Each
+time the app renews its tokens it signs the request with that key
+(`OA-Device-Proof`), so a refresh token copied off the phone is useless. The
+Simulator has no Secure Enclave: there the key is an ordinary one, and the
+server's devices list says so. Logging out forgets the key. See
+[docs/auth](../../docs/auth/sessions-and-tokens.md#native-refresh-tokens-bound-to-a-device-key)
+and [/settings/devices](https://openagents.com/settings/devices).
+
 ```sh
 # the fake-server flow and BIP-340 vectors; sign ad hoc so the Keychain works in the simulator
 xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \

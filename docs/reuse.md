@@ -41,6 +41,7 @@ undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
 | 3D models | The asset registry | `assets/registry/` (read its README) |
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |
 | Nostr events, NIPs, NIP-98, zaps | Coax Nostr | `coax/lib/nostr/` |
+| A hardware key that ties an app's login to its device (Secure Enclave, Android Keystore), and its proof | The shared device key | `apps/shared/host/apple/DeviceKey.swift`, `apps/shared/host/android/device-key.c`, `coax/web/api/auth-device-crypto.coax` |
 | Bitcoin and Lightning | Coax Bitcoin and Lightning | `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` |
 | A wire format: messages between apps, the API, rooms or devices; a file or log line a program stores | The protocol's schemas and the one codec file each shape has | `proto/` (read its README). Look the shape up in `proto/registry.json` and load its `codec` file; never write its JSON, frame or id by hand in a second file. For a new shape, add the schema and a registry row ([how](../proto/README.md#register-a-wire-shape)). `coax/web/tool.sh wire-check` fails on an unregistered shape |
 | JSON, protobuf, base64, Unicode, regex | Coax formats | `coax/lib/json/`, `coax/lib/proto/`, `coax/lib/text/` |

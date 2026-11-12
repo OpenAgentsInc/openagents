@@ -16,7 +16,9 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/system_properties.h>
 #include <time.h>
+#include "../../shared/host/android/device-key.h"
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "face.h"
@@ -742,6 +744,9 @@ void android_main(struct android_app *app) {
   g.app = app; g.stick = g.look = g.pinch = -1; g.focused = 1;
   app->onAppCmd = command; app->onInputEvent = input;
   (*app->activity->vm)->AttachCurrentThread(app->activity->vm, &g.env, NULL);
+  // A debug check of the Keystore device key (apps/shared/host/android/device-key.c, #13216):
+  // `adb shell setprop debug.oa.devicekey 1`, open the app, and read logcat's "oa-device-key".
+  { char v[PROP_VALUE_MAX] = ""; if (__system_property_get("debug.oa.devicekey", v) > 0 && v[0] == '1') oa_device_key_selftest(g.env); }
   deep_start();
   g.state = eg_new();
   if (!g.state) STOP("Everglade: no memory for the scene.");
