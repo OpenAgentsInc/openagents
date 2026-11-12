@@ -14,6 +14,10 @@
 // instead: PROGRAM is apps/shared/host/apple/device-key-check.swift's binary, which keeps a
 // Secure Enclave key under DIR and signs each proof there (`PROGRAM proof DIR METHOD URL MS TOKEN`).
 // The copied-token checks still use a software key here: the other device.
+//
+// With DEVICE_LIVE_SHOTS=DIR step 5 is done on the site's own page instead: the same key logs a
+// browser in, headless Chrome opens /settings/devices with that session, and REMOVE is pressed
+// there (Tab, Enter, Enter). DIR gets devices-list.png, devices-ask.png and devices-removed.png.
 // tool.sh: tls
 // tool.sh: run-steps 250000000
 //
@@ -139,9 +143,11 @@ dl_keep :: (t: [] Dl) {
 }
 // Logs the app in with the Nostr key, sending device as its device key: the status.
 // real: the device key is the signer program's (dl_signed has read it), not the software one.
+// No device (an empty view) is a browser's login: no device key, and a cookie instead of a pair.
 dl_login :: (t: [] Dl, nostr: [] u8, device: [] u8, name: string, real: bool) -> int {
   plain := [1] string.["Content-Type: application/json"];
-  if dl_call(t, "POST", "/api/auth/nostr/challenge", "{\"client\":\"app\"}", plain[..]) != 200 { return 0; }
+  app := device.count > 0;
+  if dl_call(t, "POST", "/api/auth/nostr/challenge", ifx app then "{\"client\":\"app\"}" else "{}", plain[..]) != 200 { return 0; }
   cb: [80] u8; ch := dl_member(t, "challenge", cb[..]);
   body: [200] u8; bn := dl_put(body[..], 0, "{\"challenge\":\""); bn = dl_put(body[..], bn, ch); bn = dl_put(body[..], bn, "\",\"label\":\"device-live\"}");
   if ch.count != 64 || bn < 0 { return 0; }
@@ -155,6 +161,10 @@ dl_login :: (t: [] Dl, nostr: [] u8, device: [] u8, name: string, real: bool) ->
   if r <= 0 { return 0; }
   auth: [6200] u8; an := dl_put(auth[..], 0, "Authorization: Nostr ");
   an += b64_encode(cast(string) ev[0..<r], auth[an..<auth.count]);
+  if !app {
+    hw := [2] string.["Content-Type: application/json", cast(string) auth[0..<an]];
+    return dl_call(t, "POST", "/api/auth/nostr", cast(string) body[0..<bn], hw[..]);
+  }
   public: [65] u8; kh: [130] u8; key: [160] u8; nm: [120] u8; sh: [40] u8;
   if !p256_public_key(device, public[..]) { return 0; }
   kn := dl_put(key[..], 0, "OA-Device-Key: "); sn := dl_put(sh[..], 0, "OA-Device-Store: ");
@@ -166,6 +176,28 @@ dl_login :: (t: [] Dl, nostr: [] u8, device: [] u8, name: string, real: bool) ->
   st := dl_call(t, "POST", "/api/auth/nostr", cast(string) body[0..<bn], h[..]);
   if st == 200 { dl_keep(t); }
   return st;
+}
+// The session cookie's value in the last answer's head, or "".
+dl_cookie :: (t: [] Dl, out: [] u8) -> string {
+  head := cast(string) t[0].w[0].head[0..<t[0].w[0].head_n]; want := "__Host-oa_session=";
+  if head.count < want.count { return ""; }
+  for i: 0..<head.count - want.count + 1 {
+    if head[i..<i + want.count] == want {
+      n := 0; at := i + want.count;
+      while at + n < head.count && head[at + n] != ';' && head[at + n] != '\r' && n < out.count { out[n] = head[at + n]; n += 1; }
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+// One headless shot of /settings/devices into DIR/name, after js runs in the page. keep: the page as the last shot left it.
+dl_shot :: (t: [] Dl, dir: string, name: string, js: string, keep: bool) -> bool {
+  u: [600] u8; un := dl_put(u[..], 0, dl_base(t)); un = dl_put(u[..], un, "/settings/devices");
+  o: [1300] u8; on := dl_put(o[..], 0, dir); on = dl_put(o[..], on, "/"); on = dl_put(o[..], on, name);
+  a := [9] string.["coax/web/tool.sh", "shot", cast(string) u[0..<un], cast(string) o[0..<on], "900x900", "9000", "--eval", js, "--keep"];
+  got: [2048] u8; err: [2048] u8;
+  r := proc_run(a[0..<ifx keep then 9 else 8], 180000, got[..], err[..]);
+  return r.status == 0;
 }
 dl_bearer :: (t: [] Dl, out: [] u8) -> string { n := dl_put(out, 0, "Authorization: Bearer "); n = dl_put(out, n, dl_at(t)); return cast(string) out[0..<n]; }
 
@@ -230,8 +262,29 @@ tool_main :: () -> int #export_c #effects(all) {
   RT2 := cast(string) r2[0..<r2n];
   rm: [80] u8; rn := dl_put(rm[..], 0, "/api/auth/devices/"); rn = dl_put(rm[..], rn, id); rn = dl_put(rm[..], rn, "/remove");
   h3 := [1] string.[dl_bearer(t[..], bb[..])];
-  st = dl_call(t[..], "POST", cast(string) rm[0..<rn], "", h3[..]);
-  _ = dl_ok(t[..], "removing the device ends its login", st == 200 && dl_member(t[..], "state", eb[..]) == "removed" && dl_member(t[..], "ended", eb[..]) == "1");
+  sb: [600] u8; shots := proc_getenv("DEVICE_LIVE_SHOTS", sb[..]);
+  if shots.count > 0 {
+    // on the site's own page: a browser logged in with the same key, the list, REMOVE, PRESS AGAIN TO REMOVE
+    saved_at: [160] u8; sn := t[0].at_n; for i: 0..<sn { saved_at[i] = t[0].at[i]; }
+    none: [1] u8; ck: [100] u8;
+    st = dl_login(t[..], nostr[..], none[0..<0], "", false);
+    cookie := dl_cookie(t[..], ck[..]);
+    _ = dl_ok(t[..], "a browser logs in to the same account with the same key", st == 200 && cookie.count > 20);
+    js: [400] u8; jn := dl_put(js[..], 0, "document.cookie='__Host-oa_session="); jn = dl_put(js[..], jn, cookie); jn = dl_put(js[..], jn, "; Secure; Path=/';location.reload();'ok'");
+    first := dl_shot(t[..], shots, "devices-loading.png", cast(string) js[0..<jn], false);
+    listed := dl_shot(t[..], shots, "devices-list.png", "'list'", true);
+    asked := dl_shot(t[..], shots, "devices-ask.png", "dispatchEvent(new KeyboardEvent('keydown',{key:'Tab'}));dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));'asked'", true);
+    removed := dl_shot(t[..], shots, "devices-removed.png", "dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));'removed'", true);
+    for i: 0..<sn { t[0].at[i] = saved_at[i]; } t[0].at_n = sn;
+    t[0].n = 0;
+    _ = dl_ok(t[..], "/settings/devices lists the device, and REMOVE is pressed there twice", first && listed && asked && removed);
+    hc: [1] string; cb2: [160] u8; cn := dl_put(cb2[..], 0, "Cookie: __Host-oa_session="); cn = dl_put(cb2[..], cn, cookie); hc[0] = cast(string) cb2[0..<cn];
+    st = dl_call(t[..], "GET", "/api/auth/devices", "", hc[..]);
+    _ = dl_ok(t[..], "the browser's list is empty now: the page removed the device", st == 200 && dl_member(t[..], "devices[0].id", eb[..]) == "");
+  } else {
+    st = dl_call(t[..], "POST", cast(string) rm[0..<rn], "", h3[..]);
+    _ = dl_ok(t[..], "removing the device ends its login", st == 200 && dl_member(t[..], "state", eb[..]) == "removed" && dl_member(t[..], "ended", eb[..]) == "1");
+  }
   st = dl_call(t[..], "GET", "/api/auth/devices", "", h3[..]);
   _ = dl_ok(t[..], "its access token is dead at once", st == 401);
   st = dl_refresh(t[..], RT2, dl_device_proof(t[..], A[..], server + 2, RT2, ph[..]));
