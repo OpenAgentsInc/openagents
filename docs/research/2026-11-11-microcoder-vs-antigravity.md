@@ -1,5 +1,10 @@
 # Microcoder against Antigravity on Gemini
 
+**Round 3 (2026-11-12): stopped at the cheap check, no verdict run.** One
+more look at the final diff and new files before a finish is taken
+(a08147fa7f) changed no outcome in four runs and cost 42% more on T1. The
+round 2 verdict stands.
+
 **Round 2 (2026-11-12, below): still not proven.** Microcoder met every
 condition but the first: it passed 22 of 28 runs against Antigravity's 24.
 It cost $14.63 against $24.76 and took a median 68 s against 161 s. On the
@@ -48,6 +53,80 @@ one or two passes is within noise; the report gives counts, not rates.
   three-file change and a reading task. Nobody tuning Microcoder looked at
   them before the final runs.
 
+
+## Round 3
+
+The coordinator approved a third round, with $35 more, for the lever round 2
+named. It was to be checked cheaply first, on the failures it was meant to
+address, then run in full only if it held up.
+
+### The change: one look before a finish is taken (a08147fa7f)
+
+- **What it does:** when a run that has run commands or edits says it is
+  finished, the loop gives it one more step of the one loop:
+  - `git --no-pager diff`;
+  - the new untracked files, at most 20, the first 8 KB of each;
+  - a note with the task again and a fixed instruction: check each
+    requirement the task states against them, then finish again or keep
+    working.
+- **Rules:** the next answer is taken as it is. It happens once a run, never
+  for a plain answer, and only when the owner asks: Coder's worker does, the
+  Lab doesn't. The reply of a finish that will get its look isn't streamed,
+  so the user sees only the one taken.
+- **Checks first:** in `loop.coax`, one check covers a finish after work
+  getting its look and the next answer being taken. Another covers once a
+  run, none for a plain answer, and none when not asked for.
+- **Where it came from:** it was designed from the failures on T3, T4 and H4.
+  H5–H8 were seen after round 2's verdict, but nothing was tuned on them.
+
+### The cheap check, one run each, against round 2's build (78ab78f450)
+
+| Task | Round 2 build | With the look | Steps after the look |
+| --- | --- | --- | --- |
+| T4 | 1 of 2 passed; $0.64, $0.63; 81 s, 57 s | passed; $0.61; 114 s | none: finished at once |
+| T3 | 1 of 2 passed; $0.21, $0.36; 44 s, 81 s | failed (no "warn" again); $0.55; 90 s | none |
+| H4 | 0 of 2 passed; $1.09, $1.62; 126 s, 201 s | failed (a fact missing); $0.48; 82 s | none |
+| T1 | 2 of 2 passed; $0.12, $0.12; 19 s, 30 s | passed; $0.17; 41 s | none |
+
+- **It changed no outcome.** In all four runs, the model read the diff and
+  its new files and finished at once, with nothing more done.
+- **T4's pass isn't the look's doing.** The answer the model gave before the
+  look was already enough. T4 had also passed in 3 of its 4 runs before this
+  round.
+- **T3 and H4 failed the same way as before.**
+- **It costs more.** On T1 it added 42% to cost ($0.17 against $0.12) and
+  about 15 s.
+- **So it stopped there.** Both of the coordinator's stop rules were met: it
+  fixed none of the failures, and it added more than about 20% to T1's cost.
+  The 28-run verdict wasn't spent.
+
+The change stays on `main` for now: the loop's checks cover it, and Coder's
+worker is the only place it is turned on. The next agent should take it out
+or keep it, but not tune it further without a measurement.
+
+### What blocks the goal, and the next lever
+
+- **The blocker stays the round 2 verdict's:** Microcoder passed 22 of 28
+  runs to Antigravity's 24, while costing 41% less and taking less than half
+  the time.
+- **What the misses are:** Argon at thinking level low leaving something out
+  of an answer. The model judges a self-check like this one as passed, so a
+  prompt-level look at its own work doesn't move it.
+- **Levers not tried:**
+  - Run the hard steps at a higher thinking level. For example, use medium
+    effort for the first step and for finishing steps only. Round 1's
+    research saw medium thinking take minutes on some calls, so this needs a
+    measurement of its own.
+  - A second setting where the model itself is stronger.
+  - Both are changes to how the model is asked, not to the loop.
+  - More runs per task, to tell a real two-run gap from noise. At $0.5 a
+    Microcoder run and $0.9 an Antigravity run, five runs of each of the 14
+    tasks cost about $100.
+
+### Round 3 spend
+
+- **Round 3:** $1.82 of the $35, plus a few cents for one tiny test turn.
+- **All rounds:** $70.67.
 
 ## Round 2
 
