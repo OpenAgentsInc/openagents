@@ -1,3 +1,5 @@
+History: finished cutover runbook (switched 2026-10-29); see [everglade/ARCHITECTURE.md](../../everglade/ARCHITECTURE.md).
+
 # Switching playtest.openagents.com to openagents.com
 
 Task `pt-cutover-plan` (#2086) of the Verse project

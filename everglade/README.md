@@ -12,6 +12,7 @@ another room. The number is `WIRE_SEATS` in
 room server's `EG_SEATS` matches.
 
 - To play, go to [everglade.world/play](https://everglade.world/play).
+- For the system map, architecture and decision log, read [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/decisions/](../docs/decisions/).
 - To build it from scratch, read [Building Everglade](book/README.md).
 - For system specs that aren't book chapters yet, see [Everglade design docs](docs/README.md),
   such as [Golemancy](docs/golemancy-profession-spec.md), the profession for commanding golems.

@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade multiplayer audit (#13157)
 
 2026-11-10 to 11-11, Chicago time. The complaint: "I don't see an arrow fly in

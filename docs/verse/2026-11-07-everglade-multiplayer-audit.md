@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade multiplayer audit: Everglade II as one multiplayer zone
 
 Date: 2026-11-07 (measured 2026-11-08, Chicago time)

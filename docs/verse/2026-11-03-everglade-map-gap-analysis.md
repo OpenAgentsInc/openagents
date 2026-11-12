@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade map gap analysis
 
 Status: in progress since wave 1, November 3, 2026. Compares the previous engine's illustrated

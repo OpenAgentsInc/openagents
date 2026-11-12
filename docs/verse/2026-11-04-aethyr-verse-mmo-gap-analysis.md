@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Aethyr and Verse: MMO architecture gap analysis
 
 Date: 2026-11-04. Source snapshot:

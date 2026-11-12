@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade: the first two minutes
 
 Date: 2026-11-06. Status: proposed experience specification; not an implementation claim.

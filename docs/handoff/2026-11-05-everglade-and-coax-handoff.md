@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Handoff: Everglade multiplayer and Coax compiler work (2026-11-05)
 
 This handoff covers the state at about 17:00 Chicago on 2026-11-05. It is for

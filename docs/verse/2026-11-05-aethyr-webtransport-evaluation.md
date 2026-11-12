@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # WebTransport datagrams against the WebSocket profile
 
 Date: 2026-11-05. Status: evaluation, decided: keep WebSocket (no-go for now).

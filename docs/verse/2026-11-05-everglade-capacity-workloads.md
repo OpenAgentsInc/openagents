@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Current Everglade capacity workloads (#12843)
 
 An encounter and a fleet have different limits. Sixteen seats in each of

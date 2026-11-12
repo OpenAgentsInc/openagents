@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade cast and combat rules under latency
 
 Date: 2026-11-04. Status: specification, built. Issue: #12790, under the Everglade multiplayer

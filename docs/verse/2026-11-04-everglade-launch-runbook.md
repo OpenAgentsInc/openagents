@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade multiplayer launch runbook (2026-11-04)
 
 This runbook takes Everglade multiplayer from tonight's deploy hold to a

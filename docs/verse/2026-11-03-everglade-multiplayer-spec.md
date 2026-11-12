@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade multiplayer specification
 
 Date: 2026-11-03. Status: specification, rewritten the same day for the owner's decision that the

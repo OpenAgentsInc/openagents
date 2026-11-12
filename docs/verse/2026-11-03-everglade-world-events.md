@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade world events and levels 1 to 3
 
 Date: 2026-11-03. Status: specification, with the build list in section 12. Epic: #12737, under

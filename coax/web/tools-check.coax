@@ -8,7 +8,7 @@
 // needs a reason, and a listed one whose bytes changed fails. Entries on the list that are gone, or now carry a
 // header, are reported so the list keeps shrinking.
 //   coax/web/tool.sh tools-check            (from the repo root)
-// Not yet run by release.sh.
+// Run by coax/web/release.sh.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";

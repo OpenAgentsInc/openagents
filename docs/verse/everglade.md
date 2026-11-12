@@ -1,3 +1,5 @@
+History: see everglade/ARCHITECTURE.md.
+
 # Everglade, the forest city
 
 Status: plan and blockout, October 28, 2026 (eg-design); the forest and
