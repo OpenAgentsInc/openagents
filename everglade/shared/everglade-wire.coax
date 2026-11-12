@@ -114,6 +114,12 @@ WIRE_MIN :: 5;
 // from before P is WIRE_PINS_FIRST's build. A room refuses a hello whose build differs ("r 0 version":
 // the page reloads into the new one).
 WIRE_ENGINE :: 1; WIRE_RULES :: 1; WIRE_CONTENT :: 1;
+// The content registry's hash WIRE_CONTENT was sealed with (#13286, everglade/model/content-ids.coax
+// CONTENT_HASH): the content pin covers every ability, spell, creature template, item kind and spawn
+// number. When the registry changes, its checks fail here until this is the new hash; raise
+// WIRE_CONTENT with it when a page and a room on either side of the change must not meet (a row
+// retired or re-meant; a row only added needs no new pin: an older build never sends it).
+WIRE_CONTENT_IDS :: 55127017896882;
 WirePins :: struct #persisted { engine: int = WIRE_ENGINE; rules: int = WIRE_RULES; content: int = WIRE_CONTENT; }
 WIRE_PINS_FIRST :: WirePins.{engine = 1, rules = 1, content = 1};
 WIRE_FRAME :: 1024;        // a page's frame at most

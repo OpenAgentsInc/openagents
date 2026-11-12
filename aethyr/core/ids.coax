@@ -9,3 +9,11 @@ CharacterId :: struct @id { value: int; }
 ItemId :: struct @id { value: int; }
 OwnerGeneration :: struct @id(ordered) { value: int #counter; }
 OperationId :: struct @id { value: int; }
+// Content identities (GitHub #13286, everglade/model/content-ids.coax): the number a wire frame or
+// a save carries for an ability, a spell, a creature template, an item kind or a spawn. A number is
+// never changed and never used again.
+AbilityId :: struct @id { value: int; }
+SpellId :: struct @id { value: int; }
+TemplateId :: struct @id { value: int; }
+ItemKindId :: struct @id { value: int; }
+SpawnId :: struct @id { value: int; }

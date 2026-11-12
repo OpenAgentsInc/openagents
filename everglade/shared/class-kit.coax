@@ -5,8 +5,8 @@
 // (coax/web/room/room-everglade.coax eg_e2_cast). Nothing here rolls or draws: the SRD 5e engine
 // (rules/srd/, through fivebar.coax) says what each ability is.
 //
-// On the wire (everglade-wire.coax C and e cast) slot i of class c's bar is XK_SLOT0 + c * XK_PER +
-// i, the bar in its own order (xc_bar_level), never the order a page has arranged it in.
+// On the wire (everglade-wire.coax C and e cast) an ability is its content number (xk_wire,
+// everglade/model/content-ids.coax, #13286), never its place on a bar.
 //   coax/bin/coax test everglade/shared/class-kit.coax
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -16,6 +16,7 @@
 #load "../../rules/srd/battle.coax";
 #load "../../aethyr/action/area-aim.coax" as aa;   // the areas abilities open, placed, outlined and resolved (#13081)
 #load "fivebar.coax";
+#load "../model/content-ids.coax";   // the numbers a cast's wire slot and a save carry (#13286)
 #load "../../rules/srd/death-save-line.coax";   // at 0 Hit Points: the Death Saving Throws on a row and the plain line, every realm
 
 XC_SLOTS :: 24;
@@ -356,23 +357,31 @@ xc_sound :: (a: FbAb, klass: int) -> XcSnd {
   return xs("arcane-cast", "", "", "", 1);
 }
 
-// ---- the wire: class c's ability i
-// A wire slot names an ability of class c whatever its level (#13046): slot i is the i-th of the class's
-// catalog, every ability its bars at levels 1 to XK_LEVELS hold, in the order they first appear. Level
-// 1's bar is the catalog's start, so its slots are the bar's own order. A seat's level says which of
-// them its bar holds (xk_entry_at); a page plays another's cast from the catalog, its level unknown.
+// ---- the wire: an ability's content number
+// A cast's wire slot is its ability's content number (#13286, everglade/model/content-ids.coax): a
+// number frozen in the registry under the key "ability/CLASS/SLUG", never the place the ability has
+// on a bar. A class's bar is a list of abilities in the order it is shown; reordering it, or adding
+// one before another, changes no wire byte. An ability a bar holds with no registry row can't be
+// cast (xk_wire -1) and fails this file's checks: give it a row first.
+// The numbers the registry froze were the catalog's of 2026-11-12: XK_SLOT0 + class * XK_PER + i.
 XK_SLOT0 :: 128;   // past Everglade's bars (fivebar.coax: its own 0 on, the Warlock's FB_WL0, Character Create's one ability FB_CL0)
 XK_PER :: XC_SLOTS;
 XK_LEVEL :: 1;     // a seat that has said no level
 XK_LEVELS :: 6;    // Everglade II's levels: 1 to 6, as Character Create offers
+XK_CL_SLUG :: [12] string.["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"];
+// A feature's part of its key, by what it is (FB_*; "" for a spell, whose part is its spell's id).
+XK_FB_SLUG :: [36] string.["attack", "dash", "", "reckless-attack", "rage", "flurry-of-blows", "patient-defense", "step-of-the-wind",
+  "wholeness-of-body", "second-wind", "action-surge", "lay-on-hands", "sacred-weapon", "cunning-dash", "steady-aim", "innate-sorcery",
+  "bardic-inspiration", "turn-undead", "preserve-life", "lands-aid", "wild-resurgence", "world", "wild-shape", "hide", "grapple", "shove",
+  "ready", "skill", "ritual", "", "shoot", "shapechange", "fire-breath", "tail-sweep", "wing-buffet", "frightful-roar"];
 xk_level :: (level: int) -> int { return ifx level < 1 then 1 else ifx level > XK_LEVELS then XK_LEVELS else level; }
+// Class c's i-th frozen number of 2026-11-12, for a check that names one; a bar's place is never it.
 xk_slot :: (c: int, i: int) -> int { return XK_SLOT0 + c * XK_PER + i; }
 xk_slot_class :: (slot: int) -> int { return ifx slot >= XK_SLOT0 && slot < XK_SLOT0 + FB_CL_N * XK_PER then (slot - XK_SLOT0) / XK_PER else -1; }
-xk_slot_index :: (slot: int) -> int { return ifx xk_slot_class(slot) >= 0 then (slot - XK_SLOT0) % XK_PER else -1; }
-// Class c's bar at `level`, in its own order: how many.
+// Class c's bar at `level`, in the order it is shown: how many.
 xk_bar_at :: (c: int, level: int, out: [] FbAb) -> int { return ifx c >= 0 && c < FB_CL_N then xc_bar_level(c, xk_level(level), out) else 0; }
 xk_bar :: (c: int, out: [] FbAb) -> int { return xk_bar_at(c, XK_LEVEL, out); }
-// Class c's catalog: how many.
+// Class c's catalog, every ability its bars at levels 1 to XK_LEVELS hold: how many.
 xk_catalog :: (c: int, out: [] FbAb) -> int {
   n := 0;
   for level: 1..<XK_LEVELS + 1 {
@@ -385,11 +394,71 @@ xk_catalog :: (c: int, out: [] FbAb) -> int {
   }
   return n;
 }
-// The wire slot of class c's ability a (-1: not in its catalog).
-xk_wire :: (c: int, a: FbAb) -> int {
-  cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]);
-  for i: 0..<n { if xc_id(cat[i]) == xc_id(a) { return xk_slot(c, i); } }
-  return -1;
+// The content number of class c's ability a (-1: the registry has no row for it).
+xk_ability :: (c: int, a: FbAb) -> AbilityId {
+  if c < 0 || c >= FB_CL_N || a.kind < 0 || a.kind >= XK_FB_SLUG.count { return AbilityId.{value = -1}; }
+  key: [CT_KEY] u8; n := 0;
+  if a.kind == FB_SPELL {
+    if a.sp < 0 { return AbilityId.{value = -1}; }
+    spell: [CT_KEY] u8; m := content_join(spell[..], "spell", rs_spell(a.sp).id, "");
+    n = content_join(key[..], "ability", XK_CL_SLUG[c], cast(string) spell[0..<m]);
+  } else { n = content_join(key[..], "ability", XK_CL_SLUG[c], XK_FB_SLUG[a.kind]); }
+  return content_ability(cast(string) key[0..<n]);
+}
+// The wire slot of class c's ability a: its content number (-1: none).
+xk_wire :: (c: int, a: FbAb) -> int { return xk_ability(c, a).value; }
+
+#test "class kits: reordering a class's bar changes no wire slot, and every ability a bar holds has its number" #steps 400000000 {
+  seen := 0;
+  for c: 0..<FB_CL_N {
+    for level: 1..<XK_LEVELS + 1 {
+      bar: [XC_SLOTS] FbAb; n := xk_bar_at(c, level, bar[..]);
+      back: [XC_SLOTS] FbAb; for i: 0..<n { back[i] = bar[n - 1 - i]; }
+      for i: 0..<n {
+        w := xk_wire(c, bar[i]);
+        // a row, in this class's block of numbers, whatever the place on the bar
+        #assert w >= 0 && xk_slot_class(w) == c && w == xk_wire(c, back[n - 1 - i]);
+        for j: 0..<i { #assert xk_wire(c, bar[j]) != w; }
+        e := xk_entry_at(c, level, w);
+        #assert e.ok && xc_id(e.ab) == xc_id(bar[i]);
+        seen += 1;
+      }
+    }
+    cat: [XC_SLOTS] FbAb; m := xk_catalog(c, cat[..]);
+    // the numbers frozen on 2026-11-12 were the catalog's places
+    for i: 0..<m { #assert xk_wire(c, cat[i]) == xk_slot(c, i); }
+  }
+  #assert seen > 200;
+  // every ability row is one some class's catalog holds: no row names content that is gone
+  for i: 0..<CONTENT_N {
+    if CONTENT[i].kind != CT_ABILITY { continue; }
+    c := xk_slot_class(CONTENT[i].id); #assert c >= 0 && xk_entry(c, CONTENT[i].id).ok;
+  }
+  #assert xk_wire(-1, xc_attack()) == -1 && xk_wire(FB_CL_N, xc_attack()) == -1;
+  #assert xk_wire(FB_CL_WIZARD, fb_feature(FB_RAGE, "Rage", "rage")) == -1 && xk_wire(FB_CL_FIGHTER, fb_spell(SP_FIREBALL, 3, FB_POINT)) == -1;
+  none := xc_attack(); none.kind = 99; #assert xk_wire(FB_CL_FIGHTER, none) == -1;
+}
+
+// A spell's and a stat block's content numbers: the rules' own table places, frozen under the
+// source's keys ("spell/ID", "monster/ID"). A spell or stat block moved in its table fails here.
+xk_spell_id :: (sp: int) -> SpellId {
+  if !rs_executable_spell(sp) { return SpellId.{value = -1}; }
+  key: [CT_KEY] u8; n := content_join(key[..], "spell", rs_spell(sp).id, "");
+  return content_spell(cast(string) key[0..<n]);
+}
+xk_template_id :: (mon: int) -> TemplateId {
+  return ifx mon > MON_NONE && mon < MON_N then content_template(RS_MON_ID[mon - 1]) else TemplateId.{value = -1};
+}
+#test "content ids: every executable spell and every stat block carries its frozen number" #steps 400000000 {
+  spells := 0; blocks := 0;
+  for sp: -1..<RS_HOUSE_END + 1 {
+    if rs_executable_spell(sp) { #assert xk_spell_id(sp).value == sp; spells += 1; } else { #assert xk_spell_id(sp).value == -1; }
+  }
+  for m: 0..<MON_N + 1 {
+    if m > MON_NONE && m < MON_N { #assert xk_template_id(m).value == m; blocks += 1; } else { #assert xk_template_id(m).value == -1; }
+  }
+  rows := 0; for i: 0..<CONTENT_N { if CONTENT[i].kind == CT_SPELL || CONTENT[i].kind == CT_CREATURE { rows += 1; } }
+  #assert rows == spells + blocks && spells == 94 && blocks == MON_N - 1;
 }
 
 #test "the level 3 Life Cleric bar gains Lesser Restoration at a stable shared wire slot" {
@@ -454,9 +523,9 @@ xk_rules :: (c: int, a: FbAb) -> FbAb {
 XkEntry :: struct { ok: bool; ab: FbAb; aim: XcAim; }
 xk_entry :: (c: int, slot: int) -> XkEntry {
   if xk_slot_class(slot) != c { return XkEntry.{}; }
-  cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]); i := xk_slot_index(slot);
-  if i < 0 || i >= n { return XkEntry.{}; }
-  return XkEntry.{ok = true, ab = cat[i], aim = xc_aim_for(cat[i], xk_weapon(c))};
+  cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]);
+  for i: 0..<n { if xk_wire(c, cat[i]) == slot { return XkEntry.{ok = true, ab = cat[i], aim = xc_aim_for(cat[i], xk_weapon(c))}; } }
+  return XkEntry.{};
 }
 // The same, for a seat of class c at `level`: ok only when that level's bar holds it.
 xk_entry_at :: (c: int, level: int, slot: int) -> XkEntry {
@@ -474,8 +543,8 @@ xk_entry_at :: (c: int, level: int, slot: int) -> XkEntry {
     #assert n >= 2 && n <= XC_SLOTS;
     #assert bar[0].kind == fb_cl_ability(c).kind && bar[0].name == fb_cl_ability(c).name && xc_url(bar[0].art) == XC_EG_URL;
     for i: 0..<n {
-      s := xk_slot(c, i);
-      #assert xk_slot_class(s) == c && xk_slot_index(s) == i && xk_entry(c, s).ok && xk_entry(c, s).ab.name == bar[i].name;
+      s := xk_wire(c, bar[i]);
+      #assert xk_slot_class(s) == c && xk_entry(c, s).ok && xk_entry(c, s).ab.name == bar[i].name;
       #assert !xk_entry((c + 1) % FB_CL_N, s).ok;   // another class's slot
     }
     #assert !xk_entry_at(c, 1, xk_slot(c, n)).ok && !xk_entry(c, FB_CL0 + c).ok && !xk_entry(c, 1).ok;

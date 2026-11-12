@@ -190,7 +190,7 @@ e2at_room :: (v: [] RmServer, code: string) -> int {
 // The Ranger's Attack on the wire: the Longbow's shot (class-kit.coax xk_bar).
 e2at_attack :: () -> int {
   bar: [XC_SLOTS] FbAb; n := xk_bar(FB_CL_RANGER, bar[..]);
-  for i: 0..<n { if bar[i].kind == FB_ATTACK { return xk_slot(FB_CL_RANGER, i); } }
+  for i: 0..<n { if bar[i].kind == FB_ATTACK { return xk_wire(FB_CL_RANGER, bar[i]); } }
   return -1;
 }
 // The launch and the Attack's request a page sends: from the hand toward `to`, drawn at tick `view`.

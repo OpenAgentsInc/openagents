@@ -22,6 +22,10 @@
 // 6. proto/wire-allowlist.txt has a line that REV's copy lacks, and the line carries no reason and
 //    issue number ("# why (#1234)"). The allowlist shrinks: a line that no longer excuses anything
 //    fails too, so the list stays true.
+// 7. A content number is gone or renamed (GitHub #13286): a row of REV's copy of
+//    proto/verse/everglade-content-ids-v1.json (a kind, a number and its key) that this tree's copy
+//    lacks or gives another key, or a number or key this tree's copy uses twice in a kind. A content
+//    number is never changed and never used again; content that goes keeps its row.
 // The registry is checked as well: each row's fields (including its owning bounded context,
 // docs/architecture/contexts.md, GitHub #13316), that its codec sits in its owner's folders, and
 // that the files it names exist. A row marked "status": "pending" names a shape and its intended
@@ -44,6 +48,7 @@ WC_REGISTRY :: "proto/registry.json";
 WC_ALLOW :: "proto/wire-allowlist.txt";
 WC_MODULES :: "proto/modules.json";
 WC_SELF :: "coax/web/wire-check.coax";
+WC_CONTENT :: "proto/verse/everglade-content-ids-v1.json";   // the content numbers (rule 7)
 WC_HOW :: "proto/README.md, \"Register a wire shape\"";
 WC_FILE :: 8388608;        // the largest file read, and the file list
 WC_LINES :: 4096;          // allowlist lines tracked
@@ -640,6 +645,72 @@ wc_judge_allow :: (d: Jv, allow: string, used: [] bool, run: WcRun) -> int {
   return bad;
 }
 
+// ---- rule 7: the content numbers
+// Row `row` of a content profile's "ids": its kind and key into the buffers, its number returned (-1: malformed).
+WcContent :: struct { ok: bool; kind: string; id: int; key: string; }
+wc_content_row :: (d: Jv, row: int, kb: [] u8, sb: [] u8) -> WcContent {
+  kn := jv_str(d, jv_get(d, row, "kind"), kb); sn := jv_str(d, jv_get(d, row, "key"), sb); id := jv_int(d, jv_get(d, row, "id"), -1);
+  if kn < 1 || sn < 1 || id < 0 { return WcContent.{}; }
+  return WcContent.{ok = true, kind = cast(string) kb[0..<kn], id = id, key = cast(string) sb[0..<sn]};
+}
+// How many faults this tree's content profile `now` has against the base's `before` (has_before
+// false: no copy there, every row is new): a malformed row, a number or key used twice in a kind,
+// and a base row that is gone or whose key changed.
+wc_judge_content :: (now: Jv, before: Jv, has_before: bool, run: WcRun) -> int #effects(all) {
+  bad := 0;
+  ids := jv_get(now, 0, "ids"); n := jv_len(now, ids);
+  if n < 1 { if !run.quiet { print("FAIL %: no \"ids\" rows\n", WC_CONTENT); } return 1; }
+  kb: [2][64] u8; sb: [2][256] u8;
+  for i: 0..<n {
+    r := wc_content_row(now, jv_at(now, ids, i), kb[0][..], sb[0][..]);
+    if !r.ok { bad += 1; if !run.quiet { print("FAIL %: row % has no kind, number or key\n", WC_CONTENT, i); } continue; }
+    for j: 0..<i {
+      o := wc_content_row(now, jv_at(now, ids, j), kb[1][..], sb[1][..]);
+      if o.ok && o.kind == r.kind && (o.id == r.id || o.key == r.key) {
+        bad += 1; if !run.quiet { print("FAIL %: % % (%) repeats a number or key of its kind\n", WC_CONTENT, r.kind, r.id, r.key); }
+      }
+    }
+  }
+  if !has_before { return bad; }
+  was := jv_get(before, 0, "ids");
+  for i: 0..<jv_len(before, was) {
+    o := wc_content_row(before, jv_at(before, was, i), kb[1][..], sb[1][..]);
+    if !o.ok { continue; }
+    kept := false;
+    for j: 0..<n {
+      r := wc_content_row(now, jv_at(now, ids, j), kb[0][..], sb[0][..]);
+      if r.ok && r.kind == o.kind && r.id == o.id && r.key == o.key { kept = true; }
+    }
+    if !kept { bad += 1; if !run.quiet { print("FAIL %: % % (%) is gone or changed; a content number is never changed and never used again (rule 7)\n", WC_CONTENT, o.kind, o.id, o.key); } }
+  }
+  return bad;
+}
+#test "rule 7: a content row that is gone, renumbered, renamed or repeated fails; a new row passes" {
+  base := "{\"ids\":[{\"kind\":\"ability\",\"id\":128,\"key\":\"ability/a\"},{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/a\"}]}";
+  texts := [8] string.[
+    base,
+    "{\"ids\":[{\"kind\":\"ability\",\"id\":128,\"key\":\"ability/a\"},{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/a\"},{\"kind\":\"spell\",\"id\":1,\"key\":\"spell/b\"}]}",
+    "{\"ids\":[{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/a\"},{\"kind\":\"ability\",\"id\":128,\"key\":\"ability/a\"}]}",
+    "{\"ids\":[{\"kind\":\"ability\",\"id\":128,\"key\":\"ability/a\"}]}",
+    "{\"ids\":[{\"kind\":\"ability\",\"id\":129,\"key\":\"ability/a\"},{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/a\"}]}",
+    "{\"ids\":[{\"kind\":\"ability\",\"id\":128,\"key\":\"ability/b\"},{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/a\"}]}",
+    "{\"ids\":[{\"kind\":\"ability\",\"id\":128,\"key\":\"ability/a\"},{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/a\"},{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/c\"}]}",
+    "{\"ids\":[{\"kind\":\"ability\",\"id\":128,\"key\":\"ability/a\"},{\"kind\":\"spell\",\"id\":0,\"key\":\"spell/a\"},{\"kind\":\"spell\",\"key\":\"spell/c\"}]}"];
+  want := [8] int.[0, 0, 0, 1, 1, 1, 1, 1];
+  bn: [256] JvNode; bd: [1] Jv; #assert jv_parse(bd[..], base, bn[..]);
+  for k: 0..<8 {
+    nn: [256] JvNode; nd: [1] Jv; #assert jv_parse(nd[..], texts[k], nn[..]);
+    #assert wc_judge_content(nd[0], bd[0], true, WC_T_QUIET) == want[k];
+  }
+  // with no copy at the base every row is new; a repeat still fails, and a file with no rows does
+  nn: [256] JvNode; nd: [1] Jv;
+  #assert jv_parse(nd[..], texts[3], nn[..]) && wc_judge_content(nd[0], bd[0], false, WC_T_QUIET) == 0;
+  #assert jv_parse(nd[..], texts[6], nn[..]) && wc_judge_content(nd[0], bd[0], false, WC_T_QUIET) == 1;
+  #assert jv_parse(nd[..], "{\"ids\":[]}", nn[..]) && wc_judge_content(nd[0], bd[0], false, WC_T_QUIET) == 1;
+  // the same key in two kinds, and the same number in two kinds, are different content
+  #assert jv_parse(nd[..], "{\"ids\":[{\"kind\":\"spell\",\"id\":0,\"key\":\"x\"},{\"kind\":\"item\",\"id\":0,\"key\":\"x\"}]}", nn[..]) && wc_judge_content(nd[0], bd[0], false, WC_T_QUIET) == 0;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh wire-check [--base REV] [--list]"); return 2; }
@@ -724,6 +795,28 @@ tool_main :: () -> int #export_c #effects(all) {
     before := ifx s.started == 0 && s.status == 0 then cast(string) body[0..<s.out_n] else "";
     bad += wc_grown(allow, before, run, added[..]);
     if added[0] > 0 { print("note: % line% of % not in %'s copy; a new line needs a reason and an issue number\n", added[0], ifx added[0] == 1 then "" else "s", WC_ALLOW, base); }
+  }
+
+  // Rule 7: the content numbers against the base's copy.
+  ctext: [1048576] u8; cnodes: [16384] JvNode; cd: [1] Jv;
+  cnow := fs_read(WC_CONTENT, ctext[..]);
+  if cnow < 0 || !jv_parse(cd[..], cast(string) ctext[0..<cnow], cnodes[..]) { print("FAIL %: missing or not JSON\n", WC_CONTENT); bad += 1; }
+  else {
+    btext: [1048576] u8; bnodes: [16384] JvNode; bd: [1] Jv; has_before := false;
+    if v.started == 0 && v.status == 0 {
+      spec: [1024] u8; sn := 0;
+      for c: base { if sn < 900 { spec[sn] = c; sn += 1; } }
+      spec[sn] = ':'; sn += 1;
+      for c: WC_CONTENT { spec[sn] = c; sn += 1; }
+      show := [3] string.["git", "show", cast(string) spec[0..<sn]];
+      s := proc_run(show[..], 60000, btext[..], err[..]);
+      // no file at the base: this is the commit that adds it
+      if s.started == 0 && s.status == 0 && !s.cut {
+        if jv_parse(bd[..], cast(string) btext[0..<s.out_n], bnodes[..]) { has_before = true; }
+        else { print("FAIL %: %'s copy is not JSON\n", WC_CONTENT, base); bad += 1; }
+      }
+    }
+    bad += wc_judge_content(cd[0], bd[0], has_before, run);
   }
 
   lines := 0; rows := 0;

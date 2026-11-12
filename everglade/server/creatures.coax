@@ -81,18 +81,59 @@ E2Mon :: struct {
 E2Shot :: struct { live: bool; m: int; seat: int; tx: f32; tz: f32; land: int; }
 E2Monsters :: struct { mon: [E2M_N] E2Mon; shots: [E2M_SHOTS] E2Shot; started: bool; }
 
-e2mo_kind :: (m: int) -> int { return ifx m < 8 then E2M_WOLF else E2M_GOBLIN; }
-e2mo_group :: (m: int) -> int { return ifx m < 3 then 0 else ifx m < 5 then 1 else ifx m < 8 then 2 else 3; }
+// Everglade II's spawns (#13286): one row a monster, named by its content number (the M the creature
+// frames carry, everglade/model/content-ids.coax "everglade2/..."): its stat block (a creature
+// template's content number, rules/srd/monsters.coax), its group (the three packs, then the camp) and
+// whether it is the camp's archer. A monster is what its row says, never what its place in a list implies.
+E2Spawn :: struct { id: int; key: string; block: int; group: int; archer: bool; }
+E2M_SPAWN :: [E2M_N] E2Spawn.[
+  E2Spawn.{id = 0, key = "everglade2/pack-1/wolf-1", block = MON_WOLF, group = 0},
+  E2Spawn.{id = 1, key = "everglade2/pack-1/wolf-2", block = MON_WOLF, group = 0},
+  E2Spawn.{id = 2, key = "everglade2/pack-1/wolf-3", block = MON_WOLF, group = 0},
+  E2Spawn.{id = 3, key = "everglade2/pack-2/wolf-1", block = MON_WOLF, group = 1},
+  E2Spawn.{id = 4, key = "everglade2/pack-2/wolf-2", block = MON_WOLF, group = 1},
+  E2Spawn.{id = 5, key = "everglade2/pack-3/wolf-1", block = MON_WOLF, group = 2},
+  E2Spawn.{id = 6, key = "everglade2/pack-3/wolf-2", block = MON_WOLF, group = 2},
+  E2Spawn.{id = 7, key = "everglade2/pack-3/wolf-3", block = MON_WOLF, group = 2},
+  E2Spawn.{id = 8, key = "everglade2/camp/goblin-1", block = MON_GOBLIN_WARRIOR, group = 3},
+  E2Spawn.{id = 9, key = "everglade2/camp/goblin-2", block = MON_GOBLIN_WARRIOR, group = 3},
+  E2Spawn.{id = 10, key = "everglade2/camp/archer-1", block = MON_GOBLIN_WARRIOR, group = 3, archer = true},
+  E2Spawn.{id = 11, key = "everglade2/camp/archer-2", block = MON_GOBLIN_WARRIOR, group = 3, archer = true}
+];
+// The stat block each monster kind on the wire (h2 KIND: E2M_WOLF, E2M_GOBLIN) fields.
+E2M_TEMPLATE :: [2] int.[MON_WOLF, MON_GOBLIN_WARRIOR];
+e2mo_spawn_row :: (m: int) -> E2Spawn { return ifx m >= 0 && m < E2M_N then E2M_SPAWN[m] else E2Spawn.{id = -1, block = MON_NONE, group = -1}; }
+e2mo_kind :: (m: int) -> int { return ifx e2mo_spawn_row(m).block == MON_GOBLIN_WARRIOR then E2M_GOBLIN else E2M_WOLF; }
+e2mo_group :: (m: int) -> int { return e2mo_spawn_row(m).group; }
+e2mo_archer :: (m: int) -> bool { return e2mo_spawn_row(m).archer; }
+// Monster m's place among its group's of its own role (0 on): the first wolf of its pack, the camp's second archer.
+e2mo_place :: (m: int) -> int {
+  me := e2mo_spawn_row(m); n := 0;
+  for o: 0..<m { r := E2M_SPAWN[o]; if r.group == me.group && r.archer == me.archer { n += 1; } }
+  return n;
+}
+#test "e2 monsters: every spawn's number, key and stat block are the content registry's" {
+  for m: 0..<E2M_N {
+    r := E2M_SPAWN[m];
+    #assert r.id == m && content_spawn(r.key).value == m && content_key(CT_SPAWN, m) == r.key;
+    #assert content_template(RS_MON_ID[r.block - 1]).value == r.block && E2M_TEMPLATE[e2mo_kind(m)] == r.block;
+    #assert e2mo_archer(m) == (m >= 10) && e2mo_kind(m) == (ifx m < 8 then E2M_WOLF else E2M_GOBLIN);
+  }
+  groups := [E2M_N] int.[0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3]; places := [E2M_N] int.[0, 1, 2, 0, 1, 0, 1, 2, 0, 1, 0, 1];
+  for m: 0..<E2M_N { #assert e2mo_group(m) == groups[m] && e2mo_place(m) == places[m]; }
+  #assert e2mo_spawn_row(-1).id == -1 && e2mo_spawn_row(E2M_N).block == MON_NONE && e2mo_group(E2M_N) == -1 && !e2mo_archer(-1);
+  n := 0; for i: 0..<CONTENT_N { if CONTENT[i].kind == CT_SPAWN { n += 1; } } #assert n == E2M_N;
+}
+#test "the P frame's content pin is sealed with the content registry's hash" { #assert WIRE_CONTENT_IDS == CONTENT_HASH && WIRE_CONTENT_IDS == content_hash(); }
 // Monster m's home: a pack's in the woods 7 to 9 m off the path's middle; the camp's two by the fire and
 // its two archers on their perches.
 e2mo_home :: (m: int) -> [3] f32 {
-  if m >= 8 {
-    j := m - 8;
-    if j >= 2 { p := e2_camp_perch(j - 2); return [3] f32.[p[0], p[1], e2_heading(e2_road_x(p[1]) - p[0], 0)]; }
+  g := e2mo_group(m); j := e2mo_place(m);
+  if g == 3 {
+    if e2mo_archer(m) { p := e2_camp_perch(j); return [3] f32.[p[0], p[1], e2_heading(e2_road_x(p[1]) - p[0], 0)]; }
     x := e2_camp_x() + ifx j == 0 then -1.4f32 else 1.5f32; z := E2_CAMP_Z + ifx j == 0 then 0.9f32 else -0.7f32;
     return [3] f32.[x, z, e2_heading(e2_camp_x() - x, E2_CAMP_Z - z)];
   }
-  g := e2mo_group(m); first := ifx g == 0 then 0 else ifx g == 1 then 3 else 5; j := m - first;
   z0 := ifx g == 0 then -175.0f32 else ifx g == 1 then -245.0f32 else -315.0f32;
   side := ifx g == 1 then -1.0f32 else 1.0f32;
   z := z0 + f32(j) * 2.4 - 2.4;
@@ -100,9 +141,9 @@ e2mo_home :: (m: int) -> [3] f32 {
   return [3] f32.[x, z, e2_heading(e2_road_x(z) - x, 0)];
 }
 e2mo_rules_creature :: (kind: int) -> RsCreature {
-  return ifx kind == E2M_WOLF then rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM) else rs_monster(MON_GOBLIN_WARRIOR, "Goblin Warrior", EGB_BEAST_TEAM);
+  return rs_monster(e2mo_block(kind), RS_MON_NAME[e2mo_block(kind) - 1], EGB_BEAST_TEAM);
 }
-e2mo_block :: (kind: int) -> int { return ifx kind == E2M_WOLF then MON_WOLF else MON_GOBLIN_WARRIOR; }
+e2mo_block :: (kind: int) -> int { return E2M_TEMPLATE[ifx kind == E2M_GOBLIN then E2M_GOBLIN else E2M_WOLF]; }
 // Its block's melee attack (the Bite, the Scimitar) and its ranged one (the Shortbow; the Wolf none).
 e2mo_melee :: (kind: int) -> RsStatAttack {
   a := rs_monster_action(e2mo_block(kind));
@@ -141,7 +182,7 @@ e2mo_spawn :: (v: [] RmServer, k: int, m: int) -> bool {
   id := r[0].next_id; r[0].next_id += 1;
   r[0].beasts[q] = EgBeast.{id = id, tag = id, by = -1, spell = -1, form = E2M_FORM, wild = true, x = h[0], z = h[1], yaw = h[2], goal_x = h[0], goal_z = h[1]};
   life := mo[0].life + 1;
-  mo[0] = E2Mon.{q = q, id = id, life = life, kind = kind, group = e2mo_group(m), archer = m >= 10, state = E2M_IDLE,
+  mo[0] = E2Mon.{q = q, id = id, life = life, kind = kind, group = e2mo_group(m), archer = e2mo_archer(m), state = E2M_IDLE,
                  x = h[0], z = h[1], yaw = h[2], hx = h[0], hz = h[1], hyaw = h[2], spin = ifx m % 2 == 0 then 1.0f32 else -1.0f32};
   return true;
 }

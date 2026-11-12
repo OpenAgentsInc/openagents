@@ -1,0 +1,324 @@
+// Everglade's content registry (GitHub #13286): every ability, spell, creature template, item kind
+// and spawn that a wire frame or a save names has one row here, a number and the key that names it.
+// A number is never changed and never used again: a row is only ever added, or its content retired
+// while the row stays. The wire and the checkpoint carry the numbers; the order a class's bar, the
+// spell table or a spawn list is written in is presentation and changes no byte.
+//
+// The pinned copy is proto/verse/everglade-content-ids-v1.json (docs/protocol/everglade-content-ids-v1.md).
+// coax/web/room/content-profile.coax holds this table to it, and coax/web/tool.sh wire-check fails
+// when a row of origin/main's copy is gone or changed. To add content: add its row at the end of its
+// kind here and in the profile, with the next unused number, and set CONTENT_HASH to what the check prints.
+//   coax/bin/coax test everglade/model/content-ids.coax
+#load "../../aethyr/core/ids.coax";
+
+CT_ABILITY :: 1; CT_SPELL :: 2; CT_CREATURE :: 3; CT_ITEM :: 4; CT_SPAWN :: 5;
+CT_KINDS :: 5;
+CT_KIND :: [6] string.["", "ability", "spell", "creature", "item", "spawn"];
+CT_KEY :: 96;   // bytes in a key at most
+ContentRow :: struct { kind: int; id: int; key: string; }
+CONTENT_N :: 211;
+CONTENT_HASH :: 55127017896882;
+CONTENT :: [CONTENT_N] ContentRow.[
+  ContentRow.{kind = CT_ABILITY, id = 128, key = "ability/barbarian/rage"},
+  ContentRow.{kind = CT_ABILITY, id = 129, key = "ability/barbarian/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 130, key = "ability/barbarian/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 131, key = "ability/barbarian/reckless-attack"},
+  ContentRow.{kind = CT_ABILITY, id = 152, key = "ability/bard/spell/vicious-mockery"},
+  ContentRow.{kind = CT_ABILITY, id = 153, key = "ability/bard/spell/healing-word"},
+  ContentRow.{kind = CT_ABILITY, id = 154, key = "ability/bard/spell/thunderwave"},
+  ContentRow.{kind = CT_ABILITY, id = 155, key = "ability/bard/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 156, key = "ability/bard/spell/hypnotic-pattern"},
+  ContentRow.{kind = CT_ABILITY, id = 157, key = "ability/bard/spell/fireball"},
+  ContentRow.{kind = CT_ABILITY, id = 176, key = "ability/cleric/spell/sacred-flame"},
+  ContentRow.{kind = CT_ABILITY, id = 177, key = "ability/cleric/spell/guiding-bolt"},
+  ContentRow.{kind = CT_ABILITY, id = 178, key = "ability/cleric/spell/healing-word"},
+  ContentRow.{kind = CT_ABILITY, id = 179, key = "ability/cleric/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 180, key = "ability/cleric/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 181, key = "ability/cleric/turn-undead"},
+  ContentRow.{kind = CT_ABILITY, id = 182, key = "ability/cleric/preserve-life"},
+  ContentRow.{kind = CT_ABILITY, id = 183, key = "ability/cleric/spell/lesser-restoration"},
+  ContentRow.{kind = CT_ABILITY, id = 184, key = "ability/cleric/spell/aid"},
+  ContentRow.{kind = CT_ABILITY, id = 185, key = "ability/cleric/spell/spirit-guardians"},
+  ContentRow.{kind = CT_ABILITY, id = 186, key = "ability/cleric/spell/revivify"},
+  ContentRow.{kind = CT_ABILITY, id = 200, key = "ability/druid/spell/starry-wisp"},
+  ContentRow.{kind = CT_ABILITY, id = 201, key = "ability/druid/spell/produce-flame-hurl"},
+  ContentRow.{kind = CT_ABILITY, id = 202, key = "ability/druid/spell/thunderwave"},
+  ContentRow.{kind = CT_ABILITY, id = 203, key = "ability/druid/spell/entangle"},
+  ContentRow.{kind = CT_ABILITY, id = 204, key = "ability/druid/spell/healing-word"},
+  ContentRow.{kind = CT_ABILITY, id = 205, key = "ability/druid/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 206, key = "ability/druid/wild-shape"},
+  ContentRow.{kind = CT_ABILITY, id = 207, key = "ability/druid/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 208, key = "ability/druid/lands-aid"},
+  ContentRow.{kind = CT_ABILITY, id = 209, key = "ability/druid/spell/call-lightning"},
+  ContentRow.{kind = CT_ABILITY, id = 224, key = "ability/fighter/second-wind"},
+  ContentRow.{kind = CT_ABILITY, id = 225, key = "ability/fighter/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 226, key = "ability/fighter/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 227, key = "ability/fighter/action-surge"},
+  ContentRow.{kind = CT_ABILITY, id = 248, key = "ability/monk/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 249, key = "ability/monk/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 250, key = "ability/monk/flurry-of-blows"},
+  ContentRow.{kind = CT_ABILITY, id = 251, key = "ability/monk/patient-defense"},
+  ContentRow.{kind = CT_ABILITY, id = 252, key = "ability/monk/step-of-the-wind"},
+  ContentRow.{kind = CT_ABILITY, id = 253, key = "ability/monk/wholeness-of-body"},
+  ContentRow.{kind = CT_ABILITY, id = 272, key = "ability/paladin/lay-on-hands"},
+  ContentRow.{kind = CT_ABILITY, id = 273, key = "ability/paladin/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 274, key = "ability/paladin/spell/divine-smite"},
+  ContentRow.{kind = CT_ABILITY, id = 275, key = "ability/paladin/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 276, key = "ability/paladin/spell/sacred-flame"},
+  ContentRow.{kind = CT_ABILITY, id = 277, key = "ability/paladin/spell/guidance"},
+  ContentRow.{kind = CT_ABILITY, id = 278, key = "ability/paladin/sacred-weapon"},
+  ContentRow.{kind = CT_ABILITY, id = 279, key = "ability/paladin/spell/protection-from-evil-and-good"},
+  ContentRow.{kind = CT_ABILITY, id = 280, key = "ability/paladin/spell/aid"},
+  ContentRow.{kind = CT_ABILITY, id = 281, key = "ability/paladin/spell/zone-of-truth"},
+  ContentRow.{kind = CT_ABILITY, id = 296, key = "ability/ranger/spell/hunters-mark"},
+  ContentRow.{kind = CT_ABILITY, id = 297, key = "ability/ranger/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 298, key = "ability/ranger/spell/entangle"},
+  ContentRow.{kind = CT_ABILITY, id = 299, key = "ability/ranger/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 320, key = "ability/rogue/attack"},
+  ContentRow.{kind = CT_ABILITY, id = 321, key = "ability/rogue/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 322, key = "ability/rogue/cunning-dash"},
+  ContentRow.{kind = CT_ABILITY, id = 323, key = "ability/rogue/steady-aim"},
+  ContentRow.{kind = CT_ABILITY, id = 344, key = "ability/sorcerer/spell/fire-bolt"},
+  ContentRow.{kind = CT_ABILITY, id = 345, key = "ability/sorcerer/spell/chill-touch"},
+  ContentRow.{kind = CT_ABILITY, id = 346, key = "ability/sorcerer/spell/ray-of-sickness"},
+  ContentRow.{kind = CT_ABILITY, id = 347, key = "ability/sorcerer/spell/thunderwave"},
+  ContentRow.{kind = CT_ABILITY, id = 348, key = "ability/sorcerer/innate-sorcery"},
+  ContentRow.{kind = CT_ABILITY, id = 349, key = "ability/sorcerer/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 350, key = "ability/sorcerer/spell/scorching-ray"},
+  ContentRow.{kind = CT_ABILITY, id = 351, key = "ability/sorcerer/spell/fireball"},
+  ContentRow.{kind = CT_ABILITY, id = 368, key = "ability/warlock/spell/eldritch-blast"},
+  ContentRow.{kind = CT_ABILITY, id = 369, key = "ability/warlock/spell/chill-touch"},
+  ContentRow.{kind = CT_ABILITY, id = 370, key = "ability/warlock/spell/hex"},
+  ContentRow.{kind = CT_ABILITY, id = 371, key = "ability/warlock/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 372, key = "ability/warlock/spell/hold-person"},
+  ContentRow.{kind = CT_ABILITY, id = 373, key = "ability/warlock/spell/scorching-ray"},
+  ContentRow.{kind = CT_ABILITY, id = 374, key = "ability/warlock/spell/fireball"},
+  ContentRow.{kind = CT_ABILITY, id = 392, key = "ability/wizard/spell/fire-bolt"},
+  ContentRow.{kind = CT_ABILITY, id = 393, key = "ability/wizard/spell/chill-touch"},
+  ContentRow.{kind = CT_ABILITY, id = 394, key = "ability/wizard/spell/ray-of-sickness"},
+  ContentRow.{kind = CT_ABILITY, id = 395, key = "ability/wizard/spell/false-life"},
+  ContentRow.{kind = CT_ABILITY, id = 396, key = "ability/wizard/spell/thunderwave"},
+  ContentRow.{kind = CT_ABILITY, id = 397, key = "ability/wizard/dash"},
+  ContentRow.{kind = CT_ABILITY, id = 398, key = "ability/wizard/spell/scorching-ray"},
+  ContentRow.{kind = CT_ABILITY, id = 399, key = "ability/wizard/spell/blindness-deafness"},
+  ContentRow.{kind = CT_ABILITY, id = 400, key = "ability/wizard/spell/fireball"},
+  ContentRow.{kind = CT_SPELL, id = 0, key = "spell/produce-flame"},
+  ContentRow.{kind = CT_SPELL, id = 1, key = "spell/produce-flame-hurl"},
+  ContentRow.{kind = CT_SPELL, id = 2, key = "spell/starry-wisp"},
+  ContentRow.{kind = CT_SPELL, id = 3, key = "spell/poison-spray"},
+  ContentRow.{kind = CT_SPELL, id = 4, key = "spell/cure-wounds"},
+  ContentRow.{kind = CT_SPELL, id = 5, key = "spell/healing-word"},
+  ContentRow.{kind = CT_SPELL, id = 6, key = "spell/thunderwave"},
+  ContentRow.{kind = CT_SPELL, id = 7, key = "spell/entangle"},
+  ContentRow.{kind = CT_SPELL, id = 8, key = "spell/faerie-fire"},
+  ContentRow.{kind = CT_SPELL, id = 9, key = "spell/chill-touch"},
+  ContentRow.{kind = CT_SPELL, id = 10, key = "spell/ray-of-sickness"},
+  ContentRow.{kind = CT_SPELL, id = 11, key = "spell/false-life"},
+  ContentRow.{kind = CT_SPELL, id = 12, key = "spell/ray-of-enfeeblement"},
+  ContentRow.{kind = CT_SPELL, id = 13, key = "spell/blindness-deafness"},
+  ContentRow.{kind = CT_SPELL, id = 14, key = "spell/eldritch-blast"},
+  ContentRow.{kind = CT_SPELL, id = 15, key = "spell/hex"},
+  ContentRow.{kind = CT_SPELL, id = 16, key = "spell/hold-person"},
+  ContentRow.{kind = CT_SPELL, id = 17, key = "spell/scorching-ray"},
+  ContentRow.{kind = CT_SPELL, id = 18, key = "spell/vicious-mockery"},
+  ContentRow.{kind = CT_SPELL, id = 19, key = "spell/sacred-flame"},
+  ContentRow.{kind = CT_SPELL, id = 20, key = "spell/guiding-bolt"},
+  ContentRow.{kind = CT_SPELL, id = 21, key = "spell/divine-smite"},
+  ContentRow.{kind = CT_SPELL, id = 22, key = "spell/hunters-mark"},
+  ContentRow.{kind = CT_SPELL, id = 23, key = "spell/fire-bolt"},
+  ContentRow.{kind = CT_SPELL, id = 24, key = "spell/shield"},
+  ContentRow.{kind = CT_SPELL, id = 25, key = "spell/fireball"},
+  ContentRow.{kind = CT_SPELL, id = 26, key = "spell/spirit-guardians"},
+  ContentRow.{kind = CT_SPELL, id = 27, key = "spell/call-lightning"},
+  ContentRow.{kind = CT_SPELL, id = 28, key = "spell/call-lightning-bolt"},
+  ContentRow.{kind = CT_SPELL, id = 29, key = "spell/hypnotic-pattern"},
+  ContentRow.{kind = CT_SPELL, id = 30, key = "spell/ice-knife"},
+  ContentRow.{kind = CT_SPELL, id = 31, key = "spell/ice-knife-burst"},
+  ContentRow.{kind = CT_SPELL, id = 32, key = "spell/ice-storm"},
+  ContentRow.{kind = CT_SPELL, id = 33, key = "spell/sleet-storm"},
+  ContentRow.{kind = CT_SPELL, id = 34, key = "spell/moonbeam"},
+  ContentRow.{kind = CT_SPELL, id = 35, key = "spell/shillelagh"},
+  ContentRow.{kind = CT_SPELL, id = 36, key = "spell/elementalism"},
+  ContentRow.{kind = CT_SPELL, id = 37, key = "spell/spike-growth"},
+  ContentRow.{kind = CT_SPELL, id = 38, key = "spell/spike-growth-step"},
+  ContentRow.{kind = CT_SPELL, id = 39, key = "spell/wall-of-fire"},
+  ContentRow.{kind = CT_SPELL, id = 40, key = "spell/conjure-animals"},
+  ContentRow.{kind = CT_SPELL, id = 41, key = "spell/polymorph"},
+  ContentRow.{kind = CT_SPELL, id = 42, key = "spell/mass-cure-wounds"},
+  ContentRow.{kind = CT_SPELL, id = 43, key = "spell/sunbeam"},
+  ContentRow.{kind = CT_SPELL, id = 44, key = "spell/wall-of-thorns"},
+  ContentRow.{kind = CT_SPELL, id = 45, key = "spell/fire-storm"},
+  ContentRow.{kind = CT_SPELL, id = 46, key = "spell/sunburst"},
+  ContentRow.{kind = CT_SPELL, id = 47, key = "spell/storm-of-vengeance"},
+  ContentRow.{kind = CT_SPELL, id = 48, key = "spell/storm-of-vengeance-bolt"},
+  ContentRow.{kind = CT_SPELL, id = 49, key = "spell/shapechange"},
+  ContentRow.{kind = CT_SPELL, id = 50, key = "spell/speak-with-animals"},
+  ContentRow.{kind = CT_SPELL, id = 51, key = "spell/ray-of-frost"},
+  ContentRow.{kind = CT_SPELL, id = 52, key = "spell/fog-cloud"},
+  ContentRow.{kind = CT_SPELL, id = 53, key = "spell/cone-of-cold"},
+  ContentRow.{kind = CT_SPELL, id = 54, key = "spell/reverse-gravity"},
+  ContentRow.{kind = CT_SPELL, id = 55, key = "spell/wind-wall"},
+  ContentRow.{kind = CT_SPELL, id = 56, key = "spell/levitate"},
+  ContentRow.{kind = CT_SPELL, id = 57, key = "spell/feather-fall"},
+  ContentRow.{kind = CT_SPELL, id = 58, key = "spell/gust-of-wind"},
+  ContentRow.{kind = CT_SPELL, id = 59, key = "spell/wall-of-stone"},
+  ContentRow.{kind = CT_SPELL, id = 60, key = "spell/telekinesis"},
+  ContentRow.{kind = CT_SPELL, id = 61, key = "spell/black-tentacles"},
+  ContentRow.{kind = CT_SPELL, id = 62, key = "spell/water-walk"},
+  ContentRow.{kind = CT_SPELL, id = 63, key = "spell/control-water"},
+  ContentRow.{kind = CT_SPELL, id = 64, key = "spell/create-or-destroy-water"},
+  ContentRow.{kind = CT_SPELL, id = 65, key = "spell/water-breathing"},
+  ContentRow.{kind = CT_SPELL, id = 66, key = "spell/meteor-swarm"},
+  ContentRow.{kind = CT_SPELL, id = 67, key = "spell/blight"},
+  ContentRow.{kind = CT_SPELL, id = 68, key = "spell/circle-of-death"},
+  ContentRow.{kind = CT_SPELL, id = 69, key = "spell/finger-of-death"},
+  ContentRow.{kind = CT_SPELL, id = 70, key = "spell/dimension-door"},
+  ContentRow.{kind = CT_SPELL, id = 71, key = "spell/hellish-rebuke"},
+  ContentRow.{kind = CT_SPELL, id = 72, key = "spell/burning-hands"},
+  ContentRow.{kind = CT_SPELL, id = 73, key = "spell/lightning-bolt"},
+  ContentRow.{kind = CT_SPELL, id = 74, key = "spell/bless"},
+  ContentRow.{kind = CT_SPELL, id = 75, key = "spell/bane"},
+  ContentRow.{kind = CT_SPELL, id = 76, key = "spell/shield-of-faith"},
+  ContentRow.{kind = CT_SPELL, id = 77, key = "spell/command"},
+  ContentRow.{kind = CT_SPELL, id = 78, key = "spell/inflict-wounds"},
+  ContentRow.{kind = CT_SPELL, id = 79, key = "spell/acid-splash"},
+  ContentRow.{kind = CT_SPELL, id = 80, key = "spell/magic-missile"},
+  ContentRow.{kind = CT_SPELL, id = 81, key = "spell/mass-healing-word"},
+  ContentRow.{kind = CT_SPELL, id = 82, key = "spell/shatter"},
+  ContentRow.{kind = CT_SPELL, id = 83, key = "spell/find-familiar"},
+  ContentRow.{kind = CT_SPELL, id = 84, key = "spell/lesser-restoration"},
+  ContentRow.{kind = CT_SPELL, id = 85, key = "spell/aid"},
+  ContentRow.{kind = CT_SPELL, id = 86, key = "spell/guidance"},
+  ContentRow.{kind = CT_SPELL, id = 87, key = "spell/protection-from-evil-and-good"},
+  ContentRow.{kind = CT_SPELL, id = 88, key = "spell/zone-of-truth"},
+  ContentRow.{kind = CT_SPELL, id = 89, key = "spell/revivify"},
+  ContentRow.{kind = CT_SPELL, id = 100, key = "spell/everglade-meteor-swarm"},
+  ContentRow.{kind = CT_SPELL, id = 101, key = "spell/thunderbolt"},
+  ContentRow.{kind = CT_SPELL, id = 102, key = "spell/mega-thunderbolt"},
+  ContentRow.{kind = CT_SPELL, id = 103, key = "spell/water-orb"},
+  ContentRow.{kind = CT_CREATURE, id = 1, key = "monster/imp"},
+  ContentRow.{kind = CT_CREATURE, id = 2, key = "monster/quasit"},
+  ContentRow.{kind = CT_CREATURE, id = 3, key = "monster/goblin-warrior"},
+  ContentRow.{kind = CT_CREATURE, id = 4, key = "monster/ogre"},
+  ContentRow.{kind = CT_CREATURE, id = 5, key = "monster/hill-giant"},
+  ContentRow.{kind = CT_CREATURE, id = 6, key = "monster/wolf"},
+  ContentRow.{kind = CT_CREATURE, id = 7, key = "monster/zombie"},
+  ContentRow.{kind = CT_CREATURE, id = 8, key = "monster/rat"},
+  ContentRow.{kind = CT_CREATURE, id = 9, key = "monster/riding-horse"},
+  ContentRow.{kind = CT_CREATURE, id = 10, key = "monster/spider"},
+  ContentRow.{kind = CT_CREATURE, id = 11, key = "monster/black-bear"},
+  ContentRow.{kind = CT_CREATURE, id = 12, key = "monster/warhorse"},
+  ContentRow.{kind = CT_CREATURE, id = 13, key = "monster/cat"},
+  ContentRow.{kind = CT_CREATURE, id = 14, key = "monster/bat"},
+  ContentRow.{kind = CT_CREATURE, id = 15, key = "monster/frog"},
+  ContentRow.{kind = CT_CREATURE, id = 16, key = "monster/hawk"},
+  ContentRow.{kind = CT_CREATURE, id = 17, key = "monster/lizard"},
+  ContentRow.{kind = CT_CREATURE, id = 18, key = "monster/octopus"},
+  ContentRow.{kind = CT_CREATURE, id = 19, key = "monster/owl"},
+  ContentRow.{kind = CT_CREATURE, id = 20, key = "monster/raven"},
+  ContentRow.{kind = CT_CREATURE, id = 21, key = "monster/weasel"},
+  ContentRow.{kind = CT_CREATURE, id = 22, key = "monster/adult-red-dragon"},
+  ContentRow.{kind = CT_SPAWN, id = 0, key = "everglade2/pack-1/wolf-1"},
+  ContentRow.{kind = CT_SPAWN, id = 1, key = "everglade2/pack-1/wolf-2"},
+  ContentRow.{kind = CT_SPAWN, id = 2, key = "everglade2/pack-1/wolf-3"},
+  ContentRow.{kind = CT_SPAWN, id = 3, key = "everglade2/pack-2/wolf-1"},
+  ContentRow.{kind = CT_SPAWN, id = 4, key = "everglade2/pack-2/wolf-2"},
+  ContentRow.{kind = CT_SPAWN, id = 5, key = "everglade2/pack-3/wolf-1"},
+  ContentRow.{kind = CT_SPAWN, id = 6, key = "everglade2/pack-3/wolf-2"},
+  ContentRow.{kind = CT_SPAWN, id = 7, key = "everglade2/pack-3/wolf-3"},
+  ContentRow.{kind = CT_SPAWN, id = 8, key = "everglade2/camp/goblin-1"},
+  ContentRow.{kind = CT_SPAWN, id = 9, key = "everglade2/camp/goblin-2"},
+  ContentRow.{kind = CT_SPAWN, id = 10, key = "everglade2/camp/archer-1"},
+  ContentRow.{kind = CT_SPAWN, id = 11, key = "everglade2/camp/archer-2"}
+];
+
+// The number of `key` in `kind` (-1: no such content).
+content_id :: (kind: int, key: string) -> int {
+  for i: 0..<CONTENT_N { if CONTENT[i].kind == kind && CONTENT[i].key == key { return CONTENT[i].id; } }
+  return -1;
+}
+// The key of number `id` in `kind` ("": no such content).
+content_key :: (kind: int, id: int) -> string {
+  for i: 0..<CONTENT_N { if CONTENT[i].kind == kind && CONTENT[i].id == id { return CONTENT[i].key; } }
+  return "";
+}
+content_has :: (kind: int, id: int) -> bool { return content_key(kind, id).count > 0; }
+// "a/b/c" as one key: the parts with a slash between them (an empty part is left out). The bytes
+// written, 0 when it doesn't fit.
+content_join :: (out: [] u8, a: string, b: string, c: string) -> int {
+  n := 0;
+  for part: [3] string.[a, b, c] {
+    if part.count == 0 { continue; }
+    if n + part.count + 1 > out.count { return 0; }
+    if n > 0 { out[n] = '/'; n += 1; }
+    for ch: part { out[n] = ch; n += 1; }
+  }
+  return n;
+}
+// The typed numbers.
+content_ability :: (key: string) -> AbilityId { return AbilityId.{value = content_id(CT_ABILITY, key)}; }
+content_spell :: (key: string) -> SpellId { return SpellId.{value = content_id(CT_SPELL, key)}; }
+content_template :: (key: string) -> TemplateId { return TemplateId.{value = content_id(CT_CREATURE, key)}; }
+content_item :: (key: string) -> ItemKindId { return ItemKindId.{value = content_id(CT_ITEM, key)}; }
+content_spawn :: (key: string) -> SpawnId { return SpawnId.{value = content_id(CT_SPAWN, key)}; }
+
+// The table's hash: every row's "KIND ID KEY\n" in order, two modular sums in one number below 2^53 (a JSON number holds it). The P
+// frame's content pin (everglade/shared/everglade-wire.coax WIRE_CONTENT) is sealed with it: a
+// table that changes changes the hash, and the pin's check then asks for a new pin.
+content_hash_byte :: (h: [] int, b: int) {
+  h[0] = (h[0] * 131 + b) % 1000000007; h[1] = (h[1] * 137 + b) % 998244353;
+}
+content_hash_int :: (h: [] int, v: int) {
+  d: [20] int; n := 0; q := v;
+  if q == 0 { d[0] = 0; n = 1; }
+  while q > 0 { d[n] = q % 10; n += 1; q = q / 10; }
+  for k: 0..<n { content_hash_byte(h, '0' + d[n - 1 - k]); }
+}
+content_hash_rows :: (rows: [] const ContentRow) -> int {
+  h := [2] int.[7, 11];
+  for i: 0..<rows.count {
+    content_hash_int(h[..], rows[i].kind); content_hash_byte(h[..], ' ');
+    content_hash_int(h[..], rows[i].id); content_hash_byte(h[..], ' ');
+    for ch: rows[i].key { content_hash_byte(h[..], cast(int) ch); }
+    content_hash_byte(h[..], '\n');
+  }
+  return h[0] * 1000000 + h[1] % 1000000;
+}
+content_hash :: () -> int { return content_hash_rows(CONTENT[..]); }
+
+#test "content ids: no number and no key is used twice in a kind, and every row is well formed" #steps 200000000 {
+  for i: 0..<CONTENT_N {
+    r := CONTENT[i];
+    #assert r.kind >= 1 && r.kind <= CT_KINDS && r.id >= 0 && r.key.count > 0 && r.key.count <= CT_KEY;
+    for ch: r.key { #assert (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '/'; }
+    for j: 0..<i { #assert CONTENT[j].kind != r.kind || (CONTENT[j].id != r.id && CONTENT[j].key != r.key); }
+    #assert content_id(r.kind, r.key) == r.id && content_key(r.kind, r.id) == r.key && content_has(r.kind, r.id);
+  }
+  #assert content_id(CT_ABILITY, "ability/none") == -1 && content_key(CT_SPELL, 9999) == "" && !content_has(CT_ITEM, 0);
+  #assert content_id(CT_SPELL, "ability/barbarian/rage") == -1;
+}
+#test "content ids: the numbers the wire and the saves already carry are the frozen ones" {
+  #assert content_ability("ability/barbarian/rage").value == 128 && content_ability("ability/wizard/spell/fire-bolt").value == 392;
+  #assert content_ability("ability/cleric/spell/revivify").value == 186 && content_ability("ability/fighter/action-surge").value == 227;
+  #assert content_spell("spell/produce-flame").value == 0 && content_spell("spell/fireball").value == 25 && content_spell("spell/revivify").value == 89;
+  #assert content_spell("spell/water-orb").value == 103;
+  #assert content_template("monster/wolf").value == 6 && content_template("monster/goblin-warrior").value == 3;
+  #assert content_spawn("everglade2/pack-1/wolf-1").value == 0 && content_spawn("everglade2/camp/archer-2").value == 11;
+  #assert content_item("item/none").value == -1;
+}
+#test "content ids: the recorded hash is the table's, and any changed row changes it" #steps 200000000 {
+  #assert content_hash() == CONTENT_HASH;
+  rows: [3] ContentRow; for i: 0..<3 { rows[i] = CONTENT[i]; }
+  base := content_hash_rows(rows[..]);
+  rows[1].id += 1; #assert content_hash_rows(rows[..]) != base; rows[1].id -= 1;
+  rows[2].kind = CT_SPELL; #assert content_hash_rows(rows[..]) != base; rows[2].kind = CT_ABILITY;
+  rows[0].key = "ability/barbarian/rag"; #assert content_hash_rows(rows[..]) != base; rows[0] = CONTENT[0];
+  swap := rows[0]; rows[0] = rows[1]; rows[1] = swap; #assert content_hash_rows(rows[..]) != base;
+  #assert content_hash_rows(rows[0..<2]) != base;
+}
+#test "content ids: a key is its parts with a slash between" {
+  b: [32] u8;
+  #assert cast(string) b[0..<content_join(b[..], "ability", "bard", "dash")] == "ability/bard/dash";
+  #assert cast(string) b[0..<content_join(b[..], "spell", "", "hex")] == "spell/hex";
+  small: [8] u8; #assert content_join(small[..], "ability", "bard", "") == 0;
+}
