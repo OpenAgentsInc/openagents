@@ -269,11 +269,12 @@ eg_slot_card :: (boxes: [] f32, n: int, hover: int, w: f32, k: f32) -> [4] f32 {
   cy := boxes[hover * 4 + 1] - 30 * k; for i: 0..<n { t := boxes[i * 4 + 1] - 38 * k; if t < cy { cy = t; } }
   return [4] f32.[cx - cw / 2, cy - ch, cx + cw / 2, cy];
 }
-// A refusal over the bar's emblem, centred at x a little over top.
+// A refusal over the bar, centred at x: top is the slots' top, and the words stand clear of the
+// emblem (eg_bar_frame: 32 px over top) and the class resource bar (eg_resource_draw: 38 px), #13263.
 eg_bar_refused :: (ui: [] cc.UitTrace, out: [] f32, at: int, said: string, x: f32, top: f32, k: f32) -> int {
   if said.count == 0 { return at; }
   cc.uit_part(ui, "bar");
-  return cc.hud_say_ui(ui, cc.UIT_NONE, "REFUSED", out, at, said, x, top - 12 * k, 8 * k, cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_WARN), 1, k, true);
+  return cc.hud_say_ui(ui, cc.UIT_NONE, "REFUSED", out, at, said, x, top - 46 * k, 8 * k, cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_WARN), 1, k, true);
 }
 #test "eg win: a slot's marks, its card kept on the page, and the bar's refusal" #steps 100000000 {
   out: [4000 * 16] f32; nt: [] cc.UitTrace; b := [4] f32.[100, 600, 152, 652];
