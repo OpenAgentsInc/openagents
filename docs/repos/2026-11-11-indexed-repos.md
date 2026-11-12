@@ -1,7 +1,8 @@
 # Indexed repos: a codebase a chat can read and change without cloning it (spec)
 
-Status: draft, 2026-11-11. Nothing here is built. Code was read at
-`0942bd418b`.
+Status: accepted, 2026-11-11, and revised the same evening (see
+[What changed in review](#what-changed-in-review)). Phase 1 is being built
+under the tracking issue named there. Code was first read at `0942bd418b`.
 
 ## Summary
 
@@ -17,21 +18,24 @@ Three things make it up:
 - **An index.** Per file version, the service keeps what makes questions
   fast: line counts, symbols and, later, embeddings.
 - **An API.** Read operations against one exact commit, and write
-  operations that build a change on the server and end as a branch and a
-  pull request.
+  operations that build a change on the server and end in the land queue,
+  checked like any other change.
 
-The first users are the web chat at `/chat`, which has no agent behind it
-yet, and Microcoder, which today can only work inside a directory on the
-machine it runs on.
+The first users are the web chat at `/chat` and Microcoder, which today can
+only work inside a directory on the machine it runs on.
 
 ## Why
 
 What exists today, read in the code:
 
-- **`/chat` has no agent.** The rebuilt page (`apps/openagents-web/chat-web.coax`)
-  answers every message with a placeholder it wrote itself.
-- **The page before it reads one baked-in checkout.** `/chat-gpu` runs the
-  Claude CLI on the Cloud Run runner (`coax/web/agent/chat-runner.c`). The
+- **`/chat`'s Gemini models have no tools.** The rebuilt page
+  (`apps/openagents-web/chat-web.coax`) asks one model with the conversation
+  so far. It can't read a file.
+- **Its Claude models read one baked-in checkout.** A Claude turn, and
+  every turn of `/chat-gpu`, runs the Claude CLI on the Cloud Run runner
+  (`coax/web/agent/chat-runner.c`). Measured on a developer's Mac on
+  2026-11-11: the first turn spent 29 seconds making that copy, and it took
+  2.1 GB of disk. The
   runner's image holds a checkout of the public repository, and each turn
   fetches what `main` changed. The image build fails over 1,200 MB, the
   runner keeps 4 GiB of memory for it, and a second repository needs a
@@ -52,7 +56,8 @@ in under a second all run into that.
 
 - A chat on any surface can read a repository it has access to, at an exact
   commit, with answers it can cite.
-- The same chat can propose a change and open a pull request.
+- The same chat can propose a change, which lands through the same checks
+  as a person's.
 - An agent run needs no clone, no git, no disk and no repository credential.
 - Microcoder works against an indexed repo with its loop and action schema
   unchanged.
@@ -62,8 +67,10 @@ Not goals, for now:
 
 - Running arbitrary commands against the repository. Checks are a named,
   allowlisted set, run on our build hosts (see [Checks](#checks)).
-- Pushing to `main`. Changes end as a branch and a pull request that a
-  person merges.
+- Pushing to `main` directly. A change is submitted to the land queue
+  (`docs/verse/green-main-pipeline.md`), which checks it on the head it
+  lands on. A person approves a queued change from an agent before it
+  lands.
 - Replacing a local checkout for Coder on your own machine.
 
 ## Terms
@@ -86,7 +93,7 @@ through its edits):
 | --- | --- |
 | `resolve` | The commit a branch or tag points at, its time, and which index parts are ready for it |
 | `tree` | The entries under a path, to a depth: path, kind, size, line count |
-| `read` | A file's text with line numbers, whole or a line range |
+| `read` | A file's text with line numbers, whole or a line range. Several files or ranges may be asked for in one call, so an agent that wants ten files pays one round trip |
 | `find` | Paths that match a glob |
 | `search` | Lines that match a literal or a regular expression, optionally under given paths, with context lines |
 | `log` | Commits, optionally for one path |
@@ -95,7 +102,7 @@ through its edits):
 | `blame` | Who last changed each line of a range, and in which commit |
 | `symbols` | Where a name is defined and used, or the outline of one file (phase 3) |
 | `similar` | Passages close in meaning to a text (phase 4) |
-| `ask` | A written answer to a question about the repo, with the passages it rests on (phase 2) |
+| `ask` | A written answer to a question about the repo, with the passages it rests on (phase 4, if it is needed) |
 
 Write operations. They need a `propose` grant:
 
@@ -106,14 +113,17 @@ Write operations. They need a `propose` grant:
 | `change_delete`, `change_move` | Removes or renames a file |
 | `change_diff` | The change so far, as a diff |
 | `change_check` | Runs one named check on the change and streams its output (phase 3) |
-| `change_commit` | Makes the change one commit on a new branch and pushes it |
-| `change_propose` | Opens a pull request for that branch |
+| `change_commit` | Makes the change one commit, with its message and trailers |
+| `change_propose` | Submits that commit to the land queue, where it waits for a person's approval and then for its checks |
 | `change_discard` | Drops the change |
 
 `ask` is the one operation that runs a model. It starts a read-only
 Microcoder run against the same repo and snapshot and returns its answer.
 A chat model with a small context can then question a large codebase
-without holding its files.
+without holding its files. It is last, and conditional: a model inside a
+tool costs a second run, adds its latency to the turn, and shows the person
+its conclusion, not its evidence. It is built only if a small-context model
+is measured failing at questions the read operations could answer.
 
 ### What every answer obeys
 
@@ -140,13 +150,22 @@ A change is a real git commit on a hidden ref in the service's mirror
 - **Reading through a change** is reading at that ref's commit, so every
   read operation works on a change with no extra code.
 - **`change_diff`** is the difference between the snapshot and the ref.
-- **`change_commit`** writes one commit with the given message onto a new
-  branch, `agent/SESSION-ID`, and pushes that branch. The author is the
-  person whose session it is. The message ends with the model's
-  `Co-Authored-By` line and the session's `Agent:` line, as AGENTS.md
-  requires.
-- **`change_propose`** opens a pull request from that branch.
-- **Nothing reaches `main`** without a person merging the pull request.
+- **`change_commit`** writes one commit with the given message on a ref of
+  its own, `refs/oa/proposed/SESSION-ID`. The author is the person whose
+  session it is. The message ends with the model's `Co-Authored-By` line
+  and the session's `Agent:` line, as AGENTS.md requires.
+- **`change_propose`** submits that commit to the land queue. The
+  integrator checks it on the head it would land on, with the same
+  pre-push rules a person's push meets (the `Agent:` line, `tools-check`,
+  `wire-check`, the suites it touches).
+- **Nothing reaches `main`** until a person has approved the queued change
+  and its checks have passed.
+
+Why the queue and not a pull request: this repository's checks run in the
+pre-push hook and the integrator, not on GitHub, and its rule is work on
+`main`. A branch and a pull request would land a change that none of those
+checks had seen. A repo that isn't ours, and has no queue, still gets a
+branch and a pull request; that is phase 4's concern.
 
 Limits: a change holds at most a set number of files and bytes, and a
 session holds at most a set number of open changes. A change left idle is
@@ -154,9 +173,9 @@ discarded after a set time. The record of who opened a change, for which
 session, and what became of it lives in oa-api's database, which already
 owns everything durable for hosted agents.
 
-If `main` moves while a change is open, the pull request shows it, as for
-any branch. A `change_rebase` operation can come later if that proves
-common.
+If `main` moves while a change is open, the integrator checks the change
+on the new head and says so if it no longer applies. A `change_rebase`
+operation can come later if that proves common.
 
 ## Checks
 
@@ -176,6 +195,23 @@ happens on our build hosts, not in the repo service:
 A check has a time limit of 15 minutes, the limit AGENTS.md sets for any
 command. The repository's code runs only on the build host, in its own
 checkout, never in the repo service.
+
+**A check runs code the model wrote.** With `propose`, the change under
+test is the model's, and text in a repository can steer a model. So
+`change_check` is running untrusted code, and a list of allowed check names
+doesn't change that: `coax test PATH` runs whatever `#test` and `#run` blocks
+the change put at that path. Before phase 3 ships, a check runs where it can
+hurt nothing:
+
+- on a host, or in a sandbox on one, that holds no credentials: no cloud
+  token, no write access to the shared build cache or the release bucket,
+  no deploy key;
+- with no network beyond what the check is declared to need;
+- with its own scratch disk, thrown away after the run.
+
+The build hosts as they are today don't meet this (they write the shared
+cache and can publish builds), so phase 3 includes that isolation and is
+not done until it is shown.
 
 ## The index
 
@@ -225,8 +261,10 @@ not indexed yet, and `resolve` says which parts are ready.
 
 One new service, `oa-repo`, on the `openagentsgemini` project.
 
-- **Where.** One small GCE VM with a persistent SSD, in `us-central1`
-  beside the runner and oa-api. Git wants a real disk: a bare mirror is a
+- **Where.** One GCE VM with two dedicated cores and a persistent SSD, in
+  `us-central1` beside the runner and oa-api. Not a shared-core machine:
+  the search times above were measured on a much faster machine, and a
+  shared core would be several times slower again. Git wants a real disk: a bare mirror is a
   few large pack files read at random, which a mounted bucket serves slowly,
   and Cloud Run has no persistent disk. We already run one service this way
   (`docs/deployment/room-vm.md`).
@@ -241,10 +279,16 @@ One new service, `oa-repo`, on the `openagentsgemini` project.
   credential's secret name, the checks it allows and who may read it. A new
   repo is one entry and a first fetch.
 
+- **A library first.** The operations are a Coax library,
+  `coax/lib/repo/`, over a bare mirror on a disk. The service is that
+  library behind sockets and grants. The library runs anywhere there is a
+  mirror, so a page under development (`coax/web/api/test.sh --serve`) and
+  the checks use it with no VM.
+
 ### Wire
 
-The schema starts in `proto/`, as a new package `openagents.repo.v1`, and in
-the protocol spec. The chat audit found that none of `/chat`'s wire shapes is
+The schema starts in `proto/`, as a new package `openagents.repo.v1alpha1`,
+and in the protocol spec. The chat audit found that none of `/chat`'s wire shapes is
 in the protocol; this one starts there. The HTTP form is the schema's JSON
 mapping under `/api/repo/`.
 
@@ -262,7 +306,8 @@ the snapshot and the size of the answer.
   today, and stays so until that changes.
 - **Private repos:** only the project's members, by the membership and
   roles projects already have.
-- **`propose`:** admins first, then members with a role that allows it.
+- **`propose`:** admins first, then members with a role that allows it. A
+  proposed change still waits for a person's approval in the queue.
 - **The model holds nothing.** It never sees a grant, a token or a key.
   The runner attaches the grant to each call.
 - **The file that decides this is `#authority`.** It is mutated with zero
@@ -283,6 +328,8 @@ or at the start of a new turn if they chose to follow `main`.
   paths and links can't reach outside the repo. A link is returned as a
   link, never followed.
 - **No shell.** There is no operation that runs a command line.
+- **Checks run untrusted code.** See [Checks](#checks): isolated, with no
+  credentials, before phase 3 ships.
 - **Secrets.** A change that adds text matching a key or token pattern is
   refused at `change_commit`. A private repo's contents never go to a
   session without a grant for it, and are never logged.
@@ -317,8 +364,13 @@ shell:
 ```
 ls PATH
 find GLOB
-grep [-i] [-E] [-C N] PATTERN [PATH...]
-git log [-n N] [PATH]
+cat PATH
+head [-n N] PATH
+tail [-n N] PATH
+sed -n FROM,TOp PATH
+wc -l PATH
+grep [-i] [-E] [-n] [-r] [-l] [-C N] PATTERN [PATH...]
+git log [-n N] [--oneline] [PATH]
 git show COMMIT
 git diff
 git blame PATH -L FROM,TO
@@ -326,6 +378,9 @@ symbols NAME
 check NAME
 ```
 
+`cat`, `head`, `tail`, `sed -n` and `wc -l` are here because models reach
+for them before anything else; each is a `read`. A pipe, a redirect, `&&`
+or `;` is refused whole, with a line saying to ask for one thing at a time.
 Anything else is answered with one line listing these forms. This is a
 hypothesis to measure, under the rule that Microcoder's loop stays simple:
 run the reading and bug-fix tasks from
@@ -351,8 +406,8 @@ tool host to work on a repo that isn't cloned on the machine.
 Estimates, not quotes. They need checking against Google's price list
 before the VM is made.
 
-- **The VM and disk:** a shared-core VM with 4 GB of memory and a 100 GB
-  SSD, roughly $35 a month, always on.
+- **The VM and disk:** two dedicated cores, 8 GB of memory and a 100 GB
+  SSD, roughly $65 a month, always on.
 - **Model spend:** unchanged in kind. Chat turns stay under `/chat`'s daily
   cap (`OA_CHAT_DAILY_USD`, $10 a day). `ask` counts against the same cap.
 - **Checks:** build-host minutes, under the build hosts' existing daily
@@ -367,28 +422,36 @@ All of it sits under the project's standing limit of $1,500 a month
 Each phase ends with something a person can use, and is measured before
 the next begins.
 
-1. **Read.**
+1. **Read.** In this order, each usable before the next:
+   - The library, `coax/lib/repo/`: `resolve`, `tree`, `read`, `find`,
+     `search`, `log`, `show`, `diff` and `blame` over a bare mirror, with
+     their limits and their fixed order, checked against a repository the
+     checks build.
    - The schema in `proto/` and the spec.
    - The service with one repo, the public `openagents` repository, and
-     `resolve`, `tree`, `read`, `find`, `search`, `log`, `show`, `diff`
-     and `blame`.
-   - Grants, and Microcoder's repo tool host.
-   - `/chat` answers questions about the repository through Microcoder.
+     grants.
+   - The tools for the Claude engine, so `/chat`'s Claude turns read
+     through the service and the runner's checkout goes.
+   - Microcoder's repo tool host, so `/chat` can answer about the
+     repository on a Gemini model.
    - Done when an admin asks `/chat` where something is defined and gets
      an answer that cites files at a commit, with no checkout in the
      runner, and read calls answer in under 300 ms and searches in under
      1.5 s at the 95th percentile, measured from the runner.
 2. **Propose.**
-   - Changes, `change_commit` and `change_propose`, and `ask`.
-   - Done when an admin asks `/chat` for a small edit and gets a pull
-     request whose diff matches what the chat showed.
+   - Changes, `change_commit` and `change_propose` into the land queue.
+   - Done when an admin asks `/chat` for a small edit, approves it in the
+     queue, and it lands with a diff that matches what the chat showed.
 3. **Check and symbols.**
-   - `change_check` on build hosts, and the symbol index.
+   - `change_check` on an isolated host with no credentials, and the symbol
+     index.
    - Done when a Microcoder run on the repo tool host passes the same
      tasks, at a similar cost, as a run in a local checkout.
 4. **More repos, and meaning.**
-   - Private project repos by membership, and a second git host if one is
-     needed.
+   - Private project repos by membership, a second git host if one is
+     needed, and a branch and pull request for a repo that has no land
+     queue.
+   - `ask`, if a small-context model is measured needing it.
    - Embeddings, if phases 1 to 3 left a measured gap that search by
      meaning would close.
 
@@ -421,20 +484,36 @@ Checks come first in every phase, as AGENTS.md requires:
   on build hosts gets the part that matters, running the checks, without
   it. This can be revisited if tasks need more than named checks.
 
-## Decisions needed from the owner
+## What changed in review
 
-1. **How pull requests are opened.** A GitHub App installed on each repo
-   gives short-lived tokens scoped to that repo, and is the recommendation.
-   The deploy keys the project agent uses can push a branch but can't open a
-   pull request.
-2. **A VM that is always on,** about $35 a month, rather than something
+Reviewed 2026-11-11, the evening it was written; the owner then asked for it
+to be updated, tracked and built. Six things changed:
+
+1. **Checks are treated as running untrusted code,** with isolation
+   required before phase 3 ships ([Checks](#checks)).
+2. **A change lands through the land queue,** not a branch and a pull
+   request, because this repository's checks live there.
+3. **The library comes first** and the service wraps it, so phase 1 is
+   usable in steps and on a developer's machine.
+4. **`ask` moved from phase 2 to phase 4,** and became conditional.
+5. **The command forms gained `cat`, `head`, `tail`, `sed -n` and `wc -l`,**
+   and pipes are refused whole.
+6. **The VM has two dedicated cores,** and `read` takes several files in
+   one call.
+
+## Decisions
+
+Recorded 2026-11-11. The owner asked for the spec to be built as revised;
+these follow from that and can be changed.
+
+1. **How a change lands:** the land queue, after a person approves it. A
+   GitHub App for pull requests is needed only for a repo with no queue
+   (phase 4).
+2. **A VM that is always on,** about $65 a month, rather than something
    that scales to zero.
-3. **Who gets `propose` first.** Recommended: admins only, as `/chat` is
-   now.
-4. **Whether a pull request opened by an agent may ever merge itself**
-   when its checks pass. Recommended: no.
-5. **Whether private repos wait for phase 4,** as written, or are needed
-   sooner.
+3. **Who gets `propose` first:** admins only, as `/chat` is now.
+4. **Whether an agent's change may land with no person's approval:** no.
+5. **Private repos** wait for phase 4.
 
 ## What was and wasn't checked
 
@@ -444,6 +523,7 @@ Checks come first in every phase, as AGENTS.md requires:
 - **Measured:** the repository's size by file type, and search times at a
   commit without a working tree, on coderos-4080. That machine is much
   faster than the proposed VM, so search time on the VM is unknown.
-- **Not checked:** the VM's price, GitHub's webhook and App details, how
+- **Not checked:** the VM's price, GitHub's webhook details, how the land
+  queue takes a commit from a ref that isn't a builder's branch, how
   the Coax compiler can list a file's symbols, and how well models write
   the command forms. Each is settled in the phase that needs it.
