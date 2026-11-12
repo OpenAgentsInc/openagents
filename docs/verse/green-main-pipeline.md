@@ -16,8 +16,9 @@ coax/remote/after.sh state    # the watcher, main, main-green and its lag, the a
 ```
 
 The first line says whether the watcher is running. When it is not, no head
-is checked and `main-green` does not move. Start it with
-`coax/remote/after.sh install`.
+is checked and `main-green` does not move. It names the watcher's machine
+(coderos-4080; see "What is built" for how to check it there and how to move
+it).
 
 The design follows a merge-queue layout that Kit Langton published on
 2026-11-09: builders hand off to an integrator, a fast check runs before
@@ -571,50 +572,103 @@ coax/remote/after.sh uninstall      # stop it
 coax/remote/after.sh --watch        # the same loop in a terminal (--no-revert: revert nothing)
 ```
 
-**The live watcher is on the coordinator's Mac, under launchd**
-(`com.openagents.green-main`). Check it with `coax/remote/after.sh state` on
-that Mac, and `launchctl print gui/$(id -u)/com.openagents.green-main`.
+**The live watcher is on `coderos-4080`**, as the systemd user service
+`com.openagents.green-main`, since 2026-11-11 (#13255). It runs from its own
+clone, `~/.openagents/pipeline/clone` (not `~/openagents`), uses the build
+hosts' SSH key and ledger in `~/.openagents/pipeline/remote`
+(`OA_REMOTE_STATE`), and pushes `main-green` and reverts with the GitHub
+login there. It builds nothing itself: every check goes to the pool hosts.
+From any machine:
+
+```sh
+coax/remote/after.sh state     # first line: "watcher running on coderos-4080, seen N s ago"
+coax/remote/after.sh health    # status 1 when it is not running
+```
+
+On coderos itself:
+
+```sh
+systemctl --user status com.openagents.green-main
+tail -f ~/.openagents/pipeline/logs/after.out
+```
 
 On macOS, `install` writes `~/Library/LaunchAgents/com.openagents.green-main.plist`.
 On Linux, it writes the systemd user service
 `~/.config/systemd/user/com.openagents.green-main.service` (`Restart=always`,
 `RestartSec=60`, `KillMode=process`) and enables it; `sudo loginctl
-enable-linger USER` keeps it running with no one logged in, and
-`OA_AFTER_INSTALL_PRINT=1` prints the unit without enabling it. Either way the
-job runs `after.sh --watch` in a checkout of its own,
+enable-linger USER` keeps it running with no one logged in (coderos has it
+on), and `OA_AFTER_INSTALL_PRINT=1` prints the unit without enabling it. The
+unit keeps `OA_REMOTE_STATE`, `OA_REMOTE_DAILY_USD`, `CLOUDSDK_CONFIG`,
+`OA_PIPELINE_SHARED` and `OA_PIPELINE_NOTIFY` when they are set at install.
+Either way the job runs `after.sh --watch` in a checkout of its own,
 `~/.openagents/pipeline/checkout`, which holds only `coax/remote`, and is
 started again whenever it stops. When the pipeline's scripts change on `main`,
 the watcher stops after its current run and starts again on the new scripts.
-Its log is `~/.openagents/pipeline/logs/after.out`.
+Its log is `~/.openagents/pipeline/logs/after.out`. coderos was installed
+with:
+
+```sh
+cd ~/.openagents/pipeline/clone
+OA_REMOTE_STATE=$HOME/.openagents/pipeline/remote coax/remote/after.sh install
+```
+
+#### The shared state
+
+The watcher's files live on its machine. Each minute, beside its heartbeat,
+it writes the files other machines read (the heartbeat, the red list, the
+last runs, the flaky and lag lists, production, the newest Everglade II
+measurement, the alarms and every agent's inbox) as one object,
+`gs://openagentsgemini-coax-build-cache/pipeline/state/state.tar.gz`
+(`pipeline-lib.sh`'s `pl_publish`; `OA_PIPELINE_SHARED` names another prefix,
+`0` none). On a machine whose own watcher isn't running, `after.sh state`,
+`red` and `health` first copy it into the same files under
+`~/.openagents/pipeline` (`pl_mirror`, at most every 20 s). So everything that
+reads those files reads the watcher's: the pre-push check's red list,
+`status-data.coax`, and `submit.sh status --agent ID` for an agent's inbox.
+`state` names the machine: "watcher running on coderos-4080". A machine
+whose own watcher is running (a fresh heartbeat and no `watcher-host` file)
+reads only its own files; `--watch` removes `watcher-host` when it starts.
+
+A watcher can't report that it died. When a machine's `state` or `health`
+sees the shared heartbeat 15 minutes old or more, that machine raises the
+alarm: the log, its `ALARM` file and the one "Green-main pipeline needs
+attention" issue, which every machine reuses (`pl_alarm` looks for an open
+one first). `release.sh` runs `health`, so a release raises it too.
+
+The build hosts' daily cap counts every machine. Each `remote.sh` copies its
+ledger to `gs://openagentsgemini-coax-build-cache/pipeline/ledgers/HOST-ID.tsv`
+and reads the others back into `~/.openagents/remote/ledgers/all/`, at most
+every 5 minutes and in the background, and `spent()` adds them up
+(`OA_REMOTE_SHARED_LEDGERS=0`: this machine's ledger alone). The cap can be
+up to 5 minutes behind.
+
+#### Moving the watcher
 
 Two watchers on two machines would race: both would move `main-green` and
-land reverts, and each keeps its own red list. Before you install one
-elsewhere, run `after.sh uninstall` on the old machine, after the new one has
-finished a run.
+land reverts. To move it, on the old machine run `after.sh uninstall`, copy
+its `~/.openagents/pipeline/releases/after/` state files (`red.json`,
+`runs.tsv`, `flaky*`, `full-green`, `full-head`, `last-*`, `production`,
+`history.tsv`) and `inbox/` to the new one, then run `after.sh install` there
+and watch its first run in the log. Back to the Mac, for example:
 
-#### Why the watcher isn't on a build host yet
+```sh
+ssh coderos-4080 'cd ~/.openagents/pipeline/clone && coax/remote/after.sh uninstall'
+coax/remote/after.sh install      # on the Mac, from any checkout
+```
+
+A Mac watcher starts from the state the mirror last copied, so after
+`after.sh state` has run there it starts where coderos stopped.
+
+#### Why coderos, not a pool host
 
 Issue [#13255](https://github.com/OpenAgentsInc/openagents/issues/13255)
-asked to move it off the Mac. The pool hosts can't hold it: each is a spot
-machine that powers itself off after 15 idle minutes and can be preempted,
-and none has a service account or a GitHub credential. A watcher host needs,
-besides a Linux shell with `git`, `gh`, `jq`, `flock` and `gcloud`:
-
-- the automation account's gcloud configuration, which `remote.sh` uses to
-  start hosts and mint each job's bucket token;
-- an SSH key the hosts accept (`~/.openagents/remote/ssh_ed25519`: the hosts'
-  metadata holds the Mac's public key);
-- one spend ledger: `remote.sh`'s daily cap reads `~/.openagents/remote/ledger.tsv`
-  on the machine that runs the job, so a second machine has a cap of its own;
-- a GitHub credential that can push `main-green` and `main` (the 30-minute
-  revert) and open and comment on issues;
-- a place other machines read its heartbeat and red list from. Today
-  `after.sh state` reads files on the machine it runs on, and the stale and
-  down alarms come from the watcher itself, so a dead remote host would be
-  silent.
-
-The options and their cost are in the issue. Until one is chosen, the Mac
-stays the watcher.
+asked to move the watcher off the Mac. The pool hosts can't hold it: each is
+a spot machine that powers itself off after 15 idle minutes and can be
+preempted, and none has a service account or a GitHub credential. coderos is
+always on, already had the automation account's gcloud configuration and a
+GitHub login, and costs nothing more; the owner approved it on 2026-11-11.
+Only the build hosts' SSH key was copied to it (the hosts' metadata holds the
+Mac's public key).
 
 ### When the pipeline itself fails
 
@@ -747,8 +801,9 @@ the room build and the compiler's units took 41 minutes on shared hosts and
 - The full run builds the web modules in three parts, each module as
   `build.sh` runs it. It leaves out `project` and `projects`, which need the
   tables `build.sh` bakes from Nostr first.
-- The red list and the messages to agents are files on the coordinator's Mac.
-  An agent on another machine reads `origin/main-green` and the issues.
+- The red list and the messages to agents are files on the watcher's machine,
+  shared through the bucket (see "The shared state"). A machine without the
+  automation account's gcloud reads `origin/main-green` and the issues.
 
 ## Capacity and cost
 
