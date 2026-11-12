@@ -112,7 +112,7 @@ Row fields:
 | Field | Meaning |
 | --- | --- |
 | `id` | The schema id on the wire (`NAME.vN`), or a short name for a shape with no id. An id that ends in `*` is a family: every id that starts that way |
-| `kind` | `proto` (a `.proto` message), `profile` (a JSON profile), `external` (a third party's format; we write no schema for it, and its `codec` folder is an anticorruption layer—the only place that parses the format, translating it into our own record type) or `local` (one program writes and reads it) |
+| `kind` | `proto` (a `.proto` message), `profile` (a JSON profile), `event` (a [domain event](#domain-events)), `external` (a third party's format; we write no schema for it, and its `codec` folder is an anticorruption layer—the only place that parses the format, translating it into our own record type) or `local` (one program writes and reads it) |
 | `owner` | The bounded context that owns the shape and may change it ([`docs/architecture/contexts.md`](../docs/architecture/contexts.md)); one of the context slugs below. Its `codec` must live inside the owner's folders |
 | `schema` | The `.proto` file, with `#Message` when you name one, or the profile file |
 | `codec` | The one file that may write the id. A folder (ending in `/`) for a family or a third party's adapter |
@@ -169,6 +169,24 @@ What `wire-check` reads as a schema id: a string that ends in `.vN`, either
 after a `schema` key or, for a registered id, as a whole quoted string.
 Comments, `#test` blocks, test folders (`tests/`, `fixtures/`) and files
 named `test_*`, `*-check.*` or `*-checks.*` don't count.
+
+## Domain events
+
+A domain event is a `registry.json` row with `"kind": "event"`, an `owner`
+context slug, a `schema` and one `codec` file.
+
+- **Name.** `<context>.<aggregate>.<past-tense-verb>.v<N>`—three lowercase
+  `[a-z][a-z0-9-]*` words separated by dots, a past-tense verb ending in `ed`,
+  and `.v` with a positive integer, such as `everglade.character.levelled.v1`
+  (where `<context>` equals `owner` or is a known context slug).
+- **Evolution.** A change is a new id, never an edit in place.
+- **Payload.** Events carry typed ids and no display text; the client words
+  them.
+- **Delivery.** Publish through an outbox in the same transaction as the state
+  change; consumers skip a sequence number they have seen (`ledger_consume` in
+  `aethyr/session/ledger.coax`).
+- **Tick boundary.** Inside the tick, the rules' ring log stays; events cross
+  a context boundary only at a checkpoint or outbox flush.
 
 ## Check and generate
 
