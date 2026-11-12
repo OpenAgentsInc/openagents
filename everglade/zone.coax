@@ -46,7 +46,8 @@
 #load "zone-drive.coax";      // ... wired to a zone
 #load "zone-touch.coax";      // a phone: which finger is the thumb's stick, JUMP, and the dragon's UP and DOWN (#13151)
 #load "../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
-#load "../aethyr/render/mesh-cull.coax" as mc;   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
+#load "../aethyr/render/mesh-cull.coax" as mc;
+#load "../aethyr/render/ghost.coax" as ghost;   // your figure as a ghost, when a zone asks (EgZone.ghost, zone_figure_blend)   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
 
 // The strokes a frame may draw and the uniforms it writes (gpu/charactercreator.bindings).
 VERTEX_FLOATS :: 16;
@@ -99,6 +100,8 @@ EgZone :: struct {
   gyro: [1] gy.Gyro; gyro_menu: bool; gyro_finger: int = -100;   // a phone's turn as look and aim, its menu open, the finger on its button (zone-touch.coax)
   lines: bool;  // ?net: the coordinates, the graphics and the frame rate on an upright phone too (experimental-combat.coax xc_corner)
   bare: bool;   // a zone with nothing to fight (Bitcoin Lab): no class bar, no monsters, no casting keys; you walk and look
+  ghost: bool;  // your figure drawn as a ghost (aethyr/render/ghost.coax): see-through with a soft rim, as WorldBuilder's walk draws it
+  bound: f32;   // metres from the middle your body may go each way, when the zone states its own ground (WorldBuilder's 128); 0: the meadow's edge
 }
 // The world is up: the page is a zone's, and you aren't walking out of Character Create's studio.
 zone_world :: (s: [] EgZone) -> bool { c := s[0].creator[..]; return c[0].on && c[0].experimental && !c[0].walk.on; }
@@ -133,6 +136,16 @@ zone_move_in :: (s: [] EgZone) -> EgMoveIn #export_c #effects(all) {
 #test "experimental escape falls back to spawn if no earlier clear place exists" {
  s:[1] EgZone;s[0].creator[0].experimental=true;s[0].you_on=true;zone_queue_escape(s[..],10,0,12);w:=zone_walk(s[..]);#assert w.put && w.x==0 && w.y==0 && w.z==0;
 }
+// How the host blends your figure's draws into the scene (coax/web/host.js coaxial_draw_blend_v1): a
+// ghost's over what is behind it (its scene shader shades it with aethyr/render/ghost.coax), else opaque.
+zone_figure_blend :: (s: [] EgZone) -> int #export_c #effects(all) { return ifx s[0].ghost then ghost.GHOST_BLEND else 0; }
+#test "a zone's figure is opaque unless the zone draws it as a ghost" {
+ s:[1] EgZone;#assert zone_figure_blend(s[..])==0;s[0].ghost=true;#assert zone_figure_blend(s[..])==2;
+}
+#test "a zone that states its own ground keeps you on all of it; else the meadow's edge" {
+ s:[1] EgZone;k:=zone_keep(s[..],100,-50);#assert k.x==82 && k.z==-50;
+ s[0].bound=127.5;k=zone_keep(s[..],100,-130);#assert k.x==100 && k.z==-127.5;k=zone_keep(s[..],-140,20);#assert k.x==-127.5 && k.z==20;
+}
 #test "experimental crowd does not block the player and mobs yield" {
  s:[1] EgZone;s[0].creator[0].experimental=true;s[0].creator[0].hostiles[0].ready=true;
  for i:0..<6 {s[0].creator[0].hostiles[0].enemies[i].x=0;s[0].creator[0].hostiles[0].enemies[i].z=0;}
@@ -165,6 +178,8 @@ zone_move_walls :: (s: [] EgZone) -> [] f32 #export_c #effects(all) { return s[0
 zone_move_floors :: (s: [] EgZone) -> [] f32 #export_c #effects(all) { return s[0].village_near[0].floors[..]; }
 // Where your body may be.
 zone_keep :: (s: [] EgZone, x: f32, z: f32) -> P3 {
+  // a zone that states its own ground keeps you on all of it (its edge is drawn: no invisible wall)
+  if s[0].bound > 0 { b := s[0].bound; return P3.{x = lo(b, hi(-b, x)), z = lo(b, hi(-b, z))}; }
   // the meadow's edge, but for the dungeon, which runs on south past it (verse/experimental-dungeon.coax)
   kz:=lo(82,hi(-82,z));if x>f32(xdungeon.DG_X0) && x<xdungeon.dg_east() && z< -82 {kz=hi(xdungeon.dg_south()+0.3,z);}return P3.{x=lo(82,hi(-82,x)),z=kz};
 }

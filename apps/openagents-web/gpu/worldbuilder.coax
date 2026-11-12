@@ -20,6 +20,7 @@
 //   second noise's; the two noises' shares, the gain and its noise's share
 #load "../../../aethyr/render/sampling.coax";
 #load "../../../aethyr/render/terrain-shade.coax";
+#load "../../../aethyr/render/ghost.coax";   // your character as a ghost
 #load "../../../components/backend/gpu-shader.coax";
 #load "fivelab.coax";   // the people's vertices and their skinning from the baked clips (fivelab_scene_vs)
 
@@ -70,6 +71,17 @@ worldbuilder_marks :: (xz:V2,w1:V2,u:[]f32)->V3 {
   wash:f32=(1.0f32-smoothstep(u[WB_U_BRUSH+1]*0.35f32,u[WB_U_BRUSH+1],bd))*0.06f32;
   return wg_add_f3f3(c,wg_mul_f3f(v3(0.35f32,1.0f32,0.95f32),(rim+(core*0.35f32)+wash)*u[WB_U_BRUSH+3]));
 }
+// The world's edge (#13324): the ground is WB_GROUND_HALF metres each way from the middle and your
+// character walks all of it, so its edge is drawn: a bright line round the square with a glow inside
+// it, and the endless floor beyond it dimmed. 1 on the line, fading inward; `beyond` 1 past it.
+worldbuilder_rim :: (xz:V2,w1:V2)->f32 {
+  d:f32=WB_GROUND_HALF-fmax(abs(xz.x),abs(xz.y));
+  px:f32=fmax(fmax(w1.x,w1.y)*1.5f32,0.04f32);
+  line:f32=1.0f32-smoothstep(0.0f32,px,abs(d));
+  glow:f32=ifx d>0.0f32 then exp((-d)*2.0f32)*0.12f32 else 0.0f32;
+  return fmin(line+glow,1.0f32);
+}
+worldbuilder_beyond :: (xz:V2)->f32 { return ifx fmax(abs(xz.x),abs(xz.y))>WB_GROUND_HALF then 1.0f32 else 0.0f32; }
 // One layer's albedo at xz, linear (aethyr/render/terrain-shade.coax's equations from the page's table).
 worldbuilder_layer :: (k:int,xz:V2,u:[]f32)->V3 {
   at:int=WB_U_LAYERS+(k*12);
@@ -92,8 +104,9 @@ worldbuilder_bg_fs :: (pos:V4,u:[]f32)->V4 {
   w1:V2=wg_max_f2f2(wg_fwidth_f2(xz),v2(0.0001f32,0.0001f32));
   dist:f32=t*rl;
   fog:f32=exp((-dist)*0.012f32);
-  ground:V3=worldbuilder_floor(xz,w1,fog,1.0f32);
+  ground:V3=worldbuilder_floor(xz,w1,fog,1.0f32-(0.75f32*worldbuilder_beyond(xz)));
   ground=wg_add_f3f3(ground,worldbuilder_marks(xz,w1,u));
+  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(0.55f32,0.95f32,1.0f32),worldbuilder_rim(xz,w1)*(fog*0.8f32+0.2f32)));
   ground=wg_mix_f3f3f(sky,ground,fog*0.85f32+0.15f32);
   edge:f32=ifx down then smoothstep(0.0f32,0.02f32,-up) else 0.0f32;
   c:V3=wg_mul_f3f(wg_mix_f3f3f(sky,ground,edge),u[3]);
@@ -253,6 +266,7 @@ worldbuilder_ground_fs :: (s:WorldbuilderS,u:[]f32,w1:V2)->V3 {
   skyc:V3=v3(0.035f32,0.06f32,0.09f32);
   bare=wg_mix_f3f3f(skyc,bare,fog*0.85f32+0.15f32);
   c=wg_mix_f3f3f(bare,wg_add_f3f3(c,wg_mul_f3f(worldbuilder_floor(xz,w1,fog,1.0f32),0.5f32*painted)),painted);
+  c=wg_add_f3f3(c,wg_mul_f3f(v3(0.55f32,0.95f32,1.0f32),worldbuilder_rim(xz,w1)*(fog*0.8f32+0.2f32)));
   return wg_add_f3f3(c,wg_mul_f3f(worldbuilder_marks(xz,w1,u),fog*0.85f32+0.15f32));
 }
 worldbuilder_scene_fs :: (s:WorldbuilderS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
@@ -265,17 +279,19 @@ worldbuilder_scene_fs :: (s:WorldbuilderS,u:[]f32,sheets:Tex2DArray,sheet:Sample
     return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(worldbuilder_ground_fs(s,u,w1),u[3])),1.0f32);
   }
   if (s.ground==2) {
-    // your character, a ghost: a pale light strongest where it turns from the eye, every other
-    // pixel let through so the world shows behind it, and no shadow
+    // your character, a ghost (aethyr/render/ghost.coax): see-through, its rim soft and bright,
+    // blended over the world behind it (worldbuilder-walk.coax wbw_draw_blend), and no shadow
     gn:V3=wg_normalize3(s.normal);
     gv:V3=wg_normalize3(wg_sub_f3f3(v3(u[28],u[29],u[30]),s.world));
-    rim:f32=pow(1.0f32-clampf(abs(wg_dot3(gn,gv)),0.0f32,1.0f32),2.0f32);
-    hole:bool=fract((floor(s.pos.x)+floor(s.pos.y))*0.5f32)>0.25f32;
-    if (hole&&(rim<0.6f32)) {
+    ndv:f32=wg_dot3(gn,gv);
+    // the far side of the body (its surface turned away) isn't drawn, so the ghost shows the world
+    // behind it and not its own back through its front
+    if (ndv<0.0f32) {
       gpu_demote_helper();
     }
-    glow:V3=wg_mix_f3f3f(v3(0.3f32,0.62f32,0.72f32),v3(0.85f32,1.0f32,1.0f32),rim);
-    return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(glow,(0.5f32+(0.7f32*rim))*u[3])),1.0f32);
+    rim:f32=aethyr_ghost_rim(ndv);
+    glow:V3=v3(aethyr_ghost_channel(rim,0),aethyr_ghost_channel(rim,1),aethyr_ghost_channel(rim,2));
+    return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(glow,u[3])),aethyr_ghost_alpha(rim));
   }
   if (textured&&(tex.w<0.4f32)) {
     gpu_demote_helper();

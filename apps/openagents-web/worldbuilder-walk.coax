@@ -15,7 +15,8 @@
 //   instances are numbered from WBW_FIGURES so the shader tells them apart, and they index the
 //   people's own index buffer (the host's coaxial_draw_index_v1);
 //   keys and pointers go to WorldBuilder first and to the zone when it leaves them.
-// The figure is drawn as a ghost (gpu/worldbuilder.coax): it walks through what you place.
+// The figure is drawn as a ghost (EgZone.ghost, aethyr/render/ghost.coax, gpu/worldbuilder.coax): it
+// walks through what you place.
 //   coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/worldbuilder-walk.coax --only "worldbuilder walk"
 #load "../../everglade/zone.coax";
 #load "worldbuilder.coax" as wb;
@@ -38,6 +39,8 @@ WalkBuilder :: struct {
 wbw_enter :: (w: [] WalkBuilder, facts: string) {
   s := w[0].z[..]; cr := s[0].creator[..];
   cr[0].field = true; cr[0].flat = true; s[0].bare = true;
+  s[0].bound = wb.WB_LAND_HALF - 0.5;
+  s[0].ghost = true;   // your figure walks through what you place: a ghost (aethyr/render/ghost.coax)   // the whole ground, to its drawn edge (gpu/worldbuilder.coax worldbuilder_rim)
   if !w[0].entered {
     w[0].entered = true; s[0].xc[0].open = false;
     s[0].put_on = true; s[0].put_x = 0; s[0].put_y = 0; s[0].put_z = 4; s[0].put_face = 3.1415927;
@@ -113,6 +116,13 @@ wbw_draw_index :: (w: [] WalkBuilder, i: int, field: int) -> int #export_c #effe
   return cast(int) w[0].draws[i * 4];
 }
 
+// How the host blends a draw (coax/web/host.js coaxial_draw_blend_v1): WorldBuilder's own opaque, the
+// figure's as the zone says (a ghost: over what is behind it).
+wbw_draw_blend :: (w: [] WalkBuilder, i: int) -> int #export_c #effects(all) {
+  if i < w[0].own_n || i >= w[0].draw_n { return 0; }
+  return zone_figure_blend(w[0].z[..]);
+}
+
 // Keys: WorldBuilder's first (its chat box, its Cmd and Ctrl keys, Tab and Enter); walking, what it leaves is the zone's.
 wbw_key :: (w: [] WalkBuilder, key: int, mods: int) -> bool #export_c #effects(all) {
   b := w[0].b[..];
@@ -147,7 +157,7 @@ wbw_uniform_floats :: () -> int #export_c #effects(all) { return wb.UNIFORM_FLOA
   #assert !w[0].z[0].creator[0].on && !wbw_up(w[..]);
   wbw_message(w[..], HOST_PAGE, "url=https://openagents.com/create-world\n");
   s := w[0].z[..];
-  #assert s[0].creator[0].on && s[0].creator[0].flat && s[0].bare && s[0].put_on && w[0].entered;
+  #assert s[0].creator[0].on && s[0].creator[0].flat && s[0].bare && s[0].put_on && w[0].entered && s[0].bound > 120;
   // no character yet: every key and pointer is WorldBuilder's, as in the overview
   #assert !wbw_walks(w[..]) && wbw_mouselook(w[..]) == 0 && wbw_draw_index(w[..], 0, 0) == -1;
   // a figure's draws follow WorldBuilder's, numbered from WBW_FIGURES, on the people's index buffer
@@ -155,6 +165,8 @@ wbw_uniform_floats :: () -> int #export_c #effects(all) { return wb.UNIFORM_FLOA
   s[0].bodies[0].draws[0] = 300; s[0].bodies[0].draws[1] = 90; s[0].bodies[0].draws[2] = 2; s[0].bodies[0].draws[3] = 1;
   n := wbw_scene(w[..], 1);
   #assert n == 1 && w[0].own_n == 0 && w[0].draws[2] == WBW_FIGURES + 2 && wbw_draw_index(w[..], 0, 0) == WBW_PEOPLE_INDEX && wbw_draw_index(w[..], 0, 1) == 300;
+  // ... blended as a ghost; WorldBuilder's own draws are opaque
+  #assert wbw_draw_blend(w[..], 0) == 2 && wbw_draw_blend(w[..], 1) == 0;
   // walking, W is the zone's and Enter gives the keys to the chat box; then W types
   #assert wbw_walks(w[..]) && wbw_key(w[..], 'w', 0) && (s[0].held & HOLD_W) != 0;
   #assert wbw_key(w[..], wb.KEY_ENTER, 0) && w[0].b[0].typing && s[0].held == 0;

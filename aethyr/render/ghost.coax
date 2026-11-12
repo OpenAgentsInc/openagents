@@ -1,0 +1,48 @@
+// A character drawn as a ghost (#13324): see-through, with a soft bright rim where its surface turns
+// away from the eye, and no shadow. The scalar functions a realm's scene shader calls for a ghost's
+// pixel, lowered to WGSL as `coax_p_<name>` (as aethyr/render/terrain-shade.coax's are), so every
+// zone that shows a ghost shows the same one. The pixel is blended over what is behind it (the host's
+// scene blend profile GHOST_BLEND, coax/web/host.js coaxial_draw_blend_v1: source over, no depth
+// write), never a pattern of holes, so it reads the same on a 1x screen as on a 2x one.
+//   ndv    = |n · v|                       (n the surface's normal, v toward the eye, both unit)
+//   rim    = (1 - ndv)^2
+//   alpha  = core + (edge - core) smoothstep(0, 1, rim)
+//   light  = 0.5 + 0.7 rim                 (how bright, times the colour)
+//   colour = mix(body, edge colour, rim)   (channel by channel: aethyr_ghost_channel)
+// An Everglade zone turns it on for your figure with EgZone.ghost (everglade/zone.coax
+// zone_figure_blend); WorldBuilder's walk is the first (apps/openagents-web/worldbuilder-walk.coax).
+//   coax/bin/coax test aethyr/render/ghost.coax
+
+#module "aethyr.render.ghost";
+#load "noise.coax";   // and through it verse/gpu/shader.coax
+
+GHOST_BLEND :: 2;     // the host's scene blend profile for a ghost's draws: source over (1 adds, 0 is opaque)
+GHOST_CORE :: 0.16;   // how much of the ghost a face toward the eye covers
+GHOST_EDGE :: 0.9;    // ... and its rim
+
+aethyr_ghost_rim :: (ndv: f32) -> f32 {
+  t := 1.0f32 - clampf(abs(ndv), 0.0f32, 1.0f32);
+  return t * t;
+}
+aethyr_ghost_alpha :: (rim: f32) -> f32 {
+  return GHOST_CORE + (GHOST_EDGE - GHOST_CORE) * smoothstep(0.0f32, 1.0f32, rim);
+}
+aethyr_ghost_light :: (rim: f32) -> f32 { return 0.5f32 + 0.7f32 * rim; }
+// One channel (0 red, 1 green, 2 blue) of the ghost's colour: a cool body toward a pale edge.
+aethyr_ghost_channel :: (rim: f32, k: int) -> f32 {
+  body := ifx k == 0 then 0.3f32 else ifx k == 1 then 0.62f32 else 0.72f32;
+  edge := ifx k == 0 then 0.85f32 else 1.0f32;
+  return (body + (edge - body) * clampf(rim, 0.0f32, 1.0f32)) * aethyr_ghost_light(rim);
+}
+
+#test "a ghost is faint where it faces you and solid and bright at its rim" {
+  #assert aethyr_ghost_rim(1) == 0 && aethyr_ghost_rim(-1) == 0 && aethyr_ghost_rim(0) == 1;
+  #assert aethyr_ghost_rim(0.5) == 0.25 && aethyr_ghost_rim(2) == 0;
+  #assert abs(aethyr_ghost_alpha(0) - GHOST_CORE) < 0.0001 && abs(aethyr_ghost_alpha(1) - GHOST_EDGE) < 0.0001;
+  #assert aethyr_ghost_alpha(0.5) > GHOST_CORE && aethyr_ghost_alpha(0.5) < GHOST_EDGE;
+  #assert aethyr_ghost_light(0) == 0.5 && abs(aethyr_ghost_light(1) - 1.2) < 0.0001;
+  // the body is cool and the rim pale, each channel brighter toward the rim
+  #assert abs(aethyr_ghost_channel(0, 0) - 0.15) < 0.0001 && abs(aethyr_ghost_channel(0, 2) - 0.36) < 0.0001;
+  #assert abs(aethyr_ghost_channel(1, 0) - 1.02) < 0.0001 && abs(aethyr_ghost_channel(1, 1) - 1.2) < 0.0001;
+  #assert aethyr_ghost_channel(0.4, 1) > aethyr_ghost_channel(0.2, 1);
+}

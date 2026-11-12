@@ -171,6 +171,8 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 /* The people's index buffer is an index asset a draw may name (host.js coaxial_draw_index_v1). */
 EXPORT("coaxial_asset_index_v1") uint32_t coaxial_asset_index_v1(int32_t i) { return i == PEOPLE_INDEX; }
 EXPORT("coaxial_draw_index_v1") int32_t coaxial_draw_index_v1(uint32_t state, uint32_t i, uint32_t shadow, uint32_t field) { (void)shadow; return (int32_t)wbw_draw_index(walk(state), (int64_t)i, (int64_t)field); }
+/* The figure's draws blend over the scene as a ghost (host.js coaxial_draw_blend_v1: 0 opaque, 2 source over). */
+EXPORT("coaxial_draw_blend_v1") uint32_t coaxial_draw_blend_v1(uint32_t state, int32_t i) { return (uint32_t)wbw_draw_blend(walk(state), (int64_t)i); }
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)walk_at(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)walk_at(state)->draw_n; }
 // Two stores: the instances' rows, and the ground's samples (worldbuilder-land.coax wb_land_gpu). Each
