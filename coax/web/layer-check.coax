@@ -6,7 +6,7 @@
 // excuse. Run it before a push:
 //   coax/web/tool.sh layer-check                 (from the repository root)
 //   coax/web/tool.sh layer-check --base REV      compare the allowlist with REV's (default origin/main)
-//   coax/web/tool.sh layer-check --consumers     report the engine modules no product loads (#13272)
+//   coax/web/tool.sh layer-check --consumers     report the engine modules no product loads, each with its line in aethyr/consumers.txt (#13272)
 //   coax/bin/coax test coax/web/layer-check.coax --library
 //
 // The rules, for a loading file that is not support code (below):
@@ -42,6 +42,7 @@
 LC_ALLOW :: "aethyr/layer-allowlist.txt";
 LC_CONTEXTS :: "contexts.txt";
 LC_MODELS :: "aethyr/model-files.txt";
+LC_CONSUMERS :: "aethyr/consumers.txt";
 LC_HOW :: "aethyr/README.md, \"Layers\"";
 LC_BUF :: 16777216;      // git grep's and git ls-files' output, and the largest file read
 LC_MODS :: 8192;         // engine modules tracked by --consumers
@@ -584,6 +585,106 @@ lc_consumed :: (loads: string, tools: string, mods: [] string, n: int, consumed:
   }
 }
 
+// ---- the consumers list (#13272): aethyr/consumers.txt says why each engine module with no product
+// consumer is kept, one line a module or folder prefix:
+//   adopt PREFIX #ISSUE     an open issue of the AAA program (#13257) takes it into the product
+//   book PREFIX CHAPTER     it is the Aethyr book's own implementation, and CHAPTER names it
+//   built PREFIX SCRIPT     no file loads it: SCRIPT compiles it by name (a page's renderer carrier)
+//   pipeline PREFIX TOOL    an offline tool that makes a shipped thing loads it (a film, a sound bank)
+// The longest prefix that starts a module's path covers it. A module with no consumer and no line
+// fails; so does a line that covers nothing now, an adopt line with no issue, and a line whose
+// evidence file is missing or does not name the prefix (its path under aethyr/).
+// The kind of a consumers line: 1 adopt, 2 book, 3 built, 4 pipeline; 0 for any other line.
+lc_cons_kind :: (line: string) -> int {
+  w := lc_word(line, 0);
+  if w == "adopt" { return 1; }
+  if w == "book" { return 2; }
+  if w == "built" { return 3; }
+  if w == "pipeline" { return 4; }
+  return 0;
+}
+// Whether a word is an issue number: # and digits.
+lc_issue :: (w: string) -> bool {
+  if w.count < 2 || w[0] != '#' { return false; }
+  for i: 1..<w.count { if !lc_digit(w[i]) { return false; } }
+  return true;
+}
+// Line k of a text, trimmed ("" past its end).
+lc_nth_line :: (text: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if n == k { return lc_trim(cast(string) text[i..<j]); }
+    i = j + 1; n += 1;
+  }
+  return "";
+}
+lc_line_count :: (text: string) -> int {
+  n := 0;
+  for c: text { if c == '\n' { n += 1; } }
+  if text.count > 0 && text[text.count - 1] != '\n' { n += 1; }
+  return n;
+}
+// The consumers line (its number in the list) whose prefix is the longest that starts path, or -1.
+lc_cover :: (list: string, path: string) -> int {
+  best := -1; best_n := 0;
+  for k: 0..<lc_line_count(list) {
+    line := lc_nth_line(list, k);
+    if lc_cons_kind(line) == 0 { continue; }
+    p := lc_word(line, 1);
+    if p.count > best_n && lc_starts(path, p) { best = k; best_n = p.count; }
+  }
+  return best;
+}
+// The modules with no product consumer against the list. counts[0] takes those no line covers,
+// counts[1..4] those each kind covers; used marks the lines that cover one. Returns the failures:
+// an uncovered module, a line that is not one of the four kinds, an adopt line with no issue, a
+// line with no evidence word, and a line that covers nothing now.
+lc_judge_consumers :: (mods: [] string, n: int, consumed: [] bool, list: string, run: LcRun, counts: [] int, used: [] bool) -> int {
+  bad := 0;
+  for m: 0..<n {
+    if consumed[m] { continue; }
+    c := lc_cover(list, mods[m]);
+    if c < 0 || c >= used.count {
+      bad += 1; counts[0] += 1;
+      if !run.quiet { print("FAIL consumers: % has no product consumer and no line in %. Fix: load it from the product, delete it, or add a line naming the issue that adopts it (%).\n", mods[m], LC_CONSUMERS, LC_HOW); }
+      continue;
+    }
+    used[c] = true; counts[lc_cons_kind(lc_nth_line(list, c))] += 1;
+  }
+  for k: 0..<lc_line_count(list) {
+    line := lc_nth_line(list, k);
+    if line.count == 0 || line[0] == '#' { continue; }
+    kind := lc_cons_kind(line);
+    if kind == 0 || lc_word(line, 1).count == 0 || lc_word(line, 2).count == 0 {
+      bad += 1;
+      if !run.quiet { print("FAIL consumers: % has a line that is not \"adopt|book|built|pipeline PREFIX EVIDENCE\": \"%\"\n", LC_CONSUMERS, line); }
+      continue;
+    }
+    if kind == 1 && !lc_issue(lc_word(line, 2)) {
+      bad += 1;
+      if !run.quiet { print("FAIL consumers: an adopt line names its issue as #NUMBER: \"%\"\n", line); }
+      continue;
+    }
+    if k < used.count && !used[k] {
+      bad += 1;
+      if !run.quiet { print("FAIL consumers: the line \"%\" covers nothing now (its modules have a consumer, or are gone). Fix: take it out of %.\n", line, LC_CONSUMERS); }
+    }
+  }
+  return bad;
+}
+// Whether a line's evidence text names its prefix: the prefix's path under aethyr/, or, for one
+// module, its file name (a file beside it loads it by that name alone).
+lc_evidence_names :: (line: string, evidence: string) -> bool {
+  p := lc_word(line, 1);
+  if !lc_starts(p, "aethyr/") { return false; }
+  if lc_has(evidence, cast(string) p[7..<p.count]) { return true; }
+  cut := p.count;
+  while cut > 0 && p[cut - 1] != '/' { cut -= 1; }
+  return cut < p.count && lc_has(evidence, cast(string) p[cut..<p.count]);
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh layer-check [--base REV] [--consumers]"); return 2; }
@@ -614,31 +715,39 @@ tool_main :: () -> int #export_c #effects(all) {
   if t.started != 0 || (t.status != 0 && t.status != 1) || t.cut { tool_errln("layer-check: git grep for tool_main failed"); return 2; }
   tools := cast(string) tools_buf[0..<t.out_n];
 
+  // the engine modules, which of them a product consumes, and the consumers list's word on the rest (#13272)
+  ls := [3] string.["git", "ls-files", "aethyr/*.coax"];
+  r := proc_run(ls[..], 60000, body[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { tool_errln("layer-check: git ls-files failed"); return 2; }
+  all_buf: [1048576] u8; all_n := 0;
+  for q: 0..<r.out_n { if all_n < all_buf.count { all_buf[all_n] = body[q]; all_n += 1; } }
+  all := cast(string) all_buf[0..<all_n];
+  mods: [LC_MODS] string; n := 0;
+  i := 0;
+  while i < all.count {
+    j := i;
+    while j < all.count && all[j] != '\n' { j += 1; }
+    p := cast(string) all[i..<j]; i = j + 1;
+    if p.count > 0 && !lc_support(p, tools) && n < mods.count { mods[n] = p; n += 1; }
+  }
+  consumed: [LC_MODS] bool; loaders: [LC_MODS] int;
+  lc_consumed(loads, tools, mods[..], n, consumed[..], loaders[..]);
+  cons_text: [262144] u8;
+  cons_n := fs_read(LC_CONSUMERS, cons_text[..]);
+  if cons_n < 0 { print("layer-check: no % here; run from the repository root\n", LC_CONSUMERS); return 2; }
+  cons := cast(string) cons_text[0..<cons_n];
+  cons_counts: [5] int; cons_used: [LC_LINES] bool;
   if args_has(args[..], "--consumers") {
-    ls := [3] string.["git", "ls-files", "aethyr/*.coax"];
-    r := proc_run(ls[..], 60000, body[..], err[..]);
-    if r.started != 0 || r.status != 0 || r.cut { tool_errln("layer-check: git ls-files failed"); return 2; }
-    all := cast(string) body[0..<r.out_n];
-    mods: [LC_MODS] string; n := 0;
-    i := 0;
-    while i < all.count {
-      j := i;
-      while j < all.count && all[j] != '\n' { j += 1; }
-      p := cast(string) all[i..<j]; i = j + 1;
-      if p.count > 0 && !lc_support(p, tools) && n < mods.count { mods[n] = p; n += 1; }
-    }
-    consumed: [LC_MODS] bool; loaders: [LC_MODS] int;
-    lc_consumed(loads, tools, mods[..], n, consumed[..], loaders[..]);
-    file: [LC_BUF] u8;
     none := 0; lines := 0;
     for k: 0..<n {
       if consumed[k] { continue; }
-      size := fs_read(mods[k], file[..]); nl := 0;
-      for q: 0..<ifx size > 0 then size else 0 { if file[q] == '\n' { nl += 1; } }
+      size := fs_read(mods[k], body[..]); nl := 0;
+      for q: 0..<ifx size > 0 then size else 0 { if body[q] == '\n' { nl += 1; } }
       none += 1; lines += nl;
-      print("%\t% lines\t% loader%\n", mods[k], nl, loaders[k], ifx loaders[k] == 1 then "" else "s");
+      c := lc_cover(cons, mods[k]);
+      print("%\t% lines\t% loader%\t%\n", mods[k], nl, loaders[k], ifx loaders[k] == 1 then "" else "s", ifx c < 0 then "NO LINE" else lc_nth_line(cons, c));
     }
-    print("layer-check --consumers: % of % engine modules under aethyr/ (% lines) have no product consumer: nothing outside aethyr/ that is not a test, tool, example, book or document loads them, directly or through another module\n", none, n, lines);
+    print("layer-check --consumers: % of % engine modules under aethyr/ (% lines) have no product consumer: nothing outside aethyr/ that is not a test, tool, example, book or document loads them, directly or through another module. % says why each is kept\n", none, n, lines, LC_CONSUMERS);
     return 0;
   }
 
@@ -648,6 +757,16 @@ tool_main :: () -> int #export_c #effects(all) {
   bad += lc_judge_models_fs(models, body[..], run, found[..], model_checked[..]);
   room_v1 := lc_room_v1(loads, LC_ROOM, run);
   bad += room_v1;
+  bad += lc_judge_consumers(mods[..], n, consumed[..], cons, run, cons_counts[..], cons_used[..]);
+  for k: 0..<lc_line_count(cons) {
+    line := lc_nth_line(cons, k);
+    if lc_cons_kind(line) < 2 || lc_word(line, 2).count == 0 { continue; }
+    size := fs_read(lc_word(line, 2), body[..]);
+    if size < 0 || !lc_evidence_names(line, cast(string) body[0..<size]) {
+      bad += 1;
+      print("FAIL consumers: the line \"%\" names % as its evidence, which % (the prefix's path under aethyr/, or the module's file name, must be in it)\n", line, lc_word(line, 2), ifx size < 0 then "is not a file here" else "does not name the prefix");
+    }
+  }
 
   // the allowlist against the base's copy: it only shrinks
   added: [1] int;
@@ -675,7 +794,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
 
   total := found[1] + found[2] + found[3] + found[4];
-  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, bad);
+  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), no-consumer modules: % with no line (none allowed), % adopted, % the book's, % built by name, % a pipeline's (%), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, cons_counts[0], cons_counts[1], cons_counts[2], cons_counts[3], cons_counts[4], LC_CONSUMERS, bad);
   return ifx bad == 0 then 0 else 1;
 }
 
@@ -800,6 +919,32 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   #assert lc_judge_model_source("aethyr/session/ledger.coax", wide, LC_T_QUIET, found[..]) == 1 && found[LC_MODEL_EFFECTS] == 1;
   // model-effects is never allowlisted
   #assert lc_entry_rule("model-effects aethyr/session/ledger.coax -> a") == 0;
+}
+#test "consumers list: the longest prefix covers a module; an uncovered module, a stale line and a bad line fail" {
+  list := "# why each is kept\nadopt aethyr/world/ #13280  # one world\nbook aethyr/world/weather.coax aethyr/book/ch071.md\nbuilt aethyr/render/carriers/ coax/web/wasm.sh\npipeline aethyr/render/film.coax aethyr/tools/film-frames.coax\n";
+  #assert lc_cons_kind("adopt a #1") == 1 && lc_cons_kind("book a b") == 2 && lc_cons_kind("built a b") == 3 && lc_cons_kind("pipeline a b") == 4 && lc_cons_kind("# adopt") == 0 && lc_cons_kind("") == 0 && lc_cons_kind("adopted a #1") == 0;
+  #assert lc_issue("#13280") && !lc_issue("#") && !lc_issue("13280") && !lc_issue("#13a") && !lc_issue("");
+  #assert lc_line_count(list) == 5 && lc_line_count("a") == 1 && lc_line_count("") == 0 && lc_nth_line(list, 1) == "adopt aethyr/world/ #13280  # one world" && lc_nth_line(list, 9) == "" && lc_nth_line(" a \nb", 0) == "a" && lc_nth_line("a\nb", 1) == "b";
+  #assert lc_cover(list, "aethyr/world/cells.coax") == 1 && lc_cover(list, "aethyr/world/weather.coax") == 2 && lc_cover(list, "aethyr/render/carriers/a.coax") == 3 && lc_cover(list, "aethyr/render/passes.coax") == -1 && lc_cover("", "aethyr/a.coax") == -1;
+  mods := [5] string.["aethyr/core/loop.coax", "aethyr/render/carriers/a.coax", "aethyr/render/film.coax", "aethyr/world/cells.coax", "aethyr/world/weather.coax"];
+  consumed := [5] bool.[true, false, false, false, false];
+  counts: [5] int; used: [8] bool;
+  #assert lc_judge_consumers(mods[..], 5, consumed[..], list, LC_T_QUIET, counts[..], used[..]) == 0;
+  #assert counts[0] == 0 && counts[1] == 1 && counts[2] == 1 && counts[3] == 1 && counts[4] == 1 && !used[0] && used[1] && used[2] && used[3] && used[4];
+  // a consumed module needs no line, so its line is stale; an uncovered module fails
+  all := [5] bool.[true, true, true, true, true];
+  c2: [5] int; u2: [8] bool;
+  #assert lc_judge_consumers(mods[..], 5, all[..], list, LC_T_QUIET, c2[..], u2[..]) == 4 && c2[0] == 0;
+  c3: [5] int; u3: [8] bool;
+  #assert lc_judge_consumers(mods[..], 5, consumed[..], "adopt aethyr/world/ #13280\n", LC_T_QUIET, c3[..], u3[..]) == 2 && c3[0] == 2 && c3[1] == 2;
+  // an adopt line names an issue; every line has its evidence word; an unknown kind fails
+  c4: [5] int; u4: [8] bool;
+  #assert lc_judge_consumers(mods[..], 1, all[..], "adopt aethyr/world/ later\n", LC_T_QUIET, c4[..], u4[..]) == 1;
+  #assert lc_judge_consumers(mods[..], 1, all[..], "book aethyr/world/\n", LC_T_QUIET, c4[..], u4[..]) == 1;
+  #assert lc_judge_consumers(mods[..], 1, all[..], "keep aethyr/world/ #1\n", LC_T_QUIET, c4[..], u4[..]) == 1;
+  #assert lc_judge_consumers(mods[..], 1, all[..], "# a comment\n\n", LC_T_QUIET, c4[..], u4[..]) == 0;
+  #assert lc_evidence_names("book aethyr/world/weather.coax ch", "see [weather](../world/weather.coax)") && !lc_evidence_names("book aethyr/world/weather.coax ch", "see weather") && !lc_evidence_names("book verse/a.coax ch", "verse/a.coax");
+  #assert lc_evidence_names("pipeline aethyr/audio/measure.coax t", "#load \"measure.coax\";") && !lc_evidence_names("adopt aethyr/audio/ t", "audio") && lc_evidence_names("book aethyr/space/ ch", "(../space/frames.coax)");
 }
 #test "consumers: a module a product loads, directly or through another module, is consumed" {
   mods := [4] string.["aethyr/a.coax", "aethyr/b.coax", "aethyr/c.coax", "aethyr/d.coax"];

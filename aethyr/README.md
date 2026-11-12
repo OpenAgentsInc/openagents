@@ -49,7 +49,14 @@ code out of `tests/` into a module. Then delete the line and run
 `coax/web/tool.sh layer-check`.
 
 `coax/web/tool.sh layer-check --consumers` lists the engine modules that no
-product loads, directly or through another module (#13272).
+product loads, directly or through another module (#13272), each with the
+line of [`consumers.txt`](consumers.txt) that says why it is kept: an open
+issue adopts it, a book chapter builds it, a build script compiles it by
+name, or a pipeline tool loads it. `layer-check` fails on a module with no
+consumer and no line, and on a line that covers nothing now. A new engine
+module is loaded by the product in the change that adds it, or names the
+issue that will. A module nobody adopts by the end of the AAA program
+(#13257) is deleted.
 
 | Module | What |
 | --- | --- |
