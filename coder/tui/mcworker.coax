@@ -259,6 +259,8 @@ tool_main :: () -> int #export_c #effects(all) {
     effort := cl_str(ar[..], msg, "effort");
     if effort != "medium" && effort != "high" { effort = "low"; }
     mk_plan_limits(plan[..], effort);
+    // at low, the plan and each finish are thought at medium (GitHub #13231); medium and high stay uniform
+    if effort == "low" { run[0].l[0].escalate = true; run[0].l[0].effort_low = "low"; run[0].l[0].effort_high = "medium"; run[0].l[0].high_limit_ms = MK_HIGH_LIMIT_MS; }
     mc_run_start(run[..], plan[..], bench[..], cd, effort);
     running = true;
   }

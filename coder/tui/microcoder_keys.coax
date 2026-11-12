@@ -157,6 +157,7 @@ mk_first_limit_ms :: (effort: string) -> int {
   return 90000;
 }
 MK_IDLE_LIMIT_MS :: 90000;
+MK_HIGH_LIMIT_MS :: 90000;       // a call at the higher level, whole: medium usually answers in 7-15 s but sometimes thinks for minutes
 MK_RETRIES :: 3;
 
 // The plan's retries and silence limits for a run at effort.
