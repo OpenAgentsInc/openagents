@@ -34,24 +34,24 @@ RS_ACTION_TIMING :: RsTimingProfile.{kind=RS_TIME_ACTION};
   }
 }
 
-rs_timing_allowed :: (p: RsTimingProfile, sealed: bool) -> bool #effects(all) {
+rs_timing_allowed :: (p: RsTimingProfile, sealed: bool) -> bool #effects(reads, writes, traps) {
   return !sealed && (p.kind==RS_TIME_STRICT || p.kind==RS_TIME_ACTION);
 }
-rs_set_timing :: (b: [] RsBattle, p: RsTimingProfile) -> bool #effects(all) {
+rs_set_timing :: (b: [] RsBattle, p: RsTimingProfile) -> bool #effects(reads, writes, traps) {
   if !rs_timing_allowed(p,b[0].timing_sealed) { return false; }
   b[0].timing = p; return true;
 }
-rs_seal_timing :: (b: [] RsBattle) #effects(all) { b[0].timing_sealed = true; }
-rs_reset_timing :: (b: [] RsBattle) #effects(all) { b[0].timing = RS_STRICT_TIMING; b[0].timing_sealed = false; }
-rs_timing_beat :: (p: RsTimingProfile) -> f32 #effects(all) { return ifx p.kind==RS_TIME_ACTION then 1.5 else 6; }
-rs_timing_recharge :: (p: RsTimingProfile) -> f32 #effects(all) { return ifx p.kind==RS_TIME_ACTION then 9 else 0; }
-rs_timing_move :: (p: RsTimingProfile, speed: int) -> int #effects(all) {
+rs_seal_timing :: (b: [] RsBattle) #effects(reads, writes, traps) { b[0].timing_sealed = true; }
+rs_reset_timing :: (b: [] RsBattle) #effects(reads, writes, traps) { b[0].timing = RS_STRICT_TIMING; b[0].timing_sealed = false; }
+rs_timing_beat :: (p: RsTimingProfile) -> f32 #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 1.5 else 6; }
+rs_timing_recharge :: (p: RsTimingProfile) -> f32 #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 9 else 0; }
+rs_timing_move :: (p: RsTimingProfile, speed: int) -> int #effects(reads, writes, traps) {
   if speed<=0 { return 0; }
   if p.kind==RS_TIME_STRICT { return speed; }
   return rs_max((speed/5+2)/4,1)*5;
 }
 // The action profile prices standing against its beat's movement grant. Strict
 // mode uses actual current Speed. The Prone policy rounds the half-cost down.
-rs_timing_stand_speed :: (p: RsTimingProfile, speed: int) -> int #effects(all) {
+rs_timing_stand_speed :: (p: RsTimingProfile, speed: int) -> int #effects(reads, writes, traps) {
   return ifx p.kind==RS_TIME_ACTION then rs_timing_move(p,speed) else rs_max(speed,0);
 }
