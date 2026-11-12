@@ -13,7 +13,7 @@ wires it in.
 
 | Zone | Its files | Entry units the check follows |
 | --- | --- | --- |
-| Everglade II (`everglade-ii`) | `apps/openagents-web/everglade2*.coax`, the room's `coax/web/room/room-e2-*.coax` and `room-everglade.coax` | `everglade2.coax`, `room-everglade.coax` |
+| Everglade II (`everglade-ii`) | `apps/openagents-web/everglade2*.coax`, the room's `everglade/server/*.coax` and `room-everglade.coax` | `everglade2.coax`, `room-everglade.coax` |
 | Experimental (`experimental`) | `apps/openagents-web/fivelab*.coax`, `charactercreator*.coax`, `experimental-*.coax`, and `verse/experimental-*.coax` | `fivelab.coax` (the module for both `/worlds/everglade-experimental` and the 5E Lab) |
 | Everglade v1 (`everglade-v1`) | `apps/openagents-web/everglade.coax` and `everglade-*.coax` | `everglade.coax` |
 

@@ -7,7 +7,7 @@
 #load "everglade-move-types.coax";
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/rock-hulls.coax";
-#load "../../verse/everglade2/camp.coax";   // the goblin camp's props (coax/web/room/room-e2-monsters.coax)
+#load "../../verse/everglade2/camp.coax";   // the goblin camp's props (everglade/server/creatures.coax)
 #load "../../verse/everglade2/points.coax";   // the spawn (#13078)
 
 E2_NEAR_BODIES :: 48;         // trunks the controller walks round
@@ -202,7 +202,7 @@ e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: []
   w.bodies = n; w.hulls = at; return w;
 }
 
-// The path's guard (coax/web/room/room-e2-guard.coax), a body like yours: upright from his shins to his
+// The path's guard (everglade/server/guard.coax), a body like yours: upright from his shins to his
 // shoulders, E2_GUARD_R round. Within E2_GUARD_NEAR m of the step he joins its bodies, so no one walks
 // through him; the page puts him where it draws him, the room where it has him.
 E2_GUARD_R :: 0.35; E2_GUARD_NEAR :: 6.0;

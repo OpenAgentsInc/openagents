@@ -6,7 +6,7 @@
 //   - in a dev build it turns on only on a page served from 127.0.0.1 or localhost whose address
 //     has ?admin (e2a_facts);
 //   - what changes the room (heal, god, teleport, noclip, the guard) goes as X lines that
-//     only a local room takes: --dev and bound to 127.0.0.1 (coax/web/room/room-e2-admin.coax).
+//     only a local room takes: --dev and bound to 127.0.0.1 (everglade/server/admin.coax).
 // Open it: coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static --no-build, a
 // dev build of everglade2.wasm, then http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950
 // (docs/verse/everglade2.md "Admin mode"). Backquote (`) shows and hides the panel; it starts shown.
@@ -79,7 +79,7 @@ e2a_say :: (s: [] E2, t: string) {
   for c: t { if a[0].said_n < a[0].said.count { a[0].said[a[0].said_n] = c; a[0].said_n += 1; } }
   a[0].said_at = s[0].clock;
 }
-// An X line to the room (room-e2-admin.coax): false with no room.
+// An X line to the room (everglade/server/admin.coax): false with no room.
 e2a_send :: (s: [] E2, m: int) -> bool {
   n := s[0].net[..];
   if !e2n_open(n) { e2a_say(s, "NO ROOM: START THE LOCAL ROOM"); return false; }

@@ -27,7 +27,7 @@ The service gives each NPC five behaviours:
 | --- | --- | --- |
 | Engine | The agent, its tuning, the window, planning, pursuit, circling, body avoidance and the leash | `aethyr/ai/steer.coax` |
 | Engine | A window filled from a realm's colliders and terrain (boxes, capsules, hulls, heightfields, steep ground) | `aethyr/ai/steer-colliders.coax` |
-| Game | Each kind's tuning: its speed, body, reach, ring and leash | `E2G_NAV` in `coax/web/room/room-e2-guard.coax`; `hostile_tune` in `verse/experimental-hostiles.coax` |
+| Game | Each kind's tuning: its speed, body, reach, ring and leash | `E2G_NAV` in `everglade/server/guard.coax`; `hostile_tune` in `verse/experimental-hostiles.coax` |
 | Zone | Where a body may stand, the bodies near it, and the final slide of a step | `e2_may_stand` and `e2m_keep` (Everglade II); `hostile_blocked_pad`, `hostile_walk` and the dungeon's doorway graph (Experimental) |
 
 Coax has no procedure values, so the zone fills the window itself. It does this only when the

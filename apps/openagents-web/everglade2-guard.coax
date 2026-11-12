@@ -1,4 +1,4 @@
-// Everglade II's path guard on the page (coax/web/room/room-e2-guard.coax walks him; everglade2-net.coax
+// Everglade II's path guard on the page (everglade/server/guard.coax walks him; everglade2-net.coax
 // keeps the room's words on him). He is drawn as everyone is, a Character Create body (e2_body) dressed
 // in the Quaternius knight's armour this pack carries: the armet, the round pauldrons, the plate
 // cuirass, the armoured arms, the greaves and the sabatons, the Ultimate RPG Sword in his right hand. He is drawn a jitter buffer behind, where
@@ -9,7 +9,7 @@
 // the body struck and sound where they land.
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only guard
 
-E2GD_DOWN :: 3; E2GD_NONE :: 4;   // his states as the room says them (room-e2-guard.coax E2GD_*)
+E2GD_DOWN :: 3; E2GD_NONE :: 4;   // his states as the room says them (everglade/server/guard.coax E2GD_*)
 E2GD_FAR :: 110.0;           // m: past this he is not drawn; from E2GD_FAR - E2GD_EDGE he thins
 E2GD_EDGE :: 12.0;
 E2GD_FADE_IN :: 1.0;         // s a new guard thins in over
@@ -54,7 +54,7 @@ e2gd_shown :: (now: f32, born: f32, d: f32, fell: bool, fell_at: f32) -> f32 {
 
 // Where you aim at him: a harmful ability whose reach takes him, with him before you (within 50
 // degrees of your facing), aims at his middle; else where it would land. The room takes a cast aimed
-// within E2GD_AIM m of him as at him (room-e2-guard.coax e2_guard_target).
+// within E2GD_AIM m of him as at him (everglade/server/guard.coax e2_guard_target).
 e2gd_aim :: (s: [] E2, m: XcAim, p: [2] f32, fx: f32, fz: f32) -> [2] f32 {
   g := s[0].guard[0];
   if !g.up || m.kind == XC_AIM_SELF { return p; }
@@ -126,7 +126,7 @@ e2gd_hits :: (s: [] E2) {
     if !e.live || e.t > n[0].rt { continue; }
     n[0].guard_hits[h].live = false;
     x := gl[0].x; z := gl[0].z; y := gl[0].y + 2.1;
-    // 4: his critical hit; 5 his arrow, 6 its critical hit (room-e2-guard.coax)
+    // 4: his critical hit; 5 his arrow, 6 its critical hit (everglade/server/guard.coax)
     crit := e.kind == 4 || e.kind == 6; arrow := e.kind == 5 || e.kind == 6; harm := e.kind == 2 || e.kind == 4 || arrow;
     if harm {
       if e.seat == n[0].seat { x = s[0].you_x; z = s[0].you_z; y = s[0].you_y + 2.1; }

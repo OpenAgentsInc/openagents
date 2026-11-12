@@ -1,4 +1,4 @@
-// Everglade II's monsters on the page (coax/web/room/room-e2-monsters.coax moves them; everglade2-net.coax
+// Everglade II's monsters on the page (everglade/server/creatures.coax moves them; everglade2-net.coax
 // keeps the room's h2 and h3 words on them). The wolves and the goblins are the pack's baked frames
 // (verse/tools/assets/everglade2_pack.coax: glade/monster0..31 the wolf's Idle, Gallop, Attack and Death,
 // glade/gremlin0..39 the goblin's Idle, Jog, Sword, Shoot and Death), each a flag-18 record turned and set
@@ -10,7 +10,7 @@
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only monster
 
 E2MN_N :: 12;
-E2MN_GONE :: 4; E2MN_DEAD :: 3;          // the room's states (room-e2-monsters.coax E2M_*)
+E2MN_GONE :: 4; E2MN_DEAD :: 3;          // the room's states (everglade/server/creatures.coax E2M_*)
 E2MN_FAR :: 90.0; E2MN_EDGE :: 12.0;     // m: past FAR not drawn; it thins over the EDGE before it
 E2MN_FADE_IN :: 1.0;                     // s a new one thins in over
 E2MN_LIE :: 5.0; E2MN_OUT :: 1.2;        // s the fallen lie after their death plays, then thin out over
@@ -21,7 +21,7 @@ E2MN_CLIP_AT :: [2][5] int.[[5] int.[0, 8, 16, 16, 24], [5] int.[0, 8, 16, 24, 3
 E2MN_CLIP_S :: [2][5] f32.[[5] f32.[2.0, 0.55, 0.6, 0.6, 1.1], [5] f32.[1.6, 0.7, 0.8, 0.9, 1.2]];
 E2MN_NAME :: [2] string.["Wolf", "Goblin"];
 E2MN_TALL :: [2] f32.[1.05, 1.25];       // m from its feet its plate stands over, and its middle for aim
-E2MN_TELL :: [2] f32.[0.45, 0.6];        // s of a blow's swing (room-e2-monsters.coax E2M_TELL_BLOW); a draw's 0.6
+E2MN_TELL :: [2] f32.[0.45, 0.6];        // s of a blow's swing (everglade/server/creatures.coax E2M_TELL_BLOW); a draw's 0.6
 E2mnLook :: struct {
   life: int = -1; born: f32 = -100; fell: bool; fell_at: f32;
   act_seen: int = -1; act_at: f32 = -100; act: int;
@@ -104,7 +104,7 @@ e2mn_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
 
 // Where you aim at a monster: a harmful ability whose reach takes one before you (within 50 degrees of
 // your facing) aims at the nearest one's middle; else where it would land. The room takes a cast aimed
-// within E2M_AIM m of one as at it (room-e2-monsters.coax e2_monster_target).
+// within E2M_AIM m of one as at it (everglade/server/creatures.coax e2_monster_target).
 e2mn_aim :: (s: [] E2, m: XcAim, p: [2] f32, fx: f32, fz: f32) -> [2] f32 {
   if m.kind == XC_AIM_SELF { return p; }
   reach := ifx m.kind == XC_AIM_MELEE then m.reach + 0.6 else m.reach + 1;

@@ -400,11 +400,11 @@ bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]) {
   pose_of(seat_p[k][s], false, out);
   return true;
 }
-/* The path guard's body this tick (room-e2-guard.coax rm_e2_guard_body), which every seat's step walks round. */
+/* The path guard's body this tick (everglade/server/guard.coax rm_e2_guard_body), which every seat's step walks round. */
 static bool guard_on[WORLD_ROOMS]; static float guard_xz[WORLD_ROOMS][2];
 void world2_guard(int k, bool on, float x, float z) { if (k >= 0 && k < WORLD_ROOMS) { guard_on[k] = on; guard_xz[k][0] = x; guard_xz[k][1] = z; } }
 /* The trunks and round props near (x, z) as circles (x, z, radius each) into out, at most cap of them:
-   what the guard steers round (room-e2-guard.coax rm_e2_guard_near, for the shared steering service). */
+   what the guard steers round (everglade/server/guard.coax rm_e2_guard_near, for the shared steering service). */
 int world2_near(float x, float z, float *out, int cap) {
   if (!world2_prepare()) return 0;
   coax_t_EgMoveWorld w = e2mg_move_world(e2mg(), x, z, false);

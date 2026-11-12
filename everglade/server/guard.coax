@@ -13,7 +13,7 @@
 //                                                   each of his turn's attacks is its own, E2G_BLOW_S apart
 // The pages draw him a jitter buffer behind, as they draw each other (everglade2-guard.coax).
 // His Dash is Everglade's (everglade/dash.coax): his run times eg_dash_rate from when he takes it.
-#load "../../../everglade/dash.coax";
+#load "../dash.coax";
 
 E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, fivelab-bodies.coax BD_RUN_FROM)
 E2G_CHASE :: E2_RUN_SPEED; // m/s: after the one who struck him, a run as fast as yours (everglade2-move.coax)
@@ -23,7 +23,7 @@ E2G_TURN :: 1.6;            // rad/s he turns at the path's ends: half round in 
 E2G_STEER :: 2.6;           // rad/s he turns as the path bends
 E2G_REST_S :: 1.5;          // s he stands at an end before he turns
 E2G_Z0 :: -18.0;            // the path's glade end (z): Everglade II's named guard post
-#load "../../../verse/everglade2/points.coax";
+#load "../../verse/everglade2/points.coax";
 #test "the guard's beat starts at Everglade II's named guard post (#13078)" { p := e2_point("guard-post"); #assert p.found && p.z == f32(E2G_Z0) && p.x == 0; }
 E2G_Z1 :: -455.0;           // its clearing end (E2_CLEAR_Z -470 + 15)
 E2G_AHEAD :: 1.5;           // m he looks ahead along the path
@@ -61,7 +61,7 @@ E2Guard :: struct {
   stopped: f32;              // s stopped by a player in his way
   clear_s: f32;              // s since a player last stood in his way
   foe: int = -1; struck_x: f32; struck_z: f32; calm: f32;
-  beast: int = -1;           // the monster's creature he fights for a player near him (room-e2-monsters.coax), -1 none
+  beast: int = -1;           // the monster's creature he fights for a player near him (everglade/server/creatures.coax), -1 none
   down_at: int = -1;         // the tick he fell (-1 standing)
   hp: int; foe_hp: int;      // his Hit Points last tick, and his foe's before the rules' step
   swing: f32 = -100; swing_tick: int = -1;
@@ -327,7 +327,7 @@ e2_guard_after :: (v: [] RmServer, k: int) {
   }
 }
 // His attacks since the log was last read, each told on its own, E2G_BLOW_S apart: whom it struck at
-// (a seat, or a monster through room-e2-monsters.coax) and the damage it did (0 a miss).
+// (a seat, or a monster through everglade/server/creatures.coax) and the damage it did (0 a miss).
 e2g_blows :: (v: [] RmServer, k: int, i: int) {
   g := v[0].eg[k].guard[..]; b := v[0].eg[k].rules[0].b[..];
   fresh := rs_min(b[0].book[0].seq - g[0].seq, b[0].book[0].count); g[0].seq = b[0].book[0].seq;

@@ -256,7 +256,7 @@ lap smoke "$t"
 # release causes; when production's commit fails it too, it is a report.
 # It runs alongside the staging starts walk (#13133); its stop messages print when both are done.
 drift_check() {
-everglade='^(apps/openagents-web/everglade|coax/web/room/|coax/web/room-worker\.js|coax/web/host\.js|coax/web/everglade-drift|aethyr/|verse/everglade/|verse/grid\.coax)'
+everglade='^(apps/openagents-web/everglade|coax/web/room/|everglade/server/|coax/web/room-worker\.js|coax/web/host\.js|coax/web/everglade-drift|aethyr/|verse/everglade/|verse/grid\.coax)'
 if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full" | grep -Eq "$everglade"; then
   t=$(now)
   # A failure is confirmed by a second run before it counts, as the other checks' are: the first run

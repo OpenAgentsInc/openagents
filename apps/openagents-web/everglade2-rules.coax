@@ -1,7 +1,7 @@
 // Everglade II's declared social combat profile: shared self effects and paid
 // empty offensive casts, at the seat's own class level (1 to 6, #13046). No player is selected for harm and no area damages
 // bystanders. The one creature a cast may harm is the one the room names (e2r_use_on): the path's guard
-// (coax/web/room/room-e2-guard.coax), never another seat or the caster's own team. The room owns the
+// (everglade/server/guard.coax), never another seat or the caster's own team. The room owns the
 // class/slot and real creature/turn state.
 #load "class-kit.coax";
 #load "../../aethyr/rules/srd/press-budget.coax";

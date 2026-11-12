@@ -986,7 +986,7 @@ int main(int argc, char **argv) {
   { const char *dg = getenv("OA_ROOM_DIR_GEN"); if (dg && !strcmp(dg, "1")) rm_dir_gen(view(), true); }   /* the directory's fence (#12797) */
   signal(SIGTERM, on_term);
   if (dev_dir) { rm_dev_start(view()); dev_store_open(port); const char *da = getenv("OA_ROOM_DEV_ADMIN"); if (da && !strcmp(da, "0")) rm_dev_admin(view(), false); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
-  /* Everglade II's admin lines (room-e2-admin.coax): --dev and 127.0.0.1 only; PORT (Cloud Run) binds 0.0.0.0 */
+  /* Everglade II's admin lines (everglade/server/admin.coax): --dev and 127.0.0.1 only; PORT (Cloud Run) binds 0.0.0.0 */
   if (rm_admin_local(view(), (coax_string){address, (int64_t)strlen(address)})) printf("room: admin lines taken (--dev on 127.0.0.1)\n");
   if (native_local && !rm_native_local(view(), (coax_string){address,(int64_t)strlen(address)})) {
     fprintf(stderr,"room: --native-local requires --dev and --listen 127.0.0.1\n");return 1;

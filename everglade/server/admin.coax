@@ -7,7 +7,7 @@
 //   X god 0|1         nothing takes your Hit Points (they are put back full each tick)
 //   X ko 0|1          KNOCK OUT: the guard you drop stays at 1 HP, Unconscious (SRD p.17)
 //   X at XMM ZMM YAW  your seat placed at (x, z) metres x 1000, facing YAW milliradians (room-tick.c)
-//   X guard kill|reset|off|on   the path guard falls; a new one now; none until on (room-e2-guard.coax)
+//   X guard kill|reset|off|on   the path guard falls; a new one now; none until on (everglade/server/guard.coax)
 //   X class KIND      the seat sits again as srd-CLASS or srd-CLASS-L (the CLASSES and LEVEL menus)
 //   coax test --library coax/web/room/room.coax --steps 4000000000 --only "e2 admin"
 

@@ -17,7 +17,7 @@ E2_CLEAR_Z :: -470.0;  // the clearing at the path's end: its middle's z (x on t
 E2_POINTS :: 9;
 E2_POINT_NAME :: [E2_POINTS] string.[
   "spawn",
-  // the guard's post: his beat's glade end (coax/web/room/room-e2-guard.coax E2G_Z0)
+  // the guard's post: his beat's glade end (everglade/server/guard.coax E2G_Z0)
   "guard-post",
   // the views down the path: in the sun past the glade, deep in the woods, under the deepest canopy
   "sunlit-path", "woods", "deep-canopy",

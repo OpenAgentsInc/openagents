@@ -164,21 +164,21 @@ EgSeat :: struct {
   // to the API to keep (room-vitals.coax)
   sat_class: bool; class_report: bool;
   last_cast: int = -1000;
-  loose: NetLoose;               // an arrow's launch its page said, kept for the Attack's request of the same number (room-e2-arrows.coax)
+  loose: NetLoose;               // an arrow's launch its page said, kept for the Attack's request of the same number (everglade/server/arrows.coax)
   aid: E2Aid;
   familiar:E2Familiar;
   familiar_incense_used:bool;
   protection_water_used:bool;
   revivify_diamond_used:bool;
   familiar_hash:int; familiar_sent:int; familiar_sense_sent:int;
-  guard_hash: int; guard_sent: int;   // the path guard's state it last heard (room-e2-guard.coax e2_guard_snapshot)
-  monster_hash: int; monster_sent: int;   // the monsters it last heard (room-e2-monsters.coax e2_monsters_snapshot)
-  // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
+  guard_hash: int; guard_sent: int;   // the path guard's state it last heard (everglade/server/guard.coax e2_guard_snapshot)
+  monster_hash: int; monster_sent: int;   // the monsters it last heard (everglade/server/creatures.coax e2_monsters_snapshot)
+  // Everglade II rest (everglade/server/rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)
   step_kx: int; step_ky: int; step_px: int; step_py: int; step_b: int;
   rest_seen: bool; rest_settled: bool; rest_told: int = -1; rest_told_dice: int = -1;
-  kit_told: int = -1;   // Everglade II: the hash of the bar state it last heard (b, room-e2-rest.coax e2_kit_tell)
+  kit_told: int = -1;   // Everglade II: the hash of the bar state it last heard (b, everglade/server/rest.coax e2_kit_tell)
   checkpoint_hello: bool;        // a schema 2 character is built/restored once, not reset by repeated H
   repaired: int = -100000;       // the tick of its last Repair (CR_REPAIR_EVERY from one to the next)
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
@@ -248,9 +248,9 @@ EgRoom :: struct {
   sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
   seat: [EG_SEATS] EgSeat;
   familiar_reactions: [EG_SEATS] E2StepReactions;
-  guard: [1] E2Guard;   // Everglade II's path guard (room-e2-guard.coax)
-  monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (room-e2-monsters.coax)
-  arrows: [1] E2Arrows;          // Everglade II's arrows in the air (room-e2-arrows.coax)
+  guard: [1] E2Guard;   // Everglade II's path guard (everglade/server/guard.coax)
+  monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (everglade/server/creatures.coax)
+  arrows: [1] E2Arrows;          // Everglade II's arrows in the air (everglade/server/arrows.coax)
   tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   casts: [EG_CASTS] EgCast; cast_order: int;
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals
@@ -403,7 +403,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
       v[0].eg[q].guard[0] = E2Guard.{};
       v[0].eg[q].monsters[0] = E2Monsters.{};
       v[0].eg[q].arrows[0] = E2Arrows.{};
-    }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
+    }   // Everglade II's rests are the shared rules' (everglade/server/rest.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
     v[0].eg[q].initialized=true;
@@ -560,12 +560,12 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
   if (c == 'I' || c == 'J' || c == 'C' || c == 'F' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
-  if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (room-e2-admin.coax)
+  if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (everglade/server/admin.coax)
   if c=='M' { if v[0].eg[k].e2 { e2_familiar_ask(v,k,seat_id,text); } return; }
   if c == 'U' { if v[0].eg[k].e2 { e2_aid_ask(v,k,seat_id,text); } return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
   if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
-  if c == 'F' { if v[0].eg[k].e2 { e2_arrow_heard(v, k, seat_id, text); } return; }   // an arrow's launch, before its Attack's C (room-e2-arrows.coax)
+  if c == 'F' { if v[0].eg[k].e2 { e2_arrow_heard(v, k, seat_id, text); } return; }   // an arrow's launch, before its Attack's C (everglade/server/arrows.coax)
   if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
   if c == 'P' {   // the page's build, for its hello's admission (#12839)
     rp: [1] WireRd; rp[0] = wire_rd(text, 1);
@@ -617,7 +617,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     return;
   }
   if c == 'L' { if v[0].eg[k].e2 { e2_heard_old_rest(v, k, seat_id, text); return; } eg_heard_rest(v, k, seat_id, text); return; }
-  if c == 'Z' { if v[0].eg[k].e2 { e2_heard_rest(v, k, seat_id, text); } return; }   // an Everglade II rest (room-e2-rest.coax)   // a Long Rest (room-events.coax ev_rest_ok)
+  if c == 'Z' { if v[0].eg[k].e2 { e2_heard_rest(v, k, seat_id, text); } return; }   // an Everglade II rest (everglade/server/rest.coax)   // a Long Rest (room-events.coax ev_rest_ok)
   if c == 'R' {
     // a room's town is rebuilt by the room (the aftermath's ev_rebuild) or by an admin, never a player's R (#12801)
     if !eg_ticket(v, k, seat_id).admin { rr0: [1] WireRd; rr0[0] = wire_rd(text, 1); eg_refuse(v, k, seat_id, wire_num(text, rr0[..]), "admin"); return; }
@@ -919,7 +919,7 @@ eg_heard_change :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { sea
 }
 // Seat seat_id's class and level as a hello's CLASS word says them (the word eg_hello_class and
 // eg_level_up decided, Change character's where the page decides, or a local admin's "X class",
-// room-e2-admin.coax): its rules seat sits again as that class at its level when either changed.
+// everglade/server/admin.coax): its rules seat sits again as that class at its level when either changed.
 eg_seat_kind :: (v: [] RmServer, k: int, seat_id: SeatId, kind: string) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
   st[0].klass_n = eg_word(kind, st[0].klass[..]);
@@ -984,7 +984,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
   r:=v[0].eg[k].rules[..];
   // a bow's Attack with its launch said: an arrow the room flies; its Attack is rolled when it reaches
-  // a body or the ground (room-e2-arrows.coax). The cast is told now, as any: the archer's loose.
+  // a body or the ground (everglade/server/arrows.coax). The cast is told now, as any: the archer's loose.
   if e.ab.kind == FB_ATTACK && xc_kit(r[0].klass[seat] - E5R_CL0) == XC_KIT_BOW && st[0].loose.ok {
     kept := st[0].loose.seq == wc.seq && rs_can_act(r[0].b[0].c[E5RR_SEAT + seat]);
     if !kept { st[0].loose = NetLoose.{}; }
@@ -999,8 +999,8 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   revive:=e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY;
   // its line of sight (#13262): v1's rule (room-casts.coax rm_eg_sights), a cast on yourself needs none
   if e.ab.tg != FB_SELF && !revive && !e2_cast_sight(v, k, me, wc.ax, wc.az) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_SIGHT)); return; }
-  // aimed at the path's guard or a monster, a harmful cast is at it (room-e2-guard.coax,
-  // room-e2-monsters.coax): the shared rules' strike
+  // aimed at the path's guard or a monster, a harmful cast is at it (everglade/server/guard.coax,
+  // everglade/server/creatures.coax): the shared rules' strike
   gfoe := ifx revive || e5rr_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
   foe := ifx gfoe >= 0 || revive || e5rr_helps(e.ab) then gfoe else e2_monster_target(v, k, wc.ax, wc.az);
   foe_hp := ifx foe >= 0 then r[0].b[0].c[foe].hp else 0;

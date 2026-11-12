@@ -1,7 +1,7 @@
 # Firm reason: 6 (Blender bpy evaluates the source monster rigs and bone attachments).
 """Bake compatible UAL animation frames for the two Bestiary Standard GLBs.
 
-With a fourth argument `e2` it bakes Everglade II's goblin (the Puglin, coax/web/room/room-e2-monsters.coax)
+With a fourth argument `e2` it bakes Everglade II's goblin (the Puglin, everglade/server/creatures.coax)
 instead: Idle_Loop, Jog_Fwd_Loop, Sword_Attack, Spell_Simple_Shoot and Death01, eight frames each, as
 Puglin-e2-N.bin (N = clip * 8 + frame; the attack, shot and death run to their last pose), at a third of its
 triangles (a Decimate ahead of the rig, so every frame keeps one topology).

@@ -37,8 +37,8 @@ E5rBeast :: struct {
   forge_id: int; forge_action: int; forge_building: bool;
   forge_hit: int; forge_swing: f32 = -100;
   dash_at: f32 = -100; shot_at: f32 = -100; // a patrolling guard's last Dash and last ranged attack (the battle's clock)
-  patrol: bool;                              // a room's patrolling guard (coax/web/room/room-e2-guard.coax): its room walks it, e5rp_turn strikes
-  wild: bool;                                // an Everglade II monster (coax/web/room/room-e2-monsters.coax): its room moves it and strikes for it
+  patrol: bool;                              // a room's patrolling guard (everglade/server/guard.coax): its room walks it, e5rp_turn strikes
+  wild: bool;                                // an Everglade II monster (everglade/server/creatures.coax): its room moves it and strikes for it
 }
 
 // Whether slot a heals or helps (and so reaches other players), else it only harms.

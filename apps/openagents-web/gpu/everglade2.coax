@@ -118,7 +118,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst);}
  if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}}
  o:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);
- // a monster's frame (18) or a held weapon (19, coax/web/room/room-e2-monsters.coax, everglade2-guard.coax):
+ // a monster's frame (18) or a held weapon (19, everglade/server/creatures.coax, everglade2-guard.coax):
  // its record's f.w is the share of its pixels the dither drops as it thins in or out
  if (instance<cast(u32)65536) {m0:=objects[cast(int)instance];if (m0.d.w>17.5f32 && m0.d.w<19.5f32) {o.dye.x=m0.f.w;}}
  // Character Create's arrival (everglade2-create.coax): your character pops up from its feet, u[99]

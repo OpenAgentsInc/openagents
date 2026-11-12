@@ -2,7 +2,7 @@
 // composition on Everglade v2's land, the ground of the path and the clearing, and the Stylized
 // Nature kit pieces the page plants in the woods (verse/everglade2/plant.coax), each at the origin.
 // With MONSTERS (verse/tools/assets/animal_bake.py and bestiary_bake.py e2's frames) and the Bestiary
-// Dungeon source it also holds Everglade II's monsters (coax/web/room/room-e2-monsters.coax): the wolf's
+// Dungeon source it also holds Everglade II's monsters (everglade/server/creatures.coax): the wolf's
 // and the goblin's frames at the origin, the goblin camp's props where verse/everglade2/camp.coax stands
 // them, and the Sword the path's guard holds.
 // Run: coax/web/tool.sh verse/tools/assets/everglade2_pack.coax SOURCE_ROOT BASE.pack OUTPUT.pack [MONSTERS BESTIARY]
@@ -86,7 +86,7 @@ gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:
   for t:0..<ni/3 {gp_tri(w,first+int(idx[t*3]),first+int(idx[t*3+1]),first+int(idx[t*3+2]));}
  }}
 }
-// ---- Everglade II's monsters (coax/web/room/room-e2-monsters.coax), the guard's Sword and the camp
+// ---- Everglade II's monsters (everglade/server/creatures.coax), the guard's Sword and the camp
 // The page's monster frames: the wolf's 32 (Idle, Gallop, Attack, Death, eight each) as glade/monster0..31,
 // the goblin's 40 (Idle, Jog, Sword, Shoot, Death) as glade/gremlin0..39, then the Sword as glade/weapon1
 // (charactercreator.coax: the frames drawn as flag-18 records, the Sword on the guard's right hand as flag 19).

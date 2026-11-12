@@ -415,5 +415,5 @@ Admin mode works only on this machine. Three checks guard it:
 - In a dev build, it turns on only for a page from `127.0.0.1` or `localhost` whose address has
   `?admin`.
 - The room acts on the panel's `X` lines only when it runs with `--dev` and listens on
-  `127.0.0.1` (`coax/web/room/room-e2-admin.coax`). Production's room drops them. The room checks
+  `127.0.0.1` (`everglade/server/admin.coax`). Production's room drops them. The room checks
   `e2 admin:` test this.

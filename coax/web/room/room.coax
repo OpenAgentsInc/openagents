@@ -46,17 +46,17 @@
 #load "room-write.coax";   // this shard's own write key (#13260)
 #load "room-vitals.coax";
 #load "room-checkpoint.coax";
-#load "room-e2-aid.coax";
-#load "room-e2-familiar.coax";
+#load "../../../everglade/server/aid.coax";
+#load "../../../everglade/server/familiar.coax";
 #load "../../../aethyr/ai/steer.coax";   // the engine's NPC navigation and steering (#13074)
-#load "room-e2-guard.coax";   // Everglade II's path guard
-#load "room-e2-admin.coax";   // Everglade II's admin mode: a local room's only (--dev on 127.0.0.1)
-#load "room-e2-monsters.coax";   // Everglade II's wolves and goblins
+#load "../../../everglade/server/guard.coax";   // Everglade II's path guard
+#load "../../../everglade/server/admin.coax";   // Everglade II's admin mode: a local room's only (--dev on 127.0.0.1)
+#load "../../../everglade/server/creatures.coax";   // Everglade II's wolves and goblins
 #load "../../../apps/openagents-web/everglade2-archery.coax";   // Everglade II's ground and bodies for an arrow, the page's too (#13157)
 #load "../../../aethyr/net/projectile.coax";   // projectiles over a room: the launch, the flight, the end, the bodies' past
-#load "room-e2-arrows.coax";   // Everglade II's arrows: the room flies each one
+#load "../../../everglade/server/arrows.coax";   // Everglade II's arrows: the room flies each one
 
-#load "room-e2-rest.coax";   // Everglade II rests, room-authoritative on the shared rules (#13046)
+#load "../../../everglade/server/rest.coax";   // Everglade II rests, room-authoritative on the shared rules (#13046)
 #load "room-control.coax";
 #load "background-budget.coax";
 #load "room-travel.coax";   // a player's travel between two rooms (#12850)
@@ -135,10 +135,10 @@ RmServer :: struct {
   evc: RmEvents;                         // the realm's world-event dials (room-events.coax)
   ev: [EG_ROOMS] EvRoom;                 // each everglade room's event, XP and levels (room-events.coax)
   dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)
-  adm: RmE2Admin;                        // Everglade II's admin lines, a local room's only (room-e2-admin.coax)
+  adm: RmE2Admin;                        // Everglade II's admin lines, a local room's only (everglade/server/admin.coax)
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
   trv: RmTravels;                        // journeys from one room to another in flight (room-travel.coax)
-  e2land: [] E2MoveGround;               // Everglade II's planting, room-world.c's (room-e2-arrows.coax rm_e2_land)
+  e2land: [] E2MoveGround;               // Everglade II's planting, room-world.c's (everglade/server/arrows.coax rm_e2_land)
   dice_pool: [1] RsDice;                 // where each room's rules' dice come from: the host's OS random key (rm_dice_key, #13258); never on the wire
 }
 

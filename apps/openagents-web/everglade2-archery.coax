@@ -3,13 +3,13 @@
 // (everglade/longbow.coax), as in Everglade Experimental and the Archery Range (everglade/zone-bow.coax).
 // What only this zone knows is here: where its ground is, how big its monsters stand, and how near
 // where the room has an archer a launch must be. The page (everglade2-arrows.coax) predicts with these and
-// the room (coax/web/room/room-e2-arrows.coax) decides with them, so both fly the same arrow.
+// the room (everglade/server/arrows.coax) decides with them, so both fly the same arrow.
 //   coax/bin/coax test --library apps/openagents-web/everglade2-archery.coax
 #load "everglade2-move.coax";
 #load "../../everglade/longbow.coax";
 #load "../../aethyr/action/bow.coax" as bow;
 
-E2AR_MONSTERS :: 12;        // the room's monsters (coax/web/room/room-e2-monsters.coax E2M_N): bodies 0 to 11
+E2AR_MONSTERS :: 12;        // the room's monsters (everglade/server/creatures.coax E2M_N): bodies 0 to 11
 E2AR_GUARD :: 12;           // the path's guard's body
 E2AR_BODIES :: 13;
 E2AR_HAND_SLACK :: 3.0;     // m a launch may be from where the room has the archer's hand: the steps the room hasn't stepped yet

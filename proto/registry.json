@@ -3,8 +3,8 @@
   "no_frames": [
     "coax/web/room/room-abilities.coax",
     "coax/web/room/room-casts.coax",
-    "coax/web/room/room-e2-arrows.coax",
-    "coax/web/room/room-e2-rest.coax",
+    "everglade/server/arrows.coax",
+    "everglade/server/rest.coax",
     "coax/web/room/room-effects.coax",
     "coax/web/room/room-fleet.coax",
     "coax/web/room/room-handles.coax",

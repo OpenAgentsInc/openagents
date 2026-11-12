@@ -284,7 +284,7 @@ wire_put_use :: (out: [] u8, at: int, u: WireUse) -> int {
 wire_put_rebuild :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "R"), seq); }
 // L SEQ: a Long Rest, in a room only between raids and out of combat (coax/web/room/room-everglade.coax eg_heard_rest).
 wire_put_rest :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "L"), seq); }
-// Z SEQ REQ: an Everglade II rest request (#13046, coax/web/room/room-e2-rest.coax): REQ 1 Short Rest,
+// Z SEQ REQ: an Everglade II rest request (#13046, everglade/server/rest.coax): REQ 1 Short Rest,
 // 2 sleep, 3 watch, 4 spend one Hit Die, 5 end (aethyr/rules/srd/rest-control.coax RS_REST_*). The room
 // decides from the body it steps; the page's word that it stands still is never asked for.
 WireRestAsk :: struct { seq: int; req: int; }

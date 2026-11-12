@@ -247,8 +247,8 @@ EP_KNOWN_MAX :: 1024;   // burn-down rows the run keeps track of
   for g, i: EF_GAPS { #assert ep_gap(ep_word(g, 0), ep_word(g, 1)) == i; }
 }
 #test "zones and owners by path" {
-  z := EfZone.{name = "t", paths = "apps/openagents-web/everglade2 coax/web/room/room-e2-", entries = "apps/openagents-web/everglade2.coax", uses = ""};
-  #assert ep_in_zone(z, "apps/openagents-web/everglade2-cast.coax") && ep_in_zone(z, "coax/web/room/room-e2-aid.coax");
+  z := EfZone.{name = "t", paths = "apps/openagents-web/everglade2 everglade/server/", entries = "apps/openagents-web/everglade2.coax", uses = ""};
+  #assert ep_in_zone(z, "apps/openagents-web/everglade2-cast.coax") && ep_in_zone(z, "everglade/server/aid.coax");
   #assert !ep_in_zone(z, "apps/openagents-web/everglade2.wgsl") && !ep_in_zone(z, "apps/openagents-web/everglade-hotbar.coax");
   f := EfFeature.{name = "bow", title = "Bow", required = true, issue = 1, owners = "aethyr/action/bow.coax everglade/hud/", marks = "", files = ""};
   #assert ep_owner(f, "aethyr/action/bow.coax") && ep_owner(f, "everglade/hud/bar.coax") && !ep_owner(f, "aethyr/action/bow-pose.coax") && !ep_owner(f, "everglade/hudx.coax");

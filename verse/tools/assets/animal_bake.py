@@ -2,7 +2,7 @@
 """Bake the original in-place Gallop clips into portable, triangulated frame data.
 
 Run Blender in background with --disable-autoexec; source files are data only.
-With a third argument `e2` it bakes Everglade II's Wolf instead (its monsters, coax/web/room/room-e2-monsters.coax):
+With a third argument `e2` it bakes Everglade II's Wolf instead (its monsters, everglade/server/creatures.coax):
 its Idle, Gallop, Attack and Death clips, eight frames each, as Wolf-e2-N.bin (N = clip * 8 + frame; Death's
 frames run to its last pose, the others round their loop), and the Dungeon kit's Woodfire as one static
 frame, Woodfire-e2.bin, when a fourth argument names the Dungeon source; the camp's props from the Fantasy

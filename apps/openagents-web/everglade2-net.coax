@@ -40,12 +40,12 @@ E2N_WT_DEFAULT :: true;
 // drawn picture reaches the tick it came with (t, the room's clock), at that player as drawn.
 E2nCast :: struct { live: bool; ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; t: int; }
 
-// The path's guard as the room says him (g2, coax/web/room/room-e2-guard.coax): each word with the
+// The path's guard as the room says him (g2, everglade/server/guard.coax): each word with the
 // room's time it is for (ms), drawn a jitter buffer behind as the others are; his blows (g3) likewise.
 E2N_GUARD_ROWS :: 8; E2N_GUARD_HITS :: 8;
 E2nGuard :: struct { t: int; life: int; state: int = 4; x: f32; z: f32; yaw: f32; hp: int; max: int; swing: int = -1; foe: int = -1; }
 E2nGuardHit :: struct { live: bool; t: int; kind: int; seat: int; amount: int; }
-// The monsters as the room says them (h2, coax/web/room/room-e2-monsters.coax): each one's last words with
+// The monsters as the room says them (h2, everglade/server/creatures.coax): each one's last words with
 // the room's time they are for (ms), drawn a jitter buffer behind; their blows, arrows and falls (h3).
 E2N_MONS :: 12; E2N_MON_ROWS :: 6; E2N_MON_HITS :: 16;
 E2nMon :: struct { t: int; life: int; kind: int; state: int = 4; x: f32; z: f32; yaw: f32; hp: int; max: int = 1; act: int; act_t: int; foe: int = -1; }
@@ -118,7 +118,7 @@ E2Net :: struct {
   mon_rows: [E2N_MONS * E2N_MON_ROWS] E2nMon; mon_n: [E2N_MONS] int; mon_tick: int = -1; mon_seen: [E2N_MONS] int; mon_hits: [E2N_MON_HITS] E2nMonHit;
   familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int; familiar_heal_cue:bool; familiar_sense:int;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
-  // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
+  // your rest as the room's rules hold it (z SEQ CODE DICE, everglade/server/rest.coax): known
   // only once this socket's room has said it; your last rest request's number and when it was refused
   rest_known: bool; rest_code: int; rest_dice: int; rest_seq: int; rest_sent: int; rest_refused: int; rest_refused_at: int = -100000;
   // your bar as the room's rules hold it (b N V ..., #13046): known once this socket's room has said it

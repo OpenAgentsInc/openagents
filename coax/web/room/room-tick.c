@@ -7,7 +7,7 @@
    movement steps, the hotbar abilities, the town (watch and folk), the spells' pieces, the people for the rules and the pages,
    rm_eg_rules (the rules' step, the raid's), rm_eg_send (every seat's D written) and the frames sent (relay_flush,
    pump_all), printed with the tick line; each tick's are the room view's workloads too (room-stats.h). */
-/* the trunks the guard is handed each tick: room-e2-guard.coax E2G_NEAR */
+/* the trunks the guard is handed each tick: everglade/server/guard.coax E2G_NEAR */
 #define E2G_NEAR_C 24
 enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_RULES, PART_WRITE, PART_SEND, PARTS };
 static int64_t part_us[PARTS];
@@ -188,12 +188,12 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
   float guard[2] = {0, 0};
   bool guard_on = rm_e2_guard_body(view(), k, (coax_v_f32){guard, 2});
   world2_guard(k, guard_on, guard[0], guard[1]);
-  /* the trunks round him, which his steps go round (room-e2-guard.coax) */
+  /* the trunks round him, which his steps go round (everglade/server/guard.coax) */
   float near[E2G_NEAR_C * 3];
   rm_e2_guard_near(view(), k, (coax_v_f32){near, guard_on ? world2_near(guard[0], guard[1], near, E2G_NEAR_C) * 3 : 0});
   for (int s = 0; s < WORLD_SEATS; s++) {
     everglade2_place(k, s, pose);
-    /* admin mode's teleport (room-e2-admin.coax): asked of a local room only */
+    /* admin mode's teleport (everglade/server/admin.coax): asked of a local room only */
     float warp[3];
     if (rm_e2_admin_warp(view(), k, (coax_t_SeatId){ s}, (coax_v_f32){warp, 3}) && world2_place(k, s, warp, pose))
       rm_eg_moved(view(), k, (coax_t_SeatId){ s}, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
