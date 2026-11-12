@@ -1,6 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openagents.com/proto/aethyrforge/scene-command-v2.schema.json",
+  "profile": "scene-command-v2",
+  "version": 2,
+  "codec": "apps/aethyrforge-desktop/scene-resize.coax",
+  "check": "coax/web/tool.sh apps/aethyrforge-desktop/scene-command-profile.coax proto/aethyrforge/scene-command-v2.schema.json",
   "title": "Local Aethyrforge scene commands v2",
   "oneOf": [
     {"$ref": "scene-command-v1.schema.json"},
@@ -17,5 +21,63 @@
       },
       "oneOf": [{"required": ["size_percent"]}, {"required": ["scale_percent"]}]
     }
+  ],
+  "fixtures": [
+    {
+      "name": "v1-place-retained",
+      "wire": "{\"op\":\"place\",\"item\":\"barrel\",\"count\":2,\"arrangement\":\"stack\",\"size_percent\":200,\"x_cm\":600,\"z_cm\":-1200}",
+      "op": "place",
+      "item": "barrel",
+      "count": 2,
+      "stack": true,
+      "size_percent": 200,
+      "located": true,
+      "x_cm": 600,
+      "z_cm": -1200
+    },
+    {
+      "name": "v1-move-retained",
+      "wire": "{\"op\":\"move\",\"group\":3,\"dx_cm\":-50,\"dz_cm\":125}",
+      "op": "move",
+      "group": 3,
+      "dx_cm": -50,
+      "dz_cm": 125
+    },
+    {
+      "name": "resize-absolute-min",
+      "wire": "{\"op\":\"resize\",\"index\":0,\"version\":0,\"size_percent\":25}",
+      "op": "resize",
+      "index": 0,
+      "version": 0,
+      "amount": 25,
+      "relative": false
+    },
+    {
+      "name": "resize-absolute-max",
+      "wire": "{\"op\":\"resize\",\"index\":63,\"version\":1000000000,\"size_percent\":400}",
+      "op": "resize",
+      "index": 63,
+      "version": 1000000000,
+      "amount": 400,
+      "relative": false
+    },
+    {
+      "name": "resize-relative",
+      "wire": "{\"op\":\"resize\",\"index\":1,\"version\":23,\"scale_percent\":300}",
+      "op": "resize",
+      "index": 1,
+      "version": 23,
+      "amount": 300,
+      "relative": true
+    }
+  ],
+  "rejected": [
+    "{}",
+    "{\"op\":\"resize\",\"index\":0,\"version\":1,\"size_percent\":100,\"scale_percent\":100}",
+    "{\"op\":\"resize\",\"index\":64,\"version\":0,\"size_percent\":100}",
+    "{\"op\":\"resize\",\"index\":0,\"version\":0,\"size_percent\":24}",
+    "{\"op\":\"resize\",\"index\":0,\"version\":0,\"scale_percent\":1601}",
+    "{\"op\":\"resize\",\"index\":0,\"version\":0}",
+    "{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0}"
   ]
 }
