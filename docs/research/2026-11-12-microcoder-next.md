@@ -23,6 +23,7 @@ what was measured and whether the piece stayed.
 | 7. Economy | Kept (913a63b6fb) | Argon: cost about halved on H4, T4 and T5. Carbon on #13263: still no edit |
 | A command's time limit | Kept (66b316de85) | H6's own checks ran (120 s) where they had been killed (30 s) |
 | A finish that carries edits | Fixed (96ee94bc29) | Flash dropped its edits on the first tiny task; Argon in 2 of 113 finishes |
+| Verdict, round 1 of 2 | Run on N1 to N6 | Passes 4 to 4, cost $13.03 against at least $15.94, median 426 s against 639 s; round 2 waits for the owner (budget) |
 
 The build the verdict runs use is 93455e7032: the round 2 loop of #13231
 with the finish fix, the seeded first step, the read budget, the economy
@@ -423,6 +424,56 @@ apart, and the verdict uses one model.
 
 No gain, so it is out (93455e7032).
 
+## The verdict: round 1 (2026-11-12)
+
+Run as defined above, at `61a4d76fdd`. That is the definition's build,
+93455e7032, rebased onto `main` with no change to Microcoder's code: the
+unpushed commits were pushed by the coordinator after this page's author
+stopped. Its Microcoder and Coder checks passed on the rebased tree.
+Before the runs, each N task's prompt and check matched the hashes in the
+table above. Pairs started together, two at once. Another agent was running
+two Microcoder turns on this machine throughout, and both sides of each pair
+shared that load.
+
+| Task | Microcoder | Antigravity |
+| --- | --- | --- |
+| N1 | pass, 421 s, 17 calls, $1.42 | **fail**: cut at 900 s (its check passed), 23 calls, at least $2.34 |
+| N2 | pass, 297 s, 7 calls, $0.76 | pass, 526 s, 24 calls, $1.81 |
+| N3 | fail, 711 s, 36 calls, $3.84: command limit | fail, 567 s, 8 calls, $3.45 |
+| N4 | fail, 685 s, 45 calls, $4.04: command limit | pass, 683 s, 21 calls, $3.60 |
+| N5 | pass, 377 s, 18 calls, $1.40 | pass, 595 s, 36 calls, $2.52 |
+| N6 | pass, 431 s, 18 calls, $1.57 | pass, 806 s, 31 calls, $2.22 |
+| **Round 1** | **4 of 6, $13.03, median 426 s** | **4 of 6, at least $15.94, median 639 s** |
+
+- **On this one round, all three conditions hold:** passes equal, cost lower
+  by at least 18%, median time lower by a third. The definition judges two
+  rounds, and one round of six is far inside the noise (a gap under 5 of 12
+  is noise even with two). So this is not yet the verdict.
+- **N1's Antigravity cost is a lower bound.** A run cut at the limit writes
+  no usage, so its tokens are read from Antigravity's conversation store. On
+  the three finished runs read the same way (N2, N5, N6), the store held 3%
+  to 6% fewer input tokens, 15% to 27% fewer cached and 7% to 45% fewer
+  output tokens than their logged usage. The store's raw numbers are used,
+  which can only understate Antigravity's cost.
+- **Both N3 runs failed the same way.** Each changed only
+  `aethyr/forge/doc.coax`, and the hidden check failed to build on a file
+  neither touched (`realm_seat.coax`: `seat_num` is not declared). Whether
+  the task asks for that or the check has a fault like H8's is looked at
+  only after the last verdict run. It counts against both alike.
+- **Microcoder's two failures are the command limit.** In N3 and N4 it ran
+  out of its 128 commands and edits after 36 and 45 calls, having edited one
+  file of the several the task needs. That is the pattern of #13263 on
+  Carbon: on a change spread over many files it searches and re-reads with
+  commands until the limit. Antigravity has no such count. The required
+  "what this step found" field (under Item 7) is the next lever for it.
+- **Microcoder needed fewer calls on every task it passed** (7 to 18 against
+  24 to 36) and sent a third to a fifth of the input tokens. Antigravity's
+  input was 75% to 92% cached, Microcoder's 12% to 52%.
+
+Round 2 has not been run. Its cost, about $29 at round 1's rate, would take
+this issue past its $49 and the owner's $200 for this work, so it waits for
+the owner.
+
 ## Spend
 
 Of the $49 for this issue, before the verdict runs: about $15.40.
@@ -437,5 +488,12 @@ Of the $49 for this issue, before the verdict runs: about $15.40.
 | The cache probe | $1.24 |
 | Tiny test turns | $0.06 |
 
-A full comparison (three runs of all 20 tasks on both harnesses, on Argon
-and on Carbon) is costed after the first round, from its cost per run.
+Verdict round 1: $13.03 for Microcoder and at least $15.94 for Antigravity,
+$28.97 in all. This issue: about $44.40 of its $49. Across #13231 and this
+issue since #13231's round 4: about $195 of the owner's $200.
+
+What more would cost, at round 1's rate of about $2.40 a run on the N
+tasks: round 2 about $29, a third round about $29 more. Three runs of all
+20 tasks on both harnesses on one model is 120 runs, about $200 (the 14
+tuning tasks are cheaper, about $0.80 a run); on Argon and Carbon both,
+about $450.
