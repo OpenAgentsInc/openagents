@@ -44,7 +44,7 @@ native_repair_rollback :: () #effects(all) {
   #assert seat[0].repaired==50 && casting[0].phase==RC_FLIGHT && strikes[0].ax==7;
 }
 native_fire_rollback :: () #effects(all) {
-  r:[1]E5rRoom;e5rr_start(r[..],9);e5rr_test_people(r[..]);
+  r:[1]EgBattle;egb_start(r[..],9);e5rr_test_people(r[..]);
   first:=e5rr_folk(0);second:=e5rr_folk(1);hp0:=r[0].b[0].c[first].hp;hp1:=r[0].b[0].c[second].hp;
   random:=r[0].b[0].dice[0].state;events:=r[0].b[0].book[0].seq;
   hits:=[3]E5rrDamage.[E5rrDamage.{who=first,by=first,amount=3},E5rrDamage.{who=second,by=first,amount=4},E5rrDamage.{who= -1,amount=5}];

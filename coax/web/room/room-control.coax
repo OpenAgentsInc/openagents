@@ -2,7 +2,7 @@
 // What the API says about Everglade's rooms, asked every two seconds (#12714; coax/web/api/player.c
 // room_control): "pvp 0|1\nedit STAMP\nkick PID\n...".
 //   - pvp: the realm's row (off unless switched on); the rules let harm reach another player only
-//     while it is on (everglade5e-room-rules.coax E5rRoom.pvp).
+//     while it is on (everglade5e-room-rules.coax EgBattle.pvp).
 //   - edit: when Everglade's world or board last changed. A change is said to every page in every
 //     room as "e edit STAMP" (wire_put_edit), and each page asks for the world again, so an admin's
 //     placed bench shows for everyone within seconds of the publish (spec section 6.8).
@@ -73,8 +73,7 @@ rc_num :: (t: string) -> int {
 }
 // The API's answer: applied. Kicked players' sockets are marked (rm_relay_kicked) for the host to close.
 // "hold CODE SEAT STAMP" (see the top): seat SEAT of everglade room CODE held by the watch's Hold
-// Person on the host's next tick, and the townsperson nearest it (within 30 m) by the rules' now.
-RC_HOLD_REACH :: 30.0;
+// Person on the host's next tick.
 rc_hold :: (v: [] RmServer, line: string) {
   code := rc_word(line, 5);
   at := 5 + code.count + 1;
@@ -93,8 +92,6 @@ rc_hold :: (v: [] RmServer, line: string) {
   if k < 0 || !rm_eg_seat_live(v, k, SeatId.{value = seat}) { return; }   // not yet: a later answer's line holds it
   v[0].ctl.hold_stamp = stamp;
   v[0].eg[k].seat[seat].hold_due = true;
-  p := v[0].eg[k].seat[seat].pose;
-  _ := e5rr_hold_folk(v[0].eg[k].rules[..], p.x, p.z, RC_HOLD_REACH);
 }
 // "place CODE SEAT BOAT STAMP" (see the top): seat SEAT of everglade room CODE beside rowboat BOAT on
 // the host's next tick (room-world.c world_place_boat). A local room's only; lines with newer STAMPs

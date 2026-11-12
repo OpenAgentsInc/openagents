@@ -29,9 +29,6 @@ eg_im_table :: (v: [] RmServer, k: int) {
         b := (row * WIRE_SLOTS + on) * WIRE_SF;
         if h[0].id[row * WIRE_SLOTS + on] != 0 && (cast(int) h[0].f[b + WS_COND] & IM_WIRE_COND_INVISIBLE) != 0 { flags = IM_HIDDEN; }
       }
-    } else if kind == WK_BEAST {
-      form := cast(int) h[0].f[a + WS_P1];
-      if form == E5RR_FORM_RAID + RS_NPC_ARCH || form == E5RR_FORM_WARD { flags = IM_ROOM; }
     } else if kind == WK_DOORS || forest_public(kind) {
       flags = IM_ROOM;   // doors and physical forest state stay shared, regardless of their starter
     } else if (kind == WK_ZONE || kind == WK_STONE || kind == WK_TENTACLES || kind == WK_THORNS || kind == WK_LINE) && cast(int) h[0].f[a + WS_OWNER] < 0 {
@@ -155,12 +152,6 @@ im_room_blocks :: (v: [] RmServer, k: int) {
       }
     }
     im_blocks(v[0].eg[k].im[..], SeatId.{value = s}, mask);
-  }
-  // the rules keep each blocked pair apart, both ways: neither targets, harms nor heals the other
-  for s: 0..<IM_SEATS {
-    both := v[0].eg[k].im[0].blocks[s];
-    for q: 0..<IM_SEATS { if ((v[0].eg[k].im[0].blocks[q] >> s) & 1) != 0 { both = both | (1 << q); } }
-    v[0].eg[k].rules[0].apart[s] = both;
   }
 }
 
@@ -324,6 +315,6 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   #assert eg_test_ent(box[..], 2, 0).id == -1 && eg_test_ent(box[..], 2, 1).id == -1;
   #assert eg_test_has(w, "s 2 ");
   // neither of the pair hurt the other, PvP on
-  bb := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0]; aa := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 2];
-  #assert aa.hp == aa.hp_max && bb.hp == bb.hp_max && e5rr_apart(v[0].eg[k].rules[..], 0, 2) && e5rr_apart(v[0].eg[k].rules[..], 2, 0) && !e5rr_apart(v[0].eg[k].rules[..], 0, 1);
+  bb := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + 0]; aa := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + 2];
+  #assert aa.hp == aa.hp_max && bb.hp == bb.hp_max && ((v[0].eg[k].im[0].blocks[0] >> 2) & 1) + ((v[0].eg[k].im[0].blocks[2] >> 0) & 1) > 0 && ((v[0].eg[k].im[0].blocks[0] >> 1) & 1) == 0;
 }

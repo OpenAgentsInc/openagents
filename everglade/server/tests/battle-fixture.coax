@@ -1,0 +1,31 @@
+// The helpers of everglade/server/battle.coax's checks, apart so its mutation gate mutates only the
+// battle (the #13315 pattern: coax/web/room/battle-check.coax).
+// A started battle with seat 0 sat as Character Create's level 3 Druid at (0, 0) and the familiars on.
+egb_test_battle :: (r: [] EgBattle) {
+  egb_start(r, 1);
+  egb_enable_familiars(r);
+  egb_join(r, 0, 0, 0, EGB_CL0 + FB_CL_DRUID, 3);
+}
+// Creature q's whole turn, its patrol's in it.
+egb_test_turn :: (r: [] EgBattle, q: int) {
+  b := r[0].b[..]; i := EGB_BEAST0 + q;
+  b[0].who = i; rs_start_turn(b, i); egb_patrol_turn(r, q); rs_end_turn(b, i); b[0].who = -1;
+}
+// A patrolling guard as creature q, set on `foe`, at square (x, y).
+egb_test_guard :: (r: [] EgBattle, q: int, foe: int, x: int, y: int) {
+  b := r[0].b[..]; i := EGB_BEAST0 + q;
+  c := rs_path_guard("Guard", 1);
+  c.x = x; c.y = y; c.turn_at = b[0].clock; c.round_at = b[0].clock;
+  b[0].c[i] = c;
+  r[0].beasts[q] = EgBeast.{id = r[0].next_id, tag = r[0].next_id, by = -1, spell = -1, form = 21, patrol = true, foe = foe};
+  r[0].next_id += 1;
+}
+
+// Whether the events read (n of them) tell of `to` dropped or killed by `by` (TGT codes).
+egb_test_down :: (out: [] f32, n: int, by: int, to: int) -> bool {
+  for q: 0..<n {
+    k := cast(int) out[q * EGB_EV_FLOATS];
+    if (k == RS_EV_DOWN || k == RS_EV_DEATH) && out[q * EGB_EV_FLOATS + 2] == f32(by) && out[q * EGB_EV_FLOATS + 3] == f32(to) { return true; }
+  }
+  return false;
+}

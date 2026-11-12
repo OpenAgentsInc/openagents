@@ -79,20 +79,19 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].cast_order = 0; v[0].eg[q].hurts[0] = HbBatch.{};
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
     // v1's town state at rest (Everglade II never sets it; it goes with the seat record trim, #13267)
-    v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
+    v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
     for t: 0..<WIRE_TREES { v[0].eg[q].tree_on[t] = false; }
     v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
-    for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; v[0].eg[q].folk_save[j] = 0; }
     for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
     for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
-    e5rr_start(v[0].eg[q].rules[..], 1);
+    egb_start(v[0].eg[q].rules[..], 1);
     v[0].eg[q].rules[0].b[0].dice[0].state = rm_dice_draw(v);   // never from the seed above (#13258)
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
     rules:=v[0].eg[q].rules[..];
-    rules[0].z_shift=E5RR_E2_Z_SHIFT;
-    rules[0].b[0].h=E5R_SIDE+E5RR_E2_Z_SHIFT;
-    e2_rest_start(v,q); e5rr_enable_familiars(rules);   // Everglade II's rests are the shared rules' (everglade/server/rest.coax)
+    rules[0].z_shift=EGB_Z_SHIFT;
+    rules[0].b[0].h=EGB_SIDE+EGB_Z_SHIFT;
+    e2_rest_start(v,q); egb_enable_familiars(rules);   // Everglade II's rests are the shared rules' (everglade/server/rest.coax)
     v[0].eg[q].guard[0] = E2Guard.{};
     v[0].eg[q].monsters[0] = E2Monsters.{};
     v[0].eg[q].arrows[0] = E2Arrows.{};
@@ -112,8 +111,8 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_i
   v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, born = true, gen = v[0].conns[conn].gen, joined_ms = v[0].mono_ms};
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
-  e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
-  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].healer_kit = 10;
+  egb_join(v[0].eg[k].rules[..], seat, 0, 0, 0, 0);
+  v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].healer_kit = 10;
   rv_join(v, k, seat_id);   // the HP its player left with (room-vitals.coax, #12715)
   rv_back(v, k, seat_id);   // and where they stood in this room, if lately
   ev_join(v, k, seat_id);   // its XP and its character's level (room-events.coax, #12739)
@@ -167,7 +166,7 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat
 eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].conn = -1; v[0].eg[k].seat[s].held = true; v[0].eg[k].seat[s].held_at = v[0].mono_ms;
   v[0].eg[k].seat[s].ends_n = 0;
-  if v[0].eg[k].seat[s].familiar.active>0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s].rite==SP_FIND_FAMILIAR { rs_rite_fail(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s," (disconnected)"); }
+  if v[0].eg[k].seat[s].familiar.active>0 && v[0].eg[k].rules[0].b[0].c[EGB_SEAT+s].rite==SP_FIND_FAMILIAR { rs_rite_fail(v[0].eg[k].rules[0].b[..],EGB_SEAT+s," (disconnected)"); }
   v[0].eg[k].seat[s].familiar=E2Familiar.{};
   v[0].eg[k].seat[s].familiar_hash=0;
   v[0].eg[k].seat[s].familiar_sense_sent=0;
@@ -201,7 +200,7 @@ eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   ck_capture(v, k, seat_id); rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
   v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
-  e5rr_leave(v[0].eg[k].rules[..], seat);
+  egb_leave(v[0].eg[k].rules[..], seat);
   v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
   any := false;
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { any = true; } }
@@ -267,14 +266,14 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
   rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-20 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
-  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := E5RR_SEAT;
-  #assert r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 1 && b[0].c[me + 1].level == 1 && r[0].klass[1] == E5R_CL0 + FB_CL_FIGHTER;
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;
+  #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 1 && b[0].c[me + 1].level == 1 && r[0].klass[1] == EGB_CL0 + FB_CL_FIGHTER;
   #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter" && !v[0].eg[k].seat[0].class_report;
   // hurt, and Second Wind spent: a hello again (another level, another class), and Change character, change nothing
   b[0].c[me].hp = 3; hp_max := b[0].c[me].hp_max; b[0].c[me].uses[RS_USE_WIND] = 0;
   for line: [4] string.["H 5 ranger.0.0.0 srd-fighter-6 0 -", "H 5 ranger.0.0.0 srd-wizard-5 0 -", "H 5 ranger.0.0.0 srd-fighter-20 0 -", "V ranger.1.2.3 srd-fighter-6"] { rm_heard(v[..], 0, line); }
   eg_test_tick(v[..], k);
-  #assert b[0].c[me].level == 1 && r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].hp == 3 && b[0].c[me].hp_max == hp_max && b[0].c[me].uses[RS_USE_WIND] == 0;
+  #assert b[0].c[me].level == 1 && r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].hp == 3 && b[0].c[me].hp_max == hp_max && b[0].c[me].uses[RS_USE_WIND] == 0;
   // the look is the page's: Change character took it
   #assert cast(string) v[0].eg[k].seat[0].look[0..<v[0].eg[k].seat[0].look_n] == "ranger.1.2.3";
 }
@@ -286,14 +285,14 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");     // the ticket's Fighter, at its 5
   rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-wizard-6 0 -");   // no class signed: the hello's Wizard, at the ticket's 1
   for q: 0..<3 { eg_test_tick(v[..], k); }
-  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := E5RR_SEAT;
-  #assert r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 5 && b[0].c[me].extra_attack > 0;
-  #assert r[0].klass[1] == E5R_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;
+  #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 5 && b[0].c[me].extra_attack > 0;
+  #assert r[0].klass[1] == EGB_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
   #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
   #assert !v[0].eg[k].seat[0].class_report && v[0].eg[k].seat[1].class_report;
   // once: a later hello's class is not taken
   rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-6 0 -"); eg_test_tick(v[..], k);
-  #assert r[0].klass[1] == E5R_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
+  #assert r[0].klass[1] == EGB_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
 }
 #test "seat class: XP crossing a level raises an Everglade II seat through the one table, and its player hears it (#13259)" #steps 12000000000 {
   v: [1] RmServer; eg_test_v5_room(v[..]); box: [1] EgInbox;
@@ -301,7 +300,7 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   k := eg_room_at(v[..], v[0].conns[0].relay);
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
-  b := v[0].eg[k].rules[0].b[..]; me := E5RR_SEAT;
+  b := v[0].eg[k].rules[0].b[..]; me := EGB_SEAT;
   #assert v[0].ev[k].xp[0] == 250 && b[0].c[me].level == 1;
   b[0].c[me].hp = b[0].c[me].hp_max - 2; was_max := b[0].c[me].hp_max;
   eg_test_drain(v[..], box[..]);
@@ -332,16 +331,16 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-cleric-6 0 -");
   rm_heard(v[..], 2, "H 5 ranger.0.0.0 srd-rogue-4 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
-  rr := v[0].eg[k].rules[..]; b := rr[0].b[..]; me := E5RR_SEAT;
-  #assert rr[0].klass[0] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1 && v[0].eg[k].seat[0].class_report;
-  #assert rr[0].klass[1] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me + 1].level == 5;
+  rr := v[0].eg[k].rules[..]; b := rr[0].b[..]; me := EGB_SEAT;
+  #assert rr[0].klass[0] == EGB_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1 && v[0].eg[k].seat[0].class_report;
+  #assert rr[0].klass[1] == EGB_CL0 + FB_CL_CLERIC && b[0].c[me + 1].level == 5;
   // the admin's (ACCT 2: the admin CLASSES and LEVEL menus): the hello's class and level, and Change character's
-  #assert rr[0].klass[2] == E5R_CL0 + FB_CL_ROGUE && b[0].c[me + 2].level == 4 && !v[0].eg[k].seat[2].class_report;
+  #assert rr[0].klass[2] == EGB_CL0 + FB_CL_ROGUE && b[0].c[me + 2].level == 4 && !v[0].eg[k].seat[2].class_report;
   rm_heard(v[..], 2, "V ranger.0.0.0 srd-bard-2"); eg_test_tick(v[..], k);
-  #assert rr[0].klass[2] == E5R_CL0 + FB_CL_BARD && b[0].c[me + 2].level == 2;
+  #assert rr[0].klass[2] == EGB_CL0 + FB_CL_BARD && b[0].c[me + 2].level == 2;
   // and nobody else's Change character sits them again
   rm_heard(v[..], 0, "V ranger.0.0.0 srd-bard-2"); eg_test_tick(v[..], k);
-  #assert rr[0].klass[0] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1;
+  #assert rr[0].klass[0] == EGB_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1;
   // the vitals post carries the classes the hellos chose, to keep (the first: verse.room_class_once)
   #assert rm_vitals_due(v[..]) > 0;
   post := cast(string) v[0].vit.out[0..<v[0].vit.out_n];

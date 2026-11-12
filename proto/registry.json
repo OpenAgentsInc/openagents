@@ -4,6 +4,7 @@
     "coax/web/room/room-casts.coax",
     "everglade/server/arrows.coax",
     "everglade/server/rest.coax",
+    "everglade/server/battle.coax",
     "coax/web/room/room-effects.coax",
     "coax/web/room/room-everglade.coax",
     "coax/web/room/room-fleet.coax",

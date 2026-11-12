@@ -45,7 +45,7 @@ rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #expo
   st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
   st[0].step_at = i.at;
   // Everglade II: a body the rules hold still (asleep, held) takes no walk or jump from its keys
-  if v[0].eg[k].rules[0].live[s] && rs_locomotion_scale(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s) <= 0 { i.kx = 0; i.ky = 0; i.px = 0; i.py = 0; i.b = i.b & (255 - WB_JUMP); }
+  if v[0].eg[k].rules[0].live[s] && rs_locomotion_scale(v[0].eg[k].rules[0].b[..], EGB_SEAT + s) <= 0 { i.kx = 0; i.ky = 0; i.px = 0; i.py = 0; i.b = i.b & (255 - WB_JUMP); }
   st[0].step_kx = i.kx; st[0].step_ky = i.ky; st[0].step_px = i.px; st[0].step_py = i.py; st[0].step_b = i.b;
   out[0] = i.seq; out[1] = i.kx; out[2] = i.ky; out[3] = i.px; out[4] = i.py; out[5] = i.theta; out[6] = i.b;
   return true;
@@ -63,9 +63,9 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
   st[0].placed = true;
   if first { ck_capture(v, k, s_id); }   // its first capture, which its gameplay waits on (#13184)
   r:=v[0].eg[k].rules[..];
-  e5rr_place(r,s,x,z);
+  egb_place(r,s,x,z);
   if was_placed && r[0].b[0].truth_zones!=0 {
-    rs_truth_enter(r[0].b[..],E5RR_SEAT+s,e5r_sq(was.x),e5rr_z_cell(r,was.z));
+    rs_truth_enter(r[0].b[..],EGB_SEAT+s,egb_sq(was.x),egb_z_cell(r,was.z));
   }
 }
 // Whether seat s sits and is still to be put in the world. An Everglade II seat waits for its hello
@@ -152,15 +152,15 @@ rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return 
 rm_eg_seat_live :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value; return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
 // Summoned creatures: how many places, where q stands (x, z) when it is on, and the ground's height
 // under it, which the host's world knows (before rm_eg_end: a new one is heard once it has it).
-rm_eg_beasts :: () -> int #export_c #effects(all) { return E5RR_BEASTS; }
+rm_eg_beasts :: () -> int #export_c #effects(all) { return EGB_BEASTS; }
 rm_eg_beast_at :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_c #effects(all) {
-  if !rm_eg_live(v, k) || q < 0 || q >= E5RR_BEASTS || out.count < 2 { return false; }
+  if !rm_eg_live(v, k) || q < 0 || q >= EGB_BEASTS || out.count < 2 { return false; }
   bt := v[0].eg[k].rules[0].beasts[q];
   if bt.id == 0 { return false; }
   out[0] = bt.x; out[1] = bt.z;
   return true;
 }
-rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c #effects(all) { if rm_eg_live(v, k) { e5rr_beast_ground(v[0].eg[k].rules[..], q, y); } }
+rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c #effects(all) { if rm_eg_live(v, k) { egb_beast_ground(v[0].eg[k].rules[..], q, y); } }
 
 // Room k's tick ends: the casts that strike now are rolled, the engine's clock moves on, its events
 // are heard (rm_eg_rules), and every EG_SEND ticks (each tick) each seat gets its state (rm_eg_send).
@@ -174,7 +174,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_ends_due(v, k);
   rc_tick_first(v, k);
   e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); e2_arrows_tick(v,k);
-  e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
+  egb_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   e2_admin_after(v,k);
   e2_guard_after(v,k); e2_monsters_after(v,k);
   e2_rest_tell_all(v, k); e2_kit_tell_all(v, k);
@@ -196,17 +196,17 @@ rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
 // Where a TGT code is now (a seat's place, a summoned creature's), else (x, z).
 eg_where :: (v: [] RmServer, k: int, tgt: int, x: f32, z: f32) -> EgPose {
   if tgt >= EG_TGT_SEAT && tgt < EG_TGT_SEAT + EG_SEATS { return v[0].eg[k].seat[tgt - EG_TGT_SEAT].pose; }
-  if tgt > E5RR_TGT_BEAST {
-    i := e5rr_beast_of_tgt(v[0].eg[k].rules[..], tgt);
-    if i >= 0 { bt := v[0].eg[k].rules[0].beasts[i - E5RR_BEAST0]; return EgPose.{x = bt.x, y = bt.y, z = bt.z}; }
+  if tgt > EGB_TGT_BEAST {
+    i := egb_of_tgt(v[0].eg[k].rules[..], tgt);
+    if i >= 0 { bt := v[0].eg[k].rules[0].beasts[i - EGB_BEAST0]; return EgPose.{x = bt.x, y = bt.y, z = bt.z}; }
   }
   return EgPose.{x = x, z = z};
 }
 eg_engine_events :: (v: [] RmServer, k: int) {
-  ev: [64 * E5RR_EV_FLOATS] f32;
-  n := e5rr_events(v[0].eg[k].rules[..], ev[..]);
+  ev: [64 * EGB_EV_FLOATS] f32;
+  n := egb_events(v[0].eg[k].rules[..], ev[..]);
   for q: 0..<n {
-    o := q * E5RR_EV_FLOATS;
+    o := q * EGB_EV_FLOATS;
     kind := cast(int) ev[o]; by := cast(int) ev[o + 2]; who := cast(int) ev[o + 3];
     at := eg_where(v, k, who, ev[o + 6], ev[o + 7]);
     b: [96] u8; m := 0;

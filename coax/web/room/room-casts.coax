@@ -37,7 +37,7 @@ rm_scheduled :: (v: [] RmServer) -> int #export_c #effects(all) {
 rc_tick_first :: (v: [] RmServer, k: int) {
   for s: 0..<EG_SEATS {
     u := hb_take(v[0].eg[k].hurts[..],s);
-    if rm_eg_seat_live(v, k, SeatId.{value = s}) { e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, u.amount, u.by); }
+    if rm_eg_seat_live(v, k, SeatId.{value = s}) { egb_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, u.amount, u.by); }
   }
 }
 // ---- checks (coax test --library coax/web/room/room.coax --only "casts:")

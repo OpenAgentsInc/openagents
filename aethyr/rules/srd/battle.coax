@@ -429,6 +429,9 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) {
   }
 }
 // Damage, with dropping to 0 and the concentration save the SRD calls for.
+// Damage the world deals outside any attack or spell (a fall, a blow a realm's own rules strike):
+// Bludgeoning, never a Critical Hit, no spell's.
+rs_world_damage :: (b: [] RsBattle, by: int, j: int, amount: int) { rs_damage(b, by, j, amount, RS_BLUDGEONING, false, -1); }
 rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) {
   rs_rest_damage_before(b,j,amount);
   dealt:=rs_damage_floor(b[0].c[j],amount);
@@ -1766,6 +1769,8 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
 // The Attack action: one attack with its weapon at j (5 feet away). `reckless` attacks recklessly
 // (a Barbarian's first attack in a turn); `cleave_to`, when the weapon's Cleave mastery applies, is
 // a second creature within 5 feet of j and of the attacker (-1 none).
+// The Attack action at j, plainly: no Reckless Attack, no Cleave.
+rs_attack_action :: (b: [] RsBattle, i: int, j: int) -> bool { return rs_attack(b, i, j, false, -1); }
 rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) -> bool {
   if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) { return false; }
   if b[0].c[i].wild_form != 0 { return rs_stat_multiattack(b, i, j, rs_monster_action(b[0].c[i].wild_form)); }   // Wild Shape: the Beast's Action

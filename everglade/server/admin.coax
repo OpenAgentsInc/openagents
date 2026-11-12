@@ -43,7 +43,7 @@ e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   bit := 1 << s;
   verb := rea_word(text, 2); at := 2 + verb.count + 1;
   arg := ifx at < text.count then rea_word(text, at) else "";
-  b := v[0].eg[k].rules[0].b[..]; c := b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
+  b := v[0].eg[k].rules[0].b[..]; c := b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
   if verb == "heal" { c[0].hp = c[0].hp_max; c[0].dead = false; c[0].stable = false; c[0].death_ok = 0; c[0].death_fail = 0; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; } return; }
   if verb == "god" { v[0].adm.god[k] = ifx arg == "1" then v[0].adm.god[k] | bit else v[0].adm.god[k] & (65535 - bit); return; }
   if verb == "ko" { v[0].adm.ko[k] = ifx arg == "1" then v[0].adm.ko[k] | bit else v[0].adm.ko[k] & (65535 - bit); return; }
@@ -57,12 +57,12 @@ e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   }
   // the CLASSES and LEVEL menus: the seat sits again as that SRD class and level (srd-CLASS or
   // srd-CLASS-L, as a hello says it), even when its ticket's checkpoint holds its later hellos
-  if verb == "class" { if e5rr_klass_of(arg) >= E5R_CL0 { eg_seat_kind(v, k, seat_id, arg); } return; }
+  if verb == "class" { if egb_klass_of(arg) >= EGB_CL0 { eg_seat_kind(v, k, seat_id, arg); } return; }
   if verb == "guard" {
     g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..];
-    if arg == "kill" { if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { b[0].c[E5RR_BEAST0 + g[0].q].hp = 0; } return; }
+    if arg == "kill" { if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { b[0].c[EGB_BEAST0 + g[0].q].hp = 0; } return; }
     if arg == "reset" || arg == "off" {
-      if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, g[0].q); }
+      if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { egb_beast_gone(r, g[0].q); }
       g[0].q = -1; g[0].state = E2G_NONE; g[0].foe = -1; g[0].hp = 0; g[0].down_at = -1;
       v[0].adm.guard_off[k] = arg == "off";
       return;
@@ -81,12 +81,12 @@ e2_admin_after :: (v: [] RmServer, k: int) {
   b := v[0].eg[k].rules[0].b[..];
   for s: 0..<EG_SEATS {
     if (v[0].adm.god[k] & (1 << s)) == 0 || !v[0].eg[k].seat[s].live { continue; }
-    c := b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
+    c := b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
     c[0].hp = c[0].hp_max; c[0].dead = false; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; }
   }
   g := v[0].eg[k].guard[0];
   if g.q >= 0 && g.foe >= 0 && g.foe < EG_SEATS && (v[0].adm.ko[k] & (1 << g.foe)) != 0 {
-    c := b[0].c[E5RR_BEAST0 + g.q..<E5RR_BEAST0 + g.q + 1];
+    c := b[0].c[EGB_BEAST0 + g.q..<EGB_BEAST0 + g.q + 1];
     if c[0].hp <= 0 { c[0].hp = 1; c[0].dead = false; c[0].cond = c[0].cond | RS_UNCONSCIOUS; }
   }
 }
@@ -115,16 +115,16 @@ rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool 
     rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
     eg_test_tick(v[..], k);
     #assert v[0].eg[k].guard[0].q >= 0;
-    c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; c[0].hp = 1;
+    c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT..<EGB_SEAT + 1]; c[0].hp = 1;
     for line: [6] string.["X heal", "X god 1", "X ko 1", "X at 5000 -40000 0", "X guard off", "X class srd-ranger-3"] { rm_heard(v[..], 0, line); }
     out: [3] f32;
     if local == 0 {
       #assert c[0].hp == 1 && v[0].adm.god[k] == 0 && v[0].adm.ko[k] == 0 && !v[0].adm.guard_off[k];
       #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]) && v[0].eg[k].guard[0].q >= 0 && v[0].adm.heard == 0 && v[0].adm.dropped == 6;
-      #assert v[0].eg[k].rules[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER;
+      #assert v[0].eg[k].rules[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER;
     } else {
       #assert c[0].hp == c[0].hp_max && v[0].adm.god[k] == 1 && v[0].adm.ko[k] == 1 && v[0].adm.guard_off[k] && v[0].adm.heard == 6;
-      #assert v[0].eg[k].rules[0].klass[0] == E5R_CL0 + FB_CL_RANGER && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].level == 3;   // the CLASSES menu
+      #assert v[0].eg[k].rules[0].klass[0] == EGB_CL0 + FB_CL_RANGER && v[0].eg[k].rules[0].b[0].c[EGB_SEAT].level == 3;   // the CLASSES menu
       #assert rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]) && out[0] == 5 && out[1] == -40 && !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]);
       #assert v[0].eg[k].guard[0].q < 0;
       for t: 0..<3 { eg_test_tick(v[..], k); }

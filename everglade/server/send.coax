@@ -47,13 +47,6 @@ eg_out_send :: (o: [] EgOut, v: [] RmServer, k: int, s_id: SeatId, f: int) { s :
 }
 eg_snap :: (v: f32, step: f32) -> f32 { return f32(eg_round(v / step)) * step; }
 eg_near :: (p: EgPose, x: f32, z: f32) -> bool { return (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) <= f32(EG_VIEW * EG_VIEW); }
-eg_kind_of :: (slot: int) -> int {
-  if slot == EG_SLOT_CONJURE { return WK_PACK; }
-  if slot == EG_SLOT_STONE { return WK_STONE; }
-  if slot == EG_SLOT_TENTACLES { return WK_TENTACLES; }
-  if slot == EG_SLOT_THORNS { return WK_THORNS; }
-  return WK_ZONE;
-}
 
 // Room k's table this tick, once for every seat (everglade-wire.coax WireHist): every placed player,
 // every townsperson outdoors, every summoned creature whose ground is known, every zone the rules hold
@@ -65,12 +58,12 @@ eg_table :: (v: [] RmServer, k: int) {
   rm[0].cache_tick = rm[0].tick;
   h := rm[0].hist[..];
   wire_hist_begin(h, rm[0].tick);
-  out: [E5RR_OUT_FLOATS] f32;
+  out: [EGB_OUT_FLOATS] f32;
   for q: 0..<EG_SEATS {
     rm[0].cn_n[q] = 0;
     other := rm[0].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
     if !other[0].live || !other[0].placed { continue; }
-    e5rr_seat_out(rm[0].rules[..], q, out[..]);
+    egb_seat_out(rm[0].rules[..], q, out[..]);
     p := other[0].pose;
     g := p.g | (ifx out[4] > 0.5 then WG_DEAD else 0) | (ifx v[0].mono_ms - other[0].heard_ms > WIRE_AWAY_MS then WG_AWAY else 0);
     if other[0].born { wire_hist_born(h, q); rm[0].seat[q].born = false; }
@@ -78,7 +71,7 @@ eg_table :: (v: [] RmServer, k: int) {
     wire_hist_put(h, q, WireS.{id = q, kind = WK_PLAYER, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, g = g, clip = p.clip,
                                hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other[0].wcond,
                                owner = q, carry = f32(p.carry) / 10000.0,
-                               p2 = rs_death_word(rm[0].rules[0].b[0].c[E5RR_SEAT + q])}, wire_rel(WK_PLAYER), true, false);   // Everglade II: the Death Saving Throws (aethyr/rules/srd/down-view.coax)
+                               p2 = rs_death_word(rm[0].rules[0].b[0].c[EGB_SEAT + q])}, wire_rel(WK_PLAYER), true, false);   // Everglade II: the Death Saving Throws (aethyr/rules/srd/down-view.coax)
     a := q * EG_ENT;
     tq := eg_ticket(v, k, SeatId.{value = q});
     n := wire_put_n(rm[0].cn[a..<a + EG_ENT], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other[0].look_n > 0 then cast(string) other[0].look[0..<other[0].look_n] else "ranger.0.0.0",
@@ -88,23 +81,12 @@ eg_table :: (v: [] RmServer, k: int) {
   }
   // summoned creatures (raiders among them) once their ground is known: G 1 while it runs (a raider's
   // level in bits 8 and up), P1 its form, MAX its most Hit Points
-  bf: [E5RR_BEAST_FLOATS] f32;
-  for q: 0..<E5RR_BEASTS {
-    id := e5rr_beast(rm[0].rules[..], q, bf[..]);
+  bf: [EGB_BEAST_FLOATS] f32;
+  for q: 0..<EGB_BEASTS {
+    id := egb_beast(rm[0].rules[..], q, bf[..]);
     if id <= 0 || bf[9] < 0.5 { continue; }
     wire_hist_put(h, EG_SLOT_BEAST + q, WireS.{id = WIRE_ID_MADE + id, kind = WK_BEAST, x = bf[0], y = bf[1], z = bf[2], yaw = bf[3], hp = cast(int) bf[4], max = cast(int) bf[5],
                                                 g = cast(int) bf[8], owner = cast(int) bf[6], p1 = cast(int) bf[7]}, wire_rel(WK_BEAST), false, true);
-  }
-  // the rules' lasting areas: P1 the ability a zone is from, P2 its radius in cm
-  zf: [E5RR_ZONE_FLOATS] f32;
-  for q: 0..<E5RR_ZONES {
-    id := e5rr_zone(rm[0].rules[..], q, zf[..]);
-    if id <= 0 { continue; }
-    slot := cast(int) zf[5]; by := cast(int) zf[1];
-    kind := eg_kind_of(slot);
-    wire_hist_put(h, EG_SLOT_ZONE + q, WireS.{id = WIRE_ID_MADE + id, kind = kind, x = zf[2], z = zf[3], hp = -1, g = 1,
-                                               owner = ifx by >= EG_TGT_SEAT then by - EG_TGT_SEAT else -1,
-                                               p1 = ifx kind == WK_ZONE then slot - EG_SP_SLOTS else 0, p2 = wire_cm(zf[4])}, wire_rel(kind), false, false);
   }
   // each seat's watch effects (Hold Person, Earthbind, Ray of Frost): OWNER the seat's TGT code, P1
   // the cause, P2 its WC_* bit, T0 the tick it started, DUR its ticks (no place: the same row all along)

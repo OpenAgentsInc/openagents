@@ -189,7 +189,7 @@ trv_arrived :: (v: [] RmServer, code: string, pid: string) {
 trv_repair_ticks :: () -> int { return cast(int) (f32(CR_REPAIR_EVERY) * f32(EG_HZ)) - EG_HZ / 3; }
 // Journey j's capture of seat `seat` of room k at its cutover.
 trv_capture :: (v: [] RmServer, j: int, k: int, seat_id: SeatId) { seat := seat_id.value;
-  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat];
+  c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat];
   e := v[0].trv.t[j..<j + 1];
   e[0].temp = c.temp; e[0].slots = c.slots; e[0].slots_max = c.slots_max; e[0].uses = c.uses; e[0].uses_max = c.uses_max;
   e[0].repair_left = rs_max(0, trv_repair_ticks() - (v[0].eg[k].tick - v[0].eg[k].seat[seat].repaired));
@@ -209,7 +209,7 @@ trv_carry :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
     if !e.landed || e.carried || v[0].mono_ms - e.landed_at > TRAVEL_MS { continue; }
     if cast(string) e.pid[0..<e.pid_n] != pid || cast(string) e.to[0..<e.to_n] != here { continue; }
     v[0].trv.t[j].carried = true;
-    c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
+    c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
     c[0].temp = e.temp;
     same := true;
     for i: 0..<10 { if c[0].slots_max[i] != e.slots_max[i] { same = false; } }

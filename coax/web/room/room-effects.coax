@@ -16,12 +16,8 @@ rm_effect_free::(v:[]RmServer,k:int,source:int,free:int) #export_c #effects(all)
   available:=ifx free>=0&&free<=span.count then free else 0;
   if source<EFFECT_SEATS{v[0].eg[k].effect_known=true;v[0].eg[k].effect_free[source]=available;return;}
   held:=0;for n:0..<v[0].eg[k].strike_n{c:=v[0].eg[k].strikes[n];if c.source==source&&effect_physical(c.slot){held+=1;}}
-  r:=v[0].eg[k].rules[..];
-  if source<EFFECT_HOUSE{
-    q:=source-EFFECT_SEATS;
-    for n:0..<r[0].raid[0].cast_n{c:=r[0].raid[0].casts[n];if c.q==q&&effect_physical(EG_WL_BLAST+c.k){held+=1;}}
-    r[0].raid[0].effect_known=true;r[0].raid[0].effect_free[q]=rs_max(available-held,0);
-  }else{v[0].eg[k].house_free=rs_max(available-held,0);}
+  // a raid caster's (EFFECT_SEATS to EFFECT_HOUSE) was v1's: Everglade II has none (#13346)
+  if source>=EFFECT_HOUSE{v[0].eg[k].house_free=rs_max(available-held,0);}
 }
 re_may_start::(v:[]RmServer,k:int, seat_id: SeatId,slot:int,exclude:int)->bool{ seat := seat_id.value;
   if !effect_physical(slot)&&slot!=EG_WL_DOOR{return true;}

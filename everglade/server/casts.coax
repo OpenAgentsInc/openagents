@@ -12,7 +12,7 @@ EG_E2_GAP :: 15;      // ticks (0.5 s at EG_HZ 30): half the page's XC_COOL of 1
 EG_E2_CAST_SLACK :: 3.0;   // m
 eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
-  e := xk_entry_at(v[0].eg[k].rules[0].klass[seat] - E5R_CL0, v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level, wc.slot);   // its level's bar (#13046)
+  e := xk_entry_at(v[0].eg[k].rules[0].klass[seat] - EGB_CL0, v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].level, wc.slot);   // its level's bar (#13046)
   if !e.ok { eg_refuse(v, k, seat_id, wc.seq, "slot"); return; }
   if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) || abs(wc.ay) > 1000 { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_AIM)); return; }
   t := v[0].eg[k].tick;
@@ -23,8 +23,8 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   r:=v[0].eg[k].rules[..];
   // a bow's Attack with its launch said: an arrow the room flies; its Attack is rolled when it reaches
   // a body or the ground (everglade/server/arrows.coax). The cast is told now, as any: the archer's loose.
-  if e.ab.kind == FB_ATTACK && xc_kit(r[0].klass[seat] - E5R_CL0) == XC_KIT_BOW && st[0].loose.ok {
-    kept := st[0].loose.seq == wc.seq && rs_can_act(r[0].b[0].c[E5RR_SEAT + seat]);
+  if e.ab.kind == FB_ATTACK && xc_kit(r[0].klass[seat] - EGB_CL0) == XC_KIT_BOW && st[0].loose.ok {
+    kept := st[0].loose.seq == wc.seq && rs_can_act(r[0].b[0].c[EGB_SEAT + seat]);
     if !kept { st[0].loose = NetLoose.{}; }
     if kept && e2_arrow_loose(v, k, seat_id, wc.slot, wc.seq) {
       st[0].last_cast = t; v[0].eg[k].e2_casts += 1;
@@ -39,11 +39,11 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   if e.ab.tg != FB_SELF && !revive && !e2_cast_sight(v, k, me, wc.ax, wc.az) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_SIGHT)); return; }
   // aimed at the path's guard or a monster, a harmful cast is at it (everglade/server/guard.coax,
   // everglade/server/creatures.coax): the shared rules' strike
-  gfoe := ifx revive || e5rr_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
-  foe := ifx gfoe >= 0 || revive || e5rr_helps(e.ab) then gfoe else e2_monster_target(v, k, wc.ax, wc.az);
+  gfoe := ifx revive || egb_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
+  foe := ifx gfoe >= 0 || revive || egb_helps(e.ab) then gfoe else e2_monster_target(v, k, wc.ax, wc.az);
   foe_hp := ifx foe >= 0 then r[0].b[0].c[foe].hp else 0;
-  done:=ifx revive then e2r_use_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,eg_e2_corpse(v,k,seat))
-    else e2r_use_at_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,e5r_sq(wc.ax),e5rr_z_cell(r,wc.az),foe);
+  done:=ifx revive then e2r_use_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-EGB_CL0,wc.slot,eg_e2_corpse(v,k,seat))
+    else e2r_use_at_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-EGB_CL0,wc.slot,egb_sq(wc.ax),egb_z_cell(r,wc.az),foe);
   if !done { eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return; }
   if gfoe >= 0 { e2_guard_struck(v, k, seat, foe_hp); }
   else if foe >= 0 { e2_monster_struck(v, k, seat, foe, foe_hp); }
@@ -88,9 +88,9 @@ eg_e2_corpse :: (v: [] RmServer, k: int, s: int) -> int {
   for j:0..<EG_SEATS {
     if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
     if (room[0].im[0].blocks[s] & (1 << j))!=0 || (room[0].im[0].blocks[j] & (1 << s))!=0 { continue; }
-    if !b[0].c[E5RR_SEAT+j].dead { continue; }
+    if !b[0].c[EGB_SEAT+j].dead { continue; }
     d:=e2_aid_distance(room[0].seat[s].pose,room[0].seat[j].pose);
     if d<=best && (target<0 || d<best) { best=d; target=j; }
   }
-  return ifx target<0 then -1 else E5RR_SEAT+target;
+  return ifx target<0 then -1 else EGB_SEAT+target;
 }

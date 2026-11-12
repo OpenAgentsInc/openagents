@@ -1,0 +1,940 @@
+#authority;
+#load "tests/battle-fixture.coax";   // its checks' helpers, kept out of its mutants
+// Everglade II's battle in a room (#13346): who the room's combatants are, where they stand on the
+// grid, and the room's step of aethyr's SRD battle (aethyr/rules/srd/battle.coax). It decides combat,
+// so it is #authority and every procedure here has a check that runs it. It loads only its checks'
+// helpers: the room loads it beside the rules (coax/web/room/room.coax); coax/web/room/battle-check.coax
+// loads it alone with them for its checks and its mutants.
+//
+// The layout: seat s is creature EGB_SEAT + s; summoned creature q (a guard on patrol, a monster of
+// the wild) is creature EGB_BEAST0 + q; each seat's familiar takes one creature after those
+// (egb_enable_familiars). Who an event names goes on the wire as a TGT code (spec 3.6): a seat 1000 +
+// s, a creature 2000 + its id. The grid: 5-foot squares from (EGB_X0, EGB_X0) metres, EGB_SIDE a side,
+// and EGB_Z_SHIFT more squares south for Everglade II's land below the old origin.
+//
+// It replaces v1's everglade5e-room-rules.coax for the room. v1's townsfolk, its raid and forge
+// orders, Finger of Death's risen Zombies and a summoned pack's chase took no part in an Everglade II
+// room and are not here (docs/decisions/0005-production-room-runs-everglade-ii.md).
+
+EGB_SEATS :: 16;
+EGB_SEAT :: 0;                                // seat s is creature s (here written s alone)
+EGB_BEASTS :: 96;                             // creatures at once: guards and monsters
+EGB_BEAST0 :: EGB_SEATS;                      // creature q is creature EGB_BEAST0 + q
+EGB_EV_FLOATS :: 8;                           // kind, spell, by, to, amount, damage, x, z (metres)
+EGB_TGT_SEAT :: 1000;
+EGB_TGT_BEAST :: 2000;
+EGB_SQ :: 1.524;                              // a 5-foot square, in metres
+EGB_X0 :: -110.0;                             // the grid's corner (square 0, 0), in metres
+EGB_SIDE :: 145;                              // squares a side
+EGB_Z_SHIFT :: 352;                           // squares south of the old origin, through the -640 m terrain edge
+EGB_AWAY :: -1000;                            // the square of one who isn't here
+EGB_DRUID :: 0; EGB_WARLOCK :: 1; EGB_CL0 :: 2;   // a seat's class: the druid, the Warlock, then Character Create's (EGB_CL0 + FB_CL_*)
+EGB_FORM_WOLF :: 1;                           // a monster's form (everglade/server/creatures.coax E2M_FORM)
+EGB_BEAST_TEAM :: 2;                          // neither the players' (0) nor the town's (1): all can hurt it
+EGB_RUN :: 9.0;                               // m/s a beast runs
+EGB_REACH :: 1.8;                             // m: a bite's 5 feet, from middle to middle
+EGB_SHOOT_FROM_FT :: 35;                      // feet from which a patrolling guard shoots rather than Dashes (past 30)
+
+// A creature of the room's: its id while on (0 off; 2000 + id names it), its last id (kept for the
+// events that tell of it after it goes), the seat that made it (-1 none), its spell and form, where
+// it is (metres; y the ground's, the host's), where it is sent and whom it is set on (a creature, -1
+// none), and its patrol's clocks (the battle's): its last blow, Dash and ranged attack.
+EgBeast :: struct {
+  id: int; tag: int;
+  by: int; spell: int; form: int;
+  x: f32; y: f32; z: f32; yaw: f32; moving: bool; grounded: bool;
+  goal_x: f32; goal_z: f32; foe: int = -1;
+  bite_at: f32;
+  swing: f32 = -100; dash_at: f32 = -100; shot_at: f32 = -100;
+  patrol: bool;                               // a patrolling guard (everglade/server/guard.coax): its room walks it, egb_patrol_turn strikes
+  wild: bool;                                 // a monster (everglade/server/creatures.coax): its room moves it and strikes for it
+}
+EgBattle :: struct {
+  b: [1] RsBattle;
+  z_shift: int;
+  seat: [EGB_SEATS] FbSeat;
+  live: [EGB_SEATS] bool;
+  familiar: [EGB_SEATS] FbSeat;
+  familiar_ready: bool;
+  bar: [FB_EG_SLOTS] FbAb;
+  wbar: [FB_WL_SLOTS] FbAb;                   // the Warlock's bar: slots FB_WL0 + k
+  cbar: [FB_CL_N] FbAb;                       // Character Create's classes' abilities: slots FB_CL0 + class
+  klass: [EGB_SEATS] int;
+  beasts: [EGB_BEASTS] EgBeast;
+  seen: int;
+  started: bool;
+  pvp: bool;                                  // the realm's pvp row (room-control.coax): harm reaches other players too
+  next_id: int;                               // the next creature's id (everglade/server/guard.coax, creatures.coax)
+}
+
+// ---- the grid
+egb_sq :: (m: f32) -> int #effects(all) { return cast(int) floor((m - f32(EGB_X0)) / f32(EGB_SQ)); }
+egb_cell_m :: (q: int) -> f32 #effects(all) { return f32(EGB_X0) + (f32(q) + 0.5) * f32(EGB_SQ); }
+egb_z_cell :: (r: [] EgBattle, z: f32) -> int #effects(all) { return egb_sq(z) + r[0].z_shift; }
+egb_cell_z :: (r: [] EgBattle, y: int) -> f32 #effects(all) { return egb_cell_m(y - r[0].z_shift); }
+
+// ---- who a TGT code names
+// A creature's TGT code: a seat's 1000 + s, a creature's 2000 + its last id, -1 for none.
+egb_tgt :: (r: [] EgBattle, i: int) -> int #effects(all) {
+  if i >= 0 && i < EGB_SEATS { return EGB_TGT_SEAT + i; }
+  if i >= EGB_BEAST0 && i < EGB_BEAST0 + EGB_BEASTS { t := r[0].beasts[i - EGB_BEAST0].tag; return ifx t > 0 then EGB_TGT_BEAST + t else -1; }
+  return -1;
+}
+// The creature a TGT code names (a seat, or a creature on now), -1 for none.
+egb_of_tgt :: (r: [] EgBattle, t: int) -> int #effects(all) {
+  if t >= EGB_TGT_SEAT && t < EGB_TGT_SEAT + EGB_SEATS { return t - EGB_TGT_SEAT; }
+  if t <= EGB_TGT_BEAST { return -1; }
+  for q: 0..<EGB_BEASTS { if r[0].beasts[q].id == t - EGB_TGT_BEAST { return EGB_BEAST0 + q; } }
+  return -1;
+}
+
+// ---- the classes and bars
+egb_klass_ok :: (klass: int) -> int #effects(all) { return ifx klass < EGB_CL0 + FB_CL_N then rs_max(klass, EGB_DRUID) else EGB_DRUID; }
+// The class the hello's KIND names: "warlock" the Warlock, a Character Create class's kind its class,
+// else the druid.
+egb_klass_of :: (kind: string) -> int #effects(all) {
+  if kind == "warlock" { return EGB_WARLOCK; }
+  c := fb_cl_of_kind(kind);
+  return ifx c >= 0 then EGB_CL0 + c else EGB_DRUID;
+}
+// Class klass's character at `level` (0: Everglade's own druid and level 17 Warlock; a Character
+// Create class is the SRD class at that level, at least 1).
+egb_hero_of :: (klass: int, level: int) -> RsCreature #effects(all) {
+  if klass >= EGB_CL0 { return fb_cl_hero(klass - EGB_CL0, "Player", 0, level); }
+  if level <= 0 { return ifx klass == EGB_WARLOCK then fb_warlock_hero("Player", 0) else fb_everglade_hero("Player", 0); }
+  if klass == EGB_WARLOCK { c := rs_warlock("Player", 0, level, SP_ELDRITCH_BLAST); c.rebuke = true; return c; }
+  return rs_druid("Player", 0, level);
+}
+// Whether bar slot k has an entry: the druid's bar (0 to FB_EG_SLOTS - 1), the Warlock's (FB_WL0 on),
+// Character Create's (FB_CL0 on).
+egb_has :: (k: int) -> bool #effects(all) { return (k >= 0 && k < FB_EG_SLOTS) || (k >= FB_WL0 && k < FB_WL0 + FB_WL_SLOTS) || (k >= FB_CL0 && k < FB_CL0 + FB_CL_N); }
+// Bar slot k's entry; egb_has(k) first.
+egb_entry :: (r: [] EgBattle, k: int) -> FbAb #effects(all) { return ifx k >= FB_CL0 then r[0].cbar[k - FB_CL0] else ifx k >= FB_WL0 then r[0].wbar[k - FB_WL0] else r[0].bar[k]; }
+// Whether ability a heals or helps (and so reaches other players), else it only harms.
+egb_helps :: (a: FbAb) -> bool #effects(all) {
+  if a.tg == FB_ALLY || a.tg == FB_ALLIES || a.tg == FB_SELF { return true; }
+  if a.kind != FB_SPELL { return false; }
+  s := rs_spell(a.sp);
+  for q: 0..<s.step_n { if s.steps[q].kind == RS_S_HEAL { return true; } }
+  return false;
+}
+
+// ---- the room's battle
+// A new room's battle: every seat empty, every creature off, the grid Everglade II's.
+egb_start :: (r: [] EgBattle, seed: int) #effects(all) {
+  b := r[0].b[..];
+  b[0].n = 0; b[0].clock = 0; b[0].w = EGB_SIDE;   // who's turn: none (rs_begin)
+  b[0].h = EGB_SIDE + EGB_Z_SHIFT;
+  _ := rs_set_world(b, RS_EVERGLADE_WORLD);   // every declared deviation: world-profile.coax
+  for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  b[0].truth_zones = 0;
+  b[0].dice[0].state = cast(u64) seed * 7919 + 3;
+  for s: 0..<EGB_SEATS {
+    o := fb_everglade_hero("Player", 0);
+    o.hp = 0; o.dead = true;
+    _ = rs_add(b, o, EGB_AWAY, EGB_AWAY);
+    r[0].live[s] = false;
+  }
+  for q: 0..<EGB_BEASTS {
+    o := rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM);
+    o.hp = 0; o.dead = true;
+    _ = rs_add(b, o, EGB_AWAY, EGB_AWAY);
+    r[0].beasts[q] = EgBeast.{};
+  }
+  rs_begin(b);
+  for s: 0..<EGB_SEATS { r[0].seat[s] = FbSeat.{me = s}; }
+  _ = fb_everglade(r[0].bar[..]);
+  _ = fb_warlock_bar(r[0].wbar[..]);
+  _ = fb_cl_bar(r[0].cbar[..]);
+  for s: 0..<EGB_SEATS { r[0].klass[s] = 0; }
+  r[0].seen = b[0].book[0].seq;
+  r[0].started = true;
+  r[0].next_id = 1;
+  r[0].familiar_ready = false;
+  r[0].z_shift = EGB_Z_SHIFT;
+}
+// One stable creature for each seat's familiar, after the rest; once.
+egb_enable_familiars :: (r: [] EgBattle) #effects(all) {
+  if r[0].familiar_ready { return; }
+  b := r[0].b[..];
+  if b[0].n + EGB_SEATS > b[0].c.count { return; }
+  for s: 0..<EGB_SEATS {
+    f := b[0].n;
+    b[0].c[f] = RsCreature.{dead = true, familiar_owner = s + 1, x = -1, y = -1};
+    b[0].n += 1;
+    r[0].familiar[s] = FbSeat.{me = f};
+  }
+  r[0].familiar_ready = true;
+}
+egb_reset_familiar :: (r: [] EgBattle, s: int) #effects(all) {
+  if !r[0].familiar_ready { return; }
+  f := r[0].familiar[s].me;
+  rs_familiar_retire(r[0].b[..], f);
+  r[0].familiar[s] = FbSeat.{me = f};
+}
+// Seat s's Wild Companion (bar slot `slot`) in form `form` at square (x, y): whether it came.
+egb_wild_companion :: (r: [] EgBattle, s: int, slot: int, form: int, x: int, y: int) -> bool #effects(all) {
+  if !r[0].familiar_ready || s < 0 || s >= EGB_SEATS || !r[0].live[s] { return false; }
+  b := r[0].b[..]; seat := r[0].seat[s..<s + 1];
+  if !seat[0].open { return false; }
+  fb_seat_in(b, seat);
+  ok := rs_wild_companion(b, s, slot, form, x, y);
+  fb_seat_out(b, seat);
+  return ok;
+}
+// A player sits at seat s as class klass at `level` (a Character Create class: 1 to 6, its hello's
+// srd-CLASS-LEVEL, #13046; else 0), at (x, z): a fresh character, full Hit Points.
+egb_join :: (r: [] EgBattle, s: int, x: f32, z: f32, klass: int, level: int) #effects(all) {
+  if !r[0].started || s < 0 || s >= EGB_SEATS { return; }
+  b := r[0].b[..];
+  i := s;
+  t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
+  egb_reset_familiar(r, s);
+  r[0].klass[s] = egb_klass_ok(klass);
+  b[0].c[i] = egb_hero_of(r[0].klass[s], ifx r[0].klass[s] >= EGB_CL0 then level else 0);
+  b[0].c[i].turn_at = rs_maxf(t, b[0].clock); b[0].c[i].round_at = ro;
+  b[0].c[i].x = egb_sq(x); b[0].c[i].y = egb_z_cell(r, z);
+  r[0].seat[s] = FbSeat.{me = i};
+  r[0].live[s] = true;
+  // the seat's last player's spells end with the new one (its Concentration is the new caster's)
+  egb_beasts_check(r);
+}
+// The player at seat s left the battle. What it concentrates on stays until the spell would end
+// (spec 6.3), or until someone else takes the seat: leaving is not lethal damage.
+egb_leave :: (r: [] EgBattle, s: int) #effects(all) {
+  if !r[0].started || s < 0 || s >= EGB_SEATS || !r[0].live[s] { return; }
+  b := r[0].b[..];
+  i := s;
+  b[0].c[i].x = EGB_AWAY; b[0].c[i].y = EGB_AWAY;
+  r[0].live[s] = false;
+  egb_reset_familiar(r, s);
+}
+// Where seat s stands now (metres).
+egb_place :: (r: [] EgBattle, s: int, x: f32, z: f32) #effects(all) {
+  if !r[0].started || s < 0 || s >= EGB_SEATS || !r[0].live[s] { return; }
+  i := s;
+  r[0].b[0].c[i].x = egb_sq(x); r[0].b[0].c[i].y = egb_z_cell(r, z);
+}
+// The room's clock on to `clock` (seconds): the engine's tick, each seat's and familiar's step, each
+// creature's turn when due (a patrolling guard's strikes in it), then whatever ended goes. (v1's bar
+// zones never start in an Everglade II room: its casts are everglade2-rules.coax's, #13346.)
+egb_step :: (r: [] EgBattle, clock: f32) #effects(all) {
+  if !r[0].started { return; }
+  b := r[0].b[..];
+  dt := clock - b[0].clock;
+  if dt <= 0 { return; }
+  rs_tick(b, dt);
+  for s: 0..<EGB_SEATS {
+    if !r[0].live[s] { continue; }
+    fb_seat_step(b, r[0].seat[s..<s + 1]);
+    if r[0].familiar_ready { fb_seat_step(b, r[0].familiar[s..<s + 1]); }
+  }
+  // each creature read in place, not copied whole, every tick
+  for q: 0..<EGB_BEASTS {
+    i := EGB_BEAST0 + q;
+    if r[0].beasts[q].id == 0 || b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
+    rs_start_turn(b, i);   // its turn: whose (b[0].who) until it ends
+    if r[0].beasts[q].patrol { egb_patrol_turn(r, q); }
+    rs_end_turn(b, i);
+  }
+  egb_beasts_check(r);
+}
+// A patrolling guard's turn (everglade/server/guard.coax walks it): an Attack action at the creature it
+// is set on, its own stat block's weapon through the shared attack (Extra Attack's blows with it), once
+// the room has brought it within reach. It never chooses a foe: the room sets one only on a creature
+// that harmed it. `swing` keeps the battle's clock of its last blow, which the room tells the pages.
+egb_patrol_turn :: (r: [] EgBattle, q: int) #effects(all) {
+  bt := r[0].beasts[q..<q + 1]; b := r[0].b[..]; i := EGB_BEAST0 + q;
+  foe := bt[0].foe;
+  if foe < 0 { return; }
+  if foe >= b[0].n || b[0].c[foe].dead || b[0].c[foe].hp <= 0 || b[0].c[foe].x == EGB_AWAY { bt[0].foe = -1; return; }
+  // a Fighter's: Second Wind below half its Hit Points, and its Action Surge for a second Attack
+  // action while the foe still stands (a stat block without them does neither)
+  if b[0].c[i].hp * 2 < b[0].c[i].hp_max { _ := rs_second_wind(b, i); }
+  // out of reach: far off, his ranged weapon (its Attack action; none, none shot); nearer, the Dash
+  // action to close (the room runs him faster while it lasts: everglade/server/guard.coax E2G_DASH)
+  if rs_feet_to(b, i, foe) > rs_weapon(b[0].c[i].weapon).reach_ft {
+    if rs_feet_to(b, i, foe) >= EGB_SHOOT_FROM_FT && rs_shoot(b, i, foe) { bt[0].shot_at = b[0].clock; return; }
+    if rs_dash(b, i) { bt[0].dash_at = b[0].clock; }
+    return;
+  }
+  was := b[0].turn.action;
+  _ := rs_attack_action(b, i, foe);
+  if rs_up(b[0].c[foe]) && rs_action_surge(b, i) { _ = rs_attack_action(b, i, foe); }
+  if b[0].turn.action && !was { bt[0].swing = b[0].clock; }
+}
+// Creature q is gone: off the list, its creature dead and away.
+egb_beast_gone :: (r: [] EgBattle, q: int) #effects(all) {
+  r[0].beasts[q].id = 0;
+  i := EGB_BEAST0 + q;
+  b := r[0].b[..];
+  b[0].c[i].dead = true; b[0].c[i].hp = 0; b[0].c[i].x = EGB_AWAY; b[0].c[i].y = EGB_AWAY;
+}
+// A creature at 0 Hit Points goes, and so does one a seat summoned whose Concentration on its spell
+// ended. A guard on patrol and a monster are the room's: only their Hit Points end them.
+egb_beasts_check :: (r: [] EgBattle) #effects(all) {
+  b := r[0].b[..];
+  for q: 0..<EGB_BEASTS {
+    if r[0].beasts[q].id == 0 { continue; }   // read in place: most are off
+    bt := r[0].beasts[q];
+    i := EGB_BEAST0 + q;
+    held := bt.patrol || bt.wild || b[0].c[rs_max(bt.by, 0)].conc == bt.spell;
+    if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held { egb_beast_gone(r, q); }
+  }
+}
+// Seat s ends what bar slot k holds up: its concentration, when that is k's spell. Whether it did.
+egb_end :: (r: [] EgBattle, s: int, k: int) -> bool #effects(all) {
+  if !r[0].started || s < 0 || s >= EGB_SEATS || !r[0].live[s] || !egb_has(k) { return false; }
+  b := r[0].b[..];
+  i := s;
+  a := egb_entry(r, k);
+  if a.kind != FB_SPELL || b[0].c[i].conc < 0 || b[0].c[i].conc != a.sp { return false; }
+  rs_end_concentration(b, i, " (ended)");
+  egb_beasts_check(r);
+  return true;
+}
+// Damage the world dealt (a guard's blade, a fall): to the creature TGT code `who` names, by the one
+// `by` names (one that names nobody: the creature itself), so the hit event names who struck.
+egb_hurt :: (r: [] EgBattle, who: int, amount: int, by: int) #effects(all) {
+  hits := [1] EgbDamage.[EgbDamage.{who = egb_of_tgt(r, who), by = egb_of_tgt(r, by), amount = amount}];
+  switch egb_damage_many(r[0].b[..], hits[..]) { case none {} case some(applied) {} }
+}
+EgbDamage :: struct { who: int; by: int; amount: int; }
+// The world's damage in one undo scope: a batch that names a target it can't hurt (none, or no
+// damage) is refused whole, before any of it lands. One that names no striker is its own.
+egb_damage_many :: (b: [] RsBattle, hits: [] const EgbDamage) -> bool? #effects(all) {
+  // refused before the undo scope opens: a room calls this every tick, mostly with nothing to deal
+  for hit: hits { if hit.who < 0 || hit.who >= b[0].n || hit.amount <= 0 { return null; } }
+  #transaction {
+    for hit: hits {
+      by := ifx hit.by >= 0 && hit.by < b[0].n then hit.by else hit.who;
+      rs_world_damage(b, by, hit.who, hit.amount);
+    }
+  }
+  return some(true);
+}
+// ---- what the room reads
+// Seat s: hp, max, temp, conditions (the engine's, and its effects' as EGB_C_* bits), dead (0 or 1),
+// concentration's spell (-1), then the seconds left on what holds it longest and that spell (-1 none).
+EGB_OUT_FLOATS :: 8;
+// The engine's effects as condition bits, after Everglade's WC_SLOWED (everglade-wire.coax WC_HALTED...).
+EGB_C_HALTED :: 131072;     // Command's Halt: it doesn't move and takes no action
+EGB_C_BANED :: 262144; EGB_C_BLESSED :: 524288; EGB_C_FAITH :: 1048576; EGB_C_ENFEEBLED :: 2097152; EGB_C_HEXED :: 4194304;
+egb_seat_out :: (r: [] EgBattle, s: int, out: [] f32) #effects(all) {
+  if s < 0 || s >= EGB_SEATS || out.count < EGB_OUT_FLOATS { return; }
+  b := r[0].b[..]; i := s;
+  out[0] = f32(b[0].c[i].hp); out[1] = f32(b[0].c[i].hp_max); out[2] = f32(b[0].c[i].temp); out[3] = f32(b[0].c[i].cond | egb_effect_bits(b, i));
+  out[4] = ifx b[0].c[i].dead then 1.0f32 else 0.0f32; out[5] = f32(b[0].c[i].conc);
+  sp: [1] int;
+  out[6] = egb_hold_left(b, i, sp[..]); out[7] = f32(sp[0]);
+}
+// Creature i's effects as EGB_C_* bits.
+egb_effect_bits :: (b: [] RsBattle, i: int) -> int #effects(all) {
+  n := 0;
+  for k: 0..<RS_EFFECTS {
+    e := b[0].c[i].eff[k].kind;
+    if e == EF_HALT { n = n | EGB_C_HALTED; }
+    if e == EF_BANE { n = n | EGB_C_BANED; }
+    if e == EF_BLESS { n = n | EGB_C_BLESSED; }
+    if e == EF_FAITH { n = n | EGB_C_FAITH; }
+    if e == EF_ENFEEBLED { n = n | EGB_C_ENFEEBLED; }
+    if e == EF_HEX { n = n | EGB_C_HEXED; }
+  }
+  return n;
+}
+// The seconds left on what holds creature i longest, its spell into sp[0] (-1, 0 s none): what stops
+// it first (Command's Halt, Hold Person's paralysis), else a curse (Bane, Ray of Enfeeblement, Hex),
+// else a blessing (Bless, Shield of Faith).
+egb_hold_left :: (b: [] RsBattle, i: int, sp: [] int) -> f32 #effects(all) {
+  sp[0] = -1;
+  best: f32 = 0; rank := 1;
+  for k: 0..<RS_EFFECTS {
+    e := b[0].c[i].eff[k];
+    if e.until <= b[0].clock { continue; }
+    rk := egb_hold_rank(e);
+    left := e.until - b[0].clock;
+    if rk > rank || (rk == rank && left > best) { rank = rk; best = left; sp[0] = e.spell; }
+  }
+  return best;
+}
+// How an effect ranks for egb_hold_left: 3 what stops it, 2 a curse, 1 a blessing, 0 none shown.
+egb_hold_rank :: (e: RsEffect) -> int #effects(all) {
+  if e.kind == EF_HALT || (e.kind == EF_COND && (e.cond & (RS_PARALYZED | RS_RESTRAINED | RS_STUNNED)) != 0) { return 3; }
+  if e.kind == EF_BANE || e.kind == EF_ENFEEBLED || e.kind == EF_HEX { return 2; }
+  if e.kind == EF_BLESS || e.kind == EF_FAITH { return 1; }
+  return 0;
+}
+// Creature q: its id (0 when off), then into out: x, y, z (metres), yaw, hp, max, the seat that made
+// it, its form, 1 while it runs, 1 once its y is the ground's.
+EGB_BEAST_FLOATS :: 10;
+egb_beast :: (r: [] EgBattle, q: int, out: [] f32) -> int #effects(all) {
+  if q < 0 || q >= EGB_BEASTS || r[0].beasts[q].id == 0 || out.count < EGB_BEAST_FLOATS { return 0; }
+  bt := r[0].beasts[q];
+  c := r[0].b[0].c[EGB_BEAST0 + q];
+  out[0] = bt.x; out[1] = bt.y; out[2] = bt.z; out[3] = bt.yaw; out[4] = f32(c.hp); out[5] = f32(c.hp_max);
+  out[6] = f32(bt.by); out[7] = f32(bt.form); out[8] = ifx bt.moving then 1.0f32 else 0.0f32; out[9] = ifx bt.grounded then 1.0f32 else 0.0f32;
+  return bt.id;
+}
+// The ground's height under creature q (the host's world knows it).
+egb_beast_ground :: (r: [] EgBattle, q: int, y: f32) #effects(all) {
+  if q < 0 || q >= EGB_BEASTS || r[0].beasts[q].id == 0 { return; }
+  r[0].beasts[q].y = y; r[0].beasts[q].grounded = true;
+}
+// The engine's events since the last call, oldest first, EGB_EV_FLOATS each (kind RS_EV_*, spell, by
+// and to as TGT codes, amount, damage type, the square's x and z in metres): how many fit.
+egb_events :: (r: [] EgBattle, out: [] f32) -> int #effects(all) {
+  if !r[0].started { return 0; }
+  b := r[0].b[..];
+  unread := rs_min(b[0].book[0].seq - r[0].seen, RS_EVENTS);
+  r[0].seen = b[0].book[0].seq;
+  n := 0;
+  q := unread - 1;
+  while q >= 0 {
+    e := rs_recent_at(b[0].book[..], q);
+    q -= 1;
+    if (n + 1) * EGB_EV_FLOATS > out.count { continue; }
+    o := n * EGB_EV_FLOATS;
+    out[o] = f32(e.kind); out[o + 1] = f32(e.spell); out[o + 2] = f32(egb_tgt(r, e.by)); out[o + 3] = f32(egb_tgt(r, e.to));
+    out[o + 4] = f32(e.amount); out[o + 5] = f32(e.damage);
+    out[o + 6] = egb_cell_m(e.x); out[o + 7] = egb_cell_z(r, e.y);
+    n += 1;
+  }
+  return n;
+}
+
+// ---- checks
+#test "battle: the grid's squares, Everglade II's shift south, and the TGT codes both ways" #steps 4000000000 {
+  #assert egb_sq(f32(EGB_X0)) == 0 && egb_sq(f32(EGB_X0) - 0.01) == -1 && egb_sq(f32(EGB_X0) + 1.52) == 0 && egb_sq(f32(EGB_X0) + 1.53) == 1;
+  #assert egb_sq(f32(EGB_X0) + 4.6) == 3;
+  #assert abs(egb_cell_m(0) - (f32(EGB_X0) + 0.762)) < 0.0001 && abs(egb_cell_m(3) - (f32(EGB_X0) + 5.334)) < 0.0001;
+  r: [1] EgBattle; egb_start(r[..], 1);
+  #assert r[0].z_shift == 352 && r[0].b[0].h == EGB_SIDE + 352 && r[0].b[0].w == EGB_SIDE;
+  #assert egb_z_cell(r[..], f32(EGB_X0) + 1.53) == 353 && abs(egb_cell_z(r[..], 355) - egb_cell_m(3)) < 0.0001;
+  #assert egb_tgt(r[..], 0) == 1000 && egb_tgt(r[..], 15) == 1015 && egb_tgt(r[..], -1) == -1;
+  #assert egb_tgt(r[..], EGB_BEAST0) == -1;   // never on: no last id
+  r[0].beasts[1].tag = 1;
+  #assert egb_tgt(r[..], EGB_BEAST0 + 1) == 2001;
+  r[0].beasts[0].tag = 7; r[0].beasts[EGB_BEASTS - 1].tag = 3;
+  #assert egb_tgt(r[..], EGB_BEAST0) == 2007 && egb_tgt(r[..], EGB_BEAST0 + EGB_BEASTS - 1) == 2003 && egb_tgt(r[..], EGB_BEAST0 + EGB_BEASTS) == -1;
+  #assert egb_of_tgt(r[..], 1000) == 0 && egb_of_tgt(r[..], 1015) == 15 && egb_of_tgt(r[..], 999) == -1 && egb_of_tgt(r[..], 1016) == -1;
+  #assert egb_of_tgt(r[..], 2007) == -1;   // its last id, but off now
+  r[0].beasts[5].id = 9; r[0].beasts[EGB_BEASTS - 1].id = 4;
+  #assert egb_of_tgt(r[..], 2009) == EGB_BEAST0 + 5 && egb_of_tgt(r[..], 2004) == EGB_BEAST0 + EGB_BEASTS - 1 && egb_of_tgt(r[..], 2010) == -1;
+  r[0].beasts[6].id = 0;
+  #assert egb_of_tgt(r[..], 2000) == -1;   // not an empty creature's 0
+  r[0].beasts[0].id = 1;
+  #assert egb_of_tgt(r[..], 2001) == EGB_BEAST0;
+}
+#test "battle: a seat's class and character from its hello, and the bars' slots" #steps 4000000000 {
+  #assert egb_klass_of("warlock") == EGB_WARLOCK && egb_klass_of("druid") == EGB_DRUID && egb_klass_of("") == EGB_DRUID;
+  #assert egb_klass_of("srd-fighter") == EGB_CL0 + FB_CL_FIGHTER && egb_klass_of("srd-barbarian") == EGB_CL0 && egb_klass_of("srd-wizard-3") == EGB_CL0 + FB_CL_WIZARD;
+  #assert egb_klass_ok(EGB_WARLOCK) == EGB_WARLOCK && egb_klass_ok(-5) == EGB_DRUID && egb_klass_ok(EGB_CL0) == EGB_CL0;
+  #assert egb_klass_ok(-1) == EGB_DRUID && egb_klass_ok(EGB_CL0 + FB_CL_N) == EGB_DRUID && egb_klass_ok(EGB_CL0 + FB_CL_N - 1) == EGB_CL0 + FB_CL_N - 1 && egb_klass_ok(EGB_WARLOCK) == EGB_WARLOCK;
+  d := egb_hero_of(EGB_DRUID, 0); w := egb_hero_of(EGB_WARLOCK, 0);
+  #assert d.hp_max == fb_everglade_hero("Player", 0).hp_max && w.hp_max == fb_warlock_hero("Player", 0).hp_max && w.level == 17;
+  w5 := egb_hero_of(EGB_WARLOCK, 5); d5 := egb_hero_of(EGB_DRUID, 5);
+  #assert w5.level == 5 && w5.rebuke && d5.level == 5 && !d5.rebuke && d5.hp_max == rs_druid("Player", 0, 5).hp_max;
+  #assert egb_hero_of(EGB_DRUID, 1).level == 1 && egb_hero_of(EGB_DRUID, 1).hp_max == rs_druid("Player", 0, 1).hp_max && egb_hero_of(EGB_WARLOCK, 1).level == 1;
+  bb := egb_hero_of(EGB_CL0, 2);
+  #assert bb.klass == RS_BARBARIAN && bb.level == 2 && bb.team == 0 && d.team == 0 && w.team == 0 && w5.team == 0 && d5.team == 0;
+  #assert w5.agonizing == SP_ELDRITCH_BLAST && egb_hero_of(EGB_CL0 + FB_CL_FIGHTER, 2).team == 0;
+  f := egb_hero_of(EGB_CL0 + FB_CL_FIGHTER, 2);
+  #assert f.level == 2 && f.hp_max == fb_cl_hero(FB_CL_FIGHTER, "Player", 0, 2).hp_max;
+  #assert egb_has(0) && egb_has(FB_EG_SLOTS - 1) && !egb_has(FB_EG_SLOTS) && !egb_has(-1);
+  #assert egb_has(FB_WL0) && egb_has(FB_WL0 + FB_WL_SLOTS - 1) && !egb_has(FB_WL0 - 1) && !egb_has(FB_WL0 + FB_WL_SLOTS);
+  #assert egb_has(FB_CL0) && egb_has(FB_CL0 + FB_CL_N - 1) && !egb_has(FB_CL0 - 1) && !egb_has(FB_CL0 + FB_CL_N);
+  r: [1] EgBattle; egb_start(r[..], 1);
+  #assert egb_entry(r[..], FB_WL0).sp == SP_ELDRITCH_BLAST && egb_entry(r[..], FB_WL0 + 1).sp == SP_FIREBALL;
+  #assert egb_entry(r[..], 0).kind == r[0].bar[0].kind && egb_entry(r[..], 0).sp == r[0].bar[0].sp && egb_entry(r[..], 3).sp == r[0].bar[3].sp;
+  #assert egb_entry(r[..], FB_CL0).kind == r[0].cbar[0].kind && egb_entry(r[..], FB_CL0).sp == r[0].cbar[0].sp && egb_entry(r[..], FB_CL0 + FB_CL_N - 1).sp == r[0].cbar[FB_CL_N - 1].sp;
+  #assert egb_entry(r[..], FB_CL0 + 2).sp == r[0].cbar[2].sp && egb_entry(r[..], FB_CL0 + 2).kind == r[0].cbar[2].kind;
+  #assert egb_helps(FbAb.{tg = FB_ALLY}) && egb_helps(FbAb.{tg = FB_ALLIES}) && egb_helps(FbAb.{tg = FB_SELF});
+  #assert !egb_helps(FbAb.{kind = FB_ATTACK, tg = FB_FOE}) && !egb_helps(fb_spell(SP_FIREBALL, 3, FB_POINT));
+  #assert egb_helps(fb_spell(SP_CURE_WOUNDS, 1, FB_FOE)) && !egb_helps(FbAb.{kind = FB_ATTACK, sp = SP_CURE_WOUNDS, tg = FB_FOE});
+}
+#test "battle: a fresh room, a seat sat and left, its familiar's creature kept, and where a seat stands" #steps 4000000000 {
+  r: [1] EgBattle;
+  none: [8] f32;
+  #assert egb_events(r[..], none[..]) == 0;   // not started: nothing
+  egb_join(r[..], 0, 0, 0, EGB_DRUID, 0); egb_place(r[..], 0, 0, 0); egb_step(r[..], 1); egb_leave(r[..], 0);
+  #assert !r[0].live[0] && r[0].b[0].n == 0 && r[0].b[0].clock == 0;   // nothing before it starts
+  egb_start(r[..], 5);
+  b := r[0].b[..];
+  #assert r[0].started && r[0].next_id == 1 && !r[0].familiar_ready && b[0].n == EGB_SEATS + EGB_BEASTS && b[0].who == -1;
+  // the dice: the seed's, then each creature's initiative as it is added
+  ref: [1] RsBattle; ref[0].dice[0].state = cast(u64) 5 * 7919 + 3; _ := rs_set_world(ref[..], RS_EVERGLADE_WORLD);
+  for q: 0..<EGB_SEATS + EGB_BEASTS {
+    o := ifx q < EGB_SEATS then fb_everglade_hero("Player", 0) else rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM);
+    o.hp = 0; o.dead = true; _ = rs_add(ref[..], o, EGB_AWAY, EGB_AWAY);
+  }
+  rs_begin(ref[..]);
+  #assert b[0].dice[0].state == ref[0].dice[0].state && b[0].c[0].turn_at == ref[0].c[0].turn_at && b[0].c[EGB_BEAST0 + 7].turn_at == ref[0].c[EGB_BEAST0 + 7].turn_at;
+  #assert b[0].walk == RS_WALK_RATE && b[0].walk == ref[0].walk;
+  #assert b[0].c[0].dead && b[0].c[EGB_SEATS - 1].dead && b[0].c[EGB_BEAST0].dead && b[0].c[EGB_BEAST0 + EGB_BEASTS - 1].dead;
+  #assert b[0].c[0].x == EGB_AWAY && b[0].c[EGB_BEAST0].team == EGB_BEAST_TEAM && b[0].c[EGB_BEAST0].hp == 0 && b[0].c[0].hp == 0;
+  #assert r[0].seat[3].me == 3 && r[0].seat[EGB_SEATS - 1].me == EGB_SEATS - 1 && r[0].klass[2] == 0 && !r[0].live[0] && !r[0].live[EGB_SEATS - 1];
+  #assert r[0].seen == b[0].book[0].seq && r[0].bar[0].sp == SP_EG_METEOR_SWARM;
+  #assert r[0].wbar[0].sp == SP_ELDRITCH_BLAST && r[0].cbar[0].kind == fb_cl_ability(0).kind && r[0].cbar[FB_CL_N - 1].sp == fb_cl_ability(FB_CL_N - 1).sp;
+  for k: 0..<RS_ZONES { #assert !b[0].zone[k].on; }
+  #assert b[0].truth_zones == 0;
+  // the familiars: one creature a seat, after the rest, once
+  egb_reset_familiar(r[..], 0);   // none yet: nothing
+  egb_enable_familiars(r[..]);
+  #assert r[0].familiar_ready && b[0].n == EGB_SEATS * 2 + EGB_BEASTS && r[0].familiar[0].me == EGB_SEATS + EGB_BEASTS && r[0].familiar[EGB_SEATS - 1].me == b[0].n - 1;
+  #assert b[0].c[r[0].familiar[0].me].familiar_owner == 1 && b[0].c[b[0].n - 1].familiar_owner == EGB_SEATS && b[0].c[b[0].n - 1].dead && b[0].c[b[0].n - 1].x == -1 && b[0].c[b[0].n - 1].y == -1;
+  egb_enable_familiars(r[..]);
+  #assert b[0].n == EGB_SEATS * 2 + EGB_BEASTS;
+  // a seat sits: its class, a fresh character, where it stands
+  b[0].clock = 4; b[0].c[2].turn_at = 9; b[0].c[2].round_at = 3; b[0].c[1].turn_at = 1;
+  egb_join(r[..], 2, f32(EGB_X0) + 1.53, f32(EGB_X0) + 4.6, EGB_CL0 + FB_CL_FIGHTER, 3);
+  #assert r[0].live[2] && r[0].klass[2] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[2].level == 3 && !b[0].c[2].dead && b[0].c[2].hp == b[0].c[2].hp_max;
+  #assert b[0].c[2].turn_at == 9 && b[0].c[2].round_at == 3 && b[0].c[2].x == 1 && b[0].c[2].y == 355 && r[0].seat[2].me == 2;
+  egb_join(r[..], 1, 0, 0, EGB_WARLOCK, 5);
+  #assert b[0].c[1].turn_at == 4 && b[0].c[1].level == 17 && r[0].klass[1] == EGB_WARLOCK;   // the turn no earlier than now; the Warlock's own level
+  r[0].seat[4].open = true;
+  b[0].c[4].conc = SP_CONJURE_ANIMALS;
+  b[0].c[EGB_BEAST0 + 9] = rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM); r[0].beasts[9] = EgBeast.{id = 30, tag = 30, by = 4, spell = SP_CONJURE_ANIMALS};
+  egb_join(r[..], 4, 0, 0, EGB_CL0, 3);
+  #assert b[0].c[4].level == 3 && b[0].c[4].klass == RS_BARBARIAN && !r[0].seat[4].open && r[0].beasts[9].id == 0;   // the last player's summons end with it
+  egb_join(r[..], 3, 0, 0, 99, 4);
+  #assert r[0].klass[3] == EGB_DRUID && b[0].c[3].hp_max == fb_everglade_hero("Player", 0).hp_max;
+  egb_join(r[..], -1, 0, 0, EGB_WARLOCK, 0); egb_join(r[..], EGB_SEATS, 0, 0, EGB_WARLOCK, 0);
+  #assert !r[0].live[0];
+  egb_place(r[..], 2, f32(EGB_X0) + 4.6, f32(EGB_X0) + 1.53);
+  #assert b[0].c[2].x == 3 && b[0].c[2].y == 353;
+  egb_place(r[..], 0, 0, 0); egb_place(r[..], -1, 0, 0); egb_place(r[..], EGB_SEATS, 0, 0);
+  #assert b[0].c[0].x == EGB_AWAY;
+  egb_join(r[..], 0, 0, 0, EGB_DRUID, 0);
+  egb_place(r[..], 0, f32(EGB_X0) + 4.6, f32(EGB_X0) + 1.53);
+  #assert b[0].c[0].x == 3 && b[0].c[0].y == 353;
+  egb_join(r[..], EGB_SEATS - 1, 0, 0, EGB_DRUID, 0);
+  egb_place(r[..], EGB_SEATS - 1, f32(EGB_X0) + 4.6, f32(EGB_X0) + 1.53);
+  #assert b[0].c[EGB_SEATS - 1].x == 3;
+  egb_leave(r[..], 0); egb_leave(r[..], EGB_SEATS - 1);
+  #assert !r[0].live[0] && b[0].c[0].x == EGB_AWAY && !r[0].live[EGB_SEATS - 1];
+  // a seat leaves: away, its familiar retired
+  f := r[0].familiar[2].me;
+  b[0].c[f].dead = false; b[0].c[f].hp = 3; b[0].c[f].x = 5;
+  r[0].familiar[2].open = true;
+  egb_leave(r[..], 2);
+  #assert !r[0].live[2] && b[0].c[2].x == EGB_AWAY && b[0].c[2].y == EGB_AWAY && !r[0].familiar[2].open && r[0].familiar[2].me == f && b[0].c[f].dead;
+  egb_leave(r[..], 2); egb_leave(r[..], -1); egb_leave(r[..], EGB_SEATS);
+  #assert r[0].live[1] && r[0].live[3];
+  // a seat taken again: its familiar retired too
+  b[0].c[r[0].familiar[1].me].dead = false; r[0].familiar[1].open = true;
+  egb_join(r[..], 1, 0, 0, EGB_DRUID, 0);
+  #assert !r[0].familiar[1].open && b[0].c[r[0].familiar[1].me].dead;
+}
+#test "battle: no room for the familiars, no familiars" {
+  r: [1] EgBattle; egb_start(r[..], 1);
+  r[0].b[0].n = r[0].b[0].c.count - EGB_SEATS + 1;
+  egb_enable_familiars(r[..]);
+  #assert !r[0].familiar_ready && r[0].b[0].n == r[0].b[0].c.count - EGB_SEATS + 1;
+  r[0].b[0].n = r[0].b[0].c.count - EGB_SEATS;
+  egb_enable_familiars(r[..]);
+  #assert r[0].familiar_ready && r[0].b[0].n == r[0].b[0].c.count;
+}
+#test "battle: a start clears whatever the room held" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  b[0].clock = 30; b[0].who = 5; b[0].zone[0].on = true; b[0].zone[RS_ZONES - 1].on = true; b[0].truth_zones = 2; b[0].w = 3; b[0].h = 4;
+  r[0].beasts[0].id = 4; r[0].beasts[EGB_BEASTS - 1].id = 2; r[0].klass[0] = 5; r[0].klass[EGB_SEATS - 1] = 3; r[0].live[EGB_SEATS - 1] = true;
+  r[0].next_id = 9; r[0].seen = -4; r[0].z_shift = 1; r[0].seat[0].me = 40; r[0].seat[EGB_SEATS - 1].me = 41; r[0].bar[0].sp = -2; r[0].wbar[0].sp = -2; r[0].cbar[0].sp = -2;
+  egb_start(r[..], 1);
+  #assert b[0].clock == 0 && b[0].who == -1 && !b[0].zone[0].on && !b[0].zone[RS_ZONES - 1].on && b[0].truth_zones == 0 && b[0].w == EGB_SIDE && b[0].h == EGB_SIDE + EGB_Z_SHIFT;
+  #assert r[0].beasts[0].id == 0 && r[0].beasts[EGB_BEASTS - 1].id == 0 && r[0].klass[0] == 0 && r[0].klass[EGB_SEATS - 1] == 0 && !r[0].live[0] && !r[0].live[EGB_SEATS - 1];
+  #assert r[0].next_id == 1 && r[0].seen == b[0].book[0].seq && r[0].z_shift == EGB_Z_SHIFT && r[0].seat[0].me == 0 && r[0].seat[EGB_SEATS - 1].me == EGB_SEATS - 1;
+  #assert r[0].bar[0].sp == SP_EG_METEOR_SWARM && r[0].wbar[0].sp == SP_ELDRITCH_BLAST && r[0].cbar[0].sp == fb_cl_ability(0).sp && !r[0].familiar_ready && b[0].n == EGB_SEATS + EGB_BEASTS;
+  #assert !b[0].c[0].dead || b[0].c[0].hp == 0;
+  #assert b[0].c[0].dead && b[0].c[0].x == EGB_AWAY && b[0].c[0].y == EGB_AWAY && b[0].c[0].team == 0;
+  q := EGB_BEAST0 + EGB_BEASTS - 1;
+  #assert b[0].c[q].x == EGB_AWAY && b[0].c[q].y == EGB_AWAY && b[0].c[q].hp_max == rs_monster(MON_WOLF, "Wolf", 2).hp_max && b[0].c[q].team == EGB_BEAST_TEAM;
+  #assert b[0].c[EGB_SEATS - 1].y == EGB_AWAY && b[0].c[EGB_SEATS - 1].x == EGB_AWAY;
+}
+#test "battle: what goes at a check: a dead or downed creature, and a summoned one whose Concentration ended" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  // 0: a guard; 1: a monster; 2: seat 0's summons on its spell; 3: on another spell; 4: no seat's (seat 0's
+  // spell held); 5: a guard at 0 Hit Points; 6: a monster dead; 7: off
+  for q: 0..<7 { b[0].c[EGB_BEAST0 + q] = rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM); r[0].beasts[q] = EgBeast.{id = q + 1, tag = q + 1, by = -1, spell = -1}; }
+  b[0].c[EGB_BEAST0 + 1].hp = 1;   // 1 Hit Point: still up
+  r[0].beasts[0].patrol = true; r[0].beasts[1].wild = true; r[0].beasts[5].patrol = true; r[0].beasts[6].wild = true;
+  r[0].beasts[2].by = 0; r[0].beasts[2].spell = SP_CONJURE_ANIMALS; r[0].beasts[3].by = 0; r[0].beasts[3].spell = SP_BLESS;
+  r[0].beasts[4].spell = SP_CONJURE_ANIMALS;
+  b[0].c[0].conc = SP_CONJURE_ANIMALS;
+  b[0].c[EGB_BEAST0 + 5].hp = 0; b[0].c[EGB_BEAST0 + 6].dead = true;
+  egb_beasts_check(r[..]);
+  #assert r[0].beasts[0].id == 1 && r[0].beasts[1].id == 2 && r[0].beasts[2].id == 3 && r[0].beasts[3].id == 0 && r[0].beasts[4].id == 5;
+  #assert r[0].beasts[5].id == 0 && r[0].beasts[6].id == 0 && r[0].beasts[3].tag == 4;
+  c := b[0].c[EGB_BEAST0 + 3];
+  #assert c.dead && c.hp == 0 && c.x == EGB_AWAY && c.y == EGB_AWAY && !b[0].c[EGB_BEAST0 + 2].dead && b[0].c[EGB_BEAST0 + 2].hp > 0;
+  // the summoner's Concentration ends: its creatures go; the room's stay
+  b[0].c[0].conc = -1;
+  egb_beasts_check(r[..]);
+  #assert r[0].beasts[2].id == 0 && r[0].beasts[4].id == 0 && r[0].beasts[0].id == 1 && r[0].beasts[1].id == 2;
+  egb_beast_gone(r[..], 1);
+  #assert r[0].beasts[1].id == 0 && r[0].beasts[1].tag == 2 && b[0].c[EGB_BEAST0 + 1].dead && b[0].c[EGB_BEAST0 + 1].hp == 0 && b[0].c[EGB_BEAST0 + 1].x == EGB_AWAY && b[0].c[EGB_BEAST0 + 1].y == EGB_AWAY;
+}
+#test "battle: a seat ends the spell it concentrates on, from its bar" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  k := FB_WL0 + 2;   // a Warlock bar spell's slot
+  sp := r[0].wbar[2].sp;
+  #assert r[0].wbar[2].kind == FB_SPELL;
+  b[0].c[0].conc = sp; b[0].c[0].conc_until = 60;
+  b[0].c[EGB_BEAST0] = rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM); r[0].beasts[0] = EgBeast.{id = 1, tag = 1, by = 0, spell = sp};
+  #assert !egb_end(r[..], 0, k + 1) && b[0].c[0].conc == sp;   // another spell's
+  #assert !egb_end(r[..], 0, FB_EG_SLOTS) && !egb_end(r[..], -1, k) && !egb_end(r[..], EGB_SEATS, k) && !egb_end(r[..], 1, k);
+  #assert b[0].c[0].conc == sp && r[0].beasts[0].id == 1;
+  #assert egb_end(r[..], 0, k) && b[0].c[0].conc == -1 && r[0].beasts[0].id == 0;
+  #assert !egb_end(r[..], 0, k);   // nothing held now
+  // an Attack slot, though its sp matches
+  b[0].c[0].conc = r[0].cbar[FB_CL_FIGHTER].sp;
+  #assert r[0].cbar[FB_CL_FIGHTER].kind != FB_SPELL && !egb_end(r[..], 0, FB_CL0 + FB_CL_FIGHTER) && b[0].c[0].conc == r[0].cbar[FB_CL_FIGHTER].sp;
+  b[0].c[0].conc = -1; r[0].wbar[2].sp = -1;
+  #assert !egb_end(r[..], 0, k);   // conc -1 never matches a spell of -1
+  b[0].c[0].conc = 0; r[0].wbar[2].sp = 0;
+  #assert egb_end(r[..], 0, k) && b[0].c[0].conc == -1;   // spell 0 is a spell
+  s: [1] EgBattle;
+  #assert !egb_end(s[..], 0, k);   // not started
+}
+#test "battle: the world's damage names who struck, and a refused batch keeps nothing" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  egb_join(r[..], 1, 3, 0, EGB_CL0 + FB_CL_FIGHTER, 3);
+  egb_join(r[..], 2, 6, 0, EGB_CL0 + FB_CL_FIGHTER, 3);
+  hp := b[0].c[0].hp; seq := b[0].book[0].seq;
+  egb_hurt(r[..], 1000, 0, 1001); egb_hurt(r[..], 1000, -2, 1001); egb_hurt(r[..], 999, 2, 1001); egb_hurt(r[..], 2001, 2, 1001);
+  #assert b[0].c[0].hp == hp && b[0].book[0].seq == seq;
+  egb_hurt(r[..], 1000, 1, 1001);
+  #assert b[0].c[0].hp == hp - 1;
+  out: [8 * RS_EVENTS] f32;
+  _ := egb_events(r[..], out[..]);
+  // to 0 Hit Points: the event names who struck
+  egb_hurt(r[..], 1000, hp - 1, 1001);
+  n := egb_events(r[..], out[..]);
+  #assert b[0].c[0].hp == 0 && egb_test_down(out[..], n, 1001, 1000);
+  egb_hurt(r[..], 1002, 500, 5);   // by nobody: the creature itself
+  n = egb_events(r[..], out[..]);
+  #assert b[0].c[2].hp == 0 && egb_test_down(out[..], n, 1002, 1002) && !egb_test_down(out[..], n, 1001, 1002);
+  s: [1] EgBattle;
+  egb_hurt(s[..], 1000, 2, 1001);
+  #assert s[0].b[0].n == 0;
+  // a batch: the second hit refused, the first undone
+  hp1 := b[0].c[1].hp;
+  bad := [2] EgbDamage.[EgbDamage.{who = 1, by = 0, amount = 2}, EgbDamage.{who = b[0].n, by = 0, amount = 2}];
+  switch egb_damage_many(b, bad[..]) { case none {} case some(x) { #assert false; } }
+  #assert b[0].c[1].hp == hp1;
+  for w: [3] int.[-1, 1, 1] {
+    one := [2] EgbDamage.[EgbDamage.{who = 1, by = 0, amount = 1}, EgbDamage.{who = w, by = 0, amount = ifx w < 0 then 1 else 0}];
+    switch egb_damage_many(b, one[..]) { case none {} case some(x) { #assert false; } }
+    #assert b[0].c[1].hp == hp1;
+  }
+  neg := [1] EgbDamage.[EgbDamage.{who = 1, by = 0, amount = -1}];
+  switch egb_damage_many(b, neg[..]) { case none {} case some(x) { #assert false; } }
+  #assert b[0].c[1].hp == hp1;
+  ok := [2] EgbDamage.[EgbDamage.{who = 1, by = b[0].n, amount = 1}, EgbDamage.{who = 1, by = -1, amount = 1}];
+  switch egb_damage_many(b, ok[..]) { case none { #assert false; } case some(x) { #assert x; } }
+  #assert b[0].c[1].hp == hp1 - 2;
+  _ = egb_events(r[..], out[..]);
+  for by: [2] int.[-1, 99999] {
+    b[0].c[1].hp = 1;
+    down := [1] EgbDamage.[EgbDamage.{who = 1, by = ifx by > 0 then b[0].n else by, amount = 5}];
+    switch egb_damage_many(b, down[..]) { case none { #assert false; } case some(x) {} }
+    n = egb_events(r[..], out[..]);
+    #assert egb_test_down(out[..], n, 1001, 1001);
+  }
+  b[0].c[1].hp = 1; b[0].c[1].dead = false;
+  by0 := [1] EgbDamage.[EgbDamage.{who = 1, by = 0, amount = 5}];
+  switch egb_damage_many(b, by0[..]) { case none { #assert false; } case some(x) {} }
+  n = egb_events(r[..], out[..]);
+  #assert egb_test_down(out[..], n, 1000, 1001);
+  // bludgeoning, never a critical hit, no spell's
+  egb_join(r[..], 3, 9, 0, EGB_CL0 + FB_CL_FIGHTER, 3);
+  b[0].c[3].hp = 1; b[0].c[3].hp_max = 30;
+  _ = egb_events(r[..], out[..]);
+  egb_hurt(r[..], 1003, 3, 1001);
+  n = egb_events(r[..], out[..]);
+  spell_ok := false;
+  for q: 0..<n { if out[q * 8] == f32(RS_EV_DOWN) && out[q * 8 + 1] == -1 { spell_ok = true; } }
+  #assert b[0].c[3].hp == 0 && !b[0].c[3].dead && b[0].c[3].death_fail == 0 && spell_ok;
+  egb_hurt(r[..], 1003, 1, 1001);
+  #assert b[0].c[3].death_fail == 1;
+  last := [1] EgbDamage.[EgbDamage.{who = b[0].n - 1, by = b[0].n - 1, amount = 1}];
+  b[0].c[b[0].n - 1].hp = 5; b[0].c[b[0].n - 1].hp_max = 5; b[0].c[b[0].n - 1].dead = false;
+  switch egb_damage_many(b, last[..]) { case none { #assert false; } case some(x) {} }
+  #assert b[0].c[b[0].n - 1].hp == 4;
+}
+#test "battle: what a seat shows: its Hit Points, conditions, effects as bits and what holds it longest" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  out: [EGB_OUT_FLOATS] f32;
+  for q: 0..<EGB_OUT_FLOATS { out[q] = -7; }
+  egb_seat_out(r[..], -1, out[..]); egb_seat_out(r[..], EGB_SEATS, out[..]); egb_seat_out(r[..], 0, out[0..<EGB_OUT_FLOATS - 1]);
+  #assert out[0] == -7 && out[EGB_OUT_FLOATS - 2] == -7;
+  b[0].c[0].hp = 7; b[0].c[0].hp_max = 21; b[0].c[0].temp = 4; b[0].c[0].cond = RS_PRONE; b[0].c[0].conc = SP_BLESS;
+  egb_seat_out(r[..], 0, out[..]);
+  #assert out[0] == 7 && out[1] == 21 && out[2] == 4 && out[3] == f32(RS_PRONE) && out[4] == 0 && out[5] == f32(SP_BLESS) && out[6] == 0 && out[7] == -1;
+  b[0].c[EGB_SEATS - 1].dead = true; b[0].c[EGB_SEATS - 1].hp = 0; b[0].c[EGB_SEATS - 1].hp_max = 9;
+  egb_seat_out(r[..], EGB_SEATS - 1, out[..]);
+  #assert out[0] == 0 && out[1] == 9 && out[4] == 1;
+  // each effect's bit, one at a time
+  kinds := [7] int.[EF_HALT, EF_BANE, EF_BLESS, EF_FAITH, EF_ENFEEBLED, EF_HEX, EF_WEAK];
+  bits := [7] int.[EGB_C_HALTED, EGB_C_BANED, EGB_C_BLESSED, EGB_C_FAITH, EGB_C_ENFEEBLED, EGB_C_HEXED, 0];
+  for q: 0..<7 {
+    b[0].c[0].eff[RS_EFFECTS - 1] = RsEffect.{kind = kinds[q], until = 100};
+    #assert egb_effect_bits(b, 0) == bits[q];
+    b[0].c[0].eff[RS_EFFECTS - 1] = RsEffect.{};
+  }
+  #assert egb_effect_bits(b, 0) == 0;
+  b[0].c[0].eff[0] = RsEffect.{kind = EF_BANE, until = 100}; b[0].c[0].eff[1] = RsEffect.{kind = EF_HEX, until = 100};
+  #assert egb_effect_bits(b, 0) == EGB_C_BANED | EGB_C_HEXED;
+  b[0].c[0].cond = RS_PRONE;
+  egb_seat_out(r[..], 0, out[..]);
+  #assert out[3] == f32(RS_PRONE | EGB_C_BANED | EGB_C_HEXED);
+  for k: 0..<RS_EFFECTS { b[0].c[0].eff[k] = RsEffect.{}; }
+}
+#test "battle: what holds a creature longest: what stops it, then a curse, then a blessing" #steps 4000000000 {
+  b: [1] RsBattle; rs_room(b[..]); b[0].n = 1; b[0].clock = 10;
+  sp: [1] int;
+  #assert egb_hold_left(b[..], 0, sp[..]) == 0 && sp[0] == -1;
+  #assert egb_hold_rank(RsEffect.{kind = EF_HALT}) == 3 && egb_hold_rank(RsEffect.{kind = EF_COND, cond = RS_STUNNED}) == 3 && egb_hold_rank(RsEffect.{kind = EF_COND, cond = RS_PARALYZED}) == 3;
+  #assert egb_hold_rank(RsEffect.{kind = EF_COND, cond = RS_RESTRAINED | RS_PRONE}) == 3 && egb_hold_rank(RsEffect.{kind = EF_COND, cond = RS_BLINDED}) == 0 && egb_hold_rank(RsEffect.{kind = EF_COND}) == 0;
+  #assert egb_hold_rank(RsEffect.{kind = EF_BANE}) == 2 && egb_hold_rank(RsEffect.{kind = EF_ENFEEBLED}) == 2 && egb_hold_rank(RsEffect.{kind = EF_HEX}) == 2;
+  #assert egb_hold_rank(RsEffect.{kind = EF_BLESS}) == 1 && egb_hold_rank(RsEffect.{kind = EF_FAITH}) == 1 && egb_hold_rank(RsEffect.{kind = EF_WEAK}) == 0 && egb_hold_rank(RsEffect.{kind = EF_NONE}) == 0;
+  #assert egb_hold_rank(RsEffect.{kind = EF_HALT, cond = RS_BLINDED}) == 3 && egb_hold_rank(RsEffect.{kind = EF_BANE, cond = RS_STUNNED}) == 2;
+  e := b[0].c[0].eff[..];
+  e[0] = RsEffect.{kind = EF_BLESS, spell = 13, until = 10.5};   // first in the list
+  #assert egb_hold_left(b[..], 0, sp[..]) == 0.5 && sp[0] == 13;
+  e[0] = RsEffect.{kind = EF_HEX, spell = 14, until = 10};      // a curse over now
+  e[1] = RsEffect.{kind = EF_NONE, spell = 15, until = 50};     // nothing, however long
+  #assert egb_hold_left(b[..], 0, sp[..]) == 0 && sp[0] == -1;
+  e[1] = RsEffect.{};
+  e[0] = RsEffect.{kind = EF_BLESS, spell = 1, until = 10};   // over now
+  e[1] = RsEffect.{kind = EF_WEAK, spell = 2, until = 50};    // not one it shows
+  e[2] = RsEffect.{kind = EF_COND, cond = RS_PRONE, spell = 3, until = 50};
+  #assert egb_hold_left(b[..], 0, sp[..]) == 0 && sp[0] == -1;
+  e[3] = RsEffect.{kind = EF_FAITH, spell = 4, until = 13};
+  #assert egb_hold_left(b[..], 0, sp[..]) == 3 && sp[0] == 4;
+  e[4] = RsEffect.{kind = EF_BLESS, spell = 5, until = 15};
+  e[5] = RsEffect.{kind = EF_BLESS, spell = 6, until = 15};   // as long: the first kept
+  #assert egb_hold_left(b[..], 0, sp[..]) == 5 && sp[0] == 5;
+  e[0] = RsEffect.{kind = EF_FAITH, spell = 7, until = 14};   // shorter, after a longer: not taken
+  e[4] = RsEffect.{kind = EF_BLESS, spell = 5, until = 12};
+  #assert egb_hold_left(b[..], 0, sp[..]) == 5 && sp[0] == 6;
+  e[1] = RsEffect.{kind = EF_HEX, spell = 8, until = 11};     // a curse outranks a longer blessing
+  #assert egb_hold_left(b[..], 0, sp[..]) == 1 && sp[0] == 8;
+  e[1] = RsEffect.{};
+  for q: [3] int.[EF_BANE, EF_ENFEEBLED, EF_HEX] {
+    e[5] = RsEffect.{kind = q, spell = 9, until = 12};
+    #assert egb_hold_left(b[..], 0, sp[..]) == 2 && sp[0] == 9;
+  }
+  e[5] = RsEffect.{kind = EF_HEX, spell = 9, until = 10.5};   // first a curse, then a longer blessing: the curse kept
+  #assert egb_hold_left(b[..], 0, sp[..]) == 0.5 && sp[0] == 9;
+  e[2] = RsEffect.{kind = EF_COND, cond = RS_PRONE | RS_STUNNED, spell = 10, until = 10.5};   // what stops it outranks them all
+  e[5] = RsEffect.{kind = EF_HEX, spell = 9, until = 20};
+  #assert egb_hold_left(b[..], 0, sp[..]) == 0.5 && sp[0] == 10;
+  for c: [2] int.[RS_PARALYZED, RS_RESTRAINED] {
+    e[2] = RsEffect.{kind = EF_COND, cond = c, spell = 11, until = 10.25};
+    #assert egb_hold_left(b[..], 0, sp[..]) == 0.25 && sp[0] == 11;
+  }
+  e[2] = RsEffect.{kind = EF_HALT, spell = 12, until = 10.75};
+  #assert egb_hold_left(b[..], 0, sp[..]) == 0.75 && sp[0] == 12;
+}
+#test "battle: a creature as the room reads it, and the ground under it" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  out: [EGB_BEAST_FLOATS] f32;
+  for q: 0..<EGB_BEAST_FLOATS { out[q] = -7; }
+  #assert egb_beast(r[..], 0, out[..]) == 0 && egb_beast(r[..], -1, out[..]) == 0 && egb_beast(r[..], EGB_BEASTS, out[..]) == 0 && out[0] == -7;
+  q := EGB_BEASTS - 1;
+  b[0].c[EGB_BEAST0 + q] = rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM); b[0].c[EGB_BEAST0 + q].hp = 6;
+  r[0].beasts[q] = EgBeast.{id = 12, tag = 12, by = 3, form = EGB_FORM_WOLF, x = 1.5, y = 2.5, z = -3.5, yaw = 0.25, moving = true};
+  #assert egb_beast(r[..], q, out[0..<EGB_BEAST_FLOATS - 1]) == 0 && out[0] == -7;
+  #assert egb_beast(r[..], q, out[..]) == 12;
+  #assert out[0] == 1.5 && out[1] == 2.5 && out[2] == -3.5 && out[3] == 0.25 && out[4] == 6 && out[5] == f32(b[0].c[EGB_BEAST0 + q].hp_max) && out[6] == 3 && out[7] == 1 && out[8] == 1 && out[9] == 0;
+  r[0].beasts[0] = EgBeast.{id = 3, tag = 3, x = 7};
+  #assert egb_beast(r[..], 0, out[..]) == 3 && out[0] == 7;
+  egb_beast_ground(r[..], 0, 2);
+  #assert r[0].beasts[0].grounded && r[0].beasts[0].y == 2;
+  r[0].beasts[0] = EgBeast.{};
+  egb_beast_ground(r[..], q, 4.5); egb_beast_ground(r[..], 0, 9); egb_beast_ground(r[..], -1, 9); egb_beast_ground(r[..], EGB_BEASTS, 9);
+  r[0].beasts[q].moving = false;
+  #assert egb_beast(r[..], q, out[..]) == 12 && out[1] == 4.5 && out[8] == 0 && out[9] == 1 && !r[0].beasts[0].grounded && r[0].beasts[0].y == 0;
+}
+#test "battle: the engine's events, oldest first, as many as fit, each read once" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  out: [8 * RS_EVENTS] f32;
+  _ := egb_events(r[..], out[..]);
+  r[0].beasts[2].tag = 5;
+  for q: 0..<3 { _ = rs_emit(b[0].book[..], RsEvent.{kind = q + 1, spell = 10 + q, by = 0, to = EGB_BEAST0 + 2, amount = 20 + q, damage = 30 + q, x = q, y = 352 + q}); }
+  small: [17] f32;
+  #assert egb_events(r[..], small[..]) == 2 && small[0] == 1 && small[8] == 2 && small[16] == 0;
+  #assert small[1] == 10 && small[2] == 1000 && small[3] == 2005 && small[4] == 20 && small[5] == 30 && small[6] == egb_cell_m(0) && small[7] == egb_cell_m(0);
+  #assert small[9] == 11 && small[14] == egb_cell_m(1) && small[15] == egb_cell_m(1);
+  #assert egb_events(r[..], out[..]) == 0;   // read: the third didn't fit and is gone too
+  for q: 0..<RS_EVENTS + 5 { _ = rs_emit(b[0].book[..], RsEvent.{kind = 1, amount = q}); }
+  #assert egb_events(r[..], out[..]) == RS_EVENTS && out[4] == 5 && out[(RS_EVENTS - 1) * 8 + 4] == f32(RS_EVENTS + 4);
+  _ = rs_emit(b[0].book[..], RsEvent.{kind = 2, amount = 77});
+  #assert egb_events(r[..], out[..]) == 1 && out[4] == 77;
+}
+#test "battle: the room's step: its clock, the seats' and familiars' turns, a creature's turn when due" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  egb_step(r[..], 0); egb_step(r[..], -1);
+  #assert b[0].clock == 0;
+  // a seat's turn opens on its beat; a seat not here, none
+  #assert !r[0].seat[0].open;
+  egb_step(r[..], b[0].c[0].turn_at + 0.1);
+  #assert r[0].seat[0].open && !r[0].seat[1].open && b[0].clock > 0;
+  // a creature takes its turn when due, not before: a guard set on seat 0, beside it
+  x := b[0].c[0].x; y := b[0].c[0].y;
+  b[0].c[0].hp = 300; b[0].c[0].hp_max = 300;
+  egb_test_guard(r[..], 0, 0, x, y + 1);
+  egb_step(r[..], b[0].clock);   // no time on: no turn
+  #assert r[0].beasts[0].swing == -100;
+  egb_step(r[..], b[0].clock + 0.01);
+  t0 := r[0].beasts[0].swing;
+  #assert t0 == b[0].clock;
+  egb_step(r[..], b[0].c[EGB_BEAST0].turn_at);   // its next turn: a fresh Attack action
+  #assert r[0].beasts[0].swing > t0;
+  r[0].beasts[0].id = 0;
+  // the last seat's and the last creature's turns too
+  egb_join(r[..], EGB_SEATS - 1, 0, 0, EGB_DRUID, 0);
+  egb_step(r[..], b[0].c[EGB_SEATS - 1].turn_at + 0.01);
+  #assert r[0].seat[EGB_SEATS - 1].open;
+  egb_test_guard(r[..], EGB_BEASTS - 1, 0, x - 1, y + 1);
+  egb_step(r[..], b[0].clock + 0.01);
+  #assert r[0].beasts[EGB_BEASTS - 1].swing == b[0].clock;
+  r[0].beasts[EGB_BEASTS - 1].id = 0;
+  egb_test_guard(r[..], 3, 0, x + 1, y);
+  b[0].c[EGB_BEAST0 + 3].turn_at = b[0].clock + 5;
+  egb_step(r[..], b[0].clock + 0.05);
+  #assert r[0].beasts[3].swing == -100 && b[0].who == -1;
+  t := b[0].c[EGB_BEAST0 + 3].turn_at;
+  while b[0].clock < t { egb_step(r[..], b[0].clock + 0.25); }
+  #assert b[0].who == -1 && r[0].beasts[3].swing >= t;
+  // a creature not a guard on patrol takes its turn but strikes no one
+  egb_test_guard(r[..], 4, 0, x - 1, y); r[0].beasts[4].patrol = false; r[0].beasts[4].wild = true;
+  egb_test_guard(r[..], 5, 0, x, y + 1); b[0].c[EGB_BEAST0 + 5].dead = true; b[0].c[EGB_BEAST0 + 5].hp = 0;
+  egb_test_guard(r[..], 6, 0, x, y - 1); r[0].beasts[6].id = 0;
+  egb_step(r[..], b[0].clock + 0.01);
+  #assert r[0].beasts[4].swing == -100 && b[0].c[EGB_BEAST0 + 4].turn_at > b[0].clock && r[0].beasts[6].swing == -100 && b[0].c[EGB_BEAST0 + 6].turn_at <= b[0].clock;
+  #assert r[0].beasts[5].id == 0;   // dead: gone at the step's check
+  // the familiar's turn opens too, once it's on the field
+  f := r[0].familiar[0].me;
+  b[0].c[f] = rs_monster(MON_CAT, "Cat", 0);
+  b[0].c[f].familiar_owner = 1; b[0].c[f].x = x; b[0].c[f].y = y + 2; b[0].c[f].turn_at = b[0].clock;
+  egb_step(r[..], b[0].clock + 0.01);
+  #assert r[0].familiar[0].open;
+  s: [1] EgBattle;
+  egb_step(s[..], 5);
+  #assert s[0].b[0].clock == 0;
+}
+#test "battle: a guard's turn: his blade within reach, Dash or his bow beyond it, Second Wind when hurt, never a foe of his own" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  b[0].dice[0].fixed = true;
+  x := b[0].c[0].x; y := b[0].c[0].y;
+  g := EGB_BEAST0;
+  // no foe: nothing
+  egb_test_guard(r[..], 0, -1, x + 1, y);
+  b[0].who = g; rs_start_turn(b, g); egb_patrol_turn(r[..], 0);
+  #assert r[0].beasts[0].swing == -100 && r[0].beasts[0].foe == -1 && !b[0].turn.action;
+  rs_end_turn(b, g); b[0].who = -1;
+  // a foe gone: forgotten
+  b[0].c[1].x = x + 3; b[0].c[1].y = y;
+  b[0].c[b[0].n] = rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM); b[0].c[b[0].n].x = x + 2; b[0].c[b[0].n].y = y;   // past the battle's creatures
+  for bad: 0..<4 {
+    egb_test_guard(r[..], 0, ifx bad == 0 then b[0].n else 1, x + 1, y);
+    if bad == 1 { b[0].c[1].dead = true; } else if bad == 2 { b[0].c[1].dead = false; b[0].c[1].hp = 0; } else if bad == 3 { b[0].c[1].hp = 5; b[0].c[1].x = EGB_AWAY; }
+    egb_test_turn(r[..], 0);
+    #assert r[0].beasts[0].foe == -1 && r[0].beasts[0].swing == -100;
+  }
+  b[0].c[1].dead = false; b[0].c[1].hp = 5; b[0].c[1].x = x + 3; b[0].c[1].y = y;
+  egb_test_guard(r[..], 0, 1, x + 2, y);
+  egb_test_turn(r[..], 0);
+  #assert r[0].beasts[0].foe == 1;   // a foe standing: kept
+  // within reach: his Attack action, and the clock of it
+  b[0].c[0].hp = 300; b[0].c[0].hp_max = 300;
+  hp := b[0].c[0].hp;
+  egb_test_guard(r[..], 0, 0, x + 1, y);
+  b[0].clock += 1;
+  b[0].who = g; rs_start_turn(b, g); egb_patrol_turn(r[..], 0);
+  #assert r[0].beasts[0].swing == b[0].clock && b[0].turn.action && b[0].c[0].hp < hp;
+  rs_end_turn(b, g); b[0].who = -1;
+  // his action spent already: no new blow told
+  egb_test_guard(r[..], 0, 0, x + 1, y);
+  b[0].who = g; rs_start_turn(b, g); b[0].turn.action = true; egb_patrol_turn(r[..], 0); rs_end_turn(b, g); b[0].who = -1;
+  #assert r[0].beasts[0].swing == -100;
+  // 10 feet off: the Dash action to close
+  egb_test_guard(r[..], 0, 0, x + 2, y);
+  b[0].clock += 1;
+  egb_test_turn(r[..], 0);
+  #assert r[0].beasts[0].dash_at == b[0].clock && r[0].beasts[0].shot_at == -100 && r[0].beasts[0].swing == -100;
+  // 30 feet off: still a Dash; past it, his Longbow
+  egb_test_guard(r[..], 0, 0, x + 6, y);
+  egb_test_turn(r[..], 0);
+  #assert r[0].beasts[0].dash_at == b[0].clock && r[0].beasts[0].shot_at == -100;
+  egb_test_guard(r[..], 0, 0, x + 7, y);
+  b[0].clock += 1;
+  egb_test_turn(r[..], 0);
+  #assert r[0].beasts[0].shot_at == b[0].clock && r[0].beasts[0].dash_at == -100;
+  // no bow: a Dash, however far
+  egb_test_guard(r[..], 0, 0, x + 7, y); b[0].c[g].ranged = -1;
+  egb_test_turn(r[..], 0);
+  #assert r[0].beasts[0].shot_at == -100 && r[0].beasts[0].dash_at == b[0].clock;
+  // a Dash spent already: nothing told
+  egb_test_guard(r[..], 0, 0, x + 2, y);
+  b[0].who = g; rs_start_turn(b, g); b[0].turn.action = true; b[0].turn.bonus = true; egb_patrol_turn(r[..], 0); rs_end_turn(b, g); b[0].who = -1;
+  #assert r[0].beasts[0].dash_at == -100;
+  // below half his Hit Points: Second Wind first; at half, not
+  egb_test_guard(r[..], 0, 0, x + 1, y); b[0].c[g].hp = 41;
+  b[0].who = g; rs_start_turn(b, g); egb_patrol_turn(r[..], 0);
+  #assert b[0].c[g].hp > 41 && b[0].turn.bonus;
+  rs_end_turn(b, g); b[0].who = -1;
+  egb_test_guard(r[..], 0, 0, x + 1, y); b[0].c[g].hp = 42;
+  b[0].who = g; rs_start_turn(b, g); egb_patrol_turn(r[..], 0);
+  #assert b[0].c[g].hp == 42 && !b[0].turn.bonus;
+  rs_end_turn(b, g); b[0].who = -1;
+}
+#test "battle: Action Surge for a second Attack action while the foe stands" #steps 4000000000 {
+  r: [1] EgBattle; egb_test_battle(r[..]);
+  b := r[0].b[..];
+  b[0].dice[0].fixed = true;
+  x := b[0].c[0].x; y := b[0].c[0].y;
+  g := EGB_BEAST0;
+  b[0].c[0].hp = 300; b[0].c[0].hp_max = 300;
+  egb_test_guard(r[..], 0, 0, x + 1, y);
+  surges := b[0].c[g].uses[RS_USE_SURGE];
+  egb_test_turn(r[..], 0);
+  #assert surges > 0 && b[0].c[g].uses[RS_USE_SURGE] == surges - 1;
+  // a foe down after the first: no second
+  egb_test_guard(r[..], 0, 0, x + 1, y);
+  b[0].c[0].hp = 1;
+  surges = b[0].c[g].uses[RS_USE_SURGE];
+  egb_test_turn(r[..], 0);
+  #assert b[0].c[g].uses[RS_USE_SURGE] == surges && b[0].c[0].hp <= 0;
+}
+#test "battle: a seat's Wild Companion, only while its turn is open" #steps 4000000000 {
+  r: [1] EgBattle; egb_start(r[..], 1);
+  egb_join(r[..], 0, 0, 0, EGB_CL0 + FB_CL_DRUID, 2);
+  b := r[0].b[..];
+  x := b[0].c[0].x; y := b[0].c[0].y; m := RS_FAMILIAR_FORMS[0];
+  egb_step(r[..], b[0].c[0].turn_at + 0.1);
+  #assert r[0].seat[0].open && !egb_wild_companion(r[..], 0, 0, m, x + 1, y);   // no familiars on
+  egb_enable_familiars(r[..]);
+  r[0].seat[0].open = false;
+  #assert !egb_wild_companion(r[..], 0, 0, m, x + 1, y);
+  egb_step(r[..], b[0].c[0].turn_at + 0.1);
+  #assert r[0].seat[0].open;
+  #assert !egb_wild_companion(r[..], -1, 0, m, x + 1, y) && !egb_wild_companion(r[..], EGB_SEATS, 0, m, x + 1, y) && !egb_wild_companion(r[..], 1, 0, m, x + 1, y);
+  who := b[0].who;
+  #assert egb_wild_companion(r[..], 0, 0, m, x + 1, y) && b[0].who == who && rs_familiar_of(b, 0) >= 0 && r[0].seat[0].turn.action;
+  #assert !egb_wild_companion(r[..], 0, 0, m, x + 1, y);   // its action spent
+  l := EGB_SEATS - 1;
+  egb_join(r[..], l, 3, 0, EGB_CL0 + FB_CL_DRUID, 2);
+  egb_step(r[..], b[0].c[l].turn_at + 0.1);
+  #assert r[0].seat[l].open && egb_wild_companion(r[..], l, 0, m, b[0].c[l].x + 1, b[0].c[l].y + 1) && rs_familiar_of(b, l) >= 0;
+}

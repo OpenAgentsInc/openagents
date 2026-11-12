@@ -39,7 +39,7 @@ e2_aid_sights :: (v:[] RmServer,k:int)->int {
     for j:0..<EG_SEATS {
       if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
       if (room[0].im[0].blocks[s] & (1 << j))!=0 || (room[0].im[0].blocks[j] & (1 << s))!=0 { continue; }
-      c:=b[0].c[E5RR_SEAT+j];
+      c:=b[0].c[EGB_SEAT+j];
       if !rs_death_eligible(c) || !rs_has(c,RS_UNCONSCIOUS) { continue; }
       d:=e2_aid_distance(st[0].pose,room[0].seat[j].pose);
       if d<=best && (target<0 || d<best) { best=d; target=j; }
@@ -83,12 +83,12 @@ e2_aid_commit :: (v:[] RmServer,k:int) {
     if aid.clear && !eg_travel_drops(v,k,id) && !rm_checkpoint_paused(v,k) && ck_can_play(v,k,id) {
       turn:=rules[0].seat[s..<s+1];
       fb_seat_in(b,turn);
-      ok=rs_healers_kit(b,E5RR_SEAT+s,E5RR_SEAT+aid.target,true);
+      ok=rs_healers_kit(b,EGB_SEAT+s,EGB_SEAT+aid.target,true);
       fb_seat_out(b,turn);
     }
     if !ok { eg_refuse(v,k,id,aid.pending,"kit"); continue; }
     out:[64]u8;
-    n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"u1"),aid.pending),b[0].c[E5RR_SEAT+s].healer_kit);
+    n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"u1"),aid.pending),b[0].c[EGB_SEAT+s].healer_kit);
     rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
   }
 }

@@ -23,6 +23,16 @@
 //                                         2 SEAT's harm at it (0 a miss), 3 an arrow loosed (cm, its flight), 4 it fell
 // The pages draw them (apps/openagents-web/everglade2-monsters.coax).
 
+// The way (dx, dz) points, in radians as atan2(dx, dz) (within a few thousandths: a creature's facing).
+e2_heading :: (dx: f32, dz: f32) -> f32 {
+  ax := abs(dx); az := abs(dz);
+  if ax + az < 0.000001 { return 0; }
+  t := ifx ax < az then ax / az else az / ax;
+  a := t * (0.7853982 + 0.273 * (1 - t));       // atan(t) for t in [0, 1]
+  if ax > az { a = 1.5707963 - a; }
+  if dz < 0 { a = 3.1415927 - a; }
+  return ifx dx < 0 then -a else a;
+}
 E2M_WOLF :: 0; E2M_GOBLIN :: 1;
 E2M_N :: 12;                // 8 wolves (packs of 3, 2 and 3) and the camp's 4 goblins
 E2M_GROUPS :: 4;            // the three packs, then the camp
@@ -32,10 +42,10 @@ E2M_SAFE_Z :: -55.0;        // north of this the glade's safe ground: no quarry,
 E2M_LEASH_Z :: -70.0;       // a monster turns home before it comes this far north
 E2M_NOTICE :: [2] f32.[15, 18];       // m: a wolf, a goblin notices you
 E2M_LEASH :: [2] f32.[40, 30];        // m from home past which it lets you go
-E2M_RUN :: [2] f32.[9.0, 5.5];        // m/s: a Wolf's 40 feet, a Goblin's 30 (everglade5e-beasts.coax E5RR_RUN)
+E2M_RUN :: [2] f32.[9.0, 5.5];        // m/s: a Wolf's 40 feet, a Goblin's 30 (everglade5e-beasts.coax EGB_RUN)
 E2M_CIRCLE :: 3.2;          // m/s a wolf circles its quarry while its bite readies
 E2M_RING :: 2.6;            // m out it circles
-E2M_REACH :: 1.9;           // m middle to middle: a blow's 5 feet (E5RR_REACH, a little slack)
+E2M_REACH :: 1.9;           // m middle to middle: a blow's 5 feet (EGB_REACH, a little slack)
 E2M_TELL_BLOW :: [2] f32.[0.45, 0.6]; // s of a blow's swing before it lands
 E2M_TELL_SHOT :: 0.6;       // s an archer draws
 E2M_ARROW :: 30.0;          // m/s an arrow flies (verse/experimental-hostiles.coax hostile_shot_speed)
@@ -49,7 +59,7 @@ E2M_RESPAWN_DEV_S :: 25.0;  // in a --dev room (room-dev.coax), so a check can s
 E2M_UNSEEN :: 45.0;         // m: no player this near its home when one appears
 E2M_XP :: [2] int.[50, 50]; // SRD XP: Wolf (CR 1/4) 50, Goblin Warrior (CR 1/4) 50
 E2M_SHOTS :: 8;
-E2M_FORM :: 1;              // its form in the rules' list (E5RR_FORM_WOLF): never a raider's
+E2M_FORM :: 1;              // its form in the rules' list (EGB_FORM_WOLF): never a raider's
 
 E2Mon :: struct {
   q: int = -1; id: int;      // its beast slot in the rules (-1 none) and its id
@@ -77,19 +87,19 @@ e2mo_group :: (m: int) -> int { return ifx m < 3 then 0 else ifx m < 5 then 1 el
 e2mo_home :: (m: int) -> [3] f32 {
   if m >= 8 {
     j := m - 8;
-    if j >= 2 { p := e2_camp_perch(j - 2); return [3] f32.[p[0], p[1], e5rr_heading(e2_road_x(p[1]) - p[0], 0)]; }
+    if j >= 2 { p := e2_camp_perch(j - 2); return [3] f32.[p[0], p[1], e2_heading(e2_road_x(p[1]) - p[0], 0)]; }
     x := e2_camp_x() + ifx j == 0 then -1.4f32 else 1.5f32; z := E2_CAMP_Z + ifx j == 0 then 0.9f32 else -0.7f32;
-    return [3] f32.[x, z, e5rr_heading(e2_camp_x() - x, E2_CAMP_Z - z)];
+    return [3] f32.[x, z, e2_heading(e2_camp_x() - x, E2_CAMP_Z - z)];
   }
   g := e2mo_group(m); first := ifx g == 0 then 0 else ifx g == 1 then 3 else 5; j := m - first;
   z0 := ifx g == 0 then -175.0f32 else ifx g == 1 then -245.0f32 else -315.0f32;
   side := ifx g == 1 then -1.0f32 else 1.0f32;
   z := z0 + f32(j) * 2.4 - 2.4;
   x := e2_road_x(z) + side * (7.2 + f32(j % 2) * 1.6);
-  return [3] f32.[x, z, e5rr_heading(e2_road_x(z) - x, 0)];
+  return [3] f32.[x, z, e2_heading(e2_road_x(z) - x, 0)];
 }
 e2mo_rules_creature :: (kind: int) -> RsCreature {
-  return ifx kind == E2M_WOLF then rs_monster(MON_WOLF, "Wolf", E5RR_BEAST_TEAM) else rs_monster(MON_GOBLIN_WARRIOR, "Goblin Warrior", E5RR_BEAST_TEAM);
+  return ifx kind == E2M_WOLF then rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM) else rs_monster(MON_GOBLIN_WARRIOR, "Goblin Warrior", EGB_BEAST_TEAM);
 }
 e2mo_block :: (kind: int) -> int { return ifx kind == E2M_WOLF then MON_WOLF else MON_GOBLIN_WARRIOR; }
 // Its block's melee attack (the Bite, the Scimitar) and its ranged one (the Shortbow; the Wolf none).
@@ -111,7 +121,7 @@ e2mo_quarry :: (v: [] RmServer, k: int, s: int) -> bool {
   if s < 0 || s >= EG_SEATS { return false; }
   st := v[0].eg[k].seat[s..<s + 1]; r := v[0].eg[k].rules[..];
   if !st[0].live || !st[0].placed || !r[0].live[s] { return false; }
-  c := r[0].b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
+  c := r[0].b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
   return !c[0].dead && c[0].hp > 0 && !e2mo_safe(st[0].pose.x, st[0].pose.z);
 }
 e2mo_dist :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { dx := ax - bx; dz := az - bz; return sqrt(dx * dx + dz * dz); }
@@ -120,26 +130,26 @@ e2mo_hz :: (s: f32) -> int { return cast(int)(s * f32(EG_HZ) + 0.5); }
 // Monster m stands at home, whole: a new creature of the battle on the rules' first free beast.
 e2mo_spawn :: (v: [] RmServer, k: int, m: int) -> bool {
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; mo := e2mo_room(v, k)[0].mon[m..<m + 1];
-  q := -1; for o: 0..<E5RR_BEASTS { if q < 0 && r[0].beasts[o].id == 0 && r[0].beasts[o].forge_id == 0 { q = o; } }
+  q := -1; for o: 0..<EGB_BEASTS { if q < 0 && r[0].beasts[o].id == 0 { q = o; } }
   if q < 0 { return false; }
   h := e2mo_home(m); kind := e2mo_kind(m);
-  i := E5RR_BEAST0 + q;
+  i := EGB_BEAST0 + q;
   c := e2mo_rules_creature(kind);
-  c.x = e5r_sq(h[0]); c.y = e5rr_z_cell(r, h[1]); c.turn_at = b[0].clock + 0.1; c.round_at = b[0].clock;
+  c.x = egb_sq(h[0]); c.y = egb_z_cell(r, h[1]); c.turn_at = b[0].clock + 0.1; c.round_at = b[0].clock;
   b[0].c[i] = c;
   id := r[0].next_id; r[0].next_id += 1;
-  r[0].beasts[q] = E5rBeast.{id = id, tag = id, by = -1, spell = -1, form = E2M_FORM, wild = true, x = h[0], z = h[1], yaw = h[2], goal_x = h[0], goal_z = h[1]};
+  r[0].beasts[q] = EgBeast.{id = id, tag = id, by = -1, spell = -1, form = E2M_FORM, wild = true, x = h[0], z = h[1], yaw = h[2], goal_x = h[0], goal_z = h[1]};
   life := mo[0].life + 1;
   mo[0] = E2Mon.{q = q, id = id, life = life, kind = kind, group = e2mo_group(m), archer = m >= 10, state = E2M_IDLE,
                  x = h[0], z = h[1], yaw = h[2], hx = h[0], hz = h[1], hyaw = h[2], spin = ifx m % 2 == 0 then 1.0f32 else -1.0f32};
   return true;
 }
-e2mo_creature :: (mo: E2Mon) -> int { return ifx mo.q < 0 then -1 else E5RR_BEAST0 + mo.q; }
+e2mo_creature :: (mo: E2Mon) -> int { return ifx mo.q < 0 then -1 else EGB_BEAST0 + mo.q; }
 // Whether monster m is up in the battle (its slot still its own).
 e2mo_up :: (v: [] RmServer, k: int, m: int) -> bool {
   mo := e2mo_room(v, k)[0].mon[m..<m + 1];
   if mo[0].q < 0 || mo[0].state == E2M_DEAD || mo[0].state == E2M_GONE { return false; }
-  q := mo[0].q; bt := v[0].eg[k].rules[0].beasts[q..<q + 1]; c := v[0].eg[k].rules[0].b[0].c[E5RR_BEAST0 + q..<E5RR_BEAST0 + q + 1];
+  q := mo[0].q; bt := v[0].eg[k].rules[0].beasts[q..<q + 1]; c := v[0].eg[k].rules[0].b[0].c[EGB_BEAST0 + q..<EGB_BEAST0 + q + 1];
   return bt[0].wild && bt[0].id == mo[0].id && !c[0].dead && c[0].hp > 0;
 }
 
@@ -169,7 +179,7 @@ e2mo_rouse :: (v: [] RmServer, k: int, group: int, s: int) {
     if mo[0].group != group || mo[0].state != E2M_IDLE { continue; }
     mo[0].state = E2M_CHASE; mo[0].foe = s;
     p := v[0].eg[k].seat[s].pose;
-    mo[0].orbit = e5rr_heading(mo[0].x - p.x, mo[0].z - p.z);
+    mo[0].orbit = e2_heading(mo[0].x - p.x, mo[0].z - p.z);
   }
 }
 e2mo_home_again :: (mo: [] E2Mon) { mo[0].state = E2M_RETURN; mo[0].foe = -1; mo[0].act = 0; }
@@ -194,9 +204,9 @@ e2_monsters_tick :: (v: [] RmServer, k: int) {
     // its slot taken by another creature (a check, the rules' own placing): gone, back in time
     if mo[0].q < 0 || !r[0].beasts[mo[0].q].wild || r[0].beasts[mo[0].q].id != mo[0].id { mo[0].state = E2M_GONE; mo[0].q = -1; mo[0].down_t = t; continue; }
     e2mo_step(v, k, m, t, dt);
-    bt := r[0].beasts[mo[0].q..<mo[0].q + 1]; i := E5RR_BEAST0 + mo[0].q;
+    bt := r[0].beasts[mo[0].q..<mo[0].q + 1]; i := EGB_BEAST0 + mo[0].q;
     bt[0].x = mo[0].x; bt[0].z = mo[0].z; bt[0].yaw = mo[0].yaw;
-    b[0].c[i].x = e5r_sq(mo[0].x); b[0].c[i].y = e5rr_z_cell(r, mo[0].z);
+    b[0].c[i].x = egb_sq(mo[0].x); b[0].c[i].y = egb_z_cell(r, mo[0].z);
   }
   ms[0].started = true;
   e2mo_arrows(v, k, t);
@@ -221,7 +231,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
   }
   if mo[0].state == E2M_RETURN {
     went := e2mo_move(mo, mo[0].hx, mo[0].hz, run, dt, 0);
-    if went > 0 { mo[0].yaw = e2mo_turn(mo[0].yaw, e5rr_heading(mo[0].hx - mo[0].x, mo[0].hz - mo[0].z), 8, dt); }
+    if went > 0 { mo[0].yaw = e2mo_turn(mo[0].yaw, e2_heading(mo[0].hx - mo[0].x, mo[0].hz - mo[0].z), 8, dt); }
     if e2mo_dist(mo[0].x, mo[0].z, mo[0].hx, mo[0].hz) < 0.05 {
       // whole again at home, as an MMO's monster is: its Hit Points and its conditions
       b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].cond = 0; b[0].c[i].temp = 0;
@@ -242,7 +252,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
   if e2mo_dist(mo[0].x, mo[0].z, mo[0].hx, mo[0].hz) > f32(E2M_LEASH[kind]) || e2mo_dist(p.x, p.z, mo[0].hx, mo[0].hz) > f32(E2M_LEASH[kind]) + 6 || mo[0].z > f32(E2M_LEASH_Z) {
     e2mo_home_again(mo); return;
   }
-  face := e5rr_heading(p.x - mo[0].x, p.z - mo[0].z);
+  face := e2_heading(p.x - mo[0].x, p.z - mo[0].z);
   // a blow or a shot under way: it stands to it, facing its quarry, until its tell is out
   if mo[0].act != 0 {
     mo[0].yaw = e2mo_turn(mo[0].yaw, face, 10, dt);
@@ -284,7 +294,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
     tx := p.x + sin(mo[0].orbit) * near; tz := p.z + cos(mo[0].orbit) * near;
     speed := ifx gap > f32(E2M_RING) + 1.5 || ready then run else f32(E2M_CIRCLE);
     went := e2mo_move(mo, tx, tz, speed, dt, 0.1);
-    mo[0].yaw = e2mo_turn(mo[0].yaw, ifx ready || went < 0.01 then face else e5rr_heading(tx - mo[0].x, tz - mo[0].z), 10, dt);
+    mo[0].yaw = e2mo_turn(mo[0].yaw, ifx ready || went < 0.01 then face else e2_heading(tx - mo[0].x, tz - mo[0].z), 10, dt);
   } else {
     _ := e2mo_move(mo, p.x, p.z, run, dt, f32(E2M_REACH) * 0.75);
     mo[0].yaw = e2mo_turn(mo[0].yaw, face, 8, dt);
@@ -294,7 +304,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
 // Monster m's blow lands now on seat s: its block's melee attack through the shared strike.
 e2mo_blow :: (v: [] RmServer, k: int, m: int, s: int) {
   mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..];
-  j := E5RR_SEAT + s; was := b[0].c[j].hp;
+  j := EGB_SEAT + s; was := b[0].c[j].hp;
   _ := e2mo_strike(b, e2mo_creature(mo[0]), j, e2mo_melee(mo[0].kind), 1);
   mo[0].hit_t = v[0].eg[k].tick; mo[0].hit_seat = s;
   e2mo_tell(v, k, 1, m, s, rs_max(was - b[0].c[j].hp, 0), mo[0].x, mo[0].z);
@@ -336,7 +346,7 @@ e2mo_arrows :: (v: [] RmServer, k: int, t: int) {
     if !e2mo_up(v, k, sh[0].m) { continue; }
     p := v[0].eg[k].seat[s].pose;
     if !e2mo_quarry(v, k, s) || e2mo_dist(p.x, p.z, sh[0].tx, sh[0].tz) > 1.0 { e2mo_tell(v, k, 1, sh[0].m, s, 0, mo.x, mo.z); continue; }
-    j := E5RR_SEAT + s; was := b[0].c[j].hp;
+    j := EGB_SEAT + s; was := b[0].c[j].hp;
     _ := e2mo_strike(b, e2mo_creature(mo), j, e2mo_ranged(mo.kind), 2);
     e2mo_tell(v, k, 1, sh[0].m, s, rs_max(was - b[0].c[j].hp, 0), mo.x, mo.z);
   }
@@ -348,9 +358,9 @@ e2_monsters_after :: (v: [] RmServer, k: int) {
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
     if mo[0].q < 0 || mo[0].state == E2M_DEAD || mo[0].state == E2M_GONE { continue; }
-    i := E5RR_BEAST0 + mo[0].q; id := r[0].beasts[mo[0].q].id;
+    i := EGB_BEAST0 + mo[0].q; id := r[0].beasts[mo[0].q].id;
     if id == mo[0].id && !b[0].c[i].dead && b[0].c[i].hp > 0 { continue; }
-    if id == mo[0].id { e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, mo[0].q); }
+    if id == mo[0].id { egb_beast_gone(r, mo[0].q); }
     mo[0].state = E2M_DEAD; mo[0].down_t = t; mo[0].act = 0; mo[0].foe = -1;
     e2mo_tell(v, k, 4, m, -1, 0, mo[0].x, mo[0].z);
     // its SRD XP, split evenly among the seats that hurt it
@@ -368,7 +378,7 @@ e2_monster_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int {
     mo := ms[0].mon[m];
     if !e2mo_up(v, k, m) || mo.state == E2M_RETURN { continue; }
     d := e2mo_dist(ax, az, mo.x, mo.z);
-    if d <= best { best = d; got = E5RR_BEAST0 + mo.q; }
+    if d <= best { best = d; got = EGB_BEAST0 + mo.q; }
   }
   return got;
 }
@@ -378,7 +388,7 @@ e2_monster_struck :: (v: [] RmServer, k: int, s: int, i: int, hp_before: int) {
   ms := e2mo_room(v, k);
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
-    if mo[0].q < 0 || E5RR_BEAST0 + mo[0].q != i { continue; }
+    if mo[0].q < 0 || EGB_BEAST0 + mo[0].q != i { continue; }
     hp := v[0].eg[k].rules[0].b[0].c[i].hp;
     mo[0].hurt_by = mo[0].hurt_by | (1 << s);
     if mo[0].state == E2M_IDLE && e2mo_quarry(v, k, s) { e2mo_rouse(v, k, mo[0].group, s); }
@@ -396,7 +406,7 @@ e2_monster_assailant :: (v: [] RmServer, k: int, x: f32, z: f32, reach: f32) -> 
     p := v[0].eg[k].seat[mo.hit_seat].pose;
     if e2mo_dist(p.x, p.z, x, z) > reach { continue; }
     d := e2mo_dist(mo.x, mo.z, x, z);
-    if d < best { best = d; got = E5RR_BEAST0 + mo.q; }
+    if d < best { best = d; got = EGB_BEAST0 + mo.q; }
   }
   return got;
 }
@@ -407,12 +417,12 @@ e2_monster_guarded_at :: (v: [] RmServer, k: int, tick: int, i: int, amount: int
   ms := e2mo_room(v, k);
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
-    if mo[0].q >= 0 && E5RR_BEAST0 + mo[0].q == i { e2mo_tell_at(v, k, tick, 2, m, -1, amount, mo[0].x, mo[0].z); return; }
+    if mo[0].q >= 0 && EGB_BEAST0 + mo[0].q == i { e2mo_tell_at(v, k, tick, 2, m, -1, amount, mo[0].x, mo[0].z); return; }
   }
 }
 e2_monster_at :: (v: [] RmServer, k: int, i: int) -> [2] f32 {
   ms := e2mo_room(v, k);
-  for m: 0..<E2M_N { mo := ms[0].mon[m]; if mo.q >= 0 && E5RR_BEAST0 + mo.q == i { return [2] f32.[mo.x, mo.z]; } }
+  for m: 0..<E2M_N { mo := ms[0].mon[m]; if mo.q >= 0 && EGB_BEAST0 + mo.q == i { return [2] f32.[mo.x, mo.z]; } }
   return [2] f32.[0, 0];
 }
 
@@ -480,7 +490,7 @@ e2_monsters_snapshot :: (v: [] RmServer, k: int, s: int) {
     mo := ms[0].mon[m];
     if mo.state == E2M_GONE || e2mo_dist(st[0].pose.x, st[0].pose.z, mo.x, mo.z) > f32(EG_VIEW) { continue; }
     hp := 0; max := 1;
-    if mo.q >= 0 && mo.state != E2M_DEAD { i := E5RR_BEAST0 + mo.q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
+    if mo.q >= 0 && mo.state != E2M_DEAD { i := EGB_BEAST0 + mo.q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
     n = wire_int(row[..], wire_int(row[..], wire_int(row[..], wire_int(row[..], n, m), mo.life), mo.kind), mo.state);
     n = wire_int(row[..], wire_int(row[..], n, cast(int) floor(mo.x * 100 + 0.5)), cast(int) floor(mo.z * 100 + 0.5));
     n = wire_int(row[..], wire_int(row[..], wire_int(row[..], n, cast(int) floor(mo.yaw * 1000 + 0.5)), hp), max);
@@ -508,7 +518,7 @@ e2mt_room :: (v: [] RmServer, code: string) -> int {
 }
 // A check's tick with every line of sight answered `clear`.
 e2mt_tick :: (v: [] RmServer, k: int) { rc_test_tick(v, k, true); }
-e2mt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x = x; v[0].eg[k].seat[0].pose.z = z; e5rr_place(v[0].eg[k].rules[..], 0, x, z); }
+e2mt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x = x; v[0].eg[k].seat[0].pose.z = z; egb_place(v[0].eg[k].rules[..], 0, x, z); }
 e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   n := 0; for m: 0..<E2M_N { if (states & (1 << v[0].eg[k].monsters[0].mon[m].state)) != 0 { n += 1; } } return n;
 }
@@ -522,7 +532,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
     mo := ms[0].mon[m];
     #assert mo.state == E2M_IDLE && mo.q >= 0 && e2mo_up(v[..], k, m);
     #assert mo.z < f32(E2M_LEASH_Z) - 40 && e2_may_stand(mo.x, mo.z);
-    c := v[0].eg[k].rules[0].b[0].c[E5RR_BEAST0 + mo.q];
+    c := v[0].eg[k].rules[0].b[0].c[EGB_BEAST0 + mo.q];
     if mo.kind == E2M_WOLF { wolves += 1; #assert c.hp == 11 && c.ac == 12 && e2_road_dist(mo.x, mo.z) > 6; }
     else { goblins += 1; #assert c.hp == 10 && c.ac == 15 && e2_clearing(mo.x, mo.z) > 0.5; }
   }
@@ -534,7 +544,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
 #test "e2 monsters: the safe glade holds no quarry; a wolf notices you near, and its pack chases and bites" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-wolves"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
-  b[0].c[E5RR_SEAT].hp = 200; b[0].c[E5RR_SEAT].hp_max = 200; b[0].c[E5RR_SEAT].ac = 5;
+  b[0].c[EGB_SEAT].hp = 200; b[0].c[EGB_SEAT].hp_max = 200; b[0].c[EGB_SEAT].ac = 5;
   // in the glade nothing stirs, nor asks to see you
   for q: 0..<EG_HZ * 3 { e2mt_at(v[..], k, 0, -10); e2mt_tick(v[..], k); }
   #assert e2mt_count(v[..], k, 1 << E2M_IDLE) == E2M_N && e2_monster_sights(v[..], k, 0) == 0;
@@ -549,18 +559,18 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   for q: 0..<EG_HZ * 8 {
     e2mt_at(v[..], k, px, pz); e2mt_tick(v[..], k);
     n := 0; for m: 0..<3 { if ms[0].mon[m].state == E2M_CHASE { n += 1; } } if n > most { most = n; }
-    if b[0].c[E5RR_SEAT].hp < 200 { bit = true; }
+    if b[0].c[EGB_SEAT].hp < 200 { bit = true; }
   }
   #assert most == 3 && bit;
   for m: 3..<E2M_N { #assert ms[0].mon[m].state == E2M_IDLE; }
   // they circle you, round their own sides
-  a0 := e5rr_heading(ms[0].mon[0].x - px, ms[0].mon[0].z - pz); a1 := e5rr_heading(ms[0].mon[1].x - px, ms[0].mon[1].z - pz);
+  a0 := e2_heading(ms[0].mon[0].x - px, ms[0].mon[0].z - pz); a1 := e2_heading(ms[0].mon[1].x - px, ms[0].mon[1].z - pz);
   #assert abs(a0 - a1) > 0.2 && e2mo_dist(ms[0].mon[0].x, ms[0].mon[0].z, px, pz) < 4;
 }
 #test "e2 monsters: a pack circling its quarry lap after lap keeps every yaw within a half turn" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-laps"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
-  b[0].c[E5RR_SEAT].hp = 20000; b[0].c[E5RR_SEAT].hp_max = 20000; b[0].c[E5RR_SEAT].ac = 30;
+  b[0].c[EGB_SEAT].hp = 20000; b[0].c[EGB_SEAT].hp_max = 20000; b[0].c[EGB_SEAT].ac = 30;
   w := ms[0].mon[0]; px := e2_road_x(w.z - 8); pz := w.z - 8;
   chased := false; lap: f32 = 0; was := ms[0].mon[0].orbit;
   for q: 0..<EG_HZ * 30 {
@@ -575,11 +585,11 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
 #test "e2 monsters: the leash takes the pack home before the glade and makes it whole there" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-leash"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
-  b[0].c[E5RR_SEAT].hp = 500; b[0].c[E5RR_SEAT].hp_max = 500;
+  b[0].c[EGB_SEAT].hp = 500; b[0].c[EGB_SEAT].hp_max = 500;
   w := ms[0].mon[0]; z := w.z - 8;
   for q: 0..<EG_HZ { e2mt_at(v[..], k, e2_road_x(z), z); e2mt_tick(v[..], k); }
   #assert ms[0].mon[0].state == E2M_CHASE;
-  i := E5RR_BEAST0 + ms[0].mon[0].q; b[0].c[i].hp = 4;
+  i := EGB_BEAST0 + ms[0].mon[0].q; b[0].c[i].hp = 4;
   // you run north up the path toward the glade at a jog: they let you go before it
   went := false; north: f32 = -1000;
   for q: 0..<EG_HZ * 40 {
@@ -594,7 +604,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
 #test "e2 monsters: a goblin archer looses an arrow that flies before it lands; a step aside makes it miss" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-camp"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
-  b[0].c[E5RR_SEAT].hp = 500; b[0].c[E5RR_SEAT].hp_max = 500; b[0].c[E5RR_SEAT].ac = 1;
+  b[0].c[EGB_SEAT].hp = 500; b[0].c[EGB_SEAT].hp_max = 500; b[0].c[EGB_SEAT].ac = 1;
   a := ms[0].mon[10]; px := a.x + 12; pz := a.z + 3;
   out: [262144] u8; _ := e2rt_heard(v[..], 0, out[..]);
   loosed := false; flying := false; hit := false;
@@ -603,11 +613,11 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
     for o: 0..<E2M_SHOTS { if ms[0].shots[o].live && ms[0].shots[o].m == 10 { flying = true; } }
     heard := e2rt_heard(v[..], 0, out[..]);
     if eg_test_has(heard, "h3 ") { loosed = loosed || ms[0].mon[10].hit_t > 0; }
-    if b[0].c[E5RR_SEAT].hp < 500 { hit = true; }
+    if b[0].c[EGB_SEAT].hp < 500 { hit = true; }
   }
   #assert loosed && flying && hit;
   // the next: you step two metres aside while it flies, and it misses
-  hp := b[0].c[E5RR_SEAT].hp; stepped := false; dodged := false;
+  hp := b[0].c[EGB_SEAT].hp; stepped := false; dodged := false;
   for q: 0..<EG_HZ * 6 {
     live := false; for o: 0..<E2M_SHOTS { if ms[0].shots[o].live { live = true; } }
     if live && !stepped { stepped = true; px += 2.5; }
@@ -617,15 +627,15 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   #assert stepped && dodged;
   // a player who closes on an archer makes it step back (Nimble Escape)
   esc := false; for q: 0..<EG_HZ * 4 { e2mt_at(v[..], k, ms[0].mon[10].x + 2, ms[0].mon[10].z); e2mt_tick(v[..], k); if ms[0].mon[10].state == E2M_ESCAPE { esc = true; } }
-  #assert esc && b[0].c[E5RR_SEAT].hp <= hp;
+  #assert esc && b[0].c[EGB_SEAT].hp <= hp;
 }
 #test "e2 monsters: a player's harm turns the group on them; the fallen give their XP, lie, and come back unseen" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-fall"); #assert k >= 0;
   v[0].dev.on = true;
   ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
-  b[0].c[E5RR_SEAT].hp = 500; b[0].c[E5RR_SEAT].hp_max = 500;
+  b[0].c[EGB_SEAT].hp = 500; b[0].c[EGB_SEAT].hp_max = 500;
   w := ms[0].mon[3]; e2mt_at(v[..], k, e2_road_x(w.z), w.z - 25); e2mt_tick(v[..], k);
-  i := E5RR_BEAST0 + w.q;
+  i := EGB_BEAST0 + w.q;
   #assert e2_monster_target(v[..], k, w.x + 0.5, w.z) == i && e2_monster_target(v[..], k, w.x + 3, w.z) == -1;
   hp := b[0].c[i].hp; b[0].c[i].hp = 0; b[0].c[i].dead = true;
   e2_monster_struck(v[..], k, 0, i, hp);
@@ -649,7 +659,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
 #test "e2 monsters: the path's guard goes for a wolf that bites a player near him, and strikes it" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-guarded"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..]; g := v[0].eg[k].guard[..];
-  b[0].c[E5RR_SEAT].hp = 500; b[0].c[E5RR_SEAT].hp_max = 500;
+  b[0].c[EGB_SEAT].hp = 500; b[0].c[EGB_SEAT].hp_max = 500;
   for q: 0..<3 { e2mt_tick(v[..], k); }
   #assert g[0].q >= 0;
   w := ms[0].mon[0]; pz := w.hz - 4; px := e2_road_x(pz);
@@ -658,7 +668,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   g[0].x = e2_road_x(pz - 6); g[0].z = pz - 6;
   e2mo_rouse(v[..], k, ms[0].mon[0].group, 0);
   ms[0].mon[0].hit_t = v[0].eg[k].tick; ms[0].mon[0].hit_seat = 0;
-  i := E5RR_BEAST0 + ms[0].mon[0].q; before := g[0].swing_tick;
+  i := EGB_BEAST0 + ms[0].mon[0].q; before := g[0].swing_tick;
   e2mt_tick(v[..], k);
   #assert g[0].beast == i && g[0].foe == -1 && g[0].state == E2G_FIGHTING;
   for q: 0..<EG_HZ * 8 { e2mt_at(v[..], k, px, pz); e2mt_tick(v[..], k); if g[0].swing_tick != before { break; } }

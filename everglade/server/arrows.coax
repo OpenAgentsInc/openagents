@@ -72,9 +72,9 @@ e2a_bodies :: (v: [] RmServer, k: int, tick: int, out: [] arch.ArcheryBody) -> i
 }
 // The rules' creature for body b now (-1: it no longer stands).
 e2a_creature :: (v: [] RmServer, k: int, b: int) -> int {
-  if b == E2AR_GUARD { g := v[0].eg[k].guard[0]; return ifx g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE then E5RR_BEAST0 + g.q else -1; }
+  if b == E2AR_GUARD { g := v[0].eg[k].guard[0]; return ifx g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE then EGB_BEAST0 + g.q else -1; }
   if b < 0 || b >= E2M_N || !e2mo_up(v, k, b) { return -1; }
-  return E5RR_BEAST0 + e2mo_room(v, k)[0].mon[b].q;
+  return EGB_BEAST0 + e2mo_room(v, k)[0].mon[b].q;
 }
 e2a_say_end :: (v: [] RmServer, k: int, id: int, kind: int, at: [3] f32, dir: [3] f32, body: int) {
   out: [160] u8;
@@ -147,7 +147,7 @@ e2a_fly :: (v: [] RmServer, k: int, tick: int) {
 e2a_archer_ok :: (v: [] RmServer, k: int, tag: E2ArrowTag) -> bool {
   if tag.seat < 0 || tag.seat >= EG_SEATS || !v[0].eg[k].seat[tag.seat].live { return false; }
   r := v[0].eg[k].rules[..];
-  return xk_entry_at(r[0].klass[tag.seat] - E5R_CL0, r[0].b[0].c[E5RR_SEAT + tag.seat].level, tag.slot).ok;
+  return xk_entry_at(r[0].klass[tag.seat] - EGB_CL0, r[0].b[0].c[EGB_SEAT + tag.seat].level, tag.slot).ok;
 }
 // An arrow reached body b: the SRD Attack on it, rolled now (everglade2-rules.coax). Whether it hit.
 e2a_strike :: (v: [] RmServer, k: int, tag: E2ArrowTag, b: int) -> bool {
@@ -155,7 +155,7 @@ e2a_strike :: (v: [] RmServer, k: int, tag: E2ArrowTag, b: int) -> bool {
   if foe < 0 || !e2a_archer_ok(v, k, tag) { return false; }
   r := v[0].eg[k].rules[..]; s := tag.seat; me := v[0].eg[k].seat[s].pose;
   hp := r[0].b[0].c[foe].hp;
-  done := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - E5R_CL0, tag.slot, e5r_sq(me.x), e5rr_z_cell(r, me.z), foe);
+  done := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - EGB_CL0, tag.slot, egb_sq(me.x), egb_z_cell(r, me.z), foe);
   if !done { return false; }
   if b == E2AR_GUARD { e2_guard_struck(v, k, s, hp); } else { e2_monster_struck(v, k, s, foe, hp); }
   e2_kit_tell(v, k, SeatId.{value = s}, false);
@@ -165,7 +165,7 @@ e2a_strike :: (v: [] RmServer, k: int, tag: E2ArrowTag, b: int) -> bool {
 e2a_empty :: (v: [] RmServer, k: int, tag: E2ArrowTag) {
   if !e2a_archer_ok(v, k, tag) { return; }
   r := v[0].eg[k].rules[..]; s := tag.seat; me := v[0].eg[k].seat[s].pose;
-  _ := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - E5R_CL0, tag.slot, e5r_sq(me.x), e5rr_z_cell(r, me.z), -1);
+  _ := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - EGB_CL0, tag.slot, egb_sq(me.x), egb_z_cell(r, me.z), -1);
   e2_kit_tell(v, k, SeatId.{value = s}, false);
 }
 // The tick (after the monsters have moved): this tick's bodies are written down, then every arrow flies to it.
@@ -240,7 +240,7 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   for q: 0..<6 { e2mt_tick(v[..], k); }
   v[0].eg[k].tick += 600;   // an older room: a moment 300 ticks back is after its start
   // a wolf stands 4 m down the path; the room's rules make every Attack hit and none kill
-  m := 0; mo := ms[0].mon[m..<m + 1]; foe := E5RR_BEAST0 + mo[0].q;
+  m := 0; mo := ms[0].mon[m..<m + 1]; foe := EGB_BEAST0 + mo[0].q;
   b[0].c[foe].ac = 1; b[0].c[foe].hp = 500; b[0].c[foe].hp_max = 500;
   for q: 0..<8 { mo[0].x = 0; mo[0].z = -44; mo[0].state = E2M_IDLE; mo[0].foe = -1; e2a_remember(v[..], k); v[0].eg[k].tick += 1; }
   // then, for the room's last two ticks, it is 6 m aside: the archer's page, drawing five ticks back,

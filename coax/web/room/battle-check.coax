@@ -1,0 +1,6 @@
+// Everglade II's battle (everglade/server/battle.coax) with only the rules it stands on: its checks
+// alone, and its mutation gate (#13346):
+//   cd coax && bin/coax mutate ../coax/web/room/battle-check.coax --library --unit ../everglade/server/battle.coax
+#load "../../../aethyr/rules/srd/battle.coax";
+#load "../../../apps/openagents-web/fivebar.coax";
+#load "../../../everglade/server/battle.coax";

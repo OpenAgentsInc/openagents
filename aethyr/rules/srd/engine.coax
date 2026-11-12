@@ -107,6 +107,7 @@ rs_proficiency :: (level: int) -> int { return 2 + (rs_max(level, 1) - 1) / 4; }
 rs_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 rs_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 rs_minf :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+rs_maxf :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
 
 // ---- damage types
 
