@@ -12,6 +12,13 @@ RS_ACTION_TIMING :: RsTimingProfile.{kind=RS_TIME_ACTION};
     p := RsTimingProfile.{kind=kind};
     #assert rs_timing_allowed(p,sealed==1) == ((kind==0 || kind==1) && sealed==0);
   } }
+  b: [1] RsBattle;
+  #assert rs_set_timing(b[..],RS_ACTION_TIMING) && b[0].timing.kind == RS_TIME_ACTION;
+  #assert !rs_set_timing(b[..],RsTimingProfile.{kind=2}) && b[0].timing.kind == RS_TIME_ACTION;
+  rs_seal_timing(b[..]);
+  #assert !rs_set_timing(b[..],RS_STRICT_TIMING) && b[0].timing.kind == RS_TIME_ACTION;
+  rs_reset_timing(b[..]);
+  #assert b[0].timing.kind == RS_TIME_STRICT && !b[0].timing_sealed;
 }
 #test "profile timing declares beat cooldown and movement without changing strict defaults" {
   #assert rs_timing_beat(RS_STRICT_TIMING) == 6 && rs_timing_beat(RS_ACTION_TIMING) == 1.5;
