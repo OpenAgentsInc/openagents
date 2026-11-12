@@ -339,7 +339,7 @@ k_row_busy :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, cu
   }
   a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "row-t", title);
   if meta.count > 0 { b := tr_leaf(t, tr_cat(idb[..], id, ".m"), TG_SPAN, "meta", meta); }
-  if busy { tr_attr(t, i, AT_STATE, "busy"); c := k_icon(t, tr_cat(idc[..], id, ".busy"), IC_SPIN); }
+  if busy { tr_attr(t, i, AT_STATE, "busy"); c := k_icon(t, tr_cat(idc[..], id, ".busy"), IC_CIRCLE_DASHED); }
   tr_close(t);
   return i;
 }
