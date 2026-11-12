@@ -200,6 +200,31 @@ committed before any final run, as before.
   with passes level; a fresh set and a per-task sign test make that lead
   hard to put down to noise.
 
+**The fresh set, recorded before any run** (2026-11-12). A separate agent
+built and validated it; each check fails on the start tree, passes on the
+known-good commit and on a second correct solution, and fails on two
+incomplete ones. No model has run on these tasks. Hashes are the first 12
+hex digits of each file's sha256.
+
+| Task | Kind | Start | Known-good change | Prompt | Check |
+| --- | --- | --- | --- | --- | --- |
+| U1 | cross-file bug fix | `8876665195` | 5 files, 173 lines | `2cc11880faa6` | `3ece4613c0cc` |
+| U2 | cross-file bug fix | `e18b86bede` | 4 files, 311 lines | `2df015539181` | `49f4a5be15ea` |
+| U3 | multi-file feature | `6793c725f7` | 5 files, 80 lines | `190d4a4cdc6b` | `b5491c28a7d0` |
+| U4 | multi-file feature (new module and its checks) | `1779c42d44` | 4 files, 269 lines | `ed631f8e5262` | `224e1aaef1ab` |
+| U5 | multi-file feature | `5882381068` | 4 files, 343 lines | `5994cd216c79` | `3ad05841f8e8` |
+| U6 | multi-file feature | `da4492f73a` | 6 files, 247 lines | `3b6128fac8de` | `e3771ed0edab` |
+| U7 | multi-file feature | `f50ad88fcf` | 6 files, 458 lines | `8d05fd4974be` | `e615259d8ba5` |
+| U8 | multi-file bug fix and feature | `b2046998bf` | 5 files, 176 lines | `0ba1e09ea889` | `a2aae86ed56f` |
+| U9 | cross-file bug fix | `1b1b6a3914` | 4 files, 203 lines | `44c380ba5c51` | `af63ec603d1b` |
+| U10 | refactor onto a shared component, one stated behaviour change | `c5dd3dc9c1` | 4 files, 138 lines | `ddeb30200e8f` | `dc3f7a5134df` |
+| U11 | refactor across eight files, behaviour kept | `bbe291e06a` | 8 files, 223 lines | `efc27781a045` | `007176dda519` |
+| U12 | cross-file bug fix | `dbbb17a7c2` | 4 files, 196 lines | `bbbeba429add` | `bd0989141247` |
+
+Known limits: U11's check takes 23 to 43 s; U3 is smaller than N3 and N4;
+U8 and U11 touch the same large app file; parts of U3, U5, U6, U7, U10, U11
+and U12 need a service, browser or C build and are not tested.
+
 ## Cost and order of work
 
 Within $200 of Google credits from 2026-11-12:
