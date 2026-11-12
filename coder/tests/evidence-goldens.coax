@@ -1,0 +1,211 @@
+// Byte-exact golden and committed-evidence re-encode check for Coder qualification evidence (#13241).
+//   coax/web/tool.sh coder/tests/evidence-goldens.coax [proto/coder/qualification-v1.json]
+#load "evidence.coax";
+#load "../../coax/lib/sys/args.coax";
+
+QG_FIXTURE_PATH :: "proto/coder/qualification-v1.json";
+
+qg_strip_nl :: (s: string) -> string {
+  return ifx s.count > 0 && s[s.count - 1] == '\n' then cast(string) s[0..<s.count - 1] else s;
+}
+
+qg_reencode :: (id: string, raw: string, out: []u8) -> int {
+  if id == QE_SEAL_SCHEMA {
+    ab: [65536]u8; ar: [1]ClArena; ar[0].buf = ab[..];
+    rows: [64]QeFileSeal;
+    count := qe_read_seal(ar[..], raw, rows[..]);
+    if count < 1 { return -1; }
+    return qe_write_seal_files(rows[0..<count], out);
+  }
+  if id == QE_CHECKPOINTS_SCHEMA {
+    pairs: [32]QeCheckpointPair;
+    count := qe_read_checkpoints(raw, pairs[..]);
+    if count < 1 { return -1; }
+    re_seals: [64][16384]u8;
+    re_pairs: [32]QeCheckpointPair;
+    for i: 0..<count {
+      ab1: [65536]u8; ar1: [1]ClArena; ar1[0].buf = ab1[..];
+      rows1: [64]QeFileSeal;
+      c1 := qe_read_seal(ar1[..], pairs[i].before, rows1[..]);
+      if c1 < 1 { return -1; }
+      n1 := qe_write_seal_files(rows1[0..<c1], re_seals[i * 2][..]);
+      if n1 < 0 { return -1; }
+
+      ab2: [65536]u8; ar2: [1]ClArena; ar2[0].buf = ab2[..];
+      rows2: [64]QeFileSeal;
+      c2 := qe_read_seal(ar2[..], pairs[i].after, rows2[..]);
+      if c2 < 1 { return -1; }
+      n2 := qe_write_seal_files(rows2[0..<c2], re_seals[i * 2 + 1][..]);
+      if n2 < 0 { return -1; }
+
+      re_pairs[i] = QeCheckpointPair.{
+        before = cast(string) re_seals[i * 2][0..<n1],
+        after = cast(string) re_seals[i * 2 + 1][0..<n2]
+      };
+    }
+    return qe_write_checkpoints(re_pairs[0..<count], out);
+  }
+  if id == QE_EXECUTION_SCHEMA {
+    ab: [4096]u8; ar: [1]ClArena; ar[0].buf = ab[..];
+    ex := qe_read_execution(ar[..], raw);
+    if !ex.ok { return -1; }
+    return qe_write_execution(ex.engine_exit, ex.elapsed_ms, ex.budget_ms, ex.timeout, ex.cut, ex.log_sha256, out);
+  }
+  if id == QE_QUALIFICATION_SCHEMA {
+    q := qe_read_qualification(raw);
+    if !q.ok { return -1; }
+    return qe_write_qualification(q, out);
+  }
+  return -1;
+}
+
+qg_read_str :: (d: Jv, at: int, key: string, buf: []u8) -> string {
+  k := jv_get(d, at, key);
+  if jv_kind(d, k) != JV_STRING { return ""; }
+  n := jv_str(d, k, buf);
+  return ifx n < 0 then "" else cast(string) buf[0..<n];
+}
+
+qg_has_path :: (d: Jv, arr: int, target: string) -> bool {
+  if jv_kind(d, arr) != JV_ARRAY { return false; }
+  k := d.nodes[arr].first;
+  pb: [4096]u8;
+  while k != -1 {
+    p := qg_read_str(d, k, "path", pb[..]);
+    if p == target { return true; }
+    k = d.nodes[k].next;
+  }
+  return false;
+}
+
+qg_check_all :: (fixture_path: string) -> bool {
+  ftext: [262144]u8;
+  fn := fs_read(fixture_path, ftext[..]);
+  if fn <= 0 || fn >= ftext.count { tool_errln("evidence-goldens: cannot read fixture file"); return false; }
+  nodes: [16384]JvNode; jd: [1]Jv;
+  if !jv_parse(jd[..], cast(string) ftext[0..<fn], nodes[..]) { tool_errln("evidence-goldens: invalid JSON in fixture file"); return false; }
+  d := jd[0];
+
+  records := jv_get(d, 0, "records");
+  if jv_kind(d, records) != JV_ARRAY { tool_errln("evidence-goldens: missing records array"); return false; }
+  seen_seal := false; seen_cp := false; seen_ex := false; seen_qual := false;
+  rk := d.nodes[records].first;
+  while rk != -1 {
+    idb: [128]u8; jsonb: [65536]u8; outb: [65536]u8;
+    id := qg_read_str(d, rk, "id", idb[..]);
+    expected := qg_read_str(d, rk, "json", jsonb[..]);
+    if id.count == 0 || expected.count == 0 { tool_errln("evidence-goldens: record missing id or json"); return false; }
+    wn := qg_reencode(id, expected, outb[..]);
+    if wn < 0 || cast(string) outb[0..<wn] != expected {
+      print("evidence-goldens: golden record % failed exact byte round-trip\n", id);
+      return false;
+    }
+    if id == QE_SEAL_SCHEMA { seen_seal = true; }
+    if id == QE_CHECKPOINTS_SCHEMA { seen_cp = true; }
+    if id == QE_EXECUTION_SCHEMA { seen_ex = true; }
+    if id == QE_QUALIFICATION_SCHEMA { seen_qual = true; }
+    rk = d.nodes[rk].next;
+  }
+  if !seen_seal || !seen_cp || !seen_ex || !seen_qual {
+    tool_errln("evidence-goldens: records must cover all four evidence schemas");
+    return false;
+  }
+
+  files := jv_get(d, 0, "files");
+  if jv_kind(d, files) != JV_ARRAY { tool_errln("evidence-goldens: missing files array"); return false; }
+  checked := 0; skipped := 0;
+  fk := d.nodes[files].first;
+  while fk != -1 {
+    pb: [4096]u8; idb: [128]u8; reasonb: [1024]u8;
+    path := qg_read_str(d, fk, "path", pb[..]);
+    id := qg_read_str(d, fk, "id", idb[..]);
+    reason := qg_read_str(d, fk, "reason", reasonb[..]);
+    if path.count == 0 || !fs_exists(path) {
+      print("evidence-goldens: listed file missing: %\n", path);
+      return false;
+    }
+    if reason.count > 0 {
+      skipped += 1;
+      fk = d.nodes[fk].next;
+      continue;
+    }
+    if id.count == 0 {
+      print("evidence-goldens: file % has neither id nor skip reason\n", path);
+      return false;
+    }
+    rawb: [262144]u8; outb: [262144]u8;
+    rn := fs_read(path, rawb[..]);
+    if rn <= 0 || rn >= rawb.count {
+      print("evidence-goldens: cannot read %\n", path);
+      return false;
+    }
+    raw := cast(string) rawb[0..<rn];
+    wn := qg_reencode(id, raw, outb[..]);
+    if wn < 0 {
+      print("evidence-goldens: reader/writer refused % (%)\n", path, id);
+      return false;
+    }
+    wrote := cast(string) outb[0..<wn];
+    if qg_strip_nl(wrote) != qg_strip_nl(raw) {
+      print("evidence-goldens: byte mismatch re-encoding %\n", path);
+      return false;
+    }
+    checked += 1;
+    fk = d.nodes[fk].next;
+  }
+  if checked == 0 { tool_errln("evidence-goldens: no committed files checked"); return false; }
+
+  // Every committed file under docs/verification/ carrying one of the four schema ids must be listed in files.
+  grep_out: [262144]u8; grep_err: [4096]u8;
+  cmd := [6]string.["git", "grep", "-l", "-E", "coder\\.(seal|checkpoints|execution|qualification)\\.v1", "docs/verification"];
+  gr := proc_run(cmd[..], 30000, grep_out[..], grep_err[..]);
+  if gr.started != 0 || gr.status != 0 || gr.cut {
+    tool_errln("evidence-goldens: git grep over docs/verification failed");
+    return false;
+  }
+  hits := cast(string) grep_out[0..<gr.out_n];
+  at := 0;
+  while at < hits.count {
+    end := at;
+    while end < hits.count && hits[end] != '\n' { end += 1; }
+    hit := cast(string) hits[at..<end];
+    at = end + 1;
+    if hit.count == 0 { continue; }
+    if !qg_has_path(d, files, hit) {
+      print("evidence-goldens: committed file % carries a qualification schema id but is missing from %\n", hit, fixture_path);
+      return false;
+    }
+  }
+  return true;
+}
+
+qg_roundtrip_ok :: (id: string, raw: string) -> bool {
+  out: [16384]u8;
+  wn := qg_reencode(id, raw, out[..]);
+  return wn >= 0 && qg_strip_nl(cast(string) out[0..<wn]) == qg_strip_nl(raw);
+}
+
+#test "qualification evidence goldens re-encode byte-for-byte across all four schemas" {
+  seal := "{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"realpath\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"sha256\":\"e05fe1c3a5a09b20f2b93e08a2398dae184a5cfc99b368a1c9538e4c3b4217fe\"}]}";
+  seal_nl := "{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"realpath\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"sha256\":\"e05fe1c3a5a09b20f2b93e08a2398dae184a5cfc99b368a1c9538e4c3b4217fe\"}]}\n";
+  cp := "{\"schema\":\"coder.checkpoints.v1\",\"pairs\":[{\"before\":{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"realpath\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"sha256\":\"e05fe1c3a5a09b20f2b93e08a2398dae184a5cfc99b368a1c9538e4c3b4217fe\"}]},\"after\":{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"realpath\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"sha256\":\"e05fe1c3a5a09b20f2b93e08a2398dae184a5cfc99b368a1c9538e4c3b4217fe\"}]}}]}";
+  ex600 := "{\"schema\":\"coder.execution.v1\",\"engine_exit\":0,\"elapsed_ms\":120840,\"budget_ms\":600000,\"timeout\":false,\"cut\":false,\"log_sha256\":\"6074884743035813926b1d11dcc30f2639cecb696800436d73a825963d7525ec\"}\n";
+  ex180 := "{\"schema\":\"coder.execution.v1\",\"engine_exit\":0,\"elapsed_ms\":64511,\"budget_ms\":180000,\"timeout\":false,\"cut\":false,\"log_sha256\":\"c31ac339abb03c0e2cd881adf6722fa544ab5a9e8447269b869ea74a83839148\"}\n";
+  qual := "{\"schema\":\"coder.qualification.v1\",\"qualified\":true,\"engine_exit\":0,\"elapsed_ms\":120840,\"budget_ms\":600000,\"acceptance_exit\":0,\"mutation_exit\":0,\"mutants\":15,\"killed\":15,\"survivors\":0,\"acceptance\":true,\"protected\":true,\"checkpoints\":true,\"artifacts\":true,\"no_exemptions\":true}\n";
+  #assert qg_roundtrip_ok(QE_SEAL_SCHEMA, seal);
+  #assert qg_roundtrip_ok(QE_SEAL_SCHEMA, seal_nl);
+  #assert qg_roundtrip_ok(QE_CHECKPOINTS_SCHEMA, cp);
+  #assert qg_roundtrip_ok(QE_EXECUTION_SCHEMA, ex600);
+  #assert qg_roundtrip_ok(QE_EXECUTION_SCHEMA, ex180);
+  #assert qg_roundtrip_ok(QE_QUALIFICATION_SCHEMA, qual);
+  #assert !qg_roundtrip_ok("coder.unknown.v1", seal);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1]Args;
+  loaded := args_load(a[..]);
+  path := ifx loaded && args_count(a[..]) >= 1 then args_at(a[..], 0) else QG_FIXTURE_PATH;
+  if !qg_check_all(path) { return 1; }
+  print("ok  qualification evidence goldens hold (%)\n", path);
+  return 0;
+}

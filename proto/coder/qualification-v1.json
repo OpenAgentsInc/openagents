@@ -1,0 +1,281 @@
+{
+  "profile": "openagents.coder.qualification",
+  "version": 1,
+  "package": "openagents.coder.qualification.v1",
+  "proto": "proto/openagents/coder/qualification/v1/evidence.proto",
+  "codec": "coder/tests/evidence.coax",
+  "check": "coax/web/tool.sh coder/tests/evidence-goldens.coax proto/coder/qualification-v1.json",
+  "doc": "docs/protocol/coder-qualification-v1.md",
+  "records": [
+    {
+      "id": "coder.seal.v1",
+      "message": "Seal",
+      "name": "single-file seal",
+      "json": "{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"realpath\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"sha256\":\"e05fe1c3a5a09b20f2b93e08a2398dae184a5cfc99b368a1c9538e4c3b4217fe\"}]}"
+    },
+    {
+      "id": "coder.checkpoints.v1",
+      "message": "Checkpoints",
+      "name": "checkpoint chain with one before/after seal pair",
+      "json": "{\"schema\":\"coder.checkpoints.v1\",\"pairs\":[{\"before\":{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"realpath\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"sha256\":\"e05fe1c3a5a09b20f2b93e08a2398dae184a5cfc99b368a1c9538e4c3b4217fe\"}]},\"after\":{\"schema\":\"coder.seal.v1\",\"files\":[{\"path\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"realpath\":\"/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md\",\"sha256\":\"e05fe1c3a5a09b20f2b93e08a2398dae184a5cfc99b368a1c9538e4c3b4217fe\"}]}}]}"
+    },
+    {
+      "id": "coder.execution.v1",
+      "message": "Execution",
+      "name": "conversation execution record (600000 ms budget)",
+      "json": "{\"schema\":\"coder.execution.v1\",\"engine_exit\":0,\"elapsed_ms\":120840,\"budget_ms\":600000,\"timeout\":false,\"cut\":false,\"log_sha256\":\"6074884743035813926b1d11dcc30f2639cecb696800436d73a825963d7525ec\"}\n"
+    },
+    {
+      "id": "coder.execution.v1",
+      "message": "Execution",
+      "name": "issue execution record (180000 ms budget)",
+      "json": "{\"schema\":\"coder.execution.v1\",\"engine_exit\":0,\"elapsed_ms\":64511,\"budget_ms\":180000,\"timeout\":false,\"cut\":false,\"log_sha256\":\"c31ac339abb03c0e2cd881adf6722fa544ab5a9e8447269b869ea74a83839148\"}\n"
+    },
+    {
+      "id": "coder.qualification.v1",
+      "message": "Qualification",
+      "name": "qualification receipt",
+      "json": "{\"schema\":\"coder.qualification.v1\",\"qualified\":true,\"engine_exit\":0,\"elapsed_ms\":120840,\"budget_ms\":600000,\"acceptance_exit\":0,\"mutation_exit\":0,\"mutants\":15,\"killed\":15,\"survivors\":0,\"acceptance\":true,\"protected\":true,\"checkpoints\":true,\"artifacts\":true,\"no_exemptions\":true}\n"
+    }
+  ],
+  "files": [
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/acceptance-failed/checkpoint-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/acceptance-failed/checkpoint-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/acceptance-failed/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/acceptance-failed/receipt.json",
+      "id": "coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/changed.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/checkpoint-failed/checkpoint-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/checkpoint-failed/checkpoint-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/checkpoint-failed/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/checkpoint-failed/receipt.json",
+      "id": "coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/engine-failed/checkpoint-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/engine-failed/checkpoint-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/engine-failed/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/engine-failed/receipt.json",
+      "id": "coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/passed/checkpoint-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/passed/checkpoint-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/passed/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/passed/receipt.json",
+      "id": "coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/protected-failed/checkpoint-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/protected-failed/checkpoint-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/protected-failed/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/protected-failed/receipt.json",
+      "id": "coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/collector-smoke/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/0-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/0-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/1-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/1-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/2-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/2-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/3-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/3-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/4-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/4-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/5-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/5-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/6-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/6-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/checkpoints.json",
+      "id": "coder.checkpoints.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/execution.json",
+      "id": "coder.execution.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/qualification/checkpoint-after.json",
+      "id": "coder.seal.v1",
+      "reason": "0-byte file: conversation qualification uses --checkpoint-chain checkpoints.json rather than --checkpoint-after, so qualify.coax wrote an empty checkpoint-after.json"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/qualification/checkpoint-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/qualification/checkpoints.json",
+      "id": "coder.checkpoints.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/qualification/execution.json",
+      "id": "coder.execution.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/qualification/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/conversation/qualification/receipt.json",
+      "id": "coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/checkpoint.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/qualification/checkpoint-after.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/qualification/checkpoint-before.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/qualification/execution.json",
+      "id": "coder.execution.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/qualification/protected.json",
+      "id": "coder.seal.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/qualification/receipt.json",
+      "id": "coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-eval-gates-2026-11-03/current-progress/run.jsonl.execution.json",
+      "id": "coder.execution.v1"
+    },
+    {
+      "path": "docs/verification/coder-followup-2026-11-03/codex-decimal/receipt.json",
+      "id": "",
+      "reason": "ad-hoc repository-v2 followup harness summary, not coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-followup-2026-11-03/invalidated-micro-epochs/receipt.json",
+      "id": "",
+      "reason": "ad-hoc repository-v2 followup harness summary, not coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-followup-2026-11-03/micro-epochs/receipt.json",
+      "id": "",
+      "reason": "ad-hoc repository-v2 followup harness summary, not coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-qualification-2026-11-03/continuation/receipt.json",
+      "id": "",
+      "reason": "ad-hoc repository-v2 continuation harness summary (suite/case/engine/baseline_failed/accepted), predates coder.qualification.v1"
+    },
+    {
+      "path": "docs/verification/coder-qualification-2026-11-03/issue-12720/receipt.json",
+      "id": "",
+      "reason": "ad-hoc issue-12720 driver summary receipt with embedded coder.observability.v1 snapshots, not coder.qualification.v1"
+    }
+  ]
+}
