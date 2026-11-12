@@ -136,6 +136,7 @@ RmServer :: struct {
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
   trv: RmTravels;                        // journeys from one room to another in flight (room-travel.coax)
   e2land: [] E2MoveGround;               // Everglade II's planting, room-world.c's (room-e2-arrows.coax rm_e2_land)
+  dice_pool: [1] RsDice;                 // where each room's rules' dice come from: the host's OS random key (rm_dice_key, #13258); never on the wire
 }
 
 // book:begin server-start
@@ -149,8 +150,21 @@ rm_init :: (v: [] RmServer) #export_c #effects(all) {
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
+  v[0].dice_pool[0] = RsDice.{};
 }
 // book:end server-start
+
+// The rules' dice key (#13258): 64 bits from the operating system's random source, as two 32-bit
+// halves (0 up to 2^32), which both hosts give at their start (room-tick.c dice_key_in) and refuse to
+// run without. Each room's dice draw from it (rm_dice_draw); no frame carries it or anything made
+// from it. The world header's seed and a cast's are cosmetic (room-everglade.coax eg_room_of).
+rm_dice_key :: (v: [] RmServer, hi: int, lo: int) #export_c #effects(all) {
+  h: u64 = cast(u64) (hi & 0xFFFFFFFF); l: u64 = cast(u64) (lo & 0xFFFFFFFF);
+  v[0].dice_pool[0].state = v[0].dice_pool[0].state ^ ((h << 32) | l);
+  _ := rs_next(v[0].dice_pool[..]);
+}
+// A new room's dice state: the pool's next 64 bits (SplitMix64), a function of the key alone.
+rm_dice_draw :: (v: [] RmServer) -> u64 { return rs_next(v[0].dice_pool[..]); }
 
 // The server as the host started it, against the declared defaults: how many differ (0 holds). The
 // host runs it under --start-check (build.sh), so a zero-filled field the game reads as its default

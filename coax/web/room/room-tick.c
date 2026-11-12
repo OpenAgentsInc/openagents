@@ -19,6 +19,18 @@ static int64_t profile_us[7];
 #endif
 static int64_t room_prepare_us[WORLD_ROOMS];
 static int64_t world_publication_us;
+/* The rules' dice key (#13258): 64 bits from the operating system's random source (getentropy: the
+   kernel's on the native host, crypto.getRandomValues through WASI random_get in the browser's
+   worker) into rm_dice_key (room.coax). Every room's dice draw from it and no frame carries it; the
+   seed W sends is cosmetic. False when the source fails: the host then refuses to start. */
+static bool dice_key_in(void) {
+  uint8_t b[8];
+  if (getentropy(b, sizeof b) != 0) return false;
+  int64_t hi = (int64_t)b[0] << 24 | (int64_t)b[1] << 16 | (int64_t)b[2] << 8 | b[3];
+  int64_t lo = (int64_t)b[4] << 24 | (int64_t)b[5] << 16 | (int64_t)b[6] << 8 | b[7];
+  rm_dice_key(view(), hi, lo);
+  return true;
+}
 static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "rules", "write", "send"};
 /* Only the opt-in native observation adapter consumes these SDK timestamps.
    The worker shares the same simulation and does not claim remote latency. */

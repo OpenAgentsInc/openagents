@@ -68,3 +68,33 @@ eg_sky_tick :: (v: [] RmServer, k: int) {
   eg_test_drain(v[..], box[..]);
   #assert !eg_test_has(eg_test_of(box[..], 1), "W ");
 }
+
+// A room started on server v at wall ms `at` with dice key (hi, lo): its W header in w (its length
+// back) and its rules' dice state in dice[0].
+eg_sky_test_room :: (v: [] RmServer, hi: int, lo: int, at: int, w: [] u8, dice: [] u64, seed: [] int) -> int {
+  rm_init(v);
+  rm_dice_key(v, hi, lo);
+  rm_clock(v, 0, at);
+  if rm_join(v, 0, "GET /api/room/relay/everglade/dice-key HTTP/1.1\r\n\r\n") != 0 { return -1; }
+  k := eg_room_at(v, v[0].conns[0].relay);
+  dice[0] = v[0].eg[k].rules[0].b[0].dice[0].state;
+  seed[0] = v[0].eg[k].seed;
+  return wire_put_world(w, 0, eg_sky_world(v, k));
+}
+#test "sky: the world header's seed and a cast's say nothing of the rules' dice, which come from the host's random key (#13258)" #steps 2000000000 {
+  v: [1] RmServer;
+  at := 1762190000000;
+  wa: [128] u8; wb: [128] u8; wc: [128] u8;
+  da: [1] u64; db: [1] u64; dc: [1] u64;
+  sa: [1] int; sb: [1] int; sc: [1] int;
+  na := eg_sky_test_room(v[..], 0x12345678, 0x9ABCDEF0, at, wa[..], da[..], sa[..]);
+  nb := eg_sky_test_room(v[..], 0x0BADF00D, 0x00C0FFEE, at, wb[..], db[..], sb[..]);
+  nc := eg_sky_test_room(v[..], 0x12345678, 0x9ABCDEF0, at, wc[..], dc[..], sc[..]);
+  // the same clock and room: every byte of W the same, and so every cast seed (1 + (seed + t*31 +
+  // seat*977 + slot*7) % 999983, room-casts.coax) the same, whatever the key
+  #assert na > 0 && na == nb && cast(string) wa[0..<na] == cast(string) wb[0..<nb] && sa[0] == sb[0];
+  // yet the dice differ with the key alone, and the same key gives the same dice
+  #assert da[0] != db[0] && da[0] == dc[0];
+  // and they are not the old seed-made state
+  #assert da[0] != cast(u64) sa[0] * 7919 + 3 && db[0] != cast(u64) sb[0] * 7919 + 3;
+}

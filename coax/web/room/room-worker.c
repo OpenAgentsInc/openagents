@@ -10,6 +10,7 @@
 #include "room-world.h"
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>   /* getentropy (room-tick.c dice_key_in) */
 
 #define EXPORT(name) __attribute__((export_name(name)))
 __attribute__((import_module("env"), import_name("room_now_us"))) extern double host_now_us(void);
@@ -31,7 +32,8 @@ EXPORT("rw_start") int32_t rw_start(void) {
   coax_default_t_RmServer(server);
   rm_init(view());
   rm_control_local(view());   /* offline play: the room's control lines are its own player's (room-control.coax) */
-  return rm_start_check(view()) == 0 ? 1 : 0;
+  if (rm_start_check(view()) != 0) return 0;
+  return dice_key_in() ? 1 : 0;   /* the dice from WASI random_get (room-worker.js), #13258 */
 }
 EXPORT("rw_size") int32_t rw_size(void) { return (int32_t)sizeof *server; }
 /* n bytes the script writes before a call that reads them (a request, a frame, a document). */
