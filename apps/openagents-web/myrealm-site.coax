@@ -38,8 +38,8 @@ site_reset :: (s: [] MyRealm) {
   s[0].encl = 0; s[0].encl_size = 1; s[0].centre = -1; s[0].site_layout = 0; s[0].path_kind = 0;
 }
 // A feature line of the site's, read into the spec (read_spec): true when it was one.
-site_read :: (s: [] MyRealm, f: string, line: string) -> bool {
-  a := word_of(line, 2); b := word_of(line, 3);
+site_read :: (s: [] MyRealm, ft: ForgeSpecFeature) -> bool {
+  f := ft.name; a := ft.a; b := ft.b;
   if f == "enclosure" {
     s[0].encl_size = ifx a == "small" then 0 else ifx a == "large" then 2 else 1;
     s[0].encl = ENCL_STONE; for k: 0..<4 { if ENCL_KINDS[k] == b || ENCL_KINDS[k] == a { s[0].encl = k + 1; } }

@@ -1,0 +1,305 @@
+{
+ "profile": "realm-spec-v1",
+ "about": "A realm's spec (GitHub #13250): what GET /api/playtest/realms/<slug> answers, text a line each, written in SQL (verse.realm_edit_spec). \"lines\" names every line: its key, its form, what it says and an example. \"steps\" are calls to a seeded realm with the status and body the server answers today (\"message\": Spec is the text; the others are record.proto's, realm.proto's and made.proto's bodies and the API's ErrorReply). aethyr/forge/spec.coax is the one reader; aethyr/forge/spec-goldens.coax reads every line of every spec through it, requires each to be a line named here and to come back the same from its fields; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "check": "coax/web/tool.sh aethyr/forge/spec-goldens.coax proto/verse/realm-spec-v1.json",
+ "codec": "aethyr/forge/spec.coax",
+ "lines": [
+  {
+   "key": "realm",
+   "form": "realm SLUG",
+   "says": "the realm's slug; the first line",
+   "example": "realm moonlit-marsh"
+  },
+  {
+   "key": "name",
+   "form": "name NAME",
+   "says": "its name, the rest of the line",
+   "example": "name Moonlit Marsh"
+  },
+  {
+   "key": "style",
+   "form": "style WORD",
+   "says": "lowpoly, painterly or flat",
+   "example": "style lowpoly"
+  },
+  {
+   "key": "ground",
+   "form": "ground WORD",
+   "says": "the ground it stands on",
+   "example": "ground grass"
+  },
+  {
+   "key": "time",
+   "form": "time WORD",
+   "says": "day, dawn, dusk or night",
+   "example": "time night"
+  },
+  {
+   "key": "camera",
+   "form": "camera WORD",
+   "says": "third, first, top or side",
+   "example": "camera third"
+  },
+  {
+   "key": "palette",
+   "form": "palette WORD",
+   "says": "natural, pastel, vivid or muted",
+   "example": "palette natural"
+  },
+  {
+   "key": "owner",
+   "form": "owner 0|1",
+   "says": "1 to its owner and to an admin",
+   "example": "owner 1"
+  },
+  {
+   "key": "role",
+   "form": "role WORD",
+   "says": "visitor, owner or admin",
+   "example": "role owner"
+  },
+  {
+   "key": "visibility",
+   "form": "visibility WORD",
+   "says": "private, unlisted or public",
+   "example": "visibility private"
+  },
+  {
+   "key": "tool",
+   "form": "tool NAME 0|1",
+   "says": "a tool the realm has, and whether it is on",
+   "example": "tool fly 1"
+  },
+  {
+   "key": "thing",
+   "form": "thing NAME",
+   "says": "a thing a hand-built realm lets a visitor place",
+   "example": "thing barrel"
+  },
+  {
+   "key": "row",
+   "form": "row KEY 0|1 LABEL",
+   "says": "a row of the board: its key, whether it is on, its label",
+   "example": "row feature:2 1 A few trees"
+  },
+  {
+   "key": "character",
+   "form": "character NAME|ROLE",
+   "says": "a character and what they are",
+   "example": "character Old Mott|the ferryman"
+  },
+  {
+   "key": "feature",
+   "form": "feature NAME [WORD ...] [COUNT]",
+   "says": "a feature with its size, variant and colour when it has them, and its count last",
+   "example": "feature trees pine 6"
+  },
+  {
+   "key": "placed",
+   "form": "placed THING X Z YAW",
+   "says": "a thing placed: metres and radians",
+   "example": "placed barrel 0 3.8 -1.571"
+  },
+  {
+   "key": "waiting",
+   "form": "waiting N",
+   "says": "proposals waiting, said to its owner and admins",
+   "example": "waiting 0"
+  },
+  {
+   "key": "rev",
+   "form": "rev N",
+   "says": "the document's revision",
+   "example": "rev 7"
+  },
+  {
+   "key": "published",
+   "form": "published N",
+   "says": "the revision published; 0 when never",
+   "example": "published 5"
+  },
+  {
+   "key": "undo",
+   "form": "undo N",
+   "says": "undo steps the server keeps, said to who may edit",
+   "example": "undo 2"
+  },
+  {
+   "key": "redo",
+   "form": "redo N",
+   "says": "redo steps the server keeps, said to who may edit",
+   "example": "redo 0"
+  },
+  {
+   "key": "listed",
+   "form": "listed 0|1",
+   "says": "whether it is on the list",
+   "example": "listed 1"
+  },
+  {
+   "key": "shapes",
+   "form": "shapes 1",
+   "says": "the server keeps turns, sizes and removals (migration 0109)",
+   "example": "shapes 1"
+  },
+  {
+   "key": "edit_fence",
+   "form": "edit_fence 1",
+   "says": "the server has revision-fenced edit routes (migration 0102)",
+   "example": "edit_fence 1"
+  },
+  {
+   "key": "from",
+   "form": "from SLUG REV|NAME",
+   "says": "the realm it was forked from, its revision then and its name",
+   "example": "from old-court 2|Old Court"
+  },
+  {
+   "key": "moved",
+   "form": "moved ENTITY X Z",
+   "says": "where a laid-out entity stands instead: metres, two decimals",
+   "example": "moved trees:3 4.00 -5.50"
+  },
+  {
+   "key": "shaped",
+   "form": "shaped ENTITY YAW SCALE GONE",
+   "says": "an entity's turn (degrees), size (percent) and whether it is gone",
+   "example": "shaped trees:3 -90 150 0"
+  },
+  {
+   "key": "engine",
+   "form": "engine SHA256",
+   "says": "the SHA-256 of the engine manifest pinned with the published revision",
+   "example": "engine 1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006"
+  }
+ ],
+ "realm": {
+  "slug": "spec-fixture",
+  "player_key": "spec-fixture-player-key-0001",
+  "stranger_key": "spec-fixture-stranger-key-0002",
+  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-spec-fixture', encode(sha256(convert_to('spec-fixture-player-key-0001', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-spec-fixture', 'p-spec-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, camera, palette, features, tools, placed, moved, made_ms) VALUES ('spec-fixture', 'made-spec-fixture', 'Spec Fixture', 'painterly', 'sand', 'dusk', 'top', 'pastel', '[{\"feature\":\"water\",\"size\":\"large\",\"variant\":\"river\"},{\"feature\":\"trees\",\"variant\":\"pine\",\"count\":6},{\"feature\":\"rocks\",\"count\":4},{\"feature\":\"house\",\"size\":\"large\",\"colour\":\"red\",\"count\":3},{\"feature\":\"mist\"},{\"feature\":\"character\",\"name\":\"Old Mott\",\"role\":\"the ferryman\"}]', '{\"fly\":true,\"jump\":true,\"map\":false}', '[{\"thing\":\"barrel\",\"x\":0,\"z\":3.8,\"yaw\":-1.571},{\"thing\":\"crate\",\"x\":-2.25,\"z\":1,\"yaw\":0}]', '[{\"entity\":\"trees:1\",\"x\":4,\"z\":-5.5}]', 1);",
+  "clean": "CREATE TEMP TABLE sf AS SELECT m.slug FROM verse.made_realms m JOIN verse.worlds w ON w.id = m.world WHERE w.owner_player = 'p-spec-fixture'; DELETE FROM verse.realm_publications WHERE slug IN (SELECT slug FROM sf); DELETE FROM verse.realm_revisions WHERE slug IN (SELECT slug FROM sf); DELETE FROM verse.made_realms WHERE slug IN (SELECT slug FROM sf); DELETE FROM verse.worlds WHERE owner_player = 'p-spec-fixture'; DELETE FROM verse.players WHERE id = 'p-spec-fixture';"
+ },
+ "steps": [
+  {
+   "name": "its owner reads the spec",
+   "method": "GET",
+   "path": "/spec-fixture",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "realm spec-fixture\nname Spec Fixture\nstyle painterly\nground sand\ntime dusk\ncamera top\nowner 1\ntool build 0\ntool fly 1\ntool jump 1\ntool map 0\ntool talk 0\ntool voice 0\nfeature water large river\nfeature trees pine 6\nfeature rocks 4\nfeature house large red 3\nfeature mist\ncharacter Old Mott|the ferryman\nplaced barrel 0 3.8 -1.571\nplaced crate -2.25 1 0\nwaiting 0\npalette pastel\nrole owner\nrev 1\npublished 1\nlisted 0\nmoved trees:1 4.00 -5.50\nundo 0\nvisibility private\nshapes 1\nredo 0\nedit_fence 1\n",
+   "message": "Spec"
+  },
+  {
+   "name": "a private realm has no spec for a stranger",
+   "method": "GET",
+   "path": "/spec-fixture",
+   "as": "stranger",
+   "body": "",
+   "status": 404,
+   "reply": "{\"error\":\"no such world\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "a realm that is not there",
+   "method": "GET",
+   "path": "/no-such-fixture",
+   "as": "owner",
+   "body": "",
+   "status": 404,
+   "reply": "{\"error\":\"no such world\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "the spec is read, not posted",
+   "method": "POST",
+   "path": "/spec-fixture",
+   "as": "owner",
+   "body": "{}",
+   "status": 405,
+   "reply": "{\"error\":\"GET the world\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "its owner turns and removes two things",
+   "method": "POST",
+   "path": "/spec-fixture/save",
+   "as": "owner",
+   "body": "{\"rev\":1,\"moved\":[{\"entity\":\"trees:1\",\"x\":4.00,\"z\":-5.50},{\"entity\":\"rocks:0\",\"x\":-1.25,\"z\":2.00}],\"shaped\":[{\"entity\":\"trees:2\",\"yaw\":-90,\"scale\":150,\"gone\":false},{\"entity\":\"rocks:1\",\"yaw\":0,\"scale\":100,\"gone\":true}]}",
+   "status": 200,
+   "reply": "{\"rev\": 2, \"sha256\": \"1015044cd98b389475c1591d60e5036d165dde6f69e6c164bc3d4353106edc32\"}",
+   "message": "SaveReply"
+  },
+  {
+   "name": "the spec after the save",
+   "method": "GET",
+   "path": "/spec-fixture",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "realm spec-fixture\nname Spec Fixture\nstyle painterly\nground sand\ntime dusk\ncamera top\nowner 1\ntool build 0\ntool fly 1\ntool jump 1\ntool map 0\ntool talk 0\ntool voice 0\nfeature water large river\nfeature trees pine 6\nfeature rocks 4\nfeature house large red 3\nfeature mist\ncharacter Old Mott|the ferryman\nplaced barrel 0 3.8 -1.571\nplaced crate -2.25 1 0\nwaiting 0\npalette pastel\nrole owner\nrev 2\npublished 1\nlisted 0\nmoved rocks:0 -1.25 2.00\nmoved trees:1 4.00 -5.50\nundo 1\nvisibility private\nshaped rocks:1 0 100 1\nshaped trees:2 -90 150 0\nshapes 1\nredo 0\nedit_fence 1\n",
+   "message": "Spec"
+  },
+  {
+   "name": "its owner makes it public",
+   "method": "POST",
+   "path": "/spec-fixture/visibility",
+   "as": "owner",
+   "body": "{\"visibility\":\"public\"}",
+   "status": 200,
+   "reply": "{\"was\": \"private\", \"slug\": \"spec-fixture\", \"visibility\": \"public\", \"page\": false}",
+   "message": "VisibilityReply"
+  },
+  {
+   "name": "a visitor's spec",
+   "method": "GET",
+   "path": "/spec-fixture",
+   "as": "stranger",
+   "body": "",
+   "status": 200,
+   "reply": "realm spec-fixture\nname Spec Fixture\nstyle painterly\nground sand\ntime dusk\ncamera top\nowner 0\ntool build 0\ntool fly 1\ntool jump 1\ntool map 0\ntool talk 0\ntool voice 0\nfeature water large river\nfeature trees pine 6\nfeature rocks 4\nfeature house large red 3\nfeature mist\ncharacter Old Mott|the ferryman\nplaced barrel 0 3.8 -1.571\nplaced crate -2.25 1 0\npalette pastel\nrole visitor\nrev 1\npublished 1\nlisted 1\nmoved trees:1 4.00 -5.50\nvisibility public\nshapes 1\nedit_fence 1\n",
+   "message": "Spec"
+  },
+  {
+   "name": "nobody's spec",
+   "method": "GET",
+   "path": "/spec-fixture",
+   "as": "none",
+   "body": "",
+   "status": 200,
+   "reply": "realm spec-fixture\nname Spec Fixture\nstyle painterly\nground sand\ntime dusk\ncamera top\nowner 0\ntool build 0\ntool fly 1\ntool jump 1\ntool map 0\ntool talk 0\ntool voice 0\nfeature water large river\nfeature trees pine 6\nfeature rocks 4\nfeature house large red 3\nfeature mist\ncharacter Old Mott|the ferryman\nplaced barrel 0 3.8 -1.571\nplaced crate -2.25 1 0\npalette pastel\nrole visitor\nrev 1\npublished 1\nlisted 1\nmoved trees:1 4.00 -5.50\nvisibility public\nshapes 1\nedit_fence 1\n",
+   "message": "Spec"
+  },
+  {
+   "name": "its owner forks it",
+   "method": "POST",
+   "path": "/spec-fixture/fork?as=lines",
+   "as": "owner",
+   "body": "{\"name\":\"Spec Copy\"}",
+   "status": 200,
+   "reply": "slug spec-copy\npath /worlds/spec-copy\npage 0\n",
+   "message": "MadeLines"
+  },
+  {
+   "name": "the fork's spec says where it came from",
+   "method": "GET",
+   "path": "/spec-copy",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "realm spec-copy\nname Spec Copy\nstyle painterly\nground sand\ntime dusk\ncamera top\nowner 1\ntool build 0\ntool fly 1\ntool jump 1\ntool map 0\ntool talk 0\ntool voice 0\nfeature water large river\nfeature trees pine 6\nfeature rocks 4\nfeature house large red 3\nfeature mist\ncharacter Old Mott|the ferryman\nplaced barrel 0 3.8 -1.571\nplaced crate -2.25 1 0\nwaiting 0\npalette pastel\nrole owner\nrev 1\npublished 1\nlisted 0\nfrom spec-fixture 2|Spec Fixture\nmoved rocks:0 -1.25 2.00\nmoved trees:1 4.00 -5.50\nundo 0\nvisibility private\nshaped rocks:1 0 100 1\nshaped trees:2 -90 150 0\nshapes 1\nredo 0\nedit_fence 1\n",
+   "message": "Spec"
+  },
+  {
+   "name": "a hand-built realm's spec",
+   "method": "GET",
+   "path": "/everglade",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "realm everglade\nrole visitor\nowner 0\ntool map 1\ntool build 1\nthing crate\nthing barrel\nthing bench\nthing fence\nthing stall\nrow flock 1 The flock that follows you\nrow floats 1 Ducks and lily pads\nrow undergrowth 1 Bushes, ferns and rocks\nrow daycycle 1 Day turning to night\nrow guards 1 Guards who chase you\nrow invincible 0 Owner can't be hurt\nrow pvp 0 Players can hurt each other\n",
+   "message": "Spec"
+  }
+ ]
+}

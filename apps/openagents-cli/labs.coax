@@ -321,7 +321,7 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   // Without --as-me a shot is a visitor's: a private realm is 404 to one, so say how to show it instead.
   sb: [API_OUT] u8; sp: [128] u8;
   seen := api_call(a, profile, "GET", realm_path(slug, "", sp[..]), "", sb[..]);
-  if !as_me && api_ok(seen) && cli_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
+  if !as_me && api_ok(seen) && forge_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
     said: [300] u8;
     return fail(r, EXIT_USAGE, lb_private_shot(slug, said[..]));
   }

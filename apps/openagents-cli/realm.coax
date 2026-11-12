@@ -35,7 +35,7 @@ realm_edit_answer :: (r: [] Rep, res: ApiAnswer, body: string) -> int {
   if rev < 1 { return fail(r,EXIT_FAIL,"the edit returned no valid revision; read the realm before retrying"); }
   if !rep_object(r,body) {
     rep_str(r,"lines",body);
-    v := cli_count(cli_spec_value(body,"rev"),1,999999999);
+    v := cli_count(forge_spec_value(body,"rev"),1,999999999);
     if v >= 1 { rep_int(r,"rev",v); }
   }
   return rep_done(r,EXIT_OK);
@@ -96,7 +96,7 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
     if n < 0 { return realm_edit_refuse(400,"the answer buffer is too small",-1,out); }
     read.n = n; return read;
   }
-  current := cli_count(cli_spec_value(spec,"rev"),1,999999999);
+  current := cli_count(forge_spec_value(spec,"rev"),1,999999999);
   if current < 1 { return realm_edit_refuse(400,"that realm has no versioned document",-1,out); }
   rev := expected;
   if rev < 1 && rc_has(a,verb,"--rev") { rev = cli_count(rc_option(a,verb,"--rev",""),1,999999999); }
@@ -114,12 +114,12 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
     base := forge_read_base(cast(string) docbuf[0..<got.n]);   // the document's base: null, or the realm a fork came from
     if !base.ok { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
     fork_publish = base.fork;
-    if fork_publish && cli_spec_value(spec,"edit_fence") != "1" { return realm_edit_refuse(400,"built-in fork publication needs revision-fenced routes (migration 0102)",rev,out); }
+    if fork_publish && forge_spec_value(spec,"edit_fence") != "1" { return realm_edit_refuse(400,"built-in fork publication needs revision-fenced routes (migration 0102)",rev,out); }
   }
-  if realm_shape_verb(verb) && cli_spec_value(spec,"shapes") != "1" {
+  if realm_shape_verb(verb) && forge_spec_value(spec,"shapes") != "1" {
     return realm_edit_refuse(400,"this server keeps no turns, sizes or removals (migration 0109)",current,out);
   }
-  if !realm_save_verb(verb) && verb != "undo" && verb != "redo" && verb != "publish" && cli_spec_value(spec,"edit_fence") != "1" {
+  if !realm_save_verb(verb) && verb != "undo" && verb != "redo" && verb != "publish" && forge_spec_value(spec,"edit_fence") != "1" {
     return realm_edit_refuse(400,"this server needs revision-fenced edit routes (migration 0102)",current,out);
   }
   if verb == "ask" && rc_has(a,verb,"--doc") { return realm_edit_doc(a,profile,slug,rev,out); }
@@ -262,7 +262,7 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
       if !api_ok(read) {
         rep_int(r,"applied",applied); return api_fail(r,read,cast(string) specbuf[0..<read.n]);
       }
-      spec := cast(string) specbuf[0..<read.n]; current := cli_count(cli_spec_value(spec,"rev"),1,999999999);
+      spec := cast(string) specbuf[0..<read.n]; current := cli_count(forge_spec_value(spec,"rev"),1,999999999);
       if current < 1 { rep_int(r,"applied",applied); return fail(r,EXIT_USAGE,"that realm has no versioned document"); }
       if expected < 1 { expected=current; }
       if current != expected {
@@ -271,7 +271,7 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
       }
       doc: [1] ForgeDoc; forge_reset(doc[..],expected);
       if !cli_edit_read_moves(spec,doc[..]) { rep_int(r,"applied",applied); return fail(r,EXIT_FAIL,"the realm's move list did not read"); }
-      shapes := cli_spec_value(spec,"shapes") == "1";
+      shapes := forge_spec_value(spec,"shapes") == "1";
       count := 0;
       while at < text.count && applied+count < 256 {
         span=realm_line(text,at);
@@ -424,15 +424,15 @@ realm_show :: (a: [] Args, r: [] Rep, profile: string) -> int {
   res := api_call(a, profile, "GET", realm_path(slug, "", p[..]), "", out[..]);
   spec := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, spec); }
-  vis := cli_spec_value(spec, "visibility");
+  vis := forge_spec_value(spec, "visibility");
   page := realm_page(a, profile, slug, vis, pg[..]);
   if !r[0].json { print("%", spec); print("page %\n", page); return EXIT_OK; }
   rep_str(r, "slug", slug);
-  rep_str(r, "name", cli_spec_value(spec, "name"));
+  rep_str(r, "name", forge_spec_value(spec, "name"));
   rep_str(r, "visibility", ifx vis == "" then "public" else vis);
-  rep_str(r, "role", cli_spec_value(spec, "role"));
-  rev := cli_spec_value(spec, "rev");
-  if rev != "" { rep_raw(r, "rev", rev); rep_raw(r, "published", cli_spec_value(spec, "published")); }
+  rep_str(r, "role", forge_spec_value(spec, "role"));
+  rev := forge_spec_value(spec, "rev");
+  if rev != "" { rep_raw(r, "rev", rev); rep_raw(r, "published", forge_spec_value(spec, "published")); }
   rep_str(r, "page", page);
   rep_str(r, "spec", spec);
   return rep_done(r, EXIT_OK);
@@ -519,7 +519,7 @@ realm_publish :: (a: [] Args, r: [] Rep, profile: string) -> int {
     res := api_call(a, profile, "GET", realm_path(slug, "", p[..]), "", out[..]);
     spec := cast(string) out[0..<res.n];
     if !api_ok(res) { return api_fail(r, res, spec); }
-    rev = cli_count(cli_spec_value(spec, "rev"), 1, 999999999);
+    rev = cli_count(forge_spec_value(spec, "rev"), 1, 999999999);
     if rev < 0 { return fail(r, EXIT_USAGE, "that realm has no revisions to publish (a built-in realm?)"); }
   }
   bn := forge_rev_body(rev, buf[..]);   // realm.proto's RevRequest, {"rev":N}

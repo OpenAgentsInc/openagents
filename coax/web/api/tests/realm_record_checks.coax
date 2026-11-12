@@ -1,7 +1,8 @@
 // The realm record's fixture through the API's routes (compliance plan step E11, GitHub #13250):
 // proto/verse/realm-record-v1.json names a made realm and a run of calls to coax/web/api/realms.c's
 // record routes (mine, visibility, publish, published), and proto/verse/realm-made-v1.json a realm
-// and its forks (made.proto). For each fixture this seeds that realm, makes each call as
+// and its forks (made.proto), and proto/verse/realm-spec-v1.json a realm's spec lines as its owner,
+// a visitor and a fork read them. For each fixture this seeds that realm, makes each call as
 // the fixture's owner, a stranger or nobody, and requires the server's status and body byte for
 // byte; a step with "sql" runs that statement instead (the publish that pins an engine: this run's
 // API has a bucket with no engine page) and requires its one value. A key named in a step's "vary"
@@ -18,7 +19,7 @@
 #load "../../../lib/net/http.coax";
 #load "../../../lib/json/json.coax";
 
-RRC_FIXTURES :: [2] string.["proto/verse/realm-record-v1.json", "proto/verse/realm-made-v1.json"];
+RRC_FIXTURES :: [3] string.["proto/verse/realm-record-v1.json", "proto/verse/realm-made-v1.json", "proto/verse/realm-spec-v1.json"];
 RRC_BYTES :: 262144;
 Rrc :: struct { api: [256] u8; api_n: int; psql: [1024] u8; psql_n: int; db: [1024] u8; db_n: int; pass: int; fail: int; }
 

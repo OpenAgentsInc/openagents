@@ -2,6 +2,7 @@
 // Realm policies and catalogue share one source unit: the CLI stays within
 // the existing 128-unit compiler profile. The Forge arithmetic stays shared.
 #load "../../aethyr/forge/edit.coax";
+#load "../../aethyr/forge/spec.coax";   // a realm's spec lines: one reader
 #authority;
 
 #test "CLI reply revisions require a complete JSON object or a bounded revision line" {
@@ -28,7 +29,7 @@ realm_reply_rev :: (body: string) -> int #effects(all) {
   i := 0;
   while i < body.count && (body[i] == ' ' || body[i] == '\n' || body[i] == '\r' || body[i] == '\t') { i+=1; }
   if i < body.count && (body[i] == '{' || body[i] == '[') { return -1; }
-  return cli_count(cli_spec_value(body,"rev"),1,999999999);
+  return cli_count(forge_spec_value(body,"rev"),1,999999999);
 }
 
 // The realm and admin domains' decisions, with no host calls: which words a
@@ -135,28 +136,6 @@ cli_who_ok :: (s: string) -> bool #effects(all) {
     if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
   }
   return true;
-}
-
-// The value of a spec's "KEY VALUE" line (GET /api/playtest/realms/<slug>), the first one; "" when
-// none. A key matches only at a line's start and only whole.
-#test "spec values" {
-  spec := "realm moonlit\nname Moonlit Marsh\nrev 7\npublished 5\nvisibility private\nrole owner\n";
-  #assert cli_spec_value(spec, "rev") == "7" && cli_spec_value(spec, "visibility") == "private" && cli_spec_value(spec, "name") == "Moonlit Marsh";
-  #assert cli_spec_value(spec, "realm") == "moonlit" && cli_spec_value(spec, "role") == "owner" && cli_spec_value(spec, "published") == "5";
-  #assert cli_spec_value(spec, "re") == "" && cli_spec_value(spec, "listed") == "" && cli_spec_value("", "rev") == "";
-  #assert cli_spec_value("xrev 1\nrev 2", "rev") == "2" && cli_spec_value("rev 1\nrev 2\n", "rev") == "1" && cli_spec_value("rev", "rev") == "";
-  #assert cli_spec_value("rev \n", "rev") == "" && cli_spec_value("a\n\nrev 3", "rev") == "3" && cli_spec_value("\nrev 3", "rev") == "3";
-}
-cli_spec_value :: (text: string, key: string) -> string #effects(all) {
-  at := 0;
-  for end: 0..<text.count + 1 {
-    if end < text.count && text[end] != '\n' { continue; }
-    line := text[at..<end];
-    k := key.count;
-    if k < line.count && line[0..<k] == key && line[k] == ' ' { return line[k + 1..<line.count]; }
-    at = end + 1;
-  }
-  return "";
 }
 
 // What GET /api/admin/access says, counted: its F (flag), I (invite), R (request) and C (creator)
@@ -381,23 +360,20 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
   if d.count < 1 { return false; }
   next: [1] ForgeDoc; forge_reset(next[..], d[0].rev);
   at := 0;
-  for end: 0..<spec.count + 1 {
-    if end < spec.count && spec[end] != '\n' { continue; }
-    line := spec[at..<end]; at = end + 1;
-    if line == "moved" || line == "shaped" { return false; }
-    if cli_prefix(line, "shaped ") {
-      if !forge_read_shape_line(next[..], line) { return false; }
+  while true {
+    l := forge_spec_line(spec, at); at = l.next;   // aethyr/forge/spec.coax, the spec's one reader
+    if l.kind == SPEC_END { break; }
+    if !l.flush { continue; }
+    if l.kind == SPEC_SHAPED {
+      if !forge_read_shape_line(next[..], l.line) { return false; }
       continue;
     }
-    if !cli_prefix(line, "moved ") { continue; }
-    p := 6;
-    while p < line.count && line[p] != ' ' { p += 1; }
-    if p == line.count { return false; }
-    key := line[6..<p]; q := cli_edit_next_space(line, p);
-    if q == line.count { return false; }
-    x := cli_edit_cm(line[p + 1..<q]); z := cli_edit_cm(line[q + 1..<line.count]);
-    if forge_where(next[..], key).found { return false; }
-    if !forge_read_move(next[..], key, x, z) { return false; }
+    if l.kind != SPEC_MOVED { continue; }
+    m := forge_spec_moved(l);
+    if !m.ok { return false; }
+    x := cli_edit_cm(m.x); z := cli_edit_cm(m.z);
+    if forge_where(next[..], m.entity).found { return false; }
+    if !forge_read_move(next[..], m.entity, x, z) { return false; }
   }
   d[0] = next[0];
   return true;
@@ -421,18 +397,6 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
   }
   e: [1] ForgeDoc; forge_reset(e[..], 1);
   #assert cli_edit_read_moves("shaped trees:0 1 100 0\nmoved trees:0 1 2\n", e[..]) && forge_where(e[..], "trees:0").found;
-}
-
-#test "the boundary after a separator includes empty final and empty middle fields" {
-  #assert cli_edit_next_space("a b c", 1) == 3;
-  #assert cli_edit_next_space("a ", 1) == 2;
-  #assert cli_edit_next_space("a  c", 1) == 2;
-  #assert cli_edit_next_space("a b", 1) == 3;
-}
-cli_edit_next_space :: (line: string, separator: int) -> int #effects(all) {
-  p := separator + 1;
-  while p < line.count && line[p] != ' ' { p += 1; }
-  return p;
 }
 
 #test "all sixty four distinct moves fit and a sixty fifth refuses" {

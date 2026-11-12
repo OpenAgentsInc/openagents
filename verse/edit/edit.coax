@@ -42,6 +42,7 @@
 //   coax/bin/coax test verse/edit/computer_test.coax
 //   coax/bin/coax test verse/edit/agent_test.coax
 
+#load "../../aethyr/forge/spec.coax";   // the spec's lines (GET /api/playtest/realms/<slug>): one reader
 #load "computer.coax";
 #load "agent.coax";
 
@@ -378,37 +379,41 @@ redit_read :: (e: [] RealmEdit, text: string) -> bool {
   e[0].role = REDIT_VISITOR; e[0].waiting = 0; e[0].row_n = 0; e[0].placed_n = 0;
   for i: 0..<REDIT_TOOLS { e[0].tool_has[i] = false; e[0].tool_on[i] = false; }
   owner := false;
+  // each line and its fields come from aethyr/forge/spec.coax, the spec's one reader
   i := 0;
   while i < text.count {
-    end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
-    head := redit_word(line, 0);
-    if head == "realm" { got = true; continue; }
-    if head == "owner" { owner = redit_word(line, 1) == "1"; continue; }
-    if head == "role" {
-      r := redit_word(line, 1);
+    l := forge_spec_line(text, i); i = l.next;
+    if l.kind == SPEC_END { break; }
+    if l.kind == SPEC_REALM { got = true; continue; }
+    if l.kind == SPEC_OWNER { owner = forge_spec_on(l); continue; }
+    if l.kind == SPEC_ROLE {
+      r := forge_spec_word(l.line, 1);
       e[0].role = ifx r == "owner" then REDIT_OWNER else ifx r == "admin" then REDIT_ADMIN else REDIT_VISITOR;
       continue;
     }
-    if head == "waiting" { e[0].waiting = redit_int(redit_word(line, 1)); if e[0].waiting < 0 { e[0].waiting = 0; } continue; }
-    if head == "tool" {
-      t := redit_tool_of(redit_word(line, 1));
-      if t >= 0 { e[0].tool_has[t] = true; e[0].tool_on[t] = redit_word(line, 2) == "1"; }
+    if l.kind == SPEC_WAITING { e[0].waiting = forge_spec_num(l); if e[0].waiting < 0 { e[0].waiting = 0; } continue; }
+    if l.kind == SPEC_TOOL {
+      tl := forge_spec_tool(l);
+      t := redit_tool_of(tl.name);
+      if t >= 0 { e[0].tool_has[t] = true; e[0].tool_on[t] = tl.on; }
       continue;
     }
-    if head == "row" && e[0].row_n < REDIT_ROWS {
+    if l.kind == SPEC_ROW && e[0].row_n < REDIT_ROWS {
+      rw := forge_spec_row(l);
       r := e[0].row_n;
-      e[0].row_key_n[r] = redit_copy(e[0].row_key[r * REDIT_KEY..<(r + 1) * REDIT_KEY], redit_word(line, 1));
-      e[0].row_on[r] = redit_word(line, 2) == "1";
-      e[0].row_label_n[r] = redit_copy(e[0].row_label[r * REDIT_LABEL..<(r + 1) * REDIT_LABEL], redit_rest(line, 3));
+      e[0].row_key_n[r] = redit_copy(e[0].row_key[r * REDIT_KEY..<(r + 1) * REDIT_KEY], rw.key);
+      e[0].row_on[r] = rw.on;
+      e[0].row_label_n[r] = redit_copy(e[0].row_label[r * REDIT_LABEL..<(r + 1) * REDIT_LABEL], rw.label);
       redit_upper(e[0].row_label[r * REDIT_LABEL..<(r + 1) * REDIT_LABEL], e[0].row_label_n[r]);
       if e[0].row_key_n[r] > 0 { e[0].row_n = r + 1; }
       continue;
     }
-    if head == "placed" && e[0].placed_n < REDIT_PLACED {
+    if l.kind == SPEC_PLACED && e[0].placed_n < REDIT_PLACED {
+      pl := forge_spec_placed(l);
       p := e[0].placed_n;
-      e[0].placed_thing_n[p] = redit_copy(e[0].placed_thing[p * REDIT_THING..<(p + 1) * REDIT_THING], redit_word(line, 1));
-      e[0].placed_x[p] = redit_number(redit_word(line, 2)); e[0].placed_z[p] = redit_number(redit_word(line, 3));
-      e[0].placed_yaw[p] = redit_number(redit_word(line, 4));
+      e[0].placed_thing_n[p] = redit_copy(e[0].placed_thing[p * REDIT_THING..<(p + 1) * REDIT_THING], pl.thing);
+      e[0].placed_x[p] = redit_number(pl.x); e[0].placed_z[p] = redit_number(pl.z);
+      e[0].placed_yaw[p] = redit_number(pl.yaw);
       e[0].placed_n = p + 1;
     }
   }
@@ -423,10 +428,12 @@ redit_read_rows :: (e: [] RealmEdit, text: string) {
   n := 0;
   i := 0;
   while i < text.count {
-    end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
-    if redit_word(line, 0) != "row" { continue; }
-    r := redit_row(e, redit_word(line, 1));
-    if r >= 0 { was := e[0].row_on[r]; e[0].row_on[r] = redit_word(line, 2) == "1"; if was != e[0].row_on[r] { n += 1; } }
+    l := forge_spec_line(text, i); i = l.next;
+    if l.kind == SPEC_END { break; }
+    if l.kind != SPEC_ROW { continue; }
+    rw := forge_spec_row(l);
+    r := redit_row(e, rw.key);
+    if r >= 0 { was := e[0].row_on[r]; e[0].row_on[r] = rw.on; if was != e[0].row_on[r] { n += 1; } }
   }
 }
 

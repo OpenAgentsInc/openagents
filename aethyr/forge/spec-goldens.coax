@@ -1,0 +1,157 @@
+// A realm's spec through its reader (compliance plan step E11, GitHub #13250):
+// proto/verse/realm-spec-v1.json names every line of a spec and holds specs as
+// GET /api/playtest/realms/<slug> answers them today (a made realm to its owner, after a save, to a
+// visitor; a fork; a hand-built realm). This requires:
+//   - the profile's "lines" are exactly the reader's keys (aethyr/forge/spec.coax SPEC_KEYS), and each
+//     example reads as its own kind;
+//   - every line of every spec is flush (its key at the line's first byte), is one of those kinds,
+//     and comes back byte for byte from the fields the reader gives for it; a shaped line also
+//     loads into the edit model (aethyr/forge/edit.coax), as My Realm and the CLI take it;
+//   - every spec starts with its realm line and ends with a newline.
+// coax/web/api/tests/realm_record_checks.coax asks the API for the same specs.
+//   coax/web/tool.sh aethyr/forge/spec-goldens.coax proto/verse/realm-spec-v1.json
+
+#import "Basic";
+#load "spec.coax";
+#load "edit.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+SG_FIXTURE_PATH :: "proto/verse/realm-spec-v1.json";
+Sg :: struct { bad: int; pass: int; quiet: bool; }
+sg_need :: (g: [] Sg, name: string, what: string, ok: bool) -> bool {
+  if ok { g[0].pass += 1; return true; }
+  g[0].bad += 1;
+  if !g[0].quiet { print("FAIL  % (%)\n", name, what); }
+  return false;
+}
+// A line written again from the fields the reader gives for it: its length in out, or -1.
+sg_rebuild :: (l: ForgeSpecLine, out: [] u8) -> int {
+  keys := SPEC_KEYS; key := keys[l.kind];
+  n := forge_put(out, 0, key);
+  k := l.kind;
+  if k == SPEC_REALM || k == SPEC_NAME || k == SPEC_STYLE || k == SPEC_GROUND || k == SPEC_TIME || k == SPEC_CAMERA || k == SPEC_PALETTE || k == SPEC_ROLE || k == SPEC_VISIBILITY || k == SPEC_THING || k == SPEC_ENGINE {
+    return forge_put(out, forge_put(out, n, " "), forge_spec_text(l));
+  }
+  if k == SPEC_WAITING || k == SPEC_REV || k == SPEC_PUBLISHED || k == SPEC_UNDO || k == SPEC_REDO { return forge_put_int(out, forge_put(out, n, " "), forge_spec_num(l)); }
+  if k == SPEC_OWNER || k == SPEC_SHAPES || k == SPEC_EDIT_FENCE { return forge_put(out, n, ifx forge_spec_on(l) then " 1" else " 0"); }
+  if k == SPEC_LISTED { return forge_put(out, n, ifx forge_spec_off(l) then " 0" else " 1"); }
+  if k == SPEC_TOOL { t := forge_spec_tool(l); return forge_put(out, forge_put(out, forge_put(out, n, " "), t.name), ifx t.on then " 1" else " 0"); }
+  if k == SPEC_ROW {
+    r := forge_spec_row(l);
+    return forge_put(out, forge_put(out, forge_put(out, forge_put(out, n, " "), r.key), ifx r.on then " 1 " else " 0 "), r.label);
+  }
+  if k == SPEC_CHARACTER { p := forge_spec_person(l); return forge_put(out, forge_put(out, forge_put(out, forge_put(out, n, " "), p.name), "|"), p.role); }
+  if k == SPEC_FEATURE {
+    f := forge_spec_feature(l);
+    n = forge_put(out, forge_put(out, n, " "), f.name);
+    last := "";
+    for w: 2..<6 { word := forge_spec_word(l.line, w); if word == "" { break; } n = forge_put(out, forge_put(out, n, " "), word); last = word; }
+    // its count is its last word when that is a number, and its first two words are the reader's
+    if (f.count >= 0) != (forge_spec_digits(last) >= 0) || f.a != forge_spec_word(l.line, 2) || f.b != forge_spec_word(l.line, 3) { return -1; }
+    return n;
+  }
+  if k == SPEC_PLACED {
+    p := forge_spec_placed(l);
+    n = forge_put(out, forge_put(out, n, " "), p.thing); n = forge_put(out, forge_put(out, n, " "), p.x);
+    n = forge_put(out, forge_put(out, n, " "), p.z);
+    return forge_put(out, forge_put(out, n, " "), p.yaw);
+  }
+  if k == SPEC_FROM {
+    f := forge_spec_from(l);
+    if !f.ok || f.rev < 0 { return -1; }
+    n = forge_put(out, forge_put(out, n, " "), f.slug);
+    return forge_put(out, forge_put(out, forge_put_int(out, forge_put(out, n, " "), f.rev), "|"), f.name);
+  }
+  if k == SPEC_MOVED {
+    m := forge_spec_moved(l);
+    if !m.ok { return -1; }
+    n = forge_put(out, forge_put(out, n, " "), m.entity); n = forge_put(out, forge_put(out, n, " "), m.x);
+    return forge_put(out, forge_put(out, n, " "), m.z);
+  }
+  if k == SPEC_SHAPED { return forge_put(out, 0, l.line); }   // read by forge_read_shape_line (sg_spec)
+  return -1;
+}
+// One spec: every line flush, of a kind the profile names, and rebuilt the same.
+sg_spec :: (g: [] Sg, name: string, text: string, named: [] bool) {
+  _ = sg_need(g, name, "the spec starts with its realm line and ends with a newline", text.count > 6 && text[0..<6] == "realm " && text[text.count - 1] == '\n');
+  doc: [1] ForgeDoc; forge_reset(doc[..], 1);
+  at := 0; out: [1024] u8;
+  while true {
+    l := forge_spec_line(text, at); at = l.next;
+    if l.kind == SPEC_END { break; }
+    if !sg_need(g, name, "a line is flush and of a kind the profile names", l.flush && l.kind >= SPEC_REALM && named[l.kind]) { if !g[0].quiet { print("  line: %\n", l.line); } continue; }
+    n := sg_rebuild(l, out[..]);
+    got := ifx n < 0 then "" else cast(string) out[0..<n];
+    if got != l.line { g[0].bad += 1; if !g[0].quiet { print("FAIL  % (a line comes back from its fields)\n  got:  %\n  want: %\n", name, got, l.line); } } else { g[0].pass += 1; }
+    if l.kind == SPEC_SHAPED { _ = sg_need(g, name, "a shaped line loads into the edit model", forge_read_shape_line(doc[..], l.line)); }
+    if l.kind == SPEC_MOVED {
+      m := forge_spec_moved(l);
+      _ = sg_need(g, name, "a moved line's numbers are metres with two decimals", forge_cm_text_ok(m.x) && forge_cm_text_ok(m.z));
+    }
+  }
+}
+// "-5.50", "4.00": an optional minus, digits, a point and two digits.
+forge_cm_text_ok :: (t: string) -> bool {
+  s := ifx t.count > 0 && t[0] == '-' then t[1..<t.count] else t;
+  if s.count < 4 || s[s.count - 3] != '.' { return false; }
+  for i: 0..<s.count { if i != s.count - 3 && !forge_digit(s[i]) { return false; } }
+  return true;
+}
+
+sg_run :: (text: string) -> int {
+  nodes: [8192] JvNode; f: [1] Jv;
+  if !jv_parse(f[..], text, nodes[..]) { print("FAIL  the fixture is not JSON\n"); return 1; }
+  g: [1] Sg; named: [SPEC_KINDS] bool; keys := SPEC_KEYS;
+  lines := jv_get(f[0], 0, "lines");
+  for i: 0..<jv_len(f[0], lines) {
+    e := jv_at(f[0], lines, i);
+    kb: [32] u8; kn := jv_str(f[0], jv_get(f[0], e, "key"), kb[..]);
+    key := ifx kn < 0 then "" else cast(string) kb[0..<kn];
+    eb: [256] u8; en := jv_str(f[0], jv_get(f[0], e, "example"), eb[..]);
+    kind := forge_spec_kind(key);
+    if !sg_need(g[..], key, "the profile's line is a key the reader knows, named once", kind >= SPEC_REALM && !named[kind]) { continue; }
+    named[kind] = true;
+    l := forge_spec_line(ifx en < 0 then "" else cast(string) eb[0..<en], 0);
+    ob: [256] u8; n := sg_rebuild(l, ob[..]);
+    _ = sg_need(g[..], key, "its example reads as its kind and comes back from its fields", l.kind == kind && l.flush && n >= 0 && cast(string) ob[0..<n] == l.line);
+  }
+  for k: SPEC_REALM..<SPEC_KINDS { _ = sg_need(g[..], keys[k], "the reader's key is a line the profile names", named[k]); }
+  steps := jv_get(f[0], 0, "steps"); specs := 0;
+  for i: 0..<jv_len(f[0], steps) {
+    s := jv_at(f[0], steps, i);
+    mb: [32] u8; mn := jv_str(f[0], jv_get(f[0], s, "message"), mb[..]);
+    if mn < 0 || cast(string) mb[0..<mn] != "Spec" { continue; }
+    nb: [160] u8; nn := jv_str(f[0], jv_get(f[0], s, "name"), nb[..]);
+    rb: [16384] u8; rn := jv_str(f[0], jv_get(f[0], s, "reply"), rb[..]);
+    if !sg_need(g[..], cast(string) nb[0..<(ifx nn < 0 then 0 else nn)], "the step has a spec", rn > 0) { continue; }
+    sg_spec(g[..], cast(string) nb[0..<nn], cast(string) rb[0..<rn], named[..]);
+    specs += 1;
+  }
+  _ = sg_need(g[..], "the fixture", "it holds at least five specs", specs >= 5);
+  print("% realm spec goldens hold, % failed\n", g[0].pass, g[0].bad);
+  return ifx g[0].bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else SG_FIXTURE_PATH;
+  buf: [262144] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("spec-goldens: cannot read the fixture"); return 2; }
+  // the checks bite: a line that is not flush, of no kind, or that the fields don't give back
+  g: [1] Sg; all: [SPEC_KINDS] bool; for k: 0..<SPEC_KINDS { all[k] = true; }
+  bad := [4] string.["realm a\n owner 1\n", "realm a\nnote x\n", "realm a\ntool fly  1\n", "realm a\nmoved trees:1 4 -5.5\n"];
+  for k: 0..<4 {
+    g[0] = Sg.{quiet = true};
+    sg_spec(g[..], "self", bad[k], all[..]);
+    if g[0].bad == 0 { print("FAIL  the check takes a spec it should refuse\n"); return 1; }
+  }
+  g[0] = Sg.{quiet = true};
+  sg_spec(g[..], "self", "realm a\nname A\nrev 2\n", all[..]);
+  if g[0].bad != 0 { print("FAIL  the check refuses a good spec\n"); return 1; }
+  return sg_run(cast(string) buf[0..<n]);
+}

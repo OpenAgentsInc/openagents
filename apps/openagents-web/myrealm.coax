@@ -42,6 +42,7 @@
 #load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../aethyr/forge/record.coax";   // a publish's reply (record.proto)
 #load "../../aethyr/forge/made.coax";   // a fork's body and its answer (made.proto)
+#load "../../aethyr/forge/spec.coax";   // the spec's lines (GET /api/playtest/realms/<slug>)
 #load "../../aethyr/forge/doc.coax";   // the realm document and its edits (aethyr/forge/edit.coax): a move, undo, the bodies and replies (realm.proto)
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
@@ -383,12 +384,8 @@ word_of :: (line: string, k: int) -> string {
   return "";
 }
 number_word :: (w: string) -> int { at: [1] int; v := int_at(w, at[..]); return ifx at[0] < 0 then -1 else v; }
-// a feature's count: its last word when that is a number
-count_of :: (line: string, fallback: int) -> int {
-  last := -1;
-  for k: 2..<6 { w := word_of(line, k); if w.count == 0 { break; } v := number_word(w); if v >= 0 { last = v; } }
-  return ifx last >= 0 then last else fallback;
-}
+// a feature's count: its last word when that is a number (aethyr/forge/spec.coax reads it)
+feature_count :: (ft: ForgeSpecFeature, fallback: int) -> int { return ifx ft.count >= 0 then ft.count else fallback; }
 // a slug's letters only: a-z, 0-9 and -
 slug_ok :: (text: string) -> bool {
   if text.count == 0 || text.count > SLUG { return false; }
@@ -409,99 +406,107 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   s[0].server_rev = 0; s[0].published_rev = 0; s[0].server_undo = 0; s[0].server_redo = 0; s[0].listed = true; s[0].from_n = 0; s[0].from_rev = 0; s[0].from_name_n = 0;
   sp: [1] ForgeDoc; forge_reset(sp[..], 0);   // the document as the server has it
   got := false;
+  // each line and its fields come from aethyr/forge/spec.coax, the spec's one reader
   i := 0;
   while i < text.count {
-    e := line_end(text, i); line := text[i..<e]; i = e + 1;
-    head := word_of(line, 0);
-    if head == "realm" { got = true; continue; }
-    if head == "name" && line.count > 5 { s[0].name_n = copy_into(s[0].name[..], line[5..<line.count]); continue; }
-    if head == "style" { s[0].style_n = copy_into(s[0].style[..], word_of(line, 1)); continue; }
-    if head == "ground" { g := word_of(line, 1); for k: 0..<6 { if GROUNDS[k] == g { s[0].ground = k; } } continue; }
-    if head == "time" { t := word_of(line, 1); for k: 0..<4 { if TIMES[k] == t { s[0].tod = k; s[0].timed = true; } } continue; }
-    if head == "owner" { s[0].owner = word_of(line, 1) == "1"; continue; }
-    if head == "camera" { c := word_of(line, 1); for k: 0..<4 { if CAMERA_NAMES[k] == c { s[0].camera = k; } } continue; }
-    if head == "palette" { pw := word_of(line, 1); for k: 0..<4 { if PALETTES[k] == pw { s[0].palette = k; } } continue; }
-    if head == "waiting" { s[0].waiting = hi_int(number_word(word_of(line, 1)), 0); continue; }
-    if head == "rev" { s[0].server_rev = hi_int(number_word(word_of(line, 1)), 0); sp[0].rev = s[0].server_rev; continue; }
-    if head == "published" { s[0].published_rev = hi_int(number_word(word_of(line, 1)), 0); continue; }
-    if head == "undo" { s[0].server_undo = hi_int(number_word(word_of(line, 1)), 0); continue; }
-    if head == "redo" { s[0].server_redo = hi_int(number_word(word_of(line, 1)), 0); continue; }
-    if head == "listed" { s[0].listed = word_of(line, 1) != "0"; continue; }
-    if head == "from" {   // from SLUG REV|NAME: the realm this one was forked from, and its revision then
-      fs := word_of(line, 1); cut := 0; while cut < line.count && line[cut] != '|' { cut += 1; }
-      if slug_ok(fs) && cut < line.count {
-        s[0].from_n = copy_into(s[0].from[..], fs);
-        s[0].from_rev = hi_int(number_word(word_of(line[0..<cut], 2)), 0);
-        s[0].from_name_n = copy_into(s[0].from_name[..], line[cut + 1..<line.count]);
+    l := forge_spec_line(text, i); i = l.next;
+    if l.kind == SPEC_END { break; }
+    line := l.line;
+    if l.kind == SPEC_REALM { got = true; continue; }
+    if l.kind == SPEC_NAME && line.count > 5 { s[0].name_n = copy_into(s[0].name[..], line[5..<line.count]); continue; }
+    if l.kind == SPEC_STYLE { s[0].style_n = copy_into(s[0].style[..], forge_spec_word(line, 1)); continue; }
+    if l.kind == SPEC_GROUND { g := forge_spec_word(line, 1); for k: 0..<6 { if GROUNDS[k] == g { s[0].ground = k; } } continue; }
+    if l.kind == SPEC_TIME { t := forge_spec_word(line, 1); for k: 0..<4 { if TIMES[k] == t { s[0].tod = k; s[0].timed = true; } } continue; }
+    if l.kind == SPEC_OWNER { s[0].owner = forge_spec_on(l); continue; }
+    if l.kind == SPEC_CAMERA { c := forge_spec_word(line, 1); for k: 0..<4 { if CAMERA_NAMES[k] == c { s[0].camera = k; } } continue; }
+    if l.kind == SPEC_PALETTE { pw := forge_spec_word(line, 1); for k: 0..<4 { if PALETTES[k] == pw { s[0].palette = k; } } continue; }
+    if l.kind == SPEC_WAITING { s[0].waiting = hi_int(forge_spec_num(l), 0); continue; }
+    if l.kind == SPEC_REV { s[0].server_rev = hi_int(forge_spec_num(l), 0); sp[0].rev = s[0].server_rev; continue; }
+    if l.kind == SPEC_PUBLISHED { s[0].published_rev = hi_int(forge_spec_num(l), 0); continue; }
+    if l.kind == SPEC_UNDO { s[0].server_undo = hi_int(forge_spec_num(l), 0); continue; }
+    if l.kind == SPEC_REDO { s[0].server_redo = hi_int(forge_spec_num(l), 0); continue; }
+    if l.kind == SPEC_LISTED { s[0].listed = !forge_spec_off(l); continue; }
+    if l.kind == SPEC_FROM {   // from SLUG REV|NAME: the realm this one was forked from, and its revision then
+      fr := forge_spec_from(l);
+      if fr.ok && slug_ok(fr.slug) {
+        s[0].from_n = copy_into(s[0].from[..], fr.slug);
+        s[0].from_rev = hi_int(fr.rev, 0);
+        s[0].from_name_n = copy_into(s[0].from_name[..], fr.name);
       }
       continue;
     }
-    if head == "moved" {   // moved ENTITY X Z: where a laid-out entity stands instead (metres)
-      at: [1] int; at[0] = word_end(line, 6);
-      x := decimal_at(line, at[..]); if at[0] < 0 { continue; }
-      z := decimal_at(line, at[..]); if at[0] < 0 { continue; }
-      _ := forge_read_move(sp[..], word_of(line, 1), cm_of(x), cm_of(z));
+    if l.kind == SPEC_MOVED {   // moved ENTITY X Z: where a laid-out entity stands instead (metres)
+      mv := forge_spec_moved(l);
+      if !mv.ok { continue; }
+      at: [1] int; at[0] = 0;
+      x := decimal_at(mv.x, at[..]); if at[0] < 0 { continue; }
+      at[0] = 0;
+      z := decimal_at(mv.z, at[..]); if at[0] < 0 { continue; }
+      _ := forge_read_move(sp[..], mv.entity, cm_of(x), cm_of(z));
       continue;
     }
-    if head == "shaped" { _ := forge_read_shape_line(sp[..], line); continue; }   // its turn, size and gone (0109; the CLI's reader too)
-    if head == "tool" { k := tool_of(word_of(line, 1)); if k >= 0 { s[0].tools[k] = word_of(line, 2) == "1"; } continue; }
-    if head == "character" && s[0].people < PEOPLE && line.count > 10 {
-      rest := line[10..<line.count];
-      cut := 0; while cut < rest.count && rest[cut] != '|' { cut += 1; }
+    if l.kind == SPEC_SHAPED { _ := forge_read_shape_line(sp[..], line); continue; }   // its turn, size and gone (0109; the CLI's reader too)
+    if l.kind == SPEC_TOOL { tl := forge_spec_tool(l); k := tool_of(tl.name); if k >= 0 { s[0].tools[k] = tl.on; } continue; }
+    if l.kind == SPEC_CHARACTER && s[0].people < PEOPLE {
+      who := forge_spec_person(l);
+      if !who.ok { continue; }
       p := s[0].people;
-      s[0].person_n[p] = copy_into(s[0].person[p * PERSON..<(p + 1) * PERSON], rest[0..<cut]);
-      s[0].role_n[p] = ifx cut + 1 < rest.count then copy_into(s[0].role[p * ROLE..<(p + 1) * ROLE], rest[cut + 1..<rest.count]) else 0;
+      s[0].person_n[p] = copy_into(s[0].person[p * PERSON..<(p + 1) * PERSON], who.name);
+      s[0].role_n[p] = ifx who.role != "" then copy_into(s[0].role[p * ROLE..<(p + 1) * ROLE], who.role) else 0;
       s[0].people = p + 1;
       continue;
     }
-    if head == "placed" && s[0].placed_n < 200 {
-      t := thing_of(word_of(line, 1));
+    if l.kind == SPEC_PLACED && s[0].placed_n < 200 {
+      pl := forge_spec_placed(l);
+      t := thing_of(pl.thing);
       if t < 0 { continue; }
-      at: [1] int; at[0] = word_end(line, 7);
-      x := decimal_at(line, at[..]); if at[0] < 0 { continue; }
-      z := decimal_at(line, at[..]); if at[0] < 0 { continue; }
-      yaw := decimal_at(line, at[..]); if at[0] < 0 { yaw = 0; }
+      at: [1] int; at[0] = 0;
+      x := decimal_at(pl.x, at[..]); if at[0] < 0 { continue; }
+      at[0] = 0;
+      z := decimal_at(pl.z, at[..]); if at[0] < 0 { continue; }
+      at[0] = 0;
+      yaw := decimal_at(pl.yaw, at[..]); if at[0] < 0 { yaw = 0; }
       n := s[0].placed_n;
       s[0].placed_thing[n] = t; s[0].placed_x[n] = clamp(x, -40, 40); s[0].placed_z[n] = clamp(z, -40, 40); s[0].placed_yaw[n] = yaw;
       s[0].placed_n = n + 1;
       continue;
     }
-    if head == "feature" {
-      f := word_of(line, 1); a := word_of(line, 2);
-      if site_read(s, f, line) { continue; }
+    if l.kind == SPEC_FEATURE {
+      ft := forge_spec_feature(l); f := ft.name; a := ft.a;
+      if site_read(s, ft) { continue; }
       if f == "water" {
         s[0].water = ifx a == "small" then 1 else ifx a == "large" then 3 else 2;
-        v := word_of(line, 3); s[0].water_kind = ifx v == "river" then 2 else ifx v == "frozen" then 3 else ifx v == "lava" then 4 else 1;
+        v := ft.b; s[0].water_kind = ifx v == "river" then 2 else ifx v == "frozen" then 3 else ifx v == "lava" then 4 else 1;
       }
       if f == "land" { for k: 0..<6 { if LANDS[k] == a { s[0].land = k + 1; } } }
       if f == "building" && s[0].building_n < BUILDINGS { for k: 0..<BUILDING_N { if BUILDING_KINDS[k] == a { s[0].building[s[0].building_n] = k; s[0].building_n += 1; } } }
-      if f == "trees" { s[0].trees = clamp_int(count_of(line, 9), 0, 20); s[0].tree_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else ifx a == "mixed" then 3 else ifx a == "palm" then 4 else ifx a == "blossom" then 5 else ifx a == "autumn" then TREE_AUTUMN else ifx a == "acacia" then TREE_ACACIA else 0; }
-      if f == "rocks" { s[0].rocks = clamp_int(count_of(line, 6), 0, 16); }
-      if f == "plants" { s[0].plants = clamp_int(count_of(line, 10), 0, 24); for k: 0..<5 { if PLANT_KINDS[k] == a { s[0].plant_kind = k; } } }
+      if f == "trees" { s[0].trees = clamp_int(feature_count(ft, 9), 0, 20); s[0].tree_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else ifx a == "mixed" then 3 else ifx a == "palm" then 4 else ifx a == "blossom" then 5 else ifx a == "autumn" then TREE_AUTUMN else ifx a == "acacia" then TREE_ACACIA else 0; }
+      if f == "rocks" { s[0].rocks = clamp_int(feature_count(ft, 6), 0, 16); }
+      if f == "plants" { s[0].plants = clamp_int(feature_count(ft, 10), 0, 24); for k: 0..<5 { if PLANT_KINDS[k] == a { s[0].plant_kind = k; } } }
       if f == "lanterns" {
-        s[0].lanterns = clamp_int(count_of(line, 8), 0, LANTERNS);
+        s[0].lanterns = clamp_int(feature_count(ft, 8), 0, LANTERNS);
         c := 0; for k: 0..<7 { if COLOURS[k] == a { c = k; } }
         s[0].lantern_r = COLOUR_RGB[c * 3]; s[0].lantern_g = COLOUR_RGB[c * 3 + 1]; s[0].lantern_b = COLOUR_RGB[c * 3 + 2];
       }
       if f == "flock" {
-        s[0].birds = clamp_int(count_of(line, 7), 0, BIRDS); s[0].flier = 0;
+        s[0].birds = clamp_int(feature_count(ft, 7), 0, BIRDS); s[0].flier = 0;
         for k: 0..<9 { if FLIERS[k] == a { s[0].flier = k; } }
         s[0].bats = s[0].flier == FLY_BAT; s[0].owls = s[0].flier == FLY_OWL;
       }
       if f == "bigtree" { s[0].great = true; s[0].great_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else 0; }
       if f == "house" {
-        s[0].houses = clamp_int(count_of(line, 1), 1, HOUSES);
+        s[0].houses = clamp_int(feature_count(ft, 1), 1, HOUSES);
         s[0].house_size = ifx a == "large" then 2 else ifx a == "medium" then 1 else 0;
-        c := word_of(line, 3); s[0].house_colour = 0; for k: 0..<7 { if HOUSE_COLOURS[k] == c { s[0].house_colour = k; } }
+        c := ft.b; s[0].house_colour = 0; for k: 0..<7 { if HOUSE_COLOURS[k] == c { s[0].house_colour = k; } }
       }
       if f == "herd" {
         kind := 0; for k: 0..<HERD_N { if HERDS[k] == a { kind = k; } }
-        if s[0].herd == 0 { s[0].herd = clamp_int(count_of(line, 6), 0, HERD); s[0].herd_kind = kind; }
-        else if s[0].herd_split == HERD { s[0].herd_split = s[0].herd; s[0].herd = clamp_int(s[0].herd + count_of(line, 6), 0, HERD); s[0].herd_kind2 = kind; }
+        if s[0].herd == 0 { s[0].herd = clamp_int(feature_count(ft, 6), 0, HERD); s[0].herd_kind = kind; }
+        else if s[0].herd_split == HERD { s[0].herd_split = s[0].herd; s[0].herd = clamp_int(s[0].herd + feature_count(ft, 6), 0, HERD); s[0].herd_kind2 = kind; }
       }
-      if f == "dwellings" { s[0].dwellings = clamp_int(count_of(line, 4), 0, DWELLINGS); s[0].dwelling_kind = ifx a == "tent" then 1 else ifx a == "hut" then 2 else 0; }
+      if f == "dwellings" { s[0].dwellings = clamp_int(feature_count(ft, 4), 0, DWELLINGS); s[0].dwelling_kind = ifx a == "tent" then 1 else ifx a == "hut" then 2 else 0; }
       if f == "mist" { s[0].mist = true; }
-      if f == "village" { s[0].villagers = clamp_int(count_of(line, 5), 0, VILLAGERS); }
+      if f == "village" { s[0].villagers = clamp_int(feature_count(ft, 5), 0, VILLAGERS); }
       if f == "props" && s[0].prop_n < PROP_MOST { for k: 0..<PROP_KINDS { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
     }
   }
