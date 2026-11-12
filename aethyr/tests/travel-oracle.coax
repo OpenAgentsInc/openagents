@@ -31,11 +31,11 @@ to_tally :: (out: [] TravelOutcome, st: int) {
   if st == TRAVEL_OK { out[0].step_ok += 1; } else { out[0].step_err += 1; }
 }
 
-to_sim :: (w: [] TravelWorld, point: int, who: int, lost: bool, ready_to: bool, do_crash: bool, steal_other: bool, next_xp: int) -> TravelOutcome {
+to_sim :: (w: [] TravelWorld, point: int, who: int, lost: bool, first_seq: int, ready_to: bool, do_crash: bool, steal_other: bool, next_xp: int) -> TravelOutcome {
   travel_world(w);
   w[0].rooms[1].ready = ready_to;
   out: [1] TravelOutcome;
-  if travel_join(w, 0, 0, TO_BODY) && travel_command(w, 0, 0, 1, 10) { to_tally(out[..], travel_reserve(w, 0, 0, 1)); }
+  if travel_join(w, 0, 0, TO_BODY) && travel_command(w, 0, 0, first_seq, 10) { to_tally(out[..], travel_reserve(w, 0, 0, 1)); }
   else { out[0].step_err += 1; }
   if point >= TO_PREPARED { to_tally(out[..], travel_prepare(w)); }
   if point >= TO_COMMITTED { to_tally(out[..], travel_commit(w)); if lost { to_tally(out[..], travel_commit(w)); } }
@@ -63,5 +63,5 @@ to_sim :: (w: [] TravelWorld, point: int, who: int, lost: bool, ready_to: bool, 
   return out[0];
 }
 to_journey :: (w: [] TravelWorld, point: int, who: int, lost: bool) -> TravelOutcome {
-  return to_sim(w, point, who, lost, true, true, false, 1);
+  return to_sim(w, point, who, lost, 1, true, true, false, 1);
 }
