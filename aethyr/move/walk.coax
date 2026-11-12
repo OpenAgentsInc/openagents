@@ -10,6 +10,13 @@
 // aethyr/move/player.coax owns the compatible C exports. This shared core exports
 // no C symbols, so a realm and its Player library may both load it.
 //
+// The walker is one module (#13270): the step, the source velocity kernel
+// (source_velocity) and the version 2 frame-input sidecar (WalkControlV2,
+// walk_control_*) all live here. locomotion.coax is the one tuning record and
+// player.coax the one C face. The bounded travel subdivision
+// (walk-substep-policy.coax) stays a module of its own: v1's guardians step
+// through it in pages that carry no walker (everglade/zone-combat.coax).
+//
 // Units are metres and seconds, +Y up and yaw0 along +Z. The fixed walking
 // period is 1/64 s. Runtime tuning comes from World.locomotion; the legacy
 // constants below name the published defaults for existing callers/checks.
@@ -26,7 +33,7 @@
 #load "player-collision-checks.coax";
 #load "locomotion.coax";
 #load "walk-substep-policy.coax";
-#load "locomotion-source.coax" as source_motion;
+#load "../tests/locomotion-source-oracle.coax";   // the velocity kernel's recorded oracle
 #load "echo-walk-checks.coax";
 #load "flight.coax";   // the per-step flight hook a flying realm declares (Fairy Forest)
 #load "walk-frame.coax";
@@ -310,7 +317,7 @@ walk_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player #effects(all) {
 // it is counted here and taken by the first fixed step after it (aethyr/core/input.coax), so a
 // frame that runs no step keeps it and a frame that runs two jumps once. This v1
 // single-sample primitive applies look immediately. Frame-driven consumers use
-// walk-control.coax's versioned sidecar; the Grid samples before calling here.
+// the version 2 sidecar's (WalkControlV2, below); the Grid samples before calling here.
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #effects(all) {
   next := p;
@@ -426,7 +433,7 @@ body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   if w.locomotion.source_velocity {
     ax:=p.key_x;az:=p.key_y;pad:=sqrt(p.pad_x*p.pad_x+p.pad_y*p.pad_y);if pad>f32(DEAD_ZONE) {ax=p.pad_x;az=p.pad_y;}
     amount:=lo(sqrt(ax*ax+az*az),1);control:=ifx p.on_ground then 1.0f32 else w.locomotion.source_air_control;
-    v:=source_motion.source_velocity(next.vel.x,next.vel.z,dir.x,dir.z,amount,speed,w.locomotion.acceleration*control,ifx p.on_ground then w.locomotion.source_friction else 0.0f32,ifx p.on_ground then w.locomotion.source_braking else 0.0f32,w.locomotion.source_braking_factor,dt);next.vel.x=v.x;next.vel.z=v.z;
+    v:=source_velocity(next.vel.x,next.vel.z,dir.x,dir.z,amount,speed,w.locomotion.acceleration*control,ifx p.on_ground then w.locomotion.source_friction else 0.0f32,ifx p.on_ground then w.locomotion.source_braking else 0.0f32,w.locomotion.source_braking_factor,dt);next.vel.x=v.x;next.vel.z=v.z;
   }else {
   // Horizontal velocity steps toward the wish at a fixed rate.
   dx := dir.x * speed - next.vel.x;
@@ -501,11 +508,7 @@ body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   // Turn toward where you are going.
   if dir.on {
     want := atan2(dir.x, dir.z);
-    turn := wrap_angle(want - next.face);
-    // Half a circle either way is a tie, broken one way: anticlockwise. Otherwise a page and the room
-    // it plays in, a hair apart, turn opposite ways, and the room's correction spins you round.
-    if abs(turn) > f32(PI) - 0.05 { turn = abs(turn); }
-    next.face = wrap_angle(next.face + turn * lo(1, w.locomotion.turn_rate * dt));
+    next.face = wrap_angle(next.face + turn_toward(want, next.face) * lo(1, w.locomotion.turn_rate * dt));
   }
 
   if !next.on_ground { next.act = Act.airborne; }
@@ -515,6 +518,33 @@ body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   return next;
 }
 // book:end move
+
+// The turn from face to want, the short way. Half a circle either way is a tie, broken one way:
+// anticlockwise. Otherwise a page and the room it plays in, a hair apart, turn opposite ways, and
+// the room's correction spins you round.
+turn_toward :: (want: f32, face: f32) -> f32 #effects(all) {
+  turn := wrap_angle(want - face);
+  if abs(turn) > f32(PI) - 0.05 { turn = abs(turn); }
+  return turn;
+}
+#test "a turn of nearly half a circle goes anticlockwise from either side; a shorter one keeps its way" {
+  tie := f32(PI) - 0.05;
+  // Exactly the tie's width is not yet a tie: the turn keeps its own, clockwise, way.
+  #assert turn_toward(0, tie) == -tie && turn_toward(0, -tie) == tie;
+  // Past it, both sides turn anticlockwise by the same amount.
+  near_half := f32(PI) - 0.02;
+  #assert turn_toward(0, near_half) == near_half && turn_toward(0, -near_half) == near_half;
+  #assert turn_toward(0, f32(PI) - 0.06) == -(f32(PI) - 0.06) && turn_toward(0.5, 0.25) == 0.25 && turn_toward(0.25, 0.5) == -0.25;
+  // Through a step: facing a hair short of straight back and walking forward, you come round anticlockwise.
+  w: World;
+  p := held(walk_place(0, 0, 0, 0), 0, 1, false);
+  p.body.face = near_half;
+  q := step(w, p, STEP);
+  #assert near(wrap_angle(q.body.face - near_half), near_half * f32(TURN_RATE * STEP), 0.0001);
+  p.body.face = -near_half;
+  q = step(w, p, STEP);
+  #assert near(wrap_angle(q.body.face + near_half), near_half * f32(TURN_RATE * STEP), 0.0001);
+}
 
 // ---- A page's player over the body's functions ----
 // The body's procedures (body_step, body_move_across, body_collision_report and the rest) take and
@@ -904,23 +934,60 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player #effects(all) {
 
 // One stick push, walking or running, for 90 steps. Split by gait into two checks (#13094): the 98
 // cases together came to 23,374,506 steps, 83% of the 28,000,000 the one check had.
-walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
-  w: World;
+// What the push did: the steps taken, the most the flat speed and one step's change of velocity
+// reached, the steps that ended on the ground and at its height, and the speed at the end.
+SpeedRun :: struct { steps: int; top: f32; change: f32; grounded: int; level: int; last: f32; }
+walk_speed_run :: (run: bool, ix: int, iy: int, count: int) -> SpeedRun #effects(all) {
+  w: World; r: SpeedRun;
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 0, f32(ix) * 0.5, f32(iy) * 0.5, run, false, 0, 0);
-  top := ifx run then f32(RUN) else f32(WALK);
-  for i: 0..<90 {
+  for i: 0..<count {
     before := p.body.vel;
     p = step(w, p, STEP);
-    #assert flat_speed(p) <= top + 0.001;
     dvx := p.body.vel.x - before.x; dvz := p.body.vel.z - before.z;
-    #assert sqrt(dvx * dvx + dvz * dvz) <= f32(ACCEL * STEP) + 0.001;
-    #assert p.body.on_ground && p.body.pos.y == 0;
+    r.steps += 1;
+    r.top = hi(r.top, flat_speed(p));
+    r.change = hi(r.change, sqrt(dvx * dvx + dvz * dvz));
+    if p.body.on_ground { r.grounded += 1; }
+    if p.body.pos.y == 0 { r.level += 1; }
   }
-  // A held stick past the dead zone reaches the top speed.
-  if ix * ix + iy * iy > 0 { #assert near(flat_speed(p), top, 0.001); }
-  else { #assert flat_speed(p) == 0; }
-  return true;
+  r.last = flat_speed(p);
+  return r;
+}
+speed_within :: (value: f32, limit: f32) -> bool #effects(all) { return value <= limit + 0.001; }
+// A run keeps the walker's promises when every step stayed on the level ground, the speed never
+// passed the top, and: with the stick held past the dead zone, the speed changed by ACCEL a step
+// at its fastest and ended at the top, which is the most it reached; with the stick at rest, nothing moved.
+speed_run_holds :: (r: SpeedRun, top: f32, pushed: bool, count: int) -> bool #effects(all) {
+  if r.steps != count || r.grounded != count || r.level != count { return false; }
+  if !speed_within(r.top, top) { return false; }
+  if !pushed { return r.last == 0 && r.top == 0 && r.change == 0; }
+  return near(r.last, top, 0.001) && r.top >= r.last && near(r.change, f32(ACCEL * STEP), 0.001);
+}
+#test "the speed judge refuses each fault alone" {
+  top: f32 = 3.5;
+  #assert speed_within(top + 0.001, top) && !speed_within(top + 0.002, top) && speed_within(0, top);
+  good := SpeedRun.{steps = 90, top = 3.5, change = f32(ACCEL * STEP), grounded = 90, level = 90, last = 3.5};
+  #assert speed_run_holds(good, top, true, 90);
+  bad := good; bad.steps = 89; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.steps = 91; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.grounded = 89; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.level = 89; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.top = 3.502; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.last = 3.49; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.top = 3.4995; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.change = f32(ACCEL * STEP) + 0.002; #assert !speed_run_holds(bad, top, true, 90);
+  bad = good; bad.change = f32(ACCEL * STEP) - 0.002; #assert !speed_run_holds(bad, top, true, 90);
+  // At rest nothing may have moved, and a moving run is not one at rest.
+  rest := SpeedRun.{steps = 90, grounded = 90, level = 90};
+  #assert speed_run_holds(rest, top, false, 90) && !speed_run_holds(good, top, false, 90) && !speed_run_holds(rest, top, true, 90);
+  bad = rest; bad.last = 0.1; #assert !speed_run_holds(bad, top, false, 90);
+  bad = rest; bad.top = 0.1; #assert !speed_run_holds(bad, top, false, 90);
+  bad = rest; bad.change = 0.1; #assert !speed_run_holds(bad, top, false, 90);
+}
+walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
+  top := ifx run then f32(RUN) else f32(WALK);
+  return speed_run_holds(walk_speed_run(run, ix, iy, 90), top, ix * ix + iy * iy > 0, 90);
 }
 #forall "speed never passes the top, and changes no faster than ACCEL, walking" ix: -3..<4, iy: -3..<4 { #assert walk_speed_holds(false, ix, iy); }
 #forall "speed never passes the top, and changes no faster than ACCEL, running" ix: -3..<4, iy: -3..<4 { #assert walk_speed_holds(true, ix, iy); }
@@ -1132,21 +1199,80 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
 
 // One look, turned and tilted by iy and ip, then 20 frames walking. Split by the turn's sign into
 // two checks (#13115): the 121 cases together came to 15,679,129 steps, 78% of the default 20,000,000.
-camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) {
-  p := walk_place(0, 0, 0, 0);
-  p = walk_input(p, 0, 1, 0, 0, true, false, f32(iy) * 0.9, f32(ip) * 0.9);
-  #assert p.cam.phi >= f32(PHI_MIN) && p.cam.phi <= f32(PHI_MAX);
-  #assert p.cam.theta >= -f32(PI) && p.cam.theta < f32(PI);
-  for i: 0..<20 {
+// What the look and the walk did: the camera's angles before and after the look and the turn and
+// tilt asked for, the frames run, those whose eye was a finite point and those whose eye stood
+// inside the orbit, and how the body ended.
+OrbitRun :: struct { from_theta: f32; from_phi: f32; dyaw: f32; dpitch: f32; theta: f32; phi: f32; frames: int; finite: int; framed: int; speed: f32; grounded: bool; }
+camera_orbit_run :: (iy: int, ip: int, count: int) -> OrbitRun #effects(all) {
+  r: OrbitRun;
+  start := walk_place(0, 0, 0, 0);
+  r.from_theta = start.cam.theta; r.from_phi = start.cam.phi;
+  r.dyaw = f32(iy) * 0.9; r.dpitch = f32(ip) * 0.9;
+  p := walk_input(start, 0, 1, 0, 0, true, false, r.dyaw, r.dpitch);
+  r.theta = p.cam.theta; r.phi = p.cam.phi;
+  for i: 0..<count {
     p = walk_advance(p, 0.02);
     eye := walk_eye(p); at := walk_at(p);
-    #assert finite(eye.x) && finite(eye.y) && finite(eye.z);
     ex := eye.x - at.x; ey := eye.y - at.y; ez := eye.z - at.z;
     d := sqrt(ex * ex + ey * ey + ez * ez);
-    #assert d >= f32(CAM_WALL_MIN) - 0.001 && d <= p.cam.max_dist + 0.001;
+    r.frames += 1;
+    if point_finite(eye) { r.finite += 1; }
+    if orbit_dist_holds(d, p.cam.max_dist) { r.framed += 1; }
   }
-  return true;
+  r.speed = flat_speed(p); r.grounded = p.body.on_ground;
+  return r;
 }
+point_finite :: (v: Vec3) -> bool #effects(all) { return finite(v.x) && finite(v.y) && finite(v.z); }
+orbit_look_holds :: (phi: f32, theta: f32) -> bool #effects(all) { return phi >= f32(PHI_MIN) && phi <= f32(PHI_MAX) && theta >= -f32(PI) && theta < f32(PI); }
+orbit_dist_holds :: (d: f32, most: f32) -> bool #effects(all) { return d >= f32(CAM_WALL_MIN) - 0.001 && d <= most + 0.001; }
+// The look turned the camera by the turn asked for and tilted it by the tilt asked for, as far as
+// the camera's limits allow; every frame's eye was a finite point in the orbit; and the body ended
+// running on the ground (a jump would still be in the air).
+// turn and tilt are the look this case set out to make: the run must have asked for exactly it.
+orbit_run_holds :: (r: OrbitRun, count: int, turn: f32, tilt: f32) -> bool #effects(all) {
+  if r.dyaw != turn || r.dpitch != tilt { return false; }
+  if r.frames != count || r.finite != count || r.framed != count { return false; }
+  if !orbit_look_holds(r.phi, r.theta) { return false; }
+  if !near(wrap_angle(r.theta - r.from_theta - r.dyaw), 0, 0.0001) { return false; }
+  if !near(r.phi, clamp(r.from_phi + r.dpitch, f32(PHI_MIN), f32(PHI_MAX)), 0.0001) { return false; }
+  return near(r.speed, f32(RUN), 0.001) && r.grounded;
+}
+#test "the orbit judges refuse each fault alone" {
+  zero: f32 = 0; nan := zero / zero;
+  #assert point_finite(Vec3.{x = 1, y = -2, z = 3});
+  #assert !point_finite(Vec3.{x = nan, y = 1, z = 1}) && !point_finite(Vec3.{x = 1, y = nan, z = 1}) && !point_finite(Vec3.{x = 1, y = 1, z = nan});
+  mid := (f32(PHI_MIN) + f32(PHI_MAX)) / 2;
+  #assert orbit_look_holds(mid, 0) && orbit_look_holds(f32(PHI_MIN), 0) && orbit_look_holds(f32(PHI_MAX), 0) && orbit_look_holds(mid, -f32(PI));
+  #assert !orbit_look_holds(f32(PHI_MIN) - 0.001, 0) && !orbit_look_holds(f32(PHI_MAX) + 0.001, 0);
+  #assert !orbit_look_holds(mid, f32(PI)) && !orbit_look_holds(mid, -f32(PI) - 0.001);
+  most: f32 = 4;
+  #assert orbit_dist_holds(f32(CAM_WALL_MIN) - 0.001, most) && orbit_dist_holds(most + 0.001, most);
+  #assert !orbit_dist_holds(f32(CAM_WALL_MIN) - 0.002, most) && !orbit_dist_holds(most + 0.002, most);
+  good := OrbitRun.{from_theta = 0.3, from_phi = mid - 0.25, dyaw = 0.5, dpitch = 0.25, theta = 0.8, phi = mid, frames = 20, finite = 20, framed = 20, speed = f32(RUN), grounded = true};
+  #assert orbit_run_holds(good, 20, 0.5, 0.25);
+  // A run that asked for another look than the case's is not the case's run.
+  #assert !orbit_run_holds(good, 20, 0.6, 0.25) && !orbit_run_holds(good, 20, 0.5, 0.3);
+  // A tilt past a limit stops at the limit, and a turn is judged round the circle.
+  stopped := good; stopped.dpitch = 9; stopped.phi = f32(PHI_MAX); #assert orbit_run_holds(stopped, 20, 0.5, stopped.dpitch);
+  stopped.dpitch = -9; #assert !orbit_run_holds(stopped, 20, 0.5, stopped.dpitch); stopped.phi = f32(PHI_MIN); #assert orbit_run_holds(stopped, 20, 0.5, stopped.dpitch);
+  round := good; round.from_theta = 3; round.dyaw = 1; round.theta = 4 - f32(TAU); #assert orbit_run_holds(round, 20, 1, 0.25);
+  bad := good; bad.frames = 19; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.frames = 21; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.finite = 19; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.framed = 19; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  // Outside the limits though it is the angle asked for: the limits are their own promise.
+  bad = good; bad.from_phi = f32(PHI_MAX); bad.dpitch = 0.01; bad.phi = f32(PHI_MAX) + 0.01; #assert !orbit_run_holds(bad, 20, 0.5, 0.01);
+  bad = good; bad.from_theta = f32(PI) - 0.5; bad.theta = f32(PI); #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.theta = 0.801; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.from_theta = 0.301; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.dyaw = 0.501; #assert !orbit_run_holds(bad, 20, 0.501, 0.25);
+  bad = good; bad.phi = mid - 0.001; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.from_phi = mid - 0.251; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.dpitch = 0.251; #assert !orbit_run_holds(bad, 20, 0.5, 0.251);
+  bad = good; bad.speed = f32(WALK); #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+  bad = good; bad.grounded = false; #assert !orbit_run_holds(bad, 20, 0.5, 0.25);
+}
+camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) { return orbit_run_holds(camera_orbit_run(iy, ip, 20), 20, f32(iy) * 0.9, f32(ip) * 0.9); }
 #forall "the camera stays in its orbit (1 of 2)" iy: -5..<0, ip: -5..<6 { #assert camera_orbit_holds(iy, ip); }
 #forall "the camera stays in its orbit (2 of 2)" iy: 0..<6, ip: -5..<6 { #assert camera_orbit_holds(iy, ip); }
 
@@ -2209,4 +2335,172 @@ advance_scaled_in :: (w:World,given:Player,frame:f32)->Player #effects(all) {
   q:=advance_scaled_in(w,p,f32(STEP)); #assert q.body.clock.ticks==1 && q.body.jumps.taken==1;
   w.collision.max_passes=0; q=advance_scaled_in(w,p,f32(STEP));
   #assert q.body.clock.ticks==1 && q.body.pos.z==p.body.pos.z && q.body.jumps.waiting==p.body.jumps.waiting && q.body.collision_refusals==1;
+}
+
+// ---- Source velocity ----
+// Scalar ground velocity path ported from installed UE 5.8 CharacterMovementComponent
+// CalcVelocity/ApplyVelocityBraking, in metres. Aethyr retains collision and its paid fixed steps.
+SourceVelocity :: struct {x:f32;z:f32;}
+#test "source velocity accelerates brakes turns and never reverses while stopping" {
+ a:=source_velocity(0,0,0,1,1,4.27,5,4,10,2,1.0/64.0);#assert a.x==0 && a.z==0.078125;
+ b:=source_velocity(0,4.27,0,0,0,4.27,5,4,10,2,1.0/64.0);#assert abs(b.z-3.58)<0.000001;
+ c:=source_velocity(1,0,0,1,1,4.27,5,4,10,2,1.0/64.0);#assert c.x==0.9375 && c.z==0.140625;
+ d:=source_velocity(0,0.15,0,0,0,4.27,5,4,10,2,1.0/64.0);#assert d.x==0 && d.z==0;
+ e:=source_velocity(0.2,0.3,0,0,0,4.27,0,0,0,2,1.0/64.0);#assert e.x==0.2 && e.z==0.3;
+ g:=source_velocity(1,0,0,1,1,4.27,5,128,10,2,1.0/64.0);#assert g.x==0 && g.z==1.078125;
+ f:=source_velocity(0,4.27,0,1,1,1.47,5,4,10,2,1.0/64.0);#assert abs(f.z-3.58)<0.000001;
+}
+#forall "source acceleration respects speed cap and braking approaches zero" angle:0..<8, count:1..<65 {
+ x:=sin(cast(f32)angle);z:=cos(cast(f32)angle);v:=SourceVelocity.{};
+ for k:0..<count {v=source_velocity(v.x,v.z,x,z,1,4.27,5,4,10,2,1.0/64.0);}#assert v.x*v.x+v.z*v.z<=4.27*4.27+0.00001;
+ before:=v.x*v.x+v.z*v.z;v=source_velocity(v.x,v.z,0,0,0,4.27,5,4,10,2,1.0/64.0);#assert v.x*v.x+v.z*v.z<=before;
+}
+#test "source strict comparisons retain equality unordered and signed boundaries" {
+ #assert source_gt(1,0) && !source_gt(0,0) && !source_gt(-1,0);
+ #assert source_lt(-1,0) && !source_lt(0,0) && !source_lt(1,0);
+ #assert source_le(-1,0) && source_le(0,0) && !source_le(1,0);
+ nan:=0.0f32/0.0f32;#assert !source_gt(nan,0) && !source_lt(nan,0) && !source_le(nan,0);
+}
+#test "source braking distinguishes overshoot tiny motion and the brake threshold" {
+ a:=source_velocity(0,0.15,0,0,0,4.27,0,0,100,0,1.0/64.0);#assert a.z==0;
+ b:=source_velocity(0,0.00001,0,0,0,4.27,0,0,0,0,1.0/64.0);#assert b.z==0;
+ c:=source_velocity(0,0.05,0,0,0,4.27,0,0,0,0,1.0/64.0);#assert c.z==0.05;
+ d:=source_velocity(0,0.05,0,0,0,4.27,0,0,0.000001,0,1.0/64.0);#assert d.z==0;
+ e:=source_velocity(0,0,0,0,0,4.27,0,0,0,0,1.0/64.0);#assert e.x==0 && e.z==0;
+ f:=source_velocity(0,1.5,0,1,1,1.47,5,4,10,2,1.0/64.0);#assert f.z==1.47;
+}
+source_gt :: (a:f32,b:f32)->bool #effects(all) {return a>b;}
+source_lt :: (a:f32,b:f32)->bool #effects(all) {return a<b;}
+source_le :: (a:f32,b:f32)->bool #effects(all) {return a<=b;}
+source_velocity :: (x:f32,z:f32,dx:f32,dz:f32,amount:f32,speed:f32,accel:f32,friction:f32,brake:f32,factor:f32,dt:f32)->SourceVelocity #effects(all) {
+ v:=SourceVelocity.{x=x,z=z};old:=v;old_size:=sqrt(x*x+z*z);maximum:=speed*amount;ax:=dx*accel*amount;az:=dz*accel*amount;zero:=ax==0 && az==0;over:=source_gt(old_size*old_size,maximum*maximum*1.01);
+ if zero || over {if source_gt(old_size,0) {v.x+=(0-friction*factor*v.x-brake*x/old_size)*dt;v.z+=(0-friction*factor*v.z-brake*z/old_size)*dt;
+  threshold:=ifx source_gt(brake,0) then 0.01f32 else 0.00000001f32;
+  if source_lt(v.x*x+v.z*z,0) || source_le(v.x*v.x+v.z*v.z,threshold) {v=SourceVelocity.{};}
+  if over && source_lt(v.x*v.x+v.z*v.z,maximum*maximum) && source_gt(ax*old.x+az*old.z,0) {v.x=x/old_size*maximum;v.z=z/old_size*maximum;}
+ }}else {share:=ifx source_gt(friction*dt,1) then 1.0f32 else friction*dt;v.x-=(v.x-dx*old_size)*share;v.z-=(v.z-dz*old_size)*share;}
+ if !zero {now:=sqrt(v.x*v.x+v.z*v.z);limit:=ifx source_gt(now*now,maximum*maximum*1.01) then now else maximum;v.x+=ax*dt;v.z+=az*dt;size:=sqrt(v.x*v.x+v.z*v.z);if source_gt(size,limit) {v.x=v.x/size*limit;v.z=v.z/size*limit;}}
+ return v;
+}
+
+// ---- Version 2 frame input ----
+// Version 2 frame-input adapter. Player and the original C controller API
+// retain their layout; pending controls belong to this explicit sidecar.
+WalkControlV2 :: struct {input:InputBuffer;heading:f32;have_heading:bool;}
+
+walk_control_feed :: (c:[]WalkControlV2,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,look_x:f32,look_y:f32) #effects(all) {
+  x:=input_axis(key_x);y:=input_axis(key_y);
+  px:=input_axis(pad_x);py:=input_axis(pad_y);pad:=Intent.{mended=px.mended+py.mended};
+  if input_finite(pad_x) && input_finite(pad_y) && sqrt(px.value*px.value+py.value*py.value)>INPUT_DEAD_ZONE {pad.move_x=px.value;pad.move_y=py.value;}
+  i:=Intent.{move_x=x.value,move_y=y.value,run=run,jump=jump,mended=x.mended+y.mended+pad.mended};
+  if pad.move_x!=0 || pad.move_y!=0 {i.move_x=pad.move_x;i.move_y=pad.move_y;}
+  i=input_amounts(i,look_x,look_y,0);c[0].input=input_feed(c[0].input,i);
+}
+// An absolute camera heading is a level, distinct from relative look
+// amounts. Keep the latest level until a physical step consumes it.
+walk_control_heading :: (c:[]WalkControlV2,p:Player,heading:f32) #effects(all) {
+  if !input_finite(heading) {c[0].input.mended+=1;return;}
+  c[0].heading=heading;c[0].have_heading=true;
+}
+walk_control_tap :: (c:[]WalkControlV2) #effects(all) {held:=c[0].input.jump.held;c[0].input.jump=input_press(c[0].input.jump);c[0].input.jump.held=held;}
+walk_control_flying :: (c:[]WalkControlV2,p:Player,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,taps:int,wings:bool,dive:bool)->Player #effects(all) {
+  before:=c[0].input.jump.pressed;
+  walk_control_feed(c,key_x,key_y,pad_x,pad_y,run,jump,0,0);
+  if taps>0 && c[0].input.jump.pressed==before {walk_control_tap(c);}
+  next:=p;next.body.wings=wings;next.body.dive_held=dive;return next;
+}
+walk_control_zoom :: (c:[]WalkControlV2,amount:f32) #effects(all) {
+  i:=input_amounts(Intent.{},0,0,amount);c[0].input.zoom+=i.zoom;c[0].input.mended+=i.mended;
+}
+walk_control_advance :: (c:[]WalkControlV2,w:World,p:Player,frame:f32)->AdvanceTrace #effects(all) {
+  schedule:=walk_schedule(p.body.clock,frame);out:=AdvanceTrace.{player=p};
+  if !schedule.ok {return advance_traced(w,p,frame);}
+  next:=p;next.body.clock=schedule.clock;c[0].input=input_frame(c[0].input,schedule.count);out.count=schedule.count;
+  for step:0..<schedule.count {
+    next=walk_control_once(c,w,next);out.targets[step]=walk_target(next);
+  }
+  next.body.clock=loop_ran(next.body.clock);out.player=next;return out;
+}
+walk_control_once :: (c:[]WalkControlV2,w:World,p:Player)->Player #effects(all) {
+  sample:=input_sample(c[0].input);c[0].input=sample.buffer;a:=sample.actions;next:=p;
+  if c[0].have_heading {next.cam.theta=c[0].heading;c[0].have_heading=false;}
+  next=walk_input(next,0,0,a.move_x,a.move_y,a.run,false,a.look_x,a.look_y);
+  if a.jump {next.body.jumps=input_press(next.body.jumps);}
+  next.body.jump_held=c[0].input.jump.held;next.body.jumps.held=next.body.jump_held;
+  next=walk_zoom(next,a.zoom);return history_step(w,next);
+}
+walk_control_realm :: (c:[]WalkControlV2,p:Player,frame:f32,bodies:[]f32,walls:[]f32,floors:[]f32,realm:string)->AdvanceTrace #effects(all) {
+  declaration:=realm_collision.collision_profile_lookup(realm);
+  if declaration.status!=realm_collision.CollisionProfileStatus.ok {return walk_advance_in_realm_traced(p,frame,bodies,walls,floors,realm);}
+  world:=World.{bodies=bodies,walls=walls,floors=floors,collision=declaration.profile,flight=flight_profile_lookup(realm)};
+  return walk_control_advance(c,world,p,frame);
+}
+
+#test "look and a short jump wait for the first physical step" {
+  c:[1]WalkControlV2;p:=walk_place(0,0,0,0);w:World;
+  walk_control_feed(c[..],0,1,0,0,true,true,0.3,0.1);
+  short:=walk_control_advance(c[..],w,p,0.001).player;
+  #assert short.cam.theta==p.cam.theta && short.cam.phi==p.cam.phi && short.body.jumps.taken==0 && c[0].input.jump.waiting==1;
+  walk_control_feed(c[..],0,1,0,0,true,false,0,0);
+  moved:=walk_control_advance(c[..],w,short,0.015).player;
+  #assert abs(wrap_angle(moved.cam.theta-p.cam.theta)-0.3)<0.000001;
+  #assert moved.body.jumps.taken==1 && moved.body.vel.y>0 && c[0].input.jump.waiting==0 && !moved.body.jumps.held && !moved.body.jump_held;
+}
+#test "three steps split look and zoom and agree with three individual samples" {
+  a:[1]WalkControlV2;b:[1]WalkControlV2;p:=walk_place(0,0,0,0);q:=p;w:World;
+  walk_control_feed(a[..],0,1,0,0,true,true,0.375,0);walk_control_zoom(a[..],-0.375);
+  trace:=walk_control_advance(a[..],w,p,3*STEP);p=trace.player;
+  #assert trace.count==3;
+  for i:0..<3 {
+    walk_control_feed(b[..],0,1,0,0,true,i==0,0.125,0);walk_control_zoom(b[..],-0.125);
+    q=walk_control_advance(b[..],w,q,STEP).player;
+    #assert trace.targets[i].feet.x==q.body.pos.x && trace.targets[i].feet.y==q.body.pos.y && trace.targets[i].feet.z==q.body.pos.z;
+  }
+  #assert p.body.pos.x==q.body.pos.x && p.body.pos.z==q.body.pos.z && p.body.vel.y==q.body.vel.y && p.cam.theta==q.cam.theta && p.cam.dist==q.cam.dist && p.cam.max_dist==q.cam.max_dist && p.cam.max_dist<CAM_MAX;
+  #assert p.body.jumps.taken==1 && q.body.jumps.taken==1 && a[0].input.look_x==0 && a[0].input.zoom==0;
+}
+#test "absolute heading levels replace across zero-step frames" {
+  c:[1]WalkControlV2;p:=walk_place(0,0,0,0);
+  walk_control_heading(c[..],p,p.cam.theta+0.2);walk_control_heading(c[..],p,p.cam.theta+0.3);
+  #assert c[0].input.look_x==0 && c[0].heading==p.cam.theta+0.3 && c[0].have_heading;
+  w:World;q:=walk_control_advance(c[..],w,p,STEP).player;
+  #assert q.cam.theta==wrap_angle(p.cam.theta+0.3) && !c[0].have_heading;
+}
+
+#test "flying taps retain their held level and invalid amounts are counted" {
+  c:[1]WalkControlV2;p:=walk_place(0,0,0,0);
+  p=walk_control_flying(c[..],p,0,1,0,0,true,false,1,true,true);
+  #assert c[0].input.jump.waiting==1 && !c[0].input.jump.held && p.body.wings && p.body.dive_held && c[0].input.move_y==1 && c[0].input.run;
+  p=walk_control_flying(c[..],p,0,1,0,0,true,true,1,false,false);
+  #assert c[0].input.jump.waiting==2 && c[0].input.jump.held && !p.body.wings && !p.body.dive_held;
+  p=walk_control_flying(c[..],p,0,1,0,0,true,true,1,true,false);
+  #assert c[0].input.jump.waiting==3;
+  p=walk_control_flying(c[..],p,0,1,0,0,true,true,0,true,false);#assert c[0].input.jump.waiting==3;
+  w:World;p=walk_control_advance(c[..],w,p,STEP).player;#assert p.body.jump_held && p.body.jumps.held;
+  released:[1]WalkControlV2;walk_control_tap(released[..]);#assert released[0].input.jump.waiting==1 && !released[0].input.jump.held;
+  bad:=1000000.0f32;walk_control_heading(c[..],p,bad);walk_control_zoom(c[..],bad);
+  #assert c[0].input.mended==2 && c[0].input.zoom==0 && !c[0].have_heading;
+}
+#test "realm and frame refusal leave the pending input owned by its next valid step" {
+  c:[1]WalkControlV2;p:=walk_place(0,0,0,0);empty:[1]f32;
+  walk_control_feed(c[..],0,1,0,0,true,true,0.2,0);
+  refused:=walk_control_realm(c[..],p,STEP,empty[0..<0],empty[0..<0],empty[0..<0],"unknown");
+  #assert refused.count==0 && c[0].input.jump.waiting==1 && c[0].input.look_x==0.2;
+  bad:=p;bad.body.clock.step_ns=1;w:World;
+  refused=walk_control_advance(c[..],w,bad,STEP);#assert refused.count==0 && c[0].input.jump.waiting==1;
+  admitted:=walk_control_realm(c[..],p,STEP,empty[0..<0],empty[0..<0],empty[0..<0],"garden");
+  #assert admitted.count==1 && admitted.player.body.jumps.taken==1 && c[0].input.jump.waiting==0;
+}
+#test "keys and stick share the exact dead zone and mended-axis rule" {
+  c:[1]WalkControlV2;
+  walk_control_feed(c[..],2,-2,0.2,0,false,false,0,0);
+  #assert c[0].input.move_x==1 && c[0].input.move_y==-1 && c[0].input.mended==2 && !c[0].input.run;
+  walk_control_feed(c[..],1,1,0.21,-0.4,true,false,0,0);
+  #assert c[0].input.move_x==0.21 && c[0].input.move_y==-0.4 && c[0].input.run;
+  walk_control_feed(c[..],1,1,0.4,0,false,false,0,0);#assert c[0].input.move_x==0.4 && c[0].input.move_y==0;
+  walk_control_feed(c[..],1,1,0,-0.4,false,false,0,0);#assert c[0].input.move_x==0 && c[0].input.move_y==-0.4;
+  bad:=1000000.0f32;
+  walk_control_feed(c[..],bad,0.5,bad,0.9,false,false,bad,bad);
+  #assert c[0].input.move_x==0 && c[0].input.move_y==0.5 && c[0].input.mended==6 && c[0].input.look_x==0 && c[0].input.look_y==0;
+  only_y:[1]WalkControlV2;walk_control_feed(only_y[..],0,0,0,bad,false,false,0,0);#assert only_y[0].input.mended==1;
 }

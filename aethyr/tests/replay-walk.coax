@@ -8,7 +8,7 @@
 #load "../core/loop.coax";
 #load "../core/rand.coax";
 #load "../move/player.coax";
-#load "../move/walk-control.coax" as controls;
+#load "../move/walk.coax" as controls;
 
 WALK_FRAMES :: 240;
 WALK_EVENTS :: 1024;

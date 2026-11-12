@@ -22,7 +22,6 @@
 #load "../../verse/deadgears/rules.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../aethyr/core/budget.coax";
-#load "../../aethyr/move/walk-control.coax" as controls;
 #load "../../aethyr/move/walk.coax" as pc;   // the controller every walkable realm shares (#6d99)
 #load "../../aethyr/physics/collision-profiles.coax" as walk_profiles;
 #load "../../aethyr/physics/collide.coax" as walk_capsule;
@@ -119,7 +118,7 @@ DeadGears :: struct {
   touch: bool; golden: bool; still: bool;
   card: bool;   // ?card=1: the hold without the HUD, for a link's card (coax/web/og-render.ts)
   feet: Point; yaw: f32; pitch: f32; walking: f32;
-  control:[1]controls.WalkControlV2;
+  control:[1]pc.WalkControlV2;
   pl: pc.Player;            // you, walked by aethyr/move/player.coax
   face: f32;                // the way you face: the crosshair with the cutter up, else the way you walk
   raised: f32;              // seconds the cutter stays up after a shot
@@ -738,7 +737,7 @@ aim :: (s: [] DeadGears) {
 stand_at :: (s: [] DeadGears, p: Point, yaw: f32) {
   g := game(s);
   s[0].yaw = yaw; s[0].face = yaw;
-  s[0].pl = pc.walk_place(p.x, p.y, p.z, yaw);s[0].control[0]=controls.WalkControlV2.{};
+  s[0].pl = pc.walk_place(p.x, p.y, p.z, yaw);s[0].control[0]=pc.WalkControlV2.{};
   s[0].feet = p;
   g.pos[me_slot(g)] = p; g.yaw[me_slot(g)] = yaw;
 }
@@ -810,17 +809,17 @@ walk :: (s: [] DeadGears, dt: f32) {
   jump := (h & HOLD_JUMP != 0 || s[0].jump_tap) && !cover && !dodging;
   s[0].jump_tap = false;
   if dodging {
-    controls.walk_control_feed(s[0].control[..], s[0].dodge_x, s[0].dodge_y, 0, 0, true, false, 0, 0);
+    pc.walk_control_feed(s[0].control[..], s[0].dodge_x, s[0].dodge_y, 0, 0, true, false, 0, 0);
   } else {
-    controls.walk_control_feed(s[0].control[..], hold_axis(h, HOLD_RIGHT, HOLD_LEFT), hold_axis(h, HOLD_FORWARD, HOLD_BACK),
+    pc.walk_control_feed(s[0].control[..], hold_axis(h, HOLD_RIGHT, HOLD_LEFT), hold_axis(h, HOLD_FORWARD, HOLD_BACK),
                                     s[0].pad_x, s[0].pad_y, run, jump, 0, 0);
   }
-  controls.walk_control_heading(s[0].control[..],s[0].pl,wrap_angle(s[0].yaw + f32(PI)));   // it walks by the camera
+  pc.walk_control_heading(s[0].control[..],s[0].pl,wrap_angle(s[0].yaw + f32(PI)));   // it walks by the camera
   s[0].pl.body.pace = ifx dodging then f32(DODGE_PACE) else ifx cover then f32(COVER_PACE) else 1.0f32;
   gather_world(s);
   from := s[0].feet;
   going := s[0].pl.body.vel;
-  s[0].pl = controls.walk_control_advance(s[0].control[..],the_world(s), s[0].pl, dt).player;
+  s[0].pl = pc.walk_control_advance(s[0].control[..],the_world(s), s[0].pl, dt).player;
   f := pc.walk_feet(s[0].pl);
   if finite(f.x) && finite(f.y) && finite(f.z) { s[0].feet = v3(f.x, f.y, f.z); }
   if raised(s) { s[0].pl.body.face = s[0].yaw; s[0].pl.body.prev_face = s[0].yaw; }

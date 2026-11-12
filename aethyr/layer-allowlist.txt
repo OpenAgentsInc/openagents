@@ -69,7 +69,7 @@ tests aethyr/host/media-notice-json.coax -> aethyr/host/tests/media-notice-json-
 tests aethyr/host/socket-context-conformance.coax -> aethyr/host/tests/socket-context-observations.coax
 tests aethyr/host/socket-tls-conformance.coax -> aethyr/host/tests/socket-tls-observations.coax
 tests aethyr/host/transport-conformance.coax -> aethyr/host/tests/transport-observations.coax
-tests aethyr/move/locomotion-source.coax -> aethyr/tests/locomotion-source-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/move/walk.coax -> aethyr/tests/locomotion-source-oracle.coax  # the velocity kernel folded into the walker with its oracle load; the load itself is as old (#13270)
 tests aethyr/core/math.coax -> aethyr/tests/math-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
 tests aethyr/world/nav/grid.coax -> aethyr/tests/nav-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
 tests aethyr/physics/query-scene.coax -> aethyr/tests/query-semantic-fixture.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)

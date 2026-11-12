@@ -1,7 +1,7 @@
 # 4. Input becomes typed actions
 
 > Engine-core task: `ec-input` (#12609). [input.coax](../core/input.coax)
-> defines typed actions. [walk-control.coax](../move/walk-control.coax) adds
+> defines typed actions. [walk.coax](../move/walk.coax)'s version 2 sidecar adds
 > `WalkControlV2`: frame input waits for physical steps, presses survive
 > zero-step frames, and relative look/zoom split across a frame's steps.
 > The versioned C adapter in [player.coax](../move/player.coax) is used by the
@@ -323,7 +323,7 @@ controls. It records a jump as a press with `input_level`:
 // it is counted here and taken by the first fixed step after it (aethyr/core/input.coax), so a
 // frame that runs no step keeps it and a frame that runs two jumps once. This v1
 // single-sample primitive applies look immediately. Frame-driven consumers use
-// walk-control.coax's versioned sidecar; the Grid samples before calling here.
+// the version 2 sidecar's (WalkControlV2, below); the Grid samples before calling here.
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #effects(all) {
   next := p;

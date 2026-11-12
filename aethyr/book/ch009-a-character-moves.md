@@ -108,7 +108,7 @@ The rest of the step runs in this order:
   if w.locomotion.source_velocity {
     ax:=p.key_x;az:=p.key_y;pad:=sqrt(p.pad_x*p.pad_x+p.pad_y*p.pad_y);if pad>f32(DEAD_ZONE) {ax=p.pad_x;az=p.pad_y;}
     amount:=lo(sqrt(ax*ax+az*az),1);control:=ifx p.on_ground then 1.0f32 else w.locomotion.source_air_control;
-    v:=source_motion.source_velocity(next.vel.x,next.vel.z,dir.x,dir.z,amount,speed,w.locomotion.acceleration*control,ifx p.on_ground then w.locomotion.source_friction else 0.0f32,ifx p.on_ground then w.locomotion.source_braking else 0.0f32,w.locomotion.source_braking_factor,dt);next.vel.x=v.x;next.vel.z=v.z;
+    v:=source_velocity(next.vel.x,next.vel.z,dir.x,dir.z,amount,speed,w.locomotion.acceleration*control,ifx p.on_ground then w.locomotion.source_friction else 0.0f32,ifx p.on_ground then w.locomotion.source_braking else 0.0f32,w.locomotion.source_braking_factor,dt);next.vel.x=v.x;next.vel.z=v.z;
   }else {
   // Horizontal velocity steps toward the wish at a fixed rate.
   dx := dir.x * speed - next.vel.x;
@@ -183,11 +183,7 @@ The rest of the step runs in this order:
   // Turn toward where you are going.
   if dir.on {
     want := atan2(dir.x, dir.z);
-    turn := wrap_angle(want - next.face);
-    // Half a circle either way is a tie, broken one way: anticlockwise. Otherwise a page and the room
-    // it plays in, a hair apart, turn opposite ways, and the room's correction spins you round.
-    if abs(turn) > f32(PI) - 0.05 { turn = abs(turn); }
-    next.face = wrap_angle(next.face + turn * lo(1, w.locomotion.turn_rate * dt));
+    next.face = wrap_angle(next.face + turn_toward(want, next.face) * lo(1, w.locomotion.turn_rate * dt));
   }
 
   if !next.on_ground { next.act = Act.airborne; }
