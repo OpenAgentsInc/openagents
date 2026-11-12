@@ -12,6 +12,7 @@ engine and the world/product layer it runs, made of realms.
 - [Registry of wire shapes](registry.json), checked by `coax/web/tool.sh wire-check`
   ([how to register a shape](#register-a-wire-shape))
 - [Compliance plan](../docs/protocol/2026-11-11-compliance-plan.md): which shapes move here, and in what order
+- [The OpenAgents Book](../openagents/book/README.md), which says why each record exists and which chapter sends it. Start with [chapter 49, one schema, three carriages](../openagents/book/ch049-one-schema-three-carriages.md), and [chapter 52, the compliance rule](../openagents/book/ch052-the-compliance-rule.md)
 
 The pre-reset spec is recovered and reconciled with the contracts that had
 already shipped. Its historical inventories do not mean the old apps/crates
