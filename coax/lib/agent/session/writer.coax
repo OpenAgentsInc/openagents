@@ -297,9 +297,7 @@ sw_live_line :: (l:[]SwLog,final:bool,out:[]u8)->string {
   if n<=l[0].live_sent {return "";}
   end:=ifx n-l[0].live_sent>8192 then l[0].live_sent+8192 else n;
   while end>l[0].live_sent && end<n && (clean[end] & 0xc0)==0x80 {end-=1;}
-  k:=json_raw(out,0,"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
-  k=json_write_int(out,k,l[0].live_segment);k=json_raw(out,k,",\"text\":");
-  k=json_write_string(out,k,cast(string)clean[l[0].live_sent..<end]);k=json_raw(out,k,"}\n");
+  k:=cst_reply_delta(out,l[0].live_segment,cast(string)clean[l[0].live_sent..<end]);k=json_raw(out,k,"\n");
   if k<0 {return "";}l[0].live_sent=end;return cast(string)out[0..<k];
 }
 sw_live_emit :: (l:[]SwLog,final:bool) {
@@ -313,8 +311,7 @@ sw_reply_flush :: (l: [] SwLog) {
   live:=l[0].live && l[0].json;
   if live {
     sw_live_emit(l,true);
-    o:=l[0].line[..];n:=json_raw(o,0,"{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
-    n=json_write_int(o,n,l[0].live_segment);n=json_raw(o,n,"}\n");
+    o:=l[0].line[..];n:=cst_reply_end(o,l[0].live_segment);n=json_raw(o,n,"\n");
     if n>0 {sw_emit(l,cast(string)o[0..<n]);}
     l[0].json=false;
   }
