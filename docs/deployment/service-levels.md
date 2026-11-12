@@ -55,6 +55,8 @@ passes each alert it sees open or resolve to the Foreman inbox and to
 | `fenced:N` | 3 or more checkpoints were fenced (stale owner) in 10 minutes | A character may be playing on two shards: check the directory's placement and the seat tickets' owners |
 | `unsaved:N` | A checkpoint has stayed unsaved for 30 s, so its player's encounter is held | Check the checkpoint store: oa-api's 5xx and the database; then the room's checkpoint retries |
 | `db-connections` | 80% or more of the database's connections are in use | Cloud SQL `openagents-production-pg`: find who holds the connections (`pg_stat_activity`); check oa-api's instances |
+| `crash:BUCKET` | A room's crash bucket got a report in the last hour ([crash reports](crash-reports.md), #13298) | Read the report and its stack at `/api/playtest/crashes`; roll back the room (`vm-deploy.sh rollback`) if a release did it |
+| `crash:page` | A page crash that no automated browser sent arrived in the last hour | Read the report and its stack at `/api/playtest/crashes` |
 | API 5xx (Cloud Monitoring) | oa-api answers 5xx more than 3 times a minute for 5 minutes | Read oa-api's log for the failing route; check the database and the last API deploy; roll back with `coax/web/api/deploy.sh` if a release did it |
 
 A silent shard raises its alert within about 105 s: 45 s of silence, plus at

@@ -288,6 +288,8 @@ const slotWas = (script && script.dataset.slotWas) || "";
 const root = (script && script.dataset.root) || "";
 const canvas = document.getElementById("coaxial");
 const dev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+// The crash test (coaxial.trapNextFrame, #13298): a real trap in the next frame, in development and on staging only.
+const crashTest = dev || location.hostname.startsWith("staging.");
 const probe = dev && new URLSearchParams(location.search).has("probe"); // tests: read the frame back
 // Agent mode (?agent, in development; coax drive opens every page so: docs/verse/agent-clock.md, #13096).
 // Simulation time moves only when the agent's clock steps it (coaxial.agent.step): the page draws
@@ -598,6 +600,7 @@ function wasiStub(module, name) {
       const p = v.getUint32(iovs + i * 8, true), len = v.getUint32(iovs + i * 8 + 4, true);
       text += new TextDecoder().decode(new Uint8Array(memory.buffer, p, len)); total += len;
     }
+    if (fd === 2 && text.trim()) lastStderr = { text: text.trimEnd().split("\n").pop(), at: performance.now() };   // a Coax trap prints PATH:LINE: WHAT, then stops (crashProps)
     v.setUint32(written, total, true); (fd === 2 ? console.error : console.log)(text.trimEnd()); return 0;
   };
   if (name === "proc_exit") return (code) => { throw new Error(`${app} exited (${code})`); };
@@ -992,11 +995,11 @@ addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reaso
 // or renderer that stopped (crash). One event in analytics.coax's batch shape, sent as a beacon to the
 // same ingest, in this tab's session ("c" and the tab id, as analytics.coax names it) under the realm's
 // page name (data-realm, else the app). The message only, no page data.
-function lifeBeacon(ev, msg) {
+function lifeBeacon(ev, msg, more = null) {
   if (location.protocol === "file:" || !navigator.sendBeacon) return;
   const [tab] = kept(sessionStorage, "coaxial.tab");
   if (!/^[0-9a-f]{8,64}$/.test(tab)) return;
-  const body = { sid: `c${tab}`, events: [{ ev, page: realmId || app, ct: Date.now(), p: { msg: String(msg || "").slice(0, 80), webgpu: !!navigator.gpu } }] };
+  const body = { sid: `c${tab}`, events: [{ ev, page: realmId || app, ct: Date.now(), p: { msg: String(msg || "").slice(0, 80), webgpu: !!navigator.gpu, ...(more || {}) } }] };
   if (navigator.webdriver) body.auto = "webdriver";
   try { navigator.sendBeacon("/api/analytics/events", new Blob([JSON.stringify(body)], { type: "text/plain" })); } catch {}
 }
@@ -3021,7 +3024,7 @@ function draw(now) {
   if (traceRow) {traceRow[5]=w;traceRow[6]=h;}
   let n = 0;
   frameStart();   // a rescue save put back, then this frame's start kept (a trap saves it)
-  const trap = dev && trapArmed;trapArmed = false;
+  const trap = crashTest && trapArmed;trapArmed = false;
   try {
     for (let k = 0; probeAt && !gpu.probed && k < probeAt * 10; k++)
       engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);
@@ -3368,21 +3371,55 @@ function frameStart() {
   frameHeld.set(new Uint8Array(memory.buffer, arena.state, size));
   heldAt = framesStarted;
 }
+// A trap's crash report (#13298, docs/deployment/crash-reports.md). The module ships without its
+// function names, so the stack names functions by index (wasm-function[123]); NAME.wasm.syms beside
+// the module (wasm.sh) has one "INDEX NAME" line a function. Only after a trap are the names fetched.
+// The `crash` event then carries the module's file (rel), the Coax trap's own line (trap: the last
+// line the engine wrote to stderr, when it wrote it just before) and the 8 innermost frames' names
+// (f0 to f7), which the API folds into a crash report (coax/web/api/service.c).
+let lastStderr = null;
+async function crashProps(e) {
+  const frames = [];
+  for (const line of String(e?.stack || "").split("\n")) {
+    const m = /wasm-function\[(\d+)\]/.exec(line);
+    if (!m) continue;
+    const named = /^\s*at (?:[\w$-]+\.)?([\w$]+) \(/.exec(line) || /^([\w$]+)@/.exec(line);   // a module that kept its names (development)
+    frames.push({ index: +m[1], name: named ? named[1] : "" });
+    if (frames.length >= 8) break;
+  }
+  const p = { rel: wasmUrl.split("/").pop().slice(0, 80) };
+  if (lastStderr && performance.now() - lastStderr.at < 2000) {
+    // the build's own folder goes: the path from the repository's root, the line and what
+    const at = /(?:^|\/)((?:apps|coax|aethyr|verse|everglade|components|pay|psionic|os|nostr|rules)\/[^:]+:\d+: .*)$/.exec(lastStderr.text);
+    p.trap = (at ? at[1] : lastStderr.text).slice(-80);
+  }
+  let names = null;
+  if (frames.length) try {
+    const r = await Promise.race([fetch(wasmUrl + ".syms"), new Promise((_, late) => setTimeout(late, 4000))]);
+    if (r.ok) {
+      names = new Map();
+      for (const l of (await r.text()).split("\n")) { const k = l.indexOf(" "); if (k > 0) names.set(+l.slice(0, k), l.slice(k + 1)); }
+    }
+  } catch {}
+  frames.forEach((f, i) => { p["f" + i] = (names?.get(f.index) || f.name || "#" + f.index).slice(0, 80); });
+  return p;
+}
 function trapped(e) {
   if (!engine) return;
   say(`${app} trapped: ${e.message}`, true);
   const again = restoredFrames >= 0 && restoredFrames < RESCUE_SETTLE;
   retireTransport();engine = null;globalThis.coaxial.ready = false;
   const bytes = again ? null : frameHeld?.slice() ?? null;
-  stopped(`THE WORLD STOPPED: ${e.message}`, bytes, again ? "START OVER" : "");
+  stopped(`THE WORLD STOPPED: ${e.message}`, bytes, again ? "START OVER" : "", crashProps(e));
   // checks: the saved state's digest, and how many frame starts before the trapping one it was held
   // (0: that frame's own start; a state over HOLD_BYTES is held every HOLD_EVERY-th frame)
   if (dev && bytes) { globalThis.coaxial.stopped.held = rescueIdentity(bytes); globalThis.coaxial.stopped.heldAge = framesStarted - heldAt; }
 }
 // The reload message: what stopped, and one action. With the state to save, the save goes first
 // and the reload puts it back; without, the realm starts over.
-function stopped(what, bytes, action = "") {
-  lifeBeacon("crash", what);
+function stopped(what, bytes, action = "", props = null) {
+  // a trap's event waits for its frames' names (crashProps, at most 4 s); any other stop goes at once
+  if (props) props.then((more) => lifeBeacon("crash", what, more), () => lifeBeacon("crash", what)); else lifeBeacon("crash", what);
   const saving = bytes && engineBytes && arena ? rescueIdentity(engineBytes).then((wasm) => wasm
     ? rescueWrite({ wasm, layout: arena.layout, size: bytes.length, bytes: bytes.buffer, at: Date.now() }) : false) : Promise.resolve(false);
   const told = globalThis.coaxial.stopped = { what, saved: null };
@@ -3569,10 +3606,11 @@ if (dev) {
   // Recovery checks (coax/web/gpu-recovery.coax): the state region's SHA-256, a real trap in the
   // next frame (its state pointer out of bounds), and a lost device.
   globalThis.coaxial.stateDigest = () => (engine && arena ? rescueIdentity(stateBytes()) : Promise.resolve(""));
-  globalThis.coaxial.trapNextFrame = () => { trapArmed = true;return !!engine; };
+  globalThis.coaxial.trapNextFrame = () => { trapArmed = true;return !!engine; };   // staging has it too (below)
   globalThis.coaxial.loseDevice = () => { gpu?.device.destroy();return !!gpu; };
   globalThis.coaxial.waitingWrites = () => waiting?.length ?? 0;
 }
+if (crashTest && !dev) globalThis.coaxial.trapNextFrame = () => { trapArmed = true;return !!engine; };   // staging's crash test (#13298): the next frame traps
 // The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
 globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };
 // A phone's browser turns the camera with the phone too, while the app asks (coaxial_gyro, aethyr/cam/gyro.coax):

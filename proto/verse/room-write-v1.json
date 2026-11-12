@@ -56,6 +56,15 @@
       "mac": "cc2bdbbcd6de9c6ad9e03233f9ae41569d9f4205ee694651f9f5e1ae9875a175"
     },
     {
+      "why": "shard 1's crash report (crash-report-v1.json)",
+      "key": "13754e49:a7ff8fecd7f41dbaedd66a1ee410c3e45f6cfe7083d506ece6673475d40cb887",
+      "purpose": "crash",
+      "shard": 1,
+      "body": "crash 1\nt 1762190000000\nsource room\nshard 1\nrelease ?\nbuild 0\nkind SIGSEGV\nat 0\nsig SIGSEGV|?\n",
+      "signer": "1 13754e49",
+      "mac": "2fb4112d97f974deb30ef437dc5ebc5f672f540ffb0bcb83ad0e65715544b055"
+    },
+    {
       "why": "shard 99's stats",
       "key": "13754e49:4dcc2811b5f08340746468f135f9c0713358259d9c80f7925149857f1d287447",
       "purpose": "stats",

@@ -4,6 +4,9 @@
 // moves the facts in and the answers out.
 //   POST /api/playtest/room-directory     a shard's report (coax/web/room/room-directory.coax), signed
 //                                         with the shard's write key or the seat-ticket key (room_write_signed, #13260)
+//   POST /api/playtest/room-crash         a shard's report of its last crash (coax/web/room/room-crash.coax,
+//                                         #13298), signed as its `crash` write; kept by bucket (service.c crash_keep)
+//   GET  /api/playtest/crashes            the crash buckets heard in 30 days, each with its newest report
 //   POST /api/playtest/room-stats         a shard's vitals every 10 s (coax/web/room/room-stats.h), signed
 //                                         alike, for the admins' room view (GET /api/admin/rooms, admin.c)
 //   GET  /api/playtest/room-shards        the shards: live, draining or down, each one's endpoint and
@@ -280,6 +283,39 @@ static void stats(const request *q, PGconn *db) {
   api_json(q->fd, 200, "{\"kept\":true}");
 }
 
+// A shard's crash report (#13298, docs/deployment/crash-reports.md): crash report v1, checked by its
+// codec and kept by bucket; the minute's service watch raises its alert.
+int crash_report_check_c(const char *body, size_t n);
+static void crash(const request *q, PGconn *db) {
+  int signer = signed_post(q, "crash");
+  if (signer < 0) return;
+  int shard = crash_report_check_c(q->body, q->body_len);
+  if (shard < 1) { api_json(q->fd, 400, "{\"error\":\"not a room's crash report\"}"); return; }
+  if (signer > 0 && shard != signer) { api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
+  char bucket[33], out[96];
+  if (!crash_keep(db, q->body, q->body_len, false, bucket)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  snprintf(out, sizeof out, "{\"kept\":true,\"bucket\":\"%s\"}", bucket);
+  api_json(q->fd, 200, out);
+}
+
+// GET /api/playtest/crashes: the crash buckets heard in 30 days and each one's newest report, for anyone
+// (verse.crash_list builds the list; the reports are the codec's text as kept).
+static void crashes(const request *q, PGconn *db) {
+  if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_json(q->fd, 405, "{\"error\":\"GET the crashes\"}"); return; }
+  char ns[24]; snprintf(ns, sizeof ns, "%lld", (long long)api_now_ms());
+  const char *v[1] = {ns};
+  PGresult *r = PQexecParams(db, "SELECT verse.crash_list($1::bigint)", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("crashes: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"no crashes\"}"); return; }
+  const char *o = getenv("OA_API_ORIGIN");
+  size_t n = strlen(PQgetvalue(r, 0, 0)) + 96;
+  char *out = malloc(n);
+  if (out) {
+    snprintf(out, n, "{\"env\":\"%s\",\"now_ms\":%s,\"buckets\":%s}", o && strstr(o, "staging") ? "staging" : "production", ns, PQgetvalue(r, 0, 0));
+    api_json(q->fd, 200, out); free(out);
+  } else api_json(q->fd, 503, "{\"error\":\"memory\"}");
+  PQclear(r);
+}
+
 // rest: the path after /api/playtest/. True when it was one of these routes (answered).
 // api --limits: the rooms' section of /docs/limits, after the character chat's (#13263).
 void rooms_print_limits(FILE *out) {
@@ -292,6 +328,8 @@ void rooms_print_limits(FILE *out) {
 bool rooms_route(const request *q, PGconn *db, const char *rest) {
   if (!strcmp(rest, "room-directory")) { report(q, db); return true; }
   if (!strcmp(rest, "room-stats")) { stats(q, db); return true; }
+  if (!strcmp(rest, "room-crash")) { crash(q, db); return true; }
+  if (!strcmp(rest, "crashes")) { crashes(q, db); return true; }
   if (!strcmp(rest, "room-shards")) { shard_list(q, db); return true; }
   if (!strncmp(rest, "rooms/", 6) && rest[6] && !strchr(rest + 6, '/')) { list(q, db, rest + 6); return true; }
   return false;

@@ -15,6 +15,8 @@ EnvironmentFile=/etc/oa-room/%i.env
 EnvironmentFile=-/etc/oa-room/%i-write.env
 ExecStart=/opt/oa-room/bin/%i
 DynamicUser=yes
+# where a crash leaves its dump for the next start to report (room-crash.c, #13298): /var/lib/oa-room/%i
+StateDirectory=oa-room/%i
 Restart=always
 RestartSec=1
 # SIGTERM: the room notes every seat and flushes its outbox, then exits (room-host.c DRAIN_MS, 8 s)

@@ -88,6 +88,7 @@ void realms_refresh_pages(void);   // realms.c: on start, made realms' pages wri
 bool jobs_route(const request *q);        // jobs.c: POST /api/jobs/<job>, Cloud Scheduler (OIDC) or an admin
 char *service_watch(PGconn *db, const char *day);   // service.c: the minute's alerts (service-policy.coax, #13297)
 bool service_route(const request *q);     // service.c: GET /api/playtest/service-health
+bool crash_keep(PGconn *db, const char *body, size_t n, bool automated, char bucket[33]);   // service.c: one crash report kept by bucket (#13298)
 bool email_route(const request *q);       // email.c: POST /api/admin/email, through Resend
 // Mail through Resend (email.c): 0 sent, 1 sent before under the same key, else an HTTP status with err.
 int email_send(PGconn *db, const char *message, char id[128], char *err, size_t errcap);

@@ -23,6 +23,7 @@
 //   GET  /api/playtest/health      a database round trip
 //   POST /api/analytics/events     a page's analytics batch (analytics.ingest in SQL)
 //   GET  /api/playtest/service-health  the service levels and open alerts (service.c, #13297)
+//   GET  /api/playtest/crashes         the crash buckets and each one's newest report (rooms.c, #13298)
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
 //   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)

@@ -73,7 +73,11 @@ all "${jobs[@]}"
 if [[ "${COAXIAL_MODE:-release}" != dev ]]; then
   wasm_opt="${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}"
   if [[ -n "$wasm_opt" ]]; then
-    "$wasm_opt" "$work/reader.wasm" -O2 -o "$work/optimized.wasm" && mv "$work/optimized.wasm" "$work/reader.wasm"
+    # -g, then the names out of the module into OUT.syms: the module is the bytes -O2 alone writes (wasm.sh, #13298)
+    "$wasm_opt" "$work/reader.wasm" -O2 -g -o "$work/optimized.wasm" && mv "$work/optimized.wasm" "$work/reader.wasm"
+    if (cd "$repo" && coax/web/tool.sh wasm-size symbols "$work/reader.wasm" "$work/shipped.wasm" "$work/reader.syms"); then
+      mv "$work/shipped.wasm" "$work/reader.wasm"; mv "$work/reader.syms" "$out.syms"
+    else rm -f "$work/shipped.wasm" "$work/reader.syms"; fi
   else
     echo "build-home.sh: no wasm-opt (brew install binaryen, or set COAXIAL_WASM_OPT): $(basename "$out") is larger" >&2
   fi

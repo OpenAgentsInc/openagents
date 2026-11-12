@@ -29,6 +29,7 @@
 #include "fast-edit-native.h"
 #endif
 #include "room-world.h"
+#include "room-crash.h"   /* crash capture: the handlers, the dump, the last crash at the next start (#13298) */
 #include "ws.h"
 #include "wt.h"
 #include <arpa/inet.h>
@@ -917,6 +918,22 @@ static void stats_window(double secs) {
   post_signed(POST_STATS,api_url("OA_ROOM_STATS_URL", "/api/playtest/room-stats", buf, sizeof buf), mac, (const uint8_t *)body, (int64_t)o.n);
 }
 
+/* The last process's crash (room-crash.c, #13298, docs/deployment/crash-reports.md): its dump and
+   addr2line's names become the report in Coax (room-crash.coax crash_room_report), signed as this
+   shard's `crash` write and posted to POST /api/playtest/room-crash on the stats lane, once. */
+static char crash_dump[32768], crash_names[16384];
+static size_t crash_dump_n, crash_names_n;
+static void crash_post(void) {
+  if (dev_dir || !crash_dump_n) return;
+  static uint8_t body[8192], mac[65];
+  coax_string r = crash_room_report((coax_string){crash_dump, (int64_t)crash_dump_n}, (coax_string){crash_names, (int64_t)crash_names_n}, (coax_v_u8){body, sizeof body});
+  if (r.count <= 0) { fprintf(stderr, "room: the last crash left a dump that is not one: no report\n"); return; }
+  printf("room: the last process crashed; its report:\n%.*s", (int)r.count, r.data);
+  if (!rm_crash_sign(view(), r, (coax_v_u8){mac, 64})) { fprintf(stderr, "room: no write key: the crash report is not posted\n"); return; }
+  char buf[512];
+  post_signed(POST_STATS, api_url("OA_ROOM_CRASH_URL", "/api/playtest/room-crash", buf, sizeof buf), mac, body, r.count);
+}
+
 /* The server's memory with every field at its declared default (coax_default_t_RmServer), then rm_init
    (room.coax): never the zeros calloc gives, which would read the level cap as 0 (#12774). */
 static coax_t_RmServer *server_new(void) {
@@ -955,6 +972,9 @@ int main(int argc, char **argv) {
   }
   const char *env = getenv("PORT");
   if (env && *env) { port = atoi(env); address = "0.0.0.0"; }
+  /* crash capture from here on, and the last process's crash read before SIGCHLD is ignored (#13298) */
+  { const char *sh = getenv("OA_ROOM_SHARD"); crash_install(sh && *sh ? atoi(sh) : 0); }
+  crash_dump_n = crash_pending(crash_dump, sizeof crash_dump, crash_names, sizeof crash_names, &crash_names_n);
 #ifdef COAX_FAST_EDIT_ENABLED
   const char *fast_directory=getenv("COAX_FAST_EDIT");
   if(!dev_dir||strcmp(address,"127.0.0.1")||!coax_fast_start(fast_directory)) {
@@ -1015,6 +1035,7 @@ int main(int argc, char **argv) {
     if (hmac || v5) printf("room: seat tickets checked (%s%s%s)%s\n", hmac ? "v2-v4" : "", hmac && v5 ? ", " : "", v5 ? "v5" : "", required ? ", required" : "");
     else printf("room: no OA_ROOM_TICKET_KEY or OA_ROOM_TICKET_PUBKEYS, seat tickets not checked\n");
   }
+  crash_post();   /* the last process's crash, now that this shard can sign it */
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
   int one = 1; setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   struct sockaddr_in a = {0};
@@ -1036,6 +1057,8 @@ int main(int argc, char **argv) {
     coax_fast_poll();
 #endif
     if (drain_phase > DRAIN_NONE && drain_phase < DRAIN_DONE && !term_asked) drain_step();
+    /* SIGUSR2 (vm-deploy.sh crash, root on the VM only): a Coax trap on purpose, to prove the crash path (#13298) */
+    if (crash_test_asked()) { printf("room: SIGUSR2: the crash test, a Coax trap on purpose\n"); (void)rm_crash_test(view(), 4 + (ticks & 3)); }
     /* SIGTERM: bounded final work only (Cloud Run kills at 10 s). A drained room has nothing left; one
        that wasn't drained tells its pages "restarting" (they sit elsewhere at once, not after a silent
        socket's wait), and every seat's vitals go out as the last step before exit. */
@@ -1099,7 +1122,7 @@ int main(int argc, char **argv) {
       int64_t t_tick = now_us();
       /* each realm steps when its profile says (room.coax rm_profile: 0 the games on their own paths, room-games.coax; 1 Everglade) */
       if (rm_realm_due(view(), 0, ticks)) rm_tick(view());
-      if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; }
+      if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; crash_tick(wall_ms(), dt, rm_players(view())); }
       for (int i = 0; i < CONNS; i++) {
         if (conns[i].fd < 0 || !conns[i].ws || conns[i].wt) continue;
         int64_t len = rm_state(view(), i);

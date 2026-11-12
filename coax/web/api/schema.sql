@@ -11307,6 +11307,89 @@ $$;
 
 
 --
+-- Name: crash_add(bigint, bigint, text, integer, text, text, text, boolean, text); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.crash_add(now_ms bigint, at_ms_ bigint, source_ text, shard_ integer, release_ text, build_ text, sig_ text, auto_ boolean, body_ text) RETURNS text
+    LANGUAGE sql
+    AS $$
+  INSERT INTO verse.crash_buckets (bucket, source, sig, first_ms, last_ms)
+  VALUES (md5(source_ || ' ' || sig_), source_, sig_, now_ms, now_ms)
+  ON CONFLICT (bucket) DO NOTHING;
+  WITH kept AS (
+    INSERT INTO verse.crash_reports (bucket, kept_ms, at_ms, source, shard, release, build, auto, body)
+    VALUES (md5(source_ || ' ' || sig_), now_ms, at_ms_, source_, shard_, coalesce(release_, ''), coalesce(build_, ''), auto_, body_)
+    ON CONFLICT (md5(body)) DO NOTHING RETURNING bucket
+  )
+  UPDATE verse.crash_buckets k SET last_ms = now_ms, reports = k.reports + 1,
+    live_ms = CASE WHEN auto_ THEN k.live_ms ELSE now_ms END
+  FROM kept WHERE k.bucket = kept.bucket;
+  DELETE FROM verse.crash_reports r WHERE r.bucket = md5(source_ || ' ' || sig_)
+    AND r.id NOT IN (SELECT x.id FROM verse.crash_reports x WHERE x.bucket = md5(source_ || ' ' || sig_) ORDER BY x.id DESC LIMIT 20);
+  DELETE FROM verse.crash_buckets k WHERE k.last_ms < now_ms - 90::bigint * 86400000;
+  SELECT md5(source_ || ' ' || sig_);
+$$;
+
+
+--
+-- Name: crash_facts(bigint, bigint); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.crash_facts(now_ms bigint, window_ms bigint) RETURNS TABLE(bucket text, source text, sig text, age_ms bigint, shard integer, release text, buckets integer)
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT k.bucket, k.source, k.sig, greatest(now_ms - k.last_ms, 0), n.shard, coalesce(n.release, ''), 1
+  FROM verse.crash_buckets k
+  LEFT JOIN LATERAL (SELECT r.shard, r.release FROM verse.crash_reports r WHERE r.bucket = k.bucket ORDER BY r.id DESC LIMIT 1) n ON true
+  WHERE k.source = 'room' AND k.last_ms > now_ms - window_ms
+  UNION ALL
+  SELECT '', 'page', coalesce((SELECT k.sig FROM verse.crash_buckets k WHERE k.source = 'page' AND k.live_ms IS NOT NULL ORDER BY k.live_ms DESC LIMIT 1), ''),
+         (SELECT CASE WHEN max(k.live_ms) IS NULL THEN -1 ELSE greatest(now_ms - max(k.live_ms), 0) END FROM verse.crash_buckets k WHERE k.source = 'page'), NULL, '',
+         (SELECT count(*) FROM verse.crash_buckets k WHERE k.source = 'page' AND k.live_ms > now_ms - window_ms)::int
+  ORDER BY 2 DESC, 1 $$;
+
+
+--
+-- Name: crash_list(bigint); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.crash_list(now_ms bigint) RETURNS jsonb
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.last_ms DESC, x.bucket), '[]'::jsonb) FROM (
+    SELECT k.bucket, k.source, k.sig, k.first_ms, k.last_ms, k.reports, n.shard, n.release, n.build, n.body AS newest
+    FROM verse.crash_buckets k
+    LEFT JOIN LATERAL (SELECT r.shard, r.release, r.build, r.body FROM verse.crash_reports r WHERE r.bucket = k.bucket ORDER BY r.id DESC LIMIT 1) n ON true
+    WHERE k.last_ms > now_ms - 30::bigint * 86400000
+    ORDER BY k.last_ms DESC LIMIT 50) x $$;
+
+
+--
+-- Name: crash_page_take(integer); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.crash_page_take(most integer) RETURNS TABLE(o_ms bigint, o_page text, o_auto boolean, o_rel text, o_msg text, o_trap text, o_frames text)
+    LANGUAGE sql
+    AS $$
+  INSERT INTO verse.crash_cursor (one, event_id) SELECT true, coalesce(max(e.id), 0) FROM analytics.events e
+  ON CONFLICT (one) DO NOTHING;
+  WITH c AS (
+    SELECT k.event_id AS from_id, coalesce((SELECT max(e.id) FROM analytics.events e), k.event_id) AS upto FROM verse.crash_cursor k
+  ), took AS (
+    SELECT e.id, e.ms, e.page, e.auto, e.p FROM analytics.events e, c
+    WHERE e.id > c.from_id AND e.id <= c.upto AND e.ev = 'crash' AND (e.p->>'f0' IS NOT NULL OR e.p->>'trap' IS NOT NULL)
+    ORDER BY e.id LIMIT most
+  ), moved AS (
+    UPDATE verse.crash_cursor k SET event_id = CASE WHEN (SELECT count(*) FROM took) >= most THEN (SELECT max(t.id) FROM took t) ELSE (SELECT c.upto FROM c) END
+    RETURNING 1
+  )
+  SELECT t.ms, t.page, t.auto IS NOT NULL AND t.auto <> 'team', coalesce(t.p->>'rel', ''), coalesce(t.p->>'msg', ''), coalesce(t.p->>'trap', ''),
+         concat_ws(E'\n', t.p->>'f0', t.p->>'f1', t.p->>'f2', t.p->>'f3', t.p->>'f4', t.p->>'f5', t.p->>'f6', t.p->>'f7')
+  FROM took t, (SELECT count(*) FROM moved) m ORDER BY t.id;
+$$;
+
+
+--
 -- Name: edit_decide(text, bigint, boolean, text, boolean); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -21256,6 +21339,70 @@ CREATE TABLE verse.courses (
 
 
 --
+-- Name: crash_buckets; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.crash_buckets (
+    bucket text NOT NULL,
+    source text NOT NULL,
+    sig text NOT NULL,
+    first_ms bigint NOT NULL,
+    last_ms bigint NOT NULL,
+    live_ms bigint,
+    reports bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT crash_buckets_source_check CHECK ((source = ANY (ARRAY['room'::text, 'page'::text])))
+);
+
+
+--
+-- Name: crash_cursor; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.crash_cursor (
+    one boolean DEFAULT true NOT NULL,
+    event_id bigint NOT NULL,
+    CONSTRAINT crash_cursor_one_check CHECK (one)
+);
+
+
+--
+-- Name: crash_reports; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.crash_reports (
+    id bigint NOT NULL,
+    bucket text NOT NULL,
+    kept_ms bigint NOT NULL,
+    at_ms bigint NOT NULL,
+    source text NOT NULL,
+    shard integer,
+    release text DEFAULT ''::text NOT NULL,
+    build text DEFAULT ''::text NOT NULL,
+    auto boolean DEFAULT false NOT NULL,
+    body text NOT NULL
+);
+
+
+--
+-- Name: crash_reports_id_seq; Type: SEQUENCE; Schema: verse; Owner: -
+--
+
+CREATE SEQUENCE verse.crash_reports_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: crash_reports_id_seq; Type: SEQUENCE OWNED BY; Schema: verse; Owner: -
+--
+
+ALTER SEQUENCE verse.crash_reports_id_seq OWNED BY verse.crash_reports.id;
+
+
+--
 -- Name: demo_files; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -22660,6 +22807,13 @@ ALTER TABLE ONLY projects.turns ALTER COLUMN id SET DEFAULT nextval('projects.tu
 
 
 --
+-- Name: crash_reports id; Type: DEFAULT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.crash_reports ALTER COLUMN id SET DEFAULT nextval('verse.crash_reports_id_seq'::regclass);
+
+
+--
 -- Name: inbox id; Type: DEFAULT; Schema: verse; Owner: -
 --
 
@@ -23847,6 +24001,30 @@ ALTER TABLE ONLY verse.courses
 
 
 --
+-- Name: crash_buckets crash_buckets_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.crash_buckets
+    ADD CONSTRAINT crash_buckets_pkey PRIMARY KEY (bucket);
+
+
+--
+-- Name: crash_cursor crash_cursor_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.crash_cursor
+    ADD CONSTRAINT crash_cursor_pkey PRIMARY KEY (one);
+
+
+--
+-- Name: crash_reports crash_reports_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.crash_reports
+    ADD CONSTRAINT crash_reports_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: demo_files demo_files_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -24938,6 +25116,27 @@ CREATE INDEX courses_owner ON verse.courses USING btree (owner, made_ms);
 
 
 --
+-- Name: crash_buckets_last; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX crash_buckets_last ON verse.crash_buckets USING btree (last_ms);
+
+
+--
+-- Name: crash_reports_bucket; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX crash_reports_bucket ON verse.crash_reports USING btree (bucket, id);
+
+
+--
+-- Name: crash_reports_once; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE UNIQUE INDEX crash_reports_once ON verse.crash_reports USING btree (md5(body));
+
+
+--
 -- Name: inbox_from; Type: INDEX; Schema: verse; Owner: -
 --
 
@@ -25852,6 +26051,14 @@ ALTER TABLE ONLY verse.course_times
 
 ALTER TABLE ONLY verse.courses
     ADD CONSTRAINT courses_owner_fkey FOREIGN KEY (owner) REFERENCES verse.players(id);
+
+
+--
+-- Name: crash_reports crash_reports_bucket_fkey; Type: FK CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.crash_reports
+    ADD CONSTRAINT crash_reports_bucket_fkey FOREIGN KEY (bucket) REFERENCES verse.crash_buckets(bucket) ON DELETE CASCADE;
 
 
 --

@@ -528,8 +528,23 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
       optw: [1] Wk; wk_s(optw[..], work); wk_s(optw[..], "/optimized.wasm");
       // Keep the qualified Mac optimization; Linux's LLVM output needs O3
       // to fit the same byte budget. Both artifacts retain their tick gate.
-      wo := [5] string.[wasm_opt, wk_text(outw[..]), ifx tool_os()==TOOL_LINUX then "-O3" else "-O2", "-o", wk_text(optw[..])];
-      if wk_run(wo[..], "", env, nb[..]) >= 0 { ok := fs_rename(wk_text(optw[..]), wk_text(outw[..])); }
+      // -g keeps the function names through the optimizer; the symbols step then moves them out of the
+      // module into OUT.syms, so the module is the bytes the optimizer writes without -g (wasm.sh, #13298)
+      wo := [6] string.[wasm_opt, wk_text(outw[..]), ifx tool_os()==TOOL_LINUX then "-O3" else "-O2", "-g", "-o", wk_text(optw[..])];
+      if wk_run(wo[..], "", env, nb[..]) >= 0 {
+        ok := fs_rename(wk_text(optw[..]), wk_text(outw[..]));
+        shipw: [1] Wk; wk_s(shipw[..], work); wk_s(shipw[..], "/shipped.wasm");
+        symw: [1] Wk; wk_s(symw[..], work); wk_s(symw[..], "/names.syms");
+        outs: [1] Wk; wk_s(outs[..], out); wk_s(outs[..], ".syms");
+        sy := [6] string.["coax/web/tool.sh", "wasm-size", "symbols", wk_text(outw[..]), wk_text(shipw[..]), wk_text(symw[..])];
+        if wk_run(sy[..], root, env, nb[..]) >= 0 {
+          ok = fs_rename(wk_text(shipw[..]), wk_text(outw[..]));
+          if !fs_rename(wk_text(symw[..]), wk_text(outs[..])) {
+            n := fs_read(wk_text(symw[..]), buf[..]);
+            if n > 0 && n < buf.count { ok = fs_write(wk_text(outs[..]), cast(string) buf[0..<n]); }
+          }
+        }
+      }
     }
     // its budget line (apps/openagents-web/wasm-budgets.txt everglade-room)
     bn := fs_base(out); bn = ifx bn.count > 5 && bn[bn.count - 5..<bn.count] == ".wasm" then bn[0..<bn.count - 5] else bn;

@@ -220,6 +220,7 @@ context coax/web/api/coax_probe.coax -> coax/lib/nostr/json.coax  # seeded (#133
 context coax/web/api/mesh-policy.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context coax/web/api/ticket-sign.coax -> aethyr/session/seat-class.coax  # seeded (#13317)
 context coax/web/api/ticket-sign.coax -> aethyr/session/seat-ticket.coax  # seeded (#13317)
+context coax/web/api/ticket-sign.coax -> coax/web/room/room-crash.coax  # the API checks, builds and reads crash report v1 through its one codec, as it does room writes (#13298)
 context coax/web/api/ticket-sign.coax -> coax/web/room/room-write.coax  # seeded (#13317)
 context coax/web/compat/character-checkpoint.coax -> aethyr/session/character-checkpoint.coax  # seeded (#13317)
 context coax/web/map-points.coax -> aethyr/world/points.coax  # seeded (#13317)

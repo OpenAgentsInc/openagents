@@ -2,9 +2,9 @@
 // writer: v5, #13260, and v2 to v4, #13248) as one unit of the API. It loads Coax libraries that nip98.generated.c,
 // progress-policy.generated.c and others load too (bytes, SHA-256, secp256k1, the resume payload),
 // and those export their procedures: the same names twice in one binary. Here every export of this
-// unit but its own (seat_ticket_*, room_write_*) gets a name of its own. A library export added later fails the
+// unit but its own (seat_ticket_*, room_write_*, crash_*) gets a name of its own. A library export added later fails the
 // link loudly; regenerate this list:
-//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_\|^room_write_'
+//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_\|^room_write_\|^crash_'
 #define cb_ct_equal stk_x_cb_ct_equal
 #define cb_ct_select32 stk_x_cb_ct_select32
 #define cb_ct_select64 stk_x_cb_ct_select64
@@ -179,4 +179,28 @@ size_t stk_class_ext_c(const char *klass, int xp, int start, char *out, size_t c
 int stk_room_write_c(const char *masters, const char *signer, const char *purpose, const char *body, size_t n, const char *mac) {
   if (!body || n > 32768) return 0;
   return (int)room_write_check(stk_text(masters), stk_text(signer), stk_text(purpose), (coax_string){body, (int64_t)n}, stk_text(mac));
+}
+// Crash report v1 (coax/web/room/room-crash.coax, #13298), for rooms.c and service.c. These move bytes only.
+int crash_report_check_c(const char *body, size_t n);
+size_t crash_report_field_c(const char *body, size_t n, const char *key, char *out, size_t cap);
+size_t crash_page_report_c(long long t, const char *page, const char *release, const char *msg, const char *trap, const char *frames, char *out, size_t cap);
+// A room's shard (1 to 99), 0 for a page's report, -1 when body is not a v1 report.
+int crash_report_check_c(const char *body, size_t n) {
+  if (!body || n > 8192) return -1;
+  return (int)crash_report_check((coax_string){body, (int64_t)n});
+}
+// The value of the report's first KEY line into out (NUL-terminated), its length; 0 when there is none.
+size_t crash_report_field_c(const char *body, size_t n, const char *key, char *out, size_t cap) {
+  if (!body || cap < 2) return 0;
+  coax_string v = crash_report_field((coax_string){body, (int64_t)n}, stk_text(key), (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  out[v.count > 0 ? v.count : 0] = 0;
+  return v.count > 0 ? (size_t)v.count : 0;
+}
+// A page's report from its crash event into out (cap at least 8193), its length; 0 when it could not be written.
+size_t crash_page_report_c(long long t, const char *page, const char *release, const char *msg, const char *trap, const char *frames, char *out, size_t cap) {
+  if (cap < 8193) return 0;
+  coax_string r = crash_page_report(t, stk_text(page), stk_text(release), stk_text(msg), stk_text(trap), stk_text(frames), (coax_v_u8){(uint8_t *)out, 8192});
+  if (r.count <= 0 || r.count > 8192) { out[0] = 0; return 0; }
+  out[r.count] = 0;
+  return (size_t)r.count;
 }

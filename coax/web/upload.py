@@ -17,7 +17,8 @@ auth = {"Authorization": "Bearer " + token}
 types = {".wasm": "application/wasm", ".wgsl": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8",
          ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".jpg": "image/jpeg",
          ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
-         ".sh": "text/plain; charset=utf-8", ".ps1": "text/plain; charset=utf-8"}
+         ".sh": "text/plain; charset=utf-8", ".ps1": "text/plain; charset=utf-8",
+         ".syms": "text/plain; charset=utf-8"}   # a module's function names (wasm.sh, #13298)
 
 def call(url, method="GET", body=None, headers={}):
     # A large body gets longer (30 s plus 1 s per 256 KB), and a timeout, a dropped connection or a
@@ -58,7 +59,7 @@ def object_name(name, site=False):
 # bucket for a client that doesn't: the homepage's seed parts (deploy.sh, mostly JSON text) and the
 # engines, shaders and host script (Everglade's page: 2.03 MB, 0.82 MB gzipped). Their names still
 # name their content, uncompressed, and they stay cached for good.
-def zipped(name): return (name.startswith("build/home-seed/") and name.endswith(".txt")) or name.endswith((".wasm", ".wgsl", ".js"))
+def zipped(name): return (name.startswith("build/home-seed/") and name.endswith(".txt")) or name.endswith((".wasm", ".wgsl", ".js", ".syms"))
 
 def put(name, path, cache, site=False):
     data = open(path, "rb").read()

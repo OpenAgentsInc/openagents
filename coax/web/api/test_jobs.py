@@ -147,3 +147,66 @@ s, b = job("/api/jobs/service-watch", "good.token")
 check("service-watch: a drained shard's silence is no alert", s == 200 and "silent:97" not in [a["key"] for a in b["result"]["sync"]["opened"]], (s, b))
 sql("DELETE FROM verse.room_shards WHERE shard = 97; DELETE FROM verse.room_minutes WHERE shard = 97")
 job("/api/jobs/service-watch", "good.token")
+
+# Crash reports (#13298, docs/deployment/crash-reports.md): a shard posts its report signed as its
+# `crash` write, the watch folds a page's crash event into one, each lands in a bucket by its
+# signature, and the watch raises the alerts (service-policy.coax): one a room bucket, one for the pages.
+import hashlib as _hashlib, hmac as _hmac
+
+_master = bytes.fromhex(os.environ.get("OA_ROOM_WRITE_MASTER", "03" * 32))
+_kid = _hmac.new(_master, b"oa-room-write-kid-v1", _hashlib.sha256).hexdigest()[:8]
+
+
+def crash_post(shard, body, purpose="crash", signer=None):
+    key = _hmac.new(_master, ("oa-room-shard-key-v1\n%d" % shard).encode(), _hashlib.sha256).digest()
+    mac = _hmac.new(key, ("oa-room-write-v1\n%s\n%d\n%s\n" % (purpose, shard, _kid)).encode() + body.encode(), _hashlib.sha256).hexdigest()
+    s, b, _ = call("POST", "/api/playtest/room-crash", body.encode(), {"X-Room-Mac": mac, "X-Room-Signer": "%d %s" % (signer or shard, _kid), "Content-Type": "text/plain"})
+    return s, (json.loads(b) if b.startswith(b"{") else b)
+
+
+sql("DELETE FROM verse.crash_buckets")
+room_crash = ("crash 1\nt %d\nsource room\nshard 97\nrelease test-release\nbuild 5f0c2a9e\nkind SIGABRT\nat 0\n"
+              "trap coax/web/room/room.coax:412: index out of bounds\nf rm_crash_test coax/web/room/room-stats.coax:160\nf main +0x1c0de\n"
+              "tick %d 420 2\nsig SIGABRT|rm_crash_test|main\n") % (now_ms, now_ms - 16)
+s, b = crash_post(97, room_crash)
+room_bucket = _hashlib.md5(b"room SIGABRT|rm_crash_test|main").hexdigest()
+check("room-crash: a shard's signed report is kept in the bucket of its signature", s == 200 and b == {"kept": True, "bucket": room_bucket}, (s, b))
+check("room-crash: the same report again is kept once", crash_post(97, room_crash)[0] == 200
+      and sql("SELECT reports FROM verse.crash_buckets WHERE bucket = '%s'" % room_bucket) == "1")
+check("room-crash: signed as another purpose it is refused", crash_post(97, room_crash, purpose="stats")[0] == 401)
+check("room-crash: another shard's report is refused", crash_post(96, room_crash)[0] == 403)
+check("room-crash: a page's report from a shard is refused", crash_post(97, "crash 1\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n")[0] == 400)
+check("room-crash: a body that is no report is refused", crash_post(97, "shard=97\n")[0] == 400)
+check("room-crash: unsigned it is refused", call("POST", "/api/playtest/room-crash", room_crash.encode())[0] == 401)
+s, b = job("/api/jobs/service-watch", "good.token")
+opened = {a["key"]: a for a in b.get("result", {}).get("sync", {}).get("opened", [])} if s == 200 else {}
+check("service-watch: a room's crash bucket opens its alert, with the signature, the release and the runbook line",
+      opened.get("crash:" + room_bucket[:8], {}).get("title") == "shard 97: a room crashed: SIGABRT|rm_crash_test|main (release test-release)"
+      and "/api/playtest/crashes" in opened["crash:" + room_bucket[:8]].get("todo", "") and "crash:page" not in opened, (s, b))
+# a page's trap: host.js sends the trap's line and the frames it resolved from the module's symbols
+ev = lambda sid, extra: {"sid": sid, "events": [{"ev": "crash", "page": "everglade2", "ct": 1, "p": dict({
+    "msg": "THE WORLD STOPPED: unreachable", "rel": "everglade2.9c2aa0c8e19b.wasm", "trap": "apps/openagents-web/everglade2.coax:88: index out of bounds",
+    "f0": "abort", "f1": "coax_trap", "f2": "page_crash_test", "f3": "frame"}, **extra)}]}
+call("POST", "/api/analytics/events", json.dumps(dict(ev("ccrashauto0001", {}), auto="webdriver")).encode(), {"Content-Type": "text/plain"})
+call("POST", "/api/analytics/events", json.dumps({"sid": "ccrashplain001", "events": [{"ev": "crash", "page": "everglade2", "ct": 1, "p": {"msg": "RENDERER STOPPED: lost", "trap": None}}]}).encode(), {"Content-Type": "text/plain"})
+s, b = job("/api/jobs/service-watch", "good.token")
+page_bucket = _hashlib.md5(b"page trap|page_crash_test|frame").hexdigest()
+check("service-watch: a page's crash event with frames becomes a report in its bucket; one with none does not",
+      sql("SELECT source || ' ' || sig || ' ' || reports FROM verse.crash_buckets WHERE source = 'page'") == "page trap|page_crash_test|frame 1", sql("SELECT sig FROM verse.crash_buckets"))
+check("service-watch: an automated browser's page crash opens no alert", s == 200 and "crash:page" not in [a["key"] for a in b["result"]["sync"]["opened"]], (s, b))
+call("POST", "/api/analytics/events", json.dumps(ev("ccrashhuman001", {"msg": "THE WORLD STOPPED: unreachable (again)"})).encode(),
+     {"Content-Type": "text/plain", "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"})
+s, b = job("/api/jobs/service-watch", "good.token")
+opened = {a["key"]: a for a in b.get("result", {}).get("sync", {}).get("opened", [])} if s == 200 else {}
+check("service-watch: a person's page crash opens the pages' one alert",
+      opened.get("crash:page", {}).get("title") == "a page crashed: trap|page_crash_test|frame (1 bucket in the last hour)", (s, b))
+s, b, _ = call("GET", "/api/playtest/crashes")
+got = {k["bucket"]: k for k in json.loads(b).get("buckets", [])} if s == 200 else {}
+check("crashes: the buckets, each with its newest report, for anyone",
+      got.get(room_bucket, {}).get("newest") == room_crash and got[room_bucket]["shard"] == 97 and got[room_bucket]["build"] == "5f0c2a9e"
+      and got.get(page_bucket, {}).get("reports") == 2 and "f page_crash_test\n" in got[page_bucket]["newest"], b)
+sql("UPDATE verse.crash_buckets SET last_ms = last_ms - 3600000, live_ms = live_ms - 3600000")
+s, b = job("/api/jobs/service-watch", "good.token")
+resolved = sorted(a["key"] for a in b.get("result", {}).get("sync", {}).get("resolved", [])) if s == 200 else []
+check("service-watch: an hour after the newest report the crash alerts resolve", resolved == sorted(["crash:" + room_bucket[:8], "crash:page"]), (s, b))
+sql("DELETE FROM verse.crash_buckets")

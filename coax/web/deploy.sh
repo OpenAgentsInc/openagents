@@ -66,6 +66,9 @@ def put(src, rel):
     for root in (assets, site):
         os.makedirs(os.path.dirname(os.path.join(root, named)), exist_ok=True)
         shutil.copy(src, os.path.join(root, named))
+        # a module's function names ship beside it under its content's name (wasm.sh, #13298): host.js
+        # asks for the module's URL + ".syms" only after a trap (docs/deployment/crash-reports.md)
+        if rel.endswith(".wasm") and os.path.exists(src + ".syms"): shutil.copy(src + ".syms", os.path.join(root, named + ".syms"))
     return "/" + named
 host_url = put(host, "coaxial/host.js")
 os.makedirs(site, exist_ok=True)
@@ -220,6 +223,9 @@ fi
 t=$(now)
 python3 -I "$here/upload.py" "$stage" "$bucket" "$(gcloud auth print-access-token)"
 lap upload "$t"
+# Each release's function names are kept apart from the site (the site keeps only this release's
+# files), so a crash from an older page still resolves (symbols.sh, #13298). Never stops a release.
+t=$(now); "$here/symbols.sh" pages "$stage/site" || echo "deploy: this release's symbols were not kept (a report here)" >&2; lap symbols "$t"
 
 if $server; then
   t=$(now)

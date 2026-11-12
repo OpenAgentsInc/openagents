@@ -17,6 +17,9 @@
 //   fenced           3 or more checkpoints refused for a newer owner in 10 minutes
 //   unsaved          a checkpoint unsaved for 30 s: the room holds that player's encounter (CF_BOUND)
 //   db-connections   80% of the database's connections in use
+//   crash            a room's crash bucket, for an hour after its newest report; the pages' crashes
+//                    share one, open while a report no automated browser sent came in the last hour
+//                    (#13298, docs/deployment/crash-reports.md)
 #authority;
 
 SV_TICK :: 0; SV_JOIN :: 1; SV_CHECKPOINT :: 2;
@@ -33,6 +36,10 @@ SV_SLOW_P95_US :: 10000; SV_SLOW_REPORTS :: 2;
 SV_FENCED_MOST :: 3;
 SV_UNSAVED_MS :: 30000;
 SV_DB_PERCENT :: 80;
+// Crashes (#13298): a bucket alerts for an hour after its newest report. A room signs its report, so
+// each room bucket has its own alert; anyone can post a page's event, so the pages share one.
+SV_CRASH_MS :: 3600000;
+SV_CRASH_ROOM :: 0; SV_CRASH_PAGE :: 1;
 // The windows the facts are counted over, in ms: slow ticks and unsaved age, failures, fencing.
 SV_W_SLOW :: 0; SV_W_FAILURES :: 1; SV_W_FENCED :: 2;
 
@@ -102,6 +109,13 @@ SV_W_SLOW :: 0; SV_W_FAILURES :: 1; SV_W_FENCED :: 2;
   #assert sv_db_text() == "80% or more of the database's connections in use";
   #assert sv_db_do() == "Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances";
   #assert sv_alert_bits() == 5;
+}
+#test "a crash alerts for an hour after its newest report; none heard is no alert" {
+  #assert sv_crash_alert(0) && sv_crash_alert(3599999) && !sv_crash_alert(3600000) && !sv_crash_alert(-1);
+  #assert sv_crash_window() == 3600000;
+  #assert sv_crash_text(SV_CRASH_ROOM) == "a room crashed" && sv_crash_text(SV_CRASH_PAGE) == "a page crashed";
+  #assert sv_crash_text(2) == "" && sv_crash_text(-1) == "";
+  #assert sv_crash_do() == "the report and its stack: GET /api/playtest/crashes (docs/deployment/crash-reports.md)";
 }
 
 sv_target :: (which: int) -> int #export_c #effects(all) {
@@ -192,3 +206,13 @@ sv_alert_do :: (bit: int) -> string #export_c #effects(all) {
 }
 sv_db_text :: () -> string #export_c #effects(all) { return "80% or more of the database's connections in use"; }
 sv_db_do :: () -> string #export_c #effects(all) { return "Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances"; }
+// Whether a crash bucket alerts: age_ms since its newest report (the pages': since the newest one a
+// person's browser sent), -1 when there is none.
+sv_crash_alert :: (age_ms: int) -> bool #export_c #effects(all) { return age_ms >= 0 && age_ms < SV_CRASH_MS; }
+sv_crash_window :: () -> int #export_c #effects(all) { return SV_CRASH_MS; }
+sv_crash_text :: (source: int) -> string #export_c #effects(all) {
+  if source == SV_CRASH_ROOM { return "a room crashed"; }
+  if source == SV_CRASH_PAGE { return "a page crashed"; }
+  return "";
+}
+sv_crash_do :: () -> string #export_c #effects(all) { return "the report and its stack: GET /api/playtest/crashes (docs/deployment/crash-reports.md)"; }

@@ -17,6 +17,11 @@
 //     the module's sections by size and its N biggest functions (default 25),
 //     by name when the module has a name section: what wasm.sh prints when a
 //     module is over its budget (apps/openagents-web/wasm-budgets.txt).
+//   coax/web/tool.sh wasm-size symbols IN.wasm OUT.wasm OUT.syms
+//     splits a module's function names from the bytes that ship (#13298, docs/deployment/crash-reports.md):
+//     OUT.wasm is IN.wasm without its "name" custom section (the bytes wasm-opt writes without -g),
+//     and OUT.syms has one "INDEX NAME" line a function. host.js fetches the .syms only after a trap,
+//     to turn the stack's wasm-function[INDEX] into names. Exit 1 when IN.wasm has no names.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
@@ -374,6 +379,83 @@ ws_report :: (a: [] Args) -> int {
   return 0;
 }
 
+// A module without its "name" custom section into out (its length), and the function names as
+// "INDEX NAME" lines into syms (sn[0] their length). -1 when m is not a module or something doesn't fit.
+ws_split :: (m: string, out: [] u8, syms: [] u8, sn: [] int) -> int {
+  sn[0] = 0;
+  if m.count < 8 || m[0] != 0 || m[1..<4] != "asm" || out.count < m.count { return -1; }
+  for i: 0..<8 { out[i] = m[i]; }
+  on := 8; at: [1] int; at[0] = 8; d: [24] u8;
+  while at[0] < m.count {
+    from := at[0];
+    id := cast(int) m[at[0]]; at[0] += 1;
+    slen := ws_leb(m, at[..]);
+    if slen < 0 || at[0] + slen > m.count { return -1; }
+    end := at[0] + slen;
+    p: [1] int; p[0] = at[0];
+    named := false;
+    if id == 0 {
+      nl := ws_leb(m, p[..]);
+      named = nl == 4 && p[0] + 4 <= end && m[p[0]..<p[0] + 4] == "name";
+      p[0] += 4;
+    }
+    if !named {
+      for i: from..<end { out[on + i - from] = m[i]; }
+      on += end - from;
+    }
+    while named && p[0] < end {
+      sub := cast(int) m[p[0]]; p[0] += 1;
+      sl := ws_leb(m, p[..]); se := p[0] + sl;
+      if sl < 0 || se > end { return -1; }
+      if sub == 1 {
+        count := ws_leb(m, p[..]);
+        for k: 0..<count {
+          idx := ws_leb(m, p[..]); l := ws_leb(m, p[..]);
+          if idx < 0 || l < 0 || p[0] + l > se { return -1; }
+          num := ws_num(idx, d[..]);
+          if sn[0] + num.count + l + 2 > syms.count { return -1; }
+          for i: 0..<num.count { syms[sn[0] + i] = num[i]; }
+          sn[0] += num.count; syms[sn[0]] = ' '; sn[0] += 1;
+          for i: 0..<l { c := m[p[0] + i]; syms[sn[0] + i] = ifx c == '\n' then cast(u8) ' ' else c; }
+          sn[0] += l; syms[sn[0]] = '\n'; sn[0] += 1;
+          p[0] += l;
+        }
+      }
+      p[0] = se;
+    }
+    at[0] = end;
+  }
+  return on;
+}
+#test "symbols: the name section leaves the module and its function names become lines" {
+  // a header, a type section (id 1, empty vector), the name section (functions 0 "f" and 7 "go"), a custom "x"
+  m := [35] u8.[0, 0x61, 0x73, 0x6d, 1, 0, 0, 0,  1, 1, 0,
+                0, 19, 4, 0x6e, 0x61, 0x6d, 0x65,  0, 2, 1, 0x6d,  1, 8, 2, 0, 1, 0x66, 7, 2, 0x67, 0x6f,
+                0, 2, 1];
+  full: [36] u8; for i: 0..<35 { full[i] = m[i]; } full[35] = 0x78;
+  out: [64] u8; syms: [64] u8; sn: [1] int;
+  n := ws_split(cast(string) full[..], out[..], syms[..], sn[..]);
+  #assert n == 15 && cast(string) syms[0..<sn[0]] == "0 f\n7 go\n";
+  #assert cast(string) out[0..<11] == cast(string) full[0..<11] && cast(string) out[11..<15] == cast(string) full[32..<36];
+  #assert ws_split(cast(string) full[0..<20], out[..], syms[..], sn[..]) == -1;        // a section past the end
+  #assert ws_split(cast(string) full[..], out[0..<35], syms[..], sn[..]) == -1 && ws_split("", out[..], syms[..], sn[..]) == -1;
+  #assert ws_split(cast(string) full[..], out[..], syms[0..<6], sn[..]) == -1;
+  n = ws_split(cast(string) full[0..<11], out[..], syms[..], sn[..]);
+  #assert n == 11 && sn[0] == 0;                                                      // no names: the same bytes
+}
+ws_symbols :: (a: [] Args) -> int {
+  m: [WS_FILE] u8; out: [WS_FILE] u8; syms: [WS_FILE / 4] u8; sn: [1] int;
+  mn := fs_read(args_at(a, 1), m[..]);
+  if mn < 8 { tool_err("wasm-size: can't read the module "); tool_errln(args_at(a, 1)); return 2; }
+  n := ws_split(cast(string) m[0..<mn], out[..], syms[..], sn[..]);
+  if n < 0 { tool_err("wasm-size: not a wasm module, or its names don't fit: "); tool_errln(args_at(a, 1)); return 2; }
+  if sn[0] == 0 { tool_err("wasm-size: no function names in "); tool_errln(args_at(a, 1)); return 1; }
+  if !fs_write(args_at(a, 2), cast(string) out[0..<n]) || !fs_write(args_at(a, 3), cast(string) syms[0..<sn[0]]) {
+    tool_errln("wasm-size: can't write the module or its symbols"); return 2;
+  }
+  return 0;
+}
+
 // ---- size budgets (apps/openagents-web/wasm-budgets.txt) --------------------
 
 // n in decimal, into out.
@@ -557,6 +639,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if ok && verb == "report" && args_count(a[..]) >= 2 { return ws_report(a[..]); }
   if ok && verb == "budgets" && args_count(a[..]) >= 3 { return ws_budgets(a[..]); }
   if ok && verb == "budget" && args_count(a[..]) == 4 { return ws_budget(a[..]); }
-  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size exports UNIT.coax... | wasm-size report FILE.wasm [N] | wasm-size budgets BUDGETS SCRIPT... | wasm-size budget BUDGETS NAME FILE.wasm");
+  if ok && verb == "symbols" && args_count(a[..]) == 4 { return ws_symbols(a[..]); }
+  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size exports UNIT.coax... | wasm-size report FILE.wasm [N] | wasm-size budgets BUDGETS SCRIPT... | wasm-size budget BUDGETS NAME FILE.wasm | wasm-size symbols IN.wasm OUT.wasm OUT.syms");
   return 2;
 }

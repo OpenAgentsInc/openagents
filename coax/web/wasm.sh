@@ -570,7 +570,7 @@ object_files=(); for o in "${objects[@]}"; do object_files+=("$work/$o.o"); done
 wasm_opt=""; [[ "$mode" == dev ]] || wasm_opt="${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}"
 module_key=""
 if [[ -n "$cache" ]]; then
-  module_key="$({ printf '%s\n' coax-wasm-module-1 "$flags_sum" "${link[@]}" "$mode" "$wasm_opt"
+  module_key="$({ printf '%s\n' coax-wasm-module-2 "$flags_sum" "${link[@]}" "$mode" "$wasm_opt"
     for o in "${objects[@]}"; do k="$(< "$work/$o.okey")"; [[ -n "$k" ]] || exit 1; printf '%s\n' "$k"; done
     tool_id wasm-ld; [[ -z "$wasm_opt" ]] || tool_id "$wasm_opt"
     for d in "$sysroot" "$resources"; do realpath "$d"; find "$(realpath "$d")" -type l -exec realpath {} + 2> /dev/null || true; done | sort
@@ -582,6 +582,7 @@ if [[ -n "$module_key" ]] && ! from_cache "$cache/$module_key.wasm" "$work/outpu
   if once "$cache/$module_key.wasm"; then module_held=1; fi   # else another run linked it meanwhile
 fi
 if [[ -n "$module_key" ]] && (( ! module_held )) && from_cache "$cache/$module_key.wasm" "$work/output.wasm"; then
+  from_cache "$cache/$module_key.syms" "$work/output.syms" || true   # its function names (a dev module keeps them inside)
   step module link "$( (( fetched )) && echo shared || echo hit)" "$began"
 else
   # Linked without -O, so clang doesn't run a wasm-opt of its own choosing (a
@@ -591,12 +592,19 @@ else
   if [[ "$mode" != dev ]]; then
     if [[ -n "$wasm_opt" ]]; then
       began="$(now)"
-      "$wasm_opt" "$work/output.wasm" -O2 -o "$work/optimized.wasm" && mv "$work/optimized.wasm" "$work/output.wasm"
+      # Symbols (#13298, docs/deployment/crash-reports.md): -g keeps the function names through the
+      # optimizer, and the symbols step moves them out of the module into NAME.wasm.syms. The module
+      # that ships is the bytes -O2 alone writes, so no budget moves; host.js fetches the names only
+      # after a trap, to name the stack's functions.
+      "$wasm_opt" "$work/output.wasm" -O2 -g -o "$work/optimized.wasm" && mv "$work/optimized.wasm" "$work/output.wasm"
+      if (cd "$repo" && "$repo/coax/web/tool.sh" wasm-size symbols "$work/output.wasm" "$work/shipped.wasm" "$work/output.syms"); then mv "$work/shipped.wasm" "$work/output.wasm"
+      else rm -f "$work/output.syms" "$work/shipped.wasm"; echo "wasm.sh: $(basename "$out"): no symbols file (the module keeps what names it has)" >&2; fi
       step module wasm_opt off "$began"
     else
       echo "wasm.sh: no wasm-opt (brew install binaryen, or set COAXIAL_WASM_OPT): $(basename "$out") is about 6% larger" >&2
     fi
   fi
+  [[ -z "$module_key" || ! -s "$work/output.syms" ]] || { keep "$work/output.syms" "$cache/$module_key.syms"; share "$cache/$module_key.syms" || true; }   # before the module, so a host that finds the module finds its names
   [[ -z "$module_key" ]] || { keep "$work/output.wasm" "$cache/$module_key.wasm"; compiled "$cache/$module_key.wasm" > /dev/null; }
   (( ! module_held )) || done_once "$cache/$module_key.wasm"
 fi
@@ -646,4 +654,6 @@ if [[ "$mode" != dev && -z "${COAX_FAST_EDIT:-}" ]]; then
     } > "$work_root/$module.built.$$" && mv -f "$work_root/$module.built.$$" "$work_root/$module.built"
   fi
 fi
+# the module's function names beside it (NAME.wasm.syms); a dev module has none apart
+if [[ -s "$work/output.syms" ]]; then mv "$work/output.syms" "$out.syms"; else rm -f "$out.syms"; fi
 mv "$work/output.wasm" "$out"   # the server never serves a half-written module

@@ -1,5 +1,5 @@
 // Room writes v1 (#13260, docs/protocol/room-write-v1.md): what a room shard posts to the API (vitals,
-// checkpoints, items, directory, stats, control, moderation) and what a deploy asks of a shard (drain), signed with
+// checkpoints, items, directory, stats, control, moderation, a crash report) and what a deploy asks of a shard (drain), signed with
 // that shard's own key, so one shard's key writes for that shard only.
 //
 // The API holds a write master (one, or two while it rotates). Shard S's key is
@@ -53,7 +53,7 @@ rw_key32 :: (text: string, out: [] u8) -> bool #effects(all) {
   return r.error == NC_OK && r.written == 32 && out.count == 32;
 }
 rw_purpose_ok :: (p: string) -> bool #effects(all) {
-  return p == "vitals" || p == "checkpoint" || p == "items" || p == "directory" || p == "stats" || p == "control" || p == "drain" || p == "moderation";
+  return p == "vitals" || p == "checkpoint" || p == "items" || p == "directory" || p == "stats" || p == "control" || p == "drain" || p == "moderation" || p == "crash";
 }
 // HMAC-SHA256 of input under key into out (32 bytes). It can't fail for its callers (a 32-byte key and out,
 // input within SHA-256's limit, buffers apart); were it to, out is zeros, which no check takes.
@@ -223,7 +223,7 @@ rw_test_mac :: (key_text: string, purpose: string, shard: int, body: string, out
   f[0] = 'G'; #assert !rw_key(cast(string) f[0..<73]).ok; f[0] = key[0];
   f[72] = 'A'; #assert !rw_key(cast(string) f[0..<73]).ok;
   #assert rw_purpose_ok("vitals") && rw_purpose_ok("checkpoint") && rw_purpose_ok("items") && rw_purpose_ok("directory");
-  #assert rw_purpose_ok("stats") && rw_purpose_ok("control") && rw_purpose_ok("drain") && rw_purpose_ok("moderation") && !rw_purpose_ok("") && !rw_purpose_ok("Vitals");
+  #assert rw_purpose_ok("stats") && rw_purpose_ok("control") && rw_purpose_ok("drain") && rw_purpose_ok("moderation") && rw_purpose_ok("crash") && !rw_purpose_ok("") && !rw_purpose_ok("Vitals");
   #assert rw_lower_hex("09af") && !rw_lower_hex("/") && !rw_lower_hex(":") && !rw_lower_hex("`") && !rw_lower_hex("g") && !rw_lower_hex("A");
 }
 #test "room write: the MAC refuses bad keys, shards and lengths" {
@@ -248,6 +248,7 @@ rw_test_mac :: (key_text: string, purpose: string, shard: int, body: string, out
   m := rw_masters(RW_TEST_MASTER2); #assert cast(string) m.kid[0][..] == "1a9d0517";
   #assert rw_test_mac(room_write_key_text(RW_TEST_MASTER, 2, b[..]), "drain", 2, "drain 2 1762190000000 300", mb[..]) == "f17c20ba310929485fea335889459bcc447732a11668a555fdb44b32738dffbf";
   #assert rw_test_mac(room_write_key_text(RW_TEST_MASTER, 99, b[..]), "stats", 99, "t 1762190000000\nshard=99\n", mb[..]) == "3742d670b554c5f898d8e477fe4658e1b33e0d81c296f9a5953bc6a3e6496a1c";
+  #assert rw_test_mac(room_write_key_text(RW_TEST_MASTER, 1, b[..]), "crash", 1, "crash 1\nt 1762190000000\nsource room\nshard 1\nrelease ?\nbuild 0\nkind SIGSEGV\nat 0\nsig SIGSEGV|?\n", mb[..]) == "2fb4112d97f974deb30ef437dc5ebc5f672f540ffb0bcb83ad0e65715544b055";   // a crash report (#13298)
   #assert room_write_check(RW_TEST_MASTER, "2 13754e49", "drain", "drain 2 1762190000000 300", "f17c20ba310929485fea335889459bcc447732a11668a555fdb44b32738dffbf") == 2;
   // the MAC's first digit, and an id no master has (signed by a master's shard key all the same)
   f: [64] u8; mac := "f17c20ba310929485fea335889459bcc447732a11668a555fdb44b32738dffbf"; for i: 0..<64 { f[i] = mac[i]; } f[0] = ifx f[0] == '0' then '1' else '0';

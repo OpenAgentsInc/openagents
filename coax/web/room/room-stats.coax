@@ -154,6 +154,36 @@ rm_st_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c #effe
 }
 ST_BODY :: 14000;   // the host's report at most (its poster's config holds 16 KB)
 
+// A crash report's X-Room-Mac (#13298, room-crash.coax): this shard's own report only, signed as its
+// `crash` write (64 hex into out); false without a key or for a body that is not this shard's report.
+rm_crash_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c #effects(all) {
+  if !rm_writes(v) || out.count < 64 || crash_report_check(body) != v[0].shard { return false; }
+  return rm_write_mac(v, "crash", body, out);
+}
+// The crash test (room-host.c on SIGUSR2, vm-deploy.sh crash): reads past the end of an array, which
+// traps, so the crash path is proved by a Coax trap with a Coax stack. i is 4 or more.
+rm_crash_test :: (v: [] RmServer, i: int) -> int #export_c #effects(all) {
+  probe: [4] int;
+  probe[0] = v[0].shard;
+  return probe[i];
+}
+#test "crash: this shard signs its own crash report as a crash write, and no other body (#13298)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  kb: [80] u8; key := room_write_key_text(RW_TEST_MASTER, 3, kb[..]); mac: [64] u8; sb: [16] u8;
+  mine := "crash 1\nt 1\nsource room\nshard 3\nrelease ?\nbuild 0\nkind SIGSEGV\nat 0\nsig SIGSEGV|?\n";
+  #assert !rm_crash_sign(v[..], mine, mac[..]);                       // no key yet
+  rm_shard(v[..], 3);
+  #assert rm_write_key(v[..], key) && rm_crash_sign(v[..], mine, mac[..]);
+  signer := rm_write_signer(v[..], sb[..]);
+  #assert room_write_check(RW_TEST_MASTER, signer, "crash", mine, cast(string) mac[..]) == 3;
+  #assert room_write_check(RW_TEST_MASTER, signer, "stats", mine, cast(string) mac[..]) == 0;
+  #assert !rm_crash_sign(v[..], mine, mac[0..<63]);
+  #assert !rm_crash_sign(v[..], "crash 1\nt 1\nsource room\nshard 4\nrelease ?\nbuild 0\nkind SIGSEGV\nat 0\nsig SIGSEGV|?\n", mac[..]);   // another shard's
+  #assert !rm_crash_sign(v[..], "crash 1\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n", mac[..]) && !rm_crash_sign(v[..], "shard=3\n", mac[..]);
+  #assert rm_crash_test(v[..], 0) == 3;
+}
+
 #test "stats: interest gauges preserve the actual pick categories and name the worst live placed seat (#12840)" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-interest-stats",2,false);out:[15]int;
   im:=v[0].eg[k].im[..];

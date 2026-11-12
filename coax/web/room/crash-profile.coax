@@ -1,0 +1,54 @@
+// Crash report v1's fixtures (#13298, coax/web/room/room-crash.coax, docs/deployment/crash-reports.md):
+//   coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v1.json
+// Every room's dump and names make the file's report through the codec, every page's event makes its
+// report, each report checks as its source, shard and signature, and every refused body is refused.
+#import "Basic";
+#load "room-crash.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/json/json.coax";
+
+CP_FILE :: 65536;
+
+cp_text :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(d, jv_get(d, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: crash-profile proto/verse/crash-report-v1.json"); return 2; }
+  text: [CP_FILE] u8; n := fs_read(args_at(a[..], 0), text[..]);
+  nodes: [2048] JvNode; d: [1] Jv;
+  if n < 1 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("crash-profile: not JSON"); return 2; }
+  pb: [64] u8;
+  if cp_text(d[0], 0, "profile", pb[..]) != "openagents.crash-report" || jv_int(d[0], jv_get(d[0], 0, "version"), -1) != 1 { tool_errln("crash-profile: not the v1 profile"); return 1; }
+  failed := 0;
+  rooms := jv_get(d[0], 0, "rooms");
+  for i: 0..<jv_len(d[0], rooms) {
+    row := jv_at(d[0], rooms, i); tb: [4][CR_BODY] u8; o: [CR_BODY] u8; f: [256] u8;
+    want := cp_text(d[0], row, "report", tb[2][..]);
+    got := crash_room_report(cp_text(d[0], row, "dump", tb[0][..]), cp_text(d[0], row, "names", tb[1][..]), o[..]);
+    ok := got == want && want != "" && crash_report_check(want) == jv_int(d[0], jv_get(d[0], row, "shard"), -1);
+    ok = ok && crash_report_field(want, "sig", f[..]) == cp_text(d[0], row, "sig", tb[3][..]) && crash_report_field(want, "source", f[..]) == "room";
+    if !ok { tool_err("crash-profile: a room's report is not the file's: "); tool_errln(cp_text(d[0], row, "why", tb[0][..])); failed += 1; }
+  }
+  pages := jv_get(d[0], 0, "pages");
+  for i: 0..<jv_len(d[0], pages) {
+    row := jv_at(d[0], pages, i); tb: [6][CR_BODY] u8; o: [CR_BODY] u8; f: [256] u8;
+    want := cp_text(d[0], row, "report", tb[5][..]);
+    got := crash_page_report(jv_int(d[0], jv_get(d[0], row, "t"), -1), cp_text(d[0], row, "page", tb[0][..]), cp_text(d[0], row, "release", tb[1][..]),
+                             cp_text(d[0], row, "msg", tb[2][..]), cp_text(d[0], row, "trap", tb[3][..]), cp_text(d[0], row, "frames", tb[4][..]), o[..]);
+    ok := got == want && want != "" && crash_report_check(want) == 0;
+    ok = ok && crash_report_field(want, "sig", f[..]) == cp_text(d[0], row, "sig", tb[0][..]) && crash_report_field(want, "source", f[..]) == "page";
+    if !ok { tool_err("crash-profile: a page's report is not the file's: "); tool_errln(cp_text(d[0], row, "why", tb[0][..])); failed += 1; }
+  }
+  refused := jv_get(d[0], 0, "refused");
+  for i: 0..<jv_len(d[0], refused) {
+    row := jv_at(d[0], refused, i); tb: [2][CR_BODY] u8;
+    if crash_report_check(cp_text(d[0], row, "body", tb[0][..])) != -1 { tool_err("crash-profile: taken, though refused: "); tool_errln(cp_text(d[0], row, "why", tb[1][..])); failed += 1; }
+  }
+  if failed > 0 { print("crash report v1: % fixture(s) failed\n", failed); return 1; }
+  print("crash report v1: % room reports and % page reports as the file says, % refused\n", jv_len(d[0], rooms), jv_len(d[0], pages), jv_len(d[0], refused));
+  return 0;
+}

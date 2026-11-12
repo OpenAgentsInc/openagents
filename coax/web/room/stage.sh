@@ -17,13 +17,17 @@ cd "$root"
 rm -rf "${out:?}/src" "${out:?}/compat"
 mkdir -p "$out/src"
 coax="${COAX:-coax/bin/coax}"
-"$coax" c coax/web/room/room.coax --library --header "$out/src/room.h" > "$out/src/room.c"
+# --debug-info (#13298): a #line for each statement, its path made the repository's, so the binary's
+# line table (compile.sh -g1) names Coax files and lines; the C is otherwise the same.
+real="$(pwd -P)"
+lines() { sed -e "s|^#line \\([0-9]*\\) \"$root/|#line \\1 \"|" -e "s|^#line \\([0-9]*\\) \"$real/|#line \\1 \"|"; }
+"$coax" c coax/web/room/room.coax --library --debug-info --header "$out/src/room.h" | lines > "$out/src/room.c"
 # the controller's unit beside the room's (room-world.c), as build.sh links it (#13267)
 for u in everglade/shared/everglade-step.coax; do
   n="$(basename "$u" .coax)"
-  "$coax" c "$u" --library --header "$out/src/$n.h" > "$out/src/$n.c"
+  "$coax" c "$u" --library --debug-info --header "$out/src/$n.h" | lines > "$out/src/$n.c"
 done
-cp "$here/room-host.c" "$here/room-tick.c" "$here/room-stats.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$here/compile.sh" "$out/src/"
+cp "$here/room-host.c" "$here/room-tick.c" "$here/room-crash.c" "$here/room-crash.h" "$here/room-stats.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$here/compile.sh" "$out/src/"
 cp "$here/room-wt.c" "$here/wt.c" "$here/wt.h" "$out/src/"; cp -R "$here/third_party" "$out/src/third_party"   # WebTransport (#13176)
 cp -R coax/web/compat "$out/compat"
 git rev-parse HEAD > "$out/commit" 2>/dev/null || true

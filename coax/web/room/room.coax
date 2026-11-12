@@ -40,6 +40,7 @@
 #load "room-sky.coax";
 #load "room-ticket.coax";
 #load "room-write.coax";   // this shard's own write key (#13260)
+#load "room-crash.coax";   // the crash report this shard posts after a crash (#13298)
 #load "room-vitals.coax";
 #load "room-checkpoint.coax";
 #load "../../../everglade/server/aid.coax";

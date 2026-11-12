@@ -1,0 +1,164 @@
+{
+  "profile": "openagents.crash-report",
+  "version": 1,
+  "spec": "docs/deployment/crash-reports.md",
+  "codec": "coax/web/room/room-crash.coax",
+  "check": "coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v1.json",
+  "note": "A crash report is lines of printable ASCII, each KEY VALUE, in the order of `lines`. A room builds its report from its signal handler's dump and addr2line's names; the API builds a page's from the page's crash event. The bucket is md5(SOURCE + ' ' + the sig line's value). A room's names are addr2line -a -f -i's answer: for each offset its own 0x line, then a function and its FILE:LINE for the code there and for each function it was inlined into.",
+  "lines": [
+    {
+      "key": "crash",
+      "value": "1",
+      "when": "always, first"
+    },
+    {
+      "key": "t",
+      "value": "when it crashed, Unix ms",
+      "when": "always, second"
+    },
+    {
+      "key": "source",
+      "value": "room or page",
+      "when": "always, third"
+    },
+    {
+      "key": "shard",
+      "value": "1 to 99",
+      "when": "room"
+    },
+    {
+      "key": "page",
+      "value": "the module",
+      "when": "page"
+    },
+    {
+      "key": "release",
+      "value": "the room's release, or the page's module file",
+      "when": "room; a page when it has one"
+    },
+    {
+      "key": "build",
+      "value": "the binary's build ID in lowercase hex (0: none)",
+      "when": "room"
+    },
+    {
+      "key": "kind",
+      "value": "the signal's name, or trap for a page",
+      "when": "always"
+    },
+    {
+      "key": "at",
+      "value": "the address the signal names, lowercase hex",
+      "when": "room"
+    },
+    {
+      "key": "trap",
+      "value": "a Coax trap's own line, PATH:LINE: WHAT",
+      "when": "a Coax trap"
+    },
+    {
+      "key": "msg",
+      "value": "the browser's message",
+      "when": "page, when it has one"
+    },
+    {
+      "key": "f",
+      "value": "NAME FILE:LINE (room), NAME (page), ? +0xOFFSET (no name) or ? - (outside the binary); innermost first, at most 24",
+      "when": "each frame"
+    },
+    {
+      "key": "tick",
+      "value": "MS US PLAYERS, the last ticks before it, oldest first, at most 16",
+      "when": "room"
+    },
+    {
+      "key": "sig",
+      "value": "KIND|NAME|NAME|NAME: the kind and the three innermost Coax functions; KIND|TEXT when no frame has one",
+      "when": "always, last"
+    }
+  ],
+  "rooms": [
+    {
+      "why": "a Coax trap in a room: abort() after the trap's line, two C library frames, then the trap helper, the bounds check inlined into the Coax function, and its caller",
+      "dump": "dump 1\nt 1762990000000\nsignal 6\naddr 0\nbuild 5f0c2a9e7b1d4c3a8e6f00112233445566778899\nexe /opt/oa-room/releases/1afd85d5a2-20261112180000/room\nrelease 1afd85d5a2-20261112180000\nshard 1\nerr coax/web/room/room.coax:412: index out of bounds\na -\na -\na 4a2f1\na 4b310\na 1c0de\ntick 1762989999900 420 2\ntick 1762989999933 512 2\n",
+      "names": "0x000000000004a2f1\ncoax_trap\n/tmp/stage/src/room.c:24\n0x000000000004b310\ncoax_index\n././room.c:372\nrm_crash_test\n./coax/web/room/room-stats.coax:168 (discriminator 2)\n0x000000000001c0de\nmain\n??:0\n",
+      "report": "crash 1\nt 1762990000000\nsource room\nshard 1\nrelease 1afd85d5a2-20261112180000\nbuild 5f0c2a9e7b1d4c3a8e6f00112233445566778899\nkind SIGABRT\nat 0\ntrap coax/web/room/room.coax:412: index out of bounds\nf ? -\nf ? -\nf coax_trap room.c:24\nf coax_index room.c:372\nf rm_crash_test coax/web/room/room-stats.coax:168\nf main +0x1c0de\ntick 1762989999900 420 2\ntick 1762989999933 512 2\nsig SIGABRT|rm_crash_test|main\n",
+      "shard": 1,
+      "sig": "SIGABRT|rm_crash_test|main"
+    },
+    {
+      "why": "the least a handler leaves",
+      "dump": "dump 1\nt 1\nsignal 11\nshard 99\n",
+      "names": "",
+      "report": "crash 1\nt 1\nsource room\nshard 99\nrelease ?\nbuild 0\nkind SIGSEGV\nat 0\nsig SIGSEGV|?\n",
+      "shard": 99,
+      "sig": "SIGSEGV|?"
+    },
+    {
+      "why": "a segfault: frames addr2line could not name keep their offsets, and the stale stderr line is dropped",
+      "dump": "dump 1\nt 5\nsignal 11\naddr 7f00\nbuild ab\nshard 2\nerr room: an old line\na 10\na zz\na 20\n",
+      "names": "0x10\n??\n??:0\n0x20\nrm_tick\ncoax/web/room/room.coax:7\n",
+      "report": "crash 1\nt 5\nsource room\nshard 2\nrelease ?\nbuild ab\nkind SIGSEGV\nat 7f00\nf ? +0x10\nf ? -\nf rm_tick coax/web/room/room.coax:7\nsig SIGSEGV|rm_tick\n",
+      "shard": 2,
+      "sig": "SIGSEGV|rm_tick"
+    }
+  ],
+  "pages": [
+    {
+      "why": "a Coax trap in a page, its frames named from the module's symbols",
+      "t": 1762990000000,
+      "page": "everglade2",
+      "release": "everglade2.9c2aa0c8e19b.wasm",
+      "msg": "unreachable",
+      "trap": "apps/openagents-web/everglade2.coax:88: index out of bounds",
+      "frames": "abort\ncoax_trap\npage_crash_test\nframe\n",
+      "report": "crash 1\nt 1762990000000\nsource page\npage everglade2\nrelease everglade2.9c2aa0c8e19b.wasm\nkind trap\ntrap apps/openagents-web/everglade2.coax:88: index out of bounds\nmsg unreachable\nf abort\nf coax_trap\nf page_crash_test\nf frame\nsig trap|page_crash_test|frame\n",
+      "sig": "trap|page_crash_test|frame"
+    },
+    {
+      "why": "no frames and no trap line: the message is the signature",
+      "t": 7,
+      "page": "p",
+      "release": "",
+      "msg": "memory access out of bounds",
+      "trap": "",
+      "frames": "",
+      "report": "crash 1\nt 7\nsource page\npage p\nkind trap\nmsg memory access out of bounds\nsig trap|memory?access?out?of?bounds\n",
+      "sig": "trap|memory?access?out?of?bounds"
+    }
+  ],
+  "refused": [
+    {
+      "why": "another version",
+      "body": "crash 2\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n"
+    },
+    {
+      "why": "no signature",
+      "body": "crash 1\nt 1\nsource page\npage p\nkind trap\n"
+    },
+    {
+      "why": "no last newline",
+      "body": "crash 1\nt 1\nsource page\npage p\nkind trap\nsig trap|?"
+    },
+    {
+      "why": "a line after the signature",
+      "body": "crash 1\nt 1\nsource page\npage p\nkind trap\nsig trap|?\nf late\n"
+    },
+    {
+      "why": "a room with no shard",
+      "body": "crash 1\nt 1\nsource room\nbuild 0\nkind SIGSEGV\nsig SIGSEGV|?\n"
+    },
+    {
+      "why": "a page with a shard",
+      "body": "crash 1\nt 1\nsource page\npage p\nshard 1\nkind trap\nsig trap|?\n"
+    },
+    {
+      "why": "a key that is not one",
+      "body": "crash 1\nt 1\nsource room\nshard 1\nbuild 0\nkind SIGSEGV\nwho me\nsig SIGSEGV|?\n"
+    },
+    {
+      "why": "a byte outside printable ASCII",
+      "body": "crash 1\nt 1\nsource page\npage p\nkind trap\nmsg a\tb\nsig trap|?\n"
+    }
+  ]
+}

@@ -12,6 +12,10 @@
 //                                     alerts (the status page, the green-main watcher's forwarding to
 //                                     the agents' inboxes: coax/remote/pipeline-lib.sh pl_service_watch)
 //
+// Crash reports (#13298, docs/deployment/crash-reports.md): the watch folds the pages' `crash`
+// events into reports and raises the crash alerts; rooms post theirs to /api/playtest/room-crash,
+// and GET /api/playtest/crashes lists the buckets (rooms.c). crash_keep stores one.
+//
 //   OA_ALERT_TO     where production's alert mail goes (deploy.sh sets the owner's address); none, or
 //                   staging: no mail
 //   OA_API_ORIGIN   https://staging.openagents.com names the staging environment in the mail
@@ -51,6 +55,76 @@ static void fail(const request *q, int status, const char *why) {
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
 static const char *env_name(void) { return strstr(origin(), "staging") ? "staging" : "production"; }
 
+// ---- crash reports (#13298): room-crash.coax is the one codec (ticket-sign-unit.c)
+int crash_report_check_c(const char *body, size_t n);
+size_t crash_report_field_c(const char *body, size_t n, const char *key, char *out, size_t cap);
+size_t crash_page_report_c(long long t, const char *page, const char *release, const char *msg, const char *trap, const char *frames, char *out, size_t cap);
+
+// Keeps one report the codec takes (verse.crash_add): its bucket into bucket, false when it is not
+// a report or could not be kept. automated: an automated browser sent it.
+bool crash_keep(PGconn *db, const char *body, size_t n, bool automated, char bucket[33]) {
+  char t[24], source[8], shard[8], release[256], build[80], sig[256], ns[24];
+  bucket[0] = 0;
+  if (crash_report_check_c(body, n) < 0) return false;
+  char *b = malloc(n + 1);
+  if (!b) return false;
+  memcpy(b, body, n); b[n] = 0;
+  bool room = crash_report_field_c(body, n, "shard", shard, sizeof shard) > 0;
+  crash_report_field_c(body, n, "release", release, sizeof release);
+  crash_report_field_c(body, n, "build", build, sizeof build);
+  if (!crash_report_field_c(body, n, "t", t, sizeof t) || !crash_report_field_c(body, n, "source", source, sizeof source) ||
+      !crash_report_field_c(body, n, "sig", sig, sizeof sig)) { free(b); return false; }
+  snprintf(ns, sizeof ns, "%lld", (long long)api_now_ms());
+  const char *v[9] = {ns, t, source, room ? shard : NULL, release, build, sig, automated ? "t" : "f", b};
+  PGresult *r = PQexecParams(db, "SELECT verse.crash_add($1::bigint, $2::bigint, $3, $4::int, $5, $6, $7, $8::boolean, $9)", 9, NULL, v, NULL, NULL, 0);
+  free(b);
+  bool kept = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
+  if (kept) snprintf(bucket, 33, "%s", PQgetvalue(r, 0, 0)); else api_log("crash: %s", PQerrorMessage(db));
+  PQclear(r);
+  if (kept) api_log("crash report kept: %s %s (bucket %s)", source, sig, bucket);
+  return kept;
+}
+// The pages' crash events since the last minute become reports (at most 50 a run).
+static int crash_fold(PGconn *db) {
+  PGresult *r = PQexec(db, "SELECT o_ms, o_page, o_auto, o_rel, o_msg, o_trap, o_frames FROM verse.crash_page_take(50)");
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("crash fold: %s", PQerrorMessage(db)); PQclear(r); return 0; }
+  int kept = 0;
+  static char body[8193];
+  for (int i = 0; i < PQntuples(r); i++) {
+    char bucket[33];
+    size_t n = crash_page_report_c(atoll(PQgetvalue(r, i, 0)), PQgetvalue(r, i, 1), PQgetvalue(r, i, 3), PQgetvalue(r, i, 4), PQgetvalue(r, i, 5), PQgetvalue(r, i, 6), body, sizeof body);
+    if (n && crash_keep(db, body, n, !strcmp(PQgetvalue(r, i, 2), "t"), bucket)) kept++;
+  }
+  PQclear(r);
+  return kept;
+}
+// The crash alerts into the array service_sync reads (service-wire.coax writes each): one a room
+// bucket, one for the pages. False when the array could not hold one.
+static bool crash_alerts(PGconn *db, long long now, sbuf *want) {
+  char ns[24], ws[24];
+  snprintf(ns, sizeof ns, "%lld", now); snprintf(ws, sizeof ws, "%lld", (long long)sv_crash_window());
+  const char *v[2] = {ns, ws};
+  PGresult *r = PQexecParams(db, "SELECT bucket, source, sig, age_ms, coalesce(shard, 0), release, buckets FROM verse.crash_facts($1::bigint, $2::bigint)", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("crash alerts: %s", PQerrorMessage(db)); PQclear(r); return true; }
+  bool held = true;
+  for (int i = 0; i < PQntuples(r); i++) {
+    if (!sv_crash_alert(atoll(PQgetvalue(r, i, 3)))) continue;
+    bool room_s = !strcmp(PQgetvalue(r, i, 1), "room");
+    coax_string what = sv_crash_text(room_s ? 0 : 1), todo = sv_crash_do();
+    char key[48], title[512];
+    if (room_s) {
+      snprintf(key, sizeof key, "crash:%.8s", PQgetvalue(r, i, 0));
+      snprintf(title, sizeof title, "shard %d: %.*s: %.200s (release %.80s)", atoi(PQgetvalue(r, i, 4)), (int)what.count, what.data, PQgetvalue(r, i, 2), PQgetvalue(r, i, 5));
+    } else {
+      snprintf(key, sizeof key, "crash:page");
+      snprintf(title, sizeof title, "%.*s: %.200s (%d bucket%s in the last hour)", (int)what.count, what.data, PQgetvalue(r, i, 2), atoi(PQgetvalue(r, i, 6)), atoi(PQgetvalue(r, i, 6)) == 1 ? "" : "s");
+    }
+    held = held && W(want, strlen(title) + (size_t)todo.count + 160, svw_wanted_write(cs(key), 0, cs(title), todo, (int64_t)want->n, ROOM(want)));
+  }
+  PQclear(r);
+  return held;
+}
+
 // The job (jobs.c, every minute): its result as JSON, or NULL when it could not run.
 char *service_watch(PGconn *db, const char *day) {
   (void)day;
@@ -86,6 +160,8 @@ char *service_watch(PGconn *db, const char *day) {
     coax_string what = sv_db_text(), todo = sv_db_do();
     held = held && W(&want, (size_t)(what.count + todo.count) + 160, svw_wanted_write(cs("db-connections"), 0, what, todo, (int64_t)want.n, ROOM(&want)));
   }
+  crash_fold(db);                                  // the pages' crash events of the last minute, as reports (#13298)
+  held = held && crash_alerts(db, now, &want);     // a room's bucket, the pages' one
   if (!held || !W(&want, 2, svw_wanted_end((int64_t)want.n, ROOM(&want)))) return NULL;
   const char *sv[2] = {ns, want.p};
   r = PQexecParams(db, "SELECT verse.service_sync($1::bigint, $2::jsonb)", 2, NULL, sv, NULL, NULL, 0);

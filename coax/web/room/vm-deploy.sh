@@ -21,6 +21,13 @@
 #   coax/web/room/vm-deploy.sh drain K [SECONDS]  drain production shard K on the VM
 #   coax/web/room/vm-deploy.sh kill K|staging     SIGKILL one unit (the failover check: systemd starts it
 #                                                 again, its pages come back through the directory)
+#   coax/web/room/vm-deploy.sh crash K|staging    the crash test (#13298): SIGUSR2 to one unit's room process,
+#                                                 which traps in Coax on purpose; it dies of SIGABRT, systemd
+#                                                 starts it again, and the new process posts the crash report
+#   coax/web/room/vm-deploy.sh symbols [NAME]     keep a release's debug file in the symbols bucket, named by
+#                                                 its build ID (deploy --staging does this; NAME: staging's)
+#   coax/web/room/vm-deploy.sh resolve BUILD OFFSET...   a crash report's "f ? +0xOFFSET" frames, or any
+#                                                 build's: the function and FILE:LINE of each, from the kept symbols
 #   coax/web/room/vm-deploy.sh setup              the VM's packages, units, env files and Caddy again
 #   coax/web/room/vm-deploy.sh status
 #   coax/web/room/vm-deploy.sh wt                 the units' WebTransport: staging on UDP 443, shard K on
@@ -191,6 +198,31 @@ build_on_vm() {
     ls -1t | tail -n +6 | while read -r d; do echo \"\$keep\" | grep -qx \"\$d\" || sudo rm -rf \"/opt/oa-room/releases/\${d:?}\"; done" || true
 }
 
+# A release's symbols (#13298, docs/deployment/crash-reports.md): the binary's debug file (objcopy
+# --only-keep-debug, gzipped), from the VM to the symbols bucket under the binary's build ID. The
+# binary itself keeps its line table, so a crash resolves on the VM while the release is there (the
+# five newest); the bucket is for after that. Never stops a deploy.
+symbols() {
+  local name="${1:-}" id
+  [[ -n "$name" ]] || name="$(on_vm 'basename "$(readlink -f /opt/oa-room/staging)"')"
+  [[ "$name" =~ ^[A-Za-z0-9.+_-]+$ ]] || { echo "room-vm: no such release: $name" >&2; return 1; }
+  id="$(on_vm "readelf -n /opt/oa-room/releases/$name/room 2>/dev/null | sed -n 's/.*Build ID: *//p' | head -1")"
+  [[ "$id" =~ ^[0-9a-f]{8,64}$ ]] || { echo "room-vm: release $name has no build ID: its symbols are not kept" >&2; return 1; }
+  on_vm "d=\$(mktemp -d) && objcopy --only-keep-debug /opt/oa-room/releases/$name/room \"\$d/room.debug\" && gzip -9 -c \"\$d/room.debug\"; rm -rf \"\${d:?}\"" > "$scratch/room.debug.gz"
+  [[ -s "$scratch/room.debug.gz" ]] || { echo "room-vm: no debug file came from $vm" >&2; return 1; }
+  "$here/../symbols.sh" room-put "$id" "$scratch/room.debug.gz" "$name"
+}
+# The function and FILE:LINE of each offset in the binary of build BUILD: its debug file from the
+# bucket, to the VM (which has addr2line), and gone again.
+resolve() {
+  local id="${1:?usage: vm-deploy.sh resolve BUILD OFFSET...}"; shift
+  local offs="" o
+  for o in "$@"; do o="${o#+}"; o="${o#0x}"; [[ "$o" =~ ^[0-9a-f]{1,16}$ ]] || { echo "room-vm: an offset in hex: $o" >&2; return 2; }; offs+=" 0x$o"; done
+  [[ -n "$offs" ]] || { echo "usage: vm-deploy.sh resolve BUILD OFFSET..." >&2; return 2; }
+  "$here/../symbols.sh" room-get "$id" "$scratch/resolve.debug.gz"
+  on_vm "d=\$(mktemp -d) && gunzip -c > \"\$d/room.debug\" && addr2line -f -e \"\$d/room.debug\"$offs | paste - -; rm -rf \"\${d:?}\"" < "$scratch/resolve.debug.gz"
+}
+
 drain_wait="${OA_ROOM_DRAIN_WAIT:-300}"
 # Drains production shard K on the VM (deploy.sh's drain, #12797): a signed POST, after which it seats
 # nobody new and the directory places nobody on it; it waits up to WAIT seconds for its world events,
@@ -240,6 +272,7 @@ deploy() {
     build_on_vm "$out" "$name"
     on_vm "sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/staging && sudo systemctl enable oa-room@staging >/dev/null 2>&1; sudo systemctl restart oa-room@staging"
     wait_healthy staging
+    symbols "$name" || echo "room-vm: the release's symbols were not kept (vm-deploy.sh symbols $name tries again)" >&2
     echo "room-vm: staging runs $name (https://$staging_host); vm-deploy.sh deploy promotes it"
     return
   fi
@@ -355,7 +388,12 @@ case "${1:-}" in
   drain) shift; drain "${1:?usage: vm-deploy.sh drain K [SECONDS]}" "${2:-$drain_wait}" ;;
   kill) shift; u="${1:?usage: vm-deploy.sh kill K|staging}"; [[ "$u" == staging ]] || u="s$u"
     on_vm "sudo systemctl kill -s KILL oa-room@$u"; echo "room-vm: oa-room@$u killed" ;;
+  crash) shift; u="${1:?usage: vm-deploy.sh crash K|staging}"; [[ "$u" == staging ]] || u="s$u"
+    # the room process only (never its helpers), and only its SIGUSR2: room-host.c runs the Coax crash test
+    on_vm "sudo systemctl kill --kill-who=main -s USR2 oa-room@$u"; echo "room-vm: oa-room@$u asked to crash (SIGUSR2); its next start posts the report" ;;
+  symbols) shift; symbols "${1:-}" ;;
+  resolve) shift; resolve "$@" ;;
   setup) setup ;;
   status) status ;;
-  *) sed -n '2,26p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,34p' "$0" >&2; exit 2 ;;
 esac

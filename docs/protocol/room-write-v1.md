@@ -48,6 +48,7 @@ with its key (HMAC-SHA256) and sends:
 | `items` | `POST /api/playtest/room-items` | the post's body |
 | `directory` | `POST /api/playtest/room-directory` | the post's body |
 | `stats` | `POST /api/playtest/room-stats` | the post's body |
+| `crash` | `POST /api/playtest/room-crash` | the crash report ([crash reports](../deployment/crash-reports.md), added in #13298) |
 | `control` | `POST /api/playtest/room-control` | `t AT`, where AT is the `X-Room-At` header |
 | `moderation` | `POST /api/playtest/room-mod-log` | the post's body ([moderation v1](moderation-v1.md)) |
 | `drain` | `POST /api/room/sK/drain` (deploy to room) | `drain K AT WAIT` |
