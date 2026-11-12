@@ -135,6 +135,8 @@ McRun :: struct {
   gated: bool;                   // each command waits for mc_run_answer: the host's hooks and approvals decide
   ask_ticket:int;
   asking: bool; ask_i: int;      // the pending action's command waiting for an answer
+  seed: bool;                    // before the first call, look up what the task names (mc_run_seed)
+  seeded: bool;
   rp: [] GwPlan;                 // the fresh reader's plan (loop.coax MC_READ); none: a finish is taken unread
   reading: bool;                 // the reader's call is out
   rlogged: int;                  // its plan's log entries handed out
@@ -164,7 +166,50 @@ MC_RUN_MS :: 900000;
 mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
   r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false; r[0].reading = false;
   r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;
+  r[0].seeded = false;
+  if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
+}
+
+// The seeded first step (GitHub #13325; loop.coax mc_seed_scan): before the first call, the
+// files the task mentions that exist under the working directory are viewed (the first
+// MC_SEED_FILES of them, each as any view: 64 KB at most, no binary), and each code name it
+// mentions is looked up (git grep, its first 8 lines; in a git checkout only). They are one
+// step in the state, given out and journaled like any step's views and commands. A task that
+// names nothing found leaves no step. Then the first call goes out.
+MC_SEED_FILES :: 4;
+mc_run_seed :: (r: [] McRun, out: [] McRunEvent) -> int {
+  r[0].seeded = true; r[0].nob = 0;
+  l := r[0].l[..]; k := 0;
+  s: [1] McSeed; mc_seed_scan(l[0].st[0].task, s[..]);
+  pb: [FS_PATH_MAX] u8; viewed := 0; begun := false;
+  for i: 0..<s[0].np {
+    if viewed >= MC_SEED_FILES { break; }
+    p := s[0].paths[i];
+    full := fs_join(r[0].cwd, p, pb[..]);
+    if full.count == 0 || fs_kind(full) != FS_FILE { continue; }
+    if !mc_run_intent(r, AjKind.view_intent, p) { return mc_run_failed(r, out, k); }
+    v := mc_view_file_profile(r[0].cwd, p, r[0].tb[0].view[..], r[0].profile);
+    if r[0].journal.count>0 && (!jf_output(r[0].journal,v.content) || !jf_result(r[0].journal,ifx v.found then "found=true" else "found=false")) {return mc_run_failed(r,out,k);}
+    if !v.found || v.content == MC_VIEW_BINARY { continue; }
+    if !begun { mc_action_begin(l[0].st[..], MC_SEED_RATIONALE); begun = true; }
+    mc_view(l, p, true, v.content);
+    k = mc_run_put(out, k, McRunEvent.{kind = MR_VIEW, text = p, found = true});
+    viewed += 1;
+  }
+  git := fs_join(r[0].cwd, ".git", pb[..]);
+  if git.count > 0 && fs_exists(git) {
+    for i: 0..<s[0].nn {
+      cb: [256] u8;
+      n := json_raw(cb[..], 0, "git grep -n -w -F -e "); n = json_raw(cb[..], n, s[0].names[i]); n = json_raw(cb[..], n, " | head -n 8");
+      if n < 0 { continue; }
+      if !begun { mc_action_begin(l[0].st[..], MC_SEED_RATIONALE); begun = true; }
+      k = mc_run_one(r, out, k, mc_run_keep(r, cast(string) cb[0..<n]));
+      if r[0].ended { return k; }
+    }
+  }
+  if begun { mc_action_end(l[0].st[..]); }
   mc_run_call(r);
+  return k;
 }
 
 mc_run_call :: (r: [] McRun) {
@@ -210,6 +255,7 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   if r[0].ended || r[0].asking { return 0; }
   if r[0].l[0].ending==MC_END_FAILED {return mc_run_end(r,out,0);}
   if r[0].journal.count>0 && cxproc_now_ms()>=r[0].deadline {gw_plan_stop(ifx r[0].reading then r[0].rp else r[0].p);return mc_run_failed(r,out,0);}
+  if r[0].seed && !r[0].seeded { return mc_run_seed(r, out); }
   if r[0].reading { return mc_run_reading(r, out); }
   l := r[0].l[..];
   k := 0;

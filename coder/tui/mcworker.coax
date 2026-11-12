@@ -260,6 +260,8 @@ tool_main :: () -> int #export_c #effects(all) {
     effort := cl_str(ar[..], msg, "effort");
     if effort != "medium" && effort != "high" { effort = "low"; }
     mk_plan_limits(plan[..], effort);
+    // before the first call, what the task names is looked up: its files viewed, its code names found (GitHub #13325)
+    run[0].seed = !(local.ok && local.value);
     // a coding run's finish is read once by a fresh reader on Flash before it is taken (GitHub #13325)
     run[0].rp = rplan[0..<0];
     if !(local.ok && local.value) && mk_plan_reader(k[..], rplan[..], rpb[..]) { rplan[0].journal = journal[..]; run[0].rp = rplan[..]; run[0].l[0].reader = true; }

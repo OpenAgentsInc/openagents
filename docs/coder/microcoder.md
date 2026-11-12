@@ -122,6 +122,11 @@ schema, the tools and the limits. The model never sees a key, a path under
   loop itself before the step's commands, so there is nothing to quote. A
   gated run refuses them and asks for a command instead.
 - **`view`**: read files under the working directory, capped at 64 KB each.
+- **A seeded first step** (#13325): in Coder, before the first call, the
+  loop looks up what the task names. The files it mentions that exist under
+  the working directory are viewed (the first four), and each code name it
+  mentions is searched for (`git grep -n -w`, first 8 lines). The results
+  are one step in the state, so the first call can already edit.
 - **A fresh reader at the finish** (#13325): in Coder, when a run that
   changed or ran something says it is finished, one separate call to Gemini
   Flash at low thinking, which has seen none of the run, gets the task, the

@@ -217,6 +217,75 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   return MC_TOOLS;
 }
 
+// The seeded first step (GitHub #13325): before the first call, the loop's owner looks up what
+// the task names (mc_seed_scan) and records it as a step of its own: the files it mentions that
+// exist, viewed, and where the code names it mentions appear. In #13231's runs the first call of
+// 14 of 14 tasks only asked to view the files the task named. Nothing here reads a file: the
+// scan is the words; run.coax checks which exist.
+MC_SEED_WORDS :: 16;             // path-like words kept (the owner views the first few that exist)
+MC_SEED_NAMES :: 6;              // code names kept
+MC_SEED_RATIONALE :: "(the loop, before your first turn) Looked up what the task names: the files it mentions that exist here, and the first places its code names appear (git grep -n -w).";
+McSeed :: struct { paths: [MC_SEED_WORDS] string; np: int; names: [MC_SEED_NAMES] string; nn: int; }
+
+mc_seed_letter :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+mc_seed_char :: (c: u8) -> bool { return mc_seed_letter(c) || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '/'; }
+
+// A word that may be a file under the working directory: relative, with a '/' between names or
+// a short extension (a.txt, AGENTS.md), no "..", not part of a URL.
+mc_seed_pathlike :: (w: string) -> bool {
+  if w.count < 3 || w[0] == '/' || w[0] == '.' || w[0] == '-' { return false; }
+  slash := false; letters := 0; dot := -1;
+  for c, i: w {
+    if c == '/' { if i + 1 < w.count && w[i + 1] == '/' { return false; } slash = true; dot = -1; }
+    else if c == '.' { if i + 1 < w.count && w[i + 1] == '.' { return false; } dot = i; }
+    else if mc_seed_letter(c) { letters += 1; }
+  }
+  if letters < 2 { return false; }
+  if slash { return true; }
+  if dot <= 0 || w.count - dot - 1 < 1 || w.count - dot - 1 > 5 || w.count == 3 { return false; }   // not "e.g"
+  for i: dot + 1..<w.count { if !mc_seed_letter(w[i]) { return false; } }
+  return true;
+}
+
+// A word that is a code name: letters, digits and '_' only, with a '_' inside (wrap_angle,
+// ENV_VERSION). Not a capital inside a word: that takes in GitHub and OpenAgents.
+mc_seed_namelike :: (w: string) -> bool {
+  if w.count < 4 || !(mc_seed_letter(w[0]) || w[0] == '_') { return false; }
+  under := false; letters := 0;
+  for c, i: w {
+    if c == '-' || c == '.' || c == '/' { return false; }
+    if mc_seed_letter(c) { letters += 1; }
+    if c == '_' && i > 0 && i + 1 < w.count { under = true; }
+  }
+  return letters >= 3 && under;
+}
+
+// The task's path-like words and code names, in order, each once.
+mc_seed_scan :: (task: string, s: [] McSeed) {
+  s[0] = McSeed.{};
+  i := 0;
+  while i < task.count {
+    if !mc_seed_char(task[i]) { i += 1; continue; }
+    j := i;
+    while j < task.count && mc_seed_char(task[j]) { j += 1; }
+    e := j;
+    while e > i && (task[e - 1] == '.' || task[e - 1] == '-' || task[e - 1] == '/') { e -= 1; }
+    w := cast(string) task[i..<e];
+    url := i >= 3 && task[i - 1] == '/' || (i >= 1 && task[i - 1] == ':');
+    i = j;
+    if url { continue; }
+    if mc_seed_pathlike(w) {
+      seen := false;
+      for k: 0..<s[0].np { if s[0].paths[k] == w { seen = true; } }
+      if !seen && s[0].np < MC_SEED_WORDS { s[0].paths[s[0].np] = w; s[0].np += 1; }
+    } else if mc_seed_namelike(w) {
+      seen := false;
+      for k: 0..<s[0].nn { if s[0].names[k] == w { seen = true; } }
+      if !seen && s[0].nn < MC_SEED_NAMES { s[0].names[s[0].nn] = w; s[0].nn += 1; }
+    }
+  }
+}
+
 // Whether a finish answered now waits for the reader.
 mc_reader_due :: (l: [] McLoop) -> bool { return l[0].reader && !l[0].read && l[0].acted; }
 
@@ -499,6 +568,21 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   #assert cl_int(j, "actions.0.results.0.exit").value == 0 && cl_str(ar[..], j, "actions.1.results.0.view") == "a.txt" && cl_count(cl_raw(j, "actions")) == 3;
+}
+
+#test "the seed's scan: the task's path-like words and code names, in order, each once; no URLs, no plain words" {
+  s: [1] McSeed;
+  mc_seed_scan("Fix coax/web/wasm-size.coax: `coax/web/tool.sh wasm-size budget` fails. See AGENTS.md and https://example.com/a/b.html, ../up.txt and /etc/passwd. In wrap_angle (called by step_once) the EnvDir is wrong, e.g. at 0.25 or v5.5; ENV_VERSION stays. Run coax/bin/coax test coax/web/wasm-size.coax. Write EXPLAIN.md.", s[..]);
+  #assert s[0].np == 5 && s[0].paths[0] == "coax/web/wasm-size.coax" && s[0].paths[1] == "coax/web/tool.sh" && s[0].paths[2] == "AGENTS.md" && s[0].paths[3] == "coax/bin/coax" && s[0].paths[4] == "EXPLAIN.md";
+  #assert s[0].nn == 3 && s[0].names[0] == "wrap_angle" && s[0].names[1] == "step_once" && s[0].names[2] == "ENV_VERSION";
+  mc_seed_scan("what is 2+2? Say hi. It costs 1.5 dollars, i.e. a lot.", s[..]);
+  #assert s[0].np == 0 && s[0].nn == 0;
+  #assert mc_seed_pathlike("a/b") && mc_seed_pathlike("a.txt") && !mc_seed_pathlike("a..b/c") && !mc_seed_pathlike("1.5") && !mc_seed_pathlike("e.g") && mc_seed_pathlike("main.c");
+  #assert !mc_seed_pathlike("word") && !mc_seed_pathlike("file.toolongext") && !mc_seed_pathlike("x.5a") && !mc_seed_pathlike("a//b");
+  #assert mc_seed_namelike("a_b_c") && !mc_seed_namelike("camelCase") && !mc_seed_namelike("GitHub") && !mc_seed_namelike("word") && !mc_seed_namelike("WORD") && !mc_seed_namelike("_ab") && !mc_seed_namelike("ab_") && !mc_seed_namelike("a-b_c");
+  // more names than it keeps: the first ones stay
+  mc_seed_scan("aa_1x bb_2x cc_3x dd_4x ee_5x ff_6x gg_7x hh_8x", s[..]);
+  #assert s[0].nn == MC_SEED_NAMES && s[0].names[5] == "ff_6x";
 }
 
 #test "'what is 2+2' finishes in one step with no commands" {

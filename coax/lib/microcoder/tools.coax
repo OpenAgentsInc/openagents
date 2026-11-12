@@ -18,6 +18,7 @@ cxproc_flush_timeout :: (h:int,ms:int)->int #foreign #effects(all);
 
 MC_COMMAND_SECONDS :: 30;
 MC_VIEW_BYTES :: 65536;
+MC_VIEW_BINARY :: "[a binary file: not shown]";
 MC_KEEP_HEAD :: 5900;            // with the tail and the gap line, under the state's 6,000 + 6,000 cut
 MC_KEEP_TAIL :: 5900;
 
@@ -212,7 +213,7 @@ mc_view_file_profile :: (cwd: string, path: string, buf: [] u8, profile:string) 
   status := cxproc_wait(h, 5000);
   y := cxproc_release(h);
   if status != 0 { return McViewResult.{content = "not shown: no such file, or it can't be read"}; }
-  if binary { return McViewResult.{found = true, content = "[a binary file: not shown]"}; }
+  if binary { return McViewResult.{found = true, content = MC_VIEW_BINARY}; }
   if cut && n > 0 {
     // say where it was cut, so the rest is asked for and not guessed
     k := ifx n > MC_VIEW_BYTES - 96 then MC_VIEW_BYTES - 96 else n;
