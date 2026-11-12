@@ -4,7 +4,13 @@
 // (typed text, the slot's save, the pack's progress, HTTP answers), the page's one request handed
 // to the host's HTTP import, the save (action 4), the pack's catalog (asset 0) and the scene drawn
 // from it.
-#include "worldbuilder.h"
+// The page is also an Everglade zone (worldbuilder-walk.coax, everglade/zone.coax): your character
+// walks the world on Everglade's controller, stepped here each frame in bitcoin-lab-walk-face.c's
+// order, its figure's instances and the baked clips two more stores, its parts' draws after
+// WorldBuilder's own on the people's index buffer (the page's second pack).
+#include "worldbuilder-walk.h"
+#include "Everglade-step.h"
+#include "Sticks.h"
 #include "face-address.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -15,8 +21,27 @@
 #endif
 COAXIAL_IMPORT("coaxial_http") int32_t coaxial_http(cx_face_addr url, uint32_t url_len, cx_face_addr body, uint32_t body_len, int32_t flags);
 
-static coax_t_WorldBuilder *state_at(uint32_t state) { return (coax_t_WorldBuilder *)(uintptr_t)state; }
+static coax_t_WalkBuilder *walk_at(uint32_t state) { return (coax_t_WalkBuilder *)(uintptr_t)state; }
+static coax_v_t_WalkBuilder walk(uint32_t state) { return (coax_v_t_WalkBuilder){walk_at(state), 1}; }
+static coax_t_WorldBuilder *state_at(uint32_t state) { return &walk_at(state)->b.e[0]; }
 static coax_v_t_WorldBuilder at(uint32_t state) { return (coax_v_t_WorldBuilder){state_at(state), 1}; }
+static coax_t_EgZone *zone_at(uint32_t state) { return &walk_at(state)->z.e[0]; }
+static coax_v_t_EgZone zone(uint32_t state) { return (coax_v_t_EgZone){zone_at(state), 1}; }
+// The people's catalog; the rig the clips are baked from, and the bake (fivelab-bodies.coax BD_BAKE_FLOATS).
+static uint8_t people_catalog[65536];
+static coax_t_People rig;
+static float bake[6453720];
+static float zone_strokes[250000 * 16];   // the zone's own strokes (everglade/zone.coax MAX_VERTICES, VERTEX_FLOATS): made, never drawn
+static uint32_t baked, frames;
+static int64_t figure_draws;
+static coax_t_Player player;   // your body (aethyr/walk.coax)
+static coax_t_Sticks sticks;   // a phone's thumb (aethyr/sticks.coax)
+static double now;
+static float width, height, dpr;
+static coax_t_Drive drive;     // the agent driver's (aethyr/agent/drive.coax): the zone holds a view of it
+#define PEOPLE_CATALOG 10      /* the page's assets, in order: WorldBuilder's pack (0..3), the HUD's fonts, icons and licence (4..9), the people's pack (10..13) */
+#define PEOPLE_INDEX 12
+/* The page asks for 4096 pages of memory (aethyr/render/adoption.coax render_memory_pages): the zone, the bake and the ground. */
 static uint8_t inbox[1310720];   // a kept world comes back through it (worldbuilder.coax SAVE_CAP)
 static uint8_t catalog[262144];
 
@@ -30,36 +55,88 @@ static void drain(uint32_t state) {
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
-  return (uint32_t)(sizeof(coax_t_WorldBuilder) * 1000003u + offsetof(coax_t_WorldBuilder, ed) * 7u + offsetof(coax_t_WorldBuilder, outbox) * 13u + 0x57424c46u);
+  return (uint32_t)(sizeof(coax_t_WalkBuilder) * 1000003u + offsetof(coax_t_WorldBuilder, ed) * 7u + offsetof(coax_t_WorldBuilder, outbox) * 13u + offsetof(coax_t_EgZone, outbox) * 17u + 0x57424c47u);
 }
-EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_WorldBuilder); }
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_WorldBuilder(state_at(state)); }
-EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_worldbuilder_max_vertices(); }
-EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_worldbuilder_vertex_floats(); }
-EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_worldbuilder_uniform_floats(); }
+EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_WalkBuilder); }
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_WalkBuilder(walk_at(state)); zone_drive_attach(zone(state), (coax_v_t_Drive){&drive, 1}); }
+EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)wbw_max_vertices(); }
+EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)wbw_vertex_floats(); }
+EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)wbw_uniform_floats(); }
 
 static bool golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 
 EXPORT("coaxial_frame")
-uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
+uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   worldbuilder_golden(at(state), golden);
-  coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_worldbuilder_max_vertices() * coaxial_worldbuilder_vertex_floats()};
-  coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_worldbuilder_uniform_floats()};
-  int64_t n = worldbuilder_frame(at(state), out, u, width, height, dpr, dt, still != 0);
+  now += dt;
+  width = w; height = h; dpr = scale;
+  zone_quality_frame(zone(state), dt, w, h, scale, golden);
+  // your body's step on Everglade's controller, in bitcoin-lab-walk-face.c's order; in the overview it stands
+  coax_t_ZoneWalk zw = zone_walk(zone(state));
+  if (zw.put) player = verse_player_place(zw.x, zw.y, zw.z, zw.face);
+  if (zw.on && wbw_walks(walk(state))) {
+    float frame = dt;
+    float step = verse_player_counts(player, frame);
+    coax_t_EgMoveIn input = zone_move_in(zone(state));
+    input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
+    input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
+    input.jump = input.jump || sticks.jump;
+    coax_t_EgMoveWorld mw = zone_move_world(zone(state), player.pos.x, player.pos.z);
+    player = eg_step_begin(player, input, mw, step);
+    coax_v_f32 near = zone_move_bodies(zone(state));
+    coax_v_f32 walls = zone_move_walls(zone(state));
+    coax_v_f32 floors = zone_move_floors(zone(state));
+    coax_t_EgBody origin = eg_step_body(player);
+    coax_t_EgMotionIntent intent = eg_step_motion_intent(input, mw);
+    coax_t_EgJump jump = zone_jump_plan(zone(state), origin, intent, player.jumps.waiting > 0);
+    player = eg_step_advance_jump(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){walls.data, mw.walls * 6}, (coax_v_f32){floors.data, mw.floors * 10}, frame, zone_move_scale(zone(state)), jump);
+    coax_t_EgBody kept = zone_keep_body(zone(state), origin, eg_step_body(player));
+    if (kept.x != player.pos.x || kept.z != player.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
+    player = eg_step_put(player, kept);
+    zone_rest_motion(zone(state), origin, kept, intent.walk, intent.jump);
+    coax_t_Vec3 feet = verse_player_feet(player);
+    zone_you(zone(state), feet.x, feet.y, feet.z, verse_player_face(player), !player.on_ground, false, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  } else {
+    sticks = verse_sticks_reset();
+  }
+  sticks = verse_sticks_used(sticks);
+  coax_v_f32 out = {(float *)(uintptr_t)vertices, wbw_max_vertices() * wbw_vertex_floats()};
+  coax_v_f32 u = {(float *)(uintptr_t)uniforms, wbw_uniform_floats()};
+  int64_t n = wbw_frame(walk(state), (coax_v_f32){zone_strokes, sizeof zone_strokes / sizeof zone_strokes[0]}, out, u, w, h, scale, dt, still != 0);
+  figure_draws = 0;
+  if (zone_at(state)->bodies.e[0].ready) {
+    if (!baked) { zone_bake(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
+    figure_draws = zone_scene(zone(state), (coax_v_f32){zone_at(state)->records.e, sizeof zone_at(state)->records.e / sizeof(float)});
+  }
+  wbw_scene(walk(state), figure_draws);
+  frames += 1;
   drain(state);
   return n < 0 ? 0u : (uint32_t)n;
 }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
-  bool used = worldbuilder_key(at(state), key, true, mods); drain(state); return used ? 1u : 0u;
+  bool used = wbw_key(walk(state), key, mods); drain(state); return used ? 1u : 0u;
 }
-EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return worldbuilder_key(at(state), key, false, mods) ? 1u : 0u; }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { worldbuilder_blur(at(state)); }
-EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  bool used = worldbuilder_pointer(at(state), x, y, phase, kind, id); drain(state); return used ? 1u : 0u;
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return wbw_key_up(walk(state), key, mods) ? 1u : 0u; }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { wbw_blur(walk(state)); sticks = verse_sticks_reset(); }
+EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { (void)state; }
+static uint32_t pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
+  bool used = wbw_pointer(walk(state), x, y, phase, kind, id, button);
+  // the finger the zone says is the thumb's moves the stick (aethyr/sticks.coax)
+  if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  drain(state);
+  return used ? 1u : 0u;
 }
-EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return worldbuilder_wheel(at(state), dy) ? 1u : 0u; }
+EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) { return pointer(state, x, y, phase, kind, id, phase == 1 ? -1 : 0); }
+EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) { return pointer(state, x, y, phase, kind, id, button); }
+EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return wbw_wheel(walk(state), dy) ? 1u : 0u; }
+/* The mouselook (aethyr/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
+EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(uint32_t state) { return (int32_t)wbw_mouselook(walk(state)); }
+EXPORT("coaxial_look_delta") void coaxial_look_delta(uint32_t state, float dx, float dy) { zone_look_delta(zone(state), dx, dy); }
+EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t status) { zone_pointer_lock(zone(state), status); }
+/* Your Character Create character, when you have one (host.js message 16; everglade/zone.coax zone_message). */
+EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)worldbuilder_cursor(at(state)); }
 EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return worldbuilder_wants_text(at(state)) ? 1u : 0u; }
 // The typed line, in device pixels: x0, y0, x1, y1.
@@ -69,7 +146,7 @@ EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; re
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) length = sizeof inbox;
-  worldbuilder_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
+  wbw_message(walk(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
   drain(state);
 }
 
@@ -80,31 +157,43 @@ EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { worldbu
 
 EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;
+  if (i == PEOPLE_CATALOG) return bytes <= sizeof people_catalog ? (uint32_t)(uintptr_t)people_catalog : 0u;
   return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
 }
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) {
-  (void)state; return i == 0 ? (uint32_t)sizeof catalog : 0u;
+  (void)state; return i == 0 ? (uint32_t)sizeof catalog : i == PEOPLE_CATALOG ? (uint32_t)sizeof people_catalog : 0u;
 }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) worldbuilder_catalog(at(state), (coax_string){(const char *)catalog, (int64_t)bytes});
   if (i >= 0 && i <= 3 && bytes == 0) worldbuilder_pack_failed(at(state));
+  if (i == PEOPLE_CATALOG && bytes > 0 && bytes <= sizeof people_catalog) zone_catalog(zone(state), (coax_string){(const char *)people_catalog, (int64_t)bytes});
 }
-EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->draws.e; }
-EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)worldbuilder_draw_count(at(state)); }
+/* The people's index buffer is an index asset a draw may name (host.js coaxial_draw_index_v1). */
+EXPORT("coaxial_asset_index_v1") uint32_t coaxial_asset_index_v1(int32_t i) { return i == PEOPLE_INDEX; }
+EXPORT("coaxial_draw_index_v1") int32_t coaxial_draw_index_v1(uint32_t state, uint32_t i, uint32_t shadow, uint32_t field) { (void)shadow; return (int32_t)wbw_draw_index(walk(state), (int64_t)i, (int64_t)field); }
+EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)walk_at(state)->draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)walk_at(state)->draw_n; }
 // Two stores: the instances' rows, and the ground's samples (worldbuilder-land.coax wb_land_gpu). Each
 // is sent again only when its version changes.
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2u; }
+// Four stores: the instances' rows, the ground's samples (worldbuilder-land.coax wb_land_gpu), the
+// figure's instances (the zone's records) and the baked clips. Each is sent again only when its version changes.
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
-  return k == 0 ? (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->objects) : (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->ground);
+  return k == 0 ? (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->objects) : k == 1 ? (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->ground)
+       : k == 2 ? (uint32_t)(4096u * 24u * 4u) : (uint32_t)sizeof bake;
 }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)(uintptr_t)state_at(state)->objects.e : (uint32_t)(uintptr_t)state_at(state)->ground.e;
+  return k == 0 ? (uint32_t)(uintptr_t)state_at(state)->objects.e : k == 1 ? (uint32_t)(uintptr_t)state_at(state)->ground.e
+       : k == 2 ? (uint32_t)(uintptr_t)zone_at(state)->records.e : (uint32_t)(uintptr_t)bake;
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)worldbuilder_store_bytes(at(state)) : (uint32_t)worldbuilder_ground_bytes(at(state));
+  if (k == 0) return (uint32_t)worldbuilder_store_bytes(at(state));
+  if (k == 1) return (uint32_t)worldbuilder_ground_bytes(at(state));
+  if (k == 2) { uint32_t n = 0; coax_t_Bodies *b = &zone_at(state)->bodies.e[0]; for (int64_t d = 0; d < b->draw_n && d < figure_draws; d++) n += b->draws.e[d * 4 + 3]; if (n > 4096u) n = 4096u; return n * 24u * 4u; }
+  return (uint32_t)sizeof bake;
 }
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)worldbuilder_scene_version(at(state)) : (uint32_t)worldbuilder_ground_version(at(state));
+  return k == 0 ? (uint32_t)worldbuilder_scene_version(at(state)) : k == 1 ? (uint32_t)worldbuilder_ground_version(at(state)) : k == 2 ? frames : baked;
 }
 // The store is copied only when the world changed (its version), not every frame.
 

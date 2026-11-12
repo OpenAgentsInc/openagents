@@ -36,7 +36,7 @@ CC_CHAT :: "components/zeron/";   // the chat set: no layer of its own yet, but 
 CC_OUTSIDE :: -1;
 CC_LAYERS :: [6] string.["components/core/", "components/layout/", "components/paint/", "components/skin/", "components/backend/", "components/kit/"];
 // What a layer may load from outside components/.
-CC_ALLOWED_OUTSIDE :: [1] string.["verse/gpu/wgsl.coax"];
+CC_ALLOWED_OUTSIDE :: [2] string.["verse/gpu/wgsl.coax", "verse/gpu/wg-make.coax"];   // the shader dialect, and the one helper it shares with Character Create (#13225)
 
 // What a file outside components/ does that components/ should do for it.
 CC_MARKDOWN :: 1; CC_WRAP :: 2; CC_EDIT :: 4;

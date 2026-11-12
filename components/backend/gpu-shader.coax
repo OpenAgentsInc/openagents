@@ -8,6 +8,7 @@
 // writes. The procedures keep the chat_ prefix they had as
 // apps/openagents-web/gpu/chat.coax, which now loads this file.
 #load "../../verse/gpu/wgsl.coax";
+#load "../../verse/gpu/wg-make.coax";
 
 
 // GPUI's quad, shadow and sprite shaders (zeronsh/zui's
@@ -242,7 +243,6 @@ wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
 wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
 wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
 wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
-wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
 wg_sign_f2 :: (p0:V2)->V2 {return v2(wg_sign(p0.x),wg_sign(p0.y));}
 wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
 wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}

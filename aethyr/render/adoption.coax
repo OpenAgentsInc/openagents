@@ -7,7 +7,7 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 
 // Source inspectors and the fivelab animation palette need the larger
 // bounded Wasm ceiling. Other producers retain the 64 MiB ceiling.
-render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="archery-range" || app=="bitcoin-lab-walk" || app=="nights" then 4096 else 1024;}
+render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="archery-range" || app=="bitcoin-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" || app=="nights" then 4096 else 1024;}
 #test "the source inspectors request the bounded larger Wasm memory" {
   #assert render_memory_pages("animationlab")==4096 && render_memory_pages("ocarinalab")==4096 && render_memory_pages("fivelab")==4096;
   for app:[4]string.["", "animationla", "animelab", "valleycanyon"] {#assert render_memory_pages(app)==1024;}

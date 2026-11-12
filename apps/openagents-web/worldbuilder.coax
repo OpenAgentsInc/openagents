@@ -13,6 +13,8 @@
 // (4 at once, then one every 1.5 s), and how many things a world holds.
 //   coax/bin/coax test apps/openagents-web/worldbuilder.coax
 
+#module "openagents.worldbuilder";
+
 #load "../../components/core/edit.coax";
 #load "../../components/kit/controls.coax";
 #load "../../components/skin/verse.coax";
@@ -28,7 +30,7 @@ UNIFORM_FLOATS :: 132;   // 33 vec4s (gpu/worldbuilder.bindings)
 
 KEY_ESCAPE :: -1;   KEY_ENTER :: -2;    KEY_BACKSPACE :: -3; KEY_LEFT :: -4;
 KEY_RIGHT :: -5;    KEY_UP :: -6;       KEY_DOWN :: -7;      KEY_HOME :: -8;
-KEY_END :: -9;      KEY_DELETE :: -12;
+KEY_END :: -9;      KEY_DELETE :: -12;   KEY_TAB :: -15;
 MOD_SHIFT :: 1; MOD_CTRL :: 2; MOD_ALT :: 4; MOD_META :: 8;
 POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
 
@@ -59,7 +61,7 @@ HIT_FIELD :: 2;
 HIT_TOOL :: 3;          // the brush bar's tools (a tab: a the row's first, b its place in the row)
 HIT_LAYER :: 4;         // ... its layers
 HIT_SLIDE :: 5;         // ... its sliders (a: SLIDE_SIZE or SLIDE_STRENGTH)
-BTN_SEND :: 0; BTN_UNDO :: 1; BTN_REDO :: 2; BTN_FRAME :: 3;
+BTN_SEND :: 0; BTN_UNDO :: 1; BTN_REDO :: 2; BTN_FRAME :: 3; BTN_VIEW :: 4;
 // The brush bar's tools: LOOK turns the view and taps "here"; the others act on the ground under a drag.
 TOOL_LOOK :: 0; TOOL_PAINT :: 1; TOOL_RAISE :: 2; TOOL_LOWER :: 3; TOOL_SMOOTH :: 4; TOOL_FLATTEN :: 5;
 TOOLS :: 6;
@@ -79,6 +81,15 @@ WorldBuilder :: struct {
   // the camera: it looks at (tx, tz) from dist away, turned yaw (0 looks along -z), pitch down
   tx: f32; tz: f32; gx: f32; gz: f32; yaw: f32; pitch: f32 = 0.6; dist: f32 = 26;
   ty: f32;                            // the ground's height under what it looks at
+  // the walk (worldbuilder-walk.coax, #13225): your character on the ground under Everglade's follow
+  // camera. The page that holds the zone says each frame whether a character is there (walk_ok),
+  // where it stands and where the follow camera is; `walk` is which view has the screen (Tab, or the
+  // WALK and OVERVIEW button). In the walk the keys are the character's until the chat box takes them
+  // (Enter or a click on it; Escape or sending gives them back).
+  walk: bool = true; walk_ok: bool; typing: bool;
+  cam_eye: [3] f32; cam_fwd: [3] f32; cam_yaw: f32;   // the follow camera: its eye, the way it looks, and that as a yaw (0 looks along -z)
+  me_x: f32; me_z: f32; me_face: f32;
+  stick_on: bool; stick: [4] f32;     // a phone's thumb stick to draw: its middle and its knob, device pixels
   goal_dist: f32 = 26; framing: bool; // a frame eases the distance too, until the person moves the view
   moved_at: f32 = -100;               // when the person last turned, zoomed or tapped the view
   // pointers: one drags the view or selects in the chat box, two pinch the view nearer
@@ -125,10 +136,10 @@ WorldBuilder :: struct {
 }
 REQ_ACT :: 1; REQ_STATUS :: 2;
 
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
-ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
 most_i :: (a: int, b: int) -> int { if a > b { return a; } return b; }
 clamp_i :: (a: int, low: int, high: int) -> int { return ifx a < low then low else ifx a > high then high else a; }
 
@@ -208,7 +219,20 @@ ed_receive :: (s: [] WorldBuilder, text: string, paste_step: bool) {
   else { _ = eb_insert(e, piece); }
 }
 
+// The character has the view and the ground under it.
+walking :: (s: [] WorldBuilder) -> bool { return s[0].walk && s[0].walk_ok; }
+worldbuilder_walking :: (s: [] WorldBuilder) -> bool #export_c #effects(all) { return walking(s); }
+// The keys are the character's: walking, and the chat box hasn't taken them.
+worldbuilder_roams :: (s: [] WorldBuilder) -> bool #export_c #effects(all) { return walking(s) && !s[0].typing; }
+// Where "here" is for an edit. Walking, it is where your character stands, the view's middle a few
+// metres ahead of it, and left, right, front and behind follow the camera behind it.
 wb_view :: (s: [] WorldBuilder) -> WbView {
+  if walking(s) {
+    fx := s[0].cam_fwd[0]; fz := s[0].cam_fwd[2];
+    fl := sqrt(fx * fx + fz * fz);
+    if fl < 0.0001 { fx = 0; fz = -1; fl = 1; }
+    return WbView.{has_here = true, here_x = s[0].me_x, here_z = s[0].me_z, view_x = s[0].me_x + fx / fl * 6, view_z = s[0].me_z + fz / fl * 6, yaw = s[0].cam_yaw};
+  }
   return WbView.{has_here = s[0].has_here, here_x = s[0].here_x, here_z = s[0].here_z, view_x = s[0].gx, view_z = s[0].gz, yaw = s[0].yaw};
 }
 
@@ -218,7 +242,7 @@ take_act :: (s: [] WorldBuilder, text: string) {
   if st == 200 {
     sum := wb_answer(s[0].world[..], s[0].cat[..], wb_view(s), body);
     // the view frames what was built, unless the person moved it a moment ago
-    if (sum.placed > 0 || sum.changed > sum.ground) && s[0].world[0].n > 0 && s[0].time - s[0].moved_at > FRAME_WAIT { frame_all(s); }
+    if (sum.placed > 0 || sum.changed > sum.ground) && s[0].world[0].n > 0 && s[0].time - s[0].moved_at > FRAME_WAIT && !walking(s) { frame_all(s); }
     s[0].heard_n = 0;
     s[0].text_undo_live = false;
     if sum.say_n > 0 { set_reply(s, cast(string) sum.say[0..<sum.say_n], REPLY_PLAIN); }
@@ -266,7 +290,7 @@ worldbuilder_message :: (s: [] WorldBuilder, kind: int, text: string) #export_c 
     return;
   }
   if kind == MSG_TEXT {
-    ed_receive(s, text, true);
+    if !worldbuilder_roams(s) { ed_receive(s, text, true); }
     return;
   }
   if kind == MSG_SLOT {
@@ -394,6 +418,7 @@ send_typed :: (s: [] WorldBuilder) {
   eb_clear(s[0].ed[..]); s[0].ed_scroll = 0; s[0].text_undo_live = false;
   s[0].reply_n = 0;
   s[0].waiting = true;
+  s[0].typing = false;   // sent: walking, the keys are the character's again
   ask(s, ACT_URL, n, 1 | 4, REQ_ACT);
 }
 
@@ -414,7 +439,7 @@ pump :: (s: [] WorldBuilder) {
 }
 worldbuilder_action :: (s: [] WorldBuilder) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
 worldbuilder_action_done :: (s: [] WorldBuilder) #export_c #effects(all) { s[0].out_n = 0; }
-worldbuilder_wants_text :: (s: [] WorldBuilder) -> bool #export_c #effects(all) { return true; }
+worldbuilder_wants_text :: (s: [] WorldBuilder) -> bool #export_c #effects(all) { return !worldbuilder_roams(s); }
 
 // ---- keys and the pointer
 
@@ -428,6 +453,14 @@ worldbuilder_key :: (s: [] WorldBuilder, key: int, down: bool, mods: int) -> boo
   if !down { return false; }
   e := s[0].ed[..];
   e[0].clock = s[0].time;
+  // Tab: the walk or the overview
+  if key == KEY_TAB { toggle_view(s); return true; }
+  // walking, the keys are the character's (the page that holds the zone gives it what comes back
+  // unused); Enter gives them to the chat box, and Cmd or Ctrl keys stay the page's
+  if worldbuilder_roams(s) {
+    if key == KEY_ENTER { s[0].typing = true; s[0].caret_at = s[0].time; return true; }
+    if (mods & (MOD_CTRL | MOD_META)) == 0 { return false; }
+  }
   shift := (mods & MOD_SHIFT) != 0;
   meta := (mods & MOD_META) != 0;
   word_mod := (mods & MOD_ALT) != 0 || ((mods & MOD_CTRL) != 0 && !meta);
@@ -507,6 +540,7 @@ worldbuilder_key :: (s: [] WorldBuilder, key: int, down: bool, mods: int) -> boo
     return true;
   }
   if key == KEY_ESCAPE {
+    if e[0].n == 0 { s[0].typing = false; }
     if e[0].n > 0 {
       s[0].text_undo_live = true;
       eb_select_all(e);
@@ -596,6 +630,13 @@ frame_all :: (s: [] WorldBuilder) {
 }
 // The person moved the view themselves: a frame under way stops, and commands leave it be a while.
 view_moved :: (s: [] WorldBuilder) { s[0].framing = false; s[0].moved_at = s[0].time; }
+// The walk or the overview. Coming out of the walk, the overview looks at where your character stands.
+toggle_view :: (s: [] WorldBuilder) {
+  if !s[0].walk_ok { return; }
+  s[0].walk = !s[0].walk;
+  s[0].typing = false;
+  if !s[0].walk { s[0].gx = s[0].me_x; s[0].gz = s[0].me_z; s[0].tx = s[0].me_x; s[0].tz = s[0].me_z; s[0].framing = false; }
+}
 
 // ---- the brush
 
@@ -626,6 +667,7 @@ button_enabled :: (s: [] WorldBuilder, btn: int) -> bool {
   if btn == BTN_UNDO { return wb_can_undo(s[0].world[..]) && !s[0].waiting && !s[0].stroking; }
   if btn == BTN_REDO { return wb_can_redo(s[0].world[..]) && !s[0].waiting; }
   if btn == BTN_FRAME { return s[0].cat_ready; }
+  if btn == BTN_VIEW { return s[0].walk_ok; }
   return false;
 }
 
@@ -671,6 +713,9 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
     s[0].down_btn = ifx hi_idx >= 0 then s[0].hits[hi_idx].a else -1;
     s[0].hover_b = ifx hi_idx >= 0 then s[0].hits[hi_idx].b else -1;
     s[0].press_btn = ifx s[0].down_kind == HIT_BUTTON then s[0].down_btn else -1;
+    if s[0].down_kind == HIT_FIELD { s[0].typing = true; } else if s[0].down_kind == 0 { s[0].typing = false; }
+    // walking with no brush, a press on the world is the character's camera's and its thumb stick's
+    if walking(s) && s[0].down_kind == 0 && s[0].tool == TOOL_LOOK { s[0].down = false; s[0].down_btn = -1; s[0].press_btn = -1; return false; }
     if s[0].down_kind == HIT_SLIDE { s[0].slide = s[0].down_btn; slide_to(s, lx); }
     if s[0].down_kind == HIT_TOOL { s[0].tool = clamp_i(s[0].down_btn + s[0].hover_b, 0, TOOLS - 1); s[0].brush_shown = false; }
     if s[0].down_kind == HIT_LAYER { s[0].paint = clamp_i(s[0].down_btn + s[0].hover_b, 0, PAINTS - 1); }
@@ -754,7 +799,8 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
       if was_btn == BTN_SEND { send_typed(s); }
       else if was_btn == BTN_UNDO { undo(s); }
       else if was_btn == BTN_REDO { redo(s); }
-      else if was_btn == BTN_FRAME { frame_all(s); }
+      else if was_btn == BTN_FRAME { if walking(s) { toggle_view(s); } frame_all(s); }
+      else if was_btn == BTN_VIEW { toggle_view(s); }
     } else if was_kind == 0 && now_kind == 0 && s[0].tool == TOOL_LOOK { set_here(s, x, y); }
   }
   return true;
@@ -781,6 +827,14 @@ view_rows :: (s: [] WorldBuilder) {
   cp := cos(s[0].pitch); sp := sin(s[0].pitch);
   fx := hx * cp; fy := -sp; fz := hz * cp;
   ex := s[0].tx - fx * s[0].dist; ey := s[0].ty - fy * s[0].dist; ez := s[0].tz - fz * s[0].dist;
+  if walking(s) {
+    // Everglade's follow camera: its eye and the way it looks (the zone's, worldbuilder-walk.coax)
+    cl := sqrt(s[0].cam_fwd[0] * s[0].cam_fwd[0] + s[0].cam_fwd[1] * s[0].cam_fwd[1] + s[0].cam_fwd[2] * s[0].cam_fwd[2]);
+    if cl > 0.0001 && abs(s[0].cam_fwd[1]) < cl * 0.999 {
+      fx = s[0].cam_fwd[0] / cl; fy = s[0].cam_fwd[1] / cl; fz = s[0].cam_fwd[2] / cl;
+      ex = s[0].cam_eye[0]; ey = s[0].cam_eye[1]; ez = s[0].cam_eye[2];
+    }
+  }
   rx := -fz; rz := fx; rl := sqrt(rx * rx + rz * rz); rx /= rl; rz /= rl;   // f × (0, 1, 0)
   ux := -rz * fy; uy := rz * fx - rx * fz; uz := rx * fy;                    // r × f
   t: f32 = 1 / tan(cast(f32) FOV * 0.5);
@@ -953,8 +1007,22 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   _ = wb_button(sh[..], m, sk, s, ux + uw + sk.space, g, "REDO", BTN_REDO, false);
   // FRAME brings everything built into view (Cmd/Ctrl+.): beside them, under them on a phone
   fw0 := button_width(m, sk, "FRAME");
-  if phone { _ = wb_button(sh[..], m, sk, s, lw - g - fw0, g + sk.control_h + sk.space, "FRAME", BTN_FRAME, false); }
-  else { _ = wb_button(sh[..], m, sk, s, ux - sk.space - fw0, g, "FRAME", BTN_FRAME, false); btns_w += fw0 + sk.space; }
+  // WALK or OVERVIEW (Tab): your character's view, or the view from above
+  view_label := ifx walking(s) then "OVERVIEW" else "WALK";
+  vw0 := button_width(m, sk, view_label);
+  if phone {
+    _ = wb_button(sh[..], m, sk, s, lw - g - fw0, g + sk.control_h + sk.space, "FRAME", BTN_FRAME, false);
+    if s[0].walk_ok { _ = wb_button(sh[..], m, sk, s, lw - g - fw0 - sk.space - vw0, g + sk.control_h + sk.space, view_label, BTN_VIEW, false); }
+  } else {
+    _ = wb_button(sh[..], m, sk, s, ux - sk.space - fw0, g, "FRAME", BTN_FRAME, false); btns_w += fw0 + sk.space;
+    if s[0].walk_ok { _ = wb_button(sh[..], m, sk, s, ux - sk.space - fw0 - sk.space - vw0, g, view_label, BTN_VIEW, false); btns_w += vw0 + sk.space; }
+  }
+  // a phone's thumb stick, where the thumb is (the zone's: everglade/zone-touch.coax decides it)
+  if s[0].stick_on && walking(s) {
+    r0: f32 = 46; r1: f32 = 20;
+    sheet_fill(sh[..], s[0].stick[0] / d - r0, s[0].stick[1] / d - r0, r0 * 2, r0 * 2, r0, opacity(sk.ink, 0.10));
+    sheet_fill(sh[..], s[0].stick[2] / d - r1, s[0].stick[3] / d - r1, r1 * 2, r1 * 2, r1, opacity(sk.accent, 0.55));
+  }
 
   // WorldBuilder, how full the world is, and the shared limits, top left in a Verse panel
   cn := put_int(buf[..], 0, s[0].world[0].n); cn = put(buf[..], cn, " of "); cn = put_int(buf[..], cn, WB_OBJECTS); cn = put(buf[..], cn, " things");
@@ -1057,11 +1125,11 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   if e[0].n > 0 {
     _ = sheet_text(sh[..], m, -1, pen_x, ty, sk.body.line, sk.body.face, sk.ink, typed);
   } else {
-    hint := ifx s[0].world[0].n == 0 && s[0].world[0].land[0].bare then "Put a tree here" else "Say what to build";
+    hint := ifx worldbuilder_roams(s) then (ifx phone then "Tap here to say what to build" else "Press Enter to say what to build") else ifx s[0].world[0].n == 0 && s[0].world[0].land[0].bare then "Put a tree here" else "Say what to build";
     _ = sheet_text(sh[..], m, -1, tx, ty, sk.body.line, sk.body.face, sk.faint, hint);
   }
   blink := s[0].still || cast(int) floor((s[0].time - s[0].caret_at) * 2) % 2 == 0;
-  if sel_a == sel_b && blink {
+  if sel_a == sel_b && blink && !worldbuilder_roams(s) {
     sheet_fill(sh[..], pen_x + caret_x, ty + 2, 2, sk.body.line - 4, 0, sk.accent);
   }
   sheet_unclip(sh[..]);
@@ -1135,6 +1203,9 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
     _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.body.line, sk.body.face, tone, line);
   } else if s[0].tool != TOOL_LOOK && s[0].cat_ready {
     hint := ifx phone then "Drag on the ground to use the brush · pinch to zoom · LOOK turns the view" else "Drag on the ground to use the brush · scroll to zoom · LOOK turns the view";
+    _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.small.line, sk.small.face, sk.muted, hint);
+  } else if walking(s) && s[0].cat_ready {
+    hint := ifx phone then "Left thumb walks · drag to look · \"here\" is where you stand" else "W A S D walks · Space jumps · drag to look · Tab for the overview · \"here\" is where you stand";
     _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.small.line, sk.small.face, sk.muted, hint);
   } else if !s[0].has_here && s[0].cat_ready {
     hint := ifx phone then "Tap the ground to say where \"here\" is · drag to turn · pinch to zoom" else "Click the ground to say where \"here\" is · drag to turn · scroll to zoom";

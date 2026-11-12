@@ -291,7 +291,8 @@
           "font:/build/zeron/Geist-SemiBold.ttf",
           "font:/build/zeron/GeistMono.ttf",
           "icons:/build/zeron/icons.json",
-          "licence:/build/zeron/Geist-OFL.txt"
+          "licence:/build/zeron/Geist-OFL.txt",
+          "pack:/realms/character-creator/assets/glade.pack"
         ]
       }
     },

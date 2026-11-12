@@ -1,0 +1,5 @@
+// One vector helper two shared shader files both need: Character Create's (apps/openagents-web/gpu/fivelab.coax)
+// and the component system's (components/backend/gpu-shader.coax). It lives here so a page may load
+// both (WorldBuilder: the control kit's HUD over an Everglade figure, #13225).
+#load "wgsl.coax";
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

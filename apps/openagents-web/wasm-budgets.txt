@@ -19,7 +19,9 @@ builder 100000
 # WorldBuilder on Aethyrforge's edit log (aethyr/forge/edit.coax), EditBuf (components/core/edit.coax) and the control kit (components/kit/controls.coax, verse_skin, gpu_draw, #13226): 122,449 bytes measured on Linux; about 6% room.
 # ... and with the ground (#13225): an Aethyr terrain tile (aethyr/terrain-tile.coax), the engine's brushes (aethyr/terrain-edit.coax),
 # the forge log's land steps, the exact ground ray (aethyr/ground-query.coax), the brush bar and the view's framing (#13224): 166,099 bytes measured on Linux; about 5% room.
-worldbuilder 175000
+# ... and it is an Everglade zone too (worldbuilder-walk.coax, everglade/zone.coax, #13225): your character on the shared controller, as the
+# Archery Range (2,819,466) and Bitcoin Lab are: 2,918,884 bytes measured on Linux; about 4% room.
+worldbuilder 3050000
 # The page carries coax/CHANGELOG.md, which grows with every Coax release: 164,653 bytes measured 2026-11-07; about 10% headroom.
 changelog 180000
 characters 100000

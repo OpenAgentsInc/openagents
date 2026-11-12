@@ -1,6 +1,7 @@
 // 5E Lab's shaders (fivelab.coax): build.sh writes apps/openagents-web/fivelab.wgsl from this
 // with coax/web/wgsl-module.coax (fivelab.module and fivelab.bindings beside it).
 #load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/gpu/wg-make.coax";
 #load "../../../verse/style.coax";
 #load "../../../aethyr/render/sampling.coax";
 
@@ -966,7 +967,6 @@ fivelab_hud_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4
 }
 
 // ---- the vector helpers this file calls
-wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
 
 fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler)->V4 {
  tex:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,1);

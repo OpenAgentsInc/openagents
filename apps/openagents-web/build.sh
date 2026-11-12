@@ -320,7 +320,9 @@ myrealm=$!
 timed builder "$here/../../coax/web/wasm.sh" "$here/builder.coax" "$here/builder-face.c" "$here/build/builder.wasm" &
 builder=$!
 # /create-world: chat a world onto an empty Grid (worldbuilder.coax, the API's coax/web/api/worldbuilder.c).
-timed worldbuilder "$here/../../coax/web/wasm.sh" "$here/worldbuilder.coax" "$here/worldbuilder-face.c" "$here/build/worldbuilder.wasm" &
+# It is an Everglade zone too (worldbuilder-walk.coax, everglade/zone.coax): your character walks the world you build.
+timed worldbuilder "$here/../../coax/web/wasm.sh" "$here/worldbuilder-walk.coax" "$here/worldbuilder-face.c" "$here/build/worldbuilder.wasm" \
+  "$here/everglade-step.coax" "$a/sticks.coax" &
 worldbuilder=$!
 # /worlds/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 timed icecream "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &

@@ -21,11 +21,13 @@
 #load "../../../aethyr/render/sampling.coax";
 #load "../../../aethyr/render/terrain-shade.coax";
 #load "../../../components/backend/gpu-shader.coax";
+#load "fivelab.coax";   // the people's vertices and their skinning from the baked clips (fivelab_scene_vs)
 
 WB_U_BRUSH :: 44;
 WB_U_LAYERS :: 48;
 WB_GROUND_SIDE :: 257;     // samples a side (worldbuilder-land.coax WB_LAND_SIDE)
 WB_GROUND_HALF :: 128.0;   // metres from the middle to the tile's edge
+WB_FIGURES :: 1048576;     // your character's instances are numbered from here (worldbuilder-walk.coax WBW_FIGURES)
 
 // Colour as the screen shows it: a rough sRGB encode of the linear light.
 worldbuilder_out :: (c:V3)->V3 {
@@ -152,7 +154,42 @@ worldbuilder_octa :: (o:V2)->V3 {
   }
   return wg_normalize3(v3(x,y,z));
 }
-worldbuilder_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]WorldbuilderObject,ground:[]V4)->WorldbuilderS {
+// The ground's height at (x, z), between its samples.
+worldbuilder_height :: (ground:[]V4,x:f32,z:f32)->f32 {
+  fx:f32=clampf(x+WB_GROUND_HALF,0.0f32,255.999f32);
+  fz:f32=clampf(z+WB_GROUND_HALF,0.0f32,255.999f32);
+  i:int=cast(int)floor(fx);
+  j:int=cast(int)floor(fz);
+  ax:f32=fx-floor(fx);
+  az:f32=fz-floor(fz);
+  a:f32=mix(worldbuilder_sample(ground,i,j).x,worldbuilder_sample(ground,i+1,j).x,ax);
+  b:f32=mix(worldbuilder_sample(ground,i,j+1).x,worldbuilder_sample(ground,i+1,j+1).x,ax);
+  return mix(a,b,az);
+}
+// Your character: the people's vertex skinned from the baked clips by the zone's record, as
+// Everglade's zones draw it (gpu/fivelab.coax), stood on the ground where it is and seen from this
+// page's camera. The zone's floor is level; the ground's height is added here.
+worldbuilder_figure_vs :: (id:u32,k:u32,u:[]f32,people:[]u32,figures:[]FivelabObj,bake:[]V4,ground:[]V4)->WorldbuilderS {
+  f:FivelabS=fivelab_scene_vs(id,k,u,people,figures,bake);
+  m:FivelabObj=figures[cast(int)k];
+  w:V3=v3(f.world.x,f.world.y+worldbuilder_height(ground,m.a.x,m.a.z),f.world.z);
+  wp:V4=v4(w.x,w.y,w.z,1.0f32);
+  o:WorldbuilderS;
+  o.pos=v4(wg_dot4(wg_at4(u,8),wp),wg_dot4(wg_at4(u,12),wp),wg_dot4(wg_at4(u,16),wp),wg_dot4(wg_at4(u,20),wp));
+  o.world=w;
+  o.normal=f.normal;
+  o.uv=v2(0.0f32,0.0f32);
+  o.tint=v3(1.0f32,1.0f32,1.0f32);
+  o.slice=255;
+  o.la=v3(0.0f32,0.0f32,0.0f32);
+  o.lb=v3(0.0f32,0.0f32,0.0f32);
+  o.ground=2;
+  return o;
+}
+worldbuilder_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,people:[]u32,objects:[]WorldbuilderObject,ground:[]V4,figures:[]FivelabObj,bake:[]V4)->WorldbuilderS {
+  if (instance>=WB_FIGURES) {
+    return worldbuilder_figure_vs(id,instance-WB_FIGURES,u,people,figures,bake,ground);
+  }
   if (objects[cast(int)instance].material.w>0.5f32) {
     return worldbuilder_ground_vs(id,u,ground);
   }
@@ -226,6 +263,19 @@ worldbuilder_scene_fs :: (s:WorldbuilderS,u:[]f32,sheets:Tex2DArray,sheet:Sample
   tex:V4=render_sample_layer8(sheets,sheet,s.uv,layer);
   if (s.ground==1) {
     return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(worldbuilder_ground_fs(s,u,w1),u[3])),1.0f32);
+  }
+  if (s.ground==2) {
+    // your character, a ghost: a pale light strongest where it turns from the eye, every other
+    // pixel let through so the world shows behind it, and no shadow
+    gn:V3=wg_normalize3(s.normal);
+    gv:V3=wg_normalize3(wg_sub_f3f3(v3(u[28],u[29],u[30]),s.world));
+    rim:f32=pow(1.0f32-clampf(abs(wg_dot3(gn,gv)),0.0f32,1.0f32),2.0f32);
+    hole:bool=fract((floor(s.pos.x)+floor(s.pos.y))*0.5f32)>0.25f32;
+    if (hole&&(rim<0.6f32)) {
+      gpu_demote_helper();
+    }
+    glow:V3=wg_mix_f3f3f(v3(0.3f32,0.62f32,0.72f32),v3(0.85f32,1.0f32,1.0f32),rim);
+    return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(glow,(0.5f32+(0.7f32*rim))*u[3])),1.0f32);
   }
   if (textured&&(tex.w<0.4f32)) {
     gpu_demote_helper();

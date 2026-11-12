@@ -1,0 +1,166 @@
+// WorldBuilder's walk (openagents.com/create-world, #13225): your character in the world you build.
+// The page is WorldBuilder (worldbuilder.coax: the chat, the things, the ground, the brush bar) and
+// an Everglade zone (everglade/zone.coax), as the Archery Range and Bitcoin Lab are: the zone walks
+// your character on Everglade's controller (W, A, S, D, Shift, Space, a phone's thumb stick) under
+// its follow camera and mouselook, and makes your figure's frame from the people's baked clips, the
+// character you made in Character Create if you have one. Nothing about walking, the camera or the
+// figure is written here. This file only joins the two:
+//   the zone is level and bare (Bitcoin Lab's setup: no meadow, no class bar, no monsters), and its
+//   own strokes are not drawn (WorldBuilder's HUD is the control kit's);
+//   each frame it tells WorldBuilder where your character stands and where the follow camera is,
+//   lifted onto WorldBuilder's ground (the zone's floor is level; the page's shader lifts the
+//   figure the same way), and WorldBuilder draws its world from that eye;
+//   the scene's draws are WorldBuilder's (the ground and the pack's meshes) and then the figure's,
+//   which come from the people's pack beside WorldBuilder's own (a second pack on the page): their
+//   instances are numbered from WBW_FIGURES so the shader tells them apart, and they index the
+//   people's own index buffer (the host's coaxial_draw_index_v1);
+//   keys and pointers go to WorldBuilder first and to the zone when it leaves them.
+// The figure is drawn as a ghost (gpu/worldbuilder.coax): it walks through what you place.
+//   coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/worldbuilder-walk.coax --only "worldbuilder walk"
+#load "../../everglade/zone.coax";
+#load "worldbuilder.coax" as wb;
+
+WBW_FIGURES :: 1048576;   // the figure's instances start here (gpu/worldbuilder.coax WB_FIGURES)
+WBW_DRAWS :: 2048;        // draws a frame: WorldBuilder's (a mesh each, and the ground) and the figure's parts
+// Where the page's assets stand in its list (realms.json create-world: WorldBuilder's pack is four,
+// then the HUD's four fonts, icons and licence, then the people's pack is four).
+WBW_PEOPLE_CATALOG :: 10; WBW_PEOPLE_INDEX :: 12;
+
+WalkBuilder :: struct {
+  b: [1] wb.WorldBuilder;
+  z: [1] EgZone;
+  zu: [UNIFORM_FLOATS] f32;            // the zone's own uniforms: its follow camera is read from them
+  draws: [WBW_DRAWS * 4] u32; draw_n: int; own_n: int;   // the frame's draws; the first own_n are WorldBuilder's
+  entered: bool;
+}
+
+// The page is the zone's: level, bare, your character at the Grid's middle looking away from the viewer.
+wbw_enter :: (w: [] WalkBuilder, facts: string) {
+  s := w[0].z[..]; cr := s[0].creator[..];
+  cr[0].field = true; cr[0].flat = true; s[0].bare = true;
+  if !w[0].entered {
+    w[0].entered = true; s[0].xc[0].open = false;
+    s[0].put_on = true; s[0].put_x = 0; s[0].put_y = 0; s[0].put_z = 4; s[0].put_face = 3.1415927;
+  }
+  zone_enter(s, facts);
+}
+wbw_message :: (w: [] WalkBuilder, kind: int, text: string) #export_c #effects(all) {
+  s := w[0].z[..];
+  // the zone's: the page's facts, your Character Create character and its replies, the graphics
+  // governor's and a driver's. The slot's save (4) is WorldBuilder's world, never the zone's.
+  if kind == 16 || kind == 17 || kind == 700 || kind == QP_HOST_GPU { _ = zone_message(s, kind, text); return; }
+  if kind == HOST_PAGE { _ = zone_message(s, kind, text); wbw_enter(w, text); }
+  wb.worldbuilder_message(w[0].b[..], kind, text);
+}
+// Whether your character is up and walking in the zone.
+wbw_up :: (w: [] WalkBuilder) -> bool { s := w[0].z[..]; return zone_world(s) && s[0].you_on; }
+
+// `strokes` is the zone's own room for its HUD's strokes (MAX_VERTICES of them, 16 floats each): they
+// are made, as every zone's frame makes them, and not drawn.
+wbw_zone_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES * VERTEX_FLOATS; }
+wbw_frame :: (w: [] WalkBuilder, strokes: [] f32, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  s := w[0].z[..]; b := w[0].b[..];
+  if s[0].creator[0].on {
+    // the zone's frame: its camera and its figure's playback
+    zone_begin(s);
+    n0 := zone_draw(s, strokes, w[0].zu[..], width, height, dpr, dt, still);
+    n0 = zone_finish(s, strokes, w[0].zu[..], n0, dt, still);
+  }
+  up := wbw_up(w);
+  b[0].walk_ok = up;
+  if up {
+    l := b[0].world[0].land[..];
+    lift := wb.wb_land_y(l, s[0].you_x, s[0].you_z);
+    b[0].me_x = s[0].you_x; b[0].me_z = s[0].you_z; b[0].me_face = s[0].you_face;
+    zu := w[0].zu[..];
+    ex := zu[16]; ey := zu[17] + lift; ez := zu[18];
+    floor_y := wb.wb_land_y(l, ex, ez) + 0.35;   // the eye never sinks into a hill behind you
+    b[0].cam_eye[0] = ex; b[0].cam_eye[1] = ifx ey > floor_y then ey else floor_y; b[0].cam_eye[2] = ez;
+    b[0].cam_fwd[0] = zu[20]; b[0].cam_fwd[1] = zu[21]; b[0].cam_fwd[2] = zu[22];
+    b[0].cam_yaw = atan2(zu[20], -zu[22]);
+    b[0].stick_on = s[0].stick_on;
+    b[0].stick[0] = s[0].stick_ox; b[0].stick[1] = s[0].stick_oy; b[0].stick[2] = s[0].stick_px; b[0].stick[3] = s[0].stick_py;
+  }
+  return wb.worldbuilder_frame(b, out, u, width, height, dpr, dt, still);
+}
+// After the figure's records are made (zone_scene: figures' draws in the zone's bodies): the frame's
+// draws, WorldBuilder's and then the figure's, each figure draw's instances numbered from WBW_FIGURES.
+wbw_scene :: (w: [] WalkBuilder, figures: int) -> int #export_c #effects(all) {
+  b := w[0].b[..]; d := w[0].draws[..];
+  n := wb.worldbuilder_draw_count(b);
+  if n > WBW_DRAWS { n = WBW_DRAWS; }
+  for k: 0..<n * 4 { d[k] = b[0].draws[k]; }
+  w[0].own_n = n;
+  if b[0].walk_ok && b[0].cat_ready {
+    // the people's parts only (your body's): a record whose flags say "environment" (its d.w over
+    // 15.5, gpu/fivelab.coax FivelabObj) is the zone's own scenery, not this world's
+    f := w[0].z[0].bodies[0].draws[..];
+    for k: 0..<figures {
+      if n >= WBW_DRAWS { break; }
+      row := cast(int) f[k * 4 + 2] * figs.BD_REC_FLOATS;
+      if row + 15 >= w[0].z[0].records.count || w[0].z[0].records[row + 15] > 15.5 { continue; }
+      d[n * 4] = f[k * 4]; d[n * 4 + 1] = f[k * 4 + 1]; d[n * 4 + 2] = f[k * 4 + 2] + WBW_FIGURES; d[n * 4 + 3] = f[k * 4 + 3];
+      n += 1;
+    }
+  }
+  w[0].draw_n = n;
+  return n;
+}
+// A draw's index buffer (field 0: -1 the page's own, else the asset that holds it) and its first index (field 1).
+wbw_draw_index :: (w: [] WalkBuilder, i: int, field: int) -> int #export_c #effects(all) {
+  if i < 0 || i >= w[0].draw_n { return ifx field == 0 then -1 else 0; }
+  if field == 0 { return ifx i < w[0].own_n then -1 else WBW_PEOPLE_INDEX; }
+  return cast(int) w[0].draws[i * 4];
+}
+
+// Keys: WorldBuilder's first (its chat box, its Cmd and Ctrl keys, Tab and Enter); walking, what it leaves is the zone's.
+wbw_key :: (w: [] WalkBuilder, key: int, mods: int) -> bool #export_c #effects(all) {
+  b := w[0].b[..];
+  if wb.worldbuilder_key(b, key, true, mods) { if !wb.worldbuilder_roams(b) { zone_blur(w[0].z[..]); } return true; }
+  if wb.worldbuilder_roams(b) { return zone_key(w[0].z[..], key); }
+  return false;
+}
+wbw_key_up :: (w: [] WalkBuilder, key: int, mods: int) -> bool #export_c #effects(all) { return zone_key_up(w[0].z[..], key, mods); }
+wbw_blur :: (w: [] WalkBuilder) #export_c #effects(all) { wb.worldbuilder_blur(w[0].b[..]); zone_blur(w[0].z[..]); }
+// Pointers: WorldBuilder's HUD, chat box and brush first; walking, a press on the world is the
+// zone's (its camera's drag, its mouselook, a phone's thumb stick).
+wbw_pointer :: (w: [] WalkBuilder, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) {
+  b := w[0].b[..];
+  if wb.worldbuilder_pointer(b, x, y, phase, kind, id) { w[0].z[0].zt_thumb = false; return true; }
+  if !wb.walking(b) { return false; }
+  return zone_pointer_buttons(w[0].z[..], x, y, phase, kind, id, button);
+}
+wbw_wheel :: (w: [] WalkBuilder, dy: f32) -> bool #export_c #effects(all) {
+  if wb.walking(w[0].b[..]) { return zone_wheel(w[0].z[..], dy); }
+  return wb.worldbuilder_wheel(w[0].b[..], dy);
+}
+// The zone's body is the face's to walk only while your character has the keys' world: not in the overview.
+wbw_walks :: (w: [] WalkBuilder) -> bool #export_c #effects(all) { return wb.walking(w[0].b[..]); }
+wbw_mouselook :: (w: [] WalkBuilder) -> int #export_c #effects(all) { return ifx wb.worldbuilder_roams(w[0].b[..]) then zone_mouselook(w[0].z[..]) else 0; }
+wbw_max_vertices :: () -> int #export_c #effects(all) { return wb.MAX_VERTICES; }
+wbw_vertex_floats :: () -> int #export_c #effects(all) { return wb.VERTEX_FLOATS; }
+wbw_uniform_floats :: () -> int #export_c #effects(all) { return wb.UNIFORM_FLOATS; }
+
+#test "worldbuilder walk: the page's facts bring the zone up level and bare, and the save stays WorldBuilder's" #steps 4000000000 {
+  w: [1] WalkBuilder;
+  wbw_message(w[..], 4, "WB1\n");
+  #assert !w[0].z[0].creator[0].on && !wbw_up(w[..]);
+  wbw_message(w[..], HOST_PAGE, "url=https://openagents.com/create-world\n");
+  s := w[0].z[..];
+  #assert s[0].creator[0].on && s[0].creator[0].flat && s[0].bare && s[0].put_on && w[0].entered;
+  // no character yet: every key and pointer is WorldBuilder's, as in the overview
+  #assert !wbw_walks(w[..]) && wbw_mouselook(w[..]) == 0 && wbw_draw_index(w[..], 0, 0) == -1;
+  // a figure's draws follow WorldBuilder's, numbered from WBW_FIGURES, on the people's index buffer
+  w[0].b[0].walk_ok = true; w[0].b[0].cat_ready = true;
+  s[0].bodies[0].draws[0] = 300; s[0].bodies[0].draws[1] = 90; s[0].bodies[0].draws[2] = 2; s[0].bodies[0].draws[3] = 1;
+  n := wbw_scene(w[..], 1);
+  #assert n == 1 && w[0].own_n == 0 && w[0].draws[2] == WBW_FIGURES + 2 && wbw_draw_index(w[..], 0, 0) == WBW_PEOPLE_INDEX && wbw_draw_index(w[..], 0, 1) == 300;
+  // walking, W is the zone's and Enter gives the keys to the chat box; then W types
+  #assert wbw_walks(w[..]) && wbw_key(w[..], 'w', 0) && (s[0].held & HOLD_W) != 0;
+  #assert wbw_key(w[..], wb.KEY_ENTER, 0) && w[0].b[0].typing && s[0].held == 0;
+  #assert wbw_key(w[..], 'w', 0) && s[0].held == 0 && w[0].b[0].ed[0].n == 1;
+  // Tab is the overview: the zone no longer has the wheel
+  #assert wbw_key(w[..], wb.KEY_TAB, 0) && !wbw_walks(w[..]);
+  far := w[0].b[0].dist;
+  #assert wbw_wheel(w[..], 100) && w[0].b[0].dist > far;
+}
