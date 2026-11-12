@@ -107,8 +107,7 @@ who'll ask why we didn't use an existing library.
 For the technical listener, from [the handoff note](../../nostr/HANDOFF.md):
 
 - The book has 104 chapters. 102 are implemented; 103 and 104 are partly
-  done. Chapter 104 lacks one thing: its treasury spend broadcast on the
-  public signet (it has run on regtest and on a private signet).
+  done.
 - The examples were all run again on 2026-11-12: 93 programs, each in two
   modes. All 186 runs match their recorded output.
 - Mutation testing plants deliberate bugs to see whether the tests catch
