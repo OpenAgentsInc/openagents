@@ -27,38 +27,30 @@ rm_admin_local :: (v: [] RmServer, address: string) -> bool #export_c #effects(a
 }
 e2_admin_allowed :: (dev: bool, address: string) -> bool { return dev && address == "127.0.0.1"; }
 
-rea_word :: (t: string, at: int) -> string { e := at; while e < t.count && t[e] != ' ' { e += 1; } return t[at..<e]; }
-rea_num :: (w: string) -> int {
-  if w.count == 0 || w.count > 10 { return -999999999; }
-  neg := w[0] == '-'; v := 0; i := ifx neg then 1 else 0;
-  if i >= w.count { return -999999999; }
-  while i < w.count { if w[i] < '0' || w[i] > '9' { return -999999999; } v = v * 10 + cast(int)(w[i] - '0'); i += 1; }
-  return ifx neg then -v else v;
-}
-// A seat's X line (room-everglade.coax eg_heard).
+// A seat's X line (room-everglade.coax eg_heard), read with everglade-wire.coax wire_read_admin.
 e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   s := seat_id.value;
   if !v[0].adm.local || s < 0 || s >= EG_SEATS { v[0].adm.dropped += 1; return; }
   v[0].adm.heard += 1;
   bit := 1 << s;
-  verb := rea_word(text, 2); at := 2 + verb.count + 1;
-  arg := ifx at < text.count then rea_word(text, at) else "";
+  rd: [1] WireRd; rd[0] = wire_rd(text, 1);
+  line := wire_read_admin(text, rd[..]);
+  if !rd[0].ok { return; }
+  verb := line.verb; arg := line.arg;
   b := v[0].eg[k].rules[0].b[..]; c := b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
-  if verb == "heal" { c[0].hp = c[0].hp_max; c[0].dead = false; c[0].stable = false; c[0].death_ok = 0; c[0].death_fail = 0; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; } return; }
-  if verb == "god" { v[0].adm.god[k] = ifx arg == "1" then v[0].adm.god[k] | bit else v[0].adm.god[k] & (65535 - bit); return; }
-  if verb == "ko" { v[0].adm.ko[k] = ifx arg == "1" then v[0].adm.ko[k] | bit else v[0].adm.ko[k] & (65535 - bit); return; }
-  if verb == "at" {
-    w1 := arg; a2 := at + w1.count + 1; w2 := ifx a2 < text.count then rea_word(text, a2) else ""; a3 := a2 + w2.count + 1;
-    w3 := ifx a3 < text.count then rea_word(text, a3) else "";
-    x := rea_num(w1); z := rea_num(w2); yaw := rea_num(w3);
+  if verb == WIRE_X_HEAL { c[0].hp = c[0].hp_max; c[0].dead = false; c[0].stable = false; c[0].death_ok = 0; c[0].death_fail = 0; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; } return; }
+  if verb == WIRE_X_GOD { v[0].adm.god[k] = ifx arg == "1" then v[0].adm.god[k] | bit else v[0].adm.god[k] & (65535 - bit); return; }
+  if verb == WIRE_X_KO { v[0].adm.ko[k] = ifx arg == "1" then v[0].adm.ko[k] | bit else v[0].adm.ko[k] & (65535 - bit); return; }
+  if verb == WIRE_X_AT {
+    x := line.x; z := line.z; yaw := line.yaw;
     if x < -400000 || x > 400000 || z < -600000 || z > 100000 || yaw < -7000 || yaw > 7000 { return; }
     v[0].adm.warp[k] = bit; v[0].adm.warp_x[k] = f32(x) / 1000; v[0].adm.warp_z[k] = f32(z) / 1000; v[0].adm.warp_yaw[k] = f32(yaw) / 1000;
     return;
   }
   // the CLASSES and LEVEL menus: the seat sits again as that SRD class and level (srd-CLASS or
   // srd-CLASS-L, as a hello says it), even when its ticket's checkpoint holds its later hellos
-  if verb == "class" { if egb_klass_of(arg) >= EGB_CL0 { eg_seat_kind(v, k, seat_id, arg); } return; }
-  if verb == "guard" {
+  if verb == WIRE_X_CLASS { if egb_klass_of(arg) >= EGB_CL0 { eg_seat_kind(v, k, seat_id, arg); } return; }
+  if verb == WIRE_X_GUARD {
     g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..];
     if arg == "kill" { if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { b[0].c[EGB_BEAST0 + g[0].q].hp = 0; } return; }
     if arg == "reset" || arg == "off" {

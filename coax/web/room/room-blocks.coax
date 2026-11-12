@@ -117,9 +117,10 @@ im_heard_blocks :: (v: [] RmServer, k: int, s_id: SeatId, text: string) { s := s
   l := v[0].eg[k].im_blk[s..<s + 1];
   l[0].n = 0;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
-  while r[0].ok && r[0].at < text.count && l[0].n < WIRE_BLOCKS {
-    w := wire_word(text, r[..]);
-    if !r[0].ok || w.count == 0 || w.count > TICKET_PID { continue; }
+  got := wire_read_blocks(text, r[..]);   // everglade-wire.coax
+  for b: 0..<got.n {
+    w := got.id[b];
+    if w.count > TICKET_PID { continue; }
     for i: 0..<w.count { l[0].id[l[0].n * TICKET_PID + i] = w[i]; }
     l[0].id_n[l[0].n] = w.count; l[0].n += 1;
   }

@@ -243,7 +243,7 @@ e2st_bow_fight :: (s: [] E2, shot: figs.Shot) -> figs.Shot {
     if b % 2 == 0 { _ := e2m_draw(s, false); } else { _ := e2m_loose(s); }
     // a local room's god mode (everglade/server/admin.coax, which takes it from 127.0.0.1 in a dev room only):
     // the camp's blows land and show, and the Ranger stays up for the whole take
-    if b % 2 == 0 && e2n_open(s[0].net[..]) { _ := e2a_word(s, "X god 1"); }
+    if b % 2 == 0 && e2n_open(s[0].net[..]) { _ := e2a_flag(s, WIRE_X_GOD, true); }
     s[0].stage_fire = b;
   }
   v := e2st_fight_view(t, s[0].you_x, s[0].you_y, s[0].you_z, a[0], a[1], a[2]);

@@ -126,7 +126,35 @@ wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
   if head == "e stop" { return wire_put_stop(out, 0, wp_int(f.v[0]), wp_int(f.v[1]), f.v[2]); }
   if head == "w" { return wire_put_wanted(out, 0, wp_int(f.v[0]), wp_int(f.v[1])); }
   if head == "r" { return wire_put_refused(out, 0, wp_int(f.v[0]), f.v[1]); }
-  if head == "g" { return wire_put_go(out, 0, f.v[0]); }
+  if head == "g" && f.n == 1 { return wire_put_go(out, 0, f.v[0]); }
+  if head == "g" {   // the raid's state, a D entry (#13364): 15 fields, PLAYERS, then the siege's 4
+    if f.n != 15 && f.n != 16 && f.n != 20 { return -1; }
+    g := WireRaid.{kind = wp_int(f.v[0]), phase = wp_int(f.v[1]), wave = wp_int(f.v[2]), waves = wp_int(f.v[3]), secs = wp_int(f.v[4]), left = wp_int(f.v[5]), standing = wp_int(f.v[6]),
+      slain = wp_int(f.v[7]), square = wp_int(f.v[8]), wards = wp_int(f.v[9]), arch = wp_int(f.v[10]), outcome = wp_int(f.v[11]), folk = wp_int(f.v[12]), levels = wp_int(f.v[13]), cap = wp_int(f.v[14])};
+    if f.n > 15 { g.players_said = true; g.players = wp_int(f.v[15]); }
+    if f.n > 16 { g.siege = true; g.front = wp_int(f.v[16]); g.town = wp_int(f.v[17]); g.cap_c = wp_int(f.v[18]); g.cap_t = wp_int(f.v[19]); }
+    return wire_put_raid(out, 0, g);
+  }
+  if head == "v" { return wire_put_you(out, 0, WireYou.{ss = wp_int(f.v[0]), level = wp_int(f.v[1]), xp = wp_int(f.v[2]), cap = wp_int(f.v[3]), lo = wp_int(f.v[4]), hi = wp_int(f.v[5]), rest_said = f.n > 6, rest = ifx f.n > 6 then wp_int(f.v[6]) else 0}); }
+  if head == "e xp" { return wire_put_xp(out, 0, WireGain.{ss = wp_int(f.v[0]), v = wp_int(f.v[1])}); }
+  if head == "e level" { return wire_put_level(out, 0, WireGain.{ss = wp_int(f.v[0]), v = wp_int(f.v[1])}); }
+  if head == "e rc" {
+    c := WireRc.{id = wp_int(f.v[0]), k = wp_int(f.v[1]), ax = f32(wp_int(f.v[2])) / 100, ay = f32(wp_int(f.v[3])) / 100, az = f32(wp_int(f.v[4])) / 100, seed = wp_int(f.v[5])};
+    if f.n > 6 { c.from = true; c.fx = f32(wp_int(f.v[6])) / 100; c.fy = f32(wp_int(f.v[7])) / 100; c.fz = f32(wp_int(f.v[8])) / 100; }
+    return wire_put_rc(out, 0, c);
+  }
+  if head == "e wm" {
+    return wire_put_wm(out, 0, WireWm.{kind = wp_int(f.v[0]), caster = wp_int(f.v[1]), foe = wp_int(f.v[2]), ax = f32(wp_int(f.v[3])) / 100, ay = f32(wp_int(f.v[4])) / 100, az = f32(wp_int(f.v[5])) / 100,
+      bx = f32(wp_int(f.v[6])) / 100, by = f32(wp_int(f.v[7])) / 100, bz = f32(wp_int(f.v[8])) / 100, flight = wp_int(f.v[9]), life = wp_int(f.v[10])});
+  }
+  if head == "e mend" { return wire_put_mend(out, 0, wp_int(f.v[0])); }
+  if head == "e pburn" { return wire_put_pburn(out, 0, WirePlaced.{i = wp_int(f.v[0]), on = wp_int(f.v[1])}); }
+  if head == "e pgone" { return wire_put_pgone(out, 0, wp_int(f.v[0])); }
+  if head == "V" { return wire_put_change(out, 0, WireChange.{look = f.v[0], kind = f.v[1]}); }
+  if head == "X" {
+    if f.n > 0 && f.v[0] == WIRE_X_AT { return wire_put_admin(out, 0, WireAdmin.{verb = f.v[0], x = wp_int(f.v[1]), z = wp_int(f.v[2]), yaw = wp_int(f.v[3])}); }
+    return wire_put_admin(out, 0, WireAdmin.{verb = f.v[0], arg = ifx f.n > 1 then f.v[1] else ""});
+  }
   if head == "O" { return wire_put_missed(out, 0, wp_int(f.v[0])); }      // (#12902)
   if head == "o" { return wire_put_outcomes(out, 0, wp_int(f.v[0])); }
   if head == "e town" { return wire_put_town(out, 0); }
@@ -162,6 +190,41 @@ wp_read :: (head: string, t: string, got: [] WpVals, num: [] u8) -> bool {
   else if head == "e hit" { h := wire_read_hit(t, r[..]); wp_n(got, num, at[..], h.who); wp_n(got, num, at[..], h.by); wp_n(got, num, at[..], h.amt); wp_n(got, num, at[..], h.kind); }
   else if head == "Z" { a := wire_read_rest_ask(t, r[..]); wp_n(got, num, at[..], a.seq); wp_n(got, num, at[..], a.req); }
   else if head == "z" { z := wire_read_rest_state(t, r[..]); wp_n(got, num, at[..], z.seq); wp_n(got, num, at[..], z.code); wp_n(got, num, at[..], z.dice); }
+  else if head == "L" { wp_n(got, num, at[..], wire_read_rest(t, r[..])); }
+  else if head == "w" { w := wire_read_wanted(t, r[..]); wp_n(got, num, at[..], w.ss); wp_n(got, num, at[..], w.level); }
+  else if head == "e xp" || head == "e level" { g := wire_read_gain(t, r[..]); wp_n(got, num, at[..], g.ss); wp_n(got, num, at[..], g.v); }
+  else if head == "e rc" {
+    c := wire_read_rc(t, r[..]);
+    for x: [5] int.[c.id, c.k, wire_cm(c.ax), wire_cm(c.ay), wire_cm(c.az)] { wp_n(got, num, at[..], x); }
+    wp_n(got, num, at[..], c.seed);
+    if c.from { wp_n(got, num, at[..], wire_cm(c.fx)); wp_n(got, num, at[..], wire_cm(c.fy)); wp_n(got, num, at[..], wire_cm(c.fz)); }
+  }
+  else if head == "e wm" {
+    w := wire_read_wm(t, r[..]);
+    for x: [11] int.[w.kind, w.caster, w.foe, wire_cm(w.ax), wire_cm(w.ay), wire_cm(w.az), wire_cm(w.bx), wire_cm(w.by), wire_cm(w.bz), w.flight, w.life] { wp_n(got, num, at[..], x); }
+  }
+  else if head == "e mend" { wp_n(got, num, at[..], wire_read_mend(t, r[..])); }
+  else if head == "e pburn" { p := wire_read_pburn(t, r[..]); wp_n(got, num, at[..], p.i); wp_n(got, num, at[..], p.on); }
+  else if head == "e pgone" { wp_n(got, num, at[..], wire_read_pgone(t, r[..])); }
+  else if head == "g" {
+    g := wire_read_raid(t, r[..]);
+    for x: [15] int.[g.kind, g.phase, g.wave, g.waves, g.secs, g.left, g.standing, g.slain, g.square, g.wards, g.arch, g.outcome, g.folk, g.levels, g.cap] { wp_n(got, num, at[..], x); }
+    if g.players_said || g.siege { wp_n(got, num, at[..], g.players); }
+    if g.siege { for x: [4] int.[g.front, g.town, g.cap_c, g.cap_t] { wp_n(got, num, at[..], x); } }
+  }
+  else if head == "v" {
+    y := wire_read_you(t, r[..]);
+    for x: [6] int.[y.ss, y.level, y.xp, y.cap, y.lo, y.hi] { wp_n(got, num, at[..], x); }
+    if y.rest_said { wp_n(got, num, at[..], y.rest); }
+  }
+  else if head == "V" { c := wire_read_change(t, r[..]); wp_s(got, c.look); wp_s(got, c.kind); }
+  else if head == "X" {
+    a := wire_read_admin(t, r[..]);
+    wp_s(got, a.verb);
+    if a.verb == WIRE_X_AT { wp_n(got, num, at[..], a.x); wp_n(got, num, at[..], a.z); wp_n(got, num, at[..], a.yaw); }
+    else if a.arg.count > 0 { wp_s(got, a.arg); }
+  }
+  else if head == "K" { b := wire_read_blocks(t, r[..]); for i: 0..<b.n { wp_s(got, b.id[i]); } }
   else if head == "n" { w := wire_read_n(t, r[..]); wp_n(got, num, at[..], w.ss); wp_s(got, w.id); wp_s(got, w.look); wp_s(got, w.kind); wp_n(got, num, at[..], w.flags); wp_s(got, w.name); }
   else { return false; }
   return r[0].ok;

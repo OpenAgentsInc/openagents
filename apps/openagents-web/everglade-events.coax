@@ -140,28 +140,22 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
   e := n[0].evp[..];
   if wire_is(t, "g") {
     r: [1] WireRd; r[0] = wire_rd(t, 1);
-    f: [15] int;
-    for i: 0..<15 { f[i] = wire_num(t, r[..]); }
+    g := wire_read_raid(t, r[..]);   // everglade-wire.coax
     if !r[0].ok { return true; }
-    if e[0].heard { egs_raid(s, e[0].phase, f[1], f[11]); }   // the horn, the end (everglade-sound.coax)
-    e[0].heard = true; e[0].kind = f[0]; e[0].phase = f[1]; e[0].wave = f[2]; e[0].waves = f[3]; e[0].secs = f[4]; e[0].left = f[5];
-    e[0].standing = f[6]; e[0].slain = f[7]; e[0].square = f[8]; e[0].wards = f[9]; e[0].arch = f[10]; e[0].outcome = f[11]; e[0].folk = f[12];
-    e[0].levels = f[13] == 1; e[0].cap = f[14]; e[0].at = n[0].mono;
-    if wire_more(t, r[..]) { pl := wire_num(t, r[..]); if r[0].ok { e[0].players = pl; } }   // older servers send no PLAYERS
-    if wire_more(t, r[..]) {
-      // the siege's (#12860)
-      fr := wire_num(t, r[..]); tw := wire_num(t, r[..]); cc := wire_num(t, r[..]); tc := wire_num(t, r[..]);
-      if r[0].ok { e[0].front = clamp_i(fr, 0, 1000); e[0].town = tw; e[0].caps[0] = cc; e[0].caps[1] = tc; }
-    }
+    if e[0].heard { egs_raid(s, e[0].phase, g.phase, g.outcome); }   // the horn, the end (everglade-sound.coax)
+    e[0].heard = true; e[0].kind = g.kind; e[0].phase = g.phase; e[0].wave = g.wave; e[0].waves = g.waves; e[0].secs = g.secs; e[0].left = g.left;
+    e[0].standing = g.standing; e[0].slain = g.slain; e[0].square = g.square; e[0].wards = g.wards; e[0].arch = g.arch; e[0].outcome = g.outcome; e[0].folk = g.folk;
+    e[0].levels = g.levels == 1; e[0].cap = g.cap; e[0].at = n[0].mono;
+    if g.players_said { e[0].players = g.players; }   // older servers send no PLAYERS
+    if g.siege { e[0].front = clamp_i(g.front, 0, 1000); e[0].town = g.town; e[0].caps[0] = g.cap_c; e[0].caps[1] = g.cap_t; }   // the siege's (#12860)
     return true;
   }
   if wire_is(t, "v") {
     r: [1] WireRd; r[0] = wire_rd(t, 1);
-    ss := wire_num(t, r[..]); level := wire_num(t, r[..]); xp := wire_num(t, r[..]); cap := wire_num(t, r[..]); lo := wire_num(t, r[..]); hi := wire_num(t, r[..]);
-    if !r[0].ok || ss != n[0].seat { return true; }
-    e[0].mine = true; e[0].level = level; e[0].xp = xp; e[0].cap = cap; e[0].lo = lo; e[0].hi = hi;
-    e[0].rest = false;
-    if wire_more(t, r[..]) { rest := wire_num(t, r[..]); e[0].rest = r[0].ok && rest == 1; }   // REST (everglade-rest.coax)
+    y := wire_read_you(t, r[..]);   // everglade-wire.coax
+    if !r[0].ok || y.ss != n[0].seat { return true; }
+    e[0].mine = true; e[0].level = y.level; e[0].xp = y.xp; e[0].cap = y.cap; e[0].lo = y.lo; e[0].hi = y.hi;
+    e[0].rest = y.rest_said && y.rest == 1;   // REST (everglade-rest.coax)
     if wl_on(s) && e[0].level > 0 && !wl_has(s, s[0].wl.armed) { s[0].wl.armed = -1; }
     if !wl_on(s) && e[0].level > 0 && s[0].sp.armed >= 0 && ege_kit_on(s) && ege_kit_place(s, s[0].sp.armed) < 0 { s[0].sp.armed = -1; }
     return true;
@@ -174,26 +168,26 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
   }
   if wire_is(t, "e level") {
     r: [1] WireRd; r[0] = wire_rd(t, 7);
-    ss := wire_num(t, r[..]); level := wire_num(t, r[..]);
-    if r[0].ok && ss == n[0].seat { e[0].up_level = level; e[0].up_t = s[0].time; }
+    g := wire_read_gain(t, r[..]);
+    if r[0].ok && g.ss == n[0].seat { e[0].up_level = g.v; e[0].up_t = s[0].time; }
     return true;
   }
   if wire_is(t, "e xp") {
     r: [1] WireRd; r[0] = wire_rd(t, 4);
-    ss := wire_num(t, r[..]); amount := wire_num(t, r[..]);
-    if r[0].ok && ss == n[0].seat && amount > 0 && s[0].started { sp_say(s, "XP", amount, "EARNED"); ege_word(s, add(ab_you(s), v3(0, 2.5, 0)), EGE_GAINED, amount); }
+    g := wire_read_gain(t, r[..]); amount := g.v;
+    if r[0].ok && g.ss == n[0].seat && amount > 0 && s[0].started { sp_say(s, "XP", amount, "EARNED"); ege_word(s, add(ab_you(s), v3(0, 2.5, 0)), EGE_GAINED, amount); }
     return true;
   }
   if wire_is(t, "e rc") {
     // a raid creature's cast: played as the Warlock's slot K from where it stands (the town's harm is the server's)
     r: [1] WireRd; r[0] = wire_rd(t, 4);
-    id := wire_num(t, r[..]); k := wire_num(t, r[..]); ax := wire_f(t, r[..]); ay := wire_f(t, r[..]); az := wire_f(t, r[..]); seed := wire_num(t, r[..]);
+    rcf := wire_read_rc(t, r[..]);   // everglade-wire.coax
+    id := rcf.id; k := rcf.k; seed := rcf.seed;
     if !r[0].ok || !s[0].started || !sp_on(s) { return true; }
-    at := v3(ax, ay, az); from := at;
+    at := v3(rcf.ax, rcf.ay, rcf.az); from := at;
     // where it leaves the caster's hands (a room since #12862 says it): a caster this page doesn't hold
     // still casts from where it stands
-    fx := wire_f(t, r[..]); fy := wire_f(t, r[..]); fz := wire_f(t, r[..]);
-    if r[0].ok { from = v3(fx, fy, fz); }
+    if rcf.from { from = v3(rcf.fx, rcf.fy, rcf.fz); }
     q := net_ent(n, NET_MADE_ID + id, false);
     if k >= EGE_K_HERO0 && k < EGE_K_HERO0 + SP_SLOTS {
       // a hero's (#12996): one of Everglade's own four, its strike once its cast bar is done, from where
@@ -220,12 +214,9 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
     // a guard's spell leaves their hands (e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE): it flies
     // here as on the server, from their hands to whom it is for (everglade-watch.coax watch_net_missile)
     r: [1] WireRd; r[0] = wire_rd(t, 4);
-    kind := wire_num(t, r[..]); caster := wire_num(t, r[..]); _ := wire_num(t, r[..]);
-    a := v3(wire_f(t, r[..]), wire_f(t, r[..]), wire_f(t, r[..]));
-    b := v3(wire_f(t, r[..]), wire_f(t, r[..]), wire_f(t, r[..]));
-    flight := f32(wire_num(t, r[..])) / 1000; life := f32(wire_num(t, r[..])) / 1000;
+    w := wire_read_wm(t, r[..]);   // everglade-wire.coax
     if !r[0].ok || !s[0].started || !s[0].wv.started { return true; }
-    watch_net_missile(watch_w(s), kind, caster, a, b, flight, life);
+    watch_net_missile(watch_w(s), w.kind, w.caster, v3(w.ax, w.ay, w.az), v3(w.bx, w.by, w.bz), f32(w.flight) / 1000, f32(w.life) / 1000);
     return true;
   }
   return false;

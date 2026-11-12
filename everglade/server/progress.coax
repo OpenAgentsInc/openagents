@@ -64,11 +64,11 @@ ev_award :: (v: [] RmServer, k: int, s_id: SeatId, base: int) { s := s_id.value;
   was := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]); _ := eg_level_up(v, k, s_id);
   // aimed at the seat (ev_who): the gainer always hears its own gain and level-up, however busy the
   // tick (the outcomes' room, no cue allowance); the seats near it hear them as cues
-  n := wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e xp"), s), amount);
+  n := wire_put_xp(b[..], 0, WireGain.{ss = s, v = amount});
   eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, false, 1 << s);
   now := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]);
   if now > was {
-    n = wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e level"), s), now);
+    n = wire_put_level(b[..], 0, WireGain.{ss = s, v = now});
     eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, true, 1 << s);
   }
 }

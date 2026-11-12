@@ -92,3 +92,32 @@ and older rooms ignore `Z`, so the version and pins are unchanged.
 
 Everglade's whole-heal `L SEQ` is refused (`r SEQ rest`) in Everglade II
 rooms. Asleep, the room zeroes the seat's walk and jump input.
+
+## Frames moved into the codec (#13364)
+
+These frames were written or read by hand on one side. Since E3b each has a
+writer and a reader in `everglade/shared/everglade-wire.coax`, the room and
+the pages call them, and the profile pins them. No byte on the wire changed.
+
+- `e xp SS AMOUNT`, `e level SS LEVEL` (server, aimed at that seat): XP a
+  seat earned and its class's level gone up (`everglade/server/progress.coax`).
+- `w SS LEVEL` (server): a seat's WANTED level (`everglade/server/send.coax`).
+- `e rc ID K AX AY AZ SEED [FX FY FZ]` (server): a raid creature's cast, aimed
+  at A in cm; F, when said, where it leaves the caster's hands.
+- `e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE` (server): a guard's
+  spell in flight from A to B (cm), FLIGHT and LIFE in ms.
+- `e mend CODE`, `e pburn I ON`, `e pgone I` (server, outcomes): a Repair
+  stood up; a placed thing alight or out; burnt through.
+- `g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME
+  FOLK LEVELS CAP [PLAYERS [FRONT TOWN CAPC CAPT]]` (server, a `D` entry): the
+  raid's state. The top-level `g CODE` frame is travel's.
+- `v SS LEVEL XP CAP LO HI [REST]` (server, a `D` entry): your level and XP.
+- `V LOOK KIND` (page): Change character (`everglade/server/input.coax`).
+- `X VERB [ARG]`, `X at XMM ZMM YAW` (page): admin lines. Only a room started
+  with `--dev` on 127.0.0.1 reads them (`everglade/server/admin.coax`).
+- `K PID PID ...` (page): the room now reads it with `wire_read_blocks`
+  (`coax/web/room/room-blocks.coax`).
+
+The rooms that write `e rc`, `e wm`, `e mend`, `e pburn`, `e pgone`, `g` and
+`v` are Everglade v1's, frozen at `everglade/server/legacy/v1.sh`'s pin; the
+v1 page still reads them, through the codec.

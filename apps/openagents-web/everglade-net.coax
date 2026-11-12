@@ -796,7 +796,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     return;
   }
   if c == 'w' {
-    ss := wire_num(t, r[..]); level := wire_num(t, r[..]);
+    wn := wire_read_wanted(t, r[..]); ss := wn.ss; level := wn.level;   // everglade-wire.coax
     if !r[0].ok || ss < 0 { return; }
     if ss == n[0].seat { n[0].wanted = level; return; }
     k := net_ent(n, ss, true);
@@ -891,21 +891,21 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   if wire_is(t, "e mend") {
     // a Repair: the server stood it up (everglade-repair.coax), its pieces whole on every page
     r[0] = wire_rd(t, 6);
-    code := wire_num(t, r[..]);
+    code := wire_read_mend(t, r[..]);
     if r[0].ok { mend_heard(s, code); n[0].mends_heard += 1; }
     return;
   }
   if wire_is(t, "e pburn") {
     // an admin's placed thing alight or out, as the server's world says (everglade-placed-fire.coax)
     r[0] = wire_rd(t, 7);
-    i := wire_num(t, r[..]); on := wire_num(t, r[..]);
+    pb := wire_read_pburn(t, r[..]); i := pb.i; on := pb.on;
     if r[0].ok && on == 1 && n[0].town_check && i >= 0 && i < CR_PLACED_MAX { n[0].placed_seen[i] = true; }
     if r[0].ok { pf_heard(s, i, ifx on == 1 then 1 else 0); }
     return;
   }
   if wire_is(t, "e pgone") {
     r[0] = wire_rd(t, 7);
-    i := wire_num(t, r[..]);
+    i := wire_read_pgone(t, r[..]);
     if r[0].ok && n[0].town_check && i >= 0 && i < CR_PLACED_MAX { n[0].placed_seen[i] = true; }
     if r[0].ok { pf_heard(s, i, 2); }
     return;

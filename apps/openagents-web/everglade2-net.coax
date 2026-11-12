@@ -631,7 +631,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if c == 'e' && (wire_is(t, "e xp") || wire_is(t, "e level")) {   // aimed at your seat: counted (everglade2-track.coax)
     xp := wire_is(t, "e xp");
     r[0] = wire_rd(t, ifx xp then 4 else 7);
-    ss := wire_num(t, r[..]); v := wire_num(t, r[..]);
+    g := wire_read_gain(t, r[..]); ss := g.ss; v := g.v;
     if !r[0].ok || ss != n[0].seat || v < 0 || v > 1000000 { return; }
     if xp { n[0].xp_n += v; } else { n[0].level_got = v; }
     return;
@@ -849,8 +849,7 @@ e2n_change :: (n: [] E2Net) -> bool {
   n[0].change_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
   kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
-  m := wire_put(n[0].out[..], wire_put(n[0].out[..], wire_put(n[0].out[..], 0, "V "), look), " ");
-  e2n_send(n, wire_put(n[0].out[..], m, cast(string) kind[0..<kn]));
+  e2n_send(n, wire_put_change(n[0].out[..], 0, WireChange.{look = look, kind = cast(string) kind[0..<kn]}));
   return true;
 }
 // Your class for the hello (srd-*: the room's kit for your casts), said again if seated and changed.

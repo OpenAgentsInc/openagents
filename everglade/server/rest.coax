@@ -55,7 +55,7 @@ e2_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
 // Everglade's whole-heal Long Rest (L) is not Everglade II's: its rests are the shared rules'.
 e2_heard_old_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   r: [1] WireRd; r[0] = wire_rd(text, 1);
-  seq := wire_num(text, r[..]);
+  seq := wire_read_rest(text, r[..]);
   if r[0].ok { eg_refuse(v, k, seat_id, seq, "rest"); }
 }
 // A creature's rest as the wire says it (WIRE_REST_*), and its Hit Dice left.

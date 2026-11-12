@@ -274,7 +274,7 @@ eg_level_up :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool { seat := seat_
 eg_heard_change :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   if eg_fields(text) != 3 { return; }
   r: [1] WireRd; r[0] = wire_rd(text, 1);
-  look := wire_word(text, r[..]); kind := wire_word(text, r[..]);
+  ch := wire_read_change(text, r[..]); look := ch.look; kind := ch.kind;
   st := v[0].eg[k].seat[seat..<seat + 1];
   if !r[0].ok || !st[0].hello || look.count == 0 || look.count > EG_LOOK || egb_klass_of(kind) < EGB_CL0 { return; }
   me := EGB_SEAT + seat; b := v[0].eg[k].rules[0].b[..];
@@ -322,7 +322,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
 // is whole again and hears e rest SEAT, its page its own rest (everglade-rest.coax).
 eg_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
-  seq := wire_num(text, r[..]);
+  seq := wire_read_rest(text, r[..]);
   if !r[0].ok { return; }
   if !ev_rest_ok(v, k, seat_id) { eg_refuse(v, k, seat_id, seq, "combat"); return; }
   ev_long_rest(v, k, seat_id);

@@ -25,6 +25,9 @@
 //   E SEQ KIND ID                  interact: KIND 1 talk to townsperson ID, 2 a door, 3 a boat, 4 a quest
 //                                  board, 5 end what bar slot ID holds up (its concentration)
 //   R SEQ                          ask for the rebuild
+//   L SEQ                          Everglade's whole-heal rest (an Everglade II room refuses it: r SEQ rest)
+//   V LOOK KIND                    Change character: your seat sits again as this look and class
+//   X VERB [ARG] | X at XMM ZMM YAW  a local room's admin lines (everglade/server/admin.coax); no other room reads them
 //   K PID PID ...                  the players you block, WIRE_BLOCKS at most, the whole list each time
 //                                  ("K -" none): the room sends you nothing of them (#12789)
 //   t MS                           a clock ping
@@ -56,6 +59,11 @@
 //     e stop SS SLOT WHY          a cast the server took ended before its strike (WHY: range, sight, gone,
 //                                  held, dead, left: everglade-cast-rules.coax, #12790); pages drop its strike
 //     w SS LEVEL                   a seat's WANTED level
+//     e xp SS AMOUNT | e level SS LEVEL  XP a seat earned, its level gone up (aimed at that seat)
+//     e rc ID K AX AY AZ SEED [FX FY FZ] | e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE  a raid
+//                                  creature's cast, a guard's spell in flight
+//     e mend CODE | e pburn I ON | e pgone I  a Repair stood up; a placed thing alight or out, burnt through
+//     g KIND PHASE ... CAP [PLAYERS [FRONT TOWN CAPC CAPT]] | v SS LEVEL XP CAP LO HI [REST]  the raid, your level
 //     e town                       the town's pieces sent again from the start have all come: what the page has
 //                                  broken, burning or gone that they didn't name stands again (#12902)
 //     k RATE USED DROPPED EVERY    your link, once a second, to a page that reads packed rows (#13178)
@@ -417,6 +425,194 @@ wire_put_wanted :: (out: [] u8, at: int, ss: int, level: int) -> int { return wi
 wire_put_go :: (out: [] u8, at: int, code: string) -> int { return wire_put(out, wire_put(out, at, "g "), code); }
 wire_put_travel :: (out: [] u8, at: int, seq: int, code: string) -> int { return wire_text(out, wire_int(out, wire_put(out, at, "T"), seq), code); }
 wire_put_refused :: (out: [] u8, at: int, seq: int, reason: string) -> int { return wire_text(out, wire_int(out, wire_put(out, at, "r"), seq), reason); }
+
+// ---- the session's other frames (#13364): a writer and a reader each, so the room and the page
+// share them and everglade-session-v5.json pins them. A reader starts past its head (wire_rd(t, 4)
+// for "e xp", 1 for "V") and leaves ok unset on a missing or bad field.
+
+// e xp SS AMOUNT: XP seat SS earned; e level SS LEVEL: its class's level went up
+// (everglade/server/progress.coax ev_award). Both are aimed at that seat.
+WireGain :: struct { ss: int; v: int; }
+wire_put_xp :: (out: [] u8, at: int, g: WireGain) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e xp"), g.ss), g.v); }
+wire_put_level :: (out: [] u8, at: int, g: WireGain) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e level"), g.ss), g.v); }
+wire_read_gain :: (t: string, r: [] WireRd) -> WireGain { g: WireGain; g.ss = wire_num(t, r); g.v = wire_num(t, r); return g; }
+// w SS LEVEL: a seat's WANTED level (wire_put_wanted above).
+WireWanted :: struct { ss: int; level: int; }
+wire_read_wanted :: (t: string, r: [] WireRd) -> WireWanted { w: WireWanted; w.ss = wire_num(t, r); w.level = wire_num(t, r); return w; }
+// L SEQ: Everglade's whole-heal rest (wire_put_rest above); an Everglade II room refuses it.
+wire_read_rest :: (t: string, r: [] WireRd) -> int { return wire_num(t, r); }
+// e rc ID K AX AY AZ SEED [FX FY FZ]: a raid creature's cast (made entity ID): the Warlock's slot K, or
+// a hero's from EGE_K_HERO0 on, aimed at A (cm), played from SEED; F, when said, where it leaves the
+// caster's hands (#12862).
+WireRc :: struct { id: int; k: int; ax: f32; ay: f32; az: f32; seed: int; from: bool; fx: f32; fy: f32; fz: f32; }
+wire_put_rc :: (out: [] u8, at: int, c: WireRc) -> int {
+  n := wire_int(out, wire_int(out, wire_put(out, at, "e rc"), c.id), c.k);
+  n = wire_int(out, wire_m(out, wire_m(out, wire_m(out, n, c.ax), c.ay), c.az), c.seed);
+  if c.from { n = wire_m(out, wire_m(out, wire_m(out, n, c.fx), c.fy), c.fz); }
+  return n;
+}
+wire_read_rc :: (t: string, r: [] WireRd) -> WireRc {
+  c: WireRc;
+  c.id = wire_num(t, r); c.k = wire_num(t, r); c.ax = wire_f(t, r); c.ay = wire_f(t, r); c.az = wire_f(t, r); c.seed = wire_num(t, r);
+  if wire_more(t, r) { c.fx = wire_f(t, r); c.fy = wire_f(t, r); c.fz = wire_f(t, r); c.from = r[0].ok; }
+  return c;
+}
+// e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE: a guard's spell leaves their hands at A for B
+// (cm), flying FLIGHT ms and lasting LIFE ms (everglade-watch.coax watch_net_missile).
+WireWm :: struct { kind: int; caster: int; foe: int; ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32; flight: int; life: int; }
+wire_put_wm :: (out: [] u8, at: int, w: WireWm) -> int {
+  n := wire_int(out, wire_int(out, wire_int(out, wire_put(out, at, "e wm"), w.kind), w.caster), w.foe);
+  n = wire_m(out, wire_m(out, wire_m(out, n, w.ax), w.ay), w.az);
+  n = wire_m(out, wire_m(out, wire_m(out, n, w.bx), w.by), w.bz);
+  return wire_int(out, wire_int(out, n, w.flight), w.life);
+}
+wire_read_wm :: (t: string, r: [] WireRd) -> WireWm {
+  w: WireWm;
+  w.kind = wire_num(t, r); w.caster = wire_num(t, r); w.foe = wire_num(t, r);
+  w.ax = wire_f(t, r); w.ay = wire_f(t, r); w.az = wire_f(t, r); w.bx = wire_f(t, r); w.by = wire_f(t, r); w.bz = wire_f(t, r);
+  w.flight = wire_num(t, r); w.life = wire_num(t, r);
+  return w;
+}
+// e mend CODE: a Repair stood CODE's pieces up (everglade-repair.coax). e pburn I ON: an admin's
+// placed thing I alight (1) or out (0); e pgone I: it burnt through (everglade-placed-fire.coax).
+// Outcomes all three (WIRE_OUTCOMES).
+WirePlaced :: struct { i: int; on: int; }
+wire_put_mend :: (out: [] u8, at: int, code: int) -> int { return wire_int(out, wire_put(out, at, "e mend"), code); }
+wire_put_pburn :: (out: [] u8, at: int, p: WirePlaced) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e pburn"), p.i), p.on); }
+wire_put_pgone :: (out: [] u8, at: int, i: int) -> int { return wire_int(out, wire_put(out, at, "e pgone"), i); }
+wire_read_mend :: (t: string, r: [] WireRd) -> int { return wire_num(t, r); }
+wire_read_pburn :: (t: string, r: [] WireRd) -> WirePlaced { p: WirePlaced; p.i = wire_num(t, r); p.on = wire_num(t, r); return p; }
+wire_read_pgone :: (t: string, r: [] WireRd) -> int { return wire_num(t, r); }
+// g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP [PLAYERS
+// [FRONT TOWN CAPC CAPT]]: a raid's state, a D entry (the g CODE frame is wire_put_go's). PLAYERS and
+// the siege's four (#12860) are said by newer rooms only.
+WireRaid :: struct {
+  kind: int; phase: int; wave: int; waves: int; secs: int; left: int; standing: int; slain: int; square: int;
+  wards: int; arch: int; outcome: int; folk: int; levels: int; cap: int;
+  players_said: bool; players: int;
+  siege: bool; front: int; town: int; cap_c: int; cap_t: int;
+}
+wire_put_raid :: (out: [] u8, at: int, g: WireRaid) -> int {
+  n := wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, at, "g"), g.kind), g.phase), g.wave), g.waves), g.secs);
+  n = wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_int(out, n, g.left), g.standing), g.slain), g.square), g.wards);
+  n = wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_int(out, n, g.arch), g.outcome), g.folk), g.levels), g.cap);
+  if !g.players_said && !g.siege { return n; }
+  n = wire_int(out, n, g.players);
+  if !g.siege { return n; }
+  return wire_int(out, wire_int(out, wire_int(out, wire_int(out, n, g.front), g.town), g.cap_c), g.cap_t);
+}
+wire_read_raid :: (t: string, r: [] WireRd) -> WireRaid {
+  g: WireRaid;
+  g.kind = wire_num(t, r); g.phase = wire_num(t, r); g.wave = wire_num(t, r); g.waves = wire_num(t, r); g.secs = wire_num(t, r);
+  g.left = wire_num(t, r); g.standing = wire_num(t, r); g.slain = wire_num(t, r); g.square = wire_num(t, r); g.wards = wire_num(t, r);
+  g.arch = wire_num(t, r); g.outcome = wire_num(t, r); g.folk = wire_num(t, r); g.levels = wire_num(t, r); g.cap = wire_num(t, r);
+  if wire_more(t, r) { g.players = wire_num(t, r); g.players_said = r[0].ok; }
+  if wire_more(t, r) { g.front = wire_num(t, r); g.town = wire_num(t, r); g.cap_c = wire_num(t, r); g.cap_t = wire_num(t, r); g.siege = r[0].ok; }
+  return g;
+}
+// v SS LEVEL XP CAP LO HI [REST]: your level and XP, a D entry to your seat: the XP cap and the level's
+// band LO..HI; REST 1 while the room holds you resting (everglade-rest.coax), said by newer rooms.
+WireYou :: struct { ss: int; level: int; xp: int; cap: int; lo: int; hi: int; rest_said: bool; rest: int; }
+wire_put_you :: (out: [] u8, at: int, y: WireYou) -> int {
+  n := wire_int(out, wire_int(out, wire_int(out, wire_put(out, at, "v"), y.ss), y.level), y.xp);
+  n = wire_int(out, wire_int(out, wire_int(out, n, y.cap), y.lo), y.hi);
+  return ifx y.rest_said then wire_int(out, n, y.rest) else n;
+}
+wire_read_you :: (t: string, r: [] WireRd) -> WireYou {
+  y: WireYou;
+  y.ss = wire_num(t, r); y.level = wire_num(t, r); y.xp = wire_num(t, r); y.cap = wire_num(t, r); y.lo = wire_num(t, r); y.hi = wire_num(t, r);
+  if wire_more(t, r) { y.rest = wire_num(t, r); y.rest_said = r[0].ok; }
+  return y;
+}
+// V LOOK KIND: Change character (everglade2-net.coax e2n_change): your seat sits again as this look
+// and class (everglade/server/input.coax eg_heard_change).
+WireChange :: struct { look: string; kind: string; }
+wire_put_change :: (out: [] u8, at: int, c: WireChange) -> int { return wire_text(out, wire_text(out, wire_put(out, at, "V"), c.look), c.kind); }
+wire_read_change :: (t: string, r: [] WireRd) -> WireChange { c: WireChange; c.look = wire_word(t, r); c.kind = wire_word(t, r); return c; }
+// X VERB [ARG] | X at XMM ZMM YAW: a local room's admin lines (everglade/server/admin.coax), from
+// everglade2-admin.coax. at: metres and radians x 1000; every other verb one word or none.
+WIRE_X_HEAL :: "heal"; WIRE_X_GOD :: "god"; WIRE_X_KO :: "ko"; WIRE_X_AT :: "at"; WIRE_X_GUARD :: "guard"; WIRE_X_CLASS :: "class";
+WireAdmin :: struct { verb: string; arg: string; x: int; z: int; yaw: int; }
+wire_put_admin :: (out: [] u8, at: int, a: WireAdmin) -> int {
+  n := wire_text(out, wire_put(out, at, "X"), a.verb);
+  if a.verb == WIRE_X_AT { return wire_int(out, wire_int(out, wire_int(out, n, a.x), a.z), a.yaw); }
+  return ifx a.arg.count > 0 then wire_text(out, n, a.arg) else n;
+}
+wire_read_admin :: (t: string, r: [] WireRd) -> WireAdmin {
+  a: WireAdmin;
+  a.verb = wire_word(t, r);
+  if a.verb == WIRE_X_AT { a.x = wire_num(t, r); a.z = wire_num(t, r); a.yaw = wire_num(t, r); return a; }
+  if wire_more(t, r) { a.arg = wire_word(t, r); }
+  return a;
+}
+// K PID PID ...: the players a page blocks (wire_put_blocks above); "K -" none. At most WIRE_BLOCKS.
+WireBlocks :: struct { n: int; id: [WIRE_BLOCKS] string; }
+wire_read_blocks :: (t: string, r: [] WireRd) -> WireBlocks {
+  b: WireBlocks;
+  while b.n < WIRE_BLOCKS && wire_more(t, r) {
+    w := wire_word(t, r);
+    if w.count > 0 { b.id[b.n] = w; b.n += 1; }
+  }
+  return b;
+}
+#test "e xp, e level, w and L: written and read back; a missing field is refused" {
+  b: [64] u8; n := wire_put_xp(b[..], 0, WireGain.{ss = 3, v = 70}); #assert cast(string) b[0..<n] == "e xp 3 70";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 4); g := wire_read_gain(cast(string) b[0..<n], r[..]); #assert r[0].ok && g.ss == 3 && g.v == 70;
+  n = wire_put_level(b[..], 0, WireGain.{ss = 2, v = 4}); #assert cast(string) b[0..<n] == "e level 2 4";
+  r[0] = wire_rd(cast(string) b[0..<n], 7); g = wire_read_gain(cast(string) b[0..<n], r[..]); #assert r[0].ok && g.ss == 2 && g.v == 4;
+  r[0] = wire_rd("e xp 3", 4); _a := wire_read_gain("e xp 3", r[..]); #assert !r[0].ok;
+  n = wire_put_wanted(b[..], 0, 5, 2); r[0] = wire_rd(cast(string) b[0..<n], 1); w := wire_read_wanted(cast(string) b[0..<n], r[..]); #assert r[0].ok && w.ss == 5 && w.level == 2;
+  r[0] = wire_rd("w 5 x", 1); _b := wire_read_wanted("w 5 x", r[..]); #assert !r[0].ok;
+  n = wire_put_rest(b[..], 0, 9); r[0] = wire_rd(cast(string) b[0..<n], 1); #assert wire_read_rest(cast(string) b[0..<n], r[..]) == 9 && r[0].ok;
+}
+#test "e rc and e wm: aims in cm, the hands' place only when said" {
+  b: [128] u8; n := wire_put_rc(b[..], 0, WireRc.{id = 9, k = 0, ax = 4, ay = 1.5, az = 7, seed = 12345});
+  #assert cast(string) b[0..<n] == "e rc 9 0 400 150 700 12345";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 4); c := wire_read_rc(cast(string) b[0..<n], r[..]); #assert r[0].ok && !c.from && c.id == 9 && c.seed == 12345 && c.ay == 1.5;
+  n = wire_put_rc(b[..], 0, WireRc.{id = 77, k = 0, ax = 4, ay = 1.5, az = 7, seed = 12345, from = true, fx = 9, fy = 1.5, fz = 7});
+  #assert cast(string) b[0..<n] == "e rc 77 0 400 150 700 12345 900 150 700";
+  r[0] = wire_rd(cast(string) b[0..<n], 4); c = wire_read_rc(cast(string) b[0..<n], r[..]); #assert r[0].ok && c.from && c.fx == 9;
+  r[0] = wire_rd("e rc 77 0 400 150 700 12345 900", 4); _a := wire_read_rc("e rc 77 0 400 150 700 12345 900", r[..]); #assert !r[0].ok;
+  n = wire_put_wm(b[..], 0, WireWm.{kind = 2, caster = 5, foe = 1, ax = 1, ay = 2, az = -3, bx = 4, by = 0.5, bz = 6, flight = 800, life = 1200});
+  #assert cast(string) b[0..<n] == "e wm 2 5 1 100 200 -300 400 50 600 800 1200";
+  r[0] = wire_rd(cast(string) b[0..<n], 4); w := wire_read_wm(cast(string) b[0..<n], r[..]); #assert r[0].ok && w.caster == 5 && w.az == -3 && w.by == 0.5 && w.life == 1200;
+  r[0] = wire_rd("e wm 2 5 1 100 200 -300 400 50 600 800", 4); _b := wire_read_wm("e wm 2 5 1 100 200 -300 400 50 600 800", r[..]); #assert !r[0].ok;
+}
+#test "e mend, e pburn, e pgone: the outcomes of placed things" {
+  b: [64] u8; n := wire_put_mend(b[..], 0, 12); #assert cast(string) b[0..<n] == "e mend 12" && wire_outcome(cast(string) b[0..<n]);
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 6); #assert wire_read_mend(cast(string) b[0..<n], r[..]) == 12 && r[0].ok;
+  n = wire_put_pburn(b[..], 0, WirePlaced.{i = 3, on = 1}); #assert cast(string) b[0..<n] == "e pburn 3 1" && wire_outcome(cast(string) b[0..<n]);
+  r[0] = wire_rd(cast(string) b[0..<n], 7); p := wire_read_pburn(cast(string) b[0..<n], r[..]); #assert r[0].ok && p.i == 3 && p.on == 1;
+  n = wire_put_pgone(b[..], 0, 4); #assert cast(string) b[0..<n] == "e pgone 4" && wire_outcome(cast(string) b[0..<n]);
+  r[0] = wire_rd(cast(string) b[0..<n], 7); #assert wire_read_pgone(cast(string) b[0..<n], r[..]) == 4 && r[0].ok;
+  r[0] = wire_rd("e pburn 3", 7); _a := wire_read_pburn("e pburn 3", r[..]); #assert !r[0].ok;
+}
+#test "g and v: the raid's state and your level, their later fields only when said" {
+  b: [160] u8; g := WireRaid.{kind = 1, phase = 2, wave = 3, waves = 5, secs = 40, left = 6, standing = 7, slain = 8, square = 9, wards = 2, arch = 1, outcome = 0, folk = 11, levels = 1, cap = 6};
+  n := wire_put_raid(b[..], 0, g); #assert cast(string) b[0..<n] == "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 1); back := wire_read_raid(cast(string) b[0..<n], r[..]); #assert r[0].ok && back.cap == 6 && back.folk == 11 && !back.players_said && !back.siege;
+  g.players_said = true; g.players = 4; g.siege = true; g.front = 500; g.town = 2; g.cap_c = 1; g.cap_t = 3;
+  n = wire_put_raid(b[..], 0, g); #assert cast(string) b[0..<n] == "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6 4 500 2 1 3";
+  r[0] = wire_rd(cast(string) b[0..<n], 1); back = wire_read_raid(cast(string) b[0..<n], r[..]); #assert r[0].ok && back.players == 4 && back.siege && back.front == 500 && back.cap_t == 3;
+  r[0] = wire_rd("g 1 2 3", 1); _a := wire_read_raid("g 1 2 3", r[..]); #assert !r[0].ok;
+  n = wire_put_you(b[..], 0, WireYou.{ss = 2, level = 3, xp = 900, cap = 2700, lo = 900, hi = 2700}); #assert cast(string) b[0..<n] == "v 2 3 900 2700 900 2700";
+  n = wire_put_you(b[..], 0, WireYou.{ss = 2, level = 3, xp = 900, cap = 2700, lo = 900, hi = 2700, rest_said = true, rest = 1}); #assert cast(string) b[0..<n] == "v 2 3 900 2700 900 2700 1";
+  r[0] = wire_rd(cast(string) b[0..<n], 1); y := wire_read_you(cast(string) b[0..<n], r[..]); #assert r[0].ok && y.rest_said && y.rest == 1 && y.xp == 900;
+  r[0] = wire_rd("v 2 3 900", 1); _b := wire_read_you("v 2 3 900", r[..]); #assert !r[0].ok;
+}
+#test "V, X and K: Change character, the admin lines and your blocks" {
+  b: [96] u8; n := wire_put_change(b[..], 0, WireChange.{look = "ranger.1.2.3", kind = "srd-fighter-6"}); #assert cast(string) b[0..<n] == "V ranger.1.2.3 srd-fighter-6";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 1); c := wire_read_change(cast(string) b[0..<n], r[..]); #assert r[0].ok && c.look == "ranger.1.2.3" && c.kind == "srd-fighter-6";
+  r[0] = wire_rd("V ranger.1.2.3", 1); _a := wire_read_change("V ranger.1.2.3", r[..]); #assert !r[0].ok;
+  n = wire_put_admin(b[..], 0, WireAdmin.{verb = WIRE_X_AT, x = 5000, z = -40000, yaw = 0}); #assert cast(string) b[0..<n] == "X at 5000 -40000 0";
+  r[0] = wire_rd(cast(string) b[0..<n], 1); a := wire_read_admin(cast(string) b[0..<n], r[..]); #assert r[0].ok && a.verb == "at" && a.z == -40000;
+  n = wire_put_admin(b[..], 0, WireAdmin.{verb = WIRE_X_GUARD, arg = "off"}); #assert cast(string) b[0..<n] == "X guard off";
+  n = wire_put_admin(b[..], 0, WireAdmin.{verb = WIRE_X_HEAL}); #assert cast(string) b[0..<n] == "X heal";
+  r[0] = wire_rd(cast(string) b[0..<n], 1); a = wire_read_admin(cast(string) b[0..<n], r[..]); #assert r[0].ok && a.verb == "heal" && a.arg.count == 0;
+  r[0] = wire_rd("X at 5000 x 0", 1); _b := wire_read_admin("X at 5000 x 0", r[..]); #assert !r[0].ok;
+  r[0] = wire_rd("K p-aa p-bb", 1); k := wire_read_blocks("K p-aa p-bb", r[..]); #assert r[0].ok && k.n == 2 && k.id[1] == "p-bb";
+  r[0] = wire_rd("K -", 1); k = wire_read_blocks("K -", r[..]); #assert r[0].ok && k.n == 0;
+}
 
 // ---- reading (bounded: a missing or bad field sets ok false)
 

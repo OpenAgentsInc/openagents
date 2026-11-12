@@ -85,15 +85,15 @@ e2a_send :: (s: [] E2, m: int) -> bool {
   if !e2n_open(n) { e2a_say(s, "NO ROOM: START THE LOCAL ROOM"); return false; }
   e2n_send(n, m); s[0].adm[0].sent += 1; return true;
 }
-e2a_word :: (s: [] E2, what: string) -> bool { return e2a_send(s, wire_put(s[0].net[0].out[..], 0, what)); }
-e2a_flag :: (s: [] E2, what: string, on: bool) -> bool { o := s[0].net[0].out[..]; return e2a_send(s, wire_int(o, wire_put(o, 0, what), ifx on then 1 else 0)); }
+e2a_line :: (s: [] E2, a: WireAdmin) -> bool { return e2a_send(s, wire_put_admin(s[0].net[0].out[..], 0, a)); }   // everglade-wire.coax
+e2a_flag :: (s: [] E2, verb: string, on: bool) -> bool { return e2a_line(s, WireAdmin.{verb = verb, arg = ifx on then "1" else "0"}); }
 // Teleport to (x, z): the room puts your seat there and its word on you moves you (e2n_row's fix).
 e2a_warp :: (s: [] E2, x: f32, z: f32) -> bool {
   if x != x || z != z { return false; }
   cx := ifx x < -400 then -400.0f32 else ifx x > 400 then 400.0f32 else x;
   cz := ifx z < -600 then -600.0f32 else ifx z > 100 then 100.0f32 else z;
   o := s[0].net[0].out[..];
-  m := wire_int(o, wire_int(o, wire_int(o, wire_put(o, 0, "X at"), cast(int)(cx * 1000)), cast(int)(cz * 1000)), cast(int)(s[0].you_face * 1000));
+  m := wire_put_admin(o, 0, WireAdmin.{verb = WIRE_X_AT, x = cast(int)(cx * 1000), z = cast(int)(cz * 1000), yaw = cast(int)(s[0].you_face * 1000)});
   if !e2a_send(s, m) { return false; }
   s[0].adm[0].warps += 1; s[0].adm[0].fly_x = cx; s[0].adm[0].fly_z = cz;
   return true;
@@ -156,16 +156,16 @@ e2a_inside :: (s: [] E2, x: f32, y: f32) -> bool {
 }
 e2a_press :: (s: [] E2, i: int) {
   a := s[0].adm[..];
-  if i == 0 { if e2a_word(s, "X heal") { e2a_say(s, "HEALED"); } }
-  if i == 1 { if e2a_flag(s, "X god", !a[0].god) { a[0].god = !a[0].god; e2a_say(s, ifx a[0].god then "GOD MODE: NOTHING HARMS YOU" else "GOD MODE OFF"); } }
+  if i == 0 { if e2a_line(s, WireAdmin.{verb = WIRE_X_HEAL}) { e2a_say(s, "HEALED"); } }
+  if i == 1 { if e2a_flag(s, WIRE_X_GOD, !a[0].god) { a[0].god = !a[0].god; e2a_say(s, ifx a[0].god then "GOD MODE: NOTHING HARMS YOU" else "GOD MODE OFF"); } }
   if i == 2 { a[0].noclip = !a[0].noclip; a[0].fly_x = s[0].you_x; a[0].fly_z = s[0].you_z; e2a_say(s, ifx a[0].noclip then "NOCLIP: WASD FLY THROUGH ANYTHING" else "NOCLIP OFF"); }
   if i == 3 { a[0].click_tp = !a[0].click_tp; e2a_say(s, ifx a[0].click_tp then "CLICK THE GROUND TO GO THERE" else "CLICK TP OFF"); }
   if i == 4 { a[0].typing = true; a[0].typed_n = 0; e2a_say(s, "TYPE X Z, THEN ENTER"); }
   if i == 5 { a[0].hour = ifx a[0].hour < 0 then 14 else (a[0].hour + 2) % 24; }
-  if i == 6 { if e2a_word(s, "X guard kill") { e2a_say(s, "THE GUARD FALLS"); } }
-  if i == 7 { if e2a_word(s, "X guard reset") { e2a_say(s, "A NEW GUARD"); } }
-  if i == 8 { if e2a_word(s, "X guard off") { e2a_say(s, "THE GUARD IS GONE"); } }
-  if i == 9 { if e2a_word(s, "X guard on") { e2a_say(s, "THE GUARD WALKS AGAIN"); } }
+  if i == 6 { if e2a_line(s, WireAdmin.{verb = WIRE_X_GUARD, arg = "kill"}) { e2a_say(s, "THE GUARD FALLS"); } }
+  if i == 7 { if e2a_line(s, WireAdmin.{verb = WIRE_X_GUARD, arg = "reset"}) { e2a_say(s, "A NEW GUARD"); } }
+  if i == 8 { if e2a_line(s, WireAdmin.{verb = WIRE_X_GUARD, arg = "off"}) { e2a_say(s, "THE GUARD IS GONE"); } }
+  if i == 9 { if e2a_line(s, WireAdmin.{verb = WIRE_X_GUARD, arg = "on"}) { e2a_say(s, "THE GUARD WALKS AGAIN"); } }
   if i == 10 { e2a_path(s, -50); }
   if i == 11 { e2a_path(s, 50); }
 }
