@@ -1,10 +1,25 @@
 {
   "identity": "everglade-familiar-senses-v1",
+  "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-senses-v1.json",
   "base_session": "everglade-session-v5",
   "scope": "Everglade II only",
   "request": "M7 SEQ",
   "success": "m7 SEQ",
   "refusal": "r SEQ familiar",
   "state": "m8 MODE",
-  "modes": {"owner": 0, "sight": 1, "sight_and_hearing": 2}
+  "modes": {"owner": 0, "sight": 1, "sight_and_hearing": 2},
+  "frames": [
+    {"frame": "request", "values": {"SEQ": 2}, "text": "M7 2"},
+    {"frame": "success", "values": {"SEQ": 2}, "text": "m7 2"},
+    {"frame": "state", "values": {"MODE": 0}, "text": "m8 0"},
+    {"frame": "state", "values": {"MODE": 1}, "text": "m8 1"},
+    {"frame": "state", "values": {"MODE": 2}, "text": "m8 2"},
+    {"frame": "refusal", "values": {"SEQ": 2}, "text": "r 2 familiar"}
+  ],
+  "malformed": [
+    "M7",
+    "M7 0",
+    "M7 2 0",
+    "M7 x"
+  ]
 }

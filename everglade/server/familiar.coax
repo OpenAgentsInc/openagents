@@ -117,27 +117,67 @@ E2Familiar :: struct {
   last:int; pending:int; active:int; wizard:bool; spirit:int; order:int;
   form:int; slot:int; target:int; ray:int=-1; x:int; y:int; clear:bool;
 }
-e2_familiar_ask :: (v:[]RmServer,k:int,id:SeatId,text:string) {
+// ---- the familiar frames: the room's one reader and writers (proto/verse/everglade-familiar*-v1.json and
+// everglade-find-familiar-v1.json; coax/web/tool.sh coax/web/room/familiar-profile.coax PROFILE checks them)
+// A request's order: 0 a summons (M1, or the Wizard's M3), 1 to 3 the lifecycle's (M4), then step (M5),
+// cure (M6) and senses (M7).
+E2_FAMILIAR_POCKET :: 1; E2_FAMILIAR_RECALL :: 2; E2_FAMILIAR_RELEASE :: 3;
+E2_FAMILIAR_STEP :: 4; E2_FAMILIAR_CURE :: 5; E2_FAMILIAR_SENSES :: 6;
+// m3's status, and m8's mode: whose senses the owner has.
+E2_WIZARD_CASTING :: 1; E2_WIZARD_COMPLETE :: 2; E2_WIZARD_INTERRUPTED :: 3;
+E2_SENSE_OWNER :: 0; E2_SENSE_SIGHT :: 1; E2_SENSE_SIGHT_HEARING :: 2;
+// The refusal's reason: r SEQ familiar.
+E2_FAMILIAR_REFUSED :: "familiar";
+// A request as read: ok false when it is no familiar request or a field is missing, extra or bad.
+// choice is M1 and M3's FORM, M4's ORDER and M6's SEAT; slot is M1 and M3's SLOT; spirit M3's SPIRIT.
+E2FamiliarAsk :: struct { ok:bool; wizard:bool; lifecycle:bool; touch:bool; step:bool; sense:bool; seq:int; choice:int; slot:int; spirit:int; }
+e2_familiar_read :: (text:string)->E2FamiliarAsk {
   wizard:=wire_is(text,"M3");
   step:=wire_is(text,"M5");
   touch:=wire_is(text,"M6");
   sense:=wire_is(text,"M7");
   lifecycle:=wire_is(text,"M4") || step || touch || sense;
-  if !wizard && !lifecycle && !wire_is(text,"M1") { return; }
+  if !wizard && !lifecycle && !wire_is(text,"M1") { return E2FamiliarAsk.{}; }
   rd:=[1]WireRd.[wire_rd(text,2)];
-  seq:=wire_num(text,rd[..]); choice:=ifx sense then 6 else ifx step then 4 else wire_num(text,rd[..]);
+  seq:=wire_num(text,rd[..]); choice:=ifx sense then E2_FAMILIAR_SENSES else ifx step then E2_FAMILIAR_STEP else wire_num(text,rd[..]);
   slot:=ifx lifecycle then 0 else wire_num(text,rd[..]);
   spirit:=ifx wizard then wire_num(text,rd[..]) else RS_FAMILIAR_FEY;
-  if !rd[0].ok || wire_more(text,rd[..]) || seq<=0 { return; }
+  ok:=rd[0].ok && !wire_more(text,rd[..]) && seq>0;
+  return E2FamiliarAsk.{ok=ok,wizard=wizard,lifecycle=lifecycle,touch=touch,step=step,sense=sense,seq=seq,choice=choice,slot=slot,spirit=spirit};
+}
+// The success reply to request seq of order: m1 SEQ FORM, m4 SEQ ORDER, m5 SEQ, m6 SEQ or m7 SEQ.
+e2_familiar_put_done :: (out:[]u8,order:int,seq:int,form:int)->int {
+  kind:=ifx order==E2_FAMILIAR_SENSES then "m7" else ifx order==E2_FAMILIAR_CURE then "m6" else ifx order==E2_FAMILIAR_STEP then "m5" else ifx order>0 then "m4" else "m1";
+  n:=wire_int(out,wire_put(out,0,kind),seq);
+  if order<E2_FAMILIAR_STEP { n=wire_int(out,n,ifx order>0 then order else form); }
+  return n;
+}
+// m3 SEQ STATUS, m8 MODE.
+e2_familiar_put_status :: (out:[]u8,seq:int,status:int)->int { return wire_int(out,wire_int(out,wire_put(out,0,"m3"),seq),status); }
+e2_familiar_put_sense :: (out:[]u8,mode:int)->int { return wire_int(out,wire_put(out,0,"m8"),mode); }
+// m2 TICK COUNT [OWNER FORM X Z HP MAX]...: one row appended at at, then the frame round count rows.
+e2_familiar_put_row :: (rows:[]u8,at:int,owner:int,form:int,x:int,z:int,hp:int,hp_max:int)->int {
+  size:=wire_int(rows,wire_int(rows,wire_int(rows,at,owner),form),x);
+  return wire_int(rows,wire_int(rows,wire_int(rows,size,z),hp),hp_max);
+}
+e2_familiar_put_rows :: (out:[]u8,tick:int,count:int,rows:string)->int {
+  return wire_put(out,wire_int(out,wire_int(out,wire_put(out,0,"m2"),tick),count),rows);
+}
+
+e2_familiar_ask :: (v:[]RmServer,k:int,id:SeatId,text:string) {
+  ask:=e2_familiar_read(text);
+  if !ask.ok { return; }
+  wizard:=ask.wizard; lifecycle:=ask.lifecycle; touch:=ask.touch; step:=ask.step; sense:=ask.sense;
+  seq:=ask.seq; choice:=ask.choice; slot:=ask.slot; spirit:=ask.spirit;
   req:=v[0].eg[k].seat[id.value].familiar;
   if seq<=req.last { return; }
   req.last=seq;
-  valid:=ifx touch then choice>=0 && choice<EG_SEATS else ifx lifecycle then step || sense || (choice>=1 && choice<=3) else choice>=0 && choice<RS_FAMILIAR_FORMS.count && slot>=0 && slot<=9 &&
+  valid:=ifx touch then choice>=0 && choice<EG_SEATS else ifx lifecycle then step || sense || (choice>=E2_FAMILIAR_POCKET && choice<=E2_FAMILIAR_RELEASE) else choice>=0 && choice<RS_FAMILIAR_FORMS.count && slot>=0 && slot<=9 &&
     spirit>=RS_FAMILIAR_FEY && spirit<=RS_FAMILIAR_FIEND;
   if req.pending>0 || req.active>0 || !valid {
-    eg_refuse(v,k,id,seq,"familiar");
+    eg_refuse(v,k,id,seq,E2_FAMILIAR_REFUSED);
   } else {
-    req.pending=seq; req.wizard=wizard; req.order=ifx touch then 5 else ifx lifecycle then choice else 0;
+    req.pending=seq; req.wizard=wizard; req.order=ifx touch then E2_FAMILIAR_CURE else ifx lifecycle then choice else 0;
     req.target=choice;
     req.form=choice; req.slot=slot; req.spirit=spirit;
   }
@@ -251,7 +291,7 @@ e2_familiar_seen :: (v:[]RmServer,k:int,q:int,clear:bool) {
 // Status one begins the cast, two completes it, and three ends it without payment.
 e2_wizard_status :: (v:[]RmServer,k:int,s:int,seq:int,status:int) {
   out:[64]u8;
-  n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"m3"),seq),status);
+  n:=e2_familiar_put_status(out[..],seq,status);
   rl_queue(v,v[0].eg[k].relay,v[0].eg[k].seat[s].conn,-1,cast(string)out[0..<n],"");
 }
 e2_wizard_cast :: (v:[]RmServer,k:int,s:int,admitted:bool) {
@@ -266,15 +306,15 @@ e2_wizard_cast :: (v:[]RmServer,k:int,s:int,admitted:bool) {
     }
     if ok {
       req.active=req.pending; req.pending=0; st[0].familiar=req;
-      e2_wizard_status(v,k,s,req.active,1);
+      e2_wizard_status(v,k,s,req.active,E2_WIZARD_CASTING);
     } else {
       st[0].familiar=E2Familiar.{last=req.last};
-      eg_refuse(v,k,SeatId.{value=s},req.pending,"familiar");
+      eg_refuse(v,k,SeatId.{value=s},req.pending,E2_FAMILIAR_REFUSED);
     }
     return;
   }
   if b[0].c[actor].rite!=SP_FIND_FAMILIAR {
-    st[0].familiar=E2Familiar.{last=req.last}; e2_wizard_status(v,k,s,req.active,3); return;
+    st[0].familiar=E2Familiar.{last=req.last}; e2_wizard_status(v,k,s,req.active,E2_WIZARD_INTERRUPTED); return;
   }
   if !admitted || !seat[0].open || !b[0].c[actor].rite_owed { return; }
   fb_seat_in(b,seat);
@@ -283,7 +323,7 @@ e2_wizard_cast :: (v:[]RmServer,k:int,s:int,admitted:bool) {
     if ok { st[0].familiar_incense_used=true; }
     else { rs_rite_fail(b,actor," (completion refused)"); }
     st[0].familiar=E2Familiar.{last=req.last};
-    e2_wizard_status(v,k,s,req.active,ifx ok then 2 else 3);
+    e2_wizard_status(v,k,s,req.active,ifx ok then E2_WIZARD_COMPLETE else E2_WIZARD_INTERRUPTED);
   } else { _:=rs_ritual_continue(b,actor); }
   fb_seat_out(b,seat);
 }
@@ -294,8 +334,8 @@ e2_familiar_lifecycle :: (r:[]EgBattle,s:int,req:E2Familiar)->bool {
   if !seat[0].open { return false; }
   b:=r[0].b[..]; actor:=seat[0].me;
   fb_seat_in(b,seat);
-  ok:=ifx req.order==2 then req.clear && rs_familiar_return(b,actor,req.x,req.y)
-    else rs_familiar_dismiss(b,actor,req.order==3);
+  ok:=ifx req.order==E2_FAMILIAR_RECALL then req.clear && rs_familiar_return(b,actor,req.x,req.y)
+    else rs_familiar_dismiss(b,actor,req.order==E2_FAMILIAR_RELEASE);
   fb_seat_out(b,seat);
   return ok;
 }
@@ -338,11 +378,11 @@ e2_familiar_sense_state :: (v:[]RmServer,k:int,s:int) {
   room:=v[0].eg[k..<k+1]; st:=room[0].seat[s..<s+1]; b:=room[0].rules[0].b[..];
   owner:=EGB_SEAT+s;
   f:=rs_familiar_observer(b,owner);
-  mode:=ifx f==owner then 0 else ifx rs_has(b[0].c[f],RS_DEAFENED) then 1 else 2;
+  mode:=ifx f==owner then E2_SENSE_OWNER else ifx rs_has(b[0].c[f],RS_DEAFENED) then E2_SENSE_SIGHT else E2_SENSE_SIGHT_HEARING;
   if mode==st[0].familiar_sense_sent && room[0].tick%EG_HZ!=0 { return; }
   st[0].familiar_sense_sent=mode;
   out:[32]u8;
-  n:=wire_int(out[..],wire_put(out[..],0,"m8"),mode);
+  n:=e2_familiar_put_sense(out[..],mode);
   rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
 }
 
@@ -356,22 +396,20 @@ e2_familiar_commit :: (v:[]RmServer,k:int) {
     if req.wizard { e2_wizard_cast(v,k,s,admitted); continue; }
     st[0].familiar=E2Familiar.{last=req.last};
     ok:=false;
-    if admitted && st[0].placed && req.order==6 {
+    if admitted && st[0].placed && req.order==E2_FAMILIAR_SENSES {
       ok=e2_familiar_sense(room[0].rules[..],s);
-    } else if admitted && st[0].placed && req.order==5 {
+    } else if admitted && st[0].placed && req.order==E2_FAMILIAR_CURE {
       ok=e2_familiar_heal(v,k,s,req);
-    } else if admitted && st[0].placed && req.order==4 {
+    } else if admitted && st[0].placed && req.order==E2_FAMILIAR_STEP {
       ok=e2_familiar_step(room[0].rules[..],s,req,room[0].familiar_reactions[s..<s+1]);
     } else if admitted && st[0].placed && req.order>0 {
       ok=e2_familiar_lifecycle(room[0].rules[..],s,req);
     } else if admitted && req.clear && req.order==0 {
       ok=egb_wild_companion(room[0].rules[..],s,req.slot,RS_FAMILIAR_FORMS[req.form],req.x,req.y);
     }
-    if !ok { eg_refuse(v,k,id,req.pending,"familiar"); continue; }
+    if !ok { eg_refuse(v,k,id,req.pending,E2_FAMILIAR_REFUSED); continue; }
     out:[64]u8;
-    kind:=ifx req.order==6 then "m7" else ifx req.order==5 then "m6" else ifx req.order==4 then "m5" else ifx req.order>0 then "m4" else "m1";
-    n:=wire_int(out[..],wire_put(out[..],0,kind),req.pending);
-    if req.order<4 { n=wire_int(out[..],n,ifx req.order>0 then req.order else req.form); }
+    n:=e2_familiar_put_done(out[..],req.order,req.pending,req.form);
     rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
   }
 }
@@ -393,16 +431,14 @@ e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
     if form<0 { continue; }
     x:=int(egb_cell_m(c[0].x)*1000);
     z:=int(egb_cell_z(rules,c[0].y)*1000);
-    size=wire_int(rows[..],wire_int(rows[..],wire_int(rows[..],size,owner),form),x);
-    size=wire_int(rows[..],wire_int(rows[..],wire_int(rows[..],size,z),c[0].hp),c[0].hp_max);
+    size=e2_familiar_put_row(rows[..],size,owner,form,x,z,c[0].hp,c[0].hp_max);
     count+=1;
   }
   hash:=eg_hash(cast(string)rows[0..<size]);
   if st[0].familiar_hash==hash && room[0].tick-st[0].familiar_sent<EG_HZ { return; }
   st[0].familiar_hash=hash; st[0].familiar_sent=room[0].tick;
   out:[1024]u8;
-  n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"m2"),room[0].tick),count);
-  n=wire_put(out[..],n,cast(string)rows[0..<size]);
+  n:=e2_familiar_put_rows(out[..],room[0].tick,count,cast(string)rows[0..<size]);
   rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
 }
 

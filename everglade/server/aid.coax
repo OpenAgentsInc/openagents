@@ -8,14 +8,27 @@ E2Aid :: struct {
   clear: bool;
 }
 
-e2_aid_ask :: (v:[] RmServer,k:int,id:SeatId,text:string) {
+// ---- the kit's frames: the room's one reader and writer (proto/verse/everglade-healers-kit-v1.json;
+// coax/web/tool.sh coax/web/room/familiar-profile.coax PROFILE checks them)
+// The refusal's reason: r SEQ kit.
+E2_AID_REFUSED :: "kit";
+// U1 SEQ: the request's sequence, or 0 when the frame is no well-formed U1.
+e2_aid_read :: (text:string)->int {
   rd:=[1]WireRd.[wire_rd(text,2)];
   seq:=wire_num(text,rd[..]);
-  if !wire_is(text,"U1") || !rd[0].ok || eg_fields(text)!=2 || seq<=0 { return; }
+  if !wire_is(text,"U1") || !rd[0].ok || eg_fields(text)!=2 || seq<=0 { return 0; }
+  return seq;
+}
+// u1 SEQ LEFT: the kit's uses left after it was used.
+e2_aid_put :: (out:[]u8,seq:int,left:int)->int { return wire_int(out,wire_int(out,wire_put(out,0,"u1"),seq),left); }
+
+e2_aid_ask :: (v:[] RmServer,k:int,id:SeatId,text:string) {
+  seq:=e2_aid_read(text);
+  if seq<=0 { return; }
   aid:=v[0].eg[k].seat[id.value].aid;
   if seq<=aid.last { return; }
   aid.last=seq;
-  if aid.pending>0 { eg_refuse(v,k,id,seq,"kit"); }
+  if aid.pending>0 { eg_refuse(v,k,id,seq,E2_AID_REFUSED); }
   else { aid.pending=seq; }
   v[0].eg[k].seat[id.value].aid=aid;
 }
@@ -86,9 +99,9 @@ e2_aid_commit :: (v:[] RmServer,k:int) {
       ok=rs_healers_kit(b,EGB_SEAT+s,EGB_SEAT+aid.target,true);
       fb_seat_out(b,turn);
     }
-    if !ok { eg_refuse(v,k,id,aid.pending,"kit"); continue; }
+    if !ok { eg_refuse(v,k,id,aid.pending,E2_AID_REFUSED); continue; }
     out:[64]u8;
-    n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"u1"),aid.pending),b[0].c[EGB_SEAT+s].healer_kit);
+    n:=e2_aid_put(out[..],aid.pending,b[0].c[EGB_SEAT+s].healer_kit);
     rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
   }
 }

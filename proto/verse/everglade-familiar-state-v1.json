@@ -1,9 +1,15 @@
 {
   "identity": "everglade-familiar-state-v1",
+  "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-state-v1.json",
   "base_session": "everglade-session-v5",
   "form_index": "everglade-familiar-v1",
   "scope": "Everglade II only",
   "snapshot": "m2 TICK COUNT [OWNER FORM X Z HP MAX]...",
   "position_unit": "integer millimetres",
-  "max_rows": 16
+  "max_rows": 16,
+  "frames": [
+    {"frame": "snapshot", "values": {"TICK": 4, "COUNT": 2, "ROWS": [[0, 8, 1500, -2000, 1, 1], [2, 0, -4000, 5500, 2, 2]]}, "text": "m2 4 2 0 8 1500 -2000 1 1 2 0 -4000 5500 2 2"},
+    {"frame": "snapshot", "values": {"TICK": 7, "COUNT": 1, "ROWS": [[2, 0, -4000, -470000, 2, 2]]}, "text": "m2 7 1 2 0 -4000 -470000 2 2"},
+    {"frame": "snapshot", "values": {"TICK": 3, "COUNT": 0, "ROWS": []}, "text": "m2 3 0"}
+  ]
 }

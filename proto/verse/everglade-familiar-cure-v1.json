@@ -1,8 +1,20 @@
 {
   "identity": "everglade-familiar-cure-v1",
+  "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-cure-v1.json",
   "base_session": "everglade-session-v5",
   "scope": "Everglade II only",
   "request": "M6 SEQ SEAT",
   "success": "m6 SEQ",
-  "refusal": "r SEQ familiar"
+  "refusal": "r SEQ familiar",
+  "frames": [
+    {"frame": "request", "values": {"SEQ": 3, "SEAT": 1}, "text": "M6 3 1"},
+    {"frame": "success", "values": {"SEQ": 3}, "text": "m6 3"},
+    {"frame": "refusal", "values": {"SEQ": 3}, "text": "r 3 familiar"}
+  ],
+  "malformed": [
+    "M6 3",
+    "M6 3 1 1",
+    "M6 0 1",
+    "M6 3 x"
+  ]
 }

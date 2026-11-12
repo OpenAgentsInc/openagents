@@ -1,9 +1,23 @@
 {
   "identity": "everglade-familiar-lifecycle-v1",
+  "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-lifecycle-v1.json",
   "base_session": "everglade-session-v5",
   "scope": "Everglade II only",
   "request": "M4 SEQ ORDER",
   "success": "m4 SEQ ORDER",
   "refusal": "r SEQ familiar",
-  "orders": {"pocket": 1, "recall": 2, "release": 3}
+  "orders": {"pocket": 1, "recall": 2, "release": 3},
+  "frames": [
+    {"frame": "request", "values": {"SEQ": 2, "ORDER": 1}, "text": "M4 2 1"},
+    {"frame": "request", "values": {"SEQ": 4000001, "ORDER": 3}, "text": "M4 4000001 3"},
+    {"frame": "success", "values": {"SEQ": 4000001, "ORDER": 3}, "text": "m4 4000001 3"},
+    {"frame": "success", "values": {"SEQ": 6, "ORDER": 2}, "text": "m4 6 2"},
+    {"frame": "refusal", "values": {"SEQ": 4000001}, "text": "r 4000001 familiar"}
+  ],
+  "malformed": [
+    "M4 1",
+    "M4 1 2 3",
+    "M4 0 2",
+    "M4 1 -"
+  ]
 }
