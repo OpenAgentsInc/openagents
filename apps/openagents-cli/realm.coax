@@ -3,6 +3,7 @@
 // base, sends that revision, and refuses a server without the fence capability.
 #load "commands.coax";
 #load "../../aethyr/forge/doc.coax";   // the realm document and its bodies (realm.proto): one codec
+#load "../../aethyr/forge/board.coax";   // the plan's and the make's bodies and the board's lines: one codec
 #load "../../aethyr/forge/made.coax";   // a made or forked realm's answer and a fork's body (made.proto): one codec
 #load "../../aethyr/forge/record.coax";   // mine, visibility, publish and the publish record (record.proto): one codec
 #load "../../coax/lib/text/base64.coax";
@@ -452,19 +453,15 @@ realm_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
     if plan < 0 { return fail(r, EXIT_USAGE, "--from is a plan's number"); }
   } else {
     // The setup the words fix (verse.builder_setup); a field not given is the model's pick.
-    p: [1] Jo; jo_start(p[..], buf[..]); jo_obj(p[..]); jo_key(p[..], "prompt"); jo_str(p[..], words);
-    if rc_has(a, "new", "--style") || rc_has(a, "new", "--time") || rc_has(a, "new", "--camera") || rc_has(a, "new", "--ground") {
-      jo_key(p[..], "setup"); jo_obj(p[..]);
-      for field: [4] string.["style", "time", "camera", "ground"] {
-        flag: [16] u8; fn := copy("--", flag[..]); fn += copy(field, flag[fn..<flag.count]);
-        v := rc_option(a, "new", cast(string) flag[0..<fn], "");
-        if v != "" { jo_key(p[..], field); jo_str(p[..], v); }
-      }
-      jo_end(p[..]);
+    // board.coax writes the body: {"prompt":WORDS[,"setup":{"style":..,"time":..,"camera":..,"ground":..}]}
+    keys := [4] string.["style", "time", "camera", "ground"]; values: [4] string; none: [1] bool;
+    for f: 0..<4 {
+      flag: [16] u8; fn := copy("--", flag[..]); fn += copy(keys[f], flag[fn..<flag.count]);
+      values[f] = rc_option(a, "new", cast(string) flag[0..<fn], "");
     }
-    jo_end(p[..]);
-    if p[0].bad { return fail(r, EXIT_USAGE, "those words are too long"); }
-    body := jo_text(p[..]);
+    bn := forge_plan_body(words, 2000, false, 0, none[0..<0], keys[..], values[..], buf[..]);
+    if bn < 0 { return fail(r, EXIT_USAGE, "those words are too long"); }
+    body := cast(string) buf[0..<bn];
     res := api_call(a, profile, "POST", "/api/playtest/realms/plan?as=lines", body, out[..]);
     text := cast(string) out[0..<res.n];
     if !api_ok(res) { return api_fail(r, res, text); }
@@ -472,12 +469,10 @@ realm_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
     if b.plan < 0 || b.rows < 0 { return fail(r, EXIT_FAIL, "the plan's board didn't read"); }
     plan = b.plan; rows = b.rows;
   }
-  o: [1] Jo; jo_start(o[..], buf[..]);
-  jo_obj(o[..]); jo_key(o[..], "plan"); jo_int(o[..], plan);
-  jo_key(o[..], "on"); jo_arr(o[..]);
-  for i: 0..<rows { jo_bool(o[..], on[i]); }
-  jo_end(o[..]); jo_end(o[..]);
-  res := api_call(a, profile, "POST", "/api/playtest/realms?as=lines", jo_text(o[..]), out[..]);
+  nokeys: [1] string;
+  mn := forge_make_body(plan, on[0..<rows], nokeys[0..<0], nokeys[0..<0], "", 0, buf[..]);   // board.coax: {"plan":N,"on":[..]}
+  if mn < 0 { return fail(r, EXIT_FAIL, "the plan's board didn't fit"); }
+  res := api_call(a, profile, "POST", "/api/playtest/realms?as=lines", cast(string) buf[0..<mn], out[..]);
   made := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, made); }
   mm: [1] ForgeMade; mm[0] = forge_read_made(made);   // made.proto's lines

@@ -1,0 +1,119 @@
+syntax = "proto3";
+package openagents.verse.doc.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// The realm builder (compliance plan step E11, GitHub #13250): the bodies
+// the builder page and the CLI send to plan, pick and make a realm, and what
+// the planner answers.
+//
+//   POST /api/playtest/realms/plan       PlanRequest -> PlanReply
+//   POST /api/playtest/realms/plan/doc   DocRequest  -> PlanReply
+//   POST /api/playtest/realms/pick       PickRequest -> PickReply
+//   POST /api/playtest/realms            MakeRequest -> MadeReply (made.proto)
+//
+// With ?as=lines the planner answers the board as text, written in SQL
+// (verse.builder_lines) and named line by line in
+// proto/verse/realm-board-v1.json, and the picker answers "field F" and
+// "value V". Every product reads the lines; the JSON answers are here so the
+// schema names what the server sends. aethyr/forge/board.coax writes the
+// requests and reads the lines; proto/verse/realm-board-v1.json pins the
+// bytes, checked through the codec (aethyr/forge/board-goldens.coax) and
+// through the routes (coax/web/api/test_realm_builder.py).
+
+// The setup's fixed fields, each one of its question's words.
+message BoardSetup {
+  optional string camera = 1 [json_name = "camera"];
+  optional string style = 2 [json_name = "style"];
+  optional string ground = 3 [json_name = "ground"];
+  optional string time = 4 [json_name = "time"];
+}
+
+// POST .../plan: the words said or typed; to change a board, its plan's
+// number and its rows' switches; and the setup answered so far.
+message PlanRequest {
+  optional string prompt = 1 [json_name = "prompt"];
+  optional int64 plan = 2 [json_name = "plan"];
+  repeated bool on = 3 [json_name = "on", (openagents.options.v1alpha1.max_count) = 64];
+  optional BoardSetup setup = 4 [json_name = "setup"];
+}
+
+// POST .../plan/doc: a design document dropped on the builder. The page's
+// host reads the picked file and adds its name and its bytes in base64 to the
+// setup the page wrote.
+message DocRequest {
+  optional BoardSetup setup = 1 [json_name = "setup"];
+  optional string name = 2 [json_name = "name"];
+  optional string data = 3 [json_name = "data"];
+}
+
+// POST .../pick: one setup question and the words said for it.
+message PickRequest {
+  optional string field = 1 [json_name = "field"];
+  optional string words = 2 [json_name = "words"];
+}
+
+// 200 from .../pick: the question and the word picked ("none" when the words
+// fit none of the question's).
+message PickReply {
+  optional string field = 1 [json_name = "field"];
+  optional string value = 2 [json_name = "value"];
+}
+
+// POST /api/playtest/realms (MAKE IT): the plan, its rows' switches as the
+// page shows them, the setup answered and the realm's one-line description.
+message MakeRequest {
+  optional int64 plan = 1 [json_name = "plan"];
+  repeated bool on = 2 [json_name = "on", (openagents.options.v1alpha1.max_count) = 64];
+  optional BoardSetup setup = 3 [json_name = "setup"];
+  optional string description = 4 [json_name = "description"];
+}
+
+// 200 from .../plan: the plan's number, the board held to the catalogue,
+// what was asked for with what the board draws of it, and the model.
+message PlanReply {
+  optional int64 plan = 1 [json_name = "plan"];
+  Board board = 2 [json_name = "board"];
+  optional string model = 3 [json_name = "model"];
+  repeated Asked asked = 4 [json_name = "asked"];
+}
+
+// A board: the realm's name and setup, its rows, and the things asked for
+// that it has no row for.
+message Board {
+  optional string name = 1 [json_name = "name"];
+  optional string style = 2 [json_name = "style"];
+  optional string ground = 3 [json_name = "ground"];
+  optional string time = 4 [json_name = "time"];
+  optional string camera = 5 [json_name = "camera"];
+  optional string palette = 6 [json_name = "palette"];
+  repeated BoardFeature features = 7 [json_name = "features"];
+  repeated string wanted = 8 [json_name = "wanted"];
+}
+
+// One row of the board: a feature of the catalogue with its typed fields, the
+// words written from them (label) and whether it is switched on.
+message BoardFeature {
+  optional string feature = 1 [json_name = "feature"];
+  optional bool on = 2 [json_name = "on"];
+  optional string label = 3 [json_name = "label"];
+  optional string size = 4 [json_name = "size"];
+  optional string variant = 5 [json_name = "variant"];
+  optional string colour = 6 [json_name = "colour"];
+  optional int32 count = 7 [json_name = "count"];
+  optional string name = 8 [json_name = "name"];
+  optional string role = 9 [json_name = "role"];
+  optional string tool = 10 [json_name = "tool"];
+}
+
+// One thing the words asked for, as the model sorted it: what was said, the
+// thing, the feature that draws it ("none" when none does), what is drawn,
+// whether that is the same thing, and what of it is missing.
+message Asked {
+  optional string said = 1 [json_name = "said"];
+  optional string thing = 2 [json_name = "thing"];
+  optional string feature = 3 [json_name = "feature"];
+  optional string drawn = 4 [json_name = "drawn"];
+  optional bool same = 5 [json_name = "same"];
+  optional string missing = 6 [json_name = "missing"];
+}

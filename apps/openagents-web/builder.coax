@@ -35,6 +35,7 @@
 #load "access.coax";
 #load "../../aethyr/core/budget.coax";
 #load "../../aethyr/forge/made.coax";   // a made realm's answer (made.proto)
+#load "../../aethyr/forge/board.coax";   // the plan's, the pick's and the make's bodies and the board's lines
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 30000;
@@ -245,29 +246,14 @@ json_quote :: (buf: [] u8, at: int, text: string, limit: int) -> int {
   }
   return put(buf, n, "\"");
 }
-// The switches as the page shows them: [true,false,...]
-put_switches :: (s: [] Builder, buf: [] u8, at: int) -> int {
-  n := put(buf, at, "[");
-  for i: 0..<s[0].feat_n {
-    if i > 0 { n = put(buf, n, ","); }
-    n = put(buf, n, ifx s[0].on[i] then "true" else "false");
-  }
-  return put(buf, n, "]");
-}
-// The answered setup as the server's fixed fields: ,"setup":{"camera":"first",...}; nothing when
-// none is answered. 2D is the side camera; 3D with no camera chosen is third person.
-put_setup :: (s: [] Builder, buf: [] u8, at: int) -> int {
-  cam := camera_word(s);
-  n := at; first := true;
+// The answered setup as the server's fixed fields, in the order the page sends them (camera, then
+// the questions'): a field not answered has no value. 2D is the side camera; 3D with no camera
+// chosen is third person. aethyr/forge/board.coax writes them ("setup":{"camera":"first",...}).
+setup_fields :: (s: [] Builder, keys: [] string, values: [] string) {
   for f: 0..<4 {
-    key := ifx f == 0 then "camera" else Q_FIELD[f + 1];
-    v := ifx f == 0 then cam else answer_word(s, f + 1);
-    if v.count == 0 { continue; }
-    n = put(buf, n, ifx first then ",\"setup\":{\"" else ",\""); first = false;
-    n = put(buf, n, key); n = put(buf, n, "\":\""); n = put(buf, n, v); n = put(buf, n, "\"");
+    keys[f] = ifx f == 0 then "camera" else Q_FIELD[f + 1];
+    values[f] = ifx f == 0 then camera_word(s) else answer_word(s, f + 1);
   }
-  if !first { n = put(buf, n, "}"); }
-  return n;
 }
 answer_word :: (s: [] Builder, q: int) -> string { c := s[0].chosen[q]; return ifx c >= 0 then Q_WORDS[q * CHOICES + c] else ""; }
 camera_word :: (s: [] Builder) -> string {
@@ -298,14 +284,8 @@ ask_plan :: (s: [] Builder, t: [] Track, words: string, via: string) {
   w := words[trim_from(words)..<trim_to(words)];
   if w.count == 0 || busy(s) || s[0].phase == PH_INVITE { return; }
   s[0].said_n = copy_into(s[0].said[..], w); s[0].said_typed = via == "typed";
-  n := put(s[0].req_body[..], 0, "{\"prompt\":");
-  n = json_quote(s[0].req_body[..], n, w, 300);
-  if s[0].plan > 0 && n > 0 {
-    n = put(s[0].req_body[..], n, ",\"plan\":"); n = put_int(s[0].req_body[..], n, s[0].plan);
-    n = put(s[0].req_body[..], n, ",\"on\":"); n = put_switches(s, s[0].req_body[..], n);
-  }
-  n = put_setup(s, s[0].req_body[..], n);
-  n = put(s[0].req_body[..], n, "}");
+  keys: [4] string; values: [4] string; setup_fields(s, keys[..], values[..]);
+  n := forge_plan_body(w, 300, true, s[0].plan, s[0].on[0..<s[0].feat_n], keys[..], values[..], s[0].req_body[..]);   // board.coax: {"prompt":..}
   if n <= 0 { set_note(s, "That's too long. Say it shorter."); return; }
   request(s, REQ_PLAN, PLAN_URL, n);
   s[0].phase = PH_PLANNING; s[0].note_n = 0;
@@ -316,9 +296,9 @@ ask_plan :: (s: [] Builder, t: [] Track, words: string, via: string) {
 pick_doc :: (s: [] Builder) {
   if busy(s) || s[0].doc_busy || s[0].held || s[0].action != 0 || s[0].phase == PH_MAKING || s[0].phase == PH_GOING || s[0].phase == PH_INVITE { return; }
   n := put(s[0].outbox[..], 0, DOC_URL);
-  setup: [BODY] u8;
-  m := put_setup(s, setup[..], 0);
-  if m > 1 { n = put(s[0].outbox[..], n, "\n{"); n = put(s[0].outbox[..], n, cast(string) setup[1..<m]); n = put(s[0].outbox[..], n, "}"); }
+  setup: [BODY] u8; keys: [4] string; values: [4] string; setup_fields(s, keys[..], values[..]);
+  m := forge_setup_body(keys[..], values[..], setup[..]);   // board.coax: the host adds the file's name and data
+  if m > 0 { n = put(s[0].outbox[..], n, "\n{\"setup\":"); n = put(s[0].outbox[..], n, cast(string) setup[0..<m]); n = put(s[0].outbox[..], n, "}"); }
   s[0].out_n = n; s[0].action = ACT_DOC; s[0].typing = false;
   set_note(s, "Pick your document: .md, .txt, .pdf or .docx.");
 }
@@ -335,12 +315,8 @@ make_it :: (s: [] Builder, t: [] Track) {
   }
   s[0].make_after = false;
   if s[0].plan <= 0 || busy(s) || s[0].phase != PH_BOARD { return; }
-  n := put(s[0].req_body[..], 0, "{\"plan\":");
-  n = put_int(s[0].req_body[..], n, s[0].plan);
-  n = put(s[0].req_body[..], n, ",\"on\":"); n = put_switches(s, s[0].req_body[..], n);
-  n = put_setup(s, s[0].req_body[..], n);
-  if s[0].desc_n > 0 && n > 0 { n = put(s[0].req_body[..], n, ",\"description\":"); n = json_quote(s[0].req_body[..], n, desc_text(s), DESC); }
-  n = put(s[0].req_body[..], n, "}");
+  keys: [4] string; values: [4] string; setup_fields(s, keys[..], values[..]);
+  n := forge_make_body(s[0].plan, s[0].on[0..<s[0].feat_n], keys[..], values[..], ifx s[0].desc_n > 0 then desc_text(s) else "", DESC, s[0].req_body[..]);   // board.coax: {"plan":..}
   request(s, REQ_MAKE, MAKE_URL, n);
   s[0].phase = PH_MAKING; s[0].note_n = 0;
   if track_begin(t, "builder-make") { track_int(t, "n", s[0].feat_n); track_int(t, "on", on_count(s)); track_end(t); }
@@ -399,11 +375,7 @@ ask_pick :: (s: [] Builder, t: [] Track, words: string) {
   w := words[trim_from(words)..<trim_to(words)];
   if w.count == 0 || busy(s) || s[0].phase != PH_SETUP || s[0].q >= QUESTIONS { return; }
   s[0].said_n = copy_into(s[0].said[..], w);
-  n := put(s[0].req_body[..], 0, "{\"field\":\"");
-  n = put(s[0].req_body[..], n, Q_FIELD[s[0].q]);
-  n = put(s[0].req_body[..], n, "\",\"words\":");
-  n = json_quote(s[0].req_body[..], n, w, 200);
-  n = put(s[0].req_body[..], n, "}");
+  n := forge_pick_body(Q_FIELD[s[0].q], w, 200, s[0].req_body[..]);   // board.coax: {"field":..,"words":..}
   if n <= 0 { set_note(s, "That's too long. Say it shorter."); return; }
   request(s, REQ_PICK, PICK_URL, n);
   s[0].note_n = 0;
@@ -508,26 +480,25 @@ number_of :: (text: string) -> int {
 read_board :: (s: [] Builder, body: string) -> bool {
   plan := 0; n := 0; w := 0;
   s[0].palette_n = 0;
+  // each line and a row's parts come from aethyr/forge/board.coax, the board's one reader
   i := 0;
   while i < body.count {
-    e := line_end(body, i);
-    line := body[i..<e];
-    i = e + 1;
-    if starts(line, "plan ") { plan = number_of(line[5..<line.count]); continue; }
-    if starts(line, "name ") { s[0].name_n = copy_into(s[0].name[..], line[5..<line.count]); continue; }
-    if starts(line, "style ") { s[0].style_n = copy_into(s[0].style[..], line[6..<line.count]); continue; }
-    if starts(line, "ground ") { s[0].ground_n = copy_into(s[0].ground[..], line[7..<line.count]); continue; }
-    if starts(line, "time ") { s[0].tod_n = copy_into(s[0].tod[..], line[5..<line.count]); continue; }
-    if starts(line, "camera ") { s[0].cam_n = copy_into(s[0].cam[..], line[7..<line.count]); continue; }
-    if starts(line, "palette ") { s[0].palette_n = copy_into(s[0].palette[..], line[8..<line.count]); continue; }
-    if starts(line, "want ") && w < WANTS { s[0].want_n[w] = copy_into(s[0].want[w * WANT..<(w + 1) * WANT], line[5..<line.count]); w += 1; continue; }
-    if starts(line, "f ") && n < FEATS {
-      k := 2; while k < line.count && line[k] != ' ' { k += 1; }
-      if k + 2 >= line.count { continue; }
-      s[0].kind_n[n] = copy_into(s[0].kind[n * KIND..<(n + 1) * KIND], line[2..<k]);
-      s[0].on[n] = line[k + 1] == '1';
-      lab := ifx k + 3 < line.count then line[k + 3..<line.count] else "";
-      s[0].label_n[n] = copy_into(s[0].label[n * LABEL..<(n + 1) * LABEL], lab);
+    l := forge_board_line(body, i); i = l.next;
+    if l.kind == BOARD_END { break; }
+    if l.kind == BOARD_PLAN { plan = number_of(forge_board_text(l)); continue; }
+    if l.kind == BOARD_NAME { s[0].name_n = copy_into(s[0].name[..], forge_board_text(l)); continue; }
+    if l.kind == BOARD_STYLE { s[0].style_n = copy_into(s[0].style[..], forge_board_text(l)); continue; }
+    if l.kind == BOARD_GROUND { s[0].ground_n = copy_into(s[0].ground[..], forge_board_text(l)); continue; }
+    if l.kind == BOARD_TIME { s[0].tod_n = copy_into(s[0].tod[..], forge_board_text(l)); continue; }
+    if l.kind == BOARD_CAMERA { s[0].cam_n = copy_into(s[0].cam[..], forge_board_text(l)); continue; }
+    if l.kind == BOARD_PALETTE { s[0].palette_n = copy_into(s[0].palette[..], forge_board_text(l)); continue; }
+    if l.kind == BOARD_WANT && w < WANTS { s[0].want_n[w] = copy_into(s[0].want[w * WANT..<(w + 1) * WANT], forge_board_text(l)); w += 1; continue; }
+    if l.kind == BOARD_ROW && n < FEATS {
+      row := forge_board_row(l);
+      if !row.ok { continue; }
+      s[0].kind_n[n] = copy_into(s[0].kind[n * KIND..<(n + 1) * KIND], row.feature);
+      s[0].on[n] = row.mark == '1';
+      s[0].label_n[n] = copy_into(s[0].label[n * LABEL..<(n + 1) * LABEL], row.label);
       n += 1;
     }
   }
@@ -569,7 +540,7 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
   if what == REQ_PICK {
     if status != 200 { say_why(s, status, body); s[0].phase = PH_SETUP; return; }
     value := ""; i := 0;
-    while i < body.count { e := line_end(body, i); line := body[i..<e]; i = e + 1; if starts(line, "value ") { value = line[6..<line.count]; } }
+    while i < body.count { l := forge_board_line(body, i); i = l.next; if l.kind == BOARD_END { break; } if l.kind == BOARD_VALUE { value = forge_board_text(l); } }   // board.coax
     q := s[0].q; got := -1;
     if q < QUESTIONS { for c: 0..<Q_COUNT[q] { if Q_WORDS[q * CHOICES + c] == value { got = c; } } }
     if got < 0 { set_note(s, "Tap one, or say it again."); return; }

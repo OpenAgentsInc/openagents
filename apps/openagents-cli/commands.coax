@@ -3,6 +3,7 @@
 // the existing 128-unit compiler profile. The Forge arithmetic stays shared.
 #load "../../aethyr/forge/edit.coax";
 #load "../../aethyr/forge/spec.coax";   // a realm's spec lines: one reader
+#load "../../aethyr/forge/board.coax";   // the builder's board lines: one reader
 #authority;
 
 #test "CLI reply revisions require a complete JSON object or a bounded revision line" {
@@ -194,6 +195,9 @@ PlanBoard :: struct { plan: int = -1; rows: int; }
   #assert n.plan == -1 && n.rows == 1 && on[0];
   o := cli_plan_board("plan 7\nf a 1 x\nf b 1 x\nf c 0 x\nf d 1 x\nf e 1 x", on[..]);
   #assert o.plan == 7 && o.rows == -1;
+  o = cli_plan_board("f a 1 x\nf b 1 x\nf c 0 x\nf d 1 x\nf e 1 x\nf g 0 x\nplan 9", on[..]);
+  #assert o.plan == 9 && o.rows == -1 && on[0] && on[1] && !on[2] && on[3];
+  #assert cli_plan_board("f a 1x", on[..]).rows == 0 && cli_plan_board("f a 1x y", on[..]).rows == 0 && cli_plan_board("name a 1 x", on[..]).rows == 0 && cli_plan_board("want a 1 x", on[..]).rows == 0;
   q := cli_plan_board("plan x\nf a 2 x\nff a 1 x\nf a\nplan 12", on[..]);
   #assert q.plan == 12 && q.rows == 0;
   #assert cli_plan_board("\nplan 3", on[..]).plan == 3 && cli_plan_board("plan 3\n", on[..]).rows == 0;
@@ -210,17 +214,15 @@ cli_prefix :: (s: string, p: string) -> bool #effects(all) { return s.count >= p
 cli_plan_board :: (text: string, on: [] bool) -> PlanBoard #effects(all) {
   b: PlanBoard;
   at := 0;
-  for end: 0..<text.count + 1 {
-    if end < text.count && text[end] != '\n' { continue; }
-    line := text[at..<end];
-    at = end + 1;
-    if line.count > 5 && line[0..<5] == "plan " { b.plan = cli_count(line[5..<line.count], 1, 999999999); }
-    if b.rows < 0 || !cli_prefix(line, "f ") { continue; }
-    sp := 3;   // a feature is at least one byte
-    while sp < line.count && line[sp] != ' ' { sp += 1; }
-    if sp + 2 >= line.count || line[sp + 2] != ' ' || (line[sp + 1] != '0' && line[sp + 1] != '1') { continue; }
+  while true {
+    l := forge_board_line(text, at); at = l.next;   // aethyr/forge/board.coax, the board's one reader
+    if l.kind == BOARD_END { break; }
+    if l.kind == BOARD_PLAN && l.line.count > 5 { b.plan = cli_count(forge_board_text(l), 1, 999999999); }
+    if b.rows < 0 { continue; }
+    row := forge_board_row(l);   // a line that is no row has no space after its mark
+    if !row.spaced || (row.mark != '0' && row.mark != '1') { continue; }
     if b.rows == on.count { b.rows = -1; continue; }
-    on[b.rows] = line[sp + 1] == '1';
+    on[b.rows] = row.mark == '1';
     b.rows += 1;
   }
   return b;

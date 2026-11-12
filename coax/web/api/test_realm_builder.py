@@ -423,6 +423,27 @@ def realm_builder_checks():
     check("0092: an older answer with no missing still keeps its place whole", wanted([{"thing": "pirate cove", "feature": "place", "same": False}]) == '["pirate cove"]')
     items = sql("select verse.builder_schema()->'properties'->'asked'->'items'->'required'")
     check("0092: each asked thing says what of it is missing", '"missing"' in items and "mist" in sql("select verse.builder_order()::text"), items)
+    # Protocol E11 (#13250): the builder's bodies and boards are aethyr/forge/board.coax's. The fixture
+    # holds each request as the page and the CLI send it and each answer as the server gives it; the
+    # plan's number is the run's, so it is 41 in the fixture and swapped both ways here.
+    import re
+    bfx = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "proto", "verse", "realm-board-v1.json")))
+    fx_key = b_player()
+    fx_plan = 0
+    for stp in bfx["steps"]:
+        if "model" in stp:
+            builder_mode["text"] = json.dumps(stp["model"])
+        if stp.get("wait"):
+            time.sleep(2.1)
+        body = stp["body"].replace('"plan":41', '"plan":%d' % fx_plan)
+        st, raw, _ = call(stp["method"], "/api/playtest/realms" + stp["path"], body.encode(), {"Content-Type": "application/json", "X-Verse-Player": fx_key})
+        got = raw.decode()
+        m = re.search(r'^plan (\d+)$', got, re.M) or re.search(r'"plan": (\d+)', got)
+        if m and stp["message"] in ("BoardLines", "PlanReply"):
+            fx_plan = int(m.group(1))
+            got = re.sub(r'^plan \d+$', "plan 41", got, flags=re.M)
+            got = re.sub(r'"plan": \d+', '"plan": 41', got)
+        check("board fixture: " + stp["name"], st == stp["status"] and got == stp["reply"], (st, got))
     time.sleep(3.2)
     gcs_server.shutdown()
     builder_fake.shutdown()

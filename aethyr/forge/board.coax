@@ -1,0 +1,221 @@
+// The realm builder on the wire (compliance plan step E11, GitHub #13250): what the builder page
+// (apps/openagents-web/builder.coax) and the CLI (realm new) send to plan, pick and make a realm,
+// and the board they read back. One codec for both.
+//   POST /api/playtest/realms/plan   {"prompt":P[,"plan":N,"on":[..]][,"setup":{..}]}   forge_plan_body
+//   POST /api/playtest/realms/pick   {"field":"F","words":W}                             forge_pick_body
+//   POST /api/playtest/realms        {"plan":N,"on":[..][,"setup":{..}][,"description":D]}   forge_make_body
+//   POST /api/playtest/realms/plan/doc   the page's host adds the picked file's name and data to
+//                                        the setup object written here (forge_setup_body)
+// With ?as=lines the planner answers the board as text, written in SQL (verse.builder_lines):
+//   plan N, name NAME, style|ground|time|camera|palette WORD, then "f FEATURE 0|1 LABEL" a row and
+//   "want WORDS" for each thing asked for that the board has no row for;
+// and the picker answers "field F" and "value V".
+// proto/verse/realm-board-v1.json names every line and holds requests and boards as the server
+// takes and answers them; aethyr/forge/board-goldens.coax holds them through this file, and
+// coax/web/api/test_realm_builder.py sends the same requests to the API.
+//   coax/bin/coax test aethyr/forge/board.coax --library
+
+#load "spec.coax";
+#load "../../coax/lib/json/json.coax";
+
+BOARD_END :: 0; BOARD_OTHER :: 1; BOARD_PLAN :: 2; BOARD_NAME :: 3; BOARD_STYLE :: 4; BOARD_GROUND :: 5; BOARD_TIME :: 6; BOARD_CAMERA :: 7;
+BOARD_PALETTE :: 8; BOARD_ROW :: 9; BOARD_WANT :: 10; BOARD_FIELD :: 11; BOARD_VALUE :: 12;
+BOARD_KINDS :: 13;
+BOARD_KEYS :: [BOARD_KINDS] string.["", "", "plan", "name", "style", "ground", "time", "camera", "palette", "f", "want", "field", "value"];
+
+// One line of a board or a pick: its kind (BOARD_OTHER for a key that is none of them, or one
+// with no space after it), its text (no newline), and where the next line starts.
+ForgeBoardLine :: struct { kind: int; line: string; next: int; }
+forge_board_line :: (text: string, at: int) -> ForgeBoardLine {
+  l := forge_spec_line(text, at);
+  if l.kind == SPEC_END { return ForgeBoardLine.{kind = BOARD_END, next = l.next}; }
+  keys := BOARD_KEYS; kind := BOARD_OTHER;
+  for k: BOARD_PLAN..<BOARD_KINDS {
+    n := keys[k].count;
+    if l.line.count > n && l.line[0..<n] == keys[k] && l.line[n] == ' ' { kind = k; }
+  }
+  return ForgeBoardLine.{kind = kind, line = l.line, next = l.next};
+}
+// A line's text after its key and one space.
+forge_board_text :: (l: ForgeBoardLine) -> string {
+  if l.kind < BOARD_PLAN { return ""; }
+  keys := BOARD_KEYS;
+  return l.line[keys[l.kind].count + 1..<l.line.count];
+}
+// "f FEATURE 0|1 LABEL": the feature (at least one byte), the byte that says on or off, whether a
+// space follows it, and the label after that space. ok when the line reaches past that byte.
+ForgeBoardRow :: struct { ok: bool; feature: string; mark: u8; spaced: bool; label: string; }
+forge_board_row :: (l: ForgeBoardLine) -> ForgeBoardRow {
+  if l.kind != BOARD_ROW { return ForgeBoardRow.{}; }
+  k := 3; while k < l.line.count && l.line[k] != ' ' { k += 1; }
+  if k + 2 >= l.line.count { return ForgeBoardRow.{}; }
+  return ForgeBoardRow.{ok = true, feature = l.line[2..<k], mark = l.line[k + 1], spaced = l.line[k + 2] == ' ',
+    label = ifx k + 3 < l.line.count then l.line[k + 3..<l.line.count] else ""};
+}
+
+// ---- the requests
+// text as a JSON string: at most `limit` bytes of it; plain: a control byte becomes a space (words
+// said or typed on the page), else it is escaped as JSON escapes it (the CLI's words).
+forge_board_quote :: (o: [] Jo, text: string, limit: int, plain: bool) {
+  n := ifx text.count < limit then text.count else limit;
+  if !plain { jo_quoted(o, text[0..<n]); return; }
+  jo_byte(o, '"');
+  for i: 0..<n {
+    c := text[i];
+    if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); }
+    else if c < 32 { jo_byte(o, ' '); }
+    else { jo_byte(o, c); }
+  }
+  jo_byte(o, '"');
+}
+// [true,false,...]
+forge_board_switches :: (o: [] Jo, on: [] bool) {
+  jo_byte(o, '[');
+  for i: 0..<on.count { if i > 0 { jo_byte(o, ','); } jo_put(o, ifx on[i] then "true" else "false"); }
+  jo_byte(o, ']');
+}
+// {"camera":"first","time":"night"}: the setup's fields in the order given, one with no value
+// left out; nothing at all when none has one. True when it wrote the object.
+forge_board_setup :: (o: [] Jo, keys: [] string, values: [] string) -> bool {
+  first := true;
+  for f: 0..<keys.count {
+    if f >= values.count || values[f].count == 0 { continue; }
+    jo_byte(o, ifx first then '{' else ','); first = false;
+    jo_quoted(o, keys[f]); jo_byte(o, ':'); jo_quoted(o, values[f]);
+  }
+  if !first { jo_byte(o, '}'); }
+  return !first;
+}
+// The setup object alone ("" when no field has a value): what plan/doc's body starts from.
+forge_setup_body :: (keys: [] string, values: [] string, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  _ = forge_board_setup(o[..], keys, values);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+forge_board_setup_member :: (o: [] Jo, keys: [] string, values: [] string) {
+  for f: 0..<keys.count {
+    if f < values.count && values[f].count > 0 { jo_put(o, ",\"setup\":"); _ = forge_board_setup(o, keys, values); return; }
+  }
+}
+// POST .../plan: the words, the board they change (plan > 0: its number and its switches), and
+// the setup answered. Its length, or -1 when it does not fit.
+forge_plan_body :: (prompt: string, limit: int, plain: bool, plan: int, on: [] bool, keys: [] string, values: [] string, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_put(o[..], "{\"prompt\":"); forge_board_quote(o[..], prompt, limit, plain);
+  if plan > 0 { jo_put(o[..], ",\"plan\":"); jo_int(o[..], plan); jo_put(o[..], ",\"on\":"); forge_board_switches(o[..], on); }
+  forge_board_setup_member(o[..], keys, values);
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// POST .../realms (MAKE IT): the plan, its switches, the setup answered and the realm's line.
+forge_make_body :: (plan: int, on: [] bool, keys: [] string, values: [] string, description: string, limit: int, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_put(o[..], "{\"plan\":"); jo_int(o[..], plan); jo_put(o[..], ",\"on\":"); forge_board_switches(o[..], on);
+  forge_board_setup_member(o[..], keys, values);
+  if description != "" { jo_put(o[..], ",\"description\":"); forge_board_quote(o[..], description, limit, true); }
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// POST .../pick: the question and the words said for it.
+forge_pick_body :: (field: string, words: string, limit: int, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_put(o[..], "{\"field\":"); jo_quoted(o[..], field); jo_put(o[..], ",\"words\":"); forge_board_quote(o[..], words, limit, true);
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "a board's lines: their kinds, their text and a row's parts" {
+  board := "plan 41\nname Moonlit Marsh\nstyle painterly\nground forest\ntime night\ncamera third\npalette natural\nf water 1 Large pond\nf lanterns 0 6 gold lanterns\nwant a dragon\n";
+  l := forge_board_line(board, 0);
+  #assert l.kind == BOARD_PLAN && forge_board_text(l) == "41" && l.next == 8;
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_NAME && forge_board_text(l) == "Moonlit Marsh";
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_STYLE && forge_board_text(l) == "painterly";
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_GROUND && forge_board_text(l) == "forest";
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_TIME && forge_board_text(l) == "night";
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_CAMERA && forge_board_text(l) == "third";
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_PALETTE && forge_board_text(l) == "natural";
+  l = forge_board_line(board, l.next);
+  r := forge_board_row(l);
+  #assert l.kind == BOARD_ROW && r.ok && r.feature == "water" && r.mark == '1' && r.spaced && r.label == "Large pond";
+  l = forge_board_line(board, l.next);
+  r = forge_board_row(l);
+  #assert r.ok && r.feature == "lanterns" && r.mark == '0' && r.label == "6 gold lanterns";
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_WANT && forge_board_text(l) == "a dragon" && !forge_board_row(l).ok;
+  l = forge_board_line(board, l.next);
+  #assert l.kind == BOARD_END && l.next == board.count && forge_board_line("", 0).kind == BOARD_END;
+  // a key alone, a key with no space, a longer key and a blank line are no line of the board
+  #assert forge_board_line("plan", 0).kind == BOARD_OTHER && forge_board_line("plans 4", 0).kind == BOARD_OTHER && forge_board_line("f", 0).kind == BOARD_OTHER && forge_board_line(" plan 4", 0).kind == BOARD_OTHER && forge_board_line("\nplan 4", 0).kind == BOARD_OTHER;
+  #assert forge_board_text(forge_board_line("note x", 0)) == "" && forge_board_text(forge_board_line("name ", 0)) == "" && forge_board_line("name ", 0).kind == BOARD_NAME && forge_board_line("plan 4", 0).kind == BOARD_PLAN;
+  // the picker's two lines
+  l = forge_board_line("field camera\nvalue first\n", 0);
+  #assert l.kind == BOARD_FIELD && forge_board_text(l) == "camera";
+  l = forge_board_line("field camera\nvalue first\n", l.next);
+  #assert l.kind == BOARD_VALUE && forge_board_text(l) == "first";
+  // a row's edges: the feature is at least one byte; the line must reach past the mark
+  #assert !forge_board_row(forge_board_line("f a 1", 0)).ok && forge_board_row(forge_board_line("f a 1 ", 0)).ok && forge_board_row(forge_board_line("f a 1 ", 0)).label == "" && forge_board_row(forge_board_line("f a 1 ", 0)).spaced;
+  #assert !forge_board_row(forge_board_line("f ", 0)).ok && !forge_board_row(forge_board_line("f a", 0)).ok && !forge_board_row(forge_board_line("f a ", 0)).ok;
+  r = forge_board_row(forge_board_line("f ab 0x y", 0));
+  #assert r.ok && r.feature == "ab" && r.mark == '0' && !r.spaced && r.label == " y";
+  r = forge_board_row(forge_board_line("f  1 x", 0));
+  #assert !r.ok;
+  r = forge_board_row(forge_board_line("f  a 1 x", 0));
+  #assert r.ok && r.feature == " a" && r.mark == '1' && r.label == "x";
+  r = forge_board_row(forge_board_line("f ab 2 x", 0));
+  #assert r.ok && r.mark == '2' && r.label == "x";
+}
+#test "the plan's, the make's and the pick's bodies, as the page and the CLI send them" {
+  buf: [512] u8; none: [1] bool; nokeys: [1] string;
+  n := forge_plan_body("a misty swamp with \"bats\"", 300, true, 0, none[0..<0], nokeys[0..<0], nokeys[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"a misty swamp with \\\"bats\\\"\"}";
+  on := [6] bool.[false, true, true, true, true, false];
+  n = forge_plan_body("no lanterns", 300, true, 41, on[..], nokeys[0..<0], nokeys[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"no lanterns\",\"plan\":41,\"on\":[false,true,true,true,true,false]}";
+  keys := [4] string.["camera", "style", "ground", "time"]; vals := [4] string.["first", "", "desert", "night"];
+  n = forge_plan_body("a lookout", 300, true, 0, none[0..<0], keys[..], vals[..], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"a lookout\",\"setup\":{\"camera\":\"first\",\"ground\":\"desert\",\"time\":\"night\"}}";
+  // the CLI's order of the setup, and its words escaped as JSON; the page's control bytes become spaces
+  ck := [4] string.["style", "time", "camera", "ground"]; cv := [4] string.["flat", "dusk", "", ""];
+  n = forge_plan_body("a\tb\n", 2000, false, 0, none[0..<0], ck[..], cv[..], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"a\\tb\\n\",\"setup\":{\"style\":\"flat\",\"time\":\"dusk\"}}";
+  n = forge_plan_body("a\tb\\c\n", 300, true, 0, none[0..<0], nokeys[0..<0], nokeys[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"a b\\\\c \"}";
+  // at most the limit's bytes of the words; a buffer too small is -1
+  n = forge_plan_body("abcdef", 3, true, 0, none[0..<0], nokeys[0..<0], nokeys[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"abc\"}" && forge_plan_body("abcdef", 3, true, 0, none[0..<0], nokeys[0..<0], nokeys[0..<0], buf[0..<n - 1]) == -1;
+  n = forge_plan_body("abcdef", 3, false, 0, none[0..<0], nokeys[0..<0], nokeys[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"abc\"}";
+  n = forge_plan_body("abcdef", 6, true, 0, none[0..<0], nokeys[0..<0], nokeys[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"abcdef\"}";
+  // a setup with no value is no member; a value past the keys' count is not written
+  ev := [4] string.["", "", "", ""];
+  n = forge_plan_body("x", 300, true, 0, none[0..<0], keys[..], ev[..], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"x\"}";
+  n = forge_plan_body("x", 300, true, 0, none[0..<0], keys[..], vals[0..<1], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"prompt\":\"x\",\"setup\":{\"camera\":\"first\"}}";
+  // the make
+  mk := [6] bool.[true, true, false, true, true, false];
+  n = forge_make_body(41, mk[..], nokeys[0..<0], nokeys[0..<0], "", 200, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"plan\":41,\"on\":[true,true,false,true,true,false]}";
+  n = forge_make_body(41, mk[..], nokeys[0..<0], nokeys[0..<0], "A drowned marsh where \"Old Mott\" waits", 200, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"plan\":41,\"on\":[true,true,false,true,true,false],\"description\":\"A drowned marsh where \\\"Old Mott\\\" waits\"}";
+  one := [1] bool.[true]; sv := [4] string.["first", "painterly", "forest", "night"];
+  n = forge_make_body(41, one[..], keys[..], sv[..], "", 200, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"plan\":41,\"on\":[true],\"setup\":{\"camera\":\"first\",\"style\":\"painterly\",\"ground\":\"forest\",\"time\":\"night\"}}";
+  n = forge_make_body(42, none[0..<0], nokeys[0..<0], nokeys[0..<0], "abcdef", 3, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"plan\":42,\"on\":[],\"description\":\"abc\"}" && forge_make_body(42, none[0..<0], nokeys[0..<0], nokeys[0..<0], "abcdef", 3, buf[0..<n - 1]) == -1;
+  // the pick, and the setup alone for a dropped document
+  n = forge_pick_body("camera", "through my \"own\" eyes\n", 200, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"field\":\"camera\",\"words\":\"through my \\\"own\\\" eyes \"}" && forge_pick_body("camera", "x", 200, buf[0..<10]) == -1;
+  n = forge_pick_body("time", "abcdef", 2, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"field\":\"time\",\"words\":\"ab\"}";
+  n = forge_setup_body(keys[..], sv[..], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"camera\":\"first\",\"style\":\"painterly\",\"ground\":\"forest\",\"time\":\"night\"}";
+  #assert forge_setup_body(keys[..], ev[..], buf[..]) == 0 && forge_setup_body(keys[..], sv[..], buf[0..<20]) == -1;
+}

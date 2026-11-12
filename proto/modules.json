@@ -183,7 +183,8 @@
       "openagents/verse/doc/v1alpha1/realm.proto",
       "openagents/verse/doc/v1alpha1/record.proto",
       "openagents/verse/doc/v1alpha1/route.proto",
-      "openagents/verse/doc/v1alpha1/made.proto"
+      "openagents/verse/doc/v1alpha1/made.proto",
+      "openagents/verse/doc/v1alpha1/builder.proto"
     ],
     "repo": [
       "openagents/repo/v1alpha1/repo.proto"

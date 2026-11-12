@@ -1,0 +1,263 @@
+{
+ "profile": "realm-board-v1",
+ "about": "The realm builder (GitHub #13250): the bodies sent to POST /api/playtest/realms/plan, /pick and /realms (MAKE IT), and the board and the pick as ?as=lines answers them (SQL's verse.builder_lines). \"lines\" names every line. \"steps\" are calls as one player with the status and body the server answers today: \"model\" is what the planner's model answers from that step on (the API suite's fake), \"wait\" says the call comes at least two seconds after the last, and the plan's number, which each run decides, is written 41 here in bodies and answers. \"message\" names the answer: BoardLines and PickLines are the text; PlanReply, PickReply (builder.proto), MadeReply and MadeLines (made.proto), RouteError (record.proto) and ErrorWords (a refusal's words alone). aethyr/forge/board.coax writes every body and reads every line; aethyr/forge/board-goldens.coax holds them through it; coax/web/api/test_realm_builder.py makes the calls.",
+ "check": "coax/web/tool.sh aethyr/forge/board-goldens.coax proto/verse/realm-board-v1.json",
+ "codec": "aethyr/forge/board.coax",
+ "plan": 41,
+ "lines": [
+  {
+   "key": "plan",
+   "form": "plan N",
+   "says": "the plan's number: what a revision and MAKE IT name",
+   "example": "plan 41"
+  },
+  {
+   "key": "name",
+   "form": "name NAME",
+   "says": "the realm's name, the rest of the line",
+   "example": "name Moonlit Marsh"
+  },
+  {
+   "key": "style",
+   "form": "style WORD",
+   "says": "lowpoly, painterly or flat",
+   "example": "style painterly"
+  },
+  {
+   "key": "ground",
+   "form": "ground WORD",
+   "says": "the ground it stands on",
+   "example": "ground forest"
+  },
+  {
+   "key": "time",
+   "form": "time WORD",
+   "says": "day, dawn, dusk or night",
+   "example": "time night"
+  },
+  {
+   "key": "camera",
+   "form": "camera WORD",
+   "says": "third, first, top or side",
+   "example": "camera third"
+  },
+  {
+   "key": "palette",
+   "form": "palette WORD",
+   "says": "natural, pastel, vivid or muted",
+   "example": "palette natural"
+  },
+  {
+   "key": "f",
+   "form": "f FEATURE 0|1 LABEL",
+   "says": "a row of the board: its feature, whether it is on, its words",
+   "example": "f water 1 Large pond"
+  },
+  {
+   "key": "want",
+   "form": "want WORDS",
+   "says": "a thing asked for that the board has no row for",
+   "example": "want a dragon"
+  },
+  {
+   "key": "field",
+   "form": "field NAME",
+   "says": "the picker's answer: the question",
+   "example": "field camera"
+  },
+  {
+   "key": "value",
+   "form": "value WORD",
+   "says": "the picker's answer: the word picked, or none",
+   "example": "value first"
+  }
+ ],
+ "steps": [
+  {
+   "name": "the page's first words come back as a board",
+   "method": "POST",
+   "path": "/plan?as=lines",
+   "body": "{\"prompt\":\"a dark marsh with an old man by the bridge\"}",
+   "status": 200,
+   "reply": "plan 41\nname Fixture Marsh\nstyle painterly\nground forest\ntime night\ncamera third\npalette natural\nf water 1 Large pond\nf trees 1 6 dead trees\nf lanterns 0 6 gold lanterns\nf character 1 Old Mott, keeps the bridge\n",
+   "message": "BoardLines",
+   "request": "PlanRequest",
+   "model": {
+    "name": "Fixture Marsh",
+    "style": "painterly",
+    "ground": "forest",
+    "time": "night",
+    "features": [
+     {
+      "feature": "water",
+      "on": true,
+      "size": "large"
+     },
+     {
+      "feature": "trees",
+      "on": true,
+      "variant": "dead",
+      "count": 6
+     },
+     {
+      "feature": "lanterns",
+      "on": false,
+      "colour": "gold",
+      "count": 6
+     },
+     {
+      "feature": "character",
+      "on": true,
+      "name": "Old Mott",
+      "role": "keeps the bridge"
+     }
+    ]
+   },
+   "wait": true
+  },
+  {
+   "name": "the CLI's words with a setup, the board as JSON",
+   "method": "POST",
+   "path": "/plan",
+   "body": "{\"prompt\":\"a lookout\",\"setup\":{\"style\":\"painterly\",\"time\":\"night\"}}",
+   "status": 200,
+   "reply": "{\"plan\": 41, \"asked\": [], \"board\": {\"name\": \"Fixture Marsh\", \"time\": \"night\", \"style\": \"painterly\", \"camera\": \"third\", \"ground\": \"forest\", \"wanted\": [], \"palette\": \"natural\", \"features\": [{\"on\": true, \"size\": \"large\", \"label\": \"Large pond\", \"feature\": \"water\", \"variant\": \"pond\"}, {\"on\": true, \"count\": 6, \"label\": \"6 dead trees\", \"feature\": \"trees\", \"variant\": \"dead\"}, {\"on\": false, \"count\": 6, \"label\": \"6 gold lanterns\", \"colour\": \"gold\", \"feature\": \"lanterns\"}, {\"on\": true, \"name\": \"Old Mott\", \"role\": \"keeps the bridge\", \"label\": \"Old Mott, keeps the bridge\", \"feature\": \"character\"}]}, \"model\": \"gemini-2.5-flash\"}",
+   "message": "PlanReply",
+   "request": "PlanRequest",
+   "wait": true
+  },
+  {
+   "name": "words that change the board, with its switches",
+   "method": "POST",
+   "path": "/plan?as=lines",
+   "body": "{\"prompt\":\"no lanterns\",\"plan\":41,\"on\":[true,true,false,true],\"setup\":{\"camera\":\"first\",\"ground\":\"desert\",\"time\":\"night\"}}",
+   "status": 200,
+   "reply": "plan 41\nname Fixture Marsh\nstyle painterly\nground desert\ntime night\ncamera first\npalette natural\nf water 1 Large pond\nf trees 1 6 dead trees\nf lanterns 0 6 gold lanterns\nf character 1 Old Mott, keeps the bridge\n",
+   "message": "BoardLines",
+   "request": "PlanRequest",
+   "wait": true
+  },
+  {
+   "name": "no words, as lines",
+   "method": "POST",
+   "path": "/plan?as=lines",
+   "body": "{\"prompt\":\"\"}",
+   "status": 400,
+   "reply": "say what world you want",
+   "message": "ErrorWords",
+   "request": "PlanRequest",
+   "wait": true
+  },
+  {
+   "name": "no words",
+   "method": "POST",
+   "path": "/plan",
+   "body": "{\"prompt\":\"\"}",
+   "status": 400,
+   "reply": "{\"error\": \"say what world you want\"}",
+   "message": "RouteError",
+   "request": "PlanRequest",
+   "wait": true
+  },
+  {
+   "name": "a spoken answer is picked, as lines",
+   "method": "POST",
+   "path": "/pick?as=lines",
+   "body": "{\"field\":\"camera\",\"words\":\"through my own eyes\"}",
+   "status": 200,
+   "reply": "field camera\nvalue first\n",
+   "message": "PickLines",
+   "request": "PickRequest",
+   "model": {
+    "value": "first"
+   },
+   "wait": true
+  },
+  {
+   "name": "a spoken answer is picked",
+   "method": "POST",
+   "path": "/pick",
+   "body": "{\"field\":\"time\",\"words\":\"when the sun goes down\"}",
+   "status": 200,
+   "reply": "{\"field\": \"time\", \"value\": \"dusk\"}",
+   "message": "PickReply",
+   "request": "PickRequest",
+   "model": {
+    "value": "dusk"
+   },
+   "wait": true
+  },
+  {
+   "name": "a question that is none",
+   "method": "POST",
+   "path": "/pick",
+   "body": "{\"field\":\"colour\",\"words\":\"red\"}",
+   "status": 400,
+   "reply": "{\"error\": \"no such question\"}",
+   "message": "RouteError",
+   "request": "PickRequest",
+   "wait": true
+  },
+  {
+   "name": "the page makes it, as lines",
+   "method": "POST",
+   "path": "?as=lines",
+   "body": "{\"plan\":41,\"on\":[true,true,false,true],\"setup\":{\"camera\":\"first\",\"ground\":\"desert\",\"time\":\"night\"},\"description\":\"A drowned marsh where \\\"Old Mott\\\" waits\"}",
+   "status": 200,
+   "reply": "slug fixture-marsh\npath /worlds/fixture-marsh\npage 0\n",
+   "message": "MadeLines",
+   "request": "MakeRequest",
+   "model": {
+    "name": "Fixture Marsh",
+    "style": "painterly",
+    "ground": "forest",
+    "time": "night",
+    "features": [
+     {
+      "feature": "water",
+      "on": true,
+      "size": "large"
+     },
+     {
+      "feature": "trees",
+      "on": true,
+      "variant": "dead",
+      "count": 6
+     },
+     {
+      "feature": "lanterns",
+      "on": false,
+      "colour": "gold",
+      "count": 6
+     },
+     {
+      "feature": "character",
+      "on": true,
+      "name": "Old Mott",
+      "role": "keeps the bridge"
+     }
+    ]
+   }
+  },
+  {
+   "name": "the CLI makes it",
+   "method": "POST",
+   "path": "",
+   "body": "{\"plan\":41,\"on\":[true,true,true,true]}",
+   "status": 200,
+   "reply": "{\"name\": \"Fixture Marsh\", \"path\": \"/worlds/fixture-marsh-2\", \"slug\": \"fixture-marsh-2\",\"page\":false}",
+   "message": "MadeReply",
+   "request": "MakeRequest"
+  },
+  {
+   "name": "a make with no board",
+   "method": "POST",
+   "path": "",
+   "body": "{\"plan\":0,\"on\":[]}",
+   "status": 400,
+   "reply": "{\"error\": \"no board\"}",
+   "message": "RouteError",
+   "request": "MakeRequest"
+  }
+ ]
+}
