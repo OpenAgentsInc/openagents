@@ -141,7 +141,7 @@ export function characterPass(deps) {
       if (current !== c) return;
       new Uint8Array(memory.buffer, x.character_digest(state), 32).set(digest);
       if (!x.character_pack_admit(state, bytes.length)) throw Error("character pack: SHA-256 refused by Coax");
-      const entries = deps.unpack(bytes), of = (kind) => entries.filter((e) => e.kind === kind);
+      const entries = await deps.unpack(bytes), of = (kind) => entries.filter((e) => e.kind === kind);
       const catalog = of(PACK_CATALOG)[0], vertices = of(PACK_VERTICES)[0], indices = of(PACK_INDICES)[0], layers = of(PACK_LAYER);
       if (!catalog || !vertices || !indices || !layers.length) throw Error("character pack: a part is missing");
       const at = x.character_catalog_at(catalog.bytes.length);

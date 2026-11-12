@@ -104,7 +104,7 @@ if [[ -x "$coax" ]]; then
     rm "$out/render-assets.pending.json"
   fi
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h "$web/face-address.h" ${faces_too[@]+"${faces_too[@]}"} "$out/"
-  cp "$here"/face.h "$here"/face-defaults.h "$here"/realm-host.h "$here"/realm-host.c "$here"/audio-host.h "$here"/realm-run.c "$out/"
+  cp "$here"/face.h "$here"/face-defaults.h "$here"/realm-host.h "$here"/realm-host.c "$here"/pack-table-gen.h "$here"/audio-host.h "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
   # C the face includes itself (the haunted house's realm-flight.c ...), and a header of the
   # site's it shares with another face (experimental-sound-bank.h): beside it, not a unit

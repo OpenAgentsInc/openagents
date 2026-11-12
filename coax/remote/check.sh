@@ -253,6 +253,7 @@ reports() {
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
   visuals
   generated
+  pack_reader_c
   cards
 }
 # The API's migrations (#13301, coax/web/api/migrations/README.md): a new one takes a number above
@@ -269,6 +270,12 @@ visuals() { step check-visuals coax/web/check-visuals.sh apps/openagents-web || 
 generated() {
   step realm-pages bun coax/web/realms.ts --check || status=1
   step changelog-page coax/web/tool.sh coax/web/changelog-page.coax --check || status=1
+}
+# verse/native/pack-table-gen.h is the C the compiler writes for the one pack reader's face
+# (#13304): the native realm host includes it, since most of the builds that compile
+# verse/native/realm-host.c take no Coax step. Committed, so it is compared with its source here.
+pack_reader_c() {
+  step pack-reader-c bash -c 'coax/bin/coax c aethyr/host/pack-table-face.coax --library | cmp -s - verse/native/pack-table-gen.h || { echo "verse/native/pack-table-gen.h is not what the compiler writes for aethyr/host/pack-table-face.coax. From the repository root: coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h, then commit it."; exit 1; }' || status=1
 }
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.
@@ -416,6 +423,8 @@ reports_since() {
   if grep -Eq '^(apps/openagents-web/realms|coax/web/realms\.ts|coax/CHANGELOG\.md|coax/web/changelog-page\.coax|apps/openagents-web/(changelog-content\.coax|coax/changelog/))' "$out/changed"; then
     generated
   fi
+  # Its sources: the reader, its face and the compiler that writes the C.
+  if grep -Eq '^(aethyr/host/pack-table|verse/native/pack-table-gen\.h|coax/(src|lib/compiler|bootstrap)/|coax/VERSION)' "$out/changed"; then pack_reader_c; fi
   if grep -Eq '^(apps/openagents-web/(realms|og/)|coax/web/og\.ts)' "$out/changed"; then
     cards
   fi

@@ -1,0 +1,28 @@
+// The one pack reader's C face (GitHub #13304): aethyr/host/pack-table.coax's pack_table and
+// pack_stated under C names. Nothing here reads a byte of a pack. It is a file of its own because
+// an exported name is exported from every unit that loads its file, and many units load
+// pack-table.coax (through aethyr/forge/pack.coax): only a host's reader unit loads this one.
+//   the browser: aethyr/host/pack-carrier.coax loads it into the pack reactor (coax/web/pack-face.c)
+//   a C, Objective-C or Swift host: its build compiles this file,
+//     coax/bin/coax c aethyr/host/pack-table-face.coax --library --header aethyr-pack-table.h > aethyr-pack-table.c
+//   and the host includes aethyr/host/pack-table.h, which wraps that header.
+//   coax/bin/coax test aethyr/host/pack-table-face.coax --library
+#module "aethyr.host.pack_table_face";
+#load "pack-table.coax";
+
+// A pack's stated size from its first 12 bytes, or -1.
+aethyr_pack_stated :: (prefix: string) -> int #export_c #effects(all) { return pack_stated(prefix); }
+// The table of the pack whose first bytes are `head` and whose whole size is `total`.
+aethyr_pack_table :: (head: string, total: int, r: [] PackTable) -> bool #export_c #effects(all) { return pack_table(head, total, r); }
+// The bytes of a pack's start the largest table a host reads takes: a buffer for `head`.
+aethyr_pack_head_max :: () -> int #export_c #effects(all) { return pack_table_need(PACK_HEADER, PACK_TABLE_MAX); }
+
+#test "the face is the reader: the same table, the same refusal" {
+  b: [600] u8; p := pack_table_test(b[..]);
+  a: [1] PackTable; t: [1] PackTable;
+  #assert aethyr_pack_table(p, p.count, a[..]) && pack_table(p, p.count, t[..]) && a[0].count == t[0].count && a[0].count == 5;
+  for k: 0..<5 { #assert a[0].entries[k].at == t[0].entries[k].at && a[0].entries[k].n == t[0].entries[k].n && a[0].entries[k].kind == t[0].entries[k].kind && a[0].entries[k].name == t[0].entries[k].name; }
+  #assert !aethyr_pack_table(p, 511, a[..]) && a[0].why == "not a VPK1 pack" && a[0].count == 0;
+  #assert aethyr_pack_stated(p) == 512 && aethyr_pack_stated("VPK") == -1;
+  #assert aethyr_pack_head_max() == 32 + 48 * 256;
+}

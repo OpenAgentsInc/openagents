@@ -3,3 +3,4 @@
 #load "buffers.coax";
 #load "transport-cost.coax";
 #load "page-stream.coax";
+#load "pack-table-face.coax";   // the one table read every host uses, under its C names (#13304)

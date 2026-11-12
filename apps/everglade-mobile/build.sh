@@ -104,7 +104,10 @@ emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk
 emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
-xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
+# The one pack reader (aethyr/host/pack-table.coax's pack_table, #13304) as C: PageHost.m and Engine.swift find a pack's entries through it.
+"$coax" c "$repo/aethyr/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
+"${cc[@]}" -w -c "$work/c/aethyr-pack-table.c" -o "$work/c/aethyr-pack-table.o"
+xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # A phone's tier for the pack's layers is Coax's (aethyr/render/texture-format.coax tf_side).
 "$coax" c "$repo/aethyr/render/texture-format.coax" --library --header "$work/c/texture-format.h" > "$work/c/texture-format.c"
 "${cc[@]}" -c "$work/c/texture-format.c" -o "$work/c/texture-format.o"
@@ -119,9 +122,9 @@ printf '#include "native-audio.h"\n#include "%s"\n#include "%s"\n' "$repo/aethyr
 mkdir -p "$app/web/realms/everglade" "$app/web/realms/5e-mmo"
 cp -R "$repo/apps/openagents-web/realms/everglade/hotbar" "$repo/apps/openagents-web/realms/everglade/sfx" "$repo/apps/openagents-web/realms/everglade/pcm-v1" "$app/web/realms/everglade/"
 cp -R "$repo/apps/openagents-web/realms/5e-mmo/hotbar" "$app/web/realms/5e-mmo/"
-printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n' "$desk/face.h" "$repo/aethyr/host/apple/page-host.h" "$work/c/texture-format.h" "$repo/aethyr/host/apple/audio-host.h" > "$work/c/bridge.h"
-xcrun -sdk "$sdk" swiftc -target "$target" -O -import-objc-header "$work/c/bridge.h" "$here"/ios/Sources/*.swift "$desk/Sources/Engine.swift" "$desk/Sources/Faces.swift" "$desk/Sources/Realms.swift" "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" \
-  "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" "$work/c/page-host.o" "$work/c/texture-format.o" \
+printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$desk/face.h" "$repo/aethyr/host/apple/page-host.h" "$work/c/texture-format.h" "$repo/aethyr/host/apple/audio-host.h" "$repo/aethyr/host/pack-table.h" > "$work/c/bridge.h"
+xcrun -sdk "$sdk" swiftc -target "$target" -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/ios/Sources/*.swift "$desk/Sources/Engine.swift" "$desk/Sources/Faces.swift" "$desk/Sources/Realms.swift" "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" \
+  "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" "$work/c/page-host.o" "$work/c/aethyr-pack-table.o" "$work/c/texture-format.o" \
   -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework ImageIO -framework CoreGraphics -framework CoreMotion -framework AVFoundation -lm -lz \
   -Xlinker -export_dynamic -Xlinker -rpath -Xlinker @executable_path/Frameworks -o "$app/Everglade"
 cp "$here/ios/Info.plist" "$app/Info.plist"

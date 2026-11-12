@@ -20,20 +20,26 @@ func faceAtlas(_ device: MTLDevice) -> MTLTexture? {
   return texture
 }
 
-// Everglade II's pack (verse/tools/pack_realm.py VPK1): a catalog, the vertices, the indices and
-// the texture layers. The host only finds the entries; model.coax reads the catalog.
+// Everglade II's pack: a catalog, the vertices, the indices and the texture layers. The host only
+// finds the entries, through the one pack reader (aethyr/host/pack-table.coax pack_table, by
+// aethyr/host/pack-table.h); model.coax reads the catalog.
 struct Pack {
   var catalog = Data(), vertices = Data(), indices = Data(), layers: [Data] = []
   init?(_ url: URL) {
-    guard let d = try? Data(contentsOf: url, options: .mappedIfSafe), d.count >= 32, d.prefix(4) == Data("VPK1".utf8) else { return nil }
-    func word(_ at: Int) -> Int { at + 4 <= d.count ? Int(d.subdata(in: at..<at + 4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }) : -1 }
-    let count = word(4), table = word(16)
-    guard count > 0, table >= 32, table + count * 48 <= d.count else { return nil }
-    for k in 0..<count {
-      let e = table + k * 48, off = word(e + 4), len = word(e + 8)
-      guard off >= 0, len >= 0, off + len <= d.count else { return nil }
-      let bytes = d.subdata(in: off..<off + len)
-      switch d[e] { case 1: catalog = bytes; case 2: vertices = bytes; case 3: indices = bytes; case 4: layers.append(bytes); default: break }
+    guard let d = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+    let table = UnsafeMutablePointer<AethyrPack>.allocate(capacity: 1)
+    table.initialize(to: AethyrPack())
+    defer { table.deinitialize(count: 1); table.deallocate() }
+    guard d.withUnsafeBytes({ aethyr_pack_open(table, $0.baseAddress, d.count) }) == 1 else { return nil }
+    for k in 0..<aethyr_pack_count(table) {
+      let at = Int(aethyr_pack_at(table, k)), bytes = d.subdata(in: at..<at + Int(aethyr_pack_bytes(table, k)))
+      switch aethyr_pack_kind(table, k) {
+      case Int32(AETHYR_PACK_CATALOG): catalog = bytes
+      case Int32(AETHYR_PACK_VERTICES): vertices = bytes
+      case Int32(AETHYR_PACK_INDICES): indices = bytes
+      case Int32(AETHYR_PACK_LAYER): layers.append(bytes)
+      default: break
+      }
     }
     if catalog.isEmpty || vertices.isEmpty || indices.isEmpty || layers.isEmpty { return nil }
   }

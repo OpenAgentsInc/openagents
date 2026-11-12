@@ -8,13 +8,18 @@
 // inflated and admitted by Coax (pack-host.js loadPaged) in the same worker. What the page gets is
 // the same bytes as before; its own checks (the pack gate's SHA-256, unpack) are unchanged.
 
+import { openPackTable } from "./pack-host.js";
+
 // url's bytes: a VPK1 pack, gzipped when gzip. progress(loaded, total) counts the bytes off the
 // network (the pack's stated size for a plain pack, the response's length for a gzipped one).
 export async function fetchWholePack(url, { gzip = false, init, signal, progress } = {}) {
+  const opening = openPackTable();   // the one pack reader, opened beside the request
+  opening.catch(() => {});
   const r = await fetch(url, { ...init, signal });
   if (!r.ok || !r.body) { await r.body?.cancel().catch(() => {}); throw Object.assign(new Error(`${url}: ${r.status}`), { status: r.status }); }
   const length = Number(r.headers.get("content-length")) || 0;
   let loaded = 0, stated = 0, target = null, at = 0, loose = [];
+  const reader = await opening;
   // The plain bytes as they come: the pack's first 12 name its whole size, so it is allocated once.
   const take = (chunk) => {
     if (!target && loose) {
@@ -22,8 +27,8 @@ export async function fetchWholePack(url, { gzip = false, init, signal, progress
       if (at < 12) return;
       const head = new Uint8Array(12); let k = 0;
       for (const c of loose) { head.set(c.subarray(0, Math.min(c.length, 12 - k)), k); k += Math.min(c.length, 12 - k); if (k >= 12) break; }
-      const size = new DataView(head.buffer).getUint32(8, true);
-      if (String.fromCharCode(...head.subarray(0, 4)) !== "VPK1" || size < at) return;   // not a pack: kept loose, and unpack says so
+      const size = reader.stated(head);   // aethyr/host/pack-table.coax pack_stated: -1 when these bytes don't start a pack
+      if (size < at) return;   // not a pack: kept loose, and unpack says so
       stated = size; target = new Uint8Array(size); k = 0;
       for (const c of loose) { target.set(c, k); k += c.length; }
       loose = null; return;

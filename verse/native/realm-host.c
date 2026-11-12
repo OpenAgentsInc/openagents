@@ -16,6 +16,16 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+// The one pack reader (aethyr/host/pack-table.coax pack_table, GitHub #13304), as the C the
+// compiler writes for its face (aethyr/host/pack-table-face.coax). It is committed beside this
+// file because nine builds compile realm-host.c and most take no Coax step;
+// `coax/remote/check.sh reports` fails when it isn't what
+//   coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h
+// writes. Its three exports are renamed here, so a binary that also links the face's own unit links.
+#define aethyr_pack_stated rh_aethyr_pack_stated
+#define aethyr_pack_table rh_aethyr_pack_table
+#define aethyr_pack_head_max rh_aethyr_pack_head_max
+#include "pack-table-gen.h"
 
 extern char **environ;
 static int golden_mode;
@@ -128,21 +138,22 @@ int rh_pack(RealmHost *h, const char *path) {
   if (!h->pack || fread(h->pack, 1, (size_t)n, f) != (size_t)n) { fclose(f); fprintf(stderr, "realm-host: cannot read %s\n", path); return 1; }
   fclose(f);
   h->pack_size = (size_t)n;
-  // The header and table checked against the length, as host.js unpack does.
+  // The pack's entries, from the one pack reader: every extent is checked against the length
+  // before a byte of an entry is read.
   const uint8_t *b = h->pack;
-  if (h->pack_size < 32 || memcmp(b, "VPK1", 4) || le32(b + 8) != h->pack_size) { fprintf(stderr, "realm-host: %s is not a whole asset pack\n", path); return 1; }
-  uint32_t count = le32(b + 4), table = le32(b + 16);
-  if ((uint64_t)table + (uint64_t)count * 48 > h->pack_size) { fprintf(stderr, "realm-host: %s: its table runs past its end\n", path); return 1; }
+  static coax_t_PackTable table;
+  if (!aethyr_pack_table((coax_string){(const char *)b, (int64_t)h->pack_size}, (int64_t)h->pack_size, (coax_v_t_PackTable){&table, 1})) {
+    fprintf(stderr, "realm-host: %s: %.*s\n", path, (int)table.why.count, table.why.data); return 1;
+  }
+  uint32_t count = (uint32_t)table.count;
   h->entries = calloc(count ? count : 1, sizeof *h->entries);
   for (uint32_t k = 0; k < count; k++) {
-    const uint8_t *at = b + table + k * 48;
-    uint32_t offset = le32(at + 4), length = le32(at + 8);
-    if ((uint64_t)offset + length > h->pack_size) { fprintf(stderr, "realm-host: %s: an entry runs past its end\n", path); return 1; }
+    coax_t_PackEntry row = table.entries.e[k];
     RhEntry *e = &h->entries[k];
-    e->kind = at[0];
-    memcpy(e->name, at + 16, 32);
-    e->bytes = b + offset;
-    e->length = length;
+    e->kind = (uint8_t)row.kind;
+    memcpy(e->name, row.name.data, (size_t)row.name.count);
+    e->bytes = b + row.at;
+    e->length = (uint32_t)row.n;
     if (e->kind == RH_LAYER) h->layers++;
   }
   h->entry_count = (int)count;

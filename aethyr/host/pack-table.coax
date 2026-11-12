@@ -1,0 +1,229 @@
+// The pack's layout and the one table read (GitHub #13304). Every host finds a pack's entries
+// through pack_table here and reads no header or table itself: the browser (coax/web/pack-face.c,
+// in the pack reactor), iOS and the Mac (aethyr/host/apple/PageHost.m, apps/everglade-desktop),
+// Android (apps/everglade-mobile/android/host.c) and the Coax tools. Aethyrforge's pack.coax
+// (aethyr/forge/pack.coax: the full admission, the catalog, the writer) loads this file for the
+// layout, so the format is stated once.
+//
+// The format (verse/tools/pack_realm.py's; docs/verse/realm-host.md, "Asset packs"), little endian:
+//   header, 32 bytes: "VPK1" (or "VPK2"), entry count, file bytes, budget bytes, table offset, data offset, 0, 0
+//   entries, 48 bytes each: kind, licence, 0 (u16), offset, bytes, 0, a name in 32 zero-padded bytes
+//
+// This file exports nothing to C, so any unit may load it. A C, Objective-C or Swift host calls it
+// through pack-table-face.coax (aethyr/host/pack-table.h).
+// Names here start with `pack`: every declaration is visible to every module that loads this.
+//   coax/bin/coax test aethyr/host/pack-table.coax --library
+//   coax/bin/coax mutate aethyr/host/pack-table.coax --library
+
+#module "aethyr.host.pack_table";
+#authority;
+
+// book:begin layout
+PACK_MAGIC :: "VPK1";
+PACK_HEADER :: 32;
+PACK_ENTRY :: 48;
+// An entry's kind.
+PACK_CATALOG :: 1;
+PACK_VERTICES :: 2;
+PACK_INDICES :: 3;
+PACK_LAYER :: 4;
+PACK_SOUND :: 5;
+PACK_DATA :: 6;       // linear data layers (normal, ORM): between the texture layers and the sounds
+// One entry as the table has it: its bytes are p[at..<at + n] of the pack read.
+PackEntry :: struct { kind: int; licence: int; at: int; n: int; name: string; }
+// book:end layout
+
+pack_magic_ok :: (magic:string)->bool #effects(all) {return magic=="VPK1" || magic=="VPK2";}
+pack_u32 :: (p: string, at: int) -> int #effects(all) {
+  pk_n := 0;
+  for pk_k: 0..<4 { pk_n = pk_n | (cast(int) p[at + pk_k] << (8 * pk_k)); }
+  return pk_n;
+}
+pack_put32 :: (out: [] u8, at: int, v: int) #effects(all) {
+  out[at] = cast,trunc(u8) v; out[at + 1] = cast,trunc(u8) (v >> 8);
+  out[at + 2] = cast,trunc(u8) (v >> 16); out[at + 3] = cast,trunc(u8) (v >> 24);
+}
+
+// book:begin table
+// The table alone, for a host (GitHub #13304): where each entry's bytes are, from the pack's first
+// bytes. `head` is the pack from its start, at least through its table; `total` is the pack's whole
+// size (a host that holds the whole pack passes it and its length). Every extent is checked against
+// `total` before a host reads a byte of it. This is looser than pack_read: no order, no catalog, no
+// licence, and the 48-entry ceiling doesn't apply, because the hosts load packs the tools wrote
+// before those rules (a 96-entry VPK1 among them). A pack pack_read admits reads here with the same
+// entries. A host finds bytes with this and hands them to the realm; it decides nothing else.
+PACK_TABLE_MAX :: 256;   // entries a host reads at most
+PackTable :: struct {
+  ok: bool; why: string;
+  count: int; bytes: int;
+  entries: [PACK_TABLE_MAX] PackEntry;
+}
+pack_table_why :: (r: [] PackTable, why: string) -> bool #effects(all) {
+  r[0] = PackTable.{why = why};
+  return false;
+}
+// The bytes of a pack's start a table of `count` entries at `table` takes.
+pack_table_need :: (table: int, count: int) -> int #effects(all) { return table + PACK_ENTRY * count; }
+// A name as a host reads it: the field's bytes before its first zero.
+pack_table_name :: (field: string) -> string #effects(all) {
+  for pk_c, pk_k: field { if pk_c == 0 { return field[0..<pk_k]; } }
+  return field;
+}
+// A pack's whole size as its first 12 bytes state it, so a loader allocates once: -1 when they don't
+// start a pack.
+pack_stated :: (prefix: string) -> int #effects(all) {
+  if prefix.count < 12 || !pack_magic_ok(prefix[0..<4]) { return -1; }
+  return pack_u32(prefix, 8);
+}
+pack_table :: (head: string, total: int, r: [] PackTable) -> bool #effects(all) {
+  if head.count < PACK_HEADER || head.count > total || pack_stated(head) == -1 { return pack_table_why(r, "not a VPK1 pack"); }
+  if pack_stated(head) != total { return pack_table_why(r, "its stated size isn't its size"); }
+  pk_count := pack_u32(head, 4); pk_table := pack_u32(head, 16);
+  if pk_count > PACK_TABLE_MAX { return pack_table_why(r, "more entries than a host reads"); }
+  if pk_table < PACK_HEADER || pack_table_need(pk_table, pk_count) > total { return pack_table_why(r, "its table runs past its end"); }
+  if pack_table_need(pk_table, pk_count) > head.count { return pack_table_why(r, "its table isn't in the bytes given"); }
+  got: [1] PackTable;
+  got[0].count = pk_count; got[0].bytes = total;
+  for pk_k: 0..<pk_count {
+    pk_e := pk_table + PACK_ENTRY * pk_k;
+    pk_off := pack_u32(head, pk_e + 4); pk_n := pack_u32(head, pk_e + 8);
+    if pk_off + pk_n > total { return pack_table_why(r, "an entry runs past its end"); }
+    got[0].entries[pk_k] = PackEntry.{kind = cast(int) head[pk_e], licence = cast(int) head[pk_e + 1], at = pk_off, n = pk_n, name = pack_table_name(head[pk_e + 16..<pk_e + PACK_ENTRY])};
+  }
+  got[0].ok = true;
+  r[0] = got[0];
+  return true;
+}
+// The table index of the n-th entry of a kind in a table read, or -1.
+pack_table_nth :: (r: [] PackTable, kind: int, n: int) -> int #effects(all) {
+  pk_seen := 0;
+  for pk_k: 0..<r[0].count {
+    if r[0].entries[pk_k].kind != kind { continue; }
+    if pk_seen == n { return pk_k; }
+    pk_seen += 1;
+  }
+  return -1;
+}
+// book:end table
+
+// ---------------------------------------------------------------------------------------------
+// Checks. A small pack, laid out as the writer lays it out: a catalog of 206 bytes at 272,
+// 6 bytes of vertices at 480, 12 of indices at 488, a layer of 5 at 500 and a sound of 3 at 508.
+// 32 + 5 * 48 = 272, then 208 + 8 + 12 + 8 + 4: 512 bytes in all.
+pack_table_test_entry :: (out: [] u8, k: int, kind: int, licence: int, at: int, n: int, name: string) #effects(all) {
+  pk_t := PACK_HEADER + PACK_ENTRY * k;
+  out[pk_t] = cast,trunc(u8) kind; out[pk_t + 1] = cast,trunc(u8) licence;
+  pack_put32(out, pk_t + 4, at); pack_put32(out, pk_t + 8, n);
+  for pk_c, pk_j: name { out[pk_t + 16 + pk_j] = pk_c; }
+}
+pack_table_test_head :: (out: [] u8, count: int, total: int) #effects(all) {
+  for pk_c, pk_k: PACK_MAGIC { out[pk_k] = pk_c; }
+  // What the table read reads: the count, the pack's size and where the table is. (The budget
+  // and the data offset are pack_read's to judge.)
+  pack_put32(out, 4, count); pack_put32(out, 8, total); pack_put32(out, 16, PACK_HEADER);
+}
+pack_table_test :: (out: [] u8) -> string #effects(all) {
+  pack_table_test_head(out, 5, 512);
+  pack_table_test_entry(out, 0, 1, 255, 272, 206, "catalog");
+  pack_table_test_entry(out, 1, 2, 255, 480, 6, "vertices");
+  pack_table_test_entry(out, 2, 3, 255, 488, 12, "indices");
+  pack_table_test_entry(out, 3, 4, 0, 500, 5, "layer0");
+  pack_table_test_entry(out, 4, 5, 1, 508, 3, "door");
+  return cast(string) out[0..<512];
+}
+// The pack with byte `at` set to v.
+pack_table_test_poke :: (p: string, at: int, v: int, out: [] u8) -> string #effects(all) {
+  for pk_c, pk_k: p { out[pk_k] = pk_c; }
+  out[at] = cast,trunc(u8) v;
+  return cast(string) out[0..<p.count];
+}
+pack_test_table_why :: (head: string, total: int) -> string #effects(all) { t: [1] PackTable; pk_ok := pack_table(head, total, t[..]); return ifx pk_ok then "" else t[0].why; }
+#test "the table read finds every entry: its kind, licence, place, length and name" {
+  b: [600] u8; p := pack_table_test(b[..]);
+  t: [1] PackTable;
+  #assert pack_table(p, p.count, t[..]) && t[0].ok && t[0].why == "" && t[0].count == 5 && t[0].bytes == 512;
+  kinds := [5] int.[1, 2, 3, 4, 5]; lics := [5] int.[255, 255, 255, 0, 1]; ats := [5] int.[272, 480, 488, 500, 508]; ns := [5] int.[206, 6, 12, 5, 3];
+  names := [5] string.["catalog", "vertices", "indices", "layer0", "door"];
+  for k: 0..<5 { e := t[0].entries[k]; #assert e.kind == kinds[k] && e.licence == lics[k] && e.at == ats[k] && e.n == ns[k] && e.name == names[k]; }
+  // The header and table are enough; a byte less than the table is not.
+  #assert pack_table(p[0..<272], 512, t[..]) && t[0].count == 5 && t[0].entries[4].name == "door";
+  #assert pack_test_table_why(p[0..<271], 512) == "its table isn't in the bytes given";
+  #assert pack_table_nth(t[..], PACK_SOUND, 0) == 4 && pack_table_nth(t[..], PACK_LAYER, 0) == 3 && pack_table_nth(t[..], PACK_LAYER, 1) == -1 && pack_table_nth(t[..], PACK_CATALOG, 0) == 0 && pack_table_nth(t[..], 9, 0) == -1;
+  #assert pack_table_need(32, 5) == 272 && pack_table_need(40, 0) == 40;
+  #assert pack_stated(p) == 512 && pack_stated(p[0..<12]) == 512 && pack_stated(p[0..<11]) == -1 && pack_stated("") == -1;
+  c: [600] u8;
+  #assert pack_stated(pack_table_test_poke(p, 3, '2', c[..])) == 512 && pack_stated(pack_table_test_poke(p, 3, '3', c[..])) == -1 && pack_stated(pack_table_test_poke(p, 9, 1, c[..])) == 256;
+  w: [8] u8; pack_put32(w[..], 2, 0x04030201); #assert w[1] == 0 && w[2] == 1 && w[3] == 2 && w[4] == 3 && w[5] == 4 && w[6] == 0;
+  #assert pack_u32(cast(string) w[..], 2) == 0x04030201 && pack_u32(cast(string) w[..], 3) == 0x00040302 && pack_u32(cast(string) w[..], 0) == 0x02010000;
+  pack_put32(w[..], 0, 4294967295); #assert w[0] == 255 && w[1] == 255 && w[2] == 255 && w[3] == 255 && w[4] == 3 && pack_u32(cast(string) w[..], 0) == 4294967295;
+  #assert pack_magic_ok("VPK1") && pack_magic_ok("VPK2") && !pack_magic_ok("VPK3") && !pack_magic_ok("VPK") && !pack_magic_ok("");
+}
+#test "a host's table read refuses a pack that isn't whole and keeps nothing" {
+  b: [600] u8; p := pack_table_test(b[..]); c: [600] u8; d: [600] u8;
+  #assert pack_test_table_why(p[0..<31], 31) == "not a VPK1 pack" && pack_test_table_why("", 0) == "not a VPK1 pack";
+  #assert pack_test_table_why(p[0..<32], 512) == "its table isn't in the bytes given" && pack_test_table_why(p, 511) == "not a VPK1 pack";
+  #assert pack_test_table_why(pack_table_test_poke(p, 0, 'W', c[..]), 512) == "not a VPK1 pack";
+  #assert pack_test_table_why(pack_table_test_poke(p, 3, '3', c[..]), 512) == "not a VPK1 pack";
+  #assert pack_test_table_why(pack_table_test_poke(p, 3, '2', c[..]), 512) == "";
+  #assert pack_test_table_why(p, 513) == "its stated size isn't its size" && pack_test_table_why(pack_table_test_poke(p, 8, 1, c[..]), 512) == "its stated size isn't its size";
+  // 257 entries are more than a host reads; 256 would run past this pack's end.
+  q := pack_table_test_poke(pack_table_test_poke(p, 4, 1, c[..]), 5, 1, d[..]);
+  #assert pack_test_table_why(q, 512) == "more entries than a host reads";
+  q = pack_table_test_poke(pack_table_test_poke(p, 4, 0, c[..]), 5, 1, d[..]);
+  #assert pack_test_table_why(q, 512) == "its table runs past its end";
+  // The table may start past the header, never inside it, and must end inside the pack.
+  #assert pack_test_table_why(pack_table_test_poke(p, 16, 31, c[..]), 512) == "its table runs past its end";
+  #assert pack_test_table_why(pack_table_test_poke(p, 16, 0, c[..]), 512) == "its table runs past its end";
+  #assert pack_test_table_why(pack_table_test_poke(p, 16, 33, c[..]), 512) != "its table runs past its end";   // a table from 33 is inside the pack (its rows are then misread)
+  q = pack_table_test_poke(pack_table_test_poke(p, 16, 0x11, c[..]), 17, 1, d[..]);   // 273 + 240 > 512
+  #assert pack_test_table_why(q, 512) == "its table runs past its end";
+  // An empty table may sit at the pack's very end (512), not a byte past it.
+  z: [600] u8; y: [600] u8;
+  q = pack_table_test_poke(pack_table_test_poke(pack_table_test_poke(p, 4, 0, c[..]), 16, 0, d[..]), 17, 2, z[..]);
+  #assert pack_test_table_why(q, 512) == "";
+  q = pack_table_test_poke(pack_table_test_poke(pack_table_test_poke(pack_table_test_poke(p, 4, 0, c[..]), 16, 1, d[..]), 17, 2, z[..]), 0, 'V', y[..]);
+  #assert pack_test_table_why(q, 512) == "its table runs past its end";
+  // One row at 464 ends the pack exactly (its bytes are the catalog's tail: an extent past the end).
+  q = pack_table_test_poke(pack_table_test_poke(pack_table_test_poke(p, 4, 1, c[..]), 16, 0xD0, d[..]), 17, 1, z[..]);
+  #assert pack_test_table_why(q, 512) != "its table runs past its end" && pack_test_table_why(q, 512) != "its table isn't in the bytes given";
+  q = pack_table_test_poke(pack_table_test_poke(pack_table_test_poke(p, 4, 1, c[..]), 16, 0xD1, d[..]), 17, 1, z[..]);
+  #assert pack_test_table_why(q, 512) == "its table runs past its end";
+  // The last entry (3 bytes at 508) may end the pack, not pass it.
+  #assert pack_test_table_why(pack_table_test_poke(p, 32 + 4 * 48 + 8, 4, c[..]), 512) == "";
+  #assert pack_test_table_why(pack_table_test_poke(p, 32 + 4 * 48 + 8, 5, c[..]), 512) == "an entry runs past its end";
+  #assert pack_test_table_why(pack_table_test_poke(p, 32 + 4 * 48 + 5, 2, c[..]), 512) == "an entry runs past its end";
+  t: [1] PackTable; t[0].ok = true; t[0].count = 9; t[0].bytes = 7;
+  #assert !pack_table(pack_table_test_poke(p, 32 + 4 * 48 + 8, 5, c[..]), 512, t[..]) && !t[0].ok && t[0].count == 0 && t[0].bytes == 0;
+}
+#test "a host's table read takes what the tools wrote before the rules: any order, no catalog, a full name" {
+  b: [400] u8; n := 248;
+  pack_table_test_head(b[..], 4, n);
+  pack_table_test_entry(b[..], 0, 4, 7, 224, 2, "a");
+  pack_table_test_entry(b[..], 1, 1, 255, 228, 13, "catalog");
+  pack_table_test_entry(b[..], 2, 9, 0, 244, 0, "unknown");
+  pack_table_test_entry(b[..], 3, 4, 0, 244, 1, "b");
+  p := cast(string) b[0..<n];
+  t: [1] PackTable;
+  #assert pack_table(p, n, t[..]) && t[0].count == 4;
+  #assert t[0].entries[0].kind == 4 && t[0].entries[0].licence == 7 && t[0].entries[0].name == "a" && t[0].entries[0].at == 224 && t[0].entries[0].n == 2;
+  #assert t[0].entries[2].kind == 9 && t[0].entries[2].n == 0 && t[0].entries[2].name == "unknown";
+  #assert pack_table_nth(t[..], 4, 1) == 3 && t[0].entries[3].at == 244;
+  // A name that fills its field has no zero: it is read whole. An empty one is "".
+  for k: 0..<32 { b[32 + 16 + k] = 'n'; }
+  b[32 + 48 + 16] = 0;
+  #assert pack_table(p, n, t[..]) && t[0].entries[0].name.count == 32 && t[0].entries[1].name == "";
+  #assert pack_table_name("ab\0c") == "ab" && pack_table_name("") == "" && pack_table_name("\0") == "";
+  // No entries at all is a table (a host then finds nothing it needs).
+  e: [32] u8; for ch, k: "VPK1" { e[k] = ch; }
+  pack_put32(e[..], 8, 32); pack_put32(e[..], 16, 32);
+  #assert pack_table(cast(string) e[..], 32, t[..]) && t[0].count == 0 && pack_table_nth(t[..], 1, 0) == -1;
+}
+#test "a host's table read holds 256 entries and names a full table's last" {
+  b: [16384] u8; for ch, k: "VPK1" { b[k] = ch; }
+  n := 32 + 256 * 48 + 4;
+  pack_put32(b[..], 4, 256); pack_put32(b[..], 8, n); pack_put32(b[..], 16, 32);
+  for k: 0..<256 { e := 32 + 48 * k; b[e] = 4; pack_put32(b[..], e + 4, n - 4); pack_put32(b[..], e + 8, ifx k == 255 then 4 else 0); b[e + 16] = 'l'; }
+  t: [1] PackTable;
+  #assert pack_table(cast(string) b[0..<n], n, t[..]) && t[0].count == 256 && t[0].entries[255].n == 4 && t[0].entries[255].at == n - 4 && t[0].entries[254].n == 0;
+  #assert pack_table_nth(t[..], 4, 255) == 255 && pack_table_nth(t[..], 4, 256) == -1;
+}

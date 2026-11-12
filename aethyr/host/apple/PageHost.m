@@ -15,6 +15,7 @@
 #include <time.h>
 #include <zlib.h>
 #include "audio-host.h"
+#include "../pack-table.h"
 
 typedef uintptr_t A;
 // The face (aethyr/host/README.md, and the page's optional v1 exports host.js reads). A name the
@@ -501,8 +502,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  }
  if (x.particles && x.particle_cap) particleBuffer = [device newBufferWithLength:(MAX(x.particle_cap(), 16u) + 15) & ~15u options:MTLResourceStorageModeShared];
 
- // The pack (VPK1): a 32-byte header, then a table of 48-byte rows; every extent is checked
- // against the whole file before a byte of it is read.
+ // The pack: its entries found by the one pack reader (loadPack).
  NSString *problem = [self loadPack];
  if (problem) return problem;
 
@@ -528,20 +528,20 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  // A pack the site serves gzipped (NAME.pack.gz) is inflated whole first, as host.js does.
  if (packBytes.length > 18 && ((const uint8_t *)packBytes.bytes)[0] == 0x1f && ((const uint8_t *)packBytes.bytes)[1] == 0x8b) packBytes = phInflate(packBytes);
  const uint8_t *b = packBytes.bytes; size_t n = packBytes.length;
- if (n < 32 || memcmp(b, "VPK1", 4)) return @"the realm's pack is missing";
- uint32_t count, table; memcpy(&count, b + 4, 4); memcpy(&table, b + 16, 4);
- if (table < 32 || table > n || count > (n - table) / 48) return @"the realm's pack is damaged";
+ // The one pack reader (aethyr/host/pack-table.coax pack_table, through aethyr/host/pack-table.h): every
+ // extent is checked against the whole file before a byte of it is read here.
+ static AethyrPack pack;
+ if (!aethyr_pack_open(&pack, b, n)) return n ? @"the realm's pack is damaged" : @"the realm's pack is missing";
  NSMutableArray<NSData *> *colour = [NSMutableArray array], *maps = [NSMutableArray array];
  NSData *catalog = nil;
- for (uint32_t k = 0; k < count; k++) {
-  const uint8_t *row = b + table + (size_t)k * 48; uint32_t at, len; memcpy(&at, row + 4, 4); memcpy(&len, row + 8, 4);
-  if (at > n || len > n - at) return @"the realm's pack is damaged";
+ for (int k = 0; k < aethyr_pack_count(&pack); k++) {
+  size_t at = aethyr_pack_at(&pack, k), len = aethyr_pack_bytes(&pack, k); int kind = aethyr_pack_kind(&pack, k);
   NSData *part = [NSData dataWithBytesNoCopy:(void *)(b + at) length:len freeWhenDone:NO];
-  if (row[0] == 1 && !catalog) catalog = part;
-  else if (row[0] == 2 && !packVertices) { packVertices = b + at; packVertexBytes = len; }
-  else if (row[0] == 3 && !packIndices) { packIndices = b + at; packIndexBytes = len; }
-  else if (row[0] == 4) [colour addObject:part];
-  else if (row[0] == 6) [maps addObject:part];
+  if (kind == AETHYR_PACK_CATALOG && !catalog) catalog = part;
+  else if (kind == AETHYR_PACK_VERTICES && !packVertices) { packVertices = b + at; packVertexBytes = len; }
+  else if (kind == AETHYR_PACK_INDICES && !packIndices) { packIndices = b + at; packIndexBytes = len; }
+  else if (kind == AETHYR_PACK_LAYER) [colour addObject:part];
+  else if (kind == AETHYR_PACK_DATA) [maps addObject:part];
  }
  if (!catalog || !packVertices || !packIndices) return @"the realm's pack lacks its catalog, vertices or indices";
  char progress[64]; int pn = snprintf(progress, sizeof progress, "%zu %zu", n, n);

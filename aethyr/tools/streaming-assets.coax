@@ -10,6 +10,7 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../forge/pack.coax" as packs;
+#load "../host/pack-table.coax" as tables;   // the layout: an entry's kinds, a word's bytes
 ceil :: (x: f64) -> f64 #foreign #effects(all);
 
 SSA_CELLS :: 12;
@@ -70,7 +71,7 @@ SsaLocations :: struct { pack: [SSA_RESOURCES] assets.AssetId; at: [SSA_RESOURCE
   id := p.content; ssa_audio(1, source[..]); #assert !assets.asset_same(id, assets.asset_id(cast(string) source[..]));
 }
 
-ssa_f32 :: (out: [] u8, at: int, value: f32) { packs.pack_put32(out, at, cast(int) f32_bits(value)); }
+ssa_f32 :: (out: [] u8, at: int, value: f32) { tables.pack_put32(out, at, cast(int) f32_bits(value)); }
 ssa_vertex :: (out: [] u8, at: int, x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) {
   for i: 0..<48 { out[at + i] = 0; }
   ssa_f32(out, at, x); ssa_f32(out, at + 4, y); ssa_f32(out, at + 8, z);
@@ -88,7 +89,7 @@ ssa_floor :: (cell: int, out: [] u8) {
 }
 ssa_indices :: (out: [] u8, count: int) {
   #assert count > 0 && out.count == count * 4;
-  for i: 0..<count { packs.pack_put32(out, i * 4, i); }
+  for i: 0..<count { tables.pack_put32(out, i * 4, i); }
 }
 ssa_cube :: (out: [] u8) {
   #assert out.count == 1728;
@@ -113,10 +114,10 @@ ssa_body :: (cell: int, out: [] u8) {
 ssa_audio :: (cell: int, out: [] u8) {
   #assert cell >= 0 && cell < SSA_CELLS && out.count == 1068;
   for i: 0..<1068 { out[i] = 0; }
-  for c, i: "RIFF" { out[i] = c; } packs.pack_put32(out, 4, 1060);
-  for c, i: "WAVEfmt " { out[8 + i] = c; } packs.pack_put32(out, 16, 16);
-  out[20] = 1; out[22] = 1; packs.pack_put32(out, 24, 48000); packs.pack_put32(out, 28, 96000); out[32] = 2; out[34] = 16;
-  for c, i: "data" { out[36 + i] = c; } packs.pack_put32(out, 40, 1024);
+  for c, i: "RIFF" { out[i] = c; } tables.pack_put32(out, 4, 1060);
+  for c, i: "WAVEfmt " { out[8 + i] = c; } tables.pack_put32(out, 16, 16);
+  out[20] = 1; out[22] = 1; tables.pack_put32(out, 24, 48000); tables.pack_put32(out, 28, 96000); out[32] = 2; out[34] = 16;
+  for c, i: "data" { out[36 + i] = c; } tables.pack_put32(out, 40, 1024);
   for i: 0..<512 {
     phase := i % 128; wave := ifx phase <= 64 then phase - 32 else 96 - phase;
     sample := wave * (32 + cell); at := 44 + i * 2;
@@ -161,13 +162,13 @@ ssa_pack :: (dir: string, vertices: [] u8, indices: [] u8, image: [] u8, sound: 
     rows: [] int, locations: [] SsaLocations) -> assets.AssetId {
   source: [5] packs.PackSource; catalog: [1024] u8; output: [SSA_PACK_BUDGET] u8;
   count := ifx sound.count > 0 then 5 else 4;
-  source[1] = packs.PackSource.{kind = packs.PACK_VERTICES, licence = 255, name = "vertices", data = cast(string) vertices};
-  source[2] = packs.PackSource.{kind = packs.PACK_INDICES, licence = 255, name = "indices", data = cast(string) indices};
-  source[3] = packs.PackSource.{kind = packs.PACK_LAYER, name = "light.png", data = cast(string) image};
-  source[4] = packs.PackSource.{kind = packs.PACK_SOUND, name = "tone", data = cast(string) sound};
+  source[1] = packs.PackSource.{kind = tables.PACK_VERTICES, licence = 255, name = "vertices", data = cast(string) vertices};
+  source[2] = packs.PackSource.{kind = tables.PACK_INDICES, licence = 255, name = "indices", data = cast(string) indices};
+  source[3] = packs.PackSource.{kind = tables.PACK_LAYER, name = "light.png", data = cast(string) image};
+  source[4] = packs.PackSource.{kind = tables.PACK_SOUND, name = "tone", data = cast(string) sound};
   size := 0;
   for attempt: 0..<8 {
-    source[0] = packs.PackSource.{kind = packs.PACK_CATALOG, licence = 255, name = "catalog", data = ssa_catalog(size, sound.count > 0, indices.count / 4, catalog[..])};
+    source[0] = packs.PackSource.{kind = tables.PACK_CATALOG, licence = 255, name = "catalog", data = ssa_catalog(size, sound.count > 0, indices.count / 4, catalog[..])};
     next := packs.pack_size(source[0..<count]); if next == size { break; } size = next;
   }
   n := packs.pack_write(source[0..<count], SSA_PACK_BUDGET, output[..]); #assert n == size;

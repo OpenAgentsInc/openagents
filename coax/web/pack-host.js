@@ -12,6 +12,26 @@ function instance(module,onMemory){
  const x=new WebAssembly.Instance(module,{env:{memory},wasi_snapshot_preview1:wasi}).exports;x._initialize?.();return {x,memory};
  }catch(error){new Uint8Array(memory.buffer).fill(0);memory.grow(0);throw error;}
 }
+// The one table read, for a caller that already holds a pack's bytes (host.js unpack, the character
+// pass) or only its first ones (pack-fetch.js): aethyr/host/pack-table.coax's pack_table in the reactor.
+// table(bytes) gives the pack's entries or throws Coax's refusal; stated(first12) gives the size a
+// pack's first 12 bytes state, or -1 when they don't start a pack.
+let tableOpened;
+export function openPackTable(){
+ tableOpened??=(async()=>{
+  const {x,memory}=instance(await packModule()),cap=x.pack_table_capacity(),text=new TextDecoder();
+  const put=bytes=>{const n=Math.min(bytes.length,cap);new Uint8Array(memory.buffer,x.pack_table_ptr(),n).set(bytes.subarray(0,n));return n;};
+  return Object.freeze({
+   stated(prefix){return Number(x.pack_table_stated(put(prefix.subarray(0,12))));},
+   table(bytes){
+    if(!x.pack_table_open(put(bytes),BigInt(bytes.length)))throw Error(`asset pack: ${text.decode(new Uint8Array(memory.buffer,Number(x.pack_table_why(0)),Number(x.pack_table_why(1))))}`);
+    const out=[];for(let k=0;k<x.pack_table_count();k++){const f=[0,1,2,3,4,5].map(i=>Number(x.pack_table_entry(k,i)));out.push({kind:f[0],licence:f[1],name:text.decode(new Uint8Array(memory.buffer,f[4],f[5])),bytes:bytes.subarray(f[2],f[2]+f[3])});}
+    return out;
+   }});
+ })();
+ tableOpened.catch(()=>{tableOpened=undefined;});
+ return tableOpened;
+}
 export async function openPackHost(){
  opened??=(async()=>{
   const module=await packModule(),master=instance(module),ops=new Set();master.x.pack_storage_open();

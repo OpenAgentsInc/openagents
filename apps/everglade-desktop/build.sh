@@ -106,7 +106,10 @@ emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk
 emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
-/usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
+# The one pack reader (aethyr/host/pack-table.coax's pack_table, #13304) as C: PageHost.m and Engine.swift find a pack's entries through it.
+"$coax" c "$repo/aethyr/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
+/usr/bin/clang "${cflags[@]}" -w -c "$work/c/aethyr-pack-table.c" -o "$work/c/aethyr-pack-table.o"
+/usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # The realms' sound: Aethyr's Apple audio host (aethyr/host/apple/audio-host.h, PageAudio.swift and
 # Aethyrforge's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,
 # and the site's sound files a page names (/realms/everglade/sfx/ and their PCM companions).
@@ -146,8 +149,8 @@ done
 /usr/bin/clang -fobjc-arc -O2 -w -I"$work/c/chat" -I"$oa" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -c "$repo/apps/shared/host/apple/ct-atlas.m" -o "$work/c/chat/ct-atlas.o"
 rm -rf "$app/Contents/Resources/chat"; mkdir -p "$app/Contents/Resources/chat"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$repo/components/zeron/NOTICE" "$app/Contents/Resources/chat/"
-printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" "$repo/aethyr/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" > "$work/c/bridge.h"
-xcrun -sdk macosx swiftc -O -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
+printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" "$repo/aethyr/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" "$repo/aethyr/host/pack-table.h" > "$work/c/bridge.h"
+xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/aethyr-pack-table.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
   -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -framework UniformTypeIdentifiers -lm -lz \
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's

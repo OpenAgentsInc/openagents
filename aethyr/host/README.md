@@ -366,6 +366,33 @@ at 0, licence at 1, byte offset at 4, length at 8 and a zero-terminated
 32-byte name at 16. Table/product/end arithmetic is checked against the
 actual complete allocation before reading a row or payload.
 
+A host never reads that header or table itself (GitHub #13304). The one
+reader is `pack_table` in [`pack-table.coax`](pack-table.coax), with
+`pack_stated` for a loader that holds only a pack's first 12 bytes. That file
+states the layout once; [`pack-table-face.coax`](pack-table-face.coax) is its C face. Aethyrforge's
+[`aethyr/forge/pack.coax`](../forge/pack.coax) loads it and adds the full
+admission, `pack_read` (order, catalog and licences), and the writer:
+
+| Host | How it reaches the reader |
+| --- | --- |
+| Browser (`coax/web/host.js`, `character-host.js`, `pack-fetch.js`) | `openPackTable()` in `coax/web/pack-host.js`: the pack reactor's `pack_table_*` exports (`coax/web/pack-face.c`) |
+| iOS and the Mac (`apple/PageHost.m`, `apps/everglade-desktop/Sources/Engine.swift`) | [`pack-table.h`](pack-table.h) over the unit the app's build compiles from `pack-table-face.coax` |
+| Android (`apps/everglade-mobile/android/host.c`) | `pack-table.h`, the same way |
+| Coax tools (`coax/web/room/room-catalog.coax`, `verse/native/wasm-run.coax`) | `#load` of `pack-table.coax` |
+| Linux (`verse/native/realm-host.c`) | `verse/native/pack-table-gen.h`, the face's emitted C (below) |
+
+The Linux realm host (`verse/native/realm-host.c`) includes
+`verse/native/pack-table-gen.h`: the C the compiler writes for
+`pack-table-face.coax`, committed because nine builds compile that file and
+most take no Coax step. `coax/remote/check.sh reports` (its `pack-reader-c`
+step) fails when the committed file isn't what the compiler writes. After a
+change to `pack-table.coax`, its face or the compiler's C, write it again from
+the repository root:
+
+```sh
+coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h
+```
+
 The v1 browser consumes `pack-stream.coax` and `private-pack.coax` through
 the separate pack reactor. Each observed stream admits at most 64 MiB;
 actual retained allocation pages share a 256 MiB/64-ticket owner. The twelve

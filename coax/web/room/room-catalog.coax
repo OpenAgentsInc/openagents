@@ -6,14 +6,11 @@
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/args.coax";
+#load "../../../aethyr/host/pack-table.coax";
 
-RC_TABLE_MAX :: 4096;        // pack entries read
 RC_CATALOG_MAX :: 4194304;   // the catalog's bytes
 RC_OUT_MAX :: 20971520;      // the C text (at most 4 bytes a catalog byte, plus lines)
 
-rc_le32 :: (b: [] u8, at: int) -> int {
-  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
-}
 rc_put :: (out: [] u8, at: int, s: string) -> int {
   if at < 0 || at + s.count > out.count { return -1; }
   for i: 0..<s.count { out[at + i] = s[i]; }
@@ -63,29 +60,27 @@ rc_c :: (cat: [] u8, out: [] u8) -> int {
   #assert rc_c(three[..], small[..]) == -1;
 }
 
-RcBuf :: struct { cat: [RC_CATALOG_MAX] u8; out: [RC_OUT_MAX] u8; table: [48 * RC_TABLE_MAX] u8; }
+RcBuf :: struct { cat: [RC_CATALOG_MAX] u8; out: [RC_OUT_MAX] u8; head: [32 + 48 * PACK_TABLE_MAX] u8; table: [1] PackTable; }
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: room-catalog PACK OUT.c"); return 2; }
   pack := args_at(a[..], 0); out_path := args_at(a[..], 1);
-  head: [32] u8;
-  if fs_read_at(pack, 0, head[..]) != 32 || cast(string) head[0..<4] != "VPK1" { tool_errln("room-catalog: not a pack"); return 1; }
-  n := rc_le32(head[..], 4); table := rc_le32(head[..], 16);
-  if n > RC_TABLE_MAX { n = RC_TABLE_MAX; }
+  // The pack's entries, from the one pack reader (aethyr/host/pack-table.coax pack_table): its header and
+  // table are read here, and its catalog by the extent the reader checked.
   b: [1] RcBuf;
-  rows := b[0].table[0..<48 * n];
-  if fs_read_at(pack, table, rows) != rows.count { tool_errln("room-catalog: the pack's table is short"); return 1; }
-  for i: 0..<n {
-    if rows[48 * i] != 1 { continue; }
-    off := rc_le32(rows, 48 * i + 4); size := rc_le32(rows, 48 * i + 8);
-    if size > RC_CATALOG_MAX { tool_errln("room-catalog: the catalog is too big"); return 1; }
-    cat := b[0].cat[0..<size];
-    if fs_read_at(pack, off, cat) != size { tool_errln("room-catalog: the catalog is short"); return 1; }
-    k := rc_c(cat, b[0].out[..]);
-    if k < 0 || !fs_write(out_path, cast(string) b[0].out[0..<k]) { tool_errln("room-catalog: can't write the C file"); return 1; }
-    return 0;
+  total := fs_size(pack);
+  got := fs_read_at(pack, 0, b[0].head[0..<(ifx total >= 0 && total < b[0].head.count then total else b[0].head.count)]);
+  if total < 0 || got < 0 || !pack_table(cast(string) b[0].head[0..<got], total, b[0].table[..]) {
+    tool_err("room-catalog: not a pack"); if b[0].table[0].why != "" { tool_err(": "); tool_err(b[0].table[0].why); } tool_errln(""); return 1;
   }
-  tool_errln("room-catalog: no catalog");
-  return 1;
+  i := pack_table_nth(b[0].table[..], PACK_CATALOG, 0);
+  if i < 0 { tool_errln("room-catalog: no catalog"); return 1; }
+  off := b[0].table[0].entries[i].at; size := b[0].table[0].entries[i].n;
+  if size > RC_CATALOG_MAX { tool_errln("room-catalog: the catalog is too big"); return 1; }
+  cat := b[0].cat[0..<size];
+  if fs_read_at(pack, off, cat) != size { tool_errln("room-catalog: the catalog is short"); return 1; }
+  k := rc_c(cat, b[0].out[..]);
+  if k < 0 || !fs_write(out_path, cast(string) b[0].out[0..<k]) { tool_errln("room-catalog: can't write the C file"); return 1; }
+  return 0;
 }

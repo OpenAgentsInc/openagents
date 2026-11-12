@@ -28,25 +28,15 @@
 #module "aethyr.forge.pack";
 #authority;
 #load "../core/assets.coax";
+#load "../host/pack-table.coax";   // the layout and the table read every host uses (the engine's)
 
 // book:begin format
-PACK_MAGIC :: "VPK1";
-PACK_HEADER :: 32;
-PACK_ENTRY :: 48;
 PACK_READ_MAX :: 128; // VPK2; VPK1 retains its published 48-entry ceiling.
 PACK_MAX :: 48;        // entries a pack has at most (verse/tools/pack-files.coax's limit too)
 PACK_NAME :: 32;       // a name's field; a name is 1 to 31 bytes
 PACK_SOURCES :: 32;    // licensed sources (L lines) a catalog declares at most
-PACK_CATALOG :: 1;
-PACK_VERTICES :: 2;
-PACK_INDICES :: 3;
-PACK_LAYER :: 4;
-PACK_SOUND :: 5;
-PACK_DATA :: 6;       // linear data layers (normal, ORM): between the texture layers and the sounds
 PACK_MANY :: 255;      // the licence of the catalog, vertices and indices: every source's
 
-// One entry as the table has it: its bytes are p[at..<at + n] of the pack read.
-PackEntry :: struct { kind: int; licence: int; at: int; n: int; name: string; }
 PackRead :: struct {
   ok: bool;
   why: string; entry: int = -1;      // the refusal, and the entry it names (-1: the pack as a whole)
@@ -58,11 +48,6 @@ PackRead :: struct {
 PackSource :: struct { kind: int; licence: int; name: string; data: string; }
 // book:end format
 
-pack_u32 :: (p: string, at: int) -> int #effects(all) {
-  pk_n := 0;
-  for pk_k: 0..<4 { pk_n = pk_n | (cast(int) p[at + pk_k] << (8 * pk_k)); }
-  return pk_n;
-}
 pack_pad :: (n: int) -> int #effects(all) { return (n + 3) / 4 * 4; }
 pack_why :: (r: [] PackRead, why: string, entry: int) -> bool #effects(all) {
   r[0] = PackRead.{why = why, entry = entry};
@@ -117,6 +102,7 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
   got: [1] PackRead;
   got[0].count = pk_count; got[0].bytes = p.count; got[0].budget = pack_u32(p, 12);
   pk_at := PACK_HEADER + PACK_ENTRY * pk_count;   // where the next entry's bytes must start
+  pk_prev: int;                                   // the kind of the entry before this one
   for pk_k: 0..<pk_count {
     pk_e := PACK_HEADER + PACK_ENTRY * pk_k;
     pk_kind := cast(int) p[pk_e];
@@ -125,7 +111,6 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
     pk_n := pack_u32(p, pk_e + 8);
     pk_name := pack_name(p[pk_e + 16..<pk_e + PACK_ENTRY]);
     pk_first := ifx pk_k < 3 then pk_kind == pk_k + 1 else pk_kind == PACK_LAYER || pk_kind == PACK_SOUND || pk_kind == PACK_DATA;
-    pk_prev := ifx pk_k > 0 then got[0].entries[pk_k - 1].kind else 0;
     if !pk_first || (pk_kind == PACK_LAYER && (pk_prev == PACK_SOUND || pk_prev == PACK_DATA)) || (pk_kind == PACK_DATA && pk_prev == PACK_SOUND) { return pack_why(r, "an entry out of order", pk_k); }
     if p[pk_e + 2] != 0 || p[pk_e + 3] != 0 || pack_u32(p, pk_e + 12) != 0 || pk_name.count == 0 { return pack_why(r, "a malformed entry", pk_k); }
     if pk_off != pk_at || pk_off + pack_pad(pk_n) > p.count { return pack_why(r, "an entry out of place", pk_k); }
@@ -133,6 +118,7 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
     if (pk_k < 3) != (pk_lic == PACK_MANY) { return pack_why(r, "an asset without one licence", pk_k); }
     got[0].entries[pk_k] = PackEntry.{kind = pk_kind, licence = pk_lic, at = pk_off, n = pk_n, name = pk_name};
     pk_at = pk_off + pack_pad(pk_n);
+    pk_prev = pk_kind;
   }
   if pk_at != p.count { return pack_why(r, "bytes after the last entry", -1); }
   pk_cat := got[0].entries[0];
@@ -142,6 +128,9 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
   return true;
 }
 // book:end read
+
+// The table alone, for a host, is pack_table in aethyr/host/pack-table.coax (GitHub #13304): looser
+// than pack_read, and a pack pack_read admits reads there with the same entries (checked below).
 
 // book:begin catalog
 // The catalog's account: the pack's budget and size again, its sources in order, every mesh's
@@ -175,14 +164,14 @@ pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
       if pk_e == -1 { return pack_why(r, "a catalog line for an entry the pack doesn't have", 0); }
       pk_lic := pack_number(pack_field(pk_line, ifx pk_what == "T" then 3 else 2));
       pk_ok := ifx pk_what == "T" then pack_number(pack_field(pk_line, 1)) == pk_layer else pack_field(pk_line, 1) == r[0].entries[pk_e].name;
-      if !pk_ok || pk_lic < 0 || pk_lic >= r[0].sources || pk_lic != r[0].entries[pk_e].licence { return pack_why(r, "an asset without a declared licence", pk_e); }
+      if !pk_ok || !pack_licensed(r, pk_e, pk_lic) { return pack_why(r, "an asset without a declared licence", pk_e); }
       if pk_what == "T" { pk_layer += 1; } else { pk_sound += 1; }
     }
     if pk_what == "D" {
       pk_e := pack_nth(r, PACK_DATA, pk_data);
       if pk_e == -1 { return pack_why(r, "a catalog line for an entry the pack doesn't have", 0); }
       pk_lic := pack_number(pack_field(pk_line, 3));
-      if pack_number(pack_field(pk_line, 1)) != pk_data || pk_lic < 0 || pk_lic >= r[0].sources || pk_lic != r[0].entries[pk_e].licence { return pack_why(r, "an asset without a declared licence", pk_e); }
+      if pack_number(pack_field(pk_line, 1)) != pk_data || !pack_licensed(r, pk_e, pk_lic) { return pack_why(r, "an asset without a declared licence", pk_e); }
       pk_data += 1;
     }
   }
@@ -193,6 +182,11 @@ pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
   return true;
 }
 // book:end catalog
+// A catalog line's licence for the table's entry e: a source the catalog has declared, and the
+// one the entry itself states. A licence that isn't a number (-1) is never an entry's.
+pack_licensed :: (r: [] PackRead, e: int, lic: int) -> bool #effects(all) {
+  return lic < r[0].sources && lic == r[0].entries[e].licence;
+}
 // The table index of the n-th entry of a kind, or -1.
 pack_nth :: (r: [] PackRead, kind: int, n: int) -> int #effects(all) {
   pk_seen := 0;
@@ -216,16 +210,11 @@ pack_size :: (s: [] PackSource) -> int #effects(all) {
   for pk_e: s { pk_n += pack_pad(pk_e.data.count); }
   return pk_n;
 }
-pack_put32 :: (out: [] u8, at: int, v: int) #effects(all) {
-  out[at] = cast,trunc(u8) v; out[at + 1] = cast,trunc(u8) (v >> 8);
-  out[at + 2] = cast,trunc(u8) (v >> 16); out[at + 3] = cast,trunc(u8) (v >> 24);
-}
 // Write a pack as pack_realm.py does: the bytes written, or -1 when out can't hold them, there are
 // more than PACK_MAX entries, or a name isn't 1 to 31 bytes. Nothing is checked beyond the layout:
 // pack_read is the check, so what this writes is read back before it is kept.
 pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {return pack_write_version(s,budget,out,false);}
 pack_write_v2 :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {return pack_write_version(s,budget,out,true);}
-pack_magic_ok :: (magic:string)->bool #effects(all) {return magic=="VPK1" || magic=="VPK2";}
 pack_write_version :: (s: [] PackSource, budget: int, out: [] u8,wide:bool) -> int #effects(all) {
   pk_total := pack_size(s);
   if s.count > (ifx wide then PACK_READ_MAX else PACK_MAX) || pk_total > out.count { return -1; }
@@ -589,4 +578,72 @@ pack_test_sounds :: (sounds: int, bytes: string, out: [] u8) -> string #effects(
  sources:[128]PackSource;sources[0]=PackSource.{kind=1,licence=255,name="catalog",data=cast(string)c[0..<n]};sources[1]=PackSource.{kind=2,licence=255,name="vertices"};sources[2]=PackSource.{kind=3,licence=255,name="indices"};for k:3..<128 {sources[k]=PackSource.{kind=5,name="s"};}
  b:[8192]u8;r:[1]PackRead;n=pack_write_v2(sources[..],9999,b[..]);#assert n==6956 && pack_read(cast(string)b[0..<n],r[..]) && r[0].count==128;
  reg:=[1]AssetRegistry.[asset_registry(9999)];#assert pack_admit(reg[..],cast(string)b[0..<n],r[..])==ASSET_MALFORMED && reg[0].held==0;
+}
+
+#test "a host's table read finds every entry pack_read admits, the same" {
+  b: [600] u8; p := pack_test(600, b[..]);
+  r: [1] PackRead; t: [1] PackTable;
+  #assert pack_read(p, r[..]) && pack_table(p, p.count, t[..]) && t[0].ok && t[0].why == "";
+  #assert t[0].count == 5 && r[0].count == 5 && t[0].bytes == 512;
+  for k: 0..<5 {
+    a := r[0].entries[k]; e := t[0].entries[k];
+    #assert a.kind == e.kind && a.licence == e.licence && a.at == e.at && a.n == e.n && a.name == e.name;
+  }
+  // The other way doesn't hold: the table read takes what pack_read refuses (an entry out of order).
+  s: [5] PackSource; pack_test_sources(PACK_TEST_CATALOG, s[..]);
+  x := s[3]; s[3] = s[4]; s[4] = x;
+  c: [600] u8; n := pack_write(s[..], 600, c[..]); q := cast(string) c[0..<n];
+  #assert !pack_read(q, r[..]) && r[0].why == "an entry out of order" && pack_table(q, n, t[..]) && t[0].count == 5 && t[0].entries[3].kind == PACK_SOUND;
+}
+
+// The test pack with three more entries after its vertices and indices (a layer, a data layer and
+// a sound when in order), each 3 bytes named "part", and the catalog that accounts for them in that
+// order: six entries, 444 bytes.
+PACK_TEST_DATA_CATALOG :: "budget 600\nbytes 444\nL 0 Kit|CC0|u\nL 1 Sounds|CC0|u\nT 0 layer3.jpg 0\nD 0 part 0\nS part 1\n";
+PackTestWhy :: struct { why: string; entry: int; }
+pack_test_data :: (kinds: [3] int) -> PackTestWhy #effects(all) {
+  s: [6] PackSource; pack_test_sources(PACK_TEST_DATA_CATALOG, s[..]);
+  for k: 0..<3 { s[3 + k] = PackSource.{kind = kinds[k], licence = ifx kinds[k] == PACK_SOUND then 1 else 0, name = "part", data = "abc"}; }
+  b: [900] u8; pk_w := pack_write(s[..], 600, b[..]);
+  r: [1] PackRead; pk_ok := pack_read(cast(string) b[0..<pk_w], r[..]);
+  return PackTestWhy.{why = r[0].why, entry = ifx pk_ok then -2 else r[0].entry};
+}
+#test "a data layer keeps its place between the layers and the sounds" {
+  a := pack_test_data([3] int.[PACK_LAYER, PACK_DATA, PACK_SOUND]);
+  #assert a.why == "" && a.entry == -2;
+  // A layer after a data layer or a sound, and a data layer after a sound, are out of order at
+  // that entry, whatever the catalog says.
+  a = pack_test_data([3] int.[PACK_DATA, PACK_LAYER, PACK_SOUND]); #assert a.why == "an entry out of order" && a.entry == 4;
+  a = pack_test_data([3] int.[PACK_SOUND, PACK_LAYER, PACK_SOUND]); #assert a.why == "an entry out of order" && a.entry == 4;
+  a = pack_test_data([3] int.[PACK_LAYER, PACK_SOUND, PACK_DATA]); #assert a.why == "an entry out of order" && a.entry == 5;
+  a = pack_test_data([3] int.[PACK_SOUND, PACK_SOUND, PACK_LAYER]); #assert a.why == "an entry out of order" && a.entry == 5;
+}
+// The test pack's table with a data layer of licence `lic` before its sound, and the catalog of
+// its sources, its layer, its sound and this line.
+pack_test_d :: (line: string, lic: int) -> PackTestWhy #effects(all) {
+  r: [1] PackRead; tb: [600] u8; pack_test_table(r[..], tb[..]);
+  r[0].count = 6; r[0].entries[5] = r[0].entries[4];
+  r[0].entries[4] = PackEntry.{kind = PACK_DATA, licence = lic, name = "normal"};
+  cb: [400] u8; c := pack_test_join("budget 600\nbytes 512\nL 0 Kit|CC0|u\nL 1 Sounds|CC0|u\nT 0 layer3.jpg 0\nS door 1\n", line, cb[..]);
+  pk_ok := pack_catalog(c, r[..]);
+  return PackTestWhy.{why = ifx pk_ok then "" else r[0].why, entry = ifx pk_ok then -2 else r[0].entry};
+}
+#test "a D line names its data layer by number and by a declared licence that is the entry's" {
+  a := pack_test_d("D 0 normal 0\n", 0); #assert a.why == "" && a.entry == -2;
+  a = pack_test_d("D 0 normal 1\n", 1); #assert a.why == "" && a.entry == -2;
+  // No D line for the data layer, or a second one for a layer the pack doesn't have.
+  a = pack_test_d("", 0); #assert a.why == "an asset without a declared licence" && a.entry == 4;
+  a = pack_test_d("D 0 normal 0\nD 1 normal 0\n", 0); #assert a.why == "a catalog line for an entry the pack doesn't have" && a.entry == 0;
+  // The wrong number with the right licence; the right number with another source's licence, with
+  // one that isn't a number, and with one past the declared sources that the entry states too.
+  a = pack_test_d("D 1 normal 0\n", 0); #assert a.why == "an asset without a declared licence" && a.entry == 4;
+  a = pack_test_d("D 0 normal 1\n", 0); #assert a.why == "an asset without a declared licence" && a.entry == 4;
+  a = pack_test_d("D 0 normal 0\n", 1); #assert a.why == "an asset without a declared licence" && a.entry == 4;
+  a = pack_test_d("D 0 normal x\n", 0); #assert a.why == "an asset without a declared licence";
+  a = pack_test_d("D 0 normal\n", 0); #assert a.why == "an asset without a declared licence";
+  a = pack_test_d("D 0 normal 2\n", 2); #assert a.why == "an asset without a declared licence" && a.entry == 4;
+  // pack_licensed by itself: under the declared sources and the entry's own.
+  r: [1] PackRead; r[0].sources = 2; r[0].entries[3].licence = 1; r[0].entries[4].licence = 2;
+  #assert pack_licensed(r[..], 3, 1) && !pack_licensed(r[..], 3, 0) && !pack_licensed(r[..], 4, 2) && !pack_licensed(r[..], 4, 1) && !pack_licensed(r[..], 3, -1);
+  r[0].sources = 3; #assert pack_licensed(r[..], 4, 2);
 }

@@ -256,7 +256,7 @@ import { layerFeatures, layerPolicy, warmLayerPolicy, layerBuild, blockLayout, l
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
-import {openPackHost} from "./pack-host.js";
+import {openPackHost,openPackTable} from "./pack-host.js";
 import { layerBitmap, layerPoolWidth, poolLayerLevels, warmLayerPool } from "./layer-pool.js";
 import { fetchPackInWorker, fetchPagedImage, fetchWholePack } from "./pack-fetch.js";
 import { characterPass } from "./character-host.js";
@@ -1834,7 +1834,7 @@ async function loadPack(pack) {
       new Uint8Array(memory.buffer, address, capacity).set(digest);
       if (packGate.coaxial_pack_admit(arena.state, bytes.length) !== 1) throw new Error("asset pack SHA256 refused by Coax");
     }
-    loadMark("pack-admitted");entries = unpack(bytes);
+    loadMark("pack-admitted");entries = await unpack(bytes);if (!parts.every(currentAsset) || engine?.exports !== packGate) return;
     const { device } = gpu, of = (kind) => entries.filter((e) => e.kind === kind);
     const [catalog, vertices, indices, layers] = parts;
     catalog.bytes = of(PACK_CATALOG)[0].bytes; catalog.size = catalog.bytes.length;
@@ -1950,20 +1950,9 @@ async function privatePack(session, cipher) {
   if (plain.length !== session.bytes || digest !== session.sha256) throw new Error("private pack: not the pack its digest names");
   return plain;
 }
-// The pack's entries: its header and table checked against its length; nothing outside it is read.
-function unpack(bytes) {
-  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
-  if (bytes.length < 32 || String.fromCharCode(...bytes.subarray(0, 4)) !== "VPK1" || v.getUint32(8, true) !== bytes.length) throw new Error("not a whole asset pack");
-  const n = v.getUint32(4, true), table = v.getUint32(16, true), out = [];
-  if (table + n * 48 > bytes.length) throw new Error("asset pack: its table runs past its end");
-  for (let k = 0; k < n; k++) {
-    const at = table + k * 48, offset = v.getUint32(at + 4, true), length = v.getUint32(at + 8, true);
-    if (offset + length > bytes.length) throw new Error("asset pack: an entry runs past its end");
-    const name = new TextDecoder().decode(bytes.subarray(at + 16, at + 48)).replace(/\0.*$/s, "");
-    out.push({ kind: bytes[at], licence: bytes[at + 1], name, bytes: bytes.subarray(offset, offset + length) });
-  }
-  return out;
-}
+// The pack's entries, from the one table read (aethyr/host/pack-table.coax pack_table, in the pack
+// reactor): its header and table checked against its length; nothing outside it is read.
+async function unpack(bytes) { return (await openPackTable()).table(bytes); }
 // Hands an asset that has arrived to the app (data into its memory) and tells it.
 function currentAsset(a) { return !renderUrl || !a.renderOwner || a.renderOwner === gpu?.renderer; }
 // Optional legacy page companion. SHA is a browser effect; Coax admits its exact identity and spans.

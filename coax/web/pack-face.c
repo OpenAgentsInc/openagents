@@ -53,6 +53,17 @@ PACK_EXPORT("pack_private_info") int64_t pack_private_info(int32_t field){switch
 PACK_EXPORT("pack_admit") uint32_t pack_admit(uint32_t required_private){uint64_t measured=(uint64_t)__builtin_wasm_memory_size(0)*65536;if(!htb_copy_span((uint64_t)allocation.address,(uint64_t)(allocation.memory_bytes-allocation.address),(uint64_t)stream.loaded,measured))return 0;return hpk_stream_pack((coax_string){(char*)(uintptr_t)allocation.address,stream.loaded},stream,private_plan,required_private!=0,(coax_v_t_PackRead){&pack,1});}
 PACK_EXPORT("pack_entry_count") uint32_t pack_entry_count(void){return(uint32_t)pack.count;}
 PACK_EXPORT("pack_entry") int64_t pack_entry(int32_t index,int32_t field){if(index<0||index>=pack.count)return -1;coax_t_PackEntry e=pack.entries.e[index];switch(field){case 0:return e.kind;case 1:return e.licence;case 2:return e.at;case 3:return e.n;case 4:return(uintptr_t)e.name.data;case 5:return e.name.count;default:return -1;}}
+// The one table read (aethyr/host/pack-table.coax pack_table): a pack's
+// header and table copied here, its whole size beside them. No JavaScript reads a pack's header.
+static uint8_t table_head[32+48*256];
+static coax_t_PackTable table;
+PACK_EXPORT("pack_table_ptr") uint32_t pack_table_ptr(void){return(uint32_t)(uintptr_t)table_head;}
+PACK_EXPORT("pack_table_capacity") uint32_t pack_table_capacity(void){return sizeof table_head;}
+PACK_EXPORT("pack_table_stated") int64_t pack_table_stated(uint32_t bytes){if(bytes>sizeof table_head)return -1;return aethyr_pack_stated((coax_string){(char*)table_head,bytes});}
+PACK_EXPORT("pack_table_open") uint32_t pack_table_open(uint32_t bytes,int64_t total){if(bytes>sizeof table_head)return 0;return aethyr_pack_table((coax_string){(char*)table_head,bytes},total,(coax_v_t_PackTable){&table,1});}
+PACK_EXPORT("pack_table_count") uint32_t pack_table_count(void){return(uint32_t)table.count;}
+PACK_EXPORT("pack_table_entry") int64_t pack_table_entry(int32_t index,int32_t field){if(index<0||index>=table.count)return -1;coax_t_PackEntry e=table.entries.e[index];switch(field){case 0:return e.kind;case 1:return e.licence;case 2:return e.at;case 3:return e.n;case 4:return(uintptr_t)e.name.data;case 5:return e.name.count;default:return -1;}}
+PACK_EXPORT("pack_table_why") int64_t pack_table_why(int32_t field){return field==0?(int64_t)(uintptr_t)table.why.data:field==1?table.why.count:-1;}
 static coax_string paged_image(void){uint64_t measured=(uint64_t)__builtin_wasm_memory_size(0)*65536;int64_t bytes=hpg_page(paged,-1,1);if(bytes<0||!allocation.valid||!htb_copy_span((uint64_t)allocation.address,(uint64_t)(allocation.memory_bytes-allocation.address),(uint64_t)bytes,measured))return(coax_string){"",0};return(coax_string){(char*)(uintptr_t)allocation.address,bytes};}
 PACK_EXPORT("pack_paged_ptr") uint32_t pack_paged_ptr(void){return(uint32_t)(uintptr_t)paged_head;}
 PACK_EXPORT("pack_paged_capacity") uint32_t pack_paged_capacity(void){return sizeof paged_head;}

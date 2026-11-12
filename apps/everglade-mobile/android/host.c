@@ -27,6 +27,7 @@
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "face.h"
+#include "../../../aethyr/host/pack-table.h"
 
 #define SAY(...) __android_log_print(ANDROID_LOG_INFO, "everglade", __VA_ARGS__)
 // Without one of the app's own parts there is nothing to show, so say which and stop.
@@ -348,21 +349,20 @@ static void model_make(void *p) {
 }
 static void model_bake(void *p) { ((struct ModelOpen *)p)->baked = egm_bake(g.model, g.model_bake.map); }
 static void model_open(void) {
-  // Everglade II's pack (verse/tools/pack_realm.py VPK1): a catalog, the vertices, the indices and the layers.
+  // Everglade II's pack: a catalog, the vertices, the indices and the layers, found by the one pack
+  // reader (aethyr/host/pack-table.coax pack_table, through aethyr/host/pack-table.h).
   size_t n; const uint8_t *d = asset("everglade2.pack", &n);
   const char *bad = "Everglade: the app's everglade2.pack is damaged or doesn't hold the player's parts. Rebuild with apps/everglade-mobile/android/build.sh.";
-  if (n < 32 || memcmp(d, "VPK1", 4) != 0) STOP("%s", bad);
-  uint32_t count = word(d, 4), table = word(d, 16);
-  if (count == 0 || table < 32 || (size_t)table + (size_t)count * 48 > n) STOP("%s", bad);
+  static AethyrPack pack;
+  if (!aethyr_pack_open(&pack, d, n)) STOP("%s", bad);
   const uint8_t *catalog = NULL, *vertices = NULL, *indices = NULL, *layers[64 + 16]; size_t cn = 0, vn = 0, in = 0, ln[64 + 16]; uint32_t layer_count = 0;
-  for (uint32_t k = 0; k < count; k++) {
-    size_t e = table + (size_t)k * 48, off = word(d, e + 4), len = word(d, e + 8);
-    if (off + len > n) STOP("%s", bad);
-    switch (d[e]) {
-      case 1: catalog = d + off; cn = len; break;
-      case 2: vertices = d + off; vn = len; break;
-      case 3: indices = d + off; in = len; break;
-      case 4: if (layer_count < 80) { layers[layer_count] = d + off; ln[layer_count++] = len; } break;
+  for (int k = 0; k < aethyr_pack_count(&pack); k++) {
+    size_t off = aethyr_pack_at(&pack, k), len = aethyr_pack_bytes(&pack, k);
+    switch (aethyr_pack_kind(&pack, k)) {
+      case AETHYR_PACK_CATALOG: catalog = d + off; cn = len; break;
+      case AETHYR_PACK_VERTICES: vertices = d + off; vn = len; break;
+      case AETHYR_PACK_INDICES: indices = d + off; in = len; break;
+      case AETHYR_PACK_LAYER: if (layer_count < 80) { layers[layer_count] = d + off; ln[layer_count++] = len; } break;
       default: break;
     }
   }

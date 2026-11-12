@@ -67,25 +67,35 @@ bounds in metres (`M`), and says which source each layer (`T`), data layer
 (`D`) and sound (`S`) comes from. A realm draws a mesh as `[first, count, instance, 1]`
 without parsing geometry.
 
-<!-- source: aethyr/forge/pack.coax format -->
+The header's and table's sizes and an entry's fields are the engine's, in
+[aethyr/host/pack-table.coax](../host/pack-table.coax), because every host
+reads a pack's table through that file (`pack_table`, GitHub #13304) and
+Aethyrforge loads it:
+
+<!-- source: aethyr/host/pack-table.coax layout -->
 ```jai
 PACK_MAGIC :: "VPK1";
 PACK_HEADER :: 32;
 PACK_ENTRY :: 48;
-PACK_READ_MAX :: 128; // VPK2; VPK1 retains its published 48-entry ceiling.
-PACK_MAX :: 48;        // entries a pack has at most (verse/tools/pack-files.coax's limit too)
-PACK_NAME :: 32;       // a name's field; a name is 1 to 31 bytes
-PACK_SOURCES :: 32;    // licensed sources (L lines) a catalog declares at most
+// An entry's kind.
 PACK_CATALOG :: 1;
 PACK_VERTICES :: 2;
 PACK_INDICES :: 3;
 PACK_LAYER :: 4;
 PACK_SOUND :: 5;
 PACK_DATA :: 6;       // linear data layers (normal, ORM): between the texture layers and the sounds
-PACK_MANY :: 255;      // the licence of the catalog, vertices and indices: every source's
-
 // One entry as the table has it: its bytes are p[at..<at + n] of the pack read.
 PackEntry :: struct { kind: int; licence: int; at: int; n: int; name: string; }
+```
+
+<!-- source: aethyr/forge/pack.coax format -->
+```jai
+PACK_READ_MAX :: 128; // VPK2; VPK1 retains its published 48-entry ceiling.
+PACK_MAX :: 48;        // entries a pack has at most (verse/tools/pack-files.coax's limit too)
+PACK_NAME :: 32;       // a name's field; a name is 1 to 31 bytes
+PACK_SOURCES :: 32;    // licensed sources (L lines) a catalog declares at most
+PACK_MANY :: 255;      // the licence of the catalog, vertices and indices: every source's
+
 PackRead :: struct {
   ok: bool;
   why: string; entry: int = -1;      // the refusal, and the entry it names (-1: the pack as a whole)
@@ -126,6 +136,7 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
   got: [1] PackRead;
   got[0].count = pk_count; got[0].bytes = p.count; got[0].budget = pack_u32(p, 12);
   pk_at := PACK_HEADER + PACK_ENTRY * pk_count;   // where the next entry's bytes must start
+  pk_prev: int;                                   // the kind of the entry before this one
   for pk_k: 0..<pk_count {
     pk_e := PACK_HEADER + PACK_ENTRY * pk_k;
     pk_kind := cast(int) p[pk_e];
@@ -134,7 +145,6 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
     pk_n := pack_u32(p, pk_e + 8);
     pk_name := pack_name(p[pk_e + 16..<pk_e + PACK_ENTRY]);
     pk_first := ifx pk_k < 3 then pk_kind == pk_k + 1 else pk_kind == PACK_LAYER || pk_kind == PACK_SOUND || pk_kind == PACK_DATA;
-    pk_prev := ifx pk_k > 0 then got[0].entries[pk_k - 1].kind else 0;
     if !pk_first || (pk_kind == PACK_LAYER && (pk_prev == PACK_SOUND || pk_prev == PACK_DATA)) || (pk_kind == PACK_DATA && pk_prev == PACK_SOUND) { return pack_why(r, "an entry out of order", pk_k); }
     if p[pk_e + 2] != 0 || p[pk_e + 3] != 0 || pack_u32(p, pk_e + 12) != 0 || pk_name.count == 0 { return pack_why(r, "a malformed entry", pk_k); }
     if pk_off != pk_at || pk_off + pack_pad(pk_n) > p.count { return pack_why(r, "an entry out of place", pk_k); }
@@ -142,6 +152,7 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
     if (pk_k < 3) != (pk_lic == PACK_MANY) { return pack_why(r, "an asset without one licence", pk_k); }
     got[0].entries[pk_k] = PackEntry.{kind = pk_kind, licence = pk_lic, at = pk_off, n = pk_n, name = pk_name};
     pk_at = pk_off + pack_pad(pk_n);
+    pk_prev = pk_kind;
   }
   if pk_at != p.count { return pack_why(r, "bytes after the last entry", -1); }
   pk_cat := got[0].entries[0];
@@ -190,14 +201,14 @@ pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
       if pk_e == -1 { return pack_why(r, "a catalog line for an entry the pack doesn't have", 0); }
       pk_lic := pack_number(pack_field(pk_line, ifx pk_what == "T" then 3 else 2));
       pk_ok := ifx pk_what == "T" then pack_number(pack_field(pk_line, 1)) == pk_layer else pack_field(pk_line, 1) == r[0].entries[pk_e].name;
-      if !pk_ok || pk_lic < 0 || pk_lic >= r[0].sources || pk_lic != r[0].entries[pk_e].licence { return pack_why(r, "an asset without a declared licence", pk_e); }
+      if !pk_ok || !pack_licensed(r, pk_e, pk_lic) { return pack_why(r, "an asset without a declared licence", pk_e); }
       if pk_what == "T" { pk_layer += 1; } else { pk_sound += 1; }
     }
     if pk_what == "D" {
       pk_e := pack_nth(r, PACK_DATA, pk_data);
       if pk_e == -1 { return pack_why(r, "a catalog line for an entry the pack doesn't have", 0); }
       pk_lic := pack_number(pack_field(pk_line, 3));
-      if pack_number(pack_field(pk_line, 1)) != pk_data || pk_lic < 0 || pk_lic >= r[0].sources || pk_lic != r[0].entries[pk_e].licence { return pack_why(r, "an asset without a declared licence", pk_e); }
+      if pack_number(pack_field(pk_line, 1)) != pk_data || !pack_licensed(r, pk_e, pk_lic) { return pack_why(r, "an asset without a declared licence", pk_e); }
       pk_data += 1;
     }
   }
@@ -229,16 +240,11 @@ pack_size :: (s: [] PackSource) -> int #effects(all) {
   for pk_e: s { pk_n += pack_pad(pk_e.data.count); }
   return pk_n;
 }
-pack_put32 :: (out: [] u8, at: int, v: int) #effects(all) {
-  out[at] = cast,trunc(u8) v; out[at + 1] = cast,trunc(u8) (v >> 8);
-  out[at + 2] = cast,trunc(u8) (v >> 16); out[at + 3] = cast,trunc(u8) (v >> 24);
-}
 // Write a pack as pack_realm.py does: the bytes written, or -1 when out can't hold them, there are
 // more than PACK_MAX entries, or a name isn't 1 to 31 bytes. Nothing is checked beyond the layout:
 // pack_read is the check, so what this writes is read back before it is kept.
 pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {return pack_write_version(s,budget,out,false);}
 pack_write_v2 :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {return pack_write_version(s,budget,out,true);}
-pack_magic_ok :: (magic:string)->bool #effects(all) {return magic=="VPK1" || magic=="VPK2";}
 pack_write_version :: (s: [] PackSource, budget: int, out: [] u8,wide:bool) -> int #effects(all) {
   pk_total := pack_size(s);
   if s.count > (ifx wide then PACK_READ_MAX else PACK_MAX) || pk_total > out.count { return -1; }
