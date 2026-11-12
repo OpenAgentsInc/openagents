@@ -1,0 +1,216 @@
+// The room's wire under random bytes (#13283, audit G5): one seat's socket says anything at all, on
+// every way the room hears it, and the room neither traps nor lets it touch another seat.
+//   coax test --library coax/web/room/fuzz/wire-fuzz.coax --steps 4000000000 --only room-fuzz:
+//
+// An input is a run of actions, each three or more bytes: OP LEN BYTES.
+//   OP & 3     0 a WebSocket text frame (room-host.c frames: the latency probe first, then rm_heard)
+//              1 a WebTransport datagram (rm_wt_heard: frames '\n' apart, NET_SAME made whole)
+//              2 a frame on its WebTransport stream (rm_wt_reliable)
+//              3 a tick of the room (and its relay queue drained), the bytes passed over
+//   OP >> 2 & 15  how many 8 ms the clocks move first (the rate limits refill)
+//   OP & 0x80  LEN is in sixteens of a byte (a frame up to 4,080 bytes), else in bytes
+// A frame is cut to what its way carries at most (a datagram NET_DATAGRAM_MAX, a frame 4,096). The
+// first byte of an input names the room: even an Everglade room, odd a relay game's (4 seats, frames
+// passed on unread). Conn 0, seat 0, says everything; conn 1 sits in seat 1 of the same room.
+//
+// The property, held after every action that is not a tick: no seat but the sender's, and no
+// connection but its own, changed (fz_others: their fields, the battle's view of them and their
+// blocks). A tick moves every seat, so the sum is taken again after it.
+//
+// The same actions are the native fuzzer's (coax/web/room/fuzz/fuzz.sh, fuzz-room.c): it builds this
+// file as a C library under ASan and UBSan and gives fz_room_step libFuzzer's inputs, comparing every
+// other seat's and connection's bytes whole, which this file's sums only sample. Each input that ever
+// failed is a #test below.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's check (room.coax)
+#load "../room.coax";
+
+FZ_OK :: 0; FZ_NO_ROOM :: 1; FZ_OTHER_CHANGED :: 2;
+FZ_SENDER :: 0;            // the conn that says everything (seat 0)
+FZ_PEERS :: 4;             // conns 1 to FZ_PEERS - 1 sit too (an Everglade room's seats 1 to 3; a game's)
+FZ_FRAME :: 4096;          // the most a frame carries on a WebSocket or a stream (room-host.c ws_parse, room-wt.c)
+FZ_TICK :: 3;
+FZ_HELLO :: "H 5 ranger.0.0.0 druid 0 -";
+FZ_EG_PATH :: "GET /api/room/relay/everglade/everglade2-1 HTTP/1.1\r\n\r\n";
+FZ_GAME_PATH :: "GET /api/room/relay/fuzz-game/fuzz-room HTTP/1.1\r\n\r\n";
+
+// The room before an input: conns 0 to FZ_PEERS - 1 sit, an Everglade room's seats each said hello
+// and the room ticked once, and conn 0 is a WebTransport session. FZ_NO_ROOM when a join failed.
+fz_room_begin :: (v: [] RmServer, mode: int) -> int #export_c #effects(all) {
+  rm_init(v); rm_clock(v, 1000, 1762190000000);
+  path := ifx mode % 2 == 0 then FZ_EG_PATH else FZ_GAME_PATH;
+  for c: 0..<FZ_PEERS { if rm_join(v, c, path) != c { return FZ_NO_ROOM; } }
+  rm_wt_conn(v, FZ_SENDER, true);
+  if mode % 2 == 0 { for c: 0..<FZ_PEERS { rm_heard(v, c, FZ_HELLO); } }
+  fz_tick(v);
+  return FZ_OK;
+}
+// The room's tick, as the host runs it: the Everglade room's step, then the relay's queue taken.
+fz_tick :: (v: [] RmServer) #effects(all) {
+  r := v[0].conns[1].relay;
+  k := ifx r >= 0 then eg_room_at(v, r) else -1;
+  if k >= 0 { eg_test_tick(v, k); }
+  fz_drain(v);
+}
+fz_drain :: (v: [] RmServer) #effects(all) { while v[0].q_n > 0 { _ := rm_relay_next(v); } }
+// Whether the action at `at` is a tick (the others' sums are taken again after it).
+fz_ticks :: (input: [] u8, at: int) -> bool #export_c #effects(all) { return at >= 0 && at < input.count && cast(int) input[at] % 4 == FZ_TICK; }
+// One action of input, from at: where the next one starts (input.count when none is left, or the
+// sender's socket was closed for its rate: the host stops reading it).
+fz_room_step :: (v: [] RmServer, input: [] u8, at: int) -> int #export_c #effects(all) {
+  if at < 0 || at + 1 >= input.count || !v[0].conns[FZ_SENDER].live { return input.count; }
+  op := cast(int) input[at];
+  n := cast(int) input[at + 1];
+  if (op & 0x80) != 0 { n *= 16; }
+  from := at + 2;
+  to := ifx n > input.count - from then input.count else from + n;
+  way := op & 3;
+  most := ifx way == 1 then NET_DATAGRAM_MAX else FZ_FRAME;
+  cut := ifx to - from > most then from + most else to;
+  text := cast(string) input[from..<cut];
+  dt := ((op >> 2) & 15) * 8;
+  rm_clock(v, v[0].mono_ms + dt, v[0].wall_ms + dt);
+  if way == 0 {
+    trace: [256] u8; now := v[0].mono_ms * 1000;
+    if rm_lt_request(v, FZ_SENDER, text, now, now, trace[..]) < 0 {
+      tail := rm_lt_tail(v, FZ_SENDER);
+      rm_heard(v, FZ_SENDER, text);
+      rm_lt_received(v, FZ_SENDER, tail, now);
+    }
+  } else if way == 1 { rm_wt_heard(v, FZ_SENDER, text); }
+  else if way == 2 { rm_wt_reliable(v, FZ_SENDER, text); }
+  else { fz_tick(v); }
+  fz_drain(v);
+  if rm_relay_kicked(v, FZ_SENDER) { rm_left(v, FZ_SENDER); return input.count; }
+  return to;
+}
+
+// ---- the others' sums: what this file can see of every seat but the sender's
+FZ_P :: 1000000007;
+fz_mix :: (h: int, x: int) -> int { return (h * 131 + (x % FZ_P + FZ_P) % FZ_P) % FZ_P; }
+fz_f :: (x: f32) -> int { if !(x == x) { return 7; } if x > 1.0e9 { return 8; } if x < -1.0e9 { return 9; } return cast(int) floor(x * 1000); }
+fz_b :: (x: bool) -> int { return ifx x then 1 else 0; }
+fz_seat :: (v: [] RmServer, k: int, s: int) -> int #effects(all) {
+  st := v[0].eg[k].seat[s..<s + 1]; t := st[0]; h := 1;
+  h = fz_mix(h, fz_b(t.live)); h = fz_mix(h, t.conn); h = fz_mix(h, t.gen.value); h = fz_mix(h, fz_b(t.held));
+  h = fz_mix(h, t.q_n); h = fz_mix(h, t.bank); h = fz_mix(h, t.ack); h = fz_mix(h, t.late); h = fz_mix(h, t.earned);
+  for i: 0..<t.q_n { e := t.q[i]; h = fz_mix(h, e.seq); h = fz_mix(h, e.kx); h = fz_mix(h, e.ky); h = fz_mix(h, e.px); h = fz_mix(h, e.py); h = fz_mix(h, e.theta); h = fz_mix(h, e.b); }
+  p := t.pose;
+  h = fz_mix(h, fz_f(p.x)); h = fz_mix(h, fz_f(p.y)); h = fz_mix(h, fz_f(p.z)); h = fz_mix(h, fz_f(p.yaw)); h = fz_mix(h, fz_b(t.placed));
+  h = fz_mix(h, fz_b(t.claim)); h = fz_mix(h, fz_f(t.claim_x)); h = fz_mix(h, fz_f(t.claim_z)); h = fz_mix(h, fz_b(t.hello));
+  h = fz_mix(h, t.look_n); for i: 0..<t.look_n { h = fz_mix(h, cast(int) t.look[i]); }
+  h = fz_mix(h, t.klass_n); for i: 0..<t.klass_n { h = fz_mix(h, cast(int) t.klass[i]); }
+  h = fz_mix(h, t.name_n); for i: 0..<t.name_n { h = fz_mix(h, cast(int) t.name[i]); }
+  h = fz_mix(h, t.flags); h = fz_mix(h, fz_b(t.sat_class)); h = fz_mix(h, t.last_cast); h = fz_mix(h, fz_b(t.loose.ok)); h = fz_mix(h, t.loose.seq);
+  h = fz_mix(h, t.heard_ms); h = fz_mix(h, fz_b(t.pinned)); h = fz_mix(h, t.travel_until); h = fz_mix(h, fz_b(t.cut)); h = fz_mix(h, t.place_due);
+  h = fz_mix(h, t.back_hp); h = fz_mix(h, t.wcond); h = fz_mix(h, t.ends_n); h = fz_mix(h, t.rest_told); h = fz_mix(h, t.kit_told);
+  h = fz_mix(h, fz_b(t.checkpoint_hello)); h = fz_mix(h, fz_b(t.town_end)); h = fz_mix(h, t.said_heard); h = fz_mix(h, fz_b(t.hold_due));
+  h = fz_mix(h, v[0].eg[k].wanted[s]); h = fz_mix(h, v[0].eg[k].im_blk[s].n);
+  out: [EGB_OUT_FLOATS] f32; egb_seat_out(v[0].eg[k].rules[..], s, out[..]);
+  for q: 0..<EGB_OUT_FLOATS { h = fz_mix(h, fz_f(out[q])); }
+  return h;
+}
+fz_conn :: (v: [] RmServer, c: int) -> int #effects(all) {
+  x := v[0].conns[c]; h := 3;
+  h = fz_mix(h, fz_b(x.live)); h = fz_mix(h, x.seat); h = fz_mix(h, x.relay); h = fz_mix(h, x.dropped); h = fz_mix(h, fz_b(x.kicked)); h = fz_mix(h, fz_b(x.over));
+  h = fz_mix(h, x.gen.value); h = fz_mix(h, fz_b(v[0].wt[c].on));
+  return h;
+}
+// Every seat's but the sender's, in the sender's room, and every peer conn's.
+fz_others :: (v: [] RmServer) -> int #effects(all) {
+  h := 5;
+  for c: 1..<FZ_PEERS { h = fz_mix(h, fz_conn(v, c)); }
+  r := v[0].conns[1].relay;
+  k := ifx r >= 0 then eg_room_at(v, r) else -1;
+  if k >= 0 { for s: 1..<EG_SEATS { h = fz_mix(h, fz_seat(v, k, s)); } }   // seat 0 is the sender's (fz_room_begin)
+  return h;
+}
+// A whole input: FZ_OK, FZ_NO_ROOM or FZ_OTHER_CHANGED (another seat or conn moved on an action
+// that was not a tick).
+fz_room_run :: (v: [] RmServer, input: [] u8) -> int #effects(all) {
+  if input.count == 0 { return FZ_OK; }
+  if fz_room_begin(v, cast(int) input[0]) != FZ_OK { return FZ_NO_ROOM; }
+  at := 1;
+  while at < input.count {
+    tick := fz_ticks(input, at);
+    before := fz_others(v);
+    at = fz_room_step(v, input, at);
+    if !tick && fz_others(v) != before { return FZ_OTHER_CHANGED; }
+  }
+  return FZ_OK;
+}
+
+// ---- random inputs for the #forall (the native fuzzer finds its own from its corpus)
+FZ_HEADS :: [32] string.["H", "I", "J1", "C", "E", "R", "F", "L", "Z", "U1", "M1", "M3", "M4", "M5", "M6", "M7",
+  "T", "V", "P", "A", "K", "O", "X", "t", "@1", "~", "S", "Q", "D", "y", "J", "M"];
+FZ_WORDS :: [40] string.["0", "1", "-1", "2", "5", "15", "16", "17", "255", "256", "4096", "65535", "1000001", "1000040",
+  "2147483647", "-2147483648", "9223372036854775807", "-9223372036854775808", "999999999999999999", "1234567890123456789",
+  "-0", "+1", "1.5", "1e9", "nan", "inf", "-", "", "x", "druid", "ranger.0.0.0", "srd-fighter-6", "at", "heal", "guard",
+  "off", "p-aa", "i", "p", "~"];
+fz_next :: (s: [] u64) -> u64 { x := s[0]; x ^= x << 13; x ^= x >> 7; x ^= x << 17; s[0] = x; return x; }
+fz_below :: (s: [] u64, n: int) -> int { return cast(int) (fz_next(s) % cast(u64) n); }
+fz_put :: (out: [] u8, at: int, t: string) -> int { n := at; for c: t { if n < out.count { out[n] = c; n += 1; } } return n; }
+// A frame as the wire spells them, or nearly: a head, then up to 12 words, each space apart (now and
+// then two spaces, a tab, a NUL or none).
+fz_frame :: (s: [] u64, out: [] u8, at: int) -> int {
+  n := fz_put(out, at, FZ_HEADS[fz_below(s, FZ_HEADS.count)]);
+  for w: 0..<fz_below(s, 13) {
+    sep := fz_below(s, 16);
+    n = fz_put(out, n, ifx sep == 0 then "  " else ifx sep == 1 then "\t" else ifx sep == 2 then "\0" else ifx sep == 3 then "" else " ");
+    if fz_below(s, 8) == 0 { n = fz_put(out, n, FZ_WORDS[fz_below(s, FZ_WORDS.count)]); n = fz_put(out, n, FZ_WORDS[fz_below(s, FZ_WORDS.count)]); }
+    else { n = fz_put(out, n, FZ_WORDS[fz_below(s, FZ_WORDS.count)]); }
+  }
+  return n;
+}
+// Input `seed`: its room, then 4 to 40 actions, each a frame, a datagram of 1 to 6 frames, a tick, or
+// up to 200 random bytes.
+fz_gen :: (seed: int, out: [] u8) -> int {
+  state: [1] u64; state[0] = cast(u64) (seed + 1) * 2654435761; s := state[..];
+  for w: 0..<4 { _ := fz_next(s); }
+  out[0] = cast(u8) fz_below(s, 256); n := 1;
+  for a: 0..<4 + fz_below(s, 37) {
+    if n + 2 + 1300 > out.count { break; }
+    way := fz_below(s, 4);
+    op := way | (fz_below(s, 16) << 2);
+    out[n] = cast(u8) op; head := n + 1; n += 2;
+    body := n;
+    if way != FZ_TICK {
+      if fz_below(s, 4) == 0 { for i: 0..<fz_below(s, 201) { out[n] = cast(u8) fz_below(s, 256); n += 1; } }
+      else if way == 1 { for f: 0..<1 + fz_below(s, 6) { if f > 0 { n = fz_put(out, n, "\n"); } n = fz_frame(s, out, n); } }
+      else { n = fz_frame(s, out, n); }
+    }
+    if n - body > 255 { n = body + 255; }
+    out[head] = cast(u8) (n - body);
+  }
+  return n;
+}
+FZ_GEN :: 16384;
+
+#forall "room-fuzz: no frame one seat says on any way traps the room or changes another seat or socket" seed: 0..<400 #steps 4000000000 {
+  v: [1] RmServer; b: [FZ_GEN] u8;
+  n := fz_gen(seed, b[..]);
+  #assert fz_room_run(v[..], b[0..<n]) == FZ_OK;
+}
+#test "room-fuzz: the property sees another seat move, and a tick is not held to it" #steps 4000000000 {
+  v: [1] RmServer;
+  #assert fz_room_begin(v[..], 0) == FZ_OK;
+  k := eg_room_at(v[..], v[0].conns[1].relay); #assert k >= 0 && v[0].eg[k].seat[1].live && v[0].eg[k].seat[3].live;
+  h := fz_others(v[..]);
+  v[0].eg[k].seat[0].q_n = 1; #assert fz_others(v[..]) == h;   // the sender's own seat is its own
+  v[0].eg[k].seat[2].q_n = 1; #assert fz_others(v[..]) != h;
+  v[0].eg[k].seat[2].q_n = 0; v[0].conns[3].dropped = 1; #assert fz_others(v[..]) != h;
+  v[0].conns[3].dropped = 0; #assert fz_others(v[..]) == h;
+  // an input: its room byte, an I frame on the WebSocket, a tick, and a datagram
+  b: [64] u8; n := 0;
+  b[0] = 0; b[1] = 0; n = fz_put(b[..], 3, "I 1 100 0 0 0 0 0 0"); b[2] = cast(u8) (n - 3);
+  b[n] = FZ_TICK; b[n + 1] = 0; n += 2;
+  b[n] = 1; m := fz_put(b[..], n + 2, "I 2 100 0 0 0 0 0 0"); b[n + 1] = cast(u8) (m - n - 2); n = m;
+  #assert fz_ticks(b[0..<n], 22) && !fz_ticks(b[0..<n], 1) && !fz_ticks(b[0..<n], n);
+  #assert fz_room_run(v[..], b[0..<n]) == FZ_OK && v[0].eg[k].seat[0].ack >= 1;
+  #assert fz_room_run(v[..], b[0..<0]) == FZ_OK && fz_room_step(v[..], b[0..<n], n - 1) == n;
+}
+#test "room-fuzz: a relay game's room passes frames on and holds the others alike" #steps 4000000000 {
+  v: [1] RmServer;
+  #assert fz_room_begin(v[..], 1) == FZ_OK && v[0].conns[1].relay >= 0 && eg_room_at(v[..], v[0].conns[1].relay) < 0;
+  b: [32] u8; b[0] = 1; b[1] = 2; n := fz_put(b[..], 3, "m 9 hello"); b[2] = cast(u8) (n - 3);
+  #assert fz_room_run(v[..], b[0..<n]) == FZ_OK;
+}

@@ -65,5 +65,9 @@ int wt_rtt_ms(const wt_server *s, int sid);
 /* Datagrams session sid's connection sent that the peer never acknowledged (lost), or -1. */
 int64_t wt_session_lost(const wt_server *s, int sid);
 wt_stats wt_get_stats(const wt_server *s);
+/* The next frame on a stream that carries frames length-first (a 2-byte big-endian length, then
+   its bytes: the room's reliable frames, room-wt.c), in in[at..n): 1 with its bytes' offset and
+   length, 0 when it hasn't all come, -1 when its length is over max (the stream is broken). */
+int wt_frame_next(const uint8_t *in, size_t n, size_t at, size_t max, size_t *off, size_t *len);
 void wt_free(wt_server *s);
 #endif

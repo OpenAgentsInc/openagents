@@ -33,7 +33,7 @@
 #                                         their sources, and every realm's link-preview card
 #   coax/remote/check.sh visuals          check-visuals alone (the web build's first stop:
 #                                         a page or the host building visible UI)
-#   coax/remote/check.sh room [PROD]      the room build (and with PROD, e2 PROD)
+#   coax/remote/check.sh room [PROD]      the room build, its WebTransport check and the fuzzers' slice (and with PROD, e2 PROD)
 #   coax/remote/check.sh api I/N          the I-th of N parts of the API suite
 #                                         (coax/web/api/test.sh --part I/N: its own
 #                                         Postgres and API on the host)
@@ -41,6 +41,8 @@
 #                                         the same, when the change since BASE reaches
 #                                         what the API suite builds or runs (a fast run)
 #   coax/remote/check.sh tools [PROD]     reports and room
+#   coax/remote/check.sh fuzz [HOURS]     the room's fuzzers for HOURS (4) on OA_FUZZ_WORKERS (9) processes:
+#                                         after.sh's nightly run (coax/web/room/fuzz/fuzz.sh long, #13283)
 #   coax/remote/check.sh e2 PROD          the room build and Everglade II's pair: this commit
 #                                         against production's commit PROD (#13266)
 #   coax/remote/check.sh counts BASE      no allowlist count raised since BASE (coax/remote/counts.sh)
@@ -274,6 +276,7 @@ room() {
   step room-build coax/web/room/build.sh || { status=1; return; }
   step room-webtransport coax/web/room/wt-check.sh 9441 || status=1
   step encounter-ttk coax/web/tool.sh coax/web/room/encounter-sim.coax --check docs/dnd/encounter-ttk.md || status=1
+  step room-fuzz coax/web/room/fuzz/fuzz.sh slice "${OA_FUZZ_SLICE:-60}" || status=1   # the wire and framing fuzzers, a minute each (#13283)
   [[ -z "${1:-}" ]] || e2_gate "$1" || status=1
 }
 # Everglade II against production (#13266, docs/verse/green-main-pipeline.md "Everglade II against
@@ -438,6 +441,7 @@ run() {   # mode arg: one check
     reports) reports ;;
     visuals) visuals ;;
     room) room "$arg" ;;
+    fuzz) step fuzz coax/web/room/fuzz/fuzz.sh long "${arg:-4}" "${OA_FUZZ_WORKERS:-9}" || status=1 ;;
     api) api "${arg:-1/1}" ;;
     tools) reports; room "$arg" ;;
     e2) [[ -n "$arg" ]] || return 2

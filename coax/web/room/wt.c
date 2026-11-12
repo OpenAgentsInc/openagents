@@ -299,8 +299,8 @@ static int h3_end_stream(nghttp3_conn *h, int64_t id, void *u, void *su) {
 static int h3_stop_sending(nghttp3_conn *h, int64_t id, uint64_t code, void *u, void *su) { (void)h; (void)su; ngtcp2_conn_shutdown_stream_read(((qconn *)u)->conn, 0, id, code); return 0; }
 static int h3_reset_stream(nghttp3_conn *h, int64_t id, uint64_t code, void *u, void *su) { (void)h; (void)su; ngtcp2_conn_shutdown_stream_write(((qconn *)u)->conn, 0, id, code); return 0; }
 
-static int h3_setup(qconn *c) {
-  if (c->h3) return 0;
+/* c's HTTP/3 connection, its streams not yet bound (h3_setup binds them; the fuzzer, fuzz/fuzz-wt.c, binds its own). */
+static int h3_new(qconn *c) {
   nghttp3_callbacks cb = {
     .acked_stream_data = h3_acked, .stream_close = h3_stream_close, .recv_data = h3_recv_data,
     .deferred_consume = h3_deferred, .recv_header = h3_header, .end_headers = h3_end_headers,
@@ -312,6 +312,11 @@ static int h3_setup(qconn *c) {
   if (nghttp3_conn_server_new(&c->h3, &cb, &st, NULL, c)) return -1;
   const ngtcp2_transport_params *lp = ngtcp2_conn_get_local_transport_params(c->conn);
   nghttp3_conn_set_max_client_streams_bidi(c->h3, lp->initial_max_streams_bidi);
+  return 0;
+}
+static int h3_setup(qconn *c) {
+  if (c->h3) return 0;
+  if (h3_new(c)) return -1;
   int64_t ctrl, enc, dec;
   if (ngtcp2_conn_open_uni_stream(c->conn, &ctrl, NULL) || nghttp3_conn_bind_control_stream(c->h3, ctrl)) return -1;
   if (ngtcp2_conn_open_uni_stream(c->conn, &enc, NULL) || ngtcp2_conn_open_uni_stream(c->conn, &dec, NULL)) return -1;
@@ -759,6 +764,14 @@ int64_t wt_session_lost(const wt_server *s, int sid) {
   return x ? x->c->lost : -1;
 }
 wt_stats wt_get_stats(const wt_server *s) { return s->st; }
+int wt_frame_next(const uint8_t *in, size_t n, size_t at, size_t max, size_t *off, size_t *len) {
+  if (at > n || n - at < 2) return 0;
+  size_t k = ((size_t)in[at] << 8) | in[at + 1];
+  if (k > max) return -1;
+  if (n - at - 2 < k) return 0;
+  *off = at + 2; *len = k;
+  return 1;
+}
 void wt_free(wt_server *s) {
   if (!s) return;
   for (int i = 0; i < s->nconns; i++) conn_free(s, s->conns[i]);

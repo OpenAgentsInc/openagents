@@ -94,14 +94,13 @@ static void wt_stream_in(void *user, int sid, int64_t stream, const uint8_t *dat
   c->heard = now_ms();
   if (c->n + n > IN_CAP) { c->doomed = true; return; }
   memcpy(c->in + c->n, data, n); c->n += n;
-  size_t at = 0;
-  while (c->n - at >= 2) {
-    size_t len = ((size_t)c->in[at] << 8) | c->in[at + 1];
-    if (len > 4096) { c->doomed = true; return; }
-    if (c->n - at - 2 < len) break;
-    st_frame_in(c->in + at + 2, len, len + 2);
-    rm_wt_reliable(view(), i, (coax_string){(const char *)c->in + at + 2, (int64_t)len});
-    at += 2 + len;
+  size_t at = 0, off = 0, len = 0;
+  int r;
+  while ((r = wt_frame_next(c->in, c->n, at, 4096, &off, &len)) != 0) {
+    if (r < 0) { c->doomed = true; return; }
+    st_frame_in(c->in + off, len, len + 2);
+    rm_wt_reliable(view(), i, (coax_string){(const char *)c->in + off, (int64_t)len});
+    at = off + len;
     if (rm_relay_kicked(view(), i)) { c->doomed = true; return; }
   }
   memmove(c->in, c->in + at, c->n - at); c->n -= at;

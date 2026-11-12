@@ -94,7 +94,8 @@
 # OA_AFTER_RETRIES (2), OA_AFTER_UNFINISHED (3), OA_AFTER_STALE (5400),
 # OA_AFTER_STALE_COMMITS (40),
 # OA_AFTER_FLAKY_TRIES (3), OA_AFTER_PAGES (0: no pages), OA_AFTER_PAGES_GAP
-# (3600), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS... in
+# (3600), OA_AFTER_FUZZ (0: no nightly fuzz), OA_AFTER_FUZZ_GAP (86400),
+# OA_AFTER_FUZZ_HOURS (4), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS... in
 # place of the remote check, for scratch runs), and
 # coax/remote/pipeline-lib.sh's OA_PIPELINE_*.
 set -uo pipefail
@@ -110,6 +111,8 @@ gap="${OA_AFTER_GAP:-10800}"   # a full run costs about $0.30 of host time (2026
 fast_gap="${OA_AFTER_FAST_GAP:-0}"
 retries="${OA_AFTER_RETRIES:-2}"
 pages_gap="${OA_AFTER_PAGES_GAP:-3600}"
+fuzz_gap="${OA_AFTER_FUZZ_GAP:-86400}"
+fuzz_hours="${OA_AFTER_FUZZ_HOURS:-4}"
 compiler_mode="${OA_AFTER_COMPILER:-auto}"
 width="${OA_BISECT_WIDTH:-4}"
 bisect_checks="${OA_BISECT_CHECKS:-4}"
@@ -537,6 +540,31 @@ pages_of() {   # head: its pages into the shared store, once, in the background 
   ( "$here/pages.sh" build "$1" > "$results/$1/pages.log" 2>&1 && pl_say "after: ${1:0:10}'s pages are in the shared store" ) 8>&- 7>&- &
 }
 
+# The room's nightly fuzz (#13283, coax/web/room/fuzz/fuzz.sh long): at most every OA_AFTER_FUZZ_GAP
+# seconds, on a head that went green, for OA_AFTER_FUZZ_HOURS on one host slot, in the background. A
+# crash, hang, leak or broken property files an issue with the log; the inputs it found come back in
+# RESULTS/HEAD/fuzz (each crash under coax/web/room/build/fuzz/artifacts there).
+fuzz_of() {   # head
+  [[ "${OA_AFTER_FUZZ:-1}" != 0 && -z "${OA_AFTER_CHECK:-}" ]] || return 0
+  due last-fuzz "$fuzz_gap" || return 0
+  date +%s > "$results/last-fuzz"
+  local head="$1" dir="$results/$1/fuzz"
+  mkdir -p "$dir"
+  (
+    OA_REMOTE_TIMEOUT=$(( fuzz_hours * 3600 + 1800 )) "$here/remote.sh" run --commit "$head" --out "$dir" --no-fallback -- coax/remote/check.sh fuzz "$fuzz_hours" > "$dir/out" 2>&1
+    s=$?
+    if (( s == 1 )); then
+      gh issue create --repo "$pl_repo" --title "Nightly fuzz: the room's fuzzers failed at ${head:0:10}" --body "\`coax/web/room/fuzz/fuzz.sh long $fuzz_hours\` on \`$head\` stopped on an input (#13283). Make it \`coax/web/room/fuzz/corpus/NAME/regress-WHAT\`, fix it, and add the case to wire-fuzz.coax when it is the room's. The inputs: \`$dir/\` on the coordinator's Mac.
+
+\`\`\`
+$(tail -n 40 "$dir/out" 2> /dev/null | cut -c1-300)
+\`\`\`" > /dev/null 2>&1
+      pl_say "after: the nightly fuzz failed at ${head:0:10} ($dir/out)"
+    else
+      pl_say "after: the nightly fuzz at ${head:0:10}: status $s"
+    fi
+  ) 8>&- 7>&- &
+}
 
 due() {   # stamp seconds: whether the stamp is that old, or missing
   [[ ! -f "$results/$1" ]] || (( $(date +%s) - $(cat "$results/$1") >= $2 ))
@@ -590,6 +618,7 @@ go_green() {   # head green kind started jobs note
     pl_say "after: green ($kind run$6); $pl_green is ${head:0:10} ($cost)"
     pl_alarm_clear "\`$pl_green\` moved to ${head:0:10} after a green $kind run."
     pages_of "$head"
+    fuzz_of "$head"
   else
     pl_say "after: green ($kind run$6), but $pl_green could not move to ${head:0:10}"
   fi
