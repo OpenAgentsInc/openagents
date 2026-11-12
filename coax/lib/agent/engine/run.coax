@@ -86,6 +86,7 @@ TrRun :: struct {
   pre_b: [SF_PRE_MAX] u8; npre: int;         // a fork's earlier turns, ahead of its first message
   resume: [128] u8; nresume: int;            // a fork resumes this Claude Code session
   same: bool;                                // ... as the same conversation, not a copy (--same-conversation)
+  text_k1: int;                              // the record's text part the reply is from, + 1 (0 none yet)
   cursor_resume: [128] u8; ncursor_resume: int;   // ... or loads this Cursor session (resumes this Antigravity one)
   // the turn
   running: bool; started_ms: int; steps: int; turns: int; exit: int; cost: f64;
@@ -490,7 +491,12 @@ tr_claude_record :: (r: [] TrRun) {
     nw := s_next(s, r[0].seen[..]);
     if nw.k < 0 { break; }
     part := s[0].parts[nw.k];
-    if part.kind == P_TEXT { tr_reply(r, nw.text); continue; }
+    if part.kind == P_TEXT {
+      // another text block (another message, or a goal's next turn) is its own reply, not glued to the last one's end
+      if r[0].text_k1 != nw.k + 1 && r[0].log[0].nreply > 0 { sw_reply_flush(r[0].log); }
+      r[0].text_k1 = nw.k + 1;
+      tr_reply(r, nw.text); continue;
+    }
     if part.kind != P_TOOL { continue; }
     lb: [1024] u8;
     tr_tool(r, tr_claude_label(r, part.name, part.input, lb[..]));
@@ -557,7 +563,8 @@ tr_claude_message :: (r: [] TrRun, m: ClMessage) {
     res := cl_result_of(ar, m);
     r[0].cost += res.total_cost_usd;
     ok := res.kind == ClResultKind.success && !res.is_error;
-    if !ok && r[0].nrep == 0 && res.result.count > 0 { tr_reply(r, res.result); }
+    // a turn with no streamed text still says something: an error, or a command's answer ("Goal cleared: ...")
+    if r[0].nrep == 0 && res.result.count > 0 { tr_reply(r, res.result); }
     tr_finish(r, ifx ok then TR_FINISHED else ifx r[0].stopping then TR_STOPPED else TR_FAILED, ifx ok then "" else "Claude Code ended the turn with an error.");
     r[0].stopping = false;
   }

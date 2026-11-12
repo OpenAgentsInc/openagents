@@ -168,6 +168,14 @@ cd_mcp_call :: (ar: [] ClArena, params: string, extra: [] string, out: [] u8) ->
 
 // A message for a session: a running job takes it as its next turn; an
 // ended one continues in a detached fork.
+// Claude Code's /goal command: "/goal" alone or followed by a space and its words (not "/goals").
+cd_goal_command :: (msg: string) -> bool {
+  return msg.count >= 5 && cast(string) msg[0..<5] == "/goal" && (msg.count == 5 || msg[5] == ' ' || msg[5] == '\n' || msg[5] == '\t');
+}
+#test "a /goal command is told from other messages" {
+  #assert cd_goal_command("/goal clear") && cd_goal_command("/goal") && cd_goal_command("/goal tests pass");
+  #assert !cd_goal_command("/goals") && !cd_goal_command("goal clear") && !cd_goal_command("/goa") && !cd_goal_command("");
+}
 cd_mcp_send_message :: (id_in: string, msg: string, out: [] u8, ok: [] bool) -> string { return cd_mcp_send_as(id_in, msg, false, out, ok); }
 // same: an ended Claude Code session goes on as the same conversation (the caller has checked nothing else has it open).
 cd_mcp_send_as :: (id_in: string, msg: string, same: bool, out: [] u8, ok: [] bool) -> string {
@@ -182,6 +190,14 @@ cd_mcp_send_as :: (id_in: string, msg: string, same: bool, out: [] u8, ok: [] bo
     pb: [1400] u8; p := cd_msg_put(id, msg, pb[..]);
     if p.count == 0 { n := cd_cat(out, 0, "Could not leave the message."); return cast(string) out[0..<n]; }
     ok[0] = true;
+    // A /goal command can't wait for the turn to end: a goal keeps the turn going until it is met, so
+    // "/goal clear" would never arrive. The turn stops now (as the Router redirects a Worker) and the
+    // message goes next; Claude Code pauses a goal its turn was stopped in, and the command then runs.
+    if cd_goal_command(msg) {
+      tb: [1300] u8; y := fs_write(cd_sibling(id, ".turnstop", tb[..]), "redirect\n");
+      n := cd_cat(out, 0, "Sent to "); n = cd_cat(out, n, id); n = cd_cat(out, n, "; its turn stops so the /goal command runs now.");
+      return cast(string) out[0..<n];
+    }
     n := cd_cat(out, 0, "Sent to "); n = cd_cat(out, n, id); n = cd_cat(out, n, "; it takes the message when its current turn ends.");
     return cast(string) out[0..<n];
   }
