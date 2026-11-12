@@ -1,14 +1,26 @@
 // Independent loopback HTTP fixture for cli-journey.coax. This models the
 // published realm document/revision contract; it never loads product CLI or
 // API implementation code and does not qualify production authentication.
+// Its bytes are the server's (#13354): the save, undo and conflict replies and
+// the document are the shapes in proto/verse/realm-document-v1.json, the
+// fixture the API's routes and aethyr/forge/ are checked against
+// (coax/web/api/tests/realm_doc_checks.coax, aethyr/forge/doc-goldens.coax).
+// cjf_load reads that file's text and keeps each shape; a reply is the shape
+// with this model's numbers in place of the file's, every other byte as the
+// file has it. It reads the file as data: this toolchain file loads nothing
+// from aethyr/forge/ (contexts.txt).
 #load "../lib/json/json.coax";
 #load "../lib/net/socket_foreign.coax";
 #load "../lib/sys/args.coax";
 #load "../lib/crypto/sha256-kernel.coax";
 
 CjfSnapshot :: struct { moved: bool; x: f64; z: f64; moves: [512] u8; moves_n: int; }
-CjfRealm :: struct { made: bool; rev: int = 1; moved: bool; x: f64; z: f64; published: int; moves: [512] u8; moves_n: int; history: [16] CjfSnapshot; history_n: int; }
-Cjf :: struct { parent: CjfRealm; fork: CjfRealm; fork_rev: int; calls: int; bad: int; out_n: int; saves: int; last_ask: [64] u8; last_ask_n: int; }
+CjfRealm :: struct { made: bool; rev: int = 1; moved: bool; x: f64; z: f64; published: int; moves: [512] u8; moves_n: int; history: [16] CjfSnapshot; history_n: int; redo_n: int; }
+// The server's shapes, from proto/verse/realm-document-v1.json: the replies to a save, an undo and a
+// stale request, the document, and one entry of its moves.
+CjfShapes :: struct { ok: bool; save: [512] u8; save_n: int; undo: [512] u8; undo_n: int; conflict: [512] u8; conflict_n: int; doc: [8192] u8; doc_n: int; move: [512] u8; move_n: int; }
+Cjf :: struct { parent: CjfRealm; fork: CjfRealm; fork_rev: int; calls: int; bad: int; out_n: int; saves: int; last_ask: [64] u8; last_ask_n: int; shapes: CjfShapes; }
+CJF_SHAPES_PATH :: "proto/verse/realm-document-v1.json";
 CjfRequest :: struct { ok: bool; method: string; path: string; body: string; has_auth: bool; }
 
 #test "CLI fixture reads a complete request and refuses truncation or missing lengths" {
@@ -18,8 +30,28 @@ CjfRequest :: struct { ok: bool; method: string; path: string; body: string; has
   #assert !cjf_request("POST /x HTTP/1.1\r\n\r\n{}").ok;
   #assert cjf_request("GET /x HTTP/1.1\r\n\r\n").ok;
 }
-#test "CLI fixture requires the revision, preserves stale state and undoes a move" {
+// The shapes a #test reads (checks run at compile time, with no files): realm-document-v1.json's start,
+// one save, one undo and the stale save, as that file has them. The tool reads the file itself.
+CJF_TEST_SHAPES :: "{\"start\": {\"doc\": \"{\\\"doc\\\": \\\"aethyr.realm\\\", \\\"off\\\": [], \\\"rev\\\": 1, \\\"base\\\": null, \\\"name\\\": \\\"Doc Fixture\\\", \\\"slug\\\": \\\"doc-fixture\\\", \\\"moved\\\": [], \\\"version\\\": 1, \\\"forked_from\\\": null}\"}, \"steps\": [{\"route\": \"/save\", \"status\": 200, \"reply\": \"{\\\"rev\\\": 2, \\\"sha256\\\": \\\"fda8\\\"}\", \"doc\": \"{\\\"moved\\\": [{\\\"x\\\": 1.25, \\\"z\\\": -2.50, \\\"entity\\\": \\\"trees:1\\\"}]}\"}, {\"route\": \"/undo\", \"status\": 200, \"reply\": \"{\\\"rev\\\": 8, \\\"redo\\\": 1, \\\"undo\\\": 5}\"}, {\"route\": \"/save\", \"status\": 409, \"reply\": \"{\\\"rev\\\": 12, \\\"error\\\": \\\"changed since\\\"}\"}]}";
+cjf_test :: (f: [] Cjf) -> bool { return cjf_load(f, CJF_TEST_SHAPES); }
+
+#test "CLI fixture keeps the server's shapes and writes its numbers into them, every other byte as the file has it" {
   f: [1] Cjf; out: [8192] u8;
+  #assert cjf_test(f[..]) && cjf_shape(f[..], 0) == "{\"rev\": 2, \"sha256\": \"fda8\"}";
+  #assert !cjf_load(f[..], "{}") && !f[0].shapes.ok && cjf_route(f[..], "GET", "/api/auth/ways?as=lines", "", out[..]) == 500;
+  #assert cjf_test(f[..]) && cjf_route(f[..], "POST", "/api/playtest/realms?as=lines", "{\"plan\":7,\"on\":[true]}", out[..]) == 200;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/save", "{\"rev\":1,\"moved\":[{\"entity\":\"trees:1\",\"x\":3,\"z\":-0.5},{\"entity\":\"trees:0\",\"x\":4.5,\"z\":-2}]}", out[..]) == 200;
+  #assert cjf_starts(cast(string) out[0..<f[0].out_n], "{\"rev\": 2, \"sha256\": \"") && f[0].out_n == 88;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/save", "{\"rev\":1,\"moved\":[]}", out[..]) == 409;
+  #assert cast(string) out[0..<f[0].out_n] == "{\"rev\": 2, \"error\": \"changed since\"}";
+  #assert cjf_route(f[..], "GET", "/api/playtest/realms/cli-journey-fixture/doc", "", out[..]) == 200;
+  #assert cjf_find(cast(string) out[0..<f[0].out_n], "\"moved\": [{\"x\": 4.50, \"z\": -2.00, \"entity\": \"trees:0\"}, {\"x\": 3.00, \"z\": -0.50, \"entity\": \"trees:1\"}], \"version\": 1, \"forked_from\": null}") >= 0;
+  #assert cjf_starts(cast(string) out[0..<f[0].out_n], "{\"doc\": {\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 2, \"base\": null, \"name\": \"CLI Journey Test\", \"slug\": \"cli-journey-fixture\", ");
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/undo", "{\"rev\":2}", out[..]) == 200;
+  #assert cast(string) out[0..<f[0].out_n] == "{\"rev\": 3, \"redo\": 1, \"undo\": 0}";
+}
+#test "CLI fixture requires the revision, preserves stale state and undoes a move" {
+  f: [1] Cjf; out: [8192] u8; #assert cjf_test(f[..]);
   #assert cjf_route(f[..], "POST", "/api/playtest/realms?as=lines", "{\"plan\":7,\"on\":[true]}", out[..]) == 200;
   #assert f[0].parent.made && f[0].parent.rev == 1;
   #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/save", "{\"rev\":1,\"moved\":[{\"entity\":\"trees:0\",\"x\":4.5,\"z\":-2}]}", out[..]) == 200;
@@ -30,7 +62,7 @@ CjfRequest :: struct { ok: bool; method: string; path: string; body: string; has
   #assert f[0].parent.rev == 3 && !f[0].parent.moved;
 }
 #test "CLI fixture fork retains provenance and its edits do not change the parent" {
-  f: [1] Cjf; out: [8192] u8;
+  f: [1] Cjf; out: [8192] u8; #assert cjf_test(f[..]);
   f[0].parent.made = true; f[0].parent.rev = 3;
   #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/publish", "{\"rev\":3}", out[..]) == 200;
   #assert f[0].parent.published == 3;
@@ -40,7 +72,7 @@ CjfRequest :: struct { ok: bool; method: string; path: string; body: string; has
   #assert f[0].fork.moved && f[0].fork.rev == 2 && !f[0].parent.moved && f[0].parent.rev == 3;
 }
 #test "CLI fixture a grouped save is one real undo step and specs retain every entity" {
-  f: [1] Cjf; out: [8192] u8; f[0].parent.made = true;
+  f: [1] Cjf; out: [8192] u8; f[0].parent.made = true; #assert cjf_test(f[..]);
   #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/save","{\"rev\":1,\"moved\":[{\"entity\":\"trees:0\",\"x\":9,\"z\":8}]}",out[..]) == 200;
   #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/save","{\"rev\":2,\"moved\":[{\"entity\":\"trees:0\",\"x\":1,\"z\":2},{\"entity\":\"trees:1\",\"x\":3,\"z\":4}]}",out[..]) == 200;
   #assert f[0].saves == 2 && f[0].parent.history_n == 2;
@@ -52,14 +84,16 @@ CjfRequest :: struct { ok: bool; method: string; path: string; body: string; has
   #assert !f[0].parent.moved && f[0].parent.history_n == 0;
 }
 #test "CLI fixture the quest route retains flag-shaped ask text exactly" {
-  f: [1] Cjf; out: [8192] u8; f[0].parent.made = true;
+  f: [1] Cjf; out: [8192] u8; f[0].parent.made = true; #assert cjf_test(f[..]);
   #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/edit-v1/quest","{\"rev\":1,\"giver\":\"Bram\",\"ask\":\"--profile\",\"steps\":[]}",out[..]) == 200;
   #assert f[0].last_ask_n == 9 && cast(string)f[0].last_ask[0..<f[0].last_ask_n] == "--profile";
 }
 #test "CLI fixture generated realm documents declare their null base" {
-  bytes: [4096] u8; nodes: [64] JvNode; d: [1] Jv;
-  doc := cjf_doc(CjfRealm.{made=true},false,0,bytes[..]);
+  f: [1] Cjf; bytes: [4096] u8; nodes: [64] JvNode; d: [1] Jv; #assert cjf_test(f[..]);
+  doc := cjf_doc(f[..],CjfRealm.{made=true},false,0,bytes[..]);
   #assert jv_parse(d[..],doc,nodes[..]) && jv_kind(d[0],jv_get(d[0],0,"base")) == JV_NULL;
+  fork := cjf_doc(f[..],CjfRealm.{made=true,rev=2},true,3,bytes[..]);
+  #assert cjf_find(fork, "\"forked_from\": {\"rev\": 3, \"slug\": \"cli-journey-fixture\"}}") >= 0;
 }
 
 cjf_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
@@ -103,21 +137,117 @@ cjf_request :: (s: string) -> CjfRequest {
   return r;
 }
 cjf_answer :: (f: [] Cjf, code: int, text: string, out: [] u8) -> int { f[0].out_n = cjf_put(text, out); return code; }
-cjf_doc :: (r: CjfRealm, forked: bool, from_rev: int, out: [] u8) -> string {
+// ---- the server's shapes
+// The server's shape `which` (0 save, 1 undo, 2 conflict, 3 document, 4 an entry of the moves).
+cjf_shape :: (f: [] Cjf, which: int) -> string {
+  h := f[0].shapes;
+  if which == 0 { return cast(string) f[0].shapes.save[0..<h.save_n]; }
+  if which == 1 { return cast(string) f[0].shapes.undo[0..<h.undo_n]; }
+  if which == 2 { return cast(string) f[0].shapes.conflict[0..<h.conflict_n]; }
+  if which == 3 { return cast(string) f[0].shapes.doc[0..<h.doc_n]; }
+  return cast(string) f[0].shapes.move[0..<h.move_n];
+}
+// An object shape again, as jsonb's text has it ("{", "KEY": VALUE joined by ", ", "}"), with the
+// value of each key in keys replaced by its text in vals; "" when it is no object or doesn't fit.
+cjf_fill :: (shape: string, keys: [] string, vals: [] string, out: [] u8) -> string {
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], shape, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return ""; }
+  o: [1] Jo; jo_start(o[..], out); jo_byte(o[..], '{');
+  for i: 0..<jv_len(d[0], 0) {
+    at := jv_at(d[0], 0, i); key := jv_key(d[0], at);
+    if i > 0 { jo_put(o[..], ", "); }
+    jo_byte(o[..], '"'); jo_put(o[..], key); jo_put(o[..], "\": ");
+    k := -1; for w: 0..<keys.count { if keys[w] == key { k = w; } }
+    if k >= 0 { jo_put(o[..], vals[k]); }
+    else if jv_kind(d[0], at) == JV_STRING { jo_byte(o[..], '"'); jo_put(o[..], jv_raw(d[0], at)); jo_byte(o[..], '"'); }
+    else { jo_put(o[..], jv_raw(d[0], at)); }
+  }
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+cjf_keep :: (text: string, buf: [] u8) -> int { return ifx text.count > buf.count then -1 else cjf_put(text, buf); }
+// Keep the server's shapes from realm-document-v1.json's text: the first save, undo and stale
+// replies, the start document and the first move a document has. Each must come back byte for byte
+// from cjf_fill with nothing replaced, or none is kept and every route answers 500.
+cjf_load :: (f: [] Cjf, text: string) -> bool {
+  f[0].shapes = CjfShapes.{};
+  nodes: [16384] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  h: CjfShapes; b: [8192] u8;
+  sn := jv_str(d[0], jv_get(d[0], jv_get(d[0], 0, "start"), "doc"), b[..]);
+  if sn < 0 { return false; }
+  h.doc_n = cjf_keep(cast(string) b[0..<sn], h.doc[..]);
+  steps := jv_get(d[0], 0, "steps");
+  for i: 0..<jv_len(d[0], steps) {
+    s := jv_at(d[0], steps, i);
+    rb: [64] u8; rn := jv_str(d[0], jv_get(d[0], s, "route"), rb[..]); route := ifx rn < 0 then "" else cast(string) rb[0..<rn];
+    status := jv_int(d[0], jv_get(d[0], s, "status"), 0);
+    pn := jv_str(d[0], jv_get(d[0], s, "reply"), b[..]); reply := ifx pn < 0 then "" else cast(string) b[0..<pn];
+    if status == 409 && h.conflict_n == 0 { h.conflict_n = cjf_keep(reply, h.conflict[..]); }
+    else if status == 200 && route == "/save" && h.save_n == 0 { h.save_n = cjf_keep(reply, h.save[..]); }
+    else if status == 200 && route == "/undo" && h.undo_n == 0 { h.undo_n = cjf_keep(reply, h.undo[..]); }
+    dn := jv_str(d[0], jv_get(d[0], s, "doc"), b[..]);
+    if h.move_n == 0 && dn > 0 {
+      dnodes: [4096] JvNode; doc: [1] Jv;
+      if jv_parse(doc[..], cast(string) b[0..<dn], dnodes[..]) && jv_len(doc[0], jv_get(doc[0], 0, "moved")) > 0 {
+        h.move_n = cjf_keep(jv_raw(doc[0], jv_at(doc[0], jv_get(doc[0], 0, "moved"), 0)), h.move[..]);
+      }
+    }
+  }
+  f[0].shapes = h;
+  none: [1] string; out: [8192] u8;
+  for w: 0..<5 { t := cjf_shape(f, w); if t.count < 2 || cjf_fill(t, none[0..<0], none[0..<0], out[..]) != t { f[0].shapes = CjfShapes.{}; return false; } }
+  f[0].shapes.ok = true;
+  return true;
+}
+// A whole number's text.
+cjf_int :: (v: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..], out); jo_int(o[..], v); return jo_text(o[..]); }
+// Metres as the server keeps them (round(x, 2)): "4.50", "-0.05", "0.00".
+cjf_metres :: (v: f64, out: [] u8) -> string {
+  cm := ifx v < 0.0 then -(cast(int) (-v * 100.0 + 0.5)) else cast(int) (v * 100.0 + 0.5);
+  a := ifx cm < 0 then -cm else cm;
+  o: [1] Jo; jo_start(o[..], out);
+  if cm < 0 { jo_byte(o[..], '-'); }
+  b: [24] u8; jo_put(o[..], cjf_int(a / 100, b[..])); jo_byte(o[..], '.');
+  if a % 100 < 10 { jo_byte(o[..], '0'); }
+  jo_put(o[..], cjf_int(a % 100, b[..]));
+  return jo_text(o[..]);
+}
+// The realm's document in the server's shape: the start document with its slug, name, revision,
+// moves (in entity order, as migration 0166 keeps them) and parent; every other key as the file has it.
+cjf_doc :: (f: [] Cjf, r: CjfRealm, forked: bool, from_rev: int, out: [] u8) -> string {
   rr := r;
-  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
-  jo_key(o[..], "doc"); jo_str(o[..], "aethyr.realm"); jo_key(o[..], "version"); jo_int(o[..], 1);
-  jo_key(o[..], "slug"); jo_str(o[..], ifx forked then "cli-journey-fork" else "cli-journey-fixture");
-  jo_key(o[..], "name"); jo_str(o[..], "CLI Journey Test"); jo_key(o[..], "rev"); jo_int(o[..], r.rev);
-  jo_key(o[..], "features"); jo_raw(o[..], "[{\"kind\":\"trees\",\"count\":2}]");
-  jo_key(o[..], "moved"); jo_raw(o[..], ifx rr.moves_n > 0 then cast(string) rr.moves[0..<rr.moves_n] else "[]");
-  jo_key(o[..], "base"); jo_null(o[..]);
-  jo_key(o[..], "forked_from");
-  if forked { jo_obj(o[..]); jo_key(o[..], "slug"); jo_str(o[..], "cli-journey-fixture"); jo_key(o[..], "rev"); jo_int(o[..], from_rev); jo_end(o[..]); } else { jo_null(o[..]); }
-  jo_end(o[..]); return ifx o[0].bad then "" else jo_text(o[..]);
+  mv: [2048] u8; mo: [1] Jo; jo_start(mo[..], mv[..]); jo_byte(mo[..], '[');
+  if rr.moves_n > 0 {
+    mn: [64] JvNode; md: [1] Jv;
+    if !jv_parse(md[..], cast(string) rr.moves[0..<rr.moves_n], mn[..]) { return ""; }
+    first := true;
+    for name: [2] string.["trees:0", "trees:1"] {   // the only entities this model moves, in entity order
+      for i: 0..<jv_len(md[0], 0) {
+        at := jv_at(md[0], 0, i); nb: [64] u8; nn := jv_str(md[0], jv_get(md[0], at, "entity"), nb[..]);
+        if nn != name.count || cast(string) nb[0..<nn] != name { continue; }
+        x := args_number(jv_raw(md[0], jv_get(md[0], at, "x"))); z := args_number(jv_raw(md[0], jv_get(md[0], at, "z")));
+        xb: [32] u8; zb: [32] u8; eb: [32] u8; eo: [1] Jo; jo_start(eo[..], eb[..]); jo_str(eo[..], name);
+        keys := [3] string.["x", "z", "entity"]; vals := [3] string.[cjf_metres(x.value, xb[..]), cjf_metres(z.value, zb[..]), jo_text(eo[..])];
+        one: [256] u8;
+        if !first { jo_put(mo[..], ", "); }
+        first = false;
+        jo_put(mo[..], cjf_fill(cjf_shape(f, 4), keys[..], vals[..], one[..]));
+      }
+    }
+  }
+  jo_byte(mo[..], ']');
+  rb: [32] u8; sb: [64] u8; so: [1] Jo; jo_start(so[..], sb[..]); jo_str(so[..], ifx forked then "cli-journey-fork" else "cli-journey-fixture");
+  pb: [128] u8; po: [1] Jo; jo_start(po[..], pb[..]);
+  if forked { fb: [32] u8; jo_put(po[..], "{\"rev\": "); jo_put(po[..], cjf_int(from_rev, fb[..])); jo_put(po[..], ", \"slug\": \"cli-journey-fixture\"}"); }
+  else { jo_put(po[..], "null"); }
+  keys := [5] string.["slug", "name", "rev", "moved", "forked_from"];
+  vals := [5] string.[jo_text(so[..]), "\"CLI Journey Test\"", cjf_int(r.rev, rb[..]), jo_text(mo[..]), jo_text(po[..])];
+  return cjf_fill(cjf_shape(f, 3), keys[..], vals[..], out);
 }
 cjf_route :: (f: [] Cjf, method: string, path: string, body: string, out: [] u8) -> int {
   f[0].calls += 1;
+  if !f[0].shapes.ok { return cjf_answer(f, 500, "{\"error\": \"the fixture's shapes are not loaded\"}", out); }
   if method == "GET" && path == "/api/auth/ways?as=lines" { return cjf_answer(f, 200, "account acct_fixture\nlevel L2\n", out); }
   if method == "GET" && path == "/api/playtest/access" { return cjf_answer(f, 200, "invites 0\nmake 1\nin 1\ncreator 0\nasked none\n", out); }
   if method == "POST" && path == "/api/playtest/realms/plan?as=lines" { return cjf_answer(f, 200, "plan 7\nname CLI Journey Test\nf trees 1 Trees\n", out); }
@@ -153,9 +283,10 @@ cjf_route :: (f: [] Cjf, method: string, path: string, body: string, out: [] u8)
     f[0].out_n = n; return 200;
   }
   if method == "GET" && tail == "/doc" {
-    doc := cjf_doc(r, forked, f[0].fork_rev, buf[..]); hash: [64] u8;
-    if !S_hex(S_hash(doc), hash[..]) { return cjf_answer(f, 500, "{}", out); }
-    jo_obj(o[..]); jo_key(o[..], "doc"); jo_raw(o[..], doc); jo_key(o[..], "sha256"); jo_str(o[..], cast(string) hash[..]); jo_end(o[..]);
+    doc := cjf_doc(f, r, forked, f[0].fork_rev, buf[..]); hash: [64] u8;
+    if doc == "" || !S_hex(S_hash(doc), hash[..]) { return cjf_answer(f, 500, "{}", out); }
+    // GET .../doc's answer as jsonb's text: {"doc": DOCUMENT, "sha256": HASH}
+    jo_put(o[..], "{\"doc\": "); jo_put(o[..], doc); jo_put(o[..], ", \"sha256\": \""); jo_put(o[..], cast(string) hash[..]); jo_put(o[..], "\"}");
     f[0].out_n = o[0].n; return 200;
   }
   if method == "POST" && tail == "/fork?as=lines" {
@@ -165,8 +296,10 @@ cjf_route :: (f: [] Cjf, method: string, path: string, body: string, out: [] u8)
   nodes: [64] JvNode; d: [1] Jv;
   if method != "POST" || !jv_parse(d[..], body, nodes[..]) { return cjf_answer(f, 400, "{\"error\":\"bad fixture request\"}", out); }
   rev := jv_int(d[0], jv_get(d[0], 0, "rev"), -1);
+  rb: [32] u8;
   if rev != r.rev {
-    jo_obj(o[..]); jo_key(o[..], "error"); jo_str(o[..], "changed since"); jo_key(o[..], "rev"); jo_int(o[..], r.rev); jo_end(o[..]); f[0].out_n = o[0].n; return 409;
+    keys := [1] string.["rev"]; vals := [1] string.[cjf_int(r.rev, rb[..])];
+    return cjf_answer(f, 409, cjf_fill(cjf_shape(f, 2), keys[..], vals[..], buf[..]), out);
   }
   if tail == "/save" {
     mv := jv_get(d[0], 0, "moved"); count := jv_len(d[0], mv);
@@ -187,12 +320,12 @@ cjf_route :: (f: [] Cjf, method: string, path: string, body: string, out: [] u8)
     // Snapshot before changing any move, so two separate saves cannot masquerade as one undo.
     old := ifx forked then f[0].fork else f[0].parent;
     r.history[r.history_n] = CjfSnapshot.{moved=old.moved,x=old.x,z=old.z,moves=old.moves,moves_n=old.moves_n}; r.history_n += 1;
-    r.moves_n = cjf_put(raw, r.moves[..]); r.moved = count > 0; r.rev += 1;
+    r.moves_n = cjf_put(raw, r.moves[..]); r.moved = count > 0; r.rev += 1; r.redo_n = 0;
     f[0].saves += 1;
   } else if tail == "/undo" {
     if r.history_n == 0 { return cjf_answer(f,409,"{\"error\":\"fixture has no prior edit\"}",out); }
     r.history_n -= 1; prior := r.history[r.history_n];
-    r.moved = prior.moved; r.x = prior.x; r.z = prior.z; r.moves = prior.moves; r.moves_n = prior.moves_n; r.rev += 1;
+    r.moved = prior.moved; r.x = prior.x; r.z = prior.z; r.moves = prior.moves; r.moves_n = prior.moves_n; r.rev += 1; r.redo_n += 1;
   }
   else if tail == "/publish" { r.published = r.rev; }
   else if tail == "/edit-v1/quest" {
@@ -202,6 +335,19 @@ cjf_route :: (f: [] Cjf, method: string, path: string, body: string, out: [] u8)
   }
   else { return cjf_answer(f, 404, "{\"error\":\"fixture operation\"}", out); }
   if forked { f[0].fork = r; } else { f[0].parent = r; }
+  if tail == "/save" {   // {"rev": R, "sha256": HASH}: the hash of the document now
+    doc := cjf_doc(f, r, forked, f[0].fork_rev, buf[..]); hash: [64] u8;
+    if doc == "" || !S_hex(S_hash(doc), hash[..]) { return cjf_answer(f, 500, "{}", out); }
+    hq: [80] u8; ho: [1] Jo; jo_start(ho[..], hq[..]); jo_str(ho[..], cast(string) hash[..]);
+    keys := [2] string.["rev", "sha256"]; vals := [2] string.[cjf_int(r.rev, rb[..]), jo_text(ho[..])];
+    sb: [512] u8; return cjf_answer(f, 200, cjf_fill(cjf_shape(f, 0), keys[..], vals[..], sb[..]), out);
+  }
+  if tail == "/undo" {   // {"rev": R, "redo": N, "undo": N}
+    ub: [32] u8; db: [32] u8;
+    keys := [3] string.["rev", "redo", "undo"]; vals := [3] string.[cjf_int(r.rev, rb[..]), cjf_int(r.redo_n, db[..]), cjf_int(r.history_n, ub[..])];
+    sb: [512] u8; return cjf_answer(f, 200, cjf_fill(cjf_shape(f, 1), keys[..], vals[..], sb[..]), out);
+  }
+  // publish and quest: the fixture file has no shape for these replies
   jo_obj(o[..]); jo_key(o[..], "rev"); jo_int(o[..], r.rev);
   if tail == "/publish" { jo_key(o[..], "published"); jo_bool(o[..], true); }
   jo_end(o[..]); f[0].out_n = o[0].n; return 200;

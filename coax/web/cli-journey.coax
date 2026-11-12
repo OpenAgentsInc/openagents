@@ -6,7 +6,8 @@
 // --profile uses an existing test profile; the key is never read by this tool.
 // Only staging and loopback are accepted. The real journey makes private test
 // realms; no production mutations, deployments, browser, sound or key output.
-// --fixture runs the same CLI against an independent loopback HTTP model. It
+// --fixture runs the same CLI against an independent loopback HTTP model that
+// answers in the server's shapes (proto/verse/realm-document-v1.json). It
 // qualifies transport/command behavior, not a deployed API or NIP-98 verifier.
 #import "Basic";
 #load "../lib/sys/tool.coax";
@@ -258,6 +259,9 @@ tool_main :: () -> int #export_c #effects(all) {
     r[0].listener = cxsock_listen(0); if r[0].listener < 0 { tool_errln("cli-journey: loopback listener unavailable"); return 1; }
     pb: [32] u8; port := cj_rev_text(cxsock_port(r[0].listener), pb[..]);
     n := cjf_put("http://127.0.0.1:", base[..]); n += cjf_put(port, base[n..<base.count]); r[0].origin = cast(string) base[0..<n];
+    // the fake answers in the server's shapes, read from the fixture the API is checked against (#13354)
+    shapes: [262144] u8; sn := fs_read(CJF_SHAPES_PATH, shapes[..]);
+    if sn <= 0 || !cjf_load(r[0].fixture[..], cast(string) shapes[0..<sn]) { tool_errln("cli-journey: the server's shapes did not read from proto/verse/realm-document-v1.json"); return 1; }
   }
   if !cj_origin_ok(r[0].origin) { tool_errln("cli-journey: --origin must be exact staging.openagents.com or http://127.0.0.1:PORT; production is refused"); return 2; }
   if r[0].profile == "" {
