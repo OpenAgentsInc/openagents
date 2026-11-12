@@ -38,8 +38,9 @@ and on production. It does four things:
 2. It runs them through the policy.
 3. It opens an alert for each condition that holds and resolves each alert
    whose condition stopped (`verse.service_alerts`).
-4. It mails every alert it opens or resolves to `OA_ALERT_TO`, the owner's
-   address.
+4. On production only, it mails every alert it opens or resolves to
+   `OA_ALERT_TO`, the owner's address. Staging's alerts reach the log,
+   `/status` and the agents' inbox, never the owner's email.
 
 Separately, the green-main watcher (`coax/remote/after.sh --watch`,
 `pipeline-lib.sh pl_service_watch`) reads the service health every minute. It
@@ -48,7 +49,7 @@ passes each alert it sees open or resolve to the Foreman inbox and to
 
 | Alert | Fires when | Runbook |
 | --- | --- | --- |
-| `silent:N` | Shard N named its address, isn't draining, was heard within the last day, and has sent no report for 20 s | `coax/web/room/vm-deploy.sh status`; restart the unit, or `vm-deploy.sh switch run` |
+| `silent:N` | Shard N named its address, isn't draining, was heard within the last day, and has sent no report for 45 s (a deploy restart or a few late reports is not silence) | `coax/web/room/vm-deploy.sh status`; restart the unit, or `vm-deploy.sh switch run` |
 | `tick:N` | Tick p95 is over 10 ms on 2 or more reports within 2 minutes | `/admin/rooms`: find which workload grew; roll back the room (`vm-deploy.sh rollback`) if a release did it |
 | `checkpoint-failures:N` | A checkpoint post failed in the last 5 minutes | Check the API's log for `room-checkpoint`, the database, and oa-api's health |
 | `fenced:N` | 3 or more checkpoints were fenced (stale owner) in 10 minutes | A character may be playing on two shards: check the directory's placement and the seat tickets' owners |
@@ -56,8 +57,8 @@ passes each alert it sees open or resolve to the Foreman inbox and to
 | `db-connections` | 80% or more of the database's connections are in use | Cloud SQL `openagents-production-pg`: find who holds the connections (`pg_stat_activity`); check oa-api's instances |
 | API 5xx (Cloud Monitoring) | oa-api answers 5xx more than 3 times a minute for 5 minutes | Read oa-api's log for the failing route; check the database and the last API deploy; roll back with `coax/web/api/deploy.sh` if a release did it |
 
-A silent shard raises its alert within about 80 s: 20 s of silence, plus at most
-one minute until the next scheduled run.
+A silent shard raises its alert within about 105 s: 45 s of silence, plus at
+most one minute until the next scheduled run.
 
 ## Resources and cost
 

@@ -11,7 +11,7 @@
 //                    most 15 s old; 99.9% (a capture every 5 s, an answer within 6 s)
 //
 // The alerts, each a key per shard (or one for the database), opened and resolved every minute:
-//   silent           a shard that named its address stopped reporting for 20 s, not while draining
+//   silent           a shard that named its address stopped reporting for 45 s, not while draining
 //   tick             2 or more reports in 2 minutes with a tick p95 over 10 ms
 //   checkpoint-failures  a checkpoint post failed in the last 5 minutes
 //   fenced           3 or more checkpoints refused for a newer owner in 10 minutes
@@ -27,7 +27,7 @@ SV_TICK_PPM :: 999000; SV_JOIN_PPM :: 950000; SV_CHECKPOINT_PPM :: 999000;
 SV_DAYS :: 30;
 
 SV_A_SILENT :: 1; SV_A_TICK :: 2; SV_A_FAILURES :: 4; SV_A_FENCED :: 8; SV_A_UNSAVED :: 16;
-SV_SILENT_MS :: 20000;
+SV_SILENT_MS :: 45000;   // a deploy restart or a stall of a few reports is not silence (#13297)
 SV_HEARD_MS :: 86400000;   // a shard silent longer than a day is retired, not down
 SV_SLOW_P95_US :: 10000; SV_SLOW_REPORTS :: 2;
 SV_FENCED_MOST :: 3;
@@ -60,8 +60,8 @@ SV_W_SLOW :: 0; SV_W_FAILURES :: 1; SV_W_FENCED :: 2;
   #assert sv_met(SV_JOIN, 950000, 1000001) == 0;   // short by under a millionth is still short
   #assert sv_share_ppm(1, 1) == 1000000 && sv_share_ppm(1, 3) == 333333 && sv_share_ppm(3, 3) == 1000000 && sv_share_ppm(0, 0) == -1 && sv_share_ppm(1, -2) == -1;
 }
-#test "a shard that named its address and stops reporting for 20 s is silent, unless it drained or retired" {
-  #assert sv_shard_alerts(true, false, 20000, 0, 0, 0, 0) == SV_A_SILENT;
+#test "a shard that named its address and stops reporting for 45 s is silent, unless it drained or retired" {
+  #assert sv_shard_alerts(true, false, 45000, 0, 0, 0, 0) == SV_A_SILENT && sv_shard_alerts(true, false, 44999, 0, 0, 0, 0) == 0;
   #assert sv_shard_alerts(true, false, 19999, 0, 0, 0, 0) == 0;
   #assert sv_shard_alerts(false, false, 60000, 0, 0, 0, 0) == 0;          // Cloud Run's shards name none and idle to zero
   #assert sv_shard_alerts(true, true, 60000, 0, 0, 0, 0) == 0;            // a drain (a deploy, switch run) is no outage
@@ -73,7 +73,7 @@ SV_W_SLOW :: 0; SV_W_FAILURES :: 1; SV_W_FENCED :: 2;
   #assert sv_shard_alerts(true, false, 0, 0, 1, 0, 0) == SV_A_FAILURES && sv_shard_alerts(true, false, 0, 0, 0, 0, 0) == 0;
   #assert sv_shard_alerts(true, false, 0, 0, 0, 3, 0) == SV_A_FENCED && sv_shard_alerts(true, false, 0, 0, 0, 2, 0) == 0;
   #assert sv_shard_alerts(true, false, 0, 0, 0, 0, 30000) == SV_A_UNSAVED && sv_shard_alerts(true, false, 0, 0, 0, 0, 29999) == 0;
-  #assert sv_shard_alerts(true, false, 30000, 5, 2, 4, 40000) == 31;
+  #assert sv_shard_alerts(true, false, 45000, 5, 2, 4, 40000) == 31;
   #assert sv_shard_alerts(false, true, 0, 5, 2, 4, 40000) == 30;          // a draining shard's last reports still count
 }
 #test "the database alerts at 80% of its connections" {
@@ -87,7 +87,7 @@ SV_W_SLOW :: 0; SV_W_FAILURES :: 1; SV_W_FENCED :: 2;
 #test "each alert has its key, its words and its runbook line" {
   #assert sv_alert_key(SV_A_SILENT) == "silent" && sv_alert_key(SV_A_TICK) == "tick" && sv_alert_key(SV_A_FAILURES) == "checkpoint-failures";
   #assert sv_alert_key(SV_A_FENCED) == "fenced" && sv_alert_key(SV_A_UNSAVED) == "unsaved" && sv_alert_key(0) == "" && sv_alert_key(32) == "";
-  #assert sv_alert_text(SV_A_SILENT) == "stopped reporting for 20 s";
+  #assert sv_alert_text(SV_A_SILENT) == "stopped reporting for 45 s";
   #assert sv_alert_text(SV_A_TICK) == "tick p95 over 10 ms twice in 2 minutes";
   #assert sv_alert_text(SV_A_FAILURES) == "a checkpoint post failed in the last 5 minutes";
   #assert sv_alert_text(SV_A_FENCED) == "3 or more checkpoints fenced in 10 minutes";
@@ -174,7 +174,7 @@ sv_alert_key :: (bit: int) -> string #export_c #effects(all) {
   return "";
 }
 sv_alert_text :: (bit: int) -> string #export_c #effects(all) {
-  if bit == SV_A_SILENT { return "stopped reporting for 20 s"; }
+  if bit == SV_A_SILENT { return "stopped reporting for 45 s"; }
   if bit == SV_A_TICK { return "tick p95 over 10 ms twice in 2 minutes"; }
   if bit == SV_A_FAILURES { return "a checkpoint post failed in the last 5 minutes"; }
   if bit == SV_A_FENCED { return "3 or more checkpoints fenced in 10 minutes"; }

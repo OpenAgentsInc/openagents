@@ -105,8 +105,9 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   fi
   echo "  ok    migrations ($6)"
   local secrets="OA_API_DATABASE=$2:latest" env="^~^OA_ADMIN_PUBKEYS=$admins~OA_AGENT_RUNNER_PUBKEYS=$runners~OA_TEAM=$team~OA_API_ORIGIN=https://$3~OA_DROPS_BUCKET=openagentsgemini-project-drops~OA_DROPS_PREFIX=$6" wake
-  # Service alerts (service.c, #13297): each one opened or resolved is mailed to the owner's phone.
-  env+="~OA_ALERT_TO=chris@openagents.com"
+  # Service alerts (service.c, #13297): production's, opened or resolved, are mailed to the owner's
+  # phone. Staging's reach only the log, /status and the agents' inbox (pipeline-lib.sh pl_service_watch).
+  [[ "$6" != production ]] || env+="~OA_ALERT_TO=chris@openagents.com"
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   # Publishing a project from a drop (drops.c, rc-publish): the key that seals project keys, the relay,
   # the site's bucket; staging's projects go on the relay as private, so no list shows them.

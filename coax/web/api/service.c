@@ -11,7 +11,8 @@
 //                                     alerts (the status page, the green-main watcher's forwarding to
 //                                     the agents' inboxes: coax/remote/pipeline-lib.sh pl_service_watch)
 //
-//   OA_ALERT_TO     where alert mail goes (deploy.sh sets the owner's address); none: no mail
+//   OA_ALERT_TO     where production's alert mail goes (deploy.sh sets the owner's address); none, or
+//                   staging: no mail
 //   OA_API_ORIGIN   https://staging.openagents.com names the staging environment in the mail
 #include "api.h"
 #include "service-policy.generated.h"
@@ -96,7 +97,8 @@ char *service_watch(PGconn *db, const char *day) {
   PQclear(r);
   if (!sync) return NULL;
   // Each change: the log, and mail to the owner.
-  const char *to = getenv("OA_ALERT_TO");
+  // Only production's alerts reach a person: staging's stay in the log, /status and the agents' inbox.
+  const char *to = strcmp(env_name(), "production") ? NULL : getenv("OA_ALERT_TO");
   const char *mv[5] = {sync, to && *to ? to : "", env_name(), origin(), ns};
   r = PQexecParams(db, "SELECT m::text, m->>'subject' FROM verse.service_mail($1::jsonb, $2, $3, $4, $5::bigint) m", 5, NULL, mv, NULL, NULL, 0);
   int mailed = 0, changes = 0;

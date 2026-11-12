@@ -107,7 +107,7 @@ h = json.loads(b) if s == 200 else {}
 check("service-health: the three service levels and the open alerts, for anyone",
       s == 200 and [l["name"] for l in h.get("levels", [])] == ["tick time", "join time", "checkpoint age"]
       and h["levels"][0]["target"] == 10000 and h["levels"][1]["objective_ppm"] == 950000
-      and any(a["key"] == "silent:97" and a["title"] == "shard 97: stopped reporting for 20 s" for a in h.get("alerts", [])), b)
+      and any(a["key"] == "silent:97" and a["title"] == "shard 97: stopped reporting for 45 s" for a in h.get("alerts", [])), b)
 check("service-health: shard 97's minute counts against tick time and checkpoint age",
       h.get("levels") and h["levels"][0]["total"] >= 1 and h["levels"][0]["worst"] >= 12500 and h["levels"][2]["worst"] >= 31000, h.get("levels"))
 now_ms = int(sql("SELECT verse.room_now()"))

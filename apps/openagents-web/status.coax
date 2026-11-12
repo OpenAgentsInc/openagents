@@ -46,13 +46,13 @@ ST_LIVE_FIXTURE :: "[\n  {\n    \"sha\": \"aaaaaaaaaabbbbbbbbbbccccccccccddddddd
   st_live(s[..],"{\"message\":\"API rate limit exceeded\"}");
   #assert !s[0].live && s[0].n==1;
 }
-ST_SERVICE_FIXTURE :: "{\"env\":\"production\",\"now_ms\":1,\"days\":30,\"levels\":[{\"name\":\"tick time\",\"target\":10000,\"unit\":\"us\",\"objective_ppm\":999000,\"good\":9,\"total\":10,\"share_ppm\":900000,\"met\":0,\"worst\":12000,\"daily\":[]},{\"name\":\"join time\",\"target\":5000,\"unit\":\"ms\",\"objective_ppm\":950000,\"good\":239,\"total\":244,\"share_ppm\":979508,\"met\":1,\"worst\":9088,\"daily\":[[\"2026-11-12\",239,244]]},{\"name\":\"checkpoint age\",\"target\":15000,\"unit\":\"ms\",\"objective_ppm\":999000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]}],\"alerts\":[{\"key\":\"silent:3\",\"title\":\"shard 3: stopped reporting for 20 s\",\"opened_ms\":1,\"resolved_ms\":null},{\"key\":\"tick:4\",\"title\":\"shard 4: tick p95 over 10 ms\",\"opened_ms\":1,\"resolved_ms\":null}],\"resolved_day\":[{\"key\":\"fenced:1\",\"title\":\"shard 1: fenced\",\"opened_ms\":1,\"resolved_ms\":2}]}";
+ST_SERVICE_FIXTURE :: "{\"env\":\"production\",\"now_ms\":1,\"days\":30,\"levels\":[{\"name\":\"tick time\",\"target\":10000,\"unit\":\"us\",\"objective_ppm\":999000,\"good\":9,\"total\":10,\"share_ppm\":900000,\"met\":0,\"worst\":12000,\"daily\":[]},{\"name\":\"join time\",\"target\":5000,\"unit\":\"ms\",\"objective_ppm\":950000,\"good\":239,\"total\":244,\"share_ppm\":979508,\"met\":1,\"worst\":9088,\"daily\":[[\"2026-11-12\",239,244]]},{\"name\":\"checkpoint age\",\"target\":15000,\"unit\":\"ms\",\"objective_ppm\":999000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]}],\"alerts\":[{\"key\":\"silent:3\",\"title\":\"shard 3: stopped reporting for 45 s\",\"opened_ms\":1,\"resolved_ms\":null},{\"key\":\"tick:4\",\"title\":\"shard 4: tick p95 over 10 ms\",\"opened_ms\":1,\"resolved_ms\":null}],\"resolved_day\":[{\"key\":\"fenced:1\",\"title\":\"shard 1: fenced\",\"opened_ms\":1,\"resolved_ms\":2}]}";
 #test "the service health gives each level's share, target and verdict, and the open alerts but not the resolved" {
   s:[1]St;
   st_service(s[..],ST_SERVICE_FIXTURE);
   #assert s[0].sv_got && s[0].sv_total[0]==10 && s[0].sv_share[0]==900000 && s[0].sv_met[0]==0 && s[0].sv_target[0]==10000;
   #assert s[0].sv_met[1]==1 && s[0].sv_share[1]==979508 && s[0].sv_objective[1]==950000 && s[0].sv_met[2]==-1 && s[0].sv_total[2]==0;
-  #assert s[0].sv_alerts==2 && cast(string)s[0].sv_alert[0..<s[0].sv_alert_n]=="shard 3: stopped reporting for 20 s";
+  #assert s[0].sv_alerts==2 && cast(string)s[0].sv_alert[0..<s[0].sv_alert_n]=="shard 3: stopped reporting for 45 s";
   b:[32]u8;
   #assert cast(string)b[0..<st_pct(b[..],0,979508)]=="97.95%" && cast(string)b[0..<st_pct(b[..],0,1000000)]=="100.00%" && cast(string)b[0..<st_pct(b[..],0,999050)]=="99.90%";
   t:[1]St;st_service(t[..],"{\"error\":\"no database\"}");#assert !t[0].sv_got;
