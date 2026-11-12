@@ -1,6 +1,6 @@
 # openagents.com/chat (docs/chat.md, chat.c, migrations/0021_chat.sql, the
 # runner's chat mode in coax/web/agent/chat-runner.c): only admins get in;
-# a message wakes the runner, whose turn runs in a fresh read-only checkout
+# a message wakes the runner, whose turn runs in a refreshed read-only checkout
 # with exactly one credential; a follow-up resumes the conversation's session
 # with the model chosen for it; STOP stops; the daily cap on OpenAgents' key
 # refuses; a person's own Anthropic API key or Claude subscription token is
@@ -252,6 +252,56 @@ T6 = json.loads(b).get("turn") if s == 200 else None
 b, u = until_turn(C, T6, ("done", "failed"))
 check("chat: with your own key the cap doesn't apply, and the turn uses only your key",
       s == 200 and u and u[2] == "done" and f"cred=ANTHROPIC_API_KEY:{h8(GOOD_API)} " in u[7] and u[5] == "own" and "budget=0.00" in u[7], (s, u))
+# ---- the checkout's failures (GitHub #13252): with a copy already there a turn reads it; with none, the person is told what failed
+os.rename(cbare, cbare + ".gone")
+s, b = cpage("POST", "send", {"c": str(C), "text": "while the host is away"})
+TG = json.loads(b).get("turn") if s == 200 else None
+b, u = until_turn(C, TG, ("done", "failed"))
+check("chat: when main can't be fetched, the turn reads the copy it has", u and u[2] == "done" and "readme=second" in u[7], u)
+check("chat: the runner's log names the git step and git's own words",
+      "chat checkout: git fetch failed" in open(chat_log).read() and "the host could not be reached" in open(chat_log).read()
+      and "the turn reads the copy already here" in open(chat_log).read(), open(chat_log).read()[-600:])
+shutil.rmtree(os.path.join(cwork, "work", "chat-repo"))
+s, b = cpage("POST", "send", {"c": str(C), "text": "with no copy at all"})
+TG = json.loads(b).get("turn") if s == 200 else None
+b, u = until_turn(C, TG, ("done", "failed"))
+check("chat: with no copy and no host, the turn fails and says the host could not be reached, in plain words",
+      u and u[2] == "failed" and u[8] == "We couldn't reach GitHub to get our copy of the code. Send your message again in a minute.", u)
+os.rename(cbare + ".gone", cbare)
+
+
+def bake(dir_, **env):
+    r = subprocess.run([os.environ["RUNNER_BIN"], "--chat-checkout"], capture_output=True, text=True, env={
+        "OA_CHAT_DIR": dir_, "OA_CHAT_REPO": "file://" + cbare, "OA_AGENT_WORK": os.path.join(cwork, "bwork"), "OA_GIT": shutil.which("git"), "PATH": "/usr/bin:/bin", **env})
+    return r.returncode, r.stderr
+
+
+baked = os.path.join(cwork, "baked")
+rc, err = bake(baked)
+check("chat: oa-agent --chat-checkout makes the image's copy and measures it",
+      rc == 0 and "made whole" in err and " MB in " in err and open(os.path.join(baked, "README.md")).read() == "second\n" and not os.path.exists(os.path.join(baked, "big.png")), (rc, err))
+open(os.path.join(cseed, "README.md"), "w").write("third\n")
+open(os.path.join(cseed, "large.txt"), "wb").write(os.urandom(3 << 20))
+cgit("add", "-A", cwd=cseed); cgit("commit", "-qm", "three", cwd=cseed); cgit("push", "-q", "origin", "HEAD:main", cwd=cseed)
+rc, err = bake(baked)
+check("chat: a copy already there is refreshed, not made again", rc == 0 and "refreshed" in err and "made whole" not in err and open(os.path.join(baked, "README.md")).read() == "third\n", (rc, err))
+rc, err = bake(baked, OA_CHAT_REPO_MAX_MB="1")
+check("chat: the copy's size check fails when the checkout is over its limit", rc == 1 and "too big" in err and "the limit is 1 MB" in err, (rc, err))
+def fake_git(name, on_fetch):   # a git whose fetch does on_fetch (the runner gives git its own environment, so one script each)
+    path = os.path.join(cwork, name)
+    with open(path, "w") as f:
+        f.write('#!/bin/sh\nif [ "$1" = fetch ]; then ' + on_fetch + '; fi\nexec ' + shutil.which("git") + ' "$@"\n')
+    os.chmod(path, 0o755)
+    return path
+
+
+rc, err = bake(os.path.join(cwork, "baked-kill"), OA_GIT=fake_git("git-killed", "kill -9 $$"))
+check("chat: a git step the kernel killed is reported as out of memory", rc == 1 and "ended by signal 9, out of memory" in err and "We ran out of memory getting our copy of the code" in err, (rc, err))
+rc, err = bake(os.path.join(cwork, "baked-slow"), OA_GIT=fake_git("git-slow", "exec /bin/sleep 30"), OA_CHAT_FETCH_SECONDS="1")
+check("chat: a git step past its limit is reported as too slow", rc == 1 and "stopped at its 1 s limit" in err and "took too long" in err, (rc, err))
+rc, err = bake(os.path.join(cwork, "baked-away"), OA_CHAT_REPO="file://" + cbare + ".nowhere")
+check("chat: a host that isn't there is reported as unreachable", rc == 1 and "the host could not be reached" in err and "We couldn't reach GitHub" in err, (rc, err))
+
 s, b = cpage("POST", "key", {"credential": GOOD_OAT})
 check("chat: a good subscription token is checked with a CLI turn and replaces the API key",
       s == 200 and json.loads(b)["kind"] == "oauth" and json.loads(b)["label"] == "Claude subscription token (from claude setup-token)", (s, b))

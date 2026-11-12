@@ -17,7 +17,15 @@
 #       on it; a second member (OTHER.key, invited by the first) with none runs
 #       on OpenAgents' key, never the first member's; REMOVE puts the first
 #       back on ours. The token is read from FILE and never printed.
-import json, os, subprocess, sys, tempfile, time, urllib.error, urllib.request
+#   live-check.py [--origin ORIGIN] chat [--cold SERVICE] [--first SECONDS] [--done SECONDS]
+#       /chat (docs/chat.md, GitHub #13252), timed: logs in as an admin, sends one short
+#       message on Haiku and reads the state as the page does. Prints when the runner took
+#       the turn, when the engine started and when the answer came; fails when the turn
+#       fails, the engine starts later than --first (15) seconds after sending, or the
+#       answer comes later than --done (60). --cold first makes a new revision of the
+#       Cloud Run service (oa-agent-staging or oa-agent, only OA_COLD_MARK changed), so
+#       the runner starts with nothing in memory. One turn costs under a cent.
+import json, os, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
 
 args = sys.argv[1:]
 def opt(name, default=None):
@@ -31,6 +39,9 @@ KEY = opt("--key", os.path.expanduser("~/work/.secrets/openagents-analytics-admi
 SIGN = opt("--sign", os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "oa-admin", "sign"))
 TOKEN = opt("--token")
 OTHER = opt("--other")
+COLD = opt("--cold")
+FIRST = float(opt("--first", "15"))
+DONE = float(opt("--done", "60"))
 MODE = args[0] if args else "tools"
 failed = 0
 
@@ -108,6 +119,68 @@ def edits(t):
 def commit_of(t):
     return next((e["data"] for e in t.get("events", []) if e["type"] == "agent.commit"), None)
 
+
+if MODE == "chat":
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    opener = urllib.request.build_opener(NoRedirect)
+
+    def chat_http(method, path, body=None, headers=None):
+        req = urllib.request.Request(ORIGIN + path, method=method, data=body, headers=headers or {})
+        try:
+            with opener.open(req, timeout=30) as r:
+                return r.status, r.read().decode(), r.headers
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode(), e.headers
+
+    if COLD:
+        genv = dict(os.environ, CLOUDSDK_CONFIG=os.environ.get("CLOUDSDK_CONFIG", os.path.expanduser("~/work/.secrets/gcloud-sa-config")))
+        r = subprocess.run(["gcloud", "run", "services", "update", COLD, "--project", "openagentsgemini", "--region", "us-central1",
+                            "--update-env-vars", f"OA_COLD_MARK={int(time.time())}", "--quiet"], env=genv, capture_output=True, text=True)
+        check(f"a new revision of {COLD}, so the runner starts cold", r.returncode == 0, r.stderr[-400:])
+        if failed:
+            sys.exit(1)
+    auth = subprocess.run([SIGN, "--key", KEY, "GET", ORIGIN + "/api/admin/login"], capture_output=True, text=True, check=True).stdout.strip()
+    s, _, h = chat_http("GET", "/api/admin/login?auth=" + urllib.parse.quote(auth, safe="") + "&next=chat")
+    tok = next((c.split(";")[0].split("=", 1)[1] for c in (h.get_all("Set-Cookie") or []) if "Path=/api/chat" in c), "")
+    check("the admin login opens /chat", s == 303 and len(tok) == 64, s)
+    if failed:
+        sys.exit(1)
+    H = {"Cookie": "oa_admin=" + tok, "Origin": ORIGIN, "Content-Type": "application/json"}
+    t0 = time.time()
+    s, b, _ = chat_http("POST", "/api/chat/send", json.dumps({"text": "Reply with the one word: ok", "model": "claude-haiku-5-5"}).encode(), H)
+    r = json.loads(b) if s == 200 else {}
+    C, T = r.get("c"), r.get("turn")
+    check("a message makes a turn", s == 200 and C and T, (s, b[:200]))
+    if failed:
+        sys.exit(1)
+    last, u, taken, engine = None, None, None, None
+    while time.time() - t0 < max(DONE * 3, 240):
+        s, b, _ = chat_http("GET", f"/api/chat/state?c={C}", None, H)
+        u = next((l.split("|") for l in b.split("\n") if l.startswith(f"U|{T}|")), None)
+        now = time.time() - t0
+        if u:
+            status, working = u[2], u[9] if len(u) > 9 else ""
+            mark = status + (": " + working if working else "")
+            if mark != last:
+                last = mark; print(f"  {now:6.1f} s  {mark}")
+            if taken is None and status != "waiting":
+                taken = now
+            # the engine runs once the status line says what the model does ("thinking", "reading ...")
+            if engine is None and status == "running" and working and working != "starting" and not working.startswith("getting "):
+                engine = now
+            if status in ("done", "failed", "stopped"):
+                break
+        time.sleep(0.5)
+    total = time.time() - t0
+    status = u[2] if u else "no turn"
+    check("the turn is done", status == "done", (status, u[8] if u and len(u) > 8 else ""))
+    check(f"the runner took the turn ({taken or 0:.1f} s)", taken is not None)
+    check(f"the engine started within {FIRST:.0f} s of sending ({engine or total:.1f} s)", (engine or total) <= FIRST)
+    check(f"the answer came within {DONE:.0f} s ({total:.1f} s)", status == "done" and total <= DONE)
+    print(f"live-check chat: {ORIGIN} turn {T}: taken {taken or 0:.1f} s, engine {engine or total:.1f} s, answer {total:.1f} s" + (" (cold)" if COLD else ""))
+    sys.exit(1 if failed else 0)
 
 if MODE == "refused":
     s, b = signed("GET", "talk")

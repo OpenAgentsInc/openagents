@@ -18,7 +18,11 @@
 # credentials (Secret Manager oa-chat-credential-key-staging and
 # oa-chat-credential-key, 32 random bytes as hex, made here once), and each
 # conversation's CLI session file is kept in a Cloud Storage bucket mounted
-# at /sessions (oa-chat-sessions-staging, oa-chat-sessions; gen2).
+# at /sessions (oa-chat-sessions-staging, oa-chat-sessions; gen2). The image
+# holds /chat's checkout of the public repository's main as of this build
+# (Dockerfile; the build fails when it is too big), so deploy again when a
+# cold start's refresh grows slow. After a deploy, time a cold start:
+#   coax/web/agent/live-check.py chat --cold oa-agent-staging
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../../.." && pwd)"
 prod=true; [[ "${1:-}" == --staging ]] && prod=false
@@ -41,7 +45,15 @@ mkdir -p "$stage/src/seat"
 cp "$repo"/coax/platform/*.c "$repo"/coax/platform/*.h "$stage/src/seat/"
 cp "$here/Dockerfile" "$here/known_hosts" "$stage/"
 image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-agent:$(git -C "$here" rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
-gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$image" --quiet \
+# a build config only to hand the Dockerfile CHAT_AT (--tag alone takes no build arguments)
+cat > "$stage/cloudbuild.yaml" <<YAML
+steps:
+- name: gcr.io/cloud-builders/docker
+  args: [build, --build-arg, "CHAT_AT=$(date +%Y%m%d-%H%M%S)", -t, "$image", .]
+images: ["$image"]
+timeout: 1800s
+YAML
+gcloud builds submit "$stage" --project "$project" --region "$region" --config "$stage/cloudbuild.yaml" --quiet \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$stage/build.log" 2>&1 || { tail -30 "$stage/build.log"; exit 1; }
 
@@ -58,6 +70,8 @@ chat_store() {  # suffix ("" or -staging)
   gcloud storage buckets add-iam-policy-binding "gs://$bucket" --member "serviceAccount:$sa" --role roles/storage.objectAdmin --quiet >/dev/null
 }
 
+# 4Gi (the most one CPU takes): the files a turn writes, and what a refresh of /chat's checkout
+# fetches, are held in memory beside the CLI's 300-500 MB a turn (GitHub #13252).
 deploy() {  # service api-origin repos-secret model chat-suffix
   chat_store "$5"
   local secrets="OA_RUNNER_KEY=oa-agent-runner-key:latest,ANTHROPIC_API_KEY=openagents-anthropic-api-key:latest,OA_CHAT_SEAL_KEY=oa-chat-credential-key$5:latest" repos="" n=0 entry slug url key
@@ -73,7 +87,7 @@ deploy() {  # service api-origin repos-secret model chat-suffix
   fi
   gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \
     --no-allow-unauthenticated --service-account "$sa" --no-cpu-throttling \
-    --port 8080 --cpu 1 --memory 2Gi --min-instances 0 --max-instances 1 --concurrency 20 --timeout 900 \
+    --port 8080 --cpu 1 --memory 4Gi --min-instances 0 --max-instances 1 --concurrency 20 --timeout 900 \
     --execution-environment gen2 --clear-volumes --clear-volume-mounts \
     --add-volume "name=sessions,type=cloud-storage,bucket=$project-oa-chat-sessions$5,mount-options=uid=1000;gid=1000" \
     --add-volume-mount volume=sessions,mount-path=/sessions \

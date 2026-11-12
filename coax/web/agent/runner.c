@@ -803,6 +803,7 @@ int main(int argc, char **argv) {
   const char *listen_at = NULL;
   for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_at = argv[++i];
   signal(SIGPIPE, SIG_IGN);
+  if (argc > 1 && !strcmp(argv[1], "--chat-checkout")) return chat_bake();   // the image's copy of /chat's checkout
   curl_global_init(CURL_GLOBAL_DEFAULT);
   if (!load_key()) { say("OA_RUNNER_KEY is missing or not a key"); return 2; }
   snprintf(anthropic_key, sizeof anthropic_key, "%s", env("ANTHROPIC_API_KEY", ""));

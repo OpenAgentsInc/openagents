@@ -3,17 +3,15 @@
 [openagents.com/chat](https://openagents.com/chat) is a direct chat with a
 Claude agent for general questions about OpenAgents. It runs on the Coax
 Claude Agent SDK through the same hosted runner as the project agent
-([project-agent.md](project-agent.md)), in a general mode: the agent reads a
-fresh copy of the public openagents repository and the web, and can't change
+([project-agent.md](project-agent.md)), in a general mode: the agent reads an
+up-to-date copy of the public openagents repository and the web, and can't change
 anything. Admins only for now.
 
 ## Who gets in
 
 - An admin logs in with the NIP-98 admin login: `coax/web/api/admin.sh chat`
   opens `/api/admin/login?...&next=chat`, which sets the admin cookie (its
-  third copy has `Path=/api/chat`) and goes to `/chat`. A phone login
-  (`/login`, the `oa_session` cookie, [phone-sign-in.md](phone-sign-in.md))
-  is accepted too when its key is in `admins.conf`.
+  third copy has `Path=/api/chat`) and goes to `/chat`.
 - Anyone else gets the dashboard's answers: 401 `sign in as an admin` with
   no session, 403 `admins only` with one that isn't an admin's. The page
   then draws only a Log in button (to `/login`).
@@ -29,7 +27,7 @@ anything. Admins only for now.
 | The API | `coax/web/api/chat.c`, `migrations/0021_chat.sql` (schema `chat`), `migrations/0139_chat_folders_tabs.sql` (folders, tabs, the record) |
 | The runner's general mode | `coax/web/agent/chat-runner.c` (included by `runner.c`) |
 | The engine | `coax/web/agent/chat.coax` (Coax Claude Agent SDK) |
-| Checks | `coax/web/api/test_zchat.py` (with `test-chat-engine.py`), the `#test`s in `chat.coax` |
+| Checks | `coax/web/api/test_zchat.py` (with `test-chat-engine.py`), the `#test`s in `chat.coax`, `coax/web/agent/live-check.py chat` (a timed turn on a deployed runner) |
 
 A conversation is a managed session (`openagents.agent.managed.v1`,
 protocol spec §18.2): `chat.conversations` is the session (idle or running)
@@ -179,18 +177,73 @@ its OFL), compiled to wasm and drawn on WebGPU. The old HUD chat is
 
 ## The checkout and the runner's size
 
-The agent reads `/tmp/oa-agent/chat-repo`, a checkout of
-`OpenAgentsInc/openagents` main refreshed at the start of every turn
-(`fetch --depth 1 --filter=blob:none`, `reset --hard`, `clean`). It is sparse:
-images, video, wasm, `.bin`, `.vertices`, `.indices`, `.glb`, `.ktx2` and
-`.zip` are left out, so their blobs are never fetched.
+The agent reads a checkout of `OpenAgentsInc/openagents` main at
+`/opt/oa-chat/repo` (`OA_CHAT_DIR`). It is shallow (`--depth 1`), blobless
+(`--filter=blob:none`) and sparse: images, video, sound, fonts, wasm, packed
+and raw data (`.bin`, `.gz`, `.pack`, `.safetensors` and the rest of the list
+in `chat_checkout`, `coax/web/agent/chat-runner.c`) are left out, so their
+blobs are never fetched.
 
-Measured on 2026-10-28: main's tree is 34 MB in 1,740 files (the largest a
-3.5 MB Coax file and 2–3 MB meshes); the sparse checkout is 41 MB on disk
-(29 MB of files, 12 MB of `.git`) in 1,733 files and takes about 5 s. The
-runner keeps 2 GiB: the Claude CLI (Node) takes 300–500 MB per turn, the
-checkout 41 MB of in-memory disk, and a project turn may run beside it.
-Cloud Run's `/tmp` is memory, so 1 GiB would be tight with two turns.
+**The image holds the checkout.** `coax/web/agent/deploy.sh` builds it into
+the runner's image: the Dockerfile runs `oa-agent --chat-checkout`, the same
+code a turn runs. At the start of every turn the runner fetches main
+(`fetch --depth 1`) and writes only the files main changed since
+(`read-tree -m -u`, which looks at no other file), so a cold start doesn't
+download the repository again. On Cloud Run a written file is held in
+memory, so the longer since the last deploy, the more a refresh fetches and
+holds. Deploy the runner again when the refresh grows slow: the log line
+`chat checkout: refreshed in N s (fetch N s, files N s)` says how long each
+one took. If the refresh can't be applied, the runner puts the whole checkout
+back with `reset --hard` and `clean`.
+
+Measured on 2026-11-11: the checkout is 707 MB (471 MB in 27,063 files and
+236 MB of `.git`). Before that date every cold start made the whole checkout
+in the instance's memory. On 2026-11-11 that took 103 seconds and then ran out of the
+runner's 2 GiB, and the page said "the repository could not be reached"
+(GitHub #13252). With 4 GiB the same cold start answered, in 29 seconds
+on staging and 103 seconds on production (whose older image left less out).
+With the checkout in the image, a cold start on staging refreshed 158
+changed files in 1.5 seconds and answered 7.1 seconds after sending.
+
+Two things made a refresh of the image's copy slow, and both are handled in
+`chat_checkout`:
+
+- `reset --hard` and `clean` look at every file's entry (12 s on a cold
+  instance), so a refresh uses `read-tree -m -u`.
+- On Cloud Run the image's index doesn't read as newer than the files it
+  lists. Git then takes every file as maybe changed in the index's last
+  second and reads all 471 MB again before it writes the index (45 s of a
+  47 s refresh). The runner sets the index's time to now before it fetches.
+
+A git step that takes over 3 seconds logs where git spent the time
+(`chat checkout: git STEP took N s: ...`, from git's trace2 timings).
+
+**The size check.** `oa-agent --chat-checkout` fails when the checkout is
+bigger than 1,200 MB (`OA_CHAT_REPO_MAX_MB`), which fails the image build and
+so the deploy. When it fails, add what grew to the sparse list. The limit is
+what a runner with 4 GiB can still hold whole in memory, beside the Claude
+CLI's 300–500 MB a turn, if it ever has to make the checkout itself.
+
+**When the checkout fails.** If main can't be fetched and a copy is there,
+the turn reads that copy and the runner's log says so. With no usable copy
+the turn fails, and the person reads which of these happened:
+
+| What failed | The person reads |
+| --- | --- |
+| The kernel ended git for memory | We ran out of memory getting our copy of the code, so we couldn't answer. Send your message again. |
+| A git step passed its time limit (fetch 60 s, reset 120 s) | Getting our copy of the code took too long, so we stopped. Send your message again. |
+| GitHub didn't answer | We couldn't reach GitHub to get our copy of the code. Send your message again in a minute. |
+| Anything else | We couldn't get our copy of the code. Send your message again. |
+
+The runner logs `chat checkout: git STEP failed after N s (exit code, signal
+or time limit, and the kind)`, then git's own output.
+
+**Timing a cold start.** `coax/web/agent/live-check.py chat --cold
+oa-agent-staging` makes a new revision (so no instance is running), logs in
+as an admin, sends one Haiku message and prints when the runner took the
+turn, when the engine started and when the answer came. It fails when the
+engine starts later than 15 seconds after sending. For production:
+`--origin https://openagents.com --cold oa-agent`.
 
 Allowed tools: Read, Glob, Grep (only inside the checkout, as
 `coax/web/agent/confine.coax` decides in a PreToolUse hook and the
@@ -208,6 +261,7 @@ history.
 
 - oa-api: `coax/web/api/deploy.sh` (migration 0021 runs on start).
 - The runner: `coax/web/agent/deploy.sh` (makes the sealing key and the
-  session bucket once).
+  session bucket once, and builds main's checkout into the image). Then time
+  a cold start with `coax/web/agent/live-check.py chat --cold oa-agent-staging`.
 - The page: `coax/web/release.sh`; `coax/web/api/lb.sh` sends `/chat` to the
   site's bucket in production.

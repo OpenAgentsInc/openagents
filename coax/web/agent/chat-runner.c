@@ -5,9 +5,10 @@
 //
 //   wake {"chat": true}   a loop takes /chat's queued turns one at a time (next, event, end)
 //   the workspace         a read-only checkout of the public openagents repository's main
-//                         (OA_CHAT_REPO), refreshed at the start of every turn: shallow
-//                         (depth 1), blobless, and sparse without big binary assets, kept
-//                         at OA_AGENT_WORK/chat-repo between turns; never committed to
+//                         (OA_CHAT_REPO) at OA_CHAT_DIR: shallow (depth 1), blobless, and
+//                         sparse without big binary assets. deploy.sh's image holds one made at
+//                         build time (oa-agent --chat-checkout, which fails when it is too big),
+//                         so a turn fetches only what main changed since; never committed to
 //   the session           each conversation's CLI session file is kept in OA_CHAT_SESSIONS
 //                         (a Cloud Storage mount on Cloud Run) and put back before its next
 //                         turn, so the turn resumes it, with that turn's model
@@ -26,6 +27,7 @@
 // opens only for the person and kind it was made for. base64(nonce | ciphertext | tag).
 // A credential is never logged, put in an event or answered back.
 #include <dirent.h>
+#include <ftw.h>
 #include <limits.h>
 #include <openssl/rand.h>
 
@@ -88,7 +90,10 @@ static bool unseal(const char *sealed, const char *owner, const char *kind, char
 
 // ---- checking a credential
 // Runs argv with envp in dir, in its own process group, for at most seconds; its output in *out.
+static bool run_timed_out;   // the last run_timed was stopped at its limit
+static int run_timed_signal;  // or ended by this signal (9 from the kernel: out of memory)
 static int run_timed(const char *dir, const char *const argv[], char *const envp[], text *out, int seconds) {
+  run_timed_out = false; run_timed_signal = 0;
   int fds[2]; if (pipe(fds)) return -1;
   pid_t pid = fork();
   if (pid == 0) {
@@ -106,10 +111,11 @@ static int run_timed(const char *dir, const char *const argv[], char *const envp
     struct pollfd p = {fds[0], POLLIN, 0};
     int r = poll(&p, 1, 500);
     if (r > 0) { ssize_t k = read(fds[0], buf, sizeof buf); if (k <= 0) break; if (out) put(out, buf, (size_t)k); }
-    if (now_ms() > until) { kill(-pid, SIGKILL); break; }
+    if (now_ms() > until) { run_timed_out = true; kill(-pid, SIGKILL); break; }
   }
   close(fds[0]);
   int st = 0; waitpid(pid, &st, 0); kill(-pid, SIGKILL);
+  if (WIFSIGNALED(st) && !run_timed_out) run_timed_signal = WTERMSIG(st);
   return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 }
 // An API key: one models list. "" when it works, else why not.
@@ -187,36 +193,155 @@ static void credential(int fd, const char *body) {
 }
 
 // ---- the workspace
-static const char *chat_repo_dir(char *out, size_t cap) { snprintf(out, cap, "%s/chat-repo", env("OA_AGENT_WORK", "/tmp/oa-agent")); return out; }
-// The checkout, fresh from main. false: the repository could not be reached.
-static bool chat_checkout(const char *dir) {
+static const char *chat_repo_dir(char *out, size_t cap) {
+  const char *d = env("OA_CHAT_DIR", "");
+  if (*d) snprintf(out, cap, "%s", d); else snprintf(out, cap, "%s/chat-repo", env("OA_AGENT_WORK", "/tmp/oa-agent"));
+  return out;
+}
+// Why a git step failed, each with its own words for the person.
+typedef enum { CHAT_GIT_OK, CHAT_GIT_MEMORY, CHAT_GIT_TIMEOUT, CHAT_GIT_UNREACHABLE, CHAT_GIT_OTHER } chat_git_why;
+static const char *chat_git_words(chat_git_why w) {
+  return w == CHAT_GIT_MEMORY ? "We ran out of memory getting our copy of the code, so we couldn't answer. Send your message again."
+       : w == CHAT_GIT_TIMEOUT ? "Getting our copy of the code took too long, so we stopped. Send your message again."
+       : w == CHAT_GIT_UNREACHABLE ? "We couldn't reach GitHub to get our copy of the code. Send your message again in a minute."
+       : "We couldn't get our copy of the code. Send your message again.";
+}
+// One git step, for at most seconds; a failure is logged with the step and git's own words.
+static chat_git_why chat_git(const char *dir, const char *step, int seconds, const char *a, const char *b, const char *c, const char *d, const char *e, const char *f, const char *g) {
+  const char *argv[10] = {git_bin(), a, b, c, d, e, f, g, NULL};
+  text out = {0};
+  double t0 = now_ms();
+  // git's own timings (trace2), so a slow step's log line says where the time went
+  char trace[700], trace_env[720], *envp[18]; int n = 0;
+  snprintf(trace, sizeof trace, "%s/chat-home/git-trace-%d.txt", env("OA_AGENT_WORK", "/tmp/oa-agent"), (int)getpid());
+  snprintf(trace_env, sizeof trace_env, "GIT_TRACE2_PERF=%s", trace);
+  unlink(trace);
+  while (git_envp[n] && n < 16) { envp[n] = git_envp[n]; n++; }
+  envp[n++] = trace_env; envp[n] = NULL;
+  int st = run_timed(dir, argv, envp, &out, seconds);
+  double took = (now_ms() - t0) / 1000;
+  if (took > atof(env("OA_CHAT_GIT_SLOW", "3"))) {
+    text where = {0};
+    FILE *tf = fopen(trace, "r");
+    char line[2000];
+    while (tf && fgets(line, sizeof line, tf)) {
+      // time | depth | thread | event | repo | since start | in region | category | label
+      char *col[10]; int k = 0;
+      for (char *c0 = line; k < 10; k++) { col[k] = c0; char *bar = strchr(c0, '|'); if (!bar) break; *bar = 0; c0 = bar + 1; }
+      if (k < 8 || !(strstr(col[3], "region_leave") || strstr(col[3], "child_exit")) || atof(col[6]) < 0.5) continue;
+      size_t ln = strcspn(col[8], "\n");
+      putf(&where, "%s%.1f s %.*s", where.n ? "; " : "", atof(col[6]), (int)(ln > 90 ? 90 : ln), col[8]);
+    }
+    if (tf) fclose(tf);
+    say("chat checkout: git %s took %.1f s: %.1500s", step, took, where.p ? where.p : "git recorded no part over 0.5 s");
+    free(where.p);
+  }
+  unlink(trace);
+  if (st == 0) { free(out.p); return CHAT_GIT_OK; }
+  const char *o = out.p ? out.p : "";
+  chat_git_why w = CHAT_GIT_OTHER;
+  if (run_timed_out) w = CHAT_GIT_TIMEOUT;
+  else if (run_timed_signal == SIGKILL || strstr(o, "ut of memory") || strstr(o, "Cannot allocate memory") || strstr(o, "No space left")) w = CHAT_GIT_MEMORY;
+  else if (strstr(o, "Could not resolve host") || strstr(o, "unable to access") || strstr(o, "Failed to connect") || strstr(o, "Could not read from remote") ||
+           strstr(o, "Connection timed out") || strstr(o, "Connection refused") || strstr(o, "early EOF") || strstr(o, "remote end hung up")) w = CHAT_GIT_UNREACHABLE;
+  char how[60];
+  if (run_timed_out) snprintf(how, sizeof how, "stopped at its %d s limit", seconds);
+  else if (run_timed_signal) snprintf(how, sizeof how, "ended by signal %d", run_timed_signal);
+  else snprintf(how, sizeof how, "exit %d", st);
+  say("chat checkout: git %s failed after %.1f s (%s, %s): %.1500s", step, (now_ms() - t0) / 1000, how,
+      w == CHAT_GIT_MEMORY ? "out of memory" : w == CHAT_GIT_TIMEOUT ? "too slow" : w == CHAT_GIT_UNREACHABLE ? "the host could not be reached" : "another error", o);
+  free(out.p);
+  return w;
+}
+static int chat_secs(const char *name, int otherwise) { int v = atoi(env(name, "")); return v > 0 ? v : otherwise; }
+// The checkout at main. With one already there (the image's, or an earlier turn's) only what main
+// changed since is fetched; if that fetch fails the turn reads the copy it has, and the log says so.
+static chat_git_why chat_checkout(const char *dir) {
   char home[600], git_dir[700], sparse[800];
   snprintf(home, sizeof home, "%s/chat-home", env("OA_AGENT_WORK", "/tmp/oa-agent"));
   mkdir(env("OA_AGENT_WORK", "/tmp/oa-agent"), 0700); mkdir(home, 0700);
   git_env(NULL, home);
   snprintf(git_dir, sizeof git_dir, "%s/.git", dir);
   struct stat sb;
-  if (stat(git_dir, &sb)) {
+  bool have = !stat(git_dir, &sb);
+  double t0 = now_ms();
+  if (!have) {
     remove_dir(dir);
+    // checkStat and trustctime: the image's copy keeps each file's size and time but not its inode
+    // or change time, and git must not read every file again to find nothing changed
     if (git7(NULL, NULL, "init", "-q", "-b", "main", dir, NULL, NULL) ||
         git(dir, NULL, "remote", "add", "origin", env("OA_CHAT_REPO", "https://github.com/OpenAgentsInc/openagents.git"), NULL, NULL) ||
-        git(dir, NULL, "config", "core.sparseCheckout", "true", NULL, NULL, NULL)) return false;
+        git(dir, NULL, "config", "core.sparseCheckout", "true", NULL, NULL, NULL) ||
+        git(dir, NULL, "config", "core.checkStat", "minimal", NULL, NULL, NULL) ||
+        git(dir, NULL, "config", "core.trustctime", "false", NULL, NULL, NULL) ||
+        git(dir, NULL, "config", "gc.auto", "0", NULL, NULL, NULL)) { say("chat checkout: git init failed in %s", dir); return CHAT_GIT_OTHER; }
     // everything but big binary assets (non-cone sparse patterns)
     snprintf(sparse, sizeof sparse, "%s/.git/info/sparse-checkout", dir);
     FILE *f = fopen(sparse, "w");
-    if (!f) return false;
+    if (!f) return CHAT_GIT_OTHER;
     fputs("/*\n!*.png\n!*.jpg\n!*.jpeg\n!*.gif\n!*.webp\n!*.bin\n!*.vertices\n!*.indices\n!*.wasm\n!*.mp4\n!*.mov\n!*.glb\n!*.ktx2\n!*.zip\n", f);
     // and packed or raw data (the realms' gzipped packs, model fixtures, sound): 1.7 GB of checkout
-    // was 1.2 GB of these on 2026-11-11, and the checkout lives in the container's memory
+    // was 1.2 GB of these on 2026-11-11
     fputs("!*.gz\n!*.pack\n!*.f32\n!*.xz\n!*.wav\n!*.pcm\n!*.ogg\n!*.mp3\n!*.ttf\n!*.otf\n!*.safetensors\n!*.npy\n!*.tar\n!/docs/verification/data/\n", f);
     fclose(f);
   }
-  text out = {0};
-  bool ok = !git7(dir, &out, "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", "main") &&
-            !git(dir, &out, "reset", "-q", "--hard", "FETCH_HEAD", NULL, NULL) &&
-            !git(dir, &out, "clean", "-qfdx", NULL, NULL, NULL, NULL);
-  free(out.p);
-  return ok;
+  if (have) {
+    // The image's index must read as newer than every file it lists. When it doesn't, git takes
+    // each file as maybe changed in the index's last second and reads all of them again before it
+    // writes the index: 45 s of a 47 s refresh on Cloud Run (2026-11-11). Nothing but git writes here.
+    char index[800]; snprintf(index, sizeof index, "%s/index", git_dir);
+    utimes(index, NULL);
+  }
+  chat_git_why w = chat_git(dir, "fetch", chat_secs("OA_CHAT_FETCH_SECONDS", 60), "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", "main");
+  if (w != CHAT_GIT_OK) {
+    if (have && !git(dir, NULL, "rev-parse", "-q", "--verify", "HEAD", NULL, NULL)) { say("chat checkout: main could not be fetched; the turn reads the copy already here"); return CHAT_GIT_OK; }
+    return w;
+  }
+  double t1 = now_ms();
+  const char *how = "made whole";
+  if (have) {
+    // already at main: nothing to do
+    text at = {0};
+    bool same = false;
+    if (!git(dir, &at, "rev-parse", "HEAD", "FETCH_HEAD", NULL, NULL, NULL) && at.p) {
+      const char *nl = strchr(at.p, '\n');
+      same = nl && nl - at.p == 40 && !strncmp(at.p, nl + 1, 40);
+    }
+    free(at.p);
+    if (same) { say("chat checkout: already at main (fetch %.1f s)", (t1 - t0) / 1000); return CHAT_GIT_OK; }
+    // a refresh writes only the files main changed, and looks at no others (reset --hard and clean
+    // read every file's entry, 12 s on a cold instance); nothing but this writes in the checkout
+    how = "refreshed";
+    w = chat_git(dir, "read-tree", chat_secs("OA_CHAT_RESET_SECONDS", 120), "read-tree", "-m", "-u", "HEAD", "FETCH_HEAD", NULL, NULL);
+    if (w == CHAT_GIT_OK) w = chat_git(dir, "update-ref", 30, "update-ref", "HEAD", "FETCH_HEAD", NULL, NULL, NULL, NULL);
+    if (w != CHAT_GIT_OK) { have = false; how = "put back whole"; }
+  }
+  if (!have) {
+    // a whole checkout fetches every file's contents here
+    w = chat_git(dir, "reset", chat_secs("OA_CHAT_RESET_SECONDS", 600), "reset", "-q", "--hard", "FETCH_HEAD", NULL, NULL, NULL);
+    if (w == CHAT_GIT_OK) w = chat_git(dir, "clean", 120, "clean", "-qfdx", NULL, NULL, NULL, NULL, NULL);
+  }
+  if (w == CHAT_GIT_OK) say("chat checkout: %s in %.1f s (fetch %.1f s, files %.1f s)", how, (now_ms() - t0) / 1000, (t1 - t0) / 1000, (now_ms() - t1) / 1000);
+  return w;
+}
+// oa-agent --chat-checkout: makes the checkout at OA_CHAT_DIR and measures it, for the image
+// (Dockerfile). Fails when it is bigger than OA_CHAT_REPO_MAX_MB (1200): a runner without the
+// image's copy holds a whole checkout in memory beside its turns, in 4 GiB.
+static long long bake_bytes, bake_files;
+static int bake_add(const char *path, const struct stat *sb, int flag, struct FTW *f) {
+  (void)path; (void)f;
+  bake_bytes += (long long)sb->st_blocks * 512; if (flag == FTW_F) bake_files++;
+  return 0;
+}
+static int chat_bake(void) {
+  char repo[600]; chat_repo_dir(repo, sizeof repo);
+  chat_git_why w = chat_checkout(repo);
+  if (w != CHAT_GIT_OK) { say("chat checkout: %s", chat_git_words(w)); return 1; }
+  nftw(repo, bake_add, 64, FTW_PHYS);
+  long long mb = bake_bytes / (1024 * 1024), cap = chat_secs("OA_CHAT_REPO_MAX_MB", 1200);
+  say("chat checkout: %lld MB in %lld files at %s; the limit is %lld MB", mb, bake_files, repo, cap);
+  if (mb > cap) { say("chat checkout: too big. Leave more out of it (the sparse list in chat-runner.c) before the runner runs out of memory"); return 1; }
+  return 0;
 }
 
 // ---- the session file
@@ -316,7 +441,19 @@ static void chat_turn(const char *next) {
   snprintf(dir, sizeof dir, "%s/chat-%lld-%d", env("OA_AGENT_WORK", "/tmp/oa-agent"), id, (int)getpid());
   snprintf(home, sizeof home, "%s/home", dir); snprintf(cfg, sizeof cfg, "%s/cfg", dir);
   if (!uuid_ok(sid)) { chat_end(id, "failed", "\"\"", "\"the conversation has no session\"", 0, false); goto out; }
-  if (!chat_checkout(repo)) { chat_end(id, "failed", "\"\"", "\"the repository could not be reached\"", 0, false); goto out; }
+  {
+    // the page's status line while the copy refreshes
+    text eb = {0}, eo = {0};
+    putf(&eb, "{\"turn\":%lld,\"events\":[{\"type\":\"working\",\"data\":{\"text\":\"getting the latest code\"}}]}", id);
+    api("POST", "runner", "event", eb.p, &eo);
+    free(eb.p); free(eo.p);
+    chat_git_why w = chat_checkout(repo);
+    if (w != CHAT_GIT_OK) {
+      text e = {0}; putq(&e, chat_git_words(w));
+      chat_end(id, "failed", "\"\"", e.p, 0, false);
+      free(e.p); goto out;
+    }
+  }
   if (mkdir(dir, 0700) || mkdir(home, 0700) || mkdir(cfg, 0700)) { chat_end(id, "failed", "\"\"", "\"the runner could not make a work directory\"", 0, false); goto out; }
   // the credential: the asker's own, else ours
   if (!turn_credential(next)) { chat_end(id, "failed", "\"\"", "\"Your saved key could not be opened. Save it again under KEY.\"", 0, false); goto out; }

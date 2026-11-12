@@ -3,7 +3,9 @@
 # chat.coax and seat.coax, compiled to C by deploy.sh before the build), with
 # the claude CLI the engines drive, git and ssh with GitHub's host keys pinned,
 # and Chromium for hosted seats' headless pages (docs/verse/realm-seat.md). No
-# shell tools reach the model.
+# shell tools reach the model. The image also holds /chat's checkout of the
+# public repository (docs/chat.md), made by the runner itself at build time, so
+# a cold start fetches only what main changed since the deploy.
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libsecp256k1-dev libssl-dev libcurl4-openssl-dev && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/
@@ -30,5 +32,12 @@ ENV OA_AGENT_ENGINE=/usr/local/bin/oa-turn OA_AGENT_WORK=/tmp/oa-agent OA_KNOWN_
     OA_CHAT_ENGINE=/usr/local/bin/oa-chat-turn OA_CLAUDE=/usr/local/bin/claude \
     OA_SEAT_ENGINE=/usr/local/bin/oa-seat CHROME=/usr/bin/chromium CDP_WEBGPU=swiftshader \
     CHROMIUM_FLAGS="--no-sandbox"
+# /chat's checkout, in the image and not in the instance's memory (GitHub #13252). CHAT_AT changes
+# on every deploy so this step is never taken from a cache. The step fails when the checkout is
+# bigger than OA_CHAT_REPO_MAX_MB (chat-runner.c chat_bake).
+ENV OA_CHAT_DIR=/opt/oa-chat/repo
+RUN mkdir -p /opt/oa-chat && chown node:node /opt/oa-chat
 USER node
+ARG CHAT_AT=none
+RUN echo "chat checkout for $CHAT_AT" && OA_AGENT_WORK=/tmp/oa-chat-build oa-agent --chat-checkout && rm -rf /tmp/oa-chat-build
 CMD ["oa-agent", "--listen", "0.0.0.0:8080"]
