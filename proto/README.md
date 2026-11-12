@@ -2,8 +2,9 @@
 
 This root `proto/` directory is the defining schema source for **all
 OpenAgents surfaces**: web, mobile, desktop, agents, cloud, decisions,
-payments and Verse. Coax is the implementation target. **Verse** is the
-engine and the world/product layer it runs, made of realms.
+payments and Verse. Coax is the implementation target. **Aethyr** is the
+engine, and **the Verse** is the world it runs: the set of realms on the open
+web ([glossary](../docs/books/glossary.md)).
 
 - [Protocol specification and implementation plan](../docs/protocol/openagents-protocol-spec.md)
 - [Verse protocol chapter](../docs/verse/openagents-verse-protocol.md)

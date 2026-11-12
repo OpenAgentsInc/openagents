@@ -1,7 +1,8 @@
 # AGENTS
 
 What every agent working in this repository needs to know. Read
-[INVARIANTS.md](INVARIANTS.md) before changing anything it covers.
+[INVARIANTS.md](INVARIANTS.md) before changing anything it covers, and follow
+the [root glossary](docs/books/glossary.md) for new identifiers, tables, registry IDs and wire fields.
 
 ## What is here
 

@@ -1,8 +1,60 @@
-# Glossary for the books
+# Root glossary
 
-Words the seven books share. Each entry names the book that owns the topic.
-For Coax language terms, see the
+Shared vocabulary for the repository and the books. Each shared term has one
+meaning and one owning context; the Conflicts column names what the code does
+today and which move renames it. For Coax language terms, see the
 [Coax glossary](../../coax/book/appendix-e-glossary.md).
+
+**Rule for new code:** a new identifier, table, registry ID or wire field uses
+the glossary's word. Old names are not swept; a rename lands only with a move
+that already touches the file (#13267 to #13269, #13280).
+
+## Shared domain terms
+
+| Term | One meaning | Context | Conflicts |
+| --- | --- | --- | --- |
+| Aethyr | The engine | Engine | `proto/README.md` called the Verse the engine (fixed in #13312); `verse/` holds older engine files |
+| Verse | The set of realms on the open web that Aethyr runs | Realms | See Aethyr |
+| Realm | One world: a document and a link | Authoring | |
+| Zone | A named area of one realm's world, loaded as cells | Everglade | Also a Wasm page (`everglade/features.coax:66-81`, rename to pages in #13268/#13280), the AAA audit's server unit, and a GCP zone |
+| Page | A Wasm module the browser loads | Web client | Called "zone" (`EfZone`) in `everglade/features.coax:66-81`; rename to pages when #13268/#13280 touch it |
+| Room | One server-owned simulation of a zone with up to 16 seats | Room session | SQL says "instance" (`verse.room_instances`, `0115_room_directory.sql:1-2`, rename to rooms when #13267/#13280 touch it); also a shard's URL path (`/api/room/s1/`) and the `oa-room` binary |
+| Instance | Don't use. Say room | Room session | `verse.room_instances` (`0115_room_directory.sql:1-2`); rename to rooms with the room/world moves (#13267, #13280) |
+| Shard | One room server process | Room session | |
+| Host (VM) | A machine that runs shards | Operations | |
+| Seat | A player's slot in a room (`SeatId`), proved by a seat ticket | Room session | `verse.seats` (`0110_realm_seats.sql`) is an agent's place in a made realm; rename to agent seats when touched (#13267–#13269, #13280) |
+| Agent seat | An agent's place in a made realm | Authoring | Rename target for `verse.seats` (`0110_realm_seats.sql`, `seats.c`), picked up when a move touches those files (#13267–#13269, #13280) |
+| Seat ticket | Signed admission to one seat: identity, character, class and level | Room session | Class and level not in all tickets yet (#13259) |
+| Account | A login identity with authenticators (`auth.accounts`) | Identity | `verse.accounts` (game account) and `inference.account_day` also use "account" |
+| Game account | The game's owner of characters and realms (`verse.accounts`) | Everglade | Spelled `verse.accounts` today |
+| Player key | A browser's random secret for a guest (`verse.players`) | Identity | "Player" also means a person and the engine's `Player` body-plus-camera struct |
+| Player | A person playing. Not a key, not a struct | Everglade | SQL `verse.players` is a player key; engine `Player` holds body and camera |
+| Body | The server-owned movable entity of a player (#13271) | Engine | Today part of `Player` |
+| Character | The persistent hero: class, level, XP, abilities, items by reference | Everglade | Rig runtime (`aethyr/character/`), appearance, talk persona (`aethyr/talk/character.coax`), checkpoint capture, and `0130_item_ledger.sql` all use the word |
+| Appearance | A character's look from Character Create | Everglade | Sometimes called character |
+| Rig | An animated skeleton and its parts (`aethyr/character/`) | Engine | Folder and types called "character" |
+| Persona | An NPC's identity for talk | Talk | `aethyr/talk/character.coax` calls it character |
+| Class | An SRD class. Spelled `class` in code | Rules | Spelled `class`, `klass` and `kind` in one function (`room-everglade.coax:789,867`, extracted in #13267), with level folded into strings like `srd-fighter-5` |
+| Level | Derived from XP by the rules' table | Rules | Two copies of the XP table; client hello can set it |
+| Ability | One action a character can take: spell, class feature, attack | Rules | #13285 defines it |
+| Aura | A lasting effect on a creature, with stacking rules | Rules | #13285 |
+| Creature | Any rules participant: character, monster, NPC | Rules | |
+| Creature template | A stat block by content ID | Rules | Monsters addressed by index today |
+| Content ID | Stable ID of an ability, spell, template or spawn | Rules | #13286 |
+| Combat profile | A world's declared departures from the SRD (`world-profile.coax`) | Rules | "Profile" has seven meanings across wire, combat, timing, checkpoint, execution, compat and books |
+| Wire profile | A JSON file pinning a hand-packed frame's bytes (`proto/verse/*.json`) | Protocol | Shares "profile" with six other uses |
+| Checkpoint | A durable save of a character or a realm's simulation | Room session | Two different things today (character checkpoint vs simulation checkpoint); always qualify it |
+| Item | A game object in the ledger. Never money | Items | |
+| Operation ID | A caller-chosen key that makes a write idempotent | Items, Room session | Raw `int` in Coax, `text` in SQL |
+| Domain event | A past-tense fact a context publishes (`RsEvent`) | All | Shares "event" with world, analytics, Nostr, `chat.events` and `projects.events` |
+| World event | A scheduled in-world happening, such as a raid | Everglade | `verse.room_events` and `room-events.coax` |
+| Session (login) | An authenticated browser or app session (`auth.sessions`) | Identity | Six SQL tables named `sessions` (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`), plus `aethyr/session/` and `openagents.session.v1` |
+| Transcript log | Coder's JSONL log, id `openagents.session.v1` | Coder | Clashes with NIP-SESS (compliance plan C1) and login/room sessions |
+| Engine (Coder) | What runs a Coder task | Coder | Shares "engine" with Aethyr and SRD `aethyr/rules/srd/engine.coax` |
+| Golem | A Coder agent session, shown in the Everglade desktop | Golemancy (ACL over Coder) | |
+| Everglade | The game. Today Everglade II | Everglade | Legacy v1 (`everglade.wasm`, until #13269), `everglade2`, `.e2`, `everglade-ii` (#13267–#13269), and web domain `everglade.world` |
+
+## Book terms
 
 ## The stack
 
