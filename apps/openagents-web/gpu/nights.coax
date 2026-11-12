@@ -1,5 +1,5 @@
 // Shared engine lighting only. Every scene texture is supplied by the NWN pack.
-#load "charactercreator.coax";
+#load "../../../everglade/scene/gpu/charactercreator.coax";
 nights_bg_vs :: (id:u32,instance:u32)->V4 {return charactercreator_bg_vs(id,instance);}
 nights_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->CharacterCreatorBg {return charactercreator_bg_fs(pos,u,frame);}
 nights_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {

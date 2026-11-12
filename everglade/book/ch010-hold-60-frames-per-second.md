@@ -3,7 +3,7 @@
 > **Status: partly implemented.** Drawing, fading and culling are in
 > [`everglade/client/client.coax`](../client/client.coax),
 > [`everglade/client/cull.coax`](../client/cull.coax)
-> and [`apps/openagents-web/gpu/everglade2-cull.coax`](../../apps/openagents-web/gpu/everglade2-cull.coax).
+> and [`everglade/client/gpu/everglade2-cull.coax`](../client/gpu/everglade2-cull.coax).
 > The graphics governor is Aethyr's [`aethyr/quality.coax`](../../aethyr/quality.coax).
 > This chapter names functions and has no source listings yet.
 
@@ -39,7 +39,7 @@ It does this without any piece moving, growing or popping in front of you.
   140 m ([`verse/everglade2/field.coax`](../../verse/everglade2/field.coax)).
   Each coarse tuft stands exactly where one of the four finer tufts under it
   stood.
-- **GPU culling (#13050).** `apps/openagents-web/gpu/everglade2-cull.coax` tests each picked
+- **GPU culling (#13050).** `everglade/client/gpu/everglade2-cull.coax` tests each picked
   piece's box against the view and a depth pyramid in two phases
   (`coax/web/instance-cull.js`). It needs the adapter's
   `indirect-first-instance` feature. Without it, or with `?cull=0`, the page

@@ -1,17 +1,17 @@
 // What Everglade II hands the host's instance cull each frame (GitHub #13050; coax/web/host.js
-// "Instance culling", gpu/everglade2-cull.coax): the camera as one world-to-clip matrix, each kit
+// "Instance culling", everglade/client/gpu/everglade2-cull.coax): the camera as one world-to-clip matrix, each kit
 // piece's index range, and the runs this frame's draw list draws from the kit store. The page
 // still picks the pieces (e2_pieces: their level of detail, thinning and fades); the GPU only
 // leaves out the ones the frustum or this frame's own depth hide. everglade2-face.c holds the
 // block and exports it (coaxial_cull_v1).
-// The uniform and run words are gpu/everglade2-cull.coax's (E2Q_*, ER_*), repeated here.
+// The uniform and run words are everglade/client/gpu/everglade2-cull.coax's (E2Q_*, ER_*), repeated here.
 E2C_FLOATS :: 100;          // E2Q_FLOATS
 E2C_EYE :: 16;              // CL_EYE
 E2C_RUNS :: 92; E2C_TOTAL :: 93; E2C_OUT1 :: 94; E2C_OUT2 :: 95; E2C_WORD :: 96; E2C_BUCKETS :: 97;
 E2C_RUN_WORDS :: 4;         // ER_WORDS: first piece, pieces, pieces before, kit piece and level
-E2C_NEAR :: 0.1; E2C_FAR :: 900.0;   // gpu/fivelab.coax FIVELAB_NEAR and FIVELAB_FAR
+E2C_NEAR :: 0.1; E2C_FAR :: 900.0;   // everglade/scene/gpu/fivelab.coax FIVELAB_NEAR and FIVELAB_FAR
 
-// fivelab_project (gpu/fivelab.coax) as a matrix by columns, m * (world, 1), from the frame's
+// fivelab_project (everglade/scene/gpu/fivelab.coax) as a matrix by columns, m * (world, 1), from the frame's
 // uniforms: the eye u[16..18], its forward, right and up frames at 20, 24 and 28, the focal
 // length u[19], the viewport u[0..1] and the centre u[23], u[27].
 e2_cull_matrix :: (u: [] f32, m: [] f32) {

@@ -30,10 +30,10 @@ E2C_ADDRESS :: 19;       // host.js: this same-origin path in the address bar (h
 E2C_DRUID :: 3;          // the CLASS row starts at the druid, as Everglade's did
 E2C_CLASSES :: 12;       // the SRD 5.2.1's, in fivebar.coax's order (aethyr/character-appearance.coax CA_CLASSES)
 E2C_CLASS_NAMES :: [12] string.["BARBARIAN", "BARD", "CLERIC", "DRUID", "FIGHTER", "MONK", "PALADIN", "RANGER", "ROGUE", "SORCERER", "WARLOCK", "WIZARD"];
-E2C_PANEL_BOTTOM :: 730.0;   // the glass panel's foot on a desktop (gpu/character-glade.coax cg_ui_cover)
+E2C_PANEL_BOTTOM :: 730.0;   // the glass panel's foot on a desktop (everglade/scene/gpu/character-glade.coax cg_ui_cover)
 // The arrival through Everglade's portal from the homepage (newland-portal.coax: its button,
 // "Create your character", flies the homepage's camera into the portal and opens this page at
-// ?via=portal). The page opens on the portal's light (gpu/everglade2.coax e2_arrival, the same light at
+// ?via=portal). The page opens on the portal's light (everglade/client/gpu/everglade2.coax e2_arrival, the same light at
 // the same scale and wall clock), holds it until the glade has drawn E2C_ARRIVE_FRAMES frames, then:
 // the glade opens through it from the middle, the camera comes round and in to the studio's
 // framing, your character pops up, and the wardrobe fades in. A key, click or scroll skips to the end.
@@ -185,7 +185,7 @@ e2c_arrive_shot :: (s: [] E2, feet: figs.Point, st: figs.Shot) -> figs.Shot {
   floor_y := e2_height(eye.x, eye.z) + 0.3; if eye.y < floor_y { eye.y = floor_y; }
   return figs.Shot.{eye = eye, at = at};
 }
-// The veil's uniforms (gpu/everglade2.coax e2_arrival): u[96] the light's hold, u[97] its clock,
+// The veil's uniforms (everglade/client/gpu/everglade2.coax e2_arrival): u[96] the light's hold, u[97] its clock,
 // u[98] its swell, u[99] your character's size short of whole, u[100] the opening, u[101] and u[102]
 // your records.
 e2c_arrive_uniforms :: (s: [] E2, u: [] f32) {

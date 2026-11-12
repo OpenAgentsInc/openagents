@@ -11,7 +11,7 @@
 
 ## Independent runtime
 
-The unlisted `/worlds/everglade-nights-experimental` route selects `nights.coax` and `nights-face.c`. It imports no `fivelab.coax`, `charactercreator.coax` or `everglade/scene/bodies.coax` product logic. The source shader imports engine math and lighting from `gpu/charactercreator.coax`; that shader source has no source-art payload dependency. The HUD uses native NWN bitmap font glyphs, panels, buttons and quickbar artwork from an owner-local atlas. There is no procedural stroke font or Quaternius UI art.
+The unlisted `/worlds/everglade-nights-experimental` route selects `nights.coax` and `nights-face.c`. It imports no `fivelab.coax`, `charactercreator.coax` or `everglade/scene/bodies.coax` product logic. The source shader imports engine math and lighting from `everglade/scene/gpu/charactercreator.coax`; that shader source has no source-art payload dependency. The HUD uses native NWN bitmap font glyphs, panels, buttons and quickbar artwork from an owner-local atlas. There is no procedural stroke font or Quaternius UI art.
 
 The private pack is served at `/realms/everglade-nights-experimental/assets/nights.pack.gz` through an owner-local web root. The payload remains outside Git. The tracked route and catalog contract do not publish or reconstruct the original game distribution. The route's directory holds `DEV-ONLY`, so `coax/web/deploy.sh` never stages it: a release would otherwise need the private pack it names, which is not in the checkout.
 

@@ -15,7 +15,7 @@
 //      to the run's second region and second indirect draw, drawn after the first.
 // A piece is hidden only when this frame's own depth (what was drawn before it) is nearer than
 // all of its box, so a piece in view is always drawn: culling never makes one pop.
-//   coax/bin/coax test apps/openagents-web/gpu/everglade2-cull.coax --library
+//   coax/bin/coax test everglade/client/gpu/everglade2-cull.coax --library
 #load "../../../aethyr/render/geometry/cull.coax";
 
 // The uniform block: cull.coax's 92 floats, then these (25 vec4s in all).
@@ -103,7 +103,7 @@ e2q_cull_two :: (t:u32,u:[]f32,inst:[]V4,runs:[]u32,boxes:[]u32,args:[]u32,flags
 }
 
 // ---- checks: the CPU runs the entries one thread at a time
-// cg_instance_point (gpu/character-glade.coax) and e2_kit_place's sway, as the kit stage places
+// cg_instance_point (everglade/scene/gpu/character-glade.coax) and e2_kit_place's sway, as the kit stage places
 // a template vertex p.
 e2q_place :: (p:V3,a:V4,c:V4,wind:f32)->V3 {
   cs:=cos(a.w);sn:=sin(a.w);

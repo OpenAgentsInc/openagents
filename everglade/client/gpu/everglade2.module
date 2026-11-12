@@ -1,3 +1,3 @@
 --vertices everglade2_bg_vs,everglade2_shadow_vs,everglade2_scene_vs,everglade2_fx_vs
 --fragments everglade2_bg_fs,everglade2_shadow_fs,everglade2_scene_fs,everglade2_bloom_fs,everglade2_post_fs,everglade2_fx_fs
---bindings apps/openagents-web/gpu/everglade2.bindings --strip everglade2_
+--bindings everglade/client/gpu/everglade2.bindings --strip everglade2_

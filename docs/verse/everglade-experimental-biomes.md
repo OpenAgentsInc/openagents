@@ -64,7 +64,7 @@ public deployment or commit the extracted NWN payloads.
 
 - Realm: `apps/openagents-web/realms/everglade-experimental/`, module `fivelab`.
 - Source geometry/seed recipe: `verse/tools/assets/character_glade_pack.coax`.
-- Grass/environment shader: `apps/openagents-web/gpu/character-glade.coax`.
+- Grass/environment shader: `everglade/scene/gpu/character-glade.coax`.
 - Existing terrain placement: `verse/experimental-terrain.coax`.
 - Private import recipe in the companion ore repository:
   `tools/nwn_biomes.py`; native decoder: `tools/nwn_model.py`.

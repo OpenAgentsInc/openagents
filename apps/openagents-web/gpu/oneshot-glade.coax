@@ -1,4 +1,4 @@
-// One-Shot's copy of 5E Lab's glade shader (gpu/fivelab.coax at 3e1bf16256, before 5E Lab moved its
+// One-Shot's copy of 5E Lab's glade shader (apps/openagents-web/gpu/fivelab.coax at 3e1bf16256, before 5E Lab moved its
 // figures to a skinned scene pass): the glade traced per pixel with its capsule figures, or the flat
 // background, on the same uniform block. Kept here so One-Shot's Table Display does not follow 5E
 // Lab's own changes; its procedures carry the glade_ prefix in place of fivelab_.

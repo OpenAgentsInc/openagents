@@ -609,7 +609,7 @@ os_health :: (c: RsCreature) -> int {
   if c.hp < c.hp_max { return HP_HURT; }
   return HP_UNHURT;
 }
-// A figure's look in 5E Lab's glade (gpu/fivelab.coax): its class's, plus 16 for each team past the first.
+// A figure's look in 5E Lab's glade (everglade/scene/gpu/fivelab.coax): its class's, plus 16 for each team past the first.
 os_look :: (klass: int) -> int {
   if klass == RS_WARLOCK { return 1; }
   if klass == RS_BARBARIAN { return 2; }

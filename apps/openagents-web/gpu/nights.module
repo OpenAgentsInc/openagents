@@ -1,3 +1,3 @@
 --vertices nights_bg_vs,nights_shadow_vs,nights_scene_vs,nights_fx_vs
 --fragments nights_bg_fs,nights_shadow_fs,nights_scene_fs,nights_bloom_fs,nights_post_fs,nights_fx_fs
---bindings apps/openagents-web/gpu/charactercreator.bindings --strip nights_
+--bindings everglade/scene/gpu/charactercreator.bindings --strip nights_

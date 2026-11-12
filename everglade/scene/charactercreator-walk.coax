@@ -231,7 +231,7 @@ walk_frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool
   u[0]=w;u[1]=h;u[2]=s[0].clock;u[4]=k;u[10]=shadow_frame(s);u[11]=ifx s[0].scene_only then 1 else 0;
   cc_view(s[0],u,w,h,k);walk_view(s,u,w,h,k);
   c:=s[0].walk;controls:=walk_controls(c);
-  // u[40] fades the control panel's glass, u[41] is the fade to black (gpu/character-glade.coax).
+  // u[40] fades the control panel's glass, u[41] is the fade to black (everglade/scene/gpu/character-glade.coax).
   u[40]=1-controls;u[41]=walk_veil(c);
   n:=0;waiting:=c.arrived_at>=0 && c.fade_at<0;
   if controls>0.001 && !s[0].scene_only {n=walk_controls_text(s,out,w,h,k);}

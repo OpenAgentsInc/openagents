@@ -84,8 +84,8 @@ pictures. It is the same Coax and the same shaders as the web, not a copy.
 - **The realm.** `verse/native/build.sh everglade2 OUT` compiles the realm
   and its face to C, as it does any web realm. The app builds that into a
   library the host loads.
-- **The shaders.** `coax metal` emits each pair of `gpu/everglade2.coax` and
-  `gpu/everglade2-fx.coax` for Metal at build time, with the list of what
+- **The shaders.** `coax metal` emits each pair of `everglade/client/gpu/everglade2.coax` and
+  `everglade/client/gpu/everglade2-fx.coax` for Metal at build time, with the list of what
   each reads. The host binds every resource by its name.
 - **The face.** `everglade2-face.c` takes addresses of the host's width and
   has what host contract v1 asks of a face: `focus`, `outbox_capacity`,
@@ -115,7 +115,7 @@ host Everglade uses.
   version 1 in a native build.
 - **The shaders.** The Experimental page draws with Character Create's passes
   (the site's `data-wgsl="/charactercreator.wgsl"`), so the app emits
-  `gpu/charactercreator.coax`'s pairs and `gpu/fivelab-fx.coax`'s particles.
+  `everglade/scene/gpu/charactercreator.coax`'s pairs and `gpu/fivelab-fx.coax`'s particles.
 - **The pack.** The app carries the site's own `glade.pack.gz` (92 MB). The
   page host inflates a gzipped pack as it opens, as the browser host does.
 - **One host, two realms.** The Mac app keeps a page for each realm world.

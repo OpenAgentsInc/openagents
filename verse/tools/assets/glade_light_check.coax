@@ -9,7 +9,7 @@
 #load "../../../coax/lib/net/cdp.coax";
 #load "../../../aethyr/render/environment-frame.coax" as envf;
 #load "../../../aethyr/render/environment-debug.coax" as envd;
-GLC_U_FLOATS :: 316;   // the binding's 79 vec4s (apps/openagents-web/gpu/charactercreator.bindings)
+GLC_U_FLOATS :: 316;   // the binding's 79 vec4s (everglade/scene/gpu/charactercreator.bindings)
 GLC_U_ENV :: 208;      // PAINT_ENV_U
 // "[0,0,...,w208,...]": the block as a JavaScript array, the glade's record in place
 glc_put :: (o: [] u8, n: int, t: string) -> int { k := n; for c: t { if k < o.count { o[k] = c; k += 1; } } return k; }

@@ -1,7 +1,7 @@
 // Everglade's portal: the light on its face, one function of the portal's own coordinates and the
 // shimmer's clock, drawn by both sides of the way in. The homepage (gpu/newland.coax, portal mode)
 // draws it on the portal in the Grid and, as the camera flies through, over the whole view; Character
-// Create (gpu/everglade2.coax, the arrival veil) draws the same light at the same scale and clock when
+// Create (everglade/client/gpu/everglade2.coax, the arrival veil) draws the same light at the same scale and clock when
 // its page opens, then lets the glade through it. The clock is the wall clock's seconds (both pages
 // read it from their facts), so the light runs on unbroken across the page change.
 //   p: the portal's coordinates, its rim at length 1 (the middle at 0).

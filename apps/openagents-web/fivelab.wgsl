@@ -1,4 +1,4 @@
-// ---- generated: apps/openagents-web/gpu/fivelab.coax (the module) by coax wgsl; do not edit
+// ---- generated: everglade/scene/gpu/fivelab.coax (the module) by coax wgsl; do not edit
 struct coax_t11 {
   x: vec4f,
   y: vec4f,

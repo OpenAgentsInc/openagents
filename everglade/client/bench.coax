@@ -1,7 +1,7 @@
 // Everglade II's Golemancer's Workbench on the page (everglade/world/golem-bench.coax says what it
 // holds): a long table beside Pansopher with a clay pot, a scroll, books, a candle and bottles on it
 // and a cauldron at its end, all Fantasy Props meshes the pack already carries (its M rows: Everglade's
-// kit, one record each, which gpu/everglade2.coax e2_prop_vs reads). Within E2B_USE m of the table a
+// kit, one record each, which everglade/client/gpu/everglade2.coax e2_prop_vs reads). Within E2B_USE m of the table a
 // prompt says to press E (or tap it); the bench's window opens over most of the screen: the kinds of
 // golem to shape, how the one picked is made, your golems, orders and reports, the materials and the
 // ranks. The craft isn't built, so its counts are nought and Shape says so. Esc, E, Close or walking
@@ -152,7 +152,7 @@ e2b_overlay :: (s: [] E2, out: [] f32, at: int) -> int {
 }
 
 // ---- the world: the table and what stands on it, each mesh a static record
-// A kit prop's record (gpu/everglade2.coax e2_prop_vs, kind 21): where it stands and its turn. Its
+// A kit prop's record (everglade/client/gpu/everglade2.coax e2_prop_vs, kind 21): where it stands and its turn. Its
 // vertices are the pack's first, so its word is 0.
 E2B_RECORD_KIND :: 21;
 e2b_record :: (out: [] f32, rec: int, x: f32, y: f32, z: f32, yaw: f32) {

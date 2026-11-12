@@ -1,4 +1,4 @@
-// Experimental meadow's ground height for the GPU passes (gpu/character-glade.coax places the open
+// Experimental meadow's ground height for the GPU passes (everglade/scene/gpu/character-glade.coax places the open
 // meadow's grass and kits on it, #13132). It loads only the glade's height, so a shader module that
 // loads it doesn't reach the CPU-side terrain (experimental-terrain.coax), the dungeon or the
 // visibility service, whose quantities WGSL doesn't take. experimental-terrain.coax keeps the site

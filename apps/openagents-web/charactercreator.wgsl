@@ -1,4 +1,4 @@
-// ---- generated: apps/openagents-web/gpu/charactercreator.coax (the module) by coax wgsl; do not edit
+// ---- generated: everglade/scene/gpu/charactercreator.coax (the module) by coax wgsl; do not edit
 struct coax_t9 {
   x: vec4f,
   y: vec4f,

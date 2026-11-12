@@ -133,7 +133,7 @@ coax/bin/coax test verse/everglade2/environment.coax
 ## Mistakes
 
 - **Copies of the numbers.** The glade's light first lived as constants in an
-  app file (`apps/openagents-web/gpu/character-glade-light.coax`). Another
+  app file (`everglade/scene/gpu/character-glade-light.coax`). Another
   realm that wanted the look had to copy them, and the copies could drift
   apart. Since #13060 the numbers live once in `aethyr/world/environment.coax`,
   and the app's `cg_*` functions only delegate to them.

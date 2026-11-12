@@ -11,7 +11,7 @@
 // the lab gives the battle of its own: battle.coax rs_use), the grid growing with them, so the
 // frame's cost can be read off the FPS in the corner.
 //
-// Two views, V switches them. The glade (the default): gpu/fivelab.coax's bg_fs traces the
+// Two views, V switches them. The glade (the default): everglade/scene/gpu/fivelab.coax's bg_fs traces the
 // battle in 3D in Everglade's painterly look, the druids standing on their squares in a
 // clearing; drag (or the arrow keys) orbits the camera, Shift-drag, WASD or two fingers pan it,
 // the wheel, a pinch or + and - zoom it. Flat: bg_fs draws the bare
@@ -68,11 +68,11 @@
 // (lab_sliders), never dropped quietly. LABEL_VERTS: the most one label takes.
 HUD_VERTS :: 150000; LABEL_VERTS :: 900;   // the HUD's text is most of it: the log and 48 heroes' lines
 SCENE_VERTS :: 100000;   // MAX_VERTICES - HUD_VERTS
-U_FRAME_FLOATS :: 104;   // 26 vec4s: the camera, the grid, the zones (gpu/fivelab.coax FivelabU)
+U_FRAME_FLOATS :: 104;   // 26 vec4s: the camera, the grid, the zones (everglade/scene/gpu/fivelab.coax FivelabU)
 // The frame store (a read-only storage buffer, group 0 binding 1: coax/web/host.js frame store),
 // the tokens and squares bg_fs reads, too many for a uniform block's 64 KB: every creature's token
 // (4 floats), then every square's (the token standing nearest its middle plus 1, 0 none).
-F_SQUARES :: 69632;   // LAB_MAX * 4 (gpu/fivelab.coax FIVELAB_SQUARES)
+F_SQUARES :: 69632;   // LAB_MAX * 4 (everglade/scene/gpu/fivelab.coax FIVELAB_SQUARES)
 FRAME_FLOATS :: 143360;   // F_SQUARES + LAB_SQUARES
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
 U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_ZONES :: 36; U_BOUNDS :: 100;
@@ -227,7 +227,7 @@ bt :: (s: [] Lab) -> [] RsBattle {
 }
 dice :: (s: [] Lab) -> [] RsDice { return s[0].battle[0].dice[..]; }
 
-// A figure's look in the glade (gpu/fivelab.coax): its class's, plus 16 for each team past the first.
+// A figure's look in the glade (everglade/scene/gpu/fivelab.coax): its class's, plus 16 for each team past the first.
 look_of :: (klass: int) -> int {
   if klass == RS_WARLOCK { return 1; }
   if klass == RS_BARBARIAN { return 2; }
@@ -2105,7 +2105,7 @@ board_areas :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
 }
 
 // The flat view's tokens: bg_fs draws each one's ring from the frame store (every creature, however
-// many: gpu/fivelab.coax fivelab_flat_tokens); these are what a token wears besides, on squares big
+// many: everglade/scene/gpu/fivelab.coax fivelab_flat_tokens); these are what a token wears besides, on squares big
 // enough to read them (TOKEN_MARKS_PX), and only the ones on the screen.
 TOKEN_MARKS_PX :: 12.0;
 draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
@@ -2823,8 +2823,8 @@ lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k
   s[0].stage = -1; lab_stage(s[..], "url=http://x/worlds/everglade-experimental?stage=nothing"); #assert s[0].stage == -1;
 }
 
-// The light (lighting plan Phase 1, #13066): the glade's passes (gpu/charactercreator.coax,
-// gpu/fivelab.coax through the cg_* names) read the camera's resolved environment at U_ENV, written
+// The light (lighting plan Phase 1, #13066): the glade's passes (everglade/scene/gpu/charactercreator.coax,
+// everglade/scene/gpu/fivelab.coax through the cg_* names) read the camera's resolved environment at U_ENV, written
 // after the frame has placed the eye (u[16..18]). Experimental and 5E Lab author no environment, so
 // it is the painterly default at the page's fixed noon (data-clock fixed:0.5): no region and no
 // clock moves it, so the record is resolved once and the same words go up every frame.
@@ -3836,7 +3836,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n := lab_frame(s[..], out[..], u[..], 1600, 1000, 1, 0.05, false);
   #assert n > 0;
-  // the shader's trees stand round the clearing at U_BOUNDS's half sizes (gpu/fivelab.coax
+  // the shader's trees stand round the clearing at U_BOUNDS's half sizes (everglade/scene/gpu/fivelab.coax
   // fivelab_tree): these four, and nothing else of the battle, place them and the grid's lines
   first: [4] f32; for k: 0..<4 { first[k] = u[U_BOUNDS + k]; }
   #assert first[0] == f32(s[0].cols) * f32(SQ) / 2 && first[1] == f32(s[0].rows) * f32(SQ) / 2 && first[2] == f32(SQ);

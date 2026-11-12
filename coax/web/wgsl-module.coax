@@ -21,10 +21,11 @@
 WM_PAGE :: 4194304;
 WM_TIMEOUT_MS :: 300000;   // each coax wgsl (wm_module)
 // Every page's module, as apps/openagents-web/build.sh writes them: Everglade's two from
-// verse/everglade/, then each apps/openagents-web/gpu/NAME.coax with NAME.module to
+// verse/everglade/, then each NAME.coax with NAME.module in a folder of WM_GPU (the web
+// app's, then the game's scene and client: everglade/scene/gpu/, everglade/client/gpu/) to
 // apps/openagents-web/NAME.wgsl. gpu/nip.coax is the NIP pages' (nip01.wgsl, generated
 // and ignored), which build.sh writes itself.
-WM_GPU :: "apps/openagents-web/gpu";
+WM_GPU :: [3] string.["apps/openagents-web/gpu", "everglade/scene/gpu", "everglade/client/gpu"];
 WM_APP :: "apps/openagents-web";
 WM_SKIP :: "nip";
 // wm_module's answers.
@@ -53,18 +54,21 @@ wm_site :: (check: bool) -> int {
   t: WmTally;
   t = wm_tally(t, wm_module("verse/everglade/gpu.coax", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.module", check), "apps/openagents-web/everglade.wgsl");
   t = wm_tally(t, wm_module("verse/everglade/gpu-fx.coax", "apps/openagents-web/everglade-fx.wgsl", "verse/everglade/gpu-fx.module", check), "apps/openagents-web/everglade-fx.wgsl");
-  l: [1] FsList;
-  k := fs_list(WM_GPU, l[..]);
-  if k < 0 || l[0].full { tool_err("wgsl-module: cannot list "); tool_errln(WM_GPU); return 1; }
-  for i: 0..<k {
-    name := wm_stem(fs_entry(l[..], i));
-    if name.count == 0 || name == WM_SKIP { continue; }
-    fb: [512] u8; ob: [512] u8; mb: [512] u8;
-    file := wm_path(fb[..], WM_GPU, name, ".coax");
-    into := wm_path(ob[..], WM_APP, name, ".wgsl");
-    opts := wm_path(mb[..], WM_GPU, name, ".module");
-    if file.count == 0 || into.count == 0 || opts.count == 0 { tool_err("wgsl-module: name too long: "); tool_errln(name); t.bad += 1; continue; }
-    t = wm_tally(t, wm_module(file, into, opts, check), into);
+  for g: 0..<WM_GPU.count {
+    gpu := WM_GPU[g];
+    l: [1] FsList;
+    k := fs_list(gpu, l[..]);
+    if k < 0 || l[0].full { tool_err("wgsl-module: cannot list "); tool_errln(gpu); return 1; }
+    for i: 0..<k {
+      name := wm_stem(fs_entry(l[..], i));
+      if name.count == 0 || name == WM_SKIP { continue; }
+      fb: [512] u8; ob: [512] u8; mb: [512] u8;
+      file := wm_path(fb[..], gpu, name, ".coax");
+      into := wm_path(ob[..], WM_APP, name, ".wgsl");
+      opts := wm_path(mb[..], gpu, name, ".module");
+      if file.count == 0 || into.count == 0 || opts.count == 0 { tool_err("wgsl-module: name too long: "); tool_errln(name); t.bad += 1; continue; }
+      t = wm_tally(t, wm_module(file, into, opts, check), into);
+    }
   }
   if check { print("wgsl-module: % module(s) checked, % stale, % failed\n", t.seen, t.stale, t.bad); }
   return ifx t.bad > 0 || t.stale > 0 then 1 else 0;
@@ -159,6 +163,7 @@ wm_words :: (text: string, into: [] string) -> int {
   o: [40] u8;
   #assert wm_path(o[..], "apps/openagents-web/gpu", "realm", ".coax") == "apps/openagents-web/gpu/realm.coax";
   #assert wm_path(o[..], "apps/openagents-web/gpu", "realmrealm", ".module") == "";
+  #assert wm_path(o[..], WM_GPU[2], "fx", ".coax") == "everglade/client/gpu/fx.coax";
 }
 #test "a failed module is bad; written and unchanged ones are only seen" {
   t: WmTally;

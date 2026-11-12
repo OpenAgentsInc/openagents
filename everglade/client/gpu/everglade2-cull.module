@@ -1,2 +1,2 @@
 --computes e2q_bounds,e2q_cull_one,e2q_cull_two,cl_hiz_depth,cl_hiz_down
---bindings apps/openagents-web/gpu/everglade2-cull.bindings
+--bindings everglade/client/gpu/everglade2-cull.bindings

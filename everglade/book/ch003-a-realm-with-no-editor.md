@@ -26,7 +26,7 @@ change one?"
 | The host face | `apps/openagents-web/everglade2-face.c` | The exports the browser host calls, such as `coaxial_frame` |
 | Movement | [`everglade/shared/move.coax`](../shared/move.coax) | Where you may stand, the pace, trunks and rock hulls |
 | Character Create | [`everglade/client/create.coax`](../client/create.coax) | The studio, the arrival and the run into the world |
-| The GPU passes | [`apps/openagents-web/gpu/everglade2.coax`](../../apps/openagents-web/gpu/everglade2.coax) | The ground, kit pieces, grass and characters, in Coax compiled to WGSL |
+| The GPU passes | [`everglade/client/gpu/everglade2.coax`](../client/gpu/everglade2.coax) | The ground, kit pieces, grass and characters, in Coax compiled to WGSL |
 | The land | [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax) | Height, path, woods, clearing and colour, as pure functions |
 | The planting | [`verse/everglade2/plant.coax`](../../verse/everglade2/plant.coax) | Which kit piece stands where |
 | The ground tiles | [`verse/everglade2/ground.coax`](../../verse/everglade2/ground.coax) | The admitted terrain tiles and their baked light |
@@ -56,8 +56,8 @@ cd apps/openagents-web
 ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
   everglade-step.coax ../../aethyr/sticks.coax
 cd ../..
-coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/everglade2.coax \
-  apps/openagents-web/everglade2.wgsl apps/openagents-web/gpu/everglade2.module
+coax/web/tool.sh coax/web/wgsl-module.coax everglade/client/gpu/everglade2.coax \
+  apps/openagents-web/everglade2.wgsl everglade/client/gpu/everglade2.module
 ```
 
 The pack changes less often. Its build command, and the step that adds the

@@ -14,7 +14,7 @@
 // The GM's page holds the table (oneshot-table.coax). Players join by link or code over the room
 // server's relay (coax/web/room/room-relay.coax: four seats a room, the GM's and three more); with
 // no relay, everyone plays on the GM's page, the tabs as seats. Every rule is the SRD engine's
-// (aethyr/rules/srd/), the 3D scene 5E Lab's shader (gpu/fivelab.coax).
+// (aethyr/rules/srd/), the 3D scene 5E Lab's shader (everglade/scene/gpu/fivelab.coax).
 //   coax test apps/openagents-web/oneshot.coax
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -30,7 +30,7 @@
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 160000;
-UNIFORM_FLOATS :: 1768;   // gpu/fivelab.coax's block (442 vec4s)
+UNIFORM_FLOATS :: 1768;   // everglade/scene/gpu/fivelab.coax's block (442 vec4s)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
 U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 1700; U_BOUNDS :: 1764;
 TOKENS3 :: 208;
@@ -1349,7 +1349,7 @@ os_frame :: (s: [] Os, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32
     s[0].out_n = os_save(s[0].camps[..], s[0].outbox[..]);
     s[0].action = ACT_KEEP; s[0].dirty = false;
   }
-  // the uniforms: 5E Lab's block (gpu/fivelab.coax)
+  // the uniforms: 5E Lab's block (everglade/scene/gpu/fivelab.coax)
   for i: 0..<u.count { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
   // the flat view with no grid: its lines a million pixels apart, off the screen

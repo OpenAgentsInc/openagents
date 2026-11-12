@@ -22,7 +22,7 @@
 #load "../../../aethyr/render/terrain-shade.coax";
 #load "../../../aethyr/render/ghost.coax";   // your character as a ghost
 #load "../../../components/backend/gpu-shader.coax";
-#load "fivelab.coax";   // the people's vertices and their skinning from the baked clips (fivelab_scene_vs)
+#load "../../../everglade/scene/gpu/fivelab.coax";   // the people's vertices and their skinning from the baked clips (fivelab_scene_vs)
 
 WB_U_BRUSH :: 44;
 WB_U_LAYERS :: 48;
@@ -180,7 +180,7 @@ worldbuilder_height :: (ground:[]V4,x:f32,z:f32)->f32 {
   return mix(a,b,az);
 }
 // Your character: the people's vertex skinned from the baked clips by the zone's record, as
-// Everglade's zones draw it (gpu/fivelab.coax), stood on the ground where it is and seen from this
+// Everglade's zones draw it (everglade/scene/gpu/fivelab.coax), stood on the ground where it is and seen from this
 // page's camera. The zone's floor is level; the ground's height is added here.
 worldbuilder_figure_vs :: (id:u32,k:u32,u:[]f32,people:[]u32,figures:[]FivelabObj,bake:[]V4,ground:[]V4)->WorldbuilderS {
   f:FivelabS=fivelab_scene_vs(id,k,u,people,figures,bake);

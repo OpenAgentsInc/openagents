@@ -143,7 +143,7 @@ weapon_matrix :: (h:[12]f32,hand:[3]f32,k:int,yaw:f32,at:[3]f32)->[12]f32 {
  // then the hand's pose
  v:[4][3]f32;
  for r:0..<3 {v[0][r]=h[r*4]*p[0]+h[r*4+1]*p[1]+h[r*4+2]*p[2]+h[r*4+3];for i:0..<3 {v[i+1][r]=h[r*4]*col[i][0]+h[r*4+1]*col[i][1]+h[r*4+2]*col[i][2];}}
- // and the figure's turn and place, as its parts (gpu/fivelab.coax)
+ // and the figure's turn and place, as its parts (everglade/scene/gpu/fivelab.coax)
  c:=cos(yaw);sn:=sin(yaw);w:[12]f32;
  for i:0..<4 {w[i*3]=v[i][0]*c+v[i][2]*sn;w[i*3+1]=v[i][1];w[i*3+2]= -v[i][0]*sn+v[i][2]*c;}
  for r:0..<3 {w[r]+=at[r];}

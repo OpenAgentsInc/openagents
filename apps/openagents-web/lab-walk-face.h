@@ -3,7 +3,7 @@
 // module is an Everglade zone (everglade/zone.coax), as the Archery Range's is (archery-range-face.c,
 // whose shape this follows): nearly every export hands the host's call to the zone, and the frame, the
 // pointer and the page's message go through the world (LAB_FRAME, LAB_POINTER, LAB_MESSAGE). The scene
-// draws your figure with Character Create's passes (gpu/charactercreator.coax); the Grid, its sky and
+// draws your figure with Character Create's passes (everglade/scene/gpu/charactercreator.coax); the Grid, its sky and
 // the stations are the walk's quads, drawn after it as the page's particles by bitcoin-lab-fx.wgsl
 // (aethyr/fx/gpu-quads.coax), 16 floats a quad.
 //

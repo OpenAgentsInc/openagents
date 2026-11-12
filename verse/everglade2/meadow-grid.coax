@@ -1,5 +1,5 @@
 // How many cells a side each open-meadow grid round the eye spans (meadow.coax scatters into these;
-// gpu/character-glade.coax cg_meadow_vs draws one instance a cell). Kept apart, with no loads, so a
+// everglade/scene/gpu/character-glade.coax cg_meadow_vs draws one instance a cell). Kept apart, with no loads, so a
 // page that draws the meadow can size its draws without loading the meadow itself; meadow.coax checks
 // every number here against its kit's cell and reach.
 #module "verse.everglade2meadowgrid";

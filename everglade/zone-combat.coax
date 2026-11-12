@@ -1790,7 +1790,7 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
   x[0].top = pick.y0;
   cr[0].dev_below = cm_pick_height(pick) / k + f32(XC_GAP);
   if u.count > 54 {
-    // gpu/character-glade.coax: the ANIMATIONS panel ends over the picker (u[52]); the picker draws its own panel (u[53], u[54] off)
+    // everglade/scene/gpu/character-glade.coax: the ANIMATIONS panel ends over the picker (u[52]); the picker draws its own panel (u[53], u[54] off)
     u[52] = ifx cr[0].dev_animations && !cr[0].preview_collapsed then cr[0].dev_below * k else 0;
     u[53] = 0; u[54] = 0;
   }

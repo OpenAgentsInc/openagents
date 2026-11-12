@@ -1238,7 +1238,7 @@ async function loadPageFont() {
   await font.load();document.fonts.add(font);pageFontFamily = JSON.stringify(family);
   // A HUD style's title face (aethyr/ui/hud-style.coax, docs/verse/hud-styles.md): data-ui-title-font-src,
   // -family and -weight. The atlas then holds two faces in one set of cells: the reading face in red, the
-  // title face in green; only a realm whose strokes ask for a channel (gpu/fivelab.coax fivelab_hud_fs) has one.
+  // title face in green; only a realm whose strokes ask for a channel (everglade/scene/gpu/fivelab.coax fivelab_hud_fs) has one.
   const titleSource = script?.dataset.uiTitleFontSrc, titleFamily = script?.dataset.uiTitleFontFamily;
   if (!titleSource || !titleFamily) return;
   const titleResponse = await fetch(new URL(titleSource, location.href));

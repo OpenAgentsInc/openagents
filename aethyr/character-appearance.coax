@@ -40,7 +40,7 @@ CaLook :: struct {head:int;hair:int=-1;extra:int=-1;skin:[3]f32;hair_rgb:[3]f32;
  a[0].klass= -1;#assert ca_save(a[0],b[..])==56;
 }
 // The dyes are display-space colours. Both Character Create and the film apply them in display
-// space, through one shared cc_albedo (apps/openagents-web/gpu/everglade2.coax), so a dye looks the
+// space, through one shared cc_albedo (everglade/client/gpu/everglade2.coax), so a dye looks the
 // same in both. The last dye is white: no dye.
 CA_DYES :: [9][3]f32.[[3]f32.[0.06,0.22,0.18],[3]f32.[0.38,0.04,0.065],[3]f32.[0.06,0.12,0.38],[3]f32.[0.72,0.65,0.48],[3]f32.[0.29,0.08,0.34],[3]f32.[0.055,0.055,0.07],[3]f32.[0.65,0.29,0.05],[3]f32.[0.22,0.36,0.46],[3]f32.[1,1,1]];
 #test "dyes are display-space colours in range and the last is no dye" {

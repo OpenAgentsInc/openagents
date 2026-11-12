@@ -91,7 +91,7 @@ gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:
 // the goblin's 40 (Idle, Jog, Sword, Shoot, Death) as glade/gremlin0..39, then the Sword as glade/weapon1
 // (charactercreator.coax: the frames drawn as flag-18 records, the Sword on the guard's right hand as flag 19).
 // Each frame stands at the origin, its first frame's middle over it and its feet on it, at its size in the
-// world. Kind 9 is a model shaded by its vertex colour alone, 10 by its texture times it (gpu/everglade2.coax).
+// world. Kind 9 is a model shaded by its vertex colour alone, 10 by its texture times it (everglade/client/gpu/everglade2.coax).
 GP_E2_WOLVES :: 32; GP_E2_GOBLINS :: 40; GP_E2_FRAMES :: 73;
 GP_E2_WOLF_SCALE :: 0.33;     // the Ultimate Animals wolf, 5.3 m long as made: 1.75 m nose to tail, 0.88 m high
 GP_E2_GOBLIN_SCALE :: 1.25;   // the Bestiary Puglin, 0.85 m as made: a Small goblin of 1.06 m
@@ -146,7 +146,7 @@ gp_e2_catalog :: (c:[]Sb,w:[]Gp,index_base:int,vertex_word:int) {
 // The ground (#13059): the admitted tiles' own samples (verse/everglade2/ground.coax), each drawn
 // E2G_DRAW_DROP below the admitted surface, every solid cell split on its south-west / north-east
 // diagonal as the tiles are; then coarse 4 m ground out to the valley's edges under them, a little
-// lower. The ground's colour is the material table's, per pixel (gpu/everglade2.coax
+// lower. The ground's colour is the material table's, per pixel (everglade/client/gpu/everglade2.coax
 // e2_ground_albedo): its vertices carry no colour of their own.
 GP_NO_COLOUR :: [3]f32.[0,0,0];
 gp_ground_v :: (w:[]Gp,x:f32,z:f32,y:f32,step:f32)->int {

@@ -47,12 +47,12 @@
 #load "../aethyr/render/mesh-cull.coax" as mc;
 #load "../aethyr/render/ghost.coax" as ghost;   // your figure as a ghost, when a zone asks (EgZone.ghost, zone_figure_blend)   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
 
-// The strokes a frame may draw and the uniforms it writes (gpu/charactercreator.bindings).
+// The strokes a frame may draw and the uniforms it writes (everglade/scene/gpu/charactercreator.bindings).
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD and the labels (the 5E Lab's log too, which shares the count)
 U_ENV :: 208;            // the camera's resolved environment, 27 vec4s (aethyr/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
 U_ENV_WORDS :: envf.ENV_FRAME_FLOATS;   // the record's words, from its owner (#13067: no second copy of the layout)
-UNIFORM_FLOATS :: 316;   // 79 vec4s (gpu/fivelab.bindings, gpu/charactercreator.bindings)
+UNIFORM_FLOATS :: 316;   // 79 vec4s (everglade/scene/gpu/fivelab.bindings, everglade/scene/gpu/charactercreator.bindings)
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 HOLD_JUMP :: 1024; HOLD_ALL :: 2047;
 OUTBOX_CAP :: 4096;
@@ -295,7 +295,7 @@ zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) {
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text);
   // the glade's environment mesh, or on the open field its meadow's ground (180 thousand triangles at the
   // range, #13190): its boxes asked of the host, 8 words a vertex; a sky vertex (kind 0, the normal word's
-  // bits 24 to 27: gpu/character-glade.coax cg_environment_vs) is in screen space, so its run is always drawn
+  // bits 24 to 27: everglade/scene/gpu/character-glade.coax cg_environment_vs) is in screen space, so its run is always drawn
   c := s[0].creator[..]; m := zone_cull_mesh(c[0]);
   mc.mesh_cull_want(s[0].glade_cull[..], m.first, m.count, m.word, 8, 3, 0x0f000000, 0);
 }
@@ -454,7 +454,7 @@ zone_gfx_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool 
 }
 
 // ---- the frame
-// The light (lighting plan Phase 1, #13066): the glade's passes (gpu/charactercreator.coax) read the
+// The light (lighting plan Phase 1, #13066): the glade's passes (everglade/scene/gpu/charactercreator.coax) read the
 // camera's resolved environment at U_ENV, written after the frame has placed the eye (u[16..18]). A
 // zone authors no environment, so it is the painterly default at the page's fixed noon (data-clock
 // fixed:0.5), resolved once; a film stage (staged) has its own day.

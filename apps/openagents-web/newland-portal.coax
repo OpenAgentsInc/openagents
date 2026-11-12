@@ -1,7 +1,7 @@
 // Everglade's portal on the lander (/newlander), and the way through it.
 //
 // One portal stands in the Grid near the places' middle: a ring of the accent's light round a face of
-// Everglade's (gpu/portal.coax, portal_field), on a dais, with motes rising into it and its name over
+// Everglade's (everglade/scene/gpu/portal.coax, portal_field), on a dais, with motes rising into it and its name over
 // it. One button, "Create your character", sits at the foot of the page. Pressing it:
 //   1. the HUD fades and the camera flies to the portal: it swings down from the Grid's high view to
 //      the portal's height, the lens widening as it closes, so the portal grows smoothly on screen;
@@ -26,7 +26,7 @@ PORTAL_LIFT :: 0.4;      // its foot over the floor
 PORTAL_DAIS :: 2.5;      // the dais's radius
 PORTAL_FLY :: 2.1;       // s: the camera flies to the portal and into it
 PORTAL_HOLD :: 0.1;      // s: past the flight, the latest the page goes on, should the light not cover the view
-PORTAL_THROUGH :: 3.0;   // the face's radius at the hand-over, in half view diagonals (gpu/portal.coax PORTAL_HANDOFF)
+PORTAL_THROUGH :: 3.0;   // the face's radius at the hand-over, in half view diagonals (everglade/scene/gpu/portal.coax PORTAL_HANDOFF)
 PORTAL_WALL :: 600000;   // the shimmer's clock: the wall clock's ms modulo this, in seconds (everglade/client/create.coax)
 PORTAL_MOTES :: 18;
 

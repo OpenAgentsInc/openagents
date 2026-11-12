@@ -1,4 +1,4 @@
-// One vector helper two shared shader files both need: Character Create's (apps/openagents-web/gpu/fivelab.coax)
+// One vector helper two shared shader files both need: Character Create's (everglade/scene/gpu/fivelab.coax)
 // and the component system's (components/backend/gpu-shader.coax). It lives here so a page may load
 // both (WorldBuilder: the control kit's HUD over an Everglade figure, #13225).
 #load "wgsl.coax";

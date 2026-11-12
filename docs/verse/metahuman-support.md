@@ -975,7 +975,7 @@ On `main` at `a35df9a4c9`, 5E Lab draws 24 figures, twelve a side
 - the Circle of Moss: five Druids and seven Berserker Barbarians;
 - the Ember Pact: five Fiend Warlocks and seven Open Hand Monks.
 
-`gpu/fivelab.coax`'s `fivelab_body` builds each figure from a capsule body,
+`everglade/scene/gpu/fivelab.coax`'s `fivelab_body` builds each figure from a capsule body,
 a sphere head and a staff, and lays it flat when it is down.
 `fivelab_trace` ray-traces those shapes, the trees and the ground
 analytically in the fragment shader. Token state arrives in a uniform

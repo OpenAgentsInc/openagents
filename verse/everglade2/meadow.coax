@@ -56,7 +56,7 @@ e2_meadow_piece :: (kit: int, h: f32, autumn: f32) -> E2MeadowPiece {
 }
 
 // ---- The meadow scattered to the horizon (the druid's field, drawn on the GPU: apps/openagents-web/
-// gpu/character-glade.coax cg_meadow_vs). Every piece of one kit stands in its own cell of a grid
+// everglade/scene/gpu/character-glade.coax cg_meadow_vs). Every piece of one kit stands in its own cell of a grid
 // fixed to the land, sized so the kit is as common as the pick makes it, and everything about it
 // (whether the cell holds one, where in the cell, its seed for e2_meadow_piece) is that cell's hash
 // alone, so a piece never moves as you walk. A kit is drawn out to its reach and shrinks away over

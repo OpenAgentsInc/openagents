@@ -2,9 +2,9 @@
 // Everglade v2's land (verse/everglade2/forest.coax), the woods' kit pieces drawn instanced from the
 // page's visible-piece store (everglade/client/client.coax), and a key-light shadow map that
 // follows the player.
-#load "fivelab.coax";
+#load "../../scene/gpu/fivelab.coax";
 #load "../../../verse/everglade2/field.coax";
-#load "portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
+#load "../../scene/gpu/portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
 #load "../../../aethyr/render/terrain-shade.coax";   // the ground's material table and baked AO (#13052)
 #load "../../../aethyr/render/character-material.coax";   // the characters' material record's shading (#13012)
 Everglade2Bg :: struct {c:V4;aux:V4;depth:f32 #depth;}
@@ -489,7 +489,7 @@ e2_pane_edge :: (p:V2,u:[]f32)->f32 {return fmax(e2_box_edge(p,u[52],u[53],u[54]
 }
 // Character Create's arrival through Everglade's portal (everglade/client/create.coax): u[96] how much of the
 // view the portal's light still holds, u[97] its clock, u[98] its swell, u[100] how far the glade has
-// opened through it from the middle. The light is gpu/portal.coax's, at the scale the homepage handed
+// opened through it from the middle. The light is everglade/scene/gpu/portal.coax's, at the scale the homepage handed
 // over (PORTAL_HANDOFF half diagonals); the glade opens from the middle through rings that shimmer,
 // and the picture ripples as it settles.
 e2_arrival_uv :: (uv:V2,u:[]f32)->V2 {

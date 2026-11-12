@@ -90,7 +90,7 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   return px > 0 ? (uint32_t)px : 6400000u;
 }
 
-/* The host's instance cull (host.js "Instance culling", gpu/everglade2-cull.coax): the block
+/* The host's instance cull (host.js "Instance culling", everglade/client/gpu/everglade2-cull.coax): the block
    everglade/client/cull.coax fills after each frame's scene. */
 static float cull_u[100];
 static uint32_t cull_buckets[2 * 36 * 3], cull_runs[4 * 384], cull_draws[384];
@@ -283,7 +283,7 @@ EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { retur
 EXPORT("coaxial_frame_store") cx_face_addr coaxial_frame_store(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->frame.e; }
 EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(cx_face_addr state) { (void)state; return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
 /* the kit store is three regions on the GPU: the page's picked pieces, then the cull's two
-   phases' survivors (gpu/everglade2-cull.coax E2Q_OUT1, E2Q_OUT2) */
+   phases' survivors (everglade/client/gpu/everglade2-cull.coax E2Q_OUT1, E2Q_OUT2) */
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
   if (k == 4) return (uint32_t)sizeof(((coax_t_E2 *)0)->eg.e[0].gpu.e);
   return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : k == 3 ? (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e) : 3u * (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
@@ -369,7 +369,7 @@ EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (in
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 // Everglade's HUD is the FANTASY style (aethyr/ui/hud-style.coax): its strokes blend straight alpha, each
-// sealed with its coverage (charactercreator.coax hud_seal, gpu/fivelab.coax fivelab_hud_fs), so dark
+// sealed with its coverage (charactercreator.coax hud_seal, everglade/scene/gpu/fivelab.coax fivelab_hud_fs), so dark
 // iron can sit over the world.
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind, uint32_t length) {

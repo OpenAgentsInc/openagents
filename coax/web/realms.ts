@@ -299,7 +299,7 @@ ${links}
 export const hasMaker = (slug: string, site = SITE) => existsSync(join(site, "realms", slug, "tip", "index.html"))
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
 // A page opened through Everglade's portal on the homepage (?via=portal, newland-portal.coax): until
-// the engine draws, the loading screen is the portal's light (gpu/portal.coax's colours at the
+// the engine draws, the loading screen is the portal's light (everglade/scene/gpu/portal.coax's colours at the
 // hand-over's scale), still moving: a slow swirl and rings running out, on the compositor, so it
 // moves while the engine compiles. No black panel, but the bar stays, low on a dark strip, so a
 // slow first load shows real progress (owner, 2026-11-09); the engine then

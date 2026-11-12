@@ -7,7 +7,7 @@
 GP_CAT_SOURCE :: 245;   // (246 the dragon's, 247 the horse's)
 GP_CAT_FRAMES :: 64;
 GP_CAT_SCALE :: 1.0;   // cat_bake.py bakes it in metres
-GP_CAT_KIND :: 9;       // gpu/everglade2.coax: a model shaded by its vertex colour alone (everglade2_pack.coax GP_E2_MODEL)
+GP_CAT_KIND :: 9;       // everglade/client/gpu/everglade2.coax: a model shaded by its vertex colour alone (everglade2_pack.coax GP_E2_MODEL)
 
 gp_cat_meshes :: (w:[]Gp,root:string,first:[]int,count:[]int) {
   anchor:[3]f32;

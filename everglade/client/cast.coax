@@ -38,7 +38,7 @@ E2Cast :: struct {
   wire: [XC_SLOTS] int;                    // each slot's ability on the wire (class-kit.coax xk_wire)
   cool_at: f32 = -100; used: int = -1; hover: int = -1;
   menu: int = -1; side_hover: int = -1; menu_hover: int = -1;   // the class menus' open one (EG_SIDE_*, everglade/hud/class-bar.coax) and what the pointer is over
-  puffs: [1] FxPuffs;                      // the casts' effects (aethyr/fx/puff.coax), drawn by gpu/everglade2-fx.coax
+  puffs: [1] FxPuffs;                      // the casts' effects (aethyr/fx/puff.coax), drawn by everglade/client/gpu/everglade2-fx.coax
   audio: [1] exsound.ExperimentalSound;    // their sounds, for the host (everglade2-face.c coaxial_sounds)
   later: [E2K_LATER] E2kLater;
   me: [1] E2kAct; them: [E2N_ENTS] E2kAct;     // yours, and each other's by its slot in the room's list

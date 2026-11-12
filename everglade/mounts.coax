@@ -331,7 +331,7 @@ eg_ride_cam_up :: (m: EgMounts) -> f32 { return ifx m.riding >= 0 && m.kind[m.ri
 eg_on_dragon :: (m: EgMounts) -> bool { return m.riding >= 0 && m.kind[m.riding] == EG_DRAGON; }
 eg_aloft :: (m: EgMounts) -> bool { return m.riding >= 0 && mount_aloft(m.mounts[m.riding]); }
 // Horse k as a moved mesh record (24 floats at out[rec * 24]: its feet, its facing's sine and cosine, its
-// vertex word; the shared mode 18 of gpu/character-glade.coax) and its frame's draw: the index range.
+// vertex word; the shared mode 18 of everglade/scene/gpu/character-glade.coax) and its frame's draw: the index range.
 EgHorseDraw :: struct { first: int; count: int; }
 eg_horse_record :: (m: EgMounts, k: int, ground: f32, out: [] f32, rec: int) -> EgHorseDraw {
   if m.kind[k] == EG_DRAGON { return eg_dragon_record(m, k, 0, out, rec); }

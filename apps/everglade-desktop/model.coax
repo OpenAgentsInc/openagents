@@ -1,7 +1,7 @@
 // Everglade for desktop: your model. You are the web's player model: Character Create's default
 // character (charactercreator.coax), its Quaternius parts from Everglade II's pack, skinned from
 // the same baked clips (everglade/scene/bodies.coax) by the same vertex math (Model.metal, from
-// gpu/fivelab.coax fivelab_scene_vs). The host gives this the pack's catalog, uploads the bake and
+// everglade/scene/gpu/fivelab.coax fivelab_scene_vs). The host gives this the pack's catalog, uploads the bake and
 // draws the records; workshop.coax's ws_you says where you stand and what you are doing.
 // A unit of its own: charactercreator.coax and aethyr/walk.coax can't share one (each has an atan2).
 //   coax/bin/coax test --library apps/everglade-desktop/model.coax --only "your model"

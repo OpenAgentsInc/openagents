@@ -4,7 +4,7 @@
 // else: no town, gate, people or HUD.
 //
 // The land is verse/everglade2/forest.coax, the planting verse/everglade2/plant.coax, the pack
-// verse/tools/assets/everglade2_pack.coax, and the passes gpu/everglade2.coax. everglade2-face.c steps
+// verse/tools/assets/everglade2_pack.coax, and the passes everglade/client/gpu/everglade2.coax. everglade2-face.c steps
 // the controller (everglade-step.coax) as fivelab-face.c does; this unit says what is round you,
 // where you may stand, and what is drawn.
 #load "../scene/charactercreator.coax" as cc;
@@ -59,7 +59,7 @@
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 32768;     // strokes: the frame rate in the bottom right corner
-E2_UNIFORM_FLOATS :: 316;     // 79 vec4s (gpu/everglade2.bindings)
+E2_UNIFORM_FLOATS :: 316;     // 79 vec4s (everglade/client/gpu/everglade2.bindings)
 E2_U_ENV :: 208;              // the camera's resolved environment, 27 vec4s (aethyr/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
 E2_U_LIGHT_VIEW :: 51;        // the developer's light view (?light=, aethyr/render/environment-debug.coax env_view_word): 0 the ordinary frame
 E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (aethyr/render/cascades.coax cascade_rows)
@@ -69,7 +69,7 @@ E2_REMOTES :: 16;             // other players drawn at most (a room seats 16)
 E2_FADE_S :: 0.6;             // s: another player thins in as it comes into your view, and out as it leaves
 E2_POP :: 0.25;               // a body cut off while more than this of it showed is a pop (e2_probe 19)
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
-E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
+E2_KIT_BASE :: 1048576;       // everglade/client/gpu/everglade2.coax E2_KIT_BASE
 E2_BUCKETS :: E2_KITS * E2_LODS;
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 HOLD_JUMP :: 1024; HOLD_ALL :: 2047;
@@ -238,7 +238,7 @@ E2_HOST_PAGE :: 600;
 E2_HOST_HIDDEN :: 601;   // the page out of sight (a hidden tab, or opened in place under another page: zone-host.js)
 E2_HOST_SHOWN :: 602;    // and shown again (with now= when handed over in place)
 // The characters' shading quality from the page's facts: ?film draws them at the film quality
-// (gpu/everglade2.coax cc_player_fs: cloth sheen, skin's wrapped light, hair's highlight), and
+// (everglade/client/gpu/everglade2.coax cc_player_fs: cloth sheen, skin's wrapped light, hair's highlight), and
 // ?maps=0 without their normal and ORM maps, for before/after captures.
 e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film"); s[0].maps_off = e2c_fact_has(t, "maps=0"); }
 #test "?film and ?maps=0 set the characters' shading quality" {
@@ -246,7 +246,7 @@ e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film")
   e2_material_facts(s[..], "url=/worlds/character-creator?filmic=1\n"); #assert !s[0].film && !s[0].maps_off;
   u: [E2_UNIFORM_FLOATS] f32; s[0].film = true; e2_material_uniforms(s[..], u[..]); #assert u[60] == 1 && u[61] == 0;
 }
-// u[60] the film quality, u[61] the maps off (gpu/everglade2.coax cc_player_fs).
+// u[60] the film quality, u[61] the maps off (everglade/client/gpu/everglade2.coax cc_player_fs).
 // u[62] the canopy's baked AO at your middle (verse/everglade2/ground.coax): it shades only your indirect light.
 e2_material_uniforms :: (s: [] E2, u: [] f32) { u[60] = ifx s[0].film then 1.0f32 else 0.0f32; u[61] = ifx s[0].maps_off then 1.0f32 else 0.0f32; u[62] = e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0); }
 E2_HOST_DRIVE :: 700;   // a driver's command (coax/web/host.js coaxial.drive)
@@ -1195,7 +1195,7 @@ e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
-// resolved environment, written each frame at E2_U_ENV (gpu/everglade2.coax through the cg_* names,
+// resolved environment, written each frame at E2_U_ENV (everglade/client/gpu/everglade2.coax through the cg_* names,
 // aethyr/render/painterly.coax paint_env_*). The world's set is e2_environment_set: the glade (the
 // painterly default) with the sunlit path's and the deep canopy's deltas; its day is the room's (W: the room's ms into its day at a tick,
 // aethyr/world/day.coax day_from_room), or the glade's fixed noon before a room is heard and in a
@@ -2023,7 +2023,7 @@ e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   return d;
 }
 // One other's body at r with slot's look and fade: on the land, its walk and run from its speed, its
-// jump from its feet off the ground, its records' fade word (gpu/everglade2.coax e2_body_fade).
+// jump from its feet off the ground, its records' fade word (everglade/client/gpu/everglade2.coax e2_body_fade).
 e2_remote_body :: (s: [] E2, r: E2Remote, slot: int, at: E2Drawn, bdt: f32) -> E2Drawn {
   a := s[0].ranim[slot..<slot + 1];
   ground := e2_height(r.x, r.z);

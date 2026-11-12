@@ -129,7 +129,7 @@ coord_draw :: (s:Creator,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 // The glade holds still and the sun is fixed, so its shadow map is drawn once, into the atlas's left
 // tile, and again only when a pack installs (at most once every CC_SHADOW_STALE frames). Only the
 // player moves: she is drawn every frame into the right tile, through the same projection
-// (gpu/character-glade.coax cg_shadow_clip), and a surface takes the darker of the two. Until the
+// (everglade/scene/gpu/character-glade.coax cg_shadow_clip), and a surface takes the darker of the two. Until the
 // host opens the atlas (shadow_event 0) the one map is drawn every frame, as before.
 CC_SHADOW_STALE :: 30;
 CcShadow :: struct { on:bool; coarse:bool; glade:bool; now:bool; frame:int; pending:bool; last:int = -30; }
@@ -918,11 +918,11 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     b[0].draws[n*4]=cast(u32)s[0].npc_first[kind][take];b[0].draws[n*4+1]=cast(u32)s[0].npc_count[kind][take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}
   // its grass and understory: each kit's mesh once (kit_first, glade/meadowkitK, slot K-20), placed by
-  // the GPU over a grid of cells round the eye (record kind 20, gpu/character-glade.coax cg_meadow_vs)
+  // the GPU over a grid of cells round the eye (record kind 20, everglade/scene/gpu/character-glade.coax cg_meadow_vs)
   if meadow_on {for j:0..<14 {kit:=20+j;for t:0..<(ifx kit==grid.E2_MEADOW_GRASS then 4 else 1) {side:=grid.e2_meadow_side(kit,t);if side<=0 || s[0].kit_count[j]<3 || n>=44-reserved {break;}
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24]=f32(kit);out[n*24+1]=f32(t);out[n*24+2]=f32(side);out[n*24+7]=f32(s[0].kit_word[j]);out[n*24+15]=20;
-    if kit>=20 && kit<=22 {for k:0..<4 {out[n*24+8+k]=s[0].field_clear[k];}out[n*24+3]=s[0].field_band;out[n*24+4]=s[0].field_keep;}   // rocks keep out of a zone's clearing (gpu/character-glade.coax cg_meadow_vs reads c)
+    if kit>=20 && kit<=22 {for k:0..<4 {out[n*24+8+k]=s[0].field_clear[k];}out[n*24+3]=s[0].field_band;out[n*24+4]=s[0].field_keep;}   // rocks keep out of a zone's clearing (everglade/scene/gpu/character-glade.coax cg_meadow_vs reads c)
     // the quality's reach (b.y: the grass's, the rocks' or the understory's) and, for the grass, its finest tier's share (b.z): cg_meadow_vs draws to them
     out[n*24+5]=ifx kit==grid.E2_MEADOW_GRASS then s[0].q_grass else ifx kit>=20 && kit<=22 then s[0].q_scenery else s[0].q_understory;out[n*24+6]=ifx kit==grid.E2_MEADOW_GRASS then s[0].q_fine else 1.0f32;   // the rocks stand far off; the small pieces cost a phone most and show least (#13190)
     b[0].draws[n*4]=cast(u32)s[0].kit_first[j];b[0].draws[n*4+1]=cast(u32)s[0].kit_count[j];b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)(side*side);n+=1;
@@ -958,7 +958,7 @@ meadow_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n0:int,cap:int)->int {
   v:=gcull.GridView.{ex=s[0].view[0],ez=s[0].view[2],fx=s[0].view[4],fy=s[0].view[5],fz=s[0].view[6],rx=s[0].view[8],ry=s[0].view[9],rz=s[0].view[10],half=(ifx cx>w-cx then cx else w-cx)/s[0].view[3]};
   // nothing on the field stands further above or below the eye than the eye is over its ground, and the land's own rise and fall
   up:=s[0].view[1]-cc_ground(s[0].flat,v.ex,v.ez);v.rise=(ifx up>0 then up else 0.0f32)+40;
-  runs:[1024]u32;origin:f32= -32768;   // E2_MEADOW_ORIGIN: the grids' corner (gpu/character-glade.coax cg_meadow_vs)
+  runs:[1024]u32;origin:f32= -32768;   // E2_MEADOW_ORIGIN: the grids' corner (everglade/scene/gpu/character-glade.coax cg_meadow_vs)
   for i:0..<n0 {
     base:=cast(int)b[0].draws[i*4+2];if base<65536 || (base&65535)!=0 {continue;}
     r:=(base>>16)-1;if (r+1)*24>out.count {continue;}
@@ -1224,7 +1224,7 @@ text :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,k:Ink)->int {
 }
 cc_text_drop :: (cap:f32)->f32 {d:=cap*0.09;return ifx d<1 then 1.0f32 else d;}
 // One run of text in a face (HUD_FACE_BODY or HUD_FACE_TITLE), no shadow: the title face's glyphs
-// are the atlas's green (tint.w 5, gpu/fivelab.coax fivelab_hud_fs).
+// are the atlas's green (tint.w 5, everglade/scene/gpu/fivelab.coax fivelab_hud_fs).
 face_text :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,k:Ink,face:int)->int {
   pen:=x;v:=n;i:=0;em:=sans_em(cap);
   while i<t.count {d:=decode(t,i);end:=i+d.len;code:=d.code;
@@ -1274,7 +1274,7 @@ hud_say_ui :: (ui:[]UitTrace,parent:int,name:string,out:[]f32,n:int,t:string,x:f
 }
 
 // ---- Everglade's HUD style: the primitives aethyr/ui/hud-style.coax's drawers write, as this
-// realm's vertices (gpu/fivelab.coax fivelab_hud_fs), and the mark that has the shader blend them.
+// realm's vertices (everglade/scene/gpu/fivelab.coax fivelab_hud_fs), and the mark that has the shader blend them.
 EG_HUD :: HUD_FANTASY;
 eg_tokens :: ()->HudTokens {return hud_tokens(EG_HUD);}
 // The engine's widgets (aethyr/ui/hud-menu.coax) as this renderer's vertices: their frames, then
@@ -1342,7 +1342,7 @@ ttext :: (ui:[]UitTrace,parent:int,out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,
 line :: (out:[]f32,n:int,x:f32,y:f32,bx:f32,by:f32,k:f32,r:f32,g:f32,b:f32)->int {
   if lit(out,n,x,y,bx,by,0.6*k,1,0,r,g,b,0) { return n+6; } return n;
 }
-// The dungeon's darkness and its torches for the glade shader (gpu/character-glade.coax
+// The dungeon's darkness and its torches for the glade shader (everglade/scene/gpu/character-glade.coax
 // cg_dungeon_light): its block and ceiling in u[60..64], then the nine torches nearest you, each
 // x, y, z and a flickering brightness, in u[68..103]. Nothing when the scene has no dungeon.
 dungeon_light :: (s:[]Creator,u:[]f32,x:f32,z:f32) {

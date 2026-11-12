@@ -96,7 +96,7 @@ wbw_scene :: (w: [] WalkBuilder, figures: int) -> int #export_c #effects(all) {
   w[0].own_n = n;
   if b[0].walk_ok && b[0].cat_ready {
     // the people's parts only (your body's): a record whose flags say "environment" (its d.w over
-    // 15.5, gpu/fivelab.coax FivelabObj) is the zone's own scenery, not this world's
+    // 15.5, everglade/scene/gpu/fivelab.coax FivelabObj) is the zone's own scenery, not this world's
     f := w[0].z[0].bodies[0].draws[..];
     for k: 0..<figures {
       if n >= WBW_DRAWS { break; }

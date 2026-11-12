@@ -27,7 +27,7 @@ looking solid.
 | The land's height as a pure function | `e2_height` in [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax) |
 | A tile's format, admission and sampler | `aethyr/terrain-tile.coax` (`terrain_tile_sample`) |
 | Everglade II's tiles, record and queries | `verse/everglade2/ground.coax` (`e2g_convert`, `e2g_seams`, `e2g_record_read`, `e2g_y`) |
-| The ground's colour at a pixel | `e2_ground_albedo` in [`apps/openagents-web/gpu/everglade2.coax`](../../apps/openagents-web/gpu/everglade2.coax) |
+| The ground's colour at a pixel | `e2_ground_albedo` in [`everglade/client/gpu/everglade2.coax`](../client/gpu/everglade2.coax) |
 
 Inside the glade, the land is exactly Character Create's own (`cg_height` in
 [`verse/character-glade.coax`](../../verse/character-glade.coax)). Outside it,

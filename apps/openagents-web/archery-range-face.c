@@ -2,7 +2,7 @@
 // (aethyr/host/apple): scalar exports over archery-range.coax. It decides nothing. The module is an
 // Everglade zone (everglade/zone.coax) with the range on it, so nearly every export hands the host's
 // call to the zone; the frame and the page's message go through the range (range_frame,
-// range_message). The scene draws with Character Create's passes (gpu/charactercreator.coax):
+// range_message). The scene draws with Character Create's passes (everglade/scene/gpu/charactercreator.coax):
 // the pack's catalog here, its vertices, indices and layers on the GPU, and two stores, the frame's
 // instances (zone_scene) and the clips baked once (zone_bake); fivelab-fx.wgsl draws the effects
 // (puffs) after the figures. Your body walks on Everglade's controller as fivelab-face.c walks it:

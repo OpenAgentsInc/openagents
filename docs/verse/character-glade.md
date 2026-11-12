@@ -20,7 +20,7 @@ without its sky shell or its distant town: Everglade's sky and Everglade's real
 town stand in for them. Build it with
 `coax/web/tool.sh verse/tools/assets/character_glade_pack.coax ... zone`; the
 sections below describe the glade's composition and its original standalone
-renderer (`apps/openagents-web/gpu/character-glade.coax`), kept as the lighting
+renderer (`everglade/scene/gpu/character-glade.coax`), kept as the lighting
 reference for the glade checks.
 
 ## Source inspection
@@ -64,8 +64,8 @@ on character records only. Static vertices never read the animation palette.
 The same indexed people pipeline performs this extra draw; no host-language
 scene logic, new browser ABI or new rendering backend was added.
 
-`apps/openagents-web/gpu/character-glade.coax` owns the sky, environment vertex
-shader, wind and surface lighting. `gpu/fivelab.coax` selects these only for
+`everglade/scene/gpu/character-glade.coax` owns the sky, environment vertex
+shader, wind and surface lighting. `everglade/scene/gpu/fivelab.coax` selects these only for
 Character Create (`u[10] == 2`); battle views retain their own scenery. Desktop
 side panels and the entire mobile appearance panel retain opaque, depth-masked
 backgrounds. The header fades the scene to keep its title readable.

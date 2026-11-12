@@ -4,7 +4,7 @@
 #load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 #load "../../../aethyr/render/sans-filter.coax";
-#load "portal.coax";   // Everglade's portal: the light on its face, shared with Character Create's arrival
+#load "../../../everglade/scene/gpu/portal.coax";   // Everglade's portal: the light on its face, shared with Character Create's arrival
 
 // The live homepage's two passes (newland.coax decides every number): the
 // splash's slow nebula fading up from black, darker at the edges (the
@@ -185,7 +185,7 @@ newland_fx_fs :: (v:NewlandV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 
 
 // Everglade's portal (newland-portal.coax, mode PORTAL): place is the portal's own coordinates (its rim
 // at length 1), shape its radius in pixels, its face's light, the shimmer's swell and the shimmer's
-// clock, and tint.x its rim's light. Its face is gpu/portal.coax's portal_field; its rim a thin line of
+// clock, and tint.x its rim's light. Its face is everglade/scene/gpu/portal.coax's portal_field; its rim a thin line of
 // the accent with a soft glow outside it. Not dimmed by the page's fade: as the camera flies through,
 // the page goes dark and this light takes the view.
 newland_portal :: (p:V2,shape:V4,tint:V4)->V4 {

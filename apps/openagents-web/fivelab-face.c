@@ -1,7 +1,7 @@
 // 5E Lab's C face for the browser (coax/web/host.js): scalar Wasm exports
 // over fivelab.coax, which holds the battle on the SRD engine
 // (aethyr/rules/srd/) and its drawing. It decides nothing.
-// gpu/fivelab.coax's bg_fs draws the grid, the glade and the log's glass, writing the glade's
+// everglade/scene/gpu/fivelab.coax's bg_fs draws the grid, the glade and the log's glass, writing the glade's
 // depth; scene_vs/scene_fs the figures (Everglade's pack: its catalog here, its vertices, indices
 // and layers on the GPU), from two stores: the frame's instances (everglade/scene/bodies.coax bd_build)
 // and the clips baked once (bd_bake); fx_fs the strokes lab_frame writes, and fivelab-fx.wgsl the

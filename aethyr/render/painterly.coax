@@ -6,7 +6,7 @@
 //
 // Every number is the glade profile's (aethyr/world/environment.coax ENV_GLADE_*, from which
 // env_glade_profile is built), so this GPU-safe evaluation and the CPU record are one source. The
-// glade's own cg_* names (apps/openagents-web/gpu/character-glade-light.coax and character-glade.coax)
+// glade's own cg_* names (everglade/scene/gpu/character-glade-light.coax and character-glade.coax)
 // are thin delegates of these while consumers move to the resolver (#13066).
 // Shape constants that are not profile channels (the cloud octaves' offsets and weights, the sky's
 // gradient and wisp shapes) stay here, as the evaluation's form.

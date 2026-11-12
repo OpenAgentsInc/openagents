@@ -37,13 +37,13 @@ a lander the browser kept in memory shows it as it was before the press (message
 The old unlisted address of the lander answers 301 to `/newlander` (the Coaxial load balancer's URL
 map, `production` path matcher).
 
-The light is one function, `portal_field` in `apps/openagents-web/gpu/portal.coax`,
+The light is one function, `portal_field` in `everglade/scene/gpu/portal.coax`,
 drawn by both pages at the same scale (`PORTAL_HANDOFF`) and on the same clock
 (the wall clock's seconds, from each page's `now=` fact). Until Character
 Create's engine draws, its loading screen is the light, moving: a CSS swirl and
 rings in the light's colours, run by the compositor while the engine compiles,
 with the loading bar low on a dark strip (`"arrival": "portal"` in `realms.json`). A failure still shows the loading screen's message. The engine
-then draws the light (`e2_arrival` in `gpu/everglade2.coax`) and holds it until
+then draws the light (`e2_arrival` in `everglade/client/gpu/everglade2.coax`) and holds it until
 the glade has drawn 2 frames and the page is in sight (not hidden, message 601). Over the next 2.9 s the glade opens through the
 light from the middle, the camera comes round and in to the studio's framing,
 your character pops up from its feet, and the wardrobe fades in. A key, click

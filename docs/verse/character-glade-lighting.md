@@ -21,7 +21,7 @@ constants. Although the host allocated HDR targets, that shader did not maintain
 an actual linear-light pipeline. Constant ambient and a uniform warm distance
 blend further flattened the materials.
 
-`gpu/character-glade-light.coax` defined an explicit contract, now the shared painterly default
+`everglade/scene/gpu/character-glade-light.coax` defined an explicit contract, now the shared painterly default
 (see "The shared painterly default" below):
 
 - Texture RGB stays in the linear domain supplied by the sRGB GPU sampler.

@@ -6,7 +6,7 @@
 // everglade/client/client.coax's) and the trees and you hide it, and none fades into a traced ground.
 #load "../../../aethyr/fx/gpu-puff.coax";
 
-E2FX_NEAR :: 0.1f32;   // gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR: the scene's depth
+E2FX_NEAR :: 0.1f32;   // everglade/scene/gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR: the scene's depth
 E2FX_FAR :: 900.0f32;
 e2fx_depth :: (o:EgfxP)->EgfxP {
   r:EgfxP=o;

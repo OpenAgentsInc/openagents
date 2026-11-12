@@ -33,11 +33,11 @@ What the glade is today, and what becomes the painterly default:
 
 | Glade element | Where it lives now | Default it becomes |
 | --- | --- | --- |
-| Linear HDR, decode once, encode once | `apps/openagents-web/gpu/character-glade-light.coax` (`cg_linear`, `cg_srgb`, `cg_decode`, `cg_encode`) | The one transfer contract for painterly realms (Phase 2) |
+| Linear HDR, decode once, encode once | `everglade/scene/gpu/character-glade-light.coax` (`cg_linear`, `cg_srgb`, `cg_decode`, `cg_encode`) | The one transfer contract for painterly realms (Phase 2) |
 | Key light: 4500 K sun under 6500 K white balance, x2.15, fixed direction | `cg_sun_colour`, `cg_sun_dir` | The painterly noon key in the default profile |
 | Warm ground / cool sky hemisphere ambient | `cg_hemisphere`, `cg_irradiance` (indirect occlusion and sun visibility on separate terms) | Default upper/lower ambient and the direct/indirect split |
 | Height air with a clear 30 m near field, forward-scatter haze to 65 m | `cg_air_depth`, `cg_phase` (g 0.62), `cg_haze_window`, `cg_atmosphere` | Default analytic atmosphere (Phase 6 starts here) |
-| Cyan daylight sky, drifting cloud shadows (sun x0.45 in shade) | `apps/openagents-web/gpu/character-glade.coax` (`cg_sky`, `cg_cloud`) | Default sky and cloud-shadow layer |
+| Cyan daylight sky, drifting cloud shadows (sun x0.45 in shade) | `everglade/scene/gpu/character-glade.coax` (`cg_sky`, `cg_cloud`) | Default sky and cloud-shadow layer |
 | Film response at exposure 1.18, saturation lift 1.16 | `cg_film`, `cg_output` over `aethyr/render/filmic.coax` | Default painterly presentation (Phase 9's identity grade) |
 | Octahedral normals with room for an indirect-light weight; normal/depth contact shading | `cg_normal_pack`, the glade's contact pass | Default contact/AO path (Phase 5) |
 | Painterly bands, rim, dab, cool shadow band | `verse/style-preset.coax` (`painterly_key`, `shadow_cool` 1.5) | Kept as the painterly material response; the glade defaults sit under it |
@@ -57,7 +57,7 @@ a subtle sunlit-path delta and a deeper, cooler canopy delta, as prisms along th
 interior and river deltas wait until Everglade II has those places. Receipts:
 `docs/verification/aethyr-lighting-p1-5-2026-11-08/`.
 
-Everglade II already reads part of this (`apps/openagents-web/gpu/everglade2.coax`
+Everglade II already reads part of this (`everglade/client/gpu/everglade2.coax`
 calls `cg_decode`, `cg_hemisphere`, `cg_sun_dir`, `cg_sky`, `cg_output` and
 more), and Experimental/fivelab loads it too. It is still private: the numbers
 are constants in an app file, not a shared profile a realm can select or vary.

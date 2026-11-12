@@ -22,12 +22,12 @@
 //   5 BEAM    a bar of light, added, bright along its middle (its x): ink.w its strength
 // The camera is the page's pinhole, read from its uniforms as aethyr/fx/gpu-puff.coax reads it:
 // size 0, eye 16 (then the focal length, px), forward 20 (then the centre's x), right 24 (then
-// the centre's y), up 28. Depth is the raster scene's (gpu/fivelab.coax fivelab_project).
+// the centre's y), up 28. Depth is the raster scene's (everglade/scene/gpu/fivelab.coax fivelab_project).
 #load "../../verse/gpu/wgsl.coax";
 #load "../render/noise.coax";
 
 QFX_SKY :: 0.0f32; QFX_FLOOR :: 1.0f32; QFX_PANEL :: 2.0f32; QFX_GLYPH :: 3.0f32; QFX_GLOW :: 4.0f32; QFX_BEAM :: 5.0f32;
-QFX_NEAR :: 0.1f32;   // gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR
+QFX_NEAR :: 0.1f32;   // everglade/scene/gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR
 QFX_FAR :: 900.0f32;
 QuadRow :: struct {at:V4; ax:V4; ay:V4; ink:V4;}
 // corner: across the quad, -1 to 1. world: the point drawn. ink: the quad's. look: kind, the

@@ -1,4 +1,4 @@
-// Firm reason: 1 (browser WebGPU: the compute passes and indirect draws for Coax's cull entries; which pieces are drawn is Coax's, gpu/everglade2-cull.coax).
+// Firm reason: 1 (browser WebGPU: the compute passes and indirect draws for Coax's cull entries; which pieces are drawn is Coax's, everglade/client/gpu/everglade2-cull.coax).
 // Instance culling (GitHub #13050), for a page whose data-assets name a `cull:` module and whose
 // face exports coaxial_cull_v1. The page still picks its pieces into runs of a store (one
 // instanced draw a run); this pass leaves out the ones the frustum or the frame's own depth hide,

@@ -1152,7 +1152,7 @@ eg_noise :: (p:V2)->f32 {
   return mix(mix(eg_hash(i),eg_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(eg_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),eg_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
 }
 // Soft cloud shadows drift over the town and meadow by day, as on Character Create's glade
-// (gpu/character-glade.coax cg_cloud): two octaves of value noise that scale the key down to .4
+// (everglade/scene/gpu/character-glade.coax cg_cloud): two octaves of value noise that scale the key down to .4
 // over broad patches. drift: metres the wind has carried them.
 eg_cloud :: (p:V2,drift:V2)->f32 {
   q:V2=wg_add_f2f2(p,drift);

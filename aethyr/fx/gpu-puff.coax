@@ -93,7 +93,7 @@ fxg_soft :: (p:EgfxP,u:[]f32)->f32 {
 fxg_particle_fs :: (p:EgfxP,u:[]f32)->V4 { return fxg_puff_fs(p,u,true); }
 fxg_particle_over_fs :: (p:EgfxP,u:[]f32)->V4 { return fxg_puff_over_fs(p,u,true); }
 // The two passes' colour; traced: fade where the traced ground is (fxg_soft), else the page's depth
-// buffer hides what is behind (a raster page's, Everglade II's: apps/openagents-web/gpu/everglade2-fx.coax).
+// buffer hides what is behind (a raster page's, Everglade II's: everglade/client/gpu/everglade2-fx.coax).
 fxg_puff_fs :: (p:EgfxP,u:[]f32,traced:bool)->V4 {
   kind:f32=p.look.x;
   a:f32=0.0f32;

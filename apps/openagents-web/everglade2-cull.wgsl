@@ -1,4 +1,4 @@
-// ---- generated: apps/openagents-web/gpu/everglade2-cull.coax (the module) by coax wgsl; do not edit
+// ---- generated: everglade/client/gpu/everglade2-cull.coax (the module) by coax wgsl; do not edit
 struct coax_t10 {
   x: vec4f,
   y: vec4f,

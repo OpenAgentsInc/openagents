@@ -120,7 +120,7 @@ the canopy; the ground takes a quarter of it (below). `e2_probe` 9 is the bake's
 
 The ground draws from the table and the bake (#13052). The page uploads both as one store
 (`e2g_gpu`: the grid, the four materials, the live AO), and the ground shader
-(`gpu/everglade2.coax` `e2_ground_albedo`, `e2_ground_ao`) takes the same weights at each pixel
+(`everglade/client/gpu/everglade2.coax` `e2_ground_albedo`, `e2_ground_ao`) takes the same weights at each pixel
 (`forest.coax` `e2_ground_layer`) and evaluates `aethyr/render/terrain-shade.coax`'s equations.
 The pack's vertex colours are no longer read. The table holds the pack's colours re-encoded for
 its 2.2 power, so each decodes to the same linear colour. The litter's autumn tint is a layer share
@@ -212,7 +212,7 @@ mv /tmp/everglade2-data.pack apps/openagents-web/realms/everglade2/assets/evergl
 
 `aethyr/character/material.coax` holds each colour layer's material record: its kind (skin,
 cloth, hair, eye or metal), roughness, metalness, sheen and the data layers it reads. The page
-stores the table (store 3) and `cc_player_fs` in `gpu/everglade2.coax` samples the maps and
+stores the table (store 3) and `cc_player_fs` in `everglade/client/gpu/everglade2.coax` samples the maps and
 shades with `aethyr/render/character-material.coax`. Roughness never goes below 0.55, or 0.7 on
 metal, so characters stay matte. `?maps=0` turns the maps off, and `?film` adds skin wrap, cloth
 sheen and hair highlights.
@@ -307,7 +307,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
 
 - The GPU leaves out the kit pieces nothing shows (#13050). The page still picks the pieces and
   their levels and fades; `everglade/client/cull.coax` hands the host each frame's camera and runs, and
-  `gpu/everglade2-cull.coax` tests each picked piece's box against the frustum and the depth
+  `everglade/client/gpu/everglade2-cull.coax` tests each picked piece's box against the frustum and the depth
   pyramid in two phases (`coax/web/instance-cull.js`). The first phase tests against last
   frame's pyramid and draws what passes. The pyramid is then built from that depth, and the
   second phase retests what the first hid and draws what is no longer hidden. A piece is left
@@ -333,7 +333,7 @@ every view:
 
 The receipt is `docs/verification/gpu-cull-everglade2-13050/`.
 
-`gpu/everglade2.coax` holds the passes. It uses Character Create's glade light, sky, fog, and
+`everglade/client/gpu/everglade2.coax` holds the passes. It uses Character Create's glade light, sky, fog, and
 materials, adds the kit pieces' vertex stage and the grass tufts' shading, and gives the woods'
 floor its leaf litter.
 
@@ -346,8 +346,8 @@ cd apps/openagents-web
 ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
   everglade-step.coax ../../aethyr/sticks.coax
 cd ../..
-coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/everglade2.coax \
-  apps/openagents-web/everglade2.wgsl apps/openagents-web/gpu/everglade2.module
+coax/web/tool.sh coax/web/wgsl-module.coax everglade/client/gpu/everglade2.coax \
+  apps/openagents-web/everglade2.wgsl everglade/client/gpu/everglade2.module
 ```
 
 To serve it without the whole site's build, serve the app statically:

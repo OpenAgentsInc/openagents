@@ -71,7 +71,7 @@ Everglade's renderer is in
   that follow.
 - `hud_seal` marks every vertex the frame drew. The fragment shader
   (`fivelab_hud_fs` in
-  [`apps/openagents-web/gpu/fivelab.coax`](../../apps/openagents-web/gpu/fivelab.coax))
+  [`everglade/scene/gpu/fivelab.coax`](../../everglade/scene/gpu/fivelab.coax))
   draws marked vertices by coverage with straight alpha. Unmarked vertices draw
   as before.
 - The page's face file exports `coaxial_fx_alpha_v1`, which tells

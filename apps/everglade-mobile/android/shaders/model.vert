@@ -1,6 +1,6 @@
 #version 450
 // Everglade for Android: your model. apps/everglade-desktop/Model.metal model_vs for Vulkan, which
-// is itself the web's vertex math (apps/openagents-web/gpu/fivelab.coax); keep them in step.
+// is itself the web's vertex math (everglade/scene/gpu/fivelab.coax); keep them in step.
 layout(set = 0, binding = 0) uniform MU { vec4 eye; vec4 right; vec4 up; vec4 forward; vec2 size; vec2 pad; } u;
 layout(set = 0, binding = 1) readonly buffer Vertices { uint v[]; } vertices;
 struct Obj { vec4 a; vec4 b; vec4 c; vec4 d; vec4 e; vec4 f; };

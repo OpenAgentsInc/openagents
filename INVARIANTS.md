@@ -6677,20 +6677,20 @@ same instances. The key light's shadow tiles snap to whole light-space texels
 Checks: `everglade/client/client.coax` "a piece keeps its place and size
 at every distance and only fades", "the woods' pieces never move, grow or swap
 as you walk, and come back the same", "Everglade II's shadow tiles: ...";
-`apps/openagents-web/gpu/everglade2.coax` "a grass tuft stands in one place at
+`everglade/client/gpu/everglade2.coax` "a grass tuft stands in one place at
 one size wherever the eye is, and only fades" and "a shadow tile places a
 point by its rows and draws it inside its own rect".
 
 ## Everglade II's GPU cull never hides a piece in view (#13050)
 
-The GPU instance cull (`apps/openagents-web/gpu/everglade2-cull.coax`,
+The GPU instance cull (`everglade/client/gpu/everglade2-cull.coax`,
 `coax/web/instance-cull.js`) only leaves out pieces the page picked. It never
 changes their level, fade, place or size. A piece is left out only when its
 whole box, conservative for every vertex the kit stage places (any turn, scale
 and wind), is outside the frustum or behind depth this frame really drew. The
 second phase retests every piece the first phase hid against the pyramid of this
 frame's depth, so the image is the image without culling.
-Checks: `apps/openagents-web/gpu/everglade2-cull.coax` "a placed piece's box holds
+Checks: `everglade/client/gpu/everglade2-cull.coax` "a placed piece's box holds
 every vertex the kit stage places, any way round and in any wind" and "a piece
 behind nearer depth is kept by the first phase and drawn by the second only once
 the pyramid shows it"; `coax/web/everglade2-cull-check.coax` (headless: the
@@ -6712,7 +6712,7 @@ identity unchanged.
 Checks: `aethyr/terrain-tile.coax` "a layer share names two other known
 materials ...", `aethyr/render/terrain-shade.coax` "a layer share is one weight
 against the other ...", `verse/everglade2/ground.coax` "the table draws the
-pack's ground colours ...", `apps/openagents-web/gpu/everglade2.coax` "the
+pack's ground colours ...", `everglade/client/gpu/everglade2.coax` "the
 ground reads its table's material, the litter's share of the layers under it,
 and the bake's AO".
 
@@ -7642,7 +7642,7 @@ its declared bounds (GitHub #13060). Checks: `coax test aethyr/render/painterly.
 ("the default's evaluation reads the glade profile's resolved values"),
 `coax test verse/style-preset.coax` ("the painterly preset's default environment
 resolves to the glade profile"), the delegate checks in
-`apps/openagents-web/gpu/character-glade-light.coax` and `character-glade.coax`,
+`everglade/scene/gpu/character-glade-light.coax` and `character-glade.coax`,
 and `docs/verification/aethyr-lighting-p1-0-2026-11-08/`.
 
 ## Lit passes read the camera's resolved environment, written once a frame

@@ -45,7 +45,7 @@
 // e2_gold wherever any meadow is left (the litter covers at most 0.6). The grain is the table's value
 // noise at the glade grid's 1.5 per metre: the dirt's as its two colours, the litter's as a 4% gain.
 //
-// The ground shader (gpu/everglade2.coax e2_ground_albedo) draws from this table and the bake: the
+// The ground shader (everglade/client/gpu/everglade2.coax e2_ground_albedo) draws from this table and the bake: the
 // page uploads both as one store (e2g_gpu, E2G_GPU_FLOATS) and the shader takes the same weights at
 // each pixel, evaluates aethyr/render/terrain-shade.coax's equations, and shades the ground's
 // indirect light by E2G_GROUND_AO_SHARE of the bake's AO, eased out over E2G_EDGE inside the tile's edge.
@@ -92,7 +92,7 @@ E2G_EDGE :: 6.0;              // m: inside the tile's edge the bake eases to the
 E2G_REACH :: 12.0;            // m: crowns this far past the tile still shade its edge
 E2G_CROWNS :: 4096;
 // How much of the bake the drawn ground takes. Its look was tuned with its own darkening under the
-// woods (gpu/everglade2.coax e2_environment_fs), so the full bake on top doubles the shade: 15 to 30%
+// woods (everglade/client/gpu/everglade2.coax e2_environment_fs), so the full bake on top doubles the shade: 15 to 30%
 // darker on the woods' path, measured. A quarter keeps the canopy's shade without darkening the look.
 E2G_GROUND_AO_SHARE :: 0.25;
 E2G_GRAIN :: 1.5;             // 1/m: the table's grain, the glade grid's (0.65 m) per-vertex hash as value noise
@@ -163,7 +163,7 @@ e2g_table :: (t: [] e2tt.TerrainMaterial) {
   t[3] = e2g_material(E2G_PATH, [3] f32.[0.67, 0.60, 0.35], [3] f32.[0.685, 0.615, 0.35]);
 }
 // The linear albedo at (x, z) with weights w (the table's IDs in order): aethyr/render/terrain-shade.coax's
-// equations, as the ground shader evaluates them (gpu/everglade2.coax e2_ground_albedo).
+// equations, as the ground shader evaluates them (everglade/client/gpu/everglade2.coax e2_ground_albedo).
 e2g_albedo :: (t: [] e2tt.TerrainMaterial, w: [4] f32, x: f32, z: f32) -> [3] f32 {
   out := [3] f32.[0, 0, 0];
   for k: 0..<4 {

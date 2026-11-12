@@ -219,7 +219,8 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
 # entries and bindings (verse/everglade/gpu.module, gpu.bindings) as coax wgsl writes them; its
 # particles' module the same from gpu-fx.coax.
 # Every page's and realm's WGSL is written from its Coax: apps/openagents-web/gpu/NAME.coax, with
-# NAME.bindings and NAME.module, writes NAME.wgsl (docs/verse/native-gpu.md, G6); none is
+# NAME.bindings and NAME.module, writes NAME.wgsl (docs/verse/native-gpu.md, G6), and so do the
+# game's in everglade/scene/gpu/ and everglade/client/gpu/; none is
 # written by hand. gpu/nip.coax is the NIP pages', written to nip01.wgsl below.
 # They are committed (the dev server, GPU passes and golden checks read them without a build):
 # commit what this writes. `coax/web/tool.sh coax/web/wgsl-module.coax --site --check` fails on drift.
