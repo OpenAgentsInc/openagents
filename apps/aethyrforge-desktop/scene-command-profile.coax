@@ -1,0 +1,147 @@
+// Checks proto/aethyrforge/scene-command-v1.schema.json and
+// proto/aethyrforge/scene-command-v2.schema.json against scene-policy.coax and
+// scene-resize.coax.
+// Usage: coax/web/tool.sh apps/aethyrforge-desktop/scene-command-profile.coax proto/aethyrforge/scene-command-v1.schema.json
+#import "Basic";
+#load "scene-resize.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+SCP_FILE :: 65536;
+SCP_NODES :: 2048;
+
+scp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+scp_write_v1 :: (buf: [] u8, c: ForgeSceneCommand) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_obj(o[..]);
+  jo_key(o[..], "op");
+  if c.op == FS_PLACE {
+    jo_str(o[..], "place");
+    if c.item < 0 || c.item >= EG_EDIT_ITEMS { return -1; }
+    jo_key(o[..], "item"); jo_str(o[..], EG_EDIT_NAME[c.item]);
+    jo_key(o[..], "count"); jo_int(o[..], c.count);
+    jo_key(o[..], "arrangement"); jo_str(o[..], ifx c.stack then "stack" else "row");
+    jo_key(o[..], "size_percent"); jo_int(o[..], c.size);
+    if c.located {
+      jo_key(o[..], "x_cm"); jo_int(o[..], c.x);
+      jo_key(o[..], "z_cm"); jo_int(o[..], c.z);
+    }
+  } else if c.op == FS_MOVE {
+    jo_str(o[..], "move");
+    jo_key(o[..], "group"); jo_int(o[..], c.group);
+    jo_key(o[..], "dx_cm"); jo_int(o[..], c.dx);
+    jo_key(o[..], "dz_cm"); jo_int(o[..], c.dz);
+  } else if c.op == FS_REMOVE {
+    jo_str(o[..], "remove");
+    jo_key(o[..], "group"); jo_int(o[..], c.group);
+  } else {
+    return -1;
+  }
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+scp_write_resize :: (buf: [] u8, c: ForgeResize) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_obj(o[..]);
+  jo_key(o[..], "op"); jo_str(o[..], "resize");
+  jo_key(o[..], "index"); jo_int(o[..], c.index);
+  jo_key(o[..], "version"); jo_int(o[..], c.version);
+  jo_key(o[..], ifx c.relative then "scale_percent" else "size_percent");
+  jo_int(o[..], c.amount);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+scp_fixture :: (d: Jv, fx: int, ver: int) -> bool #effects(all) {
+  wbuf: [512] u8; obuf: [64] u8; ibuf: [64] u8;
+  text := scp_str(d, jv_get(d, fx, "wire"), wbuf[..]);
+  op := scp_str(d, jv_get(d, fx, "op"), obuf[..]);
+  if text.count == 0 || op.count == 0 { return false; }
+  buf: [512] u8;
+  if op == "resize" {
+    if ver < 2 { return false; }
+    v1: [1] ForgeSceneCommand;
+    if fs_command(text, v1[..]) { return false; }
+    r: [1] ForgeResize;
+    if !fsr_command(text, r[..]) { return false; }
+    if r[0].index != jv_int(d, jv_get(d, fx, "index"), -1) { return false; }
+    if r[0].version != jv_int(d, jv_get(d, fx, "version"), -1) { return false; }
+    if r[0].amount != jv_int(d, jv_get(d, fx, "amount"), -1) { return false; }
+    if r[0].relative != jv_bool(d, jv_get(d, fx, "relative")) { return false; }
+    n := scp_write_resize(buf[..], r[0]);
+    return n >= 0 && cast(string) buf[0..<n] == text;
+  }
+  r2: [1] ForgeResize;
+  if fsr_command(text, r2[..]) { return false; }
+  c: [1] ForgeSceneCommand;
+  if !fs_command(text, c[..]) { return false; }
+  want_op := ifx op == "place" then FS_PLACE else (ifx op == "move" then FS_MOVE else (ifx op == "remove" then FS_REMOVE else 0));
+  if want_op == 0 || c[0].op != want_op { return false; }
+  if want_op == FS_PLACE {
+    if EG_EDIT_NAME[c[0].item] != scp_str(d, jv_get(d, fx, "item"), ibuf[..]) { return false; }
+    if c[0].count != jv_int(d, jv_get(d, fx, "count"), -1) { return false; }
+    if c[0].stack != jv_bool(d, jv_get(d, fx, "stack")) { return false; }
+    if c[0].size != jv_int(d, jv_get(d, fx, "size_percent"), -1) { return false; }
+    loc := jv_bool(d, jv_get(d, fx, "located"));
+    if c[0].located != loc { return false; }
+    if loc && (c[0].x != jv_int(d, jv_get(d, fx, "x_cm"), 99999) || c[0].z != jv_int(d, jv_get(d, fx, "z_cm"), 99999)) { return false; }
+  } else {
+    if c[0].group != jv_int(d, jv_get(d, fx, "group"), -1) { return false; }
+    if want_op == FS_MOVE && (c[0].dx != jv_int(d, jv_get(d, fx, "dx_cm"), 99999) || c[0].dz != jv_int(d, jv_get(d, fx, "dz_cm"), 99999)) { return false; }
+  }
+  n := scp_write_v1(buf[..], c[0]);
+  return n >= 0 && cast(string) buf[0..<n] == text;
+}
+
+scp_check :: (profile_json: string) -> int #effects(all) {
+  nodes: [SCP_NODES] JvNode; d_arr: [1] Jv;
+  if !jv_parse(d_arr[..], profile_json, nodes[..]) { return 0; }
+  d := d_arr[0];
+  ver := jv_int(d, jv_get(d, 0, "version"), 0);
+  nbuf: [64] u8; obuf: [64] u8; rbuf: [512] u8;
+  name := scp_str(d, jv_get(d, 0, "profile"), nbuf[..]);
+  if (ver == 1 && name != "scene-command-v1") || (ver == 2 && name != "scene-command-v2") || (ver != 1 && ver != 2) { return 0; }
+  fxs := jv_get(d, 0, "fixtures");
+  if jv_kind(d, fxs) != JV_ARRAY || jv_len(d, fxs) < 3 { return 0; }
+  saw_resize := false;
+  for i: 0..<jv_len(d, fxs) {
+    fx := jv_at(d, fxs, i);
+    if scp_str(d, jv_get(d, fx, "op"), obuf[..]) == "resize" { saw_resize = true; }
+    if !scp_fixture(d, fx, ver) { return 0; }
+  }
+  if ver == 2 && !saw_resize { return 0; }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 2 { return 0; }
+  for i: 0..<jv_len(d, rej) {
+    bad := scp_str(d, jv_at(d, rej, i), rbuf[..]);
+    c1: [1] ForgeSceneCommand; c2: [1] ForgeResize;
+    if bad.count == 0 || fs_command(bad, c1[..]) || (ver == 2 && fsr_command(bad, c2[..])) { return 0; }
+  }
+  return ver;
+}
+
+#test "Scene command v1 and v2 profile tool checks round-trips and rejects drift" {
+  v1 := "{\"profile\":\"scene-command-v1\",\"version\":1,\"fixtures\":[{\"wire\":\"{\\\"op\\\":\\\"place\\\",\\\"item\\\":\\\"crate\\\",\\\"count\\\":3,\\\"arrangement\\\":\\\"row\\\",\\\"size_percent\\\":100}\",\"op\":\"place\",\"item\":\"crate\",\"count\":3,\"stack\":false,\"size_percent\":100,\"located\":false},{\"wire\":\"{\\\"op\\\":\\\"move\\\",\\\"group\\\":2,\\\"dx_cm\\\":100,\\\"dz_cm\\\":-200}\",\"op\":\"move\",\"group\":2,\"dx_cm\":100,\"dz_cm\":-200},{\"wire\":\"{\\\"op\\\":\\\"remove\\\",\\\"group\\\":4}\",\"op\":\"remove\",\"group\":4}],\"rejected\":[\"{\\\"op\\\":\\\"resize\\\",\\\"index\\\":0,\\\"version\\\":1,\\\"size_percent\\\":100}\",\"{\\\"op\\\":\\\"place\\\",\\\"item\\\":\\\"crate\\\",\\\"x_cm\\\":0}\"]}";
+  #assert scp_check(v1) == 1;
+  v2 := "{\"profile\":\"scene-command-v2\",\"version\":2,\"fixtures\":[{\"wire\":\"{\\\"op\\\":\\\"place\\\",\\\"item\\\":\\\"barrel\\\",\\\"count\\\":2,\\\"arrangement\\\":\\\"stack\\\",\\\"size_percent\\\":200,\\\"x_cm\\\":600,\\\"z_cm\\\":-1200}\",\"op\":\"place\",\"item\":\"barrel\",\"count\":2,\"stack\":true,\"size_percent\":200,\"located\":true,\"x_cm\":600,\"z_cm\":-1200},{\"wire\":\"{\\\"op\\\":\\\"resize\\\",\\\"index\\\":1,\\\"version\\\":23,\\\"scale_percent\\\":300}\",\"op\":\"resize\",\"index\":1,\"version\":23,\"amount\":300,\"relative\":true},{\"wire\":\"{\\\"op\\\":\\\"resize\\\",\\\"index\\\":0,\\\"version\\\":5,\\\"size_percent\\\":150}\",\"op\":\"resize\",\"index\":0,\"version\":5,\"amount\":150,\"relative\":false}],\"rejected\":[\"{\\\"op\\\":\\\"resize\\\",\\\"index\\\":0,\\\"version\\\":1,\\\"size_percent\\\":100,\\\"scale_percent\\\":100}\",\"{\\\"op\\\":\\\"resize\\\",\\\"index\\\":64,\\\"version\\\":1,\\\"size_percent\\\":100}\"]}";
+  #assert scp_check(v2) == 2;
+  #assert scp_check("{}") == 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: scene-command-profile FILE.json"); return 2; }
+  raw: [SCP_FILE] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("scene-command-profile: cannot read JSON"); return 2; }
+  ver := scp_check(cast(string) raw[0..<n]);
+  if ver == 0 { print("scene-command: profile fails\n"); return 1; }
+  print("scene-command-v%: profile holds\n", ver);
+  return 0;
+}

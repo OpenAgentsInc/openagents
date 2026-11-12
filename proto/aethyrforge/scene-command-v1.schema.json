@@ -1,6 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openagents.com/proto/aethyrforge/scene-command-v1.schema.json",
+  "profile": "scene-command-v1",
+  "version": 1,
+  "codec": "apps/aethyrforge-desktop/scene-policy.coax",
+  "check": "coax/web/tool.sh apps/aethyrforge-desktop/scene-command-profile.coax proto/aethyrforge/scene-command-v1.schema.json",
   "title": "Local Aethyrforge scene command v1",
   "type": "object",
   "required": ["op"],
@@ -29,5 +33,53 @@
       "required": ["group"],
       "not": {"anyOf": [{"required": ["item"]}, {"required": ["count"]}, {"required": ["arrangement"]}, {"required": ["size_percent"]}, {"required": ["x_cm"]}, {"required": ["z_cm"]}]}
     }
+  ],
+  "fixtures": [
+    {
+      "name": "place-row",
+      "wire": "{\"op\":\"place\",\"item\":\"crate\",\"count\":1,\"arrangement\":\"row\",\"size_percent\":100}",
+      "op": "place",
+      "item": "crate",
+      "count": 1,
+      "stack": false,
+      "size_percent": 100,
+      "located": false
+    },
+    {
+      "name": "place-stack-located",
+      "wire": "{\"op\":\"place\",\"item\":\"barrel\",\"count\":5,\"arrangement\":\"stack\",\"size_percent\":25,\"x_cm\":600,\"z_cm\":-1200}",
+      "op": "place",
+      "item": "barrel",
+      "count": 5,
+      "stack": true,
+      "size_percent": 25,
+      "located": true,
+      "x_cm": 600,
+      "z_cm": -1200
+    },
+    {
+      "name": "move-group",
+      "wire": "{\"op\":\"move\",\"group\":7,\"dx_cm\":100,\"dz_cm\":-200}",
+      "op": "move",
+      "group": 7,
+      "dx_cm": 100,
+      "dz_cm": -200
+    },
+    {
+      "name": "remove-group",
+      "wire": "{\"op\":\"remove\",\"group\":7}",
+      "op": "remove",
+      "group": 7
+    }
+  ],
+  "rejected": [
+    "{}",
+    "{\"op\":\"resize\",\"index\":0,\"version\":0,\"size_percent\":100}",
+    "{\"op\":\"place\",\"item\":\"dragon\"}",
+    "{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0}",
+    "{\"op\":\"place\",\"item\":\"crate\",\"group\":1}",
+    "{\"op\":\"move\",\"group\":0}",
+    "{\"op\":\"remove\",\"group\":1,\"item\":\"crate\"}",
+    "{\"op\":\"place\",\"item\":\"crate\",\"dx_cm\":10}"
   ]
 }
