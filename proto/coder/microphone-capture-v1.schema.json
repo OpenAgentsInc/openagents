@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openagents.com/proto/coder/microphone-capture-v1.schema.json",
   "title": "Aethyrforge per-hold microphone preparation (native IPC)",
+  "check": "coax/web/tool.sh apps/aethyrforge-desktop/microphone-capture-profile.coax proto/coder/microphone-capture-v1.schema.json",
   "type": "object",
   "required": ["schema", "kind", "capture"],
   "properties": {

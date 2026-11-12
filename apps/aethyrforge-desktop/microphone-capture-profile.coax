@@ -1,0 +1,180 @@
+// Checks proto/coder/microphone-capture-v1.schema.json against
+// postMessage({schema:'aethyrforge.microphone-capture.v1', ...}) literals in Sources/app.m.
+//
+//   coax/web/tool.sh apps/aethyrforge-desktop/microphone-capture-profile.coax proto/coder/microphone-capture-v1.schema.json
+#import "Basic";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+MCP_SCHEMA_FILE :: 65536;
+MCP_APP_FILE :: 262144;
+MCP_NODES :: 1024;
+MCP_APP_PATH :: "apps/aethyrforge-desktop/Sources/app.m";
+MCP_NEEDLE :: "postMessage({schema:'";
+
+mcp_str :: (d: Jv, obj: int, key: string) -> string {
+  at := jv_get(d, obj, key);
+  return ifx jv_kind(d, at) == JV_STRING then jv_raw(d, at) else "";
+}
+
+mcp_ws :: (c: u8) -> bool {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+mcp_ident :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+mcp_in_arr :: (d: Jv, arr: int, want: string) -> bool {
+  if jv_kind(d, arr) != JV_ARRAY { return false; }
+  k := d.nodes[arr].first;
+  while k != -1 {
+    if jv_kind(d, k) == JV_STRING && jv_raw(d, k) == want { return true; }
+    k = d.nodes[k].next;
+  }
+  return false;
+}
+
+mcp_check_literal :: (d: Jv, props: int, req: int, schema_const: string, lit: string) -> bool {
+  keys: [16] string;
+  nkeys := 0;
+  schema_val := "";
+  has_schema := false;
+  i := 0;
+  if lit.count < 2 || lit[0] != '{' || lit[lit.count - 1] != '}' { return false; }
+  i = 1;
+  end := lit.count - 1;
+  while i < end {
+    while i < end && mcp_ws(lit[i]) { i += 1; }
+    if i >= end { break; }
+    ks := i;
+    while i < end && mcp_ident(lit[i]) { i += 1; }
+    if i == ks || nkeys >= keys.count { return false; }
+    key := cast(string) lit[ks..<i];
+    for p: 0..<nkeys { if keys[p] == key { return false; } }
+    keys[nkeys] = key;
+    nkeys += 1;
+    prop := jv_get(d, props, key);
+    if jv_kind(d, prop) != JV_OBJECT { return false; }
+    while i < end && mcp_ws(lit[i]) { i += 1; }
+    if i < end && lit[i] == ':' {
+      i += 1;
+      while i < end && mcp_ws(lit[i]) { i += 1; }
+      if i >= end { return false; }
+      if lit[i] == '\'' {
+        i += 1;
+        vs := i;
+        while i < end && lit[i] != '\'' { i += 1; }
+        if i >= end { return false; }
+        val := cast(string) lit[vs..<i];
+        i += 1;
+        if key == "schema" { has_schema = true; schema_val = val; }
+        en := jv_get(d, prop, "enum");
+        if jv_kind(d, en) == JV_ARRAY && !mcp_in_arr(d, en, val) { return false; }
+      } else {
+        vs := i;
+        while i < end && lit[i] != ',' { i += 1; }
+        if i == vs { return false; }
+      }
+    } else {
+      if key == "schema" { return false; }
+    }
+    while i < end && mcp_ws(lit[i]) { i += 1; }
+    if i < end {
+      if lit[i] != ',' { return false; }
+      i += 1;
+    }
+  }
+  if !has_schema || schema_val != schema_const { return false; }
+  rk := d.nodes[req].first;
+  while rk != -1 {
+    if jv_kind(d, rk) != JV_STRING { return false; }
+    want := jv_raw(d, rk);
+    found := false;
+    for p: 0..<nkeys { if keys[p] == want { found = true; } }
+    if !found { return false; }
+    rk = d.nodes[rk].next;
+  }
+  return true;
+}
+
+mcp_schema_id :: (text: string) -> string {
+  nodes: [MCP_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return ""; }
+  props := jv_get(d[0], 0, "properties");
+  if jv_kind(d[0], props) != JV_OBJECT { return ""; }
+  sch := jv_get(d[0], props, "schema");
+  if jv_kind(d[0], sch) != JV_OBJECT { return ""; }
+  return mcp_str(d[0], sch, "const");
+}
+
+mcp_check_texts :: (schema_text: string, app_text: string) -> bool {
+  nodes: [MCP_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], schema_text, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  v := d[0];
+  if mcp_str(v, 0, "check").count == 0 { return false; }
+  props := jv_get(v, 0, "properties");
+  req := jv_get(v, 0, "required");
+  if jv_kind(v, props) != JV_OBJECT || jv_kind(v, req) != JV_ARRAY { return false; }
+  sch_prop := jv_get(v, props, "schema");
+  if jv_kind(v, sch_prop) != JV_OBJECT { return false; }
+  schema_const := mcp_str(v, sch_prop, "const");
+  if schema_const.count == 0 { return false; }
+
+  hits := 0;
+  ls := 0;
+  while ls < app_text.count {
+    le := ls;
+    while le < app_text.count && app_text[le] != '\n' { le += 1; }
+    line := cast(string) app_text[ls..<le];
+    p := 0;
+    while p + MCP_NEEDLE.count <= line.count {
+      if cast(string) line[p..<p + MCP_NEEDLE.count] == MCP_NEEDLE {
+        brace := p + 12;
+        q := brace + 1;
+        while q < line.count && line[q] != '}' { q += 1; }
+        if q >= line.count || q + 1 >= line.count || line[q + 1] != ')' { return false; }
+        lit := cast(string) line[brace..<q + 1];
+        if p + MCP_NEEDLE.count + schema_const.count <= line.count && cast(string) line[p + MCP_NEEDLE.count..<p + MCP_NEEDLE.count + schema_const.count] == schema_const {
+          if !mcp_check_literal(v, props, req, schema_const, lit) { return false; }
+          hits += 1;
+        }
+        p = q + 1;
+      } else {
+        p += 1;
+      }
+    }
+    ls = le + 1;
+  }
+  return hits >= 2;
+}
+
+#test "microphone-capture literals match schema" {
+  sample_schema := "{\"check\":\"x\",\"required\":[\"schema\",\"kind\",\"capture\"],\"properties\":{\"schema\":{\"const\":\"aethyrforge.microphone-capture.v1\"},\"kind\":{\"enum\":[\"prepare\",\"cancel\"]},\"capture\":{\"type\":\"integer\"}}}";
+  sample_app := "postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'prepare',capture});\npostMessage({schema:'aethyrforge.microphone-capture.v1',kind:'cancel',capture});\n";
+  #assert mcp_check_texts(sample_schema, sample_app);
+  #assert !mcp_check_texts(sample_schema, "postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'prepare',extra:1,capture});\npostMessage({schema:'aethyrforge.microphone-capture.v1',kind:'cancel',capture});\n");
+  #assert !mcp_check_texts(sample_schema, "postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'prepare'});\npostMessage({schema:'aethyrforge.microphone-capture.v1',kind:'cancel',capture});\n");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 {
+    tool_errln("usage: microphone-capture-profile.coax <profile.json>"); return 2;
+  }
+  sraw: [MCP_SCHEMA_FILE] u8;
+  sn := fs_read(args_at(args[..], 0), sraw[..]);
+  if sn < 0 { tool_errln("microphone-capture-profile: cannot read profile"); return 2; }
+  araw: [MCP_APP_FILE] u8;
+  an := fs_read(MCP_APP_PATH, araw[..]);
+  if an < 0 { tool_errln("microphone-capture-profile: cannot read app.m"); return 2; }
+  stext := cast(string) sraw[0..<sn];
+  id := mcp_schema_id(stext);
+  if id.count == 0 { id = "profile"; }
+  if !mcp_check_texts(stext, cast(string) araw[0..<an]) {
+    print("%: profile fails\n", id); return 1;
+  }
+  print("%: profile holds\n", id);
+  return 0;
+}
