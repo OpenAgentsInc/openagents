@@ -46,8 +46,6 @@ shape external-format-fixtures  # C13, wave 2: every external row gets a fixture
 shape nip98-events-in-c  # C14, wave 2: runner.c builds NIP-98 events by hand; use coax/lib/nostr (#13250)
 shape systemone-request-json  # the System One request JSON in coax/lib/systemone/request.coax is hand-written; pin it with the contract's fixtures (#13250)
 route coax/web/api/chat.c  # C9, wave 2: the /chat routes, after C5 (#13250)
-profile proto/coder/reply-stream-v1.schema.json  # C3 replaces it with a checked profile (#13240)
-profile proto/coder/route-v2.schema.json  # C3 replaces it with a checked profile (#13240)
 profile proto/coder/voice-input-v1.schema.json  # no check; E1 adds one or deletes it (#13244)
 profile proto/coder/microphone-capture-v1.schema.json  # no check; E1 adds one or deletes it (#13244)
 proto proto/openagents/coder/observability/v1/events.proto  # C3: fix the proto to the JSON and put it in a profile (#13240)
