@@ -80,6 +80,14 @@ on the same machine, the page also lists Coder's sessions and this folder's
 Claude Code conversations in a sidebar. Its Agent menu adds Claude Code,
 Codex, Antigravity and Microcoder, which run through Coder on that machine.
 
+A Claude Code conversation open in a terminal window is listed under
+Running, from the file each `claude` keeps in `~/.claude/sessions/`; a busy
+one shows the spinner. The page can watch it but not type into it: a window
+takes input only from its keyboard, so the page says to type there. Once the
+window is closed, a message from the page continues the same conversation in
+its own folder (`coder fork ID TEXT --same-conversation`), and
+`claude --resume` shows those turns too.
+
 `/goal CONDITION` works as it does in Claude Code: the message goes to
 Claude Code as typed, and Claude keeps taking turns until its own check
 finds the condition met. While the session runs, the page shows the goal.

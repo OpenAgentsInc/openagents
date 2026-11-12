@@ -168,7 +168,9 @@ cd_mcp_call :: (ar: [] ClArena, params: string, extra: [] string, out: [] u8) ->
 
 // A message for a session: a running job takes it as its next turn; an
 // ended one continues in a detached fork.
-cd_mcp_send_message :: (id_in: string, msg: string, out: [] u8, ok: [] bool) -> string {
+cd_mcp_send_message :: (id_in: string, msg: string, out: [] u8, ok: [] bool) -> string { return cd_mcp_send_as(id_in, msg, false, out, ok); }
+// same: an ended Claude Code session goes on as the same conversation (the caller has checked nothing else has it open).
+cd_mcp_send_as :: (id_in: string, msg: string, same: bool, out: [] u8, ok: [] bool) -> string {
   ok[0] = false;
   fb: [4194304] u8; ib: [128] u8;
   text := cd_session_file(id_in, fb[..], ib[..]);
@@ -183,8 +185,15 @@ cd_mcp_send_message :: (id_in: string, msg: string, out: [] u8, ok: [] bool) -> 
     n := cd_cat(out, 0, "Sent to "); n = cd_cat(out, n, id); n = cd_cat(out, n, "; it takes the message when its current turn ends.");
     return cast(string) out[0..<n];
   }
-  a := [4] string.["fork", id, msg, "--detach"];
-  nb: [256] u8; nid := cd_mcp_coder(a[..], nb[..], ok);
+  // it goes on in the session's own folder, where its Claude Code conversation is kept
+  hl := 0; while hl < text.count && text[hl] != 10 { hl += 1; }
+  har: [4096] u8; ha: [1] ClArena; ha[0] = ClArena.{buf = har[..]};
+  cwd := cl_str(ha[..], cast(string) text[0..<hl], "cwd");
+  a: [7] string; na := 4;
+  a[0] = "fork"; a[1] = id; a[2] = msg; a[3] = "--detach";
+  if cwd.count > 0 { a[na] = "--cwd"; a[na + 1] = cwd; na += 2; }
+  if same { a[na] = "--same-conversation"; na += 1; }
+  nb: [256] u8; nid := cd_mcp_coder(a[0..<na], nb[..], ok);
   if !ok[0] { n := cd_cat(out, 0, "The session has ended and a new one did not start: "); n = cd_cat(out, n, nid); return cast(string) out[0..<n]; }
   n := cd_cat(out, 0, "The session had ended; the conversation continues in "); n = cd_cat(out, n, nid);
   return cast(string) out[0..<n];

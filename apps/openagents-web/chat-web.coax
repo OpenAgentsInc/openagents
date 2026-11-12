@@ -864,7 +864,18 @@ cw_end :: (s: [] ChatWeb, status: int) {
   } else if kind == CF_LSEND {
     ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
     now := cl_str(ar[..], body, "id");
-    if status != 200 || now.count == 0 || now.count > 23 { s[0].lrun = false; s[0].echo = false; cw_say(s, ifx body.count > 0 && body.count < CW_ERROR then body else "Coder couldn't take that message."); return; }
+    if status != 200 || now.count == 0 || now.count > 23 {
+      s[0].lrun = false; s[0].echo = false;
+      cw_say(s, ifx body.count > 0 && body.count < CW_ERROR then body else "Coder couldn't take that message.");
+      // it wasn't sent: it leaves the transcript and goes back in the field
+      k := s[0].count - 1;
+      if k >= 0 && s[0].who[k] == CW_YOU {
+        s[0].draft_n = cw_put(s[0].draft[..], 0, cw_text(s, k));
+        dm_value(s[0].dom[..], "composer", cast(string) s[0].draft[0..<s[0].draft_n]);
+        s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k];
+      }
+      return;
+    }
     if now != cw_sel(s) { cw_show(s, now, false); }   // an ended session continues in a new one
     s[0].log_due = true; s[0].list_at = s[0].time - CW_LIST_EVERY;
   } else if kind == CF_LSTOP {
@@ -1485,6 +1496,16 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   #assert cw_test_door(s) == "/local/send" && cw_test_body(s) == "{\"id\":\"20261112-050000-001\",\"message\":\"and the docs\"}";
   cw_test_answer(s, 200, "{\"id\":\"20261112-050100-002\"}");
   #assert cw_sel(s) == "20261112-050100-002" && s[0].log_next == 0 && s[0].count == 4 && s[0].echo;
+  // a conversation open in a Claude Code window: Coder refuses, and the message goes back in the field
+  for i: 0..<40 { b = coaxial_chatweb_frame(s, 0.1, true); if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); } }
+  cw_test_answer(s, 200, "{\"next\":60,\"size\":60}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":5,\"steps\":2}\n");
+  cw_test_type(s, "composer", "and tests");
+  cw_test_enter(s, "composer");
+  if cw_test_door(s) != "/local/send" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
+  #assert cw_test_door(s) == "/local/send";
+  before := s[0].count;
+  cw_test_answer(s, 409, "This conversation is open in a Claude Code window. Type there, or close it there to continue it here.");
+  #assert s[0].count == before - 1 && cast(string) s[0].draft[0..<s[0].draft_n] == "and tests" && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "open in a Claude Code window");
 }
 
 #test "/goal goes to Claude Code as typed, and the page shows the goal while the session works toward it" {

@@ -189,7 +189,6 @@ cd_local_sessions :: (now_us: int, out: [] u8, ok: [] bool) -> string {
 }
 // Whether target is one of the local routes.
 cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop" || path == "/claude" || path == "/import"; }
-// A Claude Code conversation's ID: 36 characters of lowercase hex and dashes.
 // The Claude Code conversations open now in this folder: each running `claude` keeps
 // CLAUDE_DIR/sessions/PID.json with the conversation it has open, its folder and whether it is busy,
 // and removes it when it exits. A file whose process is gone is left over from a crash and skipped.
@@ -210,7 +209,9 @@ cd_local_live :: (root: string, here: string, out: [] u8, at: int) -> int {
     text := cast(string) fb[0..<k];
     ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
     pid := cl_int(text, "pid"); id := cl_str(ar[..], text, "sessionId"); cwd := cl_str(ar[..], text, "cwd");
-    if !pid.ok || cxproc_pid_alive(pid.value) != 1 || cwd != here || !cd_local_ref_ok(id) { continue; }
+    // a person's window: its entrypoint is "cli". Coder's own claude processes say "sdk-cli", and Coder lists those sessions itself
+    if cl_str(ar[..], text, "entrypoint") != "cli" { continue; }
+    if !pid.ok || cxproc_pid_alive(pid.value) != 1 || (here.count > 0 && cwd != here) || !cd_local_ref_ok(id) { continue; }
     if kept > 0 { n = cd_cat(out, n, ","); }
     n = cd_cat(out, n, "{\"id\":\""); n = cd_cat(out, n, id); n = cd_cat(out, n, "\",\"busy\":");
     n = cd_cat(out, n, ifx cl_str(ar[..], text, "status") == "busy" then "true}" else "false}");
@@ -218,6 +219,37 @@ cd_local_live :: (root: string, here: string, out: [] u8, at: int) -> int {
   }
   return cd_cat(out, n, "]");
 }
+// The Claude Code conversation an ended session would continue: the last one its claude reported,
+// else the one it was imported from. "" for a running session (a message waits for its turn) or another engine.
+cd_local_conversation :: (id: string, out: [] u8) -> string {
+  fb: [4194304] u8; ib: [128] u8;
+  text := cd_session_file(id, fb[..], ib[..]);
+  if text.count == 0 { return ""; }
+  k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
+  pid := cd_job_pid(cast(string) ib[0..<k]);
+  if pid > 0 && cxproc_pid_alive(pid) == 1 { return ""; }
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  n := 0; at := 0; first := true;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    line := cast(string) text[at..<e]; at = e + 1;
+    ar[0].at = 0;
+    if first { first = false; if cl_str(ar[..], line, "engine") != "claude" { return ""; } }
+    kind := cl_str(ar[..], line, "kind");
+    r := "";
+    if kind == "session" { r = cl_str(ar[..], line, "resume"); }
+    else if kind == "engine_session" { r = cl_str(ar[..], line, "id"); }
+    if cd_local_ref_ok(r) { n = cd_cat(out, 0, r); }
+  }
+  return cast(string) out[0..<n];
+}
+// Whether text holds part.
+cd_local_has :: (text: string, part: string) -> bool {
+  if part.count == 0 || part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if cast(string) text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+// A Claude Code conversation's ID: 36 characters of lowercase hex and dashes.
 cd_local_ref_ok :: (ref: string) -> bool {
   if ref.count != 36 { return false; }
   for c: ref { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == '-') { return false; } }
@@ -277,7 +309,15 @@ cd_local_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
   else if path == "/send" {
     msg := cl_str(ar[..], body, "message");
     if msg.count == 0 { r.status = 400; return r; }
-    said := cd_mcp_send_message(id, msg, out, ok[..]);
+    // An ended Claude Code session goes on as the same conversation, unless a window has it open:
+    // two claude processes writing one conversation would break it, and the window can't take a
+    // message from here, so the page says where to type instead.
+    cb2: [48] u8; conv := cd_local_conversation(id, cb2[..]);
+    if conv.count > 0 {
+      rb: [2048] u8; lb: [8192] u8; ln := cd_local_live(csr_root(rb[..]), "", lb[..], 0);
+      if cd_local_has(cast(string) lb[0..<ln], conv) { r.status = 409; r.body = "This conversation is open in a Claude Code window. Type there, or close it there to continue it here."; return r; }
+    }
+    said := cd_mcp_send_as(id, msg, conv.count > 0, out, ok[..]);
     // the session the message went to: this one, or the new one an ended session continues in
     lead := "The session had ended; the conversation continues in ";
     now := id;

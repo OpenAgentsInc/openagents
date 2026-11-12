@@ -85,6 +85,7 @@ TrRun :: struct {
   memory: [TR_MEMORY_MAX] u8; nmemory: int; held: int;   // remembered facts ahead of the first message, and how many stayed back
   pre_b: [SF_PRE_MAX] u8; npre: int;         // a fork's earlier turns, ahead of its first message
   resume: [128] u8; nresume: int;            // a fork resumes this Claude Code session
+  same: bool;                                // ... as the same conversation, not a copy (--same-conversation)
   cursor_resume: [128] u8; ncursor_resume: int;   // ... or loads this Cursor session (resumes this Antigravity one)
   // the turn
   running: bool; started_ms: int; steps: int; turns: int; exit: int; cost: f64;
@@ -450,7 +451,7 @@ tr_claude_send :: (r: [] TrRun, msg: string) {
   if !s[0].live { s_init(s, r[0].ses_pool); r[0].seen[0] = SCursor.{}; }
   if r[0].live { e_send_as(e, s, msg, msg); return; }
   tr_claude_options(r[0].opt[..], tr_cwd(r), ifx r[0].model_engine == TR_CLAUDE then tr_model(r) else "", false, tr_effort(r), false, r[0].api_key);
-  if r[0].nresume > 0 { r[0].opt[0].resume = tr_s(r[0].resume[..], r[0].nresume); r[0].opt[0].fork_session = true; }
+  if r[0].nresume > 0 { r[0].opt[0].resume = tr_s(r[0].resume[..], r[0].nresume); r[0].opt[0].fork_session = !r[0].same; }
   r[0].opt[0].mcp_servers = tr_s(r[0].mcp[..], r[0].nmcp);
   e_own(e, r[0].opt[..]);
   first := cast(string) msg[0..<ifx msg.count < TR_FIRST_MAX then msg.count else TR_FIRST_MAX];
