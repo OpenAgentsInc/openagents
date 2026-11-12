@@ -76,23 +76,7 @@ McLoop :: struct {
   ending: int;
   why: string;                   // no_capacity: the gateways' last reason
   reply: string;                 // finished or asked: what the user sees
-  // Thinking by step (GitHub #13231): with escalate set, the first step, which plans the work,
-  // goes out at effort_high, every other at effort_low, and a finish answered at effort_low is
-  // asked again, once, with the same prompt at effort_high, whose answer decides. A call at
-  // effort_high carries high_limit_ms; one that fails falls back: the first step is asked
-  // again at effort_low, a re-asked finish is taken as the low answer gave it.
-  escalate: bool;
-  effort_low: string = "low";
-  effort_high: string = "medium";
-  high_limit_ms: int = 90000;
-  high: bool;                    // the call out now is at effort_high
-  reask: bool;                   // ... and it asks a low finish again
-  planned: bool;                 // the first step's call has been made at effort_high (or fell back)
-  held: [8192] u8; nheld: int;   // the low finish's reply, while it is asked again
 }
-
-// The effort the next call goes out at, and whether it is the high one.
-mc_next_high :: (l: [] McLoop) -> bool { return l[0].escalate && (!l[0].planned || l[0].reask); }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
 mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environment: string, task: string, route: string, local_work: f64) {
@@ -129,13 +113,7 @@ mc_request :: (l: [] McLoop) -> GwRequest {
     state = mc_state_json(l[0].st[..], l[0].prompt);
   }
   l[0].msgs[0] = GwMessage.{role = "user", text = state};
-  req := GwRequest.{system = MC_SYSTEM, messages = l[0].msgs[..], schema = MC_SCHEMA, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
-  l[0].high = mc_next_high(l);
-  if l[0].escalate {
-    req.effort = ifx l[0].high then l[0].effort_high else l[0].effort_low;
-    if l[0].high { req.limit_ms = l[0].high_limit_ms; }
-  }
-  return req;
+  return GwRequest.{system = MC_SYSTEM, messages = l[0].msgs[..], schema = MC_SCHEMA, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
 }
 
 mc_end :: (l: [] McLoop, ending: int) -> int { l[0].ending = ending; return MC_ENDED; }
@@ -152,26 +130,11 @@ mc_feed :: (l: [] McLoop, ev: GwEvent) -> int {
   }
   if ev.kind == GW_EV_REASONING { return MC_WAIT; }
   if ev.kind == GW_EV_REFUSED {
-    if l[0].high { return mc_high_failed(l); }
     if !l[0].got_text { l[0].why = ev.reason; return mc_end(l, MC_END_NO_CAPACITY); }
     return mc_bad(l, "the reply was cut off before it finished");
   }
   if ev.kind == GW_EV_DONE { return mc_take(l, cast(string) l[0].raw[0..<l[0].nr]); }
   return MC_WAIT;
-}
-
-// A call at effort_high that failed (its limit, a refusal, a cut): the first step goes again at
-// effort_low; a re-asked finish is taken as the low answer gave it.
-mc_high_failed :: (l: [] McLoop) -> int {
-  l[0].high = false;
-  if l[0].reask {
-    l[0].reask = false;
-    l[0].reply = cast(string) l[0].held[0..<l[0].nheld];
-    mc_record_bare(l);
-    return mc_end(l, MC_END_FINISHED);
-  }
-  l[0].planned = true;
-  return MC_AGAIN;
 }
 
 mc_bad :: (l: [] McLoop, why: string) -> int {
@@ -199,16 +162,6 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   l[0].steps += 1;
   l[0].bad = 0;
   a := l[0].pending[0];
-  was_high := l[0].high; l[0].high = false;
-  if was_high { l[0].planned = true; l[0].reask = false; }
-  if a.finished && l[0].escalate && !was_high {
-    // a finish at effort_low: asked again, once, with the same prompt, at effort_high
-    n := ifx a.reply.count < l[0].held.count then a.reply.count else l[0].held.count;
-    for i: 0..<n { l[0].held[i] = a.reply[i]; }
-    l[0].nheld = n; l[0].reask = true;
-    l[0].steps -= 1;             // the re-ask answers this step
-    return MC_AGAIN;
-  }
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }
   if a.asks { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED); }
   if a.nc == 0 && a.nv == 0 && a.ne == 0 {
@@ -273,8 +226,6 @@ McScript :: struct {
   replies: [] string;
   at: int;
   calls: int;                    // requests sent
-  eff: [16] string; lim: [16] int;    // each request's effort and limit
-  plen: [16] int; phash: [16] int;    // each request's prompt: its length and a hash of it
   ran: [16] string; nran: int;   // commands run, in order (copies in rb: the loop reuses its buffers each step)
   rb: [2048] u8; nrb: int;
 }
@@ -282,11 +233,6 @@ McScript :: struct {
 mc_script_step :: (l: [] McLoop, s: [] McScript) -> int {
   req := mc_request(l);
   #assert req.schema == MC_SCHEMA && req.system == MC_SYSTEM && json_valid(req.messages[0].text);
-  if s[0].calls < 16 {
-    s[0].eff[s[0].calls] = req.effort; s[0].lim[s[0].calls] = req.limit_ms; s[0].plen[s[0].calls] = req.messages[0].text.count;
-    h := 0; for c: req.messages[0].text { h = (h * 31 + cast(int) c) % 1000000007; }
-    s[0].phash[s[0].calls] = h;
-  }
   s[0].calls += 1;
   if s[0].at >= s[0].replies.count { return mc_feed(l, GwEvent.{kind = GW_EV_REFUSED, reason = "script over"}); }
   r := s[0].replies[s[0].at]; s[0].at += 1;
@@ -341,50 +287,6 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
   #assert json_valid(req.messages[0].text);
   #assert l[0].st[0].nearly > before;      // compacted, not dropped
-}
-
-#test "thinking by step: the plan and every finish at the higher level, the rest low; each low finish asked again once, with the same prompt" {
-  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
-  mc_init(l[..], sb[..], lb[..], "{}", "fix it", "{}", 1.0);
-  l[0].escalate = true;
-  act := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-  fin_low := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"low says done\",\"ask\":\"none\"}";
-  fin_high := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"high says done\",\"ask\":\"none\"}";
-  // plan (high), act (low), finish (low) -> re-ask (high) says keep working: act (low), finish (low) -> re-ask (high) finishes
-  r: [7] string; r[0] = act; r[1] = act; r[2] = fin_low; r[3] = act; r[4] = act; r[5] = fin_low; r[6] = fin_high;
-  s: [1] McScript; s[0].replies = r[..];
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "high says done" && s[0].calls == 7;
-  #assert s[0].eff[0] == "medium" && s[0].eff[1] == "low" && s[0].eff[2] == "low" && s[0].eff[3] == "medium";
-  #assert s[0].eff[4] == "low" && s[0].eff[5] == "low" && s[0].eff[6] == "medium";
-  #assert s[0].lim[0] == 90000 && s[0].lim[1] == 0 && s[0].lim[3] == 90000 && s[0].lim[6] == 90000;
-  // the re-ask is the same prompt as the low finish it asks again
-  #assert s[0].plen[3] == s[0].plen[2] && s[0].phash[3] == s[0].phash[2] && s[0].plen[6] == s[0].plen[5] && s[0].phash[6] == s[0].phash[5];
-  #assert l[0].steps == 5 && s[0].nran == 4;    // the two re-asks answered their steps; four commands ran
-}
-
-#test "thinking by step: a plan that finishes at once isn't asked again; a failed higher call falls back; off, the caller's effort stands" {
-  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
-  fin := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"4\",\"ask\":\"none\"}";
-  act := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-  mc_init(l[..], sb[..], lb[..], "{}", "what is 2+2", "{}", 1.0); l[0].escalate = true;
-  r1: [1] string; r1[0] = fin;
-  s: [1] McScript; s[0] = McScript.{replies = r1[..]};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 1 && s[0].eff[0] == "medium" && l[0].reply == "4";
-  // the plan's high call fails: the same step goes out low
-  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0); l[0].escalate = true;
-  r2: [3] string; r2[0] = "!refuse"; r2[1] = act; r2[2] = fin;
-  s[0] = McScript.{replies = r2[..]};
-  mc_script_run(l[..], s[..]);
-  // refuse(high) -> act(low) -> fin(low) -> re-ask(high): the script is over, so it fails: the low finish is taken
-  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "4" && s[0].eff[0] == "medium" && s[0].eff[1] == "low" && s[0].eff[2] == "low" && s[0].eff[3] == "medium";
-  // off: no effort from the loop, as before
-  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
-  r3: [2] string; r3[0] = act; r3[1] = fin;
-  s[0] = McScript.{replies = r3[..]};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 2 && s[0].eff[0] == "" && s[0].eff[1] == "" && s[0].lim[0] == 0;
 }
 
 #test "'what is 2+2' finishes in one step with no commands" {

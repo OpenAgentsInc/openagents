@@ -178,28 +178,11 @@ pr_case3 :: () -> bool {  // with no retries set a stall still ends the call, as
   return true;
 }
 
-pr_case_long :: () -> bool {  // a call past the request's whole limit is cut and refused, with no retry
-  t: [1] PrTest; srv := cxsock_listen(0);
-  if srv < 0 { return pr_check(false, "a loopback port to listen on"); }
-  pr_plan(t[0].p[..], t[0].b[..], t[0].url[..], cxsock_port(srv), 3, t[0].none[..]);
-  t[0].p[0].first_limit_ms = 0; t[0].p[0].idle_limit_ms = 0;
-  script := [2] int.[PR_STALL, PR_OK];
-  s: [1] PrServer; s[0] = PrServer.{srv = srv, script = script[..]};
-  r: [1] PrResult;
-  req := pr_request(t[..]); req.limit_ms = 500;
-  gw_plan_start(t[0].p[..], t[0].bench[..], req);
-  pr_run(t[0].p[..], t[0].bench[..], s[..], r[..]);
-  x := cxsock_close(srv);
-  if !pr_check(r[0].ended == GW_EV_REFUSED && s[0].served == 1 && t[0].p[0].nlog == 1 && t[0].p[0].log[0].outcome == GW_OUT_LAST, "a call past the request's whole limit is cut and refused, with no retry") { return false; }
-  return pr_check(t[0].p[0].why == "the call passed its time limit", "a call past the request's whole limit says why");
-}
-
 tool_main :: () -> int #export_c #effects(all) {
   failed := 0;
   if !pr_case0() { failed += 1; }
   if !pr_case1() { failed += 1; }
   if !pr_case2() { failed += 1; }
   if !pr_case3() { failed += 1; }
-  if !pr_case_long() { failed += 1; }
   return ifx failed > 0 then 1 else 0;
 }

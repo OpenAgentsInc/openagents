@@ -122,11 +122,6 @@ schema, the tools and the limits. The model never sees a key, a path under
   loop itself before the step's commands, so there is nothing to quote. A
   gated run refuses them and asks for a command instead.
 - **`view`**: read files under the working directory, capped at 64 KB each.
-- **Thinking by step:** in Coder at `--effort low`, the first step, which
-  plans the work, is asked at medium. Every other step is asked at low,
-  except that a finish answered at low is asked again, once, with the same
-  prompt, at medium, and that answer decides. A medium call has 90 s in all;
-  if it fails, the step goes out at low, or the low finish is taken (#13231).
 - Nothing else in v1: no network tools, no editing outside the working
   directory. Writes happen through commands, so they show in the transcript.
 

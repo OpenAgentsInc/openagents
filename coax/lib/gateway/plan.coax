@@ -134,10 +134,6 @@ gw_backoff :: (base: int, tried: int) -> int {
   return ifx b > GW_BACKOFF_CAP_MS then GW_BACKOFF_CAP_MS else b;
 }
 
-// Whether a call has run past the request's whole-call limit (0: none). Such a call is cut and
-// refused with no retry: its caller asked for the limit and decides what comes next.
-gw_too_long :: (limit: int, started: int, now: int) -> bool { return limit > 0 && now - started >= limit; }
-
 // Whether a call has gone silent: started at started, its last body line at last (-1: none yet).
 // A limit of 0 is off.
 GW_STALL_NONE :: 0;
@@ -161,8 +157,6 @@ GwPlan :: struct {
   tried: int;                    // retries spent on this request
   retry_at: int;                 // when the waiting retry starts, 0 when none waits
   texted: bool;                  // the running attempt has handed back text
-  call_limit_ms: int;            // the request's limit_ms: a call this long in all is cut, with no retry (0: none)
-  long_cut: bool;                // the running call was cut at call_limit_ms
   call: [1] GwCall;
   req: GwRequest;
   body: [] u8;
@@ -254,7 +248,6 @@ gw_plan_launch :: (p: [] GwPlan, bench: [] GwBench) -> bool {
 gw_plan_start :: (p: [] GwPlan, bench: [] GwBench, req: GwRequest) {
   p[0].req = req; p[0].at = 0; p[0].nlog = 0; p[0].over = false; p[0].why = "";
   p[0].tried = 0; p[0].retry_at = 0; p[0].texted = false;
-  p[0].call_limit_ms = req.limit_ms; p[0].long_cut = false;
   if p[0].n == 0 { p[0].why = "the plan has no attempts"; }
   x := gw_plan_launch(p, bench);
 }
@@ -281,19 +274,11 @@ gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
   n := gw_call_poll(p[0].call[..], ev[..]);
   if n == 0 {
     c := p[0].call[0];
-    now := cxproc_now_ms();
-    if gw_too_long(p[0].call_limit_ms, c.started_ms, now) {
-      gw_call_close(p[0].call[..]);
-      p[0].long_cut = true;
-      ev[0] = GwEvent.{kind = GW_EV_REFUSED, status = 0, reason = "the call passed its time limit"};
-      n = 1;
-    } else {
-      s := gw_stall(p[0].first_limit_ms, p[0].idle_limit_ms, c.started_ms, c.last_ms, now);
-      if s == GW_STALL_NONE { return 0; }
-      gw_call_close(p[0].call[..]);
-      ev[0] = GwEvent.{kind = GW_EV_REFUSED, status = 0, reason = ifx s == GW_STALL_FIRST then "nothing came within the first-token limit" else "the stream went silent past the idle limit"};
-      n = 1;
-    }
+    s := gw_stall(p[0].first_limit_ms, p[0].idle_limit_ms, c.started_ms, c.last_ms, cxproc_now_ms());
+    if s == GW_STALL_NONE { return 0; }
+    gw_call_close(p[0].call[..]);
+    ev[0] = GwEvent.{kind = GW_EV_REFUSED, status = 0, reason = ifx s == GW_STALL_FIRST then "nothing came within the first-token limit" else "the stream went silent past the idle limit"};
+    n = 1;
   }
   k := 0;
   for i: 0..<n {
@@ -303,7 +288,7 @@ gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
       p[0].at=p[0].n;return gw_plan_no_capacity(p,out,0);
     }
     if x.kind == GW_EV_TEXT { p[0].texted = true; }
-    if x.kind == GW_EV_REFUSED && !p[0].texted && !p[0].long_cut && p[0].tried < p[0].retries && gw_retryable(x.status) {
+    if x.kind == GW_EV_REFUSED && !p[0].texted && p[0].tried < p[0].retries && gw_retryable(x.status) {
       gw_call_close(p[0].call[..]);
       gw_plan_log(p, p[0].at, GW_OUT_RETRIED, x.status, x.usage);
       p[0].why = x.reason;
@@ -372,10 +357,6 @@ gw_plan_stop :: (p: [] GwPlan) {
   #assert gw_stall(1000, 500, 0, 100, 599) == GW_STALL_NONE && gw_stall(1000, 500, 0, 100, 600) == GW_STALL_IDLE;
   #assert gw_stall(0, 0, 0, -1, 1000000) == GW_STALL_NONE && gw_stall(0, 0, 0, 5, 1000000) == GW_STALL_NONE;
   #assert gw_outcome_name(GW_OUT_RETRIED) == "retried";
-}
-
-#test "a request's whole-call limit: off at 0, cut at the limit" {
-  #assert !gw_too_long(0, 0, 999999) && !gw_too_long(1000, 0, 999) && gw_too_long(1000, 0, 1000) && gw_too_long(1000, 50, 2000);
 }
 
 #forall "a stall is judged by the first limit before any line and by the idle limit after" first: 0..<4, idle: 0..<4, last: -1..<3, now: 0..<8 {
