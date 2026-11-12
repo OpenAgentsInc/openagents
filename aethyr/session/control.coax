@@ -208,12 +208,22 @@ control_fence :: (f: [] ControlFence, c_id: CharacterId, gen: int) -> int #effec
   // room 20 polls every 50 from t=200, acquires gen 2 at t=600 (b_first=600); room 10's
   // 200 writes on [1000, 1200) are all stale, so digest = ((((2*1009+20)*1009+600)*1009+200)*1009)+2.
   expected_digest := ((((2 * 1009 + 20) * 1009 + 600) * 1009 + 200) * 1009) + 2;
-  #assert co_reference() == expected_digest;
   for skew: 0..<3 {
     r: [1] CoRun; co_run(r[..], skew * 1000 - 1000);
     #assert r[0].owners_at_once == 1 && r[0].stale_writes == 200 && r[0].accepted_after_loss == 0;
-    #assert r[0].digest == expected_digest;
+    #assert r[0].elsewhere == 8 && r[0].b_first == 600 && r[0].digest == expected_digest;
   }
+  // Counterfactuals in the oracle: polling from 201 misses t=200 (7 live refusals, not 8);
+  // releasing at start lets room 20 save at t=0 (and without store fencing, both rooms save on
+  // [0, 400) and [1000, 1200)); a stale generation from room 20 is refused 600 times.
+  late_poll: [1] CoRun; co_sim(late_poll[..], 0, 201, false, -1, true);
+  #assert late_poll[0].elsewhere == 7 && late_poll[0].b_first == 600 && late_poll[0].digest == expected_digest;
+  released_fenced: [1] CoRun; co_sim(released_fenced[..], 0, 0, true, -1, true);
+  #assert released_fenced[0].b_first == 0 && released_fenced[0].owners_at_once == 2 && released_fenced[0].stale_writes == 599 && released_fenced[0].accepted_after_loss == 0;
+  released_unfenced: [1] CoRun; co_sim(released_unfenced[..], 0, 0, true, -1, false);
+  #assert released_unfenced[0].b_first == 0 && released_unfenced[0].owners_at_once == 2 && released_unfenced[0].accepted_after_loss == 599 && released_unfenced[0].stale_writes == 0;
+  stale_b: [1] CoRun; co_sim(stale_b[..], 0, 200, false, 0, true);
+  #assert stale_b[0].b_first == -1 && stale_b[0].stale_writes == 600 && stale_b[0].owners_at_once == 1;
 }
 
 #test "control: a transfer moves the owner in one write, once" {
