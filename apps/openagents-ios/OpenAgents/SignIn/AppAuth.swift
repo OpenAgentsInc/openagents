@@ -148,6 +148,87 @@ final class AppAuth: @unchecked Sendable {
         return Data(base64Encoded: t)
     }
 
+    // MARK: passkeys while logged in (the wallet's backup and daily limit, #13217)
+
+    /// A step-up challenge for one of this account's passkeys: answering it proves it is you for
+    /// the next five minutes (L2-fresh), which storing a wallet backup, reading it, raising the
+    /// daily limit and paying past it each need. Throws the server's words when the account has
+    /// no passkey.
+    func passkeyStepUpChallenge() async throws -> PasskeyChallenge {
+        let answer = try await said { try await self.authed("/api/auth/passkey/step-up/options", ["client": "app"]) }
+        guard let text = answer["challenge"] as? String, let bytes = AppAuth.unb64url(text), bytes.count == 32,
+              let rp = answer["rp_id"] as? String, !rp.isEmpty else { throw Failure.said("That didn't work. Try again.") }
+        return PasskeyChallenge(challenge: bytes, text: text, rpID: rp)
+    }
+    func passkeyStepUp(_ c: PasskeyChallenge, _ a: PasskeyAssertion) async throws {
+        _ = try await said { try await self.authed("/api/auth/passkey/step-up", AppAuth.passkeyBody(c, a)) }
+    }
+    /// What a new passkey is made from: the challenge, the site, and the account's user handle
+    /// and name as the password manager will show them.
+    struct PasskeyNew: Equatable { let challenge: Data; let text: String; let rpID: String; let userID: Data; let userIDText: String; let userName: String }
+    func passkeyRegisterChallenge() async throws -> PasskeyNew {
+        let answer = try await said { try await self.authed("/api/auth/passkey/register/options", ["client": "app"]) }
+        guard let text = answer["challenge"] as? String, let bytes = AppAuth.unb64url(text), bytes.count == 32,
+              let rp = answer["rp_id"] as? String, !rp.isEmpty,
+              let uid = answer["user_id"] as? String, let user = AppAuth.unb64url(uid), !user.isEmpty else { throw Failure.said("That didn't work. Try again.") }
+        return PasskeyNew(challenge: bytes, text: text, rpID: rp, userID: user, userIDText: uid, userName: answer["user_name"] as? String ?? "OpenAgents account")
+    }
+    /// Adds the passkey the phone just made. prf: the passkey said it can do PRF (what a wallet backup needs).
+    func passkeyRegister(_ c: PasskeyNew, attestation: Data, clientData: Data, prf: Bool) async throws {
+        _ = try await said {
+            try await self.authed("/api/auth/passkey/register", ["challenge": c.text, "attestation": AppAuth.b64url(attestation), "client_data": AppAuth.b64url(clientData),
+                                                                   "user_id": c.userIDText, "transports": "internal,hybrid", "prf": prf ? "1" : "0"])
+        }
+    }
+    /// How many passkeys the account has.
+    func passkeyCount() async throws -> Int {
+        guard let url = URL(string: origin + "/api/auth/passkeys") else { throw Failure.unreachable }
+        let r = try await authorize(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20))
+        let data: Data, status: Int
+        do { (data, status) = try await send(r) } catch { throw Failure.unreachable }
+        guard (200..<300).contains(status), let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw Failure.said(AppAuth.errorWords(data) ?? "That didn't work. Try again.")
+        }
+        return (o["passkeys"] as? [Any])?.count ?? 0
+    }
+    /// A challenge for a key to sign while logged in (purpose: link), and the URL it signs.
+    func proofChallenge(purpose: String) async throws -> String {
+        let answer = try await said { try await self.authed("/api/auth/proof/challenge", ["purpose": purpose]) }
+        guard let url = answer["url"] as? String, !url.isEmpty else { throw Failure.said("That didn't work. Try again.") }
+        return url
+    }
+    /// Links the Nostr key that signed proof (a NIP-98 event over url) to this account.
+    func linkNostr(url: String, proof: String, label: String) async throws {
+        guard let u = URL(string: url), u.absoluteString.hasPrefix(origin + "/api/auth/link/nostr?c=") else { throw Failure.said("That didn't work. Try again.") }
+        let path = String(u.absoluteString.dropFirst(origin.count))
+        _ = try await said { try await self.authed(path, ["proof": proof, "label": label]) }
+    }
+    /// Removes a Nostr key from the account's ways in (the server refuses the last one): its id
+    /// is looked up by its public key. Needs a fresh proof that it is you.
+    func unlinkNostr(pubkey: String) async throws {
+        guard let url = URL(string: origin + "/api/auth/ways") else { throw Failure.unreachable }
+        let r = try await authorize(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20))
+        let data: Data, status: Int
+        do { (data, status) = try await send(r) } catch { throw Failure.unreachable }
+        guard (200..<300).contains(status), let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw Failure.said(AppAuth.errorWords(data) ?? "That didn't work. Try again.")
+        }
+        let keys = o["keys"] as? [[String: Any]] ?? []
+        guard let id = keys.first(where: { ($0["pubkey"] as? String) == pubkey })?["id"] as? NSNumber else { return }   // already gone
+        let access = try await authorize(URLRequest(url: url)).value(forHTTPHeaderField: "Authorization") ?? ""
+        _ = try await said { try await self.post("/api/auth/unlink", raw: "{\"id\":\(id.int64Value),\"kind\":\"nostr\"}", authorization: access) }
+    }
+    /// A POST with this login's access token (renewed first when it is stale).
+    private func authed(_ path: String, _ json: [String: String]) async throws -> [String: Any] {
+        let access: String
+        switch AppAuth.next(tokens, now: clock()) {
+        case .loggedOut: throw Failure.said("Log in first.")
+        case .useAccess(let a): access = a
+        case .refresh: access = try await refreshed().access
+        }
+        return try await post(path, json, authorization: "Bearer " + access)
+    }
+
     /// Ends this login on the server (best effort) and forgets the tokens.
     func logout() async {
         if let t = tokens {

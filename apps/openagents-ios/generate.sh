@@ -43,6 +43,15 @@ done
 # signs for and the NIP-98 request it writes.
 "$compiler" c verse/phone-signin.coax --library --header "$out/PhoneSignin.h" > "$out/PhoneSignin.c.tmp"
 mv "$out/PhoneSignin.c.tmp" "$out/PhoneSignin.c"
+# The wallet's encrypted backup and daily limit (#13217, both #authority): verse/wallet-backup.coax
+# is what the app shows and does; verse/wallet-vault.coax is the sealing and opening
+# (coax/lib/nostr/vault-wallet.coax). The second loads Coax libraries PhoneSignin loads too, so the
+# app compiles it through OpenAgents/Platform/WalletVaultUnit.c, which gives the shared exports
+# names of their own.
+"$compiler" c verse/wallet-backup.coax --library --header "$out/WalletBackup.h" > "$out/WalletBackup.c.tmp"
+mv "$out/WalletBackup.c.tmp" "$out/WalletBackup.c"
+"$compiler" c verse/wallet-vault.coax --library --run-steps 250000000 --header "$out/WalletVault.h" > "$out/WalletVault.c.tmp"
+mv "$out/WalletVault.c.tmp" "$out/WalletVault.c"
 "$compiler" metal verse/light.coax > "$out/HomeShaders.txt.tmp"
 "$compiler" metal verse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"

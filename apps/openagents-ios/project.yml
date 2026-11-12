@@ -54,6 +54,10 @@ targets:
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/PhoneSignin.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      # The wallet's backup card and daily limit rules (verse/wallet-backup.coax, #13217). The vault
+      # itself (Generated/WalletVault.c) is compiled through OpenAgents/Platform/WalletVaultUnit.c.
+      - path: Generated/WalletBackup.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       # libsecp256k1 v0.6.0 for the phone's Nostr signatures (Vendor/secp256k1/README.md)
       - path: Vendor/secp256k1/src/secp256k1.c
         compilerFlags: "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8 -Wno-unused-function -Wno-shorten-64-to-32"
@@ -124,6 +128,10 @@ targets:
           - $(SRCROOT)/Generated/VoiceMeter.h
           - $(SRCROOT)/Generated/PhoneSignin.c
           - $(SRCROOT)/Generated/PhoneSignin.h
+          - $(SRCROOT)/Generated/WalletBackup.c
+          - $(SRCROOT)/Generated/WalletBackup.h
+          - $(SRCROOT)/Generated/WalletVault.c
+          - $(SRCROOT)/Generated/WalletVault.h
           - $(SRCROOT)/Generated/HomeShaders.txt
   OpenAgentsUITests:
     type: bundle.ui-testing

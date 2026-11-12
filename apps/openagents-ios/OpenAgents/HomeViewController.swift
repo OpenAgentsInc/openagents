@@ -100,6 +100,7 @@ final class HomeViewController: UIViewController {
             NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.didEnterBackgroundNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(resume), name: UIApplication.didBecomeActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(motionChanged), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(walletRestored), name: WalletBackupFlow.restored, object: nil)
             resume()
         } catch {
             // Fail visibly; never leave a blank view after a shader/resource error.
@@ -221,6 +222,8 @@ final class HomeViewController: UIViewController {
         super.viewDidAppear(animated)
         if let code = pendingCode { pendingCode = nil; SignInRouter.open(code, from: self) }
     }
+    /// A wallet came back from the account's backup (#13217): read its balance.
+    @objc private func walletRestored() { walletTask = nil; refreshBalance() }
     private func refreshBalance() {
         guard walletTask == nil, balanceLabel.superview != nil else { return }
         walletTask = Task { [weak self, wallet] in
@@ -250,7 +253,7 @@ final class HomeViewController: UIViewController {
         case .balance(let sats):
             reason = "Send and receive bitcoin."
             NSLog("OpenAgents wallet: balance shown (%llu sats)", sats)
-        case .noWallet: reason = "No wallet on this phone yet."
+        case .noWallet: reason = "No wallet on this phone yet. Log in with your passkey to bring a backed-up wallet back."
         case .locked: reason = "Your wallet is locked. Unlock your phone, then reopen OpenAgents."
         case .unreadable: reason = "The wallet saved on this phone can't be read. It has been left as it is."
         case .failed(let message): reason = message

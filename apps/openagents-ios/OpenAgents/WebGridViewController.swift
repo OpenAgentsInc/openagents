@@ -64,6 +64,7 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
         ])
 
         NotificationCenter.default.addObserver(self, selector: #selector(resume), name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(walletRestored), name: WalletBackupFlow.restored, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
         resume()
     }
@@ -146,6 +147,8 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
         sheet.view.tintColor = .white
         present(sheet, animated: true)
     }
+    /// A wallet came back from the account's backup (#13217): read its balance.
+    @objc private func walletRestored() { walletTask = nil; refreshBalance() }
     private func refreshBalance() {
         guard walletTask == nil else { return }
         walletTask = Task { [weak self, wallet] in

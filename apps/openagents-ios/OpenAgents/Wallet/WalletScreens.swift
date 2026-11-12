@@ -104,6 +104,9 @@ final class WalletViewController: UITableViewController {
     private let dollars = Look.label("", .preferredFont(forTextStyle: .subheadline), Look.dim)
     private var watching: Task<Void, Never>?
     private lazy var lightning = LightningAddressCardView(client: LightningAddressClient(), sign: { [host] in try await host.signProof($0) })
+    /// The backup card and the daily limit (#13217): asked the moment the wallet first holds money.
+    private lazy var safety = WalletBackupFlow.on(self)
+    private lazy var backup = WalletBackupCardView(flow: safety)
     private var header: UIStackView?
     var closed: (() -> Void)?
 
@@ -139,7 +142,16 @@ final class WalletViewController: UITableViewController {
             self?.present(vc, animated: true)
         }
         lightning.changed = { [weak self] in self?.sizeHeader() }
-        let header = Look.stack([lightning, balanceButton, dollars, buttons, buy], spacing: 10)
+        backup.present = { [weak self] vc in self?.present(vc, animated: true) }
+        backup.changed = { [weak self] in self?.sizeHeader() }
+        backup.openSafety = { [weak self] in
+            guard let self else { return }
+            let screen = WalletSafetyViewController(flow: self.safety)
+            screen.changed = { [weak self] in self?.reload() }
+            self.open(screen)
+        }
+        let header = Look.stack([backup, lightning, balanceButton, dollars, buttons, buy], spacing: 10)
+        header.setCustomSpacing(18, after: backup)
         header.setCustomSpacing(18, after: lightning)
         header.setCustomSpacing(22, after: dollars)
         header.layoutMargins = UIEdgeInsets(top: 24, left: 20, bottom: 12, right: 20); header.isLayoutMarginsRelativeArrangement = true
@@ -195,6 +207,7 @@ final class WalletViewController: UITableViewController {
             rate = await host.dollarsPerBitcoin()
             address = await host.lightningAddress()
             await lightning.load()
+            await backup.load(balance: balance)
             refreshControl?.endRefreshing()
             render()
         }
@@ -553,13 +566,23 @@ final class ReviewViewController: WalletForm {
         }
         busy(send) { [self] in
             guard await OwnerCheck.confirm("Send \(Money.text(quote.amount))") else { return }
+            // The daily limit (#13217): the account is asked before money leaves. Past the limit it
+            // asks for the passkey; when it can't be asked, this phone's own count of the last 24
+            // hours stands in (verse/wallet-backup.coax).
+            let safety = WalletBackupFlow.on(self)
+            let leaving = Int64(quote.amount + quote.fee)
+            let payment: String
+            switch await safety.maySpend(sats: leaving, destination: quote.recipient) {
+            case .pay(let id): payment = id
+            case .refuse(let why): return fail(why)
+            }
             flow = verse_wallet_step(flow, PayEvent.confirm)
-            guard flow.state == Pay.sending else { return }
+            guard flow.state == Pay.sending else { await safety.notPaid(id: payment); return }
             let outcome = await host.send(key: key, speed: speed)
             switch outcome {
-            case .sent: flow = verse_wallet_step(flow, PayEvent.sent)
-            case .notSent: flow = verse_wallet_step(flow, PayEvent.failed)
-            case .waiting: flow = verse_wallet_step(flow, PayEvent.timedOut)
+            case .sent: flow = verse_wallet_step(flow, PayEvent.sent); safety.paid(id: payment, sats: leaving, destination: quote.recipient)
+            case .notSent: flow = verse_wallet_step(flow, PayEvent.failed); await safety.notPaid(id: payment)
+            case .waiting: flow = verse_wallet_step(flow, PayEvent.timedOut); safety.paid(id: payment, sats: leaving, destination: quote.recipient)   // it may still settle: it counts
             }
             let result: ResultViewController.Result
             switch outcome {

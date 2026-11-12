@@ -11,4 +11,6 @@
 #include "Hud.h"
 #include "voice.h"
 #include "PhoneSignin.h"
+#include "WalletBackup.h"
+#include "WalletVault.h"
 #include "NostrSign.h"

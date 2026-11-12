@@ -115,6 +115,48 @@ server's devices list says so. Logging out forgets the key. See
 [docs/auth](../../docs/auth/sessions-and-tokens.md#native-refresh-tokens-bound-to-a-device-key)
 and [/settings/devices](https://openagents.com/settings/devices).
 
+## The wallet's backup and daily limit
+
+The wallet's seed is sealed on the phone and we store only the ciphertext
+(decision D4, [docs/auth](../../docs/auth/wallets-and-custody.md#what-is-built),
+#13217). Coax seals, opens and decides (`coax/lib/nostr/vault-wallet.coax`,
+`verse/wallet-vault.coax` and `verse/wallet-backup.coax`, generated as `WalletVault.h` and `WalletBackup.h`); Swift does the
+effects (`OpenAgents/Wallet/WalletBackup.swift`, `WalletBackupFlow.swift`,
+`WalletBackupScreens.swift`).
+
+- **Back up.** The wallet screen offers it the moment the wallet holds
+  money. One tap shows the passkey prompt, which also evaluates WebAuthn's
+  PRF extension; the PRF output never leaves the phone. Then the app shows
+  a 24-word recovery code once. An account with no passkey gets one first
+  (one more prompt).
+- **Bring it back.** On a phone with no wallet, logging in with the passkey
+  opens the account's backup with that same prompt and puts the seed in the
+  Keychain. The recovery code works when the passkey can't. A phone that
+  has a wallet keeps it: `WalletKeychain.addSeed` never replaces a seed.
+- **The daily limit** (20,000 sats until you change it) is in Wallet safety.
+  Before each payment the app asks `POST /api/wallet/spend`; past the limit
+  it shows the passkey prompt. When it can't ask, it uses its own count of
+  the last 24 hours. A phone that has had a limit doesn't pay while logged
+  out. We can't stop a payment made with the wallet's words elsewhere.
+- **One seed** is off unless you turn on "Use my wallet words for my Nostr
+  identity" in Wallet safety, which warns once.
+
+Coax keeps its working memory on the stack, more than a queue's thread
+has, so the vault's calls run on a 16 MiB thread (`WalletVault.onBigStack`).
+
+```sh
+# backup, a lost phone and both ways back, against a fake server and a software passkey (7 tests)
+xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination 'platform=iOS Simulator,name=OpenAgents iPhone' -derivedDataPath apps/openagents-ios/build \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -parallel-testing-enabled NO \
+  -only-testing:OpenAgentsTests/WalletBackupTests test
+```
+
+The Simulator has no synced passkey for openagents.com, so the system's own
+prompt and its PRF output are proven on a phone
+(`NEEDS_OWNER.md`); the same ceremony with a real WebAuthn PRF runs in
+headless Chrome against the live site (`coax/tests/auth/wallet-live.coax`).
+
 ```sh
 # the fake-server flow and BIP-340 vectors; sign ad hoc so the Keychain works in the simulator
 xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \

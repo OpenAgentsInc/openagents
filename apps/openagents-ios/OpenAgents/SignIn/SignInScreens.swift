@@ -133,8 +133,12 @@ final class AccountLogin {
     private let passkey = HudButton("Log in with a passkey", "login.passkey", main: true)
     private var ask: PasskeyAsk?
     private let logout = HudButton("Log out", "login.logout")
+    /// Logged in on a phone with no wallet: bring the account's backed-up wallet here (#13217).
+    private let restorePasskey = HudButton("Bring my wallet back with my passkey", "restore.passkey", main: true)
+    private let restoreCode = HudButton("Bring my wallet back with my recovery code", "restore.code")
+    private var hasBackup = false
     private var pending: String?
-    lazy var panel = HudPanel([HudHeading("Your account"), state, passkey, email, send, code, verify, again, key, logout, message])
+    lazy var panel = HudPanel([HudHeading("Your account"), state, passkey, email, send, code, verify, again, key, restorePasskey, restoreCode, logout, message])
 
     init(form: WalletForm, auth: AppAuth = .shared) {
         self.form = form; self.auth = auth
@@ -148,6 +152,36 @@ final class AccountLogin {
         key.addAction(UIAction { [weak self] _ in self?.withKey() }, for: .touchUpInside)
         passkey.addAction(UIAction { [weak self] _ in self?.withPasskey() }, for: .touchUpInside)
         logout.addAction(UIAction { [weak self] _ in self?.end() }, for: .touchUpInside)
+        restorePasskey.addAction(UIAction { [weak self] _ in self?.bringBack() }, for: .touchUpInside)
+        restoreCode.addAction(UIAction { [weak self] _ in self?.bringBackWithCode() }, for: .touchUpInside)
+    }
+    /// Whether this account has a wallet backup this phone could bring back (it has no wallet).
+    private func lookForBackup() {
+        guard auth.loggedIn, case .notFound = WalletKeychain.readSeed() else { hasBackup = false; return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.hasBackup = (try? await WalletBackupClient().summary())?.backup != nil
+            self.restorePasskey.isHidden = !self.hasBackup; self.restoreCode.isHidden = !self.hasBackup
+        }
+    }
+    private func bringBack() {
+        form?.busy(restorePasskey) { [weak self] in
+            guard let self else { return }
+            do {
+                let flow = WalletBackupFlow.on(self.form)
+                let proved = try await flow.prove()
+                guard let prf = proved.prf else { throw AppAuth.Failure.said("This passkey can't open the backup on this phone. Use your recovery code.") }
+                guard try await flow.restore(.passkey(credential: proved.credential, prf: prf)) else { throw AppAuth.Failure.said("This account has no wallet backup.") }
+                self.message.text = "Your wallet is back on this phone."
+            } catch { self.say(error) }
+            self.show()
+        }
+    }
+    private func bringBackWithCode() {
+        let screen = RestoreCodeViewController(flow: WalletBackupFlow.on(form))
+        screen.restored = { [weak self] in self?.message.text = "Your wallet is back on this phone."; self?.show() }
+        let sheet = UINavigationController(rootViewController: screen); sheet.overrideUserInterfaceStyle = .dark
+        form?.present(sheet, animated: true)
     }
 
     /// The panel for the current state: logged in, waiting for a code, or the ways in.
@@ -162,6 +196,8 @@ final class AccountLogin {
         key.isHidden = inNow
         passkey.isHidden = inNow || pending != nil
         logout.isHidden = !inNow
+        restorePasskey.isHidden = true; restoreCode.isHidden = true
+        if inNow { lookForBackup() }
     }
     private func say(_ error: Error) {
         message.text = error.localizedDescription
@@ -202,9 +238,12 @@ final class AccountLogin {
                 let ask = PasskeyAsk(anchor: self.form?.view.window)
                 self.ask = ask
                 defer { self.ask = nil }
-                let answer = try await ask.assert(challenge)
+                // The same prompt evaluates the wallet backup's PRF input (#13217): on a phone with
+                // no wallet, that opens the account's backup, and the wallet is back.
+                let answer = try await ask.assert(challenge, prf: WalletVault.prfInput)
                 try await self.auth.passkeyLogin(challenge, answer)
-                self.message.text = ""
+                let back = await WalletBackupFlow.on(self.form).restoreAfterLogin(credential: answer.credentialID, prf: ask.prfOutput)
+                self.message.text = back ? "Your wallet is back on this phone." : ""
             } catch { self.say(error) }
             self.show()
         }
@@ -227,29 +266,65 @@ final class PasskeyAsk: NSObject, ASAuthorizationControllerDelegate, ASAuthoriza
     private var waiting: CheckedContinuation<AppAuth.PasskeyAssertion, Error>?
     init(anchor: UIWindow?) { self.anchor = anchor }
 
-    func assert(_ c: AppAuth.PasskeyChallenge) async throws -> AppAuth.PasskeyAssertion {
+    /// The PRF output of the last answer, when its request asked for one and the passkey can
+    /// make it (WebAuthn's prf extension, hmac-secret). It is made inside the authenticator and
+    /// stays on this phone: it opens the wallet's encrypted backup and is never sent anywhere.
+    private(set) var prfOutput: Data?
+    /// A new passkey's answer.
+    struct Registration { let attestation: Data; let clientData: Data; let credentialID: Data; let prfSupported: Bool }
+    private var registering: CheckedContinuation<Registration, Error>?
+
+    /// prf: the PRF input to evaluate with the same prompt (the wallet backup's, WalletVault.prfInput).
+    func assert(_ c: AppAuth.PasskeyChallenge, prf: Data? = nil) async throws -> AppAuth.PasskeyAssertion {
         let request = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: c.rpID).createCredentialAssertionRequest(challenge: c.challenge)
         request.userVerificationPreference = .required
+        if let prf { request.prf = .inputValues(.init(saltInput1: prf)) }
+        prfOutput = nil
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self; controller.presentationContextProvider = self
         return try await withCheckedThrowingContinuation { k in waiting = k; controller.performRequests() }
+    }
+    /// Makes a passkey for this account on this phone (synced by the person's password manager),
+    /// asking whether it can do PRF.
+    func register(_ c: AppAuth.PasskeyNew) async throws -> Registration {
+        let request = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: c.rpID)
+            .createCredentialRegistrationRequest(challenge: c.challenge, name: c.userName, userID: c.userID)
+        request.userVerificationPreference = .required
+        request.prf = .checkForSupport
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self; controller.presentationContextProvider = self
+        return try await withCheckedThrowingContinuation { k in registering = k; controller.performRequests() }
     }
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         MainActor.assumeIsolated { anchor ?? ASPresentationAnchor() }
     }
     nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        let got = (authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion).map {
+        let answered = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion
+        let got = answered.map {
             AppAuth.PasskeyAssertion(credentialID: $0.credentialID, authenticatorData: $0.rawAuthenticatorData, clientData: $0.rawClientDataJSON,
                                      signature: $0.signature, userHandle: $0.userID)
         }
+        let prf = answered?.prf.map { $0.first.withUnsafeBytes { Data($0) } }
+        let made = (authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration).flatMap { r in
+            r.rawAttestationObject.map { Registration(attestation: $0, clientData: r.rawClientDataJSON, credentialID: r.credentialID, prfSupported: r.prf?.isSupported ?? false) }
+        }
         MainActor.assumeIsolated {
+            prfOutput = prf
+            if let k = registering {
+                registering = nil
+                if let made { k.resume(returning: made) } else { k.resume(throwing: AppAuth.Failure.said("The passkey wasn't made. Try again.")) }
+                return
+            }
             if let got { waiting?.resume(returning: got) } else { waiting?.resume(throwing: AppAuth.Failure.said("Your passkey didn't answer. Try again.")) }
             waiting = nil
         }
     }
     nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
         let words = PasskeyAsk.words(error)
-        MainActor.assumeIsolated { waiting?.resume(throwing: AppAuth.Failure.said(words)); waiting = nil }
+        MainActor.assumeIsolated {
+            if let k = registering { registering = nil; k.resume(throwing: AppAuth.Failure.said((error as? ASAuthorizationError)?.code == .canceled ? "No passkey was made." : "The passkey wasn't made. Try again.")); return }
+            waiting?.resume(throwing: AppAuth.Failure.said(words)); waiting = nil
+        }
     }
     /// Why no passkey answered, in our words.
     nonisolated static func words(_ error: Error) -> String {
