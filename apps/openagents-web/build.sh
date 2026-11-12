@@ -470,6 +470,11 @@ cp "$here/../../components/icons/apps-sdk/"*.svg "$here/../../components/icons/N
 # host and components). The page before it, chat.coax, is now /chat-gpu.
 timed chat-web "$here/../../coax/web/wasm.sh" "$here/chat-web.coax" "$here/chat-web-face.c" "$here/build/chat-web.wasm" &
 chat_web=$!
+# /nostr-chat (unlisted): Nostr from scratch as a scripted chat on the same host and components, every
+# value worked out in the page by coax/lib/nostr/ (nostr-chat.coax). It signs at run time: secp256k1's
+# tables need the larger budget, as Nostr Lab's do.
+COAXIAL_RUN_STEPS=250000000 timed nostr-chat "$here/../../coax/web/wasm.sh" "$here/nostr-chat.coax" "$here/nostr-chat-face.c" "$here/build/nostr-chat.wasm" &
+nostr_chat=$!
 # /settings/agents: an owner's agents and grants (#13211), the same components, atlas and shader.
 timed agents "$here/../../coax/web/wasm.sh" "$here/agents.coax" "$here/agents-face.c" "$here/build/agents.wasm" &
 agents_page=$!
@@ -484,6 +489,7 @@ wait "$chat"
 wait "$components_page"
 wait "$kit_page"
 wait "$chat_web"
+wait "$nostr_chat"
 wait "$agents_page"
 wait "$nip01"
 wait "$nip_guide"

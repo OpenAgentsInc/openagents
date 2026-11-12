@@ -1,0 +1,614 @@
+// openagents.com/nostr-chat (unlisted): Nostr from scratch as a chat. A scripted transcript plays on
+// its own: a question, then the tool calls that answer it, each with what it was given and what came
+// back, then a few plain words. It makes a key pair, builds and signs a note, sends it to a relay and
+// reads it back, checks it, breaks it by one letter, then sends a private message (NIP-44) and gift
+// wraps it (NIP-59). It is a demo, not an agent: the questions are fixed, and nothing is typed.
+//
+// Every value on the page is worked out in the page, when its step comes, by our Nostr library: the
+// key, the note, its bytes, ID and signature (nostr-lab-lesson.coax), the relay (the library's own
+// relay code in process, nostr-lab-relays.coax's nlr_relay; the page says on screen that it is local),
+// and the private message and the gift wrap (nostr-lab-private.coax). Those are Nostr Lab's lessons,
+// loaded here, not copied. A step the library refuses stops the script with a notice that says where;
+// nothing is ever shown that the library did not give.
+//
+// The keys are published test keys (BIP-340's vector 1 is ours, secret 3 is Alice, 7 is Carol), and
+// where a client draws random bytes the lessons use fixed ones, so every replay reads the same.
+//
+// Limits, shown when met: the transcript holds NCH_BEATS entries in NCH_POOL bytes; a wrap's content is
+// shown by its first NCH_WRAP_SHOWN characters and its length.
+//
+// The browser draws it: the frames set (components/kit/frames.coax) in the mono skin, through the
+// browser backend (components/backend/dom.coax) and coax/web/dom-host.js, as /chat is drawn. This is
+// its module for coax/web/wasm.sh, with nostr-chat-face.c.
+//   coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/nostr-chat.coax
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "../../components/kit/frames.coax";
+#load "../../components/backend/dom.coax";
+#load "nostr-lab-lesson.coax";    // the key, the note, its bytes, ID and signature, and a changed copy
+#load "nostr-lab-relays.coax";    // the lab relay: the library's relay, in process
+#load "nostr-lab-private.coax";   // NIP-44 between two keys, and NIP-59's gift wrap
+
+NCH_INBOX :: 1024;
+NCH_CSS :: 16384;
+NCH_BEATS :: 48;          // entries in the transcript, at most
+NCH_POOL :: 32768;        // bytes of their text
+NCH_CLIP :: 4096;
+NCH_WRAP_SHOWN :: 64;     // a wrap's content: the first this many characters, then its length
+NCH_USER :: 0; NCH_AGENT :: 1; NCH_TOOL :: 2; NCH_NOTICE :: 3;
+NCH_CLICK :: 1;
+NCH_ACTS :: 6;
+NCH_ASKS :: [6] string.["Make us a Nostr key pair from the demo seed.", "Write a short note and sign it.", "Send it to a relay and read it back.",
+  "What if someone changes one letter?", "Alice wants to send us a private message. Show it.", "Can the relay see that it is from Alice?"];
+NCH_ACT_NAMES :: [6] string.["the key pair", "the note", "the relay", "the changed letter", "the private message", "the gift wrap"];
+// Pacing, in seconds: how long each entry holds before the next comes. An answer first waits, then
+// comes at the skin's rate (MONO_REPLY_WAIT, MONO_REPLY_RATE).
+NCH_USER_HOLD :: 1.0;
+NCH_TOOL_RUN :: 0.6;      // a tool call shows as running this long, then its answer
+NCH_TOOL_HOLD :: 0.9;
+NCH_AGENT_HOLD :: 2.2;
+NCH_NOTICE_HOLD :: 2.4;
+NCH_LEDE :: "We make a key, sign a note, send it to a relay, read it back and check it, then send a private message. Every value below is worked out in this page by our Nostr library, written from scratch in Coax.";
+
+// One entry: its kind and up to four texts in the pool. A person's or an answer's text is the first; a
+// tool call's are its name, its one-line summary, what it was given and what came back; a notice's are
+// its kind and its words.
+NchBeat :: struct { kind: int; at: [4] int; n: [4] int; }
+NostrChat :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool; reduced: bool;
+  beats: [NCH_BEATS] NchBeat; nbeats: int;
+  closed: [NCH_BEATS] bool;          // tool calls the person closed (they open by default)
+  pool: [NCH_POOL] u8; pool_n: int;
+  full: bool;                        // an entry didn't fit: the page says so
+  asked: int;                        // questions put so far
+  ran: int;                          // steps worked out so far
+  shown: int;                        // entries wholly shown; the next is coming
+  beat_at: f32;                      // when the coming one started
+  done: bool;
+  stopped: int;                      // the library refused a step: its place + 1
+  lesson: [1] NostrLesson;
+  relay: [1] NlrRelay;
+  p44: [1] Nlp44;
+  p59: [1] Nlp59;
+  clip: [NCH_CLIP] u8; clip_n: int;  // text for the host to copy, until it has
+  inbox: [NCH_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [NCH_CSS] u8;
+  ui: [1] Ui;
+  doc: [1] MdDoc;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+nch_text :: (s: [] NostrChat, k: int, f: int) -> string { b := s[0].beats[k]; return cast(string) s[0].pool[b.at[f]..<b.at[f] + b.n[f]]; }
+// An entry into the transcript. False, and the page says the transcript is full, when it doesn't fit.
+nch_add :: (s: [] NostrChat, kind: int, a: string, b: string, c: string, d: string) -> bool {
+  if s[0].nbeats >= NCH_BEATS || s[0].pool_n + a.count + b.count + c.count + d.count > NCH_POOL { s[0].full = true; return false; }
+  k := s[0].nbeats; s[0].beats[k].kind = kind;
+  parts := [4] string.[a, b, c, d];
+  for f: 0..<4 {
+    s[0].beats[k].at[f] = s[0].pool_n; s[0].beats[k].n[f] = parts[f].count;
+    for ch: parts[f] { s[0].pool[s[0].pool_n] = ch; s[0].pool_n += 1; }
+  }
+  s[0].nbeats += 1;
+  return true;
+}
+nch_tool :: (s: [] NostrChat, name: string, detail: string, input: string, output: string) -> bool { return nch_add(s, NCH_TOOL, name, detail, input, output); }
+nch_say :: (s: [] NostrChat, text: string) -> bool { return nch_add(s, NCH_AGENT, text, "", "", ""); }
+// Bytes as lowercase hex in out, as text; "" when they don't fit.
+nch_hex :: (bytes: [] u8, out: [] u8) -> string {
+  r := hex_encode_checked(cast(string) bytes, out, false);
+  if r.error != NC_OK || r.written != bytes.count * 2 { return ""; }
+  return cast(string) out[0..<r.written];
+}
+// The first `keep` letters of a value and "...", for a one-line summary.
+nch_short :: (text: string, keep: int, out: [] u8) -> string {
+  if text.count <= keep { return text; }
+  n := json_raw(out, 0, text[0..<keep]); n = json_raw(out, n, "...");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+nch_str :: (out: [] u8, n: int) -> string { return ifx n < 0 then "" else cast(string) out[0..<n]; }
+// The library refused a step: the script stops here, and says where.
+nch_fail :: (s: [] NostrChat, act: int, step: int) -> bool {
+  names := NCH_ACT_NAMES; b: [256] u8;
+  n := json_raw(b[..], 0, "Our library stopped at step "); n = text_put_int(b[..], n, step);
+  n = json_raw(b[..], n, " while working out "); n = json_raw(b[..], n, names[act]);
+  n = json_raw(b[..], n, ". The page shows only what the library gives, so the demo stops here.");
+  ok := nch_add(s, NCH_NOTICE, "Error", nch_str(b[..], n), "", "");
+  s[0].stopped = act + 1; s[0].asked = NCH_ACTS; s[0].ran = NCH_ACTS;
+  return false;
+}
+
+// ---------------------------------------------------------------- the steps, worked out when they come
+
+// 1. A key pair from the demo seed, as NIP-19 writes it.
+nch_keys :: (s: [] NostrChat) -> bool {
+  l := s[0].lesson[..];
+  if !nlb_ready(l) { return nch_fail(s, 0, l[0].stopped); }
+  key: [32] u8; d := hex_decode_checked(NLB_KEY_HEX, key[..], false); if d.error != NC_OK || d.written != 32 { return nch_fail(s, 0, 20); }
+  nsec: [80] u8; e := nip19_encode_checked(N19_NSEC, cast(string) key[..], nsec[..], false);
+  for i: 0..<32 { key[i] = 0; }
+  if e.error != NC_OK { return nch_fail(s, 0, 21); }
+  // the npub reads back to the public key it was written from
+  back: [32] u8; r := nip19_decode_checked(cast(string) l[0].npub[0..<l[0].npub_n], back[..], false);
+  if r.error != NC_OK || r.type != N19_NPUB { return nch_fail(s, 0, 22); }
+  for i: 0..<32 { if back[i] != l[0].pub[i] { return nch_fail(s, 0, 23); } }
+  npub := cast(string) l[0].npub[0..<l[0].npub_n];
+  ib: [256] u8; ob: [512] u8;
+  i := json_raw(ib[..], 0, "seed    "); i = json_raw(ib[..], i, NLB_KEY_HEX);
+  i = json_raw(ib[..], i, "\n        BIP-340's published test vector 1: public, never for real use");
+  o := json_raw(ob[..], 0, "nsec    "); o = json_raw(ob[..], o, cast(string) nsec[0..<e.written]);
+  o = json_raw(ob[..], o, "\nnpub    "); o = json_raw(ob[..], o, npub);
+  o = json_raw(ob[..], o, "\npubkey  "); o = json_raw(ob[..], o, cast(string) l[0].pub_hex[..]);
+  ok := nch_tool(s, "nostr.keygen", npub, nch_str(ib[..], i), nch_str(ob[..], o));
+  ok = ok && nch_say(s, "That is a Nostr identity, and it is just a key pair. The **npub** is who we are: anyone may see it. The **nsec** signs for us, so it stays in this page. Nobody issued it, and nobody can take it away.\n\nThis one comes from a published test seed, so it is public. Never use it for anything real.");
+  return ok;
+}
+// 2. The note: its bytes, their SHA-256 (the ID), and the signature over the ID.
+nch_note :: (s: [] NostrChat) -> bool {
+  l := s[0].lesson[..];
+  if !l[0].ready { return nch_fail(s, 1, 1); }
+  id := cast(string) l[0].id_hex[..]; sig := cast(string) l[0].sig_hex[..];
+  ib: [256] u8; ob: [512] u8; db: [64] u8; num: [24] u8;
+  i := json_raw(ib[..], 0, "kind        "); i = text_put_int(ib[..], i, NLB_KIND);
+  i = json_raw(ib[..], i, "\ncreated_at  "); i = text_put_int(ib[..], i, NLB_CREATED);
+  i = json_raw(ib[..], i, "\ntags        "); i = json_raw(ib[..], i, NLB_TAGS);
+  i = json_raw(ib[..], i, "\ncontent     "); i = json_write_string(ib[..], i, NLB_CONTENT);
+  o := json_raw(ob[..], 0, "bytes   "); o = json_raw(ob[..], o, cast(string) l[0].pre[0..<l[0].pre_n]);
+  o = json_raw(ob[..], o, "\nsha256  "); o = json_raw(ob[..], o, id);
+  ok := nch_tool(s, "nostr.event", tr_cat(db[..], "id ", nch_short(id, 16, num[..])), nch_str(ib[..], i), nch_str(ob[..], o));
+  ib2: [256] u8; ob2: [256] u8; db2: [64] u8;
+  i = json_raw(ib2[..], 0, "id      "); i = json_raw(ib2[..], i, id);
+  i = json_raw(ib2[..], i, "\nkey     our nsec, which stays in this page");
+  // the 64 bytes as two lines of 32, so the value lines up under its label
+  o = json_raw(ob2[..], 0, "sig     "); o = json_raw(ob2[..], o, sig[0..<64]); o = json_raw(ob2[..], o, "\n        "); o = json_raw(ob2[..], o, sig[64..<128]);
+  o = json_raw(ob2[..], o, "\n        64 bytes, BIP-340 Schnorr");
+  ok = ok && nch_tool(s, "nostr.sign", tr_cat(db2[..], "sig ", nch_short(sig, 16, num[..])), nch_str(ib2[..], i), nch_str(ob2[..], o));
+  tb: [1024] u8;
+  t := json_raw(tb[..], 0, "The ID is the SHA-256 of those exact bytes, the same hash as last episode. The signature is a BIP-340 Schnorr signature over the ID, the kind Bitcoin's Taproot uses. Here is the whole event, ready to send:\n\n```json\n");
+  t = json_raw(tb[..], t, cast(string) l[0].event[0..<l[0].event_n]); t = json_raw(tb[..], t, "\n```");
+  if t < 0 { return nch_fail(s, 1, 2); }
+  return ok && nch_say(s, nch_str(tb[..], t));
+}
+// 3. To the relay and back: EVENT and OK, REQ and the stored event and EOSE, then our own check.
+nch_relay :: (s: [] NostrChat) -> bool {
+  l := s[0].lesson[..]; r := s[0].relay[..];
+  if !l[0].ready { return nch_fail(s, 2, 1); }
+  ok := nch_add(s, NCH_NOTICE, "Local relay", "This relay runs inside this page. It is our library's own relay code with the socket left out, so nothing goes over the network. What it stores is gone when you leave the page.", "", "");
+  nlr_relay_init(r);
+  event := cast(string) l[0].event[0..<l[0].event_n];
+  ends: [4] int;
+  fb: [640] u8; sent := nlr_text(fb[..], nostr_message_write_event(event, fb[..], false)); if sent.count == 0 { return nch_fail(s, 2, 2); }
+  okb: [256] u8; if nlr_relay(r, sent, NLB_CREATED, okb[..], ends[..]) != 1 { return nch_fail(s, 2, 3); }
+  ok_frame := cast(string) okb[0..<ends[0]];
+  m := nostr_message_read(ok_frame);
+  if m.error != NM_OK || m.type != NM_ACCEPT || !m.accepted { return nch_fail(s, 2, 4); }
+  for i: 0..<32 { if m.id[i] != l[0].id[i] { return nch_fail(s, 2, 5); } }
+  ok = ok && nch_tool(s, "relay.EVENT", "OK true", sent, ok_frame);
+  qb: [128] u8; ask := nlr_ask(qb[..]); if ask.count == 0 { return nch_fail(s, 2, 6); }
+  ab: [1024] u8; if nlr_relay(r, ask, NLB_CREATED, ab[..], ends[..]) != 2 { return nch_fail(s, 2, 7); }
+  back := cast(string) ab[0..<ends[0]]; eose := cast(string) ab[ends[0]..<ends[1]];
+  bm := nostr_message_read(back);
+  if bm.error != NM_OK || bm.type != NM_EVENT || back[bm.event.from..<bm.event.to] != event { return nch_fail(s, 2, 8); }
+  em := nostr_message_read(eose); if em.error != NM_OK || em.type != NM_EOSE { return nch_fail(s, 2, 9); }
+  ob: [1280] u8; o := json_raw(ob[..], 0, back); o = json_raw(ob[..], o, "\n"); o = json_raw(ob[..], o, eose);
+  ok = ok && nch_tool(s, "relay.REQ", "1 event, then EOSE", ask, nch_str(ob[..], o));
+  // we trust no relay: the signature of what came back is checked here
+  scratch: [1024] u8; v := nostr_message_event_verify_vartime(back, scratch[..], false);
+  if v.error != NE_OK || !v.verified { return nch_fail(s, 2, 10); }
+  for i: 0..<32 { if v.id[i] != l[0].id[i] { return nch_fail(s, 2, 11); } }
+  ib: [256] u8; vb: [256] u8;
+  i := json_raw(ib[..], 0, "event   "); i = json_raw(ib[..], i, cast(string) l[0].id_hex[..]);
+  i = json_raw(ib[..], i, "\nby      "); i = json_raw(ib[..], i, cast(string) l[0].npub[0..<l[0].npub_n]);
+  o2 := json_raw(vb[..], 0, "id      matches the SHA-256 of its bytes\nsig     valid");
+  ok = ok && nch_tool(s, "nostr.verify", "valid", nch_str(ib[..], i), nch_str(vb[..], o2));
+  return ok && nch_say(s, "Signed JSON in a few frames: `EVENT` to send it, `OK` back, `REQ` to ask, and `EOSE` when the relay has sent all it holds. That is the whole protocol. We don't trust the relay: we checked the signature ourselves, and it holds.");
+}
+// 4. One letter changed: our check refuses it, and so does the relay.
+nch_break :: (s: [] NostrChat) -> bool {
+  l := s[0].lesson[..]; r := s[0].relay[..];
+  if !l[0].ready { return nch_fail(s, 3, 1); }
+  if l[0].changed_claim || l[0].changed_sig { return nch_fail(s, 3, 2); }
+  same := true; for i: 0..<64 { if l[0].changed_id_hex[i] != l[0].id_hex[i] { same = false; } }
+  if same { return nch_fail(s, 3, 3); }
+  ib: [256] u8; ob: [256] u8;
+  i := json_raw(ib[..], 0, "content "); i = json_write_string(ib[..], i, cast(string) l[0].changed_content[0..<l[0].changed_content_n]);
+  i = json_raw(ib[..], i, "   one letter changed\nclaims  "); i = json_raw(ib[..], i, cast(string) l[0].id_hex[..]);
+  o := json_raw(ob[..], 0, "bytes   now hash to "); o = json_raw(ob[..], o, cast(string) l[0].changed_id_hex[..]);
+  o = json_raw(ob[..], o, "\nsig     not valid for that hash\nresult  refused");
+  ok := nch_tool(s, "nostr.verify", "refused", nch_str(ib[..], i), nch_str(ob[..], o));
+  changed := cast(string) l[0].changed[0..<l[0].changed_n];
+  ends: [4] int;
+  fb: [640] u8; sent := nlr_text(fb[..], nostr_message_write_event(changed, fb[..], false)); if sent.count == 0 { return nch_fail(s, 3, 4); }
+  xb: [256] u8; if nlr_relay(r, sent, NLB_CREATED, xb[..], ends[..]) != 1 { return nch_fail(s, 3, 5); }
+  no_frame := cast(string) xb[0..<ends[0]];
+  no := nostr_message_read(no_frame);
+  if no.error != NM_OK || no.type != NM_ACCEPT || no.accepted { return nch_fail(s, 3, 6); }
+  if no.prefix < 1 || no.prefix > 8 || NM_PREFIXES[no.prefix - 1] != "invalid" { return nch_fail(s, 3, 7); }
+  ok = ok && nch_tool(s, "relay.EVENT", "OK false", sent, no_frame);
+  return ok && nch_say(s, "One letter changed, so the bytes hash to a different ID, and the signature no longer fits. Our check refuses it, and the relay refuses it too. Nobody can edit a note and keep its author's signature.");
+}
+// 5. NIP-44: Alice encrypts to us; we decrypt; a changed letter and another key are refused.
+nch_44 :: (s: [] NostrChat) -> bool {
+  f := s[0].p44[..];
+  at := nlp_44(f); if at != 0 { return nch_fail(s, 4, at); }
+  back := cast(string) f[0].back[0..<f[0].back_n];
+  if !f[0].same || back != NLP_MESSAGE || f[0].changed != NIP44_MAC || f[0].outsider != NIP44_MAC { return nch_fail(s, 4, 20); }
+  payload := cast(string) f[0].payload[0..<f[0].payload_n];
+  ha: [64] u8; hb: [64] u8; ib: [320] u8; ob: [320] u8; db: [64] u8;
+  i := json_raw(ib[..], 0, "from    Alice  "); i = json_raw(ib[..], i, nch_hex(f[0].alice_x[..], ha[..]));
+  i = json_raw(ib[..], i, "\nto      us     "); i = json_raw(ib[..], i, nch_hex(f[0].bob_x[..], hb[..]));
+  i = json_raw(ib[..], i, "\ntext    "); i = json_write_string(ib[..], i, NLP_MESSAGE);
+  o := json_raw(ob[..], 0, "payload "); o = json_raw(ob[..], o, payload);
+  ok := nch_tool(s, "nip44.encrypt", nch_short(payload, 24, db[..]), nch_str(ib[..], i), nch_str(ob[..], o));
+  ib2: [320] u8; ob2: [256] u8; db2: [64] u8;
+  i = json_raw(ib2[..], 0, "payload "); i = json_raw(ib2[..], i, payload); i = json_raw(ib2[..], i, "\nkey     ours, with Alice's public key");
+  o = json_raw(ob2[..], 0, "text    "); o = json_write_string(ob2[..], o, back);
+  o = json_raw(ob2[..], o, "\none letter changed: refused, the MAC fails\nCarol's key:        refused, the MAC fails");
+  ok = ok && nch_tool(s, "nip44.decrypt", nch_str(db2[..], json_write_string(db2[..], 0, back)), nch_str(ib2[..], i), nch_str(ob2[..], o));
+  return ok && nch_say(s, "That is NIP-44. Alice and we each work out the same shared key, from our own secret and the other's public key, and it never travels. A relay sees only the payload. Change one letter of it, or try someone else's key, and it does not open.\n\nWhere a client draws random bytes, like this message's nonce, the page uses fixed ones so it reads the same every time. A real message never does that.");
+}
+// 6. NIP-59: the message sealed by Alice, then wrapped by a key used once; we open it.
+nch_59 :: (s: [] NostrChat) -> bool {
+  f := s[0].p59[..];
+  at := nlp_59(f); if at != 0 { return nch_fail(s, 5, at); }
+  o := f[0].opened;
+  text := cast(string) f[0].text[0..<f[0].text_n];
+  if text != NLP_MESSAGE || !nlp_same(o.author[..], f[0].alice_x[..]) || !nlp_same(o.wrap_key[..], f[0].wrap_signer[..]) || nlp_same(o.wrap_key[..], f[0].alice_x[..]) { return nch_fail(s, 5, 20); }
+  if !nlp_same(o.rumor_id[..], f[0].sent.rumor_id[..]) || o.kind != N17_CHAT || f[0].wrap_kind != NIP59_WRAP_KIND || f[0].wrong != NIP59_WRAP_PAYLOAD { return nch_fail(s, 5, 21); }
+  cipher := cast(string) f[0].wrap[f[0].cipher_from..<f[0].cipher_to];
+  hw: [64] u8; ha: [64] u8; hr: [64] u8; ib: [256] u8; ob: [512] u8; db: [64] u8;
+  i := json_raw(ib[..], 0, "rumor   kind "); i = text_put_int(ib[..], i, o.kind); i = json_raw(ib[..], i, ", "); i = json_write_string(ib[..], i, NLP_MESSAGE);
+  i = json_raw(ib[..], i, ", to us, not signed\nseal    kind "); i = text_put_int(ib[..], i, NIP59_SEAL_KIND);
+  i = json_raw(ib[..], i, ", signed by Alice\nwrap    kind "); i = text_put_int(ib[..], i, f[0].wrap_kind); i = json_raw(ib[..], i, ", signed by a key used once");
+  wrap_by := nch_hex(f[0].wrap_signer[..], hw[..]);
+  out := json_raw(ob[..], 0, "relay sees kind "); out = text_put_int(ob[..], out, f[0].wrap_kind);
+  out = json_raw(ob[..], out, " from "); out = json_raw(ob[..], out, wrap_by);
+  out = json_raw(ob[..], out, "\ncontent "); out = json_raw(ob[..], out, ifx cipher.count > NCH_WRAP_SHOWN then cipher[0..<NCH_WRAP_SHOWN] else cipher);
+  if cipher.count > NCH_WRAP_SHOWN { out = json_raw(ob[..], out, "... ("); out = text_put_int(ob[..], out, cipher.count); out = json_raw(ob[..], out, " characters in all)"); }
+  kb: [24] u8;
+  ok := nch_tool(s, "nip59.wrap", nch_str(kb[..], text_put_int(kb[..], json_raw(kb[..], 0, "kind "), f[0].wrap_kind)), nch_str(ib[..], i), nch_str(ob[..], out));
+  ib2: [128] u8; ob2: [512] u8;
+  i = json_raw(ib2[..], 0, "wrap    from "); i = json_raw(ib2[..], i, wrap_by); i = json_raw(ib2[..], i, "\nkey     ours");
+  out = json_raw(ob2[..], 0, "seal    by Alice "); out = json_raw(ob2[..], out, nch_hex(o.author[..], ha[..]));
+  out = json_raw(ob2[..], out, "\nrumor   kind "); out = text_put_int(ob2[..], out, o.kind); out = json_raw(ob2[..], out, ": "); out = json_write_string(ob2[..], out, text);
+  out = json_raw(ob2[..], out, "\nid      "); out = json_raw(ob2[..], out, nch_hex(o.rumor_id[..], hr[..]));
+  out = json_raw(ob2[..], out, "\nCarol's key: cannot open it");
+  ok = ok && nch_tool(s, "nip59.unwrap", nch_str(db[..], json_write_string(db[..], json_raw(db[..], 0, "from Alice: "), text)), nch_str(ib2[..], i), nch_str(ob2[..], out));
+  return ok && nch_say(s, "With NIP-44 alone, a relay still sees who wrote to whom. A gift wrap (NIP-59, which NIP-17 direct messages use) hides that too. Alice seals the message with her key, then wraps the seal with a key used once. The relay sees a kind 1059 event from a stranger, addressed to us. Only we can open it, and only then do we see it is from Alice.");
+}
+nch_run :: (s: [] NostrChat, act: int) -> bool {
+  if act == 0 { return nch_keys(s); }
+  if act == 1 { return nch_note(s); }
+  if act == 2 { return nch_relay(s); }
+  if act == 3 { return nch_break(s); }
+  if act == 4 { return nch_44(s); }
+  return nch_59(s);
+}
+
+// ---------------------------------------------------------------- the timeline
+
+// How long entry k holds before the next comes, in seconds.
+nch_hold :: (s: [] NostrChat, k: int) -> f32 {
+  kind := s[0].beats[k].kind;
+  if kind == NCH_USER { return NCH_USER_HOLD; }
+  if kind == NCH_TOOL { return NCH_TOOL_RUN + NCH_TOOL_HOLD; }
+  if kind == NCH_NOTICE { return NCH_NOTICE_HOLD; }
+  if s[0].reduced { return NCH_AGENT_HOLD; }
+  return MONO_REPLY_WAIT + cast(f32) s[0].beats[k].n[0] / MONO_REPLY_RATE + NCH_AGENT_HOLD;
+}
+// How many letters of answer k show at this moment: all once it is past, and with reduced motion.
+nch_letters :: (s: [] NostrChat, k: int) -> int {
+  whole := s[0].beats[k].n[0];
+  if k < s[0].shown || s[0].reduced { return whole; }
+  n := cast(int) ((s[0].time - s[0].beat_at - MONO_REPLY_WAIT) * MONO_REPLY_RATE);
+  return ifx n < 0 then 0 else ifx n > whole then whole else n;
+}
+// The script moves on: the entry coming is shown whole once its time is up; when every entry is shown,
+// the step asked about is worked out, or the next question is put, or the script ends.
+nch_tick :: (s: [] NostrChat) {
+  if s[0].done { return; }
+  s[0].dirty = true;   // an answer comes letter by letter, and a tool call turns from running to answered
+  if s[0].shown < s[0].nbeats {
+    if s[0].time - s[0].beat_at >= nch_hold(s, s[0].shown) { s[0].shown += 1; s[0].beat_at = s[0].time; }
+    return;
+  }
+  if s[0].full { s[0].done = true; return; }
+  if s[0].ran < s[0].asked { act := s[0].ran; s[0].ran += 1; ok := nch_run(s, act); s[0].beat_at = s[0].time; return; }
+  if s[0].asked < NCH_ACTS { asks := NCH_ASKS; ok := nch_add(s, NCH_USER, asks[s[0].asked], "", "", ""); s[0].asked += 1; s[0].beat_at = s[0].time; return; }
+  s[0].done = true;
+}
+// Replay: the transcript empties and everything is worked out again, from nothing.
+nch_replay :: (s: [] NostrChat) {
+  s[0].nbeats = 0; s[0].pool_n = 0; s[0].full = false; s[0].asked = 0; s[0].ran = 0; s[0].shown = 0;
+  s[0].done = false; s[0].stopped = 0; s[0].beat_at = s[0].time;
+  for k: 0..<NCH_BEATS { s[0].closed[k] = false; }
+  s[0].lesson[0] = NostrLesson.{}; s[0].p44[0] = Nlp44.{}; s[0].p59[0] = Nlp59.{};
+  ui_replay(s[0].ui[..]);
+}
+
+// ---------------------------------------------------------------- the page
+
+nch_build :: (s: [] NostrChat) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  tr_begin(t);
+  page := tr_open(t, "nostr", TG_MAIN, "chat");
+  hd := k_header(t, u, "title", "Nostr from scratch");
+  lede := tr_leaf(t, "lede", TG_P, "lede", NCH_LEDE);
+  tr_close(t);
+  lg := tr_open(t, "log", TG_DIV, "log");
+  th := tr_open(t, "thread", TG_DIV, "thread");
+  visible := ifx s[0].shown < s[0].nbeats then s[0].shown + 1 else s[0].nbeats;
+  buf: [UI_ID] u8; bufb: [UI_ID] u8; bufc: [UI_ID] u8;
+  k := 0;
+  while k < visible {
+    kind := s[0].beats[k].kind;
+    id := tr_join(buf[..], "b.", k);
+    if kind == NCH_TOOL {
+      // a run of tool calls, together
+      g := tr_open(t, tr_join(bufb[..], "g.", k), TG_DIV, "tools");
+      while k < visible && s[0].beats[k].kind == NCH_TOOL {
+        running := k == s[0].shown && s[0].time - s[0].beat_at < NCH_TOOL_RUN;
+        tid := tr_join(bufc[..], "b.", k);
+        r := k_tool(t, u, tid, nch_text(s, k, 0), ifx running then "running" else nch_text(s, k, 1), !s[0].closed[k], nch_text(s, k, 2), ifx running then "" else nch_text(s, k, 3));
+        k += 1;
+      }
+      tr_close(t);
+      continue;
+    }
+    if kind == NCH_USER { m := k_user(t, u, id, nch_text(s, k, 0)); }
+    else if kind == NCH_NOTICE { n := k_notice(t, u, id, nch_text(s, k, 0), nch_text(s, k, 1)); tr_close(t); }
+    else {
+      text := nch_text(s, k, 0); shown := nch_letters(s, k);
+      a := k_reply_open(t, id, shown < text.count, shown == 0);
+      if shown > 0 { body := k_agent_text(t, u, tr_cat(bufb[..], id, ".md"), s[0].doc[..], cast(string) text[0..<shown]); }
+      tr_close(t);
+    }
+    k += 1;
+  }
+  if s[0].full {
+    full: [160] u8; n := json_raw(full[..], 0, "The transcript is full: it holds "); n = text_put_int(full[..], n, NCH_BEATS);
+    n = json_raw(full[..], n, " entries in "); n = text_put_int(full[..], n, NCH_POOL / 1024); n = json_raw(full[..], n, " KB. Replay starts it again.");
+    m := k_notice(t, u, "full", "Full", nch_str(full[..], n)); tr_close(t);
+  }
+  tr_close(t);
+  tr_close(t);
+  foot := tr_open(t, "foot", TG_DIV, "rowf");
+  names := NCH_ACT_NAMES; st: [128] u8; sn := 0;
+  if s[0].stopped > 0 { sn = json_raw(st[..], 0, "Stopped at "); sn = json_raw(st[..], sn, names[s[0].stopped - 1]); }
+  else if s[0].done { sn = json_raw(st[..], 0, "Done: six steps, every value worked out in this page"); }
+  else if s[0].asked > 0 {
+    sn = json_raw(st[..], 0, "Step "); sn = text_put_int(st[..], sn, s[0].asked); sn = json_raw(st[..], sn, " of ");
+    sn = text_put_int(st[..], sn, NCH_ACTS); sn = json_raw(st[..], sn, ": "); sn = json_raw(st[..], sn, names[s[0].asked - 1]);
+  }
+  rp := k_button(t, u, "replay", "Replay", ifx s[0].done then BS_PRIMARY else BS_PLAIN);
+  if sn > 0 { m := k_meta(t, "status", nch_str(st[..], sn)); tr_attr(t, m, AT_ROLE, "status"); }
+  tr_close(t);
+  tr_close(t);
+}
+
+// The number after "b.": "b.12" is 12, else -1.
+nch_beat_of :: (id: string) -> int {
+  if id.count < 3 || id.count > 5 || cast(string) id[0..<2] != "b." { return -1; }
+  n := 0;
+  for i: 2..<id.count { c := id[i]; if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+nch_click :: (s: [] NostrChat, id: string) {
+  if id == "replay" { nch_replay(s); return; }
+  k := nch_beat_of(id);
+  if k >= 0 && k < s[0].nbeats && s[0].beats[k].kind == NCH_TOOL { s[0].closed[k] = !s[0].closed[k]; return; }
+  if id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" {
+    // a code block's Copy: the code beside it, as the page shows it
+    pre: [UI_ID] u8;
+    at := tr_find(s[0].tree[..], tr_cat(pre[..], cast(string) id[0..<id.count - 5], ".pre"));
+    if at >= 0 {
+      code := tr_text_of(s[0].tree[..], at);
+      n := ifx code.count > NCH_CLIP then NCH_CLIP else code.count;
+      for i: 0..<n { s[0].clip[i] = code[i]; }
+      s[0].clip_n = n;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+// One frame: the script moves on, and the page is built and flushed if anything changed or is entering.
+// Bytes of commands to apply, 0 for none, -1 to clear the page and ask again.
+coaxial_nostrchat_frame :: (s: [] NostrChat, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    n := mono_frames(s[0].sets[..]);
+    s[0].ready = true; s[0].dirty = true;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step; s[0].reduced = reduced;
+  nch_tick(s);
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_css(s[0].css[..]);
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  nch_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+// Whether the host is to call again next frame: the script is playing, or something changed or is entering.
+coaxial_nostrchat_busy :: (s: [] NostrChat) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].done || s[0].dirty || s[0].animating); }
+// A press (1) on the node in this slot. The page has no fields.
+coaxial_nostrchat_event :: (s: [] NostrChat, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 || kind != NCH_CLICK { return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count == 0 { return; }
+  nch_click(s, id);
+  s[0].dirty = true;
+}
+coaxial_nostrchat_size :: (s: [] NostrChat, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_nostrchat_clip :: (s: [] NostrChat) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
+coaxial_nostrchat_clip_done :: (s: [] NostrChat) #export_c #effects(all) { if s.count > 0 { s[0].clip_n = 0; } }
+coaxial_nostrchat_inbox_cap :: () -> int #export_c #effects(all) { return NCH_INBOX; }
+
+// ---------------------------------------------------------------- checks
+
+NchTest :: struct { s: [1] NostrChat; }
+// The script played to its end, a tenth of a second a frame. The frames it took, or -1 when it didn't end.
+nch_test_play :: (s: [] NostrChat, reduced: bool) -> int {
+  for f: 0..<3000 {
+    n := coaxial_nostrchat_frame(s, 0.1, reduced);
+    if s[0].done && !coaxial_nostrchat_busy(s) { return f; }
+  }
+  return -1;
+}
+nch_test_has :: (s: string, part: string) -> bool {
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+// The tool calls' names in order, and the text of the one called `name` (its field f) the first time.
+nch_test_tool :: (s: [] NostrChat, name: string, f: int) -> string {
+  for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && nch_text(s, k, 0) == name { return nch_text(s, k, f); } }
+  return "";
+}
+
+#test "nostr chat: the script plays on its own, a question, its tool calls and an answer for each of six steps" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_play(s, true) > 0 && s[0].stopped == 0 && !s[0].full && s[0].asked == NCH_ACTS && s[0].ran == NCH_ACTS;
+  users := 0; agents := 0; tools := 0; notices := 0;
+  for k: 0..<s[0].nbeats {
+    kind := s[0].beats[k].kind;
+    if kind == NCH_USER { users += 1; } else if kind == NCH_AGENT { agents += 1; } else if kind == NCH_TOOL { tools += 1; } else { notices += 1; }
+  }
+  #assert users == 6 && agents == 6 && tools == 12 && notices == 1 && s[0].shown == s[0].nbeats;
+  names := [12] string.["nostr.keygen", "nostr.event", "nostr.sign", "relay.EVENT", "relay.REQ", "nostr.verify", "nostr.verify", "relay.EVENT", "nip44.encrypt", "nip44.decrypt", "nip59.wrap", "nip59.unwrap"];
+  q := 0;
+  for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && q < 12 { #assert nch_text(s, k, 0) == names[q]; q += 1; } }
+  // every entry is on the page, the tool calls open, and the page is still once it ends
+  t := s[0].tree[..];
+  #assert t[0].lost == 0 && t[0].depth == 0 && tr_find(t, "title") > 0 && tr_find(t, "b.1.out") > 0 && tr_find(t, "replay") > 0;
+  #assert tr_attr_of(t, tr_find(t, "replay"), AT_STATE) == "primary" && nch_test_has(tr_text_of(t, tr_find(t, "status")), "Done");
+  #assert coaxial_nostrchat_frame(s, 0.1, true) == 0;
+}
+#test "nostr chat: the key pair is BIP-340 vector 1's, its npub and nsec read back to it through NIP-19" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_play(s, true) > 0;
+  out := nch_test_tool(s, "nostr.keygen", 3);
+  #assert nch_test_has(out, "pubkey  dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659");
+  // the nsec as shown decodes to the published secret, and the npub to the published public key
+  at := 0; while at + 5 <= out.count && cast(string) out[at..<at + 5] != "nsec1" { at += 1; }
+  e := at; while e < out.count && out[e] != '\n' { e += 1; }
+  key: [32] u8; d := nip19_decode_checked(cast(string) out[at..<e], key[..], false);
+  hx: [64] u8; #assert d.error == NC_OK && d.type == N19_NSEC && nch_hex(key[..], hx[..]) == NLB_KEY_HEX;
+  npub := nch_test_tool(s, "nostr.keygen", 1);
+  #assert npub.count == 63 && cast(string) npub[0..<5] == "npub1";
+  pub: [32] u8; p := nip19_decode_checked(npub, pub[..], false);
+  #assert p.error == NC_OK && p.type == N19_NPUB && nch_hex(pub[..], hx[..]) == "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+}
+#test "nostr chat: the ID shown is SHA-256 of the bytes shown, and the signature shown verifies over it" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_play(s, true) > 0;
+  ev := nch_test_tool(s, "nostr.event", 3);
+  pre := "[0,\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",1794441600,1,[],\"hello nostr\"]";
+  #assert nch_test_has(ev, pre);
+  pb: [128] u8; for i: 0..<pre.count { pb[i] = pre[i]; }
+  id: [32] u8; #assert sha256_hash_checked(pb[0..<pre.count], id[..], false) == 0;
+  hx: [64] u8; idh := nch_hex(id[..], hx[..]);
+  #assert nch_test_has(ev, idh);
+  sig_line := nch_test_tool(s, "nostr.sign", 3);
+  hb: [128] u8; for i: 0..<64 { hb[i] = sig_line[8 + i]; hb[64 + i] = sig_line[81 + i]; }
+  sig: [64] u8; d := hex_decode_checked(cast(string) hb[..], sig[..], false);
+  pub: [32] u8; e := hex_decode_checked("dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", pub[..], false);
+  #assert d.error == NC_OK && e.error == NC_OK && nostr_verify_vartime(id[..], pub[..], sig[..]);
+  sig[0] = ifx sig[0] == 0 then cast(u8) 1 else cast(u8) 0;
+  #assert !nostr_verify_vartime(id[..], pub[..], sig[..]);
+}
+#test "nostr chat: the relay stores the note and sends it back; the changed copy is refused by our check and by the relay" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_play(s, true) > 0;
+  ok_frame := nch_test_tool(s, "relay.EVENT", 3);
+  #assert ok_frame.count > 6 && cast(string) ok_frame[0..<6] == "[\"OK\"," && nch_test_has(ok_frame, ",true,");
+  req := nch_test_tool(s, "relay.REQ", 3);
+  #assert nch_test_has(req, "[\"EVENT\",\"lab\",") && nch_test_has(req, "[\"EOSE\",\"lab\"]") && nch_test_has(req, "hello nostr");
+  #assert nch_test_tool(s, "nostr.verify", 1) == "valid";
+  // the second relay.EVENT: false, invalid
+  seen := 0; refused := "";
+  for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && nch_text(s, k, 0) == "relay.EVENT" { seen += 1; if seen == 2 { refused = nch_text(s, k, 3); } } }
+  #assert nch_test_has(refused, ",false,\"invalid") && nch_test_has(nch_test_tool(s, "relay.EVENT", 2), "hello nostR") == false;
+  found := false;
+  for k: 0..<s[0].nbeats { if s[0].beats[k].kind == NCH_TOOL && nch_text(s, k, 1) == "refused" { found = nch_test_has(nch_text(s, k, 2), "hello nostR"); } }
+  #assert found;
+}
+#test "nostr chat: Alice's NIP-44 message opens with our key, and the gift wrap is signed by neither of us" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_play(s, true) > 0;
+  #assert nch_test_has(nch_test_tool(s, "nip44.decrypt", 3), "text    \"Meet at nine.\"");
+  enc := nch_test_tool(s, "nip44.encrypt", 3);
+  #assert cast(string) enc[0..<8] == "payload " && !nch_test_has(enc, "Meet");
+  // the payload decrypts with the conversation key worked out here from our secret and Alice's public key
+  key: [32] u8; ax: [32] u8; ours: [32] u8; ox: [32] u8; ck: [32] u8; work: [1] EcdhScratch;
+  #assert nlp_secret(NLP_ALICE_HEX, key[..], ax[..]) && nlp_secret(NLB_KEY_HEX, ours[..], ox[..]);
+  #assert nip44_conversation_key_from_keys_checked(ours[..], ax[..], work[..], ck[..], false) == NIP44_OK;
+  nw: [512] u8; plain: [64] u8;
+  dd := nip44_decrypt_checked(NIP44_COMPAT, ck[..], cast(string) enc[8..<enc.count], nw[..], plain[..], false);
+  #assert dd.error == NIP44_OK && cast(string) plain[0..<dd.written] == "Meet at nine.";
+  wrap := nch_test_tool(s, "nip59.wrap", 3);
+  hx: [64] u8;
+  #assert nch_test_has(wrap, "relay sees kind 1059 from ") && !nch_test_has(wrap, nch_hex(ax[..], hx[..]));
+  #assert nch_test_has(wrap, "characters in all)") && nch_test_has(nch_test_tool(s, "nip59.unwrap", 3), nch_hex(ax[..], hx[..]));
+}
+#test "nostr chat: an answer comes letter by letter, marked as coming, then whole" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  agent := -1;
+  for f: 0..<400 {
+    n := coaxial_nostrchat_frame(s, 0.05, false);
+    if s[0].shown < s[0].nbeats && s[0].beats[s[0].shown].kind == NCH_AGENT && nch_letters(s, s[0].shown) > 10 { agent = s[0].shown; break; }
+  }
+  #assert agent > 0;
+  buf: [UI_ID] u8; t := s[0].tree[..];
+  at := tr_find(t, tr_join(buf[..], "b.", agent));
+  #assert at > 0 && tr_attr_of(t, at, AT_STATE) == "streaming" && nch_letters(s, agent) < s[0].beats[agent].n[0];
+  for f: 0..<200 { n := coaxial_nostrchat_frame(s, 0.05, false); if s[0].shown > agent { break; } }
+  n := coaxial_nostrchat_frame(s, 0.05, false);
+  t = s[0].tree[..]; at = tr_find(t, tr_join(buf[..], "b.", agent));
+  #assert at > 0 && !tr_has(t, at, AT_STATE) && nch_letters(s, agent) == s[0].beats[agent].n[0];
+}
+#test "nostr chat: a tool call closes and opens; Replay starts over and works everything out again" #steps 4000000000 {
+  h: [1] NchTest; s := h[0].s[..];
+  #assert nch_test_play(s, true) > 0;
+  d := s[0].dom[..];
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "b.1"), 0);
+  n := coaxial_nostrchat_frame(s, 0.1, true);
+  #assert s[0].closed[1] && tr_find(s[0].tree[..], "b.1.out") < 0;
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "b.1"), 0);
+  n = coaxial_nostrchat_frame(s, 0.1, true);
+  #assert !s[0].closed[1] && tr_find(s[0].tree[..], "b.1.out") > 0;
+  // a code block's Copy copies its code: the signed event
+  copy := "";
+  for k: 0..<s[0].tree[0].n { id := tr_id(s[0].tree[..], k); if id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" { copy = id; } }
+  #assert copy.count > 0;
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, copy), 0);
+  #assert coaxial_nostrchat_clip(s) > 100 && cast(string) s[0].clip[0..<6] == "{\"id\":";
+  coaxial_nostrchat_clip_done(s);
+  before := nch_test_tool(s, "nostr.sign", 3);
+  sig: [256] u8; sn := ifx before.count > 256 then 256 else before.count;
+  for i: 0..<sn { sig[i] = before[i]; }
+  coaxial_nostrchat_event(s, NCH_CLICK, dm_find(d, "replay"), 0);
+  #assert s[0].nbeats == 0 && !s[0].done && !s[0].lesson[0].ready && coaxial_nostrchat_busy(s);
+  #assert nch_test_play(s, true) > 0 && nch_test_tool(s, "nostr.sign", 3) == cast(string) sig[0..<sn] && sn == before.count;
+}
+#test "nostr chat: a full transcript says so and the script ends" {
+  h: [1] NchTest; s := h[0].s[..];
+  for k: 0..<NCH_BEATS { ok := nch_add(s, NCH_USER, "x", "", "", ""); }
+  s[0].shown = s[0].nbeats;
+  #assert !nch_add(s, NCH_USER, "one more", "", "", "") && s[0].full;
+  n := coaxial_nostrchat_frame(s, 0.1, true);
+  n = coaxial_nostrchat_frame(s, 0.1, true);
+  t := s[0].tree[..];
+  #assert s[0].done && tr_find(t, "full") > 0 && nch_test_has(tr_text_of(t, tr_find(t, "full.t")), "48 entries in 32 KB");
+}

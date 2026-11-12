@@ -31,6 +31,9 @@ chat 260000
 # 138,805 after real answers, the model menu and Settings (21121a7788); 157,736 after the agents on this machine
 # (Coder's sessions and Claude Code's conversations in a sidebar, live ones marked, /goal, named models: #13332); about 6% room.
 chat-web 168000
+# /nostr-chat, Nostr from scratch as a scripted chat on the same components (nostr-chat.coax): the frames set and the
+# library's signing, relay, NIP-44 and NIP-59 code it runs in the page: 309,585 bytes measured 2026-11-12 on a Linux build host; about 6% room.
+nostr-chat 330000
 components 210000
 # /kit, the control kit's page (kit.coax): 80,287 bytes measured 2026-11-11 on a Linux build host; about 10% room.
 kit 90000

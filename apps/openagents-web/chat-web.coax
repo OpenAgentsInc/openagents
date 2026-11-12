@@ -372,8 +372,7 @@ cw_transcript :: (s: [] ChatWeb) {
     // an answer: what has come of it, as Markdown
     coming := s[0].live && k + 1 == s[0].count;
     if !coming && text.count == 0 { continue; }   // it got no answer: the notice below says why
-    a := tr_open(t, id, TG_DIV, "msg-ai");
-    if coming { tr_attr(t, a, AT_STATE, ifx text.count == 0 then "waiting" else "streaming"); }
+    a := k_reply_open(t, id, coming, text.count == 0);
     ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
     if coming && text.count == 0 {
       // a Claude turn at work: what it says it is doing, and the tools it has used
@@ -386,10 +385,7 @@ cw_transcript :: (s: [] ChatWeb) {
         at = e + 1; line += 1;
       }
     } else {
-      doc := s[0].doc[..];
-      doc[0].n = 0; doc[0].nb = 0; doc[0].nr = 0; doc[0].ni = 0; doc[0].nlink = 0;
-      blocks := md_parse(doc, text, 0);
-      body := k_agent(t, u, tr_cat(ida[..], id, ".md"), doc);
+      body := k_agent_text(t, u, tr_cat(ida[..], id, ".md"), s[0].doc[..], text);
     }
     if !coming {
       acts := tr_open(t, tr_cat(idb[..], id, ".acts"), TG_DIV, "acts");

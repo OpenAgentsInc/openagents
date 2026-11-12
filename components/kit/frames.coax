@@ -299,6 +299,20 @@ k_agent :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc) -> int {
   tr_close(t);
   return i;
 }
+// The agent's message in a transcript: a node around its answer. While the answer is still coming it
+// says so, and the skin marks where the text has got to (a caret at its end, or alone while nothing has
+// come yet). The caller adds the answer (k_agent_text) and what goes under it, then closes it with tr_close.
+k_reply_open :: (t: [] Tree, id: string, coming: bool, empty: bool) -> int {
+  a := tr_open(t, id, TG_DIV, "msg-ai");
+  if coming { tr_attr(t, a, AT_STATE, ifx empty then "waiting" else "streaming"); }
+  return a;
+}
+// An answer's text as Markdown: parsed afresh into doc (which it empties), then drawn by k_agent.
+k_agent_text :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc, text: string) -> int {
+  doc[0].n = 0; doc[0].nb = 0; doc[0].nr = 0; doc[0].ni = 0; doc[0].nlink = 0;
+  blocks := md_parse(doc, text, 0);
+  return k_agent(t, u, id, doc);
+}
 // Tool call: what the agent did and to what, on one row that opens onto what it sent and what came back.
 k_tool :: (t: [] Tree, u: [] Ui, id: string, what: string, detail: string, open: bool, input: string, output: string) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8; idf: [UI_ID] u8; idg: [UI_ID] u8;
