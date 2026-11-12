@@ -118,7 +118,7 @@ cjf_doc :: (r: CjfRealm, forked: bool, from_rev: int, out: [] u8) -> string {
 }
 cjf_route :: (f: [] Cjf, method: string, path: string, body: string, out: [] u8) -> int {
   f[0].calls += 1;
-  if method == "GET" && path == "/api/auth/v2/me" { return cjf_answer(f, 200, "account n-fixture\n", out); }
+  if method == "GET" && path == "/api/auth/ways?as=lines" { return cjf_answer(f, 200, "account acct_fixture\nlevel L2\n", out); }
   if method == "GET" && path == "/api/playtest/access" { return cjf_answer(f, 200, "invites 0\nmake 1\nin 1\ncreator 0\nasked none\n", out); }
   if method == "POST" && path == "/api/playtest/realms/plan?as=lines" { return cjf_answer(f, 200, "plan 7\nname CLI Journey Test\nf trees 1 Trees\n", out); }
   if method == "POST" && path == "/api/playtest/realms?as=lines" {

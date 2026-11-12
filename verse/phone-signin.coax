@@ -1,4 +1,4 @@
-// Signing in to openagents.com with the phone (coax/web/api: /api/auth/approve
+// Logging in to openagents.com with the phone (coax/web/api: /api/auth/phone/approve
 // and /api/private/<slug>/claim). Swift hands this file the text the phone
 // scanned, was pasted or was opened with, and the numbers and hex strings of
 // the key and the clock. This file decides whether the text is one of ours
@@ -14,8 +14,8 @@
 #authority;
 
 SIGNIN_NONE :: 0;     // not one of ours
-SIGNIN_SIGNIN :: 1;   // /signin#c=<64 hex>: sign this browser in
-SIGNIN_LINK :: 2;     // /signin#link=<64 hex>: add this phone's key to the member who showed it
+SIGNIN_SIGNIN :: 1;   // /login#c=<64 hex>: log this browser in (/signin#c=: the codes build 1057 knows)
+// 2 was /signin#link=, the old login page's LINK A PHONE: gone with that page (#13207).
 SIGNIN_INVITE :: 3;   // /projects/<slug>#invite=<64 hex>: the invited member's key becomes this phone's too
 
 // One parsed code: where it goes and what it carries, as offsets into the text.
@@ -94,9 +94,8 @@ verse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c #effects
   if si_starts(t, p, "/login") || si_starts(t, p, "/signin") {
     p += ifx si_starts(t, p, "/login") then 6 else 7;   // /signin: the codes build 1057 knows
     if si_starts(t, p, "/#") { p += 1; }
-    if si_starts(t, p, "#c=") { r.kind = SIGNIN_SIGNIN; p += 3; }
-    else if si_starts(t, p, "#link=") { r.kind = SIGNIN_LINK; p += 6; }
-    else { return none; }
+    if !si_starts(t, p, "#c=") { return none; }
+    r.kind = SIGNIN_SIGNIN; p += 3;
   } else if si_starts(t, p, "/projects/") {
     p += 10;
     s := p;
@@ -137,11 +136,6 @@ verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_
     o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
     return si_put(out, o, "?");
   }
-  if c.kind == SIGNIN_LINK {
-    o := si_put(out, 0, "Link this phone to your project on ");
-    o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
-    return si_put(out, o, "?");
-  }
   if c.kind == SIGNIN_INVITE { return si_put(out, 0, "Link this phone to the project you were invited to?"); }
   return -1;
 }
@@ -156,7 +150,7 @@ verse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #ef
     o = si_put(out, o, si_part(raw, c.slug_at, c.slug_n));
     return si_put(out, o, "/claim");
   }
-  return si_put(out, o, "/api/auth/approve");
+  return si_put(out, o, "/api/auth/phone/approve");
 }
 
 // The body, byte for byte (its SHA-256 goes in the payload tag).
@@ -170,7 +164,7 @@ verse_signin_body :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #e
   }
   o := si_put(out, 0, "{\"challenge\":\"");
   o = si_put(out, o, secret);
-  return si_put(out, o, ifx c.kind == SIGNIN_SIGNIN then "\",\"kind\":\"signin\"}" else "\",\"kind\":\"link\"}");
+  return si_put(out, o, "\"}");
 }
 
 // Hex that is exactly n lowercase digits.
@@ -290,10 +284,11 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   #assert kind_of("https://openagents.com/signin/#c=", SECRET, "", false) == SIGNIN_SIGNIN;
 }
 
-#test "link and invite codes" {
-  #assert kind_of("https://openagents.com/signin#link=", SECRET, "", false) == SIGNIN_LINK;
+#test "login and invite codes; the old page's link codes are not ours" {
+  #assert kind_of("https://openagents.com/signin#link=", SECRET, "", false) == SIGNIN_NONE;
   #assert kind_of("https://openagents.com/login#c=", SECRET, "", false) == SIGNIN_SIGNIN;
-  #assert kind_of("https://openagents.com/login/#link=", SECRET, "", false) == SIGNIN_LINK;
+  #assert kind_of("https://openagents.com/login/#c=", SECRET, "", false) == SIGNIN_SIGNIN;
+  #assert kind_of("https://openagents.com/login/#link=", SECRET, "", false) == SIGNIN_NONE;
   i := tx("https://openagents.com/projects/ab-12#invite=", SECRET, "");
   c := verse_signin_parse(i.b[0..<i.n], false);
   #assert c.kind == SIGNIN_INVITE && si_text(i.b[..], c.slug_at, c.slug_n) == "ab-12";
@@ -347,14 +342,13 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   t := tx("openagents://staging.openagents.com/signin#c=", SECRET, "");
   c := verse_signin_parse(t.b[0..<t.n], false);
   n := verse_signin_url(t.b[0..<t.n], c, buf[..]);
-  #assert cast(string) buf[0..<n] == "https://staging.openagents.com/api/auth/approve";
+  #assert cast(string) buf[0..<n] == "https://staging.openagents.com/api/auth/phone/approve";
   n = verse_signin_body(t.b[0..<t.n], c, buf[..]);
-  w := tx("{\"challenge\":\"", SECRET, "\",\"kind\":\"signin\"}");
+  w := tx("{\"challenge\":\"", SECRET, "\"}");
   #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
-  l := tx("https://openagents.com/signin#link=", SECRET, "");
-  n = verse_signin_body(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
-  w = tx("{\"challenge\":\"", SECRET, "\",\"kind\":\"link\"}");
-  #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
+  l := tx("https://openagents.com/login#c=", SECRET, "");
+  n = verse_signin_url(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
+  #assert cast(string) buf[0..<n] == "https://openagents.com/api/auth/phone/approve";
   i := tx("https://openagents.com/projects/ab-12#invite=", SECRET, "");
   ci := verse_signin_parse(i.b[0..<i.n], false);
   n = verse_signin_url(i.b[0..<i.n], ci, buf[..]);
@@ -364,7 +358,7 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
   d := tx("http://127.0.0.1:8810/signin#c=", SECRET, "");
   n = verse_signin_url(d.b[0..<d.n], verse_signin_parse(d.b[0..<d.n], true), buf[..]);
-  #assert cast(string) buf[0..<n] == "http://127.0.0.1:8810/api/auth/approve";
+  #assert cast(string) buf[0..<n] == "http://127.0.0.1:8810/api/auth/phone/approve";
   none: SigninCode;
   #assert verse_signin_url(t.b[0..<t.n], none, buf[..]) == -1 && verse_signin_body(t.b[0..<t.n], none, buf[..]) == -1;
   #assert verse_signin_question(t.b[0..<t.n], none, buf[..]) == -1;
@@ -375,9 +369,9 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   t := tx("https://staging.openagents.com/signin#c=", SECRET, "");
   n := verse_signin_question(t.b[0..<t.n], verse_signin_parse(t.b[0..<t.n], false), buf[..]);
   #assert cast(string) buf[0..<n] == "Log in to staging.openagents.com?";
-  l := tx("https://openagents.com/signin#link=", SECRET, "");
+  l := tx("https://openagents.com/login#c=", SECRET, "");
   n = verse_signin_question(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
-  #assert cast(string) buf[0..<n] == "Link this phone to your project on openagents.com?";
+  #assert cast(string) buf[0..<n] == "Log in to openagents.com?";
   i := tx("https://openagents.com/projects/ab#invite=", SECRET, "");
   n = verse_signin_question(i.b[0..<i.n], verse_signin_parse(i.b[0..<i.n], false), buf[..]);
   #assert cast(string) buf[0..<n] == "Link this phone to the project you were invited to?";
@@ -385,14 +379,14 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
 
 #test "the serialization and the event" {
   buf: [1200] u8;
-  u := tx("https://openagents.com/api/auth/approve", "", "");
+  u := tx("https://openagents.com/api/auth/phone/approve", "", "");
   pk := tx(PUB, "", ""); pl := tx(SECRET, "", ""); sg := tx(SECRET, SECRET, "");
   n := verse_signin_serial(pk.b[0..<pk.n], 1700000000, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]);
-  w := tx("[0,\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",1700000000,27235,[[\"u\",\"https://openagents.com/api/auth/approve\"],[\"method\",\"POST\"],[\"payload\",\"",
+  w := tx("[0,\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",1700000000,27235,[[\"u\",\"https://openagents.com/api/auth/phone/approve\"],[\"method\",\"POST\"],[\"payload\",\"",
           SECRET, "\"]],\"\"]");
   #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
   n = verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]);
-  e := tx("{\"id\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":27235,\"tags\":[[\"u\",\"https://openagents.com/api/auth/approve\"],[\"method\",\"POST\"],[\"payload\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]],\"content\":\"\",\"sig\":\"",
+  e := tx("{\"id\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":27235,\"tags\":[[\"u\",\"https://openagents.com/api/auth/phone/approve\"],[\"method\",\"POST\"],[\"payload\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]],\"content\":\"\",\"sig\":\"",
           SECRET, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
   #assert cast(string) buf[0..<n] == cast(string) e.b[0..<e.n];
   up := tx("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9", "", "");
@@ -414,10 +408,10 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   a := tx("{\"ok\":true,\"kind\":\"signin\"}", "", "");
   n := verse_signin_result(SIGNIN_SIGNIN, 200, a.b[0..<a.n], buf[..]);
   #assert cast(string) buf[0..<n] == "Logged in. Look at your computer.";
-  b := tx("{\"ok\":true,\"kind\":\"link\",\"name\":\"Ada\"}", "", "");
-  n = verse_signin_result(SIGNIN_LINK, 200, b.b[0..<b.n], buf[..]);
+  b := tx("{\"ok\":true,\"name\":\"Ada\"}", "", "");
+  n = verse_signin_result(SIGNIN_INVITE, 200, b.b[0..<b.n], buf[..]);
   #assert cast(string) buf[0..<n] == "This phone is linked to your project as Ada.";
-  n = verse_signin_result(SIGNIN_LINK, 200, a.b[0..<a.n], buf[..]);
+  n = verse_signin_result(SIGNIN_INVITE, 200, a.b[0..<a.n], buf[..]);
   #assert cast(string) buf[0..<n] == "This phone is linked to your project.";
   c := tx("{\"ok\":true,\"name\":\"A\\\"x\"}", "", "");
   n = verse_signin_result(SIGNIN_INVITE, 200, c.b[0..<c.n], buf[..]);
@@ -480,14 +474,14 @@ in_set :: (c: int, set: string) -> bool #effects(all) { for x: set { if cast(int
   t := tx("  http://localhost:7/projects/ab#invite=", SECRET, "");
   c := verse_signin_parse(t.b[0..<t.n], true);
   #assert c.kind == SIGNIN_INVITE && c.local && c.host_at == 9 && c.host_n == 11 && c.slug_at == 30 && c.slug_n == 2 && c.secret_at == 40 && c.secret_n == 64;
-  o := tx(" openagents://openagents.com/signin#link=", SECRET, "");
+  o := tx(" openagents://openagents.com/login#c=", SECRET, "");
   d := verse_signin_parse(o.b[0..<o.n], true);
-  #assert d.kind == SIGNIN_LINK && !d.local && d.host_at == 14 && d.secret_at == 41;
+  #assert d.kind == SIGNIN_SIGNIN && !d.local && d.host_at == 14 && d.secret_at == 37;
 }
 
 #test "every field of the event is checked" {
   buf: [1200] u8;
-  u := tx("https://openagents.com/api/auth/approve", "", "");
+  u := tx("https://openagents.com/api/auth/phone/approve", "", "");
   pk := tx(PUB, "", ""); pl := tx(SECRET, "", ""); sg := tx(SECRET, SECRET, "");
   bad := tx("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef", "", "");
   #assert verse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) > 0;

@@ -97,12 +97,11 @@ not synced), so it stays across reinstalls like the wallet seed; it is a
 software key signed with in app memory by libsecp256k1
 (`Vendor/secp256k1/`, `OpenAgents/Platform/NostrSign.c`), not the Secure
 Enclave. `verse/phone-signin.coax` (`#authority`) decides which codes the
-phone signs for: `https://openagents.com/signin#c=…` (sign that browser in),
-`/signin#link=…` (LINK A PHONE on a project page) and
-`/projects/<slug>#invite=…` (a member invite), on openagents.com or
+phone signs for: `https://openagents.com/login#c=…` (log that browser in)
+and `/projects/<slug>#invite=…` (a member invite), on openagents.com or
 staging.openagents.com, opened as `openagents://HOST/…`, a universal link,
 a scan or a paste. Every one asks first; Approve sends a NIP-98 signed POST
-to `/api/auth/approve` or `/api/private/<slug>/claim`.
+to `/api/auth/phone/approve` or `/api/private/<slug>/claim`.
 
 A login to your account (an email code, a passkey or the phone's key;
 `OpenAgents/SignIn/AppAuth.swift`) is tied to this phone. At login the app

@@ -104,7 +104,7 @@ final class SignInUITests: XCTestCase {
         return app
     }
 
-    func testSignInLinkAndInvite() throws {
+    func testLogInAndInvite() throws {
         let fake = try Fake()
         let origin = "http://127.0.0.1:\(fake.port)"
 
@@ -118,9 +118,9 @@ final class SignInUITests: XCTestCase {
         shot(app, "Signed in")
         guard fake.seen.count == 1 else { return XCTFail("requests: \(fake.seen.count)") }
         let first = fake.seen[0]
-        XCTAssertEqual(first.path, "/api/auth/approve")
-        XCTAssertEqual(String(decoding: first.body, as: UTF8.self), "{\"challenge\":\"\(secret)\",\"kind\":\"signin\"}")
-        let pubkey = checkSigned(first.auth, url: "\(origin)/api/auth/approve", body: first.body)
+        XCTAssertEqual(first.path, "/api/auth/phone/approve")
+        XCTAssertEqual(String(decoding: first.body, as: UTF8.self), "{\"challenge\":\"\(secret)\"}")
+        let pubkey = checkSigned(first.auth, url: "\(origin)/api/auth/phone/approve", body: first.body)
         app.buttons["signin.done"].tap()
 
         // The key screen shows the same key as an npub, and it stays across launches.
@@ -132,18 +132,6 @@ final class SignInUITests: XCTestCase {
         shot(app, "Your key")
         app.terminate()
 
-        // Link from a project page: the answer names the member.
-        fake.answer = "{\"ok\":true,\"kind\":\"link\",\"name\":\"Ada\"}"
-        app = launch("openagents://127.0.0.1:\(fake.port)/signin#link=\(secret)")
-        XCTAssertTrue(app.staticTexts["signin.question"].waitForExistence(timeout: 30))
-        XCTAssertEqual(app.staticTexts["signin.question"].label, "Link this phone to your project on 127.0.0.1:\(fake.port)?")
-        app.buttons["signin.approve"].tap()
-        XCTAssertTrue(wait(20) { app.staticTexts["signin.result"].label == "This phone is linked to your project as Ada." }, app.staticTexts["signin.result"].label)
-        guard fake.seen.count == 2 else { return XCTFail("requests: \(fake.seen.count)") }
-        XCTAssertEqual(String(decoding: fake.seen[1].body, as: UTF8.self), "{\"challenge\":\"\(secret)\",\"kind\":\"link\"}")
-        XCTAssertEqual(checkSigned(fake.seen[1].auth, url: "\(origin)/api/auth/approve", body: fake.seen[1].body), pubkey)
-        app.terminate()
-
         // An invite: the claim goes to the project's route; a used one says so.
         fake.answer = "{\"error\": \"not found\"}"; fake.status = 404
         app = launch("\(origin)/projects/fixture-proj#invite=\(secret)")
@@ -151,10 +139,10 @@ final class SignInUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["signin.question"].label, "Link this phone to the project you were invited to?")
         app.buttons["signin.approve"].tap()
         XCTAssertTrue(wait(20) { app.staticTexts["signin.result"].label == "That code was used or has expired." }, app.staticTexts["signin.result"].label)
-        guard fake.seen.count == 3 else { return XCTFail("requests: \(fake.seen.count)") }
-        XCTAssertEqual(fake.seen[2].path, "/api/private/fixture-proj/claim")
-        XCTAssertEqual(String(decoding: fake.seen[2].body, as: UTF8.self), "{\"token\":\"\(secret)\"}")
-        XCTAssertEqual(checkSigned(fake.seen[2].auth, url: "\(origin)/api/private/fixture-proj/claim", body: fake.seen[2].body), pubkey)
+        guard fake.seen.count == 2 else { return XCTFail("requests: \(fake.seen.count)") }
+        XCTAssertEqual(fake.seen[1].path, "/api/private/fixture-proj/claim")
+        XCTAssertEqual(String(decoding: fake.seen[1].body, as: UTF8.self), "{\"token\":\"\(secret)\"}")
+        XCTAssertEqual(checkSigned(fake.seen[1].auth, url: "\(origin)/api/private/fixture-proj/claim", body: fake.seen[1].body), pubkey)
         app.terminate()
 
         // Cancel sends nothing; a code for another site is not taken.
@@ -166,7 +154,7 @@ final class SignInUITests: XCTestCase {
         app = launch("https://example.com/signin#c=\(secret)")
         XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 30))
         XCTAssertFalse(app.staticTexts["signin.question"].waitForExistence(timeout: 3))
-        XCTAssertEqual(fake.seen.count, 3)
+        XCTAssertEqual(fake.seen.count, 2)
     }
 
     private func launchLogin(_ origin: String, code: String? = nil) -> XCUIApplication {
@@ -243,7 +231,7 @@ final class SignInUITests: XCTestCase {
         XCTAssertTrue(wait(20) { app.buttons["login.send"].exists && app.buttons["login.send"].isHittable })
     }
 
-    /// The new login page's QR (/login#c=) is approved at /api/auth/phone/approve with only the
+    /// The login page's QR (/login#c=) is approved at /api/auth/phone/approve with only the
     /// challenge; a refusal shows the server's words.
     func testApproveNewLoginPage() throws {
         let fake = try Fake()

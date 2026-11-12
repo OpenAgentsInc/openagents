@@ -29,7 +29,7 @@ N98S_EVENT :: 4096;     // the signed event
 N98S_HEADER :: 5500;    // "Nostr " and the event's base64
 
 #test "a URL and a method we sign: http(s), visible ASCII that needs no JSON escape" {
-  #assert n98s_url_ok("https://openagents.com/api/auth/v2/me") && n98s_url_ok("http://127.0.0.1:5/x?a=b&c=%20") && n98s_url_ok("http://a") && n98s_url_ok("https://a");
+  #assert n98s_url_ok("https://openagents.com/api/auth/account") && n98s_url_ok("http://127.0.0.1:5/x?a=b&c=%20") && n98s_url_ok("http://a") && n98s_url_ok("https://a");
   #assert !n98s_url_ok("http://") && !n98s_url_ok("https://") && !n98s_url_ok("ftp://a.b/") && !n98s_url_ok("HTTPS://a/") && !n98s_url_ok("");
   #assert !n98s_url_ok("https://a/\"") && !n98s_url_ok("https://a/\\") && !n98s_url_ok("https://a/ b") && !n98s_url_ok("https://a/\n");
   long: [N98S_URL_MAX + 1] u8;
@@ -90,7 +90,7 @@ N98S_HEADER :: 5500;    // "Nostr " and the event's base64
   h2: [N98S_HEADER] u8;
   #assert n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://openagents.com/api/playtest/realms", "POST", body[..], true, h2[..]) == n;
   for i: 0..<n { #assert h[i] == h2[i]; }
-  m := n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://openagents.com/api/auth/v2/me", "GET", none[0..<0], false, h[..]);
+  m := n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://openagents.com/api/auth/account", "GET", none[0..<0], false, h[..]);
   d = base64_decode_checked(cast(string) h[6..<m], ev[..], false);
   #assert m > 6 && d.error == NC_OK && !n98s_has(cast(string) ev[0..<d.written], "payload") && n98s_has(cast(string) ev[0..<d.written], "[\"method\",\"GET\"]");
   // An empty body bound still says its hash.

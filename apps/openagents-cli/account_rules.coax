@@ -153,6 +153,54 @@ ar_line :: (body: string, key: string) -> string #effects(all) {
   return "";
 }
 
+// GET /api/auth/ways?as=lines lists the account's ways in: "email ID MASKED" and "key ID HEX".
+// ar_key_id: the id of this key's line, or "". ar_linked: the account has a way in besides this
+// key (an email or another key), so this key joined it rather than being an account of its own.
+#test "an account's ways in" {
+  t := "account acct_x\nlevel L2\nemail 3 a•••@example.com\nkey 7 aa\nkey 12 bb\n";
+  #assert ar_key_id(t, "bb") == "12" && ar_key_id(t, "aa") == "7" && ar_key_id(t, "cc") == "" && ar_key_id(t, "a") == "";
+  #assert ar_key_id("key 7 aa\n", "aa") == "7" && ar_key_id("key 7 aa", "aa") == "7" && ar_key_id("key 7\n", "") == "" && ar_key_id("key 7 a\n", "a") == "7";
+  #assert ar_key_id("\nkey 7 aa\n", "aa") == "7" && ar_key_id("keys 7 aa\n", "aa") == "";
+  #assert ar_linked(t, "aa") && ar_linked("key 7 aa\nkey 9 bb\n", "aa") && ar_linked("email 1 x\nkey 7 aa\n", "aa") && ar_linked("\nemail 1 x\n", "aa");
+  #assert !ar_linked("account acct_x\nkey 7 aa\n", "aa") && !ar_linked("", "aa") && ar_linked("key 7 aa\n", "bb") && ar_linked("key 7 a\n", "b");
+  #assert !ar_linked("key 7\n", "aa") && !ar_linked("email 1\n", "aa") && !ar_linked("emails 1 x\n", "aa");
+  #assert ar_way("key 7 aa", "key") == "aa" && ar_way("email 3 a@b", "email") == "a@b" && ar_way("key 7", "key") == "" && ar_way("x 7 aa", "key") == "";
+  #assert ar_way_id("7 aa") == "7" && ar_way_id("12 aa") == "12" && ar_way_id("7") == "" && ar_way_id(" aa") == "" && ar_way_id(" a b") == "";
+  #assert ar_key_id("key 7 \n", "") == "" && ar_way("key", "key") == "" && ar_way("key 7 a", "ke") == "" && ar_way("\nkey 7 a", "key") == "" && ar_way("key  aa", "key") == "aa";
+  #assert ar_rest("key 7 a", "key") == "7 a" && ar_rest("key", "key") == "" && ar_rest("key ", "key") == "" && ar_rest("keyx7", "key") == "";
+  #assert ar_after_id("7 aa") == "aa" && ar_after_id(" aa") == "aa" && ar_after_id("7") == "" && ar_after_id("7 a b") == "a b";
+}
+// A ways line's id and value: "ID VALUE" after the kind.
+ar_way_id :: (v: string) -> string #effects(all) { for i: 0..<v.count { if v[i] == ' ' { return v[0..<i]; } } return ""; }
+ar_after_id :: (v: string) -> string #effects(all) { for i: 0..<v.count { if v[i] == ' ' { return v[i + 1..<v.count]; } } return ""; }
+// The value of one line "KIND ID VALUE", or "".
+ar_rest :: (l: string, kind: string) -> string #effects(all) {
+  n := kind.count;
+  return ifx l.count > n && l[0..<n] == kind && l[n] == ' ' then l[n + 1..<l.count] else "";
+}
+ar_way :: (l: string, kind: string) -> string #effects(all) { return ar_after_id(ar_rest(l, kind)); }
+ar_key_id :: (body: string, hex: string) -> string #effects(all) {
+  start := 0;
+  for i: 0..<body.count + 1 {
+    if i == body.count || body[i] == '\n' {
+      v := ar_rest(body[start..<i], "key"); start = i + 1;
+      if hex.count > 0 && ar_after_id(v) == hex { return ar_way_id(v); }
+    }
+  }
+  return "";
+}
+ar_linked :: (body: string, hex: string) -> bool #effects(all) {
+  start := 0;
+  for i: 0..<body.count + 1 {
+    if i == body.count || body[i] == '\n' {
+      l := body[start..<i]; start = i + 1;
+      k := ar_way(l, "key");
+      if ar_way(l, "email") != "" || (k != "" && k != hex) { return true; }
+    }
+  }
+  return false;
+}
+
 // A device login's poll: go on while the server says waiting and there is
 // time; stop when it says approved or expired, or the time is up.
 AR_WAIT :: 0; AR_APPROVED :: 1; AR_EXPIRED :: 2; AR_TIMEOUT :: 3; AR_REFUSED :: 4;
@@ -173,9 +221,9 @@ ar_poll :: (status: int, state: string, now_ms: int, deadline_ms: int) -> int #e
   return AR_REFUSED;
 }
 
-// Logout asks the server to unlink this key, then forgets it here. When the
-// key is its own account (409: the account's own key; 404: no account linked
-// it), forgetting it loses the account unless its words are kept: only --yes.
+// Logout asks the server to unlink this key (POST /api/auth/unlink), then forgets it here. When
+// the key is its account's last way in (409) or has no account (404), forgetting it loses the
+// account unless its words are kept: only --yes.
 AR_FORGET :: 0; AR_KEEP_OWN :: 1; AR_KEEP_ERROR :: 2;
 #test "logout forgets a linked key, and an account's own key only with --yes" {
   #assert ar_logout(200, false) == AR_FORGET && ar_logout(200, true) == AR_FORGET;

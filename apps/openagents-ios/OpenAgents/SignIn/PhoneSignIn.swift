@@ -6,7 +6,7 @@ import Foundation
 /// the NIP-98 request; this file hashes, signs with the phone's key
 /// (NostrKey) and sends it. The code's secret is never logged.
 struct PhoneSignIn {
-    enum Kind: Int64 { case signin = 1, link = 2, invite = 3 }
+    enum Kind: Int64 { case signin = 1, invite = 3 }
     let kind: Kind
     /// What the confirmation sheet asks.
     let question: String
@@ -56,26 +56,11 @@ struct PhoneSignIn {
         } ?? ""
     }
 
-    /// A code from the new login page (openagents.com/login#c=..., coax/web/api/auth.c) is approved
-    /// at /api/auth/phone/approve with {"challenge"}; the older /signin page's at /api/auth/approve
-    /// (until that page is removed, #13207). The Coax parser has already chosen the kind; this
-    /// reads only the path of the code it accepted.
-    var newLogin: Bool {
-        guard kind == .signin, let s = String(bytes: text, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let url = URL(string: s) else { return false }
-        return url.path == "/login" || url.path == "/login/"
-    }
-
     /// The signed request: Coax writes the URL, the body, the id's serialization and the event.
     func request(now: Date = Date()) throws -> URLRequest {
         let code = code
-        guard var url = withText({ t in PhoneSignIn.write { verse_signin_url(t, code, $0) } }),
-              var body = withText({ t in PhoneSignIn.write { verse_signin_body(t, code, $0) } }) else { throw NostrKey.Failure.signing }
-        if newLogin, let old = url.range(of: "/api/auth/approve", options: .backwards),
-           let challenge = (try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])?["challenge"] as? String {
-            url.replaceSubrange(old, with: "/api/auth/phone/approve")
-            body = "{\"challenge\":\"\(challenge)\"}"
-        }
+        guard let url = withText({ t in PhoneSignIn.write { verse_signin_url(t, code, $0) } }),
+              let body = withText({ t in PhoneSignIn.write { verse_signin_body(t, code, $0) } }) else { throw NostrKey.Failure.signing }
         guard let target = URL(string: url) else { throw NostrKey.Failure.signing }
         var request = URLRequest(url: target, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20)
         request.httpMethod = "POST"
@@ -115,8 +100,8 @@ struct PhoneSignIn {
         } catch {
             status = 0
         }
-        // The new login's refusals say what happened in their own words (auth.c): show them as given.
-        if newLogin, status >= 400, let words = AppAuth.errorWords(answer) { return words }
+        // A login's refusals say what happened in their own words (auth.c): show them as given.
+        if kind == .signin, status >= 400, let words = AppAuth.errorWords(answer) { return words }
         var bytes = [UInt8](answer)
         let kind = kind.rawValue
         return bytes.withUnsafeMutableBufferPointer { b in

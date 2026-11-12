@@ -196,7 +196,7 @@ acct_key :: (profile: string, k: [] Key, made: [] bool) -> bool {
   return false;
 }
 
-// whoami (keys: account keys): GET /api/auth/v2/me with this key.
+// whoami (keys: account keys): GET /api/auth/ways with this key: the account and its ways in.
 cli_whoami :: (a: [] Args, r: [] Rep, profile: string, keys: bool) -> int {
   ob: [300] u8;
   origin := acct_origin(a, profile, ob[..]);
@@ -204,28 +204,36 @@ cli_whoami :: (a: [] Args, r: [] Rep, profile: string, keys: bool) -> int {
   k: [1] Key;
   if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "not logged in on this profile: run `openagents login`"); }
   c: [1] AcctCall;
-  st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/v2/me", "");
+  st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/ways?as=lines", "");
   np: [80] u8; npn := npub_of(k[0].secret[..], np[..]); hx: [64] u8; ok := pubkey_hex(k[0].secret[..], hx[..]);
   wipe(k[0].secret[..]);
+  if st == 401 { return fail(r, EXIT_AUTH, "this key has no account yet: run `openagents login`"); }
   if st != 200 { return acct_fail(r, c[..], "asking who this key is"); }
   me := npub_text(np[..], npn);
+  own := ifx ok then cast(string) hx[..] else "";
   rep_str(r, "origin", origin);
   rep_str(r, "profile", profile);
   rep_str(r, "account", ar_line(acct_body(c[..]), "account"));
-  if !keys { rep_str(r, "npub", me); if ok { rep_str(r, "pubkey", cast(string) hx[..]); } }
-  // The identities, "kind value [label]", this key's marked.
+  if !keys { rep_str(r, "npub", me); if ok { rep_str(r, "pubkey", own); } }
+  // The ways in, "kind value": emails masked, keys in hex, this key's marked.
   list: [8192] u8; ln := 0; count := 0;
   b := acct_body(c[..]); start := 0;
   for i: 0..<b.count + 1 {
     if i < b.count && b[i] != '\n' { continue; }
     l := b[start..<i]; start = i + 1;
-    if l.count < 4 || l[0..<3] != "id|" { continue; }
-    j: [600] u8; jn := ar_json_str(l[3..<l.count], j[..]);
+    e := ar_way(l, "email"); kh := ar_way(l, "key");
+    if e.count == 0 && kh.count == 0 { continue; }
+    id: [400] u8; idn := copy(ifx e.count > 0 then "email|" else "nostr|", id[..]);
+    v := ifx e.count > 0 then e else kh;
+    if idn + v.count > id.count { continue; }
+    for x: 0..<v.count { id[idn + x] = v[x]; }
+    idn += v.count;
+    j: [600] u8; jn := ar_json_str(cast(string) id[0..<idn], j[..]);
     if jn < 0 || ln + jn + 2 > list.count { continue; }
     if count > 0 { list[ln] = ','; ln += 1; }
     for x: 0..<jn { list[ln + x] = j[x]; }
     ln += jn; count += 1;
-    if !r[0].json { mark := ifx me.count > 0 && acct_has(l, me) then "  (this computer)" else ""; print_id(l[3..<l.count], mark); }
+    if !r[0].json { mark := ifx own.count > 0 && kh == own then "  (this computer)" else ""; print_id(cast(string) id[0..<idn], mark); }
   }
   if r[0].json {
     arr: [8200] u8; arr[0] = '['; for x: 0..<ln { arr[1 + x] = list[x]; } arr[1 + ln] = ']';
@@ -240,7 +248,7 @@ acct_has :: (s: string, part: string) -> bool {
   return false;
 }
 print_id :: (id: string, mark: string) {
-  // "nostr|npub1...|cli:box" -> "id nostr npub1... cli:box"
+  // "nostr|HEX" -> "id nostr HEX"
   out: [700] u8; n := copy("id ", out[..]);
   for c: id { if n < out.count - 1 { out[n] = ifx c == '|' then cast(u8) ' ' else c; n += 1; } }
   print("%", cast(string) out[0..<n]); print("%\n", mark);
@@ -260,8 +268,9 @@ cli_login :: (a: [] Args, r: [] Rep, profile: string) -> int {
     if code >= 0 { return code; }
     store := store_key(profile, key[..]);
     if store == "" { wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
-    st := acct_call(c[..], key[..], origin, "GET", "/api/auth/v2/me", "");
+    st := acct_call(c[..], key[..], origin, "GET", "/api/auth/ways?as=lines", "");
     wipe(key[..]);
+    if st == 401 { return fail(r, EXIT_AUTH, "the key is kept, but it has no account yet: log in with it at /login, or run `openagents login` without --words"); }
     if st != 200 { return acct_fail(r, c[..], "the key is kept; asking the server who it is"); }
     if !save_origin(profile, origin) { return fail(r, EXIT_FAIL, "could not keep the origin"); }
     rep_str(r, "account", ar_line(acct_body(c[..]), "account"));
@@ -271,12 +280,11 @@ cli_login :: (a: [] Args, r: [] Rep, profile: string) -> int {
   k: [1] Key; made: [1] bool;
   if !acct_key(profile, k[..], made[..]) { return fail(r, EXIT_FAIL, "could not make or keep a key for this profile"); }
   if made[0] { tool_errln("openagents: made a new key for this computer (kept in ~/.openagents/cli/keys)"); }
-  // Already some account's other than the key's own: say so and stop.
-  st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/v2/me", "");
-  hx: [64] u8; own: [80] u8; on := 0;
-  if pubkey_hex(k[0].secret[..], hx[..]) { on = copy("n-", own[..]); for x: 0..<64 { own[on + x] = hx[x]; } on += 64; }
+  // Already joined to an account with another way in (an email or another key): say so and stop.
+  st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/ways?as=lines", "");
+  hx: [64] u8; own := ifx pubkey_hex(k[0].secret[..], hx[..]) then cast(string) hx[..] else "";
   acct := ar_line(acct_body(c[..]), "account");
-  if st == 200 && acct.count > 0 && acct != cast(string) own[0..<on] && !args_has(a, "--again") {
+  if st == 200 && acct.count > 0 && own.count > 0 && ar_linked(acct_body(c[..]), own) && !args_has(a, "--again") {
     wipe(k[0].secret[..]);
     if !save_origin(profile, origin) { return fail(r, EXIT_FAIL, "could not keep the origin"); }
     rep_str(r, "account", acct); rep_str(r, "origin", origin); rep_str(r, "profile", profile); rep_bool(r, "already", true);
@@ -339,9 +347,15 @@ cli_logout :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if k[0].from == "env" { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "OPENAGENTS_NSEC is set: nothing is kept to log out of"); }
   hx: [64] u8; body: [120] u8;
   if !pubkey_hex(k[0].secret[..], hx[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "this profile's key is not a good key"); }
-  bn := copy("{\"pubkey\":\"", body[..]); for x: 0..<64 { body[bn + x] = hx[x]; } bn += 64; bn += copy("\"}", body[bn..<body.count]);
+  // The key's id among its account's ways in, then that way removed (a NIP-98 signature is a fresh strong login).
   c: [1] AcctCall;
-  st := acct_call(c[..], k[0].secret[..], origin, "POST", "/api/auth/v2/unlink", cast(string) body[0..<bn]);
+  st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/ways?as=lines", "");
+  idb: [24] u8; idn := 0;
+  if st == 200 { idn = copy(ar_key_id(acct_body(c[..]), cast(string) hx[..]), idb[..]); }
+  if st == 200 && idn > 0 {
+    bn := copy("{\"kind\":\"nostr\",\"id\":", body[..]); for x: 0..<idn { body[bn + x] = idb[x]; } bn += idn; bn += copy("}", body[bn..<body.count]);
+    st = acct_call(c[..], k[0].secret[..], origin, "POST", "/api/auth/unlink", cast(string) body[0..<bn]);
+  } else if st == 200 || st == 401 { st = 404; }   // no account holds this key
   wipe(k[0].secret[..]);
   plan := ar_logout(st, args_has(a, "--yes"));
   if plan == AR_KEEP_OWN { return fail(r, EXIT_CONFLICT, "this key is its own account, not linked to another: forgetting it loses that account unless you kept its words. Add --yes to forget it anyway"); }
