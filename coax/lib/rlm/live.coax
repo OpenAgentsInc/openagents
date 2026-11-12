@@ -48,6 +48,7 @@ rlm_arg_limits :: (a: [] Args, d: RlmLimits) -> RlmLimits {
   l.max_depth = rlm_arg_number(a, "--max-depth", d.max_depth);
   l.max_turns = rlm_arg_number(a, "--max-turns", d.max_turns);
   l.max_calls = rlm_arg_number(a, "--max-calls", d.max_calls);
+  l.max_shown = rlm_arg_number(a, "--max-shown", d.max_shown);
   l.max_ms = rlm_arg_number(a, "--max-minutes", d.max_ms / 60000) * 60000;
   v := args_value(a, "--max-usd", "");
   n := args_number(v);
