@@ -43,10 +43,11 @@ anything. Admins only for now.
 | The API | `coax/web/api/chat.c`, `migrations/0021_chat.sql` (schema `chat`), `migrations/0139_chat_folders_tabs.sql` (folders, tabs, the record) |
 | The runner's general mode | `coax/web/agent/chat-runner.c` (included by `runner.c`) |
 | The engine | `coax/web/agent/chat.coax` (Coax Claude Agent SDK) |
+| The runner's wire | Package `openagents.agent.managed.v1alpha1` (`proto/openagents/agent/managed/v1alpha1/session.proto`); its one codec is `coax/web/agent/runner-wire.coax`, which the engines load and the C runner calls; goldens in `proto/coder/agent-managed-v1alpha1.json`, checked by `coax/web/agent/runner-wire-goldens.coax` |
 | Checks | `coax/web/api/test_zchat.py` (with `test-chat-engine.py`), the `#test`s in `chat.coax`, `coax/web/agent/live-check.py chat` (a timed turn on a deployed runner) |
 
-A conversation is a managed session (`openagents.agent.managed.v1`,
-protocol spec §18.2): `chat.conversations` is the session (idle or running)
+A conversation is a managed session (`openagents.agent.managed.v1alpha1`,
+protocol spec §18.2: only what ships): `chat.conversations` is the session (idle or running)
 with the CLI session id its turns resume, `chat.turns` each message, and
 `chat.events` what a turn did (`user.message`, `user.interrupt`,
 `agent.message` (only its length), `agent.tool_use`,
@@ -115,7 +116,9 @@ subscription token (`claude setup-token`, `sk-ant-oat...`).
 - **Sealed.** The runner seals it with AES-256-GCM (OpenSSL) under
   `OA_CHAT_SEAL_KEY`, 32 random bytes kept in Secret Manager
   (`oa-chat-credential-key`, `oa-chat-credential-key-staging`), with the
-  owner and kind as associated data. oa-api stores only the sealed bytes, the
+  associated data `oa-chat-credential.v1|OWNER|KIND` (`rw_aad` in
+  `runner-wire.coax`); a golden with a fixed test key and nonce pins the bytes
+  (`proto/coder/agent-managed-v1alpha1.json`, `sealed`). oa-api stores only the sealed bytes, the
   kind and the last four characters (`chat.credentials`); it can't open them.
   We chose a Secret Manager key over Cloud KMS: one fewer service, and the
   key never leaves the runner, which reads it once at start and drops it from

@@ -42,14 +42,22 @@ static bool seal_load(void) {
   unsetenv("OA_CHAT_SEAL_KEY");
   return seal_ready = true;
 }
-static void aad_of(const char *owner, const char *kind, char *out, size_t cap) { snprintf(out, cap, "oa-chat-credential.v1|%s|%s", owner, kind); }
+// The associated data, "oa-chat-credential.v1|OWNER|KIND" (runner-wire.coax rw_aad); false when it
+// does not fit, and then nothing is sealed or opened.
+static bool aad_of(const char *owner, const char *kind, char *out, size_t cap) {
+  int64_t n = rw_aad_write(cs(owner), cs(kind), (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  out[n > 0 ? n : 0] = 0;
+  return n > 0;
+}
 
-// plain → base64 sealed; false when sealing isn't set up.
-static bool seal(const char *plain, const char *owner, const char *kind, char *out, size_t cap) {
+// plain → base64 sealed under the 12-byte nonce; false when sealing isn't set up. runner_seal_check.c
+// holds it to the goldens' sealed credential (proto/coder/agent-managed-v1alpha1.json).
+static bool seal_with(const char *plain, const char *owner, const char *kind, const unsigned char nonce[12], char *out, size_t cap) {
   if (!seal_ready) return false;
   unsigned char buf[12 + 512 + 16]; size_t n = strlen(plain);
-  if (n > 512 || RAND_bytes(buf, 12) != 1) return false;
-  char aad[200]; aad_of(owner, kind, aad, sizeof aad);
+  if (n > 512) return false;
+  memcpy(buf, nonce, 12);
+  char aad[200]; if (!aad_of(owner, kind, aad, sizeof aad)) return false;
   EVP_CIPHER_CTX *c = EVP_CIPHER_CTX_new(); int len = 0, total = 0; bool ok = c != NULL;
   ok = ok && EVP_EncryptInit_ex(c, EVP_aes_256_gcm(), NULL, seal_key, buf) == 1;
   ok = ok && EVP_EncryptUpdate(c, NULL, &len, (const unsigned char *)aad, (int)strlen(aad)) == 1;
@@ -63,6 +71,11 @@ static bool seal(const char *plain, const char *owner, const char *kind, char *o
   OPENSSL_cleanse(buf, sizeof buf);
   return true;
 }
+// plain → base64 sealed under a random nonce.
+static bool seal(const char *plain, const char *owner, const char *kind, char *out, size_t cap) {
+  unsigned char nonce[12];
+  return RAND_bytes(nonce, 12) == 1 && seal_with(plain, owner, kind, nonce, out, cap);
+}
 // base64 sealed → plain; false when it doesn't open (another owner or kind, a changed key).
 static bool unseal(const char *sealed, const char *owner, const char *kind, char *out, size_t cap) {
   if (!seal_ready) return false;
@@ -74,7 +87,7 @@ static bool unseal(const char *sealed, const char *owner, const char *kind, char
   if (n >= 1 && sealed[n - 1] == '=') k--;
   if (n >= 2 && sealed[n - 2] == '=') k--;
   if (k < 12 + 16 + 1 || (size_t)(k - 28) + 1 > cap) return false;
-  char aad[200]; aad_of(owner, kind, aad, sizeof aad);
+  char aad[200]; if (!aad_of(owner, kind, aad, sizeof aad)) return false;
   EVP_CIPHER_CTX *c = EVP_CIPHER_CTX_new(); int len = 0, total = 0; bool ok = c != NULL;
   ok = ok && EVP_DecryptInit_ex(c, EVP_aes_256_gcm(), NULL, seal_key, raw) == 1;
   ok = ok && EVP_DecryptUpdate(c, NULL, &len, (const unsigned char *)aad, (int)strlen(aad)) == 1;
@@ -397,8 +410,7 @@ static bool session_found(const char *cfg, const char *sid, char *out, size_t ca
 
 static void chat_end(long long id, const char *status, const char *answer, const char *error, double cost, bool resumed) {
   text body = {0}, out = {0};
-  putf(&body, "{\"turn\":%lld,\"status\":\"%s\",\"answer\":%s,\"error\":%s,\"cost_usd\":%.4f,\"resumed\":%s,\"credential_expired\":%s}", id, status,
-       answer && *answer ? answer : "\"\"", error && *error ? error : "\"\"", cost, resumed ? "true" : "false", chat_expired ? "true" : "false");
+  WIRE(&body, rw_chat_end_write(id, cs(status), cs(answer), cs(error), cost, resumed, chat_expired, room));
   api("POST", "runner", "end", body.p, &out);
   say("chat turn %lld %s cost %.4f%s", id, status, cost, resumed ? " resumed" : "");
   free(body.p); free(out.p);
@@ -450,12 +462,12 @@ static void chat_turn(const char *next) {
   if (!*chat_mirror()) {
     // the page's status line while the copy refreshes
     text eb = {0}, eo = {0};
-    putf(&eb, "{\"turn\":%lld,\"events\":[{\"type\":\"working\",\"data\":{\"text\":\"getting the latest code\"}}]}", id);
+    WIRE(&eb, rw_working_batch_write(id, cs("getting the latest code"), room));
     api("POST", "runner", "event", eb.p, &eo);
     free(eb.p); free(eo.p);
     chat_git_why w = chat_checkout(repo);
     if (w != CHAT_GIT_OK) {
-      text e = {0}; putq(&e, chat_git_words(w));
+      text e = {0}; quote(&e, chat_git_words(w));
       chat_end(id, "failed", "\"\"", e.p, 0, false);
       free(e.p); goto out;
     }
@@ -478,12 +490,9 @@ static void chat_turn(const char *next) {
     text first = {0};
     char *history = jraw(next, "history", "[]"), *spent = jraw(next, "spent", "0"), *cap = jraw(next, "cap", "0");
     double budget = atof(cap) > 0 ? atof(cap) - atof(spent) : 0;
-    putf(&first, "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":%s,\"model\":\"%s\",\"budget_usd\":%.4f,\"%s\":\"%s\",\"history\":%s,\"cwd\":",
-         turn_json, chat_model(model), budget > 0 ? budget : (atof(cap) > 0 ? 0.0001 : 0), resumed ? "resume" : "session_id", sid, resumed ? "[]" : history);
-    putq(&first, repo);
-    if (*chat_mirror()) { putf(&first, ",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"mirror\":"); putq(&first, chat_mirror()); putf(&first, "}"); }
     char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
-    putf(&first, ",\"today\":\"%s\",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}", today);
+    WIRE(&first, rw_chat_turn_write(cs(turn_json), cs(chat_model(model)), budget > 0 ? budget : (atof(cap) > 0 ? 0.0001 : 0), resumed, cs(sid),
+                                    cs(resumed ? "[]" : history), cs(repo), cs(chat_mirror()), cs(today), room));
     engine_bin = env("OA_CHAT_ENGINE", "/usr/local/bin/oa-chat-turn");
     snprintf(engine_cfg, sizeof engine_cfg, "%s", cfg);
     run_engine("runner", first.p, id, repo, home, &answer, &error, &cost, status);

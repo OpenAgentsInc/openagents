@@ -1,0 +1,222 @@
+syntax = "proto3";
+package openagents.agent.managed.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/options/v1alpha1/json.proto";
+
+// The hosted runner's wire (Protocol C5, GitHub #13242; docs/chat.md,
+// docs/project-agent.md): only what ships, not the spec's full managed-agent
+// API (section 18.2: no deployments, memory stores or vaults).
+//
+//   runner <-> engine   one JSON object a line on the engine's stdin and stdout:
+//                       ProjectTurnLine or ChatTurnLine first, then ReplyLine and
+//                       StopLine in; EventLine, CallLine and DoneLine out
+//   runner -> API       EventBatch (POST .../event) and TurnEnd (POST .../end),
+//                       each with the "nonce" member the signed request adds
+//   API -> runner       NextTurn (POST .../next)
+//
+// Each json_name is the key on the wire. The one writer is
+// coax/web/agent/runner-wire.coax: turn.coax and chat.coax load it, and the C
+// runner (runner.c, chat-runner.c) calls it through runner-wire.c, compiled
+// beside it. Golden lines and bodies are in proto/coder/agent-managed-v1alpha1.json,
+// checked by coax/web/agent/runner-wire-goldens.coax; the messages with the
+// json option are also read and written back through the JSON mapper there.
+// Raw members (a turn, a history, call arguments, a reply's body) are JSON the
+// runner carries as it got it; they are strings here and written unquoted.
+
+// What an event carries. On the engine's lines: working and agent.message
+// {text}, agent.tool_use {name, detail}, session.error {error}. Stored in
+// chat.events and projects.events (migrations 0013 and 0021): agent.message
+// {length}, agent.tool_use and session.error {name, detail, error},
+// user.message {length}, user.interrupt and session.status_running {},
+// session.status_idle {status}.
+message EventData {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  option (openagents.options.v1alpha1.json) = "";
+  optional string text = 1 [json_name = "text"];
+  optional string name = 2 [json_name = "name"];
+  optional string detail = 3 [json_name = "detail"];
+  optional string error = 4 [json_name = "error"];
+  optional int32 length = 5 [json_name = "length"];
+  optional string status = 6 [json_name = "status"];
+}
+
+// One event in a batch to the API, and a stored row's type and data. The
+// types: working (the turn's status line, not stored), agent.message,
+// agent.tool_use, session.error, and the API's own user.message,
+// user.interrupt, session.status_running and session.status_idle.
+message SessionEvent {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  option (openagents.options.v1alpha1.json) = "";
+  string type = 1 [json_name = "type"];
+  EventData data = 2 [json_name = "data"];
+}
+
+// ---- the engine's lines (t is the line's kind)
+
+// Out: an event, which the runner puts in the next batch.
+message EventLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  option (openagents.options.v1alpha1.json) = "t=event";
+  string type = 1 [json_name = "type"];
+  EventData data = 2 [json_name = "data"];
+}
+
+// Out: a project tool call; the runner makes it one signed API op. args is a
+// JSON object, raw.
+message CallLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  int64 id = 1 [json_name = "id"];
+  string tool = 2 [json_name = "tool"];
+  string args = 3 [json_name = "args"];
+}
+
+// In: the API's answer to a call. id is the call's id as the engine wrote it;
+// body the API's answer when it is a JSON object or array, else {}.
+message ReplyLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  int64 id = 1 [json_name = "id"];
+  int32 status = 2 [json_name = "status"];
+  string body = 3 [json_name = "body"];
+}
+
+// In: a member pressed STOP.
+message StopLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  option (openagents.options.v1alpha1.json) = "t=stop";
+}
+
+// Out: the turn's end. cost_usd has six decimals. The project engine writes
+// credential_expired last; /chat's engine writes it before cost_usd.
+message DoneLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  string status = 1 [json_name = "status"];   // done, failed or stopped
+  string answer = 2 [json_name = "answer"];
+  string error = 3 [json_name = "error"];
+  double cost_usd = 4 [json_name = "cost_usd"];
+  bool credential_expired = 5 [json_name = "credential_expired"];
+}
+
+// What a turn offers (docs/project-agent.md, "The runner's seam").
+message Workspace {
+  string kind = 1 [json_name = "kind"];        // project or chat
+  string budget = 2 [json_name = "budget"];    // project:SLUG or chat
+  repeated string tools = 3 [json_name = "tools"];
+  bool write = 4 [json_name = "write"];
+}
+
+// In, first: a project turn. turn and history are NextTurn's, raw;
+// budget_usd has four decimals.
+message ProjectTurnLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  string slug = 1 [json_name = "slug"];
+  string turn = 2 [json_name = "turn"];
+  string history = 3 [json_name = "history"];
+  int64 version = 4 [json_name = "version"];
+  string model = 5 [json_name = "model"];
+  double budget_usd = 6 [json_name = "budget_usd"];
+  bool repo = 7 [json_name = "repo"];
+  string cwd = 8 [json_name = "cwd"];
+  string today = 9 [json_name = "today"];
+  Workspace workspace = 10 [json_name = "workspace"];
+}
+
+// An indexed repo a chat turn reads instead of a checkout (docs/repos/).
+message RepoRef {
+  string name = 1 [json_name = "name"];
+  string at = 2 [json_name = "at"];
+  string mirror = 3 [json_name = "mirror"];
+}
+
+// In, first: a /chat turn. resume when the session was put back (history is
+// then []), else session_id.
+message ChatTurnLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  string mode = 1 [json_name = "mode"];         // chat
+  string turn = 2 [json_name = "turn"];
+  string model = 3 [json_name = "model"];
+  double budget_usd = 4 [json_name = "budget_usd"];
+  oneof session {
+    string resume = 5 [json_name = "resume"];
+    string session_id = 6 [json_name = "session_id"];
+  }
+  string history = 7 [json_name = "history"];
+  string cwd = 8 [json_name = "cwd"];
+  RepoRef repo = 9 [json_name = "repo"];
+  string today = 10 [json_name = "today"];
+  Workspace workspace = 11 [json_name = "workspace"];
+}
+
+// ---- runner and API
+
+// POST .../event: a turn's events, at most 40 a batch (the API takes 50).
+// The answer says whether STOP was pressed.
+message EventBatch {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  option (openagents.options.v1alpha1.json) = "";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  int64 turn = 1 [json_name = "turn"];
+  repeated SessionEvent events = 2 [json_name = "events"];
+}
+
+// POST .../end: the turn's end. A project turn carries commit, commit_message
+// (when it pushed one) and files; a /chat turn carries resumed. cost_usd has
+// four decimals.
+message TurnEnd {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  int64 turn = 1 [json_name = "turn"];
+  string status = 2 [json_name = "status"];
+  string answer = 3 [json_name = "answer"];
+  string error = 4 [json_name = "error"];
+  double cost_usd = 5 [json_name = "cost_usd"];
+  optional string commit = 6 [json_name = "commit"];
+  optional string commit_message = 7 [json_name = "commit_message"];
+  repeated string files = 8 [json_name = "files"];
+  optional bool resumed = 9 [json_name = "resumed"];
+  bool credential_expired = 10 [json_name = "credential_expired"];
+}
+
+// A turn as next hands it out: a project turn has kind, undo_of and revert; a
+// /chat turn conv, model and session.
+message Turn {
+  int64 id = 1 [json_name = "id"];
+  string kind = 2 [json_name = "kind"];
+  string text = 3 [json_name = "text"];
+  string by = 4 [json_name = "by"];
+  optional int64 undo_of = 5 [json_name = "undo_of"];
+  optional string revert = 6 [json_name = "revert"];
+  int64 conv = 7 [json_name = "conv"];
+  string model = 8 [json_name = "model"];
+  string session = 9 [json_name = "session"];
+}
+
+// An earlier turn of the conversation.
+message HistoryTurn {
+  int64 id = 1 [json_name = "id"];
+  string by = 2 [json_name = "by"];
+  string text = 3 [json_name = "text"];
+  string answer = 4 [json_name = "answer"];
+  bool undone = 5 [json_name = "undone"];
+}
+
+// The asker's own credential, sealed by the runner: base64 of a 12-byte
+// nonce, the AES-256-GCM ciphertext and its tag, with the associated data
+// "oa-chat-credential.v1|OWNER|KIND" (runner-wire.coax rw_aad).
+message SealedCredential {
+  string kind = 1 [json_name = "kind"];     // api or oauth
+  string owner = 2 [json_name = "owner"];
+  string sealed = 3 [json_name = "sealed"];
+}
+
+// POST .../next's answer. turn is null when none waits; refused names a turn
+// the cap refused; busy, a project turn already running.
+message NextTurn {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  Turn turn = 1 [json_name = "turn"];
+  int64 version = 2 [json_name = "version"];
+  double spent = 3 [json_name = "spent"];
+  double cap = 4 [json_name = "cap"];
+  SealedCredential credential = 5 [json_name = "credential"];
+  repeated HistoryTurn history = 6 [json_name = "history"];
+  int64 refused = 7 [json_name = "refused"];
+  bool busy = 8 [json_name = "busy"];
+}

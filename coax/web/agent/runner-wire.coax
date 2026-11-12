@@ -1,0 +1,323 @@
+// The hosted runner's wire, one codec (Protocol C5, GitHub #13242): the lines between the
+// runner and its engines, and the bodies the runner sends the API, as
+// proto/openagents/agent/managed/v1alpha1/session.proto names them (profile agent-managed).
+//
+//   engines   turn.coax and chat.coax load this file and write their lines with rw_event,
+//             rw_tool, rw_call and rw_done
+//   runner    runner.c and chat-runner.c call the #export_c writers below (rw_*_write), compiled
+//             to C beside them as runner-wire.c and runner-wire.h (deploy.sh, coax/web/api/test.sh):
+//             the first line of a turn, a reply, STOP, the event batches, the end bodies and the
+//             sealed credential's associated data
+//
+// The bytes are the ones that shipped before this file: proto/coder/agent-managed-v1alpha1.json
+// holds them, taken from the engines and the runner as they were, and runner-wire-goldens.coax
+// writes each one through here. Two escapers, because two shipped: the engines' strings go
+// through coax/lib/agent/claude/'s (\n \r \t \b \f, other control bytes as \u00XX), the runner's
+// through its own (\n, other control bytes as \u00XX). Raw members (a turn, a history, call
+// arguments, a reply's body, an engine's answer and error) are JSON carried as it came.
+// Writers return the length written into out, or -1 when it does not fit.
+#load "../../lib/agent/claude/control.coax";
+
+// ---- numbers
+
+// Dollars with six decimals, as the engines write a turn's cost.
+rw_usd6 :: (o: [] ClOut, usd: f64) {
+  micro := cast(int) (usd * 1000000.0 + 0.5);
+  if micro < 0 { micro = 0; }
+  cl_put_int(o, micro / 1000000);
+  cl_put(o, ".");
+  frac := micro % 1000000;
+  d := 100000;
+  while d > 0 { digit: [1] u8; digit[0] = cast(u8) ('0' + (frac / d) % 10); cl_put(o, cast(string) digit[..]); d /= 10; }
+}
+
+// x with four decimals, exactly as C's printf("%.4f") writes it: the exact binary value, rounded
+// half to even. x * 10^4 is mant * 625 * 2^(exp + 4) with mant * 625 below 2^63, so it is
+// worked out in integers. NaN and infinities are written as printf writes them.
+rw_fixed4 :: (o: [] ClOut, x: f64) {
+  bits := f64_bits(x);
+  neg := (bits >> 63) != 0;
+  e := cast(int) ((bits >> 52) & 2047);
+  frac := cast(int) (bits & 4503599627370495);
+  if e == 2047 {
+    if frac != 0 { cl_put(o, ifx neg then "-nan" else "nan"); } else { cl_put(o, ifx neg then "-inf" else "inf"); }
+    return;
+  }
+  mant := ifx e == 0 then frac else frac + 4503599627370496;
+  shift := (ifx e == 0 then 1 else e) - 1075 + 4;   // x * 10^4 = mant * 625 * 2^shift
+  p := mant * 625;
+  n := 0;
+  if shift >= 0 {
+    n = p;   // x at or above 2^48: never a cost or a budget, and past what fits in an int here
+  } else if shift > -64 {
+    k := -shift;
+    if k == 63 {
+      n = ifx p > 4611686018427387904 then 1 else 0;   // half is 2^62; p < 2^63 is never odd above it
+    } else {
+      q := p >> k;
+      r := p - (q << k);
+      half := 1 << (k - 1);
+      if r > half || (r == half && (q & 1) == 1) { q += 1; }
+      n = q;
+    }
+  }
+  if neg { cl_put(o, "-"); }
+  cl_put_int(o, n / 10000);
+  cl_put(o, ".");
+  f := n % 10000;
+  d := 1000;
+  while d > 0 { digit: [1] u8; digit[0] = cast(u8) ('0' + (f / d) % 10); cl_put(o, cast(string) digit[..]); d /= 10; }
+}
+
+// ---- strings
+
+// s as a JSON string the way the runner always wrote one: \" \\ \n, other control bytes as
+// \u00XX (lower-case hex), everything else as it is.
+rw_quote :: (o: [] ClOut, s: string) {
+  cl_put(o, "\"");
+  hex := "0123456789abcdef";
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '"' { cl_put(o, "\\\""); }
+    else if c == '\\' { cl_put(o, "\\\\"); }
+    else if c == 10 { cl_put(o, "\\n"); }
+    else if c < 0x20 {
+      u: [6] u8; u[0] = '\\'; u[1] = 'u'; u[2] = '0'; u[3] = '0'; u[4] = hex[c >> 4]; u[5] = hex[c & 15];
+      cl_put(o, cast(string) u[..]);
+    } else { b: [1] u8; b[0] = c; cl_put(o, cast(string) b[..]); }
+  }
+  cl_put(o, "\"");
+}
+// A raw JSON member, or fallback when there is none.
+rw_raw :: (o: [] ClOut, raw: string, fallback: string) { cl_put(o, ifx raw.count > 0 then raw else fallback); }
+
+rw_len :: (o: [] ClOut) -> int { return ifx o[0].failed then -1 else o[0].len; }
+
+// ---- the engines' lines (EventLine, CallLine, DoneLine)
+
+// An event with one string member in its data: {"t":"event","type":T,"data":{KEY:VALUE}}.
+rw_event :: (o: [] ClOut, type: string, key: string, value: string) {
+  cl_put(o, "{\"t\":\"event\",\"type\":"); cl_put_string(o, type);
+  cl_put(o, ",\"data\":{"); cl_put_string(o, key); cl_put(o, ":"); cl_put_string(o, value); cl_put(o, "}}");
+}
+// A tool the model used: agent.tool_use with its name and what it was used on.
+rw_tool :: (o: [] ClOut, name: string, detail: string) {
+  cl_put(o, "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":"); cl_put_string(o, name);
+  cl_put(o, ",\"detail\":"); cl_put_string(o, detail); cl_put(o, "}}");
+}
+// A project tool call; args is the model's JSON object, raw ({} when there is none).
+rw_call :: (o: [] ClOut, id: int, tool: string, args: string) {
+  cl_put(o, "{\"t\":\"call\",\"id\":"); cl_put_int(o, id);
+  cl_put(o, ",\"tool\":"); cl_put_string(o, tool);
+  cl_put(o, ",\"args\":"); rw_raw(o, args, "{}"); cl_put(o, "}");
+}
+// Where credential_expired goes in a done line: last for the project engine, before cost_usd
+// for /chat's.
+RW_DONE_PROJECT :: 0;
+RW_DONE_CHAT :: 1;
+rw_done :: (o: [] ClOut, layout: int, status: string, answer: string, error: string, cost: f64, expired: bool) {
+  cl_put(o, "{\"t\":\"done\",\"status\":"); cl_put_string(o, status);
+  cl_put(o, ",\"answer\":"); cl_put_string(o, answer);
+  cl_put(o, ",\"error\":"); cl_put_string(o, error);
+  if layout == RW_DONE_CHAT { cl_put(o, ",\"credential_expired\":"); cl_put_bool(o, expired); }
+  cl_put(o, ",\"cost_usd\":"); rw_usd6(o, cost);
+  if layout != RW_DONE_CHAT { cl_put(o, ",\"credential_expired\":"); cl_put_bool(o, expired); }
+  cl_put(o, "}");
+}
+
+// ---- the runner's lines (ProjectTurnLine, ChatTurnLine, ReplyLine, StopLine)
+
+rw_project_turn :: (o: [] ClOut, slug: string, turn: string, history: string, version: string, model: string, budget: f64,
+                    repo: bool, cwd: string, today: string) {
+  cl_put(o, "{\"t\":\"turn\",\"slug\":"); rw_quote(o, slug);
+  cl_put(o, ",\"turn\":"); rw_raw(o, turn, "{}");
+  cl_put(o, ",\"history\":"); rw_raw(o, history, "[]");
+  cl_put(o, ",\"version\":"); rw_raw(o, version, "0");
+  cl_put(o, ",\"model\":"); rw_quote(o, model);
+  cl_put(o, ",\"budget_usd\":"); rw_fixed4(o, budget);
+  cl_put(o, ",\"repo\":"); cl_put_bool(o, repo);
+  cl_put(o, ",\"cwd\":"); rw_quote(o, cwd);
+  cl_put(o, ",\"today\":"); rw_quote(o, today);
+  cl_put(o, ",\"workspace\":{\"kind\":\"project\",\"budget\":\"project:"); rw_quote_inner(o, slug);
+  cl_put(o, "\",\"tools\":[\"project\"],\"write\":true}}");
+}
+// s's escaped bytes without the quotes, for a string built of two parts.
+rw_quote_inner :: (o: [] ClOut, s: string) {
+  tmp: [1] ClOut; buf: [4096] u8; tmp[0].buf = buf[..];
+  rw_quote(tmp[..], s);
+  if tmp[0].failed { o[0].failed = true; return; }
+  cl_put(o, cast(string) buf[1..<tmp[0].len - 1]);
+}
+// resumed: the session was put back, so the line says resume (and history is the caller's []);
+// else session_id. mirror: the indexed repo the turn reads, or "".
+rw_chat_turn :: (o: [] ClOut, turn: string, model: string, budget: f64, resumed: bool, session: string, history: string,
+                 cwd: string, mirror: string, today: string) {
+  cl_put(o, "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":"); rw_raw(o, turn, "{}");
+  cl_put(o, ",\"model\":"); rw_quote(o, model);
+  cl_put(o, ",\"budget_usd\":"); rw_fixed4(o, budget);
+  cl_put(o, ifx resumed then ",\"resume\":" else ",\"session_id\":"); rw_quote(o, session);
+  cl_put(o, ",\"history\":"); rw_raw(o, history, "[]");
+  cl_put(o, ",\"cwd\":"); rw_quote(o, cwd);
+  if mirror.count > 0 { cl_put(o, ",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"mirror\":"); rw_quote(o, mirror); cl_put(o, "}"); }
+  cl_put(o, ",\"today\":"); rw_quote(o, today);
+  cl_put(o, ",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}");
+}
+// The API's answer to a call: id as the engine wrote it, body when it is a JSON object or array.
+rw_reply :: (o: [] ClOut, id: string, status: int, body: string) {
+  cl_put(o, "{\"t\":\"reply\",\"id\":"); cl_put(o, id);
+  cl_put(o, ",\"status\":"); cl_put_int(o, status);
+  cl_put(o, ",\"body\":"); cl_put(o, ifx body.count > 0 && (body[0] == '{' || body[0] == '[') then body else "{}"); cl_put(o, "}");
+}
+RW_STOP :: "{\"t\":\"stop\"}";
+
+// ---- the runner's bodies (EventBatch, TurnEnd)
+
+// One event of a batch, after a comma unless it is the first; data is the engine's, raw.
+rw_batch_item :: (o: [] ClOut, first: bool, type: string, data: string) {
+  if !first { cl_put(o, ","); }
+  cl_put(o, "{\"type\":"); rw_quote(o, type); cl_put(o, ",\"data\":"); rw_raw(o, data, "{}"); cl_put(o, "}");
+}
+rw_batch :: (o: [] ClOut, turn: int, items: string) {
+  cl_put(o, "{\"turn\":"); cl_put_int(o, turn); cl_put(o, ",\"events\":["); cl_put(o, items); cl_put(o, "]}");
+}
+// A project turn's end. answer and error are JSON strings, raw ("" when empty); files a JSON list
+// (rw_files; [] when empty); commit and commit_message only when the turn pushed one.
+rw_project_end :: (o: [] ClOut, turn: int, status: string, answer: string, error: string, cost: f64, commit: string,
+                   commit_message: string, files: string, expired: bool) {
+  cl_put(o, "{\"turn\":"); cl_put_int(o, turn);
+  cl_put(o, ",\"status\":"); rw_quote(o, status);
+  cl_put(o, ",\"answer\":"); rw_raw(o, answer, "\"\"");
+  cl_put(o, ",\"error\":"); rw_raw(o, error, "\"\"");
+  cl_put(o, ",\"cost_usd\":"); rw_fixed4(o, cost);
+  if commit.count > 0 { cl_put(o, ",\"commit\":"); rw_quote(o, commit); cl_put(o, ",\"commit_message\":"); rw_quote(o, commit_message); }
+  cl_put(o, ",\"files\":"); rw_raw(o, files, "[]");
+  cl_put(o, ",\"credential_expired\":"); cl_put_bool(o, expired); cl_put(o, "}");
+}
+rw_chat_end :: (o: [] ClOut, turn: int, status: string, answer: string, error: string, cost: f64, resumed: bool, expired: bool) {
+  cl_put(o, "{\"turn\":"); cl_put_int(o, turn);
+  cl_put(o, ",\"status\":"); rw_quote(o, status);
+  cl_put(o, ",\"answer\":"); rw_raw(o, answer, "\"\"");
+  cl_put(o, ",\"error\":"); rw_raw(o, error, "\"\"");
+  cl_put(o, ",\"cost_usd\":"); rw_fixed4(o, cost);
+  cl_put(o, ",\"resumed\":"); cl_put_bool(o, resumed);
+  cl_put(o, ",\"credential_expired\":"); cl_put_bool(o, expired); cl_put(o, "}");
+}
+// The files a commit changed, from git's names one a line (empty lines skipped), at most 200.
+rw_files :: (o: [] ClOut, names: string) {
+  cl_put(o, "[");
+  n := 0; at := 0;
+  while at <= names.count && n < 200 {
+    end := at;
+    while end < names.count && names[end] != 10 { end += 1; }
+    if end > at { if n > 0 { cl_put(o, ","); } rw_quote(o, names[at..<end]); n += 1; }
+    at = end + 1;
+  }
+  cl_put(o, "]");
+}
+
+// The sealed credential's associated data (SealedCredential): it opens only for the person and
+// the kind it was sealed for.
+rw_aad :: (o: [] ClOut, owner: string, kind: string) {
+  cl_put(o, "oa-chat-credential.v1|"); cl_put(o, owner); cl_put(o, "|"); cl_put(o, kind);
+}
+
+// ---- the C runner's calls: each writes into out and returns its length, or -1
+
+rw_out :: (o: [] ClOut, out: [] u8) { o[0] = ClOut.{buf = out}; }
+
+rw_project_turn_write :: (slug: string, turn: string, history: string, version: string, model: string, budget: f64, repo: bool,
+                          cwd: string, today: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_project_turn(o[..], slug, turn, history, version, model, budget, repo, cwd, today); return rw_len(o[..]);
+}
+rw_chat_turn_write :: (turn: string, model: string, budget: f64, resumed: bool, session: string, history: string, cwd: string,
+                       mirror: string, today: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_chat_turn(o[..], turn, model, budget, resumed, session, history, cwd, mirror, today); return rw_len(o[..]);
+}
+rw_reply_write :: (id: string, status: int, body: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_reply(o[..], id, status, body); return rw_len(o[..]);
+}
+rw_stop_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); cl_put(o[..], RW_STOP); return rw_len(o[..]);
+}
+// Appends one event at at (0: the first) and returns the new length, or -1.
+rw_batch_item_write :: (type: string, data: string, at: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); o[0].len = at; rw_batch_item(o[..], at == 0, type, data); return rw_len(o[..]);
+}
+rw_batch_write :: (turn: int, items: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_batch(o[..], turn, items); return rw_len(o[..]);
+}
+// A batch of one working event: what the turn is doing now, before its engine starts.
+rw_working_batch_write :: (turn: int, text: string, out: [] u8) -> int #export_c #effects(all) {
+  d: [1] ClOut; db: [1024] u8; d[0].buf = db[..];
+  cl_put(d[..], "{"); cl_put_string(d[..], "text"); cl_put(d[..], ":"); cl_put_string(d[..], text); cl_put(d[..], "}");
+  if d[0].failed { return -1; }
+  i: [1] ClOut; ib: [1200] u8; i[0].buf = ib[..];
+  rw_batch_item(i[..], true, "working", cast(string) db[0..<d[0].len]);
+  if i[0].failed { return -1; }
+  o: [1] ClOut; rw_out(o[..], out); rw_batch(o[..], turn, cast(string) ib[0..<i[0].len]); return rw_len(o[..]);
+}
+rw_project_end_write :: (turn: int, status: string, answer: string, error: string, cost: f64, commit: string, commit_message: string,
+                         files: string, expired: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_project_end(o[..], turn, status, answer, error, cost, commit, commit_message, files, expired); return rw_len(o[..]);
+}
+rw_chat_end_write :: (turn: int, status: string, answer: string, error: string, cost: f64, resumed: bool, expired: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_chat_end(o[..], turn, status, answer, error, cost, resumed, expired); return rw_len(o[..]);
+}
+rw_files_write :: (names: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_files(o[..], names); return rw_len(o[..]);
+}
+// A string the runner words (an error), as a JSON string for an end body.
+rw_quote_write :: (s: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_quote(o[..], s); return rw_len(o[..]);
+}
+rw_aad_write :: (owner: string, kind: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_aad(o[..], owner, kind); return rw_len(o[..]);
+}
+
+// ---- checks (the goldens are runner-wire-goldens.coax's)
+
+rw_text :: (o: [] ClOut) -> string { return cast(string) o[0].buf[0..<o[0].len]; }
+
+#test "four decimals are printf's: half to even on the exact binary value" {
+  // each value with what printf("%.4f") wrote for it (proto/coder/agent-managed-v1alpha1.json, "f4")
+  xs := [12] f64.[0.0, 0.05, 0.00015, 0.00005, 1.23455, 0.12345, 99.99995, -2.5, 0.0001, 12.3456789, 8.75, 0.93];
+  want := [12] string.["0.0000", "0.0500", "0.0001", "0.0001", "1.2346", "0.1235", "99.9999", "-2.5000", "0.0001", "12.3457", "8.7500", "0.9300"];
+  for i: 0..<12 {
+    b: [64] u8; o: [1] ClOut; o[0].buf = b[..];
+    rw_fixed4(o[..], xs[i]);
+    #assert rw_text(o[..]) == want[i];
+  }
+  b: [64] u8; o: [1] ClOut; o[0].buf = b[..];
+  rw_fixed4(o[..], -0.0); #assert rw_text(o[..]) == "-0.0000";
+  o[0].len = 0; rw_fixed4(o[..], 0.00004999); #assert rw_text(o[..]) == "0.0000";
+  o[0].len = 0; rw_fixed4(o[..], 0.000025); #assert rw_text(o[..]) == "0.0000";
+  o[0].len = 0; rw_fixed4(o[..], 0.00000000001); #assert rw_text(o[..]) == "0.0000";
+  o[0].len = 0; rw_fixed4(o[..], 123456.0); #assert rw_text(o[..]) == "123456.0000";
+  o[0].len = 0; rw_fixed4(o[..], 0.5); #assert rw_text(o[..]) == "0.5000";
+}
+#test "the runner's escaper: \\n and \\u00XX, never \\t" {
+  b: [128] u8; o: [1] ClOut; o[0].buf = b[..];
+  rw_quote(o[..], "a\"b\\c\nd\te\rf é");
+  #assert rw_text(o[..]) == "\"a\\\"b\\\\c\\nd\\u0009e\\u000df é\"";
+}
+#test "the files list skips empty lines and stops at 200" {
+  b: [8192] u8; o: [1] ClOut; o[0].buf = b[..];
+  rw_files(o[..], "a.txt\n\ndir/b c.md\n");
+  #assert rw_text(o[..]) == "[\"a.txt\",\"dir/b c.md\"]";
+  o[0].len = 0; rw_files(o[..], ""); #assert rw_text(o[..]) == "[]";
+  many: [1000] u8; for i: 0..<500 { many[2 * i] = 'x'; many[2 * i + 1] = 10; }
+  o[0].len = 0; rw_files(o[..], cast(string) many[..]);
+  #assert o[0].len == 1 + 200 * 3 + 199 + 1;
+}
+#test "a writer that does not fit says -1" {
+  small: [8] u8;
+  #assert rw_stop_write(small[..]) == -1;
+  b: [16] u8;
+  #assert rw_stop_write(b[..]) == 12 && cast(string) b[0..<12] == RW_STOP;
+  #assert rw_aad_write("npub-x", "api", b[..]) == -1;
+}
+#test "an end body's raw members fall back to empty" {
+  b: [512] u8;
+  n := rw_project_end_write(42, "failed", "", "\"the repository could not be reached\"", 0.0, "", "", "", false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"turn\":42,\"status\":\"failed\",\"answer\":\"\",\"error\":\"the repository could not be reached\",\"cost_usd\":0.0000,\"files\":[],\"credential_expired\":false}";
+}

@@ -408,6 +408,68 @@ leaked = [h8(v) for v in SECRETS if v in logs or v in dump]
 check("chat: no key or token in the logs, turns, events or conversations", not leaked, leaked)
 chat_runner.terminate()
 
+# ---- the runner's wire (Protocol C5, openagents.agent.managed.v1alpha1): the goldens'
+# event batches and /chat end bodies (proto/coder/agent-managed-v1alpha1.json, written by
+# coax/web/agent/runner-wire.coax), posted as the runner posts them, become the same
+# chat.events rows; next answers with NextTurn's keys; and the runner seals the goldens'
+# credential to the goldens' bytes. The batches keep to ASCII: this database is SQL_ASCII,
+# where a \u escape past 0x7f is refused (22P05) and length() counts bytes.
+import re
+WIRE = json.load(open(os.path.join(agent_src, "..", "..", "..", "proto", "coder", "agent-managed-v1alpha1.json")))
+wire_nonce = [0]
+
+
+def wire_post(op, line, turn):
+    # the golden with this turn's id, and the nonce runner.c's api() adds
+    wire_nonce[0] += 1
+    body = re.sub(r'^\{"turn":\d+', '{"turn":%d' % turn, line)[:-1] + ',"nonce":"%d-%d"}' % (wire_nonce[0], int(time.time() * 1000))
+    raw = body.encode()
+    s, b, _ = call("POST", "/api/chat/runner/" + op, raw, {"Authorization": chat_signed(os.environ["RUN_KEY_FILE"], "POST", "/api/chat/runner/" + op, raw),
+                                                           "Content-Type": "application/json"})
+    return s, b.decode()
+
+
+def wire_keys_fit(got, want):
+    # the same keys at every level; a list's items as the other's first, when both have one
+    if isinstance(got, dict) and isinstance(want, dict):
+        return got.keys() == want.keys() and all(wire_keys_fit(got[k], want[k]) for k in got)
+    if isinstance(got, list) and isinstance(want, list):
+        return not got or not want or wire_keys_fit(got[0], want[0])
+    return isinstance(got, (dict, list)) == isinstance(want, (dict, list))
+
+
+owner = sql(f"select owner from chat.conversations where id = {C}")
+sql("delete from chat.credentials")
+sql("update chat.turns set status = 'failed' where status in ('queued', 'running')")   # only this check's turn waits
+sql(f"insert into chat.credentials (owner, kind, last4, sealed, saved_ms) values ('{owner}', 'api', 'TEST', '{WIRE['sealed']['sealed']}', 0)")
+WT = sql(f"insert into chat.turns (conv, owner, text, model, status, asked_ms) select id, owner, 'wire', model, 'queued', 0 from chat.conversations where id = {C} returning id").split("\n")[0]
+nraw = b"{}"
+s, b, _ = call("POST", "/api/chat/runner/next", nraw, {"Authorization": chat_signed(os.environ["RUN_KEY_FILE"], "POST", "/api/chat/runner/next", nraw),
+                                                       "Content-Type": "application/json"})
+got = json.loads(b) if s == 200 else {}
+want = json.loads(next(n["body"] for n in WIRE["next"] if n["name"] == "next-chat-own-credential"))
+check("wire: next hands out a turn with NextTurn's keys, as the goldens' next-chat-own-credential",
+      s == 200 and str((got.get("turn") or {}).get("id")) == WT and wire_keys_fit(got, want), (s, b))
+sql("delete from chat.credentials")
+for g in WIRE["goldens"]:
+    if g["writer"] not in ("batch", "working_batch", "chat_end"):
+        continue
+    sql(f"update chat.turns set status = 'running', stop = false, working = 'x' where id = {WT}")
+    mark = sql("select coalesce(max(id), 0) from chat.events")
+    s, b = wire_post("end" if g["writer"] == "chat_end" else "event", g["line"], int(WT))
+    rows = [{"type": l.split("\t", 1)[0], "data": json.loads(l.split("\t", 1)[1])} for l in
+            sql(f"select type || chr(9) || data::text from chat.events where turn = {WT} and id > {mark} order by id").split("\n") if l]
+    ok = s == 200 and rows == g.get("rows", [])
+    if g.get("working") is not None:
+        ok = ok and sql(f"select working from chat.turns where id = {WT}") == g["working"]
+    if g["writer"] == "chat_end":
+        ok = ok and sql(f"select status from chat.turns where id = {WT}") == g["values"]["status"]
+    check(f"wire: the golden {g['name']} posted to the API is the goldens' chat.events rows", ok, (s, b, rows))
+sw = WIRE["sealed"]
+r = subprocess.run([os.environ["SEAL_CHECK_BIN"], sw["key"], sw["nonce"], sw["owner"], sw["kind"], sw["plain"]], capture_output=True, text=True)
+check("wire: the runner seals the goldens' credential to the goldens' bytes, opens it for its owner and kind and not another kind",
+      r.returncode == 0 and r.stdout.split("\n")[:3] == [sw["sealed"], "1", "0"], (r.returncode, r.stdout, r.stderr[-300:]))
+
 # ---- POST /api/chat/complete: the rebuilt page's door to our inference route (inference.c inference_ask).
 # An admin's cookie asks without a Nostr signature; anyone else is refused as on every /chat route. The model
 # here is the checks' fake on INFER_PORT while test_inference.py's server is up; with none, the route says 502.

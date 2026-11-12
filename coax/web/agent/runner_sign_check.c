@@ -4,8 +4,8 @@
 // one line "METHOD URL<TAB>Authorization header". The API side checks those
 // lines with its own verifier (coax/web/api/nip98_stdin.c), a separate
 // program, as oa-api does (#12630). The key is SHA-256 of a fixed public
-// label: never a real key. Build (deploy.sh's runner-sign.c and .h in WORK):
-//   cc -std=c11 -D_DEFAULT_SOURCE -IWORK runner_sign_check.c WORK/runner-sign.c -lsecp256k1 -lcrypto -lcurl -lm
+// label: never a real key. Build (deploy.sh's runner-sign.c, runner-wire.c and headers in WORK):
+//   cc -std=c11 -D_DEFAULT_SOURCE -IWORK runner_sign_check.c WORK/runner-sign.c WORK/runner-wire.c -lsecp256k1 -lcrypto -lcurl -lm
 //   OA_RUNNER_SIGNER=coax ./runner_sign_check https://example.invalid/api/private/x/state
 #define main runner_main
 #include "runner.c"

@@ -59,6 +59,7 @@
 #include <secp256k1_extrakeys.h>
 #include <secp256k1_schnorrsig.h>
 #include "runner-sign.h"   // runner_coax_pubkey, runner_coax_sign: deploy.sh compiles runner-sign.coax
+#include "runner-wire.h"   // the lines and bodies (rw_*_write): deploy.sh compiles runner-wire.coax
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -121,6 +122,30 @@ static void putq(text *t, const char *s) {
   }
   puts_(t, "\"");
 }
+
+// ---- the wire: runner-wire.coax writes every line to the engine and every event batch and end body
+// to oa-api (Protocol C5, GitHub #13242; openagents.agent.managed.v1alpha1)
+static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
+// A writer's output into t, in place of what t held (or after the first `at` bytes, which the
+// writer is told), growing t until it fits. CALL writes into the view `room` and returns the
+// length written, or -1 when it does not fit; past 64 MB t is left empty.
+#define WIRE(t, CALL) do {                                                                          \
+    size_t want_ = (t)->cap > 4096 ? (t)->cap : 4096;                                               \
+    for (;;) {                                                                                      \
+      if ((t)->cap < want_) {                                                                       \
+        char *p_ = realloc((t)->p, want_);                                                          \
+        if (!p_) { say("out of memory"); exit(1); }                                                 \
+        (t)->p = p_; (t)->cap = want_;                                                              \
+      }                                                                                             \
+      coax_v_u8 room = {(uint8_t *)(t)->p, (int64_t)(t)->cap - 1};                                  \
+      int64_t n_ = (CALL);                                                                          \
+      if (n_ >= 0) { (t)->n = (size_t)n_; (t)->p[n_] = 0; break; }                                  \
+      if (want_ >= ((size_t)64 << 20)) { say("wire: a body past 64 MB"); (t)->n = 0; (t)->p[0] = 0; break; } \
+      want_ *= 2;                                                                                   \
+    }                                                                                               \
+  } while (0)
+// s as a JSON string, for an end body's error the runner words.
+static void quote(text *t, const char *s) { WIRE(t, rw_quote_write(cs(s), room)); }
 
 // ---- just enough JSON: the span of a top-level member's value, and a string's contents
 static const char *skip_ws(const char *p) { while (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t') p++; return p; }
@@ -432,7 +457,7 @@ static void engine_send(engine *e, const char *line) {
 typedef struct { text batch; int n; double sent; bool stop; } events;
 static void flush(events *ev, const char *slug, long long turn) {
   text body = {0}, out = {0};
-  putf(&body, "{\"turn\":%lld,\"events\":[%s]}", turn, ev->batch.p ? ev->batch.p : "");
+  WIRE(&body, rw_batch_write(turn, cs(ev->batch.p), room));
   long st = api("POST", slug, "event", body.p, &out);
   if (st == 200 && strstr(out.p, "\"stop\": true")) ev->stop = true;
   ev->batch.n = 0; if (ev->batch.p) ev->batch.p[0] = 0;
@@ -440,8 +465,8 @@ static void flush(events *ev, const char *slug, long long turn) {
   free(body.p); free(out.p);
 }
 static void add_event(events *ev, const char *slug, long long turn, const char *type, const char *data) {
-  if (ev->n) puts_(&ev->batch, ",");
-  puts_(&ev->batch, "{\"type\":"); putq(&ev->batch, type); puts_(&ev->batch, ",\"data\":"); puts_(&ev->batch, data && *data ? data : "{}"); puts_(&ev->batch, "}");
+  int64_t at = ev->n ? (int64_t)ev->batch.n : 0;
+  WIRE(&ev->batch, rw_batch_item_write(cs(type), cs(data), at, room));
   if (++ev->n >= 40) flush(ev, slug, turn);
 }
 
@@ -505,7 +530,7 @@ static void run_engine(const char *slug, const char *turn_json, long long turn, 
           else if (!strcmp(op, "state")) st = api("GET", slug, "state", NULL, &out);
           else if (!b.n) { puts_(&out, "{\"error\":\"the arguments are not an object\"}"); st = 400; }
           else st = api("POST", slug, op, b.p, &out);
-          putf(&reply, "{\"t\":\"reply\",\"id\":%s,\"status\":%ld,\"body\":%s}", id, st, out.n && (out.p[0] == '{' || out.p[0] == '[') ? out.p : "{}");
+          WIRE(&reply, rw_reply_write(cs(id), st, cs(out.n ? out.p : ""), room));
           engine_send(&e, reply.p);
           say("turn %lld tool %s %ld", turn, op ? op : "?", st);
           free(reply.p); free(out.p); free(b.p); free(id); free(tool); free(args);
@@ -529,7 +554,7 @@ static void run_engine(const char *slug, const char *turn_json, long long turn, 
       }
     } else if (r < 0 && errno != EINTR) break;
     if (!done && now_ms() - ev.sent > 4000) flush(&ev, slug, turn);
-    if (ev.stop && !stopped_at) { engine_send(&e, "{\"t\":\"stop\"}"); stopped_at = now_ms(); say("turn %lld: stop", turn); }
+    if (ev.stop && !stopped_at) { text stop = {0}; WIRE(&stop, rw_stop_write(room)); engine_send(&e, stop.p); free(stop.p); stopped_at = now_ms(); say("turn %lld: stop", turn); }
     if ((stopped_at && now_ms() - stopped_at > 30000) || now_ms() - started > 15 * 60000) {
       kill(-e.pid, SIGKILL);
       if (!stopped_at && !error->n) puts_(error, "\"the turn took longer than 15 minutes\"");
@@ -550,10 +575,7 @@ static void run_engine(const char *slug, const char *turn_json, long long turn, 
 static void changed_files(const char *dir, text *files) {
   text out = {0};
   git(dir, &out, "diff", "--name-only", "HEAD~1", "HEAD", NULL, NULL);
-  puts_(files, "[");
-  int n = 0;
-  for (char *l = out.p ? strtok(out.p, "\n") : NULL; l && n < 200; l = strtok(NULL, "\n")) { if (n++) puts_(files, ","); putq(files, l); }
-  puts_(files, "]");
+  WIRE(files, rw_files_write(cs(out.p), room));
   free(out.p);
 }
 // Why git failed, as one of a few fixed words for the log (never git's own
@@ -608,10 +630,7 @@ static void subject(const char *msg, char *out, size_t cap) {
 static void end_turn(const char *slug, long long id, const char *status, const char *answer, const char *error,
                      const char *commit, const char *commit_message, const char *files, double cost) {
   text body = {0}, out = {0};
-  putf(&body, "{\"turn\":%lld,\"status\":\"%s\",\"answer\":%s,\"error\":%s,\"cost_usd\":%.4f", id, status,
-       answer && *answer ? answer : "\"\"", error && *error ? error : "\"\"", cost);
-  if (commit && *commit) { puts_(&body, ",\"commit\":"); putq(&body, commit); puts_(&body, ",\"commit_message\":"); putq(&body, commit_message); }
-  putf(&body, ",\"files\":%s,\"credential_expired\":%s}", files && *files ? files : "[]", chat_expired ? "true" : "false");
+  WIRE(&body, rw_project_end_write(id, cs(status), cs(answer), cs(error), cost, cs(commit), cs(commit_message), cs(files), chat_expired, room));
   api("POST", slug, "end", body.p, &out);
   say("turn %lld %s cost %.4f%s", id, status, cost, commit && *commit ? " committed" : "");
   free(body.p); free(out.p);
@@ -651,7 +670,7 @@ static void one_turn(const char *slug, const char *next) {
       goto out;
     }
     text why = {0};
-    if (!push(co, &why)) { text e = {0}; putq(&e, why.p); end_turn(slug, id, "failed", "\"\"", e.p, NULL, NULL, NULL, 0); free(e.p); free(why.p); goto out; }
+    if (!push(co, &why)) { text e = {0}; quote(&e, why.p); end_turn(slug, id, "failed", "\"\"", e.p, NULL, NULL, NULL, 0); free(e.p); free(why.p); goto out; }
     free(why.p);
     out.n = 0; git(co, &out, "rev-parse", "HEAD", NULL, NULL, NULL, NULL);
     snprintf(sha, sizeof sha, "%.40s", out.p ? out.p : "");
@@ -671,12 +690,10 @@ static void one_turn(const char *slug, const char *next) {
     text first = {0};
     char home[1300];
     char *history = jraw(next, "history", "[]"), *version = jraw(next, "version", "0"), *spent = jraw(next, "spent", "0"), *cap = jraw(next, "cap", "10");
-    putf(&first, "{\"t\":\"turn\",\"slug\":\"%s\",\"turn\":%s,\"history\":%s,\"version\":%s,\"model\":\"%s\",\"budget_usd\":%.4f,\"repo\":%s,\"cwd\":",
-         slug, turn_json, history, version, env("OA_AGENT_MODEL", "claude-sonnet-5-5"), atof(cap) - atof(spent), has_repo ? "true" : "false");
-    putq(&first, co);
     char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
-    // the workspace: what this turn offers (docs/project-agent.md, "The runner's seam")
-    putf(&first, ",\"today\":\"%s\",\"workspace\":{\"kind\":\"project\",\"budget\":\"project:%s\",\"tools\":[\"project\"],\"write\":true}}", today, slug);
+    // with the workspace: what this turn offers (docs/project-agent.md, "The runner's seam")
+    WIRE(&first, rw_project_turn_write(cs(slug), cs(turn_json), cs(history), cs(version), cs(env("OA_AGENT_MODEL", "claude-sonnet-5-5")),
+                                       atof(cap) - atof(spent), has_repo, cs(co), cs(today), room));
     snprintf(home, sizeof home, "%s/home", dir); mkdir(home, 0700);
     // the member who asked: their own credential when they saved one (no cap from us), else ours;
     // a fresh CLAUDE_CONFIG_DIR either way
@@ -705,7 +722,7 @@ static void one_turn(const char *slug, const char *next) {
           snprintf(sha, sizeof sha, "%.40s", out.p ? out.p : "");
         } else {
           text e = {0};
-          putq(&e, why.p);
+          quote(&e, why.p);
           error.n = 0; puts_(&error, e.p);
           if (!strcmp(status, "done")) snprintf(status, 16, "failed");
           free(e.p);

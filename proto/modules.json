@@ -184,6 +184,9 @@
     ],
     "repo": [
       "openagents/repo/v1alpha1/repo.proto"
+    ],
+    "agent-managed": [
+      "openagents/agent/managed/v1alpha1/session.proto"
     ]
   },
   "profile_namespaces": {
@@ -332,6 +335,10 @@
     ],
     "repo": [
       "openagents.repo.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "agent-managed": [
+      "openagents.agent.managed.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

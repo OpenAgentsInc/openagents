@@ -99,10 +99,12 @@ page (Coax, wasm) ──► oa-api ──► agent runner (Cloud Run) ──► 
   - session events;
   - the edits.
 
-  Event shapes follow `openagents.agent.managed.v1` (`ManagedSession`,
-  `SessionEvent`) in `docs/protocol/openagents-protocol-spec.md` §18.2, so
-  this becomes the first piece of the hosted Managed Agents API rather than
-  a one-off.
+  Event shapes follow `openagents.agent.managed.v1alpha1` (`SessionEvent`,
+  `EventBatch`, `TurnEnd`, `NextTurn`:
+  `proto/openagents/agent/managed/v1alpha1/session.proto`, from §18.2 of
+  `docs/protocol/openagents-protocol-spec.md`, only what ships), written by
+  one codec, `coax/web/agent/runner-wire.coax`, so this becomes the first
+  piece of the hosted Managed Agents API rather than a one-off.
 - **The runner** is a Cloud Run service, `oa-agent`, with scale to zero.
   1. When a member sends a message, oa-api calls the runner with a signed
      wake request.

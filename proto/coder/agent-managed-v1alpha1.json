@@ -1,0 +1,530 @@
+{
+  "profile": "agent-managed",
+  "package": "openagents.agent.managed.v1alpha1",
+  "description": "Golden lines and bodies of the hosted runner (C5, #13242): the engines' lines (turn.coax, chat.coax), the runner's lines and its bodies to the API (runner.c, chat-runner.c), each taken from the code that shipped before coax/web/agent/runner-wire.coax, without the nonce a signed request adds. coax/web/agent/runner-wire-goldens.coax writes each through runner-wire.coax and holds its keys to proto/descriptors/agent-managed.pb; coax/web/api/test_zchat.py posts the batches and /chat end bodies to the API and reads back rows.",
+  "goldens": [
+    {
+      "name": "event-working",
+      "message": "EventLine",
+      "writer": "event",
+      "values": {
+        "type": "working",
+        "key": "text",
+        "value": "reading the project"
+      },
+      "line": "{\"t\":\"event\",\"type\":\"working\",\"data\":{\"text\":\"reading the project\"}}",
+      "mapper": true
+    },
+    {
+      "name": "event-agent-message",
+      "message": "EventLine",
+      "writer": "event",
+      "values": {
+        "type": "agent.message",
+        "key": "text",
+        "value": "Marked it \"done\".\n\tTabbed \r café \\ end"
+      },
+      "line": "{\"t\":\"event\",\"type\":\"agent.message\",\"data\":{\"text\":\"Marked it \\\"done\\\".\\n\\tTabbed \\r café \\\\ end\"}}",
+      "mapper": true
+    },
+    {
+      "name": "event-session-error",
+      "message": "EventLine",
+      "writer": "event",
+      "values": {
+        "type": "session.error",
+        "key": "error",
+        "value": "a tool outside the project was refused"
+      },
+      "line": "{\"t\":\"event\",\"type\":\"session.error\",\"data\":{\"error\":\"a tool outside the project was refused\"}}",
+      "mapper": true
+    },
+    {
+      "name": "event-tool-use",
+      "message": "EventLine",
+      "writer": "tool",
+      "values": {
+        "name": "Read",
+        "detail": "project/plan.md"
+      },
+      "line": "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":\"Read\",\"detail\":\"project/plan.md\"}}",
+      "mapper": true
+    },
+    {
+      "name": "event-tool-use-no-detail",
+      "message": "EventLine",
+      "writer": "tool",
+      "values": {
+        "name": "mcp__project__project_get",
+        "detail": ""
+      },
+      "line": "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":\"mcp__project__project_get\",\"detail\":\"\"}}",
+      "mapper": true
+    },
+    {
+      "name": "call-no-args",
+      "message": "CallLine",
+      "writer": "call",
+      "values": {
+        "id": 1,
+        "tool": "project_get",
+        "args": ""
+      },
+      "line": "{\"t\":\"call\",\"id\":1,\"tool\":\"project_get\",\"args\":{}}"
+    },
+    {
+      "name": "call",
+      "message": "CallLine",
+      "writer": "call",
+      "values": {
+        "id": 2,
+        "tool": "milestone_status",
+        "args": "{\"id\":\"m1\",\"status\":\"done\",\"evidence\":\"the deck is in the repo\"}"
+      },
+      "line": "{\"t\":\"call\",\"id\":2,\"tool\":\"milestone_status\",\"args\":{\"id\":\"m1\",\"status\":\"done\",\"evidence\":\"the deck is in the repo\"}}"
+    },
+    {
+      "name": "done-project",
+      "message": "DoneLine",
+      "writer": "done",
+      "values": {
+        "layout": "project",
+        "status": "done",
+        "answer": "Marked it done.\n\nAll set.",
+        "error": "",
+        "cost_usd": 0.05,
+        "credential_expired": false
+      },
+      "line": "{\"t\":\"done\",\"status\":\"done\",\"answer\":\"Marked it done.\\n\\nAll set.\",\"error\":\"\",\"cost_usd\":0.050000,\"credential_expired\":false}"
+    },
+    {
+      "name": "done-project-expired",
+      "message": "DoneLine",
+      "writer": "done",
+      "values": {
+        "layout": "project",
+        "status": "failed",
+        "answer": "",
+        "error": "Your token expired. Make a new one with claude setup-token and save it under KEY.",
+        "cost_usd": 0.0,
+        "credential_expired": true
+      },
+      "line": "{\"t\":\"done\",\"status\":\"failed\",\"answer\":\"\",\"error\":\"Your token expired. Make a new one with claude setup-token and save it under KEY.\",\"cost_usd\":0.000000,\"credential_expired\":true}"
+    },
+    {
+      "name": "done-project-stopped",
+      "message": "DoneLine",
+      "writer": "done",
+      "values": {
+        "layout": "project",
+        "status": "stopped",
+        "answer": "",
+        "error": "",
+        "cost_usd": 1.2345675,
+        "credential_expired": false
+      },
+      "line": "{\"t\":\"done\",\"status\":\"stopped\",\"answer\":\"\",\"error\":\"\",\"cost_usd\":1.234568,\"credential_expired\":false}"
+    },
+    {
+      "name": "done-chat",
+      "message": "DoneLine",
+      "writer": "done",
+      "values": {
+        "layout": "chat",
+        "status": "done",
+        "answer": "## Answer\n\nIt says \"first\".",
+        "error": "",
+        "cost_usd": 0.0213456,
+        "credential_expired": false
+      },
+      "line": "{\"t\":\"done\",\"status\":\"done\",\"answer\":\"## Answer\\n\\nIt says \\\"first\\\".\",\"error\":\"\",\"credential_expired\":false,\"cost_usd\":0.021346}"
+    },
+    {
+      "name": "done-chat-failed",
+      "message": "DoneLine",
+      "writer": "done",
+      "values": {
+        "layout": "chat",
+        "status": "failed",
+        "answer": "",
+        "error": "the model returned an error",
+        "cost_usd": 5e-07,
+        "credential_expired": false
+      },
+      "line": "{\"t\":\"done\",\"status\":\"failed\",\"answer\":\"\",\"error\":\"the model returned an error\",\"credential_expired\":false,\"cost_usd\":0.000001}"
+    },
+    {
+      "name": "done-chat-expired",
+      "message": "DoneLine",
+      "writer": "done",
+      "values": {
+        "layout": "chat",
+        "status": "failed",
+        "answer": "",
+        "error": "Your token expired. Make a new one with claude setup-token and save it under KEY.",
+        "cost_usd": 0.0,
+        "credential_expired": true
+      },
+      "line": "{\"t\":\"done\",\"status\":\"failed\",\"answer\":\"\",\"error\":\"Your token expired. Make a new one with claude setup-token and save it under KEY.\",\"credential_expired\":true,\"cost_usd\":0.000000}"
+    },
+    {
+      "name": "turn-project",
+      "message": "ProjectTurnLine",
+      "writer": "project_turn",
+      "values": {
+        "slug": "proj",
+        "turn": "{\"id\":41,\"kind\":\"ask\",\"text\":\"Mark m1 done\",\"by\":\"Ada\"}",
+        "history": "[{\"id\":40,\"by\":\"Ada\",\"text\":\"hi\",\"answer\":\"hello\"}]",
+        "version": "4",
+        "model": "claude-sonnet-5-5",
+        "budget_usd": 8.75,
+        "repo": true,
+        "cwd": "/tmp/oa-agent/turn-41-7/repo",
+        "today": "2026-11-12"
+      },
+      "line": "{\"t\":\"turn\",\"slug\":\"proj\",\"turn\":{\"id\":41,\"kind\":\"ask\",\"text\":\"Mark m1 done\",\"by\":\"Ada\"},\"history\":[{\"id\":40,\"by\":\"Ada\",\"text\":\"hi\",\"answer\":\"hello\"}],\"version\":4,\"model\":\"claude-sonnet-5-5\",\"budget_usd\":8.7500,\"repo\":true,\"cwd\":\"/tmp/oa-agent/turn-41-7/repo\",\"today\":\"2026-11-12\",\"workspace\":{\"kind\":\"project\",\"budget\":\"project:proj\",\"tools\":[\"project\"],\"write\":true}}"
+    },
+    {
+      "name": "turn-project-no-repo",
+      "message": "ProjectTurnLine",
+      "writer": "project_turn",
+      "values": {
+        "slug": "empty-proj",
+        "turn": "{\"id\":5,\"kind\":\"ask\",\"text\":\"plan\",\"by\":\"Cy\"}",
+        "history": "[]",
+        "version": "0",
+        "model": "claude-sonnet-5-5",
+        "budget_usd": -2.5,
+        "repo": false,
+        "cwd": "/tmp/oa-agent/turn-5-9/repo",
+        "today": "2026-11-12"
+      },
+      "line": "{\"t\":\"turn\",\"slug\":\"empty-proj\",\"turn\":{\"id\":5,\"kind\":\"ask\",\"text\":\"plan\",\"by\":\"Cy\"},\"history\":[],\"version\":0,\"model\":\"claude-sonnet-5-5\",\"budget_usd\":-2.5000,\"repo\":false,\"cwd\":\"/tmp/oa-agent/turn-5-9/repo\",\"today\":\"2026-11-12\",\"workspace\":{\"kind\":\"project\",\"budget\":\"project:empty-proj\",\"tools\":[\"project\"],\"write\":true}}"
+    },
+    {
+      "name": "turn-chat-resumed",
+      "message": "ChatTurnLine",
+      "writer": "chat_turn",
+      "values": {
+        "turn": "{\"id\":7,\"conv\":3,\"text\":\"What does README.md say?\",\"model\":\"claude-haiku-5-5\",\"by\":\"You\",\"session\":\"0f0e0d0c-0b0a-4908-8706-050403020100\"}",
+        "model": "claude-haiku-5-5",
+        "budget_usd": 0.0,
+        "resumed": true,
+        "session": "0f0e0d0c-0b0a-4908-8706-050403020100",
+        "history": "[]",
+        "cwd": "/tmp/oa-agent/chat-repo",
+        "mirror": "",
+        "today": "2026-11-12"
+      },
+      "line": "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":{\"id\":7,\"conv\":3,\"text\":\"What does README.md say?\",\"model\":\"claude-haiku-5-5\",\"by\":\"You\",\"session\":\"0f0e0d0c-0b0a-4908-8706-050403020100\"},\"model\":\"claude-haiku-5-5\",\"budget_usd\":0.0000,\"resume\":\"0f0e0d0c-0b0a-4908-8706-050403020100\",\"history\":[],\"cwd\":\"/tmp/oa-agent/chat-repo\",\"today\":\"2026-11-12\",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}"
+    },
+    {
+      "name": "turn-chat-mirror",
+      "message": "ChatTurnLine",
+      "writer": "chat_turn",
+      "values": {
+        "turn": "{\"id\":7,\"conv\":3,\"text\":\"What does README.md say?\",\"model\":\"claude-haiku-5-5\",\"by\":\"You\",\"session\":\"0f0e0d0c-0b0a-4908-8706-050403020100\"}",
+        "model": "claude-haiku-5-5",
+        "budget_usd": 0.93,
+        "resumed": false,
+        "session": "0f0e0d0c-0b0a-4908-8706-050403020100",
+        "history": "[{\"id\":6,\"by\":\"You\",\"text\":\"hi\",\"answer\":\"hello\"}]",
+        "cwd": "/tmp/oa-agent/chat-space",
+        "mirror": "/srv/mirrors/openagents.git",
+        "today": "2026-11-12"
+      },
+      "line": "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":{\"id\":7,\"conv\":3,\"text\":\"What does README.md say?\",\"model\":\"claude-haiku-5-5\",\"by\":\"You\",\"session\":\"0f0e0d0c-0b0a-4908-8706-050403020100\"},\"model\":\"claude-haiku-5-5\",\"budget_usd\":0.9300,\"session_id\":\"0f0e0d0c-0b0a-4908-8706-050403020100\",\"history\":[{\"id\":6,\"by\":\"You\",\"text\":\"hi\",\"answer\":\"hello\"}],\"cwd\":\"/tmp/oa-agent/chat-space\",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"mirror\":\"/srv/mirrors/openagents.git\"},\"today\":\"2026-11-12\",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}"
+    },
+    {
+      "name": "reply",
+      "message": "ReplyLine",
+      "writer": "reply",
+      "values": {
+        "id": "3",
+        "status": 200,
+        "body": "{\"version\":4,\"doc\":{}}"
+      },
+      "line": "{\"t\":\"reply\",\"id\":3,\"status\":200,\"body\":{\"version\":4,\"doc\":{}}}"
+    },
+    {
+      "name": "reply-not-json",
+      "message": "ReplyLine",
+      "writer": "reply",
+      "values": {
+        "id": "4",
+        "status": 404,
+        "body": "not found"
+      },
+      "line": "{\"t\":\"reply\",\"id\":4,\"status\":404,\"body\":{}}"
+    },
+    {
+      "name": "stop",
+      "message": "StopLine",
+      "writer": "stop",
+      "values": {},
+      "line": "{\"t\":\"stop\"}",
+      "mapper": true
+    },
+    {
+      "name": "files",
+      "message": "",
+      "writer": "files",
+      "values": {
+        "names": "project/plan.md\ndir/b c.md\n\nsrc/tab\there.txt\n"
+      },
+      "line": "[\"project/plan.md\",\"dir/b c.md\",\"src/tab\\u0009here.txt\"]"
+    },
+    {
+      "name": "batch",
+      "message": "EventBatch",
+      "writer": "batch",
+      "values": {
+        "turn": 41,
+        "events": [
+          {
+            "type": "working",
+            "data": "{\"text\":\"reading the project\"}"
+          },
+          {
+            "type": "agent.tool_use",
+            "data": "{\"name\":\"Read\",\"detail\":\"project/plan.md\"}"
+          },
+          {
+            "type": "agent.message",
+            "data": "{\"text\":\"Marked it \\\"done\\\".\\n\\tTabbed \\u0041 cafe\"}"
+          },
+          {
+            "type": "session.error",
+            "data": "{\"error\":\"a tool outside the project was refused\"}"
+          },
+          {
+            "type": "working",
+            "data": ""
+          }
+        ]
+      },
+      "line": "{\"turn\":41,\"events\":[{\"type\":\"working\",\"data\":{\"text\":\"reading the project\"}},{\"type\":\"agent.tool_use\",\"data\":{\"name\":\"Read\",\"detail\":\"project/plan.md\"}},{\"type\":\"agent.message\",\"data\":{\"text\":\"Marked it \\\"done\\\".\\n\\tTabbed \\u0041 cafe\"}},{\"type\":\"session.error\",\"data\":{\"error\":\"a tool outside the project was refused\"}},{\"type\":\"working\",\"data\":{}}]}",
+      "rows": [
+        {
+          "type": "agent.tool_use",
+          "data": {
+            "name": "Read",
+            "detail": "project/plan.md",
+            "error": ""
+          }
+        },
+        {
+          "type": "agent.message",
+          "data": {
+            "length": 32
+          }
+        },
+        {
+          "type": "session.error",
+          "data": {
+            "name": "",
+            "detail": "",
+            "error": "a tool outside the project was refused"
+          }
+        }
+      ],
+      "working": ""
+    },
+    {
+      "name": "batch-empty",
+      "message": "EventBatch",
+      "writer": "batch",
+      "values": {
+        "turn": 41,
+        "events": []
+      },
+      "line": "{\"turn\":41,\"events\":[]}",
+      "rows": []
+    },
+    {
+      "name": "batch-working",
+      "message": "EventBatch",
+      "writer": "working_batch",
+      "values": {
+        "turn": 7,
+        "text": "getting the latest code"
+      },
+      "line": "{\"turn\":7,\"events\":[{\"type\":\"working\",\"data\":{\"text\":\"getting the latest code\"}}]}",
+      "rows": [],
+      "working": "getting the latest code",
+      "mapper": true
+    },
+    {
+      "name": "end-project-done",
+      "message": "TurnEnd",
+      "writer": "project_end",
+      "values": {
+        "turn": 41,
+        "status": "done",
+        "answer": "\"Marked it done (status 200).\\n\\nAll set.\"",
+        "error": "\"\"",
+        "cost_usd": 0.05,
+        "commit": "0123456789abcdef0123456789abcdef01234567",
+        "commit_message": "agent turn 41: move the deck\tnow",
+        "files": "[\"project/plan.md\",\"dir/b c.md\"]",
+        "credential_expired": false
+      },
+      "line": "{\"turn\":41,\"status\":\"done\",\"answer\":\"Marked it done (status 200).\\n\\nAll set.\",\"error\":\"\",\"cost_usd\":0.0500,\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"commit_message\":\"agent turn 41: move the deck\\u0009now\",\"files\":[\"project/plan.md\",\"dir/b c.md\"],\"credential_expired\":false}"
+    },
+    {
+      "name": "end-project-failed",
+      "message": "TurnEnd",
+      "writer": "project_end",
+      "values": {
+        "turn": 42,
+        "status": "failed",
+        "answer": "\"\"",
+        "error": "\"the repository could not be reached\"",
+        "cost_usd": 0.0,
+        "commit": "",
+        "commit_message": "",
+        "files": "",
+        "credential_expired": false
+      },
+      "line": "{\"turn\":42,\"status\":\"failed\",\"answer\":\"\",\"error\":\"the repository could not be reached\",\"cost_usd\":0.0000,\"files\":[],\"credential_expired\":false}"
+    },
+    {
+      "name": "end-project-expired",
+      "message": "TurnEnd",
+      "writer": "project_end",
+      "values": {
+        "turn": 43,
+        "status": "failed",
+        "answer": "\"\"",
+        "error": "\"Your token expired. Make a new one with claude setup-token and save it under KEY.\"",
+        "cost_usd": 0.00015,
+        "commit": "",
+        "commit_message": "",
+        "files": "[]",
+        "credential_expired": true
+      },
+      "line": "{\"turn\":43,\"status\":\"failed\",\"answer\":\"\",\"error\":\"Your token expired. Make a new one with claude setup-token and save it under KEY.\",\"cost_usd\":0.0001,\"files\":[],\"credential_expired\":true}"
+    },
+    {
+      "name": "end-project-conflict",
+      "message": "TurnEnd",
+      "writer": "project_end",
+      "values": {
+        "turn": 44,
+        "status": "failed",
+        "answer": "\"\"",
+        "error": "\"A member's commit conflicts with this turn's changes, so they were not pushed. Files: a.txt \\u001b\"",
+        "cost_usd": 1.23455,
+        "commit": "",
+        "commit_message": "",
+        "files": "[\"a.txt\"]",
+        "credential_expired": false
+      },
+      "line": "{\"turn\":44,\"status\":\"failed\",\"answer\":\"\",\"error\":\"A member's commit conflicts with this turn's changes, so they were not pushed. Files: a.txt \\u001b\",\"cost_usd\":1.2346,\"files\":[\"a.txt\"],\"credential_expired\":false}"
+    },
+    {
+      "name": "end-chat-resumed",
+      "message": "TurnEnd",
+      "writer": "chat_end",
+      "values": {
+        "turn": 7,
+        "status": "done",
+        "answer": "\"## Answer\\n\\ncred=none\"",
+        "error": "\"\"",
+        "cost_usd": 0.02,
+        "resumed": true,
+        "credential_expired": false
+      },
+      "line": "{\"turn\":7,\"status\":\"done\",\"answer\":\"## Answer\\n\\ncred=none\",\"error\":\"\",\"cost_usd\":0.0200,\"resumed\":true,\"credential_expired\":false}",
+      "rows": [
+        {
+          "type": "session.status_idle",
+          "data": {
+            "status": "done"
+          }
+        }
+      ]
+    },
+    {
+      "name": "end-chat-expired",
+      "message": "TurnEnd",
+      "writer": "chat_end",
+      "values": {
+        "turn": 8,
+        "status": "failed",
+        "answer": "\"\"",
+        "error": "\"Your token expired. Make a new one with claude setup-token and save it under KEY.\"",
+        "cost_usd": 0.0,
+        "resumed": false,
+        "credential_expired": true
+      },
+      "line": "{\"turn\":8,\"status\":\"failed\",\"answer\":\"\",\"error\":\"Your token expired. Make a new one with claude setup-token and save it under KEY.\",\"cost_usd\":0.0000,\"resumed\":false,\"credential_expired\":true}",
+      "rows": [
+        {
+          "type": "session.status_idle",
+          "data": {
+            "status": "failed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "end-chat-stopped",
+      "message": "TurnEnd",
+      "writer": "chat_end",
+      "values": {
+        "turn": 9,
+        "status": "stopped",
+        "answer": "\"\"",
+        "error": "\"\"",
+        "cost_usd": 5e-05,
+        "resumed": false,
+        "credential_expired": false
+      },
+      "line": "{\"turn\":9,\"status\":\"stopped\",\"answer\":\"\",\"error\":\"\",\"cost_usd\":0.0001,\"resumed\":false,\"credential_expired\":false}",
+      "rows": [
+        {
+          "type": "session.status_idle",
+          "data": {
+            "status": "stopped"
+          }
+        }
+      ]
+    }
+  ],
+  "next": [
+    {
+      "name": "next-chat",
+      "body": "{\"cap\": 1, \"turn\": {\"by\": \"You\", \"id\": 7, \"conv\": 3, \"text\": \"hi\", \"model\": \"claude-haiku-5-5\", \"session\": \"0f0e0d0c-0b0a-4908-8706-050403020100\"}, \"spent\": 0.07, \"history\": [{\"by\": \"You\", \"id\": 6, \"text\": \"hi\", \"answer\": \"hello\"}], \"credential\": null}"
+    },
+    {
+      "name": "next-chat-own-credential",
+      "body": "{\"cap\": 0, \"turn\": {\"by\": \"You\", \"id\": 8, \"conv\": 3, \"text\": \"again\", \"model\": \"claude-opus-5-5\", \"session\": \"0f0e0d0c-0b0a-4908-8706-050403020100\"}, \"spent\": 0, \"history\": [], \"credential\": {\"kind\": \"api\", \"owner\": \"npub-test-owner\", \"sealed\": \"oKGio6SlpqeoqaqrlXNRTCu/L94SDLfgKi6FjSSBN3/mmiNB7mtH6lLAEHgZS1Y1QmxHrdBTayoMXrd/\"}}"
+    },
+    {
+      "name": "next-project",
+      "body": "{\"cap\": 10, \"turn\": {\"by\": \"Ada\", \"id\": 41, \"kind\": \"ask\", \"text\": \"Mark m1 done\", \"revert\": null, \"undo_of\": null}, \"spent\": 1.25, \"history\": [{\"by\": \"Ada\", \"id\": 40, \"text\": \"hi\", \"answer\": \"hello\", \"undone\": false}], \"version\": 4}"
+    },
+    {
+      "name": "next-none",
+      "body": "{\"turn\": null}"
+    },
+    {
+      "name": "next-refused",
+      "body": "{\"turn\": null, \"refused\": 12}"
+    },
+    {
+      "name": "next-busy",
+      "body": "{\"turn\": null, \"busy\": true}"
+    }
+  ],
+  "sealed": {
+    "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "nonce": "a0a1a2a3a4a5a6a7a8a9aaab",
+    "owner": "npub-test-owner",
+    "kind": "api",
+    "plain": "sk-ant-api03-TEST-not-a-real-key",
+    "aad": "oa-chat-credential.v1|npub-test-owner|api",
+    "sealed": "oKGio6SlpqeoqaqrlXNRTCu/L94SDLfgKi6FjSSBN3/mmiNB7mtH6lLAEHgZS1Y1QmxHrdBTayoMXrd/"
+  }
+}

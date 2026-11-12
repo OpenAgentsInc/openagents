@@ -1,0 +1,45 @@
+// The engines' side of the runner's lines (turn.coax and chat.coax): stdin and stdout through
+// engine-io.c, and each line written by the codec, runner-wire.coax (Protocol C5, GitHub #13242).
+#load "runner-wire.coax";
+
+eio_read_line :: (timeout_ms: int) -> int #foreign #effects(all);
+eio_line_byte :: (i: int) -> int #foreign #effects(all);
+eio_put :: (byte: int) -> int #foreign #effects(all);
+eio_flush :: () -> int #foreign #effects(all);
+
+// One line to the runner, unless it did not fit.
+el_send :: (o: [] ClOut) {
+  if o[0].failed { return; }
+  for i: 0..<o[0].len { r := eio_put(cast(int) o[0].buf[i]); }
+  r := eio_put(10);
+  r = eio_flush();
+}
+el_event :: (buf: [] u8, type: string, key: string, value: string) {
+  o: [1] ClOut; o[0].buf = buf; rw_event(o[..], type, key, value); el_send(o[..]);
+}
+el_tool :: (buf: [] u8, name: string, detail: string) {
+  o: [1] ClOut; o[0].buf = buf; rw_tool(o[..], name, detail); el_send(o[..]);
+}
+// False, and nothing sent, when the call does not fit buf.
+el_call :: (buf: [] u8, id: int, tool: string, args: string) -> bool {
+  o: [1] ClOut; o[0].buf = buf; rw_call(o[..], id, tool, args);
+  if o[0].failed { return false; }
+  el_send(o[..]);
+  return true;
+}
+// layout: RW_DONE_PROJECT or RW_DONE_CHAT. expired: the asker's subscription token expired.
+el_done :: (buf: [] u8, layout: int, status: string, answer: string, error: string, cost: f64, expired: bool) {
+  o: [1] ClOut; o[0].buf = buf; rw_done(o[..], layout, status, answer, error, cost, expired); el_send(o[..]);
+}
+
+// Whether the next stdin line, waited for up to timeout_ms, is a stop (StopLine).
+el_stop_waiting :: (timeout_ms: int) -> bool {
+  n := eio_read_line(timeout_ms);
+  if n == -1 { return true; }   // the runner is gone
+  if n < 0 { return false; }
+  buf: [64] u8; k := ifx n < 64 then n else 64;
+  for i: 0..<k { buf[i] = cast(u8) eio_line_byte(i); }
+  line := cast(string) buf[0..<k];
+  for i: 0..<k { if i + 6 <= k && line[i..<i + 6] == "\"stop\"" { return true; } }
+  return false;
+}

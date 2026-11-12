@@ -26,62 +26,15 @@
 #load "../../lib/agent/claude/claude.coax";
 #load "../../lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "confine-host.coax";
-
-eio_read_line :: (timeout_ms: int) -> int #foreign #effects(all);
-eio_line_byte :: (i: int) -> int #foreign #effects(all);
-eio_put :: (byte: int) -> int #foreign #effects(all);
-eio_flush :: () -> int #foreign #effects(all);
+#load "engine-line.coax";      // the runner's lines, written by runner-wire.coax
 
 TURN_LINE :: 1048576;
 RECORD_POOL :: 524288;      // the session record's text for the parts not yet written to the wire
 PROMPT_MAX :: 196608;
 HISTORY_TURNS :: 12;
 
-en_send :: (o: [] ClOut) {
-  if o[0].failed { return; }
-  for i: 0..<o[0].len { r := eio_put(cast(int) o[0].buf[i]); }
-  r := eio_put(10);
-  r = eio_flush();
-}
-
 en_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
 
-// Dollars with six decimals.
-en_usd :: (o: [] ClOut, usd: f64) {
-  micro := cast(int) (usd * 1000000.0 + 0.5);
-  if micro < 0 { micro = 0; }
-  cl_put_int(o, micro / 1000000);
-  cl_put(o, ".");
-  frac := micro % 1000000;
-  d := 100000;
-  while d > 0 { digit: [1] u8; digit[0] = cast(u8) ('0' + (frac / d) % 10); cl_put(o, cast(string) digit[..]); d /= 10; }
-}
-
-en_event :: (buf: [] u8, type: string, key: string, value: string) {
-  o: [1] ClOut; o[0].buf = buf;
-  cl_put(o[..], "{\"t\":\"event\",\"type\":"); cl_put_string(o[..], type);
-  cl_put(o[..], ",\"data\":{"); cl_put_string(o[..], key); cl_put(o[..], ":"); cl_put_string(o[..], value); cl_put(o[..], "}}");
-  en_send(o[..]);
-}
-
-en_tool :: (buf: [] u8, name: string, detail: string) {
-  o: [1] ClOut; o[0].buf = buf;
-  cl_put(o[..], "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":"); cl_put_string(o[..], name);
-  cl_put(o[..], ",\"detail\":"); cl_put_string(o[..], detail); cl_put(o[..], "}}");
-  en_send(o[..]);
-}
-
-en_done :: (buf: [] u8, status: string, answer: string, error: string, cost: f64) { en_done_as(buf, status, answer, error, cost, false); }
-// expired: the member's subscription token expired (the runner marks it so)
-en_done_as :: (buf: [] u8, status: string, answer: string, error: string, cost: f64, expired: bool) {
-  o: [1] ClOut; o[0].buf = buf;
-  cl_put(o[..], "{\"t\":\"done\",\"status\":"); cl_put_string(o[..], status);
-  cl_put(o[..], ",\"answer\":"); cl_put_string(o[..], answer);
-  cl_put(o[..], ",\"error\":"); cl_put_string(o[..], error);
-  cl_put(o[..], ",\"cost_usd\":"); en_usd(o[..], cost);
-  cl_put(o[..], ",\"credential_expired\":"); cl_put(o[..], ifx expired then "true" else "false"); cl_put(o[..], "}");
-  en_send(o[..]);
-}
 en_has :: (s: string, w: string) -> bool {
   if w.count == 0 || w.count > s.count { return false; }
   for i: 0..<s.count - w.count + 1 { if s[i..<i + w.count] == w { return true; } }
@@ -143,23 +96,11 @@ en_hook :: (q: [] ClQuery, v: int) {
   cl_hook_reply(q, ClHookOutput.{hook_specific_output = cast(string) hb[0..<h[0].len]});
 }
 
-// Whether the next stdin line, waited for up to timeout_ms, is a stop.
-en_stop_waiting :: (timeout_ms: int) -> bool {
-  n := eio_read_line(timeout_ms);
-  if n == -1 { return true; }   // the runner is gone
-  if n < 0 { return false; }
-  buf: [64] u8; k := ifx n < 64 then n else 64;
-  for i: 0..<k { buf[i] = cast(u8) eio_line_byte(i); }
-  line := cast(string) buf[0..<k];
-  for i: 0..<k { if i + 6 <= k && line[i..<i + 6] == "\"stop\"" { return true; } }
-  return false;
-}
-
 main :: () {
   first: [TURN_LINE] u8;
   n := eio_read_line(60000);
   out: [65536] u8;
-  if n <= 0 || n > TURN_LINE { en_done(out[..], "failed", "", "the agent got no turn", 0.0); return; }
+  if n <= 0 || n > TURN_LINE { el_done(out[..], RW_DONE_PROJECT, "failed", "", "the agent got no turn", 0.0, false); return; }
   for i: 0..<n { first[i] = cast(u8) eio_line_byte(i); }
   line := cast(string) first[0..<n];
   tar: [262144] u8; targ: [1] ClArena; targ[0].buf = tar[..];
@@ -177,13 +118,13 @@ main :: () {
     for i: 0..<cl_count(wt) { if cl_eq(wt, cl_item(wt, i), "project") { project_tools = true; } }
   }
   budget := cl_num(line, "budget_usd").value;
-  if text.count == 0 { en_done(out[..], "failed", "", "the turn has no message", 0.0); return; }
+  if text.count == 0 { el_done(out[..], RW_DONE_PROJECT, "failed", "", "the turn has no message", 0.0, false); return; }
   // the checkout, held open for the file tools' checks, and swept for links first
   root := -1;
   if repo {
     root = cf_open_root(cwd);
-    if root < 0 { en_done(out[..], "failed", "", "the agent could not open the checkout", 0.0); return; }
-    if cf_sweep_checkout(root) != CF_OK { en_done(out[..], "failed", "", "the repository has a symbolic link, a hard link or a special file, so the agent cannot work in it", 0.0); return; }
+    if root < 0 { el_done(out[..], RW_DONE_PROJECT, "failed", "", "the agent could not open the checkout", 0.0, false); return; }
+    if cf_sweep_checkout(root) != CF_OK { el_done(out[..], RW_DONE_PROJECT, "failed", "", "the repository has a symbolic link, a hard link or a special file, so the agent cannot work in it", 0.0, false); return; }
   }
 
   sys_buf: [16384] u8; sys: [1] ClOut; sys[0].buf = sys_buf[..];
@@ -214,7 +155,7 @@ main :: () {
     cl_put(p[..], "\n");
   }
   cl_put(p[..], "Now "); cl_put(p[..], by); cl_put(p[..], " says:\n"); cl_put(p[..], text);
-  if p[0].failed || sys[0].failed { en_done(out[..], "failed", "", "the conversation is too long for one turn", 0.0); return; }
+  if p[0].failed || sys[0].failed { el_done(out[..], RW_DONE_PROJECT, "failed", "", "the conversation is too long for one turn", 0.0, false); return; }
 
   o: [1] ClOptions;
   o[0].model = ifx model.count > 0 then model else "claude-sonnet-5-5";
@@ -251,9 +192,9 @@ main :: () {
   s_init(ses[..], pool[..]); ses[0].frames = true; ses[0].tabs = true;
   q := eng[0].q[..]; proc := eng[0].p[..];
   e_send_as(eng[..], ses[..], text, cast(string) prompt_buf[0..<p[0].len]);
-  if !eng[0].running { en_done(out[..], "failed", "", ifx ses[0].n > 1 then s_text_of(ses[..], ses[0].n - 1) else "the agent could not start", 0.0); return; }
+  if !eng[0].running { el_done(out[..], RW_DONE_PROJECT, "failed", "", ifx ses[0].n > 1 then s_text_of(ses[..], ses[0].n - 1) else "the agent could not start", 0.0, false); return; }
   defer e_close(eng[..]);
-  en_event(out[..], "working", "text", "reading the project");
+  el_event(out[..], "working", "text", "reading the project");
 
   cost := 0.0; status := "failed"; err := "the agent stopped before it finished"; expired := false;
   mar: [262144] u8; marg: [1] ClArena; marg[0].buf = mar[..];
@@ -263,7 +204,7 @@ main :: () {
   call_buf: [300000] u8;
   reply_buf: [TURN_LINE] u8;
   while true {
-    if en_stop_waiting(0) { stopped = true; break; }
+    if el_stop_waiting(0) { stopped = true; break; }
     one: [1] ClEvent;
     e_next(eng[..], ses[..], one[..]);
     ev := one[0];
@@ -273,7 +214,7 @@ main :: () {
       marg[0].at = 0; marg[0].full = false;
       tool := cl_str(marg[..], ev.arguments, "tool_name");
       v := en_confined(marg[..], root, cwd, tool, writes, cl_raw(ev.arguments, "tool_input"));
-      if v != CF_OK { en_event(out[..], "session.error", "error", "a file outside the checkout was refused"); }
+      if v != CF_OK { el_event(out[..], "session.error", "error", "a file outside the checkout was refused"); }
       en_hook(q, v);
       continue;
     }
@@ -285,20 +226,15 @@ main :: () {
       if repo && file_tool && en_confined(marg[..], root, cwd, tool, writes, ev.request.input) == CF_OK { cl_allow(q, ev.request.input, ""); }
       else {
         cl_deny(q, "Only the project tools, and Read, Glob, Grep, Edit and Write inside the checkout, are allowed.", false);
-        en_event(out[..], "session.error", "error", "a tool outside the project was refused");
+        el_event(out[..], "session.error", "error", "a tool outside the project was refused");
       }
       continue;
     }
     if ev.kind == ClEventKind.tool_call {
       tool := q[0].options.servers[ev.server].tools[ev.tool].name;
       call_n += 1;
-      c: [1] ClOut; c[0].buf = call_buf[..];
-      cl_put(c[..], "{\"t\":\"call\",\"id\":"); cl_put_int(c[..], call_n);
-      cl_put(c[..], ",\"tool\":"); cl_put_string(c[..], tool);
-      cl_put(c[..], ",\"args\":"); cl_put(c[..], ifx ev.arguments.count > 0 then ev.arguments else "{}"); cl_put(c[..], "}");
-      if c[0].failed { cl_tool_text(q, "the arguments are too long", true); continue; }
-      en_send(c[..]);
-      en_tool(out[..], tool, "");
+      if !el_call(call_buf[..], call_n, tool, ev.arguments) { cl_tool_text(q, "the arguments are too long", true); continue; }
+      el_tool(out[..], tool, "");
       // the runner's reply (a stop may come first)
       got := 0; ok := false;
       while true {
@@ -328,22 +264,22 @@ main :: () {
       nw := s_next(ses[..], cur[..]);
       if nw.k < 0 { break; }
       part := ses[0].parts[nw.k];
-      if part.kind == P_TEXT { en_event(out[..], "agent.message", "text", ifx nw.text.count > 4000 then nw.text[0..<4000] else nw.text); }
+      if part.kind == P_TEXT { el_event(out[..], "agent.message", "text", ifx nw.text.count > 4000 then nw.text[0..<4000] else nw.text); }
       else if part.kind == P_TOOL {
         name := part.name;
         if en_starts(name, "mcp__project__") {
           short := name[14..<name.count];
-          en_event(out[..], "working", "text", short);
+          el_event(out[..], "working", "text", short);
           continue;
         }
         path := cl_str(marg[..], part.input, "file_path");
         if path.count == 0 { path = cl_str(marg[..], part.input, "pattern"); }
         detail := en_shown(path, cwd, "");
-        en_tool(out[..], name, detail);
+        el_tool(out[..], name, detail);
         verb := ifx name == "Edit" || name == "Write" then "editing " else ifx name == "Read" then "reading " else "searching ";
         wb: [600] u8; w: [1] ClOut; w[0].buf = wb[..];
         cl_put(w[..], verb); cl_put(w[..], ifx detail.count > 400 then detail[0..<400] else detail);
-        if !w[0].failed { en_event(out[..], "working", "text", cast(string) wb[0..<w[0].len]); }
+        if !w[0].failed { el_event(out[..], "working", "text", cast(string) wb[0..<w[0].len]); }
       }
     }
     trimmed := s_trim(ses[..], cur[..]);
@@ -365,6 +301,6 @@ main :: () {
     }
   }
   cr := cfn_close(root);
-  if stopped { r := cl_kill(proc); en_done(out[..], "stopped", "", "", cost); return; }
-  en_done_as(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
+  if stopped { r := cl_kill(proc); el_done(out[..], RW_DONE_PROJECT, "stopped", "", "", cost, false); return; }
+  el_done(out[..], RW_DONE_PROJECT, status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
 }
