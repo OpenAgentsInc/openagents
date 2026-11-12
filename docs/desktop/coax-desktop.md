@@ -588,8 +588,28 @@ reads its file back into the same transcript, and the next message resumes
 it. check.sh store-quit then store-reopen: two sessions, quit, reopen, and
 a follow-up continues the same Claude Code session.
 
-No account is needed. A Nostr identity (the same one the phone uses for
-`/login`) comes later, for sync and for openagents.com projects.
+No account is needed to chat. **Logging in** (built 2026-11-12, #13229):
+OpenAgents ▸ Log In… asks for your email and the 6-digit code we send, or
+logs in with this Mac's key. The login is the iPhone app's own code
+(`apps/shared/host/apple/AppAuth.swift`, with `DeviceKey.swift`): an access
+token and a refresh token, each refresh signed by a Secure Enclave key made
+silently at login, and "Log in again." when the server ends the login. The
+tokens and the device key's blob are files under `~/.openagents/desktop/`
+(`login.json` and `device-key`, mode 0600), never the Keychain, so a rebuilt
+app never asks for the login password. This Mac's key is the openagents
+command's (`~/.openagents/cli/keys/PROFILE`, `default` unless
+`OPENAGENTS_PROFILE` says otherwise), so the app and the CLI are one
+identity; Log In offers to make it when there is none. While you are logged
+in the menu item reads "Logged in as a•••@example.com" (from
+`GET /api/auth/account`, asked with the access token) and Log Out is on.
+`OPENAGENTS_API_ORIGIN=https://staging.openagents.com` points the app at
+staging. The pieces are `Account.swift` (the sheets and the key file),
+`lab-sign.coax` (the key file's format and the signed event) and
+`account-mac.h`. Checks: `apps/openagents-desktop/tests/account-check.sh
+[--live https://staging.openagents.com]` (a fake API, then a real one: a key
+login, a refresh with the device key's proof, a reused refresh token ending
+the login), and coax drive's `account state | key | refresh | logout` on a
+running app.
 
 ## Milestones
 

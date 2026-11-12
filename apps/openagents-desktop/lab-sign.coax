@@ -1,9 +1,55 @@
-// The Lab's NIP-98 signer for our inference route (coax/lib/agent/engine/microcoder.coax,
-// coax/lib/gateway/ours.coax): a unit of its own, since the crypto's local
-// names clash with Zeron's procedures (hex, lift, selected) in screen.coax's unit.
+// The app's NIP-98 signer, a unit of its own, since the crypto's local
+// names clash with Zeron's procedures (hex, lift, selected) in screen.coax's unit:
+// - the Lab's, for our inference route (coax/lib/agent/engine/microcoder.coax,
+//   coax/lib/gateway/ours.coax);
+// - the account's (#13229): "Log in with this Mac's key" signs /api/auth/nostr with
+//   the key the openagents CLI keeps (~/.openagents/cli/keys/PROFILE, mode 0600,
+//   its format apps/openagents-cli/rules.coax's), so the app and the CLI are one
+//   identity. Account.swift reads and writes the file; the format, the key's check
+//   and the event are here.
 #load "../../coax/lib/gateway/ours_sign.coax";
+#load "../../coax/lib/crypto/bip32.coax";
+#load "../openagents-cli/rules.coax";
 
 // The signed event's base64 into out: its length, or -1 (gw_nip98).
 coaxial_lab_nip98 :: (key: [] u8, aux: [] u8, now_s: int, tags: string, out: [] u8) -> int #export_c #effects(all) {
   return gw_nip98(key, aux, now_s, tags, out);
+}
+
+// A NIP-98 event for a POST of a body to url (payload: the body's SHA-256, 64 hex), signed with
+// key at now_s, as base64 into out: its length, or -1. The tags are u, method and payload, which
+// /api/auth/nostr checks.
+account_tags :: (url: string, payload: string, out: [] u8) -> int {
+  if payload.count != 64 { return -1; }
+  for i: 0..<64 { if cli_hex_digit(payload[i]) < 0 { return -1; } }
+  n := json_raw(out, 0, "[[\"u\",");
+  n = json_write_string(out, n, url);
+  n = json_raw(out, n, "],[\"method\",\"POST\"],[\"payload\",\"");
+  n = json_raw(out, n, payload);
+  return json_raw(out, n, "\"]]");
+}
+coaxial_account_nip98 :: (key: [] u8, aux: [] u8, now_s: int, url: string, payload: string, out: [] u8) -> int #export_c #effects(all) {
+  tags: [2600] u8;
+  if url.count > 2048 { return -1; }
+  n := account_tags(url, payload, tags[..]);
+  if n < 0 || n > tags.count { return -1; }
+  return gw_nip98(key, aux, now_s, cast(string) tags[0..<n], out);
+}
+
+// The CLI's key file: its text into key (false for anything else), and a key into its text.
+coaxial_account_key_parse :: (text: string, key: [] u8) -> bool #export_c #effects(all) { return cli_key_parse(text, key); }
+coaxial_account_key_text :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) { return cli_key_text(key, out); }
+// Whether a profile name (OPENAGENTS_PROFILE) may name the key's file.
+coaxial_account_profile_ok :: (name: string) -> bool #export_c #effects(all) { return cli_profile_ok(name); }
+// Whether 32 random bytes are a secp256k1 secret (1 to n-1), as the CLI checks a new key.
+coaxial_account_key_ok :: (key: [] u8) -> bool #export_c #effects(all) { pub: [33] u8; return key.count == 32 && bip32_public(key, pub[..]); }
+
+#test "the account's tags: the URL as a JSON string, the method, the body's hash" {
+  out: [400] u8;
+  h := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  n := account_tags("https://openagents.com/api/auth/nostr", h, out[..]);
+  #assert cast(string) out[0..<n] == "[[\"u\",\"https://openagents.com/api/auth/nostr\"],[\"method\",\"POST\"],[\"payload\",\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"]]";
+  #assert account_tags("https://a/\"x", h, out[..]) > 0 && cast(string) out[0..<14] == "[[\"u\",\"https:/";
+  #assert account_tags("https://a/", h[0..<63], out[..]) == -1;
+  #assert account_tags("https://a/", "g3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", out[..]) == -1;
 }

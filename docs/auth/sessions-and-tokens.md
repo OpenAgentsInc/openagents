@@ -132,7 +132,7 @@ script on our own origin, so the strict CSP stays the main defence.
 | --- | --- |
 | Web | HttpOnly cookie only. No token in `localStorage`, IndexedDB or JavaScript memory. Keys from NIP-07 or NIP-46 stay in the extension or signer |
 | iOS | Keychain, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, not synced; device key in the Secure Enclave |
-| Mac | Device key in the Secure Enclave, its wrapped blob in a `0600` file under `~/.openagents/`; no Keychain, so a rebuilt app never asks for the login password |
+| Mac | Device key in the Secure Enclave, its wrapped blob in a `0600` file under `~/.openagents/`; the tokens in `~/.openagents/desktop/login.json` (`0600`); no Keychain, so a rebuilt app never asks for the login password. The login is the iPhone app's `AppAuth.swift` (#13229) |
 | Android | Device key in Keystore; tokens encrypted with a Keystore AES key in app-private storage |
 | CLI and dev tools | Files with mode `0600` under `~/.openagents/`. No Keychain by default, because a rebuilt unsigned binary triggers a Keychain password prompt on every build; `OPENAGENTS_KEYCHAIN=1` opts in |
 | Agents on servers | Secret Manager or a `0600` file; never an environment variable that ends up in a process listing or crash log, never a command-line flag |

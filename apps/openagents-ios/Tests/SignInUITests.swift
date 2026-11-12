@@ -185,7 +185,7 @@ final class SignInUITests: XCTestCase {
         let app = launchLogin(origin)
         openLogin(app, fake)
         let before = fake.seen.count
-        XCTAssertEqual(app.staticTexts["login.state"].label, "Log in with your email or this phone's key.")
+        XCTAssertEqual(app.staticTexts["login.state"].label, "Log in with a passkey, your email or this phone's key.")
         shot(app, "Log in")
 
         fake.byPath["/api/auth/email/start"] = [(200, "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5,\"pending\":\"\(secret)\"}")]

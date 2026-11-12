@@ -1,24 +1,32 @@
 import Foundation
 import Security
 
-/// The app's login to openagents.com (coax/web/api/auth.c, docs/auth/; #13206): an email code,
-/// a passkey (#13215) or this phone's Nostr key logs in, and the server answers an access token (oa_at_, an hour) and a
+/// The app's login to openagents.com (coax/web/api/auth.c, docs/auth/; #13206, #13229), one file
+/// for the iPhone app and the Mac app: an email code, a passkey (#13215) or this device's Nostr key
+/// logs in, and the server answers an access token (oa_at_, an hour) and a
 /// refresh token (oa_rt_). Requests carry `Authorization: Bearer <access>`; a stale access token is
 /// renewed first with the refresh token, which the server replaces each time. A refresh token used
 /// twice ends the whole login on the server: then the app forgets it and says "Log in again."
 ///
-/// The tokens are kept in the Keychain like the phone's key (NostrKey): a generic password,
-/// service `com.openagents.app.auth`, account `tokens-v1`, this device only, after first unlock.
+/// Where the tokens are kept:
+/// - iPhone: in the Keychain like the phone's key (NostrKey): a generic password, service
+///   `com.openagents.app.auth`, account `tokens-v1`, this device only, after first unlock.
+/// - Mac: a file only the user can read (`FileTokenStore`, `~/.openagents/<app>/login.json`, 0600),
+///   never the Keychain: an app an agent rebuilds has a new code signature each build, and a
+///   Keychain item would ask for the login password every time (the device key is kept the same
+///   way, `FileDeviceKeyStore`).
 /// Nothing here logs a token or a code.
 ///
 /// The login is tied to this phone (#13216, docs/auth "Native: refresh tokens bound to a device
 /// key"): every login request carries the public half of a device key (`DeviceKeys`, in the Secure
-/// Enclave; made silently, no prompt), the server binds the session to it, and each refresh then
+/// Enclave of the iPhone or Mac; made silently, no prompt), the server binds the session to it, and each refresh then
 /// carries `OA-Device-Proof`, the key's signature over the request, the time and the refresh
 /// token's hash. A refresh token copied off the phone is useless without the key. One key lasts
 /// one login: logging out, or the server ending the login, forgets it.
 final class AppAuth: @unchecked Sendable {
+    #if os(iOS)
     static let shared = AppAuth()
+    #endif
 
     /// What the server answered for a login or a refresh: the pair and when the access one ends.
     struct Tokens: Codable, Equatable {
@@ -53,6 +61,9 @@ final class AppAuth: @unchecked Sendable {
 
     /// One HTTP exchange: the answer's bytes and status. Tests give a fake.
     typealias Send = @Sendable (URLRequest) async throws -> (Data, Int)
+    /// A NIP-98 Authorization value ("Nostr " + base64 event) for a POST of body to url, signed with
+    /// this device's Nostr key: the phone's (PhoneSignIn.nip98) or the Mac's (the desktop app's).
+    typealias Sign = @Sendable (_ url: String, _ body: String, _ now: Date) throws -> String
     static let network: Send = { request in
         let (data, response) = try await URLSession.shared.data(for: request)
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
@@ -68,6 +79,7 @@ final class AppAuth: @unchecked Sendable {
     private let store: TokenStore
     private let clock: @Sendable () -> Date
     private let device: DeviceKeys?
+    private let sign: Sign
     private var refreshing: Task<Tokens, Error>?
     private let lock = NSLock()
 
@@ -79,13 +91,24 @@ final class AppAuth: @unchecked Sendable {
         return "https://openagents.com"
     }
 
+    #if os(iOS)
     /// The phone's device key: the Secure Enclave's wrapped blob in the Keychain beside the tokens
     /// (a software key where there is no enclave, such as the Simulator).
     static let phoneDevice = DeviceKeys(store: KeychainDeviceKeyStore())
+    static let defaultStore: TokenStore = KeychainTokenStore()
+    static let defaultDevice: DeviceKeys? = phoneDevice
+    static let defaultSign: Sign = { try PhoneSignIn.nip98(url: $0, body: $1, now: $2) }
+    #else
+    /// The Mac's: files under `~/.openagents/desktop/`, never the Keychain. The desktop app passes
+    /// its own key's signer; without one, "Log in with a key" says there is none.
+    static let defaultStore: TokenStore = FileTokenStore(app: "desktop")
+    static let defaultDevice: DeviceKeys? = DeviceKeys(store: FileDeviceKeyStore(app: "desktop"))
+    static let defaultSign: Sign = { _, _, _ in throw Failure.said("This Mac has no key to log in with.") }
+    #endif
 
-    init(origin: String = AppAuth.defaultOrigin, send: @escaping Send = AppAuth.network, store: TokenStore = KeychainTokenStore(), clock: @escaping @Sendable () -> Date = { Date() },
-         device: DeviceKeys? = AppAuth.phoneDevice) {
-        self.origin = origin; self.send = send; self.store = store; self.clock = clock; self.device = device
+    init(origin: String = AppAuth.defaultOrigin, send: @escaping Send = AppAuth.network, store: TokenStore = AppAuth.defaultStore, clock: @escaping @Sendable () -> Date = { Date() },
+         device: DeviceKeys? = AppAuth.defaultDevice, sign: @escaping Sign = AppAuth.defaultSign) {
+        self.origin = origin; self.send = send; self.store = store; self.clock = clock; self.device = device; self.sign = sign
     }
 
     var tokens: Tokens? { store.load() }
@@ -106,14 +129,14 @@ final class AppAuth: @unchecked Sendable {
         try keep(try await said { try await self.post("/api/auth/email/verify", ["code": code, "pending": pending]) })
     }
 
-    /// Logs in with this phone's key: a challenge, signed (NIP-98) over the login route and body.
+    /// Logs in with this device's key: a challenge, signed (NIP-98) over the login route and body.
     @discardableResult
     func keyLogin() async throws -> Tokens {
         let challenge = try await said { try await self.post("/api/auth/nostr/challenge", ["client": "app"]) }
         guard let ch = challenge["challenge"] as? String else { throw Failure.said("That didn't work. Try again.") }
         let body = "{\"challenge\":\"\(ch)\",\"label\":\"app\"}"
         let url = origin + "/api/auth/nostr"
-        let auth = try PhoneSignIn.nip98(url: url, body: body, now: clock())
+        let auth = try sign(url, body, clock())
         return try keep(try await said { try await self.post("/api/auth/nostr", raw: body, authorization: auth) })
     }
 
@@ -190,6 +213,20 @@ final class AppAuth: @unchecked Sendable {
             throw Failure.said(AppAuth.errorWords(data) ?? "That didn't work. Try again.")
         }
         return (o["passkeys"] as? [Any])?.count ?? 0
+    }
+    /// Who is logged in, as GET /api/auth/account says (with this login's access token): the
+    /// account, and its emails as the server masks them (a•••@example.com).
+    struct Account: Equatable { let account: String; let emails: [String]; let keys: Int }
+    func account() async throws -> Account {
+        guard let url = URL(string: origin + "/api/auth/account") else { throw Failure.unreachable }
+        let r = try await authorize(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20))
+        let data: Data, status: Int
+        do { (data, status) = try await send(r) } catch { throw Failure.unreachable }
+        guard (200..<300).contains(status), let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw Failure.said(AppAuth.errorWords(data) ?? (status == 401 ? "Log in again." : "That didn't work. Try again."))
+        }
+        guard o["logged_in"] as? Bool == true, let account = o["account"] as? String else { throw Failure.said("Log in again.") }
+        return Account(account: account, emails: o["emails"] as? [String] ?? [], keys: (o["keys"] as? [Any])?.count ?? 0)
     }
     /// A challenge for a key to sign while logged in (purpose: link), and the URL it signs.
     func proofChallenge(purpose: String) async throws -> String {
@@ -284,17 +321,31 @@ final class AppAuth: @unchecked Sendable {
 
     static let refreshPath = "/api/auth/refresh"
     static func ms(_ date: Date) -> Int64 { Int64((date.timeIntervalSince1970 * 1000).rounded()) }
+    #if os(iOS)
+    static let platform = "ios"
     static var deviceName: String {
         var info = utsname(); uname(&info)
         let machine = withUnsafeBytes(of: &info.machine) { String(decoding: $0.prefix(while: { $0 != 0 }), as: UTF8.self) }
         return machine.hasPrefix("iPad") ? "iPad" : machine.hasPrefix("iPhone") ? "iPhone" : "iPhone Simulator"
     }
+    #else
+    static let platform = "mac"
+    /// "Mac", or "Mac virtual machine" (hw.model VirtualMac…): never the computer's own name, which
+    /// is the person's and may hold their name.
+    static var deviceName: String {
+        var size = 0
+        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return "Mac" }
+        var raw = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("hw.model", &raw, &size, nil, 0) == 0 else { return "Mac" }
+        return String(cString: raw).hasPrefix("VirtualMac") ? "Mac virtual machine" : "Mac"
+    }
+    #endif
 
     /// What a login request tells the server about this phone's key (auth-device.c): the session is
     /// bound to it. Not sent with a refresh (which proves the key instead) or a logout.
     func deviceHeaders(for path: String) -> [String: String] {
         guard let device, path != AppAuth.refreshPath, path != "/api/auth/logout", let key = try? device.current() else { return [:] }
-        return ["OA-Device-Key": key.publicKeyHex, "OA-Device-Platform": "ios", "OA-Device-Store": key.store.rawValue, "OA-Device-Name": AppAuth.deviceName]
+        return ["OA-Device-Key": key.publicKeyHex, "OA-Device-Platform": AppAuth.platform, "OA-Device-Store": key.store.rawValue, "OA-Device-Name": AppAuth.deviceName]
     }
 
     /// The refresh request for these tokens, signed at `ms` by the device key when the login is bound.
@@ -372,6 +423,7 @@ protocol TokenStore: Sendable {
     func clear()
 }
 
+#if os(iOS)
 /// The Keychain item (see AppAuth).
 struct KeychainTokenStore: TokenStore {
     private let base: [String: Any] = [
@@ -429,3 +481,32 @@ struct KeychainDeviceKeyStore: DeviceKeyStore {
     }
     func clear() { SecItemDelete(base as CFDictionary) }
 }
+#else
+/// The Mac's tokens: a file only the user can read (0600, its folder 0700), never the Keychain (see
+/// AppAuth). `~/.openagents/<app>/login.json`.
+struct FileTokenStore: TokenStore {
+    let url: URL
+    init(url: URL) { self.url = url }
+    init(app: String) {
+        url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents", isDirectory: true)
+            .appendingPathComponent(app, isDirectory: true)
+            .appendingPathComponent("login.json")
+    }
+    func load() -> AppAuth.Tokens? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(AppAuth.Tokens.self, from: data)
+    }
+    func save(_ tokens: AppAuth.Tokens) {
+        guard let data = try? JSONEncoder().encode(tokens) else { return }
+        let fm = FileManager.default
+        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        // Written beside, 0600 from the start, then moved over: never a moment readable by others.
+        let next = url.appendingPathExtension("new")
+        try? fm.removeItem(at: next)
+        guard fm.createFile(atPath: next.path, contents: data, attributes: [.posixPermissions: 0o600]) else { return }
+        if rename(next.path, url.path) != 0 { try? fm.removeItem(at: next) }
+    }
+    func clear() { try? FileManager.default.removeItem(at: url) }
+}
+#endif

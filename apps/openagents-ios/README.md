@@ -104,7 +104,7 @@ a scan or a paste. Every one asks first; Approve sends a NIP-98 signed POST
 to `/api/auth/phone/approve` or `/api/private/<slug>/claim`.
 
 A login to your account (an email code, a passkey or the phone's key;
-`OpenAgents/SignIn/AppAuth.swift`) is tied to this phone. At login the app
+`../shared/host/apple/AppAuth.swift`, shared with the Mac app) is tied to this phone. At login the app
 makes a device key in the Secure Enclave, silently, with no Face ID or
 passcode prompt (`apps/shared/host/apple/DeviceKey.swift`, shared with the
 Mac apps), and sends its public half; the server binds the login to it. Each
@@ -163,8 +163,10 @@ xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents 
   -destination 'platform=iOS Simulator,name=OpenAgents iPhone' -derivedDataPath apps/openagents-ios/build \
   CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -parallel-testing-enabled NO \
   -only-testing:OpenAgentsUITests/SignInUITests test
-# a real code against a real server (opens it through the system, approves, prints the result)
-TEST_RUNNER_OA_SIGNIN_CODE='https://staging.openagents.com/signin#c=…' xcodebuild … -only-testing:OpenAgentsUITests/SignInLiveUITests test
+# against a real server: log in with this phone's key, then log out
+TEST_RUNNER_OA_LIVE_ORIGIN=https://staging.openagents.com xcodebuild … -only-testing:OpenAgentsUITests/SignInLiveUITests/testKeyLoginLive test
+# a fresh code from the /login page's QR (opens it through the system, approves, prints the result)
+TEST_RUNNER_OA_SIGNIN_CODE='https://staging.openagents.com/login#c=…' xcodebuild … -only-testing:OpenAgentsUITests/SignInLiveUITests/testApproveLoginPageLive test
 ```
 
 ## Engine measurements and debugging
