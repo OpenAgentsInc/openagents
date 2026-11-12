@@ -19,11 +19,12 @@
 // checkout. It runs there with only ANTHROPIC_API_KEY, HOME, PATH and
 // OA_AGENT_MODEL, and speaks JSON lines:
 //   in   {"t":"turn", "turn":{...}, "history":[...], "version":N, "model":M, "budget_usd":X, "slug":S, "repo":B, "cwd":DIR}
-//        {"t":"reply", "id":K, "status":S, "body":B}     the answer to a call
+//        {"t":"reply", "id":K, "status":S, "body":B}     the answer to a call (and to a repo line)
 //        {"t":"stop"}                                     a member pressed STOP
 //   out  {"t":"call", "id":K, "tool":T, "args":{...}}    a project tool; the runner makes it one oa-api op:
 //          project_get → state; project_note, project_plan → note; milestone_status, checklist_status → status;
 //          milestone_edit, goal_propose → the op of that name; document_patch → patch
+//        {"t":"repo", "id":K, "body":{...}}               /chat: a RepoRequest, posted to oa-repo (OA_REPO_URL) with the turn's grant
 //        {"t":"event", "type":T, "data":{...}}            working, agent.message, agent.tool_use, session.error
 //        {"t":"done", "status":"done"|"failed"|"stopped", "answer":A, "error":E, "cost_usd":C}
 // The runner adds the turn to every call and signs it; events go to oa-api in
@@ -45,6 +46,9 @@
 //   OA_AGENT_MODEL      claude-sonnet-5-5
 //   OA_AGENT_ENGINE     the engine's path (/usr/local/bin/oa-turn)
 //   OA_AGENT_WORK       where checkouts go (/tmp/oa-agent)
+//   OA_REPO_URL         the indexed repo service (oa-repo, docs/deployment/repo-vm.md), with
+//   OA_REPO_GRANT_KEY   the grant key it shares (64 hex; read, then removed from the environment):
+//                       /chat's turns read the repository through it, with no checkout (#13326)
 // Logs keep turn ids, event types, statuses and costs: never messages, document contents or keys.
 #define _GNU_SOURCE
 #include <curl/curl.h>
@@ -470,6 +474,39 @@ static void add_event(events *ev, const char *slug, long long turn, const char *
   if (++ev->n >= 40) flush(ev, slug, turn);
 }
 
+// ---- the indexed repo service (oa-repo, #13326)
+// A /chat turn reads the repository through oa-repo: the engine sends {"t":"repo","id","body"} with a
+// RepoRequest (openagents.repo.v1alpha1, written by coax/lib/repo/wire.coax), and the runner posts the
+// body as it is to OA_REPO_URL/api/repo/call with the turn's grant, then hands the RepoAnswer back as
+// {"t":"reply","id","status","body"}. The grant is minted per turn (chat-runner.c) and never reaches
+// the engine or the model.
+static char repo_key[65];
+static char repo_grant[256];
+static void repo_key_load(void) {
+  const char *k = getenv("OA_REPO_GRANT_KEY");
+  if (k && strlen(k) == 64) snprintf(repo_key, sizeof repo_key, "%s", k);
+  unsetenv("OA_REPO_GRANT_KEY");
+}
+static long repo_post(const char *body, text *out) {
+  char url[600], auth[400];
+  snprintf(url, sizeof url, "%s/api/repo/call", env("OA_REPO_URL", ""));
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", repo_grant);
+  CURL *h = curl_easy_init();
+  struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: application/json");
+  long status = 0;
+  curl_easy_setopt(h, CURLOPT_URL, url);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDS, body);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, out);
+  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, 5L);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 40L);
+  if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  curl_slist_free_all(hd); curl_easy_cleanup(h);
+  OPENSSL_cleanse(auth, sizeof auth);
+  return status;
+}
+
 // Runs the engine for an ask in dir; fills the end's fields. Returns its status word.
 static void run_engine(const char *slug, const char *turn_json, long long turn, const char *dir, const char *home,
                        text *answer, text *error, double *cost, char status[16]) {
@@ -534,6 +571,16 @@ static void run_engine(const char *slug, const char *turn_json, long long turn, 
           engine_send(&e, reply.p);
           say("turn %lld tool %s %ld", turn, op ? op : "?", st);
           free(reply.p); free(out.p); free(b.p); free(id); free(tool); free(args);
+        } else if (!strcmp(t, "repo")) {
+          // a read of the indexed repo: the body goes to oa-repo as it is, with this turn's grant
+          char *id = jraw(l, "id", "0"), *body = jraw(l, "body", "{}");
+          text out = {0}, reply = {0};
+          double t0 = now_ms();
+          long st = *repo_grant && *env("OA_REPO_URL", "") ? repo_post(body, &out) : 0;
+          WIRE(&reply, rw_reply_write(cs(id), (int64_t)st, cs(out.n ? out.p : ""), room));
+          engine_send(&e, reply.p);
+          say("turn %lld repo %ld %.0f ms %zu bytes", turn, st, now_ms() - t0, out.n);
+          free(reply.p); free(out.p); free(id); free(body);
         } else if (!strcmp(t, "event")) {
           char *type = jstr(l, "type", ""), *data = jraw(l, "data", "{}");
           add_event(&ev, slug, turn, type, data);
@@ -840,6 +887,8 @@ int main(int argc, char **argv) {
   snprintf(anthropic_key, sizeof anthropic_key, "%s", env("ANTHROPIC_API_KEY", ""));
   unsetenv("ANTHROPIC_API_KEY");   // only the engine gets it
   if (!seal_load()) say("OA_CHAT_SEAL_KEY is missing: /chat cannot save keys");
+  repo_key_load();
+  if (*env("OA_REPO_URL", "")) say(repo_key[0] ? "/chat reads the repository through %s" : "OA_REPO_URL is %s but OA_REPO_GRANT_KEY is missing: /chat uses a checkout", env("OA_REPO_URL", ""));
   char host[256] = "0.0.0.0"; int port = atoi(env("PORT", "8080"));
   if (listen_at) { const char *c = strrchr(listen_at, ':'); if (c) { snprintf(host, sizeof host, "%.*s", (int)(c - listen_at), listen_at); port = atoi(c + 1); } }
   int lfd = socket(AF_INET, SOCK_STREAM, 0), one = 1;

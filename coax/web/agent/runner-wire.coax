@@ -111,6 +111,12 @@ rw_call :: (o: [] ClOut, id: int, tool: string, args: string) {
   cl_put(o, ",\"tool\":"); cl_put_string(o, tool);
   cl_put(o, ",\"args\":"); rw_raw(o, args, "{}"); cl_put(o, "}");
 }
+// Out: a read of the indexed repo; body is a RepoRequest (openagents.repo.v1alpha1, coax/lib/repo/wire.coax),
+// raw. The runner posts it to oa-repo with the turn's grant and answers with a reply.
+rw_repo :: (o: [] ClOut, id: int, body: string) {
+  cl_put(o, "{\"t\":\"repo\",\"id\":"); cl_put_int(o, id);
+  cl_put(o, ",\"body\":"); rw_raw(o, body, "{}"); cl_put(o, "}");
+}
 // Where credential_expired goes in a done line: last for the project engine, before cost_usd
 // for /chat's.
 RW_DONE_PROJECT :: 0;
@@ -151,14 +157,16 @@ rw_quote_inner :: (o: [] ClOut, s: string) {
 // resumed: the session was put back, so the line says resume (and history is the caller's []);
 // else session_id. mirror: the indexed repo the turn reads, or "".
 rw_chat_turn :: (o: [] ClOut, turn: string, model: string, budget: f64, resumed: bool, session: string, history: string,
-                 cwd: string, mirror: string, today: string) {
+                 cwd: string, mirror: string, service: bool, today: string) {
   cl_put(o, "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":"); rw_raw(o, turn, "{}");
   cl_put(o, ",\"model\":"); rw_quote(o, model);
   cl_put(o, ",\"budget_usd\":"); rw_fixed4(o, budget);
   cl_put(o, ifx resumed then ",\"resume\":" else ",\"session_id\":"); rw_quote(o, session);
   cl_put(o, ",\"history\":"); rw_raw(o, history, "[]");
   cl_put(o, ",\"cwd\":"); rw_quote(o, cwd);
-  if mirror.count > 0 { cl_put(o, ",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"mirror\":"); rw_quote(o, mirror); cl_put(o, "}"); }
+  // the indexed repo: read through oa-repo (service), else from a mirror on this disk
+  if service { cl_put(o, ",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"service\":true}"); }
+  else if mirror.count > 0 { cl_put(o, ",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"mirror\":"); rw_quote(o, mirror); cl_put(o, "}"); }
   cl_put(o, ",\"today\":"); rw_quote(o, today);
   cl_put(o, ",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}");
 }
@@ -230,8 +238,8 @@ rw_project_turn_write :: (slug: string, turn: string, history: string, version: 
   o: [1] ClOut; rw_out(o[..], out); rw_project_turn(o[..], slug, turn, history, version, model, budget, repo, cwd, today); return rw_len(o[..]);
 }
 rw_chat_turn_write :: (turn: string, model: string, budget: f64, resumed: bool, session: string, history: string, cwd: string,
-                       mirror: string, today: string, out: [] u8) -> int #export_c #effects(all) {
-  o: [1] ClOut; rw_out(o[..], out); rw_chat_turn(o[..], turn, model, budget, resumed, session, history, cwd, mirror, today); return rw_len(o[..]);
+                       mirror: string, service: bool, today: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] ClOut; rw_out(o[..], out); rw_chat_turn(o[..], turn, model, budget, resumed, session, history, cwd, mirror, service, today); return rw_len(o[..]);
 }
 rw_reply_write :: (id: string, status: int, body: string, out: [] u8) -> int #export_c #effects(all) {
   o: [1] ClOut; rw_out(o[..], out); rw_reply(o[..], id, status, body); return rw_len(o[..]);

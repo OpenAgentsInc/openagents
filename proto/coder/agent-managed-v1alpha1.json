@@ -84,6 +84,26 @@
       "line": "{\"t\":\"call\",\"id\":2,\"tool\":\"milestone_status\",\"args\":{\"id\":\"m1\",\"status\":\"done\",\"evidence\":\"the deck is in the repo\"}}"
     },
     {
+      "name": "repo-resolve",
+      "message": "RepoLine",
+      "writer": "repo",
+      "values": {
+        "id": 1,
+        "body": "{\"repo\":\"openagents\",\"op\":\"resolve\",\"at\":\"main\"}"
+      },
+      "line": "{\"t\":\"repo\",\"id\":1,\"body\":{\"repo\":\"openagents\",\"op\":\"resolve\",\"at\":\"main\"}}"
+    },
+    {
+      "name": "repo-search",
+      "message": "RepoLine",
+      "writer": "repo",
+      "values": {
+        "id": 2,
+        "body": "{\"repo\":\"openagents\",\"op\":\"search\",\"at\":\"311a870f1fa709cb41f33d1e6180c642d4f149bc\",\"pattern\":\"rg_mint ::\"}"
+      },
+      "line": "{\"t\":\"repo\",\"id\":2,\"body\":{\"repo\":\"openagents\",\"op\":\"search\",\"at\":\"311a870f1fa709cb41f33d1e6180c642d4f149bc\",\"pattern\":\"rg_mint ::\"}}"
+    },
+    {
       "name": "done-project",
       "message": "DoneLine",
       "writer": "done",
@@ -234,6 +254,24 @@
         "today": "2026-11-12"
       },
       "line": "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":{\"id\":7,\"conv\":3,\"text\":\"What does README.md say?\",\"model\":\"claude-haiku-5-5\",\"by\":\"You\",\"session\":\"0f0e0d0c-0b0a-4908-8706-050403020100\"},\"model\":\"claude-haiku-5-5\",\"budget_usd\":0.9300,\"session_id\":\"0f0e0d0c-0b0a-4908-8706-050403020100\",\"history\":[{\"id\":6,\"by\":\"You\",\"text\":\"hi\",\"answer\":\"hello\"}],\"cwd\":\"/tmp/oa-agent/chat-space\",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"mirror\":\"/srv/mirrors/openagents.git\"},\"today\":\"2026-11-12\",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}"
+    },
+    {
+      "name": "turn-chat-service",
+      "message": "ChatTurnLine",
+      "writer": "chat_turn",
+      "values": {
+        "turn": "{\"id\":7,\"conv\":3,\"text\":\"What does README.md say?\",\"model\":\"claude-haiku-5-5\",\"by\":\"You\",\"session\":\"0f0e0d0c-0b0a-4908-8706-050403020100\"}",
+        "model": "claude-haiku-5-5",
+        "budget_usd": 0.93,
+        "resumed": false,
+        "session": "0f0e0d0c-0b0a-4908-8706-050403020100",
+        "history": "[{\"id\":6,\"by\":\"You\",\"text\":\"hi\",\"answer\":\"hello\"}]",
+        "cwd": "/tmp/oa-agent/chat-space",
+        "mirror": "",
+        "today": "2026-11-12",
+        "service": true
+      },
+      "line": "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":{\"id\":7,\"conv\":3,\"text\":\"What does README.md say?\",\"model\":\"claude-haiku-5-5\",\"by\":\"You\",\"session\":\"0f0e0d0c-0b0a-4908-8706-050403020100\"},\"model\":\"claude-haiku-5-5\",\"budget_usd\":0.9300,\"session_id\":\"0f0e0d0c-0b0a-4908-8706-050403020100\",\"history\":[{\"id\":6,\"by\":\"You\",\"text\":\"hi\",\"answer\":\"hello\"}],\"cwd\":\"/tmp/oa-agent/chat-space\",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"service\":true},\"today\":\"2026-11-12\",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}"
     },
     {
       "name": "reply",

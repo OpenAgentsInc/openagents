@@ -26,14 +26,17 @@
 // each answered by coax/lib/repo against the mirror at one commit, resolved
 // once as the turn starts so every answer of the turn reads the same code.
 // The tools take no path outside the repository (rules.coax decides), run no
-// command, and write nothing.
+// command, and write nothing. With "repo": {name, at, service: true} there is
+// no mirror either: each call goes to the runner as {"t":"repo","id","body"}
+// (a RepoRequest, coax/lib/repo/wire.coax), the runner posts it to oa-repo
+// with the turn's grant, and the RepoAnswer comes back as a reply.
 
 #import "Basic";
 #load "../../lib/agent/claude/claude.coax";
 #load "../../lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "confine-host.coax";
 #load "engine-line.coax";      // the runner's lines, written by runner-wire.coax
-#load "../../lib/repo/repo.coax";   // the indexed repo's read operations (docs/repos/, #13326)
+#load "../../lib/repo/wire.coax";   // the indexed repo's read operations and their wire (docs/repos/, #13326)
 
 TURN_LINE :: 1048576;
 RECORD_POOL :: 524288;      // the session record's text for the parts not yet written to the wire
@@ -103,6 +106,42 @@ ch_repo_tool :: (name: string) -> int {
   return -1;
 }
 
+// One read through the repo service (OA_REPO_URL; the turn line's "repo": {"service": true}): the
+// request goes to the runner as {"t":"repo","id","body"} (a RepoRequest, wire.coax), the runner posts
+// it with the turn's grant, and its reply {"t":"reply","id","status","body"} carries the RepoAnswer.
+// text borrows st.wire. A stop that comes first ends the turn.
+ChRemote :: struct { a: RpAnswer; text: string; stopped: bool; }
+ChRemoteState :: struct { msg: [RW_REQUEST_MAX + 64] u8; line: [RW_ANSWER_MAX + 256] u8; wire: [RP_ANSWER + 1024] u8; nodes: [256] JvNode; ar: [512] u8; }
+ch_repo_remote :: (st: [] ChRemoteState, repo: string, q: RpRequest, id: int) -> ChRemote {
+  r: ChRemote;
+  o: [1] ClOut; o[0].buf = st[0].msg[..];
+  body: [RW_REQUEST_MAX] u8;
+  bn := rw_request_write(repo, q, body[..]);
+  if bn == 0 { r.a = rp_fail("that request is too long to send"); return r; }
+  rw_repo(o[..], id, cast(string) body[0..<bn]);
+  if o[0].failed { r.a = rp_fail("that request is too long to send"); return r; }
+  el_send(o[..]);
+  while true {
+    k := eio_read_line(60000);
+    if k == -1 { r.stopped = true; return r; }
+    if k == -2 { r.a = rp_fail("the repository did not answer in time"); return r; }
+    if k > st[0].line.count { continue; }
+    for i: 0..<k { st[0].line[i] = cast(u8) eio_line_byte(i); }
+    line := cast(string) st[0].line[0..<k];
+    ar: [1] ClArena; ar[0].buf = st[0].ar[..];
+    kind := cl_str(ar[..], line, "t");
+    if kind == "stop" { r.stopped = true; return r; }
+    if kind != "reply" || cl_int(line, "id").value != id { continue; }
+    status := cl_int(line, "status").value;
+    got := rw_answer_read(cl_raw(line, "body"), st[0].nodes[..], st[0].wire[..]);
+    if !got.ok { r.a = rp_fail(ifx status == 0 then "the repository could not be reached" else "the repository's answer could not be read"); return r; }
+    r.a = got.a; r.text = got.text;
+    if !got.a.ok && got.a.error.count == 0 { r.a.error = "the repository refused that"; }
+    return r;
+  }
+  return r;
+}
+
 READ_TOOLS :: [3] string.["Read", "Glob", "Grep"];
 WEB_TOOLS :: [2] string.["WebSearch", "WebFetch"];
 DENIED :: [8] string.["Bash", "Edit", "Write", "NotebookEdit", "Task", "Agent", "TodoWrite", "KillShell"];
@@ -170,16 +209,29 @@ main :: () {
   budget := cl_num(line, "budget_usd").value;
   if text.count == 0 { el_done(out[..], RW_DONE_CHAT, "failed", "", "the turn has no message", 0.0, false); return; }
   // an indexed repo: its mirror, and the commit this turn reads, resolved once
+  // (a mirror on this disk, or the repo service through the runner: "repo": {name, at, service: true})
   mirror_dir := cl_str(targ[..], line, "repo.mirror");
   repo_name := cl_str(targ[..], line, "repo.name");
   repo_at := cl_str(targ[..], line, "repo.at");
-  indexed := mirror_dir.count > 0;
+  remote := cl_raw(line, "repo.service") == "true";
+  indexed := mirror_dir.count > 0 || remote;
   mirror := RpMirror.{git = "git", dir = mirror_dir};
   commit_buf: [40] u8;
+  rst: [1] ChRemoteState; calls := 0;
   if indexed {
     if repo_at.count == 0 { repo_at = "main"; }
-    fresh := rp_mirror_fetch(mirror);   // a mirror that can't be fetched just now is read as it is
-    if !rp_resolve_into(mirror, repo_at, commit_buf[..]) { el_done(out[..], RW_DONE_CHAT, "failed", "", "We couldn't read our copy of the code. Send your message again in a minute.", 0.0, false); return; }
+    resolved := false;
+    if remote {
+      calls += 1;
+      rr := ch_repo_remote(rst[..], repo_name, RpRequest.{op = RP_RESOLVE, at = repo_at}, calls);
+      if rr.stopped { el_done(out[..], RW_DONE_CHAT, "stopped", "", "", 0.0, false); return; }
+      resolved = rr.a.ok;
+      for i: 0..<40 { commit_buf[i] = rr.a.commit[i]; }
+    } else {
+      fresh := rp_mirror_fetch(mirror);   // a mirror that can't be fetched just now is read as it is
+      resolved = rp_resolve_into(mirror, repo_at, commit_buf[..]);
+    }
+    if !resolved { el_done(out[..], RW_DONE_CHAT, "failed", "", "We couldn't read our copy of the code. Send your message again in a minute.", 0.0, false); return; }
   }
   commit := cast(string) commit_buf[..];
   // the checkout, held open for the file tools' checks, and swept for links first
@@ -288,6 +340,13 @@ main :: () {
       tools := REPO_TOOLS;
       el_tool(out[..], tools[ev.tool], ch_repo_detail(rq));
       ch_working(out[..], ifx rq.op == RP_READ then "reading " else ifx rq.op == RP_SEARCH then "searching for " else ifx rq.op == RP_FIND then "looking for " else "looking at ", ch_repo_detail(rq));
+      if remote {
+        calls += 1;
+        rr := ch_repo_remote(rst[..], repo_name, rq, calls);
+        if rr.stopped { stopped = true; break; }
+        if rr.a.ok { cl_tool_text(q, rr.text, false); } else { cl_tool_text(q, rr.a.error, true); }
+        continue;
+      }
       ra := rp_call(mirror, rq, repo_work[..], repo_out[..]);
       if ra.ok { cl_tool_text(q, cast(string) repo_out[0..<ra.n], false); }
       else { cl_tool_text(q, ra.error, true); }

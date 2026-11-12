@@ -9,7 +9,7 @@ import "openagents/options/v1alpha1/json.proto";
 //
 //   runner <-> engine   one JSON object a line on the engine's stdin and stdout:
 //                       ProjectTurnLine or ChatTurnLine first, then ReplyLine and
-//                       StopLine in; EventLine, CallLine and DoneLine out
+//                       StopLine in; EventLine, CallLine, RepoLine and DoneLine out
 //   runner -> API       EventBatch (POST .../event) and TurnEnd (POST .../end),
 //                       each with the "nonce" member the signed request adds
 //   API -> runner       NextTurn (POST .../next)
@@ -70,6 +70,15 @@ message CallLine {
   string args = 3 [json_name = "args"];
 }
 
+// Out: a read of the indexed repo (GitHub #13326). body is a RepoRequest
+// (openagents.repo.v1alpha1), raw; the runner posts it to oa-repo with the
+// turn's grant and answers with a ReplyLine whose body is the RepoAnswer.
+message RepoLine {
+  option (openagents.options.v1alpha1.contract) = "openagents.agent.managed.v1alpha1";
+  int64 id = 1 [json_name = "id"];
+  string body = 2 [json_name = "body"];
+}
+
 // In: the API's answer to a call. id is the call's id as the engine wrote it;
 // body the API's answer when it is a JSON object or array, else {}.
 message ReplyLine {
@@ -120,11 +129,13 @@ message ProjectTurnLine {
   Workspace workspace = 10 [json_name = "workspace"];
 }
 
-// An indexed repo a chat turn reads instead of a checkout (docs/repos/).
+// An indexed repo a chat turn reads instead of a checkout (docs/repos/): from
+// a mirror on the runner's disk, or through oa-repo when service is true.
 message RepoRef {
   string name = 1 [json_name = "name"];
   string at = 2 [json_name = "at"];
   string mirror = 3 [json_name = "mirror"];
+  bool service = 4 [json_name = "service"];
 }
 
 // In, first: a /chat turn. resume when the session was put back (history is

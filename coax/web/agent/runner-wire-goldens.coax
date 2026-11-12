@@ -30,9 +30,9 @@ RG_PACKAGE :: ".openagents.agent.managed.v1alpha1.";
 RG_LINE :: 16384;
 RG_JSON :: 10;   // openagents.options.v1alpha1.json, as the importer numbers message options
 // Each writer, the message its output is, and the line's kind (t), "" for a body.
-RG_WRITERS :: [14] string.["event", "tool", "call", "done", "project_turn", "chat_turn", "reply", "stop", "batch", "working_batch", "project_end", "chat_end", "files", "next"];
-RG_MESSAGES :: [14] string.["EventLine", "EventLine", "CallLine", "DoneLine", "ProjectTurnLine", "ChatTurnLine", "ReplyLine", "StopLine", "EventBatch", "EventBatch", "TurnEnd", "TurnEnd", "", "NextTurn"];
-RG_KINDS :: [14] string.["event", "event", "call", "done", "turn", "turn", "reply", "stop", "", "", "", "", "", ""];
+RG_WRITERS :: [15] string.["event", "tool", "call", "repo", "done", "project_turn", "chat_turn", "reply", "stop", "batch", "working_batch", "project_end", "chat_end", "files", "next"];
+RG_MESSAGES :: [15] string.["EventLine", "EventLine", "CallLine", "RepoLine", "DoneLine", "ProjectTurnLine", "ChatTurnLine", "ReplyLine", "StopLine", "EventBatch", "EventBatch", "TurnEnd", "TurnEnd", "", "NextTurn"];
+RG_KINDS :: [15] string.["event", "event", "call", "repo", "done", "turn", "turn", "reply", "stop", "", "", "", "", "", ""];
 
 RgDescriptor :: struct {
   types: [256] D_Type; enums: [64] D_Type; fields: [2048] D_Field; values: [1024] D_Value; groups: [4096] string;
@@ -129,6 +129,7 @@ rg_write :: (writer: string, values: string, out: [] u8) -> int {
   if writer == "event" { rw_event(o[..], rg_s(v[..], "type"), rg_s(v[..], "key"), rg_s(v[..], "value")); }
   else if writer == "tool" { rw_tool(o[..], rg_s(v[..], "name"), rg_s(v[..], "detail")); }
   else if writer == "call" { rw_call(o[..], rg_i(v[..], "id"), rg_s(v[..], "tool"), rg_s(v[..], "args")); }
+  else if writer == "repo" { rw_repo(o[..], rg_i(v[..], "id"), rg_s(v[..], "body")); }
   else if writer == "done" {
     rw_done(o[..], ifx rg_s(v[..], "layout") == "chat" then RW_DONE_CHAT else RW_DONE_PROJECT, rg_s(v[..], "status"), rg_s(v[..], "answer"),
             rg_s(v[..], "error"), rg_f(v[..], "cost_usd"), rg_b(v[..], "credential_expired"));
@@ -137,7 +138,7 @@ rg_write :: (writer: string, values: string, out: [] u8) -> int {
                                  rg_f(v[..], "budget_usd"), rg_b(v[..], "repo"), rg_s(v[..], "cwd"), rg_s(v[..], "today"), out);
   } else if writer == "chat_turn" {
     return rw_chat_turn_write(rg_s(v[..], "turn"), rg_s(v[..], "model"), rg_f(v[..], "budget_usd"), rg_b(v[..], "resumed"), rg_s(v[..], "session"),
-                              rg_s(v[..], "history"), rg_s(v[..], "cwd"), rg_s(v[..], "mirror"), rg_s(v[..], "today"), out);
+                              rg_s(v[..], "history"), rg_s(v[..], "cwd"), rg_s(v[..], "mirror"), rg_b(v[..], "service"), rg_s(v[..], "today"), out);
   } else if writer == "reply" { return rw_reply_write(rg_s(v[..], "id"), rg_i(v[..], "status"), rg_s(v[..], "body"), out); }
   else if writer == "stop" { return rw_stop_write(out); }
   else if writer == "batch" {

@@ -95,6 +95,12 @@ deploy() {  # service api-origin repos-secret model chat-suffix
     done
   fi
   local repo_url; repo_url="$(live_env "$1" OA_REPO_URL)"
+  # the indexed repo service's grant key (oa-repo-grant-key[-staging], made by coax/web/repo/vm-deploy.sh
+  # create): with it and OA_REPO_URL, /chat reads the repository through oa-repo and makes no checkout
+  if gcloud secrets describe "oa-repo-grant-key$5" --project "$project" >/dev/null 2>&1; then
+    gcloud secrets add-iam-policy-binding "oa-repo-grant-key$5" --project "$project" --member "serviceAccount:$sa" --role roles/secretmanager.secretAccessor --quiet >/dev/null
+    secrets+=",OA_REPO_GRANT_KEY=oa-repo-grant-key$5:latest"
+  fi
   gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \
     --no-allow-unauthenticated --service-account "$sa" --no-cpu-throttling \
     --port 8080 --cpu 1 --memory 4Gi --min-instances 0 --max-instances 1 --concurrency 20 --timeout 900 \

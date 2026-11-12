@@ -211,8 +211,10 @@ static void credential(int fd, const char *body) {
 // has no checkout to make or refresh. Its working directory is then an empty one that stays the same from
 // turn to turn, so the CLI finds the conversation's session again.
 static const char *chat_mirror(void) { return env("OA_REPO_MIRROR", ""); }
+// The repo service (OA_REPO_URL with its grant key, runner.c): the agent reads through it, and no copy is made here.
+static bool chat_service(void) { return *env("OA_REPO_URL", "") && repo_key[0]; }
 static const char *chat_repo_dir(char *out, size_t cap) {
-  if (*chat_mirror()) { snprintf(out, cap, "%s/chat-space", env("OA_AGENT_WORK", "/tmp/oa-agent")); mkdir(env("OA_AGENT_WORK", "/tmp/oa-agent"), 0700); mkdir(out, 0700); return out; }
+  if (*chat_mirror() || chat_service()) { snprintf(out, cap, "%s/chat-space", env("OA_AGENT_WORK", "/tmp/oa-agent")); mkdir(env("OA_AGENT_WORK", "/tmp/oa-agent"), 0700); mkdir(out, 0700); return out; }
   const char *d = env("OA_CHAT_DIR", "");
   if (*d) snprintf(out, cap, "%s", d); else snprintf(out, cap, "%s/chat-repo", env("OA_AGENT_WORK", "/tmp/oa-agent"));
   return out;
@@ -459,7 +461,14 @@ static void chat_turn(const char *next) {
   snprintf(dir, sizeof dir, "%s/chat-%lld-%d", env("OA_AGENT_WORK", "/tmp/oa-agent"), id, (int)getpid());
   snprintf(home, sizeof home, "%s/home", dir); snprintf(cfg, sizeof cfg, "%s/cfg", dir);
   if (!uuid_ok(sid)) { chat_end(id, "failed", "\"\"", "\"the conversation has no session\"", 0, false); goto out; }
-  if (!*chat_mirror()) {
+  if (chat_service()) {
+    // this turn's read grant on the repository, an hour at most (coax/web/repo/grant.coax)
+    char session[64]; snprintf(session, sizeof session, "chat-%lld", id);
+    int64_t gn = runner_coax_repo_grant((coax_string){repo_key, 64}, (coax_string){"openagents", 10}, (int64_t)time(NULL) + 3000,
+                                        (coax_string){session, (int64_t)strlen(session)}, (coax_v_u8){(uint8_t *)repo_grant, sizeof repo_grant - 1});
+    repo_grant[gn > 0 ? gn : 0] = 0;
+    if (gn <= 0) { chat_end(id, "failed", "\"\"", "\"the runner could not make a grant to read the code\"", 0, false); goto out; }
+  } else if (!*chat_mirror()) {
     // the page's status line while the copy refreshes
     text eb = {0}, eo = {0};
     WIRE(&eb, rw_working_batch_write(id, cs("getting the latest code"), room));
@@ -492,7 +501,7 @@ static void chat_turn(const char *next) {
     double budget = atof(cap) > 0 ? atof(cap) - atof(spent) : 0;
     char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
     WIRE(&first, rw_chat_turn_write(cs(turn_json), cs(chat_model(model)), budget > 0 ? budget : (atof(cap) > 0 ? 0.0001 : 0), resumed, cs(sid),
-                                    cs(resumed ? "[]" : history), cs(repo), cs(chat_mirror()), cs(today), room));
+                                    cs(resumed ? "[]" : history), cs(repo), cs(chat_service() ? "" : chat_mirror()), chat_service(), cs(today), room));
     engine_bin = env("OA_CHAT_ENGINE", "/usr/local/bin/oa-chat-turn");
     snprintf(engine_cfg, sizeof engine_cfg, "%s", cfg);
     run_engine("runner", first.p, id, repo, home, &answer, &error, &cost, status);
@@ -504,6 +513,7 @@ static void chat_turn(const char *next) {
   chat_end(id, status, answer.p, error.p, cost, resumed);
 out:
   turn_credential_done();
+  OPENSSL_cleanse(repo_grant, sizeof repo_grant);
   remove_dir(dir);
   free(turn_json); free(model); free(sid); free(answer.p); free(error.p);
 }
