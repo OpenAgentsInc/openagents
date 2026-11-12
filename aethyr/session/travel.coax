@@ -353,7 +353,22 @@ travel_recover :: (w: [] TravelWorld, r: int) -> int #effects(reads, writes, tra
     r := ifx o.moved then 1 else 0;
     #assert w[0].now == 0 && w[0].rec[0].state.hp == (ifx point >= TO_PREPARED then 70 else 0);
     #assert w[0].rooms[r].bodies[0].last_cmd == 2;
+    repeats := (ifx point >= TO_COMMITTED && lost == 1 then 1 else 0) + (ifx point >= TO_ACTIVATED && lost == 1 then 1 else 0);
+    #assert o.step_ok == point + 1 + repeats && o.step_err == 0 && o.pre_bodies == (ifx point == TO_ACTIVATED then 2 else 1);
     #assert o.owners == 1 && o.bodies == 1 && o.routed && o.profile_kept && o.settled && o.next_ok && o.other_refused && o.places_free && o.down_refused;
     #assert o.moved == (point >= TO_COMMITTED) && o.recovery_steps == to_steps(point) && o.recovery_steps <= TRAVEL_RECOVERY;
   } } }
+  // Counterfactuals in the oracle: an unready destination fails every step; skipping the crash
+  // lets the live source run command 50 (or leaves the destination's reservation set); stealing
+  // ownership lets the other room take command 2; a larger xp delta breaks next_ok's check.
+  u: [1] TravelWorld; uo := to_sim(u[..], TO_ROUTED, 0, false, false, true, false, 1);
+  #assert uo.step_ok == 0 && uo.step_err == 5 && uo.owners == -1;
+  c0: [1] TravelWorld; co0 := to_sim(c0[..], TO_RESERVED, 0, false, true, false, false, 1);
+  #assert !co0.down_refused && c0[0].rooms[0].bodies[0].last_cmd == 50 && c0[0].rooms[0].bodies[0].xp == 16 && co0.recovery_steps == 0;
+  c1: [1] TravelWorld; co1 := to_sim(c1[..], TO_RESERVED, 1, false, true, false, false, 1);
+  #assert !co1.down_refused && c1[0].rooms[1].reserved == 1;
+  st: [1] TravelWorld; sto := to_sim(st[..], TO_ROUTED, 0, false, true, true, true, 1);
+  #assert !sto.other_refused && !sto.next_ok && st[0].rooms[0].bodies[0].last_cmd == 2 && st[0].rooms[0].bodies[0].xp == 16;
+  xp: [1] TravelWorld; xpo := to_sim(xp[..], TO_ROUTED, 0, false, true, true, false, 2);
+  #assert !xpo.next_ok && xp[0].rooms[1].bodies[0].xp == 17;
 }

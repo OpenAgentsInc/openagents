@@ -6,7 +6,8 @@ TRAVEL_POINTS :: 5;
 TO_BODY :: TravelBody.{hp = 70, effect = 2, effect_until = 900, cooldown = 40, xp = 5, group = 8};
 
 TravelOutcome :: struct {
-  owners: int; bodies: int; routed: bool; profile_kept: bool; recovery_steps: int; moved: bool;
+  owners: int; bodies: int; pre_bodies: int; step_ok: int; step_err: int;
+  routed: bool; profile_kept: bool; recovery_steps: int; moved: bool;
   settled: bool; next_ok: bool; other_refused: bool; places_free: bool; down_refused: bool;
 }
 
@@ -26,26 +27,41 @@ to_places_free :: (w: [] TravelWorld, r: int) -> bool {
   return w[0].rooms[0].reserved == 0 && w[0].rooms[1].reserved == 0 && w[0].rooms[r].used == 1 && w[0].rooms[1 - r].used == 0;
 }
 
-to_journey :: (w: [] TravelWorld, point: int, who: int, lost: bool) -> TravelOutcome {
+to_tally :: (out: [] TravelOutcome, st: int) {
+  if st == TRAVEL_OK { out[0].step_ok += 1; } else { out[0].step_err += 1; }
+}
+
+to_sim :: (w: [] TravelWorld, point: int, who: int, lost: bool, ready_to: bool, do_crash: bool, steal_other: bool, next_xp: int) -> TravelOutcome {
   travel_world(w);
-  ok := travel_join(w, 0, 0, TO_BODY) && travel_command(w, 0, 0, 1, 10) && travel_reserve(w, 0, 0, 1) == TRAVEL_OK;
-  if point >= TO_PREPARED { ok = ok && travel_prepare(w) == TRAVEL_OK; }
-  if point >= TO_COMMITTED { ok = ok && travel_commit(w) == TRAVEL_OK; if lost { ok = ok && travel_commit(w) == TRAVEL_OK; } }
-  if point >= TO_ACTIVATED { ok = ok && travel_activate(w) == TRAVEL_OK; if lost { ok = ok && travel_activate(w) == TRAVEL_OK; } }
-  if point >= TO_ROUTED { ok = ok && travel_route(w) == TRAVEL_OK; }
-  travel_crash(w, who);
-  out: TravelOutcome;
-  out.down_refused = !travel_command(w, who, 0, 50, 1) && w[0].rooms[who].reserved == 0;
-  out.recovery_steps = travel_recover(w, who);
-  out.owners = ifx ok then travel_owners(w, 0) else -1;
-  out.bodies = travel_bodies(w, 0);
+  w[0].rooms[1].ready = ready_to;
+  out: [1] TravelOutcome;
+  if travel_join(w, 0, 0, TO_BODY) && travel_command(w, 0, 0, 1, 10) { to_tally(out[..], travel_reserve(w, 0, 0, 1)); }
+  else { out[0].step_err += 1; }
+  if point >= TO_PREPARED { to_tally(out[..], travel_prepare(w)); }
+  if point >= TO_COMMITTED { to_tally(out[..], travel_commit(w)); if lost { to_tally(out[..], travel_commit(w)); } }
+  if point >= TO_ACTIVATED { to_tally(out[..], travel_activate(w)); if lost { to_tally(out[..], travel_activate(w)); } }
+  if point >= TO_ROUTED { to_tally(out[..], travel_route(w)); }
+  out[0].pre_bodies = travel_bodies(w, 0);
+  if do_crash { travel_crash(w, who); }
+  out[0].down_refused = !travel_command(w, who, 0, 50, 1) && w[0].rooms[who].reserved == 0;
+  if do_crash { out[0].recovery_steps = travel_recover(w, who); }
+  out[0].owners = ifx out[0].step_err == 0 then travel_owners(w, 0) else -1;
+  out[0].bodies = travel_bodies(w, 0);
   r := ifx w[0].rooms[1].bodies[0].here then 1 else 0;
-  out.routed = w[0].route[0] == r;
-  out.moved = r == 1;
-  out.profile_kept = to_profile_kept(w[0].rooms[r].bodies[0]);
-  out.settled = travel_settled(w);
-  out.places_free = to_places_free(w, r);
-  out.other_refused = !travel_command(w, 1 - r, 0, 2, 1);
-  out.next_ok = travel_command(w, r, 0, 2, 1) && w[0].rooms[r].bodies[0].xp == 16;
-  return out;
+  out[0].routed = w[0].route[0] == r;
+  out[0].moved = r == 1;
+  out[0].profile_kept = to_profile_kept(w[0].rooms[r].bodies[0]);
+  out[0].settled = travel_settled(w);
+  out[0].places_free = to_places_free(w, r);
+  if steal_other {
+    b := w[0].rooms[r].bodies[0];
+    _ := control_release(w[0].dir[..], CharacterId.{value = 0}, w[0].rooms[r].id, b.gen);
+    _ = travel_join(w, 1 - r, 0, b);
+  }
+  out[0].other_refused = !travel_command(w, 1 - r, 0, 2, 1);
+  out[0].next_ok = travel_command(w, r, 0, 2, next_xp) && w[0].rooms[r].bodies[0].xp == 16;
+  return out[0];
+}
+to_journey :: (w: [] TravelWorld, point: int, who: int, lost: bool) -> TravelOutcome {
+  return to_sim(w, point, who, lost, true, true, false, 1);
 }
