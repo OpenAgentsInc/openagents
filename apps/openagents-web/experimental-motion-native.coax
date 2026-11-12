@@ -1,5 +1,5 @@
 #load "../../everglade/zone.coax";
-#load "../../everglade/shared/everglade-step.coax" as controller;
+#load "everglade-step.coax" as controller;
 #load "../../aethyr/walk.coax" as walker;
 #load "../../aethyr/collide.coax" as collision;
 #load "../../coax/lib/sys/tool.coax";

@@ -1640,7 +1640,7 @@ tool_main :: () -> int #export_c #effects(all) {
   dir := args_value(a[..], "--out", btext(db[..]));
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
   inputs:[1]RtqInputs;
-  for file:[16]string.["coax/web/drift-placement.coax","verse/everglade/points.coax","aethyr/world/points.coax","coax/web/map-points.coax","coax/web/room/worker.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
+  for file:[17]string.["coax/web/drift-placement.coax","verse/everglade/points.coax","aethyr/world/points.coax","coax/web/map-points.coax","coax/web/room/worker.coax","coax/web/room/worker-profile.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
     if !rtq_input_add(inputs[..],file) {tool_errln("Cannot fence the actual drift inputs.");return 1;}
   }
   self:[4096]u8;self_n:=cxproc_self_path(self[..]);

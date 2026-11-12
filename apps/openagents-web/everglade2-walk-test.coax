@@ -3,7 +3,7 @@
 // on its top, stop at a trunk, and run the path, at Everglade II's own pace.
 //   coax/bin/coax test --library apps/openagents-web/everglade2-walk-test.coax
 #load "everglade2.coax";
-#load "../../everglade/shared/everglade-step.coax" as step;
+#load "everglade-step.coax" as step;
 #load "../../aethyr/walk.coax" as walk;
 #load "../../aethyr/query.coax" as scaled;
 

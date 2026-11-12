@@ -44,7 +44,7 @@
 #load "people-rig.coax";
 #load "../rules/srd5-combat.coax";
 #load "../../aethyr/stand.coax";
-#load "../../everglade/shared/everglade-handles.coax";
+#load "../../apps/openagents-web/everglade-handles.coax";
 
 WATCH_NEW :: 6;                        // the watch past the two gate guards
 WATCH_REIN :: 13;                      // the heat's responders at most at once: WANTED 5's roster (LADDER)

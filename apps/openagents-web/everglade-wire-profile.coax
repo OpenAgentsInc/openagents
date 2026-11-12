@@ -19,7 +19,7 @@
 //   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v5.json
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #import "Basic";
-#load "../../everglade/shared/everglade-wire.coax";
+#load "everglade-wire.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";

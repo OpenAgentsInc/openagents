@@ -13,7 +13,7 @@
 // and what stands, and the velocity your body's clip goes by.
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "move:"
 
-#load "../../everglade/shared/everglade-move-types.coax";
+#load "everglade-move-types.coax";
 
 EG_MOVE_BODIES :: 48;      // the city's bodies round you at most (the fountain, the piles, the Walls of Stone, trunks, rocks)
 EG_MOVE_HULLS :: 3;        // rowboats' hulls, 7 floats each

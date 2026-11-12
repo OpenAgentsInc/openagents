@@ -3,7 +3,7 @@
   "version": 5,
   "min": 5,
   "pins": {"engine": 1, "rules": 1, "content": 1},
-  "source": "everglade/shared/everglade-wire.coax",
+  "source": "apps/openagents-web/everglade-wire.coax",
   "check": "coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v5.json",
   "spec": "docs/protocol/everglade-session-v5.md",
   "forest": {

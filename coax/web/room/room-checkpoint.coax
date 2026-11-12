@@ -143,7 +143,7 @@ ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   c.n=[17]int.[2,tk.owner,v[0].vit.gen,0,v[0].wall_ms,v[0].wall_ms,pins.engine,pins.rules,pins.content,hero.hp,hero.hp_max,ev_xp_of(v,k, s_id),v[0].eg[k].wanted[s],eg_round(st.pose.x*1000),eg_round(st.pose.y*1000),eg_round(st.pose.z*1000),eg_round(st.pose.yaw*1000)];
   c.dead=hero.dead&&hero.hp<=0;c.state[0]=ifx v[0].eg[k].rules[0].klass[s]==1 then 1 else 0;   // the capture's class bit: the Warlock or not (a Character Create class comes back with its hello)
   c.state[1]=ifx (st.flags&EV_DEMO_FLAG)!=0&&tk.admin then 1 else 0;c.state[2]=hero.temp;
-  c.state[3]=0;c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];   // state[3]: v1's Repair wait, 0 (Everglade II has no Repair, #13346)
+  c.state[3]=rs_max(0,trv_repair_ticks()-(v[0].eg[k].tick-st.repaired));c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<CK_USES{c.state[16+q]=hero.uses[q];}
   // Everglade II also carries the seat's rest (profile 3)
   rest:=CharacterRest.{};if rs_carry_out(v[0].eg[k].rules[0].b[..],EGB_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;rest.more=true;for q:0..<CC_MORE{rest.uses[q]=hero.uses[CK_USES+q];}}
@@ -173,7 +173,7 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   hero:=v[0].eg[k].rules[0].b[0].c[EGB_SEAT+s..<EGB_SEAT+s+1];
   hero[0].hp=rs_min(c.n[9],hero[0].hp_max);hero[0].dead=c.dead;hero[0].temp=c.state[2];
   for q:0..<10{hero[0].slots[q]=rs_min(c.state[6+q],hero[0].slots_max[q]);}for q:0..<CK_USES{hero[0].uses[q]=rs_min(c.state[16+q],hero[0].uses_max[q]);}
-  v[0].eg[k].seat[s].last_cast=v[0].eg[k].tick-(EG_CAST_GAP-c.state[4]);v[0].ev[k].down[s]=c.state[5];
+  v[0].eg[k].seat[s].repaired=v[0].eg[k].tick-(trv_repair_ticks()-c.state[3]);v[0].eg[k].seat[s].last_cast=v[0].eg[k].tick-(EG_CAST_GAP-c.state[4]);v[0].ev[k].down[s]=c.state[5];
   v[0].ev[k].fought[s]=v[0].eg[k].tick+1; // a restart is not a free out-of-combat Long Rest
   v[0].eg[k].wanted[s]=c.n[12];v[0].eg[k].seat[s].want_seed=c.n[12];
   // a profile 3 rest resumes where it was, without offline credit; one that does not fit this body is dropped

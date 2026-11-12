@@ -24,7 +24,7 @@ source_prefix=""
 # The controller's unit beside the room's (everglade-step.coax, with aethyr/player.coax): Everglade II's
 # rooms step every seat with it on their land (room-world.c world2_*), as the page does. v1's city and
 # its units are the frozen build's (everglade/server/legacy/v1.sh, docs/decisions/0005, #13267).
-units=(everglade/shared/everglade-step.coax)
+units=(apps/openagents-web/everglade-step.coax)
 for u in "${units[@]}"; do
   n="$(basename "$u" .coax)"
   (cd "$source_root" && "$coax" c "${source_prefix}$u" --library --header "$work/$n.h" > "$work/$n.c")

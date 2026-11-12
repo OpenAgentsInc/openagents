@@ -109,8 +109,8 @@ proto proto/openagents/psionic/responses/v1alpha1/responses.proto  # in no profi
 proto proto/openagents/options/v1alpha2/numeric.proto  # in no profile by name; nostr/event/v1alpha2/event.proto imports it; add it to a profile or mark it no-consumer (#13250)
 
 # Codecs outside their owning context's folders (#13316).
-codec everglade-session-v5 everglade/shared/everglade-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
-codec everglade-link-input-v1 everglade/shared/everglade-link-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
+codec everglade-session-v5 apps/openagents-web/everglade-wire.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
+codec everglade-link-input-v1 apps/openagents-web/everglade-link-wire.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
 codec orbit-session-v2 apps/openagents-web/orbit-session.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
 codec openagents.account.v1alpha1 coax/web/api/agent-wire.coax  # identity codec outside coax/web/api/auth* (#13316)
 codec openagents.metareal.haunt.v1alpha1 verse/haunt.coax  # engine codec still lives in verse/ (#13316)

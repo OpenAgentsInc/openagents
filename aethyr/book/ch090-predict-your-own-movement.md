@@ -109,7 +109,7 @@ The page steps inputs 101 to 106. The server's frame for tick `t` says
 
 ```shell
 coax/bin/coax test aethyr/walk.coax --only "walk: the intent"
-coax/bin/coax test everglade/shared/everglade-step.coax --only "step:"
+coax/bin/coax test apps/openagents-web/everglade-step.coax --only "step:"
 ```
 
 ```text

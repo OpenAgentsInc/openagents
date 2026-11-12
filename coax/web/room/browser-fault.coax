@@ -1,6 +1,6 @@
 // Real page faults use the pair driver's existing muted headless browsers,
 // producer probes, socket hooks and room fixtures. No presentation-drift claim.
-#load "../../../everglade/shared/everglade-wire.coax";
+#load "../../../apps/openagents-web/everglade-wire.coax";
 
 #test "browser faults require permitted loopback origins and encode an incomplete actual wire snapshot" {
   #assert ef_local("http://127.0.0.1:61252") && ef_local("http://localhost:61252");

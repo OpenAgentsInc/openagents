@@ -1773,9 +1773,10 @@ still refuses clearance. `drift-snapshot.coax` is authority (10 mutants killed,
 zero survivors). Neither the 32 m clearance nor the 600 µs supplemental worker
 gate changes. Current target evidence: `docs/verification/worker-12981-2026-11-07/`.
 
-The worker's river unit, its Linux `-O3` and its bounded unrolling left with v1's
-city units (#13346: the worker links the room and everglade-step only, as build.sh
-does; `worker-profile.coax` went with them). Paired replay hosts receive the same complete
+The Linux release worker retains river's C `-O3` with loop unrolling disabled;
+Mac and development profiles and all strict arithmetic flags are unchanged.
+`worker-profile.coax` admits that flag only for the Linux release river unit
+(4 mutants killed, zero survivors). Paired replay hosts receive the same complete
 control answer. Shifted taps wait through a processed input step. The gravity
 rehearsal uses ordinary movement to clear the gate lintel and place both loose
 stable props safely inside its field; it still contains both complete NPC

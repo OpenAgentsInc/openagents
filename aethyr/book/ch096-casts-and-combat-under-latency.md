@@ -39,7 +39,7 @@ the target walks during the bar. Line of sight runs from the caster's eyes
 to just over and short of where the cast lands, against the room's own copy
 of the town; low pieces such as crates and fences don't block it.
 
-<!-- source: everglade/shared/cast-limits.coax cast-reach -->
+<!-- source: apps/openagents-web/everglade-cast-rules.coax cast-rules -->
 ```jai
 // ---- range and sight
 CR_SLACK :: 3.0;          // m past a spell's range at its start: where the page and the server have you differ a little
@@ -50,10 +50,7 @@ CR_SHORT :: 1.0;          // m short of the aim it ends: the wall or roof you ai
 CR_AIM_UP :: 0.5;         // m over the aim it ends
 CR_LOW :: 1.2;            // m: a piece lower than this (a crate, a fence, a bench) doesn't block the line
 CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you; the rest is the wire's cm and your pose)
-```
 
-<!-- source: apps/openagents-web/everglade-cast-rules.coax cast-rules -->
-```jai
 // ---- time
 CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it
 CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon

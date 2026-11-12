@@ -139,7 +139,7 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat
   n.hello = o.hello; n.joined_ms = o.joined_ms;
   n.look = o.look; n.look_n = o.look_n; n.klass = o.klass; n.klass_n = o.klass_n; n.flags = o.flags; n.name = o.name; n.name_n = o.name_n;
   n.sat_class = o.sat_class; n.class_report = o.class_report;
-  n.last_cast = o.last_cast;
+  n.last_cast = o.last_cast; n.repaired = o.repaired;
   n.checkpoint_hello = o.checkpoint_hello;
   n.want_seed = o.want_seed; n.hold_due = o.hold_due; n.back_hp = o.back_hp; n.back_dead = o.back_dead;
   n.wcond = o.wcond; n.fx = o.fx;

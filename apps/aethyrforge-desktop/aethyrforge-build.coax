@@ -67,7 +67,7 @@ af_newest :: (dir: string) -> int {
 af_stack_stamp :: (root: string, deadline: int) -> int {
   path: [4096] u8; script := fs_join(root, "coax/web/tool.sh", path[..]);
   argv := [11] string.[script, "wasm-size", "sources", "coax/web/room/room.coax", "apps/openagents-web/everglade5e.coax",
-    "everglade/shared/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax",
+    "apps/openagents-web/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax",
     "verse/everglade/guard-guide-policy.coax", "apps/openagents-web/everglade5e-rules.coax", "aethyr/render/carriers/everglade.coax"];
   h := proc_new(); if h < 0 { return -1; }
   ok := proc_cwd(h, root); for a: argv { ok = ok && proc_arg(h, a); }
@@ -104,7 +104,7 @@ af_native_stamp :: (root:string,source:string,deadline:int)->int {
 af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:int)->bool {
  paths:[8][4096]u8;metal:=fs_join(work,"metal",paths[0][..]);if !fs_mkdir(metal) {return false;}
  names:=[11]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","AppKitInput","HostNetwork","entropy-policy"];
- sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-images.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
+ sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-images.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
  compiler_stamp:=fs_mtime_ns(coax);producer_stamp:=0;
  for name,i:names {stamp:=af_native_stamp(root,sources[i],deadline);if stamp<0 {return false;}if compiler_stamp>stamp {stamp=compiler_stamp;}
   text:[128]u8;j:[1]Jo;jo_start(j[..],text[..]);jo_put(j[..],name);jo_put(j[..],".o");object:=fs_join(metal,jo_text(j[..]),paths[1][..]);
@@ -152,7 +152,7 @@ tool_main :: () -> int #export_c #effects(all) {
     print("Building Everglade's existing WebGPU engine…\n");
     cmd := [10] string.["bash", af_path(p[..], root, "coax/web/wasm.sh"), af_path(p[..], root, "apps/openagents-web/everglade5e.coax"),
       af_path(p[..], root, "apps/openagents-web/everglade5e-face.c"), wasm,
-      af_path(p[..], root, "everglade/shared/everglade-step.coax"), af_path(p[..], root, "verse/grid.coax"),
+      af_path(p[..], root, "apps/openagents-web/everglade-step.coax"), af_path(p[..], root, "verse/grid.coax"),
       af_path(p[..], root, "verse/everglade/river.coax"), af_path(p[..], root, "verse/everglade/guard-guide-policy.coax"),
       af_path(p[..], root, "apps/openagents-web/everglade5e-rules.coax")];
     page_job = af_start(cmd[..]); if page_job < 0 { if room_job >= 0 { released := proc_release(room_job); } return 1; }

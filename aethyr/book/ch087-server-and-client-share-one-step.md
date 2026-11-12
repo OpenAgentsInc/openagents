@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The page and oa-room run the same Coax
 > movement step on the same input
-> ([everglade-step.coax](../../everglade/shared/everglade-step.coax),
+> ([everglade-step.coax](../../apps/openagents-web/everglade-step.coax),
 > #12706), the same SRD rules
 > ([battle.coax](../../aethyr/rules/srd/battle.coax); the room's battle over them is
 > [everglade/server/battle.coax](../../everglade/server/battle.coax)),
@@ -36,7 +36,7 @@ Both call the step in the same order on the same input and the same world:
 3. `eg_step_advance` moves the controller among the world's bodies.
 4. `everglade_move_after` applies lifts, currents and the city's edge.
 
-<!-- source: everglade/shared/everglade-step.coax shared-step -->
+<!-- source: apps/openagents-web/everglade-step.coax shared-step -->
 ```jai
 // Before the advance: a blast's throw into your velocity; held or busy, no input of yours; your input;
 // prone or caught, still; the pace and grip; the camera's yaw; a fork's low gravity while you're up.
@@ -83,7 +83,7 @@ setup. Locally, `bin/room --dev` serves the same document the page reads
 ## Run it
 
 ```shell
-coax/bin/coax test everglade/shared/everglade-step.coax --only "step:"
+coax/bin/coax test apps/openagents-web/everglade-step.coax --only "step:"
 ```
 
 ```text

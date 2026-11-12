@@ -11,8 +11,8 @@
 //   - your inputs until the server steps them (NetInput) and its word on you (NetFix).
 // It holds no page's world: the pages say where things are drawn.
 //   coax/bin/coax test --library apps/openagents-web/everglade-net-core.coax
-#load "../../everglade/shared/everglade-wire.coax";
-#load "../../everglade/shared/everglade-move-types.coax";
+#load "everglade-wire.coax";
+#load "everglade-move-types.coax";
 
 NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
 NET_HIST :: 64;            // your inputs kept for the server's ACK

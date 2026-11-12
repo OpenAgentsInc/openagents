@@ -1,0 +1,16 @@
+// The supported Linux LLVM profile must fit the historical worker byte gate
+// without changing the Mac profile, development builds or strict arithmetic.
+#authority;
+
+#test "only the Linux release river unit bounds loop unrolling" {
+  for unit:-1..<11 {
+    #assert !wk_bound_unroll(false,false,unit);
+    #assert !wk_bound_unroll(false,true,unit);
+    #assert !wk_bound_unroll(true,true,unit);
+    if unit==5 { #assert wk_bound_unroll(true,false,unit); }
+    else { #assert !wk_bound_unroll(true,false,unit); }
+  }
+}
+wk_bound_unroll :: (linux:bool,dev:bool,unit:int)->bool #effects() {
+  return linux && !dev && unit==5;
+}

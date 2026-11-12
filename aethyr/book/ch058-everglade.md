@@ -10,7 +10,7 @@ fire, boats and the Cultist Raid. Its current page is
 [`everglade5e.coax`](../../apps/openagents-web/everglade5e.coax), with content
 in [`verse/everglade/`](../../verse/everglade/plan.coax) and the shared
 movement step in
-[`everglade-step.coax`](../../everglade/shared/everglade-step.coax).
+[`everglade-step.coax`](../../apps/openagents-web/everglade-step.coax).
 
 ## Read the implementation by responsibility
 

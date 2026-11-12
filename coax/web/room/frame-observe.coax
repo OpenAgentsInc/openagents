@@ -1,5 +1,5 @@
 // Exact application-frame observations. Queue acceptance is not TCP delivery.
-#load "../../../everglade/shared/everglade-wire.coax";
+#load "../../../apps/openagents-web/everglade-wire.coax";
 #authority;
 FO_KEYS::260;FO_PLAYER::256;FO_FOLK::257;FO_MADE::258;FO_HEADER::259;
 FrameObserved::struct{out_b:[FO_KEYS]int;out_n:[FO_KEYS]int;in_b:[128]int;in_n:[128]int;out_bytes:int;out_frames:int;in_bytes:int;in_frames:int;refused_bytes:int;refused_frames:int;overflow:[1]bool;}

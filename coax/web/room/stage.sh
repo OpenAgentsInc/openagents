@@ -19,7 +19,7 @@ mkdir -p "$out/src"
 coax="${COAX:-coax/bin/coax}"
 "$coax" c coax/web/room/room.coax --library --header "$out/src/room.h" > "$out/src/room.c"
 # the controller's unit beside the room's (room-world.c), as build.sh links it (#13267)
-for u in everglade/shared/everglade-step.coax; do
+for u in apps/openagents-web/everglade-step.coax; do
   n="$(basename "$u" .coax)"
   "$coax" c "$u" --library --header "$out/src/$n.h" > "$out/src/$n.c"
 done

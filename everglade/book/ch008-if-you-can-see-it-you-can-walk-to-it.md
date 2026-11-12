@@ -35,7 +35,7 @@ invisible wall is a bug, not a design choice.
 `e2m_world` gathers the colliders near you each step: up to 48 trunks
 (`E2_NEAR_BODIES`) and 16 rocks (`E2_NEAR_HULLS`). The shared step,
 `eg_step_advance_among` in
-[`everglade/shared/everglade-step.coax`](../../everglade/shared/everglade-step.coax),
+[`apps/openagents-web/everglade-step.coax`](../../apps/openagents-web/everglade-step.coax),
 moves you among them. The page, NPC first aid and the room server call the same
 step, so the server agrees with what you see.
 

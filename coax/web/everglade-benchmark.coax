@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../lib/net/cdp.coax";
 #load "everglade-benchmark-fixture.coax";
-#load "../../everglade/shared/everglade-wire.coax";
+#load "../../apps/openagents-web/everglade-wire.coax";
 eb_spawn :: (argv:[]string)->int {
   p:=proc_new();if p<0{return -1;}for a:argv {if !proc_arg(p,a){_:=proc_release(p);return -1;}}
   if proc_start(p)!=0 {_:=proc_release(p);return -1;}return p;

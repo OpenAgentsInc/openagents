@@ -8,7 +8,7 @@ the Verse.
 
 Up to 16 players share a room. When a room is full, the next player joins
 another room. The number is `WIRE_SEATS` in
-[`everglade-wire.coax`](../everglade/shared/everglade-wire.coax), which the
+[`everglade-wire.coax`](../apps/openagents-web/everglade-wire.coax), which the
 room server's `EG_SEATS` matches.
 
 - To play, go to [everglade.world/play](https://everglade.world/play).

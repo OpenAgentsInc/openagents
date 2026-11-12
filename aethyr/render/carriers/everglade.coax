@@ -3,4 +3,4 @@
 #load "../native-host.coax";
 
 #load "../../../verse/everglade/guard-guide-policy.coax" as guard_policy;
-#load "../../../everglade/shared/everglade-step.coax" as movement;
+#load "../../../apps/openagents-web/everglade-step.coax" as movement;
