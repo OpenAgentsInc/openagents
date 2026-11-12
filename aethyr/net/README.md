@@ -75,6 +75,15 @@ channel is its own stream, so a resend in one never holds up another.
   every cue and outcome, goes out of band on the combat stream. A tick's
   state replaces the last tick's if it still waits for the congestion window
   (dropped stale, at the sender).
+- **Profiles.** [`aethyr-transport-v1.json`](../../proto/verse/aethyr-transport-v1.json)
+  pins the mark byte, each channel's number and an input datagram with a
+  repeat byte ([doc](../../docs/protocol/aethyr-transport-v1.md));
+  [`everglade2-combat-v1.json`](../../proto/verse/everglade2-combat-v1.json)
+  pins `F`, `a` and `d` ([doc](../../docs/protocol/everglade-projectiles-v1.md))
+  beside Everglade II's guard and monster frames
+  ([doc](../../docs/protocol/everglade-guard-monsters-v1.md)). Their checks,
+  `coax/web/room/transport-profile.coax` and `combat-profile.coax`, run the
+  codecs.
 - **The overlay.** `?net` shows `LINK WT LOSS 1.2%` (state ticks lost on the
   way) and `KEY 3 STALE 7 WAIT 0` (snapshots, and the room's word each
   second: datagrams dropped stale and waiting now).

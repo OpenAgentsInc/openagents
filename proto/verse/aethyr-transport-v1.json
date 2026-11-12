@@ -1,0 +1,30 @@
+{
+  "identity": "aethyr-transport-v1",
+  "check": "coax/web/tool.sh coax/web/room/transport-profile.coax proto/verse/aethyr-transport-v1.json",
+  "codec": "aethyr/net/transport.coax",
+  "doc": "docs/protocol/aethyr-transport-v1.md",
+  "scope": "The bytes a page's pipe and a room's WebTransport session carry for each frame. On a WebSocket every frame is its own bytes, unchanged.",
+  "url_prefix": "wt+",
+  "mark": 1,
+  "channels": {"datagram": 0, "combat": 1, "loot": 2, "chat": 3, "session": 4},
+  "datagram_max": 1200,
+  "separator": 10,
+  "same": "~",
+  "owed_max": 6,
+  "input_bytes_max": 96,
+  "frames": [
+    {"transport": "wt", "channel": "datagram", "frame": "t 1234", "hex": "01742031323334"},
+    {"transport": "wt", "channel": "combat", "frame": "t 1234", "hex": "02742031323334"},
+    {"transport": "wt", "channel": "loot", "frame": "t 1234", "hex": "03742031323334"},
+    {"transport": "wt", "channel": "chat", "frame": "t 1234", "hex": "04742031323334"},
+    {"transport": "wt", "channel": "session", "frame": "t 1234", "hex": "05742031323334"},
+    {"transport": "wt", "channel": 9, "frame": "t 1234", "hex": "05742031323334"},
+    {"transport": "ws", "channel": "combat", "frame": "t 1234", "hex": "742031323334"}
+  ],
+  "inputs": [
+    {"seq": 1, "ack": 0, "frame": "I 1 5 0 0 0 0 0 0", "hex": "014920312035203020302030203020302030", "lost": false, "room": ["I 1 5 0 0 0 0 0 0"]},
+    {"seq": 2, "ack": 0, "frame": "I 2 5 0 0 0 0 0 1", "hex": "017e0a4920322035203020302030203020302031", "lost": true, "room": []},
+    {"seq": 3, "ack": 1, "frame": "I 3 6 0 0 0 0 0 2", "hex": "0149203220352030203020302030203020310a4920332036203020302030203020302032", "lost": false, "room": ["I 2 5 0 0 0 0 0 1", "I 3 6 0 0 0 0 0 2"]},
+    {"seq": 4, "ack": 1, "frame": "I 4 6 0 0 0 0 0 3", "hex": "0149203220352030203020302030203020310a7e0a4920342036203020302030203020302033", "lost": false, "room": ["I 4 6 0 0 0 0 0 3"]}
+  ]
+}

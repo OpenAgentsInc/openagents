@@ -19,6 +19,7 @@
 #load "../../aethyr/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
 #load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)
 #load "../../aethyr/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
+#load "../../everglade/server/creature-wire.coax";   // the guard's and the monsters' frames, the room's codec (#13246)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -959,29 +960,24 @@ e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
   if wire_more(t,rd[..]) { return; }
   n[0].familiar_rows=rows; n[0].familiar_tick=tick;
 }
-// g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE: kept in time order, the oldest let go.
+// The guard's row (creature-wire.coax g2): kept in time order, the oldest let go.
 e2n_guard_row :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
-  rd:=[1]WireRd.[wire_rd(t,2)];
-  tick:=wire_num(t,rd[..]); life:=wire_num(t,rd[..]); state:=wire_num(t,rd[..]);
-  x:=wire_num(t,rd[..]); z:=wire_num(t,rd[..]); yaw:=wire_num(t,rd[..]);
-  hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]); swing:=wire_num(t,rd[..]); foe:=wire_num(t,rd[..]);
-  if !rd[0].ok || wire_more(t,rd[..]) || tick<=n[0].guard_tick || life<0 || state<0 || state>4 || hp<0 || max<hp ||
-    x < -200000 || x > 200000 || z < -650000 || z > 200000 || yaw < -7000 || yaw > 7000 || foe < -1 || foe >= 64 { return; }
-  if state==3 && (n[0].guard_n==0 || n[0].guard_rows[n[0].guard_n-1].state!=3) && n[0].mine[E2N_MONS] { n[0].fell_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=false; }
-  row:=E2nGuard.{t=e2n_tick_t(n,tick),life=life,state=state,x=f32(x)/1000,z=f32(z)/1000,yaw=f32(yaw)/1000,hp=hp,max=max,swing=ifx swing>=0 then e2n_tick_t(n,swing) else -1,foe=foe};
+  g:=egc_guard_read(t);
+  if !g.ok || g.tick<=n[0].guard_tick { return; }
+  if g.state==3 && (n[0].guard_n==0 || n[0].guard_rows[n[0].guard_n-1].state!=3) && n[0].mine[E2N_MONS] { n[0].fell_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=false; }
+  row:=E2nGuard.{t=e2n_tick_t(n,g.tick),life=g.life,state=g.state,x=f32(g.x)/1000,z=f32(g.z)/1000,yaw=f32(g.yaw)/1000,hp=g.hp,max=g.max,swing=ifx g.swing>=0 then e2n_tick_t(n,g.swing) else -1,foe=g.foe};
   if n[0].guard_n==E2N_GUARD_ROWS { for q:1..<E2N_GUARD_ROWS { n[0].guard_rows[q-1]=n[0].guard_rows[q]; } n[0].guard_n-=1; }
-  n[0].guard_rows[n[0].guard_n]=row; n[0].guard_n+=1; n[0].guard_tick=tick;
+  n[0].guard_rows[n[0].guard_n]=row; n[0].guard_n+=1; n[0].guard_tick=g.tick;
 }
-// g3 TICK KIND SEAT AMOUNT
+// A blow at or by the guard (creature-wire.coax g3).
 e2n_guard_hit :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
-  rd:=[1]WireRd.[wire_rd(t,2)];
-  tick:=wire_num(t,rd[..]); kind:=wire_num(t,rd[..]); seat:=wire_num(t,rd[..]); amount:=wire_num(t,rd[..]);
-  if !rd[0].ok || wire_more(t,rd[..]) || kind<1 || kind>6 || kind==3 || seat< -1 || seat>=64 || amount<0 || amount>999 { return; }   // 4: his critical hit at a seat, 5 his arrow, 6 its critical hit
-  if seat==n[0].seat && amount>0 && kind==1 { n[0].hit_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=true; }
-  if seat==n[0].seat && amount>0 && kind>=2 { n[0].hurt_n[E2N_FOE_GUARD]+=1; n[0].hurt_by=E2N_FOE_GUARD; }
-  for h:0..<E2N_GUARD_HITS { if !n[0].guard_hits[h].live { n[0].guard_hits[h]=E2nGuardHit.{live=true,t=e2n_tick_t(n,tick),kind=kind,seat=seat,amount=amount}; return; } }
+  h:=egc_guard_hit_read(t);
+  if !h.ok { return; }
+  if h.seat==n[0].seat && h.amount>0 && h.kind==EGC_GUARD_HIT { n[0].hit_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=true; }
+  if h.seat==n[0].seat && h.amount>0 && h.kind>=EGC_GUARD_BLOW { n[0].hurt_n[E2N_FOE_GUARD]+=1; n[0].hurt_by=E2N_FOE_GUARD; }
+  for q:0..<E2N_GUARD_HITS { if !n[0].guard_hits[q].live { n[0].guard_hits[q]=E2nGuardHit.{live=true,t=e2n_tick_t(n,h.tick),kind=h.kind,seat=h.seat,amount=h.amount}; return; } }
 }
 // Where the guard is at the room's time rt (ms): between the two words round it, else the nearest.
 // state 4 (none) before any word.
@@ -1020,51 +1016,40 @@ e2n_guard_at :: (n:[]E2Net,rt:int)->E2nGuard {
   for t:later { e2n_record(n[..],t); }   // nine words: the oldest falls off, eight are kept
   #assert n[0].guard_n==E2N_GUARD_ROWS && n[0].guard_tick==105 && n[0].guard_rows[0].t==2000;
 }
-// h2 TICK N [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...: each monster's row kept in time order
-// (the oldest let go); one the word leaves out is out of view since that tick (mon_seen).
+// The monsters in view (creature-wire.coax h2): each one's row kept in time order (the oldest let go);
+// one the word leaves out is out of view since that tick (mon_seen).
 e2n_mon_rows :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
-  rd:=[1]WireRd.[wire_rd(t,2)];
-  tick:=wire_num(t,rd[..]); count:=wire_num(t,rd[..]);
-  if !rd[0].ok || tick<=n[0].mon_tick || count<0 || count>E2N_MONS { return; }
+  w:=egc_mon_read(t);
+  if !w.ok || w.tick<=n[0].mon_tick || w.count>E2N_MONS { return; }
   rows:[E2N_MONS]E2nMon; ids:[E2N_MONS]int;
-  for q:0..<count {
-    m:=wire_num(t,rd[..]); life:=wire_num(t,rd[..]); kind:=wire_num(t,rd[..]); state:=wire_num(t,rd[..]);
-    x:=wire_num(t,rd[..]); z:=wire_num(t,rd[..]); yaw:=wire_num(t,rd[..]); hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]);
-    act:=wire_num(t,rd[..]); at:=wire_num(t,rd[..]); foe:=wire_num(t,rd[..]);
-    if !rd[0].ok || m<0 || m>=E2N_MONS || life<0 || kind<0 || kind>1 || state<0 || state>5 || hp<0 || max<1 || hp>max || act<0 || act>2 || foe< -1 || foe>=64 ||
-      x < -20000 || x > 20000 || z < -65000 || z > 20000 || yaw < -1000000 || yaw > 1000000 { return; }
+  for q:0..<w.count {
+    r:=w.row[q]; yaw:=r.yaw;
     // any yaw is a facing: wrapped to a half turn, never a reason to drop the word (a circling wolf's once grew a lap at a time)
     while yaw>3142 { yaw-=6283; } while yaw< -3142 { yaw+=6283; }
-    ids[q]=m;
-    rows[q]=E2nMon.{t=e2n_tick_t(n,tick),life=life,kind=kind,state=state,x=f32(x)/100,z=f32(z)/100,yaw=f32(yaw)/1000,hp=hp,max=max,act=act,act_t=ifx at>0 then e2n_tick_t(n,at) else -1,foe=foe};
+    ids[q]=r.m;
+    rows[q]=E2nMon.{t=e2n_tick_t(n,w.tick),life=r.life,kind=r.kind,state=r.state,x=f32(r.x)/100,z=f32(r.z)/100,yaw=f32(yaw)/1000,hp=r.hp,max=r.max,act=r.act,act_t=ifx r.act_tick>0 then e2n_tick_t(n,r.act_tick) else -1,foe=r.foe};
   }
-  if wire_more(t,rd[..]) { return; }
-  n[0].mon_tick=tick;
+  n[0].mon_tick=w.tick;
   for m:0..<E2N_MONS { n[0].mon_seen[m]= -1; }
-  for q:0..<count {
+  for q:0..<w.count {
     m:=ids[q]; b:=m*E2N_MON_ROWS;
     if n[0].mon_n[m]==E2N_MON_ROWS { for r:1..<E2N_MON_ROWS { n[0].mon_rows[b+r-1]=n[0].mon_rows[b+r]; } n[0].mon_n[m]-=1; }
     n[0].mon_rows[b+n[0].mon_n[m]]=rows[q]; n[0].mon_n[m]+=1; n[0].mon_seen[m]=rows[q].t;
   }
 }
-// h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS]
+// A monster's event (creature-wire.coax h3).
 e2n_mon_hit :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
-  rd:=[1]WireRd.[wire_rd(t,2)];
-  tick:=wire_num(t,rd[..]); kind:=wire_num(t,rd[..]); m:=wire_num(t,rd[..]); seat:=wire_num(t,rd[..]); amount:=wire_num(t,rd[..]);
-  e:=E2nMonHit.{live=true,t=e2n_tick_t(n,tick),kind=kind,m=m,seat=seat,amount=amount};
-  if kind==3 {
-    fx:=wire_num(t,rd[..]); fz:=wire_num(t,rd[..]); tx:=wire_num(t,rd[..]); tz:=wire_num(t,rd[..]); fly:=wire_num(t,rd[..]);
-    e.fx=f32(fx)/100; e.fz=f32(fz)/100; e.tx=f32(tx)/100; e.tz=f32(tz)/100; e.fly=f32(fly)/1000;
-    if fly<0 || fly>5000 { return; }
-  }
-  if !rd[0].ok || wire_more(t,rd[..]) || kind<1 || kind>4 || m<0 || m>=E2N_MONS || seat< -1 || seat>=64 || amount<0 || amount>999 { return; }
-  foe:=e2n_mon_kind(n,m);
-  if kind==1 && seat==n[0].seat && amount>0 { n[0].hurt_n[foe]+=1; n[0].hurt_by=foe; }
-  if kind==2 && seat==n[0].seat && amount>0 { n[0].hit_n[foe]+=1; n[0].mine[m]=true; }
-  if kind==4 && n[0].mine[m] { n[0].fell_n[foe]+=1; n[0].mine[m]=false; }
-  for h:0..<E2N_MON_HITS { if !n[0].mon_hits[h].live { n[0].mon_hits[h]=e; return; } }
+  h:=egc_mon_hit_read(t);
+  if !h.ok || h.m>=E2N_MONS { return; }
+  e:=E2nMonHit.{live=true,t=e2n_tick_t(n,h.tick),kind=h.kind,m=h.m,seat=h.seat,amount=h.amount};
+  if h.kind==EGC_MON_LOOSED { e.fx=f32(h.fx)/100; e.fz=f32(h.fz)/100; e.tx=f32(h.tx)/100; e.tz=f32(h.tz)/100; e.fly=f32(h.fly)/1000; }
+  foe:=e2n_mon_kind(n,h.m);
+  if h.kind==EGC_MON_BLOW && h.seat==n[0].seat && h.amount>0 { n[0].hurt_n[foe]+=1; n[0].hurt_by=foe; }
+  if h.kind==EGC_MON_HIT && h.seat==n[0].seat && h.amount>0 { n[0].hit_n[foe]+=1; n[0].mine[h.m]=true; }
+  if h.kind==EGC_MON_FELL && n[0].mine[h.m] { n[0].fell_n[foe]+=1; n[0].mine[h.m]=false; }
+  for q:0..<E2N_MON_HITS { if !n[0].mon_hits[q].live { n[0].mon_hits[q]=e; return; } }
 }
 // Monster m at the room's time rt (ms): between its two words round it, else the nearest; state 4 (gone)
 // with no word, or once the room's words have left it out of view.

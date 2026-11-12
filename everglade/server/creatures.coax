@@ -17,11 +17,11 @@
 // monster gives its SRD XP, split among the players who hurt it (room-events.coax ev_award), lies
 // E2M_CORPSE_S, and a new one stands at home E2M_RESPAWN_S after it fell, once no player is near enough
 // to see it appear.
-//   h2 TICK N [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...   the monsters within EG_VIEW m (cm, mrad;
-//                                         ACT 1 a blow, 2 a shot, its tell from ACT_TICK; FOE a seat or -1)
-//   h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS]   KIND 1 its blow or arrow at SEAT (AMOUNT 0 a miss),
-//                                         2 SEAT's harm at it (0 a miss), 3 an arrow loosed (cm, its flight), 4 it fell
-// The pages draw them (apps/openagents-web/everglade2-monsters.coax).
+// The room tells each page the monsters within EG_VIEW m (h2: ACT 1 a blow, 2 a shot, its tell from
+// ACT_TICK; FOE a seat or -1) and their events (h3: a blow or arrow at a seat, AMOUNT 0 a miss; harm at
+// one; an arrow loosed with its flight; a fall) through the creature frames' codec, creature-wire.coax
+// (proto/verse/everglade2-combat-v1.json). The pages draw them (apps/openagents-web/everglade2-monsters.coax).
+#load "creature-wire.coax";   // h2 and h3: the one codec the page reads them with (#13246)
 
 // The way (dx, dz) points, in radians as atan2(dx, dz) (within a few thousandths: a creature's facing).
 e2_heading :: (dx: f32, dz: f32) -> f32 {
@@ -35,6 +35,7 @@ e2_heading :: (dx: f32, dz: f32) -> f32 {
 }
 E2M_WOLF :: 0; E2M_GOBLIN :: 1;
 E2M_N :: 12;                // 8 wolves (packs of 3, 2 and 3) and the camp's 4 goblins
+#test "e2 monsters: the creature frames name every monster" { #assert E2M_N == EGC_MONS; }
 E2M_GROUPS :: 4;            // the three packs, then the camp
 E2M_IDLE :: 0; E2M_CHASE :: 1; E2M_RETURN :: 2; E2M_DEAD :: 3; E2M_GONE :: 4; E2M_ESCAPE :: 5;
 E2M_ACT_BLOW :: 1; E2M_ACT_SHOT :: 2;
@@ -327,11 +328,9 @@ e2mo_loose :: (v: [] RmServer, k: int, m: int, s: int) {
   ms[0].shots[q] = E2Shot.{live = true, m = m, seat = s, tx = p.x, tz = p.z, land = t + rs_max(e2mo_hz(fly), 1)};
   ms[0].mon[m].hit_t = t; ms[0].mon[m].hit_seat = s;
   out: [160] u8;
-  n := wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_put(out[..], 0, "h3"), t), 3), m), s);
-  n = wire_int(out[..], n, 0);
-  n = wire_int(out[..], wire_int(out[..], n, cast(int) floor(mo.x * 100 + 0.5)), cast(int) floor(mo.z * 100 + 0.5));
-  n = wire_int(out[..], wire_int(out[..], n, cast(int) floor(p.x * 100 + 0.5)), cast(int) floor(p.z * 100 + 0.5));
-  n = wire_int(out[..], n, cast(int) floor(fly * 1000 + 0.5));
+  n := egc_mon_hit_put(out[..], EgcMonHit.{tick = t, kind = EGC_MON_LOOSED, m = m, seat = s, amount = 0,
+    fx = cast(int) floor(mo.x * 100 + 0.5), fz = cast(int) floor(mo.z * 100 + 0.5), tx = cast(int) floor(p.x * 100 + 0.5), tz = cast(int) floor(p.z * 100 + 0.5),
+    fly = cast(int) floor(fly * 1000 + 0.5)});
   e2mo_say(v, k, cast(string) out[0..<n], mo.x, mo.z);
 }
 // The arrows that land this tick: one at a player still within a metre of where it was aimed is the
@@ -478,8 +477,7 @@ e2mo_say :: (v: [] RmServer, k: int, text: string, x: f32, z: f32) {
 e2mo_tell :: (v: [] RmServer, k: int, kind: int, m: int, s: int, amount: int, x: f32, z: f32) { e2mo_tell_at(v, k, v[0].eg[k].tick, kind, m, s, amount, x, z); }
 e2mo_tell_at :: (v: [] RmServer, k: int, tick: int, kind: int, m: int, s: int, amount: int, x: f32, z: f32) {
   out: [96] u8;
-  n := wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_put(out[..], 0, "h3"), tick), kind), m), s);
-  n = wire_int(out[..], n, amount);
+  n := egc_mon_hit_put(out[..], EgcMonHit.{tick = tick, kind = kind, m = m, seat = s, amount = amount});
   e2mo_say(v, k, cast(string) out[0..<n], x, z);
 }
 // The monsters within EG_VIEW m of seat s: each tick they change, and once a second when they don't.
@@ -491,18 +489,16 @@ e2_monsters_snapshot :: (v: [] RmServer, k: int, s: int) {
     if mo.state == E2M_GONE || e2mo_dist(st[0].pose.x, st[0].pose.z, mo.x, mo.z) > f32(EG_VIEW) { continue; }
     hp := 0; max := 1;
     if mo.q >= 0 && mo.state != E2M_DEAD { i := EGB_BEAST0 + mo.q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
-    n = wire_int(row[..], wire_int(row[..], wire_int(row[..], wire_int(row[..], n, m), mo.life), mo.kind), mo.state);
-    n = wire_int(row[..], wire_int(row[..], n, cast(int) floor(mo.x * 100 + 0.5)), cast(int) floor(mo.z * 100 + 0.5));
-    n = wire_int(row[..], wire_int(row[..], wire_int(row[..], n, cast(int) floor(mo.yaw * 1000 + 0.5)), hp), max);
-    n = wire_int(row[..], wire_int(row[..], wire_int(row[..], n, mo.act), ifx mo.act != 0 then mo.act_t else (ifx mo.state == E2M_DEAD then mo.down_t else 0)), mo.foe);
+    n = egc_mon_put_row(row[..], n, EgcMon.{m = m, life = mo.life, kind = mo.kind, state = mo.state,
+      x = cast(int) floor(mo.x * 100 + 0.5), z = cast(int) floor(mo.z * 100 + 0.5), yaw = cast(int) floor(mo.yaw * 1000 + 0.5), hp = hp, max = max,
+      act = mo.act, act_tick = ifx mo.act != 0 then mo.act_t else (ifx mo.state == E2M_DEAD then mo.down_t else 0), foe = mo.foe});
     count += 1;
   }
   hash := eg_hash(cast(string) row[0..<n]) + count * 7919;
   if st[0].monster_hash == hash && room[0].tick - st[0].monster_sent < EG_HZ { return; }
   st[0].monster_hash = hash; st[0].monster_sent = room[0].tick;
   out: [1700] u8;
-  q := wire_int(out[..], wire_int(out[..], wire_put(out[..], 0, "h2"), room[0].tick), count);
-  q = wire_put(out[..], q, cast(string) row[0..<n]);
+  q := egc_mon_put(out[..], room[0].tick, count, cast(string) row[0..<n]);
   rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<q], "");
 }
 

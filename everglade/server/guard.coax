@@ -6,14 +6,13 @@
 // player who harmed him, and fights them until they drop, flee past his leash, or leave him be. He never
 // harms first. A player in his way stops him; one who keeps standing
 // there is stepped round, and no step of his ever ends inside a player's body.
-//   g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE   his state, to every placed seat (mm, mrad, SWING the
-//                                                   tick of his last blow or -1, FOE a seat or -1)
-//   g3 TICK KIND SEAT AMOUNT                        a blow: KIND 1 a seat's at him, 2 his at a seat, 4 his critical hit at one, 5 his arrow at one,
-//                                                   6 his arrow's critical hit (AMOUNT 0 a miss);
-//                                                   each of his turn's attacks is its own, E2G_BLOW_S apart
+// The room tells the pages his state (g2, each tick he changes and once a second when he doesn't) and
+// each blow (g3: AMOUNT 0 a miss; each of his turn's attacks is its own, E2G_BLOW_S apart) through the
+// creature frames' codec, creature-wire.coax (proto/verse/everglade2-combat-v1.json).
 // The pages draw him a jitter buffer behind, as they draw each other (everglade2-guard.coax).
 // His Dash is Everglade's (everglade/dash.coax): his run times eg_dash_rate from when he takes it.
 #load "../dash.coax";
+#load "creature-wire.coax";   // g2 and g3: the one codec the page reads them with (#13246)
 
 E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, fivelab-bodies.coax BD_RUN_FROM)
 E2G_CHASE :: E2_RUN_SPEED; // m/s: after the one who struck him, a run as fast as yours (everglade2-move.coax)
@@ -372,7 +371,7 @@ e2g_tell :: (v: [] RmServer, k: int, kind: int, s: int, amount: int) { e2g_tell_
 e2g_tell_at :: (v: [] RmServer, k: int, tick: int, kind: int, s: int, amount: int) {
   room := v[0].eg[k..<k + 1];
   out: [64] u8;
-  n := wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_put(out[..], 0, "g3"), tick), kind), s), amount);
+  n := egc_guard_hit_put(out[..], EgcGuardHit.{tick = tick, kind = kind, seat = s, amount = amount});
   for o: 0..<EG_SEATS {
     st := room[0].seat[o..<o + 1];
     if !st[0].live || !st[0].placed || st[0].conn < 0 { continue; }
@@ -385,16 +384,13 @@ e2_guard_snapshot :: (v: [] RmServer, k: int, s: int) {
   hp := 0; max := 0;
   if g.q >= 0 { hp = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp; max = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp_max; }
   row: [128] u8;
-  n := wire_int(row[..], wire_int(row[..], 0, g.life), g.state);
-  n = wire_int(row[..], wire_int(row[..], n, cast(int) floor(g.x * 1000 + 0.5)), cast(int) floor(g.z * 1000 + 0.5));
-  n = wire_int(row[..], wire_int(row[..], n, cast(int) floor(g.yaw * 1000 + 0.5)), hp);
-  n = wire_int(row[..], wire_int(row[..], wire_int(row[..], n, max), g.swing_tick), g.foe);
+  n := egc_guard_put_body(row[..], 0, EgcGuard.{life = g.life, state = g.state, x = cast(int) floor(g.x * 1000 + 0.5), z = cast(int) floor(g.z * 1000 + 0.5),
+    yaw = cast(int) floor(g.yaw * 1000 + 0.5), hp = hp, max = max, swing = g.swing_tick, foe = g.foe});
   hash := eg_hash(cast(string) row[0..<n]);
   if st[0].guard_hash == hash && room[0].tick - st[0].guard_sent < EG_HZ { return; }
   st[0].guard_hash = hash; st[0].guard_sent = room[0].tick;
   out: [192] u8;
-  m := wire_int(out[..], wire_put(out[..], 0, "g2"), room[0].tick);
-  m = wire_put(out[..], m, cast(string) row[0..<n]);
+  m := egc_guard_put(out[..], room[0].tick, cast(string) row[0..<n]);
   rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<m], "");
 }
 // Where his body stands for the movement step (room-world.c world2_step): false when there is none.

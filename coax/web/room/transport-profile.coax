@@ -1,0 +1,125 @@
+// Hold the WebTransport framing's profile (proto/verse/aethyr-transport-v1.json, #13246) to its codec,
+// aethyr/net/transport.coax, which the page's link and the room's WebTransport side both load:
+// the URL prefix, the mark byte, each channel's number and the datagram's limits are the codec's
+// constants; each "frames" entry is the exact bytes net_conn_frame gives for that frame on that
+// channel and transport; and each "inputs" step is the exact datagram net_conn_input gives after
+// the room's acknowledgement, and, when it arrives, the inputs the room takes from it
+// (net_bundle_expand making each NET_SAME whole, net_gate_fresh letting each number through once).
+//   coax/web/tool.sh coax/web/room/transport-profile.coax proto/verse/aethyr-transport-v1.json
+#import "Basic";
+#load "../../../aethyr/net/transport.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+
+TP_FILE :: 16384;
+TP_PATH :: "proto/verse/aethyr-transport-v1.json";
+TP_NONE :: -999999999;
+TP_DIGITS :: "0123456789abcdef";
+TP_CHANNELS :: [5] string.["datagram", "combat", "loot", "chat", "session"];
+
+tp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+// bytes as lower-case hexadecimal, into out.
+tp_hex :: (bytes: string, out: [] u8) -> string {
+  if bytes.count * 2 > out.count { return ""; }
+  for i: 0..<bytes.count { out[2 * i] = TP_DIGITS[cast(int) bytes[i] / 16]; out[2 * i + 1] = TP_DIGITS[cast(int) bytes[i] % 16]; }
+  return cast(string) out[0..<bytes.count * 2];
+}
+// A channel named in the profile ("combat") or given by number (9): its number, or -1.
+tp_channel :: (d: Jv, at: int) -> int {
+  if jv_kind(d, at) == JV_NUMBER { return jv_int(d, at, -1); }
+  b: [32] u8; name := tp_str(d, at, b[..]);
+  for c, i: TP_CHANNELS { if c == name { return i; } }
+  return -1;
+}
+
+tp_check :: (d: Jv, path: string) -> bool {
+  tb: [4][2048] u8;
+  if tp_str(d, jv_get(d, 0, "identity"), tb[0][..]) != "aethyr-transport-v1" { return false; }
+  if path.count < TP_PATH.count || path[path.count - TP_PATH.count..<path.count] != TP_PATH { print("identity: not the file's name\n"); return false; }
+  if tp_str(d, jv_get(d, 0, "check"), tb[0][..]) != "coax/web/tool.sh coax/web/room/transport-profile.coax proto/verse/aethyr-transport-v1.json" { print("check: not this program\n"); return false; }
+
+  // The constants are the codec's.
+  ch := jv_get(d, 0, "channels");
+  if jv_kind(d, ch) != JV_OBJECT || jv_len(d, ch) != NET_CHANNELS { print("channels\n"); return false; }
+  want := [5] int.[NET_DATAGRAM, NET_COMBAT, NET_LOOT, NET_CHAT, NET_SESSION];
+  for i: 0..<NET_CHANNELS {
+    m := jv_at(d, ch, i);
+    if jv_key(d, m) != TP_CHANNELS[i] || jv_int(d, m, TP_NONE) != want[i] { print("channels: %\n", TP_CHANNELS[i]); return false; }
+  }
+  if tp_str(d, jv_get(d, 0, "url_prefix"), tb[0][..]) != NET_WT_PREFIX || jv_int(d, jv_get(d, 0, "mark"), TP_NONE) != NET_MARK ||
+    jv_int(d, jv_get(d, 0, "datagram_max"), TP_NONE) != NET_DATAGRAM_MAX || jv_int(d, jv_get(d, 0, "separator"), TP_NONE) != NET_BUNDLE_SEP ||
+    tp_str(d, jv_get(d, 0, "same"), tb[0][..]) != NET_SAME || jv_int(d, jv_get(d, 0, "owed_max"), TP_NONE) != NET_OWED ||
+    jv_int(d, jv_get(d, 0, "input_bytes_max"), TP_NONE) != NET_INPUT_BYTES { print("constants: not the codec's\n"); return false; }
+
+  // Each frame's bytes on its channel and transport; every channel on WebTransport, and a WebSocket.
+  frames := jv_get(d, 0, "frames");
+  if jv_kind(d, frames) != JV_ARRAY { return false; }
+  seen: [NET_CHANNELS] bool; ws := false;
+  for i: 0..<jv_len(d, frames) {
+    f := jv_at(d, frames, i);
+    kind := tp_str(d, jv_get(d, f, "transport"), tb[3][..]);
+    c := tp_channel(d, jv_get(d, f, "channel"));
+    text := tp_str(d, jv_get(d, f, "frame"), tb[1][..]);
+    if (kind != "wt" && kind != "ws") || c < 0 || text == "" { print("frame %: transport, channel or frame\n", i); return false; }
+    l: [1] NetConn; _ := net_conn_opened(l[..], 1, ifx kind == "wt" then "wt" else "");
+    out: [NET_DATAGRAM_MAX] u8;
+    bytes := net_conn_frame(l[..], c, text, out[..]);
+    if bytes == "" || tp_hex(bytes, tb[2][..]) != tp_str(d, jv_get(d, f, "hex"), tb[0][..]) { print("frame %: the codec's bytes are %\n", i, tp_hex(bytes, tb[2][..])); return false; }
+    if kind == "wt" && c < NET_CHANNELS { seen[c] = true; }
+    if kind == "ws" { ws = true; }
+  }
+  for c: 0..<NET_CHANNELS { if !seen[c] { print("frames: none on channel %\n", TP_CHANNELS[c]); return false; } }
+  if !ws { print("frames: none on a WebSocket\n"); return false; }
+
+  // The inputs, in order: the page's datagram for each after the room's acknowledgement, and what the
+  // room takes from those that arrive. One step at least repeats an owed input as NET_SAME.
+  inputs := jv_get(d, 0, "inputs");
+  if jv_kind(d, inputs) != JV_ARRAY || jv_len(d, inputs) < 2 { return false; }
+  l: [1] NetConn; _ := net_conn_opened(l[..], 1, "wt");
+  gate: [1] NetGate; same := false;
+  for i: 0..<jv_len(d, inputs) {
+    s := jv_at(d, inputs, i);
+    seq := jv_int(d, jv_get(d, s, "seq"), TP_NONE); ack := jv_int(d, jv_get(d, s, "ack"), TP_NONE);
+    text := tp_str(d, jv_get(d, s, "frame"), tb[1][..]);
+    if seq == TP_NONE || ack == TP_NONE || text == "" { print("input %: seq, ack or frame\n", i); return false; }
+    net_conn_ack(l[..], ack);
+    out: [NET_DATAGRAM_MAX] u8;
+    dg := net_conn_input(l[..], seq, text, out[..]);
+    if dg == "" || tp_hex(dg, tb[2][..]) != tp_str(d, jv_get(d, s, "hex"), tb[0][..]) { print("input %: the codec's bytes are %\n", i, tp_hex(dg, tb[2][..])); return false; }
+    if dg[0] != cast(u8) (NET_MARK + NET_DATAGRAM) { return false; }
+    body := dg[1..<dg.count];
+    room := jv_get(d, s, "room");
+    if jv_kind(d, room) != JV_ARRAY { return false; }
+    taken := 0;
+    if !jv_bool(d, jv_get(d, s, "lost")) {
+      for q: 0..<net_bundle_count(body) {
+        if net_bundle_frame(body, q) == NET_SAME { same = true; }
+        e: [NET_DATAGRAM_MAX] u8;
+        f := net_bundle_expand(body, q, e[..]);
+        if f == "" { print("input %: frame % does not expand\n", i, q); return false; }
+        if !net_gate_fresh(gate[..], ntw_num(ntw_word(f, 1))) { continue; }
+        if taken >= jv_len(d, room) || tp_str(d, jv_at(d, room, taken), tb[0][..]) != f { print("input %: the room takes %\n", i, f); return false; }
+        taken += 1;
+      }
+    }
+    if taken != jv_len(d, room) { print("input %: the room takes % of them\n", i, taken); return false; }
+  }
+  if !same { print("inputs: none repeats an input as %\n", NET_SAME); return false; }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: transport-profile PROFILE.json"); return 2; }
+  path := args_at(a[..], 0);
+  text: [TP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [1024] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("transport-profile: cannot parse JSON"); return 2; }
+  if !tp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

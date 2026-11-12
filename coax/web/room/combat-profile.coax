@@ -1,0 +1,259 @@
+// Hold Everglade II's combat profile (proto/verse/everglade2-combat-v1.json, #13246) to the codecs
+// both the room and the page load: everglade/server/creature-wire.coax for the path guard (g2, g3)
+// and the monsters (h2, h3), and aethyr/net/projectile.coax for the arrows (F, a, d).
+// A frame's format ("guard": "g2 TICK LIFE ...") names its fields in the codec's order; each "frames"
+// entry's values name those fields in that order; the codec's writer gives exactly its text from
+// them, and its reader gives them back from the text; every "malformed" text is refused by the
+// reader; the kinds and bounds the profile names are the codecs' constants; and the widest
+// monsters snapshot the reader takes fits the room's bytes for it.
+//   coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v1.json
+#import "Basic";
+#load "../../../everglade/server/creature-wire.coax";
+#load "../../../aethyr/net/projectile.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+
+CP_FILE :: 32768;
+CP_PATH :: "proto/verse/everglade2-combat-v1.json";
+CP_NONE :: -999999999;
+CP_FRAMES :: [7] string.["guard", "guard_hit", "monsters", "monster_event", "loose", "shot", "shot_end"];
+
+cp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+// Word i of s split on spaces, its brackets and "..." taken off; "" past the last.
+cp_word :: (s: string, i: int) -> string {
+  at := 0; w := 0;
+  while at < s.count {
+    while at < s.count && s[at] == ' ' { at += 1; }
+    start := at;
+    while at < s.count && s[at] != ' ' { at += 1; }
+    if start < at {
+      if w == i {
+        a := start; e := at;
+        while a < e && s[a] == '[' { a += 1; }
+        while e > a && (s[e - 1] == ']' || s[e - 1] == '.') { e -= 1; }
+        return s[a..<e];
+      }
+      w += 1;
+    }
+  }
+  return "";
+}
+cp_words :: (s: string) -> int { n := 0; while cp_word(s, n) != "" { n += 1; } return n; }
+
+// Each frame's head and its fields in the codec's order (h2's after COUNT are one row's, repeated;
+// h3's last five only for an arrow loosed).
+cp_head :: (frame: string) -> string {
+  if frame == "guard" { return "g2"; } if frame == "guard_hit" { return "g3"; }
+  if frame == "monsters" { return "h2"; } if frame == "monster_event" { return "h3"; }
+  if frame == "loose" { return "F"; } if frame == "shot" { return "a"; } if frame == "shot_end" { return "d"; }
+  return "";
+}
+cp_fields :: (frame: string) -> string {
+  if frame == "guard" { return "TICK LIFE STATE X Z YAW HP MAX SWING FOE"; }
+  if frame == "guard_hit" { return "TICK KIND SEAT AMOUNT"; }
+  if frame == "monsters" { return "TICK COUNT M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE"; }
+  if frame == "monster_event" { return "TICK KIND M SEAT AMOUNT FX FZ TX TZ FLY_MS"; }
+  if frame == "loose" { return "SEQ FX FY FZ TX TY TZ ST VIEW"; }
+  if frame == "shot" { return "TICK ID SEAT SEQ FX FY FZ VX VY VZ ST AGE"; }
+  if frame == "shot_end" { return "TICK ID KIND X Y Z DX DY DZ BODY"; }
+  return "";
+}
+// The format names the head and the fields in order.
+cp_format :: (d: Jv, frame: string) -> bool {
+  tb: [256] u8;
+  fmt := cp_str(d, jv_get(d, 0, frame), tb[..]);
+  fields := cp_fields(frame); nf := cp_words(fields);
+  if cp_word(fmt, 0) != cp_head(frame) || cp_words(fmt) != nf + 1 { return false; }
+  for i: 0..<nf { if cp_word(fmt, i + 1) != cp_word(fields, i) { return false; } }
+  if frame == "monsters" && fmt != "h2 TICK COUNT [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]..." { return false; }
+  if frame == "monster_event" && fmt != "h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS]" { return false; }
+  return true;
+}
+// An object of exactly these names and values, in this order.
+cp_enum :: (d: Jv, key: string, names: [] string, values: [] int) -> bool {
+  o := jv_get(d, 0, key);
+  if jv_kind(d, o) != JV_OBJECT || jv_len(d, o) != names.count { return false; }
+  for i: 0..<names.count {
+    m := jv_at(d, o, i);
+    if jv_key(d, m) != names[i] || jv_int(d, m, CP_NONE) != values[i] { return false; }
+  }
+  return true;
+}
+
+mm :: (v: int) -> f32 { return f32(v) / 1000; }
+cp_same_mon :: (a: EgcMon, b: EgcMon) -> bool {
+  return a.m == b.m && a.life == b.life && a.kind == b.kind && a.state == b.state && a.x == b.x && a.z == b.z && a.yaw == b.yaw &&
+    a.hp == b.hp && a.max == b.max && a.act == b.act && a.act_tick == b.act_tick && a.foe == b.foe;
+}
+cp_same_guard :: (a: EgcGuard, b: EgcGuard) -> bool {
+  return a.ok == b.ok && a.tick == b.tick && a.life == b.life && a.state == b.state && a.x == b.x && a.z == b.z && a.yaw == b.yaw &&
+    a.hp == b.hp && a.max == b.max && a.swing == b.swing && a.foe == b.foe;
+}
+cp_same_guard_hit :: (a: EgcGuardHit, b: EgcGuardHit) -> bool { return a.ok == b.ok && a.tick == b.tick && a.kind == b.kind && a.seat == b.seat && a.amount == b.amount; }
+cp_same_mon_hit :: (a: EgcMonHit, b: EgcMonHit) -> bool {
+  return a.ok == b.ok && a.tick == b.tick && a.kind == b.kind && a.m == b.m && a.seat == b.seat && a.amount == b.amount &&
+    a.fx == b.fx && a.fz == b.fz && a.tx == b.tx && a.tz == b.tz && a.fly == b.fly;
+}
+// One "frames" entry: its values in the fields' order, written by the codec to its text and read back.
+cp_frame :: (d: Jv, row: int) -> bool {
+  tb: [2][1024] u8;
+  frame := cp_str(d, jv_get(d, row, "frame"), tb[0][..]);
+  text := cp_str(d, jv_get(d, row, "text"), tb[1][..]);
+  vals := jv_get(d, row, "values");
+  fields := cp_fields(frame);
+  if fields == "" || text == "" || jv_kind(d, vals) != JV_OBJECT { return false; }
+  out: [1700] u8; n := -1;
+  if frame == "monsters" {
+    if jv_len(d, vals) != 3 || jv_key(d, jv_at(d, vals, 0)) != "TICK" || jv_key(d, jv_at(d, vals, 1)) != "COUNT" || jv_key(d, jv_at(d, vals, 2)) != "ROWS" { return false; }
+    tick := jv_int(d, jv_at(d, vals, 0), CP_NONE); count := jv_int(d, jv_at(d, vals, 1), CP_NONE); at := jv_at(d, vals, 2);
+    if jv_kind(d, at) != JV_ARRAY || jv_len(d, at) != count { return false; }
+    rows: [1600] u8; size := 0; want: [EGC_MONS] EgcMon;
+    if count > EGC_MONS { return false; }
+    for i: 0..<count {
+      r := jv_at(d, at, i);
+      if jv_kind(d, r) != JV_ARRAY || jv_len(d, r) != 12 { return false; }
+      c: [12] int;
+      for q: 0..<12 { c[q] = jv_int(d, jv_at(d, r, q), CP_NONE); if c[q] == CP_NONE { return false; } }
+      want[i] = EgcMon.{m = c[0], life = c[1], kind = c[2], state = c[3], x = c[4], z = c[5], yaw = c[6], hp = c[7], max = c[8], act = c[9], act_tick = c[10], foe = c[11]};
+      size = egc_mon_put_row(rows[..], size, want[i]);
+    }
+    n = egc_mon_put(out[..], tick, count, cast(string) rows[0..<size]);
+    if cast(string) out[0..<n] != text { return false; }
+    got := egc_mon_read(text);
+    if !got.ok || got.tick != tick || got.count != count { return false; }
+    for i: 0..<count { if !cp_same_mon(got.row[i], want[i]) { return false; } }
+    return true;
+  }
+  // The values, keyed in the fields' order (h3 stops after AMOUNT unless it is an arrow loosed).
+  v: [12] int; k := jv_len(d, vals);
+  if k > 12 { return false; }
+  for i: 0..<k {
+    m := jv_at(d, vals, i);
+    if jv_key(d, m) != cp_word(fields, i) { return false; }
+    v[i] = jv_int(d, m, CP_NONE);
+    if v[i] == CP_NONE { return false; }
+  }
+  if frame == "monster_event" { if k != (ifx v[1] == EGC_MON_LOOSED then 10 else 5) { return false; } }
+  else if k != cp_words(fields) { return false; }
+  if frame == "guard" {
+    g := EgcGuard.{ok = true, tick = v[0], life = v[1], state = v[2], x = v[3], z = v[4], yaw = v[5], hp = v[6], max = v[7], swing = v[8], foe = v[9]};
+    body: [256] u8; bn := egc_guard_put_body(body[..], 0, g);
+    n = egc_guard_put(out[..], g.tick, cast(string) body[0..<bn]);
+    return cast(string) out[0..<n] == text && cp_same_guard(egc_guard_read(text), g);
+  }
+  if frame == "guard_hit" {
+    h := EgcGuardHit.{ok = true, tick = v[0], kind = v[1], seat = v[2], amount = v[3]};
+    n = egc_guard_hit_put(out[..], h);
+    return cast(string) out[0..<n] == text && cp_same_guard_hit(egc_guard_hit_read(text), h);
+  }
+  if frame == "monster_event" {
+    h := EgcMonHit.{ok = true, tick = v[0], kind = v[1], m = v[2], seat = v[3], amount = v[4], fx = v[5], fz = v[6], tx = v[7], tz = v[8], fly = v[9]};
+    n = egc_mon_hit_put(out[..], h);
+    return cast(string) out[0..<n] == text && cp_same_mon_hit(egc_mon_hit_read(text), h);
+  }
+  if frame == "loose" {
+    n = net_loose_write(NetLoose.{seq = v[0], from = [3] f32.[mm(v[1]), mm(v[2]), mm(v[3])], to = [3] f32.[mm(v[4]), mm(v[5]), mm(v[6])], strength = mm(v[7]), view_ms = v[8]}, out[..]);
+    l := net_loose_read(text);
+    if cast(string) out[0..<n] != text || !l.ok || l.seq != v[0] || net_shot_mm(l.strength) != v[7] || l.view_ms != v[8] { return false; }
+    for q: 0..<3 { if net_shot_mm(l.from[q]) != v[1 + q] || net_shot_mm(l.to[q]) != v[4 + q] { return false; } }
+    return true;
+  }
+  if frame == "shot" {
+    n = net_shot_write(NetShot.{tick = v[0], id = v[1], seat = v[2], seq = v[3], from = [3] f32.[mm(v[4]), mm(v[5]), mm(v[6])], vel = [3] f32.[mm(v[7]), mm(v[8]), mm(v[9])], strength = mm(v[10]), age_ms = v[11]}, out[..]);
+    s := net_shot_read(text);
+    if cast(string) out[0..<n] != text || !s.ok || s.tick != v[0] || s.id != v[1] || s.seat != v[2] || s.seq != v[3] || net_shot_mm(s.strength) != v[10] || s.age_ms != v[11] { return false; }
+    for q: 0..<3 { if net_shot_mm(s.from[q]) != v[4 + q] || net_shot_mm(s.vel[q]) != v[7 + q] { return false; } }
+    return true;
+  }
+  if frame == "shot_end" {
+    n = net_shot_end_write(NetShotEnd.{tick = v[0], id = v[1], kind = v[2], at = [3] f32.[mm(v[3]), mm(v[4]), mm(v[5])], dir = [3] f32.[mm(v[6]), mm(v[7]), mm(v[8])], body = v[9]}, out[..]);
+    e := net_shot_end_read(text);
+    if cast(string) out[0..<n] != text || !e.ok || e.tick != v[0] || e.id != v[1] || e.kind != v[2] || e.body != v[9] { return false; }
+    for q: 0..<3 { if net_shot_mm(e.at[q]) != v[3 + q] || net_shot_mm(e.dir[q]) != v[6 + q] { return false; } }
+    return true;
+  }
+  return false;
+}
+// Whether the frame's reader refuses text.
+cp_refused :: (frame: string, t: string) -> bool {
+  if frame == "guard" { return !egc_guard_read(t).ok; }
+  if frame == "guard_hit" { return !egc_guard_hit_read(t).ok; }
+  if frame == "monsters" { return !egc_mon_read(t).ok; }
+  if frame == "monster_event" { return !egc_mon_hit_read(t).ok; }
+  if frame == "loose" { return !net_loose_read(t).ok; }
+  if frame == "shot" { return !net_shot_read(t).ok; }
+  if frame == "shot_end" { return !net_shot_end_read(t).ok; }
+  return false;
+}
+// The widest monsters snapshot the reader takes: every monster in view, each field at its widest.
+cp_widest :: () -> int {
+  rows: [1600] u8; size := 0;
+  for m: 0..<EGC_MONS {
+    size = egc_mon_put_row(rows[..], size, EgcMon.{m = m, life = 999999, kind = 1, state = 5, x = -20000, z = -65000, yaw = -1000000, hp = 999, max = 999, act = 2, act_tick = 999999999, foe = EGC_SEATS - 1});
+  }
+  out: [4096] u8;
+  n := egc_mon_put(out[..], 999999999, EGC_MONS, cast(string) rows[0..<size]);
+  return ifx egc_mon_read(cast(string) out[0..<n]).ok then n else -1;
+}
+
+cp_check :: (d: Jv, path: string) -> bool {
+  tb: [2][512] u8;
+  identity := cp_str(d, jv_get(d, 0, "identity"), tb[0][..]);
+  if identity != "everglade2-combat-v1" || cp_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v5" { return false; }
+  file := CP_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  if cp_str(d, jv_get(d, 0, "check"), tb[1][..]) != "coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v1.json" { print("check: not this program\n"); return false; }
+  for f: CP_FRAMES { if !cp_format(d, f) { print("format: %\n", f); return false; } }
+
+  // The kinds and bounds are the codecs'.
+  gn := [5] string.["hit", "blow", "critical", "arrow", "arrow_critical"]; gv := [5] int.[EGC_GUARD_HIT, EGC_GUARD_BLOW, EGC_GUARD_CRIT, EGC_GUARD_SHOT, EGC_GUARD_SHOT_CRIT];
+  mn := [4] string.["blow", "hit", "loosed", "fell"]; mv := [4] int.[EGC_MON_BLOW, EGC_MON_HIT, EGC_MON_LOOSED, EGC_MON_FELL];
+  sn := [3] string.["stuck", "body", "gone"]; sv := [3] int.[NET_SHOT_STUCK, NET_SHOT_BODY, NET_SHOT_GONE];
+  if !cp_enum(d, "guard_hit_kinds", gn[..], gv[..]) { print("guard_hit_kinds\n"); return false; }
+  if !cp_enum(d, "monster_event_kinds", mn[..], mv[..]) { print("monster_event_kinds\n"); return false; }
+  if !cp_enum(d, "shot_end_kinds", sn[..], sv[..]) { print("shot_end_kinds\n"); return false; }
+  if jv_int(d, jv_get(d, 0, "max_monsters"), -1) != EGC_MONS || jv_int(d, jv_get(d, 0, "max_seats"), -1) != EGC_SEATS { print("max_monsters, max_seats\n"); return false; }
+  wide := cp_widest();
+  if wide < 0 || wide > jv_int(d, jv_get(d, 0, "max_snapshot_bytes"), -1) { print("max_snapshot_bytes: the widest snapshot is % bytes\n", wide); return false; }
+
+  // Every frame has a fixture, and each holds.
+  frames := jv_get(d, 0, "frames");
+  if jv_kind(d, frames) != JV_ARRAY { return false; }
+  for f: CP_FRAMES {
+    seen := false;
+    for i: 0..<jv_len(d, frames) { if cp_str(d, jv_get(d, jv_at(d, frames, i), "frame"), tb[1][..]) == f { seen = true; } }
+    if !seen { print("frames: none for %\n", f); return false; }
+  }
+  for i: 0..<jv_len(d, frames) {
+    if !cp_frame(d, jv_at(d, frames, i)) { print("frame %: %\n", i, cp_str(d, jv_get(d, jv_at(d, frames, i), "text"), tb[1][..])); return false; }
+  }
+
+  // Each frame's reader refuses its malformed texts, three at least.
+  bad := jv_get(d, 0, "malformed");
+  if jv_kind(d, bad) != JV_OBJECT || jv_len(d, bad) != CP_FRAMES.count { print("malformed: one list a frame\n"); return false; }
+  for f: CP_FRAMES {
+    list := jv_get(d, bad, f);
+    if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 3 { print("malformed: %\n", f); return false; }
+    for i: 0..<jv_len(d, list) {
+      t := cp_str(d, jv_at(d, list, i), tb[1][..]);
+      if !cp_refused(f, t) { print("malformed % taken: %\n", f, t); return false; }
+    }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: combat-profile PROFILE.json"); return 2; }
+  path := args_at(a[..], 0);
+  text: [CP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [4096] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("combat-profile: cannot parse JSON"); return 2; }
+  if !cp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}
