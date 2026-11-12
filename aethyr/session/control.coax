@@ -204,10 +204,15 @@ control_fence :: (f: [] ControlFence, c_id: CharacterId, gen: int) -> int #effec
 }
 
 #test "control: room clocks, equal or skewed, change nothing; only the directory's counts" {
+  // Room 10 holds gen 1 from t=0, last renews at t=300 (until 600), pauses [400, 1000);
+  // room 20 polls every 50 from t=200, acquires gen 2 at t=600 (b_first=600); room 10's
+  // 200 writes on [1000, 1200) are all stale, so digest = ((((2*1009+20)*1009+600)*1009+200)*1009)+2.
+  expected_digest := ((((2 * 1009 + 20) * 1009 + 600) * 1009 + 200) * 1009) + 2;
+  #assert co_reference() == expected_digest;
   for skew: 0..<3 {
     r: [1] CoRun; co_run(r[..], skew * 1000 - 1000);
-    #assert r[0].owners_at_once <= 1 && r[0].stale_writes > 0 && r[0].accepted_after_loss == 0;
-    #assert r[0].digest == co_reference();
+    #assert r[0].owners_at_once == 1 && r[0].stale_writes == 200 && r[0].accepted_after_loss == 0;
+    #assert r[0].digest == expected_digest;
   }
 }
 

@@ -320,10 +320,24 @@ travel_recover :: (w: [] TravelWorld, r: int) -> int #effects(reads, writes, tra
   #assert !v[0].rooms[0].bodies[2].here;
 }
 
+#test "travel: oracle owner and body counts distinguish missing, stale and duplicate bodies" {
+  w: [1] TravelWorld; travel_world(w[..]);
+  #assert travel_owners(w[..], 0) == 0 && travel_bodies(w[..], 0) == 0 && !travel_one_owner(w[..], 0);
+  #assert travel_join(w[..], 0, 0, TO_BODY) && travel_owners(w[..], 0) == 1 && travel_bodies(w[..], 0) == 1 && travel_one_owner(w[..], 0);
+  w[0].rooms[1].bodies[0] = TravelBody.{here = true, gen = 0};
+  #assert travel_owners(w[..], 0) == 1 && travel_bodies(w[..], 0) == 2 && !travel_one_owner(w[..], 0);
+  w[0].rooms[1].bodies[0].here = false; w[0].rooms[0].bodies[0].here = false;
+  #assert travel_owners(w[..], 0) == 0 && travel_bodies(w[..], 0) == 0 && !travel_one_owner(w[..], 0);
+}
+
 #test "travel: a crash or lost answer at every step ends in one owner, one body and the right route" {
   for point: 0..<TRAVEL_POINTS { for who: 0..<2 { for lost: 0..<2 {
     w: [1] TravelWorld;
+    w[0].rooms[0].used = 9; w[0].now = 77;
     o := to_journey(w[..], point, who, lost == 1);
+    r := ifx o.moved then 1 else 0;
+    #assert w[0].now == 0 && w[0].rec[0].state.hp == (ifx point >= TO_PREPARED then 70 else 0);
+    #assert w[0].rooms[r].bodies[0].last_cmd == 2;
     #assert o.owners == 1 && o.bodies == 1 && o.routed && o.profile_kept && o.settled && o.next_ok && o.other_refused && o.places_free && o.down_refused;
     #assert o.moved == (point >= TO_COMMITTED) && o.recovery_steps == to_steps(point) && o.recovery_steps <= TRAVEL_RECOVERY;
   } } }
