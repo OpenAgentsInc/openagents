@@ -439,6 +439,9 @@ components_page=$!
 # sections 10 and 11). The page above is now /components-gpu.
 timed kit "$here/../../coax/web/wasm.sh" "$here/kit.coax" "$here/kit-face.c" "$here/build/kit.wasm" &
 kit_page=$!
+# The icons (components/core/icons.coax): Apps SDK UI's, each its own file, fetched when a page shows it.
+mkdir -p "$here/build/icons"
+cp "$here/../../components/icons/apps-sdk/"*.svg "$here/../../components/icons/NOTICE" "$here/build/icons/"
 # /chat, rebuilt from nothing: the composer alone, drawn by the browser (chat-web.coax, the same
 # host and components). The page before it, chat.coax, is now /chat-gpu.
 timed chat-web "$here/../../coax/web/wasm.sh" "$here/chat-web.coax" "$here/chat-web-face.c" "$here/build/chat-web.wasm" &

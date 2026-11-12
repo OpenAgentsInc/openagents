@@ -1,0 +1,922 @@
+// The icons: Apps SDK UI's 755, by name (components/icons/apps-sdk/NAME.svg). A component names
+// an icon by its constant here (IC_COPY), so a misspelled icon doesn't compile, and the browser
+// backend draws it from its file: each file is one <svg id="i"> in currentColor, so an icon takes
+// the colour of the text around it (brand icons with their own fills keep them).
+//
+// The artwork is Apps SDK UI's (https://github.com/openai/apps-sdk-ui), MIT, copyright 2025 OpenAI:
+// see components/icons/NOTICE. It was in the Rust tree as crates/openagents-ui/src/icons/generated.rs
+// (tag coder-v1.0.0), and this file and the SVG files were written once from that. The constants are
+// in the files' order by name; a new icon is added as a file and a row here, in order.
+//   coax/bin/coax test components/core/icons.coax
+
+IC_COUNT :: 755;
+// Where a page finds the files (apps/openagents-web/build.sh copies them there).
+IC_BASE :: "/build/icons/";
+IC_ADD_MEMBER :: 0;
+IC_ADD_SOURCES :: 1;
+IC_AGENT :: 2;
+IC_AGENT_MODE :: 3;
+IC_ALL_GIZMOS :: 4;
+IC_ALL_PRODUCTS_EXPLORE :: 5;
+IC_ANALYTICS :: 6;
+IC_ANALYZE_DATA :: 7;
+IC_API_KEY :: 8;
+IC_API_KEY_ADMIN :: 9;
+IC_API_KEY_SERVICE_ACCOUNT :: 10;
+IC_API_KEYS :: 11;
+IC_ARCHIVE :: 12;
+IC_ARRAY :: 13;
+IC_ARROW_BOTTOM_LEFT_SM :: 14;
+IC_ARROW_BOTTOM_RIGHT_SM :: 15;
+IC_ARROW_CURVED :: 16;
+IC_ARROW_CURVED_LEFT :: 17;
+IC_ARROW_CURVED_RIGHT :: 18;
+IC_ARROW_CURVED_RIGHT_XS :: 19;
+IC_ARROW_CURVED_RIGHT_XS24PX :: 20;
+IC_ARROW_DOWN :: 21;
+IC_ARROW_DOWN_LG :: 22;
+IC_ARROW_DOWN_SM :: 23;
+IC_ARROW_LEFT :: 24;
+IC_ARROW_LEFT_LG :: 25;
+IC_ARROW_LEFT_SM :: 26;
+IC_ARROW_RIGHT :: 27;
+IC_ARROW_RIGHT_LG :: 28;
+IC_ARROW_RIGHT_SM :: 29;
+IC_ARROW_ROTATE_CCW :: 30;
+IC_ARROW_ROTATE_CW :: 31;
+IC_ARROW_TOP_LEFT_SM :: 32;
+IC_ARROW_TOP_RIGHT_SM :: 33;
+IC_ARROW_UP :: 34;
+IC_ARROW_UP_LG :: 35;
+IC_ARROW_UP_RIGHT :: 36;
+IC_ARROW_UP_SM :: 37;
+IC_ASPECT_RATIO11 :: 38;
+IC_ASPECT_RATIO169 :: 39;
+IC_ASPECT_RATIO34 :: 40;
+IC_ASPECT_RATIO43 :: 41;
+IC_ASPECT_RATIO916 :: 42;
+IC_ASSISTANT :: 43;
+IC_ASTRONOUT :: 44;
+IC_AT_SIGN :: 45;
+IC_ATOM :: 46;
+IC_AUTO_PAIR_APPS :: 47;
+IC_AUTO_SUGGESTED_EDITS :: 48;
+IC_AUTOCOMPLETE :: 49;
+IC_AVATAR_FILLED_PROFILE :: 50;
+IC_AVATAR_PROFILE :: 51;
+IC_BACK_LARGE :: 52;
+IC_BACK_SMALL :: 53;
+IC_BACK_TO_APP :: 54;
+IC_BACK10S :: 55;
+IC_BACK15S :: 56;
+IC_BACKGROUND_CONVERSATION :: 57;
+IC_BALANCING_SCALE :: 58;
+IC_BAR_CHART :: 59;
+IC_BAR_CHART_FILLED :: 60;
+IC_BATCH :: 61;
+IC_BATCHES :: 62;
+IC_BELL :: 63;
+IC_BELL_FILLED :: 64;
+IC_BETA :: 65;
+IC_BILLS :: 66;
+IC_BLEND :: 67;
+IC_BLENDING_CURVE_SHARP :: 68;
+IC_BLENDING_CURVE_SMOOTH :: 69;
+IC_BLENDING_CURVE_SUBTLE :: 70;
+IC_BOLT :: 71;
+IC_BOOK :: 72;
+IC_BOOK_BOOKMARK :: 73;
+IC_BOOK_CLOCK :: 74;
+IC_BOOK_CLOSED :: 75;
+IC_BOOK_OPEN :: 76;
+IC_BOOK_WRENCH :: 77;
+IC_BOOLEAN :: 78;
+IC_BRAIN :: 79;
+IC_BRANCH :: 80;
+IC_BRANCH_ALT :: 81;
+IC_BUG :: 82;
+IC_BUILDER_PROFILE_CARD :: 83;
+IC_BUILDING_WORKSPACE :: 84;
+IC_BUSINESS :: 85;
+IC_BUSINESS_FILLED :: 86;
+IC_CABINET :: 87;
+IC_CALENDAR :: 88;
+IC_CALENDAR_ALT :: 89;
+IC_CALENDAR_TODAY :: 90;
+IC_CAMERA :: 91;
+IC_CAMERA_FILLED_PHOTO :: 92;
+IC_CAMERA_PHOTO :: 93;
+IC_CAPTION_CC_OFF :: 94;
+IC_CAPTION_CC_ON :: 95;
+IC_CAPTION_OFF :: 96;
+IC_CAPTION_ON :: 97;
+IC_CARD :: 98;
+IC_CARET_DOWN :: 99;
+IC_CARET_LEFT :: 100;
+IC_CARET_RIGHT :: 101;
+IC_CARET_UP :: 102;
+IC_CATEGORY :: 103;
+IC_CERTIFICATE :: 104;
+IC_CHART :: 105;
+IC_CHART_X_AXIS :: 106;
+IC_CHART_Y_AXIS :: 107;
+IC_CHAT :: 108;
+IC_CHAT_COMPOSE :: 109;
+IC_CHAT_DASHED_CHECKED_TEMP :: 110;
+IC_CHAT_DASHED_TEMP :: 111;
+IC_CHAT_TEMPORARY :: 112;
+IC_CHAT_TRIPLE_DOTS :: 113;
+IC_CHATS :: 114;
+IC_CHECK :: 115;
+IC_CHECK_CIRCLE :: 116;
+IC_CHECK_CIRCLE_DASHED :: 117;
+IC_CHECK_CIRCLE_FILLED :: 118;
+IC_CHECK_LG :: 119;
+IC_CHECK_MD :: 120;
+IC_CHEVRON_DOWN :: 121;
+IC_CHEVRON_DOWN_LG :: 122;
+IC_CHEVRON_DOWN_MD :: 123;
+IC_CHEVRON_DOWN_UP :: 124;
+IC_CHEVRON_DOWN_VECTOR :: 125;
+IC_CHEVRON_LEFT :: 126;
+IC_CHEVRON_LEFT_LG :: 127;
+IC_CHEVRON_LEFT_MD :: 128;
+IC_CHEVRON_RIGHT :: 129;
+IC_CHEVRON_RIGHT_ALT :: 130;
+IC_CHEVRON_RIGHT_LG :: 131;
+IC_CHEVRON_RIGHT_MD :: 132;
+IC_CHEVRON_SMALL_DOWN :: 133;
+IC_CHEVRON_SMALL_LEFT :: 134;
+IC_CHEVRON_SMALL_RIGHT :: 135;
+IC_CHEVRON_SMALL_UP :: 136;
+IC_CHEVRON_UP :: 137;
+IC_CHEVRON_UP_DOWN :: 138;
+IC_CHEVRON_UP_LG :: 139;
+IC_CHEVRON_UP_MD :: 140;
+IC_CIRCLE :: 141;
+IC_CIRCLE_DASHED :: 142;
+IC_CIRCLE_QUESTION :: 143;
+IC_CLAPPING_BOARD_CLOSED :: 144;
+IC_CLAPPING_BOARD_OPEN :: 145;
+IC_CLEANUP :: 146;
+IC_CLEAR :: 147;
+IC_CLICK :: 148;
+IC_CLIP :: 149;
+IC_CLIPBOARD :: 150;
+IC_CLIPBOARD_COPY :: 151;
+IC_CLOCK :: 152;
+IC_CLOCK_OFF :: 153;
+IC_CLOCK10S :: 154;
+IC_CLOCK15S :: 155;
+IC_CLOCK20S :: 156;
+IC_CLOCK5S :: 157;
+IC_CLOSE_BOLD :: 158;
+IC_CODE :: 159;
+IC_CODE_SQUARE_SLASH :: 160;
+IC_COLLAPSE :: 161;
+IC_COLLAPSE_LARGE :: 162;
+IC_COLLAPSE_LEFT :: 163;
+IC_COLLAPSE_LG :: 164;
+IC_COLLAPSE_RIGHT :: 165;
+IC_COLLAPSE_SM :: 166;
+IC_COLLAPSE_SMALL :: 167;
+IC_COLOR_THEME :: 168;
+IC_COMMENT :: 169;
+IC_COMMIT :: 170;
+IC_COMPARE :: 171;
+IC_COMPARE_ARROWS :: 172;
+IC_COMPASS :: 173;
+IC_COMPLETE :: 174;
+IC_COMPOSE_CANVAS_EDIT_STAR :: 175;
+IC_COMPOSE_DASHED_TEMPORARY :: 176;
+IC_COMPOSE_EDIT_SQUARE :: 177;
+IC_CONFETTI :: 178;
+IC_CONFETTI_PARTY :: 179;
+IC_CONNECT :: 180;
+IC_CONNECT_APPS :: 181;
+IC_CONNECTED_DYNAMIC_GPT :: 182;
+IC_CONNECTORS_CONNECTED_APPS :: 183;
+IC_COPY :: 184;
+IC_CREDIT_CARD :: 185;
+IC_CREDITS :: 186;
+IC_CUBE :: 187;
+IC_CURSOR :: 188;
+IC_CUSTOMIZE :: 189;
+IC_DARK_MODE :: 190;
+IC_DATA_CONTROLS :: 191;
+IC_DEEP_SEARCH_TELESCOPE :: 192;
+IC_DELETE :: 193;
+IC_DELETE_ACCOUNT :: 194;
+IC_DESKTOP :: 195;
+IC_DINING_EVENTS :: 196;
+IC_DISABLED_CURSOR :: 197;
+IC_DOCK :: 198;
+IC_DOCUMENT :: 199;
+IC_DOCUMENTATION :: 200;
+IC_DOLLAR_CIRCLE :: 201;
+IC_DOT :: 202;
+IC_DOTS_HORIZONTAL :: 203;
+IC_DOTS_HORIZONTAL_CIRCLE :: 204;
+IC_DOTS_HORIZONTAL_MORE_MENU :: 205;
+IC_DOTS_VERTICAL :: 206;
+IC_DOTS_VERTICAL_CIRCLE :: 207;
+IC_DOTS_VERTICAL_MORE_MENU :: 208;
+IC_DOUBLE_CHEVRON_LEFT :: 209;
+IC_DOUBLE_CHEVRON_RIGHT :: 210;
+IC_DOWNLOAD :: 211;
+IC_DOWNLOAD_CIRCLE :: 212;
+IC_DOWNLOAD_GIF_WATERMARK :: 213;
+IC_DOWNLOAD_SIMPLE :: 214;
+IC_DOWNLOAD_VIDEO :: 215;
+IC_DOWNLOAD_VIDEO_WATERMARK :: 216;
+IC_DROPDOWN :: 217;
+IC_DROPDOWN_VECTOR :: 218;
+IC_DUMBBELL :: 219;
+IC_EARTH_TRAVEL_WORLD :: 220;
+IC_EDIT :: 221;
+IC_EDIT_ALT :: 222;
+IC_EDIT_DALLE_IMAGE :: 223;
+IC_EDIT_PENCIL :: 224;
+IC_EDIT_STAR :: 225;
+IC_EDIT_XS :: 226;
+IC_EDUCATION :: 227;
+IC_EMAIL :: 228;
+IC_EMOJI_ADD :: 229;
+IC_EMOJI_LISTS :: 230;
+IC_EMOJI_REMOVE :: 231;
+IC_EMOJI_SECTIONS :: 232;
+IC_EMOJI_WORDS :: 233;
+IC_EMPTY_CIRCLE :: 234;
+IC_EMPTY_CIRCLE_FILLED :: 235;
+IC_ENTER_LOGIN :: 236;
+IC_ENUM :: 237;
+IC_EQUAL :: 238;
+IC_ERROR :: 239;
+IC_EXCLAMATION_MARK_CIRCLE :: 240;
+IC_EXIT_LOGOUT :: 241;
+IC_EXPAND :: 242;
+IC_EXPAND_LARGE :: 243;
+IC_EXPAND_LG :: 244;
+IC_EXPAND_MD :: 245;
+IC_EXPAND_SM :: 246;
+IC_EXPAND_SMALL :: 247;
+IC_EXPLORE :: 248;
+IC_EXPLORE_SORA :: 249;
+IC_EXTERNAL_LINK :: 250;
+IC_EYE :: 251;
+IC_EYE_CLOSED :: 252;
+IC_EYE_OFF :: 253;
+IC_FEATURED_WREATH :: 254;
+IC_FILE :: 255;
+IC_FILE_AUDIO :: 256;
+IC_FILE_BLANK :: 257;
+IC_FILE_CODE :: 258;
+IC_FILE_DOCUMENT :: 259;
+IC_FILE_IMAGE :: 260;
+IC_FILE_PRESENTATION :: 261;
+IC_FILE_SPREADSHEET :: 262;
+IC_FILE_SPREEDSHEET :: 263;
+IC_FILE_UPLOAD :: 264;
+IC_FILE_VIDEO :: 265;
+IC_FILE_ZIP :: 266;
+IC_FILE3D :: 267;
+IC_FILTER :: 268;
+IC_FINE_TUNING :: 269;
+IC_FIST_BUMP :: 270;
+IC_FLAG :: 271;
+IC_FLASH :: 272;
+IC_FLASK :: 273;
+IC_FLASK_FILLED :: 274;
+IC_FOLDER :: 275;
+IC_FOLDER_DOCUMENTS_FINDER :: 276;
+IC_FOLDER_OPEN :: 277;
+IC_FOLDER_PLUS :: 278;
+IC_FOLDER_PLUS_ADD :: 279;
+IC_FOLDER_SHARED :: 280;
+IC_FOLDER_SHARED_OPEN :: 281;
+IC_FOLDER_STUFFED :: 282;
+IC_FOLDER_UNSHARE :: 283;
+IC_FOLDERS :: 284;
+IC_FOLLOWUP :: 285;
+IC_FORUM :: 286;
+IC_FORWARD :: 287;
+IC_FORWARD10S :: 288;
+IC_FORWARD15S :: 289;
+IC_FROZEN :: 290;
+IC_FUNCTION :: 291;
+IC_FUNCTIONS :: 292;
+IC_GENERATE_SUGGESTED_EDITS :: 293;
+IC_GLASSES :: 294;
+IC_GLOBE :: 295;
+IC_GLOBE_ALT_REAL_TIME_SEARCH :: 296;
+IC_GLOBE_FILLED :: 297;
+IC_GLOBE_OFF_REAL_TIME_SEARCH :: 298;
+IC_GLOBE_REAL_TIME_SEARCH :: 299;
+IC_GLOBE_SPIN :: 300;
+IC_GO :: 301;
+IC_GO_FILLED :: 302;
+IC_GRADUATE :: 303;
+IC_GRADUATION_CAP :: 304;
+IC_GRID :: 305;
+IC_GRID_ALT :: 306;
+IC_GROUP :: 307;
+IC_GROUP_FILLED :: 308;
+IC_GROUPS :: 309;
+IC_HAMBURGER :: 310;
+IC_HAND_BACK :: 311;
+IC_HAND_FRONT :: 312;
+IC_HAND_PEACE :: 313;
+IC_HAND_RAISED :: 314;
+IC_HAND_RAISED_HEY :: 315;
+IC_HAND_WAVING_BYE :: 316;
+IC_HAPTIC_FEEDBACK :: 317;
+IC_HEADPHONES :: 318;
+IC_HEALTH :: 319;
+IC_HEART :: 320;
+IC_HEART_FILLED :: 321;
+IC_HEART_FILLED_XS :: 322;
+IC_HEART_XS :: 323;
+IC_HELP :: 324;
+IC_HISTORY :: 325;
+IC_HISTORY_OFF :: 326;
+IC_HISTORY_ON :: 327;
+IC_HOME :: 328;
+IC_HOME_ALT :: 329;
+IC_IDENTITY :: 330;
+IC_IDENTITY_ME_SECURE :: 331;
+IC_IMAGE_CAPTION :: 332;
+IC_IMAGE_SQUARE :: 333;
+IC_IMAGE_SQUARE_PICTURE_LIBRARY :: 334;
+IC_IMAGE_TO_TEXT :: 335;
+IC_IMAGE_WIDE :: 336;
+IC_IMAGE_WIDE_FILLED :: 337;
+IC_IMAGE_WIDE_PICTURE_LIBRARY :: 338;
+IC_IMAGES :: 339;
+IC_INFO :: 340;
+IC_INFO_CIRCLE :: 341;
+IC_INKEDIN :: 342;
+IC_INPAINT :: 343;
+IC_INPAINT_RESPOND :: 344;
+IC_INSPIRATION :: 345;
+IC_INSPIRATION_FILLED :: 346;
+IC_INSTAGRAM :: 347;
+IC_INTERACTIV :: 348;
+IC_INTERNAL_KNOWLEDGE :: 349;
+IC_INTERNAL_KNOWLEDGE_OPTIMIZED_FOR_CIRCLE :: 350;
+IC_INVOICE :: 351;
+IC_IO :: 352;
+IC_JIRA :: 353;
+IC_JUMP_TO_CAPTION :: 354;
+IC_KETTLEBELL :: 355;
+IC_KEY :: 356;
+IC_KEYBOARD :: 357;
+IC_KEYBOARD_SHORTCUT :: 358;
+IC_LAB :: 359;
+IC_LANGUAGE :: 360;
+IC_LATENCY :: 361;
+IC_LIFESAVER :: 362;
+IC_LIGHT_MODE :: 363;
+IC_LIGHTBULB :: 364;
+IC_LIGHTBULB_GLOW :: 365;
+IC_LIGHTBULB20 :: 366;
+IC_LIGHTBULB22 :: 367;
+IC_LIGHTBULB22_FILLED :: 368;
+IC_LINEAR :: 369;
+IC_LINK :: 370;
+IC_LINK_DISABLED_BOLD :: 371;
+IC_LINK_EXTERNAL_WEBSITE :: 372;
+IC_LOCAL_SERVICES :: 373;
+IC_LOCK :: 374;
+IC_LOCK_KEY_HOLE :: 375;
+IC_LOGOUT :: 376;
+IC_LOOP :: 377;
+IC_LOOP_LONG :: 378;
+IC_LOOP_NORMAL :: 379;
+IC_LOOP_SHORT :: 380;
+IC_LOOP_XS :: 381;
+IC_LOTUS :: 382;
+IC_LOVE :: 383;
+IC_MAGNIFYING_GLASS_SEARCH :: 384;
+IC_MAGNIFYING_GLASS_SM_SEARCH :: 385;
+IC_MAIL :: 386;
+IC_MANAGE_HISTORY :: 387;
+IC_MAP_PIN :: 388;
+IC_MAPS :: 389;
+IC_MAPS_ADDRESS :: 390;
+IC_MAPS_DIRECTIONS :: 391;
+IC_MARKER_CODE :: 392;
+IC_MARKER_DATA :: 393;
+IC_MARKER_MULTIPLE :: 394;
+IC_MARKER_QUOTE :: 395;
+IC_MCP :: 396;
+IC_MEMBERS :: 397;
+IC_MEMBERS_FILLED :: 398;
+IC_MEMORY_FILLED_SM :: 399;
+IC_MEMORY_OFF_REMEMBER :: 400;
+IC_MEMORY_ON_REMEMBER :: 401;
+IC_MEMORY_WRITE_SM :: 402;
+IC_MENU :: 403;
+IC_MENU_INVERTED :: 404;
+IC_MENU_SIDEBAR :: 405;
+IC_MENUBAR :: 406;
+IC_MESSAGING :: 407;
+IC_MIC :: 408;
+IC_MIC_FILLED :: 409;
+IC_MIC_FILLED_OFF :: 410;
+IC_MIC_LG_DICTATE :: 411;
+IC_MIC_OFF :: 412;
+IC_MINIMIZE_DOWN :: 413;
+IC_MINIMIZE_LEFT :: 414;
+IC_MINIMIZE_RIGHT :: 415;
+IC_MINIMIZE_TOP :: 416;
+IC_MINUS :: 417;
+IC_MINUS_CIRCLE :: 418;
+IC_MINUS_CIRCLE_FILLED :: 419;
+IC_MOBILE :: 420;
+IC_MOON :: 421;
+IC_MOON_SUN_SYSTEM :: 422;
+IC_MORE_CIRCLE_MENU_DOTS :: 423;
+IC_MUSIC :: 424;
+IC_MY_GPT_PROFILE_ME :: 425;
+IC_NAME :: 426;
+IC_NEWS_PAPER :: 427;
+IC_NO_TRAINING :: 428;
+IC_NODES :: 429;
+IC_NOTEBOOK :: 430;
+IC_NOTEBOOK_CHECK :: 431;
+IC_NOTEBOOK_NARROW :: 432;
+IC_NOTEBOOK_PENCIL :: 433;
+IC_NOTEPAD :: 434;
+IC_NOTIFICATION_BELL :: 435;
+IC_NOTIFICATION_OFF_BELL :: 436;
+IC_NUMBER :: 437;
+IC_OBJECT_ICON :: 438;
+IC_ON :: 439;
+IC_OPEN_LEFT :: 440;
+IC_OPEN_RIGHT :: 441;
+IC_OPENAI_LOGO_BOLD :: 442;
+IC_OPENAI_LOGO_BOLD_BOUNDING_BOX :: 443;
+IC_OPENAI_LOGO_REGULAR :: 444;
+IC_OPENAI_LOGO_REGULAR_BOUNDING_BOX :: 445;
+IC_OPENAI_LOGO_WEBAPP_VARIABLE480 :: 446;
+IC_OPERATOR :: 447;
+IC_ORDER :: 448;
+IC_PAGE_BLANK :: 449;
+IC_PAID :: 450;
+IC_PAPERCLIP :: 451;
+IC_PAPERCLIP_ATTACH :: 452;
+IC_PARENT_CONTROL :: 453;
+IC_PASTED_TEXT :: 454;
+IC_PAUSE :: 455;
+IC_PAUSE_CIRCLE :: 456;
+IC_PAUSE_CIRCLE_FILLED :: 457;
+IC_PAUSE_OUTLINE :: 458;
+IC_PAUSE_SM :: 459;
+IC_PAW :: 460;
+IC_PENCIL :: 461;
+IC_PENCIL_SPARKLE :: 462;
+IC_PENCIL_SQUARE :: 463;
+IC_PENS :: 464;
+IC_PHONE :: 465;
+IC_PHONE_MISSED :: 466;
+IC_PHONE_RING :: 467;
+IC_PHONE_WAVES :: 468;
+IC_PICTURE_IN_PICTURE :: 469;
+IC_PIN :: 470;
+IC_PIN_FILLED :: 471;
+IC_PIN_WINDOW :: 472;
+IC_PLANE :: 473;
+IC_PLANT_DESK :: 474;
+IC_PLAY :: 475;
+IC_PLAY_CIRCLE :: 476;
+IC_PLAY_CIRCLE_FILLED :: 477;
+IC_PLAY_OUTLINE :: 478;
+IC_PLAY_SM :: 479;
+IC_PLAY_TRIANGLE :: 480;
+IC_PLAYGROUND :: 481;
+IC_PLUGIN :: 482;
+IC_PLUGIN_PUZZLE :: 483;
+IC_PLUS :: 484;
+IC_PLUS_CIRCLE :: 485;
+IC_PLUS_CIRCLE_ADD :: 486;
+IC_PLUS_CIRCLE_FILLED :: 487;
+IC_PLUS_COMPOSER :: 488;
+IC_PLUS_FILLED :: 489;
+IC_PLUS_LG :: 490;
+IC_PLUS_LG18PX_ADD :: 491;
+IC_PLUS_SM12PX :: 492;
+IC_PLUS_SQUARE_ADD :: 493;
+IC_PLUS14PX :: 494;
+IC_POP_OUT_WINDOW :: 495;
+IC_PRESET_DEFAULT :: 496;
+IC_PRESET_SELECTED :: 497;
+IC_PRIVACY_INTERN :: 498;
+IC_PRO_DIAMOND :: 499;
+IC_PRO_FILLED_DIAMOND :: 500;
+IC_PRODUCT_TAG :: 501;
+IC_PULL_REQUEST_CLOSED :: 502;
+IC_PULL_REQUEST_DRAFT :: 503;
+IC_PULL_REQUEST_MERGED :: 504;
+IC_PULL_REQUEST_OPEN :: 505;
+IC_PULSE :: 506;
+IC_QUESTION :: 507;
+IC_QUESTION_MARK :: 508;
+IC_QUESTION_MARK_CIRCLE :: 509;
+IC_QUICK_START :: 510;
+IC_QUOTE :: 511;
+IC_QUOTE_REPLY_FILLED_QUOTE_XS :: 512;
+IC_RADIO_SELECTED :: 513;
+IC_READING_LEVEL :: 514;
+IC_RECORD :: 515;
+IC_REGENERATE :: 516;
+IC_REGENERATE_OFF :: 517;
+IC_REGENERATE_STAR :: 518;
+IC_RELOAD :: 519;
+IC_REMIX_MILD :: 520;
+IC_REMIX_MILD_XS :: 521;
+IC_REMIX_STRONG :: 522;
+IC_REMIX_SUBTLE :: 523;
+IC_REMOVE_FOREVER_PERMANENTLY :: 524;
+IC_REMOVE_RED_EYE :: 525;
+IC_REPLY :: 526;
+IC_REPORT :: 527;
+IC_RESEND :: 528;
+IC_RESET_CHAT :: 529;
+IC_RESOLUTION1080P :: 530;
+IC_RESOLUTION360P :: 531;
+IC_RESOLUTION480P :: 532;
+IC_RESOLUTION720P :: 533;
+IC_RESTORE_UNTRASH :: 534;
+IC_REWIND :: 535;
+IC_ROBOT :: 536;
+IC_ROBOT_HEAD :: 537;
+IC_ROBOT_HEAD_SAD :: 538;
+IC_SAVED_FILLED_XS :: 539;
+IC_SAVED_XS :: 540;
+IC_SCALES :: 541;
+IC_SCISSOR :: 542;
+IC_SCISSOR_XS :: 543;
+IC_SCREEN_POSITION :: 544;
+IC_SEARCH :: 545;
+IC_SEARCH_CONNECTOR :: 546;
+IC_SEARCH_FEED :: 547;
+IC_SEARCH_XS :: 548;
+IC_SELECT_TEXT :: 549;
+IC_SETTINGS :: 550;
+IC_SETTINGS_CIRCLE :: 551;
+IC_SETTINGS_COG :: 552;
+IC_SETTINGS_SLIDER :: 553;
+IC_SETTINGS_WRENCH :: 554;
+IC_SHARE :: 555;
+IC_SHARE_CHAT :: 556;
+IC_SHARE_SCREEN :: 557;
+IC_SHARE_SCREEN_FILLED :: 558;
+IC_SHARE_SCREEN_OFF :: 559;
+IC_SHARE_SCREEN_OFF_FILLED :: 560;
+IC_SHIELD_CHECK :: 561;
+IC_SHIELD_KEY :: 562;
+IC_SHIELD_LOCK :: 563;
+IC_SHIELD_PERSON :: 564;
+IC_SHOPPING_BAG :: 565;
+IC_SHORTCUTS :: 566;
+IC_SHUFFLE :: 567;
+IC_SIDEBAR :: 568;
+IC_SIDEBAR_COLLAPSE_LEFT :: 569;
+IC_SIDEBAR_COLLAPSE_RIGHT :: 570;
+IC_SIDEBAR_FLOATING_LEFT :: 571;
+IC_SIDEBAR_FLOATING_OPEN_LEFT :: 572;
+IC_SIDEBAR_FLOATING_OPEN_RIGHT :: 573;
+IC_SIDEBAR_FLOATING_RIGHT :: 574;
+IC_SIDEBAR_LEFT :: 575;
+IC_SIDEBAR_MENU_MOBILE :: 576;
+IC_SIDEBAR_MENU_MOBILE_BADGE_CUTOUT :: 577;
+IC_SIDEBAR_OPEN_LEFT :: 578;
+IC_SIDEBAR_OPEN_LEFT_ALT :: 579;
+IC_SIDEBAR_OPEN_RIGHT :: 580;
+IC_SIDEBAR_OPEN_RIGHT_ALT :: 581;
+IC_SIDEBAR_RIGHT :: 582;
+IC_SIMPLE_RELAX :: 583;
+IC_SIMPLE_SAD :: 584;
+IC_SIMPLE_SMILE :: 585;
+IC_SKIP :: 586;
+IC_SLEEP :: 587;
+IC_SNAPCHAT :: 588;
+IC_SNORKLE :: 589;
+IC_SNOWFLAKE :: 590;
+IC_SORA_BASIC_POPCORN :: 591;
+IC_SORA_PRO_DIRECTOR :: 592;
+IC_SOUND_OFF_SIMPLE_MUTE :: 593;
+IC_SOUND_OFF_SPEAKER :: 594;
+IC_SOUND_ON_READ_OUT_LOUD_SPEAKER :: 595;
+IC_SPARKLE :: 596;
+IC_SPARKLE_DOUBLE :: 597;
+IC_SPARKLE_FILLED_PLUS :: 598;
+IC_SPARKLE_PLUS :: 599;
+IC_SPARKLES :: 600;
+IC_SPARKLES_FILLED :: 601;
+IC_SPEAK :: 602;
+IC_SPEECH_TO_TEXT :: 603;
+IC_SPEED :: 604;
+IC_SPEEDOMETER_LATENCY_SPEED :: 605;
+IC_SPELLING :: 606;
+IC_SPIN :: 607;
+IC_SQUARE_CHECK_CHECKBOX_CHECKED :: 608;
+IC_SQUARE_CHECK_FILLED_CHECKBOX_CHECKED_FILLED :: 609;
+IC_SQUARE_CHECKBOX_UNCHECKED :: 610;
+IC_SQUARE_CODE :: 611;
+IC_SQUARE_FILLED_TABLE_LEGEND :: 612;
+IC_SQUARE_IMAGE :: 613;
+IC_SQUARE_PLUS :: 614;
+IC_SQUARE_PLUS_ALT :: 615;
+IC_SQUARE_TABLE_LEGEND :: 616;
+IC_SQUARE_TEXT :: 617;
+IC_STACK :: 618;
+IC_STAR :: 619;
+IC_STAR_FILLED :: 620;
+IC_START_STROKE_MD :: 621;
+IC_STATUS :: 622;
+IC_STETHOSCOPE :: 623;
+IC_STICKY_NOTE :: 624;
+IC_STOP :: 625;
+IC_STOP_CIRCLE :: 626;
+IC_STOP_CIRCLE_FILLED :: 627;
+IC_STOP_OUTLINE :: 628;
+IC_STOP_SM :: 629;
+IC_STOP_STROKE_MD :: 630;
+IC_STOPWATCH :: 631;
+IC_STORAGE :: 632;
+IC_STORYBOARD :: 633;
+IC_STRING :: 634;
+IC_STUDIO :: 635;
+IC_STUFF :: 636;
+IC_STUFF_TOOLS :: 637;
+IC_SUBSCRIPTION_PLAN :: 638;
+IC_SUGGEST_EDIT :: 639;
+IC_SUITCASE :: 640;
+IC_SUITCASE_FILLED_WORK_BUSINESS :: 641;
+IC_SUITCASE_WORK_BUSINESS :: 642;
+IC_SUN :: 643;
+IC_SYSTEM_MODE :: 644;
+IC_T_BONE_RAW :: 645;
+IC_TABLE_CELL_FILLED :: 646;
+IC_TABLE_CELLS_FILLED :: 647;
+IC_TABLE_COLUMN_FILLED :: 648;
+IC_TABLE_FILLED :: 649;
+IC_TABLE_ROW_FILLED :: 650;
+IC_TAG :: 651;
+IC_TAP :: 652;
+IC_TASKS :: 653;
+IC_TELESCOPE :: 654;
+IC_TERMINAL :: 655;
+IC_TERMINAL_LG :: 656;
+IC_TERMS :: 657;
+IC_TEXT :: 658;
+IC_TEXT_LONGER :: 659;
+IC_TEXT_PROMPT :: 660;
+IC_TEXT_SHORTER :: 661;
+IC_TEXT_SHORTER_CONCISE :: 662;
+IC_TEXT_TO_SPEECH :: 663;
+IC_THUMB_DOWN :: 664;
+IC_THUMB_DOWN_FILLED :: 665;
+IC_THUMB_MIXED :: 666;
+IC_THUMB_UP :: 667;
+IC_THUMB_UP_FILLED :: 668;
+IC_THUMBNAIL_LARGE :: 669;
+IC_THUMBNAIL_MEDIUM :: 670;
+IC_THUMBNAIL_SMALL :: 671;
+IC_THUMBS :: 672;
+IC_TIKTOK :: 673;
+IC_TIMER :: 674;
+IC_TOOLS :: 675;
+IC_TOOLS_SKILLS :: 676;
+IC_TRANSLATE :: 677;
+IC_TRASH :: 678;
+IC_TRASH_REMOVE :: 679;
+IC_TRENDING :: 680;
+IC_TRIANGLE_EXCLAMATION_ERROR_WARNING :: 681;
+IC_TRIANGLE_EXCLAMATION_FILLED_ERROR_WARNING :: 682;
+IC_TROPHY_TOP :: 683;
+IC_TUNING_FORK :: 684;
+IC_UNARCHIVE :: 685;
+IC_UNDO :: 686;
+IC_UNLINK :: 687;
+IC_UNPIN :: 688;
+IC_UPGRADE :: 689;
+IC_UPGRADE_PLAN :: 690;
+IC_UPLOAD_DOCUMENTS :: 691;
+IC_UPSCALE :: 692;
+IC_UPSCALE_XS :: 693;
+IC_USAGE :: 694;
+IC_USER :: 695;
+IC_USER_ADD :: 696;
+IC_USER_GPTS :: 697;
+IC_USER_HEART :: 698;
+IC_USER_LOCK :: 699;
+IC_USER_VOICE :: 700;
+IC_USERS :: 701;
+IC_VARIATION_V21 :: 702;
+IC_VARIATION_V31 :: 703;
+IC_VARIATION_V32 :: 704;
+IC_VARIATION_V33 :: 705;
+IC_VARIATION_V41 :: 706;
+IC_VARIATION_V42 :: 707;
+IC_VARIATION_V43 :: 708;
+IC_VARIATION_V44 :: 709;
+IC_VARIATION2V2 :: 710;
+IC_VERSIONS_V1 :: 711;
+IC_VIDEO :: 712;
+IC_VIDEO_CAPTION :: 713;
+IC_VIDEO_FILLED :: 714;
+IC_VIDEO_FILLED_OFF :: 715;
+IC_VIDEO_GRID :: 716;
+IC_VIDEO_LIST :: 717;
+IC_VIDEO_TO_TEXT :: 718;
+IC_VIDEOS :: 719;
+IC_VOICE :: 720;
+IC_VOICE_BOLD :: 721;
+IC_VOICE_INPUT_AREA_MOBILE_FILLED_VOICE_XS :: 722;
+IC_VOICE_LIGHT :: 723;
+IC_VOICE4_BARS :: 724;
+IC_VOICE5_BARS_SOUNDWAVE :: 725;
+IC_WARNING :: 726;
+IC_WARNING_FILLED_WRAP_CENTERED_FOR_CIRCLE :: 727;
+IC_WARNING_WRAP_CENTERED_FOR_CIRCLE :: 728;
+IC_WAVE :: 729;
+IC_WEBSITE_NETWORK :: 730;
+IC_WECHAT :: 731;
+IC_WHATSAPP :: 732;
+IC_WHISK :: 733;
+IC_WHISPER_AUTO_SUBMIT :: 734;
+IC_WIDGET :: 735;
+IC_WIDGET_ADD :: 736;
+IC_WORK_WITH_APPS :: 737;
+IC_WORKSPACE :: 738;
+IC_WREATH :: 739;
+IC_WRITE_ALT :: 740;
+IC_WRITE_ALT2 :: 741;
+IC_WRITING :: 742;
+IC_X :: 743;
+IC_X_CIRCLE :: 744;
+IC_X_CIRCLE_CROSSED_CLOSE :: 745;
+IC_X_CIRCLE_FILLED :: 746;
+IC_X_CIRCLE_FILLED_CROSSED_CLOSE :: 747;
+IC_X_CROSSED :: 748;
+IC_X_SQUARE_CROSSED :: 749;
+IC_X_SQUARE_FILLED_CROSSED :: 750;
+IC_X_XS :: 751;
+IC_X_XS_CROSSED :: 752;
+IC_YOUTUBE :: 753;
+IC_ZENDESK :: 754;
+
+IC_NAMES :: [755] string.[
+  "add-member", "add-sources", "agent", "agent-mode", "all-gizmos", "all-products-explore", "analytics",
+  "analyze-data", "api-key", "api-key-admin", "api-key-service-account", "api-keys", "archive", "array",
+  "arrow-bottom-left-sm", "arrow-bottom-right-sm", "arrow-curved", "arrow-curved-left", "arrow-curved-right",
+  "arrow-curved-right-xs", "arrow-curved-right-xs24px", "arrow-down", "arrow-down-lg", "arrow-down-sm", "arrow-left",
+  "arrow-left-lg", "arrow-left-sm", "arrow-right", "arrow-right-lg", "arrow-right-sm", "arrow-rotate-ccw",
+  "arrow-rotate-cw", "arrow-top-left-sm", "arrow-top-right-sm", "arrow-up", "arrow-up-lg", "arrow-up-right",
+  "arrow-up-sm", "aspect-ratio11", "aspect-ratio169", "aspect-ratio34", "aspect-ratio43", "aspect-ratio916",
+  "assistant", "astronout", "at-sign", "atom", "auto-pair-apps", "auto-suggested-edits", "autocomplete",
+  "avatar-filled-profile", "avatar-profile", "back-large", "back-small", "back-to-app", "back10s", "back15s",
+  "background-conversation", "balancing-scale", "bar-chart", "bar-chart-filled", "batch", "batches", "bell",
+  "bell-filled", "beta", "bills", "blend", "blending-curve-sharp", "blending-curve-smooth", "blending-curve-subtle",
+  "bolt", "book", "book-bookmark", "book-clock", "book-closed", "book-open", "book-wrench", "boolean", "brain",
+  "branch", "branch-alt", "bug", "builder-profile-card", "building-workspace", "business", "business-filled",
+  "cabinet", "calendar", "calendar-alt", "calendar-today", "camera", "camera-filled-photo", "camera-photo",
+  "caption-cc-off", "caption-cc-on", "caption-off", "caption-on", "card", "caret-down", "caret-left", "caret-right",
+  "caret-up", "category", "certificate", "chart", "chart-x-axis", "chart-y-axis", "chat", "chat-compose",
+  "chat-dashed-checked-temp", "chat-dashed-temp", "chat-temporary", "chat-triple-dots", "chats", "check",
+  "check-circle", "check-circle-dashed", "check-circle-filled", "check-lg", "check-md", "chevron-down",
+  "chevron-down-lg", "chevron-down-md", "chevron-down-up", "chevron-down-vector", "chevron-left", "chevron-left-lg",
+  "chevron-left-md", "chevron-right", "chevron-right-alt", "chevron-right-lg", "chevron-right-md",
+  "chevron-small-down", "chevron-small-left", "chevron-small-right", "chevron-small-up", "chevron-up",
+  "chevron-up-down", "chevron-up-lg", "chevron-up-md", "circle", "circle-dashed", "circle-question",
+  "clapping-board-closed", "clapping-board-open", "cleanup", "clear", "click", "clip", "clipboard", "clipboard-copy",
+  "clock", "clock-off", "clock10s", "clock15s", "clock20s", "clock5s", "close-bold", "code", "code-square-slash",
+  "collapse", "collapse-large", "collapse-left", "collapse-lg", "collapse-right", "collapse-sm", "collapse-small",
+  "color-theme", "comment", "commit", "compare", "compare-arrows", "compass", "complete", "compose-canvas-edit-star",
+  "compose-dashed-temporary", "compose-edit-square", "confetti", "confetti-party", "connect", "connect-apps",
+  "connected-dynamic-gpt", "connectors-connected-apps", "copy", "credit-card", "credits", "cube", "cursor",
+  "customize", "dark-mode", "data-controls", "deep-search-telescope", "delete", "delete-account", "desktop",
+  "dining-events", "disabled-cursor", "dock", "document", "documentation", "dollar-circle", "dot", "dots-horizontal",
+  "dots-horizontal-circle", "dots-horizontal-more-menu", "dots-vertical", "dots-vertical-circle",
+  "dots-vertical-more-menu", "double-chevron-left", "double-chevron-right", "download", "download-circle",
+  "download-gif-watermark", "download-simple", "download-video", "download-video-watermark", "dropdown",
+  "dropdown-vector", "dumbbell", "earth-travel-world", "edit", "edit-alt", "edit-dalle-image", "edit-pencil",
+  "edit-star", "edit-xs", "education", "email", "emoji-add", "emoji-lists", "emoji-remove", "emoji-sections",
+  "emoji-words", "empty-circle", "empty-circle-filled", "enter-login", "enum", "equal", "error",
+  "exclamation-mark-circle", "exit-logout", "expand", "expand-large", "expand-lg", "expand-md", "expand-sm",
+  "expand-small", "explore", "explore-sora", "external-link", "eye", "eye-closed", "eye-off", "featured-wreath",
+  "file", "file-audio", "file-blank", "file-code", "file-document", "file-image", "file-presentation",
+  "file-spreadsheet", "file-spreedsheet", "file-upload", "file-video", "file-zip", "file3d", "filter", "fine-tuning",
+  "fist-bump", "flag", "flash", "flask", "flask-filled", "folder", "folder-documents-finder", "folder-open",
+  "folder-plus", "folder-plus-add", "folder-shared", "folder-shared-open", "folder-stuffed", "folder-unshare",
+  "folders", "followup", "forum", "forward", "forward10s", "forward15s", "frozen", "function", "functions",
+  "generate-suggested-edits", "glasses", "globe", "globe-alt-real-time-search", "globe-filled",
+  "globe-off-real-time-search", "globe-real-time-search", "globe-spin", "go", "go-filled", "graduate",
+  "graduation-cap", "grid", "grid-alt", "group", "group-filled", "groups", "hamburger", "hand-back", "hand-front",
+  "hand-peace", "hand-raised", "hand-raised-hey", "hand-waving-bye", "haptic-feedback", "headphones", "health",
+  "heart", "heart-filled", "heart-filled-xs", "heart-xs", "help", "history", "history-off", "history-on", "home",
+  "home-alt", "identity", "identity-me-secure", "image-caption", "image-square", "image-square-picture-library",
+  "image-to-text", "image-wide", "image-wide-filled", "image-wide-picture-library", "images", "info", "info-circle",
+  "inkedin", "inpaint", "inpaint-respond", "inspiration", "inspiration-filled", "instagram", "interactiv",
+  "internal-knowledge", "internal-knowledge-optimized-for-circle", "invoice", "io", "jira", "jump-to-caption",
+  "kettlebell", "key", "keyboard", "keyboard-shortcut", "lab", "language", "latency", "lifesaver", "light-mode",
+  "lightbulb", "lightbulb-glow", "lightbulb20", "lightbulb22", "lightbulb22-filled", "linear", "link",
+  "link-disabled-bold", "link-external-website", "local-services", "lock", "lock-key-hole", "logout", "loop",
+  "loop-long", "loop-normal", "loop-short", "loop-xs", "lotus", "love", "magnifying-glass-search",
+  "magnifying-glass-sm-search", "mail", "manage-history", "map-pin", "maps", "maps-address", "maps-directions",
+  "marker-code", "marker-data", "marker-multiple", "marker-quote", "mcp", "members", "members-filled",
+  "memory-filled-sm", "memory-off-remember", "memory-on-remember", "memory-write-sm", "menu", "menu-inverted",
+  "menu-sidebar", "menubar", "messaging", "mic", "mic-filled", "mic-filled-off", "mic-lg-dictate", "mic-off",
+  "minimize-down", "minimize-left", "minimize-right", "minimize-top", "minus", "minus-circle", "minus-circle-filled",
+  "mobile", "moon", "moon-sun-system", "more-circle-menu-dots", "music", "my-gpt-profile-me", "name", "news-paper",
+  "no-training", "nodes", "notebook", "notebook-check", "notebook-narrow", "notebook-pencil", "notepad",
+  "notification-bell", "notification-off-bell", "number", "object-icon", "on", "open-left", "open-right",
+  "openai-logo-bold", "openai-logo-bold-bounding-box", "openai-logo-regular", "openai-logo-regular-bounding-box",
+  "openai-logo-webapp-variable480", "operator", "order", "page-blank", "paid", "paperclip", "paperclip-attach",
+  "parent-control", "pasted-text", "pause", "pause-circle", "pause-circle-filled", "pause-outline", "pause-sm",
+  "paw", "pencil", "pencil-sparkle", "pencil-square", "pens", "phone", "phone-missed", "phone-ring", "phone-waves",
+  "picture-in-picture", "pin", "pin-filled", "pin-window", "plane", "plant-desk", "play", "play-circle",
+  "play-circle-filled", "play-outline", "play-sm", "play-triangle", "playground", "plugin", "plugin-puzzle", "plus",
+  "plus-circle", "plus-circle-add", "plus-circle-filled", "plus-composer", "plus-filled", "plus-lg",
+  "plus-lg18px-add", "plus-sm12px", "plus-square-add", "plus14px", "pop-out-window", "preset-default",
+  "preset-selected", "privacy-intern", "pro-diamond", "pro-filled-diamond", "product-tag", "pull-request-closed",
+  "pull-request-draft", "pull-request-merged", "pull-request-open", "pulse", "question", "question-mark",
+  "question-mark-circle", "quick-start", "quote", "quote-reply-filled-quote-xs", "radio-selected", "reading-level",
+  "record", "regenerate", "regenerate-off", "regenerate-star", "reload", "remix-mild", "remix-mild-xs",
+  "remix-strong", "remix-subtle", "remove-forever-permanently", "remove-red-eye", "reply", "report", "resend",
+  "reset-chat", "resolution1080p", "resolution360p", "resolution480p", "resolution720p", "restore-untrash", "rewind",
+  "robot", "robot-head", "robot-head-sad", "saved-filled-xs", "saved-xs", "scales", "scissor", "scissor-xs",
+  "screen-position", "search", "search-connector", "search-feed", "search-xs", "select-text", "settings",
+  "settings-circle", "settings-cog", "settings-slider", "settings-wrench", "share", "share-chat", "share-screen",
+  "share-screen-filled", "share-screen-off", "share-screen-off-filled", "shield-check", "shield-key", "shield-lock",
+  "shield-person", "shopping-bag", "shortcuts", "shuffle", "sidebar", "sidebar-collapse-left",
+  "sidebar-collapse-right", "sidebar-floating-left", "sidebar-floating-open-left", "sidebar-floating-open-right",
+  "sidebar-floating-right", "sidebar-left", "sidebar-menu-mobile", "sidebar-menu-mobile-badge-cutout",
+  "sidebar-open-left", "sidebar-open-left-alt", "sidebar-open-right", "sidebar-open-right-alt", "sidebar-right",
+  "simple-relax", "simple-sad", "simple-smile", "skip", "sleep", "snapchat", "snorkle", "snowflake",
+  "sora-basic-popcorn", "sora-pro-director", "sound-off-simple-mute", "sound-off-speaker",
+  "sound-on-read-out-loud-speaker", "sparkle", "sparkle-double", "sparkle-filled-plus", "sparkle-plus", "sparkles",
+  "sparkles-filled", "speak", "speech-to-text", "speed", "speedometer-latency-speed", "spelling", "spin",
+  "square-check-checkbox-checked", "square-check-filled-checkbox-checked-filled", "square-checkbox-unchecked",
+  "square-code", "square-filled-table-legend", "square-image", "square-plus", "square-plus-alt",
+  "square-table-legend", "square-text", "stack", "star", "star-filled", "start-stroke-md", "status", "stethoscope",
+  "sticky-note", "stop", "stop-circle", "stop-circle-filled", "stop-outline", "stop-sm", "stop-stroke-md",
+  "stopwatch", "storage", "storyboard", "string", "studio", "stuff", "stuff-tools", "subscription-plan",
+  "suggest-edit", "suitcase", "suitcase-filled-work-business", "suitcase-work-business", "sun", "system-mode",
+  "t-bone-raw", "table-cell-filled", "table-cells-filled", "table-column-filled", "table-filled", "table-row-filled",
+  "tag", "tap", "tasks", "telescope", "terminal", "terminal-lg", "terms", "text", "text-longer", "text-prompt",
+  "text-shorter", "text-shorter-concise", "text-to-speech", "thumb-down", "thumb-down-filled", "thumb-mixed",
+  "thumb-up", "thumb-up-filled", "thumbnail-large", "thumbnail-medium", "thumbnail-small", "thumbs", "tiktok",
+  "timer", "tools", "tools-skills", "translate", "trash", "trash-remove", "trending",
+  "triangle-exclamation-error-warning", "triangle-exclamation-filled-error-warning", "trophy-top", "tuning-fork",
+  "unarchive", "undo", "unlink", "unpin", "upgrade", "upgrade-plan", "upload-documents", "upscale", "upscale-xs",
+  "usage", "user", "user-add", "user-gpts", "user-heart", "user-lock", "user-voice", "users", "variation-v21",
+  "variation-v31", "variation-v32", "variation-v33", "variation-v41", "variation-v42", "variation-v43",
+  "variation-v44", "variation2v2", "versions-v1", "video", "video-caption", "video-filled", "video-filled-off",
+  "video-grid", "video-list", "video-to-text", "videos", "voice", "voice-bold",
+  "voice-input-area-mobile-filled-voice-xs", "voice-light", "voice4-bars", "voice5-bars-soundwave", "warning",
+  "warning-filled-wrap-centered-for-circle", "warning-wrap-centered-for-circle", "wave", "website-network", "wechat",
+  "whatsapp", "whisk", "whisper-auto-submit", "widget", "widget-add", "work-with-apps", "workspace", "wreath",
+  "write-alt", "write-alt2", "writing", "x", "x-circle", "x-circle-crossed-close", "x-circle-filled",
+  "x-circle-filled-crossed-close", "x-crossed", "x-square-crossed", "x-square-filled-crossed", "x-xs",
+  "x-xs-crossed", "youtube", "zendesk"];
+
+ic_name :: (icon: int) -> string { names := IC_NAMES; return ifx icon >= 0 && icon < IC_COUNT then names[icon] else ""; }
+// The address of an icon's drawing: "/build/icons/copy.svg#i". Bytes written; 0 for no such icon.
+ic_href :: (icon: int, out: [] u8) -> int {
+  name := ic_name(icon);
+  if name.count == 0 { return 0; }
+  n := 0;
+  for c: IC_BASE { if n < out.count { out[n] = c; n += 1; } }
+  for c: name { if n < out.count { out[n] = c; n += 1; } }
+  for c: ".svg#i" { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+// The icon with this name, or -1 (a page that reads an icon's name from data).
+ic_find :: (name: string) -> int {
+  names := IC_NAMES;
+  lo := 0; hi := IC_COUNT - 1;
+  while lo <= hi {
+    mid := (lo + hi) / 2;
+    if names[mid] == name { return mid; }
+    if ic_before(names[mid], name) { lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return -1;
+}
+ic_before :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+
+#test "every icon has a name, the names are in order with none twice, and a name finds its icon" {
+  names := IC_NAMES;
+  #assert IC_COUNT == 755 && names.count == IC_COUNT;
+  for i: 1..<IC_COUNT { #assert ic_before(names[i - 1], names[i]); }
+  #assert ic_name(IC_COPY) == "copy" && ic_find("copy") == IC_COPY && ic_find("check") == IC_CHECK && ic_find("no-such-icon") < 0;
+  #assert ic_find(names[0]) == 0 && ic_find(names[IC_COUNT - 1]) == IC_COUNT - 1 && ic_name(-1) == "" && ic_name(IC_COUNT) == "";
+  buf: [96] u8; n := ic_href(IC_COPY, buf[..]);
+  #assert cast(string) buf[0..<n] == "/build/icons/copy.svg#i" && ic_href(-1, buf[..]) == 0;
+}

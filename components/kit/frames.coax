@@ -14,13 +14,14 @@
 // moves at all. A label that types in keeps its whole text in the node for a
 // screen reader and for Find; the typed copy is hidden from both.
 //
-// The components: frame, text, button, link, field, composer, the person's
+// The components: frame, text, icon, icon button, button, link, field, composer, the person's
 // message, the agent's message (Markdown), meta line, tool call, code block,
 // notice, row, header, menu.
 //   coax/bin/coax test components/kit/frames.coax
 
 #load "../core/tree.coax";
 #load "../core/markdown.coax";
+#load "../core/icons.coax";
 #load "../core/arwes/motion.coax";
 #load "../skin/mono.coax";
 
@@ -109,6 +110,29 @@ k_button :: (t: [] Tree, u: [] Ui, id: string, label: string, state: int) -> int
   tr_close(t);
   return i;
 }
+// Icon: one of the icons (components/core/icons.coax), in the colour of the text around it. It is
+// decoration: what it means is said by the label of the button it is in.
+k_icon :: (t: [] Tree, id: string, icon: int) -> int {
+  ida: [UI_ID] u8; href: [UI_ID] u8;
+  i := tr_open(t, id, TG_SVG, "ic");
+  tr_attr(t, i, AT_HIDDEN, "true");
+  u := tr_open(t, tr_cat(ida[..], id, ".use"), TG_USE, "");
+  n := ic_href(icon, href[..]);
+  tr_attr(t, u, AT_HREF, cast(string) href[0..<n]);
+  tr_close(t);
+  tr_close(t);
+  return i;
+}
+// Icon button: a small quiet button that is only an icon. Its label is what a screen reader says and what
+// shows when the pointer rests on it.
+k_icon_button :: (t: [] Tree, id: string, icon: int, label: string) -> int {
+  ida: [UI_ID] u8;
+  i := tr_open(t, id, TG_BUTTON, "ib");
+  tr_attr(t, i, AT_LABEL, label); tr_attr(t, i, AT_TITLE, label);
+  g := k_icon(t, tr_cat(ida[..], id, ".ic"), icon);
+  tr_close(t);
+  return i;
+}
 // Link: a quiet text button, with no frame (Copy in a code block's strip).
 k_link :: (t: [] Tree, id: string, label: string) -> int { return tr_leaf(t, id, TG_BUTTON, "lk", label); }
 // Field: one or more lines of typing over an underline.
@@ -175,7 +199,7 @@ k_code :: (t: [] Tree, u: [] Ui, id: string, lang: string, code: string) -> int 
   i := k_frame(t, u, id, TG_DIV, "code", MF_PANEL);
   h := tr_open(t, tr_cat(ida[..], id, ".h"), TG_DIV, "code-h");
   l := tr_leaf(t, tr_cat(idb[..], id, ".lang"), TG_SPAN, "meta", ifx lang.count > 0 then lang else "text");
-  c := k_link(t, tr_cat(idc[..], id, ".copy"), "Copy");
+  c := k_icon_button(t, tr_cat(idc[..], id, ".copy"), IC_COPY, "Copy code");
   tr_close(t);
   p := tr_leaf(t, tr_cat(idd[..], id, ".pre"), TG_PRE, "", code);
   tr_close(t);

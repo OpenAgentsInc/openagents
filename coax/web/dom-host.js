@@ -49,7 +49,7 @@ function apply(at, length) {
   while (i < length) {
     const op = u8();
     if (op === 1) {                                  // make
-      const slot = u16(), el = document.createElement(str());
+      const slot = u16(), tag = str(), el = tag === "svg" || tag === "use" ? document.createElementNS(SVG, tag) : document.createElement(tag);
       el.id = str(); el.dataset.slot = slot; els[slot] = el;
     } else if (op === 2) {                           // remove
       const slot = u16(), el = els[slot];
@@ -61,7 +61,7 @@ function apply(at, length) {
       if (a === NONE && before && before === frames.get(parent)) before = before.nextSibling;
       parent.insertBefore(el, before);
     } else if (op === 4) { els[u16()].textContent = str(); }
-    else if (op === 5) { els[u16()].className = str(); }
+    else if (op === 5) { els[u16()].setAttribute("class", str()); }
     else if (op === 6) {                             // attr
       const el = els[u16()], key = str(), value = str();
       el.setAttribute(key, value);
