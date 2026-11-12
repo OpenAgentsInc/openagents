@@ -14,7 +14,19 @@ export class LayerBridge {
     const name=new TextDecoder().decode(new Uint8Array(this.memory.buffer,x.layers_format_text(code),x.layers_format_text_bytes(code)));
     return {code,name,block:Number(x.layers_format_block(code))};
   }
-  tierSide(declared,phone,code){return Number(this.x.layers_tier_side(BigInt(declared),phone?1:0,code));}
+  tierSide(declared,phone,code){return Number(this.x.layers_tier_side(BigInt(declared),phone?1:0,BigInt(code)));}
+  name(code){const x=this.x;return new TextDecoder().decode(new Uint8Array(this.memory.buffer,x.layers_format_text(BigInt(code)),x.layers_format_text_bytes(BigInt(code))));}
+  // A pack's block builds (GitHub #13305): a format's tag in a build's file name, and the carried bit it stands for.
+  tag(code){const x=this.x;return new TextDecoder().decode(new Uint8Array(this.memory.buffer,x.layers_format_tag(BigInt(code)),x.layers_format_tag_bytes(BigInt(code))));}
+  carries(code){return Number(this.x.layers_format_carries(BigInt(code)));}
+  // A block layer's layout as Coax reads it from its header and size (aethyr/render/block-layer.coax), or null.
+  block(bytes){
+    const x=this.x,head=Math.min(bytes.length,16);new Uint8Array(this.memory.buffer,x.layers_source_ptr(),head).set(bytes.subarray(0,head));
+    if(!x.layers_block_read(head,BigInt(bytes.length)))return null;
+    const code=Number(x.layers_block_info(0)),[width,height,count,block]=[1,2,3,4].map(f=>Number(x.layers_block_info(f))),levels=[];
+    for(let l=0;l<count;l++){const [offset,size,bytesPerRow,rows,w,h]=[0,1,2,3,4,5].map(f=>Number(x.layers_block_level(f,BigInt(l))));levels.push({offset,bytes:size,bytesPerRow,rows,width:w,height:h});}
+    return {code,name:this.name(code),width,height,block,levels};
+  }
   decode(bytes,side){
     const x=this.x;if(bytes.length>x.layers_source_capacity())throw Error('canonical image exceeds physical source storage');
     new Uint8Array(this.memory.buffer,x.layers_source_ptr(),bytes.length).set(bytes);

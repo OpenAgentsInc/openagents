@@ -71,6 +71,25 @@ tf_block :: (format: int) -> int #export_c #effects(all) { return ifx format == 
   #assert tf_block(TF_RGBA8_SRGB) == 1 && tf_block(TF_RGBA8) == 1 && tf_block(TF_BC7_SRGB) == 4 && tf_block(TF_BC5) == 4 && tf_block(TF_ASTC4) == 4 && tf_block(TF_ASTC6_SRGB) == 6 && tf_block(0) == 0 && tf_block(8) == 0;
 }
 
+// A colour format's block build of a pack, by the tag in its file name (GitHub #13305):
+// aethyr/tools/block-pack.coax writes NAME.TAG.vpk3 beside NAME.pack, and a realm lists the tags it
+// ships (host.js's blocks: asset). "" for a format no build carries (RGBA8 and the normal formats).
+tf_tag :: (format: int) -> string #export_c #effects(all) {
+  return ifx format == TF_BC7_SRGB then "bc7" else ifx format == TF_ASTC4_SRGB then "astc4" else ifx format == TF_ASTC6_SRGB then "astc6" else "";
+}
+// The carried bit (tf_pick's `carried`) that a colour build in format stands for; 0 for none.
+tf_carries :: (format: int) -> int #export_c #effects(all) {
+  return ifx format == TF_BC7_SRGB then TF_BC else ifx format == TF_ASTC4_SRGB then TF_ASTC else ifx format == TF_ASTC6_SRGB then TF_ASTC6 else 0;
+}
+#test "a colour build's tag names its format, and stands for the bit tf_pick reads" {
+  #assert tf_tag(TF_BC7_SRGB) == "bc7" && tf_tag(TF_ASTC4_SRGB) == "astc4" && tf_tag(TF_ASTC6_SRGB) == "astc6";
+  #assert tf_tag(TF_RGBA8_SRGB) == "" && tf_tag(TF_RGBA8) == "" && tf_tag(TF_BC5) == "" && tf_tag(TF_ASTC4) == "" && tf_tag(0) == "";
+  #assert tf_carries(TF_BC7_SRGB) == TF_BC && tf_carries(TF_ASTC4_SRGB) == TF_ASTC && tf_carries(TF_ASTC6_SRGB) == TF_ASTC6;
+  #assert tf_carries(TF_RGBA8_SRGB) == 0 && tf_carries(TF_BC5) == 0 && tf_carries(TF_ASTC4) == 0 && tf_carries(8) == 0;
+  // what a build carries is what tf_pick then picks
+  for f: 3..<7 { if tf_tag(f) != "" { #assert tf_pick(TF_BC | TF_ASTC, tf_carries(f), false, TF_COLOUR) == f; } }
+}
+
 TF_PHONE_RGBA8 :: 512;      // Solstice's phone tier for unpacked RGBA8
 TF_PHONE_BLOCKS :: 1024;    // a phone's tier for block-compressed layers (1 byte a texel or less)
 // The side a layer array takes: the realm's declared side (or its first image's), capped on a

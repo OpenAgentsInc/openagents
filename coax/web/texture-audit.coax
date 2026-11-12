@@ -20,7 +20,8 @@
 // columns are the material textures' bytes if every RGBA8 one were BC7, ASTC 4x4 or ASTC 6x6
 // at the same size: what block compression would save before any size tier. BC, ASTC and ETC2
 // are 1 when the adapter has texture-compression-bc, -astc or -etc2. DIR defaults to
-// coax/web/build/texture-audit-SLUG. Exit 0 on a measurement, 1 when the page failed, 2 on bad usage.
+// coax/web/build/texture-audit-SLUG. It also prints the page's pack load marks (host.js loadMark), the
+// load time a format change moves. Exit 0 on a measurement, 1 when the page failed, 2 on bad usage.
 #import "Basic";
 #load "../lib/media/media.coax";          // MEDIA_READY_JS, media_ready_step, media_value; it loads cdp.coax
 
@@ -226,6 +227,9 @@ ta_text :: (o: [] TaBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 
 // Runs before the page: the ledger, and what the adapter offers.
 TA_LEDGER_JS :: "(() => { if (!globalThis.GPUDevice) return; const live = new Map(); const L = globalThis.coaxialTextureLedger = { live, features: '' }; const P = GPUDevice.prototype, make = P.createTexture; P.createTexture = function (d) { const t = make.call(this, d); const s = d.size, w = s.width ?? s[0], h = s.height ?? s[1] ?? 1, l = s.depthOrArrayLayers ?? s[2] ?? 1; live.set(t, [d.format, w, h, l, d.mipLevelCount ?? 1, d.sampleCount ?? 1, d.usage, d.dimension ?? '2d'].join(':')); return t; }; const gone = GPUTexture.prototype.destroy; GPUTexture.prototype.destroy = function () { live.delete(this); return gone.call(this); }; const ask = GPUAdapter.prototype.requestDevice; GPUAdapter.prototype.requestDevice = function (o) { L.features = [...this.features].join(' '); return ask.call(this, o); }; })()";
+// The page's pack load marks (host.js loadMark: pack-start, pack-bytes, pack-layers...), as
+// "NAME MS" pairs, ms after the page's navigation began (GitHub #13305: load time before and after).
+TA_MARKS_JS :: "(() => (globalThis.coaxial?.loadMarks?.() ?? []).filter((m) => m[0].startsWith('pack')).map((m) => m[0] + ' ' + Math.round(m[1])).join(', '))()";
 TA_READ_JS :: "(() => { const L = globalThis.coaxialTextureLedger; if (!L) return 'none'; const f = L.features; return (matchMedia('(pointer: coarse)').matches ? 1 : 0) + ' ' + (f.includes('texture-compression-bc') ? 1 : 0) + ' ' + (f.includes('texture-compression-astc') ? 1 : 0) + ' ' + (f.includes('texture-compression-etc2') ? 1 : 0) + '|' + [...L.live.values()].join(','); })()";
 
 TaTier :: struct { name: string; w: int; h: int; dpr: int; phone: bool; }
@@ -261,6 +265,7 @@ ta_measure :: (url: string, slug: string, tier: TaTier, settle_ms: int, out: str
   gb: [256] u8; gpu_line := cdp_adapter(c[..], gb[..]);
   proc_sleep(settle_ms);
   text: [1048576] u8; tn := media_value(c[..], TA_READ_JS, text[..]);
+  marks: [4096] u8; mn := media_value(c[..], TA_MARKS_JS, marks[..]);
   // the picture the measured page drew, so a smaller tier can be checked by eye
   png: [16777216] u8; pn := cdp_screenshot(c[..], png[..]);
   cdp_close(c[..]);
@@ -303,6 +308,7 @@ ta_measure :: (url: string, slug: string, tier: TaTier, settle_ms: int, out: str
   ta_put(p[..], "; coarse pointer "); ta_int(p[..], flags[0]); ta_put(p[..], ", bc "); ta_int(p[..], flags[1]); ta_put(p[..], ", astc "); ta_int(p[..], flags[2]); ta_put(p[..], ", etc2 "); ta_int(p[..], flags[3]);
   ta_put(p[..], "\n  the RGBA8 materials as BC7: "); ta_mib(p[..], s.bc7); ta_put(p[..], ", ASTC 4x4: "); ta_mib(p[..], s.astc4); ta_put(p[..], ", ASTC 6x6: "); ta_mib(p[..], s.astc6);
   if s.bad > 0 { ta_put(p[..], "\n  unread rows: "); ta_int(p[..], s.bad); }
+  if mn > 0 { ta_put(p[..], "\n  pack marks (ms after navigation): "); ta_put(p[..], cast(string) marks[0..<mn]); }
   ta_put(p[..], "\n");
   print("%", ta_text(p[..]));
   return 0;

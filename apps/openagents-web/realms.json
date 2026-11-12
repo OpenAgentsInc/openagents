@@ -104,7 +104,7 @@
         "slot": "everglade",
         "slot_was": "everglade-5e",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade/assets/everglade-zone.pack", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
+        "assets": ["pack:/realms/everglade/assets/everglade-zone.pack", "blocks:bc7,astc4", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "everglade-nights-experimental", "name": "EVERGLADE NIGHTS EXPERIMENTAL", "kind": "open", "listed": false, "orbit": { "r": 0.35, "a": 4.3, "size": 0.02 },
       "realm": {

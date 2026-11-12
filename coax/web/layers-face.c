@@ -31,3 +31,17 @@ LAYERS_EXPORT("layers_format_text") uint32_t layers_format_text(int64_t format){
 LAYERS_EXPORT("layers_format_text_bytes") int32_t layers_format_text_bytes(int64_t format){return(int32_t)tf_name(format).count;}
 LAYERS_EXPORT("layers_format_block") int64_t layers_format_block(int64_t format){return tf_block(format);}
 LAYERS_EXPORT("layers_tier_side") int64_t layers_tier_side(int64_t declared,int32_t phone,int64_t format){return tf_side(declared,phone!=0,format);}
+/* A pack's block builds (GitHub #13305): the tag in a build's file name and the carried bit it stands for. */
+LAYERS_EXPORT("layers_format_tag") uint32_t layers_format_tag(int64_t format){return(uint32_t)(uintptr_t)tf_tag(format).data;}
+LAYERS_EXPORT("layers_format_tag_bytes") int32_t layers_format_tag_bytes(int64_t format){return(int32_t)tf_tag(format).count;}
+LAYERS_EXPORT("layers_format_carries") int64_t layers_format_carries(int64_t format){return tf_carries(format);}
+/* A block layer (aethyr/render/block-layer.coax): its header, copied to the source storage, and its whole size; then
+   its fields (0 format, 1 width, 2 height, 3 levels, 4 block) and each level's (0 offset, 1 bytes, 2 bytes a row of
+   blocks, 3 rows of blocks, 4 physical width, 5 physical height). */
+static coax_t_BlockLayer layer_block;
+LAYERS_EXPORT("layers_block_read") int32_t layers_block_read(uint32_t head,int64_t total){coax_v_u8 source=layer_source_view();if(head>(uint64_t)source.count)return 0;layer_block=bl_read((coax_string){(const char*)source.data,head},total);return layer_block.ok;}
+LAYERS_EXPORT("layers_block_info") int64_t layers_block_info(int32_t field){if(!layer_block.ok)return -1;switch(field){case 0:return layer_block.format;case 1:return layer_block.width;case 2:return layer_block.height;case 3:return layer_block.levels;case 4:return layer_block.block;default:return -1;}}
+LAYERS_EXPORT("layers_block_level") int64_t layers_block_level(int32_t field,int64_t level){
+  if(!layer_block.ok||level<0||level>=layer_block.levels)return -1;int64_t across=bl_blocks(layer_block,layer_block.width,level),down=bl_blocks(layer_block,layer_block.height,level);
+  switch(field){case 0:return bl_level_at(layer_block,level);case 1:return bl_level_bytes(layer_block,level);case 2:return across*16;case 3:return down;case 4:return across*layer_block.block;case 5:return down*layer_block.block;default:return -1;}
+}

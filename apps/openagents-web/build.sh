@@ -175,7 +175,8 @@ host_sockets=$!
 timed host-packs "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-packs.coax" "$here/../.." "$here/build/host-packs.wasm" &
 host_packs=$!
 # Range-addressable packs (VPK3, aethyr/forge/page-pack.coax, #13001): each .vpk3 a realm names in
-# realms.json is written from its tracked .pack beside it (rewritten only when the pack changed).
+# realms.json is written from its tracked .pack beside it (rewritten only when the pack changed),
+# and so is each block build (aethyr/tools/block-pack.coax) a realm's blocks: asset names.
 # Everglade II's first takes this tree's planting into its catalog (verse/tools/assets/
 # everglade2_plant.coax, #13150), so the page reads the woods instead of planting them for 1.8 s.
 vpk3s() {
@@ -185,6 +186,15 @@ vpk3s() {
     "$here/../../coax/web/tool.sh" "$here/../../aethyr/tools/page-pack.coax" "$planted" "$vpk3" > /dev/null
     rm -f "$planted"
   done
+  # Block builds (GitHub #13305): Everglade's layers as GPU blocks with their mip chains, NAME.TAG.vpk3
+  # beside the pack, one a format its blocks: asset lists; host.js loads the one this device's GPU takes.
+  local builds=()
+  for tag in bc7 astc4; do
+    "$here/../../coax/web/tool.sh" "$here/../../aethyr/tools/block-pack.coax" "$here/realms/everglade/assets/everglade-zone.pack" \
+      "$here/realms/everglade/assets/everglade-zone.$tag.vpk3" --format "$tag" > /dev/null &
+    builds+=($!)
+  done
+  for b in "${builds[@]}"; do wait "$b" || return 1; done
 }
 timed vpk3 vpk3s &
 vpk3=$!

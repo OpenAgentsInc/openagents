@@ -1,0 +1,85 @@
+{
+  "identity": "texture-block-layer-v1",
+  "check": "coax/web/tool.sh aethyr/tools/block-pack.coax profile proto/verse/texture-block-layer-v1.json",
+  "codec": "aethyr/render/block-layer.coax",
+  "carried_by": "a texture layer entry (kind 4) of a pack's block build, NAME.TAG.vpk3 beside NAME.pack (asset-pack-v2 image, paged as VPK3); written by aethyr/tools/block-pack.coax, uploaded by coax/web/host.js with writeTexture",
+  "magic": "VBL1",
+  "byte_order": "little endian",
+  "header_bytes": 16,
+  "header": "magic (4), format (u8), levels (u8), 0 (u16), width (u32), height (u32)",
+  "levels": "largest first, each max(1, side >> level) texels rounded up to whole blocks, blocks row by row with no gaps; the layer is exactly header plus levels",
+  "block_bytes": 16,
+  "side_max": 4096,
+  "rules": [
+    "width and height are whole blocks of the format",
+    "levels are 1 to the full chain",
+    "format is one of the codes below",
+    "the u16 after levels is 0"
+  ],
+  "formats": [
+    {
+      "code": 3,
+      "webgpu": "bc7-rgba-unorm-srgb",
+      "block": 4,
+      "tag": "bc7"
+    },
+    {
+      "code": 4,
+      "webgpu": "bc5-rg-unorm",
+      "block": 4
+    },
+    {
+      "code": 5,
+      "webgpu": "astc-4x4-unorm-srgb",
+      "block": 4,
+      "tag": "astc4"
+    },
+    {
+      "code": 6,
+      "webgpu": "astc-6x6-unorm-srgb",
+      "block": 6,
+      "tag": "astc6"
+    },
+    {
+      "code": 7,
+      "webgpu": "astc-4x4-unorm",
+      "block": 4
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "ramp_bc7",
+      "tag": "bc7",
+      "source": "8x8 ramp (block-pack.coax bp_ramp), its img_mips chain, each level encoded",
+      "width": 8,
+      "height": 8,
+      "levels": 4,
+      "hex": "56424c3103040000080000000800000040000cf002bcfe7f218552a875daa7fdc0e03bf00a3dffff217552a775daa7fd40000cf8063dff7f218552a875daa7fdc0e03bf80ebeffff217552a775daa7fd40c55971569cffff207552a775daa7fdc00b1683c560ffff8088f7fff7fff7ff401c0e87c3e1fe7f0000000000000000"
+    },
+    {
+      "name": "ramp_astc4",
+      "tag": "astc4",
+      "source": "8x8 ramp (block-pack.coax bp_ramp), its img_mips chain, each level encoded",
+      "width": 8,
+      "height": 8,
+      "levels": 4,
+      "hex": "56424c31050400000800000008000000530003be10b00ab600005fbd5a8d1811530003bf11b08a3601005fbd5a8d1811530003be10b18b3601005fbd5a8d1811530003bf11b10bb701005fbd5a8d1811530039943994399401005fbd5ab56811530049688354655e0100fffddfff9d045300e1e0e0e0e0e00000000000000000"
+    }
+  ],
+  "refused_hex": [
+    "56424c3203040000080000000800000040000cf002bcfe7f218552a875daa7fdc0e03bf00a3dffff217552a775daa7fd40000cf8063dff7f218552a875daa7fdc0e03bf80ebeffff217552a775daa7fd40c55971569cffff207552a775daa7fdc00b1683c560ffff8088f7fff7fff7ff401c0e87c3e1fe7f0000000000000000",
+    "56424c3103040000080000000800000040000cf002bcfe7f218552a875daa7fdc0e03bf00a3dffff217552a775daa7fd40000cf8063dff7f218552a875daa7fdc0e03bf80ebeffff217552a775daa7fd40c55971569cffff207552a775daa7fdc00b1683c560ffff8088f7fff7fff7ff",
+    "56424c3103050000080000000800000040000cf002bcfe7f218552a875daa7fdc0e03bf00a3dffff217552a775daa7fd40000cf8063dff7f218552a875daa7fdc0e03bf80ebeffff217552a775daa7fd40c55971569cffff207552a775daa7fdc00b1683c560ffff8088f7fff7fff7ff401c0e87c3e1fe7f0000000000000000",
+    "56424c3103040000060000000800000040000cf002bcfe7f218552a875daa7fdc0e03bf00a3dffff217552a775daa7fd40000cf8063dff7f218552a875daa7fdc0e03bf80ebeffff217552a775daa7fd40c55971569cffff207552a775daa7fdc00b1683c560ffff8088f7fff7fff7ff401c0e87c3e1fe7f0000000000000000",
+    "56424c3103040100080000000800000040000cf002bcfe7f218552a875daa7fdc0e03bf00a3dffff217552a775daa7fd40000cf8063dff7f218552a875daa7fdc0e03bf80ebeffff217552a775daa7fd40c55971569cffff207552a775daa7fdc00b1683c560ffff8088f7fff7fff7ff401c0e87c3e1fe7f0000000000000000",
+    "56424c3102040000080000000800000040000cf002bcfe7f218552a875daa7fdc0e03bf00a3dffff217552a775daa7fd40000cf8063dff7f218552a875daa7fdc0e03bf80ebeffff217552a775daa7fd40c55971569cffff207552a775daa7fdc00b1683c560ffff8088f7fff7fff7ff401c0e87c3e1fe7f0000000000000000"
+  ],
+  "refused": [
+    "magic VBL2",
+    "one level short of its header",
+    "levels past the chain",
+    "a width that isn't whole blocks",
+    "a nonzero reserved byte",
+    "a format code this layout doesn't carry"
+  ]
+}

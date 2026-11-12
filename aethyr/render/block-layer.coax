@@ -1,0 +1,129 @@
+// A texture layer as GPU blocks (GitHub #13305, part of #13257 P6): the bytes of one pack layer
+// entry in a block build of a pack (aethyr/tools/block-pack.coax writes them; host.js uploads them
+// with writeTexture), every mip level already encoded, so a device draws them with no image decode
+// and no resize. The profile is proto/verse/texture-block-layer-v1.json.
+//
+// The layout, little endian:
+//   header, 16 bytes: "VBL1", format (u8, aethyr/render/texture-format.coax's code: 3 BC7 sRGB,
+//     4 BC5, 5 ASTC 4x4 sRGB, 6 ASTC 6x6 sRGB, 7 ASTC 4x4), levels (u8), 0 (u16), width, height
+//   then each level, largest first, its blocks row by row with no gaps: level l is
+//     max(1, width >> l) by max(1, height >> l) texels, rounded up to whole blocks of 16 bytes
+// The width and height are whole blocks (WebGPU's rule for a compressed texture's first level),
+// at most BL_SIDE_MAX, and the levels at least 1 and at most the full chain. Anything else, or a
+// layer whose bytes are not exactly what its header says, is refused whole.
+//
+//   coax/bin/coax test aethyr/render/block-layer.coax --library
+//   coax/bin/coax mutate aethyr/render/block-layer.coax --root-only
+#authority;
+#load "texture-format.coax";
+
+BL_MAGIC :: "VBL1";
+BL_HEADER :: 16;
+BL_SIDE_MAX :: 4096;
+
+BlockLayer :: struct { ok: bool; format: int; width: int; height: int; levels: int; block: int; bytes: int; }
+
+bl_u32 :: (p: string, at: int) -> int #effects(all) {
+  n := 0;
+  for k: 0..<4 { n = n | (cast(int) p[at + k] << (8 * k)); }
+  return n;
+}
+// The levels of a full chain for a w by h first level, down to 1 by 1.
+bl_chain :: (w: int, h: int) -> int #effects(all) {
+  n := 1; m := w | h;   // the same top bit as the larger side
+  while m > 1 { m = m >> 1; n += 1; }
+  return n;
+}
+// Level l's side from the first level's: halved l times, never below 1.
+bl_side :: (n: int, l: int) -> int #effects(all) { v := n >> l; return v + (ifx v == 0 then 1 else 0); }
+// The blocks across (or down) level l of a side of n texels.
+bl_blocks :: (b: BlockLayer, n: int, l: int) -> int #export_c #effects(all) { return (bl_side(n, l) + b.block - 1) / b.block; }
+// Level l's bytes, and where they start in the layer.
+bl_level_bytes :: (b: BlockLayer, l: int) -> int #export_c #effects(all) { return bl_blocks(b, b.width, l) * bl_blocks(b, b.height, l) * 16; }
+bl_level_at :: (b: BlockLayer, l: int) -> int #export_c #effects(all) {
+  at := BL_HEADER;
+  for k: 0..<l { at += bl_level_bytes(b, k); }
+  return at;
+}
+// A layer's shape, checked: ok false (and nothing else set) when the format, sides or levels are
+// not ones this layout carries.
+bl_shape :: (format: int, w: int, h: int, levels: int) -> BlockLayer #effects(all) {
+  if format < TF_BC7_SRGB || format > TF_ASTC4 { return BlockLayer.{}; }
+  k := tf_block(format);
+  // sides are whole blocks of 4 or 6, so even: compared in pairs, 4096 and 4098 (6 by 683) fall apart
+  if w < k || h < k || w / 2 > BL_SIDE_MAX / 2 || h / 2 > BL_SIDE_MAX / 2 || w % k != 0 || h % k != 0 { return BlockLayer.{}; }
+  if levels < 1 || levels > bl_chain(w, h) { return BlockLayer.{}; }
+  b := BlockLayer.{ok = true, format = format, width = w, height = h, levels = levels, block = k};
+  b.bytes = bl_level_at(b, levels);
+  return b;
+}
+
+// book:begin read
+// Read a block layer from its first bytes (head, at least the header) and its whole size: the
+// layer, or ok false when the header isn't one or the size isn't the one it gives.
+bl_read :: (head: string, total: int) -> BlockLayer #export_c #effects(all) {
+  if head.count < BL_HEADER || head[0..<4] != BL_MAGIC || head[6] != 0 || head[7] != 0 { return BlockLayer.{}; }
+  b := bl_shape(cast(int) head[4], bl_u32(head, 8), bl_u32(head, 12), cast(int) head[5]);
+  if !b.ok || b.bytes != total { return BlockLayer.{}; }
+  return b;
+}
+// book:end read
+// Write a layer's header into out: the layer's whole size, or -1 when the shape isn't one this
+// layout carries or out can't hold the header.
+bl_head :: (format: int, w: int, h: int, levels: int, out: [] u8) -> int #effects(all) {
+  b := bl_shape(format, w, h, levels);
+  if !b.ok || out.count < BL_HEADER { return -1; }
+  for c, k: BL_MAGIC { out[k] = c; }
+  out[4] = cast,trunc(u8) format; out[5] = cast,trunc(u8) levels; out[6] = 0; out[7] = 0;
+  for k: 0..<4 { out[8 + k] = cast,trunc(u8) (w >> (8 * k)); out[12 + k] = cast,trunc(u8) (h >> (8 * k)); }
+  return b.bytes;
+}
+
+// ---------------------------------------------------------------------------------------------
+#test "a block layer's levels are whole blocks, largest first, down to 1 by 1" {
+  b := bl_shape(TF_BC7_SRGB, 512, 512, 10);
+  #assert b.ok && b.block == 4 && bl_level_bytes(b, 0) == 128 * 128 * 16 && bl_level_bytes(b, 7) == 16 && bl_level_bytes(b, 8) == 16 && bl_level_bytes(b, 9) == 16;
+  #assert bl_level_at(b, 0) == 16 && bl_level_at(b, 1) == 16 + 262144 && b.bytes == 16 + 21847 * 16 && bl_level_at(b, 10) == b.bytes;
+  a := bl_shape(TF_ASTC6_SRGB, 12, 6, 4);
+  #assert a.ok && a.block == 6 && bl_level_bytes(a, 0) == 2 * 16 && bl_level_bytes(a, 1) == 16 && bl_level_bytes(a, 3) == 16 && a.bytes == 16 + 5 * 16;
+  r := bl_shape(TF_BC5, 8, 4, 2);
+  #assert r.ok && bl_level_bytes(r, 0) == 32 && bl_level_bytes(r, 1) == 16 && r.bytes == 64;
+  #assert bl_chain(512, 512) == 10 && bl_chain(8, 4) == 4 && bl_chain(4, 8) == 4 && bl_chain(1, 1) == 1 && bl_chain(2, 1) == 2;
+  #assert bl_side(512, 9) == 1 && bl_side(512, 10) == 1 && bl_side(512, 8) == 2 && bl_side(6, 1) == 3 && bl_side(1, 0) == 1;
+}
+#test "every format this layout carries is admitted; nothing else is" {
+  for f: 0..<10 {
+    b := bl_shape(f, 24, 24, 1);
+    #assert b.ok == (f >= TF_BC7_SRGB && f <= TF_ASTC4);
+    if b.ok { #assert b.format == f && b.width == 24 && b.height == 24 && b.levels == 1 && b.bytes == 16 + (24 / b.block) * (24 / b.block) * 16; }
+  }
+}
+#test "sides that aren't whole blocks, or out of range, and levels past the chain are refused" {
+  #assert bl_shape(TF_BC7_SRGB, 4, 4, 3).ok && !bl_shape(TF_BC7_SRGB, 4, 4, 4).ok && !bl_shape(TF_BC7_SRGB, 4, 4, 0).ok;
+  #assert bl_shape(TF_ASTC6_SRGB, 4092, 6, 1).ok && !bl_shape(TF_ASTC6_SRGB, 4098, 6, 1).ok && !bl_shape(TF_ASTC6_SRGB, 6, 4098, 1).ok;
+  #assert bl_shape(TF_BC7_SRGB, 4096, 4096, 13).ok && !bl_shape(TF_BC7_SRGB, 4100, 4, 1).ok && !bl_shape(TF_BC7_SRGB, 4, 4100, 1).ok;
+  #assert !bl_shape(TF_BC7_SRGB, 0, 4, 1).ok && !bl_shape(TF_BC7_SRGB, 4, 0, 1).ok && !bl_shape(TF_BC7_SRGB, 6, 4, 1).ok && !bl_shape(TF_BC7_SRGB, 4, 6, 1).ok;
+  #assert !bl_shape(TF_ASTC6_SRGB, 512, 512, 1).ok && bl_shape(TF_ASTC6_SRGB, 516, 516, 10).ok && !bl_shape(TF_ASTC6_SRGB, 4, 6, 1).ok;
+  #assert bl_shape(TF_ASTC4, 4096, 8, 13).ok && !bl_shape(TF_ASTC4, 4096, 8, 14).ok && bl_shape(TF_ASTC4, 8, 4096, 13).ok;
+  #assert !bl_shape(TF_ASTC4, 4092 + 8, 8, 1).ok && bl_shape(TF_ASTC4, 4092, 8, 1).ok;
+  no := bl_shape(TF_BC7_SRGB, 3, 4, 1); #assert !no.ok && no.format == 0 && no.width == 0 && no.bytes == 0 && no.block == 0;
+}
+#test "a header written is read back, and every byte of it is checked" {
+  h: [16] u8; for k: 0..<16 { h[k] = 9; } n := bl_head(TF_BC7_SRGB, 0x0204, 0x0108, 3, h[..]);
+  #assert n == bl_shape(TF_BC7_SRGB, 0x0204, 0x0108, 3).bytes && h[0] == 'V' && h[3] == '1' && h[4] == 3 && h[5] == 3 && h[6] == 0 && h[7] == 0;
+  #assert h[8] == 4 && h[9] == 2 && h[10] == 0 && h[11] == 0 && h[12] == 8 && h[13] == 1 && h[14] == 0 && h[15] == 0;
+  b := bl_read(cast(string) h[..], n);
+  #assert b.ok && b.format == TF_BC7_SRGB && b.width == 0x0204 && b.height == 0x0108 && b.levels == 3 && b.bytes == n;
+  #assert !bl_read(cast(string) h[..], n - 1).ok && !bl_read(cast(string) h[..], n + 1).ok && !bl_read(cast(string) h[0..<15], n).ok;
+  for at: 0..<16 {
+    bad := h; bad[at] ^= 1;
+    #assert !bl_read(cast(string) bad[..], n).ok;
+  }
+  // a header past the first 16 bytes is not read
+  long: [20] u8; for k: 0..<16 { long[k] = h[k]; } long[16] = 9; #assert bl_read(cast(string) long[..], n).ok;
+  // the high bytes of the sides are read too
+  big: [16] u8; for k: 0..<16 { big[k] = 9; } m := bl_head(TF_BC7_SRGB, 4096, 4, 1, big[..]); #assert m == 16 + 1024 * 16 && big[9] == 16 && bl_read(cast(string) big[..], m).width == 4096;
+  big[10] = 1; #assert !bl_read(cast(string) big[..], m).ok; big[10] = 0; big[11] = 1; #assert !bl_read(cast(string) big[..], m).ok;
+  big[11] = 0; big[14] = 1; #assert !bl_read(cast(string) big[..], m).ok; big[14] = 0; big[15] = 1; #assert !bl_read(cast(string) big[..], m).ok;
+  small: [15] u8; #assert bl_head(TF_BC7_SRGB, 4, 4, 1, small[..]) == -1 && bl_head(TF_BC7_SRGB, 4, 5, 1, h[..]) == -1 && bl_head(2, 4, 4, 1, h[..]) == -1;
+}

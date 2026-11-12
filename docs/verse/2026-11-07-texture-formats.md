@@ -52,9 +52,9 @@ The same materials as block formats, at the same sizes (the audit's projection):
 - **Format choice per device.** The host now asks for every block-compression feature the
   adapter has (`texture-compression-bc`, `-astc`, `-etc2`), and Coax picks the format from
   those and from the encodings the pack carries: a phone prefers ASTC (6x6 for colour,
-  4x4 for normals), a desktop BC (BC7 colour, BC5 normals). No pack carries encoded
-  layers yet, so every device still gets RGBA8; that is the fallback, and it is also what
-  happens when the reactor can't load.
+  4x4 for normals), a desktop BC (BC7 colour, BC5 normals). Everglade's pack has block
+  builds since #13305 (below); a pack without them, or a device without the feature, gets
+  RGBA8, and so does a page whose reactor can't load.
 - **The encoder.** `aethyr/render/texture-encode.coax` writes BC7 (mode 6), BC4/BC5 and
   ASTC 4x4 and 6x6 (one partition, LDR, binary ranges; colour, colour with alpha, and
   dual-plane normals with X in `.r` and Y in `.a`). `aethyr/tools/texture-encode.coax`
@@ -117,10 +117,14 @@ shared the machine, so the gap in the Link run is load, not this change.
   download, 512 on demand, a few full-size slots under LRU) fed by the GPU request array.
   That array is Valley Lab step 6 (#13008), which is not on `main`, so the tiers wait for
   it. `tf_side` is the hook they extend.
-- **Encoded layers in packs.** Packs still carry JPEG and PNG layers. Shipping BC7 or ASTC
-  needs a pack entry kind for block layers (the range-addressable packs, #12990), an
-  upload path that writes blocks with `writeTexture`, and the normal shaders reading
-  ASTC normals from `.ra`. The format pick is ready for it: set the pack's carried bits.
+- **Block data layers.** Block builds carry colour layers only. Normal and ORM data layers
+  (BC5, ASTC normals) need the normal shaders to read ASTC normals from `.ra`; Everglade's
+  pack has no data layers.
+- **ASTC 6x6 builds.** WebGPU needs a compressed texture's first level to be whole blocks, and
+  512 is not a multiple of 6, so a 6x6 build needs layers at 516 or 510. Everglade ships BC7
+  and ASTC 4x4.
+- **Native hosts.** The iOS and desktop apps load `everglade2.pack`, and `Pages.swift` still
+  asks for RGBA8 (`tf_pick(0, 0, ...)`).
 - **The renderer's layer paths.** Realms drawn through `coax/web/render.js`
   (`makeLayersEffect`, canonical layers) do not take the phone tier yet; Everglade and
   Character Create use `host.js`'s path, which does.
@@ -131,3 +135,48 @@ shared the machine, so the gap in the Link run is load, not this change.
   bitstream half (packing, decoding, the blue-contract decode) is pinned by the golden
   blocks and the reference decoders. The tool (`aethyr/tools/texture-encode.coax`) and the
   format pick have no survivors.
+
+## Block builds (GitHub #13305)
+
+`aethyr/tools/block-pack.coax` writes a pack's block build: the same pack with every texture
+layer as a block layer (`aethyr/render/block-layer.coax`, profile
+`proto/verse/texture-block-layer-v1.json`): a 16-byte header (`VBL1`, format, levels, width,
+height), then every mip level's blocks, largest first. Each layer's chain is made as the
+canonical layer path makes it (decode, double a half-size layer, alpha-weighted box mips, one
+premultiply round trip) and each level is encoded by `aethyr/render/texture-encode.coax`. The
+catalog, geometry and sounds are the pack's; only the catalog's size lines change. The build is
+written as a VPK3 file, `NAME.TAG.vpk3`, beside `NAME.pack`, so its pages are deflated and
+admitted by SHA-256 as they arrive. `apps/openagents-web/build.sh` writes Everglade's two
+builds, `everglade-zone.bc7.vpk3` and `everglade-zone.astc4.vpk3`, from the tracked pack.
+
+A realm lists its builds with a `blocks:` asset (`blocks:bc7,astc4` for Everglade). host.js asks
+Coax which one this device takes (`tf_pick` with the carried bits `tf_carries` gives for the
+listed tags, `tf_tag` for the file name), loads it instead of the pack, and uploads each
+layer's levels with `writeTexture`: no image decode and no resize. Without a build it can use,
+or when the build doesn't load, it loads the pack as before.
+
+Measured on 2026-11-12 on the Mac's Apple GPU with `coax/web/tool.sh texture-audit`
+(the phone row emulates a phone: 390x844, dpr 3, a coarse pointer), against a local server:
+
+| | Before (pack, RGBA8) | After (block build) |
+| --- | ---: | ---: |
+| Layer array, desktop | 84.0 MiB `rgba8unorm-srgb` | 21.0 MiB `bc7-rgba-unorm-srgb` |
+| Layer array, phone | 84.0 MiB `rgba8unorm-srgb` | 21.0 MiB `astc-4x4-unorm-srgb` |
+| All materials | 89.2 MiB | 26.2 MiB |
+| Download | 33,470,676 bytes | 23,243,828 (BC7), 22,997,593 (ASTC 4x4) |
+| Bytes in to layers on the GPU | 54 to 78 ms | 9 to 11 ms |
+| Navigation to layers on the GPU (localhost) | 524 to 686 ms | 902 to 968 ms |
+
+63 layers at 512 with 10 levels each: 22,021,776 bytes of blocks against 88,080,300 as RGBA8,
+a factor of 4.0. Level 0's PSNR over RGB against the source (the encoder's own decoder, which
+reads every block as bcdec and astcenc do) is 39.77 dB for BC7 and 39.37 dB for ASTC 4x4.
+On localhost the download costs nothing, so the paged read (226 pages, each inflated and
+hashed) is slower than the whole pack's; on a phone's network the 10 MB less to download
+outweighs it.
+
+The look holds: in headless Chrome (goldens.ts's golden mode, Everglade at 1280x800) the
+building fronts above the square, which are all pack layers, differ from the RGBA8 run by
+38.3 dB PSNR, closer than two RGBA8 runs of the same build differ from each other (37.0 dB).
+Whole frames differ more, but from the scene's light, not its layers: two RGBA8 runs of one
+build already differ in 8,546 of 16,000 blocks (the grass, which reads no layer, is the
+largest part). Two block-build runs differ in 1 block.

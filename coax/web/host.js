@@ -252,7 +252,7 @@ import { localRoomSocket } from "./room-worker.js";
 import { wtSocket } from "./room-wt.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
-import { layerFeatures, layerPolicy, warmLayerPolicy } from "./layers-host.js";
+import { layerFeatures, layerPolicy, warmLayerPolicy, layerBuild, blockLayout, layerTier } from "./layers-host.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
@@ -360,6 +360,7 @@ const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PAC
 const PACK_DATA_LAYER = 6;
 function wantsDataLayers() { return !gpu?.renderer && engine?.exports.coaxial_data_layers_v1?.() === 1; }
 let soundDir = "";   // a sounds:/DIR/ asset: sounds played by name from DIR/NAME.ogg
+let packBlocks = [];   // a blocks:TAG,TAG asset: the block builds beside the page's pack (GitHub #13305)
 const assets = parseAssets((script && script.dataset.assets) || "");
 // What main() loads once the GPU is up (sounds wait to be played; fonts and icons are gpui.js's).
 const LATER = ["sound", "loop", "particles", "cull", "font", "icons", "licence"];
@@ -1682,6 +1683,7 @@ function parseAssets(text) {
     const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1), i = list.length;
     if (kind === "sound") { const e = rest.indexOf("="); list.push({ i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }); }
     else if (kind === "sounds") { if (/^\/[a-z0-9/_-]+\/$/.test(rest)) soundDir = rest; }
+    else if (kind === "blocks") packBlocks = rest.split(",").filter((tag) => /^[a-z0-9]{1,8}$/.test(tag));
     // A .vpk3 pack loads by ranges (coax/web/pack-host.js); in development ?ranges=N sets how many at once.
     else if (kind === "pack") { const pack = { url: rest, ranges: dev ? Number(new URLSearchParams(location.search).get("ranges")) || undefined : undefined }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
@@ -1872,13 +1874,25 @@ async function loadPackV1(pack){
     if(pack.away)throw Error("private");
     if(!packHost)throw Error("pack reader is unavailable");
     let told=0;
-    // Admission is synchronous, before a group or fetch promise can retain bytes.
-    const incoming=packHost.load(pack,{owner:group,current,progress:(loaded,total)=>{
+    // A block build of the pack (GitHub #13305): the realm's blocks: asset lists the builds beside
+    // it, NAME.TAG.vpk3, each layer GPU blocks with its levels; Coax picks one this device's GPU
+    // takes (aethyr/render/texture-format.coax). Without one, or when it won't load, the pack itself.
+    let build=null;
+    if(packBlocks.length&&!pack.broker&&!gpu.renderer&&/\.pack$/.test(pack.url)){
+      pack.fetching=true;
+      try{build=await layerBuild(layerFeatures(gpu.device.features),packBlocks,matchMedia("(pointer: coarse)").matches);}catch(error){if(dev)console.warn("layer build unavailable",error);}
+      check();
+    }
+    const options={owner:group,current,progress:(loaded,total)=>{
       if(!current())return;loading.bytes(pack.url,loaded,total);
       if(!waiting&&performance.now()-told>100){told=performance.now();send(PACK_KIND,`${loaded} ${total}`);}
-    }});
-    pack.fetching=true;packGroups.set(pack,group);
-    group.result=await incoming;
+    }};
+    // Admission is synchronous, before a group or fetch promise can retain bytes.
+    const incoming=build?packHost.load({...pack,url:pack.url.replace(/\.pack$/,`.${build.tag}.vpk3`)},options)
+      .catch(error=>{if(!current())throw error;if(dev)console.warn(`${pack.url}: its ${build.tag} build`,error);return packHost.load(pack,options);})
+      :packHost.load(pack,options);
+    pack.fetching=true;packGroups.set(pack,group);loadMark("pack-start");
+    group.result=await incoming;loadMark("pack-bytes");
     await group.result.use(async result=>{
       await rendererReady();const entries=result.entries,of=kind=>entries.filter(entry=>entry.kind===kind);
       const [catalog,vertices,indices,layers]=parts;
@@ -1886,7 +1900,7 @@ async function loadPackV1(pack){
       const images=!gpu.renderer||gpu.renderer.canonicalLayers?of(PACK_LAYER).map(entry=>entry.bytes):await Promise.all(of(PACK_LAYER).map(entry=>createImageBitmap(new Blob([entry.bytes])).then(image=>(loading.textures(1,0),image))));
       await rendererReady();
       const texture=images.length?await layerTexture(images):null;
-      await rendererReady();
+      await rendererReady();loadMark("pack-layers");
       if(wantsDataLayers())loading.textures(0,2*of(PACK_DATA_LAYER).length);
       const dataTexture=wantsDataLayers()&&of(PACK_DATA_LAYER).length?await layerTexture(of(PACK_DATA_LAYER).map(entry=>entry.bytes),"rgba8unorm"):null;
       await rendererReady();
@@ -2064,14 +2078,17 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
   // Pipeline two original atlases at most, overlapping decode with upload/mips.
   // Never retain the complete decoded array or all resized mipmaps.
   const encoded = images[0] instanceof Uint8Array;
+  // A block build's layers go up as they are (GitHub #13305).
+  const blocks = encoded && !dataFormat ? await blockLayout(images[0]).catch(() => null) : null;
+  if (blocks) return blockTexture(images, blocks);
   const raw = dataFormat ? { colorSpaceConversion: "none", premultiplyAlpha: "none" } : {};
   const first = encoded ? await layerBitmap(images[0], dataFormat ? raw : undefined) : images[0];
   if (encoded) loading.textures(1, 0);
   const { device } = gpu, declaredSide = dataFormat ? 0 : engine?.exports.coaxial_layers_side_v1?.(arena.state) || 0,
     [dw, dh] = declaredSide ? [declaredSide, declaredSide] : [first.width, first.height];
-  // Coax picks the format and the size tier (aethyr/render/texture-format.coax): no pack carries
-  // block-encoded layers yet, so it is RGBA8, at most 512 a side on a phone. Without the reactor
-  // the layers go up as they always have.
+  // Coax picks the format and the size tier (aethyr/render/texture-format.coax). Image layers go up
+  // as RGBA8, at most 512 a side on a phone (a block build's layers took blockTexture above).
+  // Without the reactor the layers go up as they always have.
   const format = dataFormat || "rgba8unorm-srgb"; let w = dw, h = dh;
   try {
     const policy = await layerPolicy(layerFeatures(device.features), 0, matchMedia("(pointer: coarse)").matches, 0, Math.max(dw, dh));
@@ -2117,6 +2134,30 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
     await Promise.all(Array.from({ length: width }, uploadLayers));
     if (failure) throw failure;
   } catch (error) { texture.destroy();throw error; }
+  return texture;
+}
+// A block build's layers (aethyr/render/block-layer.coax): every layer's levels written as the pack
+// has them, no decode and no resize. Each layer has the first's shape. A phone's tier for the format
+// (texture-format.coax tf_side) drops the levels above it.
+async function blockTexture(images, first) {
+  const { device } = gpu, layouts = [first];
+  for (let k = 1; k < images.length; k++) layouts.push(await blockLayout(images[k]));
+  if (layouts.some((l) => !l || l.code !== first.code || l.width !== first.width || l.height !== first.height || l.levels.length !== first.levels.length))
+    throw new Error("block layers of different shapes");
+  const side = await layerTier(Math.max(first.width, first.height), matchMedia("(pointer: coarse)").matches, first.code);
+  let skip = 0;
+  while (skip + 1 < first.levels.length && Math.max(first.width, first.height) >> skip > side) skip++;
+  const levels = first.levels.slice(skip);
+  const texture = device.createTexture({ size: [levels[0].width, levels[0].height, images.length], format: first.name, mipLevelCount: levels.length,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+  try {
+    images.forEach((bytes, layer) => {
+      levels.forEach((lv, level) => device.queue.writeTexture({ texture, mipLevel: level, origin: [0, 0, layer] }, bytes.subarray(lv.offset, lv.offset + lv.bytes),
+        { bytesPerRow: lv.bytesPerRow, rowsPerImage: lv.rows }, [lv.width, lv.height, 1]));
+      loading.textures(2, 0);
+    });
+    await device.queue.onSubmittedWorkDone();
+  } catch (error) { texture.destroy(); throw error; }
   return texture;
 }
 function flatDataTexture(device) {
