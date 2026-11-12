@@ -142,7 +142,9 @@ EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, i
 // The instances every frame; the bake once, when it is made.
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { (void)state; return k == 0 ? frames : baked; }
 
-EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return zone_key(zone(state), key) ? 1u : 0u; }
+static coax_v_t_LabWalk walk(cx_face_addr state) { return (coax_v_t_LabWalk){walk_at(state), 1}; }
+// A hub's keys first (lab-walk.coax lab_key: the index, the next station and the one before), then the zone's.
+EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return lab_key(walk(state), key) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { return zone_key_up(zone(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { zone_blur(zone(state)); sticks = verse_sticks_reset(); }
 /* Aethyr host contract v1 (aethyr/host/README.md), as fivelab-face.c has it: a native build says so;
@@ -192,7 +194,7 @@ EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind,
   LAB_MESSAGE(at(state), kind, (coax_string){(const char *)inbox, length});
 }
 
-EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) { return (int32_t)zone_action(zone(state)); }
+EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) { return (int32_t)lab_action(walk(state)); }   /* a hub's address as you move, then the zone's */
 EXPORT("coaxial_outbox") cx_face_addr coaxial_outbox(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(cx_face_addr state) { return (uint32_t)zone_at(state)->out_n; }
 /* the allocations those bytes and the media packet's are in, whole (host contract v1) */

@@ -13,7 +13,9 @@
 // The kinds and their numbers:
 //   0 SKY     the whole view, behind everything: a dark dome, a glow low on the horizon, stars
 //   1 FLOOR   the Grid: metre lines, four-metre lines, a lit lane along z through x = 0 and a pool
-//             of light round ax.w, ay.w (your feet's x and z). ink.w the time, s
+//             of light round ax.w, ay.w (your feet's x and z). ink.w the time, s. A hub instead
+//             (ink.x over 0): a lane up each of 2 ink.y + 1 avenues ink.x apart, north of z = 0,
+//             and a plaza across their mouths
 //   2 PANEL   a lit face: ax.w how much it shines of itself, ay.w its rim's light, ink.w how
 //             opaque (1: solid)
 //   3 GLYPH   one character of the pixel face (aethyr/fx/pixel-font.coax): ax.w its top four rows,
@@ -110,6 +112,9 @@ qfx_sky :: (rd:V3,t:f32)->V3 {
 }
 // How much of a line shows at distance d from it, the line `wide` metres to each side (its edge a
 // pixel soft: `soft` metres).
+// A hub's plaza (qfx_floor): how deep it runs south of the avenues' mouths, and how far it reaches
+// past the outermost avenue's middle, m.
+QFX_PLAZA :: 16.0f32; QFX_PLAZA_SIDE :: 16.0f32;
 qfx_line :: (d:f32,wide:f32,soft:f32)->f32 { return 1.0f32-smoothstep(wide,wide+soft,d); }
 // The distance to the nearest line of a grid `step` metres apart.
 qfx_cell :: (x:f32,step:f32)->f32 { return abs((fract((x/step)+0.5f32)-0.5f32)*step); }
@@ -124,9 +129,25 @@ qfx_floor :: (p:QuadP,u:[]f32)->V4 {
   bold:f32=fmax(qfx_line(qfx_cell(w.x,4.0f32),0.014f32+(px*0.4f32),px+0.006f32),qfx_line(qfx_cell(w.z,4.0f32),0.014f32+(px*0.4f32),px+0.006f32));
   fine=fine*exp(-dist/34.0f32)*saturate(0.05f32/fmax(px,0.0001f32));
   bold=bold*exp(-dist/120.0f32)*saturate(0.22f32/fmax(px,0.0001f32));
-  // the lane you walk: a paler strip between two bright rails
-  lane:f32=1.0f32-smoothstep(2.35f32,2.6f32,abs(w.x));
-  rail:f32=qfx_line(abs(abs(w.x)-2.5f32),0.035f32+(px*0.5f32),px+0.01f32)*exp(-dist/170.0f32);
+  // the lane you walk: a paler strip between two bright rails. A hub (ink.x, the avenues' spacing,
+  // over 0; ink.y of them each side of the middle) has a lane up each avenue north of z = 0 and a
+  // plaza across their mouths from z = 0 to QFX_PLAZA, railed round, open where each avenue leaves it.
+  lx:f32=w.x; north:f32=1.0f32; plaza:f32=0.0f32; prail:f32=0.0f32;
+  rw:f32=0.035f32+(px*0.5f32); rs:f32=px+0.01f32;
+  if (p.ink.x>0.0f32) {
+    k:f32=fmin(fmax(floor((w.x/p.ink.x)+0.5f32),-p.ink.y),p.ink.y);
+    lx=w.x-(k*p.ink.x);
+    north=1.0f32-smoothstep(-0.05f32,0.05f32,w.z);
+    reach:f32=(p.ink.y*p.ink.x)+QFX_PLAZA_SIDE;
+    across:f32=1.0f32-smoothstep(reach-0.15f32,reach+0.1f32,abs(w.x));
+    deep:f32=smoothstep(-0.1f32,0.05f32,w.z)*(1.0f32-smoothstep(QFX_PLAZA-0.05f32,QFX_PLAZA+0.1f32,w.z));
+    plaza=across*deep;
+    mouth:f32=1.0f32-smoothstep(2.45f32,2.55f32,abs(lx));
+    ends:f32=fmax(qfx_line(abs(w.z),rw,rs)*(1.0f32-mouth),qfx_line(abs(w.z-QFX_PLAZA),rw,rs))*across;
+    prail=fmax(ends,qfx_line(abs(abs(w.x)-reach),rw,rs)*deep);
+  }
+  lane:f32=fmax((1.0f32-smoothstep(2.35f32,2.6f32,abs(lx)))*north,plaza);
+  rail:f32=fmax(qfx_line(abs(abs(lx)-2.5f32),rw,rs)*north,prail)*exp(-dist/170.0f32);
   // a pulse running down the rails, away from where you came in
   run:f32=fract((w.z*0.035f32)+(p.ink.w*0.11f32));
   pulse:f32=exp(-run*7.0f32);
@@ -226,6 +247,24 @@ qfx_test_camera :: (u:[]f32) {
   #assert rail.y>line.y && line.y>bare.y && bare.w==1.0f32;
   p.world=v3(1.0f32,0.0f32,-700.3f32); far:=qfx_floor(p,u[..]); h:=qfx_horizon();
   #assert abs(far.x-h.x)<0.004f32 && abs(far.y-h.y)<0.01f32;
+}
+#test "quad world: a hub's floor has a rail on each avenue north of the plaza, round the plaza, and none across an avenue's mouth" {
+  u:[32]f32; qfx_test_camera(u[..]);
+  p:QuadP; p.look=v4(QFX_FLOOR,0.0f32,10.0f32,0.0f32); p.ink=v4(26.0f32,4.0f32,0.0f32,0.0f32);
+  p.world=v3(28.5f32,0.0f32,-6.3f32); rail:=qfx_floor(p,u[..]);
+  p.world=v3(27.0f32,0.0f32,-6.3f32); lane:=qfx_floor(p,u[..]);
+  p.world=v3(13.0f32,0.0f32,-6.3f32); between:=qfx_floor(p,u[..]);
+  #assert rail.y>lane.y && lane.y>between.y;
+  // no avenue past the fourth, and no lane rail inside the plaza
+  p.world=v3(130.5f32,0.0f32,-6.3f32); past:=qfx_floor(p,u[..]); #assert past.y<rail.y*0.5f32;
+  p.world=v3(28.5f32,0.0f32,8.3f32); inside:=qfx_floor(p,u[..]); #assert inside.y<rail.y*0.5f32;
+  // the plaza's south rail, its north rail between two avenues, and the gap in it at an avenue's mouth
+  p.world=v3(13.0f32,0.0f32,QFX_PLAZA); south:=qfx_floor(p,u[..]);
+  p.world=v3(13.0f32,0.0f32,0.0f32); north:=qfx_floor(p,u[..]);
+  p.world=v3(26.0f32,0.0f32,0.0f32); mouth:=qfx_floor(p,u[..]);
+  #assert south.y>between.y*2.0f32 && north.y>between.y*2.0f32 && mouth.y<north.y*0.6f32;
+  // no hub: the one lane, as before
+  p.ink=v4(0.0f32,0.0f32,0.0f32,0.0f32); p.world=v3(28.5f32,0.0f32,-6.3f32); one:=qfx_floor(p,u[..]); #assert one.y<rail.y*0.5f32;
 }
 #test "quad world: a panel's rim is brighter than its middle, and a see-through one is premultiplied" {
   u:[32]f32; qfx_test_camera(u[..]);
