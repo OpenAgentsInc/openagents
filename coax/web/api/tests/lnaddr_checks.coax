@@ -1,0 +1,148 @@
+// Lightning Address API checks (lnaddr.c, migration 0149, docs/auth/lightning-addresses.md; #13208),
+// run by test.sh after auth_checks: the LNURL errors (LUD-06), claiming (people only, one each,
+// look-alikes and held names refused), the address that isn't receiving yet, off and on, a waiting
+// change that applies when due and not while the account is frozen, cancelling, the lookup limit
+// with its number in the words, and a payer's details refused. Forward mode's fetch needs a public
+// https host, so it is proved on staging (the issue's evidence), and its JSON and invoice checks
+// are lnurl.coax's own #test cases.
+//   API=... PGURL=... PSQL=... SIGN=... coax/web/tool.sh coax/web/api/tests/lnaddr_checks.coax
+#load "api_harness.coax";
+
+ln_has :: (s: string, part: string) -> bool { return ap_has(s, part); }
+// A new key in dir/file and an account holding it (kind person, or agent owned by owner); the account id.
+ln_account :: (t: [] Ap, dir: string, file: string, agent: bool, owner: string, path: [] u8, out: [] u8) -> string {
+  kf := fs_join(dir, file, path);
+  pkb: [256] u8;
+  a := [3] string.[t[0].sign, "--new", kf];
+  err: [1024] u8;
+  got := proc_run(a[..], 30000, pkb[..], err[..]);
+  if got.status != 0 { return ""; }
+  pk := ap_trim(cast(string) pkb[0..<got.out_n]);
+  nb: [128] u8; acct := ap_sql(t, "SELECT auth.new_person(NULL)", nb[..]);
+  q: [1] Sb;
+  if agent { sb(q[..], "UPDATE auth.accounts SET kind = 'agent', owner = '"); sb(q[..], owner); sb(q[..], "' WHERE id = '"); sb(q[..], acct); sb(q[..], "'; "); }
+  sb(q[..], "WITH k AS (INSERT INTO auth.nostr_keys (account, pubkey) VALUES ('"); sb(q[..], acct); sb(q[..], "', '"); sb(q[..], pk);
+  sb(q[..], "') RETURNING account) SELECT account FROM k");   // a bare RETURNING would add psql's "INSERT 0 1"
+  return ap_sql(t, sb_text(q[..]), out);
+}
+// A request signed (NIP-98) with keyfile, from network address ip; its status.
+ln_signed :: (t: [] Ap, keyfile: string, method: string, path: string, ip: string) -> int {
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, method, sb_text(url[..]), "", false, sigb[..]);
+  a: [1] Sb; sb(a[..], "Authorization: Nostr "); sb(a[..], sig);
+  x: [1] Sb; sb(x[..], "X-Forwarded-For: "); sb(x[..], ip); sb(x[..], ", 130.211.0.1");
+  h := [2] string.[sb_text(a[..]), sb_text(x[..])];
+  return ap_call(t, method, path, "", h[..]);
+}
+ln_get :: (t: [] Ap, path: string, ip: string) -> int {
+  x: [1] Sb; sb(x[..], "X-Forwarded-For: "); sb(x[..], ip); sb(x[..], ", 130.211.0.1");
+  h := [1] string.[sb_text(x[..])];
+  return ap_call(t, "GET", path, "", h[..]);
+}
+ln_reason :: (t: [] Ap, out: [] u8) -> string { return ap_member(ap_body(t), "reason", out); }
+
+ln_checks :: (t: [] Ap, dir: string) {
+  rb: [512] u8; eb: [512] u8; ob: [512] u8; q: [1] Sb;
+  // ---- the LNURL routes for names that aren't there
+  st := ln_get(t, "/.well-known/lnurlp/nobody", "198.51.100.1");
+  ap_check(t, "a name nobody holds is LUD-06's error, 404", st == 404 && ap_member(ap_body(t), "status", eb[..]) == "ERROR"
+           && ln_reason(t, rb[..]) == "There's no Lightning Address with that name", ap_body(t));
+  st = ln_get(t, "/.well-known/lnurlp/a..b", "198.51.100.1");
+  ap_check(t, "a name the rules refuse is refused", st == 404 && ln_reason(t, rb[..]) == "That isn't a Lightning Address name", ap_body(t));
+  st = ln_get(t, "/lnurlp/verify/00", "198.51.100.1");
+  ap_check(t, "verify for a hash we never gave out is 404", st == 404 && ap_member(ap_body(t), "status", eb[..]) == "ERROR", ap_body(t));
+  none := [1] string.["Accept: application/json"];
+  st = ap_call(t, "POST", "/api/lightning/address?name=alice", "", none[..]);
+  ap_check(t, "claiming needs a login", st == 401, ap_body(t));
+
+  // ---- claiming
+  kb1: [1100] u8; ab1: [128] u8; A := ln_account(t, dir, "a.key", false, "", kb1[..], ab1[..]);
+  ka: [1100] u8; keyA := fs_join(dir, "a.key", ka[..]);
+  kb2: [1100] u8; ab2: [128] u8; B := ln_account(t, dir, "b.key", false, "", kb2[..], ab2[..]);
+  kbb: [1100] u8; keyB := fs_join(dir, "b.key", kbb[..]);
+  kb3: [1100] u8; ab3: [128] u8; G := ln_account(t, dir, "g.key", true, A, kb3[..], ab3[..]);
+  kg: [1100] u8; keyG := fs_join(dir, "g.key", kg[..]);
+  ap_check(t, "three accounts with keys", A != "" && B != "" && G != "", A);
+  st = ln_signed(t, keyG, "POST", "/api/lightning/address?name=agentname", "198.51.100.2");
+  ap_check(t, "an agent can't claim", st == 403, ap_body(t));
+  st = ln_signed(t, keyA, "POST", "/api/lightning/address?name=alice", "198.51.100.2");
+  ap_check(t, "a person claims a name; it isn't receiving until it has a destination", st == 200
+           && ap_member(ap_body(t), "name", eb[..]) == "alice" && ap_member(ap_body(t), "mode", ob[..]) == "none", ap_body(t));
+  st = ln_signed(t, keyA, "POST", "/api/lightning/address?name=alice2", "198.51.100.2");
+  ap_check(t, "one address an account", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "You already have a Lightning Address", ap_body(t));
+  st = ln_signed(t, keyB, "POST", "/api/lightning/address?name=a1ice", "198.51.100.2");
+  ap_check(t, "a look-alike of a held name is taken", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "That name is taken", ap_body(t));
+  sb(q[..], "INSERT INTO pay.name_holds (name, skeleton, account, reason) VALUES ('oldname', 'oldname', '"); sb(q[..], A); sb(q[..], "', 'paid')");
+  ap_do(t, sb_text(q[..]));
+  st = ln_signed(t, keyB, "POST", "/api/lightning/address?name=old-name", "198.51.100.2");
+  ap_check(t, "a name once paid stays with its account", st == 409, ap_body(t));
+  st = ln_signed(t, keyB, "POST", "/api/lightning/address?name=bob&forward_to=bob@127.0.0.1", "198.51.100.2");
+  ap_check(t, "a forward target on a private address is refused", st == 400
+           && ap_member(ap_body(t), "error", eb[..]) == "That isn't a Lightning Address we can forward to", ap_body(t));
+  st = ln_signed(t, keyB, "POST", "/api/lightning/address?name=bob&spark_pubkey=02aa&sig=00", "198.51.100.2");
+  ap_check(t, "a wallet that didn't sign is refused", st == 400, ap_body(t));
+
+  // ---- not receiving, off and on
+  st = ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.3");
+  ap_check(t, "an address with no destination says so", st == 200 && ln_reason(t, rb[..]) == "This address isn't receiving yet", ap_body(t));
+  st = ln_get(t, "/lnurlp/alice/invoice?amount=1000", "198.51.100.3");
+  ap_check(t, "and makes no invoice", st == 200 && ln_reason(t, rb[..]) == "This address isn't receiving yet", ap_body(t));
+  st = ln_signed(t, keyA, "POST", "/api/lightning/address/off", "198.51.100.2");
+  st2 := ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.3");
+  ap_check(t, "turned off, it says so", st2 == 200 && ln_reason(t, rb[..]) == "This address is turned off", ap_body(t));
+  st = ln_signed(t, keyA, "POST", "/api/lightning/address/on", "198.51.100.2");
+  ap_check(t, "and on again", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "active", ap_body(t));
+  st = ln_get(t, "/lnurlp/alice/invoice?amount=1000&amount=2000", "198.51.100.3");
+  ap_check(t, "an amount given twice is refused", st == 400, ap_body(t));
+  st = ln_get(t, "/lnurlp/alice/invoice?amount=12x", "198.51.100.3");
+  ap_check(t, "an amount that isn't a number is refused", st == 400
+           && ln_reason(t, rb[..]) == "The amount must be a whole number of millisatoshis", ap_body(t));
+
+  // ---- a change waits, applies when due, and never while frozen
+  st = ln_signed(t, keyA, "POST", "/api/lightning/address/change?forward_to=x@10.0.0.1", "198.51.100.2");
+  ap_check(t, "a change to a private address is refused", st == 409 || st == 400, ap_body(t));
+  sb_clear(q[..]); sb(q[..], "INSERT INTO pay.address_changes (name, account, new_mode, new_target, ready_at) VALUES ('alice', '"); sb(q[..], A);
+  sb(q[..], "', 'spark', '02"); for k: 0..<64 { sb(q[..], "b"); } sb(q[..], "', now() + interval '1 hour')");
+  ap_do(t, sb_text(q[..]));
+  st = ln_signed(t, keyA, "GET", "/api/lightning/address", "198.51.100.2");
+  ap_check(t, "a waiting change shows, and hasn't applied", st == 200 && ap_has(ap_body(t), "\"waiting\":{\"mode\":\"spark\"")
+           && ap_member(ap_body(t), "mode", eb[..]) == "none", ap_body(t));
+  st = ln_signed(t, keyA, "POST", "/api/lightning/address/cancel", "198.51.100.2");
+  ap_check(t, "cancelled, nothing waits", st == 200 && !ap_has(ap_body(t), "\"waiting\""), ap_body(t));
+  st = ln_signed(t, keyA, "POST", "/api/lightning/address/cancel", "198.51.100.2");
+  ap_check(t, "cancelling nothing says so", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "No change is waiting", ap_body(t));
+  sb_clear(q[..]); sb(q[..], "INSERT INTO pay.address_changes (name, account, new_mode, new_target, ready_at) VALUES ('alice', '"); sb(q[..], A);
+  sb(q[..], "', 'spark', '02"); for k: 0..<64 { sb(q[..], "c"); } sb(q[..], "', now() - interval '1 minute'); UPDATE auth.accounts SET frozen_at = now() WHERE id = '");
+  sb(q[..], A); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  st = ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.3");
+  fb: [128] u8; frozen_mode := ap_sql(t, "SELECT mode FROM pay.addresses WHERE name = 'alice'", fb[..]);
+  ap_check(t, "a due change doesn't apply while the account is frozen", frozen_mode == "none", frozen_mode);
+  sb_clear(q[..]); sb(q[..], "UPDATE auth.accounts SET frozen_at = NULL WHERE id = '"); sb(q[..], A); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  st = ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.3");
+  mb: [256] u8; applied := ap_sql(t, "SELECT mode || ' ' || revision FROM pay.addresses WHERE name = 'alice'", mb[..]);
+  nb: [64] u8; notices := ap_sql(t, "SELECT count(*) FROM pay.notices WHERE name = 'alice' AND kind = 'change.applied'", nb[..]);
+  ap_check(t, "a due change applies on the next lookup, with a new revision and a notice", applied == "spark 2" && notices == "1", applied);
+  ab: [64] u8; audits := ap_sql(t, "SELECT count(*) FROM auth.audit WHERE action LIKE 'lnaddr.%'", ab[..]);
+  ap_check(t, "claims, toggles and changes are in the audit log", ap_whole(audits) >= 5, audits);
+
+  // ---- a payer's details are refused; the lookup limit names its number
+  st = ln_get(t, "/lnurlp/nobody/invoice?amount=1000&payerdata=%7B%7D", "198.51.100.4");
+  ap_check(t, "an unknown name's callback is 404", st == 404, ap_body(t));
+  last := 0;
+  for i: 0..<31 { last = ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.9"); }
+  ap_check(t, "the 31st lookup a minute from one network is refused, with the limit in the words", last == 429
+           && ln_reason(t, rb[..]) == "Too many lookups from your network: the limit is 30 a minute", ap_body(t));
+  st = ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.10");
+  ap_check(t, "another network isn't limited by it", st == 200, ap_body(t));
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  wb: [4096] u8; work := fs_temp("lnaddr-checks", wb[..]);
+  ln_checks(t[..], work);
+  gone := fs_remove(work);
+  return ap_done(t[..], "lightning address checks");
+}

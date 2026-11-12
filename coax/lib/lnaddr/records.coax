@@ -1,0 +1,57 @@
+// The Lightning Address records (proto/openagents/payment/v1alpha1/lightning_address.proto,
+// #13208) as Coax: the generated codec for LightningAddress and AddressChange, read here from
+// bytes protoc's own runtime wrote (Python protobuf 5.29.3 over proto/descriptors/
+// lightning-address.pb), and the schema's bounds (a name of at most 32 bytes, a Spark key of
+// exactly 33) refused on decode.
+//   la_record_mode(wire)  a LightningAddress's mode (LAP_AddressMode_*), or -1 when it doesn't decode
+// Not #authority: it decides nothing, and the generated codec has setters no record here uses.
+#import_proto "../../../proto/descriptors/lightning-address.pb" as LAP;
+
+la_record_mode :: (wire: [] u8) -> int #effects(all) {
+  m := LAP_LightningAddress_decode(wire);
+  if m.error != 0 { return -1; }
+  return cast(int) LAP_LightningAddress_get_mode(m).value;
+}
+
+#test "a forward address protoc wrote reads back" {
+  b := [79] u8.[10,5,97,108,105,99,101,18,14,111,112,101,110,97,103,101,110,116,115,46,99,111,109,26,21,97,99,99,116,95,48,49,50,51,52,53,54,55,56,57,97,98,99,100,101,102,32,3,40,1,58,17,97,108,105,99,101,64,103,101,116,97,108,98,121,46,99,111,109,64,3,72,128,148,235,220,3,80,1];
+  m := LAP_LightningAddress_decode(b[..]);
+  #assert m.error == 0;
+  #assert LAP_LightningAddress_get_name(m).value == "alice" && LAP_LightningAddress_get_domain(m).value == "openagents.com";
+  #assert LAP_LightningAddress_get_account(m).value == "acct_0123456789abcdef";
+  #assert LAP_LightningAddress_get_mode(m).value == LAP_AddressMode_ADDRESS_MODE_FORWARD;
+  #assert LAP_LightningAddress_get_state(m).value == LAP_AddressState_ADDRESS_STATE_ACTIVE;
+  #assert LAP_LightningAddress_get_forward_to(m).value == "alice@getalby.com";
+  #assert LAP_LightningAddress_get_revision(m).value == 3 && LAP_LightningAddress_get_max_msat(m).value == 1000000000;
+  #assert LAP_LightningAddress_get_comments_on(m).value && !LAP_LightningAddress_get_spark_pubkey(m).present;
+  #assert la_record_mode(b[..]) == 3;
+}
+
+#test "a spark address carries its 33-byte key" {
+  b := [62] u8.[10,3,98,111,98,18,14,111,112,101,110,97,103,101,110,116,115,46,99,111,109,32,2,40,2,50,33,2,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,64,1];
+  m := LAP_LightningAddress_decode(b[..]);
+  #assert m.error == 0 && la_record_mode(b[..]) == 2;
+  k := LAP_LightningAddress_get_spark_pubkey(m).value;
+  #assert k.count == 33 && k[0] == 2 && k[32] == 32;
+  #assert LAP_LightningAddress_get_state(m).value == LAP_AddressState_ADDRESS_STATE_OFF;
+  #assert !LAP_LightningAddress_get_forward_to(m).present;
+}
+
+#test "the schema's bounds are refused" {
+  long_name := [35] u8.[10,33,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,48,49,50,51,52,53,54];
+  #assert la_record_mode(long_name[..]) == -1;
+  short_key := [39] u8.[10,3,98,111,98,50,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+  #assert la_record_mode(short_key[..]) == -1;
+  cut := [10] u8.[10,5,97,108,105,99,101,18,14,111];
+  #assert la_record_mode(cut[..]) == -1;
+}
+
+#test "a waiting change keeps its times and target" {
+  b := [48] u8.[10,5,97,108,105,99,101,16,3,26,25,97,108,105,99,101,64,119,97,108,108,101,116,111,102,115,97,116,111,115,104,105,46,99,111,109,32,128,226,207,170,6,40,128,133,213,170,6];
+  c := LAP_AddressChange_decode(b[..]);
+  #assert c.error == 0 && LAP_AddressChange_get_name(c).value == "alice";
+  #assert LAP_AddressChange_get_new_mode(c).value == LAP_AddressMode_ADDRESS_MODE_FORWARD;
+  #assert LAP_AddressChange_get_new_target(c).value == "alice@walletofsatoshi.com";
+  #assert LAP_AddressChange_get_ready_at(c).value - LAP_AddressChange_get_requested_at(c).value == 86400;
+  #assert !LAP_AddressChange_get_applied_at(c).present && !LAP_AddressChange_get_cancelled_at(c).present;
+}

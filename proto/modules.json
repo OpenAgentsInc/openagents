@@ -156,6 +156,9 @@
     ],
     "account-agents": [
       "openagents/account/v1alpha1/agents.proto"
+    ],
+    "lightning-address": [
+      "openagents/payment/v1alpha1/lightning_address.proto"
     ]
   },
   "profile_namespaces": {
@@ -269,6 +272,10 @@
     ],
     "account-agents": [
       "openagents.account.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "lightning-address": [
+      "openagents.payment.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

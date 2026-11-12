@@ -1,0 +1,309 @@
+// Who may do what to a name@openagents.com Lightning Address, and when an
+// address may hand out invoices (docs/auth/lightning-addresses.md, "Who can
+// change where the money goes" and "Names"; GitHub #13208). lnaddr.c gathers
+// the facts (who is asking, how they signed, the rows) and keeps what this
+// file decides; it decides nothing itself. The LNURL rules are
+// coax/lib/lnaddr/lnurl.coax, loaded here so the API links one C file.
+//
+//   first claim        logged in (L1), a person not an agent, a free name;
+//                      forward mode: the target answered with a payRequest we
+//                      can pass on; Spark mode: the wallet's signature over the
+//                      account, name, domain, operation and revision
+//   later destination  a fresh signature by the person's own key (L2-fresh),
+//   change             a proof from the new wallet (Spark mode), then a wait:
+//                      24 hours, 72 for an account that logs in only by email;
+//                      cancellable until it applies; a notice each step
+//   turn off and on    L1, at once; the name stays theirs
+//   agents             none of the above: human-only routes
+//   held names         a name that was ever paid (we hold it at its first
+//                      invoice, since forward mode can't see settlement) is
+//                      its account's for good and never another's
+//
+//   coax/bin/coax test coax/web/api/lnaddr-policy.coax
+//   coax/bin/coax mutate coax/web/api/lnaddr-policy.coax --root-only
+#load "../../lib/lnaddr/lnurl.coax";
+#authority;
+#run_steps 250000000;
+
+LA_WAIT_S :: 86400;          // 24 hours
+LA_WAIT_EMAIL_S :: 259200;   // 72 hours, like recovery
+LA_PROOF_LIFE_S :: 300;      // a wallet proof's message expires in 5 minutes
+
+// States and modes, as lnaddr.c reads them from pay.addresses.
+LA_ACTIVE :: 0; LA_OFF :: 1; LA_SUSPENDED :: 2; LA_RETIRED :: 3;
+LA_NONE :: 0; LA_SPARK :: 1; LA_FORWARD :: 2;
+
+LA_OK :: 0;
+LA_SIGN_IN :: 1;
+LA_AGENT :: 2;
+LA_NAME :: 3;
+LA_HAVE_ONE :: 4;
+LA_TAKEN :: 5;
+LA_FRESH :: 6;
+LA_PROOF :: 7;
+LA_PENDING :: 8;
+LA_NO_ADDRESS :: 9;
+LA_SAME :: 10;
+LA_TARGET :: 11;
+LA_TARGET_DOWN :: 12;
+LA_NOTHING_PENDING :: 13;
+LA_SUSPENDED_NAME :: 14;
+LA_REFUSALS :: 15;
+LA_WHY :: [LA_REFUSALS] string.[
+  "ok",   // never shown: la_text(LA_OK) is ""
+  "Log in to manage your Lightning Address",
+  "Agents can't claim, re-point or turn off an address; their owner does",
+  "That isn't a name you can claim",
+  "You already have a Lightning Address",
+  "That name is taken",
+  "Changing where the money goes needs a fresh signature from your own key",
+  "The new wallet's proof doesn't check",
+  "A change to where the money goes is already waiting",
+  "You don't have a Lightning Address yet",
+  "That's where the money already goes",
+  "That isn't a Lightning Address we can forward to",
+  "That address didn't answer with a payment request we can pass on",
+  "No change is waiting",
+  "This address is suspended; only an admin can lift that",
+];
+
+#test "every refusal has its own line" {
+  for c: 1..<LA_REFUSALS {
+    #assert la_text(c).count > 15;
+    for j: 1..<c { #assert la_text(c) != la_text(j); }
+  }
+  #assert la_text(LA_OK) == "" && la_text(-1) == "" && la_text(LA_REFUSALS) == "";
+}
+
+#test "issuing invoices: only an active address with somewhere of the person's to send the money" {
+  #assert la_issue(LA_ACTIVE, LA_FORWARD, false) == LU_OK;
+  #assert la_issue(LA_ACTIVE, LA_SPARK, true) == LU_OK;
+  #assert la_issue(LA_ACTIVE, LA_SPARK, false) == LU_NOT_RECEIVING;   // no Spark backend yet
+  #assert la_issue(LA_ACTIVE, LA_NONE, true) == LU_NOT_RECEIVING;
+  #assert la_issue(LA_OFF, LA_FORWARD, true) == LU_OFF;
+  #assert la_issue(LA_SUSPENDED, LA_FORWARD, true) == LU_SUSPENDED;
+  #assert la_issue(LA_RETIRED, LA_FORWARD, true) == LU_RETIRED;
+  #assert la_issue(LA_SUSPENDED, LA_NONE, false) == LU_SUSPENDED;
+  #assert la_issue(LA_RETIRED, LA_NONE, false) == LU_RETIRED;
+  #assert la_issue(LA_OFF, LA_NONE, false) == LU_OFF;
+  #assert la_issue(7, LA_FORWARD, true) == LU_RETIRED && la_issue(LA_ACTIVE, 7, true) == LU_NOT_RECEIVING;
+}
+
+#test "claiming: logged in, a person, one name each, a name nobody holds" {
+  #assert la_claim(true, false, true, false, false) == LA_OK;
+  #assert la_claim(false, false, true, false, false) == LA_SIGN_IN;
+  #assert la_claim(true, true, true, false, false) == LA_AGENT;
+  #assert la_claim(true, false, false, false, false) == LA_NAME;
+  #assert la_claim(true, false, true, true, false) == LA_HAVE_ONE;
+  #assert la_claim(true, false, true, false, true) == LA_TAKEN;
+  #assert la_claim(false, true, false, true, true) == LA_SIGN_IN;
+  #assert la_claim(true, true, false, true, true) == LA_AGENT;
+  #assert la_claim(true, false, false, true, true) == LA_NAME;
+  #assert la_claim(true, false, true, true, true) == LA_HAVE_ONE;
+}
+
+#test "a held name: its own account may take it back, nobody else ever" {
+  #assert !la_held_against("acct_a", "acct_a");
+  #assert la_held_against("a", "b") && !la_held_against("a", "a");
+  #assert la_held_against("acct_a", "acct_b");
+  #assert !la_held_against("", "acct_b");
+  #assert la_held_against("acct_a", "");
+}
+
+#test "turning off and on: the holder, at once; never an agent, never out of suspension" {
+  #assert la_toggle(true, false, LA_ACTIVE) == LA_OK && la_toggle(true, false, LA_OFF) == LA_OK;
+  #assert la_toggle(false, false, LA_ACTIVE) == LA_SIGN_IN;
+  #assert la_toggle(true, true, LA_ACTIVE) == LA_AGENT;
+  #assert la_toggle(true, false, LA_SUSPENDED) == LA_SUSPENDED_NAME;
+  #assert la_toggle(true, false, LA_RETIRED) == LA_NO_ADDRESS;
+  #assert la_toggle(true, false, -1) == LA_NO_ADDRESS;
+  #assert la_toggle(false, true, LA_SUSPENDED) == LA_SIGN_IN && la_toggle(true, true, LA_SUSPENDED) == LA_AGENT;
+}
+
+#test "a destination change: fresh key, new-wallet proof, nothing waiting, then 24 or 72 hours" {
+  now := 1762000000;
+  c := la_change(true, false, true, true, false, false, false, now);
+  #assert c.code == LA_OK && c.ready_at == now + LA_WAIT_S;
+  c = la_change(true, false, true, true, false, false, true, now);
+  #assert c.code == LA_OK && c.ready_at == now + LA_WAIT_EMAIL_S;
+  #assert la_change(false, false, true, true, false, false, false, now).code == LA_SIGN_IN;
+  #assert la_change(true, true, true, true, false, false, false, now).code == LA_AGENT;
+  #assert la_change(true, false, false, true, false, false, false, now).code == LA_FRESH;
+  #assert la_change(true, false, true, false, false, false, false, now).code == LA_PROOF;
+  #assert la_change(true, false, true, true, true, false, false, now).code == LA_PENDING;
+  #assert la_change(true, false, true, true, false, true, false, now).code == LA_SAME;
+  // a refusal never carries a time
+  #assert la_change(true, false, false, true, false, false, false, now).ready_at == 0;
+  #assert la_change(true, true, false, false, true, true, true, now).code == LA_AGENT;
+  #assert la_change(true, false, false, false, true, true, true, now).code == LA_FRESH;
+  #assert la_change(true, false, true, false, true, true, true, now).code == LA_PROOF;
+  #assert la_change(true, false, true, true, true, true, true, now).code == LA_PENDING;
+}
+
+#test "a waiting change applies only once its time comes, and never once cancelled or applied" {
+  #assert la_apply(100, 100, false, false);
+  #assert la_apply(101, 100, false, false);
+  #assert !la_apply(99, 100, false, false);
+  #assert !la_apply(200, 100, true, false);
+  #assert !la_apply(200, 100, false, true);
+  #assert !la_apply(200, 0, false, false);
+  #assert la_apply(1, 1, false, false);
+  #assert la_cancel(true, false, false, false) == LA_OK;
+  #assert la_cancel(false, false, false, false) == LA_SIGN_IN;
+  #assert la_cancel(true, true, false, false) == LA_AGENT;
+  #assert la_cancel(true, false, true, false) == LA_NOTHING_PENDING;
+  #assert la_cancel(true, false, false, true) == LA_NOTHING_PENDING;
+}
+
+#test "the wallet proof: its message, its expiry, and an ECDSA signature by the Spark identity key" #steps 400000000 {
+  msg: [512] u8;
+  n := la_proof_message("acct_7", "alice", "openagents.com", "claim", 3, "00ff", 1762000300, msg[..]);
+  #assert cast(string) msg[0..<n] == "openagents.lightning-address.v1\naccount acct_7\nname alice\ndomain openagents.com\noperation claim\nrevision 3\nnonce 00ff\nexpires 1762000300";
+  #assert la_proof_message("acct\n7", "alice", "openagents.com", "claim", 3, "00ff", 1, msg[..]) == -1;
+  #assert la_proof_message("acct_7", "alice", "openagents.com", "claim", 3, "00ff", 1, msg[0..<40]) == -1;
+  m := cast(string) msg[0..<n];
+  key: [32] u8; _ = ln_unhex(INVOICE_KEY, key[..]);
+  pub := inv_public(key[..]);
+  digest: [32] u8; sig: [65] u8; work: [1] EcdsaWork; b: [512] u8;
+  for i: 0..<n { b[i] = msg[i]; }
+  #assert sha256_hash_checked(b[0..<n], digest[..], false) == SHA_OK;
+  #assert ecdsa_sign_recoverable(key[..], digest[..], work[..], sig[..], false);
+  #assert la_proof_ok(m, pub[..], sig[0..<64], 1762000300, 1762000300);
+  #assert la_proof_ok(m, pub[..], sig[0..<64], 1762000300, 1762000300 - LA_PROOF_LIFE_S);
+  #assert !la_proof_ok(m, pub[..], sig[0..<64], 1762000300, 1762000301);   // expired
+  #assert !la_proof_ok(m, pub[..], sig[0..<64], 1762000300, 1762000300 - LA_PROOF_LIFE_S - 1);   // made too far ahead
+  other := pub; other[5] ^= 1;
+  #assert !la_proof_ok(m, other[..], sig[0..<64], 1762000300, 1762000300);
+  #assert !la_proof_ok(cast(string) msg[0..<n - 1], pub[..], sig[0..<64], 1762000300, 1762000300);
+  #assert !la_proof_ok(m, pub[0..<32], sig[0..<64], 1762000300, 1762000300);
+  #assert !la_proof_ok(m, pub[..], sig[0..<63], 1762000300, 1762000300);
+  // a signature over an empty message is refused; over one character it is checked like any other
+  e: [1] u8; e0: [32] u8; esig: [65] u8;
+  #assert sha256_hash_checked(e[0..<0], e0[..], false) == SHA_OK && ecdsa_sign_recoverable(key[..], e0[..], work[..], esig[..], false);
+  #assert !la_proof_ok("", pub[..], esig[0..<64], 1762000300, 1762000300);
+  x := [1] u8.['x']; x0: [32] u8; xsig: [65] u8;
+  #assert sha256_hash_checked(x[..], x0[..], false) == SHA_OK && ecdsa_sign_recoverable(key[..], x0[..], work[..], xsig[..], false);
+  #assert la_proof_ok("x", pub[..], xsig[0..<64], 1762000300, 1762000300);
+  // the same signature with s replaced by n - s (high s) is refused: proofs are low-s only
+  order := [32] u8.[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+                    0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41];
+  high: [64] u8; borrow := 0;
+  for i: 0..<32 { high[i] = xsig[i]; }
+  for k: 0..<32 {
+    i := 31 - k;
+    d := cast(int) order[i] - cast(int) xsig[32 + i] - borrow;
+    borrow = ifx d < 0 then 1 else 0;
+    high[32 + i] = cast(u8) (ifx d < 0 then d + 256 else d);
+  }
+  #assert !la_proof_ok("x", pub[..], high[..], 1762000300, 1762000300);
+  long: [1100] u8; for i: 0..<1100 { long[i] = 'a'; }
+  #assert !la_proof_ok(cast(string) long[..], pub[..], xsig[0..<64], 1762000300, 1762000300);
+}
+
+#test "a network's key for the limits: HMAC-SHA256 under our key, never the address itself" {
+  k := [4] u8.[1, 2, 3, 4];
+  a: [32] u8; b: [32] u8; c: [32] u8;
+  #assert la_ip_key(k[..], "203.0.113.9", a[..]) && la_ip_key(k[..], "203.0.113.10", b[..]);
+  #assert !lu_same(a[..], b[..]);
+  k2 := [4] u8.[1, 2, 3, 5];
+  #assert la_ip_key(k2[..], "203.0.113.9", c[..]) && !lu_same(a[..], c[..]);
+  want: [32] u8; ip := [11] u8.['2', '0', '3', '.', '0', '.', '1', '1', '3', '.', '9'];
+  #assert hmac_sha256_checked(k[..], ip[..], want[..], false) == SHA_OK && lu_same(a[..], want[..]);
+  #assert !la_ip_key(k[0..<0], "x", a[..]) && !la_ip_key(k[..], "x", a[0..<31]);
+  #assert la_ip_key(k[..], "x", a[..]) && !la_ip_key(k[..], "", a[..]);
+}
+
+la_text :: (code: int) -> string #export_c #effects(all) {
+  if code <= LA_OK || code >= LA_REFUSALS { return ""; }
+  return LA_WHY[code];
+}
+// Whether an address hands out invoices now: an lnurl.coax refusal code or
+// LU_OK. spark_backend: the Spark LNURL backend is configured.
+la_issue :: (state: int, mode: int, spark_backend: bool) -> int #export_c #effects(all) {
+  if state == LA_OFF { return LU_OFF; }
+  if state == LA_SUSPENDED { return LU_SUSPENDED; }
+  if state != LA_ACTIVE { return LU_RETIRED; }
+  if mode == LA_FORWARD { return LU_OK; }
+  if mode == LA_SPARK && spark_backend { return LU_OK; }
+  return LU_NOT_RECEIVING;
+}
+// A first claim. name_ok: lnaddr_claim accepted it; has_one: the account
+// already holds an address; taken: the name or its skeleton is another
+// account's address or hold.
+la_claim :: (signed_in: bool, agent: bool, name_ok: bool, has_one: bool, taken: bool) -> int #export_c #effects(all) {
+  if !signed_in { return LA_SIGN_IN; }
+  if agent { return LA_AGENT; }
+  if !name_ok { return LA_NAME; }
+  if has_one { return LA_HAVE_ONE; }
+  if taken { return LA_TAKEN; }
+  return LA_OK;
+}
+// Whether a hold by holder keeps the name from account: any hold not its own.
+la_held_against :: (holder: string, account: string) -> bool #export_c #effects(all) {
+  return holder.count > 0 && holder != account;
+}
+// Turning an address off or back on.
+la_toggle :: (signed_in: bool, agent: bool, state: int) -> int #export_c #effects(all) {
+  if !signed_in { return LA_SIGN_IN; }
+  if agent { return LA_AGENT; }
+  if state == LA_SUSPENDED { return LA_SUSPENDED_NAME; }
+  if state != LA_ACTIVE && state != LA_OFF { return LA_NO_ADDRESS; }
+  return LA_OK;
+}
+LaChange :: struct { code: int; ready_at: int; }
+// Asking to send the money somewhere else. fresh: a signature by the
+// person's own key made for this request (L2-fresh); proof_ok: the new
+// wallet's proof checks (forward mode: the new target answered); pending:
+// a change is already waiting; same: the new destination is the current one;
+// email_only: the account logs in only by email.
+la_change :: (signed_in: bool, agent: bool, fresh: bool, proof_ok: bool, pending: bool, same: bool, email_only: bool, now: int) -> LaChange #export_c #effects(all) {
+  if !signed_in { return LaChange.{code = LA_SIGN_IN}; }
+  if agent { return LaChange.{code = LA_AGENT}; }
+  if !fresh { return LaChange.{code = LA_FRESH}; }
+  if !proof_ok { return LaChange.{code = LA_PROOF}; }
+  if pending { return LaChange.{code = LA_PENDING}; }
+  if same { return LaChange.{code = LA_SAME}; }
+  return LaChange.{code = LA_OK, ready_at = now + (ifx email_only then LA_WAIT_EMAIL_S else LA_WAIT_S)};
+}
+// Whether a waiting change applies now.
+la_apply :: (now: int, ready_at: int, cancelled: bool, applied: bool) -> bool #export_c #effects(all) {
+  return ready_at > 0 && now >= ready_at && !cancelled && !applied;
+}
+// Cancelling a waiting change: the holder, any time before it applies.
+la_cancel :: (signed_in: bool, agent: bool, cancelled: bool, applied: bool) -> int #export_c #effects(all) {
+  if !signed_in { return LA_SIGN_IN; }
+  if agent { return LA_AGENT; }
+  if cancelled || applied { return LA_NOTHING_PENDING; }
+  return LA_OK;
+}
+// The message a Spark wallet signs to point a name at itself. Every field
+// is one line; a field with a line break refuses. Its length, or -1.
+la_proof_message :: (account: string, name: string, domain: string, operation: string, revision: int, nonce: string, expires: int, out: [] u8) -> int #export_c #effects(all) {
+  for f: [5] string.[account, name, domain, operation, nonce] { if !lu_plain(f) { return -1; } }
+  n := json_raw(out, 0, "openagents.lightning-address.v1\naccount "); n = json_raw(out, n, account);
+  n = json_raw(out, n, "\nname "); n = json_raw(out, n, name);
+  n = json_raw(out, n, "\ndomain "); n = json_raw(out, n, domain);
+  n = json_raw(out, n, "\noperation "); n = json_raw(out, n, operation);
+  n = json_raw(out, n, "\nrevision "); n = json_write_int(out, n, revision);
+  n = json_raw(out, n, "\nnonce "); n = json_raw(out, n, nonce);
+  n = json_raw(out, n, "\nexpires "); return json_write_int(out, n, expires);
+}
+// Whether sig (64 bytes, r and s, low s) is the Spark identity key's ECDSA
+// signature over SHA-256 of message, and the message is live: not expired,
+// and not made to last longer than LA_PROOF_LIFE_S.
+la_proof_ok :: (message: string, pubkey: [] u8, sig: [] u8, expires: int, now: int) -> bool #export_c #effects(all) {
+  if now > expires || expires - now > LA_PROOF_LIFE_S { return false; }
+  b: [1024] u8;
+  n := json_raw(b[..], 0, message);   // -1 when longer than b
+  digest: [32] u8;
+  // ecdsa_verify_vartime refuses a key that isn't 33 bytes and a signature that isn't 64.
+  return n > 0 && sha256_hash_checked(b[0..<n], digest[..], false) == SHA_OK && ecdsa_verify_vartime(digest[..], pubkey, sig, true);
+}
+// The key a network is counted under for the limits: HMAC-SHA256 of its
+// address under our key, so the address itself is never stored.
+la_ip_key :: (key: [] u8, ip: string, out: [] u8) -> bool #export_c #effects(all) {
+  if key.count == 0 || out.count != 32 { return false; }
+  b: [128] u8;
+  n := json_raw(b[..], 0, ip);
+  return n > 0 && hmac_sha256_checked(key, b[0..<n], out, false) == SHA_OK;
+}

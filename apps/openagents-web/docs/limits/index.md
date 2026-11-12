@@ -17,3 +17,21 @@ Every limit we enforce on logging in. When you reach one, we say which and when 
 | Recovery code tries from one network address | 10 an hour |
 
 This page is made from the table the API enforces (`coax/web/api/auth.c`).
+
+## Lightning Addresses
+
+On name@openagents.com. A wallet shows the limit's words when it refuses.
+
+| What | Limit |
+| --- | --- |
+| Smallest payment | 1 sat |
+| Largest payment | 1000000 sats (you can set it lower) |
+| Note with a payment | 280 characters |
+| Invoice expiry | 10 minutes |
+| Lookups from one network address | 30 a minute |
+| Invoice requests for one address | 120 a minute |
+| Invoice requests from one network address | 30 a minute |
+| Addresses | 1 per person |
+| Wait before a new destination takes effect | 24 hours (72 for an account with only email) |
+
+This section is made from the Lightning Address server's own numbers (`coax/web/api/lnaddr.c`).

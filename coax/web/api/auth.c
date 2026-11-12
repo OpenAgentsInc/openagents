@@ -179,6 +179,15 @@ static const auth_rule RULES[] = {
   R("*",    "/api/verse/packs/", true, AP_GUEST, "private human packs, a key a session (verse_packs.c)"),
   R("*",    "/api/villa/", true, AP_GUEST, "the villa (villa.c)"),
   R("*",    "/memorial", true, AP_PUBLIC, "a memorial's page (villa.c)"),
+  // ---- Lightning Addresses (lnaddr.c, #13208): wallets ask without a credential; the holder's routes
+  R("GET",  "/.well-known/lnurlp/", true, AP_PUBLIC, "LUD-16 lookups, capped per network address there"),
+  R("GET",  "/lnurlp/", true, AP_PUBLIC, "LNURL-pay callbacks and LUD-21 verify, capped there"),
+  R("GET",  "/api/lightning/address", false, AP_ACCOUNT, "your address, where it goes, a waiting change"),
+  R("POST", "/api/lightning/address", false, AP_HUMAN, "claim a name (people only)"),
+  R("POST", "/api/lightning/address/off", false, AP_HUMAN, "stop receiving; the name stays yours"),
+  R("POST", "/api/lightning/address/on", false, AP_HUMAN, "receive again"),
+  R("POST", "/api/lightning/address/change", false, AP_L2_FRESH, "a new destination: a fresh key login, then a 24-hour wait"),
+  R("POST", "/api/lightning/address/cancel", false, AP_HUMAN, "cancel a waiting change"),
   // ---- our models and the mesh: NIP-98 or a session, metered (inference.c, mesh.c)
   R("*",    "/api/v1/", true, AP_GUEST, "NIP-98 signed or logged in, checked there"),
   // ---- private projects and drops: members only, the same 404 for everyone else (private.c, drops.c)
@@ -1330,6 +1339,33 @@ bool auth_freeze_link(PGconn *db, const char *acct, char token[65]) {
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK;
   PQclear(r);
   return ok;
+}
+
+// A notice to every verified email on acct (Lightning Address changes, #13208): subject and text
+// as given, then the "This wasn't me" link that freezes the account. The number of emails sent.
+int auth_notice(PGconn *db, const char *acct, const char *key, const char *subject, const char *text) {
+  const char *v[1] = {acct};
+  PGresult *r = PQexecParams(db, "SELECT sealed FROM auth.emails WHERE account = $1 AND verified_at IS NOT NULL", 1, NULL, v, NULL, NULL, 0);
+  int sent = 0;
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || !sealing_ready()) { PQclear(r); return 0; }
+  char token[65] = "";
+  bool link = auth_freeze_link(db, acct, token);
+  for (int i = 0; i < PQntuples(r); i++) {
+    char email[300], ad[96], to[600], subj[300], body[2000], message[3200], id[128], err[200];
+    snprintf(ad, sizeof ad, "auth.emails|sealed|%s", acct);
+    if (!unseal(ad, PQgetvalue(r, i, 0), email, sizeof email)) continue;
+    json_esc(email, to, sizeof to); json_esc(subject, subj, sizeof subj);
+    char full[1600];
+    if (link) snprintf(full, sizeof full, "%s\n\nIf this wasn't you, freeze your account now (it ends every login and stops the change):\ncurl -X POST %s/api/auth/freeze -d '{\"t\":\"%s\"}'\n", text, origin(), token);
+    else snprintf(full, sizeof full, "%s\n", text);
+    json_esc(full, body, sizeof body);
+    snprintf(message, sizeof message, "{\"to\":\"%s\",\"subject\":\"%s\",\"idempotency_key\":\"notice-%s-%d\",\"text\":\"%s\"}", to, subj, key, i, body);
+    if (email_send(db, message, id, err, sizeof err) <= 1) sent++;
+    memset(email, 0, sizeof email); memset(to, 0, sizeof to); memset(message, 0, sizeof message);
+  }
+  memset(token, 0, sizeof token);
+  PQclear(r);
+  return sent;
 }
 
 static void me(const request *q, PGconn *db) {

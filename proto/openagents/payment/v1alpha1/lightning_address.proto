@@ -1,0 +1,59 @@
+syntax = "proto3";
+package openagents.payment.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// name@openagents.com Lightning Addresses (docs/auth/lightning-addresses.md,
+// #13208). The address record and a change to where its money goes, as the API
+// keeps them (migration 0149, pay.addresses and pay.address_changes) and as the
+// account's card shows them (GET /api/lightning/address). The money never lands
+// with us: a destination is the holder's own Spark wallet or their own Lightning
+// Address elsewhere. The LNURL wire itself is LUD-06/16/12/09/18/21 JSON, not
+// this. Alpha until the Spark backend ships.
+
+enum AddressMode {
+  ADDRESS_MODE_UNSPECIFIED = 0;
+  ADDRESS_MODE_NONE = 1;     // claimed, not receiving yet
+  ADDRESS_MODE_SPARK = 2;    // invoices for the holder's own Spark wallet
+  ADDRESS_MODE_FORWARD = 3;  // the holder's own Lightning Address elsewhere
+}
+
+enum AddressState {
+  ADDRESS_STATE_UNSPECIFIED = 0;
+  ADDRESS_STATE_ACTIVE = 1;
+  ADDRESS_STATE_OFF = 2;        // the holder turned it off; the name stays theirs
+  ADDRESS_STATE_SUSPENDED = 3;  // an admin's; only an admin lifts it
+  ADDRESS_STATE_RETIRED = 4;    // never receives again; the name stays held
+}
+
+message LightningAddress {
+  option (openagents.options.v1alpha1.contract) = "openagents.payment.lightning-address.v1alpha1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 2048;
+  // The name before the @: 3 to 32 of a-z, 0-9, '.', '-', '_' (coax/lib/lnaddr/name.coax).
+  optional string name = 1 [(openagents.options.v1alpha1.max_bytes) = 32];
+  optional string domain = 2 [(openagents.options.v1alpha1.max_bytes) = 253];
+  optional string account = 3 [(openagents.options.v1alpha1.max_bytes) = 40];
+  AddressMode mode = 4;
+  AddressState state = 5;
+  // Spark mode: the wallet's compressed secp256k1 key.
+  optional bytes spark_pubkey = 6 [(openagents.options.v1alpha1.exact_bytes) = 33];
+  // Forward mode: user@domain.
+  optional string forward_to = 7 [(openagents.options.v1alpha1.max_bytes) = 160];
+  // Bumped on every change of destination; an invoice records the revision it was for.
+  optional uint64 revision = 8;
+  optional uint64 max_msat = 9 [(openagents.options.v1alpha1.unit) = "msat"];
+  optional bool comments_on = 10;
+}
+
+message AddressChange {
+  option (openagents.options.v1alpha1.contract) = "openagents.payment.address-change.v1alpha1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 1024;
+  optional string name = 1 [(openagents.options.v1alpha1.max_bytes) = 32];
+  AddressMode new_mode = 2;
+  // A Spark wallet's key (66 hex) or a forward target (user@domain).
+  optional string new_target = 3 [(openagents.options.v1alpha1.max_bytes) = 160];
+  // Unix seconds: asked, and when it applies (24 hours later; 72 for email-only accounts).
+  optional int64 requested_at = 4 [(openagents.options.v1alpha1.unit) = "s"];
+  optional int64 ready_at = 5 [(openagents.options.v1alpha1.unit) = "s"];
+  optional int64 cancelled_at = 6 [(openagents.options.v1alpha1.unit) = "s"];
+  optional int64 applied_at = 7 [(openagents.options.v1alpha1.unit) = "s"];
+}

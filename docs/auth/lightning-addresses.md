@@ -1,6 +1,7 @@
 # Lightning Addresses
 
-Status: design, 2026-11-11. Part of [OpenAgents authentication](README.md).
+Status: forward mode live, Spark mode waiting on its backend (#13208), 2026-11-11.
+Part of [OpenAgents authentication](README.md).
 Decided by the owner the same day (decision D6).
 
 > yes good to pay peoples lightning addresses but lets ALSO offer
@@ -305,6 +306,37 @@ decision 0). Then:
 
 Names, limits and the claim flow don't change when the backend does.
 
+## What is built (#13208)
+
+- **The server:** `coax/web/api/lnaddr.c` serves the LNURL routes
+  (`/.well-known/lnurlp/<name>`, `/lnurlp/<name>`, `/lnurlp/<name>/invoice`,
+  `/lnurlp/verify/<hash>`) and the holder's routes (`/api/lightning/address`
+  with `/off`, `/on`, `/change`, `/cancel`). Every decision is Coax, with
+  `#authority` and no surviving mutants: `coax/lib/lnaddr/lnurl.coax` (the
+  LUD JSON, the invoice checks, the upstream answers, the limits) and
+  `coax/web/api/lnaddr-policy.coax` (claims, changes, waits, wallet proofs).
+- **Forward mode** works: we fetch the target's payRequest and invoice from
+  our server over https only, to public addresses only, with no redirects,
+  in 5 seconds and 64 KB at most, and pass the target's metadata through
+  byte for byte. The invoice is refused unless its network, amount and
+  description hash (SHA-256 of the metadata, or of the zap request) match and
+  it has at least a minute left. Its LUD-21 verify URL stays with us; the
+  payer's `verify` is our `/lnurlp/verify/<hash>`. A payer's details
+  (LUD-18) are refused in forward mode, since we never pass them on.
+- **Spark mode** answers "This address isn't receiving yet" until the Breez
+  LNURL backend runs (`OA_LNADDR_SPARK_URL`; see `NEEDS_OWNER.md`).
+- **Names:** the first invoice holds a name for good (`pay.name_holds`,
+  which no API role can change or delete).
+- **Changes:** a new destination needs a key signature from the last 5
+  minutes (`L2-fresh`), a proof from a new Spark wallet, and waits 24 hours
+  (72 for an account with only email). The account's verified emails get a
+  notice with a command that freezes the account, and a frozen account's
+  change never applies.
+- **Records:** `proto/openagents/payment/v1alpha1/lightning_address.proto`,
+  read by the generated codec in `coax/lib/lnaddr/records.coax`.
+- **Checks:** `coax/web/api/tests/lnaddr_checks.coax`, run by
+  `coax/web/api/test.sh`, and the two Coax files' own tests.
+
 ## Data
 
 | Table | Columns that matter |
@@ -312,7 +344,9 @@ Names, limits and the claim flow don't change when the backend does.
 | `pay.addresses` | `name` (unique), `skeleton` (unique), `account`, `mode` (spark, forward, none), `spark_pubkey`, `forward_to`, `state` (active, off, suspended, retired), `revision`, `max_msat`, `comments_on`, `created_at`, `renamed_from` |
 | `pay.address_changes` | Pending destination changes: `name`, `new_mode`, `new_target`, `proof`, `requested_session`, `ready_at`, `cancelled_at`, `applied_at` |
 | `pay.name_holds` | `name`, `account`, `since`, `reason` (paid, renamed, deleted, suspended). Rows are never deleted |
-| `pay.invoices` | `payment_hash`, `name`, `revision`, `amount_msat`, `expires_at`, `zap_request`, `comment` (deleted 30 days after read), `settled_at` |
+| `pay.invoices` | `payment_hash`, `name`, `revision`, `mode`, `amount_msat`, `pr`, `verify_url` (the target's, never shown), `zap_request`, `comment` (deleted 30 days after read), `settled_at`, `preimage` |
+| `pay.notices` | Each claim, change, cancel, on and off: `account`, `name`, `kind`, `detail`, `emailed_at` |
+| `pay.secrets` | The key network addresses are hashed under for the limits; never an address itself |
 
 Breez's LNURL server keeps its own Postgres (registrations and payment
 metadata); it goes into the same dumps and drills as everything else

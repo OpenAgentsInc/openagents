@@ -1,0 +1,69 @@
+// Fixtures for coax/lib/lnaddr/lnurl.coax, kept out of that #authority file
+// so mutation testing mutates the rules, not the fixtures. The upstream
+// answers are shaped like getalby.com's LUD-06 and LUD-21 answers; the
+// metadata spells its P as \u0050 so a passthrough that decodes and
+// re-encodes it shows. Invoices are signed with BOLT 11's test key
+// (INVOICE_KEY), payment hash 07..07.
+
+LU_T_SERVICE_KEY :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+LU_T_PAY_JSON :: "{\"tag\":\"payRequest\",\"callback\":\"https://openagents.com/lnurlp/alice/invoice\",\"minSendable\":1000,\"maxSendable\":1000000000,\"metadata\":\"[[\\\"text/plain\\\",\\\"Pay alice@openagents.com\\\"],[\\\"text/identifier\\\",\\\"alice@openagents.com\\\"]]\",\"commentAllowed\":280,\"payerData\":{\"name\":{\"mandatory\":false},\"pubkey\":{\"mandatory\":false}},\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}";
+LU_T_UP_META_RAW :: "[[\\\"text/plain\\\",\\\"Pay bob\\\"],[\\\"text/identifier\\\",\\\"bob@getalby.com\\\"]]";
+LU_T_UP_PAY :: "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/lnurlp/bob/callback\", \"minSendable\": 1000, \"maxSendable\": 11000000000, \"metadata\": \"[[\\\"text/plain\\\",\\\"Pay bob\\\"],[\\\"text/identifier\\\",\\\"bob@getalby.com\\\"]]\", \"commentAllowed\": 255, \"allowsNostr\": true, \"nostrPubkey\": \"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\", \"payerData\": {\"name\": {\"mandatory\": false}}}";
+LU_T_FORWARD_JSON :: "{\"tag\":\"payRequest\",\"callback\":\"https://openagents.com/lnurlp/alice/invoice\",\"minSendable\":1000,\"maxSendable\":1000000000,\"metadata\":\"[[\\\"text/plain\\\",\\\"Pay bob\\\"],[\\\"text/identifier\\\",\\\"bob@getalby.com\\\"]]\",\"commentAllowed\":255,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}";
+LU_T_UP_SMALL :: "{\"tag\":\"payRequest\",\"callback\":\"https://x.example.com/cb?id=7\",\"minSendable\":1,\"maxSendable\":5000,\"metadata\":\"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}";
+LU_T_UP_TINY :: "{\"tag\":\"payRequest\",\"callback\":\"https://x.example.com/cb?id=7\",\"minSendable\":1,\"maxSendable\":999,\"metadata\":\"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}";
+LU_T_UP_ERROR :: "{\"status\":\"ERROR\",\"reason\":\"Not found\"}";
+LU_T_UP_BAD :: [24] string.[
+  "",
+  "[]",
+  "nope",
+  "{\"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"withdrawRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"http://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://localhost/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://10.0.0.1/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": 5, \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 0, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 999, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"x\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"image/png\\\",\\\"x\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[1,2]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": 5}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": \"1000\", \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\", \"metadata\": \"[[\\\"text/plain\\\",\\\"b\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\", \"metad\\u0061ta\": \"[[\\\"text/plain\\\",\\\"b\\\"]]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"} x",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]] x\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[]\"}",
+  "{\"tag\": \"payRequest\", \"callback\": \"https://getalby.com/cb#x\", \"minSendable\": 1000, \"maxSendable\": 5000, \"metadata\": \"[[\\\"text/plain\\\",\\\"hi\\\"]]\"}"
+];
+LU_T_PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+LU_T_PAYMENT_HASH :: "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";   // SHA-256 of the preimage's 32 bytes
+LU_T_VERIFY_OK :: "{\"status\":\"OK\",\"settled\":true,\"preimage\":\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20\",\"pr\":\"lnbc1x\"}";
+LU_T_VERIFY_LIE :: "{\"status\":\"OK\",\"settled\":true,\"preimage\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pr\":\"lnbc1x\"}";
+LU_T_VERIFY_OPEN :: "{\"status\":\"OK\",\"settled\":false,\"preimage\":null,\"pr\":\"lnbc1x\"}";
+
+// An invoice signed with INVOICE_KEY: payment hash 07..07, secret 09..09,
+// the description hash dh (or a plain description "x" when plain), expiry
+// seconds, stamped at. Its length in out.
+lu_t_invoice :: (network: int, msat: int, at: int, expiry: int, dh: [] u8, plain: bool, out: [] u8) -> int {
+  w: [1] InvoiceWriter; key: [32] u8; ph: [32] u8; secret: [32] u8;
+  for i: 0..<32 { ph[i] = 7; secret[i] = 9; }
+  _ = invoice_begin_vartime(w[..], network, msat > 0, cast(u64) msat, cast(u64) at);
+  _ = invoice_put_bytes_vartime(w[..], INV_P, ph[..]);
+  _ = invoice_put_bytes_vartime(w[..], INV_S, secret[..]);
+  if plain { d := [1] u8.['x']; _ = invoice_put_bytes_vartime(w[..], INV_D, d[..]); }
+  else { _ = invoice_put_bytes_vartime(w[..], INV_H, dh); }
+  _ = invoice_put_number_vartime(w[..], INV_X, cast(u64) expiry);
+  t := invoice_sign_vartime(w[..], ln_unhex(INVOICE_KEY, key[..]), out);
+  return t.length;
+}
+// The zap request fixture with one signature digit changed.
+lu_t_zap_bad_sig :: (out: [] u8) -> string {
+  for i: 0..<N57_T_REQUEST.count { out[i] = N57_T_REQUEST[i]; }
+  k := N57_T_REQUEST.count - 3;
+  out[k] = ifx out[k] == '8' then cast(u8) '9' else cast(u8) '8';
+  return cast(string) out[0..<N57_T_REQUEST.count];
+}

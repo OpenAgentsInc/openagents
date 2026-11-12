@@ -1,0 +1,1084 @@
+// The LNURL-pay rules for name@openagents.com Lightning Addresses
+// (docs/auth/lightning-addresses.md, GitHub #13208). Pure Coax: no database,
+// no HTTP and no clock of its own. The API (coax/web/api/lnaddr.c) gathers
+// the facts and sends and keeps what this file writes; it decides nothing.
+//
+// The JSON follows the LUDs exactly:
+//   LUD-06  payRequest: tag, callback, minSendable, maxSendable, metadata;
+//           the callback's {"pr", "routes"}; errors {"status":"ERROR","reason"}
+//   LUD-16  metadata carries text/plain and text/identifier (never text/email);
+//           name+tag reaches name, the tag goes into text/tag
+//   LUD-12  commentAllowed (280 by default, 0 when notes are off)
+//   LUD-09  successAction of the message kind only
+//   LUD-18  payerData: an optional name or pubkey, never an email
+//   LUD-21  verify: {"status":"OK","settled","preimage","pr"}
+//   NIP-57  zaps: the zap request checked as Appendix D says
+//           (coax/lib/nostr/nip57.coax), and the invoice's description is
+//           that request alone
+//
+// Forward mode passes the person's own address through: its metadata goes
+// out byte for byte (the invoice's description hash commits to it), its
+// callback is never shown to the payer, and the invoice it returns is checked
+// before we hand it on: BOLT11 for the network asked, the exact amount, an
+// unexpired timestamp and a description hash equal to SHA-256 of what the
+// payer's wallet will hash. We never make, receive or hold the money.
+//
+//   coax/bin/coax test coax/lib/lnaddr/lnurl.coax
+//   coax/bin/coax mutate coax/lib/lnaddr/lnurl.coax
+#load "name.coax";
+#load "../lightning/invoice.coax";
+#load "../nostr/nip57.coax";
+#load "../../tests/lnaddr/lnurl_fixtures.coax";
+#authority;
+#run_steps 250000000;
+
+// ---- limits (docs/auth/lightning-addresses.md#limits-and-abuse)
+
+LU_MIN_MSAT :: 1000;              // 1 sat, LUD-06's floor
+LU_MAX_MSAT :: 1000000000;        // 1,000,000 sats by default
+LU_COMMENT_MAX :: 280;            // LUD-12 commentAllowed
+LU_ZAP_MAX :: 8192;               // N57_MAX_DESCRIPTION
+LU_PAYERDATA_MAX :: 512;          // the LUD-18 payerdata text
+LU_PAYER_NAME_MAX :: 64;          // its name, in bytes
+LU_EXPIRY_S :: 600;               // our invoices: 10 minutes, exactly
+LU_FORWARD_EXPIRY_MAX_S :: 86400; // a forwarded invoice may not live longer than a day
+LU_SKEW_S :: 600;                 // an invoice may be stamped this far ahead of our clock
+LU_FRESH_S :: 60;                 // and must still have this long to live
+LU_METADATA_MAX :: 8192;          // a metadata string, decoded
+LU_URL_MAX :: 1024;               // a callback or verify URL
+LU_LOOKUPS_PER_MIN_IP :: 30;
+LU_INVOICES_PER_MIN_NAME :: 120;
+LU_INVOICES_PER_MIN_IP :: 30;
+LU_UPSTREAM_TIMEOUT_MS :: 5000;
+LU_UPSTREAM_MAX_BYTES :: 65536;
+
+// ---- refusals: each has a reason a person can read (lu_reason)
+
+LU_OK :: 0;
+LU_NO_ADDRESS :: 1;     // no such name
+LU_BAD_NAME :: 2;       // the name breaks the name rules
+LU_NOT_RECEIVING :: 3;  // claimed, with nowhere of theirs to put the money
+LU_OFF :: 4;            // turned off by its holder
+LU_SUSPENDED :: 5;      // suspended by an admin
+LU_RETIRED :: 6;        // a tombstone: never issues invoices again
+LU_AMOUNT :: 7;         // amount is not a positive whole number of msat
+LU_TOO_SMALL :: 8;
+LU_TOO_BIG :: 9;
+LU_WHOLE_SATS :: 10;
+LU_NO_NOTES :: 11;
+LU_NOTE_LONG :: 12;
+LU_NOTE_TEXT :: 13;
+LU_PAYERDATA :: 14;
+LU_ZAP :: 15;
+LU_ZAP_AMOUNT :: 16;
+LU_LOOKUP_LIMIT :: 17;
+LU_NAME_LIMIT :: 18;
+LU_IP_LIMIT :: 19;
+LU_UPSTREAM :: 20;          // the forward target didn't answer in time
+LU_UPSTREAM_BAD :: 21;      // its answer isn't a payRequest we can pass on
+LU_UPSTREAM_REFUSED :: 22;  // it said ERROR
+LU_INVOICE :: 23;           // the invoice it made doesn't match the request
+LU_NOT_FOUND :: 24;         // LUD-21: no invoice of ours with that hash
+LU_REFUSALS :: 25;
+
+// The words a payer's wallet shows. Two of them name a limit: lu_reason
+// writes that limit into them.
+LU_WHY :: [LU_REFUSALS] string.[
+  "",
+  "There's no Lightning Address with that name",
+  "That isn't a Lightning Address name",
+  "This address isn't receiving yet",
+  "This address is turned off",
+  "This address is suspended",
+  "This address no longer receives payments",
+  "The amount must be a whole number of millisatoshis",
+  "The least this address takes in one payment is ",
+  "The most this address takes in one payment is ",
+  "This address takes whole sats only",
+  "This address doesn't take notes",
+  "Notes to this address are at most ",
+  "A note must be UTF-8 text",
+  "Only a name or a pubkey can come with a payment, never an email",
+  "The zap request isn't valid",
+  "The zap request's amount isn't the amount asked",
+  "Too many lookups from your network: the limit is 30 a minute",
+  "Too many invoice requests for this address: the limit is 120 a minute",
+  "Too many invoice requests from your network: the limit is 30 a minute",
+  "The address this one forwards to didn't answer",
+  "The address this one forwards to sent an answer we can't pass on",
+  "The address this one forwards to refused the payment",
+  "The invoice we got back doesn't match the request, so we didn't pass it on",
+  "No invoice with that payment hash came from this address",
+];
+
+// ---- checks
+
+#test "every refusal reads as a sentence and names its limit" {
+  out: [256] u8;
+  for c: 1..<LU_REFUSALS {
+    n := lu_reason(c, 0, out[..]);
+    #assert n > 20;
+    for j: 1..<c { #assert LU_WHY[c] != LU_WHY[j]; }
+  }
+  #assert lu_reason(LU_OK, 0, out[..]) == 0;
+  #assert lu_reason(-1, 0, out[..]) == -1 && lu_reason(LU_REFUSALS, 0, out[..]) == -1;
+  n := lu_reason(LU_TOO_BIG, LU_MAX_MSAT, out[..]);
+  #assert cast(string) out[0..<n] == "The most this address takes in one payment is 1,000,000 sats";
+  n = lu_reason(LU_TOO_SMALL, LU_MIN_MSAT, out[..]);
+  #assert cast(string) out[0..<n] == "The least this address takes in one payment is 1 sat";
+  n = lu_reason(LU_TOO_BIG, 21000, out[..]);
+  #assert cast(string) out[0..<n] == "The most this address takes in one payment is 21 sats";
+  n = lu_reason(LU_TOO_BIG, 1500, out[..]);
+  #assert cast(string) out[0..<n] == "The most this address takes in one payment is 1.5 sats";
+  n = lu_reason(LU_TOO_SMALL, 1, out[..]);
+  #assert cast(string) out[0..<n] == "The least this address takes in one payment is 0.001 sats";
+  n = lu_reason(LU_NOTE_LONG, LU_COMMENT_MAX, out[..]);
+  #assert cast(string) out[0..<n] == "Notes to this address are at most 280 characters";
+  n = lu_reason(LU_NOTE_LONG, 1, out[..]);
+  #assert cast(string) out[0..<n] == "Notes to this address are at most 1 character";
+  n = lu_reason(LU_SUSPENDED, 99, out[..]);
+  #assert cast(string) out[0..<n] == "This address is suspended";
+  #assert lu_reason(LU_TOO_BIG, LU_MAX_MSAT, out[0..<20]) == -1;
+  n = lu_error_json(LU_TOO_BIG, LU_MAX_MSAT, out[..]);
+  #assert cast(string) out[0..<n] == "{\"status\":\"ERROR\",\"reason\":\"The most this address takes in one payment is 1,000,000 sats\"}";
+  n = lu_error_json(LU_NOT_RECEIVING, 0, out[..]);
+  #assert cast(string) out[0..<n] == "{\"status\":\"ERROR\",\"reason\":\"This address isn't receiving yet\"}";
+  #assert lu_error_json(LU_OK, 0, out[..]) == -1 && lu_error_json(LU_OFF, 0, out[0..<30]) == -1;
+}
+
+#test "sats: grouped by thousands, a fraction only when there is one" {
+  out: [64] u8;
+  cases := [10] int.[0, 1000, 2000, 999000, 1000000, 1234567000, 1001, 1010, 1100, 21000000000000000];
+  want := [10] string.["0 sats", "1 sat", "2 sats", "999 sats", "1,000 sats", "1,234,567 sats", "1.001 sats", "1.01 sats", "1.1 sats", "21,000,000,000,000 sats"];
+  for i: 0..<10 {
+    n := lu_sats(cases[i], out[..], 0);
+    #assert n > 0 && cast(string) out[0..<n] == want[i];
+  }
+  #assert lu_sats(-1, out[..], 0) == -1 && lu_sats(1000, out[..], -1) == -1 && lu_sats(1000000, out[0..<5], 0) == -1;
+  n := lu_sats(5000, out[..], 3);
+  #assert n == 9 && cast(string) out[3..<n] == "5 sats";
+}
+
+#test "the metadata: text/plain and text/identifier, a tag as text/tag" {
+  out: [512] u8;
+  n := lu_metadata("openagents.com", "alice", "", out[..]);
+  #assert cast(string) out[0..<n] == "[[\"text/plain\",\"Pay alice@openagents.com\"],[\"text/identifier\",\"alice@openagents.com\"]]";
+  n = lu_metadata("staging.openagents.com", "bob.k", "tips", out[..]);
+  #assert cast(string) out[0..<n] == "[[\"text/plain\",\"Pay bob.k@staging.openagents.com\"],[\"text/identifier\",\"bob.k@staging.openagents.com\"],[\"text/tag\",\"tips\"]]";
+  #assert lu_metadata("openagents.com", "alice", "", out[0..<50]) == -1;
+  #assert lu_metadata("", "alice", "", out[..]) == -1 && lu_metadata("openagents.com", "", "", out[..]) == -1;
+  #assert lu_metadata("open\"agents.com", "alice", "", out[..]) == -1 && lu_metadata("openagents.com", "al\"ice", "", out[..]) == -1;
+  #assert lu_metadata("openagents.com", "alice", "t\"ag", out[..]) == -1;
+}
+
+#test "our payRequest: callback, range, notes, LUD-18 name and pubkey, and zaps only with our key" {
+  out: [1500] u8;
+  n := lu_pay_json("openagents.com", "alice", "", LU_MAX_MSAT, true, LU_T_SERVICE_KEY, out[..]);
+  #assert cast(string) out[0..<n] == LU_T_PAY_JSON;
+  n = lu_pay_json("openagents.com", "alice", "tips", 21000, false, "", out[..]);
+  #assert cast(string) out[0..<n] == "{\"tag\":\"payRequest\",\"callback\":\"https://openagents.com/lnurlp/alice+tips/invoice\",\"minSendable\":1000,\"maxSendable\":21000,\"metadata\":\"[[\\\"text/plain\\\",\\\"Pay alice@openagents.com\\\"],[\\\"text/identifier\\\",\\\"alice@openagents.com\\\"],[\\\"text/tag\\\",\\\"tips\\\"]]\",\"commentAllowed\":0,\"payerData\":{\"name\":{\"mandatory\":false},\"pubkey\":{\"mandatory\":false}}}";
+  // the person's own ceiling may only lower ours, and never below a sat
+  n = lu_pay_json("openagents.com", "alice", "", LU_MAX_MSAT + 1000, true, "", out[..]);
+  #assert n > 0 && lu_contains(cast(string) out[0..<n], "\"maxSendable\":1000000000,");
+  #assert lu_pay_json("openagents.com", "alice", "", 999, true, "", out[..]) == -1;
+  #assert lu_pay_json("openagents.com", "alice", "", LU_MAX_MSAT, true, "ABC", out[..]) == -1;
+  #assert lu_pay_json("openagents.com", "alice", "", LU_MAX_MSAT, true, LU_T_SERVICE_KEY, out[0..<300]) == -1;
+}
+
+#test "amounts: positive whole msat in plain decimal" {
+  #assert lu_amount("1000") == 1000 && lu_amount("1") == 1 && lu_amount("2100000000000000000") == 2100000000000000000;
+  for s: [10] string.["", "0", "01000", "-1000", "+1000", "1000.0", "1e3", " 1000", "1000 ", "2100000000000000001"] {
+    #assert lu_amount(s) == -1;
+  }
+  #assert lu_amount("99999999999999999999") == -1 && lu_amount("100a") == -1;
+}
+
+#test "an amount against the range, and whole sats when the wallet behind takes only sats" {
+  #assert lu_check_amount(1000, LU_MIN_MSAT, LU_MAX_MSAT, true) == LU_OK;
+  #assert lu_check_amount(LU_MAX_MSAT, LU_MIN_MSAT, LU_MAX_MSAT, true) == LU_OK;
+  #assert lu_check_amount(LU_MAX_MSAT + 1000, LU_MIN_MSAT, LU_MAX_MSAT, true) == LU_TOO_BIG;
+  #assert lu_check_amount(LU_MAX_MSAT + 1, LU_MIN_MSAT, LU_MAX_MSAT, false) == LU_TOO_BIG;
+  #assert lu_check_amount(999, LU_MIN_MSAT, LU_MAX_MSAT, false) == LU_TOO_SMALL;
+  #assert lu_check_amount(-1, LU_MIN_MSAT, LU_MAX_MSAT, false) == LU_AMOUNT;
+  #assert lu_check_amount(0, LU_MIN_MSAT, LU_MAX_MSAT, false) == LU_AMOUNT;
+  #assert lu_check_amount(1500, LU_MIN_MSAT, LU_MAX_MSAT, true) == LU_WHOLE_SATS;
+  #assert lu_check_amount(1500, LU_MIN_MSAT, LU_MAX_MSAT, false) == LU_OK;
+  #assert lu_check_amount(1001, 1001, 1001, false) == LU_OK;
+}
+
+#test "notes: none when off, at most the limit in characters, UTF-8 only" {
+  #assert lu_check_note("", 0) == LU_OK && lu_check_note("", LU_COMMENT_MAX) == LU_OK;
+  #assert lu_check_note("hi", 0) == LU_NO_NOTES;
+  #assert lu_check_note("hi", 2) == LU_OK && lu_check_note("hi!", 2) == LU_NOTE_LONG;
+  #assert lu_check_note("héé", 3) == LU_OK && lu_check_note("héé", 2) == LU_NOTE_LONG;   // characters, not bytes
+  bad := [2] u8.['a', 0xff];
+  #assert lu_check_note(cast(string) bad[..], 10) == LU_NOTE_TEXT;
+  ctl := [2] u8.['a', 0x07];
+  #assert lu_check_note(cast(string) ctl[..], 10) == LU_NOTE_TEXT;
+  nl := [3] u8.['a', 10, 'b'];
+  #assert lu_check_note(cast(string) nl[..], 10) == LU_OK;
+  long: [281] u8;
+  for i: 0..<281 { long[i] = 'x'; }
+  #assert lu_check_note(cast(string) long[0..<280], LU_COMMENT_MAX) == LU_OK;
+  #assert lu_check_note(cast(string) long[..], LU_COMMENT_MAX) == LU_NOTE_LONG;
+}
+
+#test "LUD-18 payerdata: a name or a pubkey, each once, never an email" {
+  #assert lu_check_payerdata("") == LU_OK;
+  #assert lu_check_payerdata("{\"name\":\"Alice\"}") == LU_OK;
+  #assert lu_check_payerdata("{\"pubkey\":\"02a1b2\",\"name\":\"Al\"}") == LU_OK;
+  #assert lu_check_payerdata("{}") == LU_OK;
+  for s: [9] string.["{\"email\":\"a@b.c\"}", "{\"name\":\"A\",\"email\":\"a@b.c\"}", "{\"name\":1}", "{\"name\":\"A\",\"name\":\"B\"}",
+                     "[\"name\"]", "{\"name\":\"A\"", "{\"pubkey\":\"zz\"}", "{\"auth\":{}}", "{\"identifier\":\"x\"}"] {
+    #assert lu_check_payerdata(s) == LU_PAYERDATA;
+  }
+  long: [80] u8; n := json_raw(long[..], 0, "{\"name\":\"");
+  for i: 0..<65 { long[n + i] = 'a'; }
+  n += 65; n = json_raw(long[..], n, "\"}");
+  #assert lu_check_payerdata(cast(string) long[0..<n]) == LU_PAYERDATA;
+  #assert lu_check_payerdata(cast(string) long[0..<n - 3]) == LU_PAYERDATA;
+  big: [600] u8; for i: 0..<600 { big[i] = ' '; }
+  big[0] = '{'; big[599] = '}';
+  #assert lu_check_payerdata(cast(string) big[..]) == LU_PAYERDATA;
+  #assert lu_check_payerdata(cast(string) big[88..<600]) == LU_PAYERDATA;
+}
+
+#test "the description hash: SHA-256 of the metadata, with LUD-18's payerdata after it, or of the zap request alone" #steps 200000000 {
+  h: [32] u8; want: [32] u8;
+  #assert lu_description_hash("[[\"text/plain\",\"x\"]]", "", "", h[..]);
+  m: [64] u8; mm := lu_bytes("[[\"text/plain\",\"x\"]]", m[..]);
+  #assert sha256_hash_checked(mm, want[..], false) == SHA_OK && lu_same(h[..], want[..]);
+  joined: [64] u8; jn := json_raw(joined[..], 0, "[[\"text/plain\",\"x\"]]"); jn = json_raw(joined[..], jn, "{\"name\":\"A\"}");
+  #assert lu_description_hash("[[\"text/plain\",\"x\"]]", "{\"name\":\"A\"}", "", h[..]);
+  #assert sha256_hash_checked(joined[0..<jn], want[..], false) == SHA_OK && lu_same(h[..], want[..]);
+  #assert lu_description_hash("[[\"text/plain\",\"x\"]]", "{\"name\":\"A\"}", N57_T_REQUEST, h[..]);
+  #assert lu_hex_is(h[..], N57_T_REQUEST_SHA);
+  short: [31] u8;
+  #assert !lu_description_hash("x", "", "", short[..]);
+}
+
+#test "zaps: a signed kind 9734 that keeps Appendix D, its amount the query's" #steps 400000000 {
+  #assert lu_check_zap(N57_T_REQUEST, 21000) == LU_OK;
+  #assert lu_check_zap(N57_T_REQUEST, 21001) == LU_ZAP_AMOUNT;
+  #assert lu_check_zap("", 21000) == LU_OK;
+  #assert lu_check_zap("{}", 21000) == LU_ZAP;
+  bad: [700] u8;
+  #assert lu_check_zap(lu_t_zap_bad_sig(bad[..]), 21000) == LU_ZAP;
+  big: [8200] u8; for i: 0..<8200 { big[i] = ' '; }
+  n := json_raw(big[..], 8200 - N57_T_REQUEST.count, N57_T_REQUEST);
+  #assert n == 8200 && lu_check_zap(cast(string) big[..], 21000) == LU_ZAP;
+  #assert lu_check_zap(cast(string) big[8200 - N57_T_REQUEST.count - 1..<8200], 21000) == LU_OK;
+}
+
+#test "the callback's answer: our invoice, a message, and our verify URL" {
+  out: [1024] u8;
+  n := lu_callback_json("openagents.com", "alice", "lnbc10n1x", "ab01", out[..]);
+  #assert cast(string) out[0..<n] == "{\"pr\":\"lnbc10n1x\",\"routes\":[],\"successAction\":{\"tag\":\"message\",\"message\":\"Paid alice@openagents.com\"},\"verify\":\"https://openagents.com/lnurlp/verify/ab01\"}";
+  #assert lu_callback_json("openagents.com", "alice", "lnbc10n1x", "ab01", out[0..<100]) == -1;
+  #assert lu_callback_json("openagents.com", "alice", "ln\"bc", "ab01", out[..]) == -1;
+  #assert lu_callback_json("openagents.com", "alice", "lnbc", "AB01", out[..]) == -1;
+}
+
+#test "invoices: the network, the exact amount, the description hash, the expiry and freshness" #steps 2000000000 {
+  dh: [32] u8; other: [32] u8; ph: [32] u8;
+  for i: 0..<32 { dh[i] = cast(u8) i; other[i] = cast(u8) (i + 1); }
+  text: [1024] u8; inv: [1] Invoice;
+  now := 1762000000;
+  n := lu_t_invoice(INV_MAINNET, 21000, now, 600, dh[..], false, text[..]);
+  pr := cast(string) text[0..<n];
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[..], now, true, ph[..]) == LU_OK;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[..], now, false, ph[..]) == LU_OK;
+  #assert ph[0] == 7 && ph[31] == 7;   // the fixture's payment hash
+  #assert lu_check_invoice(pr, INV_REGTEST, 21000, dh[..], now, true, ph[..]) == LU_INVOICE;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21001, dh[..], now, true, ph[..]) == LU_INVOICE;
+  #assert lu_check_invoice(pr, INV_MAINNET, 20999, dh[..], now, true, ph[..]) == LU_INVOICE;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, other[..], now, true, ph[..]) == LU_INVOICE;
+  // a stale or future-stamped invoice
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[..], now + 600 - LU_FRESH_S, true, ph[..]) == LU_OK;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[..], now + 600 - LU_FRESH_S + 1, true, ph[..]) == LU_INVOICE;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[..], now - LU_SKEW_S, true, ph[..]) == LU_OK;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[..], now - LU_SKEW_S - 1, true, ph[..]) == LU_INVOICE;
+  // ours expire in exactly 10 minutes; a forwarded one in at most a day
+  n = lu_t_invoice(INV_MAINNET, 21000, now, 3600, dh[..], false, text[..]);
+  #assert lu_check_invoice(cast(string) text[0..<n], INV_MAINNET, 21000, dh[..], now, true, ph[..]) == LU_INVOICE;
+  #assert lu_check_invoice(cast(string) text[0..<n], INV_MAINNET, 21000, dh[..], now, false, ph[..]) == LU_OK;
+  n = lu_t_invoice(INV_MAINNET, 21000, now, 86400, dh[..], false, text[..]);
+  #assert lu_check_invoice(cast(string) text[0..<n], INV_MAINNET, 21000, dh[..], now, false, ph[..]) == LU_OK;
+  n = lu_t_invoice(INV_MAINNET, 21000, now, 86401, dh[..], false, text[..]);
+  #assert lu_check_invoice(cast(string) text[0..<n], INV_MAINNET, 21000, dh[..], now, false, ph[..]) == LU_INVOICE;
+  // no amount, or a plain description instead of a hash
+  n = lu_t_invoice(INV_MAINNET, 0, now, 600, dh[..], false, text[..]);
+  #assert lu_check_invoice(cast(string) text[0..<n], INV_MAINNET, 21000, dh[..], now, true, ph[..]) == LU_INVOICE;
+  n = lu_t_invoice(INV_MAINNET, 21000, now, 600, dh[..], true, text[..]);
+  #assert lu_check_invoice(cast(string) text[0..<n], INV_MAINNET, 21000, dh[..], now, true, ph[..]) == LU_INVOICE;
+  // not an invoice, or a changed byte (the signature no longer recovers the same text)
+  #assert lu_check_invoice("lnbc1", INV_MAINNET, 21000, dh[..], now, true, ph[..]) == LU_INVOICE;
+  n = lu_t_invoice(INV_MAINNET, 21000, now, 600, dh[..], false, text[..]);
+  text[n - 10] = ifx text[n - 10] == 'q' then cast(u8) 'p' else cast(u8) 'q';
+  #assert lu_check_invoice(cast(string) text[0..<n], INV_MAINNET, 21000, dh[..], now, true, ph[..]) == LU_INVOICE;
+  short: [31] u8;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[0..<31], now, true, ph[..]) == LU_INVOICE;
+  #assert lu_check_invoice(pr, INV_MAINNET, 21000, dh[..], now, true, short[..]) == LU_INVOICE;
+}
+
+#test "forward targets: a Lightning Address elsewhere, never ours, never a private host" {
+  out: [300] u8;
+  n := lu_target("bob@getalby.com", "openagents.com", out[..]);
+  #assert cast(string) out[0..<n] == "https://getalby.com/.well-known/lnurlp/bob";
+  n = lu_target("Bob@Strike.ME", "openagents.com", out[..]);
+  #assert cast(string) out[0..<n] == "https://strike.me/.well-known/lnurlp/bob";
+  for s: [14] string.["bob@openagents.com", "bob@staging.openagents.com", "bob@x.openagents.com", "bob", "bob@", "@getalby.com",
+                      "bob@localhost", "bob@127.0.0.1", "bob@10.0.0.8", "bob@node.local", "bob@a.internal", "bob@abc.onion",
+                      "bob@getalby.com:8080", "b ob@getalby.com"] {
+    #assert lu_target(s, "openagents.com", out[..]) == -1;
+  }
+  #assert lu_target("bob@staging.openagents.com", "staging.openagents.com", out[..]) == -1;
+  #assert lu_target("bob+tips@getalby.com", "openagents.com", out[..]) == -1;
+  #assert lu_target("bob@getalby.com", "openagents.com", out[0..<10]) == -1;
+}
+
+#test "URLs we fetch: https, a public DNS name, the default port, no user part" {
+  #assert lu_url_ok("https://getalby.com/lnurlp/bob/callback");
+  #assert lu_url_ok("https://pay.example.co.uk/cb?x=1&y=2");
+  #assert lu_url_ok("https://getalby.com:443/cb");
+  for s: [16] string.["http://getalby.com/cb", "https://", "https:///cb", "https://localhost/cb", "https://127.0.0.1/cb",
+                      "https://[::1]/cb", "https://user@getalby.com/cb", "https://getalby.com:8443/cb", "https://getalby/cb",
+                      "https://x.local/cb", "https://x.internal/cb", "https://x.localhost/cb", "https://getalby.com/c b",
+                      "https://-x.com/cb", "https://x..com/cb", "https://1.2.3.4/cb"] {
+    #assert !lu_url_ok(s);
+  }
+  long: [1100] u8; n := json_raw(long[..], 0, "https://getalby.com/");
+  for i: n..<1100 { long[i] = 'a'; }
+  #assert !lu_url_ok(cast(string) long[..]) && lu_url_ok(cast(string) long[0..<LU_URL_MAX]);
+  #assert lu_host_is("https://getalby.com/x", "getalby.com") && !lu_host_is("https://getalby.com.evil.com/x", "getalby.com");
+}
+
+#test "addresses we connect to: public only" {
+  pub4 := [4] u8.[8, 8, 8, 8];
+  #assert lu_ip_public(4, pub4[..]);
+  priv4 := [56] u8.[0, 1, 2, 3, 10, 0, 0, 1, 100, 64, 0, 1, 100, 127, 255, 255, 127, 0, 0, 1, 169, 254, 169, 254,
+                    172, 16, 0, 1, 172, 31, 255, 255, 192, 0, 0, 7, 192, 168, 1, 1, 198, 18, 0, 1, 198, 19, 255, 1,
+                    224, 0, 0, 1, 255, 255, 255, 255];
+  for k: 0..<14 { #assert !lu_ip_public(4, priv4[4 * k..<4 * k + 4]); }
+  pub := [40] u8.[100, 63, 255, 255, 100, 128, 0, 0, 172, 15, 255, 255, 172, 32, 0, 0, 198, 17, 255, 255, 198, 20, 0, 0,
+                  192, 0, 1, 1, 192, 167, 255, 255, 169, 253, 0, 1, 223, 255, 255, 255];
+  for k: 0..<10 { #assert lu_ip_public(4, pub[4 * k..<4 * k + 4]); }
+  g6: [16] u8; g6[0] = 0x26; g6[1] = 0x06; g6[15] = 1;
+  #assert lu_ip_public(6, g6[..]);
+  z6: [16] u8;
+  #assert !lu_ip_public(6, z6[..]);
+  l6: [16] u8; l6[15] = 1;
+  #assert !lu_ip_public(6, l6[..]);
+  pre6 := [10] u8.[0xfc, 0, 0xfd, 0x12, 0xfe, 0x80, 0xfe, 0xbf, 0xff, 0x02];
+  for k: 0..<5 {
+    a: [16] u8; a[0] = pre6[2 * k]; a[1] = pre6[2 * k + 1]; a[15] = 1;
+    #assert !lu_ip_public(6, a[..]);
+  }
+  fec: [16] u8; fec[0] = 0xfe; fec[1] = 0xc0; fec[15] = 1;
+  #assert lu_ip_public(6, fec[..]);
+  doc: [16] u8; doc[0] = 0x20; doc[1] = 0x01; doc[2] = 0x0d; doc[3] = 0xb8;
+  #assert !lu_ip_public(6, doc[..]);
+  doc[3] = 0xb9;
+  #assert lu_ip_public(6, doc[..]);
+  // IPv4 inside IPv6: mapped (::ffff:a.b.c.d) and NAT64 (64:ff9b::a.b.c.d) take the IPv4 rule
+  m6: [16] u8; m6[10] = 0xff; m6[11] = 0xff; m6[12] = 127; m6[15] = 1;
+  #assert !lu_ip_public(6, m6[..]);
+  m6[12] = 8; m6[13] = 8; m6[14] = 8; m6[15] = 8;
+  #assert lu_ip_public(6, m6[..]);
+  n6: [16] u8; n6[1] = 0x64; n6[2] = 0xff; n6[3] = 0x9b; n6[12] = 10; n6[15] = 1;
+  #assert !lu_ip_public(6, n6[..]);
+  n6[12] = 8;
+  #assert lu_ip_public(6, n6[..]);
+  c6: [16] u8; c6[12] = 10; c6[15] = 1;   // the old IPv4-compatible ::a.b.c.d
+  #assert !lu_ip_public(6, c6[..]);
+  #assert !lu_ip_public(5, pub4[..]) && !lu_ip_public(4, g6[0..<3]) && !lu_ip_public(6, pub4[..]);
+}
+
+#test "forward lookups: the upstream payRequest passed on, its metadata byte for byte" {
+  u: [1] LuUpstream; out: [2048] u8;
+  #assert lu_upstream_pay(LU_T_UP_PAY, u[..]) == LU_OK;
+  #assert u[0].min == 1000 && u[0].max == 11000000000 && u[0].comments == 255 && u[0].nostr;
+  #assert cast(string) u[0].callback[0..<u[0].nc] == "https://getalby.com/lnurlp/bob/callback";
+  #assert lu_upstream_metadata(LU_T_UP_PAY, u[0]) == LU_T_UP_META_RAW;
+  dec: [256] u8;
+  m := lu_upstream_metadata_decoded(LU_T_UP_PAY, u[0], dec[..]);
+  #assert cast(string) dec[0..<m] == "[[\"text/plain\",\"Pay bob\"],[\"text/identifier\",\"bob@getalby.com\"]]";
+  none: LuUpstream;
+  #assert lu_upstream_metadata_decoded(LU_T_UP_PAY, none, dec[..]) == -1;
+  wide := u[0]; wide.meta_to = LU_T_UP_PAY.count + 1;
+  #assert lu_upstream_metadata_decoded(LU_T_UP_PAY, wide, dec[..]) == -1;
+  n := lu_forward_pay_json(LU_T_UP_PAY, u[0], "openagents.com", "alice", LU_MAX_MSAT, true, out[..]);
+  #assert cast(string) out[0..<n] == LU_T_FORWARD_JSON;
+  // our ceiling and notes setting win when lower; the upstream's when lower
+  n = lu_forward_pay_json(LU_T_UP_PAY, u[0], "openagents.com", "alice", 50000, false, out[..]);
+  #assert lu_contains(cast(string) out[0..<n], "\"maxSendable\":50000,") && lu_contains(cast(string) out[0..<n], "\"commentAllowed\":0");
+  #assert lu_forward_pay_json(LU_T_UP_PAY, u[0], "openagents.com", "alice", 999, true, out[..]) == -1;
+  #assert lu_forward_pay_json(LU_T_UP_PAY, u[0], "openagents.com", "alice", LU_MAX_MSAT, true, out[0..<200]) == -1;
+  #assert lu_upstream_pay(LU_T_UP_SMALL, u[..]) == LU_OK && u[0].min == 1 && u[0].max == 5000 && u[0].comments == 0 && !u[0].nostr;
+  n = lu_forward_pay_json(LU_T_UP_SMALL, u[0], "openagents.com", "alice", LU_MAX_MSAT, true, out[..]);
+  #assert lu_contains(cast(string) out[0..<n], "\"minSendable\":1000,\"maxSendable\":5000,") && !lu_contains(cast(string) out[0..<n], "allowsNostr");
+  #assert lu_contains(cast(string) out[0..<n], "\"commentAllowed\":0");
+  #assert lu_upstream_pay(LU_T_UP_TINY, u[..]) == LU_OK;
+  #assert lu_forward_pay_json(LU_T_UP_TINY, u[0], "openagents.com", "alice", LU_MAX_MSAT, true, out[..]) == -1;
+}
+
+#test "forward lookups: an upstream answer we can't pass on" {
+  u: [1] LuUpstream;
+  for s: LU_T_UP_BAD { #assert lu_upstream_pay(s, u[..]) == LU_UPSTREAM_BAD; }
+  #assert lu_upstream_pay(LU_T_UP_ERROR, u[..]) == LU_UPSTREAM_REFUSED;
+  big: [LU_UPSTREAM_MAX_BYTES + 1] u8;
+  n := json_raw(big[..], 0, LU_T_UP_PAY);
+  for i: n..<big.count { big[i] = ' '; }
+  #assert lu_upstream_pay(cast(string) big[..], u[..]) == LU_UPSTREAM_BAD;
+  #assert lu_upstream_pay(cast(string) big[0..<LU_UPSTREAM_MAX_BYTES], u[..]) == LU_OK;
+}
+
+#test "forward callbacks: the upstream URL with only amount, the note and the zap request" {
+  out: [600] u8;
+  n := lu_upstream_callback("https://getalby.com/lnurlp/bob/callback", 21000, "", "", out[..]);
+  #assert cast(string) out[0..<n] == "https://getalby.com/lnurlp/bob/callback?amount=21000";
+  n = lu_upstream_callback("https://x.com/cb?k=1", 21000, "hi there!", "{\"a\":1}", out[..]);
+  #assert cast(string) out[0..<n] == "https://x.com/cb?k=1&amount=21000&comment=hi%20there%21&nostr=%7B%22a%22%3A1%7D";
+  #assert lu_upstream_callback("https://x.com/cb", 21000, "", "", out[0..<20]) == -1;
+  #assert lu_upstream_callback("https://x.com/cb#frag", 21000, "", "", out[..]) == -1;
+}
+
+#test "forward callbacks: the invoice it sends back is checked before we pass it on" #steps 2000000000 {
+  text: [1024] u8; body: [2048] u8; v: [1] LuForwarded;
+  now := 1762000000;
+  meta := "[[\"text/plain\",\"Pay bob\"]]";
+  dh: [32] u8;
+  #assert lu_description_hash(meta, "", "", dh[..]);
+  n := lu_t_invoice(INV_MAINNET, 21000, now, 3600, dh[..], false, text[..]);
+  pr := cast(string) text[0..<n];
+  b := json_raw(body[..], 0, "{\"pr\":\""); b = json_raw(body[..], b, pr); b = json_raw(body[..], b, "\",\"routes\":[],\"verify\":\"https://getalby.com/lnurlp/bob/verify/x\"}");
+  #assert lu_forward_invoice(cast(string) body[0..<b], INV_MAINNET, 21000, dh[..], now, v[..]) == LU_OK;
+  #assert cast(string) v[0].pr[0..<v[0].npr] == pr && v[0].ph[0] == 7;
+  #assert cast(string) v[0].verify[0..<v[0].nv] == "https://getalby.com/lnurlp/bob/verify/x";
+  #assert lu_forward_invoice(cast(string) body[0..<b], INV_MAINNET, 21001, dh[..], now, v[..]) == LU_INVOICE;
+  // a verify URL we won't fetch is dropped, not refused
+  b = json_raw(body[..], 0, "{\"pr\":\""); b = json_raw(body[..], b, pr); b = json_raw(body[..], b, "\",\"verify\":\"http://10.0.0.1/v\"}");
+  #assert lu_forward_invoice(cast(string) body[0..<b], INV_MAINNET, 21000, dh[..], now, v[..]) == LU_OK && v[0].nv == 0;
+  #assert lu_forward_invoice("{\"status\":\"ERROR\",\"reason\":\"no\"}", INV_MAINNET, 21000, dh[..], now, v[..]) == LU_UPSTREAM_REFUSED;
+  for s: [6] string.["", "[]", "{\"pr\":1}", "{\"routes\":[]}", "{\"pr\":\"a\",\"pr\":\"b\"}", "{\"pr\":\"lnbc1\"} x"] {
+    #assert lu_forward_invoice(s, INV_MAINNET, 21000, dh[..], now, v[..]) == LU_UPSTREAM_BAD;
+  }
+  b = json_raw(body[..], 0, "{\"pr\":\""); b = json_raw(body[..], b, pr); b = json_raw(body[..], b, "\",\"pr\":\"x\"}");
+  #assert lu_forward_invoice(cast(string) body[0..<b], INV_MAINNET, 21000, dh[..], now, v[..]) == LU_UPSTREAM_BAD;
+  short: [31] u8;
+  #assert lu_forward_invoice("{\"pr\":\"lnbc1\"}", INV_MAINNET, 21000, short[..], now, v[..]) == LU_INVOICE;
+}
+
+#test "LUD-21 verify: settled only with a preimage that hashes to the payment hash" {
+  out: [600] u8; v: [1] LuVerify;
+  #assert lu_verify_read(LU_T_VERIFY_OK, LU_T_PAYMENT_HASH, v[..]) == LU_OK && v[0].settled;
+  n := lu_verify_json(v[0].settled, cast(string) v[0].preimage[0..<v[0].np], "lnbc1x", out[..]);
+  #assert cast(string) out[0..<n] == "{\"status\":\"OK\",\"settled\":true,\"preimage\":\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20\",\"pr\":\"lnbc1x\"}";
+  #assert lu_verify_read(LU_T_VERIFY_LIE, LU_T_PAYMENT_HASH, v[..]) == LU_OK && !v[0].settled && v[0].np == 0;
+  #assert lu_verify_read(LU_T_VERIFY_OPEN, LU_T_PAYMENT_HASH, v[..]) == LU_OK && !v[0].settled;
+  n = lu_verify_json(false, "", "lnbc1x", out[..]);
+  #assert cast(string) out[0..<n] == "{\"status\":\"OK\",\"settled\":false,\"preimage\":null,\"pr\":\"lnbc1x\"}";
+  #assert lu_verify_read("{\"status\":\"ERROR\",\"reason\":\"Not found\"}", LU_T_PAYMENT_HASH, v[..]) == LU_UPSTREAM_REFUSED;
+  #assert lu_verify_read("{\"status\":\"OK\",\"settled\":true,\"settled\":true,\"preimage\":null}", LU_T_PAYMENT_HASH, v[..]) == LU_UPSTREAM_BAD;
+  #assert lu_verify_read("nope", LU_T_PAYMENT_HASH, v[..]) == LU_UPSTREAM_BAD;
+  #assert lu_verify_json(true, "", "lnbc1x", out[..]) == -1 && lu_verify_json(false, "", "lnbc1x", out[0..<20]) == -1;
+}
+
+#test "limits: lookups per network, invoice requests per name and per network" {
+  #assert lu_limit_lookup(LU_LOOKUPS_PER_MIN_IP) == LU_OK && lu_limit_lookup(LU_LOOKUPS_PER_MIN_IP + 1) == LU_LOOKUP_LIMIT;
+  #assert lu_limit_invoice(LU_INVOICES_PER_MIN_NAME, LU_INVOICES_PER_MIN_IP) == LU_OK;
+  #assert lu_limit_invoice(LU_INVOICES_PER_MIN_NAME + 1, 1) == LU_NAME_LIMIT;
+  #assert lu_limit_invoice(1, LU_INVOICES_PER_MIN_IP + 1) == LU_IP_LIMIT;
+  #assert lu_limit_invoice(LU_INVOICES_PER_MIN_NAME + 1, LU_INVOICES_PER_MIN_IP + 1) == LU_NAME_LIMIT;
+  #assert lu_limit_lookup(-1) == LU_LOOKUP_LIMIT && lu_limit_invoice(-1, 1) == LU_NAME_LIMIT && lu_limit_invoice(1, -1) == LU_IP_LIMIT;
+}
+
+// ---- small helpers
+
+lu_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+lu_contains :: (s: string, part: string) -> bool #effects(all) {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+lu_bytes :: (s: string, out: [] u8) -> [] u8 #effects(all) {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return out[0..<s.count];
+}
+// Whether 32 bytes are the 64 lowercase hex digits.
+lu_hex_is :: (b: [] u8, hex: string) -> bool #effects(all) {
+  k: [32] u8;
+  return b.count == 32 && ne_lower_hex(hex, k[..]) && lu_same(b, k[..]);
+}
+// Text we put inside a JSON string we write ourselves: printable ASCII, no
+// quote and no backslash, so it needs no escape.
+lu_plain :: (s: string) -> bool #effects(all) {
+  for c: s { if c < 32 || c > 126 || c == '"' || c == '\\' { return false; } }
+  return true;
+}
+lu_lower_hex :: (s: string) -> bool #effects(all) {
+  if s.count == 0 || s.count % 2 != 0 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+// msat as sats a person reads: "1 sat", "1,000,000 sats", "1.5 sats". At
+// out[at..]; the new length, or -1.
+lu_sats :: (msat: int, out: [] u8, at: int) -> int #effects(all) {
+  if msat < 0 || at < 0 { return -1; }
+  sats := msat / 1000; frac := msat % 1000;
+  digits: [24] u8; d := 0; x := sats;
+  while true { digits[d] = cast(u8) ('0' + x % 10); d += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  for k: 0..<d {
+    if k > 0 && (d - k) % 3 == 0 { n = json_raw(out, n, ","); }
+    if n < 0 || n >= out.count { return -1; }
+    out[n] = digits[d - 1 - k]; n += 1;
+  }
+  if frac != 0 {
+    f: [3] u8; f[0] = cast(u8) ('0' + frac / 100); f[1] = cast(u8) ('0' + frac / 10 % 10); f[2] = cast(u8) ('0' + frac % 10);
+    keep := 3; while f[keep - 1] == '0' { keep -= 1; }
+    n = json_raw(out, n, "."); n = json_raw(out, n, cast(string) f[0..<keep]);
+  }
+  return json_raw(out, n, ifx msat == 1000 then " sat" else " sats");
+}
+
+// The reason a wallet shows for a refusal, with its limit where it names one
+// (msat for the amount limits, characters for notes). Its length, 0 for
+// LU_OK, -1 for an unknown code or a short buffer.
+lu_reason :: (code: int, limit: int, out: [] u8) -> int #export_c #effects(all) {
+  if code < 0 || code >= LU_REFUSALS { return -1; }
+  n := json_raw(out, 0, LU_WHY[code]);
+  if code == LU_TOO_SMALL || code == LU_TOO_BIG { n = lu_sats(limit, out, n); }
+  if code == LU_NOTE_LONG {
+    n = json_write_int(out, n, limit); n = json_raw(out, n, ifx limit == 1 then " character" else " characters");
+  }
+  return n;
+}
+// LUD-06's error: {"status":"ERROR","reason":"..."}.
+lu_error_json :: (code: int, limit: int, out: [] u8) -> int #export_c #effects(all) {
+  why: [256] u8;
+  w := lu_reason(code, limit, why[..]);
+  if w <= 0 { return -1; }
+  n := json_raw(out, 0, "{\"status\":\"ERROR\",\"reason\":");
+  n = json_write_string(out, n, cast(string) why[0..<w]);
+  return json_raw(out, n, "}");
+}
+
+// ---- our payRequest (LUD-06, LUD-16, LUD-12, LUD-18, NIP-57)
+
+// The metadata string, decoded: a JSON array of [mime, value] pairs. The
+// domain, name and tag are plain text (the name rules guarantee the name and
+// tag; the domain is ours). Its length, or -1.
+lu_metadata :: (domain: string, name: string, tag: string, out: [] u8) -> int #export_c #effects(all) {
+  if domain.count == 0 || name.count == 0 || !lu_plain(domain) || !lu_plain(name) || !lu_plain(tag) { return -1; }
+  n := json_raw(out, 0, "[[\"text/plain\",\"Pay ");
+  n = json_raw(out, n, name); n = json_raw(out, n, "@"); n = json_raw(out, n, domain);
+  n = json_raw(out, n, "\"],[\"text/identifier\",\"");
+  n = json_raw(out, n, name); n = json_raw(out, n, "@"); n = json_raw(out, n, domain);
+  n = json_raw(out, n, "\"]");
+  if tag.count > 0 { n = json_raw(out, n, ",[\"text/tag\",\""); n = json_raw(out, n, tag); n = json_raw(out, n, "\"]"); }
+  return json_raw(out, n, "]");
+}
+// The callback URL for name (with its +tag, which the callback reads back).
+lu_callback_url :: (domain: string, name: string, tag: string, out: [] u8, at: int) -> int #effects(all) {
+  n := json_raw(out, at, "https://"); n = json_raw(out, n, domain); n = json_raw(out, n, "/lnurlp/"); n = json_raw(out, n, name);
+  if tag.count > 0 { n = json_raw(out, n, "+"); n = json_raw(out, n, tag); }
+  return json_raw(out, n, "/invoice");
+}
+// The lookup's answer for an address whose invoices we make (Spark mode).
+// max_msat is the holder's ceiling (at most LU_MAX_MSAT, at least a sat);
+// notes turns LUD-12 notes on (280) or off (0); nostr_key is our zap receipt
+// key in hex, or "" while receipts are off. Its length, or -1.
+lu_pay_json :: (domain: string, name: string, tag: string, max_msat: int, notes: bool, nostr_key: string, out: [] u8) -> int #export_c #effects(all) {
+  if max_msat < LU_MIN_MSAT { return -1; }
+  key: [32] u8;
+  if nostr_key.count > 0 && !ne_lower_hex(nostr_key, key[..]) { return -1; }
+  meta: [512] u8;
+  m := lu_metadata(domain, name, tag, meta[..]);
+  if m < 0 { return -1; }
+  n := json_raw(out, 0, "{\"tag\":\"payRequest\",\"callback\":\"");
+  n = lu_callback_url(domain, name, tag, out, n);
+  n = json_raw(out, n, "\",\"minSendable\":"); n = json_write_int(out, n, LU_MIN_MSAT);
+  n = json_raw(out, n, ",\"maxSendable\":"); n = json_write_int(out, n, ifx max_msat > LU_MAX_MSAT then LU_MAX_MSAT else max_msat);
+  n = json_raw(out, n, ",\"metadata\":"); n = json_write_string(out, n, cast(string) meta[0..<m]);
+  n = json_raw(out, n, ",\"commentAllowed\":"); n = json_write_int(out, n, ifx notes then LU_COMMENT_MAX else 0);
+  n = json_raw(out, n, ",\"payerData\":{\"name\":{\"mandatory\":false},\"pubkey\":{\"mandatory\":false}}");
+  if nostr_key.count > 0 { n = json_raw(out, n, ",\"allowsNostr\":true,\"nostrPubkey\":\""); n = json_raw(out, n, nostr_key); n = json_raw(out, n, "\""); }
+  return json_raw(out, n, "}");
+}
+
+// ---- the callback's query (LUD-06, LUD-12, LUD-18, NIP-57)
+
+// amount: a positive whole number of msat in plain decimal, at most 21
+// million bitcoin; -1 for anything else.
+lu_amount :: (s: string) -> int #export_c #effects(all) { return n57_msat(s); }
+// The amount against the range [min, max]. whole_sats: the wallet behind
+// takes whole sats only, so a fraction is refused rather than rounded.
+lu_check_amount :: (msat: int, min: int, max: int, whole_sats: bool) -> int #export_c #effects(all) {
+  if msat < 1 { return LU_AMOUNT; }
+  if msat < min { return LU_TOO_SMALL; }
+  if msat > max { return LU_TOO_BIG; }
+  if whole_sats && msat % 1000 != 0 { return LU_WHOLE_SATS; }
+  return LU_OK;
+}
+// A note (LUD-12): UTF-8 text without control characters other than line
+// breaks and tabs, at most allowed characters; any note when allowed is 0
+// is refused.
+lu_check_note :: (note: string, allowed: int) -> int #export_c #effects(all) {
+  if note.count == 0 { return LU_OK; }
+  if allowed <= 0 { return LU_NO_NOTES; }
+  i := 0; chars := 0;
+  while i < note.count {
+    c := note[i];
+    if c < 32 && c != 10 && c != 13 && c != 9 { return LU_NOTE_TEXT; }
+    if c == 127 { return LU_NOTE_TEXT; }
+    k := json_utf8(note, i);
+    if k == 0 { return LU_NOTE_TEXT; }
+    i += k; chars += 1;
+  }
+  if chars > allowed { return LU_NOTE_LONG; }
+  return LU_OK;
+}
+// LUD-18 payerdata: "" or one JSON object with at most a name (a string of
+// at most 64 bytes) and a pubkey (hex), each once. Anything else, an email
+// above all, is refused: we ask for nothing more.
+lu_check_payerdata :: (text: string) -> int #export_c #effects(all) {
+  if text.count == 0 { return LU_OK; }
+  if text.count > LU_PAYERDATA_MAX { return LU_PAYERDATA; }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return LU_PAYERDATA; }
+  seen := 0;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END { break; }
+    if t != JSON_STRING { return LU_PAYERDATA; }
+    key := json_text(j[..]);
+    f := -1;
+    if json_is(key, "name") { f = 0; }
+    if json_is(key, "pubkey") { f = 1; }
+    v := json_next(j[..]); raw := json_text(j[..]);
+    if f < 0 || v != JSON_STRING || ((seen >> f) & 1) == 1 { return LU_PAYERDATA; }
+    seen |= 1 << f;
+    if f == 0 && raw.count > LU_PAYER_NAME_MAX { return LU_PAYERDATA; }
+    if f == 1 && !lu_lower_hex(raw) { return LU_PAYERDATA; }
+  }
+  if json_next(j[..]) != JSON_END { return LU_PAYERDATA; }
+  return LU_OK;
+}
+// A zap request (NIP-57 Appendix D): "" for none, else at most 8 KB, a
+// signed kind 9734 event with one p tag, at most one e tag, relays, and an
+// amount tag, when it has one, equal to the query's amount.
+lu_check_zap :: (text: string, msat: int) -> int #export_c #effects(all) {
+  if text.count == 0 { return LU_OK; }
+  if text.count > LU_ZAP_MAX { return LU_ZAP; }
+  scratch: [LU_ZAP_MAX + 512] u8;
+  e := nostr_event_verify_vartime(text, scratch[..], false);
+  if e.error != NE_OK || !e.verified { return LU_ZAP; }
+  r := n57_request(e);
+  if r.status != N57R_OK { return LU_ZAP; }
+  if r.msat >= 0 && r.msat != msat { return LU_ZAP_AMOUNT; }
+  return LU_OK;
+}
+// The invoice's description hash: SHA-256 of the zap request when there is
+// one (NIP-57), else of the metadata with LUD-18's payerdata after it.
+lu_description_hash :: (metadata: string, payerdata: string, zap: string, out: [] u8) -> bool #export_c #effects(all) {
+  if out.count != 32 { return false; }
+  b: [LU_ZAP_MAX + LU_PAYERDATA_MAX] u8;
+  n := ifx zap.count > 0 then json_raw(b[..], 0, zap) else json_raw(b[..], json_raw(b[..], 0, metadata), payerdata);
+  return n >= 0 && sha256_hash_checked(b[0..<n], out, false) == SHA_OK;
+}
+
+// The callback's answer: the invoice, a message (LUD-09), our verify URL
+// (LUD-21) for its payment hash in hex. Its length, or -1.
+lu_callback_json :: (domain: string, name: string, pr: string, hash_hex: string, out: [] u8) -> int #export_c #effects(all) {
+  if !lu_plain(pr) || !lu_lower_hex(hash_hex) { return -1; }
+  n := json_raw(out, 0, "{\"pr\":\""); n = json_raw(out, n, pr);
+  n = json_raw(out, n, "\",\"routes\":[],\"successAction\":{\"tag\":\"message\",\"message\":\"Paid ");
+  n = json_raw(out, n, name); n = json_raw(out, n, "@"); n = json_raw(out, n, domain);
+  n = json_raw(out, n, "\"},\"verify\":\"https://"); n = json_raw(out, n, domain); n = json_raw(out, n, "/lnurlp/verify/");
+  n = json_raw(out, n, hash_hex);
+  return json_raw(out, n, "\"}");
+}
+
+// ---- invoices (BOLT11)
+
+// Whether pr is an invoice we may hand a payer for this request: it reads
+// (and its signature recovers), it is for network, it is for exactly msat,
+// it commits to hash by its h field, it was stamped at most LU_SKEW_S ahead
+// of now and still has LU_FRESH_S to live, and it expires in exactly 10
+// minutes (own: an invoice made for us) or at most a day (forwarded). The
+// payment hash goes to payment_hash. LU_OK or LU_INVOICE.
+lu_check_invoice :: (pr: string, network: int, msat: int, hash: [] u8, now: int, own: bool, payment_hash: [] u8) -> int #export_c #effects(all) {
+  if hash.count != 32 || payment_hash.count != 32 { return LU_INVOICE; }
+  inv: [1] Invoice;
+  if invoice_decode_vartime(pr, inv[..]) != INV_OK { return LU_INVOICE; }
+  i := inv[0];
+  if i.network != network || !i.has_amount || cast(int) i.amount_msat != msat { return LU_INVOICE; }
+  if !i.has_hash || i.has_description || !lu_same(i.description_hash[..], hash) { return LU_INVOICE; }
+  stamp := cast(int) i.timestamp; life := cast(int) i.expiry;
+  if own && life != LU_EXPIRY_S { return LU_INVOICE; }
+  if life > LU_FORWARD_EXPIRY_MAX_S { return LU_INVOICE; }
+  if stamp > now + LU_SKEW_S || stamp + life < now + LU_FRESH_S { return LU_INVOICE; }
+  for k: 0..<32 { payment_hash[k] = i.payment_hash[k]; }
+  return LU_OK;
+}
+
+// ---- forward mode: where we may fetch
+
+// Whether a host label sequence is a public DNS name: two or more labels of
+// a-z 0-9 -, none empty or starting or ending with -, not all digits (no
+// IPv4 literal), and not localhost, .local, .internal, .localhost or .onion.
+lu_host_ok :: (host: string) -> bool #effects(all) {
+  if host.count == 0 || host.count > 253 { return false; }
+  labels := 0; start := 0; letters := false; i := 0;
+  while i <= host.count {
+    if i == host.count || host[i] == '.' {
+      if i == start || host[start] == '-' || host[i - 1] == '-' { return false; }
+      labels += 1; start = i + 1;
+    } else {
+      c := host[i];
+      if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; }
+      if c < '0' || c > '9' { letters = true; }
+    }
+    i += 1;
+  }
+  if labels < 2 || !letters { return false; }
+  for bad: [5] string.[".local", ".internal", ".localhost", ".onion", ".arpa"] {
+    if host.count >= bad.count && host[host.count - bad.count..<host.count] == bad { return false; }
+  }
+  return true;
+}
+// Whether a URL is one we may fetch: https, a public DNS name, port 443 if
+// any, no user part, no fragment, printable ASCII, at most LU_URL_MAX.
+lu_url_ok :: (url: string) -> bool #effects(all) {
+  if url.count > LU_URL_MAX || url.count < 9 || url[0..<8] != "https://" { return false; }
+  for c: url { if c <= 32 || c >= 127 || c == '#' || c == '"' || c == '\\' { return false; } }
+  end := 8;
+  while end < url.count && url[end] != '/' && url[end] != '?' { end += 1; }
+  authority := url[8..<end];
+  host := authority;
+  for i: 0..<authority.count {
+    if authority[i] == '@' { return false; }
+    if authority[i] == ':' {
+      if authority[i + 1..<authority.count] != "443" { return false; }
+      host = authority[0..<i];
+      break;
+    }
+  }
+  return lu_host_ok(host);
+}
+// Whether url's host is exactly host.
+lu_host_is :: (url: string, host: string) -> bool #effects(all) {
+  if url.count < 8 + host.count || url[0..<8] != "https://" || url[8..<8 + host.count] != host { return false; }
+  return url.count == 8 + host.count || url[8 + host.count] == '/' || url[8 + host.count] == ':' || url[8 + host.count] == '?';
+}
+// The LNURL-pay URL of the person's own Lightning Address (LUD-16), folded
+// to lowercase: never one of ours (ours or any name under our domain, so an
+// address can't forward to itself) and never a private host. Its length, or -1.
+lu_target :: (address: string, our_domain: string, out: [] u8) -> int #export_c #effects(all) {
+  low: [256] u8;
+  if address.count > low.count { return -1; }
+  for i: 0..<address.count { low[i] = lnaddr_lower_byte(address[i]); }
+  a := cast(string) low[0..<address.count];
+  at := -1;
+  for i: 0..<a.count { if a[i] == '@' { at = i; } }
+  if at < 1 { return -1; }
+  domain := a[at + 1..<a.count];
+  if !lu_host_ok(domain) || lu_under(domain, "openagents.com") || lu_under(domain, our_domain) { return -1; }
+  return n57_lnurlp(a, out);
+}
+// Whether host is root or a name under it.
+lu_under :: (host: string, root: string) -> bool #effects(all) {
+  if root.count == 0 || host.count < root.count || host[host.count - root.count..<host.count] != root { return false; }
+  return host.count == root.count || host[host.count - root.count - 1] == '.';
+}
+// Whether an address we connect to is public: family 4 (4 bytes) or 6 (16
+// bytes). Refused: this network, private, shared, loopback, link-local,
+// benchmarking, protocol-assignment, multicast and broadcast IPv4; the
+// unspecified, loopback, unique-local, link-local, multicast and
+// documentation IPv6; and IPv4 carried in IPv6 by its IPv4 rule.
+lu_ip_public :: (family: int, a: [] u8) -> bool #export_c #effects(all) {
+  if family == 4 && a.count == 4 { return lu_ip4_public(a[0], a[1], a[2], a[3]); }
+  if family != 6 || a.count != 16 { return false; }
+  zero10 := true; for i: 0..<10 { if a[i] != 0 { zero10 = false; } }
+  if zero10 && a[10] == 0xff && a[11] == 0xff { return lu_ip4_public(a[12], a[13], a[14], a[15]); }
+  if zero10 && a[10] == 0 && a[11] == 0 { return false; }   // ::, ::1 and ::a.b.c.d
+  if a[0] == 0 && a[1] == 0x64 && a[2] == 0xff && a[3] == 0x9b { return lu_ip4_public(a[12], a[13], a[14], a[15]); }
+  if (a[0] & 0xfe) == 0xfc { return false; }
+  if a[0] == 0xfe && (a[1] & 0xc0) == 0x80 { return false; }
+  if a[0] == 0xff { return false; }
+  if a[0] == 0x20 && a[1] == 0x01 && a[2] == 0x0d && a[3] == 0xb8 { return false; }
+  return true;
+}
+lu_ip4_public :: (a: u8, b: u8, c: u8, d: u8) -> bool #effects(all) {
+  if a == 0 || a == 10 || a == 127 || a >= 224 { return false; }
+  if a == 100 && b >= 64 && b <= 127 { return false; }
+  if a == 169 && b == 254 { return false; }
+  if a == 172 && b >= 16 && b <= 31 { return false; }
+  if a == 192 && b == 168 { return false; }
+  if a == 192 && b == 0 && c == 0 { return false; }
+  if a == 198 && (b == 18 || b == 19) { return false; }
+  return true;
+}
+
+// ---- forward mode: the lookup
+
+LuUpstream :: struct {
+  callback: [LU_URL_MAX] u8; nc: int;   // the upstream callback: never shown to the payer
+  min: int; max: int;                   // msat
+  comments: int;                        // its commentAllowed, or 0
+  nostr: bool; nostr_key: [64] u8;      // allowsNostr and its nostrPubkey, hex
+  meta_from: int; meta_to: int;         // the metadata string's raw bytes in the text
+}
+LU_UP_KEYS :: [8] string.["tag", "callback", "minSendable", "maxSendable", "metadata", "commentAllowed", "allowsNostr", "nostrPubkey"];
+// Reads the upstream's payRequest (LUD-06): one JSON object, each key we
+// read once, at most LU_UPSTREAM_MAX_BYTES; tag payRequest, a callback we
+// may fetch, 1 <= minSendable <= maxSendable, and a metadata string that is
+// a JSON array with a text/plain entry. commentAllowed and the zap pair are
+// read when present and sound. LU_OK, LU_UPSTREAM_REFUSED for an LUD-06
+// error, else LU_UPSTREAM_BAD.
+lu_upstream_pay :: (text: string, u: [] LuUpstream) -> int #export_c #effects(all) {
+  fresh: LuUpstream; u[0] = fresh;
+  if text.count > LU_UPSTREAM_MAX_BYTES { return LU_UPSTREAM_BAD; }
+  if lu_is_error(text) { return LU_UPSTREAM_REFUSED; }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return LU_UPSTREAM_BAD; }
+  seen := 0; is_pay := false; allows := false; has_key := false; min := -1; max := -1; comments := 0;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END { break; }
+    if t != JSON_STRING { return LU_UPSTREAM_BAD; }
+    key := json_text(j[..]);
+    f := -1;
+    for k: 0..<8 { if json_is(key, LU_UP_KEYS[k]) { f = k; } }
+    v := json_next(j[..]); raw := json_text(j[..]);
+    from := j[0].from; to := j[0].to;
+    if !json_skip(j[..]) { return LU_UPSTREAM_BAD; }
+    if f < 0 { continue; }
+    if ((seen >> f) & 1) == 1 { return LU_UPSTREAM_BAD; }
+    seen |= 1 << f;
+    if f == 0 { is_pay = v == JSON_STRING && json_is(raw, "payRequest"); }
+    if f == 1 {
+      if v != JSON_STRING { return LU_UPSTREAM_BAD; }
+      u[0].nc = json_unescape(raw, u[0].callback[..]);
+      if u[0].nc < 0 { return LU_UPSTREAM_BAD; }
+    }
+    if f == 2 && v == JSON_NUMBER { min = json_int(raw).value; }
+    if f == 3 && v == JSON_NUMBER { max = json_int(raw).value; }
+    if f == 4 {
+      if v != JSON_STRING { return LU_UPSTREAM_BAD; }
+      u[0].meta_from = from; u[0].meta_to = to;
+    }
+    if f == 5 && v == JSON_NUMBER { c := json_int(raw); if c.ok && c.value > 0 { comments = c.value; } }
+    if f == 6 { allows = v == JSON_TRUE; }
+    if f == 7 && v == JSON_STRING && raw.count == 64 && lu_lower_hex(raw) { has_key = true; for i: 0..<64 { u[0].nostr_key[i] = raw[i]; } }
+  }
+  if json_next(j[..]) != JSON_END || !is_pay { return LU_UPSTREAM_BAD; }
+  if u[0].nc == 0 || !lu_url_ok(cast(string) u[0].callback[0..<u[0].nc]) { return LU_UPSTREAM_BAD; }
+  if min < 1 || max < min { return LU_UPSTREAM_BAD; }
+  if ((seen >> 4) & 1) == 0 || !lu_metadata_ok(lu_upstream_metadata(text, u[0])) { return LU_UPSTREAM_BAD; }
+  u[0].min = min; u[0].max = max; u[0].comments = comments; u[0].nostr = allows && has_key;
+  return LU_OK;
+}
+// The upstream metadata string's raw bytes (escapes as sent).
+lu_upstream_metadata :: (text: string, u: LuUpstream) -> string #effects(all) { return text[u.meta_from..<u.meta_to]; }
+// A raw metadata string: decodes to at most LU_METADATA_MAX bytes of a JSON
+// array of [mime, value] string pairs with a text/plain entry.
+lu_metadata_ok :: (raw: string) -> bool #effects(all) {
+  d: [LU_METADATA_MAX] u8;
+  n := json_unescape(raw, d[..]);
+  if n <= 0 { return false; }
+  j: [1] Json; json_start(j[..], cast(string) d[0..<n]);
+  if json_next(j[..]) != JSON_ARRAY { return false; }
+  plain := false;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_ARRAY_END { break; }
+    if t != JSON_ARRAY || json_next(j[..]) != JSON_STRING { return false; }
+    mime := json_text(j[..]);
+    if json_is(mime, "text/plain") { plain = true; }
+    if !json_skip_rest(j[..]) { return false; }
+  }
+  return plain && json_next(j[..]) == JSON_END;
+}
+// After an entry's first string: its other values, then its close.
+json_skip_rest :: (j: [] Json) -> bool #effects(all) {
+  while true {
+    t := json_next(j);
+    if t == JSON_ARRAY_END { return true; }
+    if t == JSON_ERROR || t == JSON_END || !json_skip(j) { return false; }
+  }
+  return false;
+}
+// The decoded metadata, the bytes the payer's wallet hashes. Its length, or -1.
+lu_upstream_metadata_decoded :: (text: string, u: LuUpstream, out: [] u8) -> int #export_c #effects(all) {
+  if u.meta_to <= u.meta_from || u.meta_to > text.count { return -1; }
+  return json_unescape(lu_upstream_metadata(text, u), out);
+}
+// LUD-06's error shape, {"status":"ERROR",...}.
+lu_is_error :: (text: string) -> bool #effects(all) {
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return false; }
+  while true {
+    t := json_next(j[..]);
+    if t != JSON_STRING { return false; }
+    key := json_text(j[..]);
+    v := json_next(j[..]); raw := json_text(j[..]);
+    if json_is(key, "status") { return v == JSON_STRING && json_is(raw, "ERROR"); }
+    if !json_skip(j[..]) { return false; }
+  }
+  return false;
+}
+// Our lookup's answer in forward mode: the upstream's metadata byte for
+// byte, our callback, the range narrowed to ours (at least a sat, at most
+// our_max), notes only when both sides take them, and the upstream's zap
+// pair when it has one (its key signs the receipts). No payerData: we never
+// pass a payer's details on. Its length, or -1 when the ranges don't meet.
+lu_forward_pay_json :: (text: string, u: LuUpstream, domain: string, name: string, our_max: int, notes: bool, out: [] u8) -> int #export_c #effects(all) {
+  min := ifx u.min < LU_MIN_MSAT then LU_MIN_MSAT else u.min;
+  cap := ifx our_max > LU_MAX_MSAT then LU_MAX_MSAT else our_max;
+  max := ifx u.max < cap then u.max else cap;
+  if min > max || u.meta_to <= u.meta_from || u.meta_to > text.count { return -1; }
+  comments := ifx !notes then 0 else (ifx u.comments < LU_COMMENT_MAX then u.comments else LU_COMMENT_MAX);
+  n := json_raw(out, 0, "{\"tag\":\"payRequest\",\"callback\":\"");
+  n = lu_callback_url(domain, name, "", out, n);
+  n = json_raw(out, n, "\",\"minSendable\":"); n = json_write_int(out, n, min);
+  n = json_raw(out, n, ",\"maxSendable\":"); n = json_write_int(out, n, max);
+  n = json_raw(out, n, ",\"metadata\":\""); n = json_raw(out, n, lu_upstream_metadata(text, u)); n = json_raw(out, n, "\"");
+  n = json_raw(out, n, ",\"commentAllowed\":"); n = json_write_int(out, n, comments);
+  if u.nostr { key := u.nostr_key; n = json_raw(out, n, ",\"allowsNostr\":true,\"nostrPubkey\":\""); n = json_raw(out, n, cast(string) key[..]); n = json_raw(out, n, "\""); }
+  return json_raw(out, n, "}");
+}
+
+// ---- forward mode: the callback
+
+// The upstream callback with the payer's amount, note and zap request, and
+// nothing else of theirs. Its length, or -1.
+lu_upstream_callback :: (callback: string, msat: int, note: string, zap: string, out: [] u8) -> int #export_c #effects(all) {
+  q := false;
+  for c: callback { if c == '?' { q = true; } if c == '#' { return -1; } }
+  n := json_raw(out, 0, callback); n = json_raw(out, n, ifx q then "&amount=" else "?amount=");
+  n = json_write_int(out, n, msat);
+  if note.count > 0 { n = json_raw(out, n, "&comment="); n = n57_query(out, n, note); }
+  if zap.count > 0 { n = json_raw(out, n, "&nostr="); n = n57_query(out, n, zap); }
+  return n;
+}
+LuForwarded :: struct { pr: [2048] u8; npr: int; ph: [32] u8; verify: [LU_URL_MAX] u8; nv: int; }
+// Reads the upstream's callback answer and checks its invoice
+// (lu_check_invoice, not ours: up to a day's expiry). A verify URL is kept
+// only when we may fetch it. LU_OK, LU_UPSTREAM_REFUSED, LU_UPSTREAM_BAD or
+// LU_INVOICE.
+lu_forward_invoice :: (text: string, network: int, msat: int, hash: [] u8, now: int, v: [] LuForwarded) -> int #export_c #effects(all) {
+  fresh: LuForwarded; v[0] = fresh;
+  if hash.count != 32 { return LU_INVOICE; }
+  if text.count > LU_UPSTREAM_MAX_BYTES { return LU_UPSTREAM_BAD; }
+  if lu_is_error(text) { return LU_UPSTREAM_REFUSED; }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return LU_UPSTREAM_BAD; }
+  has_pr := false; has_verify := false;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END { break; }
+    if t != JSON_STRING { return LU_UPSTREAM_BAD; }
+    key := json_text(j[..]);
+    k := json_next(j[..]); raw := json_text(j[..]);
+    if !json_skip(j[..]) { return LU_UPSTREAM_BAD; }
+    if json_is(key, "pr") {
+      if has_pr || k != JSON_STRING { return LU_UPSTREAM_BAD; }
+      has_pr = true;
+      v[0].npr = json_unescape(raw, v[0].pr[..]);
+      if v[0].npr <= 0 { return LU_UPSTREAM_BAD; }
+    }
+    if json_is(key, "verify") {
+      if has_verify { return LU_UPSTREAM_BAD; }
+      has_verify = true;
+      if k == JSON_STRING { v[0].nv = json_unescape(raw, v[0].verify[..]); }
+    }
+  }
+  if json_next(j[..]) != JSON_END || !has_pr { return LU_UPSTREAM_BAD; }
+  if v[0].nv < 0 || (v[0].nv > 0 && !lu_url_ok(cast(string) v[0].verify[0..<v[0].nv])) { v[0].nv = 0; }
+  return lu_check_invoice(cast(string) v[0].pr[0..<v[0].npr], network, msat, hash, now, false, v[0].ph[..]);
+}
+
+// ---- LUD-21 verify
+
+LuVerify :: struct { settled: bool; preimage: [64] u8; np: int; }
+// Reads an upstream verify answer for the payment hash (hex). Settled only
+// when it says so and its preimage hashes to the payment hash: a claim we
+// can't check reads as not settled. LU_OK, LU_UPSTREAM_REFUSED or LU_UPSTREAM_BAD.
+lu_verify_read :: (text: string, hash_hex: string, v: [] LuVerify) -> int #export_c #effects(all) {
+  fresh: LuVerify; v[0] = fresh;
+  if text.count > LU_UPSTREAM_MAX_BYTES { return LU_UPSTREAM_BAD; }
+  if lu_is_error(text) { return LU_UPSTREAM_REFUSED; }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return LU_UPSTREAM_BAD; }
+  seen := 0; says := false; pre: [64] u8; np := 0;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END { break; }
+    if t != JSON_STRING { return LU_UPSTREAM_BAD; }
+    key := json_text(j[..]);
+    f := -1;
+    if json_is(key, "settled") { f = 0; }
+    if json_is(key, "preimage") { f = 1; }
+    k := json_next(j[..]); raw := json_text(j[..]);
+    if !json_skip(j[..]) { return LU_UPSTREAM_BAD; }
+    if f < 0 { continue; }
+    if ((seen >> f) & 1) == 1 { return LU_UPSTREAM_BAD; }
+    seen |= 1 << f;
+    if f == 0 { says = k == JSON_TRUE; }
+    if f == 1 && k == JSON_STRING && raw.count == 64 { for i: 0..<64 { pre[i] = raw[i]; } np = 64; }
+  }
+  if json_next(j[..]) != JSON_END { return LU_UPSTREAM_BAD; }
+  if says && np == 64 && x402_preimage_matches(cast(string) pre[..], hash_hex) {
+    v[0].settled = true; v[0].np = 64;
+    for i: 0..<64 { v[0].preimage[i] = pre[i]; }
+  }
+  return LU_OK;
+}
+// Our LUD-21 answer. A settled answer needs its preimage. Its length, or -1.
+lu_verify_json :: (settled: bool, preimage: string, pr: string, out: [] u8) -> int #export_c #effects(all) {
+  if settled && (preimage.count != 64 || !lu_lower_hex(preimage)) { return -1; }
+  if !lu_plain(pr) { return -1; }
+  n := json_raw(out, 0, "{\"status\":\"OK\",\"settled\":");
+  n = json_raw(out, n, ifx settled then "true" else "false");
+  n = json_raw(out, n, ",\"preimage\":");
+  if settled { n = json_raw(out, n, "\""); n = json_raw(out, n, preimage); n = json_raw(out, n, "\""); } else { n = json_raw(out, n, "null"); }
+  n = json_raw(out, n, ",\"pr\":\""); n = json_raw(out, n, pr);
+  return json_raw(out, n, "\"}");
+}
+
+// ---- limits, by the counts in the last minute including this request
+
+lu_limit_lookup :: (per_ip: int) -> int #export_c #effects(all) {
+  if per_ip < 0 || per_ip > LU_LOOKUPS_PER_MIN_IP { return LU_LOOKUP_LIMIT; }
+  return LU_OK;
+}
+lu_limit_invoice :: (per_name: int, per_ip: int) -> int #export_c #effects(all) {
+  if per_name < 0 || per_name > LU_INVOICES_PER_MIN_NAME { return LU_NAME_LIMIT; }
+  if per_ip < 0 || per_ip > LU_INVOICES_PER_MIN_IP { return LU_IP_LIMIT; }
+  return LU_OK;
+}
+
+// One of the limits above, for the pages that list them (/docs/limits, the address's card):
+// 0 least msat, 1 most msat, 2 note characters, 3 invoice expiry seconds, 4 lookups a minute per
+// network address, 5 invoices a minute per name, 6 invoices a minute per network address; -1 else.
+LU_LIMITS :: [7] int.[LU_MIN_MSAT, LU_MAX_MSAT, LU_COMMENT_MAX, LU_EXPIRY_S, LU_LOOKUPS_PER_MIN_IP, LU_INVOICES_PER_MIN_NAME, LU_INVOICES_PER_MIN_IP];
+lu_limit :: (which: int) -> int #export_c #effects(all) {
+  if which < 0 || which >= LU_LIMITS.count { return -1; }
+  return LU_LIMITS[which];
+}
+
+#test "the limits the pages list are the ones enforced" {
+  #assert lu_limit(-1) == -1 && lu_limit(7) == -1;
+  #assert lu_limit(0) == 1000 && lu_limit(1) == 1000000000 && lu_limit(2) == 280 && lu_limit(3) == 600;
+  #assert lu_limit(4) == 30 && lu_limit(5) == 120 && lu_limit(6) == 30;
+  #assert lu_limit_lookup(lu_limit(4)) == LU_OK && lu_limit_lookup(lu_limit(4) + 1) == LU_LOOKUP_LIMIT;
+  #assert lu_limit_invoice(lu_limit(5), lu_limit(6)) == LU_OK && lu_limit_invoice(lu_limit(5) + 1, 0) == LU_NAME_LIMIT;
+  #assert lu_limit_invoice(0, lu_limit(6) + 1) == LU_IP_LIMIT;
+}
