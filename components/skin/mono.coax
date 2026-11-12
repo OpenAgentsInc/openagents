@@ -95,8 +95,8 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".btn:hover{--frame-bg:var(--raised);--frame-line:var(--line-bright)}");
   n = mc(out, n, ".btn:focus-visible{outline:none;--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
   n = mc(out, n, ".btn:active{--frame-bg:#262626}");
-  n = mc(out, n, ".btn[data-state=primary]{color:#000;--frame-bg:#fff;--frame-line:#fff;--frame-deco:#fff}");
-  n = mc(out, n, ".btn[data-state=primary]:hover{--frame-bg:#d4d4d4;--frame-line:#d4d4d4}");
+  n = mc(out, n, ".btn[data-state=primary]{color:#000;--frame-bg:#c8c8c8;--frame-line:#c8c8c8;--frame-deco:#c8c8c8}");
+  n = mc(out, n, ".btn[data-state=primary]:hover{--frame-bg:#e0e0e0;--frame-line:#e0e0e0;--frame-deco:#e0e0e0}");
   n = mc(out, n, ".btn[disabled]{color:var(--ink-faint);cursor:default;--frame-bg:transparent;--frame-line:var(--line-dim);--frame-deco:var(--line-dim)}");
   n = mc(out, n, ".btn[disabled] .fr-line{stroke-dasharray:3 3}");
   // a quiet text button
