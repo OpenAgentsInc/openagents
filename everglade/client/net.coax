@@ -265,6 +265,8 @@ e2n_ticket :: (n: [] E2Net, answer: string) {
   if answer.count <= 4 || answer[0..<4] != "200\n" {
     // every room is full: the API says how many wait, and the page asks again (player.c room_ticket)
     if answer[0..<4] == "503\n" && net_json_field(answer, "waiting").count > 0 { e2n_full(n, "", ""); }
+    // maintenance (#13299, the API's flag): the page says the API's words of why, and asks again
+    if answer[0..<4] == "503\n" && net_json_field(answer, "until_ms").count > 0 { e2n_maintenance(n, net_json_field(answer, "maintenance")); }
     e2n_down(n); return;
   }
   tk := net_json_field(answer, "ticket");
@@ -306,6 +308,17 @@ e2n_full :: (n: [] E2Net, asked: string, placed: string) {
   k = wire_int(t[..], k, WIRE_SEATS); k = wire_put(t[..], k, " PLAYERS");
   if asked.count == 0 { k = wire_put(t[..], k, " · TRYING AGAIN"); }
   else { k = e2n_room_name(t[..], wire_put(t[..], k, " · JOINING "), placed, "ANOTHER"); }
+  e2n_tell(n, cast(string) t[0..<k]);
+  for i: 0..<k { n[0].full[i] = t[i]; }
+  n[0].full_n = k; n[0].full_at = n[0].mono;
+}
+// Maintenance, said over the bar as a full room is: MAINTENANCE · WHY (the API's words, cut to the bar).
+e2n_maintenance :: (n: [] E2Net, why: string) {
+  t: [E2N_SAY] u8; k := wire_put(t[..], 0, "MAINTENANCE");
+  if why.count > 0 {
+    k = wire_put(t[..], k, " · ");
+    for ch: why { if k < E2N_SAY && ch >= 32 && ch < 127 { t[k] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; k += 1; } }
+  }
   e2n_tell(n, cast(string) t[0..<k]);
   for i: 0..<k { n[0].full[i] = t[i]; }
   n[0].full_n = k; n[0].full_at = n[0].mono;
@@ -398,6 +411,13 @@ e2n_named :: (n: [] E2Net, answer: string) -> E2nNamed {
   // every room full: the page waits and asks again
   w: [1] E2Net; e2n_ticket(w[..], "503\n{\"error\":\"every room is full: try again in a minute\",\"waiting\":3,\"retry_ms\":20000}");
   #assert e2n_full_message(w[..]) == "EVERY ROOM HAS 16 PLAYERS · TRYING AGAIN" && w[0].state == E2N_DOWN;
+  // maintenance: the API's words of why, over the bar; the page waits and asks again
+  m: [1] E2Net; e2n_ticket(m[..], "503\n{\"error\":\"maintenance: A new release\",\"maintenance\":\"A new release\",\"until_ms\":0,\"retry_ms\":30000}");
+  #assert e2n_full_message(m[..]) == "MAINTENANCE · A NEW RELEASE" && m[0].state == E2N_DOWN;
+  m2: [1] E2Net; e2n_ticket(m2[..], "503\n{\"error\":\"maintenance\",\"maintenance\":\"\",\"until_ms\":1762990000000,\"retry_ms\":30000}");
+  #assert e2n_full_message(m2[..]) == "MAINTENANCE";
+  m3: [1] E2Net; e2n_ticket(m3[..], "503\n{\"error\":\"x\",\"maintenance\":\"Moving every room to the new release, back in ten minutes\",\"until_ms\":0,\"retry_ms\":30000}");
+  #assert e2n_full_message(m3[..]).count == E2N_SAY && m3[0].state == E2N_DOWN;
 }
 
 // ---- the socket

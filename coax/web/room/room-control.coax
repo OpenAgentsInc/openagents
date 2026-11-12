@@ -21,7 +21,15 @@
 //     the drift check's two rooms roll alike whatever order their rolls come in (GitHub #12887). Only
 //     a local room takes it: oa-room under --dev, and the browser's local host (rm_control_local).
 //     Production's answer never says it, and production's rooms never take it.
+//   - flag: "flag NAME VALUE", a whole number the API holds for the rooms (verse.flags, set with no
+//     deploy: POST /api/admin/flags, #13299). Every answer carries the whole list, so a flag taken away
+//     at the API is gone here two seconds later. rm_flag reads one. The flags a room reads today:
+//     "closed" (every shard) and "closed-sK" (shard K): while not 0 the shard's directory report says d,
+//     so the directory places nobody new on it (room-directory.coax), and its seated players play on:
+//     a shard taken out of rotation without a drain or a restart.
 CONTROL_KICKS :: 64;
+CONTROL_FLAGS :: 16;
+CONTROL_FLAG_NAME :: 32;
 CONTROL_EVERY_MS :: 2000;
 
 RmControl :: struct {
@@ -34,6 +42,21 @@ RmControl :: struct {
   hold_stamp: int;               // the last "hold" line's STAMP (0 none yet): each is laid once
   local: bool;                   // the browser's local host (room-worker.c): its own player's offline game
   dice_fixed: bool;              // "dice fixed": the rooms' dice land on half their faces (a local room's only)
+  flag_name: [CONTROL_FLAGS * CONTROL_FLAG_NAME] u8; flag_name_n: [CONTROL_FLAGS] int; flag_value: [CONTROL_FLAGS] int; flags: int;   // the API's flags, the whole list of the last answer
+}
+
+// The API's flag `name` as the last control answer had it, or fallback when it named no such flag.
+rm_flag :: (v: [] RmServer, name: string, fallback: int) -> int #export_c #effects(all) {
+  for i: 0..<v[0].ctl.flags {
+    if cast(string) v[0].ctl.flag_name[i * CONTROL_FLAG_NAME..<i * CONTROL_FLAG_NAME + v[0].ctl.flag_name_n[i]] == name { return v[0].ctl.flag_value[i]; }
+  }
+  return fallback;
+}
+// Whether the API has this shard out of rotation: "closed", or "closed-sK" for this shard.
+rc_closed :: (v: [] RmServer) -> bool {
+  if rm_flag(v, "closed", 0) != 0 { return true; }
+  b: [16] u8; n := tk_add(b[..], 0, "closed-s"); n = rv_int(b[..], n, v[0].shard);
+  return rm_flag(v, cast(string) b[0..<n], 0) != 0;
 }
 
 // The browser's local host (room-worker.c rw_start): offline play, one player's own game.
@@ -123,7 +146,7 @@ rc_room :: (v: [] RmServer, code: string) -> int {
   return -1;
 }
 rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
-  kicks := 0; pvp := v[0].ctl.pvp; edit := -1;
+  kicks := 0; pvp := v[0].ctl.pvp; edit := -1; flags := 0;
   at := 0;
   while at < text.count {
     e := at;
@@ -135,6 +158,14 @@ rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
     if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
     if line.count > 5 && line[0..<5] == "hold " { rc_hold(v, line); }
     if line.count > 6 && line[0..<6] == "place " { rc_place(v, line); }
+    if line.count > 5 && line[0..<5] == "flag " && flags < CONTROL_FLAGS {
+      name := rc_word(line, 5);
+      value := ifx 5 + name.count + 1 < line.count then rc_num(line[5 + name.count + 1..<line.count]) else -1;
+      if name.count > 0 && name.count <= CONTROL_FLAG_NAME && value >= 0 {
+        for i: 0..<name.count { v[0].ctl.flag_name[flags * CONTROL_FLAG_NAME + i] = name[i]; }
+        v[0].ctl.flag_name_n[flags] = name.count; v[0].ctl.flag_value[flags] = value; flags += 1;
+      }
+    }
     if line == "dice fixed" { v[0].ctl.dice_fixed = true; }
     if line == "dice random" { v[0].ctl.dice_fixed = false; }
     if line.count > 5 && line[0..<5] == "kick " && kicks < CONTROL_KICKS {
@@ -146,6 +177,7 @@ rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
     }
   }
   v[0].ctl.kicks = kicks;
+  v[0].ctl.flags = flags;
   v[0].ctl.pvp = pvp;
   for k: 0..<EG_ROOMS { v[0].eg[k].rules[0].pvp = pvp; v[0].eg[k].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v); }
   // the board or world changed: every page asks for it again

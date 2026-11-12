@@ -131,6 +131,22 @@ turn is drained, restarted and healthy before the next.
 `coax/web/room/deploy.sh`, the Cloud Run deploy, sees from the url map when
 production runs on the VM and runs these two steps instead.
 
+A whole release (the API, the rooms behind a canary shard, then the page) is one
+command: [the release set](release-set.md). Its canary uses two more commands:
+
+```sh
+coax/web/room/vm-deploy.sh canary 6      # production shard 6 alone onto staging's release
+coax/web/room/vm-deploy.sh canary-back   # that shard back on production's release
+coax/web/room/vm-deploy.sh rollback --staging   # the staging unit back on the release before its last
+```
+
+`deploy` then moves the other shards and leaves the canary running.
+
+The room's posters hold one libcurl handle each (#13300), so the VM needs
+libcurl's headers to compile a release. `vm/setup.sh` installs
+`libcurl4-openssl-dev` on a new VM, and `deploy --staging` installs it on a VM
+from before.
+
 ## Drain
 
 The same drain Cloud Run revisions get (#12797, `room-directory.coax`

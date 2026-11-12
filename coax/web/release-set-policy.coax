@@ -1,0 +1,218 @@
+// The release set's rules (#13299, AAA P5.5; docs/deployment/release-set.md). One release moves three
+// parts, in one order: the API, then the rooms, then the page. release-set.coax runs the commands;
+// this file decides:
+//   the order     which part moves next, and that a part moves only when the ones before it have
+//   the pins      the page ships only when every live shard runs the page's build: its engine, its
+//                 rules, its world (the wire's P; a room refuses a page whose pins differ, so a page
+//                 ahead of its rooms strands every player: #13163)
+//   the canary    one shard takes the new room first, and is compared with the others (in
+//                 production: the shards still on the old release, over the same minutes; on
+//                 staging, which has one shard: the same shard just before, under the same bots).
+//                 The canary fails when it
+//                   crashed          a crash bucket names the new release
+//                   is unhealthy     none of its windows could be read
+//                   ticks slower     its tick p95 is over twice the others' and 300 us more
+//                   refuses more     it refuses over twice the frames a second the others do, and
+//                                    1 a second more
+//                   seats fewer      it seated under nine in ten of what the others seated (bots)
+//                   saves slower     its oldest unsaved checkpoint is past 15 s and the others' is not
+//                   refuses the build  its bots' hellos were refused for their version
+//                 Each is a regression the release causes: what the others do too never stops it
+//                 (the owner's rule: a release is stopped only by a regression it causes).
+#authority;
+
+RS_API :: 0; RS_ROOMS :: 1; RS_PAGE :: 2; RS_DONE :: 3;
+RS_C_CRASH :: 1; RS_C_UNHEALTHY :: 2; RS_C_TICK :: 4; RS_C_REFUSED :: 8; RS_C_SEATS :: 16; RS_C_CHECKPOINT :: 32; RS_C_VERSION :: 64;
+RS_C_BITS :: 7;
+RS_TICK_MARGIN_US :: 300;
+RS_REFUSED_MARGIN_DS :: 10;       // tenths a second: 1 frame a second
+RS_SEATS_PERCENT :: 90;
+RS_CHECKPOINT_MS :: 15000;
+
+// A shard's numbers over the canary's window. tick_p95_us: its tick p95 (the median of its windows;
+// -1 not read); refused_ds: frames it refused a second, in tenths (-1 not read); seated: players
+// seated (bots); unsaved_ms: its oldest unsaved checkpoint (-1 not read); windows: windows read;
+// crashes: crash buckets naming its release; version_refused: hellos it refused for their build.
+RsShard :: struct { tick_p95_us: int = -1; refused_ds: int = -1; seated: int; unsaved_ms: int = -1; windows: int; crashes: int; version_refused: int; }
+RsPins :: struct { engine: int; rules: int; content: int; }
+
+#test "the order: the API, then the rooms, then the page, and nothing after" {
+  #assert rs_next(0) == RS_API && rs_next(1) == RS_ROOMS && rs_next(3) == RS_PAGE && rs_next(7) == RS_DONE;
+  // a part never moves before the ones ahead of it: the rooms without the API, the page without the rooms
+  #assert rs_next(2) == RS_API && rs_next(4) == RS_API && rs_next(5) == RS_ROOMS && rs_next(6) == RS_API;
+  #assert rs_may(RS_API, 0) && !rs_may(RS_ROOMS, 0) && rs_may(RS_ROOMS, 1) && !rs_may(RS_PAGE, 1) && rs_may(RS_PAGE, 3) && !rs_may(RS_PAGE, 2);
+  #assert !rs_may(RS_DONE, 7) && !rs_may(-1, 7) && !rs_may(RS_API, 1) && !rs_may(RS_ROOMS, 3) && !rs_may(RS_PAGE, 7);
+  #assert rs_part(RS_API) == "api" && rs_part(RS_ROOMS) == "rooms" && rs_part(RS_PAGE) == "page" && rs_part(RS_DONE) == "" && rs_part(-1) == "";
+  // a rollback goes the other way: the page first, the API last
+  #assert rs_back(7) == RS_PAGE && rs_back(3) == RS_ROOMS && rs_back(1) == RS_API && rs_back(0) == RS_DONE && rs_back(5) == RS_PAGE && rs_back(2) == RS_ROOMS;
+}
+#test "the pins: the page ships only when a live shard runs its engine, rules and world" {
+  p := RsPins.{engine = 4, rules = 9, content = 3};
+  #assert rs_pins_match(p, RsPins.{engine = 4, rules = 9, content = 3});
+  #assert !rs_pins_match(p, RsPins.{engine = 5, rules = 9, content = 3}) && !rs_pins_match(p, RsPins.{engine = 4, rules = 8, content = 3}) && !rs_pins_match(p, RsPins.{engine = 4, rules = 9, content = 4});
+  // every live shard must match, and with no live shard read nothing ships
+  #assert rs_pins_ship(3, 3) && rs_pins_ship(1, 1) && !rs_pins_ship(2, 3) && !rs_pins_ship(0, 0) && !rs_pins_ship(4, 3) && !rs_pins_ship(0, 1);
+}
+#test "the canary holds when it does what the others do, or better" {
+  o := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 32, unsaved_ms = 5000, windows = 30};
+  c := RsShard.{tick_p95_us = 640, refused_ds = 5, seated = 32, unsaved_ms = 5200, windows = 30};
+  #assert rs_canary(c, o) == 0;
+  c.tick_p95_us = 1500; c.refused_ds = 18; c.seated = 29;   // each at its margin's edge
+  #assert rs_canary(c, o) == 0;
+  // what the others do too is not the release's: both slow, both refusing, both unsaved
+  slow := RsShard.{tick_p95_us = 20000, refused_ds = 400, seated = 3, unsaved_ms = 40000, windows = 30};
+  #assert rs_canary(slow, slow) == 0;
+  // the others unread: only what the canary shows by itself can stop it
+  blind := RsShard.{windows = 0};
+  #assert rs_canary(c, blind) == 0 && rs_canary(RsShard.{tick_p95_us = 90000, refused_ds = 900, seated = 0, unsaved_ms = 90000, windows = 5}, blind) == 0;
+}
+#test "each way a canary fails" {
+  o := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 32, unsaved_ms = 5000, windows = 30};
+  ok := RsShard.{tick_p95_us = 640, refused_ds = 5, seated = 32, unsaved_ms = 5200, windows = 30};
+  c := ok; c.crashes = 1;
+  #assert rs_canary(c, o) == RS_C_CRASH;
+  c = ok; c.windows = 0;
+  #assert rs_canary(c, o) == RS_C_UNHEALTHY;
+  c = ok; c.tick_p95_us = 1501;
+  #assert rs_canary(c, o) == RS_C_TICK;
+  c = ok; c.tick_p95_us = 20600;   // the seeded bad build: every tick 20 ms longer
+  #assert rs_canary(c, o) == RS_C_TICK;
+  // under twice is no failure however large the margin, and a small number's double needs the margin too
+  quick := RsShard.{tick_p95_us = 100, refused_ds = 0, seated = 32, unsaved_ms = 0, windows = 30};
+  c = ok; c.tick_p95_us = 500;
+  #assert rs_canary(c, quick) == 0;
+  c.tick_p95_us = 501;
+  #assert rs_canary(c, quick) == RS_C_TICK;
+  c = ok; c.refused_ds = 19;
+  #assert rs_canary(c, o) == RS_C_REFUSED;
+  c = ok; c.tick_p95_us = 400; c.refused_ds = 10;
+  #assert rs_canary(c, quick) == 0;
+  c.refused_ds = 11;
+  #assert rs_canary(c, quick) == RS_C_REFUSED;
+  c = ok; c.seated = 28;
+  #assert rs_canary(c, o) == RS_C_SEATS;
+  c = ok; c.unsaved_ms = 15001;
+  #assert rs_canary(c, o) == RS_C_CHECKPOINT;
+  c.unsaved_ms = 15000;
+  #assert rs_canary(c, o) == 0;
+  c = ok; c.version_refused = 1;
+  #assert rs_canary(c, o) == RS_C_VERSION;
+  c = ok; c.crashes = 2; c.tick_p95_us = 9000; c.seated = 0;
+  #assert rs_canary(c, o) == RS_C_CRASH + RS_C_TICK + RS_C_SEATS;
+  // a number the canary did not report is not held against it
+  c = ok; c.tick_p95_us = -1; c.refused_ds = -1; c.unsaved_ms = -1;
+  #assert rs_canary(c, o) == 0;
+  // nor is one the others did not report: there is nothing to be slower than
+  unread := RsShard.{tick_p95_us = -1, refused_ds = -1, seated = 32, unsaved_ms = -1, windows = 5};
+  c = ok; c.tick_p95_us = 90000; c.refused_ds = 900;
+  #assert rs_canary(c, unread) == 0;
+  // the others at nothing at all: the margins alone are the bar
+  zero := RsShard.{tick_p95_us = 0, refused_ds = 0, seated = 32, unsaved_ms = 0, windows = 5};
+  c = ok; c.tick_p95_us = 300; c.refused_ds = 10;
+  #assert rs_canary(c, zero) == 0;
+  c.tick_p95_us = 301;
+  #assert rs_canary(c, zero) == RS_C_TICK;
+  c.tick_p95_us = 300; c.refused_ds = 11;
+  #assert rs_canary(c, zero) == RS_C_REFUSED;
+  // one window is a reading, of the canary and of the others
+  c = ok; c.windows = 1;
+  #assert rs_canary(c, o) == 0;
+  one := o; one.windows = 1;
+  c = ok; c.tick_p95_us = 9000;
+  #assert rs_canary(c, one) == RS_C_TICK;
+  // nine in ten of the others' seats is enough, fewer is not
+  ten := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 10, unsaved_ms = 5000, windows = 30};
+  c = ok; c.seated = 9;
+  #assert rs_canary(c, ten) == 0;
+  c.seated = 8;
+  #assert rs_canary(c, ten) == RS_C_SEATS;
+  many := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 101, unsaved_ms = 5000, windows = 30};
+  c = ok; c.seated = 90;   // 90 of 101 is under nine in ten
+  #assert rs_canary(c, many) == RS_C_SEATS;
+  c.seated = 91;
+  #assert rs_canary(c, many) == 0;
+  // the others unsaved too: not the release's
+  late := o; late.unsaved_ms = 15001;
+  c = ok; c.unsaved_ms = 40000;
+  #assert rs_canary(c, late) == 0;
+  late.unsaved_ms = 15000;
+  #assert rs_canary(c, late) == RS_C_CHECKPOINT;
+}
+#test "each reason has its word; a verdict's words are a comma apart" {
+  #assert rs_c_word(RS_C_CRASH) == "crashed" && rs_c_word(RS_C_UNHEALTHY) == "unhealthy" && rs_c_word(RS_C_TICK) == "slower-tick" && rs_c_word(RS_C_REFUSED) == "more-refusals";
+  #assert rs_c_word(RS_C_SEATS) == "fewer-seats" && rs_c_word(RS_C_CHECKPOINT) == "slower-saves" && rs_c_word(RS_C_VERSION) == "refuses-the-build" && rs_c_word(0) == "" && rs_c_word(3) == "" && rs_c_word(128) == "";
+  b: [120] u8;
+  #assert rs_c_words(0, b[..]) == "" && rs_c_words(RS_C_TICK, b[..]) == "slower-tick" && rs_c_words(RS_C_CRASH + RS_C_TICK, b[..]) == "crashed,slower-tick";
+  #assert rs_c_words(127, b[..]) == "crashed,unhealthy,slower-tick,more-refusals,fewer-seats,slower-saves,refuses-the-build";
+  #assert rs_c_words(RS_C_CRASH + RS_C_TICK, b[0..<18]) == "" && rs_c_words(RS_C_CRASH + RS_C_TICK, b[0..<19]) == "crashed,slower-tick";
+  #assert rs_c_words(RS_C_CRASH, b[0..<7]) == "crashed" && rs_c_words(RS_C_CRASH, b[0..<6]) == "";
+  #assert rs_c_words(128 + RS_C_CRASH, b[..]) == "crashed" && rs_c_words(128, b[..]) == "";   // a bit past the last is no reason
+}
+
+// The part that moves next, given the parts moved (a bit each: 1 the API, 2 the rooms, 4 the page).
+rs_next :: (moved: int) -> int #effects(all) {
+  if (moved & 1) == 0 { return RS_API; }
+  if (moved & 2) == 0 { return RS_ROOMS; }
+  if (moved & 4) == 0 { return RS_PAGE; }
+  return RS_DONE;
+}
+// Whether `part` may move now: it is the next one.
+rs_may :: (part: int, moved: int) -> bool #effects(all) { return part >= RS_API && part <= RS_PAGE && rs_next(moved) == part; }
+// The part a rollback moves back next: the last one moved first.
+rs_back :: (moved: int) -> int #effects(all) {
+  if (moved & 4) != 0 { return RS_PAGE; }
+  if (moved & 2) != 0 { return RS_ROOMS; }
+  if (moved & 1) != 0 { return RS_API; }
+  return RS_DONE;
+}
+rs_part :: (part: int) -> string #effects(all) {
+  if part == RS_API { return "api"; }
+  if part == RS_ROOMS { return "rooms"; }
+  if part == RS_PAGE { return "page"; }
+  return "";
+}
+rs_pins_match :: (page: RsPins, shard: RsPins) -> bool #effects(all) {
+  return page.engine == shard.engine && page.rules == shard.rules && page.content == shard.content;
+}
+// Whether the page may ship: `matching` of the `live` shards read run its build, all of them, and one at least.
+rs_pins_ship :: (matching: int, live: int) -> bool #effects(all) { return live > 0 && matching == live; }
+
+// The canary against the others: its failures as RS_C_* bits; 0 holds.
+rs_canary :: (c: RsShard, o: RsShard) -> int #effects(all) {
+  bits := 0;
+  if c.crashes > 0 { bits += RS_C_CRASH; }
+  if c.windows <= 0 { return bits + RS_C_UNHEALTHY; }
+  if c.version_refused > 0 { bits += RS_C_VERSION; }
+  if o.windows <= 0 { return bits; }   // nothing to compare with: only its own crash or refusal stops it
+  // a number the others did not report compares with nothing; one the canary did not (-1) is over nothing
+  if o.tick_p95_us >= 0 && c.tick_p95_us > o.tick_p95_us * 2 + RS_TICK_MARGIN_US { bits += RS_C_TICK; }
+  if o.refused_ds >= 0 && c.refused_ds > o.refused_ds * 2 + RS_REFUSED_MARGIN_DS { bits += RS_C_REFUSED; }
+  if c.seated * 100 < o.seated * RS_SEATS_PERCENT { bits += RS_C_SEATS; }
+  if c.unsaved_ms > RS_CHECKPOINT_MS && o.unsaved_ms <= RS_CHECKPOINT_MS { bits += RS_C_CHECKPOINT; }
+  return bits;
+}
+rs_c_word :: (bit: int) -> string #effects(all) {
+  if bit == RS_C_CRASH { return "crashed"; }
+  if bit == RS_C_UNHEALTHY { return "unhealthy"; }
+  if bit == RS_C_TICK { return "slower-tick"; }
+  if bit == RS_C_REFUSED { return "more-refusals"; }
+  if bit == RS_C_SEATS { return "fewer-seats"; }
+  if bit == RS_C_CHECKPOINT { return "slower-saves"; }
+  if bit == RS_C_VERSION { return "refuses-the-build"; }
+  return "";
+}
+rs_c_words :: (bits: int, out: [] u8) -> string #effects(all) {
+  n := 0; any := false;
+  for k: 0..<RS_C_BITS {
+    bit := 1 << k;
+    if (bits & bit) == 0 { continue; }
+    w := rs_c_word(bit);
+    need := w.count;
+    if any { need += 1; }
+    if n + need > out.count { return ""; }
+    if any { out[n] = ','; n += 1; }
+    for x: w { out[n] = x; n += 1; }
+    any = true;
+  }
+  return cast(string) out[0..<n];
+}

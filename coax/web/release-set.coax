@@ -1,0 +1,507 @@
+// One release of the whole set (#13299, AAA P5.5; docs/deployment/release-set.md): the API, then the
+// rooms, then the page, in that order, under one version, with a canary before the rooms and one
+// command to move all three back. It runs the three deploys that exist (coax/web/api/deploy.sh,
+// coax/web/room/vm-deploy.sh, coax/web/release.sh) and decides nothing itself: the order, the pins
+// and the canary's verdict are release-set-policy.coax's.
+//
+//   coax/web/tool.sh release-set ship [--staging] [--canary K] [--canary-seconds 120] [--canary-players 32]
+//                                     [--skip-api] [--skip-page] [--seed-tick-us N]
+//     Ships this checkout's HEAD (committed, and on origin/main). In order:
+//       the API     api/deploy.sh (--staging: staging's only), unless the API already runs HEAD
+//       the rooms   the protocol bots play staging's shard for the canary's time (the others'
+//                   numbers), vm-deploy.sh deploy --staging puts the new room there, and the bots
+//                   play it again (the canary's). A canary that fails goes back (vm-deploy.sh
+//                   rollback --staging) and the release stops. In production the new room then goes
+//                   to shard K alone (vm-deploy.sh canary K; K: the emptiest shard unless given), its
+//                   windows are read beside the other shards' for the canary's time, and the rest
+//                   follow (vm-deploy.sh deploy) only when it holds; else vm-deploy.sh canary-back
+//       the page    only when every live shard runs the page's build (its pins); then release.sh
+//     --seed-tick-us N (with --staging): the new room is a seeded bad build, every tick N us longer:
+//     the canary must stop it (the release's own check). --skip-api, --skip-page: that part is taken
+//     as moved (a release that changes only the rooms).
+//     It writes the set's record (its version, what each part ran before and after, which parts
+//     moved) under OA_PIPELINE_DIR/release-sets/ENV/, and prints it. Exits 0 when all three moved,
+//     1 when it stopped (the record says where).
+//   coax/web/tool.sh release-set rollback [--staging] [--set VERSION]
+//     Moves back what the newest set (or VERSION) moved, the page first and the API last: the page's
+//     kept pages (coax/web/rollback.sh), the rooms' previous release (vm-deploy.sh rollback), the
+//     image the API's revision before ran (as a new revision). Only a part the set moved goes back.
+//     Migrations stay: an API release keeps its schema changes readable by the revision before it.
+//   coax/web/tool.sh release-set status [--staging]
+//     The three parts' builds, the shards' pins, and whether they are one set.
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+#import "Basic";
+#load "release-set-policy.coax";
+#load "api/soak-record.coax";
+#load "../../everglade/shared/everglade-wire.coax";   // WirePins: the build this checkout's page is
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/net/http.coax";
+#load "../lib/json/json.coax";
+
+RL_OUT :: 262144;
+RL_SHARDS :: 6;
+cxproc_wall_us :: () -> int #foreign #effects(all);
+
+RlEnv :: struct { staging: bool; api: string; service: string; rooms: string; shards: int; name: string; }
+rl_env :: (staging: bool) -> RlEnv {
+  if staging { return RlEnv.{staging = true, api = "https://staging.openagents.com", service = "oa-api-staging", rooms = "https://room-staging.openagents.com", shards = 1, name = "staging"}; }
+  return RlEnv.{api = "https://openagents.com", service = "oa-api", rooms = "https://room.openagents.com", shards = RL_SHARDS, name = "production"};
+}
+// Text joined into a buffer.
+Rl :: struct { b: [4096] u8; n: int; }
+rl_s :: (t: [] Rl, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+rl_i :: (t: [] Rl, v: int) { d: [24] u8; rl_s(t, cast(string) d[0..<sr_int(d[..], 0, v)]); }
+rl_text :: (t: [] Rl) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+rl_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+rl_has :: (s: string, p: string) -> bool {
+  if p.count == 0 || p.count > s.count { return false; }
+  for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return true; } }
+  return false;
+}
+// The value after "KEY: " (or "KEY ") on a line of text; "" when there is no such line.
+rl_line :: (text: string, key: string, sep: u8) -> string {
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    if end - at > key.count && text[at..<at + key.count] == key && text[at + key.count] == sep {
+      from := at + key.count + 1; while from < end && text[from] == ' ' { from += 1; }
+      return text[from..<end];
+    }
+    at = end + 1;
+  }
+  return "";
+}
+#test "a line's value by its key" {
+  t := "current: 1afd85d5a2-20261112180000\nprevious: \nstaging: abc-1\ncanary: 3 abc-1\nset v1\n";
+  #assert rl_line(t, "current", ':') == "1afd85d5a2-20261112180000" && rl_line(t, "previous", ':') == "" && rl_line(t, "canary", ':') == "3 abc-1" && rl_line(t, "set", ' ') == "v1" && rl_line(t, "none", ':') == "";
+  #assert rl_has("abc", "bc") && !rl_has("abc", "bd") && !rl_has("a", "ab") && rl_starts("release 1", "release ") && !rl_starts("re", "release");
+}
+
+// A command run to its end from the repository's root, its lines shown as they come ("  | LINE")
+// and kept in out: its exit status (-1: it did not start; 124: it ran past timeout_s).
+rl_run :: (argv: [] string, timeout_s: int, out: [] u8, got: [] int) -> int {
+  h := proc_new(); ok := proc_err_to_out(h);
+  for a: argv { ok = ok && proc_arg(h, a); }
+  // gcloud as the automation account, as every deploy script here does
+  hb: [512] u8; home := proc_getenv("HOME", hb[..]); cb: [8] u8;
+  if proc_getenv("CLOUDSDK_CONFIG", cb[..]).count == 0 && home.count > 0 {
+    e: [1] Rl; rl_s(e[..], "CLOUDSDK_CONFIG="); rl_s(e[..], home); rl_s(e[..], "/work/.secrets/gcloud-sa-config");
+    ok = ok && proc_env(h, rl_text(e[..]));
+  }
+  got[0] = 0;
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  line: [8192] u8; until := proc_now_ms() + timeout_s * 1000; late := false;
+  while true {
+    n := proc_line(h, 1000, line[..]);
+    if n == PROC_TIMEOUT { if proc_now_ms() > until { late = true; break; } continue; }
+    if n < 0 && n != PROC_TOO_LONG { break; }
+    if n >= 0 {
+      print("  | %\n", cast(string) line[0..<n]);
+      for i: 0..<n { if got[0] < out.count { out[got[0]] = line[i]; got[0] += 1; } }
+      if got[0] < out.count { out[got[0]] = '\n'; got[0] += 1; }
+    }
+  }
+  if late { k := proc_kill(h, PROC_SIGTERM); w := proc_wait(h, 10000); if w == PROC_RUNNING { k = proc_kill(h, PROC_SIGKILL); w = proc_wait(h, 2000); } r := proc_release(h); return 124; }
+  st := proc_wait(h, 10000); r := proc_release(h);
+  return st;
+}
+rl_get :: (url: string, out: [] u8) -> string {
+  w: [1] HttpWork; none: [1] string;
+  g := http_do(w[..], "GET", url, none[0..<0], "", 15000, 0, out);
+  return ifx g.error == HTTP_OK && g.code == 200 then cast(string) out[0..<g.n] else "";
+}
+// A JSON body's string member.
+rl_member :: (text: string, key: string, out: [] u8) -> string {
+  nodes: [1024] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) { return ""; }
+  n := jv_str(j[0], jv_get(j[0], 0, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// ---- what runs now
+// The API's build (a commit) and revision, from its health.
+RlApi :: struct { build: [48] u8; build_n: int; rev: [96] u8; rev_n: int; }
+rl_api :: (e: RlEnv, a: [] RlApi) -> bool {
+  body: [4096] u8; u: [1] Rl; rl_s(u[..], e.api); rl_s(u[..], "/api/playtest/health");
+  t := rl_get(rl_text(u[..]), body[..]);
+  if t.count == 0 { return false; }
+  a[0].build_n = rl_member(t, "build", a[0].build[..]).count; a[0].rev_n = rl_member(t, "revision", a[0].rev[..]).count;
+  return a[0].build_n > 0;
+}
+// A shard's last window (its vitals), through the rooms' own address.
+rl_vitals :: (e: RlEnv, k: int, out: [] u8) -> string {
+  u: [1] Rl; rl_s(u[..], e.rooms); rl_s(u[..], "/api/room/s"); rl_i(u[..], k); rl_s(u[..], "/vitals");
+  return rl_get(rl_text(u[..]), out);
+}
+// The number after "KEY=" on a report's line times scale, rounded; -1 none.
+rl_value :: (text: string, key: string, scale: int) -> int {
+  v := rl_line(text, key, '=');
+  if v.count == 0 { return -1; }
+  whole := 0; frac := 0; div := 1; dot := false;
+  for c: v {
+    if c == '.' && !dot { dot = true; continue; }
+    if c < '0' || c > '9' { return -1; }
+    if dot { if div < 1000 { frac = frac * 10 + cast(int) (c - '0'); div *= 10; } } else { whole = whole * 10 + cast(int) (c - '0'); }
+  }
+  return whole * scale + (frac * scale + div / 2) / div;
+}
+// A report's pins: "build engine=E rules=R content=C wire=A-B schema=S".
+rl_pins :: (text: string, p: [] RsPins) -> bool {
+  l := rl_line(text, "build", ' ');
+  if l.count == 0 { return false; }
+  v: [3] int; keys := [3] string.["engine=", "rules=", "content="];
+  for q: 0..<3 {
+    at := -1;
+    for i: 0..<l.count - keys[q].count + 1 { if at < 0 && l[i..<i + keys[q].count] == keys[q] && (i == 0 || l[i - 1] == ' ') { at = i + keys[q].count; } }
+    if at < 0 { return false; }
+    n := 0; any := false;
+    while at < l.count && l[at] >= '0' && l[at] <= '9' { n = n * 10 + cast(int) (l[at] - '0'); at += 1; any = true; }
+    if !any { return false; }
+    v[q] = n;
+  }
+  p[0] = RsPins.{engine = v[0], rules = v[1], content = v[2]};
+  return true;
+}
+#test "a room's report: its numbers and its pins" {
+  r := "shard=1\nplayers=3\ntick p95 ms=2.97\ntransport refused frames a second=1.5\ncheckpoint unsaved age ms most=5100\nrefused engine=0\nbuild engine=4 rules=9 content=3 wire=5-5 schema=2\n";
+  p: [1] RsPins;
+  #assert rl_value(r, "tick p95 ms", 1000) == 2970 && rl_value(r, "transport refused frames a second", 10) == 15 && rl_value(r, "players", 1) == 3 && rl_value(r, "none", 1) == -1;
+  #assert rl_value("x=1.2345\n", "x", 1000) == 1234 && rl_value("x=abc\n", "x", 1) == -1 && rl_value("x=7\n", "x", 1000) == 7000;
+  #assert rl_pins(r, p[..]) && p[0].engine == 4 && p[0].rules == 9 && p[0].content == 3;
+  #assert !rl_pins("shard=1\n", p[..]) && !rl_pins("build engine=4 rules=9\n", p[..]) && !rl_pins("build engine= rules=9 content=3\n", p[..]);
+}
+// The rooms' releases as vm-deploy.sh releases prints them, into out.
+rl_releases :: (out: [] u8) -> string {
+  got: [1] int; a := [2] string.["coax/web/room/vm-deploy.sh", "releases"];
+  st := rl_run(a[..], 300, out, got[..]);
+  return ifx st == 0 then cast(string) out[0..<got[0]] else "";
+}
+// The crash buckets on the API that name `release` (a room's).
+rl_crashes :: (e: RlEnv, release: string) -> int {
+  body: [RL_OUT] u8; u: [1] Rl; rl_s(u[..], e.api); rl_s(u[..], "/api/playtest/crashes");
+  t := rl_get(rl_text(u[..]), body[..]);
+  nodes: [8192] JvNode; j: [1] Jv;
+  if t.count == 0 || !jv_parse(j[..], t, nodes[..]) { return 0; }
+  list := jv_get(j[0], 0, "buckets"); n := 0; rb: [128] u8; sb: [16] u8;
+  for i: 0..<jv_len(j[0], list) {
+    b := jv_at(j[0], list, i);
+    rn := jv_str(j[0], jv_get(j[0], b, "release"), rb[..]); sn := jv_str(j[0], jv_get(j[0], b, "source"), sb[..]);
+    if rn > 0 && sn > 0 && cast(string) rb[0..<rn] == release && cast(string) sb[0..<sn] == "room" { n += 1; }
+  }
+  return n;
+}
+
+// ---- the canary
+// The bots on staging's shard for `seconds`: the record they leave, as the policy's numbers.
+rl_bots :: (e: RlEnv, players: int, seconds: int, file: string, s: [] RsShard) -> bool {
+  pb: [16] u8; sb: [16] u8; got: [1] int; out: [RL_OUT] u8; v: [1] Rl;
+  rl_s(v[..], e.rooms); rl_s(v[..], "/api/room/s1/vitals");
+  a := [17] string.["coax/web/tool.sh", "coax/web/room/soak.coax", "run", "--origin", e.api, "--vitals", rl_text(v[..]), "--players", cast(string) pb[0..<sr_int(pb[..], 0, players)],
+                    "--seconds", cast(string) sb[0..<sr_int(sb[..], 0, seconds)], "--reconnect", "0", "--travel", "0", "--out", file];
+  st := rl_run(a[..], seconds + 600, out[..], got[..]);
+  rec: [SR_BODY] u8; n := fs_read(file, rec[..]);
+  if st == 2 || st < 0 || n <= 0 || !soak_record_check(cast(string) rec[0..<n]) { return false; }
+  body := cast(string) rec[0..<n]; f: [160] u8;
+  s[0] = RsShard.{};
+  s[0].tick_p95_us = sr_num(soak_record_field(body, "tick_p95_us", f[..])).v; s[0].refused_ds = sr_num(soak_record_field(body, "refused_ds", f[..])).v;
+  s[0].seated = sr_num(soak_record_field(body, "seated", f[..])).v; s[0].unsaved_ms = sr_num(soak_record_field(body, "checkpoint_ms", f[..])).v;
+  s[0].windows = ifx s[0].tick_p95_us >= 0 then 1 else 0;
+  s[0].version_refused = ifx rl_has(soak_record_field(body, "verdict", f[..]), "version") then 1 else 0;
+  return true;
+}
+// Production's shards read every 10 s for `seconds`: the canary K's numbers, and the others' together
+// (their windows' middle tick, their worst refusals and unsaved age).
+rl_watch :: (e: RlEnv, k: int, seconds: int, c: [] RsShard, o: [] RsShard) {
+  ct: [1024] int; cn := 0; ot: [4096] int; on := 0; body: [32768] u8;
+  c[0] = RsShard.{}; o[0] = RsShard.{};
+  until := proc_now_ms() + seconds * 1000;
+  while proc_now_ms() < until {
+    for q: 1..<e.shards + 1 {
+      t := rl_vitals(e, q, body[..]);
+      p95 := rl_value(t, "tick p95 ms", 1000);
+      if t.count == 0 || p95 < 0 { continue; }
+      refused := rl_value(t, "transport refused frames a second", 10); unsaved := rl_value(t, "checkpoint unsaved age ms most", 1);
+      d := ifx q == k then c else o;
+      d[0].windows += 1;
+      if refused > d[0].refused_ds { d[0].refused_ds = refused; }
+      if unsaved > d[0].unsaved_ms { d[0].unsaved_ms = unsaved; }
+      if q == k { if cn < 1024 { ct[cn] = p95; cn += 1; } } else if on < 4096 { ot[on] = p95; on += 1; }
+    }
+    proc_sleep(10000);
+  }
+  c[0].tick_p95_us = rl_middle(ct[..], cn); o[0].tick_p95_us = rl_middle(ot[..], on);
+}
+rl_middle :: (v: [] int, n: int) -> int {
+  if n <= 0 { return -1; }
+  for i: 1..<n { x := v[i]; j := i; while j > 0 && v[j - 1] > x { v[j] = v[j - 1]; j -= 1; } v[j] = x; }
+  return v[n / 2];
+}
+#test "the middle of a shard's windows" {
+  v := [5] int.[900, 300, 20000, 400, 500];
+  #assert rl_middle(v[..], 5) == 500 && rl_middle(v[..], 0) == -1;
+}
+// The emptiest live shard: the canary when none is named.
+rl_emptiest :: (e: RlEnv) -> int {
+  best := -1; least := 1000000; body: [32768] u8;
+  for q: 1..<e.shards + 1 { n := rl_value(rl_vitals(e, q, body[..]), "players", 1); if n >= 0 && n <= least { least = n; best = q; } }
+  return best;
+}
+
+// ---- the record
+RlSet :: struct { version: [64] u8; version_n: int; moved: int; }
+rl_dir :: (e: RlEnv, out: [] u8) -> string {
+  t: [1] Rl; hb: [512] u8; db: [1024] u8;
+  d := proc_getenv("OA_PIPELINE_DIR", db[..]);
+  if d.count > 0 { rl_s(t[..], d); } else { rl_s(t[..], proc_getenv("HOME", hb[..])); rl_s(t[..], "/.openagents/pipeline"); }
+  mk := fs_mkdir(rl_text(t[..])); rl_s(t[..], "/release-sets"); mk = fs_mkdir(rl_text(t[..])); rl_s(t[..], "/"); rl_s(t[..], e.name); mk = fs_mkdir(rl_text(t[..]));
+  n := sr_put(out, 0, rl_text(t[..]));
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+rl_record :: (e: RlEnv, version: string, text: string) -> bool {
+  db: [1200] u8; p: [1] Rl; rl_s(p[..], rl_dir(e, db[..])); rl_s(p[..], "/"); rl_s(p[..], version); rl_s(p[..], ".txt");
+  l: [1] Rl; rl_s(l[..], rl_dir(e, db[..])); rl_s(l[..], "/latest");
+  return fs_write(rl_text(p[..]), text) && fs_write(rl_text(l[..]), version);
+}
+
+// ---- ship
+rl_ship :: (a: [] Args) -> int {
+  e := rl_env(args_has(a, "--staging"));
+  out: [RL_OUT] u8; got: [1] int;
+  seed := args_value(a, "--seed-tick-us", "");
+  if seed.count > 0 && !e.staging { tool_errln("release-set: a seeded bad build is staging's only (--staging)"); return 2; }
+  // this checkout's HEAD, committed and on main
+  g1 := [3] string.["git", "rev-parse", "HEAD"];
+  if rl_run(g1[..], 60, out[..], got[..]) != 0 || got[0] < 40 { tool_errln("release-set: run it from the repository's root"); return 2; }
+  hb: [40] u8; for i: 0..<40 { hb[i] = out[i]; } head := cast(string) hb[..];
+  g2 := [7] string.["git", "status", "--porcelain", "--untracked-files=no", "--", "coax", "everglade"];
+  if rl_run(g2[..], 60, out[..], got[..]) != 0 || got[0] > 0 { tool_errln("release-set: commit your changes first: a release ships a commit"); return 2; }
+  g3 := [5] string.["git", "merge-base", "--is-ancestor", head, "origin/main"];
+  if !e.staging && rl_run(g3[..], 60, out[..], got[..]) != 0 { tool_errln("release-set: HEAD is not on origin/main: production ships main's commits"); return 2; }
+  // the version: the commit and the time
+  vb: [64] u8; t := cxproc_wall_us() / 1000000;
+  vn := sr_put(vb[..], 0, head[0..<10]); vn = sr_put(vb[..], vn, "."); vn = sr_int(vb[..], vn, t);
+  version := cast(string) vb[0..<vn];
+  print("release set %: % (%)\n", version, head[0..<10], e.name);
+  rec: [1] Rl; rl_s(rec[..], "set "); rl_s(rec[..], version); rl_s(rec[..], "\nenv "); rl_s(rec[..], e.name); rl_s(rec[..], "\ncommit "); rl_s(rec[..], head); rl_s(rec[..], "\n");
+  moved := 0;
+  // ---- the API
+  api: [1] RlApi; has_api := rl_api(e, api[..]);
+  rl_s(rec[..], "api-before "); rl_s(rec[..], ifx has_api then cast(string) api[0].rev[0..<api[0].rev_n] else "-"); rl_s(rec[..], " "); rl_s(rec[..], ifx has_api then cast(string) api[0].build[0..<api[0].build_n] else "-"); rl_s(rec[..], "\n");
+  if args_has(a, "--skip-api") { print("  api: skipped (taken as moved)\n"); }
+  else if has_api && cast(string) api[0].build[0..<api[0].build_n] == head { print("  api: already runs %\n", head[0..<10]); }
+  else {
+    print("  api: % runs %; deploying\n", e.service, ifx has_api then cast(string) api[0].build[0..<api[0].build_n] else "nothing we can read");
+    d := [2] string.["coax/web/api/deploy.sh", "--staging"];
+    st := rl_run(ifx e.staging then d[..] else d[0..<1], 7200, out[..], got[..]);
+    after: [1] RlApi;
+    if st != 0 || !rl_api(e, after[..]) || cast(string) after[0].build[0..<after[0].build_n] != head {
+      print("release set %: STOPPED at the api (status %): nothing after it moved\n", version, st);
+      rl_s(rec[..], "moved 0\nstopped api\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
+    }
+    rl_s(rec[..], "api-after "); rl_s(rec[..], cast(string) after[0].rev[0..<after[0].rev_n]); rl_s(rec[..], "\n");
+  }
+  moved += 1;
+  // ---- the rooms
+  if !rs_may(RS_ROOMS, moved) { return 2; }
+  rb: [2048] u8; before := rl_releases(rb[..]);
+  was: [1] Rl; rl_s(was[..], rl_line(before, ifx e.staging then "staging" else "current", ':'));
+  rl_s(rec[..], "rooms-before "); rl_s(rec[..], ifx was[0].n > 0 then rl_text(was[..]) else "-"); rl_s(rec[..], "\n");
+  seconds := sr_num(args_value(a, "--canary-seconds", "120")).v; players := sr_num(args_value(a, "--canary-players", "32")).v;
+  if seconds < 30 || players < 1 { tool_errln("release-set: --canary-seconds >= 30, --canary-players >= 1"); return 2; }
+  st_env := rl_env(true);
+  db: [1200] u8; fa: [1] Rl; rl_s(fa[..], rl_dir(e, db[..])); rl_s(fa[..], "/"); rl_s(fa[..], version); rl_s(fa[..], ".others.txt");
+  fb: [1] Rl; rl_s(fb[..], rl_dir(e, db[..])); rl_s(fb[..], "/"); rl_s(fb[..], version); rl_s(fb[..], ".canary.txt");
+  others: [1] RsShard; canary: [1] RsShard;
+  print("  rooms: the bots on staging's shard as it is (% players, % s): the others' numbers\n", players, seconds);
+  if !rl_bots(st_env, players, seconds, rl_text(fa[..]), others[..]) { others[0] = RsShard.{}; print("  rooms: the bots left no record of the shard as it is: the canary is judged by itself\n"); }
+  print("  rooms: staging takes the new room%\n", ifx seed.count > 0 then " (a seeded bad build)" else "");
+  dr := [5] string.["coax/web/room/vm-deploy.sh", "deploy", "--staging", "--seed-tick-us", seed];
+  st := rl_run(ifx seed.count > 0 then dr[..] else dr[0..<3], 3600, out[..], got[..]);
+  if st != 0 {
+    print("release set %: STOPPED at the rooms: staging did not take the new room (status %)\n", version, st);
+    rl_s(rec[..], "moved 1\nstopped rooms\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
+  }
+  rb2: [2048] u8; now_rel: [1] Rl; rl_s(now_rel[..], rl_line(rl_releases(rb2[..]), "staging", ':'));
+  print("  rooms: the bots on the canary (staging's shard on %)\n", rl_text(now_rel[..]));
+  if !rl_bots(st_env, players, seconds, rl_text(fb[..]), canary[..]) { canary[0] = RsShard.{}; }
+  canary[0].crashes = rl_crashes(st_env, rl_text(now_rel[..]));
+  bits := rs_canary(canary[0], others[0]); wb: [120] u8;
+  print("  rooms: canary tick p95 % us (others %), refused % (others %) tenths a second, seated % (others %), crashes %\n",
+        canary[0].tick_p95_us, others[0].tick_p95_us, canary[0].refused_ds, others[0].refused_ds, canary[0].seated, others[0].seated, canary[0].crashes);
+  if bits != 0 {
+    print("release set %: STOPPED at the canary: %. Staging goes back to its room; nothing after it moved\n", version, rs_c_words(bits, wb[..]));
+    back := [3] string.["coax/web/room/vm-deploy.sh", "rollback", "--staging"];
+    bs := rl_run(back[..], 900, out[..], got[..]);
+    rl_s(rec[..], "moved 1\nstopped canary "); rl_s(rec[..], rs_c_words(bits, wb[..])); rl_s(rec[..], "\n"); w := rl_record(e, version, rl_text(rec[..]));
+    return 1;
+  }
+  if !e.staging {
+    k := sr_num(args_value(a, "--canary", "0")).v;
+    if k < 1 { k = rl_emptiest(e); }
+    if k < 1 || k > e.shards { tool_errln("release-set: no shard could be read for a canary"); rl_s(rec[..], "moved 1\nstopped canary unread\n"); w := rl_record(e, version, rl_text(rec[..])); return 1; }
+    kb: [8] u8; ks := cast(string) kb[0..<sr_int(kb[..], 0, k)];
+    print("  rooms: production's shard % takes the new room first\n", k);
+    cn := [3] string.["coax/web/room/vm-deploy.sh", "canary", ks];
+    if rl_run(cn[..], 1800, out[..], got[..]) != 0 {
+      back := [2] string.["coax/web/room/vm-deploy.sh", "canary-back"]; bs := rl_run(back[..], 900, out[..], got[..]);
+      print("release set %: STOPPED at the canary: shard % did not take the new room; it is back on production's\n", version, k);
+      rl_s(rec[..], "moved 1\nstopped canary unhealthy\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
+    }
+    pc: [1] RsShard; po: [1] RsShard;
+    rl_watch(e, k, seconds, pc[..], po[..]);
+    pc[0].crashes = rl_crashes(e, rl_text(now_rel[..])); pc[0].seated = 0; po[0].seated = 0;
+    pbits := rs_canary(pc[0], po[0]);
+    print("  rooms: canary shard % tick p95 % us (the others %), refused % (%) tenths a second, crashes %\n", k, pc[0].tick_p95_us, po[0].tick_p95_us, pc[0].refused_ds, po[0].refused_ds, pc[0].crashes);
+    if pbits != 0 {
+      back := [2] string.["coax/web/room/vm-deploy.sh", "canary-back"]; bs := rl_run(back[..], 900, out[..], got[..]);
+      print("release set %: STOPPED at the canary: %. Shard % is back on production's room; the other shards never moved\n", version, rs_c_words(pbits, wb[..]), k);
+      rl_s(rec[..], "moved 1\nstopped canary "); rl_s(rec[..], rs_c_words(pbits, wb[..])); rl_s(rec[..], "\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
+    }
+    print("  rooms: the canary holds; the other shards follow\n");
+    pr := [2] string.["coax/web/room/vm-deploy.sh", "deploy"];
+    if rl_run(pr[..], 7200, out[..], got[..]) != 0 {
+      print("release set %: STOPPED in the rooms: a shard did not come back healthy. release-set rollback moves the rooms and the API back\n", version);
+      rl_s(rec[..], "rooms-after "); rl_s(rec[..], rl_text(now_rel[..])); rl_s(rec[..], "\nmoved 3\nstopped rooms\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
+    }
+  }
+  rl_s(rec[..], "rooms-after "); rl_s(rec[..], rl_text(now_rel[..])); rl_s(rec[..], "\n");
+  moved += 2;
+  // ---- the page: only onto shards that run its build
+  if !rs_may(RS_PAGE, moved) { return 2; }
+  if args_has(a, "--skip-page") { print("  page: skipped (taken as moved)\n"); }
+  else {
+    mine := WirePins.{}; page := RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content};
+    live := 0; matching := 0; body: [32768] u8;
+    for q: 1..<e.shards + 1 {
+      p: [1] RsPins;
+      if !rl_pins(rl_vitals(e, q, body[..]), p[..]) { continue; }
+      live += 1;
+      if rs_pins_match(page, p[0]) { matching += 1; } else { print("  page: shard % runs engine % rules % content %; the page is % % %\n", q, p[0].engine, p[0].rules, p[0].content, page.engine, page.rules, page.content); }
+    }
+    if !rs_pins_ship(matching, live) {
+      print("release set %: STOPPED at the page: % of % live shards run the page's build. The page would strand their players; the API and the rooms stay\n", version, matching, live);
+      rl_s(rec[..], "moved 3\nstopped page pins\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
+    }
+    print("  page: every live shard (%) runs its build; releasing\n", live);
+    rp := [4] string.["coax/web/release.sh", "--ref", head, "--staging-only"];
+    ps := rl_run(ifx e.staging then rp[..] else rp[0..<3], 10800, out[..], got[..]);
+    if ps != 0 {
+      print("release set %: STOPPED at the page (release.sh status %): the API and the rooms stay; release-set rollback moves them back\n", version, ps);
+      rl_s(rec[..], "moved 3\nstopped page\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
+    }
+    rl_s(rec[..], "page-after "); rl_s(rec[..], head); rl_s(rec[..], "\n");
+    // production's kept pages: "rollback: coax/web/rollback.sh STAMP"
+    shown := cast(string) out[0..<got[0]]; mark := "coax/web/rollback.sh ";
+    for i: 0..<shown.count - mark.count { if shown[i..<i + mark.count] == mark { j := i + mark.count; k := j; while k < shown.count && shown[k] != ')' && shown[k] != '\n' && shown[k] != ' ' { k += 1; } rl_s(rec[..], "page-kept "); rl_s(rec[..], shown[j..<k]); rl_s(rec[..], "\n"); break; } }
+  }
+  moved += 4;
+  rl_s(rec[..], "moved 7\n");
+  if !rl_record(e, version, rl_text(rec[..])) { tool_errln("release-set: the set's record could not be written"); }
+  print("%", rl_text(rec[..]));
+  print("release set %: the API, the rooms and the page run % on %. To move all three back: coax/web/tool.sh release-set rollback%\n", version, head[0..<10], e.name, ifx e.staging then " --staging" else "");
+  return 0;
+}
+
+// ---- rollback
+rl_rollback :: (a: [] Args) -> int {
+  e := rl_env(args_has(a, "--staging"));
+  db: [1200] u8; lb: [128] u8; out: [RL_OUT] u8; got: [1] int;
+  version := args_value(a, "--set", "");
+  if version.count == 0 {
+    l: [1] Rl; rl_s(l[..], rl_dir(e, db[..])); rl_s(l[..], "/latest");
+    n := fs_read(rl_text(l[..]), lb[..]);
+    if n <= 0 { tool_errln("release-set: no set is recorded on this computer for that environment (--set VERSION names one)"); return 2; }
+    version = cast(string) lb[0..<n];
+  }
+  p: [1] Rl; rl_s(p[..], rl_dir(e, db[..])); rl_s(p[..], "/"); rl_s(p[..], version); rl_s(p[..], ".txt");
+  rb: [4096] u8; rn := fs_read(rl_text(p[..]), rb[..]);
+  if rn <= 0 { tool_err("release-set: no record of set "); tool_errln(version); return 2; }
+  rec := cast(string) rb[0..<rn];
+  moved := sr_num(rl_line(rec, "moved", ' ')).v;
+  if moved < 0 { moved = 0; }
+  print("release set %: moving back what it moved (%)\n", version, e.name);
+  failed := 0;
+  while true {
+    part := rs_back(moved);
+    if part == RS_DONE { break; }
+    if part == RS_PAGE {
+      kept := rl_line(rec, "page-kept", ' ');
+      if rl_line(rec, "page-after", ' ').count == 0 { print("  page: the set moved no page; nothing to restore\n"); }
+      else if kept.count > 0 { c := [2] string.["coax/web/rollback.sh", kept]; print("  page: the pages kept at %\n", kept); if rl_run(c[..], 1800, out[..], got[..]) != 0 { failed += 1; } }
+      else if e.staging {
+        // staging keeps no pages: the commit the API ran before is released there again
+        was := rl_line(rec, "api-before", ' '); at := 0; while at < was.count && was[at] != ' ' { at += 1; }
+        commit := ifx at + 1 < was.count then was[at + 1..<was.count] else "";
+        if commit.count == 40 { c := [4] string.["coax/web/release.sh", "--ref", commit, "--staging-only"]; print("  page: staging's pages from %\n", commit[0..<10]); if rl_run(c[..], 10800, out[..], got[..]) != 0 { failed += 1; } }
+        else { print("  page: the set's record names no earlier commit; staging's pages stay\n"); }
+      } else { print("  page: the release kept no pages to restore\n"); }
+      moved -= 4;
+    } else if part == RS_ROOMS {
+      if rl_line(rec, "rooms-after", ' ').count > 0 || rl_has(rec, "stopped rooms") {
+        c := [3] string.["coax/web/room/vm-deploy.sh", "rollback", "--staging"];
+        print("  rooms: the release before\n");
+        if rl_run(ifx e.staging then c[..] else c[0..<2], 7200, out[..], got[..]) != 0 { failed += 1; }
+      } else { print("  rooms: the set left them where they were\n"); }
+      moved -= 2;
+    } else {
+      was := rl_line(rec, "api-before", ' '); at := 0; while at < was.count && was[at] != ' ' { at += 1; }
+      rev := was[0..<at];
+      build := ifx at + 1 < was.count then was[at + 1..<was.count] else "";
+      if rl_line(rec, "api-after", ' ').count > 0 && rev.count > 1 {
+        // the image the revision before ran, as a new revision: the service's traffic stays on its
+        // latest, so the next deploy takes it as every deploy does
+        d := [10] string.["gcloud", "run", "revisions", "describe", rev, "--region", "us-central1", "--project", "openagentsgemini", "--format=value(spec.containers[0].image)"];
+        ib: [1024] u8; ig: [1] int; is := rl_run(d[..], 300, ib[..], ig[..]);
+        image := cast(string) ib[0..<ig[0]]; while image.count > 0 && (image[image.count - 1] == '\n' || image[image.count - 1] == ' ') { image = image[0..<image.count - 1]; }
+        t: [1] Rl; rl_s(t[..], "OA_BUILD_SHA="); rl_s(t[..], build);
+        c := [13] string.["gcloud", "run", "services", "update", e.service, "--image", image, "--update-env-vars", rl_text(t[..]), "--region", "us-central1", "--project", "openagentsgemini"];
+        print("  api: % runs the image of % (%) again\n", e.service, rev, ifx build.count >= 10 then build[0..<10] else build);
+        if is != 0 || image.count == 0 || rl_run(c[..], 1800, out[..], got[..]) != 0 { failed += 1; }
+      } else { print("  api: the set deployed no API; nothing to move back\n"); }
+      moved -= 1;
+    }
+  }
+  if failed > 0 { print("release set %: % part(s) did not move back; see the lines above\n", version, failed); return 1; }
+  print("release set %: moved back\n", version);
+  return 0;
+}
+
+// ---- status
+rl_status :: (a: [] Args) -> int {
+  e := rl_env(args_has(a, "--staging"));
+  api: [1] RlApi; body: [RL_OUT] u8; rb: [2048] u8;
+  has := rl_api(e, api[..]);
+  print("api    % %\n", ifx has then cast(string) api[0].build[0..<api[0].build_n] else "unread", ifx has then cast(string) api[0].rev[0..<api[0].rev_n] else "");
+  rel := rl_line(rl_releases(rb[..]), ifx e.staging then "staging" else "current", ':');
+  print("rooms  %\n", ifx rel.count > 0 then rel else "unread");
+  u: [1] Rl; rl_s(u[..], e.api); rl_s(u[..], "/status/");
+  page := rl_get(rl_text(u[..]), body[..]); build := ""; mark := "data-text=\"build ";
+  for i: 0..<page.count - mark.count - 40 { if page[i..<i + mark.count] == mark { build = page[i + mark.count..<i + mark.count + 40]; break; } }
+  print("page   %\n", ifx build.count > 0 then build else "unread");
+  mine := WirePins.{}; live := 0; vb: [32768] u8;
+  for q: 1..<e.shards + 1 {
+    p: [1] RsPins;
+    if !rl_pins(rl_vitals(e, q, vb[..]), p[..]) { print("shard % unread\n", q); continue; }
+    live += 1;
+    note := ifx rs_pins_match(RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content}, p[0]) then "" else " (not this checkout's page)";
+    print("shard % engine % rules % content %", q, p[0].engine, p[0].rules, p[0].content); print("%\n", note);
+  }
+  one := has && rel.count >= 10 && build.count == 40 && cast(string) api[0].build[0..<10] == rel[0..<10] && build[0..<10] == rel[0..<10];
+  print("%\n", ifx one then "one set: the API, the rooms and the page run the same commit" else "not one set: the three parts run different commits");
+  return ifx one then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh release-set ship|rollback|status [--staging] ..."); return 2; }
+  cmd := args_at(a[..], 0);
+  if cmd == "ship" { return rl_ship(a[..]); }
+  if cmd == "rollback" { return rl_rollback(a[..]); }
+  if cmd == "status" { return rl_status(a[..]); }
+  tool_errln("release-set: ship, rollback or status");
+  return 2;
+}
