@@ -1,48 +1,55 @@
 syntax = "proto3";
 package openagents.coder.qualification.v1;
+import "openagents/options/v1alpha1/options.proto";
 
 // Local JSON artifact mapping: docs/protocol/coder-qualification-v1.md.
+// The one writer and reader is coder/tests/evidence.coax; exact bytes are
+// pinned in proto/coder/qualification-v1.json.
 // Presence is required by the artifact reader; absent bools never imply success.
 message FileSeal {
-  string path = 1;
-  string realpath = 2;
-  string sha256 = 3;
+  optional string path = 1 [json_name = "path", (openagents.options.v1alpha1.max_bytes) = 4096];
+  optional string realpath = 2 [json_name = "realpath", (openagents.options.v1alpha1.max_bytes) = 4096];
+  optional string sha256 = 3 [json_name = "sha256", (openagents.options.v1alpha1.max_bytes) = 64];
 }
 message Seal {
-  string schema = 1;
-  repeated FileSeal files = 2;
+  option (openagents.options.v1alpha1.contract) = "coder.seal.v1";
+  optional string schema = 1 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated FileSeal files = 2 [json_name = "files", (openagents.options.v1alpha1.max_count) = 64];
 }
 message CheckpointPair {
-  Seal before = 1;
-  Seal after = 2;
+  optional Seal before = 1 [json_name = "before"];
+  optional Seal after = 2 [json_name = "after"];
 }
 message Checkpoints {
-  string schema = 1;
-  repeated CheckpointPair pairs = 2;
+  option (openagents.options.v1alpha1.contract) = "coder.checkpoints.v1";
+  optional string schema = 1 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated CheckpointPair pairs = 2 [json_name = "pairs", (openagents.options.v1alpha1.max_count) = 32];
 }
 message Execution {
-  string schema = 1;
-  optional int32 engine_exit = 2;
-  optional int64 elapsed_ms = 3;
-  optional int64 budget_ms = 4;
-  optional bool timeout = 5;
-  optional bool cut = 6;
-  string log_sha256 = 7;
+  option (openagents.options.v1alpha1.contract) = "coder.execution.v1";
+  optional string schema = 1 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional int32 engine_exit = 2 [json_name = "engine_exit"];
+  optional int64 elapsed_ms = 3 [json_name = "elapsed_ms"];
+  optional int64 budget_ms = 4 [json_name = "budget_ms"];
+  optional bool timeout = 5 [json_name = "timeout"];
+  optional bool cut = 6 [json_name = "cut"];
+  optional string log_sha256 = 7 [json_name = "log_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
 }
 message Qualification {
-  string schema = 1;
-  optional bool qualified = 2;
-  optional int32 engine_exit = 3;
-  optional int64 elapsed_ms = 4;
-  optional int64 budget_ms = 5;
-  optional int32 acceptance_exit = 6;
-  optional int32 mutation_exit = 7;
-  optional int32 mutants = 8;
-  optional int32 killed = 9;
-  optional int32 survivors = 10;
-  optional bool acceptance = 11;
-  optional bool protected = 12;
-  optional bool checkpoints = 13;
-  optional bool artifacts = 14;
-  optional bool no_exemptions = 15;
+  option (openagents.options.v1alpha1.contract) = "coder.qualification.v1";
+  optional string schema = 1 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional bool qualified = 2 [json_name = "qualified"];
+  optional int32 engine_exit = 3 [json_name = "engine_exit"];
+  optional int64 elapsed_ms = 4 [json_name = "elapsed_ms"];
+  optional int64 budget_ms = 5 [json_name = "budget_ms"];
+  optional int32 acceptance_exit = 6 [json_name = "acceptance_exit"];
+  optional int32 mutation_exit = 7 [json_name = "mutation_exit"];
+  optional int32 mutants = 8 [json_name = "mutants"];
+  optional int32 killed = 9 [json_name = "killed"];
+  optional int32 survivors = 10 [json_name = "survivors"];
+  optional bool acceptance = 11 [json_name = "acceptance"];
+  optional bool protected = 12 [json_name = "protected"];
+  optional bool checkpoints = 13 [json_name = "checkpoints"];
+  optional bool artifacts = 14 [json_name = "artifacts"];
+  optional bool no_exemptions = 15 [json_name = "no_exemptions"];
 }

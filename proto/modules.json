@@ -162,6 +162,9 @@
     ],
     "session-log": [
       "openagents/session/log/v1alpha1/log.proto"
+    ],
+    "coder-qualification": [
+      "openagents/coder/qualification/v1/evidence.proto"
     ]
   },
   "profile_namespaces": {
@@ -283,6 +286,10 @@
     ],
     "session-log": [
       "openagents.session.log.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "coder-qualification": [
+      "openagents.coder.qualification.v1",
       "openagents.options.v1alpha1"
     ]
   }

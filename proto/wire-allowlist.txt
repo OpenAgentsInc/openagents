@@ -15,10 +15,6 @@ shape coder.reply-stream.v1  # C3: stream records get one codec and a profile (#
 shape coder.observability.v1  # C3: stream records get one codec and a profile (#13240)
 shape coder.observability.v2  # C3: stream records get one codec and a profile (#13240)
 shape coder.route.v2  # C3: stream records get one codec and a profile (#13240)
-shape coder.seal.v1  # C4: qualification evidence, goldens byte for byte (#13241)
-shape coder.checkpoints.v1  # C4: qualification evidence, goldens byte for byte (#13241)
-shape coder.execution.v1  # C4: two encoders become one (#13241)
-shape coder.qualification.v1  # C4: qualification evidence, goldens byte for byte (#13241)
 shape openagents.ai-call.v1  # C6: Golemancy records, one encoder each (#13243)
 shape openagents.next-issue.decision.v1  # C6: Golemancy records, one encoder each (#13243)
 shape openagents.coder.agents.v1  # C7, wave 2: local inventory (#13250)
@@ -56,7 +52,6 @@ profile proto/coder/voice-input-v1.schema.json  # no check; E1 adds one or delet
 profile proto/coder/microphone-capture-v1.schema.json  # no check; E1 adds one or deletes it (#13244)
 proto proto/openagents/coder/observability/v1/events.proto  # C3: fix the proto to the JSON and put it in a profile (#13240)
 proto proto/openagents/coder/observability/v2/events.proto  # C3: fix the proto to the JSON and put it in a profile (#13240)
-proto proto/openagents/coder/qualification/v1/evidence.proto  # C4: put it in a profile with goldens (#13241)
 proto proto/openagents/cli/local/v1/inventory.proto  # C7, wave 2 (#13250)
 proto proto/openagents/cli/dictation/v1/stream.proto  # C7, wave 2 (#13250)
 
