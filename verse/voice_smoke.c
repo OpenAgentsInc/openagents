@@ -3,6 +3,8 @@
  *   voice_smoke [--frames DIR] [file.wav ...]
  * --frames DIR writes one encoded Frame per kind to DIR/<kind>.bin so the
  * script can check them with protoc, an independent decoder. */
+#define _DEFAULT_SOURCE
+#define _POSIX_C_SOURCE 200809L
 #include "voice.h"
 
 #include <math.h>
@@ -10,6 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 static int failures;
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "%s:%d: check failed: %s\n", __FILE__, __LINE__, #c); failures++; } } while (0)
