@@ -27,7 +27,7 @@
 // (coax/web/room/room-ticket.coax) calls tk5_read. Nothing else builds or parses one.
 #authority;
 #run_steps 250000000;
-#load "resume-payload.coax";
+#load "resume-envelope.coax";
 #load "../../coax/lib/nostr/block/fi-base64url.coax";
 #load "../../coax/lib/nostr/hex.coax";
 #load "../../coax/lib/crypto/schnorr.coax";
@@ -283,6 +283,63 @@ seat_ticket_v5_secret :: (text: string, out: [] u8) -> bool #export_c #effects(a
   if text.count != 64 || out.count < 32 || !tk_lower_hex(text) { return false; }
   r := hex_decode_checked(text, out[0..<32], false);
   return r.error == NC_OK;
+}
+
+// The HP[xXP][wW][gGEN] field written by player.c:515-531 into out: its count, or -1.
+tk_hps_put :: (hp: int, xp: int, wanted: int, owner: int, out: [] u8) -> int #effects(all) {
+  if owner < 0 || owner > 9999999999 { return -1; }
+  n := ifx hp >= 0 && hp < 100000 then tk_put_int(out, 0, hp) else tk_put(out, 0, "-");
+  w := ifx wanted >= 1 && wanted <= 5 then wanted else 0;
+  x := ifx xp >= 0 && xp <= 9999999 then xp else 0;   // mutant: equivalent (xp 0 writes 0 either way)
+  if x > 0 || w > 0 { n = tk_put(out, n, "x"); n = tk_put_int(out, n, x); }
+  if w > 0 { n = tk_put(out, n, "w"); n = tk_put_int(out, n, w); }
+  if owner > 0 { n = tk_put(out, n, "g"); n = tk_put_int(out, n, owner); }
+  return n;
+}
+// NAME64 as written by player.c:443 (unpadded base64url, or "-" for empty) into out: its count, or -1.
+tk_name64_put :: (name: string, out: [] u8) -> int #effects(all) {
+  if name.count > TK_NAME || !tk_name_ok(name) { return -1; }
+  if name.count == 0 { return tk_put(out, 0, "-"); }
+  return rt_url(name, out);
+}
+// A v2, v3 or v4 HMAC-SHA256 seat ticket into out (player.c:556-566; #13248): bytes written, or 0.
+// shard 0 writes v2.PID.ACCT.NAME64.ROOM.EXPIRES.HPS.MAC; shard 1..99 writes v3 with .SHARD. after ROOM;
+// version 4 wraps that signed core and saved ("-" or a stored capture, with owner in hps) via resume_ticket_wrap.
+tk_write :: (out: [] u8, version: int, pid: string, acct: int, name64: string, room: string, shard: int, expires: int, hps: string, saved: string, key: string) -> int #effects(all) {
+  if version != 2 && version != 3 && version != 4 { return 0; }
+  if (shard == 0 && version == 3) || shard < 0 || shard > 99 { return 0; }
+  if !tk_code_ok(pid, TK_PID) || acct < 0 || acct > 2 || !tk_code_ok(room, TK_ROOM) { return 0; }
+  if expires < 1 || expires > 999999999999999 { return 0; }
+  h := tk_hp_read(hps);
+  if !h.ok { return 0; }
+  if name64 != "-" {
+    nb: [TK_NAME] u8;
+    d := fi_b64url_decode(name64, nb[..]);
+    if d.error != NC_OK || d.written < 1 || !tk_name_ok(cast(string) nb[0..<d.written]) { return 0; }
+  }
+  core: [256] u8;
+  n := tk_put(core[..], 0, ifx shard > 0 then "v3." else "v2.");
+  n = tk_put(core[..], n, pid); n = tk_put(core[..], n, ".");
+  n = tk_put_int(core[..], n, acct); n = tk_put(core[..], n, ".");
+  n = tk_put(core[..], n, name64); n = tk_put(core[..], n, ".");
+  n = tk_put(core[..], n, room); n = tk_put(core[..], n, ".");
+  if shard > 0 { n = tk_put_int(core[..], n, shard); n = tk_put(core[..], n, "."); }
+  n = tk_put_int(core[..], n, expires); n = tk_put(core[..], n, ".");
+  n = tk_put(core[..], n, hps);
+  if n < 0 || n + 65 > 256 { return 0; }
+  mac: [64] u8;
+  if !rt_mac(key, cast(string) core[0..<n], mac[..]) { return 0; }
+  core[n] = '.';
+  for i: 0..<64 { core[n + 1 + i] = mac[i]; }
+  cn := n + 65;
+  if version == 4 {
+    if h.owner < 1 { return 0; }
+    w := resume_ticket_wrap(key, cast(string) core[0..<cn], saved, out);
+    return w.count;
+  }
+  if out.count < cn { return 0; }
+  for i: 0..<cn { out[i] = core[i]; }
+  return cn;
 }
 
 // ---- the reader
@@ -678,4 +735,36 @@ tk5_test_with :: (text: string, i: int, ch: u8, out: [] u8) -> string #effects(a
   text := cast(string) b[0..<n + 129];
   #assert tk5_fields(text, "dawn", 990000).ok;                       // its fields are good
   #assert !tk5_read(tk5_keys(TK5_TEST_PUB), text, "dawn", 990000).ok;  // and the key that signed it is the room's first
+}
+#test "seat ticket HMAC: tk_write exact bytes for v2, v3, and v4" {
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  expires := 1762190600000;
+  nb: [64] u8; hb: [64] u8; out: [TK5_TEXT] u8;
+  // v2 guest (shard 0): exact bytes
+  nn := tk_name64_put("", nb[..]);
+  hn := tk_hps_put(-1, 0, 0, 0, hb[..]);
+  #assert nn == 1 && cast(string) nb[0..<nn] == "-" && hn == 1 && cast(string) hb[0..<hn] == "-";
+  n2 := tk_write(out[..], 2, "p-ffeeddccbbaa9988", 0, cast(string) nb[0..<nn], "dawn", 0, expires, cast(string) hb[0..<hn], "", key);
+  want_v2 := "v2.p-ffeeddccbbaa9988.0.-.dawn.1762190600000.-.dfcbf0268972ec384e9257de67e9fd075352620cd000dd23cab1b11b61e9e788";
+  #assert n2 == want_v2.count && cast(string) out[0..<n2] == want_v2;
+  // v3 with all optional HP suffixes: exact bytes
+  nn = tk_name64_put("Ash", nb[..]);
+  hn = tk_hps_put(14, 320, 3, 12, hb[..]);
+  #assert nn == 4 && cast(string) nb[0..<nn] == "QXNo" && cast(string) hb[0..<hn] == "14x320w3g12";
+  n3 := tk_write(out[..], 3, "p-0123456789abcdef", 1, cast(string) nb[0..<nn], "everglade-2", 3, expires, cast(string) hb[0..<hn], "", key);
+  want_v3 := "v3.p-0123456789abcdef.1.QXNo.everglade-2.3.1762190600000.14x320w3g12.8d5e517044bd6271ecf90727a9b6357c87f23d74bb6881cbf5a869a3dce68e42";
+  #assert n3 == want_v3.count && cast(string) out[0..<n3] == want_v3;
+  // shard != 0 upgrades version 2 to v3 automatically, matching player.c:557
+  #assert tk_write(out[..], 2, "p-0123456789abcdef", 1, "QXNo", "everglade-2", 3, expires, "14x320w3g12", "", key) == want_v3.count && cast(string) out[0..<n3] == want_v3;
+  // v4 resumed envelope: exact bytes
+  saved := "{\"v\":2,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]}";
+  n4 := tk_write(out[..], 4, "p-a", 0, "QXNo", "pair-a", 1, 1762190060000, "7x350w2g7", saved, key);
+  want_v4 := "v4.djMucC1hLjAuUVhOby5wYWlyLWEuMS4xNzYyMTkwMDYwMDAwLjd4MzUwdzJnNy5mZDNhOWMxYjkzY2VhMWI2OTU5MmY4OTJiOGQ3OTQwMTcxZTlkYzg5YTkwYjEyM2ExYWE5Y2IwNGUxOGYxY2Rh.eyJ2IjoyLCJvd25lciI6NywicHJvY2VzcyI6MTAxLCJyZXYiOjMsImF0IjoxNzYyMTkwMDAwMDAwLCJlbmdpbmUiOjEsInJ1bGVzIjoxLCJjb250ZW50IjoxLCJocCI6MCwibWF4IjoyMCwieHAiOjM1MCwid2FudGVkIjoyLCJ4X21tIjotMTIzNCwieV9tbSI6MjAwLCJ6X21tIjotOTg3NiwieWF3X21yYWQiOjEyMzQsInBpZCI6InAtYSIsInJvb20iOiJwYWlyLWEiLCJkZWFkIjp0cnVlLCJzdGF0ZSI6WzEsMCw0LDUwLDIsNiwwLDIsMCwwLDAsMCwwLDAsMCwwLDEsMCwwLDAsMCwwLDAsMCwwLDAsMF19.7d078c3aa021c95705a7a48a22db7856cb70ac52108877e5d5ce1f2a8f2f4304";
+  #assert n4 == want_v4.count && cast(string) out[0..<n4] == want_v4;
+  // refusals and bounds
+  #assert tk_write(out[0..<10], 2, "p-a", 0, "-", "dawn", 0, expires, "-", "", key) == 0;
+  #assert tk_write(out[..], 3, "p-a", 0, "-", "dawn", 0, expires, "-", "", key) == 0;
+  #assert tk_write(out[..], 4, "p-a", 0, "-", "dawn", 1, expires, "-", "", key) == 0;
+  #assert tk_write(out[..], 5, "p-a", 0, "-", "dawn", 1, expires, "-", "", key) == 0;
+  #assert tk_write(out[..], 2, "p-a", 0, "-", "dawn", 0, expires, "-", "", "") == 0;
 }
