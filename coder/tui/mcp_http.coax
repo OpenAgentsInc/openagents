@@ -94,6 +94,9 @@ cd_http_held :: (ss: [] CdHttpSessions, sid: string) -> int {
 //   POST /run   {"task","engine","model","effort","cwd"}   a detached session; the body is its ID
 //   POST /send  {"id","message"}      the session's next turn (an ended one continues in a new session)
 //   POST /stop  {"id"}
+//   GET  /claude                      this folder's Claude Code conversations, newest first (`coder session-read list`)
+//   POST /import {"ref"}              one of them as a Coder session (`coder import claude REF`, the same
+//                                     session each time); the body is {"id": its ID}
 CD_LOCAL_CHUNK :: 240000;
 
 // A session ID as Coder makes them: digits and dashes.
@@ -146,19 +149,79 @@ cd_local_log :: (id: string, after: int, out: [] u8) -> string {
   if span.end > span.at { n = cd_cat(out, n, cast(string) chunk[span.at..<span.end]); }
   return cast(string) out[0..<n];
 }
+// Whether a session belongs beside the chat: one that is running, or one started in the last day that
+// is not a copy of a Claude Code conversation (those are listed as the conversations they are).
+CD_LOCAL_DAY_US :: 86400000000;
+cd_local_listed :: (state: string, started_us: int, now_us: int, imported: bool) -> bool {
+  if state == "running" { return true; }
+  return !imported && started_us > 0 && now_us - started_us < CD_LOCAL_DAY_US;
+}
+// Whether session id's log says it was imported (its first line).
+cd_local_imported :: (id: string) -> bool {
+  if !cd_local_id_ok(id) { return false; }
+  db: [1100] u8; dir := cs_dir(db[..]);
+  pb: [1400] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".jsonl");
+  hb: [800] u8;
+  got := fs_read_at(cast(string) pb[0..<pn], 0, hb[..]);
+  if got <= 0 { return false; }
+  e := 0; while e < got && hb[e] != 10 { e += 1; }
+  return cl_raw(cast(string) hb[0..<e], "imported").count > 0;
+}
+// `coder ls --json`, less the sessions that don't belong beside the chat.
+cd_local_sessions :: (now_us: int, out: [] u8, ok: [] bool) -> string {
+  lb: [262144] u8; a := [2] string.["ls", "--json"];
+  all := cd_mcp_coder(a[..], lb[..], ok);
+  if !ok[0] { return ""; }
+  ab: [4096] u8; ar: [1] ClArena;
+  n := cd_cat(out, 0, "["); kept := 0;
+  for i: 0..<cl_count(all) {
+    el := cl_item(all, i);
+    if !el.ok { continue; }
+    one := cast(string) all[el.from..<el.to];
+    ar[0] = ClArena.{buf = ab[..]};
+    started := cl_int(one, "started_us");
+    if !cd_local_listed(cl_str(ar[..], one, "state"), ifx started.ok then started.value else 0, now_us, cd_local_imported(cl_str(ar[..], one, "id"))) { continue; }
+    if kept > 0 { n = cd_cat(out, n, ","); }
+    n = cd_cat(out, n, one); kept += 1;
+  }
+  n = cd_cat(out, n, "]");
+  return cast(string) out[0..<n];
+}
 // Whether target is one of the local routes.
-cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop"; }
+cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop" || path == "/claude" || path == "/import"; }
+// A Claude Code conversation's ID: 36 characters of lowercase hex and dashes.
+cd_local_ref_ok :: (ref: string) -> bool {
+  if ref.count != 36 { return false; }
+  for c: ref { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == '-') { return false; } }
+  return true;
+}
 cd_local_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
   r: CdHttpReply;
   if cd_http_header(head, "x-coder-local") != "1" { r.status = 403; return r; }
   target := cd_http_word(head, 1); verb := cd_http_word(head, 0);
   q := 0; while q < target.count && target[q] != '?' { q += 1; }
   path := cast(string) target[0..<q];
-  get := path == "/sessions" || path == "/log";
+  get := path == "/sessions" || path == "/log" || path == "/claude";
   if verb != (ifx get then "GET" else "POST") { r.status = 405; return r; }
   ok: [1] bool; a: [12] string; na := 0;
   ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  if path == "/sessions" { a[0] = "ls"; a[1] = "--json"; r.body = cd_mcp_coder(a[0..<2], out, ok[..]); r.status = ifx ok[0] then 200 else 500; return r; }
+  if path == "/sessions" { r.body = cd_local_sessions(cxproc_wall_us(), out, ok[..]); r.status = ifx ok[0] then 200 else 500; return r; }
+  if path == "/claude" {
+    cb: [1100] u8; here := fs_cwd(cb[..]);
+    a[0] = "session-read"; a[1] = "list"; a[2] = "--cwd"; a[3] = here;
+    r.body = cd_mcp_coder(a[0..<4], out, ok[..]); r.status = ifx ok[0] then 200 else 500; return r;
+  }
+  if path == "/import" {
+    ref := cl_str(ar[..], body, "ref");
+    if !cd_local_ref_ok(ref) { r.status = 400; return r; }
+    a[0] = "import"; a[1] = "claude"; a[2] = ref;
+    said := cd_mcp_coder(a[0..<3], out, ok[..]);
+    e := 0; while e < said.count && ((said[e] >= '0' && said[e] <= '9') || said[e] == '-') { e += 1; }
+    if !ok[0] || !cd_local_id_ok(cast(string) said[0..<e]) { r.body = said; r.status = 500; return r; }
+    idb: [48] u8; k := cd_cat(idb[..], 0, cast(string) said[0..<e]);
+    n := cd_cat(out, 0, "{\"id\":\""); n = cd_cat(out, n, cast(string) idb[0..<k]); n = cd_cat(out, n, "\"}");
+    r.body = cast(string) out[0..<n]; r.status = 200; return r;
+  }
   if path == "/log" {
     id := cd_local_query(target, "id"); after := cd_local_query(target, "after");
     if !cd_local_id_ok(id) { r.status = 400; return r; }
@@ -342,12 +405,17 @@ cd_cmd_mcp_http :: (port: int) -> int {
   #assert cd_http_reply("POST /send HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "{\"id\":\"2026-1\"}", ss[..], "f", out[..]).status == 400;
   #assert cd_http_reply("POST /stop HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "{}", ss[..], "f", out[..]).status == 400;
   #assert cd_http_reply("GET /log?id=..%2Fx HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "", ss[..], "f", out[..]).status == 400;
+  #assert cd_http_reply("POST /import HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "{\"ref\":\"../../etc\"}", ss[..], "f", out[..]).status == 400;
+  #assert cd_http_reply("POST /claude HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "", ss[..], "f", out[..]).status == 405;
+  #assert cd_local_ref_ok("7fe255eb-ec54-4f77-b7b3-64252ee8d7ff") && !cd_local_ref_ok("7fe255eb") && !cd_local_ref_ok("7fe255eb-ec54-4f77-b7b3-64252ee8d7fg") && !cd_local_ref_ok("7FE255EB-ec54-4f77-b7b3-64252ee8d7ff");
   #assert cd_local_id_ok("20261110-152212-593") && !cd_local_id_ok("") && !cd_local_id_ok("a") && !cd_local_id_ok("1/2") && !cd_local_id_ok("1.2");
   #assert cd_local_query("/log?id=7&after=30", "id") == "7" && cd_local_query("/log?id=7&after=30", "after") == "30" && cd_local_query("/log?id=7", "after") == "" && cd_local_query("/log", "id") == "" && cd_local_query("/log?xid=7", "id") == "";
   #assert cd_local_route("/log") && cd_local_route("/sessions") && cd_local_route("/run") && cd_local_route("/send") && cd_local_route("/stop") && !cd_local_route("/mcp") && !cd_local_route("/");
 }
 
 #test "a log is read in complete lines: from a byte, or its last chunk" {
+  #assert cd_local_listed("running", 0, 5, true) && cd_local_listed("finished", 10, 10 + CD_LOCAL_DAY_US - 1, false) && !cd_local_listed("finished", 10, 10 + CD_LOCAL_DAY_US, false);
+  #assert !cd_local_listed("finished", 10, 20, true) && !cd_local_listed("finished", 0, 20, false) && !cd_local_imported("../x");
   #assert cd_local_from(100, -1) == 0 && cd_local_from(CD_LOCAL_CHUNK + 50, -1) == 50 && cd_local_from(100, 40) == 40 && cd_local_from(100, 400) == 100 && cd_local_from(100, 0) == 0;
   s := cd_local_lines("ab\ncd\nef", false);
   #assert s.at == 0 && s.end == 6;
