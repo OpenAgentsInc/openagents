@@ -28,8 +28,9 @@ characters 100000
 # /chat's Theme (#13230) carries every skin (components/skin/all.coax, the terminal in pixels): 246,393 bytes measured 2026-11-11; about 5% room.
 chat 260000
 # /chat on the frames set drawn by the browser (chat-web.coax, components/backend/dom.coax): 98,103 bytes measured 2026-11-11 on a Linux build host;
-# 138,805 after real answers, the model menu and Settings (21121a7788); about 10% room.
-chat-web 152000
+# 138,805 after real answers, the model menu and Settings (21121a7788); 157,736 after the agents on this machine
+# (Coder's sessions and Claude Code's conversations in a sidebar, live ones marked, /goal, named models: #13332); about 6% room.
+chat-web 168000
 components 210000
 # /kit, the control kit's page (kit.coax): 80,287 bytes measured 2026-11-11 on a Linux build host; about 10% room.
 kit 90000
