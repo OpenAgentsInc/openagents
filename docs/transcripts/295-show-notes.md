@@ -222,7 +222,7 @@ Scratch's. Station numbers are Nostr Lab's, in walking order.
 | 6 | 11 | The relay's information document: its name and the NIPs it serves | A document cut short |
 | 7 | 42 | The relay's challenge, your signed kind 22242 answer, login accepted | An old answer to a new challenge |
 | 8 | 65 | Your relay list, a note on two relays, one relay lost and the note still read | A list with a bad marker |
-| 9 | 09, 40 | The author deletes a note; a note expires at its time | Someone else's deletion request |
+| 9 | 09, 40, 62 | The author deletes a note; a note expires at its time; a request to vanish removes all of its signer's notes | Someone else's deletion request |
 | 10 | 77 | Two relays compare what they hold and learn only what each lacks | A message cut short |
 | 11 | 13 | A nonce counted up until the ID starts with 10 zero bits | Work claimed and not done |
 
@@ -345,7 +345,7 @@ Don't read these out as supported, and no station.
 - **Relay features waiting on a relay key:** 43 (relay access requests) and
   NIP-29's relay-signed group events on the live relay.
 - **Implemented, but no station:** 03, 18, 21, 24, 27, 30, 32, 35, 36, 37,
-  38, 48, 52, 53, 54, 56, 5A, 62, 64, 66, 67, 68, 69, 70, 71, 73, 78, 84,
+  38, 48, 52, 53, 54, 56, 5A, 64, 66, 67, 68, 69, 70, 71, 73, 78, 84,
   85, 86, 89, 92, 94, 99, A0, B0, B7, CC, CD and F4. One line covers them:
   "and about forty more: calendars, wikis, live streams, statuses,
   podcasts, chess."
@@ -400,9 +400,9 @@ tour you recorded.
 
 - **Pick the tour.** Both work. Tour B is 42 stations; section 7 says what
   each shows.
-- **Production:** the stations are on `main`. Check that
-  `openagents.com/worlds/nostr-lab` shows 42 stations before you record
-  there; until a release ships them it shows four.
+- **Production:** `openagents.com/worlds/nostr-lab` has all 42 stations
+  (released 2026-11-12, `c2aceaca28`). The first station's HUD reads
+  `1 / 42`.
 - **Tour A, steps 1 to 7:** choose the commands. The book's runnable
   examples are in `nostr/examples/` (`events.coax`, `filters.coax`,
   `ecdh.coax`, `gift-wrap.coax`). Run them before recording, and decide
