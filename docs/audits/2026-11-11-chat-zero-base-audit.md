@@ -21,6 +21,8 @@ It builds on these and doesn't repeat them:
 - [Apps roadmap](../apps/2026-11-10-apps-roadmap.md) and
   [components spec](../../components/spec.md)
 - The OpenAgents book, `openagents/book/`
+- [Exact research](../research/exact/README.md) and [coax/web.md](../../coax/web.md)
+  (section 10, added later the same day)
 
 ## How this was done
 
@@ -56,6 +58,13 @@ Nothing was built, run or deployed. No live state was read.
   components, and those two each have their own sidebar, tabs and screen.
 - The page is invisible to a screen reader, to browser find and to native
   text selection. **(checked)**
+- The web chat is behind the desktop chat on the agent loop. The desktop
+  chat can be driven by id and compared as text; the web page can't, though
+  both draw with the same components. **(checked)**
+- Exact, which has our shape (a checked language, a compiled form, thin
+  hosts), uses the real DOM on the web and its own painter only where there
+  is no standard. Our research declined that for worlds. Chat was not in
+  scope when the canvas-only decision was made (section 10).
 
 So "zero-base the chat UI" is really three decisions: what the page draws,
 what stream it reads, and which agent answers. The second and third decide
@@ -497,6 +506,190 @@ What the other documents ask of chat:
 - **Desktop `modes.coax`** puts Claude, Psionic and Lab tabs on the model
   list. Check it against the no-modes rule before copying it.
 
+## 10. Coaxial on the web, and what Exact does instead
+
+Added 2026-11-11 after reading `coax/web.md`, `coax/web/HTTP.md`,
+`coax/start-here.md`, `docs/verse/agent-clock.md`, the header of
+`coax/web/drive.coax`, and all of
+[docs/research/exact/](../research/exact/README.md) (five files). I also read
+the description and file list of Exact's chat template in the reference
+clone (`projects/repos/exact-templates/chat`), not its source.
+
+### How a Coaxial page works
+
+- **Build.** Coax compiles to one C11 file, clang compiles that to wasm32,
+  and `wasm-ld` links it (`coax/web/wasm.sh`). There is no runtime in the
+  output and no bundler. Shaders are emitted from Coax as WGSL.
+- **Host.** `host.js` is "the browser's Swift": WebGPU, input, fetch,
+  sockets, audio, the hidden text field, the accessibility mirror. Logic
+  doesn't go there.
+- **State.** Coax has no globals and no heap. All of a page's state is one
+  struct in one `WebAssembly.Memory` the host owns (`WcHost` for `/chat`).
+- **Frames.** Immediate mode. Every frame the host calls `coaxial_frame`,
+  and the page writes the whole vertex buffer again. Nothing is retained
+  between frames and nothing is diffed.
+- **Hot reload.** `coax serve` rebuilds an engine in 118 to 135 ms and swaps
+  it against the same memory. If the state's layout fingerprint is unchanged,
+  all state survives. If one field changed, the whole state starts over.
+- **Release.** `coax/web/release.sh`: build once from committed code, deploy
+  to staging, compare staging's checks with production's, promote the same
+  bytes, roll back on a new failure.
+- **HTML** is used only where a canvas can't do the job: text input,
+  the accessibility mirror, links and copying, and `index.md` for agents and
+  crawlers.
+
+The founding decisions (`coax/web.md`, 2026-10-28) are WebGPU only with a
+text fallback, the GPU owns the screen, and "a DOM component system" is a
+non-goal. Two things in that document bear on chat:
+
+- The decision listed what openagents.com needed at the switch, and said
+  "no chat, sign-in, API pages or payments in this site for now". The
+  canvas-only rule was written for the splash and the worlds. Chat arrived
+  the next day.
+- Its open question 6 recommends chat in the canvas "with the text version
+  kept for agents and no-WebGPU visitors", and question 5 recommends that a
+  visitor without WebGPU gets "the text site (chat still works, with HTML
+  forms)". Neither was built. `/chat/index.md` describes the page; it is
+  not a chat, and a visitor without WebGPU can't use `/chat` at all.
+
+`coax/web.md` also says the browser speaks protobuf, "one message per
+WebSocket binary frame … No JSON on the hot path". The host's socket carries
+text frames only (`host.js:68`). A chat stream in binary sync frames needs
+that host change first.
+
+### What Exact does on the web
+
+Exact (Expo, released 2026-11-01) has the same shape as our stack: a
+constrained, checked language, a compiled form, thin hosts. Its web host
+makes the opposite choice from ours:
+
+| | Exact on the web | Coaxial |
+| --- | --- | --- |
+| Output | The plan compiled to a JS module; about 20 KB of runtime, tree-shaken | Wasm with no runtime; `/chat` also loads four fonts and builds an atlas |
+| Pixels | The real DOM. The browser lays out and draws | Ours, in one WebGPU canvas |
+| First paint | HTML pre-rendered at build time, then "adopted in place instead of hydrated" | A blank canvas, then "Loading", then the first state read |
+| Updates | Signals: one effect per dynamic binding, no tree diff | The whole vertex buffer, every frame |
+| Text, selection, find, links, translate, zoom | The browser's | Ours, or absent |
+| Accessibility | HTML roles and `aria-*`; `testId` serves the driver, tests and assistive tools at once | A mirror of buttons, checkboxes and one status line, which `/chat` doesn't export |
+| Agents using the app | `tool` declarations registered through WebMCP, with schemas and consequence hints | None |
+
+Exact draws its own pixels (its Ink painter) only "where there is no
+standard": Linux and Windows. On the web it uses the platform. Its
+principle is "write the web, ship the platform".
+
+The research already ruled on this (`03-what-to-adapt.md`, "What not to
+adopt"): no second UI language, no platform controls, no DOM rendering,
+because they conflict with the 2026-10-28 decisions. It also names the
+price: "we give up the free accessibility and crawler text that Exact gets
+from the DOM." It set out to recover "the agent-facing half of that" with a
+retained tree and declared tools. The half that faces people (a screen
+reader, find, selection, translate, text zoom, reader mode) was left
+unrecovered. For worlds that price is small. For a chat it is most of the
+product: a chat is text.
+
+### Where the research's nine phases stand for /chat
+
+| Phase | State in the repository | State for web `/chat` |
+| --- | --- | --- |
+| 1. One driver, targets by id | Built for realms on the web (`coax/web/drive.coax`) and for the shared native hosts (`apps/shared/host/drive.c`) | **Not drivable by id.** The desktop chat fills the element table (`dsk_elements`, `desk.coax:1287`); `chat.coax` doesn't load `components/core/elements.coax` and has no tree to answer with **(checked)** |
+| 2. An agent clock | Built for web realms and the native hosts | `/chat` says nothing about being busy, so `clock settle` can't wait for a turn. Our driver has no `clock data` (wait for pending answers), which a page that waits on a server needs |
+| 3. Drive scripts | Not landed | The page's only checks are `#test`s on its helpers and frame goldens |
+| 4. State kept field by field on reload | Not built | One new field in `WcState` resets the page |
+| 5. Tools an agent can call | Not built | None |
+| 6. The on-ramp | Built (`coax/start-here.md`, `coax vocab`) | |
+| 7. Native drive hosts | Built | The desktop chat answers `tree`, `tap ID`, `type ID TEXT`, `state NAME` |
+| 8. A retained tree with flex | The element table exists (`components/core/elements.coax`); flex exists and matches Chrome to 0.05 px (`components/layout/flex.coax`); only `kit/hud.coax` uses flex | The chat set uses neither on the web |
+| 9. A baked first frame | Not started | The empty new-chat screen is the same for every visitor and is a natural first frame to bake |
+
+So the desktop chat is ahead of the web chat on the agent loop, and both use
+the same components. The gap is in `chat.coax`, not in the components.
+
+Two more points from the apps audit (`04-apps-audit-2026-11-10.md`) apply
+directly:
+
+- **Draw when something changed.** The Linux host now presents 2 to 4 frames
+  a second when idle where it presented 60. The web host has no such rule,
+  and the `quiescent` export that would let a page skip its own frame is not
+  built. A chat is still for minutes at a time.
+- **Compare in text first.** The desktop chat's checks compare the element
+  tree row by row before any picture. The web chat's compare pictures.
+
+### What Exact's chat template has that ours doesn't
+
+Exact's `chat` template is a person-to-person messenger, not an agent chat,
+and it is 1,496 lines with its tests and seed data. From its description:
+
+- A virtualized transcript "built only where it shows", which opens at its
+  newest message and follows it.
+- "240 earlier messages put above the reader without moving what they read."
+- Routes: each conversation has a URL; the list sits beside the conversation
+  from 900 px and is a pushed screen on a phone.
+- Search over conversation names, then message text.
+- A sent message shown from the send, before it is saved, until the answer
+  has it.
+- 217 lines of driver-script tests that run on the web and on iOS.
+
+The first three are exactly the hidden limits in section 1: our transcript
+drops its oldest turns, has no paging, and has no URL per conversation.
+
+### What to take for the rebuild
+
+Whatever is decided about pixels, these carry over and none conflicts with
+a Coaxial decision:
+
+1. **One id per row, used three ways.** Build the web chat on the element
+   table. The driver's `tree`, the tests and the accessibility layer all read
+   it, as Exact's `testId` does.
+2. **The page says when it is busy.** One export answers "is anything
+   scheduled?" The host stops drawing when it says no, and `clock settle`
+   waits on it. Add `clock data` to the driver for pages that wait on a
+   server.
+3. **Drive scripts are the page's tests,** against a fixture API with the
+   agent clock, compared as text first. Check the first screen and each
+   test's end in every skin, at two widths and at the largest text size.
+4. **A windowed transcript with paging,** following its end, and a route per
+   conversation, as the template has.
+5. **A first frame at build time** for the empty new-chat screen.
+6. **Declared tools.** `send`, `new chat`, `stop` and `list conversations`
+   declared once with a consequence word, checked against the effects
+   inventory, and offered through WebMCP and the CLI's MCP server. The
+   research's review says tools are deeds; for chat they are the session
+   record's requests.
+7. **State kept field by field on reload,** so working on the page doesn't
+   reset it on every struct change.
+
+### The decision this adds
+
+Decision 4 above ("Pixels or DOM") has a third answer that the Exact
+research makes concrete, and it is the one I recommend looking at hardest:
+
+**A DOM backend for the web chat, under the same components.** The component
+system already has two backends, `gpu` and `terminal`, under one core, one
+layout and one set of skins. A third, `dom`, would turn the same element
+table and display list into real elements in the browser. The GPU backend
+keeps drawing the same chat on the Mac, on Linux and inside a realm.
+
+- **What it buys:** a screen reader, find, native selection and copy, links,
+  translate, text zoom, password managers and IME without the hidden field,
+  a page that works without WebGPU (the fallback `coax/web.md` recommended
+  and nobody built), no atlas and no font download before first paint, and
+  no redraw while idle.
+- **What it costs:** the web chat no longer matches the Mac pixel for pixel;
+  the browser lays out text, so line breaks follow the browser (the atlas
+  already measures with the browser's fonts, so they are close); a third
+  backend to keep in step, checked by the text comparison in point 3, not by
+  pictures; and it reverses "a DOM component system is a non-goal" for this
+  one page. That last part is the owner's call. It would not be a second
+  component system: the components, state and rules stay in Coax, and only
+  the last layer changes.
+- **What it doesn't change:** everything in sections 4 to 7. The stream, the
+  schema and the agent are the same work either way.
+
+If the answer stays "canvas", then points 1 and 2 above plus a full text
+mirror of the transcript (every role, not only buttons) are the minimum to
+get off zero on accessibility, and find, selection by the browser and
+translate stay unavailable.
+
 ## What to keep, delete and replace
 
 **Keep.**
@@ -546,8 +739,8 @@ These are the owner's. Each one changes what the page is.
 4. **Pixels or DOM.** Staying on the canvas keeps one component set for web,
    Mac and Linux and the Mac match. It costs accessibility, find, native
    selection and links until the element tree's accessibility is built
-   (spec 114-115) and `/chat` exports the mirror. This audit doesn't pick;
-   it notes that accessibility is at zero today.
+   (spec 114-115) and `/chat` exports the mirror. Section 10 adds a third
+   answer: a DOM backend for the web chat under the same components.
 5. **Where the chat set lives.** Rebuilding the UI is the natural moment to
    move `components/zeron/` into `kit/` as the spec says, with the sidebar
    and tabs as components, so the desktop gets the same rebuild.
@@ -599,3 +792,8 @@ desktop `screen.coax` and `desk.coax` bodies; `coax/lib/agent/claude/`
 internals; the auth gate's internals; the deploy scripts; `SUMMARY.md` and
 the book chapters outside those listed in section 8; the protocol spec
 outside sections 8, 17, 18 and 31.
+
+For section 10: Exact's source (every statement about Exact comes from
+`docs/research/exact/`, which read it at `94b8671`); the chat template's
+`.contract` files; the bodies of `host.js` and `drive.coax` past their
+contracts; `coax/web/STORAGE.md`, `fast-edit.md` and `PACK-GATE.md`.
