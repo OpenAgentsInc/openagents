@@ -49,6 +49,7 @@ protocol difference a shadow period would see.
 | 86 | with management key | with `--admin` | wired (`nip86.coax`, `FILE.nip86`) | method sets differ: Rust has `creategroup`, `deletegroup`, `listgroups`, `putgroupuser`, `removegroupuser`; Coax has `banevent`, `unbanevent`, `listbannedevents`, `listdisallowedkinds`, `changerelayname`. The Rust policy tables (`relay_blocked_pubkey`, `relay_blocked_kind`, `relay_allowed_*`, `relay_member_pubkey`) are not in the event export | owner: policy migration |
 | 94 | yes (media service) | no | **not wired** | no media upload or NIP-94 metadata endpoint | owner: keep media elsewhere, or drop |
 | 98 | with management or media | no | used inside NIP-86 only | no separate advertisement | owner: advertise with 86 or not |
+| 40, kind 3188 | keeps every 3188 | yes | wired (`rs_retained`, `relay_server.coax`) | Coax keeps kind 3188 host envelopes 7 days from `created_at`, then expires them as NIP-40 does; the import drops those already older. The Rust relay keeps them all (587,684 of its 600,064 events on 2026-11-12) | **owner's decision, 2026-11-12 (#13361)**: 7 days |
 
 ### Private and hidden kinds (not a NIP, but the largest served-set gap; wired since the third run)
 

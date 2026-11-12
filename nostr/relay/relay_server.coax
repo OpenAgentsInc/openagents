@@ -183,6 +183,52 @@ rs_expiration :: (e: NostrEvent) -> int #effects(all) {
 // Served only while not expired (NIP-40: at or after the time it is gone).
 rs_live :: (expiration: int, now: int) -> bool #effects(all) { return expiration < 0 || expiration > now; }
 
+// Retention (the owner's decision, 2026-11-12, #13361): kind 3188 host
+// envelopes are kept RS_RETAIN_S, 7 days, from their created_at. The relay
+// treats that time as the event's NIP-40 expiration, or keeps the event's own
+// expiration when it is sooner, so everything NIP-40 does applies: a live
+// EVENT or an import line already past it is refused "expired", a stored one
+// stops being served at it, and compaction drops it. The event is unchanged;
+// only the relay's time for it is.
+RS_RETAIN_KIND :: 3188; RS_RETAIN_S :: 604800;
+#test "kind 3188 is kept 7 days from created_at, or to its own sooner expiration" {
+  #assert rs_retained(3188, 1000, -1) == 605800 && rs_retained(3188, 0, -1) == 604800;
+  #assert rs_retained(3188, 1000, 5000) == 5000 && rs_retained(3188, 1000, 605799) == 605799;
+  #assert rs_retained(3188, 1000, 605800) == 605800 && rs_retained(3188, 1000, 605801) == 605800;
+  #assert rs_retained(3188, 1000, 0) == 0;
+  #assert rs_retained(3187, 1000, -1) == -1 && rs_retained(3189, 1000, -1) == -1 && rs_retained(1, 1000, 7) == 7;
+  #assert rs_retained(3187, 1000, 999999999) == 999999999;
+  #assert rs_live(rs_retained(3188, 1000, -1), 605799) && !rs_live(rs_retained(3188, 1000, -1), 605800);
+}
+#test "admission reads kind 3188's retention as its expiration" {
+  out: [65536] u8;
+  r := rs_admit_read(RST_ENVELOPE, 1000, false, false, out[..]);
+  #assert r.reason == RS_ACCEPT && r.expiration == 605800;
+  #assert rs_admit_read(RST_ENVELOPE, 605799, false, false, out[..]).reason == RS_ACCEPT;
+  #assert rs_admit_read(RST_ENVELOPE, 605800, false, false, out[..]).reason == RS_EXPIRED;
+  r = rs_admit_read(RST_ENVELOPE_EXP, 1000, false, false, out[..]);
+  #assert r.reason == RS_ACCEPT && r.expiration == 5000;
+  #assert rs_admit_read(RST_ENVELOPE_EXP, 5000, false, false, out[..]).reason == RS_EXPIRED;
+  r = rs_admit_read(RST_NEAR, 999999, false, false, out[..]);
+  #assert r.reason == RS_ACCEPT && r.expiration == -1;
+}
+#test "the 7 days decide when the event has no sooner expiration of its own" {
+  #assert rs_retention_rules(3188, 1000, -1) && rs_retention_rules(3188, 1000, 605800) && rs_retention_rules(3188, 1000, 605801);
+  #assert !rs_retention_rules(3188, 1000, 605799) && !rs_retention_rules(3188, 1000, 0);
+  #assert !rs_retention_rules(3187, 1000, -1) && !rs_retention_rules(3189, 1000, -1) && !rs_retention_rules(1, 1000, 999999999);
+}
+// The expiration the relay keeps for an event of kind created at created
+// whose own NIP-40 expiration is expiration (-1: none).
+rs_retained :: (kind: int, created: int, expiration: int) -> int #effects(all) {
+  if rs_retention_rules(kind, created, expiration) { return created + RS_RETAIN_S; }
+  return expiration;
+}
+// Whether the relay's retention, not the event's own expiration, sets the
+// time: kind 3188 with no expiration, or one at or after its 7 days.
+rs_retention_rules :: (kind: int, created: int, expiration: int) -> bool #effects(all) {
+  return kind == RS_RETAIN_KIND && (expiration < 0 || expiration >= created + RS_RETAIN_S);
+}
+
 // ---- EVENT admission ------------------------------------------------------
 
 #test "admission refusals, cheapest first, before the signature" {
@@ -258,7 +304,7 @@ rs_admit_read :: (text: string, now: int, auth_required: bool, authed: bool, scr
   e := nostr_event_read(text, scratch, false);
   if e.error == NE_ID { r.reason = RS_BAD_ID; r.e = e; return r; }
   if e.error != NE_OK { return r; }
-  r.e = e; r.kclass = rs_class(e.kind); r.expiration = rs_expiration(e);
+  r.e = e; r.kclass = rs_class(e.kind); r.expiration = rs_retained(e.kind, e.created_at, rs_expiration(e));
   if r.kclass == RS_ADDRESSABLE {
     n := rs_d(e, r.d[..]);
     if n < 0 { return r; }

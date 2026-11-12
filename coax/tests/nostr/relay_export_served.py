@@ -12,6 +12,11 @@ created_at, big-endian, then the 32-byte id. The Coax relay's --import and
 --check-store print the same digest for what they serve at T; equal digests
 mean equal sets (relay_equal.coax).
 
+Kind 3188 host envelopes are kept 7 days from created_at (the owner's
+decision, 2026-11-12, #13361): the relay reads that as their NIP-40
+expiration, or their own when it is sooner, so here too a 3188 older than
+7 days at T is not served.
+
 It also lists, for the record, what the Coax relay decides differently on
 purpose: kind 62 requests to vanish from the relay's URL or ALL_RELAYS (the
 Coax relay retires the author's earlier events; the Rust relay never did).
@@ -33,6 +38,17 @@ def expiration(tags):
     return None
 
 
+RETAIN_KIND, RETAIN_S = 3188, 604800
+
+
+def kept_until(e):
+    x = expiration(e['tags'])
+    if e['kind'] != RETAIN_KIND:
+        return x
+    keep = e['created_at'] + RETAIN_S
+    return x if x is not None and x < keep else keep
+
+
 def main():
     a = sys.argv[1:]
     if not a or '--now' not in a:
@@ -41,14 +57,17 @@ def main():
     now = int(a[a.index('--now') + 1])
     url = a[a.index('--url') + 1] if '--url' in a else 'wss://relay.openagents.com'
     ids_out = a[a.index('--ids') + 1] if '--ids' in a else None
-    served, expired, lines, vanish = [], 0, 0, []
+    served, expired, retired, lines, vanish = [], 0, 0, 0, []
     with open(path, 'rb') as f:
         for raw in f:
             lines += 1
             e = json.loads(raw)
-            x = expiration(e['tags'])
+            x = kept_until(e)
             if x is not None and x <= now:
-                expired += 1
+                if e['kind'] == RETAIN_KIND and (expiration(e['tags']) is None or expiration(e['tags']) > now):
+                    retired += 1
+                else:
+                    expired += 1
                 continue
             served.append((e['created_at'], e['id']))
             if e['kind'] == 62 and any(len(t) >= 2 and t[0] == 'relay' and t[1] in (url, 'ALL_RELAYS') for t in e['tags']):
@@ -57,7 +76,7 @@ def main():
     h = hashlib.sha256()
     for created, i in served:
         h.update(created.to_bytes(8, 'big') + bytes.fromhex(i))
-    print('export: %d lines, %d expired at %d' % (lines, expired, now))
+    print('export: %d lines, %d expired (NIP-40) and %d kind 3188 past 7 days at %d' % (lines, expired, retired, now))
     print('served set at %d: %d events, digest %s' % (now, len(served), h.hexdigest()))
     for p, c, i in vanish:
         print('kind 62 to vanish from %s: author %s at %d (event %s)' % (url, p, c, i))

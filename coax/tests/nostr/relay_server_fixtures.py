@@ -35,6 +35,10 @@ EVENTS = [
     ("RST_ADDR_LONG", event(30000, 1000, [["d", "x" * 257]], "")),
     ("RST_TAGS", event(1, 1000, [["t", "x"]] * 257, "")),
     ("RST_TAGS256", event(1, 1000, [["t", "x"]] * 256, "")),
+    # kind 3188 host envelopes: kept 7 days from created_at (the owner's decision, 2026-11-12)
+    ("RST_ENVELOPE", event(3188, 1000, [["p", "x"]], "")),
+    ("RST_ENVELOPE_EXP", event(3188, 1000, [["expiration", "5000"]], "")),
+    ("RST_NEAR", event(3187, 1000, [], "")),
 ]
 
 
