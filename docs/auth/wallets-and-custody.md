@@ -182,8 +182,8 @@ because it never has the keys.
 The limit protects against someone with the unlocked phone or the login,
 not against someone with the seed. The app and
 [/settings/wallet](https://openagents.com/settings/wallet/index.md) say
-so. The limit is also not applied to service credit (model D) yet; that
-has its own per-key accounting (#13330).
+so. Service credit (model D) counts toward the same limit, and the server
+enforces that part (#13330, below).
 
 ### Threats and their checks
 
@@ -261,6 +261,15 @@ count reaches the limit, the call gets the wallet's step-up answer (401,
 after it is answered, so the last call under the limit can pass it by its own
 cost. A key that no person's account holds, and an agent's key, aren't held to
 a person's limit; an agent spends within its grant.
+
+Upgrades never add to the credit's count, because service credit can't buy one
+(#13343): since #13210 an upgrade is paid in Bitcoin from the player's wallet
+straight to the maker, and `POST /api/playtest/upgrades/<id>/buy {pay:
+"credit"}` gets 400 (`mp_pay` in `coax/web/api/makerpay-policy.coax`;
+`makers.buy_credit`, migration 0154, touches no credit). The price is a wallet
+payment, so it counts through `POST /api/wallet/spend` like any other: past
+the limit it gets the step-up answer and goes after a fresh L2
+(`tests/wallet_checks.coax`).
 
 ## Recovery when the device is lost
 

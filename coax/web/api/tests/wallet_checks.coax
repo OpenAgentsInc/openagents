@@ -18,7 +18,9 @@
 //   a lost passkey                a backup whose passkey left the account no longer counts
 //   credit spent past the limit   a model call paid from service credit counts for the account that
 //                                 holds its key; past the limit it gets the same step-up answer, and
-//                                 goes after a fresh L2 (#13330, migration 0164)
+//                                 goes after a fresh L2 (#13330, migration 0164). Credit never buys an
+//                                 upgrade (0154); an upgrade's price is a wallet payment, refused past
+//                                 the limit and allowed after a fresh L2 (#13343)
 //   API=... PGURL=... PSQL=... SIGN=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/wallet_checks.coax
 // tool.sh: tls
 // tool.sh: run-steps 250000000
@@ -334,8 +336,20 @@ wk_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "the day's count is the account's: the wallet's own payment asks too, since credit used up the limit",
            wk_spend(t, SB, "1", "pay-c0000001", false) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh"
            && pc_with(t, "GET", "/api/wallet", "", SB) == 200 && ap_member_int(ap_body(t), "limit.spent_sat", -1) >= 20000, ap_body(t));
+  // an upgrade (#13343): service credit never buys one (migration 0154, makerpay-policy.coax's mp_pay),
+  // so no upgrade adds to the credit's count; its price is a wallet payment, held to the same count
+  cm0 := ap_whole(ap_sql(t, pc_q(q[..], "SELECT msat FROM inference.credit WHERE pubkey = '", pk2, "'"), out[..]));
+  cs0 := ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..]));
+  ap_check(t, "an upgrade bought with service credit is refused by name, by the API and the database, and the credit and the day's count stay as they were",
+           pc_with(t, "POST", "/api/playtest/upgrades/1/buy", "{\"pay\":\"credit\"}", SB) == 400 && ap_has(ap_body(t), "service credit pays only for our own services")
+           && ap_sql(t, pc_q(q[..], "SELECT makers.buy_credit(1, '', '", pk2, "', false)->>'status'"), out[..]) == "400"
+           && ap_whole(ap_sql(t, pc_q(q[..], "SELECT msat FROM inference.credit WHERE pubkey = '", pk2, "'"), out[..])) == cm0
+           && ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..])) == cs0, ap_body(t));
+  ap_check(t, "past the limit an upgrade's price, paid from the wallet, gets the step-up answer",
+           wk_spend(t, SB, "500", "upgrade-fairy-13343", false) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh", ap_body(t));
   ap_check(t, "after a fresh L2 on a login of the account (the passkey's prompt), the call past the limit goes", pc_stepup(t, SB, P2, plain) == 200
            && wk_went(wk_infer(t, K2)) && !ap_has(ap_body(t), "step_up"), ap_body(t));
+  ap_check(t, "and the upgrade's price past the limit goes after that fresh L2", wk_spend(t, SB, "500", "upgrade-fairy-13343", false) == 200, ap_body(t));
   wk_old(t, acct2);
   ap_check(t, "an L2 older than five minutes doesn't count: the next call asks again", wk_infer(t, K2) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh", ap_body(t));
   ap_check(t, "a raise counts for credit too: under a higher limit in force, the call goes with no prompt",
