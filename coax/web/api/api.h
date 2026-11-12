@@ -153,7 +153,7 @@ int agents_pause_all(PGconn *db, const char *owner);        // logout everywhere
 char *agents_export_b64(PGconn *db, const char *owner);    // the owner's agents as a base64 AgentList (malloc'd), or NULL
 bool agents_route(const request *q);                        // /api/agents*, /api/agent/*, /api/agent-keys/*, /api/auth/device/*
 
-int auth_notice(PGconn *db, const char *acct, const char *key, const char *subject, const char *text);   // emails every verified address
+void auth_notice(PGconn *db, const char *acct, const char *what, const char *subject, const char *words);   // auth-recover.c: every email and key of acct
 bool lnaddr_route(const request *q);       // /.well-known/lnurlp/*, /lnurlp/*, /api/lightning/address* (lnaddr.c)
 void lnaddr_print_limits(FILE *out);      // api --limits: the Lightning Address section of /docs/limits
 void lnaddr_init(void);                   // checks lnaddr.c's numbers against the Coax

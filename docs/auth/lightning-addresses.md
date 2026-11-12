@@ -333,8 +333,8 @@ Names, limits and the claim flow don't change when the backend does.
   which no API role can change or delete).
 - **Changes:** a new destination needs a key signature from the last 5
   minutes (`L2-fresh`), a proof from a new Spark wallet, and waits 24 hours
-  (72 for an account with only email). The account's verified emails get a
-  notice with a command that freezes the account, and a frozen account's
+  (72 for an account with only email). Every email and key on the account
+  gets the security notice with the freeze link, and a frozen account's
   change never applies.
 - **Records:** `proto/openagents/payment/v1alpha1/lightning_address.proto`,
   read by the generated codec in `coax/lib/lnaddr/records.coax`.

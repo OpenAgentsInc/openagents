@@ -1341,33 +1341,6 @@ bool auth_freeze_link(PGconn *db, const char *acct, char token[65]) {
   return ok;
 }
 
-// A notice to every verified email on acct (Lightning Address changes, #13208): subject and text
-// as given, then the "This wasn't me" link that freezes the account. The number of emails sent.
-int auth_notice(PGconn *db, const char *acct, const char *key, const char *subject, const char *text) {
-  const char *v[1] = {acct};
-  PGresult *r = PQexecParams(db, "SELECT sealed FROM auth.emails WHERE account = $1 AND verified_at IS NOT NULL", 1, NULL, v, NULL, NULL, 0);
-  int sent = 0;
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || !sealing_ready()) { PQclear(r); return 0; }
-  char token[65] = "";
-  bool link = auth_freeze_link(db, acct, token);
-  for (int i = 0; i < PQntuples(r); i++) {
-    char email[300], ad[96], to[600], subj[300], body[2000], message[3200], id[128], err[200];
-    snprintf(ad, sizeof ad, "auth.emails|sealed|%s", acct);
-    if (!unseal(ad, PQgetvalue(r, i, 0), email, sizeof email)) continue;
-    json_esc(email, to, sizeof to); json_esc(subject, subj, sizeof subj);
-    char full[1600];
-    if (link) snprintf(full, sizeof full, "%s\n\nIf this wasn't you, freeze your account now (it ends every login and stops the change):\ncurl -X POST %s/api/auth/freeze -d '{\"t\":\"%s\"}'\n", text, origin(), token);
-    else snprintf(full, sizeof full, "%s\n", text);
-    json_esc(full, body, sizeof body);
-    snprintf(message, sizeof message, "{\"to\":\"%s\",\"subject\":\"%s\",\"idempotency_key\":\"notice-%s-%d\",\"text\":\"%s\"}", to, subj, key, i, body);
-    if (email_send(db, message, id, err, sizeof err) <= 1) sent++;
-    memset(email, 0, sizeof email); memset(to, 0, sizeof to); memset(message, 0, sizeof message);
-  }
-  memset(token, 0, sizeof token);
-  PQclear(r);
-  return sent;
-}
-
 static void me(const request *q, PGconn *db) {
   const auth_principal *p = auth_principal_of(q);
   if (!p || !p->account[0]) {

@@ -288,13 +288,13 @@ static void notice(PGconn *db, const char *acct, const char *name, const char *k
   else api_log("lnaddr: notice %s: %s", kind, PQerrorMessage(db));
   PQclear(r);
   if (!id[0] || !text) return;
-  char subject[120], key[40];
-  snprintf(subject, sizeof subject, "Your Lightning Address %s@%s", name, domain());
-  snprintf(key, sizeof key, "lnaddr-%s", id);
-  if (auth_notice(db, acct, key, subject, text) > 0) {
-    const char *w[1] = {id};
-    PQclear(PQexecParams(db, "UPDATE pay.notices SET emailed_at = now() WHERE id = $1::bigint", 1, NULL, w, NULL, NULL, 0));
-  }
+  // auth-recover.c's notice: every email and key of the account, with the freeze link.
+  char subject[120], what[48];
+  snprintf(subject, sizeof subject, "your Lightning Address %s@%s", name, domain());
+  snprintf(what, sizeof what, "lnaddr.%s", kind);
+  auth_notice(db, acct, what, subject, text);
+  const char *w[1] = {id};
+  PQclear(PQexecParams(db, "UPDATE pay.notices SET emailed_at = now() WHERE id = $1::bigint", 1, NULL, w, NULL, NULL, 0));
 }
 // Applies a waiting change whose time has come (lnaddr-policy.coax la_apply decides).
 static void apply_due(PGconn *db, const char *name) {

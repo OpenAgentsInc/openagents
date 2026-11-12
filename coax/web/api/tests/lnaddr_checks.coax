@@ -112,13 +112,13 @@ ln_checks :: (t: [] Ap, dir: string) {
   st = ln_signed(t, keyA, "POST", "/api/lightning/address/cancel", "198.51.100.2");
   ap_check(t, "cancelling nothing says so", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "No change is waiting", ap_body(t));
   sb_clear(q[..]); sb(q[..], "INSERT INTO pay.address_changes (name, account, new_mode, new_target, ready_at) VALUES ('alice', '"); sb(q[..], A);
-  sb(q[..], "', 'spark', '02"); for k: 0..<64 { sb(q[..], "c"); } sb(q[..], "', now() - interval '1 minute'); UPDATE auth.accounts SET frozen_at = now() WHERE id = '");
+  sb(q[..], "', 'spark', '02"); for k: 0..<64 { sb(q[..], "c"); } sb(q[..], "', now() - interval '1 minute'); UPDATE auth.accounts SET frozen_at = now(), frozen_why = 'freeze' WHERE id = '");
   sb(q[..], A); sb(q[..], "'");
   ap_do(t, sb_text(q[..]));
   st = ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.3");
   fb: [128] u8; frozen_mode := ap_sql(t, "SELECT mode FROM pay.addresses WHERE name = 'alice'", fb[..]);
   ap_check(t, "a due change doesn't apply while the account is frozen", frozen_mode == "none", frozen_mode);
-  sb_clear(q[..]); sb(q[..], "UPDATE auth.accounts SET frozen_at = NULL WHERE id = '"); sb(q[..], A); sb(q[..], "'");
+  sb_clear(q[..]); sb(q[..], "UPDATE auth.accounts SET frozen_at = NULL, frozen_why = NULL WHERE id = '"); sb(q[..], A); sb(q[..], "'");
   ap_do(t, sb_text(q[..]));
   st = ln_get(t, "/.well-known/lnurlp/alice", "198.51.100.3");
   mb: [256] u8; applied := ap_sql(t, "SELECT mode || ' ' || revision FROM pay.addresses WHERE name = 'alice'", mb[..]);
