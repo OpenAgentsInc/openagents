@@ -45,6 +45,10 @@ and the difference in cost and wall time holds on the hold-out tasks alone.
 
 Round 4 (added 2026-11-12, before its runs): three runs per task in round 4.
 
+Carbon (added 2026-11-12, before its runs): a Carbon arm with 2 runs per task
+(`gemini-4-carbon`, `us`, both harnesses at their low default; Microcoder at
+the Argon round 4 build).
+
 The final runs are at Argon low in `us`. A second setting (Flash low or
 Carbon low) runs if the budget allows. With two runs a task, a difference of
 one or two passes is within noise; the report gives counts, not rates.
