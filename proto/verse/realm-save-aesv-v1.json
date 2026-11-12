@@ -1,0 +1,83 @@
+{
+ "identity": "realm-save-aesv-v1",
+ "check": "coax/web/tool.sh apps/openagents-web/save-profile.coax proto/verse/realm-save-aesv-v1.json",
+ "codec": "apps/openagents-web/save.coax",
+ "doc": "docs/protocol/realm-save-aesv-v1.md",
+ "scope": "A realm's save: the AESV container (kept in IndexedDB and in verse.progress on the server), the record of two saves the browser keeps, and the body that posts a save to /api/playtest/progress/WORLD/SLOT",
+ "container": [
+  {"field": "magic", "bytes": 4, "value": "AESV"},
+  {"field": "version", "bytes": 1, "value": "2 written; 1 or 2 read"},
+  {"field": "layer", "bytes": 1, "value": "2: player progress"},
+  {"field": "reserved", "bytes": 2, "value": "0 0"},
+  {"field": "schema", "bytes": 4, "value": "u32 little-endian: the payload's schema, the realm's own"},
+  {"field": "world", "bytes": "varint length, then the world's name"},
+  {"field": "payload", "bytes": "varint length, then the payload"},
+  {"field": "crc32", "bytes": 4, "value": "CRC-32 (IEEE 802.3, zlib) of every byte before it, little-endian"}
+ ],
+ "version": 2,
+ "layer": 2,
+ "min_bytes": 18,
+ "crc32_check": {
+  "ascii": "123456789",
+  "value": "cbf43926"
+ },
+ "readers": {
+  "apps/openagents-web/save.coax save_open": "everything: magic, version, layer, CRC-32, the world's name, a schema it knows, both lengths exact",
+  "coax/web/api/player.c container_ok": "at least 18 bytes, the magic, version 1 or 2, layer 2 and the CRC-32. It does not read the schema, the world or the lengths: a container it keeps that save_open refuses (\"server\": \"keeps\" below) is one the page never loads"
+ },
+ "containers": [
+  {"world": "haunted-house", "schema": 1, "payload_hex": "74686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64", "bytes": 66, "hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b"},
+  {"world": "haunted-house", "schema": 1, "payload_hex": "54484520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64", "bytes": 66, "hex": "4145535602020000010000000d6861756e7465642d686f7573652354484520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64df0347e7"},
+  {"world": "place", "schema": 3, "payload_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7", "bytes": 224, "hex": "41455356020200000300000005706c616365c801000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c74ffc3503"},
+  {"world": "", "schema": 0, "payload_hex": "", "bytes": 18, "hex": "4145535602020000000000000000d82a425c"},
+  {"world": "hotbar", "schema": 16909060, "payload_hex": "00ff0a225c80", "bytes": 30, "hex": "41455356020200000403020106686f746261720600ff0a225c80361310e3"}
+ ],
+ "read_only": [
+  {"note": "container version 1: read, never written", "world": "haunted-house", "schema": 1, "payload_hex": "74686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64", "hex": "4145535601020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e649fa97184"}
+ ],
+ "malformed": [
+  {"why": "17 bytes: shorter than the smallest container", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535602020000010000000d6861756e"},
+  {"why": "the magic is not AESV", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535702020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64dbbc7432"},
+  {"why": "the magic in lower case", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "6165737602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e648041763f"},
+  {"why": "container version 0", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535600020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e640ca6b6ce"},
+  {"why": "container version 3", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535603020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64b9b6ff11"},
+  {"why": "layer 1: not player progress", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535602010000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e6486cfc772"},
+  {"why": "layer 3", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535602030000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e644e6b9243"},
+  {"why": "one bit of the payload flipped", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535602020000010000000d6861756e7465642c686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b"},
+  {"why": "the CRC-32 big-endian", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e645b38b92a"},
+  {"why": "the last byte cut off", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab938"},
+  {"why": "a byte after the CRC-32", "world": "haunted-house", "max_schema": 1, "server": "refuses", "hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b00"},
+  {"why": "another world's save", "world": "dead-gears", "max_schema": 1, "server": "keeps", "hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b"},
+  {"why": "the same world's name in upper case", "world": "Haunted-House", "max_schema": 1, "server": "keeps", "hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b"},
+  {"why": "a schema newer than this build knows", "world": "haunted-house", "max_schema": 1, "server": "keeps", "hex": "4145535602020000020000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64f043d659"},
+  {"why": "the payload's length says one byte more than there is", "world": "haunted-house", "max_schema": 1, "server": "keeps", "hex": "4145535602020000010000000d6861756e7465642d686f7573652474686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64439a8807"},
+  {"why": "the payload's length says one byte less than there is", "world": "haunted-house", "max_schema": 1, "server": "keeps", "hex": "4145535602020000010000000d6861756e7465642d686f7573652274686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64bf6d48ce"},
+  {"why": "the world's length runs past the end", "world": "haunted-house", "max_schema": 1, "server": "keeps", "hex": "4145535602020000010000005a6861756e7465642d686f75736588ff35a6"},
+  {"why": "no payload length after the world", "world": "haunted-house", "max_schema": 1, "server": "keeps", "hex": "4145535602020000010000000d6861756e7465642d686f757365d59ef3e4"}
+ ],
+ "record": "verse-save 1 / the current save's time in ms / its container in base64 (RFC 4648, padded) / the previous save's time / its container; each line ends with a line feed, and the last two are empty when there is no previous save",
+ "record_head": "verse-save 1\n",
+ "records": [
+  {"note": "the first save: no previous", "text": "verse-save 1\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n\n\n", "current_hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "current_at": 1000, "previous_hex": "", "previous_at": 0, "pick": 1, "from": "", "save_hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "save_at": 1000},
+  {"note": "the next save: the old current becomes the previous", "text": "verse-save 1\n2000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjVEhFIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmTfA0fn\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n", "current_hex": "4145535602020000010000000d6861756e7465642d686f7573652354484520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64df0347e7", "current_at": 2000, "previous_hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "previous_at": 1000, "pick": 1, "from": "verse-save 1\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n\n\n", "save_hex": "4145535602020000010000000d6861756e7465642d686f7573652354484520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64df0347e7", "save_at": 2000},
+  {"note": "a save over a corrupted current: the last good one stays the previous", "text": "verse-save 1\n3000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n", "current_hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "current_at": 3000, "previous_hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "previous_at": 1000, "pick": 1, "from": "verse-save 1\n2000\nQUVTVgICAAABAAAADWhhdW50ZWQsaG91c2UjVEhFIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmTfA0fn\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n", "save_hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "save_at": 3000},
+  {"note": "a record whose current save has a flipped bit: read as it is; save_pick falls back to the previous", "text": "verse-save 1\n2000\nQUVTVgICAAABAAAADWhhdW50ZWQsaG91c2UjVEhFIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmTfA0fn\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n", "current_hex": "4145535602020000010000000d6861756e7465642c686f7573652354484520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e64df0347e7", "current_at": 2000, "previous_hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "previous_at": 1000, "pick": 2}
+ ],
+ "legacy_records": [
+  {"note": "from before containers: the save as bare lower-case hex, read as schema 0", "text": "0a0b0cff", "hex": "0a0b0cff"}
+ ],
+ "malformed_records": [
+  "",
+  "0a0",
+  "zz",
+  "0A0B",
+  "verse-save 2\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\n\n\n",
+  "verse-save 1\n1000\n***\n\n\n",
+  "verse-save 1\n1000\nQUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquTh\n\n\n"
+ ],
+ "post": [
+  {"hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "at": 1000, "rev": -1, "body": "{\"bytes\":\"QUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\",\"at\":1000}"},
+  {"hex": "4145535602020000010000000d6861756e7465642d686f7573652374686520686f7573653a20726f6f6d20332c2074776f206861756e747320666f756e642ab9385b", "at": 1000, "rev": 0, "body": "{\"bytes\":\"QUVTVgICAAABAAAADWhhdW50ZWQtaG91c2UjdGhlIGhvdXNlOiByb29tIDMsIHR3byBoYXVudHMgZm91bmQquThb\",\"at\":1000,\"rev\":0}"},
+  {"hex": "4145535602020000000000000000d82a425c", "at": 1762190000123, "rev": 41, "body": "{\"bytes\":\"QUVTVgICAAAAAAAAAADYKkJc\",\"at\":1762190000123,\"rev\":41}"}
+ ]
+}

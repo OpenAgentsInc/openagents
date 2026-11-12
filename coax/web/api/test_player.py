@@ -182,6 +182,33 @@ check("an old page still can't save it", pt("POST", old_slot, {"bytes": b64(s1)}
 check("nor a page from the revision before the erase", pt("POST", old_slot, {"bytes": b64(s1), "rev": 3}, key=guest["key"])[0] == 409)
 check("a page with revisions saves from the erase", pt("POST", old_slot, {"bytes": b64(s1), "rev": erased["rev"]}, key=guest["key"])[1]["rev"] == erased["rev"] + 1)
 
+# ---- the realm save's fixtures (E10, #13250): proto/verse/realm-save-aesv-v1.json, the containers the
+# pages write and read through apps/openagents-web/save.coax (save-profile.coax checks that side).
+# player.c's container_ok is held to the same bytes: every golden container is kept and comes back
+# byte for byte, and each malformed one gets what its "server" says: refused with a 400, or kept
+# (the server checks the magic, version, layer and CRC-32 only; the page's save_open refuses those).
+aesv_fx = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "proto", "verse", "realm-save-aesv-v1.json")))
+aesv_slot = "progress/haunted-house/aesv"
+aesv_rev = pt("GET", aesv_slot, key=guest["key"])[1]["rev"]
+for fx in aesv_fx["containers"] + aesv_fx["read_only"]:
+    raw = bytes.fromhex(fx["hex"])
+    status, kept = pt("POST", aesv_slot, {"bytes": b64(raw), "rev": aesv_rev}, key=guest["key"])
+    check(f"a golden container (world {fx['world']!r}, {len(raw)} bytes) is kept and comes back byte for byte",
+          status == 200 and kept["rev"] == aesv_rev + 1 and kept["current"]["bytes"] == b64(raw), kept)
+    aesv_rev = kept.get("rev", aesv_rev) if status == 200 else aesv_rev
+for fx in aesv_fx["malformed"]:
+    raw = bytes.fromhex(fx["hex"])
+    status, kept = pt("POST", aesv_slot, {"bytes": b64(raw), "rev": aesv_rev}, key=guest["key"])
+    if fx["server"] == "refuses":
+        check(f"a malformed container ({fx['why']}) is a 400", status == 400, kept)
+    else:
+        check(f"a container only the page refuses ({fx['why']}) is kept", status == 200 and kept["rev"] == aesv_rev + 1 and kept["current"]["bytes"] == b64(raw), kept)
+        aesv_rev = kept.get("rev", aesv_rev) if status == 200 else aesv_rev
+check("the fixture has containers of both kinds", {fx["server"] for fx in aesv_fx["malformed"]} == {"refuses", "keeps"} and len(aesv_fx["containers"]) >= 4)
+for fx in aesv_fx["post"]:
+    raw = bytes.fromhex(fx["hex"])
+    check("a golden post body is JSON with the container in base64", json.loads(fx["body"])["bytes"] == b64(raw) and json.loads(fx["body"]).get("rev", -1) == fx["rev"])
+
 # An API binary from before 0119 (a rollback) sends a good save straight to verse.api: 0004's rule
 # keeps it, and it is still a new revision no device has read.
 rb = json.dumps({"key": guest["key"], "good": True, "bytes": b64(s2)}).replace("'", "''")

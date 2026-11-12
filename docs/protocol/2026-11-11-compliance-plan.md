@@ -165,7 +165,7 @@ and `verse/home.coax`. None is Everglade's.
 | Item ledger op | Route `room_items` at `player.c:706`. `aethyr/session/ledger.coax` is a store model with no codec for the op; only a test loads it | No room sends it | none | Wave 2: wire it or delete it |
 | `room-state {look,class}` | `player.c:624-652` (`room_state`) | Kept: look and class go into `verse.room_vitals` and come back in the ticket reply (`:543`); only `wanted` is refused. Sent by `everglade-net.coax` and `everglade5e-face.c:82`. Only the local stand-in drops it (`room-dev.coax:214`) | none | Move: wave 2 (E11), with the other player routes |
 | Player appearance `aethyr.player.appearance.v1` (CC2, CC3, CC4 text) | `aethyr/character-appearance.coax:59,72` (the reader also takes `CC1`) | Stored in localStorage (`coax/web/host.js:570`) and the iOS store (`aethyr/host/apple/PageHost.m`) | `proto/aethyr/player-appearance-v1.json` | Pinned: E9. [player-appearance-v1.md](player-appearance-v1.md) |
-| Realm save AESV (CRC-32), stored in IndexedDB and `verse.progress` | `apps/openagents-web/save.coax`; a second validator in C (`container_ok`, `player.c:94`) | Page, API | none | Pin: wave 2 (E10). Golden |
+| Realm save AESV (CRC-32), stored in IndexedDB and `verse.progress` | `apps/openagents-web/save.coax`; a second validator in C (`container_ok`, `player.c:94`) | Page, API | `proto/verse/realm-save-aesv-v1.json` | Pinned: E10. [realm-save-aesv-v1.md](realm-save-aesv-v1.md) |
 | Realm document `aethyr.realm` v1 (SHA-256 per revision) | Built in SQL (`0093`, `0109`, `0111`). `aethyr/forge/doc.coax` reads it, but only examples, the book and `coax/web/api/tests/realm_walkthrough.coax` load that file | `apps/openagents-cli/realm.coax:108-122` parses `/doc` with its own JSON reads; `myrealm.coax:436` reads the spec's text lines, not the document; API | `verse-doc` | Done: E6. `doc.coax` is the one reader and writer; `realm-document-v1.json` |
 | Edit operations and the undo log `{to,card,ops:[{slot,before,after}]}`; save body `{rev,moved,shaped}` | `aethyr/forge/edit.coax:339-514` holds the operations in memory and builds the save body (`forge_save_body`, `:479`). The undo log JSON is built only in plpgsql (`0111:181`) | Aethyrforge, My Realm, API | `verse-doc` | Done: E6. `edit.coax` writes the bodies; `doc.coax` applies the logged steps |
 | Engine pin manifest `aethyr-engine 1` (hashed) | `aethyr/forge/publish.coax`; again in SQL (`0107`); read by `coax/web/engine-served.coax` | A fixture pair: `publish.coax:242` and `coax/web/api/tests/realm_engine_pin.sql` | none | Done: E6, row `engine-pin-manifest-v1` with its check |
@@ -205,6 +205,7 @@ Wave 2 steps done:
 | Step | Work | Done |
 | --- | --- | --- |
 | E9 | Appearance record | `proto/aethyr/player-appearance-v1.json` holds golden records for CC2, CC3 and CC4, CC1 and corrected records with the bytes they are written back as, and malformed records. `aethyr/tools/appearance-profile.coax` runs `ca_save` and `ca_restore` on each and holds the layout to the bytes. Every page reads and writes the record through `aethyr/character-appearance.coax`. The two page hosts keep the text under the ID as a storage key and never parse it; their two `id` lines stay until `wire-check` has a rule for a key |
+| E10 | Realm save | `proto/verse/realm-save-aesv-v1.json` holds golden AESV containers (made with zlib's CRC-32, not the codec), a version 1 container, malformed ones, the browser's record of two saves step by step, the bare-hex record from before containers, and the post bodies. `apps/openagents-web/save-profile.coax` runs `save_pack`, `save_open`, `save_read`, `save_record`, `save_pick` and `save_post_rev` on them. `test_player.py` posts every container to `/api/playtest/progress`: the API's `container_ok` keeps each golden and refuses each malformed one the profile says it refuses. It checks less than the page (no world, schema or lengths), and the profile names which containers only the page refuses. Row `realm-save-aesv-v1`; the codec stays in `apps/openagents-web/` with a `codec` line |
 
 ## Golden tests
 
@@ -222,7 +223,7 @@ because a signature, a hash or a stored file depends on the bytes.
 | Seat tickets, resume envelope | HMAC | E5 |
 | Character checkpoint; room reports | HMAC, stored | wave 2 |
 | Realm document, undo log, engine pin | SHA-256 per revision; two languages | E6 |
-| Realm save, VPK3 packs | CRC-32, SHA-256 | wave 2 |
+| Realm save, VPK3 packs | CRC-32, SHA-256 | E10 (the save); wave 2 (packs) |
 | Appearance record | Stored on players' devices | E9 |
 
 ## What to delete

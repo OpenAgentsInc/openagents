@@ -1,0 +1,190 @@
+// Holds the realm save profile (proto/verse/realm-save-aesv-v1.json, #13250 step E10) to the one
+// codec every realm page loads, save.coax:
+//   - each "containers" entry: save_pack writes exactly its bytes from its world, schema and
+//     payload, and save_open gives the payload back; its CRC-32 is save_crc32's;
+//   - each "read_only" container (version 1) opens, and nothing writes it;
+//   - each "malformed" container is refused by save_open for its world and schema;
+//   - each "records" entry: save_read gives its two saves and their times, save_pick loads the
+//     one "pick" names, and where it has a "from", save_record builds its text from that record
+//     and the new save;
+//   - the bare-hex record from before containers reads as schema 0, and malformed records hold no save;
+//   - each "post" body is save_post_rev's.
+// The API's validator (coax/web/api/player.c container_ok) is held to the same file by
+// coax/web/api/test_player.py, which posts every container: "server" says what it does with each.
+// Usage: coax/web/tool.sh apps/openagents-web/save-profile.coax proto/verse/realm-save-aesv-v1.json
+#import "Basic";
+#load "save.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+SVP_FILE :: 65536;
+SVP_NODES :: 4096;
+SVP_BUF :: 2048;
+SVP_NONE :: -999999999;
+
+svp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+svp_fail :: (what: string, text: string) -> bool #effects(all) { print("save-profile: %: %\n", what, text); return false; }
+// The bytes a lower-case hex string names; -1 when it is not hex.
+svp_unhex :: (hex: string, out: [] u8) -> int {
+  if hex.count % 2 != 0 || hex.count / 2 > out.count { return -1; }
+  for i: 0..<hex.count / 2 {
+    a := save_hex(hex[2 * i]); b := save_hex(hex[2 * i + 1]);
+    if a < 0 || b < 0 { return -1; }
+    out[i] = cast(u8) (a * 16 + b);
+  }
+  return hex.count / 2;
+}
+svp_hex_field :: (d: Jv, row: int, key: string, out: [] u8) -> int {
+  hb: [SVP_BUF] u8;
+  at := jv_get(d, row, key);
+  if jv_kind(d, at) == 0 { return -1; }
+  return svp_unhex(svp_str(d, at, hb[..]), out);
+}
+svp_same :: (a: [] u8, an: int, b: [] u8, bn: int) -> bool {
+  if an != bn { return false; }
+  for i: 0..<an { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+// A container entry: packed to its bytes (when written is true) and opened to its payload.
+svp_container :: (d: Jv, row: int, written: bool) -> bool #effects(all) {
+  wb: [64] u8; want: [SVP_BUF] u8; payload: [SVP_BUF] u8; out: [SVP_BUF] u8;
+  world := svp_str(d, jv_get(d, row, "world"), wb[..]);
+  schema := jv_int(d, jv_get(d, row, "schema"), SVP_NONE);
+  n := svp_hex_field(d, row, "hex", want[..]); pn := svp_hex_field(d, row, "payload_hex", payload[..]);
+  if schema == SVP_NONE || n < 0 || pn < 0 { return svp_fail("a container entry is not whole", world); }
+  if written {
+    if jv_int(d, jv_get(d, row, "bytes"), -1) != n { return svp_fail("a container's byte count", world); }
+    got := save_pack(world, schema, payload[..], pn, out[..]);
+    if !svp_same(out[..], got, want[..], n) { return svp_fail("save_pack writes other bytes", world); }
+    if save_pack(world, schema, payload[..], pn, out[0..<n - 1]) != -1 { return svp_fail("save_pack wrote into too small a buffer", world); }
+  }
+  crc := save_crc32(want[..], n - 4);
+  for k: 0..<4 { if want[n - 4 + k] != cast(u8) ((crc >> cast(u32) (8 * k)) & 255) { return svp_fail("the container's CRC-32 is not save_crc32's", world); } }
+  o := save_open(want[..], n, world, schema);
+  if !o.ok || o.schema != schema || o.count != pn || !svp_same(want[o.at..<o.at + o.count], o.count, payload[..], pn) { return svp_fail("save_open reads another payload", world); }
+  if schema > 0 && save_open(want[..], n, world, schema - 1).ok { return svp_fail("save_open took a schema newer than it was told", world); }
+  return true;
+}
+svp_record :: (d: Jv, row: int, world: string, schema: int) -> bool #effects(all) {
+  tb: [SVP_BUF] u8; fb: [SVP_BUF] u8;
+  cur: [SVP_BUF] u8; prev: [SVP_BUF] u8; slots: [SVP_BUF] u8;
+  text := svp_str(d, jv_get(d, row, "text"), tb[..]);
+  cn := svp_hex_field(d, row, "current_hex", cur[..]); pn := svp_hex_field(d, row, "previous_hex", prev[..]);
+  if text.count == 0 || cn <= 0 || pn < 0 { return svp_fail("a record entry is not whole", text); }
+  s := save_read(text, slots[..]);
+  if s.legacy || !svp_same(slots[s.cur..<s.cur + s.cur_n], s.cur_n, cur[..], cn) || s.cur_at != cast(f64) jv_int(d, jv_get(d, row, "current_at"), -1) { return svp_fail("save_read reads another current save", text); }
+  if !svp_same(slots[s.prev..<s.prev + s.prev_n], s.prev_n, prev[..], pn) { return svp_fail("save_read reads another previous save", text); }
+  if pn > 0 && s.prev_at != cast(f64) jv_int(d, jv_get(d, row, "previous_at"), -1) { return svp_fail("save_read reads another previous time", text); }
+  if save_pick(slots[..], s, world, schema, 1).which != jv_int(d, jv_get(d, row, "pick"), -1) { return svp_fail("save_pick loads another save", text); }
+  if jv_kind(d, jv_get(d, row, "from")) == 0 { return true; }
+  // built from the record before it and the new save
+  from := svp_str(d, jv_get(d, row, "from"), fb[..]);
+  old: [SVP_BUF] u8; save: [SVP_BUF] u8; out: [SVP_BUF] u8;
+  os := save_read(from, old[..]);
+  sn := svp_hex_field(d, row, "save_hex", save[..]);
+  if sn <= 0 { return svp_fail("a record's new save", text); }
+  n := save_record(save[..], sn, cast(f64) jv_int(d, jv_get(d, row, "save_at"), -1), old[..], os, world, schema, out[..]);
+  if n <= 0 || cast(string) out[0..<n] != text { return svp_fail("save_record writes another record", text); }
+  return true;
+}
+
+svp_check :: (raw: string) -> bool #effects(all) {
+  nodes: [SVP_NODES] JvNode; doc: [1] Jv;
+  if !jv_parse(doc[..], raw, nodes[..]) { return svp_fail("not JSON", ""); }
+  d := doc[0];
+  tb: [SVP_BUF] u8; wb: [64] u8;
+  if svp_str(d, jv_get(d, 0, "identity"), tb[..]) != "realm-save-aesv-v1" || svp_str(d, jv_get(d, 0, "codec"), tb[..]) != "apps/openagents-web/save.coax" { return svp_fail("identity or codec", ""); }
+  if jv_int(d, jv_get(d, 0, "version"), -1) != SAVE_VERSION || jv_int(d, jv_get(d, 0, "layer"), -1) != SAVE_PROGRESS || jv_int(d, jv_get(d, 0, "min_bytes"), -1) != 18 { return svp_fail("version, layer or min_bytes", ""); }
+  if svp_str(d, jv_get(d, 0, "record_head"), tb[..]) != SAVE_HEAD { return svp_fail("record_head", ""); }
+  if jv_len(d, jv_get(d, 0, "container")) != 8 { return svp_fail("container", ""); }
+  // the CRC-32's check value
+  cc := jv_get(d, 0, "crc32_check");
+  ascii := svp_str(d, jv_get(d, cc, "ascii"), tb[..]);
+  ab: [64] u8; for i: 0..<ascii.count { ab[i] = ascii[i]; }
+  cv: [8] u8;
+  if ascii.count == 0 || svp_hex_field(d, cc, "value", cv[..]) != 4 { return svp_fail("crc32_check", ""); }
+  crc := save_crc32(ab[..], ascii.count);
+  for k: 0..<4 { if cv[k] != cast(u8) ((crc >> cast(u32) (8 * (3 - k))) & 255) { return svp_fail("save_crc32 gives another check value", ascii); } }
+
+  rows := jv_get(d, 0, "containers");
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) < 4 { return svp_fail("containers", ""); }
+  for i: 0..<jv_len(d, rows) { if !svp_container(d, jv_at(d, rows, i), true) { return false; } }
+  rows = jv_get(d, 0, "read_only");
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) < 1 { return svp_fail("read_only", ""); }
+  for i: 0..<jv_len(d, rows) {
+    r := jv_at(d, rows, i);
+    hb: [SVP_BUF] u8;
+    if svp_hex_field(d, r, "hex", hb[..]) < 18 || hb[4] == SAVE_VERSION { return svp_fail("a read-only container of the written version", ""); }
+    if !svp_container(d, r, false) { return false; }
+  }
+  rows = jv_get(d, 0, "malformed");
+  refused := 0; kept := 0;
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) < 10 { return svp_fail("malformed", ""); }
+  for i: 0..<jv_len(d, rows) {
+    r := jv_at(d, rows, i);
+    hb: [SVP_BUF] u8; why: [128] u8;
+    world := svp_str(d, jv_get(d, r, "world"), wb[..]);
+    n := svp_hex_field(d, r, "hex", hb[..]);
+    schema := jv_int(d, jv_get(d, r, "max_schema"), SVP_NONE);
+    server := svp_str(d, jv_get(d, r, "server"), tb[..]);
+    if n < 0 || schema == SVP_NONE || (server != "refuses" && server != "keeps") { return svp_fail("a malformed entry is not whole", svp_str(d, jv_get(d, r, "why"), why[..])); }
+    if save_open(hb[..], n, world, schema).ok { return svp_fail("save_open took a malformed container", svp_str(d, jv_get(d, r, "why"), why[..])); }
+    if server == "refuses" { refused += 1; } else { kept += 1; }
+  }
+  if refused == 0 || kept == 0 { return svp_fail("malformed containers the server refuses and ones only the page refuses", ""); }
+
+  rows = jv_get(d, 0, "records");
+  first := jv_at(d, jv_get(d, 0, "containers"), 0);
+  world := svp_str(d, jv_get(d, first, "world"), wb[..]);
+  schema := jv_int(d, jv_get(d, first, "schema"), SVP_NONE);
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) < 3 { return svp_fail("records", ""); }
+  for i: 0..<jv_len(d, rows) { if !svp_record(d, jv_at(d, rows, i), world, schema) { return false; } }
+  rows = jv_get(d, 0, "legacy_records");
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) < 1 { return svp_fail("legacy_records", ""); }
+  for i: 0..<jv_len(d, rows) {
+    r := jv_at(d, rows, i);
+    want: [SVP_BUF] u8; slots: [SVP_BUF] u8;
+    text := svp_str(d, jv_get(d, r, "text"), tb[..]);
+    n := svp_hex_field(d, r, "hex", want[..]);
+    s := save_read(text, slots[..]);
+    k := save_pick(slots[..], s, world, schema, 1);
+    if n <= 0 || !s.legacy || !svp_same(slots[s.cur..<s.cur + s.cur_n], s.cur_n, want[..], n) || k.which != 1 || k.schema != 0 || k.count != n { return svp_fail("the record from before containers", text); }
+  }
+  rows = jv_get(d, 0, "malformed_records");
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) < 5 { return svp_fail("malformed_records", ""); }
+  for i: 0..<jv_len(d, rows) {
+    slots: [SVP_BUF] u8;
+    text := svp_str(d, jv_at(d, rows, i), tb[..]);
+    s := save_read(text, slots[..]);
+    if s.cur_n != 0 || s.prev_n != 0 || save_pick(slots[..], s, world, schema, 1).which != 0 { return svp_fail("save_read took a malformed record", text); }
+  }
+  rows = jv_get(d, 0, "post");
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) < 2 { return svp_fail("post", ""); }
+  for i: 0..<jv_len(d, rows) {
+    r := jv_at(d, rows, i);
+    c: [SVP_BUF] u8; out: [SVP_BUF] u8;
+    body := svp_str(d, jv_get(d, r, "body"), tb[..]);
+    n := svp_hex_field(d, r, "hex", c[..]);
+    at := jv_int(d, jv_get(d, r, "at"), -1); rev := jv_int(d, jv_get(d, r, "rev"), SVP_NONE);
+    if n <= 0 || at < 0 || rev == SVP_NONE { return svp_fail("a post entry is not whole", body); }
+    m := save_post_rev(c[..], n, cast(f64) at, rev, out[..]);
+    if m <= 0 || cast(string) out[0..<m] != body { return svp_fail("save_post_rev writes another body", body); }
+    if rev < 0 { m = save_post_body(c[..], n, cast(f64) at, out[..]); if m <= 0 || cast(string) out[0..<m] != body { return svp_fail("save_post_body writes another body", body); } }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: save-profile FILE.json"); return 2; }
+  raw: [SVP_FILE] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("save-profile: cannot read JSON"); return 2; }
+  if !svp_check(cast(string) raw[0..<n]) { print("realm-save-aesv-v1: profile fails\n"); return 1; }
+  print("realm-save-aesv-v1: profile holds\n");
+  return 0;
+}
