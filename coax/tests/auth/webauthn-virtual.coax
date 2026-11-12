@@ -2,11 +2,11 @@
 // authenticator (CTAP2, internal, resident keys, user verification) makes
 // passkeys and assertions on https://webauthn.test, a page this tool serves
 // through Fetch.fulfillRequest, and coax/lib/crypto/webauthn.coax checks
-// what the browser returns. For ES256 and RS256 it registers a passkey
-// (attestation "none", UV required), checks two assertions (each sign count
-// above the last), and refuses an assertion under another challenge,
-// another origin, a stale count and a changed signature. EdDSA registers
-// and its assertion answers WA_ALGORITHM (no Ed25519 verifier yet).
+// what the browser returns. For ES256, RS256 and EdDSA (Ed25519) it
+// registers a passkey (attestation "none", UV required), checks two
+// assertions (each sign count above the last), and refuses an assertion
+// under another challenge, another origin, a stale count and a changed
+// signature.
 //
 //   coax/web/tool.sh coax/tests/auth/webauthn-virtual.coax
 #import "Basic";
@@ -89,9 +89,7 @@ wv_round :: (c: [] Cdp, alg: int, name: string) -> bool {
     if nd <= 0 || nc <= 0 || ns <= 0 { return wv_fail("get returned nothing"); }
     got := webauthn_assert(ad[0..<nd], cd[0..<nc], sig[0..<ns], public_key, challenge[..], WV_ORIGIN, WV_RP, true, stored, be);
     print("%: assertion % error % flags % count % (stored %)\n", name, round + 1, got.error, got.flags, got.count, stored);
-    want := ifx alg == COSE_EDDSA then WA_ALGORITHM else WA_OK;
-    if got.error != want { return wv_fail("assertion"); }
-    if alg == COSE_EDDSA { return true; }
+    if got.error != WA_OK { return wv_fail("assertion"); }
     // The same answer under another challenge, origin or a later stored count refuses.
     other: [32] u8; for i: 0..<32 { other[i] = challenge[i] ^ 1; }
     if webauthn_assert(ad[0..<nd], cd[0..<nc], sig[0..<ns], public_key, other[..], WV_ORIGIN, WV_RP, true, stored, be).error != WA_CHALLENGE { return wv_fail("another challenge"); }

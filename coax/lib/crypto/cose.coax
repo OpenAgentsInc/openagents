@@ -8,13 +8,14 @@
 //
 // The P-256 point must be on the curve (p2_decode); the RSA modulus must be
 // what rsa_verify_sha256 admits (2048 to 4096 bits, odd) with the exponent
-// 65537 in its shortest bytes. An Ed25519 x is taken as 32 bytes; its point
-// is checked by the Ed25519 verifier, which is not written yet, so a WebAuthn
-// assertion with -8 refuses (webauthn.coax). A private part (-4, d) or any
+// 65537 in its shortest bytes. The Ed25519 x must be a key ed25519_verify
+// could accept: a canonical encoding of a point on the curve, not of small
+// order (ed25519_public_key_ok). A private part (-4, d) or any
 // other label refuses: the map must hold exactly the labels above.
 // Inputs are public, so this branches freely.
 #load "cbor.coax";
 #load "p256.coax";
+#load "ed25519.coax";
 #load "rsa_verify.coax";
 #authority;
 
@@ -62,7 +63,7 @@ COSE_ED :: "582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832
   #assert !cose_parses([8] string.["a5010203", "6161", "2001", "21", COSE_X, "22", COSE_Y, ""]);   // alg as text
   #assert !cose_parses([8] string.["8101", "", "", "", "", "", "", ""]) && !cose_parses([8] string.["", "", "", "", "", "", "", ""]) && !cose_parses([8] string.["a0", "", "", "", "", "", "", ""]) && !cose_parses([8] string.["a10102", "", "", "", "", "", "", ""]);
 }
-#test "OKP Ed25519 (EdDSA): the key reads; wrong fields refuse" {
+#test "OKP Ed25519 (EdDSA): the key reads; wrong fields refuse" #steps 4000000000 #traversal 4294967296 {
   b: [200] u8;
   key := cose_key(cose_build([8] string.["a4010103272006", "21", COSE_ED, "", "", "", "", ""], b[..]));
   #assert key.ok && key.alg == COSE_EDDSA && key.ed25519[0] == 0x44 && key.ed25519[31] == 0x32 && key.point[0] == 0 && key.modulus_count == 0;
@@ -77,6 +78,12 @@ COSE_ED :: "582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832
   #assert !cose_parses([8] string.["a4010103272006", "21", "7820", "6161616161616161616161616161616161616161616161616161616161616161", "", "", "", ""]);
   #assert !cose_parses([8] string.["a4010103272006", "22", COSE_ED, "", "", "", "", ""]);       // x under the wrong label
   #assert !cose_parses([8] string.["a3010103272006", "", "", "", "", "", "", ""]);
+  // x must be a usable Ed25519 key: y = p + 3 (not canonical), y = 2 (not
+  // on the curve) and the identity (small order) refuse; B reads.
+  #assert !cose_parses([8] string.["a4010103272006", "21", "5820f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", "", "", "", "", ""]);
+  #assert !cose_parses([8] string.["a4010103272006", "21", "58200200000000000000000000000000000000000000000000000000000000000000", "", "", "", "", ""]);
+  #assert !cose_parses([8] string.["a4010103272006", "21", "58200100000000000000000000000000000000000000000000000000000000000000", "", "", "", "", ""]);
+  #assert cose_parses([8] string.["a4010103272006", "21", "58205866666666666666666666666666666666666666666666666666666666666666", "", "", "", "", ""]);
 }
 #test "RSA (RS256): moduli rsa_verify admits, e 65537 only" {
   head: [16] u8; tail: [8] u8; b: [600] u8;
@@ -136,6 +143,7 @@ cose_key :: (data: [] u8) -> CoseKey #effects(all) {
     x := cbor_map_int(data, map, -2);
     if !cose_bytes32(x) { return out; }
     for i: 0..<32 { out.ed25519[i] = data[x.data + i]; }
+    if !ed25519_public_key_ok(out.ed25519[..]) { return CoseKey.{}; }
   } else if kty.value == COSE_RSA && alg.value == COSE_RS256 && map.arg == 4 {
     n := cbor_map_int(data, map, -1); e := cbor_map_int(data, map, -2);
     if n.major != CBOR_BYTES || e.major != CBOR_BYTES || e.arg != 3 { return out; }

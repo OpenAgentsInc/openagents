@@ -1,0 +1,390 @@
+// Ed25519 signature verification (RFC 8032 section 5.1.7, pure Ed25519: no
+// prehash, no context) for passkeys that sign with EdDSA (COSE alg -8,
+// webauthn.coax) and anything else that checks an Ed25519 signature.
+//
+// The arithmetic is p256.coax's: eight little-endian u32 limbs, Montgomery
+// multiplication with one masked final subtraction and Fermat inversion,
+// which hold for any odd modulus below 2^256. Here the moduli are the field
+// prime p = 2^255 - 19 (ED_P, coordinates in Montgomery form) and the group
+// order L = 2^252 + 27742317777372353535851937790883648493 (ED_L, scalars
+// canonical). Points are extended twisted Edwards coordinates (X : Y : Z :
+// T), x = X/Z, y = Y/Z, xy = T/Z, on -x^2 + y^2 = 1 + d x^2 y^2. The
+// addition is Hisil, Wong, Carter and Dawson's for a = -1 ("Twisted Edwards
+// curves revisited", 2008, section 3.1): complete on Ed25519 because d is
+// not a square, so doubling and the identity take the same steps.
+//
+// The policy is libsodium's crypto_sign_verify_detached (1.0.20, without
+// ED25519_COMPAT), decision for decision:
+//   - S must be canonical: S < L. 64-byte signatures only.
+//   - A must be a canonical encoding (y < p; x = 0 never with the sign bit)
+//     of a point on the curve, and not of small order (8 A = O).
+//   - The equation is cofactorless: the encoding of [S]B - [k]A must equal
+//     R's 32 bytes, k = SHA-512(R || A || M) mod L. A non-canonical R
+//     therefore never verifies, and neither does a small-order R ([S]B -
+//     [k]A of order 1, 2, 4 or 8), which libsodium refuses by its encoding.
+//   - A with a torsion part (mixed order) is accepted when the cofactorless
+//     equation holds, as libsodium does. Of the twelve "Taming the many
+//     EdDSAs" cases (Chalkias, Garillot and Nikolaenko, SSR 2020) only case
+//     3 verifies; Wycheproof's "acceptable" small-order keys refuse and its
+//     mixed-order keys verify exactly when the cofactorless equation holds.
+//
+// Everything here is public (keys, messages, signatures, verdicts), so it
+// branches on public bytes only. Scalar multiplication still steps through
+// every bit with masked selection and no secret is ever read.
+#load "p256.coax";
+#load "sha512.coax";
+#load "cbor.coax";       // cb_unhex, for the checks
+#authority;
+
+EdPoint :: struct { x: P2Num; y: P2Num; z: P2Num; t: P2Num; }
+EdDecode :: struct { point: EdPoint; ok: bool; }
+
+// p = 2^255 - 19; n0 = -p^-1 mod 2^32, r2 = 2^512 mod p, e = p - 2.
+ED_P :: P2Mod.{m=P2Num.{limbs=[8]u32.[0xffffffed,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0x7fffffff]},n0=678152731,
+  r2=P2Num.{limbs=[8]u32.[0x000005a4,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000]},
+  e=P2Num.{limbs=[8]u32.[0xffffffeb,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0x7fffffff]}};
+// L = 2^252 + 27742317777372353535851937790883648493, the order of B.
+ED_L :: P2Mod.{m=P2Num.{limbs=[8]u32.[0x5cf5d3ed,0x5812631a,0xa2f79cd6,0x14def9de,0x00000000,0x00000000,0x00000000,0x10000000]},n0=307527195,
+  r2=P2Num.{limbs=[8]u32.[0x449c0f01,0xa40611e3,0x68859347,0xd00e1ba7,0x17f5be65,0xceec73d2,0x7c309a3d,0x0399411b]},
+  e=P2Num.{limbs=[8]u32.[0x5cf5d3eb,0x5812631a,0xa2f79cd6,0x14def9de,0x00000000,0x00000000,0x00000000,0x10000000]}};
+// In Montgomery form (x 2^256 mod p), which the checks derive again: 1,
+// d = -121665/121666, 2d, sqrt(-1) = 2^((p-1)/4), and the base point B
+// (y = 4/5, x even) with its T = xy.
+ED_ONE_M :: P2Num.{limbs=[8]u32.[0x00000026,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000]};
+ED_D_M :: P2Num.{limbs=[8]u32.[0xdf47e9fa,0x80ed8bfe,0xafc62973,0x10a18777,0xbc188690,0xe5939207,0x729fc526,0x2c822b5a]};
+ED_D2_M :: P2Num.{limbs=[8]u32.[0xbe8fd3f4,0x01db17fd,0x5f8c52e7,0x21430eef,0x78310d20,0xcb27240f,0xe53f8a4d,0x590456b4]};
+ED_SQRTM1_M :: P2Num.{limbs=[8]u32.[0xfe2bdb04,0x3b5807d4,0xb51be9ed,0x03f590fd,0x336202d1,0x6d6e16bf,0xd6c71ba8,0x75776b0b]};
+ED_BX_M :: P2Num.{limbs=[8]u32.[0x3f9da287,0xe2cabc55,0x2396e489,0x9ca59856,0xade4b5b7,0x9879936b,0x7e6077d0,0x759e2370]};
+ED_BY_M :: P2Num.{limbs=[8]u32.[0x3333334a,0x33333333,0x33333333,0x33333333,0x33333333,0x33333333,0x33333333,0x33333333]};
+ED_BT_M :: P2Num.{limbs=[8]u32.[0x994ae86c,0x4f0896aa,0xb612506e,0xe3b7ad11,0xf183c492,0x46c7a922,0xfeb3930d,0x5e181c59]};
+// (p - 5) / 8: x = u v^3 (u v^7)^((p-5)/8) is a square root of u/v when
+// one exists, up to a factor sqrt(-1) (RFC 8032 section 5.1.3).
+ED_ROOT_E :: P2Num.{limbs=[8]u32.[0xfffffffd,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0x0fffffff]};
+
+// ---- checks
+// Little-endian hex (as RFC 8032 writes encodings) into a number.
+ed_hex :: (text: string) -> P2Num #effects(all) { b: [32] u8; return ed_load(cb_unhex(text, b[..])); }
+ed_same :: (a: P2Num, b: P2Num) -> bool #effects(all) { return p2_equal(a, b) == 1; }
+// The encoding of a point is the given hex.
+ed_is :: (point: EdPoint, text: string) -> bool #effects(all) {
+  out: [32] u8; want: [32] u8;
+  ed_encode(point, out[..]);
+  return cb_ct_equal(out[..], cb_unhex(text, want[..])) == CB_MAX64;
+}
+ed_decodes :: (text: string) -> bool #effects(all) { b: [32] u8; return ed_decode(cb_unhex(text, b[..])).ok; }
+ed_point :: (text: string) -> EdPoint #effects(all) { b: [32] u8; r := ed_decode(cb_unhex(text, b[..])); #assert r.ok; return r.point; }
+// One signature check from hex.
+ed_verifies :: (sig: string, msg: string, key: string) -> bool #effects(all) {
+  s: [64] u8; m: [64] u8; k: [32] u8;
+  return ed25519_verify(cb_unhex(sig, s[..]), cb_unhex(msg, m[..]), cb_unhex(key, k[..]));
+}
+ED_B_HEX :: "5866666666666666666666666666666666666666666666666666666666666666";
+// The eight points of order dividing 8, by their canonical encodings:
+// the identity, (0, -1) of order 2, (+-sqrt(-1), 0) of order 4 and four of
+// order 8 (libsodium's ge25519_has_small_order list, sign bits added).
+ED_TORSION :: [8] string.[
+  "0100000000000000000000000000000000000000000000000000000000000000",
+  "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+  "0000000000000000000000000000000000000000000000000000000000000000",
+  "0000000000000000000000000000000000000000000000000000000000000080",
+  "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+  "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
+  "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+  "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"];
+#test "the constants agree with each other" #steps 4000000000 #traversal 4294967296 {
+  for which: 0..<2 {
+    mod := ifx which == 0 then ED_P else ED_L;
+    #assert ((cast(u64) mod.m.limbs[0] * mod.n0) & P2_WORD) == P2_WORD;          // m n0 = -1 mod 2^32
+    #assert ed_same(p2_add(mod.e, p2_small(2), mod), P2Num.{});                 // e + 2 = m = 0
+    x := ed_hex("1032547698badcfeefcdab89674523011032547698badcfeefcdab8967452301");
+    #assert ed_same(p2_from(p2_to(x, mod), mod), x) && ed_same(p2_from(p2_to(p2_small(1), mod), mod), p2_small(1));
+  }
+  #assert ed_same(ED_P.m, ed_hex("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"));
+  #assert ed_same(ED_L.m, ed_hex("edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010"));
+  #assert ed_same(ED_ONE_M, p2_to(p2_small(1), ED_P));
+  // d 121666 = -121665, 2d = d + d, sqrt(-1)^2 = -1.
+  #assert ed_same(ed_fmul(ED_D_M, p2_to(p2_small(121666), ED_P)), p2_neg(p2_to(p2_small(121665), ED_P), ED_P));
+  #assert ed_same(ED_D2_M, ed_fadd(ED_D_M, ED_D_M));
+  #assert ed_same(ed_fmul(ED_SQRTM1_M, ED_SQRTM1_M), p2_neg(ED_ONE_M, ED_P));
+  // B: 5 y = 4, x even, T = x y, on the curve; it is what the encoding decodes to.
+  #assert ed_same(ed_fmul(ED_BY_M, p2_to(p2_small(5), ED_P)), p2_to(p2_small(4), ED_P));
+  #assert ed_same(ED_BT_M, ed_fmul(ED_BX_M, ED_BY_M)) && (p2_from(ED_BX_M, ED_P).limbs[0] & 1) == 0;
+  b := ed_point(ED_B_HEX);
+  #assert ed_same(b.x, ED_BX_M) && ed_same(b.y, ED_BY_M) && ed_same(b.z, ED_ONE_M) && ed_same(b.t, ED_BT_M);
+  // 8 (p - 5)/8 + 5 = p.
+  e8: P2Num; carry: u32;
+  for i: 0..<8 { e8.limbs[i] = (ED_ROOT_E.limbs[i] << 3) | carry; carry = ED_ROOT_E.limbs[i] >> 29; }
+  #assert carry == 0 && ed_same(p2_add_raw(e8, p2_small(5)), ED_P.m);
+}
+#test "Montgomery multiplication takes any 256-bit left factor" #steps 4000000000 #traversal 4294967296 {
+  // The hash reduction feeds raw 256-bit halves to p2_mont: a b < 2^256 m
+  // keeps the result below 2m, so one masked subtraction still finishes it.
+  top := ed_hex("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+  #assert ed_same(p2_from(p2_to(top, ED_L), ED_L), ed_hex("1c95988d7431ecd670cf7d73f45befc6feffffffffffffffffffffffffffff0f"));
+  #assert ed_same(p2_from(p2_to(top, ED_P), ED_P), p2_small(37));
+}
+#test "hashes reduce modulo L" #steps 4000000000 #traversal 4294967296 {
+  h: [64] u8;
+  for i: 0..<64 { h[i] = 0xff; }
+  #assert ed_same(ed_reduce64(h[..]), ed_hex("000f9c44e31106a447938568a71b0ed065bef517d273ecce3d9a307c1b419903"));
+  for i: 0..<64 { h[i] = 0; }
+  #assert ed_same(ed_reduce64(h[..]), P2Num.{});
+  h[0] = 5; h[32] = 1;                                         // 2^256 + 5
+  #assert ed_same(ed_reduce64(h[..]), ed_hex("2295988d7431ecd670cf7d73f45befc6feffffffffffffffffffffffffffff0f"));
+  for i: 0..<64 { h[i] = 0; }
+  m := ED_L.m; for i: 0..<8 { #assert cb_store_le32(h[..], 4 * i, m.limbs[i]); }
+  #assert ed_same(ed_reduce64(h[..]), P2Num.{});               // L itself
+  h[0] -= 1; #assert ed_same(ed_reduce64(h[..]), p2_sub(P2Num.{}, p2_small(1), ED_L));
+}
+#test "encodings: the base point, round trips and the sign of x" #steps 4000000000 #traversal 4294967296 {
+  b := ed_base();
+  #assert ed_is(b, ED_B_HEX) && ed_is(ed_identity(), ED_TORSION[0]);
+  #assert ed_is(ed_negate(b), "58666666666666666666666666666666666666666666666666666666666666e6");
+  two := ed_add(b, b);
+  #assert ed_is(two, "c9a3f86aae465f0e56513864510f3997561fa2c9e85ea21dc2292309f3cd6022");
+  #assert ed_is(ed_add(two, b), "d4b4f5784868c3020403246717ec169ff79e26608ea126a1ab69ee77d1b16712");
+  #assert ed_is(ed_add(b, ed_identity()), ED_B_HEX) && ed_is(ed_add(ed_identity(), two), "c9a3f86aae465f0e56513864510f3997561fa2c9e85ea21dc2292309f3cd6022");
+  #assert ed_is(ed_add(b, ed_negate(b)), ED_TORSION[0]) && ed_is_identity(ed_add(b, ed_negate(b))) == 1;
+  // Decoding then encoding gives the same bytes, for both signs of x.
+  for text: ED_TORSION { #assert ed_is(ed_point(text), text); }
+  #assert ed_is(ed_point("c9a3f86aae465f0e56513864510f3997561fa2c9e85ea21dc2292309f3cd60a2"), "c9a3f86aae465f0e56513864510f3997561fa2c9e85ea21dc2292309f3cd60a2");
+  // The same point with another Z encodes the same.
+  scaled := b; k := p2_to(p2_small(7), ED_P);
+  scaled.x = ed_fmul(b.x, k); scaled.y = ed_fmul(b.y, k); scaled.z = ed_fmul(b.z, k); scaled.t = ed_fmul(b.t, k);
+  #assert ed_is(scaled, ED_B_HEX) && ed_is(ed_add(scaled, b), "c9a3f86aae465f0e56513864510f3997561fa2c9e85ea21dc2292309f3cd6022");
+  #assert ed_is_identity(b) == 0 && ed_is_identity(scaled) == 0;
+  // (0, -1) has x = 0 but is not the identity; a wrong T or a point off the
+  // curve with a consistent T is not on the curve.
+  #assert ed_is_identity(ed_point(ED_TORSION[1])) == 0 && ed_on_curve(b) == 1;
+  wrong := b; wrong.t = ed_fadd(b.t, ED_ONE_M); #assert ed_on_curve(wrong) == 0;
+  off := EdPoint.{x=ED_ONE_M,y=ED_ONE_M,z=ED_ONE_M,t=ED_ONE_M}; #assert ed_on_curve(off) == 0;
+}
+#test "decoding refuses non-canonical encodings and non-points" #steps 4000000000 #traversal 4294967296 {
+  // y = p, p + 1 and p + 3 (y = 3 is on the curve), and y = 2^255 - 1.
+  #assert !ed_decodes("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");
+  #assert !ed_decodes("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");
+  #assert !ed_decodes("f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");
+  #assert ed_decodes("0300000000000000000000000000000000000000000000000000000000000000");
+  #assert !ed_decodes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");
+  #assert !ed_decodes("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+  // p - 1 is y = -1, which is on the curve; each limb below p.
+  #assert ed_decodes("ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");
+  #assert ed_decodes("eaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");     // p - 3
+  // y = 2 has no x; x = 0 (y = 1 or -1) never with the sign bit.
+  #assert !ed_decodes("0200000000000000000000000000000000000000000000000000000000000000");
+  #assert !ed_decodes("0100000000000000000000000000000000000000000000000000000000000080");
+  #assert !ed_decodes("ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+  // y = 3 to 6 are on the curve; each with both signs decodes and encodes back.
+  for y: 3..<7 {
+    b: [32] u8; b[0] = cast(u8) y;
+    for sign: 0..<2 {
+      b[31] = cast(u8) (sign * 128);
+      r := ed_decode(b[..]); out: [32] u8;
+      #assert r.ok && ed_on_curve(r.point) == 1;
+      ed_encode(r.point, out[..]);
+      #assert cb_ct_equal(out[..], b[..]) != 0;
+    }
+  }
+  short: [33] u8; #assert !ed_decode(short[0..<31]).ok && !ed_decode(short[..]).ok;
+}
+#test "small order: the eight torsion points and nothing else" #steps 40000000000 #traversal 4294967296 {
+  for text: ED_TORSION { #assert ed_small_order(ed_point(text)) == 1; }
+  b := ed_base();
+  #assert ed_small_order(b) == 0 && ed_small_order(ed_add(b, ed_point(ED_TORSION[4]))) == 0;
+  // L B = O: B's order is L, so none of 2B, 4B, 8B is the identity.
+  #assert ed_is_identity(ed_double_mul(ED_L.m, P2Num.{}, b)) == 1;
+  #assert ed_is_identity(ed_double_mul(P2Num.{}, ED_L.m, b)) == 1;
+  #assert ed_is(ed_double_mul(p2_small(2), p2_small(1), b), "d4b4f5784868c3020403246717ec169ff79e26608ea126a1ab69ee77d1b16712");
+  #assert ed_is(ed_double_mul(p2_sub(P2Num.{}, p2_small(1), ED_L), P2Num.{}, b), "58666666666666666666666666666666666666666666666666666666666666e6");
+  // The top bit the loop reads, 254, alone and with bit 0.
+  top: P2Num; top.limbs[7] = 0x40000000;
+  #assert ed_is(ed_double_mul(top, P2Num.{}, b), "693e47972caf527c7883ad1b39822f026f47db2ab0e1919955b8993aa04411d1");
+  top.limbs[0] = 1; #assert ed_is(ed_double_mul(P2Num.{}, top, b), "b6d8499443337994c104487dce3fda5bcfba5608bac79664c2556a358a21ed40");
+  // A mixed-order point (B plus an order-8 torsion point T) times L is
+  // (L mod 8) T = 5 T.
+  #assert ed_is(ed_double_mul(P2Num.{}, ED_L.m, ed_add(b, ed_point(ED_TORSION[4]))), ED_TORSION[7]);
+}
+// RFC 8032 section 7.1, TEST 1 (empty message), 2 and 3.
+ED_T1_KEY :: "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+ED_T1_SIG :: "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b";
+ED_T2_KEY :: "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c";
+ED_T2_SIG :: "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00";
+ED_T3_KEY :: "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025";
+ED_T3_SIG :: "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a";
+#test "RFC 8032 TEST 1, 2 and 3, and every byte of them changed" #steps 400000000000 #traversal 4294967296 {
+  #assert ed_verifies(ED_T1_SIG, "", ED_T1_KEY) && ed_verifies(ED_T2_SIG, "72", ED_T2_KEY) && ed_verifies(ED_T3_SIG, "af82", ED_T3_KEY);
+  #assert !ed_verifies(ED_T1_SIG, "", ED_T2_KEY) && !ed_verifies(ED_T2_SIG, "73", ED_T2_KEY) && !ed_verifies(ED_T3_SIG, "af", ED_T3_KEY);
+  sig: [64] u8; msg: [2] u8; key: [32] u8;
+  s := cb_unhex(ED_T3_SIG, sig[..]); m := cb_unhex("af82", msg[..]); k := cb_unhex(ED_T3_KEY, key[..]);
+  // A bit of R, of S (low and high) and of A.
+  s[0] ^= 0x01; #assert !ed25519_verify(s, m, k); s[0] ^= 0x01;
+  s[32] ^= 0x01; #assert !ed25519_verify(s, m, k); s[32] ^= 0x01;
+  s[62] ^= 0x01; #assert !ed25519_verify(s, m, k); s[62] ^= 0x01;
+  k[5] ^= 0x40; #assert !ed25519_verify(s, m, k); k[5] ^= 0x40;
+  m[1] ^= 0x80; #assert !ed25519_verify(s, m, k); m[1] ^= 0x80;
+  #assert ed25519_verify(s, m, k);
+  // Lengths: 63 and 65 signature bytes, 31 and 33 key bytes.
+  wide: [65] u8; for i: 0..<64 { wide[i] = s[i]; }
+  kw: [33] u8; for i: 0..<32 { kw[i] = k[i]; }
+  #assert !ed25519_verify(wide[0..<63], m, k) && !ed25519_verify(wide[..], m, k) && ed25519_verify(wide[0..<64], m, k);
+  #assert !ed25519_verify(s, m, kw[0..<31]) && !ed25519_verify(s, m, kw[..]) && ed25519_verify(s, m, kw[0..<32]);
+}
+#test "S must be below L" #steps 400000000000 #traversal 4294967296 {
+  // TEST 1 with S + L: the same point equation, refused for the encoding.
+  #assert !ed_verifies("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901554c8c7872aa064e049dbb3013fbf29380d25bf5f0595bbe24655141438e7a101b", "", ED_T1_KEY);
+  // S = L and S = L - 1 under the identity key: L refuses before anything else.
+  #assert !ed_verifies("0100000000000000000000000000000000000000000000000000000000000000edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010", "", ED_TORSION[0]);
+  #assert !ed_verifies("0100000000000000000000000000000000000000000000000000000000000000ecd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010", "", ED_T1_KEY);
+}
+// "Taming the many EdDSAs" (ed25519-speccheck cases.json): message, key,
+// signature, and libsodium's verdict (only case 3 verifies).
+EdSpec :: struct { msg: string; key: string; sig: string; valid: bool; }
+ED_SPEC :: [12] EdSpec.[
+  EdSpec.{msg="8c93255d71dcab10e8f379c26200f3c7bd5f09d9bc3068d3ef4edeb4853022b6",key="c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",sig="c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a0000000000000000000000000000000000000000000000000000000000000000",valid=false},
+  EdSpec.{msg="9bd9f44f4dcc75bd531b56b2cd280b0bb38fc1cd6d1230e14861d861de092e79",key="c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",sig="f7badec5b8abeaf699583992219b7b223f1df3fbbea919844e3f7c554a43dd43a5bb704786be79fc476f91d3f3f89b03984d8068dcf1bb7dfc6637b45450ac04",valid=false},
+  EdSpec.{msg="aebf3f2601a0c8c5d39cc7d8911642f740b78168218da8471772b35f9d35b9ab",key="f7badec5b8abeaf699583992219b7b223f1df3fbbea919844e3f7c554a43dd43",sig="c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa8c4bd45aecaca5b24fb97bc10ac27ac8751a7dfe1baff8b953ec9f5833ca260e",valid=false},
+  EdSpec.{msg="9bd9f44f4dcc75bd531b56b2cd280b0bb38fc1cd6d1230e14861d861de092e79",key="cdb267ce40c5cd45306fa5d2f29731459387dbf9eb933b7bd5aed9a765b88d4d",sig="9046a64750444938de19f227bb80485e92b83fdb4b6506c160484c016cc1852f87909e14428a7a1d62e9f22f3d3ad7802db02eb2e688b6c52fcd6648a98bd009",valid=true},
+  EdSpec.{msg="e47d62c63f830dc7a6851a0b1f33ae4bb2f507fb6cffec4011eaccd55b53f56c",key="cdb267ce40c5cd45306fa5d2f29731459387dbf9eb933b7bd5aed9a765b88d4d",sig="160a1cb0dc9c0258cd0a7d23e94d8fa878bcb1925f2c64246b2dee1796bed5125ec6bc982a269b723e0668e540911a9a6a58921d6925e434ab10aa7940551a09",valid=false},
+  EdSpec.{msg="e47d62c63f830dc7a6851a0b1f33ae4bb2f507fb6cffec4011eaccd55b53f56c",key="cdb267ce40c5cd45306fa5d2f29731459387dbf9eb933b7bd5aed9a765b88d4d",sig="21122a84e0b5fca4052f5b1235c80a537878b38f3142356b2c2384ebad4668b7e40bc836dac0f71076f9abe3a53f9c03c1ceeeddb658d0030494ace586687405",valid=false},
+  EdSpec.{msg="85e241a07d148b41e47d62c63f830dc7a6851a0b1f33ae4bb2f507fb6cffec40",key="442aad9f089ad9e14647b1ef9099a1ff4798d78589e66f28eca69c11f582a623",sig="e96f66be976d82e60150baecff9906684aebb1ef181f67a7189ac78ea23b6c0e547f7690a0e2ddcd04d87dbc3490dc19b3b3052f7ff0538cb68afb369ba3a514",valid=false},
+  EdSpec.{msg="85e241a07d148b41e47d62c63f830dc7a6851a0b1f33ae4bb2f507fb6cffec40",key="442aad9f089ad9e14647b1ef9099a1ff4798d78589e66f28eca69c11f582a623",sig="8ce5b96c8f26d0ab6c47958c9e68b937104cd36e13c33566acd2fe8d38aa19427e71f98a473474f2f13f06f97c20d58cc3f54b8bd0d272f42b695dd7e89a8c22",valid=false},
+  EdSpec.{msg="9bedc267423725d473888631ebf45988bad3db83851ee85c85e241a07d148b41",key="f7badec5b8abeaf699583992219b7b223f1df3fbbea919844e3f7c554a43dd43",sig="ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff03be9678ac102edcd92b0210bb34d7428d12ffc5df5f37e359941266a4e35f0f",valid=false},
+  EdSpec.{msg="9bedc267423725d473888631ebf45988bad3db83851ee85c85e241a07d148b41",key="f7badec5b8abeaf699583992219b7b223f1df3fbbea919844e3f7c554a43dd43",sig="ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffca8c5b64cd208982aa38d4936621a4775aa233aa0505711d8fdcfdaa943d4908",valid=false},
+  EdSpec.{msg="e96b7021eb39c1a163b6da4e3093dcd3f21387da4cc4572be588fafae23c155b",key="ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",sig="a9d55260f765261eb9b84e106f665e00b867287a761990d7135963ee0a7d59dca5bb704786be79fc476f91d3f3f89b03984d8068dcf1bb7dfc6637b45450ac04",valid=false},
+  EdSpec.{msg="39a591f5321bbe07fd5a23dc2f39d025d74526615746727ceefd6e82ae65c06f",key="ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",sig="a9d55260f765261eb9b84e106f665e00b867287a761990d7135963ee0a7d59dca5bb704786be79fc476f91d3f3f89b03984d8068dcf1bb7dfc6637b45450ac04",valid=false}];
+#test "Taming the many EdDSAs: libsodium's verdict on all twelve" #steps 400000000000 #traversal 4294967296 {
+  for c: ED_SPEC { #assert ed_verifies(c.sig, c.msg, c.key) == c.valid; }
+}
+#test "public keys: canonical, on the curve, not of small order" #steps 40000000000 #traversal 4294967296 {
+  #assert ed25519_public_key_ok_hex(ED_T1_KEY) && ed25519_public_key_ok_hex(ED_B_HEX);
+  for text: ED_TORSION { #assert !ed25519_public_key_ok_hex(text); }
+  #assert !ed25519_public_key_ok_hex("f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");   // y = p + 3
+  #assert !ed25519_public_key_ok_hex("0200000000000000000000000000000000000000000000000000000000000000");   // no x
+  #assert ed25519_public_key_ok_hex("cdb267ce40c5cd45306fa5d2f29731459387dbf9eb933b7bd5aed9a765b88d4d");   // mixed order
+  k: [33] u8; #assert !ed25519_public_key_ok(k[0..<31]) && !ed25519_public_key_ok(k[..]);
+}
+ed25519_public_key_ok_hex :: (text: string) -> bool #effects(all) { b: [32] u8; return ed25519_public_key_ok(cb_unhex(text, b[..])); }
+
+// ---- numbers and points
+// 32 little-endian bytes as a number (any 256 bits).
+ed_load :: (bytes: [] u8) -> P2Num #effects(all) {
+  #assert bytes.count == 32;
+  r: P2Num;
+  for i: 0..<8 { r.limbs[i] = cb_load_le32(bytes, 4 * i).value; }
+  return r;
+}
+ed_store :: (a: P2Num, out: [] u8) #effects(all) {
+  for i: 0..<8 { #assert cb_store_le32(out, 4 * i, a.limbs[i]); }
+}
+// 64 little-endian bytes (a SHA-512 digest) mod L: lo + hi 2^256, with
+// hi 2^256 = mont(hi, 2^512 mod L) and lo = from(to(lo)).
+ed_reduce64 :: (h: [] u8) -> P2Num #effects(all) {
+  lo := p2_from(p2_to(ed_load(h[0..<32]), ED_L), ED_L);
+  return p2_add(lo, p2_mont(ed_load(h[32..<64]), ED_L.r2, ED_L), ED_L);
+}
+ed_fmul :: (a: P2Num, b: P2Num) -> P2Num #effects(all) { return p2_mont(a, b, ED_P); }
+ed_fadd :: (a: P2Num, b: P2Num) -> P2Num #effects(all) { return p2_add(a, b, ED_P); }
+ed_fsub :: (a: P2Num, b: P2Num) -> P2Num #effects(all) { return p2_sub(a, b, ED_P); }
+ed_identity :: () -> EdPoint #effects(all) { return EdPoint.{y=ED_ONE_M,z=ED_ONE_M}; }
+ed_base :: () -> EdPoint #effects(all) { return EdPoint.{x=ED_BX_M,y=ED_BY_M,z=ED_ONE_M,t=ED_BT_M}; }
+ed_negate :: (a: EdPoint) -> EdPoint #effects(all) { r := a; r.x = p2_neg(a.x, ED_P); r.t = p2_neg(a.t, ED_P); return r; }
+ed_select :: (bit: u64, a: EdPoint, b: EdPoint) -> EdPoint #effects(all) {
+  return EdPoint.{x=p2_select(bit, a.x, b.x),y=p2_select(bit, a.y, b.y),z=p2_select(bit, a.z, b.z),t=p2_select(bit, a.t, b.t)};
+}
+// x = 0 and y = z: the identity (the only point with x = 0 and y = 1).
+ed_is_identity :: (a: EdPoint) -> u64 #effects(all) { return p2_is_zero(a.x) & p2_equal(a.y, a.z); }
+// -X^2 Z^2 + Y^2 Z^2 = Z^4 + d X^2 Y^2, and X Y = T Z: for the checks.
+ed_on_curve :: (a: EdPoint) -> u64 #effects(all) {
+  x2 := ed_fmul(a.x, a.x); y2 := ed_fmul(a.y, a.y); z2 := ed_fmul(a.z, a.z);
+  left := ed_fmul(ed_fsub(y2, x2), z2);
+  right := ed_fadd(ed_fmul(z2, z2), ed_fmul(ED_D_M, ed_fmul(x2, y2)));
+  return p2_equal(left, right) & p2_equal(ed_fmul(a.x, a.y), ed_fmul(a.t, a.z));
+}
+// Hisil-Wong-Carter-Dawson addition for a = -1 with k = 2d, complete on
+// Ed25519: P + Q, P + P and the identity alike.
+ed_add :: (p: EdPoint, q: EdPoint) -> EdPoint #effects(all) {
+  a := ed_fmul(ed_fsub(p.y, p.x), ed_fsub(q.y, q.x));
+  b := ed_fmul(ed_fadd(p.y, p.x), ed_fadd(q.y, q.x));
+  c := ed_fmul(ed_fmul(p.t, ED_D2_M), q.t);
+  d := ed_fmul(p.z, ed_fadd(q.z, q.z));
+  e := ed_fsub(b, a); f := ed_fsub(d, c); g := ed_fadd(d, c); h := ed_fadd(b, a);
+  return EdPoint.{x=ed_fmul(e, f),y=ed_fmul(g, h),z=ed_fmul(f, g),t=ed_fmul(e, h)};
+}
+// 1 when 8 P is the identity: P is one of the eight torsion points.
+ed_small_order :: (a: EdPoint) -> u64 #effects(all) {
+  r := ed_add(a, a); r = ed_add(r, r); r = ed_add(r, r);
+  return ed_is_identity(r);
+}
+// [s]B + [k]P for s and k below 2^255 (scalars below L, and clamped
+// secret scalars): from bit 254 down, double, then add B and P each under
+// its bit's mask. Every step runs for every bit.
+ed_double_mul :: (s: P2Num, k: P2Num, p: EdPoint) -> EdPoint #effects(all) {
+  r := ed_identity(); b := ed_base(); zero := ed_identity();
+  for round: 0..<255 {
+    bit := 254 - round;
+    shift := cast(u32) (bit % 32);
+    r = ed_add(r, r);
+    r = ed_add(r, ed_select(cast(u64) ((s.limbs[bit / 32] >> shift) & 1), b, zero));
+    r = ed_add(r, ed_select(cast(u64) ((k.limbs[bit / 32] >> shift) & 1), p, zero));
+  }
+  return r;
+}
+// RFC 8032 section 5.1.3, strictly: y below p, a square root of
+// (y^2 - 1) / (d y^2 + 1), and x = 0 only with the sign bit clear.
+ed_decode :: (bytes: [] u8) -> EdDecode #effects(all) {
+  if bytes.count != 32 { return EdDecode.{}; }
+  raw := ed_load(bytes);
+  sign := raw.limbs[7] >> 31;
+  raw.limbs[7] &= 0x7fffffff;
+  if p2_less(raw, ED_P.m) != 1 { return EdDecode.{}; }
+  y := p2_to(raw, ED_P);
+  y2 := ed_fmul(y, y);
+  u := ed_fsub(y2, ED_ONE_M);
+  v := ed_fadd(ed_fmul(ED_D_M, y2), ED_ONE_M);
+  uv3 := ed_fmul(u, ed_fmul(ed_fmul(v, v), v));
+  x := ed_fmul(uv3, p2_pow(ed_fmul(uv3, ed_fmul(ed_fmul(v, v), ed_fmul(v, v))), ED_ROOT_E, ED_P));
+  vx2 := ed_fmul(v, ed_fmul(x, x));
+  if p2_equal(vx2, u) != 1 {
+    if p2_equal(vx2, p2_neg(u, ED_P)) != 1 { return EdDecode.{}; }
+    x = ed_fmul(x, ED_SQRTM1_M);
+  }
+  plain := p2_from(x, ED_P);
+  if p2_is_zero(plain) == 1 && sign == 1 { return EdDecode.{}; }
+  x = p2_select(cast(u64) ((plain.limbs[0] & 1) ^ sign), p2_neg(x, ED_P), x);
+  return EdDecode.{point=EdPoint.{x=x,y=y,z=ED_ONE_M,t=ed_fmul(x, y)},ok=true};
+}
+// The 32-byte encoding: y little-endian, x's low bit in the top bit.
+ed_encode :: (a: EdPoint, out: [] u8) #effects(all) {
+  zinv := p2_inverse(a.z, ED_P);
+  x := p2_from(ed_fmul(a.x, zinv), ED_P);
+  ed_store(p2_from(ed_fmul(a.y, zinv), ED_P), out);
+  out[31] += cast(u8) ((x.limbs[0] & 1) << 7);
+}
+
+// ---- verification
+// A key ed25519_verify could accept: 32 bytes, a canonical encoding of a
+// point on the curve, not of small order. For storing passkeys (cose.coax).
+ed25519_public_key_ok :: (key: [] u8) -> bool #effects(all) {
+  a := ed_decode(key);
+  return a.ok && ed_small_order(a.point) == 0;
+}
+// signature is R || S (64 bytes), key is A (32 bytes); message at most
+// SHA512_MAX - 64 bytes. True only when every rule above holds.
+ed25519_verify :: (signature: [] u8, message: [] u8, key: [] u8) -> bool #effects(all) {
+  if signature.count != 64 { return false; }
+  a := ed_decode(key);
+  if !a.ok || ed_small_order(a.point) == 1 { return false; }
+  s := ed_load(signature[32..<64]);
+  if p2_less(s, ED_L.m) != 1 { return false; }
+  prefix: [64] u8;
+  for i: 0..<32 { prefix[i] = signature[i]; prefix[32 + i] = key[i]; }
+  // SHA-512 refuses a message over SHA512_MAX - 64 bytes; so does this.
+  h: [64] u8;
+  hashed := sha512_two(prefix[..], message, h[..]);
+  // [S]B - [k]A, which must not be of small order and must encode to R.
+  q := ed_double_mul(s, ed_reduce64(h[..]), ed_negate(a.point));
+  if ed_small_order(q) == 1 { return false; }
+  got: [32] u8;
+  ed_encode(q, got[..]);
+  return hashed && cb_ct_equal(got[..], signature[0..<32]) == CB_MAX64;
+}

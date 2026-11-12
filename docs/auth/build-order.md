@@ -66,7 +66,7 @@ NIP-VAULT (tier `user`), base64, bech32, JSON, entropy and zeroize.
 | CBOR decoder | WebAuthn `attestationObject` and COSE keys | Bounded, deterministic subset only (maps, byte strings, small ints); refuse everything else. Vectors: RFC 8949 appendix A |
 | COSE key parsing | Passkey public keys (EC2 P-256, OKP Ed25519, RSA) | RFC 9052/9053 |
 | WebAuthn verification | `clientDataJSON` (type, challenge, origin), `authenticatorData` (RP ID hash, UP, UV, BE, BS flags, sign count), signature | Test with the WebAuthn spec's examples and a virtual authenticator |
-| Ed25519 verify | Passkeys that choose EdDSA (-8) | Lower priority: nearly every platform authenticator uses ES256 |
+| Ed25519 verify | Passkeys that choose EdDSA (-8) | Built (#13221): `coax/lib/crypto/ed25519.coax`, libsodium's strict rules (S < L, canonical A and R, no small-order A or R, cofactorless); RFC 8032, Wycheproof, "Taming the many EdDSAs" and a libsodium differential |
 | RS256 check | Windows Hello passkeys | `rsa_verify.coax` exists; confirm PKCS#1 v1.5 with SHA-256 against Wycheproof |
 | Base32 and CRC-32 | Token format with checksum | Small |
 

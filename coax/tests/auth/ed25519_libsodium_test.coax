@@ -1,0 +1,22 @@
+// coax/lib/crypto/ed25519.coax against libsodium 1.0.20: every case of
+// ed25519_libsodium_vectors.coax (libsodium's own signatures and adversarial
+// ones, each with libsodium's verdict) must get the same verdict here.
+// ed25519_libsodium.py makes the cases and runs this; alone:
+//
+//   coax/bin/coax test coax/tests/auth/ed25519_libsodium_test.coax
+#load "../../lib/crypto/ed25519.coax";
+#load "ed25519_libsodium_vectors.coax";
+
+#test "libsodium's crypto_sign_verify_detached and ed25519_verify agree on every case" #steps 4000000000000 #traversal 68719476736 {
+  verified := 0; refused := 0;
+  for c: ED_DIFF {
+    key: [32] u8; msg: [256] u8; sig: [64] u8;
+    #assert c.key.count == 64 && c.sig.count == 128 && c.msg.count <= 512;
+    got := ed25519_verify(cb_unhex(c.sig, sig[..]), cb_unhex(c.msg, msg[..]), cb_unhex(c.key, key[..]));
+    if got != c.valid { print("% (key %, sig %): libsodium % here %\n", c.kind, c.key, c.sig, c.valid, got); }
+    #assert got == c.valid;
+    if got { verified += 1; } else { refused += 1; }
+  }
+  // Both verdicts occur.
+  #assert verified > 0 && refused > 0;
+}

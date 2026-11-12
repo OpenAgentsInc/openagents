@@ -12,11 +12,12 @@
 //   webauthn_assert: clientDataJSON ("webauthn.get"), authenticatorData (as
 //     above, with AT clear and BE as stored), the signature over
 //     authenticatorData || SHA-256(clientDataJSON) under the stored COSE key
-//     (ES256 as DER, RS256 as PKCS#1 v1.5), then the sign count: when the
+//     (ES256 as DER, RS256 as PKCS#1 v1.5, EdDSA as Ed25519's 64-byte R || S
+//     through ed25519_verify), then the sign count: when the
 //     stored or the new count is nonzero, the new one must be larger.
 //
-// Every refusal has its own code. EdDSA (-8) keys register, but their
-// assertions answer WA_ALGORITHM until the Ed25519 verifier exists.
+// Every refusal has its own code. WA_ALGORITHM keeps its number but is no
+// longer answered: cose_key admits only keys that have a verifier here.
 // Inputs are a browser's bytes and the server's own values: public, so
 // this branches freely.
 #load "cose.coax";
@@ -268,7 +269,7 @@ wa_signed :: (flags: string, rest: string, pad: int, client: string, uv: bool, s
   bad: [80] u8; for i: 0..<77 { bad[i] = key[i]; } bad[4] = 0x27;
   #assert webauthn_assert(data, c, s, bad[0..<77], challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_KEY;
   ed: [64] u8; edkey := cb_unhex("a401010327200621582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832", ed[..]);
-  #assert webauthn_assert(data, c, s, edkey, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_ALGORITHM;
+  #assert webauthn_assert(data, c, s, edkey, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE;
   big: [1025] u8; for i: 0..<37 { big[i] = data[i]; }
   #assert webauthn_assert(big[..], c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_AUTH_DATA;
 }
@@ -291,6 +292,34 @@ wa_signed :: (flags: string, rest: string, pad: int, client: string, uv: bool, s
   #assert wa_signed("19", "00000000a0", 0, WA_GET_CLIENT, false, 0, true).error == WA_AUTH_DATA;
 }
 
+#test "assertion: the spec's packed.EdDSA example (Ed25519), and each refusal" #steps 400000000000 #traversal 4294967296 {
+  // sctn-test-vectors-packed-eddsa: the credential key from its attestationObject, and its assertion.
+  key: [64] u8; ad: [64] u8; cd: [200] u8; sig: [80] u8; ch: [32] u8;
+  k := cb_unhex("a401010327200621582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832", key[..]);
+  data := cb_unhex("bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50100000000", ad[..]);
+  c := wa_text("{\"type\":\"webauthn.get\",\"challenge\":\"iVlX4BxjOmmDSKLYoxpUt9sn6MHEOyCA15riGQJnv9I\",\"origin\":\"https://example.org\",\"crossOrigin\":false}", cd[..]);
+  s := cb_unhex("f5c59c7e46c34f6f8cc197101ddf9934fa2595f68eb1913a637e8419eb9ba4cfdfc48f85393bc0d40b011f0d6fecb097d6607525713223a0dc0d453993dae00b", sig[..]);
+  challenge := cb_unhex("895957e01c633a698348a2d8a31a54b7db27e8c1c43b2080d79ae2190267bfd2", ch[..]);
+  r := webauthn_assert(data, c, s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false);
+  #assert r.error == WA_OK && r.flags == 0x01 && r.count == 0;
+  // R, S, the authenticator data and the client data are each signed.
+  s[3] ^= 1; #assert webauthn_assert(data, c, s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE; s[3] ^= 1;
+  s[40] ^= 1; #assert webauthn_assert(data, c, s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE; s[40] ^= 1;
+  data[36] = 1; #assert webauthn_assert(data, c, s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE; data[36] = 0;
+  sp: [200] u8; sp[0] = '{'; sp[1] = ' '; for i: 1..<c.count { sp[i+1] = c[i]; }
+  #assert webauthn_assert(data, sp[0..<c.count+1], s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE;
+  // 63 or 65 signature bytes, S + L, and another Ed25519 key.
+  #assert webauthn_assert(data, c, s[0..<63], k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE;
+  #assert webauthn_assert(data, c, sig[0..<65], k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE;
+  sl: [64] u8; for i: 0..<64 { sl[i] = s[i]; }
+  sum := p2_add_raw(ed_load(sl[32..<64]), ED_L.m); ed_store(sum, sl[32..<64]);
+  #assert webauthn_assert(data, c, sl[..], k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE;
+  other: [64] u8; ok := cb_unhex("a40101032720062158205866666666666666666666666666666666666666666666666666666666666666", other[..]);
+  #assert webauthn_assert(data, c, s, ok, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_SIGNATURE;
+  // A small-order key no longer reads at all.
+  bad: [64] u8; small := cb_unhex("a40101032720062158200100000000000000000000000000000000000000000000000000000000000000", bad[..]);
+  #assert webauthn_assert(data, c, s, small, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_KEY;
+}
 #test "assertion: the spec's packed.RS256 example (RS256, a 3482-bit modulus)" #steps 400000000000 #traversal 1073741824 {
   // sctn-test-vectors-packed-rs256: the credential key from its attestationObject, and its assertion.
   key: [460] u8; ad: [64] u8; cd: [200] u8; sig: [440] u8; ch: [32] u8;
@@ -443,11 +472,12 @@ webauthn_assert :: (auth_data: [] u8, client_data: [] u8, signature: [] u8, publ
   for i: 0..<auth_data.count { message[i] = auth_data[i]; }
   n := auth_data.count + 32;
   #assert sha256_hash_checked(client_data, message[auth_data.count..<n], false) == SHA_OK;   // at most 4096 bytes
-  if key.alg == COSE_EDDSA { out.error = WA_ALGORITHM; return out; }
+  // cose_key admits ES256, EdDSA and RS256 only. Ed25519 hashes the
+  // message itself (SHA-512, inside ed25519_verify).
   hash: [32] u8;
   #assert sha256_hash_checked(message[0..<n], hash[..], false) == SHA_OK;
-  // cose_key admits ES256, EdDSA and RS256 only.
   good := ifx key.alg == COSE_ES256 then p256_verify_der(hash[..], key.point[..], signature, false)
+          else ifx key.alg == COSE_EDDSA then ed25519_verify(signature, message[0..<n], key.ed25519[..])
           else rsa_verify_sha256(key.modulus[0..<key.modulus_count], signature, message[0..<n]);
   if !good { out.error = WA_SIGNATURE; return out; }
   if (stored_count != 0 || parsed.count != 0) && parsed.count <= stored_count { out.error = WA_COUNTER; }

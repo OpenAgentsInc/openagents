@@ -4892,6 +4892,71 @@
       "retrieved": "2026-11-11",
       "sha256": "dd071fd3c28b26a68521b6ece35ef06effa827b0e3fb66c7bec23402d47f1b48",
       "bytes": 21399
+    },
+    {
+      "path": "upstream/wycheproof/ed25519_test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ed25519_test.json",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "ed25519"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "ea80ffebac085e21cb9d3e903e7fa2b448d96702da5b31f061d0b83b430b74b3",
+      "bytes": 172628
+    },
+    {
+      "path": "upstream/rfc/rfc8032.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc8032.txt",
+      "revision": "RFC 8032",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "ed25519"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "ed63657ff389301282b169b0abde9b5dd2c7e4d524fdfa5da6ff3094fc93c4c3",
+      "bytes": 103210
+    },
+    {
+      "path": "upstream/ed25519-speccheck/cases.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/novifinancial/ed25519-speccheck/65519336fda78a3d016e947df6d82848aca0c9da/cases.json",
+      "revision": "git:65519336fda78a3d016e947df6d82848aca0c9da",
+      "license": "Apache-2.0",
+      "covers": [
+        "ed25519"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "08e47a36d9aead288664930505584f353fff113ab854f2800db1e4f5b3540450",
+      "bytes": 3589
+    },
+    {
+      "path": "upstream/ed25519-speccheck/README.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/novifinancial/ed25519-speccheck/65519336fda78a3d016e947df6d82848aca0c9da/README.md",
+      "revision": "git:65519336fda78a3d016e947df6d82848aca0c9da",
+      "license": "Apache-2.0",
+      "covers": [
+        "ed25519"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "8aefa01d4217c77b73b63dabb0bfb98d075dd5593a88025ee59213caf737e65c",
+      "bytes": 7513
+    },
+    {
+      "path": "upstream/ed25519-speccheck/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/novifinancial/ed25519-speccheck/65519336fda78a3d016e947df6d82848aca0c9da/LICENSE",
+      "revision": "git:65519336fda78a3d016e947df6d82848aca0c9da",
+      "license": "Apache-2.0",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
     }
   ]
 }

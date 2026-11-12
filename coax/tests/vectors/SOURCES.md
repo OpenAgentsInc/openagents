@@ -80,6 +80,20 @@ that a maliciously replaced manifest is authentic.
   U2F credentials) and py_webauthn's registration and authentication tests
   at `duo-labs/py_webauthn@c9ba2b7d` (real browser responses for EC2, RSA
   and OKP credentials), read by `coax/tests/auth/make_webauthn_vectors.py`.
+- **Ed25519 (auth, EdDSA passkeys):** RFC 8032 (section 7.1's five Ed25519
+  vectors: TEST 1, 2, 3, 1024 and SHA(abc)), the complete Wycheproof
+  `ed25519_test.json` (210 cases) at the same revision as the other
+  Wycheproof files, and the twelve "Taming the many EdDSAs" edge cases
+  (Chalkias, Garillot and Nikolaenko) from `novifinancial/ed25519-speccheck`
+  at `65519336`: `cases.json`, its `README.md` (whose LibSodium row of the
+  results table gives each case's expected verdict) and `LICENSE`. Retrieved
+  2026-11-11 for `coax/lib/crypto/ed25519.coax` (GitHub #13221), read by
+  `coax/tests/auth/make_ed25519_vectors.py`. The verifier follows
+  libsodium's `crypto_sign_verify_detached`: Wycheproof's "acceptable"
+  small-order keys refuse, and its mixed-order keys verify exactly when the
+  cofactorless equation holds (the generator lists each acceptable case's
+  verdict). Ed25519ctx, Ed25519ph and Ed448 vectors in the same RFC are not
+  claimed.
 - **ECDSA signing:** tiny-secp256k1's complete `tests/fixtures/ecdsa.json`
   at revision `e1fd7a77`, retrieved 2026-11-02 for Bitcoin chapter 20. Its
   2,020 `valid` rows give a key, a 32-byte hash and the compact signature
@@ -1212,3 +1226,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/w3c/webauthn-index.bs`](upstream/w3c/webauthn-index.bs) | [pinned source](https://raw.githubusercontent.com/w3c/webauthn/d13530428a290701eaa7ae6483c9632e4adae633/index.bs) | `a7c4dcae9078b83064f8a776b469fd5998c99243fd49d661a4513dbf44157835` |
 | [`upstream/py_webauthn/test_verify_registration_response.py`](upstream/py_webauthn/test_verify_registration_response.py) | [pinned source](https://raw.githubusercontent.com/duo-labs/py_webauthn/c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb/tests/test_verify_registration_response.py) | `3608df7532ef9b7aae2add99377a285a2c78b537ffa0910eea5c2f0b27998952` |
 | [`upstream/py_webauthn/test_verify_authentication_response.py`](upstream/py_webauthn/test_verify_authentication_response.py) | [pinned source](https://raw.githubusercontent.com/duo-labs/py_webauthn/c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb/tests/test_verify_authentication_response.py) | `dd071fd3c28b26a68521b6ece35ef06effa827b0e3fb66c7bec23402d47f1b48` |
+| [`upstream/wycheproof/ed25519_test.json`](upstream/wycheproof/ed25519_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ed25519_test.json) | `ea80ffebac085e21cb9d3e903e7fa2b448d96702da5b31f061d0b83b430b74b3` |
+| [`upstream/rfc/rfc8032.txt`](upstream/rfc/rfc8032.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc8032.txt) | `ed63657ff389301282b169b0abde9b5dd2c7e4d524fdfa5da6ff3094fc93c4c3` |
+| [`upstream/ed25519-speccheck/cases.json`](upstream/ed25519-speccheck/cases.json) | [pinned source](https://raw.githubusercontent.com/novifinancial/ed25519-speccheck/65519336fda78a3d016e947df6d82848aca0c9da/cases.json) | `08e47a36d9aead288664930505584f353fff113ab854f2800db1e4f5b3540450` |
+| [`upstream/ed25519-speccheck/README.md`](upstream/ed25519-speccheck/README.md) | [pinned source](https://raw.githubusercontent.com/novifinancial/ed25519-speccheck/65519336fda78a3d016e947df6d82848aca0c9da/README.md) | `8aefa01d4217c77b73b63dabb0bfb98d075dd5593a88025ee59213caf737e65c` |
+| [`upstream/ed25519-speccheck/LICENSE`](upstream/ed25519-speccheck/LICENSE) | [pinned source](https://raw.githubusercontent.com/novifinancial/ed25519-speccheck/65519336fda78a3d016e947df6d82848aca0c9da/LICENSE) | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |

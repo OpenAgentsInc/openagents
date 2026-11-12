@@ -70,7 +70,7 @@ def cose_alg(key):
         i = v_end
 
 # Error codes of webauthn.coax.
-OK, TYPE, CROSS, ATTESTATION, KEY, ALGORITHM = 'WA_OK', 'WA_TYPE', 'WA_CROSS_ORIGIN', 'WA_ATTESTATION', 'WA_KEY', 'WA_ALGORITHM'
+OK, TYPE, CROSS, ATTESTATION, KEY = 'WA_OK', 'WA_TYPE', 'WA_CROSS_ORIGIN', 'WA_ATTESTATION', 'WA_KEY'
 
 def client_rule(client):
     # crossOrigin true or a topOrigin refuses before anything else.
@@ -95,13 +95,13 @@ def spec_cases():
         reg_expect = client_rule(reg_client)
         if reg_expect == OK and not att.startswith(bytes.fromhex('a363666d74646e6f6e65')):
             reg_expect = ATTESTATION
-        # Assertion: the client data, then the key: ES256 and RS256 verify,
-        # EdDSA keys parse but have no verifier yet, other algorithms refuse.
+        # Assertion: the client data, then the key: ES256, RS256 and EdDSA
+        # verify, other algorithms refuse.
         get_client = get(auth, 'clientDataJSON')
         alg = cose_alg(key)
         auth_expect = client_rule(get_client)
         if auth_expect == OK:
-            auth_expect = OK if alg in (-7, -257) else ALGORITHM if alg == -8 else KEY
+            auth_expect = OK if alg in (-7, -8, -257) else KEY
         cases.append(dict(name=name, reg_challenge=get(reg, 'challenge').hex(), reg_client=reg_client.hex(),
             attestation=att.hex(), reg_expect=reg_expect, key=key.hex(), be='true' if auth_data[32] & 8 else 'false',
             get_challenge=get(auth, 'challenge').hex(), auth_data=get(auth, 'authenticatorData').hex(),
@@ -134,10 +134,10 @@ def pyw_cases():
             client=b64url(field(body, 'clientDataJSON')).hex(), challenge=b64url(call_arg(body, 'challenge')).hex(),
             origin='http://localhost:5000', rp='localhost', expect=expect))
     gets = []
-    # (test, uv, expected): EC2 and RSA verify, OKP waits for Ed25519.
+    # (test, uv, expected): EC2, RSA and OKP verify.
     for name, uv, expect in [('test_verify_authentication_response_with_EC2_public_key', 'false', OK),
                              ('test_verify_authentication_response_with_RSA_public_key', 'true', OK),
-                             ('test_verify_authentication_response_with_OKP_public_key', 'false', ALGORITHM),
+                             ('test_verify_authentication_response_with_OKP_public_key', 'false', OK),
                              ('test_raises_exception_on_incorrect_public_key', 'false', 'WA_SIGNATURE')]:
         body = test_body(auth_text, name)
         count = int(re.search(r'sign_count = (\d+)', body).group(1))

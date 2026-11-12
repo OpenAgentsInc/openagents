@@ -1,0 +1,76 @@
+// Every published Ed25519 vector against coax/lib/crypto/ed25519.coax
+// (ed25519_vectors.coax, generated from the pinned files by
+// make_ed25519_vectors.py):
+//   - RFC 8032 section 7.1: all five tests verify, each secret key gives its
+//     public key, and any change to a signature, key or message refuses;
+//   - Wycheproof ed25519_test.json: all 210 cases give their result
+//     (acceptable ones libsodium's verdict);
+//   - "Taming the many EdDSAs": all twelve cases give libsodium's verdict.
+// Run natively with
+//
+//   coax/bin/coax test coax/tests/auth/ed25519_vectors_test.coax
+#load "../../lib/crypto/ed25519.coax";
+#load "ed25519_vectors.coax";
+
+// Hex into out; the count, or -1 for hex that does not fit.
+ev_hex :: (text: string, out: [] u8) -> int {
+  if text.count % 2 != 0 || text.count / 2 > out.count { return -1; }
+  return cb_unhex(text, out).count;
+}
+// The public key of a secret key (RFC 8032 section 5.1.5): the low half of
+// SHA-512(secret), clamped, times B. For the checks: the scalar is masked
+// into the same double-and-add the verifier uses.
+ev_public :: (secret: [] u8, out: [] u8) {
+  h: [64] u8;
+  #assert sha512(secret, h[..]);
+  h[0] &= 248; h[31] &= 127; h[31] |= 64;
+  ed_encode(ed_double_mul(ed_load(h[0..<32]), P2Num.{}, ed_identity()), out);
+}
+
+#test "RFC 8032 section 7.1: all five Ed25519 tests" #steps 4000000000000 #traversal 68719476736 {
+  for c: ED_RFC {
+    secret: [32] u8; key: [32] u8; derived: [32] u8; msg: [1024] u8; sig: [64] u8;
+    #assert ev_hex(c.secret, secret[..]) == 32 && ev_hex(c.key, key[..]) == 32 && ev_hex(c.sig, sig[..]) == 64;
+    n := ev_hex(c.msg, msg[..]);
+    #assert n >= 0;
+    ev_public(secret[..], derived[..]);
+    for i: 0..<32 { #assert derived[i] == key[i]; }
+    #assert ed25519_verify(sig[..], msg[0..<n], key[..]);
+    #assert ed25519_public_key_ok(key[..]);
+    // One flipped bit anywhere in the signature or the key refuses.
+    for i: 0..<64 { sig[i] ^= 0x10; #assert !ed25519_verify(sig[..], msg[0..<n], key[..]); sig[i] ^= 0x10; }
+    for i: 0..<32 { key[i] ^= 0x02; #assert !ed25519_verify(sig[..], msg[0..<n], key[..]); key[i] ^= 0x02; }
+    if n > 0 { msg[n-1] ^= 1; #assert !ed25519_verify(sig[..], msg[0..<n], key[..]); msg[n-1] ^= 1; }
+    // A byte more or less of message refuses.
+    #assert !ed25519_verify(sig[..], msg[0..<n+1], key[..]);
+    if n > 0 { #assert !ed25519_verify(sig[..], msg[0..<n-1], key[..]); }
+  }
+}
+#test "Wycheproof ed25519_test.json: all 210 cases" #steps 4000000000000 #traversal 68719476736 {
+  valid := 0; acceptable := 0;
+  for c: ED_WP_CASES {
+    key: [32] u8; msg: [1024] u8; sig: [128] u8;
+    #assert ev_hex(ED_WP_KEYS[c.key], key[..]) == 32;
+    n := ev_hex(c.msg, msg[..]); m := ev_hex(c.sig, sig[..]);
+    #assert n >= 0 && m >= 0;
+    got := ed25519_verify(sig[0..<m], msg[0..<n], key[..]);
+    if got != c.valid { print("tcId % expected % got %: %\n", c.id, c.valid, got, c.comment); }
+    #assert got == c.valid;
+    if c.result == 1 { valid += 1; #assert got; }
+    if c.result == 0 { #assert !got; }
+    if c.result == 2 { acceptable += 1; }
+  }
+  #assert valid == 117 && acceptable == 29;
+}
+#test "Taming the many EdDSAs: all twelve, libsodium's policy" #steps 400000000000 #traversal 68719476736 {
+  verified := 0;
+  for c: ED_TAMING {
+    key: [32] u8; msg: [64] u8; sig: [64] u8;
+    #assert ev_hex(c.key, key[..]) == 32 && ev_hex(c.sig, sig[..]) == 64;
+    n := ev_hex(c.msg, msg[..]);
+    got := ed25519_verify(sig[..], msg[0..<n], key[..]);
+    #assert got == c.valid;
+    if got { verified += 1; }
+  }
+  #assert verified == 1 && ED_TAMING[3].valid;
+}

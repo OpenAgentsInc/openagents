@@ -82,3 +82,6 @@ aethyr/lab/.cache/
 /apps/openagents-web/realms/everglade-experimental/assets/glade.pack
 # Range-addressable packs: apps/openagents-web/build.sh writes each from its tracked .pack (#13001).
 /apps/openagents-web/realms/**/*.vpk3
+
+# libsodium for the Ed25519 differential test (ed25519_libsodium.py); never committed or shipped.
+coax/tests/auth/.cache/
