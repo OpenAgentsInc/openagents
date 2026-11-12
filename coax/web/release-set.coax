@@ -196,53 +196,77 @@ rl_crashes :: (e: RlEnv, release: string) -> int {
 }
 
 // ---- the canary
-// The bots on staging's shard for `seconds`: the record they leave, as the policy's numbers.
+// A shard's windows as they are read, and the policy's numbers from them: the middle (median) of the
+// windows' tick p50, p95 and ticks a second, the worst refusals and unsaved age.
+RL_WINDOWS :: 4096;
+RlAcc :: struct { p50: [RL_WINDOWS] int; p95: [RL_WINDOWS] int; hz: [RL_WINDOWS] int; n: int; refused: int = -1; unsaved: int = -1; }
+rl_sample :: (e: RlEnv, q: int, a: [] RlAcc) {
+  body: [32768] u8;
+  t := rl_vitals(e, q, body[..]);
+  p95 := rl_value(t, "tick p95 ms", 1000);
+  if t.count == 0 || p95 < 0 || a[0].n >= RL_WINDOWS { return; }
+  k := a[0].n; a[0].n += 1;
+  a[0].p50[k] = rl_value(t, "tick p50 ms", 1000); a[0].p95[k] = p95; a[0].hz[k] = rl_value(t, "ticks a second", 10);
+  refused := rl_value(t, "transport refused frames a second", 10); unsaved := rl_value(t, "checkpoint unsaved age ms most", 1);
+  if refused > a[0].refused { a[0].refused = refused; }
+  if unsaved > a[0].unsaved { a[0].unsaved = unsaved; }
+}
+rl_shard :: (a: [] RlAcc) -> RsShard {
+  s := RsShard.{windows = a[0].n, refused_ds = a[0].refused, unsaved_ms = a[0].unsaved};
+  s.tick_p50_us = rl_middle(a[0].p50[..], a[0].n); s.tick_p95_us = rl_middle(a[0].p95[..], a[0].n); s.ticks_ds = rl_middle(a[0].hz[..], a[0].n);
+  return s;
+}
+// The bots on staging's shard for `seconds`, the shard's windows read every 10 s once they have sat
+// (30 s in): the policy's numbers, with the seats and any refused build from the record they leave.
 rl_bots :: (e: RlEnv, players: int, seconds: int, file: string, s: [] RsShard) -> bool {
-  pb: [16] u8; sb: [16] u8; got: [1] int; out: [RL_OUT] u8; v: [1] Rl;
+  pb: [16] u8; sb: [16] u8; v: [1] Rl;
   rl_s(v[..], e.rooms); rl_s(v[..], "/api/room/s1/vitals");
   a := [17] string.["coax/web/tool.sh", "coax/web/room/soak.coax", "run", "--origin", e.api, "--vitals", rl_text(v[..]), "--players", cast(string) pb[0..<sr_int(pb[..], 0, players)],
                     "--seconds", cast(string) sb[0..<sr_int(sb[..], 0, seconds)], "--reconnect", "0", "--travel", "0", "--out", file];
-  st := rl_run(a[..], seconds + 600, out[..], got[..]);
+  h := proc_new(); ok := proc_err_to_out(h);
+  for x: a { ok = ok && proc_arg(h, x); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return false; }
+  acc: [1] RlAcc; line: [8192] u8;
+  t0 := proc_now_ms(); next := t0 + 30000; until := t0 + (seconds + 600) * 1000;
+  while proc_now_ms() < until {
+    n := proc_line(h, 500, line[..]);
+    if n >= 0 { print("  | %\n", cast(string) line[0..<n]); }
+    else if n != PROC_TIMEOUT && n != PROC_TOO_LONG { break; }
+    if proc_now_ms() >= next && proc_now_ms() < t0 + seconds * 1000 { next += 10000; rl_sample(e, 1, acc[..]); }
+  }
+  st := proc_wait(h, 10000); if st == PROC_RUNNING { k := proc_kill(h, PROC_SIGKILL); st = proc_wait(h, 2000); }
+  r := proc_release(h);
   rec: [SR_BODY] u8; n := fs_read(file, rec[..]);
-  if st == 2 || st < 0 || n <= 0 || !soak_record_check(cast(string) rec[0..<n]) { return false; }
+  if st == 2 || n <= 0 || !soak_record_check(cast(string) rec[0..<n]) { return false; }
   body := cast(string) rec[0..<n]; f: [160] u8;
-  s[0] = RsShard.{};
-  s[0].tick_p95_us = sr_num(soak_record_field(body, "tick_p95_us", f[..])).v; s[0].refused_ds = sr_num(soak_record_field(body, "refused_ds", f[..])).v;
-  s[0].seated = sr_num(soak_record_field(body, "seated", f[..])).v; s[0].unsaved_ms = sr_num(soak_record_field(body, "checkpoint_ms", f[..])).v;
-  s[0].windows = ifx s[0].tick_p95_us >= 0 then 1 else 0;
+  s[0] = rl_shard(acc[..]);
+  s[0].seated = sr_num(soak_record_field(body, "seated", f[..])).v;
   s[0].version_refused = ifx rl_has(soak_record_field(body, "verdict", f[..]), "version") then 1 else 0;
   return true;
 }
-// Production's shards read every 10 s for `seconds`: the canary K's numbers, and the others' together
-// (their windows' middle tick, their worst refusals and unsaved age).
+// Production's shards read every 10 s for `seconds`: the canary K's numbers, and the others' together.
 rl_watch :: (e: RlEnv, k: int, seconds: int, c: [] RsShard, o: [] RsShard) {
-  ct: [1024] int; cn := 0; ot: [4096] int; on := 0; body: [32768] u8;
-  c[0] = RsShard.{}; o[0] = RsShard.{};
+  ca: [1] RlAcc; oa: [1] RlAcc;
   until := proc_now_ms() + seconds * 1000;
   while proc_now_ms() < until {
-    for q: 1..<e.shards + 1 {
-      t := rl_vitals(e, q, body[..]);
-      p95 := rl_value(t, "tick p95 ms", 1000);
-      if t.count == 0 || p95 < 0 { continue; }
-      refused := rl_value(t, "transport refused frames a second", 10); unsaved := rl_value(t, "checkpoint unsaved age ms most", 1);
-      d := ifx q == k then c else o;
-      d[0].windows += 1;
-      if refused > d[0].refused_ds { d[0].refused_ds = refused; }
-      if unsaved > d[0].unsaved_ms { d[0].unsaved_ms = unsaved; }
-      if q == k { if cn < 1024 { ct[cn] = p95; cn += 1; } } else if on < 4096 { ot[on] = p95; on += 1; }
-    }
+    for q: 1..<e.shards + 1 { if q == k { rl_sample(e, q, ca[..]); } else { rl_sample(e, q, oa[..]); } }
     proc_sleep(10000);
   }
-  c[0].tick_p95_us = rl_middle(ct[..], cn); o[0].tick_p95_us = rl_middle(ot[..], on);
+  c[0] = rl_shard(ca[..]); o[0] = rl_shard(oa[..]);
 }
 rl_middle :: (v: [] int, n: int) -> int {
   if n <= 0 { return -1; }
-  for i: 1..<n { x := v[i]; j := i; while j > 0 && v[j - 1] > x { v[j] = v[j - 1]; j -= 1; } v[j] = x; }
-  return v[n / 2];
+  t: [RL_WINDOWS] int; m := 0;
+  for i: 0..<n { if v[i] >= 0 && m < RL_WINDOWS { t[m] = v[i]; m += 1; } }
+  if m == 0 { return -1; }
+  for i: 1..<m { x := t[i]; j := i; while j > 0 && t[j - 1] > x { t[j] = t[j - 1]; j -= 1; } t[j] = x; }
+  return t[m / 2];
 }
-#test "the middle of a shard's windows" {
+#test "the middle of a shard's windows, the unread ones left out" {
   v := [5] int.[900, 300, 20000, 400, 500];
   #assert rl_middle(v[..], 5) == 500 && rl_middle(v[..], 0) == -1;
+  w := [4] int.[-1, 700, -1, 300];
+  #assert rl_middle(w[..], 4) == 700 && rl_middle(w[..], 1) == -1;
 }
 // The emptiest live shard: the canary when none is named.
 rl_emptiest :: (e: RlEnv) -> int {
@@ -330,8 +354,9 @@ rl_ship :: (a: [] Args) -> int {
   if !rl_bots(st_env, players, seconds, rl_text(fb[..]), canary[..]) { canary[0] = RsShard.{}; }
   canary[0].crashes = rl_crashes(st_env, rl_text(now_rel[..]));
   bits := rs_canary(canary[0], others[0]); wb: [120] u8;
-  print("  rooms: canary tick p95 % us (others %), refused % (others %) tenths a second, seated % (others %), crashes %\n",
-        canary[0].tick_p95_us, others[0].tick_p95_us, canary[0].refused_ds, others[0].refused_ds, canary[0].seated, others[0].seated, canary[0].crashes);
+  print("  rooms: canary tick p50 % us (others %), p95 % us (others %), ", canary[0].tick_p50_us, others[0].tick_p50_us, canary[0].tick_p95_us, others[0].tick_p95_us);
+  print("ticks a second % (others %) tenths, refused % (others %) tenths a second, seated % (others %), crashes %\n",
+        canary[0].ticks_ds, others[0].ticks_ds, canary[0].refused_ds, others[0].refused_ds, canary[0].seated, others[0].seated, canary[0].crashes);
   if bits != 0 {
     print("release set %: STOPPED at the canary: %. Staging goes back to its room; nothing after it moved\n", version, rs_c_words(bits, wb[..]));
     back := [3] string.["coax/web/room/vm-deploy.sh", "rollback", "--staging"];
@@ -355,7 +380,8 @@ rl_ship :: (a: [] Args) -> int {
     rl_watch(e, k, seconds, pc[..], po[..]);
     pc[0].crashes = rl_crashes(e, rl_text(now_rel[..])); pc[0].seated = 0; po[0].seated = 0;
     pbits := rs_canary(pc[0], po[0]);
-    print("  rooms: canary shard % tick p95 % us (the others %), refused % (%) tenths a second, crashes %\n", k, pc[0].tick_p95_us, po[0].tick_p95_us, pc[0].refused_ds, po[0].refused_ds, pc[0].crashes);
+    print("  rooms: canary shard % tick p50 % us (the others %), p95 % us (%), ", k, pc[0].tick_p50_us, po[0].tick_p50_us, pc[0].tick_p95_us, po[0].tick_p95_us);
+    print("ticks a second % (%) tenths, refused % (%) tenths a second, crashes %\n", pc[0].ticks_ds, po[0].ticks_ds, pc[0].refused_ds, po[0].refused_ds, pc[0].crashes);
     if pbits != 0 {
       back := [2] string.["coax/web/room/vm-deploy.sh", "canary-back"]; bs := rl_run(back[..], 900, out[..], got[..]);
       print("release set %: STOPPED at the canary: %. Shard % is back on production's room; the other shards never moved\n", version, rs_c_words(pbits, wb[..]), k);

@@ -117,6 +117,7 @@ fuzz_hours="${OA_AFTER_FUZZ_HOURS:-4}"
 soak_gap="${OA_AFTER_SOAK_GAP:-86400}"
 soak_seconds="${OA_AFTER_SOAK_SECONDS:-7200}"
 soak_players="${OA_AFTER_SOAK_PLAYERS:-32}"
+soak_title="Nightly soak: staging's fleet does not hold"   # the one open issue a failing night opens or comments on
 compiler_mode="${OA_AFTER_COMPILER:-auto}"
 width="${OA_BISECT_WIDTH:-4}"
 bisect_checks="${OA_BISECT_CHECKS:-4}"
@@ -575,8 +576,8 @@ $(tail -n 40 "$dir/out" 2> /dev/null | cut -c1-300)
 # staging's rooms for OA_AFTER_SOAK_SECONDS from one host slot, in the background. The night's
 # capacity record comes back in RESULTS/HEAD/soak, is kept by its date in RESULTS/soak/DAY.txt, and
 # goes to the APIs (pipeline-lib.sh pl_soak_publish: the status page shows it). A run that fails
-# (a slow tick, a leak, an unsaved checkpoint, slow tickets, lost seats) files an issue with the
-# record and the log's end. Staging's alerts mail nobody.
+# (a slow tick, a leak, an unsaved checkpoint, slow tickets, lost seats) opens one issue with the
+# record and the log's end, and each failing night after it comments there. Staging's alerts mail nobody.
 soak_of() {   # head
   [[ "${OA_AFTER_SOAK:-1}" != 0 && -z "${OA_AFTER_CHECK:-}" ]] || return 0
   due last-soak "$soak_gap" || return 0
@@ -590,7 +591,8 @@ soak_of() {   # head
     rec="$dir/build/pipeline/capacity.txt"
     if [[ -s "$rec" ]]; then cp "$rec" "$results/soak/$day.txt"; pl_soak_publish "$rec"; fi
     if (( s == 1 )); then
-      gh issue create --repo "$pl_repo" --title "Nightly soak: the fleet's soak failed at ${head:0:10} ($day)" --body "\`coax/remote/check.sh soak $soak_seconds $soak_players\` on \`$head\` did not hold (#13296, docs/deployment/soak.md). The verdict line names why: a slow tick, a leak, a checkpoint unsaved too long, slow tickets, a build the room refused, or seats lost. Staging's room and API are what it played; the log and the record are in \`$dir/\` on the coordinator's machine.
+      # One issue for the soak while it fails: the first failing night opens it, the next ones comment.
+      body="\`coax/remote/check.sh soak $soak_seconds $soak_players\` on \`$head\` did not hold on $day (#13296, docs/deployment/soak.md). The verdict line names why: a slow tick, a leak, a checkpoint unsaved too long, slow tickets, a build the room refused, or seats lost. Staging's room and API are what it played; the log and the record are in \`$dir/\` on the watcher's machine.
 
 The record:
 
@@ -602,7 +604,10 @@ The log's end:
 
 \`\`\`
 $(tail -n 30 "$dir/build/pipeline/soak.log" 2> /dev/null | cut -c1-300)
-\`\`\`" > /dev/null 2>&1
+\`\`\`"
+      n="$(gh issue list --repo "$pl_repo" --state open --search "\"$soak_title\" in:title" --json number,title --jq "[.[] | select(.title == \"$soak_title\")][0].number // empty" 2> /dev/null)"
+      if [[ -n "$n" ]]; then gh issue comment "$n" --repo "$pl_repo" --body "$body" > /dev/null 2>&1
+      else gh issue create --repo "$pl_repo" --title "$soak_title" --body "$body" > /dev/null 2>&1; fi
       pl_say "after: the nightly soak failed at ${head:0:10} ($dir/out)"
     else
       pl_say "after: the nightly soak at ${head:0:10}: status $s$([[ -s "$rec" ]] && echo ", $(grep -E '^(seated|verdict) ' "$rec" | tr '\n' ' ')")"

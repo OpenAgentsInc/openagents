@@ -346,7 +346,10 @@ rollback() {
   if [[ "${1:-}" == --staging ]]; then
     prev="$(on_vm 'readlink -f /opt/oa-room/staging-previous || true')"
     [[ -n "$prev" ]] || { echo "room-vm: no earlier staging release is recorded" >&2; exit 1; }
-    on_vm "cur=\$(readlink -f /opt/oa-room/staging); sudo ln -sfn $prev /opt/oa-room/staging; sudo ln -sfn \"\$cur\" /opt/oa-room/staging-previous; sudo systemctl restart oa-room@staging"
+    # the release it leaves becomes the earlier one, unless it is a seeded bad build: nothing goes back to one
+    on_vm "cur=\$(readlink -f /opt/oa-room/staging); sudo ln -sfn $prev /opt/oa-room/staging
+      case \"\$cur\" in *-seeded) sudo rm -f /opt/oa-room/staging-previous ;; *) sudo ln -sfn \"\$cur\" /opt/oa-room/staging-previous ;; esac
+      sudo systemctl restart oa-room@staging"
     wait_healthy staging
     echo "room-vm: staging runs $(basename "$prev") again"
     return

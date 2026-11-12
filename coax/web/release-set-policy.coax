@@ -11,7 +11,9 @@
 //                 The canary fails when it
 //                   crashed          a crash bucket names the new release
 //                   is unhealthy     none of its windows could be read
-//                   ticks slower     its tick p95 is over twice the others' and 300 us more
+//                   ticks slower     its tick's p50 or p95 (the middle one of its windows) is over twice
+//                                    the others' and 300 us more, or it runs under nine in ten of
+//                                    the ticks a second the others run
 //                   refuses more     it refuses over twice the frames a second the others do, and
 //                                    1 a second more
 //                   seats fewer      it seated under nine in ten of what the others seated (bots)
@@ -25,15 +27,17 @@ RS_API :: 0; RS_ROOMS :: 1; RS_PAGE :: 2; RS_DONE :: 3;
 RS_C_CRASH :: 1; RS_C_UNHEALTHY :: 2; RS_C_TICK :: 4; RS_C_REFUSED :: 8; RS_C_SEATS :: 16; RS_C_CHECKPOINT :: 32; RS_C_VERSION :: 64;
 RS_C_BITS :: 7;
 RS_TICK_MARGIN_US :: 300;
+RS_TICKS_PERCENT :: 90;
 RS_REFUSED_MARGIN_DS :: 10;       // tenths a second: 1 frame a second
 RS_SEATS_PERCENT :: 90;
 RS_CHECKPOINT_MS :: 15000;
 
-// A shard's numbers over the canary's window. tick_p95_us: its tick p95 (the median of its windows;
-// -1 not read); refused_ds: frames it refused a second, in tenths (-1 not read); seated: players
+// A shard's numbers over the canary's window. tick_p50_us and tick_p95_us: its tick's p50 and p95
+// (each the median of its windows; -1 not read); ticks_ds: its ticks a second, in tenths (the median
+// of its windows; -1 not read); refused_ds: frames it refused a second, in tenths (-1 not read); seated: players
 // seated (bots); unsaved_ms: its oldest unsaved checkpoint (-1 not read); windows: windows read;
 // crashes: crash buckets naming its release; version_refused: hellos it refused for their build.
-RsShard :: struct { tick_p95_us: int = -1; refused_ds: int = -1; seated: int; unsaved_ms: int = -1; windows: int; crashes: int; version_refused: int; }
+RsShard :: struct { tick_p50_us: int = -1; tick_p95_us: int = -1; ticks_ds: int = -1; refused_ds: int = -1; seated: int; unsaved_ms: int = -1; windows: int; crashes: int; version_refused: int; }
 RsPins :: struct { engine: int; rules: int; content: int; }
 
 #test "the order: the API, then the rooms, then the page, and nothing after" {
@@ -114,6 +118,27 @@ RsPins :: struct { engine: int; rules: int; content: int; }
   #assert rs_canary(c, zero) == RS_C_TICK;
   c.tick_p95_us = 300; c.refused_ds = 11;
   #assert rs_canary(c, zero) == RS_C_REFUSED;
+  // the middle tick alone, or the tick rate alone, is a slower tick too
+  heavy := RsShard.{tick_p50_us = 7580, tick_p95_us = 25940, ticks_ds = 300, refused_ds = 0, seated = 32, unsaved_ms = 100, windows = 12};
+  c = RsShard.{tick_p50_us = 18390, tick_p95_us = 31950, ticks_ds = 300, refused_ds = 0, seated = 32, unsaved_ms = 87, windows = 12};   // the seeded bad build as staging measured it
+  #assert rs_canary(c, heavy) == RS_C_TICK;
+  c.tick_p50_us = 15460;
+  #assert rs_canary(c, heavy) == 0;
+  c.tick_p50_us = 15461;
+  #assert rs_canary(c, heavy) == RS_C_TICK;
+  c.tick_p50_us = 8000; c.ticks_ds = 269;   // under nine in ten of 30.0 a second
+  #assert rs_canary(c, heavy) == RS_C_TICK;
+  c.ticks_ds = 270;
+  #assert rs_canary(c, heavy) == 0;
+  c.ticks_ds = -1;   // its tick rate not read: not held against it
+  #assert rs_canary(c, heavy) == 0;
+  c.ticks_ds = 0;    // no tick at all is the slowest tick
+  #assert rs_canary(c, heavy) == RS_C_TICK;
+  norate := heavy; norate.ticks_ds = -1;   // the others' not read: nothing to run fewer than
+  c.ticks_ds = 100;
+  #assert rs_canary(c, norate) == 0;
+  #assert rs_slower(601, 150) && !rs_slower(600, 150) && !rs_slower(90000, -1) && !rs_slower(-1, 0) && rs_slower(301, 0) && !rs_slower(300, 0);
+  #assert rs_fewer_ticks(269, 300) && !rs_fewer_ticks(270, 300) && !rs_fewer_ticks(-1, 300) && !rs_fewer_ticks(100, -1) && rs_fewer_ticks(0, 300) && !rs_fewer_ticks(0, 0) && rs_fewer_ticks(90, 101) && !rs_fewer_ticks(91, 101);
   // one window is a reading, of the canary and of the others
   c = ok; c.windows = 1;
   #assert rs_canary(c, o) == 0;
@@ -185,12 +210,17 @@ rs_canary :: (c: RsShard, o: RsShard) -> int #effects(all) {
   if c.version_refused > 0 { bits += RS_C_VERSION; }
   if o.windows <= 0 { return bits; }   // nothing to compare with: only its own crash or refusal stops it
   // a number the others did not report compares with nothing; one the canary did not (-1) is over nothing
-  if o.tick_p95_us >= 0 && c.tick_p95_us > o.tick_p95_us * 2 + RS_TICK_MARGIN_US { bits += RS_C_TICK; }
+  if rs_slower(c.tick_p50_us, o.tick_p50_us) || rs_slower(c.tick_p95_us, o.tick_p95_us) || rs_fewer_ticks(c.ticks_ds, o.ticks_ds) { bits += RS_C_TICK; }
   if o.refused_ds >= 0 && c.refused_ds > o.refused_ds * 2 + RS_REFUSED_MARGIN_DS { bits += RS_C_REFUSED; }
   if c.seated * 100 < o.seated * RS_SEATS_PERCENT { bits += RS_C_SEATS; }
   if c.unsaved_ms > RS_CHECKPOINT_MS && o.unsaved_ms <= RS_CHECKPOINT_MS { bits += RS_C_CHECKPOINT; }
   return bits;
 }
+// Whether a tick time of the canary's is over twice the others' and the margin more. The others' not
+// read (-1) compares with nothing; the canary's not read is over nothing.
+rs_slower :: (canary_us: int, others_us: int) -> bool #effects(all) { return others_us >= 0 && canary_us > others_us * 2 + RS_TICK_MARGIN_US; }
+// Whether the canary runs under nine in ten of the others' ticks a second (tenths). Either not read: no.
+rs_fewer_ticks :: (canary_ds: int, others_ds: int) -> bool #effects(all) { return canary_ds >= 0 && canary_ds * 100 < others_ds * RS_TICKS_PERCENT; }
 rs_c_word :: (bit: int) -> string #effects(all) {
   if bit == RS_C_CRASH { return "crashed"; }
   if bit == RS_C_UNHEALTHY { return "unhealthy"; }

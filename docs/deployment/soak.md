@@ -77,8 +77,9 @@ The green-main watcher (`coax/remote/after.sh`, `soak_of`) runs
    shard two rooms of 16: 32 players is that shard full.
 3. It keeps the night's record in `releases/after/soak/DAY.txt` under the
    pipeline's folder, and posts it to the production and staging APIs.
-4. When the run fails, it files a GitHub issue with the record and the log's
-   end.
+4. When the run fails, it opens a GitHub issue ("Nightly soak: staging's fleet
+   does not hold") with the record and the log's end. While that issue is
+   open, each failing night comments on it.
 
 Staging's alerts mail nobody, so a soak never emails the owner.
 
