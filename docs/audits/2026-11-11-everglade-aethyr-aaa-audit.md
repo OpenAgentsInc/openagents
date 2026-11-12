@@ -1,6 +1,8 @@
 # Everglade and Aethyr against AAA MMORPG practice
 
 Date: 2026-11-11 (Chicago). Code read at `24eab15ff3`.
+Tracker: [#13257](https://github.com/OpenAgentsInc/openagents/issues/13257); it lists the issue for each
+item below (P0.1 to P6.4, #13258 to #13306, and #13255).
 
 This audit measures Everglade, its engine Aethyr and the services behind them
 against how the best MMORPG studios build and run their games. It names what
