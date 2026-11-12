@@ -1,0 +1,16 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:00 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=1703
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "YES. Strawberries are fruits that typically have red flesh inside."}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.985995Z","responseId": "JuD1aouXPIKnkPsPq_rOWQ"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a18U9wsik9DrjVrwM0s+ltAJTT8huWI+7Osv5lTFR+MViXcMdIcpd90VdqnI4mQIbNdEQ8UM+vhXx0LGu6yvgskCWEyYEe8Z/FkZWwb+N9lnET55"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 38,"candidatesTokenCount": 13,"totalTokenCount": 51,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 38}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 13}]},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.985995Z","responseId": "JuD1aouXPIKnkPsPq_rOWQ"}
+

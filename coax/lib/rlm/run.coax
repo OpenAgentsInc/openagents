@@ -38,6 +38,7 @@ RlmState :: struct {
   top_v: int; top_l: int; top_c: int;
   stop: int;                     // the policy verdict that ended the run, or RLM_OK
   failed: string;                // why the run ended without an answer, or what a limit refused
+  model_refused: bool;           // the last root call failed at the provider (not at a limit)
   root_calls: int; sub_calls: int; child_runs: int; deepest: int; turns: int; block_errors: int; reruns: int;
   in_tokens: int; out_tokens: int; unpriced: int;
   root_in: int; root_out: int; root_usd_micros: int;   // the same, by role
@@ -274,11 +275,12 @@ rlm_bytes :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> int {
 // One root (or child) call over the messages from base; its answer in the heap, or "" with
 // run.failed set.
 rlm_root_call :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> string {
+  st[0].model_refused = false;
   if !rlm_allowed(st, RLM_ROOT, rlm_bytes(r, st, system, base)) { return ""; }
   m := st[0].model[..];
   rm_call(m, RLM_ROOT, system, st[0].msgs[base..<st[0].nm]);
   rlm_count(st, RLM_ROOT, 0);
-  if !m[0].slots[0].ok { st[0].failed = rs_copy(r, rm_why(m, 0)); return ""; }
+  if !m[0].slots[0].ok { st[0].failed = rs_copy(r, rm_why(m, 0)); st[0].model_refused = true; return ""; }
   return rs_copy(r, rm_text(m, 0));
 }
 
@@ -353,12 +355,14 @@ L_END :: 7;                      // put the frame back and hand the answer up
 
 RLM_LEVELS :: 4;                 // the root and up to three child levels
 RLM_BLOCKS :: 16;                // blocks run from one reply
+RLM_ERRORS :: 3;                 // root replies in a row that may fail before the level ends (the reference's max_errors)
 
 RlmLevel :: struct {
   phase: int;
   question: string; ctx: RsVal; depth: int; out_base: int;
   system: string; base: int; turn: int;
   reply: string; k: int; many: bool; halt: bool;
+  errors: int;                   // root replies in a row that failed at the provider
   rep_from: [RLM_BLOCKS] int; rep_to: [RLM_BLOCKS] int; nrep: int;
   first: int; snap: RlmSnap; mbase: int; save_mb: int;
   serve_base: int; serve_n: int; serve_i: int;
@@ -417,7 +421,17 @@ rlm_step_call :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
   v[0].turn += 1;
   if v[0].depth == 0 { st[0].turns = v[0].turn; }
   reply := rlm_root_call(r, st, v[0].system, v[0].base);
+  if reply.count == 0 && st[0].model_refused && v[0].errors + 1 < RLM_ERRORS {
+    // a reply the provider refused (Gemini's MALFORMED_FUNCTION_CALL, an empty answer): say so and go on
+    v[0].errors += 1;
+    note := rs_cat(r, rs_cat(r, "Your last reply could not be read (", st[0].failed), "). Reply again: one ```repl block, or FINAL(...).\n\n");
+    note = rs_cat(r, note, rlm_turn_note(r, st, v[0].turn + 1, st[0].limits.max_turns));
+    st[0].failed = "";
+    if !rlm_push(r, st, "user", note) { st[0].failed = "too many messages"; v[0].phase = L_END; }
+    return;
+  }
   if reply.count == 0 { v[0].phase = L_END; return; }
+  v[0].errors = 0;
   if !rlm_push(r, st, "assistant", reply) { st[0].failed = "too many messages"; v[0].phase = L_END; return; }
   rlm_tr(st, "=== depth "); rlm_tr_int(r, st, v[0].depth); rlm_tr(st, " turn "); rlm_tr_int(r, st, v[0].turn); rlm_tr(st, " ===\n"); rlm_tr(st, reply); rlm_tr(st, "\n");
   if !rlm_has_code(reply) {
@@ -733,4 +747,19 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
   #assert !rlm_block("```repl\nno close", 0).found;
   #assert rlm_final("Done.\nFINAL(The answer is (b).)").inner == "The answer is (b)." && rlm_final("  FINAL_VAR(x)").kind == 2;
   #assert rlm_final("I will call FINAL(x) later").kind == 0 && rlm_final("**FINAL(\"q\")**").inner == "q";
+}
+
+#test "a root reply the provider refuses is retried with a note, up to three in a row" {
+  mb: [1] RlmTestMem; rb: [1] Rs; mem := mb[..]; r := rb[..]; st := mem[0].st[..];
+  roots := [3] string.["```repl\nx = 6 * 7\n```", "!refused MALFORMED_FUNCTION_CALL", "FINAL_VAR(x)"];
+  rlm_test_run(r, mem, RlmLimits.{}, roots[..], mem[0].none[0..<0]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "What?");
+  #assert st[0].answer == "42" && st[0].root_calls == 3 && st[0].failed == "";
+  #assert rs_find_sub(st[0].msgs[3].text, "Your last reply could not be read (MALFORMED_FUNCTION_CALL).", 0) == 0;
+  roots3 := [4] string.["!refused a", "!refused b", "!refused c", "FINAL(never)"];
+  rlm_test_run(r, mem, RlmLimits.{}, roots3[..], mem[0].none[0..<0]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "What?");
+  #assert st[0].answer == "" && st[0].root_calls == 3 && st[0].failed == "c";
 }

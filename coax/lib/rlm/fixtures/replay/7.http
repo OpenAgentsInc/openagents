@@ -1,0 +1,18 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:02 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=3293
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "**Focusing on Fruit Color**\n\nI'm currently processing the provided sentence to identify if it mentions a fruit with red flesh. My analysis is focused on recognizing fruit names and cross-referencing them with typical internal coloration.\n\n","thought": true}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.996137Z","responseId": "JuD1aqnmPLSpkPsPwtGtYA"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "YES, cherries often have red flesh inside."}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.996137Z","responseId": "JuD1aqnmPLSpkPsPwtGtYA"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a194LevUbQQsYqBkcl8CnxeRCE2Nilkw5cvfK3mJp+D4n49NYjE+vrZdFdNxO/xXCg9TacRmz+hW4RtJRywemcVOLGesip1HLFd8I9ABRdXXy/xDVKcGffk10E3iJMDIgi5K0Q1TzO1iYYKlwIMHWE2v/2m1dizIOcslPaypUSzKG/iOkooU63A5dM+tCMwSHge2walq8UZ0eJMCjuliWgJW8WYUlje/xfFD2CQl2DlqzLY3nmUkw4+YHIgpILx2HLqnZle6zNl4lUC9Hreo9z/bh6lZAtjQK+YwgwBUgcyXDzF/kk6jmuhm+uLMsSzcz5jqYJs95w+BmHUW81ElljT5kxWkHQ9Cnfkyj7Axda8AjxV9c0RUbSH5qNVivdbsrq3+tO5egxYYJmrmTIh+3BJc+DSMWbG0ZDyNadPGwLi67T96g1cQL8v7KADEkY8eUltPURZqBMnARdrONl+haGHh6h5lobSs194nJ/684igo59xdJt7kCisX/hz6K4NlZ5NYqVrSry5KqjjEsFD+jr9v6jhUQFO4tWE5YyZTVHiFeEqePnG0KklVurXBV1U6pNjSfEETepnXsN0yIZ8XredyxsVUhsLg00jDWJW4cj3TnOVTvkVHbCWHJoYhv3t4+URmZ/c5ImOAAE7bymRyN5yCMAfs2DBwsDRDhQoqJ39SY30ijDjxPW/UGBEWd2H9PGQtxj5hWBPfj0zgEoCGKuhmuwWouE5aKto4IW3GEvGSosNcRQ7aAKFmy9MNCtHitI3Tw6EbiV1ZUMjusdiT2sAWnhtlWqBlDylnrPWCg4O7ume18laSu975KaL4IgODb6RV7T7BwzZfsnyC+q66p5Bc/E188Z52/gzbsAwmyPFYHPOcs1FipfL25c5/7wpe68wo9/mWIvJFmQwTateD+ZxUU4XRY5nNZwYVm52rU7gmHVedF7hAlW3UMRwWgr/rM8WIciQ6VI+95iYovPHn8nufEne1NA8981beQnkD8iJd59i4AQ8j58Bjr3Gtb/GfXkOKuU5rZHTVZpFPFgxtSKi9DqVpbXH6qnUaQQyap1Qk0/hOn7Bit5TCR66gWmsGhkmYoqVBhPZ9Cjw4T3ucxaxm45RJeMsa/AuWlSE+OYpmg4AmizsFFOSnGJbJ3DCO/Y3MjtDLRv4W9qIIGXwryKFpMPd4q53L/n2sG9KMj7HdxyMwdQIHVqrC/cnpbp5QhwGcJnQ3eACmU2Tl0M2t9slsDb+5TeGh+E7Z1fC2yPi9X8qV"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 37,"candidatesTokenCount": 9,"totalTokenCount": 234,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 37}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 9}],"thoughtsTokenCount": 188},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.996137Z","responseId": "JuD1aqnmPLSpkPsPwtGtYA"}
+

@@ -1,0 +1,16 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:01 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=2207
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "NO - Bananas have cream-colored or pale yellow flesh, not red."}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.966718Z","responseId": "JuD1ar6AO77a8sYP5fSS0A4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a1+dCd0LvqpB3t5BnTIOjy+LfpcBVJ6w2JB7fx9GF1l3e5CY4i4jKFhFQYKy0ppTQ8LCm51zO3kByYrKHYwAAhFbllT4aP9HtWqCv5yVJkP1ctY8"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 36,"candidatesTokenCount": 16,"totalTokenCount": 52,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 36}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 16}]},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.966718Z","responseId": "JuD1ar6AO77a8sYP5fSS0A4"}
+

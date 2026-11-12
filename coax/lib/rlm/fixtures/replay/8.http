@@ -1,0 +1,16 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:01 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=2202
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "NO. Limes have green or yellowish-green flesh inside, not red."}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:59.021222Z","responseId": "J-D1aualAZrQ8sYPqNGI2Q4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a1/iUjLT+BxvqDH1F/AMqLILi19Ja+eKpkhn68nVJXuILMelxEyD359cXlS+EzDKT2PAsCMQQpM010XMFaoLLMUaujQdIx/9DF7QMdMeDP6qwPV4"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 38,"candidatesTokenCount": 16,"totalTokenCount": 54,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 38}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 16}]},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:59.021222Z","responseId": "J-D1aualAZrQ8sYPqNGI2Q4"}
+

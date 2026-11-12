@@ -1,0 +1,24 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:49:57 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=3064
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "```repl\nprompts = [\n    f\"Does the following line mention a fruit whose flesh is"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:54.125046Z","responseId": "IuD1avbQB5rQ8sYPqNGI2Q4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": " red inside? Answer ONLY 'YES' or 'NO', followed by a brief reason.\\nLine: {line}\"\n    for line in lines\n"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:54.125046Z","responseId": "IuD1avbQB5rQ8sYPqNGI2Q4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "]\nanswers = llm_query_batched(prompts)\ncount = 0\nfor line, ans in zip(lines, answers):\n"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:54.125046Z","responseId": "IuD1avbQB5rQ8sYPqNGI2Q4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "    print(f\"{line} -\u003e {ans}\")\n    if ans.strip().upper().startswith(\"YES\"):\n        count += "}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:54.125046Z","responseId": "IuD1avbQB5rQ8sYPqNGI2Q4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "1\nprint(\"Total count:\", count)\n```"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:54.125046Z","responseId": "IuD1avbQB5rQ8sYPqNGI2Q4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a18Iq/3qSZEP00C0u17LPC/hDP0hwBfEFDM7LIzHK+V3rnCSCiuV6gNEx42oQ3Yki878RmMBgvbW40F2bkDOACbLN6Rmg5ZwB5r48vPjU5pEhX8srXXB6VKAWBno"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 1124,"candidatesTokenCount": 126,"totalTokenCount": 1250,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 1124}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 126}]},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:54.125046Z","responseId": "IuD1avbQB5rQ8sYPqNGI2Q4"}
+

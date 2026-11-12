@@ -87,6 +87,8 @@ rm_start :: (m: [] RlmModel, slot: int, role: int, system: string, msgs: [] GwMe
     m[0].slots[slot].busy = false;
     m[0].slots[slot].ms = m[0].fake_ms;
     if !have { rm_set_why(m, slot, "the script has no more answers"); return; }
+    // "!refused WHY" scripts a call the provider refused
+    if answer.count >= 9 && cast(string) answer[0..<9] == "!refused " { rm_set_why(m, slot, cast(string) answer[9..<answer.count]); return; }
     rm_append(m, slot, answer);
     m[0].slots[slot].ok = true;
     m[0].slots[slot].usage = rm_fake_usage(m, role, in_bytes, answer.count);

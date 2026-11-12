@@ -1,0 +1,1 @@
+How many of these lines mention a fruit whose flesh is red inside? Ask a sub-model about each line in one llm_query_batched call, then count.

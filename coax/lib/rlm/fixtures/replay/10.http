@@ -1,0 +1,18 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:00 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=1184
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "NO. The fruit mentioned is an apple, which typically has white, cream, or pale yellow"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:59.062164Z","responseId": "J-D1atTlA5KBkNUPqM6b0Qo"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": " flesh, not red flesh."}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:59.062164Z","responseId": "J-D1atTlA5KBkNUPqM6b0Qo"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a1+KwoPo1YsebakY6Q0J2jkJwRraDESCleShhmnNtLbwE43WWwzEwYApuX94SdQ33s3N+m85nEi/7chXdF26/+yYjAcp1UV0nfi0uNhO0OkFbp7a"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 37,"candidatesTokenCount": 25,"totalTokenCount": 62,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 37}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 25}]},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:59.062164Z","responseId": "J-D1atTlA5KBkNUPqM6b0Qo"}
+

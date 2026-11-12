@@ -1,0 +1,16 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:01 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=2450
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "YES. Watermelon flesh is typically red inside."}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:59.039710Z","responseId": "J-D1ap62AoKnkPsPq_rOWQ"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a19x5nMxCM9s15ZR8U+sKa/69DWfqvrYhA3W1pCiODcdT44XJ5b+n58y8MzCaGbSW0jDwZzfwMUdGu3GAzpPxgToGm3uD3vEIixmVpgzG61p4Y9G"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 36,"candidatesTokenCount": 10,"totalTokenCount": 46,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 36}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 10}]},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:59.039710Z","responseId": "J-D1ap62AoKnkPsPq_rOWQ"}
+

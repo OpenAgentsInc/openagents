@@ -6,7 +6,7 @@
 // ask, base and full (one plain call with the whole context) print one JSON line with the
 // answer, its score against --expect N (OOLONG's 0.75^|error|, in thousandths), the calls,
 // tokens, price on the rates card and time; --log FILE appends it there, --trace FILE writes
-// the run's turns. Models: --root-model (gemini-4-argon), --sub-model (gemini-3.8-flash),
+// the run's turns; --must-score exits 3 unless the answer's number is --expect. Models: --root-model (gemini-4-argon), --sub-model (gemini-3.8-flash),
 // --root-effort and --sub-effort (low). Limits: --max-depth 1, --max-turns 20, --max-calls 400,
 // --max-usd 2 (a run's cap, priced on the card), --max-minutes 30.
 //
@@ -193,7 +193,9 @@ rt_score :: (got: int, want: int) -> int {
   return ifx d >= 40 then 0 else s;
 }
 
-rt_report :: (m: [] RtMem, a: [] Args, mode: string, question: string, ms: int) {
+// Prints the run's JSON line (and logs it, and writes the trace): 3 when --must-score is given
+// and the answer did not score 1000 against --expect, else 0.
+rt_report :: (m: [] RtMem, a: [] Args, mode: string, question: string, ms: int) -> int {
   st := m[0].st[..];
   o: [1] Jo; buf: [262144] u8;
   jo_start(o[..], buf[..]);
@@ -202,8 +204,10 @@ rt_report :: (m: [] RtMem, a: [] Args, mode: string, question: string, ms: int) 
   jo_key(o[..], "question"); jo_str(o[..], question);
   jo_key(o[..], "answer"); jo_str(o[..], st[0].answer);
   want := rt_number(a, "--expect", -1);
+  exact := false;
   if want >= 0 {
     got := rt_first_int(st[0].answer);
+    exact = got == want;
     jo_key(o[..], "expect"); jo_int(o[..], want);
     jo_key(o[..], "got"); jo_int(o[..], got);
     jo_key(o[..], "score_milli"); jo_int(o[..], rt_score(got, want));
@@ -237,6 +241,7 @@ rt_report :: (m: [] RtMem, a: [] Args, mode: string, question: string, ms: int) 
   }
   tr := args_value(a, "--trace", "");
   if tr.count > 0 && !fs_write(tr, cast(string) st[0].trace[0..<st[0].ntr]) { rt_err("rlm: could not write the trace"); }
+  return ifx args_has(a, "--must-score") && !exact then 3 else 0;
 }
 
 // ---------------------------------------------------------------- oolong
@@ -389,8 +394,7 @@ tool_main :: () -> int #export_c #effects(all) {
   t0 := cxproc_now_ms();
   if cmd == "base" || cmd == "full" {
     rt_base(m, question, ifx cmd == "full" then 0 else rt_number(a, "--window", 96000));
-    rt_report(m, a, cmd, question, cxproc_now_ms() - t0);
-    return 0;
+    return rt_report(m, a, cmd, question, cxproc_now_ms() - t0);
   }
   rlm_start(r, st, question);
   turns := 0; subs := 0;
@@ -405,8 +409,7 @@ tool_main :: () -> int #export_c #effects(all) {
       rt_err(cast(string) lb[0..<n]);
     }
   }
-  rt_report(m, a, "rlm", question, cxproc_now_ms() - t0);
-  return 0;
+  return rt_report(m, a, "rlm", question, cxproc_now_ms() - t0);
 }
 
 // ---------------------------------------------------------------- checks

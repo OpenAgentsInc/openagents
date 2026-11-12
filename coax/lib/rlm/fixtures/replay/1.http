@@ -1,0 +1,20 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:49:53 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=3671
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "```repl\nprint(repr"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:49.414542Z","responseId": "HeD1as6mGYmBkNUP2-W1yQ4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "(context))\nlines = [line.strip() for line in context.splitlines() if line.strip()]\nprint(\""}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:49.414542Z","responseId": "HeD1as6mGYmBkNUP2-W1yQ4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "Number of lines:\", len(lines))\nfor i, l in enumerate(lines):\n    print(i, l)\n```"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:49.414542Z","responseId": "HeD1as6mGYmBkNUP2-W1yQ4"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a19SX045gQbxRnDTyoPyo+j09aLuQQ5NQc8XxsMsr6mDvdpB9jikZ8HSeySr1UjlkZUPsHmBKeadDUH9GFqr/W5TRLZfsLD4pTgK57NaFcdWShDW8wXJow8ghBv73lzjYV60w3gt+e+32kJqOVdSgKuXU/GD0mrv7YRtZF4="}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 912,"candidatesTokenCount": 64,"totalTokenCount": 984,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 912}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 64}],"thoughtsTokenCount": 8},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:49:49.414542Z","responseId": "HeD1as6mGYmBkNUP2-W1yQ4"}
+

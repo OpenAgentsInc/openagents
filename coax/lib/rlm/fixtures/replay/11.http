@@ -1,0 +1,18 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:07 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=3583
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "```repl\nFINAL(\""}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:50:03.561573Z","responseId": "K-D1aqWjIpKBkNUPiYXaKQ"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "4\")\n```"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:50:03.561573Z","responseId": "K-D1aqWjIpKBkNUPiYXaKQ"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": ""}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 1468,"candidatesTokenCount": 9,"totalTokenCount": 1477,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 1468}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 9}]},"modelVersion": "gemini-4-argon","createTime": "2026-11-12T15:50:03.561573Z","responseId": "K-D1aqWjIpKBkNUPiYXaKQ"}
+

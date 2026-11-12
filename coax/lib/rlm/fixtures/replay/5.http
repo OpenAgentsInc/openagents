@@ -1,0 +1,20 @@
+HTTP/2 200 
+content-type: text/event-stream
+content-disposition: attachment
+vary: Origin,X-Origin,Referer
+date: Thu, 12 Nov 2026 15:50:00 GMT
+server: envoy
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+server-timing: l2gfet4t7; dur=1945
+via: 1.1 google, 1.1 google
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "**Analyzing Tomato's Ripeness**\n\nI'm confirming the botanical classification of a tomato as a fruit, specifically a berry, and assessing the condition of \"red flesh inside\" to determine if it meets the criteria for ripeness.\n\n","thought": true}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.983580Z","responseId": "JuD1apyEPO2okPsPx-7CEQ"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "YES. A tomato"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.983580Z","responseId": "JuD1apyEPO2okPsPx-7CEQ"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": " is botanically a fruit, and a ripe one typically has red flesh inside."}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.983580Z","responseId": "JuD1apyEPO2okPsPx-7CEQ"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a19ayaM2XdLRA+LohyrsKtVrV6Mxx1lEg4VN0s/M2R/GIm3GjvLhxqSiNFsGwEFI2WtqIwEp/LsgjBwPBFohKmhV2JcuthsUOEN8fq5vuMIFJEzJvhwH0hGR6miPKgSYLWztZo2PLm0Kil1M/mi803U79gk03eE7GGVCy5+nAsKqR1qSjcGRAwj2dTtULDgjsrco7kfUW1rMRHURPXI/DjmXU668wtrPW7TlA42UpL5U6qo5160kM1jS//enzAcqQrWW5yEdM5o2B0lv/zqeKNzGcKCMA9BMDzDbL8YX8AiOxpbUTuCVI1OaoBhmAEOn/0V4gAWBlrFh6kE902xz4lM0Q7PeaQo9AFscAW726GRxDMWegu3v5pNSw/P2h0z5vmHOLgHLfv2humv1c6TKa+GGplQVhXnHFuZsXvKqDZ02HINu/P2X88Gvm3Pi3zpAIn77nzl3Q8AO6UExns0NcixEzKSBm4QB7xugXFHOwUZ5E0RrQ6flNQDFM71/dV4tP2JI/lEnVRHlMN1GtAGPSRfDB+MirOJztRd/Yfq8Ko+Trm/tMxuRU75xycpAlwU6S+sAT7yEzzXF9vBa0uXY5p87BE92N1QwqqR4qAF7T1NZQdRwKIun0OcDsmAfP4ceKR8wqPyaMmf3TJi73SCh7MVdt9MK7kW8fn16vwT9/ESLt+fbqr0ibEM3BhRRKYXie3YC9ErdipZuUdxO9bLo6VmOVNAId3rT87IyyNsLWvAlscYljfjD/s6OXksb7Yn6uI//nEFHLZRMyZ3vmHKCCFHg9dqyXozzz08HOiO83e4LL0moYzeaFSG59bdgN1UhbkF1qKOiZwS+P2SAFFtqq9NhxP9Ry+n3NgXAcXZ/iVH3c3PYQv3lx1eCJpxTsG9Ir7KRvh6v/a5pVoqmJKcbLS3vSA0HFiAqNjvOxjHQVvsVwS9x+55NxA=="}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 37,"candidatesTokenCount": 20,"totalTokenCount": 199,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 37}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 20}],"thoughtsTokenCount": 142},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-12T15:49:58.983580Z","responseId": "JuD1apyEPO2okPsPx-7CEQ"}
+
