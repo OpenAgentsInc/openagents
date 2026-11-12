@@ -775,6 +775,12 @@ tk_hmac_test_is :: (got: string, body: string) -> bool #effects(all) {
 #test "seat ticket HMAC: each value's bounds, the envelope, the key and the room it has" {
   k := TK_HMAC_KEY; out: [TK5_TEXT] u8; w: [TK5_TEXT] u8;
   #assert tk_hmac_test_is(seat_ticket_hmac_write(k, "p-a", 0, "", "r", 0, 1, -1, 0, 0, 0, 0, "-", out[..]), "v2.p-a.0.-.r.1.-");
+  // the check's own refusals: another length, body, separator or MAC
+  good := seat_ticket_hmac_write(k, "p-a", 0, "", "r", 0, 1, -1, 0, 0, 0, 0, "-", w[..]);
+  #assert tk_hmac_test_is(good, "v2.p-a.0.-.r.1.-") && !tk_hmac_test_is(good, "v2.p-a.0.-.r.1.-x");
+  w[5] = 'b'; #assert !tk_hmac_test_is(good, "v2.p-a.0.-.r.1.-"); w[5] = 'a';
+  w[16] = '#'; #assert !tk_hmac_test_is(good, "v2.p-a.0.-.r.1.-"); w[16] = '.';
+  w[80] = ifx w[80] == '0' then '1' else '0'; #assert !tk_hmac_test_is(good, "v2.p-a.0.-.r.1.-");
   #assert tk_hmac_test_is(seat_ticket_hmac_write(k, "p-a", 2, "A b", "r", 99, 999999999999999, 0, 0, 0, 0, 0, "-", out[..]), "v3.p-a.2.QSBi.r.99.999999999999999.0");
   #assert tk_hmac_test_is(seat_ticket_hmac_write(k, "p-a", 1, "", "r", 1, 5, 3, 0, 0, 0, 0, "-", out[..]), "v3.p-a.1.-.r.1.5.3");
   #assert seat_ticket_hmac_write(k, "p-a", 0, "", "r", 100, 1, -1, 0, 0, 0, 0, "-", out[..]) == "";
@@ -784,6 +790,11 @@ tk_hmac_test_is :: (got: string, body: string) -> bool #effects(all) {
   #assert seat_ticket_hmac_write(k, "p-a", 0, "", "r", 0, 0, -1, 0, 0, 0, 0, "-", out[..]) == "";
   #assert seat_ticket_hmac_write(k, "p-a", 0, "", "r", 0, 1000000000000000, -1, 0, 0, 0, 0, "-", out[..]) == "";
   #assert seat_ticket_hmac_write(k, "P-a", 0, "", "r", 0, 1, -1, 0, 0, 0, 0, "-", out[..]) == "";
+  // PID 1 to 40 bytes and ROOM 1 to 24
+  p40 := "p-12345678901234567890123456789012345678"; r24 := "r-3456789012345678901234";
+  #assert tk_hmac_test_is(seat_ticket_hmac_write(k, p40, 0, "", r24, 0, 1, -1, 0, 0, 0, 0, "-", out[..]), "v2.p-12345678901234567890123456789012345678.0.-.r-3456789012345678901234.1.-");
+  #assert seat_ticket_hmac_write(k, "p-123456789012345678901234567890123456789", 0, "", "r", 0, 1, -1, 0, 0, 0, 0, "-", out[..]) == "";
+  #assert seat_ticket_hmac_write(k, "p-a", 0, "", "r-34567890123456789012345", 0, 1, -1, 0, 0, 0, 0, "-", out[..]) == "";
   #assert seat_ticket_hmac_write(k, "p-a", 0, "", "R", 0, 1, -1, 0, 0, 0, 0, "-", out[..]) == "";
   #assert seat_ticket_hmac_write(k, "p-a", 0, "a.b", "r", 0, 1, -1, 0, 0, 0, 0, "-", out[..]) == "";
   #assert seat_ticket_hmac_write(k, "p-a", 0, "", "r", 0, 1, -1, 0, 0, -1, 0, "-", out[..]) == "";
