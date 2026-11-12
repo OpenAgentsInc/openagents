@@ -27,8 +27,8 @@
     },
     "who": {
       "type": "string",
-      "pattern": "^[a-z0-9-]{1,40}$",
-      "description": "the durable identity: the account's text (decision 0006)"
+      "pattern": "^[a-z0-9_-]{1,80}$",
+      "description": "the durable identity: the account's text (decision 0006), else the player's: p-..., e-..., n-..., acct_..."
     },
     "class": {
       "type": "string",
@@ -185,10 +185,10 @@
       }
     },
     {
-      "wire": "{\"v\":1,\"who\":\"abcdefghijabcdefghijabcdefghijabcdefghij\",\"class\":\"srd-barbarian\",\"xp\":9999999,\"floor\":6,\"known\":[1,2147483647],\"bag\":[1,9007199254740991],\"inv\":9007199254740991,\"worn\":[1,0,0,0,0,0,0,0,0,9007199254740991],\"coin\":999999999,\"quests\":[[1,0],[2147483647,255]]}",
+      "wire": "{\"v\":1,\"who\":\"acct_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde\",\"class\":\"srd-barbarian\",\"xp\":9999999,\"floor\":6,\"known\":[1,2147483647],\"bag\":[1,9007199254740991],\"inv\":9007199254740991,\"worn\":[1,0,0,0,0,0,0,0,0,9007199254740991],\"coin\":999999999,\"quests\":[[1,0],[2147483647,255]]}",
       "values": {
         "v": 1,
-        "who": "abcdefghijabcdefghijabcdefghijabcdefghij",
+        "who": "acct_abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde",
         "class": "srd-barbarian",
         "xp": 9999999,
         "floor": 6,
@@ -254,6 +254,7 @@
     "{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":\"950\",\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}",
     "{}",
     "[]",
-    "not json"
+    "not json",
+    "{\"v\":1,\"who\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}"
   ]
 }

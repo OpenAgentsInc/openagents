@@ -38,12 +38,13 @@ a="$here"
 "$coax" c "$a/service-policy.coax" --library --header "$work/service-policy.generated.h" > "$work/service-policy.generated.c"
 "$coax" c "$a/progress-policy.coax" --library --header "$work/progress-policy.generated.h" > "$work/progress-policy.generated.c"
 "$coax" c "$a/item-policy.coax" --library --header "$work/item-policy.generated.h" > "$work/item-policy.generated.c"
+"$coax" c "$a/character-policy.coax" --library --header "$work/character-policy.generated.h" > "$work/character-policy.generated.c"
 "$coax" c "$a/worldbuilder-policy.coax" --library --header "$work/worldbuilder-policy.generated.h" > "$work/worldbuilder-policy.generated.c"
 "$coax" c "$a/npc-personas.coax" --run-steps 250000000 --library --header "$work/npc-personas.generated.h" > "$work/npc-personas.generated.c"
 "${cc[@]}" -std=c11 -O1 -w -D_DEFAULT_SOURCE -I"$work" "${flags[@]}" -o "$work/api" \
   "$a"/api.c "$a"/analytics.c "$a"/admin.c "$a"/player.c "$a"/rooms.c "$a"/npc.c "$work"/npc-personas.generated.c "$a"/room.c "$a"/private.c "$a"/drops.c "$a"/villa.c "$a"/chat.c "$a"/realms.c \
   "$a"/access.c "$a"/makers.c "$a"/inference.c "$a"/mesh.c "$a"/mesh-policy.generated.c "$a"/caller-policy.generated.c "$a"/nip98.generated.c \
-  "$a"/anime.c "$work"/anime-director-policy.generated.c "$a"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$work"/item-policy.generated.c "$a"/nostr.c "$a"/email.c "$a"/jobs.c "$a"/service.c "$work"/service-policy.generated.c "$a"/relay.c "$a"/verse_packs.c "$a"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "${libs[@]}"
+  "$a"/anime.c "$work"/anime-director-policy.generated.c "$a"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$work"/item-policy.generated.c "$work"/character-policy.generated.c "$a"/nostr.c "$a"/email.c "$a"/jobs.c "$a"/service.c "$work"/service-policy.generated.c "$a"/relay.c "$a"/verse_packs.c "$a"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "${libs[@]}"
 cli="$(COAX="$coax" "$repo/apps/openagents-cli/build.sh" | tail -1)"
 "$pg/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))

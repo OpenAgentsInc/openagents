@@ -28,7 +28,7 @@ cp_ints :: (d: Jv, at: int, v: [] int) -> int {
 }
 // The character a fixture's values name, built field by field without the codec's reader.
 cp_values :: (d: Jv, v: int) -> Character #effects(all) {
-  wb: [64] u8; kb: [64] u8;
+  wb: [CHAR_WHO + 8] u8; kb: [64] u8;
   c := char_new(cp_str(d, jv_get(d, v, "who"), wb[..]), jv_int(d, jv_get(d, v, "floor"), 0));
   if !c.ok || jv_int(d, jv_get(d, v, "v"), 0) != CHAR_VERSION { return Character.{}; }
   klass := cp_str(d, jv_get(d, v, "class"), kb[..]);

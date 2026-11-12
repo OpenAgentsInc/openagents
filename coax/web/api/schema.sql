@@ -11178,6 +11178,16 @@ CREATE FUNCTION verse.builder_wants(v jsonb) RETURNS jsonb
 
 
 --
+-- Name: character_xp_of(jsonb); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.character_xp_of(b jsonb) RETURNS bigint
+    LANGUAGE sql IMMUTABLE
+    AS $_$
+  SELECT CASE WHEN b->>'xp' ~ '^[0-9]{1,7}$' THEN (b->>'xp')::bigint ELSE 0 END $_$;
+
+
+--
 -- Name: chat_from_demo(); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -21181,6 +21191,20 @@ CREATE TABLE verse.character_profiles_v2 (
 
 
 --
+-- Name: characters; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.characters (
+    who text NOT NULL,
+    body jsonb NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT characters_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT characters_body CHECK (((jsonb_typeof(body) = 'object'::text) AND ((body ->> 'v'::text) = '1'::text) AND ((body ->> 'who'::text) = who) AND (jsonb_typeof((body -> 'known'::text)) = 'array'::text) AND (jsonb_typeof((body -> 'bag'::text)) = 'array'::text) AND (jsonb_typeof((body -> 'worn'::text)) = 'array'::text) AND (jsonb_array_length((body -> 'worn'::text)) = 10) AND (jsonb_typeof((body -> 'quests'::text)) = 'array'::text))),
+    CONSTRAINT characters_who CHECK ((who ~ '^[a-z0-9_-]{1,80}$'::text))
+);
+
+
+--
 -- Name: course_times; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -23698,6 +23722,14 @@ ALTER TABLE ONLY verse.character_checkpoints_v2
 
 ALTER TABLE ONLY verse.character_profiles_v2
     ADD CONSTRAINT character_profiles_v2_pkey PRIMARY KEY (who);
+
+
+--
+-- Name: characters characters_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.characters
+    ADD CONSTRAINT characters_pkey PRIMARY KEY (who);
 
 
 --

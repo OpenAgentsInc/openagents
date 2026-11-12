@@ -20,7 +20,7 @@ A JSON object with exactly these 11 keys, written in this order:
 | Key | Value | Who changes it |
 | --- | --- | --- |
 | `v` | `1` | |
-| `who` | The durable identity, `[a-z0-9-]{1,40}`: the account's text, as the item ledger names it (`verse.item_who`, [decision 0006](../decisions/0006-item-ledger-rules-in-coax.md)) | Never |
+| `who` | The durable identity, `[a-z0-9_-]{1,80}`: the account's ID (`e-...`, `n-...`, `acct_...`), else the player's (`p-...`), as the item ledger names it (`verse.item_who`, [decision 0006](../decisions/0006-item-ledger-rules-in-coax.md)) | Never |
 | `class` | The class word, `srd-` and 3 to 12 lowercase letters, or `""` before the first seat | Set once (`char_class_set`), never changed |
 | `xp` | 0 to 9,999,999 | Only rises |
 | `floor` | 1 to 6: the level the server grants without the XP (a realm's starting level, an admin's choice) | The server |

@@ -60,6 +60,7 @@
 #include "nostr.h"
 #include "progress-policy.generated.h"
 #include "item-policy.generated.h"
+#include "character-policy.generated.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -353,6 +354,40 @@ static int ticket_resume(const request *q, PGconn *db, const char *pid, int seat
 fail:
   if(r)PQclear(r);progress_run(db,"ROLLBACK");return -1;
 }
+// The character record (#13290, migrations/0169_characters.sql, character-policy.coax): kept at every
+// seat ticket, under its row's lock, from the record stored and the facts the server holds: the class
+// kept once, the greatest XP (xp), the realm's starting level (start) and the item ledger's items. The
+// ticket's class and level are then the record's. 1 kept (rec holds it), 0 none for this player (its
+// identity is not a record's: the ticket signs as before), -1 the database failed.
+static int ticket_character(PGconn *db, const char *pid, const char *klass, int xp, int start, char *rec, size_t cap) {
+  const char *pv[1] = {pid}; PGresult *r = NULL; char who[96], kept[4097] = "", items[1024] = "[]"; long long inv = 0;
+  if (!progress_run(db, "BEGIN")) return -1;
+  r = PQexecParams(db, "SELECT coalesce(account,id) FROM verse.players WHERE id=$1 FOR SHARE", 1, NULL, pv, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || strlen(PQgetvalue(r, 0, 0)) >= sizeof who) goto fail;
+  snprintf(who, sizeof who, "%s", PQgetvalue(r, 0, 0)); PQclear(r); r = NULL;
+  const char *wv[1] = {who};
+  r = PQexecParams(db, "SELECT coalesce((SELECT body::text FROM verse.characters WHERE who=$1 FOR UPDATE),''),"
+                       "coalesce((SELECT json_agg(id ORDER BY id)::text FROM (SELECT id FROM verse.items WHERE owner=$1 ORDER BY id LIMIT 33) i),'[]'),"
+                       "coalesce((SELECT version FROM verse.inventories WHERE who=$1),0)", 1, NULL, wv, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || strlen(PQgetvalue(r, 0, 0)) >= sizeof kept || strlen(PQgetvalue(r, 0, 1)) >= sizeof items) goto fail;
+  snprintf(kept, sizeof kept, "%s", PQgetvalue(r, 0, 0)); snprintf(items, sizeof items, "%s", PQgetvalue(r, 0, 1)); inv = atoll(PQgetvalue(r, 0, 2));
+  PQclear(r); r = NULL;
+  coax_string made = character_ticket((coax_string){kept, (int64_t)strlen(kept)}, (coax_string){who, (int64_t)strlen(who)}, (coax_string){klass, (int64_t)strlen(klass)},
+                                      xp, start, (coax_string){items, (int64_t)strlen(items)}, inv, (coax_v_u8){(uint8_t *)rec, (int64_t)cap - 1});
+  if (made.count <= 0) { api_log("room-ticket: no character record for %s", who); progress_run(db, "ROLLBACK"); rec[0] = 0; return 0; }
+  rec[made.count] = 0;
+  const char *bv[2] = {who, rec};
+  r = PQexecParams(db, "INSERT INTO verse.characters AS c (who, body, at_ms) VALUES ($1, $2::jsonb, verse.now_ms()) "
+                       "ON CONFLICT (who) DO UPDATE SET body = EXCLUDED.body, at_ms = EXCLUDED.at_ms WHERE c.body IS DISTINCT FROM EXCLUDED.body", 2, NULL, bv, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_COMMAND_OK) goto fail;
+  PQclear(r); r = NULL;
+  if (!progress_run(db, "COMMIT")) goto fail;
+  return 1;
+fail:
+  if (r) PQclear(r);
+  api_log("room-ticket: character: %s", PQerrorMessage(db));
+  progress_run(db, "ROLLBACK"); rec[0] = 0; return -1;
+}
 static void room_ticket(const request *q, PGconn *db, const char *key, bool site, const char *room, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
@@ -520,6 +555,23 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     if (PQresultStatus(ar) == PGRES_TUPLES_OK && PQntuples(ar) == 1 && PQgetvalue(ar, 0, 0)[0] == 't') acct = 2;
     PQclear(ar);
   }
+  /* the character record (#13290): kept at every ticket, and the class and level the ticket signs are its
+     own (the realm's starting level, OA_ROOM_START_LEVEL, 1 to 6, default 1, is its floor) */
+  const char *sl = getenv("OA_ROOM_START_LEVEL");
+  int start = sl && sl[0] ? atoi(sl) : 1;
+  if (start < 1 || start > 6) start = 1;
+  {
+    char rec[4097];
+    int kept_rec = ticket_character(db, pid, kept_class, xp, start, rec, sizeof rec);
+    if (kept_rec < 0) { api_json(q->fd, 503, "{\"error\":\"character recovery unavailable\"}"); return; }
+    if (kept_rec == 1) {
+      coax_string rc = (coax_string){rec, (int64_t)strlen(rec)};
+      char cw[24]; coax_string w = character_class_word(rc, (coax_v_u8){(uint8_t *)cw, (int64_t)sizeof cw - 1});
+      cw[w.count > 0 ? w.count : 0] = 0;
+      snprintf(kept_class, sizeof kept_class, "%s", cw);
+      xp = (int)character_xp(rc); start = (int)character_floor(rc);
+    }
+  }
   /* the ticket, every byte of it aethyr/session/seat-ticket.coax's (ticket-sign-unit.c). HP, XP, WANTED and the
      owner generation ride in its HP field (the WANTED level the room saved, #12794: the room seats it wanted). */
   char ticket[4097];
@@ -528,8 +580,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     /* the character's class, kept once (0160), and the level its XP gives, at least the realm's starting
        level (OA_ROOM_START_LEVEL, 1 to 6, default 1: the server's, never the page's): the room seats it so (#13259) */
     char ext[40] = "-";
-    const char *sl = getenv("OA_ROOM_START_LEVEL");
-    if (!stk_class_ext_c(kept_class, xp, sl && sl[0] ? atoi(sl) : 1, ext, sizeof ext)) snprintf(ext, sizeof ext, "-");
+    if (!stk_class_ext_c(kept_class, xp, start, ext, sizeof ext)) snprintf(ext, sizeof ext, "-");
     if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, ext, resume == 1 ? 2 : 1, saved, ticket, sizeof ticket)) {
       api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
     }
@@ -935,6 +986,20 @@ static void room_checkpoint(const request *q, PGconn *db, int version) {
     if (version==2) {
       r=PQexecParams(db,"INSERT INTO verse.room_vitals AS x(who,hp,hp_max,hp_at,xp,wanted,wanted_at,at) SELECT $2,(j->>'hp')::int,(j->>'max')::int,(j->>'at')::bigint,(j->>'xp')::int,(j->>'wanted')::int,(j->>'at')::bigint,(j->>'at')::bigint FROM (SELECT $1::jsonb j) s ON CONFLICT(who) DO UPDATE SET hp=EXCLUDED.hp,hp_max=EXCLUDED.hp_max,hp_at=EXCLUDED.hp_at,xp=greatest(x.xp,EXCLUDED.xp),wanted=EXCLUDED.wanted,wanted_at=EXCLUDED.wanted_at,at=greatest(x.at,EXCLUDED.at)",2,NULL,v,NULL,NULL,0);
       if (PQresultStatus(r)!=PGRES_COMMAND_OK) {free(who);goto failed;}PQclear(r);r=NULL;
+      /* the character record's XP, through its write rule (#13290, character-policy.coax): in this
+         transaction, so the record never holds less than an accepted capture */
+      r=PQexecParams(db,"SELECT body::text FROM verse.characters WHERE who=$1 FOR UPDATE",1,NULL,wv,NULL,NULL,0);
+      if (PQresultStatus(r)!=PGRES_TUPLES_OK) {free(who);goto failed;}
+      if (PQntuples(r)==1) {
+        char kept_rec[4097], next_rec[4097]; snprintf(kept_rec,sizeof kept_rec,"%s",PQgetvalue(r,0,0));PQclear(r);r=NULL;
+        coax_string made=character_checkpoint((coax_string){kept_rec,(int64_t)strlen(kept_rec)},xp,(coax_v_u8){(uint8_t *)next_rec,(int64_t)sizeof next_rec-1});
+        if (made.count>0) {
+          next_rec[made.count]=0;const char *cv[2]={who,next_rec};
+          r=PQexecParams(db,"UPDATE verse.characters SET body=$2::jsonb,at_ms=verse.now_ms() WHERE who=$1",2,NULL,cv,NULL,NULL,0);
+          if (PQresultStatus(r)!=PGRES_COMMAND_OK) {free(who);goto failed;}
+        }
+      }
+      PQclear(r);r=NULL;
     }
   }
   free(who);

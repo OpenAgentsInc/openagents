@@ -1153,6 +1153,25 @@ rc_vitals_checks :: (t: [] Ap) {
   no_g := true; for c: field { if c == 'g' { no_g = false; } }
   ap_check(t, "room-ticket: the API runs without OA_ROOM_OWNER_GEN here: the ticket carries no generation (a room from before reads it)", st == 200 && no_g, ap_body(t));
 
+  // the character record (#13290, migrations/0169): the ticket keeps it from what the server holds, and
+  // nothing a page sends or stores changes it
+  rq: [1] Sb; sb(rq[..], "select (body->>'class') || ' ' || (body->>'xp') || ' ' || (body->>'floor') || ' ' || (body->'bag')::text || ' ' || (body->>'inv') from verse.characters where who = '"); sb(rq[..], pid); sb(rq[..], "'");
+  ap_check(t, "character: a seat ticket keeps the record: the class kept once and the room's XP", ap_sql(t, sb_text(rq[..]), out[..]) == "srd-wizard 160 1 [] 0", "");
+  st = ap_call(t, "POST", "/api/playtest/room-state", "{\"class\":\"fighter\",\"look\":\"elf.3\"}", h[..]);
+  forged: [1] Sb; sb(forged[..], "update verse.room_vitals set class = 'srd-fighter' where who = '"); sb(forged[..], pid); sb(forged[..], "'"); ap_do(t, sb_text(forged[..]));
+  rv_line(l[..], pid, "6 10 160 4 4", now - 50); sb(l[..], " c=srd-fighter"); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen + 5, 10, one[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  st = ap_call(t, "POST", "/api/playtest/room-ticket/pair-rv", "{}", h[..]);
+  ap_check(t, "character: a page's class, a forged saved class and another room's later class change nothing", st == 200 && ap_sql(t, sb_text(rq[..]), out[..]) == "srd-wizard 160 1 [] 0", ap_body(t));
+  gift: [1] Sb; sb(gift[..], "insert into verse.items (kind, owner) values (7, '"); sb(gift[..], pid); sb(gift[..], "'), (9, '"); sb(gift[..], pid); sb(gift[..], "'); insert into verse.inventories (who, version) values ('"); sb(gift[..], pid); sb(gift[..], "', 2) on conflict (who) do update set version = 2");
+  ap_do(t, sb_text(gift[..]));
+  st = ap_call(t, "POST", "/api/playtest/room-ticket/pair-rv", "{}", h[..]);
+  bag: [1] Sb; sb(bag[..], "select (body->'bag')::text = (select jsonb_agg(id order by id)::text from verse.items where owner = '"); sb(bag[..], pid); sb(bag[..], "') and body->>'inv' = '2' and jsonb_array_length(body->'bag') = 2 from verse.characters where who = '"); sb(bag[..], pid); sb(bag[..], "'");
+  ap_check(t, "character: the record's bag and version are the item ledger's", st == 200 && ap_sql(t, sb_text(bag[..]), out[..]) == "t", ap_body(t));
+  // a lost room and a page with nothing stored: the record alone brings the class and XP back
+  wipe: [1] Sb; sb(wipe[..], "delete from verse.room_vitals where who = '"); sb(wipe[..], pid); sb(wipe[..], "'"); ap_do(t, sb_text(wipe[..]));
+  st = ap_call(t, "POST", "/api/playtest/room-ticket/pair-rv", "{}", h[..]);
+  ap_check(t, "character: with the room's notes gone, the ticket carries the record's XP and the record keeps its class", st == 200 && ap_has(ap_member(ap_body(t), "ticket", ticket[..]), "x160") && ap_starts(ap_sql(t, sb_text(rq[..]), out[..]), "srd-wizard 160 1 [") && ap_ends(ap_sql(t, sb_text(rq[..]), out[..]), "] 2"), ap_body(t));
   // owner generations (#12834, migrations/0127): the newest ticket's owner saves; an older owner's line is f
   sb_clear(q[..]); sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "')");
   o1 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));

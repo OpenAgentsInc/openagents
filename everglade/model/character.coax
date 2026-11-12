@@ -32,7 +32,7 @@
 
 CHAR_VERSION :: 1;
 CHAR_BODY :: 4096;        // the longest record, in bytes
-CHAR_WHO :: 40;           // [a-z0-9-], as a seat ticket's pid
+CHAR_WHO :: 80;           // [a-z0-9_-]: a player ID (p-...), an account's (e-..., n-..., acct_...)
 CHAR_CLASS :: 16;         // "srd-" and 3 to 12 lowercase letters: "srd-barbarian" is the longest class
 CHAR_LEVEL_TOP :: 6;      // Everglade II's highest level: its class kits go to 6
 CHAR_XP_MAX :: 9999999;
@@ -71,7 +71,7 @@ char_new :: (who: string, start: int) -> Character #effects(all) {
 }
 char_who_ok :: (s: string) -> bool #effects(all) {
   if s.count < 1 || s.count > CHAR_WHO { return false; }
-  for b: s { if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-') { return false; } }
+  for b: s { if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-' || b == '_') { return false; } }
   return true;
 }
 // A class word: "srd-" and 3 to 12 lowercase letters.
@@ -253,12 +253,12 @@ char_read :: (text: string) -> Character #effects(all) {
   #assert !char_class_ok("srd-ab`") && char_class_ok("srd-zza") && char_class_ok("srd-aaz");
 }
 #forall "character: a who classifies every byte" ch: 0..<256 {
-  b := [1] u8.[cast(u8) ch]; allowed := "abcdefghijklmnopqrstuvwxyz0123456789-"; found := false;
+  b := [1] u8.[cast(u8) ch]; allowed := "abcdefghijklmnopqrstuvwxyz0123456789-_"; found := false;
   for a: allowed { if cast(int) a == ch { found = true; } }
   #assert char_who_ok(cast(string) b[..]) == found;
 }
 #test "character: who, floor and new" {
-  #assert !char_who_ok("") && char_who_ok("a") && char_who_ok("abcdefghijabcdefghijabcdefghijabcdefghij") && !char_who_ok("abcdefghijabcdefghijabcdefghijabcdefghijk");
+  #assert !char_who_ok("") && char_who_ok("a") && char_who_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij") && !char_who_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk");
   #assert !char_new("", 1).ok && !char_new("p-a", 0).ok && !char_new("p-a", 7).ok && char_new("p-a", 6).ok && char_new("p-a", 1).ok;
   #assert char_new("p-a", 6).floor == 6 && char_who_is(char_new("p-a", 6), "p-a");
 }
@@ -288,7 +288,7 @@ char_read :: (text: string) -> Character #effects(all) {
   o: [CHAR_BODY] u8; #assert char_write(char_accept(kept, room), o[..]).count > 0;
   #assert char_who_is(kept, "p-a") && !char_who_is(kept, "p-ab") && !char_who_is(kept, "p-") && !char_who_is(kept, "q-a") && !char_who_is(kept, "p-b");
   #assert char_class_is(kept, "srd-ranger") && !char_class_is(kept, "xrd-ranger") && !char_class_is(kept, "srd-rangex") && !char_class_is(kept, "srd-range");
-  long := char_new("abcdefghijabcdefghijabcdefghijabcdefghij", 1); #assert long.ok && char_valid(long);
+  long := char_new("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij", 1); #assert long.ok && char_valid(long);
 }
 #test "character: every field's range, both ends" {
   c := char_fixture(); o: [CHAR_BODY] u8;
@@ -307,7 +307,7 @@ char_read :: (text: string) -> Character #effects(all) {
   c.quest_n = CHAR_QUESTS + 1; #assert !char_valid(c); c.quest_n = -1; #assert !char_valid(c); c = char_fixture();
   c.worn[0] = 5; #assert !char_valid(c); c.worn[0] = 12; #assert char_valid(c); c.worn[2] = 12; #assert !char_valid(c); c = char_fixture();
   c.klass_n = -1; #assert !char_valid(c); c.klass_n = 17; #assert !char_valid(c); c.klass_n = 1; #assert !char_valid(c); c = char_fixture();
-  c.who_n = 41; #assert !char_valid(c); c.who_n = 1; #assert char_valid(c); c = char_fixture();
+  c.who_n = 81; #assert !char_valid(c); c.who_n = 1; #assert char_valid(c); c = char_fixture();
   k: [1] Character; k[0] = char_new("a", 1); #assert char_class_set(k[..], "srd-abcdefghijkl") && char_valid(k[0]);
   #assert char_same(char_read(char_write(k[0], o[..])), k[0]); c = char_fixture();
   c.quest[1] = CHAR_CONTENT_MAX; #assert char_valid(c); c.quest[1] = CHAR_CONTENT_MAX + 1; #assert !char_valid(c); c = char_fixture();

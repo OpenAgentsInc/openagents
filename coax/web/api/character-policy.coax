@@ -1,0 +1,103 @@
+// The character record's route in Coax (#13290, AAA P4.1; docs/protocol/everglade-character-v1.md):
+// what player.c asks the record's rules. The rules are everglade/model/character.coax's; this file
+// names them for C. player.c reads the facts under the database's locks (migrations/0169_characters.sql)
+// and stores what these answers say; the database decides nothing.
+//   the seat ticket   room_ticket keeps and signs the record: character_ticket brings the stored record
+//                     up to the facts the server already holds (the class kept once, the greatest XP
+//                     a room reported, the realm's starting level) and fills the bag from the item
+//                     ledger; the ticket's class and level are the record's (character_class_word,
+//                     character_xp, character_floor).
+//   a checkpoint      an accepted capture's XP goes through the record's write rule (character_checkpoint).
+//   coax/bin/coax test coax/web/api/character-policy.coax --library
+//   coax/bin/coax mutate coax/web/api/character-policy.coax --library --root-only
+#authority;
+#load "../../../everglade/model/character.coax";
+
+// The record to keep and sign at a seat ticket, into out ("" when it can't be kept: the stored body or
+// the facts break the record's rules). kept: the stored record's text, or "" for none (a new record for
+// who, at level `start`). klass: the class the server kept once ("" none): a record with no class takes
+// it. xp: the greatest XP a room reported: the record takes it when it is more. start: the realm's
+// starting level (1 to the top): the record's floor rises to it. items: the item ledger's IDs of who's
+// items, a JSON array; inv: its inventory version: the record's bag and version are the ledger's.
+character_ticket :: (kept: string, who: string, klass: string, xp: int, start: int, items: string, inv: int, out: [] u8) -> string #export_c #effects(all) {
+  c: [1] Character;
+  c[0] = ifx kept.count == 0 then char_new(who, start) else char_read(kept);
+  if !c[0].ok || !char_who_is(c[0], who) { return ""; }
+  _ := char_class_set(c[..], klass);   // only while it has none, and only a class word
+  room := c[0]; room.xp = xp;
+  up := char_accept(c[0], room);   // the write rule: refused when xp is below the record's
+  if up.ok { c[0] = up; }
+  // the floor rises to start, never falls: the level the floor's own XP gives, at least start
+  c[0].floor = srd_level_from(srd_xp_at(c[0].floor), start, CHAR_LEVEL_TOP);
+  nodes: [64] JvNode; d: [1] Jv;
+  _ := jv_parse(d[..], items, nodes[..]);
+  c[0].bag_n = char_list(d[0], 0, CHAR_BAG, c[0].bag[..]); c[0].inv = inv;
+  return char_write(c[0], out);
+}
+// What an accepted checkpoint leaves in the record `kept`, into out: the record with the capture's XP,
+// when the record's write rule takes it and it changes the record; "" otherwise (keep the record as it is).
+character_checkpoint :: (kept: string, xp: int, out: [] u8) -> string #export_c #effects(all) {
+  c := char_read(kept);
+  if !c.ok || xp <= c.xp { return ""; }
+  room := c; room.xp = xp;
+  return char_write(char_accept(c, room), out);
+}
+// The record's class word, into out ("" none, or not a record).
+character_class_word :: (text: string, out: [] u8) -> string #export_c #effects(all) {
+  c := char_read(text);
+  if !c.ok || c.klass_n > out.count { return ""; }
+  for i: 0..<c.klass_n { out[i] = c.klass[i]; }
+  return cast(string) out[0..<c.klass_n];
+}
+// Its XP and its floor level (-1: not a record). The ticket's level is the level these give
+// (seat_ticket_v5_class_ext: srd_level_from, the same as char_level).
+character_xp :: (text: string) -> int #export_c #effects(all) { c := char_read(text); return ifx c.ok then c.xp else -1; }
+character_floor :: (text: string) -> int #export_c #effects(all) { c := char_read(text); return ifx c.ok then c.floor else -1; }
+character_level_of :: (text: string) -> int #export_c #effects(all) { c := char_read(text); return ifx c.ok then char_level(c) else -1; }
+
+#test "character route: a new record at the ticket takes the kept class, the reported XP, the start level and the ledger's items" {
+  o: [CHAR_BODY] u8;
+  s := character_ticket("", "p-a", "srd-ranger", 950, 2, "[4,9,12]", 5, o[..]);
+  #assert s == "{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,0,0,0,0,0,0,0,0,0],\"coin\":0,\"quests\":[]}";
+  #assert character_level_of(s) == 3 && character_xp(s) == 950 && character_floor(s) == 2;
+  w: [16] u8; #assert character_class_word(s, w[..]) == "srd-ranger";
+  b: [CHAR_BODY] u8;
+  #assert character_ticket("", "p-a", "", 0, 1, "[]", 0, b[..]) == "{\"v\":1,\"who\":\"p-a\",\"class\":\"\",\"xp\":0,\"floor\":1,\"known\":[],\"bag\":[],\"inv\":0,\"worn\":[0,0,0,0,0,0,0,0,0,0],\"coin\":0,\"quests\":[]}";
+  #assert character_ticket("", "p-a", "ranger", 0, 1, "[]", 0, b[..]) == character_ticket("", "p-a", "", 0, 1, "[]", 0, o[..]);
+}
+#test "character route: a kept record keeps its class, never lowers XP or the floor, and its bag is the ledger's" {
+  o: [CHAR_BODY] u8; b: [CHAR_BODY] u8; w: [16] u8;
+  kept := character_ticket("", "p-a", "srd-ranger", 950, 2, "[4]", 5, o[..]);
+  s := character_ticket(kept, "p-a", "srd-wizard", 100, 1, "[9,12]", 7, b[..]);
+  #assert character_class_word(s, w[..]) == "srd-ranger" && character_xp(s) == 950 && character_floor(s) == 2;
+  #assert s == "{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[],\"bag\":[9,12],\"inv\":7,\"worn\":[0,0,0,0,0,0,0,0,0,0],\"coin\":0,\"quests\":[]}";
+  c: [CHAR_BODY] u8; up := character_ticket(kept, "p-a", "", 2700, 3, "[]", 0, c[..]);
+  #assert character_xp(up) == 2700 && character_floor(up) == 3 && character_level_of(up) == 4 && character_class_word(up, w[..]) == "srd-ranger";
+  same: [CHAR_BODY] u8; #assert character_xp(character_ticket(kept, "p-a", "", 950, 2, "[]", 0, same[..])) == 950;
+  open := character_ticket("", "p-a", "", 0, 1, "[]", 0, c[..]); d: [CHAR_BODY] u8;
+  #assert character_class_word(character_ticket(open, "p-a", "srd-wizard", 0, 1, "[]", 0, d[..]), w[..]) == "srd-wizard";
+}
+#test "character route: a stored body for another character, a broken body or broken facts are not kept" {
+  o: [CHAR_BODY] u8; b: [CHAR_BODY] u8;
+  kept := character_ticket("", "p-a", "", 0, 1, "[]", 0, o[..]);
+  #assert character_ticket(kept, "p-b", "", 0, 1, "[]", 0, b[..]) == "";
+  #assert character_ticket("{}", "p-a", "", 0, 1, "[]", 0, b[..]) == "" && character_ticket("", "P-A", "", 0, 1, "[]", 0, b[..]) == "";
+  #assert character_ticket("", "p-a", "", 0, 7, "[]", 0, b[..]) == "" && character_ticket("", "p-a", "", 0, 0, "[]", 0, b[..]) == "";
+  #assert character_ticket("", "p-a", "", 0, 1, "[9,4]", 0, b[..]) == "" && character_ticket("", "p-a", "", 0, 1, "{}", 0, b[..]) == "";
+  #assert character_ticket("", "p-a", "", 10000000, 1, "[]", 0, b[..]) == "" && character_ticket("", "p-a", "", 0, 1, "[]", -1, b[..]) == "";
+  #assert character_xp("{}") == -1 && character_floor("{}") == -1 && character_level_of("{}") == -1;
+  w: [16] u8; #assert character_class_word("{}", w[..]) == "";
+  r := character_ticket("", "p-a", "srd-ranger", 0, 1, "[]", 0, b[..]); short: [4] u8; #assert character_class_word(r, short[..]) == "";
+  ten: [10] u8; #assert character_class_word(r, ten[..]) == "srd-ranger";
+  #assert character_ticket("", "p-a", "", 0, 1, "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]", 0, b[..]).count > 0 && character_ticket("", "p-a", "", 0, 1, "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33]", 0, b[..]) == "";
+  top := character_ticket("", "p-a", "", 0, 6, "[]", 0, o[..]); #assert character_floor(character_ticket(top, "p-a", "", 0, 7, "[]", 0, b[..])) == 6;
+}
+#test "character route: a checkpoint's XP rises the record; less or the same leaves it" {
+  o: [CHAR_BODY] u8; b: [CHAR_BODY] u8; w: [16] u8;
+  kept := character_ticket("", "p-a", "srd-ranger", 950, 2, "[4]", 5, o[..]);
+  s := character_checkpoint(kept, 2700, b[..]);
+  #assert character_xp(s) == 2700 && character_level_of(s) == 4 && character_floor(s) == 2 && character_class_word(s, w[..]) == "srd-ranger";
+  c: [CHAR_BODY] u8; #assert character_checkpoint(kept, 950, c[..]) == "" && character_checkpoint(kept, 949, c[..]) == "";
+  #assert character_checkpoint(kept, 951, c[..]).count > 0 && character_checkpoint("{}", 9999, c[..]) == "";
+  #assert character_checkpoint(kept, 10000000, c[..]) == "";
+}
