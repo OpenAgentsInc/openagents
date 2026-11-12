@@ -1,4 +1,4 @@
-/* The Orbit League room server's host (ol-room): TCP, the WebSocket
+/* The room server's host: TCP, the WebSocket
    handshake and frames (verse/voice-host/ws.c), and the 60 Hz beat. Every
    room decision is room.coax's: the host hands it each new socket's request
    (rm_join), each text frame (rm_heard) and each close (rm_left), calls
@@ -580,7 +580,7 @@ static void opening(int i) {
   }
   char out[512];
   size_t hn = ws_server_handshake((char *)c->in, len, out, sizeof out);
-  if (!hn) { http(i, "400 Bad Request", "text/plain", "Rooms: open a WebSocket to /api/room/orbit-league/NAME, or to /api/room/relay/GAME/CODE.\n"); return; }
+  if (!hn) { http(i, "400 Bad Request", "text/plain", "Rooms: open a WebSocket to a game's room path (room-games.coax), or to /api/room/relay/GAME/CODE.\n"); return; }
   if(!rm_work_request_ready(req,rooms_warmed)){http(i,"503 Service Unavailable","text/plain","The world is getting ready.\n");return;}
   int64_t seat = rm_join(view(), i, req);
   if (seat < 0) { http(i, "404 Not Found", "text/plain", "No such room, or it is full.\n"); return; }
@@ -880,8 +880,7 @@ static void stats_window(double secs) {
     /* Effects only: Coax supplies each initialized world's contract and observations. Keep this
        local log outside the published signed stats body; unavailable counters remain -1. */
     for (int realm = 1; realm <= 2; realm++) {
-      size_t count = realm == 1 ? sizeof server->eg.e / sizeof server->eg.e[0]
-                               : sizeof server->rooms.e / sizeof server->rooms.e[0];
+      size_t count = (size_t)rm_net_rooms(realm);   /* Everglade's rooms, or a game's (room-games.coax) */
       for (size_t room = 0; room < count; room++) {
         int64_t ready = rm_net_observation(view(), realm, (int64_t)room, 0);
         if (ready < 0) continue;
@@ -1084,7 +1083,7 @@ int main(int argc, char **argv) {
     if ((double)now >= next) {
       clock_in();
       int64_t t_tick = now_us();
-      /* each realm steps when its profile says (room.coax rm_profile: 0 Orbit League, 1 Everglade) */
+      /* each realm steps when its profile says (room.coax rm_profile: 0 the games on their own paths, room-games.coax; 1 Everglade) */
       if (rm_realm_due(view(), 0, ticks)) rm_tick(view());
       if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; }
       for (int i = 0; i < CONNS; i++) {

@@ -58,8 +58,10 @@ delta-v, propellant and time are computed, not invented.
 
 ## What exists today
 
-- Orbit League: [orbitleague.coax](../../apps/openagents-web/orbitleague.coax)
-  (rules and drawing; `orbitleague.wgsl` traces the scene) over
+- Orbit League: [orbitleague-game.coax](../../apps/openagents-web/orbitleague-game.coax)
+  (rules, physics and the room's wire, which the room server loads alone) and
+  [orbitleague.coax](../../apps/openagents-web/orbitleague.coax) (the page and
+  its drawing; `orbitleague.wgsl` traces the scene) over
   [aethyr/vehicle.coax](../../aethyr/vehicle.coax),
   [contact.coax](../../aethyr/contact.coax),
   [gravity.coax](../../aethyr/gravity.coax),

@@ -1,0 +1,51 @@
+// The games the room server hosts on their own paths, beside the relay's rooms (room-relay.coax): the
+// one registration the host routes through (#13347). Each game's room module lives with its game and
+// owns its rooms, its seats' frames and what each seat hears; room.coax knows only these procedures.
+// A socket's game is RmConn.game (RM_GAME_NONE for a relay socket). Today one game registers:
+//   Orbit League   orbit/server/room.coax   /api/room/orbit-league/NAME, /api/room/orbit-league-v2/NAME
+// A new game adds its module's load, its part of RmGames, a game number and a line in each procedure.
+#load "../../../orbit/server/room.coax";
+
+RM_GAME_NONE :: -1; RM_GAME_ORBIT :: 0;
+// The realms rm_net_observation names (aethyr/net/README.md): 1 is Everglade (room.coax), 2 the
+// authoritative Orbit League. The hosted games step on realm 0's beat (rm_profile, room-host.c).
+RM_REALM_ORBIT_AUTH :: 2;
+
+RmGames :: struct {
+  orbit: OlrRooms;
+}
+rm_games_init :: (v: [] RmServer) { olr_init(v); }
+
+// A WebSocket's request that is no relay room's: a game's seat, or -1 (no game's path, or full).
+rm_games_join :: (v: [] RmServer, conn: int, request: string) -> int {
+  if olr_claims(request) {
+    seat := olr_join(v, conn, request);
+    if seat >= 0 { v[0].conns[conn].game = RM_GAME_ORBIT; }
+    return seat;
+  }
+  return -1;
+}
+// A text frame from a seated socket of a game.
+rm_games_heard :: (v: [] RmServer, conn: int, text: string) {
+  if v[0].conns[conn].game == RM_GAME_ORBIT { olr_heard(v, conn, text); }
+}
+// The games' tick, on realm 0's beat.
+rm_games_tick :: (v: [] RmServer) { olr_tick(v); }
+// What a game's seated socket hears this tick, written to v[0].out: its length (0: nothing).
+rm_games_state :: (v: [] RmServer, conn: int) -> int {
+  if v[0].conns[conn].game == RM_GAME_ORBIT { return olr_state(v, conn); }
+  return 0;
+}
+// Realm 0's profile: the beat the games step on.
+rm_games_beat :: () -> NetProfile { return olr_beat(); }
+rm_games_realm :: () -> NetRealm { return olr_realm(); }
+// A game's realm's observations (rm_net_observation): -1 for a realm no game has.
+rm_games_observation :: (v: [] RmServer, realm: int, room: int, metric: int) -> int {
+  if realm == RM_REALM_ORBIT_AUTH { return olr_observation(v, room, metric); }
+  return -1;
+}
+// How many rooms a game's realm has (the host's diagnostic log walks them), 0 for none.
+rm_games_rooms :: (realm: int) -> int {
+  if realm == RM_REALM_ORBIT_AUTH { return OLR_ROOMS; }
+  return 0;
+}

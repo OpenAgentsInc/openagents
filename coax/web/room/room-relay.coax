@@ -1,7 +1,7 @@
 #load "../../../aethyr/ids.coax";
 // The room server's relay (room-relay): rooms for any game, keyed by the game and a room code,
-// that carry each player's text frames to the others unread. Orbit League's rooms
-// (/api/room/orbit-league/NAME) are untouched; a relay room's WebSocket opens at
+// that carry each player's text frames to the others unread. The games on their own paths
+// (room-games.coax) are untouched; a relay room's WebSocket opens at
 //   /api/room/relay/GAME/CODE        GAME and CODE: 1 to RELAY_NAME of [a-z0-9-]
 // and up to rl_game_seats(GAME) players sit in it (16 for everglade, 4 for every other game),
 // the first in seat 0. Seats and counts are decimal numbers. What each hears:
@@ -535,7 +535,7 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   #assert rm_join(v[..],1,cast(string)request[0..<k])==0;
 }
 
-#test "relay: rooms keyed by game and code carry each player's frames, unread, to the others; Orbit League's rooms are as they were (room-relay)" {
+#test "relay: rooms keyed by game and code carry each player's frames, unread, to the others (room-relay)" {
   v: [1] RmServer;
   rm_init(v[..]);
   rm_clock(v[..], 0, 7);
@@ -570,10 +570,9 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   rm_left(v[..], 1);
   #assert rl_heard_by(v[..], 0, b0[..]) == "l 1";
   #assert rm_join(v[..], 8, ga) == 1;
-  // the relay never ticks Orbit League, and an Orbit League room beside it plays as before
-  #assert rm_join(v[..], 9, "GET /api/room/orbit-league/one HTTP/1.1\r\n\r\n") == 0;
+  // the games' tick never steps a relay room, and a relay socket hears nothing from the games' state
   rm_tick(v[..]);
-  #assert rm_state(v[..], 0) == 0 && rm_state(v[..], 9) > 0 && v[0].rooms[0].live;
+  #assert rm_state(v[..], 0) == 0;
   // everyone leaves: the room closes
   q4 := rl_heard_by(v[..], 0, b0[..]);
   for c: 0..<9 { rm_left(v[..], c); }

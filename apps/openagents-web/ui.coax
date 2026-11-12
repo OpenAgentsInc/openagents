@@ -8,6 +8,7 @@
 // (coax/web/host.js) passes keys, the pointer and typed or pasted text in
 // and carries actions out; coax/web/unlock does the crypto and answers with
 // messages.
+#load "ui-core.coax";
 
 // Keys the host names; every other key arrives as its code point.
 KEY_ESCAPE :: -1;   KEY_ENTER :: -2;    KEY_BACKSPACE :: -3; KEY_LEFT :: -4;
@@ -100,39 +101,7 @@ Ui :: struct {
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
 
-Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
-inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
-least :: (a: int, b: int) -> int { if a < b { return a; } return b; }
-most :: (a: int, b: int) -> int { if a > b { return a; } return b; }
-
-// ---- small text buffers
-
-// Drops the last code point of buf's first n bytes. Returns the new length.
-pop :: (buf: [] u8, n: int) -> int {
-  k := n - 1;
-  while k > 0 && (buf[k] & 0xC0) == 0x80 { k -= 1; }
-  return most(k, 0);
-}
-
-// Copies text into buf from at, as much as fits. Returns the new length.
-put :: (buf: [] u8, at: int, text: string) -> int {
-  n := at;
-  for i: 0..<text.count { if n >= buf.count { break; } buf[n] = text[i]; n += 1; }
-  return n;
-}
-
-// Writes v's decimal digits into buf from at. Returns the new length.
-put_int :: (buf: [] u8, at: int, v: int) -> int {
-  digits: [20] u8; n := 0; x := most(v, 0);
-  while true { digits[n] = cast(u8) (48 + x % 10); n += 1; x /= 10; if x == 0 { break; } }
-  k := at;
-  while n > 0 && k < buf.count { n -= 1; buf[k] = digits[n]; k += 1; }
-  return k;
-}
-
-// text without spaces at either end: its first and last-plus-one bytes.
-trim_from :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
-trim_to :: (text: string) -> int { j := text.count; while j > 0 && text[j - 1] == ' ' { j -= 1; } return j; }
+// Box, least, most and the small text buffers are ui-core.coax's (the room loads them without the UI).
 
 raise :: (u: [] Ui, action: int, text: string) {
   u[0].out_n = put(u[0].outbox[..], 0, text);

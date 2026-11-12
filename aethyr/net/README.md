@@ -106,8 +106,9 @@ channel is its own stream, so a resend in one never holds up another.
   Party health does not create a visible body in `everglade-net.coax`.
   Widening permissions invalidates a baseline and sends an absolute row.
   Narrowing permissions cannot expose a previously private field.
-- `room-orbit-v2.coax` calls the same session, accepted-result, receipt and
-  field contracts. It runs `orbitleague.coax`'s vehicle/ball physics with an
+- Orbit League's room module (`orbit/server/room.coax`, behind the room's one
+  game registration, `room-games.coax`) calls the same session, accepted-result,
+  receipt and field contracts. It runs `orbitleague-game.coax`'s vehicle/ball physics with an
   explicit active-car mask. Unadmitted cars do not collide, take fuel pads
   or affect play. No second vehicle or collision kernel was introduced.
 - `orbit-session.coax` defines the realm's bounded commands and admission;

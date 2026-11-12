@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Orbit League room server (room.coax, room-host.c) to OUT
+# Builds the room server (room.coax, room-host.c) to OUT
 # (default coax/web/room/bin/room).
 #   coax/web/room/build.sh [OUT]
 set -euo pipefail
