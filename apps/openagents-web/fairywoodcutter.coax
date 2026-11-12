@@ -95,7 +95,7 @@ ffw_draw :: (s: [] Fairy, u: [] f32, you: Point, eye: Point) {
   // a question goes to the character chat as Rowan
   s[0].typed[0] = 'h'; s[0].typed[1] = 'i'; s[0].typed_n = 2;
   send_typed(s[..]);
-  #assert s[0].ask_n > 0 && ff_has(cast(string) s[0].ask[0..<s[0].ask_n], "\"name\":\"Rowan\"");
+  #assert s[0].ask_n > 0 && ff_has(cast(string) s[0].ask[0..<s[0].ask_n], "{\"npc\":\"rowan\",");
   fairy_answer(s[..], "500\n");
   #assert line_of(s[..], s[0].line_n - 1) == FF_ROWAN_SAYS;
   end_talk(s[..]);

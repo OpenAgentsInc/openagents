@@ -21,8 +21,8 @@
 // the two opens. A save that doesn't open falls back to the last good one.
 //
 // Talking: a typed question (ASK) goes to the server (/api/playtest/npc/ask,
-// with the player key), which answers as the character from who they are,
-// what players taught them and the conversation so far. When it can't (an
+// with the player key), which answers as the character the server knows by
+// their id, with what players taught them and the conversation so far. When it can't (an
 // error, the day's answers used up, nothing back in NPC_WAIT seconds) the
 // house's own lines answer (verse_haunt_ask). What you TEACH a character is
 // added to what they know and kept with the house's save.
@@ -728,7 +728,8 @@ static void ask_npc(coax_string typed, bool spoken) {
   memcpy(question, typed.data, question_n);
   coax_string q = {question, (int64_t)question_n};
   coax_t_HauntPerson p = people[house.talking];
-  int64_t n = realm_npc_body(realm_of(), p.name, p.role, p.knowledge, greet, q, (coax_v_u8){npc_body, sizeof npc_body});
+  // their id (who they are is the server's: #13261) and what players taught them, as the scene
+  int64_t n = realm_npc_body(realm_of(), p.id, p.knowledge, q, (coax_v_u8){npc_body, sizeof npc_body});
   realm_remember(realm_of(), false, q);
   npc_ask = n > 0 ? coaxial_http((uint32_t)(uintptr_t)NPC_URL, sizeof NPC_URL - 1, (uint32_t)(uintptr_t)npc_body, (uint32_t)n, HTTP_ASK) : -1;
   if (npc_ask < 0) { realm_track_ask(tr(), p.name, q, false); npc_scripted(); return; }

@@ -50,3 +50,20 @@ Paid from your wallet straight to the maker's own Lightning Address.
 | The maker's wallet's time to answer | 5 seconds |
 
 This section is made from the server's own numbers (`coax/web/api/makers.c`, `makerpay-policy.coax`).
+
+## Talking to characters
+
+Each question needs your player key. When you reach a limit, we say which and when it lifts.
+
+| What | Limit |
+| --- | --- |
+| Questions to characters from one player | 60 in 10 minutes |
+| Questions to characters from one player | 300 a day |
+| Questions to characters from one network address | 120 in 10 minutes |
+| Questions to characters from one network address | 600 a day |
+| Questions being answered at once for one player | 2 at once |
+| Questions being answered at once from one network address | 8 at once |
+| Questions being answered at once, all players | 24 at once |
+| Answers from characters, all players | 2000 a day |
+
+This section is made from the server's own numbers (`coax/web/api/npc.c`).

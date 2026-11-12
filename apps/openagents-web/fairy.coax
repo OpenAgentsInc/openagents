@@ -785,7 +785,7 @@ send_typed :: (s: [] Fairy) {
   if s[0].talk <= 0 || s[0].waiting || s[0].typed_n == 0 { return; }
   lines: [TALK_LINES] FfLine;
   for k: 0..<s[0].line_n { lines[k] = FfLine.{npc = s[0].line_npc[k], text = line_of(s, k)}; }
-  n := ff_ask_body(s[0].ask[..], s[0].forest[..], s[0].talk - 1, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n], redit_lore(s[0].ed[..], ffw_key(s[0].talk - 1)));
+  n := ff_ask_body(s[0].ask[..], s[0].forest[..], s[0].talk - 1, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n]);   // its lore: the server reads the panes
   if n == 0 { return; }
   s[0].ask_n = n;
   add_line(s, false, typed_text(s));
@@ -2441,7 +2441,7 @@ fairy_store_cap :: (k: int) -> int #export_c #effects(all) {
   #assert fairy_key(g[..], KEY_ENTER, 0);
   #assert fairy_ask(g[..]) > 0 && g[0].waiting && g[0].typed_n == 0;
   body := cast(string) g[0].ask[0..<fairy_ask(g[..])];
-  #assert ff_has(body, "\"name\":\"Bramble\"") && ff_has(body, "\"visit\":\"1730000000000\"") && ff_has(body, "\"question\":\"Hi there\"");
+  #assert ff_has(body, "{\"npc\":\"bramble\",") && ff_has(body, "\"visit\":\"1730000000000\"") && ff_has(body, "\"question\":\"Hi there\"");
   fairy_ask_sent(g[..]);
   fairy_answer(g[..], "200\n{\"text\":\"Oh, a fairy! Will you wake my flowers?\",\"model\":\"m\"}");
   #assert !g[0].waiting && g[0].line_n == 3 && line_of(g[..], 2) == "Oh, a fairy! Will you wake my flowers?";

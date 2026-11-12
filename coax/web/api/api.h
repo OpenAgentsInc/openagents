@@ -48,6 +48,7 @@ bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pi
 int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until);
 bool rooms_endpoint(PGconn *db, int shard, char *out, size_t cap);   // rooms.c: a live VM shard's wss:// endpoint (#13179)
 bool npc_route(const request *q);         // npc.c
+void npc_print_limits(FILE *out);         // api --limits: the character chat's section of /docs/limits (npc.c)
 bool piece_route(const request *q);       // npc.c: the Sandbox's set pieces
 bool voice_edit_route(const request *q);  // npc.c: an admin's spoken edit to a realm (eg-voice-edit)
 bool private_route(const request *q);     // private.c

@@ -5027,7 +5027,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_key(g[..], 'e', 0) && everglade_key(g[..], KEY_ENTER, 0);
   #assert g[0].waiting && g[0].typed_n == 0 && g[0].line_n == 2 && line_of(g[..], 1) == "I'm Wren, I love pie";
   body := cast(string) g[0].ask[0..<everglade_ask(g[..])];
-  #assert body.count > 0 && contains(body, "\"name\":\"Marta\"") && contains(body, "\"visit\":\"1730000000123\"");
+  #assert body.count > 0 && contains(body, "{\"npc\":\"marta\",") && contains(body, "\"visit\":\"1730000000123\"");
   #assert contains(body, "\"question\":\"I'm Wren, I love pie\"") && contains(body, "\"history\":[{\"from\":\"npc\"");
   everglade_ask_sent(g[..]);
   #assert everglade_ask(g[..]) == 0;
@@ -5164,7 +5164,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   for c: "Are you well?" { #assert everglade_key(g[..], cast(int) c, 0); }
   #assert everglade_key(g[..], KEY_ENTER, 0);
   body := cast(string) g[0].ask[0..<everglade_ask(g[..])];
-  #assert contains(body, "came out from the city's quest board") && contains(body, "\"name\":\"Moss\"");
+  #assert contains(body, "came out from the city's quest board") && contains(body, "{\"npc\":\"moss\",");
   everglade_answer(g[..], "200\n{\"text\":\"I am.\"}");
   #assert everglade_key(g[..], KEY_ESCAPE, 0);
   // the board takes it in, and says so

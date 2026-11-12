@@ -1,0 +1,76 @@
+// Who Fairy Forest's talkers are, as words (ff-talk, ff-woodcutter; #13261): their names, who each
+// is, its trouble, what Rowan knows, the park and its controls. The page (talk.coax, which loads
+// this) and the server (coax/web/api/npc-personas.coax, which loads it too) read the same
+// constants, so the persona the server gives the model can't drift from the page's. A page sends
+// only a talker's id (verse/talk-id.coax of its name); how far the fairy has helped is the page's
+// scene, which the server quotes in the player's turn.
+//   coax/bin/coax test verse/fairy-forest/talk-words.coax --library
+#load "../talk-id.coax";
+
+FF_WORLD :: "Fairy Forest";
+FF_WORLD_ID :: "fairy-forest";   // the world, as a page names it to the server
+FF_TALK_CONTROLS :: "W A S D or the arrows walk, Shift runs, drag the mouse to look, the wheel zooms. Space flaps the wings up, holding it climbs, letting go glides down, and Shift in the air dives. On a phone the left thumb walks, the right looks, and a tap on the right side flaps. E, or the BLOOM button, at a grey patch of flowers blooms it; at the Old Ring's dark stones it lights them. E near a creature, or a click or tap on it, talks to it; type and press Enter to say something, and Esc or BYE ends the talk. Bloom every patch in a glade and one of the heart tree's five roots wakes; all five and the heart tree blooms.";
+FF_VALLEY :: "Fairy Forest is a park laid out like Central Park in New York, a long rectangle of rolling lawns, rocks, lakes, paths and landmarks such as Bethesda Terrace, Bow Bridge and Belvedere Castle, with the city's towers round it. The heart tree in the Ramble has fallen asleep, and since then its glades have faded to grey. Five glades lie round it: Mossbank by the Pond in the south, where the fairy woke; the Reeds at the Pool, the marsh by the pond under the stream; Lanternwood in the North Woods, tall trees whose fruit glows; Thornfall at the north edge, brambles round a fallen giant tree; and the Old Ring by Cleopatra's Needle, nine standing stones that hold the forest's lore. The one talking to you is a small fairy, newly woken, who can bloom faded flowers back to colour.";
+// Rowan the woodcutter (ff-woodcutter, apps/openagents-web/fairywoodcutter.coax)
+// talks the same way, after the five creatures: talker 5. He has no glade and
+// no trouble; the first time you talk to him he gives you his old axe (CRAFT).
+FF_TALKERS :: 6;
+FF_WOODCUTTER :: 5;
+FF_TALKER_NAMES :: [6] string.["BRAMBLE", "PIP", "CLOVER", "BURDOCK", "HOLLOW", "ROWAN"];
+FF_ROWAN_PERSONA :: "an old woodcutter of the small folk, kind and slow-spoken, with a white beard and a red hood, who lives by Mossbank";
+FF_ROWAN_KNOWS :: "You cut only deadwood, never a living tree. You have given the fairy your old axe, so she can learn to Craft: with it she clears fallen deadwood from the paths, and wood and finds make tools. You are glad of the company.";
+// Who each creature is, for the chat (at most 120 letters: the server's cap).
+FF_PERSONA :: [5] string.[
+  "a shy, fussy hedgehog of Mossbank who lives in a burrow by the mushrooms",
+  "a frog of the Reeds who leads the pond's frog choir, proud of his deep voice",
+  "a young rabbit of Lanternwood, a little afraid of the dark, who loves the glowing fruit",
+  "an old badger of Thornfall, gruff but kind, who has lived by the fallen giant tree all his life",
+  "an old owl who keeps the lore of the Old Ring's standing stones, slow and gentle"
+];
+// The trouble, as the creature would put it.
+FF_TROUBLE :: [5] string.[
+  "Mossbank has gone grey, and the flowers by your burrow won't wake. There are three faded patches in Mossbank.",
+  "The Reeds have gone grey and the pond has gone quiet: the frog choir can't sing until the bank flowers again. There are two faded patches in the Reeds.",
+  "Lanternwood's lights have gone out and you can't find your way in the dark. There are three faded patches in Lanternwood.",
+  "Brambles have grown over your way home, thorns everywhere round the fallen giant tree. There are three bramble thickets in Thornfall; bloomed, they turn into wild roses.",
+  "The Old Ring's stones have gone dark, and with them what the forest remembers. Three of the stones can be lit again. You know the fade came when the heart tree fell asleep, and that the heart tree is the forest's own heart."
+];
+// A creature's name as it goes by: "BRAMBLE" is Bramble.
+ff_name :: (c: int, out: [] u8) -> int {
+  if c < 0 || c >= FF_TALKERS { return 0; }
+  name := FF_TALKER_NAMES[c];
+  n := 0;
+  for i: 0..<name.count {
+    if n >= out.count { break; }
+    ch := name[i];
+    out[n] = ifx i > 0 && ch >= 'A' && ch <= 'Z' then ch + 32 else ch;
+    n += 1;
+  }
+  return n;
+}
+
+// How each speaks (the end of what it knows).
+FF_CREATURE_SPEECH :: "Speak as a small forest creature: one or two short sentences, simple words, never more than about thirty words.";
+FF_ROWAN_SPEECH :: "Speak as an old woodcutter: one or two short sentences, simple words, never more than about thirty words.";
+// The id of talker c (talk_id of its name); its length, 0 for no such talker.
+ff_talker_id :: (c: int, out: [] u8) -> int {
+  name: [16] u8;
+  return talk_id(cast(string) name[0..<ff_name(c, name[..])], out);
+}
+// The talker whose id is id, -1 none.
+ff_talker_of :: (id: string) -> int {
+  for c: 0..<FF_TALKERS {
+    b: [16] u8; n := ff_talker_id(c, b[..]);
+    if n > 0 && cast(string) b[0..<n] == id { return c; }
+  }
+  return -1;
+}
+
+#test "every talker has an id of its own, and a persona under the server's cap" {
+  for c: 0..<FF_TALKERS {
+    b: [16] u8; n := ff_talker_id(c, b[..]);
+    #assert n > 0 && ff_talker_of(cast(string) b[0..<n]) == c;
+  }
+  for c: 0..<FF_WOODCUTTER { #assert FF_PERSONA[c].count <= 120 && FF_TROUBLE[c].count > 20; }
+  #assert ff_talker_of("bramble") == 0 && ff_talker_of("rowan") == FF_WOODCUTTER && ff_talker_of("BRAMBLE") == -1;
+}

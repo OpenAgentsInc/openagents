@@ -1,24 +1,30 @@
 // Character chat for the Verse playtest (pt-chat-endpoint): the demo's
 // POST /api/npc/ask (aethyr-cpp tools/npc_chat.py) as
 //
-//   POST /api/playtest/npc/ask  {npc: {name, role, knowledge, greet}, world, history: [{from, text}], question,
-//                                controls?, visit?}  (X-Verse-Player: the browser's player key, optional)
-//                               -> 200 {text, model}; 400 without a question; 503 {error} when there is
-//                               no answer (the page then says its own lines, as the demo's does)
-// With a player key a character remembers that player: what they said to it
-// on earlier visits goes into its prompt (migrations/0031_npc_memory.sql
-// verse.npc_ask).
+//   POST /api/playtest/npc/ask  {npc: ID, world?: WORLD, realm?: SLUG, visit?, scene?, history: [{from, text}], question}
+//                               X-Verse-Player: the browser's player key, required (#13261)
+//                               -> 200 {text, model}; 400 no question, a persona or controls from the page;
+//                               401 no player key; 404 no such character; 429 {error, limit, max, per, until_ms,
+//                               retry_s} and Retry-After; 503 {error} when there is no answer (the page then
+//                               says its own lines, as the demo's does)
+// Who the character is comes from us, never the page: a built-in world's people are compiled in
+// (npc-personas.coax, from their pages' own constants), a made realm's are its document's (SQL).
+// A character remembers its player: what they said to it on earlier visits goes into its prompt
+// (migrations/0031_npc_memory.sql verse.npc_ask; quoted since 0156).
 //
-// The prompt, the memory and the day's cap are SQL's (migrations/0005_verse_npc.sql
-// verse.npc_request, verse.npc_answer, which also keeps every question and
-// answer). The model is Google's first: Gemini on Vertex AI (OA_NPC_MODEL,
-// default gemini-3.8-flash on the global endpoint), with the service's own
-// token from the metadata server. A model call takes seconds and this
-// service answers one request at a time, so a child process makes it and
-// answers, with its own database connection, while the parent goes on.
+// The prompt, the memory, the limits and the day's cap are SQL's (migrations/0005_verse_npc.sql
+// verse.npc_request, verse.npc_answer, which also keeps every question and answer;
+// 0156_npc_ask_keyed.sql verse.npc_ask, the limits counted in Postgres so every instance shares
+// them). The numbers are NPC_LIMITS below, which /docs/limits is made from. The model is Google's
+// first: Gemini on Vertex AI (OA_NPC_MODEL, default gemini-3.8-flash on the global endpoint), with
+// the service's own token from the metadata server. A model call takes seconds and this service
+// answers one request at a time, so a child process makes it and answers, with its own database
+// connection, while the parent goes on; how many run at once is one of the limits.
 //   OA_NPC_URL    the generateContent URL (tests point it at a fake)
 //   OA_NPC_TOKEN  a token to send instead of the metadata server's (tests)
 //   OA_NPC_DAILY_CAP  answers a day across the server (2000)
+//   OA_NPC_KEY_10M, OA_NPC_KEY_DAY, OA_NPC_ADDR_10M, OA_NPC_ADDR_DAY, OA_NPC_RUNNING, OA_NPC_RUNNING_KEY,
+//   OA_NPC_RUNNING_ADDR  the limits, in place of NPC_LIMITS' numbers (tests)
 #include "api.h"
 #include <curl/curl.h>
 #include <signal.h>
@@ -26,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "npc-personas.generated.h"
 
 #define PROJECT "openagentsgemini"
 
@@ -149,20 +156,88 @@ static void answer(int fd, const char *asked, const char *request) {
   free(b.p);
 }
 
+// The character chat's limits (#13261): what each is, as people read it, and its number. A real
+// player asks a question every several seconds at most, while reading the answers between; these
+// are well above that. /docs/limits is made from this table (api --limits).
+typedef struct { const char *key, *what, *per, *env; int max; } npc_limit;
+static const npc_limit NPC_LIMITS[] = {
+  {"key_10m", "Questions to characters from one player", "in 10 minutes", "OA_NPC_KEY_10M", 60},
+  {"key_day", "Questions to characters from one player", "a day", "OA_NPC_KEY_DAY", 300},
+  {"addr_10m", "Questions to characters from one network address", "in 10 minutes", "OA_NPC_ADDR_10M", 120},
+  {"addr_day", "Questions to characters from one network address", "a day", "OA_NPC_ADDR_DAY", 600},
+  {"running_key", "Questions being answered at once for one player", "at once", "OA_NPC_RUNNING_KEY", 2},
+  {"running_addr", "Questions being answered at once from one network address", "at once", "OA_NPC_RUNNING_ADDR", 8},
+  {"running", "Questions being answered at once, all players", "at once", "OA_NPC_RUNNING", 24},
+};
+#define NPC_LIMIT_N (sizeof NPC_LIMITS / sizeof NPC_LIMITS[0])
+#define NPC_DAILY_CAP 2000
+#define NPC_BODY_MAX 24576       // a page's question, its scene and its last lines fit in a quarter of this
+static int npc_limit_of(const npc_limit *l) {
+  const char *v = getenv(l->env);
+  return v && atoi(v) > 0 ? atoi(v) : l->max;
+}
+void npc_print_limits(FILE *out) {   // api --limits: the character chat's section of /docs/limits
+  fprintf(out, "\n## Talking to characters\n\nEach question needs your player key. When you reach a limit, we say which and when it lifts.\n\n"
+               "| What | Limit |\n| --- | --- |\n");
+  for (size_t i = 0; i < NPC_LIMIT_N; i++) fprintf(out, "| %s | %d %s |\n", NPC_LIMITS[i].what, NPC_LIMITS[i].max, NPC_LIMITS[i].per);
+  fprintf(out, "| Answers from characters, all players | %d a day |\n", NPC_DAILY_CAP);
+  fprintf(out, "\nThis section is made from the server's own numbers (`coax/web/api/npc.c`).\n");
+}
+
+// A refusal from SQL: its fields, and for a limit how long until it lifts (Retry-After).
+static void npc_refuse(int fd, int status, const char *json, const char *retry_s) {
+  char hd[64] = "";
+  if (status == 429 && retry_s && *retry_s) snprintf(hd, sizeof hd, "Retry-After: %d\r\n", atoi(retry_s));
+  api_respond(fd, status, "application/json", hd[0] ? hd : NULL, json, strlen(json));
+}
+
 bool npc_route(const request *q) {
   if (strcmp(q->path, "/api/playtest/npc/ask")) return false;
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a question\"}"); return true; }
+  if (q->body_len > NPC_BODY_MAX) { api_json(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
+  char key[160] = "";
+  api_header(q, "X-Verse-Player", key, sizeof key);
+  if (!key[0]) {   // before any database work: no key, no question (SQL checks it is one we gave out)
+    api_json(q->fd, 401, "{\"error\":\"Talking to characters needs a player key (X-Verse-Player). Reload the page to get one.\"}");
+    return true;
+  }
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
   char *body = malloc(q->body_len + 3);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
-  const char *cap = getenv("OA_NPC_DAILY_CAP");
-  char key[160] = "";
-  api_header(q, "X-Verse-Player", key, sizeof key);
-  const char *v[3] = {body, cap && *cap ? cap : "2000", key};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, (x - 'request' - 'status')::text "
-                                 "FROM verse.npc_ask($1::jsonb, $2::int, $3) x", 3, NULL, v, NULL, NULL, 0);
+  // The character it names: a built-in world's from npc-personas.coax (a made realm's is SQL's).
+  const char *bv[1] = {body};
+  PGresult *w = PQexecParams(db, "SELECT CASE WHEN jsonb_typeof(b->'world') = 'string' THEN b->>'world' END, "
+                                 "CASE WHEN jsonb_typeof(b->'npc') = 'string' THEN b->>'npc' END FROM (SELECT $1::jsonb AS b) x",
+                             1, NULL, bv, NULL, NULL, 0);
+  if (PQresultStatus(w) != PGRES_TUPLES_OK || PQntuples(w) != 1) {
+    const char *state = PQresultErrorField(w, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("npc: %s", PQerrorMessage(db));
+    PQclear(w); free(body);
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    return true;
+  }
+  static uint8_t persona[16384];
+  int64_t pn = -1;
+  if (!PQgetisnull(w, 0, 0) && !PQgetisnull(w, 0, 1)) {
+    const char *world = PQgetvalue(w, 0, 0), *id = PQgetvalue(w, 0, 1);
+    pn = npc_persona((coax_string){world, (int64_t)strlen(world)}, (coax_string){id, (int64_t)strlen(id)},
+                     (coax_v_u8){persona, (int64_t)sizeof persona - 1});
+  }
+  PQclear(w);
+  if (pn > 0) persona[pn] = 0;
+  char ip[128], cap[16], lim[512];
+  auth_visitor(q, ip);
+  const char *c = getenv("OA_NPC_DAILY_CAP");
+  snprintf(cap, sizeof cap, "%d", c && atoi(c) > 0 ? atoi(c) : NPC_DAILY_CAP);
+  size_t ln = (size_t)snprintf(lim, sizeof lim, "{");
+  for (size_t i = 0; i < NPC_LIMIT_N; i++) ln += (size_t)snprintf(lim + ln, sizeof lim - ln, "%s\"%s\":%d", i ? "," : "", NPC_LIMITS[i].key, npc_limit_of(&NPC_LIMITS[i]));
+  snprintf(lim + ln, sizeof lim - ln, "}");
+  const char *v[6] = {body, pn > 0 ? (const char *)persona : NULL, cap, key, ip, lim};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'request')::text, (x->'request')::text, x->>'retry_s' "
+                                 "FROM verse.npc_ask($1::jsonb, $2::jsonb, $3::int, $4, $5, $6::jsonb) x", 6, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
@@ -174,12 +249,11 @@ bool npc_route(const request *q) {
   }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) {
-    char out[160]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
+    npc_refuse(q->fd, status, PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 3));
     PQclear(r);
-    api_json(q->fd, status, out);
     return true;
   }
-  char *request = strdup(PQgetvalue(r, 0, 2)), *asked = strdup(PQgetvalue(r, 0, 3));
+  char *request = strdup(PQgetvalue(r, 0, 2)), *asked = strdup(PQgetvalue(r, 0, 1));
   PQclear(r);
   signal(SIGCHLD, SIG_IGN);   // children are never waited for
   pid_t pid = fork();
@@ -187,7 +261,11 @@ bool npc_route(const request *q) {
     answer(q->fd, asked, request);
     _exit(0);
   }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) {              // no child: its running row goes now (verse.npc_answer would let it go)
+    const char *fv[1] = {asked};
+    PQclear(PQexecParams(db, "DELETE FROM verse.npc_running WHERE id = ($1::jsonb->>'run')::bigint", 1, NULL, fv, NULL, NULL, 0));
+    api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  }
   free(request); free(asked);
   return true;   // the parent closes its copy of the connection
 }

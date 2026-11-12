@@ -7,7 +7,7 @@
 // knows it tells one who doesn't with its repeat probability, by a roll hashed from the rumour, the
 // day, the step and the pair. No model and no message: every device works out the same who and
 // when from the shared clock. Someone who has heard one tells it when you talk to them
-// (everglade.coax quest_note: it rides in what they know). It points at nothing to do and earns nothing.
+// (everglade.coax quest_note: it rides in the question's scene, #13261). It points at nothing to do and earns nothing.
 //   coax/bin/coax test --library verse/everglade/rumours.coax --steps 2000000000
 
 #load "routines.coax";

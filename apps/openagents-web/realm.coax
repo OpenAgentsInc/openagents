@@ -1705,16 +1705,16 @@ memory_drop :: (r: [] Realm) {
   for i: e..<r[0].memory_n { r[0].memory[i - e] = r[0].memory[i]; }
   r[0].memory_n -= e; r[0].memory_lines -= 1;
 }
-// The question for the server (/api/playtest/npc/ask, pt-chat-endpoint): who
-// they are (name, role, what players taught them, their greeting), the
-// world, the conversation so far and the question. Its length in out, -1
-// when it doesn't fit.
-realm_npc_body :: (r: [] Realm, name: string, role: string, knowledge: string, greet: string, question: string, out: [] u8) -> int #export_c #effects(all) {
-  o := realm_put(out, 0, "{\"npc\":{\"name\":\""); o = json_put_str(out, o, name);
-  o = realm_put(out, o, "\",\"role\":\""); o = json_put_str(out, o, role);
-  o = realm_put(out, o, "\",\"knowledge\":\""); o = json_put_str(out, o, knowledge);
-  o = realm_put(out, o, "\",\"greet\":\""); o = json_put_str(out, o, greet);
-  o = realm_put(out, o, "\"},\"world\":\""); o = json_put_str(out, o, HAUNT_NAME);
+// The question for the server (/api/playtest/npc/ask, pt-chat-endpoint; #13261): the character's
+// id in the house (house.json's), the world, what players taught them as the scene (the server
+// quotes it in the player's turn), the conversation so far and the question. Who they are is the
+// server's, never the page's. Its length in out, -1 when it doesn't fit.
+HAUNT_WORLD_ID :: "haunted-house";   // the world, as the page names it to the server
+HAUNT_TAUGHT :: "Players have taught you this, and it is true here: ";
+realm_npc_body :: (r: [] Realm, id: string, taught: string, question: string, out: [] u8) -> int #export_c #effects(all) {
+  o := realm_put(out, 0, "{\"npc\":\""); o = json_put_str(out, o, id);
+  o = realm_put(out, o, "\",\"world\":\""); o = json_put_str(out, o, HAUNT_WORLD_ID);
+  if taught.count > 0 { o = realm_put(out, o, "\",\"scene\":\""); o = json_put_str(out, o, HAUNT_TAUGHT); o = json_put_str(out, o, taught); }
   o = realm_put(out, o, "\",\"history\":[");
   at := 0;
   while at < r[0].memory_n {
@@ -2229,20 +2229,20 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert realm_typing_for(r[..]) == TYPE_SURVEY;
 }
 
-#test "a question goes to the server with who they are, what they were taught, the last ten lines and the question" {
+#test "a question goes to the server with the character's id, what they were taught, the last ten lines and the question" {
   r: [1] Realm; desk(r[..]);
   realm_remember(r[..], true, "Good evening.");
   realm_remember(r[..], false, "Who \"are\" you?\nTell me");
   out: [1024] u8;
-  n := realm_npc_body(r[..], "Mortimer", "the butler", "The key is under the rug.", "Good evening.", "Where is the key?", out[..]);
-  #assert cast(string) out[0..<n] == "{\"npc\":{\"name\":\"Mortimer\",\"role\":\"the butler\",\"knowledge\":\"The key is under the rug.\",\"greet\":\"Good evening.\"},\"world\":\"Haunted House\",\"history\":[{\"from\":\"npc\",\"text\":\"Good evening.\"},{\"from\":\"player\",\"text\":\"Who \\\"are\\\" you? Tell me\"}],\"question\":\"Where is the key?\"}";
+  n := realm_npc_body(r[..], "mortimer", "The key is under the rug.", "Where is the key?", out[..]);
+  #assert cast(string) out[0..<n] == "{\"npc\":\"mortimer\",\"world\":\"haunted-house\",\"scene\":\"Players have taught you this, and it is true here: The key is under the rug.\",\"history\":[{\"from\":\"npc\",\"text\":\"Good evening.\"},{\"from\":\"player\",\"text\":\"Who \\\"are\\\" you? Tell me\"}],\"question\":\"Where is the key?\"}";
   for i: 0..<12 { realm_remember(r[..], i % 2 == 0, ifx i == 11 then "last" else "line"); }
   #assert r[0].memory_lines == MEMORY_LINES && r[0].memory_n == MEMORY_LINES * 7 && r[0].memory[r[0].memory_n - 4] == 97;
   small: [32] u8;
-  #assert realm_npc_body(r[..], "Mortimer", "", "", "", "hi", small[..]) == -1;
+  #assert realm_npc_body(r[..], "mortimer", "", "hi", small[..]) == -1;
   realm_forget(r[..]);
-  n = realm_npc_body(r[..], "A", "", "", "", "hi", out[..]);
-  #assert cast(string) out[0..<n] == "{\"npc\":{\"name\":\"A\",\"role\":\"\",\"knowledge\":\"\",\"greet\":\"\"},\"world\":\"Haunted House\",\"history\":[],\"question\":\"hi\"}";
+  n = realm_npc_body(r[..], "agatha", "", "hi", out[..]);
+  #assert cast(string) out[0..<n] == "{\"npc\":\"agatha\",\"world\":\"haunted-house\",\"history\":[],\"question\":\"hi\"}";
   // a long line is kept to MEMORY_LINE bytes, never half a character
   long: [MEMORY_LINE + 1] u8;
   for i: 0..<MEMORY_LINE - 1 { long[i] = 97; }

@@ -1,0 +1,116 @@
+// Who Everglade's people are, as words (eg-people; #13261): their names, roles, greetings and what
+// they know of the city, and the city's controls. The page (people.coax, which loads this) and the
+// server (coax/web/api/npc-personas.coax, which loads it too) read the same constants, so the persona
+// the server gives the model and the one the page shows can't drift. A page sends only a person's id
+// (verse/talk-id.coax of their name); the server looks them up here.
+//   coax/bin/coax test verse/everglade/people-words.coax --library
+#load "../talk-id.coax";
+
+EG_PEOPLE :: 28;   // plan.coax's EG_SPOTS (people.coax checks the two agree)
+EG_WORLD :: "Everglade";
+EG_WORLD_ID :: "everglade";   // the world, as a page names it to the server
+// The city's controls, for a character asked how to do something.
+EG_CONTROLS :: "W A S D or the arrows move you at a run, Shift walks, Space jumps, drag the mouse to look, the wheel zooms, M shows the city from above; on a phone the left thumb walks and the right looks. Walk up to someone and press E, or tap TALK, to talk to them; type and press Enter to say something, and Esc or BYE ends it. Players can't build or change the city.";
+
+// Each spot's person: the name they go by.
+EG_PERSON :: [EG_PEOPLE] string.[
+  "Bram", "Tilda", "Pip",
+  "Oswin", "Pebble",
+  "Marta", "Soot",
+  "Hollis", "Fern", "Ada", "Quill",
+  "Garrick", "Isolde",
+  "Rook", "Sable",
+  "Elowen", "Wisp",
+  "Brother Anselm", "Vega",
+  "Moss", "Old Tam", "Corin",
+  "Warden Hale", "Lark", "Mistress Wren", "Dunstan", "Tamsin", "Old Haddon"
+];
+
+EG_CAT_ROLE :: "a cat. You talk as a cat would if cats could talk: a few words at a time, curious, a little aloof, now and then a purr or a mew";
+
+EG_ROLE :: [EG_PEOPLE] string.[
+  "a guard at Everglade's South Gate, east side of the road",
+  "a guard at Everglade's South Gate, west side of the road",
+  "the stable hand at the stables on the road in",
+  "the town crier, who stands at the quest board on the commons",
+  "",
+  "the innkeeper of the Everglade inn on Inn Street",
+  "",
+  "the shopkeeper of the general store behind the market's north stalls",
+  "a fruit seller at a market stall",
+  "a cloth seller at a market stall",
+  "a trinket seller at a market stall",
+  "the smith, at the smithy's door",
+  "the alchemist, at the alchemist's door",
+  "the master of the fighters' guild hall on Guild Row",
+  "the warden of the rangers' guild hall on Guild Row",
+  "the archmage of the mages' tower",
+  "",
+  "the priest, on the temple's steps",
+  "the astronomer at the observatory",
+  "the woodwarden, who keeps the Deep Wood Trail by its waystone",
+  "the ferryman, on the river's far bank by the bridge",
+  "a scholar who studies the ruins in the woods",
+  "the market warden, who keeps the Market Hall on Main Street",
+  "a fiddler who plays at the Music Hall in the Lantern Quarter, across the river",
+  "the librarian of the Stacks in the Scholars' Quarter",
+  "the foundry master, at the Foundry Barn's door on Foundry Road",
+  "a woodcarver at the Makers' Hall in the Makers' Quarter",
+  "the boatwright, at the boathouse on Lantern Pond's north bank"
+];
+
+EG_GREET :: [EG_PEOPLE] string.[
+  "Halt, traveller. Welcome to Everglade.",
+  "Mind the road, friend. The gate's open.",
+  "Oh! Hello. Don't mind the horses.",
+  "Hear ye! Fresh notices on the board!",
+  "Mrrp?",
+  "Come in out of the woods. There's a fire going.",
+  "...",
+  "Welcome, welcome. Looking for anything in particular?",
+  "Apples, pears, blackberries, all fresh this morning.",
+  "Fine cloth, finer than you'll find anywhere in the woods.",
+  "Curiosities! Charms! Every one with a story.",
+  "Mind the sparks.",
+  "Careful what you touch in here.",
+  "Stand up straight. Want to learn to fight?",
+  "Quiet steps, traveller. The woods are listening.",
+  "Ah. A visitor to the tower.",
+  "Mew.",
+  "Peace be with you.",
+  "Have you looked up tonight? The sky is very clear.",
+  "You've come a long way down the trail.",
+  "Crossing? The water's calm today.",
+  "Careful where you step. These stones are older than the city.",
+  "Market's open. Mind your purse on Main Street.",
+  "Pull up a stool. The next tune's a good one.",
+  "Hush, please. People are reading.",
+  "Stand back from the doors. The furnace is lit.",
+  "Every piece of wood has a shape in it. You just cut away the rest.",
+  "Want a boat? The pond's calm this morning."
+];
+
+// What every one of them knows of the city (docs/verse/everglade.md).
+EG_CITY :: "Everglade is a city in a forest. Its old town stands inside a log palisade with four gates; the South Gate faces the road in, past the stables. In the middle of the old town is the commons with its fountain and the quest board. East of it is the market with its stalls and the general store; west, on Inn Street, the inn; north-west, Guild Row with the fighters' and rangers' halls and the smithy and the alchemist; north-east, the mages' tower; north, the temple and, beyond it, the observatory. Outside the palisade the Commons Loop runs all the way round the old town. South of it is the Great Lawn with the Reed and Lantern Ponds and the boathouse. North, Main Street has its shops and the Market Hall, with Stoop Lane off it. East, on Foundry Road, is the Foundry; north-east, on Studio Road, the Makers' Quarter; south-east, on Library Way, the Scholars' Quarter with the Stacks and the Old College. Across the bridge over the river, Lantern Road runs to the Lantern Quarter with its Music Hall, and to Brownstone Row. Trails lead out through the woods to the deep wood, the ruins, the crypt and the far ponds.";
+
+// What the person at spot i does: their role, or for a cat (no role of their own) a cat's.
+eg_words_role :: (i: int) -> string { return ifx i < 0 || i >= EG_PEOPLE then "" else ifx EG_ROLE[i].count == 0 then EG_CAT_ROLE else EG_ROLE[i]; }
+// The id of the person at spot i (talk_id of their name); its length, 0 for no such spot.
+eg_person_id :: (i: int, out: [] u8) -> int { return ifx i < 0 || i >= EG_PEOPLE then 0 else talk_id(EG_PERSON[i], out); }
+// The person whose id is id, -1 none.
+eg_person_of :: (id: string) -> int {
+  for i: 0..<EG_PEOPLE {
+    b: [64] u8; n := eg_person_id(i, b[..]);
+    if n > 0 && cast(string) b[0..<n] == id { return i; }
+  }
+  return -1;
+}
+
+#test "every person has a name, a greeting and an id of their own" {
+  for i: 0..<EG_PEOPLE {
+    #assert EG_PERSON[i].count > 0 && EG_GREET[i].count > 0;
+    b: [64] u8; n := eg_person_id(i, b[..]);
+    #assert n > 0 && eg_person_of(cast(string) b[0..<n]) == i;
+  }
+  #assert eg_person_of("brother-anselm") == 17 && eg_person_of("marta") == 5 && eg_person_of("nobody") == -1;
+}

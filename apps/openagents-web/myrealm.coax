@@ -1986,10 +1986,11 @@ CAMERA_CONTROLS :: [4] string.[
   "W and S walk, A and D turn, a drag looks round; on a phone the left thumb walks and the right looks.",
   "W, A, S and D walk that way, as a thumb or a drag does; the world is seen from above.",
   "A and D walk left and right, W or Space jumps; on a phone drag left or right, and up to jump."];
-// What the character knows: the realm, the others in it and its owner's lore.
-knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
-  n := json_in(out, at, "You live in "); n = json_in(out, n, name_text(s));
-  n = json_in(out, n, ", a world on the Verse that someone built from one prompt. It is ");
+// What the character sees round them, as the page lays the realm out: the time, the ground and
+// what stands there (#13261). Who they are, the others who live here and its owner's lore are the
+// server's, from the realm's document; this goes as the question's scene.
+scene_of :: (s: [] MyRealm, out: [] u8, at: int) -> int {
+  n := json_in(out, at, "It is ");
   n = json_in(out, n, TIMES[s[0].tod]); n = json_in(out, n, " here, on "); n = json_in(out, n, GROUNDS[s[0].ground]); n = json_in(out, n, " ground.");
   n = json_in(out, n, LAND_WORDS[s[0].land]);
   if s[0].water > 0 { n = json_in(out, n, ifx s[0].water_kind == 2 then " A river runs across it." else ifx s[0].water_kind == 3 then " There is a frozen pond." else ifx s[0].water_kind == 4 then " There is a pool of lava." else " There is water."); }
@@ -2002,33 +2003,23 @@ knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
   if s[0].birds > 0 { n = json_in(out, n, FLIER_SAY[s[0].flier]); }
   if s[0].houses > 0 { n = json_in(out, n, ifx s[0].houses == 1 then " There is a " else " There are "); n = json_in(out, n, HOUSE_COLOURS[s[0].house_colour]); n = json_in(out, n, ifx s[0].houses == 1 then " house." else " houses."); }
   for i: 0..<s[0].prop_n { n = json_in(out, n, " There is "); n = json_in(out, n, PROP_WORDS[s[0].props[i]]); n = json_in(out, n, "."); }
-  for q: 0..<s[0].people {
-    if q == p { continue; }
-    n = json_in(out, n, " "); n = json_in(out, n, person_name(s, q));
-    if s[0].role_n[q] > 0 { n = json_in(out, n, ", "); n = json_in(out, n, person_role(s, q)); n = json_in(out, n, ","); }
-    n = json_in(out, n, " lives here too.");
-  }
-  who: [PERSON] u8; wn := who_of(s, p, who[..]);
-  lore := redit_lore(s[0].ed[..], cast(string) who[0..<wn]);
-  if lore.count > 0 { n = json_in(out, n, " Your story, as the world's owner wrote it: "); n = json_in(out, n, lore); }
   return n;
 }
-// The question's body (the talk so far, oldest first, then the question); 0 when it didn't fit.
+// The question's body (#13261): the character's id (who_of, the key its lore is kept under), the
+// realm, this visit, the scene (scene_of and how to play here), the talk so far (oldest first) and
+// the question; 0 when it didn't fit.
 talk_body :: (s: [] MyRealm, out: [] u8) -> int {
   p := s[0].talk_p;
-  n := put(out, 0, "{\"npc\":{");
-  n = json_field(out, n, "name", person_name(s, p), false);
-  n = json_field(out, n, "role", person_role(s, p), true);
-  n = put(out, n, ",\"knowledge\":\""); n = knows_of(s, out, n, p); n = put(out, n, "\"}");
-  n = json_field(out, n, "world", name_text(s), true);
+  who: [PERSON] u8; wn := who_of(s, p, who[..]);
+  n := put(out, 0, "{");
+  n = json_field(out, n, "npc", cast(string) who[0..<wn], false);
   if s[0].slug_n > 0 { n = json_field(out, n, "realm", slug_text(s), true); }
-  cn: [600] u8;
-  c := put(cn[..], 0, CAMERA_CONTROLS[s[0].camera]);
-  c = put(cn[..], c, " E near a character, or a tap on one, talks to them: type and press Enter");
-  if may_voice(s) { c = put(cn[..], c, ", or hold HOLD TO TALK and speak"); }
-  c = put(cn[..], c, "; BYE or Esc ends the talk.");
-  n = json_field(out, n, "controls", cast(string) cn[0..<c], true);
   n = json_field(out, n, "visit", cast(string) s[0].visit[0..<s[0].visit_n], true);
+  n = put(out, n, ",\"scene\":\""); n = scene_of(s, out, n);
+  n = json_in(out, n, " How to play here: "); n = json_in(out, n, CAMERA_CONTROLS[s[0].camera]);
+  n = json_in(out, n, " E near a character, or a tap on one, talks to them: type and press Enter");
+  if may_voice(s) { n = json_in(out, n, ", or hold HOLD TO TALK and speak"); }
+  n = json_in(out, n, "; BYE or Esc ends the talk.\"");
   n = put(out, n, ",\"history\":[");
   for k: 0..<s[0].talk_n {
     n = put(out, n, ifx k > 0 then ",{\"from\":\"" else "{\"from\":\"");
@@ -3484,8 +3475,9 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
   m := frame_of(s[..], t[..], 2560, 1600);
   body := cast(string) s[0].req_body[0..<s[0].req_body_n];
   #assert url_is(s[..], NPC_URL) && (s[0].req_flags & TRACK_KEY) != 0;
-  #assert has_text(body, "\"name\":\"Old Mott\"") && has_text(body, "\"role\":\"keeps the bridge\"") && has_text(body, "\"realm\":\"moonlit-marsh\"");
-  #assert has_text(body, "\"world\":\"Moonlit Marsh\"") && has_text(body, "\"question\":\"who are you?\"") && has_text(body, "\"visit\":\"t1\"");
+  // the character by id and the realm by slug: who Old Mott is and the realm's name are the server's (#13261)
+  #assert has_text(body, "{\"npc\":\"old-mott\",\"realm\":\"moonlit-marsh\",\"visit\":\"t1\",\"scene\":\"It is ") && has_text(body, " How to play here: ");
+  #assert !has_text(body, "keeps the bridge") && !has_text(body, "\"world\"") && !has_text(body, "\"controls\"") && has_text(body, "\"question\":\"who are you?\"");
   #assert s[0].talk_wait && s[0].talk_n == 1 && !s[0].talk_npc[0];
   realm_requested(s[..], 3);
   realm_message(s[..], t[..], HTTP_ANSWER_KIND + 3, "200\n{\"text\":\"I keep the bridge, friend.\",\"model\":\"m\"}");

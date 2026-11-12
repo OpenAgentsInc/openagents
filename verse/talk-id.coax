@@ -1,0 +1,28 @@
+// A character's id for the character chat (POST /api/playtest/npc/ask, #13261): its name, lower case,
+// a dash for each space, only letters, digits and dashes kept. "Brother Anselm" is brother-anselm. A
+// page sends the id; the server looks the character up by it (coax/web/api/npc-personas.coax, and for a
+// made realm verse.npc_id in migrations/0156_npc_ask_keyed.sql, the same rule), so who a character is
+// never comes from the page. A made realm's lore is kept under the same key (myrealm.coax who_of).
+//   coax/bin/coax test verse/talk-id.coax --library
+
+talk_id :: (name: string, out: [] u8) -> int {
+  n := 0;
+  for i: 0..<name.count {
+    if n >= out.count { break; }
+    c := name[i];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    if c == ' ' { c = '-'; }
+    if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' { out[n] = c; n += 1; }
+  }
+  return n;
+}
+
+#test "a character's id is its name, lower case, dashed" {
+  out: [32] u8;
+  n := talk_id("Brother Anselm", out[..]);
+  #assert cast(string) out[0..<n] == "brother-anselm";
+  n = talk_id("Old Tam's \"boat\"", out[..]);
+  #assert cast(string) out[0..<n] == "old-tams-boat";
+  small: [3] u8;
+  #assert talk_id("Marta", small[..]) == 3 && cast(string) small[..] == "mar";
+}

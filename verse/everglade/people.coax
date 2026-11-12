@@ -8,91 +8,7 @@
 //   coax/bin/coax test --library verse/everglade/people.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
 
 #load "plan.coax";
-
-EG_WORLD :: "Everglade";
-// The city's controls, for a character asked how to do something.
-EG_CONTROLS :: "W A S D or the arrows move you at a run, Shift walks, Space jumps, drag the mouse to look, the wheel zooms, M shows the city from above; on a phone the left thumb walks and the right looks. Walk up to someone and press E, or tap TALK, to talk to them; type and press Enter to say something, and Esc or BYE ends it. Players can't build or change the city.";
-
-// Each spot's person: the name they go by.
-EG_PERSON :: [28] string.[
-  "Bram", "Tilda", "Pip",
-  "Oswin", "Pebble",
-  "Marta", "Soot",
-  "Hollis", "Fern", "Ada", "Quill",
-  "Garrick", "Isolde",
-  "Rook", "Sable",
-  "Elowen", "Wisp",
-  "Brother Anselm", "Vega",
-  "Moss", "Old Tam", "Corin",
-  "Warden Hale", "Lark", "Mistress Wren", "Dunstan", "Tamsin", "Old Haddon"
-];
-
-EG_CAT_ROLE :: "a cat. You talk as a cat would if cats could talk: a few words at a time, curious, a little aloof, now and then a purr or a mew";
-
-EG_ROLE :: [28] string.[
-  "a guard at Everglade's South Gate, east side of the road",
-  "a guard at Everglade's South Gate, west side of the road",
-  "the stable hand at the stables on the road in",
-  "the town crier, who stands at the quest board on the commons",
-  "",
-  "the innkeeper of the Everglade inn on Inn Street",
-  "",
-  "the shopkeeper of the general store behind the market's north stalls",
-  "a fruit seller at a market stall",
-  "a cloth seller at a market stall",
-  "a trinket seller at a market stall",
-  "the smith, at the smithy's door",
-  "the alchemist, at the alchemist's door",
-  "the master of the fighters' guild hall on Guild Row",
-  "the warden of the rangers' guild hall on Guild Row",
-  "the archmage of the mages' tower",
-  "",
-  "the priest, on the temple's steps",
-  "the astronomer at the observatory",
-  "the woodwarden, who keeps the Deep Wood Trail by its waystone",
-  "the ferryman, on the river's far bank by the bridge",
-  "a scholar who studies the ruins in the woods",
-  "the market warden, who keeps the Market Hall on Main Street",
-  "a fiddler who plays at the Music Hall in the Lantern Quarter, across the river",
-  "the librarian of the Stacks in the Scholars' Quarter",
-  "the foundry master, at the Foundry Barn's door on Foundry Road",
-  "a woodcarver at the Makers' Hall in the Makers' Quarter",
-  "the boatwright, at the boathouse on Lantern Pond's north bank"
-];
-
-EG_GREET :: [28] string.[
-  "Halt, traveller. Welcome to Everglade.",
-  "Mind the road, friend. The gate's open.",
-  "Oh! Hello. Don't mind the horses.",
-  "Hear ye! Fresh notices on the board!",
-  "Mrrp?",
-  "Come in out of the woods. There's a fire going.",
-  "...",
-  "Welcome, welcome. Looking for anything in particular?",
-  "Apples, pears, blackberries, all fresh this morning.",
-  "Fine cloth, finer than you'll find anywhere in the woods.",
-  "Curiosities! Charms! Every one with a story.",
-  "Mind the sparks.",
-  "Careful what you touch in here.",
-  "Stand up straight. Want to learn to fight?",
-  "Quiet steps, traveller. The woods are listening.",
-  "Ah. A visitor to the tower.",
-  "Mew.",
-  "Peace be with you.",
-  "Have you looked up tonight? The sky is very clear.",
-  "You've come a long way down the trail.",
-  "Crossing? The water's calm today.",
-  "Careful where you step. These stones are older than the city.",
-  "Market's open. Mind your purse on Main Street.",
-  "Pull up a stool. The next tune's a good one.",
-  "Hush, please. People are reading.",
-  "Stand back from the doors. The furnace is lit.",
-  "Every piece of wood has a shape in it. You just cut away the rest.",
-  "Want a boat? The pond's calm this morning."
-];
-
-// What every one of them knows of the city (docs/verse/everglade.md).
-EG_CITY :: "Everglade is a city in a forest. Its old town stands inside a log palisade with four gates; the South Gate faces the road in, past the stables. In the middle of the old town is the commons with its fountain and the quest board. East of it is the market with its stalls and the general store; west, on Inn Street, the inn; north-west, Guild Row with the fighters' and rangers' halls and the smithy and the alchemist; north-east, the mages' tower; north, the temple and, beyond it, the observatory. Outside the palisade the Commons Loop runs all the way round the old town. South of it is the Great Lawn with the Reed and Lantern Ponds and the boathouse. North, Main Street has its shops and the Market Hall, with Stoop Lane off it. East, on Foundry Road, is the Foundry; north-east, on Studio Road, the Makers' Quarter; south-east, on Library Way, the Scholars' Quarter with the Stacks and the Old College. Across the bridge over the river, Lantern Road runs to the Lantern Quarter with its Music Hall, and to Brownstone Row. Trails lead out through the woods to the deep wood, the ruins, the crypt and the far ponds.";
+#load "people-words.coax";   // who they are, as words (the server reads the same)
 
 eg_is_cat :: (i: int) -> bool { return i >= 0 && i < EG_SPOTS && EG_SPOT_CAT[i]; }
 eg_role :: (i: int) -> string { return ifx eg_is_cat(i) then EG_CAT_ROLE else EG_ROLE[i]; }
@@ -125,28 +41,24 @@ field_put :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> i
 // One line of the conversation so far: who said it (true: the character) and what.
 EgLine :: struct { npc: bool; text: string; }
 
-// The body for /api/playtest/npc/ask: the character at spot i, the
-// conversation so far (oldest first), the question, this visit's stamp.
-// The number of bytes written, or 0 when it didn't fit.
+// The body for /api/playtest/npc/ask (#13261): the id of the person at spot i, the world, this
+// visit's stamp, the conversation so far (oldest first) and the question. Who they are, what they
+// know and the city's controls are the server's (people-words.coax, which it reads too), never the
+// page's. The number of bytes written, or 0 when it didn't fit.
 eg_ask_body :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string) -> int {
   return eg_ask_body_note(out, i, lines, question, visit, "");
 }
-// The same with a note on what brought the player to them (a quest), put
-// after what everyone knows of the city.
+// The same with a note on what brought the player to them (a quest) and the talk going round town,
+// as the scene: the server quotes it in the player's turn, never in who the person is.
 eg_ask_body_note :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string, note: string) -> int {
   if i < 0 || i >= EG_SPOTS { return 0; }
-  n := raw_put(out, 0, "{\"npc\":{");
-  n = field_put(out, n, "name", EG_PERSON[i], false);
-  n = field_put(out, n, "role", eg_role(i), true);
-  n = field_put(out, n, "greet", EG_GREET[i], true);
-  n = raw_put(out, n, ",\"knowledge\":\"");
-  n = json_put(out, n, EG_CITY);
-  if note.count > 0 { n = raw_put(out, n, " "); n = json_put(out, n, note); }
-  n = raw_put(out, n, "\"");
-  n = raw_put(out, n, "}");
-  n = field_put(out, n, "world", EG_WORLD, true);
-  n = field_put(out, n, "controls", EG_CONTROLS, true);
+  id: [64] u8;
+  idn := eg_person_id(i, id[..]);
+  n := raw_put(out, 0, "{");
+  n = field_put(out, n, "npc", cast(string) id[0..<idn], false);
+  n = field_put(out, n, "world", EG_WORLD_ID, true);
   n = field_put(out, n, "visit", visit, true);
+  if note.count > 0 { n = field_put(out, n, "scene", note, true); }
   n = raw_put(out, n, ",\"history\":[");
   for k: 0..<lines.count {
     n = raw_put(out, n, ifx k > 0 then ",{\"from\":\"" else "{\"from\":\"");
@@ -164,35 +76,32 @@ eg_ask_body_note :: (out: [] u8, i: int, lines: [] EgLine, question: string, vis
 // ---- checks
 
 #test "everyone at a spot has a name, a role and a greeting; the cats are cats" {
+  #assert EG_PEOPLE == EG_SPOTS;   // people-words.coax's count is the plan's
   for i: 0..<EG_SPOTS {
     #assert EG_PERSON[i].count > 0 && EG_GREET[i].count > 0 && eg_role(i).count > 0;
-    #assert eg_is_cat(i) == (EG_ROLE[i].count == 0);
+    #assert eg_is_cat(i) == (EG_ROLE[i].count == 0) && eg_role(i) == eg_words_role(i);
     for k: 0..<i { #assert EG_PERSON[k] != EG_PERSON[i]; }   // the server remembers you per name
   }
   #assert eg_is_cat(4) && EG_SPOT_NAME[4] == "ERRAND CAT" && EG_PERSON[5] == "Marta" && EG_SPOT_NAME[5] == "INNKEEPER";
 }
 
-#test "the question's body is JSON with every text escaped" {
+#test "the question's body is JSON with every text escaped, and names the person only by id" {
   out: [4096] u8;
   lines := [2] EgLine.[EgLine.{npc = true, text = "Come in."}, EgLine.{npc = false, text = "I'm \"Wren\"\nhi \\ there"}];
   n := eg_ask_body(out[..], 5, lines[..], "Remember me?", "1730000000000");
   body := cast(string) out[0..<n];
-  #assert n > 0 && body[0] == '{' && body[n - 1] == '}';
-  want := "{\"npc\":{\"name\":\"Marta\",\"role\":\"the innkeeper of the Everglade inn on Inn Street\",\"greet\":\"Come in out of the woods. There's a fire going.\",\"knowledge\":\"";
-  #assert body[0..<want.count] == want;
-  tail := ",\"history\":[{\"from\":\"npc\",\"text\":\"Come in.\"},{\"from\":\"player\",\"text\":\"I'm \\\"Wren\\\" hi \\\\ there\"}],\"question\":\"Remember me?\"}";
-  #assert body[n - tail.count..<n] == tail;
-  #assert n < 4096;
+  want := "{\"npc\":\"marta\",\"world\":\"everglade\",\"visit\":\"1730000000000\",\"history\":[{\"from\":\"npc\",\"text\":\"Come in.\"},{\"from\":\"player\",\"text\":\"I'm \\\"Wren\\\" hi \\\\ there\"}],\"question\":\"Remember me?\"}";
+  #assert body == want;
+  #assert !contains_text(body, "innkeeper") && !contains_text(body, "knowledge");   // who she is is the server's
   // too small a buffer writes nothing
   small: [64] u8;
   #assert eg_ask_body(small[..], 5, lines[..], "Remember me?", "1") == 0;
   #assert eg_ask_body(out[..], -1, lines[..], "x", "1") == 0 && eg_ask_body(out[..], EG_SPOTS, lines[..], "x", "1") == 0;
-  // a note follows what everyone knows, escaped as the rest
+  // a note goes as the scene, escaped as the rest
   noted_buf: [4096] u8;
-  m := eg_ask_body_note(noted_buf[..], 19, lines[..], "Well?", "1", "They came from the \"board\".");
+  m := eg_ask_body_note(noted_buf[..], 17, lines[..], "Well?", "1", "They came from the \"board\".");
   noted := cast(string) noted_buf[0..<m];
-  plain := eg_ask_body(out[..], 19, lines[..], "Well?", "1");
-  #assert m == plain + 30 && contains_text(noted, " They came from the \\\"board\\\".\"},\"world\"");
+  #assert contains_text(noted, "{\"npc\":\"brother-anselm\",") && contains_text(noted, ",\"scene\":\"They came from the \\\"board\\\".\",\"history\"");
 }
 
 contains_text :: (text: string, part: string) -> bool {

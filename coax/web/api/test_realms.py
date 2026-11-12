@@ -64,9 +64,12 @@ guest_claim_checks()
 
 # A made realm's characters talk (byo-talk; migrations/0061_realm_talk.sql): the character chat
 # answers with "realm" the slug while the owner gives TALK; with it off, only the owner.
+talk_seen = []
+
+
 class TalkModel(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        self.rfile.read(int(self.headers["Content-Length"]))
+        talk_seen.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
         out = json.dumps({"candidates": [{"content": {"role": "model", "parts": [{"text": "I keep the bridge."}]}, "finishReason": "STOP"}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -82,11 +85,14 @@ def talk_checks():
     model = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["NPC_PORT"])), TalkModel)
     threading.Thread(target=model.serve_forever, daemon=True).start()
     owner = b_player()
-    st, made = b_call("POST", "/api/playtest/realms", {"board": {"name": "Talking Hollow", "features": [{"feature": "rocks", "on": True, "count": 2}]}}, owner)
+    st, made = b_call("POST", "/api/playtest/realms", {"board": {"name": "Talking Hollow", "features": [
+        {"feature": "rocks", "on": True, "count": 2}, {"feature": "character", "on": True, "name": "Old Mott", "role": "keeps the bridge"},
+        {"feature": "character", "on": True, "name": "Fern", "role": "the ferry"}]}}, owner)
     slug = made.get("slug", "talking-hollow")
 
-    def ask(key, realm=slug):
-        body = {"npc": {"name": "Old Mott", "role": "keeps the bridge"}, "world": "Talking Hollow", "realm": realm, "question": "Who are you?"}
+    # myrealm.coax's talk_body (#13261): the character's id and the realm; who they are is the realm's document
+    def ask(key, realm=slug, npc="old-mott"):
+        body = {"npc": npc, "realm": realm, "visit": "t1", "scene": "It is night here. How to play here: W walks.", "question": "Who are you?"}
         h = {"Content-Type": "application/json"}
         if key:
             h["X-Verse-Player"] = key
@@ -99,12 +105,18 @@ def talk_checks():
     st, a = ask(visitor)
     check("with TALK on a visitor's question is answered in character", st == 200 and a.get("text"), a)
     check("and kept in the realm's name", sql("select world||'|'||npc from verse.npc_log order by id desc limit 1") == "Talking Hollow|Old Mott")
+    system = talk_seen[-1]["systemInstruction"]["parts"][0]["text"]
+    check("who they are is the realm's document: the character, the others who live there, the world's name",
+          system.startswith("You are Old Mott, a character in Talking Hollow") and "Your role: keeps the bridge. " in system
+          and "You live in Talking Hollow, a world on the Verse" in system and " Fern, the ferry, lives here too." in system
+          and "night" not in system and "night" in talk_seen[-1]["contents"][-1]["parts"][0]["text"], system)
+    check("a character the realm doesn't have is a 404", ask(visitor, npc="nobody")[0] == 404)
     b_call("POST", "/api/playtest/realms/" + slug + "/settings", {"tools": {"talk": False}}, owner)
     used = sql("select n from verse.npc_day where day = current_date")
     st, a = ask(visitor)
     check("with TALK off a visitor gets no answer", st == 403, a)
     check("and nothing is spent on the day's cap", sql("select n from verse.npc_day where day = current_date") == used)
-    check("nor does someone with no key", ask(None)[0] == 403)
+    check("nor does someone with no key (a 401: a key is needed to talk anywhere)", ask(None)[0] == 401)
     st, a = ask(owner)
     check("the owner still talks", st == 200 and a.get("text"), a)
     check("a realm that isn't there is a 404", ask(visitor, "no-such-realm")[0] == 404)
