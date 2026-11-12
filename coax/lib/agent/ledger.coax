@@ -1,0 +1,332 @@
+// ledger.coax: Golemancy's two stored records, written and read here and nowhere else
+// (compliance plan step C6, GitHub #13243). Schema:
+// proto/openagents/coder/golemancy/v1alpha1/records.proto; golden lines:
+// proto/coder/golemancy-v1alpha1.json, checked by ledger-goldens.coax.
+//
+//   openagents.ai-call.v1              ~/.openagents/usage/ai-calls.jsonl, one model call a line
+//   openagents.next-issue.decision.v1  ~/.openagents/everglade/next-issue/decisions.jsonl
+//
+// The decision (with the tier rubric's scores) goes through the JSON mapper: #import_proto
+// generates its writer and reader (coax/proto.md, "JSON mapper"). The AI-call line is written
+// and read by hand here, because its model_usage member is Claude Code's own modelUsage object,
+// keyed by model name and holding a floating-point costUSD: the mapper refuses floats and has no
+// maps. That object is carried byte for byte.
+//
+// Writers: the Workshop's turns and decisions (apps/everglade-desktop/next.coax; the app's
+// Swift host and next-drive.coax append the lines it hands them) and the tier batch
+// (tiers.coax). Readers: next-context.coax's usage summary and the Golems board (golems.coax).
+//
+//   line: [GY_CALL_MAX] u8; n := gy_write_call(call, line[..]);   // 0 when it doesn't fit
+//   c := gy_read_call(text, nodes[..], strings[..]);              // c.ok false: not an AI-call line
+//   d := gy_write_decision(GyDecision.{...}, out[..]);
+
+#import_proto "../../../proto/descriptors/golemancy.pb" as GY;
+#load "../proto/json.coax";
+#load "../json/json.coax";
+#load "../sys/fs.coax";
+#load "tier.coax";
+
+GY_AI_CALL :: "openagents.ai-call.v1";
+GY_DECISION :: "openagents.next-issue.decision.v1";
+GY_CALL_MAX :: 2048;                  // the longest AI-call line a writer keeps
+GY_DECISION_MAX :: 1024;              // the longest decision line
+GY_MODEL_USAGE_MAX :: 900;            // a longer modelUsage object is left out of the line
+GY_REASON_MAX :: 400;                 // a decision's reason is cut to this many bytes
+GY_ABSENT :: -9223372036854775807 - 1;   // an optional number that is not on the line
+
+// ---- the AI-call ledger -----------------------------------------------------------------
+
+// One line of the AI-call ledger. Numbers set to GY_ABSENT and strings whose has_ flag is
+// false are left out; the others are on every line.
+GyCall :: struct {
+  at: int = GY_ABSENT;                  // unix seconds
+  app: string; purpose: string; harness: string; model: string;
+  issue: int = GY_ABSENT;
+  session: string; has_session: bool;
+  turn: int = GY_ABSENT;
+  input_tokens: int; cache_read_input_tokens: int; cache_creation_input_tokens: int; output_tokens: int;
+  thought_tokens: int = GY_ABSENT;
+  cost_priced_as: string; has_cost_priced_as: bool;
+  cost_usd_e6: int;
+  session_cost_usd_e6: int = GY_ABSENT;
+  duration_ms: int;
+  duration_api_ms: int = GY_ABSENT;
+  model_turns: int;
+  prompt_bytes: int = GY_ABSENT;
+  caches: string; has_caches: bool;
+  issues_rated: int = GY_ABSENT;
+  model_usage: string;                  // a JSON object, written as it is; "" for none
+  ok: bool;                             // gy_read_call: the line was an AI-call line
+}
+
+// A number that may be absent, as 0 when it is.
+gy_or0 :: (v: int) -> int { return ifx v == GY_ABSENT then 0 else v; }
+
+gy_key_int :: (o: [] Jo, key: string, v: int) { if v != GY_ABSENT { jo_key(o, key); jo_int(o, v); } }
+
+// The line for c (no newline): its length, or 0 when it does not fit in out.
+gy_write_call :: (c: GyCall, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], GY_AI_CALL);
+  gy_key_int(o[..], "at", c.at);
+  jo_key(o[..], "app"); jo_str(o[..], c.app);
+  jo_key(o[..], "purpose"); jo_str(o[..], c.purpose);
+  jo_key(o[..], "harness"); jo_str(o[..], c.harness);
+  jo_key(o[..], "model"); jo_str(o[..], c.model);
+  gy_key_int(o[..], "issue", c.issue);
+  if c.has_session { jo_key(o[..], "session"); jo_str(o[..], c.session); }
+  gy_key_int(o[..], "turn", c.turn);
+  jo_key(o[..], "input_tokens"); jo_int(o[..], c.input_tokens);
+  jo_key(o[..], "cache_read_input_tokens"); jo_int(o[..], c.cache_read_input_tokens);
+  jo_key(o[..], "cache_creation_input_tokens"); jo_int(o[..], c.cache_creation_input_tokens);
+  jo_key(o[..], "output_tokens"); jo_int(o[..], c.output_tokens);
+  gy_key_int(o[..], "thought_tokens", c.thought_tokens);
+  if c.has_cost_priced_as { jo_key(o[..], "cost_priced_as"); jo_str(o[..], c.cost_priced_as); }
+  jo_key(o[..], "cost_usd_e6"); jo_int(o[..], c.cost_usd_e6);
+  gy_key_int(o[..], "session_cost_usd_e6", c.session_cost_usd_e6);
+  jo_key(o[..], "duration_ms"); jo_int(o[..], c.duration_ms);
+  gy_key_int(o[..], "duration_api_ms", c.duration_api_ms);
+  jo_key(o[..], "model_turns"); jo_int(o[..], c.model_turns);
+  gy_key_int(o[..], "prompt_bytes", c.prompt_bytes);
+  if c.has_caches { jo_key(o[..], "caches"); jo_str(o[..], c.caches); }
+  gy_key_int(o[..], "issues_rated", c.issues_rated);
+  if c.model_usage.count > 1 && c.model_usage.count < GY_MODEL_USAGE_MAX && c.model_usage[0] == '{' { jo_key(o[..], "model_usage"); jo_raw(o[..], c.model_usage); }
+  jo_end(o[..]);
+  return ifx o[0].bad then 0 else o[0].n;
+}
+
+// A string member unescaped into the pool; ok false when it is there but not a string or
+// the pool is full.
+GyStr :: struct { text: string; present: bool; ok: bool; }
+GyPool :: struct { buf: [] u8; n: int; }
+gy_str :: (d: Jv, key: string, p: [] GyPool) -> GyStr {
+  at := jv_get(d, 0, key);
+  if at < 0 { return GyStr.{ok = true}; }
+  w := jv_str(d, at, p[0].buf[p[0].n..<p[0].buf.count]);
+  if w < 0 { return GyStr.{}; }
+  from := p[0].n; p[0].n += w;
+  return GyStr.{text = cast(string) p[0].buf[from..<from + w], present = true, ok = true};
+}
+// A number member: its value, GY_ABSENT when it isn't there, and bad when it is but is not an integer.
+GyInt :: struct { value: int; bad: bool; }
+gy_int :: (d: Jv, key: string) -> GyInt {
+  at := jv_get(d, 0, key);
+  if at < 0 { return GyInt.{value = GY_ABSENT}; }
+  v := jv_int(d, at, GY_ABSENT);
+  return GyInt.{value = v, bad = v == GY_ABSENT};
+}
+
+// One ledger line read back. Strings borrow strings; nodes holds the parse (a line with one
+// model in model_usage takes about 40). ok is false for a line that is not JSON, names another
+// schema, or lacks a member every line has.
+gy_read_call :: (line: string, nodes: [] JvNode, strings: [] u8) -> GyCall {
+  c: GyCall;
+  d: [1] Jv;
+  if !jv_parse(d[..], line, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return c; }
+  p: [1] GyPool; p[0].buf = strings;
+  schema := gy_str(d[0], "schema", p[..]);
+  if !schema.present || schema.text != GY_AI_CALL { return c; }
+  good := true;
+  need := [4] string.["app", "purpose", "harness", "model"];
+  got: [4] string;
+  for k, i: need { s := gy_str(d[0], k, p[..]); if !s.present || !s.ok { good = false; } got[i] = s.text; }
+  c.app = got[0]; c.purpose = got[1]; c.harness = got[2]; c.model = got[3];
+  session := gy_str(d[0], "session", p[..]); c.session = session.text; c.has_session = session.present; good = good && session.ok;
+  priced := gy_str(d[0], "cost_priced_as", p[..]); c.cost_priced_as = priced.text; c.has_cost_priced_as = priced.present; good = good && priced.ok;
+  caches := gy_str(d[0], "caches", p[..]); c.caches = caches.text; c.has_caches = caches.present; good = good && caches.ok;
+  // The numbers every line has, then the ones a line may leave out.
+  always := [7] string.["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens", "cost_usd_e6", "duration_ms", "model_turns"];
+  v: [7] int;
+  for k, i: always { n := gy_int(d[0], k); if n.bad || n.value == GY_ABSENT { good = false; } v[i] = n.value; }
+  c.input_tokens = v[0]; c.cache_read_input_tokens = v[1]; c.cache_creation_input_tokens = v[2]; c.output_tokens = v[3];
+  c.cost_usd_e6 = v[4]; c.duration_ms = v[5]; c.model_turns = v[6];
+  maybe := [8] string.["at", "issue", "turn", "thought_tokens", "session_cost_usd_e6", "duration_api_ms", "prompt_bytes", "issues_rated"];
+  m: [8] int;
+  for k, i: maybe { n := gy_int(d[0], k); if n.bad { good = false; } m[i] = n.value; }
+  c.at = m[0]; c.issue = m[1]; c.turn = m[2]; c.thought_tokens = m[3]; c.session_cost_usd_e6 = m[4]; c.duration_api_ms = m[5]; c.prompt_bytes = m[6]; c.issues_rated = m[7];
+  mu := jv_get(d[0], 0, "model_usage");
+  if mu >= 0 { if jv_kind(d[0], mu) != JV_OBJECT { good = false; } c.model_usage = jv_raw(d[0], mu); }
+  c.ok = good;
+  return c;
+}
+
+// ---- the next-issue decision ------------------------------------------------------------
+
+// What the picker decided. tier and scores are written when has_scores (the action "start").
+GyDecision :: struct {
+  at: int; action: string; issue: int; reason: string; session: string; coding_flow: string;
+  has_scores: bool; tier: string; scores: TierScores;
+  ok: bool;   // gy_read_decision: the line was a decision
+}
+
+// reason cut to GY_REASON_MAX bytes, at the start of a character.
+gy_reason :: (reason: string) -> string {
+  if reason.count <= GY_REASON_MAX { return reason; }
+  cut := GY_REASON_MAX;
+  while cut > 0 && (reason[cut] & 0xC0) == 0x80 { cut -= 1; }
+  return reason[0..<cut];
+}
+
+// The rubric's scores as the Rubric message; its wire bytes end in a (b is scratch).
+gy_rubric :: (t: TierScores, a: [] u8, b: [] u8) -> GY_Rubric {
+  r := GY_Rubric_new();
+  r = GY_Rubric_set_scope(r, cast,trunc(s32) t.scope, a);
+  r = GY_Rubric_set_ambiguity(r, cast,trunc(s32) t.ambiguity, b);
+  r = GY_Rubric_set_risk(r, cast,trunc(s32) t.risk, a);
+  r = GY_Rubric_set_depth(r, cast,trunc(s32) t.depth, b);
+  return GY_Rubric_set_delegable(r, t.delegable, a);
+}
+
+// The decision's line (no newline): its length, or 0 when it does not fit or a string is not UTF-8.
+gy_write_decision :: (x: GyDecision, out: [] u8) -> int {
+  a: [GY_DECISION_MAX] u8; b: [GY_DECISION_MAX] u8; ra: [64] u8; rb: [64] u8;
+  m := GY_NextIssueDecision_new();
+  m = GY_NextIssueDecision_set_at(m, x.at, a[..]);
+  m = GY_NextIssueDecision_set_action(m, x.action, b[..]);
+  m = GY_NextIssueDecision_set_issue(m, x.issue, a[..]);
+  m = GY_NextIssueDecision_set_reason(m, gy_reason(x.reason), b[..]);
+  m = GY_NextIssueDecision_set_session(m, x.session, a[..]);
+  m = GY_NextIssueDecision_set_coding_flow(m, x.coding_flow, b[..]);
+  if x.has_scores {
+    m = GY_NextIssueDecision_set_tier(m, x.tier, a[..]);
+    m = GY_NextIssueDecision_set_scores(m, gy_rubric(x.scores, ra[..], rb[..]), b[..]);
+  }
+  v := GY_NextIssueDecision_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
+}
+
+// A decision line read back through the mapper. Strings borrow wire, which must not overlap
+// line. ok is false for a line that is not a decision or lacks a member every line has.
+gy_read_decision :: (line: string, nodes: [] JvNode, wire: [] u8) -> GyDecision {
+  x: GyDecision;
+  m := GY_NextIssueDecision_from_json(line, nodes, wire);
+  if m.error != 0 { return x; }
+  at := GY_NextIssueDecision_get_at(m); action := GY_NextIssueDecision_get_action(m); issue := GY_NextIssueDecision_get_issue(m);
+  reason := GY_NextIssueDecision_get_reason(m); session := GY_NextIssueDecision_get_session(m); flow := GY_NextIssueDecision_get_coding_flow(m);
+  tier := GY_NextIssueDecision_get_tier(m); scores := GY_NextIssueDecision_get_scores(m);
+  if !(at.present && action.present && issue.present && reason.present && session.present && flow.present) || tier.present != scores.present { return x; }
+  x.at = cast(int) at.value; x.action = action.value; x.issue = cast(int) issue.value; x.reason = reason.value; x.session = session.value; x.coding_flow = flow.value;
+  if scores.present {
+    r := scores.value;
+    sc := GY_Rubric_get_scope(r); am := GY_Rubric_get_ambiguity(r); ri := GY_Rubric_get_risk(r); de := GY_Rubric_get_depth(r); dl := GY_Rubric_get_delegable(r);
+    if !(sc.present && am.present && ri.present && de.present && dl.present) { return x; }
+    x.has_scores = true; x.tier = tier.value;
+    x.scores = TierScores.{scope = cast(int) sc.value, ambiguity = cast(int) am.value, risk = cast(int) ri.value, depth = cast(int) de.value, delegable = dl.value};
+  }
+  x.ok = true;
+  return x;
+}
+
+// ---- the files --------------------------------------------------------------------------
+
+gy_calls_path :: (home: string, out: [] u8) -> string { return fs_join(home, ".openagents/usage/ai-calls.jsonl", out); }
+gy_decisions_path :: (home: string, out: [] u8) -> string { return fs_join(home, ".openagents/everglade/next-issue/decisions.jsonl", out); }
+// A line (out[0..<n], from a writer) appended with its newline in one write; room for it in out.
+gy_append :: (path: string, out: [] u8, n: int) -> bool {
+  if n <= 0 || n >= out.count { return false; }
+  out[n] = '\n';
+  return fs_append(path, cast(string) out[0..<n + 1]);
+}
+
+// ---- checks ------------------------------------------------------------------------------
+
+// Lines today's writers wrote (2026-11-10), from a Workshop turn on Claude Code and from the tier batch.
+GY_T_TURN :: "{\"schema\":\"openagents.ai-call.v1\",\"at\":1794323971,\"app\":\"everglade-desktop\",\"purpose\":\"next-issue.reply\",\"harness\":\"claude-code\",\"model\":\"claude-haiku-5-5\",\"session\":\"3e95afa7-1536-4959-b8a3-b058ed6ac582\",\"turn\":1,\"input_tokens\":4,\"cache_read_input_tokens\":19181,\"cache_creation_input_tokens\":939,\"output_tokens\":143,\"cost_usd_e6\":381,\"session_cost_usd_e6\":1897,\"duration_ms\":1854,\"duration_api_ms\":5854,\"model_turns\":2,\"prompt_bytes\":3,\"caches\":\"issues: fetched now, 28 open commits: fetched now\",\"model_usage\":{\"claude-haiku-5-5\":{\"inputTokens\":6,\"outputTokens\":871,\"cacheReadInputTokens\":19181,\"cacheCreationInputTokens\":10151,\"webSearchRequests\":0,\"costUSD\":0.0018967850000000002,\"contextWindow\":1000000,\"maxOutputTokens\":128000,\"thinkingTokens\":637,\"cacheCreationEphemeral5mInputTokens\":10151,\"cacheCreationEphemeral1hInputTokens\":0,\"canonicalModel\":\"claude-haiku-5-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}}}";
+GY_T_TURN_USAGE :: "{\"claude-haiku-5-5\":{\"inputTokens\":6,\"outputTokens\":871,\"cacheReadInputTokens\":19181,\"cacheCreationInputTokens\":10151,\"webSearchRequests\":0,\"costUSD\":0.0018967850000000002,\"contextWindow\":1000000,\"maxOutputTokens\":128000,\"thinkingTokens\":637,\"cacheCreationEphemeral5mInputTokens\":10151,\"cacheCreationEphemeral1hInputTokens\":0,\"canonicalModel\":\"claude-haiku-5-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}}";
+GY_T_TIER :: "{\"schema\":\"openagents.ai-call.v1\",\"app\":\"everglade-desktop\",\"purpose\":\"issue.tier\",\"harness\":\"claude-code\",\"model\":\"claude-haiku-5-5\",\"input_tokens\":4,\"cache_read_input_tokens\":15691,\"cache_creation_input_tokens\":28059,\"output_tokens\":8230,\"cost_usd_e6\":9884,\"duration_ms\":28443,\"model_turns\":28,\"issues_rated\":27}";
+
+#test "ledger: a Workshop turn's line and a tier batch's line, byte for byte as today's writers wrote them" {
+  out: [GY_CALL_MAX] u8;
+  turn := GyCall.{at = 1794323971, app = "everglade-desktop", purpose = "next-issue.reply", harness = "claude-code", model = "claude-haiku-5-5",
+    session = "3e95afa7-1536-4959-b8a3-b058ed6ac582", has_session = true, turn = 1, input_tokens = 4, cache_read_input_tokens = 19181,
+    cache_creation_input_tokens = 939, output_tokens = 143, cost_usd_e6 = 381, session_cost_usd_e6 = 1897, duration_ms = 1854, duration_api_ms = 5854,
+    model_turns = 2, prompt_bytes = 3, caches = "issues: fetched now, 28 open commits: fetched now", has_caches = true, model_usage = GY_T_TURN_USAGE};
+  n := gy_write_call(turn, out[..]);
+  #assert cast(string) out[0..<n] == GY_T_TURN;
+  tier := GyCall.{app = "everglade-desktop", purpose = "issue.tier", harness = "claude-code", model = "claude-haiku-5-5", input_tokens = 4,
+    cache_read_input_tokens = 15691, cache_creation_input_tokens = 28059, output_tokens = 8230, cost_usd_e6 = 9884, duration_ms = 28443, model_turns = 28, issues_rated = 27};
+  n = gy_write_call(tier, out[..]);
+  #assert cast(string) out[0..<n] == GY_T_TIER;
+  // An Antigravity coding turn: the issue, its thought tokens and the card's row it is priced at; no modelUsage.
+  agy := GyCall.{at = 100, app = "everglade-desktop", purpose = "issue.code", harness = "antigravity", model = "gemini-3.8-flash-high", issue = 7,
+    session = "s", has_session = true, turn = 0, output_tokens = 12, thought_tokens = 8, cost_priced_as = "gemini-3.8-flash", has_cost_priced_as = true,
+    cost_usd_e6 = 340, session_cost_usd_e6 = 340, duration_ms = 1000, duration_api_ms = 0, model_turns = 1, prompt_bytes = 0, has_caches = true};
+  n = gy_write_call(agy, out[..]);
+  #assert cast(string) out[0..<n] == "{\"schema\":\"openagents.ai-call.v1\",\"at\":100,\"app\":\"everglade-desktop\",\"purpose\":\"issue.code\",\"harness\":\"antigravity\",\"model\":\"gemini-3.8-flash-high\",\"issue\":7,\"session\":\"s\",\"turn\":0,\"input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":12,\"thought_tokens\":8,\"cost_priced_as\":\"gemini-3.8-flash\",\"cost_usd_e6\":340,\"session_cost_usd_e6\":340,\"duration_ms\":1000,\"duration_api_ms\":0,\"model_turns\":1,\"prompt_bytes\":0,\"caches\":\"\"}";
+  // A modelUsage that is not an object, or too long, is left out; a line that does not fit is not written.
+  turn.model_usage = "[]"; n = gy_write_call(turn, out[..]); #assert n > 0 && !gy_has(cast(string) out[0..<n], "model_usage");
+  #assert gy_write_call(tier, out[0..<40]) == 0;
+}
+gy_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+#test "ledger: a line reads back into the values that write it again, and other lines are refused" {
+  nodes: [256] JvNode; strings: [2048] u8; out: [GY_CALL_MAX] u8;
+  for line: [2] string.[GY_T_TURN, GY_T_TIER] {
+    c := gy_read_call(line, nodes[..], strings[..]);
+    #assert c.ok;
+    n := gy_write_call(c, out[..]);
+    #assert cast(string) out[0..<n] == line;
+  }
+  c := gy_read_call(GY_T_TURN, nodes[..], strings[..]);
+  #assert c.at == 1794323971 && c.turn == 1 && c.issue == GY_ABSENT && gy_or0(c.issue) == 0 && c.cost_usd_e6 == 381 && c.model_usage == GY_T_TURN_USAGE && c.session == "3e95afa7-1536-4959-b8a3-b058ed6ac582";
+  t := gy_read_call(GY_T_TIER, nodes[..], strings[..]);
+  #assert t.issues_rated == 27 && t.at == GY_ABSENT && !t.has_session && !t.has_caches && t.model_usage == "";
+  #assert !gy_read_call("{\"schema\":\"openagents.next-issue.decision.v1\",\"app\":\"a\"}", nodes[..], strings[..]).ok;
+  #assert !gy_read_call("{\"app\":\"everglade-desktop\"}", nodes[..], strings[..]).ok && !gy_read_call("not json", nodes[..], strings[..]).ok;
+  // a member every line has, missing; a number that is a string; a model_usage that is not an object
+  #assert !gy_read_call("{\"schema\":\"openagents.ai-call.v1\",\"app\":\"a\",\"purpose\":\"p\",\"harness\":\"h\",\"model\":\"m\",\"input_tokens\":1}", nodes[..], strings[..]).ok;
+  #assert !gy_read_call("{\"schema\":\"openagents.ai-call.v1\",\"app\":\"a\",\"purpose\":\"p\",\"harness\":\"h\",\"model\":\"m\",\"input_tokens\":1,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":0,\"cost_usd_e6\":0,\"duration_ms\":0,\"model_turns\":\"1\"}", nodes[..], strings[..]).ok;
+  base := "{\"schema\":\"openagents.ai-call.v1\",\"app\":\"a\",\"purpose\":\"p\",\"harness\":\"h\",\"model\":\"m\",\"input_tokens\":1,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":0,\"cost_usd_e6\":0,\"duration_ms\":0,\"model_turns\":1";
+  ok_line: [512] u8; k := 0;
+  for ch: base { ok_line[k] = ch; k += 1; } for ch: "}" { ok_line[k] = ch; k += 1; }
+  #assert gy_read_call(cast(string) ok_line[0..<k], nodes[..], strings[..]).ok;
+  k = base.count; for ch: ",\"model_usage\":3}" { ok_line[k] = ch; k += 1; }
+  #assert !gy_read_call(cast(string) ok_line[0..<k], nodes[..], strings[..]).ok;
+  k = base.count; for ch: ",\"session\":3}" { ok_line[k] = ch; k += 1; }
+  #assert !gy_read_call(cast(string) ok_line[0..<k], nodes[..], strings[..]).ok;
+  k = base.count; for ch: ",\"turn\":1.5}" { ok_line[k] = ch; k += 1; }
+  #assert !gy_read_call(cast(string) ok_line[0..<k], nodes[..], strings[..]).ok;
+  // strings that do not fit the pool
+  #assert !gy_read_call(GY_T_TURN, nodes[..], strings[0..<20]).ok;
+}
+
+#test "ledger: a long reason is cut at 400 bytes, never inside a character" {
+  b: [402] u8; for i: 0..<399 { b[i] = 'a'; } b[399] = 0xC3; b[400] = 0xA9; b[401] = 'z';
+  #assert gy_reason(cast(string) b[..]).count == 399;
+  b[399] = 'a'; b[400] = 'b'; #assert gy_reason(cast(string) b[..]).count == 400;
+  #assert gy_reason("short") == "short" && gy_reason(cast(string) b[0..<400]).count == 400;
+}
+
+// The tier rubric's five fields are the Rubric message's: tier.coax's answer schema
+// (TIER_PROPERTIES, TIER_REQUIRED) names the same members, in the same order, as the mapper
+// writes them. The Rubric's bytes are given here and written with the generated writer's body
+// (GY_Rubric__json_put): its setters and GY_Rubric_to_json check their buffers for overlap, which
+// a check cannot run. ledger-goldens.coax runs them on the golden decisions.
+#test "ledger: tier.coax's rubric properties and required list name the Rubric message's fields, in order" {
+  wire := [10] u8.[8, 1, 16, 2, 24, 3, 32, 0, 40, 1];
+  r := GY_Rubric_decode(wire[..]);
+  #assert r.error == 0 && GY_Rubric_get_scope(r).value == 1 && GY_Rubric_get_delegable(r).value;
+  out: [128] u8; o: [1] Jo; jo_start(o[..], out[..]);
+  #assert GY_Rubric__json_put(r, o[..]) == 0 && !o[0].bad;
+  line := jo_text(o[..]);
+  #assert line == "{\"scope\":1,\"ambiguity\":2,\"risk\":3,\"depth\":0,\"delegable\":true}";
+  props: [1024] u8; k := 0;
+  for ch: "{" { props[k] = ch; k += 1; } for ch: TIER_PROPERTIES { props[k] = ch; k += 1; } for ch: "}" { props[k] = ch; k += 1; }
+  req: [256] u8; r2 := 0;
+  for ch: "[" { req[r2] = ch; r2 += 1; } for ch: TIER_REQUIRED { req[r2] = ch; r2 += 1; } for ch: "]" { req[r2] = ch; r2 += 1; }
+  n1: [64] JvNode; n2: [64] JvNode; n3: [64] JvNode; p: [1] Jv; q: [1] Jv; w: [1] Jv;
+  #assert jv_parse(p[..], cast(string) props[0..<k], n1[..]) && jv_parse(q[..], cast(string) req[0..<r2], n2[..]) && jv_parse(w[..], line, n3[..]);
+  #assert jv_len(p[0], 0) == 5 && jv_len(q[0], 0) == 5 && jv_len(w[0], 0) == 5;
+  kb: [32] u8;
+  for i: 0..<5 {
+    member := jv_key(w[0], jv_at(w[0], 0, i));
+    #assert jv_key(p[0], jv_at(p[0], 0, i)) == member;
+    m := jv_str(q[0], jv_at(q[0], 0, i), kb[..]);
+    #assert cast(string) kb[0..<m] == member;
+  }
+}

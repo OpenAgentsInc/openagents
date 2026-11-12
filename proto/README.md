@@ -57,7 +57,7 @@ not list it; [registry.json](registry.json) does, one row a file.
 | Folder | What it holds |
 | --- | --- |
 | `verse/` | Wire profiles for hand-packed frames and records. A profile names each message, its fields in order, a value for each and the exact bytes those values make. `everglade-session-v5.json`, `everglade-latency-v1.json` and `orbit-session-v2.json` have a check that writes and reads those bytes through the codec. The Everglade II familiar, Healer's Kit and link-input profiles, `asset-pack-v2.json` and the character checkpoint JSON Schemas have no check yet |
-| `coder/` | `session-log-v1.json`, the session log's lines byte for byte, checked through `coax/lib/agent/session/log.coax` by `log-profile.coax`; and JSON Schemas for Coder's stream records and voice input, which have no check yet |
+| `coder/` | `session-log-v1.json`, the session log's lines byte for byte, checked through `coax/lib/agent/session/log.coax` by `log-profile.coax`; `golemancy-v1alpha1.json`, the AI-call ledger's and the next-issue decision's lines, checked through `coax/lib/agent/ledger.coax` by `ledger-goldens.coax`; and JSON Schemas for Coder's stream records and voice input, which have no check yet |
 | `aethyrforge/` | JSON Schemas for Aethyrforge's local commands. None has a check yet |
 | `aethyr/` | `physics-lab-v1.json`. No check yet |
 

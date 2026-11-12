@@ -52,6 +52,7 @@
 #load "../../coax/lib/gateway/card.coax";   // what Antigravity's tokens cost (the rates card): it reports none
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/agent/tier.coax";
+#load "../../coax/lib/agent/ledger.coax";   // the AI-call ledger's and the decision's one writer
 #load "golem-board.coax";
 
 NP_MODEL :: "claude-haiku-5-5";
@@ -117,7 +118,9 @@ NextPanel :: struct {
   turn: int; seconds: f32; now: int;      // now: the host's clock, seconds since the epoch
   input: int; output: int; cache_read: int; cache_write: int; cost_e6: int = -1; session_cost_e6: int;
   usage: [2048] u8; usage_n: int;         // a ledger line waiting for the host
-  decision: [1024] u8; decision_n: int;   // a decision waiting for the host
+  // A decision waiting for the host, as its values (np_decide keeps them, np_take_decision writes the line).
+  decided: bool; decided_at: int; decided_issue: int; decided_scores: bool; decided_tier: int; decided_rubric: TierScores;
+  decided_action: [16] u8; decided_action_n: int; decided_reason: [GY_REASON_MAX] u8; decided_reason_n: int; decided_session: [128] u8; decided_session_n: int;
   chosen: int;                            // the issue you said to start, 0 none
   autopilot: bool = true;                 // pick, work, pick again, with no one answering
   worked: [NP_WORKED] int; worked_n: int; // the issues this run has worked, which the picker is told to leave
@@ -394,62 +397,31 @@ np_tool_line :: (s: []NextPanel, name: string, input: string) {
   np_append(s, "\n"); s[0].after_tool = true;
 }
 
-// One turn's line for the ledger: who asked, which model, what it cost.
+// One turn's line for the ledger: who asked, which model, what it cost (written by ledger.coax).
 np_record :: (s: []NextPanel, harness: string, session: string, model_usage: string, duration_ms: int, api_ms: int, turns: int) {
-  o: [1] Jo; jo_start(o[..], s[0].usage[..]);
-  jo_obj(o[..]);
-  jo_key(o[..], "schema"); jo_str(o[..], "openagents.ai-call.v1");
-  jo_key(o[..], "at"); jo_int(o[..], s[0].now);
-  jo_key(o[..], "app"); jo_str(o[..], "everglade-desktop");
   purpose := ifx s[0].turn == 0 then "next-issue.suggest" else "next-issue.reply";
   if s[0].coding { purpose = ifx s[0].rehearsal then "issue.rehearse" else "issue.code"; }
-  jo_key(o[..], "purpose"); jo_str(o[..], purpose);
-  jo_key(o[..], "harness"); jo_str(o[..], harness);
-  jo_key(o[..], "model"); jo_str(o[..], cast(string) s[0].model[0..<s[0].model_n]);
-  if s[0].coding { jo_key(o[..], "issue"); jo_int(o[..], s[0].chosen); }
-  jo_key(o[..], "session"); jo_str(o[..], session);
-  jo_key(o[..], "turn"); jo_int(o[..], s[0].turn);
-  jo_key(o[..], "input_tokens"); jo_int(o[..], s[0].input);
-  jo_key(o[..], "cache_read_input_tokens"); jo_int(o[..], s[0].cache_read);
-  jo_key(o[..], "cache_creation_input_tokens"); jo_int(o[..], s[0].cache_write);
-  jo_key(o[..], "output_tokens"); jo_int(o[..], s[0].output);
+  c := GyCall.{at = s[0].now, app = "everglade-desktop", purpose = purpose, harness = harness, model = cast(string) s[0].model[0..<s[0].model_n],
+    session = session, has_session = true, turn = s[0].turn,
+    input_tokens = s[0].input, cache_read_input_tokens = s[0].cache_read, cache_creation_input_tokens = s[0].cache_write, output_tokens = s[0].output,
+    cost_usd_e6 = ifx s[0].cost_e6 < 0 then 0 else s[0].cost_e6, session_cost_usd_e6 = s[0].session_cost_e6,
+    duration_ms = duration_ms, duration_api_ms = api_ms, model_turns = turns, prompt_bytes = ifx s[0].turn == 0 then s[0].context_n else s[0].draft_n,
+    caches = cast(string) s[0].report[0..<s[0].report_n], has_caches = true, model_usage = model_usage};
+  if s[0].coding { c.issue = s[0].chosen; }
   if s[0].agy {
     // agy reports tokens but no cost: the cost is the rates card's price for them, at this row.
-    jo_key(o[..], "thought_tokens"); jo_int(o[..], s[0].thought);
-    jo_key(o[..], "cost_priced_as"); jo_str(o[..], cast(string) s[0].priced_as[0..<s[0].priced_as_n]);
+    c.thought_tokens = s[0].thought;
+    c.cost_priced_as = cast(string) s[0].priced_as[0..<s[0].priced_as_n]; c.has_cost_priced_as = true;
   }
-  jo_key(o[..], "cost_usd_e6"); jo_int(o[..], ifx s[0].cost_e6 < 0 then 0 else s[0].cost_e6);
-  jo_key(o[..], "session_cost_usd_e6"); jo_int(o[..], s[0].session_cost_e6);
-  jo_key(o[..], "duration_ms"); jo_int(o[..], duration_ms);
-  jo_key(o[..], "duration_api_ms"); jo_int(o[..], api_ms);
-  jo_key(o[..], "model_turns"); jo_int(o[..], turns);
-  jo_key(o[..], "prompt_bytes"); jo_int(o[..], ifx s[0].turn == 0 then s[0].context_n else s[0].draft_n);
-  jo_key(o[..], "caches"); jo_str(o[..], cast(string) s[0].report[0..<s[0].report_n]);
-  if model_usage.count > 1 && model_usage.count < 900 { jo_key(o[..], "model_usage"); jo_raw(o[..], model_usage); }
-  jo_end(o[..]);
-  s[0].usage_n = ifx o[0].bad then 0 else o[0].n;
+  s[0].usage_n = gy_write_call(c, s[0].usage[..]);
 }
-// The decision, written down for the coding flow that will read it.
+// The decision, kept for the host to append (np_take_decision writes its line through ledger.coax).
 np_decide :: (s: []NextPanel, action: string, issue: int, reason: string) {
-  o: [1] Jo; jo_start(o[..], s[0].decision[..]);
-  jo_obj(o[..]);
-  jo_key(o[..], "schema"); jo_str(o[..], "openagents.next-issue.decision.v1");
-  jo_key(o[..], "at"); jo_int(o[..], s[0].now);
-  jo_key(o[..], "action"); jo_str(o[..], action);
-  jo_key(o[..], "issue"); jo_int(o[..], issue);
-  jo_key(o[..], "reason"); jo_str(o[..], ifx reason.count > 400 then reason[0..<400] else reason);
-  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].eng[0].q[..]));
-  jo_key(o[..], "coding_flow"); jo_str(o[..], ifx action == "start" then "started" else "none");
-  if action == "start" {
-    jo_key(o[..], "tier"); jo_str(o[..], tier_name(s[0].tier));
-    jo_key(o[..], "scores"); jo_obj(o[..]);
-    jo_key(o[..], "scope"); jo_int(o[..], s[0].scores.scope); jo_key(o[..], "ambiguity"); jo_int(o[..], s[0].scores.ambiguity);
-    jo_key(o[..], "risk"); jo_int(o[..], s[0].scores.risk); jo_key(o[..], "depth"); jo_int(o[..], s[0].scores.depth);
-    jo_key(o[..], "delegable"); jo_bool(o[..], s[0].scores.delegable);
-    jo_end(o[..]);
-  }
-  jo_end(o[..]);
-  s[0].decision_n = ifx o[0].bad then 0 else o[0].n;
+  s[0].decided = true; s[0].decided_at = s[0].now; s[0].decided_issue = issue;
+  s[0].decided_action_n = np_put(s[0].decided_action[..], 0, action);
+  s[0].decided_reason_n = np_put(s[0].decided_reason[..], 0, gy_reason(reason));
+  s[0].decided_session_n = np_put(s[0].decided_session[..], 0, cl_session_id(s[0].eng[0].q[..]));
+  s[0].decided_scores = action == "start"; s[0].decided_tier = s[0].tier; s[0].decided_rubric = s[0].scores;
 }
 
 // The coder called `report`: its work on the issue is over.
@@ -1043,8 +1015,16 @@ np_take_usage :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) {
   for i: 0..<n { out[i] = s[0].usage[i]; } s[0].usage_n = 0; return n;
 }
 np_take_decision :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) {
-  n := s[0].decision_n; if n == 0 || n > out.count { return 0; }
-  for i: 0..<n { out[i] = s[0].decision[i]; } s[0].decision_n = 0; return n;
+  if !s[0].decided { return 0; }
+  action := cast(string) s[0].decided_action[0..<s[0].decided_action_n];
+  line: [GY_DECISION_MAX] u8;
+  n := gy_write_decision(GyDecision.{at = s[0].decided_at, action = action, issue = s[0].decided_issue,
+    reason = cast(string) s[0].decided_reason[0..<s[0].decided_reason_n], session = cast(string) s[0].decided_session[0..<s[0].decided_session_n],
+    coding_flow = ifx action == "start" then "started" else "none", has_scores = s[0].decided_scores, tier = tier_name(s[0].decided_tier), scores = s[0].decided_rubric}, line[..]);
+  if n > out.count { return 0; }
+  s[0].decided = false;
+  for i: 0..<n { out[i] = line[i]; }
+  return n;
 }
 // The app is quitting: the agent's process group goes with it.
 np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { np_end(s, s[0].state); } }

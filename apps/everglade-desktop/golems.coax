@@ -68,6 +68,8 @@
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/agent/observe/transcripts.coax";
 #load "../../coax/lib/agent/observe/antigravity.coax";
+#load "../../coax/lib/agent/ledger.coax";   // the AI-call ledger's one reader
+#load "../../coax/lib/gateway/card.coax";   // the prices: the rates card
 
 GS_CHUNK :: 2097152;      // bytes of a transcript read at a time
 GS_BUDGET :: 1200;       // milliseconds one snapshot spends reading transcripts; the rest waits for the next
@@ -187,16 +189,8 @@ gs_day :: (now: int, tz: int) -> int { local := now + tz; return local - local %
 
 // ---- prices
 
-// A model family's list prices in cents a million tokens: input, output, cache read, cache
-// write kept five minutes, cache write kept an hour. Zeros when the family isn't known.
-GsPrice :: struct { input: int; output: int; read: int; write5: int; write60: int; }
-gs_price :: (model: string) -> GsPrice {
-  if gs_has(model, "fable") || gs_has(model, "mythos") { return GsPrice.{input = 800, output = 4000, read = 20, write5 = 1000, write60 = 1600}; }
-  if gs_has(model, "opus") { return GsPrice.{input = 400, output = 2000, read = 20, write5 = 500, write60 = 800}; }
-  if gs_has(model, "sonnet") { return GsPrice.{input = 200, output = 1000, read = 10, write5 = 250, write60 = 400}; }
-  if gs_has(model, "haiku") { return GsPrice.{input = 10, output = 50, read = 1, write5 = 12, write60 = 20}; }
-  return GsPrice.{};
-}
+// What Claude Code's models cost: the rates card (coax/lib/gateway/card.coax), by the model's family.
+gs_rate :: (model: string) -> GwRateFound { return gw_rate_family("anthropic", model); }
 
 // ---- a shell command's kind
 
@@ -356,8 +350,9 @@ gs_usage :: (g: []Golem, ar: []ClArena, l: string, at: int, day: int) {
   for i: 0..<5 { d[i] = ifx same then now[i] - g[0].u[i] else now[i]; if d[i] < 0 { d[i] = 0; } if !same || now[i] > g[0].u[i] { g[0].u[i] = now[i]; } }
   if !same { g[0].mid_n = gs_set(g[0].mid[..], id); }
   g[0].t_in += d[0]; g[0].t_out += d[1]; g[0].t_read += d[2]; g[0].t_write += d[3] + d[4];
-  p := gs_price(cast(string) g[0].model[0..<g[0].model_n]);
-  cost := d[0] * p.input + d[1] * p.output + d[2] * p.read + d[3] * p.write5 + d[4] * p.write60;
+  // The card's price in millionths of a micro-USD, kept in hundred-millionths of a dollar.
+  r := gs_rate(cast(string) g[0].model[0..<g[0].model_n]);
+  cost := ifx r.ok then gw_round_div(gw_card_scaled(r.rate, d[0], d[2], d[3], d[4], d[1]), 10000) else 0;
   g[0].cost_e8 += cost;
   if at >= day { if g[0].day != day { g[0].day = day; g[0].cost_day_e8 = 0; } g[0].cost_day_e8 += cost; }
 }
@@ -673,18 +668,19 @@ gs_hosts :: (text: string) -> GsHosts {
 
 GS_LEDGER :: 256;
 GsCall :: struct { session: [48] u8; sn: int; issue: int; cost_e6: int; at: int; }
-// The newest calls in the AI call ledger (~/.openagents/usage/ai-calls.jsonl).
-gs_ledger :: (text: string, calls: []GsCall, ar: []ClArena) -> int {
+// The newest calls in the AI call ledger (~/.openagents/usage/ai-calls.jsonl), each line read by ledger.coax.
+gs_ledger :: (text: string, calls: []GsCall) -> int {
   k := 0; at := 0;
+  nodes: [512] JvNode; strings: [4096] u8;
   // A read from the middle of the file starts inside a line.
   while at < text.count && text[at] != '{' { while at < text.count && text[at] != '\n' { at += 1; } at += 1; }
   while at < text.count {
     l := gs_line_at(text, at); at += l.count + 1;
-    if l.count < 2 || l[0] != '{' { continue; }
-    ar[0].at = 0; ar[0].full = false;
+    c := gy_read_call(l, nodes[..], strings[..]);
+    if !c.ok { continue; }
     slot := k; if k >= calls.count { for i: 1..<calls.count { calls[i - 1] = calls[i]; } slot = calls.count - 1; } else { k += 1; }
-    calls[slot].sn = gs_set(calls[slot].session[..], cl_str(ar, l, "session"));
-    calls[slot].issue = cl_int(l, "issue").value; calls[slot].cost_e6 = cl_int(l, "cost_usd_e6").value; calls[slot].at = cl_int(l, "at").value;
+    calls[slot].sn = gs_set(calls[slot].session[..], c.session);
+    calls[slot].issue = gy_or0(c.issue); calls[slot].cost_e6 = c.cost_usd_e6; calls[slot].at = gy_or0(c.at);
   }
   return k;
 }
@@ -781,9 +777,9 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
   hb: [8192] u8; hn := fs_read(gs_path(home, "hosts.txt", pb2[..]), hb[..]); hosts := gs_hosts(ifx hn > 0 then cast(string) hb[0..<hn] else "");
   calls: [GS_LEDGER] GsCall; calls_n := 0;
   {
-    lp_b: [1400] u8; lp := fs_join(home, ".openagents/usage/ai-calls.jsonl", lp_b[..]);
+    lp_b: [1400] u8; lp := gy_calls_path(home, lp_b[..]);
     size := fs_size(lp);
-    if size > 0 { from := ifx size > buf.count then size - buf.count else 0; n := fs_read_at(lp, from, buf[..]); if n > 0 { calls_n = gs_ledger(cast(string) buf[0..<n], calls[..], ar[..]); } }
+    if size > 0 { from := ifx size > buf.count then size - buf.count else 0; n := fs_read_at(lp, from, buf[..]); if n > 0 { calls_n = gs_ledger(cast(string) buf[0..<n], calls[..]); } }
   }
   cache_b: [1400] u8; cache := gs_path(home, "cache", cache_b[..]); made := fs_mkdir(cache);
   blocks: [GS_MAX * GS_BLOCK] u8; one: [GS_MAX] GsOne; shown := 0;
@@ -844,7 +840,7 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
     n = gs_raw(out, n, "\t"); n = gs_put(out, n, ifx issue > 0 then gs_issue_title(issues, issue) else "");
     n = gs_raw(out, n, "\t"); n = gs_int(out, n, g[0].started);
     n = gs_raw(out, n, "\t"); n = gs_int(out, n, g[0].t_in + g[0].t_out + g[0].t_read + g[0].t_write);
-    priced := gs_price(cast(string) g[0].model[0..<g[0].model_n]).output > 0;
+    priced := gs_rate(cast(string) g[0].model[0..<g[0].model_n]).ok;
     n = gs_raw(out, n, "\t"); n = gs_int(out, n, ifx priced then g[0].cost_e8 / 100 else -1);
     n = gs_raw(out, n, "\t"); n = gs_put(out, n, cast(string) g[0].commits[0..<g[0].commits_n]);
     n = gs_raw(out, n, "\t"); n = gs_int(out, n, ifx g[0].turn == GS_TOOL then g[0].wait_since else 0);
@@ -1107,7 +1103,24 @@ gs_test_result :: (at: string, text: string, out: []u8) -> string {
   issues := "O\t13116\tFix the comma\nO\t13134\tGreen main\nX\t13089\tTablets\ndone\n";
   #assert gs_issue_title(issues, 13134) == "Green main" && gs_issue_title(issues, 13089) == "Tablets" && gs_issue_title(issues, 7) == "";
   #assert gs_issue_count(issues, 'O') == 2 && gs_issue_count(issues, 'X') == 1 && gs_issue_count("", 'O') == -1;
-  #assert gs_price("claude-fable-5-2").output == 4000 && gs_price("claude-haiku-5-5").read == 1 && gs_price("gpt-6").output == 0;
+  #assert gs_rate("claude-fable-5-2").rate.output == 40000000 && gs_rate("claude-haiku-5-5").rate.cached_input == 10000 && !gs_rate("gpt-6").ok;
+}
+// The board's own price table (gs_price, cents a million tokens) was deleted for the rates card
+// (GitHub #13243). Its numbers, kept here only as the oracle: every family's cost of the same usage,
+// in hundred-millionths of a dollar, is what the table gave, to the unit.
+#test "golems: the card prices a message as the board's old table did, to the hundred-millionth" {
+  models := [5] string.["claude-fable-5-2", "claude-mythos-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+  // input, output, cache read, cache write five minutes, an hour
+  old := [5][5] int.[[5] int.[800, 4000, 20, 1000, 1600], [5] int.[800, 4000, 20, 1000, 1600], [5] int.[400, 2000, 20, 500, 800], [5] int.[200, 1000, 10, 250, 400], [5] int.[10, 50, 1, 12, 20]];
+  uses := [3][5] int.[[5] int.[10, 100, 1000, 0, 50], [5] int.[3, 7, 11, 13, 17], [5] int.[58, 8152, 2122112, 0, 90931]];
+  for m, i: models {
+    r := gs_rate(m); #assert r.ok;
+    for u: uses {
+      was := u[0] * old[i][0] + u[1] * old[i][1] + u[2] * old[i][2] + u[3] * old[i][3] + u[4] * old[i][4];
+      #assert gw_round_div(gw_card_scaled(r.rate, u[0], u[2], u[3], u[4], u[1]), 10000) == was;
+    }
+  }
+  #assert !gs_rate("gpt-6").ok && !gs_rate("<synthetic>").ok && !gs_rate("gemini-4-carbon").ok;
 }
 #test "golems: what was counted survives its cache file" {
   g: [1] Golem; h: [1] Golem; out: [GS_BLOCK] u8;

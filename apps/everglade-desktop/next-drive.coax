@@ -56,8 +56,8 @@ tool_main :: () -> int #export_c #effects(all) {
   wb: [2048] u8; here := fs_cwd(wb[..]);
   repo := args_value(a[..], "--repo-dir", here);
   hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
-  lb: [2048] u8; ledger := args_value(a[..], "--ledger", fs_join(home, ".openagents/usage/ai-calls.jsonl", lb[..]));
-  db: [2048] u8; decisions := args_value(a[..], "--decisions", fs_join(home, ".openagents/everglade/next-issue/decisions.jsonl", db[..]));
+  lb: [2048] u8; ledger := args_value(a[..], "--ledger", gy_calls_path(home, lb[..]));
+  db: [2048] u8; decisions := args_value(a[..], "--decisions", gy_decisions_path(home, db[..]));
 
   s: [1] NextPanel; np_init(s[..]);
   if args_has(a[..], "--autopilot-off") { x := np_auto_box(W); t := np_pointer(s[..], x.x + 5, x.y + 5, 0, W, H); t = np_pointer(s[..], x.x + 5, x.y + 5, 2, W, H); }
@@ -80,9 +80,9 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     mid_line := printed > 0 && s[0].text[printed - 1] != '\n';
     un := np_take_usage(s[..], line[..]);
-    if un > 0 { ok := fs_append(ledger, cast(string) line[0..<un]) && fs_append(ledger, "\n"); print("%[ledger] %\n", ifx mid_line then "\n" else "", cast(string) line[0..<un]); }
+    if un > 0 { ok := gy_append(ledger, line[..], un); print("%[ledger] %\n", ifx mid_line then "\n" else "", cast(string) line[0..<un]); }
     dn := np_take_decision(s[..], line[..]);
-    if dn > 0 { ok := fs_append(decisions, cast(string) line[0..<dn]) && fs_append(decisions, "\n"); print("%[decision] %\n", ifx mid_line then "\n" else "", cast(string) line[0..<dn]); }
+    if dn > 0 { ok := gy_append(decisions, line[..], dn); print("%[decision] %\n", ifx mid_line then "\n" else "", cast(string) line[0..<dn]); }
     // Enough coding turns: stop before the next asking is answered (Stop, as the button, between turns too).
     if np_runs(s[..]) >= laps && np_state(s[..]) != NP_RUNNING {
       if np_busy(s[..]) { s[0].want_stop = true; n = np_frame(s[..], out[..], box[..], 0, 0, 0, 0, cxproc_wall_us() / 1000000); }

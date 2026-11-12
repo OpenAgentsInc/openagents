@@ -26,6 +26,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/agent/ledger.coax";   // the AI-call ledger's one reader
 
 NC_REPO :: "OpenAgentsInc/openagents";
 NC_TTL :: 600;             // seconds a fetch is good for, unless --ttl says otherwise
@@ -478,33 +479,30 @@ nc_work :: (a: [] Args, repo: string, author: string) -> int {
   return 0;
 }
 
-// ---- the ledger (~/.openagents/usage/ai-calls.jsonl), summed
+// ---- the ledger (~/.openagents/usage/ai-calls.jsonl), summed; ledger.coax reads each line
 
 Group :: struct { purpose: [48] u8; pn: int; model: [48] u8; mn: int; calls: int; input: int; output: int; cache_read: int; cache_write: int; cost_e6: int; ms: int; }
 nc_usage :: () -> int {
   home_b: [1024] u8; home := proc_getenv("HOME", home_b[..]);
-  path_b: [2048] u8; path := fs_join(home, ".openagents/usage/ai-calls.jsonl", path_b[..]);
+  path_b: [2048] u8; path := gy_calls_path(home, path_b[..]);
   raw: [8388608] u8; n := fs_read(path, raw[..]);
   if n <= 0 { print("no AI calls recorded yet (%)\n", path); return 0; }
-  g: [64] Group; gn := 0; nodes: [512] JvNode; text: [64] u8;
+  g: [64] Group; gn := 0; nodes: [512] JvNode; strings: [4096] u8;
   i := 0;
   while i < n {
     e := i; while e < n && raw[e] != '\n' { e += 1; }
-    d: [1] Jv;
-    if e > i && jv_parse(d[..], cast(string) raw[i..<e], nodes[..]) {
-      pn := jv_str(d[0], jv_get(d[0], 0, "purpose"), text[0..<48]); purpose: [48] u8; if pn < 0 { pn = 0; } for q: 0..<pn { purpose[q] = text[q]; }
-      mn := jv_str(d[0], jv_get(d[0], 0, "model"), text[0..<48]); if mn < 0 { mn = 0; }
+    c := ifx e > i then gy_read_call(cast(string) raw[i..<e], nodes[..], strings[..]) else GyCall.{};
+    if c.ok {
+      purpose := ifx c.purpose.count > 48 then c.purpose[0..<48] else c.purpose;
+      model := ifx c.model.count > 48 then c.model[0..<48] else c.model;
       at := -1;
-      for k: 0..<gn { if cast(string) g[k].purpose[0..<g[k].pn] == cast(string) purpose[0..<pn] && cast(string) g[k].model[0..<g[k].mn] == cast(string) text[0..<mn] { at = k; } }
-      if at < 0 && gn < 64 { at = gn; gn += 1; g[at].pn = pn; g[at].mn = mn; for q: 0..<pn { g[at].purpose[q] = purpose[q]; } for q: 0..<mn { g[at].model[q] = text[q]; } }
+      for k: 0..<gn { if cast(string) g[k].purpose[0..<g[k].pn] == purpose && cast(string) g[k].model[0..<g[k].mn] == model { at = k; } }
+      if at < 0 && gn < 64 { at = gn; gn += 1; g[at].pn = purpose.count; g[at].mn = model.count; for q: 0..<purpose.count { g[at].purpose[q] = purpose[q]; } for q: 0..<model.count { g[at].model[q] = model[q]; } }
       if at >= 0 {
         g[at].calls += 1;
-        g[at].input += jv_int(d[0], jv_get(d[0], 0, "input_tokens"), 0);
-        g[at].output += jv_int(d[0], jv_get(d[0], 0, "output_tokens"), 0);
-        g[at].cache_read += jv_int(d[0], jv_get(d[0], 0, "cache_read_input_tokens"), 0);
-        g[at].cache_write += jv_int(d[0], jv_get(d[0], 0, "cache_creation_input_tokens"), 0);
-        g[at].cost_e6 += jv_int(d[0], jv_get(d[0], 0, "cost_usd_e6"), 0);
-        g[at].ms += jv_int(d[0], jv_get(d[0], 0, "duration_ms"), 0);
+        g[at].input += c.input_tokens; g[at].output += c.output_tokens;
+        g[at].cache_read += c.cache_read_input_tokens; g[at].cache_write += c.cache_creation_input_tokens;
+        g[at].cost_e6 += c.cost_usd_e6; g[at].ms += c.duration_ms;
       }
     }
     i = e + 1;

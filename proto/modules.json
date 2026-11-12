@@ -166,6 +166,9 @@
     ],
     "coder-qualification": [
       "openagents/coder/qualification/v1/evidence.proto"
+    ],
+    "golemancy": [
+      "openagents/coder/golemancy/v1alpha1/records.proto"
     ]
   },
   "profile_namespaces": {
@@ -291,6 +294,10 @@
     ],
     "coder-qualification": [
       "openagents.coder.qualification.v1",
+      "openagents.options.v1alpha1"
+    ],
+    "golemancy": [
+      "openagents.coder.golemancy.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

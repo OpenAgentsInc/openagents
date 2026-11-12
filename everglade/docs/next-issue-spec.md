@@ -154,7 +154,10 @@ choose(action: "start" | "another" | "none", issue: integer, reason: string)
 A question ("why that one?") is answered without the tool.
 
 Every decision is appended to
-`~/.openagents/everglade/next-issue/decisions.jsonl`:
+`~/.openagents/everglade/next-issue/decisions.jsonl` (`NextIssueDecision` in
+`proto/openagents/coder/golemancy/v1alpha1/records.proto`, written by
+`coax/lib/agent/ledger.coax` through the JSON mapper; a `start` adds `tier` and
+the rubric's `scores`):
 
 ```json
 {"schema":"openagents.next-issue.decision.v1","at":1794321982,"action":"start","issue":13134,
@@ -375,7 +378,11 @@ section 11 asks whether you want a limit you set).
 ## 7. The ledger
 
 Every model turn appends one line to `~/.openagents/usage/ai-calls.jsonl`
-(mode 600):
+(mode 600). The schema is `AiCall` in
+`proto/openagents/coder/golemancy/v1alpha1/records.proto`; the one writer and
+reader is `coax/lib/agent/ledger.coax`, and `proto/coder/golemancy-v1alpha1.json`
+pins its lines byte for byte. The tier batch (`tiers.coax`, purpose `issue.tier`)
+writes the same record with `issues_rated` and without the turn's fields.
 
 | Field | Meaning |
 | --- | --- |

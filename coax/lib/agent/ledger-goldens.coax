@@ -1,0 +1,131 @@
+// Golemancy's records, held to their golden lines (C6, #13243): proto/coder/golemancy-v1alpha1.json
+// names each line of openagents.ai-call.v1 and openagents.next-issue.decision.v1 byte for byte.
+// For every line this program checks, through ledger.coax:
+//   - the line reads (gy_read_call, gy_read_decision) and is written back byte for byte;
+//   - a decision also goes through the JSON mapper alone (GY_NextIssueDecision_from_json, then
+//     _to_json) to the same bytes, and the other record's reader refuses it.
+// Then the writers' edges: a decision too long for its buffer, and a reason cut at 400 bytes
+// inside a character. The ai-call lines were taken from the ledger today's two writers wrote,
+// so files on disk keep loading.
+//   coax/web/tool.sh coax/lib/agent/ledger-goldens.coax [proto/coder/golemancy-v1alpha1.json]
+// With --read FILE it holds a ledger or decisions file to the same rule: every line reads and is
+// written back byte for byte (lines of another schema are counted, not failed).
+//   coax/web/tool.sh coax/lib/agent/ledger-goldens.coax --read ~/.openagents/usage/ai-calls.jsonl
+#import "Basic";
+#load "ledger.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+
+LGG_FIXTURE :: "proto/coder/golemancy-v1alpha1.json";
+
+// The line again from what it reads into: its length, -1 when it does not read, -2 when it is not either record.
+lgg_again :: (line: string, out: [] u8) -> int {
+  nodes: [1024] JvNode; strings: [8192] u8; wire: [GY_DECISION_MAX] u8;
+  c := gy_read_call(line, nodes[..], strings[..]);
+  if c.ok { return gy_write_call(c, out); }
+  x := gy_read_decision(line, nodes[..], wire[..]);
+  if x.ok { return gy_write_decision(x, out); }
+  d: [1] Jv;
+  if jv_parse(d[..], line, nodes[..]) {
+    s := jv_str(d[0], jv_get(d[0], 0, "schema"), strings[..]);
+    if s > 0 && cast(string) strings[0..<s] != GY_AI_CALL && cast(string) strings[0..<s] != GY_DECISION { return -2; }
+  }
+  return -1;
+}
+
+lgg_fail :: (what: string, name: string) -> bool { print("FAIL %: %\n", what, name); return false; }
+
+lgg_record :: (id: string, name: string, line: string) -> bool {
+  out: [4096] u8;
+  n := lgg_again(line, out[..]);
+  if n <= 0 || cast(string) out[0..<n] != line {
+    print("FAIL %: % is not written back byte for byte\n  want %\n  got  %\n", id, name, line, ifx n > 0 then cast(string) out[0..<n] else "(nothing)");
+    return false;
+  }
+  nodes: [1024] JvNode; strings: [8192] u8; wire: [GY_DECISION_MAX] u8;
+  if id == GY_AI_CALL {
+    if gy_read_decision(line, nodes[..], wire[..]).ok { return lgg_fail("the decision reader took an ai-call line", name); }
+    return gy_read_call(line, nodes[..], strings[..]).ok || lgg_fail("not an ai-call line", name);
+  }
+  if id != GY_DECISION { return lgg_fail("unknown id", id); }
+  if gy_read_call(line, nodes[..], strings[..]).ok { return lgg_fail("the ai-call reader took a decision", name); }
+  m := GY_NextIssueDecision_from_json(line, nodes[..], wire[..]);
+  if m.error != 0 { return lgg_fail("the mapper does not read the decision", name); }
+  v := GY_NextIssueDecision_to_json(m, out[..]);
+  if v.error != 0 || cast(string) v.wire != line { return lgg_fail("the mapper does not write the decision back byte for byte", name); }
+  return true;
+}
+
+lgg_edges :: () -> bool {
+  good := true;
+  out: [GY_DECISION_MAX] u8;
+  x := GyDecision.{at = 1, action = "start", issue = 2, reason = "r", session = "s", coding_flow = "started", has_scores = true, tier = "Opus",
+    scores = TierScores.{scope = 2, ambiguity = 1, risk = 2, depth = 1, delegable = true}};
+  n := gy_write_decision(x, out[..]);
+  want := "{\"schema\":\"openagents.next-issue.decision.v1\",\"at\":1,\"action\":\"start\",\"issue\":2,\"reason\":\"r\",\"session\":\"s\",\"coding_flow\":\"started\",\"tier\":\"Opus\",\"scores\":{\"scope\":2,\"ambiguity\":1,\"risk\":2,\"depth\":1,\"delegable\":true}}";
+  if n <= 0 || cast(string) out[0..<n] != want { good = lgg_fail("a decision with scores", cast(string) out[0..<n]); }
+  if gy_write_decision(x, out[0..<n - 1]) != 0 || gy_write_decision(x, out[0..<n]) != n { good = lgg_fail("a decision one byte short of its buffer is not left out", "start"); }
+  // A reason past 400 bytes whose 400th byte is inside a character is cut before the character,
+  // so the line holds valid UTF-8 and is written.
+  b: [402] u8; for i: 0..<399 { b[i] = 'a'; } b[399] = 0xC3; b[400] = 0xA9; b[401] = 'z';
+  y := GyDecision.{action = "none", reason = cast(string) b[..], coding_flow = "none"};
+  n = gy_write_decision(y, out[..]);
+  nodes: [128] JvNode; wire: [GY_DECISION_MAX] u8;
+  back := ifx n > 0 then gy_read_decision(cast(string) out[0..<n], nodes[..], wire[..]) else GyDecision.{};
+  if !back.ok || back.reason.count != 399 { good = lgg_fail("a long reason is not cut at a character's start", "none"); }
+  // Bytes that are not UTF-8 leave the decision out, as the mapper refuses them.
+  bad := [2] u8.[0xFF, 'x'];
+  y.reason = cast(string) bad[..];
+  if gy_write_decision(y, out[..]) != 0 { good = lgg_fail("a reason that is not UTF-8 is written", "none"); }
+  return good;
+}
+
+lgg_fixture :: (path: string) -> bool {
+  raw: [262144] u8; n := fs_read(path, raw[..]);
+  if n <= 0 { return lgg_fail("cannot read the fixture", path); }
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) raw[0..<n], nodes[..]) { return lgg_fail("the fixture is not JSON", path); }
+  records := jv_get(d[0], 0, "records");
+  count := jv_len(d[0], records);
+  good := true; calls := 0; decisions := 0;
+  idb: [128] u8; nb: [512] u8; lb: [8192] u8;
+  for i: 0..<count {
+    r := jv_at(d[0], records, i);
+    il := jv_str(d[0], jv_get(d[0], r, "id"), idb[..]); nl := jv_str(d[0], jv_get(d[0], r, "name"), nb[..]); ll := jv_str(d[0], jv_get(d[0], r, "json"), lb[..]);
+    if il <= 0 || nl <= 0 || ll <= 0 { good = lgg_fail("a record without id, name or json", path); continue; }
+    id := cast(string) idb[0..<il];
+    if lgg_record(id, cast(string) nb[0..<nl], cast(string) lb[0..<ll]) { print("ok  % %\n", id, cast(string) nb[0..<nl]); } else { good = false; }
+    if id == GY_AI_CALL { calls += 1; } else if id == GY_DECISION { decisions += 1; }
+  }
+  if calls < 1 || decisions < 1 { good = lgg_fail("the fixture needs a line of each record", path); }
+  if lgg_edges() { print("ok  the writers' edges: a short buffer, a reason cut inside a character, bytes that are not UTF-8\n"); } else { good = false; }
+  return good;
+}
+
+// Every line of a ledger or decisions file, written back.
+lgg_read :: (path: string) -> int {
+  raw: [16777216] u8; n := fs_read(path, raw[..]);
+  if n < 0 { tool_err("ledger-goldens: cannot read "); tool_errln(path); return 1; }
+  out: [8192] u8; lines := 0; held := 0; other := 0; bad := 0; at := 0;
+  while at < n {
+    e := at; while e < n && raw[e] != '\n' { e += 1; }
+    line := cast(string) raw[at..<e]; at = e + 1;
+    if line.count == 0 { continue; }
+    lines += 1;
+    k := lgg_again(line, out[..]);
+    if k == -2 { other += 1; continue; }
+    if k > 0 && cast(string) out[0..<k] == line { held += 1; } else { bad += 1; print("FAIL line %: %\n", lines, line); }
+  }
+  print("% lines: % written back byte for byte, % of another schema, % failed\n", lines, held, other, bad);
+  return ifx bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  loaded := args_load(a[..]);
+  if loaded && args_has(a[..], "--read") { return lgg_read(args_value(a[..], "--read", "")); }
+  path := ifx loaded && args_count(a[..]) >= 1 then args_at(a[..], 0) else LGG_FIXTURE;
+  if !lgg_fixture(path) { print("golemancy goldens fail\n"); return 1; }
+  print("golemancy goldens hold (%)\n", path);
+  return 0;
+}

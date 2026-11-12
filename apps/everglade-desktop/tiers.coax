@@ -19,6 +19,7 @@
 #load "../../coax/lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/agent/tier.coax";
+#load "../../coax/lib/agent/ledger.coax";   // the AI-call ledger's one writer
 
 TS_MODEL :: "claude-haiku-5-5";
 TS_MAX :: 200;
@@ -117,27 +118,15 @@ tool_main :: () -> int #export_c #effects(all) {
   print("\nrated % issues: Haiku %, Sonnet %, Opus %, Fable %, none %\n", rn, counts[1], counts[2], counts[3], counts[4], counts[0]);
   print("rater % cost $% in % ms, % turns\n", model, cost, ms, turns);
 
-  // The ledger.
+  // The ledger (ledger.coax writes the line).
   home_b: [1024] u8; home := cl_getenv("HOME", home_b[..]);
   if home.count > 0 {
-    jb: [2048] u8; j: [1] Jo; jo_start(j[..], jb[..]);
-    jo_obj(j[..]);
-    jo_key(j[..], "schema"); jo_str(j[..], "openagents.ai-call.v1");
-    jo_key(j[..], "app"); jo_str(j[..], "everglade-desktop");
-    jo_key(j[..], "purpose"); jo_str(j[..], "issue.tier");
-    jo_key(j[..], "harness"); jo_str(j[..], "claude-code");
-    jo_key(j[..], "model"); jo_str(j[..], model);
-    jo_key(j[..], "input_tokens"); jo_int(j[..], usage.input_tokens);
-    jo_key(j[..], "cache_read_input_tokens"); jo_int(j[..], usage.cache_read_input_tokens.value);
-    jo_key(j[..], "cache_creation_input_tokens"); jo_int(j[..], usage.cache_creation_input_tokens.value);
-    jo_key(j[..], "output_tokens"); jo_int(j[..], usage.output_tokens);
-    jo_key(j[..], "cost_usd_e6"); jo_int(j[..], int(cost * 1000000.0));
-    jo_key(j[..], "duration_ms"); jo_int(j[..], ms);
-    jo_key(j[..], "model_turns"); jo_int(j[..], turns);
-    jo_key(j[..], "issues_rated"); jo_int(j[..], rn);
-    jo_end(j[..]);
-    pb: [2048] u8; path := fs_join(home, ".openagents/usage/ai-calls.jsonl", pb[..]);
-    if !j[0].bad { jo_put(j[..], "\n"); wrote := fs_append(path, jo_text(j[..])); if !wrote { tool_errln("tiers: the ledger line was not written"); } }
+    jb: [GY_CALL_MAX] u8;
+    jn := gy_write_call(GyCall.{app = "everglade-desktop", purpose = "issue.tier", harness = "claude-code", model = model,
+      input_tokens = usage.input_tokens, cache_read_input_tokens = usage.cache_read_input_tokens.value, cache_creation_input_tokens = usage.cache_creation_input_tokens.value,
+      output_tokens = usage.output_tokens, cost_usd_e6 = int(cost * 1000000.0), duration_ms = ms, model_turns = turns, issues_rated = rn}, jb[..]);
+    pb: [2048] u8;
+    if jn > 0 && !gy_append(gy_calls_path(home, pb[..]), jb[..], jn) { tool_errln("tiers: the ledger line was not written"); }
   }
   return ifx ok && rn > 0 then 0 else 1;
 }

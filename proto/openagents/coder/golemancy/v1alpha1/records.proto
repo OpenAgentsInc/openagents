@@ -1,0 +1,105 @@
+syntax = "proto3";
+package openagents.coder.golemancy.v1alpha1;
+import "openagents/options/v1alpha1/json.proto";
+
+// Golemancy's stored records (compliance plan step C6, GitHub #13243). The one
+// writer and reader of both is coax/lib/agent/ledger.coax; golden lines are in
+// proto/coder/golemancy-v1alpha1.json. Each record is one compact JSON object a
+// line, keys in field-number order.
+
+// The tier rubric: the four scores, 0 to 3, and whether an agent should work
+// the issue at all. coax/lib/agent/tier.coax sends the same five fields to the
+// model as its answer schema (TIER_PROPERTIES); a check in ledger.coax holds the
+// two together. Every field is written, zero and false included.
+message Rubric {
+  option (openagents.options.v1alpha1.json) = "";
+  optional int32 scope = 1 [json_name = "scope"];
+  optional int32 ambiguity = 2 [json_name = "ambiguity"];
+  optional int32 risk = 3 [json_name = "risk"];
+  optional int32 depth = 4 [json_name = "depth"];
+  optional bool delegable = 5 [json_name = "delegable"];
+}
+
+// openagents.next-issue.decision.v1, ~/.openagents/everglade/next-issue/decisions.jsonl:
+// what the Golemancers' Workshop's picker decided. Written through the JSON
+// mapper (coax/proto.md, "JSON mapper"). tier and scores are written when the
+// action is "start".
+message NextIssueDecision {
+  option (openagents.options.v1alpha1.json) = "schema=openagents.next-issue.decision.v1";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  optional int64 at = 1 [json_name = "at"];                     // unix seconds
+  optional string action = 2 [json_name = "action"];            // start, another, none
+  optional int64 issue = 3 [json_name = "issue"];               // 0 for none
+  optional string reason = 4 [json_name = "reason"];            // at most 400 bytes
+  optional string session = 5 [json_name = "session"];
+  optional string coding_flow = 6 [json_name = "coding_flow"];  // started, none (older lines: "not built")
+  optional string tier = 7 [json_name = "tier"];                // Haiku, Sonnet, Opus, Fable, none
+  Rubric scores = 8 [json_name = "scores"];
+}
+
+// One model's usage in a Claude Code result's modelUsage object, as Claude
+// Code writes it. Documented here; the ledger carries the object byte for byte,
+// including keys this message does not name.
+message ModelUsage {
+  optional int64 input_tokens = 1 [json_name = "inputTokens"];
+  optional int64 output_tokens = 2 [json_name = "outputTokens"];
+  optional int64 cache_read_input_tokens = 3 [json_name = "cacheReadInputTokens"];
+  optional int64 cache_creation_input_tokens = 4 [json_name = "cacheCreationInputTokens"];
+  optional int64 web_search_requests = 5 [json_name = "webSearchRequests"];
+  optional double cost_usd = 6 [json_name = "costUSD"];
+  optional int64 context_window = 7 [json_name = "contextWindow"];
+  optional int64 max_output_tokens = 8 [json_name = "maxOutputTokens"];
+  optional int64 thinking_tokens = 9 [json_name = "thinkingTokens"];
+  optional int64 cache_creation_ephemeral_5m_input_tokens = 10 [json_name = "cacheCreationEphemeral5mInputTokens"];
+  optional int64 cache_creation_ephemeral_1h_input_tokens = 11 [json_name = "cacheCreationEphemeral1hInputTokens"];
+  optional string canonical_model = 12 [json_name = "canonicalModel"];
+  optional string provider = 13 [json_name = "provider"];
+  optional string cost_basis = 14 [json_name = "costBasis"];
+}
+// One member of the modelUsage object: its key, the model, and its value.
+message ModelUsageEntry {
+  string model = 1;
+  ModelUsage usage = 2;
+}
+
+// openagents.ai-call.v1, ~/.openagents/usage/ai-calls.jsonl: one model call
+// (a turn) by a Golemancy tool, the union of what the Workshop's turns
+// (apps/everglade-desktop/next.coax) and the tier batch (tiers.coax) write.
+// The constant member "schema":"openagents.ai-call.v1" comes first.
+//
+// A hand codec, not the JSON mapper: model_usage is Claude Code's own object,
+// keyed by model name with a floating-point costUSD, which the mapper refuses
+// (floats; no maps). ledger.coax writes and reads it; the goldens pin it.
+//
+// app, purpose, harness, model, the four token counts, cost_usd_e6,
+// duration_ms and model_turns are on every line. The Workshop's turns add at,
+// session, turn, session_cost_usd_e6, duration_api_ms, prompt_bytes and
+// caches; a coding turn adds issue; an Antigravity turn adds thought_tokens and
+// cost_priced_as; a Claude Code turn adds model_usage. The tier batch adds
+// issues_rated.
+message AiCall {
+  optional int64 at = 1 [json_name = "at"];                          // unix seconds
+  optional string app = 2 [json_name = "app"];                       // everglade-desktop
+  optional string purpose = 3 [json_name = "purpose"];               // next-issue.suggest, next-issue.reply, issue.code, issue.rehearse, issue.tier
+  optional string harness = 4 [json_name = "harness"];               // claude-code, antigravity
+  optional string model = 5 [json_name = "model"];
+  optional int64 issue = 6 [json_name = "issue"];
+  optional string session = 7 [json_name = "session"];
+  optional int64 turn = 8 [json_name = "turn"];
+  optional int64 input_tokens = 9 [json_name = "input_tokens"];
+  optional int64 cache_read_input_tokens = 10 [json_name = "cache_read_input_tokens"];
+  optional int64 cache_creation_input_tokens = 11 [json_name = "cache_creation_input_tokens"];
+  optional int64 output_tokens = 12 [json_name = "output_tokens"];
+  optional int64 thought_tokens = 13 [json_name = "thought_tokens"];
+  optional string cost_priced_as = 14 [json_name = "cost_priced_as"]; // the rates card's row an Antigravity turn is priced at
+  optional int64 cost_usd_e6 = 15 [json_name = "cost_usd_e6"];
+  optional int64 session_cost_usd_e6 = 16 [json_name = "session_cost_usd_e6"];
+  optional int64 duration_ms = 17 [json_name = "duration_ms"];
+  optional int64 duration_api_ms = 18 [json_name = "duration_api_ms"];
+  optional int64 model_turns = 19 [json_name = "model_turns"];
+  optional int64 prompt_bytes = 20 [json_name = "prompt_bytes"];
+  optional string caches = 21 [json_name = "caches"];
+  optional int64 issues_rated = 22 [json_name = "issues_rated"];
+  // In JSON an object, {"MODEL": {...}, ...}: each entry's model is its key.
+  repeated ModelUsageEntry model_usage = 23 [json_name = "model_usage"];
+}

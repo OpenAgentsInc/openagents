@@ -11,7 +11,8 @@ GwRate :: struct {
   model: string;                 // as the plan sends it
   input: int;                    // uncached input, micro-USD per million tokens
   cached_input: int = -1;        // -1: the input price
-  cache_write: int = -1;         // -1: the input price
+  cache_write: int = -1;         // -1: the input price (Anthropic: a cache kept five minutes)
+  cache_write_1h: int = -1;      // a cache kept an hour; -1: cache_write's price
   output: int;                   // output, reasoning included
 }
 
@@ -33,7 +34,11 @@ GwRate :: struct {
 // (040C-CF2F-2F36, 0751-33AC-0D5E), so every on-demand Flash call was priced at half (found by the
 // task-fit experiments, docs/research/2026-11-11-antigravity-task-fit.md). The Gemini API,
 // OpenRouter and Vercel rows keep their own providers' prices.
-GW_RATES :: [18] GwRate.[
+// Claude by family (fable, mythos, opus, sonnet, haiku: gw_rate_family matches a model by one of
+// its words): the Golems board's list prices, moved here from its own table (golems.coax gs_price,
+// cents a million tokens) when that table was deleted (GitHub #13243): input, cache reads, cache
+// writes kept five minutes and an hour, output.
+GW_RATES :: [23] GwRate.[
   GwRate.{gateway = "vertex", model = "google/gemini-3.8-flash", input = 1500000, cached_input = 150000, output = 7500000},
   GwRate.{gateway = "vertex", model = "gemini-3.8-flash", input = 1500000, cached_input = 150000, output = 7500000},
   GwRate.{gateway = "vertex", model = "google/gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
@@ -52,6 +57,11 @@ GW_RATES :: [18] GwRate.[
   GwRate.{gateway = "zai", model = "glm-5.3-flash", input = 150000, cached_input = 30000, output = 500000},
   GwRate.{gateway = "anthropic", model = "claude-haiku-4-5", input = 1000000, cached_input = 100000, cache_write = 1250000, output = 5000000},
   GwRate.{gateway = "anthropic", model = "claude-haiku-4-5-20251001", input = 1000000, cached_input = 100000, cache_write = 1250000, output = 5000000},
+  GwRate.{gateway = "anthropic", model = "fable", input = 8000000, cached_input = 200000, cache_write = 10000000, cache_write_1h = 16000000, output = 40000000},
+  GwRate.{gateway = "anthropic", model = "mythos", input = 8000000, cached_input = 200000, cache_write = 10000000, cache_write_1h = 16000000, output = 40000000},
+  GwRate.{gateway = "anthropic", model = "opus", input = 4000000, cached_input = 200000, cache_write = 5000000, cache_write_1h = 8000000, output = 20000000},
+  GwRate.{gateway = "anthropic", model = "sonnet", input = 2000000, cached_input = 100000, cache_write = 2500000, cache_write_1h = 4000000, output = 10000000},
+  GwRate.{gateway = "anthropic", model = "haiku", input = 100000, cached_input = 10000, cache_write = 120000, cache_write_1h = 200000, output = 500000},
 ];
 
 // The row for gateway and model; ok false when the card has none.
@@ -63,7 +73,38 @@ gw_rate :: (gateway: string, model: string) -> GwRateFound {
   return GwRateFound.{};
 }
 
+// The row for a model by its family: the row named exactly, else the row of that gateway whose
+// model is one word (no '-') that is one of model's '-'-separated words ("claude-opus-5-5" is
+// "opus"). ok false when neither is on the card.
+gw_rate_family :: (gateway: string, model: string) -> GwRateFound {
+  exact := gw_rate(gateway, model);
+  if exact.ok { return exact; }
+  rows := GW_RATES;
+  for r: rows {
+    if r.gateway != gateway || r.model.count == 0 { continue; }
+    one := true; for c: r.model { if c == '-' { one = false; } }
+    if !one { continue; }
+    at := 0;
+    while at < model.count {
+      end := at; while end < model.count && model[end] != '-' { end += 1; }
+      if model[at..<end] == r.model { return GwRateFound.{ok = true, rate = r}; }
+      at = end + 1;
+    }
+  }
+  return GwRateFound.{};
+}
+
 gw_round_div :: (v: int, by: int) -> int { return (v + by / 2) / by; }
+
+// What token counts cost at rate, exactly, in millionths of a micro-USD (the price a million tokens
+// times the tokens): plain input, cache reads, cache writes kept five minutes and an hour, output.
+// Callers round to their unit (gw_card_cost to micro-USD; the Golems board to hundred-millionths).
+gw_card_scaled :: (rate: GwRate, plain: int, cached: int, write: int, write_1h: int, output: int) -> int {
+  ci := ifx rate.cached_input >= 0 then rate.cached_input else rate.input;
+  cw := ifx rate.cache_write >= 0 then rate.cache_write else rate.input;
+  ch := ifx rate.cache_write_1h >= 0 then rate.cache_write_1h else cw;
+  return plain * rate.input + cached * ci + write * cw + write_1h * ch + output * rate.output;
+}
 
 // What tokens cost at rate, micro-USD, rounded to the nearest. input counts all the input:
 // cached and cache-write tokens are parts of it (held to it when they say more).
@@ -74,10 +115,7 @@ gw_card_cost :: (rate: GwRate, input: int, cached_in: int, cache_write: int, out
   if write > input - cached { write = input - cached; }
   if write < 0 { write = 0; }
   plain := input - cached - write;
-  ci := ifx rate.cached_input >= 0 then rate.cached_input else rate.input;
-  cw := ifx rate.cache_write >= 0 then rate.cache_write else rate.input;
-  scaled := plain * rate.input + cached * ci + write * cw + output * rate.output;
-  return gw_round_div(scaled, 1000000);
+  return gw_round_div(gw_card_scaled(rate, plain, cached, write, 0, output), 1000000);
 }
 
 #test "the card alone: Carbon's row and a cost from token counts" {
@@ -87,4 +125,21 @@ gw_card_cost :: (rate: GwRate, input: int, cached_in: int, cache_write: int, out
   #assert gw_card_cost(f.rate, 61, 0, 0, 13) == 504 && gw_card_cost(f.rate, 1000000, 1000000, 0, 0) == 200000;
   #assert gw_rate("vertex", "gemini-4-argon").ok && gw_rate("vertex", "gemini-4-argon").rate.output == 20000000;
   #assert gw_rate("vertex", "gemini-3.8-flash").rate.input == 1500000 && gw_rate("vertex", "google/gemini-3.8-flash").rate.output == 7500000;
+}
+
+#test "a model by its family: the exact row first, else one of its words; the hour's cache write at its own price" {
+  #assert gw_rate_family("anthropic", "claude-opus-5-5").ok && gw_rate_family("anthropic", "claude-opus-5-5").rate.output == 20000000;
+  #assert gw_rate_family("anthropic", "claude-fable-5-2").rate.input == 8000000 && gw_rate_family("anthropic", "claude-mythos-1").rate.input == 8000000;
+  #assert gw_rate_family("anthropic", "claude-sonnet-5-5").rate.cache_write_1h == 4000000 && gw_rate_family("anthropic", "haiku").rate.cached_input == 10000;
+  // the exact row wins over the family's: Haiku 4.5 is on the card at its own price
+  #assert gw_rate_family("anthropic", "claude-haiku-4-5").rate.input == 1000000 && gw_rate_family("anthropic", "claude-haiku-5-5").rate.input == 100000;
+  // a word, not a part of one; another gateway's rows; a model the card doesn't know
+  #assert !gw_rate_family("anthropic", "claude-opusx-5").ok && !gw_rate_family("anthropic", "gpt-6").ok && !gw_rate_family("vertex", "claude-opus-5-5").ok;
+  #assert !gw_rate_family("anthropic", "").ok && !gw_rate_family("anthropic", "-").ok && gw_rate_family("vertex", "gemini-4-carbon").ok;
+  o := gw_rate_family("anthropic", "claude-opus-5-5").rate;
+  // 10 in at $4, 1000 read at $0.20, 30 written for five minutes at $5, 50 for an hour at $8, 100 out at $20
+  #assert gw_card_scaled(o, 10, 1000, 30, 50, 100) == 10 * 4000000 + 1000 * 200000 + 30 * 5000000 + 50 * 8000000 + 100 * 20000000;
+  // a row without an hour's price charges the five-minute one; without either, the input price
+  h := gw_rate("anthropic", "claude-haiku-4-5").rate;
+  #assert gw_card_scaled(h, 0, 0, 0, 7, 0) == 7 * 1250000 && gw_card_scaled(gw_rate("vertex", "gemini-4-carbon").rate, 0, 0, 2, 3, 0) == 5 * 4000000;
 }
