@@ -1784,10 +1784,10 @@ e2_net_as_sent :: (s: [] E2, m: EgMoveIn) -> EgMoveIn #export_c #effects(all) { 
 e2_net_input :: (s: [] E2, m: EgMoveIn) -> int #export_c #effects(all) { return e2n_input(s[0].net[..], m); }
 e2_net_fix_due :: (s: [] E2) -> bool #export_c #effects(all) { return e2n_fix_due(s[0].net[..]); }
 e2_net_fix :: (s: [] E2) -> NetFix #export_c #effects(all) { return s[0].net[0].fix; }
-e2_net_replay_n :: (s: [] E2) -> int #export_c #effects(all) { return e2n_replay_n(s[0].net[..]); }
+e2_net_replay_n :: (s: [] E2) -> int #export_c #effects(all) { return net_predict_pending(s[0].net[0].pred[..]); }
 e2_net_replay_input :: (s: [] E2, k: int) -> EgMoveIn #export_c #effects(all) { return e2n_replay_input(s[0].net[..], k); }
 e2_net_fixed :: (s: [] E2, dx: f32, dy: f32, dz: f32) #export_c #effects(all) { e2n_fixed(s[0].net[..], dx, dy, dz); }
-e2_net_offset :: (s: [] E2, dt: f32) -> figs.Point #export_c #effects(all) { o := e2n_offset(s[0].net[..], dt); return figs.v3(o[0], o[1], o[2]); }
+e2_net_offset :: (s: [] E2, dt: f32) -> figs.Point #export_c #effects(all) { o := net_correct_step(s[0].net[0].off[..], dt); return figs.v3(o[0], o[1], o[2]); }
 // The socket's commands for the host (the face drains them): the pipe, as Everglade's.
 e2_net_pipe :: (s: [] E2) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].n; }
 e2_net_pipe_op :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].op[k]; }
@@ -1806,7 +1806,7 @@ e2_net_probe :: (s: [] E2, f: int) -> int {
   n := s[0].net[..];   // a view: E2Net is too big to copy onto the stack for each probe
   if f == 40 { return n[0].state; } if f == 41 { return n[0].seat; } if f == 42 { return e2n_remotes(s[0].net[..]); }
   if f == 43 { return n[0].delay; } if f == 44 { return cast(int) n[0].lag; } if f == 45 { return cast(int)(n[0].jitter * 100); }
-  if f == 46 { return n[0].replays; } if f == 47 { return cast(int)(sqrt(n[0].fix_sq) * 1000); } if f == 48 { return n[0].frames_in; }
+  if f == 46 { return n[0].pred[0].replays; } if f == 47 { return cast(int)(sqrt(n[0].fix_sq) * 1000); } if f == 48 { return n[0].frames_in; }
   if f == 49 { return n[0].tries; } if f == 50 { return ifx n[0].want then 1 else 0; } if f == 51 { return ifx n[0].joined then 1 else 0; }
   if f == 52 { return n[0].look_n; } if f == 54 { return n[0].pings; }
   // 84 the times this page sat again and said where it stood (A), 85 the room's first word on you after

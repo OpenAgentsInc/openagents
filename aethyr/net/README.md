@@ -92,6 +92,21 @@ channel is its own stream, so a resend in one never holds up another.
   way) and `KEY 3 STALE 7 WAIT 0` (snapshots, and the room's word each
   second: datagrams dropped stale and waiting now).
 
+## Prediction, reconciliation and interpolation
+
+A page whose room is the authority keeps this bookkeeping in two engine
+modules (#13277). The realm supplies its step and its row's fields.
+
+| Module | What | Everglade |
+| --- | --- | --- |
+| `predict.coax` (`NetPredict`) | Your inputs by number, the newest one the room stepped, and whether a re-run is due. A realm packs an input into whole numbers (`net_predict_input`), takes the room's ACK (`net_predict_heard`) and steps the inputs still held (`net_predict_pending`, `net_predict_take`, `net_predict_done`). A command numbered with the inputs takes `net_predict_number` and is never re-run | Both pages: `everglade/client/net.coax` and v1's `apps/openagents-web/everglade-net.coax`. `net_move_words` packs an `EgMoveIn`; `NetFix` is the row's word on you |
+| `predict.coax` (`NetLedger`) | Your actions that wait for the room: pressed, then confirmed or refused by the room's word, or timed out. A new socket times out what waited | Everglade II's casts and rests (`E2N_ACT_CAST`, `E2N_ACT_REST`, 5 s) |
+| `interp.coax` | The interpolation buffer (`NetState`, `net_ring_push`, `net_ring_at`, `NetLead`), the jitter buffer and tick map (`net_jitter_heard`, `net_jitter_delay`, `net_map_follow`, `net_lag_step`), the ping pick, and the easing of your own corrections (`NetCorrect`) | `everglade/client/net-core.coax` keeps `NetEnt` (an entity as Everglade's rows describe it) and calls these by `net_push`, `net_state_at` and `net_ease` |
+
+Not adopted yet: Orbit League's page draws each complete snapshot as it
+comes and predicts nothing, and Everglade II's guard, monsters and familiars
+are still drawn from their own histories until they are rows (#13276).
+
 ## Adoption points
 
 - `coax/web/room/room-everglade.coax` calls the shared initialized-step,

@@ -34,6 +34,8 @@ E2N_SAY :: 48;
 E2N_BAR_NONE :: 0; E2N_BAR_KICKED :: 1; E2N_BAR_BANNED :: 2;
 E2N_BAR_TEXT :: 96;
 E2N_BAR_ASK_MS :: 600000;       // with no end said, the page asks for a seat again this often, not on the lost socket's short waits
+E2N_ACT_CAST :: 1; E2N_ACT_REST :: 2;   // your actions' kinds in the ledger (aethyr/net/predict.coax)
+E2N_ACT_WAIT_MS :: 5000;        // a request the room has not answered in this long has timed out
 E2N_CASTS :: 16;                // the others' casts heard and not yet played (e2n_cast_due)
 E2N_SHOTS :: 16;                // the room's words on arrows heard and not yet drawn (everglade/client/arrows.coax e2bw_step)
 // The room over WebTransport (#13176): ?transport=wt asks for it, ?transport=ws keeps the WebSocket;
@@ -80,9 +82,9 @@ E2Net :: struct {
   late_mean: f32; jitter: f32; interval: f32 = 33; delay: int = NET_LOW; ticks: int;
   lag: f32 = NET_LOW; rt: int; drawn_at: int;
   mir: [1] WireMirror;
-  seq: int; inputs: [NET_HIST] NetInput; acked: int;
-  fix: NetFix; fix_due: bool;
-  off_x: f32; off_y: f32; off_z: f32;
+  pred: [1] NetPredict;   // your inputs, the newest the room stepped and the re-run due (aethyr/net/predict.coax)
+  fix: NetFix;            // the room's word on you: your row's fields after input pred.acked
+  off: [1] NetCorrect;    // where you are drawn less where the re-runs put you, eased out (aethyr/net/interp.coax)
   hello_due: bool;
   change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
   // the room sat your seat at another class or level than yours (its n row: the ticket's, or a level its
@@ -96,7 +98,7 @@ E2Net :: struct {
   lost_at: int; back_pending: bool; back_fix_mm: int = -1; back_ms: int = -1;
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
-  frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
+  frames_in: int; frames_out: int; bytes_in: int; fix_sq: f32;
   stats: [1] NetStats;           // the netcode readout's counts (aethyr/net/stats.coax): bytes, frames, state gaps, corrections
   link: [1] NetConn;             // the transport the socket runs on, its owed inputs and counts (aethyr/net/transport.coax)
   wt_ask: int = -1;              // ?transport=: 1 wt, 0 ws, -1 neither (e2n_wt)
@@ -122,6 +124,7 @@ E2Net :: struct {
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
+  acts: [1] NetLedger;          // your casts and rests that wait for the room: pressed, then confirmed, refused or timed out (aethyr/net/predict.coax)
   familiar_rows:[E2N_FAMILIARS]E2nFamiliar; familiar_tick:int=-1;
   guard_rows: [E2N_GUARD_ROWS] E2nGuard; guard_n: int; guard_tick: int = -1; guard_hits: [E2N_GUARD_HITS] E2nGuardHit;
   mon_rows: [E2N_MONS * E2N_MON_ROWS] E2nMon; mon_n: [E2N_MONS] int; mon_tick: int = -1; mon_seen: [E2N_MONS] int; mon_hits: [E2N_MON_HITS] E2nMonHit;
@@ -160,7 +163,7 @@ e2n_now :: (n: [] E2Net) -> int { return n[0].mono + n[0].offset; }
 e2n_send :: (n: [] E2Net, count: int) {
   if n[0].state != E2N_OPEN || n[0].sock < 0 || count <= 0 { return; }
   f := cast(string) n[0].out[0..<count];
-  if (f[0] == 'C' || f[0] == 'F') && n[0].link[0].kind == NET_WT { e2n_pipe(n, net_conn_owe(n[0].link[..], n[0].seq + 1, f, n[0].wout[..])); }
+  if (f[0] == 'C' || f[0] == 'F') && n[0].link[0].kind == NET_WT { e2n_pipe(n, net_conn_owe(n[0].link[..], n[0].pred[0].seq + 1, f, n[0].wout[..])); }
   e2n_pipe(n, net_conn_frame(n[0].link[..], ifx f[0] == 'C' || f[0] == 'F' || f[0] == 'E' then NET_COMBAT else NET_SESSION, f, n[0].wout[..]));
 }
 e2n_pipe :: (n: [] E2Net, d: string) {
@@ -505,6 +508,7 @@ e2n_opened :: (n: [] E2Net, id: int) { if id < 0 { e2n_down(n); return; } n[0].s
 // again after a wait that doubles to a minute, 75% to 125% of it, so a restarted room's pages spread.
 e2n_down :: (n: [] E2Net) {
   if n[0].seat >= 0 && n[0].lost_at == 0 { n[0].lost_at = ifx n[0].mono > 0 then n[0].mono else 1; }
+  _ := net_action_rejoin(n[0].acts[..], n[0].mono);   // what waited on this socket's room will never be answered
   n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
   n[0].tries += 1;
   wait := 1000;
@@ -515,7 +519,7 @@ e2n_down :: (n: [] E2Net) {
   e2n_clear_familiars(n);
   for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
   wire_mirror_forget(n[0].mir[..]);
-  n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; n[0].ticks = 0;
+  n[0].pred[0].due = false; n[0].off[0] = NetCorrect.{}; n[0].ticks = 0;
 }
 // A socket event (message 256 + 4 id + event): true when it was this room's.
 e2n_event :: (n: [] E2Net, kind: int, text: string) -> bool {
@@ -611,7 +615,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
     if n[0].lost { n[0].lost = false; e2n_tell(n, "BACK IN THE ROOM"); }
     if clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
-    n[0].hello_due = true; n[0].change_due = false; n[0].acked = n[0].seq; n[0].fix_due = false;
+    n[0].hello_due = true; n[0].change_due = false; net_predict_rejoin(n[0].pred[..]);
     return;
   }
   if c == RLW_PONG {
@@ -672,7 +676,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     z := wire_read_rest_state(t, r[..]);
     if !r[0].ok || n[0].seat < 0 || z.seq < 0 || z.code < 0 || z.code >= WIRE_REST_CODES || z.dice < 0 || z.dice > 20 { return; }
     n[0].rest_known = true; n[0].rest_code = z.code; n[0].rest_dice = z.dice;
-    if z.seq > 0 && z.seq == n[0].rest_seq { n[0].rest_refused_at = -100000; }
+    if z.seq > 0 && net_action_confirm(n[0].acts[..], z.seq, n[0].mono) == E2N_ACT_REST && z.seq == n[0].rest_seq { n[0].rest_refused_at = -100000; }
     return;
   }
   if c == 'r' {
@@ -691,8 +695,11 @@ e2n_record :: (n: [] E2Net, t: string) {
     if r[0].ok && why=="kit" && seq==n[0].aid_seq && seq>3000000 {
       n[0].aid_ok=false; n[0].aid_at=n[0].mono; return;
     }
-    if r[0].ok && why.count>0 && seq > 0 && seq == n[0].rest_seq { n[0].rest_refused += 1; n[0].rest_refused_at = n[0].mono; return; }
-    if r[0].ok && why.count>0 && seq > 0 && seq == n[0].cast_seq {
+    if !r[0].ok || why.count == 0 { return; }
+    // a request of yours the ledger still holds open, refused once; what is said is your latest one's
+    kind := net_action_refuse(n[0].acts[..], seq, 0, n[0].mono);
+    if kind == E2N_ACT_REST && seq == n[0].rest_seq { n[0].rest_refused += 1; n[0].rest_refused_at = n[0].mono; return; }
+    if kind == E2N_ACT_CAST && seq == n[0].cast_seq {
       n[0].cast_refused += 1; n[0].cast_said=e2n_cast_reason(why); n[0].cast_said_at=n[0].mono;
     }   // your last cast, turned down (slot, cooldown, range, sight, aim)
     return;
@@ -743,6 +750,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     if !r[0].ok || ce.ss < 0 || !xk_entry(xk_slot_class(ce.slot), ce.slot).ok { return; }
     if ce.ss == n[0].seat {   // yours, taken: it plays now (aethyr/action/deed.coax: nothing plays before the room says yes)
       n[0].mine_cast = E2nCast.{live = true, ss = ce.ss, slot = ce.slot, ax = ce.ax, ay = ce.ay, az = ce.az, seed = ce.seed, t = n[0].tick_t};
+      _ := net_action_confirm(n[0].acts[..], net_action_oldest(n[0].acts[..], E2N_ACT_CAST).seq, n[0].mono);   // the room takes your casts in order
       n[0].cast_mine += 1; return;
     }
     n[0].cast_heard += 1;
@@ -775,12 +783,11 @@ e2n_row :: (n: [] E2Net, w: WireS, d: WireD) {
   en[0].life = w.life; en[0].warp = w.warp; en[0].kind = w.kind; en[0].seat = w.id; en[0].seen = d.tick; en[0].hp = w.hp; en[0].max = w.max;
   net_push_row(en, NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz, f = w.g, a = w.clip}, n[0].hz);
   if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
-  if w.id == n[0].seat && d.ack > n[0].acked {
-    n[0].acked = d.ack;
-    held := n[0].inputs[d.ack % NET_HIST];
+  if w.id == n[0].seat && net_predict_heard(n[0].pred[..], d.ack) {
+    held: [NET_MOVE_WORDS] int;
+    jumped := net_predict_held(n[0].pred[..], d.ack, held[..]) == NET_MOVE_WORDS && net_move_of(held[..]).jump;
     n[0].fix = NetFix.{ok = true, ack = d.ack, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz,
-                       ground = (w.g & WG_GROUND) != 0, carry = w.carry, jump = held.seq == d.ack && held.input.jump};
-    n[0].fix_due = true;
+                       ground = (w.g & WG_GROUND) != 0, carry = w.carry, jump = jumped};
   }
 }
 
@@ -793,59 +800,41 @@ e2n_as_sent :: (m: EgMoveIn) -> EgMoveIn {
   return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
                    pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta};
 }
-// One step's input: kept for the re-run and sent (I). Its sequence number, 0 with no room.
+// One step's input: kept for the re-run (aethyr/net/predict.coax) and sent (I). Its sequence number, 0 with no room.
 e2n_input :: (n: [] E2Net, input: EgMoveIn) -> int {
   if !e2n_open(n) { return 0; }
-  n[0].seq += 1;
-  n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
+  words: [NET_MOVE_WORDS] int; net_move_words(input, words[..]);
+  seq := net_predict_input(n[0].pred[..], words[..]);
   b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0);
-  m := wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard});
+  m := wire_put_in(n[0].out[..], 0, WireIn.{seq = seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard});
   // a datagram that repeats what the room hasn't acknowledged (on a WebSocket, the frame alone)
-  if n[0].state == E2N_OPEN && n[0].sock >= 0 { e2n_pipe(n, net_conn_input(n[0].link[..], n[0].seq, cast(string) n[0].out[0..<m], n[0].wout[..])); }
-  return n[0].seq;
+  if n[0].state == E2N_OPEN && n[0].sock >= 0 { e2n_pipe(n, net_conn_input(n[0].link[..], seq, cast(string) n[0].out[0..<m], n[0].wout[..])); }
+  return seq;
 }
-e2n_fix_due :: (n: [] E2Net) -> bool { return e2n_open(n) && n[0].fix_due && n[0].fix.ok; }
-// The inputs after the server's, oldest first: how many, and the k-th.
-e2n_replay_n :: (n: [] E2Net) -> int {
-  c := 0; last := n[0].seq;
-  for q: n[0].fix.ack + 1..<last + 1 { if q > last - NET_HIST && n[0].inputs[q % NET_HIST].seq == q { c += 1; } }
-  return c;
-}
+e2n_fix_due :: (n: [] E2Net) -> bool { return e2n_open(n) && net_predict_due(n[0].pred[..]) && n[0].fix.ok; }
+// The k-th input the room hasn't stepped, oldest first, as the wire carried it: what the re-run steps.
 e2n_replay_input :: (n: [] E2Net, k: int) -> EgMoveIn {
-  c := 0; last := n[0].seq;
-  for q: n[0].fix.ack + 1..<last + 1 {
-    if q <= last - NET_HIST || n[0].inputs[q % NET_HIST].seq != q { continue; }
-    if c == k { return e2n_as_sent(n[0].inputs[q % NET_HIST].input); }
-    c += 1;
-  }
-  return EgMoveIn.{};
+  w: [NET_MOVE_WORDS] int;
+  if net_predict_take(n[0].pred[..], k, w[..]) != NET_MOVE_WORDS { return EgMoveIn.{}; }
+  return e2n_as_sent(net_move_of(w[..]));
 }
-// The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn; eased out, or past
-// NET_SNAP m taken at once (as Everglade's net_fixed).
+// The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn; the engine eases it
+// out, or past NET_SNAP m takes it at once. The page's own counts of it are kept here.
 e2n_fixed :: (n: [] E2Net, dx: f32, dy: f32, dz: f32) {
-  n[0].fix_due = false; n[0].replays += 1; n[0].fix_sq = dx * dx + dy * dy + dz * dz;
+  net_predict_done(n[0].pred[..]); n[0].fix_sq = dx * dx + dy * dy + dz * dz;
   net_stats_fix(n[0].stats[..], cast(int)(sqrt(n[0].fix_sq) * 1000), n[0].mono);
   if n[0].back_pending { n[0].back_pending = false; n[0].back_fix_mm = cast(int)(sqrt(dx * dx + dz * dz) * 1000); n[0].back_ms = ifx n[0].lost_at > 0 then n[0].mono - n[0].lost_at else -1; n[0].lost_at = 0; }
-  ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
-  if abs(ox) + abs(oy) + abs(oz) > f32(NET_SNAP) { ox = 0; oy = 0; oz = 0; }
-  n[0].off_x = ox; n[0].off_y = oy; n[0].off_z = oz;
-}
-// Where you are drawn less where you are this frame (dt s), eased to nothing over NET_SMOOTH s.
-e2n_offset :: (n: [] E2Net, dt: f32) -> [3] f32 {
-  k := nc_clamp01(1 - dt / f32(NET_SMOOTH));
-  n[0].off_x *= k; n[0].off_y *= k; n[0].off_z *= k;
-  if abs(n[0].off_x) + abs(n[0].off_y) + abs(n[0].off_z) < 0.001 { n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; }
-  return [3] f32.[n[0].off_x, n[0].off_y, n[0].off_z];
+  net_correct_take(n[0].off[..], dx, dy, dz);
 }
 #test "your inputs go as the wire carries them and the re-run takes those the room hasn't stepped" {
   n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
   for i: 0..<5 { _ := e2n_input(n[..], EgMoveIn.{key_y = 1, run = true, theta = 0.123456}); }
-  #assert n[0].seq == 5 && n[0].pipe[0].n == 5;
-  n[0].fix = NetFix.{ok = true, ack = 3}; n[0].fix_due = true;
-  #assert e2n_fix_due(n[..]) && e2n_replay_n(n[..]) == 2;
+  #assert n[0].pred[0].seq == 5 && n[0].pipe[0].n == 5;
+  n[0].fix = NetFix.{ok = true, ack = 3}; #assert net_predict_heard(n[0].pred[..], 3);
+  #assert e2n_fix_due(n[..]) && net_predict_pending(n[0].pred[..]) == 2;
   m := e2n_replay_input(n[..], 1); #assert m.key_y == 1 && m.run && abs(m.theta - 0.1235) < 0.0001;
-  e2n_fixed(n[..], 0.1, 0, 0); #assert !n[0].fix_due && abs(n[0].off_x + 0.1) < 0.0001;
-  e2n_fixed(n[..], 5, 0, 0); #assert n[0].off_x == 0;   // a jump of metres is taken at once
+  e2n_fixed(n[..], 0.1, 0, 0); #assert !e2n_fix_due(n[..]) && abs(n[0].off[0].x + 0.1) < 0.0001 && n[0].pred[0].replays == 1;
+  e2n_fixed(n[..], 5, 0, 0); #assert n[0].off[0].x == 0;   // a jump of metres is taken at once
 }
 #test "on WebTransport your inputs go as datagrams that repeat the unacknowledged, casts on the combat stream, outcomes out of band; on a WebSocket every byte is as before (#13176)" {
   n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
@@ -902,6 +891,7 @@ e2n_offset :: (n: [] E2Net, dt: f32) -> [3] f32 {
 // joined (the run began).
 e2n_step :: (n: [] E2Net, mono: int) {
   n[0].mono = mono;
+  _ := net_action_expire(n[0].acts[..], mono, E2N_ACT_WAIT_MS);
   if n[0].want && n[0].joined && (n[0].state == E2N_OFF || (n[0].state == E2N_DOWN && mono >= n[0].retry)) {
     if n[0].ticket_n > 0 {
       u: [NET_URL + NET_TICKET + 9] u8;
@@ -928,7 +918,7 @@ e2n_step :: (n: [] E2Net, mono: int) {
     if !en[0].live || en[0].ring_n == 0 { continue; }
     p := net_state_at(en, rt);
     net_ease(en, p, rt, dt);
-    p.x += en[0].ease_x; p.y += en[0].ease_y; p.z += en[0].ease_z;
+    p.x += en[0].ease[0].x; p.y += en[0].ease[0].y; p.z += en[0].ease[0].z;
     en[0].shown = p;
   }
 }
@@ -966,14 +956,15 @@ e2n_set_class :: (n: [] E2Net, c: int, level: int) {
 e2n_cast :: (n: [] E2Net, slot: int, ax: f32, ay: f32, az: f32) -> bool {
   if !e2n_open(n) { return false; }
   n[0].cast_said="";
-  n[0].cast_seq = n[0].seq + 1000000 + n[0].cast_sent;   // apart from the inputs' numbers
+  n[0].cast_seq = n[0].pred[0].seq + 1000000 + n[0].cast_sent;   // apart from the inputs' numbers
   n[0].cast_sent += 1; n[0].cast_slot = slot;
+  _ := net_action_press(n[0].acts[..], E2N_ACT_CAST, n[0].cast_seq, n[0].mono);
   e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az}));
   return true;
 }
 // The number the next cast's request will carry (e2n_cast), for what is said just before it under
 // the same number (an arrow's launch, e2n_loose).
-e2n_cast_next :: (n: [] E2Net) -> int { return n[0].seq + 1000000 + n[0].cast_sent; }
+e2n_cast_next :: (n: [] E2Net) -> int { return n[0].pred[0].seq + 1000000 + n[0].cast_sent; }
 e2n_clamp_ms :: (v: int, lo: int, hi: int) -> int { return ifx v < lo then lo else ifx v > hi then hi else v; }
 // The moment of the room's world this page draws the others at, in ms of the room's ticks (tick *
 // 1000 / hz): what an arrow's launch says, so the room flies it from what you saw (0 before a W).
@@ -1248,8 +1239,9 @@ e2n_familiar_message :: (n:[]E2Net)->string {
 // A rest request (Z SEQ REQ: RS_REST_*): the room decides it from the body it steps.
 e2n_rest :: (n: [] E2Net, req: int) -> bool {
   if !e2n_open(n) || req < 1 || req > 5 { return false; }
-  n[0].rest_seq = n[0].seq + 2000000 + n[0].rest_sent;   // apart from the inputs' and the casts' numbers
+  n[0].rest_seq = n[0].pred[0].seq + 2000000 + n[0].rest_sent;   // apart from the inputs' and the casts' numbers
   n[0].rest_sent += 1; n[0].rest_refused_at = -100000;
+  _ := net_action_press(n[0].acts[..], E2N_ACT_REST, n[0].rest_seq, n[0].mono);
   e2n_send(n, wire_put_rest_ask(n[0].out[..], 0, WireRestAsk.{seq = n[0].rest_seq, req = req}));
   return true;
 }
@@ -1393,8 +1385,18 @@ e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1
   #assert !e2n_cast_due(n[..], 1999).live;
   e := e2n_cast_due(n[..], 2000); #assert e.live && e.ss == 4 && e.slot == xk_slot(FB_CL_FIGHTER, 0) && abs(e.ax - 3) < 0.01;
   #assert !e2n_cast_due(n[..], 3000).live;   // once
+  // the ledger: that cast is confirmed, so a refusal of it now is no word on anything; the next cast's is, once
+  #assert net_action_last(n[0].acts[..], E2N_ACT_CAST).state == NET_ACT_CONFIRMED;
   rb: [64] u8; rn := wire_put(rb[..], 0, "r"); rn = wire_int(rb[..], rn, n[0].cast_seq); rn = wire_put(rb[..], rn, " cooldown");
+  e2n_record(n[..], cast(string) rb[0..<rn]); #assert n[0].cast_refused == 0;
+  #assert e2n_cast(n[..], slot, 0, 1, -20) && net_action_last(n[0].acts[..], E2N_ACT_CAST).state == NET_ACT_PENDING;
+  rn = wire_put(rb[..], 0, "r"); rn = wire_int(rb[..], rn, n[0].cast_seq); rn = wire_put(rb[..], rn, " cooldown");
+  e2n_record(n[..], cast(string) rb[0..<rn]); #assert n[0].cast_refused == 1 && net_action_last(n[0].acts[..], E2N_ACT_CAST).state == NET_ACT_REFUSED;
   e2n_record(n[..], cast(string) rb[0..<rn]); #assert n[0].cast_refused == 1;
+  // a cast the room never answers times out; a lost socket times out what waits
+  #assert e2n_cast(n[..], slot, 0, 1, -20); e2n_step(n[..], n[0].mono + E2N_ACT_WAIT_MS);
+  #assert net_action_last(n[0].acts[..], E2N_ACT_CAST).state == NET_ACT_TIMED_OUT && n[0].acts[0].timed_out == 1;
+  #assert e2n_cast(n[..], slot, 0, 1, -20); e2n_down(n[..]); #assert net_action_last(n[0].acts[..], E2N_ACT_CAST).state == NET_ACT_TIMED_OUT && n[0].acts[0].timed_out == 2;
 }
 
 // Only fixed player-facing text is retained; a server word is never drawn raw.

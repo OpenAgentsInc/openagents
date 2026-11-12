@@ -27,7 +27,7 @@
 //     differs from where it went on to by a little, eased out over NET_EASE s. A row the server
 //     didn't send was the same as the last (it sends what changed), so the entity stood there until
 //     the tick before its next;
-//   - your inputs, NET_HIST of them, until the server has stepped them; where the re-run puts you
+//   - your inputs, NET_PREDICT_HIST of them (aethyr/net/predict.coax), until the server has stepped them; where the re-run puts you
 //     differs from where you were drawn by a little: that is eased out over NET_SMOOTH s (past
 //     NET_SNAP m at once);
 //   - casts the server took (e cast): played from its seed, so they fall where they fall for everyone,
@@ -116,8 +116,8 @@ EgNet :: struct {
   budget: int = WIRE_BUDGET; // the bytes of rows a tick the server sends this page at most (W)
   rate_t: int; rate_b: int; rate: int;   // the bytes a second heard, over the last second (vitals)
   // your inputs, and the server's word on you
-  seq: int; inputs: [NET_HIST] NetInput; acked: int;
-  fix: NetFix; fix_due: bool;
+  pred: [1] NetPredict;      // your inputs and commands by number, the newest the server stepped and the re-run due (aethyr/net/predict.coax)
+  fix: NetFix;               // the server's word on you: your row's fields after input pred.acked
   stepping: int;             // the input the face is stepping now (net_input, net_replay_input)
   // your Reverse Gravity, predicted (net_own_rg): the cast's sequence number and its end's (0 none),
   // and where it stands; the room steps the inputs after the cast in it and those after the end out
@@ -127,7 +127,7 @@ EgNet :: struct {
   // until the room's entity for it comes (0 none), the entity up at the press (a new one is this
   // cast's), and one you ended before its entity came (its entity is not raised again here)
   own_pend: [AB_N] int; own_was: [AB_N] int; own_gone: [AB_N] bool;
-  off_x: f32; off_y: f32; off_z: f32;   // where you are drawn less where you are, eased out
+  off: [1] NetCorrect;       // where you are drawn less where you are, eased out (aethyr/net/interp.coax)
   wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
   breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
   mends_heard: int;                      // and stood up (e mend: everglade-repair.coax)
@@ -149,7 +149,7 @@ EgNet :: struct {
   hello_due: bool;
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
-  frames_in: int; frames_out: int; played: int; hits: int; replays: int; stops: int;
+  frames_in: int; frames_out: int; played: int; hits: int; stops: int;
   bytes_in: int;                              // the frames' bytes heard (net_probe 43)
   folk_walk: int; folk_still: int;            // townsfolk frames drawn walking, and of them drawn where they were (net_probe 41, 42)
   creature_hits: int; creature_deaths: int;   // hits on and deaths of the server's creatures heard
@@ -306,7 +306,7 @@ net_room_seated :: (n: [] EgNet) {
   for e: 0..<NET_ENTS { n[0].ents[e].live = false; }
   for q: 0..<NET_FX { n[0].fx[q].live = false; }
   net_forget(n);
-  n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; n[0].rg_open = 0; n[0].rg_close = 0;
+  n[0].pred[0].due = false; n[0].off[0] = NetCorrect.{}; n[0].rg_open = 0; n[0].rg_close = 0;
 }
 // A minted player (POST /api/playtest/player answered {"key":...,"id":"...",...}): its id for the hello.
 net_player :: (s: [] Everglade, record: string) #export_c #effects(all) {
@@ -492,7 +492,7 @@ net_down :: (n: [] EgNet) {
   for e: 0..<NET_ENTS { n[0].ents[e].live = false; }
   for q: 0..<NET_FX { n[0].fx[q].live = false; }
   net_forget(n);
-  n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0;
+  n[0].pred[0].due = false; n[0].off[0] = NetCorrect.{};
   n[0].rg_open = 0; n[0].rg_close = 0;
 }
 // What the page holds of the server's rows, forgotten: a new seat's are a new snapshot.
@@ -621,7 +621,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     net_forget(n);
     if n[0].lost { n[0].lost = false; net_tell(s, n, "BACK IN THE ROOM"); }
     if clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
-    n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false; n[0].rg_open = 0; n[0].rg_close = 0;
+    n[0].hello_due = true; net_predict_rejoin(n[0].pred[..]); n[0].rg_open = 0; n[0].rg_close = 0;
     return;
   }
   if c == RLW_PONG {
@@ -995,13 +995,12 @@ net_row :: (s: [] Everglade, n: [] EgNet, w: WireS, d: WireD) {
   if w.kind == WK_TREE { st.a = w.clip; st.ax = f32(w.p1) / 1000; st.az = f32(w.p2) / 1000; st.age = w.carry; }
   net_push_row(en, st, n[0].hz);
   if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
-  if w.kind == WK_PLAYER && w.id == n[0].seat && d.ack > n[0].acked {
-    n[0].acked = d.ack;
+  if w.kind == WK_PLAYER && w.id == n[0].seat && net_predict_heard(n[0].pred[..], d.ack) {
     // and whether that input held the jump (the re-run starts from the server's jump, not the page's)
-    held := n[0].inputs[d.ack % NET_HIST];
+    held: [NET_MOVE_WORDS] int;
+    jumped := net_predict_held(n[0].pred[..], d.ack, held[..]) == NET_MOVE_WORDS && net_move_of(held[..]).jump;
     n[0].fix = NetFix.{ok = true, ack = d.ack, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz,
-                       ground = (w.g & WG_GROUND) != 0, carry = w.carry, jump = held.seq == d.ack && held.input.jump};
-    n[0].fix_due = true;
+                       ground = (w.g & WG_GROUND) != 0, carry = w.carry, jump = jumped};
   }
 }
 // The effects the room says are on someone (WK_EFFECT rows) into out, as many as fit: who it is on
@@ -1083,40 +1082,31 @@ net_where :: (s: [] Everglade, n: [] EgNet, id: int) -> NetWhere {
 net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c #effects(all) {
   if !net_open(s) { return 0; }
   n := net_of(s);
-  n[0].seq += 1;
-  n[0].stepping = n[0].seq;
-  n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
+  words: [NET_MOVE_WORDS] int; net_move_words(input, words[..]);
+  n[0].stepping = net_predict_input(n[0].pred[..], words[..]);
   a := ab_of(s);   // and your Levitate's rise and sink keys, for the server's (everglade_room_rise)
   b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0) | (ifx dive then WB_DIVE else 0) |
        (ifx a[0].lev_on && a[0].lev_up then WB_RISE else 0) | (ifx a[0].lev_on && a[0].lev_sink then WB_SINK else 0);
   b|=input.link_flags;
-  packet:=WireIn.{seq=n[0].seq,kx=wire_axis(input.key_x),ky=wire_axis(input.key_y),px=wire_axis(input.pad_x),py=wire_axis(input.pad_y),theta=input.theta,b=b,heard=n[0].mir[0].heard};
+  packet:=WireIn.{seq=n[0].pred[0].seq,kx=wire_axis(input.key_x),ky=wire_axis(input.key_y),px=wire_axis(input.pad_x),py=wire_axis(input.pad_y),theta=input.theta,b=b,heard=n[0].mir[0].heard};
   net_send(n,ifx input.link_flags!=0 then wire_put_link_in(n[0].out[..],0,packet) else wire_put_in(n[0].out[..],0,packet));
-  return n[0].seq;
+  return n[0].pred[0].seq;
 }
 // The server's word on you is new: where it has you after input fix.ack (the face sets you there and
 // re-runs the later inputs, net_replay_*, then says how far that moved you, net_fixed).
-net_fix_due :: (s: [] Everglade) -> bool #export_c #effects(all) { return net_open(s) && net_of(s)[0].fix_due && net_of(s)[0].fix.ok; }
+net_fix_due :: (s: [] Everglade) -> bool #export_c #effects(all) { return net_open(s) && net_predict_due(net_of(s)[0].pred[..]) && net_of(s)[0].fix.ok; }
 net_fix :: (s: [] Everglade) -> NetFix #export_c #effects(all) { return net_of(s)[0].fix; }
 // The inputs after the server's, oldest first: how many, and the k-th (as the wire carried it, so the
 // re-run steps what the server steps). Only steps (I) count: a cast, an end or a rebuild takes a
 // sequence number too, and the server steps nothing for it (a re-run of it as a still step moved you
 // back of the server, and its next word pulled you on: #12731).
-net_replay_n :: (s: [] Everglade) -> int #export_c #effects(all) {
-  n := net_of(s);
-  c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
-  for q: first..<last + 1 { if q > last - NET_HIST && n[0].inputs[q % NET_HIST].seq == q { c += 1; } }
-  return c;
-}
+net_replay_n :: (s: [] Everglade) -> int #export_c #effects(all) { return net_predict_pending(net_of(s)[0].pred[..]); }
 net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c #effects(all) {
   n := net_of(s);
-  c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
-  for q: first..<last + 1 {
-    if q <= last - NET_HIST || n[0].inputs[q % NET_HIST].seq != q { continue; }
-    if c == k { n[0].stepping = q; return net_as_sent(s, n[0].inputs[q % NET_HIST].input); }
-    c += 1;
-  }
-  return EgMoveIn.{};
+  w: [NET_MOVE_WORDS] int;
+  if net_predict_take(n[0].pred[..], k, w[..]) != NET_MOVE_WORDS { return EgMoveIn.{}; }
+  n[0].stepping = net_predict_nth(n[0].pred[..], k);
+  return net_as_sent(s, net_move_of(w[..]));
 }
 // An input as the wire carries it (sticks in whole hundredths, the heading in WIRE_FINE units), so the
 // page steps what the server steps; offline too, so a room walks where offline walks.
@@ -1125,26 +1115,19 @@ net_as_sent :: (s: [] Everglade, m: EgMoveIn) -> EgMoveIn #export_c #effects(all
   return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
                    pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta,link_flags=m.link_flags};
 }
-// book:begin ease-correction
 // The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn. Small, it is eased
 // out (you are drawn where you were, coming to where you are); past NET_SNAP m, taken at once.
 net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c #effects(all) {
   n := net_of(s);
-  n[0].fix_due = false; n[0].replays += 1;
-  ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
-  if abs(ox) + abs(oy) + abs(oz) > f32(NET_SNAP) { ox = 0; oy = 0; oz = 0; }
-  n[0].off_x = ox; n[0].off_y = oy; n[0].off_z = oz;
+  net_predict_done(n[0].pred[..]);
+  net_correct_take(n[0].off[..], dx, dy, dz);
 }
 // Where you are drawn less where you are, this frame (dt s): eased to nothing over NET_SMOOTH s.
 net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c #effects(all) {
   if !net_on(s) { return v3(0, 0, 0); }
-  n := net_of(s);
-  k := clamp01(1 - dt / f32(NET_SMOOTH));
-  n[0].off_x *= k; n[0].off_y *= k; n[0].off_z *= k;
-  if abs(n[0].off_x) + abs(n[0].off_y) + abs(n[0].off_z) < 0.001 { n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; }
-  return v3(n[0].off_x, n[0].off_y, n[0].off_z);
+  o := net_correct_step(net_of(s)[0].off[..], dt);
+  return v3(o[0], o[1], o[2]);
 }
-// book:end ease-correction
 
 // ---- each frame
 
@@ -1227,7 +1210,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     if !en[0].live || en[0].ring_n == 0 { continue; }
     p := net_forest_sample(en, net_state_at(en, rt));
     net_ease(en, p, rt, dt);
-    p.x += en[0].ease_x; p.y += en[0].ease_y; p.z += en[0].ease_z;
+    p.x += en[0].ease[0].x; p.y += en[0].ease[0].y; p.z += en[0].ease[0].z;
     dx := p.x - en[0].shown.x; dz := p.z - en[0].shown.z;
     en[0].run += sqrt(dx * dx + dz * dz);
     // a townsperson on their day with the walk clip (watch_net_frame): drawn moving, or walking in place
@@ -1285,15 +1268,15 @@ net_hello :: (s: [] Everglade, n: [] EgNet) {
 net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c #effects(all) {
   if !net_open(s) { return false; }
   n := net_of(s);
-  n[0].seq += 1;
+  _ := net_predict_number(n[0].pred[..]);
   // aimed at (or by) a server creature, the cast names it: the server aims it where the creature is
   tgt := ifx target >= 0 then target else net_creature_at(n, at, NET_PICK);
   // with the spell's mode as you have it picked (Elementalism's element, Create or Destroy Water)
   mode := ifx b >= SP_SLOTS && b < SP_SLOTS + AB_N then eg_ra_mode(s, b - SP_SLOTS) else 0;
   // the server's line of sight, predicted: a cast your page sees is blocked never goes (#12790)
   if s[0].started && !eg_ra_copying(s) && !cr_sight(s, ab_you(s), at) { cr_refused(s, b, CR_SIGHT); return false; }
-  net_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].seq, slot = b, ax = at.x, ay = at.y, az = at.z, tgt = tgt, mode = mode}));
-  n[0].mine_seq[n[0].mine_at] = n[0].seq; n[0].mine_slot[n[0].mine_at] = b; n[0].mine_at = (n[0].mine_at + 1) % NET_MINE;
+  net_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].pred[0].seq, slot = b, ax = at.x, ay = at.y, az = at.z, tgt = tgt, mode = mode}));
+  n[0].mine_seq[n[0].mine_at] = n[0].pred[0].seq; n[0].mine_slot[n[0].mine_at] = b; n[0].mine_at = (n[0].mine_at + 1) % NET_MINE;
   return true;
 }
 // The TGT code (2000 + EID) of the summoned creature nearest the point within `reach` m, -1 none.
@@ -1315,8 +1298,8 @@ net_creature_at :: (n: [] EgNet, at: Point, reach: f32) -> int {
 net_end :: (s: [] Everglade, b: int) -> bool {
   if !net_open(s) { return false; }
   n := net_of(s);
-  n[0].seq += 1;
-  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_END, id = b}));
+  _ := net_predict_number(n[0].pred[..]);
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].pred[0].seq, kind = WE_END, id = b}));
   return true;
 }
 // The room's complete held forest state replaces local guesses, including acknowledged removals.
@@ -1351,8 +1334,8 @@ net_forest_frame :: (s: [] Everglade, n: [] EgNet) {
 net_door :: (s: [] Everglade, i: int) -> bool {
   if !net_open(s) || i < 0 || i >= WIRE_DOOR_WORD * WIRE_DOOR_WORDS { return false; }
   n := net_of(s);
-  n[0].seq += 1;
-  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_DOOR, id = i}));
+  _ := net_predict_number(n[0].pred[..]);
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].pred[0].seq, kind = WE_DOOR, id = i}));
   return true;
 }
 // E at rowboat i (its float; -1 out of yours): the room seats you in it or takes you out (WE_BOAT,
@@ -1360,16 +1343,16 @@ net_door :: (s: [] Everglade, i: int) -> bool {
 net_boat :: (s: [] Everglade, i: int) -> bool {
   if !net_open(s) || i < -1 || i >= 999 { return false; }
   n := net_of(s);
-  n[0].seq += 1;
-  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_BOAT, id = i}));
+  _ := net_predict_number(n[0].pred[..]);
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].pred[0].seq, kind = WE_BOAT, id = i}));
   return true;
 }
 // Talking to townsperson i (-1: done): the room stops them and turns them to you on every page.
 net_talk :: (s: [] Everglade, i: int) -> bool {
   if !net_open(s) { return false; }
   n := net_of(s);
-  n[0].seq += 1;
-  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_TALK, id = i}));
+  _ := net_predict_number(n[0].pred[..]);
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].pred[0].seq, kind = WE_TALK, id = i}));
   return true;
 }
 // Word w of the doors the room has open (its WK_DOORS row): -1 while none is heard (offline, or before
@@ -1440,8 +1423,8 @@ net_boat_by :: (s: [] Everglade, seat: int) -> NetBoat {
 net_rebuild :: (s: [] Everglade) -> bool {
   if !net_open(s) { return false; }
   n := net_of(s);
-  n[0].seq += 1;
-  net_send(n, wire_put_rebuild(n[0].out[..], 0, n[0].seq));
+  _ := net_predict_number(n[0].pred[..]);
+  net_send(n, wire_put_rebuild(n[0].out[..], 0, n[0].pred[0].seq));
   return true;
 }
 // Travel to the instance `code` of this realm, asked of the room (#12850, coax/web/room/room-travel.coax):
@@ -1450,8 +1433,8 @@ net_travel :: (s: [] Everglade, code: string) -> bool #export_c #effects(all) {
   if !net_open(s) || !net_code_ok(code) { return false; }
   n := net_of(s);
   if code == cast(string) n[0].code[0..<n[0].code_n] { return false; }
-  n[0].seq += 1;
-  net_send(n, wire_put_travel(n[0].out[..], 0, n[0].seq, code));
+  _ := net_predict_number(n[0].pred[..]);
+  net_send(n, wire_put_travel(n[0].out[..], 0, n[0].pred[0].seq, code));
   return true;
 }
 // "g CODE": the room sent you to the instance CODE. The page leaves this socket, asks the API for a
@@ -1472,8 +1455,8 @@ net_go :: (s: [] Everglade, n: [] EgNet, code: string) {
 net_rest :: (s: [] Everglade) -> bool {
   if !net_live(s) { return false; }
   n := net_of(s);
-  n[0].seq += 1;
-  net_send(n, wire_put_rest(n[0].out[..], 0, n[0].seq));
+  _ := net_predict_number(n[0].pred[..]);
+  net_send(n, wire_put_rest(n[0].out[..], 0, n[0].pred[0].seq));
   return true;
 }
 // The ability (AB_*) a kind of entity of yours stands for, -1 none: what slot it holds up.
@@ -1522,7 +1505,7 @@ net_press :: (s: [] Everglade, k: int) {
   // (a Wind Wall or a Wall of Stone pressed again raises another, as offline: they stack, and fall at their time)
   if (rg_up || net_holds(s, k) || net_own_shows(s, k)) && !net_stacks(k) && (s[0].sp.armed == b || !ab_aimed(k)) {
     if net_end(s, b) {
-      if rg_up { n[0].rg_close = n[0].seq; }
+      if rg_up { n[0].rg_close = n[0].pred[0].seq; }
       net_own_end(s, k);
     }
     s[0].sp.armed = -1;
@@ -1534,7 +1517,7 @@ net_press :: (s: [] Everglade, k: int) {
   if net_cast(s, b, add(you, times(ab_forward(s), 2)), -1) {
     if k == AB_REVERSE {
       // where the room's copy opens it: on the floor under you (everglade-abilities.coax ab_rg_open)
-      n[0].rg_open = n[0].seq; n[0].rg_close = 0; n[0].rg_heard = false; n[0].rg_at = v3(you.x, walk_at(s, you.x, you.z), you.z);
+      n[0].rg_open = n[0].pred[0].seq; n[0].rg_close = 0; n[0].rg_heard = false; n[0].rg_at = v3(you.x, walk_at(s, you.x, you.z), you.z);
     }
     net_own_show(s, k);
   }
@@ -1552,7 +1535,7 @@ net_own_show :: (s: [] Everglade, k: int) {
   if q < 0 || q >= EG_RA_SEATS { return; }
   you := ab_you(s);
   c := s[0].sp.room_ab[0].seat[q..<q + 1];
-  n[0].own_was[k] = c[0].heard[k]; n[0].own_pend[k] = n[0].seq; n[0].own_gone[k] = false;
+  n[0].own_was[k] = c[0].heard[k]; n[0].own_pend[k] = n[0].pred[0].seq; n[0].own_gone[k] = false;
   eg_ra_play(s, q, k, you, s[0].face, add(you, times(v3(sin(s[0].face), 0, cos(s[0].face)), 2)), eg_ra_mode(s, k));
 }
 // Whether your copy holds ability k up from a press the room hasn't answered yet.
@@ -1592,7 +1575,7 @@ net_own_follow :: (s: [] Everglade, n: [] EgNet, k: int, id: int) -> bool {
   // the press's entity came: it is this cast, already up here
   if id != 0 && id != n[0].own_was[k] { c[0].heard[k] = id; n[0].own_pend[k] = 0; return true; }
   // the room never raised it: it ends here too
-  if n[0].acked > n[0].own_pend[k] + NET_RG_LOST {
+  if n[0].pred[0].acked > n[0].own_pend[k] + NET_RG_LOST {
     n[0].own_pend[k] = 0;
     if c[0].used && c[0].live[k] && id == 0 {
       was := eg_ra_in(s, q, ab_you(s), s[0].face);
@@ -1622,10 +1605,10 @@ net_own_rg_frame :: (s: [] Everglade, n: [] EgNet) {
   if n[0].rg_open <= 0 { return; }
   held := net_holds(s, AB_REVERSE);
   if held { n[0].rg_heard = true; return; }
-  if n[0].rg_heard && n[0].rg_close == 0 { n[0].rg_close = n[0].acked + 1; }
-  if !n[0].rg_heard && n[0].acked > n[0].rg_open + NET_RG_LOST { n[0].rg_open = 0; n[0].rg_close = 0; }
+  if n[0].rg_heard && n[0].rg_close == 0 { n[0].rg_close = n[0].pred[0].acked + 1; }
+  if !n[0].rg_heard && n[0].pred[0].acked > n[0].rg_open + NET_RG_LOST { n[0].rg_open = 0; n[0].rg_close = 0; }
   // ended and gone: nothing left to predict once the room has stepped past the end
-  if n[0].rg_heard && n[0].rg_close > 0 && n[0].acked >= n[0].rg_close { n[0].rg_open = 0; n[0].rg_close = 0; }
+  if n[0].rg_heard && n[0].rg_close > 0 && n[0].pred[0].acked >= n[0].rg_close { n[0].rg_open = 0; n[0].rg_close = 0; }
 }
 
 // ---- the server's spell effects on this page
@@ -2050,10 +2033,10 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
   }
   if field == 10 { return n[0].played; }
   if field == 11 { return cast(int) n[0].lag; }
-  if field == 12 { return n[0].acked; }
+  if field == 12 { return n[0].pred[0].acked; }
   if field == 13 { return n[0].hits; }
-  if field == 14 { return n[0].replays; }
-  if field == 15 { return n[0].seq; }
+  if field == 14 { return n[0].pred[0].replays; }
+  if field == 15 { return n[0].pred[0].seq; }
   if field == 16 || field == 17 {
     c := 0; hp := 0;
     for e: 0..<NET_ENTS { en := n[0].ents[e]; if en.live && en.kind == WK_BEAST { c += 1; hp += en.hp; } }
@@ -2630,14 +2613,14 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   s1 := net_input(a[..], EgMoveIn.{key_y = 1}, false);
   #assert !net_own_rg(a[..]).on && !net_owns_rg(a[..]);
   // the cast (net_press takes its number and where it stands), an input, the end, an input
-  na[0].seq += 1; na[0].rg_open = na[0].seq; na[0].rg_at = v3(1, 0, 2);
+  _ := net_predict_number(na[0].pred[..]); na[0].rg_open = na[0].pred[0].seq; na[0].rg_at = v3(1, 0, 2);
   s2 := net_input(a[..], EgMoveIn.{key_y = 1}, false);
   #assert net_own_rg(a[..]).on && net_owns_rg(a[..]) && net_own_rg(a[..]).at.x == 1;
-  na[0].seq += 1; na[0].rg_close = na[0].seq;
+  _ := net_predict_number(na[0].pred[..]); na[0].rg_close = na[0].pred[0].seq;
   s3 := net_input(a[..], EgMoveIn.{key_y = 1}, false);
   #assert s2 == s1 + 2 && s3 == s2 + 2 && !net_own_rg(a[..]).on;
   // a re-run from the room's word on s1 steps s2 in it and s3 out of it
-  na[0].fix.ack = s1;
+  na[0].fix.ack = s1; #assert net_predict_heard(na[0].pred[..], s1);
   #assert net_replay_n(a[..]) == 2;
   _ := net_replay_input(a[..], 0);
   #assert net_own_rg(a[..]).on;
@@ -2645,9 +2628,9 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert !net_own_rg(a[..]).on;
   // a cast the room never raised is forgotten once it stepped NET_RG_LOST inputs past it
   na[0].rg_close = 0;
-  na[0].acked = na[0].rg_open + NET_RG_LOST; net_own_rg_frame(a[..], na[..]);
+  na[0].pred[0].acked = na[0].rg_open + NET_RG_LOST; net_own_rg_frame(a[..], na[..]);
   #assert net_owns_rg(a[..]);
-  na[0].acked += 1; net_own_rg_frame(a[..], na[..]);
+  na[0].pred[0].acked += 1; net_own_rg_frame(a[..], na[..]);
   #assert !net_owns_rg(a[..]);
 }
 #test "net: Reverse Gravity observations exclude doors boats and another caster's zone (#12946)" {
@@ -2694,7 +2677,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert q == 3 && net_live(a[..]) && !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
   // the press: your copy holds it up at once, and the cast goes out
   net_press(a[..], AB_REVERSE);
-  #assert a[0].sp.room_ab[0].seat[q].live[AB_REVERSE] && net_own_shows(a[..], AB_REVERSE) && na[0].rg_open == na[0].seq;
+  #assert a[0].sp.room_ab[0].seat[q].live[AB_REVERSE] && net_own_shows(a[..], AB_REVERSE) && na[0].rg_open == na[0].pred[0].seq;
   // no entity yet: it stays up; the room's entity comes: it is this cast, kept, not cast again
   #assert net_own_follow(a[..], na[..], AB_REVERSE, 0) && a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
   id := NET_MADE_ID + NET_ABILITY_ID + 5;
@@ -2702,7 +2685,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert !net_own_follow(a[..], na[..], AB_REVERSE, id);
   // your press again ends it here at once; the entity still heard doesn't raise it again
   net_press(a[..], AB_REVERSE);
-  #assert !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE] && na[0].rg_close == na[0].seq;
+  #assert !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE] && na[0].rg_close == na[0].pred[0].seq;
   eg_ra_keep(a[..], q, AB_REVERSE, id, ab_you(a[..]), 0, ab_you(a[..]), 0, 0);
   #assert !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
   eg_ra_keep(a[..], q, AB_REVERSE, 0, ab_you(a[..]), 0, ab_you(a[..]), 0, 0);
@@ -2710,9 +2693,9 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   na[0].rg_open = 0; na[0].rg_close = 0;
   net_press(a[..], AB_REVERSE);
   #assert a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
-  na[0].acked = na[0].own_pend[AB_REVERSE] + NET_RG_LOST;
+  na[0].pred[0].acked = na[0].own_pend[AB_REVERSE] + NET_RG_LOST;
   #assert net_own_follow(a[..], na[..], AB_REVERSE, 0) && a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
-  na[0].acked += 1;
+  na[0].pred[0].acked += 1;
   #assert !net_own_follow(a[..], na[..], AB_REVERSE, 0) && !a[0].sp.room_ab[0].seat[q].live[AB_REVERSE];
   // ended before its entity came: the entity, when it comes, isn't raised here
   na[0].rg_open = 0; na[0].rg_close = 0;
@@ -2767,7 +2750,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_test_page(a[..], na[..], 2, "pa", 100) && net_test_hear(a[..], 2, "y 3 1 5000100");
   s1 := net_input(a[..], EgMoveIn.{key_y = 1, run = true}, false);
   s2 := net_input(a[..], EgMoveIn.{key_y = 0.5}, false);
-  na[0].seq += 1;   // a cast (C) between, as net_cast numbers it
+  _ := net_predict_number(na[0].pred[..]);   // a cast (C) between, as net_cast numbers it
   s4 := net_input(a[..], EgMoveIn.{key_x = 1}, false);
   #assert s4 == s2 + 2;
   net_test_tick(room[..], 5, s1);

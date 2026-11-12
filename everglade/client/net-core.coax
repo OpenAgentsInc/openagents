@@ -1,38 +1,28 @@
-// The room client's realm-neutral half (GitHub #13054; docs/verse/2026-11-07-everglade-multiplayer-audit.md):
+// The room client's Everglade half (GitHub #13054; docs/verse/2026-11-07-everglade-multiplayer-audit.md):
 // what Everglade's page (everglade-net.coax) and Everglade II's (everglade/client/net.coax) both keep of the
-// room's world, so both draw everyone the same way:
-//   - every remote entity's last NET_RING states (NetState, NetEnt), drawn a jitter buffer's delay
-//     behind the server clock: between the two states round that time (yaw the short way), past the
-//     newest by its velocity for NET_AHEAD ms at most, then held; where newer states put it differs
-//     from where it went on to by a little, eased out over NET_EASE s (net_state_at, net_ease);
-//   - the jitter buffer's delay from how late, how spread and how far apart the states come
-//     (net_jitter_heard, net_jitter_delay), and the drawn delay coming to it at NET_SLEW (net_lag_step);
-//   - the server clock from the ping with the lowest round trip of the last NET_PINGS (net_ping_best);
-//   - your inputs until the server steps them (NetInput) and its word on you (NetFix).
+// room's world. How it is drawn is the engine's (#13277): the interpolation buffer, its clock and the
+// easing of corrections are aethyr/net/interp.coax, and your inputs' re-run and your actions' ledger are
+// aethyr/net/predict.coax. This file is the game's row beside them:
+//   - an entity as Everglade's rows describe it (NetEnt: its states' ring, who a player is, its row's
+//     fields), with the engine's calls on it by name (net_push, net_state_at, net_ease);
+//   - how far each kind goes on past its newest state (net_ahead: a townsperson further);
+//   - an input as the engine keeps it (net_move_words), and the room's word on you (NetFix);
+//   - a tree's own scalars sampled at the pose's time (net_forest_sample);
+//   - the page's facts, the API's answers and the build, as both pages read them.
 // It holds no page's world: the pages say where things are drawn.
 //   coax/bin/coax test --library everglade/client/net-core.coax
 #load "../shared/everglade-wire.coax";
 #load "../shared/everglade-move-types.coax";
+#load "../../aethyr/net/interp.coax";
+#load "../../aethyr/net/predict.coax";
 
-NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
-NET_HIST :: 64;            // your inputs kept for the server's ACK
 NET_ID :: 24; NET_NAME :: 40; NET_CODE :: 24; NET_URL :: 200;
 NET_TICKET :: 4096;  // profile 2's v4 envelope (legacy core remains 256 bytes)
 NET_LOOK :: 64;   // a look: Everglade's ranger.SKIN.DYE.TRIM, or a Character Create record (CC3, 57 bytes)
-NET_BASE :: 0; NET_LOW :: 100; NET_HIGH :: 300;   // ms: the jitter buffer's delay (NET_BASE over the states' lateness, spread and interval, NET_LOW at least)
-// The drawn delay moves to the buffer's at most this much a second (s/s): its first NET_SETTLE ticks
-// at once, then the world's time runs 10% slow or fast while it comes. A burst of states after a
-// socket's hold raises the spread at once, and a delay taken at once drew everyone back (#12890).
-NET_SLEW :: 0.1; NET_SETTLE :: 30;
-NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
 // ms a townsperson goes on: they walk their way at their pace, so their velocity holds while the
 // states stop. A read lost on the socket holds every read after it for TCP's resend (200 ms, or two
 // round trips: 500 ms at 250 ms), which NET_AHEAD and the buffer's spread don't cover (#12890).
 NET_AHEAD_FOLK :: 700;
-NET_EASE :: 0.2;           // s an entity's difference from where it went on to is eased out over
-NET_SNAP :: 1.5;           // m: a re-run's difference this big is taken at once (a teleport, a throw)
-NET_SMOOTH :: 0.12;        // s a smaller one is eased out over (a start or stop the page and server stepped apart)
-NET_PINGS :: 8;
 // A socket that goes quiet is closed and tried again: the server sends state every tick, so an open
 // socket that hears nothing for NET_SILENT_MS lost its network without a close (a phone between
 // networks, a laptop's wifi gone), which the browser can take minutes to notice; one opening that
@@ -40,14 +30,6 @@ NET_PINGS :: 8;
 // hidden or frozen tab draws none) starts the wait again: the socket had no chance to be heard.
 NET_SILENT_MS :: 6000; NET_OPEN_MS :: 10000; NET_STALL_MS :: 1000;
 
-NC_PI :: 3.14159265; NC_TAU :: 6.2831853;   // aethyr/core/points.coax PI and TAU
-nc_lerp :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
-nc_clamp01 :: (x: f32) -> f32 { if x < 0 { return 0; } if x > 1 { return 1; } return x; }
-nc_hi :: (a: int, b: int) -> int { if a > b { return a; } return b; }
-nc_lo :: (a: int, b: int) -> int { if a < b { return a; } return b; }
-nc_clamp :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
-
-NetState :: struct { t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; f: int; a: int; ax: f32; az: f32; age: f32; }
 NetEnt :: struct {
   generation:u32 #counter;
   live: bool; eid: int; kind: int; owner: int = -1;   // eid: a seat, NET_FOLK_ID + its index, NET_MADE_ID + the server's EID
@@ -66,132 +48,34 @@ NetEnt :: struct {
   shown: NetState; run: f32;
   // where it went on to past its newest state (lead: that state; lead_on: drawn past it last frame),
   // and the difference from where the states after it put it, eased out (NET_EASE)
-  lead: NetState; lead_on: bool; ease_x: f32; ease_y: f32; ease_z: f32;
+  ease: [1] NetLead;
   cast_slot: int = -1; cast_at: int;   // its last cast (e cast), server ms
 }
-NetInput :: struct { seq: int; input: EgMoveIn; }
+// An input as the engine keeps it for the re-run (aethyr/net/predict.coax): its eight fields as whole
+// numbers, the f32s by their bits.
+NET_MOVE_WORDS :: 8;
+net_move_words :: (m: EgMoveIn, w: [] int) {
+  w[0] = cast(int) f32_bits(m.key_x); w[1] = cast(int) f32_bits(m.key_y); w[2] = cast(int) f32_bits(m.pad_x); w[3] = cast(int) f32_bits(m.pad_y);
+  w[4] = ifx m.run then 1 else 0; w[5] = ifx m.jump then 1 else 0; w[6] = cast(int) f32_bits(m.theta); w[7] = m.link_flags;
+}
+net_move_of :: (w: [] int) -> EgMoveIn {
+  return EgMoveIn.{key_x = f32_from_bits(cast(u32) w[0]), key_y = f32_from_bits(cast(u32) w[1]), pad_x = f32_from_bits(cast(u32) w[2]), pad_y = f32_from_bits(cast(u32) w[3]),
+                   run = w[4] != 0, jump = w[5] != 0, theta = f32_from_bits(cast(u32) w[6]), link_flags = w[7]};
+}
 // You as the server has you after input `ack` (D's p entry for your seat).
 NetFix :: struct { ok: bool; ack: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; ground: bool; carry: f32; jump: bool; }
 
-net_turn :: (a: f32, b: f32) -> f32 {
-  d := b - a;
-  while d > f32(NC_PI) { d -= f32(NC_TAU); }
-  while d < -f32(NC_PI) { d += f32(NC_TAU); }
-  return d;
-}
-
-// ---- the jitter buffer and the clock
-
-// One state's tick heard at server time `clock` when the server clock is `now`: how late states come
-// (late_mean), their spread (jitter) and their interval (ms), the first one taking its lateness whole.
-NetJitter :: struct { late_mean: f32; jitter: f32; interval: f32; }
-net_jitter_heard :: (j: NetJitter, ticks: int, now: int, clock: int, last_t: int) -> NetJitter {
-  o := j;
-  late := f32(now - clock);
-  if ticks == 0 { o.late_mean = late; }
-  o.jitter += (abs(late - o.late_mean) - o.jitter) * 0.1;
-  o.late_mean += (late - o.late_mean) * 0.1;
-  if ticks > 0 && clock > last_t { o.interval += (f32(clock - last_t) - o.interval) * 0.1; }
-  return o;
-}
-// The buffer's delay: behind the newest state by how late states come (the way here and the server's
-// send), one interval and their spread, so the time drawn has a state after it; NET_LOW at least, and
-// more as the spread grows.
-net_jitter_delay :: (j: NetJitter) -> int {
-  late := ifx j.late_mean > 0 then j.late_mean else 0.0f32;
-  return nc_clamp(NET_BASE + cast(int) (late + j.interval + 2 * j.jitter), NET_LOW, NET_HIGH);
-}
-// The tick map follows the states (#13157): a page maps the room's ticks to its own clock from the
-// moment it heard the world (W), so a room whose ticks run a little long or short of 1000/hz ms, or
-// that started them late, shows as lateness that only grows, and the buffer's delay climbs to
-// NET_HIGH over a steady stream (production: 300 ms behind over 32 ms round trips and 6 ms spread).
-// After each state the map takes NET_FOLLOW of the mean lateness up (ms, toward zero), so the buffer
-// holds the states' spread and interval, not the drift. Nothing moves while it settles.
-NET_FOLLOW :: 0.05;
-net_map_follow :: (late_mean: f32, ticks: int) -> int {
-  if ticks <= NET_SETTLE { return 0; }
-  return cast(int) (late_mean * f32(NET_FOLLOW));
-}
-// The delay drawn this frame (dt s): the buffer's at once for its first NET_SETTLE ticks, then coming
-// to it at NET_SLEW.
-net_lag_step :: (lag: f32, delay: int, ticks: int, dt: f32) -> f32 {
-  if ticks <= NET_SETTLE { return f32(delay); }
-  step := dt * 1000 * f32(NET_SLEW);
-  d := f32(delay) - lag;
-  return lag + (ifx d < -step then -step else ifx d > step then step else d);
-}
-// The ping with the lowest round trip of the last NET_PINGS (`pings` heard so far, at most NET_PINGS kept).
-net_ping_best :: (rtt: [] int, pings: int) -> int {
-  best := 0;
-  for i: 0..<nc_lo(pings, nc_lo(NET_PINGS, rtt.count)) { if rtt[i] < rtt[best] { best = i; } }
-  return best;
-}
-
-// ---- remote entities' states
-// book:begin interp-buffer
+// ---- the engine's buffer on an Everglade entity (aethyr/net/interp.coax)
 // A state into an entity's ring, oldest first: one no newer than the newest replaces it.
-net_push :: (en: [] NetEnt, p: NetState) {
-  c := en[0].ring_n;
-  if c > 0 && p.t <= en[0].ring[c - 1].t { en[0].ring[c - 1] = p; return; }
-  if c == NET_RING { for q: 0..<NET_RING - 1 { en[0].ring[q] = en[0].ring[q + 1]; } c -= 1; }
-  en[0].ring[c] = p; en[0].ring_n = c + 1;
-}
+net_push :: (en: [] NetEnt, p: NetState) { en[0].ring_n = net_ring_push(en[0].ring[..], en[0].ring_n, p); }
 // How long entity en goes on past its newest state (ms).
 net_ahead :: (en: [] NetEnt) -> int { return ifx en[0].kind == WK_FOLK then NET_AHEAD_FOLK else NET_AHEAD; }
-// State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
-net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
-  ahead := f32(nc_lo(nc_hi(rt - p.t, 0), ahead_ms)) / 1000;
-  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
-}
 // Where entity en is at server time rt.
-net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
-  c := en[0].ring_n;
-  if c == 0 { return NetState.{}; }
-  if rt <= en[0].ring[0].t { return en[0].ring[0]; }
-  for q: 0..<c - 1 {
-    a := en[0].ring[q]; b := en[0].ring[q + 1];
-    if rt > b.t { continue; }
-    f := f32(rt - a.t) / f32(nc_hi(b.t - a.t, 1));
-    o := ifx f < 0.5 then a else b;
-    return NetState.{t = rt, x = nc_lerp(a.x, b.x, f), y = nc_lerp(a.y, b.y, f), z = nc_lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
-                     vx = nc_lerp(a.vx, b.vx, f), vy = nc_lerp(a.vy, b.vy, f), vz = nc_lerp(a.vz, b.vz, f), f = o.f, a = o.a};
-  }
-  // past the newest: on by its velocity for net_ahead ms (a frame late or lost), then held
-  return net_on_from(en[0].ring[c - 1], rt, net_ahead(en));
-}
-// Drawn past its newest state last frame, and newer states came since: where they put it differs
-// from where it went on to (a turn or a stop it made meanwhile). That difference is drawn and eased
-// out over NET_EASE s, so it doesn't jump back; past NET_SNAP m (a new life, a jump), taken at once.
-// p: where the ring has it at rt now; dt: the frame's seconds.
-net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) {
-  c := en[0].ring_n;
-  newest := en[0].ring[c - 1];
-  if c < 2 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
-  else if en[0].lead_on && newest.t > en[0].lead.t {
-    q := net_on_from(en[0].lead, rt, net_ahead(en));
-    ex := en[0].ease_x + q.x - p.x; ey := en[0].ease_y + q.y - p.y; ez := en[0].ease_z + q.z - p.z;
-    if abs(ex) + abs(ey) + abs(ez) > f32(NET_SNAP) { ex = 0; ey = 0; ez = 0; }
-    en[0].ease_x = ex; en[0].ease_y = ey; en[0].ease_z = ez;
-  }
-  en[0].lead = newest; en[0].lead_on = rt > newest.t;
-  k := nc_clamp01(1 - dt / f32(NET_EASE));
-  en[0].ease_x *= k; en[0].ease_y *= k; en[0].ease_z *= k;
-  if abs(en[0].ease_x) + abs(en[0].ease_y) + abs(en[0].ease_z) < 0.001 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
-}
-// book:end interp-buffer
-// A state into the ring. After a gap of ticks with no row, an entity whose last row stood still
-// stood there those ticks (the server sends a row only when it changed, and a start changes its
-// velocity), so that state goes in again a tick before this one; one whose last row moved was held
-// back by the byte budget, and is drawn between the two.
-net_push_row :: (en: [] NetEnt, p: NetState, hz: int) {
-  c := en[0].ring_n;
-  tick := 1000 / nc_hi(hz, 1);
-  if c > 0 && p.t - en[0].ring[c - 1].t > tick + tick / 2 {
-    last := en[0].ring[c - 1];
-    if last.vx * last.vx + last.vy * last.vy + last.vz * last.vz < 1.0e-4 { last.t = p.t - tick; net_push(en, last); }
-  }
-  net_push(en, p);
-}
+net_state_at :: (en: [] NetEnt, rt: int) -> NetState { return net_ring_at(en[0].ring[0..<en[0].ring_n], rt, net_ahead(en)); }
+// The difference between where it went on to and where newer states put it, eased out (one state at least).
+net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) { net_lead_ease(en[0].ease[..], en[0].ring[0..<en[0].ring_n], p, rt, dt, net_ahead(en)); }
+// A row's state into the ring (a standing entity's last state goes in again a tick before it).
+net_push_row :: (en: [] NetEnt, p: NetState, hz: int) { en[0].ring_n = net_ring_push_row(en[0].ring[..], en[0].ring_n, p, hz); }
 // Tree-specific fields share the pose's sampled time. The common pose buffer stays realm-neutral.
 net_forest_sample :: (en: [] NetEnt, pose: NetState) -> NetState {
   if en[0].kind != WK_TREE || en[0].ring_n == 0 { return pose; }
@@ -209,56 +93,20 @@ net_forest_sample :: (en: [] NetEnt, pose: NetState) -> NetState {
   return out;
 }
 
-#test "net core: a remote player is drawn between its states, the short way round, then on by its velocity and held" {
+#test "net core: an Everglade entity is drawn by the engine's buffer; a townsperson goes on further; an input keeps every field" {
   en: [1] NetEnt; en[0].kind = WK_PLAYER;
   net_push(en[..], NetState.{t = 100, x = 0, z = 0, yaw = 3.0, vz = -4.25});
-  net_push(en[..], NetState.{t = 133, x = 0, z = -0.14, yaw = -3.0, vz = -4.25});
-  m := net_state_at(en[..], 116);
-  #assert abs(m.z + 0.0679) < 0.002 && abs(m.yaw - 3.0) < 0.2 && m.yaw > 3.0;   // through pi, not through 0
-  on := net_state_at(en[..], 133 + 100); #assert abs(on.z - (-0.14 - 0.425)) < 0.001;
+  net_push_row(en[..], NetState.{t = 133, x = 0, z = -0.14, yaw = -3.0, vz = -4.25}, 30);
+  #assert en[0].ring_n == 2 && abs(net_state_at(en[..], 116).z + 0.0679) < 0.002 && net_ahead(en[..]) == NET_AHEAD;
   held := net_state_at(en[..], 133 + 900); #assert abs(held.z - (-0.14 - 4.25 * 0.15)) < 0.001;
-  // a state no newer replaces the newest; the ring keeps the last NET_RING
-  net_push(en[..], NetState.{t = 133, z = -0.2}); #assert en[0].ring_n == 2 && en[0].ring[1].z == -0.2;
-  for i: 0..<20 { net_push(en[..], NetState.{t = 200 + i * 33}); } #assert en[0].ring_n == NET_RING && en[0].ring[NET_RING - 1].t == 200 + 19 * 33;
-}
-#test "net core: a stop seen late is eased out, never jumped; a big difference is taken at once" {
-  en: [1] NetEnt; en[0].kind = WK_PLAYER;
-  net_push(en[..], NetState.{t = 0, z = 0, vz = -4}); net_push(en[..], NetState.{t = 33, z = -0.132, vz = -4});
-  p := net_state_at(en[..], 100); net_ease(en[..], p, 100, 0.016); #assert en[0].lead_on;
-  // it stopped at t 33: the next state says so; drawn where it went on to, coming back
-  net_push(en[..], NetState.{t = 66, z = -0.132});
-  q := net_state_at(en[..], 116); net_ease(en[..], q, 116, 0.016);
-  #assert en[0].ease_z < 0 && en[0].ease_z > -0.4;
-  for i: 0..<120 { r := net_state_at(en[..], 116 + i * 16); net_ease(en[..], r, 116 + i * 16, 0.016); }
-  #assert en[0].ease_z == 0;
-  // a jump of metres: no ease
-  en[0].lead_on = true; en[0].lead = NetState.{t = 0, z = 50}; net_push(en[..], NetState.{t = 2000, z = 0});
-  net_ease(en[..], net_state_at(en[..], 2000), 2000, 0.016); #assert en[0].ease_z == 0;
-}
-#test "net core: the buffer's delay follows how late and how spread the states come, within its bounds" {
-  j := NetJitter.{interval = 33};
-  #assert net_jitter_delay(j) == NET_LOW;
-  for i: 0..<200 { j = net_jitter_heard(j, i, 1000 + i * 33 + 40 + (ifx i % 2 == 0 then 30 else -30), 1000 + i * 33, 1000 + (i - 1) * 33); }
-  d := net_jitter_delay(j); #assert d > 130 && d < 200;
-  for i: 0..<200 { j = net_jitter_heard(j, 200 + i, i * 33 + 2000, i * 33, (i - 1) * 33); }
-  #assert net_jitter_delay(j) == NET_HIGH;
-  // the tick map follows a drift: a room whose ticks run 1 ms long settles to the spread's delay, not NET_HIGH
-  jd: NetJitter; late_t := 0; ahead := 0;
-  for i: 0..<600 {
-    now := 1000 + i * 34 + 20 + (ifx i % 2 == 0 then 3 else -3); clock := 1000 + i * 33 + ahead;
-    jd = net_jitter_heard(jd, i, now, clock, 1000 + (i - 1) * 33 + ahead);
-    f := net_map_follow(jd.late_mean, i); ahead += f; jd.late_mean -= f32(f); late_t = i;
-  }
-  #assert net_jitter_delay(jd) == NET_LOW && abs(jd.late_mean) < 45 && late_t == 599;
-  #assert net_map_follow(500, NET_SETTLE) == 0 && net_map_follow(500, NET_SETTLE + 1) == 25 && net_map_follow(-500, NET_SETTLE + 1) == -25 && net_map_follow(19, 900) == 0;
-  // the drawn delay: at once while settling, then at NET_SLEW
-  #assert net_lag_step(100, 200, NET_SETTLE, 0.016) == 200;
-  l := net_lag_step(100, 200, NET_SETTLE + 1, 0.5); #assert abs(l - 150) < 0.01;
-  #assert net_lag_step(100, 101, NET_SETTLE + 1, 0.5) == 101;
-}
-#test "net core: the clock's ping is the one with the lowest round trip" {
-  rtt := [8] int.[90, 40, 70, 41, 0, 0, 0, 0];
-  #assert net_ping_best(rtt[..], 4) == 1 && net_ping_best(rtt[..], 1) == 0;
+  net_ease(en[..], held, 133 + 900, 0.016); #assert en[0].ease[0].on && en[0].ease[0].lead.t == 133;
+  en[0].kind = WK_FOLK; #assert net_ahead(en[..]) == NET_AHEAD_FOLK;
+  folk := net_state_at(en[..], 133 + 900); #assert abs(folk.z - (-0.14 - 4.25 * 0.7)) < 0.001;
+  for i: 0..<20 { net_push(en[..], NetState.{t = 200 + i * 33}); } #assert en[0].ring_n == NET_RING;
+  w: [NET_MOVE_WORDS] int; m := EgMoveIn.{key_x = -1, key_y = 0.5, pad_x = 0.25, pad_y = -0.75, run = true, jump = false, theta = 1.2345, link_flags = 33};
+  net_move_words(m, w[..]); o := net_move_of(w[..]);
+  #assert o.key_x == -1 && o.key_y == 0.5 && o.pad_x == 0.25 && o.pad_y == -0.75 && o.run && !o.jump && o.theta == m.theta && o.link_flags == 33 && NET_MOVE_WORDS <= NET_PREDICT_WORDS;
+  m.run = false; m.jump = true; net_move_words(m, w[..]); #assert !net_move_of(w[..]).run && net_move_of(w[..]).jump;
 }
 
 // ---- the page's facts, the API's answers and the build, as every realm's page reads them

@@ -2,8 +2,9 @@
 
 > **Status: partly implemented.** The page keeps each remote entity's last 8
 > server states and draws it a delay behind the server clock, a delay that
-> adapts to how late and how irregular the frames are (`everglade/client/net-core.coax`, which Everglade II's page shares,
-> #12706). Since wire 3 every remote entity is drawn from this one buffer,
+> adapts to how late and how irregular the frames are (#12706). The buffer is
+> the engine's since #13277: [aethyr/net/interp.coax](../net/interp.coax), with
+> Everglade's entity record beside it in `everglade/client/net-core.coax`. Since wire 3 every remote entity is drawn from this one buffer,
 > townsfolk included: 100 ms or more as jitter grows, velocity for
 > `NET_AHEAD` ms on a gap, then held. Townsfolk drawn walking in place fell
 > from 31-47% of their walking frames to 0% headless (#12783, commit
@@ -28,56 +29,60 @@ entity at the server time `now − delay`, between the two states that
 bracket it, the yaw turning the short way. Past the newest state, the
 entity goes on by its velocity for at most `NET_AHEAD` 150 ms, then holds.
 
-<!-- source: everglade/client/net-core.coax interp-buffer -->
+<!-- source: aethyr/net/interp.coax interp-buffer -->
 ```jai
-// A state into an entity's ring, oldest first: one no newer than the newest replaces it.
-net_push :: (en: [] NetEnt, p: NetState) {
-  c := en[0].ring_n;
-  if c > 0 && p.t <= en[0].ring[c - 1].t { en[0].ring[c - 1] = p; return; }
-  if c == NET_RING { for q: 0..<NET_RING - 1 { en[0].ring[q] = en[0].ring[q + 1]; } c -= 1; }
-  en[0].ring[c] = p; en[0].ring_n = c + 1;
+// A state into a ring holding n states, oldest first: one no newer than the newest replaces it. The
+// ring is the realm's (NET_RING long at most); the new count comes back.
+net_ring_push :: (ring: [] NetState, n: int, p: NetState) -> int {
+  c := n;
+  if c > 0 && p.t <= ring[c - 1].t { ring[c - 1] = p; return c; }
+  if c == ring.count { for q: 0..<c - 1 { ring[q] = ring[q + 1]; } c -= 1; }
+  ring[c] = p;
+  return c + 1;
 }
-// How long entity en goes on past its newest state (ms).
-net_ahead :: (en: [] NetEnt) -> int { return ifx en[0].kind == WK_FOLK then NET_AHEAD_FOLK else NET_AHEAD; }
 // State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
 net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
   ahead := f32(nc_lo(nc_hi(rt - p.t, 0), ahead_ms)) / 1000;
   return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
 }
-// Where entity en is at server time rt.
-net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
-  c := en[0].ring_n;
+// Where the ring's entity (its states, oldest first) is at server time rt; it goes on past its
+// newest state for ahead_ms at most.
+net_ring_at :: (ring: [] NetState, rt: int, ahead_ms: int) -> NetState {
+  c := ring.count;
   if c == 0 { return NetState.{}; }
-  if rt <= en[0].ring[0].t { return en[0].ring[0]; }
+  if rt <= ring[0].t { return ring[0]; }
   for q: 0..<c - 1 {
-    a := en[0].ring[q]; b := en[0].ring[q + 1];
+    a := ring[q]; b := ring[q + 1];
     if rt > b.t { continue; }
     f := f32(rt - a.t) / f32(nc_hi(b.t - a.t, 1));
     o := ifx f < 0.5 then a else b;
     return NetState.{t = rt, x = nc_lerp(a.x, b.x, f), y = nc_lerp(a.y, b.y, f), z = nc_lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
                      vx = nc_lerp(a.vx, b.vx, f), vy = nc_lerp(a.vy, b.vy, f), vz = nc_lerp(a.vz, b.vz, f), f = o.f, a = o.a};
   }
-  // past the newest: on by its velocity for net_ahead ms (a frame late or lost), then held
-  return net_on_from(en[0].ring[c - 1], rt, net_ahead(en));
+  // past the newest: on by its velocity for ahead_ms (a frame late or lost), then held
+  return net_on_from(ring[c - 1], rt, ahead_ms);
 }
+// Where an entity went on to past its newest state (lead: that state; on: drawn past it last
+// frame), and the difference from where the states after it put it (x, y, z), eased out.
+NetLead :: struct { lead: NetState; on: bool; x: f32; y: f32; z: f32; }
 // Drawn past its newest state last frame, and newer states came since: where they put it differs
 // from where it went on to (a turn or a stop it made meanwhile). That difference is drawn and eased
 // out over NET_EASE s, so it doesn't jump back; past NET_SNAP m (a new life, a jump), taken at once.
-// p: where the ring has it at rt now; dt: the frame's seconds.
-net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) {
-  c := en[0].ring_n;
-  newest := en[0].ring[c - 1];
-  if c < 2 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
-  else if en[0].lead_on && newest.t > en[0].lead.t {
-    q := net_on_from(en[0].lead, rt, net_ahead(en));
-    ex := en[0].ease_x + q.x - p.x; ey := en[0].ease_y + q.y - p.y; ez := en[0].ease_z + q.z - p.z;
+// ring: its states (one at least); p: where the ring has it at rt now; dt: the frame's seconds.
+net_lead_ease :: (l: [] NetLead, ring: [] NetState, p: NetState, rt: int, dt: f32, ahead_ms: int) {
+  c := ring.count;
+  newest := ring[c - 1];
+  if c < 2 { l[0].x = 0; l[0].y = 0; l[0].z = 0; }
+  else if l[0].on && newest.t > l[0].lead.t {
+    q := net_on_from(l[0].lead, rt, ahead_ms);
+    ex := l[0].x + q.x - p.x; ey := l[0].y + q.y - p.y; ez := l[0].z + q.z - p.z;
     if abs(ex) + abs(ey) + abs(ez) > f32(NET_SNAP) { ex = 0; ey = 0; ez = 0; }
-    en[0].ease_x = ex; en[0].ease_y = ey; en[0].ease_z = ez;
+    l[0].x = ex; l[0].y = ey; l[0].z = ez;
   }
-  en[0].lead = newest; en[0].lead_on = rt > newest.t;
+  l[0].lead = newest; l[0].on = rt > newest.t;
   k := nc_clamp01(1 - dt / f32(NET_EASE));
-  en[0].ease_x *= k; en[0].ease_y *= k; en[0].ease_z *= k;
-  if abs(en[0].ease_x) + abs(en[0].ease_y) + abs(en[0].ease_z) < 0.001 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
+  l[0].x *= k; l[0].y *= k; l[0].z *= k;
+  if abs(l[0].x) + abs(l[0].y) + abs(l[0].z) < 0.001 { l[0].x = 0; l[0].y = 0; l[0].z = 0; }
 }
 ```
 
