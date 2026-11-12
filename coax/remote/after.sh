@@ -8,9 +8,10 @@
 #   coax/remote/after.sh --watch    the same every minute, for ever, and the
 #                                   30-minute revert (integrate.sh --once --revert;
 #                                   --no-revert or OA_AFTER_REVERT=0: no reverts)
-#   coax/remote/after.sh install    run the watcher under launchd: it starts at login,
-#                                   starts again whenever it stops, and takes new
-#                                   pipeline scripts from main (uninstall: stop it)
+#   coax/remote/after.sh install    run the watcher under launchd (macOS) or as a
+#                                   systemd user service (Linux): it starts at login
+#                                   or boot, starts again whenever it stops, and takes
+#                                   new pipeline scripts from main (uninstall: stop it)
 #   coax/remote/after.sh state      the watcher, main, main-green, the last runs and
 #                                   the red list
 #   coax/remote/after.sh health     whether the watcher is running (status 1: it is not)
@@ -108,7 +109,7 @@ watcher_health() {
   [[ ! -f "$results/heartbeat" ]] || at="$(cat "$results/heartbeat")"
   age=$(( $(date +%s) - at ))
   if (( age < 300 )); then echo "watcher     running, seen $age s ago"; return 0; fi
-  echo "watcher     NOT RUNNING$( (( at == 0 )) || echo " since $(date -r "$at" '+%Y-%m-%d %H:%M')"): no head is checked and $pl_green does not move. Start it: coax/remote/after.sh install"
+  echo "watcher     NOT RUNNING$( (( at == 0 )) || echo " since $(pl_date "$at" '%Y-%m-%d %H:%M')"): no head is checked and $pl_green does not move. Start it: coax/remote/after.sh install"
   return 1
 }
 
@@ -146,6 +147,40 @@ case "${1:-}" in
     git -C "$co" checkout -q --detach "$mref" || exit 1
     esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<< "$1"; }
     cmd="cd '$co' || exit 1; if git fetch -q $pl_remote '+refs/heads/$pl_main:$mref'; then git checkout -q --detach '$mref'; fi; exec coax/remote/after.sh --watch"
+    if [[ "$(uname -s)" == Linux ]]; then
+      # A systemd user service on a Linux host: the same command, restarted a
+      # minute after it stops (Restart=always also takes new pipeline scripts),
+      # and its jobs' children left to finish (KillMode=process, as launchd's
+      # AbandonProcessGroup). `loginctl enable-linger` keeps it running with
+      # no one logged in.
+      unit="$HOME/.config/systemd/user/$label.service"
+      sd() { sed -e 's/%/%%/g' -e 's/\$/$$/g' <<< "$1"; }
+      mkdir -p "$(dirname "$unit")"
+      cat > "$unit" <<EOF
+[Unit]
+Description=Green-main pipeline watcher (coax/remote/after.sh --watch, docs/verse/green-main-pipeline.md)
+After=network-online.target
+
+[Service]
+Type=simple
+Environment="PATH=$(sd "$PATH")" "HOME=$(sd "$HOME")" OA_AFTER_SUPERVISED=1 "OA_PIPELINE_DIR=$(sd "$pl_dir")"
+ExecStart=$(command -v bash) -c "$(sd "$cmd")"
+Restart=always
+RestartSec=60
+KillMode=process
+StandardOutput=append:$(sd "$pl_dir/logs/after.out")
+StandardError=append:$(sd "$pl_dir/logs/after.out")
+
+[Install]
+WantedBy=default.target
+EOF
+      [[ "${OA_AFTER_INSTALL_PRINT:-0}" != 1 ]] || { cat "$unit"; exit 0; }
+      systemctl --user daemon-reload && systemctl --user enable --now "$label.service" || { echo "after: systemd did not take $unit" >&2; exit 1; }
+      [[ "$(loginctl show-user "$(id -un)" -p Linger --value 2> /dev/null)" == yes ]] ||
+        echo "after: run 'sudo loginctl enable-linger $(id -un)' so the watcher runs with no one logged in" >&2
+      echo "after: the watcher runs as the systemd user service $label from $co; its log is $pl_dir/logs/after.out"
+      exit 0
+    fi
     mkdir -p "$HOME/Library/LaunchAgents"
     cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -176,8 +211,14 @@ EOF
     echo "after: the watcher runs as $label from $co; its log is $pl_dir/logs/after.out"
     exit 0 ;;
   uninstall)
-    launchctl bootout "gui/$(id -u)/$label" 2> /dev/null
-    rm -f "$HOME/Library/LaunchAgents/$label.plist" "$results/heartbeat"
+    if [[ "$(uname -s)" == Linux ]]; then
+      systemctl --user disable --now "$label.service" 2> /dev/null
+      rm -f "$HOME/.config/systemd/user/$label.service"; systemctl --user daemon-reload 2> /dev/null
+    else
+      launchctl bootout "gui/$(id -u)/$label" 2> /dev/null
+      rm -f "$HOME/Library/LaunchAgents/$label.plist"
+    fi
+    rm -f "$results/heartbeat"
     echo "after: the watcher is stopped and will not start again"
     exit 0 ;;
   red)
@@ -669,7 +710,7 @@ if (( watch == 1 )); then
   # A gap in the heartbeat is a time when nothing was checked: say so.
   if [[ -f "$results/heartbeat" ]]; then
     was="$(cat "$results/heartbeat")"; down=$(( $(date +%s) - was ))
-    (( down < 900 )) || pl_alarm "down-$was" "the watcher was not running for $(( down / 60 )) minutes" "No after-landing check ran between $(date -r "$was" '+%Y-%m-%d %H:%M') and $(date '+%Y-%m-%d %H:%M %Z'), so \`$pl_green\` did not move. The watcher is running again and checks the newest head now."
+    (( down < 900 )) || pl_alarm "down-$was" "the watcher was not running for $(( down / 60 )) minutes" "No after-landing check ran between $(pl_date "$was" '%Y-%m-%d %H:%M') and $(date '+%Y-%m-%d %H:%M %Z'), so \`$pl_green\` did not move. The watcher is running again and checks the newest head now."
   fi
   ( while kill -0 $$ 2> /dev/null; do date +%s > "$results/heartbeat"; sleep 60; done ) 7>&- &
   while true; do

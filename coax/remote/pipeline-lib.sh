@@ -32,6 +32,9 @@ pl_red="$pl_dir/releases/after/red.json"
 [[ -f "$pl_red" ]] || echo '[]' > "$pl_red"
 
 pl_say() { echo "$(date +%H:%M:%S) $*" >&2; }
+pl_date() {   # UNIX-TIME FORMAT: the time in local time, on macOS (date -r) and Linux (date -d @)
+  date -r "$1" "+$2" 2> /dev/null || date -d "@$1" "+$2"
+}
 pl_lock() {   # FILE CMD...: CMD under an exclusive lock
   if command -v flock > /dev/null; then flock "$@"; else lockf -k "$@"; fi
 }

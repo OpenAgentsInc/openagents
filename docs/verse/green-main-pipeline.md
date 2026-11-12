@@ -392,22 +392,60 @@ instead of a snapshot of the checkout, so the integrator and `after.sh` check
 exact commits without a worktree. `coax/web/tool.sh suites --part I/N` splits
 the suites across host slots.
 
-One watcher runs on the coordinator's Mac, under launchd. It runs the
-after-landing check on each new head, and one integrator round a minute for
-the 30-minute revert and for any branch an agent submitted:
+One watcher runs at a time. It runs the after-landing check on each new head,
+and one integrator round a minute for the 30-minute revert and for any branch
+an agent submitted:
 
 ```sh
-coax/remote/after.sh install        # start it, now and at every login
+coax/remote/after.sh install        # start it, now and at every login or boot
 coax/remote/after.sh uninstall      # stop it
 coax/remote/after.sh --watch        # the same loop in a terminal (--no-revert: revert nothing)
 ```
 
-`install` writes `~/Library/LaunchAgents/com.openagents.green-main.plist`.
-The job runs `after.sh --watch` in a checkout of its own,
-`~/.openagents/pipeline/checkout`, which holds only `coax/remote`. launchd
-starts it at login and starts it again whenever it stops. When the pipeline's
-scripts change on `main`, the watcher stops after its current run and starts
-again on the new scripts. Its log is `~/.openagents/pipeline/logs/after.out`.
+**The live watcher is on the coordinator's Mac, under launchd**
+(`com.openagents.green-main`). Check it with `coax/remote/after.sh state` on
+that Mac, and `launchctl print gui/$(id -u)/com.openagents.green-main`.
+
+On macOS, `install` writes `~/Library/LaunchAgents/com.openagents.green-main.plist`.
+On Linux, it writes the systemd user service
+`~/.config/systemd/user/com.openagents.green-main.service` (`Restart=always`,
+`RestartSec=60`, `KillMode=process`) and enables it; `sudo loginctl
+enable-linger USER` keeps it running with no one logged in, and
+`OA_AFTER_INSTALL_PRINT=1` prints the unit without enabling it. Either way the
+job runs `after.sh --watch` in a checkout of its own,
+`~/.openagents/pipeline/checkout`, which holds only `coax/remote`, and is
+started again whenever it stops. When the pipeline's scripts change on `main`,
+the watcher stops after its current run and starts again on the new scripts.
+Its log is `~/.openagents/pipeline/logs/after.out`.
+
+Two watchers on two machines would race: both would move `main-green` and
+land reverts, and each keeps its own red list. Before you install one
+elsewhere, run `after.sh uninstall` on the old machine, after the new one has
+finished a run.
+
+#### Why the watcher isn't on a build host yet
+
+Issue [#13255](https://github.com/OpenAgentsInc/openagents/issues/13255)
+asked to move it off the Mac. The pool hosts can't hold it: each is a spot
+machine that powers itself off after 15 idle minutes and can be preempted,
+and none has a service account or a GitHub credential. A watcher host needs,
+besides a Linux shell with `git`, `gh`, `jq`, `flock` and `gcloud`:
+
+- the automation account's gcloud configuration, which `remote.sh` uses to
+  start hosts and mint each job's bucket token;
+- an SSH key the hosts accept (`~/.openagents/remote/ssh_ed25519`: the hosts'
+  metadata holds the Mac's public key);
+- one spend ledger: `remote.sh`'s daily cap reads `~/.openagents/remote/ledger.tsv`
+  on the machine that runs the job, so a second machine has a cap of its own;
+- a GitHub credential that can push `main-green` and `main` (the 30-minute
+  revert) and open and comment on issues;
+- a place other machines read its heartbeat and red list from. Today
+  `after.sh state` reads files on the machine it runs on, and the stale and
+  down alarms come from the watcher itself, so a dead remote host would be
+  silent.
+
+The options and their cost are in the issue. Until one is chosen, the Mac
+stays the watcher.
 
 ### When the pipeline itself fails
 
@@ -437,6 +475,19 @@ running". Host jobs now run without the lock descriptors, and `remote.sh`
 ends the refresher's children with it (ab67fe133c). If the log says either
 line with no run in progress, `lsof ~/.openagents/pipeline/releases/after/*.lock`
 names the holder.
+
+On 2026-11-11 a full run failed three suite parts that the fast runs had
+passed, bisected them to three commits, and moved `main-green` back three
+hours, to the last full green run. None of the commits was at fault. The
+suites had refused the host slot's compiler ("coax/bin/coax was not built
+from this tree"): its record names the Nix toolchain's store paths, and
+`nixpkgs-unstable` had moved since the slot built it, while `host-job.sh`
+kept a slot's compiler by its sources alone. 36 jobs failed that way that day,
+on four hosts, and two earlier false culprits (#13234, #13235) came from it
+too. `host-job.sh` now keeps a slot's compiler only while
+`provenance.sh verify` passes in the job's toolchain, and `check.sh` exits 97
+(the host could not judge it) on that refusal, so the pipeline runs the check
+again instead of bisecting it (2135f8731e).
 
 Measured on 2026-11-09 on today's tree: a branch check takes 8 to 42 s of
 host time when it touches a few suites or modules, about $0.001 to $0.003 of
