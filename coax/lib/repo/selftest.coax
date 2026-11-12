@@ -1,0 +1,153 @@
+// The native check of coax/lib/repo (GitHub #13326): it builds a small
+// repository with git in a temporary directory, mirrors it, and asks every
+// read operation real questions. `coax test` cannot reach these effects
+// (child processes do not run while checking), so this program does, and
+// prints "repo selftest: ok".
+//   coax/web/tool.sh coax/lib/repo/selftest.coax
+#import "Basic";
+#load "repo.coax";
+#load "../sys/tool.coax";
+#load "../sys/fs.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+has :: (s: string, part: string) -> bool {
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+// git in the seed repository's working tree.
+seed :: (dir: string, a: [] string) -> bool {
+  argv: [16] string; n := 0;
+  fixed := [11] string.["git", "-C", dir, "-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"];
+  for f: fixed { argv[n] = f; n += 1; }
+  for x: a { argv[n] = x; n += 1; }
+  out: [4096] u8; err: [1024] u8;
+  r := proc_run(argv[0..<n], 20000, out[..], err[..]);
+  return r.started == 0 && r.status == 0;
+}
+SelfState :: struct { work: [RP_FILE_MOST] u8; out: [RP_ANSWER] u8; big: [300000] u8; }
+ask :: (st: [] SelfState, m: RpMirror, q: RpRequest) -> RpAnswer { return rp_call(m, q, st[0].work[..], st[0].out[..]); }
+text :: (st: [] SelfState, a: RpAnswer) -> string { return cast(string) st[0].out[0..<a.n]; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  bad := 0;
+  tmp: [1024] u8; p: [1024] u8; p2: [1024] u8; p3: [1024] u8;
+  dir := fs_temp("coax-repo-", tmp[..]);
+  src := fs_join(dir, "seed", p[..]);
+  ok := fs_mkdir(fs_join(src, "docs/deep", p2[..]));
+  init := [2] string.["init", "--quiet"];
+  ok = ok && seed(src, init[..]);
+  ok = ok && fs_write(fs_join(src, "README.md", p2[..]), "# Seed\n\nThe first line.\nNeedle here.\n");
+  ok = ok && fs_write(fs_join(src, "docs/a.md", p2[..]), "alpha\nbeta\ngamma\n");
+  ok = ok && fs_write(fs_join(src, "docs/deep/b.coax", p2[..]), "main :: () { needle := 1; }\n");
+  bin := [6] u8.[1, 2, 0, 3, 4, 5];
+  ok = ok && fs_write(fs_join(src, "blob.bin", p2[..]), cast(string) bin[..]);
+  add := [2] string.["add", "-A"];
+  ok = ok && seed(src, add[..]);
+  one := [4] string.["commit", "--quiet", "-m", "one: the seed"];
+  ok = ok && seed(src, one[..]);
+  ok = ok && fs_write(fs_join(src, "docs/a.md", p2[..]), "alpha\nBETA\ngamma\ndelta\n");
+  ok = ok && seed(src, add[..]);
+  two := [4] string.["commit", "--quiet", "-m", "two: beta shouts"];
+  ok = ok && seed(src, two[..]);
+  tag := [2] string.["tag", "v1"];
+  ok = ok && seed(src, tag[..]);
+  bad += check(ok, "a seed repository with two commits and a tag");
+
+  st: [1] SelfState; s := st[..];
+  mdir := fs_join(dir, "mirror.git", p3[..]);
+  m := RpMirror.{git = "git", dir = mdir};
+  bad += check(rp_mirror_make(m, src) && rp_mirror_make(m, src) && rp_mirror_fetch(m), "the mirror is made once and fetched");
+
+  a := ask(s, m, RpRequest.{op = RP_RESOLVE, at = "main"});
+  head: [40] u8; for i: 0..<40 { head[i] = a.commit[i]; }
+  hc := cast(string) head[..];
+  bad += check(a.ok && rp_commit_ok(hc) && has(text(s, a), hc) && has(text(s, a), "two: beta shouts"), "resolve: a branch is a commit, its date and its subject");
+  a = ask(s, m, RpRequest.{op = RP_RESOLVE, at = "v1"});
+  bad += check(a.ok && cast(string) a.commit[..] == hc, "resolve: a tag names the same commit");
+  a = ask(s, m, RpRequest.{op = RP_RESOLVE, at = "no-such-branch"});
+  bad += check(!a.ok && has(a.error, "no such commit"), "resolve: an unknown name is refused in words");
+  a = ask(s, m, RpRequest.{op = RP_RESOLVE, at = "main~1"});
+  bad += check(!a.ok, "resolve: a revision expression is refused");
+
+  a = ask(s, m, RpRequest.{op = RP_TREE, at = hc});
+  bad += check(a.ok && text(s, a) == "f  37  README.md\nf  6  blob.bin\nd  docs/\n", "tree: the top, files with sizes, directories marked, in git's order");
+  a = ask(s, m, RpRequest.{op = RP_TREE, at = "main", path = "docs", depth = 2});
+  bad += check(a.ok && text(s, a) == "f  23  docs/a.md\nd  docs/deep/\nf  28  docs/deep/b.coax\n", "tree: a directory to a depth");
+  a = ask(s, m, RpRequest.{op = RP_TREE, at = "main", path = "nowhere"});
+  bad += check(!a.ok, "tree: no such directory");
+  a = ask(s, m, RpRequest.{op = RP_TREE, at = "main", path = "../x"});
+  bad += check(!a.ok && has(a.error, "inside the repository"), "tree: a path outside is refused");
+
+  a = ask(s, m, RpRequest.{op = RP_READ, at = "main", path = "docs/a.md"});
+  bad += check(a.ok && text(s, a) == "== docs/a.md  (4 lines, 23 bytes)\n     1\talpha\n     2\tBETA\n     3\tgamma\n     4\tdelta\n", "read: a file, numbered, with its size");
+  a = ask(s, m, RpRequest.{op = RP_READ, at = "main", path = "docs/a.md", from = 2, to = 3});
+  bad += check(a.ok && has(text(s, a), "     2\tBETA\n     3\tgamma\n") && !has(text(s, a), "alpha") && !has(text(s, a), "delta"), "read: a line range");
+  a = ask(s, m, RpRequest.{op = RP_READ, at = "main", path = "README.md\nblob.bin\ndocs\nmissing.txt"});
+  bad += check(a.ok && has(text(s, a), "== README.md  (4 lines") && has(text(s, a), "== blob.bin: binary, 6 bytes, not returned") && has(text(s, a), "== docs: a directory") && has(text(s, a), "== missing.txt: no such file"),
+               "read: several at once; a binary file, a directory and a missing file are named");
+  a = ask(s, m, RpRequest.{op = RP_READ, at = "main", path = "/etc/passwd"});
+  bad += check(!a.ok, "read: an absolute path is refused");
+  a = ask(s, m, RpRequest.{op = RP_READ, at = "main", path = "--output=/tmp/x"});
+  bad += check(!a.ok, "read: an option is refused");
+
+  a = ask(s, m, RpRequest.{op = RP_FIND, at = "main", path = "*.md"});
+  bad += check(a.ok && text(s, a) == "README.md\ndocs/a.md\n", "find: a bare glob matches at any depth");
+  a = ask(s, m, RpRequest.{op = RP_FIND, at = "main", path = "docs/**/*.coax"});
+  bad += check(a.ok && text(s, a) == "docs/deep/b.coax\n", "find: ** crosses directories");
+  a = ask(s, m, RpRequest.{op = RP_FIND, at = "main", path = "*.zip"});
+  bad += check(a.ok && text(s, a) == "(no path matches)\n", "find: nothing matches");
+
+  a = ask(s, m, RpRequest.{op = RP_SEARCH, at = "main", pattern = "eedle"});
+  bad += check(a.ok && text(s, a) == "README.md:4:Needle here.\ndocs/deep/b.coax:1:main :: () { needle := 1; }\n", "search: a literal, as path:line:text, binary files left out");
+  a = ask(s, m, RpRequest.{op = RP_SEARCH, at = "main", pattern = "^(alpha|delta)$", regex = true, path = "docs"});
+  bad += check(a.ok && text(s, a) == "docs/a.md:1:alpha\ndocs/a.md:4:delta\n", "search: a regular expression under a path");
+  a = ask(s, m, RpRequest.{op = RP_SEARCH, at = "main", pattern = "beta", fold = true, context = 1});
+  bad += check(a.ok && text(s, a) == "docs/a.md-1-alpha\ndocs/a.md:2:BETA\ndocs/a.md-3-gamma\n", "search: ignoring case, with context");
+  a = ask(s, m, RpRequest.{op = RP_SEARCH, at = "main", pattern = "zzz-not-here"});
+  bad += check(a.ok && text(s, a) == "(no line matches)\n", "search: nothing matches");
+  a = ask(s, m, RpRequest.{op = RP_SEARCH, at = "main", pattern = "-e"});
+  bad += check(a.ok && text(s, a) == "(no line matches)\n", "search: a pattern that looks like an option is only a pattern");
+
+  a = ask(s, m, RpRequest.{op = RP_LOG, at = "main"});
+  bad += check(a.ok && has(text(s, a), " Ada: two: beta shouts\n") && has(text(s, a), " Ada: one: the seed\n") && has(text(s, a), hc), "log: newest first, with ids, dates and authors");
+  a = ask(s, m, RpRequest.{op = RP_LOG, at = "main", path = "README.md", n = 5});
+  bad += check(a.ok && has(text(s, a), "one: the seed") && !has(text(s, a), "two:"), "log: for one path");
+  a = ask(s, m, RpRequest.{op = RP_SHOW, at = "main"});
+  bad += check(a.ok && has(text(s, a), "two: beta shouts") && has(text(s, a), "-beta\n+BETA\n") && has(text(s, a), "docs/a.md"), "show: the commit's message and diff");
+  // the first commit's id, from the log
+  a = ask(s, m, RpRequest.{op = RP_LOG, at = "main", path = "README.md"});
+  first: [40] u8; for i: 0..<40 { first[i] = s[0].out[i]; }
+  fc := cast(string) first[..];
+  a = ask(s, m, RpRequest.{op = RP_DIFF, at = fc, other = "main"});
+  bad += check(a.ok && rp_commit_ok(fc) && has(text(s, a), "+delta") && cast(string) a.commit[..] == fc, "diff: from one snapshot to another");
+  a = ask(s, m, RpRequest.{op = RP_DIFF, at = "main", other = "main"});
+  bad += check(a.ok && text(s, a) == "(no difference)\n", "diff: none");
+  a = ask(s, m, RpRequest.{op = RP_BLAME, at = "main", path = "docs/a.md", from = 1, to = 2});
+  bad += check(a.ok && has(text(s, a), "alpha") && has(text(s, a), "BETA") && !has(text(s, a), "gamma") && has(text(s, a), "Ada"), "blame: a range, who and which commit");
+  a = ask(s, m, RpRequest.{op = RP_READ, at = fc, path = "docs/a.md"});
+  bad += check(a.ok && has(text(s, a), "     2\tbeta\n") && !has(text(s, a), "BETA"), "an older snapshot reads as it was");
+
+  // a file longer than one answer is cut, and says where to go on
+  n := 0; line := 0;
+  while n + 40 < s[0].big.count { n = rp_put(s[0].big[..], n, "a line of thirty-one characters\n"); line += 1; }
+  ok = fs_write(fs_join(src, "long.txt", p2[..]), cast(string) s[0].big[0..<n]) && seed(src, add[..]);
+  three := [4] string.["commit", "--quiet", "-m", "three: a long file"];
+  ok = ok && seed(src, three[..]) && rp_mirror_fetch(m);
+  a = ask(s, m, RpRequest.{op = RP_READ, at = "main", path = "long.txt"});
+  bad += check(ok && a.ok && a.cut && a.n <= RP_ANSWER && has(text(s, a), "[cut before line ") && has(text(s, a), ": read long.txt from line "), "read: a long file is cut on a line, and says where to go on");
+  bad += check(cast(string) a.commit[..] != hc, "a fetch moves the branch to the new commit");
+  a = ask(s, m, RpRequest.{op = RP_READ, at = "main", path = "long.txt", from = line - 1, to = line});
+  bad += check(a.ok && !a.cut && has(text(s, a), "\ta line of thirty-one characters\n"), "read: the end of the long file by its lines");
+  a = ask(s, m, RpRequest.{op = RP_READ, at = hc, path = "long.txt"});
+  bad += check(a.ok && has(text(s, a), "no such file at this commit"), "the snapshot before it has no such file");
+
+  done := fs_remove(dir);
+  if bad == 0 { print("repo selftest: ok\n"); return 0; }
+  print("repo selftest: % failed\n", bad);
+  return 1;
+}

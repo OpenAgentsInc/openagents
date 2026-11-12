@@ -1,0 +1,430 @@
+// Indexed repos, the read operations (docs/repos/2026-11-11-indexed-repos.md,
+// GitHub #13326): resolve, tree, read, find, search, log, show, diff and
+// blame against one exact commit of a bare git mirror on a disk, with no
+// working tree. An agent reads a codebase through these and never clones it.
+//
+// Every operation resolves the snapshot it was given (a commit id, a branch
+// or a tag) to a commit first, and the answer names that commit. An answer
+// is text for a model to read, at most RP_ANSWER bytes, in a fixed order; a
+// cut answer ends with a line saying what was left out and how to ask for it.
+//
+// What a request may name is rules.coax's (an #authority file): nothing here
+// reaches git unless it passed there, and every path goes after "--" with
+// literal pathspecs. git is run directly, never through a shell, with a
+// timeout; hooks, pagers, prompts and lazy fetches are off.
+//
+// The effects are coax/platform/process-native.c's, so `coax test` reaches
+// only this file's pure parts; coax/web/tool.sh coax/lib/repo/selftest.coax
+// builds a repository and exercises the rest.
+
+#load "text.coax";
+#load "../sys/proc.coax";
+
+RP_GIT_MS :: 20000;            // one git command's time at most
+RP_FETCH_MS :: 600000;         // a fetch's
+RP_ARGS :: 48;
+
+// A mirror: the git program and the bare repository's directory.
+RpMirror :: struct { git: string; dir: string; }
+
+RpRequest :: struct {
+  op: int;                     // RP_*
+  at: string;                  // the snapshot: a commit id, a branch or a tag
+  other: string;               // show: the commit to show (default: the snapshot). diff: the snapshot to compare with
+  path: string;                // a path; for read and search, several, a line each; for find, a glob
+  pattern: string;             // search
+  from: int; to: int;          // read (one file) and blame: a line range, from 1
+  n: int;                      // log: how many commits
+  depth: int;                  // tree: how deep (1 is the directory's own entries)
+  regex: bool; fold: bool;     // search: a regular expression (else literal); ignoring case
+  context: int;                // search: lines around each match
+}
+RpAnswer :: struct {
+  ok: bool;
+  commit: [40] u8;             // the commit the answer read
+  n: int;                      // bytes of text written
+  cut: bool;                   // the text was cut to fit
+  error: string;               // when !ok: why, in words
+}
+
+rp_fail :: (why: string) -> RpAnswer { return RpAnswer.{error = why}; }
+
+// Runs git on the mirror with these arguments. stdout into out.
+rp_git :: (m: RpMirror, args: [] string, out: [] u8, ms: int) -> ProcRun {
+  argv: [RP_ARGS] string;
+  fixed := [9] string.[m.git, "--no-pager", "--literal-pathspecs", "-c", "core.quotePath=false", "-c", "core.hooksPath=/dev/null", "--git-dir", m.dir];
+  n := 0;
+  for a: fixed { argv[n] = a; n += 1; }
+  for a: args { if n < RP_ARGS { argv[n] = a; n += 1; } }
+  err: [512] u8;
+  return proc_run(argv[0..<n], ms, out, err[..]);
+}
+// The commit a snapshot names, into out (40 bytes). False when it names none.
+rp_resolve_into :: (m: RpMirror, at: string, out: [] u8) -> bool {
+  if !rp_at_ok(at) || out.count < 40 { return false; }
+  spec: [RP_REF + 16] u8;
+  n := rp_put(spec[..], 0, at); n = rp_put(spec[..], n, "^{commit}");
+  args := [4] string.["rev-parse", "--verify", "--quiet", cast(string) spec[0..<n]];
+  got: [64] u8;
+  r := rp_git(m, args[..], got[..], RP_GIT_MS);
+  if r.started != 0 || r.status != 0 || r.out_n != 40 || !rp_commit_ok(cast(string) got[0..<40]) { return false; }
+  for i: 0..<40 { out[i] = got[i]; }
+  return true;
+}
+// text into out from at, stopping at RP_ANSWER. Whether it all fit.
+RpTook :: struct { n: int; whole: bool; }
+rp_take :: (out: [] u8, at: int, text: string) -> RpTook {
+  most := ifx out.count < RP_ANSWER then out.count else RP_ANSWER;
+  n := at;
+  for c: text { if n >= most { return RpTook.{n = n, whole = false}; } out[n] = c; n += 1; }
+  return RpTook.{n = n, whole = true};
+}
+// Ends a cut answer on a whole line and adds the note saying how to get the rest.
+rp_cut_note :: (out: [] u8, at: int, note: string) -> int {
+  n := at;
+  while n > 0 && out[n - 1] != '\n' { n -= 1; }
+  room := out.count - note.count - 4;
+  while n > room && n > 0 { n -= 1; while n > 0 && out[n - 1] != '\n' { n -= 1; } }
+  n = rp_put(out, n, "["); n = rp_put(out, n, note); n = rp_put(out, n, "]\n");
+  return n;
+}
+// The paths in a request's path field, a line each, checked. Their count, or -1 when one is refused.
+rp_paths :: (field: string, allow_top: bool, out: [] string) -> int {
+  n := 0; at := 0;
+  while at <= field.count {
+    e := at;
+    while e < field.count && field[e] != '\n' { e += 1; }
+    if e > at {
+      p := cast(string) field[at..<e];
+      if n >= out.count || !rp_path_ok(p, allow_top) { return -1; }
+      out[n] = p; n += 1;
+    }
+    at = e + 1;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- the operations
+
+// resolve: the commit, its date and its subject.
+rp_do_resolve :: (m: RpMirror, commit: string, out: [] u8) -> RpAnswer {
+  args := [5] string.["log", "-1", "--date=iso-strict", "--format=%H%n%ad%n%s", commit];
+  r := rp_git(m, args[..], out, RP_GIT_MS);
+  if r.status != 0 { return rp_fail("the commit could not be read"); }
+  n := r.out_n;
+  if n < out.count { out[n] = '\n'; n += 1; }
+  return RpAnswer.{ok = true, n = n};
+}
+// One entry of `git ls-tree -l`: "MODE TYPE SHA SIZE<tab>PATH".
+RpEntry :: struct { ok: bool; kind: u8; size: int; sha: string; path: string; }   // kind: d f l m (a directory, a file, a link, a module)
+rp_entry :: (line: string) -> RpEntry {
+  tab := 0;
+  while tab < line.count && line[tab] != '\t' { tab += 1; }
+  if tab >= line.count || tab < 52 { return RpEntry.{}; }
+  mode := cast(string) line[0..<6];
+  sp := 7;
+  while sp < tab && line[sp] != ' ' { sp += 1; }
+  kind_word := cast(string) line[7..<sp];
+  if sp + 41 > tab { return RpEntry.{}; }
+  sha := cast(string) line[sp + 1..<sp + 41];
+  size_at := sp + 41;
+  while size_at < tab && line[size_at] == ' ' { size_at += 1; }
+  size := rp_number(cast(string) line[size_at..<tab]);
+  e := RpEntry.{ok = true, sha = sha, path = cast(string) line[tab + 1..<line.count], size = ifx size < 0 then 0 else size};
+  e.kind = ifx kind_word == "tree" then 'd' else ifx kind_word == "commit" then 'm' else ifx mode == "120000" then 'l' else 'f';
+  return e;
+}
+// tree: the entries under a directory, to a depth.
+rp_do_tree :: (m: RpMirror, commit: string, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  if !rp_path_ok(q.path, true) { return rp_fail("that path is not one inside the repository"); }
+  depth := ifx q.depth < 1 then 1 else ifx q.depth > 6 then 6 else q.depth;
+  dir: [RP_PATH + 2] u8; dn := rp_put(dir[..], 0, q.path);
+  if dn > 0 && dir[dn - 1] != '/' { dir[dn] = '/'; dn += 1; }
+  args: [8] string; an := 0;
+  args[an] = "ls-tree"; an += 1; args[an] = "-l"; an += 1;
+  if depth > 1 { args[an] = "-r"; an += 1; args[an] = "-t"; an += 1; }
+  args[an] = commit; an += 1;
+  if dn > 0 { args[an] = "--"; an += 1; args[an] = cast(string) dir[0..<dn]; an += 1; }
+  r := rp_git(m, args[0..<an], work, RP_GIT_MS);
+  if r.status != 0 { return rp_fail("the tree could not be read"); }
+  if r.out_n == 0 { return rp_fail("there is no such directory at this commit"); }
+  listing := cast(string) work[0..<r.out_n];
+  n := 0; shown := 0; more := 0; at := 0;
+  while at < listing.count {
+    e := at;
+    while e < listing.count && listing[e] != '\n' { e += 1; }
+    entry := rp_entry(cast(string) listing[at..<e]);
+    at = e + 1;
+    if !entry.ok || entry.path.count < dn { continue; }   // (git lists the directory itself when it goes deeper)
+    // its depth under the directory asked for
+    level := 1;
+    for i: dn..<entry.path.count { if entry.path[i] == '/' { level += 1; } }
+    if level > depth { continue; }
+    if shown >= RP_TREE_ENTRIES || n + entry.path.count + 32 > RP_ANSWER - 80 || n + entry.path.count + 32 > out.count - 80 { more += 1; continue; }
+    out[n] = entry.kind; n += 1;
+    if entry.kind == 'f' { n = rp_put(out, n, "  "); n = rp_put_int(out, n, entry.size); }
+    n = rp_put(out, n, "  "); n = rp_put(out, n, entry.path);
+    if entry.kind == 'd' { n = rp_put(out, n, "/"); }
+    n = rp_put(out, n, "\n");
+    shown += 1;
+  }
+  cut := more > 0 || r.cut;
+  if cut {
+    note: [96] u8; k := rp_put_int(note[..], 0, more);
+    k = rp_put(note[..], k, " more entries not shown: ask for a directory under this one, or a smaller depth");
+    n = rp_cut_note(out, n, cast(string) note[0..<k]);
+  }
+  return RpAnswer.{ok = true, n = n, cut = cut};
+}
+// read: files' text with line numbers; one file may be read by a line range.
+rp_do_read :: (m: RpMirror, commit: string, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  paths: [RP_FILES] string;
+  count := rp_paths(q.path, false, paths[..]);
+  if count < 0 { return rp_fail("a path is not one inside the repository, or more files were asked for than one read takes (16)"); }
+  if count == 0 { return rp_fail("name the file to read"); }
+  n := 0; cut := false;
+  for k: 0..<count {
+    path := paths[k];
+    if cut {   // a file the answer had no room for
+      n = rp_put(out, n, "[not read, the answer is full: "); n = rp_put(out, n, path); n = rp_put(out, n, "]\n");
+      continue;
+    }
+    info: [RP_PATH + 128] u8;
+    la := [5] string.["ls-tree", "-l", commit, "--", path];
+    lr := rp_git(m, la[..], info[..], RP_GIT_MS);
+    entry := rp_entry(cast(string) info[0..<lr.out_n]);
+    n = rp_put(out, n, "== "); n = rp_put(out, n, path);
+    if lr.status != 0 || !entry.ok || entry.path != path { n = rp_put(out, n, ": no such file at this commit\n"); continue; }
+    if entry.kind == 'd' { n = rp_put(out, n, ": a directory (ask for its tree)\n"); continue; }
+    if entry.kind == 'm' { n = rp_put(out, n, ": another repository's commit (a submodule), not read\n"); continue; }
+    if entry.size > RP_FILE_MOST || entry.size > work.count {
+      n = rp_put(out, n, ": "); n = rp_put_int(out, n, entry.size); n = rp_put(out, n, " bytes, too large to read here\n"); continue;
+    }
+    ca := [3] string.["cat-file", "blob", entry.sha];
+    cr := rp_git(m, ca[..], work, RP_GIT_MS);
+    text := cast(string) work[0..<cr.out_n];
+    if cr.status != 0 { n = rp_put(out, n, ": could not be read\n"); continue; }
+    if entry.kind == 'l' { n = rp_put(out, n, ": a link to "); n = rp_put(out, n, text); n = rp_put(out, n, " (not followed)\n"); continue; }
+    if rp_binary(text) || cr.cut {
+      n = rp_put(out, n, ifx cr.cut then ": " else ": binary, "); n = rp_put_int(out, n, entry.size);
+      n = rp_put(out, n, ifx cr.cut then " bytes with a line too long to return\n" else " bytes, not returned\n"); continue;
+    }
+    lines := rp_lines(text);
+    n = rp_put(out, n, "  ("); n = rp_put_int(out, n, lines); n = rp_put(out, n, ifx lines == 1 then " line, " else " lines, ");
+    n = rp_put_int(out, n, entry.size); n = rp_put(out, n, " bytes)\n");
+    from := ifx count == 1 then q.from else 0; to := ifx count == 1 then q.to else 0;
+    room := ifx out.count < RP_ANSWER then out.count else RP_ANSWER;
+    got := rp_numbered(text, from, to, out, n, room - 160);
+    n = got.n;
+    if got.cut {
+      cut = true;
+      note: [RP_PATH + 96] u8; j := rp_put(note[..], 0, "cut before line "); j = rp_put_int(note[..], j, got.next);
+      j = rp_put(note[..], j, ": read "); j = rp_put(note[..], j, path); j = rp_put(note[..], j, " from line "); j = rp_put_int(note[..], j, got.next);
+      n = rp_put(out, n, "["); n = rp_put(out, n, cast(string) note[0..<j]); n = rp_put(out, n, "]\n");
+    }
+  }
+  return RpAnswer.{ok = true, n = n, cut = cut};
+}
+// find: the paths that match a glob, in git's order.
+rp_do_find :: (m: RpMirror, commit: string, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  if !rp_glob_ok(q.path) { return rp_fail("that glob is not one this takes: a relative path with * ? and **"); }
+  args := [4] string.["ls-tree", "-r", "--name-only", commit];
+  r := rp_git(m, args[..], work, RP_GIT_MS);
+  if r.status != 0 { return rp_fail("the tree could not be read"); }
+  listing := cast(string) work[0..<r.out_n];
+  n := 0; shown := 0; more := 0; at := 0;
+  while at < listing.count {
+    e := at;
+    while e < listing.count && listing[e] != '\n' { e += 1; }
+    path := cast(string) listing[at..<e];
+    at = e + 1;
+    if !rp_glob(q.path, path) { continue; }
+    if shown >= RP_FIND_PATHS || n + path.count + 1 > RP_ANSWER - 120 || n + path.count + 1 > out.count - 120 { more += 1; continue; }
+    n = rp_put(out, n, path); n = rp_put(out, n, "\n");
+    shown += 1;
+  }
+  if shown == 0 && more == 0 { n = rp_put(out, n, "(no path matches)\n"); }
+  cut := more > 0 || r.cut;
+  if cut {
+    note: [96] u8; k := rp_put_int(note[..], 0, more);
+    k = rp_put(note[..], k, " more paths not shown: narrow the glob");
+    n = rp_cut_note(out, n, cast(string) note[0..<k]);
+  }
+  return RpAnswer.{ok = true, n = n, cut = cut};
+}
+// search: the lines that match, as "path:line:text" (context lines as "path-line-text").
+rp_do_search :: (m: RpMirror, commit: string, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  if q.pattern.count == 0 || q.pattern.count > RP_PATTERN || rp_control(q.pattern) { return rp_fail("give a pattern to search for, on one line"); }
+  paths: [RP_FILES] string;
+  count := rp_paths(q.path, false, paths[..]);
+  if count < 0 { return rp_fail("a path is not one inside the repository"); }
+  context := ifx q.context < 0 then 0 else ifx q.context > RP_CONTEXT then RP_CONTEXT else q.context;
+  num: [8] u8; cn := rp_put_int(num[..], 0, context);
+  args: [RP_ARGS] string; an := 0;
+  args[an] = "grep"; an += 1; args[an] = "-n"; an += 1; args[an] = "-I"; an += 1;
+  args[an] = ifx q.regex then "-E" else "-F"; an += 1;
+  if q.fold { args[an] = "-i"; an += 1; }
+  if context > 0 { args[an] = "-C"; an += 1; args[an] = cast(string) num[0..<cn]; an += 1; }
+  args[an] = "-e"; an += 1; args[an] = q.pattern; an += 1;
+  args[an] = commit; an += 1;
+  if count > 0 { args[an] = "--"; an += 1; for k: 0..<count { args[an] = paths[k]; an += 1; } }
+  r := rp_git(m, args[0..<an], work, RP_GIT_MS);
+  if r.timed_out { return rp_fail("the search took too long: name paths to search under, or a simpler pattern"); }
+  if r.status == 1 && r.out_n == 0 { n0 := rp_put(out, 0, "(no line matches)\n"); return RpAnswer.{ok = true, n = n0}; }
+  if r.status != 0 && r.status != 1 { return rp_fail("that pattern is not one the search can read"); }
+  found := cast(string) work[0..<r.out_n];
+  n := 0; lines := 0; more := 0; at := 0;
+  while at < found.count {
+    e := at;
+    while e < found.count && found[e] != '\n' { e += 1; }
+    line := cast(string) found[at..<e];
+    at = e + 1;
+    // git names the commit before each path: "COMMIT:path:12:text" (or "COMMIT:path-12-text", or "--")
+    if line.count > 41 && cast(string) line[0..<40] == commit { line = cast(string) line[41..<line.count]; }
+    if lines >= RP_SEARCH_LINES || n + line.count + 1 > RP_ANSWER - 120 || n + line.count + 1 > out.count - 120 { more += 1; continue; }
+    n = rp_put(out, n, line); n = rp_put(out, n, "\n");
+    lines += 1;
+  }
+  cut := more > 0 || r.cut;
+  if cut {
+    note: [120] u8; k := rp_put_int(note[..], 0, more);
+    k = rp_put(note[..], k, " more lines not shown: name paths to search under, or a narrower pattern");
+    n = rp_cut_note(out, n, cast(string) note[0..<k]);
+  }
+  return RpAnswer.{ok = true, n = n, cut = cut};
+}
+// The output of a git command that is already the answer (a log, a commit, a diff, a blame), cut to fit.
+rp_plain :: (r: ProcRun, work: [] u8, out: [] u8, empty: string, note: string) -> RpAnswer {
+  if r.timed_out { return rp_fail("that took too long"); }
+  if r.status != 0 { return rp_fail("git could not answer that at this commit"); }
+  if r.out_n == 0 { n0 := rp_put(out, 0, empty); return RpAnswer.{ok = true, n = n0}; }
+  took := rp_take(out, 0, cast(string) work[0..<r.out_n]);
+  n := took.n;
+  if took.whole && n < out.count { out[n] = '\n'; n += 1; }
+  cut := !took.whole || r.cut;
+  if cut { n = rp_cut_note(out, n, note); }
+  return RpAnswer.{ok = true, n = n, cut = cut};
+}
+// log: the newest commits, optionally those that touched one path.
+rp_do_log :: (m: RpMirror, commit: string, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  if !rp_path_ok(q.path, true) { return rp_fail("that path is not one inside the repository"); }
+  count := ifx q.n < 1 then 20 else ifx q.n > RP_LOG_COMMITS then RP_LOG_COMMITS else q.n;
+  num: [8] u8; cn := rp_put_int(num[..], 0, count);
+  args: [10] string; an := 0;
+  args[an] = "log"; an += 1; args[an] = "-n"; an += 1; args[an] = cast(string) num[0..<cn]; an += 1;
+  args[an] = "--date=short"; an += 1; args[an] = "--format=%H %ad %an: %s"; an += 1; args[an] = commit; an += 1;
+  if q.path.count > 0 { args[an] = "--"; an += 1; args[an] = q.path; an += 1; }
+  r := rp_git(m, args[0..<an], work, RP_GIT_MS);
+  return rp_plain(r, work, out, "(no commit touched that path)\n", "cut: ask for fewer commits");
+}
+// show: one commit's message, the files it changed and its diff.
+rp_do_show :: (m: RpMirror, commit: string, work: [] u8, out: [] u8) -> RpAnswer {
+  args := [6] string.["show", "--stat", "--patch", "--date=short", "--format=commit %H%nAuthor: %an%nDate:   %ad%n%n%B", commit];
+  r := rp_git(m, args[..], work, RP_GIT_MS);
+  return rp_plain(r, work, out, "(an empty commit)\n", "cut: the commit's diff is longer than one answer; ask for the diff of one path");
+}
+// diff: what changed from the snapshot to another, optionally for one path.
+rp_do_diff :: (m: RpMirror, from: string, to: string, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  if !rp_path_ok(q.path, true) { return rp_fail("that path is not one inside the repository"); }
+  args: [8] string; an := 0;
+  args[an] = "diff"; an += 1; args[an] = from; an += 1; args[an] = to; an += 1;
+  if q.path.count > 0 { args[an] = "--"; an += 1; args[an] = q.path; an += 1; }
+  r := rp_git(m, args[0..<an], work, RP_GIT_MS);
+  return rp_plain(r, work, out, "(no difference)\n", "cut: the difference is longer than one answer; ask for the diff of one path");
+}
+// blame: who last changed each line of a range, and in which commit.
+rp_do_blame :: (m: RpMirror, commit: string, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  if !rp_path_ok(q.path, false) { return rp_fail("name the file to blame, by a path inside the repository"); }
+  from := ifx q.from < 1 then 1 else q.from;
+  to := ifx q.to < from then from + 39 else q.to;
+  if to - from + 1 > RP_BLAME_LINES { to = from + RP_BLAME_LINES - 1; }
+  range: [32] u8; rn := rp_put_int(range[..], 0, from); rn = rp_put(range[..], rn, ","); rn = rp_put_int(range[..], rn, to);
+  args := [7] string.["blame", "--date=short", "-L", cast(string) range[0..<rn], commit, "--", q.path];
+  r := rp_git(m, args[..], work, RP_GIT_MS);
+  if r.status != 0 { return rp_fail("that file has no such lines at this commit"); }
+  return rp_plain(r, work, out, "(no lines)\n", "cut: ask for fewer lines");
+}
+
+// One request answered: its text into out. work is scratch for git's output: a file bigger than it is
+// named, not returned (RP_FILE_MOST is the most it need be).
+rp_call :: (m: RpMirror, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
+  if q.op < RP_RESOLVE || q.op > RP_BLAME { return rp_fail("no such operation"); }
+  if !rp_at_ok(q.at) { return rp_fail("name the snapshot by a full commit id, a branch or a tag"); }
+  commit: [40] u8;
+  if !rp_resolve_into(m, q.at, commit[..]) { return rp_fail("there is no such commit, branch or tag in this repository"); }
+  c := cast(string) commit[..];
+  a: RpAnswer;
+  if q.op == RP_RESOLVE { a = rp_do_resolve(m, c, out); }
+  else if q.op == RP_TREE { a = rp_do_tree(m, c, q, work, out); }
+  else if q.op == RP_READ { a = rp_do_read(m, c, q, work, out); }
+  else if q.op == RP_FIND { a = rp_do_find(m, c, q, work, out); }
+  else if q.op == RP_SEARCH { a = rp_do_search(m, c, q, work, out); }
+  else if q.op == RP_LOG { a = rp_do_log(m, c, q, work, out); }
+  else if q.op == RP_BLAME { a = rp_do_blame(m, c, q, work, out); }
+  else {
+    // show and diff name a second commit (show: the one to show, the snapshot when none is given)
+    other: [40] u8;
+    if q.other.count == 0 && q.op == RP_SHOW { for i: 0..<40 { other[i] = commit[i]; } }
+    else if !rp_resolve_into(m, q.other, other[..]) { return rp_fail("the other commit, branch or tag is not in this repository"); }
+    if q.op == RP_SHOW { a = rp_do_show(m, cast(string) other[..], work, out); }
+    else { a = rp_do_diff(m, c, cast(string) other[..], q, work, out); }
+  }
+  a.commit = commit;
+  return a;
+}
+
+// ---------------------------------------------------------------- keeping a mirror
+
+// Makes the bare mirror for url if it isn't there. True when it is there after.
+rp_mirror_make :: (m: RpMirror, url: string) -> bool {
+  out: [256] u8; err: [256] u8;
+  check := [4] string.[m.git, "--git-dir", m.dir, "rev-parse"];
+  if proc_run(check[..], RP_GIT_MS, out[..], err[..]).status == 0 { return true; }
+  init := [5] string.[m.git, "init", "--quiet", "--bare", m.dir];
+  if proc_run(init[..], RP_GIT_MS, out[..], err[..]).status != 0 { return false; }
+  remote := [4] string.["remote", "add", "origin", url];
+  return rp_git(m, remote[..], out[..], RP_GIT_MS).status == 0;
+}
+// Fetches every branch and tag from the mirror's origin. Refs of ours (refs/oa/) are left alone.
+// No hooks run, no tag is followed beyond the refspecs, and no submodule is fetched.
+rp_mirror_fetch :: (m: RpMirror) -> bool {
+  out: [1024] u8;
+  args := [8] string.["fetch", "--quiet", "--prune", "--no-recurse-submodules", "--no-tags", "origin", "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"];
+  r := rp_git(m, args[..], out[..], RP_FETCH_MS);
+  return r.started == 0 && r.status == 0;
+}
+
+#test "an entry of a tree listing reads as its kind, size and path" {
+  f := rp_entry("100644 blob 0123456789abcdef0123456789abcdef01234567    1024\tcoax/web/host.js");
+  #assert f.ok && f.kind == 'f' && f.size == 1024 && f.path == "coax/web/host.js" && f.sha == "0123456789abcdef0123456789abcdef01234567";
+  d := rp_entry("040000 tree 0123456789abcdef0123456789abcdef01234567       -\tcoax");
+  #assert d.ok && d.kind == 'd' && d.size == 0 && d.path == "coax";
+  l := rp_entry("120000 blob 0123456789abcdef0123456789abcdef01234567      11\tlink name");
+  #assert l.ok && l.kind == 'l' && l.path == "link name";
+  s := rp_entry("160000 commit 0123456789abcdef0123456789abcdef01234567       -\tvendor/x");
+  #assert s.ok && s.kind == 'm' && s.path == "vendor/x";
+  #assert !rp_entry("").ok && !rp_entry("100644 blob short\tx").ok && !rp_entry("no tab here").ok;
+}
+
+#test "a request's paths are a line each, every one checked, and too many are refused" {
+  out: [3] string;
+  #assert rp_paths("a/b\nc.md", false, out[..]) == 2 && out[0] == "a/b" && out[1] == "c.md";
+  #assert rp_paths("", false, out[..]) == 0 && rp_paths("\n\n", false, out[..]) == 0 && rp_paths("a\n../b", false, out[..]) == -1;
+  #assert rp_paths("a\nb\nc\nd", false, out[..]) == -1 && rp_paths("-x", false, out[..]) == -1;
+}
+
+#test "a cut answer ends on a whole line with its note, and text is taken up to the limit" {
+  out: [64] u8;
+  n := rp_put(out[..], 0, "one\ntwo\nthr");
+  n = rp_cut_note(out[..], n, "more");
+  #assert cast(string) out[0..<n] == "one\ntwo\n[more]\n";
+  small: [20] u8;
+  n = rp_put(small[..], 0, "aaaa\nbbbb\ncccc\ndddd\n");
+  n = rp_cut_note(small[..], n, "cut");
+  #assert cast(string) small[0..<n] == "aaaa\nbbbb\n[cut]\n";
+  t := rp_take(out[..], 0, "hello");
+  #assert t.whole && t.n == 5;
+  t = rp_take(small[..], 18, "hello");
+  #assert !t.whole && t.n == 20;
+  #assert !rp_fail("why").ok && rp_fail("why").error == "why";
+}

@@ -1,0 +1,154 @@
+// Indexed repos, the rules (docs/repos/2026-11-11-indexed-repos.md, GitHub
+// #13326): what a request may name. No effects: repo.coax runs git with what
+// passes here.
+//
+// This file only decides; cutting and formatting an answer, and matching a glob,
+// are text.coax.
+//
+// A request names a snapshot (a full commit id, or a branch or tag that
+// resolves to one) and paths inside the repository. Nothing a request holds
+// is ever read as an option, a pathspec with magic, a path outside the
+// repository or a shell word: a name that could be is refused here, and
+// repo.coax also passes every path after "--" with literal pathspecs.
+//   coax/bin/coax test coax/lib/repo/rules.coax
+#authority;
+
+RP_RESOLVE :: 1; RP_TREE :: 2; RP_READ :: 3; RP_FIND :: 4; RP_SEARCH :: 5; RP_LOG :: 6; RP_SHOW :: 7; RP_DIFF :: 8; RP_BLAME :: 9;
+RP_OPS :: [10] string.["", "resolve", "tree", "read", "find", "search", "log", "show", "diff", "blame"];
+
+// An answer's limits. A cut answer says so, and says how to get the rest.
+RP_ANSWER :: 65536;       // bytes of text in one answer (Microcoder's view limit)
+RP_PATH :: 400;           // bytes of a path or a glob
+RP_REF :: 200;            // bytes of a branch or tag name
+RP_PATTERN :: 400;        // bytes of a search pattern
+RP_FILES :: 16;           // files in one read
+RP_TREE_ENTRIES :: 1000;
+RP_FIND_PATHS :: 500;
+RP_SEARCH_LINES :: 200;
+RP_CONTEXT :: 5;          // lines of context around a match, at most
+RP_LOG_COMMITS :: 50;
+RP_BLAME_LINES :: 200;
+RP_FILE_MOST :: 4194304;  // a file bigger than this is named, not returned
+
+rp_op :: (name: string) -> int #effects(all) {
+  ops := RP_OPS;
+  for i: 1..<ops.count { if ops[i] == name { return i; } }
+  return 0;
+}
+rp_hex :: (c: u8) -> bool #effects(all) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
+// A full commit id: forty lowercase hex digits.
+rp_commit_ok :: (s: string) -> bool #effects(all) {
+  if s.count != 40 { return false; }
+  for c: s { if !rp_hex(c) { return false; } }
+  return true;
+}
+// A byte a branch or tag name may hold: a letter, a digit, or one of . _ / -
+rp_ref_byte :: (c: u8) -> bool #effects(all) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '/' || c == '-';
+}
+// A branch or tag name that can't be read as an option, a range or a revision expression: only
+// rp_ref_byte's bytes, not starting with - / or ., not ending with / or ., and with no ".." or "//".
+rp_ref_ok :: (s: string) -> bool #effects(all) {
+  if s.count == 0 || s.count > RP_REF { return false; }
+  for c: s { if !rp_ref_byte(c) { return false; } }
+  first := s[0]; last := s[s.count - 1];
+  if first == '-' || first == '.' || last == '/' || last == '.' { return false; }
+  // no "//" and no "..": the name's start counts as a /, so a leading / is refused here too
+  before: u8 = '/';
+  for c: s {
+    if c == before && (c == '.' || c == '/') { return false; }
+    before = c;
+  }
+  return true;
+}
+// A snapshot a request may name: a commit id, or a ref.
+rp_at_ok :: (s: string) -> bool #effects(all) { return rp_commit_ok(s) || rp_ref_ok(s); }
+// Whether s has a control byte (below a space).
+rp_control :: (s: string) -> bool #effects(all) {
+  for c: s { if c < ' ' { return true; } }
+  return false;
+}
+// Whether the part s[from..<to] of a path is one a path may not have: empty, "." or "..".
+rp_part_bad :: (s: string, from: int, to: int) -> bool #effects(all) {
+  n := to - from;
+  if n == 0 { return true; }
+  if n == 1 { return s[from] == '.'; }
+  if n == 2 { return s[from] == '.' && s[from + 1] == '.'; }
+  return false;
+}
+// A path inside the repository: relative, with no empty, "." or ".." part, no control byte, and not
+// starting with - (an option) or : (a pathspec's magic). One / may end it (a directory). "" is the
+// repository's top, where allow_top.
+rp_path_ok :: (s: string, allow_top: bool) -> bool #effects(all) {
+  if s.count == 0 { return allow_top; }
+  if s.count > RP_PATH || rp_control(s) { return false; }
+  if s[0] == '-' || s[0] == ':' { return false; }
+  end := ifx s[s.count - 1] == '/' then s.count - 1 else s.count;   // a directory's closing /
+  start := 0;
+  for i: 0..<end {
+    if s[i] == '/' {
+      if rp_part_bad(s, start, i) { return false; }
+      start = i + 1;
+    }
+  }
+  return !rp_part_bad(s, start, end);
+}
+// A glob: no control byte, not absolute, and not starting with - or :. Its special bytes are * ? and **
+// (text.coax rp_glob); [ ] and { } are literal.
+rp_glob_ok :: (s: string) -> bool #effects(all) {
+  if s.count == 0 || s.count > RP_PATH || rp_control(s) { return false; }
+  return s[0] != '/' && s[0] != '-' && s[0] != ':';
+}
+
+// A name of n bytes, all `fill`, for the checks.
+rp_test_long :: (buf: [] u8, n: int, fill: u8) -> string #effects(all) {
+  for i: 0..<n { buf[i] = fill; }
+  return cast(string) buf[0..<n];
+}
+
+#test "an operation has a name, and only the nine do" {
+  #assert rp_op("resolve") == RP_RESOLVE && rp_op("tree") == RP_TREE && rp_op("read") == RP_READ && rp_op("find") == RP_FIND && rp_op("search") == RP_SEARCH;
+  #assert rp_op("log") == RP_LOG && rp_op("show") == RP_SHOW && rp_op("diff") == RP_DIFF && rp_op("blame") == RP_BLAME;
+  #assert rp_op("") == 0 && rp_op("push") == 0 && rp_op("Read") == 0;
+}
+
+#test "a commit id is forty lowercase hex digits, each one checked" {
+  #assert rp_commit_ok("0123456789abcdef0123456789abcdef01234567") && rp_commit_ok("ffffffffffffffffffffffffffffffffffffffff") && rp_commit_ok("0000000000000000000000000000000000000000");
+  #assert rp_commit_ok("9999999999999999999999999999999999999999") && rp_commit_ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert !rp_commit_ok("0123456789ABCDEF0123456789abcdef01234567") && !rp_commit_ok("0123") && !rp_commit_ok("") && !rp_commit_ok("0123456789abcdef0123456789abcdef012345678");
+  #assert !rp_commit_ok("0123456789abcdef0123456789abcdef0123456") && !rp_commit_ok("g123456789abcdef0123456789abcdef01234567") && !rp_commit_ok("0123456789abcdef0123456789abcdef0123456g");
+  #assert rp_hex('0') && rp_hex('9') && rp_hex('a') && rp_hex('f') && !rp_hex('/') && !rp_hex(':') && !rp_hex('`') && !rp_hex('g') && !rp_hex('A') && !rp_hex('F');
+}
+
+#test "a ref is plain: its bytes, its ends, its length, and no doubled . or /" {
+  #assert rp_ref_ok("main") && rp_ref_ok("release/1.0") && rp_ref_ok("coder-v1.0.0") && rp_ref_ok("a") && rp_ref_ok("z") && rp_ref_ok("A") && rp_ref_ok("Z");
+  #assert rp_ref_ok("0") && rp_ref_ok("9") && rp_ref_ok("a_b") && rp_ref_ok("a-b") && rp_ref_ok("x/y") && rp_ref_ok("x.y") && rp_ref_ok("tree/aa") && rp_ref_ok("bb") && rp_ref_ok("a--b") && rp_ref_ok("a__b");
+  #assert rp_ref_byte('a') && rp_ref_byte('z') && rp_ref_byte('A') && rp_ref_byte('Z') && rp_ref_byte('0') && rp_ref_byte('9') && rp_ref_byte('.') && rp_ref_byte('_') && rp_ref_byte('/') && rp_ref_byte('-');
+  #assert !rp_ref_byte('`') && !rp_ref_byte('{') && !rp_ref_byte('@') && !rp_ref_byte('[') && !rp_ref_byte(':') && !rp_ref_byte(' ') && !rp_ref_byte('~') && !rp_ref_byte('^') && !rp_ref_byte(',') && !rp_ref_byte('+');
+  #assert !rp_ref_ok("") && !rp_ref_ok("-n") && !rp_ref_ok("--upload-pack=x") && !rp_ref_ok("main..other") && !rp_ref_ok("a//b") && !rp_ref_ok("/abs") && !rp_ref_ok(".hidden");
+  #assert !rp_ref_ok("HEAD~1") && !rp_ref_ok("main^{tree}") && !rp_ref_ok("main@{1}") && !rp_ref_ok("a b") && !rp_ref_ok("x:y") && !rp_ref_ok("main.") && !rp_ref_ok("main/");
+  #assert !rp_ref_ok("@x") && !rp_ref_ok("x@") && !rp_ref_ok("a..") && !rp_ref_ok("..a") && !rp_ref_ok("a/b//c") && !rp_ref_ok("-") && !rp_ref_ok("/") && !rp_ref_ok(".");
+  buf: [RP_REF + 2] u8;
+  #assert rp_ref_ok(rp_test_long(buf[..], RP_REF, 'a')) && !rp_ref_ok(rp_test_long(buf[..], RP_REF + 1, 'a'));
+  #assert rp_at_ok("main") && rp_at_ok("0123456789abcdef0123456789abcdef01234567") && !rp_at_ok("main~1") && !rp_at_ok("");
+}
+
+#test "a path stays inside the repository and can't be an option or pathspec magic" {
+  #assert rp_path_ok("coax/web/host.js", false) && rp_path_ok("README.md", false) && rp_path_ok("", true) && !rp_path_ok("", false) && rp_path_ok("a", false);
+  #assert rp_path_ok("a b/c d.txt", false) && rp_path_ok("a/..b/c...d", false) && rp_path_ok("dir/", false) && rp_path_ok(".github/x", false) && rp_path_ok("a/.b", false) && rp_path_ok("x/-y", false) && rp_path_ok("x/:y", false);
+  #assert !rp_path_ok("/etc/passwd", true) && !rp_path_ok("/", true) && !rp_path_ok("//", true) && !rp_path_ok("a//", true) && !rp_path_ok("a//b", true);
+  #assert !rp_path_ok("..", true) && !rp_path_ok(".", true) && !rp_path_ok("../x", true) && !rp_path_ok("a/..", true) && !rp_path_ok("a/../b", true) && !rp_path_ok("a/./b", true) && !rp_path_ok("./a", true) && !rp_path_ok("a/.", true);
+  #assert !rp_path_ok("../", true) && !rp_path_ok("./", true) && !rp_path_ok("a/../", true);
+  #assert !rp_path_ok("-rf", true) && !rp_path_ok(":(glob)**", true) && !rp_path_ok("a\nb", true) && !rp_path_ok("a\tb", true) && !rp_path_ok("\n", true) && !rp_path_ok("ab\0", true);
+  buf: [RP_PATH + 2] u8; low: [3] u8; low[0] = 'a'; low[1] = 31; low[2] = 'b';
+  #assert rp_path_ok(rp_test_long(buf[..], RP_PATH, 'a'), false) && !rp_path_ok(rp_test_long(buf[..], RP_PATH + 1, 'a'), false);
+  #assert !rp_path_ok(cast(string) low[..], true) && rp_control(cast(string) low[..]) && !rp_control("a b~") && !rp_control("") && rp_control("\0");
+  #assert rp_part_bad("a//b", 2, 2) && rp_part_bad("a/./b", 2, 3) && rp_part_bad("a/../b", 2, 4) && !rp_part_bad("a/.x/b", 2, 4) && !rp_part_bad("a/x./b", 2, 4) && !rp_part_bad("a/.../b", 2, 5) && !rp_part_bad("a/b", 2, 3);
+}
+
+#test "a glob is not absolute, not an option and not magic, and holds no control byte" {
+  #assert rp_glob_ok("*.coax") && rp_glob_ok("coax/**/*.md") && rp_glob_ok("a/b") && rp_glob_ok("0.md") && rp_glob_ok("a b") && rp_glob_ok("x/-y") && rp_glob_ok("x:y") && rp_glob_ok("?");
+  #assert !rp_glob_ok("-x") && !rp_glob_ok("") && !rp_glob_ok(":x") && !rp_glob_ok("/x") && !rp_glob_ok("a\nb") && !rp_glob_ok("\t");
+  buf: [RP_PATH + 2] u8; low: [2] u8; low[0] = 'a'; low[1] = 31;
+  #assert rp_glob_ok(rp_test_long(buf[..], RP_PATH, '*')) && !rp_glob_ok(rp_test_long(buf[..], RP_PATH + 1, '*')) && !rp_glob_ok(cast(string) low[..]);
+}

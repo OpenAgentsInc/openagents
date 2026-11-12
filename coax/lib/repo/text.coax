@@ -1,0 +1,129 @@
+// Indexed repos, an answer's text (docs/repos/2026-11-11-indexed-repos.md,
+// GitHub #13326): matching a glob, numbering and cutting lines, and the
+// small writers repo.coax builds answers with. No effects and no decisions
+// about what a request may name: those are rules.coax.
+//   coax/bin/coax test coax/lib/repo/text.coax
+
+#load "rules.coax";
+
+// Whether path matches glob. * is any run inside one part, ? one byte of a part, ** any run across parts.
+// A glob with no / is matched against the path's last part, so "*.coax" finds files at any depth.
+rp_glob :: (glob: string, path: string) -> bool {
+  has_slash := false;
+  for c: glob { if c == '/' { has_slash = true; } }
+  if has_slash { return rp_glob_at(glob, 0, path, 0, 0); }
+  last := 0;
+  for i: 0..<path.count { if path[i] == '/' { last = i + 1; } }
+  return rp_glob_at(glob, 0, path, last, 0);
+}
+rp_glob_at :: (g: string, gi0: int, p: string, pi0: int, depth: int) -> bool {
+  if depth > 64 { return false; }
+  gi := gi0; pi := pi0;
+  while gi < g.count {
+    c := g[gi];
+    if c == '*' {
+      deep := gi + 1 < g.count && g[gi + 1] == '*';
+      next := ifx deep then gi + 2 else gi + 1;
+      if deep && next < g.count && g[next] == '/' { next += 1; }   // "**/" also matches nothing
+      k := pi;
+      while true {
+        if rp_glob_at(g, next, p, k, depth + 1) { return true; }
+        if k >= p.count || (!deep && p[k] == '/') { return false; }
+        k += 1;
+      }
+    }
+    if pi >= p.count { return false; }
+    if c == '?' { if p[pi] == '/' { return false; } }
+    else if c != p[pi] { return false; }
+    gi += 1; pi += 1;
+  }
+  return pi == p.count;
+}
+
+rp_put :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+rp_put_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [24] u8; d := 0; x := ifx v < 0 then -v else v;
+  if x == 0 { digits[0] = '0'; d = 1; }
+  while x > 0 && d < digits.count { digits[d] = cast(u8) ('0' + x % 10); x /= 10; d += 1; }
+  n := at;
+  if v < 0 && n < out.count { out[n] = '-'; n += 1; }
+  while d > 0 && n < out.count { d -= 1; out[n] = digits[d]; n += 1; }
+  return n;
+}
+// A decimal number's value, or -1.
+rp_number :: (s: string) -> int {
+  if s.count == 0 || s.count > 12 { return -1; }
+  n := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+// Whether text is binary, as git judges it: a zero byte in its first 8000.
+rp_binary :: (text: string) -> bool {
+  most := ifx text.count < 8000 then text.count else 8000;
+  for i: 0..<most { if text[i] == 0 { return true; } }
+  return false;
+}
+// How many lines text has (a last line with no newline counts).
+rp_lines :: (text: string) -> int {
+  n := 0;
+  for c: text { if c == '\n' { n += 1; } }
+  if text.count > 0 && text[text.count - 1] != '\n' { n += 1; }
+  return n;
+}
+RpCut :: struct { n: int; next: int; cut: bool; }
+// Lines from..to of text (from 1; to 0 is the end), each numbered "     N<tab>", into out from `at`,
+// stopping before `room` is passed. next is the first line not written, when it was cut.
+rp_numbered :: (text: string, from: int, to: int, out: [] u8, at: int, room: int) -> RpCut {
+  r := RpCut.{n = at};
+  line := 1; i := 0;
+  first := ifx from < 1 then 1 else from;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    if line >= first && (to <= 0 || line <= to) {
+      need := 8 + (e - i) + 1;
+      if r.n + need > room || r.n + need > out.count { r.cut = true; r.next = line; return r; }
+      num: [12] u8; k := rp_put_int(num[..], 0, line);
+      for pad: k..<6 { out[r.n] = ' '; r.n += 1; }
+      for q: 0..<k { out[r.n] = num[q]; r.n += 1; }
+      out[r.n] = '\t'; r.n += 1;
+      for q: i..<e { out[r.n] = text[q]; r.n += 1; }
+      out[r.n] = '\n'; r.n += 1;
+    }
+    if to > 0 && line > to { break; }
+    line += 1; i = e + 1;
+  }
+  return r;
+}
+
+#test "a glob matches by parts: * inside one, ** across them, and a bare one against the last part" {
+  #assert rp_glob("*.coax", "coax/web/drive.coax") && rp_glob("*.coax", "top.coax") && !rp_glob("*.coax", "a/b.coaxial");
+  #assert rp_glob("coax/*/host.js", "coax/web/host.js") && !rp_glob("coax/*/host.js", "coax/web/x/host.js");
+  #assert rp_glob("coax/**/host.js", "coax/web/x/host.js") && rp_glob("coax/**/host.js", "coax/host.js") && rp_glob("**", "a/b/c");
+  #assert rp_glob("docs/**", "docs/a/b.md") && !rp_glob("docs/**", "doc/a") && rp_glob("a?c", "abc") && !rp_glob("a?c", "a/c") && !rp_glob("a?c", "ac");
+  #assert rp_glob("README.md", "sub/README.md") && rp_glob("sub/README.md", "sub/README.md") && !rp_glob("sub/README.md", "README.md");
+}
+
+#test "numbered lines, a range, and a cut that says where to go on" {
+  out: [200] u8;
+  r := rp_numbered("one\ntwo\nthree\n", 0, 0, out[..], 0, 200);
+  #assert cast(string) out[0..<r.n] == "     1\tone\n     2\ttwo\n     3\tthree\n" && !r.cut;
+  r = rp_numbered("one\ntwo\nthree", 2, 3, out[..], 0, 200);
+  #assert cast(string) out[0..<r.n] == "     2\ttwo\n     3\tthree\n" && !r.cut;
+  r = rp_numbered("one\ntwo\nthree\n", 0, 0, out[..], 0, 24);
+  #assert cast(string) out[0..<r.n] == "     1\tone\n     2\ttwo\n" && r.cut && r.next == 3;
+  #assert rp_lines("") == 0 && rp_lines("a") == 1 && rp_lines("a\n") == 1 && rp_lines("a\nb") == 2;
+  #assert rp_binary("ab\0cd") && !rp_binary("plain") && rp_number("42") == 42 && rp_number("4x") == -1 && rp_number("") == -1;
+  n := rp_put_int(out[..], 0, -305); #assert cast(string) out[0..<n] == "-305";
+  n = rp_put(out[..], n, " left"); #assert cast(string) out[0..<n] == "-305 left";
+  small: [3] u8; #assert rp_put(small[..], 0, "toolong") == 3;
+}
+
+#forall "a glob with no special byte matches only itself" i: 0..<6 {
+  names := [6] string.["a", "a/b", "docs/x.md", "x.y.z", "deep/er/path/file", "q"];
+  for j: 0..<6 { #assert rp_glob(names[i], names[j]) == (i == j) || (names[i] == "a" && names[j] == "a") || (names[i] == "q" && names[j] == "q"); }
+}
