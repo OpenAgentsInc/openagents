@@ -1,0 +1,124 @@
+// Seat ticket HMAC fixtures (proto/verse/seat-ticket-hmac-v1.json; #13248): each entry's values written
+// by the one writer (aethyr/session/seat-ticket.coax tk_write) give the fixture's exact bytes, and the
+// room's real reader (coax/web/room/room-ticket.coax tk_check) takes accepted entries with matching fields
+// and refuses refused entries.
+//   coax/web/tool.sh coax/web/room/seat-ticket-hmac-profile.coax proto/verse/seat-ticket-hmac-v1.json
+#import "Basic";
+#run_steps 250000000;
+#load "room-ticket.coax";
+#load "../../../aethyr/session/seat-ticket.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/json/json.coax";
+
+SH_FILE :: 65536;
+
+sh_text :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(d, jv_get(d, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+sh_write_row :: (d: Jv, row: int, sign_key: string, out: [] u8) -> string {
+  v := jv_get(d, row, "values");
+  tb: [4][TK5_TEXT] u8; nb: [64] u8; hb: [64] u8;
+  version := jv_int(d, jv_get(d, v, "version"), -1);
+  pid := sh_text(d, v, "pid", tb[0][..]);
+  name := sh_text(d, v, "name", tb[1][..]);
+  room := sh_text(d, v, "room", tb[2][..]);
+  saved := sh_text(d, v, "saved", tb[3][..]);
+  acct := jv_int(d, jv_get(d, v, "acct"), -9);
+  shard := jv_int(d, jv_get(d, v, "shard"), -9);
+  expires := jv_int(d, jv_get(d, v, "expires"), -9);
+  hp := jv_int(d, jv_get(d, v, "hp"), -9);
+  xp := jv_int(d, jv_get(d, v, "xp"), -9);
+  wanted := jv_int(d, jv_get(d, v, "wanted"), -9);
+  owner := jv_int(d, jv_get(d, v, "owner"), -9);
+  nn := tk_name64_put(name, nb[..]);
+  hn := tk_hps_put(hp, xp, wanted, owner, hb[..]);
+  if nn <= 0 || hn <= 0 { return ""; }
+  n := tk_write(out, version, pid, acct, cast(string) nb[0..<nn], room, shard, expires, cast(string) hb[0..<hn], saved, sign_key);
+  return ifx n <= 0 then "" else cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: seat-ticket-hmac-profile FILE.json"); return 2; }
+  text: [SH_FILE] u8; n := fs_read(args_at(a[..], 0), text[..]);
+  nodes: [4096] JvNode; d: [1] Jv;
+  if n < 1 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("seat-ticket-hmac-profile: not JSON"); return 2; }
+  pb: [64] u8;
+  if sh_text(d[0], 0, "profile", pb[..]) != "openagents.seat-ticket-hmac" || jv_int(d[0], jv_get(d[0], 0, "version"), -1) != 1 {
+    tool_errln("seat-ticket-hmac-profile: not the seat-ticket-hmac v1 profile");
+    return 1;
+  }
+  kb: [128] u8; key := sh_text(d[0], 0, "key", kb[..]);
+  now := jv_int(d[0], jv_get(d[0], 0, "now"), -1);
+  if key == "" || now < 0 { tool_errln("seat-ticket-hmac-profile: missing key or now"); return 1; }
+  failed := 0;
+  rows := jv_get(d[0], 0, "tickets");
+  if jv_len(d[0], rows) < 3 { tool_errln("seat-ticket-hmac-profile: fewer than 3 accepted tickets"); return 1; }
+  for i: 0..<jv_len(d[0], rows) {
+    row := jv_at(d[0], rows, i); v := jv_get(d[0], row, "values");
+    tb: [7][TK5_TEXT] u8;
+    why := sh_text(d[0], row, "why", tb[0][..]);
+    want := sh_text(d[0], row, "text", tb[1][..]);
+    got := sh_write_row(d[0], row, key, tb[2][..]);
+    if got == "" || got != want {
+      tool_err("seat-ticket-hmac-profile: ticket "); tool_err(why); tool_err(": tk_write made\n");
+      print("%\n", got);
+      failed += 1;
+      continue;
+    }
+    pid := sh_text(d[0], v, "pid", tb[3][..]);
+    name := sh_text(d[0], v, "name", tb[4][..]);
+    room := sh_text(d[0], v, "room", tb[5][..]);
+    saved := sh_text(d[0], v, "saved", tb[6][..]);
+    acct := jv_int(d[0], jv_get(d[0], v, "acct"), -9);
+    shard := jv_int(d[0], jv_get(d[0], v, "shard"), -9);
+    want_shard := ifx shard == 0 then 1 else shard;
+    expires := jv_int(d[0], jv_get(d[0], v, "expires"), -9);
+    hp := jv_int(d[0], jv_get(d[0], v, "hp"), -9);
+    xp := jv_int(d[0], jv_get(d[0], v, "xp"), -9);
+    wanted := jv_int(d[0], jv_get(d[0], v, "wanted"), -9);
+    owner := jv_int(d[0], jv_get(d[0], v, "owner"), -9);
+    schema := jv_int(d[0], jv_get(d[0], v, "schema"), -9);
+    t := tk_check(key, got, room, now);
+    same := t.ok && cast(string) t.pid[0..<t.pid_n] == pid && t.account == (acct > 0) && t.admin == (acct == 2) && cast(string) t.name[0..<t.name_n] == name;
+    same = same && t.shard == want_shard && t.expires == expires && t.hp == hp && t.xp == xp && t.wanted == wanted && t.owner == owner && t.schema == schema && t.key == -1;
+    same = same && t.capture.ok == (schema == 2 && saved != "" && saved != "-");
+    if schema == 2 && saved != "" && saved != "-" {
+      want_cap := cc_read(saved, false);
+      same = same && want_cap.ok && t.capture.dead == want_cap.dead && cast(string) t.capture.pid[0..<t.capture.pid_n] == pid && cast(string) t.capture.room[0..<t.capture.room_n] == room;
+      for k: 0..<want_cap.n.count { same = same && t.capture.n[k] == want_cap.n[k]; }
+      for k: 0..<want_cap.state.count { same = same && t.capture.state[k] == want_cap.state[k]; }
+    }
+    if !same {
+      tool_err("seat-ticket-hmac-profile: ticket "); tool_err(why); tool_errln(": tk_check did not match fields");
+      failed += 1;
+    }
+  }
+  refused := jv_get(d[0], 0, "refused");
+  if jv_len(d[0], refused) < 2 { tool_errln("seat-ticket-hmac-profile: fewer than 2 refused tickets"); return 1; }
+  for i: 0..<jv_len(d[0], refused) {
+    row := jv_at(d[0], refused, i);
+    tb: [5][TK5_TEXT] u8;
+    why := sh_text(d[0], row, "why", tb[0][..]);
+    want := sh_text(d[0], row, "text", tb[1][..]);
+    got := sh_write_row(d[0], row, key, tb[2][..]);
+    if got == "" || got != want {
+      tool_err("seat-ticket-hmac-profile: refused "); tool_err(why); tool_err(": tk_write made\n");
+      print("%\n", got);
+      failed += 1;
+      continue;
+    }
+    check_key := sh_text(d[0], row, "key", tb[3][..]);
+    check_room := sh_text(d[0], row, "check_room", tb[4][..]);
+    if tk_check(check_key, got, check_room, now).ok {
+      tool_err("seat-ticket-hmac-profile: accepted refused entry: "); tool_errln(why);
+      failed += 1;
+    }
+  }
+  if failed > 0 { return 1; }
+  print("seat-ticket-hmac-v1: profile holds\n");
+  return 0;
+}

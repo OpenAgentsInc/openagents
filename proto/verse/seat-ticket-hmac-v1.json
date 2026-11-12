@@ -1,0 +1,33 @@
+{"profile": "openagents.seat-ticket-hmac",
+  "version": 1,
+  "codec": "aethyr/session/seat-ticket.coax",
+  "check": "coax/web/tool.sh coax/web/room/seat-ticket-hmac-profile.coax proto/verse/seat-ticket-hmac-v1.json",
+  "format": "v2.PID.ACCT.NAME64.ROOM.EXPIRES.HP.MAC, v3.PID.ACCT.NAME64.ROOM.SHARD.EXPIRES.HP.MAC, and v4.CORE64.SAVED64.MAC; MAC the lowercase hex HMAC-SHA256 of every byte before .MAC under the throwaway fixture key",
+  "about_keys": "Throwaway test key, published on purpose: never use it anywhere but these fixtures.",
+  "key": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "now": 1762190000000,
+  "tickets": [
+    {"why": "v2 guest with nothing saved (shard 0 writes v2, read back as shard 1)",
+     "values": {"version": 2, "pid": "p-ffeeddccbbaa9988", "acct": 0, "name": "", "room": "dawn", "shard": 0, "expires": 1762190600000, "hp": -1, "xp": 0, "wanted": 0, "owner": 0, "schema": 1, "saved": ""},
+     "text": "v2.p-ffeeddccbbaa9988.0.-.dawn.1762190600000.-.dfcbf0268972ec384e9257de67e9fd075352620cd000dd23cab1b11b61e9e788"},
+    {"why": "v3 account with HP, XP, WANTED and an owner generation",
+     "values": {"version": 3, "pid": "p-0123456789abcdef", "acct": 1, "name": "Ash", "room": "everglade-2", "shard": 3, "expires": 1762190600000, "hp": 14, "xp": 320, "wanted": 3, "owner": 12, "schema": 1, "saved": ""},
+     "text": "v3.p-0123456789abcdef.1.QXNo.everglade-2.3.1762190600000.14x320w3g12.8d5e517044bd6271ecf90727a9b6357c87f23d74bb6881cbf5a869a3dce68e42"},
+    {"why": "v4 resumed envelope with the durable character capture (schema 2)",
+     "values": {"version": 4, "pid": "p-a", "acct": 0, "name": "Ash", "room": "pair-a", "shard": 1, "expires": 1762190060000, "hp": 7, "xp": 350, "wanted": 2, "owner": 7, "schema": 2,
+       "saved": "{\"v\":2,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]}"},
+     "text": "v4.djMucC1hLjAuUVhOby5wYWlyLWEuMS4xNzYyMTkwMDYwMDAwLjd4MzUwdzJnNy5mZDNhOWMxYjkzY2VhMWI2OTU5MmY4OTJiOGQ3OTQwMTcxZTlkYzg5YTkwYjEyM2ExYWE5Y2IwNGUxOGYxY2Rh.eyJ2IjoyLCJvd25lciI6NywicHJvY2VzcyI6MTAxLCJyZXYiOjMsImF0IjoxNzYyMTkwMDAwMDAwLCJlbmdpbmUiOjEsInJ1bGVzIjoxLCJjb250ZW50IjoxLCJocCI6MCwibWF4IjoyMCwieHAiOjM1MCwid2FudGVkIjoyLCJ4X21tIjotMTIzNCwieV9tbSI6MjAwLCJ6X21tIjotOTg3NiwieWF3X21yYWQiOjEyMzQsInBpZCI6InAtYSIsInJvb20iOiJwYWlyLWEiLCJkZWFkIjp0cnVlLCJzdGF0ZSI6WzEsMCw0LDUwLDIsNiwwLDIsMCwwLDAsMCwwLDAsMCwwLDEsMCwwLDAsMCwwLDAsMCwwLDAsMF19.7d078c3aa021c95705a7a48a22db7856cb70ac52108877e5d5ce1f2a8f2f4304"}
+  ],
+  "refused": [
+    {"why": "wrong key",
+     "key": "wrong-key-0123456789abcdef0123456789abcdef0123456789abcdef012345",
+     "check_room": "everglade-2",
+     "values": {"version": 3, "pid": "p-0123456789abcdef", "acct": 1, "name": "Ash", "room": "everglade-2", "shard": 3, "expires": 1762190600000, "hp": 14, "xp": 320, "wanted": 3, "owner": 12, "schema": 1, "saved": ""},
+     "text": "v3.p-0123456789abcdef.1.QXNo.everglade-2.3.1762190600000.14x320w3g12.8d5e517044bd6271ecf90727a9b6357c87f23d74bb6881cbf5a869a3dce68e42"},
+    {"why": "wrong room",
+     "key": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+     "check_room": "everglade-3",
+     "values": {"version": 3, "pid": "p-0123456789abcdef", "acct": 1, "name": "Ash", "room": "everglade-2", "shard": 3, "expires": 1762190600000, "hp": 14, "xp": 320, "wanted": 3, "owner": 12, "schema": 1, "saved": ""},
+     "text": "v3.p-0123456789abcdef.1.QXNo.everglade-2.3.1762190600000.14x320w3g12.8d5e517044bd6271ecf90727a9b6357c87f23d74bb6881cbf5a869a3dce68e42"}
+  ]
+}
