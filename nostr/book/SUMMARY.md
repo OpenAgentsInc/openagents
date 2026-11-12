@@ -125,4 +125,4 @@ first. Their numbers here are kept and marked moved.
 - [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) — implemented
 - [102. Agents on Nostr](ch102-agents-on-nostr.md) — implemented
 - [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) — implemented
-- [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) — partly implemented
+- [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) — implemented

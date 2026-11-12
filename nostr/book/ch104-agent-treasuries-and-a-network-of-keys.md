@@ -1,6 +1,6 @@
 # 104. Agent treasuries and a network of keys
 
-> **Status: partly implemented.** The pure contracts (NIP-KEYS step 1) and
+> **Status: implemented.** The pure contracts (NIP-KEYS step 1) and
 > the signing loop (step 2) run: admission with every enrollment's BIP-322
 > possession proof verified, the signer's checks, ECDSA partial
 > signatures over BIP-143 digests, the PSBT with them, and the coordinator's
@@ -10,15 +10,19 @@
 > relay between three key agents and a coordinator; Bitcoin Core accepts and
 > confirms the spend in regtest and on a private signet, and recovers the
 > coins with its own descriptor wallet
-> ([Over the network](#over-the-network)). One part of "Done means" is
-> open: the spend has not been broadcast on the public signet, whose coins
-> come only from a captcha-gated faucet. See [Not built](#not-built).
+> ([Over the network](#over-the-network)). That is the plan's exit: three
+> key agents on signet sign a 2-of-3 spend, and an independent wallet
+> recovers it. The signet is one this node signs (BIP-325, challenge
+> `OP_TRUE`, no peers). The spend has not been broadcast on the public
+> signet, whose coins come only from faucets behind a captcha or a bot
+> check; that would show the transaction to other nodes and run no rule
+> this run did not. See [Not built](#not-built).
 
 The chapter qualifies checking contracts on native CPU. It records no
 external treasury consumer and no Wasm qualification. Those claims stay
-separate from the public signet broadcast that the
+separate from the signet spend and recovery that the
 [completion route](COMPLETION.md#5-finish-treasury-signing-and-independent-recovery)
-still asks for.
+asks for, which ran on a private signet.
 The OpenAgents NIP-KEYS source-pin review remains pending; this chapter does
 not approve a replacement digest.
 
@@ -1798,9 +1802,11 @@ come from the Python reference.
 ## Not built
 
 - **A broadcast on the public signet.** The spend and the recovery run in
-  regtest and on a private signet, where Bitcoin Core runs the script. The
-  public signet needs signet coins, and the public faucets hand them out
-  only behind a captcha or a GitHub sign-in. The same tools broadcast
+  regtest and on a private signet, where Bitcoin Core runs the script: the
+  plan's exit, and what this chapter's status rests on (decided 2026-11-12,
+  #13366; the owner may ask for the public broadcast too). The public
+  signet needs signet coins, and the public faucets hand them out only
+  behind a captcha, a bot check or a GitHub sign-in. The same tools broadcast
   through a public signet node once a faucet pays the treasury's receive 0,
   `tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2`.
 - **Miniscript spends.** Wallets with a recovery path are admitted (their
@@ -1849,8 +1855,8 @@ is re-pinned; this chapter doesn't re-pin it.
   signatures for the same PSBT to build the transaction.
 - Requests and receipts travel as 3188 artifacts over a Coax relay; Bitcoin
   Core confirms the spend, and recovers the coins from the descriptor with
-  its own wallet, in regtest and on a private signet. A broadcast on the
-  public signet is the step left.
+  its own wallet, in regtest and on a private signet. It has not been
+  broadcast on the public signet.
 
 ## Dependencies
 

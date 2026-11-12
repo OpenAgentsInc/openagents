@@ -2248,7 +2248,7 @@
    "number": 104,
    "title": "Agent treasuries and a network of keys",
    "file": "ch104-agent-treasuries-and-a-network-of-keys.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     "bitcoin:24",

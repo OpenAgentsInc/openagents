@@ -106,13 +106,11 @@ who'll ask why we didn't use an existing library.
 
 For the technical listener, from [the handoff note](../../nostr/HANDOFF.md):
 
-- The book has 104 chapters. 102 are implemented; 103 and 104 are partly
-  done. Chapter 104 lacks one thing: its treasury spend broadcast on the
-  public signet (it has run on regtest and on a private signet).
+- The book has 104 chapters. 103 are implemented; chapter 103 (moving the
+  live relay) is partly done. Chapter 104's treasury spend ran on regtest
+  and on a private signet; it has not been broadcast on the public signet.
 - The examples were all run again on 2026-11-12: 93 programs, each in two
-  modes. 184 of the 186 runs match their recorded output. The two that
-  differ are chapter 37's relay information example, whose recorded output
-  predates that day's change to the relay's NIP-11 document (#13361).
+  modes. All 186 runs match their recorded output.
 - Mutation testing plants deliberate bugs to see whether the tests catch
   them. Every authority file the book added has zero survivors.
 - Only one thing is not ours: the C host may link one TLS library, so
@@ -128,8 +126,7 @@ Say this part plainly, as in 294.
 - **Our relay isn't the live one yet.** `relay.openagents.com` still runs
   the earlier relay. The importer and the comparison tools are built and
   checked offline; the cutover hasn't happened.
-- **Two chapters are partly built:** moving the live relay (103) and keys
-  (104).
+- **One chapter is partly built:** moving the live relay (103).
 - **The relay holds no signing key yet,** so relay-signed groups aren't
   wired.
 - **No ecash.** Cashu and Fedimint are recognised and never built. Money on
@@ -416,7 +413,7 @@ tour you recorded.
 - **"We used them for years":** true of the earlier Rust crates (`nostr`,
   `nostr-relay`, `nostr-transport`). Change the line if you'd rather not
   say it.
-- **Numbers:** 104 chapters, 102 implemented and 184 of 186 example runs
+- **Numbers:** 104 chapters, 103 implemented and 186 of 186 example runs
   were checked on 2026-11-12. The 10,000 signatures and 300 events are from
   the libsecp256k1 record of 2026-11-01 and were not run again.
 - **Tour A's examples** (`events.coax`, `filters.coax`, `ecdh.coax`,
