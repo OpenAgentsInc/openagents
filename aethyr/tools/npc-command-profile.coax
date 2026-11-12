@@ -1,0 +1,151 @@
+// Checks proto/aethyrforge/npc-command-v1.schema.json against aethyr/forge/npc-command.coax.
+// Usage: coax/web/tool.sh aethyr/tools/npc-command-profile.coax proto/aethyrforge/npc-command-v1.schema.json
+#import "Basic";
+#load "../forge/npc-command.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+NCP_FILE :: 65536;
+NCP_NODES :: 2048;
+NCP_TARGETS :: [5] string.["npc", "person", "player", "creature", "building"];
+
+ncp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+ncp_write :: (buf: [] u8, c: FnpCommand, count_explicit: bool) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_obj(o[..]);
+  jo_key(o[..], "op");
+  if c.op == FNP_SPAWN {
+    jo_str(o[..], "spawn");
+    jo_key(o[..], "base"); jo_int(o[..], c.base);
+    if c.kind < 0 || c.kind >= FNP_KINDS.count { return -1; }
+    jo_key(o[..], "kind"); jo_str(o[..], FNP_KINDS[c.kind]);
+    if count_explicit || c.count != 1 { jo_key(o[..], "count"); jo_int(o[..], c.count); }
+    if c.located {
+      jo_key(o[..], "x_cm"); jo_int(o[..], c.x);
+      jo_key(o[..], "z_cm"); jo_int(o[..], c.z);
+    }
+  } else if c.op == FNP_ORDER {
+    jo_str(o[..], "order");
+    jo_key(o[..], "base"); jo_int(o[..], c.base);
+    if c.npc > 0 { jo_key(o[..], "npc"); jo_int(o[..], c.npc); }
+    else if c.group > 0 { jo_key(o[..], "group"); jo_int(o[..], c.group); }
+    else { return -1; }
+    jo_key(o[..], "action");
+    if c.action == FNP_ATTACK {
+      jo_str(o[..], "attack");
+      if c.target_kind < 1 || c.target_kind > NCP_TARGETS.count { return -1; }
+      jo_key(o[..], "target_kind"); jo_str(o[..], NCP_TARGETS[c.target_kind - 1]);
+      jo_key(o[..], "target_id"); jo_int(o[..], c.target);
+    } else if c.action == FNP_MOVE {
+      jo_str(o[..], "move");
+      jo_key(o[..], "x_cm"); jo_int(o[..], c.x);
+      jo_key(o[..], "z_cm"); jo_int(o[..], c.z);
+    } else if c.action == FNP_STOP {
+      jo_str(o[..], "stop");
+    } else { return -1; }
+  } else if c.op == FNP_REMOVE {
+    jo_str(o[..], "remove");
+    jo_key(o[..], "base"); jo_int(o[..], c.base);
+    if c.npc > 0 { jo_key(o[..], "npc"); jo_int(o[..], c.npc); }
+    else if c.group > 0 { jo_key(o[..], "group"); jo_int(o[..], c.group); }
+    else { return -1; }
+  } else {
+    return -1;
+  }
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+ncp_fixture :: (d: Jv, fx: int) -> bool #effects(all) {
+  wbuf: [512] u8; obuf: [64] u8; kbuf: [64] u8; abuf: [64] u8; tbuf: [64] u8;
+  text := ncp_str(d, jv_get(d, fx, "wire"), wbuf[..]);
+  op := ncp_str(d, jv_get(d, fx, "op"), obuf[..]);
+  if text.count == 0 || op.count == 0 { return false; }
+  c: [1] FnpCommand;
+  if !fnp_parse(text, c[..]) { return false; }
+  if c[0].base != jv_int(d, jv_get(d, fx, "base"), -1) { return false; }
+  want_op := ifx op == "spawn" then FNP_SPAWN else (ifx op == "order" then FNP_ORDER else (ifx op == "remove" then FNP_REMOVE else 0));
+  if want_op == 0 || c[0].op != want_op { return false; }
+  count_explicit := jv_bool(d, jv_get(d, fx, "count_explicit"));
+  if want_op == FNP_SPAWN {
+    if c[0].kind < 0 || c[0].kind >= FNP_KINDS.count { return false; }
+    if FNP_KINDS[c[0].kind] != ncp_str(d, jv_get(d, fx, "kind"), kbuf[..]) { return false; }
+    if c[0].count != jv_int(d, jv_get(d, fx, "count"), -1) { return false; }
+    loc := jv_bool(d, jv_get(d, fx, "located"));
+    if c[0].located != loc { return false; }
+    if loc && (c[0].x != jv_int(d, jv_get(d, fx, "x_cm"), 99999) || c[0].z != jv_int(d, jv_get(d, fx, "z_cm"), 99999)) { return false; }
+  } else {
+    if c[0].npc != jv_int(d, jv_get(d, fx, "npc"), 0) { return false; }
+    if c[0].group != jv_int(d, jv_get(d, fx, "group"), 0) { return false; }
+    if want_op == FNP_ORDER {
+      act := ncp_str(d, jv_get(d, fx, "action"), abuf[..]);
+      want_act := ifx act == "attack" then FNP_ATTACK else (ifx act == "move" then FNP_MOVE else (ifx act == "stop" then FNP_STOP else -1));
+      if want_act < 0 || c[0].action != want_act { return false; }
+      if want_act == FNP_ATTACK {
+        if c[0].target_kind < 1 || c[0].target_kind > NCP_TARGETS.count { return false; }
+        if NCP_TARGETS[c[0].target_kind - 1] != ncp_str(d, jv_get(d, fx, "target_kind"), tbuf[..]) { return false; }
+        if c[0].target != jv_int(d, jv_get(d, fx, "target_id"), -1) { return false; }
+      } else if want_act == FNP_MOVE {
+        if !c[0].located || c[0].x != jv_int(d, jv_get(d, fx, "x_cm"), 99999) || c[0].z != jv_int(d, jv_get(d, fx, "z_cm"), 99999) { return false; }
+      } else if c[0].located || c[0].target_kind != 0 || c[0].target != 0 {
+        return false;
+      }
+    }
+  }
+  buf: [512] u8;
+  n := ncp_write(buf[..], c[0], count_explicit);
+  return n >= 0 && cast(string) buf[0..<n] == text;
+}
+
+ncp_bounds :: () -> bool #effects(all) {
+  if !fnp_capacity(0, 1, 1) || !fnp_capacity(24, 8, 8) || fnp_capacity(32, 1, 1) { return false; }
+  if !fnp_target(FNP_NPC, 1) || fnp_target(FNP_NPC, 0) || !fnp_target(FNP_NPC, 1000000) || fnp_target(FNP_NPC, 1000001) { return false; }
+  if !fnp_target(FNP_PERSON, 0) || !fnp_target(FNP_PERSON, 46) || fnp_target(FNP_PERSON, 47) { return false; }
+  if !fnp_target(FNP_PLAYER, 0) || !fnp_target(FNP_PLAYER, 15) || fnp_target(FNP_PLAYER, 16) { return false; }
+  if !fnp_target(FNP_CREATURE, 1) || fnp_target(FNP_CREATURE, 0) || !fnp_target(FNP_CREATURE, 1000000) || fnp_target(FNP_CREATURE, 1000001) { return false; }
+  if !fnp_target(FNP_BUILDING, 0) || !fnp_target(FNP_BUILDING, 59) || fnp_target(FNP_BUILDING, 60) { return false; }
+  return true;
+}
+
+ncp_check :: (profile_json: string) -> bool #effects(all) {
+  nodes: [NCP_NODES] JvNode; d_arr: [1] Jv;
+  if !jv_parse(d_arr[..], profile_json, nodes[..]) { return false; }
+  d := d_arr[0];
+  nbuf: [64] u8; rbuf: [512] u8;
+  if ncp_str(d, jv_get(d, 0, "profile"), nbuf[..]) != "npc-command-v1" { return false; }
+  if jv_int(d, jv_get(d, 0, "version"), 0) != 1 { return false; }
+  fxs := jv_get(d, 0, "fixtures");
+  if jv_kind(d, fxs) != JV_ARRAY || jv_len(d, fxs) < 4 { return false; }
+  for i: 0..<jv_len(d, fxs) {
+    if !ncp_fixture(d, jv_at(d, fxs, i)) { return false; }
+  }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 4 { return false; }
+  for i: 0..<jv_len(d, rej) {
+    bad := ncp_str(d, jv_at(d, rej, i), rbuf[..]);
+    c: [1] FnpCommand;
+    if bad.count == 0 || fnp_parse(bad, c[..]) { return false; }
+  }
+  return ncp_bounds();
+}
+
+#test "NPC command v1 profile tool checks round-trips, target bounds, and rejects drift" {
+  ok_json := "{\"profile\":\"npc-command-v1\",\"version\":1,\"fixtures\":[{\"wire\":\"{\\\"op\\\":\\\"spawn\\\",\\\"base\\\":0,\\\"kind\\\":\\\"cultist\\\"}\",\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"count\":1,\"located\":false},{\"wire\":\"{\\\"op\\\":\\\"order\\\",\\\"base\\\":1,\\\"group\\\":2,\\\"action\\\":\\\"attack\\\",\\\"target_kind\\\":\\\"building\\\",\\\"target_id\\\":9}\",\"op\":\"order\",\"base\":1,\"group\":2,\"action\":\"attack\",\"target_kind\":\"building\",\"target_id\":9},{\"wire\":\"{\\\"op\\\":\\\"order\\\",\\\"base\\\":2,\\\"npc\\\":3,\\\"action\\\":\\\"move\\\",\\\"x_cm\\\":100,\\\"z_cm\\\":-100}\",\"op\":\"order\",\"base\":2,\"npc\":3,\"action\":\"move\",\"x_cm\":100,\"z_cm\":-100},{\"wire\":\"{\\\"op\\\":\\\"remove\\\",\\\"base\\\":3,\\\"npc\\\":1}\",\"op\":\"remove\",\"base\":3,\"npc\":1}],\"rejected\":[\"{}\",\"{\\\"op\\\":\\\"spawn\\\",\\\"base\\\":0,\\\"kind\\\":\\\"dragon\\\"}\",\"{\\\"op\\\":\\\"order\\\",\\\"base\\\":0,\\\"npc\\\":1,\\\"action\\\":\\\"attack\\\",\\\"target_kind\\\":\\\"player\\\",\\\"target_id\\\":16}\",\"{\\\"op\\\":\\\"remove\\\",\\\"base\\\":0,\\\"npc\\\":1,\\\"group\\\":1}\"]}";
+  #assert ncp_check(ok_json);
+  #assert !ncp_check("{}");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: npc-command-profile FILE.json"); return 2; }
+  raw: [NCP_FILE] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("npc-command-profile: cannot read JSON"); return 2; }
+  if !ncp_check(cast(string) raw[0..<n]) { print("npc-command-v1: profile fails\n"); return 1; }
+  print("npc-command-v1: profile holds\n");
+  return 0;
+}

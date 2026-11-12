@@ -1,6 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openagents.com/proto/aethyrforge/npc-command-v1.schema.json",
+  "profile": "npc-command-v1",
+  "version": 1,
+  "codec": "aethyr/forge/npc-command.coax",
+  "check": "coax/web/tool.sh aethyr/tools/npc-command-profile.coax proto/aethyrforge/npc-command-v1.schema.json",
   "title": "Local Aethyrforge NPC command v1",
   "type": "object",
   "required": ["op", "base"],
@@ -28,5 +32,72 @@
     {"if": {"properties": {"op": {"const": "order"}, "action": {"const": "attack"}}, "required": ["action"]}, "then": {"required": ["target_kind", "target_id"], "not": {"anyOf": [{"required": ["x_cm"]}, {"required": ["z_cm"]}]}}},
     {"if": {"properties": {"op": {"const": "order"}, "action": {"const": "move"}}, "required": ["action"]}, "then": {"required": ["x_cm", "z_cm"], "not": {"anyOf": [{"required": ["target_kind"]}, {"required": ["target_id"]}]}}},
     {"if": {"properties": {"op": {"const": "order"}, "action": {"const": "stop"}}, "required": ["action"]}, "then": {"not": {"anyOf": [{"required": ["x_cm"]}, {"required": ["z_cm"]}, {"required": ["target_kind"]}, {"required": ["target_id"]}]}}}
+  ],
+  "fixtures": [
+    {
+      "name": "spawn-default-count",
+      "wire": "{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\"}",
+      "op": "spawn",
+      "base": 0,
+      "kind": "cultist",
+      "count": 1,
+      "located": false
+    },
+    {
+      "name": "spawn-located-batch",
+      "wire": "{\"op\":\"spawn\",\"base\":1000000,\"kind\":\"villager\",\"count\":8,\"x_cm\":-16000,\"z_cm\":16000}",
+      "op": "spawn",
+      "base": 1000000,
+      "kind": "villager",
+      "count": 8,
+      "located": true,
+      "x_cm": -16000,
+      "z_cm": 16000
+    },
+    {
+      "name": "order-group-attack-building",
+      "wire": "{\"op\":\"order\",\"base\":1,\"group\":1000000,\"action\":\"attack\",\"target_kind\":\"building\",\"target_id\":9}",
+      "op": "order",
+      "base": 1,
+      "group": 1000000,
+      "action": "attack",
+      "target_kind": "building",
+      "target_id": 9
+    },
+    {
+      "name": "order-npc-move",
+      "wire": "{\"op\":\"order\",\"base\":2,\"npc\":1,\"action\":\"move\",\"x_cm\":100,\"z_cm\":-100}",
+      "op": "order",
+      "base": 2,
+      "npc": 1,
+      "action": "move",
+      "x_cm": 100,
+      "z_cm": -100
+    },
+    {
+      "name": "order-npc-stop",
+      "wire": "{\"op\":\"order\",\"base\":3,\"npc\":1000000,\"action\":\"stop\"}",
+      "op": "order",
+      "base": 3,
+      "npc": 1000000,
+      "action": "stop"
+    },
+    {
+      "name": "remove-group",
+      "wire": "{\"op\":\"remove\",\"base\":4,\"group\":1}",
+      "op": "remove",
+      "base": 4,
+      "group": 1
+    }
+  ],
+  "rejected": [
+    "{}",
+    "{\"op\":\"spawn\",\"base\":0,\"kind\":\"dragon\"}",
+    "{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"count\":9}",
+    "{\"op\":\"spawn\",\"base\":0,\"kind\":\"cultist\",\"x_cm\":0}",
+    "{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"attack\",\"target_kind\":\"player\",\"target_id\":16}",
+    "{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"move\"}",
+    "{\"op\":\"order\",\"base\":0,\"npc\":1,\"action\":\"stop\",\"x_cm\":0,\"z_cm\":0}",
+    "{\"op\":\"remove\",\"base\":0,\"npc\":1,\"group\":1}"
   ]
 }
