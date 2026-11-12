@@ -26,6 +26,17 @@ native kernel, is separate work.
 - **Voice in the browser:** after the first switch.
 - **First priority:** a Coaxial version of today's "Coming soon" splash.
 
+### Decision (2026-11-11): text surfaces use the browser
+
+On the web, a text surface is drawn by the browser and a world is drawn by
+the GPU. `/chat` is rebuilt on a DOM backend (`components/backend/dom.coax`,
+not built yet) under the same Coax components the GPU backend draws. State,
+rules and every decision stay in Coax; the host gains one applier with no
+logic; there is still no npm, bundler or JavaScript framework. This narrows
+"the GPU owns the screen" and the "DOM component system" non-goal below to
+worlds, labs and the splash. Reasons and design:
+[the chat audit, section 10](../docs/audits/2026-11-11-chat-zero-base-audit.md#decision-the-web-chat-is-drawn-by-the-browser).
+
 ## Built so far
 
 For cold-load measurements, run `coax/web/serve.sh apps/openagents-web --static

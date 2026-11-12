@@ -10,7 +10,8 @@ chat surface in the repository. It says what each one does today, what limits
 and defects it has, what a new UI can keep, and what a new UI can't have until
 something under it changes.
 
-It doesn't design the new UI.
+It doesn't design the new UI. It does settle how the web chat is drawn
+(section 10).
 
 It builds on these and doesn't repeat them:
 
@@ -65,6 +66,9 @@ Nothing was built, run or deployed. No live state was read.
   hosts), uses the real DOM on the web and its own painter only where there
   is no standard. Our research declined that for worlds. Chat was not in
   scope when the canvas-only decision was made (section 10).
+- **Decided:** on the web the chat is drawn by the browser, from the same
+  Coax components, through a new DOM backend. Worlds stay on the GPU
+  (section 10).
 
 So "zero-base the chat UI" is really three decisions: what the page draws,
 what stream it reads, and which agent answers. The second and third decide
@@ -658,37 +662,101 @@ a Coaxial decision:
 7. **State kept field by field on reload,** so working on the page doesn't
    reset it on every struct change.
 
-### The decision this adds
+### Decision: the web chat is drawn by the browser
 
-Decision 4 above ("Pixels or DOM") has a third answer that the Exact
-research makes concrete, and it is the one I recommend looking at hardest:
+Decided 2026-11-11. The owner set the earlier rulings aside and asked for the
+best answer. It is this:
 
-**A DOM backend for the web chat, under the same components.** The component
-system already has two backends, `gpu` and `terminal`, under one core, one
-layout and one set of skins. A third, `dom`, would turn the same element
-table and display list into real elements in the browser. The GPU backend
-keeps drawing the same chat on the Mac, on Linux and inside a realm.
+**On the web, a text surface is drawn by the browser. A world is drawn by
+the GPU. Both come from the same Coax components.**
 
-- **What it buys:** a screen reader, find, native selection and copy, links,
-  translate, text zoom, password managers and IME without the hidden field,
-  a page that works without WebGPU (the fallback `coax/web.md` recommended
-  and nobody built), no atlas and no font download before first paint, and
-  no redraw while idle.
-- **What it costs:** the web chat no longer matches the Mac pixel for pixel;
-  the browser lays out text, so line breaks follow the browser (the atlas
-  already measures with the browser's fonts, so they are close); a third
-  backend to keep in step, checked by the text comparison in point 3, not by
-  pictures; and it reverses "a DOM component system is a non-goal" for this
-  one page. That last part is the owner's call. It would not be a second
-  component system: the components, state and rules stay in Coax, and only
-  the last layer changes.
-- **What it doesn't change:** everything in sections 4 to 7. The stream, the
-  schema and the agent are the same work either way.
+The chat is rebuilt on a third backend, `components/backend/dom.coax`,
+beside `gpu` and `terminal`. The GPU backend keeps drawing the same chat on
+the Mac, on Linux, on the phone and inside a realm.
 
-If the answer stays "canvas", then points 1 and 2 above plus a full text
-mirror of the transcript (every role, not only buttons) are the minimum to
-get off zero on accessibility, and find, selection by the browser and
-translate stay unavailable.
+**Why.** A chat is text that people read, select, search, copy, translate,
+enlarge and have read aloud. The browser already does all of that, and
+today's page does none of it. Getting it back on a canvas means writing a
+screen-reader bridge, find, selection, translation and zoom ourselves, for
+one platform, and never quite matching. Exact reached the same answer from
+the same starting shape: its own painter where there is no standard, the
+platform where there is one. The reasons for the canvas (one renderer, a
+match with the Mac, 60 frames a second) are reasons for worlds. A page that
+is still for minutes at a time gains nothing from them. The 2026-10-28
+canvas-only decision was made for the splash and the worlds, with chat
+explicitly out of scope, so this narrows it; it doesn't undo it.
+
+**What stays ours.** This is not a JavaScript framework and not a second
+component system.
+
+- State, rules, the Markdown parser, the session record, the element table
+  and every decision stay in Coax, in `components/core` and `kit`.
+- The page is still one Wasm module with no runtime, no npm and no bundler.
+- The host gains one small applier, as it has one for WebGPU. It holds no
+  logic.
+
+**How it works.**
+
+1. **The element table is the source.** Every row, button and field has a
+   stable id, a role and a label in `components/core/elements.coax`. The
+   driver's `tree`, the tests, the DOM and the GPU all read that one table.
+2. **Coax emits changes, not frames.** `backend/dom.coax` compares the table
+   with the last one it sent and writes a short list of commands keyed by
+   id: create, set text, set attribute, set class, move, remove. The host
+   applies them. Nothing is sent when nothing changed, so an idle chat does
+   no work. This is the retained, keyed update the research's phase 8 asked
+   for, and the web chat is its first user.
+3. **The browser lays out.** The layout layer already uses CSS's names for
+   flex and matches Chrome to 0.05 px (`components/layout/flex.coax`). The
+   DOM backend hands the same properties to the browser as CSS. The GPU
+   backend computes them itself. One description, two ways to resolve it.
+4. **Skins become custom properties.** A skin's tokens are written once as
+   CSS variables. Theme keeps working, with all four skins.
+5. **The composer is a real text field.** IME, paste, spell check, the phone
+   keyboard and password managers come from the browser. The hidden field
+   and the page's own caret go away on the web. `core/edit.coax` stays the
+   edit buffer for the GPU and terminal backends. The browser's field is the
+   platform's, not a second one of ours.
+6. **Markdown is elements.** `core/markdown.coax` still parses. Its blocks
+   become headings, paragraphs, lists, tables, code blocks and links, so
+   links are links and code can be selected and copied.
+7. **The first screen is HTML.** The build runs the page's first frame and
+   writes the empty new-chat screen into `index.html`. The module adopts
+   those elements by id when it loads. No fonts, atlas or WebGPU are needed
+   before the first paint, and a visitor without WebGPU gets the full chat.
+8. **Each conversation has a URL** (`/chat/ID`), so reload, Back and a
+   shared link work.
+9. **The transcript is windowed in Coax.** It keeps rows near the viewport
+   as elements and pages earlier turns from the server, following its end
+   while a turn streams. No fixed array decides how long a chat may be.
+
+**How we know the two backends agree.** Not by pictures. The check is the
+element tree as text, row by row, the same for the DOM, the GPU and the
+terminal: ids, roles, labels and order. Each backend then has its own small
+set of pictures. The Mac match stays a check of the GPU backend, on
+`/components`, where the `#demo` comparison moves.
+
+**What it costs.**
+
+- The web chat no longer matches the Mac pixel for pixel. Text is laid out
+  and rasterized by the browser.
+- A third backend to keep in step. The text comparison is what keeps it so.
+- The browser's CSS becomes something the page depends on. Keep it to the
+  flex subset the layout layer already defines, and to the skin's tokens.
+  A style outside those is a defect, as a colour written into a component
+  is today.
+
+**What it doesn't change.** Everything in sections 4 to 7. The stream, the
+schema, the stored record and the agent are the same work for any renderer,
+and they come first.
+
+**What else follows.**
+
+- `/projects/SLUG`'s agent panel, `/settings/agents`, docs, the blog and the
+  changelog are text surfaces too. They move to the same backend after the
+  chat proves it. Worlds, labs and the splash stay on the GPU.
+- The chat inside a realm is drawn by the GPU, from the same components.
+- `coax/web.md` and `components/spec.md` now record this decision.
 
 ## What to keep, delete and replace
 
@@ -736,11 +804,10 @@ These are the owner's. Each one changes what the page is.
    a streaming import in `host.js`), the existing WebSocket pipe, or sync
    frames (`/api/sync`; not built). Whichever it is, register its schema
    first: the compliance plan has chat fifth, and a rebuild puts it first.
-4. **Pixels or DOM.** Staying on the canvas keeps one component set for web,
-   Mac and Linux and the Mac match. It costs accessibility, find, native
-   selection and links until the element tree's accessibility is built
-   (spec 114-115) and `/chat` exports the mirror. Section 10 adds a third
-   answer: a DOM backend for the web chat under the same components.
+4. **Pixels or DOM.** Decided 2026-11-11: the web chat is drawn by the
+   browser, through a DOM backend under the same Coax components. The GPU
+   backend draws it everywhere else. See
+   [the decision](#decision-the-web-chat-is-drawn-by-the-browser).
 5. **Where the chat set lives.** Rebuilding the UI is the natural moment to
    move `components/zeron/` into `kit/` as the spec says, with the sidebar
    and tabs as components, so the desktop gets the same rebuild.

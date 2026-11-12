@@ -228,6 +228,11 @@ defect, and a check finds it.
   The Mac apps (OpenAgents and Aethyrforge) build the emitted Metal; the
   hand-written `Zeron.metal` is gone (2026-11-10, #13156), and the Mac
   goldens pass with it (at most 0.05% of pixels off, at glyph edges).
+- **`backend/dom.coax`** (decided 2026-11-11, not built): the element table
+  to browser elements, as a list of changes keyed by id that the web host
+  applies. The browser lays out and draws the text. The web chat is its
+  first user
+  ([why and how](../docs/audits/2026-11-11-chat-zero-base-audit.md#decision-the-web-chat-is-drawn-by-the-browser)).
 - **`backend/terminal.coax`**: the display list to a grid of cells
   (`term_draw`), and a row of the grid to the bytes a terminal reads
   (`term_row`: SGR with 24-bit colour, written by `term_sgr`, the one
