@@ -164,7 +164,7 @@ dv_key_in :: (s: [] Dv, key: int, mods: int) -> bool #export_c #effects(all) {
 // ---------------------------------------------------------------- words
 DV_PARA :: 7.8;
 DV_WORDS :: "When the OpenAgents app logs in on a phone or computer, it makes a key that can't leave that device, and its login only works with that key. A login copied off the device is useless anywhere else. Remove a device and every login on it ends at once.";
-DV_NONE_WORDS :: "No device holds a login with a device key yet. Log in with the OpenAgents app and it shows up here.";
+DV_NONE_WORDS :: "No device holds a login with a device key. Log in with the OpenAgents app and it shows up here.";
 dv_platform_words :: (platform: int) -> string {
   return ifx platform == 1 then "iPhone or iPad" else ifx platform == 2 then "Mac" else ifx platform == 3 then "Android" else "Device";
 }
