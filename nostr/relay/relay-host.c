@@ -52,6 +52,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -220,29 +221,29 @@ int64_t ry_host_peak_kib(void) {
   return (int64_t)u.ru_maxrss;
 #endif
 }
-/* ---- --import EXPORT: read whole ---- */
+/* ---- --import EXPORT: mapped read-only ---- */
+/* Mapped, not read into memory: production's export is 1.38 GB (#13361),
+   and the store's own arrays need the VM's memory. The kernel pages the
+   export in as the import reads it and may drop those pages again. */
 static unsigned char *import_data;
 static int64_t import_n;
-/* Reads the export: its size, or -1. */
+/* Maps the export: its size, or -1. */
 int64_t ry_import_load(void) {
   if (!import_path) return -1;
   int f = open(import_path, O_RDONLY | O_CLOEXEC);
   if (f < 0) return -1;
   struct stat st;
   if (fstat(f, &st) != 0 || st.st_size < 0) { close(f); return -1; }
-  free(import_data); import_n = 0;
-  import_data = malloc(st.st_size > 0 ? (size_t)st.st_size : 1);
-  if (!import_data) { close(f); return -1; }
-  int64_t got = 0;
-  while (got < st.st_size) {
-    ssize_t r = pread(f, import_data + got, (size_t)(st.st_size - got), got);
-    if (r < 0 && errno == EINTR) continue;
-    if (r <= 0) { close(f); return -1; }
-    got += r;
-  }
+  if (import_data && import_n > 0) munmap(import_data, (size_t)import_n);
+  import_data = NULL; import_n = 0;
+  if (st.st_size == 0) { close(f); return 0; }
+  void *m = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, f, 0);
   close(f);
-  import_n = got;
-  return got;
+  if (m == MAP_FAILED) return -1;
+  (void)madvise(m, (size_t)st.st_size, MADV_SEQUENTIAL);
+  import_data = m;
+  import_n = st.st_size;
+  return import_n;
 }
 int64_t ry_import_byte(int64_t i) { return i >= 0 && i < import_n ? import_data[i] : -1; }
 /* ---- --export OUT: written to OUT.tmp, synced, renamed over OUT ---- */
