@@ -27,12 +27,12 @@
 #load "../../lib/sys/proc.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/net/http.coax";
+#load "../../lib/net/cdp.coax";
 #load "../../lib/json/json.coax";
 #load "../../lib/text/base64.coax";
 #load "../../lib/nostr/event_sign.coax";
 #load "../../web/api/auth-device-crypto.coax";
 
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign #effects(all);
 
 Dl :: struct {
   base: [200] u8; base_n: int;
@@ -53,7 +53,8 @@ dl_put :: (out: [] u8, at: int, s: string) -> int {
 }
 dl_ok :: (t: [] Dl, what: string, good: bool) -> bool {
   shown := dl_body(t); if shown.count > 300 { shown = shown[0..<300]; }
-  // a refused answer never holds a token; a good one is not shown
+  // an answer that holds a token is never shown, whatever the check said
+  for i: 0..<shown.count { if i + 3 < shown.count && shown[i] == 'o' && shown[i + 1] == 'a' && shown[i + 2] == '_' { shown = "(an answer with a token: not shown)"; break; } }
   print("% %  %\n", ifx good then "ok  " else "FAIL", what, ifx good then "" else shown);
   if !good { t[0].failed += 1; }
   return good;
@@ -190,14 +191,38 @@ dl_cookie :: (t: [] Dl, out: [] u8) -> string {
   }
   return "";
 }
-// One headless shot of /settings/devices into DIR/name, after js runs in the page. keep: the page as the last shot left it.
-dl_shot :: (t: [] Dl, dir: string, name: string, js: string, keep: bool) -> bool {
-  u: [600] u8; un := dl_put(u[..], 0, dl_base(t)); un = dl_put(u[..], un, "/settings/devices");
+// A picture of the page as it stands into DIR/name.
+dl_picture :: (c: [] Cdp, dir: string, name: string, png: [] u8) -> bool {
+  proc_sleep(2500);   // the page's answer arrives and a frame is drawn
+  n := cdp_screenshot(c, png);
   o: [1300] u8; on := dl_put(o[..], 0, dir); on = dl_put(o[..], on, "/"); on = dl_put(o[..], on, name);
-  a := [9] string.["coax/web/tool.sh", "shot", cast(string) u[0..<un], cast(string) o[0..<on], "900x900", "9000", "--eval", js, "--keep"];
-  got: [2048] u8; err: [2048] u8;
-  r := proc_run(a[0..<ifx keep then 9 else 8], 180000, got[..], err[..]);
-  return r.status == 0;
+  return n > 0 && on > 0 && fs_write(cast(string) o[0..<on], cast(string) png[0..<n]);
+}
+// Headless Chrome with this session's cookie on /settings/devices: a picture of the list, then
+// REMOVE by the keyboard (Tab to the row, Enter, Enter) with a picture after each press.
+dl_page :: (t: [] Dl, cookie: string, dir: string) -> bool {
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], 900, 900, "device-live-") { print("device-live: %\n", cdp_error(c[..])); return false; }
+  ck: [600] u8; cn := dl_put(ck[..], 0, "{\"name\":\"__Host-oa_session\",\"value\":\""); cn = dl_put(ck[..], cn, cookie);
+  cn = dl_put(ck[..], cn, "\",\"url\":\""); cn = dl_put(ck[..], cn, dl_base(t)); cn = dl_put(ck[..], cn, "/\",\"path\":\"/\",\"secure\":true,\"httpOnly\":true}");
+  url: [400] u8; un := dl_put(url[..], 0, "{\"url\":\""); un = dl_put(url[..], un, dl_base(t)); un = dl_put(url[..], un, "/settings/devices\"}");
+  ok := cn > 0 && un > 0 && cdp_call(c[..], "Network.enable", "", CDP_CALL_MS) >= 0 && cdp_call(c[..], "Network.setCookie", cast(string) ck[0..<cn], CDP_CALL_MS) >= 0
+        && cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) >= 0 && cdp_send(c[..], "Page.navigate", cast(string) url[0..<un]) >= 0;
+  loaded := false;
+  while ok && !loaded {
+    if cdp_poll(c[..], 30000) != CDP_GOT { ok = false; break; }
+    if cdp_event_method(c[0].doc[0]) == "Page.loadEventFired" { loaded = true; }
+  }
+  png: [4194304] u8;
+  proc_sleep(4000);   // the engine starts and asks for the list
+  ok = ok && dl_picture(c[..], dir, "devices-list.png", png[..]);
+  ok = ok && cdp_evaluate(c[..], "dispatchEvent(new KeyboardEvent('keydown',{key:'Tab'}));dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));1") >= 0;
+  ok = ok && dl_picture(c[..], dir, "devices-ask.png", png[..]);
+  ok = ok && cdp_evaluate(c[..], "dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));1") >= 0;
+  ok = ok && dl_picture(c[..], dir, "devices-removed.png", png[..]);
+  if !ok { print("device-live: the page: %\n", cdp_error(c[..])); }
+  cdp_close(c[..]);
+  return ok;
 }
 dl_bearer :: (t: [] Dl, out: [] u8) -> string { n := dl_put(out, 0, "Authorization: Bearer "); n = dl_put(out, n, dl_at(t)); return cast(string) out[0..<n]; }
 
@@ -270,14 +295,10 @@ tool_main :: () -> int #export_c #effects(all) {
     st = dl_login(t[..], nostr[..], none[0..<0], "", false);
     cookie := dl_cookie(t[..], ck[..]);
     _ = dl_ok(t[..], "a browser logs in to the same account with the same key", st == 200 && cookie.count > 20);
-    js: [400] u8; jn := dl_put(js[..], 0, "document.cookie='__Host-oa_session="); jn = dl_put(js[..], jn, cookie); jn = dl_put(js[..], jn, "; Secure; Path=/';location.reload();'ok'");
-    first := dl_shot(t[..], shots, "devices-loading.png", cast(string) js[0..<jn], false);
-    listed := dl_shot(t[..], shots, "devices-list.png", "'list'", true);
-    asked := dl_shot(t[..], shots, "devices-ask.png", "dispatchEvent(new KeyboardEvent('keydown',{key:'Tab'}));dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));'asked'", true);
-    removed := dl_shot(t[..], shots, "devices-removed.png", "dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));'removed'", true);
+    paged := dl_page(t[..], cookie, shots);
     for i: 0..<sn { t[0].at[i] = saved_at[i]; } t[0].at_n = sn;
     t[0].n = 0;
-    _ = dl_ok(t[..], "/settings/devices lists the device, and REMOVE is pressed there twice", first && listed && asked && removed);
+    _ = dl_ok(t[..], "/settings/devices opens with that session, and REMOVE is pressed there twice", paged);
     hc: [1] string; cb2: [160] u8; cn := dl_put(cb2[..], 0, "Cookie: __Host-oa_session="); cn = dl_put(cb2[..], cn, cookie); hc[0] = cast(string) cb2[0..<cn];
     st = dl_call(t[..], "GET", "/api/auth/devices", "", hc[..]);
     _ = dl_ok(t[..], "the browser's list is empty now: the page removed the device", st == 200 && dl_member(t[..], "devices[0].id", eb[..]) == "");

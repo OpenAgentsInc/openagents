@@ -156,7 +156,7 @@ dv_key_in :: (s: [] Dv, key: int, mods: int) -> bool #export_c #effects(all) {
     order: [DH_HITS] int; n := dv_order(s, order[..]);
     if n == 0 { return false; }
     k := 0; while k < n && order[k] != s[0].focus { k += 1; }
-    s[0].focus = order[(k + 1) % n]; return true;
+    s[0].focus = ifx k >= n then order[0] else order[(k + 1) % n]; return true;   // nothing focused yet: the first control
   }
   return false;
 }
@@ -366,6 +366,18 @@ DV_T_TWO :: "200\nnow_ms 1794000000000\ncount 2\ndevice 12 ios enclave 179399999
   #assert dv_key_in(s[..], -1, 0) && s[0].armed == -1;
   dv_press(s[..], DH_ROW); _ = dv_pointer(s[..], 2, 2, 0); _ = dv_pointer(s[..], 2, 2, 2);
   #assert s[0].armed == -1 && s[0].req == DR_NONE;
+}
+#test "devices: the keyboard alone removes a device: Tab to the first row, Enter, Enter" {
+  s: [1] Dv; dv_new(s[..]); dv_reply(s[..], 1, DV_T_TWO);
+  #assert s[0].focus == -1 && !dv_key_in(s[..], -2, 0) && s[0].req == DR_NONE;   // Enter with nothing focused does nothing
+  #assert dv_key_in(s[..], -15, 0) && s[0].focus == DH_ROW;
+  #assert dv_key_in(s[..], -2, 0) && s[0].armed == 0 && s[0].req == DR_NONE;
+  #assert dv_key_in(s[..], -2, 0) && s[0].req == DR_REMOVE && dv_url(s[..]) == "/api/auth/devices/12/remove?as=lines";
+  t: [1] Dv; dv_new(t[..]); dv_reply(t[..], 1, DV_T_TWO);
+  #assert dv_key_in(t[..], -15, 0) && dv_key_in(t[..], -15, 0) && t[0].focus == DH_ROW + 1;
+  #assert dv_key_in(t[..], -15, 0) && t[0].focus == DH_SECURITY && dv_key_in(t[..], -15, 0) && t[0].focus == DH_HOME;
+  #assert dv_key_in(t[..], -15, 0) && t[0].focus == DH_ROW;   // and round again
+  #assert !dv_key_in(t[..], 65, 0) && !dv_key_in(t[..], -1, 0);
 }
 #test "devices: refusals say why; a limited login goes to confirm it's you and comes back; nobody is asked to log in" {
   s: [1] Dv; dv_new(s[..]); dv_reply(s[..], 1, DV_T_TWO);
