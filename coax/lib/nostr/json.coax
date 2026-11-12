@@ -9,6 +9,8 @@
 // most U+10FFFF). Numbers are checked against the JSON grammar; json_int
 // reads one as an integer within 2^53.
 
+#module "coax.nostr.json";   // its own owner: the engine (aethyr.talk.character) and the game (verse.everglade.guard_policy) both load it (E0607)
+
 JSON_MAX_INPUT :: 1048576;
 JSON_DEPTH :: 16;
 JSON_MAX_STRING :: 65536;
