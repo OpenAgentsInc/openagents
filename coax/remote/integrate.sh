@@ -149,8 +149,13 @@ queue_reverts() {
     head="$(git rev-parse "$main_ref")"
     git merge-base --is-ancestor "$culprit" "$head" 2> /dev/null || continue
     check="$(jq -r --arg id "$id" '.[] | select(.id == $id) | .check' "$pl_red")"
-    tree="$(git merge-tree --write-tree --merge-base="$culprit" "$head" "$culprit^" 2> /dev/null | head -1)"
-    if [[ ! "$tree" =~ ^[0-9a-f]{40}$ ]]; then
+    # merge-tree prints a tree on a conflict too, with the conflict markers in
+    # its files, and exits 1: only status 0 is a clean revert. (On 2026-11-11
+    # the revert of c4040e643d was queued with markers in build.sh, #13255.)
+    local merged mstatus
+    merged="$(git merge-tree --write-tree --merge-base="$culprit" "$head" "$culprit^" 2> /dev/null)"; mstatus=$?
+    tree="$(head -1 <<< "$merged")"
+    if (( mstatus != 0 )) || [[ ! "$tree" =~ ^[0-9a-f]{40}$ ]]; then
       pl_say "the revert of ${culprit:0:10} conflicts with $pl_main; leaving it to its agent"
       pl_red_update '(.[] | select(.id == $id) | .revert) = "conflict"' --arg id "$id"
       pl_issue_comment "$issue" "The 30-minute revert of ${culprit:0:10} conflicts with the newest $pl_main, so it was not queued. The failure is still open."

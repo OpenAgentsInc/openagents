@@ -489,6 +489,14 @@ too. `host-job.sh` now keeps a slot's compiler only while
 (the host could not judge it) on that refusal, so the pipeline runs the check
 again instead of bisecting it (2135f8731e).
 
+The same evening the 30-minute revert of c4040e643d (#13309) was queued with
+conflict markers in `apps/openagents-web/build.sh`: four later commits built
+on the module it added, and `git merge-tree --write-tree` prints a tree on a
+conflict too, with exit status 1, which `integrate.sh` didn't read. The
+revert's check failed, so nothing bad landed. `integrate.sh` now queues a
+revert only when the merge is clean; a conflicting one is left to its agent,
+and its issue says so.
+
 Measured on 2026-11-09 on today's tree: a branch check takes 8 to 42 s of
 host time when it touches a few suites or modules, about $0.001 to $0.003 of
 host time (remote.sh's ledger bills each job at a whole host's price, three
