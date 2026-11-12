@@ -18,7 +18,9 @@
 // 2000000000` gives each of its tests 2,000,000,000 steps, and --library,
 // --run-steps (the compile's own budget: tables built at compile time),
 // --root-only and --only WORD (just the checks whose names hold WORD, no spaces: a
-// file that loads a whole suite only to add its own checks) pass on too. A file with no checks of its own whose header names
+// file that loads a whole suite only to add its own checks) pass on too. A quoted
+// --only "some words" doesn't pass on: it tells a person how to run a part by hand,
+// and the suite runs every check, as it did before --only passed on. A file with no checks of its own whose header names
 // itself is a suite too: it runs the checks of what it loads (a file pinned by
 // a verification record can't take a header line, so one beside it does). A suite with no such line runs at the compiler's
 // default, 20,000,000 steps a test; one that needs more says so in its own
@@ -180,7 +182,13 @@ su_head :: (text: string, base: string) -> SuHead {
           while y < l.count && su_space(l[y]) { y += 1; }
           z := y;
           while z < l.count && !su_space(l[z]) { z += 1; }
-          if word == "--only" { only = l[y..<z]; } else { native = l[y..<z]; } x = z;
+          if word == "--only" && z > y && l[y] == '"' {
+            // a quoted phrase is how a person runs a part by hand; the suite runs whole
+            z = y + 1;
+            while z < l.count && l[z] != '"' { z += 1; }
+            if z < l.count { z += 1; }
+          } else if word == "--only" { only = l[y..<z]; } else { native = l[y..<z]; }
+          x = z;
         }
         else if word == "--steps" || word == "--run-steps" {
           y := x;
@@ -292,6 +300,9 @@ su_web_input :: (path: string, faces: bool) -> bool {
   // --only: just the checks whose names hold it (a file that loads a whole suite to add its own)
   o := su_head("// coax test --library fuzz.coax --steps 9 --only room-fuzz: --native-link\n", "fuzz.coax");
   #assert o.found && o.only == "room-fuzz:" && o.native == "" && o.steps == "9" && k.only == "";
+  // a quoted phrase is not passed on, and the words in it are not read as options
+  q := su_head("// coax test five.coax --only \"5E --library MMO\" --steps 7\n", "five.coax");
+  #assert q.found && q.only == "" && !q.library && q.steps == "7";
 }
 #test "loads: each #load's repo path, comments and strings that only mention it left out" {
   keep: [4096] u8; a: [1] SuArena; a[0].bytes = keep[..]; loads: [8] string;
