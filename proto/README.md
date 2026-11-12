@@ -97,10 +97,10 @@ To add a shape:
 4. Add the row to `registry.json`:
 
    ```json
-   {"id": "openagents.example.v1", "kind": "proto",
+   {"id": "openagents.example.v1", "kind": "proto", "owner": "coder",
     "schema": "proto/openagents/example/v1/example.proto#Record",
-    "codec": "coax/lib/example/wire.coax",
-    "check": "coax/bin/coax test coax/lib/example/wire.coax",
+    "codec": "coder/tui/example-wire.coax",
+    "check": "coax/bin/coax test coder/tui/example-wire.coax",
     "step": "C1",
     "files": ["coax/web/api/example.c"]}
    ```
@@ -112,7 +112,8 @@ Row fields:
 | Field | Meaning |
 | --- | --- |
 | `id` | The schema id on the wire (`NAME.vN`), or a short name for a shape with no id. An id that ends in `*` is a family: every id that starts that way |
-| `kind` | `proto` (a `.proto` message), `profile` (a JSON profile), `external` (a third party's format; we write no schema for it) or `local` (one program writes and reads it) |
+| `kind` | `proto` (a `.proto` message), `profile` (a JSON profile), `external` (a third party's format; we write no schema for it, and its `codec` folder is an anticorruption layer—the only place that parses the format, translating it into our own record type) or `local` (one program writes and reads it) |
+| `owner` | The bounded context that owns the shape and may change it ([`docs/architecture/contexts.md`](../docs/architecture/contexts.md)); one of the context slugs below. Its `codec` must live inside the owner's folders |
 | `schema` | The `.proto` file, with `#Message` when you name one, or the profile file |
 | `codec` | The one file that may write the id. A folder (ending in `/`) for a family or a third party's adapter |
 | `check` | The command that ties the schema to the bytes. `proto` and `profile` rows need one |
@@ -125,6 +126,30 @@ Row fields:
 `no_frames` in the registry lists the room files that build and read no wire
 bytes of their own.
 
+Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/architecture/contexts.md)):
+
+| Slug | Context | Owned folders |
+| --- | --- | --- |
+| `combat-rules` | Combat rules (SRD) | `rules/srd/`, `aethyr/rules/srd/` |
+| `characters` | Characters and progression | `everglade/model/` |
+| `world` | World and zones | `everglade/world/`, `everglade/server/`, `everglade/client/` |
+| `creatures` | Creatures and encounters | `everglade/model/`, `everglade/server/` |
+| `items` | Items and economy | `everglade/model/`, `aethyr/session/ledger.coax` |
+| `quests` | Quests | `everglade/model/` |
+| `room-session` | Room session and replication | `aethyr/session/` (except `ledger.coax`), `aethyr/net/`, `coax/web/room/` |
+| `realm-authoring` | Realm authoring | `aethyr/forge/`, `apps/aethyrforge-desktop/`, `apps/openagents-web/worldbuilder*`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c` |
+| `identity` | Identity and auth | `coax/web/api/auth*` |
+| `payments` | Payments and wallet | `pay/`, `coax/lib/pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` |
+| `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/` |
+| `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` |
+| `projects` | Projects | `coax/web/api/private.c`, `coax/web/api/drops.c` |
+| `nostr` | Nostr | `nostr/`, `coax/lib/nostr/` |
+| `psionic` | Psionic and inference | `psionic/`, `coax/lib/systemone/`, `coax/web/api/inference.c` |
+| `engine` | Engine (Aethyr) | `aethyr/` (outside `rules/`, `session/`, `net/`, `forge/`) |
+| `protocol` | Protocol (published language) | `proto/` |
+| `toolchain` | Coax toolchain | `coax/` (outside folders owned by a narrower context) |
+| `ops` | Analytics, email, jobs, access | `coax/web/api/analytics.c`, `coax/web/api/email.c`, `coax/web/api/jobs.c`, `coax/web/api/access.c` |
+
 [wire-allowlist.txt](wire-allowlist.txt) lists what is not compliant yet.
 It only shrinks: each step of the plan takes its lines out. A new line fails
 unless it ends with a reason and an issue number (`# why (#1234)`), and a
@@ -133,6 +158,7 @@ line that no longer excuses anything fails, so the list stays true.
 | Line | It excuses |
 | --- | --- |
 | `id ID FILE` | `FILE` carries `ID` though it is not the id's codec: a second encoder or a reader with its own parser |
+| `codec ID FILE` | `ID`'s codec `FILE` lives outside its `owner` context's folders |
 | `route FILE` | An API file with a `*_route` function whose bodies no row covers |
 | `room FILE` | A room file with frames of its own that no row covers |
 | `profile FILE` | A profile or schema file with no check |

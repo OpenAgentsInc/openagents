@@ -22,11 +22,14 @@
 // 6. proto/wire-allowlist.txt has a line that REV's copy lacks, and the line carries no reason and
 //    issue number ("# why (#1234)"). The allowlist shrinks: a line that no longer excuses anything
 //    fails too, so the list stays true.
-// The registry is checked as well: each row's fields, and that the files it names exist. A row
-// marked "status": "pending" names a shape and its intended codec before its schema and check
-// exist; it needs a "shape ID" line in the allowlist, and rule 2 already holds for it.
+// The registry is checked as well: each row's fields (including its owning bounded context,
+// docs/architecture/contexts.md, GitHub #13316), that its codec sits in its owner's folders, and
+// that the files it names exist. A row marked "status": "pending" names a shape and its intended
+// codec before its schema and check exist; it needs a "shape ID" line in the allowlist, and rule 2
+// already holds for it.
 // An allowlist line excuses one thing:
 //   id ID FILE      FILE carries ID though it is not ID's codec (rules 1 and 2)
+//   codec ID FILE   ID's codec FILE is outside ID's owning context's folders
 //   route FILE      rule 3, an API file            room FILE     rule 3, a room file
 //   profile FILE    rule 4                         proto FILE    rule 5
 //   shape NAME      a shape that is not compliant yet: a pending row's id, or a shape with no row
@@ -440,11 +443,52 @@ wc_judge_path :: (d: Jv, modules: Jv, allow: string, used: [] bool, run: WcRun, 
   if !run.quiet { print("FAIL rule 5: % is in no profile of % and no row marks it no-consumer. Fix: add it to the profile of the program that imports it, or add a row with \"status\": \"no-consumer\" in %: %.\n", path, WC_MODULES, WC_REGISTRY, WC_HOW); }
   return 1;
 }
+// Bounded contexts and the folders each owns (docs/architecture/contexts.md, GitHub #13316).
+wc_known_owner :: (owner: string) -> bool {
+  return owner == "combat-rules" || owner == "characters" || owner == "world" || owner == "creatures"
+    || owner == "items" || owner == "quests" || owner == "room-session" || owner == "realm-authoring"
+    || owner == "identity" || owner == "payments" || owner == "coder" || owner == "chat"
+    || owner == "projects" || owner == "nostr" || owner == "psionic" || owner == "engine"
+    || owner == "protocol" || owner == "toolchain" || owner == "ops";
+}
+wc_owner_has :: (owner: string, codec: string) -> bool {
+  if owner == "combat-rules" { return wc_under(codec, "rules/srd/") || wc_under(codec, "aethyr/rules/srd/"); }
+  if owner == "characters" { return wc_under(codec, "everglade/model/"); }
+  if owner == "world" { return wc_under(codec, "everglade/world/") || wc_under(codec, "everglade/server/") || wc_under(codec, "everglade/client/"); }
+  if owner == "creatures" { return wc_under(codec, "everglade/model/") || wc_under(codec, "everglade/server/"); }
+  if owner == "items" { return wc_under(codec, "everglade/model/") || wc_under(codec, "aethyr/session/ledger.coax"); }
+  if owner == "quests" { return wc_under(codec, "everglade/model/"); }
+  if owner == "room-session" { return (wc_under(codec, "aethyr/session/") && !wc_under(codec, "aethyr/session/ledger.coax")) || wc_under(codec, "aethyr/net/") || wc_under(codec, "coax/web/room/"); }
+  if owner == "realm-authoring" { return wc_under(codec, "aethyr/forge/") || wc_under(codec, "apps/aethyrforge-desktop/") || wc_starts(codec, "apps/openagents-web/worldbuilder") || wc_under(codec, "coax/web/api/worldbuilder.c") || wc_under(codec, "coax/web/api/realms.c"); }
+  if owner == "identity" { return wc_starts(codec, "coax/web/api/auth"); }
+  if owner == "payments" { return wc_under(codec, "pay/") || wc_under(codec, "coax/lib/pay/") || wc_under(codec, "coax/lib/bitcoin/") || wc_under(codec, "coax/lib/lightning/") || wc_under(codec, "coax/lib/lnaddr/"); }
+  if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/"); }
+  if owner == "chat" { return wc_under(codec, "components/zeron/") || wc_under(codec, "apps/openagents-web/chat.coax") || wc_under(codec, "coax/web/api/chat.c"); }
+  if owner == "projects" { return wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c"); }
+  if owner == "nostr" { return wc_under(codec, "nostr/") || wc_under(codec, "coax/lib/nostr/"); }
+  if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c"); }
+  if owner == "engine" { return wc_under(codec, "aethyr/") && !wc_under(codec, "aethyr/rules/") && !wc_under(codec, "aethyr/session/") && !wc_under(codec, "aethyr/net/") && !wc_under(codec, "aethyr/forge/"); }
+  if owner == "protocol" { return wc_under(codec, "proto/"); }
+  if owner == "toolchain" {
+    return wc_under(codec, "coax/") && !wc_under(codec, "coax/lib/agent/") && !wc_under(codec, "coax/lib/microcoder/")
+      && !wc_under(codec, "coax/lib/gateway/") && !wc_under(codec, "coax/lib/nostr/") && !wc_under(codec, "coax/lib/pay/")
+      && !wc_under(codec, "coax/lib/bitcoin/") && !wc_under(codec, "coax/lib/lightning/") && !wc_under(codec, "coax/lib/lnaddr/")
+      && !wc_under(codec, "coax/lib/systemone/") && !wc_under(codec, "coax/web/room/") && !wc_starts(codec, "coax/web/api/auth")
+      && !wc_under(codec, "coax/web/api/worldbuilder.c") && !wc_under(codec, "coax/web/api/realms.c")
+      && !wc_under(codec, "coax/web/api/chat.c") && !wc_under(codec, "coax/web/api/private.c") && !wc_under(codec, "coax/web/api/drops.c")
+      && !wc_under(codec, "coax/web/api/inference.c") && !wc_under(codec, "coax/web/api/analytics.c")
+      && !wc_under(codec, "coax/web/api/email.c") && !wc_under(codec, "coax/web/api/jobs.c") && !wc_under(codec, "coax/web/api/access.c");
+  }
+  if owner == "ops" { return wc_under(codec, "coax/web/api/analytics.c") || wc_under(codec, "coax/web/api/email.c") || wc_under(codec, "coax/web/api/jobs.c") || wc_under(codec, "coax/web/api/access.c"); }
+  return false;
+}
 // One row's own faults, as a sentence ("" when it has none). Files are not looked up here.
 wc_row_fault :: (d: Jv, row: int) -> string {
-  kind := wc_field(d, row, "kind"); status := wc_field(d, row, "status");
+  kind := wc_field(d, row, "kind"); status := wc_field(d, row, "status"); owner := wc_field(d, row, "owner");
   if wc_field(d, row, "id").count == 0 { return "has no id"; }
   if kind != "proto" && kind != "profile" && kind != "external" && kind != "local" { return "has a kind that is not proto, profile, external or local"; }
+  if owner.count == 0 { return "has no owner (a bounded context slug from proto/README.md)"; }
+  if !wc_known_owner(owner) { return "has an unknown owner (see the context slugs in proto/README.md)"; }
   if wc_field(d, row, "step").count == 0 { return "has no step"; }
   if status.count > 0 && status != "no-consumer" && status != "pending" { return "has a status that is not \"no-consumer\" or \"pending\""; }
   if status == "no-consumer" { return ifx wc_field(d, row, "schema").count == 0 then "has no schema" else ""; }
@@ -454,17 +498,32 @@ wc_row_fault :: (d: Jv, row: int) -> string {
   if wc_field(d, row, "check").count == 0 && (kind == "proto" || kind == "profile") { return "has no check, the command that ties the schema to the bytes (or mark it \"status\": \"pending\" and list it in the allowlist)"; }
   return "";
 }
-// The registry's own faults: each row's fields, ids named twice, and files that are not there.
-wc_judge_registry :: (d: Jv, run: WcRun) -> int #effects(all) {
+// Pure registry checks: each row's fields, duplicate ids, and codec folder ownership.
+wc_judge_owners :: (d: Jv, allow: string, used: [] bool, run: WcRun) -> int {
   bad := 0;
   k := wc_first(d);
   if k == -1 { if !run.quiet { print("FAIL registry: % has no \"shapes\" array\n", WC_REGISTRY); } return 1; }
   while k != -1 {
-    id := wc_field(d, k, "id");
+    id := wc_field(d, k, "id"); owner := wc_field(d, k, "owner"); codec := wc_field(d, k, "codec");
     fault := wc_row_fault(d, k);
     if fault.count > 0 { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" in % %\n", id, WC_REGISTRY, fault); } }
     o := d.nodes[k].next;
     while o != -1 { if wc_field(d, o, "id") == id { bad += 1; if !run.quiet { print("FAIL registry: % has two rows with the id \"%\"\n", WC_REGISTRY, id); } } o = d.nodes[o].next; }
+    if codec.count > 0 && wc_known_owner(owner) && !wc_owner_has(owner, codec) && !wc_excused(allow, used, "codec", id, codec) {
+      bad += 1;
+      if !run.quiet { print("FAIL registry: the row \"%\" is owned by \"%\" but its codec % is outside %'s folders (move the codec into %'s folders or change \"owner\" in %)\n", id, owner, codec, owner, owner, WC_REGISTRY); }
+    }
+    k = d.nodes[k].next;
+  }
+  return bad;
+}
+// The registry's own faults: each row's fields, ids named twice, codec folder ownership, and files that are not there.
+wc_judge_registry :: (d: Jv, allow: string, used: [] bool, run: WcRun) -> int #effects(all) {
+  bad := wc_judge_owners(d, allow, used, run);
+  k := wc_first(d);
+  if k == -1 { return bad; }
+  while k != -1 {
+    id := wc_field(d, k, "id");
     codec := wc_field(d, k, "codec"); schema := wc_schema_file(wc_field(d, k, "schema"));
     if codec.count > 0 && !fs_exists(codec) { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" names a codec that is not there: % (correct the row in %)\n", id, codec, WC_REGISTRY); } }
     if wc_starts(schema, "proto/") && !fs_exists(schema) { bad += 1; if !run.quiet { print("FAIL registry: the row \"%\" names a schema that is not there: % (correct the row in %)\n", id, schema, WC_REGISTRY); } }
@@ -504,11 +563,11 @@ wc_judge_allow :: (d: Jv, allow: string, used: [] bool, run: WcRun) -> int {
     entry := wc_entry(cast(string) allow[i..<j]); i = j + 1; n += 1;
     if entry.count == 0 { continue; }
     kind := wc_word(entry, 0); a := wc_word(entry, 1); b := wc_word(entry, 2);
-    words := ifx kind == "id" then 3 else 2;
-    known := kind == "id" || kind == "route" || kind == "room" || kind == "profile" || kind == "proto" || kind == "shape";
+    words := ifx kind == "id" || kind == "codec" then 3 else 2;
+    known := kind == "id" || kind == "codec" || kind == "route" || kind == "room" || kind == "profile" || kind == "proto" || kind == "shape";
     if !known || a.count == 0 || (words == 3) != (b.count > 0) || wc_word(entry, words).count > 0 {
       bad += 1;
-      if !run.quiet { print("FAIL allowlist: % has a line that is not \"id ID FILE\", \"route FILE\", \"room FILE\", \"profile FILE\", \"proto FILE\" or \"shape NAME\": \"%\"\n", WC_ALLOW, entry); }
+      if !run.quiet { print("FAIL allowlist: % has a line that is not \"id ID FILE\", \"codec ID FILE\", \"route FILE\", \"room FILE\", \"profile FILE\", \"proto FILE\" or \"shape NAME\": \"%\"\n", WC_ALLOW, entry); }
       continue;
     }
     if kind == "shape" {
@@ -554,7 +613,7 @@ tool_main :: () -> int #export_c #effects(all) {
   allow := cast(string) atext[0..<an];
   used: [WC_LINES] bool;
 
-  bad := wc_judge_registry(d, run);
+  bad := wc_judge_registry(d, allow, used[..], run);
 
   // Every tracked path, for rules 3 to 5.
   files: [WC_FILE] u8; body: [WC_FILE] u8;
@@ -638,7 +697,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
 // A registry for the checks: a compliant shape with an API file and a room file, a family of
 // evidence records, a profile, a proto folder nothing imports, and a pending shape.
-WC_T_REG :: "{\"no_frames\":[\"coax/web/room/room-math.coax\"],\"shapes\":[{\"id\":\"a.log.v1\",\"kind\":\"proto\",\"schema\":\"proto/openagents/a/v1/a.proto#Log\",\"codec\":\"lib/a/log.coax\",\"check\":\"coax/bin/coax test lib/a/log.coax\",\"step\":\"S1\",\"tests\":[\"lib/a/oracle.py\"],\"sql\":[\"db/0001_a.sql\",\"db/notsql.coax\"],\"files\":[\"coax/web/api/a.c\",\"coax/web/room/room-a.coax\"]},{\"id\":\"ev.*\",\"kind\":\"local\",\"codec\":\"tools/ev/\",\"step\":\"S1\"},{\"id\":\"prof-v1\",\"kind\":\"profile\",\"schema\":\"proto/verse/prof-v1.json\",\"codec\":\"lib/p.coax\",\"check\":\"coax/web/tool.sh lib/p-profile.coax\",\"step\":\"S1\"},{\"id\":\"old\",\"kind\":\"proto\",\"schema\":\"proto/openagents/old/\",\"status\":\"no-consumer\",\"step\":\"S1\"},{\"id\":\"b.v2\",\"kind\":\"proto\",\"schema\":\"proto/coder/b-v2.json\",\"codec\":\"lib/b.coax\",\"status\":\"pending\",\"step\":\"C1\"}]}";
+WC_T_REG :: "{\"no_frames\":[\"coax/web/room/room-math.coax\"],\"shapes\":[{\"id\":\"a.log.v1\",\"kind\":\"proto\",\"owner\":\"coder\",\"schema\":\"proto/openagents/a/v1/a.proto#Log\",\"codec\":\"lib/a/log.coax\",\"check\":\"coax/bin/coax test lib/a/log.coax\",\"step\":\"S1\",\"tests\":[\"lib/a/oracle.py\"],\"sql\":[\"db/0001_a.sql\",\"db/notsql.coax\"],\"files\":[\"coax/web/api/a.c\",\"coax/web/room/room-a.coax\"]},{\"id\":\"ev.*\",\"kind\":\"local\",\"owner\":\"psionic\",\"codec\":\"tools/ev/\",\"step\":\"S1\"},{\"id\":\"prof-v1\",\"kind\":\"profile\",\"owner\":\"world\",\"schema\":\"proto/verse/prof-v1.json\",\"codec\":\"lib/p.coax\",\"check\":\"coax/web/tool.sh lib/p-profile.coax\",\"step\":\"S1\"},{\"id\":\"old\",\"kind\":\"proto\",\"owner\":\"protocol\",\"schema\":\"proto/openagents/old/\",\"status\":\"no-consumer\",\"step\":\"S1\"},{\"id\":\"b.v2\",\"kind\":\"proto\",\"owner\":\"coder\",\"schema\":\"proto/coder/b-v2.json\",\"codec\":\"lib/b.coax\",\"status\":\"pending\",\"step\":\"C1\"}]}";
 WC_T_MODULES :: "{\"profiles\":{\"one\":[\"openagents/a/v1/a.proto\"]}}";
 WC_T_QUIET :: WcRun.{quiet = true};
 
@@ -699,13 +758,25 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert jv_parse(m[..], WC_T_MODULES, mnodes[..]) && wc_in_profiles(m[0], "openagents/a/v1/a.proto") && !wc_in_profiles(m[0], "openagents/b/v1/b.proto");
   for k: 0..<5 { #assert wc_row_fault(d, jv_at(d, jv_get(d, 0, "shapes"), k)) == ""; }
 }
-#test "a row's own faults: its kind, its step, its codec, and a schema and a check unless it is pending" {
-  nodes: [64] JvNode; r: [1] Jv;
-  rows := "[{\"kind\":\"proto\"},{\"id\":\"a\",\"kind\":\"json\",\"step\":\"S1\"},{\"id\":\"a\",\"kind\":\"local\"},{\"id\":\"a\",\"kind\":\"local\",\"step\":\"S1\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"S1\",\"codec\":\"c\"},{\"id\":\"a\",\"kind\":\"profile\",\"step\":\"S1\",\"codec\":\"c\",\"schema\":\"s\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"S1\",\"status\":\"no-consumer\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"S1\",\"status\":\"done\"},{\"id\":\"a\",\"kind\":\"external\",\"step\":\"S1\",\"codec\":\"c/\"},{\"id\":\"a\",\"kind\":\"proto\",\"step\":\"C1\",\"codec\":\"c\",\"status\":\"pending\"}]";
+#test "a row's own faults: its kind, its owner, its step, its codec, and a schema and a check unless it is pending" {
+  nodes: [96] JvNode; r: [1] Jv;
+  rows := "[{\"kind\":\"proto\"},{\"id\":\"a\",\"kind\":\"json\",\"owner\":\"coder\",\"step\":\"S1\"},{\"id\":\"a\",\"kind\":\"local\",\"step\":\"S1\",\"codec\":\"c\"},{\"id\":\"a\",\"kind\":\"local\",\"owner\":\"unknown\",\"step\":\"S1\",\"codec\":\"c\"},{\"id\":\"a\",\"kind\":\"local\",\"owner\":\"coder\"},{\"id\":\"a\",\"kind\":\"local\",\"owner\":\"coder\",\"step\":\"S1\"},{\"id\":\"a\",\"kind\":\"proto\",\"owner\":\"coder\",\"step\":\"S1\",\"codec\":\"c\"},{\"id\":\"a\",\"kind\":\"profile\",\"owner\":\"coder\",\"step\":\"S1\",\"codec\":\"c\",\"schema\":\"s\"},{\"id\":\"a\",\"kind\":\"proto\",\"owner\":\"coder\",\"step\":\"S1\",\"status\":\"no-consumer\"},{\"id\":\"a\",\"kind\":\"proto\",\"owner\":\"coder\",\"step\":\"S1\",\"status\":\"done\"},{\"id\":\"a\",\"kind\":\"external\",\"owner\":\"coder\",\"step\":\"S1\",\"codec\":\"c/\"},{\"id\":\"a\",\"kind\":\"proto\",\"owner\":\"coder\",\"step\":\"C1\",\"codec\":\"c\",\"status\":\"pending\"}]";
   #assert jv_parse(r[..], rows, nodes[..]);
   d := r[0];
-  for k: 0..<8 { #assert wc_row_fault(d, jv_at(d, 0, k)).count > 0; }
-  #assert wc_row_fault(d, jv_at(d, 0, 8)) == "" && wc_row_fault(d, jv_at(d, 0, 9)) == "";
+  for k: 0..<10 { #assert wc_row_fault(d, jv_at(d, 0, k)).count > 0; }
+  #assert wc_row_fault(d, jv_at(d, 0, 10)) == "" && wc_row_fault(d, jv_at(d, 0, 11)) == "";
+  #assert wc_owner_has("coder", "coder/tui/acp.coax") && wc_owner_has("coder", "coax/lib/agent/claude/") && !wc_owner_has("coder", "coax/lib/nostr/");
+  #assert wc_owner_has("room-session", "aethyr/session/relay.coax") && !wc_owner_has("room-session", "aethyr/session/ledger.coax") && wc_owner_has("items", "aethyr/session/ledger.coax");
+  #assert wc_owner_has("toolchain", "coax/web/wire-check.coax") && !wc_owner_has("toolchain", "coax/lib/nostr/") && !wc_owner_has("toolchain", "coax/web/api/auth.c");
+  #assert wc_owner_has("engine", "aethyr/render/x.coax") && !wc_owner_has("engine", "aethyr/rules/srd/x.coax") && !wc_owner_has("engine", "aethyr/forge/x.coax");
+  // wc_judge_owners fails on missing owner and on codec outside owner's folders unless allowlisted
+  reg_nodes: [64] JvNode; reg_jv: [1] Jv; reg_used: [4] bool;
+  bad_owner := "{\"shapes\":[{\"id\":\"x.v1\",\"kind\":\"local\",\"codec\":\"coax/web/wire-check.coax\",\"step\":\"S1\"}]}";
+  #assert jv_parse(reg_jv[..], bad_owner, reg_nodes[..]) && wc_judge_owners(reg_jv[0], "", reg_used[..], WC_T_QUIET) == 1;
+  misplaced := "{\"shapes\":[{\"id\":\"x.v1\",\"kind\":\"local\",\"owner\":\"world\",\"codec\":\"coax/web/wire-check.coax\",\"step\":\"S1\"}]}";
+  #assert jv_parse(reg_jv[..], misplaced, reg_nodes[..]) && wc_judge_owners(reg_jv[0], "", reg_used[..], WC_T_QUIET) == 1;
+  reg_used[0] = false;
+  #assert wc_judge_owners(reg_jv[0], "codec x.v1 coax/web/wire-check.coax  # move (#13316)\n", reg_used[..], WC_T_QUIET) == 0 && reg_used[0];
 }
 #test "rule 1: a new schema id that the registry does not list fails" {
   nodes: [256] JvNode; r: [1] Jv; used: [8] bool;
@@ -808,7 +879,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert wc_judge_allow(d, "shape b.v2\nroute coax/web/api/gone.c  # C9 (#13250)\n", used[..], WC_T_QUIET) == 0;
   // a shape with no row passes; a shape whose row is finished fails
   #assert wc_judge_allow(d, "shape b.v2\nshape runner-lines\n", used[..], WC_T_QUIET) == 0 && wc_judge_allow(d, "shape b.v2\nshape a.log.v1\n", used[..], WC_T_QUIET) == 1;
-  // lines that are not one of the six kinds
-  #assert wc_judge_allow(d, "shape b.v2\nfile a.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nid a.v1\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute a.c b.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute\n", used[..], WC_T_QUIET) == 1;
+  // lines that are not one of the seven kinds
+  #assert wc_judge_allow(d, "shape b.v2\nfile a.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nid a.v1\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\ncodec a.v1\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute a.c b.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute\n", used[..], WC_T_QUIET) == 1;
   #assert wc_word("id a b", 0) == "id" && wc_word("id a b", 2) == "b" && wc_word("id a b", 3) == "";
 }
