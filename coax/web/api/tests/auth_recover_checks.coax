@@ -259,7 +259,7 @@ ar_checks :: (t: [] Ap, dir: string) {
   ap_do(t, ar_q(q[..], "SELECT auth.freeze_link('", acct, "', 'freezecheck')"));
   ap_do(t, "SELECT auth.freeze_by_link('freezecheck')");
   ap_check(t, "freezing the account cancels a pending recovery", ap_sql(t, ar_q(q[..], "SELECT cancelled_via FROM auth.recovery_requests WHERE account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "freeze", "");
-  ap_do(t, ar_q(q[..], "UPDATE auth.accounts SET frozen_at = NULL WHERE id = '", acct, "'"));
+  ap_do(t, ar_q(q[..], "UPDATE auth.accounts SET frozen_at = NULL, frozen_why = NULL WHERE id = '", acct, "'"));
   sE4b: [160] u8; SE4 := ar_email(t, dir, "rec@example.com", sE4b[..]);
   sKdb: [160] u8; SKd := ar_key(t, K1, sKdb[..]);   // a key login to be ended by the recovery
   // the limit: three requests a week

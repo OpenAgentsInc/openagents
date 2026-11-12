@@ -62,9 +62,15 @@ script on our own origin, so the strict CSP stays the main defence.
   grant.
 - **Devices list** shows each session and device with its name, platform,
   last seen and coarse location; each has a remove button.
-- **Freeze** ("This wasn't me" from any notice) does the same as log out
-  everywhere, suspends agent grants and blocks spends until you log in at
-  L2.
+- **Freeze** ("This wasn't me" from any notice, or FREEZE MY ACCOUNT on
+  `/settings/data` from any login, even email alone) ends every session,
+  suspends every agent grant and blocks spends, at once (#13214). A frozen
+  account can still log in, but its sessions can only see the account,
+  log out, unfreeze, step up and delete or cancel a deletion; anything else
+  answers 423, and a NIP-98 signature carries no key. Unfreezing needs the
+  strongest proof from the last 5 minutes: a key, passkey or recovery code,
+  or, on an account with only email, a new email code. Agents stay paused
+  until their owner resumes each one.
 
 ## Token formats
 

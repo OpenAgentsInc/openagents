@@ -267,12 +267,31 @@ recovery slot, so one code can also open a wallet backup
 
 ## Merging accounts
 
-Two accounts merge only when you prove both in one flow: logged in to the
-survivor, you log in to the other. Authenticators, realms, characters,
-agents and grants move; the other account becomes a tombstone pointing at
-the survivor. Wallet balances and credit never merge automatically: each
-needs its own confirmation, because merging money between two people's
-accounts by mistake can't be undone.
+Built in #13214. Two accounts merge only when you prove both within one
+10-minute ask, on `/settings/data`:
+
+1. Logged in to the account you keep (the survivor), choose MERGE ANOTHER
+   ACCOUNT. This needs the survivor's strongest proof from the last 5
+   minutes: a key, passkey or recovery code, or, on an account with only
+   email, a new email code.
+2. Prove the other account. If it has a key, passkey or recovery code, sign
+   a challenge (purpose `merge`) with its key: its email isn't enough. If
+   it has only email, type a code we send to that email.
+3. The page shows what moves. Confirm.
+
+Everything that points at the other account moves: emails, keys, passkeys,
+agents and their grants, realms, characters, saves and Lightning Address
+names. Every column that points at an account is listed in
+`auth.life_columns`, and a check fails when a new one is missing, so
+nothing is left behind. The other account becomes a tombstone
+(`merged_into` the survivor) and its logins end. Both accounts' audit rows
+stay, and the survivor's log records `merge` and the other's `merged`.
+
+Credit never moves without its own confirmation: when the other account has
+service credit, the merge is refused until you also confirm `money: true`
+(ITS CREDIT MOVES TOO on the page), because merging money between two
+people's accounts by mistake can't be undone. A frozen account, one waiting
+to be deleted, or an agent can't be merged.
 
 ## Per-platform flows
 

@@ -1,0 +1,307 @@
+// An account's life: freeze, merge, export and deletion (auth-life.c, auth-life-policy.coax,
+// migration 0149; #13214), run by test.sh after auth_recover_checks.coax. Each threat in #13214's
+// threat list has its checks here, named for it:
+//   a stolen login     the person freezes the account from any login, at once: every session ends,
+//                      agents pause, nothing spends; unfreezing needs the strongest proof, fresh
+//   a stolen session   deleting, unfreezing, merging and exporting need fresh proof; an email
+//                      login on an account with a key is never enough
+//   a hostile merge    both accounts prove themselves in one 10-minute ask; the other proves by its
+//                      key when it has one; money moves only when confirmed; nothing is lost
+//   a hasty delete     30 days, shown, cancellable from any login; then a tombstone whose id is
+//                      never reused, and personal rows really gone
+//   a data leak        the export is the person's own, needs proof, and carries no secrets
+// Notices are sent inline (OA_AUTH_NOTICE_SYNC=1) to the fake Resend.
+//   API=... PGURL=... PSQL=... SIGN=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/auth_life_checks.coax
+// tool.sh: tls
+#load "auth_harness.coax";
+#load "../agent-wire.coax";
+
+al_q :: (q: [] Sb, a: string, b: string, c: string) -> string { sb_clear(q); sb(q, a); sb(q, b); sb(q, c); return sb_text(q); }
+al_mails :: (dir: string, out: [] u8) -> string {
+  lb: [1100] u8; n := fs_read(fs_join(dir, "all", lb[..]), out);
+  return ifx n <= 0 then "" else cast(string) out[0..<n];
+}
+al_with :: (t: [] Ap, method: string, path: string, body: string, session: string) -> int {
+  c1: [1] Sb;
+  return ac_call(t, method, path, body, ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
+}
+// Logs in by email (a code, in this browser): the session's cookie value in out.
+al_email :: (t: [] Ap, dir: string, address: string, out: [] u8) -> string {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  pb: [128] u8; pend: [128] u8; c1: [1] Sb;
+  st := ac_start(t, address, "203.0.113.60", false, pb[..]);
+  p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  code: [6] u8; link: [64] u8;
+  if st != 200 || !ac_mail(dir, code[..], link[..]) { return ""; }
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "");
+  if st != 200 { return ""; }
+  return ac_cookie(t, "__Host-oa_session", out);
+}
+// Logs in with a key (a signed challenge): the session's cookie value in out.
+al_key :: (t: [] Ap, keyfile: string, out: [] u8) -> string {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  if ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "", "", "") != 200 { return ""; }
+  chb: [128] u8; ch := ap_member(ap_body(t), "challenge", chb[..]);
+  body: [1] Sb; sb(body[..], "{\"challenge\":\""); sb(body[..], ch); sb(body[..], "\",\"label\":\"extension\"}");
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/auth/nostr");
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), sb_text(body[..]), true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  if ac_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), sb_text(ah[..]), "", "") != 200 { return ""; }
+  return ac_cookie(t, "__Host-oa_session", out);
+}
+// A proof for purpose, signed by keyfile, sent to the challenge's url with this session: its status.
+al_prove :: (t: [] Ap, session: string, keyfile: string, purpose: string) -> int {
+  c1: [1] Sb; cb: [1] Sb;
+  sb(cb[..], "{\"purpose\":\""); sb(cb[..], purpose); sb(cb[..], "\"}");
+  st := ac_call(t, "POST", "/api/auth/proof/challenge", sb_text(cb[..]), ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
+  if st != 200 { return st; }
+  ub: [512] u8; url := ap_member(ap_body(t), "url", ub[..]);
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", url, "", false, sigb[..]);
+  b: [1] Sb; sb(b[..], "{\"proof\":\""); sb(b[..], sig); sb(b[..], "\"}");
+  return ac_call(t, "POST", url, sb_text(b[..]), ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
+}
+// A request signed by keyfile (NIP-98 over the URL and the body).
+al_signed :: (t: [] Ap, keyfile: string, method: string, path: string, body: string) -> int {
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
+  sig: [4096] u8;
+  auth := ap_nostr(t, keyfile, method, sb_text(url[..]), body, body.count > 0, sig[..]);
+  h: [1] Sb; sb(h[..], "Authorization: Nostr "); sb(h[..], auth);
+  hs := [2] string.[sb_text(h[..]), "Content-Type: application/x-protobuf"];
+  return ap_call(t, method, path, body, hs[..]);
+}
+al_keyed :: (t: [] Ap, key: string, method: string, path: string) -> int {
+  h: [1] Sb; sb(h[..], "Authorization: Bearer "); sb(h[..], key);
+  hs := [1] string.[sb_text(h[..])];
+  return ap_call(t, method, path, "", hs[..]);
+}
+// Links address to the account of session (a code mailed to it).
+al_link :: (t: [] Ap, dir: string, session: string, address: string) -> bool {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  b: [1] Sb; sb(b[..], "{\"email\":\""); sb(b[..], address); sb(b[..], "\",\"link\":true}");
+  if al_with(t, "POST", "/api/auth/email/start", sb_text(b[..]), session) != 200 { return false; }
+  pb: [128] u8; pend: [128] u8; p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  code: [6] u8; link: [64] u8;
+  if !ac_mail(dir, code[..], link[..]) { return false; }
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  c1: [1] Sb;
+  return ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "") == 200;
+}
+al_logged_in :: (t: [] Ap, session: string) -> bool {
+  eb: [64] u8;
+  return al_with(t, "GET", "/api/auth/account", "", session) == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true";
+}
+al_count :: (t: [] Ap, q: [] Sb, a: string, acct: string, c: string) -> int { o: [64] u8; return ap_whole(ap_sql(t, al_q(q, a, acct, c), o[..])); }
+
+al_checks :: (t: [] Ap, dir: string) {
+  eb: [1024] u8; mail: [262144] u8; q: [1] Sb; out: [4096] u8;
+  // A: a key (K1) and an email. B: a key (K2). D: a key (K3) and an email. C, F: email only. G: a key (K5).
+  k1b: [1100] u8; K1 := fs_join(dir, "k1.key", k1b[..]); pk1b: [128] u8; pk1 := ac_newkey(t, K1, pk1b[..]);
+  k2b: [1100] u8; K2 := fs_join(dir, "k2.key", k2b[..]); pk2b: [128] u8; pk2 := ac_newkey(t, K2, pk2b[..]);
+  k3b: [1100] u8; K3 := fs_join(dir, "k3.key", k3b[..]); pk3b: [128] u8; pk3 := ac_newkey(t, K3, pk3b[..]);
+  k5b: [1100] u8; K5 := fs_join(dir, "k5.key", k5b[..]); pk5b: [128] u8; pk5 := ac_newkey(t, K5, pk5b[..]);
+  sab: [160] u8; SA := al_key(t, K1, sab[..]);
+  ap_check(t, "A logs in with its key and links an email", ap_starts(SA, "oas_") && al_link(t, dir, SA, "life-a@example.com"), ap_body(t));
+  ab: [64] u8; A := ap_sql(t, al_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk1, "'"), ab[..]);
+  st := al_with(t, "GET", "/api/auth/life", "", SA);
+  ap_check(t, "the account's state: not frozen, its ways in counted, the 30 days and the backups' 35 stated", st == 200
+           && ap_member(ap_body(t), "frozen", eb[..]) == "" && ap_member_int(ap_body(t), "keys", -1) == 1 && ap_member_int(ap_body(t), "emails", -1) == 1
+           && ap_member_int(ap_body(t), "purge_days", -1) == 30 && ap_member_int(ap_body(t), "backup_days", -1) == 35, ap_body(t));
+  // A's agent, made by a signed request (L2)
+  rq: AwRequest; rq.name_n = aw_text(rq.name[..], "Helper"); rq.mask = 1;
+  wb: [AW_MAX] u8; wn := aw_request_write(rq, wb[..]);
+  st = al_signed(t, K1, "POST", "/api/agents", cast(string) wb[0..<wn]);
+  s := aw_secret_read(t[0].out[0..<t[0].n]);
+  kb: [96] u8; for i: 0..<s.secret_n { kb[i] = s.secret[i]; }
+  AGENT := cast(string) kb[0..<s.secret_n];
+  ap_check(t, "A makes an agent", st == 200 && ap_starts(AGENT, "oa_key_") && al_keyed(t, AGENT, "GET", "/api/agent/me") == 200, ap_body(t));
+
+  // ---- a stolen login: the person freezes from any login, even email alone on an account with a key
+  seb: [160] u8; SE := al_email(t, dir, "life-a@example.com", seb[..]);
+  st = al_keyed(t, AGENT, "POST", "/api/auth/freeze");
+  ap_check(t, "an agent can't freeze or delete its owner's account", st == 403 && al_keyed(t, AGENT, "POST", "/api/auth/delete") == 403, ap_body(t));
+  st = al_with(t, "POST", "/api/auth/freeze", "{}", SE);
+  ap_check(t, "a stolen login: email alone (a limited session) freezes the account at once", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "frozen", ap_body(t));
+  ap_check(t, "a stolen login: every session ended (the key's too)", !al_logged_in(t, SA) && !al_logged_in(t, SE)
+           && al_count(t, q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", A, "'") == 0, "");
+  ap_check(t, "a stolen login: its agents paused, and an agent key is refused", al_keyed(t, AGENT, "GET", "/api/agent/me") >= 401
+           && al_count(t, q[..], "SELECT count(*) FROM auth.agent_grants WHERE owner = '", A, "' AND suspended_at IS NOT NULL") == 1, ap_body(t));
+  st = al_signed(t, K1, "GET", "/api/agents", "");
+  ap_check(t, "a stolen login: the key's signature can't act (no agents, no spending): 423", st == 423
+           && ap_member(ap_body(t), "error", eb[..]) == "This account is frozen. Unfreeze it at openagents.com/settings/data first.", ap_body(t));
+  ap_check(t, "the freeze told every way in", ap_has(al_mails(dir, mail[..]), "Your OpenAgents account was frozen")
+           && al_count(t, q[..], "SELECT count(*) FROM auth.notices WHERE what = 'freeze' AND account = '", A, "'") == 1, "");
+  // the person logs in again to unfreeze
+  sa2b: [160] u8; SA2 := al_key(t, K1, sa2b[..]);
+  st = al_with(t, "GET", "/api/auth/life", "", SA2);
+  ap_check(t, "a frozen account still logs in, to see it and unfreeze", ap_starts(SA2, "oas_") && st == 200 && ap_member(ap_body(t), "frozen", eb[..]) == "freeze", ap_body(t));
+  ap_check(t, "a frozen account's session can do nothing else", al_with(t, "GET", "/api/agents", "", SA2) == 423, ap_body(t));
+  se2b: [160] u8; SE2 := al_email(t, dir, "life-a@example.com", se2b[..]);
+  st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SE2);
+  ap_check(t, "a stolen session: email alone can't unfreeze an account with a key", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  ap_do(t, al_q(q[..], "UPDATE auth.sessions SET l2_at = now() - interval '6 minutes' WHERE account = '", A, "'"));
+  st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SA2);
+  ap_check(t, "a stolen session: a key login over 5 minutes old can't unfreeze", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  st = al_prove(t, SA2, K1, "stepup");
+  st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SA2);
+  ap_check(t, "a fresh key login unfreezes", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "unfrozen"
+           && al_count(t, q[..], "SELECT count(*) FROM auth.accounts WHERE id = '", A, "' AND frozen_at IS NULL") == 1, ap_body(t));
+  ap_check(t, "agents stay paused after unfreezing, until resumed one by one", al_keyed(t, AGENT, "GET", "/api/agent/me") >= 401, ap_body(t));
+
+  // ---- email only: a fresh email code is the strongest proof there is
+  scb: [160] u8; SC := al_email(t, dir, "life-c@example.com", scb[..]);
+  cb_: [64] u8; C := ap_sql(t, "SELECT account FROM auth.emails WHERE id = (SELECT max(id) FROM auth.emails)", cb_[..]);
+  st = al_with(t, "POST", "/api/auth/freeze", "{}", SC);
+  sc2b: [160] u8; SC2 := al_email(t, dir, "life-c@example.com", sc2b[..]);
+  ap_do(t, al_q(q[..], "UPDATE auth.sessions SET created_at = now() - interval '6 minutes' WHERE account = '", C, "'"));
+  st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SC2);
+  ap_check(t, "an email-only account: an email login over 5 minutes old can't unfreeze", st == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "Log in again with a new email code to do this (within 5 minutes).", ap_body(t));
+  sc3b: [160] u8; SC3 := al_email(t, dir, "life-c@example.com", sc3b[..]);
+  st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SC3);
+  ap_check(t, "an email-only account: a new email code unfreezes it", st == 200, ap_body(t));
+
+  // ---- export: everything, machine-readable, and no secrets
+  st = al_with(t, "GET", "/api/auth/export", "", SE2);
+  ap_check(t, "a data leak: email alone can't export an account with a key", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2", ap_body(t));
+  st = al_with(t, "GET", "/api/auth/export?check=1", "", SA2);
+  ap_check(t, "the page asks whether it may export first", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "ready", ap_body(t));
+  st = al_with(t, "GET", "/api/auth/export", "", SA2);
+  body := ap_body(t);
+  ap_check(t, "the export is JSON lines: a header, the account, the email itself, the agents as their proto message, rows and audit",
+           st == 200 && ap_starts(body, "{\"type\":\"export\",\"format\":\"openagents.export.v1\"") && ap_has(body, "\"type\": \"account\"")
+           && ap_has(body, "\"address\":\"life-a@example.com\"") && ap_has(body, "\"message\":\"openagents.account.v1alpha1.AgentList\"")
+           && ap_has(body, "\"table\": \"auth.nostr_keys\"") && ap_has(body, "\"type\": \"audit\"") && ap_has(ap_header(t, "Content-Disposition"), "attachment"), body);
+  ap_check(t, "a data leak: the export carries no token digests, seals or lookups", !ap_has(body, "token_sha256") && !ap_has(body, "\"sealed\"") && !ap_has(body, "\"lookup\""), "");
+
+  // ---- a hostile merge: both prove themselves; the other's key when it has one
+  sbb: [160] u8; SB := al_key(t, K2, sbb[..]);
+  bb: [64] u8; B := ap_sql(t, al_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk2, "'"), bb[..]);
+  ap_do(t, al_q(q[..], "INSERT INTO inference.credit (pubkey, msat) VALUES ('", pk2, "', 5000)"));
+  st = al_with(t, "POST", "/api/auth/merge/start", "{}", SE2);
+  ap_check(t, "a hostile merge: email alone can't start a merge on an account with a key", st == 401, ap_body(t));
+  st = al_prove(t, SA2, K1, "stepup");
+  st = al_with(t, "POST", "/api/auth/merge/start", "{}", SA2);
+  ap_check(t, "a merge starts from a fresh login", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "asked", ap_body(t));
+  st = al_with(t, "POST", "/api/auth/merge/confirm", "{}", SA2);
+  ap_check(t, "a hostile merge: nothing merges before the other account proves itself", st == 409
+           && ap_member(ap_body(t), "error", eb[..]) == "Log in to the other account first.", ap_body(t));
+  st = al_prove(t, SA2, K1, "merge");
+  ap_check(t, "merging an account into itself is refused", st == 409, ap_body(t));
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = al_with(t, "POST", "/api/auth/email/start", "{\"email\":\"life-nobody@example.com\",\"merge\":true}", SA2);
+  ap_check(t, "a merge by an email no account has is refused before any mail", st == 404, ap_body(t));
+  st = al_prove(t, SA2, K2, "merge");
+  ap_check(t, "B's key proves B to A's merge, and shows what would move", st == 200 && ap_member(ap_body(t), "other", eb[..]) == B
+           && ap_member_int(ap_body(t), "credit_msat", -1) == 5000, ap_body(t));
+  st = al_with(t, "POST", "/api/auth/merge/confirm", "{}", SA2);
+  ap_check(t, "a hostile merge: money never moves without its own confirmation", st == 409
+           && ap_member(ap_body(t), "error", eb[..]) == "That account has service credit. Confirm that it moves too, or spend it first.", ap_body(t));
+  st = al_with(t, "POST", "/api/auth/merge/confirm", "{\"money\": true}", SA2);
+  ap_check(t, "with the money confirmed, B merges into A", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "merged", ap_body(t));
+  ap_check(t, "nothing is lost: B's key is A's now, with its credit", al_count(t, q[..], "SELECT count(*) FROM auth.nostr_keys WHERE account = '", A, "'") == 2
+           && ap_sql(t, al_q(q[..], "SELECT msat FROM inference.credit WHERE pubkey = '", pk2, "'"), out[..]) == "5000", "");
+  ap_check(t, "B is a tombstone pointing at A; its logins ended", ap_sql(t, al_q(q[..], "SELECT merged_into FROM auth.accounts WHERE id = '", B, "'"), out[..]) == A
+           && !al_logged_in(t, SB), "");
+  ap_check(t, "the audit keeps both histories", al_count(t, q[..], "SELECT count(*) FROM auth.audit WHERE action = 'merged' AND account = '", B, "'") == 1
+           && al_count(t, q[..], "SELECT count(*) FROM auth.audit WHERE action = 'login.nostr' AND account = '", B, "'") >= 1
+           && al_count(t, q[..], "SELECT count(*) FROM auth.merges WHERE survivor = '", A, "' AND money") == 1, "");
+  sb2b: [160] u8; SB2 := al_key(t, K2, sb2b[..]);
+  ap_check(t, "B's key now logs in to A", al_with(t, "GET", "/api/auth/life", "", SB2) == 200 && ap_member(ap_body(t), "account", eb[..]) == A, ap_body(t));
+  // D has a key and an email: its email alone can't prove it to a merge
+  sdb: [160] u8; SD := al_key(t, K3, sdb[..]);
+  ap_check(t, "D links an email", al_link(t, dir, SD, "life-d@example.com"), ap_body(t));
+  st = al_prove(t, SA2, K1, "stepup");
+  st = al_with(t, "POST", "/api/auth/merge/start", "{}", SA2);
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = al_with(t, "POST", "/api/auth/email/start", "{\"email\":\"life-d@example.com\",\"merge\":true}", SA2);
+  pb: [128] u8; pend: [128] u8; p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  code: [6] u8; link: [64] u8; got := ac_mail(dir, code[..], link[..]);
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  c1: [1] Sb;
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "");
+  ap_check(t, "a hostile merge: an account with a key can't be proved by its email", st == 403
+           && ap_member(ap_body(t), "error", eb[..]) == "That account has a key. Prove it with the key, not its email.", ap_body(t));
+  // C has only its email: the email proves it
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = al_with(t, "POST", "/api/auth/email/start", "{\"email\":\"life-c@example.com\",\"merge\":true}", SA2);
+  p = ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  got = ac_mail(dir, code[..], link[..]);
+  sb_clear(vb[..]); sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "");
+  ap_check(t, "an email-only account proves itself by a code to its email", st == 200 && ap_member(ap_body(t), "other", eb[..]) == C, ap_body(t));
+  st = al_with(t, "POST", "/api/auth/merge/confirm", "{}", SA2);
+  ap_check(t, "C merges into A: its email is A's way in now", st == 200 && al_count(t, q[..], "SELECT count(*) FROM auth.emails WHERE account = '", A, "'") == 2, ap_body(t));
+  st = al_with(t, "GET", "/api/auth/export", "", SA2);
+  ap_check(t, "the export holds the merged accounts' rows and history too", st == 200 && ap_has(ap_body(t), B) && ap_has(ap_body(t), C), "");
+
+  // ---- a hasty delete: 30 days, shown, cancellable from any login
+  sfb: [160] u8; SF := al_email(t, dir, "life-f@example.com", sfb[..]);
+  fb: [64] u8; F := ap_sql(t, "SELECT account FROM auth.emails WHERE id = (SELECT max(id) FROM auth.emails)", fb[..]);
+  st = al_with(t, "POST", "/api/auth/delete", "{}", SF);
+  purge := ap_member_int(ap_body(t), "purge_ms", 0);
+  ap_check(t, "deleting freezes the account at once and sets the purge 30 days on", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "deleting"
+           && al_count(t, q[..], "SELECT count(*) FROM auth.accounts WHERE id = '", F, "' AND frozen_why = 'delete' AND purge_at BETWEEN now() + interval '29 days 23 hours' AND now() + interval '30 days 1 minute'") == 1
+           && !al_logged_in(t, SF), ap_body(t));
+  ap_check(t, "the deletion was announced with its end time", ap_has(al_mails(dir, mail[..]), "Your OpenAgents account will be deleted on"), "");
+  ap_check(t, "a purge sooner than 30 days is refused by the database", ap_sql(t, "SELECT count(*) FROM pg_constraint WHERE conname = 'purge_waits_30_days' AND convalidated AND pg_get_constraintdef(oid) LIKE '%30 days%'", out[..]) == "1", "");   // an UPDATE that broke it would fail the run's SQL count
+  sf2b: [160] u8; SF2 := al_email(t, dir, "life-f@example.com", sf2b[..]);
+  st = al_with(t, "GET", "/api/auth/life", "", SF2);
+  ap_check(t, "a login sees the deletion and its end", st == 200 && ap_member(ap_body(t), "frozen", eb[..]) == "delete" && ap_member_int(ap_body(t), "purge_ms", 0) == purge, ap_body(t));
+  ap_check(t, "a deletion is cancelled, never unfrozen", al_with(t, "POST", "/api/auth/unfreeze", "{}", SF2) == 409, ap_body(t));
+  ap_check(t, "waiting to be deleted, the account may still export", al_with(t, "GET", "/api/auth/export?check=1", "", SF2) == 200, ap_body(t));
+  ap_do(t, al_q(q[..], "UPDATE auth.sessions SET created_at = now() - interval '2 days' WHERE account = '", F, "'"));
+  st = al_with(t, "POST", "/api/auth/delete/cancel", "{}", SF2);
+  ap_check(t, "a hasty delete: cancelled from an email login of any age", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "kept"
+           && al_count(t, q[..], "SELECT count(*) FROM auth.accounts WHERE id = '", F, "' AND frozen_at IS NULL AND purge_at IS NULL") == 1, ap_body(t));
+  sgb: [160] u8; SG := al_key(t, K5, sgb[..]);
+  gb: [64] u8; G := ap_sql(t, al_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk5, "'"), gb[..]);
+  st = al_with(t, "POST", "/api/auth/delete", "{}", SG);
+  sg2b: [160] u8; SG2 := al_key(t, K5, sg2b[..]);
+  ap_do(t, al_q(q[..], "UPDATE auth.sessions SET l2_at = now() - interval '2 days' WHERE account = '", G, "'"));
+  st = al_with(t, "POST", "/api/auth/delete/cancel", "{}", SG2);
+  ap_check(t, "a hasty delete: cancelled from a key login of any age", st == 200, ap_body(t));
+
+  // ---- the purge: a tombstone, personal rows gone, the id never reused
+  shb: [160] u8; SH := al_email(t, dir, "life-h@example.com", shb[..]);
+  hb: [64] u8; H := ap_sql(t, "SELECT account FROM auth.emails WHERE id = (SELECT max(id) FROM auth.emails)", hb[..]);
+  st = al_with(t, "POST", "/api/auth/delete", "{}", SH);
+  ap_do(t, al_q(q[..], "UPDATE auth.accounts SET delete_asked_at = delete_asked_at - interval '31 days', purge_at = purge_at - interval '31 days' WHERE id = '", H, "'"));
+  ap_do(t, "SELECT auth.purge_due()");
+  ap_check(t, "the purge leaves a tombstone: the id, deleted, nothing else", al_count(t, q[..], "SELECT count(*) FROM auth.accounts WHERE id = '", H, "' AND deleted_at IS NOT NULL AND display_name IS NULL") == 1
+           && al_count(t, q[..], "SELECT count(*) FROM auth.emails WHERE account = '", H, "'") == 0
+           && al_count(t, q[..], "SELECT count(*) FROM auth.sessions WHERE account = '", H, "'") == 0, "");
+  ap_check(t, "the purge forgets the audit's link to the person", al_count(t, q[..], "SELECT count(*) FROM auth.audit WHERE account = '", H, "'") == 0, "");
+  sh2b: [160] u8; SH2 := al_email(t, dir, "life-h@example.com", sh2b[..]);
+  h2b: [64] u8; H2 := ap_sql(t, "SELECT account FROM auth.emails WHERE id = (SELECT max(id) FROM auth.emails)", h2b[..]);
+  ap_check(t, "a purged account's id is never reused: the same email makes a new account", ap_starts(SH2, "oas_") && H2.count > 0 && H2 != H, H2);
+  ap_check(t, "a purged account's id can't be taken again", al_count(t, q[..], "SELECT count(*) FROM auth.accounts WHERE deleted_at IS NOT NULL AND id = '", H, "'") == 1, "");   // the tombstone holds the id: the primary key refuses it
+
+  // ---- the registry covers every column that points at an account
+  ap_check(t, "every column pointing at an account is in auth.life_columns", ap_sql(t, "SELECT count(*) FROM auth.life_unlisted()", out[..]) == "0",
+           ap_sql(t, "SELECT string_agg(tbl || '.' || col, ' ') FROM auth.life_unlisted()", out[..]));
+  ap_check(t, "every life step is in the audit log", ap_sql(t, "SELECT count(DISTINCT action) FROM auth.audit WHERE action IN ('freeze', 'unfreeze', 'export', 'merge.start', 'merge.proved', 'merge', 'merged', 'delete.ask', 'delete.cancel')", out[..]) == "9", "");
+  ap_check(t, "the dump role can read the new tables (when it exists here)",
+           ap_sql(t, "SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'oa_dump') THEN 0 WHEN has_table_privilege('oa_dump', 'auth.merges', 'SELECT') AND has_table_privilege('oa_dump', 'auth.merge_asks', 'SELECT') AND has_table_privilege('oa_dump', 'auth.life_columns', 'SELECT') THEN 0 ELSE 1 END", out[..]) == "0", "");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "mail" {
+    if args_count(a[..]) != 3 { tool_errln("auth_life_checks mail PORT DIR"); return 2; }
+    return am_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  wb: [4096] u8; work := fs_temp("auth-life-mail", wb[..]);
+  h := ac_mail_start(t[..], "coax/web/api/tests/auth_life_checks.coax", work);
+  if h < 0 { return ap_done(t[..], "auth life checks"); }
+  al_checks(t[..], work);
+  ac_mail_stop(h, work);
+  return ap_done(t[..], "auth life checks");
+}

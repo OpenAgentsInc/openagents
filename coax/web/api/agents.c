@@ -284,6 +284,19 @@ static void send_list(const request *q, PGconn *db, const char *owner) {
   else send_bytes(q, 200, list, (size_t)n);
   free(list);
 }
+// The owner's agents as an AgentList (agents.proto) in base64, for the export (auth-life.c, #13214).
+char *agents_export_b64(PGconn *db, const char *owner) {
+  PGresult *r = agents_rows(db, owner, NULL);
+  if (!r) return NULL;
+  size_t cap = 32 * AG_MAX_BODY;
+  unsigned char *list = malloc(cap);
+  int n = list ? list_rows(r, list, cap) : -1;
+  PQclear(r);
+  char *t = n >= 0 ? malloc(4 * (((size_t)n + 2) / 3) + 1) : NULL;
+  if (t) t[EVP_EncodeBlock((unsigned char *)t, list, n)] = 0;
+  free(list);
+  return t;
+}
 // One agent (the first row) as an Agent message.
 static void send_one(const request *q, PGconn *db, const char *owner, const char *agent) {
   PGresult *r = agents_rows(db, owner, agent);

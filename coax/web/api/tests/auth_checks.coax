@@ -180,7 +180,12 @@ ac_checks :: (t: [] Ap, dir: string) {
   got = ac_mail(dir, code[..], link[..]);
   sb_clear(fv[..]); sb(fv[..], "{\"code\":\""); sb(fv[..], cast(string) code[..]); sb(fv[..], "\"}");
   st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(fv[..]), ac_cookie_header("__Host-oa_pending", f2, c1[..]), "", "");
-  ap_check(t, "a frozen account's email login is refused, and says how to unfreeze", st == 403 && ap_has(ap_body(t), "frozen"), ap_body(t));
+  // Since #13214 a frozen account logs in, but only to look, unfreeze, delete or cancel, and log out.
+  f3b: [160] u8; F3 := ac_cookie(t, "__Host-oa_session", f3b[..]);
+  lst := ac_call(t, "GET", "/api/auth/life", "", ac_cookie_header("__Host-oa_session", F3, c1[..]), "", "");
+  ap_check(t, "a frozen account's email login works, and the account says it is frozen", st == 200 && lst == 200 && ap_member(ap_body(t), "frozen", eb[..]) == "freeze", ap_body(t));
+  st = ac_call(t, "GET", "/api/agents", "", ac_cookie_header("__Host-oa_session", F3, c1[..]), "", "");
+  ap_check(t, "a frozen account's login can do nothing else, and says how to unfreeze", st == 423 && ap_has(ap_body(t), "settings/data"), ap_body(t));
 
   // ---- every rule the gate keeps is on a route that exists; Origin is checked on writes
   st = ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "Origin: https://evil.example", "", "");

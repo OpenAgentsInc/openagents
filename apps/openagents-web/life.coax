@@ -1,0 +1,658 @@
+// /settings/data and /settings/delete: your account's life (docs/auth, #13214), drawn on the
+// homepage's Grid like /settings/security (login.coax's text and lines helpers; newland.coax's
+// frames and buttons; textkeys.coax's keys in the email and code box).
+//
+// /settings/data: FREEZE (every login ends, agents pause, nothing spends) and UNFREEZE; DOWNLOAD MY
+// DATA (everything we hold, JSON lines); MERGE ANOTHER ACCOUNT (the other proves itself by its
+// key, or by a code to its email when it has nothing stronger; its credit moves only when you
+// say so).
+// /settings/delete: what deleting does and keeps, the credit left and the wallet warning, DELETE
+// MY ACCOUNT; while it waits, the day it happens and CANCEL DELETION.
+//
+// A step that needs a fresh login sends you to /settings/security?step=1&next=THIS (a key or
+// recovery code) or, on an account with only email, /login?next=THIS (a new code); then back.
+//
+// What it talks to (coax/web/api/auth-life.c, auth.c), every answer as ?as=lines:
+//   GET  /api/auth/life, /api/auth/export?check=1 (then the browser downloads /api/auth/export)
+//   POST /api/auth/freeze, /api/auth/unfreeze, /api/auth/delete, /api/auth/delete/cancel
+//   POST /api/auth/merge/start, /api/auth/proof/challenge {purpose: merge} -> url, signed by the
+//        other account's key and POSTed with {proof}; /api/auth/email/start {email, merge: true},
+//        /api/auth/email/verify {code}; /api/auth/merge/confirm {money}
+//   coax/bin/coax test apps/openagents-web/life.coax
+#load "login.coax";
+#load "textkeys.coax";
+
+LF_MAX_VERTICES :: 120000;
+LF_MSG_PAGE :: 600; LF_MSG_HTTP :: 512; LF_MSG_SIGNED :: 72; LF_MSG_HAS_KEY :: 73; LF_MSG_TYPED :: 1;
+LF_ACT_GO :: 1; LF_ACT_SIGN :: 72;
+LF_POST :: 1; LF_WANTED :: 4;
+LF_DATA :: 1; LF_DELETE :: 2;   // which page
+
+// Screens.
+LF_LOADING :: 0; LF_MAIN :: 1; LF_OUT :: 2; LF_MERGE :: 3;
+// The one request in flight.
+LR_NONE :: 0; LR_LIFE :: 1; LR_FREEZE :: 2; LR_UNFREEZE :: 3; LR_EXPORT :: 4; LR_DELETE :: 5; LR_CANCEL :: 6;
+LR_MSTART :: 7; LR_CHALLENGE :: 8; LR_SIGNING :: 9; LR_PROVE :: 10; LR_MEMAIL :: 11; LR_MCODE :: 12; LR_MCONFIRM :: 13;
+// Where a merge is: asked, a code sent to the other account's email, the other proved.
+LM_ASKED :: 1; LM_CODE :: 2; LM_PROVED :: 3;
+// What can be pressed.
+LH_NONE :: -1; LH_HOME :: 0; LH_LOGIN :: 1; LH_FREEZE :: 2; LH_UNFREEZE :: 3; LH_EXPORT :: 4; LH_MERGE :: 5; LH_OTHER :: 6;
+LH_DELETE :: 7; LH_CANCEL :: 8; LH_SIGN :: 9; LH_FIELD :: 10; LH_SEND :: 11; LH_MONEY :: 12; LH_CONFIRM :: 13; LH_BACK :: 14;
+LH_HITS :: 15;
+
+Lf :: struct {
+  ready: bool; page: int = LF_DATA; w: f32; h: f32; dpr: f32; time: f32;
+  screen: int; req: int; req_id: int = -1;
+  want: bool; url: [440] u8; url_n: int; body: [4400] u8; body_n: int; flags: int;
+  action: int; outbox: [800] u8; out_n: int;
+  has_key: int = -1;
+  // the account, from GET /api/auth/life
+  frozen: int; purge_at: [40] u8; purge_n: int; days_left: int;
+  strong: int; emails: int; keys: int; agents: int; credit: int; worlds: int; saves: int;
+  // a merge: the other account's things, once proved
+  merge: int; o_emails: int; o_keys: int; o_agents: int; o_worlds: int; o_saves: int; o_credit: int; money: bool;
+  sign_url: [420] u8; sign_n: int;
+  typed: [260] u8; typed_n: int; all: bool;   // the other account's email, then its code
+  error: [300] u8; error_n: int; said: [400] u8; said_n: int;
+  panel: Box; scroll: f32; hits: [LH_HITS] Box; field: [4] f32;
+  px: f32; py: f32; down: bool; pressed: int = -1; focus: int = -1;
+}
+
+// ---------------------------------------------------------------- small things
+lf_err :: (s: [] Lf, t: string) { s[0].error_n = lg_set(s[0].error[..], t); s[0].said_n = 0; }
+lf_say :: (s: [] Lf, t: string) { s[0].said_n = lg_set(s[0].said[..], t); s[0].error_n = 0; }
+lf_quiet :: (s: [] Lf) { s[0].error_n = 0; s[0].said_n = 0; }
+lf_go :: (s: [] Lf, path: string) { s[0].out_n = lg_set(s[0].outbox[..], path); s[0].action = LF_ACT_GO; }
+lf_ask :: (s: [] Lf, req: int, url: string, body: string, flags: int) {
+  s[0].req = req; s[0].req_id = -1; s[0].want = true; s[0].flags = flags | LF_WANTED;
+  s[0].url_n = lg_set(s[0].url[..], url); s[0].body_n = lg_set(s[0].body[..], body);
+}
+lf_sent :: (s: [] Lf, id: int) #export_c #effects(all) { if s.count < 1 { return; } if id >= 0 { s[0].want = false; s[0].req_id = id; } }
+lf_here :: (s: [] Lf) -> string { return ifx s[0].page == LF_DELETE then "%2Fsettings%2Fdelete" else "%2Fsettings%2Fdata"; }
+lf_typed :: (s: [] Lf) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
+// "2,100" sats from msat
+lf_sats :: (b: [] u8, at: int, msat: int) -> int {
+  v := msat / 1000; n := at;
+  if v >= 1000000 { n = lg_add_int(b, n, v / 1000000); n = lg_add(b, n, ","); n = lf_pad3(b, n, v / 1000 % 1000); n = lg_add(b, n, ","); return lf_pad3(b, n, v % 1000); }
+  if v >= 1000 { n = lg_add_int(b, n, v / 1000); n = lg_add(b, n, ","); return lf_pad3(b, n, v % 1000); }
+  return lg_add_int(b, n, v);
+}
+lf_pad3 :: (b: [] u8, at: int, v: int) -> int { n := at; if v < 100 { n = lg_add(b, n, "0"); } if v < 10 { n = lg_add(b, n, "0"); } return lg_add_int(b, n, v); }
+
+// ---------------------------------------------------------------- the page's facts
+lf_facts :: (s: [] Lf, text: string) {
+  found: [1] bool;
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    if lg_is(text, at, "url=") {
+      u := text[at + 4..<end];
+      p := 0; while p + 9 <= u.count && !lg_is(u, p, "/settings") { p += 1; }
+      if lg_is(u, p, "/settings/delete") { s[0].page = LF_DELETE; } else { s[0].page = LF_DATA; }
+    }
+    at = end + 1;
+  }
+  _ = found[0];
+}
+
+// ---------------------------------------------------------------- requests
+lf_pump :: (s: [] Lf) {
+  if s[0].req != LR_NONE || s[0].want { return; }
+  if s[0].screen == LF_LOADING { lf_ask(s, LR_LIFE, "/api/auth/life?as=lines", "", 0); }
+}
+lf_refresh :: (s: [] Lf) { lf_ask(s, LR_LIFE, "/api/auth/life?as=lines", "", 0); }
+lf_challenge :: (s: [] Lf) {
+  if s[0].has_key == 0 { lf_err(s, "This browser has no Nostr key extension (NIP-07). Add one with the other account's key, then try again."); return; }
+  lf_quiet(s); lf_ask(s, LR_CHALLENGE, "/api/auth/proof/challenge?as=lines", "{\"purpose\":\"merge\"}", LF_POST);
+}
+lf_send :: (s: [] Lf) {
+  t := lf_typed(s);
+  if s[0].merge == LM_ASKED {
+    at := false; for c: t { if c == '@' { at = true; } }
+    if !at || t.count < 3 { lf_err(s, "Type the other account's email address."); return; }
+    b: [400] u8; n := lg_add(b[..], 0, "{\"email\":\""); n = lg_json(b[..], n, t); n = lg_add(b[..], n, "\",\"merge\":true}");
+    lf_quiet(s); lf_ask(s, LR_MEMAIL, "/api/auth/email/start?as=lines", cast(string) b[0..<n], LF_POST); return;
+  }
+  if s[0].merge == LM_CODE {
+    d: [8] u8; k := 0; for c: t { if c >= '0' && c <= '9' && k < 8 { d[k] = c; k += 1; } }
+    if k != 6 { lf_err(s, "Type the 6 digits from the email."); return; }
+    b: [60] u8; n := lg_add(b[..], 0, "{\"code\":\""); n = lg_add(b[..], n, cast(string) d[0..<6]); n = lg_add(b[..], n, "\"}");
+    lf_quiet(s); lf_ask(s, LR_MCODE, "/api/auth/email/verify?as=lines", cast(string) b[0..<n], LF_POST);
+  }
+}
+
+// ---------------------------------------------------------------- answers
+lf_failed :: (s: [] Lf, status: int, lines: string) {
+  found: [1] bool; e := lg_value(lines, "error", found[..]);
+  if found[0] && e.count > 0 { lf_err(s, e); return; }
+  if status == 0 { lf_err(s, "We couldn't reach openagents.com. Check your connection and try again."); return; }
+  lf_err(s, "That didn't work. Try again.");
+}
+// A refusal for want of a fresh login: to the step-up (a key or recovery code) or a new email code, then back.
+lf_wants_login :: (s: [] Lf, status: int, lines: string) -> bool {
+  if status != 401 { return false; }
+  found: [1] bool; _ = lg_value(lines, "step_up", found[..]);
+  b: [120] u8;
+  if found[0] { n := lg_add(b[..], 0, "/settings/security?step=1&next="); n = lg_add(b[..], n, lf_here(s)); lf_go(s, cast(string) b[0..<n]); return true; }
+  e := lg_value(lines, "error", found[..]);
+  if lg_is(e, 0, "Log in again with a new email code") { n := lg_add(b[..], 0, "/login?next="); n = lg_add(b[..], n, lf_here(s)); lf_go(s, cast(string) b[0..<n]); return true; }
+  return false;
+}
+lf_life :: (s: [] Lf, lines: string) {
+  found: [1] bool;
+  f := lg_value(lines, "frozen", found[..]);
+  s[0].frozen = ifx f == "freeze" then 1 else ifx f == "delete" then 2 else 0;
+  p := lg_value(lines, "purge_at", found[..]); s[0].purge_n = ifx found[0] && p != "-" then lg_set(s[0].purge_at[..], p) else 0;
+  purge := lg_int(lg_value(lines, "purge_ms", found[..])); now := lg_int(lg_value(lines, "now_ms", found[..]));
+  s[0].days_left = ifx purge > now then (purge - now + 86399999) / 86400000 else 0;
+  s[0].strong = lg_int(lg_value(lines, "strong", found[..])); s[0].emails = lg_int(lg_value(lines, "emails", found[..]));
+  s[0].keys = lg_int(lg_value(lines, "keys", found[..])); s[0].agents = lg_int(lg_value(lines, "agents", found[..]));
+  s[0].credit = lg_int(lg_value(lines, "credit_msat", found[..]));
+  s[0].worlds = lg_int(lg_value(lines, "worlds", found[..])); s[0].saves = lg_int(lg_value(lines, "saves", found[..]));
+}
+lf_proved :: (s: [] Lf, lines: string) {
+  found: [1] bool;
+  s[0].o_emails = lg_int(lg_value(lines, "emails", found[..])); s[0].o_keys = lg_int(lg_value(lines, "keys", found[..]));
+  s[0].o_agents = lg_int(lg_value(lines, "agents", found[..])); s[0].o_worlds = lg_int(lg_value(lines, "worlds", found[..]));
+  s[0].o_saves = lg_int(lg_value(lines, "saves", found[..])); s[0].o_credit = lg_int(lg_value(lines, "credit_msat", found[..]));
+  s[0].merge = LM_PROVED; s[0].money = false; s[0].typed_n = 0; s[0].focus = -1;
+}
+lf_answer :: (s: [] Lf, text: string) {
+  nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+  status := lg_int(text[0..<nl]);
+  lines := ifx nl < text.count then text[nl + 1..<text.count] else text[0..<0];
+  req := s[0].req; s[0].req = LR_NONE; s[0].req_id = -1;
+  ok := status >= 200 && status < 300; found: [1] bool;
+  if req == LR_LIFE {
+    if status == 401 { s[0].screen = LF_OUT; return; }
+    if !ok { if s[0].screen == LF_LOADING { s[0].screen = LF_OUT; } lf_failed(s, status, lines); return; }
+    lf_life(s, lines);
+    if s[0].screen != LF_MERGE { s[0].screen = LF_MAIN; }
+    return;
+  }
+  if req == LR_CHALLENGE {
+    if !ok { if !lf_wants_login(s, status, lines) { lf_failed(s, status, lines); } return; }
+    u := lg_value(lines, "url", found[..]);
+    if !found[0] || u.count == 0 || u.count > 400 { lf_failed(s, 500, lines[0..<0]); return; }
+    s[0].sign_n = lg_set(s[0].sign_url[..], u);
+    m := lg_add(s[0].outbox[..], 0, u); m = lg_add(s[0].outbox[..], m, "\n");
+    s[0].out_n = m; s[0].action = LF_ACT_SIGN; s[0].req = LR_SIGNING;
+    return;
+  }
+  if !ok {
+    if !lf_wants_login(s, status, lines) { lf_failed(s, status, lines); }
+    if req == LR_MCONFIRM && status == 409 && !lg_is(lg_value(lines, "error", found[..]), 0, "That account has service credit") { s[0].merge = LM_ASKED; }
+    return;
+  }
+  if req == LR_FREEZE { s[0].screen = LF_OUT; lf_say(s, "Your account is frozen: every login on it ended, its agents are paused and nothing can be spent. Log in to unfreeze it."); return; }
+  if req == LR_UNFREEZE { lf_say(s, "Unfrozen. Your agents stay paused until you resume each one on Settings, Agents."); lf_refresh(s); return; }
+  if req == LR_EXPORT { lf_say(s, "Your download has started."); lf_go(s, "/api/auth/export"); return; }
+  if req == LR_DELETE {
+    b: [300] u8; n := lg_add(b[..], 0, "Your account will be deleted on "); n = lg_add(b[..], n, lg_value(lines, "purge_at", found[..]));
+    n = lg_add(b[..], n, ". Until then it is frozen and every login ended. Log in any way to cancel.");
+    s[0].screen = LF_OUT; lf_say(s, cast(string) b[0..<n]); return;
+  }
+  if req == LR_CANCEL { lf_say(s, "The deletion is cancelled. Your account works again; its agents stay paused until you resume each one."); lf_refresh(s); return; }
+  if req == LR_MSTART { s[0].screen = LF_MERGE; s[0].merge = LM_ASKED; s[0].typed_n = 0; s[0].focus = -1; lf_quiet(s); return; }
+  if req == LR_MEMAIL { s[0].merge = LM_CODE; s[0].typed_n = 0; lf_say(s, "We sent a code to that email. Type it here."); return; }
+  if req == LR_PROVE || req == LR_MCODE { lf_proved(s, lines); lf_quiet(s); return; }
+  if req == LR_MCONFIRM {
+    s[0].screen = LF_MAIN; s[0].merge = 0;
+    lf_say(s, "Merged. The other account's emails, keys, agents, realms and saves are here now, and its history is kept with this account."); lf_refresh(s);
+  }
+}
+// key.js's answer: "Nostr <base64 event>", or why there is none.
+lf_signed :: (s: [] Lf, text: string) {
+  if s[0].req != LR_SIGNING { return; }
+  s[0].req = LR_NONE;
+  if !lg_is(text, 0, "Nostr ") {
+    lf_err(s, ifx text.count > 1 && text[0] == '!' then text[1..<text.count] else "Your key extension didn't sign. Try again.");
+    if lg_is(text, 0, "!This browser has no") { s[0].has_key = 0; }
+    return;
+  }
+  b: [4400] u8; n := lg_add(b[..], 0, "{\"proof\":\""); n = lg_json(b[..], n, text[6..<text.count]); n = lg_add(b[..], n, "\"}");
+  u: [440] u8; m := lg_add(u[..], 0, cast(string) s[0].sign_url[0..<s[0].sign_n]); m = lg_add(u[..], m, "&as=lines");
+  lf_ask(s, LR_PROVE, cast(string) u[0..<m], cast(string) b[0..<n], LF_POST);
+}
+lf_message :: (s: [] Lf, kind: int, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if kind == LF_MSG_TYPED { lf_type(s, text); return; }
+  if kind == LF_MSG_PAGE { lf_facts(s, text); lf_pump(s); return; }
+  if kind == LF_MSG_SIGNED { lf_signed(s, text); return; }
+  if kind == LF_MSG_HAS_KEY { s[0].has_key = ifx text == "1" then 1 else 0; return; }
+  if kind >= LF_MSG_HTTP && kind < LF_MSG_HTTP + 64 && kind - LF_MSG_HTTP == s[0].req_id && s[0].req != LR_NONE { lf_answer(s, text); }
+}
+lf_page :: (s: [] Lf) #export_c #effects(all) { if s.count < 1 { return; } lf_pump(s); }
+
+// ---------------------------------------------------------------- typing (the email, then the code)
+lf_type :: (s: [] Lf, text: string) {
+  if s[0].focus != LH_FIELD || !lf_typing(s) { return; }
+  if s[0].all { s[0].typed_n = 0; s[0].all = false; }
+  for c: text { if c > ' ' && c < 127 && s[0].typed_n < 254 { s[0].typed[s[0].typed_n] = c; s[0].typed_n += 1; } }
+  lf_quiet(s);
+}
+lf_typing :: (s: [] Lf) -> bool { return s[0].screen == LF_MERGE && (s[0].merge == LM_ASKED || s[0].merge == LM_CODE); }
+lf_key_in :: (s: [] Lf, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  typing := lf_typing(s) && s[0].focus == LH_FIELD;
+  if typing {
+    c := tk_command(key, mods);
+    if c == TK_ALL { s[0].all = s[0].typed_n > 0; return true; }
+    if c == TK_COPY || c == TK_CUT { if c == TK_CUT && s[0].all { s[0].typed_n = 0; s[0].all = false; } return true; }
+    if c == TK_BROWSER { return false; }
+    if key == -3 {
+      if s[0].all { s[0].typed_n = 0; s[0].all = false; } else { s[0].typed_n = tk_back(lf_typed(s), mods); }
+      return true;
+    }
+    if key != -2 { s[0].all = false; }
+  }
+  if key == -2 { lf_press(s, ifx s[0].focus >= 0 && s[0].focus != LH_FIELD then s[0].focus else ifx typing then LH_SEND else LH_NONE); return true; }
+  if key == -1 && s[0].screen == LF_MERGE { lf_press(s, LH_BACK); return true; }
+  if key == -15 {
+    order: [LH_HITS] int; n := lf_order(s, order[..]);
+    if n == 0 { return false; }
+    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
+    s[0].focus = order[(k + 1) % n]; return true;
+  }
+  return false;
+}
+lf_wants_text :: (s: [] Lf) -> bool #export_c #effects(all) { return s.count > 0 && lf_typing(s) && s[0].focus == LH_FIELD; }
+lf_done :: (s: [] Lf) #export_c #effects(all) { if s.count < 1 { return; } s[0].action = 0; s[0].out_n = 0; }
+
+// ---------------------------------------------------------------- pressing
+lf_press :: (s: [] Lf, h: int) {
+  if h < 0 { return; }
+  if h == LH_HOME { lf_go(s, "/"); return; }
+  if h == LH_LOGIN { b: [80] u8; n := lg_add(b[..], 0, "/login?next="); n = lg_add(b[..], n, lf_here(s)); lf_go(s, cast(string) b[0..<n]); return; }
+  if h == LH_OTHER { lf_go(s, ifx s[0].page == LF_DATA then "/settings/delete" else "/settings/data"); return; }
+  if s[0].req != LR_NONE { return; }
+  if s[0].screen == LF_MERGE {
+    if h == LH_FIELD { s[0].focus = LH_FIELD; return; }
+    if h == LH_SIGN { lf_challenge(s); return; }
+    if h == LH_SEND { lf_send(s); return; }
+    if h == LH_MONEY { s[0].money = !s[0].money; return; }
+    if h == LH_CONFIRM { lf_quiet(s); lf_ask(s, LR_MCONFIRM, "/api/auth/merge/confirm?as=lines", ifx s[0].money then "{\"money\":true}" else "{\"money\":false}", LF_POST); return; }
+    if h == LH_BACK { s[0].screen = LF_MAIN; s[0].merge = 0; s[0].typed_n = 0; s[0].focus = -1; lf_quiet(s); }
+    return;
+  }
+  if s[0].screen != LF_MAIN { return; }
+  lf_quiet(s);
+  if h == LH_FREEZE { lf_ask(s, LR_FREEZE, "/api/auth/freeze?as=lines", "{}", LF_POST); return; }
+  if h == LH_UNFREEZE { lf_ask(s, LR_UNFREEZE, "/api/auth/unfreeze?as=lines", "{}", LF_POST); return; }
+  if h == LH_EXPORT { lf_ask(s, LR_EXPORT, "/api/auth/export?check=1&as=lines", "", 0); return; }
+  if h == LH_MERGE { lf_ask(s, LR_MSTART, "/api/auth/merge/start?as=lines", "{}", LF_POST); return; }
+  if h == LH_DELETE { lf_ask(s, LR_DELETE, "/api/auth/delete?as=lines", "{}", LF_POST); return; }
+  if h == LH_CANCEL { lf_ask(s, LR_CANCEL, "/api/auth/delete/cancel?as=lines", "{}", LF_POST); }
+}
+
+// ---------------------------------------------------------------- words
+LF_PARA :: 7.8;
+LF_FREEZE_WORDS :: "Think someone else is in your account? Freeze it: every login ends at once, your agents pause and nothing can be spent. Unfreezing asks for your key or passkey, or a new email code if you have neither.";
+LF_EXPORT_WORDS :: "Everything we hold about you, as JSON lines: your account, emails, keys, agents, realms, saves, chats, payments and your security log. The format is described at /docs/auth/data-and-backups.";
+LF_MERGE_WORDS :: "Two accounts that are both yours become this one: the other's emails, keys, agents, realms and saves move here, and its history is kept. You prove the other account with its key, or with a code to its email if it has no key.";
+LF_KEEP_WORDS :: "What we keep: payments made to us (amounts and dates, no longer linked to you), your security log's entries without your account id, the account id itself so it is never given to anyone else, and any Lightning Address name that was ever paid, held so payments meant for you never reach someone else.";
+LF_BACKUP_WORDS :: "Backups: our nightly backups are locked and can't be deleted for 35 days. Your data leaves the last of them by day 40 after it is deleted.";
+LF_WALLET_WORDS :: "Your Bitcoin wallet lives on your devices, not with us. Write down its recovery words before you delete: we can't restore it.";
+lf_state_words :: (s: [] Lf, b: [] u8) -> string {
+  if s[0].frozen == 1 { return "This account is frozen: no login can spend or change anything until you unfreeze it."; }
+  if s[0].frozen == 2 {
+    n := lg_add(b, 0, "This account will be deleted on "); n = lg_add(b, n, cast(string) s[0].purge_at[0..<s[0].purge_n]);
+    n = lg_add(b, n, " (in "); n = lg_add_int(b, n, s[0].days_left); n = lg_add(b, n, ifx s[0].days_left == 1 then " day). " else " days). ");
+    n = lg_add(b, n, "Until then it is frozen. Cancel the deletion and it works again.");
+    return cast(string) b[0..<n];
+  }
+  return "";
+}
+lf_delete_words :: (s: [] Lf, b: [] u8) -> string {
+  n := lg_add(b, 0, "Deleting freezes your account at once and ends every login. 30 days later we delete it: your emails, keys, agents, realms, saves, chats and files. Until then you can cancel from any login.");
+  return cast(string) b[0..<n];
+}
+lf_credit_words :: (s: [] Lf, b: [] u8) -> string {
+  if s[0].credit <= 0 { return "Service credit left: none."; }
+  n := lg_add(b, 0, "Service credit left: "); n = lf_sats(b, n, s[0].credit);
+  n = lg_add(b, n, " sats. It can't be paid out: spend it before you delete, or it goes with the account.");
+  return cast(string) b[0..<n];
+}
+lf_moves_words :: (s: [] Lf, b: [] u8) -> string {
+  n := lg_add(b, 0, "Moves here: "); n = lg_add_int(b, n, s[0].o_emails); n = lg_add(b, n, ifx s[0].o_emails == 1 then " email, " else " emails, ");
+  n = lg_add_int(b, n, s[0].o_keys); n = lg_add(b, n, ifx s[0].o_keys == 1 then " key, " else " keys, ");
+  n = lg_add_int(b, n, s[0].o_agents); n = lg_add(b, n, ifx s[0].o_agents == 1 then " agent, " else " agents, ");
+  n = lg_add_int(b, n, s[0].o_worlds); n = lg_add(b, n, ifx s[0].o_worlds == 1 then " realm and " else " realms and ");
+  n = lg_add_int(b, n, s[0].o_saves); n = lg_add(b, n, ifx s[0].o_saves == 1 then " save." else " saves.");
+  if s[0].o_credit > 0 { n = lg_add(b, n, " It has "); n = lf_sats(b, n, s[0].o_credit); n = lg_add(b, n, " sats of service credit, which moves only if you say so."); }
+  return cast(string) b[0..<n];
+}
+
+// ---------------------------------------------------------------- layout
+lf_order :: (s: [] Lf, out: [] int) -> int {
+  n := 0; sc := s[0].screen;
+  if sc == LF_MAIN && s[0].page == LF_DATA {
+    if s[0].frozen == 0 { out[n] = LH_FREEZE; n += 1; }
+    if s[0].frozen == 1 { out[n] = LH_UNFREEZE; n += 1; }
+    if s[0].frozen != 1 { out[n] = LH_EXPORT; n += 1; }
+    if s[0].frozen == 0 { out[n] = LH_MERGE; n += 1; }
+    out[n] = LH_OTHER; n += 1;
+  }
+  if sc == LF_MAIN && s[0].page == LF_DELETE {
+    if s[0].frozen == 2 { out[n] = LH_CANCEL; n += 1; } else { out[n] = LH_DELETE; n += 1; }
+    out[n] = LH_OTHER; n += 1;
+  }
+  if sc == LF_MERGE {
+    if s[0].merge == LM_ASKED { out[n] = LH_SIGN; n += 1; }
+    if s[0].merge == LM_ASKED || s[0].merge == LM_CODE { out[n] = LH_FIELD; n += 1; out[n] = LH_SEND; n += 1; }
+    if s[0].merge == LM_PROVED { if s[0].o_credit > 0 { out[n] = LH_MONEY; n += 1; } out[n] = LH_CONFIRM; n += 1; }
+    out[n] = LH_BACK; n += 1;
+  }
+  if sc == LF_OUT { out[n] = LH_LOGIN; n += 1; }
+  out[n] = LH_HOME; n += 1;
+  return n;
+}
+lf_shown :: (s: [] Lf, h: int) -> bool { order: [LH_HITS] int; n := lf_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
+lf_tall :: (t: string, w: f32) -> f32 { return ifx t.count == 0 then 0.0f32 else lg_tall(t, w, LF_PARA); }
+lf_title :: (s: [] Lf) -> string {
+  if s[0].screen == LF_MERGE { return "MERGE ACCOUNTS"; }
+  return ifx s[0].page == LF_DELETE then "DELETE ACCOUNT" else "YOUR DATA";
+}
+// The page as a list of blocks, laid out (and drawn when out has room): one walk for both, so
+// what is pressed is where it is drawn. Returns the vertex count.
+LB_PARA :: 1; LB_HEAD :: 2; LB_BUTTON :: 3; LB_FIELD :: 4;
+lf_walk :: (s: [] Lf, out: [] f32, at: int, p: Pen, still: bool, draw: bool) -> int {
+  sw := hi(240, s[0].w); sh := hi(300, s[0].h);
+  pw := lo(520, sw - 32); px := (sw - pw) * 0.5;
+  top := (ifx sh > 720 then 110.0f32 else 80.0f32) - s[0].scroll;
+  x := px + 24; w := pw - 48; y := top + 66; d := p.d; v := at; b: [600] u8;
+  if !draw { for i: 0..<LH_HITS { s[0].hits[i] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; } s[0].hits[LH_HOME] = Box.{x0 = px + pw - 64, y0 = top - 56, x1 = px + pw, y1 = top - 20}; }
+  msg := ifx s[0].error_n > 0 then cast(string) s[0].error[0..<s[0].error_n] else cast(string) s[0].said[0..<s[0].said_n];
+  mk := ifx s[0].error_n > 0 then lg_red(p) else lg_text(p, INK_BRIGHT);
+  below: [1] f32;
+  if draw { v = put_fit(out, v, lf_title(s), x * d, (top + 44) * d, (ifx p.phone then 13.0f32 else 15.0f32) * d, chrome(ink(p, INK_WHITE)), w * d); }
+  sc := s[0].screen;
+  if sc == LF_LOADING { if draw { v = put(out, v, "LOADING", x * d, (y + 14) * d, 7.0 * d, ink(p, INK_DIM)); } y += 40; }
+  if msg.count > 0 && sc != LF_LOADING { if draw { v = lg_para(out, v, msg, x, y, w, LF_PARA, mk, d, below[..]); } y += lf_tall(msg, w) + 12; }
+  if sc == LF_OUT {
+    t := ifx s[0].page == LF_DELETE then "Log in to delete your account, or to cancel a deletion." else "Log in to download your data, freeze or unfreeze your account, or merge two accounts.";
+    if draw { v = lg_para(out, v, t, x, y, w, LF_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lf_tall(t, w) + 16;
+    v = lf_btn(s, out, v, p, draw, LH_LOGIN, "LOG IN", true, x, y, w); y += 44 + 20;
+  }
+  if sc == LF_MAIN {
+    st := lf_state_words(s, b[..]);
+    if st.count > 0 { if draw { v = lg_para(out, v, st, x, y, w, LF_PARA, lg_text(p, INK_BRIGHT), d, below[..]); } y += lf_tall(st, w) + 16; }
+    if s[0].page == LF_DATA {
+      v = lf_section(out, v, p, draw, ifx s[0].frozen == 1 then "UNFREEZE" else "FREEZE", ifx s[0].frozen == 1 then "" else LF_FREEZE_WORDS, x, y, w, below[..]); y = below[0];
+      if s[0].frozen == 0 { v = lf_btn(s, out, v, p, draw, LH_FREEZE, ifx s[0].req == LR_FREEZE then "FREEZING" else "FREEZE MY ACCOUNT", false, x, y, w); y += 44 + 20; }
+      if s[0].frozen == 1 { v = lf_btn(s, out, v, p, draw, LH_UNFREEZE, ifx s[0].req == LR_UNFREEZE then "UNFREEZING" else "UNFREEZE", true, x, y, w); y += 44 + 20; }
+      if s[0].frozen != 1 {
+        v = lf_section(out, v, p, draw, "YOUR DATA", LF_EXPORT_WORDS, x, y, w, below[..]); y = below[0];
+        v = lf_btn(s, out, v, p, draw, LH_EXPORT, ifx s[0].req == LR_EXPORT then "PREPARING" else "DOWNLOAD MY DATA", false, x, y, w); y += 44 + 20;
+      }
+      if s[0].frozen == 0 {
+        v = lf_section(out, v, p, draw, "MERGE", LF_MERGE_WORDS, x, y, w, below[..]); y = below[0];
+        v = lf_btn(s, out, v, p, draw, LH_MERGE, ifx s[0].req == LR_MSTART then "STARTING" else "MERGE ANOTHER ACCOUNT", false, x, y, w); y += 44 + 20;
+      }
+      v = lf_link(s, out, v, p, draw, LH_OTHER, "DELETE", "Delete your account", x, y, w); y += 28 + 14;
+    } else {
+      if s[0].frozen == 2 {
+        v = lf_btn(s, out, v, p, draw, LH_CANCEL, ifx s[0].req == LR_CANCEL then "CANCELLING" else "CANCEL DELETION", true, x, y, w); y += 44 + 20;
+      } else {
+        v = lf_section(out, v, p, draw, "WHAT HAPPENS", lf_delete_words(s, b[..]), x, y, w, below[..]); y = below[0];
+        cw := lf_credit_words(s, b[..]);
+        if draw { v = lg_para(out, v, cw, x, y, w, LF_PARA, lg_text(p, ifx s[0].credit > 0 then INK_BRIGHT else INK_PALE), d, below[..]); } y += lf_tall(cw, w) + 12;
+        if draw { v = lg_para(out, v, LF_WALLET_WORDS, x, y, w, LF_PARA, lg_text(p, INK_BRIGHT), d, below[..]); } y += lf_tall(LF_WALLET_WORDS, w) + 16;
+        v = lf_section(out, v, p, draw, "WHAT WE KEEP", LF_KEEP_WORDS, x, y, w, below[..]); y = below[0];
+        if draw { v = lg_para(out, v, LF_BACKUP_WORDS, x, y, w, LF_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lf_tall(LF_BACKUP_WORDS, w) + 16;
+        v = lf_btn(s, out, v, p, draw, LH_DELETE, ifx s[0].req == LR_DELETE then "DELETING" else "DELETE MY ACCOUNT", false, x, y, w); y += 44 + 20;
+      }
+      v = lf_link(s, out, v, p, draw, LH_OTHER, "DATA", "Download your data first", x, y, w); y += 28 + 14;
+    }
+  }
+  if sc == LF_MERGE {
+    if s[0].merge == LM_ASKED || s[0].merge == LM_CODE {
+      t := ifx s[0].merge == LM_CODE then "Type the code we sent to the other account's email." else "Prove the other account: sign with its key, or, if it has only an email, get a code there. You have 10 minutes.";
+      if draw { v = lg_para(out, v, t, x, y, w, LF_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lf_tall(t, w) + 16;
+      if s[0].merge == LM_ASKED { v = lf_btn(s, out, v, p, draw, LH_SIGN, ifx s[0].req == LR_CHALLENGE || s[0].req == LR_SIGNING || s[0].req == LR_PROVE then "SIGNING" else "SIGN WITH ITS KEY", true, x, y, w); y += 44 + 34; }
+      y += 18;
+      if !draw { s[0].hits[LH_FIELD] = Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}; }
+      else { v = lf_field(s, out, v, p, still, ifx s[0].merge == LM_CODE then "6-DIGIT CODE" else "ITS EMAIL", ifx s[0].merge == LM_CODE then "123 456" else "you@example.com"); }
+      y += 44 + 12;
+      v = lf_btn(s, out, v, p, draw, LH_SEND, ifx s[0].merge == LM_CODE then (ifx s[0].req == LR_MCODE then "CHECKING" else "CHECK THE CODE") else (ifx s[0].req == LR_MEMAIL then "SENDING" else "SEND A CODE THERE"), s[0].merge == LM_CODE, x, y, w); y += 44 + 16;
+    }
+    if s[0].merge == LM_PROVED {
+      mw := lf_moves_words(s, b[..]);
+      if draw { v = lg_para(out, v, mw, x, y, w, LF_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lf_tall(mw, w) + 16;
+      if s[0].o_credit > 0 { v = lf_btn(s, out, v, p, draw, LH_MONEY, ifx s[0].money then "ITS CREDIT MOVES TOO: YES" else "ITS CREDIT MOVES TOO: NO", s[0].money, x, y, w); y += 44 + 12; }
+      v = lf_btn(s, out, v, p, draw, LH_CONFIRM, ifx s[0].req == LR_MCONFIRM then "MERGING" else "MERGE INTO THIS ACCOUNT", true, x, y, w); y += 44 + 12;
+    }
+    v = lf_btn(s, out, v, p, draw, LH_BACK, "BACK", false, x, y, w); y += 40 + 20;
+  }
+  if !draw {
+    s[0].panel = Box.{x0 = px, y0 = top, x1 = px + pw, y1 = y};
+    dd := hi(1, s[0].dpr); f := s[0].hits[LH_FIELD];
+    s[0].field[0] = f.x0 * dd; s[0].field[1] = f.y0 * dd; s[0].field[2] = f.x1 * dd; s[0].field[3] = f.y1 * dd;
+  }
+  return v;
+}
+lf_section :: (out: [] f32, at: int, p: Pen, draw: bool, head: string, words: string, x: f32, y: f32, w: f32, below: [] f32) -> int {
+  v := at; d := p.d; yy := y;
+  if draw {
+    v = put(out, v, head, x * d, (yy + 12) * d, 6.4 * d, ink(p, INK_DIM));
+    v = rule(out, v, x * d, (yy + 20) * d, (x + w) * d, (yy + 20) * d, ink(p, INK_DIM), 0.25);
+  }
+  yy += 30;
+  if words.count > 0 { b: [1] f32; if draw { v = lg_para(out, v, words, x, yy, w, LF_PARA, lg_text(p, INK_PALE), d, b[..]); } yy += lf_tall(words, w) + 12; }
+  below[0] = yy;
+  return v;
+}
+lf_btn :: (s: [] Lf, out: [] f32, at: int, p: Pen, draw: bool, h: int, text: string, main: bool, x: f32, y: f32, w: f32) -> int {
+  if !draw { s[0].hits[h] = Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + (ifx h == LH_BACK then 40.0f32 else 44.0f32)}; return at; }
+  b := s[0].hits[h]; if b.x1 <= b.x0 || !lf_shown(s, h) { return at; }
+  return button(out, at, lg_box(b, p.d), text, main, lf_hover(s, h), true, p, ifx s[0].req != LR_NONE && h != LH_HOME then 0.55f32 else 1.0f32);
+}
+lf_link :: (s: [] Lf, out: [] f32, at: int, p: Pen, draw: bool, h: int, label: string, words: string, x: f32, y: f32, w: f32) -> int {
+  if !draw { s[0].hits[h] = Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 28}; return at; }
+  d := p.d; hot := lf_hover(s, h); v := at;
+  v = put(out, v, label, x * d, (y + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
+  return put_fit(out, v, words, (x + 70) * d, (y + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 70) * d);
+}
+lf_field :: (s: [] Lf, out: [] f32, at: int, p: Pen, still: bool, label: string, hint: string) -> int {
+  d := p.d; f := s[0].hits[LH_FIELD]; on := s[0].focus == LH_FIELD; v := at;
+  v = put(out, v, label, f.x0 * d, (f.y0 - 8) * d, 6.2 * d, ink(p, INK_DIM));
+  v = frame(out, v, lg_box(f, d), 6 * d, ink(p, ifx on then INK_WHITE else INK_DIM), ifx on then 0.85f32 else 0.45f32, p);
+  t := lf_typed(s);
+  if t.count == 0 && !on { return put_fit(out, v, hint, (f.x0 + 14) * d, (f.y0 + 27) * d, 8.4 * d, lg_text(p, INK_FAINT), (f.x1 - f.x0 - 28) * d); }
+  k := lg_text(p, ifx s[0].all then INK_BLUE else INK_WHITE);
+  v = put_fit(out, v, t, (f.x0 + 14) * d, (f.y0 + 27) * d, 8.4 * d, k, (f.x1 - f.x0 - 28) * d);
+  if on && (still || fract(s[0].time * 0.9) < 0.6) {
+    cx := (f.x0 + 14) * d + lo(text_width(t, 8.4 * d, k), (f.x1 - f.x0 - 30) * d) + 2 * d; cy := (f.y0 + 27) * d;
+    v = rule(out, v, cx, cy - 10 * d, cx, cy + 3 * d, lg_text(p, INK_WHITE), 0.9);
+  }
+  return v;
+}
+lf_pen :: (s: [] Lf, still: bool) -> Pen { d := hi(1, s[0].dpr); return Pen.{d = d, fade = 1, time = 5 + s[0].time, still = still, phone = s[0].w < 760}; }
+lf_layout :: (s: [] Lf) { none: [1] f32; _ = lf_walk(s, none[0..<0], 0, lf_pen(s, true), true, false); }
+lf_most :: (s: [] Lf) -> f32 { return hi(0, s[0].panel.y1 + s[0].scroll + 40 - s[0].h); }
+lf_wheel :: (s: [] Lf, dy: f32) #export_c #effects(all) { if s.count < 1 { return; } s[0].scroll = clamp(s[0].scroll + dy, 0, lf_most(s)); lf_layout(s); }
+lf_hit :: (s: [] Lf, x: f32, y: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return LH_NONE; }
+  for i: 0..<LH_HITS { b := s[0].hits[i]; if b.x1 > b.x0 && lf_shown(s, i) && inside(b, x, y) { return i; } }
+  return LH_NONE;
+}
+lf_hover :: (s: [] Lf, h: int) -> bool { return lf_hit(s, s[0].px, s[0].py) == h || s[0].focus == h; }
+lf_pointer :: (s: [] Lf, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  d := hi(1, s[0].dpr); px := x / d; py := y / d;
+  if phase == 1 && s[0].down && s[0].pressed < 0 { s[0].scroll = clamp(s[0].scroll - (py - s[0].py), 0, lf_most(s)); lf_layout(s); }   // a drag scrolls
+  s[0].px = px; s[0].py = py;
+  if phase == 0 { s[0].down = true; s[0].pressed = lf_hit(s, px, py); return true; }
+  if phase == 2 || phase == 3 {
+    was := s[0].down; s[0].down = false;
+    if was && phase == 2 && s[0].pressed >= 0 && lf_hit(s, px, py) == s[0].pressed { lf_press(s, s[0].pressed); lf_layout(s); }
+    return true;
+  }
+  return phase == 1 && s[0].down;
+}
+lf_cursor :: (s: [] Lf) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  h := lf_hit(s, s[0].px, s[0].py);
+  return ifx h == LH_FIELD then 3 else ifx h >= 0 then 1 else 0;
+}
+
+// ---------------------------------------------------------------- drawing
+lf_frame :: (s: [] Lf, world: [] LandState, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  d := hi(1, dpr); s[0].w = width / d; s[0].h = height / d; s[0].dpr = d; s[0].time += clamp(dt, 0, 0.1);
+  if !s[0].ready { s[0].ready = true; lf_pump(s); }
+  lf_layout(s);
+  if s[0].scroll > lf_most(s) { s[0].scroll = lf_most(s); lf_layout(s); }
+  p := lf_pen(s, still);
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still then 20.0f32 else 20 + s[0].time; u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  look := fv(0, 0, 0); c := cam(look, 0.785, 0.74, 40, width * 0.5, height * 0.62, width, Box.{x0 = 0, y0 = 0, x1 = width, y1 = height}, width, height);
+  v := floor_grid(out, 0, world, c, look, p);
+  b := s[0].panel; paper := lg_box(b, d);
+  for i: 0..<v { out[i * VERTEX_FLOATS + 6] *= ifx inside(paper, out[i * VERTEX_FLOATS], out[i * VERTEX_FLOATS + 1]) then 0.18f32 else 0.75f32; }
+  glass(u, 0, paper, 10 * d, 0.86, 0); u[5] = 1;
+  v = frame(out, v, paper, 10 * d, ink(p, INK_DIM), 0.55, p);
+  v = put(out, v, "OPENAGENTS", b.x0 * d, (b.y0 - 32) * d, 6.8 * d, ink(p, INK_DIM));
+  hb := s[0].hits[LH_HOME];
+  v = button(out, v, lg_box(hb, d), "HOME", false, lf_hover(s, LH_HOME), true, p, 1.0);
+  return lf_walk(s, out, v, p, still, true);
+}
+lf_max_vertices :: () -> int #export_c #effects(all) { return LF_MAX_VERTICES; }
+
+// ---------------------------------------------------------------- tests
+lf_new :: (s: [] Lf, url: string) {
+  s[0].w = 390; s[0].h = 844; s[0].dpr = 1; s[0].has_key = 1;
+  b: [200] u8; n := lg_add(b[..], 0, "now=1794000000000\nurl="); n = lg_add(b[..], n, url);
+  lf_message(s, LF_MSG_PAGE, cast(string) b[0..<n]); lf_layout(s);
+}
+lf_reply :: (s: [] Lf, id: int, text: string) { lf_sent(s, id); lf_message(s, LF_MSG_HTTP + id, text); lf_layout(s); }
+lf_url :: (s: [] Lf) -> string { return cast(string) s[0].url[0..<s[0].url_n]; }
+lf_body_of :: (s: [] Lf) -> string { return cast(string) s[0].body[0..<s[0].body_n]; }
+lf_out :: (s: [] Lf) -> string { return cast(string) s[0].outbox[0..<s[0].out_n]; }
+lf_error_of :: (s: [] Lf) -> string { return cast(string) s[0].error[0..<s[0].error_n]; }
+lf_said_of :: (s: [] Lf) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+LF_T_LIFE :: "200\naccount acct_x\nkind person\nfrozen no\nfrozen_ms 0\ndelete_asked_ms 0\npurge_ms 0\nnow_ms 1794000000000\nstrong 1\nemails 1\nkeys 1\nagents 2\nagents_paused 0\ncredit_msat 2100000\nworlds 1\nsaves 3\nmerged_from 0\npurge_at -\nlevel 2\nlimited 0\nfresh 1\nproved 1\n";
+LF_T_DELETING :: "200\nfrozen delete\npurge_ms 1796592000000\nnow_ms 1794000000000\npurge_at 2026-12-11 17:20 UTC\nstrong 0\ncredit_msat 0\n";
+
+#test "life: /settings/data asks for the account, then shows freeze, export and merge" {
+  s: [1] Lf; lf_new(s[..], "https://openagents.com/settings/data");
+  #assert s[0].page == LF_DATA && s[0].req == LR_LIFE && lf_url(s[..]) == "/api/auth/life?as=lines";
+  lf_reply(s[..], 1, LF_T_LIFE);
+  #assert s[0].screen == LF_MAIN && s[0].frozen == 0 && s[0].credit == 2100000 && s[0].agents == 2;
+  #assert lf_shown(s[..], LH_FREEZE) && lf_shown(s[..], LH_EXPORT) && lf_shown(s[..], LH_MERGE) && !lf_shown(s[..], LH_UNFREEZE);
+  lf_press(s[..], LH_FREEZE);
+  #assert s[0].req == LR_FREEZE && lf_url(s[..]) == "/api/auth/freeze?as=lines" && s[0].flags == (LF_POST | LF_WANTED);
+  lf_reply(s[..], 2, "200\nstate frozen\n");
+  #assert s[0].screen == LF_OUT && lg_is(lf_said_of(s[..]), 0, "Your account is frozen") && lf_shown(s[..], LH_LOGIN);
+  lf_press(s[..], LH_LOGIN);
+  #assert s[0].action == LF_ACT_GO && lf_out(s[..]) == "/login?next=%2Fsettings%2Fdata";
+}
+#test "life: a frozen account unfreezes; a stale login goes to confirm it's you and comes back" {
+  s: [1] Lf; lf_new(s[..], "https://openagents.com/settings/data");
+  lf_reply(s[..], 1, "200\nfrozen freeze\nstrong 1\n");
+  #assert s[0].frozen == 1 && lf_shown(s[..], LH_UNFREEZE) && !lf_shown(s[..], LH_EXPORT) && !lf_shown(s[..], LH_MERGE) && !lf_shown(s[..], LH_FREEZE);
+  lf_press(s[..], LH_UNFREEZE);
+  #assert s[0].req == LR_UNFREEZE && lf_url(s[..]) == "/api/auth/unfreeze?as=lines";
+  lf_reply(s[..], 2, "401\nerror Log in again with your key or passkey to do this.\nstep_up L2-fresh\nmethods nostr\n");
+  #assert s[0].action == LF_ACT_GO && lf_out(s[..]) == "/settings/security?step=1&next=%2Fsettings%2Fdata";
+  lf_done(s[..]);
+  lf_press(s[..], LH_UNFREEZE);
+  lf_reply(s[..], 3, "401\nerror Log in again with a new email code to do this (within 5 minutes).\n");
+  #assert s[0].action == LF_ACT_GO && lf_out(s[..]) == "/login?next=%2Fsettings%2Fdata";
+  lf_done(s[..]);
+  lf_press(s[..], LH_UNFREEZE); lf_reply(s[..], 4, "200\nstate unfrozen\n");
+  #assert lg_is(lf_said_of(s[..]), 0, "Unfrozen.") && s[0].req == LR_LIFE;
+}
+#test "life: the export is checked, then downloaded" {
+  s: [1] Lf; lf_new(s[..], "https://openagents.com/settings/data"); lf_reply(s[..], 1, LF_T_LIFE);
+  lf_press(s[..], LH_EXPORT);
+  #assert s[0].req == LR_EXPORT && lf_url(s[..]) == "/api/auth/export?check=1&as=lines" && s[0].flags == LF_WANTED;
+  lf_reply(s[..], 2, "200\nstate ready\n");
+  #assert s[0].action == LF_ACT_GO && lf_out(s[..]) == "/api/auth/export";
+}
+#test "life: /settings/delete shows the credit left, the wallet warning and what we keep; deleting shows its day" {
+  s: [1] Lf; lf_new(s[..], "https://openagents.com/settings/delete");
+  #assert s[0].page == LF_DELETE;
+  lf_reply(s[..], 1, LF_T_LIFE);
+  b: [400] u8;
+  #assert lf_credit_words(s[..], b[..]) == "Service credit left: 2,100 sats. It can't be paid out: spend it before you delete, or it goes with the account.";
+  #assert lf_shown(s[..], LH_DELETE) && !lf_shown(s[..], LH_CANCEL);
+  lf_press(s[..], LH_DELETE);
+  #assert s[0].req == LR_DELETE && lf_url(s[..]) == "/api/auth/delete?as=lines";
+  lf_reply(s[..], 2, "200\nstate deleting\npurge_ms 1796592000000\npurge_at 2026-12-11 17:20 UTC\n");
+  #assert s[0].screen == LF_OUT && lf_said_of(s[..]) == "Your account will be deleted on 2026-12-11 17:20 UTC. Until then it is frozen and every login ended. Log in any way to cancel.";
+  t: [1] Lf; lf_new(t[..], "https://openagents.com/settings/delete"); lf_reply(t[..], 1, LF_T_DELETING);
+  #assert t[0].frozen == 2 && t[0].days_left == 30 && lf_shown(t[..], LH_CANCEL) && !lf_shown(t[..], LH_DELETE);
+  #assert lg_is(lf_state_words(t[..], b[..]), 0, "This account will be deleted on 2026-12-11 17:20 UTC (in 30 days).");
+  lf_press(t[..], LH_CANCEL);
+  #assert t[0].req == LR_CANCEL && lf_url(t[..]) == "/api/auth/delete/cancel?as=lines";
+  lf_reply(t[..], 2, "200\nstate kept\n");
+  #assert lg_is(lf_said_of(t[..]), 0, "The deletion is cancelled.");
+  #assert lf_credit_words(t[..], b[..]) == "Service credit left: none.";
+}
+#test "life: a merge by the other account's key, its credit only when chosen" {
+  s: [1] Lf; lf_new(s[..], "https://openagents.com/settings/data"); lf_reply(s[..], 1, LF_T_LIFE);
+  lf_press(s[..], LH_MERGE);
+  #assert s[0].req == LR_MSTART && lf_url(s[..]) == "/api/auth/merge/start?as=lines";
+  lf_reply(s[..], 2, "200\nstate asked\nexpires_in 600\n");
+  #assert s[0].screen == LF_MERGE && s[0].merge == LM_ASKED && lf_shown(s[..], LH_SIGN) && lf_shown(s[..], LH_FIELD);
+  lf_press(s[..], LH_SIGN);
+  #assert s[0].req == LR_CHALLENGE && lf_body_of(s[..]) == "{\"purpose\":\"merge\"}";
+  lf_reply(s[..], 3, "200\nchallenge abc\nurl https://openagents.com/api/auth/merge/prove?c=abc\n");
+  #assert s[0].action == LF_ACT_SIGN && lf_out(s[..]) == "https://openagents.com/api/auth/merge/prove?c=abc\n";
+  lf_done(s[..]); lf_message(s[..], LF_MSG_SIGNED, "Nostr ZXZlbnQ=");
+  #assert s[0].req == LR_PROVE && lf_url(s[..]) == "https://openagents.com/api/auth/merge/prove?c=abc&as=lines" && lf_body_of(s[..]) == "{\"proof\":\"ZXZlbnQ=\"}";
+  lf_reply(s[..], 4, "200\nstate proved\nother acct_y\nemails 1\nkeys 1\nagents 0\nworlds 2\nsaves 1\ncredit_msat 5000\n");
+  b: [400] u8;
+  #assert s[0].merge == LM_PROVED && lf_moves_words(s[..], b[..]) == "Moves here: 1 email, 1 key, 0 agents, 2 realms and 1 save. It has 5 sats of service credit, which moves only if you say so.";
+  #assert lf_shown(s[..], LH_MONEY) && lf_shown(s[..], LH_CONFIRM);
+  lf_press(s[..], LH_CONFIRM);
+  #assert lf_body_of(s[..]) == "{\"money\":false}";
+  lf_reply(s[..], 5, "409\nerror That account has service credit. Confirm that it moves too, or spend it first.\n");
+  #assert s[0].merge == LM_PROVED && lg_is(lf_error_of(s[..]), 0, "That account has service credit");
+  lf_press(s[..], LH_MONEY); lf_press(s[..], LH_CONFIRM);
+  #assert lf_body_of(s[..]) == "{\"money\":true}" && lf_url(s[..]) == "/api/auth/merge/confirm?as=lines";
+  lf_reply(s[..], 6, "200\nstate merged\nmerged acct_y\n");
+  #assert s[0].screen == LF_MAIN && lg_is(lf_said_of(s[..]), 0, "Merged.") && s[0].req == LR_LIFE;
+}
+#test "life: a merge by a code to the other account's email" {
+  s: [1] Lf; lf_new(s[..], "https://openagents.com/settings/data"); lf_reply(s[..], 1, LF_T_LIFE);
+  lf_press(s[..], LH_MERGE); lf_reply(s[..], 2, "200\nstate asked\n");
+  lf_press(s[..], LH_FIELD);
+  #assert lf_wants_text(s[..]);
+  lf_press(s[..], LH_SEND);
+  #assert s[0].req == LR_NONE && lf_error_of(s[..]) == "Type the other account's email address.";
+  lf_message(s[..], LF_MSG_TYPED, "old@example.com");
+  _ = lf_key_in(s[..], -2, 0);
+  #assert s[0].req == LR_MEMAIL && lf_url(s[..]) == "/api/auth/email/start?as=lines" && lf_body_of(s[..]) == "{\"email\":\"old@example.com\",\"merge\":true}";
+  lf_reply(s[..], 3, "200\nstate sent\n");
+  #assert s[0].merge == LM_CODE && s[0].typed_n == 0 && !lf_shown(s[..], LH_SIGN);
+  lf_message(s[..], LF_MSG_TYPED, "482 913");
+  lf_press(s[..], LH_SEND);
+  #assert s[0].req == LR_MCODE && lf_body_of(s[..]) == "{\"code\":\"482913\"}";
+  lf_reply(s[..], 4, "403\nerror That account has a key. Prove it with the key, not its email.\n");
+  #assert lf_error_of(s[..]) == "That account has a key. Prove it with the key, not its email.";
+  lf_press(s[..], LH_BACK);
+  #assert s[0].screen == LF_MAIN && s[0].merge == 0;
+}
+#test "life: every shown control has a box inside the panel, on a phone and a desktop, and the page draws within its vertex budget" #steps 900000000 {
+  out: [LF_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  for k: 0..<2 {
+    for page: 0..<2 {
+      s: [1] Lf; lf_new(s[..], ifx page == 0 then "https://openagents.com/settings/data" else "https://openagents.com/settings/delete");
+      s[0].w = ifx k == 0 then 390.0f32 else 1280.0f32; s[0].h = ifx k == 0 then 844.0f32 else 800.0f32;
+      lf_reply(s[..], 1, LF_T_LIFE);
+      for screen: 1..<4 {
+        s[0].screen = screen; s[0].merge = ifx screen == LF_MERGE then LM_PROVED else 0; s[0].o_credit = 1000; lf_layout(s[..]);
+        order: [LH_HITS] int; n := lf_order(s[..], order[..]);
+        for i: 0..<n {
+          b := s[0].hits[order[i]];
+          #assert b.x1 > b.x0 && b.x0 >= s[0].panel.x0 && b.x1 <= s[0].panel.x1 + 1 && (order[i] == LH_HOME || (b.y0 >= s[0].panel.y0 && b.y1 <= s[0].panel.y1));
+          #assert lf_hit(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == order[i];
+        }
+        v := lf_frame(s[..], world[0..<0], out[..], u[..], s[0].w, s[0].h, 1, 0, true);
+        #assert v > 0 && v < LF_MAX_VERTICES;
+      }
+    }
+  }
+}

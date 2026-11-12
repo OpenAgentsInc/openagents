@@ -77,11 +77,13 @@ static char *job_heartbeat(PGconn *db, const char *day) {
 static char *job_auth_sweep(PGconn *db, const char *day) {
   PGresult *r = PQexec(db, "SELECT auth.limit_sweep(), auth.audit_age(), "
                            "(WITH d AS (DELETE FROM auth.pending WHERE expires_at < now() - interval '1 day' RETURNING 1) SELECT count(*) FROM d), "
-                           "(WITH d AS (DELETE FROM auth.nip98_seen WHERE expires_at < now() RETURNING 1) SELECT count(*) FROM d)");
+                           "(WITH d AS (DELETE FROM auth.nip98_seen WHERE expires_at < now() RETURNING 1) SELECT count(*) FROM d), "
+                           // Accounts whose 30 days are up are purged to tombstones; ended merge asks go (#13214).
+                           "coalesce(cardinality(auth.purge_due()), 0), auth.life_sweep()");
   char *out = NULL;
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && (out = malloc(200)))
-    snprintf(out, 200, "{\"day\":\"%s\",\"limits\":%s,\"audit_aged\":%s,\"pending\":%s,\"signatures\":%s}", day,
-             PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 2), PQgetvalue(r, 0, 3));
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && (out = malloc(260)))
+    snprintf(out, 260, "{\"day\":\"%s\",\"limits\":%s,\"audit_aged\":%s,\"pending\":%s,\"signatures\":%s,\"purged\":%s,\"merge_asks\":%s}", day,
+             PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 2), PQgetvalue(r, 0, 3), PQgetvalue(r, 0, 4), PQgetvalue(r, 0, 5));
   else api_log("job auth-sweep: %s", PQerrorMessage(db));
   PQclear(r);
   return out;

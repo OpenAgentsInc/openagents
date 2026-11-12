@@ -90,6 +90,14 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/auth/sessions", false, AP_ACCOUNT, "the devices list"),
   R("POST", "/api/auth/sessions/", true, AP_ACCOUNT, "remove one device's session"),
   R("POST", "/api/auth/freeze", false, AP_PUBLIC, "a notice's link token, or the session's account"),
+  // ---- an account's life (auth-life.c, auth-life-policy.coax, #13214): its own proof rules inside
+  R("GET",  "/api/auth/life", false, AP_RECOVER, "frozen or waiting to be deleted, until when, and what the account holds"),
+  R("POST", "/api/auth/unfreeze", false, AP_RECOVER, "lift a freeze (L2-fresh, or a fresh email code with nothing stronger)"),
+  R("POST", "/api/auth/delete/cancel", false, AP_RECOVER, "cancel a deletion from any login, until the purge"),
+  R("GET",  "/api/auth/export", false, AP_RECOVER, "everything we hold about you, JSON lines (L2, or any login with nothing stronger)"),
+  R("POST", "/api/auth/merge/start", false, AP_RECOVER, "merge another account into this one (L2-fresh, or a fresh email code)"),
+  R("POST", "/api/auth/merge/prove", false, AP_RECOVER, "the other account's key signs the merge's challenge"),
+  R("POST", "/api/auth/merge/confirm", false, AP_RECOVER, "both accounts proved: they become one; credit moves only when confirmed"),
   // ---- `openagents login` (agents.c): the CLI's new key asks, a person approves it
   R("POST", "/api/auth/device/start", false, AP_PUBLIC, "the CLI's new key, NIP-98 signed, checked there"),
   R("POST", "/api/auth/device/look", false, AP_PUBLIC, "what /login/device shows: the computer's name"),
@@ -126,7 +134,7 @@ static const auth_rule RULES[] = {
   R("POST", "/api/auth/recovery-code", false, AP_L2_FRESH, "a new recovery code, shown once"),
   R("POST", "/api/auth/recovery-code/login", false, AP_PUBLIC, "log in with an email or key and the recovery code"),
   // ---- reserved: these routes are built in other issues and must keep L2-fresh (#13212)
-  R("POST", "/api/auth/delete", false, AP_L2_FRESH, "delete the account (#13214)"),
+  R("POST", "/api/auth/delete", false, AP_RECOVER, "delete the account: frozen now, purged in 30 days (L2-fresh, or a fresh email code; auth-life-policy.coax)"),
   R("POST", "/api/wallet/backup/export", false, AP_L2_FRESH, "export the wallet's encrypted backup (#13217)"),
   R("POST", "/api/wallet/limit", false, AP_L2_FRESH, "raise a spend limit (#13217)"),
   R("POST", "/api/lnaddr/destination", false, AP_L2_FRESH, "change a Lightning Address's destination (#13209)"),
@@ -529,6 +537,14 @@ static void cookie_header(char *out, size_t cap, const char *name, const char *v
   snprintf(out, cap, "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n", name, value, max_age);
 }
 
+// Why a frozen account is frozen: 1 a freeze, 2 a deletion waiting (auth-life-policy.coax AL_WHY_*).
+static int frozen_why(PGconn *db, const char *acct) {
+  const char *v[1] = {acct};
+  PGresult *r = PQexecParams(db, "SELECT frozen_why FROM auth.accounts WHERE id = $1", 1, NULL, v, NULL, NULL, 0);
+  int why = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "delete") ? 2 : 1;
+  PQclear(r);
+  return why;
+}
 // Looks up a session by its token's digest and fills p. false when there is none or it has
 // ended (an ended web session's row is deleted, and its cookie cleared).
 static bool from_session(PGconn *db, const char *sha, bool web, const char *token_for_rotation, auth_principal *p) {
@@ -542,7 +558,7 @@ static bool from_session(PGconn *db, const char *sha, bool web, const char *toke
   int state = (int)ap_session(app, now, atoll(PQgetvalue(r, 0, 7)), atoll(PQgetvalue(r, 0, 8)), atoll(PQgetvalue(r, 0, 9)));
   bool good_epoch = !strcmp(PQgetvalue(r, 0, 13), "t"), frozen = !strcmp(PQgetvalue(r, 0, 14), "t");
   char sid[32]; snprintf(sid, sizeof sid, "%s", PQgetvalue(r, 0, 0));
-  if (state == AP_SESSION_ENDED || !good_epoch || frozen) {
+  if (state == AP_SESSION_ENDED || !good_epoch) {
     PQclear(r);
     const char *e[1] = {sid};
     PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, e, NULL, NULL, 0));
@@ -566,6 +582,10 @@ static bool from_session(PGconn *db, const char *sha, bool web, const char *toke
   // the account's key (private projects, admin pages, credit) until it steps up or recovery ends.
   p->limited = ap_limited(p->level, p->strong);
   if (p->limited) p->pubkey[0] = 0;
+  // A frozen account's session (#13214): the gate lets it only look, unfreeze, delete, cancel and
+  // log out (auth-life-policy.coax), and it never acts as the account's key.
+  p->l1_age_ms = !strcmp(p->via, "email") ? now - atoll(PQgetvalue(r, 0, 7)) : -1;
+  if (frozen) { p->frozen = frozen_why(db, p->account); p->pubkey[0] = 0; }
   p->admin = p->pubkey[0] && admin_is(p->pubkey);
   p->credential = web ? AUTH_COOKIE : AUTH_BEARER;
   bool is_current = !strcmp(PQgetvalue(r, 0, 12), "t");
@@ -616,8 +636,9 @@ static bool resolve(const request *q, PGconn *db, auth_principal *p, int *status
                                    "JOIN auth.accounts a ON a.id = k.account WHERE k.pubkey = $1 AND a.deleted_at IS NULL",
                                1, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
-      if (!strcmp(PQgetvalue(r, 0, 4), "t")) { PQclear(r); *status = 401; return false; }   // frozen
+      bool frozen = !strcmp(PQgetvalue(r, 0, 4), "t");
       snprintf(p->account, sizeof p->account, "%s", PQgetvalue(r, 0, 0));
+      if (frozen) p->frozen = frozen_why(db, p->account);   // the gate holds it to auth-life-policy.coax's few routes
       const char *k = PQgetvalue(r, 0, 1);
       p->kind = !strcmp(k, "agent") ? AP_AGENT : !strcmp(k, "service") ? AP_SERVICE : AP_PERSON;
       snprintf(p->verse_account, sizeof p->verse_account, "%s", PQgetvalue(r, 0, 2));
@@ -704,7 +725,7 @@ void auth_init(void) {
          && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
          && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
          && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401;
-  if (!ok || !auth_recover_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
+  if (!ok || !auth_recover_init() || !auth_life_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
 // Start of each request (api.c): nothing carries over from the last.
@@ -725,6 +746,8 @@ bool auth_gate(const request *q) {
   bool signed_in = api_header(q, "Authorization", authz, sizeof authz) != NULL;
   if ((rule->rule == AP_PUBLIC || rule->rule == AP_GUEST) && !signed_in) return false;
   const auth_principal *p = auth_principal_of(q);
+  // A frozen account (#13214): only looking, unfreezing, deleting, cancelling and logging out.
+  if (auth_life_frozen_refused(q, p)) return true;
   // A bearer token of ours that is revoked, rotated or unknown is refused on public routes too.
   if (!p && (rule->rule == AP_PUBLIC || rule->rule == AP_GUEST) && !strncmp(authz, "Bearer oa_", 10)) {
     api_log("auth: refused %s %s: a refused bearer token", q->method, q->path);
@@ -791,8 +814,8 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) {
     api_log("auth: session for %s: %s", action, PQerrorMessage(db));
     PQclear(r);
-    audit(db, acct, NULL, action, "refused", "{\"why\":\"frozen or gone\"}");
-    refuse(q, 403, "This account is frozen. Log in with your key to unfreeze it.");
+    audit(db, acct, NULL, action, "refused", "{\"why\":\"deleted\"}");
+    refuse(q, 410, "This account was deleted.");
     return;
   }
   char sid[32], vacct[160]; bool team = !strcmp(PQgetvalue(r, 0, 1), "t");
@@ -861,6 +884,7 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   json_str(body, strlen(body), "client", client, sizeof client);
   bool app = !strcmp(client, "app");
   bool link = json_true(body, strlen(body), "link");
+  bool merge = json_true(body, strlen(body), "merge");   // the other account's email proves it to a merge (auth-life.c)
   if (!json_str(body, strlen(body), "email", raw, sizeof raw)) { refuse(q, 400, "Type your email address."); return; }
   int64_t n = as_email_normalize((coax_v_u8){(uint8_t *)raw, (int64_t)strlen(raw)}, (coax_v_u8){(uint8_t *)email, (int64_t)sizeof email - 1});
   if (n < 0) { refuse(q, 400, "That isn't an email address."); return; }
@@ -871,7 +895,10 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   // Linking needs a logged-in account; logging in needs none.
   const auth_principal *p = auth_principal_of(q);
   if (link && (!p || !p->account[0])) { refuse(q, 401, "Log in first."); return; }
+  if (link && p->frozen) { refuse(q, 423, "This account is frozen. Unfreeze it at openagents.com/settings/data first."); return; }   // a login, yes; a new way in, no (#13214)
   if (link && !auth_recover_may_link(q, db, p)) return;
+  if (merge && (!p || !p->account[0])) { refuse(q, 401, "Log in to the account that stays first."); return; }
+  if (merge) link = false;
   // Limits: per address (hour and day) and per network address; a new address is a new account.
   long long until = 0; char ipk[65]; visitor_key(q, ipk);
   if (!limit_hit(db, L_EMAIL_IP, ipk, &until)) { refuse_limit(q, L_EMAIL_IP, until); return; }
@@ -881,7 +908,8 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   PGresult *r = PQexecParams(db, "SELECT EXISTS (SELECT 1 FROM auth.emails WHERE lookup = ANY($1::text[]))", 1, NULL, lv, NULL, NULL, 0);
   bool known = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "t");
   PQclear(r);
-  if (!known && !link && !limit_hit(db, L_NEW_ACCOUNT, ipk, &until)) { refuse_limit(q, L_NEW_ACCOUNT, until); return; }
+  if (merge && !known) { refuse(q, 404, "No account has that email."); return; }
+  if (!known && !link && !merge && !limit_hit(db, L_NEW_ACCOUNT, ipk, &until)) { refuse_limit(q, L_NEW_ACCOUNT, until); return; }
   // The pending login: the code and link only as digests; the address sealed to this row.
   char id[33], link_token[65], code[7], pending[65], code_sha[65], link_sha[65], pend_sha[65], sealed[1200], ad[96], tmp[120];
   if (!random_hex(id, 16) || !random_hex(link_token, 32) || !random_hex(pending, 32)) { refuse(q, 503, "No randomness here. Try again."); return; }
@@ -890,7 +918,7 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   sha_hex(link_token, link_sha); sha_hex(pending, pend_sha);
   snprintf(ad, sizeof ad, "auth.pending|target_sealed|%s", id);
   if (!seal(ad, email, sealed, sizeof sealed)) { refuse(q, 503, "Email login isn't set up here yet."); return; }
-  const char *v[9] = {id, lookup, sealed, code_sha, link_sha, pend_sha, app ? "app" : "web", link ? "link" : "login", link ? p->account : NULL};
+  const char *v[9] = {id, lookup, sealed, code_sha, link_sha, pend_sha, app ? "app" : "web", merge ? "merge" : link ? "link" : "login", link || merge ? p->account : NULL};
   r = PQexecParams(db, "SELECT auth.email_start($1, $2, $3, $4, $5, $6, $7, $8, $9)", 9, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK;
   if (!ok) api_log("auth: email start: %s", PQerrorMessage(db));
@@ -912,7 +940,8 @@ static void email_start(const request *q, PGconn *db, const char *body) {
     refuse(q, s == 400 ? 400 : 502, s == 400 ? "We can't send email to that address." : "The email didn't send. Try again.");
     return;
   }
-  audit(db, link ? p->account : NULL, link ? p->session : NULL, "email.code", "ok", link ? "{\"purpose\":\"link\"}" : "{\"purpose\":\"login\"}");
+  audit(db, link || merge ? p->account : NULL, link || merge ? p->session : NULL, "email.code", "ok",
+        merge ? "{\"purpose\":\"merge\"}" : link ? "{\"purpose\":\"link\"}" : "{\"purpose\":\"login\"}");
   char headers[300] = "", json[400], lines[300];
   if (app) {
     snprintf(json, sizeof json, "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5,\"pending\":\"%s\"}", pending);
@@ -943,6 +972,7 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
   snprintf(id, sizeof id, "%s", PQgetvalue(r, 0, 1)); snprintf(sealed_p, sizeof sealed_p, "%s", PQgetvalue(r, 0, 2));
   snprintf(lookup, sizeof lookup, "%s", PQgetvalue(r, 0, 3)); snprintf(purpose, sizeof purpose, "%s", PQgetvalue(r, 0, 4));
   snprintf(link_acct, sizeof link_acct, "%s", PQgetvalue(r, 0, 5)); snprintf(client, sizeof client, "%s", PQgetvalue(r, 0, 6));
+  if (!strcmp(purpose, "merge")) { auth_life_merge_email(q, db, link_acct, lookup); return; }   // #13214
   snprintf(ad, sizeof ad, "auth.pending|target_sealed|%s", id);
   if (!unseal(ad, sealed_p, email, sizeof email)) { refuse(q, 500, "That didn't work. Ask for a new code."); return; }
   char lower[300], team_sha[65];   // team.conf names team emails by the SHA-256 of the lower-cased address
@@ -1256,7 +1286,7 @@ static void session_remove(const request *q, PGconn *db) {
   answer(q, 200, NULL, "{\"state\":\"removed\"}", "state removed\n");
 }
 static void freeze(const request *q, PGconn *db, const char *body) {
-  char t[80], tsha[65], acct[40] = "";
+  char t[80] = "", tsha[65], acct[40] = "";
   if (json_str(body, strlen(body), "t", t, sizeof t) && strlen(t) == 64) {
     sha_hex(t, tsha);
     const char *v[1] = {tsha};
@@ -1267,11 +1297,13 @@ static void freeze(const request *q, PGconn *db, const char *body) {
   } else {
     const auth_principal *p = auth_principal_of(q);
     if (!p || !p->account[0]) { refuse(q, 401, "Log in first, or use the link in the email."); return; }
+    if (p->kind != AP_PERSON) { refuse(q, 403, "Only a person can do this, not an agent."); return; }
     snprintf(acct, sizeof acct, "%s", p->account);
     const char *v[1] = {acct};
     PQclear(PQexecParams(db, "SELECT auth.freeze($1)", 1, NULL, v, NULL, NULL, 0));
   }
   audit(db, acct, NULL, "freeze", "ok", "{}");
+  auth_life_froze(db, acct, t[0] != 0 && strlen(t) == 64);   // its agents pause; every way in is told (#13214)
   char headers[200]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
   set_cookie[0] = 0;
   answer(q, 200, headers, "{\"state\":\"frozen\"}", "state frozen\n");
@@ -1355,7 +1387,7 @@ bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
   char sid[32] = ""; if (ok) snprintf(sid, sizeof sid, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
-  if (!ok) { api_json(q->fd, 403, "{\"error\":\"this account is frozen\"}"); return false; }
+  if (!ok) { api_json(q->fd, 410, "{\"error\":\"this account was deleted\"}"); return false; }
   audit(db, acct, sid, "admin.login", "ok", "{}");
   set_cookie[0] = 0;
   char headers[900];
@@ -1370,6 +1402,7 @@ bool auth_api_route(const request *q) {
   if (strncmp(q->path, "/api/auth/", 10)) return false;
   const char *op = q->path + 10;
   if (auth_recover_route(q, api_db(), op)) return true;
+  if (auth_life_route(q, api_db(), op)) return true;
   bool get = !strcmp(q->method, "GET");
   static const char *const posts[] = {"email/start", "email/verify", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve",
                                       "phone/poll", "refresh", "logout", "logout-everywhere", "freeze", NULL};

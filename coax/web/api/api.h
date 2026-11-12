@@ -108,6 +108,8 @@ typedef struct {
   bool admin, team, payload;
   bool limited;           // email alone on an account with a stronger way in: reads and plays only (#13212)
   int strong;             // the account's stronger ways in: keys, passkeys, devices, an unspent recovery code
+  int frozen;             // 0, 1 frozen by a freeze, 2 waiting to be deleted (auth-life-policy.coax AL_WHY_*, #13214)
+  long long l1_age_ms;    // since this session's email login, or -1 (an email-only account's fresh proof)
   int refused;            // the credential's refusal (400 two, 401 bad), when auth_principal_of gave NULL
   char account[40];       // acct_..., or "" (a key no account holds, a guest, nobody)
   char verse_account[160];   // the game account it plays as (n-<pk>, g-..., e-...)
@@ -148,4 +150,5 @@ int agents_admit(const request *q, PGconn *db, auth_principal *p, char words[200
 bool agents_scoped(const auth_principal *p, int scope);     // the grant holds this scope
 void agents_used(const request *q, PGconn *db, const auth_principal *p);   // the audit row of an admitted request
 int agents_pause_all(PGconn *db, const char *owner);        // logout everywhere with agents: how many paused
+char *agents_export_b64(PGconn *db, const char *owner);    // the owner's agents as a base64 AgentList (malloc'd), or NULL
 bool agents_route(const request *q);                        // /api/agents*, /api/agent/*, /api/agent-keys/*, /api/auth/device/*

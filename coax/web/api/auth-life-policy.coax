@@ -1,0 +1,332 @@
+// An account's life: freeze, merge, export and deletion (docs/auth/identity-and-methods.md#merging-accounts,
+// docs/auth/data-and-backups.md#data-export-and-account-deletion, #13214). auth-life.c gathers the
+// facts (the account's row, the session's clocks, the other account's proof, its credit) and moves
+// them in; this file decides; auth-life.c moves the answer out and never decides on its own. The
+// rows are migrations/0149_auth_life.sql's, whose constraints refuse a purge sooner than 30 days and
+// a merge into oneself whatever any code does.
+//
+// Proof. A step that changes the account asks for the account's strongest way in, recently:
+//   - an account with a key, passkey, device or recovery code: the step-up check of
+//     auth-policy.coax (ap_admit at L2 or L2-fresh), whose verdict auth-life.c moves in here;
+//   - an account whose only ways in are emails: a login by email code, within five minutes for a
+//     fresh step (nothing stronger exists to ask for).
+//
+//   al_proof          the strongest proof the account has, now enough or not
+//   al_freeze         any login of a person freezes their own account, at once, at any level
+//   al_unfreeze       a freeze (not a deletion) lifts with fresh proof
+//   al_frozen_route   what a frozen account's session may still do: look, unfreeze, step up,
+//                     delete, cancel a deletion, log out, and export while it waits to be
+//                     deleted; nothing else (no spending, no agents)
+//   al_delete         deleting needs fresh proof; asking twice keeps the first time
+//   al_cancel         a deletion is cancelled from any login, at any level, until it is purged
+//   al_purge_at       30 days after it was asked; al_purge_due says when that has come
+//   al_export         an export needs proof (not fresh), and an account not frozen by a freeze
+//                     (one waiting to be deleted may export)
+//   al_merge_start    the account that stays asks, with fresh proof, unfrozen and not deleting
+//   al_merge_proof    the other account proves itself at its strongest: a key, or an email when
+//                     it has nothing stronger
+//   al_merge          both proofs fresh, the other a person's live account, and its credit moves
+//                     only when the person confirmed that too
+//   al_name_after     a Lightning Address name ever paid stays held after deletion; a never-paid
+//                     one is released (docs/auth/lightning-addresses.md, Names)
+//   coax/bin/coax test coax/web/api/auth-life-policy.coax
+//   coax/bin/coax mutate coax/web/api/auth-life-policy.coax
+#authority;
+
+// Verdicts.
+AL_OK :: 0;
+AL_LOG_IN :: 1;           // nobody, or a key no account holds
+AL_HUMAN_ONLY :: 2;       // an agent or a service
+AL_STEP_UP :: 3;          // a key or passkey login within five minutes (auth-policy.coax's step-up)
+AL_FRESH_EMAIL :: 4;      // an email-only account: a new email code within five minutes
+AL_NOT_FROZEN :: 5;
+AL_DELETING :: 6;         // a deletion is waiting: cancel it first
+AL_NOT_DELETING :: 7;     // nothing to cancel
+AL_SAME :: 8;             // merging an account into itself
+AL_OTHER_GONE :: 9;       // the other account is deleted, merged, frozen, being deleted, or not a person
+AL_OTHER_PROOF :: 10;     // the other account has a key: prove it with the key, not its email
+AL_MONEY :: 11;           // the other account holds credit: confirm that it moves too
+AL_NOT_PROVED :: 12;      // the other account hasn't proved itself in this merge yet
+AL_PROOF_OLD :: 13;       // the other account's proof is over ten minutes old
+AL_FROZEN :: 14;          // this account is frozen: unfreeze it first
+AL_GONE :: 15;            // this account was deleted or merged
+
+// Principal kinds (auth-policy.coax's AP_*).
+AL_NOBODY :: 0; AL_GUEST :: 1; AL_PERSON :: 2; AL_AGENT :: 3; AL_SERVICE :: 4;
+// Why an account is frozen (auth.accounts.frozen_why).
+AL_WHY_NONE :: 0; AL_WHY_FREEZE :: 1; AL_WHY_DELETE :: 2;
+// What a frozen account's session asks to do (auth-life.c names one for each route).
+AL_RT_OTHER :: 0; AL_RT_LOOK :: 1; AL_RT_UNFREEZE :: 2; AL_RT_STEP_UP :: 3; AL_RT_DELETE :: 4; AL_RT_CANCEL :: 5; AL_RT_LOG_OUT :: 6; AL_RT_EXPORT :: 7;
+// Lightning Address names after a deletion.
+AL_NAME_HOLD :: 1; AL_NAME_RELEASE :: 2;
+
+AL_MINUTE_MS :: 60000;
+AL_DAY_MS :: 86400000;
+AL_FRESH_MS :: 5 * AL_MINUTE_MS;     // auth-policy.coax's AP_FRESH_MS
+AL_MERGE_MS :: 10 * AL_MINUTE_MS;    // the other account's proof lasts this long
+AL_PURGE_DAYS :: 30;                 // a deletion waits this long, cancellable
+AL_BACKUP_DAYS :: 35;                // locked backups can't be deleted before this (data-and-backups.md)
+AL_BACKUP_GONE_DAYS :: 40;           // and are deleted by then
+
+#test "the strongest proof: the step-up check when the account has a key, a fresh email otherwise" {
+  // An account with a stronger way in: auth-policy.coax's verdict, whatever the email clock says.
+  #assert al_proof(0, 1, 0, true) == AL_OK && al_proof(0, 1, 0, false) == AL_OK;
+  #assert al_proof(3, 1, 0, true) == AL_STEP_UP && al_proof(3, 4, 0, false) == AL_STEP_UP;
+  #assert al_proof(1, 1, 0, true) == AL_LOG_IN && al_proof(2, 1, 0, true) == AL_HUMAN_ONLY;
+  #assert al_proof(8, 1, 0, true) == AL_STEP_UP;   // a limited session (AP_LIMITED) steps up too
+  #assert al_proof(6, 2, 0, true) == AL_STEP_UP;   // anything else refuses
+  // Email only: a login within five minutes for a fresh step, any login otherwise.
+  #assert al_proof(3, 0, 0, true) == AL_OK && al_proof(3, 0, AL_FRESH_MS, true) == AL_OK;
+  #assert al_proof(3, 0, AL_FRESH_MS + 1, true) == AL_FRESH_EMAIL && al_proof(3, 0, -1, true) == AL_FRESH_EMAIL;
+  #assert al_proof(3, 0, 9 * AL_DAY_MS, false) == AL_OK && al_proof(0, 0, -1, false) == AL_OK;
+  // ...but never for an agent, a service or nobody.
+  #assert al_proof(2, 0, 0, false) == AL_HUMAN_ONLY && al_proof(1, 0, 0, false) == AL_LOG_IN;
+}
+#test "a person freezes their own account from any login; an agent can't" {
+  #assert al_freeze(AL_PERSON, false) == AL_OK;
+  #assert al_freeze(AL_AGENT, false) == AL_HUMAN_ONLY && al_freeze(AL_SERVICE, false) == AL_HUMAN_ONLY;
+  #assert al_freeze(AL_NOBODY, false) == AL_LOG_IN && al_freeze(AL_GUEST, false) == AL_LOG_IN;
+  #assert al_freeze(AL_PERSON, true) == AL_GONE;
+}
+#test "unfreezing lifts a freeze with proof; a deletion is cancelled, not unfrozen" {
+  #assert al_unfreeze(AL_WHY_FREEZE, false, AL_OK) == AL_OK;
+  #assert al_unfreeze(AL_WHY_FREEZE, false, AL_STEP_UP) == AL_STEP_UP;
+  #assert al_unfreeze(AL_WHY_FREEZE, false, AL_FRESH_EMAIL) == AL_FRESH_EMAIL;
+  #assert al_unfreeze(AL_WHY_NONE, false, AL_OK) == AL_NOT_FROZEN;
+  #assert al_unfreeze(AL_WHY_DELETE, true, AL_OK) == AL_DELETING;
+  #assert al_unfreeze(AL_WHY_FREEZE, true, AL_OK) == AL_DELETING;
+  #assert al_unfreeze(AL_WHY_DELETE, false, AL_OK) == AL_NOT_FROZEN;
+}
+#test "a frozen account may look, unfreeze, step up, delete, cancel and log out; nothing else" {
+  for rt: 0..<8 { #assert al_frozen_route(rt, AL_WHY_NONE) == AL_OK; }
+  #assert al_frozen_route(AL_RT_OTHER, AL_WHY_FREEZE) == AL_FROZEN && al_frozen_route(AL_RT_OTHER, AL_WHY_DELETE) == AL_DELETING;
+  for rt: 1..<7 { #assert al_frozen_route(rt, AL_WHY_FREEZE) == AL_OK; }
+  #assert al_frozen_route(AL_RT_LOOK, AL_WHY_DELETE) == AL_OK && al_frozen_route(AL_RT_CANCEL, AL_WHY_DELETE) == AL_OK;
+  #assert al_frozen_route(AL_RT_LOG_OUT, AL_WHY_DELETE) == AL_OK && al_frozen_route(AL_RT_STEP_UP, AL_WHY_DELETE) == AL_OK;
+  #assert al_frozen_route(AL_RT_UNFREEZE, AL_WHY_DELETE) == AL_DELETING && al_frozen_route(AL_RT_DELETE, AL_WHY_DELETE) == AL_OK;
+  #assert al_frozen_route(AL_RT_EXPORT, AL_WHY_FREEZE) == AL_FROZEN && al_frozen_route(AL_RT_EXPORT, AL_WHY_DELETE) == AL_OK;
+  #assert al_frozen_route(8, AL_WHY_FREEZE) == AL_FROZEN && al_frozen_route(-1, AL_WHY_FREEZE) == AL_FROZEN && al_frozen_route(8, AL_WHY_DELETE) == AL_DELETING;
+}
+#test "deleting needs proof; asking twice is the same ask" {
+  #assert al_delete(AL_PERSON, false, false, AL_OK) == AL_OK;
+  #assert al_delete(AL_PERSON, true, false, AL_OK) == AL_OK;
+  #assert al_delete(AL_PERSON, false, false, AL_STEP_UP) == AL_STEP_UP;
+  #assert al_delete(AL_PERSON, false, false, AL_FRESH_EMAIL) == AL_FRESH_EMAIL;
+  #assert al_delete(AL_PERSON, false, true, AL_OK) == AL_GONE;
+  #assert al_delete(AL_AGENT, false, false, AL_OK) == AL_HUMAN_ONLY && al_delete(AL_NOBODY, false, false, AL_OK) == AL_LOG_IN;
+}
+#test "a deletion is cancelled from any login until it is purged" {
+  #assert al_cancel(AL_PERSON, true, false) == AL_OK;
+  #assert al_cancel(AL_PERSON, false, false) == AL_NOT_DELETING;
+  #assert al_cancel(AL_PERSON, true, true) == AL_GONE;
+  #assert al_cancel(AL_AGENT, true, false) == AL_HUMAN_ONLY && al_cancel(AL_GUEST, true, false) == AL_LOG_IN;
+}
+#test "a purge comes 30 days after the ask, not a moment sooner" {
+  t0 := 1000 * AL_DAY_MS;
+  #assert al_purge_at(t0) == t0 + 30 * AL_DAY_MS;
+  #assert al_purge_due(t0 + 30 * AL_DAY_MS, t0, t0 + 30 * AL_DAY_MS);
+  #assert al_purge_due(t0 + 31 * AL_DAY_MS, t0, t0 + 30 * AL_DAY_MS);
+  #assert !al_purge_due(t0 + 30 * AL_DAY_MS - 1, t0, t0 + 30 * AL_DAY_MS);
+  // a purge time set sooner than 30 days after the ask is never due
+  #assert !al_purge_due(t0 + 40 * AL_DAY_MS, t0, t0 + 30 * AL_DAY_MS - 1);
+  #assert !al_purge_due(t0 + 40 * AL_DAY_MS, 0, t0) && !al_purge_due(t0 + 40 * AL_DAY_MS, t0, 0);
+  #assert al_purge_due(t0, 1, 1 + 30 * AL_DAY_MS) && !al_purge_due(t0, -1, 30 * AL_DAY_MS);
+}
+#test "an export needs proof, and no freeze; waiting to be deleted may export" {
+  #assert al_export(AL_PERSON, AL_WHY_NONE, AL_OK) == AL_OK;
+  #assert al_export(AL_PERSON, AL_WHY_NONE, AL_STEP_UP) == AL_STEP_UP;
+  #assert al_export(AL_PERSON, AL_WHY_FREEZE, AL_OK) == AL_FROZEN;
+  #assert al_export(AL_PERSON, AL_WHY_DELETE, AL_OK) == AL_OK && al_export(AL_PERSON, AL_WHY_DELETE, AL_STEP_UP) == AL_STEP_UP;
+  #assert al_export(AL_AGENT, AL_WHY_NONE, AL_OK) == AL_HUMAN_ONLY && al_export(AL_NOBODY, AL_WHY_NONE, AL_OK) == AL_LOG_IN;
+}
+#test "a merge starts from a live, unfrozen account with fresh proof" {
+  #assert al_merge_start(AL_PERSON, AL_WHY_NONE, AL_OK) == AL_OK;
+  #assert al_merge_start(AL_PERSON, AL_WHY_NONE, AL_STEP_UP) == AL_STEP_UP;
+  #assert al_merge_start(AL_PERSON, AL_WHY_FREEZE, AL_OK) == AL_FROZEN;
+  #assert al_merge_start(AL_PERSON, AL_WHY_DELETE, AL_OK) == AL_DELETING;
+  #assert al_merge_start(AL_AGENT, AL_WHY_NONE, AL_OK) == AL_HUMAN_ONLY && al_merge_start(AL_NOBODY, AL_WHY_NONE, AL_OK) == AL_LOG_IN;
+  #assert al_merge_start(AL_PERSON, AL_WHY_NONE, AL_FRESH_EMAIL) == AL_FRESH_EMAIL;
+}
+#test "the other account proves itself at its strongest" {
+  #assert al_merge_proof(true, 3) == AL_OK && al_merge_proof(true, 0) == AL_OK;
+  #assert al_merge_proof(false, 0) == AL_OK;
+  #assert al_merge_proof(false, 1) == AL_OTHER_PROOF && al_merge_proof(false, 5) == AL_OTHER_PROOF;
+}
+#test "a merge: both proved, another live person's account, money only when confirmed" {
+  m := AL_MERGE_MS;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, true, 0, 0, false) == AL_OK;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, true, m, 0, false) == AL_OK;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, true, m + 1, 0, false) == AL_PROOF_OLD;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, true, -1, 0, false) == AL_PROOF_OLD;
+  #assert al_merge(AL_STEP_UP, false, AL_PERSON, false, true, 0, 0, false) == AL_STEP_UP;
+  #assert al_merge(AL_FRESH_EMAIL, false, AL_PERSON, false, true, 0, 0, false) == AL_FRESH_EMAIL;
+  #assert al_merge(AL_OK, true, AL_PERSON, false, true, 0, 0, false) == AL_SAME;
+  #assert al_merge(AL_OK, false, AL_AGENT, false, true, 0, 0, false) == AL_OTHER_GONE;
+  #assert al_merge(AL_OK, false, AL_PERSON, true, true, 0, 0, false) == AL_OTHER_GONE;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, false, 0, 0, false) == AL_NOT_PROVED;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, true, 0, 1, false) == AL_MONEY;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, true, 0, 1, true) == AL_OK;
+  #assert al_merge(AL_OK, false, AL_PERSON, false, true, 0, 0, true) == AL_OK;
+}
+#test "a Lightning Address name ever paid stays held; a never-paid one is released" {
+  #assert al_name_after(true) == AL_NAME_HOLD && al_name_after(false) == AL_NAME_RELEASE;
+}
+#test "each verdict has its status and words" {
+  #assert al_status(AL_OK) == 200 && al_status(AL_LOG_IN) == 401 && al_status(AL_STEP_UP) == 401 && al_status(AL_FRESH_EMAIL) == 401;
+  #assert al_status(AL_HUMAN_ONLY) == 403 && al_status(AL_OTHER_PROOF) == 403;
+  #assert al_status(AL_NOT_FROZEN) == 409 && al_status(AL_DELETING) == 409 && al_status(AL_NOT_DELETING) == 409;
+  #assert al_status(AL_SAME) == 409 && al_status(AL_OTHER_GONE) == 409 && al_status(AL_MONEY) == 409;
+  #assert al_status(AL_NOT_PROVED) == 409 && al_status(AL_PROOF_OLD) == 409;
+  #assert al_status(AL_FROZEN) == 423 && al_status(AL_GONE) == 410 && al_status(99) == 500 && al_status(-1) == 500;
+  #assert al_words(AL_LOG_IN) == "Log in first.";
+  #assert al_words(AL_HUMAN_ONLY) == "Only a person can do this, not an agent.";
+  #assert al_words(AL_STEP_UP) == "Log in again with your key or passkey to do this.";
+  #assert al_words(AL_FRESH_EMAIL) == "Log in again with a new email code to do this (within 5 minutes).";
+  #assert al_words(AL_NOT_FROZEN) == "This account isn't frozen.";
+  #assert al_words(AL_DELETING) == "This account is waiting to be deleted. Cancel the deletion first.";
+  #assert al_words(AL_NOT_DELETING) == "This account isn't waiting to be deleted.";
+  #assert al_words(AL_SAME) == "That's the account you're logged in to. Log in to the other one.";
+  #assert al_words(AL_OTHER_GONE) == "That account can't be merged: it was deleted or merged, is frozen or being deleted, or isn't a person's.";
+  #assert al_words(AL_OTHER_PROOF) == "That account has a key. Prove it with the key, not its email.";
+  #assert al_words(AL_MONEY) == "That account has service credit. Confirm that it moves too, or spend it first.";
+  #assert al_words(AL_NOT_PROVED) == "Log in to the other account first.";
+  #assert al_words(AL_PROOF_OLD) == "The other account's login is over 10 minutes old. Log in to it again.";
+  #assert al_words(AL_FROZEN) == "This account is frozen. Unfreeze it at openagents.com/settings/data first.";
+  #assert al_words(AL_GONE) == "This account was deleted.";
+  #assert al_words(AL_OK) == "" && al_words(99) == "";
+}
+
+// auth_verdict: auth-policy.coax's ap_admit at the step's level (AP_OK 0, AP_LOG_IN 1,
+// AP_HUMAN_ONLY 2, AP_STEP_UP 3, AP_LIMITED 8, ...). strong: the account has a key, passkey,
+// device or unspent recovery code. l1_age_ms: since this session's email login (-1: none).
+al_proof :: (auth_verdict: int, strong: int, l1_age_ms: int, fresh: bool) -> int #export_c #effects(all) {
+  if auth_verdict == 1 { return AL_LOG_IN; }
+  if auth_verdict == 2 { return AL_HUMAN_ONLY; }
+  if strong > 0 {
+    if auth_verdict == 0 { return AL_OK; }
+    return AL_STEP_UP;
+  }
+  if fresh && (l1_age_ms < 0 || l1_age_ms > AL_FRESH_MS) { return AL_FRESH_EMAIL; }
+  return AL_OK;
+}
+
+al_who :: (kind: int) -> int #effects(all) {
+  if kind == AL_PERSON { return AL_OK; }
+  if kind == AL_AGENT || kind == AL_SERVICE { return AL_HUMAN_ONLY; }
+  return AL_LOG_IN;
+}
+
+al_freeze :: (kind: int, gone: bool) -> int #export_c #effects(all) {
+  w := al_who(kind);
+  if w != AL_OK { return w; }
+  if gone { return AL_GONE; }
+  return AL_OK;
+}
+
+al_unfreeze :: (why: int, deleting: bool, proof: int) -> int #export_c #effects(all) {
+  if deleting { return AL_DELETING; }
+  if why != AL_WHY_FREEZE { return AL_NOT_FROZEN; }
+  return proof;
+}
+
+al_frozen_route :: (route: int, why: int) -> int #export_c #effects(all) {
+  if why == AL_WHY_NONE { return AL_OK; }
+  if route == AL_RT_LOOK || route == AL_RT_STEP_UP || route == AL_RT_DELETE || route == AL_RT_CANCEL || route == AL_RT_LOG_OUT { return AL_OK; }
+  if route == AL_RT_UNFREEZE && why == AL_WHY_FREEZE { return AL_OK; }
+  if route == AL_RT_EXPORT && why == AL_WHY_DELETE { return AL_OK; }
+  if why == AL_WHY_DELETE { return AL_DELETING; }
+  return AL_FROZEN;
+}
+
+al_delete :: (kind: int, deleting: bool, gone: bool, proof: int) -> int #export_c #effects(all) {
+  w := al_who(kind);
+  if w != AL_OK { return w; }
+  if gone { return AL_GONE; }
+  if deleting { return AL_OK; }
+  return proof;
+}
+
+al_cancel :: (kind: int, deleting: bool, gone: bool) -> int #export_c #effects(all) {
+  w := al_who(kind);
+  if w != AL_OK { return w; }
+  if gone { return AL_GONE; }
+  if !deleting { return AL_NOT_DELETING; }
+  return AL_OK;
+}
+
+al_purge_at :: (asked_ms: int) -> int #export_c #effects(all) { return asked_ms + AL_PURGE_DAYS * AL_DAY_MS; }
+
+al_purge_due :: (now_ms: int, asked_ms: int, purge_ms: int) -> bool #export_c #effects(all) {
+  if asked_ms <= 0 { return false; }
+  if purge_ms < al_purge_at(asked_ms) { return false; }
+  return now_ms >= purge_ms;
+}
+
+al_export :: (kind: int, why: int, proof: int) -> int #export_c #effects(all) {
+  w := al_who(kind);
+  if w != AL_OK { return w; }
+  if why == AL_WHY_FREEZE { return AL_FROZEN; }
+  return proof;
+}
+
+al_merge_start :: (kind: int, why: int, proof: int) -> int #export_c #effects(all) {
+  w := al_who(kind);
+  if w != AL_OK { return w; }
+  if why == AL_WHY_FREEZE { return AL_FROZEN; }
+  if why == AL_WHY_DELETE { return AL_DELETING; }
+  return proof;
+}
+
+// by_key: the other account signed with one of its keys. other_strong: its stronger ways in.
+al_merge_proof :: (by_key: bool, other_strong: int) -> int #export_c #effects(all) {
+  if by_key || other_strong <= 0 { return AL_OK; }
+  return AL_OTHER_PROOF;
+}
+
+// proof: the survivor's (al_proof, fresh). same: the other is this account. other_gone: deleted,
+// merged, frozen or being deleted. proved: the other account proved itself in this ask, proof_age_ms ago.
+// credit_msat: the other account's service credit; money: the person confirmed it moves.
+al_merge :: (proof: int, same: bool, other_kind: int, other_gone: bool, proved: bool, proof_age_ms: int,
+             credit_msat: int, money: bool) -> int #export_c #effects(all) {
+  if proof != AL_OK { return proof; }
+  if same { return AL_SAME; }
+  if other_kind != AL_PERSON || other_gone { return AL_OTHER_GONE; }
+  if !proved { return AL_NOT_PROVED; }
+  if proof_age_ms < 0 || proof_age_ms > AL_MERGE_MS { return AL_PROOF_OLD; }
+  if credit_msat > 0 && !money { return AL_MONEY; }
+  return AL_OK;
+}
+
+al_name_after :: (ever_paid: bool) -> int #export_c #effects(all) {
+  if ever_paid { return AL_NAME_HOLD; }
+  return AL_NAME_RELEASE;
+}
+
+al_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == AL_OK { return 200; }
+  if verdict == AL_LOG_IN || verdict == AL_STEP_UP || verdict == AL_FRESH_EMAIL { return 401; }
+  if verdict == AL_HUMAN_ONLY || verdict == AL_OTHER_PROOF { return 403; }
+  if verdict >= AL_NOT_FROZEN && verdict <= AL_PROOF_OLD { return 409; }
+  if verdict == AL_FROZEN { return 423; }
+  if verdict == AL_GONE { return 410; }
+  return 500;
+}
+
+al_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == AL_LOG_IN { return "Log in first."; }
+  if verdict == AL_HUMAN_ONLY { return "Only a person can do this, not an agent."; }
+  if verdict == AL_STEP_UP { return "Log in again with your key or passkey to do this."; }
+  if verdict == AL_FRESH_EMAIL { return "Log in again with a new email code to do this (within 5 minutes)."; }
+  if verdict == AL_NOT_FROZEN { return "This account isn't frozen."; }
+  if verdict == AL_DELETING { return "This account is waiting to be deleted. Cancel the deletion first."; }
+  if verdict == AL_NOT_DELETING { return "This account isn't waiting to be deleted."; }
+  if verdict == AL_SAME { return "That's the account you're logged in to. Log in to the other one."; }
+  if verdict == AL_OTHER_GONE { return "That account can't be merged: it was deleted or merged, is frozen or being deleted, or isn't a person's."; }
+  if verdict == AL_OTHER_PROOF { return "That account has a key. Prove it with the key, not its email."; }
+  if verdict == AL_MONEY { return "That account has service credit. Confirm that it moves too, or spend it first."; }
+  if verdict == AL_NOT_PROVED { return "Log in to the other account first."; }
+  if verdict == AL_PROOF_OLD { return "The other account's login is over 10 minutes old. Log in to it again."; }
+  if verdict == AL_FROZEN { return "This account is frozen. Unfreeze it at openagents.com/settings/data first."; }
+  if verdict == AL_GONE { return "This account was deleted."; }
+  return "";
+}

@@ -247,13 +247,13 @@ void auth_step_up_refusal(const request *q, PGconn *db, const auth_principal *p,
 // ---------------------------------------------------------------- proofs made while logged in
 static const char *proof_route(const char *purpose) {
   return !strcmp(purpose, "stepup") ? "/api/auth/step-up" : !strcmp(purpose, "link") ? "/api/auth/link/nostr"
-       : !strcmp(purpose, "finish") ? "/api/auth/recovery/finish" : NULL;
+       : !strcmp(purpose, "finish") ? "/api/auth/recovery/finish" : !strcmp(purpose, "merge") ? "/api/auth/merge/prove" : NULL;
 }
 static void proof_challenge(const request *q, PGconn *db, const auth_principal *p, const char *body) {
   char purpose[16] = "";
   auth_json_str(body, strlen(body), "purpose", purpose, sizeof purpose);
   const char *route = proof_route(purpose);
-  if (!route) { auth_refuse(q, 400, "Say what the signature is for: stepup, link or finish."); return; }
+  if (!route) { auth_refuse(q, 400, "Say what the signature is for: stepup, link, finish or merge."); return; }
   if (!p || !p->account[0]) { auth_refuse(q, 401, "Log in first."); return; }
   char id[33], ch[65], chsha[65];
   if (!auth_random_hex(id, 16) || !auth_random_hex(ch, 32)) { auth_refuse(q, 503, "No randomness here. Try again."); return; }
@@ -292,6 +292,14 @@ static bool proof_key(const request *q, PGconn *db, const auth_principal *p, con
   }
   memcpy(pk, ev.pubkey, 65);
   return true;
+}
+// For auth-life.c: the merge's proof by the other account's key (purpose "merge").
+bool auth_proof_key(const request *q, PGconn *db, const auth_principal *p, const char *purpose, const char *body, char pk[65]) {
+  return proof_key(q, db, p, purpose, body, pk);
+}
+// For auth-life.c: a notice of freezing, deletion or merging to every email and key of acct.
+void auth_notice(PGconn *db, const char *acct, const char *what, const char *subject, const char *words) {
+  notify(db, acct, what, subject, words, NULL, NULL, NULL);
 }
 static int key_owner(PGconn *db, const char *pk, const char *acct) {
   const char *v[2] = {pk, acct};

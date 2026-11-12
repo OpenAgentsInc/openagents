@@ -270,19 +270,56 @@ recommend neither now (decision D11).
 
 ## Data export and account deletion
 
-- **Export:** `/settings/data` gives a JSON file: account, authenticators
-  (public parts), sessions, grants, realms, characters, credit history and
-  the account's audit rows. At L2.
-- **Delete:** in the app and on the web at `/settings/delete`, as both
-  Apple (guideline 5.1.1(v)) and Google Play require; Google also requires
-  a web link to start deletion
-  ([Google Play account deletion](https://support.google.com/googleplay/android-developer/answer/13327111)).
-  At `L2-fresh`. The account is frozen at once, and purged after 30 days
-  (cancel by logging in). Purging deletes authenticators, sessions,
-  grants, connections and owned content, sets audit rows' account to null,
-  and leaves the account id as a tombstone so it's never reused. Copies in
-  backups age out within 40 days; the privacy page says so.
-- **Money first:** before deleting, the page shows any service credit
-  left (spend it first; credit can't be withdrawn) and reminds you that
-  your wallet is yours: deleting the account deletes our encrypted copy
-  of its backup, so save your words or move the coins first.
+Built in #13214 (`coax/web/api/auth-life.c`, its rules in
+`auth-life-policy.coax`, migration `0149_auth_life.sql`).
+
+### The export
+
+DOWNLOAD MY DATA on `/settings/data` (`GET /api/auth/export`) needs L2, or,
+on an account with only email, an email login. A frozen account can't
+export; one waiting to be deleted can. Every export is in the audit log.
+
+The file is JSON lines (`openagents-ACCOUNT.jsonl`), one object per
+line, each with a `type`:
+
+| `type` | What it holds |
+| --- | --- |
+| `export` | The header: `format` (`openagents.export.v1`), `account`, `made_ms`, `docs` (this section) |
+| `account` | The account row: kind, created, Verse account, display name, freeze and deletion times |
+| `email` | Each email address, opened from its seal for this file only |
+| `agents` | Your agents as their proto message, `openagents.account.v1alpha1.AgentList` (`proto/openagents/account/v1alpha1/agents.proto`), base64 |
+| `row` | Every other row that points at you, by `auth.life_columns`: keys (public parts), sessions (no tokens), grants, realms, characters, saves, chats, payments and credit history, with its `table` |
+| `audit` | Your security log, oldest first |
+
+The file never carries token digests, seals, lookup hashes or recovery
+code hashes. It is capped at 64 MB.
+
+### Deletion
+
+DELETE MY ACCOUNT, in the app and on the web at `/settings/delete`, as both
+Apple (guideline 5.1.1(v)) and Google Play require; Google also requires a
+web link to start deletion
+([Google Play account deletion](https://support.google.com/googleplay/android-developer/answer/13327111)).
+It needs the strongest proof from the last 5 minutes (L2-fresh, or a new
+email code on an account with only email).
+
+- The account is frozen at once and every login ends. The page shows the
+  date and time it will be deleted, 30 days on.
+- Until then, log in any way and choose CANCEL DELETION. Cancelling needs no
+  fresh proof: anyone who can log in may stop a deletion.
+- After 30 days the auth sweep (`auth.purge_due()`) deletes the emails,
+  keys, passkeys, sessions, grants, agents, realms, characters, saves and
+  every other row `auth.life_columns` lists, and sets the audit rows'
+  account to null.
+- **What we keep:** payments to us (amounts and dates, unlinked), the audit
+  rows without the account id, the account id as a tombstone so it is never
+  reused, and every Lightning Address name that was ever paid, held so that
+  payments meant for you never reach someone else. Names never paid are
+  released.
+- **Backups:** the nightly backups are locked for 35 days and can't be
+  deleted early; the account's data leaves the last of them by day 40.
+- **Money first:** the page shows any service credit left (spend it first;
+  credit can't be withdrawn) and reminds you that your wallet lives on your
+  devices: save its recovery words first. We hold no copy of a wallet today;
+  if the encrypted backup in [wallets-and-custody.md](wallets-and-custody.md)
+  is built, deleting deletes it too.

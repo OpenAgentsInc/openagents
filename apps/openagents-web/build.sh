@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -80,7 +80,10 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
     # /settings/security: ways in, recovery and the re-auth prompt (security.coax loads login.coax).
     timed security "$here/../../coax/web/wasm.sh" "$here/security.coax" "$here/security-face.c" "$here/build/security.wasm" &
     security_page=$!
-    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$security_page"
+    # /settings/data and /settings/delete: freeze, export, merge and deletion (life.coax loads login.coax).
+    timed life "$here/../../coax/web/wasm.sh" "$here/life.coax" "$here/life-face.c" "$here/build/life.wasm" &
+    life_page=$!
+    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$security_page"; wait "$life_page"
   ) &
   home=$!
   # The project pages: every projects/<slug>/project.json with a page, its tasks

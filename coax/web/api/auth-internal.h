@@ -44,3 +44,18 @@ void auth_recover_linked_email(PGconn *db, const char *acct, const char *sid);
 // The step a limited session may not take with email alone: a link of an email on an account
 // with a stronger way in. false: it answered the refusal.
 bool auth_recover_may_link(const request *q, PGconn *db, const auth_principal *p);
+// For auth-life.c: the key that signed this request's proof for purpose (false: it answered the
+// refusal), and a notice to every email and key of acct.
+bool auth_proof_key(const request *q, PGconn *db, const auth_principal *p, const char *purpose, const char *body, char pk[65]);
+void auth_notice(PGconn *db, const char *acct, const char *what, const char *subject, const char *words);
+
+// ---- auth-life.c (freeze, merge, export and deletion, #13214)
+bool auth_life_init(void);
+// Answers /api/auth/{life,unfreeze,delete,delete/cancel,export,merge/*}; false when op isn't one.
+bool auth_life_route(const request *q, PGconn *db, const char *op);
+// The gate's check of a frozen account's request: true when it answered the refusal.
+bool auth_life_frozen_refused(const request *q, const auth_principal *p);
+// After a freeze (auth.c): its agents pause and every way in is told.
+void auth_life_froze(PGconn *db, const char *acct, bool by_link);
+// email_finish for purpose "merge": the account that holds the email proved itself to survivor's ask.
+void auth_life_merge_email(const request *q, PGconn *db, const char *survivor, const char *lookup);
