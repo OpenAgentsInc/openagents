@@ -261,7 +261,7 @@ timed garden "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-fa
 garden=$!
 # /worlds/everglade-classic (Everglade before the SRD 5e rules; everglade.coax is also the city everglade5e.coax loads): the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
 timed everglade "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
-  "$here/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" &
 everglade=$!
 # /worlds/5e-mmo: the SRD 5e battle in Everglade (fivemmo.coax on everglade.coax), the battle its own unit.
 timed fivemmo "$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fivemmo-face.c" "$here/build/fivemmo.wasm" \
@@ -269,7 +269,7 @@ timed fivemmo "$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fivemmo
 fivemmo=$!
 # /worlds/everglade (since #12710; /worlds/everglade-5e redirects): Everglade on the SRD 5e engine (everglade5e.coax on everglade.coax), the rules their own unit.
 timed everglade5e "$here/../../coax/web/wasm.sh" "$here/everglade5e.coax" "$here/everglade5e-face.c" "$here/build/everglade5e.wasm" \
-  "$here/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" "$here/everglade5e-rules.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" "$here/everglade5e-rules.coax" &
 everglade5e=$!
 # Everglade's offline room (#12784): the room server's simulation, built to wasm for the local host (coax/web/room-worker.js).
 timed everglade-room "$here/../../coax/web/tool.sh" "$here/../../coax/web/room/worker.coax" "$here/build/everglade-room.wasm" &
@@ -331,7 +331,7 @@ builder=$!
 # /create-world: chat a world onto an empty Grid (worldbuilder.coax, the API's coax/web/api/worldbuilder.c).
 # It is an Everglade zone too (worldbuilder-walk.coax, everglade/zone.coax): your character walks the world you build.
 timed worldbuilder "$here/../../coax/web/wasm.sh" "$here/worldbuilder-walk.coax" "$here/worldbuilder-face.c" "$here/build/worldbuilder.wasm" \
-  "$here/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
 worldbuilder=$!
 # /worlds/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 timed icecream "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
@@ -351,17 +351,17 @@ watchtower=$!
 # /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (aethyr/rules/srd, docs/dnd).
 # Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (aethyr/sticks.coax).
 timed fivelab "$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
-  "$here/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
 fivelab=$!
 # /worlds/archery-range (unlisted): the Archery Range, an Everglade zone (everglade/zone.coax) with the range on it
 # (everglade/docs/archery-range-spec.md). It draws with Character Create's passes (charactercreator.wgsl).
 timed archery-range "$here/../../coax/web/wasm.sh" "$here/archery-range.coax" "$here/archery-range-face.c" "$here/build/archery-range.wasm" \
-  "$here/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
 archery_range=$!
 # /worlds/bitcoin-lab (unlisted): Bitcoin Lab, the Bitcoin book's first chapter as a walk on the Grid: an Everglade
 # zone (everglade/zone.coax) with your character, its stations drawn as quads by bitcoin-lab-fx.wgsl (aethyr/fx/gpu-quads.coax).
 timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab-walk.coax" "$here/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
-  "$here/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
 bitcoin_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
@@ -370,7 +370,7 @@ timed cull-fixture in_repo coax/web/tool.sh aethyr/tools/cull-fixture.coax "$her
 cullfixture=$!
 # /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/verse/everglade2.md).
 timed everglade2 "$here/../../coax/web/wasm.sh" "$here/everglade2.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
-  "$here/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
 everglade2=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
 timed metahumanlab "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &

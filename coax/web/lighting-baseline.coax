@@ -678,8 +678,8 @@ LB_BUILDS :: [11] string.[
   "coax/web/tool.sh|ROOT/coax/web/build-packs.coax|ROOT|ROOT/apps/openagents-web/build/host-packs.wasm",
   "coax/web/tool.sh|ROOT/coax/web/build-latency.coax|ROOT|ROOT/apps/openagents-web/build/latency-client.wasm",
   "coax/web/tool.sh|ROOT/aethyr/tools/page-pack.coax|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.pack|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.vpk3",
-  "coax/web/wasm.sh|ROOT/apps/openagents-web/everglade2.coax|ROOT/apps/openagents-web/everglade2-face.c|ROOT/apps/openagents-web/build/everglade2.wasm|ROOT/apps/openagents-web/everglade-step.coax|ROOT/aethyr/sticks.coax",
-  "coax/web/wasm.sh|ROOT/apps/openagents-web/fivelab.coax|ROOT/apps/openagents-web/fivelab-face.c|ROOT/apps/openagents-web/build/fivelab.wasm|ROOT/apps/openagents-web/everglade-step.coax|ROOT/aethyr/sticks.coax",
+  "coax/web/wasm.sh|ROOT/apps/openagents-web/everglade2.coax|ROOT/apps/openagents-web/everglade2-face.c|ROOT/apps/openagents-web/build/everglade2.wasm|ROOT/everglade/shared/everglade-step.coax|ROOT/aethyr/sticks.coax",
+  "coax/web/wasm.sh|ROOT/apps/openagents-web/fivelab.coax|ROOT/apps/openagents-web/fivelab-face.c|ROOT/apps/openagents-web/build/fivelab.wasm|ROOT/everglade/shared/everglade-step.coax|ROOT/aethyr/sticks.coax",
   "/usr/bin/env|COAXIAL_RUN_STEPS=250000000|ROOT/coax/web/wasm.sh|ROOT/apps/openagents-web/myrealm.coax|ROOT/apps/openagents-web/myrealm-face.c|ROOT/apps/openagents-web/build/myrealm.wasm|ROOT/verse/edit/computer-wire.coax|ROOT/coax/lib/crypto/entropy.coax"];
 LB_BUILD_MS :: 900000;
 // a build line's field i with ROOT replaced by root

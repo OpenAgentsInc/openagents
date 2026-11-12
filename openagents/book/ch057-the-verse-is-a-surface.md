@@ -63,7 +63,7 @@ On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
 
 | Record | Schema | Carriage | Today |
 | --- | --- | --- | --- |
-| A realm session | Text frames, described frame by frame in [`everglade-session-v5.json`](../../proto/verse/everglade-session-v5.json) | Frames on a WebSocket or WebTransport | In use: one hand-packed codec, `apps/openagents-web/everglade-wire.coax`, pinned by that profile. The compliance rule allows this kind ([chapter 52](ch052-the-compliance-rule.md)) |
+| A realm session | Text frames, described frame by frame in [`everglade-session-v5.json`](../../proto/verse/everglade-session-v5.json) | Frames on a WebSocket or WebTransport | In use: one hand-packed codec, `everglade/shared/everglade-wire.coax`, pinned by that profile. The compliance rule allows this kind ([chapter 52](ch052-the-compliance-rule.md)) |
 | Presence in a world | `openagents.verse.presence.v1alpha1` ([`presence.proto`](../../proto/openagents/verse/presence/v1alpha1/presence.proto)) | None yet. NIP-MV carries poses as kinds 23300 and 33301, unchanged | Schema file; no product consumer |
 
 Planned paths: `openagents/agent/surfaces/verse.coax`.

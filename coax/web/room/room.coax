@@ -1,6 +1,6 @@
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "../../../aethyr/ids.coax";
-#load "../../../apps/openagents-web/everglade-handles.coax";
+#load "../../../everglade/shared/everglade-handles.coax";
 #load "room-handles.coax";
 // The Orbit League room server's decisions (ol-room): which room a
 // WebSocket's path names, who sits where, the 60 Hz tick and what each
@@ -21,7 +21,7 @@
 #load "../../../apps/openagents-web/orbitleague.coax";
 #load "room-relay.coax";
 #load "../../../everglade/server/battle.coax";   // Everglade II's battle: its layout and step over the SRD engine (#13346)
-#load "../../../apps/openagents-web/everglade-wire.coax";
+#load "../../../everglade/shared/everglade-wire.coax";
 #load "../../../aethyr/session/compat.coax";   // sessions pinned to a build (#12839)
 #load "../../../aethyr/session/lifecycle.coax";   // the room's side of the session lifecycle: what it takes, how long it holds a seat (#12856)
 #load "../../../aethyr/session/travel.coax";   // one owner per character (its fence, control.coax) and travel's admission (#12834, #12850, #12845)
@@ -38,7 +38,7 @@
 #load "room-everglade.coax";
 #load "room-wt.coax";   // the seats on WebTransport: state as one datagram a tick, outcomes on streams (#13176)
 #load "room-casts.coax";   // casts under latency: their phases and a tick's order (#12790)
-#load "../../../apps/openagents-web/everglade-cast-rules.coax";
+#load "../../../everglade/shared/cast-limits.coax";
 #load "room-sky.coax";
 #load "room-ticket.coax";
 #load "room-write.coax";   // this shard's own write key (#13260)

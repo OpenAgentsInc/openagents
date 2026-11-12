@@ -1,7 +1,7 @@
 # 92. Priority under a budget
 
 > **Status: partly implemented.** Each tick the server fills one table of
-> rows (`WireHist`, [everglade-wire.coax](../../apps/openagents-web/everglade-wire.coax)),
+> rows (`WireHist`, [everglade-wire.coax](../../everglade/shared/everglade-wire.coax)),
 > and each seat's rows are cut from it by priority, weight over distance,
 > within `WIRE_BUDGET`, 1,000 bytes a tick (30 KB/s); the seat's own row and
 > its removals go on top (#12783, commit edd9601102). A seat whose socket has

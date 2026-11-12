@@ -178,7 +178,7 @@ coder_touched() {   # whether the change since $arg reaches Coder (yes when the 
   grep -qxF coder/tui/coder.coax "$out/affected"
 }
 # The room server builds room.coax and the controller's unit (room/build.sh, #13267).
-room_units='coax/web/room/room.coax apps/openagents-web/everglade-step.coax'
+room_units='coax/web/room/room.coax everglade/shared/everglade-step.coax'
 room_touched() {   # whether the change since $arg reaches the room build (yes when it can't tell)
   grep -Eq "$web_whole|^coax/web/room/" "$out/changed" && return 0
   affected_files || return 0

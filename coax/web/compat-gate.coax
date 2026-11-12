@@ -19,7 +19,7 @@ tool_main :: ()->int #export_c #effects(all) {
   create:=[6]string.["git","worktree","add","--detach",oldtree,revision];
   if cg_run(create[..],output[..])<0 {gone:=fs_remove(temporary);return 2;}
   defer {remove_tree:=[5]string.["git","worktree","remove","--force",oldtree];removed:=cg_run(remove_tree[..],output[..]);gone:=fs_remove(temporary);}
-  modules:=[2]string.["apps/openagents-web/everglade-wire.coax","aethyr/session/character-checkpoint.coax"];
+  modules:=[2]string.["everglade/shared/everglade-wire.coax","aethyr/session/character-checkpoint.coax"];
   facades:=[2]string.["coax/web/compat/everglade-wire.coax","coax/web/compat/character-checkpoint.coax"];
   names:=[2]string.["everglade-wire.surface","character-checkpoint.surface"];
   for module,i:modules {

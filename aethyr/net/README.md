@@ -85,7 +85,7 @@ channel is its own stream, so a resend in one never holds up another.
   admission, reconnect-hold, earned-credit and accepted-result decisions.
   `room-relay.coax` fences active and closing sockets by the shared generation
   decision. `room-checkpoint.coax` selects receipt freshness explicitly.
-- `apps/openagents-web/everglade-wire.coax` converts its packed slot storage
+- `everglade/shared/everglade-wire.coax` converts its packed slot storage
   to `NetReplica` for receipt, removal, replacement and baseline decisions.
   It copies only occupied slots. Its former local copies of those decisions
   are removed. `net_row_delta` supplies the explicit field mask.

@@ -1,4 +1,4 @@
-#load "../../../apps/openagents-web/everglade-wire.coax";
+#load "../../../everglade/shared/everglade-wire.coax";
 // The published messages. Receive histories and delta tables are runtime state.
 contract_pins :: (value:WirePins)->WirePins #effects(computes) {return value;}
 contract_input :: (value:WireIn)->WireIn #effects(computes) {return value;}

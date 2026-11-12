@@ -69,7 +69,7 @@ It builds on what exists today:
 - [`coax/web/wire-check.coax`](../../coax/web/wire-check.coax)
 - [`proto/modules.json`](../../proto/modules.json)
 - [`proto/verse/everglade-session-v5.json`](../../proto/verse/everglade-session-v5.json)
-- [`apps/openagents-web/everglade-wire.coax`](../../apps/openagents-web/everglade-wire.coax)
+- [`everglade/shared/everglade-wire.coax`](../../everglade/shared/everglade-wire.coax)
 - [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax)
 - [`coax/proto.md`](../../coax/proto.md)
 

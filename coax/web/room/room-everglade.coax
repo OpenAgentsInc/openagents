@@ -1,4 +1,4 @@
-#load "../../../apps/openagents-web/everglade-link-wire.coax";
+#load "../../../everglade/shared/everglade-link-wire.coax";
 #load "../../../aethyr/ids.coax";
 #load "../../../apps/openagents-web/everglade2-move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
 #load "../../../apps/openagents-web/class-kit.coax";
@@ -9,7 +9,7 @@
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
 // An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are
 // intents for the room's simulation here, which runs at EG_HZ, and each seat hears the world from it.
-// The frames are apps/openagents-web/everglade-wire.coax's (version 3), read and written by its code,
+// The frames are everglade/shared/everglade-wire.coax's (version 3), read and written by its code,
 // which the page #loads too:
 //   in:  H 3 LOOK CLASS FLAGS NAME   I SEQ KX KY PX PY THETA B HEARD   C SEQ SLOT AX AY AZ TGT
 //        E SEQ KIND ID (KIND 5: end what slot ID holds up)   R SEQ   (t MS, the relay's)

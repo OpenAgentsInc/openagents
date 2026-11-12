@@ -49,7 +49,7 @@ FI_SHARDS :: 14;
 FI_SHARD_HURT :: 4.0;      // m/s: a slab moving faster than this hurts who it strikes
 FI_RUBBLE_SPEED :: 4.0;    // m/s: debris striking the dome this fast wears it
 
-#load "everglade-handles.coax";
+#load "../../everglade/shared/everglade-handles.coax";
 FiBurn :: struct { piece: int; t: f32; tick: f32; spread: f32; by: int; owner:Handle(EvergladeSeat); }
 FiShard :: struct { live: bool; at: Point; vel: Point; yaw: f32; tilt: f32; spin: f32; sx: f32; sy: f32; sz: f32; still: bool; struck: bool; }
 Fire :: struct {

@@ -16,7 +16,7 @@
 // tool.sh: stack-gib 2
 #import "Basic";
 #load "../../lib/sys/proc.coax";
-#load "../../../apps/openagents-web/everglade-wire.coax";
+#load "../../../everglade/shared/everglade-wire.coax";
 #load "../../../aethyr/net/grid.coax";
 
 RB_MAX :: 1000;               // entities at most

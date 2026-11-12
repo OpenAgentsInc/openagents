@@ -26,7 +26,7 @@ shares. It showed that all of that runs in a browser tab.
 What v1 settled, and Everglade II keeps:
 
 - **One step for the page and the server.**
-  [`apps/openagents-web/everglade-step.coax`](../../apps/openagents-web/everglade-step.coax)
+  [`everglade/shared/everglade-step.coax`](../../everglade/shared/everglade-step.coax)
   holds `eg_step_begin` and `eg_step_advance_among`. The page and the room
   server both call them, so your movement on your screen and on the server
   agree. [Aethyr chapter 87](../../aethyr/book/ch087-server-and-client-share-one-step.md)

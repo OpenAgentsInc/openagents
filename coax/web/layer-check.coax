@@ -15,6 +15,11 @@
 //   tests         a file under aethyr/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or test/ folder
 //   context       a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
 //   model-effects a model file listed in aethyr/model-files.txt declares #effects(all) (#13314)
+// And one gate with no allowlist (#13267 step 7, #13346): the room server's load closure (every file
+// coax/web/room/room.coax loads, directly or through another) has no Everglade v1 file, none named
+// apps/openagents-web/everglade-*.coax or apps/openagents-web/everglade5e*.coax. v1's room builds
+// frozen from everglade/server/legacy/v1.sh's pin; Everglade II's room is everglade/server/ and the
+// shared code both sides load is everglade/shared/.
 // Support code is a test, check, tool, example or book file, which may load what it exercises:
 //   a path with a folder named tests, test, tools, examples, book, fixtures or lab;
 //   a file named test_X, test-X, check-X, check.E, checks.E, X_test.E, X-test.E, X-check.E,
@@ -23,7 +28,7 @@
 // A load whose path is absolute is outside the tree and not judged.
 //
 // aethyr/layer-allowlist.txt names the loads that break a rule today, one per line:
-//   RULE FROM -> TO        e.g. aethyr-up aethyr/net/latency.coax -> apps/openagents-web/everglade-wire.coax
+//   RULE FROM -> TO        e.g. aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax
 // The list only shrinks (the rule proto/wire-allowlist.txt keeps): a line that REV's copy lacks
 // fails unless it ends with a reason and an issue number ("# why (#1234)"), and a line that excuses
 // nothing now fails, so the list stays true. To take a line out, make the load go (move the code it
@@ -141,6 +146,55 @@ lc_resolve :: (dir: string, rel: string, out: [] u8) -> string {
     }
   }
   return cast(string) out[0..<n];
+}
+
+// ---- the room's closure (#13346)
+
+LC_ROOM :: "coax/web/room/room.coax";
+LC_ROOM_FILES :: 2048;    // files in the room's closure tracked
+// Whether path is an Everglade v1 file the room must not load.
+lc_v1 :: (path: string) -> bool {
+  return lc_starts(path, "apps/openagents-web/everglade-") || lc_starts(path, "apps/openagents-web/everglade5e");
+}
+// The v1 files in root's load closure, as `loads` (git grep's "FILE:LINE:#load ..." rows) has it:
+// each named once. How many.
+lc_room_v1 :: (loads: string, root: string, run: LcRun) -> int {
+  pool: [262144] u8; pn := 0;
+  at: [LC_ROOM_FILES] int; sz: [LC_ROOM_FILES] int; n := 0;
+  for c: root { pool[pn] = c; pn += 1; }
+  at[0] = 0; sz[0] = root.count; n = 1;
+  bad := 0;
+  q := 0;
+  while q < n {
+    from := cast(string) pool[at[q]..<at[q] + sz[q]]; q += 1;
+    dir := lc_dir(from);
+    i := 0;
+    while i < loads.count {
+      j := i;
+      while j < loads.count && loads[j] != '\n' { j += 1; }
+      row := cast(string) loads[i..<j]; i = j + 1;
+      if row.count <= from.count || row[from.count] != ':' || !lc_starts(row, from) { continue; }
+      l := lc_parse(row);
+      if !l.ok { continue; }
+      to_b: [1024] u8;
+      to := lc_resolve(dir, l.rel, to_b[..]);
+      if to.count == 0 { continue; }
+      seen := false;
+      for k: 0..<n { if cast(string) pool[at[k]..<at[k] + sz[k]] == to { seen = true; break; } }
+      if seen { continue; }
+      if n >= LC_ROOM_FILES || pn + to.count > pool.count {
+        if !run.quiet { print("layer-check: the room's closure is past % files; raise LC_ROOM_FILES\n", LC_ROOM_FILES); }
+        return bad + 1;
+      }
+      at[n] = pn; sz[n] = to.count; n += 1;
+      for c: to { pool[pn] = c; pn += 1; }
+      if lc_v1(to) {
+        bad += 1;
+        if !run.quiet { print("room-v1 % -> %   (the room loads an Everglade v1 file; everglade/shared/ holds what both sides need)\n", from, to); }
+      }
+    }
+  }
+  return bad;
 }
 
 // ---- support code and the rules
@@ -592,6 +646,8 @@ tool_main :: () -> int #export_c #effects(all) {
   bad := lc_judge_with_contexts(loads, tools, allow, ctxs, used[..], run, found[..]);
   bad += lc_judge_allow(allow, used[..], run);
   bad += lc_judge_models_fs(models, body[..], run, found[..], model_checked[..]);
+  room_v1 := lc_room_v1(loads, LC_ROOM, run);
+  bad += room_v1;
 
   // the allowlist against the base's copy: it only shrinks
   added: [1] int;
@@ -619,7 +675,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
 
   total := found[1] + found[2] + found[3] + found[4];
-  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, bad);
+  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, bad);
   return ifx bad == 0 then 0 else 1;
 }
 
@@ -628,16 +684,16 @@ tool_main :: () -> int #export_c #effects(all) {
 LC_T_QUIET :: LcRun.{quiet = true};
 // git grep -n output: an engine module loading the page's wire, a test and a sibling; a test that
 // may load anything; a tool program; a game file loading the web app; a page loading the engine.
-LC_T_LOADS :: "aethyr/net/latency.coax:5:#load \"../../apps/openagents-web/everglade-wire.coax\";\naethyr/net/latency.coax:6:#load \"../tests/net-fixture.coax\";\naethyr/net/latency.coax:7:#load \"clock.coax\";\naethyr/tests/net-checks.coax:3:#load \"../../verse/everglade/zone.coax\";\naethyr/host/build-x.coax:2:#load \"../../coax/web/wasm-chrome.coax\";\neverglade/zone.coax:4:#load \"../apps/openagents-web/hud.coax\";\neverglade/zone.coax:5:#load \"../aethyr/net/latency.coax\";\napps/openagents-web/page.coax:9:#load \"../../aethyr/net/latency.coax\";\n";
+LC_T_LOADS :: "aethyr/net/latency.coax:5:#load \"../../everglade/shared/everglade-wire.coax\";\naethyr/net/latency.coax:6:#load \"../tests/net-fixture.coax\";\naethyr/net/latency.coax:7:#load \"clock.coax\";\naethyr/tests/net-checks.coax:3:#load \"../../verse/everglade/zone.coax\";\naethyr/host/build-x.coax:2:#load \"../../coax/web/wasm-chrome.coax\";\neverglade/zone.coax:4:#load \"../apps/openagents-web/hud.coax\";\neverglade/zone.coax:5:#load \"../aethyr/net/latency.coax\";\napps/openagents-web/page.coax:9:#load \"../../aethyr/net/latency.coax\";\n";
 LC_T_TOOLS :: "aethyr/host/build-x.coax\n";
-LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/everglade-wire.coax\ntests aethyr/net/latency.coax -> aethyr/tests/net-fixture.coax\neverglade-up everglade/zone.coax -> apps/openagents-web/hud.coax\n";
+LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax\ntests aethyr/net/latency.coax -> aethyr/tests/net-fixture.coax\neverglade-up everglade/zone.coax -> apps/openagents-web/hud.coax\n";
 
 #test "a load line: its file, its line and the path it names" {
   l := lc_parse("aethyr/ui/draw.coax:6:#load \"../../verse/hud/frame.coax\" as frame;");
   #assert l.ok && l.from == "aethyr/ui/draw.coax" && l.line == 6 && l.rel == "../../verse/hud/frame.coax";
   #assert !lc_parse("a.coax:3:// #load \"x.coax\";").ok && !lc_parse("a.coax:3:#load \"\";").ok && !lc_parse("a.coax:x:#load \"b.coax\";").ok && !lc_parse("").ok;
   o: [256] u8;
-  #assert lc_resolve("aethyr/net", "../../apps/openagents-web/everglade-wire.coax", o[..]) == "apps/openagents-web/everglade-wire.coax";
+  #assert lc_resolve("aethyr/net", "../../everglade/shared/everglade-wire.coax", o[..]) == "everglade/shared/everglade-wire.coax";
   #assert lc_resolve("aethyr", "walk.coax", o[..]) == "aethyr/walk.coax" && lc_resolve("aethyr/a", "./b/../c.coax", o[..]) == "aethyr/a/c.coax";
   #assert lc_resolve("a", "../../b.coax", o[..]) == "" && lc_resolve("a", "/Users/x/b.coax", o[..]) == "";
   #assert lc_dir("aethyr/net/latency.coax") == "aethyr/net" && lc_dir("a.coax") == "";
@@ -651,7 +707,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/
   #assert lc_in_tests("aethyr/tests/a.coax") && lc_in_tests("coax/lib/test/a.coax") && !lc_in_tests("aethyr/tests.coax") && !lc_in_tests("aethyr/latest/a.coax");
 }
 #test "the rules: up from aethyr, up from everglade, and product code loading tests" {
-  #assert lc_rule("aethyr/net/latency.coax", "apps/openagents-web/everglade-wire.coax") == LC_UP_AETHYR;
+  #assert lc_rule("aethyr/net/latency.coax", "everglade/shared/everglade-wire.coax") == LC_UP_AETHYR;
   #assert lc_rule("aethyr/ui/draw.coax", "verse/hud/frame.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "everglade/zone.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "coax/web/wasm-chrome.coax") == LC_UP_AETHYR;
   #assert lc_rule("aethyr/a.coax", "coax/lib/json/json.coax") == 0 && lc_rule("aethyr/a.coax", "psionic/lib/a.coax") == 0 && lc_rule("aethyr/a.coax", "aethyr/b.coax") == 0;
   #assert lc_rule("everglade/zone.coax", "apps/openagents-web/hud.coax") == LC_UP_EVERGLADE && lc_rule("everglade/zone.coax", "verse/everglade/a.coax") == 0 && lc_rule("everglade/zone.coax", "aethyr/a.coax") == 0;
@@ -677,6 +733,16 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/
   // the same path loaded twice is one load; an absolute path is not judged
   f4: [LC_RULES] int;
   #assert lc_judge("aethyr/a.coax:1:#load \"../verse/b.coax\";\naethyr/a.coax:2:#load \"../verse/b.coax\";\naethyr/a.coax:3:#load \"/x/verse/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f4[..]) == 1 && f4[LC_UP_AETHYR] == 1;
+}
+#test "the room's closure: an Everglade v1 file it reaches through another fails; everglade/shared/ and v1's own loads do not (#13346)" {
+  loads := "coax/web/room/room.coax:3:#load \"room-a.coax\";\ncoax/web/room/room-a.coax:1:#load \"../../../everglade/shared/everglade-wire.coax\";\neverglade/shared/everglade-wire.coax:2:#load \"everglade-forest-profile.coax\";\napps/openagents-web/everglade.coax:9:#load \"everglade5e-rules.coax\";\n";
+  #assert lc_room_v1(loads, LC_ROOM, LC_T_QUIET) == 0;
+  more := "coax/web/room/room-a.coax:2:#load \"../../../apps/openagents-web/everglade-cast-rules.coax\";\napps/openagents-web/everglade-cast-rules.coax:1:#load \"everglade5e-rules.coax\";\ncoax/web/room/room.coax:4:#load \"room-a.coax\";\n";
+  joined: [4096] u8; n := 0;
+  for c: loads { joined[n] = c; n += 1; }
+  for c: more { joined[n] = c; n += 1; }
+  #assert lc_room_v1(cast(string) joined[0..<n], LC_ROOM, LC_T_QUIET) == 2;   // each named once, however reached
+  #assert lc_v1("apps/openagents-web/everglade5e.coax") && lc_v1("apps/openagents-web/everglade-wire.coax") && !lc_v1("apps/openagents-web/everglade2-move.coax") && !lc_v1("everglade/shared/everglade-wire.coax");
 }
 #test "the allowlist stays true and only shrinks" {
   used: [8] bool;

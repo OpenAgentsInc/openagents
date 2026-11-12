@@ -15,14 +15,14 @@ aethyr-up aethyr/anim/write.coax -> verse/tools/humans/ph_num.coax
 aethyr-up aethyr/character-appearance.coax -> apps/openagents-web/charactercreator-parts.coax
 aethyr-up aethyr/fx/gpu-puff.coax -> verse/everglade/gpu-fx.coax
 aethyr-up aethyr/fx/gpu-quads.coax -> verse/gpu/wgsl.coax
-aethyr-up aethyr/net/latency.coax -> apps/openagents-web/everglade-wire.coax
+aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
 aethyr-up aethyr/render/carriers/belt.coax -> apps/openagents-web/belt.coax
 aethyr-up aethyr/render/carriers/deadgears.coax -> apps/openagents-web/deadgears.coax
 aethyr-up aethyr/render/carriers/droprealm.coax -> apps/openagents-web/droprealm.coax
-aethyr-up aethyr/render/carriers/everglade.coax -> apps/openagents-web/everglade-step.coax
+aethyr-up aethyr/render/carriers/everglade.coax -> everglade/shared/everglade-step.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
 aethyr-up aethyr/render/carriers/everglade.coax -> apps/openagents-web/everglade.coax
 aethyr-up aethyr/render/carriers/everglade.coax -> verse/everglade/guard-guide-policy.coax
-aethyr-up aethyr/render/carriers/everglade5e.coax -> apps/openagents-web/everglade-step.coax
+aethyr-up aethyr/render/carriers/everglade5e.coax -> everglade/shared/everglade-step.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
 aethyr-up aethyr/render/carriers/everglade5e.coax -> apps/openagents-web/everglade5e.coax
 aethyr-up aethyr/render/carriers/everglade5e.coax -> verse/everglade/guard-guide-policy.coax
 aethyr-up aethyr/render/carriers/fairy.coax -> apps/openagents-web/fairy.coax
@@ -70,7 +70,6 @@ aethyr-up aethyr/world/weather.coax -> verse/water-weather.coax
 # The game loads from the web app
 everglade-up everglade/zone.coax -> apps/openagents-web/charactercreator.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/druid-scene.coax
-everglade-up everglade/zone.coax -> apps/openagents-web/everglade-move-types.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/experimental-combat.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/experimental-objects.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/experimental-sound.coax

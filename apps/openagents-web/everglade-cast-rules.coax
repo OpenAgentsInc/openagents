@@ -1,21 +1,13 @@
 // Everglade's cast rules under latency (GitHub #12790, epic #12718; spec
 // docs/verse/2026-11-04-everglade-cast-rules.md). The numbers and the small pure rules both sides use:
-// the room server resolves casts with them (coax/web/room/room-casts.coax), and the page predicts with
-// them (everglade-net.coax, everglade-spells.coax). It depends on nothing else, so the room's unit and
-// the page's both #load it.
+// v1's room server resolved casts with them, and the page predicts with
+// them (everglade-net.coax, everglade-spells.coax). Reach, sight and the refusal words are Everglade's
+// shared cast limits (everglade/shared/cast-limits.coax, which the room loads alone); the rest here,
+// the cast bars, the wait and Repair, are v1's page's.
 //   coax/bin/coax test --library apps/openagents-web/everglade-cast-rules.coax
+#load "../../everglade/shared/cast-limits.coax";
 
 // book:begin cast-rules
-// ---- range and sight
-CR_SLACK :: 3.0;          // m past a spell's range at its start: where the page and the server have you differ a little
-CR_SLACK_END :: 6.0;      // m past it at its release: the target walks during the cast bar
-CR_REACH_LEAST :: 4.5;    // m a spell reaches at least (a touch, a 5-foot reach, with the slack)
-CR_EYE :: 1.8;            // m over the caster's feet the line of sight starts
-CR_SHORT :: 1.0;          // m short of the aim it ends: the wall or roof you aim at is not in the way
-CR_AIM_UP :: 0.5;         // m over the aim it ends
-CR_LOW :: 1.2;            // m: a piece lower than this (a crate, a fence, a bench) doesn't block the line
-CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you; the rest is the wire's cm and your pose)
-
 // ---- time
 CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it
 CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon
@@ -35,40 +27,6 @@ CR_REPAIR_PLACED0 :: 100000;
 CR_PLACED_MAX :: 64;       // an admin's placed things at most (verse/everglade/edits.coax EG_EDIT_MAX)
 // book:end cast-rules
 
-// ---- why a cast didn't go (the wire's r SEQ WHY and e stop SS SLOT WHY)
-CR_OK :: 0; CR_RANGE :: 1; CR_SIGHT :: 2; CR_GONE :: 3; CR_HELD :: 4; CR_DEAD :: 5; CR_BUSY :: 6; CR_COOLDOWN :: 7;
-CR_LEFT :: 8; CR_AIM :: 9; CR_NO :: 10;
-CR_WORDS :: [11] string.["ok", "range", "sight", "gone", "held", "dead", "busy", "cooldown", "left", "aim", "no"];
-// the icon each reason draws (everglade-spells.coax sp_no_icon)
-CR_ICON_RANGE :: 0; CR_ICON_SIGHT :: 1; CR_ICON_GONE :: 2; CR_ICON_WAIT :: 3; CR_ICON_HELD :: 4; CR_ICON_NO :: 5;
-// The conditions that stop a cast bar (5E's incapacitated ones: RS_INCAPACITATED, RS_PARALYZED,
-// RS_PETRIFIED, RS_STUNNED, RS_UNCONSCIOUS; the wire's COND bits are the same).
-CR_HALTS :: 64 | 256 | 512 | 8192 | 16384;
-
-// A reason's word on the wire, and back (an unknown word is CR_NO).
-cr_word :: (why: int) -> string { return ifx why >= 0 && why < CR_WORDS.count then CR_WORDS[why] else "no"; }
-cr_why :: (word: string) -> int {
-  for k: 0..<CR_WORDS.count { if CR_WORDS[k] == word { return k; } }
-  return CR_NO;
-}
-cr_icon :: (why: int) -> int {
-  if why == CR_RANGE { return CR_ICON_RANGE; }
-  if why == CR_SIGHT { return CR_ICON_SIGHT; }
-  if why == CR_GONE || why == CR_LEFT { return CR_ICON_GONE; }
-  if why == CR_BUSY || why == CR_COOLDOWN { return CR_ICON_WAIT; }
-  if why == CR_HELD || why == CR_DEAD { return CR_ICON_HELD; }
-  return CR_ICON_NO;
-}
-// How far (m) a spell of range `range_m` reaches: at its start, or (end) at its release.
-cr_reach :: (range_m: f32, end: bool) -> f32 {
-  r := range_m + (ifx end then f32(CR_SLACK_END) else f32(CR_SLACK));
-  return ifx r < f32(CR_REACH_LEAST) then f32(CR_REACH_LEAST) else r;
-}
-// Whether a point (dx, dz) m from the caster is within reach.
-cr_in_reach :: (dx: f32, dz: f32, range_m: f32, end: bool) -> bool {
-  r := cr_reach(range_m, end);
-  return dx == dx && dz == dz && dx * dx + dz * dz <= r * r;
-}
 // Ticks of cast bar for bar slot `slot` at `hz`: Everglade's four's (slots 0 to 3), else 0.
 cr_repair :: (slot: int) -> bool { return slot == CR_REPAIR_SLOTS[0] || slot == CR_REPAIR_SLOTS[1]; }
 cr_bar_ticks :: (slot: int, hz: int) -> int {
@@ -76,8 +34,6 @@ cr_bar_ticks :: (slot: int, hz: int) -> int {
   if slot < 0 || slot >= CR_BAR.count { return 0; }
   return cast(int) floor(CR_BAR[slot] * f32(hz) + 0.5);
 }
-// Whether a creature with these condition bits can't go on casting.
-cr_halted :: (cond: int) -> bool { return (cond & CR_HALTS) != 0; }
 // Whether a cast heard at tick `heard` (the server's), sent after input `seq` - 1, may start now: the
 // inputs before it are stepped (the first still queued is past it, or none is), or it waited CR_WAIT
 // ticks for them.
@@ -92,13 +48,6 @@ cr_before :: (a_helps: bool, a_start: int, a_order: int, b_helps: bool, b_start:
   return a_order < b_order;
 }
 
-#test "cast rules: reach has its slack at the start and more at the release, and a least" {
-  #assert cr_in_reach(0, 39, 36, false) && !cr_in_reach(0, 39.1, 36, false);
-  #assert cr_in_reach(0, 42, 36, true) && !cr_in_reach(0, 42.1, 36, true);
-  #assert cr_reach(0, false) == f32(CR_REACH_LEAST) && cr_reach(1.5, false) == f32(CR_REACH_LEAST);
-  nan := 0.0f32 / 0.0f32;
-  #assert !cr_in_reach(nan, 0, 36, false);
-}
 #test "cast rules: a cast waits for the inputs before it, half a second at most" {
   #assert cr_ready(10, 0, 0, 100, 100);          // nothing queued
   #assert !cr_ready(10, 8, 3, 100, 101);         // input 8 still to step
@@ -109,9 +58,7 @@ cr_before :: (a_helps: bool, a_start: int, a_order: int, b_helps: bool, b_start:
   #assert cr_before(true, 9, 9, false, 1, 1) && !cr_before(false, 1, 1, true, 9, 9);
   #assert cr_before(false, 3, 9, false, 4, 1) && cr_before(false, 4, 1, false, 4, 2) && !cr_before(false, 4, 2, false, 4, 1);
 }
-#test "cast rules: words and icons round-trip; the bars are the four's; 5E's incapacitating conditions halt a cast" {
-  for k: 0..<CR_WORDS.count { #assert cr_why(cr_word(k)) == k; }
-  #assert cr_why("unbuilt") == CR_NO && cr_icon(CR_RANGE) == CR_ICON_RANGE && cr_icon(CR_COOLDOWN) == CR_ICON_WAIT && cr_icon(CR_DEAD) == CR_ICON_HELD;
+#test "cast rules: the bars are the four's and Repair's" {
   #assert cr_bar_ticks(0, 30) == 75 && cr_bar_ticks(2, 30) == 15 && cr_bar_ticks(4, 30) == 0 && cr_bar_ticks(-1, 30) == 0;
-  #assert cr_halted(256) && cr_halted(16384) && !cr_halted(4096) && !cr_halted(2048) && !cr_halted(0);
+  #assert cr_repair(47) && cr_repair(70) && !cr_repair(48) && cr_bar_ticks(47, 30) == 45;
 }

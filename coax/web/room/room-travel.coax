@@ -45,7 +45,6 @@ RmTravel :: struct {
   routed: bool;
   // what the rules spend, captured at the cutover (trv_carry lays it on the arrival's build)
   temp: int; slots: [10] int; slots_max: [10] int; uses: [RS_USES] int; uses_max: [RS_USES] int;
-  repair_left: int;       // ticks until the seat's next Repair
   landed: bool; landed_at: int; carried: bool;   // arrived (mono ms), and its capture laid on
 }
 RmTravels :: struct {
@@ -185,14 +184,11 @@ trv_arrived :: (v: [] RmServer, code: string, pid: string) {
     }
   }
 }
-// The Repair wait in ticks (room-casts.coax, less its third of a second's grace).
-trv_repair_ticks :: () -> int { return cast(int) (f32(CR_REPAIR_EVERY) * f32(EG_HZ)) - EG_HZ / 3; }
 // Journey j's capture of seat `seat` of room k at its cutover.
 trv_capture :: (v: [] RmServer, j: int, k: int, seat_id: SeatId) { seat := seat_id.value;
   c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat];
   e := v[0].trv.t[j..<j + 1];
   e[0].temp = c.temp; e[0].slots = c.slots; e[0].slots_max = c.slots_max; e[0].uses = c.uses; e[0].uses_max = c.uses_max;
-  e[0].repair_left = rs_max(0, trv_repair_ticks() - (v[0].eg[k].tick - v[0].eg[k].seat[seat].repaired));
   e[0].landed = false; e[0].carried = false;
 }
 // Seat s of room k was just built by its hello: a journey that landed it here lays on what it carried
@@ -218,7 +214,6 @@ trv_carry :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
       for i: 0..<10 { c[0].slots[i] = rs_min(c[0].slots[i], e.slots[i]); }
       for i: 0..<RS_USES { c[0].uses[i] = rs_min(c[0].uses[i], e.uses[i]); }
     }
-    if e.repair_left > 0 { v[0].eg[k].seat[s].repaired = v[0].eg[k].tick - (trv_repair_ticks() - e.repair_left); }
   }
 }
 // The counts for the minute log: 0 asked, 1 routed, 2 full, 3 refused, 4 arrived, 5 aborted, 6 intents dropped in a cutover.

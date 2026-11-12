@@ -3,7 +3,7 @@
 > **Status: partly implemented.** Wire 3 (#12783, commit edd9601102) sends
 > every replicated entity, players, townsfolk, creatures, zones and the
 > world's abilities, as one `s ID BACK MASK V...` row
-> ([everglade-wire.coax](../../apps/openagents-web/everglade-wire.coax)):
+> ([everglade-wire.coax](../../everglade/shared/everglade-wire.coax)):
 > state at a fixed tick with velocity, as a delta against the last tick the
 > page acknowledged (`HEARD`). Rows carry `LIFE` and `WARP` (commit
 > 67b4f62448): an id gone a tick and back is a new life, and a move of more
@@ -78,7 +78,7 @@ all load. There is no second encoder anywhere.
 
 ## What it builds
 
-- `apps/openagents-web/everglade-wire.coax` version 3: the record, its
+- `everglade/shared/everglade-wire.coax` version 3: the record, its
   field table and `WireMirror`.
 - On the server, `wire_seat_*` and `WireHist`: per-seat bases by tick.
 - Later, `aethyr/net/replicate.coax`: the same model for every realm.

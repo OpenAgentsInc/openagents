@@ -27,7 +27,7 @@ flowchart LR
 | System | Folder | Key files |
 | --- | --- | --- |
 | Game modules, HUD & shared zones | `everglade/` | `everglade/zone.coax`, `everglade/features.coax`, `everglade/hud/class-bar.coax`, `everglade/mounts.coax` |
-| Active client & shared step (moving in P1) | `apps/openagents-web/`, `verse/everglade2/` | `apps/openagents-web/everglade2.coax`, `apps/openagents-web/everglade2-net.coax`, `apps/openagents-web/everglade-step.coax`, `apps/openagents-web/everglade-wire.coax`, `verse/everglade2/meadow.coax` |
+| Active client & shared step (moving in P1) | `apps/openagents-web/`, `verse/everglade2/` | `apps/openagents-web/everglade2.coax`, `apps/openagents-web/everglade2-net.coax`, `everglade/shared/everglade-step.coax`, `everglade/shared/everglade-wire.coax`, `verse/everglade2/meadow.coax` |
 | Authoritative room server (moving in P1) | `everglade/server/` (the game), `coax/web/room/` (host, transport, relay) | `everglade/server/seat.coax`, `everglade/server/seats.coax`, `everglade/server/input.coax`, `everglade/server/casts.coax`, `everglade/server/tick.coax`, `everglade/server/send.coax`, `everglade/server/creatures.coax`, `coax/web/room/room.coax`, `coax/web/room/wt.c` |
 | Backend API & SQL schema | `coax/web/api/` | `coax/web/api/api.c`, `coax/web/api/rooms.c`, `coax/web/api/seats.c`, `coax/web/api/player.c`, `coax/web/api/npc.c`, `coax/web/api/migrations/0130_item_ledger.sql` |
 | Host contract & platform hosts | `aethyr/host/`, `coax/web/`, `apps/everglade-desktop/` | `aethyr/host/README.md`, `aethyr/host/conformance.coax`, `coax/web/host.js`, `aethyr/host/apple/PageHost.m`, `apps/everglade-desktop/desktop.coax` |

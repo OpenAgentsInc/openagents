@@ -9,7 +9,7 @@
 // where you may stand, and what is drawn.
 #load "charactercreator.coax" as cc;
 #load "fivelab-bodies.coax" as figs;
-#load "everglade-move-types.coax";
+#load "../../everglade/shared/everglade-move-types.coax";
 #load "everglade2-move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
 #load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
 #load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)

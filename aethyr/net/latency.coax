@@ -2,7 +2,7 @@
 // admits gameplay, owns a gameplay queue, or substitutes a simulation clock.
 #module "aethyr.net.latency";
 #authority;
-#load "../../apps/openagents-web/everglade-wire.coax";
+#load "../../everglade/shared/everglade-wire.coax";
 
 LAT_MAX :: 9007199254740991;
 LAT_FRAME :: 256;

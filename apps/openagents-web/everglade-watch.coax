@@ -38,7 +38,7 @@ POP_WORDS :: [11] string.["DOWN", "HELD", "ROOTED", "RESTRAINED", "STUNNED", "PR
 // What each one had last frame (hit points and temporary ones), so any blow shows its number.
 WatchSeen :: struct { life: int; on: bool; }
 // What the page keeps of the watch for drawing it.
-#load "everglade-handles.coax";
+#load "../../everglade/shared/everglade-handles.coax";
 WatchView :: struct {
   seat_owner: [16] Handle(EvergladeSeat);
   // the new guards: where they stand, the way they face, walking, their head (for a shout)

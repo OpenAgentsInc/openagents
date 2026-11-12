@@ -5,9 +5,12 @@
 > spells that Everglade's levels 1 to 6 use, cantrips through 3rd level, run
 > as effect programs in the shared rules, and
 > [`aethyr/rules/srd/spell-coverage.coax`](../../aethyr/rules/srd/spell-coverage.coax)
-> counts which ones. Casting under latency is the Everglade room's
-> [`apps/openagents-web/everglade-cast-rules.coax`](../../apps/openagents-web/everglade-cast-rules.coax),
-> from v1 (#12790).
+> counts which ones. Casting under latency shares its reach, sight and refusal
+> words between the room and the page in
+> [`everglade/shared/cast-limits.coax`](../../everglade/shared/cast-limits.coax);
+> v1's bars, wait and Repair stay in
+> [`apps/openagents-web/everglade-cast-rules.coax`](../../apps/openagents-web/everglade-cast-rules.coax)
+> (#12790, #13346).
 > Other agents are extending the spell files now, so this chapter's only listing
 > is the cast rules, which already have markers.
 
@@ -80,7 +83,7 @@ cantrips and 1st- to 3rd-level spells have one.
 
 The cast rules for range, sight and time are one block of constants:
 
-<!-- source: apps/openagents-web/everglade-cast-rules.coax cast-rules -->
+<!-- source: everglade/shared/cast-limits.coax cast-reach -->
 ```jai
 // ---- range and sight
 CR_SLACK :: 3.0;          // m past a spell's range at its start: where the page and the server have you differ a little
@@ -91,7 +94,10 @@ CR_SHORT :: 1.0;          // m short of the aim it ends: the wall or roof you ai
 CR_AIM_UP :: 0.5;         // m over the aim it ends
 CR_LOW :: 1.2;            // m: a piece lower than this (a crate, a fence, a bench) doesn't block the line
 CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you; the rest is the wire's cm and your pose)
+```
 
+<!-- source: apps/openagents-web/everglade-cast-rules.coax cast-rules -->
+```jai
 // ---- time
 CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it
 CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon

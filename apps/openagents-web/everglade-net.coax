@@ -1,4 +1,4 @@
-#load "everglade-link-wire.coax";
+#load "../../everglade/shared/everglade-link-wire.coax";
 // Everglade's network client (docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.6 to
 // 3.10 and 6; GitHub #12706 and #12708), loaded by everglade.coax. The room server owns the shared
 // world (owner, 2026-11-03): every player, creature, zone, spell's cast, hit and break is the
@@ -39,7 +39,7 @@
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "net:"
 
 #load "socket.coax";
-#load "everglade-wire.coax";
+#load "../../everglade/shared/everglade-wire.coax";
 #load "everglade-net-core.coax";   // the states' ring, the jitter buffer, the clock: Everglade II's page keeps them too (#13054)
 #load "../../aethyr/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)

@@ -1,8 +1,8 @@
-// Hold proto/verse/everglade-link-input-v1.json to apps/openagents-web/everglade-link-wire.coax:
+// Hold proto/verse/everglade-link-input-v1.json to everglade/shared/everglade-link-wire.coax:
 // field order, bit constants, admission masks, and exact J1 fixture bytes.
 //   coax/web/tool.sh apps/openagents-web/everglade-link-profile.coax proto/verse/everglade-link-input-v1.json
 #import "Basic";
-#load "everglade-link-wire.coax";
+#load "../../everglade/shared/everglade-link-wire.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";

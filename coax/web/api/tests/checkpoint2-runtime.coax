@@ -2,7 +2,7 @@
 // in-process simulation stand-in. Every child and temporary file is ours.
 #load "../../../lib/net/relay_conn.coax";
 #load "../../../lib/sys/args.coax";
-#load "../../../../apps/openagents-web/everglade-wire.coax";
+#load "../../../../everglade/shared/everglade-wire.coax";
 cxproc_wall_us :: ()->int #foreign #effects(all);
 c2_word :: (text:string,which:int)->string {
   at:=0;field:=0;while at<=text.count{end:=at;while end<text.count&&text[end]!=' '{end+=1;}if field==which{return text[at..<end];}field+=1;at=end+1;}return "";

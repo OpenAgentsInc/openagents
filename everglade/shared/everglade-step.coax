@@ -153,7 +153,7 @@ eg_step_drawn :: (from: walk.Vec3, p: walk.Player, ahead: f32) -> walk.Vec3 #exp
 }
 
 // ---- tests: the room step as the page and the server run it (1/30 s, the wire's rate)
-//   coax/bin/coax test apps/openagents-web/everglade-step.coax --only "step:"
+//   coax/bin/coax test everglade/shared/everglade-step.coax --only "step:"
 
 EG_TEST_STEP :: 1.0 / 30.0;
 eg_test_world :: () -> EgMoveWorld #effects(reads, writes, traps) { w: EgMoveWorld; return w; }

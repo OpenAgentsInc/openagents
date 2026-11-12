@@ -13,7 +13,7 @@
 #load "../../lib/sys/args.coax";
 #load "../../lib/sys/proc.coax";
 #load "room-ticket.coax";
-#load "../../../apps/openagents-web/everglade-wire.coax";   // an everglade check reads D as the page does (WireMirror)
+#load "../../../everglade/shared/everglade-wire.coax";   // an everglade check reads D as the page does (WireMirror)
 
 cxproc_wall_us :: () -> int #foreign #effects(all);
 

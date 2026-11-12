@@ -142,7 +142,6 @@ EgSeat :: struct {
   rest_seen: bool; rest_settled: bool; rest_told: int = -1; rest_told_dice: int = -1;
   kit_told: int = -1;   // Everglade II: the hash of the bar state it last heard (b, everglade/server/rest.coax e2_kit_tell)
   checkpoint_hello: bool;        // a schema 2 character is built/restored once, not reset by repeated H
-  repaired: int = -100000;       // the tick of its last Repair (CR_REPAIR_EVERY from one to the next)
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
   heard_n: [EG_SEATS] int;                            // a hash of who it last heard each seat is (0 nothing)
   heard_w: [EG_SEATS] int;                            // the WANTED level it last heard of each seat, plus 1 (0 nothing)

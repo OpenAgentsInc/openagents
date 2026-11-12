@@ -1,5 +1,5 @@
 // Builds the room server's simulation for the browser's local host (GitHub #12784; Aethyr book
-// chapter 95): the units build.sh links for oa-room (room.coax and the city's), turned into C by the
+// chapter 95): the units build.sh links for oa-room (room.coax and everglade-step's), turned into C by the
 // same compiler and linked to wasm32 with room-worker.c in place of room-host.c. Offline Everglade
 // runs it in a Web Worker (coax/web/room-worker.js), so offline play is a one-seat room.
 //   coax/web/tool.sh coax/web/room/worker.coax [OUT.wasm]   (default apps/openagents-web/build/everglade-room.wasm)
@@ -16,11 +16,15 @@
 #load "../../lib/sys/args.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/crypto/sha256_workspace.coax";
-#load "worker-profile.coax";
 
 cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 
-WK_UNITS :: [6] string.["coax/web/room/room.coax", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
+// The room's units, as build.sh links them (v1's city and its units are the frozen build's,
+// everglade/server/legacy/v1.sh, #13346); then the objects: room-math.c, the units, room-world.c, the
+// catalog's C and room-worker.c.
+WK_N :: 2;
+WK_UNITS :: [WK_N] string.["coax/web/room/room.coax", "everglade/shared/everglade-step.coax"];
+WK_OBJS :: WK_N + 4;
 WK_FILE :: 67108864;      // the largest file read whole (a unit's C, the module)
 WK_NAMES :: 16384;        // exported names a unit's header holds at most
 
@@ -253,7 +257,7 @@ tool_main :: () -> int #export_c #effects(all) {
 // What the module is built from, as one SHA-256: the mode, each unit's #load closure by its
 // files' hashes, and the C and tools linked with them. Not the compiler's bytes: a host's and the
 // Mac's differ, and the commit names the compiler's sources. "" when a list can't be made.
-WK_BUILT_ALSO :: [5] string.["coax/web/room/room-math.c", "coax/web/room/room-world.c", "coax/web/room/room-worker.c", "coax/web/room/worker.coax", "coax/web/room/worker-profile.coax"];
+WK_BUILT_ALSO :: [4] string.["coax/web/room/room-math.c", "coax/web/room/room-world.c", "coax/web/room/room-worker.c", "coax/web/room/worker.coax"];
 wk_inputs :: (root: string, env: [] string, buf: [] u8, out: [] u8) -> string {
   t: [1] Wk; wk_s(t[..], "coax-room-built-1\n");
   mb: [64] u8; mode := proc_getenv("COAXIAL_MODE", mb[..]);
@@ -328,8 +332,8 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   }
   csb: [64] u8; compiler_sum := wk_file_sha(coax, buf[..], csb[..]);
   if compiler_sum.count == 0 { tool_err("worker: can't read "); tool_errln(coax); return 1; }
-  hs: [6] int; keys: [6] [64] u8; keyed: [6] bool;
-  claimed: [6] bool; beats: [6] int; began := proc_now_ms();
+  hs: [WK_N] int; keys: [WK_N] [64] u8; keyed: [WK_N] bool;
+  claimed: [WK_N] bool; beats: [WK_N] int; began := proc_now_ms();
   for ui: 0..<WK_UNITS.count {
     hs[ui] = -2; beats[ui] = -1;
     u := WK_UNITS[ui]; n := wk_name(u);
@@ -343,7 +347,6 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
       if ln > 0 {
         // the key: the compiler's and the unit's names, then shasum's lines for the closure
         kt: [1] Wk; wk_s(kt[..], "coax-room-worker-c-1\n"); wk_s(kt[..], compiler_sum); wk_s(kt[..], "\n"); wk_s(kt[..], u); wk_s(kt[..], "\n");
-        if ui==4 {wk_s(kt[..],"opt=2 arithmetic=checked\n");}
         list := cast(string) lb[0..<ln]; ok := true; j := 0;
         while j < list.count {
           while j < list.count && (list[j] == ' ' || list[j] == '\n' || list[j] == '\t') { j += 1; }
@@ -395,23 +398,20 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
         }
       }
     }
-    // `c` accepts the legacy optimization preset rather than --opt. Restore
-    // every other axis: checked integers, development branches, debug metadata.
-    // Only river gets guarded loop versioning, with its checked fallback.
-    command:=ifx ui==4 then "exec \"$0\" c \"$1\" --library --release --arithmetic checked --build-profile development --debug-info --header \"$2\" > \"$3\"" else "exec \"$0\" c \"$1\" --library --header \"$2\" > \"$3\"";
+    command:="exec \"$0\" c \"$1\" --library --header \"$2\" > \"$3\"";
     ca := [9] string.["/bin/sh", "-c", command, coax, u, wh, wc, "", ""];
     hs[ui] = wk_start(ca[0..<7], root, env);
   }
-  started: [6] int; ns := 0;
-  for ui: 0..<6 { if hs[ui] != -2 { started[ns] = hs[ui]; ns += 1; } }
+  started: [WK_N] int; ns := 0;
+  for ui: 0..<WK_N { if hs[ui] != -2 { started[ns] = hs[ui]; ns += 1; } }
   compiled_ok := wk_wait_all(started[0..<ns]);
-  for ui: 0..<6 { if beats[ui] >= 0 { k := proc_kill(beats[ui], PROC_SIGKILL); st := proc_wait(beats[ui], 2000); r := proc_release(beats[ui]); } }
+  for ui: 0..<WK_N { if beats[ui] >= 0 { k := proc_kill(beats[ui], PROC_SIGKILL); st := proc_wait(beats[ui], 2000); r := proc_release(beats[ui]); } }
   if !compiled_ok {
-    for ui: 0..<6 { if claimed[ui] { claim: [1] Wk; wk_s(claim[..], "wasm/"); wk_s(claim[..], cast(string) keys[ui][..]); wk_s(claim[..], ".h"); r := wk_shared("unclaim", wk_text(claim[..]), "", env); } }
+    for ui: 0..<WK_N { if claimed[ui] { claim: [1] Wk; wk_s(claim[..], "wasm/"); wk_s(claim[..], cast(string) keys[ui][..]); wk_s(claim[..], ".h"); r := wk_shared("unclaim", wk_text(claim[..]), "", env); } }
     tool_errln("worker: a unit's C failed"); return 1;
   }
   // the new C into the cache, each file renamed into place whole
-  for ui: 0..<6 {
+  for ui: 0..<WK_N {
     if hs[ui] == -2 || !keyed[ui] { continue; }
     key := cast(string) keys[ui][..]; n := wk_name(WK_UNITS[ui]);
     for ext: [2] string.[".c", ".h"] {
@@ -438,7 +438,7 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   if keep.count>0{
     if !fs_mkdir(keep)&&fs_kind(keep)!=2{tool_errln("worker: cannot make retained C directory");return 1;}
     manifest:[1]Wk;wk_s(manifest[..],"compiler ");wk_s(manifest[..],compiler_sum);wk_s(manifest[..],"\n");
-    for ui:0..<6{n:=wk_name(WK_UNITS[ui]);
+    for ui:0..<WK_N{n:=wk_name(WK_UNITS[ui]);
       wk_s(manifest[..],WK_UNITS[ui]);wk_s(manifest[..]," ");
       wk_s(manifest[..],ifx keyed[ui] then cast(string)keys[ui][..] else "uncached");wk_s(manifest[..],"\n");
       for ext:[2]string.[".c",".h"]{
@@ -454,7 +454,7 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   // The room's unit and the city's both carry apps/openagents-web/analytics.coax's exports (build.sh
   // makes the room's copies local to it): here the room's are renamed in its object, room_dup_NAME.
   room_names: [1] WkNames; other: [1] WkNames;
-  for ui: 0..<6 {
+  for ui: 0..<WK_N {
     hp: [1] Wk; wk_s(hp[..], work); wk_s(hp[..], "/"); wk_s(hp[..], wk_name(WK_UNITS[ui])); wk_s(hp[..], ".h");
     n := fs_read(wk_text(hp[..]), buf[..]);
     if n < 0 { tool_errln("worker: a unit's header is missing"); return 1; }
@@ -484,21 +484,19 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   // the objects, in the link's order: room-math.c (no LTO: it stands in for the C library's
   // functions, which the link resolves after the bitcode), the room's unit with its renames, the
   // city's units, room-world.c, the catalog and room-worker.c
-  srcs: [10] [1] Wk; objs: [10] [1] Wk; procs: [10] int;
-  for jb: 0..<10 {
+  srcs: [WK_OBJS] [1] Wk; objs: [WK_OBJS] [1] Wk; procs: [WK_OBJS] int;
+  for jb: 0..<WK_OBJS {
     if jb == 0 { wk_s(srcs[jb][..], root); wk_s(srcs[jb][..], "/coax/web/room/room-math.c"); }
-    else if jb <= 6 { wk_s(srcs[jb][..], work); wk_s(srcs[jb][..], "/"); wk_s(srcs[jb][..], wk_name(WK_UNITS[jb - 1])); wk_s(srcs[jb][..], ".c"); }
-    else if jb == 7 { wk_s(srcs[jb][..], root); wk_s(srcs[jb][..], "/coax/web/room/room-world.c"); }
-    else if jb == 8 { wk_s(srcs[jb][..], work); wk_s(srcs[jb][..], "/room-catalog.c"); }
+    else if jb <= WK_N { wk_s(srcs[jb][..], work); wk_s(srcs[jb][..], "/"); wk_s(srcs[jb][..], wk_name(WK_UNITS[jb - 1])); wk_s(srcs[jb][..], ".c"); }
+    else if jb == WK_N + 1 { wk_s(srcs[jb][..], root); wk_s(srcs[jb][..], "/coax/web/room/room-world.c"); }
+    else if jb == WK_N + 2 { wk_s(srcs[jb][..], work); wk_s(srcs[jb][..], "/room-catalog.c"); }
     else { wk_s(srcs[jb][..], root); wk_s(srcs[jb][..], "/coax/web/room/room-worker.c"); }
     src := wk_text(srcs[jb][..]); stem := fs_base(src); stem = stem[0..<stem.count - 2];
     wk_s(objs[jb][..], work); wk_s(objs[jb][..], "/"); wk_s(objs[jb][..], stem); wk_s(objs[jb][..], ".o");
     argv: [4200] string; c := 0;
     for x: [5] string.[clang, "--target=wasm32-wasip1", wk_text(sr[..]), wk_text(rd[..]), "-std=c11"] { argv[c] = x; c += 1; }
-    // Optimize river buoyancy for speed; the remaining units retain size
-    // optimization under the same strict arithmetic and final size gate.
-    argv[c] = ifx dev then "-O1" else ifx jb==5 then "-O3" else "-Os"; c += 1;
-    if wk_bound_unroll(tool_os()==TOOL_LINUX,dev,jb) {argv[c]="-fno-unroll-loops";c+=1;}
+    // size optimization under the strict arithmetic and the final size gate
+    argv[c] = ifx dev then "-O1" else "-Os"; c += 1;
     if proc_has_env("COAX_ROOM_PROFILE") {argv[c]="-DCOAX_ROOM_PROFILE=1";c+=1;}
     if !dev && jb != 0 { argv[c] = "-flto"; c += 1; }
     for x: [3] string.["-ffp-contract=off", "-fno-fast-math", "-w"] { argv[c] = x; c += 1; }
@@ -508,8 +506,8 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
       argv[c] = wk_flag(wk_text(b1[..])); c += 1; argv[c] = wk_flag(wk_text(b2[..])); c += 1;
     }
     if jb == 1 { for i: 0..<rn { argv[c] = rs[i]; c += 1; } }
-    if jb >= 1 && jb <= 6 { argv[c] = wk_text(wi[..]); c += 1; }
-    if jb == 7 || jb == 9 { argv[c] = wk_text(wi[..]); c += 1; argv[c] = wk_text(hi[..]); c += 1; }
+    if jb >= 1 && jb <= WK_N { argv[c] = wk_text(wi[..]); c += 1; }
+    if jb == WK_N + 1 || jb == WK_N + 3 { argv[c] = wk_text(wi[..]); c += 1; argv[c] = wk_text(hi[..]); c += 1; }
     argv[c] = "-c"; c += 1; argv[c] = src; c += 1; argv[c] = "-o"; c += 1; argv[c] = wk_text(objs[jb][..]); c += 1;
     procs[jb] = wk_start(argv[0..<c], "", env);
   }
@@ -518,11 +516,10 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   la: [32] string; c := 0;
   for s: [5] string.[clang, "--target=wasm32-wasip1", wk_text(sr[..]), wk_text(rd[..]), "-mexec-model=reactor"] { la[c] = s; c += 1; }
   la[c] = "-o"; c += 1; la[c] = wk_text(outw[..]); c += 1;
-  for i: 0..<10 { la[c] = wk_text(objs[i][..]); c += 1; }
-  // Units that load the same Coax module each carry its #export_c procedures: since 010c25bbed
-  // guard-guide-policy carries aethyr/input.coax's input_runs (as everglade-step does) and coax.json's
-  // S_hash/S_hex (as the room does), which the header renames above don't name. The same source made
-  // the same code, so the first in the link's order is the program's (build.sh localizes them likewise).
+  for i: 0..<WK_OBJS { la[c] = wk_text(objs[i][..]); c += 1; }
+  // Units that load the same Coax module each carry its #export_c procedures, some of which the
+  // header renames above don't name. The same source made the same code, so the first in the link's
+  // order is the program's (build.sh localizes them likewise).
   la[c] = "-Wl,--import-memory,--max-memory=268435456,-z,stack-size=4194304,--export=__heap_base,--gc-sections,--strip-debug,--allow-multiple-definition"; c += 1;
   nb: [1] u8;
   if wk_run(la[0..<c], "", env, nb[..]) < 0 { tool_errln("worker: the link failed"); return 1; }

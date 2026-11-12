@@ -4,7 +4,7 @@
 // Everglade II rooms) both #load this file and step the same controller (everglade-step.coax) on it,
 // so the page's prediction and the room's word on you agree. Plain numbers only: no drawing.
 //   coax/bin/coax test --library apps/openagents-web/everglade2-move.coax
-#load "everglade-move-types.coax";
+#load "../../everglade/shared/everglade-move-types.coax";
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/rock-hulls.coax";
 #load "../../verse/everglade2/camp.coax";   // the goblin camp's props (everglade/server/creatures.coax)

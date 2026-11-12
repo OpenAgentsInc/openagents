@@ -60,7 +60,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !args_load(args[..]) || args_count(args[..]) != 1 { tool_errln("usage: effect-contracts.coax COMPILER"); return 2; }
   compiler := args_at(args[..], 0);
   bad := 0;
-  sources := [2] string.["apps/openagents-web/everglade-step.coax", "apps/openagents-web/everglade5e-rules.coax"];
+  sources := [2] string.["everglade/shared/everglade-step.coax", "apps/openagents-web/everglade5e-rules.coax"];
   entries := [2] string.["eg_step_body", "e5r_start"];
   effects := [2] string.["clock", "io"];
   for i: 0..<2 { for effect: effects { if !ec_probe(compiler, sources[i], entries[i], effect) { bad += 1; } } }
