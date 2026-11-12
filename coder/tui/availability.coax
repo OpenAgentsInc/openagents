@@ -6,8 +6,5 @@ ca_failure :: (a: [] App) {
   if a[0].engine == ENGINE_MICRO { engine = "micro"; }
   if ca_index(engine) < 0 { return; }
   saved: [1] bool; retry := ca_record(engine, a[0].provider_reset_s, saved[..]);
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(o, n, engine);
-  n = json_raw(o, n, ",\"retry_after_s\":"); n = json_write_int(o, n, retry);
-  n = json_raw(o, n, ",\"persisted\":"); n = json_raw(o, n, ifx saved[0] then "true}" else "false}"); cs_put(a, n);
+  cs_put(a, cst_availability(a[0].log[0].line[..], engine, retry, saved[0]));
 }

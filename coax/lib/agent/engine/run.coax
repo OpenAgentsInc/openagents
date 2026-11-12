@@ -303,11 +303,7 @@ tr_provider_failed :: (r: [] TrRun) {
   engine := ifx r[0].engine == TR_MICRO then "micro" else tr_engine_name(r[0].engine);
   if ca_index(engine) < 0 { return; }
   saved: [1] bool; retry := ca_record(engine, r[0].provider_reset_s, saved[..]);
-  o := r[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(o, n, engine);
-  n = json_raw(o, n, ",\"retry_after_s\":"); n = json_write_int(o, n, retry);
-  n = json_raw(o, n, ",\"persisted\":"); n = json_raw(o, n, ifx saved[0] then "true}" else "false}");
-  sw_put(r[0].log, n);
+  sw_put(r[0].log, cst_availability(r[0].log[0].line[..], engine, retry, saved[0]));
 }
 
 tr_reply :: (r: [] TrRun, s: string) { sw_reply_add(r[0].log, s); r[0].nrep += s.count; }

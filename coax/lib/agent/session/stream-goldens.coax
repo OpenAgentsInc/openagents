@@ -42,16 +42,6 @@ sg_copy_line :: (s: string, out: [] u8) -> int {
   return clean.count;
 }
 
-sg_availability_current :: (engine: string, retry: int, persisted: bool, out: [] u8) -> int {
-  n := json_raw(out, 0, "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":");
-  n = json_write_string(out, n, engine);
-  n = json_raw(out, n, ",\"cause\":\"provider\",\"retry_after_s\":");
-  n = json_write_int(out, n, retry);
-  n = json_raw(out, n, ",\"persisted\":");
-  n = json_raw(out, n, ifx persisted then "true}" else "false}");
-  return n;
-}
-
 sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
   rec := sg_s(p[..], d, item, "record");
   vs := jv_get(d, item, "values");
@@ -66,7 +56,7 @@ sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
     return cst_acp_usage(out, sg_s(p[..], d, vs, "engine"), sg_s(p[..], d, vs, "usage"));
   }
   if rec == "availability" {
-    return sg_availability_current(sg_s(p[..], d, vs, "engine"), sg_i(d, vs, "retry_after_s", 0), sg_b(d, vs, "persisted"), out);
+    return cst_availability(out, sg_s(p[..], d, vs, "engine"), sg_i(d, vs, "retry_after_s", 0), sg_b(d, vs, "persisted"));
   }
   if rec == "attempt" {
     vals: [7] int;
@@ -83,20 +73,10 @@ sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
     return sg_copy_line(cast(string) mb[0..<n], out);
   }
   if rec == "reply_delta" {
-    l: [1] SwLog; rb: [SG_LINE] u8;
-    l[0].live_segment = sg_i(d, vs, "segment", 0);
-    text := sg_s(p[..], d, vs, "text");
-    for c: text { if l[0].nreply < l[0].reply.count { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; } }
-    line := sw_live_line(l[..], true, rb[..]);
-    return sg_copy_line(line, out);
+    return cst_reply_delta(out, sg_i(d, vs, "segment", 0), sg_s(p[..], d, vs, "text"));
   }
   if rec == "reply_end" {
-    l: [1] SwLog; ob: [SG_LINE] u8; l[0].out = ob[..]; l[0].json = true; l[0].live = true;
-    l[0].live_segment = sg_i(d, vs, "segment", 0);
-    l[0].reply[0] = 'x'; l[0].nreply = 1; l[0].live_sent = 1;
-    sw_reply_flush(l[..]);
-    got: [SG_LINE] u8; n := sw_take(l[..], got[..]);
-    return sg_copy_line(cast(string) got[0..<n], out);
+    return cst_reply_end(out, sg_i(d, vs, "segment", 0));
   }
   if rec == "route" {
     r: [1] AgRoute;
@@ -165,7 +145,7 @@ sg_check :: (raw: string, quiet: bool) -> int {
 }
 
 #test "stream-v1 goldens match encoders byte for byte across all stream records" {
-  sample := "{\"goldens\":[{\"name\":\"m\",\"record\":\"model\",\"values\":{\"model\":\"test-model\",\"effort\":\"high\"},\"line\":\"{\\\"kind\\\":\\\"model\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"codex\\\",\\\"source\\\":\\\"thread/start\\\",\\\"model\\\":\\\"test-model\\\",\\\"effort\\\":\\\"high\\\",\\\"cost_usd\\\":null}\"},{\"name\":\"u\",\"record\":\"usage\",\"values\":{\"scope\":\"turn\",\"engine\":\"antigravity\",\"usage\":\"{\\\"inputTokens\\\":5}\"},\"line\":\"{\\\"kind\\\":\\\"usage\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"antigravity\\\",\\\"scope\\\":\\\"turn\\\",\\\"totalTokens\\\":null,\\\"inputTokens\\\":5,\\\"cachedReadTokens\\\":null,\\\"cachedWriteTokens\\\":null,\\\"outputTokens\\\":null,\\\"thoughtTokens\\\":null,\\\"cost_usd\\\":null}\"},{\"name\":\"av\",\"record\":\"availability\",\"values\":{\"engine\":\"claude\",\"retry_after_s\":60,\"persisted\":true},\"line\":\"{\\\"kind\\\":\\\"availability\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"claude\\\",\\\"cause\\\":\\\"provider\\\",\\\"retry_after_s\\\":60,\\\"persisted\\\":true}\"},{\"name\":\"at\",\"record\":\"attempt\",\"values\":{\"engine\":\"micro\",\"gateway\":\"g\",\"model\":\"model\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":10,\"output_tokens\":2,\"cached_tokens\":0,\"reasoning_tokens\":-1,\"cache_write_tokens\":-1,\"provider_cost_usd_micros\":-1,\"card_estimate_usd_micros\":12},\"line\":\"{\\\"kind\\\":\\\"attempt\\\",\\\"schema\\\":\\\"coder.observability.v2\\\",\\\"scope\\\":\\\"request_attempt\\\",\\\"engine\\\":\\\"micro\\\",\\\"gateway\\\":\\\"g\\\",\\\"model\\\":\\\"model\\\",\\\"model_source\\\":\\\"attempt_configuration\\\",\\\"requested_effort\\\":\\\"low\\\",\\\"outcome\\\":\\\"done\\\",\\\"status\\\":200,\\\"input_tokens\\\":10,\\\"output_tokens\\\":2,\\\"cached_tokens\\\":0,\\\"reasoning_tokens\\\":null,\\\"cache_write_tokens\\\":null,\\\"provider_cost_usd_micros\\\":null,\\\"card_estimate_usd_micros\\\":12,\\\"usd_micros\\\":12}\"},{\"name\":\"rd\",\"record\":\"reply_delta\",\"values\":{\"segment\":0,\"text\":\"hi\"},\"line\":\"{\\\"kind\\\":\\\"reply_delta\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0,\\\"text\\\":\\\"hi\\\"}\"},{\"name\":\"re\",\"record\":\"reply_end\",\"values\":{\"segment\":0},\"line\":\"{\\\"kind\\\":\\\"reply_end\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0}\"},{\"name\":\"rt\",\"record\":\"route\",\"values\":{\"ok\":true,\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability_e3\":50,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"},\"line\":\"{\\\"kind\\\":\\\"route\\\",\\\"ok\\\":true,\\\"schema\\\":\\\"coder.route.v2\\\",\\\"source\\\":\\\"local-elephant\\\",\\\"model\\\":\\\"\\\",\\\"engine\\\":\\\"codex\\\",\\\"probability\\\":0.050,\\\"difficulty\\\":1,\\\"effort\\\":\\\"low\\\",\\\"eligible_mask\\\":4,\\\"blocked_mask\\\":0,\\\"allowed_mask\\\":15,\\\"ran\\\":\\\"codex\\\"}\"}]}";
+  sample := "{\"goldens\":[{\"name\":\"m\",\"record\":\"model\",\"values\":{\"model\":\"test-model\",\"effort\":\"high\"},\"line\":\"{\\\"kind\\\":\\\"model\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"codex\\\",\\\"source\\\":\\\"thread/start\\\",\\\"model\\\":\\\"test-model\\\",\\\"effort\\\":\\\"high\\\",\\\"cost_usd\\\":null}\"},{\"name\":\"u\",\"record\":\"usage\",\"values\":{\"scope\":\"turn\",\"engine\":\"antigravity\",\"usage\":\"{\\\"inputTokens\\\":5}\"},\"line\":\"{\\\"kind\\\":\\\"usage\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"antigravity\\\",\\\"scope\\\":\\\"turn\\\",\\\"totalTokens\\\":null,\\\"inputTokens\\\":5,\\\"cachedReadTokens\\\":null,\\\"cachedWriteTokens\\\":null,\\\"outputTokens\\\":null,\\\"thoughtTokens\\\":null,\\\"cost_usd\\\":null}\"},{\"name\":\"av\",\"record\":\"availability\",\"values\":{\"engine\":\"claude\",\"retry_after_s\":60,\"persisted\":true},\"line\":\"{\\\"kind\\\":\\\"availability\\\",\\\"schema\\\":\\\"coder.observability.v1\\\",\\\"engine\\\":\\\"claude\\\",\\\"retry_after_s\\\":60,\\\"persisted\\\":true}\"},{\"name\":\"at\",\"record\":\"attempt\",\"values\":{\"engine\":\"micro\",\"gateway\":\"g\",\"model\":\"model\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":10,\"output_tokens\":2,\"cached_tokens\":0,\"reasoning_tokens\":-1,\"cache_write_tokens\":-1,\"provider_cost_usd_micros\":-1,\"card_estimate_usd_micros\":12},\"line\":\"{\\\"kind\\\":\\\"attempt\\\",\\\"schema\\\":\\\"coder.observability.v2\\\",\\\"scope\\\":\\\"request_attempt\\\",\\\"engine\\\":\\\"micro\\\",\\\"gateway\\\":\\\"g\\\",\\\"model\\\":\\\"model\\\",\\\"model_source\\\":\\\"attempt_configuration\\\",\\\"requested_effort\\\":\\\"low\\\",\\\"outcome\\\":\\\"done\\\",\\\"status\\\":200,\\\"input_tokens\\\":10,\\\"output_tokens\\\":2,\\\"cached_tokens\\\":0,\\\"reasoning_tokens\\\":null,\\\"cache_write_tokens\\\":null,\\\"provider_cost_usd_micros\\\":null,\\\"card_estimate_usd_micros\\\":12,\\\"usd_micros\\\":12}\"},{\"name\":\"rd\",\"record\":\"reply_delta\",\"values\":{\"segment\":0,\"text\":\"hi\"},\"line\":\"{\\\"kind\\\":\\\"reply_delta\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0,\\\"text\\\":\\\"hi\\\"}\"},{\"name\":\"re\",\"record\":\"reply_end\",\"values\":{\"segment\":0},\"line\":\"{\\\"kind\\\":\\\"reply_end\\\",\\\"schema\\\":\\\"coder.reply-stream.v1\\\",\\\"segment\\\":0}\"},{\"name\":\"rt\",\"record\":\"route\",\"values\":{\"ok\":true,\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability_e3\":50,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"},\"line\":\"{\\\"kind\\\":\\\"route\\\",\\\"ok\\\":true,\\\"schema\\\":\\\"coder.route.v2\\\",\\\"source\\\":\\\"local-elephant\\\",\\\"model\\\":\\\"\\\",\\\"engine\\\":\\\"codex\\\",\\\"probability\\\":0.050,\\\"difficulty\\\":1,\\\"effort\\\":\\\"low\\\",\\\"eligible_mask\\\":4,\\\"blocked_mask\\\":0,\\\"allowed_mask\\\":15,\\\"ran\\\":\\\"codex\\\"}\"}]}";
   #assert sg_check(sample, true) == 0;
 }
 
