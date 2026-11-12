@@ -35,6 +35,68 @@ pl_say() { echo "$(date +%H:%M:%S) $*" >&2; }
 pl_date() {   # UNIX-TIME FORMAT: the time in local time, on macOS (date -r) and Linux (date -d @)
   date -r "$1" "+$2" 2> /dev/null || date -d "@$1" "+$2"
 }
+# The watcher's state, shared (#13255): the watcher runs on one machine
+# (coderos-4080 since 2026-11-11), and every other machine reads its heartbeat,
+# red list, last runs, alarms and agents' inboxes from one object in the build
+# cache's bucket. The watcher writes it each minute (pl_publish); after.sh
+# state, red and health on any other machine copy it into the same files under
+# OA_PIPELINE_DIR first (pl_mirror), so everything that reads those files
+# (prepush.coax, status-data.coax, submit.sh status) reads the watcher's.
+# OA_PIPELINE_SHARED: the object's prefix, 0 for none. A scratch run (another
+# main or main-green, or OA_PIPELINE_ISSUES=0) shares nothing unless set.
+pl_shared="${OA_PIPELINE_SHARED:-gs://openagentsgemini-coax-build-cache/pipeline/state}"
+if [[ -z "${OA_PIPELINE_SHARED:-}" ]] && [[ -n "${OA_PIPELINE_MAIN:-}${OA_PIPELINE_GREEN:-}" || "$pl_issues" != 1 ]]; then pl_shared=0; fi
+pl_gcloud() {   # gcloud as the automation account (as remote.sh), at most 60 s
+  local sa="$HOME/work/.secrets/gcloud-sa-config"
+  if [[ -z "${CLOUDSDK_CONFIG:-}" && -d "$sa" ]]; then CLOUDSDK_CONFIG="$sa" timeout 60 gcloud "$@"; else timeout 60 gcloud "$@"; fi
+}
+pl_host() { hostname -s 2> /dev/null || hostname; }
+# The watcher's files other machines read, as one tarball: run each minute
+# beside the heartbeat.
+pl_publish() {
+  [[ "$pl_shared" != 0 ]] || return 0
+  local t f files=() e2
+  t="$(mktemp -d "${TMPDIR:-/tmp}/oa-pl-pub.XXXXXXXX")" || return 0
+  for f in heartbeat red.json runs.tsv flaky.txt flaky.tsv lag.tsv production full-green full-head; do
+    [[ ! -f "$pl_dir/releases/after/$f" ]] || files+=("releases/after/$f")
+  done
+  # The newest Everglade II measurement, at its own path (after.sh state lists it).
+  e2="$(cd "$pl_dir" && ls -t releases/after/*/*/build/pipeline/e2.tsv 2> /dev/null | head -1)"
+  [[ -z "$e2" ]] || files+=("$e2")
+  [[ ! -f "$pl_dir/ALARM" ]] || files+=(ALARM)
+  for f in "$pl_dir"/inbox/*.log; do [[ ! -f "$f" ]] || files+=("inbox/${f##*/}"); done
+  echo "$(pl_host) $(date +%s)" > "$t/watcher"
+  tar -czf "$t/state.tar.gz" -C "$pl_dir" ${files[@]+"${files[@]}"} -C "$t" watcher 2> /dev/null &&
+    pl_gcloud storage cp "$t/state.tar.gz" "$pl_shared/state.tar.gz" > /dev/null 2>&1 ||
+    pl_say "could not publish the pipeline's state to $pl_shared"
+  rm -rf "$t"
+}
+# On a machine whose own watcher isn't running: the shared state into the
+# local files, at most every 20 s. Status 0 when they now show a watcher on
+# another machine (its name in releases/after/watcher-host).
+pl_mirror() {
+  [[ "$pl_shared" != 0 ]] || return 1
+  # This machine's watcher holds watch.lock: its own files are the state.
+  pl_trylock "$pl_dir/releases/after/watch.lock" true || return 1
+  local m="$pl_dir/mirror" t host at
+  mkdir -p "$m"
+  if [[ -f "$m/fetched" ]] && (( $(date +%s) - $(cat "$m/fetched") < 20 )); then
+    [[ -s "$pl_dir/releases/after/watcher-host" ]]; return
+  fi
+  t="$(mktemp -d "${TMPDIR:-/tmp}/oa-pl-mirror.XXXXXXXX")" || return 1
+  if ! pl_gcloud storage cp "$pl_shared/state.tar.gz" "$t/state.tar.gz" > /dev/null 2>&1 ||
+     ! mkdir "$t/s" || ! tar -xzf "$t/state.tar.gz" -C "$t/s" 2> /dev/null || [[ ! -s "$t/s/watcher" ]]; then
+    rm -rf "$t"; date +%s > "$m/fetched"; [[ -s "$pl_dir/releases/after/watcher-host" ]]; return
+  fi
+  read -r host at < "$t/s/watcher"
+  if [[ "$host" == "$(pl_host)" ]]; then rm -rf "$t"; return 1; fi
+  rm -f "$t/s/watcher" "$t/s/ALARM.keep"; [[ ! -f "$t/s/ALARM" ]] || mv "$t/s/ALARM" "$t/s/ALARM.keep"
+  (cd "$t/s" && find . -type f ! -name ALARM.keep -print0 | while IFS= read -r -d '' f; do mkdir -p "$pl_dir/${f%/*}" && cp "$f" "$pl_dir/$f"; done)
+  if [[ -f "$t/s/ALARM.keep" ]]; then cp "$t/s/ALARM.keep" "$pl_dir/ALARM"; else rm -f "$pl_dir/ALARM"; fi
+  echo "$host" > "$pl_dir/releases/after/watcher-host"
+  rm -rf "$t"; date +%s > "$m/fetched"
+  return 0
+}
 pl_lock() {   # FILE CMD...: CMD under an exclusive lock
   if command -v flock > /dev/null; then flock "$@"; else lockf -k "$@"; fi
 }
@@ -91,6 +153,8 @@ pl_alarm() {   # key title text
   printf '%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M %Z')" "$key" "$2" >> "$pl_dir/ALARM"
   [[ "$pl_issues" == 1 ]] || return 0
   [[ ! -f "$pl_dir/alarm-issue" ]] || n="$(cat "$pl_dir/alarm-issue")"
+  # One issue for every machine: the watcher's and a reader's (pl_watcher_alarm).
+  [[ -n "$n" ]] || n="$(pl_alarm_open)"
   if [[ -n "$n" && "$(gh issue view "$n" --repo "$pl_repo" --json state --jq .state 2> /dev/null)" == OPEN ]]; then
     gh issue comment "$n" --repo "$pl_repo" --body "**$2**
 
@@ -102,8 +166,18 @@ Reported by \`coax/remote/after.sh\` (docs/verse/green-main-pipeline.md). \`coax
       echo "${url##*/}" > "$pl_dir/alarm-issue" || pl_say "could not open an issue for the alarm"
   fi
 }
-# main-green moved: the alarms are over.
+# The open alarm issue, if any (another machine may have opened it).
+pl_alarm_open() {
+  gh issue list --repo "$pl_repo" --state open --search 'in:title "Green-main pipeline needs attention"' --json number --jq '.[0].number // empty' 2> /dev/null
+}
+# main-green moved: the alarms are over. An issue another machine opened is
+# looked for at most every 30 minutes.
 pl_alarm_clear() {   # text
+  if [[ ! -f "$pl_dir/ALARM" && ! -f "$pl_dir/alarm-issue" && "$pl_issues" == 1 ]] &&
+     { [[ ! -f "$pl_dir/alarm-looked" ]] || (( $(date +%s) - $(cat "$pl_dir/alarm-looked") >= 1800 )); }; then
+    date +%s > "$pl_dir/alarm-looked"
+    local o; o="$(pl_alarm_open)"; [[ -z "$o" ]] || echo "$o" > "$pl_dir/alarm-issue"
+  fi
   [[ -f "$pl_dir/ALARM" || -f "$pl_dir/alarm-issue" ]] || return 0
   rm -rf "$pl_dir/ALARM" "$pl_dir/alarms"
   local n=""; [[ ! -f "$pl_dir/alarm-issue" ]] || n="$(cat "$pl_dir/alarm-issue")"

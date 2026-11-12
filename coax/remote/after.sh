@@ -114,12 +114,18 @@ results="$pl_dir/releases/after"
 history="$results/history.tsv"
 label="${OA_AFTER_LABEL:-com.openagents.green-main}"
 # Whether a watcher is alive, from the time it writes each minute (heartbeat).
+# On a machine that isn't the watcher, the watcher's shared state first
+# (pipeline-lib.sh's pl_mirror): the watcher elsewhere, and its host.
 watcher_health() {
-  local at=0 age
+  local at=0 age where=""
+  ! pl_mirror || where=" on $(cat "$results/watcher-host")"
   [[ ! -f "$results/heartbeat" ]] || at="$(cat "$results/heartbeat")"
   age=$(( $(date +%s) - at ))
-  if (( age < 300 )); then echo "watcher     running, seen $age s ago"; return 0; fi
-  echo "watcher     NOT RUNNING$( (( at == 0 )) || echo " since $(pl_date "$at" '%Y-%m-%d %H:%M')"): no head is checked and $pl_green does not move. Start it: coax/remote/after.sh install"
+  if (( age < 300 )); then echo "watcher     running$where, seen $age s ago"; return 0; fi
+  # A watcher on another machine that went quiet can't say so itself: the
+  # machine that sees it does (the log, ALARM and the one GitHub issue).
+  [[ -z "$where" ]] || (( age < 900 )) || pl_alarm "quiet-$at" "the watcher$where has not been seen for $(( age / 60 )) minutes" "The green-main watcher$where last wrote its heartbeat at $(pl_date "$at" '%Y-%m-%d %H:%M %Z'), so no head is checked and \`$pl_green\` does not move. Check it there: \`systemctl --user status com.openagents.green-main\` and \`~/.openagents/pipeline/logs/after.out\` (docs/verse/green-main-pipeline.md)." > /dev/null 2>&1
+  echo "watcher     NOT RUNNING$where$( (( at == 0 )) || echo " since $(pl_date "$at" '%Y-%m-%d %H:%M')"): no head is checked and $pl_green does not move. $([[ -n "$where" ]] && echo "Check it there: systemctl --user status $label" || echo "Start it: coax/remote/after.sh install")"
   return 1
 }
 
@@ -274,7 +280,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-Environment="PATH=$(sd "$PATH")" "HOME=$(sd "$HOME")" OA_AFTER_SUPERVISED=1 "OA_PIPELINE_DIR=$(sd "$pl_dir")"
+Environment="PATH=$(sd "$PATH")" "HOME=$(sd "$HOME")" OA_AFTER_SUPERVISED=1 "OA_PIPELINE_DIR=$(sd "$pl_dir")"$(for v in OA_REMOTE_STATE OA_REMOTE_DAILY_USD CLOUDSDK_CONFIG OA_PIPELINE_SHARED OA_PIPELINE_NOTIFY; do [[ -z "${!v:-}" ]] || printf ' "%s=%s"' "$v" "$(sd "${!v}")"; done)
 ExecStart=$(command -v bash) -c "$(sd "$cmd")"
 Restart=always
 RestartSec=60
@@ -333,6 +339,7 @@ EOF
     echo "after: the watcher is stopped and will not start again"
     exit 0 ;;
   red)
+    pl_mirror || true
     jq -r '.[] | "\(.status)\t\(.check)\t\(if .culprit == "" then "-" else .culprit[0:10] end) \(.subject)\tagent \(.agent)\t#\(.issue // "-")\t\(.opened | strflocaltime("%Y-%m-%d %H:%M %Z"))"' "$pl_red"
     exit 0 ;;
   history)
@@ -855,7 +862,9 @@ if (( watch == 1 )); then
     was="$(cat "$results/heartbeat")"; down=$(( $(date +%s) - was ))
     (( down < 900 )) || pl_alarm "down-$was" "the watcher was not running for $(( down / 60 )) minutes" "No after-landing check ran between $(pl_date "$was" '%Y-%m-%d %H:%M') and $(date '+%Y-%m-%d %H:%M %Z'), so \`$pl_green\` did not move. The watcher is running again and checks the newest head now."
   fi
-  ( while kill -0 $$ 2> /dev/null; do date +%s > "$results/heartbeat"; sleep 60; done ) 7>&- &
+  # This machine is the watcher now; other machines read its state (pl_publish).
+  rm -f "$results/watcher-host"
+  ( while kill -0 $$ 2> /dev/null; do date +%s > "$results/heartbeat"; pl_publish; sleep 60; done ) 7>&- &
   while true; do
     once
     stale_check
