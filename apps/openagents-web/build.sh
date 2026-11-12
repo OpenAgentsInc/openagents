@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm, build/devices.wasm, build/lightning.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -86,7 +86,10 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
     # /settings/devices: the device keys that hold app logins, with remove (devices.coax loads login.coax).
     timed devices "$here/../../coax/web/wasm.sh" "$here/devices.coax" "$here/devices-face.c" "$here/build/devices.wasm" &
     devices_page=$!
-    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$security_page"; wait "$life_page"; wait "$devices_page"
+    # /settings/lightning: the name@openagents.com claim card (lightning.coax loads login.coax), with the address's QR.
+    timed lightning "$here/../../coax/web/wasm.sh" "$here/lightning.coax" "$here/lightning-face.c" "$here/build/lightning.wasm" "$here/../../coax/lib/qr/qr-memory.coax" &
+    lightning_page=$!
+    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$security_page"; wait "$life_page"; wait "$devices_page"; wait "$lightning_page"
   ) &
   home=$!
   # The project pages: every projects/<slug>/project.json with a page, its tasks

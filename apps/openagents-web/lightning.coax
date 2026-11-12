@@ -1,0 +1,786 @@
+// /settings/lightning: your name@openagents.com Lightning Address (docs/auth/lightning-addresses.md
+// "The one-tap claim", #13209), drawn on the homepage's Grid like /settings/devices (login.coax's
+// text and lines helpers; newland.coax's frames and buttons; components/core/edit.coax's EditBuf
+// for the two boxes, with the site's keys from textkeys.coax).
+//
+// No address yet: a name to type (the display name's, when it's free), checked as you type; a
+// second box, "Send to an address I already have"; the app link for receiving in your own
+// wallet; the limits; and one CLAIM. Never claimed for you: nothing happens until you press it.
+// With an address: the address, where its money goes (said honestly while the app wallet's
+// receiving isn't on yet), a QR, COPY, SHARE, TURN OFF / TURN ON, where to send it (at once for a
+// name with no destination yet; a change waits 24 hours and needs a fresh signature), a waiting
+// change with CANCEL, and ADD TO MY NOSTR PROFILE: your own key extension (NIP-07) signs the
+// profile with lud16 and nip05 set; we only check it and pass it on.
+//
+// What it talks to (coax/web/api/lnaddr.c), every answer as ?as=lines:
+//   GET  /api/lightning/address                       the card
+//   GET  /api/lightning/address/available?name=N      while typing
+//   POST /api/lightning/address?name=N[&forward_to=A] claim
+//   POST /api/lightning/address/off | /on | /cancel
+//   POST /api/lightning/address/change?forward_to=A   the first destination, or a change
+//   GET  /api/lightning/address/profile?pubkey=K&nip05=1   the profile your key signs
+//   POST /api/lightning/address/profile               the signed profile
+// and settings/lightning/lightning.js (NIP-07 and the browser's share sheet).
+//   coax/bin/coax test apps/openagents-web/lightning.coax
+#load "login.coax";
+#load "textkeys.coax";
+#load "../../components/core/edit.coax";
+
+LP_MAX_VERTICES :: 140000;
+LP_MSG_TYPED :: 1; LP_MSG_PAGE :: 600; LP_MSG_HTTP :: 512;
+LP_ACT_GO :: 1;                                     // TK_ACT_COPY (2): the outbox to the clipboard
+LP_ACT_SIGN :: 76; LP_MSG_SIGNED :: 76;             // lightning.js: sign "CREATED_AT\nCONTENT" as kind 0; "Event <base64>" or "!WORDS"
+LP_ACT_SHARE :: 77;                                 // lightning.js: the browser's share sheet with the outbox's text
+LP_MSG_CAN :: 78;                                   // lightning.js: "KEY SHARE", each 1 or 0
+LP_ACT_PUBKEY :: 79; LP_MSG_PUBKEY :: 79;           // lightning.js: the extension's public key (hex) or "!WORDS"
+LP_POST :: 1; LP_WANTED :: 4;
+LP_CHECK_WAIT :: 0.4;                               // seconds after the last key before a name is checked
+LP_NAME_MAX :: 32; LP_TARGET_MAX :: 160;
+
+// Screens.
+LP_LOADING :: 0; LP_CLAIM :: 1; LP_MINE :: 2; LP_OUT :: 3;
+// The one request in flight.
+LR_NONE :: 0; LR_CARD :: 1; LR_CHECK :: 2; LR_CLAIM :: 3; LR_TOGGLE :: 4; LR_SEND :: 5; LR_CANCEL :: 6;
+LR_KEY :: 7; LR_OFFER :: 8; LR_SIGNING :: 9; LR_PUBLISH :: 10;   // KEY and SIGNING: on lightning.js
+// Modes and states, as the card says them.
+LM_NONE :: 0; LM_SPARK :: 1; LM_FORWARD :: 2;
+LS_ACTIVE :: 0; LS_OFF :: 1; LS_SUSPENDED :: 2; LS_RETIRED :: 3;
+// What can be pressed.
+LH_NONE :: -1; LH_HOME :: 0; LH_LOGIN :: 1; LH_NAME :: 2; LH_TARGET :: 3; LH_CLAIM :: 4; LH_APP :: 5; LH_COPY :: 6;
+LH_SHARE :: 7; LH_TOGGLE :: 8; LH_SEND :: 9; LH_CANCEL :: 10; LH_NOSTR :: 11; LH_LIMITS :: 12; LH_HITS :: 13;
+LP_QR :: 5929;
+
+Lp :: struct {
+  ready: bool; w: f32; h: f32; dpr: f32; time: f32;
+  screen: int; req: int; req_id: int = -1;
+  want: bool; url: [480] u8; url_n: int; body: [9000] u8; body_n: int; flags: int;
+  action: int; outbox: [9000] u8; out_n: int;
+  has_key: int = -1; can_share: int = -1;            // lightning.js: a NIP-07 extension, the share sheet
+  // the card (GET /api/lightning/address?as=lines)
+  person: bool; have: bool; mode: int; state: int; nip05: bool; spark_on: bool;
+  addr: [80] u8; addr_n: int; fwd: [200] u8; fwd_n: int;
+  min_msat: int; max_msat: int; comments: int; wait_hours: int;
+  waiting: bool; wait_to: [200] u8; wait_to_n: int; wait_s: int; now_s: int; now_at: f32;
+  // typing: 0 the name, 1 the address to send to
+  ed: [2] EditBuf; all: [2] bool;
+  checked: [40] u8; checked_n: int; avail: int = -1; check_at: f32 = -1;   // avail: -1 not known, 0 no, 1 yes
+  why: [200] u8; why_n: int;
+  // the profile: the key, the content to sign
+  pubkey: [64] u8; pubkey_n: int; content: [4000] u8; content_n: int; signed_at: int;
+  qr: [LP_QR] u8; qr_size: int; qr_want: bool;       // the face encodes "lightning:ADDRESS" when qr_want
+  error: [300] u8; error_n: int; said: [300] u8; said_n: int;
+  panel: Box; scroll: f32; hits: [LH_HITS] Box; field: [4] f32; qr_box: Box;
+  px: f32; py: f32; down: bool; pressed: int = -1; focus: int = -1;
+}
+
+// ---------------------------------------------------------------- small things
+lp_err :: (s: [] Lp, t: string) { s[0].error_n = lg_set(s[0].error[..], t); s[0].said_n = 0; }
+lp_say :: (s: [] Lp, t: string) { s[0].said_n = lg_set(s[0].said[..], t); s[0].error_n = 0; }
+lp_quiet :: (s: [] Lp) { s[0].error_n = 0; s[0].said_n = 0; }
+lp_go :: (s: [] Lp, path: string) { s[0].out_n = lg_set(s[0].outbox[..], path); s[0].action = LP_ACT_GO; }
+lp_out :: (s: [] Lp, act: int, text: string) { s[0].out_n = lg_set(s[0].outbox[..], text); s[0].action = act; }
+lp_ask :: (s: [] Lp, req: int, url: string, body: string, flags: int) {
+  s[0].req = req; s[0].req_id = -1; s[0].want = true; s[0].flags = flags | LP_WANTED;
+  s[0].url_n = lg_set(s[0].url[..], url); s[0].body_n = lg_set(s[0].body[..], body);
+}
+lp_sent :: (s: [] Lp, id: int) #export_c #effects(all) { if s.count < 1 { return; } if id >= 0 { s[0].want = false; s[0].req_id = id; } }
+lp_typed_name :: (s: [] Lp) -> string { return eb_text(s[0].ed[0..<1]); }
+lp_typed_target :: (s: [] Lp) -> string { return eb_text(s[0].ed[1..<2]); }
+lp_addr :: (s: [] Lp) -> string { return cast(string) s[0].addr[0..<s[0].addr_n]; }
+lp_fwd :: (s: [] Lp) -> string { return cast(string) s[0].fwd[0..<s[0].fwd_n]; }
+// A query value: letters, digits and . - _ @ + as they are, anything else %XX.
+lp_query :: (b: [] u8, at: int, t: string) -> int {
+  n := at; hexd := "0123456789ABCDEF";
+  for c: t {
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' || c == '@';
+    if ok { if n < b.count { b[n] = c; n += 1; } }
+    else if n + 3 <= b.count { b[n] = '%'; b[n + 1] = hexd[c >> 4]; b[n + 2] = hexd[c & 15]; n += 3; }
+  }
+  return n;
+}
+// A whole number of sats with thousands commas.
+lp_sats :: (b: [] u8, at: int, v: int) -> int {
+  digits: [24] u8; c := 0; x := ifx v < 0 then 0 else v;
+  while true { digits[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  for k: 0..<c { if k > 0 && (c - k) % 3 == 0 && n < b.count { b[n] = ','; n += 1; } if n < b.count { b[n] = digits[c - 1 - k]; n += 1; } }
+  return n;
+}
+// "Receives 1 to 1,000,000 sats a payment. Notes up to 280 characters." from the card's numbers.
+lp_limits :: (s: [] Lp, b: [] u8) -> string {
+  lo := hi_int(1, s[0].min_msat / 1000); top := s[0].max_msat / 1000;
+  n := lg_add(b, 0, "Receives "); n = lp_sats(b, n, lo); n = lg_add(b, n, " to "); n = lp_sats(b, n, top);
+  n = lg_add(b, n, ifx top == 1 then " sat a payment. " else " sats a payment. ");
+  if s[0].comments > 0 { n = lg_add(b, n, "Notes up to "); n = lg_add_int(b, n, s[0].comments); n = lg_add(b, n, " characters."); }
+  else { n = lg_add(b, n, "No notes."); }
+  return cast(string) b[0..<n];
+}
+
+// ---------------------------------------------------------------- requests
+lp_pump :: (s: [] Lp) {
+  if s[0].req != LR_NONE || s[0].want { return; }
+  if s[0].screen == LP_LOADING { lp_ask(s, LR_CARD, "/api/lightning/address?as=lines", "", 0); return; }
+  if s[0].screen == LP_CLAIM && s[0].check_at >= 0 && s[0].time >= s[0].check_at { lp_check(s); }
+}
+lp_refresh :: (s: [] Lp) { lp_ask(s, LR_CARD, "/api/lightning/address?as=lines", "", 0); }
+lp_check :: (s: [] Lp) {
+  s[0].check_at = -1;
+  name := lp_typed_name(s);
+  if name.count == 0 { s[0].avail = -1; s[0].checked_n = 0; return; }
+  b: [200] u8; n := lg_add(b[..], 0, "/api/lightning/address/available?as=lines&name="); n = lp_query(b[..], n, name);
+  s[0].checked_n = lg_set(s[0].checked[..], name);
+  lp_ask(s, LR_CHECK, cast(string) b[0..<n], "", 0);
+}
+lp_claim :: (s: [] Lp) {
+  if s[0].avail != 1 || lp_typed_name(s) != cast(string) s[0].checked[0..<s[0].checked_n] { return; }
+  b: [440] u8; n := lg_add(b[..], 0, "/api/lightning/address?as=lines&name="); n = lp_query(b[..], n, lp_typed_name(s));
+  to := lp_typed_target(s);
+  if to.count > 0 { n = lg_add(b[..], n, "&forward_to="); n = lp_query(b[..], n, to); }
+  lp_quiet(s); lp_ask(s, LR_CLAIM, cast(string) b[0..<n], "{}", LP_POST);
+}
+lp_send_to :: (s: [] Lp) {
+  to := lp_typed_target(s);
+  if to.count == 0 { lp_err(s, "Type the Lightning Address the money should go to, like you@getalby.com."); return; }
+  b: [440] u8; n := lg_add(b[..], 0, "/api/lightning/address/change?as=lines&forward_to="); n = lp_query(b[..], n, to);
+  lp_quiet(s); lp_ask(s, LR_SEND, cast(string) b[0..<n], "{}", LP_POST);
+}
+
+// ---------------------------------------------------------------- answers
+lp_failed :: (s: [] Lp, status: int, lines: string) {
+  found: [1] bool; e := lg_value(lines, "error", found[..]);
+  if found[0] && e.count > 0 { lp_err(s, e); return; }
+  if status == 0 { lp_err(s, "We couldn't reach openagents.com. Check your connection and try again."); return; }
+  lp_err(s, "That didn't work. Try again.");
+}
+lp_mode_of :: (t: string) -> int { return ifx t == "spark" then LM_SPARK else ifx t == "forward" then LM_FORWARD else LM_NONE; }
+lp_state_of :: (t: string) -> int { return ifx t == "active" then LS_ACTIVE else ifx t == "off" then LS_OFF else ifx t == "suspended" then LS_SUSPENDED else LS_RETIRED; }
+lp_card :: (s: [] Lp, lines: string) {
+  f: [1] bool;
+  s[0].person = lg_value(lines, "person", f[..]) != "0";
+  s[0].min_msat = lg_int(lg_value(lines, "min_msat", f[..])); s[0].max_msat = lg_int(lg_value(lines, "limit_max_msat", f[..]));
+  s[0].comments = lg_int(lg_value(lines, "comment_chars", f[..])); s[0].wait_hours = lg_int(lg_value(lines, "change_wait_hours", f[..]));
+  s[0].spark_on = lg_value(lines, "spark_receiving", f[..]) == "1";
+  s[0].now_s = lg_int(lg_value(lines, "now_s", f[..])); s[0].now_at = s[0].time;
+  addr := lg_value(lines, "address", f[..]);
+  s[0].have = f[0] && addr.count > 0;
+  if !s[0].have {
+    sug := lg_value(lines, "suggest", f[..]);
+    if s[0].screen != LP_CLAIM {
+      s[0].screen = LP_CLAIM; s[0].focus = LH_NAME;
+      if f[0] && sug.count > 0 && s[0].ed[0].n == 0 { eb_set(s[0].ed[0..<1], sug); s[0].all[0] = true; s[0].check_at = s[0].time; }
+    }
+    return;
+  }
+  first := s[0].screen != LP_MINE;
+  s[0].screen = LP_MINE;
+  s[0].addr_n = lg_set(s[0].addr[..], addr);
+  if s[0].max_msat > 0 { m := lg_int(lg_value(lines, "max_msat", f[..])); if m > 0 { s[0].max_msat = m; } }
+  s[0].comments = ifx lg_value(lines, "comments_on", f[..]) == "1" then s[0].comments else 0;
+  s[0].mode = lp_mode_of(lg_value(lines, "mode", f[..])); s[0].state = lp_state_of(lg_value(lines, "state", f[..]));
+  s[0].fwd_n = lg_set(s[0].fwd[..], lg_value(lines, "forward_to", f[..]));
+  _ = lg_value(lines, "nip05", f[..]); s[0].nip05 = f[0];
+  w := lg_value(lines, "waiting_target", f[..]); s[0].waiting = f[0];
+  s[0].wait_to_n = lg_set(s[0].wait_to[..], w); s[0].wait_s = lg_int(lg_value(lines, "waiting_ready_s", f[..]));
+  if first { s[0].focus = -1; eb_clear(s[0].ed[1..<2]); }
+  b: [120] u8; n := lg_add(b[..], 0, "lightning:"); n = lg_add(b[..], n, addr);
+  s[0].qr_want = true; s[0].qr_size = 0;
+}
+lp_answer :: (s: [] Lp, text: string) {
+  nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+  status := lg_int(text[0..<nl]);
+  lines := ifx nl < text.count then text[nl + 1..<text.count] else text[0..<0];
+  req := s[0].req; s[0].req = LR_NONE; s[0].req_id = -1;
+  ok := status >= 200 && status < 300;
+  if req == LR_CARD {
+    if status == 401 { s[0].screen = LP_OUT; return; }
+    if !ok { if s[0].screen == LP_LOADING { s[0].screen = LP_OUT; } lp_failed(s, status, lines); return; }
+    lp_card(s, lines);
+    return;
+  }
+  if req == LR_CHECK {
+    f: [1] bool;
+    if !ok { s[0].avail = 0; s[0].why_n = lg_set(s[0].why[..], lg_value(lines, "error", f[..])); if s[0].why_n == 0 { s[0].why_n = lg_set(s[0].why[..], "We couldn't check that name. Try again."); } return; }
+    if lp_typed_name(s) != cast(string) s[0].checked[0..<s[0].checked_n] { return; }   // typed on since: checked again when the typing stops
+    s[0].avail = ifx lg_value(lines, "available", f[..]) == "1" then 1 else 0;
+    s[0].why_n = lg_set(s[0].why[..], lg_value(lines, "reason", f[..]));
+    nm := lg_value(lines, "name", f[..]);
+    if s[0].avail == 1 && nm != lp_typed_name(s) { eb_set(s[0].ed[0..<1], nm); s[0].checked_n = lg_set(s[0].checked[..], nm); }   // as we'd keep it: lowercase
+    return;
+  }
+  if req == LR_KEY || req == LR_SIGNING { return; }
+  if req == LR_OFFER {
+    if !ok { lp_failed(s, status, lines); return; }
+    f: [1] bool; c := lg_value(lines, "content", f[..]);
+    s[0].content_n = lg_set(s[0].content[..], c); s[0].signed_at = lg_int(lg_value(lines, "created_at", f[..]));
+    if !f[0] || s[0].content_n == 0 || s[0].content_n >= s[0].content.count { lp_err(s, "That didn't work. Try again."); return; }
+    b: [4200] u8; n := lg_add_int(b[..], 0, s[0].signed_at); n = lg_add(b[..], n, "\n"); n = lg_add(b[..], n, c);
+    s[0].req = LR_SIGNING; lp_out(s, LP_ACT_SIGN, cast(string) b[0..<n]);
+    return;
+  }
+  if req == LR_PUBLISH {
+    if !ok { lp_failed(s, status, lines); return; }
+    f: [1] bool; sent := lg_int(lg_value(lines, "published", f[..]));
+    b: [200] u8; n := lg_add(b[..], 0, "Added to your Nostr profile and sent to ");
+    n = lg_add_int(b[..], n, sent); n = lg_add(b[..], n, ifx sent == 1 then " relay. " else " relays. ");
+    n = lg_add(b[..], n, "Your key signed it; we only passed it on.");
+    lp_say(s, cast(string) b[0..<n]); lp_refresh(s);
+    return;
+  }
+  if !ok {
+    f: [1] bool;
+    if status == 401 && lg_value(lines, "step_up", f[..]).count > 0 { lp_go(s, "/settings/security?step=1&next=%2Fsettings%2Flightning"); return; }
+    lp_failed(s, status, lines);
+    if req == LR_CLAIM { s[0].avail = -1; s[0].check_at = s[0].time; }
+    if status == 409 || status == 404 { lp_refresh(s); }
+    return;
+  }
+  if req == LR_CLAIM { lp_say(s, "It's yours. Nothing is paid to it until it has somewhere of yours to send the money."); eb_clear(s[0].ed[0..<1]); }
+  if req == LR_TOGGLE { lp_say(s, ifx s[0].state == LS_OFF then "Turned on. It takes payments again." else "Turned off. The name stays yours."); }
+  if req == LR_CANCEL { lp_say(s, "Cancelled. Nothing changed."); }
+  if req == LR_SEND { eb_clear(s[0].ed[1..<2]); }
+  was_none := s[0].mode == LM_NONE && s[0].screen == LP_MINE;
+  lp_card(s, lines);
+  if req == LR_SEND && s[0].waiting { lp_say(s, "Asked. It waits, and we told every email and key on your account; you can cancel it until then."); }
+  else if req == LR_SEND && was_none { lp_say(s, "Done. Payments go there now."); }
+  if req == LR_CLAIM && s[0].mode == LM_FORWARD { lp_say(s, "It's yours, and payments go to the address you gave."); }
+}
+// lightning.js's answers: the extension's key, then its signature.
+lp_pubkey :: (s: [] Lp, text: string) {
+  if s[0].req != LR_KEY { return; }
+  s[0].req = LR_NONE;
+  if text.count != 64 { lp_err(s, ifx text.count > 1 && text[0] == '!' then text[1..<text.count] else "Your key extension didn't answer. Try again."); return; }
+  s[0].pubkey_n = lg_set(s[0].pubkey[..], text);
+  b: [200] u8; n := lg_add(b[..], 0, "/api/lightning/address/profile?as=lines&nip05=1&pubkey="); n = lg_add(b[..], n, text);
+  lp_ask(s, LR_OFFER, cast(string) b[0..<n], "", 0);
+}
+lp_signed :: (s: [] Lp, text: string) {
+  if s[0].req != LR_SIGNING { return; }
+  s[0].req = LR_NONE;
+  if !lg_is(text, 0, "Event ") { lp_err(s, ifx text.count > 1 && text[0] == '!' then text[1..<text.count] else "Your key extension didn't sign. Try again."); return; }
+  lp_ask(s, LR_PUBLISH, "/api/lightning/address/profile?as=lines", text[6..<text.count], LP_POST);
+}
+lp_message :: (s: [] Lp, kind: int, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if kind == LP_MSG_TYPED { lp_typed(s, text); return; }
+  if kind == LP_MSG_PAGE { lp_pump(s); return; }
+  if kind == LP_MSG_CAN { s[0].has_key = ifx lg_is(text, 0, "1") then 1 else 0; s[0].can_share = ifx text.count >= 3 && text[2] == '1' then 1 else 0; return; }
+  if kind == LP_MSG_PUBKEY { lp_pubkey(s, text); return; }
+  if kind == LP_MSG_SIGNED { lp_signed(s, text); return; }
+  if kind >= LP_MSG_HTTP && kind < LP_MSG_HTTP + 64 && kind - LP_MSG_HTTP == s[0].req_id && s[0].req != LR_NONE { lp_answer(s, text); }
+}
+lp_page :: (s: [] Lp) #export_c #effects(all) { if s.count < 1 { return; } lp_pump(s); }
+lp_done :: (s: [] Lp) #export_c #effects(all) { if s.count < 1 { return; } s[0].action = 0; s[0].out_n = 0; }
+lp_qr :: (s: [] Lp, status: int, size: int) #export_c #effects(all) {
+  if s.count < 1 || !s[0].qr_want { return; }
+  s[0].qr_want = false;
+  s[0].qr_size = ifx status == 0 && size >= 21 && size * size <= LP_QR then size else 0;
+}
+lp_qr_text :: (s: [] Lp, b: [] u8) -> int #export_c #effects(all) { n := lg_add(b, 0, "lightning:"); return lg_add(b, n, lp_addr(s)); }
+
+// ---------------------------------------------------------------- typing (the two boxes, EditBuf)
+lp_box :: (s: [] Lp) -> int { return ifx s[0].focus == LH_NAME then 0 else ifx s[0].focus == LH_TARGET then 1 else -1; }
+lp_edited :: (s: [] Lp, k: int) {
+  lp_quiet(s);
+  if k == 0 { s[0].avail = -1; s[0].check_at = s[0].time + LP_CHECK_WAIT; }
+}
+lp_typed :: (s: [] Lp, text: string) {
+  k := lp_box(s); if k < 0 || !lp_wants_text(s) { return; }
+  e := s[0].ed[k..<k + 1]; e[0].clock = s[0].time;
+  if s[0].all[k] { eb_select_all(e); s[0].all[k] = false; }
+  cap := ifx k == 0 then LP_NAME_MAX else LP_TARGET_MAX;
+  clean: [200] u8; n := 0;
+  for c: text {
+    if c < 0x21 || c == 127 { continue; }   // no spaces or line breaks in an address
+    l := ifx k == 0 && c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+    if e[0].n - (eb_sel_hi(e) - eb_sel_lo(e)) + n < cap && n < clean.count { clean[n] = l; n += 1; }
+  }
+  if n == 0 { return; }
+  if n > 1 { _ = eb_paste(e, cast(string) clean[0..<n]); } else { _ = eb_insert(e, cast(string) clean[0..<n]); }
+  lp_edited(s, k);
+}
+lp_key_in :: (s: [] Lp, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  k := lp_box(s);
+  if k >= 0 && lp_wants_text(s) {
+    e := s[0].ed[k..<k + 1];
+    c := tk_command(key, mods);
+    if c == TK_ALL { s[0].all[k] = e[0].n > 0; eb_select_all(e); return true; }
+    if c == TK_COPY || c == TK_CUT {
+      t := ifx eb_sel_hi(e) > eb_sel_lo(e) then eb_selected(e) else eb_text(e);
+      if t.count > 0 { s[0].out_n = tk_copy(s[0].outbox[..], t); s[0].action = TK_ACT_COPY; }
+      if c == TK_CUT && e[0].n > 0 { if eb_sel_hi(e) == eb_sel_lo(e) { eb_select_all(e); } eb_cut_selection(e); s[0].all[k] = false; lp_edited(s, k); }
+      return true;
+    }
+    if c == TK_BROWSER { return false; }
+    if key == -3 {
+      if s[0].all[k] { eb_select_all(e); s[0].all[k] = false; }
+      if eb_sel_hi(e) > eb_sel_lo(e) { eb_delete_to(e, e[0].caret); }
+      else if (mods & 8) != 0 { eb_delete_to(e, 0); }
+      else if (mods & 6) != 0 { eb_delete_to(e, eb_prev_word(e, e[0].caret)); }
+      else { eb_delete_to(e, eb_prev_boundary(e, e[0].caret)); }
+      lp_edited(s, k); return true;
+    }
+    if key == -4 { s[0].all[k] = false; eb_move_to(e, ifx (mods & 8) != 0 then 0 else eb_prev_boundary(e, e[0].caret)); return true; }
+    if key == -5 { s[0].all[k] = false; eb_move_to(e, ifx (mods & 8) != 0 then e[0].n else eb_next_boundary(e, e[0].caret)); return true; }
+    if key == -8 { s[0].all[k] = false; eb_move_to(e, 0); return true; }
+    if key == -9 { s[0].all[k] = false; eb_move_to(e, e[0].n); return true; }
+    if key == -2 { s[0].all[k] = false; lp_press(s, ifx k == 1 && s[0].screen == LP_MINE then LH_SEND else LH_CLAIM); return true; }
+    if key == -1 { s[0].focus = -1; return true; }
+    if key > 0 && (mods & 10) == 0 { return false; }   // typed keys come as text
+  }
+  if key == -2 { lp_press(s, s[0].focus); return s[0].focus >= 0; }
+  if key == -15 {
+    order: [LH_HITS] int; n := lp_order(s, order[..]);
+    if n == 0 { return false; }
+    i := 0; while i < n && order[i] != s[0].focus { i += 1; }
+    s[0].focus = ifx i >= n then order[0] else order[(i + 1) % n]; return true;
+  }
+  return false;
+}
+lp_wants_text :: (s: [] Lp) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if s[0].focus == LH_NAME { return s[0].screen == LP_CLAIM; }
+  if s[0].focus == LH_TARGET { return lp_shown(s, LH_TARGET); }
+  return false;
+}
+
+// ---------------------------------------------------------------- pressing
+lp_press :: (s: [] Lp, h: int) {
+  if h < 0 { return; }
+  if h == LH_HOME { lp_go(s, "/"); return; }
+  if h == LH_LOGIN { lp_go(s, "/login?next=%2Fsettings%2Flightning"); return; }
+  if h == LH_LIMITS { lp_go(s, "/docs/limits"); return; }
+  if h == LH_APP { lp_go(s, "/download"); return; }
+  if h == LH_NAME || h == LH_TARGET { s[0].focus = h; return; }
+  if h == LH_COPY { s[0].out_n = tk_copy(s[0].outbox[..], lp_addr(s)); s[0].action = TK_ACT_COPY; lp_say(s, "Copied."); return; }
+  if h == LH_SHARE { lp_out(s, LP_ACT_SHARE, lp_addr(s)); return; }
+  if s[0].req != LR_NONE { return; }
+  if h == LH_CLAIM { lp_claim(s); return; }
+  if h == LH_TOGGLE { lp_quiet(s); lp_ask(s, LR_TOGGLE, ifx s[0].state == LS_OFF then "/api/lightning/address/on?as=lines" else "/api/lightning/address/off?as=lines", "{}", LP_POST); return; }
+  if h == LH_SEND { lp_send_to(s); return; }
+  if h == LH_CANCEL { lp_quiet(s); lp_ask(s, LR_CANCEL, "/api/lightning/address/cancel?as=lines", "{}", LP_POST); return; }
+  if h == LH_NOSTR { lp_quiet(s); s[0].req = LR_KEY; lp_out(s, LP_ACT_PUBKEY, "pubkey"); return; }
+}
+
+// ---------------------------------------------------------------- words
+LP_PARA :: 7.8;
+LP_INTRO :: "Anyone can pay you at name@openagents.com. The money goes to a wallet of yours, never ours. Nothing is claimed until you press CLAIM.";
+LP_APP_WORDS :: "To receive in your own wallet, even with your phone off, get the OpenAgents app and claim from its wallet.";
+LP_TARGET_HINT :: "Send to an address I already have (optional)";
+lp_status :: (s: [] Lp, b: [] u8) -> string {
+  if s[0].state == LS_OFF { return "Turned off: payments to it are refused until you turn it on. The name stays yours."; }
+  if s[0].state == LS_SUSPENDED { return "This address is suspended, so it takes no payments. We told you why by email."; }
+  if s[0].state != LS_ACTIVE { return "This address no longer takes payments."; }
+  if s[0].mode == LM_FORWARD { n := lg_add(b, 0, "Payments go to "); n = lg_add(b, n, lp_fwd(s)); n = lg_add(b, n, ", your address there."); return cast(string) b[0..<n]; }
+  if s[0].mode == LM_SPARK && s[0].spark_on { return "Payments go straight to the wallet in your OpenAgents app, even while your phone is off."; }
+  if s[0].mode == LM_SPARK { return "This address isn't receiving yet. It points at the wallet in your OpenAgents app, and we'll turn receiving on when it's ready; until then payments are refused, so nothing is lost."; }
+  return "This address isn't receiving yet: it has nowhere of yours to send the money. Give it an address you already have below, or claim it from the OpenAgents app's wallet.";
+}
+lp_check_words :: (s: [] Lp, b: [] u8) -> string {
+  name := lp_typed_name(s);
+  if name.count == 0 { return "Type the name you want."; }
+  if s[0].avail == 1 { n := lg_add(b, 0, name); n = lg_add(b, n, "@openagents.com is free."); return cast(string) b[0..<n]; }
+  if s[0].avail == 0 { return cast(string) s[0].why[0..<s[0].why_n]; }
+  return "Checking...";
+}
+lp_wait_words :: (s: [] Lp, b: [] u8) -> string {
+  left := s[0].wait_s - (s[0].now_s + cast(int) (s[0].time - s[0].now_at));
+  n := lg_add(b, 0, "Payments will go to "); n = lg_add(b, n, cast(string) s[0].wait_to[0..<s[0].wait_to_n]);
+  n = lg_add(b, n, " in ");
+  hrs := hi_int(0, left) / 3600;
+  if hrs >= 1 { n = lg_add_int(b, n, hrs); n = lg_add(b, n, ifx hrs == 1 then " hour" else " hours"); }
+  else { n = lg_add_int(b, n, hi_int(1, hi_int(0, left) / 60)); n = lg_add(b, n, " minutes"); }
+  n = lg_add(b, n, ". Cancel it if you didn't ask for it.");
+  return cast(string) b[0..<n];
+}
+lp_send_label :: (s: [] Lp) -> string { return ifx s[0].mode == LM_NONE then "SEND HERE" else "CHANGE TO THIS"; }
+lp_send_words :: (s: [] Lp, b: [] u8) -> string {
+  if s[0].mode == LM_NONE { return "Send to an address I already have: payments go there at once."; }
+  n := lg_add(b, 0, "Send somewhere else: to keep a stolen login from redirecting your money, a change waits ");
+  n = lg_add_int(b, n, s[0].wait_hours); n = lg_add(b, n, " hours and needs your key or passkey.");
+  return cast(string) b[0..<n];
+}
+lp_nostr_words :: (s: [] Lp) -> string {
+  if s[0].nip05 { return "Your Nostr profile has this address, and it is your Nostr name (NIP-05)."; }
+  if s[0].has_key == 1 { return "Add it to your Nostr profile (lud16) and use it as your Nostr name (NIP-05). Your key extension signs it; we only pass it on."; }
+  return "To add it to your Nostr profile, use a browser with a Nostr key extension (NIP-07).";
+}
+
+// ---------------------------------------------------------------- layout
+lp_order :: (s: [] Lp, out: [] int) -> int {
+  n := 0; sc := s[0].screen;
+  if sc == LP_OUT { out[n] = LH_LOGIN; n += 1; }
+  if sc == LP_CLAIM && s[0].person { out[n] = LH_NAME; n += 1; out[n] = LH_TARGET; n += 1; out[n] = LH_CLAIM; n += 1; out[n] = LH_APP; n += 1; }
+  if sc == LP_MINE {
+    out[n] = LH_COPY; n += 1;
+    if s[0].can_share == 1 { out[n] = LH_SHARE; n += 1; }
+    if s[0].state == LS_ACTIVE || s[0].state == LS_OFF { out[n] = LH_TOGGLE; n += 1; }
+    if !s[0].waiting && (s[0].state == LS_ACTIVE || s[0].state == LS_OFF) { out[n] = LH_TARGET; n += 1; out[n] = LH_SEND; n += 1; }
+    if s[0].waiting { out[n] = LH_CANCEL; n += 1; }
+    if s[0].mode != LM_SPARK { out[n] = LH_APP; n += 1; }
+    if s[0].has_key == 1 && !s[0].nip05 && s[0].state == LS_ACTIVE { out[n] = LH_NOSTR; n += 1; }
+  }
+  if sc == LP_CLAIM || sc == LP_MINE { out[n] = LH_LIMITS; n += 1; }
+  out[n] = LH_HOME; n += 1;
+  return n;
+}
+lp_shown :: (s: [] Lp, h: int) -> bool { order: [LH_HITS] int; n := lp_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
+lp_tall :: (t: string, w: f32) -> f32 { return ifx t.count == 0 then 0.0f32 else lg_tall(t, w, LP_PARA); }
+// The page laid out (and drawn when draw): one walk for both, so what is pressed is where it is
+// drawn. Returns the vertex count.
+lp_walk :: (s: [] Lp, out: [] f32, at: int, p: Pen, draw: bool) -> int {
+  sw := hi(240, s[0].w); sh := hi(300, s[0].h);
+  pw := lo(520, sw - 32); px := (sw - pw) * 0.5;
+  top := (ifx sh > 720 then 110.0f32 else 80.0f32) - s[0].scroll;
+  x := px + 24; w := pw - 48; y := top + 66; d := p.d; v := at; b: [400] u8; below: [1] f32;
+  if !draw {
+    for i: 0..<LH_HITS { s[0].hits[i] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+    s[0].hits[LH_HOME] = Box.{x0 = px + pw - 64, y0 = top - 56, x1 = px + pw, y1 = top - 20};
+    s[0].qr_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  }
+  msg := ifx s[0].error_n > 0 then cast(string) s[0].error[0..<s[0].error_n] else cast(string) s[0].said[0..<s[0].said_n];
+  mk := ifx s[0].error_n > 0 then lg_red(p) else lg_text(p, INK_BRIGHT);
+  if draw { v = put_fit(out, v, "LIGHTNING ADDRESS", x * d, (top + 44) * d, (ifx p.phone then 13.0f32 else 15.0f32) * d, chrome(ink(p, INK_WHITE)), w * d); }
+  sc := s[0].screen;
+  if sc == LP_LOADING { if draw { v = put(out, v, "LOADING", x * d, (y + 14) * d, 7.0 * d, ink(p, INK_DIM)); } y += 40; }
+  if msg.count > 0 && sc != LP_LOADING { if draw { v = lg_para(out, v, msg, x, y, w, LP_PARA, mk, d, below[..]); } y += lp_tall(msg, w) + 12; }
+  if sc == LP_OUT {
+    t := "Log in to get name@openagents.com, a Lightning Address that pays your own wallet.";
+    if draw { v = lg_para(out, v, t, x, y, w, LP_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lp_tall(t, w) + 16;
+    v = lp_btn(s, out, v, p, draw, LH_LOGIN, "LOG IN", true, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 20;
+  }
+  limits := lp_limits(s, b[..]);
+  if sc == LP_CLAIM && !s[0].person {
+    t := "An agent's Lightning Address is claimed by its owner, on Your agents.";
+    if draw { v = lg_para(out, v, t, x, y, w, LP_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lp_tall(t, w) + 16;
+  }
+  if sc == LP_CLAIM && s[0].person {
+    if draw { v = lg_para(out, v, LP_INTRO, x, y, w, LP_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lp_tall(LP_INTRO, w) + 18;
+    suffix := "@openagents.com"; sw2: f32 = 128;
+    v = lp_field(s, out, v, p, draw, LH_NAME, 0, "your name", Box.{x0 = x, y0 = y, x1 = x + w - sw2, y1 = y + 44});
+    if draw { v = put(out, v, suffix, (x + w - sw2 + 10) * d, (y + 27) * d, 8.4 * d, lg_text(p, INK_BRIGHT)); }
+    y += 44 + 8;
+    cw: [200] u8; cwords := lp_check_words(s, cw[..]);
+    ck := ifx s[0].avail == 0 then lg_red(p) else ifx s[0].avail == 1 then lg_text(p, INK_WHITE) else lg_text(p, INK_FAINT);
+    if draw { v = lg_para(out, v, cwords, x, y, w, 6.6, ck, d, below[..]); } y += lg_tall(cwords, w, 6.6) + 14;
+    v = lp_field(s, out, v, p, draw, LH_TARGET, 1, LP_TARGET_HINT, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 14;
+    if draw { v = lg_para(out, v, limits, x, y, w, 6.6, lg_text(p, INK_PALE), d, below[..]); } y += lg_tall(limits, w, 6.6) + 14;
+    v = lp_btn(s, out, v, p, draw, LH_CLAIM, ifx s[0].req == LR_CLAIM then "CLAIMING" else "CLAIM", s[0].avail == 1, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 18;
+    if draw { v = lg_para(out, v, LP_APP_WORDS, x, y, w, LP_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lp_tall(LP_APP_WORDS, w) + 10;
+    v = lp_btn(s, out, v, p, draw, LH_APP, "GET THE APP", false, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 40}); y += 40 + 18;
+  }
+  if sc == LP_MINE {
+    a := lp_addr(s);
+    if draw { v = put_fit(out, v, a, x * d, (y + 22) * d, (ifx p.phone then 10.0f32 else 12.0f32) * d, lg_text(p, INK_WHITE), w * d); }
+    y += 40;
+    st: [400] u8; words := lp_status(s, st[..]);
+    if draw { v = lg_para(out, v, words, x, y, w, LP_PARA, lg_text(p, ifx s[0].state == LS_ACTIVE && (s[0].mode == LM_FORWARD || s[0].spark_on) then INK_BRIGHT else INK_PALE), d, below[..]); }
+    y += lp_tall(words, w) + 16;
+    side := lo(200, w);
+    if !draw { s[0].qr_box = Box.{x0 = floor(x + (w - side) * 0.5), y0 = y, x1 = floor(x + (w - side) * 0.5) + side, y1 = y + side}; }
+    else if s[0].qr_size > 0 { v = qr_grid_draw(s[0].qr[..], s[0].qr_size, out, v, s[0].qr_box, p); }
+    y += side + 16;
+    share := s[0].can_share == 1; half := ifx share then (w - 12) * 0.5 else w;
+    v = lp_btn(s, out, v, p, draw, LH_COPY, "COPY", true, Box.{x0 = x, y0 = y, x1 = x + half, y1 = y + 44});
+    if share { v = lp_btn(s, out, v, p, draw, LH_SHARE, "SHARE", false, Box.{x0 = x + w - half, y0 = y, x1 = x + w, y1 = y + 44}); }
+    y += 44 + 12;
+    if lp_shown(s, LH_TOGGLE) {
+      v = lp_btn(s, out, v, p, draw, LH_TOGGLE, ifx s[0].req == LR_TOGGLE then "ONE MOMENT" else ifx s[0].state == LS_OFF then "TURN ON" else "TURN OFF", false, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 40});
+      y += 40 + 12;
+    }
+    if draw { v = lg_para(out, v, limits, x, y, w, 6.6, lg_text(p, INK_PALE), d, below[..]); } y += lg_tall(limits, w, 6.6) + 18;
+    if s[0].waiting {
+      ww: [400] u8; wt := lp_wait_words(s, ww[..]);
+      if draw { v = lg_para(out, v, wt, x, y, w, LP_PARA, lg_text(p, INK_BRIGHT), d, below[..]); } y += lp_tall(wt, w) + 10;
+      v = lp_btn(s, out, v, p, draw, LH_CANCEL, "CANCEL THE CHANGE", false, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 40}); y += 40 + 18;
+    }
+    if lp_shown(s, LH_SEND) {
+      sb2: [300] u8; swords := lp_send_words(s, sb2[..]);
+      if draw { v = lg_para(out, v, swords, x, y, w, LP_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lp_tall(swords, w) + 10;
+      v = lp_field(s, out, v, p, draw, LH_TARGET, 1, "you@getalby.com", Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 10;
+      v = lp_btn(s, out, v, p, draw, LH_SEND, ifx s[0].req == LR_SEND then "ONE MOMENT" else lp_send_label(s), lp_typed_target(s).count > 0, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 40});
+      y += 40 + 18;
+    }
+    if s[0].mode != LM_SPARK {
+      if draw { v = lg_para(out, v, LP_APP_WORDS, x, y, w, LP_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lp_tall(LP_APP_WORDS, w) + 10;
+      v = lp_btn(s, out, v, p, draw, LH_APP, "GET THE APP", false, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 40}); y += 40 + 18;
+    }
+    if s[0].state == LS_ACTIVE && s[0].has_key >= 0 {
+      nw := lp_nostr_words(s);
+      if draw { v = lg_para(out, v, nw, x, y, w, LP_PARA, lg_text(p, INK_PALE), d, below[..]); } y += lp_tall(nw, w) + 10;
+      if lp_shown(s, LH_NOSTR) {
+        busy := s[0].req == LR_KEY || s[0].req == LR_OFFER || s[0].req == LR_SIGNING || s[0].req == LR_PUBLISH;
+        v = lp_btn(s, out, v, p, draw, LH_NOSTR, ifx busy then "ASK YOUR KEY EXTENSION" else "ADD TO MY NOSTR PROFILE", false, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 40});
+        y += 40 + 18;
+      }
+    }
+  }
+  if sc == LP_CLAIM || sc == LP_MINE {
+    if !draw { s[0].hits[LH_LIMITS] = Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 28}; }
+    else {
+      hot := lp_hover(s, LH_LIMITS);
+      v = put(out, v, "LIMITS", x * d, (y + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
+      v = put_fit(out, v, "Every limit, in one place", (x + 70) * d, (y + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 70) * d);
+    }
+    y += 28 + 14;
+  }
+  if !draw {
+    s[0].panel = Box.{x0 = px, y0 = top, x1 = px + pw, y1 = y};
+    k := lp_box(s); f := ifx k >= 0 && lp_wants_text(s) then s[0].hits[s[0].focus] else Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+    dd := hi(1, s[0].dpr); s[0].field[0] = f.x0 * dd; s[0].field[1] = f.y0 * dd; s[0].field[2] = f.x1 * dd; s[0].field[3] = f.y1 * dd;
+  }
+  return v;
+}
+lp_btn :: (s: [] Lp, out: [] f32, at: int, p: Pen, draw: bool, h: int, text: string, main: bool, box: Box) -> int {
+  if !draw { s[0].hits[h] = box; return at; }
+  b := s[0].hits[h]; if b.x1 <= b.x0 || !lp_shown(s, h) { return at; }
+  return button(out, at, lg_box(b, p.d), text, main, lp_hover(s, h), true, p, ifx s[0].req != LR_NONE then 0.55f32 else 1.0f32);
+}
+// A box typed into (EditBuf k): its frame, the text (its end kept in view), the selection and the caret.
+lp_field :: (s: [] Lp, out: [] f32, at: int, p: Pen, draw: bool, h: int, k: int, hint: string, box: Box) -> int {
+  if !draw { s[0].hits[h] = box; return at; }
+  d := p.d; b := s[0].hits[h]; on := s[0].focus == h;
+  v := frame(out, at, lg_box(b, d), 6 * d, ink(p, ifx on then INK_WHITE else INK_DIM), ifx on then 0.85f32 else 0.45f32, p);
+  tx := b.x0 + 14; base := (b.y0 + b.y1) * 0.5 + 5.5; room := (b.x1 - b.x0 - 28) * d;
+  e := s[0].ed[k..<k + 1]; text := eb_text(e); white := lg_text(p, INK_WHITE); cap: f32 = 9.0;
+  if text.count == 0 && !on { return put_fit(out, v, hint, tx * d, base * d, 8 * d, lg_text(p, INK_FAINT), room); }
+  from := 0; while from < text.count && text_width(text[from..<text.count], cap * d, white) > room { from += 1; }
+  if s[0].all[k] && text.count > 0 {
+    wsel := text_width(text[from..<text.count], cap * d, white);
+    v = rule(out, v, tx * d, (base - 3) * d, tx * d + wsel, (base - 3) * d, ink(p, INK_BLUE), 0.6 * cap);
+  }
+  v = put(out, v, text[from..<text.count], tx * d, base * d, cap * d, white);
+  if on && fract(s[0].time * 0.9) < 0.6 {
+    c := hi_int(from, e[0].caret); if c > text.count { c = text.count; }
+    cx := tx * d + text_width(text[from..<c], cap * d, white) + 2 * d;
+    v = rule(out, v, cx, (base - cap - 2) * d, cx, (base + 3) * d, white, 0.9);
+  }
+  return v;
+}
+lp_pen :: (s: [] Lp, still: bool) -> Pen { d := hi(1, s[0].dpr); return Pen.{d = d, fade = 1, time = 5 + s[0].time, still = still, phone = s[0].w < 760}; }
+lp_layout :: (s: [] Lp) { none: [1] f32; _ = lp_walk(s, none[0..<0], 0, lp_pen(s, true), false); }
+lp_most :: (s: [] Lp) -> f32 { return hi(0, s[0].panel.y1 + s[0].scroll + 40 - s[0].h); }
+lp_wheel :: (s: [] Lp, dy: f32) #export_c #effects(all) { if s.count < 1 { return; } s[0].scroll = clamp(s[0].scroll + dy, 0, lp_most(s)); lp_layout(s); }
+lp_hit :: (s: [] Lp, x: f32, y: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return LH_NONE; }
+  for i: 0..<LH_HITS { b := s[0].hits[i]; if b.x1 > b.x0 && lp_shown(s, i) && inside(b, x, y) { return i; } }
+  return LH_NONE;
+}
+lp_hover :: (s: [] Lp, h: int) -> bool { return lp_hit(s, s[0].px, s[0].py) == h || s[0].focus == h; }
+lp_pointer :: (s: [] Lp, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  d := hi(1, s[0].dpr); px := x / d; py := y / d;
+  if phase == 1 && s[0].down && s[0].pressed < 0 { s[0].scroll = clamp(s[0].scroll - (py - s[0].py), 0, lp_most(s)); lp_layout(s); }   // a drag scrolls
+  s[0].px = px; s[0].py = py;
+  if phase == 0 { s[0].down = true; s[0].pressed = lp_hit(s, px, py); return true; }
+  if phase == 2 || phase == 3 {
+    was := s[0].down; s[0].down = false;
+    if was && phase == 2 && s[0].pressed >= 0 && lp_hit(s, px, py) == s[0].pressed { lp_press(s, s[0].pressed); lp_layout(s); }
+    else if was && phase == 2 && s[0].pressed < 0 { s[0].focus = -1; }
+    return true;
+  }
+  return phase == 1 && s[0].down;
+}
+lp_cursor :: (s: [] Lp) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  h := lp_hit(s, s[0].px, s[0].py);
+  return ifx h == LH_NAME || h == LH_TARGET then 3 else ifx h >= 0 then 1 else 0;
+}
+
+// ---------------------------------------------------------------- drawing
+lp_frame :: (s: [] Lp, world: [] LandState, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  d := hi(1, dpr); s[0].w = width / d; s[0].h = height / d; s[0].dpr = d; s[0].time += clamp(dt, 0, 0.1);
+  if !s[0].ready { s[0].ready = true; }
+  lp_pump(s);
+  lp_layout(s);
+  if s[0].scroll > lp_most(s) { s[0].scroll = lp_most(s); lp_layout(s); }
+  p := lp_pen(s, still);
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still then 20.0f32 else 20 + s[0].time; u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  look := fv(0, 0, 0); c := cam(look, 0.785, 0.74, 40, width * 0.5, height * 0.62, width, Box.{x0 = 0, y0 = 0, x1 = width, y1 = height}, width, height);
+  v := floor_grid(out, 0, world, c, look, p);
+  b := s[0].panel; paper := lg_box(b, d);
+  for i: 0..<v { out[i * VERTEX_FLOATS + 6] *= ifx inside(paper, out[i * VERTEX_FLOATS], out[i * VERTEX_FLOATS + 1]) then 0.18f32 else 0.75f32; }
+  glass(u, 0, paper, 10 * d, 0.86, 0); u[5] = 1;
+  v = frame(out, v, paper, 10 * d, ink(p, INK_DIM), 0.55, p);
+  v = put(out, v, "OPENAGENTS", b.x0 * d, (b.y0 - 32) * d, 6.8 * d, ink(p, INK_DIM));
+  hb := s[0].hits[LH_HOME];
+  v = button(out, v, lg_box(hb, d), "HOME", false, lp_hover(s, LH_HOME), true, p, 1.0);
+  return lp_walk(s, out, v, p, true);
+}
+lp_max_vertices :: () -> int #export_c #effects(all) { return LP_MAX_VERTICES; }
+
+// ---------------------------------------------------------------- tests
+lp_new :: (s: [] Lp) { s[0].w = 390; s[0].h = 844; s[0].dpr = 1; lp_message(s, LP_MSG_PAGE, "now=1794000000000\nurl=https://openagents.com/settings/lightning"); lp_layout(s); }
+lp_reply :: (s: [] Lp, id: int, text: string) { lp_sent(s, id); lp_message(s, LP_MSG_HTTP + id, text); lp_layout(s); }
+lp_url :: (s: [] Lp) -> string { return cast(string) s[0].url[0..<s[0].url_n]; }
+lp_outbox :: (s: [] Lp) -> string { return cast(string) s[0].outbox[0..<s[0].out_n]; }
+lp_error_of :: (s: [] Lp) -> string { return cast(string) s[0].error[0..<s[0].error_n]; }
+lp_said_of :: (s: [] Lp) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+lp_wait :: (s: [] Lp, seconds: f32) { s[0].time += seconds; lp_pump(s); }
+LP_T_NONE :: "200\nmin_msat 1000\nlimit_max_msat 1000000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1794000000\nperson 1\nsuggest carol.q\n";
+LP_T_SPARK :: "200\nmin_msat 1000\nlimit_max_msat 1000000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1794000000\nperson 1\naddress carol.q@openagents.com\nname carol.q\nmode spark\nstate active\nrevision 1\nmax_msat 1000000000\ncomments_on 1\nspark_pubkey 02aa\n";
+LP_T_HELD :: "200\nmin_msat 1000\nlimit_max_msat 1000000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1794000000\nperson 1\naddress carol.q@openagents.com\nname carol.q\nmode none\nstate active\nrevision 1\nmax_msat 1000000000\ncomments_on 1\n";
+LP_T_FWD :: "200\nmin_msat 1000\nlimit_max_msat 1000000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1794000000\nperson 1\naddress carol.q@openagents.com\nname carol.q\nmode forward\nstate active\nrevision 2\nmax_msat 1000000000\ncomments_on 1\nforward_to carol@getalby.com\n";
+
+#test "the card offers the display name's name, checks it once the typing stops, and claims only on CLAIM" {
+  s: [1] Lp; lp_new(s[..]);
+  #assert s[0].req == LR_CARD && lp_url(s[..]) == "/api/lightning/address?as=lines" && s[0].flags == LP_WANTED;
+  lp_reply(s[..], 1, LP_T_NONE);
+  #assert s[0].screen == LP_CLAIM && lp_typed_name(s[..]) == "carol.q" && s[0].focus == LH_NAME && lp_wants_text(s[..]);
+  b: [200] u8;
+  #assert lp_limits(s[..], b[..]) == "Receives 1 to 1,000,000 sats a payment. Notes up to 280 characters.";
+  lp_wait(s[..], 0.01);
+  #assert s[0].req == LR_CHECK && lp_url(s[..]) == "/api/lightning/address/available?as=lines&name=carol.q";
+  lp_reply(s[..], 2, "200\nname carol.q\navailable 1\ncode 0\nreason \n");
+  #assert s[0].avail == 1 && lp_check_words(s[..], b[..]) == "carol.q@openagents.com is free." && s[0].req == LR_NONE;
+  // typing replaces the suggestion (it's selected), and waits before checking
+  lp_typed(s[..], "Carl");
+  #assert lp_typed_name(s[..]) == "carl" && s[0].avail == -1 && s[0].req == LR_NONE;
+  lp_wait(s[..], 0.2); #assert s[0].req == LR_NONE;
+  lp_typed(s[..], "o"); lp_wait(s[..], 0.3); #assert s[0].req == LR_NONE;
+  lp_press(s[..], LH_CLAIM); #assert s[0].req == LR_NONE;   // nothing claimed before the name is checked
+  lp_wait(s[..], 0.2);
+  #assert s[0].req == LR_CHECK && lp_url(s[..]) == "/api/lightning/address/available?as=lines&name=carlo";
+  lp_reply(s[..], 3, "200\nname carlo\navailable 0\ncode 5\nreason That name is taken\n");
+  #assert s[0].avail == 0 && lp_check_words(s[..], b[..]) == "That name is taken";
+  lp_press(s[..], LH_CLAIM); #assert s[0].req == LR_NONE;    // a taken name has no CLAIM to press
+  _ = lp_key_in(s[..], -3, 0); lp_typed(s[..], "a"); lp_wait(s[..], 0.5);
+  lp_reply(s[..], 4, "200\nname carla\navailable 1\ncode 0\nreason \n");
+  lp_press(s[..], LH_CLAIM);
+  #assert s[0].req == LR_CLAIM && lp_url(s[..]) == "/api/lightning/address?as=lines&name=carla" && s[0].flags == (LP_POST | LP_WANTED);
+  lp_reply(s[..], 5, "200\nmin_msat 1000\nlimit_max_msat 1000000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1794000000\nperson 1\naddress carla@openagents.com\nname carla\nmode none\nstate active\nrevision 1\nmax_msat 1000000000\ncomments_on 1\n");
+  #assert s[0].screen == LP_MINE && lp_addr(s[..]) == "carla@openagents.com" && s[0].mode == LM_NONE && s[0].qr_want;
+  #assert lp_said_of(s[..]) == "It's yours. Nothing is paid to it until it has somewhere of yours to send the money.";
+  q: [100] u8; #assert cast(string) q[0..<lp_qr_text(s[..], q[..])] == "lightning:carla@openagents.com";
+}
+#test "a claim can send to an address you already have; a race for the name says so and checks again" {
+  s: [1] Lp; lp_new(s[..]); lp_reply(s[..], 1, LP_T_NONE); lp_wait(s[..], 0.01);
+  lp_reply(s[..], 2, "200\nname carol.q\navailable 1\ncode 0\nreason \n");
+  lp_press(s[..], LH_TARGET); #assert s[0].focus == LH_TARGET && lp_wants_text(s[..]);
+  lp_typed(s[..], "Carol@GetAlby.com");
+  #assert lp_typed_target(s[..]) == "Carol@GetAlby.com" && lp_typed_name(s[..]) == "carol.q";
+  lp_press(s[..], LH_CLAIM);
+  #assert lp_url(s[..]) == "/api/lightning/address?as=lines&name=carol.q&forward_to=Carol@GetAlby.com";
+  lp_reply(s[..], 3, "409\nerror That name is taken\ncode 5\n");
+  #assert lp_error_of(s[..]) == "That name is taken" && s[0].avail == -1 && s[0].req == LR_CARD;   // the card again: maybe it's ours now
+  lp_reply(s[..], 4, LP_T_NONE);
+  #assert s[0].screen == LP_CLAIM && lp_typed_name(s[..]) == "carol.q";   // what was typed stays
+  lp_wait(s[..], 0.01); #assert s[0].req == LR_CHECK;
+}
+#test "an address of yours: the honest words for where its money goes, copy, share, off and on" {
+  s: [1] Lp; lp_new(s[..]); lp_message(s[..], LP_MSG_CAN, "1 1"); lp_reply(s[..], 1, LP_T_SPARK);
+  b: [400] u8;
+  #assert s[0].screen == LP_MINE && s[0].mode == LM_SPARK && !s[0].spark_on;
+  #assert lp_status(s[..], b[..]) == "This address isn't receiving yet. It points at the wallet in your OpenAgents app, and we'll turn receiving on when it's ready; until then payments are refused, so nothing is lost.";
+  #assert !lp_shown(s[..], LH_APP) && lp_shown(s[..], LH_SHARE) && lp_shown(s[..], LH_NOSTR) && lp_shown(s[..], LH_SEND);
+  lp_press(s[..], LH_COPY); #assert s[0].action == TK_ACT_COPY && lp_outbox(s[..]) == "carol.q@openagents.com" && lp_said_of(s[..]) == "Copied.";
+  lp_done(s[..]);
+  lp_press(s[..], LH_SHARE); #assert s[0].action == LP_ACT_SHARE && lp_outbox(s[..]) == "carol.q@openagents.com";
+  lp_done(s[..]);
+  lp_press(s[..], LH_TOGGLE); #assert s[0].req == LR_TOGGLE && lp_url(s[..]) == "/api/lightning/address/off?as=lines";
+  t: [1000] u8; n := lg_add(t[..], 0, LP_T_SPARK); txt := cast(string) t[0..<n];
+  off: [1000] u8; m := 0; i := 0;
+  while i < txt.count { if lg_is(txt, i, "state active") { m = lg_add(off[..], m, "state off"); i += 12; } else { off[m] = txt[i]; m += 1; i += 1; } }
+  lp_reply(s[..], 2, cast(string) off[0..<m]);
+  #assert s[0].state == LS_OFF && lp_said_of(s[..]) == "Turned off. The name stays yours." && lp_status(s[..], b[..]) == "Turned off: payments to it are refused until you turn it on. The name stays yours.";
+  #assert !lp_shown(s[..], LH_NOSTR);
+  lp_press(s[..], LH_TOGGLE); #assert lp_url(s[..]) == "/api/lightning/address/on?as=lines";
+  lp_reply(s[..], 3, LP_T_SPARK);
+  #assert s[0].state == LS_ACTIVE && lp_said_of(s[..]) == "Turned on. It takes payments again.";
+  u: [1] Lp; lp_new(u[..]); lp_message(u[..], LP_MSG_CAN, "0 0"); lp_reply(u[..], 1, LP_T_FWD);
+  #assert lp_status(u[..], b[..]) == "Payments go to carol@getalby.com, your address there." && !lp_shown(u[..], LH_SHARE) && !lp_shown(u[..], LH_NOSTR) && lp_shown(u[..], LH_APP);
+  #assert lp_nostr_words(u[..]) == "To add it to your Nostr profile, use a browser with a Nostr key extension (NIP-07).";
+}
+#test "a held name's first destination applies at once; a later change waits, needs a fresh signature, and can be cancelled" {
+  s: [1] Lp; lp_new(s[..]); lp_reply(s[..], 1, LP_T_HELD);
+  b: [300] u8;
+  #assert lp_send_label(s[..]) == "SEND HERE" && lp_send_words(s[..], b[..]) == "Send to an address I already have: payments go there at once.";
+  lp_press(s[..], LH_SEND); #assert s[0].req == LR_NONE && lp_error_of(s[..]) == "Type the Lightning Address the money should go to, like you@getalby.com.";
+  lp_press(s[..], LH_TARGET); lp_typed(s[..], "carol@getalby.com");
+  _ = lp_key_in(s[..], -2, 0);
+  #assert s[0].req == LR_SEND && lp_url(s[..]) == "/api/lightning/address/change?as=lines&forward_to=carol@getalby.com";
+  lp_reply(s[..], 2, LP_T_FWD);
+  #assert s[0].mode == LM_FORWARD && lp_said_of(s[..]) == "Done. Payments go there now." && lp_typed_target(s[..]) == "";
+  #assert lp_send_label(s[..]) == "CHANGE TO THIS" && lp_send_words(s[..], b[..]) == "Send somewhere else: to keep a stolen login from redirecting your money, a change waits 24 hours and needs your key or passkey.";
+  lp_press(s[..], LH_TARGET); lp_typed(s[..], "c@strike.me"); lp_press(s[..], LH_SEND);
+  lp_reply(s[..], 3, "401\nerror Changing where the money goes needs a fresh signature from your own key\ncode 6\nstep_up L2-fresh\n");
+  #assert s[0].action == LP_ACT_GO && lp_outbox(s[..]) == "/settings/security?step=1&next=%2Fsettings%2Flightning";
+  lp_done(s[..]); lp_press(s[..], LH_SEND);
+  t: [1000] u8; n := lg_add(t[..], 0, LP_T_FWD); n = lg_add(t[..], n, "waiting_mode forward\nwaiting_ready_s 1794086400\nwaiting_target c@strike.me\n");
+  lp_reply(s[..], 4, cast(string) t[0..<n]);
+  #assert s[0].waiting && lp_said_of(s[..]) == "Asked. It waits, and we told every email and key on your account; you can cancel it until then.";
+  #assert lp_wait_words(s[..], b[..]) == "Payments will go to c@strike.me in 24 hours. Cancel it if you didn't ask for it.";
+  #assert lp_shown(s[..], LH_CANCEL) && !lp_shown(s[..], LH_SEND);
+  lp_press(s[..], LH_CANCEL); #assert lp_url(s[..]) == "/api/lightning/address/cancel?as=lines";
+  lp_reply(s[..], 5, LP_T_FWD);
+  #assert !s[0].waiting && lp_said_of(s[..]) == "Cancelled. Nothing changed.";
+}
+#test "Add to my Nostr profile: the extension's key, our unsigned offer, its signature, then the relays" {
+  s: [1] Lp; lp_new(s[..]); lp_message(s[..], LP_MSG_CAN, "1 0"); lp_reply(s[..], 1, LP_T_SPARK);
+  b: [300] u8;
+  #assert lp_nostr_words(s[..]) == "Add it to your Nostr profile (lud16) and use it as your Nostr name (NIP-05). Your key extension signs it; we only pass it on.";
+  lp_press(s[..], LH_NOSTR); #assert s[0].req == LR_KEY && s[0].action == LP_ACT_PUBKEY;
+  lp_done(s[..]);
+  lp_message(s[..], LP_MSG_PUBKEY, "!Your key extension didn't answer. Try again.");
+  #assert s[0].req == LR_NONE && lp_error_of(s[..]) == "Your key extension didn't answer. Try again.";
+  lp_press(s[..], LH_NOSTR); lp_done(s[..]);
+  lp_message(s[..], LP_MSG_PUBKEY, "84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0");
+  #assert s[0].req == LR_OFFER && lp_url(s[..]) == "/api/lightning/address/profile?as=lines&nip05=1&pubkey=84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0";
+  lp_reply(s[..], 2, "200\npubkey 84bf\nfound 1\ncreated_at 1794000000\nnip05 1\nrelays 4\ncontent {\"name\":\"Ada\",\"lud16\":\"carol.q@openagents.com\",\"nip05\":\"carol.q@openagents.com\"}\n");
+  #assert s[0].req == LR_SIGNING && s[0].action == LP_ACT_SIGN && lp_outbox(s[..]) == "1794000000\n{\"name\":\"Ada\",\"lud16\":\"carol.q@openagents.com\",\"nip05\":\"carol.q@openagents.com\"}";
+  lp_done(s[..]);
+  lp_message(s[..], LP_MSG_SIGNED, "Event {\"kind\":0}");
+  #assert s[0].req == LR_PUBLISH && lp_url(s[..]) == "/api/lightning/address/profile?as=lines" && cast(string) s[0].body[0..<s[0].body_n] == "{\"kind\":0}";
+  lp_reply(s[..], 3, "200\npublished 3\nrelays 4\nnip05 1\n");
+  #assert lp_said_of(s[..]) == "Added to your Nostr profile and sent to 3 relays. Your key signed it; we only passed it on." && s[0].req == LR_CARD;
+  t: [1000] u8; n := lg_add(t[..], 0, LP_T_SPARK); n = lg_add(t[..], n, "nip05 84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0\n");
+  lp_reply(s[..], 4, cast(string) t[0..<n]);
+  #assert s[0].nip05 && !lp_shown(s[..], LH_NOSTR) && lp_nostr_words(s[..]) == "Your Nostr profile has this address, and it is your Nostr name (NIP-05).";
+  // a refusal says the server's words
+  u: [1] Lp; lp_new(u[..]); lp_message(u[..], LP_MSG_CAN, "1 0"); lp_reply(u[..], 1, LP_T_SPARK);
+  lp_press(u[..], LH_NOSTR); lp_message(u[..], LP_MSG_PUBKEY, "84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0");
+  lp_reply(u[..], 2, "403\nerror That key isn't one of the keys on your account\ncode 16\n");
+  #assert lp_error_of(u[..]) == "That key isn't one of the keys on your account" && u[0].req == LR_NONE;
+}
+#test "logged out, an agent, and the site's keys in the boxes" {
+  s: [1] Lp; lp_new(s[..]); lp_reply(s[..], 1, "401\nerror Log in to manage your Lightning Address\ncode 1\n");
+  #assert s[0].screen == LP_OUT && lp_shown(s[..], LH_LOGIN) && !lp_shown(s[..], LH_CLAIM);
+  lp_press(s[..], LH_LOGIN); #assert lp_outbox(s[..]) == "/login?next=%2Fsettings%2Flightning";
+  a: [1] Lp; lp_new(a[..]); lp_reply(a[..], 1, "200\nmin_msat 1000\nlimit_max_msat 1000000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1\nperson 0\n");
+  #assert a[0].screen == LP_CLAIM && !a[0].person && !lp_shown(a[..], LH_CLAIM) && !lp_shown(a[..], LH_NAME);
+  k: [1] Lp; lp_new(k[..]); lp_reply(k[..], 1, LP_T_NONE);
+  #assert lp_key_in(k[..], 'a', 8) && k[0].all[0];
+  #assert lp_key_in(k[..], 'c', 8) && k[0].action == TK_ACT_COPY && lp_outbox(k[..]) == "carol.q";
+  lp_done(k[..]);
+  #assert !lp_key_in(k[..], 'v', 8);                         // the browser pastes; the text comes typed
+  _ = lp_key_in(k[..], -3, 0); #assert lp_typed_name(k[..]) == "";   // everything selected: Backspace empties it
+  lp_typed(k[..], "ab cd"); #assert lp_typed_name(k[..]) == "abcd";  // no spaces in a name
+  _ = lp_key_in(k[..], -3, 8); #assert lp_typed_name(k[..]) == "";
+  lp_typed(k[..], "abcdefghijabcdefghijabcdefghijabcdefghij"); #assert lp_typed_name(k[..]).count == LP_NAME_MAX;
+  _ = lp_key_in(k[..], -1, 0); #assert k[0].focus == -1 && !lp_wants_text(k[..]);
+  #assert lp_key_in(k[..], -15, 0) && k[0].focus == LH_NAME;
+  b: [40] u8; #assert cast(string) b[0..<lp_query(b[..], 0, "a b&c=d")] == "a%20b%26c%3Dd";
+  c: [40] u8; #assert cast(string) c[0..<lp_sats(c[..], 0, 1234567)] == "1,234,567" && cast(string) c[0..<lp_sats(c[..], 0, 7)] == "7";
+}
+#test "every shown control has a box inside the panel, on a phone and a desktop, and the page draws within its vertex budget" #steps 900000000 {
+  out: [LP_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  cards := [4] string.[LP_T_NONE, LP_T_SPARK, LP_T_HELD, LP_T_FWD];
+  for k: 0..<2 {
+    for c: 0..<4 {
+      s: [1] Lp; lp_new(s[..]); lp_message(s[..], LP_MSG_CAN, "1 1");
+      s[0].w = ifx k == 0 then 390.0f32 else 1280.0f32; s[0].h = ifx k == 0 then 844.0f32 else 800.0f32;
+      lp_reply(s[..], 1, cards[c]);
+      lp_layout(s[..]);
+      order: [LH_HITS] int; n := lp_order(s[..], order[..]);
+      for i: 0..<n {
+        b := s[0].hits[order[i]];
+        #assert b.x1 > b.x0 && b.x0 >= s[0].panel.x0 && b.x1 <= s[0].panel.x1 + 1 && (order[i] == LH_HOME || (b.y0 >= s[0].panel.y0 && b.y1 <= s[0].panel.y1));
+        #assert lp_hit(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == order[i];
+      }
+      v := lp_frame(s[..], world[0..<0], out[..], u[..], s[0].w, s[0].h, 1, 0, true);
+      #assert v > 0 && v < LP_MAX_VERTICES;
+    }
+  }
+}

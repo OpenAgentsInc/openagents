@@ -24,7 +24,8 @@
 #
 # Lightning Addresses (lnaddr.c, #13208):
 #   lb.sh lnurl-route          /.well-known/lnurlp/* and /lnurlp/* on both hosts -> the API, so
-#                              wallets reach name@openagents.com's LNURL-pay server
+#                              wallets reach name@openagents.com's LNURL-pay server; and
+#                              /.well-known/nostr.json, its NIP-05 names (#13209)
 set -euo pipefail
 project=openagentsgemini region=us-central1 map=coaxial-openagents-web-staging
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
@@ -59,10 +60,11 @@ for pm in m["pathMatchers"]:
     if name not in api: continue
     rules = pm.setdefault("routeRules", [])
     if what in ("memorial-route", "lnurl-route"):
-        want = [{"fullPathMatch": "/memorial"}, {"prefixMatch": "/memorial/"}] if what == "memorial-route" else \
-               [{"prefixMatch": "/.well-known/lnurlp/"}, {"prefixMatch": "/lnurlp/"}]
-        if any(r.get("matchRules") == want for r in rules): continue
-        rules.append({"priority": room_before(rules, None), "matchRules": want, "service": base + "backendServices/" + api[name]})
+        wants = [[{"fullPathMatch": "/memorial"}, {"prefixMatch": "/memorial/"}]] if what == "memorial-route" else \
+                [[{"prefixMatch": "/.well-known/lnurlp/"}, {"prefixMatch": "/lnurlp/"}], [{"fullPathMatch": "/.well-known/nostr.json"}]]
+        for want in wants:
+            if any(r.get("matchRules") == want for r in rules): continue
+            rules.append({"priority": room_before(rules, None), "matchRules": want, "service": base + "backendServices/" + api[name]})
     elif what == "private-route":
         want = [{"fullPathMatch": f"/projects/{slug}"}, {"prefixMatch": f"/projects/{slug}/"}]
         if any(r.get("matchRules") == want for r in rules): continue
@@ -174,13 +176,14 @@ for pm in m["pathMatchers"]:
         print("url map: production " + want[0]["fullPathMatch"] + " to " + to)
 # /settings/agents (an owner's agents and grants, #13211) and /settings/security (ways in, step-up
 # and recovery, #13212, #13213), /settings/data and /settings/delete (freeze, export, merge and
-# deletion, #13214) and /settings/devices (device keys, #13216) are the site's own pages: they go to the bucket ahead of the
+# deletion, #13214), /settings/devices (device keys, #13216) and /settings/lightning (the Lightning Address claim card,
+# #13209) are the site's own pages: they go to the bucket ahead of the
 # old-settings redirect above, on both hosts.
 for pm in m["pathMatchers"]:
     if pm["name"] not in ("production", "staging"): continue
     rules = pm.setdefault("routeRules", [])
     bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/" + ("coaxial-openagents-web" if pm["name"] == "production" else "coaxial-openagents-web-staging")
-    for page in ("agents", "security", "data", "delete", "devices"):
+    for page in ("agents", "security", "data", "delete", "devices", "lightning"):
         want = [{"fullPathMatch": f"/settings/{page}"}, {"prefixMatch": f"/settings/{page}/"}]
         rule = next((r for r in rules if r.get("matchRules") == want), None)
         old = next((r["priority"] for r in rules if r.get("urlRedirect", {}).get("pathRedirect") == "/login" and {"prefixMatch": "/settings/"} in r.get("matchRules", [])), 40)

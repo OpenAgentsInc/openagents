@@ -204,6 +204,8 @@ security 86000
 life 67000
 # /settings/devices: login.coax's helpers plus the device keys list and remove (#13216): 49,625 bytes measured 2026-11-11; about 10% room
 devices 55000
+# /settings/lightning: login.coax's helpers, EditBuf and the QR encoder plus the claim card (#13209): 79,132 bytes measured 2026-11-11; about 10% room
+lightning 88000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 215,662 measured; about 5% room
 verse 230000
 villa 550000

@@ -1,0 +1,191 @@
+// The one-tap claim (#13209) against a live site, LNADDR_LIVE_BASE (https://staging.openagents.com
+// or https://openagents.com). A new test account each run, made by a throwaway Nostr key (NIP-98,
+// a browser's login: a session cookie):
+//   1. the card: limits, and no address until CLAIM
+//   2. a name checked as typed, then claimed (no destination yet)
+//   3. https://HOST/.well-known/lnurlp/NAME answers, and says it isn't receiving yet
+//   4. one tap off, one tap on
+//   5. /.well-known/nostr.json names nobody for it (no profile signed), and keeps our fixed names
+//   6. with LNADDR_LIVE_SHOTS=DIR: /settings/lightning shot at 1280x800 and 390x844
+//   7. the test account is deleted (frozen now, purged in 30 days)
+// Never the owner's account: the key is made here and forgotten.
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+//
+//   LNADDR_LIVE_BASE=https://staging.openagents.com coax/web/tool.sh coax/tests/lnaddr/claim-live.coax
+#run_steps 250000000;
+#import "Basic";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/net/http.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/text/base64.coax";
+#load "../../lib/nostr/event_sign.coax";
+#load "../../lib/crypto/sha256-memory.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign #effects(all);
+
+Cl :: struct {
+  base: [200] u8; base_n: int;
+  w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int;
+  cookie: [200] u8; cookie_n: int;
+  failed: int;
+}
+cl_base :: (t: [] Cl) -> string { return cast(string) t[0].base[0..<t[0].base_n]; }
+cl_body :: (t: [] Cl) -> string { return cast(string) t[0].out[0..<t[0].n]; }
+cl_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+cl_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+cl_ok :: (t: [] Cl, what: string, good: bool) -> bool {
+  shown := cl_body(t); if shown.count > 300 { shown = shown[0..<300]; }
+  print("% %  %\n", ifx good then "ok  " else "FAIL", what, ifx good then "" else shown);
+  if !good { t[0].failed += 1; }
+  return good;
+}
+cl_call :: (t: [] Cl, method: string, path: string, body: string, headers: [] string) -> int {
+  url: [600] u8; n := cl_put(url[..], 0, cl_base(t)); n = cl_put(url[..], n, path);
+  got := http_do(t[0].w[..], method, cast(string) url[0..<n], headers, body, 30000, 0, t[0].out[..]);
+  t[0].n = ifx got.error == HTTP_OK then got.n else 0;
+  return ifx got.error == HTTP_OK then got.code else 0;
+}
+// A call as the logged-in browser: the session cookie, and our own origin for a POST.
+cl_as :: (t: [] Cl, method: string, path: string) -> int {
+  c: [260] u8; cn := cl_put(c[..], 0, "Cookie: __Host-oa_session="); cn = cl_put(c[..], cn, cast(string) t[0].cookie[0..<t[0].cookie_n]);
+  o: [260] u8; on := cl_put(o[..], 0, "Origin: "); on = cl_put(o[..], on, cl_base(t));
+  h := [3] string.[cast(string) c[0..<cn], cast(string) o[0..<on], "Content-Type: application/json"];
+  return cl_call(t, method, path, ifx method == "POST" then "{}" else "", h[..]);
+}
+cl_member :: (t: [] Cl, path: string, out: [] u8) -> string {
+  nodes: [2048] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], cl_body(t), nodes[..]) { return ""; }
+  at := jv_path(j[0], 0, path);
+  if at < 0 { return ""; }
+  if jv_kind(j[0], at) == JV_STRING { n := jv_str(j[0], at, out); return ifx n < 0 then "" else cast(string) out[0..<n]; }
+  raw := jv_raw(j[0], at);
+  if raw.count > out.count { return ""; }
+  for i: 0..<raw.count { out[i] = raw[i]; }
+  return cast(string) out[0..<raw.count];
+}
+cl_hex :: (bytes: [] u8, out: [] u8) -> string {
+  d := "0123456789abcdef";
+  for i: 0..<bytes.count { out[2 * i] = d[bytes[i] >> 4]; out[2 * i + 1] = d[bytes[i] & 15]; }
+  return cast(string) out[0..<2 * bytes.count];
+}
+cl_now_s :: () -> int {
+  db: [1100] u8; d := fs_temp("lnaddr-live", db[..]);
+  pb: [1200] u8; p := fs_join(d, "now", pb[..]);
+  wrote := fs_write(p, "1"); ns := fs_mtime_ns(p); gone := fs_remove(d);
+  return ifx wrote && ns > 0 then ns / 1000000000 else 0;
+}
+// A browser's login with the Nostr key (NIP-98 over POST /api/auth/nostr): the status; the cookie kept.
+cl_login :: (t: [] Cl, nostr: [] u8) -> int {
+  plain := [1] string.["Content-Type: application/json"];
+  if cl_call(t, "POST", "/api/auth/nostr/challenge", "{}", plain[..]) != 200 { return 0; }
+  cb: [80] u8; ch := cl_member(t, "challenge", cb[..]);
+  body: [200] u8; bn := cl_put(body[..], 0, "{\"challenge\":\""); bn = cl_put(body[..], bn, ch); bn = cl_put(body[..], bn, "\",\"label\":\"lnaddr-live\"}");
+  if ch.count != 64 || bn < 0 { return 0; }
+  d: [32] u8; copy: [200] u8; for i: 0..<bn { copy[i] = body[i]; }
+  if sha256_hash_checked(copy[0..<bn], d[..], false) != SHA_OK { return 0; }
+  pb: [64] u8; pay := cl_hex(d[..], pb[..]);
+  tags: [700] u8; tn := cl_put(tags[..], 0, "[[\"u\",\""); tn = cl_put(tags[..], tn, cl_base(t)); tn = cl_put(tags[..], tn, "/api/auth/nostr\"],[\"method\",\"POST\"],[\"payload\",\"");
+  tn = cl_put(tags[..], tn, pay); tn = cl_put(tags[..], tn, "\"]]");
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; ev: [4096] u8;
+  if tn < 0 || cxrand_draw(aux[..], 32) != 0 { return 0; }
+  r := EVENT_MORE; steps := 0; now := cl_now_s();
+  while r == EVENT_MORE && steps < 4096 { r = nostr_event_sign_step(nostr, aux[..], now, 27235, cast(string) tags[0..<tn], "", work[..], scratch[..], ev[..], false); steps += 1; }
+  if r <= 0 { return 0; }
+  auth: [6200] u8; an := cl_put(auth[..], 0, "Authorization: Nostr ");
+  an += b64_encode(cast(string) ev[0..<r], auth[an..<auth.count]);
+  hw := [2] string.["Content-Type: application/json", cast(string) auth[0..<an]];
+  st := cl_call(t, "POST", "/api/auth/nostr", cast(string) body[0..<bn], hw[..]);
+  head := cast(string) t[0].w[0].head[0..<t[0].w[0].head_n]; want := "__Host-oa_session=";
+  for i: 0..<head.count - want.count {
+    if head[i..<i + want.count] == want {
+      n := 0; at := i + want.count;
+      while at + n < head.count && head[at + n] != ';' && head[at + n] != '\r' && n < 200 { t[0].cookie[n] = head[at + n]; n += 1; }
+      t[0].cookie_n = n; break;
+    }
+  }
+  return st;
+}
+cl_shot :: (t: [] Cl, dir: string, name: string, size: string, js: string, keep: bool) -> bool {
+  u: [600] u8; un := cl_put(u[..], 0, cl_base(t)); un = cl_put(u[..], un, "/settings/lightning");
+  o: [1300] u8; on := cl_put(o[..], 0, dir); on = cl_put(o[..], on, "/"); on = cl_put(o[..], on, name);
+  a := [9] string.["coax/web/tool.sh", "shot", cast(string) u[0..<un], cast(string) o[0..<on], size, "9000", "--eval", js, "--keep"];
+  got: [2048] u8; err: [2048] u8;
+  r := proc_run(a[0..<ifx keep then 9 else 8], 180000, got[..], err[..]);
+  return r.status == 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Cl; eb: [400] u8;
+  base := proc_getenv("LNADDR_LIVE_BASE", t[0].base[..]); t[0].base_n = base.count;
+  if base.count == 0 { print("lnaddr-live: set LNADDR_LIVE_BASE (https://staging.openagents.com or https://openagents.com)\n"); return 2; }
+  nostr: [32] u8; tag: [4] u8;
+  if cxrand_draw(nostr[..], 32) != 0 || cxrand_draw(tag[..], 4) != 0 { print("lnaddr-live: no randomness for the test key\n"); return 1; }
+  nb: [20] u8; hb: [8] u8; nn := cl_put(nb[..], 0, "lntest"); nn = cl_put(nb[..], nn, cl_hex(tag[..], hb[..]));
+  name := cast(string) nb[0..<nn];
+  host := ifx cl_has(base, "staging") then "staging.openagents.com" else "openagents.com";
+  print("lnaddr-live: % with the name %\n", base, name);
+
+  st := cl_login(t[..], nostr[..]);
+  _ = cl_ok(t[..], "a throwaway key logs a browser in", st == 200 && t[0].cookie_n > 20);
+  // 1. the card
+  st = cl_as(t[..], "GET", "/api/lightning/address?as=lines");
+  b := cl_body(t[..]);
+  _ = cl_ok(t[..], "the card: the limits, and no address until CLAIM", st == 200 && cl_has(b, "min_msat 1000\n") && cl_has(b, "comment_chars 280\n") && !cl_has(b, "\naddress "));
+  // 2. checked as typed, then claimed
+  p: [200] u8; pn := cl_put(p[..], 0, "/api/lightning/address/available?name="); pn = cl_put(p[..], pn, name);
+  st = cl_as(t[..], "GET", cast(string) p[0..<pn]);
+  _ = cl_ok(t[..], "the name is free", st == 200 && cl_has(cl_body(t[..]), "\"available\":true"));
+  pn = cl_put(p[..], 0, "/api/lightning/address?name="); pn = cl_put(p[..], pn, name);
+  st = cl_as(t[..], "POST", cast(string) p[0..<pn]);
+  _ = cl_ok(t[..], "CLAIM: the name is the account's", st == 200 && cl_member(t[..], "name", eb[..]) == name && cl_member(t[..], "state", eb[..]) == "active");
+  // 3. the public LNURL answer
+  w: [200] u8; wn := cl_put(w[..], 0, "/.well-known/lnurlp/"); wn = cl_put(w[..], wn, name);
+  nh := [1] string.["Accept: application/json"]; none := nh[..];
+  st = cl_call(t[..], "GET", cast(string) w[0..<wn], "", none);
+  full: [300] u8; fl := cl_put(full[..], 0, "https://"); fl = cl_put(full[..], fl, host); fl = cl_put(full[..], fl, cast(string) w[0..<wn]);
+  print("       %  ->  % %\n", cast(string) full[0..<fl], st, cl_body(t[..]));
+  _ = cl_ok(t[..], "it resolves, and says it isn't receiving yet (no destination)", st == 200 && cl_has(cl_body(t[..]), "isn't receiving yet"));
+  // 4. off and on
+  st = cl_as(t[..], "POST", "/api/lightning/address/off");
+  _ = cl_ok(t[..], "one tap off", st == 200 && cl_member(t[..], "state", eb[..]) == "off");
+  st = cl_call(t[..], "GET", cast(string) w[0..<wn], "", none);
+  _ = cl_ok(t[..], "off: the address says so", cl_has(cl_body(t[..]), "turned off"));
+  st = cl_as(t[..], "POST", "/api/lightning/address/on");
+  _ = cl_ok(t[..], "one tap on", st == 200 && cl_member(t[..], "state", eb[..]) == "active");
+  // 5. NIP-05
+  n5: [200] u8; n5n := cl_put(n5[..], 0, "/.well-known/nostr.json?name="); n5n = cl_put(n5[..], n5n, name);
+  st = cl_call(t[..], "GET", cast(string) n5[0..<n5n], "", none);
+  _ = cl_ok(t[..], "NIP-05 names nobody for it until a profile is signed", st == 200 && cl_body(t[..]) == "{\"names\":{}}");
+  st = cl_call(t[..], "GET", "/.well-known/nostr.json", "", none);
+  _ = cl_ok(t[..], "and our own fixed names stay", st == 200 && cl_has(cl_body(t[..]), "\"coax\":"));
+  // 6. the page
+  sb: [600] u8; shots := proc_getenv("LNADDR_LIVE_SHOTS", sb[..]);
+  if shots.count > 0 {
+    js: [400] u8; jn := cl_put(js[..], 0, "document.cookie='__Host-oa_session="); jn = cl_put(js[..], jn, cast(string) t[0].cookie[0..<t[0].cookie_n]);
+    jn = cl_put(js[..], jn, "; Secure; Path=/';location.reload();'ok'");
+    first := cl_shot(t[..], shots, "lightning-desktop-cookie.png", "1280x800", cast(string) js[0..<jn], false);
+    desk := cl_shot(t[..], shots, "lightning-desktop.png", "1280x800", "'desk'", true);
+    again := cl_shot(t[..], shots, "lightning-phone-cookie.png", "390x844", cast(string) js[0..<jn], false);
+    phone := cl_shot(t[..], shots, "lightning-phone.png", "390x844", "'phone'", true);
+    first = first && again;
+    t[0].n = 0;
+    _ = cl_ok(t[..], "/settings/lightning shot at 1280x800 and 390x844", first && desk && phone);
+  }
+  // 7. the test account goes
+  st = cl_as(t[..], "POST", "/api/auth/delete");
+  _ = cl_ok(t[..], "the test account is deleted (frozen now, purged in 30 days)", st == 200);
+  for i: 0..<32 { nostr[i] = 0; }
+  if t[0].failed > 0 { print("lnaddr-live: % failed\n", t[0].failed); return 1; }
+  print("lnaddr-live: all passed\n");
+  return 0;
+}

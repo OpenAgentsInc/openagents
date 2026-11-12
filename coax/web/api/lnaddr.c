@@ -22,14 +22,30 @@
 //   POST /api/lightning/address/change?forward_to=A | ?spark_pubkey=K&sig=S&nonce=X&expires=T
 //                                             waits 24 hours (72 for email-only accounts)
 //   POST /api/lightning/address/cancel        cancels the waiting change
+// The claim card's (#13209; ?as=lines answers each as "name value" lines for the Coax pages):
+//   GET  /api/lightning/address/available?name=N   whether N could be claimed now, and why not
+//   GET  /api/lightning/address/proof?name=N&op=claim|change
+//                                             the exact message the Spark wallet signs (one codec:
+//                                             lnaddr-policy.coax la_proof_message), its nonce, expiry
+//   GET  /api/lightning/address/profile?pubkey=K[&nip05=1]
+//                                             the person's newest kind 0 from the relays with lud16
+//                                             (and nip05) set to the address: what their key signs
+//   POST /api/lightning/address/profile       body: that event, signed by a key on the account; we
+//                                             check it and pass it to the relays. We never sign one
+//   GET  /.well-known/nostr.json?name=N       NIP-05: the key that signed the profile naming N
+// A claimed name with nowhere to send money yet (mode none) takes its first destination through
+// /change at once, like a claim (la_first); any later change waits.
 //
 //   OA_API_ORIGIN          https://openagents.com or https://staging.openagents.com: the domain
 //   OA_LNADDR_NETWORK      mainnet (default), testnet, signet or regtest: the invoices' network
 //   OA_LNADDR_SPARK_URL    the Breez LNURL backend for spark mode, when it is deployed
 //   OA_LNADDR_ZAP_PUBKEY   our zap receipt key (hex), advertised in spark mode only
+//   OA_LNADDR_PROFILE_RELAYS  where "Add to my Nostr profile" reads and publishes (space-separated
+//                          wss:// URLs; default ours, relay.damus.io, nos.lol, relay.primal.net)
 #include "api.h"
 #include "auth-policy.generated.h"
 #include "lnaddr-policy.generated.h"
+#include "relay.h"
 
 #include <arpa/inet.h>
 #include <curl/curl.h>
@@ -48,7 +64,8 @@
 enum { LU_OK = 0, LU_NO_ADDRESS = 1, LU_BAD_NAME = 2, LU_NOT_RECEIVING = 3, LU_TOO_SMALL = 8, LU_TOO_BIG = 9,
        LU_AMOUNT = 7, LU_NOTE_LONG = 12, LU_PAYERDATA = 14, LU_ZAP = 15, LU_LOOKUP_LIMIT = 17, LU_NAME_LIMIT = 18,
        LU_IP_LIMIT = 19, LU_UPSTREAM = 20, LU_UPSTREAM_BAD = 21, LU_UPSTREAM_REFUSED = 22, LU_INVOICE = 23, LU_NOT_FOUND = 24 };
-enum { LA_OK = 0, LA_NAME = 3, LA_TARGET = 11, LA_TARGET_DOWN = 12, LA_NO_ADDRESS = 9 };
+enum { LA_OK = 0, LA_NAME = 3, LA_TAKEN = 5, LA_FRESH = 6, LA_PROOF = 7, LA_NO_ADDRESS = 9, LA_TARGET = 11, LA_TARGET_DOWN = 12,
+       LA_PROFILE_BAD = 15, LA_NOT_YOUR_KEY = 16, LA_PROFILE_UNREADABLE = 17, LA_SLOW = 18 };
 enum { LA_ACTIVE = 0, LA_OFF = 1, LA_SUSPENDED = 2, LA_RETIRED = 3, LA_NONE = 0, LA_SPARK = 1, LA_FORWARD = 2 };
 #define LU_MIN_MSAT 1000LL
 #define LU_COMMENT_MAX 280
@@ -103,15 +120,27 @@ static void lnurl_error(const request *q, int status, int64_t code, int64_t limi
   int64_t n = lu_error_json(code, limit, cv(out, sizeof out));
   reply_n(q, status, out, n);
 }
-// The management routes' refusal, lnaddr-policy.coax's words: {"error": "..."}.
+static bool as_lines(const request *q) { char v[16]; return api_query(q, "as", v, sizeof v) && !strcmp(v, "lines"); }
+static void reply_lines(const request *q, int status, const char *lines) {
+  api_respond(q->fd, status, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", lines, strlen(lines));
+}
+// The management routes' refusal, lnaddr-policy.coax's words: {"error": "..."}, or as lines
+// "error WORDS", "code N" and, when a fresh signature would do it, "step_up L2-fresh" (the pages
+// send the person to confirm it's them, then back).
 static void la_refuse(const request *q, int status, int64_t code) {
   coax_string w = la_text(code);
-  char json[400];
-  snprintf(json, sizeof json, "{\"error\":\"%.*s\",\"code\":%lld}", (int)w.count, w.data, (long long)code);
-  reply(q, status, json);
+  char out[500];
+  if (as_lines(q)) {
+    snprintf(out, sizeof out, "error %.*s\ncode %lld\n%s", (int)w.count, w.data, (long long)code, code == LA_FRESH ? "step_up L2-fresh\n" : "");
+    reply_lines(q, status, out);
+    return;
+  }
+  snprintf(out, sizeof out, "{\"error\":\"%.*s\",\"code\":%lld}", (int)w.count, w.data, (long long)code);
+  reply(q, status, out);
 }
 static void say(const request *q, int status, const char *words) {
   char json[400];
+  if (as_lines(q)) { snprintf(json, sizeof json, "error %s\n", words); reply_lines(q, status, json); return; }
   snprintf(json, sizeof json, "{\"error\":\"%s\"}", words);
   reply(q, status, json);
 }
@@ -280,6 +309,7 @@ typedef struct {
   char name[40], account[40], mode[12], state[12], forward_to[200], spark_pubkey[80];
   long long revision, max_msat;
   bool comments_on;
+  char nip05[72];   // the key that signed the profile naming this address (NIP-05), or ""
 } address;
 static int mode_of(const address *a) { return !strcmp(a->mode, "forward") ? LA_FORWARD : !strcmp(a->mode, "spark") ? LA_SPARK : LA_NONE; }
 static int state_of(const address *a) {
@@ -348,11 +378,13 @@ static bool load(PGconn *db, const char *sql, const char *key, address *a) {
     snprintf(a->mode, sizeof a->mode, "%s", PQgetvalue(r, 0, 2)); snprintf(a->state, sizeof a->state, "%s", PQgetvalue(r, 0, 3));
     snprintf(a->forward_to, sizeof a->forward_to, "%s", PQgetvalue(r, 0, 4)); snprintf(a->spark_pubkey, sizeof a->spark_pubkey, "%s", PQgetvalue(r, 0, 5));
     a->revision = atoll(PQgetvalue(r, 0, 6)); a->max_msat = atoll(PQgetvalue(r, 0, 7)); a->comments_on = !strcmp(PQgetvalue(r, 0, 8), "t");
+    snprintf(a->nip05, sizeof a->nip05, "%s", PQgetvalue(r, 0, 9));
   }
   PQclear(r);
   return ok;
 }
-#define ADDRESS_COLUMNS "SELECT name, account, mode, state, coalesce(forward_to, ''), coalesce(spark_pubkey, ''), revision, max_msat, comments_on FROM pay.addresses "
+#define ADDRESS_COLUMNS "SELECT name, account, mode, state, coalesce(forward_to, ''), coalesce(spark_pubkey, ''), revision, max_msat, comments_on, " \
+                        "coalesce(nip05_pubkey, '') FROM pay.addresses "
 static bool by_name(PGconn *db, const char *name, address *a) {
   apply_due(db, name);
   return load(db, ADDRESS_COLUMNS "WHERE name = $1", name, a);
@@ -589,33 +621,153 @@ static who caller(const request *q, PGconn *db) {
   PQclear(r);
   return w;
 }
+// Whether name or its skeleton is another account's address or hold.
+static bool name_taken(PGconn *db, const char *name, const char *skel, const char *acct) {
+  const char *v[3] = {name, skel, acct};
+  PGresult *t = PQexecParams(db, "SELECT EXISTS (SELECT 1 FROM pay.addresses WHERE (name = $1 OR skeleton = $2) AND account <> $3) "
+                                 "OR EXISTS (SELECT 1 FROM pay.name_holds WHERE (name = $1 OR skeleton = $2) AND account <> $3)", 3, NULL, v, NULL, NULL, 0);
+  bool taken = PQresultStatus(t) != PGRES_TUPLES_OK || PQntuples(t) != 1 || strcmp(PQgetvalue(t, 0, 0), "f");
+  PQclear(t);
+  return taken;
+}
+// A name to offer on the claim card: from the account's display name (la_suggest), when nobody
+// holds it. Never claimed for them.
+static void suggest(PGconn *db, const char *acct, char out[40]) {
+  out[0] = 0;
+  const char *v[1] = {acct};
+  PGresult *r = PQexecParams(db, "SELECT coalesce(display_name, '') FROM auth.accounts WHERE id = $1", 1, NULL, v, NULL, NULL, 0);
+  char display[100] = "";
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) snprintf(display, sizeof display, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  uint8_t b[40];
+  int64_t n = la_suggest(cs(display), cv(b, sizeof b));
+  if (n <= 0) return;
+  char name[40]; snprintf(name, sizeof name, "%.*s", (int)n, (const char *)b);
+  coax_t_LnaddrResult c = lnaddr_claim(cs(name));
+  char skel[40]; snprintf(skel, sizeof skel, "%.*s", (int)c.skeleton_len, (const char *)c.skeleton.e);
+  if (c.reason == 0 && !name_taken(db, name, skel, acct)) snprintf(out, 40, "%s", name);
+}
+// The card: the address, where it goes, the limits, a waiting change and the notices; JSON, or
+// for ?as=lines one "name value" line each (no notices).
 static void card(const request *q, PGconn *db) {
   who w = caller(q, db);
   if (!w.signed_in) { la_refuse(q, 401, 1); return; }
   address a;
   if (!by_account(db, w.p->account, &a)) { say(q, 503, "busy"); return; }
-  char json[4000];
-  int n = snprintf(json, sizeof json, "{\"limits\":{\"min_msat\":%lld,\"max_msat\":%lld,\"comment_chars\":%lld,\"invoice_expiry_s\":%lld,"
-                   "\"lookups_per_min_per_network\":%lld,\"invoices_per_min_per_name\":%lld,\"invoices_per_min_per_network\":%lld,\"change_wait_hours\":%lld}",
-                   (long long)lu_limit(0), (long long)lu_limit(1), (long long)lu_limit(2), (long long)lu_limit(3), (long long)lu_limit(4),
-                   (long long)lu_limit(5), (long long)lu_limit(6), (long long)(la_change(true, false, true, true, false, false, w.email_only, 0).ready_at / 3600));
-  if (!a.found) { snprintf(json + n, sizeof json - (size_t)n, ",\"address\":null}"); reply(q, 200, json); return; }
-  n += snprintf(json + n, sizeof json - (size_t)n, ",\"address\":\"%s@%s\",\"name\":\"%s\",\"mode\":\"%s\",\"state\":\"%s\",\"forward_to\":\"%s\",\"spark_pubkey\":\"%s\","
-                "\"revision\":%lld,\"max_msat\":%lld,\"comments_on\":%s",
-                a.name, domain(), a.name, a.mode, a.state, a.forward_to, a.spark_pubkey, a.revision, a.max_msat, a.comments_on ? "true" : "false");
-  const char *v[1] = {a.name};
-  PGresult *r = PQexecParams(db, "SELECT new_mode, new_target, extract(epoch FROM ready_at)::bigint FROM pay.address_changes "
-                                 "WHERE name = $1 AND cancelled_at IS NULL AND applied_at IS NULL", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1)
-    n += snprintf(json + n, sizeof json - (size_t)n, ",\"waiting\":{\"mode\":\"%s\",\"target\":\"%s\",\"ready_at\":%s}", PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 2));
-  PQclear(r);
+  long long wait_h = (long long)(la_change(true, false, true, true, false, false, w.email_only, 0).ready_at / 3600);
+  bool spark_on = spark_backend();
+  char sug[40] = "";
+  if (!a.found && !w.agent) suggest(db, w.p->account, sug);
+  char wmode[12] = "", wtarget[200] = "", wready[24] = "";
+  bool waiting = false;
+  if (a.found) {
+    const char *v[1] = {a.name};
+    PGresult *r = PQexecParams(db, "SELECT new_mode, new_target, extract(epoch FROM ready_at)::bigint FROM pay.address_changes "
+                                   "WHERE name = $1 AND cancelled_at IS NULL AND applied_at IS NULL", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+      waiting = true;
+      snprintf(wmode, sizeof wmode, "%s", PQgetvalue(r, 0, 0)); snprintf(wtarget, sizeof wtarget, "%s", PQgetvalue(r, 0, 1)); snprintf(wready, sizeof wready, "%s", PQgetvalue(r, 0, 2));
+    }
+    PQclear(r);
+  }
+  char out[4000];
+  int n;
+  if (as_lines(q)) {
+    n = snprintf(out, sizeof out, "min_msat %lld\nlimit_max_msat %lld\ncomment_chars %lld\nchange_wait_hours %lld\nspark_receiving %d\nnow_s %lld\nperson %d\n",
+                 (long long)lu_limit(0), (long long)lu_limit(1), (long long)lu_limit(2), wait_h, spark_on ? 1 : 0, (long long)time(NULL), w.agent ? 0 : 1);
+    if (!a.found) { if (sug[0]) snprintf(out + n, sizeof out - (size_t)n, "suggest %s\n", sug); reply_lines(q, 200, out); return; }
+    n += snprintf(out + n, sizeof out - (size_t)n, "address %s@%s\nname %s\nmode %s\nstate %s\nrevision %lld\nmax_msat %lld\ncomments_on %d\n",
+                  a.name, domain(), a.name, a.mode, a.state, a.revision, a.max_msat, a.comments_on ? 1 : 0);
+    if (a.forward_to[0]) n += snprintf(out + n, sizeof out - (size_t)n, "forward_to %s\n", a.forward_to);
+    if (a.spark_pubkey[0]) n += snprintf(out + n, sizeof out - (size_t)n, "spark_pubkey %s\n", a.spark_pubkey);
+    if (a.nip05[0]) n += snprintf(out + n, sizeof out - (size_t)n, "nip05 %s\n", a.nip05);
+    if (waiting) snprintf(out + n, sizeof out - (size_t)n, "waiting_mode %s\nwaiting_ready_s %s\nwaiting_target %s\n", wmode, wready, wtarget);
+    reply_lines(q, 200, out);
+    return;
+  }
+  n = snprintf(out, sizeof out, "{\"limits\":{\"min_msat\":%lld,\"max_msat\":%lld,\"comment_chars\":%lld,\"invoice_expiry_s\":%lld,"
+               "\"lookups_per_min_per_network\":%lld,\"invoices_per_min_per_name\":%lld,\"invoices_per_min_per_network\":%lld,\"change_wait_hours\":%lld},"
+               "\"spark_receiving\":%s",
+               (long long)lu_limit(0), (long long)lu_limit(1), (long long)lu_limit(2), (long long)lu_limit(3), (long long)lu_limit(4),
+               (long long)lu_limit(5), (long long)lu_limit(6), wait_h, spark_on ? "true" : "false");
+  if (!a.found) { snprintf(out + n, sizeof out - (size_t)n, ",\"address\":null,\"suggest\":\"%s\"}", sug); reply(q, 200, out); return; }
+  n += snprintf(out + n, sizeof out - (size_t)n, ",\"address\":\"%s@%s\",\"name\":\"%s\",\"mode\":\"%s\",\"state\":\"%s\",\"forward_to\":\"%s\",\"spark_pubkey\":\"%s\","
+                "\"revision\":%lld,\"max_msat\":%lld,\"comments_on\":%s,\"nip05\":\"%s\"",
+                a.name, domain(), a.name, a.mode, a.state, a.forward_to, a.spark_pubkey, a.revision, a.max_msat, a.comments_on ? "true" : "false", a.nip05);
+  if (waiting) n += snprintf(out + n, sizeof out - (size_t)n, ",\"waiting\":{\"mode\":\"%s\",\"target\":\"%s\",\"ready_at\":%s}", wmode, wtarget, wready);
   const char *u[1] = {w.p->account};
-  r = PQexecParams(db, "SELECT coalesce(jsonb_agg(jsonb_build_object('kind', kind, 'at', extract(epoch FROM created_at)::bigint, 'detail', detail) ORDER BY id DESC), '[]')::text "
-                       "FROM (SELECT * FROM pay.notices WHERE account = $1 ORDER BY id DESC LIMIT 10) x", 1, NULL, u, NULL, NULL, 0);
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) n += snprintf(json + n, sizeof json - (size_t)n, ",\"notices\":%s", PQgetvalue(r, 0, 0));
+  PGresult *r = PQexecParams(db, "SELECT coalesce(jsonb_agg(jsonb_build_object('kind', kind, 'at', extract(epoch FROM created_at)::bigint, 'detail', detail) ORDER BY id DESC), '[]')::text "
+                                 "FROM (SELECT * FROM pay.notices WHERE account = $1 ORDER BY id DESC LIMIT 10) x", 1, NULL, u, NULL, NULL, 0);
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) n += snprintf(out + n, sizeof out - (size_t)n, ",\"notices\":%s", PQgetvalue(r, 0, 0));
   PQclear(r);
-  snprintf(json + n, sizeof json - (size_t)n, "}");
-  reply(q, 200, json);
+  snprintf(out + n, sizeof out - (size_t)n, "}");
+  reply(q, 200, out);
+}
+// Whether a name could be claimed now, for the card's field as the person types: the name as we'd
+// keep it, and the words when it can't be. Counted (la_check_limit), so it isn't a fast way to
+// list who holds what.
+static void available(const request *q, PGconn *db) {
+  who w = caller(q, db);
+  if (!w.signed_in) { la_refuse(q, 401, 1); return; }
+  long long n = hits(db, "lnaddr_check_account", w.p->account);
+  if (la_check_limit(n) != LA_OK) { la_refuse(q, 429, LA_SLOW); return; }
+  char raw[80];
+  int nn = qparam(q, "name", raw, sizeof raw);
+  coax_t_LnaddrResult r = lnaddr_claim(cs(nn > 0 ? raw : ""));
+  char name[40] = "", skel[40] = "";
+  bool name_ok = nn > 0 && r.reason == 0;
+  if (name_ok) { snprintf(name, sizeof name, "%.*s", (int)r.name_len, (const char *)r.name.e); snprintf(skel, sizeof skel, "%.*s", (int)r.skeleton_len, (const char *)r.skeleton.e); }
+  bool taken = name_ok && name_taken(db, name, skel, w.p->account);
+  int64_t code = la_claim(true, w.agent, name_ok, false, taken);
+  coax_string why = code == LA_NAME && nn > 0 ? lnaddr_reason_text(r.reason) : la_text(code);
+  char out[400];
+  if (as_lines(q)) {
+    snprintf(out, sizeof out, "name %s\navailable %d\ncode %lld\nreason %.*s\n", name, code == LA_OK ? 1 : 0, (long long)code, (int)why.count, why.data);
+    reply_lines(q, 200, out);
+    return;
+  }
+  snprintf(out, sizeof out, "{\"name\":\"%s\",\"available\":%s,\"code\":%lld,\"reason\":\"%.*s\"}", name, code == LA_OK ? "true" : "false", (long long)code, (int)why.count, why.data);
+  reply(q, 200, out);
+}
+// The message a Spark wallet signs to point a name at itself (claim: a new name at revision 1;
+// change: the account's own name at its next revision). The app signs exactly these bytes, so it
+// never builds the message itself: lnaddr-policy.coax's la_proof_message is its one codec.
+static void proof(const request *q, PGconn *db) {
+  who w = caller(q, db);
+  if (!w.signed_in) { la_refuse(q, 401, 1); return; }
+  if (w.agent) { la_refuse(q, 403, 2); return; }
+  char op[12] = "", raw[80] = "", name[40] = "";
+  qparam(q, "op", op, sizeof op);
+  long long revision = 1;
+  if (!strcmp(op, "change")) {
+    address a;
+    if (!by_account(db, w.p->account, &a) || !a.found) { la_refuse(q, 404, LA_NO_ADDRESS); return; }
+    snprintf(name, sizeof name, "%s", a.name); revision = a.revision + 1;
+  } else if (!strcmp(op, "claim")) {
+    int nn = qparam(q, "name", raw, sizeof raw);
+    coax_t_LnaddrResult r = lnaddr_claim(cs(nn > 0 ? raw : ""));
+    if (nn <= 0 || r.reason != 0) { la_refuse(q, 400, LA_NAME); return; }
+    snprintf(name, sizeof name, "%.*s", (int)r.name_len, (const char *)r.name.e);
+  } else { say(q, 400, "op is claim or change"); return; }
+  unsigned char nb[16]; char nonce[33];
+  if (getentropy(nb, sizeof nb) != 0) { say(q, 503, "busy"); return; }
+  hex_of(nb, sizeof nb, nonce);
+  long long expires = (long long)time(NULL) + 300;
+  uint8_t msg[600];
+  int64_t m = la_proof_message(cs(w.p->account), cs(name), cs(domain()), cs(op), revision, cs(nonce), expires, cv(msg, sizeof msg));
+  if (m < 0) { say(q, 500, "That didn't work. Try again."); return; }
+  char out[1400];
+  if (as_lines(q)) {   // the message has line breaks: as lines it is the rest of the answer, after "message"
+    snprintf(out, sizeof out, "name %s\nnonce %s\nexpires %lld\nrevision %lld\nmessage\n%.*s", name, nonce, expires, revision, (int)m, (const char *)msg);
+    reply_lines(q, 200, out);
+    return;
+  }
+  // The message is lines of plain ASCII (lu_plain fields): \n is its only escape.
+  char esc[800]; size_t e = 0;
+  for (int64_t i = 0; i < m && e + 3 < sizeof esc; i++) { if (msg[i] == '\n') { esc[e++] = '\\'; esc[e++] = 'n'; } else esc[e++] = (char)msg[i]; }
+  esc[e] = 0;
+  snprintf(out, sizeof out, "{\"name\":\"%s\",\"op\":\"%s\",\"nonce\":\"%s\",\"expires\":%lld,\"revision\":%lld,\"message\":\"%s\"}", name, op, nonce, expires, revision, esc);
+  reply(q, 200, out);
 }
 // A forward target: its normal form ("bob@getalby.com", lowercase) and whether it answers with a
 // payRequest we can pass on. LA_OK, LA_TARGET or LA_TARGET_DOWN.
@@ -651,11 +803,7 @@ static void claim(const request *q, PGconn *db) {
   if (w.signed_in) {
     if (!by_account(db, w.p->account, &mine)) { say(q, 503, "busy"); return; }
     has_one = mine.found;
-    const char *v[3] = {name, skel, w.p->account};
-    PGresult *t = PQexecParams(db, "SELECT EXISTS (SELECT 1 FROM pay.addresses WHERE (name = $1 OR skeleton = $2) AND account <> $3) "
-                                   "OR EXISTS (SELECT 1 FROM pay.name_holds WHERE (name = $1 OR skeleton = $2) AND account <> $3)", 3, NULL, v, NULL, NULL, 0);
-    taken = PQresultStatus(t) != PGRES_TUPLES_OK || PQntuples(t) != 1 || strcmp(PQgetvalue(t, 0, 0), "f");
-    PQclear(t);
+    taken = name_taken(db, name, skel, w.p->account);
   }
   int64_t code = la_claim(w.signed_in, w.agent, name_ok, has_one, taken);
   if (code != LA_OK) {
@@ -699,6 +847,29 @@ static void toggle(const request *q, PGconn *db, bool on) {
   notice(db, w.p->account, a.name, on ? "on" : "off", detail, NULL);
   card(q, db);
 }
+// A claimed name's first destination (it had none: mode none). Nothing was ever redirected, so
+// it takes effect at once, like a claim (la_first), with a notice on every channel.
+static void first(const request *q, PGconn *db, const who *w, const address *a, const char *mode, const char *target, bool proof_ok) {
+  int64_t code = la_first(w->signed_in, w->agent, state_of(a), proof_ok);
+  if (code != LA_OK) {
+    audit(db, w->p->account, w->p->session, "lnaddr.first", "refused", NULL);
+    la_refuse(q, code == 2 ? 403 : code == LA_PROOF ? 400 : 409, code);
+    return;
+  }
+  bool fwd = !strcmp(mode, "forward");
+  const char *v[4] = {a->name, mode, fwd ? target : NULL, fwd ? NULL : target};
+  PGresult *r = PQexecParams(db, "UPDATE pay.addresses SET mode = $2, forward_to = $3, spark_pubkey = $4, revision = revision + 1, updated_at = now() "
+                                 "WHERE name = $1 AND mode = 'none'", 4, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_COMMAND_OK && !strcmp(PQcmdTuples(r), "1");
+  PQclear(r);
+  if (!ok) { la_refuse(q, 409, 8); return; }   // raced with another first destination: the card shows which won
+  char detail[300]; snprintf(detail, sizeof detail, "{\"name\":\"%s\",\"mode\":\"%s\"}", a->name, mode);
+  audit(db, w->p->account, w->p->session, "lnaddr.first", "ok", detail);
+  char text[500];
+  snprintf(text, sizeof text, "Payments to %s@%s now go to %s.", a->name, domain(), fwd ? target : "the wallet in your OpenAgents app");
+  notice(db, w->p->account, a->name, "destination", detail, text);
+  card(q, db);
+}
 static void change(const request *q, PGconn *db) {
   who w = caller(q, db);
   address a;
@@ -708,6 +879,7 @@ static void change(const request *q, PGconn *db) {
   bool proof_ok = false;
   if (w.signed_in && qparam(q, "forward_to", raw, sizeof raw) > 0) { mode = "forward"; proof_ok = check_target(raw, target) == LA_OK; }
   else if (w.signed_in) { mode = "spark"; proof_ok = spark_proof(q, w.p->account, a.name, "change", a.revision + 1, pubkey); snprintf(target, sizeof target, "%s", pubkey); }
+  if (w.signed_in && mode_of(&a) == LA_NONE) { first(q, db, &w, &a, mode, target, proof_ok); return; }
   bool pending = false;
   if (w.signed_in) {
     const char *v[1] = {a.name};
@@ -760,6 +932,147 @@ static void cancel(const request *q, PGconn *db) {
   card(q, db);
 }
 
+// ---------------------------------------------------------------- "Add to my Nostr profile"
+// The relays we read the person's profile from and pass their signed one to.
+static int profile_relays(char urls[6][200]) {
+  char list[1200];
+  snprintf(list, sizeof list, "%s", env_or("OA_LNADDR_PROFILE_RELAYS", "wss://relay.openagents.com wss://relay.damus.io wss://nos.lol wss://relay.primal.net"));
+  int n = 0;
+  for (char *t = strtok(list, " "); t && n < 6; t = strtok(NULL, " ")) if (!strncmp(t, "wss://", 6) || !strncmp(t, "ws://", 5)) snprintf(urls[n++], 200, "%s", t);
+  return n;
+}
+// Whether pubkey (64 hex) is one of the account's own Nostr keys.
+static bool key_on_account(PGconn *db, const char *acct, const char *pubkey) {
+  const char *v[2] = {acct, pubkey};
+  PGresult *r = PQexecParams(db, "SELECT 1 FROM auth.nostr_keys WHERE account = $1 AND pubkey = $2", 2, NULL, v, NULL, NULL, 0);
+  bool mine = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  PQclear(r);
+  return mine;
+}
+// GET: the person's newest profile on the relays (each event's signature checked) with lud16, and
+// nip05 when asked, set to the address: the content their key signs as a kind 0. We sign nothing.
+static void profile_offer(const request *q, PGconn *db) {
+  who w = caller(q, db);
+  address a; bool has = false;
+  if (w.signed_in && w.p->account[0]) { if (!by_account(db, w.p->account, &a)) { say(q, 503, "busy"); return; } has = a.found; }
+  char pk[80] = "";
+  bool hexok = qparam(q, "pubkey", pk, sizeof pk) == 64;
+  unsigned char pub[32];
+  if (hexok) hexok = unhex(pk, pub, 32);
+  bool mine = w.signed_in && hexok && key_on_account(db, w.p->account, pk);
+  int64_t code = la_profile_admit(w.signed_in, w.agent, has, LA_OK, mine);
+  if (code != LA_OK) { la_refuse(q, code == 1 ? 401 : code == 2 ? 403 : code == LA_NO_ADDRESS ? 404 : 403, code); return; }
+  char nip[4] = ""; bool nip05 = qparam(q, "nip05", nip, sizeof nip) > 0 && !strcmp(nip, "1");
+  char urls[6][200]; int nr = profile_relays(urls);
+  unsigned char sk[32]; char spub[65];
+  char *best = NULL; long long best_at = -1; int asked = 0;
+  if (nostr_keygen(sk, spub)) {   // a throwaway key, only for a relay that asks NIP-42 AUTH before a read
+    char filter[160]; snprintf(filter, sizeof filter, "{\"kinds\":[0],\"authors\":[\"%s\"],\"limit\":1}", pk);
+    for (int i = 0; i < nr; i++) {
+      char err[200];
+      relay *rl = relay_open(urls[i], sk, err, sizeof err);
+      if (!rl) { api_log("lnaddr: profile read %s: %s", urls[i], err); continue; }
+      char *arr = relay_query(rl, filter, err, sizeof err);
+      relay_close(rl);
+      if (!arr) { api_log("lnaddr: profile read %s: %s", urls[i], err); continue; }
+      asked++;
+      int64_t span[2] = {0, 0};
+      int64_t at = la_profile_newest(cs(arr), cv(pub, 32), (coax_v_s64){span, 2});
+      if (at > best_at) { free(best); best = strndup(arr + span[0], (size_t)(span[1] - span[0])); best_at = at; }
+      free(arr);
+    }
+  }
+  if (asked == 0) { free(best); say(q, 502, "We couldn't reach any Nostr relay to read your profile. Try again."); return; }
+  char address_s[100]; snprintf(address_s, sizeof address_s, "%s@%s", a.name, domain());
+  static uint8_t content[70000];
+  int64_t n = la_profile_offer(cs(best ? best : ""), cs(address_s), nip05, cv(content, sizeof content));
+  free(best);
+  if (n < 0) { la_refuse(q, 409, LA_PROFILE_UNREADABLE); return; }
+  // The content as a JSON string (json_write_string's escapes), for the page to hand the signer.
+  size_t cap = (size_t)n * 6 + 400;
+  char *out = malloc(cap);
+  if (!out) { say(q, 503, "busy"); return; }
+  size_t o = (size_t)snprintf(out, cap, "{\"pubkey\":\"%s\",\"found\":%s,\"created_at\":%lld,\"address\":\"%s\",\"nip05\":%s,\"relays\":%d,\"content\":\"",
+                              pk, best_at >= 0 ? "true" : "false", (long long)time(NULL), address_s, nip05 ? "true" : "false", nr);
+  for (int64_t i = 0; i < n; i++) {
+    unsigned char c = content[i];
+    if (c == '"' || c == '\\') { out[o++] = '\\'; out[o++] = (char)c; }
+    else if (c < 0x20) o += (size_t)snprintf(out + o, cap - o, "\\u%04x", c);
+    else out[o++] = (char)c;
+  }
+  snprintf(out + o, cap - o, "\"}");
+  reply(q, 200, out);
+  free(out);
+}
+// POST: the kind 0 the person's key signed (the body), checked (la_profile_check: signed, kind 0,
+// made now, lud16 this address; la_profile_admit: a key on this account), then passed to the
+// relays. When it names the address as its nip05 too, that key becomes the address's NIP-05 key.
+static void profile_publish(const request *q, PGconn *db) {
+  who w = caller(q, db);
+  address a; bool has = false;
+  if (w.signed_in && w.p->account[0]) { if (!by_account(db, w.p->account, &a)) { say(q, 503, "busy"); return; } has = a.found; }
+  char address_s[100]; snprintf(address_s, sizeof address_s, "%s@%s", has ? a.name : "", domain());
+  char *event = q->body && q->body_len && q->body_len < 70000 ? strndup(q->body, q->body_len) : NULL;
+  unsigned char pub[32], id[32];
+  int64_t check = event && has ? la_profile_check(cs(event), cs(address_s), (int64_t)time(NULL), cv(pub, 32), cv(id, 32)) : LA_PROFILE_BAD;
+  char pk[65] = "", idhex[65] = "";
+  if (check == LA_OK) { hex_of(pub, 32, pk); hex_of(id, 32, idhex); }
+  bool mine = check == LA_OK && w.signed_in && key_on_account(db, w.p->account, pk);
+  int64_t code = la_profile_admit(w.signed_in, w.agent, has, check, mine);
+  if (code != LA_OK) {
+    free(event);
+    if (w.signed_in) audit(db, w.p->account, w.p->session, "lnaddr.profile", "refused", NULL);
+    la_refuse(q, code == 1 ? 401 : code == 2 ? 403 : code == LA_NO_ADDRESS ? 404 : code == LA_NOT_YOUR_KEY ? 403 : 400, code);
+    return;
+  }
+  char urls[6][200]; int nr = profile_relays(urls), sent = 0;
+  unsigned char sk[32]; char spub[65];
+  if (nostr_keygen(sk, spub)) {
+    for (int i = 0; i < nr; i++) {
+      char err[200];
+      relay *rl = relay_open(urls[i], sk, err, sizeof err);
+      if (!rl) { api_log("lnaddr: profile send %s: %s", urls[i], err); continue; }
+      if (relay_send(rl, event, idhex, err, sizeof err)) sent++;
+      else api_log("lnaddr: profile send %s: %s", urls[i], err);
+      relay_close(rl);
+    }
+  }
+  bool nip05 = la_profile_nip05(cs(event), cs(address_s));
+  free(event);
+  if (sent == 0) { say(q, 502, "No Nostr relay took your profile. Try again."); return; }
+  if (nip05) {
+    const char *v[2] = {a.name, pk};
+    PQclear(PQexecParams(db, "UPDATE pay.addresses SET nip05_pubkey = $2, updated_at = now() WHERE name = $1", 2, NULL, v, NULL, NULL, 0));
+  }
+  char detail[300]; snprintf(detail, sizeof detail, "{\"name\":\"%s\",\"pubkey\":\"%s\",\"relays\":%d,\"nip05\":%s}", a.name, pk, sent, nip05 ? "true" : "false");
+  audit(db, w.p->account, w.p->session, "lnaddr.profile", "ok", detail);
+  notice(db, w.p->account, a.name, "profile", detail, NULL);
+  char out[300];
+  if (as_lines(q)) { snprintf(out, sizeof out, "published %d\nrelays %d\nnip05 %d\n", sent, nr, nip05 ? 1 : 0); reply_lines(q, 200, out); return; }
+  snprintf(out, sizeof out, "{\"published\":%d,\"relays\":%d,\"nip05\":%s}", sent, nr, nip05 ? "true" : "false");
+  reply(q, 200, out);
+}
+// NIP-05 (/.well-known/nostr.json?name=N): the key that signed the profile naming N@ our domain,
+// while that key is still on the account and the name isn't suspended or retired.
+static void nip05_json(const request *q, PGconn *db) {
+  char raw[80] = "", name[40] = "", pk[72] = "";
+  if (qparam(q, "name", raw, sizeof raw) > 0) {
+    coax_t_LnaddrResult r = lnaddr_lookup(cs(raw));
+    if (r.reason == 0 && !r.has_tag) {
+      snprintf(name, sizeof name, "%.*s", (int)r.name_len, (const char *)r.name.e);
+      const char *v[1] = {name};
+      PGresult *x = PQexecParams(db, "SELECT a.nip05_pubkey FROM pay.addresses a JOIN auth.nostr_keys k ON k.account = a.account AND k.pubkey = a.nip05_pubkey "
+                                     "WHERE a.name = $1 AND a.state IN ('active', 'off')", 1, NULL, v, NULL, NULL, 0);
+      if (PQresultStatus(x) == PGRES_TUPLES_OK && PQntuples(x) == 1) snprintf(pk, sizeof pk, "%s", PQgetvalue(x, 0, 0));
+      PQclear(x);
+    }
+  }
+  uint8_t out[300];
+  // no name asked: our fixed names; a name asked with no key on its account: no names (the policy's)
+  const char *asked = pk[0] || name[0] ? name : raw;
+  reply_n(q, 200, out, la_nip05_json(cs(asked), cs(pk), cv(out, sizeof out)));
+}
+
 // ---------------------------------------------------------------- /docs/limits
 // The Lightning Address limits as people read them, after auth.c's (api --limits). The numbers are
 // lnurl.coax's and lnaddr-policy.coax's, asked here, so the page can't drift from the server.
@@ -775,7 +1088,10 @@ void lnaddr_print_limits(FILE *out) {
   fprintf(out, "| Lookups from one network address | %lld a minute |\n", (long long)lu_limit(4));
   fprintf(out, "| Invoice requests for one address | %lld a minute |\n", (long long)lu_limit(5));
   fprintf(out, "| Invoice requests from one network address | %lld a minute |\n", (long long)lu_limit(6));
+  int64_t checks = 0; while (checks < 100000 && la_check_limit(checks + 1) == LA_OK) checks++;
+  fprintf(out, "| Name checks while claiming | %lld a minute |\n", (long long)checks);
   fprintf(out, "| Addresses | 1 per person |\n");
+  fprintf(out, "| First destination for a claimed name | at once (it had nowhere to send money) |\n");
   fprintf(out, "| Wait before a new destination takes effect | %lld hours (%lld for an account with only email) |\n",
           (long long)(wait_s / 3600), (long long)(wait_email_s / 3600));
   fprintf(out, "\nThis section is made from the Lightning Address server's own numbers (`coax/web/api/lnaddr.c`).\n");
@@ -798,9 +1114,11 @@ bool lnaddr_route(const request *q) {
   const char *p = q->path;
   bool get = !strcmp(q->method, "GET") || !strcmp(q->method, "HEAD");
   bool wk = !strncmp(p, "/.well-known/lnurlp/", 20), ln = !strncmp(p, "/lnurlp/", 8), api = !strncmp(p, "/api/lightning/address", 22);
-  if (!wk && !ln && !api) return false;
+  bool n5 = !strcmp(p, "/.well-known/nostr.json");
+  if (!wk && !ln && !api && !n5) return false;
   PGconn *db = api_db();
   if (!db) { say(q, 503, "busy"); return true; }
+  if (n5) { if (get) nip05_json(q, db); else say(q, 405, "GET only"); return true; }
   if (wk || ln) {
     if (!get) { say(q, 405, "GET only"); return true; }
     const char *rest = p + (wk ? 20 : 8);
@@ -817,12 +1135,16 @@ bool lnaddr_route(const request *q) {
   }
   const char *rest = p + 22;
   if (!strcmp(rest, "") && get) { card(q, db); return true; }
+  if (!strcmp(rest, "/available") && get) { available(q, db); return true; }
+  if (!strcmp(rest, "/proof") && get) { proof(q, db); return true; }
+  if (!strcmp(rest, "/profile") && get) { profile_offer(q, db); return true; }
   if (!strcmp(q->method, "POST")) {
     if (!strcmp(rest, "")) { claim(q, db); return true; }
     if (!strcmp(rest, "/off")) { toggle(q, db, false); return true; }
     if (!strcmp(rest, "/on")) { toggle(q, db, true); return true; }
     if (!strcmp(rest, "/change")) { change(q, db); return true; }
     if (!strcmp(rest, "/cancel")) { cancel(q, db); return true; }
+    if (!strcmp(rest, "/profile")) { profile_publish(q, db); return true; }
   }
   say(q, 404, "not found");
   return true;

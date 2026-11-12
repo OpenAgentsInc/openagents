@@ -31,7 +31,9 @@ On name@openagents.com. A wallet shows the limit's words when it refuses.
 | Lookups from one network address | 30 a minute |
 | Invoice requests for one address | 120 a minute |
 | Invoice requests from one network address | 30 a minute |
+| Name checks while claiming | 60 a minute |
 | Addresses | 1 per person |
+| First destination for a claimed name | at once (it had nowhere to send money) |
 | Wait before a new destination takes effect | 24 hours (72 for an account with only email) |
 
 This section is made from the Lightning Address server's own numbers (`coax/web/api/lnaddr.c`).

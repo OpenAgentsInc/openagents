@@ -4,7 +4,7 @@
 // refused when either the lowercased name itself or its skeleton matches any
 // entry in LN_RESERVED.
 
-LN_RESERVED_COUNT :: 28;
+LN_RESERVED_COUNT :: 29;
 LN_RESERVED :: [LN_RESERVED_COUNT] string.[
   // The LUD-16 default identifier (_@openagents.com), left unused.
   "_",
@@ -16,4 +16,6 @@ LN_RESERVED :: [LN_RESERVED_COUNT] string.[
   // Our names.
   "openagents", "oa", "team", "staff", "official",
   "verse", "everglade", "coder", "foreman",
+  // Our NIP-05 names (lnaddr-policy.coax LA_NIP05_FIXED).
+  "coax",
 ];

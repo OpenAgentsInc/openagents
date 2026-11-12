@@ -5,8 +5,17 @@
 // with its number in the words, and a payer's details refused. Forward mode's fetch needs a public
 // https host, so it is proved on staging (the issue's evidence), and its JSON and invoice checks
 // are lnurl.coax's own #test cases.
+// The one-tap claim (#13209) and its threats: a suggested name from the display name, availability
+// as you type (and its limit), the wallet's proof over the message we hand out, a claim raced by
+// another account, a held name's first destination at once, and "Add to my Nostr profile": only a
+// kind 0 the person's own key signed, with this address, from a key on this account, is passed
+// on, and NIP-05 names that key while it stays on the account.
 //   API=... PGURL=... PSQL=... SIGN=... coax/web/tool.sh coax/web/api/tests/lnaddr_checks.coax
+#run_steps 250000000;
 #load "api_harness.coax";
+#load "../../../lib/crypto/ecdsa_sign.coax";
+#load "../../../lib/crypto/secp_encode.coax";
+#load "../../../lib/nostr/event_sign.coax";
 
 ln_has :: (s: string, part: string) -> bool { return ap_has(s, part); }
 // A new key in dir/file and an account holding it (kind person, or agent owned by owner); the account id.
@@ -138,11 +147,179 @@ ln_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "another network isn't limited by it", st == 200, ap_body(t));
 }
 
+// A signed request with a body, from network address ip; its status.
+ln_signed_body :: (t: [] Ap, keyfile: string, method: string, path: string, body: string, ip: string) -> int {
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, method, sb_text(url[..]), body, true, sigb[..]);
+  a: [1] Sb; sb(a[..], "Authorization: Nostr "); sb(a[..], sig);
+  x: [1] Sb; sb(x[..], "X-Forwarded-For: "); sb(x[..], ip); sb(x[..], ", 130.211.0.1");
+  h := [3] string.[sb_text(a[..]), sb_text(x[..]), "Content-Type: application/json"];
+  return ap_call(t, method, path, body, h[..]);
+}
+// The test wallet's and the test Nostr key's secret: 01 02 ... 20.
+ln_secret :: () -> [32] u8 { k: [32] u8; for i: 0..<32 { k[i] = cast(u8) (i + 1); } return k; }
+// The Spark proof's query: spark_pubkey, sig, nonce and expires for the message /proof handed out
+// (its JSON's "message", with \n for each line break), signed by key.
+ln_spark_query :: (t: [] Ap, key: [] u8, proof: string, q: [] Sb) -> bool {
+  mb: [1200] u8; m := ap_member(proof, "message", mb[..]);
+  nb: [80] u8; nonce := ap_member(proof, "nonce", nb[..]);
+  eb: [40] u8; expires := ap_member(proof, "expires", eb[..]);
+  if m.count == 0 || nonce.count == 0 { return false; }
+  digest: [32] u8; sig: [65] u8; work: [1] EcdsaWork; b: [1200] u8;
+  for i: 0..<m.count { b[i] = m[i]; }
+  if sha256_hash_checked(b[0..<m.count], digest[..], false) != SHA_OK || !ecdsa_sign_recoverable(key, digest[..], work[..], sig[..], false) { return false; }
+  k := sc_load(key); pub: [33] u8; _ = se_encode(smc_multiply(k.value, sg_generator()).value, SE_COMPRESSED, pub[..]);
+  hb: [200] u8;
+  sb(q, "spark_pubkey="); sb(q, ap_lower_hex(pub[..], hb[..])); sb(q, "&sig="); sb(q, ap_lower_hex(sig[0..<64], hb[..]));
+  sb(q, "&nonce="); sb(q, nonce); sb(q, "&expires="); sb(q, expires);
+  return true;
+}
+// A kind 0 signed by key at created_at with content (already a JSON object); its length in out.
+ln_profile_event :: (key: [] u8, created_at: int, content: string, out: [] u8) -> int {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [70000] u8;
+  r := 0;
+  while true { r = nostr_event_sign_step(key, aux[..], created_at, 0, "[]", content, work[..], scratch[..], out, false); if r != 0 { break; } }
+  return r;
+}
+
+ln_claim_card :: (t: [] Ap, dir: string) {
+  eb: [512] u8; ob: [512] u8; q: [1] Sb; out: [256] u8;
+  now_b: [40] u8; now := ap_whole(ap_sql(t, "SELECT extract(epoch FROM now())::bigint", now_b[..]));
+  kb1: [1100] u8; ab1: [128] u8; C := ln_account(t, dir, "c.key", false, "", kb1[..], ab1[..]);
+  kc: [1100] u8; keyC := fs_join(dir, "c.key", kc[..]);
+  kb2: [1100] u8; ab2: [128] u8; D := ln_account(t, dir, "d.key", false, "", kb2[..], ab2[..]);
+  kd: [1100] u8; keyD := fs_join(dir, "d.key", kd[..]);
+  kb3: [1100] u8; ab3: [128] u8; E := ln_account(t, dir, "e.key", false, "", kb3[..], ab3[..]);
+  ke: [1100] u8; keyE := fs_join(dir, "e.key", ke[..]);
+  ap_check(t, "three more accounts", C != "" && D != "" && E != "", C);
+  sb(q[..], "UPDATE auth.accounts SET display_name = 'Carol Q' WHERE id = '"); sb(q[..], C); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+
+  // ---- the card offers a name from the display name; nothing is claimed for the person
+  st := ln_signed(t, keyC, "GET", "/api/lightning/address", "198.51.100.20");
+  ap_check(t, "the card suggests a name from the display name", st == 200 && ap_member(ap_body(t), "suggest", eb[..]) == "carol.q"
+           && ap_has(ap_body(t), "\"address\":null") && ap_has(ap_body(t), "\"spark_receiving\":false"), ap_body(t));
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address?as=lines", "198.51.100.20");
+  ap_check(t, "and as lines, with the limits the card shows", st == 200 && ap_has(ap_body(t), "suggest carol.q\n") && ap_has(ap_body(t), "min_msat 1000\n")
+           && ap_has(ap_body(t), "limit_max_msat 1000000000\n") && ap_has(ap_body(t), "comment_chars 280\n"), ap_body(t));
+  nb: [64] u8;
+  ap_check(t, "a suggestion is never a claim", ap_sql(t, "SELECT count(*) FROM pay.addresses WHERE name = 'carol.q'", nb[..]) == "0", "");
+
+  // ---- availability as you type
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address/available?name=Carol.Q", "198.51.100.20");
+  ap_check(t, "a free name is available, as we'd keep it", st == 200 && ap_has(ap_body(t), "\"available\":true") && ap_member(ap_body(t), "name", eb[..]) == "carol.q", ap_body(t));
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address/available?name=a1ice", "198.51.100.20");
+  ap_check(t, "a look-alike of a held name is taken", st == 200 && ap_has(ap_body(t), "\"available\":false") && ap_member(ap_body(t), "reason", eb[..]) == "That name is taken", ap_body(t));
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address/available?name=ab", "198.51.100.20");
+  ap_check(t, "a short name says why", ap_member(ap_body(t), "reason", eb[..]) == "Names must be at least 3 characters", ap_body(t));
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address/available?name=coax&as=lines", "198.51.100.20");
+  ap_check(t, "a reserved name says so, as lines too", ap_has(ap_body(t), "available 0\n") && ap_has(ap_body(t), "reason This name is reserved\n"), ap_body(t));
+  none := [1] string.["Accept: application/json"];
+  st = ap_call(t, "GET", "/api/lightning/address/available?name=carol", "", none[..]);
+  ap_check(t, "checking names needs a login", st == 401, ap_body(t));
+
+  // ---- threat: a claim raced. E checks a name, another account takes it first: E's claim is refused
+  st = ln_signed(t, keyE, "GET", "/api/lightning/address/available?name=raced", "198.51.100.21");
+  ap_check(t, "the name is free when E looks", ap_has(ap_body(t), "\"available\":true"), ap_body(t));
+  st = ln_signed(t, keyD, "POST", "/api/lightning/address?name=raced", "198.51.100.21");
+  ap_check(t, "D claims it first", st == 200, ap_body(t));
+  st = ln_signed(t, keyE, "POST", "/api/lightning/address?name=raced", "198.51.100.21");
+  ap_check(t, "E's claim is refused, the name stays D's", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "That name is taken"
+           && ap_sql(t, "SELECT account FROM pay.addresses WHERE name = 'raced'", ob[..]) == D, ap_body(t));
+  sb_clear(q[..]); sb(q[..], "DO $$ BEGIN INSERT INTO pay.addresses (name, skeleton, account) SELECT 'r4ced', skeleton, '"); sb(q[..], E); sb(q[..], "' FROM pay.addresses WHERE name = 'raced'; EXCEPTION WHEN unique_violation THEN NULL; END $$");
+  ap_do(t, sb_text(q[..]));
+  ap_check(t, "and the database refuses a look-alike written past the API (the skeleton is unique)", ap_sql(t, "SELECT count(*) FROM pay.addresses WHERE name = 'r4ced'", ob[..]) == "0", "");
+
+  // ---- the wallet signs the message we hand out; the claim points the name at that wallet
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address/proof?name=carol.q&op=claim", "198.51.100.20");
+  proof: [1600] u8; pn := 0; for c: ap_body(t) { proof[pn] = c; pn += 1; }
+  ap_check(t, "the proof message names the account, the name, the operation and revision 1", st == 200
+           && ap_member(ap_body(t), "revision", eb[..]) == "1" && ap_has(ap_body(t), "operation claim") && ap_has(ap_body(t), C), ap_body(t));
+  key := ln_secret();
+  wrong := key; wrong[31] ^= 1;
+  sb_clear(q[..]); sb(q[..], "/api/lightning/address?name=carol.q&");
+  ap_check(t, "the test wallet signs", ln_spark_query(t, key[..], cast(string) proof[0..<pn], q[..]), "");
+  st = ln_signed(t, keyC, "POST", "/api/lightning/address?name=carol.q&spark_pubkey=02aa&sig=00&nonce=0000000000000000&expires=1", "198.51.100.20");
+  ap_check(t, "a proof that doesn't check is refused", st == 400 && ap_member(ap_body(t), "error", eb[..]) == "The new wallet's proof doesn't check", ap_body(t));
+  st = ln_signed(t, keyC, "POST", sb_text(q[..]), "198.51.100.20");
+  ap_check(t, "the claim points the name at the signing wallet", st == 200 && ap_member(ap_body(t), "mode", eb[..]) == "spark"
+           && ap_member(ap_body(t), "name", ob[..]) == "carol.q", ap_body(t));
+  st = ln_get(t, "/.well-known/lnurlp/carol.q", "198.51.100.22");
+  ap_check(t, "with no Spark backend yet it says it isn't receiving, honestly", st == 200 && ln_reason(t, eb[..]) == "This address isn't receiving yet", ap_body(t));
+
+  // ---- a held name's first destination takes effect at once; it had nowhere to send money
+  st = ln_signed(t, keyD, "GET", "/api/lightning/address/proof?op=change", "198.51.100.21");
+  pd: [1600] u8; dn := 0; for c: ap_body(t) { pd[dn] = c; dn += 1; }
+  ap_check(t, "the change proof is for D's own name at its next revision", st == 200 && ap_member(ap_body(t), "name", eb[..]) == "raced"
+           && ap_member(ap_body(t), "revision", ob[..]) == "2", ap_body(t));
+  sb_clear(q[..]); sb(q[..], "/api/lightning/address/change?");
+  _ = ln_spark_query(t, key[..], cast(string) pd[0..<dn], q[..]);
+  st = ln_signed(t, keyD, "POST", sb_text(q[..]), "198.51.100.21");
+  ap_check(t, "the first destination applies at once, with a notice", st == 200 && ap_member(ap_body(t), "mode", eb[..]) == "spark"
+           && ap_member(ap_body(t), "revision", ob[..]) == "2" && !ap_has(ap_body(t), "\"waiting\"")
+           && ap_sql(t, "SELECT count(*) FROM pay.notices WHERE name = 'raced' AND kind = 'destination'", nb[..]) == "1", ap_body(t));
+
+  // ---- threat: a lud16 written without the person's signature. Only a kind 0 their key signed,
+  // with this address, from a key on this account, is passed on; we never sign one
+  dom := t[0].api; if ap_starts(dom, "http://") { dom = dom[7..<dom.count]; }
+  addr: [1] Sb; sb(addr[..], "carol.q@"); sb(addr[..], dom);
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address/profile?pubkey=84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0", "198.51.100.20");
+  ap_check(t, "a key that isn't on the account gets no profile to sign", st == 403
+           && ap_member(ap_body(t), "error", eb[..]) == "That key isn't one of the keys on your account", ap_body(t));
+  sb_clear(q[..]); sb(q[..], "INSERT INTO auth.nostr_keys (account, pubkey) VALUES ('"); sb(q[..], C); sb(q[..], "', '84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0')");
+  ap_do(t, sb_text(q[..]));
+  st = ln_signed(t, keyC, "GET", "/api/lightning/address/profile?pubkey=84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0&nip05=1", "198.51.100.20");
+  cb: [600] u8; content := ap_member(ap_body(t), "content", cb[..]);
+  want: [1] Sb; sb(want[..], "{\"lud16\":\""); sb(want[..], sb_text(addr[..])); sb(want[..], "\",\"nip05\":\""); sb(want[..], sb_text(addr[..])); sb(want[..], "\"}");
+  ap_check(t, "the profile to sign: unsigned, with lud16 and nip05 set", st == 200 && content == sb_text(want[..]) && !ap_has(ap_body(t), "\"sig\""), ap_body(t));
+  ev: [70000] u8; en := ln_profile_event(key[..], now, content, ev[..]);
+  // the same profile signed by another key, not on the account
+  other: [70000] u8; on := ln_profile_event(wrong[..], now, content, other[..]);
+  st = ln_signed_body(t, keyC, "POST", "/api/lightning/address/profile", cast(string) other[0..<on], "198.51.100.20");
+  ap_check(t, "a profile signed by a key that isn't on the account is refused", st == 403
+           && ap_member(ap_body(t), "error", eb[..]) == "That key isn't one of the keys on your account", ap_body(t));
+  st = ln_signed_body(t, keyD, "POST", "/api/lightning/address/profile", cast(string) ev[0..<en], "198.51.100.21");
+  ap_check(t, "C's signed profile posted by another account is refused (its lud16 isn't theirs)", st == 400
+           && ap_member(ap_body(t), "error", eb[..]) == "That isn't a profile signed by your key with this address in it", ap_body(t));
+  tampered: [70000] u8; for i: 0..<en { tampered[i] = ev[i]; }
+  tampered[en - 4] = ifx tampered[en - 4] == 'a' then cast(u8) 'b' else cast(u8) 'a';
+  st = ln_signed_body(t, keyC, "POST", "/api/lightning/address/profile", cast(string) tampered[0..<en], "198.51.100.20");
+  ap_check(t, "a profile whose signature doesn't check is refused", st == 400, ap_body(t));
+  old_ev: [70000] u8; oe := ln_profile_event(key[..], now - 3600, content, old_ev[..]);
+  st = ln_signed_body(t, keyC, "POST", "/api/lightning/address/profile", cast(string) old_ev[0..<oe], "198.51.100.20");
+  ap_check(t, "an old signed profile replayed is refused", st == 400, ap_body(t));
+  ap_check(t, "nothing refused reached NIP-05", ap_sql(t, "SELECT coalesce(nip05_pubkey, '') FROM pay.addresses WHERE name = 'carol.q'", ob[..]) == "", "");
+  st = ln_signed_body(t, keyC, "POST", "/api/lightning/address/profile", cast(string) ev[0..<en], "198.51.100.20");
+  ap_check(t, "the person's own signed profile goes to the relay", st == 200 && ap_member(ap_body(t), "published", eb[..]) == "1"
+           && ap_has(ap_body(t), "\"nip05\":true"), ap_body(t));
+  st = ln_get(t, "/.well-known/nostr.json?name=carol.q", "198.51.100.22");
+  ap_check(t, "NIP-05 names the key that signed", st == 200 && ap_has(ap_body(t), "\"carol.q\":\"84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0\""), ap_body(t));
+  st = ln_get(t, "/.well-known/nostr.json", "198.51.100.22");
+  ap_check(t, "our own fixed names stay", st == 200 && ap_has(ap_body(t), "\"coax\":\"9ef92e341b43"), ap_body(t));
+  ap_do(t, "DELETE FROM auth.nostr_keys WHERE pubkey = '84bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0'");
+  st = ln_get(t, "/.well-known/nostr.json?name=carol.q", "198.51.100.22");
+  ap_check(t, "a key removed from the account is no longer named", st == 200 && ap_body(t) == "{\"names\":{}}", ap_body(t));
+  st = ln_signed(t, keyC, "POST", "/api/lightning/address/off", "198.51.100.20");
+  st = ln_get(t, "/.well-known/lnurlp/carol.q", "198.51.100.22");
+  ap_check(t, "one tap off", ln_reason(t, eb[..]) == "This address is turned off", ap_body(t));
+  st = ln_signed(t, keyC, "POST", "/api/lightning/address/on", "198.51.100.20");
+  ap_check(t, "one tap on, no new claim", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "active" && ap_member(ap_body(t), "mode", ob[..]) == "spark", ap_body(t));
+
+  // ---- the name checks' limit, with its number in the words
+  last := 0;
+  for i: 0..<59 { last = ln_signed(t, keyE, "GET", "/api/lightning/address/available?name=somename", "198.51.100.23"); }
+  ap_check(t, "60 name checks a minute pass (E checked one before)", last == 200, ap_body(t));
+  last = ln_signed(t, keyE, "GET", "/api/lightning/address/available?name=somename", "198.51.100.23");
+  ap_check(t, "the 61st waits, and says the number", last == 429
+           && ap_member(ap_body(t), "error", eb[..]) == "That's more than 60 name checks in a minute. Wait a moment, then try again", ap_body(t));
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
   wb: [4096] u8; work := fs_temp("lnaddr-checks", wb[..]);
   ln_checks(t[..], work);
+  ln_claim_card(t[..], work);
   gone := fs_remove(work);
   return ap_done(t[..], "lightning address checks");
 }

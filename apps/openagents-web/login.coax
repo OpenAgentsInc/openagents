@@ -56,7 +56,8 @@ REQ_PK_COND :: 11; REQ_PK_OPTIONS :: 12; REQ_PK_WAIT :: 13; REQ_PK_LOGIN :: 14;
 REQ_PK_OFFER :: 15; REQ_PK_REG :: 16; REQ_PK_REGISTER :: 17; REQ_PK_OFFERED :: 18;
 // What can be pressed.
 H_NONE :: -1; H_FIELD :: 0; H_MAIN :: 1; H_RESEND :: 2; H_OTHER :: 3; H_KEY :: 4; H_LIMITS :: 5; H_HOME :: 6; H_LOGOUT :: 7; H_PHONE :: 8; H_PASSKEY :: 9;
-LG_HITS :: 10;
+H_LIGHTNING :: 10;   // LG_IN: YOUR LIGHTNING ADDRESS, /settings/lightning (#13209)
+LG_HITS :: 11;
 LG_QR :: 5929;           // every QR version's grid (coax/lib/qr)
 LG_POLL_EVERY :: 2.0;   // seconds between polls while the phone's QR shows
 LG_QR_WIDE :: 520.0;    // narrower than this, the page is most likely the phone that would scan it
@@ -507,6 +508,7 @@ lg_press :: (s: [] Lg, h: int) {
     if h == H_MAIN { lg_go_next(s); }
     if h == H_LOGOUT { lg_logout(s); }
     if h == H_KEY { lg_key(s); }
+    if h == H_LIGHTNING { lg_go(s, "/settings/lightning"); }
     return;
   }
   if (sc == LG_ELSEWHERE || sc == LG_LINK_FAILED) && h == H_MAIN { lg_go(s, "/login"); }
@@ -547,7 +549,7 @@ lg_order :: (s: [] Lg, out: [] int) -> int {
     out[n] = H_LIMITS; n += 1;
   }
   if sc == LG_CODE { out[0] = H_FIELD; out[1] = H_MAIN; out[2] = H_RESEND; out[3] = H_OTHER; out[4] = H_LIMITS; n = 5; }
-  if sc == LG_IN { out[0] = H_MAIN; out[1] = H_LOGOUT; n = 2; if s[0].has_key != 0 { out[n] = H_KEY; n += 1; } }
+  if sc == LG_IN { out[0] = H_MAIN; out[1] = H_LIGHTNING; out[2] = H_LOGOUT; n = 3; if s[0].has_key != 0 { out[n] = H_KEY; n += 1; } }
   if sc == LG_ELSEWHERE || sc == LG_LINK_FAILED { out[0] = H_MAIN; n = 1; }
   if sc == LG_OFFER { out[0] = H_MAIN; out[1] = H_OTHER; n = 2; }
   if sc == LG_PHONE { if s[0].phone_over { out[n] = H_RESEND; n += 1; } out[n] = H_OTHER; n += 1; }
@@ -630,6 +632,7 @@ lg_layout :: (s: [] Lg) {
   if sc == LG_IN {
     y = lg_err_at(s, y + 4, w) + 8;
     s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 16;
+    s[0].hits[H_LIGHTNING] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16;
     s[0].hits[H_LOGOUT] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16;
     if s[0].has_key != 0 { s[0].hits[H_KEY] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16; }
     y += 8;
@@ -740,13 +743,13 @@ lg_left :: (b: [] u8, at: int, seconds: f32) -> int {
 }
 // The phone's QR: a light square (the light modules and a 4-module quiet zone), the dark
 // modules left dark, whole device pixels a module (as private.coax draws it).
-lg_dark :: (s: [] Lg, y: int, x: int) -> bool {
-  n := s[0].qr_size;
+qr_grid_dark :: (grid: [] u8, n: int, y: int, x: int) -> bool {
   if x < 0 || y < 0 || x >= n || y >= n { return false; }
-  return s[0].qr[y * n + x] == 1;
+  return grid[y * n + x] == 1;
 }
-lg_qr_draw :: (s: [] Lg, out: [] f32, at: int, b: Box, p: Pen) -> int {
-  n := s[0].qr_size; if n <= 0 { return at; }
+// A QR module grid (coax/lib/qr, n by n) in box b: shared by /login and /settings/lightning.
+qr_grid_draw :: (grid: [] u8, n: int, out: [] f32, at: int, b: Box, p: Pen) -> int {
+  if n <= 0 || n * n > grid.count { return at; }
   d := p.d; all := n + 8; side := (b.x1 - b.x0) * d;
   m := hi(1, floor(side / cast(f32) all));
   x0 := floor(b.x0 * d + (side - m * cast(f32) all) * 0.5); y0 := floor(b.y0 * d + (side - m * cast(f32) all) * 0.5);
@@ -757,8 +760,8 @@ lg_qr_draw :: (s: [] Lg, out: [] f32, at: int, b: Box, p: Pen) -> int {
   for row: 0..<all {
     col := 0;
     while col < all {
-      if lg_dark(s, row - 4, col - 4) { col += 1; continue; }
-      run := col; while run < all && !lg_dark(s, row - 4, run - 4) { run += 1; }
+      if qr_grid_dark(grid, n, row - 4, col - 4) { col += 1; continue; }
+      run := col; while run < all && !qr_grid_dark(grid, n, row - 4, run - 4) { run += 1; }
       ax := x0 + cast(f32) col * m + r; bx := x0 + cast(f32) run * m - r;
       if bx <= ax { bx = ax + 0.01; }
       for k: 0..<strips {
@@ -770,6 +773,8 @@ lg_qr_draw :: (s: [] Lg, out: [] f32, at: int, b: Box, p: Pen) -> int {
   }
   return v;
 }
+lg_dark :: (s: [] Lg, y: int, x: int) -> bool { return qr_grid_dark(s[0].qr[..], s[0].qr_size, y, x); }
+lg_qr_draw :: (s: [] Lg, out: [] f32, at: int, b: Box, p: Pen) -> int { return qr_grid_draw(s[0].qr[..], s[0].qr_size, out, at, b, p); }
 lg_ceil :: (x: f32) -> f32 { f := floor(x); return ifx f < x then f + 1 else f; }
 lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
   d := p.d; b := s[0].panel; x := b.x0 + 24; w := b.x1 - b.x0 - 48; v := at; below: [1] f32;
@@ -812,6 +817,7 @@ lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
   }
   if sc == LG_IN {
     v = lg_button(s, out, v, p, H_MAIN, "CONTINUE", true);
+    v = lg_button(s, out, v, p, H_LIGHTNING, "YOUR LIGHTNING ADDRESS", false);
     v = lg_button(s, out, v, p, H_LOGOUT, ifx s[0].req == REQ_LOGOUT && !s[0].logout_then_key then "LOGGING OUT" else "LOG OUT", false);
     v = lg_button(s, out, v, p, H_KEY, "LOG IN WITH A KEY INSTEAD", false);
   }
@@ -891,6 +897,8 @@ lg_error_of :: (s: [] Lg) -> string { return cast(string) s[0].error[0..<s[0].er
   #assert s[0].screen == LG_IN && !lg_wants_text(s[..]);
   lg_press(s[..], H_MAIN);
   #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/chat?a=1";
+  lg_done(s[..]); lg_press(s[..], H_LIGHTNING);
+  #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/settings/lightning";   // offered, never claimed for you (#13209)
   lg_done(s[..]); lg_press(s[..], H_LOGOUT);
   #assert s[0].req == REQ_LOGOUT && lg_url(s[..]) == "/api/auth/logout?as=lines" && s[0].flags == (LG_HTTP_POST | LG_HTTP_WANTED);
   lg_reply(s[..], 1, "200\nstate logged-out\n");

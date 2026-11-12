@@ -192,6 +192,11 @@ static const auth_rule RULES[] = {
   R("POST", "/api/lightning/address/on", false, AP_HUMAN, "receive again"),
   R("POST", "/api/lightning/address/change", false, AP_L2_FRESH, "a new destination: a fresh key login, then a 24-hour wait"),
   R("POST", "/api/lightning/address/cancel", false, AP_HUMAN, "cancel a waiting change"),
+  R("GET",  "/api/lightning/address/available", false, AP_ACCOUNT, "whether a name could be claimed, as you type (60 a minute)"),
+  R("GET",  "/api/lightning/address/proof", false, AP_HUMAN, "the message your wallet signs to receive at your name"),
+  R("GET",  "/api/lightning/address/profile", false, AP_HUMAN, "your Nostr profile with this address in it, for your key to sign"),
+  R("POST", "/api/lightning/address/profile", false, AP_HUMAN, "your signed profile, checked and passed on to the relays; we never sign it"),
+  R("GET",  "/.well-known/nostr.json", false, AP_PUBLIC, "NIP-05: the key on the account that signed its address's profile"),
   // ---- our models and the mesh: NIP-98 or a session, metered (inference.c, mesh.c)
   R("*",    "/api/v1/", true, AP_GUEST, "NIP-98 signed or logged in, checked there"),
   // ---- private projects and drops: members only, the same 404 for everyone else (private.c, drops.c)

@@ -107,6 +107,8 @@ PV_MACHINE :: 64;          // a computer's name, as the server keeps it
 // your wallet, see it confirmed. PAID only when the maker's wallet service says it arrived or the paying wallet
 // reports the preimage; a tip nobody can confirm is SENT FROM YOUR WALLET.
 POST_TIP :: 16; POST_TIP_CHECK :: 17; ASK_MAKER :: 4;
+ASK_LNADDR :: 5;           // page 4: /api/lightning/address?as=lines, the maker's own name@openagents.com (#13209)
+H_CUSELN :: 44;            // page 4: USE name@openagents.com, or GET ONE (/settings/lightning)
 H_TIP0 :: 37; H_TIP_COPY :: 40; H_TIP_WALLET :: 41; H_TIP_AGAIN :: 42; H_TIP_SENT :: 43;   // H_TIP0 + 0, 1, 2: the amounts
 TIP_PICK :: 0; TIP_ASKING :: 1; TIP_SHOWN :: 2; TIP_PAID :: 3; TIP_EXPIRED :: 4; TIP_SENT :: 5;
 TIP_POLL :: 3.0;           // seconds between asks while an invoice waits
@@ -192,6 +194,7 @@ PrivateState :: struct {
   // page 4: a realm's claim (the code from the hash, what the maker typed, the answer)
   claim_code: [32] u8; claim_code_n: int; claim_state: int;
   cname: [PV_CNAME] u8; cname_n: int; cln: [PV_CLN] u8; cln_n: int;
+  my_ln: [80] u8; my_ln_n: int; my_ln_state: int;   // 0 not asked, 1 asked, 2 none yet, 3 has one, 4 not offered (no account)
   claim_note: [PV_NOTE] u8; claim_note_n: int;
   invite_tries: int;             // page 6 (an invite, its code in claim_code): times the code was sent
   dev_looked: bool;              // page 7 (a device login, its code in claim_code): the server said what it is for
@@ -396,6 +399,12 @@ coaxial_private_posted :: (s: [] PrivateState, id: int) #export_c #effects(all) 
   s[0].post_n = 0; s[0].post_id = id;
 }
 pv_say :: (s: [] PrivateState, word: string) { s[0].note_n = pv_put(s[0].note[..], 0, word); s[0].note_at = s[0].time; }
+// Page 4's offer of the maker's own name@openagents.com: shown once we know, and not once it's typed.
+pv_offer_ln :: (s: [] PrivateState) -> bool {
+  if s[0].claim_state != CLAIM_FORM || s[0].me_status != 200 { return false; }
+  if s[0].my_ln_state == 2 { return true; }
+  return s[0].my_ln_state == 3 && cast(string) s[0].cln[0..<s[0].cln_n] != cast(string) s[0].my_ln[0..<s[0].my_ln_n];
+}
 pv_go :: (s: [] PrivateState, url: string) { s[0].out_n = pv_put(s[0].outbox[..], 0, url); s[0].action = PV_NAVIGATE; }
 pv_go_page :: (s: [] PrivateState) {
   n := pv_put(s[0].outbox[..], 0, "/projects/");
@@ -423,6 +432,13 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     unclaimed := code == 404 || (code == 200 && pv_value(bytes, i, "state") == "unclaimed");
     s[0].maker_status = ifx unclaimed then 404 else ifx code == 200 && nm.count > 0 then 200 else 599;
     if s[0].maker_status == 200 && nm.count <= PV_CNAME { s[0].cname_n = pv_put(s[0].cname[..], 0, nm); }
+    return;
+  }
+  if id == s[0].ask_id && s[0].ask_kind == ASK_LNADDR {
+    s[0].ask_id = -1;
+    a := pv_kv_line(bytes, i, "address");
+    if code == 200 && a.count > 0 && a.count <= s[0].my_ln.count { s[0].my_ln_n = pv_put(s[0].my_ln[..], 0, a); s[0].my_ln_state = 3; }
+    else { s[0].my_ln_state = ifx code == 200 && pv_kv_line(bytes, i, "person") == "1" then 2 else 4; }
     return;
   }
   if id == s[0].ask_id && s[0].ask_kind != ASK_ME {
@@ -664,6 +680,22 @@ pv_poll_due :: (s: [] PrivateState) {
   if s[0].time - s[0].polled_at < PV_POLL { return; }
   s[0].polled_at = s[0].time;
   pv_post_auth(s, "poll", POST_POLL, "poll", cast(string) s[0].poll[0..<s[0].poll_n]);
+}
+// A "key value" line's value in an ?as=lines answer, from i on.
+pv_kv_line :: (bytes: string, i: int, key: string) -> string {
+  at := i;
+  while at < bytes.count {
+    end := at; while end < bytes.count && bytes[end] != '\n' { end += 1; }
+    if end - at > key.count && bytes[at..<at + key.count] == key && bytes[at + key.count] == ' ' { return bytes[at + key.count + 1..<end]; }
+    at = end + 1;
+  }
+  return bytes[0..<0];
+}
+// Page 4, logged in: whether the maker has a name@openagents.com to offer for tips.
+pv_lnaddr_due :: (s: [] PrivateState) {
+  if s[0].my_ln_state != 0 || s[0].me_status != 200 || s[0].ask_id >= 0 || s[0].ask_n > 0 { return; }
+  s[0].ask_n = pv_put(s[0].ask[..], 0, "/api/lightning/address?as=lines");
+  s[0].ask_kind = ASK_LNADDR; s[0].my_ln_state = 1;
 }
 pv_ask_me :: (s: [] PrivateState) {
   if s[0].ask_id >= 0 || s[0].ask_n > 0 { return; }
@@ -1297,6 +1329,12 @@ pv_claim :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   f.y += 2 * d;
   f = pv_field(s, out, f, x0, x1, p, true, 0, 5, "you@wallet.com", ifx s[0].claim_state == CLAIM_SENDING then "CLAIMING" else "CLAIM", H_CLN, H_CLAIM);
   f.y += 20 * d;
+  if pv_offer_ln(s) {
+    use: [100] u8; un := pv_put(use[..], 0, ifx s[0].my_ln_state == 3 then "USE " else "GET NAME@OPENAGENTS.COM");
+    if s[0].my_ln_state == 3 { un = pv_put(use[..], un, cast(string) s[0].my_ln[0..<s[0].my_ln_n]); }
+    f.v = pv_chip(s, out, f.v, cast(string) use[0..<un], x0, f.y, H_CUSELN, false, p, true, 0);
+    f.y += 34 * d;
+  }
   if s[0].claim_note_n > 0 {
     f.y -= 12 * d;
     f = pv_text(s, out, f, cast(string) s[0].claim_note[0..<s[0].claim_note_n], x0, colw, BODY, pv_ink(p, INK_WHITE), 3, true, 0);
@@ -2073,6 +2111,7 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
     if s[0].me_status == -1 || (s[0].me_status == 599 && s[0].time - s[0].me_at > 10) { pv_ask_me(s); }
     pv_acct_due(s);
     if s[0].page == 6 { pv_invite_due(s); }
+    if s[0].page == 4 && s[0].claim_state == CLAIM_FORM { pv_lnaddr_due(s); }
     if s[0].page == 7 { pv_device_due(s); }
   }
   if s[0].page == 5 { pv_tip_due(s); }
@@ -2214,6 +2253,8 @@ pv_act :: (s: [] PrivateState, target: int) {
   else if target == H_CLAIM { s[0].focus = 5; pv_claim_send(s); }
   else if target == H_COPEN { n := pv_put(s[0].outbox[..], 0, "/worlds/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_slug(s)); s[0].action = PV_NAVIGATE; }
   else if target == H_CACCOUNT { pv_go(s, "/login"); }
+  else if target == H_CUSELN && s[0].my_ln_state == 3 { s[0].cln_n = pv_put(s[0].cln[..], 0, cast(string) s[0].my_ln[0..<s[0].my_ln_n]); s[0].claim_note_n = 0; }
+  else if target == H_CUSELN && s[0].my_ln_state == 2 { pv_go(s, "/settings/lightning"); }
   else if target == H_IMAKE { pv_go(s, "/worlds/new"); }
   else if target == H_DAPPROVE { pv_device_approve(s); }
   else if target >= H_TIP0 && target < H_TIP0 + 3 { pv_tip_ask(s, PV_TIP_SATS[target - H_TIP0]); }
@@ -2943,6 +2984,24 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   pv_answer(s[..], 3, "200\nK|npub1maker\n");
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   #assert pv_has_hit(s[..], H_CNAME) && pv_has_hit(s[..], H_CLN) && pv_has_hit(s[..], H_CLAIM);
+  // the maker's own name@openagents.com is offered, never filled in for them (#13209)
+  #assert s[0].ask_kind == ASK_LNADDR && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/lightning/address?as=lines" && !pv_has_hit(s[..], H_CUSELN);
+  coaxial_private_asked(s[..], 9);
+  pv_answer(s[..], 9, "200\nmin_msat 1000\nperson 1\naddress topher@openagents.com\nname topher\n");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert pv_has_hit(s[..], H_CUSELN) && s[0].cln_n == 0;
+  pv_act(s[..], H_CUSELN);
+  #assert cast(string) s[0].cln[0..<s[0].cln_n] == "topher@openagents.com";
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert !pv_has_hit(s[..], H_CUSELN);   // used: not offered again
+  s[0].cln_n = 0;
+  // none yet: GET NAME@OPENAGENTS.COM goes to /settings/lightning; logged out of the site's account: nothing offered
+  #assert pv_kv_line("200\nperson 1\nsuggest topher\n", 4, "address") == "" && pv_kv_line("200\nperson 1\n", 4, "person") == "1";
+  s[0].my_ln_state = 2; pv_act(s[..], H_CUSELN);
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/settings/lightning";
+  coaxial_private_action_done(s[..]); s[0].my_ln_state = 4;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert !pv_has_hit(s[..], H_CUSELN);
   // CLAIM with nothing typed asks for the name and posts nothing
   pv_act(s[..], H_CLAIM);
   #assert s[0].post_n == 0 && s[0].focus == 4 && s[0].typing && s[0].claim_note_n > 0;

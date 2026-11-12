@@ -161,6 +161,7 @@ an account takeover would aim there first. So:
 | --- | --- |
 | First claim, pointing at this phone's wallet (B) | L1 and a signature by the wallet's Spark identity key over the account id, name and revision |
 | First claim, forwarding (A) | L1; we fetch the target address and show what it returned before saving |
+| First destination of a claimed name that has none yet | `L2-fresh` and the wallet's proof (B) or the target's answer (A), then **at once**: a name with nowhere to send money has nothing to redirect. A notice goes to every email and key on the account |
 | Any later change of destination | `L2-fresh`, a proof from the new wallet (B), then a **24-hour wait** with a notice by email, push and Nostr direct message, cancellable from any of them. An account with only email waits 72 hours instead, like recovery |
 | Moving a B address to a new phone | Both wallets sign the transfer (Breez requires it). If the old phone is lost, the 72-hour recovery path ([identity](identity-and-methods.md#recovery)) authorizes the new wallet |
 | Turn the address off | L1, at once. The name stays yours |
@@ -177,7 +178,7 @@ already issued keeps its original recipient whatever changes later.
 | Case | Lowercase only. We lowercase what's typed and fold any case in lookups, since some wallets send capitals. Non-ASCII letters are refused, not transliterated, so look-alike letters can't sneak in |
 | Uniqueness | One account per name, by a unique index. A name is also refused when its **skeleton** matches an existing name: drop `.`, `-` and `_`, and map `0`→`o`, `1`→`l`, `i`→`l`. So `chris.d`, `chrisd` and `chr1sd` are one name |
 | Tags | `alice+tips@openagents.com` reaches `alice` (LUD-16 tags); the tag goes into `text/tag` and is shown to the recipient. A tag never selects a different person or wallet |
-| Reserved | `_` (the LUD-16 default identifier, which we leave unused), system words (`admin`, `root`, `api`, `www`, `mail`, `postmaster`, `hostmaster`, `webmaster`, `abuse`, `security`, `support`, `help`, `billing`, `pay`, `payments`, `wallet`, `lnurl`, `noreply`), our names (`openagents`, `oa`, `team`, `staff`, `official`, `verse`, `everglade`, `coder`, `foreman`) and the team's own names. The list is a file changed only by a deploy, like `admins.conf` |
+| Reserved | `_` (the LUD-16 default identifier, which we leave unused), system words (`admin`, `root`, `api`, `www`, `mail`, `postmaster`, `hostmaster`, `webmaster`, `abuse`, `security`, `support`, `help`, `billing`, `pay`, `payments`, `wallet`, `lnurl`, `noreply`), our names (`openagents`, `oa`, `team`, `staff`, `official`, `verse`, `everglade`, `coder`, `foreman`, and `coax`, our NIP-05 name) and the team's own names. The list is a file changed only by a deploy, like `admins.conf` |
 | How many | One name per person account. Each agent can have one, up to 10 agent names per owner. Shown on the claim card |
 | Ties to | The account, not a key or a wallet. Changing keys or wallets doesn't move the name |
 | Renaming | Once every 30 days. The old name keeps paying the same wallet unless you turn it off, and stays held by your account |
@@ -207,6 +208,49 @@ Never auto-assigned: a person who doesn't tap has no address.
 
 Turning it off is one tap on the same card; turning it back on needs no
 new claim.
+
+**What is built (#13209):**
+
+- **The card's server side** (`coax/web/api/lnaddr.c`, every rule in
+  `lnaddr-policy.coax`): the card suggests a name from the display name
+  only when it's free (`la_suggest`); `GET /api/lightning/address/available`
+  checks a name as it's typed (60 checks a minute, `la_check_limit`); `GET
+  /api/lightning/address/proof` hands the wallet the exact message to sign,
+  so the app never rebuilds it; every route answers `?as=lines` for the web
+  page.
+- **The web card:** `/settings/lightning` (`apps/openagents-web/lightning.coax`):
+  the suggested name, live availability, "Send to an address I already
+  have", the app link, the limits line, CLAIM, then the address with its QR,
+  COPY, SHARE (where the browser has a share sheet), TURN OFF / TURN ON,
+  where its money goes said plainly (a Spark address says it isn't receiving
+  yet), a waiting change with CANCEL, and ADD TO MY NOSTR PROFILE.
+- **The app card:** the iOS wallet screen (`apps/openagents-ios/OpenAgents/Wallet/LightningAddressCard.swift`)
+  signs the Spark proof with the wallet's identity key.
+- **Offered, never assigned:** the wallet's first open, the maker claim flow
+  (`/worlds/<world>/claim`: USE name@openagents.com, or GET
+  NAME@OPENAGENTS.COM when there is none), and the logged-in screen of
+  `/login` (YOUR LIGHTNING ADDRESS).
+- **Nostr:** `GET /api/lightning/address/profile?pubkey=K&nip05=1` reads the
+  key's newest kind 0 from the relays (`OA_LNADDR_PROFILE_RELAYS`) and
+  offers its content with `lud16` (and `nip05`) set, every other member kept
+  byte for byte. A profile we can't read is never overwritten. The person's
+  NIP-07 extension signs it; `POST /api/lightning/address/profile` checks it
+  and sends it to the relays. `/.well-known/nostr.json?name=N` names the key
+  that signed, while that key is still on the account (`pay.addresses.nip05_pubkey`).
+
+**Threats and their checks** (`coax/web/api/tests/lnaddr_checks.coax` unless
+named):
+
+| Threat | What stops it | Check |
+| --- | --- | --- |
+| A name squatted: a look-alike (`a1ice` for `alice`) or a reserved word | The skeleton rule and reserved list in `lnaddr_claim`; the skeleton's unique index | "a look-alike of a held name is taken", "a reserved name says so", "the database refuses a look-alike written past the API" |
+| Names enumerated by checking them fast | 60 checks a minute per account, logged in only | "the 61st waits, and says the number", "checking names needs a login" |
+| A claim raced: two accounts claim one name | The unique index decides; the loser gets "That name is taken" and the card checks again | "E's claim is refused, the name stays D's"; `lightning.coax` "a race for the name says so and checks again" |
+| A suggested name taken for the person | Suggestions are never claims; only CLAIM writes | "a suggestion is never a claim"; `lightning.coax` "claims only on CLAIM" |
+| A Spark claim pointed at someone else's wallet | The proof must be the wallet key's signature over our message (account, name, operation, revision, nonce, expiry) | "a proof that doesn't check is refused", "the claim points the name at the signing wallet" |
+| A `lud16` written without the person's signature | We never sign a profile. Only a kind 0 that verifies, made within 10 minutes, whose `lud16` is this address, signed by a key on this account, is passed on | "a profile signed by a key that isn't on the account is refused", "C's signed profile posted by another account is refused", "a profile whose signature doesn't check is refused", "an old signed profile replayed is refused"; `lnaddr-policy.coax` profile tests |
+| NIP-05 naming a key the person removed | `nostr.json` joins the account's current keys | "a key removed from the account is no longer named" |
+| A profile's other fields lost when we add `lud16` | Every other member copied byte for byte; an unreadable profile refused | `lnaddr-policy.coax` "the profile to sign keeps every field the person had" |
 
 ## Limits and abuse
 

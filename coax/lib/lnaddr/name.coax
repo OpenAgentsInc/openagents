@@ -251,7 +251,7 @@ LnaddrResult :: struct {
     "openagents", "oa", "team", "staff", "official",
     "verse", "everglade", "coder", "foreman",
   ];
-  #assert LN_RESERVED_COUNT == 28;
+  #assert LN_RESERVED_COUNT == 29;
   for i: 0..<28 {
     w := expected[i];
     #assert LN_RESERVED[i] == w;
