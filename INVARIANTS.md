@@ -1030,6 +1030,13 @@ mutation-clean), their fixture profiles (`proto/verse/seat-ticket-v5.json`,
 `room-write-v1.json`) and `coax/web/api/tests/room_checks.coax`
 `rc_write_keys` and `rc_write_owners`.
 
+Every seat ticket's bytes, every version, come from `seat-ticket.coax`:
+`seat_ticket_v5_write` for v5 and `seat_ticket_hmac_write` for v2, v3 and the
+v4 envelope (#13248). `coax/web/api/player.c` calls them through
+`ticket-sign-unit.c` and no C file builds any part of a ticket. Checks: the
+same file's tests, mutation-clean, and `seat-ticket-hmac-profile.coax` on
+`proto/verse/seat-ticket-hmac-v1.json`, which the room's `tk_check` reads.
+
 ## A made realm's document changes only from the revision it was read at
 
 A made realm is a versioned document (`verse.realm_doc`,

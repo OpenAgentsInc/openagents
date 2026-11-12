@@ -48,6 +48,33 @@ The independently written tree fixture checks every forest field through
 the ordinary row writer and reader. Room and page suites cover burn-down,
 starter attribution, snapshots, delayed delivery, rebuild and record reuse.
 
+## The seat ticket
+
+A page joins a room with a seat ticket from
+`POST /api/playtest/room-ticket/ROOM` (`?t=TICKET`). The ticket has one
+writer, [`aethyr/session/seat-ticket.coax`](../../aethyr/session/seat-ticket.coax),
+for every version: `seat_ticket_v5_write` writes version 5
+([seat-ticket-v5](seat-ticket-v5.md)), and `seat_ticket_hmac_write` writes
+versions 2 and 3 and the version 4 envelope around them, the HMAC tickets the
+API signs while it has no version 5 signing key (#13248). The API
+(`coax/web/api/player.c`) calls both through
+`coax/web/api/ticket-sign-unit.c` and builds no part of a ticket itself. The
+room reads every version with `tk_check_keys` in
+`coax/web/room/room-ticket.coax`.
+
+The writer's bytes are fixed by fixtures that the writer and the room's
+reader both check:
+
+```sh
+coax/web/tool.sh coax/web/room/seat-ticket-profile.coax proto/verse/seat-ticket-v5.json
+coax/web/tool.sh coax/web/room/seat-ticket-hmac-profile.coax proto/verse/seat-ticket-hmac-v1.json
+```
+
+Moving the version 2 to 4 writer from C to Coax changed no byte: the C
+writer and `seat_ticket_hmac_write` gave the same bytes for the fixtures and
+for 200,000 seeded inputs before the C writer was removed, so rooms and the
+API deploy in either order.
+
 ## Everglade II rest messages (#13046)
 
 Two additive messages run only in Everglade II rooms; older pages ignore `z`

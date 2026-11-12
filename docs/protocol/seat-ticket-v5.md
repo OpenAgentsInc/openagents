@@ -15,6 +15,9 @@ writer and the one reader are
 the API calls `seat_ticket_v5_write` through `coax/web/api/ticket-sign-unit.c`,
 and the room calls `tk5_read` through `tk_check_keys` in
 `coax/web/room/room-ticket.coax`. No C builds or parses a v5 ticket.
+The same file writes versions 2, 3 and 4 (`seat_ticket_hmac_write`, #13248;
+fixtures in
+[`seat-ticket-hmac-v1.json`](../../proto/verse/seat-ticket-hmac-v1.json)).
 
 ## Format
 

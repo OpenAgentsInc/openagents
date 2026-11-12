@@ -65,8 +65,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <openssl/hmac.h>
-#include <openssl/evp.h>
 
 #define PREFIX "/api/playtest/"
 
@@ -235,15 +233,11 @@ static const char *legacy(const char *path) {
 }
 
 // A seat ticket (#12712, spec 4.4): who the X-Verse-Player key is, for one room's socket, for
-// TICKET_MS. Its text, which coax/web/room/room-ticket.coax reads and checks:
-//   v2.PID.ACCOUNT.NAME.ROOM.EXPIRES.HP.MAC
-// PID the player's public id, ACCOUNT 1 when the key has an account (0 a guest), NAME the display name
-// as base64url without padding ("-" none), ROOM the room's code, EXPIRES unix ms, HP the saved hit points
-// ("-" none, #12715), MAC the lowercase hex
-// of HMAC-SHA256 over everything before ".MAC", keyed with OA_ROOM_TICKET_KEY's bytes (Secret Manager
-// oa-room-ticket-key, which oa-room holds too). The name is verse.player_name's, the one chat, presence
-// and the inbox show too (migrations/0116_one_player_name.sql), kept to letters, digits, spaces, '-'
-// and '_', 24 at most.
+// TICKET_MS. aethyr/session/seat-ticket.coax writes every byte of it (docs/protocol/everglade-session-v5.md
+// "The seat ticket"): v5 signed with OA_ROOM_TICKET_SIGNING_KEY (#13260), else v2/v3, or the v4 envelope
+// around one, under OA_ROOM_TICKET_KEY's HMAC (#13248). coax/web/room/room-ticket.coax reads and checks it.
+// The name is verse.player_name's, the one chat, presence and the inbox show too
+// (migrations/0116_one_player_name.sql), kept to letters, digits, spaces, '-' and '_', 24 at most.
 int room_write_signed(const request *q, const char *purpose, const char *body, size_t n);   /* rooms.c (#13260) */
 #define TICKET_MS 600000
 /* seat ticket v5's one writer (ticket-sign-unit.c, aethyr/session/seat-ticket.coax; #13260) */
@@ -251,19 +245,12 @@ bool stk_secret_c(const char *text, unsigned char out[32]);
 size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, const char *name, const char *room, int shard,
                    long long expires, int hp, int xp, int wanted, long long owner, const char *ext, int profile, const char *saved,
                    char *out, size_t cap);
+/* seat tickets v2 to v4's one writer (ticket-sign-unit.c, seat_ticket_hmac_write; #13248) */
+size_t stk_hmac_write_c(const char *key, const char *pid, int acct, const char *name, const char *room, int shard,
+                        long long expires, int hp, int xp, int wanted, long long owner, int envelope, const char *saved,
+                        char *out, size_t cap);
 /* the EXT's class and level (aethyr/session/seat-class.coax, #13259) */
 size_t stk_class_ext_c(const char *klass, int xp, int start, char *out, size_t cap);
-static void b64url(char *out, size_t cap, const unsigned char *b, size_t n) {
-  static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-  size_t o = 0;
-  for (size_t i = 0; i < n && o + 5 < cap; i += 3) {
-    unsigned v = (unsigned)b[i] << 16 | (i + 1 < n ? (unsigned)b[i + 1] << 8 : 0) | (i + 2 < n ? b[i + 2] : 0);
-    out[o++] = a[v >> 18 & 63]; out[o++] = a[v >> 12 & 63];
-    if (i + 1 < n) out[o++] = a[v >> 6 & 63];
-    if (i + 2 < n) out[o++] = a[v & 63];
-  }
-  out[o] = 0;
-}
 static size_t ticket_name(char *out, size_t cap, const char *in) {
   size_t m = 0;
   for (const unsigned char *p = (const unsigned char *)(in ? in : ""); *p && m + 1 < cap && m < 24; p++) {
@@ -417,10 +404,10 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     return;
   }
   if (PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
-  char pid[64], name[32], name64[48];
+  char pid[64], name[32];
   snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
   bool account = PQgetvalue(r, 0, 1)[0] == 't';
-  size_t nn = ticket_name(name, sizeof name, PQgetvalue(r, 0, 2));
+  ticket_name(name, sizeof name, PQgetvalue(r, 0, 2));
   if (PQgetvalue(r, 0, 7)[0] == 't') { PQclear(r); room_count(db, "kicked"); api_json(q->fd, 403, "{\"error\":\"kicked\"}"); return; }   /* an admin's kick, 24 hours (#12714) */
   int hp = PQgetisnull(r, 0, 3) ? -1 : atoi(PQgetvalue(r, 0, 3));
   int wanted = PQgetisnull(r, 0, 4) ? -1 : atoi(PQgetvalue(r, 0, 4));
@@ -441,7 +428,6 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   }
   PQclear(r);
   for (char *c = pid; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
-  if (nn) b64url(name64, sizeof name64, (const unsigned char *)name, nn); else strcpy(name64, "-");
   // ?realm=REALM (#12717): the directory (rooms.c) gives the instance and the shard that holds it,
   // and the ticket names that shard (v3), which seats it and no other. Without it, a v2 ticket for the
   // room asked, which shard 1 seats (a page from before the directory).
@@ -512,25 +498,18 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     coax_string cls=checkpoint2_class((coax_string){saved,(int64_t)strlen(saved)});
     if(cls.count)snprintf(klass,sizeof klass,"%.*s",(int)cls.count,cls.data);
   }
-  char text[256];
-  char hps[32]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
-  if (xp > 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x%d", xp);
-  /* the WANTED level the room saved, "w1" to "w5" (#12794; room-ticket.coax): the room seats it wanted */
-  if (wanted >= 1 && wanted <= 5) { if (xp <= 0) snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "x0"); snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "w%d", wanted); }
-  /* the character's next owner generation (#12834, migrations/0127): "g" and it, last in the HP field, once
+  /* the character's next owner generation (#12834, migrations/0127), last in the ticket's HP field, once
      every shard reads it (OA_ROOM_OWNER_GEN=1; a room from before refuses a ticket with it). The room
      sends it with its vitals lines, and a line below the character's newest generation is not kept. */
   const char *og = getenv("OA_ROOM_OWNER_GEN");
-  long long owner_gen = 0;   /* the same generation, for the v5 writer */
-  if (resume==1) { snprintf(hps+strlen(hps),sizeof hps-strlen(hps),"g%lld",checkpoint_owner); owner_gen = checkpoint_owner; }
+  long long owner_gen = 0;   /* 0: none */
+  if (resume==1) owner_gen = checkpoint_owner;
   else if (og && !strcmp(og, "1")) {
     char ss[12]; snprintf(ss, sizeof ss, "%d", seat_shard);
     const char *gv[2] = {pid, ss};
     PGresult *gr = PQexecParams(db, "SELECT verse.room_owner_next($1, $2::int)", 2, NULL, gv, NULL, NULL, 0);   /* and its shard (0156) */
-    if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0)) {
-      snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "g%s", PQgetvalue(gr, 0, 0));
-      owner_gen = atoll(PQgetvalue(gr, 0, 0));
-    } else if (PQresultStatus(gr) != PGRES_TUPLES_OK) api_log("room-owner: %s", PQerrorMessage(db));
+    if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0)) owner_gen = atoll(PQgetvalue(gr, 0, 0));
+    else if (PQresultStatus(gr) != PGRES_TUPLES_OK) api_log("room-owner: %s", PQerrorMessage(db));
     PQclear(gr);
   }
   /* ACCT 2: an account who is one of Everglade's admins, who may play its demo character (#12739) */
@@ -541,31 +520,22 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     if (PQresultStatus(ar) == PGRES_TUPLES_OK && PQntuples(ar) == 1 && PQgetvalue(ar, 0, 0)[0] == 't') acct = 2;
     PQclear(ar);
   }
-  char resumed[4097]; const char *ticket=text;
+  /* the ticket, every byte of it aethyr/session/seat-ticket.coax's (ticket-sign-unit.c). HP, XP, WANTED and the
+     owner generation ride in its HP field (the WANTED level the room saved, #12794: the room seats it wanted). */
+  char ticket[4097];
   if (v5) {
-    /* the one v5 writer (ticket-sign-unit.c): shard 0 (no directory) is shard 1's, as a v2 ticket is */
+    /* v5: shard 0 (no directory) is shard 1's, as a v2 ticket is */
     /* the character's class, kept once (0160), and the level its XP gives, at least the realm's starting
        level (OA_ROOM_START_LEVEL, 1 to 6, default 1: the server's, never the page's): the room seats it so (#13259) */
     char ext[40] = "-";
     const char *sl = getenv("OA_ROOM_START_LEVEL");
     if (!stk_class_ext_c(kept_class, xp, sl && sl[0] ? atoi(sl) : 1, ext, sizeof ext)) snprintf(ext, sizeof ext, "-");
-    if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, ext, resume == 1 ? 2 : 1, saved, resumed, sizeof resumed)) {
+    if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, ext, resume == 1 ? 2 : 1, saved, ticket, sizeof ticket)) {
       api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
     }
-    ticket = resumed;
-  } else {
-  int tn = shard > 0 ? snprintf(text, sizeof text, "v3.%s.%d.%s.%s.%d.%lld.%s", pid, acct, name64, room, shard, expires, hps)
-                     : snprintf(text, sizeof text, "v2.%s.%d.%s.%s.%lld.%s", pid, acct, name64, room, expires, hps);
-  if (tn <= 0 || (size_t)tn + 66 >= sizeof text) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
-  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
-  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)text, (size_t)tn, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
-  text[tn++] = '.';
-  for (unsigned i = 0; i < 32; i++) tn += snprintf(text + tn, sizeof text - (size_t)tn, "%02x", mac[i]);
-  if (resume==1) {
-    coax_string prefix=resume_ticket_prefix((coax_string){text,tn},(coax_string){saved,(int64_t)strlen(saved)},(coax_v_u8){(uint8_t *)resumed,4031});
-    if (!prefix.count || !HMAC(EVP_sha256(),secret,(int)strlen(secret),(const unsigned char *)resumed,(size_t)prefix.count,mac,&ml) || ml!=32) {api_json(q->fd,503,"{\"error\":\"character recovery unavailable\"}");return;}
-    int pos=(int)prefix.count;resumed[pos++]='.';for(unsigned i=0;i<32;i++)pos+=snprintf(resumed+pos,sizeof resumed-(size_t)pos,"%02x",mac[i]);ticket=resumed;
-  }
+  } else if (!stk_hmac_write_c(secret, pid, acct, name, room, shard, expires, hp, xp, wanted, owner_gen, resume == 1 ? 1 : 0, saved, ticket, sizeof ticket)) {
+    /* v2 (shard 0: no directory) or v3, wrapped in the v4 envelope with the character's capture when it resumes one */
+    api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
   }
   char out[6144], en[48], st[960] = "";
   esc(en, sizeof en, name);
