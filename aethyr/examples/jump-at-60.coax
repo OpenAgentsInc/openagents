@@ -22,8 +22,8 @@ main :: () {
     p = advance_in(w, p, frame);
     q = advance_in(w, q, frame);
     y := verse_player_feet(p).y; e := verse_player_eye(p).y;                   // interpolated
-    ly := q.pos.y; le := q.target.y + orbit_offset(q).y * q.dist;             // the last step
-    if k >= 2 && !p.on_ground {
+    ly := q.body.pos.y; le := q.cam.target.y + orbit_offset(q).y * q.cam.dist;             // the last step
+    if k >= 2 && !p.body.on_ground {
       feet = hi(feet, abs((y - py) - pdy)); eye = hi(eye, abs((e - pe) - pde));
       last_feet = hi(last_feet, abs((ly - qy) - qdy)); last_eye = hi(last_eye, abs((le - qe) - qde));
     }

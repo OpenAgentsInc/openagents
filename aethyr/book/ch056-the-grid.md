@@ -95,7 +95,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
   g[0].now += cast(f64) pc.hi(ifx pc.finite(dt) then dt else 0, 0);
   if frozen { g[0].thumbs = verse_sticks_used(g[0].thumbs); return; }
   s := gw_session(g);
-  clock := loop_accept(g[0].you.clock, cast(f64) dt);
+  clock := loop_accept(g[0].you.body.clock, cast(f64) dt);
   steps := loop_due(clock);
   if replay_events(s) >= GW_EVENTS || replay_tick(s) + steps > GW_MARKS {
     gw_take(g, s);   // frames still waiting for a step go into the new record's start
@@ -105,7 +105,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
   v := replay_offer(s, e);
   g[0].thumbs = verse_sticks_used(g[0].thumbs);
   for k: 0..<steps { gw_step(g); }
-  g[0].you.clock = loop_ran(clock);
+  g[0].you.body.clock = loop_ran(clock);
 }
 ```
 
@@ -138,9 +138,9 @@ gw_step :: (g: [] GridWalk) #effects(all) {
   g[0].input = sm.buffer;
   a := sm.actions;
   p := pc.walk_input(g[0].you, 0, 0, a.move_x, a.move_y, a.run, false, a.look_x, a.look_y);
-  if a.jump { p.jumps = input_press(p.jumps); }
+  if a.jump { p.body.jumps = input_press(p.body.jumps); }
   p = pc.walk_zoom(p, a.zoom);
-  g[0].prev_theta = g[0].you.theta; g[0].prev_phi = g[0].you.phi;
+  g[0].prev_theta = g[0].you.cam.theta; g[0].prev_phi = g[0].you.cam.phi;
   w := gw_world();
   g[0].you = pc.steps_in(w, p, 1);
   replay_stepped(s, gridwalk_digest(g));
@@ -232,8 +232,8 @@ main :: () {
   }
   feet := gridwalk_feet(g[..]);
   print("frames 240, steps %, jumps %, frames with the feet off the floor %, highest % cm\n",
-        gridwalk_steps(g[..]), g[0].you.jumps.taken, air, cm(top));
-  print("feet at (% cm, % cm, % cm), on the ground: %\n", cm(feet.x), cm(feet.y), cm(feet.z), g[0].you.on_ground);
+        gridwalk_steps(g[..]), g[0].you.body.jumps.taken, air, cm(top));
+  print("feet at (% cm, % cm, % cm), on the ground: %\n", cm(feet.x), cm(feet.y), cm(feet.z), g[0].you.body.on_ground);
   print("session digest %\n", gridwalk_session(g[..]));
   again: [1] GridWalk;
   print("replayed from the record's start: %, same digest: %\n", gridwalk_replay(g[..], again[..]),

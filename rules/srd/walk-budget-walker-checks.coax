@@ -11,9 +11,9 @@
     moved: f32 = 0;
     for k: 0..<384 {   // six seconds of fixed steps
       q := walk.advance_scaled_in(w,p,f32(walk.STEP));
-      to := rs_walk_take(b[..],0,p.pos.x,p.pos.z,q.pos.x,q.pos.z);
-      moved += to.metres; q.pos.x = to.x; q.pos.z = to.z; p = q;
+      to := rs_walk_take(b[..],0,p.body.pos.x,p.body.pos.z,q.body.pos.x,q.body.pos.z);
+      moved += to.metres; q.body.pos.x = to.x; q.body.pos.z = to.z; p = q;
     }
-    #assert wt_near(moved,f32(30 + 30*dash)*RS_FOOT_M) && abs(p.pos.z) <= f32(30 + 30*dash)*RS_FOOT_M + 0.001;
+    #assert wt_near(moved,f32(30 + 30*dash)*RS_FOOT_M) && abs(p.body.pos.z) <= f32(30 + 30*dash)*RS_FOOT_M + 0.001;
   }
 }

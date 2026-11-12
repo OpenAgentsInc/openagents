@@ -5,10 +5,10 @@
   flag := bit == 1; s: [1] SwWalk; b: [1] SwStateBytes;
   zero_clock := clock.FrameClock.{step_ns = 0, max_frame_ns = 0, max_steps = 0};
   s[0].valid = flag; s[0].closing = flag; s[0].prefetch_cell = 0;
-  s[0].player = walking.Player.{on_ground = flag, theta = 0, phi = 0, dist = 0, max_dist = 0,
-    target = walking.Vec3.{}, prev_target = walking.Vec3.{}, prev_dist = 0, pace = 0, grip = 0, clock = zero_clock,
-    run = flag, jump_held = flag, wings = flag, dive_held = flag, diving = flag, sliding = flag, collision_floor_cut = flag};
-  s[0].player.jumps.held = flag;
+  s[0].player = walking.Player.{body = walking.Body.{on_ground = flag, pace = 0, grip = 0, clock = zero_clock, yaw = 0,
+      run = flag, jump_held = flag, wings = flag, dive_held = flag, diving = flag, sliding = flag, collision_floor_cut = flag},
+    cam = walking.Camera.{theta = 0, phi = 0, dist = 0, max_dist = 0, target = walking.Vec3.{}, prev_target = walking.Vec3.{}, prev_dist = 0}};
+  s[0].player.body.jumps.held = flag;
   s[0].cells[0].n = 1; s[0].cells[0].cells[0].body_n = 1;
   boxes: [6] f32; bodies: [1] cells.CellBody; s[0].decoded_boxes[0] = boxes[..]; s[0].decoded_bodies[0] = bodies[..];
   for i: 0..<SW_CELLS {
@@ -35,7 +35,7 @@
   #assert cast(string) hex[..] == expected;
 }
 #test "canonical schema review is required when retained record shapes change" {
-  #assert type_info(SwWalk).field_count == 52 && type_info(walking.Player).field_count == 38;
+  #assert type_info(SwWalk).field_count == 52 && type_info(walking.Player).field_count == 2 && type_info(walking.Body).field_count == 29 && type_info(walking.Camera).field_count == 10;
   #assert type_info(clock.FrameClock).field_count == 13;
   #assert type_info(inputs.InputPress).field_count == 5;
   #assert type_info(cells.CellBody).field_count == 5 && type_info(cells.CellState).field_count == 4 && type_info(cells.CellWorld).field_count == 5;

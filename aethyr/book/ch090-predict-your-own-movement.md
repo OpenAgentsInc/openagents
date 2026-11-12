@@ -82,8 +82,8 @@ that only the server had swung the camera. It now turns toward
 // The motion your controls ask for, m/s on the flat: the wish at the pace you walk or run. A follow
 // camera turns toward this, not toward the velocity, which a wall, a push or a room server's
 // correction changes without you asking (#12777).
-walk_asked :: (p: Player) -> Vec3 #effects(all) {
-  w := wish(p);
+body_asked :: (p: Body) -> Vec3 #effects(all) {
+  w := body_wish(p);
   if !w.on { return Vec3.{}; }
   pace := ifx p.run then f32(RUN) else f32(WALK);
   return Vec3.{x = w.x * pace, y = 0, z = w.z * pace};

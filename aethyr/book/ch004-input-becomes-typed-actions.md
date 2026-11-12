@@ -327,18 +327,18 @@ controls. It records a jump as a press with `input_level`:
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #effects(all) {
   next := p;
-  next.key_x = clamp(key_x, -1, 1);
-  next.key_y = clamp(key_y, -1, 1);
-  next.pad_x = clamp(pad_x, -1, 1);
-  next.pad_y = clamp(pad_y, -1, 1);
-  if !finite(key_x) { next.key_x = 0; }
-  if !finite(key_y) { next.key_y = 0; }
-  if !finite(pad_x) || !finite(pad_y) { next.pad_x = 0; next.pad_y = 0; }
-  next.run = run;
-  next.jumps = input_level(p.jumps, jump);
-  next.jump_held = jump;
+  next.body.key_x = clamp(key_x, -1, 1);
+  next.body.key_y = clamp(key_y, -1, 1);
+  next.body.pad_x = clamp(pad_x, -1, 1);
+  next.body.pad_y = clamp(pad_y, -1, 1);
+  if !finite(key_x) { next.body.key_x = 0; }
+  if !finite(key_y) { next.body.key_y = 0; }
+  if !finite(pad_x) || !finite(pad_y) { next.body.pad_x = 0; next.body.pad_y = 0; }
+  next.body.run = run;
+  next.body.jumps = input_level(p.body.jumps, jump);
+  next.body.jump_held = jump;
   cam := follow_look(follow_of(next), dyaw, dpitch);
-  next.theta = cam.theta; next.phi = cam.phi;
+  next.cam.theta = cam.theta; next.cam.phi = cam.phi;
   return next;
 }
 ```
@@ -349,7 +349,7 @@ jump:
 <!-- source: aethyr/move/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
+body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;
@@ -440,22 +440,22 @@ The controller's checks cover these cases:
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 0, 0, 0, false, true, 0, 0);
   p = advance_in(w, p, 0.001);                    // runs no step
-  #assert p.clock.ticks == 0 && p.on_ground && p.jumps.waiting == 1;
+  #assert p.body.clock.ticks == 0 && p.body.on_ground && p.body.jumps.waiting == 1;
   p = walk_input(p, 0, 0, 0, 0, false, false, 0, 0);   // let go before the step
   p = advance_in(w, p, 0.015);
-  #assert p.clock.ticks == 1 && !p.on_ground && p.jumps.taken == 1;
+  #assert p.body.clock.ticks == 1 && !p.body.on_ground && p.body.jumps.taken == 1;
   q := walk_place(0, 0, 0, 0);
   q = walk_input(q, 0, 0, 0, 0, false, true, 0, 0);
   q = advance_in(w, q, 0.032);                    // two steps
-  #assert q.clock.ticks == 2 && q.jumps.taken == 1 && q.jumps.waiting == 0;
+  #assert q.body.clock.ticks == 2 && q.body.jumps.taken == 1 && q.body.jumps.waiting == 0;
   one := step_once(w, step_once(w, walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
   #assert same_step(q, one) && !same_step(q, step_once(w, q, STEP)) && !same_step(q, walk_place(0, 0, 0, 0));
   // The step that jumps already counts as in the air: on ice, it pushes you with full grip.
-  ice := walk_place(0, 0, 0, 0); ice.grip = 0.5;
+  ice := walk_place(0, 0, 0, 0); ice.body.grip = 0.5;
   dry := walk_place(0, 0, 0, 0);
   a := step(w, walk_input(ice, 0, 1, 0, 0, true, true, 0, 0), STEP);
   b := step(w, walk_input(dry, 0, 1, 0, 0, true, true, 0, 0), STEP);
-  #assert !a.on_ground && same_step(a, b);
+  #assert !a.body.on_ground && same_step(a, b);
 }
 
 // The same action stream drives desktop and phone: a session on the keyboard and the same
@@ -472,9 +472,9 @@ The controller's checks cover these cases:
     touch := input_stick(x, 1, true, jump, false, 0, 0, 0);
     k = advance_in(w, walk_intent(k, keys), 1.0 / 60.0);
     t = advance_in(w, walk_intent(t, touch), 1.0 / 60.0);
-    #assert same_step(k, t) && k.pos.x == t.pos.x;
+    #assert same_step(k, t) && k.body.pos.x == t.body.pos.x;
   }
-  #assert k.jumps.taken == 2 && abs(k.pos.z) > 5 && abs(k.pos.x) > 0.5;   // it ran, turned and jumped twice
+  #assert k.body.jumps.taken == 2 && abs(k.body.pos.z) > 5 && abs(k.body.pos.x) > 0.5;   // it ran, turned and jumped twice
 }
 ```
 

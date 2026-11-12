@@ -649,15 +649,15 @@ edge, and a box's top holds you while your capsule is over it.
     pa = step(a, walk_input(pa, 0, 1, 0, 0, false, jump, 0, 0), STEP);
     pb = step(b, walk_input(pb, 0, 1, 0, 0, false, jump, 0, 0), STEP);
     pc = step(c, walk_input(pc, 0, 1, 0, 0, false, jump, 0, 0), STEP);
-    #assert same_step(pa, pb) && pa.pos.y == pb.pos.y && pa.pos.z == pb.pos.z;
-    if landed < 0 && i > 12 && pa.on_ground { landed = i; #assert pa.pos.y == 0.5 && pa.pos.z > 2; }
-    if off_a < 0 && landed >= 0 && !pa.on_ground { off_a = i; }
-    if off_c < 0 && landed >= 0 && !pc.on_ground { off_c = i; }
-    if off_c < 0 { #assert same_step(pa, pc) && pa.pos.y == pc.pos.y; }
+    #assert same_step(pa, pb) && pa.body.pos.y == pb.body.pos.y && pa.body.pos.z == pb.body.pos.z;
+    if landed < 0 && i > 12 && pa.body.on_ground { landed = i; #assert pa.body.pos.y == 0.5 && pa.body.pos.z > 2; }
+    if off_a < 0 && landed >= 0 && !pa.body.on_ground { off_a = i; }
+    if off_c < 0 && landed >= 0 && !pc.body.on_ground { off_c = i; }
+    if off_c < 0 { #assert same_step(pa, pc) && pa.body.pos.y == pc.body.pos.y; }
   }
   // it landed on the ledge, walked off it, and came down on the ground: the floor first
   #assert landed > 12 && off_a > landed && off_c > landed && off_c < off_a;
-  #assert pa.on_ground && pc.on_ground && pa.pos.y == 0 && pc.pos.y == 0 && pa.pos.z > 6;
+  #assert pa.body.on_ground && pc.body.on_ground && pa.body.pos.y == 0 && pc.body.pos.y == 0 && pa.body.pos.z > 6;
   // a realm whose ground is not at 0 stands you on it, and on the ledge's top over it
   higher: World; higher.ground = 0.25; higher.walls = ledge[..];
   #assert floor_at(higher, 0, 0, 0.25) == 0.25 && floor_at(higher, 0, 2, 0.25) == 0.5 && floor_at(higher, 0, 2, -1) == 0.25;

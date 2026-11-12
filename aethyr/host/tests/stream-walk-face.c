@@ -152,7 +152,7 @@ SW_API("sw_host_info") int64_t sw_host_info(int32_t field){switch(field){
   case 19:return state.cells.e[0].counts.e[5];case 20:return state.stream.e[0].requests;case 21:return state.stream.e[0].destroyed;
   case 22:return audio_memory.total*4;case 23:return image_memory.total;
   case 24:return state.stream.e[0].closing&&state.stream.e[0].destroyed==state.stream.e[0].requests;
-  case 25:return state.peak_active;case 26:return state.player.clock.frames;
+  case 25:return state.peak_active;case 26:return state.player.body.clock.frames;
   case 27:return sizeof state+sizeof manifest+sizeof audio_memory+sizeof image_memory+sizeof objects+sizeof configuration+sizeof root_hex+sizeof borrows+sizeof borrowed+sizeof uniforms+sizeof fixed+sizeof fixed_live+sizeof drawing+sizeof physical_bytes+sizeof physical_peak+sizeof physical_trace+sizeof trace_n+sizeof trace_overflow
 #ifndef __wasm__
     +sizeof load_fault
@@ -165,7 +165,7 @@ SW_API("sw_host_info") int64_t sw_host_info(int32_t field){switch(field){
 #endif
     ;
   default:return -1;}}
-SW_API("sw_host_player") float sw_host_player(int32_t field){switch(field){case 0:return state.player.pos.x;case 1:return state.player.pos.y;case 2:return state.player.pos.z;case 3:return state.player.theta;case 4:return state.player.phi;case 5:return state.player.dist;case 6:return state.player.target.x;case 7:return state.player.target.y;case 8:return state.player.target.z;default:return 0;}}
+SW_API("sw_host_player") float sw_host_player(int32_t field){switch(field){case 0:return state.player.body.pos.x;case 1:return state.player.body.pos.y;case 2:return state.player.body.pos.z;case 3:return state.player.cam.theta;case 4:return state.player.cam.phi;case 5:return state.player.cam.dist;case 6:return state.player.cam.target.x;case 7:return state.player.cam.target.y;case 8:return state.player.cam.target.z;default:return 0;}}
 SW_API("sw_host_command") int64_t sw_host_command(int32_t retiring,int32_t index,int32_t field){
   int64_t n=retiring?state.retire_n:state.load_n;if(index<0||index>=n)return -1;
   coax_t_ResourceLoadKey k=retiring?state.retires.e[index]:state.loads.e[index];

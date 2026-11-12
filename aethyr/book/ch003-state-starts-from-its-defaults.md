@@ -48,21 +48,14 @@ The walking controller's state uses several defaults:
 
 <!-- source: aethyr/move/walk.coax state -->
 ```jai
-Player :: struct {
+// The body: where you are and what the fixed step reads and writes. The server owns it; the room and
+// the wire carry only this (#13271).
+Body :: struct {
   pos: Vec3;            // feet, after the last step
   vel: Vec3;
   face: f32;            // yaw the character faces
   on_ground: bool = true;
   act: Act = Act.idle;
-  // The orbit camera: theta around +Y from +Z, phi down from +Y, and its
-  // distance from the spring-followed target.
-  theta: f32 = PI;
-  phi: f32 = BEHIND_PHI;
-  dist: f32 = CAM_MAX;
-  max_dist: f32 = CAM_MAX;
-  zoom_push: f32;       // zoom past a view's end, gathering to cross it
-  target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
-  spring_vel: Vec3;
   // The controls held now.
   key_x: f32;
   key_y: f32;
@@ -81,9 +74,7 @@ Player :: struct {
   // and where the last step began, so the frame shows a point between the last two.
   clock: FrameClock;
   prev_pos: Vec3;
-  prev_target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
   prev_face: f32;
-  prev_dist: f32 = CAM_MAX;
   // Your speed's share, set by the realm: 1 on land, 0.5 wading or swimming
   // (verse/everglade/river.coax pace_of). WALK and RUN themselves never change.
   pace: f32 = 1;
@@ -95,8 +86,26 @@ Player :: struct {
   collision_passes: int;
   collision_floor_cut: bool;
   query_status: QueryStatus;         // a refused ground receipt on the last physical step
-  camera_query_status: QueryStatus;  // the last camera receipt, retained when its step is skipped
+  // The view's yaw the step turns your controls by (the stick's forward is the view's forward): an
+  // input, set from the camera on the client and from the wire on the server. The body has no camera.
+  yaw: f32 = PI;
 }
+// The camera: the orbit round the body (theta around +Y from +Z, phi down from +Y, its distance from
+// the spring-followed target). The client owns it; the step never reads it.
+Camera :: struct {
+  theta: f32 = PI;
+  phi: f32 = BEHIND_PHI;
+  dist: f32 = CAM_MAX;
+  max_dist: f32 = CAM_MAX;
+  zoom_push: f32;       // zoom past a view's end, gathering to cross it
+  target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
+  spring_vel: Vec3;
+  prev_target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
+  prev_dist: f32 = CAM_MAX;
+  query_status: QueryStatus;  // the last camera receipt, retained when its step is skipped
+}
+// What a page holds: its body and its camera.
+Player :: struct { body: Body; cam: Camera; }
 ```
 
 In the browser, the host allocates the state in the module's memory. That
@@ -150,12 +159,12 @@ prints a constructed player and then runs a zeroed clock:
 main :: () {
   made: [1] Player;
   p := made[0];
-  print("constructed: on_ground %, camera % m out at phi %, pace %, grip %\n", p.on_ground, p.dist, p.phi, p.pace, p.grip);
-  print("constructed clock: step % ns, clamp % ns, at most % steps\n", p.clock.step_ns, p.clock.max_frame_ns, p.clock.max_steps);
-  zeroed := p.clock;
+  print("constructed: on_ground %, camera % m out at phi %, pace %, grip %\n", p.body.on_ground, p.cam.dist, p.cam.phi, p.body.pace, p.body.grip);
+  print("constructed clock: step % ns, clamp % ns, at most % steps\n", p.body.clock.step_ns, p.body.clock.max_frame_ns, p.body.clock.max_steps);
+  zeroed := p.body.clock;
   zeroed.step_ns = 0; zeroed.max_frame_ns = 0; zeroed.max_steps = 0;   // as zeroed memory reads it
   k := loop_frame(zeroed, 1.0 / 64.0);
-  ok := loop_frame(p.clock, 1.0 / 64.0);
+  ok := loop_frame(p.body.clock, 1.0 / 64.0);
   print("one 1/64 s frame, constructed clock: steps %, clamp % ns\n", ok.steps, ok.clock.max_frame_ns);
   print("one 1/64 s frame, zeroed clock:      steps %, clamp % ns\n", k.steps, k.clock.max_frame_ns);
   s := loop_frame(zeroed, 3.0);

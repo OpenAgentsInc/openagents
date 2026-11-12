@@ -1,0 +1,17 @@
+// Original scalar movement numbers, through the real shared scheduler/collision/controller.
+#test "Echo source movement accelerates brakes and retains airborne velocity" {
+ w:World;w.locomotion=LocomotionProfile.{source_velocity=true,walk_speed=1.47,run_speed=4.27,gravity=9.8,jump_speed=6,acceleration=5};
+ p:=walk_input(walk_place(0,0,0,0),0,1,0,0,true,false,0,0);p=advance_in(w,p,STEP);#assert p.body.vel.z==0.078125;
+ for k:0..<64 {p=advance_in(w,p,STEP);}#assert abs(p.body.vel.z-4.27)<0.00001;
+ p=walk_input(p,0,0,0,0,false,false,0,0);p=advance_in(w,p,STEP);#assert abs(p.body.vel.z-3.58)<0.00001;
+ p=walk_place(0,0,0,0);p=walk_input(p,0,0,0,0,false,true,0,0);p=advance_in(w,p,STEP);#assert abs(p.body.pos.y-0.09255371)<0.000001 && abs(p.body.vel.y-5.846875)<0.000001;
+ p.body.vel.x=1;p.body.vel.z=2;p=walk_input(p,1,0,0,0,false,false,0,0);p=advance_in(w,p,STEP);#assert p.body.vel.x==1 && p.body.vel.z==2;
+}
+
+#test "Echo source motion takes both analog axes and keeps the shared dead zone" {
+ w:World;w.locomotion=LocomotionProfile.{source_velocity=true,walk_speed=1.47,run_speed=4.27,gravity=9.8,jump_speed=6,acceleration=5};
+ p:=walk_input(walk_place(0,0,0,0),0,0,0.3,0.4,true,false,0,0);p=advance_in(w,p,STEP);#assert abs(p.body.vel.x+0.0234375)<0.000001 && abs(p.body.vel.z-0.03125)<0.000001;
+ p=walk_input(walk_place(0,0,0,0),0,1,0.2,0,true,false,0,0);p=advance_in(w,p,STEP);#assert abs(p.body.vel.x)<0.000001 && abs(p.body.vel.z-0.078125)<0.000001;
+ p=walk_input(walk_place(0,0,0,0),0,1,0.1,0.1,true,false,0,0);p=advance_in(w,p,STEP);#assert abs(p.body.vel.x)<0.000001 && abs(p.body.vel.z-0.078125)<0.000001;
+ p=walk_input(walk_place(0,0,0,0),1,1,0,0,true,false,0,0);p=advance_in(w,p,STEP);#assert abs(flat_speed(p)-0.078125)<0.000001 && p.body.vel.x<0 && p.body.vel.z>0;
+}

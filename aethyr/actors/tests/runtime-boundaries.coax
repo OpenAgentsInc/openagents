@@ -25,7 +25,7 @@
 }
 #test "missing remembered or authored goals fall back to the current body rather than a stale destination" #steps 200000000 #traversal 2000000000 {
  base:[1]ActorRuntimeFixture;actor_runtime_fixture(base[..]);
- for goal:0..<5 {f:=base;i:=entities.entity_slot(f[0].base.handle);a:=f[0].base.pool[0].actors[i];a.definition.parameters.controller=1;a.definition.parameters.rules[0].goal=goal;a.body.pos.z=5.25;a.goal_x=900;a.goal_z=900;a.perception.tick=1;
+ for goal:0..<5 {f:=base;i:=entities.entity_slot(f[0].base.handle);a:=f[0].base.pool[0].actors[i];a.definition.parameters.controller=1;a.definition.parameters.rules[0].goal=goal;a.body.body.pos.z=5.25;a.goal_x=900;a.goal_z=900;a.perception.tick=1;
  if goal==ACTOR_HOME {a.facts.values[1]=state_int(2);}if goal==ACTOR_ROUTINE {a.definition.parameters.schedule[0].phase=2;}
  f[0].base.pool[0].actors[i]=a;work:[1]ActorWork;actor_runtime_choose(f[0].base.pool[..],i,actor_runtime_world(f[..],1),work[..]);got:=f[0].base.pool[0].actors[i];#assert got.goal_x==400 && got.goal_z==525 && work[0].refused==0;
  }
@@ -44,8 +44,8 @@
  if mode==0 {a.body=walking.walk_place(0.5,0,0.5,0);a.goal_x=150;a.goal_z=50;a.navigation=ActorNavigation.{key=ActorNavKey.{request=1},status=ACTOR_NAV_PENDING,goal=1,asked=0,serial=1};}
  else if mode==1 {a.body=walking.walk_place(1005,0,5,0);a.goal_x=500;a.goal_z=500;w.grid.nx=128;w.grid.nz=1;w.grid.cell=10;a.navigation=ActorNavigation.{key=ActorNavKey.{request=1},status=ACTOR_NAV_PENDING,goal=0,asked=0,serial=1};}
  else {a.controller=1;a.definition.parameters.controller=1;a.definition.parameters.radius=10;a.definition.parameters.speed=300;a.input=ActorControl.{x=100};}
- a.body.theta=0;a.navigation.key=actor_context(a,w);f[0].base.pool[0].actors[i]=a;work:[1]ActorWork;actor_runtime_move(f[0].base.pool[..],i,w,work[..]);got:=f[0].base.pool[0].actors[i];
- if mode==0 {#assert got.navigation.status==ACTOR_NAV_SUCCESS && got.body.pos.x>0.5;}else if mode==1 {#assert got.navigation.status==ACTOR_NAV_UNREACHABLE && got.navigation.retry_at==17;}else {#assert got.body.pos.x>4;}
+ a.body.cam.theta=0;a.navigation.key=actor_context(a,w);f[0].base.pool[0].actors[i]=a;work:[1]ActorWork;actor_runtime_move(f[0].base.pool[..],i,w,work[..]);got:=f[0].base.pool[0].actors[i];
+ if mode==0 {#assert got.navigation.status==ACTOR_NAV_SUCCESS && got.body.body.pos.x>0.5;}else if mode==1 {#assert got.navigation.status==ACTOR_NAV_UNREACHABLE && got.navigation.retry_at==17;}else {#assert got.body.body.pos.x>4;}
  }
 }
 #test "a scoped clock behind the paid clock refuses before publication" #steps 200000000 #traversal 2000000000 {

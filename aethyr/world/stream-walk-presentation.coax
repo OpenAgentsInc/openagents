@@ -6,10 +6,10 @@
 #test "persistent HUD reads no streamed owner and cannot advance canonical simulation" #steps 100000000 {
   s: [1] SwWalk; out: [hud.SH_FLOATS] f32;
   #assert sw_hud(s[..], 320, 180, out[..]) == 0;
-  s[0].valid = true; s[0].player.pos.z = 56;
-  before := sw_state_digest(s[..], s[0].player.clock, 0);
+  s[0].valid = true; s[0].player.body.pos.z = 56;
+  before := sw_state_digest(s[..], s[0].player.body.clock, 0);
   #assert sw_hud(s[..], 320, 180, out[..]) > 600;
-  #assert assets.asset_same(before, sw_state_digest(s[..], s[0].player.clock, 0));
+  #assert assets.asset_same(before, sw_state_digest(s[..], s[0].player.body.clock, 0));
   // Closing an area/world retires no persistent display service. Its host
   // storage lives until the renderer/engine teardown after this last frame.
   s[0].closing = true; #assert sw_hud(s[..], 320, 180, out[..]) > 600;
@@ -18,5 +18,5 @@
 }
 sw_hud :: (s: [] SwWalk, width: f32, height: f32, out: [] f32) -> int #export_c #effects(all) {
   if s.count != 1 || !s[0].valid { return 0; }
-  return hud.sh_draw(width, height, s[0].player.pos.z, out);
+  return hud.sh_draw(width, height, s[0].player.body.pos.z, out);
 }

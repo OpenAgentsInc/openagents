@@ -7363,7 +7363,7 @@ producer boundaries, not all movement/timing/world qualification. Evidence:
 difficult-terrain costs onto the declared Speed-30 action locomotion baseline.
 Player rate is separate from terrain pace, so rates above one reach the actual
 controller; AI pursuit/home motion receives the same projection. Opt-in
-`walk-scaled.coax` keeps one paid fixed tick/camera history while subdividing
+`walk.coax`'s scaled entry (`advance_scaled_in`, `body_advance_scaled_in`) keeps one paid fixed tick/camera history while subdividing
 collision integration through `walk-substep-policy.coax`'s bounded powers of
 two. Original collision travel limits are unchanged. Refusal restores the
 fixed step's physical/control state and correct interpolation history. Normal

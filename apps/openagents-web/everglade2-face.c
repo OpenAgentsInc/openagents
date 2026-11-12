@@ -33,14 +33,14 @@ static coax_t_People rig;
 static uint32_t baked;
 static uint32_t frames;
 static int64_t draw_n;
-static coax_t_Player player;
+static coax_t_Body player;
 static coax_t_Sticks sticks;
 static float width, height, dpr;
 static double now;
 /* the room (everglade/client/net.coax): the step's clock and the next step's speculation, the seat ticket's
    POST and the player key's mint (POST /api/playtest/player, kept by the host as action 5) */
 static float step_acc, step_jump_held;
-static coax_t_Player step_next;   /* the step this frame's input will make next: where you are drawn toward (#13167) */
+static coax_t_Body step_next;   /* the step this frame's input will make next: where you are drawn toward (#13167) */
 static int64_t joined_ms = -1;
 static int32_t ticket_id = -1, mint_id = -1;
 static bool has_player, mint_tried, facts_seen;
@@ -97,7 +97,7 @@ static uint32_t cull_buckets[2 * 36 * 3], cull_runs[4 * 384], cull_draws[384];
 static int64_t cull_n;
 /* One step of the controller: the world round you, Everglade II's pace, its two halves over the trunks
    and the rocks' hulls, then kept where you may stand. The room's world2_step (coax/web/room/room-world.c) is the same. */
-static coax_t_Player step_frame(cx_face_addr state, coax_t_Player p, coax_t_EgMoveIn input, float step, float frame) {
+static coax_t_Body step_frame(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float step, float frame) {
   float fx = p.pos.x, fz = p.pos.z;
   coax_t_EgMoveWorld mw = e2_move_world(at(state), p.pos.x, p.pos.z);
   mw.pace = e2_pace(input.run);
@@ -105,10 +105,10 @@ static coax_t_Player step_frame(cx_face_addr state, coax_t_Player p, coax_t_EgMo
   coax_v_f32 near = e2_move_bodies(at(state)), hulls = e2_move_hulls(at(state));
   p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, frame);
   coax_t_Point kept = e2_keep_from(at(state), p.pos.x, p.pos.z, fx, fz);
-  if (kept.x != p.pos.x || kept.z != p.pos.z) p = verse_player_constrain(p, kept.x, kept.z);
+  if (kept.x != p.pos.x || kept.z != p.pos.z) p = verse_body_constrain(p, kept.x, kept.z);
   return p;
 }
-static coax_t_Player step_once(cx_face_addr state, coax_t_Player p, coax_t_EgMoveIn input, float dt) {
+static coax_t_Body step_once(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float dt) {
   return step_frame(state, p, input, dt, dt);   /* the room steps 1/30 s, not the clock's count (room-world.c world2_step) */
 }
 /* The room's commands (everglade/client/net.coax's pipe) to the host, in order: open, send, close, and the
@@ -181,11 +181,11 @@ EXPORT("coaxial_frame")
 uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float w, float h, float scale, float dt, uint32_t still) {
   width = w; height = h; dpr = scale; now += dt;
   quality_state = state; e2_quality_frame(at(state), dt, w, h, scale, golden);
-  if (e2_start(at(state))) player = verse_player_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
+  if (e2_start(at(state))) player = verse_body_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
   /* Character Create's run starts from you as the studio drew you (everglade/client/create.coax e2c_walk) */
-  if (e2_reseat(at(state))) player = verse_player_place(player.pos.x, 0, player.pos.z, e2_at(state)->you_face);
+  if (e2_reseat(at(state))) player = verse_body_place(player.pos.x, 0, player.pos.z, e2_at(state)->you_face);
   float frame = dt;
-  float step = verse_player_counts(player, frame);
+  float step = verse_body_counts(player, frame);
   e2_look(at(state), sticks.dyaw, sticks.dpitch, sticks.zoom);
   coax_t_EgMoveIn input = e2_move_in(at(state));
   input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
@@ -225,7 +225,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     step_acc = 0; step_jump_held = 0;
     player = step_frame(state, player, input, step, frame);
   }
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = verse_body_feet(player);
   if (e2_net_live(at(state))) {
     /* drawn from where the last step left you toward where the next one will, by its time gone, less
        what a re-run moved you, eased out */
@@ -233,7 +233,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     feet = eg_step_drawn(eg_step_feet(player), step_next, step_acc * 30);
     feet.x += off.x; feet.y += off.y; feet.z += off.z;
   }
-  e2_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player));
+  e2_you(at(state), feet.x, feet.y, feet.z, verse_body_face(player));
   sticks = verse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_e2_max_vertices() * coaxial_e2_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_e2_uniform_floats()};

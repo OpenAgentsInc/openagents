@@ -9,12 +9,12 @@
 main :: () {
   made: [1] Player;
   p := made[0];
-  print("constructed: on_ground %, camera % m out at phi %, pace %, grip %\n", p.on_ground, p.dist, p.phi, p.pace, p.grip);
-  print("constructed clock: step % ns, clamp % ns, at most % steps\n", p.clock.step_ns, p.clock.max_frame_ns, p.clock.max_steps);
-  zeroed := p.clock;
+  print("constructed: on_ground %, camera % m out at phi %, pace %, grip %\n", p.body.on_ground, p.cam.dist, p.cam.phi, p.body.pace, p.body.grip);
+  print("constructed clock: step % ns, clamp % ns, at most % steps\n", p.body.clock.step_ns, p.body.clock.max_frame_ns, p.body.clock.max_steps);
+  zeroed := p.body.clock;
   zeroed.step_ns = 0; zeroed.max_frame_ns = 0; zeroed.max_steps = 0;   // as zeroed memory reads it
   k := loop_frame(zeroed, 1.0 / 64.0);
-  ok := loop_frame(p.clock, 1.0 / 64.0);
+  ok := loop_frame(p.body.clock, 1.0 / 64.0);
   print("one 1/64 s frame, constructed clock: steps %, clamp % ns\n", ok.steps, ok.clock.max_frame_ns);
   print("one 1/64 s frame, zeroed clock:      steps %, clamp % ns\n", k.steps, k.clock.max_frame_ns);
   s := loop_frame(zeroed, 3.0);

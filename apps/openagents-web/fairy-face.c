@@ -229,7 +229,7 @@ static bool progress_message(uint32_t state, int32_t kind, uint32_t length) {
 // Where you are, kept so a reload puts you back (place-face.h).
 static coax_t_Place place_here(uint32_t state) {
   if (!placed) return (coax_t_Place){0};
-  return fairy_place_of(at(state), player.pos.x, player.pos.y, player.pos.z, verse_player_face(player));
+  return fairy_place_of(at(state), player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player));
 }
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = fairy_place_fix(at(state), p);
@@ -249,7 +249,7 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_fairy_uniform_floats(); }
 
 // How high you fly, for a headless touch check (globalThis.coaxial.probe()): your feet in millimetres.
-EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) { (void)state; return (int32_t)(player.pos.y * 1000.0f); }
+EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) { (void)state; return (int32_t)(player.body.pos.y * 1000.0f); }
 
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
@@ -276,11 +276,11 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // up, as many as you like (on the ground the player's jump lifts you); between beats you
   // glide down; held, she keeps beating and climbs; Shift in the air dives. In the water, or
   // with flight off for visitors (SETTINGS), there are no wings.
-  int64_t beats_were = player.beats, jumps_were = (int64_t)player.jumps.pressed;
-  bool grounded = player.on_ground;
+  int64_t beats_were = player.body.beats, jumps_were = (int64_t)player.body.jumps.pressed;
+  bool grounded = player.body.on_ground;
   player = verse_player_v2_flying(control(), player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
                                      jump && !afloat, afloat ? 0 : taps, fairy_may_fly(at(state)) && !afloat, g->run && !afloat);
-  player.pace = swim.pace;
+  player.body.pace = swim.pace;
   verse_player_v2_heading(control(), player, fairy_player_theta(at(state)));
 
   if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
@@ -289,30 +289,30 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"fairy-forest", sizeof "fairy-forest" - 1}).player;
   coax_t_Vec3 feet = verse_player_feet(player);
-  bool pressed = (int64_t)player.jumps.pressed != jumps_were;
+  bool pressed = (int64_t)player.body.jumps.pressed != jumps_were;
   /* a flap, for the wings and the count: a beat the steps took, or a press from the ground or with wings */
-  bool beat = player.beats != beats_were || (pressed && (grounded || fairy_may_fly(at(state))));
-  bool diving = player.diving;
+  bool beat = player.body.beats != beats_were || (pressed && (grounded || fairy_may_fly(at(state))));
+  bool diving = player.body.diving;
   if (beat) flap_phase = 1.5708f + 6.2832f * (float)(int)(flap_phase / 6.2832f + 1.0f);   /* wings to the top, then the downstroke */
   coax_v_f32 heights = {g->heights.e, fairy_heights(at(state))};
   fairy_stream_drop(sv(), heights, fairy_pond_drop(at(state)));   /* the pond: low until filled (fairypond.coax) */
   /* on a bridge's deck you stand over the water by the deck's height (fairypark.coax walk_at) */
-  swim = fairy_stream_swim(sv(), heights, player.pos.x, player.pos.z, feet.y + fairy_deck_lift(at(state), feet.x, feet.z), false, dt, now);
+  swim = fairy_stream_swim(sv(), heights, player.body.pos.x, player.body.pos.z, feet.y + fairy_deck_lift(at(state), feet.x, feet.z), false, dt, now);
   // the wings: a slow beat standing, a full stroke after each press, fast strokes while you climb, a flutter as you glide
-  flap_phase += dt * (player.on_ground ? 3.0f : jump ? 22.0f : 11.0f);
+  flap_phase += dt * (player.body.on_ground ? 3.0f : jump ? 22.0f : 11.0f);
   if (diving) flap_phase = 4.7124f;   /* sin = -1: the wings held down */
   if (flap_phase > 6283.0f) flap_phase -= 6283.1853f;
   int64_t floats = fairy_stream_floats(sv(), dt, (coax_v_f32){pads, 7 * 8});
   bool small = fairy_phone(at(state));
   fairy_water(at(state), swim.medium, fairy_stream_vertices(small), fairy_stream_patches(sv()), (coax_v_f32){pads, 7 * 8}, floats);
   // in the water you are drawn at its float line; else at the ground plus how high you fly
-  float air = player.on_ground ? 0.0f : feet.y;   /* standing (on the ground or a crown) is not flying */
+  float air = player.body.on_ground ? 0.0f : feet.y;   /* standing (on the ground or a crown) is not flying */
   float lift = feet.y;
   if (swim.medium >= 2) lift = swim.feet - fairy_ground(at(state), feet.x, feet.z);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_fairy_max_vertices() * coaxial_fairy_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_fairy_uniform_floats()};
   int64_t n = fairy_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, lift, feet.z, verse_player_face(player),
-                          verse_player_act(player), player.vel.x, player.vel.z, air, flap_phase,
+                          verse_player_act(player), player.body.vel.x, player.body.vel.z, air, flap_phase,
                           sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   if (n > 0) {
     int64_t at_water = fairy_water_at();
@@ -501,7 +501,7 @@ static void social_frame(uint32_t state, float dt) {
   room_at = now;
   int64_t un = room_url(ffs_room(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
   coax_t_Vec3 feet = verse_player_feet(player);
-  float air = player.on_ground ? 0.0f : feet.y;
+  float air = player.body.on_ground ? 0.0f : feet.y;
   int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), f->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
   if (un <= 0 || bn <= 0) return;
   room_ask = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);

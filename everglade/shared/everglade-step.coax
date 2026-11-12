@@ -21,12 +21,12 @@
 #load "../../aethyr/physics/collision-profiles.coax" as link_collision;
 #load "../../verse/ocarina/locomotion.coax" as link_motion;
 
-eg_step_body :: (p: walk.Player) -> EgBody #export_c #effects(reads, writes, traps) {
+eg_step_body :: (p: walk.Body) -> EgBody #export_c #effects(reads, writes, traps) {
   return EgBody.{x = p.pos.x, y = p.pos.y, z = p.pos.z, px = p.prev_pos.x, py = p.prev_pos.y, pz = p.prev_pos.z,
                  vx = p.vel.x, vy = p.vel.y, vz = p.vel.z, ground = p.on_ground, air = p.act == walk.Act.airborne,
                  show_vx = p.vel.x, show_vz = p.vel.z};
 }
-eg_step_put :: (p0: walk.Player, b: EgBody) -> walk.Player #export_c #effects(reads, writes, traps) {
+eg_step_put :: (p0: walk.Body, b: EgBody) -> walk.Body #export_c #effects(reads, writes, traps) {
   p := p0;
   p.pos = walk.Vec3.{x = b.x, y = b.y, z = b.z}; p.prev_pos = walk.Vec3.{x = b.px, y = b.py, z = b.pz};
   p.vel = walk.Vec3.{x = b.vx, y = b.vy, z = b.vz}; p.on_ground = b.ground;
@@ -41,17 +41,17 @@ eg_step_world :: (w0:EgMoveWorld,input:EgMoveIn)->EgMoveWorld #export_c #effects
 // book:begin shared-step
 // Before the advance: a blast's throw into your velocity; held or busy, no input of yours; your input;
 // prone or caught, still; the pace and grip; the camera's yaw; a fork's low gravity while you're up.
-eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> walk.Player #export_c #effects(reads, writes, traps) {
+eg_step_begin :: (p0: walk.Body, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> walk.Body #export_c #effects(reads, writes, traps) {
   p := p0;
   if w.kx != 0 || w.ky != 0 || w.kz != 0 {
     p.vel.x += w.kx; p.vel.z += w.kz;
     if w.ky > 0 { p.vel.y = ifx w.ky > p.vel.y then w.ky else p.vel.y; p.on_ground = false; }
   }
-  if w.busy || w.still { p = walk.walk_input(p, 0, 0, 0, 0, false, false, 0, 0); }
-  else { p = walk.walk_input(p, input.key_x, input.key_y, input.pad_x, input.pad_y, input.run, input.jump && w.jump_ok, 0, 0); }
+  if w.busy || w.still { p = walk.body_input(p, 0, 0, 0, 0, false, false, p.yaw); }
+  else { p = walk.body_input(p, input.key_x, input.key_y, input.pad_x, input.pad_y, input.run, input.jump && w.jump_ok, p.yaw); }
   if (w.link_flags & 512) != 0 && !w.busy && !w.still { p.key_x = 0; p.key_y = 1; p.pad_x = 0; p.pad_y = 0; p.run = true; }
   p.pace = w.pace; p.grip = w.grip;
-  p.theta = input.theta;
+  p.yaw = input.theta;   // the view's yaw from the wire: the step's input
   if (w.link_flags&32)!=0 {p.pace*=link_motion.ocl_input_pace(p.key_x,p.key_y,p.pad_x,p.pad_y);}
   if (w.link_flags&128)!=0 {
     p.face=input.theta;
@@ -65,11 +65,11 @@ eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> 
 // The advance: in a rowboat you sit where it seats you; else the controller among the world's bodies
 // (the city's and the rowboats' hulls), walls and floors. Over the fountain's lip only its column
 // stands in your way, so you stand on the lip.
-eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, frame: f32) -> walk.Player #export_c #effects(reads, writes, traps) {
+eg_step_advance :: (p0: walk.Body, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, frame: f32) -> walk.Body #export_c #effects(reads, writes, traps) {
   return eg_step_advance_among(p0, w, bodies, walls, floors, floors[0..<0], frame);
 }
 // The same among hulls too (aethyr/physics/query.coax): Everglade II's rocks, each its mesh's own shape.
-eg_step_advance_among :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, hulls: [] f32, frame: f32) -> walk.Player #export_c #effects(reads, writes, traps) {
+eg_step_advance_among :: (p0: walk.Body, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, hulls: [] f32, frame: f32) -> walk.Body #export_c #effects(reads, writes, traps) {
   p := p0;
   if w.aboard {
     p.pos.x = w.seat_x; p.pos.z = w.seat_z; p.prev_pos = p.pos;
@@ -81,7 +81,7 @@ eg_step_advance_among :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls
   if (w.link_flags&32)!=0 {
     profile:=link_collision.collision_profile_lookup("ocarina-lab");
     world:=walk.World.{bodies=bodies,walls=walls,floors=floors,hulls=hulls,collision=profile.profile,locomotion=link_motion.ocl_locomotion(link_motion.OCL_WALK_SPEED,link_motion.OCL_RUN_SPEED,(w.link_flags&128)!=0,(w.link_flags&256)!=0,(w.link_flags&64)!=0)};
-    p=walk.advance_in(world,p,frame);
+    p=walk.body_advance_in(world,p,frame);
     if (w.link_flags&128)!=0 {p.face=w.link_yaw;if p.on_ground {p.vel.x=0;p.vel.z=0;}}
     if (w.link_flags&64)!=0 {p.face=w.link_yaw-walk.PI;}
     return p;
@@ -91,9 +91,9 @@ eg_step_advance_among :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls
     world := walk.World.{bodies = bodies, walls = walls, floors = floors, hulls = hulls, collision = profile.profile};
     // Stay within the realm's admitted maximum travel per fixed collision step.
     world.locomotion.run_speed = 9.2;
-    return walk.advance_in(world, p, frame);
+    return walk.body_advance_in(world, p, frame);
   }
-  return walk.walk_advance_among_hulls(p, frame, bodies, walls, floors, hulls, "everglade");
+  return walk.body_advance_among_hulls(p, frame, bodies, walls, floors, hulls, "everglade");
 }
 // The wire's CARRY (seconds, a tenth of a millisecond: the server's leftover cut down to its tenth) as
 // the controller's leftover, nanoseconds. The room's 1/30 s step leaves the 1/64 s controller one of
@@ -115,14 +115,14 @@ eg_step_carry_ns :: (carry: f32) -> int #export_c #effects(reads, writes, traps)
   return ifx ns < 0 then 0 else ifx ns >= LOOP_STEP_NS then LOOP_STEP_NS - 1 else ns;
 }
 // The controller's leftover step time, seconds (the wire's CARRY).
-eg_step_carry :: (p: walk.Player) -> f32 #export_c #effects(reads, writes, traps) { return f32(p.clock.carry_ns) / 1.0e9; }
+eg_step_carry :: (p: walk.Body) -> f32 #export_c #effects(reads, writes, traps) { return f32(p.clock.carry_ns) / 1.0e9; }
 // You as the room server has you after an input (the wire's p entry for your seat): the start the
 // page re-runs its later inputs from. jump: that input's jump, held or not, as the server's controller
 // last saw it, with no press waiting: a re-run of the press after it jumps as the server did. (The
 // page's own jump, still held from a later input, would make the re-run's press no rise, so the re-run
 // would drop you back to the ground and the server's next word would throw you up again.) The act
 // follows the ground: on it you stand until the re-run's step says how you move.
-eg_step_set :: (p0: walk.Player, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, ground: bool, carry: f32, jump: bool) -> walk.Player #export_c #effects(reads, writes, traps) {
+eg_step_set :: (p0: walk.Body, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, ground: bool, carry: f32, jump: bool) -> walk.Body #export_c #effects(reads, writes, traps) {
   p := p0;
   // where the last fixed step began moves with you, so the feet drawn between the two (walk_feet, by the
   // leftover) stay where they were when the server agrees; set on you, a word on the input the page
@@ -145,10 +145,10 @@ eg_step_set :: (p0: walk.Player, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: 
 // controller runs two or three of its steps in each 1/30 s room step, so its raw position moves 31 or
 // 47 ms a step and a draw between those stutters (every few steps the body runs on and jumps back);
 // its feet, between its last two steps by its leftover time, move 33 ms each step.
-eg_step_feet :: (p: walk.Player) -> walk.Vec3 #export_c #effects(reads, writes, traps) { return walk.walk_feet(p); }
-eg_step_drawn :: (from: walk.Vec3, p: walk.Player, ahead: f32) -> walk.Vec3 #export_c #effects(reads, writes, traps) {
+eg_step_feet :: (p: walk.Body) -> walk.Vec3 #export_c #effects(reads, writes, traps) { return walk.body_feet(p); }
+eg_step_drawn :: (from: walk.Vec3, p: walk.Body, ahead: f32) -> walk.Vec3 #export_c #effects(reads, writes, traps) {
   a := ifx ahead > 0 then (ifx ahead < 1 then ahead else 1.0f32) else 0.0f32;
-  to := walk.walk_feet(p);
+  to := walk.body_feet(p);
   return walk.Vec3.{x = from.x + (to.x - from.x) * a, y = from.y + (to.y - from.y) * a, z = from.z + (to.z - from.z) * a};
 }
 
@@ -158,7 +158,7 @@ eg_step_drawn :: (from: walk.Vec3, p: walk.Player, ahead: f32) -> walk.Vec3 #exp
 EG_TEST_STEP :: 1.0 / 30.0;
 eg_test_world :: () -> EgMoveWorld #effects(reads, writes, traps) { w: EgMoveWorld; return w; }
 // One room step of input (ahead key_y, jump) on p, the page's and the server's order.
-eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effects(reads, writes, traps) {
+eg_test_step :: (p0: walk.Body, key_y: f32, jump: bool) -> walk.Body #effects(reads, writes, traps) {
   w := eg_test_world();
   none: [1] f32;
   p := eg_step_begin(p0, EgMoveIn.{key_y = key_y, run = true, jump = jump}, w, f32(EG_TEST_STEP));
@@ -167,7 +167,7 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
 }
 
 #test "step: a jump while running lands, and the run's walk comes back (the air pose ends)" {
-  p := walk.walk_place(0, 0, 0, 0);
+  p := walk.body_place(0, 0, 0, 0);
   for k: 0..<20 { p = eg_test_step(p, 1, false); }
   #assert p.on_ground && p.act == walk.Act.running;
   p = eg_test_step(p, 1, true);
@@ -187,7 +187,7 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
 
 #test "step: the server's word mid-jump: the re-run jumps as the server did, not from the page's held key" {
   // the server stepped input 1 (the press) and the page has stepped inputs 1..4, the key still down
-  start := walk.walk_place(0, 0, 0, 0);
+  start := walk.body_place(0, 0, 0, 0);
   for k: 0..<10 { start = eg_test_step(start, 1, false); }
   page := start;
   for k: 0..<4 { page = eg_test_step(page, 1, true); }
@@ -210,7 +210,7 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
 }
 
 #test "step: drawn between room steps, a steady run moves the same each frame (no 31/47 ms stutter)" {
-  p := walk.walk_place(0, 0, 0, 0);
+  p := walk.body_place(0, 0, 0, 0);
   for k: 0..<30 { p = eg_test_step(p, 1, false); }
   // 60 Hz frames: a room step every second frame, drawn at ahead 0 and 0.5
   last := eg_step_feet(p);
@@ -239,7 +239,7 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
 #test "step: the server's word through the wire's tenth of a millisecond: every re-run steps as the server did" {
   // the server's seat from its placing (leftover 0), a steady run; at each of 45 steps the page starts
   // again from the server's word as the wire carries it and both step the next input
-  server := walk.walk_place(0, 0, 0, 0);
+  server := walk.body_place(0, 0, 0, 0);
   worst := 0.0f32;
   for k: 0..<45 {
     server = eg_test_step(server, 1, false);
@@ -255,7 +255,7 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
 }
 
 #test "step: the server's word on the input just stepped (nothing to re-run) leaves the drawn feet where they were" {
-  p := walk.walk_place(0, 0, 0, 0);
+  p := walk.body_place(0, 0, 0, 0);
   for k: 0..<20 { p = eg_test_step(p, 1, false); }
   before := eg_step_feet(p);
   same := eg_step_set(p, p.pos.x, p.pos.y, p.pos.z, p.face, p.vel.x, p.vel.y, p.vel.z, p.on_ground, f32(p.clock.carry_ns / 100000) / 10000.0, false);
@@ -264,23 +264,23 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
 }
 
 #test "step: Link uses Lab launch and source speeds on both prediction and room replay" {
- p:=walk.walk_place(0,0,0,0);none:[1]f32;w:=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=32,key_y=1,theta=0});
+ p:=walk.body_place(0,0,0,0);none:[1]f32;w:=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=32,key_y=1,theta=0});
  for k:0..<64 {p=eg_step_begin(p,EgMoveIn.{link_flags=32,key_y=1,theta=0},w,1.0f32/64);p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);}
  #assert p.pos.z< -0.58 && p.pos.z> -0.7;
- p=walk.walk_place(0,0,0,0);peak:f32=0;w=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=288,jump=true});
+ p=walk.body_place(0,0,0,0);peak:f32=0;w=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=288,jump=true});
  for k:0..<100 {p=eg_step_begin(p,EgMoveIn.{link_flags=288,jump=k==0},w,1.0f32/64);p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);peak=walk.hi(peak,p.pos.y);}
  #assert peak>0.66 && peak<0.71 && p.on_ground;
 }
 
 #test "step: Link backflip launches at source speed and keeps captured facing across camera input" {
- p:=walk.walk_place(0,0,0,0);i:=EgMoveIn.{key_y=1,jump=true,link_flags=160,theta=0.7};w:=eg_step_world(EgMoveWorld.{},i);p=eg_step_begin(p,i,w,1.0f32/64);
+ p:=walk.body_place(0,0,0,0);i:=EgMoveIn.{key_y=1,jump=true,link_flags=160,theta=0.7};w:=eg_step_world(EgMoveWorld.{},i);p=eg_step_begin(p,i,w,1.0f32/64);
  #assert !p.on_ground && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)>6.79999 && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)<6.80001 && p.vel.y>2.9 && p.face==0.7;
  none:[1]f32;for k:0..<32 {p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);}#assert p.on_ground && p.face==0.7 && p.vel.x==0 && p.vel.z==0;
 }
 
 #test "experimental dash runs forward faster and cannot pass a wall" {
   empty: [1] f32; walls := [6] f32.[-3, 0, 2, 3, 3, 2.2];
-  normal := walk.walk_place(0, 0, 0, 0); dash := normal;
+  normal := walk.body_place(0, 0, 0, 0); dash := normal;
   i := EgMoveIn.{key_y = 1, run = true, theta = walk.PI}; di := EgMoveIn.{key_y = 1, run = true, theta = walk.PI, link_flags = 512};
   w := eg_step_world(EgMoveWorld.{}, i); dw := eg_step_world(EgMoveWorld.{}, di);
   for k: 0..<40 {
@@ -288,14 +288,14 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
     dash = eg_step_advance(eg_step_begin(dash, di, dw, 1.0f32 / 64), dw, empty[0..<0], empty[0..<0], empty[0..<0], 1.0f32 / 64);
   }
   #assert dash.pos.z > normal.pos.z + 0.5;
-  dash = walk.walk_place(0, 0, 0, 0);
+  dash = walk.body_place(0, 0, 0, 0);
   for k: 0..<64 { dash = eg_step_advance(eg_step_begin(dash, di, dw, 1.0f32 / 64), dw, empty[0..<0], walls[..], empty[0..<0], 1.0f32 / 64); }
-  #assert dash.pos.z > 1 && dash.pos.z < 2 && walk.walk_collision_refusals(dash) == 0;
+  #assert dash.pos.z > 1 && dash.pos.z < 2 && dash.collision_refusals == 0;
 }
 
 // A step at a pace scale, for Everglade's Dash (everglade/dash.coax on aethyr/action/sprint.coax), through the controller as
 // fivelab-face.c steps it: the sprint's pace is the scale, on link flag 512. Speed 30: 9.144 m over a 7.5 m/s run.
-eg_test_scaled_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f32, scale: f32) -> walk.Player #effects(all) {
+eg_test_scaled_step :: (p: walk.Body, i: EgMoveIn, w: EgMoveWorld, walls: [] f32, scale: f32) -> walk.Body #effects(all) {
   empty: [1] f32; f := 1.0f32 / 64;
   return eg_step_advance_jump(eg_step_begin(p, i, w, f), w, empty[0..<0], walls, empty[0..<0], f, scale, EgJump.{});
 }
@@ -303,7 +303,7 @@ eg_test_scaled_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f
   none: [1] f32;
   i := EgMoveIn.{key_y = 1, run = true, theta = walk.PI}; di := EgMoveIn.{key_y = 1, run = true, theta = walk.PI, link_flags = 512};
   w := eg_step_world(EgMoveWorld.{}, i); dw := eg_step_world(EgMoveWorld.{}, di);
-  run := walk.walk_place(0, 0, 0, 0);
+  run := walk.body_place(0, 0, 0, 0);
   for k: 0..<64 { run = eg_test_scaled_step(run, i, w, none[0..<0], 1); }   // already running, 7.5 m/s
   dash := run; start := run.pos.z; peak: f32 = 0; g := sprint.sprint_gain(9.144, 7.5);
   for k: 0..<128 {   // two seconds: the sprint's 1.8 and a little after
@@ -318,20 +318,20 @@ eg_test_scaled_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f
   #assert abs(dash.vel.z - run.vel.z) < 0.05 && sprint.sprint_shape(f32(sprint.SPRINT_SECONDS)) == 0;   // and back to the run when it ends
   // a wall 6 m ahead: the sprint stops at it, every step admitted
   wall := [6] f32.[-3, 0, 6, 3, 3, 6.4];
-  p := walk.walk_place(0, 0, 0, 0);
+  p := walk.body_place(0, 0, 0, 0);
   for k: 0..<128 {
     p = eg_test_scaled_step(p, di, dw, wall[..], sprint.sprint_rate(f32(k) / 64, g));
     #assert p.collision_status == scaled_collision.CollideStatus.ok && p.pos.z < 6;
   }
-  #assert p.pos.z > 5.3 && walk.walk_collision_refusals(p) == 0;
+  #assert p.pos.z > 5.3 && p.collision_refusals == 0;
 }
 
 // Experimental combat's proportional walking rate. This is an opt-in native
 // surface; the ordinary shared/replayed controller export remains unchanged.
-eg_step_advance_scaled :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32)->walk.Player #export_c #effects(reads,writes,traps) {
+eg_step_advance_scaled :: (p0:walk.Body,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32)->walk.Body #export_c #effects(reads,writes,traps) {
   return eg_step_advance_jump(p0,w,bodies,walls,floors,frame,scale,EgJump.{});
 }
-eg_step_advance_jump :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32,jump:EgJump)->walk.Player #export_c #effects(reads,writes,traps) {
+eg_step_advance_jump :: (p0:walk.Body,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32,jump:EgJump)->walk.Body #export_c #effects(reads,writes,traps) {
   p:=p0;
   if jump.mode==EG_JUMP_DENIED { p.jumps.waiting=0; }
   shaped:=jump.mode==EG_JUMP_HIGH || jump.mode==EG_JUMP_LONG;
@@ -339,14 +339,14 @@ eg_step_advance_jump :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,f
   // the scale, the sprint over the run, in as many collision steps as it needs
   if scale==1 && !shaped && (w.link_flags&512)==0 { return eg_step_advance(p,w,bodies,walls,floors,frame); }
   if !walk.finite(scale) || scale<0 || w.aboard || (w.link_flags&32)!=0 {
-    return walk.collision_report(p0,scaled_collision.CollideResult.{status=scaled_collision.CollideStatus.bad_profile});
+    return walk.body_collision_report(p0,scaled_collision.CollideResult.{status=scaled_collision.CollideStatus.bad_profile});
   }
   if scale==0 { p.vel.x=0; p.vel.z=0; }
   profile:=link_collision.collision_profile_lookup("everglade");
   world:=walk.World.{bodies=bodies,walls=walls,floors=floors,collision=profile.profile};
   if !w.deck && bodies.count>=7 && p.pos.y>0.6 { bodies[4]=1.9; bodies[6]=0.62; }
   world.locomotion.walk_speed*=scale; world.locomotion.run_speed*=scale;
-  if shaped && walk.walk_counts(p,frame)>0 {
+  if shaped && walk.body_counts(p,frame)>0 {
     launch:=p.on_ground && p.jumps.waiting>0;
     if jump.mode==EG_JUMP_HIGH {
       world.locomotion.jump_speed=sqrt(2*world.locomotion.gravity*jump.height);
@@ -359,17 +359,17 @@ eg_step_advance_jump :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,f
       world.locomotion.walk_speed=speed;
       world.locomotion.run_speed=speed;
       if launch {
-        direction:=walk.wish(p);
+        direction:=walk.body_wish(p);
         p.vel.x=direction.x*speed;
         p.vel.z=direction.z*speed;
       }
     }
   }
-  return walk.advance_scaled_in(world,p,frame);
+  return walk.body_advance_scaled_in(world,p,frame);
 }
 #test "combat walking rate speeds and slows actual motion while keeping the same controller clock" {
   w:=EgMoveWorld.{deck=true}; empty:[1]f32;
-  base:=walk.walk_input(walk.walk_place(0,0,0,0),0,1,0,0,true,false,0,0); fast:=base; slow:=base;
+  base:=walk.body_input(walk.body_place(0,0,0,0),0,1,0,0,true,false,f32(walk.PI)); fast:=base; slow:=base;
   for i:0..<64 {
     base=eg_step_advance_scaled(base,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),1);
     fast=eg_step_advance_scaled(fast,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),2);
@@ -381,7 +381,7 @@ eg_step_advance_jump :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,f
 }
 
 #test "combat walking rate refuses unsupported profiles and stops horizontal motion at zero" {
-  p:=walk.walk_input(walk.walk_place(0,0,0,0),0,1,0,0,true,false,0,0); p.vel.z=7.5;
+  p:=walk.body_input(walk.body_place(0,0,0,0),0,1,0,0,true,false,f32(walk.PI)); p.vel.z=7.5;
   empty:[1]f32; zero:f32=0;
   for mode:0..<5 {
     w:=EgMoveWorld.{deck=true}; rate:f32=2;
@@ -468,7 +468,7 @@ eg_contact_clear :: (bodies:[] f32,fx:f32,fy:f32,fz:f32,tx:f32,ty:f32,tz:f32)->b
 #test "SRD jump envelopes reach their physical height and length through the fixed controller" {
   w:=EgMoveWorld.{deck=true}; empty:[1]f32;
   for mode:EG_JUMP_DENIED..<EG_JUMP_LONG+1 {
-    p:=walk.walk_place(0,0,0,0);
+    p:=walk.body_place(0,0,0,0);
     jump:=EgJump.{mode=mode,height=0.9144,span=2.4384};
     peak:=0.0f32;
     for tick:0..<64 {

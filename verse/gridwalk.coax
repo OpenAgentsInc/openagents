@@ -63,24 +63,24 @@ gw_session :: (g: [] GridWalk) -> ReplaySession #effects(all) {
 // Profile 2 hashes the supported canonical player/input fields, including collision and
 // query diagnostics. The profile is part of that digest; profile 1's records are refused.
 gw_digest :: (p: pc.Player, b: InputBuffer, profile: int) -> int #effects(all) {
-  floats := [20] f32.[p.pos.x, p.pos.y, p.pos.z, p.vel.x, p.vel.y, p.vel.z, p.face, p.theta, p.phi, p.dist,
-    p.max_dist, p.target.x, p.target.y, p.target.z, p.spring_vel.x, p.spring_vel.y, p.spring_vel.z,
+  floats := [20] f32.[p.body.pos.x, p.body.pos.y, p.body.pos.z, p.body.vel.x, p.body.vel.y, p.body.vel.z, p.body.face, p.cam.theta, p.cam.phi, p.cam.dist,
+    p.cam.max_dist, p.cam.target.x, p.cam.target.y, p.cam.target.z, p.cam.spring_vel.x, p.cam.spring_vel.y, p.cam.spring_vel.z,
     b.look_x, b.look_y, b.zoom];
   h := 2166136261;
   for k: 0..<20 { h = replay_mix(h, replay_bits(floats[k])); }
   h = replay_mix(h, replay_bits(b.move_x)); h = replay_mix(h, replay_bits(b.move_y));
-  h = replay_mix(h, replay_flag(p.on_ground)); h = replay_mix(h, replay_flag(p.sliding)); h = replay_mix(h, replay_flag(b.run));
-  h = replay_mix(h, cast(int) cast(u8) p.act); h = replay_mix(h, p.jumps.waiting); h = replay_mix(h, b.jump.waiting);
+  h = replay_mix(h, replay_flag(p.body.on_ground)); h = replay_mix(h, replay_flag(p.body.sliding)); h = replay_mix(h, replay_flag(b.run));
+  h = replay_mix(h, cast(int) cast(u8) p.body.act); h = replay_mix(h, p.body.jumps.waiting); h = replay_mix(h, b.jump.waiting);
   h = replay_mix(h, b.steps_left);
   h = replay_mix(h, profile);
-  h = replay_mix(h, cast(int) cast(u8) p.collision_status);
-  h = replay_mix(h, cast(int) (p.collision_refusals & 4294967295));
-  h = replay_mix(h, cast(int) (p.collision_refusals >> 32));
-  h = replay_mix(h, replay_bits(p.collision_residual));
-  h = replay_mix(h, p.collision_passes);
-  h = replay_mix(h, replay_flag(p.collision_floor_cut));
-  h = replay_mix(h, cast(int) cast(u8) p.query_status);
-  return replay_mix(h, cast(int) cast(u8) p.camera_query_status);
+  h = replay_mix(h, cast(int) cast(u8) p.body.collision_status);
+  h = replay_mix(h, cast(int) (p.body.collision_refusals & 4294967295));
+  h = replay_mix(h, cast(int) (p.body.collision_refusals >> 32));
+  h = replay_mix(h, replay_bits(p.body.collision_residual));
+  h = replay_mix(h, p.body.collision_passes);
+  h = replay_mix(h, replay_flag(p.body.collision_floor_cut));
+  h = replay_mix(h, cast(int) cast(u8) p.body.query_status);
+  return replay_mix(h, cast(int) cast(u8) p.cam.query_status);
 }
 gridwalk_digest :: (g: [] GridWalk) -> int #export_c #effects(all) { return gw_digest(g[0].you, g[0].input, g[0].profile); }
 
@@ -97,12 +97,12 @@ gridwalk_place :: (g: [] GridWalk, x: f32, z: f32, face: f32, phi: f32, dist: f3
   if g.count < 1 { return; }
   g[0].profile = GW_PROFILE;
   p := pc.walk_place(x, 0, z, face);
-  p.phi = phi;
-  p.max_dist = dist; p.dist = dist; p.prev_dist = dist;
+  p.cam.phi = phi;
+  p.cam.max_dist = dist; p.cam.dist = dist; p.cam.prev_dist = dist;
   g[0].you = p;
   g[0].input = InputBuffer.{};
   g[0].thumbs = Sticks.{};
-  g[0].prev_theta = p.theta; g[0].prev_phi = p.phi;
+  g[0].prev_theta = p.cam.theta; g[0].prev_phi = p.cam.phi;
   g[0].records = 0;
   gw_begin(g);
 }
@@ -128,9 +128,9 @@ gw_step :: (g: [] GridWalk) #effects(all) {
   g[0].input = sm.buffer;
   a := sm.actions;
   p := pc.walk_input(g[0].you, 0, 0, a.move_x, a.move_y, a.run, false, a.look_x, a.look_y);
-  if a.jump { p.jumps = input_press(p.jumps); }
+  if a.jump { p.body.jumps = input_press(p.body.jumps); }
   p = pc.walk_zoom(p, a.zoom);
-  g[0].prev_theta = g[0].you.theta; g[0].prev_phi = g[0].you.phi;
+  g[0].prev_theta = g[0].you.cam.theta; g[0].prev_phi = g[0].you.cam.phi;
   w := gw_world();
   g[0].you = pc.steps_in(w, p, 1);
   replay_stepped(s, gridwalk_digest(g));
@@ -162,7 +162,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
   g[0].now += cast(f64) pc.hi(ifx pc.finite(dt) then dt else 0, 0);
   if frozen { g[0].thumbs = verse_sticks_used(g[0].thumbs); return; }
   s := gw_session(g);
-  clock := loop_accept(g[0].you.clock, cast(f64) dt);
+  clock := loop_accept(g[0].you.body.clock, cast(f64) dt);
   steps := loop_due(clock);
   if replay_events(s) >= GW_EVENTS || replay_tick(s) + steps > GW_MARKS {
     gw_take(g, s);   // frames still waiting for a step go into the new record's start
@@ -172,7 +172,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
   v := replay_offer(s, e);
   g[0].thumbs = verse_sticks_used(g[0].thumbs);
   for k: 0..<steps { gw_step(g); }
-  g[0].you.clock = loop_ran(clock);
+  g[0].you.body.clock = loop_ran(clock);
 }
 // book:end gridwalk-frame
 
@@ -199,7 +199,7 @@ gridwalk_pinch :: (g: [] GridWalk) -> f32 #export_c #effects(all) { return ifx g
 
 // book:begin gridwalk-drawn
 // Where to draw: between the last two steps, the camera's turn included.
-gw_alpha :: (g: [] GridWalk) -> f32 #effects(all) { return loop_alpha(g[0].you.clock); }
+gw_alpha :: (g: [] GridWalk) -> f32 #effects(all) { return loop_alpha(g[0].you.body.clock); }
 gridwalk_feet :: (g: [] GridWalk) -> pc.Vec3 #export_c #effects(all) { return pc.walk_feet(g[0].you); }
 gridwalk_face :: (g: [] GridWalk) -> f32 #export_c #effects(all) { return pc.walk_face(g[0].you); }
 gridwalk_act :: (g: [] GridWalk) -> int #export_c #effects(all) { return pc.walk_act(g[0].you); }
@@ -207,8 +207,8 @@ gridwalk_at :: (g: [] GridWalk) -> pc.Vec3 #export_c #effects(all) { return pc.w
 gridwalk_eye :: (g: [] GridWalk) -> pc.Vec3 #export_c #effects(all) {
   p := g[0].you;
   a := gw_alpha(g);
-  p.theta = pc.wrap_angle(g[0].prev_theta + pc.wrap_angle(p.theta - g[0].prev_theta) * a);
-  p.phi = g[0].prev_phi + (p.phi - g[0].prev_phi) * a;
+  p.cam.theta = pc.wrap_angle(g[0].prev_theta + pc.wrap_angle(p.cam.theta - g[0].prev_theta) * a);
+  p.cam.phi = g[0].prev_phi + (p.cam.phi - g[0].prev_phi) * a;
   return pc.walk_eye(p);
 }
 // book:end gridwalk-drawn
@@ -246,9 +246,9 @@ gridwalk_probe :: (g: [] GridWalk, field: int) -> int #export_c #effects(all) {
   if g.count < 1 || field < 0 || field >= 10 { return -1; }
   p := g[0].you;
   values := [10] int.[gridwalk_steps(g),gridwalk_session(g),gridwalk_digest(g),
-    g[0].records,g[0].profile,p.jumps.taken,replay_flag(p.on_ground),
-    cast(int) p.collision_refusals,cast(int) cast(u8) p.query_status,
-    cast(int) cast(u8) p.camera_query_status];
+    g[0].records,g[0].profile,p.body.jumps.taken,replay_flag(p.body.on_ground),
+    cast(int) p.body.collision_refusals,cast(int) cast(u8) p.body.query_status,
+    cast(int) cast(u8) p.cam.query_status];
   return values[field];
 }
 // The interpolated world-space feet, eye, target and facing, in that order.
@@ -271,20 +271,20 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   w.bodies = bodies[..]; w.walls = walls[..];
   p := pc.walk_place(0.4, 0, 0, 0);
   q := pc.step(w, p, pc.STEP);
-  #assert q.collision_status == walk_capsule.CollideStatus.unresolved && q.collision_passes == 3;
-  #assert q.pos.x == p.pos.x && q.pos.y == p.pos.y && q.pos.z == p.pos.z;
+  #assert q.body.collision_status == walk_capsule.CollideStatus.unresolved && q.body.collision_passes == 3;
+  #assert q.body.pos.x == p.body.pos.x && q.body.pos.y == p.body.pos.y && q.body.pos.z == p.body.pos.z;
   w.collision.max_passes = 1;
   limited := pc.step(w, p, pc.STEP);
-  #assert limited.collision_status == walk_capsule.CollideStatus.unresolved && limited.collision_passes == 1;
+  #assert limited.body.collision_status == walk_capsule.CollideStatus.unresolved && limited.body.collision_passes == 1;
 }
 
 #test "placed: you stand where the page puts you, the camera behind, and the record starts there" {
   g: [1] GridWalk; gw_new(g[..]);
   f := gridwalk_feet(g[..]);
-  #assert f.x == 28 && f.y == 0 && f.z == 28 && g[0].you.phi == 1.35 && g[0].you.max_dist == 9 && g[0].you.dist == 9 && g[0].you.prev_dist == 9;
+  #assert f.x == 28 && f.y == 0 && f.z == 28 && g[0].you.cam.phi == 1.35 && g[0].you.cam.max_dist == 9 && g[0].you.cam.dist == 9 && g[0].you.cam.prev_dist == 9;
   #assert g[0].records == 1 && g[0].n[REPLAY_INITIAL] == gw_digest(g[0].start, g[0].start_input, g[0].profile) && replay_seed(gw_session(g[..])) == GW_SEED;
   #assert gridwalk_steps(g[..]) == 0 && gridwalk_mark(g[..], 0) == -1 && replay_events(gw_session(g[..])) == 1;
-  #assert gridwalk_face(g[..]) == g[0].you.face && gridwalk_act(g[..]) == 0 && g[0].prev_theta == g[0].you.theta && g[0].prev_phi == 1.35;
+  #assert gridwalk_face(g[..]) == g[0].you.body.face && gridwalk_act(g[..]) == 0 && g[0].prev_theta == g[0].you.cam.theta && g[0].prev_phi == 1.35;
   // placed again: nothing held, no finger down, a new record
   gridwalk_touch(g[..], 1, 0, 200, 1500);
   gw_keys(g[..], 1, true, 0.5, 1.0 / 64.0);
@@ -360,10 +360,10 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   gw_keys(g[..], 1, true, 0.25, 1.0 / 64.0);
   w: pc.World;
   q := pc.walk_input(p, 0, 0, 0, 1, true, false, 0.25, 0);
-  q.jumps = input_press(q.jumps);
+  q.body.jumps = input_press(q.body.jumps);
   q = pc.steps_in(w, q, 1);
-  #assert gridwalk_steps(g[..]) == 1 && g[0].you.pos.x == q.pos.x && g[0].you.pos.y == q.pos.y && g[0].you.pos.z == q.pos.z;
-  #assert g[0].you.vel.y == q.vel.y && g[0].you.theta == q.theta && g[0].you.dist == q.dist;
+  #assert gridwalk_steps(g[..]) == 1 && g[0].you.body.pos.x == q.body.pos.x && g[0].you.body.pos.y == q.body.pos.y && g[0].you.body.pos.z == q.body.pos.z;
+  #assert g[0].you.body.vel.y == q.body.vel.y && g[0].you.cam.theta == q.cam.theta && g[0].you.cam.dist == q.cam.dist;
   // the placed state's digest, the same on every host
   h: [1] GridWalk; gw_new(h[..]);
   #assert gridwalk_digest(h[..]) == 1068547055;
@@ -375,14 +375,14 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   gridwalk_touch(g[..], 2, 0, 800, 1000);
   gridwalk_touch(g[..], 2, 2, 800, 1000);
   gw_still(g[..], 0);                     // no step: the tap waits in the record
-  #assert g[0].you.on_ground && !gridwalk_thumbs(g[..]).jump;
+  #assert g[0].you.body.on_ground && !gridwalk_thumbs(g[..]).jump;
   gw_still(g[..], 1.0 / 60.0);
-  #assert !g[0].you.on_ground && g[0].you.vel.y > 0 && g[0].you.jumps.taken == 1;
+  #assert !g[0].you.body.on_ground && g[0].you.body.vel.y > 0 && g[0].you.body.jumps.taken == 1;
   for f: 0..<80 { gw_still(g[..], 1.0 / 60.0); }
-  #assert g[0].you.on_ground && g[0].you.jumps.taken == 1 && g[0].input.jump.waiting == 0;
+  #assert g[0].you.body.on_ground && g[0].you.body.jumps.taken == 1 && g[0].input.jump.waiting == 0;
   // Space held across many frames is one jump
   for f: 0..<80 { gw_keys(g[..], 0, true, 0, 1.0 / 60.0); }
-  #assert g[0].you.jumps.taken == 2;
+  #assert g[0].you.body.jumps.taken == 2;
 }
 
 #test "look and zoom turn by the same total at 30, 60 and 144 FPS, on the steps" {
@@ -395,27 +395,27 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
       gridwalk_frame(g[..], 0, 0, false, false, 1.5 / cast(f32) n, -0.3 / cast(f32) n, 3 / cast(f32) n, 1000, 2000, 2, 1 / cast(f32) n, false);
     }
     for f: 0..<4 { gw_still(g[..], 1.0 / 60.0); }
-    theta[r] = g[0].you.theta; dist[r] = g[0].you.max_dist; steps[r] = gridwalk_steps(g[..]);
+    theta[r] = g[0].you.cam.theta; dist[r] = g[0].you.cam.max_dist; steps[r] = gridwalk_steps(g[..]);
     #assert g[0].input.look_x == 0 && g[0].input.zoom == 0;
   }
   for r: 1..<3 { #assert gw_near(theta[r], theta[0], 0.00002) && gw_near(dist[r], dist[0], 0.00002); }
   g: [1] GridWalk; gw_new(g[..]);
-  #assert gw_near(dist[0], 12, 0.0001) && gw_near(pc.wrap_angle(theta[0] - g[0].you.theta), 1.5, 0.0001);
+  #assert gw_near(dist[0], 12, 0.0001) && gw_near(pc.wrap_angle(theta[0] - g[0].you.cam.theta), 1.5, 0.0001);
 }
 
 #test "the camera is drawn turning between the last two steps" {
   g: [1] GridWalk; gw_new(g[..]);
-  t0 := g[0].you.theta;
+  t0 := g[0].you.cam.theta;
   gw_keys(g[..], 0, false, 0.1, 1.0 / 64.0);           // one step turns 0.1, the next 0.2
   gw_keys(g[..], 0, false, 0.2, 1.0 / 64.0);
-  t1 := g[0].you.theta;
+  t1 := g[0].you.cam.theta;
   #assert gw_near(pc.wrap_angle(t1 - g[0].prev_theta), 0.2, 0.00001) && gw_near(pc.wrap_angle(g[0].prev_theta - t0), 0.1, 0.00001);
   gw_still(g[..], 1.0 / 128.0);                          // half a step on: still drawn between them
   e := gridwalk_eye(g[..]);
-  p := g[0].you; p.theta = pc.wrap_angle(g[0].prev_theta + 0.1); p.phi = g[0].prev_phi;
+  p := g[0].you; p.cam.theta = pc.wrap_angle(g[0].prev_theta + 0.1); p.cam.phi = g[0].prev_phi;
   m := pc.walk_eye(p);
   #assert gw_near(gw_alpha(g[..]), 0.5, 0.0001) && gw_near(e.x, m.x, 0.0005) && gw_near(e.z, m.z, 0.0005) && gw_near(e.y, m.y, 0.0005);
-  q := g[0].you; q.phi = g[0].prev_phi + (q.phi - g[0].prev_phi) * 0.5; q.theta = p.theta;
+  q := g[0].you; q.cam.phi = g[0].prev_phi + (q.cam.phi - g[0].prev_phi) * 0.5; q.cam.theta = p.cam.theta;
   #assert gw_near(e.y, pc.walk_eye(q).y, 0.0005);
   a := gridwalk_at(g[..]); b := pc.walk_at(g[0].you);
   #assert a.x == b.x && a.y == b.y && a.z == b.z;
@@ -425,10 +425,10 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   g: [1] GridWalk; gw_new(g[..]);
   gridwalk_frame(g[..], 0, 0, false, false, 0, -0.1, 0, 1000, 2000, 2, 1.0 / 64.0, false);
   gridwalk_frame(g[..], 0, 0, false, false, 0, -0.4, 0, 1000, 2000, 2, 1.0 / 64.0, false);
-  #assert gw_near(g[0].prev_phi - g[0].you.phi, 0.4, 0.00001) && gw_near(g[0].prev_phi, 1.25, 0.00001);
+  #assert gw_near(g[0].prev_phi - g[0].you.cam.phi, 0.4, 0.00001) && gw_near(g[0].prev_phi, 1.25, 0.00001);
   gw_still(g[..], 1.0 / 128.0);
   e := gridwalk_eye(g[..]);
-  p := g[0].you; p.phi = g[0].prev_phi - 0.2; p.theta = g[0].prev_theta;
+  p := g[0].you; p.cam.phi = g[0].prev_phi - 0.2; p.cam.theta = g[0].prev_theta;
   m := pc.walk_eye(p);
   #assert gw_near(e.y, m.y, 0.0005) && gw_near(e.x, m.x, 0.0005);
 }
@@ -448,7 +448,7 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   #assert replay_diverged(gw_session(again[..])) == g[0].events[k].tick;
   // a record that starts from another state is refused
   g[0].events[k].words[1] = replay_bits(0);
-  g[0].start.pos.x += 1;
+  g[0].start.body.pos.x += 1;
   #assert !gridwalk_replay(g[..], again[..]);
   e: [1] GridWalk;
   #assert !gridwalk_replay(e[0..<0], again[..]) && !gridwalk_replay(g[..], e[0..<0]);
@@ -460,9 +460,9 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   for f: 0..<GW_EVENTS - 21 { gw_keys(g[..], 1, f == 500, 0.001, 0); }   // frames with no step: the record fills
   #assert g[0].records == 1 && replay_events(gw_session(g[..])) == GW_EVENTS;
   gw_keys(g[..], 1, false, 0.01, 1.0 / 60.0);
-  #assert g[0].records == 2 && replay_events(gw_session(g[..])) == 1 && g[0].start.pos.x != 28;
+  #assert g[0].records == 2 && replay_events(gw_session(g[..])) == 1 && g[0].start.body.pos.x != 28;
   #assert g[0].n[REPLAY_INITIAL] == gw_digest(g[0].start, g[0].start_input, g[0].profile) && g[0].start_input.look_x != 0;
-  #assert g[0].you.jumps.taken == 2;   // the press made while the record filled was kept
+  #assert g[0].you.body.jumps.taken == 2;   // the press made while the record filled was kept
   for f: 0..<20 { gw_keys(g[..], 1, f == 5, 0.01, 1.0 / 60.0); }
   again: [1] GridWalk;
   #assert gridwalk_replay(g[..], again[..]) && gridwalk_digest(again[..]) == gridwalk_digest(g[..]);
@@ -484,7 +484,7 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   for f: 0..<30 { gridwalk_frame(g[..], 0, 1, false, true, 0.1, 0, 1, 1000, 2000, 2, 1.0 / 60.0, true); }
   #assert gridwalk_steps(g[..]) == 0 && replay_events(gw_session(g[..])) == 1 && !gridwalk_thumbs(g[..]).jump;
   f := gridwalk_feet(g[..]);
-  #assert f.x == 28 && f.z == 28 && g[0].you.max_dist == 9;
+  #assert f.x == 28 && f.z == 28 && g[0].you.cam.max_dist == 9;
   #assert gw_near(cast(f32) g[0].now, 0.5, 0.0001);
   gridwalk_frame(g[..], 0, 0, false, false, 0, 0, 0, 640, 480, 1.5, -1, true);
   #assert g[0].width == 640 && g[0].height == 480 && g[0].dpr == 1.5 && gw_near(cast(f32) g[0].now, 0.5, 0.0001);
@@ -511,13 +511,13 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
 #test "a blur starts a new record from the state it leaves, and that one replays" {
   g: [1] GridWalk; gw_new(g[..]);
   for f: 0..<100 { gw_keys(g[..], 1, true, 0.01, 1.0 / 60.0); }   // Space held: one jump, landed
-  #assert g[0].you.jumps.taken == 1 && g[0].you.on_ground;
+  #assert g[0].you.body.jumps.taken == 1 && g[0].you.body.on_ground;
   gw_keys(g[..], 1, true, 0.01, 0);                                // a frame waiting for a step
   gridwalk_blur(g[..]);
   #assert g[0].records == 2 && replay_events(gw_session(g[..])) == 0 && gridwalk_steps(g[..]) == 0;
   #assert g[0].start_input.look_x != 0 && !g[0].start_input.jump.held && g[0].n[REPLAY_INITIAL] == gw_digest(g[0].start, g[0].start_input, g[0].profile);
   for f: 0..<100 { gw_keys(g[..], 1, true, 0.01, 1.0 / 60.0); }   // held again after focus: a new jump
-  #assert g[0].you.jumps.taken == 2;
+  #assert g[0].you.body.jumps.taken == 2;
   again: [1] GridWalk;
   #assert gridwalk_replay(g[..], again[..]) && gridwalk_digest(again[..]) == gridwalk_digest(g[..]);
   // a session never placed has no record to start
@@ -532,22 +532,22 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   p := g[0].you; b := g[0].input; d := gw_digest(p, b, GW_PROFILE);
   for k: 0..<20 {
     q := p; c := b;
-    if k == 0 { q.pos.x += 0.5; } if k == 1 { q.pos.y += 0.5; } if k == 2 { q.pos.z += 0.5; }
-    if k == 3 { q.vel.x += 0.5; } if k == 4 { q.vel.y += 0.5; } if k == 5 { q.vel.z += 0.5; }
-    if k == 6 { q.face += 0.5; } if k == 7 { q.theta += 0.5; } if k == 8 { q.phi += 0.5; } if k == 9 { q.dist += 0.5; }
-    if k == 10 { q.max_dist += 0.5; } if k == 11 { q.target.x += 0.5; } if k == 12 { q.target.y += 0.5; } if k == 13 { q.target.z += 0.5; }
-    if k == 14 { q.spring_vel.x += 0.5; } if k == 15 { q.spring_vel.y += 0.5; } if k == 16 { q.spring_vel.z += 0.5; }
+    if k == 0 { q.body.pos.x += 0.5; } if k == 1 { q.body.pos.y += 0.5; } if k == 2 { q.body.pos.z += 0.5; }
+    if k == 3 { q.body.vel.x += 0.5; } if k == 4 { q.body.vel.y += 0.5; } if k == 5 { q.body.vel.z += 0.5; }
+    if k == 6 { q.body.face += 0.5; } if k == 7 { q.cam.theta += 0.5; } if k == 8 { q.cam.phi += 0.5; } if k == 9 { q.cam.dist += 0.5; }
+    if k == 10 { q.cam.max_dist += 0.5; } if k == 11 { q.cam.target.x += 0.5; } if k == 12 { q.cam.target.y += 0.5; } if k == 13 { q.cam.target.z += 0.5; }
+    if k == 14 { q.cam.spring_vel.x += 0.5; } if k == 15 { q.cam.spring_vel.y += 0.5; } if k == 16 { q.cam.spring_vel.z += 0.5; }
     if k == 17 { c.look_x += 0.5; } if k == 18 { c.look_y += 0.5; } if k == 19 { c.zoom += 0.5; }
     #assert gw_digest(q, c, GW_PROFILE) != d;
   }
   q := p; c := b;
   c.move_x += 0.5; #assert gw_digest(q, c, GW_PROFILE) != d; c = b;
   c.move_y += 0.5; #assert gw_digest(q, c, GW_PROFILE) != d; c = b;
-  q.on_ground = !p.on_ground; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
-  q.sliding = !p.sliding; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
+  q.body.on_ground = !p.body.on_ground; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
+  q.body.sliding = !p.body.sliding; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
   c.run = !b.run; #assert gw_digest(q, c, GW_PROFILE) != d; c = b;
-  q.act = ifx p.act == pc.Act.idle then pc.Act.running else pc.Act.idle; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
-  q.jumps.waiting += 1; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
+  q.body.act = ifx p.body.act == pc.Act.idle then pc.Act.running else pc.Act.idle; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
+  q.body.jumps.waiting += 1; #assert gw_digest(q, c, GW_PROFILE) != d; q = p;
   c.jump.waiting += 1; #assert gw_digest(q, c, GW_PROFILE) != d; c = b;
   c.steps_left += 1; #assert gw_digest(q, c, GW_PROFILE) != d; c = b;
 }
@@ -555,29 +555,29 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
 #forall "each collision and terrain diagnostic enters the Grid digest independently" gw_diagnostic: 0..<8 {
   gw_player: pc.Player; gw_input: InputBuffer;
   gw_original := gw_digest(gw_player, gw_input, GW_PROFILE);
-  if gw_diagnostic == 0 { gw_player.collision_status = walk_capsule.CollideStatus.unresolved; }
-  if gw_diagnostic == 1 { gw_player.collision_refusals = 1; }
-  if gw_diagnostic == 2 { gw_player.collision_refusals = 4294967296; }
-  if gw_diagnostic == 3 { gw_player.collision_residual = 0.25; }
-  if gw_diagnostic == 4 { gw_player.collision_passes = 1; }
-  if gw_diagnostic == 5 { gw_player.collision_floor_cut = true; }
-  if gw_diagnostic == 6 { gw_player.query_status = grid_queries.QueryStatus.terrain; }
-  if gw_diagnostic == 7 { gw_player.camera_query_status = grid_queries.QueryStatus.exhausted; }
+  if gw_diagnostic == 0 { gw_player.body.collision_status = walk_capsule.CollideStatus.unresolved; }
+  if gw_diagnostic == 1 { gw_player.body.collision_refusals = 1; }
+  if gw_diagnostic == 2 { gw_player.body.collision_refusals = 4294967296; }
+  if gw_diagnostic == 3 { gw_player.body.collision_residual = 0.25; }
+  if gw_diagnostic == 4 { gw_player.body.collision_passes = 1; }
+  if gw_diagnostic == 5 { gw_player.body.collision_floor_cut = true; }
+  if gw_diagnostic == 6 { gw_player.body.query_status = grid_queries.QueryStatus.terrain; }
+  if gw_diagnostic == 7 { gw_player.cam.query_status = grid_queries.QueryStatus.exhausted; }
   #assert gw_digest(gw_player, gw_input, GW_PROFILE) != gw_original;
 }
 
 #forall "the Grid digest retains every bit in both halves of its refusal counter" gw_counter_bit: 0..<64 {
   gw_player: pc.Player; gw_input: InputBuffer;
   gw_original := gw_digest(gw_player, gw_input, GW_PROFILE);
-  gw_player.collision_refusals = cast(u64) 1 << gw_counter_bit;
+  gw_player.body.collision_refusals = cast(u64) 1 << gw_counter_bit;
   #assert gw_digest(gw_player, gw_input, GW_PROFILE) != gw_original;
 }
 
 #test "the Grid digest retains diagnostic residual bits including signed zero" {
   gw_player: pc.Player; gw_input: InputBuffer;
   gw_original := gw_digest(gw_player, gw_input, GW_PROFILE);
-  gw_zero := 0.0f32; gw_player.collision_residual = -gw_zero;
-  #assert f32_bits(gw_player.collision_residual) == 2147483648;
+  gw_zero := 0.0f32; gw_player.body.collision_residual = -gw_zero;
+  #assert f32_bits(gw_player.body.collision_residual) == 2147483648;
   #assert gw_digest(gw_player, gw_input, GW_PROFILE) != gw_original;
 }
 
@@ -610,16 +610,16 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
   gw_profile_source: [1] GridWalk; gw_new(gw_profile_source[..]);
   gw_profile_source[0].profile = gw_versions[gw_version_case];
   gw_profile_target: [1] GridWalk;
-  gw_profile_target[0].profile = 17; gw_profile_target[0].you.pos.x = 123;
+  gw_profile_target[0].profile = 17; gw_profile_target[0].you.body.pos.x = 123;
   gw_profile_target[0].input.zoom = 7; gw_profile_target[0].thumbs.pad_x = 0.5;
-  gw_profile_target[0].start.pos.z = 234; gw_profile_target[0].start_input.look_x = 8;
+  gw_profile_target[0].start.body.pos.z = 234; gw_profile_target[0].start_input.look_x = 8;
   gw_profile_target[0].events[0].words[0] = 91; gw_profile_target[0].marks[0] = 93;
   gw_profile_target[0].channels[0].epoch = 97; gw_profile_target[0].n[REPLAY_INITIAL] = 99;
   gw_profile_target[0].records = 11; gw_profile_target[0].now = 19; gw_profile_target[0].width = 640;
   #assert !gridwalk_replay(gw_profile_source[..], gw_profile_target[..]);
-  #assert gw_profile_target[0].profile == 17 && gw_profile_target[0].you.pos.x == 123;
+  #assert gw_profile_target[0].profile == 17 && gw_profile_target[0].you.body.pos.x == 123;
   #assert gw_profile_target[0].input.zoom == 7 && gw_profile_target[0].thumbs.pad_x == 0.5;
-  #assert gw_profile_target[0].start.pos.z == 234 && gw_profile_target[0].start_input.look_x == 8;
+  #assert gw_profile_target[0].start.body.pos.z == 234 && gw_profile_target[0].start_input.look_x == 8;
   #assert gw_profile_target[0].events[0].words[0] == 91 && gw_profile_target[0].marks[0] == 93;
   #assert gw_profile_target[0].channels[0].epoch == 97 && gw_profile_target[0].n[REPLAY_INITIAL] == 99;
   #assert gw_profile_target[0].records == 11 && gw_profile_target[0].now == 19 && gw_profile_target[0].width == 640;
@@ -644,13 +644,13 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
     eye := gridwalk_eye(g[..]); feet := gridwalk_feet(g[..]).y;
     move := pc.sub(eye, was);
     p := g[0].you;
-    shown := pc.add(p.target, pc.times(pc.orbit_offset(p), p.dist));   // the last step, not mixed
+    shown := pc.add(p.cam.target, pc.times(pc.orbit_offset(p), p.cam.dist));   // the last step, not mixed
     step_move := pc.sub(shown, last);
     if f >= 3 {
       change := pc.sub(move, was_move);
       #assert sqrt(pc.dot(move, move)) <= far && sqrt(pc.dot(move, move)) > 0;
       #assert sqrt(pc.dot(change, change)) <= 0.016;
-      if !p.on_ground && feet > was_feet { #assert move.y > 0; rising += 1; }
+      if !p.body.on_ground && feet > was_feet { #assert move.y > 0; rising += 1; }
       d := pc.sub(step_move, last_move);
       lurch = pc.hi(lurch, sqrt(pc.dot(d, d)));
     }

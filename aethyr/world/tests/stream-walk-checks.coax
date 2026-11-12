@@ -46,7 +46,7 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
     s[0].actor[i] = cells.CellBody.{id = i + 1, x = 8, z = f64(i * 64 + 32)};
   }
   s[0].active = 2; sw_walk(s[..], 1);
-  #assert s[0].player.pos.z > 56 && s[0].nav_flow.settled == 2 && s[0].player.key_y == 1 && s[0].player.run && s[0].query_epoch[0] == 2;
+  #assert s[0].player.body.pos.z > 56 && s[0].nav_flow.settled == 2 && s[0].player.body.key_y == 1 && s[0].player.body.run && s[0].query_epoch[0] == 2;
   for i: 0..<2 { #assert s[0].metadata[i].shape == queries.QueryShape.box && s[0].metadata[i].index == i;
     #assert s[0].metadata[i].ref.id == 1000 + i && s[0].metadata[i].ref.generation == 1 && s[0].metadata[i].surface == 10;
     #assert s[0].metadata[2 + i].shape == queries.QueryShape.capsule && s[0].metadata[2 + i].index == i;
@@ -63,27 +63,27 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
   #assert resource_decode_collision(m[0].entries[5].plan, encoded[..], boxes[..]) == ResourceCostStatus.ok;
   s[0].decoded_boxes[0] = boxes[..]; s[0].awake[0] = true; s[0].active = 1; s[0].cells[0].cells[0].level = cells.CELL_DRAW_LEVEL;
   s[0].actor[0] = cells.CellBody.{id = 1, x = 8, z = 32};
-  s[0].player.pos.z = 63.999; s[0].player.prev_pos.z = 63.8; s[0].player.vel.z = 7.5;
+  s[0].player.body.pos.z = 63.999; s[0].player.body.prev_pos.z = 63.8; s[0].player.body.vel.z = 7.5;
   prior := s[0].player; sw_walk(s[..], 1);
-  #assert s[0].player.pos.z == prior.pos.z && s[0].player.pos.y == prior.pos.y && s[0].player.vel.y == prior.vel.y && s[0].player.on_ground;
-  #assert s[0].player.vel.x == 0 && s[0].player.vel.z == 0 && s[0].player.prev_pos.z == s[0].player.pos.z && s[0].player.key_y == 1;
-  sw_walk(s[..], -1); #assert s[0].player.pos.z < prior.pos.z && s[0].player.vel.z < 0 && s[0].player.key_y == -1;
+  #assert s[0].player.body.pos.z == prior.body.pos.z && s[0].player.body.pos.y == prior.body.pos.y && s[0].player.body.vel.y == prior.body.vel.y && s[0].player.body.on_ground;
+  #assert s[0].player.body.vel.x == 0 && s[0].player.body.vel.z == 0 && s[0].player.body.prev_pos.z == s[0].player.body.pos.z && s[0].player.body.key_y == 1;
+  sw_walk(s[..], -1); #assert s[0].player.body.pos.z < prior.body.pos.z && s[0].player.body.vel.z < 0 && s[0].player.body.key_y == -1;
 }
 
 #test "edge hold resets interpolation history but preserves vertical motion camera and pending input" {
   s: [1] SwWalk;
-  s[0].player.pos = walking.Vec3.{x = 2, y = 3, z = 4}; s[0].player.prev_pos = walking.Vec3.{x = 20, y = 30, z = 40};
-  s[0].player.target = walking.Vec3.{x = 5, y = 6, z = 7}; s[0].player.prev_target = walking.Vec3.{x = 50, y = 60, z = 70};
-  s[0].player.vel = walking.Vec3.{x = 1, y = -2, z = 3}; s[0].player.face = 0.5; s[0].player.prev_face = -0.5;
-  s[0].player.dist = 4; s[0].player.prev_dist = 8; s[0].player.jumps.waiting = 1; s[0].blocked = 7;
+  s[0].player.body.pos = walking.Vec3.{x = 2, y = 3, z = 4}; s[0].player.body.prev_pos = walking.Vec3.{x = 20, y = 30, z = 40};
+  s[0].player.cam.target = walking.Vec3.{x = 5, y = 6, z = 7}; s[0].player.cam.prev_target = walking.Vec3.{x = 50, y = 60, z = 70};
+  s[0].player.body.vel = walking.Vec3.{x = 1, y = -2, z = 3}; s[0].player.body.face = 0.5; s[0].player.body.prev_face = -0.5;
+  s[0].player.cam.dist = 4; s[0].player.cam.prev_dist = 8; s[0].player.body.jumps.waiting = 1; s[0].blocked = 7;
   sw_hold(s[..], -1);
-  #assert s[0].player.pos.x == 2 && s[0].player.pos.y == 3 && s[0].player.pos.z == 4;
-  #assert s[0].player.vel.x == 0 && s[0].player.vel.y == -2 && s[0].player.vel.z == 0 && s[0].player.key_y == -1;
-  #assert s[0].player.prev_pos.x == 2 && s[0].player.prev_pos.y == 3 && s[0].player.prev_pos.z == 4;
-  #assert s[0].player.target.x == 5 && s[0].player.target.y == 6 && s[0].player.target.z == 7;
-  #assert s[0].player.prev_target.x == 5 && s[0].player.prev_target.y == 6 && s[0].player.prev_target.z == 7;
-  #assert s[0].player.face == 0.5 && s[0].player.prev_face == 0.5 && s[0].player.dist == 4 && s[0].player.prev_dist == 4;
-  #assert s[0].player.jumps.waiting == 1 && s[0].blocked == 8;
+  #assert s[0].player.body.pos.x == 2 && s[0].player.body.pos.y == 3 && s[0].player.body.pos.z == 4;
+  #assert s[0].player.body.vel.x == 0 && s[0].player.body.vel.y == -2 && s[0].player.body.vel.z == 0 && s[0].player.body.key_y == -1;
+  #assert s[0].player.body.prev_pos.x == 2 && s[0].player.body.prev_pos.y == 3 && s[0].player.body.prev_pos.z == 4;
+  #assert s[0].player.cam.target.x == 5 && s[0].player.cam.target.y == 6 && s[0].player.cam.target.z == 7;
+  #assert s[0].player.cam.prev_target.x == 5 && s[0].player.cam.prev_target.y == 6 && s[0].player.cam.prev_target.z == 7;
+  #assert s[0].player.body.face == 0.5 && s[0].player.body.prev_face == 0.5 && s[0].player.cam.dist == 4 && s[0].player.cam.prev_dist == 4;
+  #assert s[0].player.body.jumps.waiting == 1 && s[0].blocked == 8;
 }
 
 #test "draw planning requires ready live GPU owners and preserves floor actor player order with declared lighting fallback" {
@@ -120,11 +120,11 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
 #test "streamed consumer checks manifest layout and creates stable existence separately from active actors" {
   m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk;
   #assert sw_manifest(m[..], 0, ResourceBackend.browser) && sw_open(s[..], m[..], 0, ResourceBackend.browser);
-  #assert entities.entity_count(sw_entities(s[..])) == 12 && s[0].active == 0 && s[0].tick == 0 && s[0].player.pos.z == 56;
+  #assert entities.entity_count(sw_entities(s[..])) == 12 && s[0].active == 0 && s[0].tick == 0 && s[0].player.body.pos.z == 56;
   #assert s[0].stream[0].budget[0].total_cap == 32768 && s[0].stream[0].budget[0].actor_cap == 5;
   #assert !sw_open(s[..], m[..], 0, ResourceBackend.browser) && !sw_manifest(m[..], 1, ResourceBackend.browser) && !sw_manifest(m[..], 0, ResourceBackend.vulkan);
   #assert sw_frame(s[..], m[..], 0, 1) && s[0].tick == 0 && s[0].stream[0].requests == 0;
-  #assert sw_frame(s[..], m[..], 15625000, 1) && s[0].tick == 1 && s[0].player.clock.ticks == 1 && s[0].blocked == 1;
+  #assert sw_frame(s[..], m[..], 15625000, 1) && s[0].tick == 1 && s[0].player.body.clock.ticks == 1 && s[0].blocked == 1;
   #assert s[0].load_n == 4 && s[0].loads[0].owner == 5 && s[0].loads[1].owner == 6 && s[0].loads[2].owner == 10 && s[0].loads[3].owner == 11;
   #assert s[0].active == 0 && !cells.cell_may_enter(s[0].cells[..], 32, 64);
   u: [64] f32; #assert sw_uniforms(s[..], -1, 1, u[..]) && u[16] == 32 && u[18] == 56;
@@ -149,7 +149,7 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
   #assert s[0].records[0].tick == 2 && s[0].records[0].kind == SwRecordKind.completed && s[0].records[0].status == ResourceStreamStatus.ok;
   #assert s[0].records[2].kind == SwRecordKind.ready && s[0].records[2].key.owner == 5;
   #assert s[0].active == 1 && s[0].born[0] && s[0].actor[0].id == 1 && s[0].actor[0].words[0] == 1;
-  #assert s[0].player.pos.z > 56 && !resource_stream_ready(s[0].stream[..], 8) && s[0].nav_flow.status == navigation.NavFlowStatus.ok;
+  #assert s[0].player.body.pos.z > 56 && !resource_stream_ready(s[0].stream[..], 8) && s[0].nav_flow.status == navigation.NavFlowStatus.ok;
   borrow := sw_borrow(s[..], 5); #assert borrow.slot >= 0 && sw_return(s[..], m[..], borrow) && !sw_return(s[..], m[..], borrow);
   #assert sw_close(s[..], m[..]) && s[0].active == 0 && s[0].drawn == 0 && s[0].updated == 0 && s[0].voices == 0 && s[0].query_epoch[0] == 0;
   #assert s[0].cells[0].cells[0].body_n == 1 && s[0].cells[0].cells[0].bodies[0].id == 1 && s[0].cells[0].cells[0].bodies[0].words[0] == 1 && !s[0].awake[0];
@@ -206,10 +206,10 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
   #assert s[0].claims[0].slot >= 0 && s[0].claims[3].slot >= 0 && s[0].claims[4].slot >= 0 && s[0].claims[9].slot >= 0 && s[0].claims[14].slot >= 0;
   #assert s[0].claims[7].slot >= 0 && s[0].claims[12].slot >= 0 && s[0].claims[17].slot == -1;
   #assert s[0].claims[6].slot == -1 && s[0].claims[8].slot == -1 && !s[0].stream[0].wanted[6];
-  s[0].player.pos.z = 64; s[0].profile.pools.voices = 1; sw_interest(s[..], m[..], -1);
+  s[0].player.body.pos.z = 64; s[0].profile.pools.voices = 1; sw_interest(s[..], m[..], -1);
   #assert s[0].prefetch_cell == 0 && s[0].voices == 1 && s[0].audio_deferred == 2;
   #assert s[0].claims[7].slot >= 0 && s[0].claims[12].slot == -1 && s[0].claims[17].slot == -1;
-  s[0].player.pos.x = 1000; sw_interest(s[..], m[..], 0);
+  s[0].player.body.pos.x = 1000; sw_interest(s[..], m[..], 0);
   #assert s[0].prefetch_cell == -1 && s[0].prefetch.slot == -1 && s[0].voices == 0 && s[0].audio_deferred == 0;
   for row: 0..<64 { #assert s[0].stream[0].wanted[row] == (row == 2 || row == 3); }
   #assert s[0].claims[0].slot == -1 && s[0].claims[3].slot >= 0 && s[0].active == 0;
@@ -226,7 +226,7 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
   #assert !sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 1, ResourceBackend.browser) && !s[0].valid && !out[0].valid;
   #assert !sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 0, ResourceBackend.vulkan) && !s[0].valid && !out[0].valid;
   #assert sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 0, ResourceBackend.browser);
-  #assert out[0].valid && out[0].count == 64 && assets.asset_same(out[0].identity, m.identity) && s[0].player.prev_target.x == 32 && s[0].player.prev_target.z == 56;
+  #assert out[0].valid && out[0].count == 64 && assets.asset_same(out[0].identity, m.identity) && s[0].player.cam.prev_target.x == 32 && s[0].player.cam.prev_target.z == 56;
   #assert !sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 0, ResourceBackend.browser);
 }
 
@@ -261,7 +261,7 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
     for i: 0..<7 { #assert s[0].stream[0].budget[0].caps[i] == [7] int.[8192, 512, 4096, 2048, 8192, 4096, 2048][i]; }
     #assert s[0].stream[0].budget[0].voice_cap == 2 && s[0].stream[0].load_limit == 4 && s[0].stream[0].epoch == 1;
     #assert s[0].queue[0].capacity == 8388608 && s[0].queue[0].limit == 33554432 && s[0].registry[0].limit.slots == 512 && s[0].registry[0].limit.words == 268435456;
-    #assert s[0].player.pos.x == 32 && s[0].player.pos.y == 0 && s[0].player.prev_pos.z == 56 && s[0].player.target.x == 32 && s[0].player.target.y == 1.5 && s[0].player.target.z == 56;
+    #assert s[0].player.body.pos.x == 32 && s[0].player.body.pos.y == 0 && s[0].player.body.prev_pos.z == 56 && s[0].player.cam.target.x == 32 && s[0].player.cam.target.y == 1.5 && s[0].player.cam.target.z == 56;
     #assert s[0].query_epoch[0] == 1 && s[0].surfaces[0].id == 10 && s[0].surfaces[0].footstep == 4;
   } }
 }
@@ -270,7 +270,7 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
   m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk;
   #assert !sw_frame(s[..], m[..], 15625000, 0) && !sw_offer(s[..], SwFact.{}) && !sw_close(s[..], m[..]) && sw_draws(s[..], m[..]).count == 0;
   #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
-  for direction: [4] f32.[-1.01, 1.01, 0.0f32 / 0.0f32, 1.0f32 / 0.0f32] { #assert !sw_frame(s[..], m[..], 15625000, direction) && s[0].tick == 0 && s[0].player.clock.frames == 0; }
+  for direction: [4] f32.[-1.01, 1.01, 0.0f32 / 0.0f32, 1.0f32 / 0.0f32] { #assert !sw_frame(s[..], m[..], 15625000, direction) && s[0].tick == 0 && s[0].player.body.clock.frames == 0; }
   for i: 0..<64 { #assert sw_offer(s[..], SwFact.{}); }
   #assert !sw_offer(s[..], SwFact.{}) && s[0].fact_n == 64 && s[0].offered_refused == 2;
   #assert sw_frame(s[..], m[..], 0, 0) && s[0].fact_n == 64 && s[0].record_n == 0;
@@ -278,9 +278,9 @@ sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
   for i: 0..<64 { #assert s[0].records[i].tick == 1 && s[0].records[i].status == ResourceStreamStatus.stale && s[0].records[i].key.owner == -1 && s[0].facts[i].key.owner == -1; }
   #assert s[0].stream[0].loading == 4 && s[0].stream[0].refused == 0;
   sw_test_ack(s[..]); s[0].tick = 9223372036854775807;
-  #assert !sw_frame(s[..], m[..], 15625000, 0) && s[0].player.clock.ticks == 1;
+  #assert !sw_frame(s[..], m[..], 15625000, 0) && s[0].player.body.clock.ticks == 1;
   s[0].tick = 1; s[0].query_epoch[0] = 9223372036854775807;
-  #assert !sw_frame(s[..], m[..], 15625000, 0) && s[0].player.clock.ticks == 1;
+  #assert !sw_frame(s[..], m[..], 15625000, 0) && s[0].player.body.clock.ticks == 1;
 }
 
 #test "neighbor preparation counts its complete declared peak and never grants spawn authority" #steps 100000000 {

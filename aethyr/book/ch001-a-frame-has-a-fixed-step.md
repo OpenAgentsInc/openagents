@@ -216,27 +216,27 @@ walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule #effects(all) {
   return WalkSchedule.{ok = true, clock = accepted, count = count};
 }
 walk_target :: (p: Player) -> StepTarget #effects(all) {
-  return StepTarget.{feet = wp(p.pos), velocity = StepVelocity.{x = p.vel.x, y = p.vel.y, z = p.vel.z},
-    face = p.face, act = cast(u8) p.act, collision_status = cast(u8) p.collision_status};
+  return StepTarget.{feet = wp(p.body.pos), velocity = StepVelocity.{x = p.body.vel.x, y = p.body.vel.y, z = p.body.vel.z},
+    face = p.body.face, act = cast(u8) p.body.act, collision_status = cast(u8) p.body.collision_status};
 }
 advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace #effects(all) {
   out := AdvanceTrace.{player = p};
-  schedule := walk_schedule(p.clock, frame);
+  schedule := walk_schedule(p.body.clock, frame);
   if !schedule.ok {
     out.player = collision_report(p, CollideResult.{state = collision_state(p), status = CollideStatus.bad_profile});
     return out;
   }
-  next := p; next.clock = schedule.clock; out.count = schedule.count;
+  next := p; next.body.clock = schedule.clock; out.count = schedule.count;
   for i: 0..<schedule.count {
     next = history_step(w, next);
     out.targets[i] = walk_target(next);
   }
-  next.clock = loop_ran(next.clock); out.player = next;
+  next.body.clock = loop_ran(next.body.clock); out.player = next;
   return out;
 }
 history_step :: (w: World, p: Player) -> Player #effects(all) {
-  next := p; next.prev_pos = p.pos; next.prev_target = p.target;
-  next.prev_face = p.face; next.prev_dist = p.dist;
+  next := p; next.body.prev_pos = p.body.pos; next.cam.prev_target = p.cam.target;
+  next.body.prev_face = p.body.face; next.cam.prev_dist = p.cam.dist;
   return step_once(w, next, STEP);
 }
 // Runs n fixed steps (what a clock says are due), keeping where the last began, so the
@@ -257,13 +257,16 @@ facing, and the camera, whose mix is `aethyr/cam/follow.coax`'s `follow_shot`
 <!-- source: aethyr/move/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
-walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
-walk_face :: (p: Player) -> f32 #effects(all) {
-  return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
+walk_feet :: (p: Player) -> Vec3 #effects(all) { return body_feet(p.body); }
+walk_face :: (p: Player) -> f32 #effects(all) { return body_face(p.body); }
+// A body's feet and facing as drawn: between its last two steps, by how far its clock is into the next.
+body_feet :: (b: Body) -> Vec3 #effects(all) { return mix3(b.prev_pos, b.pos, loop_alpha(b.clock)); }
+body_face :: (b: Body) -> f32 #effects(all) {
+  return wrap_angle(b.prev_face + wrap_angle(b.face - b.prev_face) * loop_alpha(b.clock));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.cam.prev_target), p.cam.prev_dist, alpha(p)); }
 walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
 walk_eye :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).eye); }
 ```
@@ -386,7 +389,7 @@ a bound:
     y := walk_feet(p).y;
     eye := walk_eye(p).y;
     dy := y - was_y; deye := eye - was_eye;
-    if k >= 2 && !p.on_ground && p.prev_pos.y > 0 && p.clock.ticks > 2 {
+    if k >= 2 && !p.body.on_ground && p.body.prev_pos.y > 0 && p.body.clock.ticks > 2 {
       #assert abs(dy - was_dy) <= bound;
       #assert abs(deye - was_deye) <= eye_bound;
       flying += 1;
@@ -399,11 +402,11 @@ a bound:
   worst := 0.0f32; worst_eye := 0.0f32; was_y = 0; was_dy = 0; was_eye = 0; was_deye = 0;
   for k: 0..<40 {
     q = advance_in(w, q, frame);
-    dy := q.pos.y - was_y;
-    eye := q.target.y + orbit_offset(q).y * q.dist;
+    dy := q.body.pos.y - was_y;
+    eye := q.cam.target.y + orbit_offset(q).y * q.cam.dist;
     deye := eye - was_eye;
-    if k >= 2 && !q.on_ground { worst = hi(worst, abs(dy - was_dy)); worst_eye = hi(worst_eye, abs(deye - was_deye)); }
-    was_y = q.pos.y; was_dy = dy; was_eye = eye; was_deye = deye;
+    if k >= 2 && !q.body.on_ground { worst = hi(worst, abs(dy - was_dy)); worst_eye = hi(worst_eye, abs(deye - was_deye)); }
+    was_y = q.body.pos.y; was_dy = dy; was_eye = eye; was_deye = deye;
   }
   #assert worst > 3 * bound && worst_eye > 3 * eye_bound;
 }

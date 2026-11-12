@@ -68,7 +68,7 @@ vertical speed to `JUMP`:
 <!-- source: aethyr/move/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
+body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;
@@ -102,7 +102,7 @@ The rest of the step runs in this order:
 <!-- source: aethyr/move/walk.coax move -->
 ```jai
   next := p;
-  dir := wish(p);
+  dir := body_wish(p);
   speed := (ifx p.run then w.locomotion.run_speed else w.locomotion.walk_speed) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
 
   if w.locomotion.source_velocity {
@@ -122,16 +122,16 @@ The rest of the step runs in this order:
     next.vel.z += dz / diff * applied;
   }
   }
-  contact := collide_move(colliders(w), w.collision, collision_state(next), next.vel.x * dt, next.vel.z * dt);
-  // A refused step keeps the input Player, including its queued jump. The
+  contact := collide_move(colliders(w), w.collision, body_collision_state(next), next.vel.x * dt, next.vel.z * dt);
+  // A refused step keeps the input Body, including its queued jump. The
   // outer FrameClock consumes the assigned step; only diagnostics change.
-  if contact.status != CollideStatus.ok { return collision_report(given, contact); }
-  next = collision_report(collision_apply(next, contact.state), contact);
+  if contact.status != CollideStatus.ok { return body_collision_report(given, contact); }
+  next = body_collision_report(body_collision_apply(next, contact.state), contact);
 
   // Gravity and the floor.
   surface := query_ground_checked(colliders(w), next.pos.x, next.pos.z, next.pos.y + w.collision.step_up, w.collision.radius);
   if surface.status != QueryStatus.ok {
-    refused := collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_state});
+    refused := body_collision_report(given, CollideResult.{state = body_collision_state(given), status = CollideStatus.bad_state});
     refused.query_status = surface.status;
     return refused;
   }
@@ -256,15 +256,15 @@ main :: () {
   peak := 0.0f32; up := 0; air := 0;
   while true {
     q = step(w, q, STEP); air += 1;
-    if q.pos.y > peak { peak = q.pos.y; up = air; }
-    if q.on_ground { break; }
+    if q.body.pos.y > peak { peak = q.body.pos.y; up = air; }
+    if q.body.on_ground { break; }
   }
   print("standing jump: peak % m after % steps; JUMP^2 / (2 GRAVITY) = % m\n", peak, up, f32(JUMP * JUMP / (2 * GRAVITY)));
-  print("landed after % steps, feet at %, falling %\n", air, q.pos.y, q.vel.y);
+  print("landed after % steps, feet at %, falling %\n", air, q.body.pos.y, q.body.vel.y);
 
   for d: [2] f32.[50, 60] {
     r := ramp(d);
-    print("% degrees: after 2 s at (%, %), sliding %, on the ground %\n", d, r.pos.z, r.pos.y, r.sliding, r.on_ground);
+    print("% degrees: after 2 s at (%, %), sliding %, on the ground %\n", d, r.body.pos.z, r.body.pos.y, r.body.sliding, r.body.on_ground);
   }
 }
 ```
@@ -350,7 +350,7 @@ main :: () {
   second := advance_traced(world, first.player, 0.006);
   // A follower consumes the actual targets. Dividing this frame's 6 ms by
   // 1/64 s would miss the step owed by the clock's earlier 10 ms carry.
-  print("10 ms then 6 ms: % then % targets, % paid tick\n", first.count, second.count, second.player.clock.ticks);
+  print("10 ms then 6 ms: % then % targets, % paid tick\n", first.count, second.count, second.player.body.clock.ticks);
   print("step target: z %, drawn z %\n", second.targets[0].feet.z, walk_feet(second.player).z);
 
   invalid := world;
@@ -358,7 +358,7 @@ main :: () {
   waiting := walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
   refused := advance_traced(invalid, waiting, STEP);
   print("gravity 0: status % (bad_profile), jump waiting %, paid ticks %\n",
-        cast(int) cast(u8) refused.player.collision_status, refused.player.jumps.waiting, refused.player.clock.ticks);
+        cast(int) cast(u8) refused.player.body.collision_status, refused.player.body.jumps.waiting, refused.player.body.clock.ticks);
 }
 ```
 
@@ -418,7 +418,9 @@ records the C facade parity, actual scene checks and complete Wasm links.
 
 ## The module and the realm boundary
 
-`aethyr/move/walk.coax` owns Player, World, physical stepping and interpolation.
+`aethyr/move/walk.coax` owns Body (what the step reads and writes, and all a
+server holds), Camera (the orbit, which the step never reads), Player (a page's
+body and camera), World, physical stepping and interpolation.
 The Walk unit declares no C exports of its own. `aethyr/move/player.coax` retains
 the published `verse_player_*` C signatures as thin adapters to `walk_*`.
 Coax consumers that qualify names load Walk directly; an alias cannot

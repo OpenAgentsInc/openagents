@@ -47,7 +47,7 @@ static void start(uint32_t state) {
 
 static coax_t_Place place_here(uint32_t state) {
   if (!placed) return (coax_t_Place){0};
-  return verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), garden(state)->orbit, -1);
+  return verse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), garden(state)->orbit, -1);
 }
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = garden_place_fix(at(state), p);
@@ -90,9 +90,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_garden_max_vertices() * coaxial_garden_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_garden_uniform_floats()};
-  int64_t n = garden_frame_on_clock(at(state), out, u, w, h, scale, player.clock,
+  int64_t n = garden_frame_on_clock(at(state), out, u, w, h, scale, player.body.clock,
                            (coax_v_t_StepTarget){walked.targets.e, walked.count}, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
-                           verse_player_act(player), player.vel.x, player.vel.z,
+                           verse_player_act(player), player.body.vel.x, player.body.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   place_frame(state);
   track_frame(tr(), dt, w, h, scale);

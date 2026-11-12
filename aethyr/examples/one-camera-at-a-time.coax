@@ -14,7 +14,7 @@ main :: () {
     for c: 0..<3 { p[c] = frame_with(w, verse_player_input(p[c], 0, 1, 0, 0, f > 20, f == 60, 0, 0), 1.0f32 / 60, c); }
   }
   for c: 0..<3 {
-    print("camera steps % a step: feet at (%, %, %); the camera looks at z = %\n", c, p[c].pos.x, p[c].pos.y, p[c].pos.z, p[c].target.z);
+    print("camera steps % a step: feet at (%, %, %); the camera looks at z = %\n", c, p[c].body.pos.x, p[c].body.pos.y, p[c].body.pos.z, p[c].cam.target.z);
   }
   print("the same player each way: %\n", walker_same(p[0], p[1]) && walker_same(p[2], p[1]));
   names := [3] string.["first person", "follow", "top down"];

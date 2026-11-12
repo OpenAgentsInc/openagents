@@ -40,17 +40,17 @@ Both call the step in the same order on the same input and the same world:
 ```jai
 // Before the advance: a blast's throw into your velocity; held or busy, no input of yours; your input;
 // prone or caught, still; the pace and grip; the camera's yaw; a fork's low gravity while you're up.
-eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> walk.Player #export_c #effects(reads, writes, traps) {
+eg_step_begin :: (p0: walk.Body, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> walk.Body #export_c #effects(reads, writes, traps) {
   p := p0;
   if w.kx != 0 || w.ky != 0 || w.kz != 0 {
     p.vel.x += w.kx; p.vel.z += w.kz;
     if w.ky > 0 { p.vel.y = ifx w.ky > p.vel.y then w.ky else p.vel.y; p.on_ground = false; }
   }
-  if w.busy || w.still { p = walk.walk_input(p, 0, 0, 0, 0, false, false, 0, 0); }
-  else { p = walk.walk_input(p, input.key_x, input.key_y, input.pad_x, input.pad_y, input.run, input.jump && w.jump_ok, 0, 0); }
+  if w.busy || w.still { p = walk.body_input(p, 0, 0, 0, 0, false, false, p.yaw); }
+  else { p = walk.body_input(p, input.key_x, input.key_y, input.pad_x, input.pad_y, input.run, input.jump && w.jump_ok, p.yaw); }
   if (w.link_flags & 512) != 0 && !w.busy && !w.still { p.key_x = 0; p.key_y = 1; p.pad_x = 0; p.pad_y = 0; p.run = true; }
   p.pace = w.pace; p.grip = w.grip;
-  p.theta = input.theta;
+  p.yaw = input.theta;   // the view's yaw from the wire: the step's input
   if (w.link_flags&32)!=0 {p.pace*=link_motion.ocl_input_pace(p.key_x,p.key_y,p.pad_x,p.pad_y);}
   if (w.link_flags&128)!=0 {
     p.face=input.theta;

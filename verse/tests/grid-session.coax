@@ -85,5 +85,5 @@ main :: () {
   print("session %\n", gridwalk_session(g[..]));
   print("replayed %\n", gridwalk_replay(g[..], again[..]));
   f := gridwalk_feet(g[..]);
-  print("feet % % %, jumps %\n", f.x, f.y, f.z, g[0].you.jumps.taken);
+  print("feet % % %, jumps %\n", f.x, f.y, f.z, g[0].you.body.jumps.taken);
 }

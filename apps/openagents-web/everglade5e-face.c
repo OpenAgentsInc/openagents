@@ -300,8 +300,8 @@ static void start(cx_face_addr state) {
 static coax_t_Place place_here(cx_face_addr state) {
   coax_t_Everglade *g = city(state);
   if (!placed) return (coax_t_Place){0};
-  return everglade_place_here(at(state), verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), g->orbit,
-                        everglade_room_at(at(state), player.pos.x, player.pos.z)));
+  return everglade_place_here(at(state), verse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), g->orbit,
+                        everglade_room_at(at(state), player.body.pos.x, player.body.pos.z)));
 }
 // Put you at a kept place, on open ground near it if it no longer is.
 static void place_put(cx_face_addr state, coax_t_Place p) {
@@ -345,7 +345,7 @@ EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 // as (x + 500) * 10 * 10000 + (z + 500) * 10.
 EXPORT("coaxial_probe") int32_t coaxial_probe(cx_face_addr state) {
   (void)state;
-  return (int32_t)(player.pos.x * 10 + 5000.5f) * 10000 + (int32_t)(player.pos.z * 10 + 5000.5f);
+  return (int32_t)(player.body.pos.x * 10 + 5000.5f) * 10000 + (int32_t)(player.body.pos.z * 10 + 5000.5f);
 }
 
 // Your body as this frame drew it, for a headless walk (globalThis.coaxial.fieldProbe(field)):
@@ -387,15 +387,15 @@ static bool step_jump;            /* a jump pressed since the last step */
 static coax_t_Vec3 step_from;     /* where the last step started, to draw between */
 static void move_once(cx_face_addr state, coax_t_Everglade *g, coax_t_EgMoveIn input, coax_t_Seat seat, int64_t hulls, float dt, float frame,
                       float *show_vx, float *show_vz) {
-  coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.pos.x, player.pos.y, player.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
+  coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.body.pos.x, player.body.pos.y, player.body.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
                                                river.aboard >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){hull_bodies, hulls * 7});
   mw = eg_step_world(mw, input);
-  player = eg_step_begin(player, input, mw, dt);
-  coax_t_EgBody before = eg_step_body(player);
+  player.body = eg_step_begin(player.body, input, mw, dt); player.cam.theta = input.theta;
+  coax_t_EgBody before = eg_step_body(player.body);
   coax_v_f32 near = everglade_move_bodies(at(state));
-  player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){g->walls.e, mw.walls * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
-  coax_t_EgBody moved = everglade_move_after(at(state), mw, before, eg_step_body(player), dt);
-  player = eg_step_put(player, moved);
+  player.body = eg_step_advance(player.body, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){g->walls.e, mw.walls * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
+  coax_t_EgBody moved = everglade_move_after(at(state), mw, before, eg_step_body(player.body), dt);
+  player.body = eg_step_put(player.body, moved);
   *show_vx = moved.show_vx; *show_vz = moved.show_vz;
 }
 
@@ -454,12 +454,12 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     if (net_fix_due(at(state))) {
       // what the re-run moves you is measured where you are drawn from (the controller's feet at the
       // last step's end), so the draw's two ends move together and the ease takes it out
-      coax_t_Vec3 was = eg_step_feet(player);
+      coax_t_Vec3 was = eg_step_feet(player.body);
       coax_t_NetFix f = net_fix(at(state));
-      player = eg_step_set(player, f.x, f.y, f.z, f.yaw, f.vx, f.vy, f.vz, f.ground, f.carry, f.jump);
+      player.body = eg_step_set(player.body, f.x, f.y, f.z, f.yaw, f.vx, f.vy, f.vz, f.ground, f.carry, f.jump);
       int64_t again = net_replay_n(at(state));
       for (int64_t k = 0; k < again; k++) move_once(state, g, net_replay_input(at(state), k), seat, hulls, STEP, STEP, &show_vx, &show_vz);
-      coax_t_Vec3 now_at = eg_step_feet(player);
+      coax_t_Vec3 now_at = eg_step_feet(player.body);
       float dx = now_at.x - was.x, dy = now_at.y - was.y, dz = now_at.z - was.z;
       step_from.x += dx; step_from.y += dy; step_from.z += dz;
       net_fixed(at(state), dx, dy, dz);
@@ -473,7 +473,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     while (step_acc >= STEP) {
       coax_t_EgMoveIn one = input;
       one.jump = step_jump; step_jump = false;
-      step_from = eg_step_feet(player);   /* where this step starts (everglade-step.coax eg_step_drawn) */
+      step_from = eg_step_feet(player.body);   /* where this step starts (everglade-step.coax eg_step_drawn) */
       net_input(at(state), one, g->dive && !busy);
       move_once(state, g, one, seat, hulls, STEP, STEP, &show_vx, &show_vz);
       step_acc -= STEP;
@@ -482,7 +482,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     // before your seat (a golden page, the first frames on the local host) you stand where you are put:
     // only a room steps you (#12908)
     step_acc = 0; step_jump = false; show_vx = 0; show_vz = 0;
-    step_from = eg_step_feet(player);
+    step_from = eg_step_feet(player.body);
   }
   // the river: what water you are in, on the bridge's deck none
   // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
@@ -491,12 +491,12 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   // Water Breathing (everglade-tide.coax): your breath never runs short under water
   everglade_river_gills(rv(), everglade_water_breathing(at(state)));
   // on the bridge's deck, or in Part Water's trench (everglade-tide.coax), you are out of the water
-  if ((everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2) || everglade_parted(at(state), player.pos.x, player.pos.z)) {
+  if ((everglade_on_bridge(at(state), player.body.pos.x, player.body.pos.z) && swim.medium < 2) || everglade_parted(at(state), player.body.pos.x, player.body.pos.z)) {
     swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
   } else {
     // your feet's height over the bed: over the water's surface (levitating, falling) you are not in it
     // on the ice over the water you stand on it (everglade-frost.coax)
-    swim = everglade_river_swim_over(rv(), heights, player.pos.x, player.pos.z, player.pos.y + everglade_ice_lift(at(state), player.pos.x, player.pos.z), g->dive && !busy, dt, now);
+    swim = everglade_river_swim_over(rv(), heights, player.body.pos.x, player.body.pos.z, player.body.pos.y + everglade_ice_lift(at(state), player.body.pos.x, player.body.pos.z), g->dive && !busy, dt, now);
   }
   if (swim.defeated) {
     // the sixth level of Exhaustion: you come to on the nearer bank
@@ -525,22 +525,22 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
       if (net_boat_refused(at(state), river.aboard, (float)(now - boarded_at))) {
         coax_t_Seat off = everglade_river_leave(rv(), heights, now);
         if (off.on) player = verse_player_place(off.x, 0, off.z, off.yaw);
-        swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, false, 0, now);
+        swim = everglade_river_swim(rv(), heights, player.body.pos.x, player.body.pos.z, false, 0, now);
         boarded = -1; boarded_at = -1;
       }
     }
   }
   int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 28 * 8});
   // a rowboat near you to board, or E (the prompt) to board it or step ashore
-  everglade_boat_near(at(state), swim.medium == 3 || swim.aloft || busy ? -1 : everglade_river_boat_near(rv(), player.pos.x, player.pos.z));
+  everglade_boat_near(at(state), swim.medium == 3 || swim.aloft || busy ? -1 : everglade_river_boat_near(rv(), player.body.pos.x, player.body.pos.z));
   if (everglade_boat_start(at(state)) && river.aboard < 0) everglade_river_board(rv(), everglade_river_first_boat(rv()));
   if (everglade_boat_take(at(state))) {
     if (river.aboard >= 0) {
       coax_t_Seat off = everglade_river_leave(rv(), heights, now);
       if (off.on) player = verse_player_place(off.x, 0, off.z, off.yaw);
-      swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, false, 0, now);
-    } else if (everglade_river_board(rv(), everglade_river_boat_near(rv(), player.pos.x, player.pos.z))) {
-      swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, false, 0, now);
+      swim = everglade_river_swim(rv(), heights, player.body.pos.x, player.body.pos.z, false, 0, now);
+    } else if (everglade_river_board(rv(), everglade_river_boat_near(rv(), player.body.pos.x, player.body.pos.z))) {
+      swim = everglade_river_swim(rv(), heights, player.body.pos.x, player.body.pos.z, false, 0, now);
     }
   }
   bool small = everglade_phone(at(state));
@@ -551,7 +551,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     // drawn between the last two steps' ends (the controller's feet at each), and less what a re-run
     // moved you, eased out
     coax_t_Point off = net_offset(at(state), frame);
-    feet = eg_step_drawn(step_from, player, step_acc * 30);
+    feet = eg_step_drawn(step_from, player.body, step_acc * 30);
     feet.x += off.x; feet.y += off.y; feet.z += off.z;
   }
   probe_feet[0] = feet.x; probe_feet[1] = feet.y; probe_feet[2] = feet.z; probe_speed = show_vx * show_vx + show_vz * show_vz;
@@ -573,7 +573,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   {
     /* the room's server (everglade-net.coax): the clock, the socket, the world where it is drawn */
     net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, verse_player_face(player), show_vx, show_vz,
-             !player.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
+             !player.body.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
     net_drain(state);
     sound_n = (uint32_t)everglade_sound_lines(at(state));   /* the cues of the page's frame and the room's events (everglade-sound.coax) */
     ticket_out();
@@ -590,7 +590,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     everglade_river_frame(rv(), (coax_v_f32){u.data + at_water, u.count - at_water}, now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
     // the wakes, the particles and the weir's sheet (W6)
     int64_t at_fx = everglade_fx_at();
-    everglade_river_fx(rv(), (coax_v_f32){u.data + at_fx, u.count - at_fx}, golden ? 0 : dt, now, player.pos.x, player.pos.z, swim.medium, eye[0], eye[1], eye[2]);
+    everglade_river_fx(rv(), (coax_v_f32){u.data + at_fx, u.count - at_fx}, golden ? 0 : dt, now, player.body.pos.x, player.body.pos.z, swim.medium, eye[0], eye[1], eye[2]);
     // what struck the water this frame (spells, falling debris: W8) splashes, rings and shoves the floats
     static float hits[32];
     int64_t hn = everglade_water_hits(at(state), (coax_v_f32){hits, 32});
@@ -606,7 +606,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   room_out(state, dt);
   edit_out(state);
   place_frame(state);
-  if (placed) everglade_track(at(state), (coax_v_t_EgSeen){&track_seen, 1}, tr(), player.pos.x, player.pos.z);
+  if (placed) everglade_track(at(state), (coax_v_t_EgSeen){&track_seen, 1}, tr(), player.body.pos.x, player.body.pos.z);
 
   bar_frame(state);
   track_frame(tr(), dt, w, h, scale);
@@ -737,7 +737,7 @@ static void room_out(cx_face_addr state, float dt) {
   room_asked_n = room.count < (int64_t)sizeof room_asked ? (int)room.count : 0;
   memcpy(room_asked, room.data, (size_t)room_asked_n);
   coax_t_Vec3 feet = verse_player_feet(player);
-  float air = player.on_ground ? 0.0f : feet.y;
+  float air = player.body.on_ground ? 0.0f : feet.y;
   int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), city(state)->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
   if (un <= 0 || bn <= 0) return;
   room_id = coaxial_http((cx_face_addr)(uintptr_t)room_url_buf, (uint32_t)un, (cx_face_addr)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);

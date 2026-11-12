@@ -101,7 +101,7 @@ actor_test_claims :: (s:[]ResourceStream)->int {n:=0;for c:s[0].claims {if c.liv
  f.pool[0].limits.capacity=2;f.pool[0].limits.scans=32;f.pool[0].limits.senses=8;f.pool[0].limits.search=256;f.pool[0].limits.choices=8;
  before:=actor_test_claims(f.resources.pool[..]);got:=actor_spawn_with(f.pool[..],d,f.resources.schema,refs,2,f.resources.m[..],f.resources.pool[..],f.resources.world[0],500,700,17,o);#assert got.status==ACTOR_OK;
  a:=f.pool[0].actors[entities.entity_slot(got.handle)];
- #assert a.body.pos.x==5 && a.body.pos.z==7 && a.body.pos.y==0 && a.body.theta==0 && a.presentation_x==5 && a.presentation_z==7 && a.pose_tick== -1;
+ #assert a.body.body.pos.x==5 && a.body.body.pos.z==7 && a.body.body.pos.y==0 && a.body.cam.theta==0 && a.presentation_x==5 && a.presentation_z==7 && a.pose_tick== -1;
  #assert a.facts.tick==17 && a.facts.day==3 && a.facts.phase==11 && a.brain.tick==17 && a.perception.tick==17 && a.day_ticks==f.resources.schema.day_ticks;
  #assert a.overrides.mask==o.mask && a.overrides.speed==(ifx (o.mask&1)!=0 then 300 else 0) && a.overrides.radius==(ifx (o.mask&2)!=0 then 40 else 0);
  #assert a.definition.parameters.speed==(ifx (o.mask&1)!=0 then 300 else 200) && a.definition.parameters.radius==(ifx (o.mask&2)!=0 then 40 else 30);

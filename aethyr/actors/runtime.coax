@@ -34,17 +34,17 @@ actor_runtime_sense :: (p:[]ActorExecPool,i:int,w:ActorStepWorld,work:[]ActorWor
  }
  if n<=par.sense_work && w.tick%par.period==0 {
   scratch:[1]scene.QueryScratch;selected:=scene.query_select_world(w.queries,filters.QueryFilter.{include=1,ignore_entity=a.handle,sensors=false},scratch[..]);
-  x:=actor_cm(a.body.pos.x);y:=actor_cm(a.body.pos.y);z:=actor_cm(a.body.pos.z);fx:=x-w.focus_x;fz:=z-w.focus_z;
+  x:=actor_cm(a.body.body.pos.x);y:=actor_cm(a.body.body.pos.y);z:=actor_cm(a.body.body.pos.z);fx:=x-w.focus_x;fz:=z-w.focus_z;
   if fx*fx+fz*fz<=par.cull*par.cull {
    for j:0..<n {c:=candidates[j];if !c.eligible || c.id==a.id {continue;}dx:=c.x-x;dy:=c.y-y;dz:=c.z-z;range:=ifx c.id==a.perception.target then par.track else par.discover;
     if dx*dx+dz*dz>range*range || dy< -par.vertical || dy>par.vertical {continue;}
-    from:=spatial.world_point(a.body.pos.x,a.body.pos.y+1.6,a.body.pos.z);to:=spatial.world_point(f32(c.x)/100,f32(c.y)/100+1.6,f32(c.z)/100);line:=scene.semantic_clear(selected,from,spatial.world_sub(to,from),0.99999994);
+    from:=spatial.world_point(a.body.body.pos.x,a.body.body.pos.y+1.6,a.body.body.pos.z);to:=spatial.world_point(f32(c.x)/100,f32(c.y)/100+1.6,f32(c.z)/100);line:=scene.semantic_clear(selected,from,spatial.world_sub(to,from),0.99999994);
     candidates[j].clear=line.status==queries.QueryStatus.ok && line.clear;work[0].rays+=1;if line.status!=queries.QueryStatus.ok {work[0].refused+=1;}
    }
   }
  }
- got:=actor_perceive(par,a.perception,w.tick,a.id,actor_cm(a.body.pos.x),actor_cm(a.body.pos.y),actor_cm(a.body.pos.z),w.focus_x,w.focus_z,candidates[0..<n]);
- if got.status!=ACTOR_OK {work[0].refused+=1;got=actor_perceive(par,a.perception,w.tick,a.id,actor_cm(a.body.pos.x),actor_cm(a.body.pos.y),actor_cm(a.body.pos.z),w.focus_x,w.focus_z,candidates[0..<0]);}
+ got:=actor_perceive(par,a.perception,w.tick,a.id,actor_cm(a.body.body.pos.x),actor_cm(a.body.body.pos.y),actor_cm(a.body.body.pos.z),w.focus_x,w.focus_z,candidates[0..<n]);
+ if got.status!=ACTOR_OK {work[0].refused+=1;got=actor_perceive(par,a.perception,w.tick,a.id,actor_cm(a.body.body.pos.x),actor_cm(a.body.body.pos.y),actor_cm(a.body.body.pos.z),w.focus_x,w.focus_z,candidates[0..<0]);}
  a.perception=got.state;a.choice=ActorChoice.{};a.choice.work=cast(int)got.flags;work[0].sense+=got.work;p[0].actors[i]=a;
 }
 actor_runtime_choose :: (p:[]ActorExecPool,i:int,w:ActorStepWorld,work:[]ActorWork) #effects(all) {
@@ -54,11 +54,11 @@ actor_runtime_choose :: (p:[]ActorExecPool,i:int,w:ActorStepWorld,work:[]ActorWo
  choice:=actor_choose(par,a.brain,ActorKnowledge.{tick=w.tick,flags=flags,culled=a.perception.culled || a.facts.values[0].integer==0},w.seed,a.id);
  if choice.status!=ACTOR_OK {work[0].refused+=1;return;}a.brain=choice.brain;a.choice=choice;work[0].choices+=choice.work;
  goal:=ifx choice.goal==ACTOR_ROUTINE then anchor else a.facts.values[1].integer;
- a.goal_x=actor_cm(a.body.pos.x);a.goal_z=actor_cm(a.body.pos.z);
+ a.goal_x=actor_cm(a.body.body.pos.x);a.goal_z=actor_cm(a.body.body.pos.z);
  if choice.goal==ACTOR_HOME || choice.goal==ACTOR_ROUTINE {for point:w.anchors {if point.id==goal {a.goal_x=point.x;a.goal_z=point.z;}}}
  if choice.goal==ACTOR_MEMORY || choice.goal==ACTOR_AWAY {
   recall:=senses.memory_recall(a.perception.memory,senses.Senses.{forget=par.forget},a.perception.target,w.tick);
-  if recall.known {a.goal_x=actor_cm(recall.at.x);a.goal_z=actor_cm(recall.at.z);if choice.goal==ACTOR_AWAY {a.goal_x=2*actor_cm(a.body.pos.x)-a.goal_x;a.goal_z=2*actor_cm(a.body.pos.z)-a.goal_z;}}
+  if recall.known {a.goal_x=actor_cm(recall.at.x);a.goal_z=actor_cm(recall.at.z);if choice.goal==ACTOR_AWAY {a.goal_x=2*actor_cm(a.body.body.pos.x)-a.goal_x;a.goal_z=2*actor_cm(a.body.body.pos.z)-a.goal_z;}}
  }
  if a.brain.rule>=0 && (par.rules[a.brain.rule].require&ACTOR_MODEL)!=0 && a.model.kind==decisions.DECIDE_GO {a.goal_x=actor_cm(a.model.x);a.goal_z=actor_cm(a.model.z);}
  a.last_anchor=anchor;p[0].actors[i]=a;
@@ -75,7 +75,7 @@ actor_runtime_move :: (p:[]ActorExecPool,i:int,w:ActorStepWorld,work:[]ActorWork
   if nav.status==ACTOR_NAV_PENDING && w.tick>nav.asked {
    heap:[128]s32;slots:[128]s32;order:[128]s32;
    got:=navigation.nav_grid_flow(w.grid,w.walk,a.flow[..],heap[..],slots[..],order[..],nav.goal,1000,par.path_work);work[0].search+=1;work[0].settled+=got.settled;
-   at:=navigation.nav_grid_cell_at(w.grid,a.body.pos.x,a.body.pos.z);result:=ACTOR_NAV_UNREACHABLE;
+   at:=navigation.nav_grid_cell_at(w.grid,a.body.body.pos.x,a.body.body.pos.z);result:=ACTOR_NAV_UNREACHABLE;
    if got.status==navigation.NavFlowStatus.cut {result=ACTOR_NAV_EXHAUSTED;}else if got.status==navigation.NavFlowStatus.ok && at>=0 && a.flow[at]<1000 {result=ACTOR_NAV_SUCCESS;}
    admitted:=actor_nav_accept(nav,nav.key,context,w.tick,result,par.retry);if admitted.status==ACTOR_OK {nav=admitted.navigation;}else {nav.status=ACTOR_NAV_INVALIDATED;work[0].refused+=1;}
   }
@@ -85,14 +85,14 @@ actor_runtime_move :: (p:[]ActorExecPool,i:int,w:ActorStepWorld,work:[]ActorWork
   }
   // A successful bounded search is followed using the shared downhill rule.
   if nav.status==ACTOR_NAV_SUCCESS {
-   at:=navigation.nav_grid_cell_at(w.grid,a.body.pos.x,a.body.pos.z);next:= -1;if at>=0 && a.flow[at]<1000 {next=navigation.nav_grid_downhill(w.grid,w.walk,a.flow[..],at);}
-   if next>=0 {dx:=navigation.nav_grid_centre_x(w.grid,next)-a.body.pos.x;dz:=navigation.nav_grid_centre_z(w.grid,next)-a.body.pos.z;length:=sqrt(dx*dx+dz*dz);if length>0.08 {input.x=int(dx/length*100);input.z=int(dz/length*100);}}
+   at:=navigation.nav_grid_cell_at(w.grid,a.body.body.pos.x,a.body.body.pos.z);next:= -1;if at>=0 && a.flow[at]<1000 {next=navigation.nav_grid_downhill(w.grid,w.walk,a.flow[..],at);}
+   if next>=0 {dx:=navigation.nav_grid_centre_x(w.grid,next)-a.body.body.pos.x;dz:=navigation.nav_grid_centre_z(w.grid,next)-a.body.body.pos.z;length:=sqrt(dx*dx+dz*dz);if length>0.08 {input.x=int(dx/length*100);input.z=int(dz/length*100);}}
   }
  }
- before:=a.body.pos;body:=walking.walk_input(a.body,f32(input.x)/100,-f32(input.z)/100,0,0,false,input.jump,0,0);body.theta=0;
+ before:=a.body.body.pos;body:=walking.walk_input(a.body,f32(input.x)/100,-f32(input.z)/100,0,0,false,input.jump,0,0);body.cam.theta=0;
  world:=w.bodies;world.collision.radius=f32(par.radius)/100;world.collision.max_travel=world.collision.radius/2;world.locomotion.walk_speed=f32(par.speed)/100;world.locomotion.run_speed=f32(par.speed)/100;
  a.body=walking.step(world,body,1.0f32/64.0f32);a.input.jump=false;
- progress:=actor_nav_progress(nav,w.tick,actor_cm(before.x)!=actor_cm(a.body.pos.x) || actor_cm(before.z)!=actor_cm(a.body.pos.z),wants && (input.x!=0 || input.z!=0),par.stuck,par.retry);
+ progress:=actor_nav_progress(nav,w.tick,actor_cm(before.x)!=actor_cm(a.body.body.pos.x) || actor_cm(before.z)!=actor_cm(a.body.body.pos.z),wants && (input.x!=0 || input.z!=0),par.stuck,par.retry);
  if progress.status==ACTOR_OK {a.navigation=progress.navigation;}else {a.navigation=nav;work[0].refused+=1;}p[0].actors[i]=a;
 }
 actor_runtime_step :: (p:[]ActorExecPool,w:ActorStepWorld)->ActorWork #effects(all) {
@@ -124,7 +124,7 @@ actor_runtime_step :: (p:[]ActorExecPool,w:ActorStepWorld)->ActorWork #effects(a
   else if step==1 {actor_runtime_sense(p,i,w,work[..]);}
   else if step==2 {actor_runtime_choose(p,i,w,work[..]);}
   else if step==3 {actor_runtime_move(p,i,w,work[..]);}
-  else if step==4 {p[0].actors[i].pose_tick=w.tick;}else if step==5 {p[0].actors[i].presentation_x=a.body.pos.x;p[0].actors[i].presentation_z=a.body.pos.z;}
+  else if step==4 {p[0].actors[i].pose_tick=w.tick;}else if step==5 {p[0].actors[i].presentation_x=a.body.body.pos.x;p[0].actors[i].presentation_z=a.body.body.pos.z;}
   // The procedural body is the final pose. Presentation reads only after the
   // last phase; the action/attachment pipeline can later extend these phases.
  }}

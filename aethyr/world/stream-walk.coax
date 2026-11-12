@@ -142,8 +142,8 @@ sw_open :: (s: [] SwWalk, m: [] ResourceManifest, tier: int, backend: ResourceBa
     born := entities.entity_spawn(store); #assert born.id.value == i + 1;
   }
   entities.entity_flush(store);
-  s[0].player.pos = walking.Vec3.{x = 32, z = 56}; s[0].player.prev_pos = s[0].player.pos;
-  s[0].player.target = walking.Vec3.{x = 32, y = 1.5, z = 56}; s[0].player.prev_target = s[0].player.target;
+  s[0].player.body.pos = walking.Vec3.{x = 32, z = 56}; s[0].player.body.prev_pos = s[0].player.body.pos;
+  s[0].player.cam.target = walking.Vec3.{x = 32, y = 1.5, z = 56}; s[0].player.cam.prev_target = s[0].player.cam.target;
   s[0].query_epoch[0] = 1; s[0].surfaces[0] = filters.PhysicalSurface.{id = 10, footstep = 4};
   s[0].valid = true; return true;
 }
@@ -190,7 +190,7 @@ sw_claim :: (s: [] SwWalk, m: [] ResourceManifest, row: int, wanted: bool) #effe
   if !wanted && ref.slot >= 0 { #assert resource_stream_drop(s[0].stream[..], m, ref); s[0].claims[row] = ResourceReference.{}; }
 }
 sw_interest :: (s: [] SwWalk, m: [] ResourceManifest, direction: f32) #effects(all) {
-  x := f64(s[0].player.pos.x); z := f64(s[0].player.pos.z); p := s[0].profile;
+  x := f64(s[0].player.body.pos.x); z := f64(s[0].player.body.pos.z); p := s[0].profile;
   prefetch := profiles.world_stream_prefetch(p, s[0].cells[..], x, z, 0, f64(direction));
   if s[0].prefetch_cell != prefetch {
     if s[0].prefetch.slot >= 0 { #assert resource_stream_drop(s[0].stream[..], m, s[0].prefetch); }
@@ -231,7 +231,7 @@ sw_cells :: (s: [] SwWalk) #effects(all) {
   for i: 0..<s[0].cells[0].n { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) {
     result := cells.cell_complete(s[0].cells[..], cells.cell_answer(s[0].cells[0].cells[i].request, s[0].stream[0].epoch, i, s[0].cells[0].manifest[i].digest, false)); #assert result == cells.CELL_OK;
   } }
-  advanced := cells.cell_step_profile(s[0].cells[..], f64(s[0].player.pos.x), f64(s[0].player.pos.z), s[0].profile.rings);
+  advanced := cells.cell_step_profile(s[0].cells[..], f64(s[0].player.body.pos.x), f64(s[0].player.body.pos.z), s[0].profile.rings);
   #assert advanced.status == cells.CellAdvanceStatus.ok;
   s[0].active = 0; s[0].drawn = 0; s[0].updated = 0;
   for i: 0..<SW_CELLS {
@@ -252,8 +252,8 @@ sw_cells :: (s: [] SwWalk) #effects(all) {
 sw_hold :: (s: [] SwWalk, direction: f32) #effects(all) {
   // A held edge stops planar transport. Keeping an outward velocity would
   // prevent the first braking/reverse step from ever being committed.
-  p := s[0].player; p.vel.x = 0; p.vel.z = 0; p.key_y = direction;
-  p.prev_pos = p.pos; p.prev_target = p.target; p.prev_face = p.face; p.prev_dist = p.dist;
+  p := s[0].player; p.body.vel.x = 0; p.body.vel.z = 0; p.body.key_y = direction;
+  p.body.prev_pos = p.body.pos; p.cam.prev_target = p.cam.target; p.body.prev_face = p.body.face; p.cam.prev_dist = p.cam.dist;
   s[0].player = p; s[0].blocked += 1;
 }
 sw_walk :: (s: [] SwWalk, direction: f32) #effects(all) {
@@ -280,14 +280,14 @@ sw_walk :: (s: [] SwWalk, direction: f32) #effects(all) {
   world := semantics.QueryWorld.{geometry = queries.Colliders.{ground_enabled = false, boxes = s[0].boxes[0..<box_n * 6], capsules = s[0].capsules[0..<capsule_n * 7]},
     metadata = s[0].metadata[0..<meta_n], surfaces = s[0].surfaces[..], entity_store = store, current_epoch = s[0].query_epoch[..], epoch = s[0].query_epoch[0], tick = s[0].tick};
   selected := semantics.query_select_world(world, filters.QueryFilter.{include = 9}, s[0].query_scratch[..]); #assert selected.status == queries.QueryStatus.ok;
-  p := s[0].player; p.key_y = direction; p.run = true;
-  ground := semantics.semantic_ground(selected, p.pos.x, p.pos.z, p.pos.y + 0.55, 0.3);
-  if !cells.cell_may_enter(s[0].cells[..], f64(p.pos.x), f64(p.pos.z)) || ground.geometry.shape == queries.QueryShape.none { sw_hold(s, direction); return; }
+  p := s[0].player; p.body.key_y = direction; p.body.run = true;
+  ground := semantics.semantic_ground(selected, p.body.pos.x, p.body.pos.z, p.body.pos.y + 0.55, 0.3);
+  if !cells.cell_may_enter(s[0].cells[..], f64(p.body.pos.x), f64(p.body.pos.z)) || ground.geometry.shape == queries.QueryShape.none { sw_hold(s, direction); return; }
   w := walking.World.{ground = -99999, walls = selected.geometry.boxes, bodies = selected.geometry.capsules};
   next := walking.history_step(w, p);
-  if !cells.cell_may_enter(s[0].cells[..], f64(next.pos.x), f64(next.pos.z)) { sw_hold(s, direction); return; }
+  if !cells.cell_may_enter(s[0].cells[..], f64(next.body.pos.x), f64(next.body.pos.z)) { sw_hold(s, direction); return; }
   s[0].player = next;
-  grid := navigation.NavGrid.{nx = 1, nz = SW_CELLS, cell = 64}; goal := cells.cell_of(s[0].cells[..], f64(next.pos.x), f64(next.pos.z));
+  grid := navigation.NavGrid.{nx = 1, nz = SW_CELLS, cell = 64}; goal := cells.cell_of(s[0].cells[..], f64(next.body.pos.x), f64(next.body.pos.z));
   s[0].nav_flow = navigation.nav_grid_flow(grid, s[0].nav_walk[..], s[0].nav_cost[..], s[0].nav_heap[..], s[0].nav_slot[..], s[0].nav_order[..], goal, 768, s[0].cells[0].n);
 }
 sw_requests :: (s: [] SwWalk, m: [] ResourceManifest) #effects(all) {
@@ -312,7 +312,7 @@ sw_retirements :: (s: [] SwWalk) #effects(all) {
 // queued external facts; callbacks do not advance a second clock.
 sw_frame :: (s: [] SwWalk, m: [] ResourceManifest, frame_ns: int, direction: f32) -> bool #export_c #effects(all) {
   if !s[0].valid || !resource_stream_bound(s[0].stream[..], m) || s[0].load_n != 0 || s[0].retire_n != 0 || s[0].record_n != 0 || !(direction >= -1 && direction <= 1) { return false; }
-  schedule := clock.loop_accept_ns(s[0].player.clock, frame_ns);
+  schedule := clock.loop_accept_ns(s[0].player.body.clock, frame_ns);
   if schedule.due > 9223372036854775807 - s[0].tick || schedule.due > 9223372036854775807 - s[0].query_epoch[0] { return false; }
   s[0].step_n = 0;
   for step: 0..<schedule.due {
@@ -325,7 +325,7 @@ sw_frame :: (s: [] SwWalk, m: [] ResourceManifest, frame_ns: int, direction: f32
     }
     if s[0].observe_steps { s[0].step_digest[step] = sw_state_digest(s, schedule, step + 1); s[0].step_n += 1; }
   }
-  s[0].player.clock = clock.loop_ran(schedule); return true;
+  s[0].player.body.clock = clock.loop_ran(schedule); return true;
 }
 sw_close :: (s: [] SwWalk, m: [] ResourceManifest) -> bool #export_c #effects(all) {
   if !s[0].valid || s[0].closing { return false; }
@@ -361,7 +361,7 @@ sw_auth :: (source: [] u8, expected: string) -> bool #export_c #effects(all) {
 sw_uniforms :: (s: [] SwWalk, cell: int, aspect: f32, out: [] f32) -> bool #export_c #effects(all) {
   if !s[0].valid || cell < -2 || cell >= SW_CELLS { return false; }
   eye := walking.walk_eye(s[0].player); at := walking.walk_at(s[0].player);
-  offset := ifx cell == -1 then draw.v3(s[0].player.pos.x, s[0].player.pos.y, s[0].player.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
+  offset := ifx cell == -1 then draw.v3(s[0].player.body.pos.x, s[0].player.body.pos.y, s[0].player.body.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
   return draw.sd_view(draw.v3(eye.x, eye.y, eye.z), draw.v3(at.x, at.y, at.z), aspect, offset, out);
 }
 sw_gpu_acquire :: (s: [] SwWalk, kind: int, words: int) -> gpu.RrGrant #export_c #effects(all) { return gpu.rr_acquire(s[0].registry[..], kind, words); }

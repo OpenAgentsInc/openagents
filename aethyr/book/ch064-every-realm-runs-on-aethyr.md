@@ -265,9 +265,9 @@ main :: () {
   for realm: REALMS {
     p := walk(realm, 300, 1.0 / 60.0);
     q := walk(realm, 150, 1.0 / 30.0);
-    same := p.clock.ticks == q.clock.ticks && p.pos.x == q.pos.x && p.pos.y == q.pos.y && p.pos.z == q.pos.z;
+    same := p.body.clock.ticks == q.body.clock.ticks && p.body.pos.x == q.body.pos.x && p.body.pos.y == q.body.pos.y && p.body.pos.z == q.body.pos.z;
     print("%: % steps, % jumps, feet at (% cm, % cm, % cm), collision %; at 30 FPS the same: %\n", realm,
-          p.clock.ticks, p.jumps.taken, cm(p.pos.x), cm(p.pos.y), cm(p.pos.z), walk_collision_status(p), same);
+          p.body.clock.ticks, p.body.jumps.taken, cm(p.body.pos.x), cm(p.body.pos.y), cm(p.body.pos.z), walk_collision_status(p), same);
   }
 }
 ```

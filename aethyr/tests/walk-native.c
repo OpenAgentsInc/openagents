@@ -1,4 +1,7 @@
-/* Independent native client of the public, generated Player C header.
+/* Reads the flat Player of the walk extraction (#12609): it builds against trees before the body
+ * and camera split (#13271), whose own proof is walk.coax's body checks and the drift check. Kept as
+ * the harness of the recorded parity runs (walk-parity-*.json).
+ * Independent native client of the public, generated Player C header.
  * Every scalar leaf of the pre-extraction Player is serialized by its bits.
  * Producer-loss controls affect current execution only, before serialization. */
 #include "player-native.h"

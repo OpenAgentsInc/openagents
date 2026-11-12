@@ -30,7 +30,7 @@ state_lab_breakable :: ()->breaks.Breakable #effects(all) {
 state_lab_blade :: (s:[]StateLab,u:f32)->sense.SensorPose #effects(all) {
  d:=s[0].strike.def;open:=f32(d.events[0].tick);shut:=f32(d.events[2].tick);
  f:=(u-open)/(shut-open);f=ifx f<0 then 0 else ifx f>1 then 1 else f;
- p:=s[0].player.pos;ang:=s[0].player.face+1.0-2.0*f;
+ p:=s[0].player.body.pos;ang:=s[0].player.body.face+1.0-2.0*f;
  return sense.SensorPose.{a=space.world_point(p.x+sin(ang)*0.2,p.y+1.2,p.z+cos(ang)*0.2),b=space.world_point(p.x+sin(ang)*STATE_LAB_BLADE,p.y+1.2,p.z+cos(ang)*STATE_LAB_BLADE)};
 }
 // [B]: a swing, unless one is playing.
@@ -50,7 +50,7 @@ state_lab_strike_step :: (s:[]StateLab,tick:int) #effects(all) {
   for i:0..<6 {sw.poses[i]=state_lab_blade(s,local+f32(i)/5);}
   broken:=s[0].world[0].facts.values[0].integer==1;
   hurt:=[1]sense.HurtCapsule.[sense.HurtCapsule.{id=STATE_LAB_GATE,gen=1,team=2,feet=space.world_point(8,0,4),height=3,radius=0.5,alive=!broken}];
-  p:=s[0].player.pos;open:queries.Colliders;open.ground_enabled=false;
+  p:=s[0].player.body.pos;open:queries.Colliders;open.ground_enabled=false;
   r:=sense.sensor_resolve(k.def,s[0].strike.inst,tick,1,1,space.world_point(p.x,p.y+1.2,p.z),sw,STATE_LAB_BLADE_R,hurt[..],open,s[0].strike.ledger);
   if r.status==sense.SensorStatus.ok {s[0].strike.ledger=r.ledger;}
   for c:0..<r.n {if r.contacts[c].status==sense.ContactStatus.hit {state_lab_gate_hit(s,tick);}}
@@ -61,7 +61,7 @@ state_lab_strike_step :: (s:[]StateLab,tick:int) #effects(all) {
 state_lab_gate_hit :: (s:[]StateLab,tick:int) #effects(all) {
  s[0].strike.contacts+=1;
  sword:=react.AttackAttrs.{kinds=react.DMG_SLASH,stop=react.HitStop.{ticks=4,scope=react.StopScope.source}};
- p:=s[0].player.pos;dx:=p.x-8;dz:=p.z-4;l:=sqrt(dx*dx+dz*dz);toward:=ifx l>0.0001 then space.world_point(dx/l,0,dz/l) else space.world_point(-1,0,0);
+ p:=s[0].player.body.pos;dx:=p.x-8;dz:=p.z-4;l:=sqrt(dx*dx+dz*dz);toward:=ifx l>0.0001 then space.world_point(dx/l,0,dz/l) else space.world_point(-1,0,0);
  r:=react.react_decide(sword,react.TargetResponse.{},space.world_point(-1,0,0),toward,1);
  s[0].strike.stops=react.react_stop_add(s[0].strike.stops,r,1,STATE_LAB_GATE,tick);
  b:=breaks.break_hit(state_lab_breakable(),s[0].strike.gate,r,react.react_scaled(r,1),s[0].world[0].facts.values[0].integer==1);

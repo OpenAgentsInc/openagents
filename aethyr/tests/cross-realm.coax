@@ -77,14 +77,14 @@ cr_len :: (v: cr.Vec3) -> f32 { return sqrt(cr.dot(v, v)); }
     #assert cr.walk_collision_status(p) == 0;   // ok
     eye := cr.walk_eye(p);
     move := cr.sub(eye, was);
-    shown := cr.add(p.target, cr.times(cr.orbit_offset(p), p.dist));
+    shown := cr.add(p.cam.target, cr.times(cr.orbit_offset(p), p.cam.dist));
     step_move := cr.sub(shown, last);
     if f >= 3 {
       #assert cr_len(move) <= far;
       worst = cr.hi(worst, cr_len(cr.sub(move, was_move)));
       lurch = cr.hi(lurch, cr_len(cr.sub(step_move, last_move)));
     }
-    if p.on_ground && p.pos.y == 0.4f32 { stepped = true; }
+    if p.body.on_ground && p.body.pos.y == 0.4f32 { stepped = true; }
     was = eye; was_move = move; last = shown; last_move = step_move;
   }
   #assert worst <= f32(CR_LURCH) && worst > 0;
@@ -103,20 +103,20 @@ cr_len :: (v: cr.Vec3) -> f32 { return sqrt(cr.dot(v, v)); }
     a := cr.alpha(p);
     #assert a >= 0 && a <= 1;
     // The drawn feet are the physics feet between the last two steps, nowhere else.
-    #assert feet.y >= cr.lo(p.prev_pos.y, p.pos.y) && feet.y <= cr.hi(p.prev_pos.y, p.pos.y);
-    #assert feet.x == p.prev_pos.x + (p.pos.x - p.prev_pos.x) * a;
-    #assert feet.y == p.prev_pos.y + (p.pos.y - p.prev_pos.y) * a;
+    #assert feet.y >= cr.lo(p.body.prev_pos.y, p.body.pos.y) && feet.y <= cr.hi(p.body.prev_pos.y, p.body.pos.y);
+    #assert feet.x == p.body.prev_pos.x + (p.body.pos.x - p.body.prev_pos.x) * a;
+    #assert feet.y == p.body.prev_pos.y + (p.body.pos.y - p.body.prev_pos.y) * a;
     // Settled on the ground, the physics feet are at the ground under them: the step's top
     // within the capsule's radius of it, else 0. Stepping down, they ease onto the ground from
     // above it (locomotion's step_smooth), never below it by more than the sink limit.
-    on_step := p.pos.x >= -2.3 && p.pos.x <= 2.3 && p.pos.z >= 8.7 && p.pos.z <= 13.3;
-    if p.on_ground && p.prev_pos.y == p.pos.y {
+    on_step := p.body.pos.x >= -2.3 && p.body.pos.x <= 2.3 && p.body.pos.z >= 8.7 && p.body.pos.z <= 13.3;
+    if p.body.on_ground && p.body.prev_pos.y == p.body.pos.y {
       grounded += 1;
-      #assert p.pos.y == 0 || (on_step && p.pos.y == 0.4f32);
-      #assert feet.y == p.pos.y;
+      #assert p.body.pos.y == 0 || (on_step && p.body.pos.y == 0.4f32);
+      #assert feet.y == p.body.pos.y;
     }
-    if p.on_ground { #assert p.pos.y >= 0 && p.pos.y <= 0.4f32; }
-    if !p.on_ground { airborne += 1; #assert p.pos.y > 0; }
+    if p.body.on_ground { #assert p.body.pos.y >= 0 && p.body.pos.y <= 0.4f32; }
+    if !p.body.on_ground { airborne += 1; #assert p.body.pos.y > 0; }
   }
   #assert airborne > 60 && grounded > 100;
 }
@@ -144,7 +144,7 @@ cr_len :: (v: cr.Vec3) -> f32 { return sqrt(cr.dot(v, v)); }
     none: [1] f32;
     r = cr.walk_advance_in_realm(q, cr_dts[f], none[0..<0], walls[..], none[0..<0], cr_realm(which));
     #assert cr.walker_same(r, live[f]);
-    #assert f32_bits(r.dist) == f32_bits(live[f].dist) && f32_bits(r.target.y) == f32_bits(live[f].target.y);
+    #assert f32_bits(r.cam.dist) == f32_bits(live[f].cam.dist) && f32_bits(r.cam.target.y) == f32_bits(live[f].cam.target.y);
     e := cr.walk_eye(r); le := cr.walk_eye(live[f]);
     #assert f32_bits(e.x) == f32_bits(le.x) && f32_bits(e.y) == f32_bits(le.y) && f32_bits(e.z) == f32_bits(le.z);
   }

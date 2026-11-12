@@ -816,14 +816,14 @@ walk :: (s: [] DeadGears, dt: f32) {
                                     s[0].pad_x, s[0].pad_y, run, jump, 0, 0);
   }
   controls.walk_control_heading(s[0].control[..],s[0].pl,wrap_angle(s[0].yaw + f32(PI)));   // it walks by the camera
-  s[0].pl.pace = ifx dodging then f32(DODGE_PACE) else ifx cover then f32(COVER_PACE) else 1.0f32;
+  s[0].pl.body.pace = ifx dodging then f32(DODGE_PACE) else ifx cover then f32(COVER_PACE) else 1.0f32;
   gather_world(s);
   from := s[0].feet;
-  going := s[0].pl.vel;
+  going := s[0].pl.body.vel;
   s[0].pl = controls.walk_control_advance(s[0].control[..],the_world(s), s[0].pl, dt).player;
   f := pc.walk_feet(s[0].pl);
   if finite(f.x) && finite(f.y) && finite(f.z) { s[0].feet = v3(f.x, f.y, f.z); }
-  if raised(s) { s[0].pl.face = s[0].yaw; s[0].pl.prev_face = s[0].yaw; }
+  if raised(s) { s[0].pl.body.face = s[0].yaw; s[0].pl.body.prev_face = s[0].yaw; }
   s[0].face = pc.walk_face(s[0].pl);
   moved := flat(from, s[0].feet);
   s[0].walking = ifx dt > 0 then moved / dt else 0.0f32;
@@ -841,7 +841,7 @@ walk :: (s: [] DeadGears, dt: f32) {
 // it takes you out of cover. False while the last one is still settling.
 start_dodge :: (s: [] DeadGears) -> bool {
   g := game(s);
-  if !playing(s) || s[0].dodge_wait > 0 || !s[0].pl.on_ground { return false; }
+  if !playing(s) || s[0].dodge_wait > 0 || !s[0].pl.body.on_ground { return false; }
   h := s[0].held;
   x := hold_axis(h, HOLD_RIGHT, HOLD_LEFT) + s[0].pad_x;
   y := hold_axis(h, HOLD_FORWARD, HOLD_BACK) + s[0].pad_y;
@@ -1134,7 +1134,7 @@ suit_pose :: (s: [] DeadGears, ally: bool, duck: bool, speed: f32) -> fig.Pose {
   if repairing { return repair_pose(p, t); }
   if duck { p = crouch(p, ifx !ally && s[0].dodge > 0 then 1.0f32 else 0.85f32); }
   if !ally && s[0].dodge > 0 { p = pitch_by(p, fig.P_SPINE, 0.35); }
-  if !ally && !s[0].pl.on_ground {
+  if !ally && !s[0].pl.body.on_ground {
     // In the air: knees up, arms out a little.
     p = turn(p, fig.P_L_HIP, -0.75, 0, 0.04); p = turn(p, fig.P_R_HIP, -0.35, 0, -0.04);
     p = turn(p, fig.P_L_KNEE, 1.25, 0, 0); p = turn(p, fig.P_R_KNEE, 0.9, 0, 0);
@@ -1170,7 +1170,7 @@ suit_pose :: (s: [] DeadGears, ally: bool, duck: bool, speed: f32) -> fig.Pose {
 suit_joints :: (s: [] DeadGears, at: Point, yaw: f32, p: fig.Pose, ally: bool, joints: [] fig.Fv) -> bool {
   k := s[0].suit_rig;
   if !fig.verse_figure_joints_at(k, p, fig.Place.{x = at.x, y = at.y, z = at.z, yaw = yaw}, joints) { return false; }
-  if ally || s[0].pl.on_ground {
+  if ally || s[0].pl.body.on_ground {
     low := 1000.0f32;
     for q: 0..<2 {
       hip := ifx q == 0 then fig.P_L_HIP else fig.P_R_HIP;
@@ -1952,8 +1952,8 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     col := fire.x0 - gap - sb;
     n = hud_button(s, u, out, n, BTN_COVER, Rect.{x0 = col, y0 = fire.y1 - sb, x1 = col + sb, y1 = fire.y1}, "COVER", 6 * k, st.cover, true);
     jc := col - gap - sb;
-    n = hud_button(s, u, out, n, BTN_JUMP, Rect.{x0 = jc, y0 = fire.y1 - sb, x1 = jc + sb, y1 = fire.y1}, "JUMP", 6 * k, false, !st.cover && s[0].pl.on_ground);
-    n = hud_button(s, u, out, n, BTN_DODGE, Rect.{x0 = jc, y0 = fire.y0, x1 = jc + sb, y1 = fire.y0 + sb}, "DODGE", 6 * k, s[0].dodge > 0, s[0].dodge_wait <= 0 && s[0].pl.on_ground);
+    n = hud_button(s, u, out, n, BTN_JUMP, Rect.{x0 = jc, y0 = fire.y1 - sb, x1 = jc + sb, y1 = fire.y1}, "JUMP", 6 * k, false, !st.cover && s[0].pl.body.on_ground);
+    n = hud_button(s, u, out, n, BTN_DODGE, Rect.{x0 = jc, y0 = fire.y0, x1 = jc + sb, y1 = fire.y0 + sb}, "DODGE", 6 * k, s[0].dodge > 0, s[0].dodge_wait <= 0 && s[0].pl.body.on_ground);
     n = hud_button(s, u, out, n, BTN_RELOAD, Rect.{x0 = col, y0 = fire.y0, x1 = col + sb, y1 = fire.y0 + sb}, "RELOAD", 5.5 * k, false, st.reload <= 0 && st.ammo < 12);
     row := fire.y0 - gap - sb;
     holding := dg_held_alive(g);
@@ -2259,11 +2259,11 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert w.collision.max_passes == 3 && walk_capsule.collide_profile_ok(w.collision);
   p := pc.walk_place(0.4, 0, 0, 0);
   q := pc.step(w, p, pc.STEP);
-  #assert q.collision_status == walk_capsule.CollideStatus.unresolved && q.collision_passes == 3;
-  #assert q.pos.x == p.pos.x && q.pos.y == p.pos.y && q.pos.z == p.pos.z;
+  #assert q.body.collision_status == walk_capsule.CollideStatus.unresolved && q.body.collision_passes == 3;
+  #assert q.body.pos.x == p.body.pos.x && q.body.pos.y == p.body.pos.y && q.body.pos.z == p.body.pos.z;
   w.collision.max_passes = 1;
   limited := pc.step(w, p, pc.STEP);
-  #assert limited.collision_status == walk_capsule.CollideStatus.unresolved && limited.collision_passes == 1;
+  #assert limited.body.collision_status == walk_capsule.CollideStatus.unresolved && limited.body.collision_passes == 1;
 }
 
 #test "walking: forward goes where the camera looks, and the cover stops you" #steps 468000000 {
@@ -2302,7 +2302,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
 
 // ---- the controller (#6d99): aethyr/move/player.coax walks you
 
-feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel.x + s[0].pl.vel.z * s[0].pl.vel.z); }
+feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.body.vel.x * s[0].pl.body.vel.x + s[0].pl.body.vel.z * s[0].pl.body.vel.z); }
 
 #test "walking starts and stops with acceleration, not at once" #steps 69000000 {
   s: [1] DeadGears;

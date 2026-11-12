@@ -27,8 +27,8 @@ main :: () {
   person := walker.place_in(walk_world, 0, 2.5, 0, 0);
   person = walker.walk_input(person, 0, 1, 0, 0, false, true, 0, 0);
   person = walker.step(walk_world, person, walker.STEP);
-  print("terrain jump: above 2.5 m = %, query %\n", person.pos.y > 2.5, person.query_status);
+  print("terrain jump: above 2.5 m = %, query %\n", person.body.pos.y > 2.5, person.body.query_status);
   for tick: 0..<48 { person = walker.step(walk_world, person, walker.STEP); }
-  print("terrain landing: feet y %, grounded %\n", person.pos.y, person.on_ground);
+  print("terrain landing: feet y %, grounded %\n", person.body.pos.y, person.body.on_ground);
 }
 // book:end example

@@ -89,3 +89,11 @@ verse_player_v2_advance :: (c:[]control.WalkControlV2,p:walk.Player,frame:f32,bo
 }
 
 verse_player_v2_reset :: ()->control.WalkControlV2 #export_c #effects(all) {fresh:control.WalkControlV2;return fresh;}
+
+// The body alone, for a room server and a client that keeps its own camera (#13271): no camera field
+// crosses this face.
+verse_body_place :: (x: f32, y: f32, z: f32, yaw: f32) -> walk.Body #export_c #effects(all) { return walk.body_place(x, y, z, yaw); }
+verse_body_counts :: (b: walk.Body, frame: f32) -> f32 #export_c #effects(all) { return walk.body_counts(b, frame); }
+verse_body_feet :: (b: walk.Body) -> walk.Vec3 #export_c #effects(all) { return walk.body_feet(b); }
+verse_body_face :: (b: walk.Body) -> f32 #export_c #effects(all) { return walk.body_face(b); }
+verse_body_constrain :: (b: walk.Body, x: f32, z: f32) -> walk.Body #export_c #effects(all) { return walk.body_constrain(b, x, z); }

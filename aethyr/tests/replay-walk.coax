@@ -38,15 +38,15 @@ walk_init :: (w: [] Walk) {
 walk_digest :: (w: [] Walk) -> int {
   p := w[0].you;
   h := 2166136261;
-  floats := [14] f32.[p.pos.x, p.pos.y, p.pos.z, p.vel.x, p.vel.y, p.vel.z, p.face, p.theta, p.phi, p.dist,
-    p.target.x, p.target.y, p.target.z, p.pace];
+  floats := [14] f32.[p.body.pos.x, p.body.pos.y, p.body.pos.z, p.body.vel.x, p.body.vel.y, p.body.vel.z, p.body.face, p.cam.theta, p.cam.phi, p.cam.dist,
+    p.cam.target.x, p.cam.target.y, p.cam.target.z, p.body.pace];
   for k: 0..<14 { h = replay_mix(h, cast(int) f32_bits(floats[k])); }
   for k: 0..<BODY { h = replay_mix(h, cast(int) f32_bits(w[0].peer[k])); }
   b:=w[0].control[0].input;
   for value:[5]f32.[b.move_x,b.move_y,b.look_x,b.look_y,b.zoom] {h=replay_mix(h,cast(int)f32_bits(value));}
   for value:[9]int.[b.steps_left,b.jump.waiting,b.jump.pressed,b.jump.taken,b.jump.lost,b.act.waiting,b.mended,b.untimed,replay_flag(b.run)] {h=replay_mix_wide(h,value);}
   h=replay_mix(h,replay_flag(b.jump.held));
-  return replay_mix(replay_mix(h, replay_flag(p.on_ground)), p.jumps.pressed * 64 + p.jumps.taken);
+  return replay_mix(replay_mix(h, replay_flag(p.body.on_ground)), p.body.jumps.pressed * 64 + p.body.jumps.taken);
 }
 // book:end walk-state
 
@@ -65,7 +65,7 @@ walk_step :: (s: ReplaySession, w: [] Walk, sent: [] int) {
       controls.walk_control_zoom(w[0].control[..],i.zoom);
       w[0].control[0].input=input_frame(w[0].control[0].input,replay_steps(e));
     }
-    if e.source == REPLAY_MODEL { w[0].you.pace = replay_float(e.words[0]); }
+    if e.source == REPLAY_MODEL { w[0].you.body.pace = replay_float(e.words[0]); }
     if e.source == REPLAY_NETWORK { for k: 0..<3 { w[0].peer[k] = replay_float(e.words[k]); w[0].peer[3 + k] = replay_float(e.words[k]) + ifx k == 1 then 1.4f32 else 0; } }
   }
   if t % 40 == 5 {
@@ -75,7 +75,7 @@ walk_step :: (s: ReplaySession, w: [] Walk, sent: [] int) {
   if t % 100 == 99 { replay_new_epoch(s, REPLAY_MODEL); }
   world := World.{bodies = w[0].peer[..]};
   next := controls.walk_control_once(w[0].control[..],world,w[0].you);
-  if w[0].fault_at >= 0 && t >= w[0].fault_at { next.vel.x += 0.0001; }
+  if w[0].fault_at >= 0 && t >= w[0].fault_at { next.body.vel.x += 0.0001; }
   w[0].you = next;
   replay_stepped(s, walk_digest(w));
 }

@@ -11,7 +11,7 @@ walk :: (w: World, run: bool) -> Player {
   return p;
 }
 show :: (what: string, p: Player) {
-  print("%: feet at (%, %, %), speed into it %\n", what, p.pos.x, p.pos.y, p.pos.z, p.vel.z);
+  print("%: feet at (%, %, %), speed into it %\n", what, p.body.pos.x, p.body.pos.y, p.body.pos.z, p.body.vel.z);
 }
 main :: () {
   thin := [6] f32.[-2, 0, 3, 2, 2, 3.1];         // a 0.1 m wall whose face is at z = 3

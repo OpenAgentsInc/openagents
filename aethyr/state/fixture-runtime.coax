@@ -53,7 +53,7 @@ state_lab_ready_roots :: (s:[]StateLab,variant:int)->bool #effects(all) {
 }
 state_lab_safe_place :: (s:[]StateLab,variant:int)->bool #effects(all) {
  old:=s[0].variants.items[s[0].world[0].variant].owners[1];next:=s[0].variants.items[variant].owners[1];if old==next {return true;}
- ids:[1]queries.QueryId;p:=s[0].player.pos;hit:=queries.query_overlap_checked(queries.Colliders.{ground_enabled=false,boxes=s[0].boxes[next][..]},space.world_point(p.x,p.y+0.5,p.z),0.3,ids[..]);
+ ids:[1]queries.QueryId;p:=s[0].player.body.pos;hit:=queries.query_overlap_checked(queries.Colliders.{ground_enabled=false,boxes=s[0].boxes[next][..]},space.world_point(p.x,p.y+0.5,p.z),0.3,ids[..]);
  return hit.status==queries.QueryStatus.ok && hit.count==0;
 }
 state_lab_attempt :: (s:[]StateLab,tick:int)->int #effects(all) {
@@ -107,7 +107,7 @@ state_lab_step :: (s:[]StateLab,tick:int) #effects(all) {
  }
  if !accepted && !state_lab_idle(s) {s[0].ready=false;return;}state_lab_nav(s);state_lab_walls(s);state_lab_strike_sync(s);
  if state_lab_held(s,tick) {s[0].strike.held+=1;return;}   // the swing's hit stop holds only you
- p:=s[0].player;p.pace=ifx state_lab_fluid(s,p.pos.x,p.pos.z)>0 then 0.5 else 1;
+ p:=s[0].player;p.body.pace=ifx state_lab_fluid(s,p.body.pos.x,p.body.pos.z)>0 then 0.5 else 1;
  p=walking.walk_input(p,s[0].key_x,s[0].key_y,0,0,false,false,0,0);
  s[0].player=walking.step(walking.World.{walls=s[0].walls[..]},p,1.0f32/64.0f32);
 }
@@ -136,6 +136,6 @@ state_lab_frame :: (s:[]StateLab,ns:int) #export_c #effects(all) {
 }
 state_lab_digest :: (s:[]StateLab)->assets.AssetId #effects(all) {
  words:[2048]int;n:=state_save(s[0].schema,s[0].world[0].facts,state_lab_refs(s),words[..]);p:=s[0].player;
- values:=[15]int.[s[0].clock.ticks,s[0].world[0].variant,cast(int)f32_bits(p.pos.x),cast(int)f32_bits(p.pos.y),cast(int)f32_bits(p.pos.z),cast(int)f32_bits(p.vel.x),cast(int)f32_bits(p.vel.y),cast(int)f32_bits(p.vel.z),cast(int)f32_bits(p.face),s[0].credit.operation,s[0].credit.credits,s[0].intent,ifx s[0].nav_reached then 1 else 0,ifx state_lab_npc(s) then 1 else 0,cast(int)f32_bits(state_lab_fluid(s,3,3))];
+ values:=[15]int.[s[0].clock.ticks,s[0].world[0].variant,cast(int)f32_bits(p.body.pos.x),cast(int)f32_bits(p.body.pos.y),cast(int)f32_bits(p.body.pos.z),cast(int)f32_bits(p.body.vel.x),cast(int)f32_bits(p.body.vel.y),cast(int)f32_bits(p.body.vel.z),cast(int)f32_bits(p.body.face),s[0].credit.operation,s[0].credit.credits,s[0].intent,ifx s[0].nav_reached then 1 else 0,ifx state_lab_npc(s) then 1 else 0,cast(int)f32_bits(state_lab_fluid(s,3,3))];
  for v:values {words[n]=v;n+=1;}for id:s[0].variants.items[s[0].world[0].variant].content {for w:id.words {words[n]=cast(int)w;n+=1;}}return state_words_id(words[0..<n]);
 }

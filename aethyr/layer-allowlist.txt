@@ -140,9 +140,6 @@ tests aethyr/state/restore.coax -> aethyr/state/tests/restore.coax
 tests aethyr/state/variants.coax -> aethyr/state/tests/variants-matrix.coax
 tests aethyr/state/variants.coax -> aethyr/state/tests/variants.coax
 tests aethyr/world/terrain-tile.coax -> aethyr/tests/terrain-tile-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/move/walk.coax -> aethyr/tests/echo-walk-checks.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/move/walk.coax -> aethyr/tests/player-collision-checks.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/move/walk.coax -> aethyr/tests/walk-tuning-checks.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
 tests aethyr/world/cells.coax -> aethyr/tests/cells-oracle.coax
 tests aethyr/world/owners.coax -> aethyr/tests/owners-oracle.coax
 tests aethyr/world/resource-cost.coax -> aethyr/world/tests/resource-cost-fixture.coax

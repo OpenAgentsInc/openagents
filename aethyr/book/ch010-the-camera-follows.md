@@ -255,13 +255,16 @@ The walker draws its camera with these two calls:
 <!-- source: aethyr/move/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
-walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
-walk_face :: (p: Player) -> f32 #effects(all) {
-  return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
+walk_feet :: (p: Player) -> Vec3 #effects(all) { return body_feet(p.body); }
+walk_face :: (p: Player) -> f32 #effects(all) { return body_face(p.body); }
+// A body's feet and facing as drawn: between its last two steps, by how far its clock is into the next.
+body_feet :: (b: Body) -> Vec3 #effects(all) { return mix3(b.prev_pos, b.pos, loop_alpha(b.clock)); }
+body_face :: (b: Body) -> f32 #effects(all) {
+  return wrap_angle(b.prev_face + wrap_angle(b.face - b.prev_face) * loop_alpha(b.clock));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.cam.prev_target), p.cam.prev_dist, alpha(p)); }
 walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
 walk_eye :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).eye); }
 ```
@@ -488,14 +491,14 @@ player's step and then the camera's, so every realm that advances through
 camera_step :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := p;
   cam := follow_track(follow_of(p), colliders(w), w.room, wp(look_at(p)), dt);
-  next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
-  next.camera_query_status = cam.status;
+  next.cam.target = vp(cam.target); next.cam.spring_vel = vp(cam.vel); next.cam.dist = cam.dist;
+  next.cam.query_status = cam.status;
   return next;
 }
 // One fixed step of the player, then of its camera: what steps_in runs each step.
 step_once :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := step(w, p, dt);
-  if next.collision_status != CollideStatus.ok { return next; }
+  if next.body.collision_status != CollideStatus.ok { return next; }
   return camera_step(w, next, dt);
 }
 ```
@@ -515,23 +518,23 @@ wall pulled the camera in:
 // bit for bit, whether its camera steps after every step, never, or twice a step. Only the
 // camera's own fields differ, and the camera did meet the wall.
 walker_same :: (a: Player, b: Player) -> bool #effects(all) {
-  return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
-    && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.act == b.act && a.theta == b.theta
-    && a.phi == b.phi && a.max_dist == b.max_dist && a.prev_pos.x == b.prev_pos.x && a.prev_pos.y == b.prev_pos.y
-    && a.prev_pos.z == b.prev_pos.z && a.prev_face == b.prev_face && a.sliding == b.sliding
-    && a.jumps.waiting == b.jumps.waiting && a.jumps.taken == b.jumps.taken && a.clock.ticks == b.clock.ticks
-    && a.clock.carry_ns == b.clock.carry_ns;
+  return a.body.pos.x == b.body.pos.x && a.body.pos.y == b.body.pos.y && a.body.pos.z == b.body.pos.z && a.body.vel.x == b.body.vel.x && a.body.vel.y == b.body.vel.y
+    && a.body.vel.z == b.body.vel.z && a.body.face == b.body.face && a.body.on_ground == b.body.on_ground && a.body.act == b.body.act && a.cam.theta == b.cam.theta
+    && a.cam.phi == b.cam.phi && a.cam.max_dist == b.cam.max_dist && a.body.prev_pos.x == b.body.prev_pos.x && a.body.prev_pos.y == b.body.prev_pos.y
+    && a.body.prev_pos.z == b.body.prev_pos.z && a.body.prev_face == b.body.prev_face && a.body.sliding == b.body.sliding
+    && a.body.jumps.waiting == b.body.jumps.waiting && a.body.jumps.taken == b.body.jumps.taken && a.body.clock.ticks == b.body.clock.ticks
+    && a.body.clock.carry_ns == b.body.clock.carry_ns;
 }
 // A frame as advance_in runs it, with the camera stepped `cams` times after each player step.
 frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(all) {
   next := p;
-  next.clock = loop_accept(p.clock, cast(f64) frame);
-  for i: 0..<loop_due(next.clock) {
-    next.prev_pos = next.pos; next.prev_target = next.target; next.prev_face = next.face; next.prev_dist = next.dist;
+  next.body.clock = loop_accept(p.body.clock, cast(f64) frame);
+  for i: 0..<loop_due(next.body.clock) {
+    next.body.prev_pos = next.body.pos; next.cam.prev_target = next.cam.target; next.body.prev_face = next.body.face; next.cam.prev_dist = next.cam.dist;
     next = step(w, next, STEP);
     for c: 0..<cams { next = camera_step(w, next, STEP); }
   }
-  next.clock = loop_ran(next.clock);
+  next.body.clock = loop_ran(next.body.clock);
   return next;
 }
 #test "the player is the same whether its camera steps every step, never, or twice a step" {
@@ -549,33 +552,33 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(al
       runs[c] = frame_with(w, runs[c], frame, c);
     }
     #assert walker_same(runs[0], runs[1]) && walker_same(runs[2], runs[1]);
-    if runs[1].dist < f32(CAM_MAX) - 0.5 { pulled = true; }
-    if runs[1].pos.z == 3.7 { stopped = true; }               // the wall's face, less your radius
-    if runs[0].target.z != runs[1].target.z && runs[2].target.z != runs[1].target.z { parted += 1; }
+    if runs[1].cam.dist < f32(CAM_MAX) - 0.5 { pulled = true; }
+    if runs[1].body.pos.z == 3.7 { stopped = true; }               // the wall's face, less your radius
+    if runs[0].cam.target.z != runs[1].cam.target.z && runs[2].cam.target.z != runs[1].cam.target.z { parted += 1; }
   }
   // It walked into the wall, round it and jumped twice, and the three cameras really differed.
-  #assert stopped && runs[1].pos.z > 10 && runs[1].clock.ticks == 256 && runs[1].jumps.taken == 2;
+  #assert stopped && runs[1].body.pos.z > 10 && runs[1].body.clock.ticks == 256 && runs[1].body.jumps.taken == 2;
   #assert pulled && parted > 200;
   // The same run with steps_in's own camera gives the same player too.
   q := start;
   for f: 0..<240 {
     q = advance_in(w, walk_input(q, ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0), frame);
   }
-  #assert walker_same(q, runs[1]) && q.target.z == runs[1].target.z && q.dist == runs[1].dist;
-  #assert q.prev_target.z == runs[1].prev_target.z && q.prev_dist == runs[1].prev_dist;
+  #assert walker_same(q, runs[1]) && q.cam.target.z == runs[1].cam.target.z && q.cam.dist == runs[1].cam.dist;
+  #assert q.cam.prev_target.z == runs[1].cam.prev_target.z && q.cam.prev_dist == runs[1].cam.prev_dist;
 }
 #forall "walker_same compares every field it names" k: 0..<21 {
   a := walk_input(walk_advance(walk_place(1, 0.5, 2, 0.3), 0.04), 0, 1, 0, 0, false, true, 0, 0);
   #assert walker_same(a, a);
   b := a;
-  if k == 0 { b.pos.x += 1; } else if k == 1 { b.pos.y += 1; } else if k == 2 { b.pos.z += 1; } else if k == 3 { b.vel.x += 1; }
-  else if k == 4 { b.vel.y += 1; } else if k == 5 { b.vel.z += 1; } else if k == 6 { b.face += 1; } else if k == 7 { b.on_ground = !b.on_ground; }
-  else if k == 8 { b.act = Act.running; } else if k == 9 { b.theta += 1; } else if k == 10 { b.phi += 1; } else if k == 11 { b.max_dist += 1; }
-  else if k == 12 { b.prev_pos.x += 1; } else if k == 13 { b.prev_pos.y += 1; } else if k == 14 { b.prev_pos.z += 1; }
-  else if k == 15 { b.prev_face += 1; } else if k == 16 { b.sliding = !b.sliding; } else if k == 17 { b.jumps.waiting += 1; }
-  else if k == 18 { b.jumps.taken += 1; } else if k == 19 { b.clock.ticks += 1; } else { b.clock.carry_ns += 1; }
+  if k == 0 { b.body.pos.x += 1; } else if k == 1 { b.body.pos.y += 1; } else if k == 2 { b.body.pos.z += 1; } else if k == 3 { b.body.vel.x += 1; }
+  else if k == 4 { b.body.vel.y += 1; } else if k == 5 { b.body.vel.z += 1; } else if k == 6 { b.body.face += 1; } else if k == 7 { b.body.on_ground = !b.body.on_ground; }
+  else if k == 8 { b.body.act = Act.running; } else if k == 9 { b.cam.theta += 1; } else if k == 10 { b.cam.phi += 1; } else if k == 11 { b.cam.max_dist += 1; }
+  else if k == 12 { b.body.prev_pos.x += 1; } else if k == 13 { b.body.prev_pos.y += 1; } else if k == 14 { b.body.prev_pos.z += 1; }
+  else if k == 15 { b.body.prev_face += 1; } else if k == 16 { b.body.sliding = !b.body.sliding; } else if k == 17 { b.body.jumps.waiting += 1; }
+  else if k == 18 { b.body.jumps.taken += 1; } else if k == 19 { b.body.clock.ticks += 1; } else { b.body.clock.carry_ns += 1; }
   #assert !walker_same(a, b) && !walker_same(b, a);
-  c := a; c.target.x += 1; c.dist += 1; c.spring_vel.y += 1; c.prev_target.z += 1; c.prev_dist += 1;
+  c := a; c.cam.target.x += 1; c.cam.dist += 1; c.cam.spring_vel.y += 1; c.cam.prev_target.z += 1; c.cam.prev_dist += 1;
   #assert walker_same(a, c);    // the camera's fields are not the player's
 }
 ```
@@ -683,7 +686,7 @@ main :: () {
     for c: 0..<3 { p[c] = frame_with(w, verse_player_input(p[c], 0, 1, 0, 0, f > 20, f == 60, 0, 0), 1.0f32 / 60, c); }
   }
   for c: 0..<3 {
-    print("camera steps % a step: feet at (%, %, %); the camera looks at z = %\n", c, p[c].pos.x, p[c].pos.y, p[c].pos.z, p[c].target.z);
+    print("camera steps % a step: feet at (%, %, %); the camera looks at z = %\n", c, p[c].body.pos.x, p[c].body.pos.y, p[c].body.pos.z, p[c].cam.target.z);
   }
   print("the same player each way: %\n", walker_same(p[0], p[1]) && walker_same(p[2], p[1]));
   names := [3] string.["first person", "follow", "top down"];
@@ -762,13 +765,13 @@ mixed one changes the move by more than three times the bound:
     eye := gridwalk_eye(g[..]); feet := gridwalk_feet(g[..]).y;
     move := pc.sub(eye, was);
     p := g[0].you;
-    shown := pc.add(p.target, pc.times(pc.orbit_offset(p), p.dist));   // the last step, not mixed
+    shown := pc.add(p.cam.target, pc.times(pc.orbit_offset(p), p.cam.dist));   // the last step, not mixed
     step_move := pc.sub(shown, last);
     if f >= 3 {
       change := pc.sub(move, was_move);
       #assert sqrt(pc.dot(move, move)) <= far && sqrt(pc.dot(move, move)) > 0;
       #assert sqrt(pc.dot(change, change)) <= 0.016;
-      if !p.on_ground && feet > was_feet { #assert move.y > 0; rising += 1; }
+      if !p.body.on_ground && feet > was_feet { #assert move.y > 0; rising += 1; }
       d := pc.sub(step_move, last_move);
       lurch = pc.hi(lurch, sqrt(pc.dot(d, d)));
     }

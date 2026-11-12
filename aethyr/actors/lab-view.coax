@@ -10,7 +10,7 @@ actor_lab_view :: (s:[]ActorLab,width:f32,height:f32) #export_c #effects(all) {
   if left<right && near<far {state_lab_box(s[0].world[..],x0+left*scale,y0+near*scale,(right-left)*scale,(far-near)*scale,0.46,0.45,0.36);}
  }
  for anchor:ACTOR_LAB_ANCHORS {state_lab_box(s[0].world[..],x0+(f32(anchor.x)/100-0.08)*scale,y0+(f32(anchor.z)/100-0.08)*scale,scale*0.16,scale*0.16,0.45,0.8,0.52);}
- player:=s[0].world[0].player.pos;state_lab_box(s[0].world[..],x0+(player.x-0.16)*scale,y0+(player.z-0.16)*scale,scale*0.32,scale*0.32,0.94,0.96,0.88);
+ player:=s[0].world[0].player.body.pos;state_lab_box(s[0].world[..],x0+(player.x-0.16)*scale,y0+(player.z-0.16)*scale,scale*0.32,scale*0.32,0.94,0.96,0.88);
  store:=actor_entity_store(s[0].actors[..]);for i:0..<3 {h:=s[0].handles[i];if !entities.entity_alive(store,h) {continue;}a:=s[0].actors[0].actors[entities.entity_slot(h)];attributes:=actor_attributes(s[0].actors[..],h);x:=a.presentation_x;z:=a.presentation_z;
   state_lab_box(s[0].world[..],x0+(x-0.24)*scale,y0+(z-0.24)*scale,scale*0.48,scale*0.48,ifx i==2 then 0.3 else 0.94,ifx i==0 then 0.78 else ifx i==1 then 0.43 else 0.65,ifx i==2 then 0.95 else 0.28);
   if attributes.controlled {state_lab_box(s[0].world[..],x0+(x-0.27)*scale,y0+(z+0.26)*scale,scale*0.54,scale*0.07,0.93,0.96,0.98);}

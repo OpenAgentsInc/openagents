@@ -114,7 +114,7 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
 EXPORT("coaxial_quality_probe") int32_t coaxial_quality_probe(uint32_t state, int32_t field) { return (int32_t)everglade_quality_probe(at(state), field); }
 EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) {
   (void)state;
-  return (int32_t)(player.pos.x * 10 + 5000.5f) * 10000 + (int32_t)(player.pos.z * 10 + 5000.5f);
+  return (int32_t)(player.body.pos.x * 10 + 5000.5f) * 10000 + (int32_t)(player.body.pos.z * 10 + 5000.5f);
 }
 
 // What the battle says this frame, into the view.
@@ -148,39 +148,39 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   float pace = mmo_pace(mm());
   bool stuck = pace <= 0;
   verse_player_v2_input(control(), stuck ? 0 : g->key_x, stuck ? 0 : g->key_y, stuck ? 0 : sticks.pad_x, stuck ? 0 : sticks.pad_y, false, false, 0, 0);
-  player.pace = pace;
+  player.body.pace = pace;
   verse_player_v2_heading(control(), player, everglade_player_theta(at(state)));
   if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);
   sticks = verse_sticks_used(sticks);
   int64_t walls = everglade_walls_on(at(state), false);
   int64_t nb = mmo_bodies(at(state), mm(), (coax_v_f32){bodies, sizeof bodies / sizeof bodies[0]});
-  int64_t floors = everglade_floors_near(at(state), player.pos.x, player.pos.z);
+  int64_t floors = everglade_floors_near(at(state), player.body.pos.x, player.body.pos.z);
   player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){bodies, nb * 7}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){g->floors.e, floors * 10}, (coax_string){"everglade", sizeof "everglade" - 1}).player;
   // on the grid; and where the engine couldn't take you (a Skeleton in the way, Restrained), back
-  coax_t_Point kept = mmo_hold(mm(), player.pos.x, player.pos.z);
+  coax_t_Point kept = mmo_hold(mm(), player.body.pos.x, player.body.pos.z);
   if (mmo_drift(mm(), kept.x, kept.z) > 2.5f) {
     coax_t_Point home = mmo_home(mm());
     float k = dt * 6 > 1 ? 1 : dt * 6;
     kept.x += (home.x - kept.x) * k; kept.z += (home.z - kept.z) * k;
   }
-  if (kept.x != player.pos.x || kept.z != player.pos.z) {
-    player.pos.x = kept.x; player.pos.z = kept.z; player.prev_pos = player.pos;
+  if (kept.x != player.body.pos.x || kept.z != player.body.pos.z) {
+    player.body.pos.x = kept.x; player.body.pos.z = kept.z; player.body.prev_pos = player.body.pos;
   }
   /* the controller's floor is flat at 0; stand on the green's terrain, which rises above it */
-  { float gy = mmo_ground(at(state), player.pos.x, player.pos.z);
-    if (player.pos.y < gy) { player.pos.y = gy; player.prev_pos.y = gy; if (player.vel.y < 0) player.vel.y = 0; } }
+  { float gy = mmo_ground(at(state), player.body.pos.x, player.body.pos.z);
+    if (player.body.pos.y < gy) { player.body.pos.y = gy; player.body.prev_pos.y = gy; if (player.body.vel.y < 0) player.body.vel.y = 0; } }
   coax_t_Vec3 feet = verse_player_feet(player);
   int64_t sq = mmo_square(feet.x, feet.z);
   mb_want(mb(), sq / 100, sq % 100);
-  float speed = __builtin_sqrtf(player.vel.x * player.vel.x + player.vel.z * player.vel.z);
+  float speed = __builtin_sqrtf(player.body.vel.x * player.body.vel.x + player.body.vel.z * player.body.vel.z);
   mmo_pose(at(state), mm(), feet.x, feet.y, feet.z, verse_player_face(player), speed, dt);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
   { coax_t_Vec3 want = verse_player_asked(player); everglade_intent(at(state), want.x, want.z); }   /* the camera's heading (#12777) */
   everglade_guide_begin(at(state), golden);
   int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, verse_player_face(player),
-                              verse_player_act(player), player.vel.x, player.vel.z,
+                              verse_player_act(player), player.body.vel.x, player.body.vel.z,
                               sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   (void)n;
   // Everglade's first frame starts its orbit at the town's spawn; turn it once to look up the grid
@@ -194,7 +194,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     float fy = aspect * 1.25f; fy = fy < 0.95f ? 0.95f : fy > 1.9f ? 1.9f : fy;
     everglade_river_frame(rv(), (coax_v_f32){u.data + at_water, u.count - at_water}, now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
     int64_t at_fx = everglade_fx_at();
-    everglade_river_fx(rv(), (coax_v_f32){u.data + at_fx, u.count - at_fx}, golden ? 0 : dt, now, player.pos.x, player.pos.z, 0, eye[0], eye[1], eye[2]);
+    everglade_river_fx(rv(), (coax_v_f32){u.data + at_fx, u.count - at_fx}, golden ? 0 : dt, now, player.body.pos.x, player.body.pos.z, 0, eye[0], eye[1], eye[2]);
   }
   return n < 0 ? 0u : (uint32_t)n;
 }

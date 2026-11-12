@@ -33,13 +33,13 @@ SwStateBytes :: struct {bytes: [SW_STATE_BYTES] u8; n: int;}
 }
 #test "canonical walk state binds every lifecycle domain but excludes SDK pointers and derived scratch" #steps 100000000 {
   m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
-  schedule := clock.loop_accept_ns(s[0].player.clock, 15625000); before: [1] SwStateBytes; after: [1] SwStateBytes;
+  schedule := clock.loop_accept_ns(s[0].player.body.clock, 15625000); before: [1] SwStateBytes; after: [1] SwStateBytes;
   original_n := sw_state_bytes(s[..], schedule, 0, before[..]); original := cast(string) before[0].bytes[0..<original_n];
   for field: 0..<18 {
     copy := s;
-    if field == 0 { copy[0].player.spring_vel.y = 0.25; }
-    if field == 1 { copy[0].player.collision_refusals = 4294967296; }
-    if field == 2 { copy[0].player.prev_face = -0.0; }
+    if field == 0 { copy[0].player.cam.spring_vel.y = 0.25; }
+    if field == 1 { copy[0].player.body.collision_refusals = 4294967296; }
+    if field == 2 { copy[0].player.body.prev_face = -0.0; }
     if field == 3 { copy[0].cells[0].cells[11].bodies[0].words[3] = 1; copy[0].cells[0].cells[11].body_n = 1; }
     if field == 4 { copy[0].actor[11].words[3] = 1; }
     if field == 5 { copy[0].entity[0].gen[11] = add_sat(copy[0].entity[0].gen[11], 1); }
@@ -73,7 +73,7 @@ SwStateBytes :: struct {bytes: [SW_STATE_BYTES] u8; n: int;}
   #assert sw_frame(b[..], m[..], 31250000, 1) && b[0].step_n == 0 && b[0].tick == 2;
   #assert !assets.asset_same(a[0].step_digest[0], a[0].step_digest[1]);
   schedule := clock.loop_accept_ns(clock.FrameClock.{frames = 1}, 31250000);
-  pending := a; pending[0].player.clock = clock.FrameClock.{frames = 1};
+  pending := a; pending[0].player.body.clock = clock.FrameClock.{frames = 1};
   #assert assets.asset_same(a[0].step_digest[1], sw_state_digest(pending[..], schedule, 2));
   // Observer storage does not enter its own digest or change the simulation.
   #assert assets.asset_same(sw_state_digest(a[..], schedule, 2), sw_state_digest(b[..], schedule, 2));
@@ -99,17 +99,17 @@ sw_state_clock :: (b: [] SwStateBytes, c: clock.FrameClock) #effects(all) {
     c.refused, c.overlong, c.stalls, c.dropped_ns, c.counted_ns, c.ran]; sw_state_words(b, words6[..]);
 }
 sw_state_player :: (b: [] SwStateBytes, p: walking.Player) #effects(all) {
-  floats := [33] f32.[p.pos.x, p.pos.y, p.pos.z, p.vel.x, p.vel.y, p.vel.z, p.face, p.theta, p.phi, p.dist, p.max_dist, p.zoom_push,
-    p.target.x, p.target.y, p.target.z, p.spring_vel.x, p.spring_vel.y, p.spring_vel.z, p.key_x, p.key_y, p.pad_x, p.pad_y,
-    p.prev_pos.x, p.prev_pos.y, p.prev_pos.z, p.prev_target.x, p.prev_target.y, p.prev_target.z, p.prev_face, p.prev_dist,
-    p.pace, p.grip, p.collision_residual];
+  floats := [33] f32.[p.body.pos.x, p.body.pos.y, p.body.pos.z, p.body.vel.x, p.body.vel.y, p.body.vel.z, p.body.face, p.cam.theta, p.cam.phi, p.cam.dist, p.cam.max_dist, p.cam.zoom_push,
+    p.cam.target.x, p.cam.target.y, p.cam.target.z, p.cam.spring_vel.x, p.cam.spring_vel.y, p.cam.spring_vel.z, p.body.key_x, p.body.key_y, p.body.pad_x, p.body.pad_y,
+    p.body.prev_pos.x, p.body.prev_pos.y, p.body.prev_pos.z, p.cam.prev_target.x, p.cam.prev_target.y, p.cam.prev_target.z, p.body.prev_face, p.cam.prev_dist,
+    p.body.pace, p.body.grip, p.body.collision_residual];
   for i: 0..<33 { words7 := [1] int.[cast(int) f32_bits(floats[i])]; sw_state_words(b, words7[..]); }
-  words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
-    (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
-    cast,trunc(int) p.collision_refusals, p.collision_passes, (ifx p.collision_floor_cut then 1 else 0), cast(int) cast(u8) p.query_status,
-    cast(int) cast(u8) p.camera_query_status]; sw_state_words(b, words8[..]);
-  sw_state_clock(b, p.clock);
-  press := [4] int.[(ifx p.jumps.held then 1 else 0), p.jumps.pressed, p.jumps.taken, p.jumps.lost]; sw_state_words(b, press[..]);
+  words8 := [16] int.[(ifx p.body.on_ground then 1 else 0), cast(int) cast(u8) p.body.act, (ifx p.body.run then 1 else 0), (ifx p.body.jump_held then 1 else 0), p.body.jumps.waiting,
+    (ifx p.body.wings then 1 else 0), (ifx p.body.dive_held then 1 else 0), p.body.beats, (ifx p.body.diving then 1 else 0), (ifx p.body.sliding then 1 else 0), cast(int) cast(u8) p.body.collision_status,
+    cast,trunc(int) p.body.collision_refusals, p.body.collision_passes, (ifx p.body.collision_floor_cut then 1 else 0), cast(int) cast(u8) p.body.query_status,
+    cast(int) cast(u8) p.cam.query_status]; sw_state_words(b, words8[..]);
+  sw_state_clock(b, p.body.clock);
+  press := [4] int.[(ifx p.body.jumps.held then 1 else 0), p.body.jumps.pressed, p.body.jumps.taken, p.body.jumps.lost]; sw_state_words(b, press[..]);
 }
 sw_state_budget :: (b: [] SwStateBytes, p: ResourceBudget) #effects(all) {
   words9 := [11] int.[(ifx p.valid then 1 else 0), p.total_cap, p.total, p.peak, p.actor_cap, p.actors, p.actor_peak, p.voice_cap, p.voices, p.voice_peak, p.refused]; sw_state_words(b, words9[..]);

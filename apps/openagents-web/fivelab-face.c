@@ -80,21 +80,21 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
     input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
     input.jump = input.jump || sticks.jump;
-    coax_t_EgMoveWorld mw = lab_move_world(at(state), player.pos.x, player.pos.z);
-    player = eg_step_begin(player, input, mw, step);
+    coax_t_EgMoveWorld mw = lab_move_world(at(state), player.body.pos.x, player.body.pos.z);
+    player.body = eg_step_begin(player.body, input, mw, step); player.cam.theta = input.theta;
     coax_v_f32 near = lab_move_bodies(at(state));
     coax_v_f32 walls = lab_move_walls(at(state));
     coax_v_f32 floors = lab_move_floors(at(state));
-    coax_t_EgBody origin = eg_step_body(player);
+    coax_t_EgBody origin = eg_step_body(player.body);
     coax_t_EgMotionIntent intent = eg_step_motion_intent(input, mw);
-    coax_t_EgJump jump = lab_jump_plan(at(state), origin, intent, player.jumps.waiting > 0);
-    player = eg_step_advance_jump(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){walls.data, mw.walls * 6}, (coax_v_f32){floors.data, mw.floors * 10}, frame, lab_move_scale(at(state)), jump);
-    coax_t_EgBody kept = lab_keep_body(at(state), origin, eg_step_body(player));
-    if (kept.x != player.pos.x || kept.z != player.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
-    player = eg_step_put(player, kept);
+    coax_t_EgJump jump = lab_jump_plan(at(state), origin, intent, player.body.jumps.waiting > 0);
+    player.body = eg_step_advance_jump(player.body, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){walls.data, mw.walls * 6}, (coax_v_f32){floors.data, mw.floors * 10}, frame, lab_move_scale(at(state)), jump);
+    coax_t_EgBody kept = lab_keep_body(at(state), origin, eg_step_body(player.body));
+    if (kept.x != player.body.pos.x || kept.z != player.body.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
+    player.body = eg_step_put(player.body, kept);
     lab_rest_motion(at(state), origin, kept, intent.walk, intent.jump);
     coax_t_Vec3 feet = verse_player_feet(player);
-    lab_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player), !player.on_ground, touched, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+    lab_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player), !player.body.on_ground, touched, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   } else {
     sticks = verse_sticks_reset();
   }

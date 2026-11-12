@@ -40,7 +40,7 @@ static void room_frame(float dt) {
   if (now - room_at < ROOM_EVERY) return;
   int64_t un = room_url(room_name(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
   coax_t_Vec3 feet = verse_player_feet(player);
-  int64_t bn = room_presence_body(feet.x, feet.y, feet.z, player.theta, room.last, (coax_v_u8){room_body, sizeof room_body});
+  int64_t bn = room_presence_body(feet.x, feet.y, feet.z, player.cam.theta, room.last, (coax_v_u8){room_body, sizeof room_body});
   room_at = now;
   if (un <= 0 || bn <= 0) return;
   room_ask = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);

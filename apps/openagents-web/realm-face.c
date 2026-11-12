@@ -409,7 +409,7 @@ static void open_house(void) {
   for (int i = 0; i < 5; i++) item_mesh[i] = verse_haunt_mesh(house, text(items[i].mesh));
   player = sandbox ? verse_player_place(0, 0, -2, 0) : verse_player_place(7, 0, 2, 0);
   controls = verse_player_v2_reset();
-  house.camera = 1; player.phi = 1.107f;   // one camera: behind you, pulled in and cut away indoors
+  house.camera = 1; player.cam.phi = 1.107f;   // one camera: behind you, pulled in and cut away indoors
   sticks = verse_sticks_reset();
   opened = true;
   // where you were, if it came first (place-face.h); else where you start
@@ -428,7 +428,7 @@ static void follow_talk(void);
 static coax_t_Place place_here(uint32_t state) {
   (void)state;
   if (!opened) return (coax_t_Place){0};
-  return verse_place(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), player.theta, player.phi, zoom_pref,
+  return verse_place(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), player.cam.theta, player.cam.phi, zoom_pref,
                      1, -1, 0);
 }
 // Put you back: on the walkable floor nearest it, clear of the walls, else where you start.
@@ -447,8 +447,8 @@ static void place_put(uint32_t state, coax_t_Place p) {
   player = verse_player_place(x, 0, z, p.face);
   controls = verse_player_v2_reset();
   house.camera = 1;   // one camera, whatever an older save kept
-  player.theta = p.yaw;
-  player.phi = isfinite(p.pitch) && p.pitch > 0.3f && p.pitch < 2.2f ? p.pitch : 1.107f;
+  player.cam.theta = p.yaw;
+  player.cam.phi = isfinite(p.pitch) && p.pitch > 0.3f && p.pitch < 2.2f ? p.pitch : 1.107f;
   if (isfinite(p.zoom) && p.zoom >= ZOOM_NEAR && p.zoom <= ZOOM_FAR) zoom_pref = p.zoom;
   house.facing = verse_player_face(player);
 }
@@ -929,7 +929,7 @@ static void queue_sounds(void) {
 // The phone's frame (HauntViewController.tick), then the HUD over it.
 static void step(float frame, float dt) {
   coax_v_t_Realm r = realm_of();
-  coax_t_Vec3 was = player.pos;
+  coax_t_Vec3 was = player.body.pos;
   house.camera = 1;
   // The one camera: the wheel or a pinch sets how far back it sits; in a room it comes in closer.
   if (realm.zoom != 0 && isfinite(realm.zoom)) {
@@ -937,7 +937,7 @@ static void step(float frame, float dt) {
     zoom_pref = zoom_pref < ZOOM_NEAR ? ZOOM_NEAR : zoom_pref > ZOOM_FAR ? ZOOM_FAR : zoom_pref;
   }
   int64_t here = verse_haunt_area(house, point(verse_player_feet(player)));
-  player.max_dist = here >= 0 && areas[here].room && zoom_pref > ROOM_ZOOM ? ROOM_ZOOM : zoom_pref;
+  player.cam.max_dist = here >= 0 && areas[here].room && zoom_pref > ROOM_ZOOM ? ROOM_ZOOM : zoom_pref;
   if (realm.hold >= 0 && house.quest == 1) house = verse_haunt_quest(house, text("edit"));   // a hotbar item in hand
   bool run = verse_runs((realm.held & 16) != 0, sticks.run, sticks.pad_x, sticks.pad_y), jump = sticks.jump || (realm.held & 32) || jump_asked;
   jump_asked = false;
@@ -947,7 +947,7 @@ static void step(float frame, float dt) {
   sticks = verse_sticks_used(sticks);
   player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6},
                                          (coax_v_f32){0, 0}, house.world_id).player;
-  coax_t_HauntPoint kept = verse_haunt_constrain(house, point(was), point(player.pos));
+  coax_t_HauntPoint kept = verse_haunt_constrain(house, point(was), point(player.body.pos));
   player = verse_player_constrain(player, kept.x, kept.z);
   coax_t_Vec3 feet = verse_player_feet(player);
   float distance = hypotf(feet.x - was.x, feet.z - was.z);
@@ -955,7 +955,7 @@ static void step(float frame, float dt) {
   house.facing = verse_player_face(player);
   if (now - emote_at < 0.8) house.facing += (float)((now - emote_at) / 0.8) * 6.2831853f;   // the emote: a spin
   coax_t_Vec3 eye = verse_player_view_eye(player, house.camera);
-  house = verse_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
+  house = verse_haunt_advance(house, now, point(feet), point(eye), player.cam.theta, distance, player.body.on_ground);
   take_asks();
   gesture_frame();
   house.editing = house.selected >= 0 && house.selected < house.entity_count;

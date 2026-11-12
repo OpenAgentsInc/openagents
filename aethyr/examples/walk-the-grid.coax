@@ -20,8 +20,8 @@ main :: () {
   }
   feet := gridwalk_feet(g[..]);
   print("frames 240, steps %, jumps %, frames with the feet off the floor %, highest % cm\n",
-        gridwalk_steps(g[..]), g[0].you.jumps.taken, air, cm(top));
-  print("feet at (% cm, % cm, % cm), on the ground: %\n", cm(feet.x), cm(feet.y), cm(feet.z), g[0].you.on_ground);
+        gridwalk_steps(g[..]), g[0].you.body.jumps.taken, air, cm(top));
+  print("feet at (% cm, % cm, % cm), on the ground: %\n", cm(feet.x), cm(feet.y), cm(feet.z), g[0].you.body.on_ground);
   print("session digest %\n", gridwalk_session(g[..]));
   again: [1] GridWalk;
   print("replayed from the record's start: %, same digest: %\n", gridwalk_replay(g[..], again[..]),

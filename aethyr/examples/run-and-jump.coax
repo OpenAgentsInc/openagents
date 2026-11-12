@@ -24,15 +24,15 @@ main :: () {
   peak := 0.0f32; up := 0; air := 0;
   while true {
     q = step(w, q, STEP); air += 1;
-    if q.pos.y > peak { peak = q.pos.y; up = air; }
-    if q.on_ground { break; }
+    if q.body.pos.y > peak { peak = q.body.pos.y; up = air; }
+    if q.body.on_ground { break; }
   }
   print("standing jump: peak % m after % steps; JUMP^2 / (2 GRAVITY) = % m\n", peak, up, f32(JUMP * JUMP / (2 * GRAVITY)));
-  print("landed after % steps, feet at %, falling %\n", air, q.pos.y, q.vel.y);
+  print("landed after % steps, feet at %, falling %\n", air, q.body.pos.y, q.body.vel.y);
 
   for d: [2] f32.[50, 60] {
     r := ramp(d);
-    print("% degrees: after 2 s at (%, %), sliding %, on the ground %\n", d, r.pos.z, r.pos.y, r.sliding, r.on_ground);
+    print("% degrees: after 2 s at (%, %), sliding %, on the ground %\n", d, r.body.pos.z, r.body.pos.y, r.body.sliding, r.body.on_ground);
   }
 }
 // book:end example

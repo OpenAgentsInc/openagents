@@ -54,7 +54,7 @@ EXPORT("follower_init") void follower_init(void) {
   villa_on_realm_clock(scene_view(&scene));
 #endif
   player = verse_player_input(verse_player_place(origin_x, 0, origin_z, 0), 1, 0, 0, 0, true, false, 0, 0);
-  player.theta = 1.234567f;
+  player.cam.theta = 1.234567f;
   memset(&walked, 0, sizeof walked);
   drawn_vertices = 0;
 }
@@ -67,18 +67,18 @@ static void draw_frame(int fault, float counted) {
 #if defined(FOLLOWER_GARDEN)
   if (fault == 2) {
     drawn_vertices = garden_frame(scene_view(&scene), out, u, 1280, 800, 1, counted, true,
-      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z,
+      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z,
       false, 0, 0, 0, 0);
   } else {
-    drawn_vertices = garden_frame_on_clock(scene_view(&scene), out, u, 1280, 800, 1, player.clock, targets, true,
-      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z,
+    drawn_vertices = garden_frame_on_clock(scene_view(&scene), out, u, 1280, 800, 1, player.body.clock, targets, true,
+      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z,
       false, 0, 0, 0, 0);
   }
 #else
   if (fault == 2) villa_step(scene_view(&scene), counted, feet.x, feet.y, feet.z, verse_player_face(player),
-      verse_player_act(player), player.vel.x, player.vel.z);
-  else villa_step_on_clock(scene_view(&scene), player.clock, targets, feet.x, feet.y, feet.z,
-      verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z);
+      verse_player_act(player), player.body.vel.x, player.body.vel.z);
+  else villa_step_on_clock(scene_view(&scene), player.body.clock, targets, feet.x, feet.y, feet.z,
+      verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z);
   drawn_vertices = villa_draw(scene_view(&scene), out, u, 1280, 800, 1, false, 0, 0, 0, 0);
 #endif
 }
@@ -101,7 +101,7 @@ EXPORT("follower_apply") void follower_apply(int32_t operation, float frame, int
   } else if (operation == 1) {
     draw_frame(0, 0);
   } else if (operation == 2) {
-    player.vel.x = 100; /* a finite incoming velocity whose move is refused */
+    player.body.vel.x = 100; /* a finite incoming velocity whose move is refused */
   } else if (operation == 3) {
     player = verse_player_input(verse_player_place(origin_x + 2, 0, origin_z, 0), 1, 0, 0, 0, true, false, 0, 0);
     scene_place(scene_view(&scene), verse_place(origin_x + 2, 0, origin_z, 0, 0, 0.4f, 6, 0, -1, 1000));
@@ -121,9 +121,9 @@ static void put_float(size_t *at, float value) { memcpy(&words[(*at)++], &value,
 static void put_point(size_t *at, coax_t_Point p) { put_float(at, p.x); put_float(at, p.y); put_float(at, p.z); }
 EXPORT("follower_snapshot") uintptr_t follower_snapshot(void) {
   size_t at = 0;
-  put_float(&at, player.pos.x); put_float(&at, player.pos.y); put_float(&at, player.pos.z);
-  put_float(&at, player.vel.x); put_float(&at, player.vel.y); put_float(&at, player.vel.z);
-  put_float(&at, player.face); words[at++] = player.on_ground; words[at++] = player.act;
+  put_float(&at, player.body.pos.x); put_float(&at, player.body.pos.y); put_float(&at, player.body.pos.z);
+  put_float(&at, player.body.vel.x); put_float(&at, player.body.vel.y); put_float(&at, player.body.vel.z);
+  put_float(&at, player.body.face); words[at++] = player.body.on_ground; words[at++] = player.body.act;
   words[at++] = (uint32_t)scene.fetch.mode;
   put_point(&at, scene.fetch.dog.pos); put_point(&at, scene.fetch.dog.vel);
   put_float(&at, scene.fetch.dog.face); words[at++] = scene.fetch.dog.walking;
@@ -137,11 +137,11 @@ EXPORT("follower_snapshot") uintptr_t follower_snapshot(void) {
 #else
   put_float(&at, 0); put_float(&at, 0);
 #endif
-  words[at++] = (uint32_t)player.clock.ticks; words[at++] = (uint32_t)player.clock.frames;
-  words[at++] = (uint32_t)player.clock.ran; words[at++] = (uint32_t)player.clock.carry_ns;
-  words[at++] = (uint32_t)player.clock.counted_ns; words[at++] = (uint32_t)player.clock.refused;
-  words[at++] = (uint32_t)player.clock.overlong; words[at++] = (uint32_t)player.clock.stalls;
-  words[at++] = (uint32_t)player.clock.dropped_ns; words[at++] = (uint32_t)scene.follower_cursor.ticks;
+  words[at++] = (uint32_t)player.body.clock.ticks; words[at++] = (uint32_t)player.body.clock.frames;
+  words[at++] = (uint32_t)player.body.clock.ran; words[at++] = (uint32_t)player.body.clock.carry_ns;
+  words[at++] = (uint32_t)player.body.clock.counted_ns; words[at++] = (uint32_t)player.body.clock.refused;
+  words[at++] = (uint32_t)player.body.clock.overlong; words[at++] = (uint32_t)player.body.clock.stalls;
+  words[at++] = (uint32_t)player.body.clock.dropped_ns; words[at++] = (uint32_t)scene.follower_cursor.ticks;
   words[at++] = (uint32_t)scene.follower_cursor.frames; words[at++] = (uint32_t)scene.follower_steps;
   words[at++] = scene.follower_status; put_float(&at, scene.follower_alpha);
 #if defined(FOLLOWER_GARDEN)
@@ -149,7 +149,7 @@ EXPORT("follower_snapshot") uintptr_t follower_snapshot(void) {
 #else
   words[at++] = scene.pet.e[0].doing >= 0; words[at++] = (uint32_t)scene.pet.e[0].ev_n;
 #endif
-  words[at++] = player.collision_status;
+  words[at++] = player.body.collision_status;
   coax_t_Point drawn = {99999, 99999, 99999};
 #if defined(FOLLOWER_GARDEN)
   /* First golden-coat sphere is the actual dog body emitted by dog(). */

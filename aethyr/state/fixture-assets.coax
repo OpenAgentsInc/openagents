@@ -66,7 +66,7 @@ state_lab_open :: (s:[]StateLab,credit:StateCredit)->bool #export_c #effects(all
  for role:0..<6 {owner:=s[0].variants.items[0].owners[role];if !state_lab_load_now(s,owner) {return false;}}
  events:[12]ResourceAccepted;if resource_stream_publish(s[0].pool[..],s[0].manifest[..],0,events[..])!=6 {return false;}
  if state_variant_publish(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,s[0].world[..],1,t)!=STATE_OK {return false;}
- s[0].retry=state_retry_capture(s[0].schema,s[0].world[0].facts,refs);s[0].player=walking.walk_place(4,0,4,0);s[0].player.theta=0;s[0].ready=true;state_lab_nav(s);return true;
+ s[0].retry=state_retry_capture(s[0].schema,s[0].world[0].facts,refs);s[0].player=walking.walk_place(4,0,4,0);s[0].player.cam.theta=0;s[0].ready=true;state_lab_nav(s);return true;
 }
 state_lab_pump :: (s:[]StateLab,tick:int) #effects(all) {
  for i:0..<4 {if s[0].loads[i].live && s[0].loads[i].due<=tick {load:=s[0].loads[i];owner:=load.key.owner;status:=resource_stream_complete(s[0].pool[..],s[0].manifest[..],s[0].inbox[..],load.key,s[0].source[owner][0..<s[0].length[owner]],state_lab_decode(s,owner));if status!=ResourceStreamStatus.ok {s[0].refused+=1;}s[0].loads[i].live=false;}}

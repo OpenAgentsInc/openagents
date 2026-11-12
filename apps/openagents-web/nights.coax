@@ -57,7 +57,7 @@ night_default_hero :: (s:[]Nights)->int {
  for i:0..<s[0].hero_n {h:=s[0].heroes[i];if h.ready && h.gender==0 && h.head==0 && h.outfit==1 {return i;}}return 0;
 }
 night_ready :: (s:[]Nights)->bool #export_c #effects(all) {return s[0].ready && s[0].ui[0].ready;}
-night_start :: (s:[]Nights) {if s[0].started || !s[0].ready {return;}z:=s[0].zones[s[0].zone];s[0].you=pc.walk_place(z.x,z.y,z.z,0);s[0].you.phi=1.24;s[0].you.dist=5;s[0].you.max_dist=3.5;s[0].started=true;}
+night_start :: (s:[]Nights) {if s[0].started || !s[0].ready {return;}z:=s[0].zones[s[0].zone];s[0].you=pc.walk_place(z.x,z.y,z.z,0);s[0].you.cam.phi=1.24;s[0].you.cam.dist=5;s[0].you.cam.max_dist=3.5;s[0].started=true;}
 night_label :: (s:[]Nights,which:int)->string {if which==0 {return cast(string)s[0].heroes[s[0].hero].name[0..<s[0].heroes[s[0].hero].name_n];}if which==1 {return cast(string)s[0].zones[s[0].zone].name[0..<s[0].zones[s[0].zone].name_n];}c:=s[0].clip;return cast(string)s[0].heroes[s[0].hero].clips[c].name[0..<s[0].heroes[s[0].hero].clips[c].name_n];}
 night_clip_find :: (s:[]Nights,name:string)->int {for i:0..<s[0].heroes[s[0].hero].clip_n {c:=s[0].heroes[s[0].hero].clips[i];if cast(string)c.name[0..<c.name_n]==name {return i;}}return 0;}
 night_blur :: (s:[]Nights) #export_c #effects(all) {s[0].keys=0;s[0].thumbs=verse_sticks_reset();s[0].drag=false;s[0].look_x=0;s[0].look_y=0;}
@@ -92,8 +92,8 @@ night_pointer :: (s:[]Nights,x:f32,y:f32,phase:int,kind:int,id:int)->bool #expor
 night_step :: (s:[]Nights,dt:f32,still:bool) #export_c #effects(all) {
  night_start(s);if !s[0].ready || still || !(dt>0 && dt<1) {return;}s[0].clock+=dt;s[0].clip_clock+=dt;t:=s[0].thumbs;k:=s[0].keys;p:=s[0].you;
  if s[0].choosing {p=pc.walk_input(p,0,0,0,0,false,false,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);s[0].you=p;}
- if !s[0].choosing && !s[0].menu {p=pc.walk_input(p,f32((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),f32((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&16)!=0,t.run,t.pad_x,t.pad_y),(k&32)!=0 || t.jump || s[0].ui_jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);world:pc.World;world.ground=s[0].zones[s[0].zone].y;world.walls=s[0].walls[0..<s[0].box_n*6];p=pc.advance_in(world,p,dt);z:=s[0].zones[s[0].zone];x:=p.pos.x;zz:=p.pos.z;if !night_inside_union(s,x,zz) {x=s[0].you.pos.x;zz=s[0].you.pos.z;}for zi:0..<s[0].zone_n {nz:=s[0].zones[zi];if x>=nz.x0 && x<=nz.x1 && zz>=nz.z0 && zz<=nz.z1 {s[0].zone=zi;}}for i:0..<s[0].box_n {b:=s[0].boxes[i];if x>b.x0-0.3 && x<b.x1+0.3 && zz>b.z0-0.3 && zz<b.z1+0.3 {x=s[0].you.pos.x;zz=s[0].you.pos.z;}}p=pc.walk_constrain(p,x,zz);s[0].you=p;}
- next:=ifx s[0].forced>=0 then s[0].forced else night_clip_find(s,ifx !s[0].choosing && abs(p.vel.x)+abs(p.vel.z)>0.05 then (ifx p.run then "run" else "walk") else "pause1");if next!=s[0].clip {s[0].clip=next;s[0].clip_clock=0;}s[0].look_x=0;s[0].look_y=0;s[0].ui_jump=false;s[0].thumbs=verse_sticks_used(t);
+ if !s[0].choosing && !s[0].menu {p=pc.walk_input(p,f32((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),f32((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&16)!=0,t.run,t.pad_x,t.pad_y),(k&32)!=0 || t.jump || s[0].ui_jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);world:pc.World;world.ground=s[0].zones[s[0].zone].y;world.walls=s[0].walls[0..<s[0].box_n*6];p=pc.advance_in(world,p,dt);z:=s[0].zones[s[0].zone];x:=p.body.pos.x;zz:=p.body.pos.z;if !night_inside_union(s,x,zz) {x=s[0].you.body.pos.x;zz=s[0].you.body.pos.z;}for zi:0..<s[0].zone_n {nz:=s[0].zones[zi];if x>=nz.x0 && x<=nz.x1 && zz>=nz.z0 && zz<=nz.z1 {s[0].zone=zi;}}for i:0..<s[0].box_n {b:=s[0].boxes[i];if x>b.x0-0.3 && x<b.x1+0.3 && zz>b.z0-0.3 && zz<b.z1+0.3 {x=s[0].you.body.pos.x;zz=s[0].you.body.pos.z;}}p=pc.walk_constrain(p,x,zz);s[0].you=p;}
+ next:=ifx s[0].forced>=0 then s[0].forced else night_clip_find(s,ifx !s[0].choosing && abs(p.body.vel.x)+abs(p.body.vel.z)>0.05 then (ifx p.body.run then "run" else "walk") else "pause1");if next!=s[0].clip {s[0].clip=next;s[0].clip_clock=0;}s[0].look_x=0;s[0].look_y=0;s[0].ui_jump=false;s[0].thumbs=verse_sticks_used(t);
 }
 night_inside_union :: (s:[]Nights,x:f32,z:f32)->bool {
  for corner:0..<4 {cx:=x+(ifx corner%2==0 then -0.3f32 else 0.3f32);cz:=z+(ifx corner<2 then -0.3f32 else 0.3f32);inside:=false;for i:0..<s[0].zone_n {r:=s[0].zones[i];if cx>=r.x0 && cx<=r.x1 && cz>=r.z0 && cz<=r.z1 {inside=true;}}if !inside {return false;}}
@@ -111,9 +111,9 @@ night_light :: (s:[]Nights,u:[]f32) {
 night_frame :: (s:[]Nights,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
  if u.count<NIGHT_UNIFORMS {return 0;}
  s[0].width=w;s[0].height=h;s[0].d=d;for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=d;u[10]=2;u[11]=1;u[42]=0;
- p:=s[0].you;yaw:=p.theta;pitch:=p.phi-1.5707963;dist:=ifx s[0].choosing then p.max_dist else p.dist;cy:=cos(pitch);sy:=sin(pitch);sx:=sin(yaw);cz:=cos(yaw);target:=p.pos.y+1.2;
- room:=night_camera_room(s,p.pos.x,p.pos.z,sx*cy*dist,cz*cy*dist);dist*=room;
- u[16]=p.pos.x+sx*cy*dist;u[17]=target-sy*dist;u[18]=p.pos.z+cz*cy*dist;u[19]=h*0.89;u[20]= -sx*cy;u[21]=sy;u[22]= -cz*cy;u[23]=w*0.5;u[24]=cz;u[26]= -sx;u[27]=ifx s[0].choosing && w<700*d then h*0.32f32 else h*0.52f32;u[28]=sx*sy;u[29]=cy;u[30]=cz*sy;u[32]= -0.45;u[33]=0.78;u[34]= -0.42;
+ p:=s[0].you;yaw:=p.cam.theta;pitch:=p.cam.phi-1.5707963;dist:=ifx s[0].choosing then p.cam.max_dist else p.cam.dist;cy:=cos(pitch);sy:=sin(pitch);sx:=sin(yaw);cz:=cos(yaw);target:=p.body.pos.y+1.2;
+ room:=night_camera_room(s,p.body.pos.x,p.body.pos.z,sx*cy*dist,cz*cy*dist);dist*=room;
+ u[16]=p.body.pos.x+sx*cy*dist;u[17]=target-sy*dist;u[18]=p.body.pos.z+cz*cy*dist;u[19]=h*0.89;u[20]= -sx*cy;u[21]=sy;u[22]= -cz*cy;u[23]=w*0.5;u[24]=cz;u[26]= -sx;u[27]=ifx s[0].choosing && w<700*d then h*0.32f32 else h*0.52f32;u[28]=sx*sy;u[29]=cy;u[30]=cz*sy;u[32]= -0.45;u[33]=0.78;u[34]= -0.42;
  u[104]=f32(s[0].ground_grass);u[105]=f32(s[0].ground_earth);u[106]=s[0].ground_repeat;u[107]=ifx s[0].ground_ready then 1 else 0;
  night_light(s,u);
  return night_ui_draw(s,out);
@@ -127,7 +127,7 @@ night_clip_frame :: (c:NClip,clock:f32)->int {
 night_scene :: (s:[]Nights) #export_c #effects(all) {
  s[0].draw_n=0;if !s[0].ready {return;}for i:0..<48 {s[0].records[i]=0;}f:=s[0].env;s[0].records[7]=f32(f.word);s[0].records[15]=16;s[0].draws[0]=u32(f.first);s[0].draws[1]=u32(f.count);s[0].draws[2]=0;s[0].draws[3]=1;
  c:=s[0].heroes[s[0].hero].clips[s[0].clip];fi:=night_clip_frame(c,s[0].clip_clock);f=s[0].heroes[s[0].hero].frames[fi];p:=s[0].you;
- s[0].records[24]=p.pos.x;s[0].records[25]=p.pos.y;s[0].records[26]=p.pos.z;s[0].records[31]=f32(f.word);face:=p.face+(ifx s[0].choosing then 0.0f32 else 3.141592653589793f32);s[0].records[32]=sin(face);s[0].records[33]=cos(face);s[0].records[34]=1;s[0].records[37]=f32(s[0].palette*s[0].palette_stride);s[0].records[39]=18;
+ s[0].records[24]=p.body.pos.x;s[0].records[25]=p.body.pos.y;s[0].records[26]=p.body.pos.z;s[0].records[31]=f32(f.word);face:=p.body.face+(ifx s[0].choosing then 0.0f32 else 3.141592653589793f32);s[0].records[32]=sin(face);s[0].records[33]=cos(face);s[0].records[34]=1;s[0].records[37]=f32(s[0].palette*s[0].palette_stride);s[0].records[39]=18;
  s[0].draws[4]=u32(f.first);s[0].draws[5]=u32(f.count);s[0].draws[6]=1;s[0].draws[7]=1;s[0].draw_n=2;s[0].revision+=1;
 }
 
@@ -170,7 +170,7 @@ night_ui_draw :: (s:[]Nights,out:[]f32)->int {
  s:[1]Nights;night_fixture(s[..]);for width:[2]f32.[1440,390] {s[0].width=width;s[0].height=844;s[0].d=1;
  for id:9..<18 {r:=night_ui_rect(s[..],id);#assert r.w>=36 && r.h>=36 && r.x>=0 && r.x+r.w<=width;#assert night_ui_hit(s[..],r.x+r.w*0.5f32,r.y+r.h*0.5f32)==id;}
  night_ui_action(s[..],17);#assert !s[0].choosing;for id:3..<9 {r:=night_ui_rect(s[..],id);#assert night_ui_hit(s[..],r.x+r.w*0.5f32,r.y+r.h*0.5f32)==id;}
- night_ui_action(s[..],1);#assert s[0].menu;night_ui_action(s[..],5);#assert s[0].zone==2 && !s[0].menu;night_ui_action(s[..],8);night_step(s[..],1.0/64,false);#assert s[0].you.vel.y>0;night_ui_action(s[..],2);#assert s[0].choosing;}
+ night_ui_action(s[..],1);#assert s[0].menu;night_ui_action(s[..],5);#assert s[0].zone==2 && !s[0].menu;night_ui_action(s[..],8);night_step(s[..],1.0/64,false);#assert s[0].you.body.vel.y>0;night_ui_action(s[..],2);#assert s[0].choosing;}
 }
 main :: () {}
 night_fixture :: (s:[]Nights) {
@@ -189,9 +189,9 @@ night_fixture :: (s:[]Nights) {
  night_message(t[..],4,"CC2 wrong");#assert t[0].palette==13;
 }
 #test "Nights controller walks jumps changes region and releases controls" #steps 10000000 {
- s:[1]Nights;night_fixture(s[..]);ignored4:=night_key(s[..],-2,true);ignored5:=night_key(s[..],87,true);for i:0..<30 {night_step(s[..],1.0/64,false);}#assert abs(s[0].you.pos.x)+abs(s[0].you.pos.z)>0.1;
- ignored6:=night_key(s[..],32,true);night_step(s[..],1.0/64,false);#assert s[0].you.vel.y>0;
- night_blur(s[..]);#assert s[0].keys==0 && !s[0].drag;ignored7:=night_key(s[..],50,true);#assert s[0].zone==1 && s[0].you.pos.x==40;
+ s:[1]Nights;night_fixture(s[..]);ignored4:=night_key(s[..],-2,true);ignored5:=night_key(s[..],87,true);for i:0..<30 {night_step(s[..],1.0/64,false);}#assert abs(s[0].you.body.pos.x)+abs(s[0].you.body.pos.z)>0.1;
+ ignored6:=night_key(s[..],32,true);night_step(s[..],1.0/64,false);#assert s[0].you.body.vel.y>0;
+ night_blur(s[..]);#assert s[0].keys==0 && !s[0].drag;ignored7:=night_key(s[..],50,true);#assert s[0].zone==1 && s[0].you.body.pos.x==40;
 }
 
 #test "Nights capsule crosses shared area edges but respects union outer boundary" {
@@ -203,7 +203,7 @@ night_fixture :: (s:[]Nights) {
 
 #test "Nights native source prop boxes feed swept fixed-step controller collision" #steps 10000000 {
  s:[1]Nights;night_fixture(s[..]);s[0].choosing=false;s[0].started=true;s[0].you=pc.walk_place(11,0,9,0);s[0].keys=1;
- for i:0..<120 {night_step(s[..],1.0/64,false);}#assert s[0].you.pos.z<9.71;
+ for i:0..<120 {night_step(s[..],1.0/64,false);}#assert s[0].you.body.pos.z<9.71;
 }
 #test "Nights admits 1024 source collision boxes and refuses a 1025th without overflow" {
  bytes:[32768]u8;row:="B nights 1 2 3 4\n";n:=0;limit:=0;
@@ -226,10 +226,10 @@ night_fixture :: (s:[]Nights) {
 }
 
 #test "Nights native minus-Z actors face the camera in picker and movement in exploration" {
- s:[1]Nights;night_fixture(s[..]);s[0].you.face=0;night_scene(s[..]);
+ s:[1]Nights;night_fixture(s[..]);s[0].you.body.face=0;night_scene(s[..]);
  #assert abs(s[0].records[32])<0.00001 && abs(s[0].records[33]-1)<0.00001;
- s[0].choosing=false;night_scene(s[..]);#assert abs(s[0].records[32])<0.00001 && abs(s[0].records[33]+1)<0.00001 && s[0].you.face==0;
- s[0].you.face=1.570796326794897;night_scene(s[..]);#assert abs(s[0].records[32]+1)<0.00001 && abs(s[0].records[33])<0.00001;
+ s[0].choosing=false;night_scene(s[..]);#assert abs(s[0].records[32])<0.00001 && abs(s[0].records[33]+1)<0.00001 && s[0].you.body.face==0;
+ s[0].you.body.face=1.570796326794897;night_scene(s[..]);#assert abs(s[0].records[32]+1)<0.00001 && abs(s[0].records[33])<0.00001;
 }
 
 #test "Nights writes its admitted spring profile in all 79 uniform vectors" {
@@ -250,8 +250,8 @@ night_fixture :: (s:[]Nights) {
  night_catalog(s[..],"");#assert !s[0].ground_ready && s[0].ground_grass== -1;
 }
 #test "Nights default view frames sky and keeps native hero clear of phone UI" {
- s:[1]Nights;night_fixture(s[..]);night_start(s[..]);#assert s[0].you.phi>=1.2 && s[0].you.phi<=1.25;
+ s:[1]Nights;night_fixture(s[..]);night_start(s[..]);#assert s[0].you.cam.phi>=1.2 && s[0].you.cam.phi<=1.25;
  for i:0..<2 {w:=ifx i==0 then 1440.0f32 else 430.0f32;h:=ifx i==0 then 900.0f32 else 932.0f32;u:[NIGHT_UNIFORMS]f32;out:[16]f32;n:=night_frame(s[..],out[..],u[..],w,h,1);
- for point:0..<2 {x:=s[0].you.pos.x-u[16];y:=s[0].you.pos.y+(ifx point==0 then 0.0f32 else 1.8f32)-u[17];z:=s[0].you.pos.z-u[18];depth:=x*u[20]+y*u[21]+z*u[22];screen:=u[27]-(x*u[28]+y*u[29]+z*u[30])*u[19]/depth;if point==0 {#assert screen<(ifx i==1 then night_ui_panel_rect(s[..]).y-8 else h-20);}else {#assert screen>64;}}
+ for point:0..<2 {x:=s[0].you.body.pos.x-u[16];y:=s[0].you.body.pos.y+(ifx point==0 then 0.0f32 else 1.8f32)-u[17];z:=s[0].you.body.pos.z-u[18];depth:=x*u[20]+y*u[21]+z*u[22];screen:=u[27]-(x*u[28]+y*u[29]+z*u[30])*u[19]/depth;if point==0 {#assert screen<(ifx i==1 then night_ui_panel_rect(s[..]).y-8 else h-20);}else {#assert screen>64;}}
  }
 }

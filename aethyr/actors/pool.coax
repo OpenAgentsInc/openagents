@@ -53,7 +53,7 @@ actor_spawn :: (p:[]ActorExecPool,d:ActorProfile,schema:StateSchema,refs:StateRe
  spawned:=entities.entity_spawn(store);if spawned.handle==entities.ENTITY_NONE {for ref:members {dropped:=resource_stream_drop(pool,m,ref);}out.status=ACTOR_CAPACITY;return out;}
  slot:=entities.entity_slot(spawned.handle);owner:=add_sat(entities.entity_generation(spawned.handle).value,1);
  actor:=ActorExecInstance.{definition=d,archetype=d.content,day_ticks=schema.day_ticks,handle=spawned.handle,id=spawned.id.value,owner=owner,members=members,home_x=x,home_z=z,goal_x=x,goal_z=z};
- scope:=actor_scope_schema(actor);actor.facts=state_construct(scope,StateRefs.{},owner);actor.body=walking.walk_place(f32(x)/100,0,f32(z)/100,0);actor.body.theta=0;actor.presentation_x=actor.body.pos.x;actor.presentation_z=actor.body.pos.z;
+ scope:=actor_scope_schema(actor);actor.facts=state_construct(scope,StateRefs.{},owner);actor.body=walking.walk_place(f32(x)/100,0,f32(z)/100,0);actor.body.cam.theta=0;actor.presentation_x=actor.body.body.pos.x;actor.presentation_z=actor.body.body.pos.z;
  actor.facts.tick=tick;actor.facts.day=world.facts.day;actor.facts.phase=world.facts.phase;actor.brain.tick=tick;actor.perception.tick=tick;p[0].actors[slot]=actor;p[0].scan_cap+=16;p[0].sense_cap+=par.sense_work;p[0].search_cap+=par.path_work;p[0].choice_cap+=4*par.n;
  decisions.decide_transfer(p[0].models[..],slot);p[0].models[0].catalogue[slot]=decisions.DECIDE_ALL;
  if (par.hooks&1)!=0 {p[0].hooks[0]+=1;}out.status=ACTOR_OK;out.handle=spawned.handle;out.id=actor.id;return out;

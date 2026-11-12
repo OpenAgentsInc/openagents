@@ -78,7 +78,7 @@ actor_lab_apply :: (s:[]ActorLab,action:int) #effects(all) {
  if action==0 || action==1 || action==3 || action==4 {state_lab_action(s[0].world[..],action);}
  else if action==2 {state_lab_action(s[0].world[..],7);}else if action==5 {state_lab_action(s[0].world[..],6);}
  else if action==6 || action==9 {i:=ifx action==6 then 0 else 1;store:=actor_entity_store(s[0].actors[..]);h:=s[0].handles[i];x:=ifx i==0 then 700 else 1150;z:=ifx i==0 then 350 else 200;
-  if entities.entity_alive(store,h) {a:=s[0].actors[0].actors[entities.entity_slot(h)];x=actor_cm(a.body.pos.x);z=actor_cm(a.body.pos.z);removed:=actor_remove(s[0].actors[..],h);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);}
+  if entities.entity_alive(store,h) {a:=s[0].actors[0].actors[entities.entity_slot(h)];x=actor_cm(a.body.body.pos.x);z=actor_cm(a.body.body.pos.z);removed:=actor_remove(s[0].actors[..],h);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);}
   definition:=ifx action==6 then ACTOR_LAB_GUARD.items[0] else ACTOR_LAB_PATH.items[1];spawned:=actor_lab_spawn(s,i,definition,x,z);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);s[0].alternate=true;
  }else if action==7 {removed:=actor_remove(s[0].actors[..],s[0].handles[0]);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);}
  else if action==8 {store:=actor_entity_store(s[0].actors[..]);if !entities.entity_alive(store,s[0].handles[0]) {spawned:=actor_lab_spawn(s,0,ACTOR_LAB_NORMAL.items[0],700,350);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);}}
@@ -91,7 +91,7 @@ actor_lab_script :: (s:[]ActorLab,tick:int) #effects(all) {
  s[0].world[0].keys[1].held=tick<224;
  if tick==96 || tick==160 {actor_lab_apply(s,11);}if tick==128 {actor_lab_apply(s,0);}if tick==192 {actor_lab_apply(s,1);}if tick==224 {actor_lab_apply(s,3);}
  if tick==256 {actor_lab_apply(s,5);}if tick==288 {actor_lab_apply(s,4);}if tick==320 {actor_lab_apply(s,6);}if tick==352 {actor_lab_apply(s,2);}if tick==416 {actor_lab_apply(s,7);}if tick==448 {actor_lab_apply(s,8);}if tick==480 {actor_lab_apply(s,9);}if tick==512 {actor_lab_apply(s,10);}
- mount:=s[0].handles[2];a:=s[0].actors[0].actors[entities.entity_slot(mount)];if a.controller==1 {record:=ifx s[0].control_ai then actor_lab_ai_control(actor_cm(a.body.pos.x),actor_cm(a.body.pos.z),tick) else actor_lab_recorded_control(tick);accepted:=actor_control(s[0].actors[..],mount,a.owner,record);s[0].world[0].keys[1].held=false;
+ mount:=s[0].handles[2];a:=s[0].actors[0].actors[entities.entity_slot(mount)];if a.controller==1 {record:=ifx s[0].control_ai then actor_lab_ai_control(actor_cm(a.body.body.pos.x),actor_cm(a.body.body.pos.z),tick) else actor_lab_recorded_control(tick);accepted:=actor_control(s[0].actors[..],mount,a.owner,record);s[0].world[0].keys[1].held=false;
   if accepted && s[0].control_n<64 {at:=s[0].control_n*4;s[0].control_words[at]=tick;s[0].control_words[at+1]=record.x;s[0].control_words[at+2]=record.z;s[0].control_words[at+3]=ifx record.jump then 1 else 0;s[0].control_n+=1;}
  }
 }
@@ -108,7 +108,7 @@ actor_lab_step :: (s:[]ActorLab,tick:int) #effects(all) {
  state_lab_walls(s[0].world[..]);metadata:[7]filters.QueryCollider;for i:0..<7 {metadata[i]=filters.QueryCollider.{ref=filters.ColliderRef.{id=1000+i,generation=1},shape=queries.QueryShape.box,index=i,surface=1};}
  surfaces:=[1]filters.PhysicalSurface.[filters.PhysicalSurface.{id=1}];epoch:=[1]int.[s[0].revision];store:=actor_entity_store(s[0].actors[..]);
  query:=scene.QueryWorld.{geometry=queries.Colliders.{ground_enabled=false,boxes=s[0].world[0].walls[..]},metadata=metadata[..],surfaces=surfaces[..],entity_store=store,current_epoch=epoch[..],epoch=epoch[0],tick=tick};
- targets:=[1]ActorTarget.[ActorTarget.{handle=s[0].player,x=actor_cm(w.player.pos.x),y=actor_cm(w.player.pos.y),z=actor_cm(w.player.pos.z)}];
+ targets:=[1]ActorTarget.[ActorTarget.{handle=s[0].player,x=actor_cm(w.player.body.pos.x),y=actor_cm(w.player.body.pos.y),z=actor_cm(w.player.body.pos.z)}];
  context:=ActorStepWorld.{tick=tick,revision=s[0].revision,nav_revision=s[0].nav_revision,schema=w.schema,refs=state_lab_refs(s[0].world[..]),facts=w.world[0].facts,anchors=ACTOR_LAB_ANCHORS[..],targets=targets[..],queries=query,bodies=walking.World.{walls=s[0].world[0].walls[..]},grid=navigation.NavGrid.{nx=16,nz=8,cell=1},walk=s[0].world[0].walk[..],focus_x=targets[0].x,focus_z=targets[0].z};
  s[0].work=actor_runtime_step(s[0].actors[..],context);if !s[0].work.ok {s[0].ready=false;return;}s[0].refused+=s[0].work.refused;s[0].invalidated+=s[0].work.invalidated;for h:s[0].handles {notice:=actor_notice(s[0].actors[..],h,tick);if notice.kind!=0 {s[0].notices+=1;}}
  replay.replay_stepped(actor_lab_session(s),entities.entity_digest(store));

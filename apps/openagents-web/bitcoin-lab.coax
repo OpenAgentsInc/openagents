@@ -468,9 +468,9 @@ lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bo
   if s[0].remote[0].active && !s[0].map {s[0].world_top=240;s[0].world_bottom=ifx s[0].h<700 then s[0].h-252 else s[0].h-440;}
   s[0].world_scale=lo(s[0].h*0.78,(s[0].world_bottom-s[0].world_top)*2.5);
   s[0].field_box=[4]f32.[16*d,(s[0].world_bottom+28)*d,(s[0].w-16)*d,(s[0].world_bottom+72)*d];
-  keys:=s[0].keys;before:=s[0].session[0].you.clock.ticks;
+  keys:=s[0].keys;before:=s[0].session[0].you.body.clock.ticks;
   gw.gridwalk_frame(s[0].session[..],cast(f32)((ifx (keys&8)!=0 then 1 else 0)-(ifx (keys&4)!=0 then 1 else 0)),cast(f32)((ifx (keys&1)!=0 then 1 else 0)-(ifx (keys&2)!=0 then 1 else 0)),(keys&32)!=0,(keys&16)!=0,s[0].look,0,0,w,h,d,dt,false);
-  s[0].look=0;s[0].steps=s[0].session[0].you.clock.ticks-before;
+  s[0].look=0;s[0].steps=s[0].session[0].you.body.clock.ticks-before;
   eye:=gw.gridwalk_eye(s[0].session[..]);at:=gw.gridwalk_at(s[0].session[..]);
   s[0].eye=v3(eye.x,eye.y,eye.z);
   s[0].forward=unit_or(sub(v3(at.x,at.y,at.z),s[0].eye),v3(0,0,1));
@@ -621,7 +621,7 @@ lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c #effects(all) {
   if field>=2 && field<=4 {return cast(int)(gw.gridwalk_pose(s[0].session[..],field-2)*1000);}
   if field==5 {return s[0].keys;}if field==6 {return s[0].used;}
   if field==7 {return s[0].meter[0].refused;}
-  if field==8 {return s[0].session[0].you.clock.ticks;}
+  if field==8 {return s[0].session[0].you.body.clock.ticks;}
   if field==9 {return s[0].focus;}
   e:=s[0].explorer[..];
   if field==10 {return e[0].phase;}if field==11 {return LAB_BLOCKS[e[0].block].height;}

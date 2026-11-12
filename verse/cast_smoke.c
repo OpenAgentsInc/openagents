@@ -103,11 +103,11 @@ int main(int argc, char **argv) {
       assert(verse_cast_robots_pose(view, c, i / 60.0, (coax_v_t_Joint){palette, joints}));
       assert(verse_cast_bodies(view, c, (coax_v_t_Joint){palette, joints}, (coax_v_f32){bodies, count * 7}) == count);
       p = verse_player_advance_among(p, 1 / 60.0f, (coax_v_f32){bodies, run == 2 ? 0 : count * 7}, (coax_v_f32){0, 0});
-      assert(isfinite(p.pos.x) && isfinite(p.pos.z));
-      float d = hypotf(p.pos.x - tx, p.pos.z - tz);
+      assert(isfinite(p.body.pos.x) && isfinite(p.body.pos.z));
+      float d = hypotf(p.body.pos.x - tx, p.body.pos.z - tz);
       if (d < nearest[run]) nearest[run] = d;
     }
-    far[run] = hypotf(p.pos.x, p.pos.z);
+    far[run] = hypotf(p.body.pos.x, p.body.pos.z);
   }
   printf("Foreman: a leg stops you %.2f m from it; under it %.2f m from its middle, on to %.1f m\n",
          nearest[0], nearest[1], far[1]);
@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
   coax_t_Player p = verse_player_place(lx, 0, lz - 0.9f, 0);
   bodies[3] = NAN;
   p = verse_player_advance_among(p, 1 / 60.0f, (coax_v_f32){bodies, count * 7}, (coax_v_f32){0, 0});
-  assert(isfinite(p.pos.x) && isfinite(p.pos.z));
+  assert(isfinite(p.body.pos.x) && isfinite(p.body.pos.z));
   assert(refused(bytes, size, (size_t)c.robot_bodies.offset + 32 + 12, nan));
   assert(refused(bytes, size, (size_t)c.robot_bodies.offset + 4, inf));
   free(bodies);

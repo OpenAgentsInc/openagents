@@ -9,7 +9,7 @@ state_lab_metric :: (s:[]StateLab,index:int)->f64 #export_c #effects(all) {
  if index==0 {return f64(s[0].clock.ticks);}if index==1 {return f64(f.values[0].integer);}if index==2 {return f64(f.values[1].integer);}if index==3 {return f64(f.values[2].integer);}
  if index==4 {return ifx s[0].nav_reached then 1 else 0;}if index==5 {return ifx state_lab_npc(s) then 1 else 0;}if index==6 {return f64(s[0].credit.credits);}
  if index==7 {return f64(f.day);}if index==8 {return f64(f.phase);}if index==9 {return f64(s[0].last_status);}if index==10 {return f64(f.tick);}if index==11 {return f64(f.sequence);}if index==12 {return f64(s[0].world[0].variant);}
- if index==13 {return f64(s[0].player.pos.x);}if index==14 {return f64(s[0].player.pos.z);}if index==15 {return f64(s[0].pool[0].loading);}if index==16 {return f64(s[0].pool[0].budget[0].peak);}
+ if index==13 {return f64(s[0].player.body.pos.x);}if index==14 {return f64(s[0].player.body.pos.z);}if index==15 {return f64(s[0].pool[0].loading);}if index==16 {return f64(s[0].pool[0].budget[0].peak);}
  if index==17 {count:=0;for claim:s[0].pool[0].claims {if claim.live {count+=1;}}return f64(count);}if index==18 {return f64(size_of(StateLab));}if index==19 {return f64(s[0].waiting);}if index==20 {return f64(s[0].refused);}if index==21 {return f64(s[0].applied);}if index==22 {return f64(s[0].failed_roles);}
  if index==23 {return ifx s[0].ready then 1 else 0;}if index==24 {return f64(s[0].clock.frames);}if index==25 {return f64(s[0].clock.dropped_ns);}if index==26 {return f64(s[0].pool[0].budget[0].actor_peak);}if index==27 {return f64(s[0].saved_n);}return 0;
 }

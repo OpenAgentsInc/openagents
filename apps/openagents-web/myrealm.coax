@@ -1592,7 +1592,7 @@ walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
   from := Spot.{x = x, z = z}; mx := dx; mz := dz;
   for pass: 0..<2 {
     m := pc.move_across(walk_world(s, from.x, from.z, sqrt(mx * mx + mz * mz)), pc.walk_place(from.x, s[0].y, from.z, 0), mx, mz);
-    p = kept_in(seg_push(s, Spot.{x = m.pos.x, z = m.pos.z}));
+    p = kept_in(seg_push(s, Spot.{x = m.body.pos.x, z = m.body.pos.z}));
     from = p; mx = 0; mz = 0;
   }
   return p;

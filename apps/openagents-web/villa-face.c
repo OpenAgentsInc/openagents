@@ -108,7 +108,7 @@ static void start(uint32_t state) {
 // Where you are, kept so a reload puts you back (place-face.h).
 static coax_t_Place place_here(uint32_t state) {
   if (!placed) return (coax_t_Place){0};
-  return verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), villa(state)->orbit, -1);
+  return verse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), villa(state)->orbit, -1);
 }
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = villa_place_fix(at(state), p);
@@ -255,8 +255,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
                                          (coax_v_f32){0, 0}, (coax_string){"hecates-cemetery", sizeof "hecates-cemetery" - 1});
   player = walked.player;
   coax_t_Vec3 feet = verse_player_feet(player);
-  villa_step_on_clock(at(state), player.clock, (coax_v_t_StepTarget){walked.targets.e, walked.count},
-                      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z);
+  villa_step_on_clock(at(state), player.body.clock, (coax_v_t_StepTarget){walked.targets.e, walked.count},
+                      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z);
   {   // metres walked and each 20 m square of the cemetery visited once (analytics.coax track_walk, track_area)
     static float last_x, last_z; static bool placed;
     if (placed) { float dx = feet.x - last_x, dz = feet.z - last_z; track_walk(tr(), __builtin_sqrt((double)(dx * dx + dz * dz))); }

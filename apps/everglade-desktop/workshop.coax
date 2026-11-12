@@ -95,7 +95,7 @@ ws_walls :: (out: []f32) -> int {
 ws_start :: (s: []Workshop) {
   if s[0].started { return; }
   s[0].you = pc.walk_place(0, 0, 4.2, f32(pc.PI));
-  s[0].you.theta = 0; s[0].you.phi = 1.25;
+  s[0].you.cam.theta = 0; s[0].you.cam.phi = 1.25;
   s[0].started = true;
 }
 
@@ -108,8 +108,8 @@ ws_walk :: (s: []Workshop, dt: f32) {
   p := pc.walk_input(s[0].you, key_x, key_y, s[0].pad_x, s[0].pad_y, pc.walk_runs((k & 32) != 0, false, s[0].pad_x, s[0].pad_y), (k & 16) != 0, s[0].look_x, s[0].look_y);
   walls: [WS_WALLS * pc.WALL] f32; count := ws_walls(walls[..]);
   p = pc.walk_advance_on(p, dt, walls[0..<0], walls[0..<count], walls[0..<0]);
-  r := sqrt(p.pos.x * p.pos.x + p.pos.z * p.pos.z);
-  if r > WS_REACH { p = pc.walk_constrain(p, p.pos.x * f32(WS_REACH) / r, p.pos.z * f32(WS_REACH) / r); }
+  r := sqrt(p.body.pos.x * p.body.pos.x + p.body.pos.z * p.body.pos.z);
+  if r > WS_REACH { p = pc.walk_constrain(p, p.body.pos.x * f32(WS_REACH) / r, p.body.pos.z * f32(WS_REACH) / r); }
   s[0].you = p; s[0].look_x = 0; s[0].look_y = 0;
 }
 
@@ -290,15 +290,15 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   first := ws_view(pc.walk_eye(s[0].you), pc.walk_at(s[0].you), 1280, 800, 1);
   #assert ws_key(s[..], 119, true);
   for i: 0..<20 { ws_walk(s[..], 0.016); }
-  #assert s[0].you.pos.z < 4.0 && abs(s[0].you.pos.x) < 0.01;
+  #assert s[0].you.body.pos.z < 4.0 && abs(s[0].you.body.pos.x) < 0.01;
   for i: 0..<300 { ws_walk(s[..], 0.016); }
   // The golem's box ends at z = 0.26; your body is 0.3 m round.
-  #assert s[0].you.pos.z > 0.5 && s[0].you.pos.z < 0.7;
+  #assert s[0].you.body.pos.z > 0.5 && s[0].you.body.pos.z < 0.7;
   #assert ws_key(s[..], 119, false) && s[0].keys == 0;
   t: [1] Workshop; ws_start(t[..]);
   #assert ws_key(t[..], 100, true);
   for i: 0..<30 { ws_walk(t[..], 0.016); }
-  moved := ws_eye(first, WsPoint.{x = t[0].you.pos.x, y = 0, z = t[0].you.pos.z});
+  moved := ws_eye(first, WsPoint.{x = t[0].you.body.pos.x, y = 0, z = t[0].you.body.pos.z});
   was := ws_eye(first, WsPoint.{x = 0, y = 0, z = 4.2});
   #assert moved.x > was.x + 0.5;
 }
@@ -306,31 +306,31 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   s: [1] Workshop; ws_start(s[..]);
   #assert ws_key(s[..], 115, true);
   for i: 0..<600 { ws_walk(s[..], 0.016); }
-  r := sqrt(s[0].you.pos.x * s[0].you.pos.x + s[0].you.pos.z * s[0].you.pos.z);
+  r := sqrt(s[0].you.body.pos.x * s[0].you.body.pos.x + s[0].you.body.pos.z * s[0].you.body.pos.z);
   #assert r <= WS_REACH + 0.001 && r > WS_REACH - 0.2;
   #assert ws_key(s[..], -1, true) && s[0].keys == 0;
   for i: 0..<60 { ws_walk(s[..], 0.016); }
-  #assert s[0].you.on_ground && s[0].you.pos.y == 0;
+  #assert s[0].you.body.on_ground && s[0].you.body.pos.y == 0;
   #assert ws_key(s[..], 32, true);
   peak: f32 = 0;
-  for i: 0..<40 { ws_walk(s[..], 0.016); if s[0].you.pos.y > peak { peak = s[0].you.pos.y; } }
+  for i: 0..<40 { ws_walk(s[..], 0.016); if s[0].you.body.pos.y > peak { peak = s[0].you.body.pos.y; } }
   #assert peak > 0.8 && peak < 1.4;
   #assert !ws_key(s[..], 999, true);
 }
 #test "a drag turns the camera as on the web" {
-  s: [1] Workshop; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; ws_start(s[..]); theta := s[0].you.theta;
+  s: [1] Workshop; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; ws_start(s[..]); theta := s[0].you.cam.theta;
   ws_pointer(s[..], 100, 100, 0); ws_pointer(s[..], 160, 100, 1); ws_pointer(s[..], 160, 100, 2);
   #assert !s[0].held && s[0].look_x < 0;
   n := ws_frame(s[..], out[..], 1280, 800, 2, 0.016);
-  #assert s[0].you.theta != theta && s[0].look_x == 0;
+  #assert s[0].you.cam.theta != theta && s[0].look_x == 0;
 }
 #test "you walk and look at once: a stick pushed forward and a drag in the same frames both take" {
-  s: [1] Workshop; ws_start(s[..]); theta := s[0].you.theta; z := s[0].you.pos.z; x := s[0].you.pos.x;
+  s: [1] Workshop; ws_start(s[..]); theta := s[0].you.cam.theta; z := s[0].you.body.pos.z; x := s[0].you.body.pos.x;
   ws_pad(s[..], 0, 1); ws_pointer(s[..], 300, 300, 0);
   px: f32 = 300;
   for i: 0..<30 { px += 4; ws_pointer(s[..], px, 300, 1); ws_walk(s[..], 0.016); }
-  moved := (s[0].you.pos.z - z) * (s[0].you.pos.z - z) + (s[0].you.pos.x - x) * (s[0].you.pos.x - x);
-  #assert s[0].you.theta != theta && moved > 0.25;
+  moved := (s[0].you.body.pos.z - z) * (s[0].you.body.pos.z - z) + (s[0].you.body.pos.x - x) * (s[0].you.body.pos.x - x);
+  #assert s[0].you.cam.theta != theta && moved > 0.25;
 }
 #test "the Gyro switch: offered it is on and the phone's turn looks; a tap on it turns it off; elsewhere a tap is not its" {
   s: [1] Workshop; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; ws_start(s[..]);
@@ -338,9 +338,9 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   ws_pad(s[..], 0, 0); ws_turn_offer(s[..]); #assert ws_turns(s[..]);
   n := ws_frame(s[..], out[..], 402, 874, 3, 0.016);
   #assert s[0].bw > 0 && s[0].bx + s[0].bw <= 402 && s[0].bx > 201;
-  theta := s[0].you.theta;
+  theta := s[0].you.cam.theta;
   ws_turn(s[..], -0.2, 0); ws_turn(s[..], 5, 0); #assert s[0].look_x < -0.19 && s[0].look_x > -0.21;
-  ws_walk(s[..], 0.016); #assert s[0].you.theta != theta;
+  ws_walk(s[..], 0.016); #assert s[0].you.cam.theta != theta;
   #assert !ws_tap(s[..], 40, 400) && ws_turns(s[..]);
   #assert ws_tap(s[..], s[0].bx + 20, s[0].by + 20) && !ws_turns(s[..]);
   ws_turn(s[..], -0.2, 0); #assert s[0].look_x == 0;
@@ -380,11 +380,11 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   ws_pad(s[..], 0, 5);
   #assert s[0].touch && s[0].pad_y == 1 && s[0].pad_x == 0;
   for i: 0..<40 { ws_walk(s[..], 0.016); }
-  #assert s[0].you.pos.z < 4.0;
-  ws_pad(s[..], 0, 0); z := s[0].you.pos.z;
+  #assert s[0].you.body.pos.z < 4.0;
+  ws_pad(s[..], 0, 0); z := s[0].you.body.pos.z;
   for i: 0..<60 { ws_walk(s[..], 0.016); }
-  after := s[0].you.pos.z;
+  after := s[0].you.body.pos.z;
   for i: 0..<30 { ws_walk(s[..], 0.016); }
-  #assert s[0].you.pos.z == after && after <= z;
+  #assert s[0].you.body.pos.z == after && after <= z;
   zero: f32 = 0; ws_pad(s[..], zero / zero, -9); #assert s[0].pad_x == 0 && s[0].pad_y == -1;
 }

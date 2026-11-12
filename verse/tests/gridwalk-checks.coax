@@ -7,9 +7,9 @@
   g: [1] GridWalk; gw_new(g[..]); gw_play(g[..], 30);
   before := g[0];
   expected := [10] int.[gridwalk_steps(g[..]), gridwalk_session(g[..]), gridwalk_digest(g[..]),
-    g[0].records, g[0].profile, g[0].you.jumps.taken, replay_flag(g[0].you.on_ground),
-    cast(int) g[0].you.collision_refusals, cast(int) cast(u8) g[0].you.query_status,
-    cast(int) cast(u8) g[0].you.camera_query_status];
+    g[0].records, g[0].profile, g[0].you.body.jumps.taken, replay_flag(g[0].you.body.on_ground),
+    cast(int) g[0].you.body.collision_refusals, cast(int) cast(u8) g[0].you.body.query_status,
+    cast(int) cast(u8) g[0].you.cam.query_status];
   for k: 0..<10 { #assert gridwalk_probe(g[..], k) == expected[k]; }
   feet := gridwalk_feet(g[..]); eye := gridwalk_eye(g[..]); at := gridwalk_at(g[..]);
   pose := [10] f32.[feet.x,feet.y,feet.z,eye.x,eye.y,eye.z,at.x,at.y,at.z,gridwalk_face(g[..])];

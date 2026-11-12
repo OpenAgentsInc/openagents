@@ -43,7 +43,7 @@ EXPORT("coaxial_action") int32_t action(uint32_t p){return night_action(view(p))
 EXPORT("coaxial_outbox") uint32_t outbox(uint32_t p){return(uint32_t)(uintptr_t)state(p)->outbox.e;}
 EXPORT("coaxial_outbox_len") uint32_t out_len(uint32_t p){return state(p)->out_n;}
 EXPORT("coaxial_action_done") void done(uint32_t p){state(p)->out_n=0;}
-EXPORT("coaxial_field_probe") double probe(uint32_t p,int32_t k){return k==0?state(p)->ready:k==1?state(p)->hero:k==2?state(p)->palette:k==3?state(p)->zone:k==4?state(p)->you.pos.x:k==5?state(p)->you.pos.z:k==6?state(p)->clip:k==7?state(p)->draw_n:k==8?state(p)->you.pos.y:k==9?state(p)->choosing:k==10?state(p)->you.dist:k==11?state(p)->ui.e[0].ready:k==12?state(p)->menu:k==13?state(p)->ui.e[0].glyph_n:k==14?state(p)->ui.e[0].sprite_n:0;}
+EXPORT("coaxial_field_probe") double probe(uint32_t p,int32_t k){return k==0?state(p)->ready:k==1?state(p)->hero:k==2?state(p)->palette:k==3?state(p)->zone:k==4?state(p)->you.body.pos.x:k==5?state(p)->you.body.pos.z:k==6?state(p)->clip:k==7?state(p)->draw_n:k==8?state(p)->you.body.pos.y:k==9?state(p)->choosing:k==10?state(p)->you.cam.dist:k==11?state(p)->ui.e[0].ready:k==12?state(p)->menu:k==13?state(p)->ui.e[0].glyph_n:k==14?state(p)->ui.e[0].sprite_n:0;}
 
 EXPORT("coaxial_fx_scene_v1") uint32_t fx_scene(void){return 1;}
 EXPORT("coaxial_fx_alpha_v1") uint32_t fx_alpha(void){return 1;}

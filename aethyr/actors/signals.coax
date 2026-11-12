@@ -11,7 +11,7 @@ ActorNotice :: struct {kind:int;source:int;generation:int;tick:int= -1;target:in
 #load "tests/signals.coax";
 actor_attributes :: (p:[]ActorExecPool,h:Handle(entities.Entity))->ActorAttributes #effects(all) {
  out:ActorAttributes;if p.count!=1 || !p[0].ready {return out;}store:=actor_entity_store(p);if !entities.entity_alive(store,h) || entities.entity_doomed(store,h) {return out;}a:=p[0].actors[entities.entity_slot(h)];if a.id<1 {return out;}
- out.valid=true;out.moving=a.body.vel.x!=0 || a.body.vel.z!=0;out.controlled=a.controller==1;out.airborne=a.body.act==walking.Act.airborne;
+ out.valid=true;out.moving=a.body.body.vel.x!=0 || a.body.body.vel.z!=0;out.controlled=a.controller==1;out.airborne=a.body.body.act==walking.Act.airborne;
  if a.brain.rule>=0 {out.interacting=a.choice.status==ACTOR_OK && a.choice.verb==ACTOR_INTERACT;out.interruptible=a.definition.parameters.rules[a.brain.rule].interruptible;}return out;
 }
 actor_notice :: (p:[]ActorExecPool,h:Handle(entities.Entity),tick:int)->ActorNotice #effects(all) {

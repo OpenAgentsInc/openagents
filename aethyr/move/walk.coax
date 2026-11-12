@@ -23,15 +23,14 @@
 #load "../cam/follow.coax";  // the camera: Aethyr's follow, which every realm shares
 #load "../physics/collide.coax"; // checked capsule resolution and the trusted legacy adapters
 #load "../physics/collision-profiles.coax" as realm_collision;
-#load "../tests/player-collision-checks.coax";
+#load "player-collision-checks.coax";
 #load "locomotion.coax";
 #load "walk-substep-policy.coax";
-#load "walk-scaled.coax";
 #load "locomotion-source.coax" as source_motion;
-#load "../tests/echo-walk-checks.coax";
+#load "echo-walk-checks.coax";
 #load "flight.coax";   // the per-step flight hook a flying realm declares (Fairy Forest)
 #load "walk-frame.coax";
-#load "../tests/walk-tuning-checks.coax";
+#load "walk-tuning-checks.coax";
 #authority;
 
 PI :: 3.14159265;
@@ -93,21 +92,14 @@ World :: struct {
 Act :: enum u8 { idle; walking; running; airborne; }
 
 // book:begin state
-Player :: struct {
+// The body: where you are and what the fixed step reads and writes. The server owns it; the room and
+// the wire carry only this (#13271).
+Body :: struct {
   pos: Vec3;            // feet, after the last step
   vel: Vec3;
   face: f32;            // yaw the character faces
   on_ground: bool = true;
   act: Act = Act.idle;
-  // The orbit camera: theta around +Y from +Z, phi down from +Y, and its
-  // distance from the spring-followed target.
-  theta: f32 = PI;
-  phi: f32 = BEHIND_PHI;
-  dist: f32 = CAM_MAX;
-  max_dist: f32 = CAM_MAX;
-  zoom_push: f32;       // zoom past a view's end, gathering to cross it
-  target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
-  spring_vel: Vec3;
   // The controls held now.
   key_x: f32;
   key_y: f32;
@@ -126,9 +118,7 @@ Player :: struct {
   // and where the last step began, so the frame shows a point between the last two.
   clock: FrameClock;
   prev_pos: Vec3;
-  prev_target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
   prev_face: f32;
-  prev_dist: f32 = CAM_MAX;
   // Your speed's share, set by the realm: 1 on land, 0.5 wading or swimming
   // (verse/everglade/river.coax pace_of). WALK and RUN themselves never change.
   pace: f32 = 1;
@@ -140,8 +130,26 @@ Player :: struct {
   collision_passes: int;
   collision_floor_cut: bool;
   query_status: QueryStatus;         // a refused ground receipt on the last physical step
-  camera_query_status: QueryStatus;  // the last camera receipt, retained when its step is skipped
+  // The view's yaw the step turns your controls by (the stick's forward is the view's forward): an
+  // input, set from the camera on the client and from the wire on the server. The body has no camera.
+  yaw: f32 = PI;
 }
+// The camera: the orbit round the body (theta around +Y from +Z, phi down from +Y, its distance from
+// the spring-followed target). The client owns it; the step never reads it.
+Camera :: struct {
+  theta: f32 = PI;
+  phi: f32 = BEHIND_PHI;
+  dist: f32 = CAM_MAX;
+  max_dist: f32 = CAM_MAX;
+  zoom_push: f32;       // zoom past a view's end, gathering to cross it
+  target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
+  spring_vel: Vec3;
+  prev_target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
+  prev_dist: f32 = CAM_MAX;
+  query_status: QueryStatus;  // the last camera receipt, retained when its step is skipped
+}
+// What a page holds: its body and its camera.
+Player :: struct { body: Body; cam: Camera; }
 // book:end state
 
 lo :: (a: f32, b: f32) -> f32 #effects(all) { if a < b { return a; } return b; }
@@ -194,11 +202,11 @@ floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit #effects(all) {
 // book:end ground
 // The trusted adapters retain the old direct-helper contract, including large
 // moves used by tools and checks. The real fixed step uses collide_move below.
-collision_state :: (p: Player) -> CollideState #effects(all) { return CollideState.{feet = wp(p.pos), velocity = wp(p.vel)}; }
-collision_apply :: (p: Player, s: CollideState) -> Player #effects(all) {
+body_collision_state :: (p: Body) -> CollideState #effects(all) { return CollideState.{feet = wp(p.pos), velocity = wp(p.vel)}; }
+body_collision_apply :: (p: Body, s: CollideState) -> Body #effects(all) {
   next := p; next.pos = vp(s.feet); next.vel = vp(s.velocity); return next;
 }
-collision_report :: (p: Player, r: CollideResult) -> Player #effects(all) {
+body_collision_report :: (p: Body, r: CollideResult) -> Body #effects(all) {
   next := p;
   next.query_status = QueryStatus.ok;
   next.collision_status = r.status; next.collision_residual = r.residual;
@@ -209,12 +217,12 @@ collision_report :: (p: Player, r: CollideResult) -> Player #effects(all) {
 floor_cuts :: (w: World, x: f32, z: f32, feet: f32) -> bool #effects(all) {
   return collide_floor_cuts(colliders(w), w.collision, world_point(x, feet, z));
 }
-off_floors :: (w: World, from: Player, p: Player) -> Player #effects(all) {
-  return collision_apply(p, collide_floor_sides(colliders(w), w.collision, collision_state(from), collision_state(p)));
+body_off_floors :: (w: World, from: Body, p: Body) -> Body #effects(all) {
+  return body_collision_apply(p, collide_floor_sides(colliders(w), w.collision, body_collision_state(from), body_collision_state(p)));
 }
 // book:begin walls
-out_of_walls :: (w: World, p: Player) -> Player #effects(all) {
-  return collision_apply(p, collide_walls(colliders(w), w.collision, collision_state(p)));
+body_out_of_walls :: (w: World, p: Body) -> Body #effects(all) {
+  return body_collision_apply(p, collide_walls(colliders(w), w.collision, body_collision_state(p)));
 }
 
 // book:end walls
@@ -240,15 +248,15 @@ closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest #effects(all) {
 
 // book:begin across
 // A trusted direct move, deliberately not the bounded fixed-step entry.
-move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player #effects(all) {
-  next := collision_state(p); next.feet.x += dx; next.feet.z += dz;
+body_move_across :: (w: World, p: Body, dx: f32, dz: f32) -> Body #effects(all) {
+  next := body_collision_state(p); next.feet.x += dx; next.feet.z += dz;
   for pass: 0..<w.collision.max_passes {
     bodies := collide_bodies(colliders(w), w.collision, next, dx, dz);
     hulls := collide_hulls(colliders(w), w.collision, bodies.state);
     next = collide_walls(colliders(w), w.collision, hulls.state);
     if !bodies.pushed && !hulls.pushed { break; }
   }
-  return collision_apply(p, next);
+  return body_collision_apply(p, next);
 }
 
 // book:end across
@@ -265,12 +273,12 @@ camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 #effects(
 wp :: (v: Vec3) -> WorldPoint #effects(all) { return world_point(v.x, v.y, v.z); }
 vp :: (w: WorldPoint) -> Vec3 #effects(all) { return Vec3.{x = w.x, y = w.y, z = w.z}; }
 follow_of :: (p: Player) -> Follow #effects(all) {
-  return Follow.{theta = p.theta, phi = p.phi, dist = p.dist, max_dist = p.max_dist, target = wp(p.target), vel = wp(p.spring_vel)};
+  return Follow.{theta = p.cam.theta, phi = p.cam.phi, dist = p.cam.dist, max_dist = p.cam.max_dist, target = wp(p.cam.target), vel = wp(p.cam.spring_vel)};
 }
 
 // ---- The controller ----
 
-look_at :: (p: Player) -> Vec3 #effects(all) { return Vec3.{x = p.pos.x, y = p.pos.y + f32(LOOK_AT_HEIGHT), z = p.pos.z}; }
+look_at :: (p: Player) -> Vec3 #effects(all) { return Vec3.{x = p.body.pos.x, y = p.body.pos.y + f32(LOOK_AT_HEIGHT), z = p.body.pos.z}; }
 
 orbit_offset :: (p: Player) -> Vec3 #effects(all) {
   return vp(follow_offset(follow_of(p)));
@@ -278,14 +286,14 @@ orbit_offset :: (p: Player) -> Vec3 #effects(all) {
 
 place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Player #effects(all) {
   p: Player;
-  p.pos = Vec3.{x = x, y = y, z = z};
-  p.face = wrap_angle(yaw);
-  p.theta = wrap_angle(yaw + f32(PI));
-  p.on_ground = y - floor_at(w, x, z, y) <= w.locomotion.ride_height;
-  p.target = look_at(p);
-  p.prev_pos = p.pos;
-  p.prev_target = p.target;
-  p.prev_face = p.face;
+  p.body.pos = Vec3.{x = x, y = y, z = z};
+  p.body.face = wrap_angle(yaw);
+  p.cam.theta = wrap_angle(yaw + f32(PI)); p.body.yaw = p.cam.theta;
+  p.body.on_ground = y - floor_at(w, x, z, y) <= w.locomotion.ride_height;
+  p.cam.target = look_at(p);
+  p.body.prev_pos = p.body.pos;
+  p.cam.prev_target = p.cam.target;
+  p.body.prev_face = p.body.face;
   return p;
 }
 
@@ -306,18 +314,18 @@ walk_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player #effects(all) {
 walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #effects(all) {
   next := p;
-  next.key_x = clamp(key_x, -1, 1);
-  next.key_y = clamp(key_y, -1, 1);
-  next.pad_x = clamp(pad_x, -1, 1);
-  next.pad_y = clamp(pad_y, -1, 1);
-  if !finite(key_x) { next.key_x = 0; }
-  if !finite(key_y) { next.key_y = 0; }
-  if !finite(pad_x) || !finite(pad_y) { next.pad_x = 0; next.pad_y = 0; }
-  next.run = run;
-  next.jumps = input_level(p.jumps, jump);
-  next.jump_held = jump;
+  next.body.key_x = clamp(key_x, -1, 1);
+  next.body.key_y = clamp(key_y, -1, 1);
+  next.body.pad_x = clamp(pad_x, -1, 1);
+  next.body.pad_y = clamp(pad_y, -1, 1);
+  if !finite(key_x) { next.body.key_x = 0; }
+  if !finite(key_y) { next.body.key_y = 0; }
+  if !finite(pad_x) || !finite(pad_y) { next.body.pad_x = 0; next.body.pad_y = 0; }
+  next.body.run = run;
+  next.body.jumps = input_level(p.body.jumps, jump);
+  next.body.jump_held = jump;
   cam := follow_look(follow_of(next), dyaw, dpitch);
-  next.theta = cam.theta; next.phi = cam.phi;
+  next.cam.theta = cam.theta; next.cam.phi = cam.phi;
   return next;
 }
 // book:end input
@@ -332,11 +340,11 @@ walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
 walk_fly_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32, run: bool, jump: bool,
                    taps: int, wings: bool, dive: bool) -> Player #effects(all) {
   next := walk_input(p, key_x, key_y, pad_x, pad_y, run, jump, 0, 0);
-  if taps > 0 && next.jumps.pressed == p.jumps.pressed {
-    next.jumps = input_press(next.jumps);
-    next.jumps.held = jump;
+  if taps > 0 && next.body.jumps.pressed == p.body.jumps.pressed {
+    next.body.jumps = input_press(next.body.jumps);
+    next.body.jumps.held = jump;
   }
-  next.wings = wings; next.dive_held = dive;
+  next.body.wings = wings; next.body.dive_held = dive;
   return next;
 }
 
@@ -353,7 +361,7 @@ Wish :: struct { x: f32; z: f32; on: bool; }
 
 // Stick when it is past the dead zone, else keys, turned from the camera's
 // frame into the world's.
-wish :: (p: Player) -> Wish #effects(all) {
+body_wish :: (p: Body) -> Wish #effects(all) {
   ax := p.key_x; ay := p.key_y;
   if sqrt(p.pad_x * p.pad_x + p.pad_y * p.pad_y) > f32(DEAD_ZONE) { ax = p.pad_x; ay = p.pad_y; }
   size := sqrt(ax * ax + ay * ay);
@@ -362,7 +370,7 @@ wish :: (p: Player) -> Wish #effects(all) {
   mx := ax / size; mz := -ay / size;
   // Turn local -Z onto the camera's flat forward. The camera sits at theta
   // around the target, so its flat forward is -(sin theta, cos theta).
-  c := math_cos(p.theta); s := math_sin(p.theta);
+  c := math_cos(p.yaw); s := math_sin(p.yaw);
   w.x = mx * c + mz * s;
   w.z = -mx * s + mz * c;
   w.on = true;
@@ -373,8 +381,8 @@ wish :: (p: Player) -> Wish #effects(all) {
 // The motion your controls ask for, m/s on the flat: the wish at the pace you walk or run. A follow
 // camera turns toward this, not toward the velocity, which a wall, a push or a room server's
 // correction changes without you asking (#12777).
-walk_asked :: (p: Player) -> Vec3 #effects(all) {
-  w := wish(p);
+body_asked :: (p: Body) -> Vec3 #effects(all) {
+  w := body_wish(p);
   if !w.on { return Vec3.{}; }
   pace := ifx p.run then f32(RUN) else f32(WALK);
   return Vec3.{x = w.x * pace, y = 0, z = w.z * pace};
@@ -384,7 +392,7 @@ walk_asked :: (p: Player) -> Vec3 #effects(all) {
 #test "walk: the intent is the controls' wish at the pace, whatever the velocity a wall or a correction left (#12777)" {
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 1, 0, 0, false, false, 0, 0);   // W
-  p.vel = Vec3.{x = 4, y = 0, z = 0};                  // a correction's sideways velocity
+  p.body.vel = Vec3.{x = 4, y = 0, z = 0};                  // a correction's sideways velocity
   w := wish(p); i := walk_asked(p);
   #assert near(i.x, w.x * f32(WALK), 0.0001) && near(i.z, w.z * f32(WALK), 0.0001);
   q := walk_input(p, 0, 0, 0, 0, false, false, 0, 0);
@@ -400,7 +408,7 @@ spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> Vec3 #effects(all) {
 
 // book:begin take
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
+body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;
@@ -412,7 +420,7 @@ step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
 // book:end take
 // book:begin move
   next := p;
-  dir := wish(p);
+  dir := body_wish(p);
   speed := (ifx p.run then w.locomotion.run_speed else w.locomotion.walk_speed) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
 
   if w.locomotion.source_velocity {
@@ -432,16 +440,16 @@ step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
     next.vel.z += dz / diff * applied;
   }
   }
-  contact := collide_move(colliders(w), w.collision, collision_state(next), next.vel.x * dt, next.vel.z * dt);
-  // A refused step keeps the input Player, including its queued jump. The
+  contact := collide_move(colliders(w), w.collision, body_collision_state(next), next.vel.x * dt, next.vel.z * dt);
+  // A refused step keeps the input Body, including its queued jump. The
   // outer FrameClock consumes the assigned step; only diagnostics change.
-  if contact.status != CollideStatus.ok { return collision_report(given, contact); }
-  next = collision_report(collision_apply(next, contact.state), contact);
+  if contact.status != CollideStatus.ok { return body_collision_report(given, contact); }
+  next = body_collision_report(body_collision_apply(next, contact.state), contact);
 
   // Gravity and the floor.
   surface := query_ground_checked(colliders(w), next.pos.x, next.pos.z, next.pos.y + w.collision.step_up, w.collision.radius);
   if surface.status != QueryStatus.ok {
-    refused := collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_state});
+    refused := body_collision_report(given, CollideResult.{state = body_collision_state(given), status = CollideStatus.bad_state});
     refused.query_status = surface.status;
     return refused;
   }
@@ -508,6 +516,160 @@ step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
 }
 // book:end move
 
+// ---- A page's player over the body's functions ----
+// The body's procedures (body_step, body_move_across, body_collision_report and the rest) take and
+// return a Body: they are what the server runs. A page holds a Player, its body and its camera, and
+// these are the same procedures for it. Where the step reads the view's yaw, the page's camera
+// gives it; the camera's own fields are not touched.
+player_yawed :: (p: Player) -> Body #effects(all) { b := p.body; b.yaw = p.cam.theta; return b; }
+step :: (w: World, p: Player, dt: f32) -> Player #effects(all) { next := p; next.body = body_step(w, player_yawed(p), dt); return next; }
+wish :: (p: Player) -> Wish #effects(all) { return body_wish(player_yawed(p)); }
+walk_asked :: (p: Player) -> Vec3 #effects(all) { return body_asked(player_yawed(p)); }
+collision_state :: (p: Player) -> CollideState #effects(all) { return body_collision_state(p.body); }
+collision_report :: (p: Player, r: CollideResult) -> Player #effects(all) { next := p; next.body = body_collision_report(p.body, r); return next; }
+off_floors :: (w: World, from: Player, p: Player) -> Player #effects(all) { next := p; next.body = body_off_floors(w, from.body, p.body); return next; }
+out_of_walls :: (w: World, p: Player) -> Player #effects(all) { next := p; next.body = body_out_of_walls(w, p.body); return next; }
+move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player #effects(all) { next := p; next.body = body_move_across(w, p.body, dx, dz); return next; }
+
+// ---- The server's body: placed, given its controls, advanced; no camera anywhere ----
+// Stands a body at feet facing yaw; the view starts behind it.
+body_place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Body #effects(all) { return place_in(w, x, y, z, yaw).body; }
+// The same on the flat ground with nothing on it.
+body_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Body #effects(all) { w: World; return body_place_in(w, x, y, z, yaw); }
+// A tick's controls for a body: the keys and stick, run and jump held, and the view's yaw (radians,
+// the camera's theta: what the wire carries). The same clamps and jump edge as walk_input.
+body_input :: (b: Body, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32, run: bool, jump: bool, view_yaw: f32) -> Body #effects(all) {
+  p: Player; p.body = b;
+  next := walk_input(p, key_x, key_y, pad_x, pad_y, run, jump, 0, 0).body;
+  next.yaw = ifx finite(view_yaw) then wrap_angle(view_yaw) else b.yaw;
+  return next;
+}
+// One fixed step of a body with its history kept for drawing between steps.
+body_history_step :: (w: World, b: Body) -> Body #effects(all) {
+  next := b; next.prev_pos = b.pos; next.prev_face = b.face;
+  return body_step(w, next, STEP);
+}
+// Advances a body by a frame's time on the one clock: the steps that are due, none of them a camera's.
+body_advance_in :: (w: World, b: Body, frame: f32) -> Body #effects(all) {
+  schedule := walk_schedule(b.clock, frame);
+  if !schedule.ok { return body_collision_report(b, CollideResult.{state = body_collision_state(b), status = CollideStatus.bad_profile}); }
+  next := b; next.clock = schedule.clock;
+  for i: 0..<schedule.count { next = body_history_step(w, next); }
+  next.clock = loop_ran(next.clock);
+  return next;
+}
+
+#test "body: the server's body moves exactly as a page's player does, with no camera (#13271)" {
+  w: World;
+  p := walk_place(1, 0, -2, 0.5);
+  b := body_place_in(w, 1, 0, -2, 0.5);
+  #assert body_place(1, 0, -2, 0.5).pos.z == -2 && body_place(1, 0, -2, 0.5).face == b.face && body_place(1, 0.2, -2, 0.5).on_ground && !body_place(1, 2, -2, 0.5).on_ground;
+  #assert b.pos.x == 1 && b.pos.z == -2 && b.face == p.body.face && b.yaw == p.cam.theta && b.on_ground && b.prev_pos.x == 1;
+  // walk forward, turn the view, run, jump: every frame the two agree to the bit
+  for f: 0..<240 {
+    turn: f32 = ifx f >= 60 && f < 90 then 0.02 else 0.0;
+    run := f >= 120; jump := f == 150 || f == 151;
+    p = walk_input(p, 0, 1, 0, 0, run, jump, turn, 0);
+    b = body_input(b, 0, 1, 0, 0, run, jump, p.cam.theta);
+    frame: f32 = ifx (f % 3) == 0 then 0.021 else 0.0125;   // uneven frames: 0, 1 or 2 steps each
+    p = advance_in(w, p, frame);
+    b = body_advance_in(w, b, frame);
+    #assert b.pos.x == p.body.pos.x && b.pos.y == p.body.pos.y && b.pos.z == p.body.pos.z;
+    #assert b.vel.x == p.body.vel.x && b.vel.y == p.body.vel.y && b.vel.z == p.body.vel.z;
+    #assert b.face == p.body.face && b.on_ground == p.body.on_ground && b.act == p.body.act;
+    #assert b.prev_pos.x == p.body.prev_pos.x && b.prev_pos.z == p.body.prev_pos.z && b.prev_face == p.body.prev_face;
+    #assert b.clock.ticks == p.body.clock.ticks && b.clock.carry_ns == p.body.clock.carry_ns && b.clock.ran == p.body.clock.ran && b.jumps.taken == p.body.jumps.taken;
+  }
+  #assert b.pos.z != -2 && b.clock.ticks > 200 && b.jumps.taken == 1;   // it went somewhere, on many steps, and jumped once
+}
+#test "body: the step reads the view's yaw and nothing else of the camera" {
+  w: World;
+  p := walk_input(walk_place(0, 0, 0, 0), 0, 1, 0, 0, false, false, 0, 0);
+  q := p; q.cam.phi = 0.3; q.cam.dist = 1; q.cam.max_dist = 2; q.cam.zoom_push = 5; q.cam.target = Vec3.{x = 9, y = 9, z = 9}; q.cam.spring_vel = Vec3.{x = 1, y = 1, z = 1};
+  a := step(w, p, STEP); c := step(w, q, STEP);
+  #assert a.body.pos.x == c.body.pos.x && a.body.pos.z == c.body.pos.z && a.body.vel.z == c.body.vel.z && a.body.face == c.body.face;
+  #assert c.cam.phi == 0.3 && c.cam.dist == 1 && c.cam.target.x == 9;   // and the body's step leaves the camera as it was
+  // the yaw is the input: a quarter turn of the view turns the way W goes
+  r := p; r.cam.theta = p.cam.theta + f32(PI) / 2;
+  d := step(w, r, STEP);
+  #assert abs(d.body.vel.x) > 0.5 && abs(d.body.vel.z) < 0.001 && abs(a.body.vel.z) > 0.5 && abs(a.body.vel.x) < 0.001;
+  // a stale body.yaw does not matter to a page: its camera's yaw is what the step is given
+  s2 := p; s2.body.yaw = 1.234;
+  #assert step(w, s2, STEP).body.vel.z == a.body.vel.z && player_yawed(s2).yaw == p.cam.theta;
+  #assert body_wish(player_yawed(p)).z == wish(p).z && body_asked(player_yawed(p)).z == walk_asked(p).z && walk_asked(p).z != 0;
+}
+#test "body: its controls are clamped, a jump is one press, and the view's yaw is wrapped or kept" {
+  w: World;
+  b := body_place_in(w, 0, 0, 0, 0);
+  n := body_input(b, 3, -3, 0.5, 9, true, true, 7.0);
+  #assert n.key_x == 1 && n.key_y == -1 && n.pad_x == 0.5 && n.pad_y == 1 && n.run && n.jump_held && n.jumps.pressed == b.jumps.pressed + 1;
+  #assert near(n.yaw, 7.0 - f32(TAU), 0.0001) && n.yaw < f32(PI);
+  #assert body_input(n, 0, 0, 0, 0, false, true, 0.25).jumps.pressed == n.jumps.pressed;   // still held: no second press
+  #assert body_input(n, 0, 0, 0, 0, false, false, 0.25).yaw == 0.25 && !body_input(n, 0, 0, 0, 0, false, false, 0.25).run;
+  bad: f32 = 2000000.0;
+  #assert body_input(n, 0, 0, 0, 0, false, false, bad).yaw == n.yaw && body_input(n, 0, 0, 0, 0, false, false, -bad).yaw == n.yaw;
+  #assert body_input(n, bad, 0, 0, 0, false, false, 0).key_x == 0;
+}
+#test "body: a step keeps where the last began; a clock that is not the engine's is refused and nothing moves" {
+  w: World;
+  b := body_input(body_place_in(w, 0, 0, 0, 0), 0, 1, 0, 0, true, false, f32(PI));
+  one := body_history_step(w, b);
+  #assert one.prev_pos.z == b.pos.z && one.pos.z != b.pos.z && one.prev_face == b.face;
+  two := body_history_step(w, one);
+  #assert two.prev_pos.z == one.pos.z && two.prev_face == one.face && two.pos.z != one.pos.z;
+  // a frame's time: the due steps, and the clock says how many ran
+  adv := body_advance_in(w, b, f32(STEP) * 2);
+  #assert adv.clock.ticks == 2 && adv.clock.ran == 2 && adv.pos.z == two.pos.z && adv.prev_pos.z == one.pos.z && adv.collision_status == CollideStatus.ok;
+  none := body_advance_in(w, b, 0);
+  #assert none.clock.ticks == 0 && none.clock.ran == 0 && none.pos.z == b.pos.z;
+  odd := b; odd.clock.step_ns = 1000;
+  r := body_advance_in(w, odd, f32(STEP) * 2);
+  #assert r.collision_status == CollideStatus.bad_profile && r.collision_refusals == 1 && r.pos.z == b.pos.z && r.clock.ticks == 0 && r.clock.step_ns == 1000;
+}
+
+// A body's frame in a realm's declared collision profile (and its flight, when it flies), among the
+// bodies, walls, floors and hulls near it: what a room server runs for a seat.
+body_advance_among_hulls :: (b: Body, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, hulls: [] f32, realm: string) -> Body #effects(all) {
+  declaration := realm_collision.collision_profile_lookup(realm);
+  if declaration.status != realm_collision.CollisionProfileStatus.ok {
+    return body_collision_report(b, CollideResult.{state = body_collision_state(b), status = CollideStatus.bad_profile});
+  }
+  w := World.{bodies = bodies, walls = walls, floors = floors, hulls = hulls, collision = declaration.profile, flight = flight_profile_lookup(realm)};
+  return body_advance_in(w, b, frame);
+}
+#test "body: in a realm's profile it advances as the page's player does; an unknown realm is refused; drawn feet, facing and bounds agree" {
+  hold: [1] f32; none := hold[0..<0]; wall := [6] f32.[-5, 0, 2, 5, 3, 2.5];
+  p := walk_input(walk_place(0, 0, 0, 0), 0.4, 1, 0, 0, true, false, 0, 0);
+  b := p.body;
+  for f: 0..<90 {
+    p = walk_advance_among_hulls(p, 0.011, none, wall[..], none, none, "everglade");
+    b = body_advance_among_hulls(b, 0.011, none, wall[..], none, none, "everglade");
+    #assert b.pos.x == p.body.pos.x && b.pos.z == p.body.pos.z && b.vel.x == p.body.vel.x && b.face == p.body.face && b.clock.carry_ns == p.body.clock.carry_ns;
+    #assert body_feet(b).x == walk_feet(p).x && body_feet(b).z == walk_feet(p).z && body_face(b) == walk_face(p) && body_counts(b, 0.011) == walk_counts(p, 0.011);
+  }
+  #assert b.pos.x != 0 && b.pos.z > 1 && b.pos.z < 2;   // it walked to the wall and was stopped by it
+  #assert body_counts(b, 0.011) > 0.0109 && body_counts(b, 0.011) < 0.0111;
+  // drawn feet: half way into the next step, half way between the last two
+  h := b; h.prev_pos = Vec3.{x = 1, y = 0, z = 1}; h.pos = Vec3.{x = 2, y = 0, z = 3}; h.clock.carry_ns = LOOP_STEP_NS / 2;
+  #assert near(body_feet(h).x, 1.5, 0.001) && near(body_feet(h).z, 2, 0.001);
+  r := body_advance_among_hulls(b, 0.011, none, wall[..], none, none, "no-such-realm");
+  #assert r.collision_status == CollideStatus.bad_profile && r.pos.z == b.pos.z && r.clock.carry_ns == b.clock.carry_ns;
+  odd := b; odd.clock.step_ns = 7; #assert body_counts(odd, 0.011) == 0;
+  // a realm's bound: put there with no slide and no speed into it, each axis on its own
+  c := body_constrain(b, b.pos.x, 1.0);
+  #assert c.pos.z == 1.0 && c.prev_pos.z == 1.0 && c.vel.z == 0 && c.pos.x == b.pos.x && c.prev_pos.x == b.prev_pos.x && c.vel.x == b.vel.x && b.vel.x != 0;
+  d := body_constrain(b, 3.0, b.pos.z);
+  #assert d.pos.x == 3.0 && d.prev_pos.x == 3.0 && d.vel.x == 0 && d.pos.z == b.pos.z && d.prev_pos.z == b.prev_pos.z && d.vel.z == b.vel.z;
+  // the page's player: the same body, and its camera's target carried with it
+  q := walk_constrain(p, 3.0, 1.0);
+  #assert q.body.pos.x == 3.0 && q.body.pos.z == 1.0 && near(q.cam.target.x - p.cam.target.x, 3.0 - p.body.pos.x, 0.0001) && near(q.cam.prev_target.z - p.cam.prev_target.z, 1.0 - p.body.pos.z, 0.0001);
+  same := walk_constrain(p, p.body.pos.x, p.body.pos.z);
+  #assert same.cam.target.x == p.cam.target.x && same.cam.target.z == p.cam.target.z && same.body.vel.x == p.body.vel.x;
+  // a facing that turns: drawn between the last two
+  t := b; t.prev_face = 0.2; t.face = 0.6; t.clock.carry_ns = LOOP_STEP_NS / 2;
+  #assert near(body_face(t), 0.4, 0.001);
+}
+
 // book:begin camera
 // The camera's step, after the player's (aethyr/cam/follow.coax): its target follows you on the
 // spring, and it pulls in at once where something is in the way and backs out gently. It reads
@@ -517,14 +679,14 @@ step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
 camera_step :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := p;
   cam := follow_track(follow_of(p), colliders(w), w.room, wp(look_at(p)), dt);
-  next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
-  next.camera_query_status = cam.status;
+  next.cam.target = vp(cam.target); next.cam.spring_vel = vp(cam.vel); next.cam.dist = cam.dist;
+  next.cam.query_status = cam.status;
   return next;
 }
 // One fixed step of the player, then of its camera: what steps_in runs each step.
 step_once :: (w: World, p: Player, dt: f32) -> Player #effects(all) {
   next := step(w, p, dt);
-  if next.collision_status != CollideStatus.ok { return next; }
+  if next.body.collision_status != CollideStatus.ok { return next; }
   return camera_step(w, next, dt);
 }
 // book:end camera
@@ -552,27 +714,27 @@ walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule #effects(all) {
   return WalkSchedule.{ok = true, clock = accepted, count = count};
 }
 walk_target :: (p: Player) -> StepTarget #effects(all) {
-  return StepTarget.{feet = wp(p.pos), velocity = StepVelocity.{x = p.vel.x, y = p.vel.y, z = p.vel.z},
-    face = p.face, act = cast(u8) p.act, collision_status = cast(u8) p.collision_status};
+  return StepTarget.{feet = wp(p.body.pos), velocity = StepVelocity.{x = p.body.vel.x, y = p.body.vel.y, z = p.body.vel.z},
+    face = p.body.face, act = cast(u8) p.body.act, collision_status = cast(u8) p.body.collision_status};
 }
 advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace #effects(all) {
   out := AdvanceTrace.{player = p};
-  schedule := walk_schedule(p.clock, frame);
+  schedule := walk_schedule(p.body.clock, frame);
   if !schedule.ok {
     out.player = collision_report(p, CollideResult.{state = collision_state(p), status = CollideStatus.bad_profile});
     return out;
   }
-  next := p; next.clock = schedule.clock; out.count = schedule.count;
+  next := p; next.body.clock = schedule.clock; out.count = schedule.count;
   for i: 0..<schedule.count {
     next = history_step(w, next);
     out.targets[i] = walk_target(next);
   }
-  next.clock = loop_ran(next.clock); out.player = next;
+  next.body.clock = loop_ran(next.body.clock); out.player = next;
   return out;
 }
 history_step :: (w: World, p: Player) -> Player #effects(all) {
-  next := p; next.prev_pos = p.pos; next.prev_target = p.target;
-  next.prev_face = p.face; next.prev_dist = p.dist;
+  next := p; next.body.prev_pos = p.body.pos; next.cam.prev_target = p.cam.target;
+  next.body.prev_face = p.body.face; next.cam.prev_dist = p.cam.dist;
   return step_once(w, next, STEP);
 }
 // Runs n fixed steps (what a clock says are due), keeping where the last began, so the
@@ -630,46 +792,50 @@ walk_advance_among_hulls_traced :: (p: Player, frame: f32, bodies: [] f32, walls
   return advance_traced(w, p, frame);
 }
 
-walk_collision_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.collision_status; }
-walk_collision_refusals :: (p: Player) -> u64 #effects(all) { return p.collision_refusals; }
-walk_collision_residual :: (p: Player) -> f32 #effects(all) { return p.collision_residual; }
-walk_collision_passes :: (p: Player) -> int #effects(all) { return p.collision_passes; }
-walk_collision_floor_cut :: (p: Player) -> bool #effects(all) { return p.collision_floor_cut; }
-walk_query_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.query_status; }
-walk_camera_query_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.camera_query_status; }
+walk_collision_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.body.collision_status; }
+walk_collision_refusals :: (p: Player) -> u64 #effects(all) { return p.body.collision_refusals; }
+walk_collision_residual :: (p: Player) -> f32 #effects(all) { return p.body.collision_residual; }
+walk_collision_passes :: (p: Player) -> int #effects(all) { return p.body.collision_passes; }
+walk_collision_floor_cut :: (p: Player) -> bool #effects(all) { return p.body.collision_floor_cut; }
+walk_query_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.body.query_status; }
+walk_camera_query_status :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.cam.query_status; }
 
 // The seconds a frame of `frame` counts for on the player's clock, before it advances: what a
 // page face moves the rest of its realm by (its animation, its room's timing), so the realm
 // and the player are clamped and dropped by the one clock. It replaced the faces' own 0.1 s
 // clamps.
-walk_counts :: (p: Player, frame: f32) -> f32 #effects(all) {
-  schedule := walk_schedule(p.clock, frame);
+walk_counts :: (p: Player, frame: f32) -> f32 #effects(all) { return body_counts(p.body, frame); }
+body_counts :: (b: Body, frame: f32) -> f32 #effects(all) {
+  schedule := walk_schedule(b.clock, frame);
   return ifx schedule.ok then f32(f64(schedule.clock.counted_ns) / f64(LOOP_SECOND)) else 0.0f32;
 }
 // The fixed steps the player's last frame ran.
-walk_ran :: (p: Player) -> int #effects(all) { return p.clock.ran; }
+walk_ran :: (p: Player) -> int #effects(all) { return p.body.clock.ran; }
 
 // How far this frame is between the last two steps, in [0, 1].
-alpha :: (p: Player) -> f32 #effects(all) { return loop_alpha(p.clock); }
+alpha :: (p: Player) -> f32 #effects(all) { return loop_alpha(p.body.clock); }
 
 // book:begin drawn
 // The feet and facing to draw this frame.
-walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
-walk_face :: (p: Player) -> f32 #effects(all) {
-  return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
+walk_feet :: (p: Player) -> Vec3 #effects(all) { return body_feet(p.body); }
+walk_face :: (p: Player) -> f32 #effects(all) { return body_face(p.body); }
+// A body's feet and facing as drawn: between its last two steps, by how far its clock is into the next.
+body_feet :: (b: Body) -> Vec3 #effects(all) { return mix3(b.prev_pos, b.pos, loop_alpha(b.clock)); }
+body_face :: (b: Body) -> f32 #effects(all) {
+  return wrap_angle(b.prev_face + wrap_angle(b.face - b.prev_face) * loop_alpha(b.clock));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.cam.prev_target), p.cam.prev_dist, alpha(p)); }
 walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
 walk_eye :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).eye); }
 // book:end drawn
-walk_act :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.act; }
+walk_act :: (p: Player) -> int #effects(all) { return cast(int) cast(u8) p.body.act; }
 
 // ---- Checks ----
 
 near :: (a: f32, b: f32, tolerance: f32) -> bool #effects(all) { return abs(a - b) <= tolerance; }
-flat_speed :: (p: Player) -> f32 #effects(all) { return sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z); }
+flat_speed :: (p: Player) -> f32 #effects(all) { return sqrt(p.body.vel.x * p.body.vel.x + p.body.vel.z * p.body.vel.z); }
 held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player #effects(all) {
   return walk_input(p, key_x, key_y, 0, 0, run, false, 0, 0);
 }
@@ -697,10 +863,10 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player #effects(all) {
   p := walk_place(0, 0, 0, 0);
   p = held(p, 0, 1, walk_runs(false, false, 0, 0));
   for i: 0..<60 { p = step(w, p, STEP); }
-  #assert near(flat_speed(p), f32(RUN), 0.001) && p.act == Act.running;
+  #assert near(flat_speed(p), f32(RUN), 0.001) && p.body.act == Act.running;
   p = held(p, 0, 1, walk_runs(true, false, 0, 0));
   for i: 0..<60 { p = step(w, p, STEP); }
-  #assert near(flat_speed(p), f32(WALK), 0.001) && p.act == Act.walking;
+  #assert near(flat_speed(p), f32(WALK), 0.001) && p.body.act == Act.walking;
 }
 
 #test "atan2 behind is +PI, not -PI" {
@@ -724,16 +890,16 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player #effects(all) {
   w: World;
   w.ground = 2;
   p := place_in(w, 1, 2.25, -3, 0.5);
-  #assert p.pos.x == 1 && p.pos.y == 2.25 && p.pos.z == -3;
-  #assert p.face == 0.5 && near(p.theta, 0.5 - f32(PI), 0.000001);
-  #assert p.on_ground;
-  #assert p.target.x == 1 && near(p.target.y, 3.77, 0.000001) && p.target.z == -3;
-  #assert p.prev_pos.x == 1 && p.prev_pos.y == 2.25 && p.prev_target.y == p.target.y && p.prev_face == 0.5;
+  #assert p.body.pos.x == 1 && p.body.pos.y == 2.25 && p.body.pos.z == -3;
+  #assert p.body.face == 0.5 && near(p.cam.theta, 0.5 - f32(PI), 0.000001);
+  #assert p.body.on_ground;
+  #assert p.cam.target.x == 1 && near(p.cam.target.y, 3.77, 0.000001) && p.cam.target.z == -3;
+  #assert p.body.prev_pos.x == 1 && p.body.prev_pos.y == 2.25 && p.cam.prev_target.y == p.cam.target.y && p.body.prev_face == 0.5;
   // Higher than RIDE_HEIGHT over this floor is in the air.
-  #assert !place_in(w, 0, 2.41, 0, 0).on_ground;
-  #assert place_in(w, 0, 0.3, 0, 0).on_ground;
+  #assert !place_in(w, 0, 2.41, 0, 0).body.on_ground;
+  #assert place_in(w, 0, 0.3, 0, 0).body.on_ground;
   q := walk_place(0, 0.4, 0, 0);
-  #assert q.on_ground && !walk_place(0, 0.41, 0, 0).on_ground;
+  #assert q.body.on_ground && !walk_place(0, 0.41, 0, 0).body.on_ground;
 }
 
 // One stick push, walking or running, for 90 steps. Split by gait into two checks (#13094): the 98
@@ -744,12 +910,12 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p = walk_input(p, 0, 0, f32(ix) * 0.5, f32(iy) * 0.5, run, false, 0, 0);
   top := ifx run then f32(RUN) else f32(WALK);
   for i: 0..<90 {
-    before := p.vel;
+    before := p.body.vel;
     p = step(w, p, STEP);
     #assert flat_speed(p) <= top + 0.001;
-    dvx := p.vel.x - before.x; dvz := p.vel.z - before.z;
+    dvx := p.body.vel.x - before.x; dvz := p.body.vel.z - before.z;
     #assert sqrt(dvx * dvx + dvz * dvz) <= f32(ACCEL * STEP) + 0.001;
-    #assert p.on_ground && p.pos.y == 0;
+    #assert p.body.on_ground && p.body.pos.y == 0;
   }
   // A held stick past the dead zone reaches the top speed.
   if ix * ix + iy * iy > 0 { #assert near(flat_speed(p), top, 0.001); }
@@ -763,7 +929,7 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 1, 0, 0, true, false, 0, 0);
   dry := walk_advance(p, 0.0625);
-  p.grip = 0.1;
+  p.body.grip = 0.1;
   icy := walk_advance(p, 0.0625);
   #assert flat_speed(icy) < flat_speed(dry) * 0.2 && flat_speed(icy) > 0;
 }
@@ -771,13 +937,13 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
 #test "a pace under one slows you by its share, and the land speeds stay as they are" {
   w: World;
   p := held(walk_place(0, 0, 0, 0), 0, 1, false);
-  p.pace = 0.5;
+  p.body.pace = 0.5;
   for i: 0..<128 { p = step(w, p, STEP); }
   #assert near(flat_speed(p), f32(WALK) * 0.5, 0.001);
-  p.pace = 1;
+  p.body.pace = 1;
   for i: 0..<128 { p = step(w, p, STEP); }
   #assert near(flat_speed(p), f32(WALK), 0.001);
-  #assert walk_place(0, 0, 0, 0).pace == 1;
+  #assert walk_place(0, 0, 0, 0).body.pace == 1;
 }
 
 #forall "a stick inside the dead zone doesn't move you" ix: -3..<4, iy: -3..<4 {
@@ -785,17 +951,17 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 0, f32(ix) * 0.04, f32(iy) * 0.04, false, false, 0, 0);
   for i: 0..<30 { p = step(w, p, STEP); }
-  #assert p.pos.x == 0 && p.pos.z == 0 && p.act == Act.idle;
+  #assert p.body.pos.x == 0 && p.body.pos.z == 0 && p.body.act == Act.idle;
 }
 
 #test "the dead zone ends at DEAD_ZONE" {
   w: World;
   p := walk_place(0, 0, 0, 0);
-  #assert step(w, walk_input(p, 0, 0, 0, 0.2, false, false, 0, 0), STEP).vel.z == 0;
-  #assert step(w, walk_input(p, 0, 0, 0, 0.21, false, false, 0, 0), STEP).vel.z > 0;
+  #assert step(w, walk_input(p, 0, 0, 0, 0.2, false, false, 0, 0), STEP).body.vel.z == 0;
+  #assert step(w, walk_input(p, 0, 0, 0, 0.21, false, false, 0, 0), STEP).body.vel.z > 0;
   // Past it, the stick wins over the keys.
   q := step(w, walk_input(p, 0, -1, 0, 0.5, false, false, 0, 0), STEP);
-  #assert q.vel.z > 0;
+  #assert q.body.vel.z > 0;
 }
 
 #forall "forward is the way you face" k: -4..<5 {
@@ -804,11 +970,11 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p := held(walk_place(0, 0, 0, yaw), 0, 1, false);
   for i: 0..<64 { p = step(w, p, STEP); }
   // One second at walking speed, less the time to get up to it.
-  d := sqrt(p.pos.x * p.pos.x + p.pos.z * p.pos.z);
+  d := sqrt(p.body.pos.x * p.body.pos.x + p.body.pos.z * p.body.pos.z);
   #assert d > 3.3 && d <= f32(WALK);
-  #assert near(p.pos.x / d, sin(yaw), 0.001) && near(p.pos.z / d, cos(yaw), 0.001);
-  #assert near(wrap_angle(p.face - yaw), 0, 0.001);
-  #assert p.act == Act.walking;
+  #assert near(p.body.pos.x / d, sin(yaw), 0.001) && near(p.body.pos.z / d, cos(yaw), 0.001);
+  #assert near(wrap_angle(p.body.face - yaw), 0, 0.001);
+  #assert p.body.act == Act.walking;
 }
 
 #test "the character turns to where it moves, at TURN_RATE" {
@@ -817,38 +983,38 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p := held(walk_place(0, 0, 0, 0), 1, 0, false);
   q := step(w, p, STEP);
   want := -f32(PI) / 2;
-  #assert near(q.face, want * f32(TURN_RATE * STEP), 0.0001);
+  #assert near(q.body.face, want * f32(TURN_RATE * STEP), 0.0001);
   for i: 0..<120 { q = step(w, q, STEP); }
-  #assert near(q.face, want, 0.001);
-  #assert q.vel.x < 0 && near(q.vel.z, 0, 0.0001);
+  #assert near(q.body.face, want, 0.001);
+  #assert q.body.vel.x < 0 && near(q.body.vel.z, 0, 0.0001);
   // Letting go keeps the facing.
   r := step(w, held(q, 0, 0, false), STEP);
-  #assert r.face == q.face;
+  #assert r.body.face == q.body.face;
 }
 
 #forall "a jump goes up 1.17 m and lands back on the floor" run: bool, ix: -1..<2 {
   w: World;
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, f32(ix), 0, 0, 0, run, true, 0, 0);
-  #assert p.on_ground && p.jumps.waiting == 1;   // the press waits for the step
+  #assert p.body.on_ground && p.body.jumps.waiting == 1;   // the press waits for the step
   p = step(w, p, STEP);
-  #assert !p.on_ground && p.vel.y < f32(JUMP) && p.vel.y > f32(JUMP) - 1 && p.jumps.waiting == 0;
-  peak := p.pos.y;
+  #assert !p.body.on_ground && p.body.vel.y < f32(JUMP) && p.body.vel.y > f32(JUMP) - 1 && p.body.jumps.waiting == 0;
+  peak := p.body.pos.y;
   steps := 1;
-  while !p.on_ground && steps < 120 {
+  while !p.body.on_ground && steps < 120 {
     p = step(w, p, STEP);
-    if !p.on_ground { #assert p.act == Act.airborne; }
+    if !p.body.on_ground { #assert p.body.act == Act.airborne; }
     // Holding jump in the air never jumps again.
     p = walk_input(p, f32(ix), 0, 0, 0, run, true, 0, 0);
-    peak = hi(peak, p.pos.y);
-    #assert p.pos.y >= -0.05;
+    peak = hi(peak, p.body.pos.y);
+    #assert p.body.pos.y >= -0.05;
     steps += 1;
   }
-  #assert p.on_ground && p.pos.y == 0 && p.vel.y == 0;
+  #assert p.body.on_ground && p.body.pos.y == 0 && p.body.vel.y == 0;
   #assert near(peak, f32(JUMP * JUMP / (2 * GRAVITY)), 0.07);
   // About 2 JUMP / GRAVITY, 0.63 s.
   #assert steps >= 38 && steps <= 42;
-  #assert p.act != Act.airborne;
+  #assert p.body.act != Act.airborne;
 }
 
 #test "jump acts on the press, not the hold, and only from the ground" {
@@ -856,24 +1022,24 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 0, 0, 0, false, true, 0, 0);
   for i: 0..<5 { p = step(w, p, STEP); }
-  vy := p.vel.y;
-  #assert !p.on_ground && vy > 0;
+  vy := p.body.vel.y;
+  #assert !p.body.on_ground && vy > 0;
   // Released and pressed again in the air: the step takes the press, and nothing happens.
   p = walk_input(p, 0, 0, 0, 0, false, false, 0, 0);
   p = walk_input(p, 0, 0, 0, 0, false, true, 0, 0);
-  #assert p.vel.y == vy && p.jumps.waiting == 1;
+  #assert p.body.vel.y == vy && p.body.jumps.waiting == 1;
   p = step(w, p, STEP);
-  #assert p.jumps.waiting == 0 && p.vel.y < vy;
-  while !p.on_ground { p = step(w, p, STEP); }
+  #assert p.body.jumps.waiting == 0 && p.body.vel.y < vy;
+  while !p.body.on_ground { p = step(w, p, STEP); }
   // Still held after landing: no jump until it is pressed again.
   p = walk_input(p, 0, 0, 0, 0, false, true, 0, 0);
   p = step(w, p, STEP);
-  #assert p.on_ground && p.jumps.waiting == 0;
+  #assert p.body.on_ground && p.body.jumps.waiting == 0;
   p = walk_input(p, 0, 0, 0, 0, false, false, 0, 0);
   p = walk_input(p, 0, 0, 0, 0, false, true, 0, 0);
-  #assert p.on_ground;
+  #assert p.body.on_ground;
   p = step(w, p, STEP);
-  #assert !p.on_ground && p.vel.y > f32(JUMP) - 1;
+  #assert !p.body.on_ground && p.body.vel.y > f32(JUMP) - 1;
 }
 
 // book:begin presses
@@ -885,22 +1051,22 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 0, 0, 0, false, true, 0, 0);
   p = advance_in(w, p, 0.001);                    // runs no step
-  #assert p.clock.ticks == 0 && p.on_ground && p.jumps.waiting == 1;
+  #assert p.body.clock.ticks == 0 && p.body.on_ground && p.body.jumps.waiting == 1;
   p = walk_input(p, 0, 0, 0, 0, false, false, 0, 0);   // let go before the step
   p = advance_in(w, p, 0.015);
-  #assert p.clock.ticks == 1 && !p.on_ground && p.jumps.taken == 1;
+  #assert p.body.clock.ticks == 1 && !p.body.on_ground && p.body.jumps.taken == 1;
   q := walk_place(0, 0, 0, 0);
   q = walk_input(q, 0, 0, 0, 0, false, true, 0, 0);
   q = advance_in(w, q, 0.032);                    // two steps
-  #assert q.clock.ticks == 2 && q.jumps.taken == 1 && q.jumps.waiting == 0;
+  #assert q.body.clock.ticks == 2 && q.body.jumps.taken == 1 && q.body.jumps.waiting == 0;
   one := step_once(w, step_once(w, walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
   #assert same_step(q, one) && !same_step(q, step_once(w, q, STEP)) && !same_step(q, walk_place(0, 0, 0, 0));
   // The step that jumps already counts as in the air: on ice, it pushes you with full grip.
-  ice := walk_place(0, 0, 0, 0); ice.grip = 0.5;
+  ice := walk_place(0, 0, 0, 0); ice.body.grip = 0.5;
   dry := walk_place(0, 0, 0, 0);
   a := step(w, walk_input(ice, 0, 1, 0, 0, true, true, 0, 0), STEP);
   b := step(w, walk_input(dry, 0, 1, 0, 0, true, true, 0, 0), STEP);
-  #assert !a.on_ground && same_step(a, b);
+  #assert !a.body.on_ground && same_step(a, b);
 }
 
 // The same action stream drives desktop and phone: a session on the keyboard and the same
@@ -917,34 +1083,34 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
     touch := input_stick(x, 1, true, jump, false, 0, 0, 0);
     k = advance_in(w, walk_intent(k, keys), 1.0 / 60.0);
     t = advance_in(w, walk_intent(t, touch), 1.0 / 60.0);
-    #assert same_step(k, t) && k.pos.x == t.pos.x;
+    #assert same_step(k, t) && k.body.pos.x == t.body.pos.x;
   }
-  #assert k.jumps.taken == 2 && abs(k.pos.z) > 5 && abs(k.pos.x) > 0.5;   // it ran, turned and jumped twice
+  #assert k.body.jumps.taken == 2 && abs(k.body.pos.z) > 5 && abs(k.body.pos.x) > 0.5;   // it ran, turned and jumped twice
 }
 // book:end presses
 
 #test "placed in the air, you fall to the floor" {
   w: World;
   p := walk_place(0, 3, 0, 0);
-  #assert !p.on_ground;
+  #assert !p.body.on_ground;
   p = step(w, p, STEP);
-  #assert p.vel.y == -f32(GRAVITY * STEP) && p.act == Act.airborne;
+  #assert p.body.vel.y == -f32(GRAVITY * STEP) && p.body.act == Act.airborne;
   for i: 0..<64 { p = step(w, p, STEP); }
-  #assert p.on_ground && p.pos.y == 0;
+  #assert p.body.on_ground && p.body.pos.y == 0;
 }
 
 #test "standing eases onto a floor within RIDE_HEIGHT" {
   w: World;
   w.ground = 0.04;
   p := walk_place(0, 0, 0, 0);
-  p.vel.y = -3;
+  p.body.vel.y = -3;
   q := step(w, p, STEP);
-  #assert q.on_ground && q.vel.y == 0;
-  #assert near(q.pos.y, 0.04 * f32(STEP_SMOOTH * STEP), 0.000001);
+  #assert q.body.on_ground && q.body.vel.y == 0;
+  #assert near(q.body.pos.y, 0.04 * f32(STEP_SMOOTH * STEP), 0.000001);
   // Exactly RIDE_HEIGHT above still stands, and eases down.
   w.ground = 0;
   r := step(w, walk_place(0, 0.4, 0, 0), STEP);
-  #assert r.on_ground && r.vel.y == 0 && near(r.pos.y, 0.4 * (1 - f32(STEP_SMOOTH * STEP)), 0.000001);
+  #assert r.body.on_ground && r.body.vel.y == 0 && near(r.body.pos.y, 0.4 * (1 - f32(STEP_SMOOTH * STEP)), 0.000001);
 }
 
 #test "walking off a ledge falls" {
@@ -952,16 +1118,16 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   p := walk_place(0, 0, 0, 0);
   w.ground = -2;
   q := step(w, p, STEP);
-  #assert !q.on_ground && q.vel.y == -f32(GRAVITY * STEP) && q.act == Act.airborne;
+  #assert !q.body.on_ground && q.body.vel.y == -f32(GRAVITY * STEP) && q.body.act == Act.airborne;
 }
 
 #test "a fall that reaches the floor exactly lands" {
   w: World;
   p := walk_place(0, 0.25, 0, 0);
-  p.on_ground = false;
-  p.vel.y = -1;
+  p.body.on_ground = false;
+  p.body.vel.y = -1;
   q := step(w, p, 0.25);
-  #assert q.on_ground && q.pos.y == 0 && q.vel.y == 0;
+  #assert q.body.on_ground && q.body.pos.y == 0 && q.body.vel.y == 0;
 }
 
 // One look, turned and tilted by iy and ip, then 20 frames walking. Split by the turn's sign into
@@ -969,15 +1135,15 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
 camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) {
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 1, 0, 0, true, false, f32(iy) * 0.9, f32(ip) * 0.9);
-  #assert p.phi >= f32(PHI_MIN) && p.phi <= f32(PHI_MAX);
-  #assert p.theta >= -f32(PI) && p.theta < f32(PI);
+  #assert p.cam.phi >= f32(PHI_MIN) && p.cam.phi <= f32(PHI_MAX);
+  #assert p.cam.theta >= -f32(PI) && p.cam.theta < f32(PI);
   for i: 0..<20 {
     p = walk_advance(p, 0.02);
     eye := walk_eye(p); at := walk_at(p);
     #assert finite(eye.x) && finite(eye.y) && finite(eye.z);
     ex := eye.x - at.x; ey := eye.y - at.y; ez := eye.z - at.z;
     d := sqrt(ex * ex + ey * ey + ez * ez);
-    #assert d >= f32(CAM_WALL_MIN) - 0.001 && d <= p.max_dist + 0.001;
+    #assert d >= f32(CAM_WALL_MIN) - 0.001 && d <= p.cam.max_dist + 0.001;
   }
   return true;
 }
@@ -987,8 +1153,8 @@ camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) {
 #test "looking turns the camera by the deltas" {
   p := walk_place(0, 0, 0, 0);
   q := walk_input(p, 0, 0, 0, 0, false, false, 0.3, 0.2);
-  #assert near(q.theta, wrap_angle(f32(PI) + 0.3), 0.000001);
-  #assert near(q.phi, f32(BEHIND_PHI) + 0.2, 0.000001);
+  #assert near(q.cam.theta, wrap_angle(f32(PI) + 0.3), 0.000001);
+  #assert near(q.cam.phi, f32(BEHIND_PHI) + 0.2, 0.000001);
 }
 
 #test "the eye sits dist along the orbit from the target" {
@@ -996,9 +1162,9 @@ camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) {
   at := walk_at(p);
   eye := walk_eye(p);
   o := orbit_offset(p);
-  #assert near(eye.x - at.x, o.x * p.dist, 0.00001);
-  #assert near(eye.y - at.y, o.y * p.dist, 0.00001);
-  #assert near(eye.z - at.z, o.z * p.dist, 0.00001);
+  #assert near(eye.x - at.x, o.x * p.cam.dist, 0.00001);
+  #assert near(eye.y - at.y, o.y * p.cam.dist, 0.00001);
+  #assert near(eye.z - at.z, o.z * p.cam.dist, 0.00001);
   // Behind you and above.
   #assert (eye.x - at.x) * sin(1.0f32) + (eye.z - at.z) * cos(1.0f32) < -1 && eye.y > at.y + 1;
 }
@@ -1008,19 +1174,19 @@ camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) {
   w.room = 2;
   p := walk_place(0, 0, 0, 0);
   q := step_once(w, p, STEP);
-  #assert q.dist == 2;
+  #assert q.cam.dist == 2;
   // A wall closer than CAM_WALL_MIN still leaves that much.
   w.room = 0.1;
-  #assert step_once(w, p, STEP).dist == f32(CAM_WALL_MIN);
+  #assert step_once(w, p, STEP).cam.dist == f32(CAM_WALL_MIN);
   // Room again: out by CAM_LERP of the gap per 1/60 s.
   w.room = 1000;
   r := step_once(w, q, STEP);
   gap := f32(CAM_MAX) - 2;
-  #assert near(r.dist, 2 + gap * (1 - pow(f32(1 - CAM_LERP), f32(STEP * 60))), 0.00001);
-  #assert r.dist > 2 && r.dist < f32(CAM_MAX);
+  #assert near(r.cam.dist, 2 + gap * (1 - pow(f32(1 - CAM_LERP), f32(STEP * 60))), 0.00001);
+  #assert r.cam.dist > 2 && r.cam.dist < f32(CAM_MAX);
   // Exactly the room it has: it stays.
   w.room = 2;
-  #assert step_once(w, q, STEP).dist == 2;
+  #assert step_once(w, q, STEP).cam.dist == 2;
 }
 
 // book:begin readonly
@@ -1029,23 +1195,23 @@ camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) {
 // bit for bit, whether its camera steps after every step, never, or twice a step. Only the
 // camera's own fields differ, and the camera did meet the wall.
 walker_same :: (a: Player, b: Player) -> bool #effects(all) {
-  return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
-    && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.act == b.act && a.theta == b.theta
-    && a.phi == b.phi && a.max_dist == b.max_dist && a.prev_pos.x == b.prev_pos.x && a.prev_pos.y == b.prev_pos.y
-    && a.prev_pos.z == b.prev_pos.z && a.prev_face == b.prev_face && a.sliding == b.sliding
-    && a.jumps.waiting == b.jumps.waiting && a.jumps.taken == b.jumps.taken && a.clock.ticks == b.clock.ticks
-    && a.clock.carry_ns == b.clock.carry_ns;
+  return a.body.pos.x == b.body.pos.x && a.body.pos.y == b.body.pos.y && a.body.pos.z == b.body.pos.z && a.body.vel.x == b.body.vel.x && a.body.vel.y == b.body.vel.y
+    && a.body.vel.z == b.body.vel.z && a.body.face == b.body.face && a.body.on_ground == b.body.on_ground && a.body.act == b.body.act && a.cam.theta == b.cam.theta
+    && a.cam.phi == b.cam.phi && a.cam.max_dist == b.cam.max_dist && a.body.prev_pos.x == b.body.prev_pos.x && a.body.prev_pos.y == b.body.prev_pos.y
+    && a.body.prev_pos.z == b.body.prev_pos.z && a.body.prev_face == b.body.prev_face && a.body.sliding == b.body.sliding
+    && a.body.jumps.waiting == b.body.jumps.waiting && a.body.jumps.taken == b.body.jumps.taken && a.body.clock.ticks == b.body.clock.ticks
+    && a.body.clock.carry_ns == b.body.clock.carry_ns;
 }
 // A frame as advance_in runs it, with the camera stepped `cams` times after each player step.
 frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(all) {
   next := p;
-  next.clock = loop_accept(p.clock, cast(f64) frame);
-  for i: 0..<loop_due(next.clock) {
-    next.prev_pos = next.pos; next.prev_target = next.target; next.prev_face = next.face; next.prev_dist = next.dist;
+  next.body.clock = loop_accept(p.body.clock, cast(f64) frame);
+  for i: 0..<loop_due(next.body.clock) {
+    next.body.prev_pos = next.body.pos; next.cam.prev_target = next.cam.target; next.body.prev_face = next.body.face; next.cam.prev_dist = next.cam.dist;
     next = step(w, next, STEP);
     for c: 0..<cams { next = camera_step(w, next, STEP); }
   }
-  next.clock = loop_ran(next.clock);
+  next.body.clock = loop_ran(next.body.clock);
   return next;
 }
 #test "the player is the same whether its camera steps every step, never, or twice a step" {
@@ -1063,33 +1229,33 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(al
       runs[c] = frame_with(w, runs[c], frame, c);
     }
     #assert walker_same(runs[0], runs[1]) && walker_same(runs[2], runs[1]);
-    if runs[1].dist < f32(CAM_MAX) - 0.5 { pulled = true; }
-    if runs[1].pos.z == 3.7 { stopped = true; }               // the wall's face, less your radius
-    if runs[0].target.z != runs[1].target.z && runs[2].target.z != runs[1].target.z { parted += 1; }
+    if runs[1].cam.dist < f32(CAM_MAX) - 0.5 { pulled = true; }
+    if runs[1].body.pos.z == 3.7 { stopped = true; }               // the wall's face, less your radius
+    if runs[0].cam.target.z != runs[1].cam.target.z && runs[2].cam.target.z != runs[1].cam.target.z { parted += 1; }
   }
   // It walked into the wall, round it and jumped twice, and the three cameras really differed.
-  #assert stopped && runs[1].pos.z > 10 && runs[1].clock.ticks == 256 && runs[1].jumps.taken == 2;
+  #assert stopped && runs[1].body.pos.z > 10 && runs[1].body.clock.ticks == 256 && runs[1].body.jumps.taken == 2;
   #assert pulled && parted > 200;
   // The same run with steps_in's own camera gives the same player too.
   q := start;
   for f: 0..<240 {
     q = advance_in(w, walk_input(q, ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0), frame);
   }
-  #assert walker_same(q, runs[1]) && q.target.z == runs[1].target.z && q.dist == runs[1].dist;
-  #assert q.prev_target.z == runs[1].prev_target.z && q.prev_dist == runs[1].prev_dist;
+  #assert walker_same(q, runs[1]) && q.cam.target.z == runs[1].cam.target.z && q.cam.dist == runs[1].cam.dist;
+  #assert q.cam.prev_target.z == runs[1].cam.prev_target.z && q.cam.prev_dist == runs[1].cam.prev_dist;
 }
 #forall "walker_same compares every field it names" k: 0..<21 {
   a := walk_input(walk_advance(walk_place(1, 0.5, 2, 0.3), 0.04), 0, 1, 0, 0, false, true, 0, 0);
   #assert walker_same(a, a);
   b := a;
-  if k == 0 { b.pos.x += 1; } else if k == 1 { b.pos.y += 1; } else if k == 2 { b.pos.z += 1; } else if k == 3 { b.vel.x += 1; }
-  else if k == 4 { b.vel.y += 1; } else if k == 5 { b.vel.z += 1; } else if k == 6 { b.face += 1; } else if k == 7 { b.on_ground = !b.on_ground; }
-  else if k == 8 { b.act = Act.running; } else if k == 9 { b.theta += 1; } else if k == 10 { b.phi += 1; } else if k == 11 { b.max_dist += 1; }
-  else if k == 12 { b.prev_pos.x += 1; } else if k == 13 { b.prev_pos.y += 1; } else if k == 14 { b.prev_pos.z += 1; }
-  else if k == 15 { b.prev_face += 1; } else if k == 16 { b.sliding = !b.sliding; } else if k == 17 { b.jumps.waiting += 1; }
-  else if k == 18 { b.jumps.taken += 1; } else if k == 19 { b.clock.ticks += 1; } else { b.clock.carry_ns += 1; }
+  if k == 0 { b.body.pos.x += 1; } else if k == 1 { b.body.pos.y += 1; } else if k == 2 { b.body.pos.z += 1; } else if k == 3 { b.body.vel.x += 1; }
+  else if k == 4 { b.body.vel.y += 1; } else if k == 5 { b.body.vel.z += 1; } else if k == 6 { b.body.face += 1; } else if k == 7 { b.body.on_ground = !b.body.on_ground; }
+  else if k == 8 { b.body.act = Act.running; } else if k == 9 { b.cam.theta += 1; } else if k == 10 { b.cam.phi += 1; } else if k == 11 { b.cam.max_dist += 1; }
+  else if k == 12 { b.body.prev_pos.x += 1; } else if k == 13 { b.body.prev_pos.y += 1; } else if k == 14 { b.body.prev_pos.z += 1; }
+  else if k == 15 { b.body.prev_face += 1; } else if k == 16 { b.body.sliding = !b.body.sliding; } else if k == 17 { b.body.jumps.waiting += 1; }
+  else if k == 18 { b.body.jumps.taken += 1; } else if k == 19 { b.body.clock.ticks += 1; } else { b.body.clock.carry_ns += 1; }
   #assert !walker_same(a, b) && !walker_same(b, a);
-  c := a; c.target.x += 1; c.dist += 1; c.spring_vel.y += 1; c.prev_target.z += 1; c.prev_dist += 1;
+  c := a; c.cam.target.x += 1; c.cam.dist += 1; c.cam.spring_vel.y += 1; c.cam.prev_target.z += 1; c.cam.prev_dist += 1;
   #assert walker_same(a, c);    // the camera's fields are not the player's
 }
 // book:end readonly
@@ -1099,11 +1265,11 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(al
   p := held(walk_place(0, 0, 0, 0), 0, 1, false);
   for i: 0..<64 { p = step_once(w, p, STEP); }
   // It trails while you walk, never runs ahead, and settles once you stop.
-  #assert p.target.z < p.pos.z && p.target.z > p.pos.z - 1;
+  #assert p.cam.target.z < p.body.pos.z && p.cam.target.z > p.body.pos.z - 1;
   p = held(p, 0, 0, false);
   for i: 0..<128 { p = step_once(w, p, STEP); }
   t := look_at(p);
-  #assert near(p.target.x, t.x, 0.001) && near(p.target.y, t.y, 0.001) && near(p.target.z, t.z, 0.001);
+  #assert near(p.cam.target.x, t.x, 0.001) && near(p.cam.target.y, t.y, 0.001) && near(p.cam.target.z, t.z, 0.001);
 }
 
 // The spring from rest, one step, against the exact critically damped
@@ -1135,38 +1301,38 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(al
   if which == 3 { bad = 2000000.0; }
   p := walk_place(0, 0, 0, 0);
   q := walk_input(p, bad, bad, bad, 0.5, false, false, bad, bad);
-  #assert q.key_x == 0 && q.key_y == 0 && q.pad_x == 0 && q.pad_y == 0;
-  #assert q.theta == p.theta && q.phi == p.phi;
+  #assert q.body.key_x == 0 && q.body.key_y == 0 && q.body.pad_x == 0 && q.body.pad_y == 0;
+  #assert q.cam.theta == p.cam.theta && q.cam.phi == p.cam.phi;
   q = walk_input(p, 0, 0, 0.5, bad, false, false, 0, 0);
-  #assert q.pad_x == 0 && q.pad_y == 0;
+  #assert q.body.pad_x == 0 && q.body.pad_y == 0;
   q = walk_advance(q, bad);
   // a non-number, infinite or absurdly long frame is no frame: refused, nothing stepped
-  #assert q.clock.carry_ns == 0 && q.clock.ticks == 0 && q.clock.refused == 1;
-  #assert finite(q.pos.x) && finite(q.pos.y) && finite(q.pos.z);
+  #assert q.body.clock.carry_ns == 0 && q.body.clock.ticks == 0 && q.body.clock.refused == 1;
+  #assert finite(q.body.pos.x) && finite(q.body.pos.y) && finite(q.body.pos.z);
   q = walk_advance(q, 0.1);
-  #assert finite(q.pos.x) && finite(q.pos.z) && q.clock.carry_ns >= 0 && q.clock.carry_ns < LOOP_STEP_NS;
+  #assert finite(q.body.pos.x) && finite(q.body.pos.z) && q.body.clock.carry_ns >= 0 && q.body.clock.carry_ns < LOOP_STEP_NS;
 }
 
 #test "frames run whole steps and show the point between" {
   p := held(walk_place(0, 0, 0, 0), 0, 1, false);
   // A frame of exactly one step runs it.
   one := walk_advance(p, STEP);
-  #assert one.clock.carry_ns == 0 && one.clock.ticks == 1 && one.pos.z > 0;
+  #assert one.body.clock.carry_ns == 0 && one.body.clock.ticks == 1 && one.body.pos.z > 0;
   // A negative frame counts as none.
-  #assert walk_advance(p, -1).clock.carry_ns == 0 && walk_advance(p, -1).clock.ticks == 0;
+  #assert walk_advance(p, -1).body.clock.carry_ns == 0 && walk_advance(p, -1).body.clock.ticks == 0;
   p = walk_advance(p, f32(STEP) * 1.5);
   #assert alpha(p) == 0.5;
   f := walk_feet(p);
-  #assert f.z > p.prev_pos.z && f.z < p.pos.z;
-  #assert near(f.z, (p.prev_pos.z + p.pos.z) / 2, 0.0001);
+  #assert f.z > p.body.prev_pos.z && f.z < p.body.pos.z;
+  #assert near(f.z, (p.body.prev_pos.z + p.body.pos.z) / 2, 0.0001);
   // A long stall runs at most LOOP_MAX_STEPS and keeps no backlog of whole steps.
   w: World;
   s := p;
   for i: 0..<LOOP_MAX_STEPS { s = step(w, s, STEP); }
   q := walk_advance(p, 10);
-  #assert q.clock.carry_ns < LOOP_STEP_NS && q.pos.z == s.pos.z && q.clock.dropped_ns > 0;
+  #assert q.body.clock.carry_ns < LOOP_STEP_NS && q.body.pos.z == s.body.pos.z && q.body.clock.dropped_ns > 0;
   r := walk_place(0, 0, 0, 0);
-  #assert walk_advance(r, f32(STEP) * (LOOP_MAX_STEPS + 1)).clock.carry_ns == 0;
+  #assert walk_advance(r, f32(STEP) * (LOOP_MAX_STEPS + 1)).body.clock.carry_ns == 0;
 }
 
 #test "each step remembers where it began" {
@@ -1175,16 +1341,16 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(al
   p := held(walk_place(0, 0, 0, 0), 1, 1, false);
   p = advance_in(w, p, STEP);
   q := advance_in(w, p, STEP);
-  #assert q.prev_pos.x == p.pos.x && q.prev_pos.z == p.pos.z;
-  #assert q.prev_target.z == p.target.z && q.prev_face == p.face && q.prev_dist == p.dist;
-  #assert q.prev_face != q.face && q.prev_pos.z != q.pos.z;
+  #assert q.body.prev_pos.x == p.body.pos.x && q.body.prev_pos.z == p.body.pos.z;
+  #assert q.cam.prev_target.z == p.cam.target.z && q.body.prev_face == p.body.face && q.cam.prev_dist == p.cam.dist;
+  #assert q.body.prev_face != q.body.face && q.body.prev_pos.z != q.body.pos.z;
 }
 
 #test "the facing shown turns the short way" {
   p := walk_place(0, 0, 0, 3.1);
-  p.prev_face = 3.1;
-  p.face = -3.1;
-  p.clock.carry_ns = LOOP_STEP_NS / 2;
+  p.body.prev_face = 3.1;
+  p.body.face = -3.1;
+  p.body.clock.carry_ns = LOOP_STEP_NS / 2;
   #assert abs(walk_face(p)) > 3.1;
 }
 
@@ -1198,13 +1364,13 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(al
   most := 0;
   for i: 0..<9 {
     counts := walk_counts(p, frames[i]);
-    before := p.clock.ticks;
+    before := p.body.clock.ticks;
     p = walk_advance(p, frames[i]);
-    #assert counts == cast(f32) loop_counted(p.clock);
-    #assert walk_ran(p) == p.clock.ticks - before && walk_ran(p) <= 8;
+    #assert counts == cast(f32) loop_counted(p.body.clock);
+    #assert walk_ran(p) == p.body.clock.ticks - before && walk_ran(p) <= 8;
     if walk_ran(p) > most { most = walk_ran(p); }
   }
-  #assert most == 8 && walk_counts(p, 3.0) <= 0.140625 && walk_counts(p, 1.0 / 60.0) == cast(f32) loop_counts(p.clock, cast(f64) (1.0f32 / 60.0f32));
+  #assert most == 8 && walk_counts(p, 3.0) <= 0.140625 && walk_counts(p, 1.0 / 60.0) == cast(f32) loop_counts(p.body.clock, cast(f64) (1.0f32 / 60.0f32));
   #assert walk_counts(p, -1.0) == 0 && walk_counts(p, 0.0 / 0.0) == 0;
 }
 
@@ -1213,8 +1379,8 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player #effects(al
 // through the same states, bit for bit, at every step. Only how many steps each frame
 // runs, and the point drawn between the last two, differ.
 same_step :: (a: Player, b: Player) -> bool #effects(all) {
-  return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
-    && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.target.y == b.target.y && a.dist == b.dist;
+  return a.body.pos.x == b.body.pos.x && a.body.pos.y == b.body.pos.y && a.body.pos.z == b.body.pos.z && a.body.vel.x == b.body.vel.x && a.body.vel.y == b.body.vel.y
+    && a.body.vel.z == b.body.vel.z && a.body.face == b.body.face && a.body.on_ground == b.body.on_ground && a.cam.target.y == b.cam.target.y && a.cam.dist == b.cam.dist;
 }
 // book:begin stutter
 // No stutter at 60 FPS: the 64 Hz steps do not land one to a frame (some frames run two),
@@ -1235,7 +1401,7 @@ same_step :: (a: Player, b: Player) -> bool #effects(all) {
     y := walk_feet(p).y;
     eye := walk_eye(p).y;
     dy := y - was_y; deye := eye - was_eye;
-    if k >= 2 && !p.on_ground && p.prev_pos.y > 0 && p.clock.ticks > 2 {
+    if k >= 2 && !p.body.on_ground && p.body.prev_pos.y > 0 && p.body.clock.ticks > 2 {
       #assert abs(dy - was_dy) <= bound;
       #assert abs(deye - was_deye) <= eye_bound;
       flying += 1;
@@ -1248,11 +1414,11 @@ same_step :: (a: Player, b: Player) -> bool #effects(all) {
   worst := 0.0f32; worst_eye := 0.0f32; was_y = 0; was_dy = 0; was_eye = 0; was_deye = 0;
   for k: 0..<40 {
     q = advance_in(w, q, frame);
-    dy := q.pos.y - was_y;
-    eye := q.target.y + orbit_offset(q).y * q.dist;
+    dy := q.body.pos.y - was_y;
+    eye := q.cam.target.y + orbit_offset(q).y * q.cam.dist;
     deye := eye - was_eye;
-    if k >= 2 && !q.on_ground { worst = hi(worst, abs(dy - was_dy)); worst_eye = hi(worst_eye, abs(deye - was_deye)); }
-    was_y = q.pos.y; was_dy = dy; was_eye = eye; was_deye = deye;
+    if k >= 2 && !q.body.on_ground { worst = hi(worst, abs(dy - was_dy)); worst_eye = hi(worst_eye, abs(deye - was_deye)); }
+    was_y = q.body.pos.y; was_dy = dy; was_eye = eye; was_deye = deye;
   }
   #assert worst > 3 * bound && worst_eye > 3 * eye_bound;
 }
@@ -1260,13 +1426,13 @@ same_step :: (a: Player, b: Player) -> bool #effects(all) {
 
 #forall "same_step compares every field it names" k: 0..<10 {
   a := walk_input(walk_place(1, 0.5, 2, 0.3), 0, 1, 0, 0, false, true, 0, 0);
-  #assert same_step(a, a) && a.jump_held && a.jumps.held;
+  #assert same_step(a, a) && a.body.jump_held && a.body.jumps.held;
   b := a;
-  if k == 0 { b.pos.x += 1; } else if k == 1 { b.pos.y += 1; } else if k == 2 { b.pos.z += 1; } else if k == 3 { b.vel.x += 1; }
-  else if k == 4 { b.vel.y += 1; } else if k == 5 { b.vel.z += 1; } else if k == 6 { b.face += 1; } else if k == 7 { b.on_ground = !b.on_ground; }
-  else if k == 8 { b.target.y += 1; } else { b.dist += 1; }
+  if k == 0 { b.body.pos.x += 1; } else if k == 1 { b.body.pos.y += 1; } else if k == 2 { b.body.pos.z += 1; } else if k == 3 { b.body.vel.x += 1; }
+  else if k == 4 { b.body.vel.y += 1; } else if k == 5 { b.body.vel.z += 1; } else if k == 6 { b.body.face += 1; } else if k == 7 { b.body.on_ground = !b.body.on_ground; }
+  else if k == 8 { b.cam.target.y += 1; } else { b.cam.dist += 1; }
   #assert !same_step(a, b);
-  #assert !walk_input(a, 0, 1, 0, 0, false, false, 0, 0).jump_held;
+  #assert !walk_input(a, 0, 1, 0, 0, false, false, 0, 0).body.jump_held;
 }
 
 #forall "a run and jump has the same states at 30, 60, 120 and 144 FPS" r: 0..<4 {
@@ -1276,27 +1442,27 @@ same_step :: (a: Player, b: Player) -> bool #effects(all) {
   ref: [160] Player;
   q := walk_input(walk_place(0, 0, 0, 0), 0.6, 1, 0, 0, true, true, 0, 0);
   for i: 0..<160 { q = step_once(w, q, STEP); ref[i] = q; }
-  #assert ref[20].pos.y > 0.5 && ref[159].on_ground;   // it jumped, and landed
+  #assert ref[20].body.pos.y > 0.5 && ref[159].body.on_ground;   // it jumped, and landed
   p := walk_input(walk_place(0, 0, 0, 0), 0.6, 1, 0, 0, true, true, 0, 0);
   last := 0;
-  while p.clock.ticks < 160 {
+  while p.body.clock.ticks < 160 {
     p = advance_in(w, p, cast(f32) (1.0 / cast(f64) fps));
-    if p.clock.ticks > 160 { break; }
-    if p.clock.ticks > 0 { #assert same_step(p, ref[p.clock.ticks - 1]); }
+    if p.body.clock.ticks > 160 { break; }
+    if p.body.clock.ticks > 0 { #assert same_step(p, ref[p.body.clock.ticks - 1]); }
     // what is drawn lies between the last two steps
-    if p.clock.ticks > 1 {
+    if p.body.clock.ticks > 1 {
       f := walk_feet(p);
-      #assert f.y >= lo(p.prev_pos.y, p.pos.y) && f.y <= hi(p.prev_pos.y, p.pos.y);
+      #assert f.y >= lo(p.body.prev_pos.y, p.body.pos.y) && f.y <= hi(p.body.prev_pos.y, p.body.pos.y);
     }
-    #assert p.clock.ticks - last <= 2 * (64 / fps + 1);
-    last = p.clock.ticks;
+    #assert p.body.clock.ticks - last <= 2 * (64 / fps + 1);
+    last = p.body.clock.ticks;
   }
 }
 
 #test "the act names what you are doing" {
   w: World;
   p := walk_place(0, 0, 0, 0);
-  #assert p.act == Act.idle && walk_act(p) == 0;
+  #assert p.body.act == Act.idle && walk_act(p) == 0;
   #assert walk_act(step(w, held(p, 0, 1, false), STEP)) == 1;
   #assert walk_act(step(w, held(p, 0, 1, true), STEP)) == 2;
 }
@@ -1306,11 +1472,11 @@ same_step :: (a: Player, b: Player) -> bool #effects(all) {
   w.ground = 1.5;
   #assert floor_at(w, 5, -7, 2) == 1.5;
   p := walk_place(0, 0, 0, 0);
-  p.vel = Vec3.{x = 1, y = 0, z = 2};
+  p.body.vel = Vec3.{x = 1, y = 0, z = 2};
   q := move_across(w, p, 1.5, -2);
-  #assert q.pos.x == 1.5 && q.pos.z == -2 && q.vel.x == 1 && q.vel.z == 2;
+  #assert q.body.pos.x == 1.5 && q.body.pos.z == -2 && q.body.vel.x == 1 && q.body.vel.z == 2;
   w.room = 2;
-  #assert camera_room(w, p.pos, orbit_offset(p), 3) == 2 && camera_room(w, p.pos, orbit_offset(p), 1) == 1;
+  #assert camera_room(w, p.body.pos, orbit_offset(p), 3) == 2 && camera_room(w, p.body.pos, orbit_offset(p), 1) == 1;
 }
 
 #test "the helpers" {
@@ -1362,14 +1528,14 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) #effects(all) {
   w.bodies = bodies[..];
   p := held(walk_place(0, 0, 0, 0), 0, 1, false);
   for i: 0..<48 { p = step(w, p, STEP); }
-  #assert near(p.pos.z, 2 - 0.2 - f32(RADIUS), 0.0001) && near(p.pos.x, 0, 0.0001);
+  #assert near(p.body.pos.z, 2 - 0.2 - f32(RADIUS), 0.0001) && near(p.body.pos.x, 0, 0.0001);
   // What went into it stopped; you still face it, pressing. (Held long
   // enough, the smallest drift slides you round it, as round bodies do.)
-  #assert near(p.vel.z, 0, 0.0001) && p.act == Act.walking;
+  #assert near(p.body.vel.z, 0, 0.0001) && p.body.act == Act.walking;
   // Sideways along it still goes.
   p = held(p, 1, 0, false);
   for i: 0..<64 { p = step(w, p, STEP); }
-  #assert p.pos.x < -0.5 && near(p.pos.z, 1.5, 0.01);
+  #assert p.body.pos.x < -0.5 && near(p.body.pos.z, 1.5, 0.01);
 }
 
 #test "a body moving into you pushes you" {
@@ -1382,7 +1548,7 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) #effects(all) {
     p = step(w, p, STEP);
   }
   // The post's at z = 0.05 now: you are a radius and its width behind it.
-  #assert near(p.pos.z, 0.05 - 0.4 - f32(RADIUS), 0.0001);
+  #assert near(p.body.pos.z, 0.05 - 0.4 - f32(RADIUS), 0.0001);
 }
 
 #test "a body passes over your head and under your feet" {
@@ -1393,16 +1559,16 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) #effects(all) {
   w: World;
   w.bodies = bodies[0..<7];
   p := walk_place(0, 0, 1, 0);
-  #assert move_across(w, p, 0, 0).pos.z == 1;   // under the bar
+  #assert move_across(w, p, 0, 0).body.pos.z == 1;   // under the bar
   w.bodies = bodies[..];
   q := move_across(w, p, 0, 0);                 // on the ball: back off it
-  #assert near(q.pos.z, 1 - sqrt(0.5f32 * 0.5 - 0.1 * 0.1), 0.0001);   // clear of it at your shin, 0.1 m above its centre
+  #assert near(q.body.pos.z, 1 - sqrt(0.5f32 * 0.5 - 0.1 * 0.1), 0.0001);   // clear of it at your shin, 0.1 m above its centre
   // Jumping clear over it (its own: the bar would hit your head).
   w.bodies = bodies[7..<14];
-  p.pos.y = 0.45;
-  #assert move_across(w, p, 0, 0).pos.z == 1;
-  p.pos.y = 0.39;
-  #assert move_across(w, p, 0, 0).pos.z < 1;
+  p.body.pos.y = 0.45;
+  #assert move_across(w, p, 0, 0).body.pos.z == 1;
+  p.body.pos.y = 0.39;
+  #assert move_across(w, p, 0, 0).body.pos.z < 1;
 }
 
 #test "standing on a body's axis, you go back the way you came" {
@@ -1412,9 +1578,9 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) #effects(all) {
   w.bodies = bodies[..];
   p := walk_place(1, 0, 0.5, 0);
   q := move_across(w, p, 0, 0.5);
-  #assert near(q.pos.x, 1, 0.0001) && near(q.pos.z, 0.5, 0.0001);
+  #assert near(q.body.pos.x, 1, 0.0001) && near(q.body.pos.z, 0.5, 0.0001);
   q = move_across(w, walk_place(1, 0, 1, 0), 0, 0);
-  #assert near(q.pos.z, 0.5, 0.0001);
+  #assert near(q.body.pos.z, 0.5, 0.0001);
 }
 
 #test "the camera stops short of a body behind you" {
@@ -1435,7 +1601,7 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) #effects(all) {
   // Too close for any room: none, and the step keeps CAM_WALL_MIN.
   #assert camera_room(w, v3(0, 1, -1.6), v3(0, 0, -1), 4) == 0;
   q := step_once(w, p, STEP);
-  #assert q.dist < f32(CAM_MAX);
+  #assert q.cam.dist < f32(CAM_MAX);
 }
 
 #test "bodies with bad numbers, and a partial one, are skipped" {
@@ -1444,20 +1610,20 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) #effects(all) {
   w: World;
   p := walk_place(0, 0, 0, 0);
   w.bodies = bodies[..];
-  #assert move_across(w, p, 0, 0).pos.z != 0;
+  #assert move_across(w, p, 0, 0).body.pos.z != 0;
   bodies[6] = 0;
-  #assert move_across(w, p, 0, 0).pos.z == 0;    // no width
+  #assert move_across(w, p, 0, 0).body.pos.z == 0;    // no width
   for k: 0..<7 {
     post(bodies[..], 0, 0, 0.5);
     bodies[k] = 2000000;
-    #assert move_across(w, p, 0, 0).pos.z == 0 && camera_room(w, v3(0, 1, 2), v3(0, 0, -1), 4) == 4;
+    #assert move_across(w, p, 0, 0).body.pos.z == 0 && camera_room(w, v3(0, 1, 2), v3(0, 0, -1), 4) == 4;
   }
   post(bodies[..], 0, 0, 0.5);
   w.bodies = bodies[0..<6];
-  #assert move_across(w, p, 0, 0).pos.z == 0;
+  #assert move_across(w, p, 0, 0).body.pos.z == 0;
   // The exported call reads them.
   stand := walk_advance_among(walk_place(0, 0, 0.2, 0), STEP, bodies[0..<7], bodies[0..<0]);
-  #assert near(stand.pos.z, 0.8, 0.0001);
+  #assert near(stand.body.pos.z, 0.8, 0.0001);
 }
 
 // ---- Walls ----
@@ -1475,11 +1641,11 @@ desk :: (out: [] f32) #effects(all) {
   w.walls = walls[..];
   p := held(walk_place(0, 0, 0, 0), 0, 1, false);
   for i: 0..<64 { p = step(w, p, STEP); }
-  #assert near(p.pos.z, 3.5 - f32(RADIUS), 0.0001) && near(p.pos.x, 0, 0.0001) && p.vel.z == 0 && p.on_ground;
+  #assert near(p.body.pos.z, 3.5 - f32(RADIUS), 0.0001) && near(p.body.pos.x, 0, 0.0001) && p.body.vel.z == 0 && p.body.on_ground;
   // Along it you still walk; past its end you go on.
   p = held(p, 1, 1, false);
   for i: 0..<128 { p = step(w, p, STEP); }
-  #assert p.pos.x < -1.4 && p.pos.z > 3.5;
+  #assert p.body.pos.x < -1.4 && p.body.pos.z > 3.5;
 }
 
 #test "a desk's corner rounds you off it, and inside one you go out the nearest side" {
@@ -1488,12 +1654,12 @@ desk :: (out: [] f32) #effects(all) {
   w: World;
   w.walls = walls[..];
   q := move_across(w, walk_place(1.5, 0, 3.4, 0), 0, 0);
-  d := sqrt((q.pos.x - 1.4) * (q.pos.x - 1.4) + (q.pos.z - 3.5) * (q.pos.z - 3.5));
-  #assert near(d, f32(RADIUS), 0.0001) && q.pos.x > 1.4 && q.pos.z < 3.5;
+  d := sqrt((q.body.pos.x - 1.4) * (q.body.pos.x - 1.4) + (q.body.pos.z - 3.5) * (q.body.pos.z - 3.5));
+  #assert near(d, f32(RADIUS), 0.0001) && q.body.pos.x > 1.4 && q.body.pos.z < 3.5;
   r := move_across(w, walk_place(1.3, 0, 4, 0), 0, 0);
-  #assert near(r.pos.x, 1.4 + f32(RADIUS), 0.0001) && r.pos.z == 4;
+  #assert near(r.body.pos.x, 1.4 + f32(RADIUS), 0.0001) && r.body.pos.z == 4;
   s := move_across(w, walk_place(0, 0, 3.6, 0), 0, 0);
-  #assert near(s.pos.z, 3.5 - f32(RADIUS), 0.0001);
+  #assert near(s.body.pos.z, 3.5 - f32(RADIUS), 0.0001);
 }
 
 #test "you jump onto the desk and stand on it; the screen is still a wall" {
@@ -1503,13 +1669,13 @@ desk :: (out: [] f32) #effects(all) {
   w.walls = walls[..];
   // Standing at the desk's front, jump while walking into it.
   p := held(walk_place(0, 0, 3.2, 0), 0, 1, false);
-  p.jump_held = false;
+  p.body.jump_held = false;
   p = walk_input(p, 0, 1, 0, 0, false, true, 0, 0);
   for i: 0..<96 { p = step(w, p, STEP); }
-  #assert near(p.pos.y, 1, 0.01) && p.on_ground;
+  #assert near(p.body.pos.y, 1, 0.01) && p.body.on_ground;
   // On it, the screen stops you.
-  #assert p.pos.z <= 3.9 - f32(RADIUS) + 0.0001 && p.pos.z > 3.5;
-  #assert floor_at(w, p.pos.x, p.pos.z, p.pos.y) == 1;
+  #assert p.body.pos.z <= 3.9 - f32(RADIUS) + 0.0001 && p.body.pos.z > 3.5;
+  #assert floor_at(w, p.body.pos.x, p.body.pos.z, p.body.pos.y) == 1;
   // A floor too high to step onto is not a floor.
   #assert floor_at(w, 0, 3.4, 0) == 0 && floor_at(w, 0, 3.4, 0.45) == 1;
   // Off its far side you fall back to the ground.
@@ -1543,15 +1709,15 @@ desk :: (out: [] f32) #effects(all) {
     pa = step(a, walk_input(pa, 0, 1, 0, 0, false, jump, 0, 0), STEP);
     pb = step(b, walk_input(pb, 0, 1, 0, 0, false, jump, 0, 0), STEP);
     pc = step(c, walk_input(pc, 0, 1, 0, 0, false, jump, 0, 0), STEP);
-    #assert same_step(pa, pb) && pa.pos.y == pb.pos.y && pa.pos.z == pb.pos.z;
-    if landed < 0 && i > 12 && pa.on_ground { landed = i; #assert pa.pos.y == 0.5 && pa.pos.z > 2; }
-    if off_a < 0 && landed >= 0 && !pa.on_ground { off_a = i; }
-    if off_c < 0 && landed >= 0 && !pc.on_ground { off_c = i; }
-    if off_c < 0 { #assert same_step(pa, pc) && pa.pos.y == pc.pos.y; }
+    #assert same_step(pa, pb) && pa.body.pos.y == pb.body.pos.y && pa.body.pos.z == pb.body.pos.z;
+    if landed < 0 && i > 12 && pa.body.on_ground { landed = i; #assert pa.body.pos.y == 0.5 && pa.body.pos.z > 2; }
+    if off_a < 0 && landed >= 0 && !pa.body.on_ground { off_a = i; }
+    if off_c < 0 && landed >= 0 && !pc.body.on_ground { off_c = i; }
+    if off_c < 0 { #assert same_step(pa, pc) && pa.body.pos.y == pc.body.pos.y; }
   }
   // it landed on the ledge, walked off it, and came down on the ground: the floor first
   #assert landed > 12 && off_a > landed && off_c > landed && off_c < off_a;
-  #assert pa.on_ground && pc.on_ground && pa.pos.y == 0 && pc.pos.y == 0 && pa.pos.z > 6;
+  #assert pa.body.on_ground && pc.body.on_ground && pa.body.pos.y == 0 && pc.body.pos.y == 0 && pa.body.pos.z > 6;
   // a realm whose ground is not at 0 stands you on it, and on the ledge's top over it
   higher: World; higher.ground = 0.25; higher.walls = ledge[..];
   #assert floor_at(higher, 0, 0, 0.25) == 0.25 && floor_at(higher, 0, 2, 0.25) == 0.5 && floor_at(higher, 0, 2, -1) == 0.25;
@@ -1584,24 +1750,24 @@ desk :: (out: [] f32) #effects(all) {
     desk(walls[..]);
     walls[k] = 2000000;
     w.walls = walls[0..<6];
-    #assert move_across(w, p, 0, 0).pos.z == 4 && floor_at(w, 0, 4, 0.9) == 0;
+    #assert move_across(w, p, 0, 0).body.pos.z == 4 && floor_at(w, 0, 4, 0.9) == 0;
   }
   desk(walls[..]);
   walls[0] = 2;                        // min x past max x
   w.walls = walls[0..<6];
-  #assert move_across(w, p, 0, 0).pos.z == 4;
+  #assert move_across(w, p, 0, 0).body.pos.z == 4;
   desk(walls[..]);
   w.walls = walls[0..<5];
-  #assert move_across(w, p, 0, 0).pos.z == 4;
+  #assert move_across(w, p, 0, 0).body.pos.z == 4;
   w.walls = walls[..];
-  #assert move_across(w, p, 0, 0).pos.z != 4;
-  #assert walk_advance_among(walk_place(0, 0, 3.4, 0), STEP, walls[0..<0], walls[..]).pos.z < 3.21;
+  #assert move_across(w, p, 0, 0).body.pos.z != 4;
+  #assert walk_advance_among(walk_place(0, 0, 3.4, 0), STEP, walls[0..<0], walls[..]).body.pos.z < 3.21;
 }
 
 // Camera modes are shared engine behaviour, so worlds do not reimplement
 // orientation in their native adapters. Mode 0 first, 1 third, 2 top down.
 #test "first-person eye is in your head and looks along the orbit heading" {
- p:=walk_place(7,0,2,0);p.phi=f32(PI/2);
+ p:=walk_place(7,0,2,0);p.cam.phi=f32(PI/2);
  e:=walk_view_eye(p,0);a:=walk_view_at(p,0);
  #assert near(e.x,7,0.001) && near(e.y,1.6,0.001) && near(e.z,2,0.001);
  #assert a.z>e.z && near(a.x,e.x,0.001);
@@ -1627,7 +1793,7 @@ walk_view :: (p: Player, mode: int) -> CameraShot #effects(all) {
 walk_view_eye :: (p: Player, mode: int) -> Vec3 #effects(all) { return vp(walk_view(p, mode).eye); }
 walk_view_at :: (p: Player, mode: int) -> Vec3 #effects(all) { return vp(walk_view(p, mode).at); }
 // book:end views
-walk_zoom :: (p:Player,delta:f32)->Player #effects(all) {next:=p;next.max_dist=follow_zoom(follow_of(p),delta).max_dist;return next;}
+walk_zoom :: (p:Player,delta:f32)->Player #effects(all) {next:=p;next.cam.max_dist=follow_zoom(follow_of(p),delta).max_dist;return next;}
 // Zooming crosses between first and third person. Out from first person
 // past ZOOM_OUT starts third person at its closest; in past the closest
 // third-person distance by ZOOM_IN goes to first person. The push gathers
@@ -1640,35 +1806,43 @@ walk_zoom_view :: (p:Player,mode:int,delta:f32)->PlayerZoom #effects(all) {
  z:PlayerZoom;z.player=p;z.mode=mode;if !finite(delta) || delta==0 {return z;}
  if mode==2 {z.player=walk_zoom(p,delta);return z;}
  if mode==0 {
-  if player_negative(delta) {z.player.zoom_push=0;return z;}
-  z.player.zoom_push=p.zoom_push+delta;
-  if z.player.zoom_push>=f32(ZOOM_OUT) {z.mode=1;z.player.max_dist=1;z.player.dist=1;z.player.prev_dist=1;z.player.phi=f32(BEHIND_PHI);z.player.zoom_push=0;}
+  if player_negative(delta) {z.player.cam.zoom_push=0;return z;}
+  z.player.cam.zoom_push=p.cam.zoom_push+delta;
+  if z.player.cam.zoom_push>=f32(ZOOM_OUT) {z.mode=1;z.player.cam.max_dist=1;z.player.cam.dist=1;z.player.cam.prev_dist=1;z.player.cam.phi=f32(BEHIND_PHI);z.player.cam.zoom_push=0;}
   return z;
  }
- if !player_negative(delta) {z.player=walk_zoom(p,delta);z.player.zoom_push=0;return z;}
+ if !player_negative(delta) {z.player=walk_zoom(p,delta);z.player.cam.zoom_push=0;return z;}
  z.player=walk_zoom(p,delta);
- if p.max_dist+delta>=1 {z.player.zoom_push=0;return z;}
- z.player.zoom_push=p.zoom_push+(1-(p.max_dist+delta));
- if z.player.zoom_push>=f32(ZOOM_IN) {z.mode=0;z.player.phi=f32(PI/2);z.player.zoom_push=0;}
+ if p.cam.max_dist+delta>=1 {z.player.cam.zoom_push=0;return z;}
+ z.player.cam.zoom_push=p.cam.zoom_push+(1-(p.cam.max_dist+delta));
+ if z.player.cam.zoom_push>=f32(ZOOM_IN) {z.mode=0;z.player.cam.phi=f32(PI/2);z.player.cam.zoom_push=0;}
  return z;
 }
 #test "zoom crosses first and third person without flapping" {
  p:=walk_place(7,0,2,0);
  z:=walk_zoom_view(p,0,0.1);#assert z.mode==0;
- z=walk_zoom_view(z.player,0,0.25);#assert z.mode==1 && z.player.max_dist==1 && z.player.phi==f32(BEHIND_PHI);
+ z=walk_zoom_view(z.player,0,0.25);#assert z.mode==1 && z.player.cam.max_dist==1 && z.player.cam.phi==f32(BEHIND_PHI);
  z=walk_zoom_view(z.player,1,-0.3);#assert z.mode==1;
- z=walk_zoom_view(z.player,1,0.2);#assert z.mode==1 && near(z.player.max_dist,1.2,0.0001);
- z=walk_zoom_view(z.player,1,-0.2);z=walk_zoom_view(z.player,1,-0.2);#assert z.mode==1 && z.player.max_dist==1;
+ z=walk_zoom_view(z.player,1,0.2);#assert z.mode==1 && near(z.player.cam.max_dist,1.2,0.0001);
+ z=walk_zoom_view(z.player,1,-0.2);z=walk_zoom_view(z.player,1,-0.2);#assert z.mode==1 && z.player.cam.max_dist==1;
  z=walk_zoom_view(z.player,1,0.05);z=walk_zoom_view(z.player,1,-0.3);#assert z.mode==1;
- z=walk_zoom_view(z.player,1,-0.5);#assert z.mode==0 && near(z.player.phi,f32(PI/2),0.0001);
+ z=walk_zoom_view(z.player,1,-0.5);#assert z.mode==0 && near(z.player.cam.phi,f32(PI/2),0.0001);
  z=walk_zoom_view(z.player,0,0.2);z=walk_zoom_view(z.player,0,-0.1);z=walk_zoom_view(z.player,0,0.2);#assert z.mode==0;
  z=walk_zoom_view(z.player,0,0.4);#assert z.mode==1;
- t:=walk_zoom_view(p,2,-3);#assert t.mode==2 && near(t.player.max_dist,1.4,0.0001);
+ t:=walk_zoom_view(p,2,-3);#assert t.mode==2 && near(t.player.cam.max_dist,1.4,0.0001);
 }
 walk_constrain :: (p:Player,x:f32,z:f32)->Player #effects(all) {
- next:=p;dx:=x-p.pos.x;dz:=z-p.pos.z;
- if dx!=0 {next.pos.x=x;next.prev_pos.x=x;next.target.x+=dx;next.prev_target.x+=dx;next.vel.x=0;}
- if dz!=0 {next.pos.z=z;next.prev_pos.z=z;next.target.z+=dz;next.prev_target.z+=dz;next.vel.z=0;}
+ next:=p;dx:=x-p.body.pos.x;dz:=z-p.body.pos.z;
+ next.body=body_constrain(p.body,x,z);
+ if dx!=0 {next.cam.target.x+=dx;next.cam.prev_target.x+=dx;}
+ if dz!=0 {next.cam.target.z+=dz;next.cam.prev_target.z+=dz;}
+ return next;
+}
+// Puts a body at (x, z) where a realm's bounds moved it: no drawn slide to there, and no speed into the bound.
+body_constrain :: (b:Body,x:f32,z:f32)->Body #effects(all) {
+ next:=b;
+ if x!=b.pos.x {next.pos.x=x;next.prev_pos.x=x;next.vel.x=0;}
+ if z!=b.pos.z {next.pos.z=z;next.prev_pos.z=z;next.vel.z=0;}
  return next;
 }
 
@@ -1687,17 +1861,17 @@ gable :: (f: [] f32, eave: f32) #effects(all) {
   w.floors = f[..];
   p := walk_place(-3.5, 12, 0, 0);
   for i: 0..<120 { p = step(w, p, STEP); }
-  #assert p.on_ground && near(p.pos.y, 4 + 3 * 0.5 / 4, 0.01) && !p.sliding;
+  #assert p.body.on_ground && near(p.body.pos.y, 4 + 3 * 0.5 / 4, 0.01) && !p.body.sliding;
   q := walk_place(0, 12, 1, 0);
   for i: 0..<120 { q = step(w, q, STEP); }
-  #assert q.on_ground && near(q.pos.y, 7, 0.01);
+  #assert q.body.on_ground && near(q.body.pos.y, 7, 0.01);
   // and you jump off it as off the ground
   q = step(w, walk_input(q, 0, 0, 0, 0, false, true, 0, 0), STEP);
-  #assert !q.on_ground && q.vel.y > f32(JUMP) - 1 && q.pos.y > 7;
+  #assert !q.body.on_ground && q.body.vel.y > f32(JUMP) - 1 && q.body.pos.y > 7;
   // under it (inside, on the ground) it is no floor
   r := walk_place(-1, 0, 0, 0);
   for i: 0..<20 { r = step(w, r, STEP); }
-  #assert r.on_ground && r.pos.y == 0;
+  #assert r.body.on_ground && r.body.pos.y == 0;
 }
 
 #test "walking along a roof follows its slope, and off its end you fall to the ground" {
@@ -1707,23 +1881,23 @@ gable :: (f: [] f32, eave: f32) #effects(all) {
   w.floors = f[..];
   p := walk_place(-2, 5.5, -4, 0);   // facing +z, along the ridge
   for i: 0..<20 { p = step(w, p, STEP); }
-  #assert p.on_ground && near(p.pos.y, 5.5, 0.01);
+  #assert p.body.on_ground && near(p.body.pos.y, 5.5, 0.01);
   p = held(p, 0, 1, false);
   fell := false; low := 100.0f32;
   for i: 0..<400 {
     p = step(w, p, STEP);
-    if p.pos.z < 4.9 { #assert near(p.pos.y, 5.5, 0.05) && p.on_ground; }
-    if p.pos.z > 5.3 && !p.on_ground { fell = true; }
-    low = lo(low, p.pos.y);
+    if p.body.pos.z < 4.9 { #assert near(p.body.pos.y, 5.5, 0.05) && p.body.on_ground; }
+    if p.body.pos.z > 5.3 && !p.body.on_ground { fell = true; }
+    low = lo(low, p.body.pos.y);
   }
-  #assert fell && p.pos.y == 0 && low == 0;
+  #assert fell && p.body.pos.y == 0 && low == 0;
   // across it: up its slope to the ridge, down the other side, off the far eave
   q := walk_place(-3.8, 4.2, 0, f32(PI) / 2);
   for i: 0..<20 { q = step(w, q, STEP); }
   q = held(q, 0, 1, false);
   top := 0.0f32;
-  for i: 0..<300 { q = step(w, q, STEP); top = hi(top, q.pos.y); }
-  #assert top > 6.8 && q.pos.x > 4.5 && q.pos.y == 0;
+  for i: 0..<300 { q = step(w, q, STEP); top = hi(top, q.body.pos.y); }
+  #assert top > 6.8 && q.body.pos.x > 4.5 && q.body.pos.y == 0;
 }
 
 #test "a slope too steep to stand on slides you off its low edge" {
@@ -1735,15 +1909,15 @@ gable :: (f: [] f32, eave: f32) #effects(all) {
   slid := false;
   for i: 0..<400 {
     p = step(w, p, STEP);
-    if p.sliding { slid = true; #assert !p.on_ground && p.pos.y > 2.9; }
+    if p.body.sliding { slid = true; #assert !p.body.on_ground && p.body.pos.y > 2.9; }
   }
-  #assert slid && p.pos.x > 2 && p.pos.y == 0 && p.on_ground;
+  #assert slid && p.body.pos.x > 2 && p.body.pos.y == 0 && p.body.on_ground;
   // and while sliding you can't jump
   q := walk_place(0.5, 9, 0, 0);
-  for i: 0..<60 { q = step(w, q, STEP); if q.sliding { break; } }
-  #assert q.sliding;
+  for i: 0..<60 { q = step(w, q, STEP); if q.body.sliding { break; } }
+  #assert q.body.sliding;
   q = walk_input(q, 0, 0, 0, 0, false, true, 0, 0);
-  #assert q.vel.y <= 0;
+  #assert q.body.vel.y <= 0;
 }
 
 #test "walking into a low roof's edge from the side stops you; one under a step you walk onto" {
@@ -1753,11 +1927,11 @@ gable :: (f: [] f32, eave: f32) #effects(all) {
   w.floors = f[..];
   p := held(walk_place(-6, 0, 0, f32(PI) / 2), 0, 1, false);
   for i: 0..<200 { p = step(w, p, STEP); }
-  #assert p.pos.x < -3.9 && p.pos.x > -4.5 && p.pos.y == 0;
+  #assert p.body.pos.x < -3.9 && p.body.pos.x > -4.5 && p.body.pos.y == 0;
   gable(f[..], 0.3);
   q := held(walk_place(-6, 0, 0, f32(PI) / 2), 0, 1, false);
   for i: 0..<120 { q = step(w, q, STEP); }
-  #assert q.pos.x > -3 && q.pos.y > 0.5;
+  #assert q.body.pos.x > -3 && q.body.pos.y > 0.5;
 }
 
 // ---- Flight (aethyr/move/flight.coax): the per-step hook a flying realm declares ----
@@ -1775,9 +1949,9 @@ fly_controls :: (p: Player, k: int) -> Player #effects(all) {
 }
 // The step a window's controls start on: floor(k * 64 / 6 + 1 / 2).
 fly_window_step :: (k: int) -> int #effects(all) { return (64 * k + 3) / 6; }
-fly_start :: () -> Player #effects(all) { p := walk_place(0, 0, 0, 0); p.clock.carry_ns = LOOP_STEP_NS / 2; return p; }
+fly_start :: () -> Player #effects(all) { p := walk_place(0, 0, 0, 0); p.body.clock.carry_ns = LOOP_STEP_NS / 2; return p; }
 same_flight :: (a: Player, b: Player) -> bool #effects(all) {
-  return same_step(a, b) && a.beats == b.beats && a.diving == b.diving && a.jumps.taken == b.jumps.taken;
+  return same_step(a, b) && a.body.beats == b.body.beats && a.body.diving == b.body.diving && a.body.jumps.taken == b.body.jumps.taken;
 }
 fly_reference :: (out: [] Player) #effects(all) {
   w := flier();
@@ -1804,11 +1978,11 @@ fly_uneven :: (f: int) -> f32 #effects(all) {
   ref: [192] Player;
   fly_reference(ref[0..<total]);
   // the reference really flew: it climbed held, glided, beat twice in the air, dived and landed
-  #assert ref[fly_window_step(3) - 1].pos.y > 1 && ref[fly_window_step(3) - 1].vel.y == 3.2;
-  #assert ref[fly_window_step(4) + 8].vel.y == -1.5 && !ref[fly_window_step(4) + 8].on_ground;
-  #assert ref[total - 1].beats == 2 && ref[total - 1].jumps.taken == 3;
-  #assert ref[fly_window_step(10) + 2].diving && ref[fly_window_step(10) + 2].vel.y == -7;
-  #assert ref[total - 1].on_ground && !ref[total - 1].diving;
+  #assert ref[fly_window_step(3) - 1].body.pos.y > 1 && ref[fly_window_step(3) - 1].body.vel.y == 3.2;
+  #assert ref[fly_window_step(4) + 8].body.vel.y == -1.5 && !ref[fly_window_step(4) + 8].body.on_ground;
+  #assert ref[total - 1].body.beats == 2 && ref[total - 1].body.jumps.taken == 3;
+  #assert ref[fly_window_step(10) + 2].body.diving && ref[fly_window_step(10) + 2].body.vel.y == -7;
+  #assert ref[total - 1].body.on_ground && !ref[total - 1].body.diving;
   w := flier();
   p := fly_start();
   frames := 0;
@@ -1818,11 +1992,11 @@ fly_uneven :: (f: int) -> f32 #effects(all) {
       frame := ifx r == 4 then fly_uneven(frames) else cast(f32) (1.0 / cast(f64) fps);
       p = advance_in(w, p, frame);
       frames += 1;
-      if p.clock.ticks > 0 { #assert same_flight(p, ref[p.clock.ticks - 1]); }
+      if p.body.clock.ticks > 0 { #assert same_flight(p, ref[p.body.clock.ticks - 1]); }
     }
-    #assert p.clock.ticks == fly_window_step(k + 1);   // every rate ends the window on the same step
+    #assert p.body.clock.ticks == fly_window_step(k + 1);   // every rate ends the window on the same step
   }
-  #assert frames == FLY_WINDOWS * per && p.clock.ticks == total;
+  #assert frames == FLY_WINDOWS * per && p.body.clock.ticks == total;
 }
 // book:end flight-rates
 
@@ -1833,9 +2007,9 @@ fly_uneven :: (f: int) -> f32 #effects(all) {
   fly_reference(ref[..]);
   bits := [18] u32.[0, 1062830080, 1068728317, 1070098015, 1068158149, 1073607463, 1074359493, 1076874435, 1079181300,
     1079866149, 1075278629, 1066722890, 1063767188, 1059835028, 1054054696, 1042231888, 0, 0];
-  for k: 0..<18 { #assert f32_bits(ref[fly_window_step(k + 1) - 1].pos.y) == bits[k]; }
-  #assert ref[191].pos.z == 8.1484375 && ref[148].pos.z == 8.072266 && ref[159].pos.z == 8.1484375;
-  #assert fly_start().clock.carry_ns * 2 == LOOP_STEP_NS;
+  for k: 0..<18 { #assert f32_bits(ref[fly_window_step(k + 1) - 1].body.pos.y) == bits[k]; }
+  #assert ref[191].body.pos.z == 8.1484375 && ref[148].body.pos.z == 8.072266 && ref[159].body.pos.z == 8.1484375;
+  #assert fly_start().body.clock.carry_ns * 2 == LOOP_STEP_NS;
   sum := 0.0f32;
   for f: 0..<5 { sum += fly_uneven(f); #assert f == 0 || fly_uneven(f) != fly_uneven(f - 1); }
   #assert abs(sum - 1.0f32 / 6) < 0.000001 && fly_uneven(5) == fly_uneven(0);
@@ -1845,7 +2019,7 @@ fly_uneven :: (f: int) -> f32 #effects(all) {
   a := walk_fly_input(walk_place(0, 3, 0, 0), 0, 0, 0, 0, false, true, 0, true, true);
   #assert same_flight(a, a);
   b := a;
-  if k == 0 { b.pos.y += 1; } else if k == 1 { b.beats += 1; } else if k == 2 { b.diving = !b.diving; } else { b.jumps.taken += 1; }
+  if k == 0 { b.body.pos.y += 1; } else if k == 1 { b.body.beats += 1; } else if k == 2 { b.body.diving = !b.body.diving; } else { b.body.jumps.taken += 1; }
   #assert !same_flight(a, b);
 }
 
@@ -1854,54 +2028,54 @@ fly_uneven :: (f: int) -> f32 #effects(all) {
   p := walk_place(0, 10, 0, 0);
   p = walk_fly_input(p, 0, 0, 0, 0, false, false, 0, true, false);
   for i: 0..<64 {
-    y := p.pos.y;
+    y := p.body.pos.y;
     p = step(w, p, STEP);
-    if i > 4 { #assert p.vel.y == -1.5 && p.pos.y == y - 1.5 * f32(STEP) && !p.on_ground && !p.diving; }
+    if i > 4 { #assert p.body.vel.y == -1.5 && p.body.pos.y == y - 1.5 * f32(STEP) && !p.body.on_ground && !p.body.diving; }
   }
   p = walk_fly_input(p, 0, 0, 0, 0, false, true, 0, true, false);   // pressed: a beat, then held: the climb
   p = step(w, p, STEP);
-  #assert p.beats == 1 && p.vel.y == 5.2 && p.jumps.taken == 1;
+  #assert p.body.beats == 1 && p.body.vel.y == 5.2 && p.body.jumps.taken == 1;
   for i: 0..<64 { p = step(w, p, STEP); }
-  y := p.pos.y;
+  y := p.body.pos.y;
   p = step(w, p, STEP);
-  #assert p.vel.y == 3.2 && p.pos.y == y + 3.2 * f32(STEP) && p.beats == 1;
+  #assert p.body.vel.y == 3.2 && p.body.pos.y == y + 3.2 * f32(STEP) && p.body.beats == 1;
 }
 
 #test "a press on the ground still jumps; in the air without wings it is spent and lifts nothing" {
   w := flier();
   p := walk_fly_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, true, false);
   p = step(w, p, STEP);
-  #assert !p.on_ground && p.beats == 0 && p.vel.y > f32(JUMP) - 1;   // the jump, not a beat
+  #assert !p.body.on_ground && p.body.beats == 0 && p.body.vel.y > f32(JUMP) - 1;   // the jump, not a beat
   q := walk_fly_input(walk_place(0, 10, 0, 0), 0, 0, 0, 0, false, false, 0, false, false);
   for i: 0..<8 { q = step(w, q, STEP); }   // falling from rest: gravity, then the glide
-  #assert q.vel.y == -1.5;
+  #assert q.body.vel.y == -1.5;
   q = walk_fly_input(q, 0, 0, 0, 0, false, true, 0, false, false);
   q = step(w, q, STEP);
-  #assert q.jumps.taken == 1 && q.jumps.waiting == 0 && q.beats == 0 && q.vel.y == -1.5;
+  #assert q.body.jumps.taken == 1 && q.body.jumps.waiting == 0 && q.body.beats == 0 && q.body.vel.y == -1.5;
   // the dive works without wings: Shift in the air
   q = walk_fly_input(q, 0, 0, 0, 0, false, false, 0, false, true);
   q = step(w, q, STEP);
-  #assert q.diving && q.vel.y == -7;
+  #assert q.body.diving && q.body.vel.y == -7;
   // still held down to the ground: landed, you are not diving
-  while !q.on_ground { q = step(w, q, STEP); }
-  #assert !q.diving && q.dive_held;
+  while !q.body.on_ground { q = step(w, q, STEP); }
+  #assert !q.body.diving && q.body.dive_held;
 }
 
 #test "a tap is a press even while the jump is held; held, it is one press" {
   p := walk_place(0, 0, 0, 0);
   p = walk_fly_input(p, 0, 0, 0, 0, false, true, 0, true, false);
-  #assert p.jumps.pressed == 1;
+  #assert p.body.jumps.pressed == 1;
   p = walk_fly_input(p, 0, 0, 0, 0, false, true, 0, true, false);
-  #assert p.jumps.pressed == 1;                       // held: no new press
+  #assert p.body.jumps.pressed == 1;                       // held: no new press
   p = walk_fly_input(p, 0, 0, 0, 0, false, true, 2, true, false);
-  #assert p.jumps.pressed == 2 && p.jumps.held;       // a tap while held: one more, the hold kept
+  #assert p.body.jumps.pressed == 2 && p.body.jumps.held;       // a tap while held: one more, the hold kept
   q := walk_fly_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, false, 1, true, false);
-  #assert q.jumps.pressed == 1 && !q.jumps.held && !q.jump_held;   // a tap alone: a press, nothing held
+  #assert q.body.jumps.pressed == 1 && !q.body.jumps.held && !q.body.jump_held;   // a tap alone: a press, nothing held
   q = walk_fly_input(q, 0, 0, 0, 0, false, true, 1, true, false);
-  #assert q.jumps.pressed == 2 && q.jump_held;        // rising and tapping in one frame: one press
-  #assert q.wings && !q.dive_held;
+  #assert q.body.jumps.pressed == 2 && q.body.jump_held;        // rising and tapping in one frame: one press
+  #assert q.body.wings && !q.body.dive_held;
   q = walk_fly_input(q, 0, 0, 0, 0, false, false, 0, false, true);
-  #assert !q.wings && q.dive_held && q.jumps.pressed == 2;
+  #assert !q.body.wings && q.body.dive_held && q.body.jumps.pressed == 2;
 }
 
 #test "a walker with no flight profile is the same with wings and a dive held" {
@@ -1914,9 +2088,9 @@ fly_uneven :: (f: int) -> f32 #effects(all) {
     #assert walker_same(a, walk_input(was, 0, 1, 0, 0, false, jump, 0, 0));
     b = walk_fly_input(b, 0, 1, 0, 0, false, jump, ifx i == 40 then 1 else 0, true, true);
     a = step_once(w, a, STEP); b = step_once(w, b, STEP);
-    if i < 40 { #assert walker_same(a, b) && b.beats == 0 && !b.diving; }
+    if i < 40 { #assert walker_same(a, b) && b.body.beats == 0 && !b.body.diving; }
   }
-  #assert a.jumps.taken == 2 && b.jumps.taken == 3 && b.beats == 0 && !b.diving;
+  #assert a.body.jumps.taken == 2 && b.body.jumps.taken == 3 && b.body.beats == 0 && !b.body.diving;
 }
 
 // A level-topped hull for the checks: x in [-1, 1] moved dx along, z in [-1, 1], from -0.25 to `top`.
@@ -1928,19 +2102,111 @@ walk_test_block :: (h: [] f32, dx: f32, top: f32) #effects(all) {
   h: [QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE] f32; walk_test_block(h[..], 3, 0.4);
   w: World; w.hulls = h[..];
   p := place_in(w, 0, 0, 0, 0);
-  for k: 0..<120 { p = walk_input(p, 0, ifx k < 50 then 1.0f32 else 0.0f32, 0, 0, false, false, 0, 0); p.theta = -f32(PI) / 2; p = advance_in(w, p, f32(STEP)); }
+  for k: 0..<120 { p = walk_input(p, 0, ifx k < 50 then 1.0f32 else 0.0f32, 0, 0, false, false, 0, 0); p.cam.theta = -f32(PI) / 2; p = advance_in(w, p, f32(STEP)); }
   // walked across +x onto it: stood on its top
-  #assert p.pos.x > 2.4 && p.pos.x < 4 && near(p.pos.y, 0.4, 0.02) && p.on_ground && p.collision_refusals == 0;
+  #assert p.body.pos.x > 2.4 && p.body.pos.x < 4 && near(p.body.pos.y, 0.4, 0.02) && p.body.on_ground && p.body.collision_refusals == 0;
   walk_test_block(h[..], 3, 1.2);
   q := place_in(w, 0, 0, 0, 0);
-  for k: 0..<120 { q = walk_input(q, 0, 1, 0, 0, false, false, 0, 0); q.theta = -f32(PI) / 2; q = walk_advance_among_hulls(q, f32(STEP), h[0..<0], h[0..<0], h[0..<0], h[..], "everglade"); }
+  for k: 0..<120 { q = walk_input(q, 0, 1, 0, 0, false, false, 0, 0); q.cam.theta = -f32(PI) / 2; q = walk_advance_among_hulls(q, f32(STEP), h[0..<0], h[0..<0], h[0..<0], h[..], "everglade"); }
   // stopped a radius short of its side, on the ground
-  #assert near(q.pos.x, 2 - 0.3, 0.01) && q.pos.y == 0;
+  #assert near(q.body.pos.x, 2 - 0.3, 0.01) && q.body.pos.y == 0;
   // a jump with the key held: up, over its edge and down on its top, feet on it
-  for k: 0..<120 { q = walk_input(q, 0, ifx k < 36 then 1.0f32 else 0.0f32, 0, 0, false, k < 3, 0, 0); q.theta = -f32(PI) / 2; q = advance_in(w, q, f32(STEP)); }
-  #assert q.pos.x > 2.2 && near(q.pos.y, 1.2, 0.02) && q.on_ground;
+  for k: 0..<120 { q = walk_input(q, 0, ifx k < 36 then 1.0f32 else 0.0f32, 0, 0, false, k < 3, 0, 0); q.cam.theta = -f32(PI) / 2; q = advance_in(w, q, f32(STEP)); }
+  #assert q.body.pos.x > 2.2 && near(q.body.pos.y, 1.2, 0.02) && q.body.on_ground;
   // the trusted direct move stops at its side too
-  m := move_across(w, place_in(w, 1.5, 0, 0, 0), 0.4, 0); #assert near(m.pos.x, 1.7, 0.0001);
-  #assert move_across(w, place_in(w, 1.5, 1.3, 0, 0), 0.4, 0).pos.x == 1.9;
-  #assert near(move_across(w, place_in(w, 1.5, 0.6, 0, 0), 0.4, 0).pos.x, 1.7, 0.0001);   // its side is felt up to its top
+  m := move_across(w, place_in(w, 1.5, 0, 0, 0), 0.4, 0); #assert near(m.body.pos.x, 1.7, 0.0001);
+  #assert move_across(w, place_in(w, 1.5, 1.3, 0, 0), 0.4, 0).body.pos.x == 1.9;
+  #assert near(move_across(w, place_in(w, 1.5, 0.6, 0, 0), 0.4, 0).body.pos.x, 1.7, 0.0001);   // its side is felt up to its top
+}
+
+// ---- Faster locomotion on the same paid clock (was walk-scaled.coax) ----
+// The ordinary advance_in contract is one collision integration a tick. This opt-in keeps the tick
+// and takes as many collision parts in it as the profile's travel limit needs.
+body_step :: (w:World,given:Body,dt:f32)->Body #effects(all) {
+  if !locomotion_profile_ok(w.locomotion) || walk_travel_parts(w.locomotion.run_speed,f32(STEP),w.collision.max_travel)!=1 {
+    return body_collision_report(given,CollideResult.{status=CollideStatus.bad_profile});
+  }
+  return body_step_fixed(w,given,dt);
+}
+body_substep :: (w:World,given:Body,dt:f32)->Body #effects(all) {
+  if !locomotion_profile_ok(w.locomotion) || walk_travel_parts(w.locomotion.run_speed,dt,w.collision.max_travel)!=1 {
+    return body_collision_report(given,CollideResult.{status=CollideStatus.bad_profile});
+  }
+  return body_step_fixed(w,given,dt);
+}
+body_substep_refusal :: (given:Body,attempt:Body)->Body #effects(all) {
+  return body_collision_report(given,CollideResult.{status=attempt.collision_status,passes=attempt.collision_passes,residual=attempt.collision_residual,floor_cut=attempt.collision_floor_cut});
+}
+// One paid tick of a body at a faster pace: the tick's travel in as many collision parts as the profile needs.
+body_scaled_fixed :: (w:World,given:Body)->Body #effects(all) {
+  parts:=walk_travel_parts(w.locomotion.run_speed,f32(STEP),w.collision.max_travel);
+  start:=given; start.prev_pos=given.pos; start.prev_face=given.face;
+  if parts==0 { return body_collision_report(start,CollideResult.{status=CollideStatus.bad_profile}); }
+  next:=start;
+  for part:0..<parts {
+    next=body_substep(w,next,f32(STEP)/f32(parts));
+    if next.collision_status!=CollideStatus.ok { return body_substep_refusal(start,next); }
+  }
+  return next;
+}
+body_advance_scaled_in :: (w:World,given:Body,frame:f32)->Body #effects(all) {
+  schedule:=walk_schedule(given.clock,frame);
+  if !schedule.ok { return body_collision_report(given,CollideResult.{status=CollideStatus.bad_profile}); }
+  next:=given; next.clock=schedule.clock;
+  for tick:0..<schedule.count { next=body_scaled_fixed(w,next); }
+  next.clock=loop_ran(next.clock);
+  return next;
+}
+// The same for a page's player: its body's tick with its camera's yaw, then its camera's step.
+walk_scaled_fixed :: (w:World,given:Player)->Player #effects(all) {
+  start:=given; start.cam.prev_target=given.cam.target; start.cam.prev_dist=given.cam.dist;
+  start.body=body_scaled_fixed(w,player_yawed(given));
+  if start.body.collision_status!=CollideStatus.ok { return start; }
+  return camera_step(w,start,f32(STEP));
+}
+advance_scaled_in :: (w:World,given:Player,frame:f32)->Player #effects(all) {
+  schedule:=walk_schedule(given.body.clock,frame);
+  if !schedule.ok { return collision_report(given,CollideResult.{status=CollideStatus.bad_profile}); }
+  next:=given; next.body.clock=schedule.clock;
+  for tick:0..<schedule.count { next=walk_scaled_fixed(w,next); }
+  next.body.clock=loop_ran(next.body.clock);
+  return next;
+}
+#test "scaled: a body's faster ticks are the page's player's, part for part, and refuse as it does" {
+  w:World; w.locomotion.walk_speed=14; w.locomotion.run_speed=30;
+  p:=walk_input(walk_place(0,0,0,0),0,1,0,0,true,true,0,0); b:=p.body;
+  #assert walk_travel_parts(w.locomotion.run_speed,f32(STEP),w.collision.max_travel)>1;
+  for f:0..<40 {
+    p=advance_scaled_in(w,p,0.02); b=body_advance_scaled_in(w,b,0.02);
+    #assert b.pos.z==p.body.pos.z && b.pos.y==p.body.pos.y && b.vel.z==p.body.vel.z && b.prev_pos.z==p.body.prev_pos.z && b.prev_face==p.body.prev_face && b.clock.ticks==p.body.clock.ticks && b.clock.ran==p.body.clock.ran;
+  }
+  #assert b.pos.z!=0 && b.clock.ticks>40 && b.jumps.taken==1;
+  one:=body_scaled_fixed(w,b); #assert one.prev_pos.z==b.pos.z && one.pos.z!=b.pos.z && one.prev_face==b.face;
+  // no steps due: nothing moves and the clock says none ran
+  still:=body_advance_scaled_in(w,b,0); #assert still.pos.z==b.pos.z && still.clock.ran==0 && still.clock.ticks==b.clock.ticks;
+  // a profile that pays for no travel, a pass budget of none, a clock that is not the engine's: each refused, nothing moved
+  z:=w; z.collision.max_travel=0;
+  r:=body_scaled_fixed(z,b); #assert r.collision_status==CollideStatus.bad_profile && r.pos.z==b.pos.z && r.collision_refusals==b.collision_refusals+1 && r.prev_pos.z==b.pos.z;
+  n:=w; n.collision.max_passes=0;
+  q:=body_scaled_fixed(n,b); #assert q.collision_status!=CollideStatus.ok && q.pos.z==b.pos.z && q.jumps.waiting==b.jumps.waiting && q.collision_refusals==b.collision_refusals+1;
+  // a page's player: the tick keeps where its camera was, steps the camera after an accepted tick, and leaves it on a refused one
+  pq:=p; pq.body=b; pq.cam.prev_target=Vec3.{x=50,y=50,z=50}; pq.cam.prev_dist=0.5;
+  ok:=walk_scaled_fixed(w,pq);
+  #assert ok.body.collision_status==CollideStatus.ok && ok.body.pos.z==one.pos.z;
+  #assert ok.cam.prev_target.z==pq.cam.target.z && ok.cam.prev_target.x==pq.cam.target.x && ok.cam.prev_dist==pq.cam.dist && ok.cam.target.z!=pq.cam.target.z;
+  no:=walk_scaled_fixed(n,pq);
+  #assert no.body.collision_status==q.collision_status && no.cam.target.z==pq.cam.target.z && no.cam.dist==pq.cam.dist && no.cam.prev_target.z==pq.cam.target.z && no.cam.prev_dist==pq.cam.dist;
+  // a part's own entry: a tuning that is not valid, or a part longer than the profile pays for, each alone refuses it
+  bad:=w; bad.locomotion.jump_speed= -1;
+  #assert walk_travel_parts(bad.locomotion.run_speed,f32(STEP)/8,bad.collision.max_travel)==1 && body_substep(bad,b,f32(STEP)/8).collision_status==CollideStatus.bad_profile;
+  #assert locomotion_profile_ok(w.locomotion) && walk_travel_parts(w.locomotion.run_speed,f32(STEP),w.collision.max_travel)!=1 && body_substep(w,b,f32(STEP)).collision_status==CollideStatus.bad_profile;
+  #assert body_substep(w,b,f32(STEP)/8).collision_status==CollideStatus.ok;
+  odd:=b; odd.clock.step_ns=9;
+  o:=body_advance_scaled_in(w,odd,0.02); #assert o.collision_status==CollideStatus.bad_profile && o.pos.z==b.pos.z && o.clock.ticks==b.clock.ticks;
+}
+#test "ordinary scaled entry keeps one tick and a refused step preserves queued input" {
+  w:World; p:=walk_input(walk_place(0,0,0,0),0,1,0,0,true,true,0,0);
+  q:=advance_scaled_in(w,p,f32(STEP)); #assert q.body.clock.ticks==1 && q.body.jumps.taken==1;
+  w.collision.max_passes=0; q=advance_scaled_in(w,p,f32(STEP));
+  #assert q.body.clock.ticks==1 && q.body.pos.z==p.body.pos.z && q.body.jumps.waiting==p.body.jumps.waiting && q.body.collision_refusals==1;
 }
