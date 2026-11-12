@@ -146,6 +146,26 @@ McRun :: struct {
   tb: [1] McToolBuffers;
   start: [64] u8; nstart: int;   // a journaled run's first commit (git rev-parse HEAD), for the commits a failed ending lists
   work: [8192] u8;               // a failed ending's text: why, the commits made, the files left (tools.coax mc_work_list)
+  // Long outputs saved whole (GitHub #13325): the folder the host gives ("" for none: outputs are then
+  // only cut), each command's file in it named run-step-result.txt, and the buffer a file is written from.
+  spill_dir: string;
+  spill_ready: bool;
+  runs: int;
+  spill_buf: [262144] u8;
+  spill_path: [4096] u8;
+  shaped: [MC_SPILL_SHOW + 4096] u8;
+}
+
+// Where this command's whole output goes, if it is long: spill_dir/RUN-STEP-K.txt (K its place among the
+// step's results); "" when the run has no spill folder or it can't be made.
+mc_run_spill_path :: (r: [] McRun) -> string {
+  if r[0].spill_dir.count == 0 { return ""; }
+  if !r[0].spill_ready { r[0].spill_ready = fs_mkdir(r[0].spill_dir); if !r[0].spill_ready { return ""; } }
+  b := r[0].spill_path[..];
+  n := mc_put(b, 0, r[0].spill_dir); n = mc_put(b, n, "/"); n = mc_put_int(b, n, r[0].runs); n = mc_put(b, n, "-");
+  n = mc_put_int(b, n, r[0].l[0].st[0].steps); n = mc_put(b, n, "-"); n = mc_put_int(b, n, r[0].l[0].st[0].open_cmds + 1); n = mc_put(b, n, ".txt");
+  if n >= b.count { return ""; }
+  return cast(string) b[0..<n];
 }
 
 // A command's output kept for this poll's events (cut to what is left).
@@ -169,6 +189,7 @@ mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effo
   r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;r[0].reads=0;r[0].refused="";
   r[0].seeded = false;
   r[0].nstart = 0;
+  r[0].runs += 1;
   if r[0].journal.count > 0 { r[0].nstart = mc_git_head(cwd, r[0].profile, r[0].tb[0].out[..], r[0].start[..]).count; }
   if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
 }
@@ -185,13 +206,19 @@ mc_run_seed :: (r: [] McRun, out: [] McRunEvent) -> int {
   l := r[0].l[..]; k := 0;
   s: [1] McSeed; mc_seed_scan(l[0].st[0].task, s[..]);
   pb: [FS_PATH_MAX] u8; viewed := 0; begun := false;
+  // the files that exist share the step's budget, less room for the code names' lines
+  files := 0;
+  for i: 0..<s[0].np { full := fs_join(r[0].cwd, s[0].paths[i], pb[..]); if files < MC_SEED_FILES && full.count > 0 && fs_kind(full) == FS_FILE { files += 1; } }
+  share := ifx files > 0 then (MC_STEP_BUDGET - 1024 * s[0].nn) / files else 0;
   for i: 0..<s[0].np {
     if viewed >= MC_SEED_FILES { break; }
     p := s[0].paths[i];
     full := fs_join(r[0].cwd, p, pb[..]);
     if full.count == 0 || fs_kind(full) != FS_FILE { continue; }
     if !mc_run_intent(r, AjKind.view_intent, p) { return mc_run_failed(r, out, k); }
-    v := mc_view_file_profile(r[0].cwd, p, r[0].tb[0].view[..], r[0].profile);
+    room := ifx begun then mc_result_room(l[0].st[..], p) else MC_STEP_BUDGET - 96;
+    if room > share { room = share; }
+    v := mc_view_lines(r[0].cwd, p, r[0].profile, r[0].spill_dir, room, r[0].tb[..]);
     if r[0].journal.count>0 && (!jf_output(r[0].journal,v.content) || !jf_result(r[0].journal,ifx v.found then "found=true" else "found=false")) {return mc_run_failed(r,out,k);}
     if !v.found || v.content == MC_VIEW_BINARY { continue; }
     if !begun { mc_action_begin(l[0].st[..], MC_SEED_RATIONALE); begun = true; }
@@ -343,11 +370,20 @@ mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int 
   if !mc_run_intent(r,AjKind.command_intent,command) {return mc_run_failed(r,out,k);}
   seconds:=ifx r[0].command_seconds>0 then r[0].command_seconds else MC_COMMAND_SECONDS;
   if r[0].journal.count>0 {left:=(r[0].deadline-cxproc_now_ms())/1000;if left<seconds {seconds=left;}if seconds<1 {r[0].refused="time limit reached: a run has 15 minutes";return mc_run_failed(r,out,k);}}
-  res := mc_run_command_profile(r[0].cwd, command, seconds, r[0].tb[0].out[..],r[0].profile);
+  o := r[0].tb[0].out[..];
+  sp := mc_run_spill_path(r);
+  o[0].spill = sp; o[0].all = ifx sp.count > 0 then r[0].spill_buf[..] else r[0].spill_buf[0..<0];
+  res := mc_run_command_profile(r[0].cwd, command, seconds, o, r[0].profile);
+  // a long output keeps its head and tail in the state, and goes whole to its file, which the cut line names
+  shown := res.output;
+  show := mc_result_room(r[0].l[0].st[..], command) - 512;
+  if show > MC_SPILL_SHOW { show = MC_SPILL_SHOW; }
+  if sp.count > 0 && o[0].esc > show && mc_output_spill(o) { shown = mc_output_shown(o, show, sp, r[0].shaped[..]); }
+  o[0].spill = ""; o[0].all = r[0].spill_buf[0..<0];
   metadata:[128]u8;m:=json_raw(metadata[..],0,"exit=");m=json_write_int(metadata[..],m,res.exit);
   m=json_raw(metadata[..],m,ifx res.timed_out then " timed_out=true" else " timed_out=false");
   if r[0].journal.count>0 && (!jf_output(r[0].journal,res.output) || !jf_result(r[0].journal,cast(string)metadata[0..<m])) {return mc_run_failed(r,out,k);}
-  mc_command(r[0].l[..], command, res.exit, res.timed_out, res.output);
+  mc_command(r[0].l[..], command, res.exit, res.timed_out, shown);
   return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = command, exit = res.exit, timed_out = res.timed_out, output = mc_run_keep(r, res.output)});
 }
 
@@ -365,7 +401,7 @@ mc_run_edit :: (r: [] McRun, out: [] McRunEvent, k: int, e: McEdit) -> int {
   if !mc_run_intent(r, AjKind.command_intent, label) { return mc_run_failed(r, out, k); }
   res := mc_edit_file(r[0].cwd, e, r[0].profile, r[0].tb[..]);
   if r[0].journal.count > 0 && (!jf_output(r[0].journal, ifx res.ok then "applied" else res.why) || !jf_result(r[0].journal, ifx res.ok then "exit=0 timed_out=false" else "exit=1 timed_out=false")) { return mc_run_failed(r, out, k); }
-  mc_edited(r[0].l[..], e.path, res.ok, res.why);
+  mc_edited_shown(r[0].l[..], e.path, res.ok, res.why, res.from, res.to, res.shown);
   return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = ifx res.ok then 0 else 1, output = mc_run_keep(r, ifx res.ok then "applied" else res.why)});
 }
 
@@ -373,8 +409,11 @@ mc_run_edit :: (r: [] McRun, out: [] McRunEvent, k: int, e: McEdit) -> int {
 mc_run_after :: (r: [] McRun, out: [] McRunEvent, k0: int) -> int {
   l := r[0].l[..]; a := mc_pending(l); k := k0;
   for i: 0..<a.nv {
+    // a view the step's budget has no room for is held back, unread, and its result says so (GitHub #13325)
+    room := mc_result_room(l[0].st[..], a.view[i]);
+    if room < MC_VIEW_MIN { mc_file_held(l[0].st[..], a.view[i]); k = mc_run_put(out, k, McRunEvent.{kind = MR_VIEW, text = a.view[i], found = false}); continue; }
     if !mc_run_intent(r,AjKind.view_intent,a.view[i]) {return mc_run_failed(r,out,k);}
-    v := mc_view_file_profile(r[0].cwd, a.view[i], r[0].tb[0].view[..],r[0].profile);
+    v := mc_view_lines(r[0].cwd, a.view[i], r[0].profile, r[0].spill_dir, room, r[0].tb[..]);
     if r[0].journal.count>0 && (!jf_output(r[0].journal,v.content) || !jf_result(r[0].journal,ifx v.found then "found=true" else "found=false")) {return mc_run_failed(r,out,k);}
     mc_view(l, a.view[i], v.found, v.content);
     k = mc_run_put(out, k, McRunEvent.{kind = MR_VIEW, text = a.view[i], found = v.found});

@@ -530,10 +530,14 @@ mrt_run_command :: (m: RpMirror, snapshot: string, command: string, b: [] McRepo
 }
 
 // One view: the file read at the snapshot, numbered, or why it isn't shown.
-mrt_run_view :: (m: RpMirror, snapshot: string, view: string, b: [] McRepoBuffers) -> McViewResult {
+// The answer is cut on a line to fit room (the step's budget, GitHub #13325), with the read's own line
+// saying where to go on.
+mrt_run_view :: (m: RpMirror, snapshot: string, view: string, room: int, b: [] McRepoBuffers) -> McViewResult {
   st := mrt_view_begin(snapshot, view, b);
   if !st.done {
-    a := rp_call(m, st.q, b[0].work[..], b[0].answer[..]);
+    most := room * 4 / 5;      // numbered lines escape their tab and line end
+    if most > b[0].answer.count { most = b[0].answer.count; }
+    a := rp_call(m, st.q, b[0].work[..], b[0].answer[0..<most]);
     st = mrt_view_answer(st, a, ifx a.ok then cast(string) b[0].answer[0..<a.n] else "", b);
   }
   return McViewResult.{found = st.found, content = st.text};
@@ -549,7 +553,9 @@ mc_run_repo_tools :: (l: [] McLoop, m: RpMirror, snapshot: string, b: [] McRepoB
     mc_command(l, a.commands[i], r.exit, r.timed_out, r.output);
   }
   for i: 0..<a.nv {
-    v := mrt_run_view(m, snapshot, a.view[i], b);
+    room := mc_result_room(l[0].st[..], a.view[i]);
+    if room < MC_VIEW_MIN { mc_file_held(l[0].st[..], a.view[i]); continue; }
+    v := mrt_run_view(m, snapshot, a.view[i], room, b);
     mc_view(l, a.view[i], v.found, v.content);
   }
   return mc_tools_done(l);

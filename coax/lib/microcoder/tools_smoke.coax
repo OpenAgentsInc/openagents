@@ -1,6 +1,8 @@
 // The tools against a real folder (tools_smoke.sh makes it): a command's
 // output, a command past its timeout killed and recorded, views inside and
-// outside the working directory, exact edits, and a loop step's tools recorded in state.
+// outside the working directory, numbered and by range, exact edits and what
+// they show, a long output saved whole and viewed by range, and a loop step's
+// tools recorded in state.
 
 #import "Basic";
 #load "tools.coax";
@@ -35,18 +37,18 @@ main :: () {
   ok = ok && s == MC_TOOLS && mc_run_tools(l[..], dir, b[..]) == MC_AGAIN;
   j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  ok = ok && cl_str(ar[..], j, "actions.0.results.0.output") == "3\n" && cl_str(ar[..], j, "actions.0.results.1.content") == "print(\"b\")";
+  ok = ok && cl_str(ar[..], j, "actions.0.results.0.output") == "3\n" && cl_str(ar[..], j, "actions.0.results.1.content") == "     1\tprint(\"b\")\n";
   // exact edits: one place changed, a new file written, and the refusals
   e := mc_edit_file(dir, McEdit.{path = "a.swift", old = "\"a\"", text = "\"a2\""}, "danger-full-access", b[..]);
   v = mc_view_file(dir, "a.swift", b[0].view[..]);
-  print("edit: ok % why [%] now [%]\n", e.ok, e.why, v.content);
-  ok = ok && e.ok && v.content == "print(\"a2\")";
+  print("edit: ok % why [%] now [%] shown [%]\n", e.ok, e.why, v.content, e.shown);
+  ok = ok && e.ok && v.content == "print(\"a2\")" && e.shown == "     1\tprint(\"a2\")\n" && e.from == 1 && e.to == 1;
   e = mc_edit_file(dir, McEdit.{path = "sub/new.txt", old = "", text = "x"}, "danger-full-access", b[..]);
   ok = ok && !e.ok && e.why == "could not write the file: does its folder exist?";
   e = mc_edit_file(dir, McEdit.{path = "notes.txt", old = "", text = "one\none\n"}, "danger-full-access", b[..]);
   ok = ok && e.ok;
   e = mc_edit_file(dir, McEdit.{path = "notes.txt", old = "one", text = "two"}, "danger-full-access", b[..]);
-  ok = ok && !e.ok && e.why == "the old text is in the file more than once: include more of the lines around it so it is unique";
+  ok = ok && !e.ok && e.why == "the old text is in the file 2 times (at lines 1, 2): include more of the lines around it so it is unique";
   e = mc_edit_file(dir, McEdit.{path = "notes.txt", old = "three", text = "two"}, "danger-full-access", b[..]);
   ok = ok && !e.ok && e.why == "the old text is not in the file: copy it exactly, with its whitespace, from a view or the file";
   e = mc_edit_file(dir, McEdit.{path = "nope.txt", old = "a", text = "b"}, "danger-full-access", b[..]);
@@ -55,7 +57,44 @@ main :: () {
   r = mc_run_command(dir, "head -c 70000 /dev/zero | tr '\\0' 'x' > long.txt", 30, b[0].out[..]);
   v = mc_view_file(dir, "long.txt", b[0].view[..]);
   print("cut view: % bytes, ends [%]\n", v.content.count, cast(string) v.content[v.content.count - 40..<v.content.count]);
-  ok = ok && v.found && v.content.count <= MC_VIEW_BYTES && cast(string) v.content[v.content.count - 30..<v.content.count] == "with a command such as sed -n]";
+  ok = ok && v.found && v.content.count <= MC_VIEW_BYTES && cast(string) v.content[v.content.count - 29..<v.content.count] == "view a range of it, PATH:A-B]";
+  // numbered views: a file of 1,000 lines shows 300 and names the next; a range shows itself
+  r = mc_run_command(dir, "seq 1 1000 > n.txt", 30, b[0].out[..]);
+  v = mc_view_lines(dir, "n.txt", "danger-full-access", "", MC_STEP_BUDGET, b[..]);
+  ok = ok && v.found && ps_count(v.content, "   300\t300\n[lines 1-300 of 1000; next: view n.txt:301-600]") == 1;
+  v = mc_view_lines(dir, "n.txt:499-500", "danger-full-access", "", MC_STEP_BUDGET, b[..]);
+  print("ranged view: [%]\n", v.content);
+  ok = ok && v.content == "   499\t499\n   500\t500\n[lines 499-500 of 1000; next: view n.txt:501-800]";
+  v = mc_view_lines(dir, "../outside.txt", "danger-full-access", "", MC_STEP_BUDGET, b[..]);
+  ok = ok && !v.found;
+  // an edit in the middle shows two lines around its new text; a failed one the nearest lines
+  e = mc_edit_file(dir, McEdit.{path = "n.txt", old = "500\n501\n", text = "five hundred\n501\n"}, "danger-full-access", b[..]);
+  print("edit shows: [%]\n", e.shown);
+  ok = ok && e.ok && e.from == 498 && e.to == 503 && e.shown == "   498\t498\n   499\t499\n   500\tfive hundred\n   501\t501\n   502\t502\n   503\t503\n";
+  e = mc_edit_file(dir, McEdit.{path = "n.txt", old = "500\n501\n", text = "x\n"}, "danger-full-access", b[..]);
+  print("failed edit shows: [%] [%]\n", e.why, e.shown);
+  ok = ok && !e.ok && e.shown == "   497\t497\n   498\t498\n   499\t499\n   500\tfive hundred\n   501\t501\n   502\t502\n   503\t503\n   504\t504\n   505\t505\n" && ps_count(e.why, "the nearest lines are these") == 1;
+  // a long output: saved whole, its head and tail shown around a line that names the file, which a view reads by range
+  spb: [512] u8; spill := fs_temp("mc-smoke-spill-", spb[..]);      // outside the working directory, as a run's is
+  ok = ok && spill.count > 0;
+  fb: [512] u8; file := fs_join(spill, "1-1-1.txt", fb[..]);
+  chunk: [4096] u8;      // smaller than the output, so the file is written in pieces
+  b[0].out[0].all = chunk[..]; b[0].out[0].spill = file;
+  r = mc_run_command(dir, "seq 1 20000", 30, b[0].out[..]);
+  saved := mc_output_spill(b[0].out[..]);
+  sh: [16384] u8; shown := mc_output_shown(b[0].out[..], MC_SPILL_SHOW, file, sh[..]);
+  b[0].out[0].all = chunk[0..<0]; b[0].out[0].spill = "";
+  print("spilled: % bytes, saved %; shown % bytes\n", fs_size(file), saved, shown.count);
+  ok = ok && saved && fs_size(file) == 108894 && mc_escaped_size(shown) <= MC_SPILL_SHOW && cast(string) shown[0..<4] == "1\n2\n";
+  ok = ok && ps_count(shown, "The whole output, 20000 lines, is saved: view ") == 1 && cast(string) shown[shown.count - 6..<shown.count] == "20000\n";
+  rb: [600] u8; rn := json_raw(rb[..], 0, file); rn = json_raw(rb[..], rn, ":10000-10001");
+  v = mc_view_lines(dir, cast(string) rb[0..<rn], "danger-full-access", spill, MC_STEP_BUDGET, b[..]);
+  print("spill view: [%]\n", v.content);
+  ok = ok && v.found && cast(string) v.content[0..<26] == " 10000\t10000\n 10001\t10001\n";
+  v = mc_view_lines(dir, cast(string) rb[0..<rn], "danger-full-access", "", MC_STEP_BUDGET, b[..]);
+  ok = ok && !v.found;      // without the run's spill folder, it is outside the working directory
+  rmb: [600] u8; rmn := json_raw(rmb[..], 0, "rm -rf "); rmn = json_raw(rmb[..], rmn, spill);
+  r = mc_run_command("/", cast(string) rmb[0..<rmn], 30, b[0].out[..]);
   // an edit in a step: recorded before the step's commands, which see it
   x = mc_request(l[..]);
   s = mc_take(l[..], "{\"rationale\":\"fix\",\"edits\":[{\"path\":\"b.swift\",\"old\":\"b\",\"new\":\"b2\"}],\"commands\":[\"cat b.swift\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
@@ -63,6 +102,8 @@ main :: () {
   j = mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ar[0].at = 0;
   ok = ok && cl_bool(j, "actions.1.results.0.applied").value && cl_str(ar[..], j, "actions.1.results.1.output") == "print(\"b2\")\n";
+  ar[0].at = 0;
+  ok = ok && cl_str(ar[..], j, "actions.1.results.0.now") == "     1\tprint(\"b2\")\n" && cl_str(ar[..], j, "actions.1.results.0.lines") == "1-1";
   // what a failed run leaves (GitHub #13351): the commits since its start head, and the files left
   g := "git -c user.name=smoke -c user.email=smoke@example.invalid";
   gb: [512] u8; gn := 0;

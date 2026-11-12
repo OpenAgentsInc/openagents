@@ -43,6 +43,8 @@ MC_KEEP_RECENT :: 24576;         // the recent steps kept whole by a compaction,
 MC_EARLIER_BYTES :: 40960;       // the compacted steps
 MC_MAX_ACTIONS :: 512;           // steps the log can hold
 MC_PROMPT_BYTES :: 458752;       // the whole state's JSON: every buffer below, with room for its keys
+MC_STEP_BUDGET :: 32768;         // bytes one step's results may add to the recent steps (GitHub #13325): one step can't flush the rest
+MC_HELD :: "this step's results reached their 32 KB";   // why a result was cut or held back
 
 McStateBuffers :: struct {
   log: [MC_LOG_BYTES] u8;
@@ -67,6 +69,7 @@ McState :: struct {
   steps: int;                    // actions recorded so far (the step number of the next is steps + 1)
   open: int;                     // the action being written (its index), -1 when none
   open_cmds: int;
+  results_at: int;               // where the open action's results start in log
   notes: [] u8; nn: int;
   facts: [] u8; task_buf: [] u8; route_buf: [] u8;
 }
@@ -107,13 +110,33 @@ mc_write_cut :: (out: [] u8, at: int, text: string, head: int, tail: int) -> int
   if text.count <= head + tail { return json_write_string(out, at, text); }
   h := mc_back(text, head);
   t := mc_back(text, text.count - tail);
+  return mc_write_parts(out, at, text, h, t, " bytes left out ...]");
+}
+// text[0..<h], a line "[... N<what>" (N the bytes between), and text[t..]: as a JSON string.
+mc_write_parts :: (out: [] u8, at: int, text: string, h: int, t: int, what: string) -> int {
   n := json_raw(out, at, "\"");
   n = mc_esc(out, n, cast(string) text[0..<h]);
-  n = json_raw(out, n, "\\n[... ");
+  n = json_raw(out, n, ifx h > 0 then "\\n[... " else "[... ");
   n = json_write_int(out, n, t - h);
-  n = json_raw(out, n, " bytes left out ...]\\n");
+  n = mc_esc(out, n, what);
+  n = json_raw(out, n, ifx t < text.count then "\\n" else "");
   n = mc_esc(out, n, cast(string) text[t..<text.count]);
   return json_raw(out, n, "\"");
+}
+// text as a JSON string in at most room escaped bytes (and its first head and last tail bytes, as
+// mc_write_cut): what doesn't fit the step's budget is held back, and the line says so.
+MC_HELD_OUTPUT :: " bytes held back: this step's results reached their 32 KB; ask for less at once, or run it again in a later step]";
+mc_write_budget :: (out: [] u8, at: int, text: string, head: int, tail: int, room: int) -> int {
+  if mc_escaped_size(text) <= room && text.count <= head + tail { return json_write_string(out, at, text); }
+  if mc_escaped_size(text) > room {
+    half := (room - MC_HELD_OUTPUT.count - 24) / 2;
+    if half < 0 { half = 0; }
+    h := mc_fit_head(cast(string) text[0..<ifx text.count < head then text.count else head], half);
+    t := mc_fit_tail(cast(string) text[h..<text.count], half) + h;
+    if text.count - t > tail { t = mc_back(text, text.count - tail); }
+    return mc_write_parts(out, at, text, h, t, MC_HELD_OUTPUT);
+  }
+  return mc_write_cut(out, at, text, head, tail);
 }
 
 
@@ -190,7 +213,53 @@ mc_action_begin :: (st: [] McState, rationale: string) {
   c = json_raw(mc_croom(st), c, ",\"results\":[");
   if c < 0 { c = json_raw(mc_croom(st), cat, ",{\"step\":0,\"rationale\":\"\",\"results\":["); }
   st[0].act_at[st[0].nacts] = at; st[0].cact_at[st[0].nacts] = cat; st[0].open = st[0].nacts; st[0].nacts += 1;
-  st[0].nlog = n; st[0].nclog = c; st[0].open_cmds = 0;
+  st[0].nlog = n; st[0].nclog = c; st[0].open_cmds = 0; st[0].results_at = n;
+}
+
+// The bytes of the step budget the open action's results have left (MC_STEP_BUDGET when none is open).
+mc_step_left :: (st: [] McState) -> int {
+  if st[0].open < 0 { return MC_STEP_BUDGET; }
+  left := MC_STEP_BUDGET - (st[0].nlog - st[0].results_at);
+  return ifx left < 0 then 0 else left;
+}
+
+// The bytes s takes as a JSON string's content (each quote, backslash and control character escaped).
+mc_escaped_size :: (s: string) -> int {
+  n := s.count;
+  for c: s { if c == '"' || c == '\\' || c == 10 || c == 13 || c == 9 || c == 8 || c == 12 { n += 1; } else if c < 32 { n += 5; } }
+  return n;
+}
+mc_esc_byte :: (c: u8) -> int {
+  if c == '"' || c == '\\' || c == 10 || c == 13 || c == 9 || c == 8 || c == 12 { return 2; }
+  return ifx c < 32 then 6 else 1;
+}
+// How many of text's first bytes fit in budget escaped bytes, on a character boundary; at a line's
+// end when one is in the second half of them.
+mc_fit_head :: (text: string, budget: int) -> int {
+  k := 0; used := 0;
+  while k < text.count && used + mc_esc_byte(text[k]) <= budget { used += mc_esc_byte(text[k]); k += 1; }
+  if k >= text.count { return k; }
+  k = mc_back(text, k);
+  e := k;
+  while e > k / 2 && text[e - 1] != '\n' { e -= 1; }
+  return ifx e > k / 2 then e else k;
+}
+// Where the last bytes of text that fit in budget escaped bytes start: after a line's end when
+// one is in the first half of them.
+mc_fit_tail :: (text: string, budget: int) -> int {
+  k := text.count; used := 0;
+  while k > 0 && used + mc_esc_byte(text[k - 1]) <= budget { used += mc_esc_byte(text[k - 1]); k -= 1; }
+  if k == 0 { return 0; }
+  while k < text.count && (text[k] & 0xC0) == 0x80 { k += 1; }
+  e := k; half := k + (text.count - k) / 2;
+  while e < half && text[e] != '\n' { e += 1; }
+  return ifx e < half then e + 1 else k;
+}
+
+// The room the open step has left for one result's text (escaped bytes), after what names it.
+mc_result_room :: (st: [] McState, name: string) -> int {
+  n := mc_step_left(st) - mc_escaped_size(cast(string) name[0..<ifx name.count > 1000 then 1000 else name.count]) - 96;
+  return ifx n < 0 then 0 else n;
 }
 
 // Where the open action's next result goes in the log (after a comma when not the first), or -1.
@@ -225,7 +294,7 @@ mc_action_command_checked :: (st: [] McState, command: string, exit: int, timed_
   if timed_out { n = json_raw(room, n, ",\"timed_out\":true"); }
   if last_check.count > 0 { n = json_raw(room, n, ",\"last_check\":"); n = json_write_string(room, n, last_check); }
   n = json_raw(room, n, ",\"output\":");
-  n = mc_write_cut(room, n, output, MC_OUTPUT_HEAD, MC_OUTPUT_TAIL);
+  n = mc_write_budget(room, n, output, MC_OUTPUT_HEAD, MC_OUTPUT_TAIL, mc_result_room(st, command) - mc_escaped_size(last_check));
   n = json_raw(room, n, "}");
   if n < 0 {
     // the log is full: the command stays, its output doesn't
@@ -268,17 +337,31 @@ mc_action_refused :: (st: [] McState, command: string, why: string) {
   x := mc_result_end(st, n, c);
 }
 
-// An edit's result: applied, or why not. Compacted as it is.
-mc_action_edit :: (st: [] McState, path: string, ok: bool, why: string) {
+// An edit's result: applied, or why not.
+mc_action_edit :: (st: [] McState, path: string, ok: bool, why: string) { mc_action_edit_shown(st, path, ok, why, 0, 0, ""); }
+
+// An edit's result with what it shows (GitHub #13325): an applied edit's new text, lines from..to
+// of the file now, numbered; a failed edit's nearest region of the file, numbered. A compacted
+// applied edit keeps its lines; the text it showed goes, as a view's does.
+mc_action_edit_shown :: (st: [] McState, path: string, ok: bool, why: string, from: int, to: int, shown: string) {
   at := mc_result_start(st);
   if at < 0 { return; }
+  room_left := mc_result_room(st, path) - mc_escaped_size(why) - 40;
   ws: [2] int;
   for w: 0..<2 {
     room := ifx w == 0 then mc_room(st) else mc_croom(st);
     n := json_raw(room, ifx w == 0 then at else mc_cresult_start(st), "{\"edit\":");
     n = mc_write_cut(room, n, path, 1000, 0);
-    if ok { n = json_raw(room, n, ",\"applied\":true}"); }
-    else { n = json_raw(room, n, ",\"failed\":"); n = json_write_string(room, n, why); n = json_raw(room, n, "}"); }
+    if ok { n = json_raw(room, n, ",\"applied\":true"); } else { n = json_raw(room, n, ",\"failed\":"); n = json_write_string(room, n, why); }
+    if ok && from > 0 {
+      n = json_raw(room, n, ",\"lines\":\""); n = json_write_int(room, n, from); n = json_raw(room, n, "-"); n = json_write_int(room, n, to); n = json_raw(room, n, "\"");
+    }
+    if w == 0 && shown.count > 0 {
+      n = json_raw(room, n, ifx ok then ",\"now\":" else ",\"nearest\":");
+      if mc_escaped_size(shown) <= room_left { n = json_write_string(room, n, shown); }
+      else { n = json_raw(room, n, "\"[held back: "); n = mc_esc(room, n, MC_HELD); n = json_raw(room, n, "; view the file in a later step]\""); }
+    }
+    n = json_raw(room, n, "}");
     ws[w] = n;
   }
   x := mc_result_end(st, ws[0], ws[1]);
@@ -295,21 +378,29 @@ mc_action_end :: (st: [] McState) {
 mc_files_clear :: (st: [] McState) {}
 
 // One viewed file in the open action; found false when there is no such file (content then
-// says why). Content is capped by the tool (64 KB); one that doesn't fit the log is noted. A
-// compacted view keeps the path and the size: the file can be viewed again.
+// says why). The tools fit content to the step's budget (tools.coax mc_view_lines); content that
+// still doesn't fit is cut at a line's end with a line that says so, and one that doesn't fit the
+// log is noted. A compacted view keeps the path (with its range) and the size: it can be viewed again.
 mc_file :: (st: [] McState, path: string, found: bool, content: string) {
   at := mc_result_start(st);
   if at < 0 { return; }
   room := mc_room(st);
+  left := mc_result_room(st, path);
   n := json_raw(room, at, "{\"view\":");
   n = json_write_string(room, n, path);
-  if found { n = json_raw(room, n, ",\"content\":"); n = json_write_string(room, n, content); }
+  if found && mc_escaped_size(content) <= left { n = json_raw(room, n, ",\"content\":"); n = json_write_string(room, n, content); }
+  else if found {
+    n = json_raw(room, n, ",\"content\":\"");
+    h := mc_fit_head(content, left - 160);
+    n = mc_esc(room, n, cast(string) content[0..<h]);
+    n = json_raw(room, n, "[... the rest held back: "); n = mc_esc(room, n, MC_HELD); n = json_raw(room, n, "; view it again from here in a later step]\"");
+  }
   else { n = json_raw(room, n, ",\"missing\":"); n = json_write_string(room, n, content); }
   n = json_raw(room, n, "}");
   if n < 0 {
     n = json_raw(room, at, "{\"view\":");
     n = json_write_string(room, n, path);
-    n = json_raw(room, n, ",\"missing\":\"too large to show with this step's other results: read parts of it with a command\"}");
+    n = json_raw(room, n, ",\"missing\":\"too large to show with this step's other results: view a range of it (PATH:A-B)\"}");
   }
   cr := mc_croom(st);
   c := json_raw(cr, mc_cresult_start(st), "{\"view\":");
@@ -317,6 +408,21 @@ mc_file :: (st: [] McState, path: string, found: bool, content: string) {
   if found { c = json_raw(cr, c, ",\"bytes\":"); c = json_write_int(cr, c, content.count); c = json_raw(cr, c, "}"); }
   else { c = json_raw(cr, c, ",\"missing\":"); c = mc_write_cut(cr, c, content, 300, 0); c = json_raw(cr, c, "}"); }
   x := mc_result_end(st, n, c);
+}
+
+// A view the step's budget had no room for: not read, and the model told how to get it.
+mc_file_held :: (st: [] McState, path: string) {
+  at := mc_result_start(st);
+  if at < 0 { return; }
+  ws: [2] int;
+  for w: 0..<2 {
+    room := ifx w == 0 then mc_room(st) else mc_croom(st);
+    n := json_raw(room, ifx w == 0 then at else mc_cresult_start(st), "{\"view\":");
+    n = mc_write_cut(room, n, path, 1000, 0);
+    n = json_raw(room, n, ",\"held\":\"not read: "); n = mc_esc(room, n, MC_HELD); n = json_raw(room, n, "; view it in a later step\"}");
+    ws[w] = n;
+  }
+  x := mc_result_end(st, ws[0], ws[1]);
 }
 
 // A note for the next step (a reply that failed the schema, commands refused).
@@ -363,6 +469,13 @@ mc_state_json :: (st: [] McState, out: [] u8) -> string {
 }
 
 // ---------------------------------------------------------------- checks
+
+mc_count :: (text: string, needle: string) -> int {
+  n := 0;
+  if needle.count == 0 || needle.count > text.count { return 0; }
+  for i: 0..<text.count - needle.count + 1 { if cast(string) text[i..<i + needle.count] == needle { n += 1; } }
+  return n;
+}
 
 McStateTest :: struct { b: [1] McStateBuffers; out: [MC_PROMPT_BYTES] u8; }
 
@@ -515,19 +628,99 @@ mc_through_earlier :: (j: string) -> int {
   #assert json_valid(j) && cl_int(j, "actions.0.step").value == 4;
 }
 
-#test "a view too large for what is left of the log is noted, and the step goes on" #steps 80000000 {
+#test "one step's results stay within its budget: a view is cut at a line's end, later ones held back, and the step goes on" #steps 120000000 {
   t: [1] McStateTest; st: [1] McState;
   mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
   mc_action_begin(st[..], "view a lot");
-  for i: 0..<MC_PROMPT_BYTES { t[0].out[i] = 'q'; }
+  for i: 0..<MC_PROMPT_BYTES { t[0].out[i] = ifx i % 64 == 63 then '\n' else 'q'; }
   for k: 0..<7 { mc_file(st[..], "big", true, cast(string) t[0].out[0..<65536]); }
+  mc_file_held(st[..], "later.txt");
   mc_action_command(st[..], "true", 0, false, "");
+  #assert st[0].nlog - st[0].results_at <= MC_STEP_BUDGET + 2048;
   mc_action_end(st[..]);
   j := mc_state_json(st[..], t[0].out[..]);
-  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  #assert json_valid(j) && cl_count(cl_raw(j, "actions.0.results")) == 8;
-  #assert cl_str(ar[..], j, "actions.0.results.6.missing") == "too large to show with this step's other results: read parts of it with a command";
-  #assert cl_str(ar[..], j, "actions.0.results.7.command") == "true";
+  ab: [40000] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && cl_count(cl_raw(j, "actions.0.results")) == 9;
+  first := cl_str(ar[..], j, "actions.0.results.0.content");
+  #assert first.count > 30000 && mc_count(first, "[... the rest held back: this step's results reached their 32 KB") == 1;
+  #assert mc_count(first, "q\n[... the rest held back") == 1;      // cut at a line's end
+  ar[0].at = 0;
+  #assert cl_str(ar[..], j, "actions.0.results.6.content") == "[... the rest held back: this step's results reached their 32 KB; view it again from here in a later step]";
+  ar[0].at = 0;
+  #assert cl_str(ar[..], j, "actions.0.results.7.held") == "not read: this step's results reached their 32 KB; view it in a later step";
+  ar[0].at = 0;
+  #assert cl_str(ar[..], j, "actions.0.results.8.command") == "true" && cl_int(j, "actions.0.results.0.bytes").ok == false;
+  // compacted: each view keeps its size, the held one its note
+  mc_compact(st[..], 0);
+  j = mc_state_json(st[..], t[0].out[..]);
+  ar[0].at = 0;
+  #assert json_valid(j) && cl_int(j, "earlier.0.results.0.bytes").value == 65536 && cl_str(ar[..], j, "earlier.0.results.7.view") == "later.txt";
+}
+
+#test "commands share the step's budget: the first outputs whole, then cut with a line that says why, then held back" #steps 120000000 {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  big: [12000] u8; for i: 0..<big.count { big[i] = cast(u8) ('a' + i % 26); }
+  mc_action_begin(st[..], "run a lot");
+  for k: 0..<5 { mc_action_command(st[..], "make", 0, false, cast(string) big[..]); }
+  #assert st[0].nlog - st[0].results_at <= MC_STEP_BUDGET + 512;
+  mc_action_end(st[..]);
+  j := mc_state_json(st[..], t[0].out[..]);
+  ab: [40000] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && cl_str(ar[..], j, "actions.0.results.1.output") == cast(string) big[..];
+  ar[0].at = 0; third := cl_str(ar[..], j, "actions.0.results.2.output");
+  #assert third.count > 4000 && third.count < 9000 && mc_count(third, "bytes held back: this step's results reached their 32 KB") == 1;
+  #assert third[0] == 'a' && third[third.count - 1] == big[big.count - 1];
+  ar[0].at = 0; last := cl_str(ar[..], j, "actions.0.results.4.output");
+  #assert last == "[... 12000 bytes held back: this step's results reached their 32 KB; ask for less at once, or run it again in a later step]";
+  // escaped bytes count: an output of quotes takes twice its size
+  q: [20000] u8; for i: 0..<q.count { q[i] = '"'; }
+  mc_action_begin(st[..], "quotes");
+  mc_action_command(st[..], "cat q", 0, false, cast(string) q[0..<6000]);
+  mc_action_command(st[..], "cat q", 0, false, cast(string) q[0..<6000]);
+  mc_action_command(st[..], "cat q", 0, false, cast(string) q[0..<6000]);
+  #assert st[0].nlog - st[0].results_at <= MC_STEP_BUDGET + 512 && st[0].nlog - st[0].results_at > MC_STEP_BUDGET - 2048;
+  mc_action_end(st[..]);
+  #assert mc_step_left(st[..]) == MC_STEP_BUDGET;
+}
+
+#test "an applied edit shows its new text and lines, a failed one its nearest region; compacted, only the lines stay" {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  mc_action_begin(st[..], "edit");
+  mc_action_edit_shown(st[..], "a.c", true, "", 10, 12, "    10\tint x;\n    11\tint y = 2;\n    12\t}\n");
+  mc_action_edit_shown(st[..], "b.c", false, "the old text is not in the file", 3, 9, "     3\tvoid f() {\n");
+  mc_action_edit(st[..], "c.c", true, "");
+  mc_action_end(st[..]);
+  j := mc_state_json(st[..], t[0].out[..]);
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && cl_str(ar[..], j, "actions.0.results.0.now") == "    10\tint x;\n    11\tint y = 2;\n    12\t}\n";
+  ar[0].at = 0;
+  #assert cl_str(ar[..], j, "actions.0.results.0.lines") == "10-12" && cl_str(ar[..], j, "actions.0.results.1.nearest") == "     3\tvoid f() {\n";
+  #assert cl_raw(j, "actions.0.results.1.lines").count == 0 && cl_raw(j, "actions.0.results.2.now").count == 0 && cl_bool(j, "actions.0.results.2.applied").value;
+  mc_compact(st[..], 0);
+  j = mc_state_json(st[..], t[0].out[..]);
+  ar[0].at = 0;
+  #assert json_valid(j) && cl_str(ar[..], j, "earlier.0.results.0.lines") == "10-12" && cl_raw(j, "earlier.0.results.0.now").count == 0 && cl_raw(j, "earlier.0.results.1.nearest").count == 0;
+  // a step whose budget is spent holds the text back and says so
+  mc_action_begin(st[..], "full");
+  big: [40000] u8; for i: 0..<big.count { big[i] = 'z'; }
+  mc_action_command(st[..], "cat z", 0, false, cast(string) big[0..<12000]);
+  mc_action_command(st[..], "cat z", 0, false, cast(string) big[0..<12000]);
+  mc_action_command(st[..], "cat z", 0, false, cast(string) big[0..<9000]);
+  mc_action_edit_shown(st[..], "a.c", true, "", 1, 40, cast(string) big[0..<3000]);
+  mc_action_end(st[..]);
+  j = mc_state_json(st[..], t[0].out[..]);
+  ar[0].at = 0;
+  #assert json_valid(j) && cl_str(ar[..], j, "actions.0.results.3.now") == "[held back: this step's results reached their 32 KB; view the file in a later step]";
+}
+
+#test "fitting a head and a tail: escaped bytes, on a character boundary, at a line's end when one is near" {
+  #assert mc_fit_head("abcdef", 4) == 4 && mc_fit_head("ab\ncdef", 6) == 3 && mc_fit_head("\"\"\"\"", 5) == 2 && mc_fit_head("abc", 10) == 3;
+  #assert mc_fit_tail("abcdef", 4) == 2 && mc_fit_tail("abcd\nef", 5) == 5 && mc_fit_tail("abc", 10) == 0;
+  eb := [4] u8.['x', 0xC3, 0xA9, 'y']; e := cast(string) eb[..];      // xéy
+  #assert mc_fit_head(e, 2) == 1 && mc_fit_tail(e, 2) == 3;
+  #assert mc_escaped_size("a\"b\\c\nd") == 10 && mc_esc_byte(1) == 6;
 }
 
 #test "refused commands, failed edits and missing files are recorded as such" {

@@ -18,7 +18,8 @@
 //        {"kind":"ended","ending":"finished","text":"..."}
 //        {"kind":"embedding","values":[...]} or {"kind":"embedding","error":"..."}
 //
-// Each run's facts carry the earlier turns as "conversation". Credentials as
+// Each run's facts carry the earlier turns as "conversation". A command's long output is saved whole
+// in the folder beside the journal (worker-N.out/RUN-STEP-K.txt), which the run's views may read. Credentials as
 // the desktop Lab reads them (microcoder_keys.coax): into curl's and gcloud's
 // child environments only, never this process's.
 //
@@ -155,6 +156,9 @@ tool_main :: () -> int #export_c #effects(all) {
   if home.count==0 || pn<0 || !fs_mkdir(cast(string)path[0..<pn]) {return 1;}
   jn:=json_raw(jp[..],0,cast(string)path[0..<pn]);jn=json_raw(jp[..],jn,"/worker-");jn=json_write_int(jp[..],jn,cxproc_wall_us());jn=json_raw(jp[..],jn,".ajr");
   if jn<0 || !jf_open(journal[..],cast(string)jp[0..<jn]) {return 1;}
+  // long outputs are saved whole beside the journal, one file each, for the model to view by range (GitHub #13325)
+  spill:[4096]u8;sn:=json_raw(spill[..],0,cast(string)jp[0..<jn-4]);sn=json_raw(spill[..],sn,".out");
+  run[0].spill_dir=ifx sn<0 then "" else cast(string)spill[0..<sn];
   notice:=json_raw(out[..],0,"{\"kind\":\"journal\",\"path\":");notice=json_write_string(out[..],notice,cast(string)jp[0..<jn]);notice=json_raw(out[..],notice,"}");mw_send(out[..],notice);
   running := false;
   mw_send(out[..], json_raw(out[..], 0, "{\"kind\":\"ready\"}"));

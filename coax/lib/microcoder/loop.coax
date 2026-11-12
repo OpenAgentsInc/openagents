@@ -42,7 +42,7 @@ MC_BAD_LIMIT :: 3;
 MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
-MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it whole), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; output cut to its head and tail), then view (files shown whole in this step's results). Do everything you can in each turn; you see all the results in the next.\n- Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), read the lines you need (sed -n 'A,Bp' FILE) rather than view a large file whole, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; a long output is cut to its head and tail, and when it is saved whole the cut line names the file, which you can view by range), then view (each entry PATH, or PATH:A-B for lines A to B; shown as numbered lines, the first 300 or the range asked for, with a line saying which lines are left and how to ask for them). An applied edit's result shows its new text with line numbers, as the file is now; a failed edit's shows the file's nearest lines. Do everything you can in each turn; you see all the results in the next.\n- One step's results take at most about 32 KB of your state: what doesn't fit is held back, and its result says so and how to get it, so ask for what you need rather than everything at once. Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), view the lines you need (FILE:A-B, with the numbers a search or an earlier view gave) rather than a whole large file, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
 
 mc_ending_name :: (e: int) -> string {
   if e == MC_END_FINISHED { return "finished"; }
@@ -95,13 +95,6 @@ mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environmen
 // AF_REQUEST, 256 KB: a longer one fails the run), less room for the system prompt and schema.
 MC_REQUEST_MAX :: 262144;
 MC_REQUEST_ROOM :: 12288;
-
-// The bytes s takes as a JSON string's content (each quote, backslash and control character escaped).
-mc_escaped_size :: (s: string) -> int {
-  n := s.count;
-  for c: s { if c == '"' || c == '\\' || c == 10 || c == 13 || c == 9 || c == 8 || c == 12 { n += 1; } else if c < 32 { n += 5; } }
-  return n;
-}
 
 mc_request :: (l: [] McLoop) -> GwRequest {
   l[0].nr = 0; l[0].got_text = false;
@@ -276,8 +269,10 @@ mc_command :: (l: [] McLoop, command: string, exit: int, timed_out: bool, output
 }
 
 // An edit's result: applied, or why not.
-mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) {
-  mc_action_edit(l[0].st[..], path, ok, why);
+mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) { mc_edited_shown(l, path, ok, why, 0, 0, ""); }
+// The same with what it shows (tools.coax McEditResult): the new text, lines from..to, or the nearest region.
+mc_edited_shown :: (l: [] McLoop, path: string, ok: bool, why: string, from: int, to: int, shown: string) {
+  mc_action_edit_shown(l[0].st[..], path, ok, why, from, to, shown);
   if ok { mc_check_edited(l[0].check[..]); }
 }
 
@@ -362,10 +357,15 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   // quote-heavy outputs: each byte doubles inside the request
   q: [65000] u8; for i: 0..<q.count { q[i] = '"'; }
   mc_action_begin(l[0].st[..], "small"); mc_action_command(l[0].st[..], "true", 0, false, ""); mc_action_end(l[0].st[..]);
-  mc_action_begin(l[0].st[..], "q");
-  mc_file(l[0].st[..], "q", true, cast(string) q[..]);
-  mc_action_command(l[0].st[..], "cat q", 0, false, cast(string) q[0..<12000]);
-  mc_action_end(l[0].st[..]);
+  // each step fills its budget (32 KB in the log), and each byte of it doubles again inside the request
+  for k: 0..<4 {
+    mc_action_begin(l[0].st[..], "q");
+    mc_file(l[0].st[..], "q", true, cast(string) q[0..<8000]);
+    mc_action_command(l[0].st[..], "cat q", 0, false, cast(string) q[0..<6000]);
+    mc_action_command(l[0].st[..], "cat q", 0, false, cast(string) q[0..<6000]);
+    mc_action_end(l[0].st[..]);
+  }
+  #assert l[0].st[0].nearly == 0;
   before := l[0].st[0].nearly;
   req := mc_request(l[..]);
   #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
@@ -437,8 +437,15 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
 
 #test "the system prompt tells the model how its state forgets, and what stays" {
   #assert ps_count(MC_SYSTEM, "about 140 KB of recent results") == 1 && ps_count(MC_SYSTEM, "only the names of the files it viewed") == 1;
-  #assert ps_count(MC_SYSTEM, "in that step's rationale, which stays") == 1 && ps_count(MC_SYSTEM, "sed -n 'A,Bp' FILE") == 1;
+  #assert ps_count(MC_SYSTEM, "in that step's rationale, which stays") == 1 && ps_count(MC_SYSTEM, "sed -n") == 0 && ps_count(MC_SYSTEM, "view the lines you need (FILE:A-B") == 1;
   #assert MC_LOG_BYTES >= 140 * 1024 && MC_LOG_BYTES < 150 * 1024 && MC_BRIEF_RATIONALE >= 1000;     // what it says is so
+  #assert ps_count(MC_SYSTEM, "at most about 32 KB of your state") == 1 && MC_STEP_BUDGET == 32768;
+}
+
+#test "the system prompt says how views, long outputs and edit results look" {
+  #assert ps_count(MC_SYSTEM, "PATH:A-B for lines A to B; shown as numbered lines, the first 300") == 1;
+  #assert ps_count(MC_SYSTEM, "when it is saved whole the cut line names the file, which you can view by range") == 1;
+  #assert ps_count(MC_SYSTEM, "An applied edit's result shows its new text with line numbers") == 1 && ps_count(MC_SYSTEM, "a failed edit's shows the file's nearest lines") == 1;
 }
 
 #test "'what is 2+2' finishes in one step with no commands" {
