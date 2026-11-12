@@ -18,11 +18,21 @@
 // session.error) and ends with {"t":"done",...}; a {"t":"stop"} ends the turn.
 // Build: coax c chat.coax, then cc with coax/platform/process-native.c,
 // engine-io.c and confine-native.c (coax/web/agent/Dockerfile).
+//
+// With an indexed repo (the turn line's "repo": {name, at, mirror}; docs/repos/
+// 2026-11-11-indexed-repos.md, GitHub #13326) there is no checkout. The model
+// gets the repo tools instead of Read, Glob and Grep, served in process (SDK
+// MCP server "repo"): tree, read, find, search, log, show, diff and blame,
+// each answered by coax/lib/repo against the mirror at one commit, resolved
+// once as the turn starts so every answer of the turn reads the same code.
+// The tools take no path outside the repository (rules.coax decides), run no
+// command, and write nothing.
 
 #import "Basic";
 #load "../../lib/agent/claude/claude.coax";
 #load "../../lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "confine-host.coax";
+#load "../../lib/repo/repo.coax";   // the indexed repo's read operations (docs/repos/, #13326)
 
 eio_read_line :: (timeout_ms: int) -> int #foreign #effects(all);
 eio_line_byte :: (i: int) -> int #foreign #effects(all);
@@ -88,6 +98,56 @@ ch_shown :: (path: string, cwd: string) -> string {
   return path;
 }
 
+// The repo tools: their names, what the model is told, and their inputs. A tool's place here is its
+// operation less one (RP_TREE is 2): resolve is the engine's own, done once a turn.
+REPO_TOOLS :: [8] string.["tree", "read", "find", "search", "log", "show", "diff", "blame"];
+REPO_ABOUT :: [8] string.[
+  "List a directory of the repository: each entry's kind (d directory, f file with its size in bytes, l link, m submodule) and path. depth lists that many levels (1 to 6).",
+  "Read files of the repository as numbered lines. paths is one path, or several on separate lines (up to 16). For one file, from and to give a line range. A long file is cut and says which line to continue from.",
+  "Find paths by a glob: * within a name, ? one character, ** across directories. A glob with no slash matches file names at any depth (\"*.coax\").",
+  "Search file contents. pattern is literal text unless regex is true (extended regular expressions). paths limits the search to those files or directories, one a line. context adds lines around each match (0 to 5). Answers are path:line:text.",
+  "List recent commits, newest first: id, date, author and subject. path limits them to commits that changed that file or directory. n is how many (up to 50).",
+  "Show one commit: its message, the files it changed and its diff. commit is a full id from log, or a branch or tag name. With none, the commit this turn reads.",
+  "Show what differs between the commit this turn reads and another (a full id, a branch or a tag), optionally for one path.",
+  "Show who last changed each line of a range of a file, and in which commit. from and to are line numbers (at most 200 lines)."];
+REPO_SCHEMA :: [8] string.[
+  "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A directory, relative to the repository's top. Empty for the top.\"},\"depth\":{\"type\":\"integer\"}}}",
+  "{\"type\":\"object\",\"properties\":{\"paths\":{\"type\":\"string\"},\"from\":{\"type\":\"integer\"},\"to\":{\"type\":\"integer\"}},\"required\":[\"paths\"]}",
+  "{\"type\":\"object\",\"properties\":{\"glob\":{\"type\":\"string\"}},\"required\":[\"glob\"]}",
+  "{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"regex\":{\"type\":\"boolean\"},\"ignore_case\":{\"type\":\"boolean\"},\"paths\":{\"type\":\"string\"},\"context\":{\"type\":\"integer\"}},\"required\":[\"pattern\"]}",
+  "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"n\":{\"type\":\"integer\"}}}",
+  "{\"type\":\"object\",\"properties\":{\"commit\":{\"type\":\"string\"}}}",
+  "{\"type\":\"object\",\"properties\":{\"other\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"}},\"required\":[\"other\"]}",
+  "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"from\":{\"type\":\"integer\"},\"to\":{\"type\":\"integer\"}},\"required\":[\"path\",\"from\",\"to\"]}"];
+// A repo tool's call as a request: its operation, and the fields its input names.
+ch_repo_request :: (ar: [] ClArena, tool: int, commit: string, input: string) -> RpRequest {
+  q := RpRequest.{op = tool + 2, at = commit};
+  whole := cl_int(input, "from"); if whole.ok { q.from = whole.value; }
+  whole = cl_int(input, "to"); if whole.ok { q.to = whole.value; }
+  whole = cl_int(input, "n"); if whole.ok { q.n = whole.value; }
+  whole = cl_int(input, "depth"); if whole.ok { q.depth = whole.value; }
+  whole = cl_int(input, "context"); if whole.ok { q.context = whole.value; }
+  q.regex = cl_raw(input, "regex") == "true"; q.fold = cl_raw(input, "ignore_case") == "true";
+  q.pattern = cl_str(ar, input, "pattern");
+  q.path = cl_str(ar, input, ifx q.op == RP_READ || q.op == RP_SEARCH then "paths" else ifx q.op == RP_FIND then "glob" else "path");
+  q.other = cl_str(ar, input, ifx q.op == RP_SHOW then "commit" else "other");
+  return q;
+}
+// What the page shows for a repo tool's call: the path, glob, pattern or commit it names.
+ch_repo_detail :: (q: RpRequest) -> string {
+  if q.op == RP_SEARCH { return q.pattern; }
+  if q.op == RP_SHOW || q.op == RP_DIFF { return ifx q.other.count > 0 then q.other else q.path; }
+  return q.path;
+}
+// The repo tool an SDK tool name is ("mcp__repo__read" is 1), or -1.
+ch_repo_tool :: (name: string) -> int {
+  if !ch_starts(name, "mcp__repo__") { return -1; }
+  short := cast(string) name[11..<name.count];
+  tools := REPO_TOOLS;
+  for k: 0..<tools.count { if tools[k] == short { return k; } }
+  return -1;
+}
+
 READ_TOOLS :: [3] string.["Read", "Glob", "Grep"];
 WEB_TOOLS :: [2] string.["WebSearch", "WebFetch"];
 DENIED :: [8] string.["Bash", "Edit", "Write", "NotebookEdit", "Task", "Agent", "TodoWrite", "KillShell"];
@@ -98,6 +158,11 @@ ch_may :: (tool: string, confined: int) -> bool {
   for name: WEB_TOOLS { if name == tool { return true; } }
   for name: READ_TOOLS { if name == tool { return confined == CF_OK; } }
   return false;
+}
+// The same with an indexed repo: the web tools and the repo tools, and no file tool at all.
+ch_may_repo :: (tool: string) -> bool {
+  for name: WEB_TOOLS { if name == tool { return true; } }
+  return ch_repo_tool(tool) >= 0;
 }
 
 // A tool call's input against the checkout: CF_OK, or why not. Edit and Write are never offered here.
@@ -125,6 +190,8 @@ ch_expired :: (text: string) -> bool {
 }
 
 SYSTEM :: "You are the OpenAgents agent on openagents.com/chat, talking with one of the OpenAgents team. Answer general questions plainly and accurately.\n\nYour working directory is a read-only checkout of the public OpenAgents repository (github.com/OpenAgentsInc/openagents), main, refreshed for this turn. When a question is about OpenAgents, Coax, Verse, the website or this repository, look in the checkout with Read, Glob and Grep before answering, and name the files you used as paths relative to the checkout (for example coax/web/release.sh), with line numbers when they help. You can also search and fetch the web. You cannot change files, run commands or start other agents: those tools are refused.\n\nWrite in Markdown: short paragraphs, lists where they help, and fenced code blocks for code. Be concise.";
+
+SYSTEM_REPO :: "You are the OpenAgents agent on openagents.com/chat, talking with one of the OpenAgents team. Answer general questions plainly and accurately.\n\nYou can read the public OpenAgents repository (github.com/OpenAgentsInc/openagents) through the repo tools: tree, read, find, search, log, show, diff and blame. Every tool reads the one commit named below, so what you see doesn't change during this turn. When a question is about OpenAgents, Coax, Verse, the website or this repository, look with those tools before answering: search or find first, then read the lines that matter, several files in one read when you can. Name the files you used as paths with line numbers (for example coax/web/release.sh#L10-L42), and say which commit you read when it matters. You can also search and fetch the web. You cannot change files, run commands or start other agents: those tools are refused.\n\nWrite in Markdown: short paragraphs, lists where they help, and fenced code blocks for code. Be concise.";
 
 ch_working :: (buf: [] u8, verb: string, what: string) {
   wb: [600] u8; w: [1] ClOut; w[0].buf = wb[..];
@@ -159,14 +226,35 @@ main :: () {
   session := cl_str(targ[..], line, "session_id");
   budget := cl_num(line, "budget_usd").value;
   if text.count == 0 { ch_done(out[..], "failed", "", "the turn has no message", 0.0, false); return; }
+  // an indexed repo: its mirror, and the commit this turn reads, resolved once
+  mirror_dir := cl_str(targ[..], line, "repo.mirror");
+  repo_name := cl_str(targ[..], line, "repo.name");
+  repo_at := cl_str(targ[..], line, "repo.at");
+  indexed := mirror_dir.count > 0;
+  mirror := RpMirror.{git = "git", dir = mirror_dir};
+  commit_buf: [40] u8;
+  if indexed {
+    if repo_at.count == 0 { repo_at = "main"; }
+    fresh := rp_mirror_fetch(mirror);   // a mirror that can't be fetched just now is read as it is
+    if !rp_resolve_into(mirror, repo_at, commit_buf[..]) { ch_done(out[..], "failed", "", "We couldn't read our copy of the code. Send your message again in a minute.", 0.0, false); return; }
+  }
+  commit := cast(string) commit_buf[..];
   // the checkout, held open for the file tools' checks, and swept for links first
-  root := cf_open_root(cwd);
-  if root < 0 { ch_done(out[..], "failed", "", "the agent could not open the checkout", 0.0, false); return; }
-  if cf_sweep_checkout(root) != CF_OK { ch_done(out[..], "failed", "", "the checkout has a symbolic link, a hard link or a special file", 0.0, false); return; }
+  root := ifx indexed then -1 else cf_open_root(cwd);
+  if !indexed {
+    if root < 0 { ch_done(out[..], "failed", "", "the agent could not open the checkout", 0.0, false); return; }
+    if cf_sweep_checkout(root) != CF_OK { ch_done(out[..], "failed", "", "the checkout has a symbolic link, a hard link or a special file", 0.0, false); return; }
+  }
 
   sys_buf: [8192] u8; sys: [1] ClOut; sys[0].buf = sys_buf[..];
-  cl_put(sys[..], SYSTEM);
-  cl_put(sys[..], "\n\nThe checkout: "); cl_put(sys[..], cwd);
+  if indexed {
+    cl_put(sys[..], SYSTEM_REPO);
+    cl_put(sys[..], "\n\nThe repository: "); cl_put(sys[..], repo_name); cl_put(sys[..], ", "); cl_put(sys[..], repo_at);
+    cl_put(sys[..], " at commit "); cl_put(sys[..], commit); cl_put(sys[..], ".");
+  } else {
+    cl_put(sys[..], SYSTEM);
+    cl_put(sys[..], "\n\nThe checkout: "); cl_put(sys[..], cwd);
+  }
   cl_put(sys[..], "\nToday is "); cl_put(sys[..], cl_str(targ[..], line, "today")); cl_put(sys[..], " (Chicago).\n");
 
   // The prompt: this message, after the conversation so far when its session could not be resumed.
@@ -196,9 +284,21 @@ main :: () {
   o[0].model = ifx model.count > 0 then model else "claude-opus-5-5";
   o[0].system_prompt = cast(string) sys_buf[0..<sys[0].len];
   o[0].tools_set = true;
-  for name: READ_TOOLS { cl_add_tool(o[..], name); }
+  if !indexed { for name: READ_TOOLS { cl_add_tool(o[..], name); } }
   for name: WEB_TOOLS { cl_add_tool(o[..], name); }
   for name: DENIED { cl_add_disallowed(o[..], name); }
+  repo_names: [8 * 32] u8;
+  if indexed {
+    for name: READ_TOOLS { cl_add_disallowed(o[..], name); }   // there is no checkout to read
+    srv := cl_add_server(o[..], "repo", "1.0.0");
+    tools := REPO_TOOLS; about := REPO_ABOUT; schema := REPO_SCHEMA;
+    for k: 0..<tools.count {
+      added := cl_add_server_tool(o[..], srv, tools[k], about[k], schema[k]);
+      w: [1] ClOut; w[0].buf = repo_names[k * 32..<(k + 1) * 32];
+      cl_put(w[..], "mcp__repo__"); cl_put(w[..], tools[k]);
+      cl_add_allowed(o[..], cast(string) repo_names[k * 32..<k * 32 + w[0].len]);
+    }
+  }
   o[0].permission_handler = true;
   cl_add_hook(o[..], "PreToolUse", "", 0.0);   // every tool call, even one the CLI would allow by itself
   o[0].max_turns = 30;
@@ -227,6 +327,7 @@ main :: () {
   cost := 0.0; status := "failed"; err := "the agent stopped before it finished";
   expired := false;
   mar: [262144] u8; marg: [1] ClArena; marg[0].buf = mar[..];
+  repo_work: [RP_FILE_MOST] u8; repo_out: [RP_ANSWER] u8;
   ans_buf: [ANSWER_MAX] u8; ans_n := 0;
   err_buf: [2000] u8;
   stopped := false;
@@ -237,9 +338,25 @@ main :: () {
     ev := one[0];
     if ev.kind == ClEventKind.end { break; }
     if ev.kind == ClEventKind.failed { err = cl_error(q); break; }
+    if ev.kind == ClEventKind.tool_call {
+      // a repo tool: answered here, from the mirror, at this turn's commit
+      marg[0].at = 0; marg[0].full = false;
+      rq := ch_repo_request(marg[..], ev.tool, commit, ev.arguments);
+      tools := REPO_TOOLS;
+      ch_tool(out[..], tools[ev.tool], ch_repo_detail(rq));
+      ch_working(out[..], ifx rq.op == RP_READ then "reading " else ifx rq.op == RP_SEARCH then "searching for " else ifx rq.op == RP_FIND then "looking for " else "looking at ", ch_repo_detail(rq));
+      ra := rp_call(mirror, rq, repo_work[..], repo_out[..]);
+      if ra.ok { cl_tool_text(q, cast(string) repo_out[0..<ra.n], false); }
+      else { cl_tool_text(q, ra.error, true); }
+      continue;
+    }
     if ev.kind == ClEventKind.hook {
       marg[0].at = 0; marg[0].full = false;
       tool := cl_str(marg[..], ev.arguments, "tool_name");
+      if indexed {   // no file tool is offered: the repo tools and the web pass, anything else is refused
+        if ch_may_repo(tool) { cl_hook_answer(q, "{}"); } else { ch_event(out[..], "session.error", "error", "a tool outside the repo tools was refused"); ch_hook(q, CF_OUTSIDE); }
+        continue;
+      }
       v := ch_confined(marg[..], root, cwd, tool, cl_raw(ev.arguments, "tool_input"));
       if v != CF_OK { ch_event(out[..], "session.error", "error", cf_reason(v)); }
       ch_hook(q, v);
@@ -250,7 +367,8 @@ main :: () {
       marg[0].at = 0; marg[0].full = false;
       path := cl_str(marg[..], ev.request.input, "file_path");
       if path.count == 0 { path = cl_str(marg[..], ev.request.input, "path"); }
-      if ch_may(tool, ch_confined(marg[..], root, cwd, tool, ev.request.input)) { cl_allow(q, ev.request.input, ""); }
+      if indexed && ch_may_repo(tool) { cl_allow(q, ev.request.input, ""); }
+      else if !indexed && ch_may(tool, ch_confined(marg[..], root, cwd, tool, ev.request.input)) { cl_allow(q, ev.request.input, ""); }
       else {
         cl_deny(q, "Refused: only Read, Glob and Grep inside the checkout, WebSearch and WebFetch are allowed here.", false);
         wb: [400] u8; w: [1] ClOut; w[0].buf = wb[..];
@@ -271,6 +389,7 @@ main :: () {
       if part.kind == P_TEXT { ch_event(out[..], "agent.message", "text", ifx nw.text.count > 4000 then nw.text[0..<4000] else nw.text); }
       else if part.kind == P_TOOL {
         name := part.name;
+        if ch_repo_tool(name) >= 0 { continue; }   // a repo tool's call was said when it was answered
         if name == "WebSearch" {
           query := cl_str(marg[..], part.input, "query");
           ch_tool(out[..], name, query); ch_working(out[..], "searching the web for ", query);
@@ -307,7 +426,7 @@ main :: () {
       }
     }
   }
-  cr := cfn_close(root);
+  if root >= 0 { cr := cfn_close(root); }
   if stopped { r := cl_kill(proc); ch_done(out[..], "stopped", "", "", cost, false); return; }
   ch_done(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
 }
@@ -319,6 +438,33 @@ main :: () {
   #assert ch_may("WebSearch", CF_OK) && ch_may("WebFetch", CF_OK);
   #assert !ch_may("Bash", CF_OK) && !ch_may("Edit", CF_OK) && !ch_may("Write", CF_OK);
   #assert !ch_may("Task", CF_OK) && !ch_may("mcp__x__y", CF_OK);
+}
+
+#test "with an indexed repo: the repo tools and the web pass, file tools and everything else don't" {
+  #assert ch_may_repo("mcp__repo__read") && ch_may_repo("mcp__repo__search") && ch_may_repo("mcp__repo__blame") && ch_may_repo("WebSearch") && ch_may_repo("WebFetch");
+  #assert !ch_may_repo("Read") && !ch_may_repo("Grep") && !ch_may_repo("Bash") && !ch_may_repo("Edit") && !ch_may_repo("mcp__repo__push") && !ch_may_repo("mcp__other__read") && !ch_may_repo("mcp__repo__");
+  #assert ch_repo_tool("mcp__repo__tree") == 0 && ch_repo_tool("mcp__repo__read") == 1 && ch_repo_tool("mcp__repo__blame") == 7 && ch_repo_tool("read") == -1;
+}
+
+#test "a repo tool's call becomes a request at the turn's commit, and nothing the model sends picks another repository or mirror" {
+  ab: [4096] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  c := "0123456789abcdef0123456789abcdef01234567";
+  q := ch_repo_request(ar[..], 1, c, "{\"paths\":\"a.md\\nb/c.coax\",\"from\":3,\"to\":9,\"at\":\"other\",\"mirror\":\"/etc\"}");
+  #assert q.op == RP_READ && q.at == c && q.path == "a.md\nb/c.coax" && q.from == 3 && q.to == 9;
+  q = ch_repo_request(ar[..], 3, c, "{\"pattern\":\"wc_ask\",\"regex\":true,\"ignore_case\":true,\"paths\":\"apps\",\"context\":2}");
+  #assert q.op == RP_SEARCH && q.pattern == "wc_ask" && q.regex && q.fold && q.path == "apps" && q.context == 2 && ch_repo_detail(q) == "wc_ask";
+  q = ch_repo_request(ar[..], 2, c, "{\"glob\":\"*.coax\"}");
+  #assert q.op == RP_FIND && q.path == "*.coax" && !q.regex && ch_repo_detail(q) == "*.coax";
+  q = ch_repo_request(ar[..], 5, c, "{\"commit\":\"main\"}");
+  #assert q.op == RP_SHOW && q.other == "main" && ch_repo_detail(q) == "main";
+  q = ch_repo_request(ar[..], 6, c, "{\"other\":\"v1\",\"path\":\"docs\"}");
+  #assert q.op == RP_DIFF && q.other == "v1" && q.path == "docs";
+  q = ch_repo_request(ar[..], 0, c, "{}");
+  #assert q.op == RP_TREE && q.path == "" && q.depth == 0;
+  q = ch_repo_request(ar[..], 7, c, "{\"path\":\"a.md\",\"from\":1,\"to\":4}");
+  #assert q.op == RP_BLAME && q.path == "a.md" && q.to == 4;
+  q = ch_repo_request(ar[..], 4, c, "{\"n\":5}");
+  #assert q.op == RP_LOG && q.n == 5;
 }
 
 #test "an expired subscription token is told apart" {

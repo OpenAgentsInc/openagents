@@ -66,6 +66,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -393,6 +394,14 @@ static bool engine_start(engine *e, const char *dir, const char *home) {
   if (e->pid == 0) {
     setpgid(0, 0);   // its own group: STOP and timeouts end the CLI with it
     if (chdir(dir)) _exit(127);
+    // The engine keeps its buffers in locals, as Coax programs do (a file read through the repo tools is up
+    // to 4 MB): it gets a 64 MB stack, or as much as the system allows.
+    struct rlimit stack;
+    if (!getrlimit(RLIMIT_STACK, &stack)) {
+      rlim_t want = (rlim_t)64 << 20;
+      stack.rlim_cur = stack.rlim_max == RLIM_INFINITY || stack.rlim_max > want ? want : stack.rlim_max;
+      setrlimit(RLIMIT_STACK, &stack);
+    }
     dup2(a[0], 0); dup2(b[1], 1); close(a[1]); close(b[0]);
     char key[600], h[600], model[200], cfg[1000];
     snprintf(key, sizeof key, "%s=%s", engine_cred_name, engine_cred);   // one credential, never both

@@ -193,7 +193,13 @@ static void credential(int fd, const char *body) {
 }
 
 // ---- the workspace
+// An indexed repo's mirror (OA_REPO_MIRROR, a bare git repository; docs/repos/2026-11-11-indexed-repos.md,
+// #13326): with one, the agent reads the repository through the repo tools at an exact commit, and a turn
+// has no checkout to make or refresh. Its working directory is then an empty one that stays the same from
+// turn to turn, so the CLI finds the conversation's session again.
+static const char *chat_mirror(void) { return env("OA_REPO_MIRROR", ""); }
 static const char *chat_repo_dir(char *out, size_t cap) {
+  if (*chat_mirror()) { snprintf(out, cap, "%s/chat-space", env("OA_AGENT_WORK", "/tmp/oa-agent")); mkdir(env("OA_AGENT_WORK", "/tmp/oa-agent"), 0700); mkdir(out, 0700); return out; }
   const char *d = env("OA_CHAT_DIR", "");
   if (*d) snprintf(out, cap, "%s", d); else snprintf(out, cap, "%s/chat-repo", env("OA_AGENT_WORK", "/tmp/oa-agent"));
   return out;
@@ -441,7 +447,7 @@ static void chat_turn(const char *next) {
   snprintf(dir, sizeof dir, "%s/chat-%lld-%d", env("OA_AGENT_WORK", "/tmp/oa-agent"), id, (int)getpid());
   snprintf(home, sizeof home, "%s/home", dir); snprintf(cfg, sizeof cfg, "%s/cfg", dir);
   if (!uuid_ok(sid)) { chat_end(id, "failed", "\"\"", "\"the conversation has no session\"", 0, false); goto out; }
-  {
+  if (!*chat_mirror()) {
     // the page's status line while the copy refreshes
     text eb = {0}, eo = {0};
     putf(&eb, "{\"turn\":%lld,\"events\":[{\"type\":\"working\",\"data\":{\"text\":\"getting the latest code\"}}]}", id);
@@ -475,6 +481,7 @@ static void chat_turn(const char *next) {
     putf(&first, "{\"t\":\"turn\",\"mode\":\"chat\",\"turn\":%s,\"model\":\"%s\",\"budget_usd\":%.4f,\"%s\":\"%s\",\"history\":%s,\"cwd\":",
          turn_json, chat_model(model), budget > 0 ? budget : (atof(cap) > 0 ? 0.0001 : 0), resumed ? "resume" : "session_id", sid, resumed ? "[]" : history);
     putq(&first, repo);
+    if (*chat_mirror()) { putf(&first, ",\"repo\":{\"name\":\"openagents\",\"at\":\"main\",\"mirror\":"); putq(&first, chat_mirror()); putf(&first, "}"); }
     char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
     putf(&first, ",\"today\":\"%s\",\"workspace\":{\"kind\":\"chat\",\"budget\":\"chat\",\"tools\":[\"web\"],\"write\":false}}", today);
     engine_bin = env("OA_CHAT_ENGINE", "/usr/local/bin/oa-chat-turn");

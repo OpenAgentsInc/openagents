@@ -197,12 +197,20 @@ if [[ $serve == 1 ]]; then
     $cc -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" -o "$work/oa-chat-turn" "$work/chat-engine.c" \
       "$repo_root/coax/platform/process-native.c" "$here/../agent/engine-io.c" "$here/../agent/confine-native.c" -lm
     common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
+    # An indexed repo for the agent to read (docs/repos/2026-11-11-indexed-repos.md, #13326): a bare mirror of
+    # this repository that borrows the checkout's objects, so it is made at once and takes no disk. With it a
+    # turn makes no checkout. OA_SERVE_NO_MIRROR=1 leaves it out, and the agent reads a checkout as before.
+    mirror=""
+    if [[ -z "${OA_SERVE_NO_MIRROR:-}" ]]; then
+      mirror="$work/mirrors/openagents.git"; mkdir -p "$work/mirrors"
+      git clone --quiet --bare --shared "$(dirname "$common")" "$mirror"
+    fi
     env -i HOME="$HOME" PATH="$(dirname "$claude_bin"):/opt/homebrew/bin:/usr/bin:/bin" \
       OA_API_ORIGIN="$api_origin" OA_RUNNER_KEY="$(cat "$RUN_KEY_FILE")" OA_CHAT_SEAL_KEY="$(openssl rand -hex 32)" \
       OA_CHAT_ENGINE="$work/oa-chat-turn" OA_CLAUDE="$claude_bin" OA_CHAT_REPO="${OA_SERVE_CHAT_REPO:-file://$(dirname "$common")}" \
-      OA_CHAT_SESSIONS="$work/sessions" OA_AGENT_WORK="$work/agent" OA_GIT="$(command -v git)" \
+      OA_CHAT_SESSIONS="$work/sessions" OA_AGENT_WORK="$work/agent" OA_GIT="$(command -v git)" OA_REPO_MIRROR="$mirror" \
       "$RUNNER_BIN" --listen "127.0.0.1:$CHAT_PORT" 2>"$work/runner.log" & runner_pid=$!
-    echo "serve: /chat's runner is on 127.0.0.1:$CHAT_PORT with $claude_bin (its log: $work/runner.log)"
+    echo "serve: /chat's runner is on 127.0.0.1:$CHAT_PORT with $claude_bin (its log: $work/runner.log)${mirror:+, reading the mirror $mirror}"
   else
     echo "serve: no claude on PATH, so /chat's Claude turns have no runner"
   fi
