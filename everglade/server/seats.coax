@@ -64,7 +64,6 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     if v[0].eg[q].live { continue; }
     v[0].eg[q].initialized=false;v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
     v[0].eg[q].work[0]=WorkBudget.{};
-    v[0].eg[q].effect_known=false;v[0].eg[q].house_free=0;for s:0..<EG_SEATS{v[0].eg[q].effect_free[s]=0;}
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
     for t: 0..<WIRE_SLOTS { v[0].eg[q].fight_t[t] = 0; }
     v[0].eg[q].combat_n = 0;
@@ -75,16 +74,10 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     // so the rules' dice never do (they come from the host's OS random key: rm_dice_draw, #13258)
     v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
     for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
-    for c: 0..<EG_CASTS { v[0].eg[q].casts[c].on = false; }
-    v[0].eg[q].cast_order = 0; v[0].eg[q].hurts[0] = HbBatch.{};
+    v[0].eg[q].hurts[0] = HbBatch.{};
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
-    // v1's town state at rest (Everglade II never sets it; it goes with the seat record trim, #13267)
-    v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
-    for t: 0..<WIRE_TREES { v[0].eg[q].tree_on[t] = false; }
-    v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
+    v[0].eg[q].place_stamp = 0;
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
-    for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
-    for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
     egb_start(v[0].eg[q].rules[..], 1);
     v[0].eg[q].rules[0].b[0].dice[0].state = rm_dice_draw(v);   // never from the seed above (#13258)
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
@@ -171,7 +164,6 @@ eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].familiar_hash=0;
   v[0].eg[k].seat[s].familiar_sense_sent=0;
   ck_capture(v, k, s_id); rv_note_seat(v, k, s_id); v[0].vit.flush = true;
-  for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
   v[0].st.held += 1;
 }
 // Whether seat s's ticket names player pid.

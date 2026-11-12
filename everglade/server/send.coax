@@ -111,17 +111,8 @@ eg_table :: (v: [] RmServer, k: int) {
                                                            owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st[0].fx[c].t0, dur = st[0].fx[c].dur}, wire_rel(WK_EFFECT), true, false);
     }
   }
-  // the town's doors as the world has them, every seat's however far (late joiners' snapshots have them open)
-  wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = rm[0].doors[0], p2 = rm[0].doors[1], form = rm[0].gates}, wire_rel(WK_DOORS), true, false);
-  // the rowboats where the world has them, every seat's (OWNER the rower's seat, -1 moored; P1 the float; P2 the oars' stroke in thousandths, -1 shipped)
-  for b: 0..<EG_BOATS {
-    if !rm[0].boat_on[b] { continue; }
-    wire_hist_put(h, EG_SLOT_BOAT + b, WireS.{id = WIRE_ID_MADE + WIRE_BOAT_EID + b, kind = WK_BOAT, x = rm[0].boat_x[b], y = rm[0].boat_y[b], z = rm[0].boat_z[b], yaw = rm[0].boat_yaw[b],
-                                             g = 1, owner = rm[0].boat_by[b], p1 = rm[0].boat_i[b], p2 = rm[0].boat_oar[b]}, wire_rel(WK_BOAT), true, false);
-  }
-  for t: 1..<WIRE_TREES {
-    if rm[0].tree_on[t] { wire_hist_put(h, EG_SLOT_TREE + t, rm[0].tree[t], wire_rel(WK_TREE), true, false); }
-  }
+  // the doors row, every seat's however far: Everglade II has no doors, its words all shut (the slot and bytes kept, #13346)
+  wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = 0, p2 = 0, form = 0}, wire_rel(WK_DOORS), true, false);
   // whose Hit Points moved since last tick: fighting; and the slots that may be in combat with a seat (eg_combat)
   now := rm[0].tick; nrow := now % WIRE_BASES;
   rm[0].combat_n = 0;
@@ -199,27 +190,8 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   o[0].dg = rm_wt_on(v, c);   // a WebTransport seat: its state one datagram a tick (room-wt.coax)
   me := st[0].pose;
   e: [320] u8;
-  // the town's pieces, from the first snapshot on (or a page's O), EG_JOIN_BUDGET bytes a tick
-  if (full || st[0].pieces > 0 || st[0].town_end) && st[0].pieces < EG_PIECES_ALL {
-    jb := 0;
-    while st[0].pieces < EG_PIECES_ALL {
-      q := st[0].pieces;
-      n := 0;
-      if q < EG_PIECES {
-        if v[0].eg[k].broken[q] { n = eg_put_break(e[..], q, 0, 0, 0); } else if v[0].eg[k].burning[q] { n = eg_put_burn(e[..], q, true); }
-      } else {
-        p := q - EG_PIECES;
-        if v[0].eg[k].placed_gone[p] { n = eg_put_placed(e[..], 5, p, false); } else if v[0].eg[k].placed_burn[p] { n = eg_put_placed(e[..], 4, p, true); }
-      }
-      if n > 0 && jb + n + 1 > EG_JOIN_BUDGET { break; }
-      if n > 0 { eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<n]); jb += n + 1; }
-      st[0].pieces = q + 1;
-    }
-    v[0].st.join_b += jb;
-    if st[0].pieces < EG_PIECES_ALL { v[0].st.join_wait += 1; }
-  }
-  // all of them gone: the page stands what it holds that they didn't name, said after the rows (#12902)
-  town_now := st[0].town_end && st[0].pieces >= EG_PIECES_ALL;
+  // the town owed (every seat's first, or one its page asked for): said after the rows (#12902)
+  town_now := st[0].town_end;
   if town_now { st[0].town_end = false; }
   eg_table(v, k);
   rm := v[0].eg[k..<k + 1];
@@ -320,23 +292,10 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   }
   eg_out_send(o[..], v, k, s_id, f);
 }
-// O N: seat seat's page heard fewer outcomes than an o said (a frame lost on the way): the town's pieces
-// go again from the first, from EG_JOIN_BUDGET, then e town, and the page's town is the room's (#12902).
+// O N: seat seat's page heard fewer outcomes than an o said (a frame lost on the way): e town goes
+// again, and the page's town is the room's (#12902).
 eg_heard_missed :: (v: [] RmServer, k: int, seat_id: SeatId) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
-  st[0].pieces = 0; st[0].town_end = true;
+  st[0].town_end = true;
   v[0].st.towns += 1;
-}
-// e pburn I ON, or e pgone I: placed thing I alight or out, or burnt through.
-eg_put_placed :: (e: [] u8, kind: int, i: int, on: bool) -> int {
-  if kind == 5 { return wire_int(e, wire_put(e, 0, "e pgone"), i); }
-  return wire_int(e, wire_int(e, wire_put(e, 0, "e pburn"), i), ifx on then 1 else 0);
-}
-eg_put_break :: (e: [] u8, piece: int, a: f32, b: f32, c: f32) -> int {
-  n := wire_put(e, 0, "e break"); n = wire_int(e, n, piece); n = wire_m(e, n, a); n = wire_m(e, n, b); n = wire_m(e, n, c);
-  return n;
-}
-eg_put_burn :: (e: [] u8, piece: int, on: bool) -> int {
-  n := wire_put(e, 0, "e burn"); n = wire_int(e, n, piece); n = wire_int(e, n, ifx on then 1 else 0);
-  return n;
 }

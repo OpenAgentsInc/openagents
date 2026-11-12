@@ -15,11 +15,6 @@ eg_seat_ref_live :: (v:[]RmServer,k:int,h:Handle(EvergladeSeat))->bool #effects(
   switch eg_seat_get(v,k,h) {case none {return false;} case some(seat) {return true;}}
 }
 rm_eg_seat_owner :: (v:[]RmServer,k:int,seat:SeatId)->u64 #export_c #effects(all) {return eg_seat_ref(v,k,seat).value;}
-rm_eg_strike_current :: (v:[]RmServer,k:int,q:int)->bool #export_c #effects(all) {
-  if k<0 || k>=EG_ROOMS || q<0 || q>=v[0].eg[k].strike_n {return false;}
-  strike:=v[0].eg[k].strikes[q];
-  return strike.by<0 || (handle_slot(strike.owner)==strike.by && eg_seat_ref_live(v,k,strike.owner));
-}
 #test "handles: a socket rejoin keeps its character; a new character in the same seat is a new handle" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-handles",2,false);r:=v[0].eg[k].relay;
   old:=eg_seat_ref(v[..],k,SeatId.{value=0});
@@ -37,10 +32,4 @@ rm_eg_strike_current :: (v:[]RmServer,k:int,q:int)->bool #export_c #effects(all)
   #assert !handle_present(eg_seat_ref(v[..],k,SeatId.{value=2}));
   #assert !eg_seat_ref_live(v[..],-1,fresh) && !eg_seat_ref_live(v[..],EG_ROOMS,fresh);
   #assert !eg_seat_ref_live(v[..],k,Handle(EvergladeSeat).{}) && !eg_seat_ref_live(v[..],k,Handle(EvergladeSeat).{value=4294967312});
-  v[0].eg[k].strike_n=1;v[0].eg[k].strikes[0]=EgStrike.{by=0,owner=fresh};
-  #assert rm_eg_strike_current(v[..],k,0);
-  v[0].eg[k].strikes[0].owner=old;#assert !rm_eg_strike_current(v[..],k,0);
-  v[0].eg[k].strikes[0].by= -1;#assert rm_eg_strike_current(v[..],k,0);
-  #assert !rm_eg_strike_current(v[..],-1,0) && !rm_eg_strike_current(v[..],EG_ROOMS,0);
-  #assert !rm_eg_strike_current(v[..],k,-1) && !rm_eg_strike_current(v[..],k,1);
 }

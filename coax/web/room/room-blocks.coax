@@ -37,17 +37,6 @@ eg_im_table :: (v: [] RmServer, k: int) {
     im_put_at(im, now, EntityId.{value = id1 - 1}, q, x, z, SeatId.{value = of}, flags);
   }
   im_sweep(im, now);
-  // a hidden player who starts a cast this tick gives itself away to those near
-  for c: 0..<EG_CASTS {
-    ca := rm[0].casts[c];
-    if !ca.on || ca.start != rm[0].tick || ca.seat < 0 || ca.seat >= EG_SEATS { continue; }
-    i := im_find(im, EntityId.{value = ca.seat});
-    if i < 0 || (im[0].e[i].flags & IM_HIDDEN) == 0 { continue; }
-    for s: 0..<EG_SEATS {
-      p := rm[0].seat[s].pose;
-      if s != ca.seat && rm[0].seat[s].live && eg_near(p, im[0].e[i].x, im[0].e[i].z) { im_reveal(im, EntityId.{value = ca.seat}, SeatId.{value = s}, now + EG_REVEAL_TICKS); }
-    }
-  }
 }
 // Seat s's pick this tick as the send path takes it: each table slot's priority (-1 not for this seat).
 eg_im_pick :: (v: [] RmServer, k: int, s_id: SeatId, x: f32, z: f32, pick: [] f32) { s := s_id.value;

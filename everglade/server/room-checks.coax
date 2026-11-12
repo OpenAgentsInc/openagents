@@ -72,45 +72,6 @@ eg_test_drain :: (v: [] RmServer, box: [] EgInbox) {
 // What conn c's page holds of entity id (WireS id -1: nothing).
 eg_test_ent :: (box: [] EgInbox, c: int, id: int) -> WireS { return wire_mirror_of(box[0].m[c..<c + 1], id); }
 eg_test_of :: (box: [] EgInbox, c: int) -> string { return cast(string) box[0].t[c * 16384..<c * 16384 + box[0].n[c]]; }
-// v1 town state the send checks still load their tables with (from everglade/server/legacy/town.coax,
-// #13267): Everglade II never sets it. It goes with the seat record trim (P1.1 step 3).
-// Piece `piece` broke (KIND 1, thrown at A B C m/s) or caught or went out (KIND 2, A 1 alight) in the
-// world, standing at (x, z): every page hears it, near or far, for every page's town is the same.
-// KIND 3: a Repair stood structure `piece` up (everglade-repair.coax RP_*: a group, or a placed thing
-// past CR_REPAIR_PLACED0), its pieces whole (rm_eg_piece_up, from the host first). KIND 4 and 5: placed thing
-// `piece` caught or went out (A 1 alight), or burnt through and broke apart (everglade-placed-fire.coax).
-rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c: f32, x: f32, z: f32) #effects(all) {
-  if !rm_eg_live(v, k) || piece < 0 { return; }
-  e: [96] u8; n := 0;
-  if kind == 3 {
-    q := piece - CR_REPAIR_PLACED0;
-    if q >= 0 && q < CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; }
-    n = wire_int(e[..], wire_put(e[..], 0, "e mend"), piece);
-    eg_event(v, k, cast(string) e[0..<n], x, z, true);
-    return;
-  }
-  if kind == 4 || kind == 5 {
-    if piece >= CR_PLACED_MAX { return; }
-    if kind == 4 { v[0].eg[k].placed_burn[piece] = a > 0.5; } else { v[0].eg[k].placed_gone[piece] = true; v[0].eg[k].placed_burn[piece] = false; }
-    n = eg_put_placed(e[..], kind, piece, a > 0.5);
-    eg_event(v, k, cast(string) e[0..<n], x, z, true);
-    return;
-  }
-  if piece >= EG_PIECES { return; }
-  if kind == 1 {
-    v[0].eg[k].broken[piece] = true; v[0].eg[k].burning[piece] = false;
-    n = eg_put_break(e[..], piece, a, b, c);
-  } else {
-    v[0].eg[k].burning[piece] = a > 0.5;
-    n = eg_put_burn(e[..], piece, a > 0.5);
-  }
-  eg_event(v, k, cast(string) e[0..<n], x, z, true);
-}
-// Piece i stands whole again (a Repair): late pages hear nothing of it.
-rm_eg_piece_up :: (v: [] RmServer, k: int, i: int) #effects(all) {
-  if !rm_eg_live(v, k) || i < 0 || i >= EG_PIECES { return; }
-  v[0].eg[k].broken[i] = false; v[0].eg[k].burning[i] = false;
-}
 // Whether what a conn heard has a state frame (D) in it.
 eg_test_d :: (t: string) -> bool { return (t.count > 1 && t[0] == 'D' && t[1] == ' ') || eg_test_has(t, "|D "); }
 eg_test_has :: (t: string, part: string) -> bool {
@@ -371,138 +332,6 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
 // first EG_TEST_PIECES; a Repair's code q stands pieces 8q to 8q + 7), its count of outcomes, and the
 // check of the town sent again (net_town_begin, net_town_end). Reads what conn c heard since the last
 // drain, and says O for it as the page does.
-EG_TEST_PIECES :: 64;
-EgTestTown :: struct { broken: [EG_TEST_PIECES] bool; seen: [EG_TEST_PIECES] bool; got: int; check: bool; snap: bool; asked: int; ended: int; }
-eg_test_town :: (v: [] RmServer, box: [] EgInbox, c: int, t: [] EgTestTown) {
-  text := eg_test_of(box, c);
-  i := 0;
-  while i < text.count {
-    e := i; while e < text.count && text[e] != '|' { e += 1; }
-    f := text[i..<e]; i = e + 1;
-    if f.count < 2 || f[0] != 'D' { continue; }
-    r: [1] WireRd; r[0] = wire_rd(f, 1);
-    d := wire_read_d(f, r[..]);
-    if !r[0].ok { continue; }
-    snap := (d.f & 1) != 0;
-    if snap && !t[0].snap { t[0].check = true; for q: 0..<EG_TEST_PIECES { t[0].seen[q] = false; } }
-    t[0].snap = snap;
-    from := r[0].at;
-    for q: 0..<wire_entries(f, from) {
-      en := wire_entry(f, from, q);
-      if wire_outcome(en) { t[0].got += 1; }
-      rr: [1] WireRd; rr[0] = wire_rd(en, 1);
-      if en.count > 2 && en[0] == 'o' && en[1] == ' ' {
-        m := wire_num(en, rr[..]);
-        if m > t[0].got {
-          b: [32] u8;
-          rm_heard(v, c, cast(string) b[0..<wire_put_missed(b[..], 0, t[0].got)]);
-          t[0].asked += 1; t[0].check = true;
-          for p: 0..<EG_TEST_PIECES { t[0].seen[p] = false; }
-        }
-        t[0].got = m;
-      }
-      if wire_is(en, "e break") {
-        rr[0] = wire_rd(en, 7);
-        pc := wire_num(en, rr[..]);
-        if pc >= 0 && pc < EG_TEST_PIECES { t[0].broken[pc] = true; if t[0].check { t[0].seen[pc] = true; } }
-      }
-      if wire_is(en, "e mend") {
-        rr[0] = wire_rd(en, 6);
-        g := wire_num(en, rr[..]);
-        for p: 0..<EG_TEST_PIECES { if p / 8 == g { t[0].broken[p] = false; } }
-      }
-      if en == "e rebuild" { for p: 0..<EG_TEST_PIECES { t[0].broken[p] = false; } }
-      if en == "e town" && t[0].check {
-        t[0].check = false; t[0].ended += 1;
-        for p: 0..<EG_TEST_PIECES { if t[0].broken[p] && !t[0].seen[p] { t[0].broken[p] = false; } }
-      }
-    }
-  }
-}
-// Whether conn c's page holds the room's town (its first EG_TEST_PIECES).
-eg_test_town_right :: (v: [] RmServer, k: int, t: [] EgTestTown) -> bool {
-  for p: 0..<EG_TEST_PIECES { if t[0].broken[p] != v[0].eg[k].broken[p] { return false; } }
-  return true;
-}
-eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestTown) {
-  eg_test_tick(v, k); eg_test_drain(v, box);
-  for c: 0..<towns.count { eg_test_town(v, box, c, towns[c..<c + 1]); }
-}
-#test "everglade room: a frame lost on the way with the town's outcomes in it: the page's count falls short of o, it says O, and the town sent again makes its town the room's, for a break, a Repair and a rebuild each lost (#12902)" #steps 40000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  rm_control(v[..], "levels 0 2\n");
-  rm_clock(v[..], 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-e2-lost-town HTTP/1.1\r\n\r\n";
-  box: [1] EgInbox;
-  towns: [2] EgTestTown;
-  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
-  // every seat's first town ends with e town; nothing asked
-  for t: 0..<120 { eg_test_town_tick(v[..], k, box[..], towns[..]); }
-  #assert towns[0].ended == 1 && towns[1].ended == 1 && towns[0].asked == 0 && towns[1].asked == 0 && v[0].st.towns == 0;
-  // 1: pieces 3 to 12 break; the frame that tells seat 1 is lost
-  box[0].lose_out[1] = true;
-  for p: 3..<13 { rm_eg_piece(v[..], k, 1, p, 0, 0, 0, 0, 0); }
-  eg_test_town_tick(v[..], k, box[..], towns[..]);
-  #assert !box[0].lose_out[1] && !eg_test_town_right(v[..], k, towns[1..<2]) && eg_test_town_right(v[..], k, towns[0..<1]);
-  for t: 0..<EG_OUT_SAY + 30 { eg_test_town_tick(v[..], k, box[..], towns[..]); }
-  #assert towns[1].asked == 1 && towns[1].ended == 2 && v[0].st.towns == 1 && eg_test_town_right(v[..], k, towns[1..<2]);
-  // 2: a Repair stands pieces 8 to 15 (code 1); its e mend to seat 1 is lost: its page holds 8 to 12 broken
-  for p: 8..<16 { rm_eg_piece_up(v[..], k, p); }
-  box[0].lose_out[1] = true;
-  rm_eg_piece(v[..], k, 3, 1, 0, 0, 0, 0, 0);
-  eg_test_town_tick(v[..], k, box[..], towns[..]);
-  #assert !box[0].lose_out[1] && towns[1].broken[8] && !v[0].eg[k].broken[8];
-  for t: 0..<EG_OUT_SAY + 30 { eg_test_town_tick(v[..], k, box[..], towns[..]); }
-  #assert towns[1].asked == 2 && towns[1].ended == 3 && eg_test_town_right(v[..], k, towns[1..<2]) && towns[1].broken[3] && !towns[1].broken[8];
-  // 3: the room's rebuild (an admin's R); seat 1 misses it, and the frame after that is fine
-  v[0].eg[k].broke_at = -100000;
-  for p: 3..<8 { #assert v[0].eg[k].broken[p]; }
-  box[0].lose_out[1] = true;
-  b: [32] u8;
-  eg_event(v[..], k, cast(string) b[0..<wire_put_rebuilt(b[..], 0)], 0, 0, true);
-  for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; }
-  eg_test_town_tick(v[..], k, box[..], towns[..]);
-  #assert towns[1].broken[3] && !towns[0].broken[3];
-  for t: 0..<EG_OUT_SAY + 30 { eg_test_town_tick(v[..], k, box[..], towns[..]); }
-  #assert towns[1].asked == 3 && eg_test_town_right(v[..], k, towns[1..<2]) && !towns[1].broken[3];
-  // the seat that lost nothing never asked, and its town was the room's throughout
-  #assert towns[0].asked == 0 && eg_test_town_right(v[..], k, towns[0..<1]) && v[0].st.towns == 3;
-}
-#test "everglade room: a joining page hears the town's broken pieces from their own allowance over the ticks after its first snapshot, every one once (#12836)" #steps 4000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  rm_control(v[..], "levels 0 2\n");
-  rm_clock(v[..], 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-e2-pieces HTTP/1.1\r\n\r\n";
-  box: [1] EgInbox;
-  #assert rm_join(v[..], 0, ev) == 0;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
-  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  // a raid broke 3000 of the town's pieces and set one alight; then seat 1 joins
-  for q: 0..<3000 { v[0].eg[k].broken[q * 2] = true; }
-  v[0].eg[k].burning[5999] = true;
-  #assert rm_join(v[..], 1, ev) == 1;
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
-  was := v[0].st.join_b;
-  breaks := 0; burns := 0; ticks := 0;
-  for t: 0..<60 {
-    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-    c := eg_test_of(box[..], 1);
-    n := 0; at := 0;
-    while at + 8 <= c.count { if c[at..<at + 8] == "e break " { n += 1; } if c[at..<at + 7] == "e burn " { burns += 1; } at += 1; }
-    #assert n * 15 <= EG_JOIN_BUDGET;   // a tick's pieces within the allowance (each 15 bytes or more)
-    #assert !eg_test_has(eg_test_of(box[..], 0), "e break ");   // the seat that was there hears none again
-    breaks += n;
-    if n > 0 { ticks += 1; }
-  }
-  // all 3000 and the fire, once each, over about 25 ticks rather than in the join's first
-  #assert breaks == 3000 && burns == 1 && ticks >= 20 && ticks <= 35;
-  #assert v[0].eg[k].seat[1].pieces == EG_PIECES_ALL && v[0].st.join_b - was >= 3000 * 15 && v[0].st.join_wait > 0;
-}
 #test "everglade room: cues go from their own allowance and the rest are dropped and counted; outcomes reach every page past a tick full of cues (#12836)" #steps 4000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
@@ -515,12 +344,12 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_ev_outcome("e break 12 0 0 0") && eg_ev_outcome("e rebuild") && eg_ev_outcome("e edit 3") && !eg_ev_outcome("e hit 1001 2003 7 3") && !eg_ev_outcome("e breakx 1") && !eg_ev_outcome("x 3");
-  // a tick of 200 hits near both seats (more than a tick's events), a hit aimed at seat 1, then 20 pieces break
+  // a tick of 200 hits near both seats (more than a tick's events), a hit aimed at seat 1, then 20 outcomes (e break, as v1's were)
   b: [64] u8;
   for q: 0..<200 { n := wire_put_hit(b[..], 0, WireHit.{who = 2000 + q, by = 2001, amt = 7, kind = 3}); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, false); }
   lost := v[0].st.ev_lost; dropped := v[0].st.cue_drop;
   n := wire_put_hit(b[..], 0, WireHit.{who = 1001, by = 2400, amt = 9, kind = 3}); eg_event_who(v[..], k, cast(string) b[0..<n], 900, 900, false, 2);
-  for q: 0..<20 { rm_eg_piece(v[..], k, 1, 100 + q, 0, 0, 0, 0, 0); }
+  for q: 0..<20 { n = wire_int(b[..], wire_put(b[..], 0, "e break"), 100 + q); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, true); }
   #assert v[0].st.ev_lost == lost;   // the outcomes had their own room
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   for c: 0..<2 {

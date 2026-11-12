@@ -94,12 +94,7 @@ eg_ends_due :: (v: [] RmServer, k: int) {
 // server steps the inputs after a cast with what it holds up, as the page that pressed it did.
 eg_waits :: (v: [] RmServer, k: int, s_id: SeatId, seq: int) -> bool { s := s_id.value;
   st := v[0].eg[k].seat[s];
-  if st.ends_n > 0 && st.ends[0].seq < seq { return true; }
-  for q: 0..<EG_CASTS {
-    c := v[0].eg[k].casts[q];
-    if c.on && c.seat == s && c.phase == RC_WAIT && c.seq < seq { return true; }
-  }
-  return false;
+  return st.ends_n > 0 && st.ends[0].seq < seq;
 }
 // book:begin intent-queue
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page

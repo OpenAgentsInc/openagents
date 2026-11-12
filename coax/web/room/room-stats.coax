@@ -54,7 +54,7 @@ RmStats :: struct {
   held: int; held_out: int;       // seats held for their player when the socket closed, and those that left at the grace's end
   stale: int;                     // frames dropped from a socket that is no longer its seat's (an older generation)
   // the allowances beside the rows' (#12836): bytes of x's (WIRE_LIFE_BUDGET), of n and w entries
-  // (EG_META_BUDGET) and of a joining page's pieces (EG_JOIN_BUDGET), and the entries each left waiting
+  // (EG_META_BUDGET) and of a joining page's pieces (v1's town; 0 since #13346), and the entries each left waiting
   life_b: int; life_wait: int; meta_b: int; meta_wait: int; join_b: int; join_wait: int;
   // and of events (room-everglade.coax EG_CUE_BUDGET): cue bytes and cues dropped (a seat each), outcome
   // and aimed bytes, and outcomes lost past their own room (a room each)

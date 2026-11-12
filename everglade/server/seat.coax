@@ -57,9 +57,6 @@ EG_VIEW :: 120.0;               // m: what a seat hears of creatures, zones and 
 // WIRE_LIFE_BUDGET; #12836), each a tick's bytes of entries for one seat, framing aside:
 //   - EG_META_BUDGET: who each seat is (n) and its WANTED level (w), on change and on resend. One that
 //     doesn't fit waits for the next tick, as unsent; 16 players' n's (about 90 bytes each) go in 2 ticks.
-//   - EG_JOIN_BUDGET: the town's broken, burning and placed pieces a joining page is told of, from its
-//     first snapshot on, in their order; the rest go on the ticks after. 6000 broken pieces (about 19
-//     bytes each, "e break 2999 0 0 0;") go in about 1.9 s.
 // The host reports the bytes each sent and the entries each left waiting (room-stats.coax rm_st_alloc).
 EG_META_BUDGET :: 900;
 // A seat's rows a second (#13178, aethyr/net/budget.coax NetLink): the link starts here and halves,
@@ -70,11 +67,7 @@ EG_ROW_BPS :: 15000;
 EG_LINK_SAY :: 30;   // ticks between a packed page's k entries (its ?net overlay's BUDGET and DROP lines)
 EG_FIGHT_TICKS :: 90;   // ticks (3 s) an entity whose HP moved counts as fighting
 EG_FIGHT_NEAR :: 30.0;  // m: fighting this near a seat is combat near it
-EG_JOIN_BUDGET :: 2000;
 EG_CHUNK :: 3740;               // a D frame's entries at most (WIRE_SERVER_FRAME with its header); past it, F 2
-EG_CASTS :: 32;                 // casts heard and on their way, from the press to the strike (room-casts.coax)
-EG_PLAYER_STRIKES :: EFFECT_SEATS * EFFECT_PLAYER_CAP;
-EG_WORLD_STRIKES :: EG_PLAYER_STRIKES + EGB_BEASTS;
 EG_CAST_GAP :: 8;               // ticks between a seat's casts at least (about 4 a second)
 EG_NAME :: 24; EG_LOOK :: 64;   // a look: Character Create's CC3 record (57 bytes, aethyr/character-appearance.coax) or v1's ranger.S.D.T
 // A tick's events (e entries) at most. An outcome (eg_ev_outcome: the town's pieces, a rebuild, an edit:
@@ -93,10 +86,6 @@ EG_SLOT_STONE :: 10; EG_SLOT_TENTACLES :: 12; EG_SLOT_CONJURE :: 32; EG_SLOT_THO
 EG_SP_SLOTS :: 4;
 // the Warlock's slots that the world plays (fivebar.coax FB_WL0 + k): Eldritch Blast, Fireball, Dimension Door
 EG_WL_BLAST :: 64; EG_WL_FIREBALL :: 65; EG_WL_DOOR :: 69;
-EG_CRIMES :: 16;
-EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up once no spell struck it for 10 s, once in 30 s at most
-EG_PIECES :: 6000;              // the town's pieces at most: verse/demolish.coax DEMO_PIECES, which wave 1 raised (the bridge's are past 4000)
-EG_PIECES_ALL :: EG_PIECES + CR_PLACED_MAX;   // a joining page's pieces: the town's, then the placed things
 EG_ENT :: 192;                  // bytes of one cached n entry (eg_table) at most
 // the table's slots (everglade-wire.coax WIRE_SLOTS): the seats' players, the townsfolk, the summoned
 // creatures, the rules' zones, then the world's abilities' entities as they come and go
@@ -110,7 +99,6 @@ EG_BOATS :: 3;                     // the rowboats (river.coax BOATS), a row eac
 EG_SLOT_BOAT :: EG_SLOT_DOORS - EG_BOATS;
 EG_SLOT_TREE :: 256;    // separate sparse forest records, zero unused
 EG_DOORS_ID :: WIRE_DOORS_EID;    // its id: WIRE_ID_MADE + EG_DOORS_ID
-EG_USE_ASKS :: EG_SEATS*2;        // one interaction and one release per seat per tick
 EG_FX_ID :: 950000;              // a watch effect's id: WIRE_ID_MADE + EG_FX_ID + SS * WE_WATCH + cause
 
 EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; at: int; }   // theta in WIRE_FINE units; at: mono ms it was heard (room-stats.coax)
@@ -168,11 +156,10 @@ EgSeat :: struct {
   n_t: [EG_SEATS] int; n_bits: [EG_SEATS] int; n_ok: [EG_SEATS] bool;
   w_t: [EG_SEATS] int; w_bits: [EG_SEATS] int; w_ok: [EG_SEATS] bool;
   // its D's are snapshots (F 1: the page forgets everything first) from its first, until its page
-  // says it heard one (full_t: the first's tick); the town's broken pieces go from the first on,
-  // EG_JOIN_BUDGET bytes a tick (pieces: how many of the EG_PIECES_ALL have gone through)
-  full: bool; full_t: int; pieces: int;
+  // says it heard one (full_t: the first's tick)
+  full: bool; full_t: int;
   // the town's outcomes (WIRE_OUTCOMES) sent it, which o says (#12902): how many, the count o last said
-  // and its tick; and an e town owed once the pieces have all gone: every seat's first, and one its page
+  // and its tick; and an e town owed: every seat's first, and one its page
   // asked for (O: it heard fewer outcomes than o said), so what the page holds and the room doesn't stands.
   // The counts are #counter fields: they stop at the largest int, as the page's does (#12927)
   out_n: int #counter; out_said: int #counter; out_t: int; town_end: bool = true;
@@ -195,21 +182,10 @@ EgSeat :: struct {
 }
 EG_ENDS :: 4;
 EgEnd :: struct { seq: int; slot: int; }
-// A cast from its hearing to its strike (room-casts.coax, #12790): its phase (RC_*), the ticks it was
-// heard, started, is released and strikes at, the order it was heard in, and its line of sight's
-// question this tick and answer (0 none, 1 clear, 2 blocked).
-EgCast :: struct {
-  owner: Handle(EvergladeSeat); target_owner: Handle(EvergladeSeat);
-  on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int;
-  seq: int; mode: int; phase: int; heard: int; queued_ms:int; start: int; release: int; order: int; helps: bool; seed: int;
-  ask: int = -1; sight: int;
-  hp0: int; mx: f32; mz: f32;   // a Repair's: its caster's HP and feet at its start (hurt or moved, it stops)
-}
 EgRoom :: struct {
   initialized:bool;
   seat_life: [EG_SEATS] u32 #counter; // character lifetime; a socket rejoin keeps it
   work:[1]WorkBudget;
-  forge_version:int=-1;
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
   behind_n: int;       // seat ticks whose rows waited, its socket behind
   live: bool; relay: int = -1;
@@ -225,7 +201,6 @@ EgRoom :: struct {
   monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (everglade/server/creatures.coax)
   arrows: [1] E2Arrows;          // Everglade II's arrows in the air (everglade/server/arrows.coax)
   tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
-  casts: [EG_CASTS] EgCast; cast_order: int;
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals
   rules: [1] EgBattle;
   // the events since the last D, as entry text, each with where it happened
@@ -234,26 +209,7 @@ EgRoom :: struct {
   ev_out: [EG_EVENTS + EG_EV_KEEP] bool;   // an outcome (eg_ev_outcome), not a cue
   ev_who: [EG_EVENTS + EG_EV_KEEP] int;       // the seats an event also tells of beyond its own fields, one bit each (room-blocks.coax eg_im_event)
   wanted: [EG_SEATS] int;
-  // the harm seats did the town since the world last heard (a crime each), and who last harmed each person
-  crimes: [EG_CRIMES] EgCrime; crime_n: int;
-  use_ask: [EG_USE_ASKS] int; use_ask_n: int;   // the seats' doors and talks since the world last heard (eg_use_code)
-  doors: [WIRE_DOOR_WORDS] int;                    // the doors the world has open (rm_eg_doors), for the WK_DOORS row
-  // the rowboats as the world has them (rm_eg_boat): where, which way, who rows (a seat, -1 none), the oars, the float
-  boat_on: [EG_BOATS] bool; boat_x: [EG_BOATS] f32; boat_y: [EG_BOATS] f32; boat_z: [EG_BOATS] f32; boat_yaw: [EG_BOATS] f32;
-  boat_by: [EG_BOATS] int; boat_oar: [EG_BOATS] int; boat_i: [EG_BOATS] int;
-  tree_on: [WIRE_TREES] bool; tree: [WIRE_TREES] WireS;
   place_stamp: int;                                // the newest place line's STAMP this room laid (room-control.coax "place"; 0 none)
-  gates: int;                                      // bit 0 while the world has the town's gates shut (rm_eg_gates, WANTED 4: #12794), then its leaves burnt and alight (#12932): the row's FORM
-  // the town's pieces: Everglade's four spells' strikes for the world (it breaks and burns the pieces),
-  // the rebuild asked for, and what is broken and burning now (a seat's snapshot names them)
-  strikes: [EG_WORLD_STRIKES] EgStrike; strike_n: int;
-  effect_known: bool; effect_free: [EG_SEATS] int; house_free: int;
-  rebuild: bool;
-  broke_at: int = -100000; rebuilt_at: int = -100000;   // the ticks of the last spell on the town and the last rebuild (R's rules)
-  fresh: bool;                   // a new room in this slot: the world's town starts whole
-  broken: [EG_PIECES] bool; burning: [EG_PIECES] bool;
-  // an admin's placed things (verse/everglade/edits.coax, by their index): alight, burnt and broken apart
-  placed_burn: [CR_PLACED_MAX] bool; placed_gone: [CR_PLACED_MAX] bool;
   // every entity's state this tick, filled once (eg_table) for every seat's rows to be cut from, and
   // each player's n entry with its hash
   cache_tick: int = -1;
@@ -265,5 +221,3 @@ EgRoom :: struct {
   fight_t: [WIRE_SLOTS] int;   // the tick each slot's Hit Points last moved, 0 never (eg_combat, #13178)
   combat_q: [WIRE_SLOTS] int; combat_n: int;   // this tick's slots that may be in combat with a seat: players, a seat's targets and makings, the fighting
 }
-EgStrike :: struct { owner:Handle(EvergladeSeat); by: int; source: int = -1; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
-EgCrime :: struct { by: int; x: f32; z: f32; }

@@ -3,9 +3,7 @@
 // Everglade II casts go through everglade/server/casts.coax eg_e2_cast, so the queue's phases left with
 // v1 (#13267). Kept: the world's harm each tick, the line-of-sight questions the host's world answers
 // (rm_eg_sights, rm_eg_sight, rm_eg_sight_is: Everglade II's aid, familiar and monsters ask them), and
-// the test rooms. The EgCast array and RC_* phases go with the seat record trim (P1.1 step 3).
-
-RC_WAIT :: 1; RC_BAR :: 2; RC_FLIGHT :: 3;
+// the test rooms.
 #load "hurt-budget.coax";
 
 // ---- line of sight (the host's world answers)
@@ -26,13 +24,10 @@ rm_eg_sight_is :: (v: [] RmServer, k: int, q: int, clear: bool) #export_c #effec
   e2_aid_seen(v,k,q,clear); e2_familiar_seen(v,k,q,clear); e2_monster_seen(v,k,q,clear); return;
 }
 
-// What the rooms have scheduled (the agent clock's `clock settle`, #13096): the casts begun and not yet
-// resolved, over every live room. A room with none has nothing with a moment of its own still to come.
-rm_scheduled :: (v: [] RmServer) -> int #export_c #effects(all) {
-  n := 0;
-  for k: 0..<EG_ROOMS { if !rm_eg_live(v, k) { continue; } for q: 0..<EG_CASTS { if v[0].eg[k].casts[q].on { n += 1; } } }
-  return n;
-}
+// What the rooms have scheduled (the agent clock's `clock settle`, #13096): a moment of its own still to
+// come. v1's queued casts were the only such; Everglade II's casts resolve on the tick they are heard
+// (everglade/server/casts.coax), so there are none.
+rm_scheduled :: (v: [] RmServer) -> int #export_c #effects(all) { return 0; }
 // Each tick, before the rules' step: the world's harm (a guard's blade, a fall), after the heals.
 rc_tick_first :: (v: [] RmServer, k: int) {
   for s: 0..<EG_SEATS {
