@@ -11,7 +11,6 @@
 
 static coax_t_Splice *splice_state(uint32_t state) { return (coax_t_Splice *)(uintptr_t)state; }
 static coax_v_t_Splice at(uint32_t state) { return (coax_v_t_Splice){splice_state(state), 1}; }
-#define SPLICE_CLOCK 0.78f   /* realms.json clock fixed:0.78: just after sunset, the dusk variant */
 #define WORLD_WORDS (150000u * 6u)   /* splice.coax SP_WORLD_WORDS × VERTEX_WORDS */
 #define LIVE_WORDS (150000u * 6u)
 static uint32_t world[WORLD_WORDS];
@@ -36,7 +35,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_splice_max_vertices() * coaxial_splice_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_splice_uniform_floats()};
   for (int i = 0; i < 128; i++) style[i] = 0;
-  animelab_style_block(2 /* ANIME_DUSK, verse/style-preset.coax */, animelab_phone(width, dpr), SPLICE_CLOCK, (coax_v_f32){style, 128});
+  /* each scene picks its own look: its anime variant (verse/style-preset.coax) and clock */
+  animelab_style_block(splice_variant(at(state)), animelab_phone(width, dpr), splice_clock(at(state)), (coax_v_f32){style, 128});
   int64_t n = splice_frame(at(state), out, u, width, height, dpr, dt, (still != 0) || golden,
                            (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS}, (coax_v_f32){style, 128});
   frames += 1;

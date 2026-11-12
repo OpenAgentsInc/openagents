@@ -26,7 +26,7 @@
 #load "../../coax/lib/nostr/block/fi-base64url.coax";
 #load "font.coax";
 #load "../../aethyr/budget.coax";
-#load "animelab-mesh.coax";
+#load "../../aethyr/render/cel-mesh.coax";
 #load "animelab-cast.coax";
 #load "animelab-world.coax";
 #load "animelab-take-checks.coax";

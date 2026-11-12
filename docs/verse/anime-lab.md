@@ -253,7 +253,7 @@ Built (A2), November 2:
   appears behind them, everyone recoils from a huge impact, whoever walks
   on from behind comes out of smoke.
 - **The realm** is `apps/openagents-web/animelab.coax` (with
-  `animelab-cast.coax`, `animelab-world.coax`, `animelab-mesh.coax`,
+  `animelab-cast.coax`, `animelab-world.coax`, `aethyr/render/cel-mesh.coax`,
   `animelab-style.coax`, `gpu/animelab.coax`): Skyreach Academy's
   courtyard at dusk in the action variant, the cast built from primitives
   with anime faces whose marks change with the feeling, the effects, the

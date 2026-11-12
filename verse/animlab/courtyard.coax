@@ -1,6 +1,6 @@
 #module "verse.animlab.courtyard";
 // Reuse Anime Lab's original Skyreach Academy geometry in scene playback.
 #load "../anime/stage.coax";
-#load "../../apps/openagents-web/animelab-mesh.coax";
+#load "../../aethyr/render/cel-mesh.coax";
 #load "../../apps/openagents-web/animelab-cast.coax";
 #load "../../apps/openagents-web/animelab-world.coax";

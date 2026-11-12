@@ -1,12 +1,13 @@
-// Anime Lab's mesh writers (animelab.coax): boxes, tapered tubes, ellipsoids,
-// flat shapes and ink ribbons, written as triangles into a store of words the
-// GPU reads in order (gpu/animelab.coax scene_vs): six words a vertex, x, y, z
-// (f32 bits), the normal and an object number (four bytes), the colour (sRGB
-// bytes) and its material (the top byte), and a parameter (f32 bits: a glow's
-// strength, the made thing's distance from its sketch lines, smoke's share
-// left). Every shape is built from its frame, so the cast and the stage pose
-// it by moving frames. Nothing here draws or decides; it only writes.
-//   coax/bin/coax test apps/openagents-web/animelab.coax
+// Cel mesh writers: boxes, tapered tubes, ellipsoids, flat shapes and ink ribbons, written as
+// triangles into a store of words the GPU reads in order (the anime scene_vs in
+// apps/openagents-web/gpu/animelab.coax): six words a vertex, x, y, z (f32 bits), the normal and an
+// object number (four bytes), the colour (sRGB bytes) and its material (the top byte), and a
+// parameter (f32 bits: a glow's strength, the made thing's distance from its sketch lines, smoke's
+// share left). Every shape is built from its frame, so a cast, a stage or a kit (aethyr/kit/) poses
+// it by moving frames. Nothing here draws or decides; it only writes. Moved from Anime Lab
+// (apps/openagents-web/animelab-mesh.coax) so every cel realm shares one copy.
+//   coax/bin/coax test --library aethyr/render/cel-mesh.coax
+#load "../points.coax";
 
 VERTEX_WORDS :: 6;
 MAT_WORLD :: 0; MAT_SKIN :: 1; MAT_HAIR :: 2; MAT_GLOW :: 3; MAT_FLAT :: 4; MAT_FLOOR :: 5; MAT_MADE :: 6;

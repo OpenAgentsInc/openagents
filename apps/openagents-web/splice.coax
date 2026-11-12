@@ -1,17 +1,18 @@
-// Splice, openagents.com/worlds/splice (unlisted): a robot stands on Mars at dusk, drawn in the
-// anime style (docs/verse/art-styles.md, Anime: cel bands, coloured ink, the vivid dusk sky).
+// Splice, openagents.com/worlds/splice (unlisted): robots and machines on Mars and stranger worlds,
+// drawn in the anime style (docs/verse/art-styles.md, Anime: cel bands, coloured ink, a vivid sky).
 //
-// Everything that draws is Aethyr's and Anime Lab's: the mesh writers (animelab-mesh.coax), the
-// uniform layout and camera rows (animelab.coax), the anime style block (animelab-style.coax), and
-// the anime shader (gpu/splice.coax loads gpu/animelab.coax). Only the world is new here: the
-// dune floor, the mesas, the rocks and the robot. Nothing about the academy, the stage or the
-// director is used.
+// Everything that draws is Aethyr's: the cel mesh writers (aethyr/render/cel-mesh.coax), the
+// machine and land kits (aethyr/kit/machines.coax, aethyr/kit/land.coax), Anime Lab's uniform
+// layout and camera rows (animelab.coax), its style block (animelab-style.coax) and its shader
+// (gpu/splice.coax loads gpu/animelab.coax). This page only stages scenes: each picks pieces from
+// the kits, their colours, a camera, a key light and an anime variant and clock (its look).
 //   coax/bin/coax test apps/openagents-web/splice.coax
 #load "animelab.coax";
+#load "../../aethyr/kit/land.coax";
 
 SP_WORLD_WORDS :: 150000;
 
-// The state the page keeps: the world is written once, the clock runs while the page is open.
+// The state the page keeps: the world is written once a scene, the clock runs while the page is open.
 Splice :: struct {
   started: bool;
   world_built: bool;
@@ -25,196 +26,235 @@ Splice :: struct {
   world_gen: int;             // counts the world's writes: the page copies the store when it changes
 }
 
-// A deterministic value in [0, 1) for a seed.
-sp_rand :: (k: f32) -> f32 { return wh(k * 1.37 + 3.1, k * 0.71 + 9.7); }
+// A scene's look: its anime variant (verse/style-preset.coax ANIME_*), the clock it is seen at, and
+// where its key light comes from.
+SpLook :: struct { variant: int; clock: f32; key: Point; }
+SP_PASTORAL :: 0; SP_ACTION :: 1; SP_DUSK :: 2; SP_NEON :: 3;
 
-// A frame placed at local (x, y, z) of f, keeping its axes.
-sp_at :: (f: Frame, x: f32, y: f32, z: f32) -> Frame { return frame_move(f, fp(f, x, y, z)); }
+c :: (r: f32, g: f32, b: f32) -> KitTint { return kit_tint(r, g, b); }
+ink_dark :: () -> KitTint { return c(0.23, 0.16, 0.21); }
+cream :: () -> KitTint { return c(0.95, 0.90, 0.78); }
+teal :: () -> KitTint { return c(0.25, 0.84, 0.76); }
+red :: () -> KitTint { return c(0.83, 0.27, 0.23); }
 
-// The robot, original: cream plates, a dark chassis, a red band, a teal eye and chest light.
-sp_robot :: (buf: [] u32, p: [] Pen, f: Frame) {
-  pen_set(p, 20, MAT_CLOTH, 0.23, 0.16, 0.21);
-  box(buf, p, sp_at(f, -0.28, 0.42, 0), 0.14, 0.42, 0.14);      // left leg
-  box(buf, p, sp_at(f, 0.28, 0.42, 0), 0.14, 0.42, 0.14);       // right leg
-  box(buf, p, sp_at(f, -0.00, 1.02, 0), 0.42, 0.14, 0.32);      // hips
-  pen_set(p, 21, MAT_SKIN, 0.95, 0.90, 0.78);
-  box(buf, p, sp_at(f, -0.28, 0.07, 0.06), 0.20, 0.07, 0.26);  // feet
-  box(buf, p, sp_at(f, 0.28, 0.07, 0.06), 0.20, 0.07, 0.26);
-  box(buf, p, sp_at(f, 0, 1.55, 0), 0.50, 0.45, 0.36);          // torso
-  pen_set(p, 22, MAT_FLAT, 0.83, 0.27, 0.23);
-  box(buf, p, sp_at(f, 0, 1.2, 0), 0.52, 0.07, 0.37);           // red band
-  pen_set(p, 21, MAT_SKIN, 0.95, 0.90, 0.78);
-  box(buf, p, sp_at(f, 0, 2.30, 0), 0.36, 0.30, 0.32);          // head
-  pen_set(p, 23, MAT_WINDOW, 0.23, 0.16, 0.21);
-  box(buf, p, sp_at(f, 0, 2.33, 0.33), 0.28, 0.10, 0.02);       // visor
-  pen_set(p, 24, MAT_GLOW, 0.25, 0.84, 0.76);
-  ball(buf, p, fp(f, 0, 1.6, 0.42), 0.11, 12);                  // chest light
-  box(buf, p, sp_at(f, 0, 2.33, 0.345), 0.20, 0.03, 0.01);      // eye glow strip
-  pen_set(p, 25, MAT_CLOTH, 0.23, 0.16, 0.21);
-  tube(buf, p, frame_at(fp(f, 0.14, 2.62, 0), 0), 0.55, 0.03, 0.03, 0.03, 0.03, 6, true);   // antenna
-  pen_set(p, 26, MAT_FLAT, 0.83, 0.27, 0.23);
-  ball(buf, p, fp(f, 0.14, 3.2, 0), 0.08, 10);                  // antenna tip
-  pen_set(p, 21, MAT_SKIN, 0.95, 0.90, 0.78);
-  limb(buf, p, fp(f, -0.62, 1.9, 0), fp(f, -0.80, 1.22, 0.10), 0.11, 0.09, fd(f, 0, 0, 1), 8);   // left arm, hanging
-  limb(buf, p, fp(f, 0.62, 1.9, 0), fp(f, 1.05, 2.72, 0.10), 0.11, 0.09, fd(f, 0, 0, 1), 8);     // right arm, raised
-  ball(buf, p, fp(f, 1.12, 2.88, 0.10), 0.14, 10);              // the raised hand
+// The scenes' robot, in its home colours (cream plates, a red band, a teal eye).
+sp_robot :: (buf: [] u32, p: [] Pen, f: Frame, s: f32) {
+  kit_robot(buf, p, f, s, 20, cream(), red(), teal(), ink_dark(), 0.62);
 }
 
-// Scene 0, Dunes: a dune floor, lavender mesas on the horizon, coral and ochre rocks, and the robot.
+// 0, Dunes: a coral basin, ochre dunes, lavender mesas, and the robot waving.
 sp_dunes :: (buf: [] u32, p: [] Pen) {
-  pen_set(p, 1, MAT_FLOOR, 0.86, 0.50, 0.37);
-  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
-  // dune swells: flat ochre blobs across the basin, kept off the robot's square
-  for i: 0..<18 {
-    k := cast(f32) i;
-    x := (sp_rand(k + 1) * 2 - 1) * 46;
-    z := -22 - sp_rand(k + 40) * 48;   // well behind the robot: no dune reaches the camera
-    if abs(x) < 6 && abs(z) < 6 { z -= 9; }
-    r := 4 + sp_rand(k + 80) * 7;
-    pen_set(p, 2, MAT_FLOOR, 0.89, 0.66, 0.35);
-    ellipsoid(buf, p, frame_at(v3(x, -0.25 * r * 0.3, z), sp_rand(k + 9) * 6), r, r * 0.3, r * 0.8, 12, 6, 0);
-  }
-  // mesas: lavender cones on the far horizon
-  for i: 0..<9 {
-    k := cast(f32) i;
-    x := (k - 4) * 22 + (sp_rand(k + 120) - 0.5) * 8;
-    z := -70 - sp_rand(k + 130) * 40;
-    h := 14 + sp_rand(k + 140) * 22;
-    pen_set(p, 3, MAT_WORLD, 0.64, 0.55, 0.80);
-    tube(buf, p, frame_at(v3(x, -0.5, z), 0), h, 12 + sp_rand(k + 150) * 10, 12 + sp_rand(k + 150) * 10, 4 + sp_rand(k + 160) * 4, 4 + sp_rand(k + 160) * 4, 7, true);
-  }
-  // rocks: coral and dark ochre, scattered near the robot
-  for i: 0..<22 {
-    k := cast(f32) i;
-    a := sp_rand(k + 200) * 6.2832;
-    d := 3.5 + sp_rand(k + 210) * 14;
-    r := 0.25 + sp_rand(k + 220) * 0.7;
-    pen_set(p, 4, MAT_WORLD, 0.60, 0.30, 0.24);
-    ellipsoid(buf, p, frame_at(v3(cos(a) * d, r * 0.2, sin(a) * d), sp_rand(k + 230) * 6), r, r * 0.7, r * 0.9, 8, 5, 0);
-  }
-  sp_robot(buf, p, frame_at(v3(0, 0, 0), -0.35));
+  kit_ground(buf, p, 1, c(0.86, 0.50, 0.37), true);
+  kit_dunes(buf, p, 2, c(0.89, 0.66, 0.35), 18, 0, 46, -70, -22, 4, 11);
+  kit_mesas(buf, p, 3, c(0.64, 0.55, 0.80), 9, 0, -70, 22, 14, 36);
+  kit_rocks(buf, p, 4, c(0.60, 0.30, 0.24), 22, 0, 0, 0, 3.5, 17.5, 0.25, 0.95);
+  sp_robot(buf, p, frame_at(v3(0, 0, 0), -0.35), 1);
 }
-
-
-// Scene 1, Arch (Pinterest: a red sandstone arch over a plain, a small figure beneath it): the robot
-// stands in the arch's shadow, and mesas stand off across the sand.
+// 1, Arch (pin 3): a red post-and-lintel arch over the sand, the robot in its shadow.
 sp_arch :: (buf: [] u32, p: [] Pen) {
-  pen_set(p, 1, MAT_FLOOR, 0.93, 0.72, 0.42);
-  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
-  pen_set(p, 2, MAT_WORLD, 0.84, 0.44, 0.30);
-  block(buf, p, -4.6, 0, -4, 2.3, 9.0, 2.4);     // left pier
-  block(buf, p, 4.6, 0, -4, 2.3, 9.0, 2.4);      // right pier
-  pen_set(p, 3, MAT_WORLD, 0.78, 0.36, 0.26);
-  block(buf, p, 0, 7.6, -4, 7.6, 2.8, 2.6);      // the lintel, over the span
+  kit_ground(buf, p, 1, c(0.93, 0.72, 0.42), true);
+  kit_arch_block(buf, p, frame_at(v3(0, 0, -4), 0), 2, c(0.84, 0.44, 0.30), c(0.78, 0.36, 0.26), 4.6, 7.6, 4.6);
+  kit_rocks(buf, p, 4, c(0.80, 0.42, 0.28), 6, 300, 0, -20, 14, 22, 1.4, 3);
+  kit_mesas(buf, p, 5, c(0.64, 0.55, 0.80), 7, 330, -75, 16, 16, 30);
+  sp_robot(buf, p, frame_at(v3(0, 0, 0.5), 0.15), 1);
+}
+// 2, Scissors (pin 14): two red crab-bots squaring off on a coral plain, the robot watching.
+sp_crabs :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.86, 0.56, 0.40), true);
+  kit_rocks(buf, p, 4, c(0.66, 0.34, 0.26), 14, 400, 0, 0, 7, 24, 0.4, 1.5);
+  kit_mesas(buf, p, 5, c(0.70, 0.50, 0.66), 8, 410, -80, 20, 12, 26);
+  kit_crab(buf, p, frame_at(v3(-2.6, 0, 0.2), 0.9), 0.8, 30, c(0.80, 0.20, 0.18), c(0.84, 0.26, 0.22), ink_dark());
+  kit_crab(buf, p, frame_at(v3(2.4, 0, -0.8), -0.9), 0.8, 34, c(0.80, 0.20, 0.18), c(0.84, 0.26, 0.22), ink_dark());
+  sp_robot(buf, p, frame_at(v3(0.2, 0, -5.5), 0.1), 0.85);
+}
+// 3, Walker (pin 13): the white walker with orange bands striding over pale ground.
+sp_walker :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.93, 0.82, 0.62), true);
+  kit_walker(buf, p, frame_at(v3(0, 0, 0), 0), 1, 2, c(0.97, 0.96, 0.92), c(0.95, 0.45, 0.15), ink_dark());
+  kit_rocks(buf, p, 6, c(0.78, 0.62, 0.46), 12, 450, 0, 0, 6, 20, 0.3, 0.9);
+}
+// 4, Terraces (pin 8): a lavender terraced city, a domed top, a sage tower, the robot below.
+sp_terraces :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.66, 0.56, 0.82), true);
+  kit_terraces(buf, p, frame_at(v3(0, 0, 0), 0), 2, c(0.62, 0.52, 0.80), c(0.86, 0.74, 0.68), c(0.24, 0.20, 0.36), 5, 16, 12, 2.2);
+  kit_pen(p, 6, MAT_SKIN, c(0.90, 0.86, 0.80));
+  ellipsoid(buf, p, frame_at(v3(0, 11.0, 0), 0), 1.9, 1.3, 1.9, 14, 7, 0);
+  kit_pen(p, 7, MAT_WORLD, c(0.55, 0.66, 0.50));
+  tube(buf, p, frame_at(v3(9.5, 0, -4), 0), 15, 1.3, 1.0, 0.8, 0.6, 8, true);
+  sp_robot(buf, p, frame_at(v3(-6.5, 0, 10), 0.5), 1);
+}
+// 5, Pack walker (pin 3): a long-legged pack beast under a natural red arch, teal noon sky.
+sp_pack :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.90, 0.62, 0.42), false);
+  kit_arch_round(buf, p, frame_at(v3(2, 0, -14), 0), 2, c(0.80, 0.30, 0.22), 30, 22, 4.5, 6, 18);
+  kit_mesas(buf, p, 3, c(0.85, 0.45, 0.32), 6, 500, -90, 26, 18, 34);
+  kit_rocks(buf, p, 4, c(0.72, 0.34, 0.26), 18, 510, 0, -4, 6, 26, 0.5, 2.2);
+  kit_beast(buf, p, frame_at(v3(-1, 0, -2), 1.1), 1, 10, c(0.92, 0.86, 0.74), ink_dark(), c(0.62, 0.48, 0.36), true);
+  sp_robot(buf, p, frame_at(v3(4.5, 0, 3), -0.5), 0.6);
+}
+// 6, Yellow canyon (pins 1, 10): a deep ochre canyon, the robot small on its floor, a moon above.
+sp_canyon :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.95, 0.78, 0.40), false);
+  kit_canyon(buf, p, 2, c(0.96, 0.74, 0.30), c(0.90, 0.62, 0.26), 600, 12, -90, 10, 26);
+  kit_rocks(buf, p, 4, c(0.82, 0.55, 0.25), 16, 610, 0, -10, 2, 18, 0.4, 1.4);
+  kit_moon(buf, p, 5, c(0.98, 0.95, 0.85), v3(-6, 52, -120), 7);
+  sp_robot(buf, p, frame_at(v3(0.5, 0, 0), 0.2), 1);
+}
+// 7, Palace (pin 6): sage-green domed houses and palms by a sea, the robot on the shore.
+sp_palace :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.90, 0.80, 0.60), false);
+  kit_sea(buf, p, 2, c(0.30, 0.62, 0.66), c(0.94, 0.96, 0.92), 0.05, -16, 700);
+  wall := c(0.86, 0.84, 0.72); dome := c(0.55, 0.72, 0.58);
+  kit_dome_house(buf, p, frame_at(v3(-11, 0, -10), 0.2), 3, wall, dome, 6, 5);
+  kit_dome_house(buf, p, frame_at(v3(-1, 0, -16), 0), 3, wall, dome, 9, 7);
+  kit_dome_house(buf, p, frame_at(v3(9, 0, -11), -0.3), 3, wall, dome, 5, 4);
+  kit_towers(buf, p, 5, wall, dome, 710, 2, 2, -26, 8, 12, 16);
   for i: 0..<6 {
     k := cast(f32) i;
-    pen_set(p, 4, MAT_WORLD, 0.80, 0.42, 0.28);
-    ellipsoid(buf, p, frame_at(v3(-16 + k * 6.4, 0.6, -18 - sp_rand(k + 300) * 8), 0), 1.6 + sp_rand(k + 310) * 1.8, 1.4, 1.5, 10, 5, 0);
+    kit_palm(buf, p, frame_at(v3(-14 + k * 5.6, 0, -1.5 - kit_rand(k + 720) * 4), kit_rand(k + 730) * 6), 0.9 + kit_rand(k + 740) * 0.4, 7, c(0.62, 0.46, 0.32), c(0.36, 0.58, 0.34));
   }
-  pen_set(p, 5, MAT_WORLD, 0.64, 0.55, 0.80);
+  sp_robot(buf, p, frame_at(v3(1.5, 0, 5), -0.3), 0.8);
+}
+// 8, Spider (pin 26): an orange spider bot crossing dark cinder ground at dusk, the robot facing it.
+sp_spider :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.42, 0.26, 0.28), false);
+  kit_rocks(buf, p, 4, c(0.30, 0.20, 0.24), 26, 800, 0, 0, 5, 26, 0.3, 1.6);
+  kit_mesas(buf, p, 3, c(0.52, 0.30, 0.40), 8, 810, -80, 20, 14, 30);
+  kit_spider(buf, p, frame_at(v3(-1.5, 0, -1), 0.5), 1.2, 10, c(0.96, 0.52, 0.18), c(0.99, 0.80, 0.30), ink_dark());
+  sp_robot(buf, p, frame_at(v3(4.2, 0, 2.5), -1.1), 0.75);
+}
+// 9, Tank crabs (pin 32): three blue tank crabs rolling across a white salt flat.
+sp_tanks :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.95, 0.94, 0.90), false);
+  kit_rocks(buf, p, 4, c(0.78, 0.80, 0.84), 10, 900, 0, 0, 8, 30, 0.2, 0.6);
+  kit_mesas(buf, p, 3, c(0.70, 0.78, 0.90), 7, 910, -100, 26, 8, 16);
+  blue := c(0.28, 0.48, 0.86); tread := c(0.18, 0.20, 0.30); lens := c(1.0, 0.62, 0.20);
+  kit_tank(buf, p, frame_at(v3(-3.2, 0, 1), 0.4), 1, 10, blue, tread, lens);
+  kit_tank(buf, p, frame_at(v3(1.0, 0, -2), 0.1), 1.2, 14, blue, tread, lens);
+  kit_tank(buf, p, frame_at(v3(4.6, 0, 0.5), -0.3), 0.9, 18, blue, tread, lens);
+}
+// 10, Salt caravan (pin 35): sand-coloured walkers in a line across a white flat, the robot leading.
+sp_caravan :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.96, 0.95, 0.91), false);
+  kit_mesas(buf, p, 3, c(0.84, 0.80, 0.86), 8, 1000, -110, 30, 10, 20);
+  for i: 0..<4 {
+    k := cast(f32) i;
+    kit_beast(buf, p, frame_at(v3(-12 + k * 8, 0, -6 - k * 3), 1.35), 0.7 + kit_rand(k + 1010) * 0.2, 10 + i * 3, c(0.88, 0.78, 0.60), ink_dark(), c(0.80, 0.42, 0.30), i % 2 == 0);
+  }
+  sp_robot(buf, p, frame_at(v3(9, 0, 2), 1.2), 0.7);
+}
+// 11, Windmill (pin 37): a lone turbine on dusty ground under a purple dusk, the robot below it.
+sp_windmill :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.80, 0.62, 0.52), false);
+  kit_dunes(buf, p, 2, c(0.86, 0.70, 0.56), 14, 1100, 50, -60, -14, 5, 12);
+  kit_rocks(buf, p, 4, c(0.56, 0.40, 0.42), 16, 1110, 0, 0, 4, 20, 0.3, 1.1);
+  kit_turbine(buf, p, frame_at(v3(-3, 0, -5), 0.3), 1, 10, c(0.94, 0.92, 0.86), c(0.94, 0.92, 0.86), 0.4);
+  kit_moon(buf, p, 6, c(0.98, 0.84, 0.80), v3(30, 40, -140), 9);
+  sp_robot(buf, p, frame_at(v3(1.5, 0, 1.5), -0.4), 0.9);
+}
+// 12, Sky city (pins 11, 12): lavender towers in a canyon, airships and birds over it.
+sp_skycity :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.72, 0.62, 0.80), false);
+  kit_canyon(buf, p, 2, c(0.66, 0.56, 0.80), c(0.80, 0.66, 0.78), 1200, 26, -110, -10, 30);
+  kit_towers(buf, p, 4, c(0.90, 0.82, 0.86), c(0.58, 0.70, 0.84), 1210, 7, 0, -50, 12, 18, 40);
+  kit_airship(buf, p, frame_at(v3(-6, 30, -30), 1.3), 1.8, 10, c(0.94, 0.86, 0.72), c(0.98, 0.94, 0.88), ink_dark());
+  kit_airship(buf, p, frame_at(v3(12, 40, -60), -1.9), 1.4, 13, c(0.94, 0.86, 0.72), c(0.86, 0.44, 0.40), ink_dark());
   for i: 0..<7 {
     k := cast(f32) i;
-    tube(buf, p, frame_at(v3(-50 + k * 16, -0.5, -70 - sp_rand(k + 330) * 20), 0), 16 + sp_rand(k + 340) * 14, 12, 12, 5, 5, 7, true);
+    kit_bird(buf, p, frame_at(v3(-4 + k * 2.4, 22 + kit_rand(k + 1220) * 6, -12 - kit_rand(k + 1230) * 8), 0.2), 0.8, 16, ink_dark());
   }
-  sp_robot(buf, p, frame_at(v3(0, 0, 0.5), 0.15));
+  sp_robot(buf, p, frame_at(v3(0, 0, 6), 0.1), 1);
 }
-
-// The red scissor crabs of the Pinterest sheet: a red body on splayed legs, two pincers, a rear fold.
-sp_crab :: (buf: [] u32, p: [] Pen, f: Frame) {
-  pen_set(p, 30, MAT_FLAT, 0.80, 0.20, 0.18);
-  ellipsoid(buf, p, frame_at(fp(f, 0, 0.75, 0), 0), 1.15, 0.5, 0.9, 12, 6, 0);
-  pen_set(p, 31, MAT_FLAT, 0.84, 0.26, 0.22);
-  for side: 0..<2 {
-    sx := ifx side == 0 then -1.0f32 else 1.0f32;
-    limb(buf, p, fp(f, sx * 0.8, 0.9, 0.7), fp(f, sx * 1.7, 0.95, 1.5), 0.13, 0.11, fd(f, 0, 1, 0), 8);
-    ball(buf, p, fp(f, sx * 1.85, 0.95, 1.75), 0.34, 10);
-  }
-  pen_set(p, 32, MAT_CLOTH, 0.23, 0.16, 0.21);
-  for side: 0..<2 {
-    sx := ifx side == 0 then -1.0f32 else 1.0f32;
-    for j: 0..<3 {
-      z := -0.4 + cast(f32) j * 0.45;
-      limb(buf, p, fp(f, sx * 0.9, 0.6, z), fp(f, sx * 1.8, 0.05, z + 0.1), 0.07, 0.05, fd(f, 0, 0, 1), 6);
-    }
-  }
+// 13, Big mech (pins 15, 30): a round white mech with orange plates and a tracked rover on snow.
+sp_mech :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.92, 0.94, 0.97), false);
+  kit_dunes(buf, p, 2, c(0.96, 0.97, 0.99), 16, 1300, 60, -80, -16, 6, 14);
+  kit_mesas(buf, p, 3, c(0.62, 0.70, 0.84), 7, 1310, -110, 28, 18, 34);
+  kit_mech(buf, p, frame_at(v3(-2, 0, -1), 0.35), 1, 10, c(0.96, 0.95, 0.92), c(0.96, 0.48, 0.16), c(0.30, 0.30, 0.36), c(0.30, 0.86, 0.95));
+  kit_rover(buf, p, frame_at(v3(4.5, 0, 3), -0.7), 0.9, 15, c(0.95, 0.94, 0.90), c(0.96, 0.48, 0.16), c(0.22, 0.22, 0.28));
 }
-
-// Scene 2, Scissors (Pinterest: two red crab-bots with pincers, on a coral plain).
-sp_crabs :: (buf: [] u32, p: [] Pen) {
-  pen_set(p, 1, MAT_FLOOR, 0.86, 0.56, 0.40);
-  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
-  for i: 0..<14 {
+// 14, Spire (pin 38): a red canyon with one tall tower spire, the robot looking up at it.
+sp_spire :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.78, 0.36, 0.26), false);
+  kit_canyon(buf, p, 2, c(0.74, 0.28, 0.22), c(0.86, 0.40, 0.28), 1400, 18, -100, 0, 34);
+  kit_pen(p, 5, MAT_WORLD, c(0.96, 0.88, 0.76));
+  tube(buf, p, frame_at(v3(0, 0, -40), 0), 46, 3.4, 3.4, 1.6, 1.6, 10, true);
+  tube(buf, p, frame_at(v3(0, 46, -40), 0), 12, 1.6, 1.6, 0.02, 0.02, 10, true);
+  kit_pen(p, 6, MAT_FLAT, c(0.20, 0.30, 0.52));
+  for r: 0..<4 { tube(buf, p, frame_at(v3(0, 10 + cast(f32) r * 9, -40), 0), 1.2, 3.6 - cast(f32) r * 0.45, 3.6 - cast(f32) r * 0.45, 3.5 - cast(f32) r * 0.45, 3.5 - cast(f32) r * 0.45, 10, true); }
+  sp_robot(buf, p, frame_at(v3(2.2, 0, -4), 2.8), 0.9);
+}
+// 15, Coral sea (pin 7): a red-orange sea at dusk, birds, and the robot on a rock at the shore.
+sp_sea :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.82, 0.52, 0.42), false);
+  kit_sea(buf, p, 2, c(0.86, 0.36, 0.30), c(0.98, 0.80, 0.66), 0.05, -6, 1500);
+  kit_rocks(buf, p, 4, c(0.42, 0.24, 0.26), 8, 1510, 0, 2, 2, 8, 0.5, 1.8);
+  kit_pen(p, 5, MAT_WORLD, c(0.42, 0.24, 0.26));
+  ellipsoid(buf, p, frame_at(v3(0, 0.2, 0), 0), 2.2, 1.0, 1.8, 10, 6, 0);
+  for i: 0..<5 {
     k := cast(f32) i;
-    a := sp_rand(k + 400) * 6.2832;
-    d := 6 + sp_rand(k + 410) * 18;
-    r := 0.4 + sp_rand(k + 420) * 1.1;
-    pen_set(p, 4, MAT_WORLD, 0.66, 0.34, 0.26);
-    ellipsoid(buf, p, frame_at(v3(cos(a) * d, r * 0.2, sin(a) * d), sp_rand(k + 430) * 6), r, r * 0.6, r * 0.9, 8, 5, 0);
+    kit_bird(buf, p, frame_at(v3(-6 + k * 3.2, 9 + kit_rand(k + 1520) * 4, -10 - kit_rand(k + 1530) * 6), 0.4), 0.7, 16, c(0.98, 0.94, 0.90));
   }
-  sp_crab(buf, p, frame_at(v3(-2.7, 0, 0.5), 0.5));
-  sp_crab(buf, p, frame_at(v3(2.9, 0, -1.8), -0.45));
+  sp_robot(buf, p, frame_at(v3(0, 0.95, 0), 2.6), 0.8);
+}
+// 16, Sun stairs (pin 8): a great lavender stair to a wall with a blue banner, the sun behind.
+sp_stairs :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, c(0.76, 0.66, 0.86), false);
+  kit_steps(buf, p, frame_at(v3(0, 0, 0), 0), 2, c(0.70, 0.60, 0.86), c(0.82, 0.72, 0.90), 12, 0.9, 1.8, 14);
+  kit_pen(p, 3, MAT_WORLD, c(0.64, 0.54, 0.80));
+  block(buf, p, 0, 0, -24, 14, 22, 2);
+  block(buf, p, -13, 0, -22, 2.4, 26, 2.4);
+  block(buf, p, 13, 0, -22, 2.4, 26, 2.4);
+  kit_banner(buf, p, frame_at(v3(0, 16, -21.8), 0), 4, c(0.24, 0.40, 0.80), c(1.0, 0.86, 0.50), 6, 9);
+  kit_moon(buf, p, 6, c(1.0, 0.92, 0.70), v3(-24, 34, -60), 6);
+  sp_robot(buf, p, frame_at(v3(-1, 0, 5), 3.0), 1);
 }
 
-// Scene 3, Walker (Pinterest: the white and orange legged machine striding over pale ground): a
-// white body on four long jointed legs with orange bands and dark feet.
-sp_walker :: (buf: [] u32, p: [] Pen) {
-  pen_set(p, 1, MAT_FLOOR, 0.93, 0.82, 0.62);
-  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
-  pen_set(p, 2, MAT_SKIN, 0.97, 0.96, 0.92);
-  ellipsoid(buf, p, frame_at(v3(0, 4.0, 0), 0), 1.25, 1.0, 1.05, 14, 8, 0);
-  pen_set(p, 3, MAT_FLAT, 0.95, 0.45, 0.15);
-  box(buf, p, frame_at(v3(0, 4.6, 1.0), 0), 0.95, 0.12, 0.05);
-  box(buf, p, frame_at(v3(0, 3.5, 1.0), 0), 0.95, 0.10, 0.05);
-  pen_set(p, 4, MAT_CLOTH, 0.23, 0.16, 0.21);
-  for i: 0..<4 {
-    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32;
-    sz := ifx i < 2 then -1.0f32 else 1.0f32;
-    hip := v3(sx * 0.8, 3.4, sz * 0.6);
-    knee := v3(sx * 2.3, 2.2, sz * 1.6);
-    foot := v3(sx * 2.7, 0.2, sz * 2.1);
-    limb(buf, p, hip, knee, 0.24, 0.17, v3(1, 0, 0), 8);
-    limb(buf, p, knee, foot, 0.17, 0.12, v3(1, 0, 0), 8);
-    ball(buf, p, foot, 0.28, 10);
-  }
-}
-
-// Scene 4, Terraces (Pinterest: a lavender city cut into stepped terraces, a tower, a small robot
-// at its foot): stacked blocks, a dome, a sage-green tower.
-sp_terraces :: (buf: [] u32, p: [] Pen) {
-  pen_set(p, 1, MAT_FLOOR, 0.66, 0.56, 0.82);
-  quad(buf, p, v3(-140, 0, -140), v3(140, 0, -140), v3(140, 0, 140), v3(-140, 0, 140));
-  for lvl: 0..<5 {
-    k := cast(f32) lvl;
-    if lvl % 2 == 0 { pen_set(p, 2, MAT_WORLD, 0.62, 0.52, 0.80); } else { pen_set(p, 2, MAT_WORLD, 0.86, 0.74, 0.68); }
-    block(buf, p, 0, k * 2.2, 0, 8.0 - k * 1.4, 2.2, 6.0 - k * 0.9);
-    pen_set(p, 5, MAT_WINDOW, 0.24, 0.20, 0.36);
-    for w: 0..<4 {
-      wx := (cast(f32) w - 1.5) * (8.0 - k * 1.4) * 0.42;   // spaced across this terrace's own width
-      box(buf, p, frame_at(v3(wx, k * 2.2 + 1.2, 6.0 - k * 0.9 + 0.02), 0), 0.5, 0.45, 0.02);
-    }
-  }
-  pen_set(p, 6, MAT_SKIN, 0.90, 0.86, 0.80);
-  ellipsoid(buf, p, frame_at(v3(0, 11.0, 0), 0), 1.9, 1.3, 1.9, 14, 7, 0);
-  pen_set(p, 7, MAT_WORLD, 0.55, 0.66, 0.50);
-  tube(buf, p, frame_at(v3(9.5, 0, -4), 0), 15, 1.3, 1.0, 0.8, 0.6, 8, true);
-  sp_robot(buf, p, frame_at(v3(-6.5, 0, 10), 0.5));
-}
-
+SP_SCENES :: 17;
 // Each scene's world, written once when the scene is chosen.
 sp_build_world :: (buf: [] u32, p: [] Pen, scene: int) {
-  if scene == 1 { sp_arch(buf, p); } else if scene == 2 { sp_crabs(buf, p); } else if scene == 3 { sp_walker(buf, p); } else if scene == 4 { sp_terraces(buf, p); } else { sp_dunes(buf, p); }
+  if scene == 1 { sp_arch(buf, p); } else if scene == 2 { sp_crabs(buf, p); } else if scene == 3 { sp_walker(buf, p); }
+  else if scene == 4 { sp_terraces(buf, p); } else if scene == 5 { sp_pack(buf, p); } else if scene == 6 { sp_canyon(buf, p); }
+  else if scene == 7 { sp_palace(buf, p); } else if scene == 8 { sp_spider(buf, p); } else if scene == 9 { sp_tanks(buf, p); }
+  else if scene == 10 { sp_caravan(buf, p); } else if scene == 11 { sp_windmill(buf, p); } else if scene == 12 { sp_skycity(buf, p); }
+  else if scene == 13 { sp_mech(buf, p); } else if scene == 14 { sp_spire(buf, p); } else if scene == 15 { sp_sea(buf, p); }
+  else if scene == 16 { sp_stairs(buf, p); } else { sp_dunes(buf, p); }
 }
+cam :: (ex: f32, ey: f32, ez: f32, ax: f32, ay: f32, az: f32, fov: f32) -> CamNow { return CamNow.{eye = v3(ex, ey, ez), at = v3(ax, ay, az), fov = fov}; }
 // Each scene's camera (one fixed view per scene).
 sp_camera :: (scene: int) -> CamNow {
-  if scene == 1 { return CamNow.{eye = v3(0, 2.2, 21.0), at = v3(0, 4.2, -1), fov = 0.62}; }
-  if scene == 2 { return CamNow.{eye = v3(0, 2.6, 12.0), at = v3(0, 1.2, 0), fov = 0.6}; }
-  if scene == 3 { return CamNow.{eye = v3(-9.0, 3.2, 17.0), at = v3(0, 4.2, 0), fov = 0.62}; }
-  if scene == 4 { return CamNow.{eye = v3(-14.0, 7.0, 34.0), at = v3(0, 6.0, 0), fov = 0.6}; }
-  return CamNow.{eye = v3(-5.6, 2.6, 13.0), at = v3(0.5, 1.7, 0), fov = 0.52};
+  if scene == 1 { return cam(0, 2.2, 21, 0, 4.2, -1, 0.62); }
+  if scene == 2 { return cam(0, 3.4, 13, 0, 1.0, -1, 0.6); }
+  if scene == 3 { return cam(-9, 3.2, 17, 0, 4.2, 0, 0.62); }
+  if scene == 4 { return cam(-14, 7, 34, 0, 6, 0, 0.6); }
+  if scene == 5 { return cam(-6, 2.2, 22, 1, 7, -6, 0.7); }
+  if scene == 6 { return cam(0, 1.6, 14, 0, 9, -20, 0.75); }
+  if scene == 7 { return cam(6, 3, 24, -1, 4, -10, 0.62); }
+  if scene == 8 { return cam(-4, 3.2, 13, 0.5, 1.4, 0, 0.62); }
+  if scene == 9 { return cam(0, 2.2, 12, 0.6, 0.9, -0.5, 0.62); }
+  if scene == 10 { return cam(2, 2.4, 22, -2, 3, -8, 0.6); }
+  if scene == 11 { return cam(4, 1.2, 14, -2, 6, -4, 0.75); }
+  if scene == 12 { return cam(0, 2, 20, 0, 16, -30, 0.85); }
+  if scene == 13 { return cam(-4, 2.4, 15, 0.5, 2.4, 0, 0.62); }
+  if scene == 14 { return cam(3, 1.6, 12, 0, 18, -40, 0.8); }
+  if scene == 15 { return cam(-5, 2.6, 12, 0, 2.6, -6, 0.62); }
+  if scene == 16 { return cam(5, 4.5, 22, 0, 8, -14, 0.7); }
+  return cam(-5.6, 2.6, 13, 0.5, 1.7, 0, 0.52);
 }
-SP_SCENES :: 5;
+look :: (variant: int, clock: f32, kx: f32, ky: f32, kz: f32) -> SpLook { return SpLook.{variant = variant, clock = clock, key = unit_or(v3(kx, ky, kz), v3(0, 1, 0))}; }
+// Each scene's look: a noon pastoral for the bright pins, dusk for the sunset ones, neon for night.
+sp_look :: (scene: int) -> SpLook {
+  if scene == 5 || scene == 7 || scene == 9 || scene == 10 || scene == 13 { return look(SP_PASTORAL, 0.5, -0.45, 0.62, -0.64); }
+  if scene == 6 || scene == 12 || scene == 16 { return look(SP_PASTORAL, 0.62, -0.6, 0.45, -0.66); }
+  if scene == 8 { return look(SP_NEON, 0.0, 0.5, 0.4, -0.76); }
+  if scene == 11 || scene == 15 { return look(SP_DUSK, 0.80, 0.55, 0.2, -0.81); }
+  if scene == 14 { return look(SP_ACTION, 0.0, -0.4, 0.5, -0.77); }
+  return look(SP_DUSK, 0.78, -0.5, 0.27, -0.82);
+}
+splice_variant :: (s: [] Splice) -> int #export_c #effects(all) { return sp_look(s[0].scene).variant; }
+splice_clock :: (s: [] Splice) -> f32 #export_c #effects(all) { return sp_look(s[0].scene).clock; }
 
-// The page's facts (kind 600) carry the URL: ?scene=N picks the scene, 0 to 4; anything else is 0.
+// The page's facts (kind 600) carry the URL: ?scene=N picks the scene, 0 to SP_SCENES - 1; anything else is 0.
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
   if kind != 600 || s.count < 1 { return; }
   target := "scene=";
@@ -223,15 +263,20 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     for j: 0..<target.count {
       if i + j >= body.count || body[i + j] != target[j] { hit = false; break; }
     }
-    if hit && i + target.count < body.count {
-      d := cast(int) body[i + target.count] - 48;
-      s[0].scene = ifx d >= 0 && d < SP_SCENES then d else 0;
+    if hit {
+      n := 0; digits := 0; at := i + target.count;
+      while at < body.count && digits < 3 {
+        d := cast(int) body[at] - 48;
+        if d < 0 || d > 9 { break; }
+        n = n * 10 + d; digits += 1; at += 1;
+      }
+      s[0].scene = ifx digits > 0 && n < SP_SCENES then n else 0;
       return;
     }
   }
 }
 
-// The frame: the anime look over the world, one fixed camera and the dusk key light.
+// The frame: the anime look over the world, the scene's fixed camera and key light.
 splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                  world: [] u32, live: [] u32, style: [] f32) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
@@ -246,9 +291,8 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   t := s[0].time;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   for i: 0..<lo_i(style.count, STYLE_FLOATS) { u[U_STYLE + i] = style[i]; }
-  cam := sp_camera(s[0].scene);
-  view_rows(u, cam, width / height);
-  key := unit_or(v3(-0.5, 0.27, -0.82), v3(0, 1, 0));
+  view_rows(u, sp_camera(s[0].scene), width / height);
+  key := sp_look(s[0].scene).key;
   if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
   shadow_rows(u, key);
   put4(u, U_SIZE, width, height, t, dpr);
@@ -268,3 +312,13 @@ splice_world_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].wo
 splice_world_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_gen; }
 splice_live_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].live_n; }
 splice_draw_count :: (s: [] Splice) -> int #export_c #effects(all) { return ifx s[0].world_built then 1 else 0; }
+
+#test "two digit scenes parse, and an unknown scene is the first" {
+  s := [1] Splice.[Splice.{}];
+  splice_message(s[..], 600, "https://x/worlds/splice?scene=16");
+  #assert s[0].scene == 16;
+  splice_message(s[..], 600, "?scene=7&x=1");
+  #assert s[0].scene == 7;
+  splice_message(s[..], 600, "?scene=99");
+  #assert s[0].scene == 0;
+}
