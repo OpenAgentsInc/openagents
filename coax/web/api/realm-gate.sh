@@ -26,28 +26,21 @@ if [[ "$(uname -s)" == Darwin ]]; then
   flags=(-I/opt/homebrew/opt/postgresql@16/include -I"$(brew --prefix secp256k1)/include" -I"$(brew --prefix openssl@3)/include")
   libs=(-L/opt/homebrew/opt/postgresql@16/lib -L"$(brew --prefix secp256k1)/lib" -L"$(brew --prefix openssl@3)/lib" -lpq -lsecp256k1 -lssl -lcrypto -lcurl -lz -lm)
 else
-  pg="$(dirname "$(command -v initdb)")"; cc=("${CC:-gcc}")
+  # initdb on PATH (NixOS), else PGDG's postgresql-16 or the newest installed, as test.sh finds it (a build host)
+  pg="$(command -v initdb || true)"; pg="${pg:+$(dirname "$pg")}"
+  [[ -n "$pg" ]] || pg="$(ls -d /usr/lib/postgresql/16/bin /usr/lib/postgresql/*/bin 2>/dev/null | head -n 1)"
+  [[ -x "$pg/initdb" ]] || { echo "realm-gate: no Postgres server (initdb); coax/remote/host-startup.sh installs postgresql-16" >&2; exit 1; }
+  cc=("${CC:-gcc}")
   read -r -a flags <<< "$(pkg-config --cflags libpq libsecp256k1 openssl libcurl zlib)"
   read -r -a libs <<< "$(pkg-config --libs libpq libsecp256k1 openssl libcurl zlib) -lm"
 fi
 work="$(mktemp -d /tmp/rg.XXXXXX)"
 trap 'kill ${api_pid:-} ${site_pid:-} 2>/dev/null || true; "$pg/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 a="$here"
-"$coax" c "$a/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
-"$coax" c "$a/seat-policy.coax" --library --header "$work/seat-policy.generated.h" > "$work/seat-policy.generated.c"
-"$coax" c "$a/service-policy.coax" --library --header "$work/service-policy.generated.h" > "$work/service-policy.generated.c"
-"$coax" c "$a/service-wire.coax" --library --header "$work/service-wire.generated.h" > "$work/service-wire.generated.c"
-"$coax" c "$a/realm-wire.coax" --library --header "$work/realm-wire.generated.h" > "$work/realm-wire.generated.c"
-"$coax" c "$a/progress-policy.coax" --library --header "$work/progress-policy.generated.h" > "$work/progress-policy.generated.c"
-"$coax" c "$a/item-policy.coax" --library --header "$work/item-policy.generated.h" > "$work/item-policy.generated.c"
-"$coax" c "$a/moderation-policy.coax" --library --header "$work/moderation-policy.generated.h" > "$work/moderation-policy.generated.c"
-"$coax" c "$a/character-policy.coax" --library --header "$work/character-policy.generated.h" > "$work/character-policy.generated.c"
-"$coax" c "$a/worldbuilder-policy.coax" --library --header "$work/worldbuilder-policy.generated.h" > "$work/worldbuilder-policy.generated.c"
-"$coax" c "$a/npc-personas.coax" --run-steps 250000000 --library --header "$work/npc-personas.generated.h" > "$work/npc-personas.generated.c"
-"${cc[@]}" -std=c11 -O1 -w -D_DEFAULT_SOURCE -I"$work" "${flags[@]}" -o "$work/api" \
-  "$a"/api.c "$a"/analytics.c "$a"/admin.c "$a"/player.c "$a"/rooms.c "$a"/npc.c "$work"/npc-personas.generated.c "$a"/room.c "$a"/private.c "$a"/drops.c "$a"/villa.c "$a"/chat.c "$a"/realms.c \
-  "$a"/access.c "$a"/makers.c "$a"/inference.c "$a"/mesh.c "$a"/mesh-policy.generated.c "$a"/caller-policy.generated.c "$a"/nip98.generated.c \
-  "$a"/anime.c "$work"/anime-director-policy.generated.c "$a"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$work"/item-policy.generated.c "$work"/moderation-policy.generated.c "$work"/character-policy.generated.c "$a"/nostr.c "$a"/email.c "$a"/jobs.c "$a"/service.c "$work"/service-policy.generated.c "$work"/service-wire.generated.c "$work"/realm-wire.generated.c "$a"/relay.c "$a"/verse_packs.c "$a"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "${libs[@]}"
+# The same C files and Coax units as test.sh: api-sources.sh is the one list (#13380).
+source "$a/api-sources.sh"
+api_sources "$a" "$work" "$coax"
+"${cc[@]}" -std=c11 -O1 -w -D_DEFAULT_SOURCE -I"$work" "${flags[@]}" -o "$work/api" "${API_SOURCES[@]}" "${libs[@]}"
 cli="$(COAX="$coax" "$repo/apps/openagents-cli/build.sh" | tail -1)"
 "$pg/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))
@@ -65,7 +58,7 @@ if [[ -z "${REALM_GATE_PAGE_ONLY:-}" ]]; then
   done
   mkdir -p "$work/walk"
   WORK="$work/walk" coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax | tail -1
-  CLI="$cli" API="http://127.0.0.1:$api_port" PINNED=1 coax/web/tool.sh coax/web/api/tests/realm_cli_api.coax | tail -1
+  CLI="$cli" API="http://127.0.0.1:$api_port" PINNED=1 coax/web/tool.sh coax/web/api/tests/realm_cli_api.coax || { tail -30 "$work/api.log" >&2; exit 1; }
 fi
 if [[ "${1:-}" == --page ]]; then
   [[ -s apps/openagents-web/build/myrealm.wasm ]] || { echo "realm-gate: build apps/openagents-web/build/myrealm.wasm first" >&2; exit 2; }

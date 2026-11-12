@@ -89,37 +89,22 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_snapshot_test.py"
 lap "the policy, NIP-98 and deploy checks"
 fi
 work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} 2>/dev/null || true; "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
-"$cli_coax" c "$here/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
-"$cli_coax" c "$here/seat-policy.coax" --library --header "$work/seat-policy.generated.h" > "$work/seat-policy.generated.c"
-"$cli_coax" c "$here/service-policy.coax" --library --header "$work/service-policy.generated.h" > "$work/service-policy.generated.c"
-"$cli_coax" c "$here/service-wire.coax" --library --header "$work/service-wire.generated.h" > "$work/service-wire.generated.c"
-"$cli_coax" c "$here/realm-wire.coax" --library --header "$work/realm-wire.generated.h" > "$work/realm-wire.generated.c"
-"$cli_coax" c "$here/progress-policy.coax" --library --header "$work/progress-policy.generated.h" > "$work/progress-policy.generated.c"
-"$cli_coax" c "$here/item-policy.coax" --library --header "$work/item-policy.generated.h" > "$work/item-policy.generated.c"
-"$cli_coax" c "$here/moderation-policy.coax" --library --header "$work/moderation-policy.generated.h" > "$work/moderation-policy.generated.c"
-"$cli_coax" c "$here/character-policy.coax" --library --header "$work/character-policy.generated.h" > "$work/character-policy.generated.c"
-"$cli_coax" c "$here/worldbuilder-policy.coax" --library --header "$work/worldbuilder-policy.generated.h" > "$work/worldbuilder-policy.generated.c"
-"$cli_coax" c "$here/npc-personas.coax" --run-steps 250000000 --library --header "$work/npc-personas.generated.h" > "$work/npc-personas.generated.c"
-"$cli_coax" c "$here/auth-policy.coax" --library --header "$work/auth-policy.generated.h" > "$work/auth-policy.generated.c"
-"$cli_coax" c "$here/auth-seal.coax" --run-steps 250000000 --library --header "$work/auth-seal.generated.h" > "$work/auth-seal.generated.c"
-"$cli_coax" c "$here/agent-wire.coax" --run-steps 250000000 --library --header "$work/agent-wire.generated.h" > "$work/agent-wire.generated.c"
-"$cli_coax" c "$here/agent-attest.coax" --run-steps 250000000 --library --header "$work/agent-attest.generated.h" > "$work/agent-attest.generated.c"
-"$cli_coax" c "$here/auth-recover-policy.coax" --library --header "$work/auth-recover-policy.generated.h" > "$work/auth-recover-policy.generated.c"
-"$cli_coax" c "$here/auth-life-policy.coax" --library --header "$work/auth-life-policy.generated.h" > "$work/auth-life-policy.generated.c"
-"$cli_coax" c "$here/auth-recover-crypto.coax" --run-steps 250000000 --library --header "$work/auth-recover-crypto.generated.h" > "$work/auth-recover-crypto.generated.c"
-"$cli_coax" c "$here/passkey-policy.coax" --library --header "$work/passkey-policy.generated.h" > "$work/passkey-policy.generated.c"
-"$cli_coax" c "$here/passkey-verify.coax" --run-steps 250000000 --library --header "$work/passkey-verify.generated.h" > "$work/passkey-verify.generated.c"
-"$cli_coax" c "$repo_root/pay/lnaddr-policy.coax" --run-steps 250000000 --library --header "$work/lnaddr-policy.generated.h" > "$work/lnaddr-policy.generated.c"
-"$cli_coax" c "$here/auth-device-policy.coax" --library --header "$work/auth-device-policy.generated.h" > "$work/auth-device-policy.generated.c"
-"$cli_coax" c "$here/auth-device-crypto.coax" --run-steps 250000000 --library --header "$work/auth-device-crypto.generated.h" > "$work/auth-device-crypto.generated.c"
-"$cli_coax" c "$repo_root/pay/wallet-policy.coax" --library --header "$work/wallet-policy.generated.h" > "$work/wallet-policy.generated.c"
-"$cli_coax" c "$repo_root/pay/wallet-vault-store.coax" --run-steps 250000000 --library --header "$work/wallet-vault.generated.h" > "$work/wallet-vault.generated.c"
-"$cli_coax" c "$here/ticket-sign.coax" --run-steps 250000000 --library --header "$work/ticket-sign.generated.h" > "$work/ticket-sign.generated.c"
+# The binary's C files and Coax units are api-sources.sh's, the one list every local build reads (#13380).
+source "$here/api-sources.sh"
+api_sources "$here" "$work" "$cli_coax"
+if [[ $serve == 0 ]] && runs checks; then
+# The image keeps its own list: the Dockerfile's C files and deploy.sh's Coax units must be this one's.
+diff <(printf '%s\n' "${API_SOURCES[@]##*/}" | sort) <(grep -o '/src/[A-Za-z0-9_.-]*\.c' "$here/Dockerfile" | sed 's|/src/||' | sort) ||
+  { echo 'api: the Dockerfile and api-sources.sh name different files' >&2; exit 1; }
+for u in $API_COAX $API_COAX_WRAPPED; do
+  grep -E '^for m in ' "$here/deploy.sh" | grep -q -- "[ :]${u##*:}[ ;]" || { echo "api: deploy.sh makes no C for ${u##*:} (api-sources.sh)" >&2; exit 1; }
+done
+fi
 # OA_LNADDR_TEST_FETCH: this build's Lightning Address fetches go to the fake services on SPARK_PORT
 # (test_makers_tips.py); the image is built without it and fetches only public https hosts.
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH -fsanitize=address,undefined \
   -I"$work" ${pq_inc[@]+"${pq_inc[@]}"} ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$work"/npc-personas.generated.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$work"/item-policy.generated.c "$work"/moderation-policy.generated.c "$work"/character-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c "$here"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "$here"/auth.c "$work"/auth-policy.generated.c "$here"/auth-seal-unit.c "$here"/lnaddr.c "$here"/lnaddr-unit.c "$here"/agents.c "$here"/agent-wire-unit.c "$here"/agent-attest-unit.c "$here"/auth-recover.c "$work"/auth-recover-policy.generated.c "$here"/auth-life.c "$work"/auth-life-policy.generated.c "$here"/auth-recover-crypto-unit.c "$here"/auth-device.c "$work"/auth-device-policy.generated.c "$here"/auth-device-crypto-unit.c "$here"/passkeys.c "$work"/passkey-policy.generated.c "$here"/passkey-verify-unit.c "$here"/wallet.c "$work"/wallet-policy.generated.c "$here"/wallet-vault-unit.c "$here"/ticket-sign-unit.c "$here"/service.c "$work"/service-policy.generated.c "$work"/service-wire.generated.c "$work"/realm-wire.generated.c \
+  -o "$work/api" "${API_SOURCES[@]}" \
   ${pq_lib[@]+"${pq_lib[@]}"} -lpq ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lssl -lcrypto -lcurl -lz -lm
 if runs checks; then
 # The gate's table (auth.c): an unknown route has no rule, and /docs/limits is the API's own limits table.

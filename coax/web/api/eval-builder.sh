@@ -20,9 +20,11 @@ OA_NPC_TOKEN="$(CLOUDSDK_CONFIG="$work/gcloud" gcloud auth print-access-token 2>
 export OA_NPC_TOKEN
 cc=/usr/bin/clang
 secp="$(brew --prefix secp256k1 2>/dev/null || true)"
+source "$here/api-sources.sh"
+api_sources "$here" "$work" "${COAX:-$here/../../bin/coax}"
 $cc -std=c11 -O1 -w -D_DEFAULT_SOURCE \
   -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/nip98.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c \
+  -I"$work" -o "$work/api" "${API_SOURCES[@]}" \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
 "$pg/bin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))

@@ -104,11 +104,15 @@ ca_answer :: (c: [] Ca, path1: string, path2: string, out: [] u8) -> string {
 ca_num :: (v: int, out: [] u8) -> string { q: [1] Cb; cb_int(q[..], v); for i: 0..<q[0].n { out[i] = q[0].b[i]; } return cast(string) out[0..<q[0].n]; }
 
 ca_run :: (c: [] Ca) -> bool {
-  me := [1] string.["whoami"];
-  if !ca_ok(c, ca_cli(c, me[..], 0), "the CLI names its key (whoami)") { return false; }
+  // Its key, said without asking the server (whoami needs an account since #13320's login; a run's
+  // fresh key has none), then one signed call, so the API knows the key's caller player.
+  me := [2] string.["nostr", "show"];
+  if !ca_ok(c, ca_cli(c, me[..], 0), "the CLI names its key (nostr show)") { return false; }
   pk: [80] u8; pubkey := ca_answer(c, "pubkey", "", pk[..]);
   if pubkey.count != 64 { pubkey = ca_answer(c, "body", "pubkey", pk[..]); }
   if !ca_ok(c, pubkey.count == 64, "its public key is 64 hex digits") { return false; }
+  mine := [2] string.["realm", "list"];
+  if !ca_ok(c, ca_cli(c, mine[..], 0), "a signed call: its realms, none yet (realm list)") { return false; }
   sb: [64] u8; stamp := ca_num(proc_now_ms() % 1000000000, sb[..]);
   slug_b: [1] Cb; cb_put(slug_b[..], "cli-api-"); cb_put(slug_b[..], stamp); slug := cb_text(slug_b[..]);
   // The realm, owned by the key's caller player (0098), made as MAKE IT would make it.
