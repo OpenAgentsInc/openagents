@@ -271,7 +271,16 @@ st_capacity :: (s:[]St,text:string) {
   for i:0..<10 {s[0].cp_day[i]=day[i];}
   s[0].cp_seated=st_int(st_line(text,"seated"));s[0].cp_seconds=st_int(st_line(text,"seconds"));s[0].cp_tick_us=st_signed(st_line(text,"tick_p99_us"));
   s[0].cp_holds=verdict=="holds";s[0].cp_why_n=0;
-  if !s[0].cp_holds && verdict.count>6 {k:=0;for i:6..<verdict.count {if k<96 {s[0].cp_why[k]=verdict[i];k+=1;}}s[0].cp_why_n=k;}
+  // the reasons as words a person reads: "slow-tick,lost" is "slow tick, lost"
+  if !s[0].cp_holds && verdict.count>6 {
+    k:=0;
+    for i:6..<verdict.count {
+      c:=verdict[i];
+      if c==44 {if k<95 {s[0].cp_why[k]=44;s[0].cp_why[k+1]=32;k+=2;}}
+      else if k<96 {s[0].cp_why[k]=ifx c==45 then 32 else c;k+=1;}
+    }
+    s[0].cp_why_n=k;
+  }
   s[0].cp_got=true;
 }
 // The capacity line: what last night's soak held, or why it failed.
@@ -295,7 +304,7 @@ st_capacity_text :: (s:[]St,b:[]u8)->int {
   #assert s[0].cp_got && s[0].cp_holds && s[0].cp_seated==92 && s[0].cp_seconds==7200 && s[0].cp_tick_us==2400;
   #assert cast(string)b[0..<st_capacity_text(s[..],b[..])]=="Capacity: 92 players held for 2 hours in the soak of 2026-11-12, worst tick p99 2.4 ms.";
   st_capacity(s[..],"capacity 1\nday 2026-11-13\nseconds 600\nseated 40\ntick_p99_us -1\nverdict fails slow-tick,leak\n");
-  #assert !s[0].cp_holds && cast(string)b[0..<st_capacity_text(s[..],b[..])]=="Capacity: the soak of 2026-11-13 failed (slow-tick,leak) with 40 players seated.";
+  #assert !s[0].cp_holds && cast(string)b[0..<st_capacity_text(s[..],b[..])]=="Capacity: the soak of 2026-11-13 failed (slow tick, leak) with 40 players seated.";
   st_capacity(s[..],"capacity 1\nday 2026-11-14\nseconds 600\nseated 48\ntick_p99_us -1\nverdict holds\n");
   #assert cast(string)b[0..<st_capacity_text(s[..],b[..])]=="Capacity: 48 players held for 10 minutes in the soak of 2026-11-14.";
   t:[1]St;st_capacity(t[..],"{\"error\":\"no capacity record\"}");#assert !t[0].cp_got;
