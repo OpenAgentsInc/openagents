@@ -323,6 +323,10 @@ Names, limits and the claim flow don't change when the backend does.
   it has at least a minute left. Its LUD-21 verify URL stays with us; the
   payer's `verify` is our `/lnurlp/verify/<hash>`. A payer's details
   (LUD-18) are refused in forward mode, since we never pass them on.
+  Some targets break LUD-06 when a payment carries a note: getalby.com puts
+  the note in a plain description instead of the hash, so we refuse that
+  invoice ("The invoice we got back doesn't match the request"). The same
+  payment without a note goes through.
 - **Spark mode** answers "This address isn't receiving yet" until the Breez
   LNURL backend runs (`OA_LNADDR_SPARK_URL`; see `NEEDS_OWNER.md`).
 - **Names:** the first invoice holds a name for good (`pay.name_holds`,

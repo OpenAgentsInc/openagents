@@ -67,3 +67,13 @@ lu_t_zap_bad_sig :: (out: [] u8) -> string {
   out[k] = ifx out[k] == '8' then cast(u8) '9' else cast(u8) '8';
   return cast(string) out[0..<N57_T_REQUEST.count];
 }
+// An upstream payRequest from parts: {"tag":"payRequest" then a, b, c and d, then }.
+LU_T_CB :: ",\"callback\":\"https://x.example.com/cb\"";
+LU_T_META :: ",\"metadata\":\"[[\\\"text/plain\\\",\\\"hi\\\"]]\"";
+LU_T_RANGE :: ",\"minSendable\":1000,\"maxSendable\":5000";
+LU_T_DIGITS64 :: "1111111111111111111111111111111111111111111111111111111111111111";
+lu_t_up :: (a: string, b: string, c: string, d: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"tag\":\"payRequest\""); n = json_raw(out, n, a); n = json_raw(out, n, b);
+  n = json_raw(out, n, c); n = json_raw(out, n, d); n = json_raw(out, n, "}");
+  return cast(string) out[0..<n];
+}
