@@ -1,0 +1,164 @@
+// The models an RLM run calls (GitHub #13367; README.md "Models"): the root
+// model, which writes the code, and the sub model, which llm_query reaches.
+// Live, each call is a gateway plan (coax/lib/gateway/plan.coax) on the
+// caller's Gateway, so pricing on the rates card, retries and the refusal
+// rules are the gateway's; a batch runs up to RLM_SLOTS plans at once.
+// Scripted, the answers are the caller's lists, one per role, taken in
+// order, with usage counted as four bytes a token and priced on the same
+// card, and a clock that moves fake_ms a call: the whole loop is checked
+// with no network and no time.
+
+#load "../gateway/plan.coax";
+#load "policy.coax";
+#load "../sys/proc.coax";
+
+RLM_SLOTS :: 8;                  // sub-calls in flight at once in a batch
+RLM_REPLY_MAX :: 65536;          // bytes a live slot keeps of one answer (reply's size / RLM_SLOTS; the rest is cut, and the answer says so)
+RLM_ROOT :: 0;
+RLM_SUB :: 1;
+
+RmSlot :: struct {
+  busy: bool;
+  ok: bool;
+  n: int;                        // answer bytes in the slot's part of reply
+  cut: bool;                     // the answer was longer than RLM_REPLY_MAX
+  why: [256] u8; nwhy: int;      // why it failed
+  usage: GwUsage;                // as priced by the plan (card_usd_micros) or the scripted count
+  ms: int;
+  started: int;
+  msgs: [1] GwMessage;
+}
+
+RlmModel :: struct {
+  scripted: bool;
+  root_script: [] string; nroot: int;
+  sub_script: [] string; nsub: int;
+  fake_ms: int = 1000; fake_now: int;
+  gateway: string = "vertex";    // the card's gateway name for both roles
+  root_gw: Gateway; root_model: string = "gemini-4-argon"; root_effort: string = "low";
+  sub_gw: Gateway; sub_model: string = "gemini-3.8-flash"; sub_effort: string = "low";
+  plans: [] GwPlan; pbufs: [] GwPlanBuffers;   // RLM_SLOTS of each when live
+  bench: [1] GwBench;
+  reply: [] u8;                  // RLM_SLOTS slots of reply.count / RLM_SLOTS bytes (RLM_REPLY_MAX each when live)
+  slots: [RLM_SLOTS] RmSlot;
+}
+
+rm_now :: (m: [] RlmModel) -> int { return ifx m[0].scripted then m[0].fake_now else cxproc_now_ms(); }
+rm_model :: (m: [] RlmModel, role: int) -> string { return ifx role == RLM_ROOT then m[0].root_model else m[0].sub_model; }
+rm_cap :: (m: [] RlmModel) -> int { return m[0].reply.count / RLM_SLOTS; }
+rm_text :: (m: [] RlmModel, slot: int) -> string {
+  at := slot * rm_cap(m);
+  return cast(string) m[0].reply[at..<at + m[0].slots[slot].n];
+}
+rm_why :: (m: [] RlmModel, slot: int) -> string { return cast(string) m[0].slots[slot].why[0..<m[0].slots[slot].nwhy]; }
+
+rm_set_why :: (m: [] RlmModel, slot: int, why: string) {
+  n := 0;
+  for c: why { if n < m[0].slots[slot].why.count { m[0].slots[slot].why[n] = c; n += 1; } }
+  m[0].slots[slot].nwhy = n;
+}
+rm_append :: (m: [] RlmModel, slot: int, text: string) {
+  cap := rm_cap(m); at := slot * cap;
+  for c: text {
+    if m[0].slots[slot].n < cap { m[0].reply[at + m[0].slots[slot].n] = c; m[0].slots[slot].n += 1; }
+    else { m[0].slots[slot].cut = true; }
+  }
+}
+
+// What a call of in_bytes in and out_bytes out counts as, scripted: four bytes a token, priced.
+rm_fake_usage :: (m: [] RlmModel, role: int, in_bytes: int, out_bytes: int) -> GwUsage {
+  u := GwUsage.{ok = true, input_tokens = (in_bytes + 3) / 4, output_tokens = (out_bytes + 3) / 4};
+  return gw_price(m[0].gateway, rm_model(m, role), u, 0);
+}
+
+// Starts a call in slot: the system prompt and messages for role. A scripted call ends at once.
+rm_start :: (m: [] RlmModel, slot: int, role: int, system: string, msgs: [] GwMessage) {
+  s := m[0].slots[slot];
+  s = RmSlot.{busy = true, started = rm_now(m)};
+  s.msgs = m[0].slots[slot].msgs;
+  m[0].slots[slot] = s;
+  if m[0].scripted {
+    in_bytes := system.count;
+    for g: msgs { in_bytes += g.text.count; }
+    answer := ""; have := false;
+    if role == RLM_ROOT && m[0].nroot < m[0].root_script.count { answer = m[0].root_script[m[0].nroot]; m[0].nroot += 1; have = true; }
+    if role == RLM_SUB && m[0].nsub < m[0].sub_script.count { answer = m[0].sub_script[m[0].nsub]; m[0].nsub += 1; have = true; }
+    m[0].fake_now += m[0].fake_ms;
+    m[0].slots[slot].busy = false;
+    m[0].slots[slot].ms = m[0].fake_ms;
+    if !have { rm_set_why(m, slot, "the script has no more answers"); return; }
+    rm_append(m, slot, answer);
+    m[0].slots[slot].ok = true;
+    m[0].slots[slot].usage = rm_fake_usage(m, role, in_bytes, answer.count);
+    return;
+  }
+  p := m[0].plans[slot..<slot + 1];
+  gw_plan_init(p, m[0].pbufs[slot..<slot + 1]);
+  g := ifx role == RLM_ROOT then m[0].root_gw else m[0].sub_gw;
+  x := gw_plan_add(p, g, rm_model(m, role), m[0].bench[0].names[0..<0]);
+  p[0].retries = 3; p[0].backoff_ms = 2000;
+  p[0].first_limit_ms = 240000; p[0].idle_limit_ms = 120000;
+  req := GwRequest.{model = rm_model(m, role), system = system, messages = msgs, effort = ifx role == RLM_ROOT then m[0].root_effort else m[0].sub_effort};
+  gw_plan_start(p, m[0].bench[..], req);
+}
+
+// Starts a sub-call in slot with prompt as its one message.
+rm_start_prompt :: (m: [] RlmModel, slot: int, prompt: string) {
+  m[0].slots[slot].msgs[0] = GwMessage.{role = "user", text = prompt};
+  rm_start(m, slot, RLM_SUB, "", m[0].slots[slot].msgs[..]);
+}
+
+// Polls slot: true once its call is over (ok, or why).
+rm_poll :: (m: [] RlmModel, slot: int) -> bool {
+  if !m[0].slots[slot].busy { return true; }
+  p := m[0].plans[slot..<slot + 1];
+  ev: [8] GwEvent;
+  n := gw_plan_poll(p, m[0].bench[..], ev[..]);
+  for i: 0..<n {
+    x := ev[i];
+    if x.kind == GW_EV_TEXT { rm_append(m, slot, x.text); }
+    if x.kind == GW_EV_DONE { m[0].slots[slot].ok = true; m[0].slots[slot].usage = x.usage; }
+    if x.kind == GW_EV_REFUSED { m[0].slots[slot].ok = false; rm_set_why(m, slot, x.reason); m[0].slots[slot].usage = x.usage; }
+  }
+  if p[0].over {
+    m[0].slots[slot].busy = false;
+    m[0].slots[slot].ms = rm_now(m) - m[0].slots[slot].started;
+    if !m[0].slots[slot].ok && m[0].slots[slot].nwhy == 0 { rm_set_why(m, slot, ifx p[0].why.count > 0 then p[0].why else "the call failed"); }
+    return true;
+  }
+  return false;
+}
+
+// Waits for every busy slot.
+rm_wait :: (m: [] RlmModel, count: int) {
+  while true {
+    left := 0;
+    for i: 0..<count { if !rm_poll(m, i) { left += 1; } }
+    if left == 0 { return; }
+    proc_sleep(5);
+  }
+}
+
+// One call, waited for, in slot 0.
+rm_call :: (m: [] RlmModel, role: int, system: string, msgs: [] GwMessage) {
+  rm_start(m, 0, role, system, msgs);
+  if !m[0].scripted { rm_wait(m, 1); }
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a scripted model answers each role from its own list, counts four bytes a token and prices them on the card" {
+  roots := [2] string.["root one", "root two"];
+  subs := [1] string.["sub"];
+  reply: [RLM_SLOTS * 64] u8;
+  m: [1] RlmModel; m[0] = RlmModel.{scripted = true, root_script = roots[..], sub_script = subs[..], reply = reply[..]};
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "12345678"};
+  rm_call(m[..], RLM_SUB, "", msgs[..]);
+  #assert m[0].slots[0].ok && rm_text(m[..], 0) == "sub" && m[0].slots[0].usage.input_tokens == 2 && m[0].slots[0].usage.output_tokens == 1;
+  // Flash: 2 in at $1.50 and 1 out at $7.50 a million: 3 + 7.5, rounded to 11 micro-USD
+  #assert m[0].slots[0].usage.card_usd_micros == 11;
+  rm_call(m[..], RLM_ROOT, "sys", msgs[..]);
+  #assert rm_text(m[..], 0) == "root one" && m[0].fake_now == 2000 && m[0].slots[0].ms == 1000;
+  rm_call(m[..], RLM_SUB, "", msgs[..]);
+  #assert !m[0].slots[0].ok && rm_why(m[..], 0) == "the script has no more answers";
+}

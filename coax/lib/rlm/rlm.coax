@@ -1,0 +1,425 @@
+// rlm: a Recursive Language Model over a file or a folder, on Gemini through
+// Vertex (GitHub #13367; README.md). Run it with
+//   coax/web/tool.sh coax/lib/rlm/rlm.coax ask --file F | --dir D [--ext .coax,.md] --question Q
+//   coax/web/tool.sh coax/lib/rlm/rlm.coax base ...   one plain call on the root model, the context cut to --window
+//   coax/web/tool.sh coax/lib/rlm/rlm.coax oolong --data trec.label --n 3000 --seed 1 --out DIR
+// ask, base and full (one plain call with the whole context) print one JSON line with the
+// answer, its score against --expect N (OOLONG's 0.75^|error|, in thousandths), the calls,
+// tokens, price on the rates card and time; --log FILE appends it there, --trace FILE writes
+// the run's turns. Models: --root-model (gemini-4-argon), --sub-model (gemini-3.8-flash),
+// --root-effort and --sub-effort (low). Limits: --max-depth 1, --max-turns 20, --max-calls 400,
+// --max-usd 2 (a run's cap, priced on the card), --max-minutes 30.
+//
+// Credentials are Microcoder's (coder/tui/microcoder_keys.coax): the service account that
+// ~/.openagents/coder/antigravity.env names, project openagentsgemini, location us; the token
+// goes into curl's environment only. With GW_REPLAY=DIR set, recorded responses answer in
+// order and nothing is sent; GW_RECORD=DIR records a live run.
+//
+// oolong builds an OOLONG-style task (arXiv 2511.02817, trec_coarse) from the TREC question
+// classification data: dated lines of questions by users, the labels hidden, and questions
+// that count the questions of each label; DIR/context.txt and DIR/tasks.txt ("count<TAB>question").
+// tool.sh: stack-gib 3
+
+#load "run.coax";
+#load "../../../coder/tui/microcoder_keys.coax";
+#load "../sys/args.coax";
+#load "../sys/tool.coax";
+#load "../json/json.coax";
+
+RT_CTX_BYTES :: 33554432;        // 32 MiB of context
+RT_FILES :: 4096;
+RT_HEAP :: 268435456;            // 256 MiB of strings
+RT_CELLS :: 1048576;
+RT_LISTS :: 131072;
+RT_NODES :: 262144;
+RT_NAMES :: 4096;
+RT_MEMO :: 8192;
+
+RtMem :: struct {
+  ctx: [RT_CTX_BYTES] u8; nctx: int;
+  names: [RT_FILES] string; texts: [RT_FILES] string; nfiles: int;
+  namebuf: [1048576] u8; nnb: int;
+  heap: [RT_HEAP] u8;
+  cells: [RT_CELLS] RsVal; lists: [RT_LISTS] RsList;
+  toks: [RT_NODES] RsTok; nodes: [RT_NODES] RsNode;
+  vnames: [RT_NAMES] string; vals: [RT_NAMES] RsVal;
+  memo: [RT_MEMO] string; memo_fail: [RT_MEMO] bool; pend: [RT_MEMO] string;
+  out: [4194304] u8; trace: [16777216] u8; reply: [RLM_SLOTS * RLM_REPLY_MAX] u8;
+  snap_names: [2 * RT_NAMES] string; snap_vals: [2 * RT_NAMES] RsVal; snap_lists: [2 * RT_LISTS] RsList; snap_cells: [2 * RT_CELLS] RsVal;
+  st: [1] RlmState; r: [1] Rs;
+  plans: [RLM_SLOTS] GwPlan; pbufs: [RLM_SLOTS] GwPlanBuffers;
+  keys: [1] MkKeys; vroot: [1] GwVertex; vsub: [1] GwVertex;
+  line: [65536] u8;
+  list: [1] FsList;
+  dirs: [256] string; dirbuf: [65536] u8;
+}
+
+rt_err :: (s: string) { tool_errln(s); }
+
+// ---------------------------------------------------------------- the context
+
+rt_has_ext :: (name: string, exts: string) -> bool {
+  if exts.count == 0 { return true; }
+  at := 0;
+  while at <= exts.count {
+    e := at; while e < exts.count && exts[e] != ',' { e += 1; }
+    x := cast(string) exts[at..<e];
+    if x.count > 0 && name.count >= x.count && cast(string) name[name.count - x.count..<name.count] == x { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+// A file's bytes into the context buffer: its text, or "" when it does not fit.
+rt_read :: (m: [] RtMem, path: string) -> string {
+  size := fs_size(path);
+  if size < 0 || m[0].nctx + size > RT_CTX_BYTES { return ""; }
+  n := fs_read_at(path, 0, m[0].ctx[m[0].nctx..<m[0].nctx + size]);
+  if n < 0 { return ""; }
+  t := cast(string) m[0].ctx[m[0].nctx..<m[0].nctx + n];
+  m[0].nctx += n;
+  return t;
+}
+
+rt_keep_name :: (m: [] RtMem, s: string) -> string {
+  at := m[0].nnb;
+  for c: s { if m[0].nnb < m[0].namebuf.count { m[0].namebuf[m[0].nnb] = c; m[0].nnb += 1; } }
+  return cast(string) m[0].namebuf[at..<m[0].nnb];
+}
+
+// Every regular file under dir whose name ends in one of exts (all when ""), skipping
+// dot-folders, sorted by path: names relative to dir. False when something did not fit.
+rt_walk :: (m: [] RtMem, dir: string, exts: string) -> bool {
+  nd := 1; m[0].dirs[0] = ""; db := 0;
+  while nd > 0 {
+    nd -= 1;
+    rel := m[0].dirs[nd];
+    pb: [4096] u8; full := ifx rel.count == 0 then dir else fs_join(dir, rel, pb[..]);
+    k := fs_list(full, m[0].list[..]);
+    if k < 0 { rt_err("rlm: can't list a folder"); return false; }
+    // directories after files, and pushed in reverse so they are walked in order
+    subs: [512] int; ns := 0;
+    for i: 0..<k {
+      name := fs_entry(m[0].list[..], i);
+      if name.count == 0 || name[0] == '.' { continue; }
+      nb: [4096] u8; path := fs_join(full, name, nb[..]);
+      kind := fs_kind(path);
+      rb: [4096] u8; relname := ifx rel.count == 0 then name else fs_join(rel, name, rb[..]);
+      if kind == 2 { if ns < 512 { subs[ns] = i; ns += 1; } continue; }
+      if kind != 1 || !rt_has_ext(name, exts) { continue; }
+      if m[0].nfiles >= RT_FILES { return false; }
+      text := rt_read(m, path);
+      if text.count == 0 && fs_size(path) > 0 { return false; }
+      m[0].names[m[0].nfiles] = rt_keep_name(m, relname); m[0].texts[m[0].nfiles] = text; m[0].nfiles += 1;
+    }
+    j := ns;
+    while j > 0 {
+      j -= 1;
+      name := fs_entry(m[0].list[..], subs[j]);
+      rb: [4096] u8; relname := ifx rel.count == 0 then name else fs_join(rel, name, rb[..]);
+      if nd >= 256 || db + relname.count > m[0].dirbuf.count { return false; }
+      at := db; for c: relname { m[0].dirbuf[db] = c; db += 1; }
+      m[0].dirs[nd] = cast(string) m[0].dirbuf[at..<db]; nd += 1;
+    }
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- models
+
+// The live models (or the replay): "" when ready, else why not.
+rt_models :: (m: [] RtMem, a: [] Args) -> string {
+  st := m[0].st[..];
+  md := st[0].model[..];
+  md[0].plans = m[0].plans[..]; md[0].pbufs = m[0].pbufs[..];
+  md[0].root_model = mk_vertex_model(args_value(a, "--root-model", "gemini-4-argon"));
+  md[0].sub_model = mk_vertex_model(args_value(a, "--sub-model", "gemini-3.8-flash"));
+  md[0].root_effort = args_value(a, "--root-effort", "low");
+  md[0].sub_effort = args_value(a, "--sub-effort", "low");
+  rb: [1024] u8;
+  replay := gw_env("GW_REPLAY", rb[..]).count > 0;
+  k := m[0].keys[..];
+  mk_keys(k);
+  if !replay {
+    why := mk_vertex(k);
+    if why.count > 0 { return why; }
+  }
+  m[0].vroot[0] = k[0].vx[0]; m[0].vsub[0] = k[0].vx[0];
+  md[0].root_gw = gw_vertex_native(m[0].vroot[..], md[0].root_model);
+  md[0].sub_gw = gw_vertex_native(m[0].vsub[..], md[0].sub_model);
+  return "";
+}
+
+rt_number :: (a: [] Args, name: string, fallback: int) -> int {
+  v := args_value(a, name, "");
+  if v.count == 0 { return fallback; }
+  n := args_number(v);
+  return ifx n.ok then cast(int) n.value else fallback;
+}
+
+rt_limits :: (a: [] Args) -> RlmLimits {
+  l := RlmLimits.{};
+  l.max_depth = rt_number(a, "--max-depth", 1);
+  l.max_turns = rt_number(a, "--max-turns", 20);
+  l.max_calls = rt_number(a, "--max-calls", 400);
+  l.max_ms = rt_number(a, "--max-minutes", 30) * 60000;
+  v := args_value(a, "--max-usd", "2");
+  n := args_number(v);
+  l.max_usd_micros = ifx n.ok then cast(int) (n.value * 1000000.0) else 2000000;
+  return l;
+}
+
+// ---------------------------------------------------------------- scoring and the report
+
+// The first whole number in s, or -1.
+rt_first_int :: (s: string) -> int {
+  i := 0;
+  while i < s.count && !(s[i] >= '0' && s[i] <= '9') { i += 1; }
+  if i >= s.count { return -1; }
+  v := 0;
+  while i < s.count && ((s[i] >= '0' && s[i] <= '9') || s[i] == ',') {
+    if s[i] != ',' { if v > 100000000000 { return -1; } v = v * 10 + cast(int) (s[i] - '0'); }
+    i += 1;
+  }
+  return v;
+}
+
+// OOLONG's numeric score 0.75^|got - want|, in thousandths (each step rounds down).
+rt_score :: (got: int, want: int) -> int {
+  if got < 0 { return 0; }
+  d := ifx got > want then got - want else want - got;
+  s := 1000;
+  for i: 0..<(ifx d < 40 then d else 40) { s = s * 3 / 4; }
+  return ifx d >= 40 then 0 else s;
+}
+
+rt_report :: (m: [] RtMem, a: [] Args, mode: string, question: string, ms: int) {
+  st := m[0].st[..];
+  o: [1] Jo; buf: [262144] u8;
+  jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "mode"); jo_str(o[..], mode);
+  jo_key(o[..], "question"); jo_str(o[..], question);
+  jo_key(o[..], "answer"); jo_str(o[..], st[0].answer);
+  want := rt_number(a, "--expect", -1);
+  if want >= 0 {
+    got := rt_first_int(st[0].answer);
+    jo_key(o[..], "expect"); jo_int(o[..], want);
+    jo_key(o[..], "got"); jo_int(o[..], got);
+    jo_key(o[..], "score_milli"); jo_int(o[..], rt_score(got, want));
+  }
+  jo_key(o[..], "root_model"); jo_str(o[..], st[0].model[0].root_model);
+  jo_key(o[..], "sub_model"); jo_str(o[..], st[0].model[0].sub_model);
+  jo_key(o[..], "context_bytes"); jo_int(o[..], m[0].nctx);
+  jo_key(o[..], "root_calls"); jo_int(o[..], st[0].root_calls);
+  jo_key(o[..], "sub_calls"); jo_int(o[..], st[0].sub_calls);
+  jo_key(o[..], "child_runs"); jo_int(o[..], st[0].child_runs);
+  jo_key(o[..], "turns"); jo_int(o[..], st[0].turns);
+  jo_key(o[..], "block_errors"); jo_int(o[..], st[0].block_errors);
+  jo_key(o[..], "root_in"); jo_int(o[..], st[0].root_in);
+  jo_key(o[..], "root_out"); jo_int(o[..], st[0].root_out);
+  jo_key(o[..], "sub_in"); jo_int(o[..], st[0].sub_in);
+  jo_key(o[..], "sub_out"); jo_int(o[..], st[0].sub_out);
+  jo_key(o[..], "usd_micros"); jo_int(o[..], st[0].spent.usd_micros);
+  jo_key(o[..], "unpriced"); jo_int(o[..], st[0].unpriced);
+  jo_key(o[..], "ms"); jo_int(o[..], ms);
+  jo_key(o[..], "stop"); jo_str(o[..], rlm_stop_name(st[0].stop));
+  jo_key(o[..], "failed"); jo_str(o[..], st[0].failed);
+  jo_end(o[..]);
+  line := jo_text(o[..]);
+  print("%\n", line);
+  logf := args_value(a, "--log", "");
+  if logf.count > 0 {
+    lb: [262145] u8; n := 0;
+    for c: line { lb[n] = c; n += 1; }
+    lb[n] = 10; n += 1;
+    if !fs_append(logf, cast(string) lb[0..<n]) { rt_err("rlm: could not append to the log"); }
+  }
+  tr := args_value(a, "--trace", "");
+  if tr.count > 0 && !fs_write(tr, cast(string) st[0].trace[0..<st[0].ntr]) { rt_err("rlm: could not write the trace"); }
+}
+
+// ---------------------------------------------------------------- oolong
+
+// The TREC coarse labels as OOLONG names them.
+rt_label :: (code: string) -> string {
+  if code == "ABBR" { return "abbreviation"; }
+  if code == "DESC" { return "description and abstract concept"; }
+  if code == "ENTY" { return "entity"; }
+  if code == "HUM" { return "human being"; }
+  if code == "LOC" { return "location"; }
+  if code == "NUM" { return "numeric value"; }
+  return "";
+}
+RT_LABELS :: [6] string.["ABBR", "DESC", "ENTY", "HUM", "LOC", "NUM"];
+RT_MONTHS :: [12] string.["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+rt_rand :: (s: [] int) -> int {
+  // xorshift64: shifts and xor only, so nothing can overflow; never 0 after a nonzero seed
+  x := s[0];
+  if x == 0 { x = 88172645463325252; }
+  x = x ^ (x << 13); x = x ^ (x >> 7); x = x ^ (x << 17);
+  s[0] = x;
+  return (x >> 16) & 4294967295;
+}
+
+rt_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+rt_cat_int :: (out: [] u8, n: int, v: int, width: int) -> int {
+  tmp: [24] u8; k := 0; x := v;
+  while x > 0 || k == 0 { tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  m := n;
+  for i: k..<width { m = rt_cat(out, m, "0"); }
+  while k > 0 { k -= 1; if m < out.count { out[m] = tmp[k]; m += 1; } }
+  return m;
+}
+
+rt_oolong :: (m: [] RtMem, a: [] Args) -> int {
+  data := args_value(a, "--data", ""); outdir := args_value(a, "--out", "");
+  n := rt_number(a, "--n", 3000); seed := rt_number(a, "--seed", 1);
+  if data.count == 0 || outdir.count == 0 { rt_err("rlm oolong: --data FILE and --out DIR"); return 2; }
+  text := rt_read(m, data);
+  if text.count == 0 { rt_err("rlm oolong: can't read the data"); return 1; }
+  // the lines: LABEL:fine question
+  starts: [8192] int; ends: [8192] int; nl := 0; at := 0;
+  while at < text.count && nl < 8192 {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    if e > at { starts[nl] = at; ends[nl] = e; nl += 1; }
+    at = e + 1;
+  }
+  if n > nl { n = nl; }
+  // a seeded shuffle; the first n make the context
+  order: [8192] int; for i: 0..<nl { order[i] = i; }
+  rs: [1] int; rs[0] = seed;
+  i := nl - 1;
+  while i > 0 { j := rt_rand(rs[..]) % (i + 1); t := order[i]; order[i] = order[j]; order[j] = t; i -= 1; }
+  counts: [6] int;
+  out := m[0].heap[..]; o := 0;
+  o = rt_cat(out, o, "The following lines contain general-knowledge questions, one per line. Each line has a date, a user ID and the question (the instance). Each question can be labeled with exactly one of these labels: abbreviation, description and abstract concept, entity, human being, location, numeric value. The labels are not given; to answer, infer each question's label from what it asks for (for example, \"Who wrote Hamlet?\" asks for a human being, \"How far is it to the Moon?\" for a numeric value, \"What does NASA stand for?\" for an abbreviation).\n\n");
+  labels := RT_LABELS; months := RT_MONTHS;
+  for q: 0..<n {
+    k := order[q];
+    line := cast(string) text[starts[k]..<ends[k]];
+    colon := 0; while colon < line.count && line[colon] != ':' { colon += 1; }
+    sp := colon; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    code := cast(string) line[0..<colon];
+    for lb, li: labels { if lb == code { counts[li] += 1; } }
+    question := cast(string) line[ifx sp + 1 < line.count then sp + 1 else line.count..<line.count];
+    o = rt_cat(out, o, "Date: "); o = rt_cat(out, o, months[rt_rand(rs[..]) % 12]); o = rt_cat(out, o, " ");
+    o = rt_cat_int(out, o, 1 + rt_rand(rs[..]) % 28, 2); o = rt_cat(out, o, ", ");
+    o = rt_cat_int(out, o, 2022 + rt_rand(rs[..]) % 3, 4);
+    o = rt_cat(out, o, " || User: "); o = rt_cat_int(out, o, 10000 + rt_rand(rs[..]) % 90000, 5);
+    o = rt_cat(out, o, " || Instance: "); o = rt_cat(out, o, question); o = rt_cat(out, o, "\n");
+  }
+  pb: [4096] u8;
+  if !fs_mkdir(outdir) || !fs_write(fs_join(outdir, "context.txt", pb[..]), cast(string) out[0..<o]) { rt_err("rlm oolong: can't write the context"); return 1; }
+  tb: [16384] u8; t := 0;
+  for lb, li: labels {
+    t = rt_cat_int(tb[..], t, counts[li], 1); t = rt_cat(tb[..], t, "\t");
+    t = rt_cat(tb[..], t, "In the context, how many of the questions should be labeled '"); t = rt_cat(tb[..], t, rt_label(lb));
+    t = rt_cat(tb[..], t, "'? Give the answer as a whole number.\n");
+  }
+  if !fs_write(fs_join(outdir, "tasks.txt", pb[..]), cast(string) tb[0..<t]) { rt_err("rlm oolong: can't write the tasks"); return 1; }
+  print("oolong: % questions, % bytes of context; counts ABBR % DESC % ENTY % HUM % LOC % NUM %\n", n, o, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
+  return 0;
+}
+
+// ---------------------------------------------------------------- one plain call
+
+RT_BASE_NOTE :: "Answer the question about the context below. Answer with the answer only; for a count, give a whole number.";
+
+// The root model once, with the context cut to window bytes (0: whole).
+rt_base :: (m: [] RtMem, question: string, window: int) {
+  r := m[0].r[..]; st := m[0].st[..];
+  ctx := cast(string) m[0].ctx[0..<m[0].nctx];
+  cut := ifx window > 0 && ctx.count > window then window else ctx.count;
+  while cut > 0 && cut < ctx.count && ctx[cut - 1] != 10 { cut -= 1; }   // at a line end
+  at := r[0].nh;
+  ok := rs_put(r, RT_BASE_NOTE) && rs_put(r, "\n\nQuestion: ") && rs_put(r, question) && rs_put(r, "\n\nContext");
+  if cut < ctx.count { ok = ok && rs_put(r, " (cut to its first ") && rs_put_int(r, cut) && rs_put(r, " of ") && rs_put_int(r, ctx.count) && rs_put(r, " characters, to fit)"); }
+  ok = ok && rs_put(r, ":\n") && rs_put(r, cast(string) ctx[0..<cut]) && rs_put(r, "\n\nQuestion, again: ") && rs_put(r, question);
+  if !ok { st[0].failed = "the prompt does not fit"; return; }
+  prompt := rs_take(r, at);
+  st[0].spent = RlmSpent.{started_ms = rm_now(st[0].model[..])};
+  if !rlm_allowed(st, RLM_ROOT, prompt.count) { return; }
+  md := st[0].model[..];
+  md[0].slots[0].msgs[0] = GwMessage.{role = "user", text = prompt};
+  rm_call(md, RLM_ROOT, "", md[0].slots[0].msgs[..]);
+  rlm_count(st, RLM_ROOT, 0);
+  if !md[0].slots[0].ok { st[0].failed = rs_copy(r, rm_why(md, 0)); return; }
+  st[0].answer = rs_copy(r, rm_text(md, 0));
+}
+
+// ---------------------------------------------------------------- main
+
+tool_main :: () -> int #export_c #effects(all) {
+  ab: [1] Args;
+  if !args_load(ab[..]) { rt_err("rlm: too many arguments"); return 2; }
+  a := ab[..];
+  mb: [1] RtMem; m := mb[..];
+  cmd := args_at(a, 0);
+  if cmd == "oolong" { return rt_oolong(m, a); }
+  if cmd != "ask" && cmd != "base" && cmd != "full" {
+    rt_err("usage: rlm ask|base|full (--file F | --dir D [--ext .a,.b]) (--question Q | --question-file F) [--expect N] [--log F] [--trace F] ...");
+    rt_err("       rlm oolong --data TREC.label --n N --seed S --out DIR");
+    return 2;
+  }
+  arenas := RlmArenas.{heap = m[0].heap[..], cells = m[0].cells[..], lists = m[0].lists[..], toks = m[0].toks[..], nodes = m[0].nodes[..], names = m[0].vnames[..], vals = m[0].vals[..], memo = m[0].memo[..], memo_fail = m[0].memo_fail[..], pend = m[0].pend[..], out = m[0].out[..], trace = m[0].trace[..], reply = m[0].reply[..], snap_names = m[0].snap_names[..], snap_vals = m[0].snap_vals[..], snap_lists = m[0].snap_lists[..], snap_cells = m[0].snap_cells[..]};
+  r := m[0].r[..]; st := m[0].st[..];
+  rlm_init(r, st, arenas, rt_limits(a));
+  // the question
+  question := args_value(a, "--question", "");
+  qf := args_value(a, "--question-file", "");
+  if qf.count > 0 { question = rt_read(m, qf); }
+  if question.count == 0 { rt_err("rlm: give --question or --question-file"); return 2; }
+  question = rs_copy(r, question);
+  m[0].nctx = 0;
+  // the context
+  file := args_value(a, "--file", ""); dir := args_value(a, "--dir", "");
+  if file.count > 0 {
+    text := rt_read(m, file);
+    if text.count == 0 { rt_err("rlm: can't read the file (or it is empty, or larger than 32 MiB)"); return 1; }
+    rlm_set_context(r, text);
+  } else if dir.count > 0 {
+    if !rt_walk(m, dir, args_value(a, "--ext", "")) { rt_err("rlm: the folder does not fit (32 MiB, 4096 files)"); return 1; }
+    rlm_set_files(r, st, m[0].names[0..<m[0].nfiles], m[0].texts[0..<m[0].nfiles]);
+  } else { rt_err("rlm: give --file or --dir"); return 2; }
+  if rs_bad(r) { rt_err(r[0].err); return 1; }
+  why := rt_models(m, a);
+  if why.count > 0 { rt_err("rlm: no model: "); rt_err(why); return 1; }
+  t0 := cxproc_now_ms();
+  if cmd == "base" || cmd == "full" {
+    rt_base(m, question, ifx cmd == "full" then 0 else rt_number(a, "--window", 96000));
+    rt_report(m, a, cmd, question, cxproc_now_ms() - t0);
+    return 0;
+  }
+  rlm_start(r, st, question);
+  turns := 0; subs := 0;
+  while st[0].nlev > 0 {
+    rlm_step(r, st);
+    if st[0].root_calls != turns || st[0].sub_calls != subs {
+      turns = st[0].root_calls; subs = st[0].sub_calls;
+      lb: [256] u8; n := rt_cat(lb[..], 0, "rlm: root calls "); n = rt_cat_int(lb[..], n, turns, 1);
+      n = rt_cat(lb[..], n, ", sub-calls "); n = rt_cat_int(lb[..], n, subs, 1);
+      n = rt_cat(lb[..], n, ", card $0."); n = rt_cat_int(lb[..], n, st[0].spent.usd_micros / 1000, 3);
+      n = rt_cat(lb[..], n, ", "); n = rt_cat_int(lb[..], n, (cxproc_now_ms() - t0) / 1000, 1); n = rt_cat(lb[..], n, " s");
+      rt_err(cast(string) lb[0..<n]);
+    }
+  }
+  rt_report(m, a, "rlm", question, cxproc_now_ms() - t0);
+  return 0;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "OOLONG's score: 0.75 per unit of error, in thousandths; no number scores 0" {
+  #assert rt_score(10, 10) == 1000 && rt_score(11, 10) == 750 && rt_score(8, 10) == 562 && rt_score(-1, 10) == 0 && rt_score(100, 10) == 0;
+  #assert rt_first_int("There are 1,234 of them (and 5 more)") == 1234 && rt_first_int("none") == -1 && rt_first_int("42") == 42;
+}
+
+#test "a file's extension against a list" {
+  #assert rt_has_ext("a/b.coax", ".coax,.md") && rt_has_ext("x.md", ".coax,.md") && !rt_has_ext("x.c", ".coax,.md") && rt_has_ext("x.c", "");
+}
+
+#test "the TREC labels map to OOLONG's names" {
+  #assert rt_label("NUM") == "numeric value" && rt_label("HUM") == "human being" && rt_label("X") == "";
+}

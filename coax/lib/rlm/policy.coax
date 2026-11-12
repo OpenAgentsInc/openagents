@@ -1,0 +1,131 @@
+// What a Recursive Language Model run may still spend (GitHub #13367; README.md
+// "Limits"): before every model call, root or sub, the run asks rlm_may_call
+// whether one more call fits its limits on calls, time and money, and how a
+// recursive sub-call is served at a depth (rlm_depth_route). The money rule:
+// a call is refused when what is spent plus the least the call can cost (its
+// prompt's input tokens at the card's input price, rlm_floor_micros) would
+// pass the cap, and a model off the rates card is refused while a cap is set,
+// since what it costs can't be counted. Pure: the run passes in what it has
+// spent and the clock.
+#authority;
+
+#load "../gateway/card.coax";
+
+// Verdicts.
+RLM_OK :: 0;
+RLM_STOP_CALLS :: 1;             // the run has made max_calls model calls
+RLM_STOP_TIME :: 2;              // the run has used max_ms
+RLM_STOP_COST :: 3;              // spent plus this call's floor would pass max_usd_micros
+RLM_STOP_UNPRICED :: 4;          // a cap is set and the model is not on the rates card
+RLM_STOP_PROMPT :: 5;            // the prompt is longer than max_prompt_bytes
+
+// How rlm_query is served.
+RLM_ROUTE_CHILD :: 1;            // a child RLM with its own environment, one level deeper
+RLM_ROUTE_PLAIN :: 2;            // a plain sub-LM call (llm_query): the deepest level
+
+RLM_BYTES_PER_TOKEN :: 4;        // the floor's token estimate: four bytes of prompt a token (English runs 4 to 4.5)
+
+RlmLimits :: struct {
+  max_depth: int = 1;            // 1: sub-calls are plain LM calls (the paper's default); 2: rlm_query starts child RLMs
+  max_turns: int = 20;           // root (and child) iterations before the closing answer
+  max_calls: int = 400;          // model calls in the whole run, every depth
+  max_ms: int = 1800000;         // wall time of the whole run
+  max_usd_micros: int = 2000000; // card price of the whole run; 0 for no cap
+  max_prompt_bytes: int = 400000;// one sub-call's prompt (the request body holds 512 KB)
+  max_steps: int = 20000000;     // interpreter steps per code block
+  max_shown: int = 12000;        // bytes of a block's output the model sees each turn
+}
+
+RlmSpent :: struct {
+  calls: int;
+  usd_micros: int;
+  started_ms: int;
+}
+
+// The least a prompt of prompt_bytes can cost on the card at gateway/model:
+// its input tokens (RLM_BYTES_PER_TOKEN bytes each, rounded up) at the input
+// price, micro-USD rounded up. -1 when the model is off the card.
+rlm_floor_micros :: (gateway: string, model: string, prompt_bytes: int) -> int #effects(all) {
+  f := gw_rate(gateway, model);
+  if !f.ok { return -1; }
+  tokens := (prompt_bytes + RLM_BYTES_PER_TOKEN - 1) / RLM_BYTES_PER_TOKEN;
+  return (tokens * f.rate.input + 999999) / 1000000;
+}
+
+// Whether one more call with a prompt of prompt_bytes to gateway/model fits.
+rlm_may_call :: (l: RlmLimits, s: RlmSpent, now_ms: int, gateway: string, model: string, prompt_bytes: int) -> int #effects(all) {
+  if prompt_bytes > l.max_prompt_bytes { return RLM_STOP_PROMPT; }
+  if s.calls >= l.max_calls { return RLM_STOP_CALLS; }
+  if now_ms - s.started_ms >= l.max_ms { return RLM_STOP_TIME; }
+  if l.max_usd_micros > 0 {
+    least := rlm_floor_micros(gateway, model, prompt_bytes);
+    if least < 0 { return RLM_STOP_UNPRICED; }
+    if s.usd_micros + least > l.max_usd_micros { return RLM_STOP_COST; }
+  }
+  return RLM_OK;
+}
+
+// A recursive sub-call made at depth (the root is 0) starts a child RLM while
+// the child's depth stays under max_depth, else it is a plain LM call.
+rlm_depth_route :: (depth: int, max_depth: int) -> int #effects(all) {
+  return ifx depth + 1 < max_depth then RLM_ROUTE_CHILD else RLM_ROUTE_PLAIN;
+}
+
+rlm_stop_name :: (v: int) -> string #effects(all) {
+  if v == RLM_STOP_CALLS { return "the call limit"; }
+  if v == RLM_STOP_TIME { return "the time limit"; }
+  if v == RLM_STOP_COST { return "the cost limit"; }
+  if v == RLM_STOP_UNPRICED { return "a model off the rates card while a cost limit is set"; }
+  if v == RLM_STOP_PROMPT { return "the prompt size limit"; }
+  return "";
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "the floor: input tokens rounded up at the card's input price, -1 off the card" {
+  // Flash on Vertex: $1.50 a million input tokens
+  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 4000000) == 1500000;
+  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 4) == 2;          // one token: 1.5 micro-USD, rounded up
+  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 5) == 3;          // two tokens: 3
+  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 0) == 0;
+  #assert rlm_floor_micros("vertex", "gemini-4-argon", 400000) == 400000;  // 100,000 tokens at $4
+  #assert rlm_floor_micros("vertex", "gemini-4-argon", 3) == 4;            // one token at $4: 4 micro-USD exactly
+  #assert rlm_floor_micros("vertex", "no-such-model", 10) == -1;
+}
+
+#test "a call fits until a limit: calls, time, prompt size" {
+  l := RlmLimits.{max_calls = 3, max_ms = 1000, max_prompt_bytes = 100, max_usd_micros = 0};
+  s := RlmSpent.{calls = 2, started_ms = 500};
+  #assert rlm_may_call(l, s, 1499, "vertex", "x", 100) == RLM_OK;           // no cap: the model need not be priced
+  #assert rlm_may_call(l, s, 1500, "vertex", "x", 100) == RLM_STOP_TIME;
+  #assert rlm_may_call(l, s, 600, "vertex", "x", 101) == RLM_STOP_PROMPT;
+  s.calls = 3;
+  #assert rlm_may_call(l, s, 600, "vertex", "x", 1) == RLM_STOP_CALLS;
+}
+
+#test "money: spent plus the call's floor may reach the cap but not pass it; an unpriced model is refused under a cap" {
+  l := RlmLimits.{max_usd_micros = 100};
+  s := RlmSpent.{usd_micros = 98};
+  // 4 bytes on Flash: a floor of 2 micro-USD; 98 + 2 = 100 fits
+  #assert rlm_may_call(l, s, 0, "vertex", "gemini-3.8-flash", 4) == RLM_OK;
+  // 5 bytes: a floor of 3; 101 passes the cap
+  #assert rlm_may_call(l, s, 0, "vertex", "gemini-3.8-flash", 5) == RLM_STOP_COST;
+  #assert rlm_may_call(l, s, 0, "vertex", "unknown-model", 1) == RLM_STOP_UNPRICED;
+  s.usd_micros = 101;
+  #assert rlm_may_call(l, s, 0, "vertex", "gemini-3.8-flash", 0) == RLM_STOP_COST;
+  // the smallest cap is a cap
+  #assert rlm_may_call(RlmLimits.{max_usd_micros = 1}, RlmSpent.{}, 0, "vertex", "unknown-model", 1) == RLM_STOP_UNPRICED;
+}
+
+#forall "the depth route: a child while it stays under the limit, then a plain call" depth: 0..<5, max: 0..<5 {
+  r := rlm_depth_route(depth, max);
+  #assert (r == RLM_ROUTE_CHILD) == (depth + 1 < max);
+  #assert r == RLM_ROUTE_CHILD || r == RLM_ROUTE_PLAIN;
+}
+
+#test "every stop has a name for the model and the log; OK has none" {
+  #assert rlm_stop_name(RLM_OK) == "";
+  #assert rlm_stop_name(RLM_STOP_CALLS) == "the call limit" && rlm_stop_name(RLM_STOP_TIME) == "the time limit";
+  #assert rlm_stop_name(RLM_STOP_COST) == "the cost limit" && rlm_stop_name(RLM_STOP_PROMPT) == "the prompt size limit";
+  #assert rlm_stop_name(RLM_STOP_UNPRICED) == "a model off the rates card while a cost limit is set";
+}

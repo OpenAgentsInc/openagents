@@ -1,0 +1,736 @@
+// A Recursive Language Model run (arXiv 2512.24601; GitHub #13367;
+// README.md): the root model never sees the context. It sees the question,
+// the context's size, and each turn the (cut) output of the code it wrote;
+// the context lives in its environment (script.coax) as `context`, where its
+// code slices, searches and chunks it and asks sub-models about the pieces
+// (llm_query, llm_query_batched), or starts a child RLM on a piece
+// (rlm_query, when max_depth allows). The run ends when the code calls
+// FINAL(answer) or FINAL_VAR(name), when an answer with no code block says
+// FINAL(...), or after max_turns with one closing call; or early, at a limit
+// (policy.coax), with the best it has.
+//
+// A block that asks a sub-model suspends (script.coax); the driver here
+// serves the request (a batch's calls in flight together, a child RLM run
+// to its end), restores the block's starting state from a snapshot and runs
+// it again with the answers in its memo. The interpreter so never calls
+// out, and children nest in the driver, each in a frame of its own.
+//
+// Memory: every arena is the caller's (RlmArenas); nothing is allocated.
+
+#load "model.coax";
+#load "script.coax";
+
+RLM_MSGS :: 256;                 // messages of the root and every child at once
+RLM_FENCE :: "```";
+RLM_SYSTEM :: "You are a Recursive Language Model (RLM): a language model answering a question about a context that is too long to read at once. The context is not in this conversation. It is stored as the variable `context` in a REPL that you program, turn by turn, until you give the final answer.\n\nWrite code in ```repl blocks; each turn, every block runs in order and you see what it printed (cut to the first {SHOWN} characters a block). Variables persist across turns. The REPL runs a subset of Python:\n- values: None, bool, int (no floats: / and // both floor), str, list, dict; f-strings; list comprehensions; a if c else b\n- statements: assignment (also a, b = ... and x[i] = ...), += -= *=, if/elif/else, for (one or two names), while, break, continue; import lines do nothing\n- builtins: print len str repr int bool abs list dict range enumerate zip sum min max sorted (key= only as d.get; reverse=True)\n- str methods: lower upper strip lstrip rstrip split splitlines join find rfind index count startswith endswith replace isdigit; list: append extend pop index count sort; dict: get keys values items\n- re.search(pattern, s) and grep(pattern, text[, limit]) (the lines that match), with a small regex subset: literals . \\d \\w \\s [a-z] [^...] * + ? ^ $ (no groups, no |, no {n,m})\n- not supported: def, lambda, class, try, with, return, ** and slices with a step. Write steps inline.\n\nAvailable in the REPL:\n- `context`: a str holding the whole context (read-only){FILES}\n- `chunk(text, size)`: text cut into pieces of at most size characters, at line ends where possible\n- `llm_query(prompt)`: one call to a sub-LM, which sees only that prompt (no REPL, no context). It handles about {SUBCHARS} characters a prompt. Returns its answer as a str.\n- `llm_query_batched(prompts)`: the same for a list of prompts, run concurrently; answers in the same order. Prefer it to a loop of llm_query.\n- `rlm_query(prompt)` / `rlm_query_batched(prompts)`: a recursive RLM sub-call, which gets the prompt as its own `context` and REPL; it falls back to llm_query when recursion is off ({DEPTH}).\n- `FINAL(answer)`: ends the run with answer. `FINAL_VAR(name)` ends it with that variable's value. You can also answer outside code with a line FINAL(your answer), in a turn with no code block.\n- `SHOW_VARS()`: the names of your variables.\n\nStrategy: look at the context first (its length, a few slices, how it is structured). Then plan how the question decomposes into sub-LM calls over pieces of the context, and run that plan: chunk the context, ask each sub-LM a focused question over its chunk with terse, structured answers you can parse, and combine the answers in code. Use code (find, grep, split, counting) wherever it decides the answer exactly; use sub-LMs where reading or meaning is needed. Keep prompts to sub-LMs well under their capacity, and pack each with as much context as it can usefully read. Print short summaries, not whole chunks: what you print fills your own small window. Do not answer before you have looked at the context, and check your answer against the evidence you printed before you give it.";
+
+RLM_CHILD_QUESTION :: "Your task, with the data it needs, is in `context`. Read it there and do what it asks; give the result with FINAL.";
+
+RlmState :: struct {
+  limits: RlmLimits;
+  spent: RlmSpent;
+  model: [1] RlmModel;
+  msgs: [RLM_MSGS] GwMessage; nm: int;
+  ndocs: int;
+  trace: [] u8; ntr: int;
+  // block snapshots, a stack (a child's blocks above its parent's)
+  snap_names: [] string; snap_vals: [] RsVal; snap_lists: [] RsList; snap_cells: [] RsVal;
+  top_v: int; top_l: int; top_c: int;
+  stop: int;                     // the policy verdict that ended the run, or RLM_OK
+  failed: string;                // why the run ended without an answer, or what a limit refused
+  root_calls: int; sub_calls: int; child_runs: int; deepest: int; turns: int; block_errors: int; reruns: int;
+  in_tokens: int; out_tokens: int; unpriced: int;
+  root_in: int; root_out: int; root_usd_micros: int;   // the same, by role
+  sub_in: int; sub_out: int; sub_usd_micros: int;
+  sub_ms: int;                   // time sub-calls took, summed over batches' longest
+  answer: string;
+  levels: [RLM_LEVELS] RlmLevel; nlev: int;
+}
+
+// The arenas a run uses, all the caller's: heap bytes, list cells and headers, tokens, nodes,
+// variables, the memo and pending prompts, a block's output, the trace, the model's reply
+// slots, and the snapshot stack (cells and lists at least twice the live ones for a child).
+RlmArenas :: struct {
+  heap: [] u8;
+  cells: [] RsVal; lists: [] RsList;
+  toks: [] RsTok; nodes: [] RsNode;
+  names: [] string; vals: [] RsVal;
+  memo: [] string; memo_fail: [] bool; pend: [] string;
+  out: [] u8; trace: [] u8; reply: [] u8;
+  snap_names: [] string; snap_vals: [] RsVal; snap_lists: [] RsList; snap_cells: [] RsVal;
+}
+
+rlm_init :: (r: [] Rs, st: [] RlmState, a: RlmArenas, limits: RlmLimits) {
+  r[0] = Rs.{heap = a.heap, cells = a.cells, lists = a.lists, toks = a.toks, nodes = a.nodes, names = a.names, vals = a.vals, memo = a.memo, memo_fail = a.memo_fail, pend = a.pend, out = a.out, max_steps = limits.max_steps};
+  st[0] = RlmState.{limits = limits, trace = a.trace, snap_names = a.snap_names, snap_vals = a.snap_vals, snap_lists = a.snap_lists, snap_cells = a.snap_cells};
+  st[0].model[0].reply = a.reply;
+}
+
+// The context: one text.
+rlm_set_context :: (r: [] Rs, text: string) { rs_define(r, "context", rs_strv(text)); }
+
+// The context as files (names and texts, which the caller keeps alive), joined with a header
+// line each; `files` lists their names and doc(name) returns one.
+rlm_set_files :: (r: [] Rs, st: [] RlmState, names: [] string, texts: [] string) {
+  r[0].doc_names = names; r[0].doc_texts = texts; st[0].ndocs = names.count;
+  at := r[0].nh; ok := true;
+  for t, i: texts { ok = ok && rs_put(r, "==> ") && rs_put(r, names[i]) && rs_put(r, " <==\n") && rs_put(r, t); if t.count > 0 && t[t.count - 1] != 10 { ok = ok && rs_putc(r, 10); } }
+  if !ok { r[0].nh = at; rs_oom(r); return; }
+  rs_define(r, "context", rs_strv(rs_take(r, at)));
+  l := rs_new_list(r, names.count);
+  if rs_bad(r) { return; }
+  for n: names { x := rs_list_push(r, l.i, rs_strv(n)); }
+  rs_define(r, "files", l);
+}
+
+rlm_tr :: (st: [] RlmState, s: string) {
+  for c: s { if st[0].ntr < st[0].trace.count { st[0].trace[st[0].ntr] = c; st[0].ntr += 1; } }
+}
+rlm_tr_int :: (r: [] Rs, st: [] RlmState, v: int) {
+  at := r[0].nh;
+  if rs_put_int(r, v) { rlm_tr(st, rs_take(r, at)); }
+  r[0].nh = at;
+}
+
+// ---------------------------------------------------------------- calls under the policy
+
+// Whether a call of prompt_bytes to role may go; when not, st.failed says why, and st.stop
+// too when the run must end (every limit but a prompt's size).
+rlm_allowed :: (st: [] RlmState, role: int, prompt_bytes: int) -> bool {
+  m := st[0].model[..];
+  v := rlm_may_call(st[0].limits, st[0].spent, rm_now(m), m[0].gateway, rm_model(m, role), prompt_bytes);
+  if v != RLM_OK && v != RLM_STOP_PROMPT { st[0].stop = v; }
+  if v != RLM_OK { st[0].failed = rlm_stop_name(v); }
+  return v == RLM_OK;
+}
+// Counts slot's call: its tokens and price.
+rlm_count :: (st: [] RlmState, role: int, slot: int) {
+  s := st[0].model[0].slots[slot];
+  st[0].spent.calls += 1;
+  if role == RLM_ROOT { st[0].root_calls += 1; } else { st[0].sub_calls += 1; }
+  if s.usage.ok { st[0].in_tokens += s.usage.input_tokens; st[0].out_tokens += s.usage.output_tokens; }
+  usd := ifx s.usage.card_usd_micros > 0 then s.usage.card_usd_micros else 0;
+  st[0].spent.usd_micros += usd;
+  if s.usage.ok && s.usage.card_usd_micros < 0 { st[0].unpriced += 1; }
+  if role == RLM_ROOT { st[0].root_in += s.usage.input_tokens; st[0].root_out += s.usage.output_tokens; st[0].root_usd_micros += usd; }
+  else { st[0].sub_in += s.usage.input_tokens; st[0].sub_out += s.usage.output_tokens; st[0].sub_usd_micros += usd; }
+}
+
+// Adds an answer to the block's memo (fail: the block ends with text as its error).
+rlm_memo :: (r: [] Rs, text: string, fail: bool) {
+  r[0].memo[r[0].nmemo] = text; r[0].memo_fail[r[0].nmemo] = fail; r[0].nmemo += 1;
+}
+
+// A slot's answer into the memo: the text, or "Error: ..." (a value, as the reference gives a
+// failed call in a batch) when the call failed.
+rlm_memo_slot :: (r: [] Rs, st: [] RlmState, slot: int) {
+  m := st[0].model[..];
+  if !m[0].slots[slot].ok { rlm_memo(r, rs_cat(r, "Error: the sub-call failed: ", rm_why(m, slot)), false); return; }
+  t := rs_copy(r, rm_text(m, slot));
+  if m[0].slots[slot].cut { t = rs_cat(r, t, "\n[the answer was cut here: it was too long]"); }
+  rlm_memo(r, t, false);
+}
+
+// The pending prompts from..<to as plain sub-calls, RLM_SLOTS at a time; their answers into the memo.
+rlm_serve_llm :: (r: [] Rs, st: [] RlmState, from: int, to: int) {
+  m := st[0].model[..];
+  at := from;
+  while at < to {
+    k := ifx to - at < RLM_SLOTS then to - at else RLM_SLOTS;
+    // a call the limits refuse fails, and so does every call after it
+    go := 0;
+    while go < k {
+      p := r[0].pend[at + go];
+      if !rlm_allowed(st, RLM_SUB, p.count) { break; }
+      st[0].spent.calls += 1;   // so the next one's check counts it; taken back below, counted again by rlm_count
+      go += 1;
+    }
+    st[0].spent.calls -= go;
+    for j: 0..<go { rm_start_prompt(m, j, r[0].pend[at + j]); }
+    if !m[0].scripted { rm_wait(m, go); }
+    for j: 0..<go { rlm_count(st, RLM_SUB, j); rlm_memo_slot(r, st, j); }
+    if go < k {
+      why := rs_cat(r, "the sub-call was refused: ", rs_cat(r, st[0].failed, " was reached"));
+      for j: at + go..<to { rlm_memo(r, why, true); }
+      return;
+    }
+    at += k;
+  }
+}
+
+// ---------------------------------------------------------------- snapshots
+
+RlmSnap :: struct { nv: int; nl: int; nc: int; at_v: int; at_l: int; at_c: int; ok: bool; }
+
+// The variables, list headers and cells as they are, onto the snapshot stack.
+rlm_snap_take :: (r: [] Rs, st: [] RlmState) -> RlmSnap {
+  s := RlmSnap.{nv = r[0].nv, nl = r[0].nl, nc = r[0].nc, at_v = st[0].top_v, at_l = st[0].top_l, at_c = st[0].top_c};
+  if s.at_v + s.nv > st[0].snap_vals.count || s.at_v + s.nv > st[0].snap_names.count || s.at_l + s.nl > st[0].snap_lists.count || s.at_c + s.nc > st[0].snap_cells.count { return s; }
+  for i: 0..<s.nv { st[0].snap_names[s.at_v + i] = r[0].names[i]; st[0].snap_vals[s.at_v + i] = r[0].vals[i]; }
+  for i: 0..<s.nl { st[0].snap_lists[s.at_l + i] = r[0].lists[i]; }
+  for i: 0..<s.nc { st[0].snap_cells[s.at_c + i] = r[0].cells[i]; }
+  st[0].top_v += s.nv; st[0].top_l += s.nl; st[0].top_c += s.nc;
+  s.ok = true;
+  return s;
+}
+rlm_snap_restore :: (r: [] Rs, st: [] RlmState, s: RlmSnap) {
+  for i: 0..<s.nv { r[0].names[i] = st[0].snap_names[s.at_v + i]; r[0].vals[i] = st[0].snap_vals[s.at_v + i]; }
+  for i: 0..<s.nl { r[0].lists[i] = st[0].snap_lists[s.at_l + i]; }
+  for i: 0..<s.nc { r[0].cells[i] = st[0].snap_cells[s.at_c + i]; }
+  r[0].nv = s.nv; r[0].nl = s.nl; r[0].nc = s.nc;
+}
+rlm_snap_drop :: (st: [] RlmState, s: RlmSnap) { if s.ok { st[0].top_v = s.at_v; st[0].top_l = s.at_l; st[0].top_c = s.at_c; } }
+
+// ---------------------------------------------------------------- reading the model's answer
+
+// The code of the k-th ```repl (or ```python) block in text, or "" with found false.
+RlmBlock :: struct { found: bool; code: string; }
+rlm_block :: (text: string, k: int) -> RlmBlock {
+  at := 0; seen := 0;
+  while true {
+    f := rs_find_sub(text, RLM_FENCE, at);
+    if f < 0 { return RlmBlock.{}; }
+    e := f + 3; while e < text.count && text[e] != 10 { e += 1; }
+    tag := cast(string) text[f + 3..<e];
+    while tag.count > 0 && (tag[tag.count - 1] == ' ' || tag[tag.count - 1] == 13) { tag = cast(string) tag[0..<tag.count - 1]; }
+    close := ifx e < text.count then rs_find_sub(text, RLM_FENCE, e + 1) else -1;
+    if close < 0 { return RlmBlock.{}; }
+    if tag == "repl" || tag == "python" || tag == "py" {
+      if seen == k { return RlmBlock.{found = true, code = cast(string) text[e + 1..<close]}; }
+      seen += 1;
+    }
+    at = close + 3;
+  }
+  return RlmBlock.{};
+}
+
+// FINAL(...) or FINAL_VAR(...) at the start of a line outside code: what is inside, and which.
+RlmFinal :: struct { kind: int; inner: string; }   // kind 0 none, 1 FINAL, 2 FINAL_VAR
+rlm_final :: (text: string) -> RlmFinal {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    s := at; while s < e && (text[s] == ' ' || text[s] == 9 || text[s] == '*') { s += 1; }
+    line := cast(string) text[s..<e];
+    kind := 0; open := 0;
+    if line.count >= 10 && cast(string) line[0..<10] == "FINAL_VAR(" { kind = 2; open = 10; }
+    else if line.count >= 6 && cast(string) line[0..<6] == "FINAL(" { kind = 1; open = 6; }
+    if kind > 0 {
+      // the answer runs to the last ')' of the text (it may span lines)
+      rest := cast(string) text[s + open..<text.count];
+      close := rs_rfind_sub(rest, ")");
+      if close >= 0 {
+        inner := cast(string) rest[0..<close];
+        while inner.count > 0 && (inner[0] == ' ' || inner[0] == 10) { inner = cast(string) inner[1..<inner.count]; }
+        while inner.count > 0 && (inner[inner.count - 1] == ' ' || inner[inner.count - 1] == 10) { inner = cast(string) inner[0..<inner.count - 1]; }
+        if inner.count >= 2 && (inner[0] == 34 || inner[0] == 39) && inner[inner.count - 1] == inner[0] { inner = cast(string) inner[1..<inner.count - 1]; }
+        return RlmFinal.{kind = kind, inner = inner};
+      }
+    }
+    at = e + 1;
+  }
+  return RlmFinal.{};
+}
+
+// The text after a fence-free answer has been searched: is there any fence at all?
+rlm_has_code :: (text: string) -> bool { return rlm_block(text, 0).found; }
+
+// ---------------------------------------------------------------- the loop
+
+rlm_system :: (r: [] Rs, st: [] RlmState, depth: int) -> string {
+  at := r[0].nh; s := RLM_SYSTEM; i := 0; ok := true;
+  while i < s.count {
+    if s[i] == '{' {
+      e := rs_find_sub(s, "}", i);
+      key := cast(string) s[i + 1..<e];
+      if key == "SHOWN" { ok = ok && rs_put_int(r, st[0].limits.max_shown); }
+      if key == "SUBCHARS" { ok = ok && rs_put_int(r, st[0].limits.max_prompt_bytes / 2); }
+      if key == "DEPTH" {
+        on := rlm_depth_route(depth, st[0].limits.max_depth) == RLM_ROUTE_CHILD;
+        ok = ok && rs_put(r, ifx on then "recursion is on here" else "recursion is off here");
+      }
+      if key == "FILES" && depth == 0 && st[0].ndocs > 0 { ok = ok && rs_put(r, "; it joins several files, each after a line ==> path <==\n- `files`: the list of their paths, and `doc(path)`: one file's text"); }
+      i = e + 1; continue;
+    }
+    ok = ok && rs_putc(r, s[i]); i += 1;
+  }
+  if !ok { r[0].nh = at; rs_oom(r); return RLM_SYSTEM; }
+  return rs_take(r, at);
+}
+
+rlm_push :: (r: [] Rs, st: [] RlmState, role: string, text: string) -> bool {
+  if st[0].nm >= RLM_MSGS { return false; }
+  st[0].msgs[st[0].nm] = GwMessage.{role = role, text = text}; st[0].nm += 1;
+  return true;
+}
+
+// The bytes a root call sends: system and messages from base.
+rlm_bytes :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> int {
+  n := system.count;
+  for i: base..<st[0].nm { n += st[0].msgs[i].text.count; }
+  return n;
+}
+
+// One root (or child) call over the messages from base; its answer in the heap, or "" with
+// run.failed set.
+rlm_root_call :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> string {
+  if !rlm_allowed(st, RLM_ROOT, rlm_bytes(r, st, system, base)) { return ""; }
+  m := st[0].model[..];
+  rm_call(m, RLM_ROOT, system, st[0].msgs[base..<st[0].nm]);
+  rlm_count(st, RLM_ROOT, 0);
+  if !m[0].slots[0].ok { st[0].failed = rs_copy(r, rm_why(m, 0)); return ""; }
+  return rs_copy(r, rm_text(m, 0));
+}
+
+rlm_turn_note :: (r: [] Rs, st: [] RlmState, turn: int, max: int) -> string {
+  at := r[0].nh;
+  ok := rs_put(r, "Turn ") && rs_put_int(r, turn) && rs_put(r, "/") && rs_put_int(r, max) && rs_put(r, ":");
+  if !ok { r[0].nh = at; return "Next turn:"; }
+  return rs_take(r, at);
+}
+
+// The first message of a run: the question, the context's size, the first turn's note.
+rlm_first :: (r: [] Rs, st: [] RlmState, question: string, depth: int) -> string {
+  ctxv := rs_get(r, "context");
+  clen := ifx ctxv.kind == RS_STR then ctxv.s.count else 0;
+  at := r[0].nh;
+  ok := rs_put(r, "Answer the following: ") && rs_put(r, question) && rs_put(r, "\n\nYour context is a str of ") && rs_put_int(r, clen) && rs_put(r, " characters");
+  if depth == 0 && st[0].ndocs > 0 { ok = ok && rs_put(r, " joining ") && rs_put_int(r, st[0].ndocs) && rs_put(r, " files"); }
+  ok = ok && rs_put(r, ". You have not looked at it yet: look at the context first, and do not give a final answer yet.\n\n");
+  if !ok { r[0].nh = at; return ""; }
+  return rs_cat(r, rs_take(r, at), rlm_turn_note(r, st, 1, st[0].limits.max_turns));
+}
+
+// One block's report for the model: its output (cut to max_shown) and its error.
+rlm_report :: (r: [] Rs, st: [] RlmState, k: int, many: bool, out_base: int) -> bool {
+  shown := cast(string) r[0].out[out_base..<r[0].no];
+  lim := st[0].limits.max_shown;
+  if shown.count > lim { shown = cast(string) shown[0..<lim]; }
+  ok := rs_put(r, "REPL output");
+  if many { ok = ok && rs_put(r, " (block ") && rs_put_int(r, k + 1) && rs_put(r, ")"); }
+  ok = ok && rs_put(r, ":\n") && rs_put(r, shown);
+  if r[0].out_total > shown.count { ok = ok && rs_put(r, "\n... [") && rs_put_int(r, r[0].out_total - shown.count) && rs_put(r, " more characters not shown]"); }
+  if rs_bad(r) { st[0].block_errors += 1; ok = ok && rs_put(r, "\nError: ") && rs_put(r, r[0].err); }
+  if r[0].out_total == 0 && !rs_bad(r) { ok = ok && rs_put(r, "(no output)"); }
+  return ok && rs_put(r, "\n\n");
+}
+
+// What a reply with no code block ends the run with: 1 an answer (in r.run.answer), 0 go on (the
+// note to the model pushed), -1 stop.
+rlm_no_code :: (r: [] Rs, st: [] RlmState, reply: string, turn: int) -> int {
+  f := rlm_final(reply);
+  if f.kind == 1 { st[0].answer = rs_copy(r, f.inner); return 1; }
+  if f.kind == 2 {
+    k := rs_find(r, f.inner);
+    if k >= 0 { st[0].answer = rs_text(r, r[0].vals[k], false); return 1; }
+    return ifx rlm_push(r, st, "user", rs_cat(r, "FINAL_VAR: there is no variable named ", f.inner)) then 0 else -1;
+  }
+  note := rs_cat(r, "There is no ```repl block in your answer. Write code in a ```repl block, or give the answer as FINAL(...).\n\n", rlm_turn_note(r, st, turn + 1, st[0].limits.max_turns));
+  return ifx rlm_push(r, st, "user", note) then 0 else -1;
+}
+
+// The closing call after the last turn: the answer it gives, or "".
+rlm_closing :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> string {
+  if !rlm_push(r, st, "user", "You are out of turns. Give your best final answer now, as a line FINAL(your answer), with no code.") { return ""; }
+  reply := rlm_root_call(r, st, system, base);
+  if reply.count == 0 { return ""; }
+  f := rlm_final(reply);
+  if f.kind == 1 { return rs_copy(r, f.inner); }
+  if f.kind == 2 { k := rs_find(r, f.inner); if k >= 0 { return rs_text(r, r[0].vals[k], false); } }
+  return reply;
+}
+
+// ---------------------------------------------------------------- the driver
+
+// A run level: the root (depth 0) or a child RLM, stepped by rlm_step through its phases.
+L_START :: 1;                    // set up the frame and the first message
+L_CALL :: 2;                     // the next turn's root call
+L_BLOCK :: 3;                    // the reply's next block: parse it, keep the state
+L_PASS :: 4;                     // run the block; serve what it waits on
+L_CHILD :: 5;                    // waiting on a child level's answer for an rlm_query
+L_CLOSE :: 6;                    // out of turns: the closing call
+L_END :: 7;                      // put the frame back and hand the answer up
+
+RLM_LEVELS :: 4;                 // the root and up to three child levels
+RLM_BLOCKS :: 16;                // blocks run from one reply
+
+RlmLevel :: struct {
+  phase: int;
+  question: string; ctx: RsVal; depth: int; out_base: int;
+  system: string; base: int; turn: int;
+  reply: string; k: int; many: bool; halt: bool;
+  rep_from: [RLM_BLOCKS] int; rep_to: [RLM_BLOCKS] int; nrep: int;
+  first: int; snap: RlmSnap; mbase: int; save_mb: int;
+  serve_base: int; serve_n: int; serve_i: int;
+  save_frame: int; save_nv: int; save_nn: int; save_nt: int; save_depth: int; save_nm: int;
+  save_final: bool; save_fval: RsVal;
+  answer: string;
+}
+
+rlm_push_level :: (st: [] RlmState, question: string, ctx: RsVal, depth: int, out_base: int) -> bool {
+  if st[0].nlev >= RLM_LEVELS { return false; }
+  st[0].levels[st[0].nlev] = RlmLevel.{phase = L_START, question = question, ctx = ctx, depth = depth, out_base = out_base};
+  st[0].nlev += 1;
+  return true;
+}
+
+// The feedback for the turn that just ran: every block's report, then the next turn's note.
+rlm_feedback :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) -> string {
+  note := rlm_turn_note(r, st, v[0].turn + 1, st[0].limits.max_turns);   // made first: it goes in the heap too
+  at := r[0].nh; ok := true;
+  for i: 0..<v[0].nrep { ok = ok && rs_put(r, cast(string) r[0].heap[v[0].rep_from[i]..<v[0].rep_to[i]]); }
+  ok = ok && rs_put(r, note);
+  if !ok { r[0].nh = at; return ""; }
+  return rs_take(r, at);
+}
+
+// The block just ended: its report kept, the next block (or the end of the run) next.
+rlm_block_done :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
+  at := r[0].nh;
+  if !rlm_report(r, st, v[0].k, v[0].many, v[0].out_base) { r[0].nh = at; st[0].failed = "the run's memory is full"; v[0].phase = L_END; return; }
+  v[0].rep_from[v[0].nrep] = at; v[0].rep_to[v[0].nrep] = r[0].nh; v[0].nrep += 1;
+  v[0].k += 1;
+  if r[0].final_set {
+    v[0].answer = rs_text(r, r[0].final_val, false);
+    rlm_tr(st, "--- final ---\n"); rlm_tr(st, v[0].answer); rlm_tr(st, "\n");
+    v[0].phase = L_END; return;
+  }
+  if st[0].stop != RLM_OK { v[0].halt = true; }
+  v[0].phase = L_BLOCK;
+}
+
+rlm_step_start :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
+  if v[0].depth > st[0].deepest { st[0].deepest = v[0].depth; }
+  v[0].save_frame = r[0].frame; v[0].save_nv = r[0].nv; v[0].save_nn = r[0].nn; v[0].save_nt = r[0].nt; v[0].save_depth = r[0].depth;
+  v[0].save_final = r[0].final_set; v[0].save_fval = r[0].final_val; v[0].save_nm = st[0].nm;
+  if v[0].depth > 0 { r[0].frame = r[0].nv; r[0].depth = v[0].depth; rs_define(r, "context", v[0].ctx); }
+  r[0].final_set = false;
+  v[0].system = rlm_system(r, st, v[0].depth);
+  v[0].base = st[0].nm;
+  first := rlm_first(r, st, v[0].question, v[0].depth);
+  if first.count == 0 || !rlm_push(r, st, "user", first) { st[0].failed = "the run's memory is full"; v[0].phase = L_END; return; }
+  v[0].phase = L_CALL;
+}
+
+rlm_step_call :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
+  if v[0].turn >= st[0].limits.max_turns || st[0].stop != RLM_OK { v[0].phase = L_CLOSE; return; }
+  v[0].turn += 1;
+  if v[0].depth == 0 { st[0].turns = v[0].turn; }
+  reply := rlm_root_call(r, st, v[0].system, v[0].base);
+  if reply.count == 0 { v[0].phase = L_END; return; }
+  if !rlm_push(r, st, "assistant", reply) { st[0].failed = "too many messages"; v[0].phase = L_END; return; }
+  rlm_tr(st, "=== depth "); rlm_tr_int(r, st, v[0].depth); rlm_tr(st, " turn "); rlm_tr_int(r, st, v[0].turn); rlm_tr(st, " ===\n"); rlm_tr(st, reply); rlm_tr(st, "\n");
+  if !rlm_has_code(reply) {
+    w := rlm_no_code(r, st, reply, v[0].turn);
+    if w == 1 { v[0].answer = st[0].answer; v[0].phase = L_END; }
+    if w < 0 { st[0].failed = "too many messages"; v[0].phase = L_END; }
+    return;
+  }
+  v[0].reply = reply; v[0].k = 0; v[0].nrep = 0; v[0].halt = false;
+  v[0].many = rlm_block(reply, 1).found;
+  v[0].phase = L_BLOCK;
+}
+
+rlm_step_block :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
+  b := rlm_block(v[0].reply, v[0].k);
+  if !b.found || v[0].k >= RLM_BLOCKS || v[0].halt {
+    feedback := rlm_feedback(r, st, v);
+    if feedback.count == 0 { st[0].failed = "the run's memory is full"; v[0].phase = L_END; return; }
+    rlm_tr(st, "--- output ---\n"); rlm_tr(st, feedback); rlm_tr(st, "\n");
+    if !rlm_push(r, st, "user", feedback) { st[0].failed = "too many messages"; v[0].phase = L_END; return; }
+    v[0].phase = L_CALL;
+    return;
+  }
+  r[0].no = v[0].out_base; r[0].out_total = 0; r[0].err = ""; r[0].line = 1;
+  v[0].first = rs_parse(r, b.code);
+  if v[0].first < 0 { rlm_block_done(r, st, v); return; }
+  v[0].snap = rlm_snap_take(r, st);
+  if !v[0].snap.ok { r[0].err = "the memory limit (no room to keep the block's state)"; rlm_block_done(r, st, v); return; }
+  v[0].mbase = r[0].nmemo; v[0].save_mb = r[0].memo_base;
+  r[0].memo_base = v[0].mbase;
+  v[0].phase = L_PASS;
+}
+
+rlm_step_pass :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
+  r[0].no = v[0].out_base; r[0].out_total = 0;
+  rs_pass(r, v[0].first);
+  if !r[0].suspended {
+    rlm_snap_drop(st, v[0].snap);
+    r[0].nmemo = v[0].mbase; r[0].memo_base = v[0].save_mb;
+    rlm_block_done(r, st, v);
+    return;
+  }
+  st[0].reruns += 1;
+  if r[0].pkind == RS_ASK_LLM || rlm_depth_route(v[0].depth, st[0].limits.max_depth) == RLM_ROUTE_PLAIN {
+    rlm_serve_llm(r, st, r[0].pend_base, r[0].pend_base + r[0].npend);
+    rlm_snap_restore(r, st, v[0].snap);
+    return;
+  }
+  // child RLMs, one after another; their own prompts go above these
+  v[0].serve_base = r[0].pend_base; v[0].serve_n = r[0].npend; v[0].serve_i = 0;
+  r[0].pend_base = v[0].serve_base + v[0].serve_n;
+  v[0].phase = L_CHILD;
+  rlm_next_child(r, st, v);
+}
+
+// Starts the next child for the waiting level v, or, when none is left, runs v's block again.
+rlm_next_child :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
+  while v[0].serve_i < v[0].serve_n {
+    if st[0].stop == RLM_OK {
+      st[0].child_runs += 1;
+      if rlm_push_level(st, RLM_CHILD_QUESTION, rs_strv(r[0].pend[v[0].serve_base + v[0].serve_i]), v[0].depth + 1, v[0].out_base) { return; }
+      rlm_memo(r, "rlm_query: recursion is too deep", true);
+    } else {
+      rlm_memo(r, rs_cat(r, "rlm_query stopped: ", rs_cat(r, rlm_stop_name(st[0].stop), " was reached")), true);
+    }
+    v[0].serve_i += 1;
+  }
+  r[0].pend_base = v[0].serve_base;
+  rlm_snap_restore(r, st, v[0].snap);
+  v[0].phase = L_PASS;
+}
+
+rlm_step_end :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
+  // a child's frame and messages go; the root keeps its own, for whoever reads the run after
+  if v[0].depth > 0 {
+    r[0].frame = v[0].save_frame; r[0].nv = v[0].save_nv; r[0].nn = v[0].save_nn; r[0].nt = v[0].save_nt; r[0].depth = v[0].save_depth;
+    r[0].final_set = v[0].save_final; r[0].final_val = v[0].save_fval; st[0].nm = v[0].save_nm;
+  }
+  answer := v[0].answer;
+  st[0].nlev -= 1;
+  if st[0].nlev == 0 { st[0].answer = answer; return; }
+  // the parent waits on this child: its answer into the parent's memo, then the next child
+  p := st[0].levels[st[0].nlev - 1..<st[0].nlev];
+  rlm_memo(r, answer, false);
+  p[0].serve_i += 1;
+  rlm_next_child(r, st, p);
+}
+
+// One step of the level on top of the stack.
+rlm_step :: (r: [] Rs, st: [] RlmState) {
+  t := st[0].nlev - 1;
+  v := st[0].levels[t..<t + 1];
+  ph := v[0].phase;
+  if ph == L_START { rlm_step_start(r, st, v); }
+  else if ph == L_CALL { rlm_step_call(r, st, v); }
+  else if ph == L_BLOCK { rlm_step_block(r, st, v); }
+  else if ph == L_PASS { rlm_step_pass(r, st, v); }
+  else if ph == L_CLOSE {
+    if st[0].stop == RLM_OK && st[0].failed.count == 0 { v[0].answer = rlm_closing(r, st, v[0].system, v[0].base); }
+    v[0].phase = L_END;
+  }
+  else if ph == L_END { rlm_step_end(r, st, v); }
+}
+
+// Starts a run on question: step it with rlm_step while st.nlev > 0 (rlm_run does).
+rlm_start :: (r: [] Rs, st: [] RlmState, question: string) {
+  st[0].spent = RlmSpent.{started_ms = rm_now(st[0].model[..])};
+  st[0].stop = RLM_OK; st[0].failed = ""; st[0].answer = ""; st[0].nlev = 0;
+  // the question is copied into the heap: everything the run keeps is the run's own
+  x := rlm_push_level(st, rs_copy(r, question), rs_nil(), 0, 0);
+}
+
+// The run: started now, stepped until the root level ends. Its answer is st.answer (a
+// procedure that returned it would make the checker trace every string the run can hold).
+rlm_run :: (r: [] Rs, st: [] RlmState, question: string) {
+  rlm_start(r, st, question);
+  while st[0].nlev > 0 { rlm_step(r, st); }
+}
+
+// ---------------------------------------------------------------- checks
+
+// A test harness: arenas sized for checks, and a scripted model.
+RlmTestMem :: struct {
+  st: [1] RlmState;
+  none: [1] string;
+  heap: [200000] u8;
+  cells: [4000] RsVal; lists: [600] RsList;
+  toks: [3000] RsTok; nodes: [3000] RsNode;
+  names: [64] string; vals: [64] RsVal;
+  memo: [64] string; memo_fail: [64] bool; pend: [64] string;
+  out: [4096] u8; trace: [16384] u8; reply: [RLM_SLOTS * 2048] u8;
+  snap_names: [128] string; snap_vals: [128] RsVal; snap_lists: [1200] RsList; snap_cells: [8000] RsVal;
+}
+rlm_test_run :: (r: [] Rs, mem: [] RlmTestMem, limits: RlmLimits, roots: [] string, subs: [] string) {
+  a := RlmArenas.{heap = mem[0].heap[..], cells = mem[0].cells[..], lists = mem[0].lists[..], toks = mem[0].toks[..], nodes = mem[0].nodes[..], names = mem[0].names[..], vals = mem[0].vals[..], memo = mem[0].memo[..], memo_fail = mem[0].memo_fail[..], pend = mem[0].pend[..], out = mem[0].out[..], trace = mem[0].trace[..], reply = mem[0].reply[..], snap_names = mem[0].snap_names[..], snap_vals = mem[0].snap_vals[..], snap_lists = mem[0].snap_lists[..], snap_cells = mem[0].snap_cells[..]};
+  rlm_init(r, mem[0].st[..], a, limits);
+  mem[0].st[0].model[0].scripted = true; mem[0].st[0].model[0].root_script = roots; mem[0].st[0].model[0].sub_script = subs;
+}
+
+// Runs src as one block over context ctx, its sub-calls answered by subs: what it printed, or
+// "Error: ..." when it failed.
+rlm_test_eval :: (mem: [] RlmTestMem, r: [] Rs, ctx: string, src: string, subs: [] string) -> string {
+  rlm_test_run(r, mem, RlmLimits.{max_steps = 200000}, mem[0].none[0..<0], subs);
+  rlm_set_context(r, ctx);
+  rlm_test_block(r, mem[0].st[..], src);
+  if rs_bad(r) { return rs_cat(r, "Error: ", r[0].err); }
+  return cast(string) r[0].out[0..<r[0].no];
+}
+
+// One block run to its end outside a run's turns, as rlm_step runs it (for the checks).
+rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
+  st[0].spent = RlmSpent.{};
+  x := rlm_push_level(st, "", rs_nil(), 0, 0);
+  v := st[0].levels[0..<1];
+  v[0].reply = rs_cat(r, rs_cat(r, "```repl\n", src), "\n```");
+  v[0].phase = L_BLOCK;
+  while v[0].phase == L_BLOCK || v[0].phase == L_PASS || st[0].nlev > 1 {
+    if st[0].nlev == 1 && v[0].phase == L_BLOCK && v[0].k > 0 { break; }
+    rlm_step(r, st);
+  }
+  st[0].nlev = 0;
+}
+
+#test "the environment runs fixed programs: values, strings, lists, dicts, loops and f-strings" {
+  mem: [1] RlmTestMem; r: [1] Rs; none := mem[0].none[0..<0];
+  #assert rlm_test_eval(mem[..], r[..], "", "x = 7\nprint(x // 2, x % 3, -x // 2, 10 - 2 * 3)", none) == "3 1 -4 4\n";
+  #assert rlm_test_eval(mem[..], r[..], "abcdef", "print(len(context), context[1:3], context[-2:], context[:2] + '|')", none) == "6 bc ef ab|\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "n = 3\nprint(f'n={n} twice={n * 2} {{x}} {\"q\"}')", none) == "n=3 twice=6 {x} q\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "a = [1, 2, 3]\na.append(4)\nb = [x * x for x in a if x % 2 == 0]\nprint(b, sum(a), max(a), min(a), len(a))", none) == "[4, 16] 10 4 1 4\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "d = {}\nfor w in 'b a b c b a'.split():\n    d[w] = d.get(w, 0) + 1\nprint(d, max(d, key=d.get), sorted(d, key=d.get, reverse=True))", none) == "{'b': 3, 'a': 2, 'c': 1} b ['b', 'a', 'c']\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "t = 0\ni = 0\nwhile True:\n    i += 1\n    if i > 10:\n        break\n    if i % 2:\n        continue\n    t += i\nprint(t)", none) == "30\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "for i, w in enumerate(['x', 'y']):\n    print(i, w)\nfor k, v in {'a': 1}.items(): print(k, v)", none) == "0 x\n1 y\na 1\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "s = '  Hello, World  '\nprint(s.strip().lower().replace('world', 'there'), '|'.join(['a', 'b']), s.count('l'), s.find('W'))", none) == "hello, there a|b 3 9\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "a, b = 1, 2\nprint(b, a, 'yes' if a < b else 'no', not a, 3 in [1, 3], 'z' not in 'abc')", none) == "2 1 yes False True True\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "import re\nprint(re.search('\\\\d+', 'ab12'), re.search('^x', 'ab'), int(' -42 '), str(5) + '!', repr('a\\'b'))", none) == "True None -42 5! 'a\\'b'\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "x = [3, 1, 2]\nx.sort()\ny = x[:]\ny[0] = 9\nprint(x, y, x == [1, 2, 3], [1, [2]] == [1, [2]])", none) == "[1, 2, 3] [9, 2, 3] True True\n";
+  #assert rlm_test_eval(mem[..], r[..], "", "total = 0\nfor i in range(1, 10, 3):\n    total += i\nprint(total, list(range(3)), len(range(0, 10, 4)))", none) == "12 [0, 1, 2] 3\n";
+}
+
+#test "the environment's context helpers: lines, chunks at line ends, grep, files and doc" {
+  mem: [1] RlmTestMem; r: [1] Rs; none := mem[0].none[0..<0];
+  ctx := "alpha 1\nbeta 22\ngamma 3\ndelta 44\n";
+  #assert rlm_test_eval(mem[..], r[..], ctx, "print(len(context.splitlines()), grep('\\\\d\\\\d$', context))", none) == "4 ['beta 22', 'delta 44']\n";
+  // pieces of at most 18 bytes, cut after a newline in their second half
+  #assert rlm_test_eval(mem[..], r[..], ctx, "print(chunk(context, 18))", none) == "['alpha 1\\nbeta 22\\n', 'gamma 3\\ndelta 44\\n']\n";
+  #assert rlm_test_eval(mem[..], r[..], ctx, "print(len(chunk(context, 5)), ''.join(chunk(context, 5)) == context)", none) == "8 True\n";
+  #assert rlm_test_eval(mem[..], r[..], ctx, "print(SHOW_VARS())", none) == "['context']\n";
+}
+
+#test "the environment refuses what it does not have, and every failure is a message, not a trap" {
+  mem: [1] RlmTestMem; r: [1] Rs; none := mem[0].none[0..<0];
+  #assert rlm_test_eval(mem[..], r[..], "", "print(nope)", none) == "Error: line 1: name 'nope' is not defined";
+  #assert rlm_test_eval(mem[..], r[..], "", "x = [1]\nprint(x[5])", none) == "Error: line 2: list index out of range";
+  #assert rlm_test_eval(mem[..], r[..], "", "print(1 // 0)", none) == "Error: line 1: division by zero";
+  #assert rlm_test_eval(mem[..], r[..], "", "def f():\n    pass", none) == "Error: line 1: 'def' is not supported in this REPL: write the steps inline with loops";
+  #assert rlm_test_eval(mem[..], r[..], "", "f = open('/etc/passwd')", none) == "Error: line 1: open() is not available: the context is in `context` (and doc(path) for a file of it)";
+  #assert rlm_test_eval(mem[..], r[..], "", "x = 3000000000 * 3000000000", none) == "Error: line 1: an integer is too large";
+  #assert rlm_test_eval(mem[..], r[..], "", "while True:\n    pass", none) == "Error: line 1: the step limit (the block ran too long; is a loop endless?)";
+  #assert rlm_test_eval(mem[..], r[..], "abc", "context = 'x'", none) == "Error: line 1: 'context' is read-only: copy it into a variable of your own";
+  #assert rlm_test_eval(mem[..], r[..], "", "x = 1.5", none) == "Error: line 1: floats are not supported: use integers (/ and // both floor)";
+  #assert rlm_test_eval(mem[..], r[..], "", "if True:\nprint(1)", none) == "Error: line 2: expected an indented block";
+  #assert rlm_test_eval(mem[..], r[..], "", "print('a' + 1)", none) == "Error: line 1: unsupported operand types: str and int";
+  #assert rlm_test_eval(mem[..], r[..], "", "s = 'x' * 300000", none) == "Error: the memory limit (the run's arena is full)";
+}
+
+#test "a sub-model call suspends the block; it runs again with the answers, and what it did before the call is not done twice" {
+  mem: [1] RlmTestMem; r: [1] Rs;
+  subs := [4] string.["ONE", "TWO", "A", "B"];
+  src := "log = []\nlog.append('start')\nx = llm_query('first')\nlog.append(x)\ny = llm_query_batched(['p', 'q'])\nprint(log, y, llm_query('last'))";
+  #assert rlm_test_eval(mem[..], r[..], "", src, subs[..]) == "['start', 'ONE'] ['TWO', 'A'] B\n";
+  st := mem[0].st[..];
+  #assert st[0].sub_calls == 4 && st[0].reruns == 3 && st[0].model[0].nsub == 4;
+  // the memo is the block's: a later block asks again
+  #assert r[0].nmemo == 0 && st[0].top_c == 0;
+}
+
+#test "a run: the root looks, then chunks the context, asks the sub-model per chunk in one batch and ends with FINAL" {
+  mb: [1] RlmTestMem; rb: [1] Rs; mem := mb[..]; r := rb[..]; st := mem[0].st[..];
+  roots := [2] string.[
+    "Let me look.\n```repl\nprint(len(context), context[:12])\n```",
+    "Now each chunk.\n```repl\nparts = chunk(context, 16)\nans = llm_query_batched([f'count apples: {p}' for p in parts])\ntotal = sum([int(a) for a in ans])\nFINAL(f'{total} apples')\n```"];
+  subs := [5] string.["1", "1", "1", "0", "0"];   // five chunks: one line each
+  rlm_test_run(r, mem, RlmLimits.{}, roots[..], subs[..]);
+  rlm_set_context(r, "apple pear\napple fig\nkiwi apple\nplum plum\nfig fig\n");
+  rlm_run(r, st, "How many apples?");
+  #assert st[0].answer == "3 apples" && st[0].stop == RLM_OK && st[0].failed == "";
+  #assert st[0].root_calls == 2 && st[0].sub_calls == 5 && st[0].turns == 2 && st[0].deepest == 0;
+  // the second turn saw the first's output
+  #assert rs_find_sub(st[0].msgs[2].text, "REPL output:\n50 apple pear\na\n", 0) == 0;
+  #assert rs_count_sub(st[0].msgs[2].text, "Turn 2/20:") == 1;
+  // priced on the card: the sub prompts "count apples: " plus their chunk, one-byte answers, on Flash
+  #assert st[0].sub_usd_micros > 0 && st[0].root_usd_micros > 0 && st[0].spent.usd_micros == st[0].sub_usd_micros + st[0].root_usd_micros;
+  #assert st[0].spent.calls == 7 && st[0].in_tokens == st[0].root_in + st[0].sub_in;
+  #assert rs_find_sub(cast(string) st[0].trace[0..<st[0].ntr], "--- final ---\n3 apples", 0) > 0;
+}
+
+#test "a final answer outside code: FINAL(...) and FINAL_VAR(name), and a reply with neither gets a note" {
+  mb: [1] RlmTestMem; rb: [1] Rs; mem := mb[..]; r := rb[..]; st := mem[0].st[..];
+  roots := [3] string.["```repl\nbest = 'forty-two'\n```", "I am thinking.", "The answer is ready.\nFINAL_VAR(best)"];
+  rlm_test_run(r, mem, RlmLimits.{}, roots[..], mem[0].none[0..<0]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "What?");
+  #assert st[0].answer == "forty-two" && st[0].root_calls == 3;
+  #assert rs_find_sub(st[0].msgs[4].text, "There is no ```repl block in your answer.", 0) == 0;
+  roots2 := [2] string.["```repl\nprint(context)\n```", "FINAL(\"it is x\")"];
+  rlm_test_run(r, mem, RlmLimits.{}, roots2[..], mem[0].none[0..<0]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "What?");
+  #assert st[0].answer == "it is x";
+}
+
+#test "out of turns: one closing call gives the answer" {
+  mb: [1] RlmTestMem; rb: [1] Rs; mem := mb[..]; r := rb[..]; st := mem[0].st[..];
+  roots := [3] string.["```repl\nprint(1)\n```", "```repl\nprint(2)\n```", "FINAL(my best guess)"];
+  rlm_test_run(r, mem, RlmLimits.{max_turns = 2}, roots[..], mem[0].none[0..<0]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "What?");
+  #assert st[0].answer == "my best guess" && st[0].root_calls == 3 && st[0].turns == 2;
+  #assert rs_find_sub(st[0].msgs[st[0].nm - 1].text, "You are out of turns.", 0) == 0;
+}
+
+#test "limits: calls, cost and time stop the run, and the block that hit one says which" {
+  mb: [1] RlmTestMem; rb: [1] Rs; mem := mb[..]; r := rb[..]; st := mem[0].st[..];
+  roots := [2] string.["```repl\na = llm_query('one')\nb = llm_query('two')\nFINAL(a + b)\n```", "FINAL(never)"];
+  subs := [2] string.["1", "2"];
+  // two calls allowed: the root's and one sub-call
+  rlm_test_run(r, mem, RlmLimits.{max_calls = 2}, roots[..], subs[..]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "Sum?");
+  #assert st[0].answer == "" && st[0].stop == RLM_STOP_CALLS && st[0].sub_calls == 1 && st[0].root_calls == 1;
+  #assert rs_find_sub(cast(string) st[0].trace[0..<st[0].ntr], "Error: line 2: the sub-call was refused: the call limit was reached", 0) > 0;
+  // a cost cap below the second root call's floor
+  rlm_test_run(r, mem, RlmLimits.{max_usd_micros = 5000}, roots[..], subs[..]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "Sum?");
+  #assert st[0].answer == "12" && st[0].stop == RLM_OK;
+  rlm_test_run(r, mem, RlmLimits.{max_usd_micros = 10}, roots[..], subs[..]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "Sum?");
+  #assert st[0].answer == "" && st[0].stop == RLM_STOP_COST && st[0].root_calls == 0 && st[0].spent.calls == 0;
+  // time: each scripted call takes a second; two seconds allowed
+  rlm_test_run(r, mem, RlmLimits.{max_ms = 2000}, roots[..], subs[..]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "Sum?");
+  #assert st[0].stop == RLM_STOP_TIME && st[0].spent.calls == 2 && st[0].answer == "";
+}
+
+#test "recursion: at depth 2 rlm_query runs a child RLM in its own frame; at depth 1 it is a plain sub-call" {
+  mb: [1] RlmTestMem; rb: [1] Rs; mem := mb[..]; r := rb[..]; st := mem[0].st[..];
+  // the child's turn is a root-model call too: it comes from the root list, in order
+  roots := [3] string.[
+    "```repl\nsecret = 'parent only'\na = rlm_query('data: 5 apples')\nFINAL(a)\n```",
+    "```repl\nprint(context)\n```",
+    "```repl\nFINAL(context[6:14] + ' ' + str(SHOW_VARS()))\n```"];
+  rlm_test_run(r, mem, RlmLimits.{max_depth = 2}, roots[..], mem[0].none[0..<0]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "How many?");
+  #assert st[0].answer == "5 apples ['context']" && st[0].child_runs == 1 && st[0].deepest == 1 && st[0].root_calls == 3 && st[0].sub_calls == 0;
+  #assert r[0].frame == 0 && st[0].nlev == 0 && st[0].top_c == 0;
+  // the root's own variables are back after the child
+  #assert rs_find(r, "secret") >= 0;
+  subs := [1] string.["plain answer"];
+  roots1 := [1] string.["```repl\nFINAL(rlm_query('data'))\n```"];
+  rlm_test_run(r, mem, RlmLimits.{max_depth = 1}, roots1[..], subs[..]);
+  rlm_set_context(r, "x");
+  rlm_run(r, st, "How many?");
+  #assert st[0].answer == "plain answer" && st[0].child_runs == 0 && st[0].sub_calls == 1;
+}
+
+#test "the model's answer: repl and python blocks in order, other fences skipped; FINAL at a line start" {
+  t := "Plan.\n```text\nnot code\n```\n```repl\na = 1\n```\nthen\n```python\nb = 2\n```";
+  #assert rlm_block(t, 0).found && rlm_block(t, 0).code == "a = 1\n" && rlm_block(t, 1).code == "b = 2\n" && !rlm_block(t, 2).found;
+  #assert !rlm_block("```repl\nno close", 0).found;
+  #assert rlm_final("Done.\nFINAL(The answer is (b).)").inner == "The answer is (b)." && rlm_final("  FINAL_VAR(x)").kind == 2;
+  #assert rlm_final("I will call FINAL(x) later").kind == 0 && rlm_final("**FINAL(\"q\")**").inner == "q";
+}

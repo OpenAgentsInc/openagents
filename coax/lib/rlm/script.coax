@@ -1,0 +1,1950 @@
+// The RLM's environment (GitHub #13367; README.md "The environment"): the
+// small, safe language a Recursive Language Model writes in its ```repl
+// blocks, parsed and run here. It is a subset of Python, because that is
+// what models write best, with nothing that reaches a shell, a file, the
+// network or the clock. It calls nothing outside itself: a sub-model call
+// (llm_query, rlm_query and their batches) takes its answer from the
+// block's memo, or, when the memo has none yet, records the prompts in
+// pend and suspends the block. The driver (run.coax) makes the calls,
+// adds the answers to the memo, puts the variables, lists and dicts back
+// as they were when the block started, and runs it again: the block is
+// deterministic, so it reaches the same calls in the same order and this
+// time gets their answers. FINAL(x) and FINAL_VAR(name) end the run.
+//
+// Values: None, bool, int (64-bit; `/` floors, there are no floats), str
+// (bytes), list and dict (insertion-ordered, linear lookup). Lists and
+// dicts are shared by reference, as in Python. Statements: assignment
+// (also `a, b = ...`, `x[i] = ...`, `+=` `-=` `*=`), if/elif/else, for
+// (one or two names), while, break, continue, pass; import lines are
+// accepted and do nothing. Expressions: literals, f-strings, `[...]`,
+// `{k: v}`, list comprehensions and generator arguments, `a if c else b`,
+// and/or/not, comparisons with in/not in/is, + - * / // %, indexing and
+// slicing (no step). No def, lambda, class, try or with: the model is told.
+//
+// Memory is the caller's: every string, list cell, token and node comes from
+// the arenas in Rs and is never freed during a run, so the arenas are the
+// byte limit. A block also stops after max_steps steps. Every error (a bad
+// index, a missing name, an arena full, a step limit) ends the block with
+// a message for the model; nothing traps.
+//
+// Checks: `coax test coax/lib/rlm/run.coax` (the checks are there, beside the driver).
+
+#load "../text/regex.coax";
+
+RS_NONE :: 0;
+RS_BOOL :: 1;
+RS_INT :: 2;
+RS_STR :: 3;
+RS_LIST :: 4;
+RS_DICT :: 5;
+
+RS_ASK_LLM :: 1;                 // a block waits on llm_query or llm_query_batched
+RS_ASK_RLM :: 2;                 // a block waits on rlm_query or rlm_query_batched
+RS_WAITING :: "(waiting for a model's answer)";
+
+RS_INT_MAX :: 4611686018427387903;   // 2^62 - 1: results past it are an error, never an overflow trap
+RS_MUL_MAX :: 2147483647;            // operands of * past it in size are an error
+
+RsVal :: struct {
+  kind: int;
+  i: int;                        // bool 0/1, int, or the list/dict id
+  s: string;
+}
+
+RsList :: struct { at: int; n: int; cap: int; }
+
+T_NAME :: 1; T_INT :: 2; T_STR :: 3; T_FSTR :: 4; T_OP :: 5; T_NL :: 6; T_INDENT :: 7; T_DEDENT :: 8; T_END :: 9;
+
+RsTok :: struct { kind: int; s: string; i: int; line: int; }
+
+// Nodes. Expressions:
+N_INT :: 1; N_STR :: 2; N_FSTR :: 3; N_NAME :: 4; N_BOOL :: 5; N_NONE :: 6; N_LIST :: 7; N_DICT :: 8;
+N_COMP :: 9; N_BIN :: 10; N_NEG :: 11; N_AND :: 12; N_OR :: 13; N_NOT :: 14; N_IFX :: 15; N_CALL :: 16;
+N_ATTR :: 17; N_INDEX :: 18; N_SLICE :: 19; N_KW :: 20; N_PAIR :: 21;
+// Statements:
+S_EXPR :: 30; S_ASSIGN :: 31; S_AUG :: 32; S_IF :: 33; S_FOR :: 34; S_WHILE :: 35; S_BREAK :: 36; S_CONT :: 37; S_PASS :: 38;
+
+// Binary operators (N_BIN.i, S_AUG.i).
+B_ADD :: 1; B_SUB :: 2; B_MUL :: 3; B_DIV :: 4; B_MOD :: 5;
+B_EQ :: 6; B_NE :: 7; B_LT :: 8; B_LE :: 9; B_GT :: 10; B_GE :: 11; B_IN :: 12; B_NOTIN :: 13;
+
+// One node: children by index (-1 for none), siblings through next.
+RsNode :: struct { kind: int; a: int = -1; b: int = -1; c: int = -1; next: int = -1; s: string; s2: string; i: int; line: int; }
+
+RS_INDENTS :: 64;
+
+Rs :: struct {
+  memo: [] string; memo_fail: [] bool; nmemo: int;   // answers for the running block, from memo_base
+  memo_base: int; mused: int;    // the block's first entry; entries taken by this pass
+  pend: [] string; pend_base: int; npend: int; pkind: int;   // a suspended block's prompts
+  suspended: bool;
+  doc_names: [] string; doc_texts: [] string;
+  heap: [] u8; nh: int;
+  cells: [] RsVal; nc: int;
+  lists: [] RsList; nl: int;
+  toks: [] RsTok; nt: int; tp: int;
+  nodes: [] RsNode; nn: int;
+  names: [] string; vals: [] RsVal; nv: int; frame: int;
+  out: [] u8; no: int; out_total: int;
+  steps: int; max_steps: int = 1000000;
+  err: string;
+  line: int;
+  brk: bool; cont: bool;
+  final_set: bool; final_val: RsVal;
+  depth: int;                    // the run's depth: 0 at the root
+}
+
+rs_nil :: () -> RsVal { return RsVal.{}; }
+rs_int :: (v: int) -> RsVal { return RsVal.{kind = RS_INT, i = v}; }
+rs_bool :: (b: bool) -> RsVal { return RsVal.{kind = RS_BOOL, i = ifx b then 1 else 0}; }
+rs_strv :: (s: string) -> RsVal { return RsVal.{kind = RS_STR, s = s}; }
+rs_bad :: (r: [] Rs) -> bool { return r[0].err.count > 0; }
+
+// ---------------------------------------------------------------- the heap
+
+rs_put :: (r: [] Rs, s: string) -> bool {
+  if r[0].nh + s.count > r[0].heap.count { return false; }
+  for c: s { r[0].heap[r[0].nh] = c; r[0].nh += 1; }
+  return true;
+}
+rs_putc :: (r: [] Rs, c: u8) -> bool {
+  if r[0].nh >= r[0].heap.count { return false; }
+  r[0].heap[r[0].nh] = c; r[0].nh += 1;
+  return true;
+}
+rs_put_int :: (r: [] Rs, v: int) -> bool {
+  tmp: [24] u8; k := 0; x := v;
+  if x == 0 { return rs_putc(r, '0'); }
+  neg := x < 0;
+  while x != 0 && k < 24 { d := x % 10; if d < 0 { d = -d; } tmp[k] = cast(u8) ('0' + d); x /= 10; k += 1; }
+  ok := true;
+  if neg { ok = rs_putc(r, '-'); }
+  while k > 0 { k -= 1; ok = ok && rs_putc(r, tmp[k]); }
+  return ok;
+}
+rs_take :: (r: [] Rs, at: int) -> string { return cast(string) r[0].heap[at..<r[0].nh]; }
+
+// The error that ends the block: "line N: a b c".
+rs_fail :: (r: [] Rs, a: string, b: string, c: string) {
+  if rs_bad(r) { return; }
+  at := r[0].nh;
+  ok := rs_put(r, "line ") && rs_put_int(r, r[0].line) && rs_put(r, ": ") && rs_put(r, a) && rs_put(r, b) && rs_put(r, c);
+  if !ok { r[0].nh = at; r[0].err = "the memory limit (the run's arena is full)"; return; }
+  r[0].err = rs_take(r, at);
+}
+rs_oom :: (r: [] Rs) { if !rs_bad(r) { r[0].err = "the memory limit (the run's arena is full)"; } }
+
+rs_cat :: (r: [] Rs, a: string, b: string) -> string {
+  at := r[0].nh;
+  if !(rs_put(r, a) && rs_put(r, b)) { r[0].nh = at; rs_oom(r); return ""; }
+  return rs_take(r, at);
+}
+rs_copy :: (r: [] Rs, a: string) -> string { return rs_cat(r, a, ""); }
+
+// ---------------------------------------------------------------- lists and dicts
+
+rs_list_new :: (r: [] Rs, cap: int) -> int {
+  c := ifx cap < 4 then 4 else cap;
+  if r[0].nl >= r[0].lists.count || r[0].nc + c > r[0].cells.count { rs_oom(r); return -1; }
+  id := r[0].nl; r[0].nl += 1;
+  r[0].lists[id] = RsList.{at = r[0].nc, n = 0, cap = c};
+  r[0].nc += c;
+  return id;
+}
+rs_list_push :: (r: [] Rs, id: int, v: RsVal) -> bool {
+  l := r[0].lists[id];
+  if l.n >= l.cap {
+    c := l.cap * 2;
+    if r[0].nc + c > r[0].cells.count { rs_oom(r); return false; }
+    at := r[0].nc;
+    for i: 0..<l.n { r[0].cells[at + i] = r[0].cells[l.at + i]; }
+    r[0].nc += c;
+    l.at = at; l.cap = c;
+  }
+  r[0].cells[l.at + l.n] = v; l.n += 1;
+  r[0].lists[id] = l;
+  return true;
+}
+rs_len_of :: (r: [] Rs, id: int) -> int { return r[0].lists[id].n; }
+rs_at :: (r: [] Rs, id: int, i: int) -> RsVal { return r[0].cells[r[0].lists[id].at + i]; }
+rs_set_at :: (r: [] Rs, id: int, i: int, v: RsVal) { r[0].cells[r[0].lists[id].at + i] = v; }
+rs_new_list :: (r: [] Rs, cap: int) -> RsVal {
+  id := rs_list_new(r, cap);
+  if id < 0 { return rs_nil(); }
+  return RsVal.{kind = RS_LIST, i = id};
+}
+rs_new_dict :: (r: [] Rs) -> RsVal {
+  id := rs_list_new(r, 8);
+  if id < 0 { return rs_nil(); }
+  return RsVal.{kind = RS_DICT, i = id};
+}
+// A dict's entry for key: the index of its key cell, or -1.
+rs_dict_find :: (r: [] Rs, id: int, key: RsVal) -> int {
+  n := rs_len_of(r, id);
+  i := 0;
+  while i + 1 < n { if rs_equal(r, rs_at(r, id, i), key) { return i; } i += 2; }
+  return -1;
+}
+rs_dict_set :: (r: [] Rs, id: int, key: RsVal, v: RsVal) {
+  if key.kind == RS_LIST || key.kind == RS_DICT { rs_fail(r, "a list or dict can't be a dict key", "", ""); return; }
+  k := rs_dict_find(r, id, key);
+  if k >= 0 { rs_set_at(r, id, k + 1, v); return; }
+  if rs_list_push(r, id, key) { x := rs_list_push(r, id, v); }
+}
+
+rs_equal :: (r: [] Rs, a: RsVal, b: RsVal) -> bool {
+  if (a.kind == RS_INT || a.kind == RS_BOOL) && (b.kind == RS_INT || b.kind == RS_BOOL) { return a.i == b.i; }
+  if a.kind != b.kind { return false; }
+  if a.kind == RS_NONE { return true; }
+  if a.kind == RS_STR { return a.s == b.s; }
+  if a.i == b.i { return true; }
+  n := rs_len_of(r, a.i);
+  if n != rs_len_of(r, b.i) { return false; }
+  if a.kind == RS_LIST {
+    for i: 0..<n { if !rs_equal(r, rs_at(r, a.i, i), rs_at(r, b.i, i)) { return false; } }
+    return true;
+  }
+  i := 0;
+  while i + 1 < n {
+    k := rs_dict_find(r, b.i, rs_at(r, a.i, i));
+    if k < 0 || !rs_equal(r, rs_at(r, a.i, i + 1), rs_at(r, b.i, k + 1)) { return false; }
+    i += 2;
+  }
+  return true;
+}
+
+rs_truthy :: (r: [] Rs, v: RsVal) -> bool {
+  if v.kind == RS_NONE { return false; }
+  if v.kind == RS_BOOL || v.kind == RS_INT { return v.i != 0; }
+  if v.kind == RS_STR { return v.s.count > 0; }
+  return rs_len_of(r, v.i) > 0;
+}
+
+rs_type_name :: (v: RsVal) -> string {
+  if v.kind == RS_NONE { return "None"; }
+  if v.kind == RS_BOOL { return "bool"; }
+  if v.kind == RS_INT { return "int"; }
+  if v.kind == RS_STR { return "str"; }
+  if v.kind == RS_LIST { return "list"; }
+  return "dict";
+}
+
+// ---------------------------------------------------------------- text of values
+
+rs_put_repr_str :: (r: [] Rs, s: string) -> bool {
+  ok := rs_putc(r, 39);
+  for c: s {
+    if c == 39 || c == 92 { ok = ok && rs_putc(r, 92) && rs_putc(r, c); }
+    else if c == 10 { ok = ok && rs_put(r, "\\n"); }
+    else if c == 9 { ok = ok && rs_put(r, "\\t"); }
+    else { ok = ok && rs_putc(r, c); }
+  }
+  return ok && rs_putc(r, 39);
+}
+// Writes v as Python prints it (repr inside containers and for repr()).
+rs_put_val :: (r: [] Rs, v: RsVal, repr: bool, nest: int) -> bool {
+  if nest > 32 { return rs_put(r, "[...]"); }
+  if v.kind == RS_NONE { return rs_put(r, "None"); }
+  if v.kind == RS_BOOL { return rs_put(r, ifx v.i != 0 then "True" else "False"); }
+  if v.kind == RS_INT { return rs_put_int(r, v.i); }
+  if v.kind == RS_STR { return ifx repr then rs_put_repr_str(r, v.s) else rs_put(r, v.s); }
+  n := rs_len_of(r, v.i);
+  if v.kind == RS_LIST {
+    ok := rs_putc(r, '[');
+    for i: 0..<n { if i > 0 { ok = ok && rs_put(r, ", "); } ok = ok && rs_put_val(r, rs_at(r, v.i, i), true, nest + 1); }
+    return ok && rs_putc(r, ']');
+  }
+  ok := rs_putc(r, '{');
+  i := 0;
+  while i + 1 < n {
+    if i > 0 { ok = ok && rs_put(r, ", "); }
+    ok = ok && rs_put_val(r, rs_at(r, v.i, i), true, nest + 1) && rs_put(r, ": ") && rs_put_val(r, rs_at(r, v.i, i + 1), true, nest + 1);
+    i += 2;
+  }
+  return ok && rs_putc(r, '}');
+}
+rs_text :: (r: [] Rs, v: RsVal, repr: bool) -> string {
+  if v.kind == RS_STR && !repr { return v.s; }
+  at := r[0].nh;
+  if !rs_put_val(r, v, repr, 0) { r[0].nh = at; rs_oom(r); return ""; }
+  return rs_take(r, at);
+}
+
+// What the block prints, kept up to out's size; out_total counts all of it.
+rs_print :: (r: [] Rs, s: string) {
+  for c: s { if r[0].no < r[0].out.count { r[0].out[r[0].no] = c; r[0].no += 1; } }
+  r[0].out_total += s.count;
+}
+
+// ---------------------------------------------------------------- the lexer
+
+rs_tok :: (r: [] Rs, kind: int, s: string, i: int, line: int) -> bool {
+  if r[0].nt >= r[0].toks.count { rs_fail(r, "the program is too long", "", ""); return false; }
+  r[0].toks[r[0].nt] = RsTok.{kind = kind, s = s, i = i, line = line}; r[0].nt += 1;
+  return true;
+}
+rs_is_alpha :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+rs_is_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+
+RS_OPS2 :: [10] string.["==", "!=", "<=", ">=", "//", "+=", "-=", "*=", "**", "/="];
+RS_OPS1 :: "+-*/%<>=()[]{},:.";
+
+// The end of the string literal opening at i (its quote q, tripled or not): the index past its
+// closing quote, or -1.
+rs_str_end :: (src: string, i: int, triple: bool) -> int {
+  q := src[i];
+  j := i + (ifx triple then 3 else 1);
+  while j < src.count {
+    c := src[j];
+    if c == 92 { j += 2; continue; }
+    if !triple && c == 10 { return -1; }
+    if c == q {
+      if !triple { return j + 1; }
+      if j + 2 < src.count && src[j + 1] == q && src[j + 2] == q { return j + 3; }
+    }
+    j += 1;
+  }
+  return -1;
+}
+
+// A literal's text with its escapes made bytes (\n \t \r \\ \' \" and \<newline>; others stay).
+rs_unescape :: (r: [] Rs, s: string) -> string {
+  has := false;
+  for c: s { if c == 92 { has = true; } }
+  if !has { return s; }
+  at := r[0].nh; ok := true; j := 0;
+  while j < s.count {
+    c := s[j];
+    if c == 92 && j + 1 < s.count {
+      e := s[j + 1]; j += 2;
+      if e == 'n' { ok = ok && rs_putc(r, 10); }
+      else if e == 't' { ok = ok && rs_putc(r, 9); }
+      else if e == 'r' { ok = ok && rs_putc(r, 13); }
+      else if e == 10 { }
+      else if e == 92 || e == 39 || e == 34 { ok = ok && rs_putc(r, e); }
+      else { ok = ok && rs_putc(r, 92) && rs_putc(r, e); }
+      continue;
+    }
+    ok = ok && rs_putc(r, c); j += 1;
+  }
+  if !ok { r[0].nh = at; rs_oom(r); return ""; }
+  return rs_take(r, at);
+}
+
+// Tokens of src from r.nt on, ending in T_END. Statement mode (in_expr false) adds
+// T_NL, T_INDENT and T_DEDENT as Python's tokenizer does; in_expr mode (an f-string's
+// expression) adds none.
+rs_lex :: (r: [] Rs, src: string, first_line: int, in_expr: bool) -> bool {
+  indents: [RS_INDENTS] int; ni := 1; indents[0] = 0;
+  i := 0; line := first_line; depth := 0; bol := !in_expr;
+  while i < src.count {
+    if bol {
+      // a line's indentation; blank and comment-only lines are skipped
+      col := 0; j := i;
+      while j < src.count && (src[j] == ' ' || src[j] == 9) { col += ifx src[j] == 9 then 4 else 1; j += 1; }
+      if j >= src.count { i = j; break; }
+      if src[j] == 10 || src[j] == 13 || src[j] == '#' {
+        while j < src.count && src[j] != 10 { j += 1; }
+        i = j + 1; line += 1; continue;
+      }
+      bol = false; i = j;
+      if col > indents[ni - 1] {
+        if ni >= RS_INDENTS { r[0].line = line; rs_fail(r, "too deeply nested", "", ""); return false; }
+        indents[ni] = col; ni += 1;
+        if !rs_tok(r, T_INDENT, "", 0, line) { return false; }
+      } else {
+        while ni > 1 && col < indents[ni - 1] { ni -= 1; if !rs_tok(r, T_DEDENT, "", 0, line) { return false; } }
+        if col != indents[ni - 1] { r[0].line = line; rs_fail(r, "the indentation does not match any outer level", "", ""); return false; }
+      }
+      continue;
+    }
+    c := src[i];
+    if c == ' ' || c == 9 || c == 13 { i += 1; continue; }
+    if c == '#' { while i < src.count && src[i] != 10 { i += 1; } continue; }
+    if c == 92 && i + 1 < src.count && src[i + 1] == 10 { i += 2; line += 1; continue; }
+    if c == 10 {
+      i += 1; line += 1;
+      if depth == 0 && !in_expr {
+        if r[0].nt > 0 && r[0].toks[r[0].nt - 1].kind != T_NL && r[0].toks[r[0].nt - 1].kind != T_INDENT && r[0].toks[r[0].nt - 1].kind != T_DEDENT {
+          if !rs_tok(r, T_NL, "", 0, line - 1) { return false; }
+        }
+        bol = true;
+      }
+      continue;
+    }
+    if rs_is_digit(c) {
+      v := 0; j := i;
+      while j < src.count && (rs_is_digit(src[j]) || src[j] == '_') {
+        if src[j] != '_' {
+          if v > (RS_INT_MAX - 9) / 10 { r[0].line = line; rs_fail(r, "an integer literal is too large", "", ""); return false; }
+          v = v * 10 + cast(int) (src[j] - '0');
+        }
+        j += 1;
+      }
+      if j < src.count && src[j] == '.' && j + 1 < src.count && rs_is_digit(src[j + 1]) { r[0].line = line; rs_fail(r, "floats are not supported: use integers (/ and // both floor)", "", ""); return false; }
+      if !rs_tok(r, T_INT, "", v, line) { return false; }
+      i = j; continue;
+    }
+    if rs_is_alpha(c) {
+      j := i;
+      while j < src.count && (rs_is_alpha(src[j]) || rs_is_digit(src[j])) { j += 1; }
+      word := cast(string) src[i..<j];
+      // a string prefix: f, r, rf, fr (any case); b is not supported
+      if j < src.count && (src[j] == 39 || src[j] == 34) && word.count <= 2 {
+        f := false; raw := false; okp := true;
+        for w: word { if w == 'f' || w == 'F' { f = true; } else if w == 'r' || w == 'R' { raw = true; } else { okp = false; } }
+        if okp {
+          triple := j + 2 < src.count && src[j + 1] == src[j] && src[j + 2] == src[j];
+          e := rs_str_end(src, j, triple);
+          if e < 0 { r[0].line = line; rs_fail(r, "a string is not closed", "", ""); return false; }
+          q := ifx triple then 3 else 1;
+          body := cast(string) src[j + q..<e - q];
+          for b: body { if b == 10 { line += 1; } }
+          text := ifx raw || f then body else rs_unescape(r, body);
+          if !rs_tok(r, ifx f then T_FSTR else T_STR, text, ifx raw then 1 else 0, line) { return false; }
+          i = e; continue;
+        }
+      }
+      if !rs_tok(r, T_NAME, word, 0, line) { return false; }
+      i = j; continue;
+    }
+    if c == 39 || c == 34 {
+      triple := i + 2 < src.count && src[i + 1] == c && src[i + 2] == c;
+      e := rs_str_end(src, i, triple);
+      if e < 0 { r[0].line = line; rs_fail(r, "a string is not closed", "", ""); return false; }
+      q := ifx triple then 3 else 1;
+      body := cast(string) src[i + q..<e - q];
+      start := line;
+      for b: body { if b == 10 { line += 1; } }
+      if !rs_tok(r, T_STR, rs_unescape(r, body), 0, start) { return false; }
+      i = e; continue;
+    }
+    if i + 1 < src.count {
+      two := cast(string) src[i..<i + 2];
+      ops := RS_OPS2; hit := false;
+      for o: ops { if o == two { hit = true; } }
+      if hit { if !rs_tok(r, T_OP, two, 0, line) { return false; } i += 2; continue; }
+    }
+    one := false;
+    for o: RS_OPS1 { if o == c { one = true; } }
+    if one {
+      if c == '(' || c == '[' || c == '{' { depth += 1; }
+      if (c == ')' || c == ']' || c == '}') && depth > 0 { depth -= 1; }
+      if !rs_tok(r, T_OP, cast(string) src[i..<i + 1], 0, line) { return false; }
+      i += 1; continue;
+    }
+    r[0].line = line;
+    rs_fail(r, "unexpected character '", cast(string) src[i..<i + 1], "'");
+    return false;
+  }
+  if !in_expr {
+    if r[0].nt > 0 && r[0].toks[r[0].nt - 1].kind != T_NL && r[0].toks[r[0].nt - 1].kind != T_DEDENT { if !rs_tok(r, T_NL, "", 0, line) { return false; } }
+    while ni > 1 { ni -= 1; if !rs_tok(r, T_DEDENT, "", 0, line) { return false; } }
+  }
+  return rs_tok(r, T_END, "", 0, line);
+}
+
+// ---------------------------------------------------------------- the parser
+
+rs_peek :: (r: [] Rs) -> RsTok { return r[0].toks[r[0].tp]; }
+rs_next :: (r: [] Rs) -> RsTok { t := r[0].toks[r[0].tp]; if t.kind != T_END { r[0].tp += 1; } return t; }
+rs_is_op :: (r: [] Rs, op: string) -> bool { t := rs_peek(r); return t.kind == T_OP && t.s == op; }
+rs_is_word :: (r: [] Rs, w: string) -> bool { t := rs_peek(r); return t.kind == T_NAME && t.s == w; }
+rs_eat_op :: (r: [] Rs, op: string) -> bool { if rs_is_op(r, op) { x := rs_next(r); return true; } return false; }
+rs_eat_word :: (r: [] Rs, w: string) -> bool { if rs_is_word(r, w) { x := rs_next(r); return true; } return false; }
+rs_expect_op :: (r: [] Rs, op: string) -> bool {
+  if rs_eat_op(r, op) { return true; }
+  r[0].line = rs_peek(r).line;
+  rs_fail(r, "expected '", op, "'");
+  return false;
+}
+
+rs_node :: (r: [] Rs, kind: int, line: int) -> int {
+  if r[0].nn >= r[0].nodes.count { rs_fail(r, "the program is too long", "", ""); return -1; }
+  id := r[0].nn; r[0].nn += 1;
+  r[0].nodes[id] = RsNode.{kind = kind, line = line};
+  return id;
+}
+
+RS_KEYWORDS :: [12] string.["if", "else", "elif", "for", "in", "while", "and", "or", "not", "is", "def", "lambda"];
+rs_keyword :: (s: string) -> bool { k := RS_KEYWORDS; for w: k { if w == s { return true; } } return false; }
+
+rs_parse_atom :: (r: [] Rs) -> int {
+  t := rs_peek(r);
+  r[0].line = t.line;
+  if t.kind == T_INT { x := rs_next(r); n := rs_node(r, N_INT, t.line); if n >= 0 { r[0].nodes[n].i = t.i; } return n; }
+  if t.kind == T_STR || t.kind == T_FSTR {
+    // adjacent literals join, as in Python
+    first := -1; last := -1; plain := true; text := "";
+    while rs_peek(r).kind == T_STR || rs_peek(r).kind == T_FSTR {
+      u := rs_next(r);
+      if u.kind == T_FSTR { plain = false; }
+      if plain { text = ifx text.count == 0 then u.s else rs_cat(r, text, u.s); }
+      p := ifx u.kind == T_FSTR then rs_parse_fstr(r, u) else rs_node(r, N_STR, u.line);
+      if p < 0 { return -1; }
+      if u.kind == T_STR { r[0].nodes[p].s = u.s; }
+      if first < 0 { first = p; } else { r[0].nodes[last].next = p; }
+      last = p;
+    }
+    if plain { n := rs_node(r, N_STR, t.line); if n >= 0 { r[0].nodes[n].s = text; } return n; }
+    n := rs_node(r, N_FSTR, t.line);
+    if n >= 0 { r[0].nodes[n].a = first; }
+    return n;
+  }
+  if t.kind == T_NAME {
+    if t.s == "True" || t.s == "False" { x := rs_next(r); n := rs_node(r, N_BOOL, t.line); if n >= 0 { r[0].nodes[n].i = ifx t.s == "True" then 1 else 0; } return n; }
+    if t.s == "None" { x := rs_next(r); return rs_node(r, N_NONE, t.line); }
+    if t.s == "lambda" { rs_fail(r, "lambda is not supported: write a loop", "", ""); return -1; }
+    if rs_keyword(t.s) { rs_fail(r, "unexpected '", t.s, "'"); return -1; }
+    x := rs_next(r);
+    n := rs_node(r, N_NAME, t.line);
+    if n >= 0 { r[0].nodes[n].s = t.s; }
+    return n;
+  }
+  if rs_eat_op(r, "(") {
+    if rs_eat_op(r, ")") { return rs_node(r, N_LIST, t.line); }
+    e := rs_parse_expr(r);
+    if e < 0 { return -1; }
+    if rs_is_word(r, "for") { c := rs_parse_comp(r, e, t.line); if c < 0 || !rs_expect_op(r, ")") { return -1; } return c; }
+    if !rs_is_op(r, ",") { if !rs_expect_op(r, ")") { return -1; } return e; }
+    l := rs_node(r, N_LIST, t.line); if l < 0 { return -1; }
+    r[0].nodes[l].a = e; last := e;
+    while rs_eat_op(r, ",") {
+      if rs_is_op(r, ")") { break; }
+      x := rs_parse_expr(r); if x < 0 { return -1; }
+      r[0].nodes[last].next = x; last = x;
+    }
+    if !rs_expect_op(r, ")") { return -1; }
+    return l;
+  }
+  if rs_eat_op(r, "[") {
+    l := rs_node(r, N_LIST, t.line); if l < 0 { return -1; }
+    if rs_eat_op(r, "]") { return l; }
+    e := rs_parse_expr(r); if e < 0 { return -1; }
+    if rs_is_word(r, "for") { c := rs_parse_comp(r, e, t.line); if c < 0 || !rs_expect_op(r, "]") { return -1; } return c; }
+    r[0].nodes[l].a = e; last := e;
+    while rs_eat_op(r, ",") {
+      if rs_is_op(r, "]") { break; }
+      x := rs_parse_expr(r); if x < 0 { return -1; }
+      r[0].nodes[last].next = x; last = x;
+    }
+    if !rs_expect_op(r, "]") { return -1; }
+    return l;
+  }
+  if rs_eat_op(r, "{") {
+    d := rs_node(r, N_DICT, t.line); if d < 0 { return -1; }
+    last := -1;
+    while !rs_is_op(r, "}") {
+      k := rs_parse_expr(r); if k < 0 { return -1; }
+      if !rs_is_op(r, ":") { rs_fail(r, "sets are not supported: use a list or a dict", "", ""); return -1; }
+      x := rs_next(r);
+      v := rs_parse_expr(r); if v < 0 { return -1; }
+      if rs_is_word(r, "for") { rs_fail(r, "dict comprehensions are not supported: write a loop", "", ""); return -1; }
+      p := rs_node(r, N_PAIR, t.line); if p < 0 { return -1; }
+      r[0].nodes[p].a = k; r[0].nodes[p].b = v;
+      if last < 0 { r[0].nodes[d].a = p; } else { r[0].nodes[last].next = p; }
+      last = p;
+      if !rs_eat_op(r, ",") { break; }
+    }
+    if !rs_expect_op(r, "}") { return -1; }
+    return d;
+  }
+  if t.kind == T_END || t.kind == T_NL { rs_fail(r, "the line ends where a value was expected", "", ""); return -1; }
+  rs_fail(r, "unexpected '", t.s, "'");
+  return -1;
+}
+
+// f"...{expr}...": literal parts and expressions, as a list of nodes.
+rs_parse_fstr :: (r: [] Rs, t: RsTok) -> int {
+  s := t.s; raw := t.i == 1;
+  first := -1; last := -1; i := 0; lit := r[0].nh; ok := true;
+  while i <= s.count {
+    done := i == s.count;
+    c: u8 = 0; if !done { c = s[i]; }
+    if !done && c == '{' && i + 1 < s.count && s[i + 1] == '{' { ok = ok && rs_putc(r, '{'); i += 2; continue; }
+    if !done && c == '}' && i + 1 < s.count && s[i + 1] == '}' { ok = ok && rs_putc(r, '}'); i += 2; continue; }
+    if done || c == '{' {
+      if !ok { rs_oom(r); return -1; }
+      if r[0].nh > lit {
+        p := rs_node(r, N_STR, t.line); if p < 0 { return -1; }
+        piece := rs_take(r, lit);
+        r[0].nodes[p].s = ifx raw then piece else rs_unescape(r, piece);
+        if first < 0 { first = p; } else { r[0].nodes[last].next = p; }
+        last = p;
+      }
+      if done { break; }
+      // the expression runs to the matching '}', a format spec after a top-level ':' or '!' is dropped
+      j := i + 1; depth := 0; end := -1; spec := -1;
+      while j < s.count {
+        d := s[j];
+        if d == 39 || d == 34 { q := d; j += 1; while j < s.count && s[j] != q { j += 1; } }
+        else if d == '(' || d == '[' || d == '{' { depth += 1; }
+        else if (d == ')' || d == ']') && depth > 0 { depth -= 1; }
+        else if d == '}' { if depth == 0 { end = j; break; } depth -= 1; }
+        else if (d == ':' || d == '!') && depth == 0 && spec < 0 && !(d == '!' && j + 1 < s.count && s[j + 1] == '=') { spec = j; }
+        j += 1;
+      }
+      if end < 0 { r[0].line = t.line; rs_fail(r, "an f-string has a '{' with no '}'", "", ""); return -1; }
+      code := cast(string) s[i + 1..<ifx spec >= 0 then spec else end];
+      // lex the expression after the tokens in use, parse it there, then carry on
+      save_tp := r[0].tp; base := r[0].nt;
+      if !rs_lex(r, code, t.line, true) { return -1; }
+      r[0].tp = base;
+      e := rs_parse_expr(r);
+      if e < 0 { return -1; }
+      if rs_peek(r).kind != T_END { rs_fail(r, "an f-string expression has more after it: ", code, ""); return -1; }
+      r[0].tp = save_tp;
+      if first < 0 { first = e; } else { r[0].nodes[last].next = e; }
+      last = e;
+      i = end + 1; lit = r[0].nh;
+      continue;
+    }
+    ok = ok && rs_putc(r, c); i += 1;
+  }
+  n := rs_node(r, N_LIST, t.line);   // a holder: rs_parse_atom takes its parts
+  if n < 0 { return -1; }
+  // an f-string token is one node whose parts are in a: wrap as N_FSTR
+  r[0].nodes[n].kind = N_FSTR; r[0].nodes[n].a = first;
+  return n;
+}
+
+// [elem for x(, y) in iter (if cond)]
+rs_parse_comp :: (r: [] Rs, elem: int, line: int) -> int {
+  x := rs_next(r);    // for
+  c := rs_node(r, N_COMP, line); if c < 0 { return -1; }
+  r[0].nodes[c].a = elem;
+  t := rs_next(r);
+  if t.kind != T_NAME { rs_fail(r, "expected a name after 'for'", "", ""); return -1; }
+  r[0].nodes[c].s = t.s;
+  if rs_eat_op(r, ",") { u := rs_next(r); if u.kind != T_NAME { rs_fail(r, "expected a name after ','", "", ""); return -1; } r[0].nodes[c].s2 = u.s; }
+  if !rs_eat_word(r, "in") { rs_fail(r, "expected 'in'", "", ""); return -1; }
+  iter := rs_parse_or(r); if iter < 0 { return -1; }
+  r[0].nodes[c].b = iter;
+  if rs_eat_word(r, "if") { cond := rs_parse_or(r); if cond < 0 { return -1; } r[0].nodes[c].c = cond; }
+  if rs_is_word(r, "for") { rs_fail(r, "nested comprehensions are not supported: write a loop", "", ""); return -1; }
+  return c;
+}
+
+rs_parse_postfix :: (r: [] Rs) -> int {
+  n := rs_parse_atom(r);
+  while n >= 0 {
+    line := rs_peek(r).line;
+    if rs_eat_op(r, "(") {
+      c := rs_node(r, N_CALL, line); if c < 0 { return -1; }
+      r[0].nodes[c].a = n; last := -1;
+      while !rs_is_op(r, ")") {
+        if rs_is_op(r, "*") || rs_is_op(r, "**") { rs_fail(r, "*args and **kwargs are not supported", "", ""); return -1; }
+        arg := -1;
+        t := rs_peek(r);
+        nt := r[0].toks[ifx r[0].tp + 1 < r[0].nt then r[0].tp + 1 else r[0].tp];
+        if t.kind == T_NAME && nt.kind == T_OP && nt.s == "=" {
+          x := rs_next(r); y := rs_next(r);
+          v := rs_parse_expr(r); if v < 0 { return -1; }
+          arg = rs_node(r, N_KW, t.line); if arg < 0 { return -1; }
+          r[0].nodes[arg].s = t.s; r[0].nodes[arg].a = v;
+        } else {
+          arg = rs_parse_expr(r); if arg < 0 { return -1; }
+          if rs_is_word(r, "for") { arg = rs_parse_comp(r, arg, line); if arg < 0 { return -1; } }
+        }
+        if last < 0 { r[0].nodes[c].b = arg; } else { r[0].nodes[last].next = arg; }
+        last = arg;
+        if !rs_eat_op(r, ",") { break; }
+      }
+      if !rs_expect_op(r, ")") { return -1; }
+      n = c; continue;
+    }
+    if rs_eat_op(r, "[") {
+      lo := -1; hi := -1; slice := false;
+      if !rs_is_op(r, ":") { lo = rs_parse_expr(r); if lo < 0 { return -1; } }
+      if rs_eat_op(r, ":") {
+        slice = true;
+        if !rs_is_op(r, "]") && !rs_is_op(r, ":") { hi = rs_parse_expr(r); if hi < 0 { return -1; } }
+        if rs_is_op(r, ":") { rs_fail(r, "a slice step is not supported", "", ""); return -1; }
+      }
+      if !rs_expect_op(r, "]") { return -1; }
+      if slice {
+        s := rs_node(r, N_SLICE, line); if s < 0 { return -1; }
+        r[0].nodes[s].a = n; r[0].nodes[s].b = lo; r[0].nodes[s].c = hi; n = s;
+      } else {
+        x := rs_node(r, N_INDEX, line); if x < 0 { return -1; }
+        r[0].nodes[x].a = n; r[0].nodes[x].b = lo; n = x;
+      }
+      continue;
+    }
+    if rs_eat_op(r, ".") {
+      t := rs_next(r);
+      if t.kind != T_NAME { rs_fail(r, "expected a name after '.'", "", ""); return -1; }
+      a := rs_node(r, N_ATTR, line); if a < 0 { return -1; }
+      r[0].nodes[a].a = n; r[0].nodes[a].s = t.s; n = a;
+      continue;
+    }
+    break;
+  }
+  return n;
+}
+
+rs_parse_unary :: (r: [] Rs) -> int {
+  line := rs_peek(r).line;
+  if rs_eat_op(r, "-") { a := rs_parse_unary(r); if a < 0 { return -1; } n := rs_node(r, N_NEG, line); if n >= 0 { r[0].nodes[n].a = a; } return n; }
+  if rs_eat_op(r, "+") { return rs_parse_unary(r); }
+  return rs_parse_postfix(r);
+}
+rs_bin :: (r: [] Rs, op: int, a: int, b: int, line: int) -> int {
+  n := rs_node(r, N_BIN, line);
+  if n >= 0 { r[0].nodes[n].i = op; r[0].nodes[n].a = a; r[0].nodes[n].b = b; }
+  return n;
+}
+rs_parse_term :: (r: [] Rs) -> int {
+  a := rs_parse_unary(r);
+  while a >= 0 {
+    line := rs_peek(r).line; op := 0;
+    if rs_is_op(r, "**") { rs_fail(r, "** is not supported: multiply in a loop", "", ""); return -1; }
+    if rs_eat_op(r, "*") { op = B_MUL; } else if rs_eat_op(r, "//") || rs_eat_op(r, "/") { op = B_DIV; } else if rs_eat_op(r, "%") { op = B_MOD; } else { break; }
+    b := rs_parse_unary(r); if b < 0 { return -1; }
+    a = rs_bin(r, op, a, b, line);
+  }
+  return a;
+}
+rs_parse_sum :: (r: [] Rs) -> int {
+  a := rs_parse_term(r);
+  while a >= 0 {
+    line := rs_peek(r).line; op := 0;
+    if rs_eat_op(r, "+") { op = B_ADD; } else if rs_eat_op(r, "-") { op = B_SUB; } else { break; }
+    b := rs_parse_term(r); if b < 0 { return -1; }
+    a = rs_bin(r, op, a, b, line);
+  }
+  return a;
+}
+rs_parse_cmp :: (r: [] Rs) -> int {
+  a := rs_parse_sum(r);
+  if a < 0 { return -1; }
+  line := rs_peek(r).line; op := 0;
+  if rs_eat_op(r, "==") { op = B_EQ; } else if rs_eat_op(r, "!=") { op = B_NE; }
+  else if rs_eat_op(r, "<=") { op = B_LE; } else if rs_eat_op(r, ">=") { op = B_GE; }
+  else if rs_eat_op(r, "<") { op = B_LT; } else if rs_eat_op(r, ">") { op = B_GT; }
+  else if rs_eat_word(r, "in") { op = B_IN; }
+  else if rs_eat_word(r, "is") { op = ifx rs_eat_word(r, "not") then B_NE else B_EQ; }
+  else if rs_is_word(r, "not") && r[0].tp + 1 < r[0].nt && r[0].toks[r[0].tp + 1].kind == T_NAME && r[0].toks[r[0].tp + 1].s == "in" { x := rs_next(r); y := rs_next(r); op = B_NOTIN; }
+  else { return a; }
+  b := rs_parse_sum(r); if b < 0 { return -1; }
+  n := rs_bin(r, op, a, b, line);
+  if rs_is_op(r, "<") || rs_is_op(r, ">") || rs_is_op(r, "==") || rs_is_op(r, "<=") || rs_is_op(r, ">=") || rs_is_op(r, "!=") { rs_fail(r, "chained comparisons are not supported: use 'and'", "", ""); return -1; }
+  return n;
+}
+rs_parse_not :: (r: [] Rs) -> int {
+  line := rs_peek(r).line;
+  if rs_eat_word(r, "not") { a := rs_parse_not(r); if a < 0 { return -1; } n := rs_node(r, N_NOT, line); if n >= 0 { r[0].nodes[n].a = a; } return n; }
+  return rs_parse_cmp(r);
+}
+rs_parse_and :: (r: [] Rs) -> int {
+  a := rs_parse_not(r);
+  while a >= 0 && rs_is_word(r, "and") {
+    line := rs_next(r).line;
+    b := rs_parse_not(r); if b < 0 { return -1; }
+    n := rs_node(r, N_AND, line); if n < 0 { return -1; }
+    r[0].nodes[n].a = a; r[0].nodes[n].b = b; a = n;
+  }
+  return a;
+}
+rs_parse_or :: (r: [] Rs) -> int {
+  a := rs_parse_and(r);
+  while a >= 0 && rs_is_word(r, "or") {
+    line := rs_next(r).line;
+    b := rs_parse_and(r); if b < 0 { return -1; }
+    n := rs_node(r, N_OR, line); if n < 0 { return -1; }
+    r[0].nodes[n].a = a; r[0].nodes[n].b = b; a = n;
+  }
+  return a;
+}
+// a if c else b
+rs_parse_expr :: (r: [] Rs) -> int {
+  a := rs_parse_or(r);
+  if a < 0 || !rs_is_word(r, "if") { return a; }
+  line := rs_next(r).line;
+  c := rs_parse_or(r); if c < 0 { return -1; }
+  if !rs_eat_word(r, "else") { rs_fail(r, "expected 'else'", "", ""); return -1; }
+  b := rs_parse_expr(r); if b < 0 { return -1; }
+  n := rs_node(r, N_IFX, line); if n < 0 { return -1; }
+  r[0].nodes[n].a = c; r[0].nodes[n].b = a; r[0].nodes[n].c = b;
+  return n;
+}
+// e or e, e, ... (a tuple, as a list)
+rs_parse_exprlist :: (r: [] Rs) -> int {
+  line := rs_peek(r).line;
+  e := rs_parse_expr(r);
+  if e < 0 || !rs_is_op(r, ",") { return e; }
+  l := rs_node(r, N_LIST, line); if l < 0 { return -1; }
+  r[0].nodes[l].a = e; last := e;
+  while rs_eat_op(r, ",") {
+    if rs_is_op(r, "=") || rs_peek(r).kind == T_NL || rs_peek(r).kind == T_END { break; }
+    x := rs_parse_expr(r); if x < 0 { return -1; }
+    r[0].nodes[last].next = x; last = x;
+  }
+  return l;
+}
+
+// A block after ':': an indented suite, or simple statements on the same line.
+rs_parse_suite :: (r: [] Rs) -> int {
+  if !rs_expect_op(r, ":") { return -1; }
+  if rs_peek(r).kind != T_NL { return rs_parse_simple_line(r); }
+  x := rs_next(r);
+  if rs_peek(r).kind != T_INDENT { r[0].line = rs_peek(r).line; rs_fail(r, "expected an indented block", "", ""); return -1; }
+  y := rs_next(r);
+  first := -1; last := -1;
+  while rs_peek(r).kind != T_DEDENT && rs_peek(r).kind != T_END {
+    s := rs_parse_stmt(r); if s < 0 { return -1; }
+    if first < 0 { first = s; } else { r[0].nodes[last].next = s; }
+    last = s;
+    while r[0].nodes[last].next >= 0 { last = r[0].nodes[last].next; }
+  }
+  z := rs_eat_dedent(r);
+  return first;
+}
+rs_eat_dedent :: (r: [] Rs) -> bool { if rs_peek(r).kind == T_DEDENT { x := rs_next(r); return true; } return false; }
+
+// Simple statements separated by ';' are not supported; one per line, then the newline.
+rs_parse_simple_line :: (r: [] Rs) -> int {
+  s := rs_parse_simple(r); if s < 0 { return -1; }
+  t := rs_peek(r);
+  if t.kind == T_NL { x := rs_next(r); return s; }
+  if t.kind == T_END || t.kind == T_DEDENT { return s; }
+  r[0].line = t.line;
+  rs_fail(r, "unexpected '", t.s, "' after a statement");
+  return -1;
+}
+
+RS_UNSUPPORTED :: [9] string.["def", "class", "try", "with", "return", "lambda", "global", "del", "yield"];
+
+rs_parse_simple :: (r: [] Rs) -> int {
+  t := rs_peek(r);
+  r[0].line = t.line;
+  if t.kind == T_NAME {
+    if t.s == "pass" { x := rs_next(r); return rs_node(r, S_PASS, t.line); }
+    if t.s == "break" { x := rs_next(r); return rs_node(r, S_BREAK, t.line); }
+    if t.s == "continue" { x := rs_next(r); return rs_node(r, S_CONT, t.line); }
+    if t.s == "import" || t.s == "from" {
+      while rs_peek(r).kind != T_NL && rs_peek(r).kind != T_END { x := rs_next(r); }
+      return rs_node(r, S_PASS, t.line);
+    }
+    u := RS_UNSUPPORTED;
+    for w: u { if t.s == w { rs_fail(r, "'", t.s, "' is not supported in this REPL: write the steps inline with loops"); return -1; } }
+  }
+  e := rs_parse_exprlist(r); if e < 0 { return -1; }
+  line := rs_peek(r).line;
+  if rs_eat_op(r, "=") {
+    v := rs_parse_exprlist(r); if v < 0 { return -1; }
+    if rs_is_op(r, "=") { rs_fail(r, "chained assignment is not supported", "", ""); return -1; }
+    k := r[0].nodes[e].kind;
+    if k != N_NAME && k != N_INDEX && k != N_LIST { rs_fail(r, "can't assign to this", "", ""); return -1; }
+    n := rs_node(r, S_ASSIGN, line); if n < 0 { return -1; }
+    r[0].nodes[n].a = e; r[0].nodes[n].b = v;
+    return n;
+  }
+  op := 0;
+  if rs_eat_op(r, "+=") { op = B_ADD; } else if rs_eat_op(r, "-=") { op = B_SUB; } else if rs_eat_op(r, "*=") { op = B_MUL; } else if rs_eat_op(r, "/=") { op = B_DIV; }
+  if op > 0 {
+    k := r[0].nodes[e].kind;
+    if k != N_NAME && k != N_INDEX { rs_fail(r, "can't assign to this", "", ""); return -1; }
+    v := rs_parse_expr(r); if v < 0 { return -1; }
+    n := rs_node(r, S_AUG, line); if n < 0 { return -1; }
+    r[0].nodes[n].i = op; r[0].nodes[n].a = e; r[0].nodes[n].b = v;
+    return n;
+  }
+  n := rs_node(r, S_EXPR, line); if n < 0 { return -1; }
+  r[0].nodes[n].a = e;
+  return n;
+}
+
+rs_parse_stmt :: (r: [] Rs) -> int {
+  t := rs_peek(r);
+  r[0].line = t.line;
+  if t.kind == T_INDENT { rs_fail(r, "unexpected indentation", "", ""); return -1; }
+  if t.kind == T_NAME && (t.s == "if" || t.s == "elif") {
+    x := rs_next(r);
+    c := rs_parse_expr(r); if c < 0 { return -1; }
+    body := rs_parse_suite(r); if body < 0 { return -1; }
+    n := rs_node(r, S_IF, t.line); if n < 0 { return -1; }
+    r[0].nodes[n].a = c; r[0].nodes[n].b = body;
+    if rs_is_word(r, "elif") { e := rs_parse_stmt(r); if e < 0 { return -1; } r[0].nodes[n].c = e; }
+    else if rs_eat_word(r, "else") { e := rs_parse_suite(r); if e < 0 { return -1; } r[0].nodes[n].c = e; }
+    return n;
+  }
+  if t.kind == T_NAME && t.s == "for" {
+    x := rs_next(r);
+    v := rs_next(r);
+    if v.kind != T_NAME { rs_fail(r, "expected a name after 'for'", "", ""); return -1; }
+    n := rs_node(r, S_FOR, t.line); if n < 0 { return -1; }
+    r[0].nodes[n].s = v.s;
+    if rs_eat_op(r, ",") { u := rs_next(r); if u.kind != T_NAME { rs_fail(r, "expected a name after ','", "", ""); return -1; } r[0].nodes[n].s2 = u.s; }
+    if rs_is_op(r, ",") { rs_fail(r, "for takes one or two names", "", ""); return -1; }
+    if !rs_eat_word(r, "in") { rs_fail(r, "expected 'in'", "", ""); return -1; }
+    iter := rs_parse_exprlist(r); if iter < 0 { return -1; }
+    body := rs_parse_suite(r); if body < 0 { return -1; }
+    r[0].nodes[n].a = iter; r[0].nodes[n].b = body;
+    if rs_is_word(r, "else") { rs_fail(r, "for ... else is not supported", "", ""); return -1; }
+    return n;
+  }
+  if t.kind == T_NAME && t.s == "while" {
+    x := rs_next(r);
+    c := rs_parse_expr(r); if c < 0 { return -1; }
+    body := rs_parse_suite(r); if body < 0 { return -1; }
+    n := rs_node(r, S_WHILE, t.line); if n < 0 { return -1; }
+    r[0].nodes[n].a = c; r[0].nodes[n].b = body;
+    return n;
+  }
+  if t.kind == T_NAME && t.s == "else" { rs_fail(r, "'else' without an 'if'", "", ""); return -1; }
+  return rs_parse_simple_line(r);
+}
+
+// The program in src: its first statement's node, or -1 with r.err set (an empty program is a pass).
+rs_parse :: (r: [] Rs, src: string) -> int {
+  r[0].err = ""; r[0].line = 1;
+  base := r[0].nt;
+  if !rs_lex(r, src, 1, false) { return -1; }
+  r[0].tp = base;
+  first := -1; last := -1;
+  while rs_peek(r).kind != T_END {
+    if rs_peek(r).kind == T_NL || rs_peek(r).kind == T_DEDENT { x := rs_next(r); continue; }
+    s := rs_parse_stmt(r); if s < 0 { return -1; }
+    if first < 0 { first = s; } else { r[0].nodes[last].next = s; }
+    last = s;
+  }
+  if first < 0 { return rs_node(r, S_PASS, 1); }
+  return first;
+}
+
+// ---------------------------------------------------------------- variables
+
+rs_find :: (r: [] Rs, name: string) -> int {
+  i := r[0].nv - 1;
+  while i >= r[0].frame { if r[0].names[i] == name { return i; } i -= 1; }
+  return -1;
+}
+rs_get :: (r: [] Rs, name: string) -> RsVal {
+  k := rs_find(r, name);
+  if k < 0 { rs_fail(r, "name '", name, "' is not defined"); return rs_nil(); }
+  return r[0].vals[k];
+}
+RS_READ_ONLY :: [3] string.["context", "files", "FINAL"];
+rs_set :: (r: [] Rs, name: string, v: RsVal) {
+  ro := RS_READ_ONLY;
+  for w: ro { if w == name && rs_find(r, name) >= 0 { rs_fail(r, "'", name, "' is read-only: copy it into a variable of your own"); return; } }
+  rs_define(r, name, v);
+}
+// Sets a variable, read-only or not (the run sets context and files so).
+rs_define :: (r: [] Rs, name: string, v: RsVal) {
+  k := rs_find(r, name);
+  if k >= 0 { r[0].vals[k] = v; return; }
+  if r[0].nv >= r[0].names.count { rs_fail(r, "too many variables", "", ""); return; }
+  r[0].names[r[0].nv] = name; r[0].vals[r[0].nv] = v; r[0].nv += 1;
+}
+
+// ---------------------------------------------------------------- evaluation
+
+rs_step :: (r: [] Rs) -> bool {
+  r[0].steps += 1;
+  if r[0].steps > r[0].max_steps { rs_fail(r, "the step limit (the block ran too long; is a loop endless?)", "", ""); return false; }
+  return true;
+}
+
+// A Python index into a sequence of n: negative counts from the end. -1 when out of range.
+rs_index :: (i: int, n: int) -> int {
+  k := ifx i < 0 then i + n else i;
+  return ifx k >= 0 && k < n then k else -1;
+}
+// A slice bound: clamped into 0..n, negatives from the end.
+rs_bound :: (i: int, n: int) -> int {
+  k := ifx i < 0 then i + n else i;
+  if k < 0 { return 0; }
+  if k > n { return n; }
+  return k;
+}
+
+rs_need :: (r: [] Rs, v: RsVal, kind: int, what: string) -> bool {
+  if v.kind == kind || (kind == RS_INT && v.kind == RS_BOOL) { return true; }
+  rs_fail(r, what, " needs a ", ifx kind == RS_INT then "int" else ifx kind == RS_STR then "str" else ifx kind == RS_LIST then "list" else "dict");
+  return false;
+}
+
+rs_arith :: (r: [] Rs, op: int, a: RsVal, b: RsVal) -> RsVal {
+  ai := a.kind == RS_INT || a.kind == RS_BOOL; bi := b.kind == RS_INT || b.kind == RS_BOOL;
+  if ai && bi {
+    x := a.i; y := b.i;
+    if op == B_ADD || op == B_SUB {
+      z := ifx op == B_ADD then y else -y;
+      if (z > 0 && x > RS_INT_MAX - z) || (z < 0 && x < -RS_INT_MAX - z) { rs_fail(r, "an integer is too large", "", ""); return rs_nil(); }
+      return rs_int(x + z);
+    }
+    if op == B_MUL {
+      if x > RS_MUL_MAX || x < -RS_MUL_MAX || y > RS_MUL_MAX || y < -RS_MUL_MAX { rs_fail(r, "an integer is too large", "", ""); return rs_nil(); }
+      return rs_int(x * y);
+    }
+    if y == 0 { rs_fail(r, "division by zero", "", ""); return rs_nil(); }
+    q := x / y; m := x % y;
+    if m != 0 && ((m < 0) != (y < 0)) { q -= 1; m += y; }   // Python floors
+    return rs_int(ifx op == B_DIV then q else m);
+  }
+  if op == B_ADD && a.kind == RS_STR && b.kind == RS_STR { return rs_strv(rs_cat(r, a.s, b.s)); }
+  if op == B_ADD && a.kind == RS_LIST && b.kind == RS_LIST {
+    na := rs_len_of(r, a.i); nb := rs_len_of(r, b.i);
+    l := rs_new_list(r, na + nb); if rs_bad(r) { return rs_nil(); }
+    for i: 0..<na { if !rs_list_push(r, l.i, rs_at(r, a.i, i)) { return rs_nil(); } }
+    for i: 0..<nb { if !rs_list_push(r, l.i, rs_at(r, b.i, i)) { return rs_nil(); } }
+    return l;
+  }
+  if op == B_MUL && ((a.kind == RS_STR && bi) || (ai && b.kind == RS_STR)) {
+    s := ifx a.kind == RS_STR then a.s else b.s; k := ifx a.kind == RS_STR then b.i else a.i;
+    at := r[0].nh;
+    for i: 0..<(ifx k > 0 then k else 0) { if !rs_put(r, s) { r[0].nh = at; rs_oom(r); return rs_nil(); } }
+    return rs_strv(rs_take(r, at));
+  }
+  if op == B_MOD && a.kind == RS_STR { rs_fail(r, "% formatting is not supported: use an f-string", "", ""); return rs_nil(); }
+  rs_fail(r, "unsupported operand types: ", rs_type_name(a), rs_cat(r, " and ", rs_type_name(b)));
+  return rs_nil();
+}
+
+rs_less :: (r: [] Rs, a: RsVal, b: RsVal) -> int {   // 1 less, 0 not, -1 can't compare
+  if (a.kind == RS_INT || a.kind == RS_BOOL) && (b.kind == RS_INT || b.kind == RS_BOOL) { return ifx a.i < b.i then 1 else 0; }
+  if a.kind == RS_STR && b.kind == RS_STR {
+    n := ifx a.s.count < b.s.count then a.s.count else b.s.count;
+    for i: 0..<n { if a.s[i] != b.s[i] { return ifx a.s[i] < b.s[i] then 1 else 0; } }
+    return ifx a.s.count < b.s.count then 1 else 0;
+  }
+  if a.kind == RS_LIST && b.kind == RS_LIST {
+    na := rs_len_of(r, a.i); nb := rs_len_of(r, b.i);
+    n := ifx na < nb then na else nb;
+    for i: 0..<n {
+      x := rs_at(r, a.i, i); y := rs_at(r, b.i, i);
+      if !rs_equal(r, x, y) { return rs_less(r, x, y); }
+    }
+    return ifx na < nb then 1 else 0;
+  }
+  return -1;
+}
+
+rs_contains :: (r: [] Rs, hay: RsVal, x: RsVal) -> bool {
+  if hay.kind == RS_STR {
+    if x.kind != RS_STR { rs_fail(r, "'in <str>' needs a str on the left", "", ""); return false; }
+    return rs_find_sub(hay.s, x.s, 0) >= 0;
+  }
+  if hay.kind == RS_LIST { n := rs_len_of(r, hay.i); for i: 0..<n { if rs_equal(r, rs_at(r, hay.i, i), x) { return true; } } return false; }
+  if hay.kind == RS_DICT { return rs_dict_find(r, hay.i, x) >= 0; }
+  rs_fail(r, "'in' needs a str, list or dict on the right, not ", rs_type_name(hay), "");
+  return false;
+}
+
+rs_find_sub :: (s: string, sub: string, from: int) -> int {
+  if sub.count == 0 { return ifx from <= s.count then from else -1; }
+  i := from;
+  while i + sub.count <= s.count {
+    if s[i] == sub[0] && cast(string) s[i..<i + sub.count] == sub { return i; }
+    i += 1;
+  }
+  return -1;
+}
+rs_rfind_sub :: (s: string, sub: string) -> int {
+  i := s.count - sub.count;
+  while i >= 0 { if cast(string) s[i..<i + sub.count] == sub { return i; } i -= 1; }
+  return -1;
+}
+rs_count_sub :: (s: string, sub: string) -> int {
+  if sub.count == 0 { return s.count + 1; }
+  n := 0; i := rs_find_sub(s, sub, 0);
+  while i >= 0 { n += 1; i = rs_find_sub(s, sub, i + sub.count); }
+  return n;
+}
+
+rs_eval :: (r: [] Rs, id: int) -> RsVal {
+  if rs_bad(r) || !rs_step(r) { return rs_nil(); }
+  n := r[0].nodes[id];
+  r[0].line = n.line;
+  k := n.kind;
+  if k == N_INT { return rs_int(n.i); }
+  if k == N_STR { return rs_strv(n.s); }
+  if k == N_BOOL { return rs_bool(n.i != 0); }
+  if k == N_NONE { return rs_nil(); }
+  if k == N_NAME { return rs_get(r, n.s); }
+  if k == N_FSTR {
+    acc := ""; p := n.a;
+    while p >= 0 {
+      v := rs_eval(r, p); if rs_bad(r) { return rs_nil(); }
+      piece := rs_text(r, v, false);
+      acc = ifx acc.count == 0 then piece else rs_cat(r, acc, piece);
+      if rs_bad(r) { return rs_nil(); }
+      p = r[0].nodes[p].next;
+    }
+    return rs_strv(acc);
+  }
+  if k == N_LIST {
+    l := rs_new_list(r, 4); if rs_bad(r) { return rs_nil(); }
+    p := n.a;
+    while p >= 0 {
+      v := rs_eval(r, p); if rs_bad(r) { return rs_nil(); }
+      if !rs_list_push(r, l.i, v) { return rs_nil(); }
+      p = r[0].nodes[p].next;
+    }
+    return l;
+  }
+  if k == N_DICT {
+    d := rs_new_dict(r); if rs_bad(r) { return rs_nil(); }
+    p := n.a;
+    while p >= 0 {
+      key := rs_eval(r, r[0].nodes[p].a); if rs_bad(r) { return rs_nil(); }
+      v := rs_eval(r, r[0].nodes[p].b); if rs_bad(r) { return rs_nil(); }
+      rs_dict_set(r, d.i, key, v); if rs_bad(r) { return rs_nil(); }
+      p = r[0].nodes[p].next;
+    }
+    return d;
+  }
+  if k == N_COMP { return rs_comp(r, id); }
+  if k == N_NEG {
+    v := rs_eval(r, n.a); if rs_bad(r) { return rs_nil(); }
+    if !rs_need(r, v, RS_INT, "unary -") { return rs_nil(); }
+    return rs_int(-v.i);
+  }
+  if k == N_NOT { v := rs_eval(r, n.a); if rs_bad(r) { return rs_nil(); } return rs_bool(!rs_truthy(r, v)); }
+  if k == N_AND {
+    a := rs_eval(r, n.a); if rs_bad(r) || !rs_truthy(r, a) { return a; }
+    return rs_eval(r, n.b);
+  }
+  if k == N_OR {
+    a := rs_eval(r, n.a); if rs_bad(r) || rs_truthy(r, a) { return a; }
+    return rs_eval(r, n.b);
+  }
+  if k == N_IFX {
+    c := rs_eval(r, n.a); if rs_bad(r) { return rs_nil(); }
+    return rs_eval(r, ifx rs_truthy(r, c) then n.b else n.c);
+  }
+  if k == N_BIN {
+    a := rs_eval(r, n.a); if rs_bad(r) { return rs_nil(); }
+    b := rs_eval(r, n.b); if rs_bad(r) { return rs_nil(); }
+    r[0].line = n.line;
+    op := n.i;
+    if op == B_EQ { return rs_bool(rs_equal(r, a, b)); }
+    if op == B_NE { return rs_bool(!rs_equal(r, a, b)); }
+    if op == B_IN { return rs_bool(rs_contains(r, b, a)); }
+    if op == B_NOTIN { c := rs_contains(r, b, a); return rs_bool(!c); }
+    if op == B_LT || op == B_LE || op == B_GT || op == B_GE {
+      x := ifx op == B_LT || op == B_GE then a else b;
+      y := ifx op == B_LT || op == B_GE then b else a;
+      lt := rs_less(r, x, y);
+      if lt < 0 { rs_fail(r, "can't compare ", rs_type_name(a), rs_cat(r, " with ", rs_type_name(b))); return rs_nil(); }
+      return rs_bool(ifx op == B_LT || op == B_GT then lt == 1 else lt == 0);
+    }
+    return rs_arith(r, op, a, b);
+  }
+  if k == N_INDEX {
+    o := rs_eval(r, n.a); if rs_bad(r) { return rs_nil(); }
+    x := rs_eval(r, n.b); if rs_bad(r) { return rs_nil(); }
+    r[0].line = n.line;
+    return rs_subscript(r, o, x);
+  }
+  if k == N_SLICE {
+    o := rs_eval(r, n.a); if rs_bad(r) { return rs_nil(); }
+    lo := rs_nil(); hi := rs_nil();
+    if n.b >= 0 { lo = rs_eval(r, n.b); if rs_bad(r) { return rs_nil(); } }
+    if n.c >= 0 { hi = rs_eval(r, n.c); if rs_bad(r) { return rs_nil(); } }
+    r[0].line = n.line;
+    return rs_slice(r, o, lo, hi);
+  }
+  if k == N_CALL { return rs_call(r, id); }
+  if k == N_ATTR { rs_fail(r, "'.", n.s, "' must be called, like x.name(...)"); return rs_nil(); }
+  rs_fail(r, "this can't be evaluated", "", "");
+  return rs_nil();
+}
+
+rs_subscript :: (r: [] Rs, o: RsVal, x: RsVal) -> RsVal {
+  if o.kind == RS_DICT {
+    k := rs_dict_find(r, o.i, x);
+    if k < 0 { rs_fail(r, "KeyError: ", rs_text(r, x, true), ""); return rs_nil(); }
+    return rs_at(r, o.i, k + 1);
+  }
+  if !rs_need(r, x, RS_INT, "an index") { return rs_nil(); }
+  if o.kind == RS_STR {
+    k := rs_index(x.i, o.s.count);
+    if k < 0 { rs_fail(r, "string index out of range", "", ""); return rs_nil(); }
+    return rs_strv(cast(string) o.s[k..<k + 1]);
+  }
+  if o.kind == RS_LIST {
+    k := rs_index(x.i, rs_len_of(r, o.i));
+    if k < 0 { rs_fail(r, "list index out of range", "", ""); return rs_nil(); }
+    return rs_at(r, o.i, k);
+  }
+  rs_fail(r, rs_type_name(o), " can't be indexed", "");
+  return rs_nil();
+}
+
+rs_slice :: (r: [] Rs, o: RsVal, lo: RsVal, hi: RsVal) -> RsVal {
+  if (lo.kind != RS_NONE && !rs_need(r, lo, RS_INT, "a slice bound")) || (hi.kind != RS_NONE && !rs_need(r, hi, RS_INT, "a slice bound")) { return rs_nil(); }
+  n := 0;
+  if o.kind == RS_STR { n = o.s.count; } else if o.kind == RS_LIST { n = rs_len_of(r, o.i); }
+  else { rs_fail(r, rs_type_name(o), " can't be sliced", ""); return rs_nil(); }
+  a := ifx lo.kind == RS_NONE then 0 else rs_bound(lo.i, n);
+  b := ifx hi.kind == RS_NONE then n else rs_bound(hi.i, n);
+  if b < a { b = a; }
+  if o.kind == RS_STR { return rs_strv(cast(string) o.s[a..<b]); }
+  l := rs_new_list(r, b - a); if rs_bad(r) { return rs_nil(); }
+  for i: a..<b { if !rs_list_push(r, l.i, rs_at(r, o.i, i)) { return rs_nil(); } }
+  return l;
+}
+
+// Binds a loop's names to item: one name takes it, two unpack a pair.
+rs_bind :: (r: [] Rs, s: string, s2: string, item: RsVal) {
+  if s2.count == 0 { rs_set(r, s, item); return; }
+  if item.kind != RS_LIST || rs_len_of(r, item.i) != 2 { rs_fail(r, "can't unpack ", rs_type_name(item), " into two names"); return; }
+  rs_set(r, s, rs_at(r, item.i, 0));
+  if !rs_bad(r) { rs_set(r, s2, rs_at(r, item.i, 1)); }
+}
+
+// What a for loop walks: a list's or dict's items as they are when the loop starts (a list
+// holder made here), a string's bytes, or a range kept as numbers.
+RsIter :: struct { kind: int; id: int; s: string; lo: int; hi: int; step: int; n: int; }
+
+rs_iter :: (r: [] Rs, at_node: int) -> RsIter {
+  node := r[0].nodes[at_node];
+  // range(...) in a for is walked without making the list
+  if node.kind == N_CALL && r[0].nodes[node.a].kind == N_NAME && r[0].nodes[node.a].s == "range" && rs_find(r, "range") < 0 {
+    args: [3] RsVal; na := 0; p := node.b;
+    while p >= 0 {
+      if na >= 3 { rs_fail(r, "range takes at most 3 arguments", "", ""); return RsIter.{}; }
+      args[na] = rs_eval(r, p); if rs_bad(r) { return RsIter.{}; }
+      if !rs_need(r, args[na], RS_INT, "range") { return RsIter.{}; }
+      na += 1; p = r[0].nodes[p].next;
+    }
+    if na == 0 { rs_fail(r, "range needs an argument", "", ""); return RsIter.{}; }
+    lo := ifx na >= 2 then args[0].i else 0; hi := ifx na >= 2 then args[1].i else args[0].i; st := ifx na == 3 then args[2].i else 1;
+    if st == 0 { rs_fail(r, "range's step can't be 0", "", ""); return RsIter.{}; }
+    cnt := 0;
+    if st > 0 && hi > lo { cnt = (hi - lo + st - 1) / st; }
+    if st < 0 && lo > hi { cnt = (lo - hi - st - 1) / (-st); }
+    return RsIter.{kind = 1, lo = lo, step = st, n = cnt};
+  }
+  v := rs_eval(r, at_node);
+  if rs_bad(r) { return RsIter.{}; }
+  if v.kind == RS_STR { return RsIter.{kind = 2, s = v.s, n = v.s.count}; }
+  if v.kind == RS_LIST { return RsIter.{kind = 3, id = v.i, n = rs_len_of(r, v.i)}; }
+  if v.kind == RS_DICT {
+    keys := rs_dict_keys(r, v.i); if rs_bad(r) { return RsIter.{}; }
+    return RsIter.{kind = 3, id = keys.i, n = rs_len_of(r, keys.i)};
+  }
+  rs_fail(r, rs_type_name(v), " can't be looped over", "");
+  return RsIter.{};
+}
+rs_iter_at :: (r: [] Rs, t: RsIter, i: int) -> RsVal {
+  if t.kind == 1 { return rs_int(t.lo + i * t.step); }
+  if t.kind == 2 { return rs_strv(cast(string) t.s[i..<i + 1]); }
+  return rs_at(r, t.id, i);
+}
+
+rs_dict_keys :: (r: [] Rs, id: int) -> RsVal {
+  n := rs_len_of(r, id);
+  l := rs_new_list(r, n / 2); if rs_bad(r) { return rs_nil(); }
+  i := 0;
+  while i + 1 < n { if !rs_list_push(r, l.i, rs_at(r, id, i)) { return rs_nil(); } i += 2; }
+  return l;
+}
+
+rs_comp :: (r: [] Rs, id: int) -> RsVal {
+  n := r[0].nodes[id];
+  t := rs_iter(r, n.b); if rs_bad(r) { return rs_nil(); }
+  out := rs_new_list(r, t.n); if rs_bad(r) { return rs_nil(); }
+  for i: 0..<t.n {
+    rs_bind(r, n.s, n.s2, rs_iter_at(r, t, i)); if rs_bad(r) { return rs_nil(); }
+    if n.c >= 0 { c := rs_eval(r, n.c); if rs_bad(r) { return rs_nil(); } if !rs_truthy(r, c) { continue; } }
+    v := rs_eval(r, n.a); if rs_bad(r) { return rs_nil(); }
+    if !rs_list_push(r, out.i, v) { return rs_nil(); }
+  }
+  return out;
+}
+
+// Assigns v to a target: a name, x[i], or a tuple of names.
+rs_assign :: (r: [] Rs, target: int, v: RsVal) {
+  t := r[0].nodes[target];
+  if t.kind == N_NAME { rs_set(r, t.s, v); return; }
+  if t.kind == N_INDEX {
+    o := rs_eval(r, t.a); if rs_bad(r) { return; }
+    x := rs_eval(r, t.b); if rs_bad(r) { return; }
+    r[0].line = t.line;
+    if o.kind == RS_DICT { rs_dict_set(r, o.i, x, v); return; }
+    if o.kind == RS_LIST {
+      if !rs_need(r, x, RS_INT, "an index") { return; }
+      k := rs_index(x.i, rs_len_of(r, o.i));
+      if k < 0 { rs_fail(r, "list assignment index out of range", "", ""); return; }
+      rs_set_at(r, o.i, k, v); return;
+    }
+    rs_fail(r, rs_type_name(o), " does not support item assignment", "");
+    return;
+  }
+  // a, b = v
+  if v.kind != RS_LIST { rs_fail(r, "can't unpack ", rs_type_name(v), ""); return; }
+  cnt := 0; p := t.a;
+  while p >= 0 { cnt += 1; p = r[0].nodes[p].next; }
+  if cnt != rs_len_of(r, v.i) { rs_fail(r, "the number of names does not match the number of values", "", ""); return; }
+  p = t.a; i := 0;
+  while p >= 0 {
+    if r[0].nodes[p].kind != N_NAME { rs_fail(r, "only names can be unpacked into", "", ""); return; }
+    rs_set(r, r[0].nodes[p].s, rs_at(r, v.i, i)); if rs_bad(r) { return; }
+    p = r[0].nodes[p].next; i += 1;
+  }
+}
+
+// Runs statements from first along their next links.
+rs_exec :: (r: [] Rs, first: int) {
+  s := first;
+  while s >= 0 && !rs_bad(r) && !r[0].brk && !r[0].cont && !r[0].final_set {
+    if !rs_step(r) { return; }
+    n := r[0].nodes[s];
+    r[0].line = n.line;
+    k := n.kind;
+    if k == S_EXPR { v := rs_eval(r, n.a); }
+    else if k == S_ASSIGN { v := rs_eval(r, n.b); if !rs_bad(r) { rs_assign(r, n.a, v); } }
+    else if k == S_AUG {
+      t := r[0].nodes[n.a];
+      cur := rs_eval(r, n.a); if rs_bad(r) { return; }
+      v := rs_eval(r, n.b); if rs_bad(r) { return; }
+      r[0].line = n.line;
+      // a list += list extends in place, as Python does
+      if n.i == B_ADD && cur.kind == RS_LIST && v.kind == RS_LIST {
+        m := rs_len_of(r, v.i);
+        for i: 0..<m { if !rs_list_push(r, cur.i, rs_at(r, v.i, i)) { return; } }
+      } else {
+        x := rs_arith(r, n.i, cur, v); if rs_bad(r) { return; }
+        rs_assign(r, n.a, x);
+      }
+    }
+    else if k == S_IF {
+      c := rs_eval(r, n.a); if rs_bad(r) { return; }
+      if rs_truthy(r, c) { rs_exec(r, n.b); } else if n.c >= 0 { rs_exec(r, n.c); }
+    }
+    else if k == S_FOR {
+      t := rs_iter(r, n.a); if rs_bad(r) { return; }
+      for i: 0..<t.n {
+        rs_bind(r, n.s, n.s2, rs_iter_at(r, t, i)); if rs_bad(r) { return; }
+        rs_exec(r, n.b);
+        if r[0].cont { r[0].cont = false; }
+        if r[0].brk { r[0].brk = false; break; }
+        if rs_bad(r) || r[0].final_set { return; }
+      }
+    }
+    else if k == S_WHILE {
+      while true {
+        c := rs_eval(r, n.a); if rs_bad(r) { return; }
+        if !rs_truthy(r, c) { break; }
+        rs_exec(r, n.b);
+        if r[0].cont { r[0].cont = false; }
+        if r[0].brk { r[0].brk = false; break; }
+        if rs_bad(r) || r[0].final_set || !rs_step(r) { return; }
+      }
+    }
+    else if k == S_BREAK { r[0].brk = true; return; }
+    else if k == S_CONT { r[0].cont = true; return; }
+    s = n.next;
+  }
+}
+
+// ---------------------------------------------------------------- calls
+
+RsArgs :: struct {
+  v: [8] RsVal; n: int;
+  kw_name: [4] string; kw: [4] RsVal; nk: int;
+}
+rs_kw :: (a: RsArgs, name: string) -> int { for i: 0..<a.nk { if a.kw_name[i] == name { return i; } } return -1; }
+
+rs_args :: (r: [] Rs, first: int, a: [] RsArgs) {
+  p := first;
+  while p >= 0 {
+    node := r[0].nodes[p];
+    if node.kind == N_KW {
+      if a[0].nk >= 4 { rs_fail(r, "too many keyword arguments", "", ""); return; }
+      v := rs_eval(r, node.a); if rs_bad(r) { return; }
+      a[0].kw_name[a[0].nk] = node.s; a[0].kw[a[0].nk] = v; a[0].nk += 1;
+    } else {
+      if a[0].n >= 8 { rs_fail(r, "too many arguments", "", ""); return; }
+      v := rs_eval(r, p); if rs_bad(r) { return; }
+      a[0].v[a[0].n] = v; a[0].n += 1;
+    }
+    p = node.next;
+  }
+}
+
+rs_arity :: (r: [] Rs, a: RsArgs, name: string, lo: int, hi: int) -> bool {
+  if a.n >= lo && a.n <= hi { return true; }
+  rs_fail(r, name, " takes a different number of arguments", "");
+  return false;
+}
+
+rs_call :: (r: [] Rs, id: int) -> RsVal {
+  n := r[0].nodes[id];
+  callee := r[0].nodes[n.a];
+  a: [1] RsArgs;
+  if callee.kind == N_ATTR {
+    obj := r[0].nodes[callee.a];
+    // re.search / re.findall-free module calls: re.search only
+    if obj.kind == N_NAME && obj.s == "re" && rs_find(r, "re") < 0 {
+      rs_args(r, n.b, a[..]); if rs_bad(r) { return rs_nil(); }
+      r[0].line = n.line;
+      return rs_re(r, callee.s, a[0]);
+    }
+    o := rs_eval(r, callee.a); if rs_bad(r) { return rs_nil(); }
+    // max(d, key=d.get) and sorted(..., key=d.get) take d.get uncalled; elsewhere a method is called
+    rs_args(r, n.b, a[..]); if rs_bad(r) { return rs_nil(); }
+    r[0].line = n.line;
+    return rs_method(r, o, callee.s, a[0]);
+  }
+  if callee.kind != N_NAME { rs_fail(r, "only names and methods can be called", "", ""); return rs_nil(); }
+  // key=d.get: evaluated to the dict itself, marked as a key function
+  p := n.b; nk := 0;
+  while p >= 0 {
+    node := r[0].nodes[p];
+    if node.kind == N_KW && node.s == "key" {
+      kn := r[0].nodes[node.a];
+      if kn.kind != N_ATTR || kn.s != "get" { rs_fail(r, "key= takes only d.get (lambda is not supported: build a list of [key, item] pairs and sort that)", "", ""); return rs_nil(); }
+    }
+    p = node.next;
+  }
+  if rs_keyed(r, n.b) {
+    // evaluate key=d.get's d in place of the attribute
+    rs_args_keyed(r, n.b, a[..]); if rs_bad(r) { return rs_nil(); }
+  } else {
+    rs_args(r, n.b, a[..]); if rs_bad(r) { return rs_nil(); }
+  }
+  r[0].line = n.line;
+  return rs_builtin(r, callee.s, a[0]);
+}
+rs_keyed :: (r: [] Rs, first: int) -> bool {
+  p := first;
+  while p >= 0 { node := r[0].nodes[p]; if node.kind == N_KW && node.s == "key" { return true; } p = node.next; }
+  return false;
+}
+rs_args_keyed :: (r: [] Rs, first: int, a: [] RsArgs) {
+  p := first;
+  while p >= 0 {
+    node := r[0].nodes[p];
+    if node.kind == N_KW && node.s == "key" {
+      d := rs_eval(r, r[0].nodes[node.a].a); if rs_bad(r) { return; }
+      if d.kind != RS_DICT { rs_fail(r, "key=x.get needs x to be a dict", "", ""); return; }
+      a[0].kw_name[a[0].nk] = "key"; a[0].kw[a[0].nk] = d; a[0].nk += 1;
+    } else if node.kind == N_KW {
+      if a[0].nk >= 4 { rs_fail(r, "too many keyword arguments", "", ""); return; }
+      v := rs_eval(r, node.a); if rs_bad(r) { return; }
+      a[0].kw_name[a[0].nk] = node.s; a[0].kw[a[0].nk] = v; a[0].nk += 1;
+    } else {
+      if a[0].n >= 8 { rs_fail(r, "too many arguments", "", ""); return; }
+      v := rs_eval(r, p); if rs_bad(r) { return; }
+      a[0].v[a[0].n] = v; a[0].n += 1;
+    }
+    p = node.next;
+  }
+}
+
+// The sort key of v under key (a dict: key=d.get), or v itself.
+rs_key_of :: (r: [] Rs, key: RsVal, has: bool, v: RsVal) -> RsVal {
+  if !has { return v; }
+  k := rs_dict_find(r, key.i, v);
+  return ifx k >= 0 then rs_at(r, key.i, k + 1) else rs_nil();
+}
+
+// The items of a list, a dict's keys or a string's bytes, as a list (shared when it is one).
+rs_items :: (r: [] Rs, v: RsVal, what: string) -> RsVal {
+  if v.kind == RS_LIST { return v; }
+  if v.kind == RS_DICT { return rs_dict_keys(r, v.i); }
+  if v.kind == RS_STR {
+    l := rs_new_list(r, v.s.count); if rs_bad(r) { return rs_nil(); }
+    for i: 0..<v.s.count { if !rs_list_push(r, l.i, rs_strv(cast(string) v.s[i..<i + 1])) { return rs_nil(); } }
+    return l;
+  }
+  rs_fail(r, what, " needs a list, dict or str, not ", rs_type_name(v));
+  return rs_nil();
+}
+
+// A stable merge sort of list id's cells by key (a dict for key=d.get), into a new list.
+rs_sorted :: (r: [] Rs, src: RsVal, key: RsVal, has_key: bool, reverse: bool) -> RsVal {
+  n := rs_len_of(r, src.i);
+  out := rs_new_list(r, n); if rs_bad(r) { return rs_nil(); }
+  for i: 0..<n { if !rs_list_push(r, out.i, rs_at(r, src.i, i)) { return rs_nil(); } }
+  tmp := rs_new_list(r, n); if rs_bad(r) { return rs_nil(); }
+  for i: 0..<n { if !rs_list_push(r, tmp.i, rs_nil()) { return rs_nil(); } }
+  width := 1;
+  while width < n {
+    lo := 0;
+    while lo < n {
+      mid := ifx lo + width < n then lo + width else n;
+      hi := ifx lo + 2 * width < n then lo + 2 * width else n;
+      i := lo; j := mid; k := lo;
+      while k < hi {
+        take_left := j >= hi;
+        if !take_left && i < mid {
+          x := rs_key_of(r, key, has_key, rs_at(r, out.i, i)); y := rs_key_of(r, key, has_key, rs_at(r, out.i, j));
+          lt := ifx reverse then rs_less(r, x, y) else rs_less(r, y, x);
+          if lt < 0 { rs_fail(r, "can't compare ", rs_type_name(x), rs_cat(r, " with ", rs_type_name(y))); return rs_nil(); }
+          take_left = lt == 0;
+        }
+        if take_left { rs_set_at(r, tmp.i, k, rs_at(r, out.i, i)); i += 1; } else { rs_set_at(r, tmp.i, k, rs_at(r, out.i, j)); j += 1; }
+        k += 1;
+      }
+      lo = hi;
+      if !rs_step(r) { return rs_nil(); }
+    }
+    for q: 0..<n { rs_set_at(r, out.i, q, rs_at(r, tmp.i, q)); }
+    width *= 2;
+  }
+  return out;
+}
+
+// Lines of text, without their newline bytes (a final newline makes no empty line).
+rs_lines :: (r: [] Rs, s: string) -> RsVal {
+  l := rs_new_list(r, 16); if rs_bad(r) { return rs_nil(); }
+  at := 0;
+  while at < s.count {
+    e := at; while e < s.count && s[e] != 10 { e += 1; }
+    end := ifx e > at && s[e - 1] == 13 then e - 1 else e;
+    if !rs_list_push(r, l.i, rs_strv(cast(string) s[at..<end])) { return rs_nil(); }
+    at = e + 1;
+  }
+  return l;
+}
+
+rs_space :: (c: u8) -> bool { return c == ' ' || c == 9 || c == 10 || c == 13 || c == 11 || c == 12; }
+
+rs_split :: (r: [] Rs, s: string, sep: RsVal, max: int) -> RsVal {
+  l := rs_new_list(r, 16); if rs_bad(r) { return rs_nil(); }
+  if sep.kind == RS_NONE {
+    i := 0; made := 0;
+    while i < s.count {
+      while i < s.count && rs_space(s[i]) { i += 1; }
+      if i >= s.count { break; }
+      if max >= 0 && made >= max {
+        e := s.count; while e > i && rs_space(s[e - 1]) { e -= 1; }
+        if !rs_list_push(r, l.i, rs_strv(cast(string) s[i..<e])) { return rs_nil(); }
+        break;
+      }
+      j := i; while j < s.count && !rs_space(s[j]) { j += 1; }
+      if !rs_list_push(r, l.i, rs_strv(cast(string) s[i..<j])) { return rs_nil(); }
+      made += 1; i = j;
+    }
+    return l;
+  }
+  if sep.kind != RS_STR || sep.s.count == 0 { rs_fail(r, "split's separator must be a non-empty str", "", ""); return rs_nil(); }
+  at := 0; made := 0;
+  while true {
+    k := ifx max >= 0 && made >= max then -1 else rs_find_sub(s, sep.s, at);
+    if k < 0 { if !rs_list_push(r, l.i, rs_strv(cast(string) s[at..<s.count])) { return rs_nil(); } break; }
+    if !rs_list_push(r, l.i, rs_strv(cast(string) s[at..<k])) { return rs_nil(); }
+    at = k + sep.s.count; made += 1;
+    if !rs_step(r) { return rs_nil(); }
+  }
+  return l;
+}
+
+rs_strip_set :: (c: u8, chars: RsVal) -> bool {
+  if chars.kind != RS_STR { return rs_space(c); }
+  for x: chars.s { if x == c { return true; } }
+  return false;
+}
+
+// Pieces of s of at most size bytes, each ending at a newline when one falls in its second half.
+rs_chunks :: (r: [] Rs, s: string, size: int) -> RsVal {
+  if size <= 0 { rs_fail(r, "chunk's size must be positive", "", ""); return rs_nil(); }
+  l := rs_new_list(r, s.count / size + 1); if rs_bad(r) { return rs_nil(); }
+  at := 0;
+  while at < s.count {
+    e := ifx at + size < s.count then at + size else s.count;
+    if e < s.count {
+      k := e;
+      while k > at + size / 2 && s[k - 1] != 10 { k -= 1; }
+      if k > at + size / 2 { e = k; }
+    }
+    if !rs_list_push(r, l.i, rs_strv(cast(string) s[at..<e])) { return rs_nil(); }
+    at = e;
+  }
+  return l;
+}
+
+// The lines of text that match pattern (coax/lib/text/regex.coax's subset), at most limit.
+rs_grep :: (r: [] Rs, pattern: string, text: string, limit: int) -> RsVal {
+  if !rx_valid(pattern) { rs_fail(r, "grep's pattern is outside the supported subset (no groups, | or {n,m}): ", pattern, ""); return rs_nil(); }
+  l := rs_new_list(r, 16); if rs_bad(r) { return rs_nil(); }
+  at := 0;
+  while at < text.count && rs_len_of(r, l.i) < limit {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    m := rx_test(pattern, line);
+    if m == RX_REFUSED { rs_fail(r, "grep's pattern took too many steps on a line; make it simpler", "", ""); return rs_nil(); }
+    if m == RX_YES { if !rs_list_push(r, l.i, rs_strv(line)) { return rs_nil(); } }
+    at = e + 1;
+    if !rs_step(r) { return rs_nil(); }
+  }
+  return l;
+}
+
+rs_re :: (r: [] Rs, name: string, a: RsArgs) -> RsVal {
+  if name == "search" || name == "match" {
+    if !rs_arity(r, a, "re.search", 2, 2) || !rs_need(r, a.v[0], RS_STR, "re.search") || !rs_need(r, a.v[1], RS_STR, "re.search") { return rs_nil(); }
+    p := a.v[0].s;
+    if name == "match" && (p.count == 0 || p[0] != '^') { p = rs_cat(r, "^", p); }
+    if !rx_valid(p) { rs_fail(r, "the pattern is outside the supported subset (no groups, | or {n,m}): ", p, ""); return rs_nil(); }
+    m := rx_test(p, a.v[1].s);
+    if m == RX_REFUSED { rs_fail(r, "the pattern took too many steps; search line by line with grep(pattern, text)", "", ""); return rs_nil(); }
+    return ifx m == RX_YES then rs_bool(true) else rs_nil();
+  }
+  rs_fail(r, "re.", name, " is not supported: use re.search(pattern, s), grep(pattern, text) or string methods");
+  return rs_nil();
+}
+
+rs_method :: (r: [] Rs, o: RsVal, name: string, a: RsArgs) -> RsVal {
+  if o.kind == RS_STR {
+    s := o.s;
+    if name == "lower" || name == "upper" {
+      if !rs_arity(r, a, name, 0, 0) { return rs_nil(); }
+      at := r[0].nh;
+      for c: s {
+        x := c;
+        if name == "lower" && c >= 'A' && c <= 'Z' { x = c + 32; }
+        if name == "upper" && c >= 'a' && c <= 'z' { x = c - 32; }
+        if !rs_putc(r, x) { r[0].nh = at; rs_oom(r); return rs_nil(); }
+      }
+      return rs_strv(rs_take(r, at));
+    }
+    if name == "strip" || name == "lstrip" || name == "rstrip" {
+      if !rs_arity(r, a, name, 0, 1) { return rs_nil(); }
+      chars := ifx a.n == 1 then a.v[0] else rs_nil();
+      i := 0; j := s.count;
+      if name != "rstrip" { while i < j && rs_strip_set(s[i], chars) { i += 1; } }
+      if name != "lstrip" { while j > i && rs_strip_set(s[j - 1], chars) { j -= 1; } }
+      return rs_strv(cast(string) s[i..<j]);
+    }
+    if name == "split" {
+      if !rs_arity(r, a, name, 0, 2) { return rs_nil(); }
+      sep := ifx a.n >= 1 then a.v[0] else rs_nil();
+      k := rs_kw(a, "sep"); if k >= 0 { sep = a.kw[k]; }
+      mx := -1;
+      if a.n == 2 { if !rs_need(r, a.v[1], RS_INT, "split") { return rs_nil(); } mx = a.v[1].i; }
+      m := rs_kw(a, "maxsplit"); if m >= 0 { mx = a.kw[m].i; }
+      return rs_split(r, s, sep, mx);
+    }
+    if name == "splitlines" { if !rs_arity(r, a, name, 0, 0) { return rs_nil(); } return rs_lines(r, s); }
+    if name == "join" {
+      if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+      items := rs_items(r, a.v[0], "join"); if rs_bad(r) { return rs_nil(); }
+      // the parts are made first, then the result written in one piece
+      cnt := rs_len_of(r, items.i);
+      for i: 0..<cnt { if rs_at(r, items.i, i).kind != RS_STR { rs_fail(r, "join needs a list of str; item ", rs_text(r, rs_int(i), false), rs_cat(r, " is ", rs_type_name(rs_at(r, items.i, i)))); return rs_nil(); } }
+      at := r[0].nh;
+      for i: 0..<cnt {
+        if i > 0 && !rs_put(r, s) { r[0].nh = at; rs_oom(r); return rs_nil(); }
+        if !rs_put(r, rs_at(r, items.i, i).s) { r[0].nh = at; rs_oom(r); return rs_nil(); }
+      }
+      return rs_strv(rs_take(r, at));
+    }
+    if name == "find" || name == "index" || name == "rfind" || name == "count" || name == "startswith" || name == "endswith" {
+      if !rs_arity(r, a, name, 1, 2) || !rs_need(r, a.v[0], RS_STR, name) { return rs_nil(); }
+      sub := a.v[0].s;
+      if name == "count" { return rs_int(rs_count_sub(s, sub)); }
+      if name == "startswith" { return rs_bool(sub.count <= s.count && cast(string) s[0..<sub.count] == sub); }
+      if name == "endswith" { return rs_bool(sub.count <= s.count && cast(string) s[s.count - sub.count..<s.count] == sub); }
+      if name == "rfind" { return rs_int(rs_rfind_sub(s, sub)); }
+      from := 0;
+      if a.n == 2 { if !rs_need(r, a.v[1], RS_INT, name) { return rs_nil(); } from = rs_bound(a.v[1].i, s.count); }
+      k := rs_find_sub(s, sub, from);
+      if k < 0 && name == "index" { rs_fail(r, "substring not found", "", ""); return rs_nil(); }
+      return rs_int(k);
+    }
+    if name == "replace" {
+      if !rs_arity(r, a, name, 2, 2) || !rs_need(r, a.v[0], RS_STR, name) || !rs_need(r, a.v[1], RS_STR, name) { return rs_nil(); }
+      old := a.v[0].s; rep := a.v[1].s;
+      if old.count == 0 { rs_fail(r, "replace's old text must not be empty", "", ""); return rs_nil(); }
+      at := r[0].nh; i := 0;
+      while i < s.count {
+        k := rs_find_sub(s, old, i);
+        e := ifx k < 0 then s.count else k;
+        if !rs_put(r, cast(string) s[i..<e]) { r[0].nh = at; rs_oom(r); return rs_nil(); }
+        if k < 0 { break; }
+        if !rs_put(r, rep) { r[0].nh = at; rs_oom(r); return rs_nil(); }
+        i = k + old.count;
+      }
+      return rs_strv(rs_take(r, at));
+    }
+    if name == "isdigit" { if s.count == 0 { return rs_bool(false); } for c: s { if !rs_is_digit(c) { return rs_bool(false); } } return rs_bool(true); }
+    rs_fail(r, "str has no method '", name, "' here (there are lower upper strip lstrip rstrip split splitlines join find rfind index count startswith endswith replace isdigit)");
+    return rs_nil();
+  }
+  if o.kind == RS_LIST {
+    if name == "append" { if !rs_arity(r, a, name, 1, 1) { return rs_nil(); } x := rs_list_push(r, o.i, a.v[0]); return rs_nil(); }
+    if name == "extend" {
+      if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+      items := rs_items(r, a.v[0], "extend"); if rs_bad(r) { return rs_nil(); }
+      cnt := rs_len_of(r, items.i);
+      for i: 0..<cnt { if !rs_list_push(r, o.i, rs_at(r, items.i, i)) { return rs_nil(); } }
+      return rs_nil();
+    }
+    if name == "pop" {
+      if !rs_arity(r, a, name, 0, 1) { return rs_nil(); }
+      cnt := rs_len_of(r, o.i);
+      at := cnt - 1;
+      if a.n == 1 { if !rs_need(r, a.v[0], RS_INT, "pop") { return rs_nil(); } at = rs_index(a.v[0].i, cnt); }
+      if at < 0 || cnt == 0 { rs_fail(r, "pop index out of range", "", ""); return rs_nil(); }
+      v := rs_at(r, o.i, at);
+      for i: at..<cnt - 1 { rs_set_at(r, o.i, i, rs_at(r, o.i, i + 1)); }
+      l := r[0].lists[o.i]; l.n -= 1; r[0].lists[o.i] = l;
+      return v;
+    }
+    if name == "index" || name == "count" {
+      if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+      cnt := rs_len_of(r, o.i); c := 0;
+      for i: 0..<cnt {
+        if rs_equal(r, rs_at(r, o.i, i), a.v[0]) { if name == "index" { return rs_int(i); } c += 1; }
+      }
+      if name == "index" { rs_fail(r, "the value is not in the list", "", ""); return rs_nil(); }
+      return rs_int(c);
+    }
+    if name == "sort" {
+      k := rs_kw(a, "key"); rv := rs_kw(a, "reverse");
+      sorted := rs_sorted(r, o, ifx k >= 0 then a.kw[k] else rs_nil(), k >= 0, rv >= 0 && rs_truthy(r, a.kw[rv]));
+      if rs_bad(r) { return rs_nil(); }
+      cnt := rs_len_of(r, o.i);
+      for i: 0..<cnt { rs_set_at(r, o.i, i, rs_at(r, sorted.i, i)); }
+      return rs_nil();
+    }
+    rs_fail(r, "list has no method '", name, "' here (there are append extend pop index count sort)");
+    return rs_nil();
+  }
+  if o.kind == RS_DICT {
+    if name == "get" {
+      if !rs_arity(r, a, name, 1, 2) { return rs_nil(); }
+      k := rs_dict_find(r, o.i, a.v[0]);
+      if k >= 0 { return rs_at(r, o.i, k + 1); }
+      return ifx a.n == 2 then a.v[1] else rs_nil();
+    }
+    if name == "keys" { return rs_dict_keys(r, o.i); }
+    if name == "values" || name == "items" {
+      cnt := rs_len_of(r, o.i);
+      l := rs_new_list(r, cnt / 2); if rs_bad(r) { return rs_nil(); }
+      i := 0;
+      while i + 1 < cnt {
+        v := rs_at(r, o.i, i + 1);
+        if name == "items" {
+          p := rs_new_list(r, 2); if rs_bad(r) { return rs_nil(); }
+          x := rs_list_push(r, p.i, rs_at(r, o.i, i)); y := rs_list_push(r, p.i, v);
+          v = p;
+        }
+        if !rs_list_push(r, l.i, v) { return rs_nil(); }
+        i += 2;
+      }
+      return l;
+    }
+    rs_fail(r, "dict has no method '", name, "' here (there are get keys values items)");
+    return rs_nil();
+  }
+  rs_fail(r, rs_type_name(o), " has no method '", rs_cat(r, name, "'"));
+  return rs_nil();
+}
+
+rs_builtin :: (r: [] Rs, name: string, a: RsArgs) -> RsVal {
+  if name == "print" {
+    for i: 0..<a.n { if i > 0 { rs_print(r, " "); } rs_print(r, rs_text(r, a.v[i], false)); }
+    e := rs_kw(a, "end");
+    if e >= 0 && a.kw[e].kind == RS_STR { rs_print(r, a.kw[e].s); } else { rs_print(r, "\n"); }
+    return rs_nil();
+  }
+  if name == "len" {
+    if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+    v := a.v[0];
+    if v.kind == RS_STR { return rs_int(v.s.count); }
+    if v.kind == RS_LIST { return rs_int(rs_len_of(r, v.i)); }
+    if v.kind == RS_DICT { return rs_int(rs_len_of(r, v.i) / 2); }
+    rs_fail(r, rs_type_name(v), " has no len()", ""); return rs_nil();
+  }
+  if name == "str" { if !rs_arity(r, a, name, 0, 1) { return rs_nil(); } return rs_strv(ifx a.n == 0 then "" else rs_text(r, a.v[0], false)); }
+  if name == "repr" { if !rs_arity(r, a, name, 1, 1) { return rs_nil(); } return rs_strv(rs_text(r, a.v[0], true)); }
+  if name == "int" {
+    if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+    v := a.v[0];
+    if v.kind == RS_INT || v.kind == RS_BOOL { return rs_int(v.i); }
+    if v.kind == RS_STR {
+      s := v.s; i := 0; j := s.count;
+      while i < j && rs_space(s[i]) { i += 1; }
+      while j > i && rs_space(s[j - 1]) { j -= 1; }
+      neg := false;
+      if i < j && (s[i] == '-' || s[i] == '+') { neg = s[i] == '-'; i += 1; }
+      if i >= j { rs_fail(r, "invalid literal for int(): ", rs_text(r, v, true), ""); return rs_nil(); }
+      x := 0;
+      for k: i..<j {
+        if !rs_is_digit(s[k]) { rs_fail(r, "invalid literal for int(): ", rs_text(r, v, true), ""); return rs_nil(); }
+        if x > (RS_INT_MAX - 9) / 10 { rs_fail(r, "an integer is too large", "", ""); return rs_nil(); }
+        x = x * 10 + cast(int) (s[k] - '0');
+      }
+      return rs_int(ifx neg then -x else x);
+    }
+    rs_fail(r, "int() can't convert ", rs_type_name(v), ""); return rs_nil();
+  }
+  if name == "bool" { if !rs_arity(r, a, name, 1, 1) { return rs_nil(); } return rs_bool(rs_truthy(r, a.v[0])); }
+  if name == "abs" { if !rs_arity(r, a, name, 1, 1) || !rs_need(r, a.v[0], RS_INT, "abs") { return rs_nil(); } return rs_int(ifx a.v[0].i < 0 then -a.v[0].i else a.v[0].i); }
+  if name == "list" {
+    if !rs_arity(r, a, name, 0, 1) { return rs_nil(); }
+    if a.n == 0 { return rs_new_list(r, 4); }
+    items := rs_items(r, a.v[0], "list"); if rs_bad(r) { return rs_nil(); }
+    return rs_slice(r, items, rs_nil(), rs_nil());
+  }
+  if name == "dict" { if !rs_arity(r, a, name, 0, 0) { return rs_nil(); } return rs_new_dict(r); }
+  if name == "range" {
+    if !rs_arity(r, a, name, 1, 3) { return rs_nil(); }
+    for i: 0..<a.n { if !rs_need(r, a.v[i], RS_INT, "range") { return rs_nil(); } }
+    lo := ifx a.n >= 2 then a.v[0].i else 0; hi := ifx a.n >= 2 then a.v[1].i else a.v[0].i; st := ifx a.n == 3 then a.v[2].i else 1;
+    if st == 0 { rs_fail(r, "range's step can't be 0", "", ""); return rs_nil(); }
+    l := rs_new_list(r, 16); if rs_bad(r) { return rs_nil(); }
+    x := lo;
+    while (st > 0 && x < hi) || (st < 0 && x > hi) { if !rs_list_push(r, l.i, rs_int(x)) || !rs_step(r) { return rs_nil(); } x += st; }
+    return l;
+  }
+  if name == "enumerate" {
+    if !rs_arity(r, a, name, 1, 2) { return rs_nil(); }
+    items := rs_items(r, a.v[0], "enumerate"); if rs_bad(r) { return rs_nil(); }
+    start := ifx a.n == 2 then a.v[1].i else 0;
+    cnt := rs_len_of(r, items.i);
+    l := rs_new_list(r, cnt); if rs_bad(r) { return rs_nil(); }
+    for i: 0..<cnt {
+      p := rs_new_list(r, 2); if rs_bad(r) { return rs_nil(); }
+      x := rs_list_push(r, p.i, rs_int(start + i)); y := rs_list_push(r, p.i, rs_at(r, items.i, i));
+      if !rs_list_push(r, l.i, p) { return rs_nil(); }
+    }
+    return l;
+  }
+  if name == "zip" {
+    if !rs_arity(r, a, name, 2, 2) { return rs_nil(); }
+    x := rs_items(r, a.v[0], "zip"); y := rs_items(r, a.v[1], "zip"); if rs_bad(r) { return rs_nil(); }
+    cnt := rs_len_of(r, x.i); if rs_len_of(r, y.i) < cnt { cnt = rs_len_of(r, y.i); }
+    l := rs_new_list(r, cnt); if rs_bad(r) { return rs_nil(); }
+    for i: 0..<cnt {
+      p := rs_new_list(r, 2); if rs_bad(r) { return rs_nil(); }
+      u := rs_list_push(r, p.i, rs_at(r, x.i, i)); w := rs_list_push(r, p.i, rs_at(r, y.i, i));
+      if !rs_list_push(r, l.i, p) { return rs_nil(); }
+    }
+    return l;
+  }
+  if name == "sum" {
+    if !rs_arity(r, a, name, 1, 2) { return rs_nil(); }
+    items := rs_items(r, a.v[0], "sum"); if rs_bad(r) { return rs_nil(); }
+    acc := ifx a.n == 2 then a.v[1] else rs_int(0);
+    cnt := rs_len_of(r, items.i);
+    for i: 0..<cnt { acc = rs_arith(r, B_ADD, acc, rs_at(r, items.i, i)); if rs_bad(r) { return rs_nil(); } }
+    return acc;
+  }
+  if name == "min" || name == "max" || name == "sorted" {
+    items := rs_nil();
+    if a.n == 1 { items = rs_items(r, a.v[0], name); if rs_bad(r) { return rs_nil(); } }
+    else if a.n >= 2 && name != "sorted" {
+      items = rs_new_list(r, a.n); if rs_bad(r) { return rs_nil(); }
+      for i: 0..<a.n { x := rs_list_push(r, items.i, a.v[i]); }
+    } else { rs_fail(r, name, " takes a different number of arguments", ""); return rs_nil(); }
+    k := rs_kw(a, "key"); rv := rs_kw(a, "reverse");
+    key := ifx k >= 0 then a.kw[k] else rs_nil();
+    if name == "sorted" { return rs_sorted(r, items, key, k >= 0, rv >= 0 && rs_truthy(r, a.kw[rv])); }
+    cnt := rs_len_of(r, items.i);
+    if cnt == 0 {
+      d := rs_kw(a, "default");
+      if d >= 0 { return a.kw[d]; }
+      rs_fail(r, name, "() of an empty sequence", ""); return rs_nil();
+    }
+    best := rs_at(r, items.i, 0);
+    for i: 1..<cnt {
+      x := rs_at(r, items.i, i);
+      lt := ifx name == "min" then rs_less(r, rs_key_of(r, key, k >= 0, x), rs_key_of(r, key, k >= 0, best)) else rs_less(r, rs_key_of(r, key, k >= 0, best), rs_key_of(r, key, k >= 0, x));
+      if lt < 0 { rs_fail(r, "can't compare the items of ", name, "()"); return rs_nil(); }
+      if lt == 1 { best = x; }
+    }
+    return best;
+  }
+  if name == "chunk" {
+    if !rs_arity(r, a, name, 2, 2) || !rs_need(r, a.v[0], RS_STR, "chunk") || !rs_need(r, a.v[1], RS_INT, "chunk") { return rs_nil(); }
+    return rs_chunks(r, a.v[0].s, a.v[1].i);
+  }
+  if name == "grep" {
+    if !rs_arity(r, a, name, 2, 3) || !rs_need(r, a.v[0], RS_STR, "grep") || !rs_need(r, a.v[1], RS_STR, "grep") { return rs_nil(); }
+    limit := 1000;
+    if a.n == 3 { if !rs_need(r, a.v[2], RS_INT, "grep") { return rs_nil(); } limit = a.v[2].i; }
+    return rs_grep(r, a.v[0].s, a.v[1].s, limit);
+  }
+  if name == "SHOW_VARS" {
+    l := rs_new_list(r, 16); if rs_bad(r) { return rs_nil(); }
+    for i: r[0].frame..<r[0].nv { if !rs_list_push(r, l.i, rs_strv(r[0].names[i])) { return rs_nil(); } }
+    return l;
+  }
+  if name == "FINAL" {
+    if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+    r[0].final_set = true; r[0].final_val = a.v[0];
+    return rs_nil();
+  }
+  if name == "FINAL_VAR" {
+    if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+    v := a.v[0];
+    if v.kind == RS_STR && rs_find(r, v.s) >= 0 { v = rs_get(r, v.s); }
+    r[0].final_set = true; r[0].final_val = v;
+    return rs_nil();
+  }
+  if name == "llm_query" || name == "rlm_query" {
+    if !rs_arity(r, a, name, 1, 1) { return rs_nil(); }
+    p := rs_text(r, a.v[0], false); if rs_bad(r) { return rs_nil(); }
+    return rs_ask(r, ifx name == "llm_query" then RS_ASK_LLM else RS_ASK_RLM, rs_strv(p));
+  }
+  if name == "llm_query_batched" || name == "rlm_query_batched" {
+    if !rs_arity(r, a, name, 1, 1) || !rs_need(r, a.v[0], RS_LIST, name) { return rs_nil(); }
+    cnt := rs_len_of(r, a.v[0].i);
+    for i: 0..<cnt { if rs_at(r, a.v[0].i, i).kind != RS_STR { rs_fail(r, name, " needs a list of str prompts", ""); return rs_nil(); } }
+    return rs_ask(r, ifx name == "llm_query_batched" then RS_ASK_LLM else RS_ASK_RLM, a.v[0]);
+  }
+  if name == "doc" {
+    if !rs_arity(r, a, name, 1, 1) || !rs_need(r, a.v[0], RS_STR, "doc") { return rs_nil(); }
+    for d, i: r[0].doc_names { if d == a.v[0].s { return rs_strv(r[0].doc_texts[i]); } }
+    rs_fail(r, "no file '", a.v[0].s, "' in the context: see `files`");
+    return rs_nil();
+  }
+  if name == "open" || name == "exec" || name == "eval" || name == "input" || name == "__import__" || name == "compile" {
+    rs_fail(r, name, "() is not available: the context is in `context` (and doc(path) for a file of it)", "");
+    return rs_nil();
+  }
+  if rs_find(r, name) >= 0 { rs_fail(r, "'", name, "' is not callable"); return rs_nil(); }
+  rs_fail(r, "name '", name, "' is not defined");
+  return rs_nil();
+}
+
+// ---------------------------------------------------------------- sub-model calls
+
+// A call of kind for q (one prompt, a str, or a list of them): the answers from the memo when
+// this pass has reached entries the memo has, else the prompts go into pend and the block
+// suspends. A failed entry (memo_fail: a limit refused the call) ends the block with its text.
+rs_ask :: (r: [] Rs, kind: int, q: RsVal) -> RsVal {
+  n := ifx q.kind == RS_STR then 1 else rs_len_of(r, q.i);
+  if r[0].mused + n <= r[0].nmemo {
+    at := r[0].mused; r[0].mused += n;
+    for i: at..<at + n { if r[0].memo_fail[i] { rs_fail(r, r[0].memo[i], "", ""); return rs_nil(); } }
+    if q.kind == RS_STR { return rs_strv(r[0].memo[at]); }
+    l := rs_new_list(r, n); if rs_bad(r) { return rs_nil(); }
+    for i: at..<at + n { if !rs_list_push(r, l.i, rs_strv(r[0].memo[i])) { return rs_nil(); } }
+    return l;
+  }
+  if r[0].mused != r[0].nmemo { rs_fail(r, "the block asked for different calls when it ran again", "", ""); return rs_nil(); }
+  if n == 0 { return rs_new_list(r, 4); }
+  if r[0].pend_base + n > r[0].pend.count || r[0].nmemo + n > r[0].memo.count { rs_fail(r, "too many prompts at once in this block: batch fewer", "", ""); return rs_nil(); }
+  for i: 0..<n { r[0].pend[r[0].pend_base + i] = ifx q.kind == RS_STR then q.s else rs_at(r, q.i, i).s; }
+  r[0].npend = n; r[0].pkind = kind; r[0].suspended = true;
+  r[0].err = RS_WAITING;
+  return rs_nil();
+}
+
+// ---------------------------------------------------------------- running a block
+
+// Runs one block of source: its output in r.out[0..<r.no] (r.out_total all of it), r.err when it
+// ended on an error, r.final_set when it gave a final answer.
+rs_run :: (r: [] Rs, src: string) {
+  first := rs_parse(r, src);
+  if first >= 0 { rs_pass(r, first); }
+}
+
+// One pass over a parsed block (rs_parse's first statement): output and step count start again.
+rs_pass :: (r: [] Rs, first: int) {
+  r[0].steps = 0; r[0].brk = false; r[0].cont = false; r[0].err = ""; r[0].suspended = false;
+  r[0].mused = r[0].memo_base;
+  rs_exec(r, first);
+  if (r[0].brk || r[0].cont) && !rs_bad(r) { rs_fail(r, "'break' or 'continue' outside a loop", "", ""); }
+  r[0].brk = false; r[0].cont = false;
+}
