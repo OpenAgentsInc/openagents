@@ -256,5 +256,29 @@ check("one player's words are never told to another", "Wren" not in system and "
 status, system = ask_as(mem["key"], mem_addr, "visit-5", "Hello", npc="tilda")
 check("each character remembers only what was said to it", "talked with you before" not in system, system)
 npc_reset()
+
+# ---- the NPC ask's fixtures (E4, #13247): proto/verse/npc-ask-v1.json, the bytes the pages write through
+# aethyr/talk/wire.coax (aethyr/talk/wire-goldens.coax checks the codec writes and reads each). Each is
+# posted as it is, byte for byte, by a new player, and gets the fixture's status; a 200's body is the answer
+# the fixture names, byte for byte.
+npc_fx = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "proto", "verse", "npc-ask-v1.json")))
+fx_owner, fx_owner_addr = npc_fresh()
+st, raw, _ = call("POST", "/api/playtest/realms", json.dumps({"board": {"name": "Fixture Hollow", "features": [
+    {"feature": "rocks", "on": True, "count": 2}, {"feature": "character", "on": True, "name": "Old Mott", "role": "keeps the bridge"}]}}).encode(),
+    {"Content-Type": "application/json", "X-Verse-Player": fx_owner["key"]})
+check("the fixtures' made realm is made as fixture-hollow", st == 200 and json.loads(raw).get("slug") == "fixture-hollow", raw)
+fx_answer = npc_fx["answers"][0]["json"].encode()
+for case in npc_fx["asks"] + npc_fx["refused"]:
+    npc_reset()
+    if "\"realm\":" in case["json"]:
+        k, ad = fx_owner, fx_owner_addr   # the realm's owner talks in it, TALK on or off
+    else:
+        k, ad = npc_fresh()
+    st, raw, _ = call("POST", "/api/playtest/npc/ask", case["json"].encode(),
+                      {"Content-Type": "application/json", "X-Verse-Player": k["key"], "X-Forwarded-For": ad + ", 10.0.0.1"})
+    check("fixture %s: %d" % (case["name"], case["status"]), st == case["status"], (st, raw))
+    if case["status"] == 200:
+        check("fixture %s: the answer is the fixture's, byte for byte" % case["name"], raw == fx_answer, raw)
+npc_reset()
 fake.shutdown()
 fake.server_close()

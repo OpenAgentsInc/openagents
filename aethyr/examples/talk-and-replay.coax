@@ -1,12 +1,13 @@
 // book:begin example
+#load "../talk/ask.coax";
 #load "../talk/wire.coax";
 #import "Basic";
 
 // A deterministic transport fixture: no socket, model, credential or database.
 reply_fixture :: (s:[]TalkSession,key:TalkKey,tick:int,http:int,body:string)->bool #effects(all) {
-  words:[TALK_LINE_BYTES]u8;r:=TalkRead.{status=TalkReadStatus.json};
-  if http==200 {r=talk_decode_reply(body,words[..]);}
-  ok:=http==200 && r.status==TalkReadStatus.ok;
+  words:[TALK_LINE_BYTES]u8;r:=NpcRead.{status=NpcStatus.json};
+  if http==200 {r=npc_answer_decode(body,words[..]);}
+  ok:=http==200 && r.status==NpcStatus.ok;
   text:="";if ok {text=cast(string)words[0..<r.count];}
   return talk_receive(s,key,tick,ok,text);
 }
@@ -16,12 +17,12 @@ exit :: (code:s32) #foreign #effects(foreign);
 main :: () #effects(all) {
   c:=TalkCharacter.{id=EntityId.{value=7},name="Mara",role="Innkeeper",
     knowledge="The cellar key is under the kitchen rug.",greeting="Welcome.",fallback="Try the kitchen rug."};
-  live:[1]TalkSession;play:[1]TalkSession;out:[TALK_REQUEST_BYTES]u8;
+  live:[1]TalkSession;play:[1]TalkSession;out:[NPC_ASK_BYTES]u8;
   coins:=3;guard_x:=12;sends:=0;
   if !talk_open(live[..],c,11) {exit(1);return;}
   if talk_begin(live[..],c,"Where is the cellar key?",10,5)!=TalkStart.send {exit(1);return;}sends+=1;
-  n:=talk_write_request(c,"Lamp Cove",live[0].history[0..<live[0].history_n],talk_line_text(live[0].question[..]),out[..]);
-  if n!=187 {exit(1);return;}print("first request: % bytes; ticket %/%/%/%\n",n,live[0].key.epoch,live[0].key.request,live[0].key.character.value,live[0].key.player);
+  n:=npc_ask_write(NpcAsk.{npc="mara",world="lamp-cove",question=talk_line_text(live[0].question[..])},out[..]);
+  if n!=85 {exit(1);return;}print("first request: % bytes; ticket %/%/%/%\n",n,live[0].key.epoch,live[0].key.request,live[0].key.character.value,live[0].key.player);
   first:=live[0].key;
   if !reply_fixture(live[..],first,11,200,"{\"text\":\"The cellar key is under the kitchen rug.\",\"model\":\"fixture\"}") {exit(1);return;}
   print("tick 11: %\n",talk_line_text(live[0].answer[..]));

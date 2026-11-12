@@ -1915,42 +1915,12 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
 everglade_ask :: (s: [] Everglade) -> int #export_c #effects(all) { return s[0].ask_n; }
 everglade_ask_sent :: (s: [] Everglade) #export_c #effects(all) { s[0].ask_n = 0; }
 
-// The "text" of the server's answer, unescaped, into out; its length.
-answer_text :: (body: string, out: [] u8) -> int {
-  // "text", a colon and the opening quote, with or without spaces between (the server writes "text": ")
-  key := "\"text\"";
-  i := 0; found := -1;
-  while i + key.count <= body.count {
-    if body[i..<i + key.count] == key {
-      j := i + key.count;
-      while j < body.count && body[j] == ' ' { j += 1; }
-      if j < body.count && body[j] == ':' {
-        j += 1;
-        while j < body.count && body[j] == ' ' { j += 1; }
-        if j < body.count && body[j] == '"' { found = j + 1; break; }
-      }
-    }
-    i += 1;
-  }
-  if found < 0 { return 0; }
-  n := 0; i = found;
-  while i < body.count && body[i] != '"' && n < out.count {
-    c := body[i];
-    if c == '\\' && i + 1 < body.count {
-      e := body[i + 1];
-      if e == 'u' { out[n] = '\''; n += 1; i += 6; continue; }   // a rare escape: a stand-in
-      out[n] = ifx e == 'n' || e == 't' || e == 'r' then cast(u8) ' ' else e; n += 1; i += 2; continue;
-    }
-    out[n] = c; n += 1; i += 1;
-  }
-  return n;
-}
 everglade_answer :: (s: [] Everglade, reply: string) #export_c #effects(all) {
   if s[0].talk < 0 || !s[0].waiting { return; }
   s[0].waiting = false;
   ok := reply.count > 4 && reply[0..<4] == "200\n";
   text: [LINE_BYTES] u8;
-  n := ifx ok then answer_text(reply[4..<reply.count], text[..]) else 0;
+  n := ifx ok then npc_answer_text(reply[4..<reply.count], text[..]) else 0;   // the NPC ask's codec (aethyr/talk/wire.coax)
   if n > 0 { add_line(s, true, cast(string) text[0..<n]); return; }
   add_line(s, true, ifx eg_is_cat(s[0].talk) then "Mrrp." else "Hm? Say that again, I didn't catch it.");
 }

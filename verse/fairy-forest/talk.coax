@@ -9,6 +9,7 @@
 // the talk; its face (fairy-face.c) sends the body and hands back the answer.
 //   coax/bin/coax test apps/openagents-web/fairy.coax   (these checks run with the page's)
 #load "talk-words.coax";   // who they are, as words (the server reads the same)
+#load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 FF_REMARK_NEAR :: 12.0;    // metres: near enough to hear a creature's passing remark
 
@@ -46,8 +47,10 @@ ff_remark :: (f: [] Forest, c: int, turn: int) -> string {
   return FF_REMARKS[c * FF_REMARKS_EACH + t % FF_GREY_REMARKS];
 }
 
-// ---- the question's body: JSON, every text escaped
+// ---- the question's scene, as words (the NPC ask's codec, aethyr/talk/wire.coax, writes the body)
 
+// A JSON string's inside (" and \ escaped, a control byte as a space), for fairyroom.coax's own
+// messages; the NPC ask is the codec's.
 ff_json :: (out: [] u8, at: int, text: string) -> int {
   n := at;
   for i: 0..<text.count {
@@ -63,13 +66,6 @@ ff_raw :: (out: [] u8, at: int, text: string) -> int {
   for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
   return n;
 }
-ff_field :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> int {
-  n := ff_raw(out, at, ifx comma then ",\"" else "\"");
-  n = ff_raw(out, n, name);
-  n = ff_raw(out, n, "\":\"");
-  n = ff_json(out, n, text);
-  return ff_raw(out, n, "\"");
-}
 ff_digit :: (out: [] u8, at: int, v: int) -> int {
   if at >= out.count { return at; }
   out[at] = cast(u8) ('0' + clamp_i(v, 0, 9));
@@ -83,21 +79,21 @@ clamp_i :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { r
 ff_scene :: (out: [] u8, at: int, f: [] Forest, c: int) -> int {
   g := cast(int) FF_CREATURE[c * 4 + 2];
   done := ff_glade_done(f, g); all := ff_glade_patches(g);
-  n := ff_json(out, at, "Patches the fairy has bloomed in your glade so far: ");
-  n = ff_digit(out, n, done); n = ff_json(out, n, " of "); n = ff_digit(out, n, all); n = ff_json(out, n, ".");
+  n := ff_raw(out, at, "Patches the fairy has bloomed in your glade so far: ");
+  n = ff_digit(out, n, done); n = ff_raw(out, n, " of "); n = ff_digit(out, n, all); n = ff_raw(out, n, ".");
   if done >= all {
-    n = ff_json(out, n, " Your trouble is solved: the fairy talking to you did it. Thank them warmly, and say what has changed for you.");
+    n = ff_raw(out, n, " Your trouble is solved: the fairy talking to you did it. Thank them warmly, and say what has changed for you.");
   } else if done > 0 {
-    n = ff_json(out, n, " The fairy has started to help you; say what is still grey and where.");
+    n = ff_raw(out, n, " The fairy has started to help you; say what is still grey and where.");
   } else {
-    n = ff_json(out, n, " Ask the fairy for help with it, kindly.");
+    n = ff_raw(out, n, " Ask the fairy for help with it, kindly.");
   }
-  n = ff_json(out, n, " You feel ");
-  n = ff_json(out, n, FF_FEEL_WORDS[ff_feel(f, c)]);
-  n = ff_json(out, n, " now.");
-  n = ff_json(out, n, " Roots of the heart tree awake: ");
-  n = ff_digit(out, n, ff_roots_awake(f)); n = ff_json(out, n, " of 5.");
-  if f[0].heart { n = ff_json(out, n, " The heart tree has bloomed and colour is back in the whole park: the fairy saved the forest."); }
+  n = ff_raw(out, n, " You feel ");
+  n = ff_raw(out, n, FF_FEEL_WORDS[ff_feel(f, c)]);
+  n = ff_raw(out, n, " now.");
+  n = ff_raw(out, n, " Roots of the heart tree awake: ");
+  n = ff_digit(out, n, ff_roots_awake(f)); n = ff_raw(out, n, " of 5.");
+  if f[0].heart { n = ff_raw(out, n, " The heart tree has bloomed and colour is back in the whole park: the fairy saved the forest."); }
   return n;
 }
 
@@ -105,61 +101,20 @@ ff_scene :: (out: [] u8, at: int, f: [] Forest, c: int) -> int {
 FfLine :: struct { npc: bool; text: string; }
 
 // The body for /api/playtest/npc/ask (#13261): talker c's id, the world, this visit's stamp, a
-// creature's scene (ff_scene; Rowan has none), the talk so far (oldest first) and the question.
-// Who it is, its trouble, the park and its keeper's lore (edit mode's panes) are the server's. The
-// bytes written, or 0 when it didn't fit.
+// creature's scene (ff_scene; Rowan has none), the talk so far (oldest first) and the question,
+// written by the NPC ask's one codec (aethyr/talk/wire.coax). Who it is, its trouble, the park and
+// its keeper's lore (edit mode's panes) are the server's. The bytes written, or 0 when it didn't fit.
 ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: string, visit: string) -> int {
-  if c < 0 || c >= FF_TALKERS { return 0; }
+  if c < 0 || c >= FF_TALKERS || lines.count > NPC_HISTORY { return 0; }
   id: [16] u8;
   idn := ff_talker_id(c, id[..]);
-  n := ff_raw(out, 0, "{");
-  n = ff_field(out, n, "npc", cast(string) id[0..<idn], false);
-  n = ff_field(out, n, "world", FF_WORLD_ID, true);
-  n = ff_field(out, n, "visit", visit, true);
-  if c != FF_WOODCUTTER { n = ff_raw(out, n, ",\"scene\":\""); n = ff_scene(out, n, f, c); n = ff_raw(out, n, "\""); }
-  n = ff_raw(out, n, ",\"history\":[");
-  for k: 0..<lines.count {
-    n = ff_raw(out, n, ifx k > 0 then ",{\"from\":\"" else "{\"from\":\"");
-    n = ff_raw(out, n, ifx lines[k].npc then "npc\"" else "player\"");
-    n = ff_field(out, n, "text", lines[k].text, true);
-    n = ff_raw(out, n, "}");
-  }
-  n = ff_raw(out, n, "]");
-  n = ff_field(out, n, "question", question, true);
-  n = ff_raw(out, n, "}");
-  if n >= out.count - 1 { return 0; }
-  return n;
-}
-
-// The "text" of the server's answer, unescaped, into out; its length.
-ff_answer_text :: (body: string, out: [] u8) -> int {
-  // "text", then a colon and the opening quote, with or without spaces between (the server writes "text": ")
-  key := "\"text\"";
-  i := 0; found := -1;
-  while i + key.count <= body.count {
-    if body[i..<i + key.count] == key {
-      j := i + key.count;
-      while j < body.count && body[j] == ' ' { j += 1; }
-      if j < body.count && body[j] == ':' {
-        j += 1;
-        while j < body.count && body[j] == ' ' { j += 1; }
-        if j < body.count && body[j] == '"' { found = j + 1; break; }
-      }
-    }
-    i += 1;
-  }
-  if found < 0 { return 0; }
-  n := 0; i = found;
-  while i < body.count && body[i] != '"' && n < out.count {
-    c := body[i];
-    if c == '\\' && i + 1 < body.count {
-      e := body[i + 1];
-      if e == 'u' { out[n] = '\''; n += 1; i += 6; continue; }   // a rare escape: a stand-in
-      out[n] = ifx e == 'n' || e == 't' || e == 'r' then cast(u8) ' ' else e; n += 1; i += 2; continue;
-    }
-    out[n] = c; n += 1; i += 1;
-  }
-  return n;
+  scene: [2048] u8; sn := 0;
+  if c != FF_WOODCUTTER { sn = ff_scene(scene[..], 0, f, c); }
+  turns: [NPC_HISTORY] NpcTurn;
+  for k: 0..<lines.count { turns[k] = NpcTurn.{npc = lines[k].npc, text = lines[k].text}; }
+  n := npc_ask_write(NpcAsk.{npc = cast(string) id[0..<idn], world = FF_WORLD_ID, has_visit = true, visit = visit,
+                             scene = cast(string) scene[0..<sn], history = turns[0..<lines.count], question = question}, out);
+  return ifx n > 0 then n else 0;
 }
 
 ff_has :: (text: string, part: string) -> bool {
@@ -204,10 +159,8 @@ ff_has :: (text: string, part: string) -> bool {
   #assert ff_ask_body(small[..], f[..], 0, lines[..], "x", "1") == 0 && ff_ask_body(out[..], f[..], FF_TALKERS, lines[..], "x", "1") == 0;
   n = ff_ask_body(out[..], f[..], FF_WOODCUTTER, lines[..], "x", "1");
   #assert n > 0 && ff_has(cast(string) out[0..<n], "{\"npc\":\"rowan\",") && !ff_has(cast(string) out[0..<n], "scene") && FF_ROWAN_PERSONA.count <= 120;
+  // the answer is the codec's to read (npc_answer_text): one line, as the server writes it
   t: [64] u8;
-  m := ff_answer_text("{\"text\":\"Oh, \\\"thank\\\" you!\\nTruly.\",\"model\":\"g\"}", t[..]);
+  m := npc_answer_text("{\"text\": \"Oh, \\\"thank\\\" you!\\nTruly.\", \"model\": \"gemini\"}", t[..]);
   #assert cast(string) t[0..<m] == "Oh, \"thank\" you! Truly.";
-  // as the server writes it: a space after each colon
-  m = ff_answer_text("{\"text\": \"Oh, hello.\", \"model\": \"gemini\"}", t[..]);
-  #assert cast(string) t[0..<m] == "Oh, hello.";
 }

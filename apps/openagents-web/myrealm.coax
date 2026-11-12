@@ -44,6 +44,7 @@
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 #load "../../aethyr/budget.coax";
+#load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 #load "myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
 #load "../../aethyr/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
 #load "../../aethyr/loop.coax";    // the walking's fixed steps: Aethyr's one clock (aethyr/book ch001)
@@ -866,6 +867,8 @@ next_request :: (s: [] MyRealm) {
   if s[0].press_due != 0 { press_due_go(s); if busy(s) { return; } }
   if s[0].ask_due && s[0].talk_p >= 0 {
     s[0].ask_due = false;
+    // the sample realm (/worlds/built with none named) isn't on the server: no character there answers
+    if s[0].slug_n == 0 { set_note(s, "No answer. Try again."); return; }
     n := talk_body(s, s[0].req_body[..]);
     if n == 0 { set_note(s, "That was too long. Try a shorter one."); return; }
     talk_add(s, false, cast(string) s[0].asked[0..<s[0].asked_n]);
@@ -1962,21 +1965,6 @@ talk_let_go :: (s: [] MyRealm) {
   s[0].voice_held = false; s[0].heard_due = true; s[0].want_voice = 2;
 }
 
-// a JSON string's inside: quotes and backslashes escaped, control bytes as spaces
-json_in :: (out: [] u8, at: int, text: string) -> int {
-  n := at;
-  for i: 0..<text.count {
-    c := text[i];
-    if n + 2 >= out.count { return n; }
-    if c == '"' || c == '\\' { out[n] = '\\'; out[n + 1] = c; n += 2; continue; }
-    out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1;
-  }
-  return n;
-}
-json_field :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> int {
-  n := put(out, at, ifx comma then ",\"" else "\""); n = put(out, n, name); n = put(out, n, "\":\"");
-  n = json_in(out, n, text); return put(out, n, "\"");
-}
 TREE_AUTUMN :: 6; TREE_ACACIA :: 7;
 TREE_WORDS :: [8] string.["round trees", "pines", "dead trees", "trees of every kind", "palm trees", "blossom trees", "autumn trees, orange and red", "acacia trees"];
 PROP_WORDS :: [PROP_KINDS] string.["crates", "barrels", "wagons", "a fence", "a camp", "a campfire", "boats", "a bridge", "a signpost", "a well", "treasure", "gravestones", "tumbleweeds", "a statue",
@@ -1990,80 +1978,46 @@ CAMERA_CONTROLS :: [4] string.[
 // what stands there (#13261). Who they are, the others who live here and its owner's lore are the
 // server's, from the realm's document; this goes as the question's scene.
 scene_of :: (s: [] MyRealm, out: [] u8, at: int) -> int {
-  n := json_in(out, at, "It is ");
-  n = json_in(out, n, TIMES[s[0].tod]); n = json_in(out, n, " here, on "); n = json_in(out, n, GROUNDS[s[0].ground]); n = json_in(out, n, " ground.");
-  n = json_in(out, n, LAND_WORDS[s[0].land]);
-  if s[0].water > 0 { n = json_in(out, n, ifx s[0].water_kind == 2 then " A river runs across it." else ifx s[0].water_kind == 3 then " There is a frozen pond." else ifx s[0].water_kind == 4 then " There is a pool of lava." else " There is water."); }
-  for i: 0..<s[0].building_n { n = json_in(out, n, " There is "); n = json_in(out, n, BUILDING_WORDS[s[0].building[i]]); n = json_in(out, n, "."); }
-  if s[0].great { n = json_in(out, n, " A giant tree stands over it all."); }
-  if s[0].trees > 0 { n = json_in(out, n, " There are "); n = json_in(out, n, TREE_WORDS[s[0].tree_kind]); n = json_in(out, n, "."); }
-  if s[0].rocks > 0 { n = json_in(out, n, " There are rocks."); }
-  if s[0].lanterns > 0 { n = json_in(out, n, " Lanterns stand about."); }
-  if s[0].mist { n = json_in(out, n, " Mist lies over the land."); }
-  if s[0].birds > 0 { n = json_in(out, n, FLIER_SAY[s[0].flier]); }
-  if s[0].houses > 0 { n = json_in(out, n, ifx s[0].houses == 1 then " There is a " else " There are "); n = json_in(out, n, HOUSE_COLOURS[s[0].house_colour]); n = json_in(out, n, ifx s[0].houses == 1 then " house." else " houses."); }
-  for i: 0..<s[0].prop_n { n = json_in(out, n, " There is "); n = json_in(out, n, PROP_WORDS[s[0].props[i]]); n = json_in(out, n, "."); }
+  n := put(out, at, "It is ");
+  n = put(out, n, TIMES[s[0].tod]); n = put(out, n, " here, on "); n = put(out, n, GROUNDS[s[0].ground]); n = put(out, n, " ground.");
+  n = put(out, n, LAND_WORDS[s[0].land]);
+  if s[0].water > 0 { n = put(out, n, ifx s[0].water_kind == 2 then " A river runs across it." else ifx s[0].water_kind == 3 then " There is a frozen pond." else ifx s[0].water_kind == 4 then " There is a pool of lava." else " There is water."); }
+  for i: 0..<s[0].building_n { n = put(out, n, " There is "); n = put(out, n, BUILDING_WORDS[s[0].building[i]]); n = put(out, n, "."); }
+  if s[0].great { n = put(out, n, " A giant tree stands over it all."); }
+  if s[0].trees > 0 { n = put(out, n, " There are "); n = put(out, n, TREE_WORDS[s[0].tree_kind]); n = put(out, n, "."); }
+  if s[0].rocks > 0 { n = put(out, n, " There are rocks."); }
+  if s[0].lanterns > 0 { n = put(out, n, " Lanterns stand about."); }
+  if s[0].mist { n = put(out, n, " Mist lies over the land."); }
+  if s[0].birds > 0 { n = put(out, n, FLIER_SAY[s[0].flier]); }
+  if s[0].houses > 0 { n = put(out, n, ifx s[0].houses == 1 then " There is a " else " There are "); n = put(out, n, HOUSE_COLOURS[s[0].house_colour]); n = put(out, n, ifx s[0].houses == 1 then " house." else " houses."); }
+  for i: 0..<s[0].prop_n { n = put(out, n, " There is "); n = put(out, n, PROP_WORDS[s[0].props[i]]); n = put(out, n, "."); }
   return n;
 }
 // The question's body (#13261): the character's id (who_of, the key its lore is kept under), the
 // realm, this visit, the scene (scene_of and how to play here), the talk so far (oldest first) and
-// the question; 0 when it didn't fit.
+// the question, written by the NPC ask's one codec (aethyr/talk/wire.coax); 0 when it didn't fit.
+TALK_SCENE :: 4096;
 talk_body :: (s: [] MyRealm, out: [] u8) -> int {
   p := s[0].talk_p;
   who: [PERSON] u8; wn := who_of(s, p, who[..]);
-  n := put(out, 0, "{");
-  n = json_field(out, n, "npc", cast(string) who[0..<wn], false);
-  if s[0].slug_n > 0 { n = json_field(out, n, "realm", slug_text(s), true); }
-  n = json_field(out, n, "visit", cast(string) s[0].visit[0..<s[0].visit_n], true);
-  n = put(out, n, ",\"scene\":\""); n = scene_of(s, out, n);
-  n = json_in(out, n, " How to play here: "); n = json_in(out, n, CAMERA_CONTROLS[s[0].camera]);
-  n = json_in(out, n, " E near a character, or a tap on one, talks to them: type and press Enter");
-  if may_voice(s) { n = json_in(out, n, ", or hold HOLD TO TALK and speak"); }
-  n = json_in(out, n, "; BYE or Esc ends the talk.\"");
-  n = put(out, n, ",\"history\":[");
-  for k: 0..<s[0].talk_n {
-    n = put(out, n, ifx k > 0 then ",{\"from\":\"" else "{\"from\":\"");
-    n = put(out, n, ifx s[0].talk_npc[k] then "npc\"" else "player\"");
-    n = json_field(out, n, "text", talk_text(s, k), true);
-    n = put(out, n, "}");
-  }
-  n = put(out, n, "]");
-  n = json_field(out, n, "question", cast(string) s[0].asked[0..<s[0].asked_n], true);
-  n = put(out, n, "}");
-  return ifx n >= out.count - 1 then 0 else n;
-}
-// The "text" of the server's answer, unescaped, into out; its length.
-answer_text :: (body: string, out: [] u8) -> int {
-  key := "\"text\""; i := 0; found := -1;
-  while i + key.count <= body.count {
-    if body[i..<i + key.count] == key {
-      j := i + key.count;
-      while j < body.count && body[j] == ' ' { j += 1; }
-      if j < body.count && body[j] == ':' {
-        j += 1; while j < body.count && body[j] == ' ' { j += 1; }
-        if j < body.count && body[j] == '"' { found = j + 1; break; }
-      }
-    }
-    i += 1;
-  }
-  if found < 0 { return 0; }
-  n := 0; i = found;
-  while i < body.count && body[i] != '"' && n < out.count {
-    c := body[i];
-    if c == '\\' && i + 1 < body.count {
-      e := body[i + 1];
-      if e == 'u' { out[n] = '\''; n += 1; i += 6; continue; }
-      out[n] = ifx e == 'n' || e == 't' || e == 'r' then cast(u8) ' ' else e; n += 1; i += 2; continue;
-    }
-    out[n] = c; n += 1; i += 1;
-  }
-  return n;
+  scene: [TALK_SCENE] u8;
+  n := scene_of(s, scene[..], 0);
+  n = put(scene[..], n, " How to play here: "); n = put(scene[..], n, CAMERA_CONTROLS[s[0].camera]);
+  n = put(scene[..], n, " E near a character, or a tap on one, talks to them: type and press Enter");
+  if may_voice(s) { n = put(scene[..], n, ", or hold HOLD TO TALK and speak"); }
+  n = put(scene[..], n, "; BYE or Esc ends the talk.");
+  turns: [TALK_LINES] NpcTurn;
+  for k: 0..<s[0].talk_n { turns[k] = NpcTurn.{npc = s[0].talk_npc[k], text = talk_text(s, k)}; }
+  w := npc_ask_write(NpcAsk.{npc = cast(string) who[0..<wn], realm = slug_text(s), has_visit = true, visit = cast(string) s[0].visit[0..<s[0].visit_n],
+                             scene = cast(string) scene[0..<n], history = turns[0..<s[0].talk_n],
+                             question = cast(string) s[0].asked[0..<s[0].asked_n]}, out);
+  return ifx w > 0 then w else 0;
 }
 talk_answered :: (s: [] MyRealm, status: int, body: string) {
   s[0].talk_wait = false;
   if s[0].talk_p < 0 { return; }
   if status == 200 {
-    buf: [TALK_LINE] u8; m := answer_text(body, buf[..]);
+    buf: [TALK_LINE] u8; m := npc_answer_text(body, buf[..]);   // the NPC ask's codec
     if m > 0 {
       talk_add(s, true, cast(string) buf[0..<m]);
       if s[0].spoken { s[0].say_n = copy_into(s[0].say[..], cast(string) buf[0..<m]); }
@@ -3536,7 +3490,13 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
   realm_message(s[..], t[..], MSG_TEXT, "hello");
   e := realm_key(s[..], t[..], KEY_ENTER, true);
   m := frame_of(s[..], t[..], 2560, 1600);
-  #assert url_is(s[..], NPC_URL) && !has_text(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"realm\"");
+  // the sample realm isn't on the server: nothing is asked (the NPC ask names a realm)
+  #assert !url_is(s[..], NPC_URL) && s[0].talk_n == 0;
+  s[0].slug_n = copy_into(s[0].slug[..], "built-here");   // as /worlds/built#built-here opens it
+  realm_message(s[..], t[..], MSG_TEXT, "hello");
+  e = realm_key(s[..], t[..], KEY_ENTER, true);
+  m = frame_of(s[..], t[..], 2560, 1600);
+  #assert url_is(s[..], NPC_URL) && has_text(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"realm\":\"built-here\"");
   realm_requested(s[..], 0);
   a := "200\n{\"text\": \"Mint, mostly.\", \"model\": \"m\"}";
   #assert !redit_message(s[0].ed[..], HTTP_ANSWER_KIND, a);   // the face asks the edit layer first
@@ -4146,6 +4106,24 @@ gate_clear :: (s: [] MyRealm) -> bool {
   #assert s[0].piece_n <= PIECES && s[0].solid_n <= SOLIDS;
   // a wall stops you: nothing stands inside a wall
   for k: 0..<s[0].solid_n { for q: 0..<s[0].seg_n { #assert seg_gap(s[..], q, s[0].solid_x[k], s[0].solid_z[k]) > -0.01 || s[0].solid_r[k] < 0.5; } }
+}
+#test "a question to a character is the NPC ask's body: its id, the realm, the visit, the scene with how to play, the talk and the question" {
+  s: [1] MyRealm;
+  s[0].slug_n = copy_into(s[0].slug[..], "talking-hollow");
+  s[0].people = 1; s[0].person_n[0] = copy_into(s[0].person[0..<PERSON], "Old Mott");
+  s[0].talk_p = 0; s[0].visit_n = copy_into(s[0].visit[..], "1730000000123");
+  s[0].trees = 3; s[0].tree_kind = 1; s[0].mist = true;
+  talk_add(s[..], true, "Mind the bridge.");
+  talk_add(s[..], false, "Is it \"safe\"?");
+  s[0].asked_n = copy_into(s[0].asked[..], "Who are you?");
+  out: [8192] u8;
+  n := talk_body(s[..], out[..]);
+  // proto/verse/npc-ask-v1.json's made realm (its slug there is the API check's own realm)
+  #assert cast(string) out[0..<n] == "{\"npc\":\"old-mott\",\"realm\":\"talking-hollow\",\"visit\":\"1730000000123\",\"scene\":\"It is day here, on meadow ground. There are pines. Mist lies over the land. How to play here: W and S or the arrows walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns. E near a character, or a tap on one, talks to them: type and press Enter; BYE or Esc ends the talk.\",\"history\":[{\"from\":\"npc\",\"text\":\"Mind the bridge.\"},{\"from\":\"player\",\"text\":\"Is it \\\"safe\\\"?\"}],\"question\":\"Who are you?\"}";
+  small: [64] u8; #assert talk_body(s[..], small[..]) == 0;
+  s[0].asked_n = copy_into(s[0].asked[..], "  "); #assert talk_body(s[..], out[..]) == 0;   // nothing asked
+  t: [64] u8; m := npc_answer_text("{\"text\": \"Who? Me.\\nOld Mott.\", \"model\": \"m\"}", t[..]);
+  #assert cast(string) t[0..<m] == "Who? Me. Old Mott.";
 }
 #test "a realm with none of the site's features lays out as before: no walls, no site" {
   s: [1] MyRealm; t: [1] Track;

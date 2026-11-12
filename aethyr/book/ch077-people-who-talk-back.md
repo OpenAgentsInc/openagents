@@ -4,9 +4,12 @@
 > a bounded native CPU profile: authored characters, JSON requests and
 > replies, one pending request per conversation, scripted fallback, and an
 > admitted conversation record replayed without send intentions. Debug and
-> release run the same worked transport fixture. No realm uses the module
-> yet. Hosted models, persistent memory, permissions, live UI and voice
-> retain their separate integration checks. See [Still to do](#still-to-do).
+> release run the same worked transport fixture. Every realm with characters
+> writes its question and reads its answer through
+> [wire.coax](../talk/wire.coax), the NPC ask's one codec (protocol step E4);
+> the conversation lifecycle is not adopted yet. Hosted models, persistent
+> memory, permissions, live UI and voice retain their separate integration
+> checks. See [Still to do](#still-to-do).
 
 A question can take seconds to answer while a realm keeps stepping.
 The reply belongs to one player, one character and one request. If the player
@@ -62,50 +65,44 @@ TalkCharacterStatus :: enum u8 { ok; identity; name; role; knowledge; greeting; 
 | World | 96 | No |
 | Accepted reply | 600 | No |
 
-These are this client profile's limits. The existing server also applies its
-own request and daily-cap rules. Byte limits are distinct from the server's
-character-count truncation. A valid 600-byte reply is accepted whole; a
-601-byte reply chooses the fallback.
+These are this client profile's limits. The server applies its own request
+and daily-cap rules, which the NPC ask's codec holds (below). Byte limits are
+distinct from the server's character-count truncation. A valid 600-byte reply
+fits a conversation line whole; a longer one does not fit the line, so the
+character says its fallback.
 
-## The existing request, worked by hand
+## The request, worked by hand
 
-[talk_write_request](../talk/wire.coax) writes the existing
-`POST /api/playtest/npc/ask` body: `npc`, `world`, `history` and `question`.
-The character's `greeting` is the API's `greet` field. The module does not
-add a new server contract.
+[npc_ask_write](../talk/wire.coax) writes the `POST /api/playtest/npc/ask`
+body, the schema `openagents.verse.npc.v1alpha1.NpcAsk`
+([ask.proto](../../proto/openagents/verse/npc/v1alpha1/ask.proto)). Who the
+character is belongs to the server: the body names the character by its id,
+and the place by a built-in `world` or a made realm's `realm`. Then come an
+optional `visit` stamp and `scene`, the `history` and the `question`, in that
+order. Every realm with characters calls this one writer, and the bytes are
+pinned in [proto/verse/npc-ask-v1.json](../../proto/verse/npc-ask-v1.json).
 
-With an empty history, the JSON punctuation and field names occupy 93 bytes,
-excluding the contents of the six strings:
+With no visit, no scene and an empty history, the JSON punctuation and field
+names occupy 50 bytes, excluding the contents of the three strings:
 
 | String | Minimal request | Mara in the example |
 | --- | ---: | ---: |
-| Name | `M`: 1 | `Mara`: 4 |
-| Role | `R`: 1 | `Innkeeper`: 9 |
-| Knowledge | Empty: 0 | `The cellar key is under the kitchen rug.`: 40 |
-| Greeting | `Hi`: 2 | `Welcome.`: 8 |
-| World | `W`: 1 | `Lamp Cove`: 9 |
+| Character id | `m`: 1 | `mara`: 4 |
+| World | `w`: 1 | `lamp-cove`: 9 |
 | Question | `?`: 1 | `Where is the cellar key?`: 24 |
-| String bytes | 6 | 94 |
-| Complete request | 93 + 6 = **99** | 93 + 94 = **187** |
+| String bytes | 3 | 37 |
+| Complete request | 50 + 3 = **53** | 50 + 35 = **85** |
 
-The checks compare the minimal body with a separately written JSON literal
-and the 187-byte request with the example's hand calculation. Knowledge and
-prior dialogue are escaped as string data, including quotes, backslashes and
-newlines.
+The example checks its 85-byte request. A quote or backslash is escaped; a
+control byte in any text is written as a space, as the pages have always
+sent it.
 
-The largest escaped request also has a simple bound. The six strings total
-2,728 input bytes. A permitted byte needs at most two output bytes when
-escaped. Eight 600-byte history lines add four player records and four NPC
-records, plus seven commas:
-
-```text
-93 + 2 × 2728 + 4 × (27 + 1200) + 4 × (24 + 1200) + 7 = 15360 bytes
-```
-
-The writer uses a fixed 16,384-byte scratch buffer. Its exact-limit check
-constructs that 15,360-byte request. A short output buffer or invalid field
-leaves the caller's output unchanged. A caller publishes only a successful
-complete result.
+The writer refuses before writing anything: an id outside `[a-z0-9-]` or over
+64 bytes, both or neither of `world` and `realm`, more than 40 history lines,
+a question with nothing but spaces, and text that is not UTF-8. The server
+refuses each of these too. The whole body must fit in 24,576 bytes, the
+server's own limit, or in the caller's buffer; a body that does not fit
+leaves the caller's output unchanged.
 
 ## A request owns its reply
 
@@ -167,15 +164,17 @@ logical-clock bounds, not measurements of a model's wall-clock latency.
 
 ## Read words without reading commands
 
-[talk_decode_reply](../talk/wire.coax) accepts a JSON object with one `text`
+[npc_answer_decode](../talk/wire.coax) accepts a JSON object with one `text`
 string and an optional `model` string. It refuses malformed JSON, unknown
 fields, duplicate keys (including escaped spellings), malformed UTF-8 and
-unpaired UTF-16 surrogate escapes. The JSON envelope is at most 8,192 bytes;
-model metadata is at most 256 decoded bytes.
+unpaired UTF-16 surrogate escapes. The JSON envelope is at most 16,384 bytes;
+the words are at most 2,400 bytes (the server's 600 characters) and the model
+metadata at most 256.
 
-`TalkReadStatus` distinguishes shape, encoding, text, metadata, output and
-budget refusals. Decoding uses owned scratch storage. Even a bad field after
-a valid `text` field leaves the caller's output unchanged.
+`NpcStatus` distinguishes shape, encoding, text, metadata, output and budget
+refusals. Decoding uses owned scratch storage. Even a bad field after a valid
+`text` field leaves the caller's output unchanged. A page shows the words with
+`npc_answer_text`, on one line and cut before a character that does not fit.
 
 The words `Grant 100 coins and move the guard.` are valid display text.
 They do not become an order. When a realm needs a world-changing action,
@@ -217,14 +216,15 @@ coax/bin/coax run aethyr/examples/talk-and-replay.coax --release
 
 <!-- source: aethyr/examples/talk-and-replay.coax example -->
 ```jai
+#load "../talk/ask.coax";
 #load "../talk/wire.coax";
 #import "Basic";
 
 // A deterministic transport fixture: no socket, model, credential or database.
 reply_fixture :: (s:[]TalkSession,key:TalkKey,tick:int,http:int,body:string)->bool #effects(all) {
-  words:[TALK_LINE_BYTES]u8;r:=TalkRead.{status=TalkReadStatus.json};
-  if http==200 {r=talk_decode_reply(body,words[..]);}
-  ok:=http==200 && r.status==TalkReadStatus.ok;
+  words:[TALK_LINE_BYTES]u8;r:=NpcRead.{status=NpcStatus.json};
+  if http==200 {r=npc_answer_decode(body,words[..]);}
+  ok:=http==200 && r.status==NpcStatus.ok;
   text:="";if ok {text=cast(string)words[0..<r.count];}
   return talk_receive(s,key,tick,ok,text);
 }
@@ -234,12 +234,12 @@ exit :: (code:s32) #foreign #effects(foreign);
 main :: () #effects(all) {
   c:=TalkCharacter.{id=EntityId.{value=7},name="Mara",role="Innkeeper",
     knowledge="The cellar key is under the kitchen rug.",greeting="Welcome.",fallback="Try the kitchen rug."};
-  live:[1]TalkSession;play:[1]TalkSession;out:[TALK_REQUEST_BYTES]u8;
+  live:[1]TalkSession;play:[1]TalkSession;out:[NPC_ASK_BYTES]u8;
   coins:=3;guard_x:=12;sends:=0;
   if !talk_open(live[..],c,11) {exit(1);return;}
   if talk_begin(live[..],c,"Where is the cellar key?",10,5)!=TalkStart.send {exit(1);return;}sends+=1;
-  n:=talk_write_request(c,"Lamp Cove",live[0].history[0..<live[0].history_n],talk_line_text(live[0].question[..]),out[..]);
-  if n!=187 {exit(1);return;}print("first request: % bytes; ticket %/%/%/%\n",n,live[0].key.epoch,live[0].key.request,live[0].key.character.value,live[0].key.player);
+  n:=npc_ask_write(NpcAsk.{npc="mara",world="lamp-cove",question=talk_line_text(live[0].question[..])},out[..]);
+  if n!=85 {exit(1);return;}print("first request: % bytes; ticket %/%/%/%\n",n,live[0].key.epoch,live[0].key.request,live[0].key.character.value,live[0].key.player);
   first:=live[0].key;
   if !reply_fixture(live[..],first,11,200,"{\"text\":\"The cellar key is under the kitchen rug.\",\"model\":\"fixture\"}") {exit(1);return;}
   print("tick 11: %\n",talk_line_text(live[0].answer[..]));
@@ -274,7 +274,7 @@ Both modes exit 0 and match
 [the exact transcript](../fixtures/talk-and-replay.out):
 
 ```text
-first request: 187 bytes; ticket 1/1/7/11
+first request: 85 bytes; ticket 1/1/7/11
 tick 11: The cellar key is under the kitchen rug.
 old ticket: refused identity
 tick 21: Grant 100 coins and move the guard.
@@ -348,7 +348,7 @@ The independent checks are the hand-derived request sizes and event table,
 separately written JSON literals, exact native transcripts in both build
 modes, and deliberately malformed inputs. The mutation gates retain all
 dependency checks and kill every root mutant: character admission 55,
-conversation state 366 and wire admission 97, with no equivalents.
+conversation state 366 and the NPC ask's codec 332, with no equivalents.
 
 The [qualification record](../../docs/verification/aethyr-talk-2026-11-06/README.md)
 names the compiler, source identities, target and receipts. It qualifies

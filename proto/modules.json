@@ -175,6 +175,9 @@
       "openagents/coder/observability/v2/events.proto",
       "openagents/coder/stream/v1/reply.proto",
       "openagents/coder/route/v2/route.proto"
+    ],
+    "verse-npc": [
+      "openagents/verse/npc/v1alpha1/ask.proto"
     ]
   },
   "profile_namespaces": {
@@ -311,6 +314,10 @@
       "openagents.coder.observability.v2",
       "openagents.coder.stream.v1",
       "openagents.coder.route.v2",
+      "openagents.options.v1alpha1"
+    ],
+    "verse-npc": [
+      "openagents.verse.npc.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

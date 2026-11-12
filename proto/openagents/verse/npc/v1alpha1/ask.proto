@@ -1,0 +1,71 @@
+syntax = "proto3";
+package openagents.verse.npc.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// The NPC ask (compliance plan step E4, GitHub #13247): a question to a
+// character, POST /api/playtest/npc/ask with the X-Verse-Player key
+// (coax/web/api/npc.c; the rules are SQL verse.npc_ask in
+// coax/web/api/migrations/0157_npc_ask_keyed.sql over 0005, 0012 and 0031),
+// and the character's answer.
+//
+// One codec writes and reads both: aethyr/talk/wire.coax. Every page that
+// talks to a character calls it (Everglade, Fairy Forest, the Haunted House,
+// made realms). Fixtures: proto/verse/npc-ask-v1.json, checked through the
+// codec by aethyr/talk/wire-goldens.coax and posted to the API by
+// coax/web/api/test_npc.py.
+//
+// The JSON is written by hand, not by the JSON mapper: history is written
+// even when it is empty, and a control byte in any text is written as a
+// space (what the pages have always sent). One compact object, keys in
+// field-number order: npc, world or realm, visit, scene, history, question.
+
+// One line of the conversation so far, oldest first.
+message HistoryTurn {
+  // "npc" (the character said it) or "player".
+  optional string speaker = 1 [json_name = "from", (openagents.options.v1alpha1.required_value) = true];
+  // The server uses the first 500 characters of each.
+  optional string text = 2 [json_name = "text", (openagents.options.v1alpha1.required_value) = true];
+}
+
+message NpcAsk {
+  // npc.c refuses a larger body with a 413.
+  option (openagents.options.v1alpha1.max_message_bytes) = 24576;
+  // The character's id: its name, lower case, a dash for a space
+  // (verse/talk-id.coax). Another id, or a persona object, is a 400.
+  optional string npc = 1 [json_name = "npc", (openagents.options.v1alpha1.required_value) = true,
+                           (openagents.options.v1alpha1.max_bytes) = 64,
+                           (openagents.options.v1alpha1.grammar) = "[a-z0-9-]+"];
+  // Where the character lives. Neither, or an unknown one, is a 404.
+  oneof place {
+    // A built-in world: everglade, fairy-forest or haunted-house; its
+    // people are compiled into the API (coax/web/api/npc-personas.coax).
+    string world = 2 [json_name = "world", (openagents.options.v1alpha1.max_bytes) = 64,
+                      (openagents.options.v1alpha1.grammar) = "[a-z0-9-]+"];
+    // A made realm's slug; its characters come from the realm's document.
+    string realm = 3 [json_name = "realm", (openagents.options.v1alpha1.max_bytes) = 48,
+                      (openagents.options.v1alpha1.grammar) = "[a-z0-9-]+"];
+  }
+  // This visit's stamp. The character remembers the player's words from
+  // other visits. The server keeps the first 64 characters.
+  optional string visit = 4 [json_name = "visit"];
+  // What the page's game shows now, quoted in the player's turn, never in
+  // the system instruction. Left out when empty. The server uses the first
+  // 2000 characters.
+  optional string scene = 5 [json_name = "scene"];
+  // More than 40 is a 400. The server uses the last ten.
+  repeated HistoryTurn history = 6 [json_name = "history", (openagents.options.v1alpha1.max_count) = 40];
+  // A question that is empty or only spaces is a 400. The server uses the
+  // first 500 characters.
+  optional string question = 7 [json_name = "question", (openagents.options.v1alpha1.required_value) = true];
+}
+
+// The answer, 200 {"text": ..., "model": ...}, as the API writes it
+// (Postgres jsonb text: a space after each colon and comma). Every other
+// status carries {"error", ...}, and the page then says the character's own
+// lines.
+message NpcAnswer {
+  // At most 600 characters (verse.npc_answer), so at most 2400 bytes.
+  optional string text = 1 [json_name = "text", (openagents.options.v1alpha1.required_value) = true,
+                            (openagents.options.v1alpha1.max_bytes) = 2400];
+  optional string model = 2 [json_name = "model", (openagents.options.v1alpha1.max_bytes) = 256];
+}

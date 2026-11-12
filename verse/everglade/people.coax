@@ -4,73 +4,46 @@
 // /api/playtest/npc/ask). The server remembers a player for each of them
 // (coax/web/api/migrations/0031_npc_memory.sql): what you told one of them
 // on an earlier visit, it can recall. The cats talk too, as cats would.
-// The question's body is written here: eg_ask_body.
+// The question's body is written here, through the NPC ask's codec (aethyr/talk/wire.coax):
+// eg_ask_body.
 //   coax/bin/coax test --library verse/everglade/people.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
 
 #load "plan.coax";
 #load "people-words.coax";   // who they are, as words (the server reads the same)
+#load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 eg_is_cat :: (i: int) -> bool { return i >= 0 && i < EG_SPOTS && EG_SPOT_CAT[i]; }
 eg_role :: (i: int) -> string { return ifx eg_is_cat(i) then EG_CAT_ROLE else EG_ROLE[i]; }
 
-// ---- the question's body: JSON, every text escaped
+// One line of the conversation so far: who said it (true: the character) and what.
+EgLine :: struct { npc: bool; text: string; }
 
-json_put :: (out: [] u8, at: int, text: string) -> int {
-  n := at;
-  for i: 0..<text.count {
-    c := text[i];
-    if n + 2 >= out.count { return n; }
-    if c == '"' || c == '\\' { out[n] = '\\'; out[n + 1] = c; n += 2; continue; }
-    out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1;
-  }
-  return n;
-}
+// Copies text into out from at, as much as fits (edits.coax writes with it too).
 raw_put :: (out: [] u8, at: int, text: string) -> int {
   n := at;
   for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
   return n;
 }
-field_put :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> int {
-  n := raw_put(out, at, ifx comma then ",\"" else "\"");
-  n = raw_put(out, n, name);
-  n = raw_put(out, n, "\":\"");
-  n = json_put(out, n, text);
-  return raw_put(out, n, "\"");
-}
-
-// One line of the conversation so far: who said it (true: the character) and what.
-EgLine :: struct { npc: bool; text: string; }
 
 // The body for /api/playtest/npc/ask (#13261): the id of the person at spot i, the world, this
-// visit's stamp, the conversation so far (oldest first) and the question. Who they are, what they
-// know and the city's controls are the server's (people-words.coax, which it reads too), never the
-// page's. The number of bytes written, or 0 when it didn't fit.
+// visit's stamp, the conversation so far (oldest first) and the question, written by the NPC ask's
+// one codec (aethyr/talk/wire.coax). Who they are, what they know and the city's controls are the
+// server's (people-words.coax, which it reads too), never the page's. The number of bytes written,
+// or 0 when it didn't fit.
 eg_ask_body :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string) -> int {
   return eg_ask_body_note(out, i, lines, question, visit, "");
 }
 // The same with a note on what brought the player to them (a quest) and the talk going round town,
 // as the scene: the server quotes it in the player's turn, never in who the person is.
 eg_ask_body_note :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string, note: string) -> int {
-  if i < 0 || i >= EG_SPOTS { return 0; }
+  if i < 0 || i >= EG_SPOTS || lines.count > NPC_HISTORY { return 0; }
   id: [64] u8;
   idn := eg_person_id(i, id[..]);
-  n := raw_put(out, 0, "{");
-  n = field_put(out, n, "npc", cast(string) id[0..<idn], false);
-  n = field_put(out, n, "world", EG_WORLD_ID, true);
-  n = field_put(out, n, "visit", visit, true);
-  if note.count > 0 { n = field_put(out, n, "scene", note, true); }
-  n = raw_put(out, n, ",\"history\":[");
-  for k: 0..<lines.count {
-    n = raw_put(out, n, ifx k > 0 then ",{\"from\":\"" else "{\"from\":\"");
-    n = raw_put(out, n, ifx lines[k].npc then "npc\"" else "player\"");
-    n = field_put(out, n, "text", lines[k].text, true);
-    n = raw_put(out, n, "}");
-  }
-  n = raw_put(out, n, "]");
-  n = field_put(out, n, "question", question, true);
-  n = raw_put(out, n, "}");
-  if n >= out.count - 1 { return 0; }
-  return n;
+  turns: [NPC_HISTORY] NpcTurn;
+  for k: 0..<lines.count { turns[k] = NpcTurn.{npc = lines[k].npc, text = lines[k].text}; }
+  n := npc_ask_write(NpcAsk.{npc = cast(string) id[0..<idn], world = EG_WORLD_ID, has_visit = true, visit = visit, scene = note,
+                             history = turns[0..<lines.count], question = question}, out);
+  return ifx n > 0 then n else 0;
 }
 
 // ---- checks

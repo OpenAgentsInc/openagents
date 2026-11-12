@@ -29,6 +29,7 @@
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "access.coax";                 // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 #load "../../aethyr/budget.coax";
+#load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -1707,87 +1708,33 @@ memory_drop :: (r: [] Realm) {
 }
 // The question for the server (/api/playtest/npc/ask, pt-chat-endpoint; #13261): the character's
 // id in the house (house.json's), the world, what players taught them as the scene (the server
-// quotes it in the player's turn), the conversation so far and the question. Who they are is the
-// server's, never the page's. Its length in out, -1 when it doesn't fit.
+// quotes it in the player's turn), the conversation so far and the question, written by the NPC
+// ask's one codec (aethyr/talk/wire.coax). Who they are is the server's, never the page's. Its
+// length in out, -1 when it doesn't fit.
 HAUNT_WORLD_ID :: "haunted-house";   // the world, as the page names it to the server
 HAUNT_TAUGHT :: "Players have taught you this, and it is true here: ";
 realm_npc_body :: (r: [] Realm, id: string, taught: string, question: string, out: [] u8) -> int #export_c #effects(all) {
-  o := realm_put(out, 0, "{\"npc\":\""); o = json_put_str(out, o, id);
-  o = realm_put(out, o, "\",\"world\":\""); o = json_put_str(out, o, HAUNT_WORLD_ID);
-  if taught.count > 0 { o = realm_put(out, o, "\",\"scene\":\""); o = json_put_str(out, o, HAUNT_TAUGHT); o = json_put_str(out, o, taught); }
-  o = realm_put(out, o, "\",\"history\":[");
+  scene: [8192] u8; sn := 0;
+  if taught.count > scene.count - HAUNT_TAUGHT.count { return -1; }
+  if taught.count > 0 {
+    for c: HAUNT_TAUGHT { scene[sn] = c; sn += 1; }
+    for c: taught { scene[sn] = c; sn += 1; }
+  }
+  turns: [MEMORY_LINES] NpcTurn; tn := 0;
   at := 0;
-  while at < r[0].memory_n {
+  while at < r[0].memory_n && tn < MEMORY_LINES {
     e := at;
     while e < r[0].memory_n && r[0].memory[e] != 10 { e += 1; }
-    if at > 0 { o = realm_put(out, o, ","); }
-    o = realm_put(out, o, ifx r[0].memory[at] == 110 then "{\"from\":\"npc\",\"text\":\"" else "{\"from\":\"player\",\"text\":\"");
-    o = json_put_str(out, o, cast(string) r[0].memory[at + 2..<e]);
-    o = realm_put(out, o, "\"}");
+    turns[tn] = NpcTurn.{npc = r[0].memory[at] == 110, text = cast(string) r[0].memory[at + 2..<e]}; tn += 1;
     at = e + 1;
   }
-  o = realm_put(out, o, "],\"question\":\""); o = json_put_str(out, o, question);
-  o = realm_put(out, o, "\"}");
-  return ifx o > out.count then -1 else o;
+  return npc_ask_write(NpcAsk.{npc = id, world = HAUNT_WORLD_ID, scene = cast(string) scene[0..<sn], history = turns[0..<tn], question = question}, out);
 }
-hex4 :: (s: string, at: int) -> int {
-  v := 0;
-  for j: 0..<4 {
-    c := cast(int) s[at + j];
-    d := ifx c >= 48 && c <= 57 then c - 48 else ifx c >= 97 && c <= 102 then c - 87 else ifx c >= 65 && c <= 70 then c - 55 else -1;
-    if d < 0 { return -1; }
-    v = v * 16 + d;
-  }
-  return v;
-}
-json_space :: (c: u8) -> bool { return c == 32 || c == 9 || c == 10 || c == 13; }
-// The character's words in the server's answer ({"text": "...", "model": ...}),
-// unescaped into out, on one line. Their length, or -1 when there are none.
+// The character's words in the server's answer ({"text": "...", "model": ...}), read by the NPC
+// ask's codec, on one line. Their length, or -1 when there are none.
 realm_npc_text :: (body: string, out: [] u8) -> int #export_c #effects(all) {
-  key := "\"text\"";
-  i := 0;
-  while i + key.count <= body.count && body[i..<i + key.count] != key { i += 1; }
-  if i + key.count > body.count { return -1; }
-  i += key.count;
-  while i < body.count && json_space(body[i]) { i += 1; }
-  if i >= body.count || body[i] != 58 { return -1; }
-  i += 1;
-  while i < body.count && json_space(body[i]) { i += 1; }
-  if i >= body.count || body[i] != 34 { return -1; }
-  i += 1;
-  n := 0;
-  while i < body.count && body[i] != 34 {
-    c := body[i];
-    if c != 92 {
-      if n >= out.count { return -1; }
-      out[n] = ifx c < 32 then cast(u8) 32 else c; n += 1; i += 1;
-      continue;
-    }
-    if i + 1 >= body.count { return -1; }
-    e := body[i + 1];
-    i += 2;
-    if e == 117 {   // \uXXXX; a surrogate pair is one character
-      if i + 4 > body.count { return -1; }
-      u := hex4(body, i);
-      i += 4;
-      if u < 0 { return -1; }
-      if u >= 0xD800 && u < 0xDC00 && i + 6 <= body.count && body[i] == 92 && body[i + 1] == 117 {
-        low := hex4(body, i + 2);
-        if low >= 0xDC00 && low < 0xE000 { u = 0x10000 + (u - 0xD800) * 1024 + (low - 0xDC00); i += 6; }
-      }
-      if u < 32 { u = 32; }
-      if n + 4 > out.count { return -1; }
-      buf: [4] u8;
-      k := utf8(buf[..], u);
-      for j: 0..<k { out[n] = buf[j]; n += 1; }
-      continue;
-    }
-    if n >= out.count { return -1; }
-    out[n] = ifx e == 110 || e == 116 || e == 114 || e == 98 || e == 102 then cast(u8) 32 else e;
-    n += 1;
-  }
-  if i >= body.count || n == 0 { return -1; }
-  return n;
+  n := npc_answer_text(body, out);
+  return ifx n > 0 then n else -1;
 }
 // A question to a character, and whether the server answered it (else their own lines did).
 realm_track_ask :: (t: [] Track, who: string, question: string, ok: bool) #export_c #effects(all) {
@@ -2262,8 +2209,8 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert realm_npc_text("{\"text\": \"never ends", out[..]) == -1;
   #assert realm_npc_text("{\"text\": \"\"}", out[..]) == -1;
   #assert realm_npc_text("", out[..]) == -1;
-  small: [4] u8;
-  #assert realm_npc_text("{\"text\":\"too long\"}", small[..]) == -1;
+  small: [4] u8;   // cut to the page's buffer, never inside a character
+  #assert realm_npc_text("{\"text\":\"too long\"}", small[..]) == 4 && cast(string) small[..] == "too ";
 }
 
 #test "the picked thing: a drag that starts on it moves it, the wheel and + - size it, Q and E turn it, Delete removes it, Escape lets go" {

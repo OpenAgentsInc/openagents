@@ -842,7 +842,7 @@ fairy_answer :: (s: [] Fairy, reply: string) #export_c #effects(all) {
   ffk_note(s, FFK_SPEAK);   // answered for the first time
   ok := reply.count > 4 && reply[0..<4] == "200\n";
   text: [LINE_BYTES] u8;
-  n := ifx ok then ff_answer_text(reply[4..<reply.count], text[..]) else 0;
+  n := ifx ok then npc_answer_text(reply[4..<reply.count], text[..]) else 0;   // the NPC ask's codec (aethyr/talk/wire.coax)
   if n > 0 { add_line(s, true, cast(string) text[0..<n]); return; }
   // no answer: what is on its mind, as a creature would say it again
   add_line(s, true, ff_talker_says(s[0].forest[..], s[0].talk - 1, s[0].life[0].skills.axe));
