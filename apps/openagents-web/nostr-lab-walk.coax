@@ -222,7 +222,7 @@ nw_tone :: (tone: int) -> LabRgb {
   return LAB_ICE;
 }
 NW_ROW_EVERY :: 0.45f32;   // seconds between one row starting and the next
-NW_ROW_TOP :: 2.76f32; NW_ROW_STEP :: 0.385f32; NW_ROW_LEFT :: 0.45f32; NW_VALUE_H :: 0.175f32; NW_LABEL_UP :: 0.225f32; NW_LABEL_H :: 0.125f32;   // the first row's value from the floor, a row's height, the rows' left edge, a value's letter height, its label above it and the label's letter height
+NW_ROW_TOP :: 2.805f32; NW_ROW_STEP :: 0.405f32; NW_ROW_LEFT :: 0.45f32; NW_VALUE_H :: 0.175f32; NW_LABEL_UP :: 0.22f32; NW_LABEL_H :: 0.15f32;   // the first row's value from the floor, a row's height, the rows' left edge, a value's letter height, its label above it and the label's letter height
 nw_rows_done :: (rows: int) -> f32 { return 0.3 + NW_ROW_EVERY * f32(rows) + 0.4; }
 nw_card :: (nk: [] NostrWalk, i: int, lit: f32) {
   w := nk[0].w[..]; x0 := lab_left(w, i); z := lab_face(w, i); t := lab_anim(w, i); now := lab_clock(w);
@@ -253,7 +253,7 @@ nw_card :: (nk: [] NostrWalk, i: int, lit: f32) {
   for k: 0..<c[0].rows {
     at := t - 0.3 - NW_ROW_EVERY * f32(k); if at <= 0 { break; }
     v := NW_ROW_TOP - NW_ROW_STEP * f32(k); r := c[0].row[k];
-    lab_say(w, cast(string) r.label[0..<r.label_n], x0, z, NW_ROW_LEFT, v + NW_LABEL_UP, NW_LABEL_H, LAB_CYAN, 1.05);
+    lab_say(w, cast(string) r.label[0..<r.label_n], x0, z, NW_ROW_LEFT, v + NW_LABEL_UP, NW_LABEL_H, LAB_CYAN, 1.35);
     lab_say(w, nw_typed(cast(string) r.text[0..<r.n], cast(int) (at * 110)), x0, z, NW_ROW_LEFT, v, NW_VALUE_H, nw_tone(r.tone), 1.25);
   }
   // what held, then what was refused
