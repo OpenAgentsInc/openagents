@@ -5,6 +5,7 @@
 // (ws:// and wss://, TLS through tls-native.c), so tool.sh links TLS for
 // these tools (the "tool.sh: tls" line below).
 // tool.sh: tls
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../../lib/net/relay_conn.coax";
 #load "../../lib/json/json.coax";
@@ -100,12 +101,22 @@ rs_stamp :: () -> int { return (cxproc_wall_us() / 1000) % 100000; }
 // own character, its whole bar, whether levels are on or off (#12774); one that doesn't plays its level.
 rs_ticketed :: (out: [] u8, url: string, pid: string, name: string) -> string { return rs_ticketed_on(out, url, pid, name, 0); }
 // The same for one oa-room shard (a v3 ticket; 0 a v2 ticket, which shard 1 takes).
+// With OA_ROOM_TICKET_SIGNING_KEY (the API's v5 private key, #13260) the ticket is v5, as the API signs
+// one once rooms hold only its public key (docs/deployment/room-keys.md); shard 0 is then shard 1.
 rs_ticketed_on :: (out: [] u8, url: string, pid: string, name: string, shard: int) -> string {
+  at := url.count;
+  while at > 0 && url[at - 1] != '/' { at -= 1; }
+  sb: [80] u8; sk: [32] u8;
+  if seat_ticket_v5_secret(proc_getenv("OA_ROOM_TICKET_SIGNING_KEY", sb[..]), sk[..]) {
+    aux: [32] u8; v: [TK5_TEXT] u8;
+    s := seat_ticket_v5_write(sk[..], aux[..], pid, 2, name, url[at..<url.count], ifx shard > 0 then shard else 1, cxproc_wall_us() / 1000 + 300000, -1, 0, 0, 0, "-", 1, "", v[..]);
+    if s == "" || url.count + 3 + s.count > out.count { return ""; }
+    k := rs_put(out, 0, url); k = rs_put(out, k, "?t="); k = rs_put(out, k, s);
+    return ifx k < 0 then "" else cast(string) out[0..<k];
+  }
   kb: [TICKET_KEY] u8;
   key := proc_getenv("OA_ROOM_TICKET_KEY", kb[..]);
   if key.count < 32 { return url; }
-  at := url.count;
-  while at > 0 && url[at - 1] != '/' { at -= 1; }
   t: [TICKET_TEXT] u8;
   n := tk_sign_admin_on(key, pid, name, url[at..<url.count], shard, cxproc_wall_us() / 1000 + 300000, t[..]);
   if n == 0 || url.count + 3 + n > out.count { return ""; }

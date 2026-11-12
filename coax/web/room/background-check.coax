@@ -7,6 +7,7 @@
 // stress-control runs the identical workload against the pre-observer baseline;
 // it requires the older report and cannot qualify the new observations.
 // tool.sh: tls
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/net/http.coax";

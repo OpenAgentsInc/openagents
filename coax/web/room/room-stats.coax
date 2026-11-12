@@ -147,18 +147,10 @@ rm_st_alloc :: (v: [] RmServer, out: [] int) #export_c #effects(all) {
   out[6] = v[0].st.cue_b; out[7] = v[0].st.cue_drop; out[8] = v[0].st.out_b; out[9] = v[0].st.ev_lost; out[10] = v[0].st.resnaps; out[11] = v[0].st.towns; out[12] = v[0].st.snaps_held;
 }
 
-// The X-Room-Mac of body (64 hex into out), with the seat-ticket key; false without one.
+// The X-Room-Mac of body (64 hex into out), with this shard's write key or the seat-ticket key; false without either.
 rm_st_sign :: (v: [] RmServer, body: string, out: [] u8) -> bool #export_c #effects(all) {
-  if v[0].tkey_n == 0 || out.count < 64 { return false; }
-  key: [TICKET_KEY] u8;
-  for i: 0..<v[0].tkey_n { key[i] = v[0].tkey[i]; }
-  b: [ST_BODY] u8;
-  if body.count > ST_BODY { return false; }
-  for i: 0..<body.count { b[i] = body[i]; }
-  mac: [32] u8;
-  if hmac_sha256_checked(key[0..<v[0].tkey_n], b[0..<body.count], mac[..], false) != SHA_OK { return false; }
-  for i: 0..<32 { out[i * 2] = tk_hex(cast(int) (mac[i] >> 4)); out[i * 2 + 1] = tk_hex(cast(int) (mac[i] & 15)); }
-  return true;
+  if !rm_writes(v) || out.count < 64 || body.count > ST_BODY { return false; }
+  return rm_write_mac(v, "stats", body, out);   // this shard's write key, else the shared key (#13260)
 }
 ST_BODY :: 14000;   // the host's report at most (its poster's config holds 16 KB)
 

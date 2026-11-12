@@ -3,7 +3,7 @@
 // (migrations/0115_room_directory.sql: verse.room_pick, verse.room_report, verse.room_list); this file
 // moves the facts in and the answers out.
 //   POST /api/playtest/room-directory     a shard's report (coax/web/room/room-directory.coax), signed
-//                                         with the seat-ticket key (X-Room-Mac, as room-vitals is)
+//                                         with the shard's write key or the seat-ticket key (room_write_signed, #13260)
 //   POST /api/playtest/room-stats         a shard's vitals every 10 s (coax/web/room/room-stats.h), signed
 //                                         alike, for the admins' room view (GET /api/admin/rooms, admin.c)
 //   GET  /api/playtest/room-shards        the shards: live, draining or down, each one's endpoint and
@@ -105,20 +105,50 @@ int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until
   return out;
 }
 
-// A shard's signed POST (X-Room-Mac: the body's HMAC-SHA256 with the seat-ticket key): true when it
-// checks; otherwise answered.
-static bool signed_post(const request *q) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a report\"}"); return false; }
+int stk_room_write_c(const char *masters, const char *signer, const char *purpose, const char *body, size_t n, const char *mac);
+/* A room shard's signed write (#13260; coax/web/room/room-write.coax, docs/deployment/room-keys.md),
+   for player.c's routes too. With X-Room-Signer ("SHARD KID") the MAC must be that shard's own key's,
+   made from OA_ROOM_WRITE_MASTER (one master, or two while one rotates), over the purpose, the shard and
+   body: the answer is the shard (1 to 99), and the route then refuses a body that names another shard.
+   Without it the MAC is the shared OA_ROOM_TICKET_KEY's over body, as before #13260, while that key is
+   set: the answer is 0 (no shard bound). Refused, it is answered and the answer is -1. */
+int room_write_signed(const request *q, const char *purpose, const char *body, size_t n) {
+  char given[80], signer[24];
+  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return -1; }
+  const char *masters = getenv("OA_ROOM_WRITE_MASTER");
+  if (api_header(q, "X-Room-Signer", signer, sizeof signer)) {
+    if (!masters || !*masters) { api_json(q->fd, 503, "{\"error\":\"no write key\"}"); return -1; }
+    int shard = stk_room_write_c(masters, signer, purpose, body, n, given);
+    if (shard < 1) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return -1; }
+    return shard;
+  }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
-  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return false; }
-  char given[80];
-  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64 || q->body_len == 0 || q->body_len > 32768) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return false; }
+  if (!secret || strlen(secret) < 32) {
+    if (masters && *masters) api_json(q->fd, 401, "{\"error\":\"a shard's signature\"}");
+    else api_json(q->fd, 503, "{\"error\":\"no ticket key\"}");
+    return -1;
+  }
   unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
-  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)q->body, q->body_len, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return false; }
+  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)body, n, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return -1; }
   char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
   unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
-  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return false; }
-  return true;
+  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return -1; }
+  return 0;
+}
+/* Whether every line of b that starts with key names shard (key's number right after it), and one does. */
+static bool lines_name_shard(const char *b, const char *key, int shard) {
+  size_t kn = strlen(key); int seen = 0;
+  for (const char *line = b; line && *line; ) {
+    if (!strncmp(line, key, kn)) { if (atoi(line + kn) != shard) return false; seen++; }
+    line = strchr(line, '\n'); if (line) line++;
+  }
+  return seen > 0;
+}
+// A shard's signed POST of purpose: the signer's shard (room_write_signed), or -1 answered.
+static int signed_post(const request *q, const char *purpose) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a report\"}"); return -1; }
+  if (q->body_len == 0 || q->body_len > 32768) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return -1; }
+  return room_write_signed(q, purpose, q->body, q->body_len);
 }
 // The endpoint and health lines a VM shard adds (#13179, migrations/0140_room_shard_endpoints.sql),
 // taken out of body (in place) so room_report reads the report it always has:
@@ -155,10 +185,13 @@ static int shard_lines(char *body, char *ep, size_t cap, int *players, int *tick
 }
 
 static void report(const request *q, PGconn *db) {
-  if (!signed_post(q)) return;
+  int signer = signed_post(q, "directory");
+  if (signer < 0) return;
   char *b = malloc(q->body_len + 1);
   if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
+  /* a shard's own key reports for that shard only (#13260) */
+  if (signer > 0 && (strlen(b) != q->body_len || !lines_name_shard(b, "s ", signer))) { free(b); api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
   char ep[200]; int players, tick_us;
   int shard = shard_lines(b, ep, sizeof ep, &players, &tick_us);
   const char *v[1] = {b};
@@ -231,10 +264,12 @@ static void list(const request *q, PGconn *db, const char *realm) {
 
 // A shard's vitals for the admins' room view (#12791, migrations/0123_room_stats.sql), kept a day.
 static void stats(const request *q, PGconn *db) {
-  if (!signed_post(q)) return;
+  int signer = signed_post(q, "stats");
+  if (signer < 0) return;
   char *b = malloc(q->body_len + 1);
   if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
+  if (signer > 0 && (strlen(b) != q->body_len || !lines_name_shard(b, "shard=", signer))) { free(b); api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
   const char *v[1] = {b};
   PGresult *r = PQexecParams(db, "SELECT verse.room_stats_add($1)", 1, NULL, v, NULL, NULL, 0);
   free(b);

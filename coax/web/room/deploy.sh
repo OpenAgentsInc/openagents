@@ -75,16 +75,35 @@ build_commit="$(git rev-parse HEAD)"
 
 # The checks and the drains sign with the seat-ticket key, which stays in this process's environment and
 # is never printed or put in an argument list.
-OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY
+# Room keys (#13260, docs/deployment/room-keys.md), each used when its secret exists, so nothing changes
+# until the owner creates them: oa-room-ticket-pubkeys (the API's v5 public keys, checked by every
+# shard), oa-room-write-key-sK (shard K's own write key) and oa-room-ticket-signing-key (the checks sign
+# v5 tickets with it). The shared oa-room-ticket-key goes once the owner deletes it, the rollout's last step.
+has() { g secrets describe "$1" >/dev/null 2>&1; }
+shared=0; if has oa-room-ticket-key; then shared=1; OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY; fi
+pubkeys=0; has oa-room-ticket-pubkeys && pubkeys=1
+if has oa-room-ticket-signing-key; then
+  (( pubkeys )) || { echo "room: oa-room-ticket-signing-key exists but oa-room-ticket-pubkeys does not: create the public keys first (room-keys.md)" >&2; exit 1; }
+  OA_ROOM_TICKET_SIGNING_KEY="$(g secrets versions access latest --secret oa-room-ticket-signing-key)"; export OA_ROOM_TICKET_SIGNING_KEY; fi
+(( shared || pubkeys )) || { echo "room: neither oa-room-ticket-key nor oa-room-ticket-pubkeys exists: the shards could check no ticket" >&2; exit 1; }
 drain_wait="${OA_ROOM_DRAIN_WAIT:-300}"; [[ "${OA_ROOM_DEPLOY_FORCE:-0}" == 1 ]] && drain_wait=0
 # Drains shard K (#12797): asks it, signed, then waits for its health to say "drain done". A shard that
 # doesn't answer the ask (none running behind it) has nothing to drain.
 drain() {
   local k="$1" at mac code h
   at="$(python3 -I -c 'import time; print(int(time.time() * 1000))')"
-  mac="$(python3 -I -c 'import hashlib, hmac, os, sys; print(hmac.new(os.environ["OA_ROOM_TICKET_KEY"].encode(), sys.argv[1].encode(), hashlib.sha256).hexdigest())' "drain $k $at $drain_wait")"
-  code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H "X-Room-At: $at" -H "X-Room-Wait: $drain_wait" -H "X-Room-Mac: $mac" \
-    "https://openagents.com/api/room/s$k/drain" || true)"
+  code=000
+  # a shard on its own write key takes a drain signed with it (room-write-tool.coax); one on the shared key, that key's
+  if has "oa-room-write-key-s$k"; then
+    mac="$(OA_ROOM_WRITE_KEY="$(g secrets versions access latest --secret "oa-room-write-key-s$k")" coax/web/tool.sh coax/web/room/room-write-tool.coax mac drain "$k" "drain $k $at $drain_wait")" || return 1
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H "X-Room-At: $at" -H "X-Room-Wait: $drain_wait" -H "X-Room-Mac: $mac" \
+      "https://openagents.com/api/room/s$k/drain" || true)"
+  fi
+  if [[ "$code" != 200 && -n "${OA_ROOM_TICKET_KEY:-}" ]]; then
+    mac="$(python3 -I -c 'import hashlib, hmac, os, sys; print(hmac.new(os.environ["OA_ROOM_TICKET_KEY"].encode(), sys.argv[1].encode(), hashlib.sha256).hexdigest())' "drain $k $at $drain_wait")"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H "X-Room-At: $at" -H "X-Room-Wait: $drain_wait" -H "X-Room-Mac: $mac" \
+      "https://openagents.com/api/room/s$k/drain" || true)"
+  fi
   if [[ "$code" == 403 ]]; then echo "room: shard $k refused the drain (its key or clock): stopping" >&2; return 1; fi
   if [[ "$code" != 200 ]]; then echo "room: shard $k: nothing to drain (answered $code)"; return 0; fi
   local until=$((SECONDS + drain_wait + 60))
@@ -109,6 +128,14 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
 # Cloud Run's default the process froze once the last socket closed, and a leaving player's HP never
 # reached the API (#12715). Billed while an instance is up; min 0 still scales to none when idle.
 svc() { if [[ "$1" == 1 ]]; then echo "$service"; else echo "$service-$1"; fi; }
+# shard K's secrets (#13260): --set-secrets replaces the list, so a key left out here is gone from the new revision
+room_secrets() {
+  local out=""
+  (( shared )) && out+=",OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest"
+  (( pubkeys )) && out+=",OA_ROOM_TICKET_PUBKEYS=oa-room-ticket-pubkeys:latest"
+  has "oa-room-write-key-s$1" && out+=",OA_ROOM_WRITE_KEY=oa-room-write-key-s$1:latest"
+  echo "${out#,}"
+}
 # one shard at a time, each answering its health before the next is replaced (#12797)
 for k in $(seq 1 "$shards"); do
   drain "$k" || exit 1
@@ -117,7 +144,7 @@ for k in $(seq 1 "$shards"); do
     --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
     --startup-probe "httpGet.path=/ready,httpGet.port=8080,periodSeconds=2,timeoutSeconds=2,failureThreshold=60" \
     --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity --no-cpu-throttling \
-    --set-secrets OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest \
+    --set-secrets "$(room_secrets "$k")" \
     --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1},OA_ROOM_SHARD=$k,OA_ROOM_DIR_GEN=${OA_ROOM_DIR_GEN:-1}" 2>&1)" ||
     { sed "s/^/shard $k: /" <<<"$out" >&2; echo "room: shard $k's deploy failed: stopping before the next shard" >&2; exit 1; }
   { grep -E "ERROR|revision" <<<"$out" || true; } | sed "s/^/shard $k: /"

@@ -243,7 +243,13 @@ static const char *legacy(const char *path) {
 // oa-room-ticket-key, which oa-room holds too). The name is verse.player_name's, the one chat, presence
 // and the inbox show too (migrations/0116_one_player_name.sql), kept to letters, digits, spaces, '-'
 // and '_', 24 at most.
+int room_write_signed(const request *q, const char *purpose, const char *body, size_t n);   /* rooms.c (#13260) */
 #define TICKET_MS 600000
+/* seat ticket v5's one writer (ticket-sign-unit.c, aethyr/session/seat-ticket.coax; #13260) */
+bool stk_secret_c(const char *text, unsigned char out[32]);
+size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, const char *name, const char *room, int shard,
+                   long long expires, int hp, int xp, int wanted, long long owner, const char *ext, int profile, const char *saved,
+                   char *out, size_t cap);
 static void b64url(char *out, size_t cap, const unsigned char *b, size_t n) {
   static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   size_t o = 0;
@@ -359,7 +365,11 @@ fail:
 static void room_ticket(const request *q, PGconn *db, const char *key, bool site, const char *room, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
-  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
+  /* v5 (#13260, aethyr/session/seat-ticket.coax; docs/deployment/room-keys.md): set, the API signs with this
+     private key (64 hex) and rooms check with its public key only. Unset, v2/v3/v4 under OA_ROOM_TICKET_KEY. */
+  const char *signing = getenv("OA_ROOM_TICKET_SIGNING_KEY");
+  unsigned char v5_key[32]; bool v5 = signing && signing[0];
+  if (v5 ? !stk_secret_c(signing, v5_key) : (!secret || strlen(secret) < 32)) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
   {
     char ip[128]; room_visitor(q, ip);
     long long wait = room_admit("room-key", key && key[0] ? key : "-", ROOM_ASKS_KEY);
@@ -504,12 +514,14 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
      every shard reads it (OA_ROOM_OWNER_GEN=1; a room from before refuses a ticket with it). The room
      sends it with its vitals lines, and a line below the character's newest generation is not kept. */
   const char *og = getenv("OA_ROOM_OWNER_GEN");
-  if (resume==1) snprintf(hps+strlen(hps),sizeof hps-strlen(hps),"g%lld",checkpoint_owner);
+  long long owner_gen = 0;   /* the same generation, for the v5 writer */
+  if (resume==1) { snprintf(hps+strlen(hps),sizeof hps-strlen(hps),"g%lld",checkpoint_owner); owner_gen = checkpoint_owner; }
   else if (og && !strcmp(og, "1")) {
     const char *gv[1] = {pid};
     PGresult *gr = PQexecParams(db, "SELECT verse.room_owner_next($1)", 1, NULL, gv, NULL, NULL, 0);
     if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1 && !PQgetisnull(gr, 0, 0)) {
       snprintf(hps + strlen(hps), sizeof hps - strlen(hps), "g%s", PQgetvalue(gr, 0, 0));
+      owner_gen = atoll(PQgetvalue(gr, 0, 0));
     } else if (PQresultStatus(gr) != PGRES_TUPLES_OK) api_log("room-owner: %s", PQerrorMessage(db));
     PQclear(gr);
   }
@@ -521,6 +533,14 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     if (PQresultStatus(ar) == PGRES_TUPLES_OK && PQntuples(ar) == 1 && PQgetvalue(ar, 0, 0)[0] == 't') acct = 2;
     PQclear(ar);
   }
+  char resumed[4097]; const char *ticket=text;
+  if (v5) {
+    /* the one v5 writer (ticket-sign-unit.c): shard 0 (no directory) is shard 1's, as a v2 ticket is */
+    if (!stk_write_c(v5_key, pid, acct, name, room, shard > 0 ? shard : 1, expires, hp, xp, wanted, owner_gen, "-", resume == 1 ? 2 : 1, saved, resumed, sizeof resumed)) {
+      api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
+    }
+    ticket = resumed;
+  } else {
   int tn = shard > 0 ? snprintf(text, sizeof text, "v3.%s.%d.%s.%s.%d.%lld.%s", pid, acct, name64, room, shard, expires, hps)
                      : snprintf(text, sizeof text, "v2.%s.%d.%s.%s.%lld.%s", pid, acct, name64, room, expires, hps);
   if (tn <= 0 || (size_t)tn + 66 >= sizeof text) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
@@ -528,11 +548,11 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)text, (size_t)tn, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
   text[tn++] = '.';
   for (unsigned i = 0; i < 32; i++) tn += snprintf(text + tn, sizeof text - (size_t)tn, "%02x", mac[i]);
-  char resumed[4097]; const char *ticket=text;
   if (resume==1) {
     coax_string prefix=resume_ticket_prefix((coax_string){text,tn},(coax_string){saved,(int64_t)strlen(saved)},(coax_v_u8){(uint8_t *)resumed,4031});
     if (!prefix.count || !HMAC(EVP_sha256(),secret,(int)strlen(secret),(const unsigned char *)resumed,(size_t)prefix.count,mac,&ml) || ml!=32) {api_json(q->fd,503,"{\"error\":\"character recovery unavailable\"}");return;}
     int pos=(int)prefix.count;resumed[pos++]='.';for(unsigned i=0;i<32;i++)pos+=snprintf(resumed+pos,sizeof resumed-(size_t)pos,"%02x",mac[i]);ticket=resumed;
+  }
   }
   char out[6144], en[48], st[960] = "";
   esc(en, sizeof en, name);
@@ -705,15 +725,10 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
 // is verse.item_apply's: {"status":..., "item":..., "replay":...}. Game items only.
 static void room_items(const request *q, PGconn *db) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a mutation\"}"); return; }
-  const char *secret = getenv("OA_ROOM_TICKET_KEY");
-  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
-  char given[80];
-  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64 || q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
-  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
-  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)q->body, q->body_len, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return; }
-  char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
-  unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
-  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
+  if (q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  int signer = room_write_signed(q, "items", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
+  if (signer < 0) return;
+  (void)signer;   /* a per-player write: bound to the owner generation, not to a shard (docs/deployment/room-keys.md) */
   char *b = malloc(q->body_len + 1);
   if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
@@ -738,15 +753,10 @@ static void room_items(const request *q, PGconn *db) {
 // This receiver is additive: no room producer or ticket restore uses it yet.
 static void room_checkpoint(const request *q, PGconn *db, int version) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a checkpoint\"}"); return; }
-  const char *secret = getenv("OA_ROOM_TICKET_KEY");
-  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
-  char given[80];
-  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64 || q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
-  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
-  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)q->body, q->body_len, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return; }
-  char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
-  unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
-  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
+  if (q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  int signer = room_write_signed(q, "checkpoint", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
+  if (signer < 0) return;
+  (void)signer;   /* a per-player write: bound to the owner generation, not to a shard (docs/deployment/room-keys.md) */
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   if (!(version == 2 ? checkpoint2_input((coax_string){(const char *)q->body, q->body_len}, now) : room_checkpoint_input((coax_string){(const char *)q->body, q->body_len}, now))) {
@@ -814,15 +824,9 @@ failed:
 }
 static void room_vitals(const request *q, PGconn *db) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST vitals\"}"); return; }
-  const char *secret = getenv("OA_ROOM_TICKET_KEY");
-  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
-  char given[80];
-  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64 || q->body_len == 0 || q->body_len > 8192) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
-  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
-  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)q->body, q->body_len, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return; }
-  char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
-  unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
-  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
+  if (q->body_len == 0 || q->body_len > 8192) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  int signer = room_write_signed(q, "vitals", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
+  if (signer < 0) return;
   char *b = malloc(q->body_len + 1);
   if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
@@ -833,7 +837,10 @@ static void room_vitals(const request *q, PGconn *db) {
   /* "o SHARD GEN BATCH" (#12793): every line has an operation ID, and the answer is a receipt */
   char *o = strchr(b, '\n');
   int oshard = 0; long long ogen = 0, obatch = 0;
-  if (o && sscanf(o + 1, "o %d %lld %lld", &oshard, &ogen, &obatch) == 3) {
+  bool owned = o && sscanf(o + 1, "o %d %lld %lld", &oshard, &ogen, &obatch) == 3;
+  /* a shard's own key posts its own vitals only, with their operation IDs (#13260) */
+  if (signer > 0 && (!owned || oshard != signer)) { free(b); api_json(q->fd, 403, "{\"error\":\"another shard's vitals\"}"); return; }
+  if (owned) {
     room_vitals_receipt(q, db, o, oshard, ogen, obatch, at);
     free(b);
     return;
@@ -870,18 +877,15 @@ static void room_vitals(const request *q, PGconn *db) {
 // pvp row, when its world or board last changed (a publish or a switch; the room says "e edit" to
 // every page then) and who is kicked. Signed like room-vitals: X-Room-Mac over "t MS" (X-Room-At).
 static void room_control(const request *q, PGconn *db) {
-  const char *secret = getenv("OA_ROOM_TICKET_KEY");
-  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
-  char given[80], at[32];
-  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64 || !api_header(q, "X-Room-At", at, sizeof at)) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  char at[32];
+  if (!api_header(q, "X-Room-At", at, sizeof at)) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
   char text[48]; int tn = snprintf(text, sizeof text, "t %s", at);
-  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
-  if (tn <= 0 || !HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)text, (size_t)tn, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return; }
-  char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
-  unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
+  if (tn <= 0 || tn >= (int)sizeof text) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  /* this shard's write key, or the shared key (#13260); the control answer is the realm's, not a shard's */
+  if (room_write_signed(q, "control", text, (size_t)tn) < 0) return;
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000, when = atoll(at);
-  if (diff || when < now - 120000 || when > now + 120000) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
+  if (when < now - 120000 || when > now + 120000) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
   PGresult *r = PQexecParams(db,
     "SELECT 'pvp ' || CASE WHEN coalesce((SELECT (switched->>'pvp')::boolean FROM verse.realm_edit WHERE slug = 'everglade'), false) THEN '1' ELSE '0' END || chr(10) || "
     "'edit ' || greatest(coalesce((SELECT ms FROM verse.realm_edit WHERE slug = 'everglade'), 0), "

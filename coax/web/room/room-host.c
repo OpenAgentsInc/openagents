@@ -738,6 +738,9 @@ static bool dev_control_changed(void) {
   return changed;
 }
 /* Production asks every two seconds; --dev also observes new file publications. */
+/* X-Room-Signer, "SHARD KID", when this shard signs with its own write key (#13260, room-write.coax);
+   empty while it signs with the shared key (an API before #13260 ignores the header). */
+static char write_signer[16], write_signer_line[48];   /* the line: 'header = "X-Room-Signer: ..."', or "" */
 static void control_ask(void) {
   bool due = rm_control_due(view());
   if (dev_dir) {
@@ -748,8 +751,8 @@ static void control_ask(void) {
   const char *url = getenv("OA_ROOM_CONTROL_URL");
   if (!url || !*url) url = "https://openagents.com/api/playtest/room-control";
   char cfg[512];
-  int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"X-Room-At: %.*s\"\nsilent\nshow-error\nfail\nmax-time = 5\n",
-                   url, (const char *)server->ctl.mac.e, (int)(server->ctl.ask_n - 2), (const char *)server->ctl.ask.e + 2);
+  int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\n%sheader = \"X-Room-At: %.*s\"\nsilent\nshow-error\nfail\nmax-time = 5\n",
+                   url, (const char *)server->ctl.mac.e, write_signer_line, (int)(server->ctl.ask_n - 2), (const char *)server->ctl.ask.e + 2);
   if(k>0&&k+48<(int)sizeof cfg){k+=snprintf(cfg+k,sizeof cfg-(size_t)k,"write-out = \"\\n#HTTP %%{http_code}\"\n");poster_send(POST_CONTROL,cfg,(size_t)k,0);}
 }
 static const char *api_url(const char *env, const char *path, char *buf, size_t cap);
@@ -775,7 +778,7 @@ static void world_ask(void) {
    Every complete HTTP result returns through poster_hear. */
 static bool post_report(int lane, const char *url, const uint8_t *mac, const uint8_t *body, int64_t n, int64_t batch) {
   static char cfg[16384];
-  size_t k=(size_t)snprintf(cfg,sizeof cfg,"url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nshow-error\nmax-time = 5\nwrite-out = \"\\n#HTTP %%{http_code}\"\ndata-binary = \"",url,(const char *)mac);
+  size_t k=(size_t)snprintf(cfg,sizeof cfg,"url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\n%sheader = \"Content-Type: text/plain\"\nsilent\nshow-error\nmax-time = 5\nwrite-out = \"\\n#HTTP %%{http_code}\"\ndata-binary = \"",url,(const char *)mac,write_signer_line);
   if(k>=sizeof cfg)return false;
   for (int64_t i = 0; i < n && k + 4 < sizeof cfg; i++) {
     char ch = (char)body[i];
@@ -1004,9 +1007,31 @@ int main(int argc, char **argv) {
   /* a room VM's shard names where its pages connect, and reports its health every 5 s (#13179) */
   { const char *ep = getenv("OA_ROOM_ENDPOINT"); if (ep && *ep && !rm_endpoint(view(), (coax_string){ep, (int64_t)strlen(ep)})) fprintf(stderr, "room: OA_ROOM_ENDPOINT is not a wss:// URL ending in /: not named\n"); }
   printf("room: shard %lld\n", (long long)server->shard);
+  /* the API's public keys for v5 tickets (#13260, docs/deployment/room-keys.md): one, or two while a key
+     rotates. With them and no OA_ROOM_TICKET_KEY, only v5 tickets seat, and nothing this host holds can sign one. */
+  const char *tpub = getenv("OA_ROOM_TICKET_PUBKEYS");
   if (dev_dir) {}
-  else if (tkey && strlen(tkey) >= 32) { rm_ticket_key(view(), (coax_string){tkey, (int64_t)strlen(tkey)}, required); printf("room: seat tickets checked%s\n", required ? ", required" : ""); }
-  else printf("room: no OA_ROOM_TICKET_KEY, seat tickets not checked\n");
+  else {
+    bool hmac = tkey && strlen(tkey) >= 32, v5 = tpub && *tpub;
+    if (hmac) rm_ticket_key(view(), (coax_string){tkey, (int64_t)strlen(tkey)}, required);
+    if (v5 && !rm_ticket_pubkeys(view(), (coax_string){tpub, (int64_t)strlen(tpub)}, required)) {
+      fprintf(stderr, "room: OA_ROOM_TICKET_PUBKEYS is not one or two x-only public keys in lowercase hex\n"); return 1;
+    }
+    /* this shard's own write key (#13260, docs/deployment/room-keys.md): "KID:KEYHEX", made from the API's
+       write master for this shard only. With it every write is signed as this shard; without it, with the shared key. */
+    const char *wkey = getenv("OA_ROOM_WRITE_KEY");
+    if (wkey && *wkey) {
+      if (!rm_write_key(view(), (coax_string){wkey, (int64_t)strlen(wkey)})) {
+        fprintf(stderr, "room: OA_ROOM_WRITE_KEY is not KID:KEYHEX (8 and 64 lowercase hex digits), or OA_ROOM_SHARD is not 1 to 99\n"); return 1;
+      }
+      coax_string sg = rm_write_signer(view(), (coax_v_u8){(uint8_t *)write_signer, (int64_t)sizeof write_signer - 1});
+      write_signer[sg.count] = 0;
+      snprintf(write_signer_line, sizeof write_signer_line, "header = \"X-Room-Signer: %s\"\n", write_signer);
+      printf("room: writes signed as shard %lld with its own key\n", (long long)server->shard);
+    } else if (hmac) printf("room: writes signed with the shared OA_ROOM_TICKET_KEY\n");
+    if (hmac || v5) printf("room: seat tickets checked (%s%s%s)%s\n", hmac ? "v2-v4" : "", hmac && v5 ? ", " : "", v5 ? "v5" : "", required ? ", required" : "");
+    else printf("room: no OA_ROOM_TICKET_KEY or OA_ROOM_TICKET_PUBKEYS, seat tickets not checked\n");
+  }
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
   int one = 1; setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   struct sockaddr_in a = {0};

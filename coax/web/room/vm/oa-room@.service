@@ -11,6 +11,8 @@ StartLimitIntervalSec=0
 [Service]
 EnvironmentFile=/etc/oa-room/secret.env
 EnvironmentFile=/etc/oa-room/%i.env
+# this shard's own write key, OA_ROOM_WRITE_KEY (#13260, docs/deployment/room-keys.md), root only; none, it signs with the shared key
+EnvironmentFile=-/etc/oa-room/%i-write.env
 ExecStart=/opt/oa-room/bin/%i
 DynamicUser=yes
 Restart=always

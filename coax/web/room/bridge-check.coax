@@ -7,6 +7,7 @@
 //   coax/web/tool.sh coax/web/room/bridge-check.coax [ws://localhost:8830]
 //   (deploy.sh runs it through wss://openagents.com)
 // Prints one JSON line, then "holds" and exits 0, or "falls" and 1.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../../verse/everglade/points.coax";   // the streets' gates, the commons and the bridge, by name (#13078)
 #load "../map-points.coax";

@@ -7,6 +7,7 @@
 //   coax/web/tool.sh coax/web/room/siege-sim.coax [MINUTES] [SIZE]
 // Exits 0 when the front kept its band 90% of the time, the camp stood, and both sides lost fighters
 // and were reinforced.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/proc.coax";

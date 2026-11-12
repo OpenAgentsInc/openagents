@@ -1,0 +1,211 @@
+{
+  "profile": "openagents.room-write",
+  "version": 1,
+  "spec": "docs/protocol/room-write-v1.md",
+  "codec": "coax/web/room/room-write.coax",
+  "check": "coax/web/tool.sh coax/web/room/room-write-tool.coax profile proto/verse/room-write-v1.json",
+  "note": "Throwaway masters for checks only. The values were computed with Python's hmac module, apart from the Coax codec.",
+  "master": "0303030303030303030303030303030303030303030303030303030303030303",
+  "second_master": "0404040404040404040404040404040404040404040404040404040404040404",
+  "master_kid": "13754e49",
+  "second_master_kid": "1a9d0517",
+  "shard_keys": [
+    {
+      "master": "first",
+      "shard": 1,
+      "key": "13754e49:a7ff8fecd7f41dbaedd66a1ee410c3e45f6cfe7083d506ece6673475d40cb887"
+    },
+    {
+      "master": "first",
+      "shard": 2,
+      "key": "13754e49:db5555f6f7f482cc65cbce8883f9983ed055d45a488cc7218f9e07c4cefd8980"
+    },
+    {
+      "master": "first",
+      "shard": 3,
+      "key": "13754e49:3bc2b25d49cc95751d3269c460dbd113834b057d14d82be14ca258354a9530fd"
+    },
+    {
+      "master": "first",
+      "shard": 99,
+      "key": "13754e49:4dcc2811b5f08340746468f135f9c0713358259d9c80f7925149857f1d287447"
+    },
+    {
+      "master": "second",
+      "shard": 3,
+      "key": "1a9d0517:74c530ab7ea1c4738467d1941deb42f3515e5851113855abe31ea8801d0b7832"
+    }
+  ],
+  "writes": [
+    {
+      "why": "a directory report from shard 3",
+      "key": "13754e49:3bc2b25d49cc95751d3269c460dbd113834b057d14d82be14ca258354a9530fd",
+      "purpose": "directory",
+      "shard": 3,
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "signer": "3 13754e49",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "a vitals post from shard 1 with its operation IDs",
+      "key": "13754e49:a7ff8fecd7f41dbaedd66a1ee410c3e45f6cfe7083d506ece6673475d40cb887",
+      "purpose": "vitals",
+      "shard": 1,
+      "body": "t 1762190000000\no 1 1762180000000 7\np-0011 14 20 320 0 3 1762189999000 12\n",
+      "signer": "1 13754e49",
+      "mac": "cc2bdbbcd6de9c6ad9e03233f9ae41569d9f4205ee694651f9f5e1ae9875a175"
+    },
+    {
+      "why": "shard 99's stats",
+      "key": "13754e49:4dcc2811b5f08340746468f135f9c0713358259d9c80f7925149857f1d287447",
+      "purpose": "stats",
+      "shard": 99,
+      "body": "t 1762190000000\nshard=99\n",
+      "signer": "99 13754e49",
+      "mac": "3742d670b554c5f898d8e477fe4658e1b33e0d81c296f9a5953bc6a3e6496a1c"
+    },
+    {
+      "why": "shard 2's control ask (the body is t AT)",
+      "key": "13754e49:db5555f6f7f482cc65cbce8883f9983ed055d45a488cc7218f9e07c4cefd8980",
+      "purpose": "control",
+      "shard": 2,
+      "body": "t 1762190000000",
+      "signer": "2 13754e49",
+      "mac": "715a592b726fabece08e22948f4a6a9f3dee11f20dcfe8b6145f95ae4f062e04"
+    },
+    {
+      "why": "a deploy's drain of shard 2",
+      "key": "13754e49:db5555f6f7f482cc65cbce8883f9983ed055d45a488cc7218f9e07c4cefd8980",
+      "purpose": "drain",
+      "shard": 2,
+      "body": "drain 2 1762190000000 300",
+      "signer": "2 13754e49",
+      "mac": "f17c20ba310929485fea335889459bcc447732a11668a555fdb44b32738dffbf"
+    },
+    {
+      "why": "an item mutation",
+      "key": "13754e49:7c09852c7e9f2a34b40d3fafae276a42aec3b93501c9806b5e2dbe90a8dbda93",
+      "purpose": "items",
+      "shard": 4,
+      "body": "{\"id\":\"i-1\",\"op\":\"grant\",\"pid\":\"p-0011\",\"gen\":12,\"ver\":1,\"item\":7,\"to\":\"p-0011\",\"kind\":1,\"sent\":1762190000000}",
+      "signer": "4 13754e49",
+      "mac": "5d0c9ae3e1c6ae2819f40cea4abf6bf5c2f239e807f9421c245b3001c802c93e"
+    },
+    {
+      "why": "a checkpoint",
+      "key": "13754e49:7c09852c7e9f2a34b40d3fafae276a42aec3b93501c9806b5e2dbe90a8dbda93",
+      "purpose": "checkpoint",
+      "shard": 4,
+      "body": "v2 empty",
+      "signer": "4 13754e49",
+      "mac": "fefc50acb7718f3e1569a59e2812568452398bc68bd3c41cefb8eec50ec92636"
+    },
+    {
+      "why": "an empty body",
+      "key": "13754e49:a7ff8fecd7f41dbaedd66a1ee410c3e45f6cfe7083d506ece6673475d40cb887",
+      "purpose": "stats",
+      "shard": 1,
+      "body": "",
+      "signer": "1 13754e49",
+      "mac": "3cb1d2a9c866351f2e65a1a4480f76e9945537f4d78fdb36c62c0085fa0b2d59"
+    }
+  ],
+  "refused": [
+    {
+      "why": "another purpose",
+      "masters": "first",
+      "signer": "3 13754e49",
+      "purpose": "stats",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "another body",
+      "masters": "first",
+      "signer": "3 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 1\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "another shard named by the signer",
+      "masters": "first",
+      "signer": "4 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "shard 4's key signing as shard 3",
+      "masters": "first",
+      "signer": "3 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "402c0067fc16c6cab6a8908412f75d80a34cde51473c33670f2f0d7263efea66"
+    },
+    {
+      "why": "a master the API does not hold",
+      "masters": "second",
+      "signer": "3 1a9d0517",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "the right MAC under the other master's id",
+      "masters": "first",
+      "signer": "3 1a9d0517",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "an upper-case MAC",
+      "masters": "first",
+      "signer": "3 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2E44519947F5EDBFFEF36488A1497F4581F5C4A97A7F5771D096DC37D2F34F87"
+    },
+    {
+      "why": "a MAC one digit short",
+      "masters": "first",
+      "signer": "3 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f8"
+    },
+    {
+      "why": "a signer with a leading zero",
+      "masters": "first",
+      "signer": "03 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "shard 0",
+      "masters": "first",
+      "signer": "0 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    },
+    {
+      "why": "the body's MAC under the shared key's form (no prefix)",
+      "masters": "first",
+      "signer": "3 13754e49",
+      "purpose": "directory",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2dba75dea18b9ac8fc6fc5cda927c3fd031b2c2582afe73421583fa8cf49204e"
+    },
+    {
+      "why": "a purpose no write has",
+      "masters": "first",
+      "signer": "3 13754e49",
+      "purpose": "ticket",
+      "body": "t 1762190000000\ns 3 2\nr everglade-2 1 p-0011\n",
+      "mac": "2e44519947f5edbffef36488a1497f4581f5c4a97a7f5771d096dc37d2f34f87"
+    }
+  ]
+}

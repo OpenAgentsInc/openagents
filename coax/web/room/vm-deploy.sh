@@ -9,7 +9,7 @@
 # room-staging.openagents.com on TCP 443 and routes /api/room/sK/ to shard K, for direct use.
 #
 #   coax/web/room/vm-deploy.sh provision          the VM, its firewall, DNS, TLS and backends (idempotent)
-#   coax/web/room/vm-deploy.sh secret             the seat-ticket key, from Secret Manager to the VM only
+#   coax/web/room/vm-deploy.sh secret             the room keys (room-keys.md), from Secret Manager to the VM only
 #   coax/web/room/vm-deploy.sh deploy --staging   stage this checkout on a build host, compile it on the
 #                                                 VM, run it as oa-room@staging and check its health
 #   coax/web/room/vm-deploy.sh deploy             promote the release staging runs to the production
@@ -86,10 +86,23 @@ else: cf("POST", f"/zones/{zone}/dns_records", body); print(f"dns: {name} A {add
 PY
 }
 
-secret() {   # the seat-ticket key, piped from Secret Manager into the VM's root-only file; never printed
-  g secrets versions access latest --secret oa-room-ticket-key |
-    on_vm 'sudo sh -c "umask 077; { printf OA_ROOM_TICKET_KEY=; cat; echo; } > /etc/oa-room/secret.env.new && mv /etc/oa-room/secret.env.new /etc/oa-room/secret.env"'
-  echo "room-vm: the seat-ticket key is on $vm (/etc/oa-room/secret.env, root only)"
+has() { g secrets describe "$1" >/dev/null 2>&1; }
+# The room keys, piped from Secret Manager into the VM's root-only files; never printed. Each is used when
+# its secret exists (#13260, docs/deployment/room-keys.md): the shared seat-ticket key (oa-room-ticket-key,
+# until the owner deletes it), the API's v5 public keys (oa-room-ticket-pubkeys) into secret.env, and
+# shard K's own write key (oa-room-write-key-sK) into sK-write.env. A running shard reads them at its restart.
+secret() {
+  { if has oa-room-ticket-key; then printf OA_ROOM_TICKET_KEY=; g secrets versions access latest --secret oa-room-ticket-key; echo; fi
+    if has oa-room-ticket-pubkeys; then printf OA_ROOM_TICKET_PUBKEYS=; g secrets versions access latest --secret oa-room-ticket-pubkeys; echo; fi; } |
+    on_vm 'sudo sh -c "umask 077; cat > /etc/oa-room/secret.env.new && mv /etc/oa-room/secret.env.new /etc/oa-room/secret.env"'
+  for k in 1 2 3 4 5 6; do
+    if has "oa-room-write-key-s$k"; then
+      { printf OA_ROOM_WRITE_KEY=; g secrets versions access latest --secret "oa-room-write-key-s$k"; echo; } |
+        on_vm "sudo sh -c 'umask 077; cat > /etc/oa-room/s$k-write.env.new && mv /etc/oa-room/s$k-write.env.new /etc/oa-room/s$k-write.env'"
+    else on_vm "sudo rm -f /etc/oa-room/s$k-write.env"
+    fi
+  done
+  echo "room-vm: the room keys are on $vm (/etc/oa-room/secret.env and sK-write.env, root only)"
 }
 
 setup() {   # the VM's packages, unit, env files and Caddy (vm/setup.sh); a running unit keeps its env until restarted
@@ -176,11 +189,20 @@ drain_wait="${OA_ROOM_DRAIN_WAIT:-300}"
 # tells every page "restarting" and saves every seat; then its health says "drain done".
 drain() {
   local k="$1" wait="${2:-$drain_wait}" at mac code h
-  [[ -n "${OA_ROOM_TICKET_KEY:-}" ]] || { OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY; }
+  [[ -n "${OA_ROOM_TICKET_KEY:-}" ]] || ! has oa-room-ticket-key || { OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY; }
   at="$(python3 -I -c 'import time; print(int(time.time() * 1000))')"
-  mac="$(python3 -I -c 'import hashlib, hmac, os, sys; print(hmac.new(os.environ["OA_ROOM_TICKET_KEY"].encode(), sys.argv[1].encode(), hashlib.sha256).hexdigest())' "drain $k $at $wait")"
-  code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H "X-Room-At: $at" -H "X-Room-Wait: $wait" -H "X-Room-Mac: $mac" \
-    "https://$host/api/room/s$k/drain" || true)"
+  code=000
+  # a shard on its own write key takes a drain signed with it (#13260, room-write-tool.coax); one on the shared key, that key's
+  if has "oa-room-write-key-s$k"; then
+    mac="$(OA_ROOM_WRITE_KEY="$(g secrets versions access latest --secret "oa-room-write-key-s$k")" "$here/../tool.sh" "$here/room-write-tool.coax" mac drain "$k" "drain $k $at $wait")" || return 1
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H "X-Room-At: $at" -H "X-Room-Wait: $wait" -H "X-Room-Mac: $mac" \
+      "https://$host/api/room/s$k/drain" || true)"
+  fi
+  if [[ "$code" != 200 && -n "${OA_ROOM_TICKET_KEY:-}" ]]; then
+    mac="$(python3 -I -c 'import hashlib, hmac, os, sys; print(hmac.new(os.environ["OA_ROOM_TICKET_KEY"].encode(), sys.argv[1].encode(), hashlib.sha256).hexdigest())' "drain $k $at $wait")"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST -H "X-Room-At: $at" -H "X-Room-Wait: $wait" -H "X-Room-Mac: $mac" \
+      "https://$host/api/room/s$k/drain" || true)"
+  fi
   if [[ "$code" == 403 ]]; then echo "room-vm: shard $k refused the drain (its key or clock)" >&2; return 1; fi
   if [[ "$code" != 200 ]]; then echo "room-vm: shard $k: nothing to drain (answered $code)"; return 0; fi
   local until=$((SECONDS + wait + 60))

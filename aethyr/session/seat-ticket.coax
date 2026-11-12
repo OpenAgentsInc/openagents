@@ -1,0 +1,681 @@
+// Seat ticket v5 (#13260; docs/protocol/seat-ticket-v5.md, fixtures proto/verse/seat-ticket-v5.json):
+// the one writer and the one reader. The API signs a ticket with its private key (BIP-340 Schnorr,
+// schnorr_sign.coax) and a room checks it with public keys only, so a room's secrets cannot mint a
+// ticket, the admin bit included. Its text is
+//
+//   v5.KID.PID.ACCT.NAME64.ROOM.SHARD.EXPIRES.HP.EXT.SAVED.SIG
+//
+// KID     the signing key's id: the first 8 lowercase hex digits of its x-only public key. A room holds
+//         one or two public keys (a rotation's overlap) and checks with the one the id names.
+// PID     the player's id, 1 to 40 of [a-z0-9-]
+// ACCT    0 a guest, 1 an account, 2 an account who is one of the realm's admins
+// NAME64  the display name in unpadded canonical base64url ("-" none): 1 to 24 letters, digits,
+//         '-', '_' and inner spaces
+// ROOM    the room's code, 1 to 24 of [a-z0-9-]
+// SHARD   the room shard that seats it, 1 to 99
+// EXPIRES wall-clock milliseconds, 1 to 15 digits
+// HP      v2/v3's saved-state field: HP or "-", then xXP, wWANTED, gOWNER (tk_hp_read)
+// EXT     "-" or up to 8 signed NAME=VALUE items joined by ',', names [a-z]{1,8} strictly ascending,
+//         values [a-z0-9-]{1,24}. v5 defines no names yet; a reader ignores a name it doesn't know,
+//         so a writer may add one before every room reads it. #13259 adds class and level here.
+// SAVED   "0": no character-checkpoint profile (the room reads it as v2/v3's schema 1); "-": profile
+//         2 with no capture yet (a first join); else the stored capture in unpadded base64url
+//         (profile 2, the v4 envelope's field). With "-" or a capture, OWNER is at least 1.
+// SIG     128 lowercase hex: the BIP-340 signature of every byte before ".SIG" under the key KID names
+//
+// At most TK5_TEXT bytes. The API (coax/web/api/player.c) calls seat_ticket_v5_write; the room
+// (coax/web/room/room-ticket.coax) calls tk5_read. Nothing else builds or parses one.
+#authority;
+#run_steps 250000000;
+#load "resume-payload.coax";
+#load "../../coax/lib/nostr/block/fi-base64url.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/lib/crypto/schnorr.coax";
+#load "../../coax/lib/crypto/schnorr_sign.coax";
+
+TK5_TEXT :: 4096;         // a v5 ticket's most bytes (the page's NET_TICKET, the v4 envelope's RT_TEXT)
+TK5_KEYS :: 2;            // public keys a room holds at once: the old and the new during a rotation
+TK5_EXT :: 256;           // EXT's most bytes
+TK5_EXT_ITEMS :: 8;
+TK_PID :: 40;
+TK_NAME :: 24;
+TK_ROOM :: 24;
+TK_LIFE_MS :: 600000;     // what the API signs (player.c TICKET_MS)
+TK_SKEW_MS :: 60000;      // clocks may differ this much
+
+// The public keys a room checks v5 tickets with (OA_ROOM_TICKET_PUBKEYS).
+TicketKeys :: struct { n: int; pub: [2][32] u8; kid: [2][8] u8; }
+
+// A v5 ticket as read. key: which of the room's keys checked it.
+SeatTicket :: struct {
+  ok: bool; key: int = -1;
+  pid: [TK_PID] u8; pid_n: int;
+  account: bool; admin: bool;
+  name: [TK_NAME] u8; name_n: int;
+  shard: int; expires: int;
+  hp: int = -1; xp: int; wanted: int; owner: int;
+  schema: int = 1;                 // 1: SAVED "0"; 2: a character-checkpoint profile ticket
+  ext: [TK5_EXT] u8; ext_n: int;   // EXT as signed ("" for "-"): tk5_ext reads one item
+  capture: CharacterCapture; rest: CharacterRest;
+  kid: [8] u8; signed_n: int;      // the key id and how many bytes it signs (tk5_fields)
+}
+
+// HP's field, shared by v2, v3 and v5: HP (1 to 5 digits) or "-", then optionally "x" and 1 to 7 digits,
+// "w" and one of 1 to 5, "g" and 1 to 10 digits without a leading zero, in that order.
+TkHp :: struct { ok: bool; hp: int = -1; xp: int; wanted: int; owner: int; }
+tk_digits :: (s: string, most: int) -> int #effects(all) {
+  if s.count == 0 || s.count > most { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+tk_hp_read :: (field: string) -> TkHp #effects(all) {
+  r := TkHp.{}; hx := field;
+  // index 0 is the HP's own (a digit or "-"), so the markers are looked for from 1
+  for i: 1..<hx.count {
+    if hx[i] != 'g' { continue; }
+    gs := hx[i + 1..<hx.count];
+    if gs.count >= 2 && gs[0] == '0' { return TkHp.{}; }   // "g0" alone fails as owner 0
+    r.owner = tk_digits(gs, 10);
+    if r.owner < 1 { return TkHp.{}; }
+    hx = hx[0..<i];
+    break;
+  }
+  for i: 1..<hx.count {
+    if hx[i] != 'w' { continue; }
+    if i + 2 != hx.count || hx[i + 1] < '1' || hx[i + 1] > '5' { return TkHp.{}; }
+    r.wanted = cast(int) (hx[i + 1] - '0');
+    hx = hx[0..<i];
+    break;
+  }
+  hf := hx;
+  for i: 1..<hx.count {
+    if hx[i] != 'x' { continue; }
+    hf = hx[0..<i];
+    r.xp = tk_digits(hx[i + 1..<hx.count], 7);
+    if r.xp < 0 { return TkHp.{}; }
+    break;
+  }
+  if hf != "-" {
+    r.hp = tk_digits(hf, 5);
+    if r.hp < 0 { return TkHp.{}; }
+  }
+  r.ok = true;
+  return r;
+}
+
+tk_code_ok :: (s: string, most: int) -> bool #effects(all) {
+  if s.count == 0 || s.count > most { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+tk_name_ok :: (name: string) -> bool #effects(all) {
+  n := name.count;
+  for i: 0..<n {
+    ch := name[i];
+    ok := (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || (ch == ' ' && i > 0 && i < n - 1) || ch == '-' || ch == '_';
+    if !ok { return false; }
+  }
+  return true;
+}
+tk_lower_hex :: (s: string) -> bool #effects(all) {
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+// EXT: "-" or NAME=VALUE items as the header says.
+tk5_ext_ok :: (ext: string) -> bool #effects(all) {
+  if ext == "-" { return true; }
+  if ext.count > TK5_EXT { return false; }   // "" fails as an item with no "="
+  items := 0; at := 0; last := "";
+  while at <= ext.count {
+    end := at;
+    while end < ext.count && ext[end] != ',' { end += 1; }
+    item := ext[at..<end];
+    eq := 0;   // mutant: equivalent (from 1 instead: item[0] '=' fails as a name, else it is never '=')
+    while eq < item.count && item[eq] != '=' { eq += 1; }
+    if eq == 0 || eq > 8 || eq >= item.count { return false; }
+    name := item[0..<eq];
+    for c: name { if c < 'a' || c > 'z' { return false; } }
+    if !tk_code_ok(item[eq + 1..<item.count], 24) { return false; }
+    if !tk5_before(last, name) { return false; }   // last "" sorts before every name
+    last = name; items += 1;
+    if items > TK5_EXT_ITEMS { return false; }
+    at = end + 1;
+  }
+  return true;
+}
+// Whether a sorts strictly before b, bytewise.
+tk5_before :: (a: string, b: string) -> bool #effects(all) {
+  i := 0;
+  while i < a.count && i < b.count {
+    if a[i] != b[i] { return a[i] < b[i]; }   // mutant: equivalent (a[i] <= b[i] where they differ is a[i] < b[i])
+    i += 1;
+  }
+  return a.count < b.count;
+}
+// The value of EXT item `name` ("" none). For #13259: tk5_ext(t.ext, "c").
+tk5_ext :: (ext: string, name: string) -> string #effects(all) {
+  at := 0;
+  while at < ext.count {   // mutant: equivalent (at == ext.count reads an empty item, which names nothing)
+    end := at;
+    while end < ext.count && ext[end] != ',' { end += 1; }
+    item := ext[at..<end];
+    if item.count > name.count && item[0..<name.count] == name && item[name.count] == '=' { return item[name.count + 1..<item.count]; }
+    at = end + 1;
+  }
+  return "";
+}
+
+// The room's keys from OA_ROOM_TICKET_PUBKEYS: one or two x-only public keys in lowercase hex,
+// joined by ','. n 0 when the text is anything else (a bad key, a third key, the same key twice).
+tk5_keys :: (text: string) -> TicketKeys #effects(all) {
+  k := TicketKeys.{};
+  at := 0;
+  while at <= text.count {
+    end := at;
+    while end < text.count && text[end] != ',' { end += 1; }
+    hex := text[at..<end];
+    if k.n >= TK5_KEYS || hex.count != 64 || !tk_lower_hex(hex) { return TicketKeys.{}; }
+    pub: [32] u8;
+    r := hex_decode_checked(hex, pub[..], false);
+    if r.error != NC_OK || !sg_lift_x_public(pub[..]).ok { return TicketKeys.{}; }
+    for i: 0..<k.n { if cast(string) k.kid[i][..] == hex[0..<8] { return TicketKeys.{}; } }
+    for i: 0..<32 { k.pub[k.n][i] = pub[i]; }
+    for i: 0..<8 { k.kid[k.n][i] = hex[i]; }
+    k.n += 1;
+    at = end + 1;
+  }
+  return k;
+}
+
+// ---- the writer
+
+tk_put :: (b: [] u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || n + s.count > b.count { return -1; }
+  for i: 0..<s.count { b[n + i] = s[i]; }
+  return n + s.count;
+}
+tk_put_int :: (b: [] u8, n: int, v: int) -> int #effects(all) {
+  d: [20] u8; dn := 0; e := v;
+  while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+  m := n;
+  for j: 0..<dn { m = tk_put(b, m, cast(string) d[dn - 1 - j..<dn - j]); }
+  return m;
+}
+// The x-only public key of secret into out (32 bytes); false for a key that is not one.
+tk5_public :: (secret: [] u8, out: [] u8) -> bool #effects(all) {
+  if secret.count != 32 || out.count < 32 { return false; }
+  work: [1] SignWork; aux: [32] u8; sig: [64] u8;
+  if schnorr_sign_step(secret, aux[..], aux[0..<0], work[..], sig[..], false) != SIGN_MORE { return false; }   // mutant: equivalent (stage 0 derives the key; it reads no message)
+  for i: 0..<32 { out[i] = work[0].prep[0].public_key[i]; }
+  _ := sw_clear(work[..]);
+  return true;
+}
+// The signed text before ".SIG" into out: its count, or -1 when a value is out of the format or it does not fit.
+// hp below 0 or above 99999 is written "-"; xp outside 0 to 9999999 as 0; wanted outside 1 to 5 as
+// none; owner 0 as none. profile 1 writes SAVED "0"; profile 2 writes saved ("-" or a stored capture).
+tk5_body :: (kid: string, pid: string, acct: int, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, owner: int, ext: string, profile: int, saved: string, out: [] u8) -> int #effects(all) {
+  if kid.count != 8 || !tk_lower_hex(kid) || !tk_code_ok(pid, TK_PID) || acct < 0 || acct > 2 || !tk_code_ok(room, TK_ROOM) { return -1; }
+  if name.count > TK_NAME || !tk_name_ok(name) || shard < 1 || shard > 99 { return -1; }
+  if expires < 1 || expires > 999999999999999 || owner < 0 || owner > 9999999999 || !tk5_ext_ok(ext) { return -1; }
+  if profile != 1 && profile != 2 { return -1; }
+  if profile == 2 && (owner < 1 || (saved != "-" && !cc_read(saved, false).ok)) { return -1; }
+  n := tk_put(out, 0, "v5."); n = tk_put(out, n, kid); n = tk_put(out, n, "."); n = tk_put(out, n, pid); n = tk_put(out, n, ".");
+  n = tk_put_int(out, n, acct); n = tk_put(out, n, ".");
+  if name.count == 0 { n = tk_put(out, n, "-"); }
+  else {
+    b: [32] u8; m := rt_url(name, b[..]);
+    n = tk_put(out, n, cast(string) b[0..<m]);
+  }
+  n = tk_put(out, n, "."); n = tk_put(out, n, room); n = tk_put(out, n, ".");
+  n = tk_put_int(out, n, shard); n = tk_put(out, n, "."); n = tk_put_int(out, n, expires); n = tk_put(out, n, ".");
+  if hp >= 0 && hp < 100000 { n = tk_put_int(out, n, hp); } else { n = tk_put(out, n, "-"); }
+  w := ifx wanted >= 1 && wanted <= 5 then wanted else 0;
+  x := ifx xp >= 0 && xp <= 9999999 then xp else 0;   // mutant: equivalent (xp 0 writes 0 either way)
+  if x > 0 || w > 0 { n = tk_put(out, n, "x"); n = tk_put_int(out, n, x); }
+  if w > 0 { n = tk_put(out, n, "w"); n = tk_put_int(out, n, w); }
+  if owner > 0 { n = tk_put(out, n, "g"); n = tk_put_int(out, n, owner); }
+  n = tk_put(out, n, "."); n = tk_put(out, n, ext); n = tk_put(out, n, ".");
+  if profile == 1 || saved == "-" { n = tk_put(out, n, ifx profile == 1 then "0" else "-"); }
+  else {
+    if n == -1 { return -1; }
+    m := rt_url(saved, out[n..<out.count]);
+    if m == -1 { return -1; }
+    n += m;
+  }
+  return n;   // -1 when it did not fit out
+}
+// The whole ticket, signed with secret (32 bytes) and aux (BIP-340's 32 auxiliary random bytes;
+// the API passes fresh ones, the fixtures zeros), into out: the ticket, or "" when anything is out
+// of the format or the key is not one. The one v5 writer: coax/web/api/player.c calls it.
+seat_ticket_v5_write :: (secret: [] u8, aux: [] u8, pid: string, acct: int, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, owner: int, ext: string, profile: int, saved: string, out: [] u8) -> string #export_c #effects(all) {
+  if aux.count != 32 || out.count < TK5_TEXT { return ""; }
+  pub: [32] u8;
+  if !tk5_public(secret, pub[..]) { return ""; }
+  kid: [8] u8; hx: [64] u8;
+  r := hex_encode_checked(cast(string) pub[..], hx[..], false);
+  if r.error != NC_OK { return ""; }
+  for i: 0..<8 { kid[i] = hx[i]; }
+  // the body, then ".SIG", straight into out; the body leaves the signature its 129 bytes
+  n := tk5_body(cast(string) kid[..], pid, acct, name, room, shard, expires, hp, xp, wanted, owner, ext, profile, saved, out[0..<TK5_TEXT - 129]);   // mutant: equivalent (no body checks past 3,300 bytes)
+  if n == -1 { return ""; }
+  work: [1] SignWork; sig: [64] u8;
+  status := SIGN_MORE;
+  while status == SIGN_MORE { status = schnorr_sign_step(secret, aux, out[0..<n], work[..], sig[..], false); }
+  if status != SIGN_DONE { return ""; }
+  out[n] = '.';
+  r = hex_encode_checked(cast(string) sig[..], out[n + 1..<n + 129], false);   // mutant: equivalent (a byte more room changes nothing written)
+  if r.error != NC_OK { return ""; }
+  return cast(string) out[0..<n + 129];
+}
+// The id of secret's key (its public key's first 8 hex digits) into out, for the API's start line; "" for no key.
+seat_ticket_v5_kid :: (secret: [] u8, out: [] u8) -> string #export_c #effects(all) {
+  pub: [32] u8; hx: [64] u8;
+  if out.count < 8 || !tk5_public(secret, pub[..]) { return ""; }
+  r := hex_encode_checked(cast(string) pub[..], hx[..], false);
+  if r.error != NC_OK { return ""; }
+  for i: 0..<8 { out[i] = hx[i]; }
+  return cast(string) out[0..<8];
+}
+// OA_ROOM_TICKET_SIGNING_KEY's 64 lowercase hex digits into out (32 bytes); false for anything else.
+seat_ticket_v5_secret :: (text: string, out: [] u8) -> bool #export_c #effects(all) {
+  if text.count != 64 || out.count < 32 || !tk_lower_hex(text) { return false; }
+  r := hex_decode_checked(text, out[0..<32], false);
+  return r.error == NC_OK;
+}
+
+// ---- the reader
+
+// The ticket's fields checked against the room's code and now (wall ms), all but its signature: ok
+// false unless every field has its format. kid and signed_n say which key must have signed which bytes.
+tk5_fields :: (text: string, room: string, now: int) -> SeatTicket #effects(all) {
+  t := SeatTicket.{};
+  // no length check: every field bounded, a ticket whose fields check is under 3,300 bytes, below TK5_TEXT
+  at: [13] int; n := 1;
+  for i: 0..<text.count {   // mutant: equivalent (from 1: byte 0 is f[0]'s, which must be "v5")
+    if text[i] == '.' {
+      if n >= 12 { return t; }   // mutant: equivalent (n >= 13 stores at[12] and refuses at n != 12)
+      at[n] = i + 1; n += 1;
+    }
+  }
+  if n != 12 { return t; }
+  at[12] = text.count + 1;
+  f: [12] string;
+  for i: 0..<12 { f[i] = text[at[i]..<at[i + 1] - 1]; }
+  if f[0] != "v5" || f[1].count != 8 || !tk_lower_hex(f[1]) || f[11].count != 128 || !tk_lower_hex(f[11]) { return t; }
+  // who, where and until when
+  if !tk_code_ok(f[2], TK_PID) || f[5] != room { return t; }
+  if f[3] != "0" && f[3] != "1" && f[3] != "2" { return t; }
+  if f[6].count == 2 && f[6][0] == '0' { return t; }   // "0" alone is shard 0
+  shard := tk_digits(f[6], 2);
+  ends := tk_digits(f[7], 15);
+  if shard < 1 || now > ends || ends - now > TK_LIFE_MS + TK_SKEW_MS { return t; }
+  hp := tk_hp_read(f[8]);
+  if !hp.ok || !tk5_ext_ok(f[9]) { return t; }
+  // the name
+  if f[4] != "-" {
+    nb: [TK_NAME] u8;
+    d := fi_b64url_decode(f[4], nb[..]);
+    if d.error != NC_OK || d.written < 1 || !tk_name_ok(cast(string) nb[0..<d.written]) { return t; }
+    for i: 0..<d.written { t.name[i] = nb[i]; }
+    t.name_n = d.written;
+  }
+  // the saved capture
+  if f[10] != "0" {
+    if hp.owner < 1 { return SeatTicket.{}; }
+    t.schema = 2;
+    if f[10] != "-" {
+      saved: [CC_BODY] u8;
+      d := fi_b64url_decode(f[10], saved[..]);
+      if d.error != NC_OK { return SeatTicket.{}; }
+      t.capture = cc_read(cast(string) saved[0..<d.written], false);
+      if !t.capture.ok { return SeatTicket.{}; }
+      t.rest = cc_rest(cast(string) saved[0..<d.written], false);
+    }
+  }
+  for i: 0..<f[2].count { t.pid[i] = f[2][i]; }
+  t.pid_n = f[2].count;
+  t.account = f[3] != "0"; t.admin = f[3] == "2";
+  t.shard = shard; t.expires = ends;
+  t.hp = hp.hp; t.xp = hp.xp; t.wanted = hp.wanted; t.owner = hp.owner;
+  if f[9] != "-" { for i: 0..<f[9].count { t.ext[i] = f[9][i]; } t.ext_n = f[9].count; }
+  for i: 0..<8 { t.kid[i] = f[1][i]; }
+  t.signed_n = at[11] - 1;
+  t.ok = true;
+  return t;
+}
+// The ticket checked against the room's keys, the room's code and now (wall ms): ok false unless all
+// of it holds. The key the id names must have signed every byte before ".SIG".
+tk5_read :: (keys: TicketKeys, text: string, room: string, now: int) -> SeatTicket #effects(all) {
+  if keys.n < 1 || keys.n > TK5_KEYS { return SeatTicket.{}; }
+  t := tk5_fields(text, room, now);
+  if !t.ok { return SeatTicket.{}; }
+  kk := keys; k := -1;
+  for i: 0..<kk.n { if cast(string) kk.kid[i][..] == cast(string) t.kid[..] { k = i; } }
+  if k < 0 { return SeatTicket.{}; }
+  sig: [64] u8;
+  r := hex_decode_checked(text[t.signed_n + 1..<text.count], sig[..], false);
+  signed: [TK5_TEXT] u8;
+  for i: 0..<t.signed_n { signed[i] = text[i]; }
+  if r.error != NC_OK || !schnorr_verify_vartime(signed[0..<t.signed_n], kk.pub[k][..], sig[..]) { return SeatTicket.{}; }
+  t.key = k;
+  return t;
+}
+
+// ---- checks
+// Signing and verifying cost the most here, and #authority checks run under mutation, so most checks
+// read unsigned bodies (tk5_fields) or the fixtures' signed tickets; few sign.
+
+TK5_TEST_SECRET :: "0101010101010101010101010101010101010101010101010101010101010101";
+TK5_TEST_OTHER :: "0202020202020202020202020202020202020202020202020202020202020202";
+TK5_TEST_PUB :: "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f";
+TK5_TEST_PUB2 :: "4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766";
+TK5_TEST_BOTH :: "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f,4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766";
+// proto/verse/seat-ticket-v5.json's first, sixth and seventh tickets
+TK5_TEST_T1 :: "v5.1b84c556.p-0123456789abcdef.1.QXNo.everglade-2.3.1762190600000.14x320w3g12.-.0.059791198f4fc9dfa17206b9cf47e4a549fdf839dcf43c4da30a67ef03cf3e5a5f4d1868dd293a23416fc11002c189d71e6659b08ea7f43d7fcc0212aa01ff1d";
+TK5_TEST_T6 :: "v5.1b84c556.p-a.0.QXNo.pair-a.1.1762190060000.7x350w2g7.-.eyJ2IjoyLCJvd25lciI6NywicHJvY2VzcyI6MTAxLCJyZXYiOjMsImF0IjoxNzYyMTkwMDAwMDAwLCJlbmdpbmUiOjEsInJ1bGVzIjoxLCJjb250ZW50IjoxLCJocCI6MCwibWF4IjoyMCwieHAiOjM1MCwid2FudGVkIjoyLCJ4X21tIjotMTIzNCwieV9tbSI6MjAwLCJ6X21tIjotOTg3NiwieWF3X21yYWQiOjEyMzQsInBpZCI6InAtYSIsInJvb20iOiJwYWlyLWEiLCJkZWFkIjp0cnVlLCJzdGF0ZSI6WzEsMCw0LDUwLDIsNiwwLDIsMCwwLDAsMCwwLDAsMCwwLDEsMCwwLDAsMCwwLDAsMCwwLDAsMF19.1a14e93666bea860f847319441764eff5fd1050f2f7d36844d290083685ac73f515210d4d8dd80925bf96dbe2b16e87a8ce0328b214cc8c5f3680041944b853d";
+TK5_TEST_T7 :: "v5.4d4b6cd1.p-0123456789abcdef.1.QXNo.everglade-2.3.1762190600000.14x320w3g12.-.0.ec2c2a3b9733d5a43757cb079fb2d060603820663db4f4884d9f2fa206eaaa16540c0afa1e618f8fcb2c0ee5df4216c35dc9d3190f91a5e1ec0d39d0987eba13";
+TK5_TEST_SIG :: ".00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+tk5_test_sign :: (secret: string, pid: string, acct: int, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, owner: int, ext: string, profile: int, saved: string, out: [] u8) -> string #effects(all) {
+  sk: [32] u8; aux: [32] u8;
+  #assert seat_ticket_v5_secret(secret, sk[..]);
+  return seat_ticket_v5_write(sk[..], aux[..], pid, acct, name, room, shard, expires, hp, xp, wanted, owner, ext, profile, saved, out);
+}
+// A body with a placeholder signature, for the format's checks (tk5_fields).
+tk5_test_unsigned :: (body: string, out: [] u8) -> string #effects(all) {
+  n := tk_put(out, 0, body); n = tk_put(out, n, TK5_TEST_SIG);
+  return cast(string) out[0..<n];
+}
+tk5_test_with :: (text: string, i: int, ch: u8, out: [] u8) -> string #effects(all) {
+  for j: 0..<text.count { out[j] = text[j]; }
+  out[i] = ch;
+  return cast(string) out[0..<text.count];
+}
+
+#test "seat ticket v5: the writer's exact bytes for a fixed key and zero aux" #steps 4000000000 {
+  out: [TK5_TEXT] u8;
+  s := tk5_test_sign(TK5_TEST_SECRET, "p-0123456789abcdef", 1, "Ash", "everglade-2", 3, 1762190600000, 14, 320, 3, 12, "-", 1, "", out[..]);
+  #assert s == TK5_TEST_T1;
+}
+#test "seat ticket v5: the reader takes the fixtures back with the key their id names" #steps 4000000000 {
+  one := tk5_keys(TK5_TEST_PUB);
+  t := tk5_read(one, TK5_TEST_T1, "everglade-2", 1762190000000);
+  #assert t.ok && t.key == 0 && cast(string) t.pid[0..<t.pid_n] == "p-0123456789abcdef" && t.account && !t.admin;
+  #assert cast(string) t.name[0..<t.name_n] == "Ash" && t.shard == 3 && t.expires == 1762190600000;
+  #assert t.hp == 14 && t.xp == 320 && t.wanted == 3 && t.owner == 12 && t.schema == 1 && t.ext_n == 0 && !t.capture.ok;
+  #assert !tk5_read(one, TK5_TEST_T7, "everglade-2", 1762190000000).ok;   // the second key's
+}
+#test "seat ticket v5: two keys take either (a rotation); a dropped key's tickets are refused" #steps 4000000000 {
+  both := tk5_keys(TK5_TEST_BOTH);
+  #assert both.n == 2 && tk5_read(both, TK5_TEST_T1, "everglade-2", 1762190000000).key == 0 && tk5_read(both, TK5_TEST_T7, "everglade-2", 1762190000000).key == 1;
+  #assert !tk5_read(tk5_keys(TK5_TEST_PUB2), TK5_TEST_T1, "everglade-2", 1762190000000).ok;
+  #assert !tk5_read(TicketKeys.{}, TK5_TEST_T1, "everglade-2", 1762190000000).ok;
+  bad := both; bad.n = 3; #assert !tk5_read(bad, TK5_TEST_T1, "everglade-2", 1762190000000).ok;
+}
+#test "seat ticket v5: another key's id, or this id on another key, does not verify" #steps 4000000000 {
+  both := tk5_keys(TK5_TEST_BOTH); f: [TK5_TEXT] u8;
+  swap := TK5_TEST_T1;
+  for i: 0..<8 { swap = tk5_test_with(swap, 3 + i, TK5_TEST_T7[3 + i], f[..]); }
+  #assert !tk5_read(both, swap, "everglade-2", 1762190000000).ok;
+  fake := tk5_keys(TK5_TEST_PUB2); for i: 0..<8 { fake.kid[0][i] = TK5_TEST_PUB[i]; }
+  #assert !tk5_read(fake, TK5_TEST_T1, "everglade-2", 1762190000000).ok;
+}
+#test "seat ticket v5: a signed byte or a signature byte changed does not verify" #steps 4000000000 {
+  one := tk5_keys(TK5_TEST_PUB); f: [TK5_TEXT] u8; s := TK5_TEST_T1;
+  // the account bit raised to admin, the shard, the owner generation, a signature digit
+  #assert !tk5_read(one, tk5_test_with(s, 31, '2', f[..]), "everglade-2", 1762190000000).ok;
+  #assert !tk5_read(one, tk5_test_with(s, 50, '4', f[..]), "everglade-2", 1762190000000).ok;
+  #assert !tk5_read(one, tk5_test_with(s, s.count - 140, '3', f[..]), "everglade-2", 1762190000000).ok;
+  #assert !tk5_read(one, tk5_test_with(s, s.count - 1, 'e', f[..]), "everglade-2", 1762190000000).ok;
+  #assert s[31] == '1' && s[50] == '3' && s[s.count - 140] == '2' && s[s.count - 1] == 'd';
+}
+#test "seat ticket v5: a profile 2 ticket carries the whole capture, signed" #steps 4000000000 {
+  one := tk5_keys(TK5_TEST_PUB); f: [TK5_TEXT] u8; s := TK5_TEST_T6;
+  t := tk5_read(one, s, "pair-a", 1762190000000);
+  #assert t.ok && t.schema == 2 && t.owner == 7 && t.hp == 7 && t.xp == 350 && t.capture.ok && t.capture.dead && t.capture.n[13] == -1234;
+  at := s.count - 200;
+  #assert !tk5_read(one, tk5_test_with(s, at, ifx s[at] == 'A' then 'B' else 'A', f[..]), "pair-a", 1762190000000).ok;
+}
+#test "seat ticket v5: the fields' rules, before any signature" {
+  b: [TK5_TEXT] u8; s := TK5_TEST_T1;
+  t := tk5_fields(s, "everglade-2", 1762190000000);
+  #assert t.ok && t.key == -1 && cast(string) t.kid[..] == "1b84c556" && t.signed_n == s.count - 129;
+  #assert !tk5_fields(s, "everglade-3", 1762190000000).ok;                                     // another room
+  #assert !tk5_fields(s, "everglade-2", 1762190600001).ok && tk5_fields(s, "everglade-2", 1762190600000).ok;   // expired
+  #assert !tk5_fields(s, "everglade-2", 1762190600000 - TK_LIFE_MS - TK_SKEW_MS - 1).ok;     // too far off
+  #assert tk5_fields(s, "everglade-2", 1762190600000 - TK_LIFE_MS - TK_SKEW_MS).ok;
+  #assert !tk5_fields(s[0..<s.count - 1], "everglade-2", 1762190000000).ok;                   // a signature digit short
+  #assert !tk5_fields("", "dawn", 0).ok && !tk5_fields("v4.a", "dawn", 0).ok && !tk5_fields("v5", "dawn", 0).ok;
+  long: [TK5_TEXT + 1] u8; for j: 0..<long.count { long[j] = 'a'; } long[0] = 'v'; long[1] = '5'; long[2] = '.';
+  #assert !tk5_fields(cast(string) long[..], "dawn", 0).ok;
+  f: [TK5_TEXT] u8;
+  for j: 0..<s.count { f[j] = s[j]; }
+  for j: s.count - 128..<s.count { if f[j] >= 'a' { f[j] -= 32; } }
+  #assert !tk5_fields(cast(string) f[0..<s.count], "everglade-2", 1762190000000).ok;          // an upper-case signature
+}
+#test "seat ticket v5: each field out of its format is refused, whatever signs it" {
+  r: [TK5_TEXT] u8;
+  bodies := [24] string.[
+    "v5.1b84c55.p-0011.1.QXNo.dawn.2.1000000.9.-.0",            // a short key id
+    "v5.1B84C556.p-0011.1.QXNo.dawn.2.1000000.9.-.0",           // an upper-case key id
+    "v5.1b84c556.P-0011.1.QXNo.dawn.2.1000000.9.-.0",           // the id's letters
+    "v5.1b84c556..1.QXNo.dawn.2.1000000.9.-.0",                 // no id
+    "v5.1b84c556.p-0011.3.QXNo.dawn.2.1000000.9.-.0",           // ACCT 3
+    "v5.1b84c556.p-0011.1.QXNo!.dawn.2.1000000.9.-.0",          // a name that is not base64url
+    "v5.1b84c556.p-0011.1.QXNoIQ.dawn.2.1000000.9.-.0",         // "Ash!"
+    "v5.1b84c556.p-0011.1..dawn.2.1000000.9.-.0",               // an empty name field
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.-.0x",          // SAVED not a capture
+    "v5.1b84c556.p-0011.1.QXNo.dawn.02.1000000.9.-.0",          // a leading zero
+    "v5.1b84c556.p-0011.1.QXNo.dawn.0.1000000.9.-.0",           // shard 0
+    "v5.1b84c556.p-0011.1.QXNo.dawn.100.1000000.9.-.0",         // three digits
+    "v5.1b84c556.p-0011.1.QXNo.dawn..1000000.9.-.0",            // no shard
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000a.9.-.0",          // EXPIRES not digits
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9a.-.0",          // HP not digits
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9w6.-.0",         // WANTED 6
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9g0.-.0",         // owner 0
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.l=5,c=x.0",     // EXT not ascending
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.C=x.0",         // EXT's name upper case
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9..0",            // EXT empty
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.-.-",           // profile 2 with no owner
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9g1.-.e30",       // a capture "{}" that does not read
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9g1.-.!",         // a capture that is not base64url
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.-.0.0"          // a thirteenth field
+  ];
+  for b: bodies { #assert !tk5_fields(tk5_test_unsigned(b, r[..]), "dawn", 990000).ok; }
+}
+#test "seat ticket v5: each field at its edges reads back" {
+  r: [TK5_TEXT] u8;
+  goods := [6] string.[
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.-.0",
+    "v5.1b84c556.p-0011.2.-.dawn.99.1000000.-.-.0",
+    "v5.1b84c556.p-0011.0.QXNo.dawn.2.1000000.9x0w1g1.-.-",
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.c=srd-fighter,l=5,zz=new.0",
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.-x7.a=b.0",
+    "v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9g4294967296.-.-"
+  ];
+  for b: goods { #assert tk5_fields(tk5_test_unsigned(b, r[..]), "dawn", 990000).ok; }
+  t := tk5_fields(tk5_test_unsigned(goods[0], r[..]), "dawn", 990000);
+  #assert t.account && !t.admin && t.schema == 1 && cast(string) t.name[0..<t.name_n] == "Ash" && t.hp == 9 && t.shard == 2 && t.expires == 1000000;
+  #assert cast(string) t.pid[0..<t.pid_n] == "p-0011";
+  t = tk5_fields(tk5_test_unsigned(goods[1], r[..]), "dawn", 990000);
+  #assert t.admin && t.account && t.name_n == 0 && t.shard == 99 && t.hp == -1 && t.schema == 1;
+  t = tk5_fields(tk5_test_unsigned(goods[2], r[..]), "dawn", 990000);
+  #assert !t.account && !t.admin && t.schema == 2 && t.owner == 1 && t.wanted == 1 && t.xp == 0 && !t.capture.ok;
+  t = tk5_fields(tk5_test_unsigned(goods[3], r[..]), "dawn", 990000);
+  #assert cast(string) t.ext[0..<t.ext_n] == "c=srd-fighter,l=5,zz=new";
+  #assert tk5_ext(cast(string) t.ext[0..<t.ext_n], "c") == "srd-fighter" && tk5_ext(cast(string) t.ext[0..<t.ext_n], "l") == "5";
+  #assert tk5_ext(cast(string) t.ext[0..<t.ext_n], "z") == "" && tk5_ext(cast(string) t.ext[0..<t.ext_n], "zz") == "new" && tk5_ext("", "c") == "";
+  t = tk5_fields(tk5_test_unsigned(goods[4], r[..]), "dawn", 990000);
+  #assert t.hp == -1 && t.xp == 7 && t.wanted == 0 && t.owner == 0 && t.ext_n == 3;
+  #assert tk5_fields(tk5_test_unsigned(goods[5], r[..]), "dawn", 990000).owner == 4294967296;
+  #assert tk5_test_with("abc", 1, 'x', r[..]) == "axc";
+}
+#test "seat ticket v5: every value the writer refuses, and its canonical HP field" {
+  b: [TK5_TEXT] u8;
+  k := "1b84c556";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..])] == "v5.1b84c556.p-a.0.-.r.1.1.-.-.0";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 2, "Al B", "r", 99, 999999999999999, 0, 0, 2, 0, "-", 1, "", b[..])] == "v5.1b84c556.p-a.2.QWwgQg.r.99.999999999999999.0x0w2.-.0";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 0, "", "r", 1, 1, 100000, 10000000, 6, 9999999999, "-", 1, "", b[..])] == "v5.1b84c556.p-a.0.-.r.1.1.-g9999999999.-.0";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 1, "", "r", 1, 1, 99999, 9999999, 5, 1, "c=srd-fighter,l=5", 2, "-", b[..])] == "v5.1b84c556.p-a.1.-.r.1.1.99999x9999999w5g1.c=srd-fighter,l=5.-";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, -1, 0, 0, "-", 1, "", b[..])] == "v5.1b84c556.p-a.0.-.r.1.1.-.-.0";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 0, "", "r", 1, 1, 7, 3, 0, 0, "-", 1, "", b[..])] == "v5.1b84c556.p-a.0.-.r.1.1.7x3.-.0";
+  #assert tk5_body("1b84c55", "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body("1B84C556", "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "P-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", -1, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 3, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r.s", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "Ash!", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "abcdefghijklmnopqrstuvwxy", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "abcdefghijklmnopqrstuvwx", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) > 0;
+  #assert tk5_body(k, "p-a", 0, "", "r", 0, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 100, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 0, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1000000000000000, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, -1, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 10000000000, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 0, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 3, "", b[..]) == -1;
+  // profile 2 needs an owner, and a capture that reads
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 2, "-", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 1, "-", 2, "{}", b[..]) == -1;
+  // the capture written whole, and a body too long for its signature to fit
+  c := cc_fixture(); saved: [CC_BODY] u8; st := cc_stored(c, saved[..]);
+  n := tk5_body(k, "p-a", 0, "Ash", "pair-a", 1, 1762190060000, 7, 350, 2, 7, "-", 2, st, b[..]);
+  #assert n == TK5_TEST_T6.count - 129 && cast(string) b[0..<n] == TK5_TEST_T6[0..<n];
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 1, "-", 2, "-", b[0..<10]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 1, "-", 2, st, b[0..<40]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 1, "-", 2, st, b[0..<10]) == -1;   // full before the capture
+  big: [4200] u8;
+  #assert tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 0, 1, "-", 2, st, big[..]) > 0;
+  #assert tk_put(b[..], -1, "a") == -1 && tk_put(b[0..<2], 1, "ab") == -1 && tk_put(b[0..<2], 0, "ab") == 2;
+  #assert cast(string) b[0..<tk_put_int(b[..], 0, 0)] == "0" && cast(string) b[0..<tk_put_int(b[..], 0, 1020)] == "1020";
+}
+#test "seat ticket v5: the writer refuses a bad key, aux or room for the ticket" #steps 4000000000 {
+  sk: [32] u8; aux: [32] u8; zero: [32] u8; out: [TK5_TEXT] u8;
+  #assert seat_ticket_v5_secret(TK5_TEST_SECRET, sk[..]);
+  #assert seat_ticket_v5_write(sk[..], aux[0..<31], "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", out[..]) == "";
+  #assert seat_ticket_v5_write(sk[..], aux[..], "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", out[0..<TK5_TEXT - 1]) == "";
+  #assert seat_ticket_v5_write(zero[..], aux[..], "p-a", 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", out[..]) == "";
+  #assert seat_ticket_v5_write(sk[..], aux[..], "p-a", 0, "", "r", 0, 1, -1, 0, 0, 0, "-", 1, "", out[..]) == "";
+}
+#test "seat ticket v5: the signing key's text and its id" #steps 4000000000 {
+  sk: [32] u8; kid: [8] u8; pub: [32] u8;
+  #assert seat_ticket_v5_secret(TK5_TEST_SECRET, sk[..]) && sk[0] == 1 && sk[31] == 1;
+  #assert seat_ticket_v5_kid(sk[..], kid[..]) == "1b84c556";
+  #assert seat_ticket_v5_kid(sk[..], kid[0..<7]) == "";
+  z: [32] u8; #assert seat_ticket_v5_kid(z[..], kid[..]) == "";
+  #assert tk5_public(sk[..], pub[..]) && pub[0] == 0x1b && pub[31] == 0x8f;
+  #assert !tk5_public(sk[0..<31], pub[..]) && !tk5_public(sk[..], pub[0..<31]);
+  #assert !seat_ticket_v5_secret(TK5_TEST_SECRET[0..<63], sk[..]);
+  #assert !seat_ticket_v5_secret("01010101010101010101010101010101010101010101010101010101010101AB", sk[..]);
+  #assert !seat_ticket_v5_secret(TK5_TEST_SECRET, sk[0..<31]);
+}
+#test "seat ticket v5: the room's key list is one or two points, lowercase, distinct" #steps 4000000000 {
+  one := tk5_keys(TK5_TEST_PUB);
+  #assert one.n == 1 && cast(string) one.kid[0][..] == "1b84c556" && one.pub[0][0] == 0x1b && one.pub[0][31] == 0x8f;
+  two := tk5_keys(TK5_TEST_BOTH);
+  #assert two.n == 2 && cast(string) two.kid[1][..] == "4d4b6cd1" && two.pub[1][0] == 0x4d;
+  b: [300] u8; n := tk_put(b[..], 0, TK5_TEST_BOTH); n = tk_put(b[..], n, ","); n = tk_put(b[..], n, TK5_TEST_PUB);
+  #assert tk5_keys(cast(string) b[0..<n]).n == 0;                                 // a third
+  n = tk_put(b[..], 0, TK5_TEST_PUB); n = tk_put(b[..], n, ","); n = tk_put(b[..], n, TK5_TEST_PUB);
+  #assert tk5_keys(cast(string) b[0..<n]).n == 0;                                 // the same twice
+  n = tk_put(b[..], 0, TK5_TEST_PUB); n = tk_put(b[..], n, ",");
+  #assert tk5_keys(cast(string) b[0..<n]).n == 0;                                 // an empty second
+  #assert tk5_keys("").n == 0 && tk5_keys(",").n == 0 && tk5_keys(TK5_TEST_PUB[0..<63]).n == 0;
+  #assert tk5_keys("0000000000000000000000000000000000000000000000000000000000000000").n == 0;   // no point
+  #assert tk5_keys("1B84C5567B126440995D3ED5AABA0565D71E1834604819FF9C17F5E9D5DD078F").n == 0;   // upper case
+}
+#test "ticket HP field: v2, v3 and v5 read it alike" {
+  #assert tk_hp_read("-").ok && tk_hp_read("-").hp == -1 && tk_hp_read("0").hp == 0 && tk_hp_read("99999").hp == 99999;
+  r := tk_hp_read("14x320w3g12"); #assert r.ok && r.hp == 14 && r.xp == 320 && r.wanted == 3 && r.owner == 12;
+  r = tk_hp_read("-x0w5"); #assert r.ok && r.hp == -1 && r.xp == 0 && r.wanted == 5 && r.owner == 0;
+  r = tk_hp_read("-g2147483647"); #assert r.ok && r.owner == 2147483647 && r.xp == 0;
+  r = tk_hp_read("1x9999999"); #assert r.ok && r.xp == 9999999;
+  r = tk_hp_read("1w1"); #assert r.ok && r.wanted == 1 && r.xp == 0;
+  bad := [14] string.["", "100000", "a", "1x", "1x10000000", "1w", "1w0", "1w6", "1w12", "1g", "1g01", "1g12345678901", "1g1a", "1x1a"];
+  for b: bad { #assert !tk_hp_read(b).ok; }
+  #assert tk_digits("", 3) == -1 && tk_digits("1234", 3) == -1 && tk_digits("123", 3) == 123 && tk_digits("1/", 3) == -1 && tk_digits("1:", 3) == -1;
+}
+#test "ticket EXT: names ascending, values bounded, eight items at most; one item read by name" {
+  #assert tk5_ext_ok("-") && tk5_ext_ok("a=b") && tk5_ext_ok("a=b,ab=c,b=0-9") && tk5_ext_ok("abcdefgh=abcdefghijklmnopqrstuvwx") && tk5_ext_ok("z=a");
+  #assert tk5_ext_ok("a=1,b=1,c=1,d=1,e=1,f=1,g=1,h=1") && !tk5_ext_ok("a=1,b=1,c=1,d=1,e=1,f=1,g=1,h=1,i=1");
+  bad := [15] string.["", "a", "a=", "=b", "a=b,", ",a=b", "a=b,a=c", "b=1,a=1", "abcdefghi=1", "a=B", "a=b=c", "a1=b", "a=abcdefghijklmnopqrstuvwxy", "a=b,,c=d", "{=b"];
+  for b: bad { #assert !tk5_ext_ok(b); }
+  long: [TK5_EXT + 1] u8; for i: 0..<long.count { long[i] = 'a'; } long[1] = '=';
+  #assert !tk5_ext_ok(cast(string) long[..]);
+  #assert tk5_ext_ok(cast(string) long[0..<26]);
+  #assert tk5_before("a", "b") && tk5_before("a", "ab") && !tk5_before("ab", "a") && !tk5_before("a", "a") && !tk5_before("b", "a");
+  #assert tk5_ext("ab=1,b=2", "a") == "" && tk5_ext("ab=1,b=2", "ab") == "1" && tk5_ext("ab=1,b=2", "b") == "2";
+}
+#test "ticket fields: codes, names and lowercase hex" {
+  #assert tk_code_ok("a-0", 3) && !tk_code_ok("a-0z", 3) && !tk_code_ok("", 3) && !tk_code_ok("A", 3) && !tk_code_ok("a_", 3) && !tk_code_ok("a/", 3) && !tk_code_ok("{", 3) && !tk_code_ok("`", 3) && !tk_code_ok(":", 3) && !tk_code_ok(",", 3);
+  #assert tk_name_ok("Ash Vale_-9") && tk_name_ok("") && !tk_name_ok(" Ash") && !tk_name_ok("Ash ") && !tk_name_ok("A.b") && !tk_name_ok("[") && !tk_name_ok("{") && !tk_name_ok("@") && !tk_name_ok("/") && !tk_name_ok(":");
+  #assert tk_name_ok("Zz") && tk_name_ok("az09");
+  #assert tk_lower_hex("0123456789abcdef") && !tk_lower_hex("g") && !tk_lower_hex("A") && !tk_lower_hex("/") && !tk_lower_hex(":") && !tk_lower_hex("`");
+}
+
+#test "seat ticket v5: each limit at its edge, and one past it" {
+  b: [TK5_TEXT] u8; r: [TK5_TEXT] u8; k := "1b84c556";
+  e256 := "aaaaaaaa=vvvvvvvvvvvvvvvvvvvvvvvv,bbbbbbbb=vvvvvvvvvvvvvvvvvvvvvvvv,cccccccc=vvvvvvvvvvvvvvvvvvvvvvvv,dddddddd=vvvvvvvvvvvvvvvvvvvvvvvv,eeeeeeee=vvvvvvvvvvvvvvvvvvvvvvvv,ffffffff=vvvvvvvvvvvvvvvvvvvvvvvv,gggggggg=vvvvvvvvvvvvvvvvvvvvvvvv,hhhhhhhh=vvvvvvvvv";
+  #assert e256.count == 256 && tk5_ext_ok(e256);
+  e257: [257] u8; for i: 0..<256 { e257[i] = e256[i]; } e257[256] = 'v';
+  #assert !tk5_ext_ok(cast(string) e257[..]);
+  #assert tk_code_ok("z9", 2) && tk_code_ok("a0", 2) && tk_name_ok("A B") && tk_name_ok("zZ9");
+  #assert tk5_before("ab", "ac") && !tk5_before("ac", "ab");
+  #assert tk5_ext("ab=1,c", "c") == "" && tk5_ext("c=x,cd=y", "cd") == "y";
+  // three distinct points are one too many (the third: the generator's x)
+  three: [200] u8; n := tk_put(three[..], 0, TK5_TEST_BOTH); n = tk_put(three[..], n, ",79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert tk5_keys(cast(string) three[0..<n]).n == 0 && tk5_keys("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798").n == 1;
+  // a 40-byte id and a 24-byte room are the most, in the writer and the reader
+  pid40 := "p-01234567890123456789012345678901234567"; pid41 := "p-012345678901234567890123456789012345678";
+  room24 := "abcdefghijklmnopqrstuvwx"; room25 := "abcdefghijklmnopqrstuvwxy";
+  #assert pid40.count == 40 && pid41.count == 41 && room24.count == 24 && room25.count == 25;
+  #assert tk5_body(k, pid40, 0, "", room24, 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) > 0;
+  #assert tk5_body(k, pid41, 0, "", "r", 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  #assert tk5_body(k, "p-a", 0, "", room25, 1, 1, -1, 0, 0, 0, "-", 1, "", b[..]) == -1;
+  n = tk_put(b[..], 0, "v5.1b84c556."); n = tk_put(b[..], n, pid40); n = tk_put(b[..], n, ".1.QXNo.dawn.2.1000000.9.-.0");
+  #assert tk5_fields(tk5_test_unsigned(cast(string) b[0..<n], r[..]), "dawn", 990000).ok;
+  n = tk_put(b[..], 0, "v5.1b84c556."); n = tk_put(b[..], n, pid41); n = tk_put(b[..], n, ".1.QXNo.dawn.2.1000000.9.-.0");
+  #assert !tk5_fields(tk5_test_unsigned(cast(string) b[0..<n], r[..]), "dawn", 990000).ok;
+  // WANTED 1 and XP 1 alone
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 0, "", "r", 1, 1, -1, 0, 1, 0, "-", 1, "", b[..])] == "v5.1b84c556.p-a.0.-.r.1.1.-x0w1.-.0";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 0, "", "r", 1, 1, 3, 1, 0, 0, "-", 1, "", b[..])] == "v5.1b84c556.p-a.0.-.r.1.1.3x1.-.0";
+  #assert cast(string) b[0..<tk5_body(k, "p-a", 0, "", "r", 1, 1, 3, 0, 0, 1, "-", 1, "", b[..])] == "v5.1b84c556.p-a.0.-.r.1.1.3g1.-.0";
+  r1 := tk_hp_read("1g1"); #assert r1.ok && r1.owner == 1;
+  #assert !tk_hp_read("1g0").ok && !tk_hp_read("g1").ok && !tk_hp_read("x1").ok && !tk_hp_read("w1").ok;
+  // the reader: shard 10, a one-letter name, a name's first byte, fifteen digits, many dots
+  t := tk5_fields(tk5_test_unsigned("v5.1b84c556.p-0011.1.QQ.dawn.10.1000000.9.-.0", r[..]), "dawn", 990000);
+  #assert t.ok && t.shard == 10 && cast(string) t.name[0..<t.name_n] == "A";
+  #assert !tk5_fields(tk5_test_unsigned("v5.1b84c556.p-0011.1.IUFzaA.dawn.2.1000000.9.-.0", r[..]), "dawn", 990000).ok;
+  #assert tk5_fields(tk5_test_unsigned("v5.1b84c556.p-0011.1.QXNo.dawn.2.999999999999999.9.-.0", r[..]), "dawn", 999999999999000).ok;
+  #assert !tk5_fields(tk5_test_unsigned("v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000000000000.9.-.0", r[..]), "dawn", 999999999999999).ok;
+  #assert !tk5_fields(tk5_test_unsigned("v5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.-.0.0.0.0.0", r[..]), "dawn", 990000).ok;
+  #assert !tk5_fields(tk5_test_unsigned("v4.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.-.0", r[..]), "dawn", 990000).ok;
+  #assert !tk5_fields(tk5_test_unsigned("xv5.1b84c556.p-0011.1.QXNo.dawn.2.1000000.9.-.0", r[..]), "dawn", 990000).ok;
+}
+#test "seat ticket v5: the capture's rest comes back with it" {
+  c := cc_fixture(); c.n[0] = 3; saved: [CC_BODY] u8; st := cc_stored_rest(c, cc_rest_fixture(), saved[..]);   // a v3 capture: it has a rest
+  b: [TK5_TEXT] u8; r: [TK5_TEXT] u8;
+  n := tk5_body("1b84c556", "p-a", 0, "Ash", "pair-a", 1, 1762190060000, 7, 350, 2, 7, "-", 2, st, b[..]);
+  t := tk5_fields(tk5_test_unsigned(cast(string) b[0..<n], r[..]), "pair-a", 1762190000000);
+  want := cc_rest(st, false);
+  #assert t.ok && t.capture.ok && want.on && t.rest.on == want.on && t.rest.more == want.more;
+  for i: 0..<want.n.count { #assert t.rest.n[i] == want.n[i]; }
+}
+#test "seat ticket v5: a ticket under an id no room key has is refused, whoever signed it" #steps 4000000000 {
+  sk: [32] u8; aux: [32] u8; work: [1] SignWork; sig: [64] u8; b: [TK5_TEXT] u8;
+  #assert seat_ticket_v5_secret(TK5_TEST_SECRET, sk[..]);
+  body := "v5.deadbeef.p-0011.1.QXNo.dawn.2.1000000.9.-.0";
+  n := tk_put(b[..], 0, body);
+  status := SIGN_MORE;
+  while status == SIGN_MORE { status = schnorr_sign_step(sk[..], aux[..], b[0..<n], work[..], sig[..], false); }
+  b[n] = '.'; r := hex_encode_checked(cast(string) sig[..], b[n + 1..<n + 129], false);
+  text := cast(string) b[0..<n + 129];
+  #assert tk5_fields(text, "dawn", 990000).ok;                       // its fields are good
+  #assert !tk5_read(tk5_keys(TK5_TEST_PUB), text, "dawn", 990000).ok;  // and the key that signed it is the room's first
+}

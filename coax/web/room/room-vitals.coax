@@ -198,7 +198,7 @@ rv_hp_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
 // reports once the directory fences owners (#12797).
 rm_vitals_due :: (v: [] RmServer) -> int #export_c #effects(all) {
   v[0].vit.out_n = 0;
-  if v[0].tkey_n == 0 { return 0; }
+  if !rm_writes(v) { return 0; }
   if v[0].vit.gen == 0 { v[0].vit.gen = v[0].wall_ms; }
   if v[0].vit.flush || v[0].wall_ms - v[0].vit.last >= VITALS_EVERY_MS {
     v[0].vit.last = v[0].wall_ms;
@@ -242,7 +242,7 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c #effects(all) {
     v[0].vit.v[i].sent_at = v[0].wall_ms;
   }
   if m == 0 { return 0; }
-  if !tk_mac(cast(string) v[0].tkey[0..<v[0].tkey_n], cast(string) o[0..<n], v[0].vit.mac[..]) { return 0; }
+  if !rm_write_mac(v, "vitals", cast(string) o[0..<n], v[0].vit.mac[..]) { return 0; }
   v[0].vit.batch = batch;
   v[0].vit.fly = true; v[0].vit.fly_at = v[0].wall_ms; v[0].vit.fly_n = m;
   v[0].vit.posts += 1;

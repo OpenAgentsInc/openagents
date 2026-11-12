@@ -147,8 +147,8 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   // a seat ticket for this room, when the server has a key (room-ticket.coax): forged, expired or another room's, no seat
   tk := Ticket.{};
   given := tk_query(request);
-  if native_local_ticket_check(local,v[0].relays[r].limited,v[0].tkey_n>0,given.count>0,v[0].tkey_must) {
-    tk = tk_check(cast(string) v[0].tkey[0..<v[0].tkey_n], given, cast(string) code[0..<ns[1]], v[0].wall_ms);
+  if native_local_ticket_check(local,v[0].relays[r].limited,v[0].tkey_n>0||v[0].tkeys.n>0,given.count>0,v[0].tkey_must) {
+    tk = tk_check_keys(cast(string) v[0].tkey[0..<v[0].tkey_n], v[0].tkeys, given, cast(string) code[0..<ns[1]], v[0].wall_ms);
     // and for this shard (#12717): the directory put the room here, and nowhere else
     if !tk.ok || rc_kicked(v, cast(string) tk.pid[0..<tk.pid_n]) || tk.shard != v[0].shard {
       if rl_people(v, r) == 0 { v[0].relays[r].live = false; }

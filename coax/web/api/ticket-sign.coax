@@ -1,0 +1,8 @@
+// The API's seat-ticket writer (#13260): aethyr/session/seat-ticket.coax, the one v5 writer, compiled
+// to C as one unit of the API (ticket-sign-unit.c; deploy.sh, test.sh). player.c room_ticket calls it
+// when OA_ROOM_TICKET_SIGNING_KEY is set. It also checks room shards' writes (coax/web/room/room-write.coax,
+// room_write_signed in rooms.c) when OA_ROOM_WRITE_MASTER is set. The format, its reader and the checks are in that file.
+//   coax c coax/web/api/ticket-sign.coax --run-steps 250000000 --library --header ticket-sign.generated.h
+#run_steps 250000000;
+#load "../../../aethyr/session/seat-ticket.coax";
+#load "../room/room-write.coax";

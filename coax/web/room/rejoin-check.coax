@@ -17,6 +17,7 @@
 // room server started with the same key (room-proof.coax raid's way).
 //   coax/web/tool.sh coax/web/room/rejoin-check.coax [ws://localhost:8830]
 // Prints one JSON line, then "rejoins" and exits 0, or "fails" and 1.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 
 RJ_SEATS :: 16;
@@ -83,7 +84,8 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("rejoin-check: bad arguments"); return 2; }
   kb: [128] u8;
-  if proc_getenv("OA_ROOM_TICKET_KEY", kb[..]).count < 32 { tool_errln("rejoin-check: needs OA_ROOM_TICKET_KEY (the player's seat tickets name who comes back)"); print("fails\n"); return 1; }
+  skb: [80] u8;
+  if proc_getenv("OA_ROOM_TICKET_KEY", kb[..]).count < 32 && proc_getenv("OA_ROOM_TICKET_SIGNING_KEY", skb[..]).count != 64 { tool_errln("rejoin-check: needs OA_ROOM_TICKET_KEY or OA_ROOM_TICKET_SIGNING_KEY (the player's seat tickets name who comes back)"); print("fails\n"); return 1; }
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
   u: [1024] u8;

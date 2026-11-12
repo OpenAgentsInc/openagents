@@ -19,6 +19,7 @@
 //     the 95th percentile and the most.
 // Holds when the healthy page's gap stays under 250 ms and its input to ACK under 250 ms at the 95th,
 // and the slow page holds the room within 1 s of the release (or of its rejoin, when it was closed).
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../lib/sys/fs.coax";
 

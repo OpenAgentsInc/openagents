@@ -1,4 +1,5 @@
 // Independent room-side integration check for the versioned private Link input.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room.coax";
 #test "J1 room admission retains source controller bits without broadening original I" #steps 2000000000 {
  v:[1]RmServer;rm_init(v[..]);rm_control(v[..],"levels 0 2\n");rm_clock(v[..],0,1762190000000);

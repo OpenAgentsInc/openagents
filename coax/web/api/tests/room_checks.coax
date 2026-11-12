@@ -24,6 +24,7 @@
 // (from the repository root; no names runs them all, in that order).
 #load "api_harness.coax";
 #load "../../room/raid-identity.coax";
+#load "../../room/room-write.coax";   // a shard's own write key (#13260)
 
 cxproc_wall_us :: () -> int #foreign #effects(all);
 rc_wall_ms :: () -> int { return cxproc_wall_us() / 1000; }
@@ -344,6 +345,41 @@ rc_room_post :: (t: [] Ap, route: string, body: string, mac_in: string) -> int {
   mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], m);
   h := [2] string.[sb_text(mh[..]), "Content-Type: text/plain"];
   return ap_call(t, "POST", route, body, h[..]);
+}
+
+// A post signed with shard's own write key (room-write.coax), made from the throwaway master test.sh
+// gives the API (OA_ROOM_WRITE_MASTER): signer_shard names who signs in X-Room-Signer.
+rc_write_post :: (t: [] Ap, route: string, purpose: string, shard: int, signer_shard: int, body: string) -> int {
+  kb: [80] u8; key := rw_key(room_write_key_text(RW_TEST_MASTER, shard, kb[..]));
+  kid: [8] u8; for i: 0..<8 { kid[i] = key.kid[i]; }
+  kk := key.key; mac: [64] u8;
+  if !rw_mac(kk[..], cast(string) kid[..], purpose, signer_shard, body, mac[..]) { return -1; }
+  mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], cast(string) mac[..]);
+  sh: [1] Sb; sb(sh[..], "X-Room-Signer: "); sb_int(sh[..], signer_shard); sb(sh[..], " "); sb(sh[..], cast(string) kid[..]);
+  h := [3] string.[sb_text(mh[..]), sb_text(sh[..]), "Content-Type: text/plain"];
+  return ap_call(t, "POST", route, body, h[..]);
+}
+// Shards' own write keys (#13260): a shard writes as itself only, for the purpose it signed.
+rc_write_keys :: (t: [] Ap) {
+  out: [4096] u8; b: [1] Sb;
+  now := rc_wall_ms();
+  // shard 5's own: the room view's checks read shard 2's series
+  sb(b[..], "t "); sb_int(b[..], now); sb(b[..], "\nshard=5\nplayers=1\n");
+  st := rc_write_post(t, "/api/playtest/room-stats", "stats", 5, 5, sb_text(b[..]));
+  ap_check(t, "room write: shard 5's report signed with its own key is kept", st == 200 && ap_sql(t, "select count(*) from verse.room_stats where shard = 5", out[..]) == "1", ap_body(t));
+  st = rc_write_post(t, "/api/playtest/room-stats", "stats", 3, 3, sb_text(b[..]));
+  ap_check(t, "room write: shard 3's key can't report as shard 5", st == 403, ap_body(t));
+  st = rc_write_post(t, "/api/playtest/room-stats", "stats", 3, 5, sb_text(b[..]));
+  ap_check(t, "room write: shard 3's key signing as shard 5 does not check", st == 401, ap_body(t));
+  st = rc_write_post(t, "/api/playtest/room-stats", "directory", 5, 5, sb_text(b[..]));
+  ap_check(t, "room write: a MAC made for another purpose does not check", st == 401, ap_body(t));
+  ap_do(t, "delete from verse.room_stats where shard = 5");   // the room view's checks count the shards that report
+  v: [1] Sb; sb(v[..], "t "); sb_int(v[..], now); sb(v[..], "\no 3 1 1\n");
+  st = rc_write_post(t, "/api/playtest/room-vitals", "vitals", 2, 2, sb_text(v[..]));
+  ap_check(t, "room write: shard 2's key can't post shard 3's vitals", st == 403, ap_body(t));
+  d: [1] Sb; sb(d[..], "t "); sb_int(d[..], now); sb(d[..], "\ns 3 2\n");
+  st = rc_write_post(t, "/api/playtest/room-directory", "directory", 2, 2, sb_text(d[..]));
+  ap_check(t, "room write: shard 2's key can't report shard 3's rooms", st == 403, ap_body(t));
 }
 
 // ---- invites ------------------------------------------------------------------------------------------
@@ -833,6 +869,7 @@ rc_stats :: (t: [] Ap) {
   rs_body(b[..], now + 1, "1.80");
   st = rc_room_post(t, "/api/playtest/room-stats", sb_text(b[..]), "");
   ap_check(t, "room-stats: the next is kept beside it", st == 200 && ap_sql(t, "select count(*) from verse.room_stats where shard = 2", out[..]) == "2", ap_body(t));
+  rc_write_keys(t);
 
   st = ap_call(t, "GET", "/api/admin/rooms", "", none[0..<0]);
   ap_check(t, "room view: signed out, a 401 and no numbers", st == 401 && !ap_has(ap_body(t), "tick"), ap_body(t));

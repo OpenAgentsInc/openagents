@@ -13,6 +13,7 @@
 // Every cast must be answered (taken: e cast; refused: r) within CC_ANSWER_MS, whatever the network
 // held or lost. Prints a line for each part and "casts hold" (exit 0), or "casts fail" (exit 1).
 //   coax/web/tool.sh coax/web/room/cast-check.coax ws://127.0.0.1:PORT [ROOM] [ROUNDS]
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 
 CC_BOTS :: 4;

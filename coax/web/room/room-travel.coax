@@ -151,7 +151,7 @@ trv_route_due :: (v: [] RmServer) {
     if !trv_live(v, j) || e.routed { continue; }
     // its vitals note, then its checkpoint (profile 2): each saved (travel_saved)
     i := rv_find(v, cast(string) e.pid[0..<e.pid_n]);
-    if !travel_saved(v[0].tkey_n > 0 && i >= 0, e.rev, ifx i >= 0 then v[0].vit.v[i].acked else 0) { continue; }
+    if !travel_saved(rm_writes(v) && i >= 0, e.rev, ifx i >= 0 then v[0].vit.v[i].acked else 0) { continue; }
     ci := ck_find(v, cast(string) e.pid[0..<e.pid_n]);
     if !travel_saved(e.checkpoint_rev > 0, e.checkpoint_rev, ifx ci >= 0 then v[0].ck.slot[ci].acked else -1) { continue; }
     v[0].trv.t[j].routed = true;

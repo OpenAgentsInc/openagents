@@ -34,6 +34,7 @@
 // the same room (everglade2-crowd --room CODE) draws them: 10 and more near, with their casts (C).
 //   coax/web/tool.sh coax/web/room/e2-restart-check.coax --interest [--players N] [--near N] [--seconds S] [--external PORT --code CODE]
 // The room and its directory are this run's own (a temporary --dev directory and store); both go at the end.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../lib/net/http.coax";
 #load "../../lib/sys/fs.coax";

@@ -56,11 +56,11 @@ rc_kicked :: (v: [] RmServer, pid: string) -> bool {
 }
 // Whether it is time to ask: the ask's "t MS" in ctl.ask and its MAC in ctl.mac (none without a key).
 rm_control_due :: (v: [] RmServer) -> bool #export_c #effects(all) {
-  if v[0].tkey_n == 0 || v[0].wall_ms - v[0].ctl.asked < CONTROL_EVERY_MS { return false; }
+  if !rm_writes(v) || v[0].wall_ms - v[0].ctl.asked < CONTROL_EVERY_MS { return false; }
   v[0].ctl.asked = v[0].wall_ms;
   n := tk_add(v[0].ctl.ask[..], 0, "t "); n = rv_int(v[0].ctl.ask[..], n, v[0].wall_ms);
   v[0].ctl.ask_n = n;
-  return tk_mac(cast(string) v[0].tkey[0..<v[0].tkey_n], cast(string) v[0].ctl.ask[0..<n], v[0].ctl.mac[..]);
+  return rm_write_mac(v, "control", cast(string) v[0].ctl.ask[0..<n], v[0].ctl.mac[..]);
 }
 rc_word :: (line: string, at: int) -> string {
   i := at;

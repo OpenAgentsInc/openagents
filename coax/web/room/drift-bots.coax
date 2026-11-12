@@ -13,6 +13,7 @@
 // Seat tickets are signed with OA_ROOM_TICKET_KEY (room-ticket.coax), as raid-check.coax's are; the
 // bots are tagged as tests: room pair-drift-ROOM, player ids p-drift-K, names "Drift K".
 // Prints one line at the end: the casts sent, those refused and the D frames heard.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../drift-snapshot.coax";
 #load "../../lib/sys/fs.coax";

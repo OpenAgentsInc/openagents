@@ -1,3 +1,4 @@
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "../../../aethyr/ids.coax";
 #load "../../../apps/openagents-web/everglade-handles.coax";
 #load "room-handles.coax";
@@ -43,6 +44,7 @@
 #load "room-abilities.coax";
 #load "room-sky.coax";
 #load "room-ticket.coax";
+#load "room-write.coax";   // this shard's own write key (#13260)
 #load "room-vitals.coax";
 #load "room-checkpoint.coax";
 #load "room-e2-aid.coax";
@@ -122,6 +124,8 @@ RmServer :: struct {
   ab: [EG_ROOMS] RaRoom;    // their abilities the world runs (room-abilities.coax)
   tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
   tkey_must: bool;
+  tkeys: TicketKeys;   // the API's public keys for v5 tickets (rm_ticket_pubkeys, #13260): one, or two during a rotation
+  wkey: RoomWriteKey;  // this shard's write key (rm_write_key, room-write.coax, #13260): set, it signs every write instead of tkey
   vit: RmVitals;                         // players' HP between visits (room-vitals.coax)
   ck: RmCheckpoints;                     // schema 2's bounded durable captures and exact receipts
   ctl: RmControl;                        // the API's word on pvp, edits and kicks (room-control.coax)
@@ -202,6 +206,94 @@ rm_ticket_key :: (v: [] RmServer, key: string, must: bool) #export_c #effects(al
   v[0].tkey_must = must;
   for i: 0..<key.count { v[0].tkey[i] = key[i]; }
   v[0].tkey_n = key.count;
+}
+
+// The API's public keys for v5 seat tickets (the host's OA_ROOM_TICKET_PUBKEYS, #13260): one x-only key in
+// lowercase hex, or two joined by ',' while a key rotates. Set, an everglade join's ticket must check
+// (with must, a join without one is refused, as rm_ticket_key's). False, and nothing set, for any other text.
+rm_ticket_pubkeys :: (v: [] RmServer, text: string, must: bool) -> bool #export_c #effects(all) {
+  k := tk5_keys(text);
+  if k.n == 0 { return false; }
+  v[0].tkeys = k;
+  v[0].tkey_must = must;
+  return true;
+}
+// Whether this room checks seat tickets at all: an HMAC key (v2, v3, v4) or public keys (v5).
+rm_tickets_checked :: (v: [] RmServer) -> bool #effects(all) { return v[0].tkey_n > 0 || v[0].tkeys.n > 0; }
+
+// This shard's write key (the host's OA_ROOM_WRITE_KEY, "KID:KEYHEX", #13260): from then on every write
+// to the API (vitals, checkpoints, directory, stats, control) is signed with it, as this shard, and a
+// drain must be. False, and nothing set, for any other text or before the shard is named (rm_shard).
+rm_write_key :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) {
+  k := rw_key(text);
+  if !k.ok || v[0].shard < 1 || v[0].shard > RW_SHARDS { return false; }
+  v[0].wkey = k;
+  return true;
+}
+// Whether this shard writes to the API at all: its own write key, or the shared seat-ticket key (until
+// the rollout turns that off, docs/deployment/room-keys.md).
+rm_writes :: (v: [] RmServer) -> bool #effects(all) { return v[0].wkey.ok || v[0].tkey_n > 0; }
+// The MAC of a write of purpose (room-write.coax rw_purpose_ok) into out: under this shard's write key
+// when it has one, else under the shared key over the body alone (the API's form before #13260).
+rm_write_mac :: (v: [] RmServer, purpose: string, body: string, out: [] u8) -> bool #effects(all) {
+  if v[0].wkey.ok {
+    k := v[0].wkey; kid: [8] u8;
+    for i: 0..<8 { kid[i] = k.kid[i]; }
+    return rw_mac(k.key[..], cast(string) kid[..], purpose, v[0].shard, body, out);
+  }
+  if v[0].tkey_n == 0 || body.count > RW_BODY || out.count < 64 { return false; }
+  key: [TICKET_KEY] u8; b: [RW_BODY] u8; h: [32] u8;
+  for i: 0..<v[0].tkey_n { key[i] = v[0].tkey[i]; }
+  for i: 0..<body.count { b[i] = body[i]; }
+  if hmac_sha256_checked(key[0..<v[0].tkey_n], b[0..<body.count], h[..], false) != SHA_OK { return false; }
+  rw_hex_of(h[..], out[0..<64]);
+  return true;
+}
+// The X-Room-Signer header's value, "SHARD KID", into out; "" when writes are signed the old way.
+rm_write_signer :: (v: [] RmServer, out: [] u8) -> string #export_c #effects(all) {
+  if !v[0].wkey.ok || out.count < 11 { return ""; }
+  n := rw_int(out, 0, v[0].shard); n = rw_put(out, n, " ");
+  for i: 0..<8 { if n >= 0 { out[n + i] = v[0].wkey.kid[i]; } }
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n + 8];
+}
+
+#test "start: a shard's own write key signs its writes as that shard, and the API takes them (#13260)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  kb: [80] u8; key := room_write_key_text(RW_TEST_MASTER, 3, kb[..]);
+  v[0].shard = 0;
+  #assert !rm_writes(v[..]) && !rm_write_key(v[..], key);      // no shard named
+  sb: [16] u8; mac: [64] u8;
+  #assert rm_write_signer(v[..], sb[..]) == "" && !rm_write_mac(v[..], "stats", "x", mac[..]);
+  rm_shard(v[..], 3);
+  #assert !rm_write_key(v[..], key[0..<72]) && !rm_writes(v[..]);
+  #assert rm_write_key(v[..], key) && rm_writes(v[..]);
+  signer := rm_write_signer(v[..], sb[..]);
+  #assert signer.count == 10 && signer[0..<2] == "3 " && signer[2..<10] == key[0..<8];
+  #assert rm_write_signer(v[..], sb[0..<10]) == "";
+  #assert rm_write_mac(v[..], "stats", "s 3\n", mac[..]) && room_write_check(RW_TEST_MASTER, signer, "stats", "s 3\n", cast(string) mac[..]) == 3;
+  #assert room_write_check(RW_TEST_MASTER, signer, "vitals", "s 3\n", cast(string) mac[..]) == 0;
+  // the shared key's form, before a write key: the body alone
+  #assert !rm_write_mac(v[..], "stat", "s 3\n", mac[..]);
+  v[0].wkey = RoomWriteKey.{};
+  #assert !rm_writes(v[..]);
+  rm_ticket_key(v[..], "local-development-room-ticket-key-not-a-secret", true);
+  want: [64] u8;
+  #assert rm_writes(v[..]) && rm_write_mac(v[..], "stats", "s 3\n", mac[..]) && tk_mac("local-development-room-ticket-key-not-a-secret", "s 3\n", want[..]);
+  #assert cast(string) mac[..] == cast(string) want[..] && rm_write_signer(v[..], sb[..]) == "";
+}
+
+#test "start: the API's public keys turn ticket checks on; a bad list sets nothing (#13260)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  #assert !rm_tickets_checked(v[..]);
+  #assert !rm_ticket_pubkeys(v[..], "zz", true) && !rm_tickets_checked(v[..]) && !v[0].tkey_must;
+  #assert rm_ticket_pubkeys(v[..], "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f,4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766", true);
+  #assert rm_tickets_checked(v[..]) && v[0].tkey_must && v[0].tkeys.n == 2 && v[0].tkey_n == 0;
+  w: [1] RmServer; rm_init(w[..]);
+  rm_ticket_key(w[..], "0123456789abcdef0123456789abcdef", false);
+  #assert rm_tickets_checked(w[..]) && w[0].tkeys.n == 0;
 }
 
 // The room name in "GET /api/room/orbit-league/NAME HTTP/1.1": its bytes into
@@ -680,6 +772,27 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 1);
   #assert eg_test_has(a, ";n 0 p-0011223344556677 ranger.2.1.0 druid 2 Ash Vale") && eg_test_has(a, ";n 1 p-8899aabbccddeeff ranger.0.0.0 druid 1 -");
+}
+#test "ticket v5: a room with only the API's public keys seats a signed ticket and nothing its own key could sign (#13260)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  #assert rm_ticket_pubkeys(v[..], "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f", true);
+  t: [TK5_TEXT] u8; r: [TK5_TEXT + 128] u8; h: [256] u8;
+  // an HMAC ticket, admin bit and all, from a key a room once held: no seat
+  n := tk_sign_admin_on("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "p-0011223344556677", "Ash Vale", "pair-tk", 0, now + 60000, h[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], h[..], n)) < 0;
+  // a v5 ticket under another private key: no seat
+  s := tk5_test_sign(TK5_TEST_OTHER, "p-0011223344556677", 2, "Ash Vale", "pair-tk", 1, now + 60000, -1, 0, 0, 0, "-", 1, "", t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], s.count)) < 0;
+  // another shard's: no seat
+  s = tk5_test_sign(TK5_TEST_SECRET, "p-0011223344556677", 1, "Ash Vale", "pair-tk", 2, now + 60000, -1, 0, 0, 0, "-", 1, "", t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], s.count)) < 0;
+  // the API's: seated, with its id and name
+  s = tk5_test_sign(TK5_TEST_SECRET, "p-0011223344556677", 1, "Ash Vale", "pair-tk", 1, now + 60000, -1, 0, 0, 0, "-", 1, "", t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], s.count)) == 0;
+  #assert cast(string) v[0].conns[0].ticket.pid[0..<v[0].conns[0].ticket.pid_n] == "p-0011223344556677" && v[0].conns[0].ticket.account && !v[0].conns[0].ticket.admin;
 }
 #test "ticket: a key without must lets a ticketless join sit with no id, but still refuses a forged ticket" #steps 2000000000 {
   v: [1] RmServer;

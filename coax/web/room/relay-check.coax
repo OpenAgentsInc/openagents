@@ -12,6 +12,7 @@
 // so there only the reader's frames are checked.
 // Prints one JSON line (the first three frames each heard, how many of the
 // frames arrived, in how many ms), then "relays" and exits 0, or "fails" and 1.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 
 RK_N :: 200;

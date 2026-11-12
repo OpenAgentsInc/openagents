@@ -219,7 +219,7 @@ rm_checkpoint_pending :: (v:[]RmServer)->int #export_c #effects(all) {
   n:=0;for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if e[0].live&&e[0].latest.ok&&e[0].latest.n[3]>e[0].acked{n+=1;}}return n;
 }
 rm_checkpoint_due :: (v:[]RmServer)->int #export_c #effects(all) {
-  v[0].ck.out_n=0;if v[0].tkey_n==0{return 0;}
+  v[0].ck.out_n=0;if !rm_writes(v){return 0;}
   if v[0].mono_ms-v[0].ck.last>=CF_EVERY{rm_checkpoint_flush(v);v[0].ck.last=v[0].mono_ms;}
   if v[0].ck.waiting{if v[0].mono_ms-v[0].ck.sent_mono<CF_RESPONSE{return 0;}ck_failed(v);}
   if v[0].mono_ms<v[0].ck.retry_at{return 0;}
@@ -232,7 +232,7 @@ rm_checkpoint_due :: (v:[]RmServer)->int #export_c #effects(all) {
   }
   if !v[0].ck.fly{return 0;}c:=v[0].ck.fly_capture;c.n[5]=rs_max(v[0].wall_ms,c.n[4]);
   if v[0].ck.two_only{c.n[0]=2;}body:=cc_write_rest(c,v[0].ck.fly_rest,v[0].ck.out[..]);
-  if body.count==0||!checkpoint2_input(body,c.n[5])||!tk_mac(cast(string)v[0].tkey[0..<v[0].tkey_n],body,v[0].ck.mac[..]){return 0;}
+  if body.count==0||!checkpoint2_input(body,c.n[5])||!rm_write_mac(v,"checkpoint",body,v[0].ck.mac[..]){return 0;}
   v[0].ck.request+=1;v[0].ck.waiting=true;v[0].ck.sent_mono=v[0].mono_ms;v[0].ck.out_n=body.count;v[0].ck.posts+=1;if v[0].ck.tries>0{v[0].ck.retries+=1;}return body.count;
 }
 ck_failed :: (v:[]RmServer) {v[0].ck.waiting=false;v[0].ck.fly=false;v[0].ck.tries+=1;v[0].ck.failures+=1;v[0].ck.retry_at=v[0].mono_ms+cf_wait(v[0].ck.tries,(v[0].vit.gen+v[0].ck.request)%2147483647);}

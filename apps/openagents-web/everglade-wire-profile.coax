@@ -17,6 +17,7 @@
 // The file is the independent expected result: its frames are written by hand, not by this codec.
 // Prints a line per message and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
 //   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v5.json
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "everglade-wire.coax";
 #load "../../coax/lib/json/json.coax";

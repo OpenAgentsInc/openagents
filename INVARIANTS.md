@@ -1001,8 +1001,26 @@ revision no device has read. On a 409 a page of progress takes the server's
 save; a page of where you are or the spell bar sends its own again from the
 server's revision (`apps/openagents-web/save.coax` `SaveSync`). Server-owned
 room state (`verse.room_vitals`: HP, XP) is not a progress save: only
-`oa-room` writes it, signed with the seat-ticket key, and XP only rises,
+`oa-room` writes it, signed with the seat-ticket key or the writing shard's
+own key (room writes v1, #13260), and XP only rises,
 also when a guest's row follows them into an account (0119 `vitals_follow`).
+
+## A room holds no key that signs a ticket or another shard's writes
+
+Once the room keys are rolled out (`docs/deployment/room-keys.md`, #13260),
+a room shard holds the API's ticket public keys and its own write key, and
+nothing else. A seat ticket (v5, `aethyr/session/seat-ticket.coax`) seats only
+when the key its ID names verifies its BIP-340 signature over every byte
+before the signature, so a room can't mint a seat, the admin bit included. A
+room write (`coax/web/room/room-write.coax`) checks only under the key the API
+derives for the shard it names, over its purpose, shard and body, and the API
+refuses a directory report, stats or vitals post that names another shard.
+Two keys of each kind overlap only during a rotation. Until the shared
+`OA_ROOM_TICKET_KEY` is removed (the rollout's last step) the older forms are
+still taken. Checks: `seat-ticket.coax` and `room-write.coax` (`#authority`,
+mutation-clean), their fixture profiles (`proto/verse/seat-ticket-v5.json`,
+`room-write-v1.json`) and `coax/web/api/tests/room_checks.coax`
+`rc_write_keys`.
 
 ## A made realm's document changes only from the revision it was read at
 

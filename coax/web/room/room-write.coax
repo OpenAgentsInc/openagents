@@ -1,0 +1,265 @@
+// Room writes v1 (#13260, docs/protocol/room-write-v1.md): what a room shard posts to the API (vitals,
+// checkpoints, items, directory, stats, control) and what a deploy asks of a shard (drain), signed with
+// that shard's own key, so one shard's key writes for that shard only.
+//
+// The API holds a write master (one, or two while it rotates). Shard S's key is
+//   HMAC-SHA256(MASTER, "oa-room-shard-key-v1\n" S)
+// and the master's id, KID, is the first 8 hex digits of HMAC-SHA256(MASTER, "oa-room-write-kid-v1").
+// A shard holds "KID:KEYHEX" (OA_ROOM_WRITE_KEY) and never the master. It signs
+//   "oa-room-write-v1\n" PURPOSE "\n" SHARD "\n" KID "\n" BODY
+// with its key, the MAC in X-Room-Mac and "SHARD KID" in X-Room-Signer. The API derives the key from
+// the master KID names and the shard the signer names; the shard is in the signed bytes, so a MAC from
+// shard 2 does not check as shard 3's, and the purpose is too, so a directory report is not a vitals post.
+// The API then checks the shard against the shard the body names (rooms.c, player.c).
+#authority;
+#load "../../lib/crypto/hmac.coax";
+#load "../../lib/nostr/hex.coax";
+
+RW_MASTERS :: 2;
+RW_BODY :: 32768;      // the most bytes a write signs (a directory report's limit)
+RW_SHARDS :: 99;
+
+RoomWriteMasters :: struct { n: int; key: [RW_MASTERS][32] u8; kid: [RW_MASTERS][8] u8; }
+RoomWriteKey :: struct { ok: bool; kid: [8] u8; key: [32] u8; }
+
+rw_put :: (out: [] u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+rw_int :: (out: [] u8, n: int, v: int) -> int #effects(all) {
+  if v < 0 { return -1; }
+  d: [20] u8; m := 0; x := v;
+  while true { d[m] = cast(u8) ('0' + x % 10); m += 1; x = x / 10; if x == 0 { break; } }
+  if n < 0 || n + m > out.count { return -1; }
+  for i: 0..<m { out[n + i] = d[m - 1 - i]; }
+  return n + m;
+}
+rw_lower_hex :: (s: string) -> bool #effects(all) {
+  for i: 0..<s.count { c := s[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+rw_hex_of :: (b: [] u8, out: [] u8) #effects(all) {
+  for i: 0..<b.count {
+    hi := cast(int) (b[i] >> 4); lo := cast(int) (b[i] & 15);
+    out[i * 2] = cast(u8) (ifx hi < 10 then '0' + hi else 'a' + hi - 10);
+    out[i * 2 + 1] = cast(u8) (ifx lo < 10 then '0' + lo else 'a' + lo - 10);
+  }
+}
+// 32 bytes from 64 lowercase hex digits.
+rw_key32 :: (text: string, out: [] u8) -> bool #effects(all) {
+  if !rw_lower_hex(text) { return false; }
+  r := hex_decode_checked(text, out, false);
+  return r.error == NC_OK && r.written == 32 && out.count == 32;
+}
+rw_purpose_ok :: (p: string) -> bool #effects(all) {
+  return p == "vitals" || p == "checkpoint" || p == "items" || p == "directory" || p == "stats" || p == "control" || p == "drain";
+}
+// HMAC-SHA256 of input under key into out (32 bytes). It can't fail for its callers (a 32-byte key and out,
+// input within SHA-256's limit, buffers apart); were it to, out is zeros, which no check takes.
+rw_hmac :: (key: [] u8, input: [] u8, out: [] u8) #effects(all) {
+  if hmac_sha256_checked(key, input, out, false) != SHA_OK { for i: 0..<out.count { out[i] = 0; } }   // mutant: equivalent (the alias flag, and a failure no caller can cause)
+}
+// A master's id: 8 lowercase hex digits.
+rw_master_kid :: (master: [] u8, out: [] u8) -> bool #effects(all) {
+  if master.count != 32 || out.count < 8 { return false; }
+  label := "oa-room-write-kid-v1"; t: [32] u8; h: [32] u8; hx: [64] u8;
+  for i: 0..<label.count { t[i] = label[i]; }
+  rw_hmac(master, t[0..<label.count], h[..]);
+  rw_hex_of(h[..], hx[..]);
+  for i: 0..<8 { out[i] = hx[i]; }
+  return true;
+}
+// Shard's key under master.
+rw_shard_key :: (master: [] u8, shard: int, out: [] u8) -> bool #effects(all) {
+  if master.count != 32 || out.count != 32 || shard < 1 || shard > RW_SHARDS { return false; }
+  t: [40] u8;   // the label and two digits always fit
+  n := rw_put(t[..], 0, "oa-room-shard-key-v1\n"); n = rw_int(t[..], n, shard);
+  rw_hmac(master, t[0..<n], out);
+  return true;
+}
+// The API's masters: "HEX64" or "HEX64,HEX64", lowercase, with distinct ids. n 0 when not.
+rw_masters :: (text: string) -> RoomWriteMasters #effects(all) {
+  m := RoomWriteMasters.{};
+  if text.count != 64 && text.count != 129 { return m; }
+  if text.count == 129 && text[64] != ',' { return m; }
+  n := ifx text.count == 64 then 1 else 2;
+  for k: 0..<n {
+    key: [32] u8; kid: [8] u8;
+    if !rw_key32(text[k * 65..<k * 65 + 64], key[..]) || !rw_master_kid(key[..], kid[..]) { return RoomWriteMasters.{}; }
+    for i: 0..<32 { m.key[k][i] = key[i]; }
+    for i: 0..<8 { m.kid[k][i] = kid[i]; }
+  }
+  if n == 2 && cast(string) m.kid[0][..] == cast(string) m.kid[1][..] { return RoomWriteMasters.{}; }
+  m.n = n;
+  return m;
+}
+// A shard's OA_ROOM_WRITE_KEY, "KID:KEYHEX". ok false when not.
+rw_key :: (text: string) -> RoomWriteKey #effects(all) {
+  k := RoomWriteKey.{};
+  if text.count != 73 || text[8] != ':' || !rw_lower_hex(text[0..<8]) { return k; }
+  key: [32] u8;
+  if !rw_key32(text[9..<73], key[..]) { return k; }
+  for i: 0..<8 { k.kid[i] = text[i]; }
+  for i: 0..<32 { k.key[i] = key[i]; }
+  k.ok = true;
+  return k;
+}
+// The MAC of a write, as 64 lowercase hex digits into out.
+rw_mac :: (key: [] u8, kid: string, purpose: string, shard: int, body: string, out: [] u8) -> bool #effects(all) {
+  if key.count != 32 || kid.count != 8 || !rw_purpose_ok(purpose) || shard < 1 || shard > RW_SHARDS || body.count > RW_BODY || out.count < 64 { return false; }
+  t: [RW_BODY + 64] u8;   // the prefix is at most 46 bytes, so a checked body always fits
+  n := rw_put(t[..], 0, "oa-room-write-v1\n"); n = rw_put(t[..], n, purpose); n = rw_put(t[..], n, "\n");
+  n = rw_int(t[..], n, shard); n = rw_put(t[..], n, "\n"); n = rw_put(t[..], n, kid); n = rw_put(t[..], n, "\n");
+  n = rw_put(t[..], n, body);
+  h: [32] u8;
+  rw_hmac(key, t[0..<n], h[..]);
+  rw_hex_of(h[..], out[0..<64]);
+  return true;
+}
+// "SHARD KID": the shard (1 to 99, no leading zero), or 0 when not.
+rw_signer_shard :: (signer: string) -> int #effects(all) {
+  if signer.count != 10 && signer.count != 11 { return 0; }
+  d := signer.count - 9;
+  if signer[d] != ' ' || signer[0] == '0' || !rw_lower_hex(signer[d + 1..<signer.count]) { return 0; }
+  s := 0;
+  for i: 0..<d { c := signer[i]; if c < '0' || c > '9' { return 0; } s = s * 10 + cast(int) (c - '0'); }
+  return s;
+}
+
+// The API's check: the shard (1 to 99) a write is signed by, or 0 when masters (rw_masters' text),
+// the signer header and the MAC do not check for this purpose and body.
+room_write_check :: (masters: string, signer: string, purpose: string, body: string, mac: string) -> int #export_c #effects(all) {
+  m := rw_masters(masters);
+  shard := rw_signer_shard(signer);
+  if mac.count != 64 { return 0; }   // no masters, no shard, another purpose or too long a body: rw_shard_key and rw_mac refuse
+  kid := signer[signer.count - 8..<signer.count];
+  k := -1;
+  for i: 0..<m.n { if cast(string) m.kid[i][..] == kid { k = i; } }
+  if k < 0 { return 0; }
+  key: [32] u8; want: [64] u8;
+  if !rw_shard_key(m.key[k][..], shard, key[..]) || !rw_mac(key[..], kid, purpose, shard, body, want[..]) { return 0; }
+  diff := 0;
+  for i: 0..<64 { diff = diff | (cast(int) want[i] ^ cast(int) mac[i]); }
+  return ifx diff == 0 then shard else 0;
+}
+// A shard's OA_ROOM_WRITE_KEY from one master (64 hex digits): "KID:KEYHEX", 73 bytes, into out; "" when not.
+room_write_key_text :: (master: string, shard: int, out: [] u8) -> string #export_c #effects(all) {
+  mk: [32] u8; kid: [8] u8; key: [32] u8;
+  if out.count < 73 || !rw_key32(master, mk[..]) || !rw_master_kid(mk[..], kid[..]) || !rw_shard_key(mk[..], shard, key[..]) { return ""; }
+  for i: 0..<8 { out[i] = kid[i]; }
+  out[8] = ':';
+  rw_hex_of(key[..], out[9..<73]);
+  return cast(string) out[0..<73];
+}
+
+// ---- checks (proto/verse/room-write-v1.json holds the same values)
+
+RW_TEST_MASTER :: "0303030303030303030303030303030303030303030303030303030303030303";
+RW_TEST_MASTER2 :: "0404040404040404040404040404040404040404040404040404040404040404";
+
+rw_test_mac :: (key_text: string, purpose: string, shard: int, body: string, out: [] u8) -> string #effects(all) {
+  k := rw_key(key_text);
+  #assert k.ok;
+  kid: [8] u8; for i: 0..<8 { kid[i] = k.kid[i]; }
+  kk := k.key;
+  if !rw_mac(kk[..], cast(string) kid[..], purpose, shard, body, out) { return ""; }
+  return cast(string) out[0..<64];
+}
+
+#test "room write: a shard's key text from the master, and the master's id" {
+  b: [80] u8; c: [80] u8;
+  k3 := room_write_key_text(RW_TEST_MASTER, 3, b[..]);
+  #assert k3.count == 73 && k3[8] == ':' && rw_key(k3).ok;
+  k4 := room_write_key_text(RW_TEST_MASTER, 4, c[..]);
+  #assert k4[0..<9] == k3[0..<9] && k4 != k3;            // one master: one id, a key a shard
+  m := rw_masters(RW_TEST_MASTER);
+  #assert m.n == 1 && cast(string) m.kid[0][..] == k3[0..<8];
+  #assert room_write_key_text(RW_TEST_MASTER, 0, b[..]) == "" && room_write_key_text(RW_TEST_MASTER, 100, b[..]) == "";
+  #assert room_write_key_text(RW_TEST_MASTER, 99, b[..]) != "" && room_write_key_text(RW_TEST_MASTER, 1, b[..]) != "";
+  #assert room_write_key_text(RW_TEST_MASTER, 3, b[0..<72]) == "" && room_write_key_text(RW_TEST_MASTER[0..<63], 3, b[..]) == "";
+}
+#test "room write: the API takes a shard's signed write as that shard's, and only for its purpose and body" {
+  kb: [80] u8; mb: [64] u8; sb: [16] u8;
+  key := room_write_key_text(RW_TEST_MASTER, 3, kb[..]);
+  body := "t 1762190000000\ns 3\n";
+  mac := rw_test_mac(key, "directory", 3, body, mb[..]);
+  n := rw_put(sb[..], 0, "3 "); n = rw_put(sb[..], n, key[0..<8]); signer := cast(string) sb[0..<n];
+  #assert room_write_check(RW_TEST_MASTER, signer, "directory", body, mac) == 3;
+  #assert room_write_check(RW_TEST_MASTER, signer, "stats", body, mac) == 0;               // another purpose
+  #assert room_write_check(RW_TEST_MASTER, signer, "directory", "t 1762190000000\ns 4\n", mac) == 0;   // another body
+  sb[0] = '4';
+  #assert room_write_check(RW_TEST_MASTER, cast(string) sb[0..<n], "directory", body, mac) == 0;        // another shard's name
+  sb[0] = '3';
+  #assert room_write_check(RW_TEST_MASTER2, signer, "directory", body, mac) == 0;           // another master
+  both: [129] u8; q := rw_put(both[..], 0, RW_TEST_MASTER2); q = rw_put(both[..], q, ","); q = rw_put(both[..], q, RW_TEST_MASTER);
+  #assert room_write_check(cast(string) both[..], signer, "directory", body, mac) == 3;     // a rotation: either master
+  bad: [64] u8; for i: 0..<64 { bad[i] = mac[i]; } bad[63] = ifx bad[63] == '0' then '1' else '0';
+  #assert room_write_check(RW_TEST_MASTER, signer, "directory", body, cast(string) bad[..]) == 0;
+  #assert room_write_check(RW_TEST_MASTER, signer, "directory", body, mac[0..<63]) == 0;
+  #assert room_write_check("", signer, "directory", body, mac) == 0;
+  #assert room_write_check(RW_TEST_MASTER, signer, "drains", body, mac) == 0;
+  // shard 4's key, signing as shard 3, does not check: the key is the shard's
+  k4b: [80] u8; key4 := room_write_key_text(RW_TEST_MASTER, 4, k4b[..]); m4: [64] u8;
+  #assert room_write_check(RW_TEST_MASTER, signer, "directory", body, rw_test_mac(key4, "directory", 3, body, m4[..])) == 0;
+}
+#test "room write: the signer header, the masters and a shard's key text refuse what is not theirs" {
+  #assert rw_signer_shard("3 abcdef01") == 3 && rw_signer_shard("99 abcdef01") == 99 && rw_signer_shard("10 00000000") == 10;
+  bad := [12] string.["", "0 abcdef01", "03 abcdef01", "100 abcdef01", "3 abcdef0", "3 ABCDEF01", "3  bcdef01", "3abcdef01", "a abcdef01", "3 abcdef0g", "3:abcdef01", "/ abcdef01"];
+  for s: bad { #assert rw_signer_shard(s) == 0; }
+  #assert rw_signer_shard(": abcdef01") == 0;
+  b: [140] u8;
+  n := rw_put(b[..], 0, RW_TEST_MASTER); n = rw_put(b[..], n, ","); n = rw_put(b[..], n, RW_TEST_MASTER2);
+  #assert rw_masters(cast(string) b[0..<n]).n == 2;
+  b[64] = ';'; #assert rw_masters(cast(string) b[0..<n]).n == 0; b[64] = ',';
+  n = rw_put(b[..], 0, RW_TEST_MASTER); n = rw_put(b[..], n, ","); n = rw_put(b[..], n, RW_TEST_MASTER);
+  #assert rw_masters(cast(string) b[0..<n]).n == 0;                     // the same master twice
+  #assert rw_masters(RW_TEST_MASTER[0..<63]).n == 0 && rw_masters("").n == 0;
+  #assert rw_masters("0303030303030303030303030303030303030303030303030303030303030A03").n == 0;
+  kb: [80] u8; key := room_write_key_text(RW_TEST_MASTER, 3, kb[..]);
+  #assert rw_key(key).ok && !rw_key(key[0..<72]).ok && !rw_key("").ok;
+  f: [80] u8; for i: 0..<73 { f[i] = key[i]; }
+  f[8] = ';'; #assert !rw_key(cast(string) f[0..<73]).ok; f[8] = ':';
+  f[0] = 'G'; #assert !rw_key(cast(string) f[0..<73]).ok; f[0] = key[0];
+  f[72] = 'A'; #assert !rw_key(cast(string) f[0..<73]).ok;
+  #assert rw_purpose_ok("vitals") && rw_purpose_ok("checkpoint") && rw_purpose_ok("items") && rw_purpose_ok("directory");
+  #assert rw_purpose_ok("stats") && rw_purpose_ok("control") && rw_purpose_ok("drain") && !rw_purpose_ok("") && !rw_purpose_ok("Vitals");
+  #assert rw_lower_hex("09af") && !rw_lower_hex("/") && !rw_lower_hex(":") && !rw_lower_hex("`") && !rw_lower_hex("g") && !rw_lower_hex("A");
+}
+#test "room write: the MAC refuses bad keys, shards and lengths" {
+  k: [32] u8; o: [64] u8; big: [RW_BODY + 1] u8;
+  #assert rw_mac(k[..], "abcdef01", "drain", 1, "x", o[..]) && rw_mac(k[..], "abcdef01", "drain", 99, "", o[..]);
+  #assert !rw_mac(k[0..<31], "abcdef01", "drain", 1, "x", o[..]) && !rw_mac(k[..], "abcdef0", "drain", 1, "x", o[..]);
+  #assert !rw_mac(k[..], "abcdef01", "drainx", 1, "x", o[..]) && !rw_mac(k[..], "abcdef01", "drain", 0, "x", o[..]);
+  #assert !rw_mac(k[..], "abcdef01", "drain", 100, "x", o[..]) && !rw_mac(k[..], "abcdef01", "drain", 1, "x", o[0..<63]);
+  #assert !rw_mac(k[..], "abcdef01", "drain", 1, cast(string) big[..], o[..]) && rw_mac(k[..], "abcdef01", "drain", 1, cast(string) big[0..<RW_BODY], o[..]);
+  #assert !rw_shard_key(k[0..<31], 1, k[..]) && !rw_shard_key(k[..], 1, o[0..<31]);
+  #assert !rw_master_kid(k[0..<31], o[..]) && !rw_master_kid(k[..], o[0..<7]);
+  #assert !rw_key32(RW_TEST_MASTER, k[0..<31]);
+  #assert rw_put(o[..], -1, "a") == -1 && rw_put(o[0..<1], 0, "ab") == -1 && rw_int(o[..], 0, -1) == -1 && rw_int(o[0..<1], 0, 10) == -1 && rw_int(o[..], -1, 1) == -1;
+  #assert cast(string) o[0..<rw_int(o[..], 0, 0)] == "0" && cast(string) o[0..<rw_int(o[..], 0, 907)] == "907";
+}
+
+#test "room write: the keys and MACs are the fixtures' (proto/verse/room-write-v1.json, computed apart from this code)" {
+  b: [80] u8; c: [73] u8; mb: [64] u8;
+  #assert room_write_key_text(RW_TEST_MASTER, 1, b[..]) == "13754e49:a7ff8fecd7f41dbaedd66a1ee410c3e45f6cfe7083d506ece6673475d40cb887";
+  #assert room_write_key_text(RW_TEST_MASTER, 99, c[..]) == "13754e49:4dcc2811b5f08340746468f135f9c0713358259d9c80f7925149857f1d287447";       // exactly 73 bytes of room
+  #assert room_write_key_text(RW_TEST_MASTER2, 3, b[..]) == "1a9d0517:74c530ab7ea1c4738467d1941deb42f3515e5851113855abe31ea8801d0b7832";
+  m := rw_masters(RW_TEST_MASTER2); #assert cast(string) m.kid[0][..] == "1a9d0517";
+  #assert rw_test_mac(room_write_key_text(RW_TEST_MASTER, 2, b[..]), "drain", 2, "drain 2 1762190000000 300", mb[..]) == "f17c20ba310929485fea335889459bcc447732a11668a555fdb44b32738dffbf";
+  #assert rw_test_mac(room_write_key_text(RW_TEST_MASTER, 99, b[..]), "stats", 99, "t 1762190000000\nshard=99\n", mb[..]) == "3742d670b554c5f898d8e477fe4658e1b33e0d81c296f9a5953bc6a3e6496a1c";
+  #assert room_write_check(RW_TEST_MASTER, "2 13754e49", "drain", "drain 2 1762190000000 300", "f17c20ba310929485fea335889459bcc447732a11668a555fdb44b32738dffbf") == 2;
+  // the MAC's first digit, and an id no master has (signed by a master's shard key all the same)
+  f: [64] u8; mac := "f17c20ba310929485fea335889459bcc447732a11668a555fdb44b32738dffbf"; for i: 0..<64 { f[i] = mac[i]; } f[0] = ifx f[0] == '0' then '1' else '0';
+  #assert room_write_check(RW_TEST_MASTER, "2 13754e49", "drain", "drain 2 1762190000000 300", cast(string) f[..]) == 0;
+  k2 := rw_key(room_write_key_text(RW_TEST_MASTER, 2, b[..])); kk := k2.key; o: [64] u8;
+  #assert rw_mac(kk[..], "deadbeef", "drain", 2, "drain 2 1762190000000 300", o[..]);
+  #assert room_write_check(RW_TEST_MASTER, "2 deadbeef", "drain", "drain 2 1762190000000 300", cast(string) o[..]) == 0;
+  #assert cast(string) o[0..<rw_int(o[0..<3], 0, 907)] == "907";
+  h: [32] u8;
+  #assert !rw_key32("0303030303030303030303030303030303030303030303030303030303030A03", h[..]);
+  #assert rw_key32(RW_TEST_MASTER, h[..]) && h[0] == 3 && h[31] == 3;
+  #assert !rw_key32(RW_TEST_MASTER[0..<62], h[..]) && !rw_key32(RW_TEST_MASTER[0..<63], h[..]) && !rw_key32("", h[..]);
+  long: [66] u8; for i: 0..<66 { long[i] = '0'; }
+  #assert !rw_key32(cast(string) long[..], h[..]);
+}

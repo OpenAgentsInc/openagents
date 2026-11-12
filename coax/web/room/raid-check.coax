@@ -28,6 +28,7 @@
 //   coax/web/tool.sh coax/web/room/raid-check.coax URL N SECONDS ROOM CLASS MODE LEVEL2 EXPECT
 // Prints one JSON line (each seat's XP, and the part of it after the outcome: the raid's end
 // award), then "raids" and exits 0, or "fails" and 1.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "raid-identity.coax";
 #load "../../lib/sys/fs.coax";

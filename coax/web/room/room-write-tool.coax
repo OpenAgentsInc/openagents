@@ -1,0 +1,97 @@
+// Room writes v1's tool (#13260, coax/web/room/room-write.coax, docs/deployment/room-keys.md). Keys come
+// from the environment only, never from arguments, and only a shard key the owner asks for is printed:
+//   coax/web/tool.sh coax/web/room/room-write-tool.coax key SHARD
+//       OA_ROOM_WRITE_MASTER (one master, 64 hex) -> shard SHARD's OA_ROOM_WRITE_KEY ("KID:KEYHEX") on
+//       stdout, to pipe straight into Secret Manager (room-keys.md); never to a terminal or a log
+//   coax/web/tool.sh coax/web/room/room-write-tool.coax mac PURPOSE SHARD BODY
+//       OA_ROOM_WRITE_KEY (that shard's "KID:KEYHEX") -> the 64 hex MAC of BODY (a deploy's drain)
+//   coax/web/tool.sh coax/web/room/room-write-tool.coax profile proto/verse/room-write-v1.json
+//       the fixtures: every key and MAC as the file says, and every refused write refused
+#import "Basic";
+#load "room-write.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/json/json.coax";
+
+RT_FILE :: 65536;
+
+rt_text :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(d, jv_get(d, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+rt_shard :: (s: string) -> int {
+  if s.count < 1 || s.count > 2 || s[0] == '0' { return 0; }
+  n := 0;
+  for i: 0..<s.count { if s[i] < '0' || s[i] > '9' { return 0; } n = n * 10 + cast(int) (s[i] - '0'); }
+  return n;
+}
+rt_profile :: (path: string) -> int #effects(all) {
+  text: [RT_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [2048] JvNode; d: [1] Jv;
+  if n < 1 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("room-write: not JSON"); return 2; }
+  pb: [64] u8;
+  if rt_text(d[0], 0, "profile", pb[..]) != "openagents.room-write" || jv_int(d[0], jv_get(d[0], 0, "version"), -1) != 1 { tool_errln("room-write: not the v1 profile"); return 1; }
+  mb: [2][80] u8;
+  m1 := rt_text(d[0], 0, "master", mb[0][..]); m2 := rt_text(d[0], 0, "second_master", mb[1][..]);
+  both: [140] u8; bn := rw_put(both[..], 0, m1); bn = rw_put(both[..], bn, ","); bn = rw_put(both[..], bn, m2);
+  failed := 0;
+  keys := jv_get(d[0], 0, "shard_keys");
+  for i: 0..<jv_len(d[0], keys) {
+    row := jv_at(d[0], keys, i); tb: [2][96] u8; kb: [80] u8;
+    master := ifx rt_text(d[0], row, "master", tb[0][..]) == "second" then m2 else m1;
+    want := rt_text(d[0], row, "key", tb[1][..]);
+    if room_write_key_text(master, jv_int(d[0], jv_get(d[0], row, "shard"), -1), kb[..]) != want { tool_errln("room-write: a shard key is not the file's"); failed += 1; }
+  }
+  writes := jv_get(d[0], 0, "writes");
+  for i: 0..<jv_len(d[0], writes) {
+    row := jv_at(d[0], writes, i); tb: [5][4096] u8; mac: [64] u8;
+    key := rw_key(rt_text(d[0], row, "key", tb[0][..]));
+    purpose := rt_text(d[0], row, "purpose", tb[1][..]); body := rt_text(d[0], row, "body", tb[2][..]);
+    shard := jv_int(d[0], jv_get(d[0], row, "shard"), -1); want := rt_text(d[0], row, "mac", tb[3][..]);
+    signer := rt_text(d[0], row, "signer", tb[4][..]);
+    kid: [8] u8; for j: 0..<8 { kid[j] = key.kid[j]; }
+    kk := key.key;
+    ok := key.ok && rw_mac(kk[..], cast(string) kid[..], purpose, shard, body, mac[..]) && cast(string) mac[..] == want;
+    ok = ok && room_write_check(m1, signer, purpose, body, want) == shard && room_write_check(cast(string) both[0..<bn], signer, purpose, body, want) == shard;
+    if !ok { tool_errln("room-write: a write's MAC is not the file's, or the API does not take it"); failed += 1; }
+  }
+  refused := jv_get(d[0], 0, "refused");
+  for i: 0..<jv_len(d[0], refused) {
+    row := jv_at(d[0], refused, i); tb: [5][4096] u8;
+    masters := ifx rt_text(d[0], row, "masters", tb[0][..]) == "second" then m2 else m1;
+    got := room_write_check(masters, rt_text(d[0], row, "signer", tb[1][..]), rt_text(d[0], row, "purpose", tb[2][..]), rt_text(d[0], row, "body", tb[3][..]), rt_text(d[0], row, "mac", tb[4][..]));
+    if got != 0 { tool_err("room-write: taken, though refused: "); tool_errln(rt_text(d[0], row, "why", tb[0][..])); failed += 1; }
+  }
+  if failed > 0 { print("room write v1: % fixture(s) failed\n", failed); return 1; }
+  print("room write v1: % shard keys and % writes as the file says, % refused\n", jv_len(d[0], keys), jv_len(d[0], writes), jv_len(d[0], refused));
+  return 0;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: room-write-tool key SHARD | mac PURPOSE SHARD BODY | profile FILE.json"); return 2; }
+  verb := args_at(a[..], 0);
+  if verb == "profile" && args_count(a[..]) == 2 { return rt_profile(args_at(a[..], 1)); }
+  if verb == "key" && args_count(a[..]) == 2 {
+    mb: [200] u8; kb: [80] u8;
+    k := room_write_key_text(proc_getenv("OA_ROOM_WRITE_MASTER", mb[..]), rt_shard(args_at(a[..], 1)), kb[..]);
+    for i: 0..<mb.count { mb[i] = 0; }
+    if k == "" { tool_errln("room-write: OA_ROOM_WRITE_MASTER is not one master (64 lowercase hex), or SHARD is not 1 to 99"); return 1; }
+    print("%\n", k);
+    return 0;
+  }
+  if verb == "mac" && args_count(a[..]) == 4 {
+    kb: [200] u8; mac: [64] u8;
+    key := rw_key(proc_getenv("OA_ROOM_WRITE_KEY", kb[..]));
+    for i: 0..<kb.count { kb[i] = 0; }
+    kid: [8] u8; for i: 0..<8 { kid[i] = key.kid[i]; }
+    kk := key.key;
+    if !key.ok || !rw_mac(kk[..], cast(string) kid[..], args_at(a[..], 1), rt_shard(args_at(a[..], 2)), args_at(a[..], 3), mac[..]) {
+      tool_errln("room-write: OA_ROOM_WRITE_KEY is not KID:KEYHEX, or the purpose or shard is not one"); return 1;
+    }
+    print("%\n", cast(string) mac[..]);
+    return 0;
+  }
+  tool_errln("usage: room-write-tool key SHARD | mac PURPOSE SHARD BODY | profile FILE.json");
+  return 2;
+}

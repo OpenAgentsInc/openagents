@@ -1,0 +1,103 @@
+// Seat ticket v5's fixtures (proto/verse/seat-ticket-v5.json; #13260): each ticket's values written by the
+// one writer (aethyr/session/seat-ticket.coax seat_ticket_v5_write) with the fixture's throwaway keys and
+// zero aux give exactly the fixture's bytes; the reader takes each back with the room's public keys and
+// gives back its values; and every "refused" entry is refused.
+//   coax/web/tool.sh coax/web/room/seat-ticket-profile.coax proto/verse/seat-ticket-v5.json
+// On a mismatch it prints the bytes the writer made, so a new fixture is written from the codec once and
+// then pinned.
+//   coax/web/tool.sh coax/web/room/seat-ticket-profile.coax pubkey
+// prints the x-only public key (64 hex, public) of the signing key in OA_ROOM_TICKET_SIGNING_KEY, for the
+// rooms' OA_ROOM_TICKET_PUBKEYS (docs/deployment/room-keys.md). The key comes from the environment only.
+#import "Basic";
+#run_steps 250000000;
+#load "../../../aethyr/session/seat-ticket.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/json/json.coax";
+
+SP_FILE :: 65536;
+
+// The room's keys a fixture names: "first", "second" or "both" of the fixture's public keys.
+sp_keys :: (d: Jv, which: string) -> TicketKeys {
+  b: [200] u8; n := jv_str(d, jv_get(d, 0, "public_keys"), b[..]);
+  if n != 129 { return TicketKeys.{}; }
+  if which == "first" { return tk5_keys(cast(string) b[0..<64]); }
+  if which == "second" { return tk5_keys(cast(string) b[65..<129]); }
+  if which == "both" { return tk5_keys(cast(string) b[0..<129]); }
+  return TicketKeys.{};
+}
+sp_text :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(d, jv_get(d, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: seat-ticket-profile FILE.json | pubkey"); return 2; }
+  if args_at(a[..], 0) == "pubkey" {
+    kb: [200] u8; sk: [32] u8; pub: [32] u8; hx: [64] u8;
+    ok := seat_ticket_v5_secret(proc_getenv("OA_ROOM_TICKET_SIGNING_KEY", kb[..]), sk[..]) && tk5_public(sk[..], pub[..]);
+    for i: 0..<kb.count { kb[i] = 0; }
+    for i: 0..<32 { sk[i] = 0; }
+    if !ok { tool_errln("seat-ticket: OA_ROOM_TICKET_SIGNING_KEY is not 64 lowercase hex digits of a secp256k1 secret key"); return 1; }
+    r := hex_encode_checked(cast(string) pub[..], hx[..], false);
+    print("%\n", cast(string) hx[..]);
+    return 0;
+  }
+  text: [SP_FILE] u8; n := fs_read(args_at(a[..], 0), text[..]);
+  nodes: [4096] JvNode; d: [1] Jv;
+  if n < 1 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("seat-ticket-profile: not JSON"); return 2; }
+  pb: [64] u8;
+  if sp_text(d[0], 0, "profile", pb[..]) != "openagents.seat-ticket" || jv_int(d[0], jv_get(d[0], 0, "version"), -1) != 5 { tool_errln("seat-ticket-profile: not the v5 profile"); return 1; }
+  sb: [3][80] u8;
+  secrets := [2] string.[sp_text(d[0], 0, "secret", sb[0][..]), sp_text(d[0], 0, "second_secret", sb[1][..])];
+  ab: [80] u8; auxt := sp_text(d[0], 0, "aux", ab[..]);
+  aux: [32] u8;
+  if !seat_ticket_v5_secret(auxt, aux[..]) { tool_errln("seat-ticket-profile: aux is not 64 hex digits"); return 1; }
+  // the public keys are the secrets' own
+  pk: [200] u8; pn := jv_str(d[0], jv_get(d[0], 0, "public_keys"), pk[..]);
+  for s: 0..<2 {
+    sk: [32] u8; pub: [32] u8; hx: [64] u8;
+    if !seat_ticket_v5_secret(secrets[s], sk[..]) || !tk5_public(sk[..], pub[..]) { tool_errln("seat-ticket-profile: a secret is not a key"); return 1; }
+    r := hex_encode_checked(cast(string) pub[..], hx[..], false);
+    if pn != 129 || cast(string) hx[..] != cast(string) pk[s * 65..<s * 65 + 64] { tool_errln("seat-ticket-profile: public_keys are not the secrets' keys"); return 1; }
+  }
+  failed := 0; now := jv_int(d[0], jv_get(d[0], 0, "now"), -1);
+  rows := jv_get(d[0], 0, "tickets");
+  for i: 0..<jv_len(d[0], rows) {
+    row := jv_at(d[0], rows, i); v := jv_get(d[0], row, "values");
+    tb: [8][TK5_TEXT] u8;
+    who := sp_text(d[0], row, "signer", tb[0][..]);
+    s := ifx who == "second" then 1 else 0;
+    sk: [32] u8; _ := seat_ticket_v5_secret(secrets[s], sk[..]);
+    pid := sp_text(d[0], v, "pid", tb[1][..]); name := sp_text(d[0], v, "name", tb[2][..]); room := sp_text(d[0], v, "room", tb[3][..]);
+    ext := sp_text(d[0], v, "ext", tb[4][..]); saved := sp_text(d[0], v, "saved", tb[5][..]);
+    acct := jv_int(d[0], jv_get(d[0], v, "acct"), -9); shard := jv_int(d[0], jv_get(d[0], v, "shard"), -9);
+    expires := jv_int(d[0], jv_get(d[0], v, "expires"), -9); hp := jv_int(d[0], jv_get(d[0], v, "hp"), -9);
+    xp := jv_int(d[0], jv_get(d[0], v, "xp"), -9); wanted := jv_int(d[0], jv_get(d[0], v, "wanted"), -9);
+    owner := jv_int(d[0], jv_get(d[0], v, "owner"), -9); profile := jv_int(d[0], jv_get(d[0], v, "profile"), -9);
+    want := sp_text(d[0], row, "text", tb[6][..]);
+    got := seat_ticket_v5_write(sk[..], aux[..], pid, acct, name, room, shard, expires, hp, xp, wanted, owner, ext, profile, saved, tb[7][..]);
+    if got == "" || got != want { tool_err("seat-ticket-profile: ticket "); tool_err(sp_text(d[0], row, "why", tb[0][..])); tool_err(": the writer made\n"); print("%\n", got); failed += 1; continue; }
+    keys := sp_keys(d[0], ifx s == 1 then "second" else "first");
+    both := sp_keys(d[0], "both");
+    t := tk5_read(keys, want, room, now);
+    u := tk5_read(both, want, room, now);
+    same := t.ok && u.ok && u.key == s && cast(string) t.pid[0..<t.pid_n] == pid && t.account == (acct > 0) && t.admin == (acct == 2) && cast(string) t.name[0..<t.name_n] == name;
+    same = same && t.shard == shard && t.expires == expires && t.hp == hp && t.xp == xp && t.wanted == wanted && t.owner == owner && t.schema == profile;
+    same = same && cast(string) t.ext[0..<t.ext_n] == (ifx ext == "-" then "" else ext) && t.capture.ok == (profile == 2 && saved != "-");
+    if !same { tool_err("seat-ticket-profile: ticket "); tool_err(sp_text(d[0], row, "why", tb[0][..])); tool_errln(": the reader did not give its values back"); failed += 1; }
+  }
+  refused := jv_get(d[0], 0, "refused");
+  for i: 0..<jv_len(d[0], refused) {
+    row := jv_at(d[0], refused, i); tb: [3][TK5_TEXT] u8;
+    keys := sp_keys(d[0], sp_text(d[0], row, "keys", tb[0][..]));
+    if keys.n == 0 { tool_errln("seat-ticket-profile: a refused entry names no keys"); failed += 1; continue; }
+    if tk5_read(keys, sp_text(d[0], row, "text", tb[1][..]), sp_text(d[0], row, "room", tb[2][..]), jv_int(d[0], jv_get(d[0], row, "now"), -1)).ok {
+      tool_err("seat-ticket-profile: taken, though refused: "); tool_errln(sp_text(d[0], row, "why", tb[0][..])); failed += 1;
+    }
+  }
+  if failed > 0 { print("seat ticket v5: % fixture(s) failed\n", failed); return 1; }
+  print("seat ticket v5: % tickets written byte for byte and read back, % refused\n", jv_len(d[0], rows), jv_len(d[0], refused));
+  return 0;
+}

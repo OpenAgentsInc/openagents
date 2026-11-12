@@ -1,5 +1,6 @@
 // Native integration assertions use the actual room, combat and ledger entry points.
 // tool.sh: stack-gib 1
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../web/room/room.coax";
 native_seat_lifetime :: () #effects(all) {

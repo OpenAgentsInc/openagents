@@ -9,6 +9,7 @@
 // Run it against a local room (room --dev DIR, with OA_ROOM_TICKET_KEY its key): it writes its place
 // lines after DIR/room-control.txt's own and puts the file back as it was. Prints one JSON line, then
 // "rows" and exits 0, or "fails" and 1.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../lib/sys/fs.coax";
 

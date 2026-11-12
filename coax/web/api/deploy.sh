@@ -61,7 +61,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify lnaddr-policy auth-device-policy auth-device-crypto; do
+for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify lnaddr-policy auth-device-policy auth-device-crypto ticket-sign; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
@@ -118,6 +118,10 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   if gcloud secrets describe openagents-resend-api-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_RESEND_API_KEY=openagents-resend-api-key:latest"; fi
   # Seat tickets (player.c room_ticket): the key oa-room checks them with (coax/web/room/room-ticket.coax).
   if gcloud secrets describe oa-room-ticket-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest"; fi
+  # Room keys (#13260, docs/deployment/room-keys.md): the v5 ticket signing key and the room-write master
+  # (one, or two joined by "," while one rotates). Each is used once the owner creates it.
+  if gcloud secrets describe oa-room-ticket-signing-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_ROOM_TICKET_SIGNING_KEY=oa-room-ticket-signing-key:latest"; fi
+  if gcloud secrets describe oa-room-write-master --project "$project" >/dev/null 2>&1; then secrets+=",OA_ROOM_WRITE_MASTER=oa-room-write-master:latest"; fi
   # Staging's allowlist: the owner and the login checks' test inbox (secret oa-email-allow-staging), else the owner.
   if [[ "$6" == staging ]]; then
     if gcloud secrets describe oa-email-allow-staging --project "$project" >/dev/null 2>&1; then secrets+=",OA_EMAIL_ALLOW=oa-email-allow-staging:latest"

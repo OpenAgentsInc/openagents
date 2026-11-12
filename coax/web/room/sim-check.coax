@@ -13,6 +13,7 @@
 //   coax/web/tool.sh coax/web/room/sim-check.coax [ws://localhost:8830]
 //   (deploy.sh runs it through wss://openagents.com)
 // Prints one JSON line, then "shares" and exits 0, or "fails" and 1.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../../aethyr/session/lifecycle.coax";   // LIFECYCLE_HOLD_MS: how long the room holds a closed socket's seat
 

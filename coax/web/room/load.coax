@@ -29,6 +29,7 @@
 // tick) and the frames the server refused (r). The bots are tagged as tests: their rooms are
 // pair-* (left out of the rooms list), their seat tickets' player ids p-load-ROOM-K, their names
 // "Load K", so a usage count can leave them out.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 // The everglade2 mode's classes and casts (#13058): fivebar.coax FB_CL_KIND and class-kit.coax xk_slot
 // (XK_SLOT0 + class * XK_PER), written here because the SRD engine's names clash with this tool's
