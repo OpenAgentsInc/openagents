@@ -127,3 +127,38 @@ rp_numbered :: (text: string, from: int, to: int, out: [] u8, at: int, room: int
   names := [6] string.["a", "a/b", "docs/x.md", "x.y.z", "deep/er/path/file", "q"];
   for j: 0..<6 { #assert rp_glob(names[i], names[j]) == (i == j) || (names[i] == "a" && names[j] == "a") || (names[i] == "q" && names[j] == "q"); }
 }
+
+// Makes text valid UTF-8 in place: each byte that doesn't start a whole, well-formed character
+// (RFC 3629: no overlongs, surrogates or values above U+10FFFF, ws_utf8's rules) becomes '?'.
+// An answer is JSON on the wire (coax/lib/repo/wire.coax), whose strings must be UTF-8, and a
+// file in a repository may be Latin-1 or cut mid-character.
+rp_utf8_mend :: (text: [] u8) -> int {
+  mended := 0; i := 0;
+  while i < text.count {
+    c := text[i];
+    if c < 0x80 { i += 1; continue; }
+    need := 0; low: u8 = 0x80; high: u8 = 0xbf;
+    if c >= 0xc2 && c <= 0xdf { need = 1; }
+    else if c >= 0xe0 && c <= 0xef { need = 2; if c == 0xe0 { low = 0xa0; } if c == 0xed { high = 0x9f; } }
+    else if c >= 0xf0 && c <= 0xf4 { need = 3; if c == 0xf0 { low = 0x90; } if c == 0xf4 { high = 0x8f; } }
+    whole := need > 0 && i + need < text.count && text[i + 1] >= low && text[i + 1] <= high;
+    for k: 2..<need + 1 { if whole && (text[i + k] < 0x80 || text[i + k] > 0xbf) { whole = false; } }
+    if whole { i += need + 1; continue; }
+    text[i] = '?'; mended += 1; i += 1;
+  }
+  return mended;
+}
+
+#test "text is mended to UTF-8 a byte at a time, and good text is left alone" {
+  good := [11] u8.['a', 0xc3, 0xa9, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80, 'z'];
+  #assert rp_utf8_mend(good[..]) == 0 && good[1] == 0xc3 && good[9] == 0x80;
+  bad := [9] u8.[0xff, 'a', 0xc3, 'b', 0xe0, 0x80, 0x80, 0xed, 0xa0];
+  #assert rp_utf8_mend(bad[..]) == 7;
+  #assert bad[0] == '?' && bad[1] == 'a' && bad[2] == '?' && bad[3] == 'b' && bad[4] == '?' && bad[5] == '?' && bad[6] == '?' && bad[7] == '?' && bad[8] == '?';
+  cut := [3] u8.['x', 0xe2, 0x82];
+  #assert rp_utf8_mend(cut[..]) == 2 && cut[0] == 'x' && cut[1] == '?' && cut[2] == '?';
+  top := [5] u8.[0xf4, 0x90, 0x80, 0x80, 0xc0];
+  #assert rp_utf8_mend(top[..]) == 5;
+  edge := [4] u8.[0xf4, 0x8f, 0xbf, 0xbf];
+  #assert rp_utf8_mend(edge[..]) == 0;
+}

@@ -370,6 +370,7 @@ rp_call :: (m: RpMirror, q: RpRequest, work: [] u8, out: [] u8) -> RpAnswer {
     else { a = rp_do_diff(m, c, cast(string) other[..], q, work, out); }
   }
   a.commit = commit;
+  if a.ok { _ = rp_utf8_mend(out[0..<a.n]); }   // an answer is UTF-8 text (wire.coax carries it as a JSON string)
   return a;
 }
 

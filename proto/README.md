@@ -31,6 +31,7 @@ workspace is restored.
 | `openagents/host/v1/`, `openagents/reach/v1/` | Recovered phone task/admission, binding/cursor and authenticated reach records. Existing wire types are unchanged. **No product consumer**: a library adapter imports them and only tests and an example load it. `coder host` uses NIP-HOST's JSON. |
 | `openagents/decision/v1alpha1/` | New protobuf projection of the frozen `openagents.systemone.v1` JSON contract (request and response), served by Psionic's `/v1/systemone`. See its [README](openagents/decision/v1alpha1/README.md). |
 | `openagents/bitcoin/explorer/v1alpha1/` | New read-only explorer projection. The [HTTP v1 contract](../docs/protocol/bitcoin-explorer-v1.md) defines its JSON envelope and snapshot semantics. |
+| `openagents/repo/v1alpha1/` | Indexed repos' read calls (profile `repo`, #13326): `RepoRequest` and `RepoAnswer`, the JSON bodies of the repo service's `/api/repo/call` and `/api/repo/fetch`. One codec, `coax/lib/repo/wire.coax`. |
 | `openagents/cli/local/v1/` | Read-only local agent/model inventory for desktop setup. See [the JSON contract](../docs/protocol/local-inventory-v1.md). |
 | `openagents/options/v1alpha1/` | New experimental data-class, limit, presence, unit and contract annotations. Numbers are provisional pending registry review. |
 | `openagents/verse/doc/v1alpha1/` | A made realm's document (`aethyr.realm` version 1) and its edits: the bodies of save, undo and redo, their replies and the server's undo log (profile `verse-doc`, #13249). `aethyr/forge/doc.coax` and `edit.coax` are the one codec; `verse/realm-document-v1.json` holds the stored bytes and hashes. |
@@ -58,7 +59,7 @@ not list it; [registry.json](registry.json) does, one row a file.
 | Folder | What it holds |
 | --- | --- |
 | `verse/` | Wire profiles for hand-packed frames and records. A profile names each message, its fields in order, a value for each and the exact bytes those values make. `everglade-session-v5.json`, `everglade-latency-v1.json` and `orbit-session-v2.json` have a check that writes and reads those bytes through the codec. `npc-ask-v1.json` holds the NPC ask's bodies and answers (`openagents.verse.npc.v1alpha1`), checked through `aethyr/talk/wire.coax` and posted to the API by `coax/web/api/test_npc.py`. `realm-document-v1.json` holds a made realm's document as the server stores it, a run of edits and, after each, the document, its SHA-256, the reply and the logged undo step; `aethyr/forge/doc-goldens.coax` replays it through `edit.coax` and `doc.coax`, and `coax/web/api/tests/realm_doc_checks.coax` through the API's routes. The Everglade II familiar, Healer's Kit and link-input profiles, `asset-pack-v2.json` and the character checkpoint JSON Schemas have no check yet |
-| `coder/` | `session-log-v1.json`, the session log's lines byte for byte, checked through `coax/lib/agent/session/log.coax` by `log-profile.coax`; `golemancy-v1alpha1.json`, the AI-call ledger's and the next-issue decision's lines, checked through `coax/lib/agent/ledger.coax` by `ledger-goldens.coax`; `stream-v1.json`, Coder's stream records' lines (reply-stream, observability v1 and v2, route v2), checked through `coax/lib/agent/session/stream.coax` by `stream-goldens.coax`; and JSON Schemas for voice input |
+| `coder/` | `repo-v1alpha1.json`, the repo service's bodies (`openagents.repo.v1alpha1`), checked through `coax/lib/repo/wire.coax` by `wire-goldens.coax`; `session-log-v1.json`, the session log's lines byte for byte, checked through `coax/lib/agent/session/log.coax` by `log-profile.coax`; `golemancy-v1alpha1.json`, the AI-call ledger's and the next-issue decision's lines, checked through `coax/lib/agent/ledger.coax` by `ledger-goldens.coax`; `stream-v1.json`, Coder's stream records' lines (reply-stream, observability v1 and v2, route v2), checked through `coax/lib/agent/session/stream.coax` by `stream-goldens.coax`; and JSON Schemas for voice input |
 | `aethyrforge/` | JSON Schemas for Aethyrforge's local commands. None has a check yet |
 | `aethyr/` | `physics-lab-v1.json`. No check yet |
 
@@ -141,7 +142,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 | `realm-authoring` | Realm authoring | `aethyr/forge/`, `apps/aethyrforge-desktop/`, `apps/openagents-web/worldbuilder*`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c` |
 | `identity` | Identity and auth | `coax/web/api/auth*` |
 | `payments` | Payments and wallet | `pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` |
-| `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/` |
+| `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `coax/lib/repo/`, `coax/web/repo/`, `coax/web/agent/` |
 | `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` |
 | `projects` | Projects | `coax/web/api/private.c`, `coax/web/api/drops.c` |
 | `nostr` | Nostr | `nostr/`, `coax/lib/nostr/` |

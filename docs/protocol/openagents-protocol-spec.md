@@ -3888,6 +3888,42 @@ study candidates, tuned tasks, briefings, executor events) is evidence,
 not protocol. It goes to `evidence.v1` (§30.2), except
 `coder-one.policy.v1`, which is above.
 
+### 25.6 `openagents.repo.v1alpha1`, indexed repos
+
+An indexed repo is a repository one service (`oa-repo`) keeps a bare mirror
+of and answers reads about, so an agent reads a codebase through tools at
+one exact commit with no clone, no git and no credential
+([spec](../repos/2026-11-11-indexed-repos.md), GitHub #13326). Phase 1 is
+read only. The schema is `proto/openagents/repo/v1alpha1/repo.proto`
+(profile `repo`); its one codec is `coax/lib/repo/wire.coax`, held to
+`proto/coder/repo-v1alpha1.json` by `coax/lib/repo/wire-goldens.coax`.
+
+```proto
+package openagents.repo.v1alpha1;
+message RepoRequest { string repo = 1; string op = 2; string at = 3; string other = 4; string path = 5; string pattern = 6;
+  int32 from = 7; int32 to = 8; int32 n = 9; int32 depth = 10; bool regex = 11; bool ignore_case = 12; int32 context = 13; }
+message RepoAnswer { bool ok = 1; string commit = 2; string text = 3; bool cut = 4; string error = 5; }
+```
+
+- **Transport.** The schema's JSON mapping over HTTP/1.1 on the VPC only:
+  `POST /api/repo/call` takes a `RepoRequest` and answers a `RepoAnswer`;
+  `POST /api/repo/fetch` takes one naming only its repo, fetches, and
+  answers with `main`'s commit. `GET /healthz` answers `ok`.
+- **Operations.** `op` is one of `resolve`, `tree`, `read`, `find`,
+  `search`, `log`, `show`, `diff` and `blame` (`coax/lib/repo/rules.coax`
+  decides what a request may name). An answer names the commit it read, is
+  at most 64 KB of UTF-8 text in a fixed order, and a cut one ends with a
+  line saying how to get the rest.
+- **Grants.** Every call carries `Authorization: Bearer
+  v1.REPO.MODE.EXPIRES.SESSION.MAC`: one repo, `read`, `propose` or
+  `fetch`, an expiry at most an hour off, and HMAC-SHA256 under a key the
+  minter and the service share (`coax/web/repo/grant.coax`, `#authority`).
+  The model never sees a grant. A refused grant is HTTP 403 with a
+  `RepoAnswer` whose `error` says why.
+- **Records.** A tool call through it is an `agent.tool_use` event of the
+  managed session (§18.2) with the operation, the commit and the answer's
+  size.
+
 ## 26. Money: markets, labor, payments, ledgers, billing
 
 ### 26.1 The money rule
@@ -4513,6 +4549,7 @@ messages are the ones in each section.
 | `AttestService` | `attest.v1` | Verify, Endpoint |
 | `DeployService` | `deploy.v1` | Lane, History |
 | `DiscoveryService` | `discovery.v1` | Manifest |
+| `RepoService` | `repo.v1alpha1` | Call, Fetch (§25.6; HTTP `/api/repo/call`, `/api/repo/fetch`) |
 
 The HTTP mapping is declared per method with `google.api.http`
 annotations, which keep the existing paths: `/v1/decisions`,

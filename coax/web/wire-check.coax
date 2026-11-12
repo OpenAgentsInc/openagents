@@ -463,7 +463,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "realm-authoring" { return wc_under(codec, "aethyr/forge/") || wc_under(codec, "apps/aethyrforge-desktop/") || wc_starts(codec, "apps/openagents-web/worldbuilder") || wc_under(codec, "coax/web/api/worldbuilder.c") || wc_under(codec, "coax/web/api/realms.c"); }
   if owner == "identity" { return wc_starts(codec, "coax/web/api/auth"); }
   if owner == "payments" { return wc_under(codec, "pay/") || wc_under(codec, "coax/lib/pay/") || wc_under(codec, "coax/lib/bitcoin/") || wc_under(codec, "coax/lib/lightning/") || wc_under(codec, "coax/lib/lnaddr/"); }
-  if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/"); }
+  if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/") || wc_under(codec, "coax/lib/repo/") || wc_under(codec, "coax/web/repo/") || wc_under(codec, "coax/web/agent/"); }
   if owner == "chat" { return wc_under(codec, "components/zeron/") || wc_under(codec, "apps/openagents-web/chat.coax") || wc_under(codec, "coax/web/api/chat.c"); }
   if owner == "projects" { return wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c"); }
   if owner == "nostr" { return wc_under(codec, "nostr/") || wc_under(codec, "coax/lib/nostr/"); }
@@ -472,6 +472,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "protocol" { return wc_under(codec, "proto/"); }
   if owner == "toolchain" {
     return wc_under(codec, "coax/") && !wc_under(codec, "coax/lib/agent/") && !wc_under(codec, "coax/lib/microcoder/")
+      && !wc_under(codec, "coax/lib/repo/") && !wc_under(codec, "coax/web/repo/") && !wc_under(codec, "coax/web/agent/")
       && !wc_under(codec, "coax/lib/gateway/") && !wc_under(codec, "coax/lib/nostr/") && !wc_under(codec, "coax/lib/pay/")
       && !wc_under(codec, "coax/lib/bitcoin/") && !wc_under(codec, "coax/lib/lightning/") && !wc_under(codec, "coax/lib/lnaddr/")
       && !wc_under(codec, "coax/lib/systemone/") && !wc_under(codec, "coax/web/room/") && !wc_starts(codec, "coax/web/api/auth")
@@ -811,7 +812,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   d := r[0];
   for k: 0..<10 { #assert wc_row_fault(d, jv_at(d, 0, k)).count > 0; }
   #assert wc_row_fault(d, jv_at(d, 0, 10)) == "" && wc_row_fault(d, jv_at(d, 0, 11)) == "";
-  #assert wc_owner_has("coder", "coder/tui/acp.coax") && wc_owner_has("coder", "coax/lib/agent/claude/") && !wc_owner_has("coder", "coax/lib/nostr/");
+  #assert wc_owner_has("coder", "coax/lib/repo/wire.coax") && wc_owner_has("coder", "coax/web/agent/chat.coax") && !wc_owner_has("toolchain", "coax/lib/repo/wire.coax") && wc_owner_has("coder", "coder/tui/acp.coax") && wc_owner_has("coder", "coax/lib/agent/claude/") && !wc_owner_has("coder", "coax/lib/nostr/");
   #assert wc_owner_has("room-session", "aethyr/session/relay.coax") && !wc_owner_has("room-session", "aethyr/session/ledger.coax") && wc_owner_has("items", "aethyr/session/ledger.coax");
   #assert wc_owner_has("toolchain", "coax/web/wire-check.coax") && !wc_owner_has("toolchain", "coax/lib/nostr/") && !wc_owner_has("toolchain", "coax/web/api/auth.c");
   #assert wc_owner_has("engine", "aethyr/render/x.coax") && !wc_owner_has("engine", "aethyr/rules/srd/x.coax") && !wc_owner_has("engine", "aethyr/forge/x.coax");

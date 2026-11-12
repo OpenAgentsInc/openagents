@@ -1,0 +1,85 @@
+// openagents.repo.v1alpha1 held to its goldens (#13326): proto/coder/repo-v1alpha1.json names each
+// body of the repo service byte for byte. Every RepoRequest reads through wire.coax's
+// rw_request_read and is written back by rw_request_write to the same bytes; every RepoAnswer
+// the same through rw_answer_read and rw_answer_write. Then the edges: an answer that says ok
+// with no commit is refused, an answer is cut to nothing when its buffer is a byte short, text
+// that is not UTF-8 is not written, and the largest answer the library makes fits RW_ANSWER_MAX.
+//   coax/web/tool.sh coax/lib/repo/wire-goldens.coax [proto/coder/repo-v1alpha1.json]
+#import "Basic";
+#load "wire.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+RWG_FIXTURE :: "proto/coder/repo-v1alpha1.json";
+
+rwg_fail :: (what: string, name: string) -> bool { print("FAIL %: %\n", what, name); return false; }
+
+rwg_record :: (message: string, name: string, line: string) -> bool {
+  nodes: [4096] JvNode; wire: [RP_ANSWER + 1024] u8; out: [RW_ANSWER_MAX] u8;
+  n := 0;
+  if message == "RepoRequest" {
+    c := rw_request_read(line, nodes[..], wire[..]);
+    if !c.ok { return rwg_fail("the request does not read", name); }
+    n = rw_request_write(c.repo, c.q, out[..]);
+  } else if message == "RepoAnswer" {
+    g := rw_answer_read(line, nodes[..], wire[..]);
+    if !g.ok { return rwg_fail("the answer does not read", name); }
+    n = rw_answer_write(g.a, g.text, out[..]);
+  } else { return rwg_fail("unknown message", message); }
+  if n <= 0 || cast(string) out[0..<n] != line {
+    print("FAIL % is not written back byte for byte\n  want %\n  got  %\n", name, line, ifx n > 0 then cast(string) out[0..<n] else "(nothing)");
+    return false;
+  }
+  return true;
+}
+
+rwg_edges :: () -> bool {
+  good := true;
+  nodes: [256] JvNode; wire: [4096] u8; out: [RW_ANSWER_MAX] u8;
+  if rw_answer_read("{\"ok\":true,\"text\":\"x\"}", nodes[..], wire[..]).ok { good = rwg_fail("an ok answer with no commit is read", "edges"); }
+  if rw_answer_read("{\"ok\":true,\"commit\":\"main\",\"text\":\"x\"}", nodes[..], wire[..]).ok { good = rwg_fail("an ok answer naming a branch is read", "edges"); }
+  if rw_answer_read("[1]", nodes[..], wire[..]).ok || rw_request_read("{\"op\":7}", nodes[..], wire[..]).ok { good = rwg_fail("a body of another shape is read", "edges"); }
+  c := rw_request_read("{\"op\":\"push\",\"repo\":\"openagents\"}", nodes[..], wire[..]);
+  if !c.ok || c.q.op != 0 { good = rwg_fail("an operation the library doesn't have is not left as none", "edges"); }
+  a: RpAnswer; a.ok = true; for i: 0..<40 { a.commit[i] = 'a'; }
+  n := rw_answer_write(a, "hello", out[..]);
+  if n <= 0 || rw_answer_write(a, "hello", out[0..<n - 1]) != 0 { good = rwg_fail("an answer one byte short of its buffer is written", "edges"); }
+  bad := [2] u8.[0xFF, 'x'];
+  if rw_answer_write(a, cast(string) bad[..], out[..]) != 0 { good = rwg_fail("text that is not UTF-8 is written", "edges"); }
+  // the largest answer: 64 KB of control bytes, each escaped as \u00XX
+  big: [RP_ANSWER] u8; for i: 0..<big.count { big[i] = 1; }
+  if rw_answer_write(a, cast(string) big[..], out[..]) <= 0 { good = rwg_fail("the largest answer does not fit RW_ANSWER_MAX", "edges"); }
+  return good;
+}
+
+rwg_fixture :: (path: string) -> bool {
+  raw: [262144] u8; n := fs_read(path, raw[..]);
+  if n <= 0 { return rwg_fail("cannot read the fixture", path); }
+  nodes: [8192] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) raw[0..<n], nodes[..]) { return rwg_fail("the fixture is not JSON", path); }
+  records := jv_get(d[0], 0, "records");
+  count := jv_len(d[0], records);
+  good := true; requests := 0; answers := 0;
+  mb: [64] u8; nb: [512] u8; lb: [16384] u8;
+  for i: 0..<count {
+    r := jv_at(d[0], records, i);
+    ml := jv_str(d[0], jv_get(d[0], r, "message"), mb[..]); nl := jv_str(d[0], jv_get(d[0], r, "name"), nb[..]); ll := jv_str(d[0], jv_get(d[0], r, "json"), lb[..]);
+    if ml <= 0 || nl <= 0 || ll <= 0 { good = rwg_fail("a record without message, name or json", path); continue; }
+    message := cast(string) mb[0..<ml];
+    if rwg_record(message, cast(string) nb[0..<nl], cast(string) lb[0..<ll]) { print("ok  % %\n", message, cast(string) nb[0..<nl]); } else { good = false; }
+    if message == "RepoRequest" { requests += 1; } else { answers += 1; }
+  }
+  if requests < 1 || answers < 1 { good = rwg_fail("the fixture needs a body of each message", path); }
+  if rwg_edges() { print("ok  the edges: no commit, another shape, an unknown operation, a short buffer, bytes that are not UTF-8, the largest answer\n"); } else { good = false; }
+  return good;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  loaded := args_load(a[..]);
+  path := ifx loaded && args_count(a[..]) >= 1 then args_at(a[..], 0) else RWG_FIXTURE;
+  if !rwg_fixture(path) { print("repo goldens fail\n"); return 1; }
+  print("repo goldens hold (%)\n", path);
+  return 0;
+}

@@ -14,7 +14,7 @@ room-session folders: aethyr/session/ aethyr/net/ coax/web/room/ may load: engin
 realm-authoring folders: aethyr/forge/ apps/aethyrforge-desktop/ apps/openagents-web/worldbuilder coax/web/api/worldbuilder.c coax/web/api/realms.c may load: engine protocol toolchain
 identity folders: coax/web/api/auth may load: nostr toolchain
 payments folders: pay/ coax/lib/bitcoin/ coax/lib/lightning/ coax/lib/lnaddr/ may load: nostr identity toolchain
-coder folders: coder/ coax/lib/agent/ coax/lib/microcoder/ coax/lib/gateway/ may load: psionic nostr protocol toolchain
+coder folders: coder/ coax/lib/agent/ coax/lib/microcoder/ coax/lib/gateway/ coax/lib/repo/ coax/web/repo/ coax/web/agent/ may load: psionic nostr protocol toolchain
 chat folders: components/zeron/ apps/openagents-web/chat.coax coax/web/api/chat.c may load: coder identity protocol toolchain
 projects folders: coax/web/api/private.c coax/web/api/drops.c may load: identity payments toolchain
 nostr folders: nostr/ coax/lib/nostr/ may load: toolchain

@@ -1,0 +1,89 @@
+// Indexed repos on the wire (docs/repos/2026-11-11-indexed-repos.md, GitHub #13326):
+// the one codec of openagents.repo.v1alpha1 (proto/openagents/repo/v1alpha1/repo.proto),
+// the bodies of the repo service's POST /api/repo/call and /api/repo/fetch. A
+// RepoRequest is one read (repo.coax's RpRequest and the repository's slug); a
+// RepoAnswer is what it found (RpAnswer and its text). Both go through the JSON
+// mapper (#import_proto with the json option), so the keys are the schema's
+// json_names in field-number order, and a zero, empty or false field is left out.
+//
+// The service (coax/web/repo/serve.coax) reads requests and writes answers; the
+// chat engine (coax/web/agent/chat.coax) writes requests and reads answers.
+// Goldens: proto/coder/repo-v1alpha1.json, held here by wire-goldens.coax:
+//   coax/web/tool.sh coax/lib/repo/wire-goldens.coax
+#import_proto "../../../proto/descriptors/repo.pb" as RW;
+#load "../proto/json.coax";
+#load "repo.coax";
+
+RW_REQUEST_MAX :: 16384;               // a request's JSON and wire: 16 paths of 400 bytes and a pattern fit
+RW_ANSWER_MAX :: RP_ANSWER * 6 + 1024; // an answer's JSON: 64 KB of text, every byte escaped at worst
+
+// One read as the service gets it: the repository and the request. ok is false for a body that
+// is not a RepoRequest or names no operation the library has.
+RwCall :: struct { ok: bool; repo: string; q: RpRequest; }
+// An answer as the engine gets it. text borrows the reader's wire buffer.
+RwGot :: struct { ok: bool; a: RpAnswer; text: string; }
+
+// A request's JSON into out: its length, or 0 when it doesn't fit or a string is not UTF-8.
+rw_request_write :: (repo: string, q: RpRequest, out: [] u8) -> int {
+  a: [RW_REQUEST_MAX] u8; b: [RW_REQUEST_MAX] u8;
+  ops := RP_OPS;
+  op := ifx q.op >= 1 && q.op < ops.count then ops[q.op] else "";
+  m := RW_RepoRequest_new();
+  m = RW_RepoRequest_set_repo(m, repo, a[..]);
+  m = RW_RepoRequest_set_op(m, op, b[..]);
+  m = RW_RepoRequest_set_at(m, q.at, a[..]);
+  m = RW_RepoRequest_set_other(m, q.other, b[..]);
+  m = RW_RepoRequest_set_path(m, q.path, a[..]);
+  m = RW_RepoRequest_set_pattern(m, q.pattern, b[..]);
+  m = RW_RepoRequest_set_from(m, cast(s32) q.from, a[..]);
+  m = RW_RepoRequest_set_to(m, cast(s32) q.to, b[..]);
+  m = RW_RepoRequest_set_n(m, cast(s32) q.n, a[..]);
+  m = RW_RepoRequest_set_depth(m, cast(s32) q.depth, b[..]);
+  m = RW_RepoRequest_set_regex(m, q.regex, a[..]);
+  m = RW_RepoRequest_set_ignore_case(m, q.fold, b[..]);
+  m = RW_RepoRequest_set_context(m, cast(s32) q.context, a[..]);
+  v := RW_RepoRequest_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
+}
+// A request read back. Strings borrow wire, which must not overlap text.
+rw_request_read :: (text: string, nodes: [] JvNode, wire: [] u8) -> RwCall {
+  c: RwCall;
+  m := RW_RepoRequest_from_json(text, nodes, wire);
+  if m.error != 0 { return c; }
+  repo := RW_RepoRequest_get_repo(m); op := RW_RepoRequest_get_op(m);
+  at := RW_RepoRequest_get_at(m); other := RW_RepoRequest_get_other(m); path := RW_RepoRequest_get_path(m);
+  pattern := RW_RepoRequest_get_pattern(m); from := RW_RepoRequest_get_from(m); to := RW_RepoRequest_get_to(m);
+  n := RW_RepoRequest_get_n(m); depth := RW_RepoRequest_get_depth(m); regex := RW_RepoRequest_get_regex(m);
+  fold := RW_RepoRequest_get_ignore_case(m); context := RW_RepoRequest_get_context(m);
+  c.repo = repo.value;
+  c.q = RpRequest.{op = rp_op(op.value), at = at.value, other = other.value, path = path.value, pattern = pattern.value,
+    from = cast(int) from.value, to = cast(int) to.value, n = cast(int) n.value, depth = cast(int) depth.value,
+    regex = regex.value, fold = fold.value, context = cast(int) context.value};
+  c.ok = true;
+  return c;
+}
+// An answer's JSON into out (RW_ANSWER_MAX holds any): its length, or 0 when it doesn't fit.
+rw_answer_write :: (a: RpAnswer, text: string, out: [] u8) -> int {
+  x: [RP_ANSWER + 1024] u8; y: [RP_ANSWER + 1024] u8;
+  commit := a.commit;
+  m := RW_RepoAnswer_new();
+  m = RW_RepoAnswer_set_ok(m, a.ok, x[..]);
+  if a.ok { m = RW_RepoAnswer_set_commit(m, cast(string) commit[..], y[..]); m = RW_RepoAnswer_set_text(m, text, x[..]); m = RW_RepoAnswer_set_cut(m, a.cut, y[..]); }
+  else { m = RW_RepoAnswer_set_error(m, a.error, y[..]); }
+  v := RW_RepoAnswer_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
+}
+// An answer read back. ok is false for a body that is not a RepoAnswer, or an answer that says
+// it is ok and names no full commit id (a.ok is the service's own verdict).
+rw_answer_read :: (body: string, nodes: [] JvNode, wire: [] u8) -> RwGot {
+  g: RwGot;
+  m := RW_RepoAnswer_from_json(body, nodes, wire);
+  if m.error != 0 { return g; }
+  ok := RW_RepoAnswer_get_ok(m); commit := RW_RepoAnswer_get_commit(m); text := RW_RepoAnswer_get_text(m);
+  cut := RW_RepoAnswer_get_cut(m); err := RW_RepoAnswer_get_error(m);
+  if ok.value && !rp_commit_ok(commit.value) { return g; }
+  g.a.ok = ok.value; g.a.cut = cut.value; g.a.error = err.value; g.text = text.value; g.a.n = text.value.count;
+  if ok.value { for i: 0..<40 { g.a.commit[i] = commit.value[i]; } }
+  g.ok = true;
+  return g;
+}

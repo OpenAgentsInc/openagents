@@ -1,0 +1,43 @@
+syntax = "proto3";
+package openagents.repo.v1alpha1;
+import "openagents/options/v1alpha1/json.proto";
+
+// Indexed repos (docs/repos/2026-11-11-indexed-repos.md, GitHub #13326): the
+// read operations of the repo service oa-repo. The HTTP form is this schema's
+// JSON mapping: POST /api/repo/call takes a RepoRequest and answers a
+// RepoAnswer; POST /api/repo/fetch takes a RepoRequest naming only its repo,
+// brings the mirror up to date and answers with main's commit. Every call
+// carries a grant (Authorization: Bearer v1.REPO.MODE.EXPIRES.SESSION.MAC,
+// coax/web/repo/grant.coax); a grant is never in a body.
+//
+// One codec: coax/lib/repo/wire.coax. Goldens: proto/coder/repo-v1alpha1.json,
+// checked by coax/lib/repo/wire-goldens.coax.
+
+// One read: an operation on one repository at one snapshot.
+message RepoRequest {
+  option (openagents.options.v1alpha1.json) = "";
+  string repo = 1 [json_name = "repo"];          // the repository's slug, such as openagents
+  string op = 2 [json_name = "op"];              // resolve, tree, read, find, search, log, show, diff or blame
+  string at = 3 [json_name = "at"];              // the snapshot: a full commit id, a branch or a tag
+  string other = 4 [json_name = "other"];        // show: the commit to show (default: the snapshot); diff: the snapshot to compare with
+  string path = 5 [json_name = "path"];          // a path; read and search: several, a line each; find: a glob
+  string pattern = 6 [json_name = "pattern"];    // search
+  int32 from = 7 [json_name = "from"];           // read (one file) and blame: the first line, from 1
+  int32 to = 8 [json_name = "to"];               // read (one file) and blame: the last line
+  int32 n = 9 [json_name = "n"];                 // log: how many commits
+  int32 depth = 10 [json_name = "depth"];        // tree: how many levels, 1 to 6
+  bool regex = 11 [json_name = "regex"];         // search: a regular expression (else a literal)
+  bool ignore_case = 12 [json_name = "ignoreCase"];
+  int32 context = 13 [json_name = "context"];    // search: lines around each match, at most 5
+}
+
+// What a read found: text for a model to read, at most 64 KB, in a fixed
+// order. A cut answer ends with a line saying what was left out.
+message RepoAnswer {
+  option (openagents.options.v1alpha1.json) = "";
+  bool ok = 1 [json_name = "ok"];
+  string commit = 2 [json_name = "commit"];      // the full commit id the answer read
+  string text = 3 [json_name = "text"];
+  bool cut = 4 [json_name = "cut"];
+  string error = 5 [json_name = "error"];        // when not ok: why, in words
+}

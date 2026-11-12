@@ -181,6 +181,9 @@
     ],
     "verse-doc": [
       "openagents/verse/doc/v1alpha1/realm.proto"
+    ],
+    "repo": [
+      "openagents/repo/v1alpha1/repo.proto"
     ]
   },
   "profile_namespaces": {
@@ -325,6 +328,10 @@
     ],
     "verse-doc": [
       "openagents.verse.doc.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "repo": [
+      "openagents.repo.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

@@ -1,0 +1,78 @@
+{
+  "profile": "openagents.repo",
+  "version": 1,
+  "package": "openagents.repo.v1alpha1",
+  "proto": "proto/openagents/repo/v1alpha1/repo.proto",
+  "codec": "coax/lib/repo/wire.coax",
+  "check": "coax/web/tool.sh coax/lib/repo/wire-goldens.coax proto/coder/repo-v1alpha1.json",
+  "transport": "HTTP/1.1 bodies, Content-Type application/json: POST /api/repo/call and /api/repo/fetch take a RepoRequest and answer a RepoAnswer (coax/web/repo/serve.coax); keys in field-number order, a zero, empty or false field left out",
+  "about": "Each body reads through wire.coax and is written back byte for byte (#13326).",
+  "records": [
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "resolve main",
+      "json": "{\"repo\":\"openagents\",\"op\":\"resolve\",\"at\":\"main\"}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "read two files",
+      "json": "{\"repo\":\"openagents\",\"op\":\"read\",\"at\":\"4ffaa55b45e1d0a2c3b4d5e6f708192a3b4c5d6e\",\"path\":\"coax/web/release.sh\\ndocs/chat.md\"}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "read one file by a line range",
+      "json": "{\"repo\":\"openagents\",\"op\":\"read\",\"at\":\"4ffaa55b45e1d0a2c3b4d5e6f708192a3b4c5d6e\",\"path\":\"coax/lib/repo/repo.coax\",\"from\":10,\"to\":42}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "a regular-expression search, ignoring case, under two paths with context",
+      "json": "{\"repo\":\"openagents\",\"op\":\"search\",\"at\":\"4ffaa55b45e1d0a2c3b4d5e6f708192a3b4c5d6e\",\"path\":\"coax/lib\\napps\",\"pattern\":\"rp_call \\\\\\\\(m\\\"\",\"regex\":true,\"ignoreCase\":true,\"context\":2}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "a tree two levels deep",
+      "json": "{\"repo\":\"openagents\",\"op\":\"tree\",\"at\":\"main\",\"path\":\"coax/web\",\"depth\":2}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "the log of one path",
+      "json": "{\"repo\":\"openagents\",\"op\":\"log\",\"at\":\"4ffaa55b45e1d0a2c3b4d5e6f708192a3b4c5d6e\",\"path\":\"docs/repos\",\"n\":5}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "a diff against a tag",
+      "json": "{\"repo\":\"openagents\",\"op\":\"diff\",\"at\":\"4ffaa55b45e1d0a2c3b4d5e6f708192a3b4c5d6e\",\"other\":\"v1.0.0\",\"path\":\"docs\"}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoRequest",
+      "name": "a fetch (POST /api/repo/fetch names only the repo)",
+      "json": "{\"repo\":\"openagents\"}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoAnswer",
+      "name": "a whole answer",
+      "json": "{\"ok\":true,\"commit\":\"4ffaa55b45e1d0a2c3b4d5e6f708192a3b4c5d6e\",\"text\":\"== a.md  (2 lines, 9 bytes)\\n1\\tone\\n2\\t\\\"two\\\" é\\n\"}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoAnswer",
+      "name": "a cut answer",
+      "json": "{\"ok\":true,\"commit\":\"4ffaa55b45e1d0a2c3b4d5e6f708192a3b4c5d6e\",\"text\":\"coax/a.coax:3:x\\n[12 more lines not shown: name paths to search under, or a narrower pattern]\\n\",\"cut\":true}"
+    },
+    {
+      "id": "openagents.repo.v1alpha1",
+      "message": "RepoAnswer",
+      "name": "a refusal",
+      "json": "{\"error\":\"that path is not one inside the repository\"}"
+    }
+  ]
+}
