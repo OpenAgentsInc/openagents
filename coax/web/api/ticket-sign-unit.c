@@ -1,10 +1,10 @@
 // ticket-sign.coax's C (ticket-sign.generated.c: aethyr/session/seat-ticket.coax, the one seat ticket
-// v5 writer, #13260) as one unit of the API. It loads Coax libraries that nip98.generated.c,
+// writer: v5, #13260, and v2 to v4, #13248) as one unit of the API. It loads Coax libraries that nip98.generated.c,
 // progress-policy.generated.c and others load too (bytes, SHA-256, secp256k1, the resume payload),
 // and those export their procedures: the same names twice in one binary. Here every export of this
-// unit but its own (seat_ticket_v5_*, room_write_*) gets a name of its own. A library export added later fails the
+// unit but its own (seat_ticket_*, room_write_*) gets a name of its own. A library export added later fails the
 // link loudly; regenerate this list:
-//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_v5_\|^room_write_'
+//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_\|^room_write_'
 #define cb_ct_equal stk_x_cb_ct_equal
 #define cb_ct_select32 stk_x_cb_ct_select32
 #define cb_ct_select64 stk_x_cb_ct_select64
@@ -124,6 +124,9 @@ size_t stk_kid_c(const unsigned char secret[32], char out[9]);
 size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, const char *name, const char *room, int shard,
                    long long expires, int hp, int xp, int wanted, long long owner, const char *ext, int profile, const char *saved,
                    char *out, size_t cap);
+size_t stk_hmac_write_c(const char *key, const char *pid, int acct, const char *name, const char *room, int shard,
+                        long long expires, int hp, int xp, int wanted, long long owner, int envelope, const char *saved,
+                        char *out, size_t cap);
 int stk_room_write_c(const char *masters, const char *signer, const char *purpose, const char *body, size_t n, const char *mac);
 size_t stk_class_ext_c(const char *klass, int xp, int start, char *out, size_t cap);
 
@@ -146,6 +149,18 @@ size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, co
   coax_string t = seat_ticket_v5_write((coax_v_u8){(uint8_t *)secret, 32}, (coax_v_u8){aux, 32}, stk_text(pid), acct, stk_text(name),
                                        stk_text(room), shard, expires, hp, xp, wanted, owner, stk_text(ext), profile, stk_text(saved),
                                        (coax_v_u8){(uint8_t *)out, 4096});
+  if (t.count <= 0 || t.count > 4096) { out[0] = 0; return 0; }
+  out[t.count] = 0;
+  return (size_t)t.count;
+}
+// A v2 or v3 ticket under the HMAC key, or (envelope 1) the v4 envelope around it with saved
+// (seat_ticket_hmac_write, #13248) into out (cap at least 4097), its length; 0 when the writer refused.
+size_t stk_hmac_write_c(const char *key, const char *pid, int acct, const char *name, const char *room, int shard,
+                        long long expires, int hp, int xp, int wanted, long long owner, int envelope, const char *saved,
+                        char *out, size_t cap) {
+  if (cap < 4097) return 0;
+  coax_string t = seat_ticket_hmac_write(stk_text(key), stk_text(pid), acct, stk_text(name), stk_text(room), shard, expires, hp, xp,
+                                         wanted, owner, envelope, stk_text(saved), (coax_v_u8){(uint8_t *)out, 4096});
   if (t.count <= 0 || t.count > 4096) { out[0] = 0; return 0; }
   out[t.count] = 0;
   return (size_t)t.count;

@@ -1,5 +1,5 @@
 // Seat ticket HMAC fixtures (proto/verse/seat-ticket-hmac-v1.json; #13248): each entry's values written
-// by the one writer (aethyr/session/seat-ticket.coax tk_write) give the fixture's exact bytes, and the
+// by the one writer (aethyr/session/seat-ticket.coax seat_ticket_hmac_write) give the fixture's exact bytes, and the
 // room's real reader (coax/web/room/room-ticket.coax tk_check) takes accepted entries with matching fields
 // and refuses refused entries.
 //   coax/web/tool.sh coax/web/room/seat-ticket-hmac-profile.coax proto/verse/seat-ticket-hmac-v1.json
@@ -18,26 +18,22 @@ sh_text :: (d: Jv, at: int, key: string, out: [] u8) -> string {
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 
+// The entry's values written by the one writer: v2 or v3 by its shard, v4 the envelope around it.
 sh_write_row :: (d: Jv, row: int, sign_key: string, out: [] u8) -> string {
   v := jv_get(d, row, "values");
-  tb: [4][TK5_TEXT] u8; nb: [64] u8; hb: [64] u8;
+  tb: [4][TK5_TEXT] u8;
   version := jv_int(d, jv_get(d, v, "version"), -1);
   pid := sh_text(d, v, "pid", tb[0][..]);
   name := sh_text(d, v, "name", tb[1][..]);
   room := sh_text(d, v, "room", tb[2][..]);
   saved := sh_text(d, v, "saved", tb[3][..]);
-  acct := jv_int(d, jv_get(d, v, "acct"), -9);
   shard := jv_int(d, jv_get(d, v, "shard"), -9);
-  expires := jv_int(d, jv_get(d, v, "expires"), -9);
-  hp := jv_int(d, jv_get(d, v, "hp"), -9);
-  xp := jv_int(d, jv_get(d, v, "xp"), -9);
-  wanted := jv_int(d, jv_get(d, v, "wanted"), -9);
-  owner := jv_int(d, jv_get(d, v, "owner"), -9);
-  nn := tk_name64_put(name, nb[..]);
-  hn := tk_hps_put(hp, xp, wanted, owner, hb[..]);
-  if nn <= 0 || hn <= 0 { return ""; }
-  n := tk_write(out, version, pid, acct, cast(string) nb[0..<nn], room, shard, expires, cast(string) hb[0..<hn], saved, sign_key);
-  return ifx n <= 0 then "" else cast(string) out[0..<n];
+  if version < 2 || version > 4 { return ""; }
+  t := seat_ticket_hmac_write(sign_key, pid, jv_int(d, jv_get(d, v, "acct"), -9), name, room, shard, jv_int(d, jv_get(d, v, "expires"), -9),
+                              jv_int(d, jv_get(d, v, "hp"), -9), jv_int(d, jv_get(d, v, "xp"), -9), jv_int(d, jv_get(d, v, "wanted"), -9),
+                              jv_int(d, jv_get(d, v, "owner"), -9), ifx version == 4 then 1 else 0, ifx saved == "" then "-" else saved, out);
+  if t.count < 3 || t[1] != cast(u8) ('0' + version) { return ""; }   // the version the entry names
+  return t;
 }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -64,7 +60,7 @@ tool_main :: () -> int #export_c #effects(all) {
     want := sh_text(d[0], row, "text", tb[1][..]);
     got := sh_write_row(d[0], row, key, tb[2][..]);
     if got == "" || got != want {
-      tool_err("seat-ticket-hmac-profile: ticket "); tool_err(why); tool_err(": tk_write made\n");
+      tool_err("seat-ticket-hmac-profile: ticket "); tool_err(why); tool_err(": seat_ticket_hmac_write made\n");
       print("%\n", got);
       failed += 1;
       continue;
@@ -106,7 +102,7 @@ tool_main :: () -> int #export_c #effects(all) {
     want := sh_text(d[0], row, "text", tb[1][..]);
     got := sh_write_row(d[0], row, key, tb[2][..]);
     if got == "" || got != want {
-      tool_err("seat-ticket-hmac-profile: refused "); tool_err(why); tool_err(": tk_write made\n");
+      tool_err("seat-ticket-hmac-profile: refused "); tool_err(why); tool_err(": seat_ticket_hmac_write made\n");
       print("%\n", got);
       failed += 1;
       continue;
