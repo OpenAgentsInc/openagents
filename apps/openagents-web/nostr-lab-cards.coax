@@ -8,9 +8,10 @@
 #load "nostr-lab-keys.coax";
 #load "nostr-lab-social.coax";
 #load "nostr-lab-apps.coax";
+#load "nostr-lab-more.coax";
 #load "nostr-lab-agents.coax";
 
-NLAB_CARDS :: NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLG_COUNT;
+NLAB_CARDS :: NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLM_COUNT + NLG_COUNT;
 // Card k (0 and up), filled. False when its lesson stopped, or k names none.
 nostr_lab_card :: (k0: int, c: [] NostrCard) -> bool {
   k := k0; if k < 0 { return nc_stop(c, 98); }
@@ -20,6 +21,7 @@ nostr_lab_card :: (k0: int, c: [] NostrCard) -> bool {
   if k < NLK_COUNT { return nlk_card(k, c); } k -= NLK_COUNT;
   if k < NLS_COUNT { return nls_card(k, c); } k -= NLS_COUNT;
   if k < NLA_COUNT { return nla_card(k, c); } k -= NLA_COUNT;
+  if k < NLM_COUNT { return nlm_card(k, c); } k -= NLM_COUNT;
   if k < NLG_COUNT { return nlg_card(k, c); } k -= NLG_COUNT;
   return nc_stop(c, 98);
 }
@@ -51,10 +53,13 @@ nlab_test_cards :: (from: int, to: int) -> bool {
 #test "nostr lab cards: the cards for what people build finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
   #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT);
 }
+#test "nostr lab cards: the cards for the smaller kinds finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLM_COUNT);
+}
 #test "nostr lab cards: the cards for agents finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
-  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLG_COUNT);
+  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLM_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLM_COUNT + NLG_COUNT);
 }
 #test "nostr lab cards: a number past the last card, or below the first, names none" {
-  #assert NLAB_CARDS == NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLG_COUNT;
+  #assert NLAB_CARDS == NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLM_COUNT + NLG_COUNT;
   c: [1] NostrCard; #assert !nostr_lab_card(NLAB_CARDS, c[..]) && c[0].stopped == 98 && !nostr_lab_card(-1, c[..]) && c[0].stopped == 98;
 }

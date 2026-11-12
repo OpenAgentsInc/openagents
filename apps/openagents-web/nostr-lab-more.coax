@@ -1,0 +1,581 @@
+// Nostr Lab's lessons for more of what people post: comments (NIP-22), chats (C7), forum threads (7D),
+// public messages (A4), profiles and the accounts they claim (NIP-01 kind 0, NIP-39), pull requests
+// (NIP-34) and code snippets (C0).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is).
+//
+//   0  NIP-22 comments: a kind 1111 comment on an article (A, K 30023), a reply to that comment
+//      (e, k 1111) and a comment on a web page (I, K web); a comment with no root tags refuses.
+//   1  NIP-C7 chats: a kind 9 message and a reply whose q tag nc7_reply_tags writes; a q tag whose
+//      ID is cut short refuses.
+//   2  NIP-7D threads: a kind 11 thread with its title and a kind 1111 reply to it; a reply to that
+//      reply refuses as nested.
+//   3  NIP-A4 public messages: a kind 24 message to two people, its text in the signed event as it
+//      was written; a message with an e tag refuses.
+//   4  NIP-39 identities: a kind 0 profile, a kind 10011 list of two claimed accounts, the URL of
+//      each proof and the npub the proof must hold; a platform name in capitals refuses.
+//   5  NIP-34 pull requests: a kind 1618 pull request, its author's kind 1619 update, and the tip
+//      n34_head works out; an update signed by someone else does not move it.
+//   6  NIP-C0 snippets: a kind 1337 snippet with its language, name, extension and licence; a
+//      language name in capitals refuses.
+//
+// The keys are BIP-340's published test vectors 0 to 3, the ones the book's examples sign with:
+// never real keys. No card shows a secret key. Every signature uses a zero aux, so a card is the
+// same on every run; a real client takes fresh random bytes.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-more.coax --only "nostr lab"
+#load "nostr-lab-card.coax";
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip34-event.coax";   // loads nip22.coax, nip34.coax, nip34-patch.coax
+#load "../../coax/lib/nostr/nip23.coax";         // the address of an article or a repository
+#load "../../coax/lib/nostr/nipc7.coax";
+#load "../../coax/lib/nostr/nip7d.coax";
+#load "../../coax/lib/nostr/nipa4.coax";
+#load "../../coax/lib/nostr/metadata.coax";
+#load "../../coax/lib/nostr/nip39.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/nip34-pr.coax";
+#load "../../coax/lib/nostr/nipc0.coax";
+
+NLM_COUNT :: 7;
+
+// Published test keys. Alice is BIP-340 vector 0 (the secret 3), Bob vector 1, Carol vector 2 and
+// Mallory vector 3.
+NLM_ALICE :: "0000000000000000000000000000000000000000000000000000000000000003";
+NLM_BOB :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+NLM_CAROL :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+NLM_MALLORY :: "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710";
+NLM_ALICE_PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+NLM_BOB_PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+NLM_CAROL_PUB :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";
+NLM_RELAY :: "wss://relay.example.com";
+NLM_T0 :: 1794441600;   // 12 November 2026, 00:00 UTC
+NLM_EVENT :: 2048;      // room for one signed event
+
+// Signs one event with a test key into out: its length, or -1. The aux is zero, so the event is the
+// same on every run.
+nlm_sign :: (key_hex: string, created: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  key: [32] u8; aux: [32] u8;
+  d := hex_decode_checked(key_hex, key[..], false); if d.error != NC_OK || d.written != 32 { return -1; }
+  work: [1] NostrSignWork; scratch: [4096] u8; n := EVENT_MORE; calls := 0;
+  while n == EVENT_MORE && calls < 256 {
+    n = nostr_event_sign_step(key[..], aux[..], created, kind, tags, content, work[..], scratch[..], out, false);
+    calls += 1;
+  }
+  for i: 0..<32 { key[i] = 0; }
+  return ifx n > 0 then n else -1;
+}
+// Signs an event into out and reads it back with its ID recomputed and its signature checked.
+// The answer's verified is false when any of that failed.
+nlm_event :: (key_hex: string, created: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  none: NostrEvent;
+  n := nlm_sign(key_hex, created, kind, tags, content, out); if n <= 0 { return none; }
+  scratch: [4096] u8;
+  return nostr_event_verify_vartime(cast(string) out[0..<n], scratch[..], false);
+}
+nlm_ok :: (e: NostrEvent) -> bool { return e.error == NE_OK && e.verified; }
+nlm_key :: (hex: string) -> [32] u8 { k: [32] u8; d := hex_decode_checked(hex, k[..], false); return k; }
+// A JSON string's raw bytes (a tag's value, an event's content) as the text they spell, in out.
+nlm_plain :: (raw: string, out: [] u8) -> string {
+  n := json_unescape(raw, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+nlm_content :: (e: NostrEvent, out: [] u8) -> string { return nlm_plain(e.original[e.content_from..<e.content_to], out); }
+// A row of 64 hex digits read from a tag, shown as nc_row_hex shows 32 bytes.
+nlm_row_id :: (c: [] NostrCard, label: string, hex: string, tone: int) -> bool {
+  b: [32] u8; d := hex_decode_checked(hex, b[..], false);
+  if d.error != NC_OK || d.written != 32 { return false; }
+  return nc_row_hex(c, label, b[..], tone);
+}
+nlm_has :: (s: string, part: string) -> bool {
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+// One NIP-22 scope's tags: the item under names[0], its kind under names[1] and, when author isn't
+// empty, its author under names[2]. names is "AKP", "ekp" and so on.
+nlm_scope :: (out: [] u8, at: int, names: string, ref: string, kind: string, author: string) -> int {
+  n := json_raw(out, at, "[\""); n = json_raw(out, n, names[0..<1]); n = json_raw(out, n, "\","); n = json_write_string(out, n, ref);
+  n = json_raw(out, n, "],[\""); n = json_raw(out, n, names[1..<2]); n = json_raw(out, n, "\","); n = json_write_string(out, n, kind); n = json_raw(out, n, "]");
+  if author.count > 0 { n = json_raw(out, n, ",[\""); n = json_raw(out, n, names[2..<3]); n = json_raw(out, n, "\",\""); n = json_raw(out, n, author); n = json_raw(out, n, "\"]"); }
+  return n;
+}
+// A comment's tags: the root scope, then the parent scope. An empty roots leaves the root scope out,
+// which no client should do.
+nlm_comment_tags :: (roots: string, root: string, root_kind: string, root_author: string, parents: string, parent: string, parent_kind: string, parent_author: string, out: [] u8) -> int {
+  n := json_raw(out, 0, "[");
+  if roots.count > 0 { n = nlm_scope(out, n, roots, root, root_kind, root_author); n = json_raw(out, n, ","); }
+  n = nlm_scope(out, n, parents, parent, parent_kind, parent_author);
+  return json_raw(out, n, "]");
+}
+
+// ---- 0. NIP-22: comments
+
+NLM_ARTICLE_D :: "nostr-from-scratch";
+NLM_PAGE :: "https://openagents.com/worlds/nostr-lab";
+
+nlm_comments :: (c: [] NostrCard) -> bool {
+  b0: [NLM_EVENT] u8; b1: [NLM_EVENT] u8; b2: [NLM_EVENT] u8; b3: [NLM_EVENT] u8; tags: [1024] u8;
+  // Alice's article is named by its address, kind:author:d (the NIP-23 station)
+  ab: [160] u8; an := nip23_address(N23_ARTICLE, nlm_key(NLM_ALICE_PUB), NLM_ARTICLE_D, ab[..]); if an <= 0 { return nc_stop(c, 1); }
+  address := cast(string) ab[0..<an];
+  // Bob's comment on the article: the article is the root (A, K, P) and the parent (a, k, p)
+  n := nlm_comment_tags("AKP", address, "30023", NLM_ALICE_PUB, "akp", address, "30023", NLM_ALICE_PUB, tags[..]); if n <= 0 { return nc_stop(c, 2); }
+  top := nlm_event(NLM_BOB, NLM_T0, N34_KIND_COMMENT, cast(string) tags[0..<n], "Does chapter 1 need a relay?", b0[..]); if !nlm_ok(top) { return nc_stop(c, 3); }
+  te := nt_event_of(top); tc := n22_comment(te);
+  if tc.status != N34_OK || tc.root.at != 'A' || tc.parent.at != 'a' || tc.root.kind_value != N23_ARTICLE || tc.parent.kind_value != N23_ARTICLE { return nc_stop(c, 4); }
+  if nt_raw(te, tc.root.ref.v[0]) != address || nt_raw(te, tc.parent.ref.v[0]) != address || nt_raw(te, tc.root.author.v[0]) != NLM_ALICE_PUB { return nc_stop(c, 5); }
+  // Carol's answer to Bob: the root is still the article, the parent is Bob's comment (e, k 1111, p)
+  top_id := n34_hex32(top.id); bob := n34_hex32(top.public_key);
+  n = nlm_comment_tags("AKP", address, "30023", NLM_ALICE_PUB, "ekp", cast(string) top_id[..], "1111", cast(string) bob[..], tags[..]); if n <= 0 { return nc_stop(c, 6); }
+  reply := nlm_event(NLM_CAROL, NLM_T0 + 60, N34_KIND_COMMENT, cast(string) tags[0..<n], "No. Keys and events only.", b1[..]); if !nlm_ok(reply) { return nc_stop(c, 7); }
+  re := nt_event_of(reply); rc := n22_comment(re);
+  if rc.status != N34_OK || rc.root.at != 'A' || nt_raw(re, rc.root.ref.v[0]) != address { return nc_stop(c, 8); }
+  if rc.parent.at != 'e' || rc.parent.kind_value != N34_KIND_COMMENT || nt_raw(re, rc.parent.ref.v[0]) != cast(string) top_id[..] { return nc_stop(c, 9); }
+  // Bob's comment on a web page: the root is its URL (I) and its kind the word "web" (NIP-73)
+  n = nlm_comment_tags("IKP", NLM_PAGE, "web", "", "ikp", NLM_PAGE, "web", "", tags[..]); if n <= 0 { return nc_stop(c, 10); }
+  web := nlm_event(NLM_BOB, NLM_T0 + 120, N34_KIND_COMMENT, cast(string) tags[0..<n], "A good walk.", b2[..]); if !nlm_ok(web) { return nc_stop(c, 11); }
+  we := nt_event_of(web); wc := n22_comment(we);
+  if wc.status != N34_OK || wc.root.at != 'I' || wc.parent.at != 'i' || nt_raw(we, wc.root.ref.v[0]) != NLM_PAGE || nt_raw(we, wc.root.kind.v[0]) != "web" { return nc_stop(c, 12); }
+  // a comment with only the lowercase tags: signed well, and nobody can say what it is under
+  n = nlm_comment_tags("", "", "", "", "akp", address, "30023", NLM_ALICE_PUB, tags[..]); if n <= 0 { return nc_stop(c, 13); }
+  lost := nlm_event(NLM_BOB, NLM_T0 + 180, N34_KIND_COMMENT, cast(string) tags[0..<n], "Does chapter 1 need a relay?", b3[..]); if !nlm_ok(lost) { return nc_stop(c, 14); }
+  if n22_comment(nt_event_of(lost)).status != N34_MISSING { return nc_stop(c, 15); }
+
+  nc_nodes(c, "ARTICLE", "COMMENT", "REPLY", "");
+  ok := nc_row_int(c, "KIND", top.kind, "", NC_PLAIN);
+  ok = ok && nc_row(c, "ROOT A TAG", nt_raw(te, tc.root.ref.v[0]), NC_VALUE);
+  ok = ok && nc_row(c, "ROOT K TAG", nt_raw(te, tc.root.kind.v[0]), NC_PLAIN);
+  ok = ok && nlm_row_id(c, "REPLY E TAG", nt_raw(re, rc.parent.ref.v[0]), NC_VALUE);
+  ok = ok && nc_row(c, "REPLY K TAG", nt_raw(re, rc.parent.kind.v[0]), NC_PLAIN);
+  ok = ok && nc_row(c, "WEB PAGE I", nt_raw(we, wc.root.ref.v[0]), NC_PLAIN);
+  if !ok { return nc_stop(c, 16); }
+  return nc_done(c, "ROOT AND PARENT READ FROM THE TAGS", "NO ROOT TAGS: NOT A COMMENT");
+}
+
+// ---- 1. NIP-C7: chats
+
+NLM_CHAT :: "GM";
+NLM_CHAT_REPLY :: "GM, Alice";
+
+nlm_chats :: (c: [] NostrCard) -> bool {
+  b0: [NLM_EVENT] u8; b1: [NLM_EVENT] u8; b2: [NLM_EVENT] u8; tags: [512] u8;
+  first := nlm_event(NLM_ALICE, NLM_T0, NC7_KIND_CHAT, "[]", NLM_CHAT, b0[..]); if !nlm_ok(first) { return nc_stop(c, 20); }
+  fc := nc7_chat(nt_event_of(first)); if fc.status != N34_OK || fc.quotes != 0 || fc.parent.found { return nc_stop(c, 21); }
+  // Bob's reply: the library writes its one q tag, the message's ID, where it was seen and who wrote it
+  id := n34_hex32(first.id); alice := n34_hex32(first.public_key);
+  n := nc7_reply_tags(cast(string) id[..], NLM_RELAY, cast(string) alice[..], tags[..]); if n <= 0 { return nc_stop(c, 22); }
+  reply := nlm_event(NLM_BOB, NLM_T0 + 30, NC7_KIND_CHAT, cast(string) tags[0..<n], NLM_CHAT_REPLY, b1[..]); if !nlm_ok(reply) { return nc_stop(c, 23); }
+  re := nt_event_of(reply); rc := nc7_chat(re);
+  if rc.status != N34_OK || rc.quotes != 1 || !rc.parent.found || rc.parent.values != 3 { return nc_stop(c, 24); }
+  if nt_raw(re, rc.parent.v[0]) != cast(string) id[..] || nt_raw(re, rc.parent.v[2]) != cast(string) alice[..] { return nc_stop(c, 25); }
+  // a reply whose q tag holds only the first 8 digits of the ID: the writer refuses it, and signed
+  // by hand it does not read as a chat message
+  if nc7_reply_tags(cast(string) id[0..<8], NLM_RELAY, cast(string) alice[..], tags[..]) != -1 { return nc_stop(c, 26); }
+  n = json_raw(tags[..], 0, "[[\"q\",\""); n = json_raw(tags[..], n, cast(string) id[0..<8]); n = json_raw(tags[..], n, "\"]]"); if n <= 0 { return nc_stop(c, 27); }
+  short := nlm_event(NLM_BOB, NLM_T0 + 60, NC7_KIND_CHAT, cast(string) tags[0..<n], NLM_CHAT_REPLY, b2[..]); if !nlm_ok(short) { return nc_stop(c, 28); }
+  if nc7_chat(nt_event_of(short)).status != N34_MALFORMED { return nc_stop(c, 29); }
+
+  nc_nodes(c, "ALICE", "RELAY", "BOB", "");
+  said: [64] u8;
+  ok := nc_row_int(c, "KIND", first.kind, "", NC_PLAIN);
+  ok = ok && nc_row(c, "ALICE SAYS", nlm_content(first, said[..]), NC_PLAIN);
+  ok = ok && nc_row_hex(c, "MESSAGE ID", first.id[..], NC_VALUE);
+  ok = ok && nlm_row_id(c, "REPLY Q TAG", nt_raw(re, rc.parent.v[0]), NC_VALUE);
+  ok = ok && nc_row(c, "Q TAG RELAY", nt_raw(re, rc.parent.v[1]), NC_PLAIN);
+  ok = ok && nlm_row_id(c, "Q TAG AUTHOR", nt_raw(re, rc.parent.v[2]), NC_KEY);
+  if !ok { return nc_stop(c, 30); }
+  return nc_done(c, "THE REPLY QUOTES THE MESSAGE", "Q TAG WITH A SHORT ID: REFUSED");
+}
+
+// ---- 2. NIP-7D: forum threads
+
+NLM_TITLE :: "Which relay first?";
+
+nlm_threads :: (c: [] NostrCard) -> bool {
+  b0: [NLM_EVENT] u8; b1: [NLM_EVENT] u8; b2: [NLM_EVENT] u8; tags: [1024] u8;
+  n := n7d_thread_tags(NLM_TITLE, tags[..]); if n <= 0 { return nc_stop(c, 40); }
+  thread := nlm_event(NLM_CAROL, NLM_T0, N7D_KIND_THREAD, cast(string) tags[0..<n], "One relay or three for a new key?", b0[..]); if !nlm_ok(thread) { return nc_stop(c, 41); }
+  te := nt_event_of(thread); t := n7d_thread(te); if t.status != N34_OK || !t.title.found { return nc_stop(c, 42); }
+  // Alice's reply: a NIP-22 comment whose root and parent are both the thread; the library writes
+  // its six tags
+  id := n34_hex32(thread.id); carol := n34_hex32(thread.public_key);
+  n = n7d_reply_tags(cast(string) id[..], NLM_RELAY, cast(string) carol[..], tags[..]); if n <= 0 { return nc_stop(c, 43); }
+  reply := nlm_event(NLM_ALICE, NLM_T0 + 60, N34_KIND_COMMENT, cast(string) tags[0..<n], "Three. One can go away.", b1[..]); if !nlm_ok(reply) { return nc_stop(c, 44); }
+  re := nt_event_of(reply); r := n7d_reply(re);
+  if r.status != N34_OK || nt_raw(re, r.thread.v[0]) != cast(string) id[..] || nt_raw(re, r.author.v[0]) != cast(string) carol[..] { return nc_stop(c, 45); }
+  rk := n22_comment(re).root.kind; if nt_raw(re, rk.v[0]) != "11" { return nc_stop(c, 46); }
+  // Bob answers Alice's reply, not the thread: a fair NIP-22 comment, and NIP-7D refuses it as nested
+  rid := n34_hex32(reply.id); alice := n34_hex32(reply.public_key);
+  n = nlm_comment_tags("EKP", cast(string) id[..], "11", cast(string) carol[..], "ekp", cast(string) rid[..], "1111", cast(string) alice[..], tags[..]); if n <= 0 { return nc_stop(c, 47); }
+  deep := nlm_event(NLM_BOB, NLM_T0 + 120, N34_KIND_COMMENT, cast(string) tags[0..<n], "Which three?", b2[..]); if !nlm_ok(deep) { return nc_stop(c, 48); }
+  de := nt_event_of(deep);
+  if n22_comment(de).status != N34_OK || n7d_reply(de).status != N7D_NESTED { return nc_stop(c, 49); }
+
+  nc_nodes(c, "THREAD", "REPLY", "READER", "");
+  title: [64] u8;
+  ok := nc_row_int(c, "KIND", thread.kind, "", NC_PLAIN);
+  ok = ok && nc_row(c, "TITLE TAG", nlm_plain(nt_raw(te, t.title.v[0]), title[..]), NC_PLAIN);
+  ok = ok && nc_row_hex(c, "THREAD ID", thread.id[..], NC_VALUE);
+  ok = ok && nc_row_int(c, "REPLY KIND", reply.kind, "", NC_PLAIN);
+  ok = ok && nlm_row_id(c, "REPLY E TAG", nt_raw(re, r.thread.v[0]), NC_VALUE);
+  ok = ok && nc_row(c, "REPLY K TAG", nt_raw(re, rk.v[0]), NC_PLAIN);
+  if !ok { return nc_stop(c, 50); }
+  return nc_done(c, "THE REPLY NAMES THE THREAD", "A REPLY TO A REPLY: REFUSED");
+}
+
+// ---- 3. NIP-A4: public messages
+
+NLM_PUBLIC :: "Are you both coming on Friday?";
+
+nlm_public :: (c: [] NostrCard) -> bool {
+  b0: [NLM_EVENT] u8; b1: [NLM_EVENT] u8; b2: [NLM_EVENT] u8; tags: [512] u8;
+  to := [2] string.[NLM_BOB_PUB, NLM_CAROL_PUB]; relays := [2] string.["", ""];
+  n := na4_tags(to[..], relays[..], 0, tags[..]); if n <= 0 { return nc_stop(c, 60); }
+  msg := nlm_event(NLM_ALICE, NLM_T0, NA4_KIND_MESSAGE, cast(string) tags[0..<n], NLM_PUBLIC, b0[..]); if !nlm_ok(msg) { return nc_stop(c, 61); }
+  me := nt_event_of(msg); m := na4_message(me);
+  if m.status != N34_OK || m.receivers != 2 || m.quotes != 0 || m.expires != -1 { return nc_stop(c, 62); }
+  p0 := nt_tag(me, "p", 0); p1 := nt_tag(me, "p", 1);
+  if !p0.found || !p1.found || nt_raw(me, p0.v[0]) != NLM_BOB_PUB || nt_raw(me, p1.v[0]) != NLM_CAROL_PUB { return nc_stop(c, 63); }
+  // nothing is sealed: the text Alice wrote is in the signed event that goes to the relay
+  if !nlm_has(msg.original, NLM_PUBLIC) { return nc_stop(c, 64); }
+  // Bob answers with an e tag naming Alice's message: kind 24 has no threads
+  id := n34_hex32(msg.id);
+  n = json_raw(tags[..], 0, "[[\"p\",\""); n = json_raw(tags[..], n, NLM_ALICE_PUB); n = json_raw(tags[..], n, "\"],[\"e\",\""); n = json_raw(tags[..], n, cast(string) id[..]); n = json_raw(tags[..], n, "\"]]");
+  if n <= 0 { return nc_stop(c, 65); }
+  threaded := nlm_event(NLM_BOB, NLM_T0 + 600, NA4_KIND_MESSAGE, cast(string) tags[0..<n], "Yes.", b1[..]); if !nlm_ok(threaded) { return nc_stop(c, 66); }
+  if na4_message(nt_event_of(threaded)).status != NA4_THREAD { return nc_stop(c, 67); }
+  // and a message to nobody is not one
+  nobody := nlm_event(NLM_BOB, NLM_T0 + 660, NA4_KIND_MESSAGE, "[]", "Yes.", b2[..]); if !nlm_ok(nobody) { return nc_stop(c, 68); }
+  if na4_message(nt_event_of(nobody)).status != N34_MISSING || na4_tags(to[0..<0], relays[0..<0], 0, tags[..]) != -1 { return nc_stop(c, 69); }
+
+  nc_nodes(c, "ALICE", "RELAY", "ANYONE", "");
+  said: [64] u8;
+  ok := nc_row_int(c, "KIND", msg.kind, "", NC_PLAIN);
+  ok = ok && nc_row_int(c, "RECEIVERS", m.receivers, "P TAGS", NC_PLAIN);
+  ok = ok && nlm_row_id(c, "TO", nt_raw(me, p0.v[0]), NC_KEY);
+  ok = ok && nlm_row_id(c, "AND TO", nt_raw(me, p1.v[0]), NC_KEY);
+  ok = ok && nc_row(c, "RELAY READS", nlm_content(msg, said[..]), NC_PLAIN);
+  ok = ok && nc_row(c, "WITH AN E TAG", "NO THREADS IN KIND 24", NC_BAD);
+  if !ok { return nc_stop(c, 70); }
+  return nc_done(c, "NOT ENCRYPTED: ANYONE CAN READ IT", "AN E TAG MAKES A THREAD: REFUSED");
+}
+
+// ---- 4. NIP-01 profiles and NIP-39 identities
+
+NLM_PROFILE :: "{\"name\":\"alice\",\"about\":\"Tea, relays and Coax\"}";
+// Two accounts Alice says are hers, each with where its proof is: a gist's ID and a post's ID. The
+// accounts and IDs are made up; no one fetches them here.
+NLM_CLAIMS :: "[[\"i\",\"github:alice-tea\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"],[\"i\",\"mastodon:tea.example/@alice\",\"109775066355589974\"]]";
+NLM_CLAIMS_CAPITALS :: "[[\"i\",\"GitHub:alice-tea\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"]]";
+NLM_CLAIMS_CLIMB :: "[[\"i\",\"github:alice-tea/../bob\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"]]";
+
+// A key's npub into out.
+nlm_npub :: (key: [32] u8, out: [] u8) -> string {
+  k := key; r := nip19_encode_checked(N19_NPUB, cast(string) k[..], out, false);
+  return ifx r.error == NC_OK then cast(string) out[0..<r.written] else "";
+}
+nlm_profiles :: (c: [] NostrCard) -> bool {
+  b0: [NLM_EVENT] u8; b1: [NLM_EVENT] u8; b2: [NLM_EVENT] u8; b3: [NLM_EVENT] u8;
+  // the profile: kind 0, whose content is a JSON object
+  prof := nlm_event(NLM_ALICE, NLM_T0, 0, "[]", NLM_PROFILE, b0[..]); if !nlm_ok(prof) { return nc_stop(c, 80); }
+  mb: [256] u8; md := nostr_metadata_read(prof, mb[..], false);
+  if md.error != NMD_OK || !md.has[NMD_NAME] || !md.has[NMD_ABOUT] || md.has[NMD_PICTURE] { return nc_stop(c, 81); }
+  name: [64] u8; about: [64] u8; nn := nmd_decoded(md, NMD_NAME, name[..]); na := nmd_decoded(md, NMD_ABOUT, about[..]);
+  if nn <= 0 || na <= 0 { return nc_stop(c, 82); }
+  // the claims: kind 10011, one i tag for each account, by the same key
+  ids := nlm_event(NLM_ALICE, NLM_T0 + 60, N39_KIND_IDENTITIES, NLM_CLAIMS, "", b1[..]); if !nlm_ok(ids) { return nc_stop(c, 83); }
+  if !n34_same(ids.public_key, prof.public_key) { return nc_stop(c, 84); }
+  ie := nt_event_of(ids); claim: [4] N39Claim; r := n39_claims(ie, claim[..]);
+  if r.status != N34_OK || r.n != 2 || nt_raw(ie, claim[0].platform) != "github" || nt_raw(ie, claim[1].platform) != "mastodon" { return nc_stop(c, 85); }
+  // where each proof is published
+  u0: [160] u8; u1: [160] u8; n0 := n39_proof_url(ie, claim[0], u0[..]); n1 := n39_proof_url(ie, claim[1], u1[..]);
+  if n0 <= 0 || n1 <= 0 { return nc_stop(c, 86); }
+  // what the proof must hold: the key's npub. A page with Alice's npub proves the claim; the same
+  // page does not prove it for Bob's key.
+  nb: [80] u8; npub := nlm_npub(ids.public_key, nb[..]); if !n39_npub(npub) { return nc_stop(c, 87); }
+  page: [200] u8; pn := n39_text(npub, page[..]); if pn <= 0 { return nc_stop(c, 88); }
+  ob: [80] u8; other := nlm_npub(nlm_key(NLM_BOB_PUB), ob[..]);
+  if !n39_proves(cast(string) page[0..<pn], npub) || !n39_npub(other) || n39_proves(cast(string) page[0..<pn], other) { return nc_stop(c, 89); }
+  // a platform spelled in capitals: the whole list refuses, so "GitHub" and "github" are never two
+  capitals := nlm_event(NLM_ALICE, NLM_T0 + 120, N39_KIND_IDENTITIES, NLM_CLAIMS_CAPITALS, "", b2[..]); if !nlm_ok(capitals) { return nc_stop(c, 90); }
+  cr := n39_claims(nt_event_of(capitals), claim[2..<4]); if cr.status != N39_PLATFORM || cr.at != 0 { return nc_stop(c, 91); }
+  // an identity that would climb out of its own page: the claim reads, and it gets no URL
+  climb := nlm_event(NLM_ALICE, NLM_T0 + 180, N39_KIND_IDENTITIES, NLM_CLAIMS_CLIMB, "", b3[..]); if !nlm_ok(climb) { return nc_stop(c, 92); }
+  ce := nt_event_of(climb); xr := n39_claims(ce, claim[2..<4]); xu: [160] u8;
+  if xr.status != N34_OK || xr.n != 1 || n39_proof_url(ce, claim[2], xu[..]) != 0 { return nc_stop(c, 93); }
+
+  nc_nodes(c, "ALICE", "RELAY", "CLIENT", "GITHUB");
+  ok := nc_row(c, "KIND 0 NAME", cast(string) name[0..<nn], NC_PLAIN);
+  ok = ok && nc_row(c, "KIND 0 ABOUT", cast(string) about[0..<na], NC_PLAIN);
+  ok = ok && nc_row_int(c, "KIND 10011", r.n, "I TAGS: ACCOUNTS CLAIMED", NC_PLAIN);
+  ok = ok && nc_row(c, "GITHUB", nt_raw(ie, claim[0].identity), NC_PLAIN);
+  ok = ok && nc_row(c, "PROOF URL", cast(string) u0[0..<n0], NC_VALUE);
+  ok = ok && nc_row(c, "MUST HOLD", npub, NC_KEY);
+  if !ok { return nc_stop(c, 94); }
+  return nc_done(c, "CLAIMS READ, PROOF URL WORKED OUT", "PLATFORM IN CAPITALS: REFUSED");
+}
+
+// ---- 5. NIP-34: pull requests
+
+NLM_REPO_D :: "nostr-lab";
+// The branch's tip when the pull request opens, after Carol's fix, and the commit Mallory tries to
+// move it to. Made-up commit IDs: nothing fetches them.
+NLM_TIP_1 :: "9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6";
+NLM_TIP_2 :: "2b1d0c9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c";
+NLM_TIP_3 :: "7e6d5c4b3a291807f6e5d4c3b2a190807f6e5d4c";
+NLM_CLONE :: "https://git.example.com/carol/lab.git";
+NLM_CLONE_OTHER :: "https://git.example.com/mallory/lab.git";
+
+nlm_pulls :: (c: [] NostrCard) -> bool {
+  b0: [NLM_EVENT] u8; b1: [NLM_EVENT] u8; b2: [NLM_EVENT] u8; tags: [1024] u8;
+  // Alice's repository, by its address: 30617:author:d
+  ab: [160] u8; an := nip23_address(N34_KIND_REPO, nlm_key(NLM_ALICE_PUB), NLM_REPO_D, ab[..]); if an <= 0 { return nc_stop(c, 100); }
+  repo := cast(string) ab[0..<an];
+  // Carol's pull request: no code in it, only the commit at the tip of her branch and where to fetch it
+  n := n34_pull_tags(repo, NLM_ALICE_PUB, "Station lights", "station-lights", NLM_TIP_1, NLM_CLONE, tags[..]); if n <= 0 { return nc_stop(c, 101); }
+  pr := nlm_event(NLM_CAROL, NLM_T0, N34_KIND_PULL, cast(string) tags[0..<n], "Each station lights up as you reach it.", b0[..]); if !nlm_ok(pr) { return nc_stop(c, 102); }
+  pe := nt_event_of(pr); p := n34_pull(pe);
+  if p.status != N34_OK || nt_raw(pe, p.repo) != repo || nt_raw(pe, p.tip.commit.v[0]) != NLM_TIP_1 { return nc_stop(c, 103); }
+  // her update, an hour later: the same pull request (E) and author (P), a new tip
+  id := n34_hex32(pr.id); carol := n34_hex32(pr.public_key);
+  n = n34_pull_update_tags(repo, NLM_ALICE_PUB, cast(string) id[..], cast(string) carol[..], NLM_TIP_2, NLM_CLONE, tags[..]); if n <= 0 { return nc_stop(c, 104); }
+  fix := nlm_event(NLM_CAROL, NLM_T0 + 3600, N34_KIND_PULL_UPDATE, cast(string) tags[0..<n], "", b1[..]); if !nlm_ok(fix) { return nc_stop(c, 105); }
+  fe := nt_event_of(fix); u := n34_pull_update(fe);
+  if u.status != N34_OK || nt_raw(fe, u.pull.v[0]) != cast(string) id[..] || nt_raw(fe, u.tip.commit.v[0]) != NLM_TIP_2 { return nc_stop(c, 106); }
+  // Mallory's update, later still and so the newest: it names Carol's pull request and reads well
+  n = n34_pull_update_tags(repo, NLM_ALICE_PUB, cast(string) id[..], cast(string) carol[..], NLM_TIP_3, NLM_CLONE_OTHER, tags[..]); if n <= 0 { return nc_stop(c, 107); }
+  theirs := nlm_event(NLM_MALLORY, NLM_T0 + 7200, N34_KIND_PULL_UPDATE, cast(string) tags[0..<n], "", b2[..]); if !nlm_ok(theirs) { return nc_stop(c, 108); }
+  if n34_pull_update(nt_event_of(theirs)).status != N34_OK || n34_same(theirs.public_key, pr.public_key) { return nc_stop(c, 109); }
+  // the tip: the pull request's own, then Carol's; Mallory's update never counts
+  set: [2] N34Signed; set[0] = nt_signed_of(fix); set[1] = nt_signed_of(theirs);
+  alone := n34_head(nt_signed_of(pr), set[0..<0]); at0 := alone.commit;
+  if alone.status != N34_OK || alone.winner != -1 || cast(string) at0[..] != NLM_TIP_1 { return nc_stop(c, 110); }
+  moved := n34_head(nt_signed_of(pr), set[0..<1]); at1 := moved.commit;
+  if moved.status != N34_OK || moved.winner != 0 || moved.counted != 1 || cast(string) at1[..] != NLM_TIP_2 { return nc_stop(c, 111); }
+  both := n34_head(nt_signed_of(pr), set[..]); at2 := both.commit;
+  if both.status != N34_OK || both.winner != 0 || both.counted != 1 || both.ignored != 1 || cast(string) at2[..] != NLM_TIP_2 { return nc_stop(c, 112); }
+  only := n34_head(nt_signed_of(pr), set[1..<2]); at3 := only.commit;
+  if only.status != N34_OK || only.winner != -1 || only.ignored != 1 || cast(string) at3[..] != NLM_TIP_1 { return nc_stop(c, 113); }
+
+  nc_nodes(c, "CAROL", "RELAY", "REPO", "");
+  ok := nc_row(c, "REPO A TAG", nt_raw(pe, p.repo), NC_VALUE);
+  ok = ok && nc_row(c, "1618 TIP", nt_raw(pe, p.tip.commit.v[0]), NC_VALUE);
+  ok = ok && nc_row(c, "CLONE", nt_raw(pe, p.tip.clone.v[0]), NC_PLAIN);
+  ok = ok && nc_row(c, "1619 TIP", nt_raw(fe, u.tip.commit.v[0]), NC_VALUE);
+  ok = ok && nc_row(c, "TIP NOW", cast(string) at2[..], NC_GOOD);
+  ok = ok && nc_row_int(c, "ANOTHER KEY", both.ignored, "UPDATE IGNORED", NC_BAD);
+  if !ok { return nc_stop(c, 114); }
+  return nc_done(c, "THE AUTHOR'S UPDATE MOVED THE TIP", "ANOTHER KEY'S UPDATE: IGNORED");
+}
+
+// ---- 6. NIP-C0: code snippets
+
+NLM_CODE :: "fn secs(m: u32, s: u32) -> u32 { m*60+s }";
+
+nlm_snippet_tags :: (language: string, out: [] u8) -> int {
+  t: NC0Tags; t.language = language; t.extension = "rs"; t.name = "secs.rs"; t.license = "MIT";
+  return nc0_tags(t, out);
+}
+nlm_snippets :: (c: [] NostrCard) -> bool {
+  b0: [NLM_EVENT] u8; b1: [NLM_EVENT] u8; tags: [512] u8;
+  n := nlm_snippet_tags("rust", tags[..]); if n <= 0 { return nc_stop(c, 120); }
+  snip := nlm_event(NLM_CAROL, NLM_T0, NC0_KIND_SNIPPET, cast(string) tags[0..<n], NLM_CODE, b0[..]); if !nlm_ok(snip) { return nc_stop(c, 121); }
+  se := nt_event_of(snip); s := nc0_snippet(se);
+  if s.status != N34_OK || !s.language.found || !s.name.found || !s.extension.found || s.licenses != 1 || s.deps != 0 || s.repo_is != NC0_NO_REPO { return nc_stop(c, 122); }
+  licence := nt_tag(se, "license", 0); if !licence.found { return nc_stop(c, 123); }
+  code: [128] u8; text := nlm_content(snip, code[..]); if text != NLM_CODE { return nc_stop(c, 124); }
+  // the same snippet with its language as "Rust": NIP-C0 asks for lowercase, so it does not read
+  n = nlm_snippet_tags("Rust", tags[..]); if n <= 0 { return nc_stop(c, 125); }
+  loud := nlm_event(NLM_CAROL, NLM_T0 + 60, NC0_KIND_SNIPPET, cast(string) tags[0..<n], NLM_CODE, b1[..]); if !nlm_ok(loud) { return nc_stop(c, 126); }
+  if nc0_snippet(nt_event_of(loud)).status != N34_MALFORMED { return nc_stop(c, 127); }
+
+  nc_nodes(c, "AUTHOR", "RELAY", "READER", "");
+  ok := nc_row_int(c, "KIND", snip.kind, "", NC_PLAIN);
+  ok = ok && nc_row(c, "L TAG", nt_raw(se, s.language.v[0]), NC_PLAIN);
+  ok = ok && nc_row(c, "NAME", nt_raw(se, s.name.v[0]), NC_PLAIN);
+  ok = ok && nc_row(c, "EXTENSION", nt_raw(se, s.extension.v[0]), NC_PLAIN);
+  ok = ok && nc_row(c, "LICENSE", nt_raw(se, licence.v[0]), NC_PLAIN);
+  ok = ok && nc_row(c, "CONTENT", text, NC_VALUE);
+  if !ok { return nc_stop(c, 128); }
+  return nc_done(c, "THE CODE AND ITS TAGS READ", "LANGUAGE IN CAPITALS: REFUSED");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nlm_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nlm_comments(c); }
+  if k == 1 { return nlm_chats(c); }
+  if k == 2 { return nlm_threads(c); }
+  if k == 3 { return nlm_public(c); }
+  if k == 4 { return nlm_profiles(c); }
+  if k == 5 { return nlm_pulls(c); }
+  if k == 6 { return nlm_snippets(c); }
+  return nc_stop(c, 97);
+}
+
+// ---- checks
+
+// Whether a row shows these 64 hex digits the way nc_row_hex writes 32 bytes.
+nlm_t_shows :: (c: [] NostrCard, k: int, hex: string) -> bool {
+  t := nc_text(c, k);
+  return t.count == 41 && t[0..<24] == hex[0..<24] && t[27..<41] == hex[50..<64];
+}
+nlm_t_card :: (k: int, c: [] NostrCard, nodes: int, rows: int) -> bool {
+  if !nlm_card(k, c) || !c[0].ready || c[0].stopped != 0 || c[0].nodes != nodes || c[0].rows != rows { return false; }
+  if c[0].good.count == 0 || c[0].bad.count == 0 { return false; }
+  for r: 0..<rows { if c[0].row[r].label_n == 0 || c[0].row[r].n == 0 { return false; } }
+  return true;
+}
+// A row cut to fit shows the start of the whole value.
+nlm_t_cut :: (c: [] NostrCard, k: int, whole: string) -> bool {
+  t := nc_text(c, k);
+  return whole.count > NC_TEXT && t.count == NC_TEXT && t[0..<NC_TEXT - 3] == whole[0..<NC_TEXT - 3] && t[NC_TEXT - 3..<NC_TEXT] == "...";
+}
+
+#test "nostr lab more: the test keys' public keys are the ones the cards name" #steps 2000000000 {
+  b: [NLM_EVENT] u8;
+  a := nlm_event(NLM_ALICE, NLM_T0, 1, "[]", "", b[..]); #assert nlm_ok(a) && n34_same(a.public_key, nlm_key(NLM_ALICE_PUB));
+  e := nlm_event(NLM_BOB, NLM_T0, 1, "[]", "", b[..]); #assert nlm_ok(e) && n34_same(e.public_key, nlm_key(NLM_BOB_PUB));
+  e = nlm_event(NLM_CAROL, NLM_T0, 1, "[]", "", b[..]); #assert nlm_ok(e) && n34_same(e.public_key, nlm_key(NLM_CAROL_PUB));
+  e = nlm_event(NLM_MALLORY, NLM_T0, 1, "[]", "", b[..]); #assert nlm_ok(e) && !n34_same(e.public_key, nlm_key(NLM_CAROL_PUB));
+}
+#test "nostr lab more: a comment names its root and parent, and one with no root tags is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nlm_t_card(0, c[..], 3, 6);
+  ab: [160] u8; an := nip23_address(N23_ARTICLE, nlm_key(NLM_ALICE_PUB), NLM_ARTICLE_D, ab[..]); #assert an == 6 + 64 + 1 + NLM_ARTICLE_D.count;
+  address := cast(string) ab[0..<an];
+  #assert nc_text(c[..], 0) == "1111" && nlm_t_cut(c[..], 1, address) && nc_text(c[..], 2) == "30023";
+  #assert nc_text(c[..], 3).count == 41 && nc_text(c[..], 4) == "1111" && nc_text(c[..], 5) == NLM_PAGE;
+  #assert c[0].good == "ROOT AND PARENT READ FROM THE TAGS" && c[0].bad == "NO ROOT TAGS: NOT A COMMENT";
+  // the first comment signed again: its ID is what the reply's e tag row shows
+  b: [NLM_EVENT] u8; tags: [1024] u8;
+  n := nlm_comment_tags("AKP", address, "30023", NLM_ALICE_PUB, "akp", address, "30023", NLM_ALICE_PUB, tags[..]); #assert n > 0;
+  top := nlm_event(NLM_BOB, NLM_T0, 1111, cast(string) tags[0..<n], "Does chapter 1 need a relay?", b[..]); #assert nlm_ok(top);
+  id := n34_hex32(top.id); #assert nlm_t_shows(c[..], 3, cast(string) id[..]);
+  // the tags alone, unsigned: each half is needed, and the root's address is a real one
+  e := n34_event(cast(string) tags[0..<n], 1111); k := n22_comment(e);
+  #assert k.status == N34_OK && nt_coord(nt_raw(e, k.root.ref.v[0])).kind == 30023 && n22_comment(n34_event(cast(string) tags[0..<n], 1)).status == N34_KIND;
+  n = nlm_comment_tags("", "", "", "", "akp", address, "30023", NLM_ALICE_PUB, tags[..]); #assert n > 0 && n22_comment(n34_event(cast(string) tags[0..<n], 1111)).status == N34_MISSING;
+  n = nlm_comment_tags("", "", "", "", "AKP", address, "30023", NLM_ALICE_PUB, tags[..]); #assert n > 0 && n22_comment(n34_event(cast(string) tags[0..<n], 1111)).status == N34_MISSING;
+  // a parent that is neither a comment nor the root item, and a root address that is not one
+  n = nlm_comment_tags("AKP", address, "30023", NLM_ALICE_PUB, "ekp", NLM_ALICE_PUB, "1", "", tags[..]); #assert n > 0 && n22_comment(n34_event(cast(string) tags[0..<n], 1111)).status == N22_KINDS;
+  n = nlm_comment_tags("AKP", "30023:alice", "30023", "", "akp", "30023:alice", "30023", "", tags[..]); #assert n > 0 && n22_comment(n34_event(cast(string) tags[0..<n], 1111)).status == N34_MALFORMED;
+}
+#test "nostr lab more: a chat reply quotes the message, and a q tag with a short ID is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nlm_t_card(1, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "9" && nc_text(c[..], 1) == NLM_CHAT;
+  // the message's ID and the reply's q tag are one value; the q tag's author is Alice
+  #assert nc_text(c[..], 2).count == 41 && nc_text(c[..], 3) == nc_text(c[..], 2) && nc_text(c[..], 4) == NLM_RELAY && nlm_t_shows(c[..], 5, NLM_ALICE_PUB);
+  #assert c[0].good == "THE REPLY QUOTES THE MESSAGE" && c[0].bad == "Q TAG WITH A SHORT ID: REFUSED";
+  b: [NLM_EVENT] u8; first := nlm_event(NLM_ALICE, NLM_T0, 9, "[]", NLM_CHAT, b[..]); #assert nlm_ok(first);
+  id := n34_hex32(first.id); #assert nlm_t_shows(c[..], 2, cast(string) id[..]);
+  // the q tag read without a signature, and what else nc7_chat refuses
+  tags: [512] u8; n := nc7_reply_tags(cast(string) id[..], NLM_RELAY, NLM_ALICE_PUB, tags[..]); #assert n > 0;
+  e := n34_event(cast(string) tags[0..<n], 9); k := nc7_chat(e);
+  #assert k.status == N34_OK && k.parent.found && nt_raw(e, k.parent.v[0]) == cast(string) id[..] && nc7_cites(e, k.parent) == NC7_ID;
+  #assert nc7_chat(n34_event(cast(string) tags[0..<n], 1)).status == N34_KIND;
+  #assert nc7_chat(n34_event("[[\"q\",\"5c83da77\"]]", 9)).status == N34_MALFORMED && nc7_chat(n34_event("[[\"q\"]]", 9)).status == N34_MALFORMED;
+  #assert nc7_reply_tags(cast(string) id[..], NLM_RELAY, "alice", tags[..]) == -1;
+}
+#test "nostr lab more: a thread's reply names the thread, and a reply to a reply is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nlm_t_card(2, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "11" && nc_text(c[..], 1) == NLM_TITLE && nc_text(c[..], 3) == "1111" && nc_text(c[..], 5) == "11";
+  #assert nc_text(c[..], 2).count == 41 && nc_text(c[..], 4) == nc_text(c[..], 2);
+  #assert c[0].good == "THE REPLY NAMES THE THREAD" && c[0].bad == "A REPLY TO A REPLY: REFUSED";
+  tags: [1024] u8; b: [NLM_EVENT] u8;
+  n := n7d_thread_tags(NLM_TITLE, tags[..]); #assert n > 0;
+  thread := nlm_event(NLM_CAROL, NLM_T0, 11, cast(string) tags[0..<n], "One relay or three for a new key?", b[..]); #assert nlm_ok(thread);
+  id := n34_hex32(thread.id); #assert nlm_t_shows(c[..], 2, cast(string) id[..]);
+  // unsigned: the six tags read as a reply to the thread, and the same comment under another root,
+  // under a reply, or with a title tag and no title, does not
+  n = n7d_reply_tags(cast(string) id[..], NLM_RELAY, NLM_CAROL_PUB, tags[..]); #assert n > 0;
+  e := n34_event(cast(string) tags[0..<n], 1111); r := n7d_reply(e);
+  #assert r.status == N34_OK && nt_raw(e, r.thread.v[0]) == cast(string) id[..] && nt_raw(e, r.author.v[0]) == NLM_CAROL_PUB;
+  n = nlm_comment_tags("EKP", cast(string) id[..], "11", NLM_CAROL_PUB, "ekp", NLM_ALICE_PUB, "1111", NLM_ALICE_PUB, tags[..]); #assert n > 0;
+  e = n34_event(cast(string) tags[0..<n], 1111); r = n7d_reply(e);
+  #assert r.status == N7D_NESTED && nt_raw(e, r.thread.v[0]) == cast(string) id[..] && n22_comment(e).status == N34_OK;
+  n = nlm_comment_tags("EKP", cast(string) id[..], "1", NLM_CAROL_PUB, "ekp", cast(string) id[..], "1", NLM_CAROL_PUB, tags[..]); #assert n > 0;
+  #assert n7d_reply(n34_event(cast(string) tags[0..<n], 1111)).status == N7D_ELSEWHERE;
+  #assert n7d_thread(n34_event("[[\"title\"]]", 11)).status == N34_MALFORMED && n7d_thread(n34_event("[]", 11)).status == N34_OK && n7d_thread(n34_event("[]", 1)).status == N34_KIND;
+}
+#test "nostr lab more: a public message names its receivers in the clear, and one with an e tag is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nlm_t_card(3, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "24" && nc_text(c[..], 1) == "2 P TAGS" && nlm_t_shows(c[..], 2, NLM_BOB_PUB) && nlm_t_shows(c[..], 3, NLM_CAROL_PUB);
+  #assert nc_text(c[..], 4) == NLM_PUBLIC && c[0].row[5].tone == NC_BAD;
+  #assert c[0].good == "NOT ENCRYPTED: ANYONE CAN READ IT" && c[0].bad == "AN E TAG MAKES A THREAD: REFUSED";
+  // the signed event, as a relay holds it: the text and both receivers are in it, letter for letter
+  to := [2] string.[NLM_BOB_PUB, NLM_CAROL_PUB]; relays := [2] string.["", ""]; tags: [512] u8; b: [NLM_EVENT] u8;
+  n := na4_tags(to[..], relays[..], 0, tags[..]); #assert n > 0;
+  wn := nlm_sign(NLM_ALICE, NLM_T0, 24, cast(string) tags[0..<n], NLM_PUBLIC, b[..]); #assert wn > 0;
+  wire := cast(string) b[0..<wn];
+  #assert nlm_has(wire, NLM_PUBLIC) && nlm_has(wire, NLM_BOB_PUB) && nlm_has(wire, NLM_CAROL_PUB) && nlm_has(wire, "\"kind\":24");
+  // what else na4_message refuses, read from tags alone
+  #assert na4_message(n34_event(cast(string) tags[0..<n], 24)).status == N34_OK && na4_message(n34_event(cast(string) tags[0..<n], 14)).status == N34_KIND;
+  #assert na4_message(n34_event("[]", 24)).status == N34_MISSING && na4_message(n34_event("[[\"p\",\"dff1d77f\"]]", 24)).status == N34_MALFORMED;
+  #assert na4_message(n34_event("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]", 24)).status == NA4_THREAD;
+}
+#test "nostr lab more: a profile reads, its claims give their proof URLs, and a platform in capitals is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nlm_t_card(4, c[..], 4, 6);
+  #assert nc_text(c[..], 0) == "alice" && nc_text(c[..], 1) == "Tea, relays and Coax" && nc_text(c[..], 2) == "2 I TAGS: ACCOUNTS CLAIMED" && nc_text(c[..], 3) == "alice-tea";
+  #assert nlm_t_cut(c[..], 4, "https://gist.github.com/alice-tea/9721ce4ee4fceb91c9711ca2a6c9a5ab");
+  #assert c[0].good == "CLAIMS READ, PROOF URL WORKED OUT" && c[0].bad == "PLATFORM IN CAPITALS: REFUSED";
+  // the npub row is Alice's key: worked out again here, and it decodes back to her 32 bytes
+  nb: [80] u8; npub := nlm_npub(nlm_key(NLM_ALICE_PUB), nb[..]); #assert npub.count == 63 && nlm_t_cut(c[..], 5, npub);
+  back: [32] u8; d := nip19_decode_checked(npub, back[..], false); #assert d.error == NC_OK && n34_same(back, nlm_key(NLM_ALICE_PUB));
+  // the claims without a signature: both URLs, and proofs in older words or for another key
+  e := n34_event(NLM_CLAIMS, 10011); claim: [4] N39Claim; r := n39_claims(e, claim[..]); #assert r.status == N34_OK && r.n == 2;
+  u: [160] u8; n := n39_proof_url(e, claim[1], u[..]); #assert n > 0 && cast(string) u[0..<n] == "https://tea.example/@alice/109775066355589974";
+  old: [200] u8; o := json_raw(old[..], 0, "My Public Key: \""); o = json_raw(old[..], o, npub); o = json_raw(old[..], o, "\""); #assert o > 0;
+  #assert n39_proves(cast(string) old[0..<o], npub) && !n39_proves("Verifying that I control the following Nostr public key: ", npub) && !n39_proves(cast(string) old[0..<o], "alice");
+  // refusals: capitals, a claim with no proof, a climbing identity, a proof with a query, another kind
+  #assert n39_claims(n34_event(NLM_CLAIMS_CAPITALS, 10011), claim[..]).status == N39_PLATFORM;
+  #assert n39_claims(n34_event("[[\"i\",\"github:alice-tea\"]]", 10011), claim[..]).status == N34_MALFORMED && n39_claims(n34_event(NLM_CLAIMS, 0), claim[..]).status == N34_KIND;
+  e = n34_event(NLM_CLAIMS_CLIMB, 10011); #assert n39_claims(e, claim[..]).status == N34_OK && n39_proof_url(e, claim[0], u[..]) == 0;
+  e = n34_event("[[\"i\",\"twitter:alice_tea\",\"1?ref=x\"]]", 10011); #assert n39_claims(e, claim[..]).status == N34_OK && n39_proof_url(e, claim[0], u[..]) == 0;
+  // a profile that is not a JSON object's text does not read, nor a note read as a profile
+  b: [NLM_EVENT] u8; mb: [256] u8;
+  bad := nlm_event(NLM_ALICE, NLM_T0, 0, "[]", "alice", b[..]); #assert nlm_ok(bad) && nostr_metadata_read(bad, mb[..], false).error == NMD_JSON;
+  note := nlm_event(NLM_ALICE, NLM_T0, 1, "[]", NLM_PROFILE, b[..]); #assert nlm_ok(note) && nostr_metadata_read(note, mb[..], false).error == NMD_KIND;
+}
+#test "nostr lab more: a pull request's author moves its tip, and another key's update is ignored" #steps 2000000000 {
+  c: [1] NostrCard; #assert nlm_t_card(5, c[..], 3, 6);
+  ab: [160] u8; an := nip23_address(30617, nlm_key(NLM_ALICE_PUB), NLM_REPO_D, ab[..]); #assert an > 0;
+  repo := cast(string) ab[0..<an]; #assert nt_coord(repo).kind == N34_KIND_REPO && nlm_t_cut(c[..], 0, repo);
+  #assert nc_text(c[..], 1) == NLM_TIP_1 && nc_text(c[..], 2) == NLM_CLONE && nc_text(c[..], 3) == NLM_TIP_2;
+  #assert nc_text(c[..], 4) == NLM_TIP_2 && c[0].row[4].tone == NC_GOOD && nc_text(c[..], 5) == "1 UPDATE IGNORED";
+  #assert c[0].good == "THE AUTHOR'S UPDATE MOVED THE TIP" && c[0].bad == "ANOTHER KEY'S UPDATE: IGNORED";
+  // The same rule on unsigned records with the library's own test authors (nip34-patch.coax's n34_as):
+  // the author's update counts whenever it was made, another key's never, and an update for another
+  // repository is ignored too.
+  // (a record keeps reading the tags it was parsed from, so each has a buffer of its own)
+  tags: [1024] u8; pb: [1024] u8; ub: [1024] u8; vb: [1024] u8; none: [1] u8;
+  n := n34_pull_tags(repo, NLM_ALICE_PUB, "", "", NLM_TIP_1, NLM_CLONE, pb[..]); #assert n > 0;
+  pull := n34_as(n34_parsed(1618, cast(string) pb[0..<n], none[..]), 0xcc, 100, 0x01); #assert n34_pull(pull.e).status == N34_OK;
+  pid := n34_hex32(pull.id);
+  n = n34_pull_update_tags(repo, NLM_ALICE_PUB, cast(string) pid[..], NLM_CAROL_PUB, NLM_TIP_2, NLM_CLONE, ub[..]); #assert n > 0;
+  set: [2] N34Signed;
+  set[0] = n34_as(n34_parsed(1619, cast(string) ub[0..<n], none[..]), 0xcc, 200, 0x02);
+  n = n34_pull_update_tags(repo, NLM_ALICE_PUB, cast(string) pid[..], NLM_CAROL_PUB, NLM_TIP_3, NLM_CLONE_OTHER, vb[..]); #assert n > 0;
+  set[1] = n34_as(n34_parsed(1619, cast(string) vb[0..<n], none[..]), 0xdd, 300, 0x03);
+  h := n34_head(pull, set[..]); tip := h.commit; #assert h.status == N34_OK && h.winner == 0 && h.counted == 1 && h.ignored == 1 && cast(string) tip[..] == NLM_TIP_2;
+  set[1] = n34_as(set[1], 0xcc, 300, 0x03);
+  h = n34_head(pull, set[..]); tip = h.commit; #assert h.winner == 1 && h.counted == 2 && h.ignored == 0 && cast(string) tip[..] == NLM_TIP_3;
+  // what the readers refuse: no clone URL, a short commit, no repository, an update that names no pull request
+  #assert n34_pull_tags(repo, NLM_ALICE_PUB, "", "", "9c4f6e2b", NLM_CLONE, tags[..]) == -1 && n34_pull_tags(repo, NLM_ALICE_PUB, "", "", NLM_TIP_1, "", tags[..]) == -1;
+  #assert n34_pull(n34_event("[[\"c\",\"9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6\"],[\"clone\",\"https://git.example.com/carol/lab.git\"]]", 1618)).status == N34_MISSING;
+  n = n34_pull_tags(repo, NLM_ALICE_PUB, "", "", NLM_TIP_2, NLM_CLONE, tags[..]); #assert n > 0;
+  #assert n34_pull_update(n34_event(cast(string) tags[0..<n], 1619)).status == N34_MISSING && n34_pull(n34_event(cast(string) tags[0..<n], 1619)).status == N34_KIND;
+}
+#test "nostr lab more: a snippet's tags and code read, and a language in capitals is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nlm_t_card(6, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "1337" && nc_text(c[..], 1) == "rust" && nc_text(c[..], 2) == "secs.rs" && nc_text(c[..], 3) == "rs" && nc_text(c[..], 4) == "MIT";
+  #assert nc_text(c[..], 5) == NLM_CODE;
+  #assert c[0].good == "THE CODE AND ITS TAGS READ" && c[0].bad == "LANGUAGE IN CAPITALS: REFUSED";
+  // the tags without a signature, NIP-C0's own example, and what else nc0_snippet refuses
+  tags: [512] u8; n := nlm_snippet_tags("rust", tags[..]); #assert n > 0;
+  #assert nc0_snippet(n34_event(cast(string) tags[0..<n], 1337)).status == N34_OK && nc0_snippet(n34_event(cast(string) tags[0..<n], 1)).status == N34_KIND;
+  x := nc0_snippet(n34_event(NC0_EXAMPLE, 1337)); #assert x.status == N34_OK && x.repo_is == NC0_URL && x.licenses == 1;
+  n = nlm_snippet_tags("Rust", tags[..]); #assert n > 0 && nc0_snippet(n34_event(cast(string) tags[0..<n], 1337)).status == N34_MALFORMED;
+  #assert nc0_snippet(n34_event("[[\"extension\",\".rs\"]]", 1337)).status == N34_MALFORMED && nc0_snippet(n34_event("[[\"repo\",\"lab\"]]", 1337)).status == N34_MALFORMED;
+  #assert nc0_snippet(n34_event("[[\"license\"]]", 1337)).status == N34_MALFORMED && nc0_snippet(n34_event("[]", 1337)).status == N34_OK;
+}
+#test "nostr lab more: a card number past the last stops" {
+  c: [1] NostrCard; #assert !nlm_card(NLM_COUNT, c[..]) && c[0].stopped == 97 && !nlm_card(-1, c[..]);
+}

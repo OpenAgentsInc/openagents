@@ -21,7 +21,7 @@
 // The quads: 16 floats each (aethyr/fx/gpu-quads.coax QuadRow), in groups sorted far to near.
 LAB_QUADS :: 6144; LAB_GROUPS :: 128; LAB_QF :: 16;
 QK_SKY :: 0.0f32; QK_FLOOR :: 1.0f32; QK_PANEL :: 2.0f32; QK_GLYPH :: 3.0f32; QK_GLOW :: 4.0f32; QK_BEAM :: 5.0f32;
-LAB_MAX :: 40;                // the most stations a walk has
+LAB_MAX :: 48;                // the most stations a walk has
 LAB_SOLID :: 8;               // the most slabs that are boxes you walk round at once: the ones nearest you (lab_props)
 LAB_EXTRA :: 8;               // the most boxes a world stands beside them (Bitcoin Lab's block cubes)
 LAB_PANEL_W :: 7.6f32; LAB_PANEL_H :: 4.4f32; LAB_PANEL_D :: 0.3f32;

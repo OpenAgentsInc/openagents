@@ -2,7 +2,7 @@
 
 An unlisted learning world at https://openagents.com/worlds/nostr-lab, made
 for Episode 295, *Nostr From Scratch*. You walk your Everglade character down
-a lit lane on the Grid. Thirty-five stations stand beside it.
+a lit lane on the Grid. Forty-two stations stand beside it.
 
 ## The first four: an event from nothing
 
@@ -83,10 +83,19 @@ out, what held, and what was refused.
 32. **NIP-88, polls**: a poll, and one vote per key.
 33. **NIP-50, search** (with NIP-45): a relay searching and counting.
 
+34. **NIP-22, comments**: a comment on anything: a note, an article, a web
+    page.
+35. **NIP-C7, chats**: a chat message, and a reply that quotes it.
+36. **NIP-7D, forum threads**: a thread with a title, and its replies.
+37. **NIP-A4, public messages**: a message to someone that anyone can read.
+38. **NIP-39, profiles**: a profile, and the other accounts it claims.
+39. **NIP-34, pull requests**: a pull request on a repository, and its update.
+40. **NIP-C0, code snippets**: a code snippet, with its language.
+
 **Agents**
 
-34. **NIP-OA** (Block's): an owner's key authorizes an agent's key.
-35. **NIP-PYLON** (OpenAgents'): a Pylon's beacon, read fresh or stale, and
+41. **NIP-OA** (Block's): an owner's key authorizes an agent's key.
+42. **NIP-PYLON** (OpenAgents'): a Pylon's beacon, read fresh or stale, and
     the receipt its buyer signs for the work.
 
 Every key, byte, hash, signature and answer is computed in Coax as the page

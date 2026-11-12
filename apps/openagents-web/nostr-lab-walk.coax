@@ -23,8 +23,8 @@
 
 NW_OWN :: 4;                         // the first stations, each drawn by its own procedure below
 NW_STATIONS :: NW_OWN + NLAB_CARDS;    // then one station a card (nostr-lab-cards.coax), a NIP each
-NW_STATION_Z :: [NW_STATIONS] f32.[-10, -25, -40, -55, -70, -85, -100, -115, -130, -145, -160, -175, -190, -205, -220, -235, -250, -265, -280, -295, -310, -325, -340, -355, -370, -385, -400, -415, -430, -445, -460, -475, -490, -505, -520];
-NW_STATION_SIDE :: [NW_STATIONS] f32.[-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1];
+NW_STATION_Z :: [NW_STATIONS] f32.[-10, -25, -40, -55, -70, -82, -94, -106, -118, -130, -142, -154, -166, -178, -190, -202, -214, -226, -238, -250, -262, -274, -286, -298, -310, -322, -334, -346, -358, -370, -382, -394, -406, -418, -430, -442, -454, -466, -478, -490, -502, -514];   // the first four 15 m apart, the cards 12 m
+NW_STATION_SIDE :: [NW_STATIONS] f32.[-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1];
 NW_NAME :: [NW_STATIONS] string.[
   "KEY PAIR", "AN EVENT", "THE ID", "THE SIGNATURE",
   "NIP-01 A RELAY", "NIP-11 RELAY INFO", "NIP-42 RELAY LOGIN", "NIP-65 TWO RELAYS",
@@ -34,7 +34,9 @@ NW_NAME :: [NW_STATIONS] string.[
   "NIP-46 REMOTE SIGNER", "NIP-98 HTTP AUTH", "NIP-05 NAMES", "NIP-02 FOLLOWS",
   "NIP-10 THREADS", "NIP-23 ARTICLES", "NIP-51 LISTS", "NIP-29 GROUPS",
   "NIP-34 GIT", "NIP-90 JOBS", "NIP-58 BADGES", "NIP-88 POLLS",
-  "NIP-50 SEARCH", "NIP-OA AGENT KEYS", "NIP-PYLON",
+  "NIP-50 SEARCH", "NIP-22 COMMENTS", "NIP-C7 CHATS", "NIP-7D FORUM THREADS",
+  "NIP-A4 PUBLIC MESSAGES", "NIP-39 PROFILES", "NIP-34 PULL REQUESTS", "NIP-C0 CODE SNIPPETS",
+  "NIP-OA AGENT KEYS", "NIP-PYLON",
 ];
 NW_LINE :: [NW_STATIONS] string.[
   "A secret key makes a public key. Only the public one is shown.",
@@ -70,6 +72,13 @@ NW_LINE :: [NW_STATIONS] string.[
   "A badge defined, awarded and worn.",
   "A poll, and one vote per key.",
   "Ask a relay to search, and to count.",
+  "A comment on anything: a note, an article, a web page.",
+  "A chat message, and a reply that quotes it.",
+  "A forum thread: a title, and replies.",
+  "A public message to someone. Anyone can read it.",
+  "A profile, and the other accounts it claims.",
+  "A pull request on a repository, and its update.",
+  "A code snippet, with its language.",
   "An owner's key authorizes an agent's key.",
   "A Pylon announces itself. Its buyer signs a receipt for the work.",
 ];
@@ -256,7 +265,7 @@ nw_card :: (nk: [] NostrWalk, i: int, lit: f32) {
 // Which stations' faces are listed: the ones you can read from where you are. Every slab is listed.
 nw_shown :: (nk: [] NostrWalk, i: int) -> bool {
   w := nk[0].w[..]; z := w[0].z[0].creator[0].player_z;
-  return ifx i < NW_OWN then lab_near(w, i, z, 80, 25) else lab_near(w, i, z, 36, 16);
+  return ifx i < NW_OWN then lab_near(w, i, z, 80, 25) else lab_near(w, i, z, 30, 14);
 }
 nw_station :: (nk: [] NostrWalk, i: int) {
   lit := lab_station(nk[0].w[..], i);
@@ -326,7 +335,7 @@ nw_test_lab :: (nk: [] NostrWalk) {
   nk: [1] NostrWalk; nw_test_lab(nk[..]); w := nk[0].w[..]; s := w[0].z[..];
   #assert w[0].on && s[0].creator[0].flat && s[0].bare && s[0].put_z == w[0].start_z;
   #assert w[0].n == NW_STATIONS && NW_STATIONS <= LAB_MAX && w[0].name[3] == "THE SIGNATURE" && w[0].name[NW_STATIONS - 1] == "NIP-PYLON" && w[0].title == "NOSTR LAB";
-  for k: 1..<NW_STATIONS { #assert NW_STATION_Z[k] < NW_STATION_Z[k - 1] - 10; }
+  for k: 1..<NW_STATIONS { #assert NW_STATION_Z[k] < NW_STATION_Z[k - 1] - 10; }   // each far enough on that you come to them in order (lab_at)
   nw_stand(nk[..]); p := w[0].z[0].creator[0].props[0];
   #assert p.n == LAB_SOLID + LAB_TOWERS && !wprops.props_inside(p, 0, 1, NW_STATION_Z[0]);
   #assert nk[0].lesson[0].ready;
