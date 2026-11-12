@@ -205,7 +205,7 @@ tests aethyr/world/stream-walk.coax -> aethyr/world/tests/stream-walk-checks.coa
 tests coax/web/api/checkpoint-policy.coax -> coax/web/api/tests/checkpoint-fixture.coax  # inline #test fixture kept out of #authority module (#13315)
 tests pay/lnaddr-policy.coax -> coax/tests/lnaddr/profile_fixtures.coax  # inline #test fixtures kept out of #authority module for mutation testing (#13315)
 tests coax/web/room/room-checkpoint.coax -> coax/web/room/tests/checkpoint-fixture.coax  # inline #test helpers and fixtures loaded by room-checkpoint (#13315)
-tests everglade/server/battle.coax -> everglade/server/tests/battle-fixture.coax  # #test helpers kept out of the #authority battle's mutants (#13346)
+tests everglade/server/battle.coax -> everglade/server/tests/battle-fixture.coax  # #test helpers kept out of the #authority battle's mutants (#13346, rebaselined in #13355)
 # The tests rule covers coax/web/api/ and coax/web/room/ since 94d1194a42 (#13315), and pay/ since #13320; its seeded lines only shrink.
 
 # Cross-context loads outside contexts.txt (#13317)
