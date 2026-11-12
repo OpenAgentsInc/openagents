@@ -71,6 +71,7 @@ bool anime_route(const request *q);        // anime.c: typed Anime Lab direction
 bool worldbuilder_route(const request *q); // worldbuilder.c: /create-world's chat, the day's $50 cap and anti-flood
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
+bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)
 // Our Spark wallet (inference.c, OA_SPARK_URL): POST path with json (GET with none); its status (0 unreached), its body into *out.
 long api_spark(const char *path, const char *json, long timeout_s, char **out);
 // The model (npc.c): its generateContent answer into *body (malloc'd, or NULL), the HTTP status (0 unreached).

@@ -1,0 +1,101 @@
+// The gateways' types: a request, the events a stream becomes, usage, a
+// gateway's description, and what a stream's parser carries. They are apart
+// from gateway.coax (which also runs the call, through curl) so that a
+// program with no processes, a page in a browser, can build a request and
+// read a stream with the same codecs (chat.coax, sse.coax): load this file,
+// then the codec. apps/openagents-web/chat-web.coax does.
+// Part of the gateways (docs/coder/microcoder.md).
+
+#load "../agent/claude/fields.coax";
+
+GW_WIRE_RESPONSES :: 1;          // Open Responses: POST /v1/responses (Vercel AI Gateway, OpenRouter, psionic)
+GW_WIRE_CHAT :: 2;               // Chat Completions (chat.coax)
+GW_WIRE_GEMINI :: 3;             // Gemini native streamGenerateContent?alt=sse (the Gemini API, Vertex)
+GW_WIRE_ANTHROPIC :: 4;          // Anthropic Messages
+
+GW_EV_TEXT :: 1;                 // text: a piece of the answer
+GW_EV_REASONING :: 2;            // text: a piece of the model's reasoning, never the answer
+GW_EV_DONE :: 3;                 // usage; reason "stop" or "length"
+GW_EV_REFUSED :: 4;              // status (HTTP; 0 inside a 200 stream or with no response) and reason
+
+GwUsage :: struct {
+  observed: int;                 // token presence bits: input=1 output=2 cache=4 reasoning=8 cache-write=16
+  ok: bool;                      // the provider reported usage
+  input_tokens: int;
+  output_tokens: int;            // reasoning included, as providers bill it
+  cached_tokens: int;
+  reasoning_tokens: int;
+  cache_write_tokens: int;       // input written to the cache (Anthropic), counted in input_tokens
+  card_usd_micros: int = -1;     // the rates card's price for it (rates.coax gw_price), -1 until priced or when the card has no row
+  cost_msats: int;               // the card's price in millisatoshis, when a bitcoin price is given; 0 otherwise
+  cost_usd_micros: int = -1;     // what the provider itself says it charged (OpenRouter's usage.cost), -1 when it says nothing
+}
+
+GwEvent :: struct {
+  kind: int;
+  text: string;                  // a delta's text; on done, the upstream provider that served it when the gateway names one
+  usage: GwUsage;
+  status: int;
+  reason: string;
+}
+
+GwMessage :: struct {
+  role: string;                  // "user" or "assistant"
+  text: string;
+}
+
+GwRequest :: struct {
+  model: string;
+  system: string;                // "" for none
+  messages: [] GwMessage;
+  schema: string;                // a JSON Schema object for strict structured output, "" for plain text
+  schema_name: string = "reply";
+  schema_hint: string;           // added to the system prompt by a gateway that drops the schema (GW_NO_STRICT_SCHEMA), "" for none
+  effort: string;                // "low" | "medium" | "high", "" to leave it to the provider
+  max_tokens: int;               // 0 to leave it to the provider
+  limit_ms: int;                 // the call's whole time at most, 0 for the plan's own limits (a plan cuts it, with no retry)
+  stream: bool = true;
+}
+
+Gateway :: struct {
+  name: string;                  // "vertex", "gemini", "openrouter" ...
+  url: string;                   // the full endpoint
+  key_env: string;               // the variable curl reads the key from; "" for a keyless door
+  key_value: string;             // a key minted at run time (Vertex's hourly token): set in curl's environment only
+  key_header: string = "Authorization";
+  scheme: string = "Bearer";     // "" sends the key alone in key_header
+  wire: int;
+  flags: int;                    // the wire's dialect: GW_CHAT_* for Chat Completions
+}
+
+// What a stream's parser carries between events (Chat Completions says how
+// it finished in one chunk and its usage in a later one, then [DONE]).
+GW_FIN_NONE :: 0;
+GW_FIN_STOP :: 1;
+GW_FIN_LENGTH :: 2;
+GW_FIN_TOOLS :: 3;
+GW_FIN_FILTER :: 4;
+GW_FIN_UNKNOWN :: 5;             // a finish this parser doesn't know
+
+GwParse :: struct {
+  finish: int;
+  usage: GwUsage;
+  provider: [48] u8; np: int;    // OpenRouter's provider field, copied from the first chunk that has one
+  // Anthropic: usage comes in message_start and message_delta, apart
+  in_raw: int; in_ok: bool;      // input_tokens, without the cache
+  cache_read: int; cache_write: int; cache_read_ok: bool; cache_write_ok: bool;
+  out: int; out_ok: bool;        // (stop_reason goes in finish)
+}
+
+// A provider-reported cost in dollars as millionths, or -1 when absent.
+gw_cost_micros :: (obj: string, path: string) -> int {
+  c := cl_num(obj, path);
+  if !c.ok || c.value < 0.0 { return -1; }
+  return cast(int) (c.value * 1000000.0 + 0.5);
+}
+
+gw_put :: (out: [] GwEvent, n: int, e: GwEvent) -> int {
+  if n >= out.count { return n; }
+  out[n] = e;
+  return n + 1;
+}

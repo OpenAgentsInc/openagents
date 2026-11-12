@@ -113,6 +113,18 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".ic{display:block;width:16px;height:16px;flex:none}");
   n = mc(out, n, ".ib{appearance:none;border:0;background:none;color:var(--ink-faint);width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,background .15s}");
   n = mc(out, n, ".ib:hover,.ib:focus-visible{color:#fff;background:var(--raised);outline:none}.ib[data-state=done]{color:#fff}");
+  // a select: what is chosen and a chevron, and its menu over it
+  n = mc(out, n, ".anchor{position:relative;display:flex}");
+  n = mc(out, n, ".sel{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;");
+  n = mc(out, n, "height:28px;padding:0 8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:color .15s,background .15s}");
+  n = mc(out, n, ".sel:hover,.sel:focus-visible,.sel[aria-expanded=true]{color:#fff;background:var(--raised);outline:none}.sel .ic{width:12px;height:12px}");
+  n = mc(out, n, ".menu.pop{position:absolute;bottom:calc(100% + 10px);left:0;z-index:5;width:320px;max-width:calc(100vw - 48px)}");
+  n = mc(out, n, ".menu>.meta{padding:8px 12px;text-transform:none;letter-spacing:0;font:12px/1.5 var(--sans)}.menu .row .meta{text-transform:none;letter-spacing:0;font:12px/1.4 var(--sans)}");
+  // settings: cards of rows
+  n = mc(out, n, ".settings{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:20px;padding:8px 0 24px}");
+  n = mc(out, n, ".card{padding:18px 20px;display:flex;flex-direction:column;gap:14px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".card .field{max-width:none}.set-t{margin:0;font:500 15px/1.4 var(--sans)}.set-n{margin:0;color:var(--ink-muted);font-size:13px;max-width:64ch}");
+  n = mc(out, n, "input{display:block;width:100%;border:0;outline:0;background:none;color:var(--ink);font:14px/1.6 var(--mono);padding:0}input::placeholder{color:var(--ink-faint);font-family:var(--sans)}");
   // field and composer
   n = mc(out, n, "textarea{display:block;width:100%;resize:none;border:0;outline:0;background:none;color:var(--ink);font:14px/1.6 var(--sans);padding:0}");
   // a field is as tall as its text, to eight lines (MONO_FIELD_LINES), then it scrolls
@@ -122,7 +134,7 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".field:focus-within{--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
   n = mc(out, n, ".composer{padding:14px 16px 10px;display:flex;flex-direction:column;gap:8px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
   n = mc(out, n, ".composer:focus-within{--frame-line:var(--line);--frame-deco:var(--line-bright)}");
-  n = mc(out, n, ".composer-r{display:flex;justify-content:flex-end;align-items:center;gap:12px}.composer-r .meta{margin-right:auto}");
+  n = mc(out, n, ".composer-r{display:flex;align-items:center;gap:6px}.composer-r>.btn{margin-left:auto}");
   // messages: the person's in a dim frame, the agent's plain on the ground
   n = mc(out, n, ".thread{display:flex;flex-direction:column;gap:18px}");
   n = mc(out, n, ".msg-user{align-self:flex-end;max-width:72%;padding:10px 14px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
@@ -163,12 +175,17 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".chat{height:100dvh;max-width:792px;margin:0 auto;padding:16px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}");
   // the transcript fills what the composer leaves and scrolls inside itself, staying at its end as messages come
   n = mc(out, n, ".log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column-reverse;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
-  n = mc(out, n, ".log .thread{padding:8px 0 20px;gap:0}.msg-user p{overflow-wrap:anywhere}");
+  // (a short conversation starts at the top of the window: the thread takes the room under it)
+  n = mc(out, n, ".log .thread{padding:8px 0 20px;gap:0;margin-bottom:auto}.msg-user p{overflow-wrap:anywhere}");
+  n = mc(out, n, ".acts .meta{margin-left:6px}.work{margin:0;color:var(--ink-muted);font:12px/1.5 var(--mono)}");
   // a turn: the person's message, then the answer close under it as prose on the ground, then its actions
   n = mc(out, n, ".log .msg-user,.log .md{font-size:15px;line-height:1.65}.log .msg-user{margin-top:28px}.log .thread>:first-child{margin-top:0}");
   n = mc(out, n, ".msg-ai{margin-top:14px;display:flex;flex-direction:column;gap:6px;min-width:0;animation:rise .32s cubic-bezier(.2,.7,.2,1)}");
   n = mc(out, n, ".msg-ai .md{gap:16px;max-width:none}.msg-ai .md p{overflow-wrap:anywhere}");
-  n = mc(out, n, ".msg-ai[data-state=streaming] .md>:last-child::after{content:'\\25AE';margin-left:3px;color:var(--ink-muted);animation:blink 1s steps(2,start) infinite}");
+  n = mc(out, n, ".msg-ai[data-state=streaming] .md>:last-child::after,.msg-ai[data-state=waiting]::after{content:'';display:inline-block;width:.5em;height:1.3em;vertical-align:-.28em;margin-left:3px;background:var(--ink-muted);animation:blink 1s steps(2,start) infinite}");
+  n = mc(out, n, ".msg-ai[data-state=waiting]::after{margin-left:0}");
+  // the composer's own text is the transcript's size, so its caret is as tall as a line of it
+  n = mc(out, n, ".composer textarea{font-size:15px;line-height:1.65}");
   n = mc(out, n, ".acts{display:flex;align-items:center;gap:2px;margin-left:-6px;animation:rise .25s ease-out}");
   n = mc(out, n, "@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes blink{to{visibility:hidden}}");
   n = mc(out, n, "@media (prefers-reduced-motion:reduce){.msg-ai,.acts{animation:none}}");

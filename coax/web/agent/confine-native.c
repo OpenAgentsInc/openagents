@@ -40,6 +40,12 @@
 #ifdef __linux__
 #include <linux/openat2.h>
 #endif
+/* macOS has no O_PATH. On a developer's Mac (coax/web/api/test.sh --serve runs the engine there; the
+   service itself is Linux) a path is opened with O_SYMLINK, which opens a symbolic link itself and never
+   follows it, so the by-hand walk still sees each link and refuses it. */
+#if defined(__APPLE__) && !defined(O_PATH)
+#define O_PATH O_SYMLINK
+#endif
 
 typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 typedef struct { int64_t *data; int64_t count; } coax_v_s64;

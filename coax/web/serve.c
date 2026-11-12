@@ -333,8 +333,16 @@ static void proxy_api(client *c) {
   }
   send_all(fd, c->buf, c->n);
   if (is_upgrade(c)) { tunnel(c->fd, fd); close(fd); drop(c); return; }
-  char tmp[16384]; ssize_t k;
-  while ((k = recv(fd, tmp, sizeof tmp, 0)) > 0) send_all(c->fd, tmp, (size_t)k);
+  // A child carries the answer back, so the server goes on answering meanwhile: an answer can take
+  // minutes (a model's stream, a key being checked), and the API's own helpers call back through this
+  // server while it waits (/chat's runner asks for its turn), which a server that waited would never hear.
+  pid_t pid = fork();
+  if (pid == 0) {
+    char tmp[16384]; ssize_t k;
+    while ((k = recv(fd, tmp, sizeof tmp, 0)) > 0) send_all(c->fd, tmp, (size_t)k);
+    _exit(0);
+  }
+  if (pid < 0) respond(c->fd, 503, "Service Unavailable", "application/json", "{\"error\":\"the dev server is busy\"}", 35);
   close(fd);
   drop(c);
 }

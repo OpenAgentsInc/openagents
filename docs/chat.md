@@ -2,8 +2,16 @@
 
 **Changed 2026-11-11.** `/chat` is being rebuilt from nothing
 ([audit](audits/2026-11-11-chat-zero-base-audit.md)). The new page is
-`apps/openagents-web/chat-web.coax`: for now only the composer, drawn by the
-browser, which sends nothing yet. Everything below describes the page before
+`apps/openagents-web/chat-web.coax`, drawn by the browser: a composer under
+a transcript. A message is answered by one model call with the conversation
+so far, streamed, through `POST /api/chat/complete`: a Chat Completions
+request handed to the inference route's own ask (`inference.c`
+`inference_ask`: Gemini on Vertex, its caps and its metering) for the admin
+the cookie names. No agent is behind it yet, and nothing is stored.
+To run it on this Mac with real answers: `OA_SERVE_INFERENCE_TOKEN=$(gcloud
+auth print-access-token) coax/web/api/test.sh --serve http://127.0.0.1:PORT`,
+then `coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:PORT --api
+API_PORT`, and open the login link it prints (the token lasts an hour). Everything below describes the page before
 it, which is now at `/chat-gpu` (`chat.coax`, `chat-gpu/index.html`) and still
 talks to the same API. In production `/chat-gpu` reaches the site only after
 `coax/web/api/lb.sh` has been run with its new path rule.

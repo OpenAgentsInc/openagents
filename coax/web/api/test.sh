@@ -3,11 +3,22 @@
 # Postgres (Homebrew postgresql@16) and the service on it, and runs the
 # checks in test.py against both (migrations, health, ingest, admin).
 #   coax/web/api/test.sh
+#   coax/web/api/test.sh --serve ORIGIN   for a page under development: the same build, database and
+#                           service, left running for the dev server at ORIGIN to send /api/ to
+#                           (coax/web/serve.sh APP --listen HOST:PORT --api API_PORT), with no checks run.
+#                           It prints the service's port and a link that logs a throwaway admin in.
+#                           OA_SERVE_INFERENCE_TOKEN, when set, is a Google access token: /api/v1/inference
+#                           and /api/chat/complete then ask Vertex itself, not the checks' fake model.
+#                           Everything is gone when it is stopped.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+serve=0; serve_origin=""
+if [[ "${1:-}" == --serve ]]; then serve=1; serve_origin="${2:?test.sh --serve ORIGIN, for example http://127.0.0.1:9471}"; fi
+if [[ $serve == 0 ]]; then
 "$here/mesh-policy.sh" --check-inputs
 "$here/caller-policy.sh" --check-inputs
 "$here/nip98.sh" --check-inputs
+fi
 # NIP-98 is Coax (nip98.coax): with a compiler here, its checks and its C cache.
 repo_root="$(cd "$here/../../.." && pwd)"
 cli_coax="${COAX:-$repo_root/coax/bin/coax}"
@@ -15,17 +26,19 @@ if [[ ! -x "$cli_coax" ]]; then
   common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
   [[ -n "$common" ]] && cli_coax="$(dirname "$common")/coax/bin/coax"
 fi
-if [[ -x "$cli_coax" ]]; then
+if [[ -x "$cli_coax" && $serve == 0 ]]; then
   "$here/nip98.sh" --check || echo 'nip98: the C cache differs from this compiler'"'"'s output (the image builds from source; regenerate with nip98.sh --generate)' >&2
   (cd "$repo_root" && "$cli_coax" test coax/web/api/nip98.coax --run-steps 250000000 | tail -1)
   (cd "$repo_root" && "$cli_coax" test coax/web/api/nip98_checks.coax --steps 4000000000 --run-steps 250000000 | tail -1)
 fi
+if [[ $serve == 0 ]]; then
 "$here/test-deploy-command.sh"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_verify_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_rollout_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_snapshot_test.py"
+fi
 pg=/opt/homebrew/opt/postgresql@16
-work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} 2>/dev/null || true; "$pg/bin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} 2>/dev/null || true; "$pg/bin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 cc=/usr/bin/clang
 secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 "$cli_coax" c "$here/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
@@ -60,7 +73,7 @@ $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,u
   ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/nip98_diff" \
   "$here/nip98_diff.c" "$here/nip98_reference.c" "$here/nostr.c" "$here/nip98.generated.c" \
   ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
-"$work/nip98_diff" "$here/nip98_corpus.tsv" 400
+[[ $serve == 1 ]] || "$work/nip98_diff" "$here/nip98_corpus.tsv" 400
 "$pg/bin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 # A free TCP port in [LOW, LOW + 1000) that this run hasn't taken. Agents run these checks side by
 # side, and a port another run's server holds would send this run's requests to that server.
@@ -146,11 +159,20 @@ pack test-human $vsha $(wc -c < "$VERSE_PACK_DIR/plain" | tr -d ' ') $(wc -c < "
 export OA_VERSE_PACKS_GCS="http://127.0.0.1:$VERSE_GCS_PORT" OA_VERSE_PACKS_BUCKET=verse-test OA_VERSE_PACK_PER_HOUR=3
 # Anime's checks own a separate Coax selector; it has no model credentials.
 ANIME_PORT=$(free_port 46000); taken+="$ANIME_PORT "; export ANIME_PORT
+# The checks ask a fake model on INFER_PORT, five requests a day. Serving a page with a token, the model is Vertex's.
+infer_url="http://127.0.0.1:$INFER_PORT/chat/completions" infer_token=test-token infer_daily=5 api_origin="http://127.0.0.1:$api_port"
+if [[ $serve == 1 ]]; then
+  api_origin="$serve_origin"
+  if [[ -n "${OA_SERVE_INFERENCE_TOKEN:-}" ]]; then
+    infer_url="https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi/chat/completions"
+    infer_token="$OA_SERVE_INFERENCE_TOKEN" infer_daily=500
+  fi
+fi
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
 OA_PROJECT_KEK="$(openssl rand -hex 32)" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \
 OA_DROPS_GCS="http://127.0.0.1:$GCS_PORT" OA_DROPS_TOKEN=test-gcs OA_DROPS_BUCKET=drops-test OA_DROPS_PREFIX=test OA_DRAFT_URL="http://127.0.0.1:$GCS_PORT/model" OA_VILLA_URL="http://127.0.0.1:$GCS_PORT/villa-model" \
-OA_INFERENCE_URL="http://127.0.0.1:$INFER_PORT/chat/completions" OA_INFERENCE_TOKEN=test-token OA_INFERENCE_DAILY_REQUESTS=5 \
+OA_INFERENCE_URL="$infer_url" OA_INFERENCE_TOKEN="$infer_token" OA_INFERENCE_DAILY_REQUESTS="$infer_daily" \
 OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark OA_LNADDR_TEST_PORT="$SPARK_PORT" \
 OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=device-a@example.com,device-b@example.com,life-a@example.com,life-c@example.com,life-d@example.com,life-f@example.com,life-h@example.com,owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,solo@example.com,pk@example.com,newcomer@example.com OA_EMAIL_BACKOFF_MS=10 \
 OA_AUTH_SEAL_KEY="1:$(openssl rand -hex 32),2:$(openssl rand -hex 32)" OA_AUTH_LOOKUP_PEPPER="1:$(openssl rand -hex 32)" \
@@ -159,10 +181,39 @@ OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=job
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_NPC_KEY_10M=3 OA_NPC_ADDR_10M=5 OA_NPC_RUNNING=3 OA_NPC_RUNNING_KEY=1 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
 OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
-  OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="http://127.0.0.1:$api_port" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
+  OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="$api_origin" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
 # The answer came from this run's server, not from another run's that took the port first.
 kill -0 "$api_pid" 2>/dev/null || { echo "test.sh: the API didn't start" >&2; cat "$work/api.log"; exit 1; }
+if [[ $serve == 1 ]]; then
+  # /chat's Claude turns: the real runner and its real engine (coax/web/agent/chat.coax, the Coax Claude
+  # Agent SDK) on CHAT_PORT, with the Claude CLI on this machine, when there is one. A turn runs on the
+  # credential the admin saved (the page's Settings); this machine's own Claude login is never used: the
+  # runner gives the CLI a fresh configuration directory and only that credential. The copy of the code
+  # the agent reads is this repository's main, from disk.
+  claude_bin="$(command -v claude || true)"
+  if [[ -n "$claude_bin" ]]; then
+    "$cli_coax" c "$here/../agent/chat.coax" > "$work/chat-engine.c"
+    $cc -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" -o "$work/oa-chat-turn" "$work/chat-engine.c" \
+      "$repo_root/coax/platform/process-native.c" "$here/../agent/engine-io.c" "$here/../agent/confine-native.c" -lm
+    common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
+    env -i HOME="$HOME" PATH="$(dirname "$claude_bin"):/opt/homebrew/bin:/usr/bin:/bin" \
+      OA_API_ORIGIN="$api_origin" OA_RUNNER_KEY="$(cat "$RUN_KEY_FILE")" OA_CHAT_SEAL_KEY="$(openssl rand -hex 32)" \
+      OA_CHAT_ENGINE="$work/oa-chat-turn" OA_CLAUDE="$claude_bin" OA_CHAT_REPO="${OA_SERVE_CHAT_REPO:-file://$(dirname "$common")}" \
+      OA_CHAT_SESSIONS="$work/sessions" OA_AGENT_WORK="$work/agent" OA_GIT="$(command -v git)" \
+      "$RUNNER_BIN" --listen "127.0.0.1:$CHAT_PORT" 2>"$work/runner.log" & runner_pid=$!
+    echo "serve: /chat's runner is on 127.0.0.1:$CHAT_PORT with $claude_bin (its log: $work/runner.log)"
+  else
+    echo "serve: no claude on PATH, so /chat's Claude turns have no runner"
+  fi
+  login="$("$SIGN" --key "$ADMIN_KEY" GET "$api_origin/api/admin/login")"
+  echo "serve: the API is on 127.0.0.1:$api_port (its log: $work/api.log)"
+  echo "serve: run the dev server with --api $api_port"
+  echo "serve: admin login, good for 60 seconds: $api_origin/api/admin/login?auth=$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$login")&next=chat"
+  echo "serve: a new link later: auth=\$($SIGN --key $ADMIN_KEY GET $api_origin/api/admin/login), then open $api_origin/api/admin/login?auth=<that, URL-encoded>&next=chat"
+  wait "$api_pid"
+  exit 0
+fi
 API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
 # The CLI as a caller (NIP-98 callers, realms/mine, visibility, admin keys, device login), in Coax: tests/cli_auth.coax.
 # The CLI-caller checks are a Coax program: they need a compiler. A deploy's

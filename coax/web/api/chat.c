@@ -16,6 +16,11 @@
 //                                  checks it (a models list, or a one-line Haiku turn) and seals it; only
 //                                  the sealed bytes, the kind and the last four characters are kept
 //   POST /api/chat/key_remove      deletes it
+//   GET  /api/chat/account         {"claude": {kind, last4, expired} or null}: the saved credential, never the key
+//   GET  /api/chat/turn?t=ID       one turn as JSON: {status, answer, error, working, model, credential, cost_usd,
+//                                  tools: [{name, detail}]}, for a page that asks about the turn it sent
+//   POST /api/chat/complete        a Chat Completions request (model, messages, stream): our inference
+//                                  route's answer (inference.c), for the rebuilt page (chat-web.coax)
 //   POST /api/chat/runner/next|event|end   the runner (NIP-98, a key in OA_AGENT_RUNNER_PUBKEYS)
 //
 // Who: an admin (admin.c admin_who: a session of ours, auth.c, whose account
@@ -285,12 +290,22 @@ void chat_key(const request *q, const char *pubkey, bool member) {
   if (pid < 0) reply(q->fd, 503, "{\"error\":\"busy\"}");
 }
 
+// A read for the rebuilt page: one row, one JSON text, for this admin (and a second value, when the query takes one).
+static void chat_json(const request *q, PGconn *db, const char *sql, const char *pubkey, const char *second) {
+  const char *v[2] = {pubkey, second};
+  PGresult *r = PQexecParams(db, sql, second ? 2 : 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("chat: %s", PQerrorMessage(db)); PQclear(r); reply(q->fd, 500, "{\"error\":\"not read\"}"); return; }
+  if (PQntuples(r) != 1) { PQclear(r); reply(q->fd, 404, "{\"error\":\"no such turn\"}"); return; }
+  reply(q->fd, 200, PQgetvalue(r, 0, 0));
+  PQclear(r);
+}
+
 bool chat_route(const request *q) {
   if (strncmp(q->path, "/api/chat/", 10)) return false;
   const char *op = q->path + 10;
   bool runner = !strncmp(op, "runner/", 7);
   if (runner) op += 7;
-  static const char *const member_ops[] = {"state", "new", "send", "model", "stop", "tab", "record", "key", "key_remove", NULL};
+  static const char *const member_ops[] = {"state", "new", "send", "model", "stop", "tab", "record", "key", "key_remove", "complete", "account", "turn", NULL};
   static const char *const runner_ops[] = {"next", "event", "end", NULL};
   bool known = false;
   for (const char *const *o = runner ? runner_ops : member_ops; *o; o++) if (!strcmp(*o, op)) known = true;
@@ -298,7 +313,7 @@ bool chat_route(const request *q) {
   if (!known) return false;
   bool post = !strcmp(q->method, "POST");
   if (!post && strcmp(q->method, "GET")) { reply(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
-  bool get_op = !strcmp(op, "state") || !strcmp(op, "record");
+  bool get_op = !strcmp(op, "state") || !strcmp(op, "record") || !strcmp(op, "account") || !strcmp(op, "turn");
   if (get_op == post) { reply(q->fd, 405, post ? "{\"error\":\"GET this\"}" : "{\"error\":\"POST this\"}"); return true; }
   if (q->body_len > 64 * 1024) { reply(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
   PGconn *db = api_db();
@@ -322,6 +337,22 @@ bool chat_route(const request *q) {
   }
 
   if (!strcmp(op, "key")) { chat_key(q, pubkey, false); return true; }
+  // The rebuilt /chat page (apps/openagents-web/chat-web.coax): a Chat Completions request, answered by
+  // our inference route's own ask (inference.c: Vertex, its caps and its metering) as it comes.
+  if (!strcmp(op, "complete")) return inference_ask(q, pubkey, true);
+  if (!strcmp(op, "account")) { chat_json(q, db, "SELECT jsonb_build_object('claude', (SELECT jsonb_build_object('kind', kind, 'last4', last4, 'expired', expired) "
+                                                 "FROM chat.credentials WHERE owner = $1))::text", pubkey, NULL); return true; }
+  if (!strcmp(op, "turn")) {
+    char t[24]; api_query(q, "t", t, sizeof t);
+    bool digits = t[0] != 0;
+    for (const char *p = t; *p; p++) if (!isdigit((unsigned char)*p)) digits = false;
+    if (!digits || strlen(t) > 18) { reply(q->fd, 400, "{\"error\":\"t is a turn's number\"}"); return true; }
+    chat_json(q, db, "SELECT jsonb_build_object('status', t.status, 'answer', t.answer, 'error', t.error, 'working', t.working, 'model', t.model, "
+                     "'credential', t.credential, 'cost_usd', t.cost_usd::text, 'tools', coalesce((SELECT jsonb_agg(jsonb_build_object("
+                     "'name', e.data->>'name', 'detail', coalesce(e.data->>'detail', '')) ORDER BY e.id) FROM chat.events e "
+                     "WHERE e.turn = t.id AND e.type = 'agent.tool_use'), '[]'::jsonb))::text FROM chat.turns t WHERE t.owner = $1 AND t.id = $2::bigint", pubkey, t);
+    return true;
+  }
 
   char *body;
   if (post) {

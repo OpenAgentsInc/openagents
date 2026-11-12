@@ -21,18 +21,21 @@ TG_P :: 8; TG_UL :: 9; TG_OL :: 10; TG_LI :: 11; TG_PRE :: 12; TG_CODE :: 13; TG
 TG_NAV :: 16; TG_MAIN :: 17; TG_STRONG :: 18; TG_EM :: 19; TG_BLOCKQUOTE :: 20; TG_DEL :: 21; TG_FOOTER :: 22;
 TG_TABLE :: 23; TG_TR :: 24; TG_TH :: 25; TG_TD :: 26;
 TG_SVG :: 27; TG_USE :: 28;      // an icon: an svg holding a use of the icon's file (icons.coax)
-TG_COUNT :: 29;
-TG_NAMES :: [29] string.["div", "span", "button", "textarea", "a", "h1", "h2", "h3", "p", "ul", "ol", "li", "pre", "code",
-  "section", "header", "nav", "main", "strong", "em", "blockquote", "del", "footer", "table", "tr", "th", "td", "svg", "use"];
+TG_INPUT :: 29;                  // a one-line field (AT_TYPE says what kind: a password's is hidden as it is typed)
+TG_COUNT :: 30;
+TG_NAMES :: [30] string.["div", "span", "button", "textarea", "a", "h1", "h2", "h3", "p", "ul", "ol", "li", "pre", "code",
+  "section", "header", "nav", "main", "strong", "em", "blockquote", "del", "footer", "table", "tr", "th", "td", "svg", "use", "input"];
 
 // Attributes, and their names in the browser. AT_FRAME is set by tr_frame.
 AT_HREF :: 0; AT_LABEL :: 1; AT_PLACEHOLDER :: 2; AT_ROLE :: 3; AT_HIDDEN :: 4; AT_EXPANDED :: 5; AT_PRESSED :: 6;
 AT_DISABLED :: 7; AT_STATE :: 8; AT_FRAME :: 9; AT_CURRENT :: 10; AT_ROWS :: 11; AT_LANG :: 12; AT_LIVE :: 13;
 AT_FOCUS :: 14;      // the field the page opens with the caret in
 AT_TITLE :: 15;      // what shows when the pointer rests on it
-AT_COUNT :: 16;
-AT_NAMES :: [16] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
-  "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus", "title"];
+AT_TYPE :: 16;       // an input's kind
+AT_COMPLETE :: 17;   // whether the browser may offer to fill a field ("off" for a pasted key)
+AT_COUNT :: 18;
+AT_NAMES :: [18] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
+  "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus", "title", "type", "autocomplete"];
 
 TrNode :: struct {
   id_at: int; id_n: int;

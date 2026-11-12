@@ -26,6 +26,7 @@
 //              then x and y as i32 in 64ths of a px for each point
 //   9 style    string                                (the page's stylesheet, once)
 //  10 value    slot u16, string                      (what a field holds, when the page sets it)
+//  11 focus    slot u16                              (the caret goes to this node)
 // This is the module's own memory read by its own host, as the vertex buffer
 // is, not a wire shape: nothing stores it and nothing else reads it.
 //   coax/bin/coax test components/backend/dom.coax
@@ -36,7 +37,7 @@
 DM_OUT :: 524288;      // bytes of commands one flush can hold
 DM_ID :: 64;           // bytes of an id kept
 DM_NONE :: 65535;
-DC_MAKE :: 1; DC_REMOVE :: 2; DC_PLACE :: 3; DC_TEXT :: 4; DC_CLASS :: 5; DC_ATTR :: 6; DC_UNATTR :: 7; DC_FRAME :: 8; DC_STYLE :: 9; DC_VALUE :: 10;
+DC_MAKE :: 1; DC_REMOVE :: 2; DC_PLACE :: 3; DC_TEXT :: 4; DC_CLASS :: 5; DC_ATTR :: 6; DC_UNATTR :: 7; DC_FRAME :: 8; DC_STYLE :: 9; DC_VALUE :: 10; DC_FOCUS :: 11;
 DM_VALUE :: 1024;      // bytes of a field's value the page can set
 
 DomSlot :: struct {
@@ -61,6 +62,7 @@ Dom :: struct {
   sent: int;                      // commands written by the last flush
   value_id: [DM_ID] u8; value_id_n: int;          // a field whose value the page set (dm_value), until a flush sends it
   value: [DM_VALUE] u8; value_n: int; value_set: bool;
+  focus_id: [DM_ID] u8; focus_id_n: int; focus_set: bool;   // a node the page put the caret in (dm_focus), until a flush sends it
 }
 
 dm_u8 :: (d: [] Dom, v: int) {
@@ -115,6 +117,12 @@ dm_value :: (d: [] Dom, id: string, text: string) {
   for c: id { if d[0].value_id_n < DM_ID { d[0].value_id[d[0].value_id_n] = c; d[0].value_id_n += 1; } }
   for c: text { if d[0].value_n < DM_VALUE { d[0].value[d[0].value_n] = c; d[0].value_n += 1; } }
   d[0].value_set = true;
+}
+// Puts the caret in a node (a field, once a choice has been made elsewhere). The next flush sends it.
+dm_focus :: (d: [] Dom, id: string) {
+  d[0].focus_id_n = 0;
+  for c: id { if d[0].focus_id_n < DM_ID { d[0].focus_id[d[0].focus_id_n] = c; d[0].focus_id_n += 1; } }
+  d[0].focus_set = true;
 }
 // Forgets what was sent: the next flush makes every node again (a host that started over).
 dm_reset :: (d: [] Dom) {
@@ -242,6 +250,11 @@ dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {
     if slot >= 0 { dm_u8(d, DC_VALUE); dm_u16(d, slot); dm_str(d, cast(string) d[0].value[0..<d[0].value_n]); d[0].sent += 1; }
     d[0].value_set = false;
   }
+  if d[0].focus_set {
+    slot := dm_find(d, cast(string) d[0].focus_id[0..<d[0].focus_id_n]);
+    if slot >= 0 { dm_u8(d, DC_FOCUS); dm_u16(d, slot); d[0].sent += 1; }
+    d[0].focus_set = false;
+  }
   return ifx d[0].overflow then 0 else d[0].out_n;
 }
 
@@ -265,7 +278,7 @@ dm_test_count :: (d: [] Dom, bytes: int, want: int) -> int {
     if op == want { n += 1; }
     i += 1;
     if op == DC_MAKE { i += 2; i += 4 + dm_test_u32(d, i); i += 4 + dm_test_u32(d, i); }
-    else if op == DC_REMOVE { i += 2; }
+    else if op == DC_REMOVE || op == DC_FOCUS { i += 2; }
     else if op == DC_PLACE { i += 6; }
     else if op == DC_TEXT || op == DC_CLASS || op == DC_VALUE { i += 2; i += 4 + dm_test_u32(d, i); }
     else if op == DC_ATTR { i += 2; i += 4 + dm_test_u32(d, i); i += 4 + dm_test_u32(d, i); }
@@ -343,6 +356,12 @@ dm_test_u32 :: (d: [] Dom, i: int) -> int {
   dm_value(d, "a", "typed"); dm_value(d, "a", "");
   n = dm_flush(d, t, sets[..]);
   #assert d[0].sent == 1 && dm_test_count(d, n, DC_VALUE) == 1;
+  dm_focus(d, "b"); dm_focus(d, "gone");
+  n = dm_flush(d, t, sets[..]);
+  #assert n == 0;   // a node that isn't there takes no caret
+  dm_focus(d, "b");
+  n = dm_flush(d, t, sets[..]);
+  #assert d[0].sent == 1 && dm_test_count(d, n, DC_FOCUS) == 1;
   n = dm_flush(d, t, sets[..]);
   #assert n == 0;
   dm_reset(d);

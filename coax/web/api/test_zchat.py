@@ -390,3 +390,37 @@ dump = sql("select coalesce(string_agg(t::text, ' '), '') from (select row_to_js
 leaked = [h8(v) for v in SECRETS if v in logs or v in dump]
 check("chat: no key or token in the logs, turns, events or conversations", not leaked, leaked)
 chat_runner.terminate()
+
+# ---- POST /api/chat/complete: the rebuilt page's door to our inference route (inference.c inference_ask).
+# An admin's cookie asks without a Nostr signature; anyone else is refused as on every /chat route. The model
+# here is the checks' fake on INFER_PORT while test_inference.py's server is up; with none, the route says 502.
+_ask = {"model": "google/gemini-3.8-flash", "messages": [{"role": "user", "content": "hello"}], "stream": False}
+s, b = cpage("POST", "complete", _ask, cookie=False)
+check("chat complete: no session is 401", s == 401, (s, b[:120]))
+s, b = cpage("POST", "complete", _ask, origin="https://evil.example")
+check("chat complete: a cookie's write from another site is 403", s == 403 and "cross-site" in b, (s, b[:120]))
+s, b = cpage("GET", "complete")
+check("chat complete: GET is 405", s == 405, (s, b[:120]))
+s, b = cpage("POST", "complete", {"model": "no-such-model", "messages": [{"role": "user", "content": "hello"}]})
+check("chat complete: a model the route doesn't serve is 400, in the inference route's words", s == 400 and "does not serve that model" in b, (s, b[:160]))
+s, b = cpage("POST", "complete", _ask)
+# (the admin's key has asked the fake model all day in test_inference.py, so its day may be used up: 429, the same route's answer)
+check("chat complete: an admin's cookie reaches the inference route: the model's answer (200), its day used up (429), or the model not reached (502)",
+      s in (200, 429, 502), (s, b[:160]))
+
+# ---- GET /api/chat/account and /api/chat/turn?t=ID: what the rebuilt page reads, as JSON.
+s, b = cpage("GET", "account")
+check("chat account: an admin with no saved credential reads claude null, and no key", s == 200 and json.loads(b) == {"claude": None}, (s, b[:160]))
+s, b = cpage("GET", "account", cookie=False)
+check("chat account: no session is 401", s == 401, (s, b[:120]))
+s, b = cpage("GET", "turn", query="?t=abc")
+check("chat turn: t must be a number", s == 400, (s, b[:120]))
+s, b = cpage("GET", "turn", query="?t=999999999")
+check("chat turn: a turn that isn't this admin's is 404", s == 404, (s, b[:120]))
+# one of this admin's turns from the checks above (the newest conversation's), read back
+s, b = cpage("GET", "state")
+_ids = [l.split("|")[1] for l in b.split("\n") if l.startswith("U|")]
+s, b = cpage("GET", "turn", query=f"?t={_ids[0]}") if _ids else (0, "no turn to read")
+_j = json.loads(b) if s == 200 else {}
+check("chat turn: a turn reads back as JSON with its status, model and tools",
+      s == 200 and _j.get("status") in ("queued", "running", "done", "failed", "refused", "stopped") and _j.get("model") and isinstance(_j.get("tools"), list) and "answer" in _j, (s, b[:240]))

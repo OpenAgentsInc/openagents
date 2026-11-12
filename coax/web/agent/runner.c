@@ -399,7 +399,13 @@ static bool engine_start(engine *e, const char *dir, const char *home) {
     snprintf(cfg, sizeof cfg, "CLAUDE_CONFIG_DIR=%s", engine_cfg);
     snprintf(h, sizeof h, "HOME=%s", home);
     snprintf(model, sizeof model, "OA_AGENT_MODEL=%s", env("OA_AGENT_MODEL", "claude-sonnet-5-5"));
-    char path[] = "PATH=/usr/local/bin:/usr/bin:/bin", quiet[] = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", noup[] = "DISABLE_AUTOUPDATER=1";
+    // The engine finds the CLI by name: its search path is the directory of the CLI this runner was given
+    // (OA_CLAUDE; the image's is /usr/local/bin, a developer's machine's may be elsewhere), then the system's.
+    char path[700], cli[512]; snprintf(cli, sizeof cli, "%s", env("OA_CLAUDE", "/usr/local/bin/claude"));
+    char *slash = strrchr(cli, '/');
+    if (slash && slash != cli) *slash = 0; else strcpy(cli, "/usr/local/bin");
+    snprintf(path, sizeof path, "PATH=%s:/usr/local/bin:/usr/bin:/bin", cli);
+    char quiet[] = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", noup[] = "DISABLE_AUTOUPDATER=1";
     char *envp[] = {key, h, path, model, quiet, noup, engine_cfg[0] ? cfg : NULL, NULL};
     const char *argv[] = {engine_bin ? engine_bin : env("OA_AGENT_ENGINE", "/usr/local/bin/oa-turn"), NULL};
     execve(argv[0], (char *const *)argv, envp);

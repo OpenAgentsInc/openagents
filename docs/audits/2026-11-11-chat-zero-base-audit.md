@@ -975,10 +975,28 @@ realms.
   everything at once.
 - **`/components`** shows every one of them, working
   (`components/gallery/web.coax`). The earlier page is `/components-gpu`.
-- **`/chat`** is the composer alone (`apps/openagents-web/chat-web.coax`).
-  It sends nothing yet. The earlier page is `/chat-gpu`.
+- **`/chat`** is a composer under a transcript
+  (`apps/openagents-web/chat-web.coax`). The earlier page is `/chat-gpu`.
+- **Real answers, streamed.** A message is answered by one model call with
+  the conversation so far: `POST /api/chat/complete`, a door for an admin's
+  session onto the inference route's own ask (Gemini on Vertex, metered).
+  The host has a streaming import (`dom_stream`), the request and the stream
+  are read by the gateway's Chat Completions and SSE codecs
+  (`coax/lib/gateway/types.coax` was split out so a page can load them), and
+  Stop ends the stream and keeps what came.
+- **Icons:** Apps SDK UI's 755, as SVG files and a Coax name table
+  (`components/core/icons.coax`), found in the Rust tree at `coder-v1.0.0`.
 
-Not built: the first screen as HTML at build time (the page is empty until
+What that door is and isn't: it is the old chat worker's serving path
+(Episode 289's chat answered on Gemini Flash on Vertex first) with none of
+the agent around it. Of the Rust `openagents-chat`, `route-contract`, `jev`
+and `knowledge` crates (about 100,000 lines at `coder-v1.0.0`), nothing is
+ported: no front, no routes, no members, no knowledge base, so the model
+answers from what it knows and can be wrong about OpenAgents. The door's
+wire is Chat Completions, a vendor's shape, inside the allowlisted
+`chat.c`; `openagents.chat.v1alpha1` is still to be written.
+
+Not built: stored conversations; the first screen as HTML at build time (the page is empty until
 the module loads); exits (a node that goes is removed at once); the element
 table for the driver, so `coax drive` can't name these nodes yet; a windowed
 transcript; a route per conversation; tools for agents. Driven headless in

@@ -5,7 +5,9 @@
 // (from_responses_request) and upstream/chat.rs (body, Dialect): the body
 // has the same fields in the same order as the old crate serialized them,
 // always streamed with usage, never asking the upstream to store anything.
-// Loaded by gateway.coax, which dispatches to it on GW_WIRE_CHAT.
+// Loaded by gateway.coax, which dispatches to it on GW_WIRE_CHAT. It needs only
+// types.coax, so a page can load it without the gateway's process transport; its
+// checks, which run whole calls, are chat-checks.coax.
 //
 // A Gateway's flags are the old Dialect:
 //   GW_CHAT_LEGACY_MAX_TOKENS  the cap goes as max_tokens, not max_completion_tokens
@@ -196,103 +198,3 @@ gw_chat_whole :: (ar: [] ClArena, body: string, out: [] GwEvent) -> int {
 }
 
 // ---------------------------------------------------------------- checks
-
-#test "a Chat Completions body has the old crate's fields in its order: system first, strict schema, cap, effort, stream with usage" {
-  out: [2048] u8; why: [1] string;
-  msgs: [2] GwMessage;
-  msgs[0] = GwMessage.{role = "user", text = "Count from one to five, one word per line."};
-  msgs[1] = GwMessage.{role = "assistant", text = "One"};
-  g := Gateway.{name = "openrouter", url = "https://openrouter.ai/api/v1/chat/completions", key_env = "OPENROUTER_API_KEY", wire = GW_WIRE_CHAT};
-  req := GwRequest.{model = "google/gemini-3.8-flash", system = "You are terse.", messages = msgs[..], max_tokens = 200, effort = "low", schema = "{\"type\":\"object\"}", schema_name = "next_action"};
-  body := gw_translate(g, req, out[..], why[..]);
-  #assert body == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are terse.\"},{\"role\":\"user\",\"content\":\"Count from one to five, one word per line.\"},{\"role\":\"assistant\",\"content\":\"One\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"next_action\",\"schema\":{\"type\":\"object\"},\"strict\":true}},\"max_completion_tokens\":200,\"reasoning_effort\":\"low\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
-  #assert json_valid(body);
-}
-
-#test "the Z.ai dialect: max_tokens, thinking always on and no reasoning_effort; a plain request carries only what it has" {
-  out: [2048] u8; why: [1] string;
-  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "hi"};
-  g := Gateway.{name = "zai", url = "https://api.z.ai/api/paas/v4/chat/completions", key_env = "ZAI_API_KEY", wire = GW_WIRE_CHAT, flags = GW_CHAT_LEGACY_MAX_TOKENS | GW_CHAT_THINKING_ON};
-  req := GwRequest.{model = "glm-5.3-flash", messages = msgs[..], max_tokens = 64, effort = "high"};
-  #assert gw_translate(g, req, out[..], why[..]) == "{\"model\":\"glm-5.3-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":64,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"thinking\":{\"type\":\"enabled\"}}";
-  plain := Gateway.{name = "psionic", url = "http://127.0.0.1:8080/v1/chat/completions", wire = GW_WIRE_CHAT};
-  whole := GwRequest.{model = "gpt-oss-20b", messages = msgs[..], stream = false};
-  #assert gw_translate(plain, whole, out[..], why[..]) == "{\"model\":\"gpt-oss-20b\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false}";
-}
-
-#test "the recorded OpenRouter Chat Completions stream: reasoning, then the answer, then done with usage at [DONE]" {
-  r: [1] GwReplay; fx := GW_FX_OPENROUTER_CHAT_GEMINI_3_8_FLASH;
-  gw_replay(GW_WIRE_CHAT, fx[..], r[..]);
-  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive";
-  #assert r[0].thoughts >= 1 && r[0].nr > 0 && r[0].refused == 0;
-  #assert r[0].done == 1 && r[0].done_at_end && r[0].reason == "stop";
-  #assert r[0].usage.ok && r[0].usage.input_tokens == 25 && r[0].usage.output_tokens == 139 && r[0].usage.reasoning_tokens == 130 && r[0].usage.cached_tokens == 0;
-  #assert r[0].usage.cost_usd_micros == 540 && gw_replay_provider(r[..]) == "Google";   // usage.cost 0.00054 dollars
-}
-
-#test "the recorded whole OpenRouter chat.completion parses with its usage" {
-  arena: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
-  ev: [8] GwEvent;
-  body := GW_FX_OPENROUTER_CHAT_GEMINI_3_8_FLASH_JSON;
-  // the wire's own leading keep-alive whitespace stays: JSON allows it
-  n := gw_parse_whole(GW_WIRE_CHAT, ar[..], body, ev[..]);
-  #assert n == 2 && ev[0].kind == GW_EV_TEXT && ev[0].text == "One\nTwo\nThree\nFour\nFive";
-  #assert ev[1].kind == GW_EV_DONE && ev[1].reason == "stop" && ev[1].usage.input_tokens == 25 && ev[1].usage.output_tokens == 9;
-  #assert ev[1].usage.cost_usd_micros == 53 && ev[1].text == "Google";   // 0.0000525 dollars, rounded
-}
-
-#test "chat chunks: reasoning_content, finish then usage then [DONE], a stream cut short, errors and content_filter" {
-  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
-  ev: [8] GwEvent; ps: [1] GwParse;
-  n := gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[{\"delta\":{\"reasoning_content\":\"think\",\"content\":\"\"}}]}", ev[..]);
-  #assert n == 1 && ev[0].kind == GW_EV_REASONING && ev[0].text == "think";
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":\"length\"}]}", ev[..]);
-  #assert n == 1 && ev[0].kind == GW_EV_TEXT && ev[0].text == "Hi" && ps[0].finish == GW_FIN_LENGTH;
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":3}}}", ev[..]);
-  #assert n == 0;
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "[DONE]", ev[..]);
-  #assert n == 1 && ev[0].kind == GW_EV_DONE && ev[0].reason == "length" && ev[0].usage.input_tokens == 4 && ev[0].usage.cached_tokens == 3;
-  // finished but no [DONE]: the end of the stream is done; nothing finished: nothing to add
-  ps[0] = GwParse.{};
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}", ev[..]);
-  #assert n == 0 && gw_parse_end(GW_WIRE_CHAT, ps[..], ev[..]) == 1 && ev[0].kind == GW_EV_DONE;
-  #assert gw_parse_end(GW_WIRE_CHAT, ps[..], ev[..]) == 0;
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "[DONE]", ev[..]);
-  #assert n == 1 && ev[0].kind == GW_EV_REFUSED;
-  ps[0] = GwParse.{};
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\"}}", ev[..]);
-  #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].status == 429 && ev[0].reason == "Rate limit exceeded";
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}", ev[..]);
-  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "[DONE]", ev[..]);
-  #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "content_filter";
-}
-
-#test "the recorded Vertex OpenAI-endpoint stream (gemini-3.8-flash) parses, and reasoning beside completion_tokens is added in" {
-  r: [1] GwReplay; fx := GW_FX_VERTEX_OPENAI_GEMINI_3_8_FLASH;
-  gw_replay(GW_WIRE_CHAT, fx[..], r[..]);
-  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive" && r[0].done == 1 && r[0].done_at_end && r[0].refused == 0;
-  #assert r[0].usage.input_tokens == 25 && r[0].usage.output_tokens == 9;
-  u := gw_chat_usage_of("{\"completion_tokens\":9,\"completion_tokens_details\":{\"reasoning_tokens\":129},\"prompt_tokens\":25,\"total_tokens\":163}");
-  #assert u.output_tokens == 138 && u.reasoning_tokens == 129;
-  u = gw_chat_usage_of("{\"prompt_tokens\":25,\"completion_tokens\":139,\"total_tokens\":164,\"completion_tokens_details\":{\"reasoning_tokens\":130}}");
-  #assert u.output_tokens == 139;
-}
-
-#test "Vertex's whole answer, with no completion_tokens, counts output as the total less the prompt" {
-  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
-  ev: [8] GwEvent;
-  n := gw_parse_whole(GW_WIRE_CHAT, ar[..], "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"Hi\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89\"}},\"role\":\"assistant\"}}],\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens_details\":{\"reasoning_tokens\":45},\"extra_properties\":{\"google\":{\"traffic_type\":\"ON_DEMAND\"}},\"prompt_tokens\":6,\"total_tokens\":51}}", ev[..]);
-  #assert n == 2 && ev[0].text == "Hi" && ev[1].kind == GW_EV_DONE && ev[1].reason == "length";
-  #assert ev[1].usage.input_tokens == 6 && ev[1].usage.output_tokens == 45 && ev[1].usage.reasoning_tokens == 45;
-}
-
-#test "a whole Open Responses object and a whole Gemini answer parse too" {
-  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
-  ev: [8] GwEvent;
-  n := gw_parse_whole(GW_WIRE_RESPONSES, ar[..], "{\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"hm\"}]},{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"4\"}]}],\"usage\":{\"input_tokens\":9,\"output_tokens\":2}}", ev[..]);
-  #assert n == 3 && ev[0].kind == GW_EV_REASONING && ev[1].text == "4" && ev[2].kind == GW_EV_DONE && ev[2].usage.input_tokens == 9;
-  n = gw_parse_whole(GW_WIRE_GEMINI, ar[..], "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"4\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":1}}", ev[..]);
-  #assert n == 2 && ev[0].text == "4" && ev[1].kind == GW_EV_DONE && ev[1].usage.input_tokens == 5;
-  n = gw_parse_whole(GW_WIRE_CHAT, ar[..], "not json", ev[..]);
-  #assert n == 1 && ev[0].kind == GW_EV_REFUSED;
-}

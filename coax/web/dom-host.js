@@ -91,6 +91,7 @@ function apply(at, length) {
       if (!style) { style = document.createElement("style"); style.id = "coaxial-style"; document.head.appendChild(style); }
       style.textContent = str();
     } else if (op === 10) { const el = els[u16()]; el.value = str(); fit(el); }
+    else if (op === 11) { els[u16()].focus(); }
     else throw new Error(`${app}: unknown command ${op}`);
   }
 }
@@ -125,11 +126,46 @@ function send(kind, slot, value) {
   x.dom_event(state, kind, slot, n); ask();
 }
 
+// A request to this site (a POST of the body, or a GET when there is none) whose answer comes back in pieces as it arrives (the module's dom_stream): each
+// piece goes into the module's inbox as event 4 with the answer's status, and its end is event 5 (status 0
+// when there was no answer). One at a time: a new one, or dom_stream_stop, ends the last, and an ended
+// one says nothing more.
+let stream = null;
+function streamStop() { if (stream) { stream.abort(); stream = null; } }
+function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
+  streamStop();
+  const url = text.decode(new Uint8Array(memory.buffer, urlAt, urlLen));
+  if (!url.startsWith("/") || url.startsWith("//")) return;
+  const body = new Uint8Array(memory.buffer, bodyAt, bodyLen).slice(), mine = new AbortController();
+  stream = mine;
+  const live = () => stream === mine;
+  (async () => {
+    let status = 0;
+    try {
+      const r = await fetch(url, bodyLen ? { method: "POST", body, credentials: "same-origin", headers: { "Content-Type": "application/json" }, signal: mine.signal }
+        : { credentials: "same-origin", cache: "no-store", signal: mine.signal });
+      status = r.status;
+      const reader = r.body.getReader(), cap = x.dom_inbox_cap();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done || !live()) break;
+        for (let at = 0; at < value.length && live(); at += cap) {
+          const piece = value.subarray(at, at + cap);
+          new Uint8Array(memory.buffer, x.dom_inbox(state), piece.length).set(piece);
+          x.dom_event(state, 4, status, piece.length);
+        }
+        ask();
+      }
+    } catch { if (live()) status = 0; }
+    if (live()) { stream = null; x.dom_event(state, 5, status, 0); ask(); }
+  })();
+}
+
 async function start() {
   const response = await fetch(`/build/${app}.wasm`, { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
   const module = await WebAssembly.compile(await response.arrayBuffer());
   memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });
-  const imports = { env: { memory } };
+  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop } };
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= imp.name === "fd_write"
@@ -152,10 +188,10 @@ async function start() {
     const slot = slotOf(e.target, "button[data-slot]");
     if (slot >= 0) send(1, slot);
   });
-  root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot]"); if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); } });
+  root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]"); if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); } });
   root.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
-    const slot = slotOf(e.target, "textarea[data-slot]");
+    const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]");
     if (slot >= 0) { e.preventDefault(); send(2, slot, e.target.value); send(3, slot); }
   });
   reduced.addEventListener("change", ask);

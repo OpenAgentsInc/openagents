@@ -387,7 +387,13 @@ bool inference_route(const request *q) {
     char out[240]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", err);
     api_json(q->fd, 401, out); return true;
   }
-  bool free_key = admin_is(ev.pubkey) || listed(ev.pubkey);
+  return inference_ask(q, ev.pubkey, admin_is(ev.pubkey) || listed(ev.pubkey));
+}
+
+// The request q's Chat Completions body asked of Vertex for this key, answered as it comes, under the
+// same caps and metering as the signed route. /chat's door (chat.c, POST /api/chat/complete) calls
+// this for an admin its cookie named, so the page asks without a Nostr signature.
+bool inference_ask(const request *q, const char *pubkey, bool free_key) {
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
   if (!free_key) rate_refresh(db);
@@ -395,7 +401,7 @@ bool inference_route(const request *q) {
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   char origin[600]; snprintf(origin, sizeof origin, "%s/api/v1/inference/credit", env_or("OA_API_ORIGIN", "https://openagents.com"));
-  const char *v[6] = {ev.pubkey, body, env_or("OA_INFERENCE_DAILY_REQUESTS", "500"), env_or("OA_INFERENCE_DAILY_USD_MICROS", "2000000"),
+  const char *v[6] = {pubkey, body, env_or("OA_INFERENCE_DAILY_REQUESTS", "500"), env_or("OA_INFERENCE_DAILY_USD_MICROS", "2000000"),
                       free_key ? "true" : "false", origin};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, x->>'model', x->>'stream', "
                                  "(x - 'status' || CASE WHEN x ? 'credit' THEN jsonb_build_object('credit', $6::text) ELSE '{}' END)::text "
@@ -426,7 +432,7 @@ bool inference_route(const request *q) {
   signal(SIGCHLD, SIG_IGN);   // children are never waited for
   pid_t pid = fork();
   if (pid == 0) {             // the child answers; the parent's database connection is never touched here
-    answer(q->fd, ev.pubkey, model, request, stream, free_key);
+    answer(q->fd, pubkey, model, request, stream, free_key);
     _exit(0);
   }
   if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");

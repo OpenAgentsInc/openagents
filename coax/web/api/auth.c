@@ -168,7 +168,8 @@ static const auth_rule RULES[] = {
   R("*",    "/api/chat/send", false, AP_ADMIN, "/chat"), R("*", "/api/chat/model", false, AP_ADMIN, "/chat"),
   R("*",    "/api/chat/stop", false, AP_ADMIN, "/chat"), R("*", "/api/chat/tab", false, AP_ADMIN, "/chat"),
   R("*",    "/api/chat/record", false, AP_ADMIN, "/chat"), R("*", "/api/chat/key", false, AP_ADMIN, "/chat"),
-  R("*",    "/api/chat/key_remove", false, AP_ADMIN, "/chat"),
+  R("*",    "/api/chat/key_remove", false, AP_ADMIN, "/chat"), R("*", "/api/chat/complete", false, AP_ADMIN, "/chat"),
+  R("*",    "/api/chat/account", false, AP_ADMIN, "/chat"), R("*", "/api/chat/turn", false, AP_ADMIN, "/chat"),
   R("*",    "/api/chat/", true, AP_GUEST, "a room's chat (room.c)"),
   R("*",    "/api/presence/", true, AP_GUEST, "a room's presence (room.c)"),
   // ---- scheduled jobs: Cloud Scheduler's OIDC token or an admin, checked there (jobs.c)

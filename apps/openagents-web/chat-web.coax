@@ -1,20 +1,38 @@
-// openagents.com/chat, rebuilt from nothing (docs/audits/2026-11-11-chat-zero-base-audit.md):
-// the first pieces. The page is the composer at the foot of the window, a
-// real text field and Send, under a transcript of what you sent. Enter or
-// Send puts your message in the transcript and clears the field. Nothing is
-// sent anywhere yet and nothing answers: there is no agent behind it, and
-// the transcript is gone when the page is left. The page before this one is
-// /chat-gpu (chat.coax).
+// openagents.com/chat, rebuilt from nothing (docs/audits/2026-11-11-chat-zero-base-audit.md).
+// The page is the composer at the foot of the window, a real text field and
+// Send, under a transcript. Enter or Send puts your message in the
+// transcript and asks the model: the answer comes in under it as it is
+// written, as Markdown. While it comes, Send is Stop. Under a finished
+// answer, Copy copies it. The page before this one is /chat-gpu (chat.coax).
 //
-// Each message gets an answer, and the answer is a dummy: one of CW_REPLIES,
-// written here, from no model. It arrives a moment after the message and its
-// text comes in as an answer being written would (the skin's MONO_REPLY_*),
-// parsed as Markdown as it grows. Under a finished answer, Copy copies it.
+// Who answers is the model chosen in the menu at the composer's foot:
+// - Gemini (3.8 Flash, 4 Argon, 4 Carbon): one model call with the
+//   conversation so far, streamed, through OpenAgents' own inference route
+//   (coax/web/api/inference.c: Vertex, its caps and its metering) by /chat's
+//   door to it, POST /api/chat/complete. No tools, no memory.
+// - Claude (Haiku, Sonnet, Opus 5.5), offered once a Claude account is
+//   connected: a turn of /chat's hosted agent (POST /api/chat/send, then GET
+//   /api/chat/turn?t=ID each second), which runs the Claude CLI through the
+//   Coax Claude Agent SDK (coax/web/agent/chat.coax) on the person's own
+//   credential. It reads the public openagents repository and the web, and
+//   its tools show while it works. Its answer comes whole when the turn ends,
+//   and it remembers its own turns of this visit, not Gemini's.
+// The gear opens Settings in the transcript's place: connected accounts,
+// where an Anthropic API key or a Claude subscription token is pasted,
+// checked and sealed by the runner (POST /api/chat/key), and never shown again.
+// Requests and streams are built and read by the gateway's codecs
+// (coax/lib/gateway/chat.coax, sse.coax) and the JSON reader, not by hand.
+// Episode 289's agent (front, members, knowledge) is not behind this yet:
+// docs/audits/2026-11-10-episode-289-port-audit.md.
 //
-// The transcript keeps up to CW_MESSAGES messages in CW_POOL bytes (when it
-// is full the oldest quarter goes) and
-// shows as many of the newest as fit CW_SHOWN bytes; when there are more, a
-// line above them says how many are not shown.
+// Nothing is kept: the transcript is gone when the page is left.
+//
+// Limits, all shown when met: a message is CW_DRAFT bytes at most; an answer
+// CW_ANSWER (past it the page says the rest was not kept); the transcript
+// keeps CW_MESSAGES messages in CW_POOL bytes (when it is full the oldest
+// quarter goes) and shows as many of the newest as fit CW_SHOWN bytes, with
+// a line saying how many are not shown; the model is sent as much of the
+// newest conversation as fits CW_ASK bytes.
 //
 // The browser draws it: the frames set (components/kit/frames.coax) in the
 // mono skin, through the browser backend (components/backend/dom.coax) and
@@ -24,19 +42,41 @@
 
 #load "../../components/kit/frames.coax";
 #load "../../components/backend/dom.coax";
+#load "../../coax/lib/gateway/types.coax";   // the request and the stream's events
+#load "../../coax/lib/gateway/chat.coax";    // Chat Completions: the request's body, a chunk
+#load "../../coax/lib/gateway/sse.coax";     // server-sent events
 
-CW_INBOX :: 16384;     // a field's text from the host
+CW_INBOX :: 16384;     // a field's text, or a piece of the answer's stream, from the host
 CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
+CW_ANSWER :: 49152;    // an answer's most, in bytes
 CW_CSS :: 16384;
 CW_MESSAGES :: 128;    // messages kept
-CW_POOL :: 262144;     // bytes of their text kept
-CW_YOU :: 0; CW_AGENT :: 1;
-CW_REPLIES :: [3] string.[
-  "This is a placeholder answer. Nothing was sent to a model: the page wrote this itself, so you can see how an answer looks and how it arrives.\n\nA real answer will come from the agent once the page is connected to it.",
-  "Here is what an answer with some structure looks like:\n\n- a short point\n- a second one, with `inline code`\n- and a third, with **something that matters**\n\nI am still a placeholder. No model wrote this.",
-  "A placeholder again, this time with code:\n\n```sh\ncoax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9471\n```\n\nThe text above is real text. You can select it, search for it and copy it."];
+CW_POOL :: 524288;     // bytes of their text kept
 CW_SHOWN :: 98304;     // bytes of text the page shows at once (the tree holds 131072)
-CW_CLICK :: 1; CW_INPUT :: 2; CW_SUBMIT :: 3;
+CW_ASK :: 40960;       // bytes of the conversation sent with a message
+CW_REQUEST :: 61440;   // the request's JSON (the door takes 64 KB)
+CW_EVENT :: 32768;     // one event of the stream
+CW_ERROR :: 320;
+CW_RESP :: 131072;     // an answer that isn't a stream (a turn, the account)
+CW_KEY :: 400;         // a pasted key's most
+CW_TOOLS :: 2048;      // the running turn's tools, as lines
+CW_META :: 64;         // the line under an answer
+CW_YOU :: 0; CW_AGENT :: 1;
+CW_CHAT :: 0; CW_SETTINGS :: 1;
+// The models, Gemini's first: a Claude one is offered only while a Claude account is connected.
+CW_MODELS :: 6; CW_GEMINIS :: 3;
+CW_MODEL_IDS :: [6] string.["google/gemini-3.8-flash", "google/gemini-4-argon", "google/gemini-4-carbon", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"];
+CW_MODEL_NAMES :: [6] string.["Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5"];
+CW_MODEL_NOTES :: [6] string.["Google. Answers from what it knows", "Google. Answers from what it knows", "Google. Answers from what it knows",
+  "Your Claude account. Reads our code and the web", "Your Claude account. Reads our code and the web", "Your Claude account. Reads our code and the web"];
+// What is in flight: one request at a time.
+CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
+CA_NONE :: 0; CA_KEY :: 1; CA_TOKEN :: 2;   // the connected Claude credential's kind
+CW_POLL :: 1.0;        // seconds between reads of a Claude turn
+CW_SYSTEM :: "You are OpenAgents, answering in the chat on openagents.com. Speak as \"we\" for OpenAgents. Be direct and brief, and use Markdown where it helps. You can't use tools, read files or the web, or remember earlier conversations yet; say so plainly if asked to. You have no knowledge base about OpenAgents yet, so if you aren't sure of a fact about OpenAgents, say you aren't sure. If asked which model you are, say exactly this and never guess another version: the model answering is ";
+// What the host sends (coax/web/dom-host.js): a press, a field's text, Enter in a field,
+// a piece of the answer's stream (the inbox holds it), and the stream's end (the slot is its HTTP status, 0 for none).
+CW_CLICK :: 1; CW_INPUT :: 2; CW_SUBMIT :: 3; CW_PIECE :: 4; CW_END :: 5;
 
 ChatWeb :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
@@ -45,10 +85,35 @@ ChatWeb :: struct {
   total: int;                        // messages put in the transcript so far, theirs and the answers: the next one's number
   at: [CW_MESSAGES] int; len: [CW_MESSAGES] int; count: int;   // the kept messages, oldest first, in the pool
   who: [CW_MESSAGES] int;            // CW_YOU or CW_AGENT
-  born: [CW_MESSAGES] f32;           // an answer: the second its text starts to come
-  streaming: bool;                   // an answer's text is still coming: build again next frame
+  view: int;                         // CW_CHAT, or CW_SETTINGS in the transcript's place
+  menu: bool;                        // the model menu is open
+  model: int;                        // the model the next message goes to
+  known: bool;                       // the account has been read
+  claude: int; last4: [8] u8; last4_n: int; expired: bool;   // the connected Claude credential (CA_*), never the key
+  key: [CW_KEY] u8; key_n: int;      // a key being typed in Settings, wiped once sent
+  note: [CW_ERROR] u8; note_n: int;  // what Settings last said (a key that didn't work, Connected, Removed)
+  flight: int;                       // the request in flight (CF_*)
+  resp: [CW_RESP] u8; resp_n: int;   // its answer so far, when it isn't a stream
+  conv: int; turn: int;              // the hosted agent's conversation and the turn running in it
+  asked_at: f32;                     // when the turn was last read
+  stopping: bool;                    // Stop was pressed on a Claude turn: it ends when the runner says so
+  stop_sent: bool;                   // and the runner has been asked
+  working: [CW_ERROR] u8; working_n: int;   // what the running turn says it is doing
+  tools: [CW_TOOLS] u8; tools_n: int; ntools: int;   // its tools so far, a line each
+  meta: [CW_MESSAGES] [CW_META] u8; meta_n: [CW_MESSAGES] int;   // the line under each answer: who wrote it
+  live: bool;                        // the last message is an answer still coming
+  status: int;                       // the stream's HTTP status once a piece has come
+  cut: bool;                         // the answer passed CW_ANSWER: the rest was not kept
+  ps: [1] GwParse;                   // the stream's finish and usage so far
+  event: [CW_EVENT] u8; event_n: int;   // the stream's bytes since the last whole event
+  raw: [CW_ERROR] u8; raw_n: int;    // the start of an answer that isn't a stream (an error's body)
+  error: [CW_ERROR] u8; error_n: int;   // why the last message got no answer, until the next one
+  request: [CW_REQUEST] u8; request_n: int; ask: bool;   // a request for the host to send (the face sends it)
+  stop: bool;                        // the host is to end the stream
+  door: [96] u8; door_n: int;        // where the request goes, for the face
   clip: [CW_DRAFT] u8; clip_n: int;  // text for the host to copy, until it has
   copied: int; copied_at: f32;       // the answer last copied (its number + 1, 0 for none) and when
+  marking: bool;                     // Copy shows its check: build again when it gives way
   doc: [1] MdDoc;
   pool: [CW_POOL] u8; pool_n: int;
   inbox: [CW_INBOX] u8;
@@ -59,64 +124,147 @@ ChatWeb :: struct {
   dom: [1] Dom;
 }
 
+cw_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+cw_say :: (s: [] ChatWeb, why: string) { s[0].error_n = cw_put(s[0].error[..], 0, why); }
 // Whether the draft has anything but spaces and line breaks.
 cw_has_words :: (s: [] ChatWeb) -> bool {
   for i: 0..<s[0].draft_n { c := s[0].draft[i]; if c != ' ' && c != '\n' && c != '\t' && c != '\r' { return true; } }
   return false;
 }
-cw_build :: (s: [] ChatWeb) {
+cw_text :: (s: [] ChatWeb, k: int) -> string { return cast(string) s[0].pool[s[0].at[k]..<s[0].at[k] + s[0].len[k]]; }
+
+cw_claude_model :: (model: int) -> bool { return model >= CW_GEMINIS; }
+cw_connected :: (s: [] ChatWeb) -> bool { return s[0].claude != CA_NONE && !s[0].expired; }
+// The model the next message goes to: the one chosen, unless it is Claude's and no account is connected.
+cw_model :: (s: [] ChatWeb) -> int {
+  m := s[0].model;
+  if m < 0 || m >= CW_MODELS { return 0; }
+  return ifx cw_claude_model(m) && !cw_connected(s) then 0 else m;
+}
+// A request for the host: a POST of the body, or a GET when there is none. False while another is in flight.
+cw_go :: (s: [] ChatWeb, kind: int, url: string, body: string) -> bool {
+  if s[0].flight != CF_NONE { return false; }
+  s[0].door_n = cw_put(s[0].door[..], 0, url);
+  s[0].request_n = cw_put(s[0].request[..], 0, body);
+  s[0].flight = kind; s[0].ask = true; s[0].resp_n = 0; s[0].status = 0;
+  return true;
+}
+cw_settings_card :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
-  tr_begin(t);
-  page := tr_open(t, "chat", TG_MAIN, "chat");
-  if s[0].count > 0 {
-    scroller := tr_open(t, "log", TG_DIV, "log");
-    th := tr_open(t, "thread", TG_DIV, "thread");
-    // the newest that fit, oldest of them first
-    first := s[0].count; shown := 0;
-    while first > 0 && shown + s[0].len[first - 1] <= CW_SHOWN { first -= 1; shown += s[0].len[first]; }
-    hidden := s[0].total - (s[0].count - first);
-    buf: [UI_ID] u8; buf2: [UI_ID] u8;
-    if hidden > 0 { m := k_meta(t, "earlier", tr_cat(buf2[..], tr_join(buf[..], "", hidden), ifx hidden == 1 then " earlier message is not shown" else " earlier messages are not shown")); }
-    s[0].streaming = false;
-    for k: first..<s[0].count {
-      id := tr_join(buf[..], "m.", s[0].total - s[0].count + k);
-      text := cast(string) s[0].pool[s[0].at[k]..<s[0].at[k] + s[0].len[k]];
-      if s[0].who[k] == CW_YOU { m := k_user(t, u, id, text); continue; }
-      // an answer: as much of it as has come, as Markdown
-      n := text.count;
-      if !u[0].reduced {
-        since := s[0].time - s[0].born[k];
-        if since < 0 { s[0].streaming = true; continue; }   // not yet
-        come := cast(int) (since * MONO_REPLY_RATE);
-        if come < n { n = come; s[0].streaming = true; }
-        while n > 0 && n < text.count && (text[n] & 0xC0) == 0x80 { n -= 1; }   // not inside a character
+  set := tr_open(t, "settings.view", TG_DIV, "settings");
+  hd := k_header(t, u, "settings.title", "Settings");
+  tr_close(t);
+  card := k_card(t, u, "accounts", "Connected accounts");
+  name := tr_leaf(t, "claude.name", TG_P, "set-t", "Claude");
+  line: [CW_ERROR] u8; n := 0;
+  if !s[0].known { n = cw_put(line[..], 0, "Log in as an admin to connect an account. The chat is for admins only for now."); }
+  else if s[0].claude == CA_NONE { n = cw_put(line[..], 0, "Not connected. Connect it to choose Claude models: their turns then run on your account, with no limit from us."); }
+  else {
+    n = cw_put(line[..], 0, ifx s[0].claude == CA_TOKEN then "Connected: a Claude subscription token ending " else "Connected: an Anthropic API key ending ");
+    n = cw_put(line[..], n, cast(string) s[0].last4[0..<s[0].last4_n]);
+    n = cw_put(line[..], n, ifx s[0].expired then ". It has expired: paste a new one." else ".");
+  }
+  status := tr_leaf(t, "claude.status", TG_P, "set-n", cast(string) line[0..<n]);
+  if s[0].known {
+    how := tr_leaf(t, "claude.how", TG_P, "set-n", "Paste an Anthropic API key (it starts sk-ant-api) or a Claude subscription token (run claude setup-token in a terminal; it starts sk-ant-oat). We check it, seal it, and never show it again.");
+    f := k_secret(t, u, "claude.key", ifx s[0].claude == CA_NONE then "sk-ant-..." else "Paste a new one to replace it", "A Claude key or token");
+    row := tr_open(t, "claude.row", TG_DIV, "rowf");
+    checking := s[0].flight == CF_KEY;
+    b := k_button(t, u, "claude.save", ifx checking then "Checking" else "Connect", ifx s[0].key_n > 0 && s[0].flight == CF_NONE then BS_PRIMARY else BS_DISABLED);
+    if s[0].claude != CA_NONE { r := k_button(t, u, "claude.remove", "Disconnect", ifx s[0].flight == CF_NONE then BS_PLAIN else BS_DISABLED); }
+    tr_close(t);
+    if s[0].note_n > 0 { m := tr_leaf(t, "claude.note", TG_P, "set-n", cast(string) s[0].note[0..<s[0].note_n]); tr_attr(t, m, AT_ROLE, "status"); }
+  }
+  tr_close(t);
+  back := tr_open(t, "settings.foot", TG_DIV, "rowf");
+  bb := k_button(t, u, "settings.back", "Back to the chat", BS_PLAIN);
+  tr_close(t);
+  tr_close(t);
+}
+cw_transcript :: (s: [] ChatWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  scroller := tr_open(t, "log", TG_DIV, "log");
+  th := tr_open(t, "thread", TG_DIV, "thread");
+  // the newest that fit, oldest of them first
+  first := s[0].count; shown := 0;
+  while first > 0 && shown + s[0].len[first - 1] <= CW_SHOWN { first -= 1; shown += s[0].len[first]; }
+  hidden := s[0].total - (s[0].count - first);
+  buf: [UI_ID] u8; buf2: [UI_ID] u8;
+  if hidden > 0 { m := k_meta(t, "earlier", tr_cat(buf2[..], tr_join(buf[..], "", hidden), ifx hidden == 1 then " earlier message is not shown" else " earlier messages are not shown")); }
+  for k: first..<s[0].count {
+    number := s[0].total - s[0].count + k;
+    id := tr_join(buf[..], "m.", number);
+    text := cw_text(s, k);
+    if s[0].who[k] == CW_YOU { m := k_user(t, u, id, text); continue; }
+    // an answer: what has come of it, as Markdown
+    coming := s[0].live && k + 1 == s[0].count;
+    if !coming && text.count == 0 { continue; }   // it got no answer: the notice below says why
+    a := tr_open(t, id, TG_DIV, "msg-ai");
+    if coming { tr_attr(t, a, AT_STATE, ifx text.count == 0 then "waiting" else "streaming"); }
+    ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+    if coming && text.count == 0 {
+      // a Claude turn at work: what it says it is doing, and the tools it has used
+      if s[0].working_n > 0 { w := tr_leaf(t, tr_cat(ida[..], id, ".work"), TG_P, "work", cast(string) s[0].working[0..<s[0].working_n]); }
+      at := 0; line := 0;
+      while at < s[0].tools_n {
+        e := at;
+        while e < s[0].tools_n && s[0].tools[e] != '\n' { e += 1; }
+        tl := tr_leaf(t, tr_join(idc[..], tr_cat(idb[..], id, ".tool."), line), TG_P, "work", cast(string) s[0].tools[at..<e]);
+        at = e + 1; line += 1;
       }
-      whole := n == text.count;
-      a := tr_open(t, id, TG_DIV, "msg-ai");
-      if !whole { tr_attr(t, a, AT_STATE, "streaming"); }
+    } else {
       doc := s[0].doc[..];
       doc[0].n = 0; doc[0].nb = 0; doc[0].nr = 0; doc[0].ni = 0; doc[0].nlink = 0;
-      blocks := md_parse(doc, cast(string) text[0..<n], 0);
-      ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+      blocks := md_parse(doc, text, 0);
       body := k_agent(t, u, tr_cat(ida[..], id, ".md"), doc);
-      if whole {
-        acts := tr_open(t, tr_cat(idb[..], id, ".acts"), TG_DIV, "acts");
-        number := s[0].total - s[0].count + k;
-        done := s[0].copied == number + 1 && s[0].time - s[0].copied_at < MONO_COPIED;
-        if done { s[0].streaming = true; }   // build again when the check gives way to Copy
-        c := k_icon_button(t, tr_cat(idc[..], id, ".copy"), ifx done then IC_CHECK else IC_COPY, ifx done then "Copied" else "Copy");
-        if done { tr_attr(t, c, AT_STATE, "done"); }
-        tr_close(t);
-      }
+    }
+    if !coming {
+      acts := tr_open(t, tr_cat(idb[..], id, ".acts"), TG_DIV, "acts");
+      done := s[0].copied == number + 1 && s[0].time - s[0].copied_at < MONO_COPIED;
+      if done { s[0].marking = true; }
+      c := k_icon_button(t, tr_cat(idc[..], id, ".copy"), ifx done then IC_CHECK else IC_COPY, ifx done then "Copied" else "Copy");
+      if done { tr_attr(t, c, AT_STATE, "done"); }
+      if s[0].meta_n[k] > 0 { mm := k_meta(t, tr_cat(idd[..], id, ".meta"), cast(string) s[0].meta[k][0..<s[0].meta_n[k]]); }
       tr_close(t);
     }
     tr_close(t);
+  }
+  if s[0].error_n > 0 {
+    n := k_notice(t, u, "failed", "Error", cast(string) s[0].error[0..<s[0].error_n]);
     tr_close(t);
   }
-  f := k_composer(t, u, "composer", "Ask anything", "", "Send", cw_has_words(s));
-  tr_attr(t, f, AT_FOCUS, "");
+  tr_close(t);
   tr_close(t);
 }
+cw_build :: (s: [] ChatWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  tr_begin(t);
+  s[0].marking = false;
+  page := tr_open(t, "chat", TG_MAIN, "chat");
+  if s[0].view == CW_SETTINGS { cw_settings_card(s); }
+  else if s[0].count > 0 { cw_transcript(s); }
+  f := k_composer_begin(t, u, "composer", "Ask anything");
+  tr_attr(t, f, AT_FOCUS, "");
+  gear := k_icon_button(t, "settings", IC_SETTINGS, ifx s[0].view == CW_SETTINGS then "Back to the chat" else "Settings");
+  if s[0].view == CW_SETTINGS { tr_attr(t, gear, AT_STATE, "done"); }
+  names := CW_MODEL_NAMES; notes := CW_MODEL_NOTES;
+  k_select_begin(t, u, "model", names[cw_model(s)], "Model", s[0].menu);
+  if s[0].menu {
+    buf: [UI_ID] u8;
+    most := ifx cw_connected(s) then CW_MODELS else CW_GEMINIS;
+    for m: 0..<most { r := k_row(t, u, tr_join(buf[..], "model.", m), names[m], notes[m], m == cw_model(s)); }
+    if !cw_connected(s) { hint := k_meta(t, "model.hint", "Connect a Claude account in Settings to choose Claude models."); }
+  }
+  k_select_end(t, s[0].menu);
+  stoppable := s[0].live && !s[0].stopping;
+  k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && s[0].flight == CF_NONE));
+  tr_close(t);
+}
+
 // Makes room for one more message of `need` bytes. When the transcript is full the oldest quarter goes at
 // once, in one pass, so the text is not moved for every message after that.
 cw_room :: (s: [] ChatWeb, need: int) {
@@ -127,16 +275,28 @@ cw_room :: (s: [] ChatWeb, need: int) {
   if drop == 0 { return; }
   for i: gone..<s[0].pool_n { s[0].pool[i - gone] = s[0].pool[i]; }
   s[0].pool_n -= gone;
-  for k: drop..<s[0].count { s[0].at[k - drop] = s[0].at[k] - gone; s[0].len[k - drop] = s[0].len[k]; s[0].who[k - drop] = s[0].who[k]; s[0].born[k - drop] = s[0].born[k]; }
+  for k: drop..<s[0].count {
+    s[0].at[k - drop] = s[0].at[k] - gone; s[0].len[k - drop] = s[0].len[k]; s[0].who[k - drop] = s[0].who[k];
+    s[0].meta[k - drop] = s[0].meta[k]; s[0].meta_n[k - drop] = s[0].meta_n[k];
+  }
   s[0].count -= drop;
 }
-// A message into the transcript, the oldest making room for it.
-cw_add :: (s: [] ChatWeb, text: string, who: int) {
-  cw_room(s, text.count);
+// A message into the transcript, the oldest making room for it and for `reserve` more bytes after it.
+cw_add :: (s: [] ChatWeb, text: string, who: int, reserve: int) {
+  cw_room(s, text.count + reserve);
   k := s[0].count;
-  s[0].at[k] = s[0].pool_n; s[0].len[k] = text.count; s[0].who[k] = who; s[0].born[k] = s[0].time + MONO_REPLY_WAIT;
+  s[0].at[k] = s[0].pool_n; s[0].len[k] = text.count; s[0].who[k] = who; s[0].meta_n[k] = 0;
   for c: text { s[0].pool[s[0].pool_n] = c; s[0].pool_n += 1; }
   s[0].count += 1; s[0].total += 1;
+}
+// More of the answer that is coming: onto the last message, which ends the pool.
+cw_more :: (s: [] ChatWeb, text: string) {
+  if !s[0].live || s[0].count == 0 { return; }
+  k := s[0].count - 1;
+  for c: text {
+    if s[0].len[k] >= CW_ANSWER || s[0].pool_n >= CW_POOL { s[0].cut = true; return; }
+    s[0].pool[s[0].pool_n] = c; s[0].pool_n += 1; s[0].len[k] += 1;
+  }
 }
 // The number in an answer's Copy id ("m.7.copy" is 7), or -1.
 cw_copy_of :: (id: string) -> int {
@@ -145,29 +305,248 @@ cw_copy_of :: (id: string) -> int {
   for i: 2..<id.count - 5 { c := id[i]; if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
   return n;
 }
-// Takes the message: it goes into the transcript, without the space around it, and the field is cleared.
+// The digit after a part: "model.2" after "model." is 2, else -1.
+cw_index :: (id: string, part: string) -> int {
+  if id.count != part.count + 1 || cast(string) id[0..<part.count] != part { return -1; }
+  c := id[part.count];
+  return ifx c >= '0' && c <= '9' then cast(int) (c - '0') else -1;
+}
+
+// A Gemini message: the request for the conversation as it stands, the newest messages that fit CW_ASK,
+// oldest of them first, to the inference door.
+cw_complete :: (s: [] ChatWeb, model: int) -> bool {
+  first := s[0].count; bytes := 0;
+  while first > 0 && bytes + s[0].len[first - 1] <= CW_ASK { first -= 1; bytes += s[0].len[first]; }
+  if first == s[0].count && s[0].count > 0 { first = s[0].count - 1; }   // the message itself always goes
+  messages: [CW_MESSAGES] GwMessage; n := 0;
+  for k: first..<s[0].count {
+    if s[0].len[k] == 0 { continue; }   // an answer that never came
+    messages[n] = GwMessage.{role = ifx s[0].who[k] == CW_AGENT then "assistant" else "user", text = cw_text(s, k)};
+    n += 1;
+  }
+  ids := CW_MODEL_IDS; names := CW_MODEL_NAMES;
+  system: [1024] u8;
+  sn := cw_put(system[..], 0, CW_SYSTEM);
+  sn = cw_put(system[..], sn, names[model]); sn = cw_put(system[..], sn, " ("); sn = cw_put(system[..], sn, ids[model]);
+  sn = cw_put(system[..], sn, ") on Google's Vertex AI.");
+  req := GwRequest.{model = ids[model], system = cast(string) system[0..<sn], messages = messages[0..<n], effort = "low", stream = true};
+  body: [CW_REQUEST] u8;
+  bn := gw_chat_body(req, 0, body[..]);
+  return cw_go(s, CF_COMPLETE, "/api/chat/complete", cast(string) body[0..<bn]);
+}
+// A Claude message: a turn of the hosted agent, in this visit's conversation there (a new one the first time).
+cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
+  ids := CW_MODEL_IDS;
+  body: [CW_REQUEST] u8; num: [24] u8;
+  n := json_raw(body[..], 0, "{");
+  if s[0].conv > 0 { n = json_raw(body[..], n, "\"c\":\""); n = json_raw(body[..], n, tr_join(num[..], "", s[0].conv)); n = json_raw(body[..], n, "\","); }
+  n = json_raw(body[..], n, "\"text\":"); n = json_write_string(body[..], n, text);
+  n = json_raw(body[..], n, ",\"model\":"); n = json_write_string(body[..], n, ids[model]);
+  n = json_raw(body[..], n, "}");
+  return cw_go(s, CF_SEND, "/api/chat/send", cast(string) body[0..<n]);
+}
+// Takes the message: it goes into the transcript, without the space around it, the field is cleared,
+// and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_send :: (s: [] ChatWeb) {
-  if !cw_has_words(s) { return; }
+  if s[0].live || s[0].flight != CF_NONE || !cw_has_words(s) { return; }
   lo := 0; hi := s[0].draft_n;
   while lo < hi && (s[0].draft[lo] == ' ' || s[0].draft[lo] == '\n' || s[0].draft[lo] == '\t' || s[0].draft[lo] == '\r') { lo += 1; }
   while hi > lo && (s[0].draft[hi - 1] == ' ' || s[0].draft[hi - 1] == '\n' || s[0].draft[hi - 1] == '\t' || s[0].draft[hi - 1] == '\r') { hi -= 1; }
-  cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU);
-  // the dummy answer: the next of CW_REPLIES, a moment later
-  replies := CW_REPLIES;
-  cw_add(s, replies[s[0].sends % replies.count], CW_AGENT);
+  model := cw_model(s);
+  cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, CW_ANSWER);
+  sent := ifx cw_claude_model(model) then cw_turn_send(s, model, cw_text(s, s[0].count - 1)) else cw_complete(s, model);
+  cw_add(s, "", CW_AGENT, CW_ANSWER);
+  names := CW_MODEL_NAMES;
+  k := s[0].count - 1;
+  s[0].meta_n[k] = cw_put(s[0].meta[k][..], 0, names[model]);
   s[0].sends += 1;
-  s[0].draft_n = 0;
+  s[0].live = true; s[0].cut = false; s[0].event_n = 0; s[0].raw_n = 0; s[0].error_n = 0;
+  s[0].turn = 0; s[0].stopping = false; s[0].stop_sent = false; s[0].working_n = 0; s[0].tools_n = 0; s[0].ntools = 0;
+  fresh: GwParse; s[0].ps[0] = fresh;
+  s[0].draft_n = 0; s[0].view = CW_CHAT; s[0].menu = false;
   dm_value(s[0].dom[..], "composer", "");
 }
+// Stop. A Gemini stream ends at once and what came of the answer stays. A Claude turn is asked to stop,
+// and ends when the runner says it has.
+cw_stop :: (s: [] ChatWeb) {
+  if !s[0].live || s[0].stopping { return; }
+  if s[0].flight == CF_COMPLETE {
+    s[0].stop = true; s[0].ask = false; s[0].flight = CF_NONE;
+    s[0].live = false;
+    return;
+  }
+  s[0].stopping = true;
+}
+
+// One whole event of the stream (its lines, without the blank one that ended it).
+cw_event :: (s: [] ChatWeb, lines: string) {
+  name: [64] u8; data: [CW_EVENT] u8;
+  sse: [1] GwSse;
+  gw_sse_init(sse[..], name[..], data[..]);
+  at := 0;
+  while at <= lines.count {
+    e := at;
+    while e < lines.count && lines[e] != '\n' { e += 1; }
+    ev := gw_sse_line(sse[..], cast(string) lines[at..<e]);
+    if ev.ready {
+      scratch: [CW_EVENT] u8;
+      ar: [1] ClArena; ar[0].buf = scratch[..];
+      out: [8] GwEvent;
+      n := gw_chat_chunk(s[0].ps[..], ar[..], ev.data, out[..]);
+      for k: 0..<n {
+        if out[k].kind == GW_EV_TEXT { cw_more(s, out[k].text); }
+        else if out[k].kind == GW_EV_REFUSED { cw_say(s, ifx out[k].reason.count > 0 then out[k].reason else "The model stopped before it finished."); }
+      }
+    }
+    at = e + 1;
+  }
+}
+// A piece of an answer. A stream's whole events are read as they end (a blank line); anything else is kept for its end.
+cw_piece :: (s: [] ChatWeb, status: int, bytes: string) {
+  if s[0].flight == CF_NONE { return; }
+  s[0].status = status;
+  if s[0].flight != CF_COMPLETE || status != 200 {
+    for c: bytes { if s[0].resp_n < CW_RESP { s[0].resp[s[0].resp_n] = c; s[0].resp_n += 1; } }
+    return;
+  }
+  for c: bytes {
+    if c == '\r' { continue; }
+    if s[0].event_n >= CW_EVENT { s[0].event_n = 0; s[0].cut = true; }   // an event too long to read is skipped
+    s[0].event[s[0].event_n] = c; s[0].event_n += 1;
+    n := s[0].event_n;
+    if n >= 2 && s[0].event[n - 1] == '\n' && s[0].event[n - 2] == '\n' {
+      cw_event(s, cast(string) s[0].event[0..<n - 1]);
+      s[0].event_n = 0;
+    }
+  }
+}
+// Why a request failed, in words: the door's own ({"error": "..."}) when it has any.
+cw_why :: (s: [] ChatWeb, status: int, out: [] u8) -> int {
+  scratch: [CW_ERROR] u8;
+  ar: [1] ClArena; ar[0].buf = scratch[..];
+  said := cl_str(ar[..], cast(string) s[0].resp[0..<s[0].resp_n], "error");
+  if status == 401 { return cw_put(out, 0, "Log in as an admin to chat. The chat is for admins only for now."); }
+  if status == 403 { return cw_put(out, 0, "The chat is for admins only for now."); }
+  if status == 0 { return cw_put(out, 0, "The page couldn't reach OpenAgents. Check your connection and try again."); }
+  if said.count > 0 { return cw_put(out, 0, said); }
+  if status == 429 { return cw_put(out, 0, "Too many requests just now. Wait a minute and try again."); }
+  return cw_put(out, 0, "That didn't work. Try again.");
+}
+cw_fail :: (s: [] ChatWeb, status: int) { s[0].error_n = cw_why(s, status, s[0].error[..]); s[0].live = false; }
+// The account as the API says it: the credential's kind and last four characters, or none.
+cw_account :: (s: [] ChatWeb, body: string, under: string) {
+  scratch: [CW_ERROR] u8; path: [48] u8;
+  ar: [1] ClArena; ar[0].buf = scratch[..];
+  kind := cl_str(ar[..], body, tr_cat(path[..], under, "kind"));
+  s[0].claude = ifx kind == "oauth" then CA_TOKEN else ifx kind.count > 0 then CA_KEY else CA_NONE;
+  last := cl_str(ar[..], body, tr_cat(path[..], under, "last4"));
+  s[0].last4_n = cw_put(s[0].last4[..], 0, last);
+  s[0].expired = cl_raw(body, tr_cat(path[..], under, "expired")) == "true";
+}
+// A Claude turn as the API reads it back: at work (what it is doing, its tools), or ended.
+cw_turn_read :: (s: [] ChatWeb, body: string) {
+  scratch: [CW_ANSWER] u8; path: [48] u8; part: [48] u8;
+  ar: [1] ClArena; ar[0].buf = scratch[..];
+  status := cl_str(ar[..], body, "status");
+  s[0].working_n = cw_put(s[0].working[..], 0, cl_str(ar[..], body, "working"));
+  s[0].tools_n = 0; s[0].ntools = 0;
+  while s[0].ntools < 64 {
+    name := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "tools.", s[0].ntools), ".name"));
+    if name.count == 0 { break; }
+    detail := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "tools.", s[0].ntools), ".detail"));
+    n := cw_put(s[0].tools[..], s[0].tools_n, name);
+    if detail.count > 0 { n = cw_put(s[0].tools[..], n, "  "); n = cw_put(s[0].tools[..], n, detail); }
+    s[0].tools_n = cw_put(s[0].tools[..], n, "\n");
+    s[0].ntools += 1;
+  }
+  if status == "queued" || status == "running" { return; }
+  k := s[0].count - 1;
+  if s[0].ntools > 0 {
+    num: [24] u8;
+    n := cw_put(s[0].meta[k][..], s[0].meta_n[k], " · ");
+    n = cw_put(s[0].meta[k][..], n, tr_join(num[..], "", s[0].ntools));
+    s[0].meta_n[k] = cw_put(s[0].meta[k][..], n, ifx s[0].ntools == 1 then " tool" else " tools");
+  }
+  if status == "done" { cw_more(s, cl_str(ar[..], body, "answer")); }
+  else if status != "stopped" {
+    why := cl_str(ar[..], body, "error");
+    cw_say(s, ifx why.count > 0 then why else "The turn didn't finish. Send it again.");
+  }
+  if s[0].cut { cw_say(s, "The answer was longer than this page keeps, so its end is missing."); }
+  s[0].live = false; s[0].stopping = false; s[0].turn = 0; s[0].working_n = 0; s[0].tools_n = 0;
+}
+// A request's end.
+cw_end :: (s: [] ChatWeb, status: int) {
+  kind := s[0].flight;
+  if kind == CF_NONE { return; }
+  s[0].flight = CF_NONE;
+  body := cast(string) s[0].resp[0..<s[0].resp_n];
+  if kind == CF_ACCOUNT {
+    s[0].known = status == 200;
+    if status == 200 { cw_account(s, body, "claude."); }
+  } else if kind == CF_KEY {
+    if status == 200 { cw_account(s, body, ""); s[0].expired = false; s[0].note_n = cw_put(s[0].note[..], 0, "Connected. Choose a Claude model in the menu beside the gear."); }
+    else { s[0].note_n = cw_why(s, status, s[0].note[..]); }
+  } else if kind == CF_UNKEY {
+    if status == 200 { s[0].claude = CA_NONE; s[0].last4_n = 0; s[0].expired = false; s[0].note_n = cw_put(s[0].note[..], 0, "Disconnected."); }
+    else { s[0].note_n = cw_why(s, status, s[0].note[..]); }
+  } else if kind == CF_COMPLETE {
+    if !s[0].live { return; }
+    s[0].live = false;
+    if s[0].event_n > 0 { cw_event(s, cast(string) s[0].event[0..<s[0].event_n]); s[0].event_n = 0; }
+    got := s[0].count > 0 && s[0].len[s[0].count - 1] > 0;
+    if status != 200 { cw_fail(s, status); }
+    else if s[0].cut { cw_say(s, "The answer was longer than this page keeps, so its end is missing."); }
+    else if !got && s[0].error_n == 0 { cw_say(s, "The model sent no answer."); }
+  } else if kind == CF_SEND {
+    if status != 200 { cw_fail(s, status); return; }
+    c := cl_int(body, "c"); turn := cl_int(body, "turn");
+    if !c.ok || !turn.ok { cw_fail(s, 0); return; }
+    s[0].conv = c.value; s[0].turn = turn.value; s[0].asked_at = s[0].time;
+  } else if kind == CF_TURN {
+    if status == 200 { cw_turn_read(s, body); }
+    else if status != 0 { cw_fail(s, status); s[0].turn = 0; }   // with no answer at all, it is read again
+  }
+}
+// What a frame sends for a Claude turn at work: Stop once, then a read each CW_POLL seconds.
+cw_tick :: (s: [] ChatWeb) {
+  if !s[0].live || s[0].turn <= 0 || s[0].flight != CF_NONE { return; }
+  url: [96] u8; num: [24] u8;
+  if s[0].stopping && !s[0].stop_sent && s[0].conv > 0 {
+    body: [64] u8;
+    n := cw_put(body[..], 0, "{\"c\":\""); n = cw_put(body[..], n, tr_join(num[..], "", s[0].conv)); n = cw_put(body[..], n, "\"}");
+    if cw_go(s, CF_STOP, "/api/chat/stop", cast(string) body[0..<n]) { s[0].stop_sent = true; s[0].asked_at = s[0].time - CW_POLL; }   // then read at once
+    return;
+  }
+  if s[0].time - s[0].asked_at < CW_POLL { return; }
+  if cw_go(s, CF_TURN, tr_cat(url[..], "/api/chat/turn?t=", tr_join(num[..], "", s[0].turn)), "") { s[0].asked_at = s[0].time; }
+}
+// Connect: the key typed in Settings goes to be checked and sealed, and is wiped here.
+cw_connect :: (s: [] ChatWeb) {
+  if s[0].key_n == 0 || s[0].flight != CF_NONE { return; }
+  body: [CW_KEY + 64] u8;
+  n := json_raw(body[..], 0, "{\"credential\":");
+  n = json_write_string(body[..], n, cast(string) s[0].key[0..<s[0].key_n]);
+  n = json_raw(body[..], n, "}");
+  sent := cw_go(s, CF_KEY, "/api/chat/key", cast(string) body[0..<n]);
+  for i: 0..<body.count { body[i] = 0; }
+  for i: 0..<CW_KEY { s[0].key[i] = 0; }
+  s[0].key_n = 0; s[0].note_n = 0;
+  dm_value(s[0].dom[..], "claude.key", "");
+}
+
+// ---------------------------------------------------------------- the face's calls
 
 coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   if !s[0].ready {
     n := mono_frames(s[0].sets[..]);
     s[0].ready = true; s[0].dirty = true;
+    asked := cw_go(s, CF_ACCOUNT, "/api/chat/account", "");
   }
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step;
+  cw_tick(s);
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
@@ -177,39 +556,61 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   ui_begin(s[0].ui[..], s[0].time, reduced);
   cw_build(s);
   ui_end(s[0].ui[..]);
-  s[0].animating = s[0].ui[0].busy || s[0].streaming;
+  s[0].animating = s[0].ui[0].busy || s[0].marking;
   s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
   if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
   return bytes;
 }
-coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// Whether the host is to call again next frame: something changed or is moving, or a Claude turn is at work.
+coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating || (s[0].live && s[0].turn > 0)); }
 coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
   if s.count < 1 { return; }
+  if kind == CW_PIECE {
+    n := ifx length < 0 then 0 else ifx length > CW_INBOX then CW_INBOX else length;
+    cw_piece(s, slot, cast(string) s[0].inbox[0..<n]);
+    s[0].dirty = true; return;
+  }
+  if kind == CW_END { cw_end(s, slot); s[0].dirty = true; return; }
   id := dm_slot_id(s[0].dom[..], slot);
   if kind == CW_INPUT && id == "composer" {
     n := ifx length < 0 then 0 else ifx length > CW_DRAFT then CW_DRAFT else length;
     for i: 0..<n { s[0].draft[i] = s[0].inbox[i]; }
     s[0].draft_n = n;
   }
+  else if kind == CW_INPUT && id == "claude.key" {
+    n := ifx length < 0 then 0 else ifx length > CW_KEY then CW_KEY else length;
+    for i: 0..<n { s[0].key[i] = s[0].inbox[i]; s[0].inbox[i] = 0; }   // the key doesn't stay in the inbox
+    s[0].key_n = n;
+  }
   else if kind == CW_SUBMIT && id == "composer" { cw_send(s); }
-  else if kind == CW_CLICK && id == "composer.send" { cw_send(s); }
+  else if kind == CW_SUBMIT && id == "claude.key" { cw_connect(s); }
+  else if kind == CW_CLICK && id == "composer.send" { if s[0].live { cw_stop(s); } else { cw_send(s); } }
+  else if kind == CW_CLICK && id == "settings" {
+    s[0].view = ifx s[0].view == CW_SETTINGS then CW_CHAT else CW_SETTINGS; s[0].menu = false; s[0].note_n = 0;
+    if s[0].view == CW_SETTINGS { again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); }   // the account as it is now (a login since the page opened)
+  }
+  else if kind == CW_CLICK && id == "settings.back" { s[0].view = CW_CHAT; }
+  else if kind == CW_CLICK && id == "model" { s[0].menu = !s[0].menu; }
+  else if kind == CW_CLICK && cw_index(id, "model.") >= 0 {
+    m := cw_index(id, "model.");
+    if m < CW_MODELS && (!cw_claude_model(m) || cw_connected(s)) { s[0].model = m; }
+    s[0].menu = false;
+    dm_focus(s[0].dom[..], "composer");   // a model chosen: the caret is back in the field
+  }
+  else if kind == CW_CLICK && id == "claude.save" { cw_connect(s); }
+  else if kind == CW_CLICK && id == "claude.remove" { if cw_go(s, CF_UNKEY, "/api/chat/key_remove", "{}") { s[0].note_n = 0; } }
   else if kind == CW_CLICK && cw_copy_of(id) < 0 && id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" {
     // a code block's Copy: the code beside it, as the page shows it
     pre: [UI_ID] u8;
     at := tr_find(s[0].tree[..], tr_cat(pre[..], cast(string) id[0..<id.count - 5], ".pre"));
-    if at >= 0 {
-      code := tr_text_of(s[0].tree[..], at);
-      s[0].clip_n = 0;
-      for c: code { if s[0].clip_n < CW_DRAFT { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } }
-    }
+    if at >= 0 { s[0].clip_n = cw_put(s[0].clip[..], 0, tr_text_of(s[0].tree[..], at)); }
   }
   else if kind == CW_CLICK && cw_copy_of(id) >= 0 {
     k := cw_copy_of(id) - (s[0].total - s[0].count);
     if k >= 0 && k < s[0].count {
       s[0].copied = cw_copy_of(id) + 1; s[0].copied_at = s[0].time;
-      s[0].clip_n = 0;
-      for i: 0..<s[0].len[k] { if s[0].clip_n < CW_DRAFT { s[0].clip[s[0].clip_n] = s[0].pool[s[0].at[k] + i]; s[0].clip_n += 1; } }
+      s[0].clip_n = cw_put(s[0].clip[..], 0, cw_text(s, k));
     }
   }
   else { return; }
@@ -221,104 +622,303 @@ coaxial_chatweb_size :: (s: [] ChatWeb, slot: int, w: f32, h: f32) #export_c #ef
 coaxial_chatweb_clip :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
 coaxial_chatweb_clip_done :: (s: [] ChatWeb) #export_c #effects(all) { if s.count > 0 { s[0].clip_n = 0; } }
 coaxial_chatweb_inbox_cap :: () -> int #export_c #effects(all) { return CW_INBOX; }
+// Whether a request waits for the host; its body's bytes (none for a GET); and that it has gone, when the
+// body, which may hold a key, is wiped.
+coaxial_chatweb_asking :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ask; }
+coaxial_chatweb_ask :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].ask then s[0].request_n else 0; }
+coaxial_chatweb_asked :: (s: [] ChatWeb) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if s[0].flight != CF_COMPLETE { for i: 0..<s[0].request_n { s[0].request[i] = 0; } s[0].request_n = 0; }
+  s[0].ask = false;
+}
+// Whether the host is to end the stream, read once.
+coaxial_chatweb_stop :: (s: [] ChatWeb) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].stop { return false; }
+  s[0].stop = false;
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
 
 CwTest :: struct { s: [1] ChatWeb; }
 
-#test "the page is the composer alone; Send is off until there are words" {
+cw_test_type :: (s: [] ChatWeb, id: string, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_chatweb_event(s, CW_INPUT, dm_find(s[0].dom[..], id), text.count);
+}
+// A piece of an answer, as the host hands it over, and a whole answer with its end.
+cw_test_piece :: (s: [] ChatWeb, status: int, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_chatweb_event(s, CW_PIECE, status, text.count);
+}
+cw_test_answer :: (s: [] ChatWeb, status: int, text: string) {
+  coaxial_chatweb_asked(s);
+  if text.count > 0 { cw_test_piece(s, status, text); }
+  coaxial_chatweb_event(s, CW_END, status, 0);
+}
+cw_test_has :: (s: string, part: string) -> bool {
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+// The page as it opens: its first frame, and the account's answer.
+cw_test_open :: (s: [] ChatWeb, account: string) {
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_answer(s, 200, account);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+}
+cw_test_door :: (s: [] ChatWeb) -> string { return cast(string) s[0].door[0..<s[0].door_n]; }
+cw_test_body :: (s: [] ChatWeb) -> string { return cast(string) s[0].request[0..<s[0].request_n]; }
+cw_test_press :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_CLICK, dm_find(s[0].dom[..], id), 0); }
+cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMIT, dm_find(s[0].dom[..], id), 0); }
+
+#test "the page opens on the composer, asks for the account, and Send is off until there are words" {
   h: [1] CwTest; s := h[0].s[..];
   n := coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert n > 0 && t[0].n == 6 && t[0].lost == 0 && tr_class(t, 0) == "chat";
+  #assert n > 0 && t[0].lost == 0 && tr_class(t, 0) == "chat" && tr_find(t, "log") < 0 && tr_find(t, "settings.title") < 0;
+  #assert coaxial_chatweb_asking(s) && coaxial_chatweb_ask(s) == 0 && cw_test_door(s) == "/api/chat/account";
   #assert t[0].nodes[tr_find(t, "composer")].tag == TG_TEXTAREA && tr_has(t, tr_find(t, "composer"), AT_FOCUS);
-  #assert tr_has(t, tr_find(t, "composer.send"), AT_DISABLED) && coaxial_chatweb_frame(s, 0.016, true) == 0;
-  d := s[0].dom[..];
-  spaces := "  \n ";
-  for i: 0..<spaces.count { s[0].inbox[i] = spaces[i]; }
-  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), spaces.count);
+  #assert tr_attr_of(t, tr_find(t, "settings"), AT_LABEL) == "Settings" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 3.8 Flash";
+  #assert tr_has(t, tr_find(t, "composer.send"), AT_DISABLED);
+  cw_test_answer(s, 200, "{\"claude\":null}");
+  #assert s[0].known && s[0].claude == CA_NONE && !coaxial_chatweb_asking(s);
+  cw_test_type(s, "composer", "  \n ");
   n = coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
-  coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
-  #assert s[0].sends == 0;
+  cw_test_enter(s, "composer");
+  #assert s[0].sends == 0 && !coaxial_chatweb_asking(s);
 }
 
-#test "a sent message and its answer are in the transcript, in order; the oldest go when there are too many, and the page says so" {
+#test "a message goes into the transcript, the field clears, and Gemini is asked with the conversation" {
   h: [1] CwTest; s := h[0].s[..];
-  n := coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_open(s, "{\"claude\":null}");
   d := s[0].dom[..];
-  #assert tr_find(s[0].tree[..], "log") < 0;
-  text := "  first\nline two \n";
-  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
-  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), text.count);
-  coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
+  cw_test_type(s, "composer", "  first\nline \"two\" \n");
+  cw_test_enter(s, "composer");
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert s[0].sends == 1 && s[0].live && s[0].draft_n == 0 && dm_test_count(d, n, DC_VALUE) == 1;
+  #assert tr_text_of(t, tr_find(t, "m.0.p")) == "first\nline \"two\"" && tr_attr_of(t, tr_find(t, "m.1"), AT_STATE) == "waiting";
+  #assert tr_text_of(t, tr_find(t, "composer.send.l")) == "Stop" && !tr_has(t, tr_find(t, "composer.send"), AT_DISABLED);
+  body := cw_test_body(s);
+  #assert coaxial_chatweb_ask(s) > 0 && cw_test_door(s) == "/api/chat/complete";
+  #assert cw_test_has(body, "\"model\":\"google/gemini-3.8-flash\"") && cw_test_has(body, "{\"role\":\"system\",\"content\":\"You are OpenAgents");
+  #assert cw_test_has(body, "the model answering is Gemini 3.8 Flash (google/gemini-3.8-flash) on Google's Vertex AI.");
+  #assert cw_test_has(body, "{\"role\":\"user\",\"content\":\"first\\nline \\\"two\\\"\"}") && cw_test_has(body, "\"stream\":true") && cw_test_has(body, "\"reasoning_effort\":\"low\"");
+  #assert !cw_test_has(body, "assistant");
+  coaxial_chatweb_asked(s);
+  #assert !coaxial_chatweb_asking(s);
+  // nothing more is taken while the answer is coming
+  cw_test_type(s, "composer", "again");
+  cw_test_enter(s, "composer");
+  #assert s[0].sends == 1;
+}
+
+#test "the answer comes in pieces, split anywhere, and is Markdown when whole; the next message carries it" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  d := s[0].dom[..];
+  cw_test_type(s, "composer", "hi");
+  cw_test_enter(s, "composer");
+  coaxial_chatweb_asked(s);
+  cw_test_piece(s, 200, "data: {\"choices\":[{\"delta\":{\"content\":\"We are **Open\"}}]}\n\ndata: {\"choi");
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_attr_of(t, tr_find(t, "m.1"), AT_STATE) == "streaming" && tr_find(t, "m.1.copy") < 0;
+  #assert tr_text_of(t, tr_find(t, "m.1.md.b0.0")) == "We are ";
+  cw_test_piece(s, 200, "ces\":[{\"delta\":{\"content\":\"Agents**.\\n\\n- one\"}}]}\r\n\r\n");
+  cw_test_piece(s, 200, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":7}}\n\ndata: [DONE]\n\n");
+  coaxial_chatweb_event(s, CW_END, 200, 0);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !s[0].live && s[0].error_n == 0 && cw_text(s, 1) == "We are **OpenAgents**.\n\n- one";
+  #assert !tr_has(t, tr_find(t, "m.1"), AT_STATE) && tr_find(t, "m.1.copy") > 0 && tr_find(t, "failed") < 0;
+  #assert t[0].nodes[tr_find(t, "m.1.md.b0.1")].tag == TG_STRONG && tr_text_of(t, tr_find(t, "m.1.md.b1.i0.0")) == "one";
+  #assert tr_text_of(t, tr_find(t, "composer.send.l")) == "Send" && tr_text_of(t, tr_find(t, "m.1.meta")) == "Gemini 3.8 Flash";
+  cw_test_type(s, "composer", "and then?");
+  cw_test_enter(s, "composer");
+  #assert cw_test_has(cw_test_body(s), "{\"role\":\"user\",\"content\":\"hi\"},{\"role\":\"assistant\",\"content\":\"We are **OpenAgents**.\\n\\n- one\"},{\"role\":\"user\",\"content\":\"and then?\"}");
+  // Copy copies the answer
+  cw_test_press(s, "m.1.copy");
+  #assert coaxial_chatweb_clip(s) == cw_text(s, 1).count && cw_copy_of("m.12.copy") == 12 && cw_copy_of("m.x.copy") < 0 && cw_copy_of("composer") < 0;
+}
+
+#test "Stop keeps what came; a refusal, a missing answer and the door's errors are said in words" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_type(s, "composer", "one");
+  cw_test_enter(s, "composer");
+  coaxial_chatweb_asked(s);
+  cw_test_piece(s, 200, "data: {\"choices\":[{\"delta\":{\"content\":\"half an\"}}]}\n\n");
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_press(s, "composer.send");
+  #assert !s[0].live && coaxial_chatweb_stop(s) && !coaxial_chatweb_stop(s) && cw_text(s, 1) == "half an";
+  cw_test_piece(s, 200, "data: {\"choices\":[{\"delta\":{\"content\":\" answer\"}}]}\n\n");   // a late piece is not taken
+  coaxial_chatweb_event(s, CW_END, 200, 0);
+  #assert cw_text(s, 1) == "half an" && s[0].error_n == 0;
+  // the door says no
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_type(s, "composer", "two");
+  cw_test_enter(s, "composer");
+  cw_test_answer(s, 401, "{\"error\":\"log in as an admin\"}");
   n = coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert tr_text_of(t, tr_find(t, "m.0.p")) == "first\nline two" && tr_find(t, "earlier") < 0;
-  #assert tr_class(t, tr_find(t, "m.1")) == "msg-ai" && tr_find(t, "m.1.md.b0") > tr_find(t, "m.0") && tr_find(t, "m.1.copy") > 0;
-  #assert t[0].nodes[tr_find(t, "log")].parent == 0 && tr_find(t, "log") < tr_find(t, "composer");
-  for k: 0..<CW_MESSAGES {
-    s[0].inbox[0] = cast(u8) ('a' + k % 26);
-    coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), 1);
-    coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
-  }
+  #assert !s[0].live && tr_text_of(t, tr_find(t, "failed.t")) == "Log in as an admin to chat. The chat is for admins only for now." && tr_find(t, "m.3") < 0;
+  // its own words for a limit
+  cw_test_type(s, "composer", "three");
+  cw_test_enter(s, "composer");
+  #assert s[0].error_n == 0;
+  cw_test_answer(s, 429, "{\"error\":\"today's requests are used up\"}");
+  #assert cast(string) s[0].error[0..<s[0].error_n] == "today's requests are used up";
+  // no connection, and a stream that ends with nothing
+  cw_test_type(s, "composer", "four");
+  cw_test_enter(s, "composer");
+  cw_test_answer(s, 0, "");
+  #assert cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "couldn't reach OpenAgents");
+  cw_test_type(s, "composer", "five");
+  cw_test_enter(s, "composer");
+  // an answer that never came is not sent back to the model
+  #assert !cw_test_has(cw_test_body(s), "\"content\":\"\"");
+  cw_test_answer(s, 200, "data: {\"error\":{\"message\":\"the model is overloaded\",\"code\":503}}\n\n");
+  #assert cast(string) s[0].error[0..<s[0].error_n] == "the model is overloaded";
+}
+
+#test "the menu offers the Gemini models, and Claude's only once an account is connected" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_press(s, "model");
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "model.0.t")) == "Gemini 3.8 Flash" && tr_text_of(t, tr_find(t, "model.1.t")) == "Gemini 4 Argon" && tr_text_of(t, tr_find(t, "model.2.t")) == "Gemini 4 Carbon";
+  #assert tr_find(t, "model.3") < 0 && tr_find(t, "model.hint") > 0 && tr_attr_of(t, tr_find(t, "model.0"), AT_CURRENT) == "true";
+  cw_test_press(s, "model.2");
   n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert s[0].count <= CW_MESSAGES && s[0].count >= CW_MESSAGES - CW_MESSAGES / 4 && s[0].sends == CW_MESSAGES + 1 && s[0].total == CW_MESSAGES * 2 + 2;
+  #assert s[0].model == 2 && !s[0].menu && tr_find(t, "model.0") < 0 && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 4 Carbon";
+  #assert dm_test_count(s[0].dom[..], n, DC_FOCUS) == 1;   // the caret goes back to the field
+  cw_test_type(s, "composer", "hello");
+  cw_test_enter(s, "composer");
+  #assert cw_test_has(cw_test_body(s), "\"model\":\"google/gemini-4-carbon\"") && cw_test_has(cw_test_body(s), "Gemini 4 Carbon (google/gemini-4-carbon)");
+  // a connected account brings the Claude models
+  g: [1] CwTest; c := g[0].s[..];
+  cw_test_open(c, "{\"claude\":{\"kind\":\"oauth\",\"last4\":\"wxyz\",\"expired\":false}}");
+  #assert c[0].claude == CA_TOKEN && cw_connected(c);
+  cw_test_press(c, "model");
+  n = coaxial_chatweb_frame(c, 0.016, true);
+  #assert tr_text_of(c[0].tree[..], tr_find(c[0].tree[..], "model.5.t")) == "Claude Opus 5.5" && tr_find(c[0].tree[..], "model.hint") < 0;
+  // an expired one doesn't
+  e: [1] CwTest; x := e[0].s[..];
+  cw_test_open(x, "{\"claude\":{\"kind\":\"api_key\",\"last4\":\"wxyz\",\"expired\":true}}");
+  x[0].model = 5;
+  #assert x[0].claude == CA_KEY && !cw_connected(x) && cw_model(x) == 0;
+}
+
+#test "the gear opens Settings in the transcript's place; a key is sent once, wiped, and the account is said back" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  d := s[0].dom[..];
+  cw_test_press(s, "settings");
+  #assert cw_test_door(s) == "/api/chat/account";
+  cw_test_answer(s, 200, "{\"claude\":null}");
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert s[0].view == CW_SETTINGS && tr_find(t, "log") < 0 && tr_find(t, "accounts.h") > 0 && tr_attr_of(t, tr_find(t, "settings"), AT_LABEL) == "Back to the chat";
+  #assert cw_test_has(tr_text_of(t, tr_find(t, "claude.status")), "Not connected") && tr_attr_of(t, tr_find(t, "claude.key"), AT_TYPE) == "password";
+  #assert tr_has(t, tr_find(t, "claude.save"), AT_DISABLED) && tr_find(t, "claude.remove") < 0 && tr_find(t, "composer") > 0;
+  cw_test_type(s, "claude.key", "sk-ant-oat01-secretsecret");
+  #assert s[0].key_n == 25 && s[0].inbox[0] == 0;
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !tr_has(t, tr_find(t, "claude.save"), AT_DISABLED);
+  cw_test_press(s, "claude.save");
+  #assert cw_test_door(s) == "/api/chat/key" && cw_test_body(s) == "{\"credential\":\"sk-ant-oat01-secretsecret\"}" && s[0].key_n == 0 && s[0].key[0] == 0;
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "claude.save.l")) == "Checking" && dm_test_count(d, n, DC_VALUE) == 1;
+  coaxial_chatweb_asked(s);
+  #assert s[0].request_n == 0 && s[0].request[14] == 0;   // the key is not kept once it has gone
+  cw_test_piece(s, 400, "{\"error\":\"That key didn't work: the token is invalid\"}");
+  coaxial_chatweb_event(s, CW_END, 400, 0);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].claude == CA_NONE && tr_text_of(t, tr_find(t, "claude.note")) == "That key didn't work: the token is invalid";
+  cw_test_type(s, "claude.key", "sk-ant-oat01-good");
+  cw_test_enter(s, "claude.key");
+  cw_test_answer(s, 200, "{\"kind\":\"oauth\",\"label\":\"Claude subscription\",\"last4\":\"good\"}");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_connected(s) && tr_text_of(t, tr_find(t, "claude.status")) == "Connected: a Claude subscription token ending good." && tr_find(t, "claude.remove") > 0;
+  cw_test_press(s, "claude.remove");
+  #assert cw_test_door(s) == "/api/chat/key_remove";
+  cw_test_answer(s, 200, "{\"removed\":true}");
+  #assert s[0].claude == CA_NONE && cast(string) s[0].note[0..<s[0].note_n] == "Disconnected.";
+  cw_test_press(s, "settings.back");
+  #assert s[0].view == CW_CHAT;
+  // not logged in: Settings says so, and offers no field
+  g: [1] CwTest; c := g[0].s[..];
+  n = coaxial_chatweb_frame(c, 0.016, true);
+  cw_test_answer(c, 401, "{\"error\":\"log in as an admin\"}");
+  cw_test_press(c, "settings");
+  cw_test_answer(c, 401, "{\"error\":\"log in as an admin\"}");
+  n = coaxial_chatweb_frame(c, 0.016, true);
+  #assert !c[0].known && tr_find(c[0].tree[..], "claude.key") < 0 && cw_test_has(tr_text_of(c[0].tree[..], tr_find(c[0].tree[..], "claude.status")), "Log in as an admin");
+}
+
+#test "a Claude message is a turn of the hosted agent: sent, read each second with its tools, then answered" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":{\"kind\":\"oauth\",\"last4\":\"wxyz\",\"expired\":false}}");
+  s[0].model = 5;
+  cw_test_type(s, "composer", "what does chat.coax do?");
+  cw_test_enter(s, "composer");
+  #assert cw_test_door(s) == "/api/chat/send" && cw_test_body(s) == "{\"text\":\"what does chat.coax do?\",\"model\":\"claude-opus-5-5\"}";
+  cw_test_answer(s, 200, "{\"c\": 7, \"turn\": 31, \"model\": \"claude-opus-5-5\"}");
+  #assert s[0].conv == 7 && s[0].turn == 31 && s[0].live && coaxial_chatweb_busy(s);
+  n := coaxial_chatweb_frame(s, 0.1, true);
+  #assert !coaxial_chatweb_asking(s);   // not yet a second
+  for k: 0..<11 { n = coaxial_chatweb_frame(s, 0.1, true); }
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/chat/turn?t=31" && coaxial_chatweb_ask(s) == 0;
+  cw_test_answer(s, 200, "{\"status\":\"running\",\"answer\":\"\",\"error\":\"\",\"working\":\"reading chat.coax\",\"tools\":[{\"name\":\"Read\",\"detail\":\"apps/openagents-web/chat.coax\"},{\"name\":\"Grep\",\"detail\":\"wc_ask\"}]}");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert s[0].live && s[0].ntools == 2 && tr_text_of(t, tr_find(t, "m.1.work")) == "reading chat.coax";
+  #assert tr_text_of(t, tr_find(t, "m.1.tool.0")) == "Read  apps/openagents-web/chat.coax" && tr_text_of(t, tr_find(t, "m.1.tool.1")) == "Grep  wc_ask";
+  // Stop asks the runner once, and the turn ends when it says so
+  cw_test_press(s, "composer.send");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].stopping && cw_test_door(s) == "/api/chat/stop" && cw_test_body(s) == "{\"c\":\"7\"}" && tr_has(t, tr_find(t, "composer.send"), AT_DISABLED);
+  cw_test_answer(s, 200, "{\"turn\":31}");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/api/chat/turn?t=31";
+  cw_test_answer(s, 200, "{\"status\":\"running\",\"answer\":\"\",\"error\":\"\",\"working\":\"\",\"tools\":[]}");
+  for k: 0..<12 { n = coaxial_chatweb_frame(s, 0.1, true); }
+  #assert cw_test_door(s) == "/api/chat/turn?t=31" && coaxial_chatweb_asking(s);
+  cw_test_answer(s, 200, "{\"status\":\"done\",\"answer\":\"It draws **/chat-gpu**.\",\"error\":\"\",\"working\":\"\",\"tools\":[{\"name\":\"Read\",\"detail\":\"a\"}]}");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !s[0].live && !s[0].stopping && s[0].turn == 0 && cw_text(s, 1) == "It draws **/chat-gpu**." && !coaxial_chatweb_busy(s);
+  #assert tr_text_of(t, tr_find(t, "m.1.meta")) == "Claude Opus 5.5 · 1 tool" && tr_find(t, "m.1.copy") > 0;
+  // the next one goes to the same conversation; a turn that fails says why
+  cw_test_type(s, "composer", "and?");
+  cw_test_enter(s, "composer");
+  #assert cw_test_body(s) == "{\"c\":\"7\",\"text\":\"and?\",\"model\":\"claude-opus-5-5\"}";
+  cw_test_answer(s, 200, "{\"c\": 7, \"turn\": 32}");
+  for k: 0..<12 { n = coaxial_chatweb_frame(s, 0.1, true); }
+  cw_test_answer(s, 200, "{\"status\":\"failed\",\"answer\":\"\",\"error\":\"Your token expired. Make a new one with claude setup-token and save it under KEY.\",\"working\":\"\",\"tools\":[]}");
+  #assert !s[0].live && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "Your token expired");
+  cw_test_type(s, "composer", "again");
+  cw_test_enter(s, "composer");
+  cw_test_answer(s, 409, "{\"error\":\"the agent is still answering; wait or press STOP\"}");
+  #assert !s[0].live && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "still answering");
+}
+
+#test "the oldest messages go when there are too many, and the page says how many are not shown" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  for k: 0..<CW_MESSAGES {
+    cw_add(s, "question", CW_YOU, 0);
+    cw_add(s, "answer", CW_AGENT, 0);
+  }
+  s[0].dirty = true;
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert s[0].count <= CW_MESSAGES && s[0].count >= CW_MESSAGES - CW_MESSAGES / 4 && s[0].total == CW_MESSAGES * 2;
   gone := s[0].total - s[0].count;
   b1: [UI_ID] u8; b2: [UI_ID] u8; b3: [UI_ID] u8; b4: [UI_ID] u8;
   #assert tr_find(t, "m.0") < 0 && tr_find(t, tr_join(b1[..], "m.", gone - 1)) < 0 && tr_find(t, tr_join(b2[..], "m.", gone)) > 0;
   #assert tr_class(t, tr_find(t, tr_join(b3[..], "m.", s[0].total - 1))) == "msg-ai";
   #assert tr_text_of(t, tr_find(t, "earlier")) == tr_cat(b4[..], tr_join(b1[..], "", gone), " earlier messages are not shown") && t[0].lost == 0 && t[0].depth == 0;
-}
-
-#test "an answer comes a moment later, its text grows, and then it is whole and can be copied" {
-  h: [1] CwTest; s := h[0].s[..];
-  n := coaxial_chatweb_frame(s, 0.016, false);
-  d := s[0].dom[..];
-  for k: 0..<20 { n = coaxial_chatweb_frame(s, 0.1, false); }   // the composer has entered
-  #assert !coaxial_chatweb_busy(s);
-  s[0].inbox[0] = 'q';
-  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), 1);
-  coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
-  n = coaxial_chatweb_frame(s, 0.016, false);
-  t := s[0].tree[..];
-  #assert tr_find(t, "m.0") > 0 && tr_find(t, "m.1") < 0 && coaxial_chatweb_busy(s);
-  for k: 0..<5 { n = coaxial_chatweb_frame(s, 0.1, false); }
-  first := tr_text_of(t, tr_find(t, "m.1.md.b0.0"));
-  replies := CW_REPLIES;
-  #assert first.count > 0 && first.count < 100 && first == cast(string) replies[0][0..<first.count];
-  #assert tr_attr_of(t, tr_find(t, "m.1"), AT_STATE) == "streaming" && tr_find(t, "m.1.copy") < 0 && coaxial_chatweb_busy(s);
-  for k: 0..<40 { n = coaxial_chatweb_frame(s, 0.1, false); }
-  #assert !tr_has(t, tr_find(t, "m.1"), AT_STATE) && tr_find(t, "m.1.copy") > 0 && !coaxial_chatweb_busy(s);
-  #assert coaxial_chatweb_frame(s, 0.016, false) == 0;
-  coaxial_chatweb_event(s, CW_CLICK, dm_find(d, "m.1.copy"), 0);
-  #assert coaxial_chatweb_clip(s) == replies[0].count && cw_copy_of("m.12.copy") == 12 && cw_copy_of("m.x.copy") < 0 && cw_copy_of("composer") < 0;
-  coaxial_chatweb_clip_done(s);
-  #assert coaxial_chatweb_clip(s) == 0;
-  // the third answer has a code block, and its Copy copies the code
-  for q: 0..<2 {
-    s[0].inbox[0] = 'q';
-    coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), 1);
-    coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
-    for k: 0..<40 { n = coaxial_chatweb_frame(s, 0.1, false); }
-  }
-  coaxial_chatweb_event(s, CW_CLICK, dm_find(d, "m.5.md.b1.copy"), 0);
-  #assert coaxial_chatweb_clip(s) == "coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9471".count;
-}
-
-#test "Enter or Send takes the message and clears the field" {
-  h: [1] CwTest; s := h[0].s[..];
-  n := coaxial_chatweb_frame(s, 0.016, true);
-  d := s[0].dom[..];
-  text := "hello";
-  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
-  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), text.count);
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert !tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED) && tr_attr_of(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_STATE) == "primary";
-  coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert s[0].sends == 1 && s[0].draft_n == 0 && dm_test_count(d, n, DC_VALUE) == 1;
-  #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
-  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
-  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), text.count);
-  coaxial_chatweb_event(s, CW_CLICK, dm_find(d, "composer.send"), 0);
-  #assert s[0].sends == 2;
 }
