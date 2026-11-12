@@ -22,8 +22,6 @@ EXPORT("dom_inbox_cap") uint32_t dom_inbox_cap(void) { return (uint32_t)coaxial_
 EXPORT("dom_event") void dom_event(uint32_t state, int32_t kind, int32_t slot, int32_t length) { coaxial_chatweb_event(at(state), kind, slot, length); }
 EXPORT("dom_size") void dom_size(uint32_t state, int32_t slot, float w, float h) { coaxial_chatweb_size(at(state), slot, w, h); }
 
-// Nothing on this page is copied for the person: the host asks, and the answer is none.
-EXPORT("dom_clip") uint32_t dom_clip(uint32_t state) { (void)state; return 0u; }
-EXPORT("dom_clip_len") uint32_t dom_clip_len(uint32_t state) { (void)state; return 0u; }
-EXPORT("dom_clip_done") void dom_clip_done(uint32_t state) { (void)state; }
-
+EXPORT("dom_clip") uint32_t dom_clip(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->clip.e; }
+EXPORT("dom_clip_len") uint32_t dom_clip_len(uint32_t state) { return (uint32_t)coaxial_chatweb_clip(at(state)); }
+EXPORT("dom_clip_done") void dom_clip_done(uint32_t state) { coaxial_chatweb_clip_done(at(state)); }

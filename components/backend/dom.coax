@@ -51,7 +51,8 @@ DomSlot :: struct {
 }
 Dom :: struct {
   slots: [TR_NODES] DomSlot;
-  of: [TR_NODES] int;             // a node's slot, this flush
+  of: [TR_NODES] int;             // a node's slot, this flush (and, until it is set again, the last one)
+  top: int;                       // one past the highest slot ever used: the slots to look through
   last: [TR_NODES] int;           // the last child placed under a node, as a slot
   out: [DM_OUT] u8; out_n: int;
   overflow: bool;                 // a flush that ran out of room: the next one sends everything again
@@ -85,12 +86,21 @@ dm_slot_id :: (d: [] Dom, slot: int) -> string {
   return cast(string) d[0].slots[slot].id[0..<d[0].slots[slot].id_n];
 }
 dm_find :: (d: [] Dom, id: string) -> int {
-  for s: 0..<TR_NODES { if d[0].slots[s].live && dm_slot_id(d, s) == id { return s; } }
+  for s: 0..<d[0].top { if d[0].slots[s].live && dm_slot_id(d, s) == id { return s; } }
   return -1;
 }
+// The slot of node i: where the node at that place was last time if it is the same one (a tree that
+// didn't change shape is matched without a search), else wherever its id is.
+dm_find_near :: (d: [] Dom, i: int, id: string) -> int {
+  s := d[0].of[i];
+  if s >= 0 && s < d[0].top && d[0].slots[s].live && !d[0].slots[s].seen && dm_slot_id(d, s) == id { return s; }
+  return dm_find(d, id);
+}
 dm_free :: (d: [] Dom) -> int {
-  for s: 0..<TR_NODES { if !d[0].slots[s].live { return s; } }
-  return -1;
+  for s: 0..<d[0].top { if !d[0].slots[s].live { return s; } }
+  if d[0].top >= TR_NODES { return -1; }
+  d[0].top += 1;
+  return d[0].top - 1;
 }
 // The host's report of a framed node's size. True when it changed (the page builds again).
 dm_size :: (d: [] Dom, slot: int, w: f32, h: f32) -> bool {
@@ -108,7 +118,8 @@ dm_value :: (d: [] Dom, id: string, text: string) {
 }
 // Forgets what was sent: the next flush makes every node again (a host that started over).
 dm_reset :: (d: [] Dom) {
-  for s: 0..<TR_NODES { d[0].slots[s].live = false; }
+  for s: 0..<d[0].top { d[0].slots[s].live = false; }
+  d[0].top = 0;
   d[0].styled = false; d[0].keep = false; d[0].overflow = false; d[0].out_n = 0;
 }
 // The page's stylesheet, sent before the first flush's nodes.
@@ -154,12 +165,12 @@ dm_frame :: (d: [] Dom, slot: int, kind: int, set: AfSettings, progress: f32) {
 dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {
   if !d[0].keep { d[0].out_n = 0; d[0].sent = 0; }   // the stylesheet written just before stays in front
   d[0].keep = false;
-  for s: 0..<TR_NODES { d[0].slots[s].seen = false; }
+  for s: 0..<d[0].top { d[0].slots[s].seen = false; }
   root_last := -1;
   for i: 0..<t[0].n {
     node := t[0].nodes[i];
     id := tr_id(t, i);
-    slot := dm_find(d, id);
+    slot := dm_find_near(d, i, id);
     fresh := slot < 0 || d[0].slots[slot].seen;   // a second node with one id gets its own slot
     if fresh {
       slot = dm_free(d);
@@ -220,7 +231,7 @@ dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {
       dm_frame(d, slot, node.frame - 1, sets[node.frame_set], node.progress);
     } else { d[0].slots[slot].frame_h = 0; }
   }
-  for s: 0..<TR_NODES {
+  for s: 0..<d[0].top {
     if d[0].slots[s].live && !d[0].slots[s].seen {
       dm_u8(d, DC_REMOVE); dm_u16(d, s); d[0].sent += 1;
       d[0].slots[s].live = false;
@@ -307,7 +318,7 @@ dm_test_u32 :: (d: [] Dom, i: int) -> int {
   dm_test_page(t, "Send", false);
   n := dm_flush(d, t, sets[..]);
   slot := dm_find(d, "send");
-  #assert dm_size(d, slot, 120, 32) && !dm_size(d, slot, 120, 32) && !dm_size(d, 400, 1, 1);
+  #assert dm_size(d, slot, 120, 32) && !dm_size(d, slot, 120, 32) && !dm_size(d, 400, 1, 1) && !dm_size(d, TR_NODES, 1, 1);
   n = dm_flush(d, t, sets[..]);
   #assert d[0].sent == 1 && dm_test_count(d, n, DC_FRAME) == 1;
   n = dm_flush(d, t, sets[..]);

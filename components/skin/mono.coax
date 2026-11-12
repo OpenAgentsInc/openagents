@@ -40,6 +40,9 @@ MONO_TEXT_MOST :: 0.7;
 MONO_TEXT_RATE :: 70.0;        // characters a second
 // A field grows with what is typed, to this many lines; past them it scrolls. The stylesheet says the same.
 MONO_FIELD_LINES :: 8;
+// An answer arrives a moment after the message, then its text comes this many characters a second.
+MONO_REPLY_WAIT :: 0.35;
+MONO_REPLY_RATE :: 240.0;
 
 mc :: (out: [] u8, at: int, s: string) -> int {
   n := at;
@@ -66,8 +69,8 @@ mono_css :: (out: [] u8) -> int {
   // It is its own fixed layer behind the page, so scrolling and coming back to the tab don't draw it again.
   n = mc(out, n, "body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;");
   n = mc(out, n, "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' shape-rendering='crispEdges'%3E");
-  n = mc(out, n, "%3Cpath fill='%230b0b0b' d='M0 20h40v1H0zM20 0h1v40h-1z'/%3E");
-  n = mc(out, n, "%3Cpath fill='%23262626' d='M19.5 19.5h2v2h-2z'/%3E%3C/svg%3E\");");
+  n = mc(out, n, "%3Cpath fill='%23070707' d='M0 20h40v1H0zM20 0h1v40h-1z'/%3E");
+  n = mc(out, n, "%3Cpath fill='%23181818' d='M19.5 19.5h2v2h-2z'/%3E%3C/svg%3E\");");
   n = mc(out, n, "background-size:40px 40px;background-position:center top}");
   n = mc(out, n, "::selection{background:#fff;color:#000}");
   // a frame: the SVG behind a node's content, its three layers
@@ -154,7 +157,15 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".chat{height:100dvh;max-width:792px;margin:0 auto;padding:16px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}");
   // the transcript fills what the composer leaves and scrolls inside itself, staying at its end as messages come
   n = mc(out, n, ".log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column-reverse;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
-  n = mc(out, n, ".log .thread{padding:8px 0 20px}.msg-user p{overflow-wrap:anywhere}");
+  n = mc(out, n, ".log .thread{padding:8px 0 20px;gap:0}.msg-user p{overflow-wrap:anywhere}");
+  // a turn: the person's message, then the answer close under it as prose on the ground, then its actions
+  n = mc(out, n, ".log .msg-user,.log .md{font-size:15px;line-height:1.65}.log .msg-user{margin-top:28px}.log .thread>:first-child{margin-top:0}");
+  n = mc(out, n, ".msg-ai{margin-top:14px;display:flex;flex-direction:column;gap:6px;min-width:0;animation:rise .32s cubic-bezier(.2,.7,.2,1)}");
+  n = mc(out, n, ".msg-ai .md{gap:16px;max-width:none}.msg-ai .md p{overflow-wrap:anywhere}");
+  n = mc(out, n, ".msg-ai[data-state=streaming] .md>:last-child::after{content:'\\25AE';margin-left:3px;color:var(--ink-muted);animation:blink 1s steps(2,start) infinite}");
+  n = mc(out, n, ".acts{display:flex;align-items:center;gap:2px;margin-left:-8px;animation:rise .25s ease-out}");
+  n = mc(out, n, "@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes blink{to{visibility:hidden}}");
+  n = mc(out, n, "@media (prefers-reduced-motion:reduce){.msg-ai,.acts{animation:none}}");
   // the chat page is as tall as the window and never scrolls or bounces: only what is inside it scrolls
   n = mc(out, n, "html:has(.chat),body:has(.chat){height:100%;overflow:hidden;overscroll-behavior:none}body:has(.chat){position:fixed;inset:0}");
   n = mc(out, n, "@media (max-width:600px){.page{padding:20px 16px 64px;gap:36px}.list,.menu{width:100%}.msg-user{max-width:88%}}");

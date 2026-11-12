@@ -11,7 +11,7 @@
 // comes or goes. A node holds text or children, not both.
 //   coax/bin/coax test components/core/tree.coax
 
-TR_NODES :: 512;      // nodes in one tree
+TR_NODES :: 4096;     // nodes in one tree
 TR_POOL :: 131072;    // bytes of ids, classes, text and attribute values
 TR_DEPTH :: 32;       // open nodes at once
 
