@@ -286,8 +286,9 @@ A full run is the backstop: every suite, every web module against its budget,
 the report checks, the room build, and the compiler's units when its sources
 changed since the last full green run. It runs when there is no `main-green`,
 and at most every three hours after that (`OA_AFTER_GAP`). If a full run fails
-where the fast runs passed, it bisects from the last head a full run passed
-and moves `main-green` back to that head.
+where the fast runs passed, it bisects from the last head a full run passed.
+When a culprit it finds is in `main-green`'s history, `main-green` moves back
+to just before the oldest such culprit, and no further (#13256).
 
 When a run passes, it moves `main-green`:
 
@@ -306,8 +307,14 @@ Results go under `releases/after/<commit>/`. The per-commit history of
 compile-time totals, wasm sizes and allowlist counts (`after.sh history`)
 shows which commit made a unit grow.
 
-A job whose host stops under it (the hosts are spot machines) runs again, up
-to two more times, before the run counts as unfinished.
+A job the host could not judge runs again, up to two more times, before the
+run counts as unfinished: its host stopped under it (the hosts are spot
+machines), the check says it can't judge the commit (`check.sh` exits 97;
+"Host faults", below), or it failed with no verdict of its own (empty output,
+or output that stops before `check.sh`'s last line). Each try after the first
+goes to another host when one has a free slot (`OA_REMOTE_AVOID`), with the
+slot's compiler installed again first (`OA_REMOTE_FRESH_COMPILER=1`). Such a
+job is never bisected, filed or reverted.
 
 An unfinished run leaves the head unjudged, neither green nor red. The same
 is true when the hosts could not finish a bisect. The jobs that did not pass
@@ -318,12 +325,15 @@ bisect never leaves `main-green` waiting for someone to push.
 
 ### 5. A failure finds its culprit and goes back to its author
 
-When a run fails, `after.sh` first runs the failing check again on the head.
-If it passes, the check is flaky (see below). If it fails again, `after.sh`
-bisects between `main-green` and the head. It runs only the failing check,
-several commits at once on parallel host slots, so a run of eight commits
-takes one or two rounds. A commit the hosts could not run is left out of its
-round, and the other commits still narrow the range. It then:
+When a run fails, `after.sh` first runs the failing check again on the head,
+on another host than the one it failed on. If it passes, the check is flaky
+(see below). If it fails again, `after.sh` bisects between `main-green` and the
+head. It runs only the failing check, several commits at once on parallel
+host slots, so a run of eight commits takes one or two rounds. A commit the
+hosts could not run is left out of its round, and the other commits still
+narrow the range. A culprit before the head failed only once, on one host, so
+it runs again on another host first; when it passes there, nothing is filed.
+It then:
 
 1. Files an issue that names the culprit commit, the failing check and its
    output, and the agent from the commit's `Agent:` trailer.
@@ -364,7 +374,13 @@ the entry; a raise with a `Rebaseline:` trailer is green; a commit worse than
 production in Everglade II, under two later commits, is red and the bisect
 names it; a `main-green` as bad as the head against production is reported,
 not red; a suite that fails once is flaky with an owned entry, which fails
-`after.sh flaky` once it is eight days old. `check.sh reports`, and any fast
+`after.sh flaky` once it is eight days old. And the host faults of #13256,
+none of which may blame a commit: a toolchain that moved under the host (97
+until the compiler is installed again) is green with nothing filed; so is a
+job that fails once with empty output; a host that can never run the check
+leaves the head unfinished with nothing filed; a check that fails on one host
+and passes on another is not the commit's; and a full run's culprit sets
+`main-green` back to just before it, not to the last full green run. `check.sh reports`, and any fast
 run that changes `coax/remote/`, runs it.
 
 #### The allowlist counts
@@ -504,6 +520,13 @@ prints it now and, for the last seven days, the worst and the share of samples
 under 30 minutes. That line is where the week-long observation of #13255
 (under 30 minutes behind for a week) is read.
 
+Every release waits on `main-green`, so a long lag is reported loudly
+(#13256): when the oldest commit after it is 90 minutes old
+(`OA_AFTER_STALE`, 5400 s; three hours before) or 40 commits have landed
+after it (`OA_AFTER_STALE_COMMITS`), the watcher raises the alarm (the log,
+the `ALARM` file and the "Green-main pipeline needs attention" issue, below),
+and `after.sh state` prints a `BEHIND` line under `main-green`'s.
+
 ### 6. Releases ship `main-green`
 
 `release.sh` already takes `--ref COMMIT`. Its default becomes
@@ -550,6 +573,7 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
 | One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `coder-since BASE`, `coder`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`) |
 | The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`, `flaky`) |
+| The build hosts' pinned nixpkgs (#13256) | `coax/remote/nixpkgs.rev` |
 | The allowlist counts (#13266) | `coax/remote/counts.sh` (`show [REV]`, `check BASE [REV]`) |
 | The comparing gates' own check (#13266) | `coax/remote/test-after.sh` |
 | The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
@@ -681,8 +705,8 @@ GitHub issue titled "Green-main pipeline needs attention", which it opens,
 comments on, and closes when `main-green` next moves. It reports when:
 
 - the watcher starts after 15 minutes or more without running;
-- `main-green` is three hours behind `main` (`OA_AFTER_STALE`), for any
-  reason;
+- `main-green` is 90 minutes or 40 commits behind `main`
+  (`OA_AFTER_STALE`, `OA_AFTER_STALE_COMMITS`), for any reason;
 - the hosts could not finish the check of one head three times in a row.
 
 Each kind is reported at most once every two hours
@@ -711,6 +735,59 @@ too. `host-job.sh` now keeps a slot's compiler only while
 `provenance.sh verify` passes in the job's toolchain, and `check.sh` exits 97
 (the host could not judge it) on that refusal, so the pipeline runs the check
 again instead of bisecting it (2135f8731e).
+
+#### Host faults
+
+Issue [#13256](https://github.com/OpenAgentsInc/openagents/issues/13256). The
+cause of 2026-11-11, from the hosts: every running host (`oa-build-1`, `-10`,
+`-11`, `-12`) holds two store paths of the same GCC 16.2.0 musl wrapper,
+`8w6brrb0...` (registered on 11-09 and 11-10) and `r7l3x65k...`, registered
+on each host between 18:08 and 19:17 Chicago time on 11-11, when Nix fetched
+`nixpkgs-unstable` again and got `f6bf1059f0`. The compiler's provenance
+fingerprint names the C compiler's path, so every slot compiler built
+before then stopped verifying, though no compiler input had changed: the
+suites refused it in about 4 seconds from 18:59 to 19:40.
+
+Now:
+
+- **The toolchain is pinned.** `coax/remote/nixpkgs.rev` holds a nixpkgs
+  commit (`f6bf1059f0`, what the hosts already had, so no slot rebuilt).
+  `remote.sh` sends it with each job, and `host-job.sh` sets the host's
+  `nixpkgs` flake to it (`nix registry add`) before anything else, so every
+  `nix shell nixpkgs#...` on the host resolves to it: the job's toolchain,
+  `check.sh` at any commit a bisect runs, the Wasm toolchain and OpenSSL.
+  `publish-host.sh` builds the published Linux compiler from the same commit.
+  The fingerprint changes only when that file does; the next job on each
+  host then rebuilds its slots' compilers once.
+- **A check that can't judge the commit says so.** `check.sh` exits 97 when
+  every failing item is a host's: the compiler refused as not built from the
+  tree, a suite whose compiler did not start, the suites step with no suite
+  failing for itself, the compiler's units with no unit failing, an empty
+  log, or a failure outside any step. One real failure beside them keeps the
+  check judged. A commit that breaks the suite runner itself before any suite
+  runs therefore isn't bisected either: it leaves the head unfinished, and
+  after three runs the pipeline raises its alarm.
+- **`after.sh` judges only what the check judged.** A failed job counts only
+  when its output carries the check's own verdict (`check ...: FAILED`); any
+  other status or an empty output is 97. A 97 runs again elsewhere with the
+  compiler installed again, then leaves the head unfinished: never bisected,
+  filed or reverted.
+- **One host can't confirm its own failure.** The run again of a failing
+  check, and the run again of a culprit before the head, go to another host.
+  The `mutation_schedule` unit of #13327 failed twice on `oa-build-10` slot 1
+  (`evidence.py`: the compiler's own SHA-256 was `null` in its record) and
+  passed on `oa-build-11` and `-12` at the same commit: it was the host's.
+- **The issue shows the failing output.** When the culprit was the head, its
+  issue looked for a bisect round that never ran it and printed nothing
+  (#13327, #13333). It now prints the head's run again, or the job's own.
+- **`main-green` moves back only as far as the culprit.** Until now a full
+  run that found a culprit moved `main-green` back to the last head a full
+  run passed: on 2026-11-11 twice to `38daeb78d0` (15:59), at 19:29 and at
+  22:36, though fast runs had passed later heads (78ab78f450 at 18:36). That is
+  why `main-green` read `38daeb78d0`. It now moves to just before the oldest
+  culprit in its history, and not at all when every culprit is after it.
+
+`test-after.sh` plays each of these with its stand-in check (cases 8 to 12).
 
 The same evening the 30-minute revert of c4040e643d (#13309) was queued with
 conflict markers in `apps/openagents-web/build.sh`: four later commits built

@@ -54,7 +54,8 @@
 # "PERCENT CODE RESOURCE USED LIMIT UNIT"), sizes.txt ("MODULE BYTES BUDGET
 # PERCENT") and warnings.txt (limits above 90%, modules above 98% of budget).
 # Exit 0 when the check passed, 1 when it failed, 97 when the host could not
-# judge it (its compiler doesn't match the tree).
+# judge it (not_judged, below: its compiler doesn't match the tree, or the
+# check failed before any suite or unit ran).
 set -uo pipefail
 export LC_ALL=C
 mode="${1:-}"; arg="${2:-}"; also=("${@:3}")
@@ -479,13 +480,39 @@ case "$mode" in
   *) run "$mode" "$arg" || { sed -n '8,45p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
-# tool.sh suites refused the compiler: the host's compiler doesn't match this
-# tree in its toolchain (nixpkgs moved under the slot). That says nothing of
-# the commit, so the host could not run the check (97): the caller runs it
-# again, and host-job.sh rebuilds the compiler first (#13255).
-if [[ $status != 0 ]] && grep -q 'was not built from this tree; run coax/build.sh' "$log"; then
+# A failure that says nothing of the commit: the host could not run the check
+# (97), and the caller runs it again, with the slot's compiler installed again
+# first, instead of bisecting it (#13255, #13256). Each failing item has to be
+# one of these; one real failure beside them keeps the check judged.
+#   - tool.sh suites refused the compiler: it doesn't match this tree in the
+#     host's toolchain (nixpkgs moved under the slot, 2026-11-11)
+#   - a suite whose compiler did not start
+#   - the suites step failed with no suite failing for itself, or the
+#     compiler's units with no unit failing (an empty log, a full or broken
+#     host, a harness that stopped before any suite or unit ran)
+#   - nothing failed by name: the check stopped outside any step
+not_judged() {
+  [[ $status != 0 ]] || return 1
+  [[ -s "$log" ]] || { why="its log is empty"; return 0; }
+  if grep -q 'was not built from this tree; run coax/build.sh' "$log"; then why="the host's compiler doesn't match this tree"; return 0; fi
+  [[ -s "$out/failed" ]] || { why="it stopped outside any step"; return 0; }
+  local item
+  while IFS= read -r item; do
+    case "$item" in
+      # judged when a suite failed for itself, or a unit failed
+      "step suites") grep -E '^FAIL ' "$log" | grep -qv ': the compiler did not start$' && return 1 ;;
+      "step compiler") grep -Eq '^== [^ ]+: FAILED' "$log" && return 1 ;;
+      suite\ *) grep -qxF "FAIL ${item#suite }: the compiler did not start" "$log" || return 1 ;;
+      *) return 1 ;;
+    esac
+  done < "$out/failed"
+  why="no suite or unit failed for itself"
+  return 0
+}
+why=""
+if not_judged; then
   echo 97 > "$out/status"
-  echo "check $mode${arg:+ ${arg:0:60}}: the host's compiler doesn't match this tree; not judged (97)"
+  echo "check $mode${arg:+ ${arg:0:60}}: not judged (97): $why"
   exit 97
 fi
 echo "$status" > "$out/status"

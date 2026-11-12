@@ -1,0 +1,13 @@
+# The nixpkgs revision the build hosts take their toolchains from (#13256).
+# host-job.sh pins each host's `nixpkgs` flake to it before a job, so every
+# `nix shell nixpkgs#...` there (the compiler's static GCC for musl, the Wasm
+# toolchain, OpenSSL) resolves to this commit, whatever nixpkgs-unstable says.
+# coax/provenance.sh's fingerprint names the C compiler's store path, so a
+# slot's compiler stops verifying only when this line changes.
+#
+# f6bf1059f0 is what nixpkgs-unstable gave every host on 2026-11-11 from about
+# 18:00 Chicago time (GCC 16.2.0, x86_64-unknown-linux-musl-gcc-wrapper at
+# /nix/store/r7l3x65k0bcfzd91qxik6013acyijiw3-...). To move it: change the
+# line, push, and the next job on each host pins the new one and rebuilds its
+# slots' compilers once.
+f6bf1059f02576e0b913c7b49d5e4eb6dda9cc22

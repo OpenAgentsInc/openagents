@@ -19,6 +19,20 @@ infra() { echo "remote: $*" >&2; rm -rf "$in"; exit 97; }
 # shellcheck disable=SC1091
 source ~/.nix-profile/etc/profile.d/nix.sh 2> /dev/null || true
 export PATH="$HOME/.bun/bin:$PATH"
+# The toolchain's nixpkgs, pinned (#13256): the caller's coax/remote/nixpkgs.rev.
+# Every `nix shell nixpkgs#...` on this host (here, in check.sh at any commit,
+# in toolchain.sh and tls-env.sh) resolves through the user's flake registry,
+# so pinning `nixpkgs` there holds them all to that commit. Unpinned, nixpkgs
+# followed nixpkgs-unstable: on 2026-11-11 between 18:08 and 19:17 Chicago
+# time every host fetched a new revision whose GCC 16.2.0 wrapper had a new
+# store path, every slot's compiler record (which names that path) stopped
+# verifying, and the pipeline blamed five innocent commits for it.
+pin="$(grep -m1 -oE '^[0-9a-f]{40}$' "$in/nixpkgs.rev" 2> /dev/null)"
+if [[ -n "$pin" ]] && command -v nix > /dev/null 2>&1 && ! grep -q "$pin" ~/.config/nix/registry.json 2> /dev/null; then
+  ( flock 9
+    grep -q "$pin" ~/.config/nix/registry.json 2> /dev/null || nix registry add nixpkgs "github:NixOS/nixpkgs/$pin"
+  ) 9> ~/.oa-tools.lock || infra "could not pin nixpkgs to $pin on $(hostname)"
+fi
 # What the CLI's build needs (the web build builds the CLI) and a host set up
 # before #13117 lacks: xxd (the Parakeet build embeds its shader source with
 # it) and the system's OpenSSL headers (without them tls-env.sh takes Nix's
@@ -134,6 +148,9 @@ slot_compiler_ok() {
   [[ -x coax/bin/coax && "$(cat ~/slots/$slot/compiler 2> /dev/null)" == "$fingerprint" ]] || return 1
   "${toolchain[@]}" coax/provenance.sh verify "$tree" coax/bin/coax coax/bin/provenance-check coax/bin/provenance.record > /dev/null 2>&1
 }
+# OA_REMOTE_FRESH_COMPILER=1: the caller's retry of a check the host could not
+# judge (after.sh, #13256): the slot's compiler is installed again first.
+[[ "${OA_REMOTE_FRESH_COMPILER:-0}" != 1 ]] || rm -f ~/slots/$slot/compiler
 if ! slot_compiler_ok; then
   # A compiler another host built for these sources (#13119): build.sh's
   # cache entry (~/.cache/coax-release/FINGERPRINT), from the shared bucket

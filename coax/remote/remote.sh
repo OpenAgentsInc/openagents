@@ -32,6 +32,10 @@
 #                                waiting on one (default 1800)
 #   OA_REMOTE_HOST               run on this host only (a running one), waiting for its
 #                                slot: for measuring one host against another
+#   OA_REMOTE_AVOID              a host to use only when no other running one has a free slot (the
+#                                pipeline runs a failed check again elsewhere, #13256)
+#   OA_REMOTE_FRESH_COMPILER=1   the slot reinstalls its compiler before the command
+#                                (the pipeline's retry of a check the host could not judge)
 #   CLOUDSDK_CONFIG              gcloud's configuration (default the automation account's)
 set -uo pipefail
 export LC_ALL=C
@@ -146,19 +150,22 @@ create() {   # name: a new spot host, in each zone in turn
 # A host with a free slot: a running one, else a stopped one started, else a
 # new one (within OA_REMOTE_MAX_HOSTS and the budget). Prints "name ip".
 acquire() {
-  local list name zone status ip best="" stopped="" count=0 free
+  local list name zone status ip best="" stopped="" count=0 free avoided=""
   list="$(hosts)" || return 1
   while read -r name zone status ip; do
     [[ -n "$name" ]] || continue
     count=$((count + 1))
     if [[ "$status" == RUNNING && -n "$ip" ]] && ready "$name" "$ip"; then
       free="$(free_slots "$name" "$ip")"
+      # OA_REMOTE_AVOID: another host first, this one only when none has a slot.
+      if (( free > 0 )) && [[ "$name" == "${OA_REMOTE_AVOID:-}" ]]; then avoided="$name $ip"; continue; fi
       if (( free > 0 )); then echo "$name $ip"; return 0; fi
       [[ -n "$best" ]] || best="$name $ip"
     elif [[ "$status" == TERMINATED || "$status" == STOPPED ]]; then
       [[ -n "$stopped" ]] || stopped="$name $zone"
     fi
   done <<< "$list"
+  [[ -z "$avoided" ]] || { echo "$avoided"; return 0; }
   if ! under_budget; then
     say "the hosts cost about \$$(spent 86400) over 24 hours, the most OA_REMOTE_DAILY_USD allows is \$$daily: starting none"
     [[ -n "$best" ]] && { echo "$best"; return 0; }
@@ -193,6 +200,7 @@ named_host() {   # name: "name ip" of that running host
 cached_host() {
   local name ip free
   [[ -f "$state/host" ]] && read -r name ip < "$state/host" || return 1
+  [[ "$name" != "${OA_REMOTE_AVOID:-}" ]] || return 1
   [[ -n "$ip" ]] && ready "$name" "$ip" || return 1
   free="$(free_slots "$name" "$ip")"
   (( free > 0 )) || return 1
@@ -317,7 +325,8 @@ run() {
     printf 'env_vars=('; [[ ${#env_vars[@]} -eq 0 ]] || printf '%q ' "${env_vars[@]}"; printf ')\n'; } > "$tmp/spec"
   under_budget || fail "the hosts cost about \$$(spent 86400) over 24 hours (OA_REMOTE_DAILY_USD is \$$daily)" "$@"
   local host name ip inbox="$job.$$" sent attempt=1 nowait status
-  cp "$here/host-job.sh" "$here/shared-cache.sh" "$tmp/"
+  # nixpkgs.rev: the toolchain revision host-job.sh pins the host's nixpkgs to (#13256).
+  cp "$here/host-job.sh" "$here/shared-cache.sh" "$here/nixpkgs.rev" "$tmp/"
   # A host whose slots filled since it was picked sends the job back (96), and
   # the hosts are asked again until one has a free slot.
   while true; do
@@ -325,7 +334,7 @@ run() {
     elif (( attempt == 1 )); then host="$(cached_host || lock "$state/acquire.lock" "$0" _acquire)"
     else host="$(lock "$state/acquire.lock" "$0" _acquire)"; fi || fail "no build host could take the job" "$@"
     read -r name ip <<< "$host"; [[ -n "${OA_REMOTE_HOST:-}" ]] || echo "$name $ip" > "$state/host"
-    (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh shared-cache.sh) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
+    (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh shared-cache.sh nixpkgs.rev) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
       || fail "could not send the job to $name" "$@"
     sent=$(now)
     # Every host full: look again every 10 s for the first slot any host frees,
@@ -345,7 +354,7 @@ run() {
         done ) > /dev/null 2>&1 &
       refresher=$!
     fi
-    ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
+    ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} OA_REMOTE_FRESH_COMPILER=${OA_REMOTE_FRESH_COMPILER:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
     status=$?
     # Its sleep too: an orphaned sleep keeps the caller's descriptors, and with
     # them a lock such as after.sh's (#13102).

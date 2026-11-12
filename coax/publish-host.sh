@@ -72,11 +72,14 @@ once() {
 build() {
   case "$(uname -s)" in
     Linux)
-      # The musl toolchain's compilers by name, inside a nix shell that provides them.
-      nix shell nixpkgs#pkgsStatic.stdenv.cc nixpkgs#python3 nixpkgs#gnumake --command env \
+      # The musl toolchain's compilers by name, inside a nix shell that provides them,
+      # from the nixpkgs the build hosts are pinned to (coax/remote/nixpkgs.rev, #13256).
+      local np=nixpkgs rev
+      rev="$(grep -m1 -oE '^[0-9a-f]{40}$' "$clone/coax/remote/nixpkgs.rev" 2> /dev/null)" && np="github:NixOS/nixpkgs/$rev"
+      nix shell "$np#pkgsStatic.stdenv.cc" "$np#python3" "$np#gnumake" --command env \
         CC="$(uname -m)-unknown-linux-musl-gcc" CXX="$(uname -m)-unknown-linux-musl-g++" COAX_LDFLAGS=-static \
         COAX_NO_PUBLISHED=1 COAX_MUTATION_FULL=1 "$clone/coax/build.sh" \
-      && nix shell nixpkgs#pkgsStatic.stdenv.cc --command env \
+      && nix shell "$np#pkgsStatic.stdenv.cc" --command env \
         CC="$(uname -m)-unknown-linux-musl-gcc" CXX="$(uname -m)-unknown-linux-musl-g++" COAX_LDFLAGS=-static \
         "$clone/coax/published.sh" publish "$clone" ;;
     Darwin)

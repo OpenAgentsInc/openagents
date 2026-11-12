@@ -45,7 +45,11 @@ seconds on the Mac.
    compiler for the tree's compiler sources with `coax/build.sh`: the
    published Linux build, or a bootstrap with the release toolchain (static
    GCC for musl from nixpkgs, as `publish-host.sh` builds) when none is
-   published. Then it runs the command. Output streams back as it runs.
+   published. That nixpkgs is pinned: each job first sets the host's
+   `nixpkgs` flake to the revision in `coax/remote/nixpkgs.rev` (#13256), so
+   the toolchain, and the compiler's provenance fingerprint that names it,
+   changes only when that file does. Then it runs the command. Output
+   streams back as it runs.
 4. **Bring back.** Every file the command wrote or changed in the tree (newer
    than a marker made just before it ran, except `.git`, `coax/bin` and
    `node_modules`) comes back into the checkout as a tar stream: modules,

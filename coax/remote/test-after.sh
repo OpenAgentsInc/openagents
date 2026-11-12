@@ -13,6 +13,15 @@
 #   6. main-green as bad as the head against production: reported, not red; green
 #   7. a suite that fails once and passes when run again: flaky, the entry has an owner, and
 #      `after.sh flaky` fails once the entry is older than 7 days
+# And the host faults of #13256, none of which may blame a commit:
+#   8. the toolchain moved under a host (the check can't judge: 97) until the slot's compiler is
+#      installed again: green, main-green moves, nothing on the red list
+#   9. a job that fails with empty output (a full host) once: green, nothing on the red list
+#  10. a host that can never run the check: unfinished, main-green stays, nothing on the red list;
+#      once it can, green
+#  11. a check that fails on one host and passes on another (#13327): not the commit's; nothing filed
+#  12. a full run that finds a culprit the fast runs passed: main-green goes back to just before
+#      the culprit, not to the last full green run
 set -uo pipefail
 export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -37,20 +46,35 @@ g add -A && g commit -qm "base
 
 Agent: test-base" && g push -q origin main && g push -q origin main:refs/heads/main-green || exit 2
 
-# The stand-in check: CMD COMMIT OUTDIR CHECK-ARGS. Everglade II (room-since/tools with production,
-# e2) fails "e2 tick-p95" when the commit has e2-regress; a suite part fails once when the commit has
-# flaky-once.
+# The stand-in check: CMD COMMIT OUTDIR CHECK-ARGS. A failure ends as check.sh's does ("check
+# ...: FAILED"). Everglade II (room-since/tools with production, e2) fails "e2 tick-p95" when the
+# commit has e2-regress; a suite part fails once when the commit has flaky-once. The host faults
+# (#13256): toolchain-moved is not judged (97) until after.sh asks for the compiler again
+# (OA_REMOTE_FRESH_COMPILER=1); host-full fails with no output until then; host-broken is never
+# judged; full-break fails the full run's suite parts.
 cat > "$w/check" <<'EOF'
 #!/usr/bin/env bash
 commit="$1" dir="$2"; shift 2
 mkdir -p "$dir/build/pipeline"; : > "$dir/build/pipeline/failed"
 has() { git cat-file -e "$commit:$1" 2> /dev/null; }
+fail() { echo "$2" > "$dir/build/pipeline/failed"; echo "failed:"; echo "  $2"; echo "check $1: FAILED"; exit 1; }
+if [[ "${OA_REMOTE_FRESH_COMPILER:-0}" != 1 ]]; then
+  has toolchain-moved && { echo "check $1: not judged (97): the host's compiler doesn't match this tree"; exit 97; }
+  has host-full && exit 1
+fi
+has host-broken && { echo "remote: no build host could take the job"; exit 97; }
+# one-bad-host: the job fails on oa-bad (where it goes first), passes anywhere else
+if has one-bad-host; then
+  h=oa-bad; [[ "${OA_REMOTE_AVOID:-}" != oa-bad ]] || h=oa-good
+  echo "remote: $h slot 1: checkout and compiler 1 s, command 1 s, status 0"
+  [[ "$h" != oa-bad ]] || fail "$1" "compiler mutation_schedule"
+fi
 case "$1" in
   room-since|tools|e2)
-    if { [[ "$1" == e2 ]] || [[ "$1" == tools && -n "${2:-}" ]] || [[ "$1" == room-since && -n "${3:-}" ]]; } && has e2-regress; then echo "e2 tick-p95" > "$dir/build/pipeline/failed"; echo worse; exit 1; fi ;;
+    if { [[ "$1" == e2 ]] || [[ "$1" == tools && -n "${2:-}" ]] || [[ "$1" == room-since && -n "${3:-}" ]]; } && has e2-regress; then fail "$1" "e2 tick-p95"; fi ;;
   since)
-    if has flaky-once && [[ ! -e "$OA_TEST_W/flaked" ]]; then : > "$OA_TEST_W/flaked"; echo "suite lib/a.coax" > "$dir/build/pipeline/failed"; exit 1; fi ;;
-  only) exit 0 ;;
+    if has flaky-once && [[ ! -e "$OA_TEST_W/flaked" ]]; then : > "$OA_TEST_W/flaked"; fail "$1" "suite lib/a.coax"; fi ;;
+  suites|only) has full-break && fail "$1" "suite lib/a.coax" ;;
 esac
 exit 0
 EOF
@@ -117,6 +141,48 @@ s="$(run)"; f="$w/pl/releases/after/flaky.tsv"
 awk -F'\t' -v OFS='\t' '{ $3 = $3 - 8 * 86400 } { print }' "$f" > "$f.new" && mv "$f.new" "$f"
 out="$( (cd "$w/repo" && coax/remote/after.sh flaky) 2>&1)"; st=$?
 (( st == 1 )) && grep -q FAILING <<< "$out" && ok "7: an entry over 7 days old is a failure" || { bad "7: aged entry: status $st"; echo "$out"; }
+
+rm -f "$w/repo/flaky-once"
+open_count() { jq '[.[] | select(.status == "open")] | length' "$red"; }
+before="$(open_count)"
+
+# 8
+touch "$w/repo/toolchain-moved"; echo 'nine :: 9;' >> "$w/repo/lib/a.coax"; push agent-tc "a change while nixpkgs moved"; c8="$(g rev-parse HEAD)"
+s="$(run)"
+[[ "$s" == green && "$(open_count)" == "$before" ]] && green_is "$c8" && grep -q "not judged (97)" "$w/pl/releases/after/$c8"/*.try1.out &&
+  ok "8: a moved toolchain is not the commit's: run again with the compiler installed again, green, nothing filed" || { bad "8: status $s, open $(open_count)"; cat "$w/run.log"; }
+rm -f "$w/repo/toolchain-moved"
+
+# 9
+touch "$w/repo/host-full"; echo 'ten :: 10;' >> "$w/repo/lib/a.coax"; push agent-full "a change while the hosts were full"; c9="$(g rev-parse HEAD)"
+s="$(run)"
+[[ "$s" == green && "$(open_count)" == "$before" ]] && green_is "$c9" && grep -q "no verdict from the check" "$w/pl/releases/after/$c9"/*.try1.out &&
+  ok "9: a failure with empty output is not judged: green, nothing filed" || { bad "9: status $s, open $(open_count)"; cat "$w/run.log"; }
+rm -f "$w/repo/host-full"
+
+# 10
+touch "$w/repo/host-broken"; echo 'eleven :: 11;' >> "$w/repo/lib/a.coax"; push agent-hb "a change no host can check"; c10="$(g rev-parse HEAD)"
+s="$(run)"
+[[ "$s" == unfinished && "$(open_count)" == "$before" ]] && green_is "$c9" && ok "10: a host that can't run the check leaves the head unjudged; main-green stays; nothing filed" || { bad "10: status $s, open $(open_count)"; cat "$w/run.log"; }
+rm -f "$w/repo/host-broken"; push agent-hb "the hosts are back"; c10b="$(g rev-parse HEAD)"
+s="$(run)"; [[ "$s" == green ]] && green_is "$c10b" && ok "10: once a host can, green" || { bad "10 after: status $s"; cat "$w/run.log"; }
+
+# 11
+touch "$w/repo/one-bad-host"; echo 'eleven2 :: 11;' >> "$w/repo/lib/a.coax"; push agent-bh "a change checked on a bad host"; c12="$(g rev-parse HEAD)"
+s="$(run)"
+[[ "$s" == green && "$(open_count)" == "$before" ]] && green_is "$c12" && grep -q "remote: oa-good" "$w/pl/releases/after/$c12"/bisect-0/c1-*/out &&
+  ok "11: a failure on one host is run again on another, passes there, and nothing is filed" || { bad "11: status $s, open $(open_count)"; cat "$w/run.log"; }
+rm -f "$w/repo/one-bad-host"; push agent-bh "off the bad host"; c10b="$(g rev-parse HEAD)"; s="$(run)"
+
+# 12
+echo "$c10b" > "$w/pl/releases/after/full-green"
+echo 'twelve :: 12;' >> "$w/repo/lib/a.coax"; push agent-a "good before the break"; c11a="$(g rev-parse HEAD)"
+touch "$w/repo/full-break"; push agent-break "breaks what only the full run checks"; c11="$(g rev-parse HEAD)"
+echo 'thirteen :: 13;' >> "$w/repo/lib/a.coax"; push agent-b "on top of the break"; c11b="$(g rev-parse HEAD)"
+s="$(run)"; green_is "$c11b" || { bad "12: the fast run did not pass: $s"; cat "$w/run.log"; }
+rm -f "$w/pl/releases/after/last-full"
+s="$(run)"; e="$(open_entry "suite lib/a.coax")"
+[[ "$s" == red && "$e" == "$c11" ]] && green_is "$c11a" && ok "12: a full run's culprit sets main-green back to just before it (${c11a:0:10}), not to the last full green run (${c10b:0:10})" || { bad "12: status $s, culprit ${e:-none}, main-green $(git -C "$w/origin.git" rev-parse main-green | cut -c1-10)"; cat "$w/run.log"; }
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

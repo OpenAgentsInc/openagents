@@ -77,8 +77,9 @@
 #
 # The pipeline reports its own trouble (pipeline-lib.sh's pl_alarm: the log,
 # OA_PIPELINE_DIR/ALARM and one GitHub issue): the watcher was not running,
-# main-green is OA_AFTER_STALE (10800) seconds behind main, or the hosts could
-# not finish a head.
+# main-green is OA_AFTER_STALE (5400) seconds or OA_AFTER_STALE_COMMITS (40)
+# commits behind main (state prints a BEHIND line), or the hosts could not
+# finish a head.
 #
 # Results: OA_PIPELINE_DIR/releases/after/COMMIT/ (each job's output and
 # report, run.tsv with each job's status and seconds, kind and status),
@@ -90,7 +91,8 @@
 # runs), OA_AFTER_FAST_GAP (0: seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
 # OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing checks bisected one by
 # one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job),
-# OA_AFTER_RETRIES (2), OA_AFTER_UNFINISHED (3), OA_AFTER_STALE (10800),
+# OA_AFTER_RETRIES (2), OA_AFTER_UNFINISHED (3), OA_AFTER_STALE (5400),
+# OA_AFTER_STALE_COMMITS (40),
 # OA_AFTER_FLAKY_TRIES (3), OA_AFTER_PAGES (0: no pages), OA_AFTER_PAGES_GAP
 # (3600), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS... in
 # place of the remote check, for scratch runs), and
@@ -113,7 +115,8 @@ width="${OA_BISECT_WIDTH:-4}"
 bisect_checks="${OA_BISECT_CHECKS:-4}"
 limit="${OA_AFTER_TIMEOUT:-3000}"
 max_unfinished="${OA_AFTER_UNFINISHED:-3}"
-stale="${OA_AFTER_STALE:-10800}"
+stale="${OA_AFTER_STALE:-5400}"
+stale_commits="${OA_AFTER_STALE_COMMITS:-40}"
 results="$pl_dir/releases/after"
 history="$results/history.tsv"
 label="${OA_AFTER_LABEL:-com.openagents.green-main}"
@@ -214,6 +217,14 @@ lag_now() {   # head green: seconds
   [[ -n "$first" ]] || { echo 0; return; }
   echo $(( $(date +%s) - $(git log -1 --format=%ct "$first") ))
 }
+behind() {   # head green: "COMMITS SECONDS" main-green is behind main
+  local first n
+  [[ -n "$1" && -n "$2" && "$1" != "$2" ]] || { echo "0 0"; return; }
+  n="$(git rev-list --count --first-parent "$2..$1" 2> /dev/null || echo 0)"
+  first="$(git rev-list --reverse --first-parent "$2..$1" | head -1)"
+  [[ -n "$first" ]] || { echo "$n 0"; return; }
+  echo "$n $(( $(date +%s) - $(git log -1 --format=%ct "$first") ))"
+}
 lag_show() {
   [[ -s "$results/lag.tsv" ]] || return 0
   awk -F'\t' -v since="$(( $(date +%s) - 7 * 86400 ))" '$1 >= since { n++; if ($2 > worst) worst = $2; if ($2 <= 1800) ok++ }
@@ -230,7 +241,10 @@ case "${1:-}" in
     [[ ! -s "$pl_dir/ALARM" ]] || { echo "alarms (time, kind, what):"; tail -n 5 "$pl_dir/ALARM" | sed 's/^/  /'; }
     echo "$pl_main        ${h:0:10} $(git log -1 --format='%s' "$h" 2> /dev/null | cut -c1-70)"
     if [[ -z "$g" ]]; then echo "$pl_green  none: no run has passed yet"
-    else echo "$pl_green  ${g:0:10} $(git log -1 --format='%cd' --date=format-local:'%Y-%m-%d %H:%M' "$g"), $(git rev-list --count "$g..$h" 2> /dev/null) commit(s) behind $pl_main, lag $(( $(lag_now "$h" "$g") / 60 )) min"; fi
+    else echo "$pl_green  ${g:0:10} $(git log -1 --format='%cd' --date=format-local:'%Y-%m-%d %H:%M' "$g"), $(git rev-list --count "$g..$h" 2> /dev/null) commit(s) behind $pl_main, lag $(( $(lag_now "$h" "$g") / 60 )) min"
+      read -r bn ba <<< "$(behind "$h" "$g")"
+      (( ba < stale && bn < stale_commits )) || echo "BEHIND      $pl_green is $bn commit(s) and $(( ba / 60 )) min behind $pl_main: releases ship $pl_green, so they wait (the alarm: $(( stale / 60 )) min or $stale_commits commits)"
+    fi
     lag_show
     # The allowlist counts (#13266): main's, main-green's (the baseline) and what a commit raised.
     if [[ -n "$h" ]]; then
@@ -371,27 +385,53 @@ fetch() {
   git fetch -q "$pl_remote" "+refs/heads/$pl_green:$green_ref" 2> /dev/null || git update-ref -d "$green_ref" 2> /dev/null
   return 0
 }
+# The host a job ran on, from remote.sh's last line in its output ("" when none).
+host_of() { sed -nE 's/^remote: ([A-Za-z0-9._-]+) slot [0-9]+: .*/\1/p' "$1" 2> /dev/null | tail -1; }
+# Whether a failed job's output judges the commit (#13256): the check said so
+# itself. check.sh ends a failed check with "check MODE...: FAILED"; a job
+# whose output is empty, or holds only remote.sh's own lines, or stops before
+# that line (a host that filled up, dropped the connection or killed the job)
+# says nothing of the commit. check-visuals.sh, run as itself, has only to say
+# something.
+judged() {   # outfile check-args...
+  local f="$1"; shift
+  grep -qv '^remote: ' "$f" 2> /dev/null || return 1
+  [[ "$1" == visuals && -z "${OA_AFTER_CHECK:-}" ]] && return 0
+  grep -Eq '^check .*: FAILED$' "$f"
+}
 # One check on one commit: 0 passed, 1 failed, 97 the hosts could not run it
-# (after OA_AFTER_RETRIES more tries: a spot host can stop under a job).
+# (after OA_AFTER_RETRIES more tries: a spot host can stop under a job). A job
+# the host could not judge (97, or a failure with no verdict: judged) runs
+# again on another host when there is one, with the slot's compiler installed
+# again first (OA_REMOTE_AVOID, OA_REMOTE_FRESH_COMPILER), and is never
+# counted as the commit's failure (#13256).
 check() {   # commit outdir check-args...
-  local commit="$1" dir="$2" s try=0; shift 2
+  local commit="$1" dir="$2" s try=0 avoid="${OA_REMOTE_AVOID:-}" fresh="${OA_REMOTE_FRESH_COMPILER:-0}"; shift 2
   local t0; t0=$(date +%s)
   while true; do
     rm -rf "$dir"; mkdir -p "$dir"
     if [[ -n "${OA_AFTER_CHECK:-}" ]]; then
       # shellcheck disable=SC2086
-      timeout "$limit" $OA_AFTER_CHECK "$commit" "$dir" "$@" > "$dir/out" 2>&1; s=$?
+      OA_REMOTE_AVOID="$avoid" OA_REMOTE_FRESH_COMPILER="$fresh" timeout "$limit" $OA_AFTER_CHECK "$commit" "$dir" "$@" > "$dir/out" 2>&1; s=$?
     else
       # check-visuals runs as itself, so a bisect can run it on commits whose
       # check.sh has no such step.
       local cmd=(coax/remote/check.sh "$@")
       [[ "$1" != visuals ]] || cmd=(coax/web/check-visuals.sh apps/openagents-web)
       # Without the lock descriptors: nothing a job leaves behind holds the watcher's locks.
-      OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- "${cmd[@]}" > "$dir/out" 2>&1 7>&- 8>&-; s=$?
+      OA_REMOTE_AVOID="$avoid" OA_REMOTE_FRESH_COMPILER="$fresh" OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- "${cmd[@]}" > "$dir/out" 2>&1 7>&- 8>&-; s=$?
     fi
-    case "$s" in 0|1) break ;; 124) echo "after: the check ran past $limit s" >> "$dir/out"; s=97; break ;; 97|255) s=97 ;; *) s=1; break ;; esac
+    case "$s" in
+      0) break ;;
+      124) echo "after: the check ran past $limit s" >> "$dir/out"; s=97; break ;;
+      97|255) s=97 ;;
+      *) if judged "$dir/out" "$@"; then s=1; break; fi
+         echo "after: status $s with no verdict from the check (empty output, or it stopped first): the host could not judge it (97)" >> "$dir/out"; s=97 ;;
+    esac
     (( try < retries )) || break
     try=$((try + 1)); cp "$dir/out" "$dir/../$(basename "$dir").try$try.out" 2> /dev/null
+    # Again: elsewhere, with the slot's compiler installed again.
+    avoid="$(host_of "$dir/out")"; [[ -n "$avoid" ]] || avoid="${OA_REMOTE_AVOID:-}"; fresh=1
   done
   printf '%s\t%s\t%s\t%s\n' "$*" "$s" "$(( $(date +%s) - t0 ))" "${commit:0:10}" >> "$dir/../run.tsv"
   return "$s"
@@ -419,6 +459,8 @@ args_for() {   # item job-args...
 # it fails again, "infra" when the hosts could not run it. A check that was
 # flaky before (flaky.txt) gets OA_AFTER_FLAKY_TRIES (3) runs, and one pass is
 # enough.
+# The run again goes to another host than the failure's (OA_REMOTE_AVOID, which
+# the caller sets), so one bad host can't confirm its own failure (#13256).
 confirm() {   # dir head item check-args...
   local dir="$1" head="$2" item="$3" tries=1 t; shift 3
   ! cut -f1 "$flaky_tsv" 2> /dev/null | grep -qxF "$(flaky_key "$item")" || tries="${OA_AFTER_FLAKY_TRIES:-3}"
@@ -760,7 +802,7 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
     pl_say "after: $kind run on ${head:0:10}: $(record_run "$head" "$kind" red "$started" "${#jobs[@]}")"
     return 0
   fi
-  local bpids=() bitems=() n=0 job args rest=() owned=0 flaky_n=0 found=0 infra_b=0
+  local bpids=() bitems=() bjobs=() n=0 job args rest=() owned=0 flaky_n=0 found=0 infra_b=0
   for x in ${failed[@]+"${failed[@]}"}; do
     item="${x%%|*}"; job="${x#*|}"
     if jq -e --arg c "$item" '.[] | select(.status == "open" and .check == $c)' "$pl_red" > /dev/null; then
@@ -769,11 +811,12 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
     if [[ "$item" == count\ * ]]; then
       # A raised count: its culprit is the commit that raised it (counts.sh), no bisect.
       awk -v x="${item#count }" '$2 == x { print $3; exit }' "$dir/count-culprits" > "$dir/bisect-$n.culprit"
-      bpids+=(0); bitems+=("$item"); n=$((n + 1))
+      bpids+=(0); bitems+=("$item"); bjobs+=("$job"); n=$((n + 1))
     elif (( n < bisect_checks )); then
       args="$(args_for "$item" "$job")"
       # shellcheck disable=SC2086
-      ( c="$(confirm "$dir/bisect-$n" "$head" "$item" $args)"
+      ( export OA_REMOTE_AVOID; OA_REMOTE_AVOID="$(host_of "$dir/${job//[ \/]/-}/out")"
+        c="$(confirm "$dir/bisect-$n" "$head" "$item" $args)"
         # Worse than production at main-green too: it was already there (it shipped, or will), so
         # it is reported, not red, and no commit of this run is blamed for it.
         if [[ "$c" == red && "$item" == e2\ * ]]; then
@@ -781,11 +824,19 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
           case $? in 1) c=prior ;; 97) c=infra ;; esac
         fi
         [[ "$c" != red ]] || c="$(bisect "$dir/bisect-$n" "$base" "$head" $args)"
-        echo "$c" > "$dir/bisect-$n.culprit" ) & bpids+=($!); bitems+=("$item"); n=$((n + 1))
+        # A culprit before the head failed once, on one host: it runs again on
+        # another before anyone is blamed (the head already failed twice, the
+        # second time elsewhere). Passing there, it is not filed (#13256).
+        if [[ "$c" =~ ^[0-9a-f]{40}$ && "$c" != "$head" ]]; then
+          OA_REMOTE_AVOID="$(host_of "$(ls -td "$dir/bisect-$n"/r*-"${c:0:10}" 2> /dev/null | head -1)/out")"
+          check "$c" "$dir/bisect-$n/v-${c:0:10}" $args
+          case $? in 0) c="unconfirmed ${c}" ;; 97) c=infra ;; esac
+        fi
+        echo "$c" > "$dir/bisect-$n.culprit" ) & bpids+=($!); bitems+=("$item"); bjobs+=("$job"); n=$((n + 1))
     else rest+=("$item"); fi
   done
   (( ${#rest[@]} == 0 )) || pl_say "after: left for the next run (OA_BISECT_CHECKS=$bisect_checks): ${rest[*]}"
-  local counted=0
+  local counted=0 culprits=()
   for k in "${!bpids[@]}"; do
     [[ "${bpids[$k]}" == 0 ]] || wait "${bpids[$k]}"
     item="${bitems[$k]}"
@@ -799,11 +850,17 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
       infra) pl_say "after: the hosts could not finish the bisect of $item"; infra_b=$((infra_b + 1)); continue ;;
       "") pl_say "after: the bisect of $item found no culprit after ${base:0:10}"
           continue ;;
+      unconfirmed\ *) pl_say "after: the bisect of $item named ${culprit#unconfirmed }, but it passed when run again on another host; nothing filed"
+          continue ;;
     esac
     local agent subject out
     agent="$(pl_agent_of "$culprit")"; [[ -n "$agent" ]] || agent="unknown"
     subject="$(git log -1 --format=%s "$culprit")"
-    out="$(ls -d "$dir/bisect-$k"/r*-"${culprit:0:10}" 2> /dev/null | tail -1)/out"
+    # The culprit's own failing run: a bisect round's, or, when the culprit is
+    # the head, the run again (c*) or the job itself. Before #13256 a culprit
+    # at the head had no round of its own, and its issue showed empty output.
+    out="$(ls -td "$dir/bisect-$k"/r*-"${culprit:0:10}" "$dir/bisect-$k"/c*-"${culprit:0:10}" 2> /dev/null | head -1)"
+    if [[ -n "$out" ]]; then out="$out/out"; else out="$dir/${bjobs[$k]//[ \/]/-}/out"; fi
     issue="$(file_issue "$item" "$culprit" "$agent" "$out")"
     pl_red_update '. + [{id: $id, check: $c, culprit: $s, subject: $sub, agent: $a, issue: (if $i == "" then null else $i end), opened: ($t | tonumber), seen: ($t | tonumber), status: "open", revert: ""}]' \
       --arg id "${culprit:0:10}:$item" --arg c "$item" --arg s "$culprit" --arg sub "$subject" --arg a "$agent" --arg i "$issue" --arg t "$(date +%s)"
@@ -818,18 +875,31 @@ Fixing it comes before new work. If it still fails 30 minutes from now, the inte
     done
     pl_say "after: $item: culprit ${culprit:0:10} by $agent${issue:+ (#$issue)}"
     # A count's baseline is main-green, not the last full green run: it never moves main-green back.
-    if [[ "$item" == count\ * ]]; then counted=$((counted + 1)); else found=$((found + 1)); fi
+    if [[ "$item" == count\ * ]]; then counted=$((counted + 1)); else found=$((found + 1)); culprits+=("$culprit"); fi
   done
   # Every failure passed when run again on H: H is green.
   if (( infra == 0 && infra_b == 0 && owned == 0 && ${#rest[@]} == 0 && flaky_n == ${#failed[@]} )); then
     go_green "$head" "$green" "$kind" "$started" "${#jobs[@]}" ", on a second run of $flaky_n flaky check(s)"
     return 0
   fi
-  # A full run found what the fast runs passed: main-green goes back to the
-  # last head a full run passed.
+  # A full run found what the fast runs passed: main-green goes back to just
+  # before the oldest culprit it holds, never further. Until #13256 it went
+  # back to the last head a full run passed: on 2026-11-11 twice to 38daeb78d0,
+  # 3 and 6 hours back, though each culprit was hours newer (and the first
+  # three were a host fault).
   if (( found > 0 )) && [[ -n "$green" && "$green" != "$base" ]]; then
-    git push -q --force "$pl_remote" "$base:refs/heads/$pl_green" 2> /dev/null &&
-      pl_say "after: a full run failed after fast runs passed; $pl_green is back at ${base:0:10}"
+    local back="" c2
+    for c2 in "${culprits[@]}"; do
+      git merge-base --is-ancestor "$c2" "$green" 2> /dev/null || continue
+      [[ -z "$back" ]] || git merge-base --is-ancestor "$c2" "$back" 2> /dev/null || continue
+      back="$c2"
+    done
+    if [[ -n "$back" ]] && back="$(git rev-parse -q --verify "$back^" 2> /dev/null)" &&
+       git push -q --force "$pl_remote" "$back:refs/heads/$pl_green" 2> /dev/null; then
+      pl_say "after: a full run found a culprit in $pl_green's history; $pl_green is back at ${back:0:10}, before it"
+    elif [[ -z "$back" ]]; then
+      pl_say "after: a full run's culprits are all after $pl_green ${green:0:10}; it stays"
+    fi
   fi
   # A job or a bisect the hosts could not finish: the head is not red yet, and
   # main-green must not wait for a new head. What did not finish runs again.
@@ -841,16 +911,17 @@ Fixing it comes before new work. If it still fails 30 minutes from now, the inte
   pl_say "after: $kind run and bisects on ${head:0:10}: $(record_run "$head" "$kind" red "$started" "${#jobs[@]}")"
 }
 # main-green far behind main is reported, whatever the reason: releases ship it.
+# Far is OA_AFTER_STALE seconds (5400: 90 minutes; 3 hours before #13256) since
+# the oldest commit after it landed, or OA_AFTER_STALE_COMMITS (40) commits.
+# The report is the log, the ALARM file (the first lines of after.sh state) and
+# a comment on the one "Green-main pipeline needs attention" issue.
 stale_check() {
-  local head green first age
+  local head green n age
   head="$(git rev-parse -q --verify "$main_ref" 2> /dev/null || true)"
   green="$(git rev-parse -q --verify "$green_ref" 2> /dev/null || true)"
-  [[ -n "$head" && -n "$green" && "$head" != "$green" ]] || return 0
-  first="$(git rev-list --reverse --first-parent "$green..$head" | head -1)"
-  [[ -n "$first" ]] || return 0
-  age=$(( $(date +%s) - $(git log -1 --format=%ct "$first") ))
-  (( age >= stale )) || return 0
-  pl_alarm stale "$pl_green is $(( age / 3600 )) h $(( age % 3600 / 60 )) min behind $pl_main" "\`$pl_green\` is ${green:0:10}, and the oldest of the $(git rev-list --count "$green..$head") commit(s) after it landed $(( age / 60 )) minutes ago. Releases ship \`$pl_green\`, so they are that far behind.
+  read -r n age <<< "$(behind "$head" "$green")"
+  (( age >= stale || n >= stale_commits )) || return 0
+  pl_alarm stale "$pl_green is $n commit(s) and $(( age / 3600 )) h $(( age % 3600 / 60 )) min behind $pl_main" "\`$pl_green\` is ${green:0:10}, and the oldest of the $n commit(s) after it landed $(( age / 60 )) minutes ago (the alarm: $(( stale / 60 )) minutes or $stale_commits commits). Releases ship \`$pl_green\`, so they are that far behind.
 
 \`\`\`
 $("$here/after.sh" state 2>&1 | head -n 40)
