@@ -27,7 +27,7 @@
 
 MC_OUTPUT_HEAD :: 6000;          // bytes of a command's output kept from its start
 MC_OUTPUT_TAIL :: 6000;          // and from its end
-MC_LOG_BYTES :: 196608;          // the actions' JSON, all of them
+MC_LOG_BYTES :: 163840;          // the actions' JSON, all of them: escaped once more inside a request, it still fits the journal's 256 KB
 MC_ACTION_ROOM :: 65536;         // free log a new action starts with (older steps leave for it)
 MC_MAX_ACTIONS :: 512;           // actions the log can hold
 MC_PROMPT_BYTES :: 458752;       // the whole state's JSON: every buffer below, with room for its keys
@@ -105,7 +105,7 @@ mc_log_drop :: (st: [] McState, keep: int) {
   k := 0;
   while k < closed && st[0].nlog - st[0].act_at[k] > keep { k += 1; }
   if k == 0 { return; }
-  cut := st[0].act_at[k];
+  cut := ifx k < st[0].nacts then st[0].act_at[k] else st[0].nlog;    // every step leaves: the whole log
   for i: cut..<st[0].nlog { st[0].log[i - cut] = st[0].log[i]; }
   st[0].nlog -= cut;
   for a: k..<st[0].nacts { st[0].act_at[a - k] = st[0].act_at[a] - cut; }
@@ -325,6 +325,21 @@ McStateTest :: struct { b: [1] McStateBuffers; out: [MC_PROMPT_BYTES] u8; }
   j = mc_state_json(st[..], t[0].out[..]);
   #assert json_valid(j) && cl_int(j, "left_out").value == st[0].left_out && cl_count(cl_raw(j, "actions")) == st[0].nacts;
   #assert cl_int(j, "actions.0.step").value == st[0].left_out + 1;
+}
+
+#test "every step can leave: the log empties and renders, and new steps follow" {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  for s: 0..<3 { mc_action_begin(st[..], "step"); mc_action_command(st[..], "echo hi", 0, false, "hi\n"); mc_action_end(st[..]); }
+  mc_log_drop(st[..], st[0].nlog - st[0].act_at[2]);
+  #assert st[0].nacts == 1 && st[0].left_out == 2;
+  mc_log_drop(st[..], 0);      // the slots past the last step hold old offsets: none may be read
+  #assert st[0].nacts == 0 && st[0].nlog == 0 && st[0].left_out == 3;
+  j := mc_state_json(st[..], t[0].out[..]);
+  #assert json_valid(j) && cl_count(cl_raw(j, "actions")) == 0 && cl_int(j, "left_out").value == 3;
+  mc_action_begin(st[..], "again"); mc_action_end(st[..]);
+  j = mc_state_json(st[..], t[0].out[..]);
+  #assert json_valid(j) && cl_int(j, "actions.0.step").value == 4;
 }
 
 #test "a view too large for what is left of the log is noted, and the step goes on" #steps 80000000 {

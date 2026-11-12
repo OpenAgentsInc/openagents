@@ -276,11 +276,17 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   mc_init(l[..], sb[..], lb[..], "{}", "x", "{}", 1.0);
   #assert mc_escaped_size("a\"b\\c\nd") == 10 && mc_escaped_size("abc") == 3;
   // quote-heavy outputs: each byte doubles inside the request
-  q: [12000] u8; for i: 0..<q.count { q[i] = '"'; }
-  for s: 0..<40 { mc_action_begin(l[0].st[..], "q"); mc_action_command(l[0].st[..], "cat q", 0, false, cast(string) q[..]); mc_action_end(l[0].st[..]); }
+  q: [65000] u8; for i: 0..<q.count { q[i] = '"'; }
+  mc_action_begin(l[0].st[..], "small"); mc_action_command(l[0].st[..], "true", 0, false, ""); mc_action_end(l[0].st[..]);
+  mc_action_begin(l[0].st[..], "q");
+  mc_file(l[0].st[..], "q", true, cast(string) q[..]);
+  mc_action_command(l[0].st[..], "cat q", 0, false, cast(string) q[0..<12000]);
+  mc_action_end(l[0].st[..]);
   before := l[0].st[0].left_out;
   req := mc_request(l[..]);
-  #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX && l[0].st[0].left_out > before && json_valid(req.messages[0].text);
+  #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
+  #assert json_valid(req.messages[0].text);
+  #assert l[0].st[0].left_out > before;
 }
 
 #test "'what is 2+2' finishes in one step with no commands" {
