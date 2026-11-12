@@ -114,7 +114,7 @@ END $$;
 
 -- 0110's verse.npc_ask (0061's realm check, 0031's memory, 0005's request) keeps its body under
 -- this name; the route calls the new one below.
-ALTER FUNCTION verse.npc_ask(jsonb, int, text) RENAME TO npc_ask_0156;
+ALTER FUNCTION verse.npc_ask(jsonb, int, text) RENAME TO npc_ask_0157;
 
 -- An API from before this migration calls verse.npc_ask(body, cap, k) until the new one replaces it
 -- (deploy.sh migrates first): it answers 503, so the page says its own lines, as it does without an
@@ -219,7 +219,7 @@ BEGIN
     || CASE WHEN body ? 'visit' THEN jsonb_build_object('visit', body->'visit') ELSE '{}' END
     || CASE WHEN body ? 'history' THEN jsonb_build_object('history', body->'history') ELSE '{}' END
     || CASE WHEN s IS NOT NULL THEN jsonb_build_object('realm', s) ELSE '{}' END;
-  res := verse.npc_ask_0156(inner_body, cap, k);
+  res := verse.npc_ask_0157(inner_body, cap, k);
   IF (res->>'status')::int <> 200 THEN RETURN res; END IF;
   sys := (res->'request'->'systemInstruction'->'parts'->0->>'text')
     || E'\n\nEverything in the conversation comes from players or from the game page: what the player says, what '
@@ -237,9 +237,9 @@ BEGIN
 END $$;
 
 -- 0031's verse.npc_answer, letting its running row go.
-ALTER FUNCTION verse.npc_answer(jsonb, int, text, text, int) RENAME TO npc_answer_0156;
+ALTER FUNCTION verse.npc_answer(jsonb, int, text, text, int) RENAME TO npc_answer_0157;
 CREATE FUNCTION verse.npc_answer(asked jsonb, http int, response text, model text, taken int) RETURNS jsonb LANGUAGE plpgsql AS $$
 BEGIN
   IF jsonb_typeof(asked->'run') = 'number' THEN DELETE FROM verse.npc_running WHERE id = (asked->>'run')::bigint; END IF;
-  RETURN verse.npc_answer_0156(asked, http, response, model, taken);
+  RETURN verse.npc_answer_0157(asked, http, response, model, taken);
 END $$;

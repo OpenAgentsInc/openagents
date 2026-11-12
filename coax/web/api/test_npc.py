@@ -228,7 +228,7 @@ check("the day's answers are capped across the server", [d[0] for d in day[:4]] 
 status, raw, _ = call("GET", "/api/playtest/health")
 check("the service answered other requests meanwhile", status == 200)
 
-# ---- characters who remember you (eg-people, migrations/0031_npc_memory.sql, quoted since 0156)
+# ---- characters who remember you (eg-people, migrations/0031_npc_memory.sql, quoted since 0157)
 npc_reset()
 
 

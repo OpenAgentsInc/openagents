@@ -10,11 +10,11 @@
 // Who the character is comes from us, never the page: a built-in world's people are compiled in
 // (npc-personas.coax, from their pages' own constants), a made realm's are its document's (SQL).
 // A character remembers its player: what they said to it on earlier visits goes into its prompt
-// (migrations/0031_npc_memory.sql verse.npc_ask; quoted since 0156).
+// (migrations/0031_npc_memory.sql verse.npc_ask; quoted since 0157).
 //
 // The prompt, the memory, the limits and the day's cap are SQL's (migrations/0005_verse_npc.sql
 // verse.npc_request, verse.npc_answer, which also keeps every question and answer;
-// 0156_npc_ask_keyed.sql verse.npc_ask, the limits counted in Postgres so every instance shares
+// 0157_npc_ask_keyed.sql verse.npc_ask, the limits counted in Postgres so every instance shares
 // them). The numbers are NPC_LIMITS below, which /docs/limits is made from. The model is Google's
 // first: Gemini on Vertex AI (OA_NPC_MODEL, default gemini-3.8-flash on the global endpoint), with
 // the service's own token from the metadata server. A model call takes seconds and this service

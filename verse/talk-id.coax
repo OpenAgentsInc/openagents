@@ -1,7 +1,7 @@
 // A character's id for the character chat (POST /api/playtest/npc/ask, #13261): its name, lower case,
 // a dash for each space, only letters, digits and dashes kept. "Brother Anselm" is brother-anselm. A
 // page sends the id; the server looks the character up by it (coax/web/api/npc-personas.coax, and for a
-// made realm verse.npc_id in migrations/0156_npc_ask_keyed.sql, the same rule), so who a character is
+// made realm verse.npc_id in migrations/0157_npc_ask_keyed.sql, the same rule), so who a character is
 // never comes from the page. A made realm's lore is kept under the same key (myrealm.coax who_of).
 //   coax/bin/coax test verse/talk-id.coax --library
 
