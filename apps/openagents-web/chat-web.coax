@@ -142,6 +142,7 @@ ChatWeb :: struct {
   csel: [40] u8; csel_n: int;        // the one shown
   watch_at: f32; watching: bool;     // it is copied again now and then; the log just asked for is such a fresh copy
   csize: int;                        // the copy's size when it was last read
+  goal: [CW_GOAL] u8; goal_n: int;   // the shown session's goal (Claude Code's /goal), while one is set
   sel: [24] u8; sel_n: int;          // the session the transcript shows (none: a new chat)
   log_next: int;                     // where its log is read from next (under 0: its end)
   log_due: bool;                     // read it now
@@ -181,6 +182,46 @@ cw_put :: (out: [] u8, at: int, text: string) -> int {
   return n;
 }
 cw_say :: (s: [] ChatWeb, why: string) { s[0].error_n = cw_put(s[0].error[..], 0, why); }
+// Claude Code's /goal: "/goal CONDITION" sets the session's goal, and Claude keeps taking turns until its
+// own check finds the condition met; "/goal" alone asks for it; "/goal clear" (or stop, off, reset, none,
+// cancel) removes it. The message goes to Claude Code as typed. The page only keeps the condition, to show.
+CW_GOAL :: 400;
+CW_GOAL_NONE :: -1; CW_GOAL_ASK :: 0; CW_GOAL_CLEAR :: 1; CW_GOAL_SET :: 2;
+CW_GOAL_OFF :: [6] string.["clear", "stop", "off", "reset", "none", "cancel"];
+cw_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
+// What follows "/goal", without the space around it.
+cw_goal_rest :: (text: string) -> string {
+  lo := 5; hi := text.count;
+  if hi < lo { return ""; }
+  while lo < hi && cw_space(text[lo]) { lo += 1; }
+  while hi > lo && cw_space(text[hi - 1]) { hi -= 1; }
+  return cast(string) text[lo..<hi];
+}
+cw_goal_of :: (text: string) -> int {
+  if text.count < 5 || cast(string) text[0..<5] != "/goal" { return CW_GOAL_NONE; }
+  if text.count > 5 && !cw_space(text[5]) { return CW_GOAL_NONE; }   // "/goals" is something else
+  rest := cw_goal_rest(text);
+  if rest.count == 0 { return CW_GOAL_ASK; }
+  off := CW_GOAL_OFF;
+  for i: 0..<6 { if rest == off[i] { return CW_GOAL_CLEAR; } }
+  return CW_GOAL_SET;
+}
+cw_goal_note :: (s: [] ChatWeb, text: string) {
+  k := cw_goal_of(text);
+  if k == CW_GOAL_CLEAR { s[0].goal_n = 0; }
+  else if k == CW_GOAL_SET { s[0].goal_n = cw_put(s[0].goal[..], 0, cw_goal_rest(text)); }
+}
+// Whether the message goes to Claude Code: a conversation of its, a Coder session it runs, or a new chat with it chosen.
+cw_to_claude :: (s: [] ChatWeb) -> bool {
+  if s[0].csel_n > 0 { return true; }
+  if s[0].sel_n > 0 {
+    for i: 0..<s[0].ns {
+      if cast(string) s[0].sid[i][0..<s[0].sid_n[i]] == cw_sel(s) { return cast(string) s[0].seng[i][0..<s[0].seng_n[i]] == "claude"; }
+    }
+    return true;   // not listed (older than a day): Coder knows its engine
+  }
+  return cw_agent(s) == 1;
+}
 // Whether the draft has anything but spaces and line breaks.
 cw_has_words :: (s: [] ChatWeb) -> bool {
   for i: 0..<s[0].draft_n { c := s[0].draft[i]; if c != ' ' && c != '\n' && c != '\t' && c != '\r' { return true; } }
@@ -342,7 +383,11 @@ cw_transcript :: (s: [] ChatWeb) {
     }
     tr_close(t);
   }
-  if s[0].lrun { w := tr_leaf(t, "l.work", TG_P, "work", "Working"); tr_attr(t, w, AT_ROLE, "status"); }
+  if s[0].lrun {
+    gb: [CW_GOAL + 32] u8;
+    w := tr_leaf(t, "l.work", TG_P, "work", ifx s[0].goal_n > 0 then tr_cat(gb[..], "Working toward the goal: ", cast(string) s[0].goal[0..<s[0].goal_n]) else "Working");
+    tr_attr(t, w, AT_ROLE, "status");
+  }
   if s[0].error_n > 0 {
     n := k_notice(t, u, "failed", "Error", cast(string) s[0].error[0..<s[0].error_n]);
     tr_close(t);
@@ -357,7 +402,7 @@ cw_build :: (s: [] ChatWeb) {
   page := tr_open(t, "chat", TG_MAIN, "chat");
   if s[0].local == 1 { cw_side(s); }
   if s[0].view == CW_SETTINGS { cw_settings_card(s); }
-  else if s[0].count > 0 || s[0].lrun { cw_transcript(s); }
+  else if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
   f := k_composer_begin(t, u, "composer", "Ask anything");
   tr_attr(t, f, AT_FOCUS, "");
   gear := k_icon_button(t, "settings", IC_SETTINGS, ifx s[0].view == CW_SETTINGS then "Back to the chat" else "Settings");
@@ -456,6 +501,7 @@ cw_number :: (id: string, part: string) -> int {
 cw_clear :: (s: [] ChatWeb) {
   s[0].count = 0; s[0].pool_n = 0; s[0].total = 0; s[0].error_n = 0;
   s[0].live = false; s[0].lrun = false; s[0].echo = false; s[0].stop_due = false; s[0].turn = 0; s[0].conv = 0;
+  s[0].goal_n = 0;
 }
 // Shows session id from where its log ends (tail) or starts.
 cw_show :: (s: [] ChatWeb, id: string, tail: bool) {
@@ -518,7 +564,7 @@ cw_log_read :: (s: [] ChatWeb, body: string) {
         // a fresh copy of a Claude Code conversation: the same size is the same conversation, and nothing changes
         s[0].watching = false;
         if size.ok && size.value == s[0].csize { s[0].log_next = next.value; return; }
-        s[0].count = 0; s[0].pool_n = 0; s[0].total = 0;
+        s[0].count = 0; s[0].pool_n = 0; s[0].total = 0; s[0].goal_n = 0;
       }
       if size.ok && s[0].csel_n > 0 { s[0].csize = size.value; }
       if s[0].log_next < 0 { s[0].lrun = true; }   // a session opened at its end is running until its ending is read
@@ -528,6 +574,7 @@ cw_log_read :: (s: [] ChatWeb, body: string) {
     }
     kind := cl_str(ar[..], line, "kind");
     if kind == "user" {
+      cw_goal_note(s, cl_str(ar[..], line, "text"));
       if s[0].echo { s[0].echo = false; } else { cw_add(s, cl_str(ar[..], line, "text"), CW_YOU, 0); }
       s[0].lrun = true;
     } else if kind == "session" { s[0].lrun = true; }
@@ -618,7 +665,13 @@ cw_send :: (s: [] ChatWeb) {
   while lo < hi && (s[0].draft[lo] == ' ' || s[0].draft[lo] == '\n' || s[0].draft[lo] == '\t' || s[0].draft[lo] == '\r') { lo += 1; }
   while hi > lo && (s[0].draft[hi - 1] == ' ' || s[0].draft[hi - 1] == '\n' || s[0].draft[hi - 1] == '\t' || s[0].draft[hi - 1] == '\r') { hi -= 1; }
   model := cw_model(s);
+  said := cast(string) s[0].draft[lo..<hi];
+  if cw_goal_of(said) != CW_GOAL_NONE && !cw_to_claude(s) {
+    cw_say(s, "Only Claude Code runs /goal. Choose Claude Code in the Agent menu, or open one of its sessions.");
+    return;
+  }
   if cw_local_model(model) {
+    cw_goal_note(s, said);
     // an agent on this machine: the message shows at once, and the session's log brings the rest
     cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, 0);
     if !cw_local_send(s, model, cw_text(s, s[0].count - 1)) { s[0].count -= 1; s[0].total -= 1; s[0].pool_n = s[0].at[s[0].count]; return; }
@@ -1412,6 +1465,47 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   #assert cw_test_door(s) == "/local/send" && cw_test_body(s) == "{\"id\":\"20261112-050000-001\",\"message\":\"and the docs\"}";
   cw_test_answer(s, 200, "{\"id\":\"20261112-050100-002\"}");
   #assert cw_sel(s) == "20261112-050100-002" && s[0].log_next == 0 && s[0].count == 4 && s[0].echo;
+}
+
+#test "/goal goes to Claude Code as typed, and the page shows the goal while the session works toward it" {
+  #assert cw_goal_of("/goal tests pass") == CW_GOAL_SET && cw_goal_of("/goal") == CW_GOAL_ASK && cw_goal_of("/goal  \n") == CW_GOAL_ASK;
+  #assert cw_goal_of("/goal clear") == CW_GOAL_CLEAR && cw_goal_of("/goal cancel ") == CW_GOAL_CLEAR && cw_goal_of("/goal clear the cache") == CW_GOAL_SET;
+  #assert cw_goal_of("/goals") == CW_GOAL_NONE && cw_goal_of("goal x") == CW_GOAL_NONE && cw_goal_of("/goa") == CW_GOAL_NONE && cw_goal_of("") == CW_GOAL_NONE;
+  #assert cw_goal_rest("/goal \n every open issue is closed \n") == "every open issue is closed" && cw_goal_rest("/go") == "";
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_local(s, CW_T_SESSIONS);
+  // Microcoder doesn't run goals: nothing is sent, and the page says where they run
+  s[0].model = 9;
+  cw_test_type(s, "composer", "/goal all tests pass");
+  cw_test_enter(s, "composer");
+  #assert !coaxial_chatweb_asking(s) && s[0].count == 0 && s[0].goal_n == 0 && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "Only Claude Code runs /goal");
+  b0 := coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(s[0].tree[..], "failed") >= 0;
+  // Claude Code gets it word for word
+  s[0].model = 6;
+  cw_test_enter(s, "composer");
+  if cw_test_door(s) != "/local/run" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
+  #assert cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"/goal all tests pass\",\"engine\":\"claude\"}";
+  #assert cast(string) s[0].goal[0..<s[0].goal_n] == "all tests pass";
+  cw_test_answer(s, 200, "20261112-060000-001\n");
+  b := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "l.work")) == "Working toward the goal: all tests pass";
+  // a session opened from its log: the goal is what its messages last set
+  tv: [1] CwTest; v := tv[0].s[..];
+  cw_test_local(v, CW_T_SESSIONS);
+  cw_test_press(v, "s.0");
+  b = coaxial_chatweb_frame(v, 0.016, true);
+  #assert cw_test_door(v) == "/local/log?id=20261112-042601-123&after=-1";
+  cw_test_answer(v, 200, "{\"next\":90,\"size\":90}\n{\"kind\":\"user\",\"text\":\"/goal docs build\"}\n{\"kind\":\"user\",\"text\":\"/goal\"}\n");
+  #assert cast(string) v[0].goal[0..<v[0].goal_n] == "docs build";
+  cw_log_read(v, "{\"next\":120,\"size\":120}\n{\"kind\":\"user\",\"text\":\"/goal clear\"}\n");
+  #assert v[0].goal_n == 0;
+  // a goal sent to a Microcoder session is refused too
+  cw_test_press(v, "s.1");
+  cw_test_type(v, "composer", "/goal done");
+  cw_test_enter(v, "composer");
+  #assert cw_test_has(cast(string) v[0].error[0..<v[0].error_n], "Only Claude Code runs /goal") && v[0].goal_n == 0;
 }
 
 #test "a session chosen beside the chat is shown from its log's end; Stop asks Coder to stop it" {

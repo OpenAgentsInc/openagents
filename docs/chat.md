@@ -73,6 +73,19 @@ counts against a daily cap for /chat of $10 across every model and person
 what's left; over it `send` answers 429 and the page says so. Tests use
 Haiku.
 
+## Agents on your machine
+
+When the page is served with `--local PORT` and `coder mcp --http PORT` runs
+on the same machine, the page also lists Coder's sessions and this folder's
+Claude Code conversations in a sidebar. Its Agent menu adds Claude Code,
+Codex, Antigravity and Microcoder, which run through Coder on that machine.
+
+`/goal CONDITION` works as it does in Claude Code: the message goes to
+Claude Code as typed, and Claude keeps taking turns until its own check
+finds the condition met. While the session runs, the page shows the goal.
+`/goal` alone asks for it, and `/goal clear` removes it. Only Claude Code
+runs goals; the page refuses `/goal` for the other agents.
+
 ## Theme
 
 Theme, beside Key, lists every skin from `/components` (`components/skin/all.coax`):
