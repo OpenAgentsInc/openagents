@@ -103,6 +103,8 @@ final class WalletViewController: UITableViewController {
     private let balanceButton = UIButton(type: .system)
     private let dollars = Look.label("", .preferredFont(forTextStyle: .subheadline), Look.dim)
     private var watching: Task<Void, Never>?
+    private lazy var lightning = LightningAddressCardView(client: LightningAddressClient(), sign: { [host] in try await host.signProof($0) })
+    private var header: UIStackView?
     var closed: (() -> Void)?
 
     init(host: SparkHost) {
@@ -131,11 +133,19 @@ final class WalletViewController: UITableViewController {
         let buttons = UIStackView(arrangedSubviews: [receive, send]); buttons.spacing = 12; buttons.distribution = .fillEqually
         let buy = Look.button("Buy bitcoin", "wallet.buy")
         buy.addAction(UIAction { [weak self] _ in self?.open(BuyViewController(host: self!.host)) }, for: .touchUpInside)
-        let header = Look.stack([balanceButton, dollars, buttons, buy], spacing: 10)
+        // The Lightning Address card first: offered on the wallet's first open, never claimed without a tap.
+        lightning.present = { [weak self] vc, from in
+            vc.popoverPresentationController?.sourceView = from
+            self?.present(vc, animated: true)
+        }
+        lightning.changed = { [weak self] in self?.sizeHeader() }
+        let header = Look.stack([lightning, balanceButton, dollars, buttons, buy], spacing: 10)
+        header.setCustomSpacing(18, after: lightning)
         header.setCustomSpacing(22, after: dollars)
         header.layoutMargins = UIEdgeInsets(top: 24, left: 20, bottom: 12, right: 20); header.isLayoutMarginsRelativeArrangement = true
-        header.frame.size = header.systemLayoutSizeFitting(CGSize(width: view.bounds.width, height: 0), withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
-        tableView.tableHeaderView = header
+        self.header = header
+        sizeHeader()
+        Task { await lightning.load() }
         refreshControl = UIRefreshControl()
         refreshControl?.addAction(UIAction { [weak self] _ in self?.reload() }, for: .valueChanged)
         render(); reload()
@@ -148,6 +158,17 @@ final class WalletViewController: UITableViewController {
         }
     }
     deinit { watching?.cancel() }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if let h = header, abs(h.frame.width - tableView.bounds.width) > 0.5 { sizeHeader() }
+    }
+    /// The header's height follows its content (the card grows and shrinks).
+    private func sizeHeader() {
+        guard let header else { return }
+        let width = tableView.bounds.width > 0 ? tableView.bounds.width : view.bounds.width
+        header.frame.size = header.systemLayoutSizeFitting(CGSize(width: width, height: 0), withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
+        tableView.tableHeaderView = header
+    }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         if navigationController?.isBeingDismissed ?? isBeingDismissed { closed?() }
@@ -173,6 +194,7 @@ final class WalletViewController: UITableViewController {
             }
             rate = await host.dollarsPerBitcoin()
             address = await host.lightningAddress()
+            await lightning.load()
             refreshControl?.endRefreshing()
             render()
         }

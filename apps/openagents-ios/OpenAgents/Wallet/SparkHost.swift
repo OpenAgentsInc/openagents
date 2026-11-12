@@ -281,6 +281,14 @@ actor SparkHost {
         try? await connected().getLightningAddress()?.lightningAddress
     }
 
+    /// The wallet's Spark identity key signs message (the SDK hashes it with SHA-256 first): the
+    /// key and the compact signature, as hex. This is the proof that points a name@openagents.com
+    /// address at this wallet (LightningAddress.swift); the server wrote the message.
+    func signProof(_ message: String) async throws -> LightningAddress.Signed {
+        let r = try await connected().signMessage(request: SignMessageRequest(message: message, compact: true))
+        return LightningAddress.Signed(pubkey: r.pubkey, signature: r.signature)
+    }
+
     // MARK: Sending
 
     /// What `text` asks for. A BIP21 URI becomes the best method in it:

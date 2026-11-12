@@ -58,6 +58,12 @@ existing Spark wallet sits top right; tapping it opens the wallet. You can:
   address (fast, normal or slow fee) or a Spark address, by paste or scan;
 - take LNURL withdrawals, claim on-chain deposits, and see activity and each
   payment's details.
+- get a Lightning Address (`yourname@openagents.com`, GitHub #13209): the card at the
+  top of the wallet suggests a name, checks it as you type and claims it on one
+  tap; the wallet's Spark key signs the proof the server asks for. Then Copy,
+  Share, a QR, and Turn off / Turn on. Nothing is claimed without the tap, and
+  the limits are on the card (`Wallet/LightningAddress.swift`,
+  `Wallet/LightningAddressCard.swift`, `UnitTests/LightningAddressTests.swift`).
 - buy bitcoin with dollars (Buy bitcoin): MoonPay sends it on-chain to the
   wallet's own address, Cash App pays a Lightning invoice the wallet made.
   The screen shows the most adding an on-chain purchase costs at today's
