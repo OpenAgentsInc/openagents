@@ -1,0 +1,528 @@
+// The engine's layers, checked (GitHub #13264; audit docs/audits/2026-11-11-everglade-aethyr-aaa-audit.md, G6).
+// aethyr/ is the engine, everglade/ the game on it, verse/, apps/ and coax/web/ the realms and pages
+// on both. A load goes down the layers, never up, and product code does not load test code. This
+// tool reads every `#load "..."` line (git grep), resolves its path against the loading file's
+// folder, and fails on a load that breaks a rule and that aethyr/layer-allowlist.txt does not
+// excuse. Run it before a push:
+//   coax/web/tool.sh layer-check                 (from the repository root)
+//   coax/web/tool.sh layer-check --base REV      compare the allowlist with REV's (default origin/main)
+//   coax/web/tool.sh layer-check --consumers     report the engine modules no product loads (#13272)
+//   coax/bin/coax test coax/web/layer-check.coax --library
+//
+// The rules, for a loading file that is not support code (below):
+//   aethyr-up    a file under aethyr/ loads from verse/, apps/, everglade/ or coax/web/
+//   everglade-up a file under everglade/ loads from apps/
+//   tests        a file under aethyr/ or everglade/ loads a file in a tests/ or test/ folder
+// Support code is a test, check, tool, example or book file, which may load what it exercises:
+//   a path with a folder named tests, test, tools, examples, book, fixtures or lab;
+//   a file named test_X, test-X, check-X, check.E, checks.E, X_test.E, X-test.E, X-check.E,
+//   X-checks.E or X_check.E (the names wire-check also treats as tests, and the check-X programs);
+//   a file that defines `tool_main ::` (a program run by coax/web/tool.sh, not a module).
+// A load whose path is absolute is outside the tree and not judged.
+//
+// aethyr/layer-allowlist.txt names the loads that break a rule today, one per line:
+//   RULE FROM -> TO        e.g. aethyr-up aethyr/net/latency.coax -> apps/openagents-web/everglade-wire.coax
+// The list only shrinks (the rule proto/wire-allowlist.txt keeps): a line that REV's copy lacks
+// fails unless it ends with a reason and an issue number ("# why (#1234)"), and a line that excuses
+// nothing now fails, so the list stays true. To take a line out, make the load go (move the code it
+// needs down into the layer, or pass it in from the caller) and delete the line.
+// Exits 0 when the tree keeps the rules, 1 when it does not, 2 when it can't be read.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+LC_ALLOW :: "aethyr/layer-allowlist.txt";
+LC_HOW :: "aethyr/README.md, \"Layers\"";
+LC_BUF :: 16777216;      // git grep's and git ls-files' output, and the largest file read
+LC_MODS :: 8192;         // engine modules tracked by --consumers
+LC_LINES :: 4096;        // allowlist lines tracked
+
+// The rules, by index (0: none).
+LC_UP_AETHYR :: 1; LC_UP_EVERGLADE :: 2; LC_TESTS :: 3; LC_RULES :: 4;
+LC_NAMES :: [4] string.["", "aethyr-up", "everglade-up", "tests"];
+
+LcRun :: struct { quiet: bool; }
+// One "#load" line of git grep's output: the loading file, its line and the path it names.
+LcLoad :: struct { ok: bool; from: string; line: int; rel: string; }
+
+// ---- text
+
+lc_starts :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[0..<p.count] == p; }
+lc_has :: (s: string, p: string) -> bool {
+  if p.count > s.count { return false; }
+  for k: 0..<s.count - p.count + 1 { if cast(string) s[k..<k + p.count] == p { return true; } }
+  return false;
+}
+lc_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+lc_letter :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+lc_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+// The folder of a path ("" for a file at the root).
+lc_dir :: (path: string) -> string {
+  e := path.count;
+  while e > 0 && path[e - 1] != '/' { e -= 1; }
+  return cast(string) path[0..<ifx e > 0 then e - 1 else 0];
+}
+// Bytewise order, as git sorts paths: <0, 0 or >0.
+lc_cmp :: (a: string, b: string) -> int {
+  n := ifx a.count < b.count then a.count else b.count;
+  for k: 0..<n { if a[k] != b[k] { return cast(int) a[k] - cast(int) b[k]; } }
+  return a.count - b.count;
+}
+
+// ---- load lines
+
+// A line of `git grep -n` output for "#load" lines: "PATH:LINE:#load \"REL\" ...".
+lc_parse :: (row: string) -> LcLoad {
+  l: LcLoad;
+  a := 0;
+  while a < row.count && row[a] != ':' { a += 1; }
+  b := a + 1;
+  while b < row.count && lc_digit(row[b]) { b += 1; }
+  if a >= row.count || b == a + 1 || b >= row.count || row[b] != ':' { return l; }
+  p := "#load \"";
+  text := cast(string) row[b + 1..<row.count];
+  if !lc_starts(text, p) { return l; }
+  e := p.count;
+  while e < text.count && text[e] != '"' { e += 1; }
+  if e >= text.count || e == p.count { return l; }
+  n := 0;
+  for k: a + 1..<b { n = n * 10 + cast(int) (row[k] - '0'); }
+  l.ok = true; l.from = cast(string) row[0..<a]; l.line = n; l.rel = cast(string) text[p.count..<e];
+  return l;
+}
+// dir joined with rel, with "." and ".." resolved, into out; "" when it climbs past the root
+// or rel is absolute.
+lc_resolve :: (dir: string, rel: string, out: [] u8) -> string {
+  if rel.count > 0 && rel[0] == '/' { return ""; }
+  n := 0;
+  starts: [256] int; depth := 0;
+  for pass: 0..<2 {
+    s := ifx pass == 0 then dir else rel;
+    i := 0;
+    while i < s.count {
+      e := i;
+      while e < s.count && s[e] != '/' { e += 1; }
+      seg := cast(string) s[i..<e]; i = e + 1;
+      if seg.count == 0 || seg == "." { continue; }
+      if seg == ".." {
+        if depth == 0 { return ""; }
+        depth -= 1; n = starts[depth]; if n > 0 { n -= 1; }
+        continue;
+      }
+      if depth >= starts.count || n + seg.count + 1 > out.count { return ""; }
+      if n > 0 { out[n] = '/'; n += 1; }
+      starts[depth] = n; depth += 1;
+      for c: seg { out[n] = c; n += 1; }
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- support code and the rules
+
+// Whether path is support code by its name: a test, check, tool, example, book or lab folder, or
+// a test or check file name.
+lc_support_path :: (path: string) -> bool {
+  i := 0;
+  while i < path.count {
+    j := i;
+    while j < path.count && path[j] != '/' { j += 1; }
+    seg := cast(string) path[i..<j];
+    if j < path.count {
+      if seg == "tests" || seg == "test" || seg == "tools" || seg == "examples" || seg == "book" || seg == "fixtures" || seg == "lab" { return true; }
+    } else {
+      if lc_starts(seg, "test_") || lc_starts(seg, "test-") || lc_starts(seg, "check-") || lc_starts(seg, "check.") || lc_starts(seg, "checks.") { return true; }
+      marks := [5] string.["_test.", "-test.", "-check.", "-checks.", "_check."];
+      for m: marks { if lc_has(seg, m) { return true; } }
+    }
+    i = j + 1;
+  }
+  return false;
+}
+// Whether a sorted list of paths, one a line, has path.
+lc_listed :: (list: string, path: string) -> bool {
+  i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    if cast(string) list[i..<j] == path { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+// Whether path is support code: by its name, or a program (tools lists the files that define tool_main).
+lc_support :: (path: string, tools: string) -> bool { return lc_support_path(path) || lc_listed(tools, path); }
+// Whether a path has a folder named tests or test.
+lc_in_tests :: (path: string) -> bool {
+  i := 0;
+  while i < path.count {
+    j := i;
+    while j < path.count && path[j] != '/' { j += 1; }
+    if j < path.count && (cast(string) path[i..<j] == "tests" || cast(string) path[i..<j] == "test") { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+// The rule a load from `from` (not support code) to `to` breaks, or 0.
+lc_rule :: (from: string, to: string) -> int {
+  if lc_starts(from, "aethyr/") && (lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
+  if lc_starts(from, "everglade/") && lc_starts(to, "apps/") { return LC_UP_EVERGLADE; }
+  if (lc_starts(from, "aethyr/") || lc_starts(from, "everglade/")) && lc_in_tests(to) { return LC_TESTS; }
+  return 0;
+}
+
+// ---- the allowlist
+
+// A line's entry: what stands before its #, trimmed ("" for a comment or an empty line).
+lc_entry :: (line: string) -> string {
+  e := 0;
+  while e < line.count && line[e] != '#' { e += 1; }
+  return lc_trim(cast(string) line[0..<e]);
+}
+// Whether a line carries a reason and an issue number after its #: "# why (#1234)".
+lc_reasoned :: (line: string) -> bool {
+  e := 0;
+  while e < line.count && line[e] != '#' { e += 1; }
+  if e >= line.count { return false; }
+  issue := false; letters := 0;
+  k := e + 1;
+  while k < line.count {
+    if line[k] == '#' {
+      n := k + 1;
+      while n < line.count && lc_digit(line[n]) { n += 1; }
+      if n - k - 1 >= 3 { issue = true; }
+    }
+    if lc_letter(line[k]) { letters += 1; }
+    k += 1;
+  }
+  return issue && letters >= 3;
+}
+// "RULE FROM -> TO" into out.
+lc_line :: (rule: int, from: string, to: string, out: [] u8) -> string {
+  n := 0;
+  parts := [5] string.[LC_NAMES[rule], " ", from, " -> ", to];
+  for p: parts { for c: p { if n < out.count { out[n] = c; n += 1; } } }
+  return cast(string) out[0..<n];
+}
+// The number of the list's line whose entry is `entry`, or -1.
+lc_allow_find :: (list: string, entry: string) -> int {
+  if entry.count == 0 { return -1; }
+  i := 0; n := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    if lc_entry(cast(string) list[i..<j]) == entry { return n; }
+    i = j + 1; n += 1;
+  }
+  return -1;
+}
+// Word k of an entry split by single spaces, or "".
+lc_word :: (s: string, k: int) -> string {
+  n := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == ' ' {
+      if n == k { return cast(string) s[from..<i]; }
+      n += 1; from = i + 1;
+    }
+  }
+  return "";
+}
+// The rule an allowlist entry names, or 0 when it is not "RULE FROM -> TO".
+lc_entry_rule :: (entry: string) -> int {
+  if lc_word(entry, 2) != "->" || lc_word(entry, 1).count == 0 || lc_word(entry, 3).count == 0 || lc_word(entry, 4).count > 0 { return 0; }
+  name := lc_word(entry, 0);
+  for r: 1..<LC_RULES { if LC_NAMES[r] == name { return r; } }
+  return 0;
+}
+
+// ---- the judgment
+
+// Every load in `loads` (git grep -n output for "#load" lines): how many break a rule with no
+// allowlist line. found counts the loads that break each rule (excused or not), once per
+// FROM -> TO; used marks the allowlist lines that excused a load.
+lc_judge :: (loads: string, tools: string, allow: string, used: [] bool, run: LcRun, found: [] int) -> int {
+  bad := 0; i := 0;
+  last := ""; last_support := false;
+  prev_from := ""; prev_to: [1024] u8; prev_n := 0;
+  out: [1024] u8; buf: [2048] u8;
+  while i < loads.count {
+    j := i;
+    while j < loads.count && loads[j] != '\n' { j += 1; }
+    l := lc_parse(cast(string) loads[i..<j]); i = j + 1;
+    if !l.ok { continue; }
+    if !lc_starts(l.from, "aethyr/") && !lc_starts(l.from, "everglade/") { continue; }
+    if l.from != last { last = l.from; last_support = lc_support(l.from, tools); }
+    if last_support { continue; }
+    to := lc_resolve(lc_dir(l.from), l.rel, out[..]);
+    if to.count == 0 { continue; }
+    rule := lc_rule(l.from, to);
+    if rule == 0 { continue; }
+    // a file that loads the same path twice is one load
+    if l.from == prev_from && cast(string) prev_to[0..<prev_n] == to { continue; }
+    prev_from = l.from; prev_n = 0;
+    for c: to { if prev_n < prev_to.count { prev_to[prev_n] = c; prev_n += 1; } }
+    found[rule] += 1;
+    at := lc_allow_find(allow, lc_line(rule, l.from, to, buf[..]));
+    if at >= 0 { if at < used.count { used[at] = true; } continue; }
+    bad += 1;
+    if run.quiet { continue; }
+    if rule == LC_UP_AETHYR { print("FAIL aethyr-up: %:% loads %. aethyr/ is the engine: it loads nothing from verse/, apps/, everglade/ or coax/web/. Fix: move what it needs down into aethyr/, or have the caller pass it in (%).\n", l.from, l.line, to, LC_HOW); }
+    else if rule == LC_UP_EVERGLADE { print("FAIL everglade-up: %:% loads %. everglade/ is the game: it loads nothing from apps/. Fix: move what it needs into everglade/ or aethyr/ (%).\n", l.from, l.line, to, LC_HOW); }
+    else { print("FAIL tests: %:% loads %, which is in a tests folder, and % is not a test, check or tool. Fix: move what both need out of the tests folder into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
+  }
+  return bad;
+}
+// The allowlist's own faults: a line that is not "RULE FROM -> TO", and a line that excused
+// nothing this run (the load is gone: take the line out).
+lc_judge_allow :: (allow: string, used: [] bool, run: LcRun) -> int {
+  bad := 0; i := 0; n := 0;
+  while i < allow.count {
+    j := i;
+    while j < allow.count && allow[j] != '\n' { j += 1; }
+    entry := lc_entry(cast(string) allow[i..<j]); i = j + 1; n += 1;
+    if entry.count == 0 { continue; }
+    if lc_entry_rule(entry) == 0 {
+      bad += 1;
+      if !run.quiet { print("FAIL allowlist: % has a line that is not \"RULE FROM -> TO\" with RULE aethyr-up, everglade-up or tests: \"%\"\n", LC_ALLOW, entry); }
+      continue;
+    }
+    if n - 1 < used.count && !used[n - 1] {
+      bad += 1;
+      if !run.quiet { print("FAIL allowlist: the line \"%\" excuses nothing now (the load is gone, or the file is support code). Fix: take it out of %.\n", entry, LC_ALLOW); }
+    }
+  }
+  return bad;
+}
+// The lines of list that base lacks and that carry no reason and issue number. added counts
+// every line base lacks.
+lc_grown :: (list: string, base: string, run: LcRun, added: [] int) -> int {
+  bad := 0; i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    line := cast(string) list[i..<j]; i = j + 1;
+    entry := lc_entry(line);
+    if entry.count == 0 || lc_allow_find(base, entry) >= 0 { continue; }
+    added[0] += 1;
+    if lc_reasoned(line) { continue; }
+    bad += 1;
+    if !run.quiet { print("FAIL allowlist: % has a new line with no reason and issue number: \"%\". The allowlist only shrinks. Fix: take the load out (%), or end the line with \"# why (#ISSUE)\".\n", LC_ALLOW, entry, LC_HOW); }
+  }
+  return bad;
+}
+
+// ---- the consumer report (#13272)
+
+// The index of path in mods (sorted), or -1.
+lc_find :: (mods: [] string, n: int, path: string) -> int {
+  lo := 0; hi := n;
+  while lo < hi {
+    mid := (lo + hi) / 2;
+    c := lc_cmp(mods[mid], path);
+    if c == 0 { return mid; }
+    if c < 0 { lo = mid + 1; } else { hi = mid; }
+  }
+  return -1;
+}
+// Marks the engine modules (mods: aethyr/ files that are not support code) that a product loads:
+// a file outside aethyr/ that is not support code or a document, or a module already marked,
+// following loads until nothing changes. loaders counts each module's loaders of any kind.
+lc_consumed :: (loads: string, tools: string, mods: [] string, n: int, consumed: [] bool, loaders: [] int) {
+  out: [1024] u8;
+  pass := 0; changed := true;
+  while changed {
+    changed = false;
+    i := 0; last := ""; last_product := false;
+    while i < loads.count {
+      j := i;
+      while j < loads.count && loads[j] != '\n' { j += 1; }
+      l := lc_parse(cast(string) loads[i..<j]); i = j + 1;
+      if !l.ok { continue; }
+      to := lc_resolve(lc_dir(l.from), l.rel, out[..]);
+      if !lc_starts(to, "aethyr/") { continue; }
+      m := lc_find(mods, n, to);
+      if m < 0 { continue; }
+      if pass == 0 { loaders[m] += 1; }
+      if consumed[m] { continue; }
+      product := false;
+      if lc_starts(l.from, "aethyr/") { f := lc_find(mods, n, l.from); product = f >= 0 && consumed[f]; }
+      else {
+        if l.from != last { last = l.from; last_product = !lc_starts(l.from, "docs/") && !lc_support(l.from, tools); }
+        product = last_product;
+      }
+      if product { consumed[m] = true; changed = true; }
+    }
+    pass += 1;
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh layer-check [--base REV] [--consumers]"); return 2; }
+  run: LcRun;
+  base := args_value(args[..], "--base", "origin/main");
+  err: [4096] u8;
+  atext: [1048576] u8;
+  an := fs_read(LC_ALLOW, atext[..]);
+  if an < 0 { print("layer-check: no % here; run from the repository root (an empty file is the goal; a missing one is not)\n", LC_ALLOW); return 2; }
+  allow := cast(string) atext[0..<an];
+
+  loads_buf: [LC_BUF] u8; tools_buf: [1048576] u8; body: [LC_BUF] u8;
+  grep := [6] string.["git", "grep", "-nE", "^#load \"", "--", "*.coax"];
+  g := proc_run(grep[..], 120000, loads_buf[..], err[..]);
+  if g.started != 0 || g.status != 0 || g.cut { tool_errln("layer-check: git grep for #load lines failed"); return 2; }
+  loads := cast(string) loads_buf[0..<g.out_n];
+  tl := [6] string.["git", "grep", "-l", "^tool_main ::", "--", "*.coax"];
+  t := proc_run(tl[..], 120000, tools_buf[..], err[..]);
+  if t.started != 0 || (t.status != 0 && t.status != 1) || t.cut { tool_errln("layer-check: git grep for tool_main failed"); return 2; }
+  tools := cast(string) tools_buf[0..<t.out_n];
+
+  if args_has(args[..], "--consumers") {
+    ls := [3] string.["git", "ls-files", "aethyr/*.coax"];
+    r := proc_run(ls[..], 60000, body[..], err[..]);
+    if r.started != 0 || r.status != 0 || r.cut { tool_errln("layer-check: git ls-files failed"); return 2; }
+    all := cast(string) body[0..<r.out_n];
+    mods: [LC_MODS] string; n := 0;
+    i := 0;
+    while i < all.count {
+      j := i;
+      while j < all.count && all[j] != '\n' { j += 1; }
+      p := cast(string) all[i..<j]; i = j + 1;
+      if p.count > 0 && !lc_support(p, tools) && n < mods.count { mods[n] = p; n += 1; }
+    }
+    consumed: [LC_MODS] bool; loaders: [LC_MODS] int;
+    lc_consumed(loads, tools, mods[..], n, consumed[..], loaders[..]);
+    file: [LC_BUF] u8;
+    none := 0; lines := 0;
+    for k: 0..<n {
+      if consumed[k] { continue; }
+      size := fs_read(mods[k], file[..]); nl := 0;
+      for q: 0..<ifx size > 0 then size else 0 { if file[q] == '\n' { nl += 1; } }
+      none += 1; lines += nl;
+      print("%\t% lines\t% loader%\n", mods[k], nl, loaders[k], ifx loaders[k] == 1 then "" else "s");
+    }
+    print("layer-check --consumers: % of % engine modules under aethyr/ (% lines) have no product consumer: nothing outside aethyr/ that is not a test, tool, example, book or document loads them, directly or through another module\n", none, n, lines);
+    return 0;
+  }
+
+  used: [LC_LINES] bool; found: [LC_RULES] int;
+  bad := lc_judge(loads, tools, allow, used[..], run, found[..]);
+  bad += lc_judge_allow(allow, used[..], run);
+
+  // the allowlist against the base's copy: it only shrinks
+  added: [1] int;
+  commit: [1024] u8; cn := 0;
+  for c: base { if cn < 1000 { commit[cn] = c; cn += 1; } }
+  for c: "^{commit}" { commit[cn] = c; cn += 1; }
+  rp := [5] string.["git", "rev-parse", "--verify", "--quiet", cast(string) commit[0..<cn]];
+  v := proc_run(rp[..], 60000, body[..], err[..]);
+  if v.started != 0 || v.status != 0 {
+    print("note: % is not a commit here, so the allowlist was not compared with it; pass --base REV\n", base);
+  } else {
+    spec: [1024] u8; sn := 0;
+    for c: base { if sn < 900 { spec[sn] = c; sn += 1; } }
+    spec[sn] = ':'; sn += 1;
+    for c: LC_ALLOW { spec[sn] = c; sn += 1; }
+    show := [3] string.["git", "show", cast(string) spec[0..<sn]];
+    s := proc_run(show[..], 60000, body[..], err[..]);
+    if s.started != 0 || s.status != 0 {
+      // the commit that adds the file seeds it with the loads that were there
+      print("note: % has no %, so this is its seed and its lines were not compared\n", base, LC_ALLOW);
+    } else {
+      bad += lc_grown(allow, cast(string) body[0..<s.out_n], run, added[..]);
+      if added[0] > 0 { print("note: % line% of % not in %'s copy; a new line needs a reason and an issue number\n", added[0], ifx added[0] == 1 then "" else "s", LC_ALLOW, base); }
+    }
+  }
+
+  total := found[1] + found[2] + found[3];
+  print("layer-check: aethyr-up %, everglade-up %, tests %, total % loads across the layers (each needs a line in %), % failed\n", found[1], found[2], found[3], total, LC_ALLOW, bad);
+  return ifx bad == 0 then 0 else 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+LC_T_QUIET :: LcRun.{quiet = true};
+// git grep -n output: an engine module loading the page's wire, a test and a sibling; a test that
+// may load anything; a tool program; a game file loading the web app; a page loading the engine.
+LC_T_LOADS :: "aethyr/net/latency.coax:5:#load \"../../apps/openagents-web/everglade-wire.coax\";\naethyr/net/latency.coax:6:#load \"../tests/net-fixture.coax\";\naethyr/net/latency.coax:7:#load \"clock.coax\";\naethyr/tests/net-checks.coax:3:#load \"../../verse/everglade/zone.coax\";\naethyr/host/build-x.coax:2:#load \"../../coax/web/wasm-chrome.coax\";\neverglade/zone.coax:4:#load \"../apps/openagents-web/hud.coax\";\neverglade/zone.coax:5:#load \"../aethyr/net/latency.coax\";\napps/openagents-web/page.coax:9:#load \"../../aethyr/net/latency.coax\";\n";
+LC_T_TOOLS :: "aethyr/host/build-x.coax\n";
+LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/everglade-wire.coax\ntests aethyr/net/latency.coax -> aethyr/tests/net-fixture.coax\neverglade-up everglade/zone.coax -> apps/openagents-web/hud.coax\n";
+
+#test "a load line: its file, its line and the path it names" {
+  l := lc_parse("aethyr/ui/draw.coax:6:#load \"../../verse/hud/frame.coax\" as frame;");
+  #assert l.ok && l.from == "aethyr/ui/draw.coax" && l.line == 6 && l.rel == "../../verse/hud/frame.coax";
+  #assert !lc_parse("a.coax:3:// #load \"x.coax\";").ok && !lc_parse("a.coax:3:#load \"\";").ok && !lc_parse("a.coax:x:#load \"b.coax\";").ok && !lc_parse("").ok;
+  o: [256] u8;
+  #assert lc_resolve("aethyr/net", "../../apps/openagents-web/everglade-wire.coax", o[..]) == "apps/openagents-web/everglade-wire.coax";
+  #assert lc_resolve("aethyr", "walk.coax", o[..]) == "aethyr/walk.coax" && lc_resolve("aethyr/a", "./b/../c.coax", o[..]) == "aethyr/a/c.coax";
+  #assert lc_resolve("a", "../../b.coax", o[..]) == "" && lc_resolve("a", "/Users/x/b.coax", o[..]) == "";
+  #assert lc_dir("aethyr/net/latency.coax") == "aethyr/net" && lc_dir("a.coax") == "";
+  #assert lc_cmp("aethyr/a", "aethyr/b") < 0 && lc_cmp("aethyr/a", "aethyr/a") == 0 && lc_cmp("aethyr/a/b", "aethyr/a") > 0;
+}
+#test "support code: tests, checks, tools, examples, the book and programs" {
+  #assert lc_support_path("aethyr/tests/walk.coax") && lc_support_path("aethyr/render/tools/bake.coax") && lc_support_path("aethyr/examples/one-press.coax") && lc_support_path("aethyr/book/tools/x.coax") && lc_support_path("aethyr/lab/physics-lab.coax") && lc_support_path("aethyr/space/fixtures/a.coax");
+  #assert lc_support_path("aethyr/anim/bundle-checks.coax") && lc_support_path("aethyr/actors/checks.coax") && lc_support_path("aethyr/host/check-browser.coax") && lc_support_path("aethyr/a_test.coax");
+  #assert !lc_support_path("aethyr/walk.coax") && !lc_support_path("aethyr/render/checker.coax") && !lc_support_path("aethyr/contest/a.coax") && !lc_support_path("aethyr/toolsy/a.coax");
+  #assert lc_support("aethyr/host/build-x.coax", LC_T_TOOLS) && !lc_support("aethyr/host/build", LC_T_TOOLS);
+  #assert lc_in_tests("aethyr/tests/a.coax") && lc_in_tests("coax/lib/test/a.coax") && !lc_in_tests("aethyr/tests.coax") && !lc_in_tests("aethyr/latest/a.coax");
+}
+#test "the rules: up from aethyr, up from everglade, and product code loading tests" {
+  #assert lc_rule("aethyr/net/latency.coax", "apps/openagents-web/everglade-wire.coax") == LC_UP_AETHYR;
+  #assert lc_rule("aethyr/ui/draw.coax", "verse/hud/frame.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "everglade/zone.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "coax/web/wasm-chrome.coax") == LC_UP_AETHYR;
+  #assert lc_rule("aethyr/a.coax", "coax/lib/json/json.coax") == 0 && lc_rule("aethyr/a.coax", "psionic/lib/a.coax") == 0 && lc_rule("aethyr/a.coax", "aethyr/b.coax") == 0;
+  #assert lc_rule("everglade/zone.coax", "apps/openagents-web/hud.coax") == LC_UP_EVERGLADE && lc_rule("everglade/zone.coax", "verse/everglade/a.coax") == 0 && lc_rule("everglade/zone.coax", "aethyr/a.coax") == 0;
+  #assert lc_rule("aethyr/walk.coax", "aethyr/tests/walk-fixture.coax") == LC_TESTS && lc_rule("everglade/a.coax", "coax/lib/tests/x.coax") == LC_TESTS;
+  // the other trees are not judged here
+  #assert lc_rule("verse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
+}
+#test "the seeded allowlist passes; a new upward load fails" {
+  used: [8] bool; found: [LC_RULES] int;
+  #assert lc_judge(LC_T_LOADS, LC_T_TOOLS, LC_T_ALLOW, used[..], LC_T_QUIET, found[..]) == 0;
+  #assert found[LC_UP_AETHYR] == 1 && found[LC_UP_EVERGLADE] == 1 && found[LC_TESTS] == 1 && used[1] && used[2] && used[3] && !used[0];
+  #assert lc_judge_allow(LC_T_ALLOW, used[..], LC_T_QUIET) == 0;
+  // one more load from the engine up into a realm
+  more := "aethyr/ui/draw.coax:6:#load \"../../verse/hud/frame.coax\";\n";
+  fresh: [8] bool; f2: [LC_RULES] int;
+  joined: [4096] u8; n := 0;
+  for c: LC_T_LOADS { joined[n] = c; n += 1; }
+  for c: more { joined[n] = c; n += 1; }
+  #assert lc_judge(cast(string) joined[0..<n], LC_T_TOOLS, LC_T_ALLOW, fresh[..], LC_T_QUIET, f2[..]) == 1 && f2[LC_UP_AETHYR] == 2;
+  // and a product module that loads a test file, and a game file that loads the web app
+  f3: [LC_RULES] int;
+  #assert lc_judge("aethyr/walk.coax:26:#load \"tests/walk-fixture.coax\";\neverglade/dash.coax:2:#load \"../apps/a/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f3[..]) == 2 && f3[LC_TESTS] == 1 && f3[LC_UP_EVERGLADE] == 1;
+  // the same path loaded twice is one load; an absolute path is not judged
+  f4: [LC_RULES] int;
+  #assert lc_judge("aethyr/a.coax:1:#load \"../verse/b.coax\";\naethyr/a.coax:2:#load \"../verse/b.coax\";\naethyr/a.coax:3:#load \"/x/verse/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f4[..]) == 1 && f4[LC_UP_AETHYR] == 1;
+}
+#test "the allowlist stays true and only shrinks" {
+  used: [8] bool;
+  // a line no load needs, and lines that are not RULE FROM -> TO
+  #assert lc_judge_allow("aethyr-up aethyr/gone.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 1;
+  used[0] = true;
+  #assert lc_judge_allow("aethyr-up aethyr/gone.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 0;
+  #assert lc_judge_allow("up aethyr/a.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("aethyr-up aethyr/a.coax verse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("tests a -> b c\n", used[..], LC_T_QUIET) == 1;
+  #assert lc_entry_rule("tests aethyr/a.coax -> aethyr/tests/b.coax") == LC_TESTS && lc_entry_rule("everglade-up a -> b") == LC_UP_EVERGLADE;
+  base := "# seed\naethyr-up aethyr/a.coax -> verse/a.coax\ntests aethyr/b.coax -> aethyr/tests/b.coax\n";
+  added: [1] int;
+  #assert lc_grown(base, base, LC_T_QUIET, added[..]) == 0 && lc_grown("tests aethyr/b.coax -> aethyr/tests/b.coax\n", base, LC_T_QUIET, added[..]) == 0 && added[0] == 0;
+  #assert lc_grown("aethyr-up aethyr/c.coax -> apps/x.coax\n", base, LC_T_QUIET, added[..]) == 1 && added[0] == 1;
+  #assert lc_grown("aethyr-up aethyr/c.coax -> apps/x.coax  # later\n", base, LC_T_QUIET, added[..]) == 1;
+  added[0] = 0;
+  #assert lc_grown("aethyr-up aethyr/c.coax -> apps/x.coax  # the HUD frame moves down in P2.1 (#13270)\n", base, LC_T_QUIET, added[..]) == 0 && added[0] == 1;
+  #assert lc_reasoned("a  # why (#123)") && !lc_reasoned("a") && !lc_reasoned("a # #1234");
+}
+#test "consumers: a module a product loads, directly or through another module, is consumed" {
+  mods := [4] string.["aethyr/a.coax", "aethyr/b.coax", "aethyr/c.coax", "aethyr/d.coax"];
+  loads := "apps/page.coax:1:#load \"../aethyr/a.coax\";\naethyr/a.coax:1:#load \"b.coax\";\naethyr/tests/t.coax:1:#load \"../c.coax\";\naethyr/d.coax:1:#load \"c.coax\";\ndocs/x/y.coax:1:#load \"../../aethyr/d.coax\";\n";
+  consumed: [4] bool; loaders: [4] int;
+  lc_consumed(loads, "", mods[..], 4, consumed[..], loaders[..]);
+  #assert consumed[0] && consumed[1] && !consumed[2] && !consumed[3];
+  #assert loaders[0] == 1 && loaders[1] == 1 && loaders[2] == 2 && loaders[3] == 1;
+  #assert lc_find(mods[..], 4, "aethyr/c.coax") == 2 && lc_find(mods[..], 4, "aethyr/e.coax") == -1;
+}

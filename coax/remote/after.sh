@@ -243,7 +243,7 @@ args_for() {   # item job-args...
     module\ *) echo "module ${item#module }" ;;
     compiler\ *) echo "unit ${item#compiler }" ;;
     job\ *) echo "${item#job }" ;;
-    step\ tools-check|step\ everglade-parity|step\ wire-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
+    step\ tools-check|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
     step\ check-visuals) echo "visuals" ;;
     *) echo "$*" ;;   # the whole job again

@@ -25,6 +25,32 @@ kernels beside pinned Rapier and Jolt references. It runs six shared seeded
 scenes on coderos-4080, with JSON metrics, deterministic Aethyr repeats and
 headless captures. Reference engines stay in its ignored lab cache.
 
+## Layers
+
+Loads go down the layers, never up (#13264). `aethyr/` is the engine:
+nothing in it loads from `verse/`, `apps/`, `everglade/` or `coax/web/`.
+`everglade/` is the game on the engine: nothing in it loads from `apps/`.
+Product code in either folder does not load a file in a `tests/` folder.
+Support code may load what it exercises: a path with a `tests`, `test`,
+`tools`, `examples`, `book`, `fixtures` or `lab` folder, a test or check
+file name (`checks.coax`, `X-checks.coax`, `check-X.coax`, `X_test.coax`),
+or a program that defines `tool_main`.
+
+`coax/web/tool.sh layer-check` checks this in a few seconds, with no build.
+It prints the count of loads for each rule (`aethyr-up`, `everglade-up`,
+`tests`). [`layer-allowlist.txt`](layer-allowlist.txt) lists the loads that
+broke a rule when the check landed, one `RULE FROM -> TO` line each. The list
+only shrinks. A new line fails unless it ends with a reason and an issue
+number (`# why (#1234)`). A line that excuses nothing now also fails.
+
+To remove a line, make the load go. Move what the file needs down into its
+own layer, or have the caller pass it in. For a `tests` line, move the shared
+code out of `tests/` into a module. Then delete the line and run
+`coax/web/tool.sh layer-check`.
+
+`coax/web/tool.sh layer-check --consumers` lists the engine modules that no
+product loads, directly or through another module (#13272).
+
 | Module | What |
 | --- | --- |
 | `loop.coax` | The one frame loop: fixed-step simulation, interpolated drawing, one clock |
