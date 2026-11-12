@@ -1,7 +1,7 @@
 // Aethyr's live Quaternius wardrobe. Shared people parts, skinning and baked clips;
 // no cloned geometry or per-outfit skeleton. Used by fivelab's character-creator route.
 #module "openagents.charactercreator";
-#load "../../apps/openagents-web/font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../dragon-clips.coax" as dragon;   // the Shapechange dragon's baked frames
 #load "../../verse/character-glade.coax" as glade;
 #load "../../verse/experimental-terrain.coax" as meadow;

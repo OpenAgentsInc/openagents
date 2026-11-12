@@ -3,7 +3,7 @@
 // a phone, the same pane the forge screen's YOUR AGENT tab uses.
 //   coax/bin/coax test verse/edit/agent_test.coax
 
-#load "../../apps/openagents-web/font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "edit.coax";
 

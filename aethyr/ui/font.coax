@@ -11,7 +11,7 @@
 // The table is sorted by code point: font_find is a binary search.
 // Glyphs: ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _ ` | ~ U+00A1 U+00AB U+00B0 U+00B7 U+00BB U+00BF U+00C6 U+00D7 U+00DE U+00DF U+00F7 U+0132 U+014A U+0152 U+2013 U+2014 U+2018 U+2019 U+201C U+201D U+2022 U+2026 U+20BF U+2192 U+25A1
 
-#load "../../aethyr/render/sans-profile.coax";
+#load "../render/sans-profile.coax";
 
 FONT_BREAK :: 255;
 FONT_GLYPHS :: 91;

@@ -33,7 +33,7 @@
 #load "../lib/json/json.coax";
 #load "../lib/text/base64.coax";
 #load "../../aethyr/speak.coax";
-#load "../../apps/openagents-web/font.coax";
+#load "../../aethyr/ui/font.coax";
 
 SPEAK_VERSION :: "speak-1";
 SPEAK_SIZE :: 720;            // the portrait's side, px

@@ -28,7 +28,7 @@
 // villa_controls, the player's step, villa_step, the figures, villa_draw.
 //   coax/bin/coax test apps/openagents-web/villa.coax --steps 200000000   (the stone route check ~155M)
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../aethyr/camera.coax";
 #load "../../aethyr/throw.coax";

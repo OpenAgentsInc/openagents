@@ -17,7 +17,7 @@
 // draw whole frames of the real baked Coax queue (a frame is ~14M steps, the
 // longest check ~135M), more than the default 20M a check.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "projects/baked.coax";   // every project with a page (`openagents project bake`)
 #load "project-live.coax";
 #load "../../coax/web/analytics.coax";

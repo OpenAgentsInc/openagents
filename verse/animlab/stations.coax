@@ -7,7 +7,7 @@
 #load "../../aethyr/anim/inspect-mesh.coax";
 #load "../../aethyr/loop.coax" as clock;
 #load "../../aethyr/ui/draw.coax";
-#load "../../apps/openagents-web/font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../verse/tools/humans/ph_num.coax";
 #load "direct.coax";
 AlState :: struct {

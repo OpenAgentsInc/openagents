@@ -1,6 +1,6 @@
 // Shared source part: Font layout and renderer effects load this same physical
 // owner without a second logical module or C exports. Font's advance widths and
-// cap-height layout remain in apps/openagents-web/font.coax.
+// cap-height layout remain in aethyr/ui/font.coax.
 #authority;
 SANS_GLYPHS :: 111;
 SANS_COLUMNS :: 16; SANS_ROWS :: 7;

@@ -18,7 +18,7 @@
 // MAKE A REALM, at the header's top right, opens /worlds/new; it hides while realm making is invite
 // only and this visitor isn't an approved creator (access.coax: GET /api/playtest/access once).
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "textkeys.coax";
 #load "realms/list.coax";
 #load "../../coax/web/analytics.coax";

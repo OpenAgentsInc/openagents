@@ -51,7 +51,7 @@ CC_TO_MOVE :: [22] CcMove.[
   CcMove.{path = "apps/openagents-web/everglade-events.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/everglade-room.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/everglade-voice.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-web/font.coax", does = CC_WRAP},
+  CcMove.{path = "aethyr/ui/font.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/memorial.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/myrealm.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/newland.coax", does = CC_WRAP},

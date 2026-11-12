@@ -30,7 +30,7 @@
 // Filament (font.coax). The host (coax/web/host.js) moves bytes; every
 // decision is here. What people do is recorded through analytics.coax.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "textkeys.coax";
 #load "../../coax/web/analytics.coax";

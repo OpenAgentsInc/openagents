@@ -1224,7 +1224,7 @@ function frameUpload(x) {
 // 16 columns of 96-texel cells, the pen at x 16 and the baseline at y 72 of
 // each, drawn at 64 px and cut at its cell; every mip level is drawn at its own size rather than
 // downsampled. Coax lays the text out with the same fonts' widths
-// (apps/openagents-web/font.coax, "the system sans"), so this list, the cell
+// (aethyr/ui/font.coax, "the system sans"), so this list, the cell
 // and the font must match it.
 const SANS_EXTRA = [183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
 const SANS_FONT = 'Helvetica, Arial, "Liberation Sans", "Nimbus Sans", sans-serif';

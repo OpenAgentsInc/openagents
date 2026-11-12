@@ -20,7 +20,7 @@
 // each as its projected 2D Gaussian, blended over the meshes (gpu/splatlab.coax) and their depth.
 //   coax/bin/coax test apps/openagents-web/splatlab.coax
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../aethyr/loop.coax";
 #load "../../aethyr/points.coax";
 

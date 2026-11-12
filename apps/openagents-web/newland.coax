@@ -7,7 +7,7 @@
 // pointer, touch and keyboard selection open each listed realm.
 // Checks: coax test apps/openagents-web/newland.coax --steps 400000000.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "newland-data.coax";
 #load "newland-golden-data.coax";
 #load "realms.coax";

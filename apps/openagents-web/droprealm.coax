@@ -21,7 +21,7 @@
 // your lamp, and the strokes over them; droprealm-face.c binds it.
 //   coax/bin/coax test apps/openagents-web/droprealm.coax
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "../../aethyr/budget.coax";
 

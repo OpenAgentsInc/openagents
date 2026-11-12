@@ -359,7 +359,7 @@ coax/bin/coax test aethyr/ui/hud.coax --library
   DOM/framework/audio effects owned by hosts.
 - [verse/light.coax](../../verse/light.coax): the slot and bar shading
   (`verse_slot_light`, `verse_slot_cover`, `verse_bar`, `verse_slot_icon`).
-- Filament, the stroke font in `apps/openagents-web/font.coax`
+- Filament, the stroke font in `aethyr/ui/font.coax`
   ([coax/font.md](../../coax/font.md)), and GPUI's atlas for Geist in
   `coax/web/gpui.js`.
 - [aethyr/arrange.coax](../../aethyr/arrange.coax): a close-up view where

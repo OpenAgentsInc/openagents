@@ -22,7 +22,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/socket.coax";
 #load "oneshot-table.coax";
 #load "../../aethyr/shot.coax" as ash;

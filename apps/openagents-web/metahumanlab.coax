@@ -17,7 +17,7 @@ META_CLIPS :: 12;
 // Shift-drag or two fingers pan, and held W A S D (Q down, E up) fly the pivot smoothly.
 //   coax/bin/coax test apps/openagents-web/metahumanlab.coax
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../aethyr/loop.coax";
 #load "../../verse/everglade/people-rig.coax";   // the CC0 skeletons and clips (it loads aethyr/skin.coax)
 #load "../../aethyr/mannequin.coax";

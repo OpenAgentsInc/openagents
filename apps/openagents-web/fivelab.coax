@@ -27,7 +27,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../everglade/scene/charactercreator.coax" as cc;
 #load "../../verse/experimental-village.coax" as village;
 #load "../../verse/experimental-hostiles.coax" as hostile;

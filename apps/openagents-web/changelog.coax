@@ -1,6 +1,6 @@
 // The release history, drawn on WebGPU with the shared Filament/sans font.
 // Content is generated from coax/CHANGELOG.md; browser glue transports effects.
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "changelog-content.coax";
 

@@ -21,7 +21,7 @@
 // the preset's STYLE_FLOATS (verse/style-preset.coax). Every painterly engine
 // task shows its work here; its goldens are fixture-painterly-<clock>.png.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";

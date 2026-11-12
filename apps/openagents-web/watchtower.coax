@@ -13,7 +13,7 @@
 // are fx strokes (font.coax).
 //   coax/bin/coax test apps/openagents-web/watchtower.coax --steps 2000000000
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../aethyr/loop.coax";   // the fixed steps: Aethyr's one clock (aethyr/book ch001)

@@ -18,7 +18,7 @@
 //   coax/bin/coax test apps/openagents-web/realm.coax --steps 2000000000
 // (the first-step check walks the house frame by frame: about 1.3 billion steps)
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "textkeys.coax";
 #load "../../coax/web/analytics.coax";

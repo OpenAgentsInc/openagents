@@ -4,7 +4,7 @@
 // coax/bin/coax test aethyr/ui/draw.coax --library
 #load "hud.coax";
 #load "../../verse/hud/frame.coax";
-#load "../../apps/openagents-web/font.coax";
+#load "font.coax";
 
 VERTEX_FLOATS :: 12;
 // quiet: the instruments without their specimen captions, for a consumer that labels them itself.

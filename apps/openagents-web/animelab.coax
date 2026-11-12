@@ -24,7 +24,7 @@
 #load "../../verse/anime/stage.coax";
 #load "../../verse/anime/take.coax";
 #load "../../coax/lib/nostr/block/fi-base64url.coax";
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../aethyr/budget.coax";
 #load "../../aethyr/render/cel-mesh.coax";
 #load "animelab-cast.coax";

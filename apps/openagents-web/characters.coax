@@ -15,7 +15,7 @@
 // State lives in the host's memory (a Chars the face keeps), so the dev
 // server can swap this code in while the page runs.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../aethyr/motion.coax";
 #load "../../aethyr/budget.coax";

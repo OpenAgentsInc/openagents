@@ -18,7 +18,7 @@
 // (prefers-color-scheme: dark). The page's build (the hashed Wasm name of a
 // Coaxial page, or "") goes in build.
 #load "../net/cdp.coax";
-#load "../../../apps/openagents-web/font.coax";
+#load "../../../aethyr/ui/font.coax";
 
 MEDIA_PNG :: 25165824;   // the largest screenshot, 24 MiB
 

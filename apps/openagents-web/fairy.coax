@@ -28,7 +28,7 @@
 // it for the browser and runs the player and the stream between its calls.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../aethyr/camera.coax";
 #load "../../aethyr/terrain.coax";

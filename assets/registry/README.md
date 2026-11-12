@@ -142,7 +142,7 @@ multi-parent assemblies. Do not change parent history to point at "latest".
 `collections/character-create.json` is the authored wardrobe definition: stable
 asset IDs, labels, availability and preset membership. `registry.coax wardrobe`
 resolves it against the imported catalog, writes the collection lock and
-regenerates `apps/openagents-web/charactercreator-parts.coax`.
+regenerates `everglade/scene/charactercreator-parts.coax`.
 
 Its `legacy_slot` values are frozen CC2 compatibility keys, never source-array
 positions. Do not reorder or reuse them. Retired slots stay reserved; a future

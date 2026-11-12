@@ -24,7 +24,7 @@
 // show the solids over it.
 //   coax/bin/coax test apps/openagents-web/painted.coax --steps 2000000000
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../aethyr/loop.coax";
 #load "../../verse/painted/village-road.coax";
 

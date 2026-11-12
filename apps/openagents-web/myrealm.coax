@@ -32,7 +32,7 @@
 // myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
 //   coax/bin/coax test apps/openagents-web/myrealm.coax   (a check that lays out a realm several times has its own #steps)
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 #load "access.coax";   // who may make a realm: BUILD YOUR OWN REALM hides on make 0

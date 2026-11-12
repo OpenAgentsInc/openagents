@@ -9,7 +9,7 @@
 // F_* facts, the same places as play.coax's); the HUD's buttons go back as
 // acts (play.coax A_*), which the face hands on.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)

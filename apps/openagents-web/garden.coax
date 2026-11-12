@@ -28,7 +28,7 @@
 // binds it for the browser and runs the player between its calls.
 //   coax/bin/coax test apps/openagents-web/garden.coax
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "save.coax";
 #load "../../aethyr/camera.coax";

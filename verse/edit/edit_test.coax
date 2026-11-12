@@ -2,7 +2,7 @@
 // page's analytics first, a realm's `lit`, then the layer.
 //   coax/bin/coax test verse/edit/edit_test.coax
 
-#load "../../apps/openagents-web/font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "edit.coax";
 

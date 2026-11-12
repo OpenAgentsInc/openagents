@@ -29,7 +29,7 @@
 // the plates and the strokes; builder-face.c sends the page's requests and the analytics batches.
 //   coax/bin/coax test apps/openagents-web/builder.coax
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 #load "access.coax";

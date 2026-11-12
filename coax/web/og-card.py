@@ -1,7 +1,7 @@
 """A page's link-preview card (Open Graph and Twitter): a frame of the page
 cropped to 1200x630, darkened on the left, with its words written in
 Filament, the stroke font every Coaxial page draws in (the glyph table is
-read from apps/openagents-web/font.coax, so the card and the pages agree).
+read from aethyr/ui/font.coax, so the card and the pages agree).
 Tooling only: it runs on this machine and ships a JPEG.
 
     python3 -I coax/web/og-card.py SHOT.png OUT.jpg --crop X0,Y0,X1,Y1 \
@@ -25,7 +25,7 @@ def table(src, name):
     return [int(v) for v in re.findall(r"\d+", m.group(1))]
 
 
-src = open(os.path.join(ROOT, "apps/openagents-web/font.coax"), encoding="utf-8").read()
+src = open(os.path.join(ROOT, "aethyr/ui/font.coax"), encoding="utf-8").read()
 CODES, FIRST, COUNT, WIDTH, POINTS = (table(src, n) for n in ("FONT_CODES", "FONT_FIRST", "FONT_COUNT", "FONT_WIDTH", "FONT_POINTS"))
 BREAK = 255
 

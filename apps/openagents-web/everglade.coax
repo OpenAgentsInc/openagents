@@ -55,7 +55,7 @@
 // every object). everglade-face.c binds it for the browser.
 //   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../aethyr/character-appearance.coax" as cc;
 #load "../../aethyr/action/area-aim.coax" as aa;   // a placed area's ground targeting (Entangle), shared with Everglade II
 #load "everglade-link.coax";

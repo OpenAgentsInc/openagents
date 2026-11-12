@@ -21,7 +21,7 @@
 //   MINE is the projects the viewer is a member of, and it is the first
 //   choice when there are any.
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "textkeys.coax";
 #load "projects/list.coax";
 #load "../../coax/web/analytics.coax";

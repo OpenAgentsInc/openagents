@@ -354,7 +354,7 @@ shot grid   src=https://openagents.com/realms/orbit-league?stage=highlight  dur=
   burns the captions in. It never edits the transcribe domain; it calls it.
 - Prints `out`, `seconds`, `shots N`, `label`.
 - Uses: `labs clip`, ffmpeg (concat, xfade, drawtext, subtitles),
-  `openagents transcribe`, `apps/openagents-web/font.coax` for titles
+  `openagents transcribe`, `aethyr/ui/font.coax` for titles
   (**new**: titles drawn as PNG overlays in Filament, as the deck draws them).
 
 ### `labs deck`

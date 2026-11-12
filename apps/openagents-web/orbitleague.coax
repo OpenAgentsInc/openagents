@@ -23,7 +23,7 @@
 // them from the uniforms written here; the HUD is strokes over it.
 //   coax/bin/coax test apps/openagents-web/orbitleague.coax   (long simulations declare measured #steps)
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "orbitleague-game.coax";   // the game without its page: the match, the arenas, the bot, the physics, the room's wire
 #load "../../aethyr/budget.coax";

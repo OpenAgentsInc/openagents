@@ -1818,7 +1818,7 @@ eg_fx_vs :: (_vid4:u32,_iid5:u32,in_:eg_fx_vs_in,u:[]f32)->EgV {
 }
 eg_fx_fs :: (v:EgV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
   if (v.tint.w>3.5f32) {
-    // A glyph from the host's atlas (apps/openagents-web/font.coax draw_sans), Character Create's
+    // A glyph from the host's atlas (aethyr/ui/font.coax draw_sans), Character Create's
     // labels (everglade-create.coax): place is the atlas coordinate, shape.x the em in pixels.
     lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
     a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);

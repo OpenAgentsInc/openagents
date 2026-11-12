@@ -14,7 +14,7 @@
 // says so, with the way into the garden.
 //   coax/bin/coax test apps/openagents-web/memorial.coax
 
-#load "font.coax";
+#load "../../aethyr/ui/font.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/web/analytics.coax";
 
