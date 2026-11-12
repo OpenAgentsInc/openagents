@@ -759,7 +759,8 @@ static CheckReuse g_check_reuse;
 
 // Marks a cache record as just used, so the cache evicts the least recently used first.
 static void cache_touch(const std::string &path) { utimensat(AT_FDCWD, path.c_str(), nullptr, 0); }
-static void check_cache_used(const std::string &dir);  // main.cpp: evicts old records when this process ends
+// main.cpp: renames temp to path and adds the record to the cache's account
+static bool check_cache_put(const std::string &dir, const std::string &temp, const std::string &path, uint64_t size);
 
 struct ReuseIndex {
   enum : uint8_t { NONE, SIG, EXEC, FULL };
@@ -1244,8 +1245,8 @@ struct ReuseRecord {
     if (!f) return false;
     const std::string text = "coax.check-reuse.v2\n" + table + rows;
     const bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
-    if (fclose(f) != 0 || !ok || std::rename(temp.c_str(), path.c_str()) != 0) { unlink(temp.c_str()); return false; }
-    return true;
+    if (fclose(f) != 0 || !ok) { unlink(temp.c_str()); return false; }
+    return check_cache_put(dir, temp, path, text.size());
   }
 };
 

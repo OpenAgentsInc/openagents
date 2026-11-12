@@ -5433,10 +5433,20 @@ diagnostics, exit status and C are a cold compile's. A failing check is
 never recorded. A procedure an executed check ran that has no item, or a
 name with a newline, means that check isn't recorded.
 
-The check cache is bounded. When a process that used it exits, it evicts
-the least recently modified records (a hit touches its record) until at
-most `$COAX_CHECK_CACHE_FILES` (65,536) records and `$COAX_CHECK_CACHE_BYTES`
-(2 GiB) remain, and removes temporary files older than an hour. Keys and
+The check cache is bounded: at most `$COAX_CHECK_CACHE_FILES` (65,536)
+records and `$COAX_CHECK_CACHE_BYTES` (2 GiB). No compile walks it to learn
+its size (#13307). Its account, `.account` in the cache directory, holds the
+record count and bytes; every record is renamed into place under the
+account's flock, which adds it to the account (a replaced record adds only
+its change in size), so concurrent compiles keep it exact. A put that leaves
+the account over a limit, or finds none, starts one detached `coax
+check-cache evict` (at most once a minute a process, none while one runs:
+the flock on `.evict`). It walks the cache once, evicts the least recently
+modified records (a hit touches its record) down to 7/8 of each limit, removes
+temporary files older than an hour, and writes the account from what it found
+plus what was put meanwhile. A missing or wrong account only causes a walk, or
+a later one; no compile reads the account to answer a check.
+`$COAX_CHECK_CACHE_EVICT=inline` evicts in the compile, at its exit. Keys and
 records name each unit by its path inside its Git checkout, never by the
 checkout's absolute path, so worktrees with the same sources share passes
 (#13077).

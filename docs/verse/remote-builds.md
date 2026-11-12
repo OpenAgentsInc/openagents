@@ -523,7 +523,11 @@ found nothing: fivelab's reports said `"check_reuse": {"reused": 0, "run":
 2. **The cache was too small.** It kept 4,096 records. Agents filled it in
    about 90 minutes (the oldest record on the Mac was from 07:58 at 09:20), so
    few records lived until the next build. The default is now 65,536 records
-   and 2 GiB (`COAX_CHECK_CACHE_FILES`, `COAX_CHECK_CACHE_BYTES`).
+   and 2 GiB (`COAX_CHECK_CACHE_FILES`, `COAX_CHECK_CACHE_BYTES`). Each
+   compile used to walk the whole cache at its exit to total it; at 57,000
+   records under load that took minutes and failed releases (#13307). The
+   cache now keeps an account of its size as records are written, and only a
+   detached `coax check-cache evict` walks it, once a limit is crossed.
 
 The C those compiles emit is unchanged, so wasm.sh's own cache keys stay
 valid. The change reaches agents with the next published compiler.

@@ -174,6 +174,9 @@ template <class F> static void burst(size_t count, size_t grain, F &&work) {
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <sys/file.h>
+#include <sys/resource.h>
 #include <pthread.h>
 #include <thread>
 
@@ -721,7 +724,9 @@ static void timings_table(double total) {
     g_decl_costs.top=keep;
   }
 }
+static void check_cache_finish();  // the check cache's inline eviction, before the command answers
 static int finish_profile(int status) {
+  check_cache_finish();
   capacity_notes();
   status=finish_semantic_report(status);
   if(!g_timings.on()) return status;
@@ -1298,37 +1303,210 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
 static std::string library_cache_dir() {
   const char *env = getenv("COAX_CHECK_CACHE");
   const char *home = getenv("HOME");
-  const std::string dir = env && *env ? env : std::string(home && *home ? home : "/tmp") + "/.cache/coax-check";
-  check_cache_used(dir);
-  return dir;
+  return env && *env ? env : std::string(home && *home ? home : "/tmp") + "/.cache/coax-check";
 }
 
-// The check cache is bounded (ax-check-cache-bound): when a process that used
-// it ends, it removes the least recently used records (by modification time; a
-// record read is touched) until at most $COAX_CHECK_CACHE_FILES records
-// (default 65,536) and $COAX_CHECK_CACHE_BYTES bytes (default 2 GiB) are left,
-// and any temporary file older than an hour. A record that is gone only costs
-// the work it saved. Forked children leave with _exit and evict nothing.
-static std::string *g_check_cache_dir = nullptr;
+// The check cache is bounded (ax-check-cache-bound): it keeps at most
+// $COAX_CHECK_CACHE_FILES records (default 65,536) and $COAX_CHECK_CACHE_BYTES
+// bytes (default 2 GiB). A record that is gone only costs the work it saved.
+//
+// No compile walks the cache to learn its size (#13307: at 57,000 records each
+// exit's walk took minutes on a busy Mac). The cache's account, .account in its
+// directory, holds its record count and bytes. Every record is put in place
+// under the account's flock (check_cache_put), which also adds the record to
+// the account (a replaced record adds only its change in size), so concurrent
+// compiles keep it exact. When a put leaves the account over a limit, or finds
+// no account, the compile starts `coax check-cache evict DIR --background`, a
+// detached process, at most once a minute. That process, one at a time (the
+// flock on .evict), walks the cache, removes the least recently used records (by
+// modification time; a record read is touched) until at most 7/8 of each limit
+// is left, so the next walk is thousands of records away, removes any temporary
+// file older than an hour, and writes the account from what it found plus what
+// was put meanwhile. An account that is lost or wrong only causes a walk or a
+// late one, never a wrong answer: no compile reads the account to answer a
+// check. $COAX_CHECK_CACHE_EVICT=inline evicts in the compile itself, when it
+// ends (as compiles did before #13307: the checks of the limit use it), and
+// $COAX_CHECK_CACHE_TRACE=FILE appends a line for each eviction step.
+// Forked children leave with _exit and evict nothing at exit.
 static uint64_t cache_limit(const char *name, uint64_t fallback) {
   uint64_t v = 0;
   const char *env = getenv(name);
   return env && parse_count(env, &v) ? v : fallback;
 }
-static void check_cache_evict() {
-  if (!g_check_cache_dir) return;
-  const uint64_t files = cache_limit("COAX_CHECK_CACHE_FILES", 65536), bytes = cache_limit("COAX_CHECK_CACHE_BYTES", 2048ull << 20);
-  struct Entry { int64_t when; std::string path; uint64_t size; };
+static uint64_t check_cache_files_limit() { return cache_limit("COAX_CHECK_CACHE_FILES", 65536); }
+static uint64_t check_cache_bytes_limit() { return cache_limit("COAX_CHECK_CACHE_BYTES", 2048ull << 20); }
+static void check_cache_trace(const std::string &line) {
+  const char *path = getenv("COAX_CHECK_CACHE_TRACE");
+  if (!path || !*path) return;
+  const int fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+  if (fd < 0) return;
+  const std::string text = line + " pid=" + std::to_string(getpid()) + "\n";
+  ssize_t n = write(fd, text.data(), text.size());
+  (void)n;
+  close(fd);
+}
+struct CacheAccount { bool known = false; uint64_t records = 0, bytes = 0; };
+static const char CACHE_ACCOUNT_SCHEMA[] = "coax.check-cache-account.v1";
+// The account in fd (held under its flock); not known when empty or unreadable.
+static CacheAccount cache_account_read(int fd) {
+  CacheAccount a;
+  char buf[128];
+  const ssize_t n = pread(fd, buf, sizeof buf - 1, 0);
+  if (n <= 0) return a;
+  buf[n] = 0;
+  char schema[64];
+  unsigned long long records = 0, bytes = 0;
+  if (sscanf(buf, "%63s %llu %llu", schema, &records, &bytes) == 3 && std::string(schema) == CACHE_ACCOUNT_SCHEMA) {
+    a.known = true;
+    a.records = records;
+    a.bytes = bytes;
+  }
+  return a;
+}
+// Writes the account at fixed width, so a rewrite never leaves an old tail.
+static void cache_account_write(int fd, const CacheAccount &a) {
+  char buf[128];
+  const int n = a.known ? snprintf(buf, sizeof buf, "%s %020llu %020llu\n", CACHE_ACCOUNT_SCHEMA, (unsigned long long)a.records, (unsigned long long)a.bytes)
+                        : snprintf(buf, sizeof buf, "%s unknown\n", CACHE_ACCOUNT_SCHEMA);
+  if (n > 0 && pwrite(fd, buf, (size_t)n, 0) == n && ftruncate(fd, n) == 0) return;
+}
+static int cache_account_open(const std::string &dir) {
+  const int fd = open((dir + "/.account").c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+  if (fd < 0) return -1;
+  if (flock(fd, LOCK_EX) != 0) { close(fd); return -1; }
+  return fd;
+}
+static bool cache_account_over(const CacheAccount &a) {
+  return !a.known || a.records > check_cache_files_limit() || a.bytes > check_cache_bytes_limit();
+}
+static uint64_t cache_apply(uint64_t base, int64_t delta) {
+  if (delta < 0 && (uint64_t)(-delta) > base) return 0;
+  return base + (uint64_t)delta;
+}
+
+static int check_cache_evict(const std::string &dir, bool wait, bool background);
+static std::string *g_check_cache_inline = nullptr;  // the cache to evict when this process ends (inline mode)
+static void check_cache_evict_at_exit() {
+  if (g_check_cache_inline) check_cache_evict(*g_check_cache_inline, true, false);
+  g_check_cache_inline = nullptr;
+}
+// When a command ends (finish_profile): before a resident's request answers its
+// client, so the client sees the evicted cache; atexit covers an early exit().
+static void check_cache_finish() { check_cache_evict_at_exit(); }
+static void check_cache_inline(const std::string &dir) {
+  static bool registered = false;
+  if (!g_check_cache_inline) g_check_cache_inline = new std::string(dir);
+  if (!registered) { registered = true; atexit(check_cache_evict_at_exit); }
+}
+// A put left the cache over a limit, or found no account: evict, at most once a
+// minute a process.
+static void check_cache_over(const std::string &dir) {
+  const char *mode = getenv("COAX_CHECK_CACHE_EVICT");
+  if (mode && std::string(mode) == "inline") {
+    check_cache_inline(dir);
+    return;
+  }
+  static std::chrono::steady_clock::time_point last;
+  static bool started = false;
+  const auto now = std::chrono::steady_clock::now();
+  if (started && now - last < std::chrono::seconds(60)) return;
+  started = true;
+  last = now;
+  // An eviction already running will write the account: start none.
+  const int fd = open((dir + "/.evict").c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+  if (fd < 0) return;
+  const bool busy = flock(fd, LOCK_EX | LOCK_NB) != 0;
+  close(fd);
+  if (busy) { check_cache_trace("busy"); return; }
+  const std::string self = executable_path();
+  if (self.empty()) return;
+  // Detached: its own process group (a timeout's kill of the compile's group
+  // misses it), /dev/null for 0, 1 and 2 (no pipe waits for it), and it closes
+  // every other descriptor first (no build-worker token goes with it).
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+  posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
+  posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+  posix_spawnattr_t attr;
+  posix_spawnattr_init(&attr);
+  posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
+  posix_spawnattr_setpgroup(&attr, 0);
+  std::string a0 = self, a1 = "check-cache", a2 = "evict", a3 = dir, a4 = "--background";
+  char *argv[] = {a0.data(), a1.data(), a2.data(), a3.data(), a4.data(), nullptr};
+  pid_t pid = 0;
+  const int rc = posix_spawn(&pid, self.c_str(), &actions, &attr, argv, environ);
+  posix_spawn_file_actions_destroy(&actions);
+  posix_spawnattr_destroy(&attr);
+  check_cache_trace(rc == 0 ? "spawn" : "spawn-failed");
+  if (rc != 0) check_cache_inline(dir);
+}
+
+// Puts the record written to temp (size bytes) at path, in dir, and adds it to
+// the account, both under the account's flock. False (and temp removed) when
+// the rename fails.
+static bool check_cache_put(const std::string &dir, const std::string &temp, const std::string &path, uint64_t size) {
+  const int fd = cache_account_open(dir);
+  struct stat old;
+  const bool replaced = lstat(path.c_str(), &old) == 0 && S_ISREG(old.st_mode);
+  if (std::rename(temp.c_str(), path.c_str()) != 0) {
+    unlink(temp.c_str());
+    if (fd >= 0) close(fd);
+    return false;
+  }
+  if (fd < 0) { check_cache_over(dir); return true; }  // no account: a walk will make one
+  CacheAccount a = cache_account_read(fd);
+  if (a.known) {
+    a.records += replaced ? 0 : 1;
+    a.bytes = cache_apply(a.bytes, (int64_t)size - (replaced ? (int64_t)old.st_size : 0));
+    cache_account_write(fd, a);
+  }
+  close(fd);  // the flock goes with it
+  if (cache_account_over(a)) check_cache_over(dir);
+  return true;
+}
+
+// The walk (see above). wait: wait for a running eviction (else leave it to
+// that one). Returns 0, or 1 when the cache can't be read.
+static int check_cache_evict(const std::string &dir, bool wait, bool background) {
+  const int lock = open((dir + "/.evict").c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+  if (lock < 0) return 1;
+  if (flock(lock, wait ? LOCK_EX : LOCK_EX | LOCK_NB) != 0) { close(lock); check_cache_trace("busy"); return 0; }
+  const uint64_t files = check_cache_files_limit(), bytes = check_cache_bytes_limit();
+  CacheAccount before;
+  {
+    const int fd = cache_account_open(dir);
+    if (fd >= 0) { before = cache_account_read(fd); close(fd); }
+  }
+  // Another eviction may have finished since this one was asked for.
+  if (!cache_account_over(before)) { close(lock); check_cache_trace("under"); return 0; }
+  if (!before.known) {
+    // Start the account at nothing, so what is put while this walks is counted
+    // (a record put and also seen here counts twice: an early next walk, never
+    // a cache past its limit).
+    const int fd = cache_account_open(dir);
+    if (fd >= 0) {
+      before.known = true;
+      cache_account_write(fd, before);
+      close(fd);
+    }
+  }
+  struct Entry { int64_t when; std::string name; uint64_t size; };
   std::vector<Entry> entries;
   uint64_t total = 0;
-  std::error_code ec;
-  const auto now = std::chrono::system_clock::now();
-  for (auto it = std::filesystem::directory_iterator(*g_check_cache_dir, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+  DIR *d = opendir(dir.c_str());
+  if (!d) { close(lock); return 1; }
+  const int dfd = dirfd(d);
+  const time_t now = time(nullptr);
+  size_t scanned = 0;
+  while (const struct dirent *e = readdir(d)) {
+    const std::string name = e->d_name;
+    if (name == "." || name == ".." || name == ".account" || name == ".evict") continue;
+    scanned++;
     struct stat st;
-    const std::string path = it->path().string(), name = it->path().filename().string();
-    if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
-    if (!name.empty() && name[0] == '.') {
-      if (std::chrono::system_clock::to_time_t(now) - st.st_mtime > 3600) unlink(path.c_str());
+    if (fstatat(dfd, name.c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISREG(st.st_mode)) continue;
+    if (name[0] == '.') {  // a temporary file a writer left
+      if (now - st.st_mtime > 3600) unlinkat(dfd, name.c_str(), 0);
       continue;
     }
 #ifdef __APPLE__
@@ -1336,21 +1514,76 @@ static void check_cache_evict() {
 #else
     const int64_t when = (int64_t)st.st_mtim.tv_sec * 1000000000 + st.st_mtim.tv_nsec;
 #endif
-    entries.push_back({when, path, (uint64_t)st.st_size});
+    entries.push_back({when, name, (uint64_t)st.st_size});
     total += (uint64_t)st.st_size;
   }
-  if (entries.size() <= files && total <= bytes) return;
-  std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) { return a.when != b.when ? a.when < b.when : a.path < b.path; });
-  size_t left = entries.size();
-  for (const Entry &e : entries) {
-    if (left <= files && total <= bytes) break;
-    if (unlink(e.path.c_str()) == 0 || errno == ENOENT) { left--; total -= e.size; }
+  size_t left = entries.size(), removed = 0;
+  if (left > files || total > bytes) {
+    // Down to 7/8 of each limit, so the next walk is an eighth of the cache away.
+    const uint64_t keep_files = files - files / 8, keep_bytes = bytes - bytes / 8;
+    std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) { return a.when != b.when ? a.when < b.when : a.name < b.name; });
+    for (const Entry &e : entries) {
+      if (left <= keep_files && total <= keep_bytes) break;
+      if (unlinkat(dfd, e.name.c_str(), 0) == 0 || errno == ENOENT) { left--; total -= e.size; removed++; }
+    }
   }
+  closedir(d);
+  // What was put while this walked is in the account's change since it began;
+  // a record put and also seen here counts twice, which only brings the next
+  // walk sooner.
+  const int fd = cache_account_open(dir);
+  if (fd >= 0) {
+    const CacheAccount now_account = cache_account_read(fd);
+    CacheAccount a;
+    a.known = true;
+    a.records = left;
+    a.bytes = total;
+    if (before.known && now_account.known) {
+      a.records = cache_apply(a.records, (int64_t)now_account.records - (int64_t)before.records);
+      a.bytes = cache_apply(a.bytes, (int64_t)now_account.bytes - (int64_t)before.bytes);
+    }
+    cache_account_write(fd, a);
+    close(fd);
+  }
+  check_cache_trace("walk scanned=" + std::to_string(scanned) + " removed=" + std::to_string(removed) + " left=" + std::to_string(left) +
+                    std::string(background ? " background" : ""));
+  close(lock);  // after the trace, so one who waited on the lock reads this walk's line
+  return 0;
 }
-static void check_cache_used(const std::string &dir) {
-  if (g_check_cache_dir) return;
-  g_check_cache_dir = new std::string(dir);
-  atexit(check_cache_evict);
+
+// coax check-cache [DIR]                the account: records and bytes, and the limits
+// coax check-cache evict [DIR]          evict now if the cache is over a limit (waits for a running eviction)
+// coax check-cache evict DIR --background   what a compile starts: never waits, prints nothing
+static int usage();
+static int check_cache_command(int argc, char **argv) {
+  const bool evict = argc >= 3 && std::string(argv[2]) == "evict";
+  const int at = evict ? 3 : 2;
+  const bool background = evict && argc == 5 && std::string(argv[4]) == "--background";
+  if (argc > at + 1 + (background ? 1 : 0)) return usage();
+  const std::string dir = argc > at ? std::string(argv[at]) : library_cache_dir();
+  if (background) {
+    // Leave the compile's descriptors (its build-worker tokens) behind.
+    struct rlimit rl;
+    const int top = getrlimit(RLIMIT_NOFILE, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY && rl.rlim_cur < 65536 ? (int)rl.rlim_cur : 65536;
+    for (int fd = 3; fd < top; fd++) close(fd);
+    return check_cache_evict(dir, false, true);
+  }
+  if (evict) {
+    const int rc = check_cache_evict(dir, true, false);
+    if (rc != 0) fprintf(stderr, "coax check-cache: cannot read %s\n", dir.c_str());
+    return rc;
+  }
+  CacheAccount a;
+  struct stat st;
+  if (stat((dir + "/.account").c_str(), &st) == 0) {
+    const int fd = cache_account_open(dir);
+    if (fd >= 0) { a = cache_account_read(fd); close(fd); }
+  }
+  printf("dir %s\n", dir.c_str());
+  if (a.known) printf("records %llu\nbytes %llu\n", (unsigned long long)a.records, (unsigned long long)a.bytes);
+  else printf("records unknown\nbytes unknown\n");
+  printf("limit records %llu\nlimit bytes %llu\n", (unsigned long long)check_cache_files_limit(), (unsigned long long)check_cache_bytes_limit());
+  return 0;
 }
 
 // The SHA-256 of this compiler's executable, once a process; "" in the
@@ -1395,7 +1628,7 @@ static void cache_record(const std::string &dir, const std::string &key, const s
   std::error_code ec;
   if (key.empty() || !(std::filesystem::create_directories(dir, ec), !ec || std::filesystem::is_directory(dir, ec))) return;
   const std::string temp = dir + "/." + key + "." + std::to_string(getpid());
-  if (write_file(temp, record)) std::rename(temp.c_str(), (dir + "/" + key).c_str());
+  if (write_file(temp, record)) check_cache_put(dir, temp, dir + "/" + key, record.size());
 }
 
 // The units unit `at` loads, directly or not, itself first, in a fixed order.
@@ -2130,6 +2363,7 @@ static int usage() {
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
           "       coax status [--json] | --jobs [--json]   (the build-worker budget: on stderr, or alone with --jobs)\n"
+          "       coax check-cache [evict] [DIR]   (the check cache's records and bytes; evict: down to 7/8 of its limits if over one)\n"
           "       coax serve [status|start|stop]   (the resident compiler that c, check, test, lib, header, build and deps use; COAX_SERVE=0 turns it off)\n"
           "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --traversal N sets the aggregate traversal limit of the compilation and of each check without #traversal\n       --json prints diagnostics as JSON lines\n       --near-limit P notes each limit used above P percent (1 to 100; default 75, or COAX_NEAR_LIMIT)\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check, library and declaration times on stderr\n       --timings-top N lists the N costliest declarations in those reports (default 20)\n       --jobs N runs at most N parallel check workers; every coax process shares one build-worker budget (coax status --jobs)\n");
   return 2;
@@ -2368,6 +2602,7 @@ static int main_impl(int argc, char **argv) {
   if (cmd == "compat") return compat_command(argc,argv);
   if (cmd == "explain") return explain(argc, argv);
   if (cmd == "vocab") return vocab_command(argc, argv);
+  if (cmd == "check-cache") return check_cache_command(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "checks-c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
       cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto" && cmd != "query")
     return usage();

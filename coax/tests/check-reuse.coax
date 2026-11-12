@@ -25,6 +25,9 @@
 //   - two checkouts of the same sources (each under a directory holding
 //     .git) share passes and per-check records (#13077);
 //   - the cache stays within COAX_CHECK_CACHE_FILES entries, oldest out first;
+//   - no compile walks the cache to learn its size: its account (.account)
+//     does, kept exact by concurrent compiles; over a limit a compile starts
+//     one detached eviction (#13307);
 //   - a check near its step budget (tests/check-reuse/near) is reused with
 //     the note a cold compile prints: a comment in a loaded file runs no
 //     check (#13123). Those compiles run with COAX_NATIVE_CHECKS=0; every
@@ -163,9 +166,40 @@ tool_main :: () -> int #export_c #effects(all) {
 
   // The cache keeps at most COAX_CHECK_CACHE_FILES entries; a compile after
   // an eviction is still a cold one's.
-  r = run(compiler, dir, "export COAX_CHECK_CACHE_FILES=5; for v in 11 12 13 14; do edit b.coax \"RATE :: $((v - 1));\" \"RATE :: $v;\"; chk small-$v check > /dev/null; echo \"files=$(ls \"$D/cache\" | wc -l | tr -d ' ')\"; done; chk small check", out[..]);
+  r = run(compiler, dir, "export COAX_CHECK_CACHE_FILES=5 COAX_CHECK_CACHE_EVICT=inline; for v in 11 12 13 14; do edit b.coax \"RATE :: $((v - 1));\" \"RATE :: $v;\"; chk small-$v check > /dev/null; echo \"files=$(ls \"$D/cache\" | wc -l | tr -d ' ')\"; done; chk small check", out[..]);
   t = cast(string) out[0..<r.out_n];
   bad += check(has(t, "files=5\nfiles=5\nfiles=5\nfiles=5\nsmall status=0 reused=") && has(t, " same"), "the cache stays within its limit and a compile after an eviction is a cold one's");
+
+  // No compile walks the cache to learn its size (#13307): the account
+  // (.account) keeps its records and bytes. A cache of 3,000 records with no
+  // account is walked once, by the first compile, and never again: a compile
+  // that writes records and one that only reads them walk nothing.
+  // COAX_CHECK_CACHE_TRACE has a line for each walk.
+  r = run(compiler, dir, "export COAX_CHECK_CACHE_EVICT=inline COAX_CHECK_CACHE_TRACE=\"$D/big.trace\"; B=\"$D/big\"; mkdir -p \"$B\" \"$D/bw\" && cp tests/check-reuse/*.coax \"$D/bw/\" && seq -f %064.0f 1 3000 | sed \"s|^|$B/|\" | xargs touch; walks() { grep -c '^walk' \"$D/big.trace\"; }; acct() { \"$C\" check-cache \"$B\" | sed -n 's/^records //p'; }; COAX_CHECK_CACHE=\"$B\" \"$C\" check \"$D/bw/main.coax\" > /dev/null 2>&1; echo \"first walks=$(walks) $(grep -o 'scanned=[0-9]*' \"$D/big.trace\") account=$(acct) files=$(ls \"$B\" | wc -l | tr -d ' ')\"; was=$(acct); sed 's/^RATE :: .*;$/RATE :: 31;/' \"$D/bw/b.coax\" > \"$D/bw/b.new\" && mv \"$D/bw/b.new\" \"$D/bw/b.coax\"; COAX_CHECK_CACHE=\"$B\" \"$C\" check \"$D/bw/main.coax\" > /dev/null 2>&1; echo \"writer walks=$(walks) grew=$([ \"$(acct)\" -gt \"$was\" ] && echo yes || echo no) exact=$([ \"$(acct)\" = \"$(ls \"$B\" | wc -l | tr -d ' ')\" ] && echo yes || echo no)\"; COAX_CHECK_CACHE=\"$B\" \"$C\" check \"$D/bw/main.coax\" > /dev/null 2>&1; echo \"reader walks=$(walks)\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  before := bad;
+  bad += check(has(t, "first walks=1 scanned=3") && has(t, " files=") && !has(t, "account= "), "a cache with no account is walked once and gets one");
+  bad += check(has(t, "writer walks=1 grew=yes exact=yes"), "a compile that writes records walks nothing, and the account stays exact");
+  bad += check(has(t, "reader walks=1"), "a compile that only reads records walks nothing");
+  if bad > before { print("%", t); }
+
+  // Over a limit, a compile starts one detached eviction (no wait at its
+  // exit); `coax check-cache evict` waits for it. The cache ends within the
+  // limit, walked once, and the account covers it (a record put while the
+  // walk ran may count twice, which only brings the next walk sooner).
+  r = run(compiler, dir, "export COAX_CHECK_CACHE_FILES=100 COAX_CHECK_CACHE_TRACE=\"$D/over.trace\"; unset COAX_CHECK_CACHE_EVICT; B=\"$D/over\"; mkdir -p \"$B\" \"$D/ow\" && cp tests/check-reuse/*.coax \"$D/ow/\" && seq -f %064.0f 1 300 | sed \"s|^|$B/|\" | xargs touch; COAX_CHECK_CACHE=\"$B\" \"$C\" check \"$D/ow/main.coax\" > /dev/null 2>&1; echo \"status=$?\"; \"$C\" check-cache evict \"$B\"; n=$(ls \"$B\" | wc -l | tr -d ' '); echo \"spawned=$([ \"$(grep -c '^spawn pid' \"$D/over.trace\")\" -ge 1 ] && echo yes || echo no) walks=$(grep -c '^walk' \"$D/over.trace\") within=$([ \"$n\" -le 100 ] && [ \"$n\" -ge 88 ] && echo yes || echo no) covers=$([ \"$(\"$C\" check-cache \"$B\" | sed -n 's/^records //p')\" -ge \"$n\" ] && echo yes || echo no)\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  before = bad;
+  bad += check(has(t, "status=0\nspawned=yes walks=1 within=yes covers=yes"), "over a limit a compile starts one detached eviction, which keeps the cache within it");
+  if bad > before { print("%", t); }
+
+  // Six compiles at once into one cache keep its account exact: the records
+  // and bytes it names are the cache's.
+  r = run(compiler, dir, "unset COAX_CHECK_CACHE_EVICT; B=\"$D/conc\"; mkdir -p \"$B\" && \"$C\" check-cache evict \"$B\" && for i in 1 2 3 4 5 6; do mkdir -p \"$D/p$i\" && cp tests/check-reuse/*.coax \"$D/p$i/\" && sed \"s/^RATE :: .*;\\$/RATE :: 4$i;/\" tests/check-reuse/b.coax > \"$D/p$i/b.coax\"; done; for i in 1 2 3 4 5 6; do COAX_CHECK_CACHE=\"$B\" \"$C\" check \"$D/p$i/main.coax\" > /dev/null 2>&1 & done; wait; n=$(ls \"$B\" | wc -l | tr -d ' '); bytes=$(cat \"$B\"/* | wc -c | tr -d ' '); \"$C\" check-cache \"$B\" > \"$D/conc.account\"; echo \"concurrent records=$([ \"$(sed -n 's/^records //p' \"$D/conc.account\")\" = \"$n\" ] && echo exact || echo off) bytes=$([ \"$(sed -n 's/^bytes //p' \"$D/conc.account\")\" = \"$bytes\" ] && echo exact || echo off) many=$([ \"$n\" -gt 6 ] && echo yes || echo no)\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  before = bad;
+  bad += check(has(t, "concurrent records=exact bytes=exact many=yes"), "compiles at once into one cache keep its account exact");
+  if bad > before { print("%", t); }
 
   // Steps are the evaluator's: these compiles turn native checks off.
   // A check near its step budget prints a note (#13123); its record keeps
@@ -175,7 +209,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // edit to add() runs only the check that reaches it.
   r = run(compiler, dir, "export COAX_NATIVE_CHECKS=0 CACHE=near MAIN=\"$D/n/main.coax\"; mkdir -p \"$D/n\" && cp tests/check-reuse/near/*.coax \"$D/n/\" && chk near-cold check; grep -q 'compile-time steps:' \"$D/near-cold.err\" && echo noted; printf '\\n// edited\\n' >> \"$D/n/zone.coax\" && chk near-comment check; { printf '// moved\\n\\n'; cat \"$D/n/engine.coax\"; } > \"$D/n/engine.new\" && mv \"$D/n/engine.new\" \"$D/n/engine.coax\" && chk near-moved check; grep -o 'engine.coax:[0-9]*' \"$D/near-moved.err\" | head -1; sed 's/return a + b;/return b + a;/' \"$D/n/engine.coax\" > \"$D/n/engine.new\" && mv \"$D/n/engine.new\" \"$D/n/engine.coax\" && chk near-engine check", out[..]);
   t = cast(string) out[0..<r.out_n];
-  before := bad;
+  before = bad;
   bad += check(has(t, "near-cold status=0 reused=0 run=3 same\nnoted\n"), "a check near its step budget prints a note");
   bad += check(has(t, "near-comment status=0 reused=3 run=0 same"), "a comment appended to a loaded file runs no check, and the note is a cold compile's");
   bad += check(has(t, "near-moved status=0 reused=3 run=0 same\nengine.coax:4"), "lines added above a consumer run no check; the note names its new line");

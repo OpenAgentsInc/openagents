@@ -1201,11 +1201,16 @@ refund_ok :: (paid: int, refund: int) -> bool {
   by its absolute path, so a pass recorded in one worktree, clone or
   temporary release tree is reused by another with the same sources
   (#13077). A unit outside any checkout is named by its absolute path.
-- The check cache is bounded: when a compile ends it removes the least
-  recently used records until at most `$COAX_CHECK_CACHE_FILES` (default
-  65,536) records and `$COAX_CHECK_CACHE_BYTES` bytes (default 2 GiB) are
-  left. (At 4,096, agents' builds filled it in about 90 minutes, so a
-  record rarely lived to be reused.)
+- The check cache is bounded: at most `$COAX_CHECK_CACHE_FILES` (default
+  65,536) records and `$COAX_CHECK_CACHE_BYTES` bytes (default 2 GiB). (At
+  4,096, agents' builds filled it in about 90 minutes, so a record rarely
+  lived to be reused.) Its account (`.account`) keeps its record count and
+  bytes as records are written, so no compile walks the cache (#13307). A
+  compile that takes the cache over a limit starts one detached
+  `coax check-cache evict`, which removes the least recently used records
+  down to 7/8 of each limit. `coax check-cache` prints the account and the
+  limits; `coax check-cache evict` evicts now, if the cache is over a limit.
+  `$COAX_CHECK_CACHE_EVICT=inline` evicts in the compile, when it ends.
 - `#authority;` marks a file whose rules guard money, signatures or grants.
   Every procedure authored in that physical source unit except `main` and `#foreign` imports must actually execute
   in a check, directly or through calls (E0380). Dead references, short-circuited
