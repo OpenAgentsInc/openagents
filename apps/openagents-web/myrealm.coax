@@ -40,7 +40,7 @@
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
-#load "../../aethyr/forge/edit.coax";   // the realm document's edits: a move, undo, the revision a save names
+#load "../../aethyr/forge/doc.coax";   // the realm document and its edits (aethyr/forge/edit.coax): a move, undo, the bodies and replies (realm.proto)
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 #load "../../aethyr/budget.coax";
@@ -736,7 +736,7 @@ undo_press :: (s: [] MyRealm) {
     return;
   }
   if !may_undo(s) || held(s, BTN_UNDO) { return; }
-  n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].server_rev); n = put(s[0].req_body[..], n, "}");
+  n := forge_rev_body(s[0].server_rev, s[0].req_body[..]);   // realm.proto's RevRequest
   ask(s, REQ_UNDO, "/undo", n, true);
 }
 // REDO: the page's step last undone first; then the server's (0111), when nothing is unsaved.
@@ -749,7 +749,7 @@ redo_press :: (s: [] MyRealm) {
     return;
   }
   if !may_redo(s) || held(s, BTN_REDO) { return; }
-  n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].server_rev); n = put(s[0].req_body[..], n, "}");
+  n := forge_rev_body(s[0].server_rev, s[0].req_body[..]);   // realm.proto's RevRequest
   ask(s, REQ_REDO, "/redo", n, true);
 }
 save_press :: (s: [] MyRealm) {
@@ -761,50 +761,42 @@ save_press :: (s: [] MyRealm) {
 }
 publish_press :: (s: [] MyRealm) {
   if !may_publish(s) || held(s, BTN_PUBLISH) { return; }
-  n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].fd[0].rev); n = put(s[0].req_body[..], n, "}");
+  n := forge_rev_body(s[0].fd[0].rev, s[0].req_body[..]);
   ask(s, REQ_PUBLISH, "/publish", n, true);
 }
 fork_press :: (s: [] MyRealm) {
   if !may_fork(s) || held(s, BTN_FORK) { return; }
   ask(s, REQ_FORK, "/fork?as=lines", put(s[0].req_body[..], 0, "{}"), true);
 }
-// A whole number after "NAME": in a JSON answer, or -1.
-json_int_of :: (body: string, name: string) -> int {
-  q: [32] u8; qn := put(q[..], 0, "\""); qn = put(q[..], qn, name); qn = put(q[..], qn, "\":");
-  key := cast(string) q[0..<qn];
-  for i: 0..<body.count - key.count + 1 {
-    if body[i..<i + key.count] == key { at: [1] int; at[0] = i + key.count; v := int_at(body, at[..]); return ifx at[0] < 0 then -1 else v; }
-  }
-  return -1;
-}
 forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
   s[0].forge_status = status; s[0].forge_what = what;
+  r := forge_read_reply(body);   // realm.proto's SaveReply, UndoReply or Conflict (aethyr/forge/doc.coax)
   changed := "Changed since you opened it. Reload to see it.";
   if what == REQ_SAVE {
     if status == 200 {
-      rev := json_int_of(body, "rev");
+      rev := r.rev;
       if rev > 0 && rev != s[0].server_rev { forge_commit(s[0].fd[..], rev); s[0].server_rev = rev; s[0].server_undo += 1; s[0].base[0] = s[0].fd[0]; }
       else if rev > 0 { forge_saved(s[0].fd[..], rev); }   // the server had these moves already
       s[0].kept_due = true; set_note(s, "Saved."); return;
     }
-    if status == 409 { s[0].server_rev = hi_int(json_int_of(body, "rev"), s[0].server_rev); set_note(s, changed); return; }
+    if status == 409 { s[0].server_rev = hi_int(r.rev, s[0].server_rev); set_note(s, changed); return; }
     set_note(s, ifx status == 403 then "Only its owner saves it." else "Not saved. Try again.");
     return;
   }
   if what == REQ_UNDO {
-    if status == 200 { s[0].server_undo = hi_int(json_int_of(body, "undo"), 0); s[0].server_redo = hi_int(json_int_of(body, "redo"), 0); set_note(s, "Undone."); ask_spec(s); return; }
+    if status == 200 { s[0].server_undo = hi_int(r.undo, 0); s[0].server_redo = hi_int(r.redo, 0); set_note(s, "Undone."); ask_spec(s); return; }
     set_note(s, ifx status == 409 then changed else "Not undone. Try again.");
     ask_spec(s);
     return;
   }
   if what == REQ_REDO {
-    if status == 200 { s[0].server_undo = hi_int(json_int_of(body, "undo"), 0); s[0].server_redo = hi_int(json_int_of(body, "redo"), 0); set_note(s, "Redone."); ask_spec(s); return; }
+    if status == 200 { s[0].server_undo = hi_int(r.undo, 0); s[0].server_redo = hi_int(r.redo, 0); set_note(s, "Redone."); ask_spec(s); return; }
     set_note(s, ifx status == 409 then changed else "Not redone. Try again.");
     ask_spec(s);
     return;
   }
   if what == REQ_PUBLISH {
-    if status == 200 { s[0].published_rev = hi_int(json_int_of(body, "rev"), 0); set_note(s, "Published."); return; }
+    if status == 200 { s[0].published_rev = hi_int(r.rev, 0); set_note(s, "Published."); return; }
     set_note(s, ifx status == 409 then changed else "Not published. Try again.");
     return;
   }
@@ -3763,7 +3755,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   tap_box(s[..], t[..], s[0].boxes[BTN_SAVE]);
   b: [16] u8; key := forge_move_key(s[0].fd[..], 0);
   want: [200] u8; wn := put(want[..], 0, "{\"rev\":3,\"moved\":[{\"entity\":\""); wn = put(want[..], wn, key); wn = put(want[..], wn, "\",\"x\":");
-  wn = forge_put_cm(want[..], wn, cm_of(s[0].x)); wn = put(want[..], wn, ",\"z\":"); wn = forge_put_cm(want[..], wn, cm_of(s[0].z - a)); wn = put(want[..], wn, "}]}");
+  wn = forge_put_cm(want[..], wn, cm_of(s[0].x)); wn = put(want[..], wn, ",\"z\":"); wn = forge_put_cm(want[..], wn, cm_of(s[0].z - a)); wn = put(want[..], wn, "}],\"shaped\":[]}");
   #assert url_is(s[..], "/api/playtest/realms/forge-court/save") && (s[0].req_flags & HTTP_POST) != 0 && body_is(s[..], cast(string) want[0..<wn]);
   answered(s[..], t[..], 5, "200\n{\"rev\": 4, \"sha256\": \"ab\"}");
   #assert !forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 4 && s[0].server_rev == 4 && note_is(s[..], "Saved.") && realm_probe(s[..], 15) == 200;

@@ -178,6 +178,9 @@
     ],
     "verse-npc": [
       "openagents/verse/npc/v1alpha1/ask.proto"
+    ],
+    "verse-doc": [
+      "openagents/verse/doc/v1alpha1/realm.proto"
     ]
   },
   "profile_namespaces": {
@@ -318,6 +321,10 @@
     ],
     "verse-npc": [
       "openagents.verse.npc.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "verse-doc": [
+      "openagents.verse.doc.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

@@ -2,6 +2,7 @@
 // policies; SQL owns the atomic revision comparison. Every edit reads its
 // base, sends that revision, and refuses a server without the fence capability.
 #load "commands.coax";
+#load "../../aethyr/forge/doc.coax";   // the realm document and its bodies (realm.proto): one codec
 #load "../../coax/lib/text/base64.coax";
 
 REALM_DOC_MAX :: 368640;
@@ -24,11 +25,8 @@ realm_read :: (a: [] Args, r: [] Rep, profile: string, tail: string) -> int {
 
 realm_edit_answer :: (r: [] Rep, res: ApiAnswer, body: string) -> int {
   if res.error == HTTP_OK && res.status == 409 {
-    nodes: [64] JvNode; d: [1] Jv;
-    if jv_parse(d[..],body,nodes[..]) {
-      v := jv_int(d[0],jv_get(d[0],0,"rev"),-1);
-      if v >= 1 { rep_int(r,"rev",v); }
-    }
+    c := forge_read_reply(body);   // realm.proto's Conflict: the revision there now
+    if c.ok { rep_int(r,"rev",c.rev); }
   }
   if !api_ok(res) { return api_fail(r,res,body); }
   rev := realm_reply_rev(body);
@@ -111,15 +109,9 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
       if copied < 0 { return realm_edit_refuse(400,"the answer buffer is too small",-1,out); }
       got.n=copied; return got;
     }
-    nodes: [2048] JvNode; d: [1] Jv;
-    if !jv_parse(d[..],cast(string) docbuf[0..<got.n],nodes[..]) { return realm_edit_refuse(400,"the publication profile did not read",rev,out); }
-    doc := jv_get(d[0],0,"doc"); base := jv_get(d[0],doc,"base");
-    if jv_kind(d[0],base) == JV_STRING {
-      name: [48] u8; bn := jv_str(d[0],base,name[..]);
-      if bn < 1 || !cli_slug_ok(cast(string) name[0..<bn]) { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
-      fork_publish=true;
-    }
-    else if jv_kind(d[0],base) != JV_NULL { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
+    base := forge_read_base(cast(string) docbuf[0..<got.n]);   // the document's base: null, or the realm a fork came from
+    if !base.ok { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
+    fork_publish = base.fork;
     if fork_publish && cli_spec_value(spec,"edit_fence") != "1" { return realm_edit_refuse(400,"built-in fork publication needs revision-fenced routes (migration 0102)",rev,out); }
   }
   if realm_shape_verb(verb) && cli_spec_value(spec,"shapes") != "1" {
@@ -137,6 +129,11 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
     n := forge_save_body(doc[..],buf[..]);
     if n < 0 { return realm_edit_refuse(400,"the move body is too large",rev,out); }
     return api_call(a,profile,"POST",realm_path(slug,"/save",path[..]),cast(string) buf[0..<n],out);
+  }
+  if verb == "undo" || verb == "redo" {
+    n := forge_rev_body(rev,buf[..]);   // realm.proto's RevRequest, {"rev":N}
+    tb: [128] u8;
+    return api_call(a,profile,"POST",realm_path(slug,realm_edit_tail(verb,"",tb[..]),path[..]),cast(string) buf[0..<n],out);
   }
   o: [1] Jo; jo_start(o[..],buf[..]); jo_obj(o[..]); jo_key(o[..],"rev"); jo_int(o[..],rev);
   v := rc_pos(a,verb,3);
@@ -449,14 +446,12 @@ realm_publish :: (a: [] Args, r: [] Rep, profile: string) -> int {
     rev = cli_count(cli_spec_value(spec, "rev"), 1, 999999999);
     if rev < 0 { return fail(r, EXIT_USAGE, "that realm has no revisions to publish (a built-in realm?)"); }
   }
-  o: [1] Jo; jo_start(o[..], buf[..]);
-  jo_obj(o[..]); jo_key(o[..], "rev"); jo_int(o[..], rev); jo_end(o[..]);
-  res := api_call(a, profile, "POST", realm_path(slug, "/publish", p[..]), jo_text(o[..]), out[..]);
+  bn := forge_rev_body(rev, buf[..]);   // realm.proto's RevRequest, {"rev":N}
+  res := api_call(a, profile, "POST", realm_path(slug, "/publish", p[..]), cast(string) buf[0..<bn], out[..]);
   body := cast(string) out[0..<res.n];
   if res.error == HTTP_OK && res.status == 409 {
-    nodes: [32] JvNode; d: [1] Jv;
-    // realm_reply_rev refuses a quoted "7" (commands.coax's checks), so only a number is printed
-    if jv_parse(d[..], body, nodes[..]) { rv := realm_reply_rev(body); if rv > 0 { rep_int(r, "rev", rv); } }
+    c := forge_read_reply(body);   // a Conflict's revision; a quoted "7" is none, so only a number is printed
+    if c.ok { rep_int(r, "rev", c.rev); }
   }
   if !api_ok(res) { return api_fail(r, res, body); }
   if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }

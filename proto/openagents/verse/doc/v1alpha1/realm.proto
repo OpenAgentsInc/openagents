@@ -1,0 +1,251 @@
+syntax = "proto3";
+package openagents.verse.doc.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/options/v1alpha1/json.proto";
+
+// A made realm's document and its edits (compliance plan step E6, GitHub
+// #13249; Aethyr book chapters 51, 52 and 81). The server builds and keeps the
+// document in SQL (coax/web/api/migrations/0093, 0109 and 0111), one revision
+// at a time, with the SHA-256 of its text. aethyr/forge/doc.coax is the one
+// reader and writer of the document; aethyr/forge/edit.coax holds the edits and
+// writes the bodies of /save, /undo and /redo. proto/verse/realm-document-v1.json
+// pins the bytes: a starting document, a run of edits, and after each one the
+// document as stored and its hash, checked through doc.coax and edit.coax
+// (aethyr/forge/doc-goldens.coax) and through the API's routes
+// (coax/web/api/tests/realm_doc_checks.coax).
+//
+// The document travels as JSON: Postgres's jsonb text (keys by length, then
+// by bytes; ", " and ": " between items). Its hash is of exactly those bytes,
+// so the document has a hand codec, not the JSON mapper: it has objects keyed
+// by name (tools, lore, quests), which proto3 can only spell as a map, and
+// numbers written as the server rounded them. The messages here name every
+// key; json_name is the key on the wire. The small request and reply bodies
+// (RevRequest, SaveReply, UndoReply, Conflict) are on the JSON mapper too, and
+// the goldens check reads and writes them through it as well.
+//
+// The names follow the Verse chapter's doc.v1 sketch where they fit
+// (docs/verse/openagents-verse-protocol.md, section 10.3): a document, its
+// revision, its placed things. A made realm's document is older than that
+// sketch and keeps its own keys; doc.v1 remains the target for every world.
+
+// GET /api/playtest/realms/<slug>/doc's document, "aethyr.realm" version 1.
+message RealmDocument {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_DOCUMENT;
+  option (openagents.options.v1alpha1.contract) = "aethyr.realm";
+  option (openagents.options.v1alpha1.max_message_bytes) = 262144;   // FORGE_DOC_BYTES
+  optional string doc = 1 [json_name = "doc"];                        // always "aethyr.realm"
+  optional uint32 version = 2 [json_name = "version"];                // 1
+  optional string slug = 3 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 64];   // FORGE_SLUG
+  optional uint64 rev = 4 [json_name = "rev"];                        // 1..999999999 (FORGE_REV_MOST)
+  optional string name = 5 [json_name = "name"];
+  Setup setup = 6 [json_name = "setup"];
+  repeated Feature features = 7 [json_name = "features"];             // the board's features, the server's
+  repeated string off = 8 [json_name = "off"];                        // rows switched off, by key
+  // An object on the wire, {NAME: ON}: a visitor tool on or off.
+  repeated Tool tools = 9 [json_name = "tools"];
+  repeated Placed placed = 10 [json_name = "placed", (openagents.options.v1alpha1.max_count) = 200];
+  repeated Move moved = 11 [json_name = "moved", (openagents.options.v1alpha1.max_count) = 64];   // FORGE_MOVES
+  optional string base = 12 [json_name = "base"];                     // null for a made realm
+  ForkedFrom forked_from = 13 [json_name = "forked_from"];            // null unless a fork
+  // Only when it has an entry: a document without any keeps the bytes it had (0109, 0111).
+  repeated Shape shaped = 14 [json_name = "shaped", (openagents.options.v1alpha1.max_count) = 64];
+  // An object on the wire, {WHO: TEXT}.
+  repeated Lore lore = 15 [json_name = "lore", (openagents.options.v1alpha1.max_count) = 40];
+  // An object on the wire, {GIVER: {ask, steps, reward}}.
+  repeated Quest quests = 16 [json_name = "quests", (openagents.options.v1alpha1.max_count) = 40];
+}
+
+message Setup {
+  optional string style = 1 [json_name = "style"];
+  optional string ground = 2 [json_name = "ground"];
+  optional string time = 3 [json_name = "time"];
+  optional string camera = 4 [json_name = "camera"];
+  optional string palette = 5 [json_name = "palette"];
+}
+
+// One of the board's features, as the builder wrote it.
+message Feature {
+  optional string feature = 1 [json_name = "feature"];
+  optional string size = 2 [json_name = "size"];
+  optional string variant = 3 [json_name = "variant"];
+  optional string colour = 4 [json_name = "colour"];
+  optional int32 count = 5 [json_name = "count"];
+  optional string name = 6 [json_name = "name"];
+  optional string role = 7 [json_name = "role"];
+}
+
+message Tool {
+  optional string name = 1 [json_name = "name", (openagents.options.v1alpha1.max_bytes) = 43];
+  optional bool on = 2 [json_name = "on"];
+}
+
+// A thing placed: the N-th is the slot "place:N" and the entity "placed:N".
+// Its numbers are as the server wrote them (metres and degrees).
+message Placed {
+  optional string thing = 1 [json_name = "thing", (openagents.options.v1alpha1.max_bytes) = 31];
+  optional double x = 2 [json_name = "x", (openagents.options.v1alpha1.unit) = "m"];
+  optional double z = 3 [json_name = "z", (openagents.options.v1alpha1.unit) = "m"];
+  optional double yaw = 4 [json_name = "yaw", (openagents.options.v1alpha1.unit) = "deg"];
+}
+
+// An entity standing elsewhere: "trees:3" (a feature and its index in the
+// layout) or "placed:N". Whole centimetres within 40 m of the middle
+// (FORGE_REACH); on the wire, metres with two decimals ("-2.50").
+message Move {
+  optional string entity = 1 [json_name = "entity", (openagents.options.v1alpha1.max_bytes) = 24];   // FORGE_KEY
+  optional sint32 x_cm = 2 [json_name = "x", (openagents.options.v1alpha1.unit) = "cm"];
+  optional sint32 z_cm = 3 [json_name = "z", (openagents.options.v1alpha1.unit) = "cm"];
+}
+
+// An entity's turn (whole degrees, -179..180: FORGE_TURN), size (whole
+// percent, 25..400: FORGE_SCALE_MIN, FORGE_SCALE_MAX) and whether it is taken
+// away. The plain shape (0, 100, false) is no entry.
+message Shape {
+  optional string entity = 1 [json_name = "entity", (openagents.options.v1alpha1.max_bytes) = 24];
+  optional sint32 yaw = 2 [json_name = "yaw", (openagents.options.v1alpha1.unit) = "deg"];
+  optional uint32 scale = 3 [json_name = "scale", (openagents.options.v1alpha1.unit) = "percent"];
+  optional bool gone = 4 [json_name = "gone"];
+}
+
+message Lore {
+  optional string who = 1 [json_name = "who", (openagents.options.v1alpha1.max_bytes) = 42];
+  optional string text = 2 [json_name = "text", (openagents.options.v1alpha1.max_bytes) = 1600];
+}
+
+// A giver's quest: what it asks, up to three steps, and its reward. The edit
+// model keeps it as one slot, "ASK|STEP|STEP|STEP|REWARD".
+message Quest {
+  optional string giver = 1 [json_name = "giver", (openagents.options.v1alpha1.max_bytes) = 42];
+  optional string ask = 2 [json_name = "ask"];
+  repeated string steps = 3 [json_name = "steps", (openagents.options.v1alpha1.max_count) = 3];
+  optional string reward = 4 [json_name = "reward"];
+}
+
+message ForkedFrom {
+  optional string slug = 1 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint64 rev = 2 [json_name = "rev"];
+}
+
+// One named value of the document the edit model keeps (aethyr/forge/edit.coax):
+// "tool:NAME" (1 or 0), "set:FIELD" (style, ground, time, camera, palette;
+// the server's log also names set:name), "lore:WHO", "quest:GIVER" and
+// "place:N" (THING X Z YAW). The server's log also names "row:N" and
+// "feature:N", the N-th entry of off and features; the model does not hold
+// them yet. A slot absent is the realm without it.
+message Slot {
+  optional string key = 1 [json_name = "key", (openagents.options.v1alpha1.max_bytes) = 48];     // FORGE_SLOT_KEY
+  optional string value = 2 [json_name = "value", (openagents.options.v1alpha1.max_bytes) = 2400];   // FORGE_VAL
+}
+
+// An entity's whole shape in the edit model: where it stands instead (at),
+// its turn, its size and whether it is gone.
+message EntityShape {
+  optional bool at = 1 [json_name = "at"];
+  optional sint32 x_cm = 2 [json_name = "x_cm", (openagents.options.v1alpha1.unit) = "cm"];
+  optional sint32 z_cm = 3 [json_name = "z_cm", (openagents.options.v1alpha1.unit) = "cm"];
+  optional sint32 yaw = 4 [json_name = "yaw", (openagents.options.v1alpha1.unit) = "deg"];
+  optional uint32 scale = 5 [json_name = "scale", (openagents.options.v1alpha1.unit) = "percent"];
+  optional bool gone = 6 [json_name = "gone"];
+}
+message EntityEdit {
+  optional string entity = 1 [json_name = "entity", (openagents.options.v1alpha1.max_bytes) = 24];
+  EntityShape before = 2 [json_name = "before"];
+  EntityShape after = 3 [json_name = "after"];
+}
+// A slot's value before and after; absent is the slot absent.
+message SlotEdit {
+  optional string slot = 1 [json_name = "slot", (openagents.options.v1alpha1.max_bytes) = 48];
+  optional string before = 2 [json_name = "before", (openagents.options.v1alpha1.max_bytes) = 2400];
+  optional string after = 3 [json_name = "after", (openagents.options.v1alpha1.max_bytes) = 2400];
+}
+// One typed edit with its inverse (before and after swapped): edit.coax's ForgeOp.
+// The goldens name each one by what made it ("move", "rotate", "resize",
+// "remove", "restore", "lore", "quest", ...) with that call's arguments.
+message EditOp {
+  oneof edit {
+    EntityEdit entity = 1 [json_name = "entity"];
+    SlotEdit slot = 2 [json_name = "slot"];
+  }
+}
+
+// The server's undo log: each step is the revision it came from, the card it
+// settled (null when none) and its ops, one per slot that differs, in slot
+// order (0111). A value is the slot's JSON value (null: absent): for an entity
+// {x, z} when moved and {yaw, scale, gone} when shaped, a setup field's text, a
+// tool's true or false, a placed thing's object, lore's text, a quest's object.
+// A step on the redo list may also carry the card's state.
+message UndoStep {
+  optional uint64 to = 1 [json_name = "to"];
+  optional uint64 card = 2 [json_name = "card"];
+  repeated LoggedOp ops = 3 [json_name = "ops", (openagents.options.v1alpha1.max_count) = 512];
+  optional string state = 4 [json_name = "state"];
+}
+message LoggedOp {
+  optional string slot = 1 [json_name = "slot", (openagents.options.v1alpha1.max_bytes) = 48];
+  SlotValue before = 2 [json_name = "before"];
+  SlotValue after = 3 [json_name = "after"];
+}
+// A logged value is the JSON value itself, never wrapped in a key.
+message SlotValue {
+  oneof value {
+    EntityValue entity = 1;
+    string text = 2;
+    bool flag = 3;
+    Placed place = 4;
+    Feature feature = 5;
+    Quest quest = 6;
+  }
+}
+message EntityValue {
+  optional double x = 1 [json_name = "x", (openagents.options.v1alpha1.unit) = "m"];
+  optional double z = 2 [json_name = "z", (openagents.options.v1alpha1.unit) = "m"];
+  optional sint32 yaw = 3 [json_name = "yaw", (openagents.options.v1alpha1.unit) = "deg"];
+  optional uint32 scale = 4 [json_name = "scale", (openagents.options.v1alpha1.unit) = "percent"];
+  optional bool gone = 5 [json_name = "gone"];
+}
+
+// POST .../save: the revision read, every move, and every turn, size and
+// removal (always sent, empty when none: without it the server keeps the
+// shapes it had, 0109).
+message SaveRequest {
+  option (openagents.options.v1alpha1.max_message_bytes) = 16384;
+  optional uint64 rev = 1 [json_name = "rev"];
+  repeated Move moved = 2 [json_name = "moved", (openagents.options.v1alpha1.max_count) = 64];
+  repeated Shape shaped = 3 [json_name = "shaped", (openagents.options.v1alpha1.max_count) = 64];
+}
+
+// POST .../undo, .../redo and .../publish: the revision there now.
+message RevRequest {
+  option (openagents.options.v1alpha1.json) = "";
+  optional int32 rev = 1 [json_name = "rev"];
+}
+
+// 200 from .../save: the revision kept and its document's hash.
+message SaveReply {
+  option (openagents.options.v1alpha1.json) = "";
+  optional int32 rev = 1 [json_name = "rev"];
+  optional string sha256 = 2 [json_name = "sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// 200 from .../undo and .../redo: the revision now and the steps left each way.
+message UndoReply {
+  option (openagents.options.v1alpha1.json) = "";
+  optional int32 rev = 1 [json_name = "rev"];
+  optional int32 undo = 2 [json_name = "undo"];
+  optional int32 redo = 3 [json_name = "redo"];
+}
+
+// 409 from .../save, .../undo, .../redo and .../publish: the revision there
+// now ("changed since"), or nothing to undo or redo.
+message Conflict {
+  option (openagents.options.v1alpha1.json) = "";
+  optional int32 rev = 1 [json_name = "rev"];
+  optional string error = 2 [json_name = "error"];
+}
+
+// GET .../doc's answer: the document and the SHA-256 of its text.
+message DocReply {
+  RealmDocument doc = 1 [json_name = "doc"];
+  optional string sha256 = 2 [json_name = "sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+}

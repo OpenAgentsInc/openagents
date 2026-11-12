@@ -1,0 +1,193 @@
+{
+ "about": "A made realm's document and its edits (realm.proto, GitHub #13249), taken from what the server stores today: seed the realm, send each step's body to its route, and the server answers with this status and reply, keeps this document (jsonb's text) with this SHA-256, and logs this undo step. aethyr/forge/doc-goldens.coax replays the steps through edit.coax and doc.coax; coax/web/api/tests/realm_doc_checks.coax replays them through the routes. Both must give these bytes.",
+ "schema": "proto/openagents/verse/doc/v1alpha1/realm.proto",
+ "realm": {
+  "slug": "doc-fixture",
+  "player_key": "doc-fixture-player-key-0001",
+  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-doc-fixture', encode(sha256(convert_to('doc-fixture-player-key-0001', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-doc-fixture', 'p-doc-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms) VALUES ('doc-fixture', 'made-doc-fixture', 'Doc Fixture', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"count\":4},{\"feature\":\"rocks\",\"count\":2}]', '{\"fly\":false,\"jump\":true}', 1);",
+  "clean": "DELETE FROM verse.made_realms WHERE slug = 'doc-fixture'; DELETE FROM verse.worlds WHERE id = 'made-doc-fixture'; DELETE FROM verse.players WHERE id = 'p-doc-fixture';"
+ },
+ "start": {
+  "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 1, \"base\": null, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+  "sha256": "cae53d0cb14568d00389a22a7d4e511eac3364b096d2ab8764f5d911f63069cf"
+ },
+ "steps": [
+  {
+   "name": "move trees:1",
+   "ops": [
+    {
+     "op": "move",
+     "entity": "trees:1",
+     "x_cm": 125,
+     "z_cm": -250
+    }
+   ],
+   "route": "/save",
+   "body": "{\"rev\":1,\"moved\":[{\"entity\":\"trees:1\",\"x\":1.25,\"z\":-2.50}],\"shaped\":[]}",
+   "status": 200,
+   "reply": "{\"rev\": 2, \"sha256\": \"fda8f43daffdc69a43ee5c5340b3ce1879031ed41c13b894305cde89d443e474\"}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 2, \"base\": null, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "fda8f43daffdc69a43ee5c5340b3ce1879031ed41c13b894305cde89d443e474",
+   "logged": "{\"to\": 1, \"ops\": [{\"slot\": \"trees:1\", \"after\": {\"x\": 1.25, \"z\": -2.50}, \"before\": null}], \"card\": null}"
+  },
+  {
+   "name": "turn trees:1 and size rocks:0",
+   "ops": [
+    {
+     "op": "rotate",
+     "entity": "trees:1",
+     "deg": 90
+    },
+    {
+     "op": "resize",
+     "entity": "rocks:0",
+     "percent": 150
+    }
+   ],
+   "route": "/save",
+   "body": "{\"rev\":2,\"moved\":[{\"entity\":\"trees:1\",\"x\":1.25,\"z\":-2.50}],\"shaped\":[{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":100,\"gone\":false},{\"entity\":\"rocks:0\",\"yaw\":0,\"scale\":150,\"gone\":false}]}",
+   "status": 200,
+   "reply": "{\"rev\": 3, \"sha256\": \"2b4de5d7364358e888670dce03cc941a7f531ffdbad4dd3b8616cca18db8048b\"}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 3, \"base\": null, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "2b4de5d7364358e888670dce03cc941a7f531ffdbad4dd3b8616cca18db8048b",
+   "logged": "{\"to\": 2, \"ops\": [{\"slot\": \"rocks:0\", \"after\": {\"yaw\": 0, \"gone\": false, \"scale\": 150}, \"before\": null}, {\"slot\": \"trees:1\", \"after\": {\"x\": 1.25, \"z\": -2.50, \"yaw\": 90, \"gone\": false, \"scale\": 100}, \"before\": {\"x\": 1.25, \"z\": -2.50}}], \"card\": null}"
+  },
+  {
+   "name": "remove rocks:1",
+   "ops": [
+    {
+     "op": "remove",
+     "entity": "rocks:1"
+    }
+   ],
+   "route": "/save",
+   "body": "{\"rev\":3,\"moved\":[{\"entity\":\"trees:1\",\"x\":1.25,\"z\":-2.50}],\"shaped\":[{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":100,\"gone\":false},{\"entity\":\"rocks:0\",\"yaw\":0,\"scale\":150,\"gone\":false},{\"entity\":\"rocks:1\",\"yaw\":0,\"scale\":100,\"gone\":true}]}",
+   "status": 200,
+   "reply": "{\"rev\": 4, \"sha256\": \"44aff94dba0b848e939fca273fd0972f9f0e0cbd5b1c7dbc920cd0efd4a98a65\"}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 4, \"base\": null, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "44aff94dba0b848e939fca273fd0972f9f0e0cbd5b1c7dbc920cd0efd4a98a65",
+   "logged": "{\"to\": 3, \"ops\": [{\"slot\": \"rocks:1\", \"after\": {\"yaw\": 0, \"gone\": true, \"scale\": 100}, \"before\": null}], \"card\": null}"
+  },
+  {
+   "name": "lore for mara",
+   "ops": [
+    {
+     "op": "lore",
+     "who": "mara",
+     "text": "She keeps the lighthouse."
+    }
+   ],
+   "route": "/edit-v1/lore",
+   "body": "{\"rev\":4,\"who\":\"mara\",\"text\":\"She keeps the lighthouse.\"}",
+   "status": 200,
+   "reply": "{\"rev\": 5, \"who\": \"mara\", \"saved\": true}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 5, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "c401e8088bc3313b337db49baccea56588d5e7ea3e2ba679dc271be9ab82cff2",
+   "logged": "{\"to\": 4, \"ops\": [{\"slot\": \"lore:mara\", \"after\": \"She keeps the lighthouse.\", \"before\": null}], \"card\": null}"
+  },
+  {
+   "name": "mara's quest",
+   "ops": [
+    {
+     "op": "quest",
+     "giver": "mara",
+     "ask": "Light the lamp",
+     "steps": [
+      "Find oil",
+      "",
+      "Climb"
+     ],
+     "reward": "A map"
+    }
+   ],
+   "route": "/edit-v1/quest",
+   "body": "{\"rev\":5,\"giver\":\"mara\",\"ask\":\"Light the lamp\",\"steps\":[\"Find oil\",\"\",\"Climb\"],\"reward\":\"A map\"}",
+   "status": 200,
+   "reply": "{\"rev\": 6, \"giver\": \"mara\", \"saved\": true}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 6, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "9eaa22d4eb0f74a8bbaad9fc16e9773196351e2a55e7b7835654a39841caf926",
+   "logged": "{\"to\": 5, \"ops\": [{\"slot\": \"quest:mara\", \"after\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}, \"before\": null}], \"card\": null}"
+  },
+  {
+   "name": "restore every shape",
+   "ops": [
+    {
+     "op": "restore",
+     "entity": "rocks:1"
+    },
+    {
+     "op": "resize",
+     "entity": "rocks:0",
+     "percent": 100
+    },
+    {
+     "op": "rotate",
+     "entity": "trees:1",
+     "deg": 0
+    }
+   ],
+   "route": "/save",
+   "body": "{\"rev\":6,\"moved\":[{\"entity\":\"trees:1\",\"x\":1.25,\"z\":-2.50}],\"shaped\":[]}",
+   "status": 200,
+   "reply": "{\"rev\": 7, \"sha256\": \"9683d2fcccf846174395c283226abb3a96516b226862ec64ccb404747ce06477\"}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 7, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}}, \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "9683d2fcccf846174395c283226abb3a96516b226862ec64ccb404747ce06477",
+   "logged": "{\"to\": 6, \"ops\": [{\"slot\": \"rocks:0\", \"after\": null, \"before\": {\"yaw\": 0, \"gone\": false, \"scale\": 150}}, {\"slot\": \"rocks:1\", \"after\": null, \"before\": {\"yaw\": 0, \"gone\": true, \"scale\": 100}}, {\"slot\": \"trees:1\", \"after\": {\"x\": 1.25, \"z\": -2.50}, \"before\": {\"x\": 1.25, \"z\": -2.50, \"yaw\": 90, \"gone\": false, \"scale\": 100}}], \"card\": null}"
+  },
+  {
+   "name": "undo the restore",
+   "ops": [
+    {
+     "op": "undo"
+    }
+   ],
+   "route": "/undo",
+   "body": "{\"rev\":7}",
+   "status": 200,
+   "reply": "{\"rev\": 8, \"redo\": 1, \"undo\": 5}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 8, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "a4a1167ea47ee8fc2e10cd33ee6a95dd0bc0c7ec898ddaa0e91e1fc5e92cd5ed"
+  },
+  {
+   "name": "undo the quest",
+   "ops": [
+    {
+     "op": "undo"
+    }
+   ],
+   "route": "/undo",
+   "body": "{\"rev\":8}",
+   "status": 200,
+   "reply": "{\"rev\": 9, \"redo\": 2, \"undo\": 4}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 9, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "fc809b1f4743cd84987e24bfc0dfd9df64df4baf69e0275249a55afc3ee26db3"
+  },
+  {
+   "name": "redo the quest",
+   "ops": [
+    {
+     "op": "redo"
+    }
+   ],
+   "route": "/redo",
+   "body": "{\"rev\":9}",
+   "status": 200,
+   "reply": "{\"rev\": 10, \"redo\": 1, \"undo\": 5}",
+   "doc": "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 10, \"base\": null, \"lore\": {\"mara\": \"She keeps the lighthouse.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"rocks:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}",
+   "sha256": "d4b13c008246672aa5c2b07aa79e9ebe73d4d2c15375eef1cb611b4cb055e043"
+  },
+  {
+   "name": "a save from a stale revision",
+   "ops": [
+    {
+     "op": "stale",
+     "rev": 3
+    }
+   ],
+   "route": "/save",
+   "body": "{\"rev\":3,\"moved\":[{\"entity\":\"trees:1\",\"x\":1.25,\"z\":-2.50}],\"shaped\":[{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":100,\"gone\":false},{\"entity\":\"rocks:0\",\"yaw\":0,\"scale\":150,\"gone\":false},{\"entity\":\"rocks:1\",\"yaw\":0,\"scale\":100,\"gone\":true}]}",
+   "status": 409,
+   "reply": "{\"rev\": 10, \"error\": \"changed since\"}"
+  }
+ ]
+}

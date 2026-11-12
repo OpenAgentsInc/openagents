@@ -1,0 +1,275 @@
+// The realm document's goldens through the engine (compliance plan step E6, GitHub #13249):
+// proto/verse/realm-document-v1.json holds a made realm's document as the server stores it, a run of
+// edits, and after each one the document, its SHA-256, the reply and the undo step the server logged.
+// This replays the same steps through aethyr/forge/edit.coax and doc.coax and requires, byte for byte:
+//   - the body each step sends (edit.coax's forge_save_body and forge_rev_body);
+//   - the document after it (doc.coax's forge_doc_json) and the SHA-256 of that text;
+//   - the reply (forge_save_reply, forge_undo_reply, forge_conflict) and its revision read back;
+//   - an undo or redo is the server's logged step applied to the model (forge_apply_step), and every
+//     logged step applies backwards to the model it was logged after;
+//   - every key is a json_name of its message in proto/descriptors/verse-doc.pb (realm.proto), and
+//     the messages on the JSON mapper (RevRequest, SaveReply, UndoReply, Conflict) read the bodies
+//     and replies, and write a RevRequest back byte for byte.
+// coax/web/api/tests/realm_doc_checks.coax replays the same file through the API's routes.
+//   coax/web/tool.sh aethyr/forge/doc-goldens.coax proto/verse/realm-document-v1.json
+
+#import "Basic";
+#import_proto "../../proto/descriptors/verse-doc.pb" as RDJ;
+#load "doc.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "../../coax/lib/proto/json.coax";
+#load "../../coax/lib/proto/importer.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+DG_FIXTURE_PATH :: "proto/verse/realm-document-v1.json";
+DG_DESCRIPTOR_PATH :: "proto/descriptors/verse-doc.pb";
+DG_PKG :: ".openagents.verse.doc.v1alpha1.";
+DG_STEPS :: 32;   // the most logged steps the replay keeps
+
+DgDescriptor :: struct {
+  types: [128] D_Type; enums: [16] D_Type; fields: [1024] D_Field; values: [256] D_Value; groups: [1024] string;
+  files: [16] string; deps: [64] string; arena: [1048576] u8; output: [1] u8; symbols: [4096] string;
+  state: [1] D_State;
+}
+dg_descriptor_load :: (g: [] DgDescriptor, raw: string) -> string {
+  g[0].state[0] = D_State.{types = g[0].types[..], enums = g[0].enums[..], fields = g[0].fields[..], values = g[0].values[..], groups = g[0].groups[..],
+    files = g[0].files[..], deps = g[0].deps[..], arena = g[0].arena[..], output = g[0].output[..], symbols = g[0].symbols[..]};
+  D_parse(g[0].state[..], raw, "DG");
+  return g[0].state[0].error;
+}
+
+// The replay's state: the model, the fixture's start text, its logged steps, what failed.
+DgPool :: struct { buf: [1048576] u8; n: int; }
+Dg :: struct {
+  bad: int; pass: int;
+  undo: [DG_STEPS] string; undo_n: int; redo: [DG_STEPS] string; redo_n: int;
+}
+
+dg_s :: (p: [] DgPool, j: Jv, at: int, key: string) -> string {
+  w := jv_str(j, jv_get(j, at, key), p[0].buf[p[0].n..<p[0].buf.count]);
+  if w < 0 { return ""; }
+  s := cast(string) p[0].buf[p[0].n..<p[0].n + w]; p[0].n += w;
+  return s;
+}
+dg_i :: (j: Jv, at: int, key: string) -> int { return jv_int(j, jv_get(j, at, key), -999999); }
+dg_check :: (g: [] Dg, name: string, what: string, got: string, want: string) {
+  if got == want { g[0].pass += 1; return; }
+  g[0].bad += 1;
+  print("FAIL  % (%)\n  got:  %\n  want: %\n", name, what, got, want);
+}
+dg_true :: (g: [] Dg, name: string, what: string, ok: bool) { _ = dg_need(g, name, what, ok); }
+dg_need :: (g: [] Dg, name: string, what: string, ok: bool) -> bool {
+  if ok { g[0].pass += 1; return true; }
+  g[0].bad += 1; print("FAIL  % (%)\n", name, what);
+  return false;
+}
+
+// Whether every key of the object at `at` is a json_name of the message (its leaf name in realm.proto).
+dg_keys_of :: (st: [] D_State, leaf: string, j: Jv, at: int) -> bool {
+  full: [128] u8; n := forge_put(full[..], 0, DG_PKG); n = forge_put(full[..], n, leaf);
+  m := -1;
+  for i: 0..<st[0].nt { if st[0].types[i].full == cast(string) full[0..<n] { m = i; } }
+  if m < 0 || jv_kind(j, at) != JV_OBJECT { return false; }
+  t := st[0].types[m];
+  for i: 0..<jv_len(j, at) {
+    k := jv_key(j, jv_at(j, at, i)); found := false;
+    for f: t.first..<t.first + t.count { if st[0].fields[f].json == k { found = true; } }
+    if !found { return false; }
+  }
+  return true;
+}
+// Each entry of the array (or each value of the object) at `at` is the message.
+dg_each_of :: (st: [] D_State, leaf: string, j: Jv, at: int) -> bool {
+  if at < 0 || jv_kind(j, at) == JV_NULL { return true; }
+  for i: 0..<jv_len(j, at) { e := jv_at(j, at, i); if jv_kind(j, e) != JV_NULL && !dg_keys_of(st, leaf, j, e) { return false; } }
+  return true;
+}
+// A stored document's keys, and its parts', are RealmDocument's.
+dg_doc_keys :: (st: [] D_State, text: string) -> bool {
+  nodes: [8192] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) || !dg_keys_of(st, "RealmDocument", j[0], 0) { return false; }
+  setup := jv_get(j[0], 0, "setup"); from := jv_get(j[0], 0, "forked_from");
+  return (setup < 0 || dg_keys_of(st, "Setup", j[0], setup)) && (from < 0 || jv_kind(j[0], from) == JV_NULL || dg_keys_of(st, "ForkedFrom", j[0], from)) &&
+    dg_each_of(st, "Feature", j[0], jv_get(j[0], 0, "features")) && dg_each_of(st, "Move", j[0], jv_get(j[0], 0, "moved")) &&
+    dg_each_of(st, "Shape", j[0], jv_get(j[0], 0, "shaped")) && dg_each_of(st, "Placed", j[0], jv_get(j[0], 0, "placed")) &&
+    dg_each_of(st, "Quest", j[0], jv_get(j[0], 0, "quests"));
+}
+// A logged step's keys are UndoStep's and its ops' LoggedOp's.
+dg_step_keys :: (st: [] D_State, text: string) -> bool {
+  nodes: [2048] JvNode; j: [1] Jv;
+  return jv_parse(j[..], text, nodes[..]) && dg_keys_of(st, "UndoStep", j[0], 0) && dg_each_of(st, "LoggedOp", j[0], jv_get(j[0], 0, "ops"));
+}
+// A body's or reply's keys are the message's (and a save's moves and shapes theirs).
+dg_body_keys :: (st: [] D_State, leaf: string, text: string) -> bool {
+  nodes: [1024] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) || !dg_keys_of(st, leaf, j[0], 0) { return false; }
+  return dg_each_of(st, "Move", j[0], jv_get(j[0], 0, "moved")) && dg_each_of(st, "Shape", j[0], jv_get(j[0], 0, "shaped"));
+}
+
+// The JSON mapper's reading of a reply: its revision and the rest as said. Run only by the tool:
+// the mapper's alias check does not run at compile time, where #test runs.
+dg_mapper_reply :: (route: string, status: int, reply: string, rev: int, undo: int, redo: int, sha: string, error: string) -> bool {
+  nodes: [256] JvNode; wire: [1024] u8;
+  if status == 409 {
+    m := RDJ_Conflict_from_json(reply, nodes[..], wire[..]);
+    return m.error == 0 && cast(int) RDJ_Conflict_get_rev(m).value == rev && RDJ_Conflict_get_error(m).value == error;
+  }
+  if route == "/save" {
+    m := RDJ_SaveReply_from_json(reply, nodes[..], wire[..]);
+    return m.error == 0 && cast(int) RDJ_SaveReply_get_rev(m).value == rev && RDJ_SaveReply_get_sha256(m).value == sha;
+  }
+  if route == "/undo" || route == "/redo" {
+    m := RDJ_UndoReply_from_json(reply, nodes[..], wire[..]);
+    return m.error == 0 && cast(int) RDJ_UndoReply_get_rev(m).value == rev && cast(int) RDJ_UndoReply_get_undo(m).value == undo && cast(int) RDJ_UndoReply_get_redo(m).value == redo;
+  }
+  return true;
+}
+// A RevRequest's body read and written back by the mapper, byte for byte.
+dg_mapper_rev :: (body: string, rev: int) -> bool {
+  nodes: [64] JvNode; wire: [64] u8; out: [64] u8;
+  m := RDJ_RevRequest_from_json(body, nodes[..], wire[..]);
+  if m.error != 0 || cast(int) RDJ_RevRequest_get_rev(m).value != rev { return false; }
+  v := RDJ_RevRequest_to_json(m, out[..]);
+  return v.error == 0 && cast(string) v.wire == body;
+}
+
+// One edit of a step on the model; false when the model refuses it.
+dg_op :: (p: [] DgPool, d: [] ForgeDoc, j: Jv, at: int) -> bool {
+  op := dg_s(p, j, at, "op"); e := dg_s(p, j, at, "entity");
+  if op == "move" { return forge_move(d, e, dg_i(j, at, "x_cm"), dg_i(j, at, "z_cm")); }
+  if op == "rotate" { return forge_rotate(d, e, dg_i(j, at, "deg")); }
+  if op == "resize" { return forge_resize(d, e, dg_i(j, at, "percent")); }
+  if op == "remove" { return forge_remove(d, e); }
+  if op == "restore" { return forge_restore(d, e); }
+  if op == "lore" { return forge_lore(d, dg_s(p, j, at, "who"), dg_s(p, j, at, "text")); }
+  if op == "quest" {
+    steps: [3] string; s := jv_get(j, at, "steps");
+    for k: 0..<3 { if k < jv_len(j, s) { b := jv_at(j, s, k); w := jv_str(j, b, p[0].buf[p[0].n..<p[0].buf.count]); if w < 0 { return false; } steps[k] = cast(string) p[0].buf[p[0].n..<p[0].n + w]; p[0].n += w; } }
+    return forge_quest(d, dg_s(p, j, at, "giver"), dg_s(p, j, at, "ask"), steps, dg_s(p, j, at, "reward"));
+  }
+  return false;
+}
+
+dg_hex :: (text: string, out: [] u8) -> string { if !S_hex(S_hash(text), out) { return ""; } return cast(string) out[0..<64]; }
+
+dg_run :: (raw: string, st: [] D_State) -> int {
+  g: [1] Dg; p: [1] DgPool;
+  nodes: [16384] JvNode; f: [1] Jv;
+  if !jv_parse(f[..], raw, nodes[..]) || jv_kind(f[0], 0) != JV_OBJECT { print("FAIL  the fixture is not a JSON object\n"); return 1; }
+  j := f[0];
+  start := jv_get(j, 0, "start"); steps := jv_get(j, 0, "steps");
+  if jv_kind(j, steps) != JV_ARRAY || jv_len(j, steps) == 0 { print("FAIL  the fixture has no steps\n"); return 1; }
+  first := dg_s(p[..], j, start, "doc");
+  d: [1] ForgeDoc;
+  read := forge_read_doc(d[..], first);
+  if !read.ok { print("FAIL  start: doc.coax does not read it (%)\n", read.why); return 1; }
+  out: [FORGE_DOC_BYTES] u8; hb: [64] u8;
+  n := forge_doc_json(d[..], first, out[..]);
+  dg_check(g[..], "start", "doc", ifx n < 0 then "" else cast(string) out[0..<n], first);
+  dg_check(g[..], "start", "sha256", dg_hex(first, hb[..]), dg_s(p[..], j, start, "sha256"));
+  if st.count > 0 { dg_true(g[..], "start", "keys", dg_doc_keys(st, first)); }
+  rev := d[0].rev;
+  for i: 0..<jv_len(j, steps) {
+    s := jv_at(j, steps, i);
+    name := dg_s(p[..], j, s, "name"); route := dg_s(p[..], j, s, "route"); body := dg_s(p[..], j, s, "body");
+    reply := dg_s(p[..], j, s, "reply"); status := dg_i(j, s, "status");
+    ops := jv_get(j, s, "ops"); kind := dg_s(p[..], j, jv_at(j, ops, 0), "op");
+    bb: [16384] u8; rb: [1024] u8;
+    if kind == "stale" {
+      // A save from a revision since gone: its body is a SaveRequest this model writes back, and 409 names the revision now.
+      old: [1] ForgeDoc;
+      dg_true(g[..], name, "body read", forge_read_save(old[..], body) == dg_i(j, jv_at(j, ops, 0), "rev"));
+      bn := forge_save_body(old[..], bb[..]);
+      dg_check(g[..], name, "body", ifx bn < 0 then "" else cast(string) bb[0..<bn], body);
+      rn := forge_conflict(rev, "changed since", rb[..]);
+      dg_check(g[..], name, "reply", ifx rn < 0 then "" else cast(string) rb[0..<rn], reply);
+      dg_true(g[..], name, "status", status == 409);
+      if st.count > 0 {
+        dg_true(g[..], name, "keys", dg_body_keys(st, "SaveRequest", body) && dg_body_keys(st, "Conflict", reply));
+        dg_true(g[..], name, "mapper", dg_mapper_reply(route, status, reply, rev, -1, -1, "", "changed since"));
+      }
+      print("ok    %\n", name);
+      continue;
+    }
+    if kind == "undo" || kind == "redo" {
+      bn := forge_rev_body(rev, bb[..]);
+      dg_check(g[..], name, "body", ifx bn < 0 then "" else cast(string) bb[0..<bn], body);
+      back := kind == "undo";
+      have := ifx back then g[0].undo_n else g[0].redo_n;
+      if !dg_need(g[..], name, "a logged step to take", have > 0) { continue; }
+      step := ifx back then g[0].undo[g[0].undo_n - 1] else g[0].redo[g[0].redo_n - 1];
+      if !dg_need(g[..], name, "the logged step applies to the model", forge_apply_step(d[..], step, back)) { continue; }
+      if back { g[0].undo_n -= 1; g[0].redo[g[0].redo_n] = step; g[0].redo_n += 1; }
+      else { g[0].redo_n -= 1; g[0].undo[g[0].undo_n] = step; g[0].undo_n += 1; }
+    } else {
+      for k: 0..<jv_len(j, ops) { if !dg_need(g[..], name, "the edit applies to the model", dg_op(p[..], d[..], j, jv_at(j, ops, k))) { break; } }
+      if route == "/save" {
+        bn := forge_save_body(d[..], bb[..]);
+        dg_check(g[..], name, "body", ifx bn < 0 then "" else cast(string) bb[0..<bn], body);
+        if st.count > 0 { dg_true(g[..], name, "body keys", dg_body_keys(st, "SaveRequest", body)); }
+      }
+    }
+    r := forge_read_reply(reply);
+    dg_true(g[..], name, "status", status == 200 && r.ok && r.rev == rev + 1);
+    rev = r.rev;
+    forge_commit(d[..], rev);
+    doc := dg_s(p[..], j, s, "doc");
+    n = forge_doc_json(d[..], first, out[..]);
+    got := ifx n < 0 then "" else cast(string) out[0..<n];
+    dg_check(g[..], name, "doc", got, doc);
+    sha := dg_hex(doc, hb[..]);
+    dg_check(g[..], name, "sha256", sha, dg_s(p[..], j, s, "sha256"));
+    if route == "/save" {
+      rn := forge_save_reply(rev, sha, rb[..]);
+      dg_check(g[..], name, "reply", ifx rn < 0 then "" else cast(string) rb[0..<rn], reply);
+    } else if route == "/undo" || route == "/redo" {
+      rn := forge_undo_reply(rev, g[0].undo_n, g[0].redo_n, rb[..]);
+      dg_check(g[..], name, "reply", ifx rn < 0 then "" else cast(string) rb[0..<rn], reply);
+      if st.count > 0 { dg_true(g[..], name, "body", dg_mapper_rev(body, rev - 1)); }
+    }
+    if st.count > 0 {
+      dg_true(g[..], name, "keys", dg_doc_keys(st, doc));
+      if route == "/save" || route == "/undo" || route == "/redo" {
+        dg_true(g[..], name, "reply keys", dg_body_keys(st, ifx route == "/save" then "SaveReply" else "UndoReply", reply));
+        dg_true(g[..], name, "mapper", dg_mapper_reply(route, status, reply, rev, g[0].undo_n, g[0].redo_n, sha, ""));
+      }
+    }
+    if jv_get(j, s, "logged") >= 0 {
+      // A new edit: the server logs one step and forgets what could be redone. The step must apply
+      // backwards to the model now (an undo's bytes are the next steps'; an undo gives the same
+      // entities back but may list them in another order than before, so not the same bytes).
+      logged := dg_s(p[..], j, s, "logged");
+      if g[0].undo_n >= DG_STEPS { print("FAIL  % (more than % steps)\n", name, DG_STEPS); return 1; }
+      g[0].undo[g[0].undo_n] = logged; g[0].undo_n += 1; g[0].redo_n = 0;
+      back: [1] ForgeDoc; back[0] = d[0];
+      dg_true(g[..], name, "the logged step takes back", forge_apply_step(back[..], logged, true));
+      if st.count > 0 { dg_true(g[..], name, "logged keys", dg_step_keys(st, logged)); }
+    }
+    print("ok    %\n", name);
+  }
+  print("% checks, % failed: %\n", g[0].pass + g[0].bad, g[0].bad, ifx g[0].bad == 0 then "realm document goldens hold" else "realm document goldens fail");
+  return ifx g[0].bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else DG_FIXTURE_PATH;
+  buf: [262144] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("doc-goldens: cannot read the fixture"); return 2; }
+  pb: [65536] u8;
+  pn := fs_read(DG_DESCRIPTOR_PATH, pb[..]);
+  if pn <= 0 { tool_errln("doc-goldens: cannot read the descriptor"); return 2; }
+  g: [1] DgDescriptor;
+  err := dg_descriptor_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  // The key check bites: a key the message lacks fails.
+  if dg_body_keys(st, "SaveReply", "{\"rev\": 2, \"sha\": \"x\"}") || !dg_body_keys(st, "SaveReply", "{\"rev\": 2, \"sha256\": \"x\"}") {
+    print("FAIL  the key check takes a body it should refuse\n"); return 1;
+  }
+  return dg_run(cast(string) buf[0..<n], st);
+}

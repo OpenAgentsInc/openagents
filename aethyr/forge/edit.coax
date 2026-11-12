@@ -444,7 +444,7 @@ forge_same_moves :: (a: [] ForgeDoc, b: [] ForgeDoc) -> bool {
   return true;
 }
 
-// ---- the save's body: {"rev":N,"moved":[{"entity":"trees:3","x":1.25,"z":-2.5}]}, positions in metres
+// ---- the bodies a client sends (realm.proto: SaveRequest, RevRequest); positions in metres
 forge_put :: (buf: [] u8, at: int, text: string) -> int {
   if at < 0 || at + text.count > buf.count { return -1; }
   for i: 0..<text.count { buf[at + i] = text[i]; }
@@ -474,8 +474,10 @@ forge_any_shaped :: (d: [] ForgeDoc) -> bool {
   return false;
 }
 // book:begin save
-// The body of POST /api/playtest/realms/<slug>/save: the revision read, every move in metres, and
-// (only when there are any: a server before migration 0109 knows moves only) every turn, size and removal.
+// The body of POST /api/playtest/realms/<slug>/save (proto/openagents/verse/doc/v1alpha1/realm.proto,
+// SaveRequest): the revision read, every move in metres, and every turn, size and removal. "shaped"
+// is always sent, empty when there are none: without it the server keeps the shapes it had (0109),
+// so restoring the last turned, sized or removed entity would not be saved (#13249).
 forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
   n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, d[0].rev); n = forge_put(buf, n, ",\"moved\":[");
   first := true;
@@ -488,22 +490,23 @@ forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
     n = forge_put(buf, n, "\",\"x\":"); n = forge_put_cm(buf, n, m.x);
     n = forge_put(buf, n, ",\"z\":"); n = forge_put_cm(buf, n, m.z); n = forge_put(buf, n, "}");
   }
-  n = forge_put(buf, n, "]");
-  if forge_any_shaped(d) {
-    n = forge_put(buf, n, ",\"shaped\":[");
-    first = true;
-    for i: 0..<d[0].move_n {
-      m := d[0].moves[i];
-      if m.yaw == 0 && m.scale == 100 && !m.gone { continue; }
-      if !first { n = forge_put(buf, n, ","); }
-      first = false;
-      n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
-      n = forge_put(buf, n, "\",\"yaw\":"); n = forge_put_int(buf, n, m.yaw);
-      n = forge_put(buf, n, ",\"scale\":"); n = forge_put_int(buf, n, m.scale);
-      n = forge_put(buf, n, ",\"gone\":"); n = forge_put(buf, n, ifx m.gone then "true" else "false"); n = forge_put(buf, n, "}");
-    }
-    n = forge_put(buf, n, "]");
+  n = forge_put(buf, n, "],\"shaped\":[");
+  first = true;
+  for i: 0..<d[0].move_n {
+    m := d[0].moves[i];
+    if m.yaw == 0 && m.scale == 100 && !m.gone { continue; }
+    if !first { n = forge_put(buf, n, ","); }
+    first = false;
+    n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
+    n = forge_put(buf, n, "\",\"yaw\":"); n = forge_put_int(buf, n, m.yaw);
+    n = forge_put(buf, n, ",\"scale\":"); n = forge_put_int(buf, n, m.scale);
+    n = forge_put(buf, n, ",\"gone\":"); n = forge_put(buf, n, ifx m.gone then "true" else "false"); n = forge_put(buf, n, "}");
   }
+  return forge_put(buf, n, "]}");
+}
+// The body of POST .../undo, .../redo and .../publish (RevRequest): the revision there now, {"rev":N}.
+forge_rev_body :: (rev: int, buf: [] u8) -> int {
+  n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, rev);
   return forge_put(buf, n, "}");
 }
 // book:end save
@@ -1080,12 +1083,17 @@ forge_scene_replay :: (s: ForgeScene, from: ForgeScene) -> bool {
   d: [1] ForgeDoc; forge_reset(d[..], 12);
   b: [256] u8;
   n := forge_save_body(d[..], b[..]);
-  #assert cast(string) b[0..<n] == "{\"rev\":12,\"moved\":[]}";
+  #assert cast(string) b[0..<n] == "{\"rev\":12,\"moved\":[],\"shaped\":[]}";
   #assert forge_move(d[..], "trees:3", 125, -250) && forge_move(d[..], "rocks:0", -5, 7);
   n = forge_save_body(d[..], b[..]);
-  #assert cast(string) b[0..<n] == "{\"rev\":12,\"moved\":[{\"entity\":\"trees:3\",\"x\":1.25,\"z\":-2.50},{\"entity\":\"rocks:0\",\"x\":-0.05,\"z\":0.07}]}";
+  #assert cast(string) b[0..<n] == "{\"rev\":12,\"moved\":[{\"entity\":\"trees:3\",\"x\":1.25,\"z\":-2.50},{\"entity\":\"rocks:0\",\"x\":-0.05,\"z\":0.07}],\"shaped\":[]}";
   small: [10] u8;
   #assert forge_save_body(d[..], small[..]) < 0;
+  // a restore of the last shaped entity is sent as no shapes, so the server drops it too
+  #assert forge_remove(d[..], "rocks:0") && forge_restore(d[..], "rocks:0") && !forge_any_shaped(d[..]);
+  n = forge_save_body(d[..], b[..]);
+  #assert cast(string) b[n - 12..<n] == "\"shaped\":[]}";
+  #assert forge_rev_body(7, b[..]) == 9 && cast(string) b[0..<9] == "{\"rev\":7}" && forge_rev_body(123, small[..]) < 0;
 }
 
 #test "rotate, resize and remove are overrides with inverses; moving keeps them" {

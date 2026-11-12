@@ -1,0 +1,119 @@
+// The realm document's fixture through the API's routes (compliance plan step E6, GitHub #13249):
+// proto/verse/realm-document-v1.json names a made realm, a run of edits and, after each, the
+// document as the server stores it, its SHA-256, the reply and the undo step the server logs. This
+// seeds that realm, sends each step's body to its route, and requires the server's answers byte for
+// byte: GET .../doc's document and hash, the reply, and the newest step of its undo log. The same
+// file is replayed through aethyr/forge/edit.coax and doc.coax by aethyr/forge/doc-goldens.coax, so
+// the two languages give the same bytes. Local isolated API and database only.
+//   API=http://127.0.0.1:PORT PGURL=... PSQL=... coax/web/tool.sh coax/web/api/tests/realm_doc_checks.coax
+// tool.sh: tls
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/net/http.coax";
+#load "../../../lib/json/json.coax";
+
+RDC_FIXTURE :: "proto/verse/realm-document-v1.json";
+RDC_BYTES :: 262144;
+Rdc :: struct { api: [256] u8; api_n: int; psql: [1024] u8; psql_n: int; db: [1024] u8; db_n: int; pass: int; fail: int; slug: [64] u8; slug_n: int; key: [64] u8; key_n: int; }
+
+rdc_put :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+rdc_check :: (t: [] Rdc, name: string, what: string, got: string, want: string) {
+  if got == want { t[0].pass += 1; return; }
+  t[0].fail += 1;
+  print("FAIL % (%)\n  got:  %\n  want: %\n", name, what, got, want);
+}
+rdc_sql :: (t: [] Rdc, sql: string, out: [] u8) -> int {
+  a := [8] string.[cast(string) t[0].psql[0..<t[0].psql_n], "-XAt", "-v", "ON_ERROR_STOP=1", "--dbname", cast(string) t[0].db[0..<t[0].db_n], "-c", sql];
+  err: [8192] u8;
+  r := proc_run(a[..], 15000, out, err[..]);
+  if r.status != 0 { tool_err(cast(string) err[0..<r.err_n]); return -1; }
+  n := r.out_n;
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r') { n -= 1; }
+  return n;
+}
+// One call to the realm's route: its status, and its body in out.
+RdcGot :: struct { code: int; n: int; }
+rdc_call :: (t: [] Rdc, method: string, tail: string, body: string, out: [] u8) -> RdcGot {
+  ub: [512] u8; n := rdc_put(ub[..], 0, cast(string) t[0].api[0..<t[0].api_n]);
+  n = rdc_put(ub[..], n, "/api/playtest/realms/"); n = rdc_put(ub[..], n, cast(string) t[0].slug[0..<t[0].slug_n]); n = rdc_put(ub[..], n, tail);
+  hb: [128] u8; hn := rdc_put(hb[..], 0, "X-Verse-Player: "); hn = rdc_put(hb[..], hn, cast(string) t[0].key[0..<t[0].key_n]);
+  hs := [2] string.[cast(string) hb[0..<hn], "Content-Type: application/json"];
+  w: [1] HttpWork;
+  got := http_do(w[..], method, cast(string) ub[0..<n], hs[..], body, 10000, 0, out);
+  if got.error != HTTP_OK { return RdcGot.{code = -1}; }
+  return RdcGot.{code = got.code, n = got.n};
+}
+// A string member of a fixture object, unescaped into out ("" when absent).
+rdc_str :: (j: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(j, jv_get(j, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// GET .../doc: the document's bytes and its hash, as the fixture holds them.
+rdc_doc :: (t: [] Rdc, name: string, doc: string, sha: string) {
+  out: [RDC_BYTES] u8;
+  got := rdc_call(t, "GET", "/doc", "", out[..]);
+  if got.code != 200 { t[0].fail += 1; print("FAIL % (GET /doc: %)\n", name, got.code); return; }
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) out[0..<got.n], nodes[..]) { t[0].fail += 1; print("FAIL % (GET /doc is not JSON)\n", name); return; }
+  rdc_check(t, name, "doc", jv_raw(d[0], jv_get(d[0], 0, "doc")), doc);
+  rdc_check(t, name, "sha256", jv_raw(d[0], jv_get(d[0], 0, "sha256")), sha);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Rdc;
+  base := proc_getenv("API", t[0].api[..]); t[0].api_n = base.count;
+  psql := proc_getenv("PSQL", t[0].psql[..]); t[0].psql_n = psql.count;
+  db := proc_getenv("PGURL", t[0].db[..]); t[0].db_n = db.count;
+  if base.count < 18 || base[0..<17] != "http://127.0.0.1:" || db == "" || psql == "" {
+    tool_errln("set local API=http://127.0.0.1:PORT, PGURL and PSQL"); return 2;
+  }
+  text: [RDC_BYTES] u8; tn := fs_read(RDC_FIXTURE, text[..]);
+  nodes: [16384] JvNode; f: [1] Jv;
+  if tn <= 0 || !jv_parse(f[..], cast(string) text[0..<tn], nodes[..]) { tool_errln("realm_doc_checks: the fixture did not read"); return 2; }
+  realm := jv_get(f[0], 0, "realm");
+  sb: [64] u8; slug := rdc_str(f[0], realm, "slug", sb[..]);
+  kb: [64] u8; key := rdc_str(f[0], realm, "player_key", kb[..]);
+  for i: 0..<slug.count { t[0].slug[i] = slug[i]; } t[0].slug_n = slug.count;
+  for i: 0..<key.count { t[0].key[i] = key[i]; } t[0].key_n = key.count;
+  out: [RDC_BYTES] u8;
+  seed: [8192] u8;
+  if slug == "" || key == "" || rdc_sql(t[..], rdc_str(f[0], realm, "seed", seed[..]), out[..]) < 0 { tool_errln("realm_doc_checks: the seed did not run"); return 1; }
+  start := jv_get(f[0], 0, "start");
+  db1: [RDC_BYTES] u8; sh1: [80] u8;
+  rdc_doc(t[..], "start", rdc_str(f[0], start, "doc", db1[..]), rdc_str(f[0], start, "sha256", sh1[..]));
+  steps := jv_get(f[0], 0, "steps");
+  for i: 0..<jv_len(f[0], steps) {
+    s := jv_at(f[0], steps, i);
+    nb: [128] u8; name := rdc_str(f[0], s, "name", nb[..]);
+    rb: [64] u8; route := rdc_str(f[0], s, "route", rb[..]);
+    bb: [16384] u8; body := rdc_str(f[0], s, "body", bb[..]);
+    got := rdc_call(t[..], "POST", route, body, out[..]);
+    sc: [16] u8; sn := 0; code := got.code;
+    if code < 0 { sc[0] = '-'; sn = 1; code = 1; }
+    cd: [16] u8; cn := 0; c := code; while c > 0 { cd[cn] = cast(u8) ('0' + c % 10); c /= 10; cn += 1; }
+    for k: 0..<cn { sc[sn] = cd[cn - 1 - k]; sn += 1; }
+    rdc_check(t[..], name, "status", cast(string) sc[0..<sn], jv_raw(f[0], jv_get(f[0], s, "status")));
+    rp: [4096] u8; rdc_check(t[..], name, "reply", cast(string) out[0..<got.n], rdc_str(f[0], s, "reply", rp[..]));
+    if jv_get(f[0], s, "doc") >= 0 {
+      db2: [RDC_BYTES] u8; sh2: [80] u8;
+      rdc_doc(t[..], name, rdc_str(f[0], s, "doc", db2[..]), rdc_str(f[0], s, "sha256", sh2[..]));
+    }
+    if jv_get(f[0], s, "logged") >= 0 {
+      q: [256] u8; qn := rdc_put(q[..], 0, "SELECT (undo -> -1)::text FROM verse.made_realms WHERE slug = '");
+      qn = rdc_put(q[..], qn, slug); qn = rdc_put(q[..], qn, "'");
+      lg: [16384] u8; n := rdc_sql(t[..], cast(string) q[0..<qn], out[..]);
+      rdc_check(t[..], name, "logged", ifx n < 0 then "" else cast(string) out[0..<n], rdc_str(f[0], s, "logged", lg[..]));
+    }
+    print("ok %\n", name);
+  }
+  cl: [1024] u8;
+  if rdc_sql(t[..], rdc_str(f[0], realm, "clean", cl[..]), out[..]) < 0 { t[0].fail += 1; }
+  print("% realm document checks passed, % failed\n", t[0].pass, t[0].fail);
+  return ifx t[0].fail == 0 then 0 else 1;
+}

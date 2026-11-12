@@ -64,7 +64,7 @@ On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
 | Record | Schema | Carriage | Today |
 | --- | --- | --- | --- |
 | A realm, character or asset release | `openagents.extension.v1` `Release`, `Listing` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr kinds 3184 and 30184, public | Spec sketch; no `.proto` file |
-| A realm document and its edits | Planned `openagents.verse.doc.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step E6) | HTTP | Built by hand in Coax and in SQL today. Each revision has a SHA-256, so it needs a fixture first |
+| A realm document and its edits | `openagents.verse.doc.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step E6) | HTTP | Built in SQL; `aethyr/forge/doc.coax` and `edit.coax` are the client's one codec, and one fixture of stored bytes and SHA-256 checks both |
 
 Planned paths: `openagents/registry/realms.coax`.
 
