@@ -503,7 +503,8 @@ pp_only_docs :: (changed: string) -> bool {
 
 // The checks for a push whose merge base with main is base and whose changes are `changed`;
 // 1 when one failed, 0 otherwise (a check cut off by the time limit or with no host is named).
-pp_checks :: (base: string, changed: string, seconds: int, red: string) -> int {
+// The report checks read the checkout; the suites run on a host from commit itself.
+pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: string) -> int {
   t0 := proc_now_ms();
   deadline := t0 + seconds * 1000;
   jobs: [PP_JOBS] PpJob;
@@ -541,8 +542,9 @@ pp_checks :: (base: string, changed: string, seconds: int, red: string) -> int {
         if suites.count == 0 { remote_skip = "the push changes no suite"; }
         else if !pp_free_host(pp_text(jobs[5..<5 + 1])) { remote_skip = "no build host has a free slot (coax/remote/remote.sh status)"; }
         else {
-          ra := [7] string.["coax/remote/remote.sh", "run", "--no-fallback", "--", "coax/web/tool.sh", "suites", "--only"];
-          rargv: [8] string; for q: 0..<7 { rargv[q] = ra[q]; } rargv[7] = suites;
+          // the pushed commit itself on the host, its files left there (check.sh only, as AGENTS.md says)
+          ra := [8] string.["coax/remote/remote.sh", "run", "--no-fallback", "--commit", commit, "--", "coax/remote/check.sh", "only"];
+          rargv: [9] string; for q: 0..<8 { rargv[q] = ra[q]; } rargv[8] = suites;
           env := [1] string.["OA_REMOTE_WAIT=15"];
           remote_started = pp_start(jobs[6..<7], "coax test", rargv[..], env[..]);
           if !remote_started { remote_skip = "remote.sh did not start"; }
@@ -730,7 +732,7 @@ tool_main :: () -> int #export_c #effects(all) {
     red := ifx rg.ok then rg.text else "";
     left := seconds - (proc_now_ms() - t0) / 1000;
     if left < 10 { left = 10; }
-    checks += pp_checks(base, cg.text, left, red);
+    checks += pp_checks(base, local, cg.text, left, red);
   }
   total := (proc_now_ms() - t0 + 500) / 1000;
   if refused > 0 { print("prepush: push refused. Emergency bypass: OA_PREPUSH_BYPASS=\"why\" git push ... (logged)\n"); return PP_REFUSE; }

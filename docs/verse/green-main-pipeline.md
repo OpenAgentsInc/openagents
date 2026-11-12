@@ -140,7 +140,8 @@ refuses a push when:
    pushes with `OA_PREPUSH_HUMAN=1`.
 4. **A check fails:** `tools-check`, `everglade-parity`, `wire-check` and
    `layer-check` (the last two with `--base` set to the push's merge base),
-   and `coax test` of the suites the push changed, on a build host when
+   and `coax test` of the suites the push changed (`check.sh only`, on the
+  pushed commit itself), on a build host when
    `remote.sh status` shows one with a free slot. A check that fails on
    `main` already (an open entry on the red list) isn't counted. The checks
    run only when the pushed commit is the checkout's `HEAD`, and only when
@@ -152,12 +153,13 @@ after-landing check runs it. With no free host, the touched suites are
 skipped with a note. `OA_PREPUSH_TESTS=0` skips them.
 
 Measured on 2026-11-11 for a one-commit push of a new tool: the rules took
-0.1 to 0.3 seconds, the four report checks 1 to 2 seconds each in parallel,
-and `coax test` of the touched suite on a host 10 to 12 seconds. The whole
-push paid 14 seconds of checks and 17 to 18 seconds in all. With
-`OA_PREPUSH_TESTS=0` it paid 3 seconds; with no free host, about 6 (the
-host status takes about 5). The first push from a new worktree also
-builds the tools, a few seconds more.
+0.1 to 0.3 seconds, the four report checks 1 to 3 seconds each in parallel,
+and `check.sh only` of the touched suite on a host 12 to 15 seconds (about
+$0.001). The push paid 14 to 18 seconds of checks and about 21 seconds in
+all. With `OA_PREPUSH_TESTS=0` it paid 3 seconds; with no free host, about
+6 (the host status takes about 5). The first push from a new worktree also
+builds the tools, a few seconds more. A deliberately failing assertion in a
+touched suite was refused in 15 seconds.
 
 **Why "since the base" means "since the commit's parent".** A push to `main`
 must be a fast-forward, so a pushed commit always sits on `main`'s tip, and
