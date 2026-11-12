@@ -343,6 +343,10 @@ splice_key :: (s: [] Splice, key: int, down: bool) -> bool #export_c #effects(al
   if s[0].gallery || !s[0].started { return false; }
   return g_key(s[0].game[..], key, down);
 }
+// Mouse look (the host holds the pointer while you walk): 0 a still scene, 1 the cursor is free, 2 hold it.
+splice_mouselook :: (s: [] Splice) -> int #export_c #effects(all) { if s[0].gallery || !s[0].started { return 0; } return g_mouselook(s[0].game[..]); }
+splice_look :: (s: [] Splice, dx: f32, dy: f32) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_look(s[0].game[..], dx, dy); } }
+splice_lock :: (s: [] Splice, status: int) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_lock(s[0].game[..], status); } }
 splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
   if s[0].gallery || !s[0].started { return false; }
   return g_pointer(s[0].game[..], x, y, phase);

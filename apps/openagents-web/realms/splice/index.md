@@ -7,34 +7,53 @@ engine instead of Unreal.
 
 ## The run
 
-1. **Day mine.** Walk the scrap room for the Drill Arm, Treads, Battery and the MOVE and DRILL cards.
-2. **Edit bay.** At the rover, put the cards on the film strip and deploy the Digger. DRILL then
-   MOVE is a bad cut; MOVE then DRILL opens the rubble.
-3. **Dusk, then night.** The tunnel leads to the raiders' party. Four banned pieces glow blue on
-   the floor and the catwalk. Each adds 25 Heat; raiders notice you from further away as Heat
-   rises, and the catwalk is safe from them. Three pieces make DRILL+. A fourth, without cooling
-   off at the stash crate first, brings the Imperial Sweep.
-4. **The boss wall.** Splice DRILL+ at the stash crate and deploy MOVE, DRILL+.
-5. **The banned bot.** Its arm sweeps round every few seconds. Stun its three weak points between
-   sweeps, take its core, and splice the core at the crate or the rover.
-6. **The memory.** A hologram of the old world plays, then SCENE RESTORED.
+The run follows the Splice game design document, Tier 1 and Tier 2.
 
-Three hearts. At zero hearts or 100 Heat you are back at the rover, and banned pieces picked up
-since then are lost.
+1. **Title.** Click to play.
+2. **Dome village, dawn.** Walk out through the scanner gate: "HEAT: COOL. PASS."
+3. **Rail drive, day.** The rover follows the rail; W and S change its speed. Halfway a sensor
+   ping stops it. Walk to the marker, pick up the Battery, and board again.
+4. **Day mine.** Pick up the Drill Arm, the Treads and the MOVE and DRILL cards.
+5. **Edit bay.** At the rover, drag the parts and cards onto the film-strip timeline and press
+   SPLICE. DRILL then MOVE is a bad cut; MOVE then DRILL opens the rubble.
+6. **Dusk, then night.** The passage leads to the raiders' party: five raiders on the floor, a
+   catwalk along the wall with a ramp at each end, and three banned pieces. Each banned piece
+   adds 25 Heat. Raiders notice you from further away as Heat rises and give up at the catwalk.
+7. **DRILL+.** The glowing card lies by the boss wall (it adds 25 Heat too). Put MOVE, DRILL+
+   on the strip at the stash crate; only DRILL+ breaks the boss wall.
+8. **The banned bot.** Its arm sweeps round every few seconds. Stun its three weak points with
+   F; a stunned point wakes after 12 seconds, so all three must be down together. Take its core.
+9. **The memory.** Splice the core at the crate or the rover. A hologram of the old world plays,
+   then SCENE RESTORED.
+
+Three hearts. At zero hearts or 100 Heat you are back at the checkpoint post by the rover with
+the inventory you had when you last stood there. Heat cools only by the rover or the stash crate.
 
 ## Controls
 
-- **W, S** walk; **A, D** turn (the arrow keys also work).
-- **E** opens and closes the edit bay at the rover or the stash crate.
-- In the edit bay: **1, 2, 3** add a card, **C** clears the strip, **Enter** deploys, **X** splices
-  DRILL+ or the core. The buttons also take clicks.
-- **F** stuns a weak point within reach.
+- **W, A, S, D** move; the **mouse** looks (click to hold the pointer, Escape frees it). The left
+  and right arrows also turn.
+- **E** picks up, boards the rover, and opens the edit bay.
+- **TAB** opens and closes the edit bay at the rover or the stash crate.
+- In the edit bay, drag or click a part or card to place it. Keys also work: **1, 2, 3** cards,
+  **4, 5, 6** parts, **C** clears the strip, **Enter** is SPLICE, **X** is SPLICE CORE.
+- **F** stuns a weak point within 2 m.
 
 ## Look
 
-Ink on cream paper for the interface (paper `#EADBC4`, ink `#1E1B18`, orange for danger, blue for
-banned tech), film-strip sprockets on the title and the timeline, and cel-shaded flat fills with
-ink contour lines for the world: a bright day, dusk, and a neon night.
+The interface follows the Game UI board: ink on cream paper (paper `#EADBC4`, ink `#1E1B18`,
+orange `#B8431F` for danger, blue `#4FB3D9` for banned tech), Michroma for banners, titles and
+buttons, IBM Plex Mono for labels and captions, film-strip sprockets on the title and the
+timeline. The world is cel-shaded flat fills with ink contour lines, in four time-of-day
+presets: dawn, day, dusk and night.
+
+## Not in this build
+
+- Sound: the document assigns the sound list to a later asset drop.
+- Tier 3: the solar farm stop and the village trade stall.
+- The memory's caption lines are placeholders, and "1 of ? erased scenes" keeps the document's
+  open count.
+- The characters are engine shapes until the art drops arrive.
 
 ## Source
 
@@ -47,7 +66,9 @@ ink contour lines for the world: a bright day, dusk, and a neon night.
   cel kits and mesh writers.
 
 A page script can stand the game at one beat with `coaxial.send(610, "N")`, N from 0 (title) to
-10, for stills and checks.
+15, for stills and checks.
+
+The fonts are in `realms/splice/assets/fonts/` with their Open Font Licences.
 
 ## Still scenes
 

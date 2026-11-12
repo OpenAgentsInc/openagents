@@ -1245,7 +1245,10 @@ async function loadPageFont() {
   if (!titleResponse.ok) throw Error(`UI title font HTTP ${titleResponse.status}`);
   const title = new FontFace(titleFamily, await titleResponse.arrayBuffer(), { weight: "100 900" });
   await title.load();document.fonts.add(title);
-  pageTitleFont = { family: JSON.stringify(titleFamily), weight: script?.dataset.uiTitleFontWeight || "400" };
+  // data-ui-title-font-scale (0.4 to 1): a wide title face is drawn that much smaller so its widest
+  // glyphs fit their cells; the realm's layout scales its quads back up (splice-game.coax).
+  const titleScale = Math.min(1, Math.max(0.4, Number(script?.dataset.uiTitleFontScale) || 1));
+  pageTitleFont = { family: JSON.stringify(titleFamily), weight: script?.dataset.uiTitleFontWeight || "400", scale: titleScale };
 }
 function sansAtlas(device) {
   const codes = [...Array.from({ length: 95 }, (_, i) => 32 + i), ...SANS_EXTRA];
@@ -1268,7 +1271,7 @@ function sansAtlas(device) {
     codes.forEach(glyph);
     if (pageTitleFont) {
       g.globalCompositeOperation = "lighter"; g.fillStyle = "#0f0";
-      g.font = `${pageTitleFont.weight} ${64 / (1 << level)}px ${pageTitleFont.family}`;
+      g.font = `${pageTitleFont.weight} ${64 * pageTitleFont.scale / (1 << level)}px ${pageTitleFont.family}`;
       codes.forEach(glyph);
     }
     device.queue.copyExternalImageToTexture({ source: canvas }, { texture, mipLevel: level, premultipliedAlpha: true }, [w, h]);

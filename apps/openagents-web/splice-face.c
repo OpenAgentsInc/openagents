@@ -64,6 +64,10 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   (void)kind; (void)id; return splice_pointer(at(state), x, y, phase) ? 1u : 0u;
 }
+// Mouse look: the host holds the pointer while the smuggler walks and frees it in the edit bay.
+EXPORT("coaxial_mouselook") uint32_t coaxial_mouselook(uint32_t state) { return (uint32_t)splice_mouselook(at(state)); }
+EXPORT("coaxial_look_delta") void coaxial_look_delta(uint32_t state, float dx, float dy) { splice_look(at(state), dx, dy); }
+EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t status) { splice_lock(at(state), status); }
 // The interface is ink on paper: the overlay blends source over (gpu/splice.coax fx_fs).
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 
