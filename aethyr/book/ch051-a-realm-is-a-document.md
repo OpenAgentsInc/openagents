@@ -226,9 +226,9 @@ slot tool:jump 1
 The moves are the hand-worked centimetres: `trees:3` at 125, −250 and
 `rocks:0` at −4000, 7. A placed thing keeps the document's numbers as written
 (`barrel 2 -3.5 90`). `rocks:0` sorts before `trees:3`, and `set:` before
-`tool:`, whatever order the document used. The rows switched off (`off`) are
-not in the model: the server owns them, and `row:KEY` slots carry only the
-edits a page makes to them.
+`tool:`, whatever order the document used. The board's rows are slots too:
+each row on is `feature:N` and each row off is `row:N`, its object as the server
+wrote it, the names the server's undo log uses.
 
 ## Checks
 

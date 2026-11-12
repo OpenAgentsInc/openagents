@@ -36,7 +36,9 @@ BEGIN
     RAISE EXCEPTION 'slots read';
   END IF;
   m := verse.realm_slot_put(m, 'trees:1', '{"yaw":45,"scale":100,"gone":false}');
-  IF m.moved <> '[]' OR m.shaped -> 0 IS DISTINCT FROM '{"entity":"trees:1","yaw":45,"scale":100,"gone":false}'::jsonb THEN RAISE EXCEPTION 'an entity replaced in place: % %', m.moved, m.shaped; END IF;
+  -- entity order (0166): rocks:0 before trees:1, whatever order the lists had
+  IF m.moved <> '[]' OR m.shaped -> 1 IS DISTINCT FROM '{"entity":"trees:1","yaw":45,"scale":100,"gone":false}'::jsonb
+     OR m.shaped -> 0 ->> 'entity' <> 'rocks:0' THEN RAISE EXCEPTION 'an entity replaced, in entity order: % %', m.moved, m.shaped; END IF;
   m := verse.realm_slot_put(m, 'place:2', '{"thing":"crate","x":0,"z":0,"yaw":0}');
   IF jsonb_array_length(m.placed) <> 3 THEN RAISE EXCEPTION 'place:2 fills to it'; END IF;
   m := verse.realm_slot_put(m, 'place:2', NULL);

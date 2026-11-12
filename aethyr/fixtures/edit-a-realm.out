@@ -14,6 +14,6 @@ turn rocks:0 45 degrees: true; done 2 of 2, dirty true
   the lore can be done again: false
 a stale move of trees:3 from (125, -250): false; done 2 of 2, dirty true
   trees:3 at (300, -100) cm, yaw 0, size 100 percent
-save: {"rev":4,"moved":[{"entity":"trees:3","x":3.00,"z":-1.00},{"entity":"rocks:0","x":-40.00,"z":0.07}],"shaped":[{"entity":"rocks:0","yaw":45,"scale":100,"gone":false}]}
+save: {"rev":4,"moved":[{"entity":"rocks:0","x":-40.00,"z":0.07},{"entity":"trees:3","x":3.00,"z":-1.00}],"shaped":[{"entity":"rocks:0","yaw":45,"scale":100,"gone":false}]}
 kept as revision 5: true; done 2 of 2, dirty false
 replayed onto revision 4: true, the same realm: true

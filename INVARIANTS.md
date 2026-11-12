@@ -1056,7 +1056,13 @@ history. Each undo step is the edit's per-slot inverses, the slots
 `aethyr/forge/edit.coax` names (`0111_realm_edit_log.sql`): undo puts each
 slot it changed back, newest first, and is refused (409, nothing changed) when
 a slot is no longer what the step left; `.../<slug>/redo` applies it again
-under the same rule, and a new edit drops what was undone. A made realm's lore
+under the same rule, and a new edit drops what was undone. A document's moves
+and shapes stand in entity order (by feature, then index:
+`0166_realm_entity_order.sql`, and `edit.coax` keeps its overrides the same
+way), so an undo or redo gives back the restored revision's bytes with only
+`rev` changed; `proto/verse/realm-document-v1.json` pins it (`restores`),
+checked by `aethyr/forge/doc-goldens.coax` and
+`coax/web/api/tests/realm_doc_checks.coax`. A made realm's lore
 and quests are in its document (present only when it has some, so a document
 without them keeps its bytes and hash), so publish, undo and fork carry them;
 lore moved there from 0055's tables became one new revision and every older

@@ -254,7 +254,7 @@ def realm_fork_checks():
     st, sv5 = b_call("POST", R + "forge-court/save", {"rev": 4, "moved": mv5}, maker)
     om, vm = line_map(b_call("GET", R + "forge-court", key=maker)[1]), line_map(b_call("GET", R + "forge-court", key=rival)[1])
     check("after a save its owner sees it and a visitor still sees the revision published", st == 200 and sv5["rev"] == 5
-          and om.get("rev") == ["5"] and om.get("moved") == ["trees:2 1.00 1.00", "rocks:0 -2.00 3.00"] and om.get("published") == ["4"]
+          and om.get("rev") == ["5"] and om.get("moved") == ["rocks:0 -2.00 3.00", "trees:2 1.00 1.00"] and om.get("published") == ["4"]
           and vm.get("rev") == ["4"] and vm.get("moved") == ["trees:2 3.26 -4.50"], (st, sv5, om, vm))
     check("a visitor's document is the one published, its hash the publish's", b_call("GET", R + "forge-court/doc")[1] == d4
           and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["rev"] == 5)

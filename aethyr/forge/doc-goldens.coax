@@ -7,6 +7,9 @@
 //   - the reply (forge_save_reply, forge_undo_reply, forge_conflict) and its revision read back;
 //   - an undo or redo is the server's logged step applied to the model (forge_apply_step), and every
 //     logged step applies backwards to the model it was logged after;
+//   - an undo or redo gives back the revision it restores (`restores`, a step's name) byte for byte
+//     but for its `rev`, so its SHA-256 is that text's (#13354: moves and shapes in entity order);
+//   - a board row switched (forge_switch) moves between `features` and `off` as the server's does;
 //   - every key is a json_name of its message in proto/descriptors/verse-doc.pb (realm.proto), and
 //     the messages on the JSON mapper (RevRequest, SaveReply, UndoReply, Conflict) read the bodies
 //     and replies, and write a RevRequest back byte for byte.
@@ -92,7 +95,7 @@ dg_doc_keys :: (st: [] D_State, text: string) -> bool {
   if !jv_parse(j[..], text, nodes[..]) || !dg_keys_of(st, "RealmDocument", j[0], 0) { return false; }
   setup := jv_get(j[0], 0, "setup"); from := jv_get(j[0], 0, "forked_from");
   return (setup < 0 || dg_keys_of(st, "Setup", j[0], setup)) && (from < 0 || jv_kind(j[0], from) == JV_NULL || dg_keys_of(st, "ForkedFrom", j[0], from)) &&
-    dg_each_of(st, "Feature", j[0], jv_get(j[0], 0, "features")) && dg_each_of(st, "Move", j[0], jv_get(j[0], 0, "moved")) &&
+    dg_each_of(st, "Feature", j[0], jv_get(j[0], 0, "features")) && dg_each_of(st, "Feature", j[0], jv_get(j[0], 0, "off")) && dg_each_of(st, "Move", j[0], jv_get(j[0], 0, "moved")) &&
     dg_each_of(st, "Shape", j[0], jv_get(j[0], 0, "shaped")) && dg_each_of(st, "Placed", j[0], jv_get(j[0], 0, "placed")) &&
     dg_each_of(st, "Quest", j[0], jv_get(j[0], 0, "quests"));
 }
@@ -143,6 +146,7 @@ dg_op :: (p: [] DgPool, d: [] ForgeDoc, j: Jv, at: int) -> bool {
   if op == "resize" { return forge_resize(d, e, dg_i(j, at, "percent")); }
   if op == "remove" { return forge_remove(d, e); }
   if op == "restore" { return forge_restore(d, e); }
+  if op == "switch" { return forge_switch(d, dg_s(p, j, at, "row"), jv_kind(j, jv_get(j, at, "on")) == JV_TRUE); }
   if op == "lore" { return forge_lore(d, dg_s(p, j, at, "who"), dg_s(p, j, at, "text")); }
   if op == "quest" {
     steps: [3] string; s := jv_get(j, at, "steps");
@@ -152,6 +156,24 @@ dg_op :: (p: [] DgPool, d: [] ForgeDoc, j: Jv, at: int) -> bool {
   return false;
 }
 
+// A document's text with its revision (the first "rev") made rev; "" when it has none or doesn't fit.
+dg_with_rev :: (text: string, rev: int, out: [] u8) -> string {
+  key := "\"rev\": ";
+  for i: 0..<text.count - key.count {
+    if text[i..<i + key.count] != key { continue; }
+    e := i + key.count; while e < text.count && forge_digit(text[e]) { e += 1; }
+    n := forge_put(out, 0, text[0..<i + key.count]); n = forge_put_int(out, n, rev); n = forge_put(out, n, text[e..<text.count]);
+    return ifx n < 0 then "" else cast(string) out[0..<n];
+  }
+  return "";
+}
+// The document of the step named `name` (or the start's, "start"), or "".
+dg_doc_of :: (p: [] DgPool, j: Jv, name: string) -> string {
+  if name == "start" { return dg_s(p, j, jv_get(j, 0, "start"), "doc"); }
+  steps := jv_get(j, 0, "steps");
+  for i: 0..<jv_len(j, steps) { s := jv_at(j, steps, i); if dg_s(p, j, s, "name") == name { return dg_s(p, j, s, "doc"); } }
+  return "";
+}
 dg_hex :: (text: string, out: [] u8) -> string { if !S_hex(S_hash(text), out) { return ""; } return cast(string) out[0..<64]; }
 
 dg_run :: (raw: string, st: [] D_State) -> int {
@@ -221,6 +243,13 @@ dg_run :: (raw: string, st: [] D_State) -> int {
     dg_check(g[..], name, "doc", got, doc);
     sha := dg_hex(doc, hb[..]);
     dg_check(g[..], name, "sha256", sha, dg_s(p[..], j, s, "sha256"));
+    if jv_get(j, s, "restores") >= 0 {
+      // an undo or redo: the revision it restores, byte for byte but for `rev`, and so its hash
+      was := dg_doc_of(p[..], j, dg_s(p[..], j, s, "restores")); wb: [FORGE_DOC_BYTES] u8; eb: [64] u8;
+      same := dg_with_rev(was, rev, wb[..]);
+      dg_check(g[..], name, "restores", same, doc);
+      dg_check(g[..], name, "restored sha256", dg_hex(same, eb[..]), sha);
+    }
     if route == "/save" {
       rn := forge_save_reply(rev, sha, rb[..]);
       dg_check(g[..], name, "reply", ifx rn < 0 then "" else cast(string) rb[0..<rn], reply);
@@ -238,8 +267,7 @@ dg_run :: (raw: string, st: [] D_State) -> int {
     }
     if jv_get(j, s, "logged") >= 0 {
       // A new edit: the server logs one step and forgets what could be redone. The step must apply
-      // backwards to the model now (an undo's bytes are the next steps'; an undo gives the same
-      // entities back but may list them in another order than before, so not the same bytes).
+      // backwards to the model now (an undo's bytes are the next steps', checked by `restores`).
       logged := dg_s(p[..], j, s, "logged");
       if g[0].undo_n >= DG_STEPS { print("FAIL  % (more than % steps)\n", name, DG_STEPS); return 1; }
       g[0].undo[g[0].undo_n] = logged; g[0].undo_n += 1; g[0].redo_n = 0;

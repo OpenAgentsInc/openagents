@@ -14491,6 +14491,20 @@ END $$;
 
 
 --
+-- Name: realm_by_entity(jsonb); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_by_entity(a jsonb) RETURNS jsonb
+    LANGUAGE sql IMMUTABLE
+    AS $_$
+  SELECT CASE WHEN a IS NULL THEN NULL ELSE coalesce((
+    SELECT jsonb_agg(x ORDER BY split_part(x->>'entity', ':', 1) COLLATE "C",
+                                CASE WHEN split_part(x->>'entity', ':', 2) ~ '^[0-9]{1,9}$' THEN split_part(x->>'entity', ':', 2)::int END,
+                                x->>'entity' COLLATE "C")
+    FROM jsonb_array_elements(a) x), '[]') END $_$;
+
+
+--
 -- Name: realm_card_gone(text); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -14778,6 +14792,16 @@ CREATE FUNCTION verse.realm_entity(m verse.made_realms, e text) RETURNS jsonb
 CREATE FUNCTION verse.realm_entry(a jsonb, e text, v jsonb) RETURNS jsonb
     LANGUAGE sql IMMUTABLE
     AS $$
+  SELECT verse.realm_by_entity(verse.realm_entry_0111(a, e, v)) $$;
+
+
+--
+-- Name: realm_entry_0111(jsonb, text, jsonb); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_entry_0111(a jsonb, e text, v jsonb) RETURNS jsonb
+    LANGUAGE sql IMMUTABLE
+    AS $$
   SELECT CASE
     WHEN v IS NULL THEN coalesce((SELECT jsonb_agg(x ORDER BY o) FROM jsonb_array_elements(a) WITH ORDINALITY t(x, o) WHERE x->>'entity' <> e), '[]')
     WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(a) x WHERE x->>'entity' = e)
@@ -14904,6 +14928,16 @@ END $$;
 --
 
 CREATE FUNCTION verse.realm_moves(v jsonb) RETURNS jsonb
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT verse.realm_by_entity(verse.realm_moves_0093(v)) $$;
+
+
+--
+-- Name: realm_moves_0093(jsonb); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_moves_0093(v jsonb) RETURNS jsonb
     LANGUAGE plpgsql IMMUTABLE
     AS $_$
 DECLARE
@@ -15210,6 +15244,16 @@ END $$;
 --
 
 CREATE FUNCTION verse.realm_shapes(v jsonb) RETURNS jsonb
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT verse.realm_by_entity(verse.realm_shapes_0109(v)) $$;
+
+
+--
+-- Name: realm_shapes_0109(jsonb); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_shapes_0109(v jsonb) RETURNS jsonb
     LANGUAGE plpgsql IMMUTABLE
     AS $_$
 DECLARE

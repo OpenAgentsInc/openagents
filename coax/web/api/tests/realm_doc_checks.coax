@@ -2,7 +2,9 @@
 // proto/verse/realm-document-v1.json names a made realm, a run of edits and, after each, the
 // document as the server stores it, its SHA-256, the reply and the undo step the server logs. This
 // seeds that realm, sends each step's body to its route, and requires the server's answers byte for
-// byte: GET .../doc's document and hash, the reply, and the newest step of its undo log. The same
+// byte: GET .../doc's document and hash, the reply, and the newest step of its undo log; and an
+// undo or redo gives back the revision it restores (`restores`) byte for byte but for `rev`, as the
+// server keeps it (verse.realm_revisions), so its SHA-256 is that text's (#13354). The same
 // file is replayed through aethyr/forge/edit.coax and doc.coax by aethyr/forge/doc-goldens.coax, so
 // the two languages give the same bytes. Local isolated API and database only.
 //   API=http://127.0.0.1:PORT PGURL=... PSQL=... coax/web/tool.sh coax/web/api/tests/realm_doc_checks.coax
@@ -54,6 +56,21 @@ rdc_str :: (j: Jv, at: int, key: string, out: [] u8) -> string {
   n := jv_str(j, jv_get(j, at, key), out);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
+// The revision a step's document has (its "rev"), or -1.
+rdc_rev_of :: (j: Jv, s: int) -> int {
+  b: [RDC_BYTES] u8; text := rdc_str(j, s, "doc", b[..]);
+  nodes: [4096] JvNode; d: [1] Jv;
+  if text == "" || !jv_parse(d[..], text, nodes[..]) { return -1; }
+  return jv_int(d[0], jv_get(d[0], 0, "rev"), -1);
+}
+rdc_int :: (v: int, out: [] u8) -> string {
+  if v < 0 { return "-1"; }
+  d: [24] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { out[k] = d[n - 1 - k]; }
+  return cast(string) out[0..<n];
+}
 // GET .../doc: the document's bytes and its hash, as the fixture holds them.
 rdc_doc :: (t: [] Rdc, name: string, doc: string, sha: string) {
   out: [RDC_BYTES] u8;
@@ -103,6 +120,18 @@ tool_main :: () -> int #export_c #effects(all) {
     if jv_get(f[0], s, "doc") >= 0 {
       db2: [RDC_BYTES] u8; sh2: [80] u8;
       rdc_doc(t[..], name, rdc_str(f[0], s, "doc", db2[..]), rdc_str(f[0], s, "sha256", sh2[..]));
+    }
+    if jv_get(f[0], s, "restores") >= 0 {
+      // the revision restored, as the server kept it, with only `rev` changed, is the document now
+      wb: [128] u8; was := rdc_str(f[0], s, "restores", wb[..]); rev := -1;
+      for k: 0..<jv_len(f[0], steps) {
+        e := jv_at(f[0], steps, k); eb: [128] u8;
+        if rdc_str(f[0], e, "name", eb[..]) == was { rev = rdc_rev_of(f[0], e); }
+      }
+      q: [512] u8; qn := rdc_put(q[..], 0, "SELECT (r.doc || jsonb_build_object('rev', m.rev))::text = (verse.realm_doc(m))::text FROM verse.made_realms m JOIN verse.realm_revisions r ON r.slug = m.slug WHERE m.slug = '");
+      qn = rdc_put(q[..], qn, slug); qn = rdc_put(q[..], qn, "' AND r.rev = "); rb2: [24] u8; qn = rdc_put(q[..], qn, rdc_int(rev, rb2[..]));
+      n := rdc_sql(t[..], cast(string) q[0..<qn], out[..]);
+      rdc_check(t[..], name, "restores", ifx n < 0 then "" else cast(string) out[0..<n], "t");
     }
     if jv_get(f[0], s, "logged") >= 0 {
       q: [256] u8; qn := rdc_put(q[..], 0, "SELECT (undo -> -1)::text FROM verse.made_realms WHERE slug = '");

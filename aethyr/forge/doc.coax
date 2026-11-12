@@ -13,8 +13,11 @@
 // The server is the authority on what a document is (migrations 0093, 0109); this reader only
 // refuses what it can't hold. What it reads becomes the model's own: moves and shapes as entity overrides, the setup fields as
 // "set:" slots, the tools as "tool:" slots and each placed thing as a "place:N" slot (THING X Z YAW
-// with the document's numbers as written), and lore and quests as "lore:" and "quest:" slots, the
-// names the server's undo log uses too (0111). Rows are the server's: not in this document.
+// with the document's numbers as written), lore and quests as "lore:" and "quest:" slots, and the
+// board's rows as "feature:N" (on, the N-th of `features`) and "row:N" (off, the N-th of `off`)
+// slots holding each row's object as the server wrote it: the names the server's undo log uses too
+// (0111), so every step it logs applies to this model (forge_apply_step) and a row switched on or
+// off is forge_switch, the server's switch.
 //   coax/bin/coax test aethyr/forge/doc.coax --library
 
 #module "aethyr.forge.doc";
@@ -162,6 +165,16 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
     }
     kb: [24] u8;
     if thing == "" || m == -1 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+  }
+  for list: [2] string.["features", "off"] {   // a row's object as written; a null is a hole
+    rows := jv_get(j[0], at, list);
+    if rows != -1 && jv_kind(j[0], rows) != JV_ARRAY { return forge_why("rows not a list"); }
+    for i: 0..<jv_len(j[0], rows) {
+      e := jv_at(j[0], rows, i);
+      if jv_kind(j[0], e) == JV_NULL { continue; }
+      kb: [24] u8;
+      if jv_kind(j[0], e) != JV_OBJECT || !forge_read_slot(next[..], forge_row_slot(list == "off", i, kb[..]), jv_raw(j[0], e)) { return forge_why("a row out of bounds"); }
+    }
   }
   lore := jv_get(j[0], at, "lore");   // absent before migration 0111: none
   if lore != -1 && jv_kind(j[0], lore) != JV_OBJECT { return forge_why("lore not an object"); }
@@ -321,6 +334,32 @@ forge_put_placed :: (o: [] Jo, d: [] ForgeDoc) -> bool {
   return true;
 }
 
+// A board row's slot: "row:N" when off, "feature:N" when on.
+forge_row_slot :: (off: bool, n: int, buf: [] u8) -> string {
+  m := forge_put(buf, 0, ifx off then "row:" else "feature:"); m = forge_put_int(buf, m, n);
+  return ifx m < 0 then "" else cast(string) buf[0..<m];
+}
+// The highest N of a "feature:N" or "row:N" slot, or -1 when none.
+forge_rows_top :: (d: [] ForgeDoc, off: bool) -> int {
+  prefix := ifx off then "row:" else "feature:"; top := -1;
+  for i: 0..<d[0].slot_n {
+    k := forge_slot_key(d, i);
+    if k.count > prefix.count && k[0..<prefix.count] == prefix { n := forge_whole(k[prefix.count..<k.count], 0, FORGE_SLOTS); if n > top { top = n; } }
+  }
+  return top;
+}
+// The rows on (`features`) or off (`off`), N = 0 up, each its object as kept; a hole is null.
+forge_put_rows :: (o: [] Jo, d: [] ForgeDoc, off: bool) -> bool {
+  jo_byte(o, '[');
+  for n: 0..<forge_rows_top(d, off) + 1 {
+    if n > 0 { jo_put(o, ", "); }
+    kb: [24] u8; k := forge_row_slot(off, n, kb[..]);
+    if forge_slot_at(d, k).found { jo_put(o, forge_slot_text(d, k)); } else { jo_put(o, "null"); }
+  }
+  jo_byte(o, ']');
+  return true;
+}
+
 // book:begin write
 // d as the server stores it, into buf: its length, or -1 when it doesn't fit or `start` isn't a
 // document this writer knows. Moves are metres with two decimals, as the server rounds them.
@@ -345,6 +384,8 @@ forge_doc_json :: (d: [] ForgeDoc, start: string, buf: [] u8) -> int {
     if key == "shaped" { has = forge_any_shaped(d); }
     if key == "tools" { has = has || forge_any_slot(d, "tool:"); }
     if key == "placed" { has = has || forge_any_slot(d, "place:"); }
+    if key == "features" { has = has || forge_any_slot(d, "feature:"); }
+    if key == "off" { has = has || forge_any_slot(d, "row:"); }
     if key == "name" { has = has || forge_slot_at(d, "set:name").found; }
     if !has { continue; }
     forge_jo_key(o[..], first, key); first = false;
@@ -386,6 +427,7 @@ forge_doc_json :: (d: [] ForgeDoc, start: string, buf: [] u8) -> int {
     else if key == "lore" { ok = forge_put_named(o[..], d, "lore:"); }
     else if key == "quests" { ok = forge_put_named(o[..], d, "quest:"); }
     else if key == "placed" { ok = forge_put_placed(o[..], d); }
+    else if key == "features" || key == "off" { ok = forge_put_rows(o[..], d, key == "off"); }
     else { forge_copy_node(o[..], j[0], v); }
     if !ok { return -1; }
   }
@@ -501,7 +543,11 @@ forge_slot_value :: (j: Jv, at: int, key: string, buf: [] u8) -> ForgeValue {
     if k != JV_OBJECT || thing == "" || m < 0 { return ForgeValue.{}; }
     return ForgeValue.{ok = true, on = true, text = cast(string) buf[0..<m]};
   }
-  return ForgeValue.{};   // row:N and feature:N: the server's, not this model's
+  if kind == "row" || kind == "feature" {   // a board row's object, as the server wrote it
+    if k != JV_OBJECT { return ForgeValue.{}; }
+    return ForgeValue.{ok = true, on = true, text = jv_raw(j, at)};
+  }
+  return ForgeValue.{};
 }
 ForgeShapeValue :: struct { ok: bool; shape: ForgeShape; }
 // A logged entity value as its shape: null is the plain shape.
@@ -555,6 +601,82 @@ forge_apply_step :: (d: [] ForgeDoc, step: string, back: bool) -> bool {
   return true;
 }
 // book:end step
+
+// book:begin switch
+// A board row's key, as the server names one (verse.edit_key): a "row" row's variant; else its
+// feature, then ":" and a character's name (lowercase, each run of other bytes one "-") or a props,
+// building or herd row's variant. "" when it has none (the server's null).
+forge_row_key :: (row: string, buf: [] u8) -> string {
+  nodes: [64] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], row, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT || jv_kind(j[0], jv_get(j[0], 0, "feature")) != JV_STRING { return ""; }
+  fb: [64] u8; feature := forge_str(j[0], jv_get(j[0], 0, "feature"), fb[..]);
+  vb: [128] u8; variant := forge_str(j[0], jv_get(j[0], 0, "variant"), vb[..]);
+  has_variant := jv_kind(j[0], jv_get(j[0], 0, "variant")) == JV_STRING;
+  if feature == "row" { return ifx has_variant then forge_key_of("", variant, buf) else ""; }
+  n := forge_put(buf, 0, feature);
+  if feature == "props" || feature == "building" || feature == "herd" {
+    if has_variant { n = forge_put(buf, forge_put(buf, n, ":"), variant); }
+  } else if feature == "character" && jv_kind(j[0], jv_get(j[0], 0, "name")) == JV_STRING {
+    nb: [128] u8; name := forge_str(j[0], jv_get(j[0], 0, "name"), nb[..]);
+    n = forge_put(buf, n, ":"); run := false;
+    for c: name {
+      l := ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+      if forge_lower(l) || forge_digit(l) { e: [1] u8; e[0] = l; n = forge_put(buf, n, cast(string) e[..]); run = false; }
+      else if !run { n = forge_put(buf, n, "-"); run = true; }
+    }
+  }
+  return ifx n < 0 then "" else cast(string) buf[0..<n];
+}
+// A board row on or off, as the server's switch does it (verse.edit_switch_0110): the row named
+// key (the first on, else the first off) leaves the rows on ("feature:N") and off ("row:N"), every
+// one with its key and every hole with them, and goes at the end of the rows on, or off. One step
+// of an op for each slot that changes. False when no row has that key or nothing changes.
+FORGE_ROWS :: 64;   // board rows on, and off, this switch keeps
+forge_switch :: (d: [] ForgeDoc, key: string, on: bool) -> bool {
+  if key == "" { return false; }
+  // each list as it is (l 0: on, 1: off), its slots by N, a hole not found; then as it will be
+  was: [2 * FORGE_ROWS] ForgeVal; now: [2 * FORGE_ROWS] ForgeVal; top: [2] int; n: [2] int;
+  pick := ForgeVal.{};
+  for l: 0..<2 {
+    top[l] = forge_rows_top(d, l == 1) + 1;
+    if top[l] > FORGE_ROWS { return false; }
+    for i: 0..<top[l] {
+      kb: [24] u8; v := forge_slot_at(d, forge_row_slot(l == 1, i, kb[..]));
+      was[l * FORGE_ROWS + i] = v;
+      rb: [64] u8;
+      if v.found && !pick.found && forge_row_key(forge_val_text(d, v), rb[..]) == key { pick = v; }
+    }
+  }
+  if !pick.found { return false; }
+  for l: 0..<2 {
+    for i: 0..<top[l] {
+      v := was[l * FORGE_ROWS + i]; rb: [64] u8;
+      if !v.found { continue; }
+      k := forge_row_key(forge_val_text(d, v), rb[..]);
+      if k == "" || k == key { continue; }
+      now[l * FORGE_ROWS + n[l]] = v; n[l] += 1;
+    }
+    if (l == 0) == on { if n[l] >= FORGE_ROWS { return false; } now[l * FORGE_ROWS + n[l]] = pick; n[l] += 1; }
+  }
+  o: [2 * FORGE_ROWS] ForgeOp; ops := 0;
+  for l: 0..<2 {
+    for i: 0..<ifx top[l] > n[l] then top[l] else n[l] {
+      b := ifx i < top[l] then was[l * FORGE_ROWS + i] else ForgeVal.{};
+      a := ifx i < n[l] then now[l * FORGE_ROWS + i] else ForgeVal.{};
+      if b.found == a.found && (!b.found || forge_val_text(d, b) == forge_val_text(d, a)) { continue; }
+      if ops >= FORGE_OPS { return false; }
+      kb: [24] u8; forge_key_into(o[ops..<ops + 1], forge_row_slot(l == 1, i, kb[..]));
+      o[ops].kind = FORGE_SLOT;
+      o[ops].had = b.found; if b.found { o[ops].bv = d[0].slots[b.at].at; o[ops].bv_n = d[0].slots[b.at].n; }
+      o[ops].has = a.found; if a.found { o[ops].av = d[0].slots[a.at].at; o[ops].av_n = d[0].slots[a.at].n; }
+      ops += 1;
+    }
+  }
+  return ops > 0 && forge_push(d, o[0..<ops]);
+}
+// A found slot's value.
+forge_val_text :: (d: [] ForgeDoc, v: ForgeVal) -> string { return forge_span(d, d[0].slots[v.at].at, d[0].slots[v.at].n); }
+// book:end switch
 
 // A document's base: null (a made realm), or the slug of the built-in realm a fork was made from.
 ForgeBase :: struct { ok: bool; fork: bool; slug: [FORGE_SLUG] u8; slug_n: int; }
@@ -834,13 +956,48 @@ FORGE_STORED_V1 :: "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 1, \"base\
   #assert forge_lore(d[..], "mara", "She \"keeps\" it.") && forge_quest(d[..], "mara", "Light", [3] string.["Oil", "", ""], "A map") && forge_tool(d[..], "fly", true);
   forge_commit(d[..], 2);
   n = forge_doc_json(d[..], FORGE_STORED_V1, out[..]);
-  #assert cast(string) out[0..<n] == "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 2, \"base\": null, \"lore\": {\"mara\": \"She \\\"keeps\\\" it.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": true, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light\", \"steps\": [\"Oil\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}";
+  #assert cast(string) out[0..<n] == "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 2, \"base\": null, \"lore\": {\"mara\": \"She \\\"keeps\\\" it.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": true, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light\", \"steps\": [\"Oil\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}, {\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}";
   // a place slot and a key it doesn't know; a buffer too small
   #assert forge_place(d[..], "barrel", 150, -20, 45);
   n = forge_doc_json(d[..], FORGE_STORED_V1, out[..]);
   #assert n > 0 && forge_find_text(cast(string) out[0..<n], "\"placed\": [{\"x\": 150, \"z\": -20, \"yaw\": 45, \"thing\": \"barrel\"}]");
   #assert forge_doc_json(d[..], "{\"doc\": \"aethyr.realm\", \"rev\": 1, \"what\": 1}", out[..]) < 0 && forge_doc_json(d[..], "[]", out[..]) < 0;
   small: [64] u8; #assert forge_doc_json(d[..], FORGE_STORED_V1, small[..]) < 0;
+}
+#test "a board row switched off and on is the server's switch: rows move between features and off, one step" {
+  d: [1] ForgeDoc; out: [4096] u8; b: [4096] u8;
+  t := forge_doc_with_rows("[{\"count\": 4, \"feature\": \"trees\"}, {\"name\": \"Old Mara!\", \"feature\": \"character\"}, null, {\"count\": 2, \"feature\": \"rocks\"}]", b[..]);
+  #assert forge_read_doc(d[..], t).ok && forge_slot_text(d[..], "feature:1") == "{\"name\": \"Old Mara!\", \"feature\": \"character\"}" && !forge_slot_at(d[..], "feature:2").found;
+  n := forge_doc_json(d[..], t, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == t;   // a hole stays a null
+  kb: [64] u8;
+  #assert forge_row_key("{\"name\": \"Old Mara!\", \"feature\": \"character\"}", kb[..]) == "character:old-mara-";
+  #assert forge_row_key("{\"variant\": \"well\", \"feature\": \"row\"}", kb[..]) == "well" && forge_row_key("{\"variant\": \"oak\", \"feature\": \"props\"}", kb[..]) == "props:oak";
+  #assert forge_row_key("{\"variant\": \"oak\", \"feature\": \"trees\"}", kb[..]) == "trees" && forge_row_key("{\"feature\": \"row\"}", kb[..]) == "" && forge_row_key("[]", kb[..]) == "";
+  #assert forge_switch(d[..], "trees", false) && d[0].done == 4;   // four slots, one step
+  n = forge_doc_json(d[..], t, out[..]);
+  #assert forge_find_text(cast(string) out[0..<n], "\"off\": [{\"count\": 4, \"feature\": \"trees\"}]");
+  #assert forge_find_text(cast(string) out[0..<n], "\"features\": [{\"name\": \"Old Mara!\", \"feature\": \"character\"}, {\"count\": 2, \"feature\": \"rocks\"}]");
+  #assert !forge_switch(d[..], "trees", false) && !forge_switch(d[..], "water", true) && !forge_switch(d[..], "", true);
+  #assert forge_switch(d[..], "trees", true);
+  n = forge_doc_json(d[..], t, out[..]);
+  #assert forge_find_text(cast(string) out[0..<n], "\"off\": []") && forge_find_text(cast(string) out[0..<n], "\"count\": 2, \"feature\": \"rocks\"}, {\"count\": 4, \"feature\": \"trees\"}]");
+  #assert forge_undo(d[..]) && forge_undo(d[..]) && !forge_undo(d[..]);
+  n = forge_doc_json(d[..], t, out[..]);
+  #assert cast(string) out[0..<n] == t;   // every op of both steps taken back: the bytes read
+  #assert forge_redo(d[..]) && forge_slot_text(d[..], "row:0") == "{\"count\": 4, \"feature\": \"trees\"}";
+}
+// FORGE_STORED_V1 with other rows on.
+forge_doc_with_rows :: (rows: string, buf: [] u8) -> string {
+  from := "\"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}]";
+  for i: 0..<FORGE_STORED_V1.count - from.count {
+    if FORGE_STORED_V1[i..<i + from.count] == from {
+      n := forge_put(buf, 0, FORGE_STORED_V1[0..<i]); n = forge_put(buf, n, "\"features\": "); n = forge_put(buf, n, rows);
+      n = forge_put(buf, n, FORGE_STORED_V1[i + from.count..<FORGE_STORED_V1.count]);
+      return ifx n < 0 then "" else cast(string) buf[0..<n];
+    }
+  }
+  return "";
 }
 forge_find_text :: (s: string, part: string) -> bool {
   for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
@@ -875,7 +1032,7 @@ forge_find_text :: (s: string, part: string) -> bool {
   step := "{\"to\": 6, \"ops\": [{\"slot\": \"rocks:0\", \"after\": null, \"before\": {\"yaw\": 0, \"gone\": false, \"scale\": 150}}, {\"slot\": \"rocks:1\", \"after\": null, \"before\": {\"yaw\": 0, \"gone\": true, \"scale\": 100}}, {\"slot\": \"trees:1\", \"after\": {\"x\": 1.25, \"z\": -2.50}, \"before\": {\"x\": 1.25, \"z\": -2.50, \"yaw\": 90, \"gone\": false, \"scale\": 100}}], \"card\": null}";
   #assert forge_apply_step(d[..], step, true);
   #assert forge_shape_of(d[..], "trees:1").yaw == 90 && forge_shape_of(d[..], "rocks:1").gone && forge_shape_of(d[..], "rocks:0").scale == 150;
-  #assert forge_move_key(d[..], 1) == "rocks:1" && forge_move_key(d[..], 2) == "rocks:0";   // newest op first, as the server's UNDO
+  #assert forge_move_key(d[..], 0) == "rocks:0" && forge_move_key(d[..], 1) == "rocks:1" && forge_move_key(d[..], 2) == "trees:1";   // in entity order, as the server keeps them
   #assert !forge_apply_step(d[..], step, true) && forge_shape_of(d[..], "rocks:0").scale == 150;   // already undone: refused, unchanged
   #assert forge_apply_step(d[..], step, false) && d[0].move_n == 1 && forge_shape_of(d[..], "trees:1").yaw == 0;
   quest := "{\"to\": 5, \"ops\": [{\"slot\": \"quest:mara\", \"after\": {\"ask\": \"Light\", \"steps\": [\"Oil\", \"\", \"Climb\"], \"reward\": \"A map\"}, \"before\": null}], \"card\": null}";
@@ -887,7 +1044,7 @@ forge_find_text :: (s: string, part: string) -> bool {
   #assert forge_read_slot(d[..], "tool:fly", "0") && forge_read_slot(d[..], "set:time", "day");
   #assert forge_apply_step(d[..], tools, false) && forge_slot_text(d[..], "tool:fly") == "1" && forge_slot_text(d[..], "set:time") == "night" && forge_slot_text(d[..], "place:0") == "barrel 1.5 -2 45";
   #assert forge_apply_step(d[..], tools, true) && forge_slot_text(d[..], "tool:fly") == "0" && !forge_slot_at(d[..], "place:0").found;
-  // the server's own slots, and steps that aren't one, are refused whole
+  // a row that isn't an object, and steps that aren't one, are refused whole
   #assert !forge_apply_step(d[..], "{\"to\": 1, \"ops\": [{\"slot\": \"tool:fly\", \"after\": true, \"before\": false}, {\"slot\": \"row:0\", \"after\": \"off\", \"before\": null}]}", false) && forge_slot_text(d[..], "tool:fly") == "0";
   #assert !forge_apply_step(d[..], "{\"to\": 1}", false) && !forge_apply_step(d[..], "[]", false) && !forge_apply_step(d[..], "{\"ops\": [{\"slot\": \"tool:fly\", \"after\": 1, \"before\": false}]}", false);
   #assert !forge_apply_step(d[..], "{\"ops\": [{\"slot\": \"trees:1\", \"after\": {\"yaw\": 0, \"gone\": false, \"scale\": 100}, \"before\": {\"x\": 1.25, \"z\": -2.50}}]}", false);

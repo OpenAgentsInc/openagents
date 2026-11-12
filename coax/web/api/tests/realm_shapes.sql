@@ -60,7 +60,7 @@ BEGIN
   SELECT * INTO m FROM verse.made_realms WHERE slug = 'shapes';
   IF m.rev <> 3 OR jsonb_array_length(m.shaped) <> 2 OR jsonb_array_length(m.moved) <> 1 THEN RAISE EXCEPTION 'a refused save changed the document'; END IF;
   spec := verse.edit_spec('shapes', 'shapes-player-key-0001', false);
-  IF strpos(spec, E'\nshaped trees:2 45 200 0\nshaped rocks:1 0 100 1\nshapes 1\n') = 0 THEN RAISE EXCEPTION 'spec: %', spec; END IF;
+  IF strpos(spec, E'\nshaped rocks:1 0 100 1\nshaped trees:2 45 200 0\nshapes 1\n') = 0 THEN RAISE EXCEPTION 'spec: %', spec; END IF;
 END $$;
 SELECT 'ok a save keeps shapes with its moves; a page that sends moves only keeps them; refusals change nothing';
 
@@ -77,7 +77,7 @@ BEGIN
   out := verse.realm_save('shapes', '{"rev":3,"moved":[{"entity":"trees:2","x":1,"z":2}],"shaped":[{"entity":"trees:2","yaw":90,"scale":200,"gone":false}]}', 'shapes-player-key-0001', false);
   IF out->>'status' <> '200' OR (out->>'rev')::int <> 4 THEN RAISE EXCEPTION 'turn again: %', out; END IF;
   spec := verse.edit_spec('shapes', 'shapes-player-key-0002', false);
-  IF strpos(spec, E'\nshaped trees:2 45 200 0\nshaped rocks:1 0 100 1\n') = 0 OR strpos(spec, 'shaped trees:2 90') > 0 THEN RAISE EXCEPTION 'visitor spec: %', spec; END IF;
+  IF strpos(spec, E'\nshaped rocks:1 0 100 1\nshaped trees:2 45 200 0\n') = 0 OR strpos(spec, 'shaped trees:2 90') > 0 THEN RAISE EXCEPTION 'visitor spec: %', spec; END IF;
   -- a visitor's fork copies the published revision's shapes; the owner's fork copies now's
   out := verse.made_fork('shapes', '{"name":"Shapes Visitor"}', 'shapes-player-key-0002', 12);
   SELECT * INTO f FROM verse.made_realms WHERE slug = out->>'slug';

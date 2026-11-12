@@ -41,10 +41,11 @@ message RealmDocument {
   optional string name = 5 [json_name = "name"];
   Setup setup = 6 [json_name = "setup"];
   repeated Feature features = 7 [json_name = "features"];             // the board's features, the server's
-  repeated string off = 8 [json_name = "off"];                        // rows switched off, by key
+  repeated Feature off = 8 [json_name = "off"];                       // rows switched off, each as it was on
   // An object on the wire, {NAME: ON}: a visitor tool on or off.
   repeated Tool tools = 9 [json_name = "tools"];
   repeated Placed placed = 10 [json_name = "placed", (openagents.options.v1alpha1.max_count) = 200];
+  // Moves and shapes stand in entity order: by feature, then index, then name (0166).
   repeated Move moved = 11 [json_name = "moved", (openagents.options.v1alpha1.max_count) = 64];   // FORGE_MOVES
   optional string base = 12 [json_name = "base"];                     // null for a made realm
   ForkedFrom forked_from = 13 [json_name = "forked_from"];            // null unless a fork
@@ -64,7 +65,9 @@ message Setup {
   optional string palette = 5 [json_name = "palette"];
 }
 
-// One of the board's features, as the builder wrote it.
+// One of the board's rows, as the builder or the realm's rights wrote it: on in
+// `features`, off in `off`. A null entry is a hole. The edit model keeps each
+// one's object as written, as the "feature:N" or "row:N" slot.
 message Feature {
   optional string feature = 1 [json_name = "feature"];
   optional string size = 2 [json_name = "size"];
@@ -73,6 +76,10 @@ message Feature {
   optional int32 count = 5 [json_name = "count"];
   optional string name = 6 [json_name = "name"];
   optional string role = 7 [json_name = "role"];
+  optional string label = 8 [json_name = "label"];
+  optional string tool = 9 [json_name = "tool"];
+  optional bool rule = 10 [json_name = "rule"];
+  optional string says = 11 [json_name = "says"];
 }
 
 message Tool {
@@ -130,9 +137,10 @@ message ForkedFrom {
 // One named value of the document the edit model keeps (aethyr/forge/edit.coax):
 // "tool:NAME" (1 or 0), "set:FIELD" (style, ground, time, camera, palette;
 // the server's log also names set:name), "lore:WHO", "quest:GIVER" and
-// "place:N" (THING X Z YAW). The server's log also names "row:N" and
-// "feature:N", the N-th entry of off and features; the model does not hold
-// them yet. A slot absent is the realm without it.
+// "place:N" (THING X Z YAW), "feature:N" and "row:N" (the N-th entry of
+// features and off: the row's object as written; aethyr/forge/doc.coax's
+// forge_switch moves a row between them as the server does). A slot absent is
+// the realm without it.
 message Slot {
   optional string key = 1 [json_name = "key", (openagents.options.v1alpha1.max_bytes) = 48];     // FORGE_SLOT_KEY
   optional string value = 2 [json_name = "value", (openagents.options.v1alpha1.max_bytes) = 2400];   // FORGE_VAL

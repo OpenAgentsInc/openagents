@@ -42,11 +42,14 @@ stable name: its feature and its index in that feature's layout, such as
 override for each entity that was moved, turned, resized or taken away: its
 place in whole centimetres, its turn in whole degrees, its size in whole
 percent, so the same document is the same bytes on every device. Every other
-revision path a made realm has is a named slot: a board row (`row:KEY`), a
-visitor tool (`tool:NAME`), a setup field (`set:time`), a character's lore
-(`lore:WHO`), a quest (`quest:GIVER`) and each thing placed (`place:N`). Slot
-values live in one text the document and its history share, packed when it
-fills:
+revision path a made realm has is a named slot, named as the server's undo log
+names it: a board row on (`feature:N`) or off (`row:N`), a visitor tool
+(`tool:NAME`), a setup field (`set:time`), a character's lore (`lore:WHO`), a
+quest (`quest:GIVER`) and each thing placed (`place:N`). Overrides stand in
+entity order, by feature and then index, as the server keeps them, so an undo
+gives back the very bytes it undid. An edit that changes several slots, such
+as a board row switched, is one step of several ops. Slot values live in one
+text the document and its history share, packed when it fills:
 
 <!-- source: aethyr/forge/edit.coax doc -->
 ```jai
@@ -59,7 +62,7 @@ FORGE_SCALE_MIN :: 25; // percent of its laid-out size, at least
 FORGE_SCALE_MAX :: 400;
 FORGE_SLOT_KEY :: 48;  // a slot's name: "lore:mara"
 FORGE_VAL :: 2400;     // a slot's value bytes at most (a quest: 564 characters of up to four bytes; lore: 400)
-FORGE_SLOTS :: 320;    // slots one document keeps (200 placed things, 40 lore, 40 quests, setup, tools)
+FORGE_SLOTS :: 400;    // slots one document keeps (200 placed things, 40 lore, 40 quests, setup, tools, board rows)
 FORGE_TEXT :: 65536;   // bytes of slot values the document and its history keep together (40 lore and 40 quests of plain words fit)
 
 // An entity as the document has it: where it stands instead (`at`), its turn and size, and gone.
@@ -71,9 +74,10 @@ ForgeSlot :: struct { key: [FORGE_SLOT_KEY] u8; key_n: int; at: int; n: int; }
 FORGE_ENTITY :: 0;
 FORGE_SLOT :: 1;
 // One edit: what it changes, as it was before and after. An entity's shapes (`b`, `a`), or a
-// slot's values (`had` false: absent before; `has` false: absent after).
+// slot's values (`had` false: absent before; `has` false: absent after). `joined`: part of the
+// step of the op before it.
 ForgeOp :: struct {
-  kind: int;
+  kind: int; joined: bool;
   key: [FORGE_SLOT_KEY] u8; key_n: int;
   b: ForgeShape; a: ForgeShape;
   had: bool; bv: int; bv_n: int;
@@ -151,8 +155,8 @@ forge_restore :: (d: [] ForgeDoc, key: string) -> bool {
   s := forge_shape_of(d, key); s.gone = false;
   return forge_reshape(d, key, s);
 }
-// A board row on or off; a visitor tool on or off; one of the setup fields.
-forge_switch :: (d: [] ForgeDoc, row: string, on: bool) -> bool { return forge_slot_edit(d, "row:", row, true, ifx on then "1" else "0"); }
+// A visitor tool on or off; one of the setup fields. (A board row on or off is doc.coax's
+// forge_switch: it reads the rows' objects.)
 forge_tool :: (d: [] ForgeDoc, tool: string, on: bool) -> bool { return forge_slot_edit(d, "tool:", tool, true, ifx on then "1" else "0"); }
 forge_setting :: (d: [] ForgeDoc, what: string, value: string) -> bool {
   if what != "style" && what != "ground" && what != "time" && what != "camera" && what != "palette" { return false; }
@@ -192,15 +196,30 @@ document that changed under it stops at the first step that no longer fits:
 // Replay: the applied steps of `from`, in order, onto `d` as steps of its own. False at the first
 // step whose before no longer matches (the document changed under it); the steps before stay.
 forge_replay :: (d: [] ForgeDoc, from: [] ForgeDoc) -> bool {
-  for i: 0..<from[0].done {
-    o: [1] ForgeOp; o[0] = from[0].ops[i];
-    if o[0].kind == FORGE_SLOT {   // its values move into this document's text
-      if o[0].has { o[0].av = forge_keep(d, forge_span(from, o[0].av, o[0].av_n)); if o[0].av < 0 { return false; } }
-      if o[0].had { o[0].bv = forge_keep(d, forge_span(from, o[0].bv, o[0].bv_n)); if o[0].bv < 0 { return false; } }
+  i := 0;
+  while i < from[0].done {
+    end := i + 1; while end < from[0].done && from[0].ops[end].joined { end += 1; }
+    o: [FORGE_OPS] ForgeOp;
+    if !forge_room(d, from, i, end) { return false; }
+    for k: i..<end {
+      o[k - i] = from[0].ops[k];
+      if o[k - i].kind == FORGE_SLOT {   // its values move into this document's text
+        if o[k - i].has { o[k - i].av = forge_keep(d, forge_span(from, o[k - i].av, o[k - i].av_n)); }
+        if o[k - i].had { o[k - i].bv = forge_keep(d, forge_span(from, o[k - i].bv, o[k - i].bv_n)); }
+      }
     }
-    if !forge_push(d, o[..]) { return false; }
+    if !forge_push(d, o[0..<end - i]) { return false; }
+    i = end;
   }
   return true;
+}
+// Room in d's text for the values of from's ops i..<end (packed first when it needs to be), so
+// keeping them packs nothing away: a value kept for an op not yet in the log is named by nothing.
+forge_room :: (d: [] ForgeDoc, from: [] ForgeDoc, i: int, end: int) -> bool {
+  need := 0;
+  for k: i..<end { o := from[0].ops[k]; if o.kind == FORGE_SLOT { if o.has { need += o.av_n; } if o.had { need += o.bv_n; } } }
+  if d[0].text_n + need > FORGE_TEXT { forge_pack(d); }
+  return d[0].text_n + need <= FORGE_TEXT;
 }
 ```
 
@@ -219,8 +238,10 @@ A save sends the revision the page read, every move and (to a server with migrat
 
 <!-- source: aethyr/forge/edit.coax save -->
 ```jai
-// The body of POST /api/playtest/realms/<slug>/save: the revision read, every move in metres, and
-// (only when there are any: a server before migration 0109 knows moves only) every turn, size and removal.
+// The body of POST /api/playtest/realms/<slug>/save (proto/openagents/verse/doc/v1alpha1/realm.proto,
+// SaveRequest): the revision read, every move in metres, and every turn, size and removal. "shaped"
+// is always sent, empty when there are none: without it the server keeps the shapes it had (0109),
+// so restoring the last turned, sized or removed entity would not be saved (#13249).
 forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
   n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, d[0].rev); n = forge_put(buf, n, ",\"moved\":[");
   first := true;
@@ -233,22 +254,23 @@ forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
     n = forge_put(buf, n, "\",\"x\":"); n = forge_put_cm(buf, n, m.x);
     n = forge_put(buf, n, ",\"z\":"); n = forge_put_cm(buf, n, m.z); n = forge_put(buf, n, "}");
   }
-  n = forge_put(buf, n, "]");
-  if forge_any_shaped(d) {
-    n = forge_put(buf, n, ",\"shaped\":[");
-    first = true;
-    for i: 0..<d[0].move_n {
-      m := d[0].moves[i];
-      if m.yaw == 0 && m.scale == 100 && !m.gone { continue; }
-      if !first { n = forge_put(buf, n, ","); }
-      first = false;
-      n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
-      n = forge_put(buf, n, "\",\"yaw\":"); n = forge_put_int(buf, n, m.yaw);
-      n = forge_put(buf, n, ",\"scale\":"); n = forge_put_int(buf, n, m.scale);
-      n = forge_put(buf, n, ",\"gone\":"); n = forge_put(buf, n, ifx m.gone then "true" else "false"); n = forge_put(buf, n, "}");
-    }
-    n = forge_put(buf, n, "]");
+  n = forge_put(buf, n, "],\"shaped\":[");
+  first = true;
+  for i: 0..<d[0].move_n {
+    m := d[0].moves[i];
+    if m.yaw == 0 && m.scale == 100 && !m.gone { continue; }
+    if !first { n = forge_put(buf, n, ","); }
+    first = false;
+    n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
+    n = forge_put(buf, n, "\",\"yaw\":"); n = forge_put_int(buf, n, m.yaw);
+    n = forge_put(buf, n, ",\"scale\":"); n = forge_put_int(buf, n, m.scale);
+    n = forge_put(buf, n, ",\"gone\":"); n = forge_put(buf, n, ifx m.gone then "true" else "false"); n = forge_put(buf, n, "}");
   }
+  return forge_put(buf, n, "]}");
+}
+// The body of POST .../undo, .../redo and .../publish (RevRequest): the revision there now, {"rev":N}.
+forge_rev_body :: (rev: int, buf: [] u8) -> int {
+  n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, rev);
   return forge_put(buf, n, "}");
 }
 ```
@@ -369,7 +391,7 @@ turn rocks:0 45 degrees: true; done 2 of 2, dirty true
   the lore can be done again: false
 a stale move of trees:3 from (125, -250): false; done 2 of 2, dirty true
   trees:3 at (300, -100) cm, yaw 0, size 100 percent
-save: {"rev":4,"moved":[{"entity":"trees:3","x":3.00,"z":-1.00},{"entity":"rocks:0","x":-40.00,"z":0.07}],"shaped":[{"entity":"rocks:0","yaw":45,"scale":100,"gone":false}]}
+save: {"rev":4,"moved":[{"entity":"rocks:0","x":-40.00,"z":0.07},{"entity":"trees:3","x":3.00,"z":-1.00}],"shaped":[{"entity":"rocks:0","yaw":45,"scale":100,"gone":false}]}
 kept as revision 5: true; done 2 of 2, dirty false
 replayed onto revision 4: true, the same realm: true
 ```

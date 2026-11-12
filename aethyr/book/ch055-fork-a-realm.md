@@ -81,15 +81,30 @@ description of a fork:
 // Replay: the applied steps of `from`, in order, onto `d` as steps of its own. False at the first
 // step whose before no longer matches (the document changed under it); the steps before stay.
 forge_replay :: (d: [] ForgeDoc, from: [] ForgeDoc) -> bool {
-  for i: 0..<from[0].done {
-    o: [1] ForgeOp; o[0] = from[0].ops[i];
-    if o[0].kind == FORGE_SLOT {   // its values move into this document's text
-      if o[0].has { o[0].av = forge_keep(d, forge_span(from, o[0].av, o[0].av_n)); if o[0].av < 0 { return false; } }
-      if o[0].had { o[0].bv = forge_keep(d, forge_span(from, o[0].bv, o[0].bv_n)); if o[0].bv < 0 { return false; } }
+  i := 0;
+  while i < from[0].done {
+    end := i + 1; while end < from[0].done && from[0].ops[end].joined { end += 1; }
+    o: [FORGE_OPS] ForgeOp;
+    if !forge_room(d, from, i, end) { return false; }
+    for k: i..<end {
+      o[k - i] = from[0].ops[k];
+      if o[k - i].kind == FORGE_SLOT {   // its values move into this document's text
+        if o[k - i].has { o[k - i].av = forge_keep(d, forge_span(from, o[k - i].av, o[k - i].av_n)); }
+        if o[k - i].had { o[k - i].bv = forge_keep(d, forge_span(from, o[k - i].bv, o[k - i].bv_n)); }
+      }
     }
-    if !forge_push(d, o[..]) { return false; }
+    if !forge_push(d, o[0..<end - i]) { return false; }
+    i = end;
   }
   return true;
+}
+// Room in d's text for the values of from's ops i..<end (packed first when it needs to be), so
+// keeping them packs nothing away: a value kept for an op not yet in the log is named by nothing.
+forge_room :: (d: [] ForgeDoc, from: [] ForgeDoc, i: int, end: int) -> bool {
+  need := 0;
+  for k: i..<end { o := from[0].ops[k]; if o.kind == FORGE_SLOT { if o.has { need += o.av_n; } if o.had { need += o.bv_n; } } }
+  if d[0].text_n + need > FORGE_TEXT { forge_pack(d); }
+  return d[0].text_n + need <= FORGE_TEXT;
 }
 ```
 
@@ -184,7 +199,7 @@ the fork starts as its parent's realm: true
 the fork turns trees:3, makes it 150%, takes rocks:0 away: true, 3 steps in its log
 the parent is byte-identical: true
 parent + the fork's log replays: true, and is the fork: true
-the fork's save: {"rev":1,"moved":[{"entity":"trees:3","x":1.25,"z":-2.50},{"entity":"rocks:0","x":-40.00,"z":0.07}],"shaped":[{"entity":"trees:3","yaw":90,"scale":150,"gone":false},{"entity":"rocks:0","yaw":0,"scale":100,"gone":true}]}
+the fork's save: {"rev":1,"moved":[{"entity":"rocks:0","x":-40.00,"z":0.07},{"entity":"trees:3","x":1.25,"z":-2.50}],"shaped":[{"entity":"rocks:0","yaw":0,"scale":100,"gone":true},{"entity":"trees:3","yaw":90,"scale":150,"gone":false}]}
 a parent at revision 0 -> refused: a fork's parent out of bounds; the fork keeps its 3 edits
 ```
 
