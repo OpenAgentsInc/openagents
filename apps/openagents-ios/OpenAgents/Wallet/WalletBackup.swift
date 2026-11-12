@@ -9,7 +9,7 @@ import Security
 /// backup, us included.
 ///
 /// Coax does the sealing, the opening and every decision (coax/lib/nostr/vault-wallet.coax and
-/// verse/wallet-vault.coax, through WalletVault.h; the app's rules are verse/wallet-backup.coax's). This file does the effects: the system's
+/// pay/wallet-vault.coax, through WalletVault.h; the app's rules are pay/wallet-backup.coax's). This file does the effects: the system's
 /// randomness, the memory scrypt needs, the Keychain, and the requests to openagents.com
 /// (coax/web/api/wallet.c), whose answers it reads and words.
 enum WalletBackup {
@@ -166,7 +166,7 @@ enum WalletVault {
         }
     }
 
-    /// A size or code Swift can't import from Coax (verse/wallet-vault.coax's verse_backup_number).
+    /// A size or code Swift can't import from Coax (pay/wallet-vault.coax's verse_backup_number).
     static func number(_ which: Int64) -> Int { Int(verse_backup_number(which)) }
 
     static func random(_ n: Int) throws -> [UInt8] {
@@ -409,7 +409,7 @@ final class WalletBackupClient: @unchecked Sendable {
 }
 
 /// What this phone paid in the last 24 hours and the limit it last heard, for when the server
-/// can't be asked (verse/wallet-backup.coax's verse_limit_local). Sizes and times only.
+/// can't be asked (pay/wallet-backup.coax's verse_limit_local). Sizes and times only.
 struct SpendLedger {
     var defaults: UserDefaults = .standard
     var now: () -> Date = { Date() }

@@ -19,7 +19,7 @@
 // slot the record doesn't list (WB_UNLISTED: a removed slot handed back).
 //
 // A backup counts with a recovery slot and a passkey-prf slot (wb_enough); the server runs the
-// same rule on the same slot texts (coax/web/api/wallet-vault.coax). Every random byte is the
+// same rule on the same slot texts (pay/wallet-vault-store.coax). Every random byte is the
 // caller's, so the checks make coax/tests/nostr/vault_wallet_reference.py's vectors byte for byte.
 //   coax/bin/coax test coax/lib/nostr/vault-wallet.coax
 //   coax/bin/coax mutate coax/lib/nostr/vault-wallet.coax --root-only

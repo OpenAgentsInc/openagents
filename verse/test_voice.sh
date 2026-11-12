@@ -16,15 +16,16 @@ cd "$(dirname "$0")/.."
 work=$(mktemp -d "${TMPDIR:-/tmp}/verse-voice.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 coax=coax/bin/coax
-for f in voice voice-wire voice-floor voice-meter; do
-  "$coax" test "verse/$f.coax" --steps 20000000 | tail -1 | sed "s|^|$f: |"
+# The meter is the Payments context's (pay/voice-meter.coax, #13320).
+for f in verse/voice verse/voice-wire verse/voice-floor pay/voice-meter; do
+  "$coax" test "$f.coax" --steps 20000000 | tail -1 | sed "s|^|${f#*/}: |"
 done
-for f in voice-floor voice-meter; do
-  "$coax" mutate "verse/$f.coax" | tail -1 | sed "s|^|$f mutate: |"
+for f in verse/voice-floor pay/voice-meter; do
+  "$coax" mutate "$f.coax" | tail -1 | sed "s|^|${f#*/} mutate: |"
 done
-for pair in voice:VoiceEngine voice-wire:VoiceWire voice-floor:VoiceFloor voice-meter:VoiceMeter; do
+for pair in verse/voice:VoiceEngine verse/voice-wire:VoiceWire verse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
   src=${pair%%:*}; base=${pair##*:}
-  "$coax" c "verse/$src.coax" --library --header "$work/$base.h" > "$work/$base.c"
+  "$coax" c "$src.coax" --library --header "$work/$base.h" > "$work/$base.c"
 done
 cflags=(-std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
 "${CC:-cc}" "${cflags[@]}" -w -I "$work" -c "$work/VoiceEngine.c" -o "$work/e.o"

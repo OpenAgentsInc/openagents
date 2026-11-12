@@ -12,7 +12,7 @@
 //                  for matching a passkey slot to the account's passkeys
 //   wv_b64, wv_unb64                   the object's bytes as the JSON carries them
 #run_steps 250000000;
-#load "../../lib/nostr/vault-wallet.coax";
+#load "../coax/lib/nostr/vault-wallet.coax";
 #authority;
 
 WV_PRF :: 1; WV_RECOVERY :: 2; WV_NOSTR :: 3;

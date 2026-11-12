@@ -139,7 +139,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 | `room-session` | Room session and replication | `aethyr/session/` (except `ledger.coax`), `aethyr/net/`, `coax/web/room/` |
 | `realm-authoring` | Realm authoring | `aethyr/forge/`, `apps/aethyrforge-desktop/`, `apps/openagents-web/worldbuilder*`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c` |
 | `identity` | Identity and auth | `coax/web/api/auth*` |
-| `payments` | Payments and wallet | `pay/`, `coax/lib/pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` |
+| `payments` | Payments and wallet | `pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` |
 | `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/` |
 | `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` |
 | `projects` | Projects | `coax/web/api/private.c`, `coax/web/api/drops.c` |

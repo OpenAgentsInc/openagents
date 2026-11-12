@@ -63,7 +63,7 @@ consent and explicit grants, never by the words spoken.
 6. **NPC and agent lines.** An NPC's `Voice` in the realm document (up to
    16 per `verse.doc.v1`) gains a `VoiceProfile`. Lines that repeat render
    as cached batch jobs (phase V6) and play as spatial sources at the NPC.
-7. **Cost and limits.** [`verse/voice-meter.coax`](../../verse/voice-meter.coax)
+7. **Cost and limits.** [`pay/voice-meter.coax`](../../pay/voice-meter.coax)
    gives each account a free tier per day (`FREE_MS` 600,000 ms recognized,
    `FREE_CHARS` 5,000 characters synthesized) and prices the rest in
    millisatoshis. Player-to-player voice uses no speech models, so it costs
@@ -174,7 +174,7 @@ record at the end ([record](../../docs/verification/verse-parakeet-2026-11-02/RE
   recorded fixtures.
 - [verse/voice-floor.coax](../../verse/voice-floor.coax),
   [verse/voice-wire.coax](../../verse/voice-wire.coax) and
-  [verse/voice-meter.coax](../../verse/voice-meter.coax): consent and
+  [pay/voice-meter.coax](../../pay/voice-meter.coax): consent and
   floors, the `openagents.voice.v1alpha1.Frame` wire (16 KiB frames), and
   metering.
 - [verse/voice-host/](../../verse/voice-host/host.c): the C host with

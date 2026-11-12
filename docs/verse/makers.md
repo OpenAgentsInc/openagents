@@ -115,7 +115,7 @@ nothing new is made that way.
 | Rules and storage | `coax/web/api/migrations/0072_realm_makers.sql` (`makers.claim`, `makers.edit`, `makers.of`) |
 | Routes | `coax/web/api/makers.c` |
 | Checks | `coax/web/api/test_makers.py`, the claim `#test` in `apps/openagents-web/private.coax` |
-| Tips | Rules: `coax/web/api/makerpay-policy.coax` (`#authority`, no surviving mutants). The maker's invoice: `coax/web/api/lnaddr.c` (`lnaddr_invoice_of`, `lnaddr_settled`) on `coax/lib/lnaddr/lnurl.coax`. Rows: `coax/web/api/migrations/0073_maker_tips.sql`, `0154_maker_direct_pay.sql`. Routes: `makers.c` |
+| Tips | Rules: `pay/makerpay-policy.coax` (`#authority`, no surviving mutants). The maker's invoice: `coax/web/api/lnaddr.c` (`lnaddr_invoice_of`, `lnaddr_settled`) on `coax/lib/lnaddr/lnurl.coax`. Rows: `coax/web/api/migrations/0073_maker_tips.sql`, `0154_maker_direct_pay.sql`. Routes: `makers.c` |
 | Bonus and gift payouts | `makers.c` (`run_payouts`), `coax/web/api/spark/wallet.cjs` (`/quote`, `/sent`, `/send`) |
 | Checks | `coax/web/api/test_makers_tips.py` (fake Lightning Address services with signed BOLT 11 invoices), the tip `#test`s in `private.coax`, the maker `#test` in each realm module |
 | Pages | `apps/openagents-web/realms/<realm>/claim/index.html` (page 4), `.../tip/index.html` (page 5 of `private.coax`) |
@@ -177,7 +177,7 @@ buyer's wallet straight to its maker's Lightning Address (owner decision D6,
 
 | Piece | Where |
 | --- | --- |
-| Rules and storage | `coax/web/api/makerpay-policy.coax` (paying), `coax/web/api/migrations/0077_fairy_upgrades.sql` (`makers.listings`, `makers.wearing`), `0154_maker_direct_pay.sql` |
+| Rules and storage | `pay/makerpay-policy.coax` (paying), `coax/web/api/migrations/0077_fairy_upgrades.sql` (`makers.listings`, `makers.wearing`), `0154_maker_direct_pay.sql` |
 | Routes | `coax/web/api/makers.c` (`upgrades_route`) |
 | Checks | `coax/web/api/test_upgrades.py` (the fake Lightning Address services), the UPGRADE `#test`s in `apps/openagents-web/fairyupgrade.coax` |
 | Page | `apps/openagents-web/fairyupgrade.coax` (the button and pane), `fairy.coax` (`fairy_figure` draws a worn look), `fairy-face.c` (requests, the QR) |

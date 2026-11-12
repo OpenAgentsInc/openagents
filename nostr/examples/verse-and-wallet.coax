@@ -11,7 +11,7 @@
 #load "../../coax/lib/nostr/store.coax";
 #load "../../coax/lib/nostr/relay_route.coax";
 #load "../../coax/lib/nostr/filter.coax";
-#load "../../verse/wallet.coax";
+#load "../../pay/wallet.coax";
 
 // Test keys only, the secp256k1 scalars 2 (Ana), 3 (Mallory), 4 (Ben) and
 // 7 (Ben's LNURL server). The plaza is chapter 85's world, owned by key 1.
@@ -172,7 +172,7 @@ draw_x :: (x1: f64, t1: int, x2: f64, t2: int, now_ms: int) -> f64 {
 // book:end presence
 
 // book:begin zap
-// The wallet's side of a zap, as the host hands it to verse/wallet.coax in
+// The wallet's side of a zap, as the host hands it to pay/wallet.coax in
 // whole sats: whether the LNURL server takes the amount and the balance
 // covers it, whether the invoice states exactly the zap's amount on
 // mainnet, and whether the confirmed quote (fee, the fee shown as cap,
@@ -328,7 +328,7 @@ main :: () {
   print("  % msat, h = %\n", v.msat, hex32(v.description_hash, hx[..]));
   print("  sha256(zap request)   %\n", hex32(sha_of(zr.original), hx[..]));
 
-  print("the wallet's rules (verse/wallet.coax), Ana has % sats\n", BALANCE);
+  print("the wallet's rules (pay/wallet.coax), Ana has % sats\n", BALANCE);
   ok := zap_check(pay, 21000, inv, FEE, FEE, BALANCE, T0 + 62, T0 + 61 + EXPIRY);
   show_check("21 sats, fee 1", ok);
   fl := verse_wallet_start();

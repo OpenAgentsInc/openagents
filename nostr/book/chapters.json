@@ -2145,7 +2145,7 @@
     72
    ],
    "source": [
-    "verse/wallet.coax",
+    "pay/wallet.coax",
     "coax/lib/nostr/nipmv.coax",
     "coax/lib/nostr/nip57.coax",
     "coax/lib/nostr/nip75.coax",

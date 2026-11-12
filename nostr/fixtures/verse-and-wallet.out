@@ -28,7 +28,7 @@ zap request f72c3d9c908806583cdd040a441709bc4ec3085ef705024d25db1ed875b109b9, 66
 invoice: lnbc210n1p4tzwaapp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztyshp5kqygvm23fy0yndxkah2yc756yv2gaxuzjhtfvs7efrrvj9l0g60qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkmm3wn
   21000 msat, h = b008866d51491e49b4d6edd44c7a9a23148e9b8295d69643d948c6c917ef469e
   sha256(zap request)   b008866d51491e49b4d6edd44c7a9a23148e9b8295d69643d948c6c917ef469e
-the wallet's rules (verse/wallet.coax), Ana has 1000 sats
+the wallet's rules (pay/wallet.coax), Ana has 1000 sats
 21 sats, fee 1: amount ok, invoice ok, may_send send -> pay
 flow: quote, confirm -> sending (sends 1)
 a second confirm -> sending (sends 1)

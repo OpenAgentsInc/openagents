@@ -7,7 +7,7 @@ import BreezSdkSpark
 ///
 /// This is the only file that imports BreezSdkSpark
 /// (docs/lightning/coax-integration.md). It does the effects (Keychain, SDK
-/// calls, events) and hands the screens plain values; verse/wallet.coax
+/// calls, events) and hands the screens plain values; pay/wallet.coax
 /// decides whether a quote may be paid and how a payment moves. It never
 /// writes, replaces or shows the seed.
 actor SparkHost {
@@ -521,7 +521,7 @@ actor SparkHost {
     // MARK: Buying
 
     /// Who sells bitcoin for dollars, through Breez's SDK. Raw values are
-    /// verse/wallet.coax's BUY_MOONPAY and BUY_CASHAPP.
+    /// pay/wallet.coax's BUY_MOONPAY and BUY_CASHAPP.
     enum Provider: Int64, Sendable { case moonpay = 0, cashApp = 1 }
 
     /// The most adding an on-chain deposit to the balance costs now: the
@@ -535,7 +535,7 @@ actor SparkHost {
 
     /// The provider's page for buying `amount` sats into this wallet, from
     /// the SDK's buyBitcoin. Bitcoin only: MoonPay delivers bitcoin on-chain,
-    /// never another asset. The page is returned only if verse/wallet.coax
+    /// never another asset. The page is returned only if pay/wallet.coax
     /// passes it: MoonPay's for bitcoin to the deposit address the wallet
     /// reports, Cash App's for a mainnet invoice of exactly `amount`.
     func buy(_ provider: Provider, amount: UInt64) async throws -> URL {

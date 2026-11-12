@@ -1,4 +1,4 @@
-// verse/wallet-vault.coax's C (Generated/WalletVault.c) as one unit of the app (#13217). It
+// pay/wallet-vault.coax's C (Generated/WalletVault.c) as one unit of the app (#13217). It
 // loads Coax libraries that Generated/PhoneSignin.c loads too (bech32, hex), and a library's
 // exports would then be defined twice in one binary. Here every export of this unit but the
 // ones Swift calls (wb_* and verse_*) gets a name of its own. A library export added later

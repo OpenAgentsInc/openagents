@@ -5,7 +5,7 @@
 // checked) or makes invoices for the person's own Spark wallet (spark mode, through the Breez
 // LNURL backend at OA_LNADDR_SPARK_URL; while that isn't set, a spark address answers "This
 // address isn't receiving yet"). Every decision is Coax: coax/lib/lnaddr/lnurl.coax (the LUDs,
-// invoices, upstream answers, limits) and lnaddr-policy.coax (who may claim, change, cancel,
+// invoices, upstream answers, limits) and pay/lnaddr-policy.coax (who may claim, change, cancel,
 // turn off), linked as lnaddr-unit.c. This file gathers the facts and keeps the results.
 //
 // Public, for wallets (no credential; errors are LUD-06's {"status":"ERROR","reason"}):
@@ -26,7 +26,7 @@
 //   GET  /api/lightning/address/available?name=N   whether N could be claimed now, and why not
 //   GET  /api/lightning/address/proof?name=N&op=claim|change
 //                                             the exact message the Spark wallet signs (one codec:
-//                                             lnaddr-policy.coax la_proof_message), its nonce, expiry
+//                                             pay/lnaddr-policy.coax la_proof_message), its nonce, expiry
 //   GET  /api/lightning/address/profile?pubkey=K[&nip05=1]
 //                                             the person's newest kind 0 from the relays with lud16
 //                                             (and nip05) set to the address: what their key signs
@@ -124,7 +124,7 @@ static bool as_lines(const request *q) { char v[16]; return api_query(q, "as", v
 static void reply_lines(const request *q, int status, const char *lines) {
   api_respond(q->fd, status, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", lines, strlen(lines));
 }
-// The management routes' refusal, lnaddr-policy.coax's words: {"error": "..."}, or as lines
+// The management routes' refusal, pay/lnaddr-policy.coax's words: {"error": "..."}, or as lines
 // "error WORDS", "code N" and, when a fresh signature would do it, "step_up L2-fresh" (the pages
 // send the person to confirm it's them, then back).
 static void la_refuse(const request *q, int status, int64_t code) {
@@ -338,7 +338,7 @@ static void notice(PGconn *db, const char *acct, const char *name, const char *k
   const char *w[1] = {id};
   PQclear(PQexecParams(db, "UPDATE pay.notices SET emailed_at = now() WHERE id = $1::bigint", 1, NULL, w, NULL, NULL, 0));
 }
-// Applies a waiting change whose time has come (lnaddr-policy.coax la_apply decides).
+// Applies a waiting change whose time has come (pay/lnaddr-policy.coax la_apply decides).
 static void apply_due(PGconn *db, const char *name) {
   const char *v[1] = {name};
   PGresult *r = PQexecParams(db, "SELECT c.id, extract(epoch FROM c.ready_at)::bigint, extract(epoch FROM now())::bigint, c.account, c.new_mode, c.new_target, "
@@ -731,7 +731,7 @@ static void available(const request *q, PGconn *db) {
 }
 // The message a Spark wallet signs to point a name at itself (claim: a new name at revision 1;
 // change: the account's own name at its next revision). The app signs exactly these bytes, so it
-// never builds the message itself: lnaddr-policy.coax's la_proof_message is its one codec.
+// never builds the message itself: pay/lnaddr-policy.coax's la_proof_message is its one codec.
 static void proof(const request *q, PGconn *db) {
   who w = caller(q, db);
   if (!w.signed_in) { la_refuse(q, 401, 1); return; }
@@ -1075,7 +1075,7 @@ static void nip05_json(const request *q, PGconn *db) {
 
 // ---------------------------------------------------------------- /docs/limits
 // The Lightning Address limits as people read them, after auth.c's (api --limits). The numbers are
-// lnurl.coax's and lnaddr-policy.coax's, asked here, so the page can't drift from the server.
+// lnurl.coax's and pay/lnaddr-policy.coax's, asked here, so the page can't drift from the server.
 void lnaddr_print_limits(FILE *out) {
   int64_t wait_s = la_change(true, false, true, true, false, false, false, 0).ready_at;
   int64_t wait_email_s = la_change(true, false, true, true, false, false, true, 0).ready_at;
@@ -1107,7 +1107,7 @@ void lnaddr_init(void) {
          && lu_upstream_pay(cs("{\"status\":\"ERROR\"}"), (coax_v_t_LuUpstream){&(coax_t_LuUpstream){0}, 1}) == LU_UPSTREAM_REFUSED
          && lu_upstream_pay(cs("x"), (coax_v_t_LuUpstream){&(coax_t_LuUpstream){0}, 1}) == LU_UPSTREAM_BAD
          && la_claim(true, false, false, false, false) == LA_NAME && la_toggle(true, false, LA_RETIRED) == LA_NO_ADDRESS;
-  if (!ok) { fprintf(stderr, "api: lnaddr.c and lnaddr-policy.coax disagree on their numbers\n"); exit(2); }
+  if (!ok) { fprintf(stderr, "api: lnaddr.c and pay/lnaddr-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
 bool lnaddr_route(const request *q) {

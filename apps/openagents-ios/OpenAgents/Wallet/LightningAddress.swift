@@ -2,7 +2,7 @@ import Foundation
 
 /// The person's name@openagents.com Lightning Address, as the wallet screen's card shows it
 /// (docs/auth/lightning-addresses.md, "The one-tap claim"; GitHub #13209). The server
-/// (coax/web/api/lnaddr.c and lnaddr-policy.coax) makes every decision: whether a name is free,
+/// (coax/web/api/lnaddr.c and pay/lnaddr-policy.coax) makes every decision: whether a name is free,
 /// whether a claim stands, whether the address receives. This file reads its answers, builds its
 /// requests and words them; the wallet's own key signs the proof the server asks for.
 ///

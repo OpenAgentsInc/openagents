@@ -27,9 +27,9 @@
 //                   admin's gift. A tip or purchase paid to our wallet
 //                   before this rule is still paid out; none is made after.
 //
-//   coax/bin/coax test coax/web/api/makerpay-policy.coax
-//   coax/bin/coax mutate coax/web/api/makerpay-policy.coax --root-only
-#load "../../lib/lnaddr/lnurl.coax";
+//   coax/bin/coax test pay/makerpay-policy.coax
+//   coax/bin/coax mutate pay/makerpay-policy.coax --root-only
+#load "../coax/lib/lnaddr/lnurl.coax";
 #authority;
 #run_steps 250000000;
 

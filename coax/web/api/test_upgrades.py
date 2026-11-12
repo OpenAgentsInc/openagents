@@ -1,4 +1,4 @@
-# Listed upgrades (makers.c, makerpay-policy.coax, migrations/0077_fairy_upgrades.sql and 0154_maker_direct_pay.sql)
+# Listed upgrades (makers.c, pay/makerpay-policy.coax, migrations/0077_fairy_upgrades.sql and 0154_maker_direct_pay.sql)
 # against the fake Lightning Address services test_makers_tips.py adds: a maker lists a fairy, an admin
 # approves it, it shows under UPGRADE, a player buys it by paying the maker's own invoice, wears it
 # once the payment is confirmed, and everyone in the room sees its look. Service credit never buys one

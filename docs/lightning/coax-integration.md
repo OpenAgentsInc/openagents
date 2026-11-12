@@ -13,7 +13,7 @@ layer. The wallet uses the same split.
 UIKit screens (Swift)                 show balance, QR, quote, confirm, history
       │  touches, lifecycle
       ▼
-verse/wallet.coax  #authority      decides: may this send go? what state next?
+pay/wallet.coax  #authority      decides: may this send go? what state next?
       ▲  scalars over #export_c        what the HUD shows, what record to write
       │  / #foreign
 SparkHost.swift (Swift)               does: Keychain, BreezSdkSpark calls,
@@ -34,7 +34,7 @@ BreezSdkSpark (Swift package, Rust)   Spark operators, SSP, chain service
   It passes Coax plain numbers, enum codes and byte views. **The words and
   keys never cross into Coax.** Coax needs none of them, so no secret sits
   in Coax memory or its records.
-- **Coax decides.** `verse/wallet.coax` is an `#authority` file. Every
+- **Coax decides.** `pay/wallet.coax` is an `#authority` file. Every
   procedure in it must be run by a check, and the checks run on every
   build. It decides:
   - whether a quote may be paid;
@@ -162,7 +162,7 @@ module yet. When it lands:
   records the xcframework checksum. Bump it by hand, reading the release
   notes, the way Bitcoin Core treats its dependencies.
 - **Coax.** The existing build phase gets a second library:
-  - `coax c verse/wallet.coax --library --header`;
+  - `coax c pay/wallet.coax --library --header`;
   - the checks run as part of that compile, because the file is
     `#authority`;
   - a failing check stops the app build.
@@ -188,7 +188,7 @@ module yet. When it lands:
 ## Order of work
 
 1. Done 2026-10-28: `SparkHost.swift` and the screens (`Wallet/WalletScreens.swift`).
-2. Done 2026-10-28: `verse/wallet.coax` with `#authority`: units, LNURL
+2. Done 2026-10-28: `pay/wallet.coax` with `#authority`: units, LNURL
    bounds, the keypad, the high-fee and expiry warnings, `may_send`, and the
    payment state machine `verse_wallet_step` (it replaced `after_send`),
    with a `#forall` over every four-event sequence. `coax mutate`: 155 of

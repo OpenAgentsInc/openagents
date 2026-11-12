@@ -9,9 +9,9 @@
 //
 // The seed never leaves the phone except inside the object wb_make seals. Swift brings the
 // system's randomness, the memory scrypt needs and the passkey's PRF output; nothing here does
-// an effect. What the app shows and does about the backup and the limit is verse/wallet-backup.coax's.
-//   coax/bin/coax test verse/wallet-vault.coax
-//   coax/bin/coax mutate verse/wallet-vault.coax --root-only
+// an effect. What the app shows and does about the backup and the limit is pay/wallet-backup.coax's.
+//   coax/bin/coax test pay/wallet-vault.coax
+//   coax/bin/coax mutate pay/wallet-vault.coax --root-only
 #run_steps 250000000;
 #load "../coax/lib/nostr/vault-wallet.coax";
 #load "../coax/lib/bitcoin/oneseed.coax";

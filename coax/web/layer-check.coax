@@ -12,7 +12,7 @@
 // The rules, for a loading file that is not support code (below):
 //   aethyr-up     a file under aethyr/ loads from verse/, apps/, everglade/ or coax/web/
 //   everglade-up  a file under everglade/ loads from apps/
-//   tests         a file under aethyr/, everglade/, coax/web/api/ or coax/web/room/ loads a file in a tests/ or test/ folder
+//   tests         a file under aethyr/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or test/ folder
 //   context       a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
 //   model-effects a model file listed in aethyr/model-files.txt declares #effects(all) (#13314)
 // Support code is a test, check, tool, example or book file, which may load what it exercises:
@@ -267,7 +267,7 @@ lc_context_allows :: (m: LcCtxMap, a: int, b: int) -> bool {
 lc_rule :: (from: string, to: string) -> int {
   if lc_starts(from, "aethyr/") && (lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
   if lc_starts(from, "everglade/") && lc_starts(to, "apps/") { return LC_UP_EVERGLADE; }
-  if (lc_starts(from, "aethyr/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/")) && lc_in_tests(to) { return LC_TESTS; }
+  if (lc_starts(from, "aethyr/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/") || lc_starts(from, "pay/")) && lc_in_tests(to) { return LC_TESTS; }
   return 0;
 }
 // Including contexts.txt: fixed rules take precedence; otherwise cross-context disallowed loads return LC_CONTEXT.
@@ -417,7 +417,7 @@ lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: Lc
     if !l.ok { continue; }
     if l.from != last {
       last = l.from;
-      in_fixed := lc_starts(l.from, "aethyr/") || lc_starts(l.from, "everglade/") || lc_starts(l.from, "coax/web/api/") || lc_starts(l.from, "coax/web/room/");
+      in_fixed := lc_starts(l.from, "aethyr/") || lc_starts(l.from, "everglade/") || lc_starts(l.from, "coax/web/api/") || lc_starts(l.from, "coax/web/room/") || lc_starts(l.from, "pay/");
       last_judged = in_fixed || (ctxs.n > 0 && lc_context_of(ctxs, l.from) >= 0);
       last_support = ifx last_judged then lc_support(l.from, tools) else false;
     }
@@ -655,7 +655,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/
   #assert lc_rule("aethyr/ui/draw.coax", "verse/hud/frame.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "everglade/zone.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "coax/web/wasm-chrome.coax") == LC_UP_AETHYR;
   #assert lc_rule("aethyr/a.coax", "coax/lib/json/json.coax") == 0 && lc_rule("aethyr/a.coax", "psionic/lib/a.coax") == 0 && lc_rule("aethyr/a.coax", "aethyr/b.coax") == 0;
   #assert lc_rule("everglade/zone.coax", "apps/openagents-web/hud.coax") == LC_UP_EVERGLADE && lc_rule("everglade/zone.coax", "verse/everglade/a.coax") == 0 && lc_rule("everglade/zone.coax", "aethyr/a.coax") == 0;
-  #assert lc_rule("aethyr/walk.coax", "aethyr/tests/walk-fixture.coax") == LC_TESTS && lc_rule("everglade/a.coax", "coax/lib/tests/x.coax") == LC_TESTS && lc_rule("coax/web/api/a.coax", "coax/web/api/tests/x.coax") == LC_TESTS && lc_rule("coax/web/room/a.coax", "coax/web/room/tests/x.coax") == LC_TESTS;
+  #assert lc_rule("aethyr/walk.coax", "aethyr/tests/walk-fixture.coax") == LC_TESTS && lc_rule("everglade/a.coax", "coax/lib/tests/x.coax") == LC_TESTS && lc_rule("coax/web/api/a.coax", "coax/web/api/tests/x.coax") == LC_TESTS && lc_rule("coax/web/room/a.coax", "coax/web/room/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/lib/x.coax") == 0;
   // the other trees are not judged here
   #assert lc_rule("verse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
 }

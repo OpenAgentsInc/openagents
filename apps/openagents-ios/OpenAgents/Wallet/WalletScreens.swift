@@ -5,7 +5,7 @@ import CoreImage.CIFilterBuiltins
 // The wallet's screens (UIKit, per docs/lightning/coax-integration.md):
 // the balance and activity, sending, receiving and a payment's details.
 // Buying is in BuyScreen.swift.
-// SparkHost does the work; verse/wallet.coax decides each send.
+// SparkHost does the work; pay/wallet.coax decides each send.
 
 enum Look {
     static let ink = UIColor(white: 1, alpha: 0.92)
@@ -476,7 +476,7 @@ final class SendViewController: WalletForm {
 }
 
 /// The last step before money leaves: recipient, amount, fee and total,
-/// with anything unusual called out. verse/wallet.coax decides whether
+/// with anything unusual called out. pay/wallet.coax decides whether
 /// the confirmed quote may be paid.
 final class ReviewViewController: WalletForm {
     private let host: SparkHost
@@ -568,7 +568,7 @@ final class ReviewViewController: WalletForm {
             guard await OwnerCheck.confirm("Send \(Money.text(quote.amount))") else { return }
             // The daily limit (#13217): the account is asked before money leaves. Past the limit it
             // asks for the passkey; when it can't be asked, this phone's own count of the last 24
-            // hours stands in (verse/wallet-backup.coax).
+            // hours stands in (pay/wallet-backup.coax).
             let safety = WalletBackupFlow.on(self)
             let leaving = Int64(quote.amount + quote.fee)
             let payment: String

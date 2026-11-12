@@ -3,7 +3,7 @@ import UIKit
 /// The wallet screen's backup card (docs/auth/wallets-and-custody.md, "Recovery when the device is
 /// lost"; #13217). It asks the moment the wallet first holds money: one tap backs the wallet up
 /// with the account's passkey. Then it says the wallet is backed up, or that the account's backup
-/// isn't this wallet's or no longer works. verse/wallet-backup.coax decides which
+/// isn't this wallet's or no longer works. pay/wallet-backup.coax decides which
 /// (verse_backup_card); WalletBackupFlow does the work.
 @MainActor
 final class WalletBackupCardView: UIView {
@@ -211,7 +211,7 @@ final class RestoreCodeViewController: WalletForm {
 
 /// Wallet safety: the daily limit (shown, changeable), the backup and its slots, and the opt-in
 /// to use the wallet's words as a Nostr identity. Every change goes through the server's rules
-/// (coax/web/api/wallet-policy.coax); a raise or a change to the backup asks for the passkey.
+/// (pay/wallet-policy.coax); a raise or a change to the backup asks for the passkey.
 final class WalletSafetyViewController: WalletForm {
     private let flow: WalletBackupFlow
     private var summary: WalletBackup.Summary?

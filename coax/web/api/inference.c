@@ -401,7 +401,7 @@ bool inference_ask(const request *q, const char *pubkey, bool free_key) {
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
   if (!free_key) {
-    // The wallet's daily limit holds for credit too (wallet.c, wallet-policy.coax's wp_credit; #13330).
+    // The wallet's daily limit holds for credit too (wallet.c, pay/wallet-policy.coax's wp_credit; #13330).
     if (wallet_credit_refused(q, db, pubkey)) return true;
     rate_refresh(db);
   }

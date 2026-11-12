@@ -4332,7 +4332,7 @@ The word list is checked against its published SHA-256 before use.
 
 The wallet sends and receives (Lightning invoices and addresses, LNURL,
 on-chain, Spark). `Wallet/SparkHost.swift` is the only file that imports the
-SDK and hands the screens plain values. `verse/wallet.coax` is
+SDK and hands the screens plain values. `pay/wallet.coax` is
 `#authority` and compiled into the app, so its checks run on every build. It
 decides each send: `verse_wallet_may_send` passes a quote only while its
 payment is quoted, before it expires, with the fee no more than the review
@@ -4348,7 +4348,7 @@ of the words and exit data are later work (`docs/lightning/`).
 
 Buying bitcoin (Wallet → Buy bitcoin, #12613) goes through the SDK's
 `buyBitcoin` with MoonPay's Bitcoin delivery or Cash App's Lightning invoice,
-never an asset other than bitcoin. `verse/wallet.coax` decides it:
+never an asset other than bitcoin. `pay/wallet.coax` decides it:
 
 - `verse_wallet_buy_amount` passes a MoonPay amount only when it is more than
   the most the SDK may pay to claim the deposit
@@ -4384,7 +4384,7 @@ each SDK answer for two seconds so a second tap lands while a page is being
 asked for; Release builds compile it out.
 
 Check: `apps/openagents-ios/tools/test-bip39.sh` (published BIP-39 vectors);
-`coax test` and `coax mutate verse/wallet.coax` (0 survivors); the iOS UI
+`coax test` and `coax mutate pay/wallet.coax` (0 survivors); the iOS UI
 tests (a phone with no wallet shows that and changes nothing, and
 `WalletUITests` against mainnet with a throwaway wallet: every kind of
 request is made, sends are parsed and quoted, and an empty wallet's send is
@@ -4777,7 +4777,7 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   missing decider can fail to steer audio, but can't stall it.
 - **Who may be heard and what speech may cost are `#authority`.**
   `verse/voice-floor.coax` (consent, input floor, routes by explicit binding
-  only, never by reading the words) and `verse/voice-meter.coax` (free tier
+  only, never by reading the words) and `pay/voice-meter.coax` (free tier
   and price; no provider call for a turn the meter refuses) run with zero
   surviving mutants.
 - **Only the voice host calls a speech provider.** The phone and web clients

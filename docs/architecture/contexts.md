@@ -28,7 +28,7 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 | **Room session and replication** | `aethyr/session/`, `aethyr/net/`, `coax/web/room/` | `coax/web/room/`, `aethyr/net/`, `aethyr/session/` (control, travel, party, region, compat) | Supporting | Engine, Protocol (`proto/`); Everglade rooms additionally depend on Combat rules, Characters, World, Creatures, Items, Identity (seat ticket ACL) | Authoritative simulation hosting, seat admission, checkpoints and travel sagas. |
 | **Realm authoring** | `aethyr/forge/` (adapters in `apps/aethyrforge-desktop/`, `apps/openagents-web/worldbuilder*.coax`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c`) | Same, plus SQL `verse.realm_*`, `worldbuilder.*` | Supporting | Engine, Protocol (`proto/`), `components/` | WorldBuilder edits through `aethyr/forge/edit.coax` (#13226); `aethyr/forge/doc.coax` owns the realm document format (#13249). |
 | **Identity and auth** | `coax/web/api/auth*` (`auth*.c`, `auth-*-policy.coax`) | `coax/web/api/auth*.c`, `coax/web/api/auth-*-policy.coax`, SQL `auth.*` and legacy `signin.*`, `docs/auth/` | Generic (built in-house) | `coax/lib/` (crypto, web), Nostr (NIP-42/key auth) | Accounts, authenticators and sessions (`0142_auth_accounts.sql`), built in-house with no phone or third-party identity provider. |
-| **Payments and wallet** | `pay/` (or `coax/lib/pay/`, consolidating `verse/wallet.coax` and pay policies; DDD.9) | `verse/wallet.coax`, `coax/web/api/lnaddr*.c`, `coax/web/api/makerpay-policy.coax`, SQL `pay.*`, `makers.*`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` | Supporting | `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/`, Nostr, Identity | Bitcoin-only rails ([`docs/lightning/`](../lightning/README.md)); money policy files are `#authority`. |
+| **Payments and wallet** | `pay/` (DDD.9, #13320) | `pay/` (the money rules, below), adapters `coax/web/api/wallet.c`, `lnaddr*.c`, `makers.c` and the iOS wallet, SQL `pay.*`, `makers.*`, `auth.wallet_*`, `auth.credit_spends`, libraries `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` | Supporting | `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/`, Nostr, Identity | Bitcoin-only rails ([`docs/lightning/`](../lightning/README.md)); money policy files are `#authority`. |
 | **Coder and agents** | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/` | Same, plus `apps/everglade-desktop/` (Golemancy view) | Core | `coax/lib/gateway/`, Psionic (via ACL), Nostr, Protocol (`proto/`), `coax/lib/` | Coding agent harness, session logs (`openagents.session.v1`), Router and Workers (`coder/book/`). |
 | **Chat** | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` | Same, plus SQL `chat.*` | Supporting | Coder, Identity, Protocol (`proto/`), `components/` | Web and desktop chat surfaces over agent and user threads. |
 | **Projects** | `coax/web/api/` (`private.c`, `drops.c`) | `coax/web/api/private.c`, `coax/web/api/drops.c`, SQL `projects.*`, `drops.*` | Supporting | Identity, Payments, `coax/lib/` | Private project pages and drops. |
@@ -118,7 +118,7 @@ DDD relationship kinds used here:
 | **Identity and auth -> Room session** | Seat ticket proves seat identity, while the client hello still supplies class and level | **Anticorruption layer (ACL)** | The signed seat ticket (#13248, #13259) carries identity plus the character context's class and level; the room never trusts the hello for rules facts. |
 | **Engine (Aethyr) -> World, Room and apps** | Shared code, but with 57 `aethyr-up` upward loads in `aethyr/layer-allowlist.txt` into `apps/openagents-web/` and `verse/` | **Shared kernel** (strictly downward) | `coax/web/tool.sh layer-check` (#13264) blocks new upward loads; #13270 removes the remaining allowlisted ones. |
 | **Realm authoring -> World and zones** | Versioned realm document read by `aethyr/forge/doc.coax` and written through `aethyr/forge/edit.coax` (`realms.c` still holds separate SQL rules) | **Published language** | The versioned realm document (#13249) is the contract between authoring tools and world loaders. |
-| **Payments and wallet -> Nostr and callers** | Wallet logic in `verse/wallet.coax`, maker pay in `coax/web/api/makerpay-policy.coax`, LNURL in `coax/lib/lnaddr/` | **Open host service + published language** | Consolidate into one payments context folder (DDD.9) exposing an `#authority` policy API internally and LNURL / Nostr zaps externally. |
+| **Payments and wallet -> Nostr and callers** | Wallet logic in `pay/wallet.coax`, maker pay in `pay/makerpay-policy.coax`, LNURL in `coax/lib/lnaddr/` | **Open host service + published language** | One payments context folder, `pay/` (DDD.9, #13320), exposing an `#authority` policy API internally and LNURL / Nostr zaps externally. |
 | **Coder <- Psionic and third-party agents** | `proto/registry.json` holds 12 `external` rows (Claude Code, Codex, Cursor, ACP, MCP, LNURL, Nostr NIPs) alongside `coax/lib/gateway/` and `psionic.*` | **Anticorruption layer (ACL)** (keep and name) | Each `external` row's codec folder is the sole parser for that third-party format and outputs our own record types. |
 | **Coder -> Chat** | `apps/openagents-web/chat.coax` and `components/zeron/` render Coder threads and turns directly | **Conformist** | Same product family; Chat conforms to Coder's thread and turn model rather than translating it. |
 | **Coder -> Golemancy (`apps/everglade-desktop/`)** | `apps/everglade-desktop/golems.coax` reads Coder session transcripts and presents agents as golems | **Anticorruption layer (ACL)** | Game terminology ("golem") over agent session records (`openagents.session.v1`) is an explicit view/translation layer. |
@@ -181,3 +181,35 @@ AAA layout (#13257) lands:
 - **DDD.5 and DDD.6:** enforce context ownership in `proto/registry.json`
   (`wire-check`) and per-context `#load` rules (`contexts.txt` in
   `layer-check`).
+
+## The Payments folder (DDD.9, #13320)
+
+Every file that decides money, and where it lives:
+
+| Rule | File |
+| --- | --- |
+| The Spark wallet's payment rules (send, receive, buy) | `pay/wallet.coax` |
+| The wallet's backup card and daily limit, in the app | `pay/wallet-backup.coax`, `pay/wallet-vault.coax` |
+| The wallet's daily limit, backup and service credit, on the server | `pay/wallet-policy.coax`, `pay/wallet-vault-store.coax` |
+| Lightning Addresses | `pay/lnaddr-policy.coax` |
+| Tips and upgrades paid to a maker's own address | `pay/makerpay-policy.coax` |
+| Speech metering: free tier and prices | `pay/voice-meter.coax` |
+
+They stay elsewhere, on purpose:
+
+- Adapters stay with their host: `coax/web/api/wallet.c`, `lnaddr.c`, `makers.c`
+  and `inference.c` gather facts and answer HTTP; the iOS wallet and the web
+  settings page draw and call.
+- Libraries stay in `coax/lib/`: `bitcoin/`, `lightning/` and `lnaddr/` (already
+  this context's), `x402/` (a wire codec that `coax/lib/nostr/` loads for NIP-47
+  and NIP-57, so it stays below Nostr) and `nostr/vault-wallet.coax` (the backup
+  record's codec, `proto/wire-allowlist.txt`).
+- Model-call prices belong to the contexts that charge them: the gateway's rates
+  card (`coax/lib/gateway/rates.coax`, Coder) and the inference debit
+  (`inference.finish` in SQL, Psionic and inference).
+
+Why root `pay/` and not `coax/lib/pay/`: these are product rules, not Coax
+libraries. Root folders already hold the other contexts' rules (`rules/`,
+`nostr/`, `psionic/`), and `coax/` is the toolchain's context, so a rule under
+`coax/lib/` would sit inside another context's folder. `layer-check`'s tests rule
+covers `pay/` as it covers `coax/web/api/`.

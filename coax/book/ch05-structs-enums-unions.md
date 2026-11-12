@@ -697,7 +697,7 @@ state, make it the zero member, so a fresh value means something:
 Pay :: enum u8 { idle; quoted; sending; succeeded; not_sent; unknown; }
 ```
 
-That's the payment state from `verse/wallet.coax`. Its first member,
+That's the payment state from `pay/wallet.coax`. Its first member,
 `idle`, is zero, so a zeroed payment is an idle one.
 
 If an enum has no sensible zero, as `Kind` doesn't, give it a field default
@@ -823,7 +823,7 @@ one `return`. The last branch is a plain `else`, which makes the chain
 complete by construction, at the cost of treating any new member as "a
 shot". Choose the final `else` with that in mind.
 
-> Note: `verse/wallet.coax` drives a real payment through its states
+> Note: `pay/wallet.coax` drives a real payment through its states
 > this way. `verse_wallet_step :: (f: Flow, e: Event) -> Flow` is an
 > `if e == Event.quote { ... } else if e == Event.confirm { ... }` chain,
 > and a `#forall state: Pay, e: Event, sends: 0..<2` check walks every state

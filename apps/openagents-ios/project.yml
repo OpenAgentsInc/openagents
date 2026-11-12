@@ -54,7 +54,7 @@ targets:
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/PhoneSignin.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
-      # The wallet's backup card and daily limit rules (verse/wallet-backup.coax, #13217). The vault
+      # The wallet's backup card and daily limit rules (pay/wallet-backup.coax, #13217). The vault
       # itself (Generated/WalletVault.c) is compiled through OpenAgents/Platform/WalletVaultUnit.c.
       - path: Generated/WalletBackup.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"

@@ -1,7 +1,7 @@
 import Foundation
 import LocalAuthentication
 
-/// verse/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
+/// pay/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
 /// import the header's cast macros). The header's layout checks pin Flow.
 enum Pay { static let idle: coax_t_Pay = 0, quoted: coax_t_Pay = 1, sending: coax_t_Pay = 2, succeeded: coax_t_Pay = 3, notSent: coax_t_Pay = 4, unknown: coax_t_Pay = 5 }
 enum Verdict { static let send: coax_t_Verdict = 0, overCap: coax_t_Verdict = 1, overLimit: coax_t_Verdict = 2, expired: coax_t_Verdict = 3, badAmount: coax_t_Verdict = 4, busy: coax_t_Verdict = 5 }

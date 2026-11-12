@@ -3,8 +3,8 @@
 // fees, times and what the SDK reported. This file decides whether a quote
 // may be paid, how a payment's state moves, what the keypad holds and when
 // a warning shows. Words and keys never come here.
-//   coax/bin/coax test verse/wallet.coax
-//   coax/bin/coax mutate verse/wallet.coax
+//   coax/bin/coax test pay/wallet.coax
+//   coax/bin/coax mutate pay/wallet.coax
 #import "Basic";
 #authority;
 

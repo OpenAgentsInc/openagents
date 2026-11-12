@@ -670,7 +670,7 @@ exist in release builds.
 ## In the real world: the wallet's rules
 
 The OpenAgents iOS wallet keeps its payment rules in
-`verse/wallet.coax`, and it follows exactly this split. When the
+`pay/wallet.coax`, and it follows exactly this split. When the
 person confirms a payment, Swift asks Coax whether it may be sent:
 
 ```jai

@@ -17,7 +17,7 @@ checks come first; live money comes last, in small amounts.
 
 ## 1. Coax checks
 
-`verse/wallet.coax` is `#authority`. So:
+`pay/wallet.coax` is `#authority`. So:
 
 - every procedure except `main` and `#foreign` ones must be run by a check
   (E0380);
@@ -52,7 +52,7 @@ What to check:
 
 ## 2. Mutation
 
-`coax mutate verse/wallet.coax` must report 0 survivors. It changes:
+`coax mutate pay/wallet.coax` must report 0 survivors. It changes:
 
 - operators, including boundary swaps such as `<` to `<=`;
 - int literals;

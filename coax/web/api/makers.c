@@ -26,7 +26,7 @@
 //                                                         once. 402 a preimage that isn't this invoice's
 //   POST /api/admin/makers/<realm>/gift {sats}          an admin's gift from our wallet to the maker
 //   GET  /api/admin/makers/payouts, POST .../payouts/run   the payouts as lines; run the due ones now
-// Every rule is makerpay-policy.coax's (mp_*, in lnaddr-policy.generated.h); the LNURL fetch and its
+// Every rule is pay/makerpay-policy.coax's (mp_*, in lnaddr-policy.generated.h); the LNURL fetch and its
 // checks are lnaddr.c's and coax/lib/lnaddr/lnurl.coax's. Our wallet sends only our own money: a
 // maker's first confirmed tip carries OA_MAKER_FIRST_TIP_BONUS_SATS (1,000; 0 ends the launch
 // bonus) as a payment of its own, and an admin's gift. A child process sends due payouts (quote,
@@ -52,7 +52,7 @@
 #define PREFIX "/api/playtest/makers/"
 #define ADMIN_PREFIX "/api/admin/makers/"
 
-// makerpay-policy.coax's numbers this file names; makers_init checks them against the Coax.
+// pay/makerpay-policy.coax's numbers this file names; makers_init checks them against the Coax.
 enum { MP_TIP = 0, MP_UPGRADE = 1, MP_NO_PROOF = 0, MP_BY_VERIFY = 1, MP_BY_WALLET = 2, MP_OK = 0, MP_MOVED = 2, MP_BAD = 4,
        MP_FAKE = 10, MP_NO_TIP = 11, MP_S_PAID = 3, MP_S_FAKE = 5, MP_SRC_TIP = 0, MP_SRC_UPGRADE = 1, MP_SRC_BONUS = 2, MP_SRC_GIFT = 3 };
 static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
@@ -245,7 +245,7 @@ static void sql_answer(int fd, PGconn *db, const char *sql, int n, const char *c
   else api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   PQclear(r);
 }
-// ---- a payment straight to the maker (makerpay-policy.coax decides; lnaddr.c asks the address)
+// ---- a payment straight to the maker (pay/makerpay-policy.coax decides; lnaddr.c asks the address)
 static void mp_refuse(int fd, int64_t code) {
   coax_string w = mp_text(code);
   char json[400];
@@ -632,7 +632,7 @@ bool upgrades_route(const request *q) {
   return true;
 }
 
-// makers.c's numbers against makerpay-policy.coax, at start.
+// makers.c's numbers against pay/makerpay-policy.coax, at start.
 void makers_init(void) {
   bool ok = mp_issue(MP_TIP, true, true, false, false) == MP_OK && mp_issue(MP_UPGRADE, true, true, false, false) != MP_OK
          && mp_issue(MP_TIP, true, false, true, true) == MP_MOVED && mp_quote(23) == MP_BAD && mp_status(MP_FAKE) == 402 && mp_status(MP_NO_TIP) == 404
@@ -641,7 +641,7 @@ void makers_init(void) {
          && mp_bonus(MP_TIP, MP_S_PAID, false, 7) == 7 && mp_bonus(MP_UPGRADE, MP_S_PAID, false, 7) == 0
          && mp_payout(MP_SRC_BONUS, true) && mp_payout(MP_SRC_GIFT, true) && !mp_payout(MP_SRC_TIP, true) && !mp_payout(MP_SRC_UPGRADE, true)
          && mp_payout(MP_SRC_TIP, false) && mp_payout(MP_SRC_UPGRADE, false) && mp_pay(cs("credit")) != MP_OK && mp_pay(cs("sats")) == MP_OK;
-  if (!ok) { fprintf(stderr, "api: makers.c and makerpay-policy.coax disagree on their numbers\n"); exit(2); }
+  if (!ok) { fprintf(stderr, "api: makers.c and pay/makerpay-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
 // /docs/limits (api --limits), after the Lightning Address section: what a tip or a purchase is held to.
@@ -652,5 +652,5 @@ void makers_print_limits(FILE *out) {
   fprintf(out, "| An upgrade's price | %s to %s sats |\n", env_or("OA_UPGRADE_MIN_SATS", "10"), env_or("OA_UPGRADE_MAX_SATS", "100000"));
   fprintf(out, "| Invoices asked of makers' wallets, all players | %lld a minute |\n", (long long)mp_per_min());
   fprintf(out, "| The maker's wallet's time to answer | 5 seconds |\n");
-  fprintf(out, "\nThis section is made from the server's own numbers (`coax/web/api/makers.c`, `makerpay-policy.coax`).\n");
+  fprintf(out, "\nThis section is made from the server's own numbers (`coax/web/api/makers.c`, `pay/makerpay-policy.coax`).\n");
 }

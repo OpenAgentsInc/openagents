@@ -70,7 +70,7 @@ existing Spark wallet sits top right; tapping it opens the wallet. You can:
   fees, then the incoming payment as the SDK reports it.
 
 Every send goes through a review screen and the phone's owner check, and
-`verse/wallet.coax` decides whether it may go. The wallet opens from the
+`pay/wallet.coax` decides whether it may go. The wallet opens from the
 Keychain seed the earlier app saved, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
 `Package.resolved`). See [`docs/lightning/`](../../docs/lightning/README.md).
 
@@ -120,7 +120,7 @@ and [/settings/devices](https://openagents.com/settings/devices).
 The wallet's seed is sealed on the phone and we store only the ciphertext
 (decision D4, [docs/auth](../../docs/auth/wallets-and-custody.md#what-is-built),
 #13217). Coax seals, opens and decides (`coax/lib/nostr/vault-wallet.coax`,
-`verse/wallet-vault.coax` and `verse/wallet-backup.coax`, generated as `WalletVault.h` and `WalletBackup.h`); Swift does the
+`pay/wallet-vault.coax` and `pay/wallet-backup.coax`, generated as `WalletVault.h` and `WalletBackup.h`); Swift does the
 effects (`OpenAgents/Wallet/WalletBackup.swift`, `WalletBackupFlow.swift`,
 `WalletBackupScreens.swift`).
 

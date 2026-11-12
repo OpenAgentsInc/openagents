@@ -487,11 +487,11 @@ $ coax check spend.coax --json
 {"file": "spend.coax", "line": 26, "col": 3, "code": "E0406", "message": "assertion failed [#forall sends exactly what the rule allows]; counterexample: amount = 1, spent = 9", "fix": ""}
 ```
 
-This is how the real wallet is built. `verse/wallet.coax` is
+This is how the real wallet is built. `pay/wallet.coax` is
 `#authority`, and its checks are strong enough that every mutant dies:
 
 ```shell
-$ coax mutate verse/wallet.coax
+$ coax mutate pay/wallet.coax
 155 mutants, 155 killed, 0 survived
 ```
 

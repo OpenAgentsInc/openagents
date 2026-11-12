@@ -61,7 +61,7 @@ Notice the checks alongside the implementation in all four compiler modules.
 Each starts with `#authority;`, the directive
 from Chapter 11 that says every procedure needs a check and that the
 checks run on every build. The compiler's front end is held to the same
-rule we asked of the wallet code in `verse/wallet.coax`.
+rule we asked of the wallet code in `pay/wallet.coax`.
 
 The C++ side is a *unity build*: `main.cpp` `#include`s every other `.cpp`
 file, so the whole C++ frontend is one translation unit compiled by one

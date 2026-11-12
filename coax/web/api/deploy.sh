@@ -35,7 +35,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(git -C "$here" rev-parse --show-toplevel)"
 commit="$(git -C "$repo" rev-parse --verify HEAD)"
-[[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal -- coax/web/api)" ]] || { echo 'api: commit API changes before deployment' >&2; exit 1; }
+[[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal -- coax/web/api pay)" ]] || { echo 'api: commit API changes before deployment' >&2; exit 1; }
 work="$(mktemp -d)"
 cleanup() { git -C "$repo" worktree remove --force "$work/source" >/dev/null 2>&1 || true; rm -rf "$work"; }
 trap cleanup EXIT
@@ -61,8 +61,12 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify lnaddr-policy auth-device-policy auth-device-crypto ticket-sign wallet-policy wallet-vault; do
+for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto ticket-sign; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
+done
+# The money rules are the Payments context's (pay/, #13320): SOURCE:GENERATED.
+for m in lnaddr-policy:lnaddr-policy wallet-policy:wallet-policy wallet-vault-store:wallet-vault; do
+  "$work/source/coax/bin/coax" c "$work/source/pay/${m%%:*}.coax" --run-steps 250000000 --library --header "$stage/gen/${m##*:}.generated.h" > "$stage/gen/${m##*:}.generated.c"
 done
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
 # Capture the authenticated build result, not the mutable tag's later value.

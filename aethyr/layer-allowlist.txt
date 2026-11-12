@@ -204,9 +204,9 @@ tests aethyr/world/resource-stream.coax -> aethyr/world/tests/resource-stream-fi
 tests aethyr/world/stream-walk-state.coax -> aethyr/world/tests/stream-walk-state-checks.coax
 tests aethyr/world/stream-walk.coax -> aethyr/world/tests/stream-walk-checks.coax
 tests coax/web/api/checkpoint-policy.coax -> coax/web/api/tests/checkpoint-fixture.coax  # inline #test fixture kept out of #authority module (#13315)
-tests coax/web/api/lnaddr-policy.coax -> coax/tests/lnaddr/profile_fixtures.coax  # inline #test fixtures kept out of #authority module for mutation testing (#13315)
+tests pay/lnaddr-policy.coax -> coax/tests/lnaddr/profile_fixtures.coax  # inline #test fixtures kept out of #authority module for mutation testing (#13315)
 tests coax/web/room/room-checkpoint.coax -> coax/web/room/tests/checkpoint-fixture.coax  # inline #test helpers and fixtures loaded by room-checkpoint (#13315)
-# The tests rule covers coax/web/api/ and coax/web/room/ since 94d1194a42 (#13315); its seeded lines only shrink.
+# The tests rule covers coax/web/api/ and coax/web/room/ since 94d1194a42 (#13315), and pay/ since #13320; its seeded lines only shrink.
 
 # Cross-context loads outside contexts.txt (#13317)
 context aethyr/anim/document.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
@@ -263,13 +263,10 @@ context coax/web/api/anime-director-policy.coax -> coax/lib/nostr/json.coax  # s
 context coax/web/api/checkpoint-policy.coax -> aethyr/ids.coax  # seeded (#13317)
 context coax/web/api/checkpoint-resume-policy.coax -> aethyr/session/resume-payload.coax  # seeded (#13317)
 context coax/web/api/coax_probe.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
-context coax/web/api/lnaddr-policy.coax -> coax/lib/lnaddr/lnurl.coax  # seeded (#13317)
-context coax/web/api/makerpay-policy.coax -> coax/lib/lnaddr/lnurl.coax  # seeded (#13317)
 context coax/web/api/mesh-policy.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context coax/web/api/ticket-sign.coax -> aethyr/session/seat-class.coax  # seeded (#13317)
 context coax/web/api/ticket-sign.coax -> aethyr/session/seat-ticket.coax  # seeded (#13317)
 context coax/web/api/ticket-sign.coax -> coax/web/room/room-write.coax  # seeded (#13317)
-context coax/web/api/wallet-vault.coax -> coax/lib/nostr/vault-wallet.coax  # seeded (#13317)
 context coax/web/compat/character-checkpoint.coax -> aethyr/session/character-checkpoint.coax  # seeded (#13317)
 context coax/web/map-points.coax -> aethyr/world/points.coax  # seeded (#13317)
 context coax/web/project/landing-browser.coax -> coax/lib/nostr/fixtures/nip42_events.coax  # seeded (#13317)

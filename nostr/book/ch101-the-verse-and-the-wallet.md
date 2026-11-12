@@ -5,7 +5,7 @@ and a wallet that pays. This chapter composes an offline Nostr example for
 two proposed Verse features. Players see each other through NIP-MV pose frames
 that a Coax relay carries, and one player zaps another in the world, with
 every payment decided by the Spark wallet's existing rules in
-`verse/wallet.coax`. It runs both once, offline, with test keys, fixture
+`pay/wallet.coax`. It runs both once, offline, with test keys, fixture
 invoices and a fixed clock, by composing units that earlier chapters built.
 It also says plainly which parts OpenAgents runs in production today and
 which exist only in this book.
@@ -44,13 +44,13 @@ units, and adds only the glue between them (`publish`, `receive`, `draw_x`,
 | [nipmv.coax](../../coax/lib/nostr/nipmv.coax) | `mv_frame_read`, `mv_order`, `mv_online` | a pose frame for this world, its order, and presence | 85 |
 | [nip57.coax](../../coax/lib/nostr/nip57.coax), [nip75.coax](../../coax/lib/nostr/nip75.coax) | `n57_pay`, `n57_request_tags`, `n57_invoice`, `n57_receipt`, `n75_tally` | the zap request, the receipt, and the goal's count | 71 |
 | [nip47.coax](../../coax/lib/nostr/nip47.coax) | `n47_request`, `n47_spend`, `n47_code` | a Wallet Connect payment against its budget | 72 |
-| [verse/wallet.coax](../../verse/wallet.coax) | `verse_wallet_msat_up`, `verse_wallet_msat_down`, `verse_wallet_amount_ok`, `bw_invoice_is`, `verse_wallet_may_send`, `verse_wallet_step` | whether the Spark wallet pays, and how the payment moves | this chapter |
+| [pay/wallet.coax](../../pay/wallet.coax) | `verse_wallet_msat_up`, `verse_wallet_msat_down`, `verse_wallet_amount_ok`, `bw_invoice_is`, `verse_wallet_may_send`, `verse_wallet_step` | whether the Spark wallet pays, and how the payment moves | this chapter |
 
-`verse/wallet.coax`, `nip57.coax`, `nip47.coax`, `relay_server.coax` and
+`pay/wallet.coax`, `nip57.coax`, `nip47.coax`, `relay_server.coax` and
 `relay_route.coax` decide money, admission or policy. Each is an
 `#authority` file whose checks came first and whose mutation record has no
 survivors; "How the code is checked" lists the records. Words and keys
-never enter `verse/wallet.coax`: the host hands it amounts, fees and
+never enter `pay/wallet.coax`: the host hands it amounts, fees and
 times, and it answers with verdicts.
 
 ## What runs today and what is only in this book
@@ -60,7 +60,7 @@ In production today:
 - **The Spark wallet.** Since 2026-10-28 the iOS app
   (`apps/openagents-ios`) sends and receives on Breez's Spark SDK on
   mainnet through `Wallet/SparkHost.swift`, and every payment rule is
-  `verse/wallet.coax`: the keypad, LNURL-pay bounds through
+  `pay/wallet.coax`: the keypad, LNURL-pay bounds through
   `verse_wallet_amount_ok`, the high-fee and expiry warnings,
   `verse_wallet_may_send` and the state machine `verse_wallet_step`
   ([docs/lightning/](../../docs/lightning/README.md)). It pays BOLT11
@@ -88,7 +88,7 @@ Only in this book, today:
   shown in any realm.
 - Wallet Connect: neither the app nor a realm opens a NIP-47 connection.
 - `zap_check`, the glue that hands a zap to the wallet's rules, is in the
-  example, not in `verse/wallet.coax`.
+  example, not in `pay/wallet.coax`.
 
 ## The session
 
@@ -116,7 +116,7 @@ a 1-sat fee.
 | T0 | Ben's goal, kind `9041`, 50,000 msat | NIP-75 | Ben |
 | T0 + 60 | Ana's zap request, kind `9734`, 21,000 msat | NIP-57 | Ana |
 | T0 + 61 | the invoice, `lnbc210n...` | BOLT #11 | Ben's server |
-| T0 + 62 | the wallet's rules, the payment | `verse/wallet.coax` | none |
+| T0 + 62 | the wallet's rules, the payment | `pay/wallet.coax` | none |
 | T0 + 70 | the zap receipt, kind `9735` | NIP-57 | Ben's server |
 
 ## The trace by hand
@@ -230,7 +230,7 @@ Each layer refuses what it owns:
 | the 21,000 msat zap over NWC with 12,000 msat a day | `n47_spend` | over the budget, answered `QUOTA_EXCEEDED` |
 
 The 2,000-sat zap is the refusal "Done means" asks for: the zap request is
-over the wallet's limits, and `verse/wallet.coax` refuses it.
+over the wallet's limits, and `pay/wallet.coax` refuses it.
 
 ## Wallet Connect as a second path
 
@@ -241,7 +241,7 @@ same invoice to a connection: 12,000 msat a day refuses it, and 50,000
 msat a day takes it twice (21,000, then 42,000 spent). Sealing the request
 with NIP-44 and signing it are left out here; chapter 72 runs them. A
 Spark-backed NWC service would apply both its own budget and
-`verse/wallet.coax`'s rules; that service is not built.
+`pay/wallet.coax`'s rules; that service is not built.
 
 ## The example
 
@@ -263,7 +263,7 @@ The constants come first:
 #load "../../coax/lib/nostr/store.coax";
 #load "../../coax/lib/nostr/relay_route.coax";
 #load "../../coax/lib/nostr/filter.coax";
-#load "../../verse/wallet.coax";
+#load "../../pay/wallet.coax";
 
 // Test keys only, the secp256k1 scalars 2 (Ana), 3 (Mallory), 4 (Ben) and
 // 7 (Ben's LNURL server). The plaza is chapter 85's world, owned by key 1.
@@ -396,7 +396,7 @@ The zap glue hands the wallet's rules plain numbers in whole sats, as
 
 <!-- source: nostr/examples/verse-and-wallet.coax zap -->
 ```jai
-// The wallet's side of a zap, as the host hands it to verse/wallet.coax in
+// The wallet's side of a zap, as the host hands it to pay/wallet.coax in
 // whole sats: whether the LNURL server takes the amount and the balance
 // covers it, whether the invoice states exactly the zap's amount on
 // mainnet, and whether the confirmed quote (fee, the fee shown as cap,
@@ -504,7 +504,7 @@ main :: () {
   print("  % msat, h = %\n", v.msat, hex32(v.description_hash, hx[..]));
   print("  sha256(zap request)   %\n", hex32(sha_of(zr.original), hx[..]));
 
-  print("the wallet's rules (verse/wallet.coax), Ana has % sats\n", BALANCE);
+  print("the wallet's rules (pay/wallet.coax), Ana has % sats\n", BALANCE);
   ok := zap_check(pay, 21000, inv, FEE, FEE, BALANCE, T0 + 62, T0 + 61 + EXPIRY);
   show_check("21 sats, fee 1", ok);
   fl := verse_wallet_start();
@@ -586,7 +586,7 @@ zap request f72c3d9c908806583cdd040a441709bc4ec3085ef705024d25db1ed875b109b9, 66
 invoice: lnbc210n1p4tzwaapp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztyshp5kqygvm23fy0yndxkah2yc756yv2gaxuzjhtfvs7efrrvj9l0g60qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkmm3wn
   21000 msat, h = b008866d51491e49b4d6edd44c7a9a23148e9b8295d69643d948c6c917ef469e
   sha256(zap request)   b008866d51491e49b4d6edd44c7a9a23148e9b8295d69643d948c6c917ef469e
-the wallet's rules (verse/wallet.coax), Ana has 1000 sats
+the wallet's rules (pay/wallet.coax), Ana has 1000 sats
 21 sats, fee 1: amount ok, invoice ok, may_send send -> pay
 flow: quote, confirm -> sending (sends 1)
 a second confirm -> sending (sends 1)
@@ -725,7 +725,7 @@ No library file changed for this chapter, so the units' mutation runs were
 not repeated. Their records, all with no survivors and none marked
 equivalent:
 
-- `verse/wallet.coax`: 471 of 471 mutants killed at `d7c266208a`
+- `pay/wallet.coax`: 471 of 471 mutants killed at `d7c266208a`
   (2026-10-31), 29 checks.
 - `nip57.coax` 678 of 678 and `nip75.coax` 131 of 131, root-only, on
   2026-11-01 (chapter 71).
@@ -747,7 +747,7 @@ equivalent:
   not run for this chapter.
 - Zaps in the app: `SparkHost.swift` sending the zap request with an
   LNURL payment, reading receipts, and `zap_check`'s rule moving into
-  `verse/wallet.coax` with its own checks and mutation run.
+  `pay/wallet.coax` with its own checks and mutation run.
 - A Spark-backed Wallet Connect service, and NWC in a realm.
 - Verse identities: players' profiles and follows (chapter 45) shown in a
   realm. The example uses bare test keys.
@@ -759,7 +759,7 @@ equivalent:
   and sequence number, and draws others 500 ms behind.
 - On the fixed clock, a move reaches the other screen in 749 ms, inside
   the 830 ms bound and the one-second budget.
-- An in-world zap is paid only when `verse/wallet.coax` says the amount,
+- An in-world zap is paid only when `pay/wallet.coax` says the amount,
   the invoice and the quote all pass; the 21-sat zap leaves 978 sats, and
   a zap over the balance is refused.
 - The receipt counts only when Ben's server signed it, the amounts and

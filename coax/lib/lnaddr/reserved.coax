@@ -16,6 +16,6 @@ LN_RESERVED :: [LN_RESERVED_COUNT] string.[
   // Our names.
   "openagents", "oa", "team", "staff", "official",
   "verse", "everglade", "coder", "foreman",
-  // Our NIP-05 names (lnaddr-policy.coax LA_NIP05_FIXED).
+  // Our NIP-05 names (pay/lnaddr-policy.coax LA_NIP05_FIXED).
   "coax",
 ];

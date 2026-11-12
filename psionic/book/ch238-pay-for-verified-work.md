@@ -38,7 +38,7 @@ One `#authority` file holds every decision:
 it, chapter 180's `bl_admit` for the hold and `BL_MSAT_MOST` (21 million
 bitcoin in millisatoshis) for every bound. It holds no key, opens no
 socket and calls no wallet. Its shape follows the wallet's own payment
-rules in [`verse/wallet.coax`](../../verse/wallet.coax): plain integers in,
+rules in [`pay/wallet.coax`](../../pay/wallet.coax): plain integers in,
 a decision out, with the wallet SDK outside.
 
 ```shell

@@ -76,7 +76,7 @@ can't: talk to audio hardware, open sockets, and make HTTPS calls.
 | The engine | `verse/voice.coax` | Resampling, levels, voice activity, end of turn, barge-in, jitter buffer, gain, features, decisions |
 | The wire | `verse/voice-wire.coax` | Frame codecs, generated from the schema |
 | The floor | `verse/voice-floor.coax` | Consent, who holds the floor, media epochs (`#authority`) |
-| The meter | `verse/voice-meter.coax` | Free tier, prices, whether a turn may run (`#authority`) |
+| The meter | `pay/voice-meter.coax` | Free tier, prices, whether a turn may run (`#authority`) |
 | The C face | `verse/platform/voice.h`, `voice.c` | A stable C API over the four libraries |
 | The voice host | `verse/voice-host/` | WebSocket server, sessions, Google calls, a dev client |
 | The reply path | `verse/voice-host/voice-reply.coax` | When a partial may stand as the final transcript, and where a reply splits into sentences (`#authority`, newest and still changing) |
@@ -1341,7 +1341,7 @@ $ coax/bin/coax mutate verse/voice-floor.coax
 77 mutants, 77 killed, 0 survived
 ```
 
-`verse/voice-meter.coax` decides money. Each account gets a free tier
+`pay/voice-meter.coax` decides money. Each account gets a free tier
 per day (10 minutes recognized and 5,000 characters synthesized), and
 beyond it every millisecond and character is priced in millisatoshis. A
 turn may start only if its worst case still fits the free tier plus the
@@ -1349,7 +1349,7 @@ budget the host sets. The arithmetic saturates instead of trapping, and
 it's written so that every boundary is one a check can see. The comment
 explains why the comparisons look a little unusual:
 
-Filename: verse/voice-meter.coax
+Filename: pay/voice-meter.coax
 
 ```jai
 // Each comparison is placed where its boundary changes the answer, so the
@@ -1395,7 +1395,7 @@ with `used < free + 1`, the mutant `used <= free + 1` returns 0 at
 The real file passes its gate:
 
 ```shell
-$ coax/bin/coax mutate verse/voice-meter.coax
+$ coax/bin/coax mutate pay/voice-meter.coax
 72 mutants, 72 killed, 0 survived
 ```
 

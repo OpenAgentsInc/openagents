@@ -100,7 +100,7 @@ static const auth_rule RULES[] = {
   // ---- device keys (auth-device.c, auth-device-policy.coax, #13216)
   R("GET",  "/api/auth/devices", false, AP_HUMAN, "the device keys that hold your logins"),
   R("POST", "/api/auth/devices/", true, AP_HUMAN, "remove one device: its key is revoked and its logins end"),
-  // ---- the wallet's encrypted backup and daily limit (wallet.c, wallet-policy.coax, #13217):
+  // ---- the wallet's encrypted backup and daily limit (wallet.c, pay/wallet-policy.coax, #13217):
   // reading, storing and deleting the backup and raising the limit are L2-fresh here and in the
   // policy; a payment past the limit is L2-fresh in the policy; the cancel link needs no login
   R("GET",  "/api/wallet", false, AP_HUMAN, "the daily limit, what the last 24 hours counted, a waiting raise, the backup's public facts"),

@@ -1,4 +1,4 @@
-// Fixtures for coax/web/api/lnaddr-policy.coax's "Add to my Nostr profile" checks, kept out of
+// Fixtures for pay/lnaddr-policy.coax's "Add to my Nostr profile" checks, kept out of
 // that #authority file so mutation testing mutates the rules, not the fixtures. Each is a kind 0
 // (or, the last, kind 1) event signed by the secret key 01 02 ... 20 (hex 0102..1f20), made with
 // coax/lib/nostr/event_sign.coax at created_at 1762000000.

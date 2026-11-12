@@ -294,7 +294,7 @@ authority, where a half-applied update is the worst outcome.
 - **Coax writes the log itself.** Coax generates the C, so the emitter can
   log stores at the point it writes them. It doesn't need AutoRTFM's LLVM
   pass. Writes through `#unsafe` code inside a transaction are refused.
-- **First consumers.** The signer's policy and the wallet (`verse/wallet.coax`)
+- **First consumers.** The signer's policy and the wallet (`pay/wallet.coax`)
   in the [Verse OS isolation proposal](../docs/os/2026-11-05-verse-os-isolation.md).
 
 Coax 0.52 uses coarse before-images of reachable state, rather than a store-by-store

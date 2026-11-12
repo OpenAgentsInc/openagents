@@ -5,7 +5,7 @@
  *                              jitter buffer, gain/duck/rate, decisions
  *   verse/voice-wire.coax   Frame codecs (generated from voice.pb)
  *   verse/voice-floor.coax  consent, input floor, media epochs (#authority)
- *   verse/voice-meter.coax  free tier and pricing (#authority)
+ *   pay/voice-meter.coax  free tier and pricing (#authority)
  * This file owns storage (the opaque structs wrap the Coax state), converts
  * between the C structs in voice.h and the Coax ones, and nothing else.
  * Build each .coax with `coax/bin/coax c FILE --library --header Name.h`.

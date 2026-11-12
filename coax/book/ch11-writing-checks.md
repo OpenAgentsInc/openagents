@@ -1064,7 +1064,7 @@ changes the procedures the checks call, not the checks, and the rule
 
 ## Checks in the real world
 
-The Grid's wallet in `verse/wallet.coax` is written this way. Swift
+The Grid's wallet in `pay/wallet.coax` is written this way. Swift
 talks to the payment SDK and hands the Coax file plain numbers: amounts,
 fees, times and what the SDK reported. Coax decides whether a quote may
 be paid. The file starts like our split:
@@ -1096,7 +1096,7 @@ verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
 }
 ```
 
-*Listing 11-7: The start of `verse/wallet.coax`*
+*Listing 11-7: The start of `pay/wallet.coax`*
 
 Here is the small-instance pattern from earlier. The `#forall` covers
 amounts from -3 to 39 sats, crossing the boundary at zero, and the
@@ -1123,13 +1123,13 @@ the start:
 }
 ```
 
-*Listing 11-8: Every four-event history of a payment, from `verse/wallet.coax`*
+*Listing 11-8: Every four-event history of a payment, from `pay/wallet.coax`*
 
 `Event` has 8 values, so that's 8^4 = 4,096 histories, every one of
 them. The whole file runs in a few hundredths of a second:
 
 ```shell
-$ coax test verse/wallet.coax
+$ coax test pay/wallet.coax
 ok   #forall sats to msat (43 cases, 1188 steps)
 ok   #test sats to msat at the top (1 case, 54 steps)
 ...
@@ -1139,7 +1139,7 @@ ok   #test a fresh payment (1 case, 24 steps)
 ok   #forall each step (96 cases, 9876 steps)
 ok   #forall every four events (4096 cases, 1355356 steps)
 16 checks, 16 passed, 0 failed
-$ coax mutate verse/wallet.coax
+$ coax mutate pay/wallet.coax
 155 mutants, 155 killed, 0 survived
 ```
 

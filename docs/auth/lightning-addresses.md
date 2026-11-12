@@ -306,7 +306,7 @@ Decision D6 moves tips and upgrade purchases off our wallet:
 Status: built (GitHub #13210). This replaced the payout runner for tips
 and upgrades in `makers.tips` and `makers.payouts`; our wallet now sends
 only the first-tip bonus and an admin's gift. The rules are
-`coax/web/api/makerpay-policy.coax`; the fetch and its checks are
+`pay/makerpay-policy.coax`; the fetch and its checks are
 `lnaddr_invoice_of` and `lnaddr_settled` in `coax/web/api/lnaddr.c`, on the
 same `lnurl.coax` rules as forward mode. A maker's `name@openagents.com`
 address is read from our own rows and its forward target is asked, exactly
@@ -365,7 +365,7 @@ Names, limits and the claim flow don't change when the backend does.
   with `/off`, `/on`, `/change`, `/cancel`). Every decision is Coax, with
   `#authority` and no surviving mutants: `coax/lib/lnaddr/lnurl.coax` (the
   LUD JSON, the invoice checks, the upstream answers, the limits) and
-  `coax/web/api/lnaddr-policy.coax` (claims, changes, waits, wallet proofs).
+  `pay/lnaddr-policy.coax` (claims, changes, waits, wallet proofs).
 - **Forward mode** works: we fetch the target's payRequest and invoice from
   our server over https only, to public addresses only, with no redirects,
   in 5 seconds and 64 KB at most, and pass the target's metadata through

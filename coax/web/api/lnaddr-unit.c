@@ -1,4 +1,4 @@
-// lnaddr-policy.coax's C (lnaddr-policy.generated.c) as one unit of the API. The Coax libraries it
+// pay/lnaddr-policy.coax's C (lnaddr-policy.generated.c) as one unit of the API. The Coax libraries it
 // loads (bytes, SHA-256, HMAC, secp256k1, ECDSA, Bech32, JSON, Nostr events) export their
 // procedures, and so do nip98.generated.c and auth-seal.generated.c, which load some of the same:
 // the same names twice in one binary. Here every export of this unit that isn't its own (lu_, la_,

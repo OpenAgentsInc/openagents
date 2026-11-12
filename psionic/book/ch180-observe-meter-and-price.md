@@ -22,7 +22,7 @@ zero-survivor mutation checks:
 log are in [`serve-meter.coax`](../lib/serve-meter.coax). Neither moves
 money. Settlement stays in the Bitcoin wallet
 ([docs/lightning/](../../docs/lightning/README.md)), outside Psionic, as it
-does for [the voice meter](../../verse/voice-meter.coax).
+does for [the voice meter](../../pay/voice-meter.coax).
 
 ```shell
 coax/bin/coax run psionic/examples/serve-meter.coax
@@ -586,5 +586,5 @@ carries its own gate.
 
 - [Chapter plan](PLAN.md)
 - [Inference Engineering notes](../docs/serving/inference-engineering.md)
-- [The voice meter](../../verse/voice-meter.coax), the pattern for integer
+- [The voice meter](../../pay/voice-meter.coax), the pattern for integer
   millisatoshi pricing

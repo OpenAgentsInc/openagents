@@ -234,7 +234,7 @@ message Speech {
   optional string turn = 5 [(openagents.options.v1alpha1.max_bytes) = 64];
 }
 
-// What speech has cost this account. voice-meter.coax is the authority;
+// What speech has cost this account. pay/voice-meter.coax is the authority;
 // this is its report.
 message Meter {
   optional uint64 recognized_ms = 1 [(openagents.options.v1alpha1.unit) = "ms"];

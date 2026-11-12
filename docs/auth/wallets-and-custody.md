@@ -77,7 +77,7 @@ Built in #13217. The format is
 [NIP-VAULT's wallet seed backup](../../nostr/nips/openagents/NIP-VAULT.md#wallet-seed-backup);
 the code is `coax/lib/nostr/vault-wallet.coax` (the apps seal and open
 with it, and the API reads public fields with it), `coax/web/api/wallet.c`
-with its rules in `wallet-policy.coax`, and `verse/wallet-backup.coax` (with `verse/wallet-vault.coax`) for
+with its rules in `wallet-policy.coax`, and `pay/wallet-backup.coax` (with `pay/wallet-vault.coax`) for
 what the iPhone app shows and does.
 
 ### What our database holds
@@ -195,7 +195,7 @@ enforces that part (#13330, below).
 | A lost passkey | The recovery code opens the backup; the wallet on the phone keeps working; a new backup replaces the old | iPhone unit tests; `wallet_checks.coax` "a lost passkey" |
 | A lost recovery code | The passkey opens the backup; "Back up again" makes a new code and a new vault | iPhone unit tests |
 | Both lost, and the phone too | The money is lost. Nobody can open the backup, us included; the app says so before the code is dismissed | By design |
-| A stolen unlocked phone | Every payment needs Face ID or the passcode (as before); past the daily limit, the passkey; freezing the account ends the login and the app stops paying | `verse/wallet-backup.coax`; iPhone unit tests |
+| A stolen unlocked phone | Every payment needs Face ID or the passcode (as before); past the daily limit, the passkey; freezing the account ends the login and the app stops paying | `pay/wallet-backup.coax`; iPhone unit tests |
 | A rollback | The server stores a backup only at the next epoch (the database refuses otherwise); the apps refuse an epoch that isn't the one named, and one older than they have seen. A new phone can't tell an old epoch the server kept: it restores the same seed | `wallet-policy.coax`, `wallet_checks.coax` "a rollback" (four checks), `vault-wallet.coax` |
 | A slot added by someone with a session and no step-up | Storing needs `L2-fresh`; and a slot is only made by someone who opened the `VMK` | `wallet_checks.coax` "a slot added without step-up" |
 | A session thief raises the limit | `L2-fresh`, 24 hours, a notice to every way in with a cancel link | `wallet_checks.coax` "limit raising by a session thief" and the six checks after it |
@@ -229,7 +229,7 @@ authenticator, and shows the single-point-of-failure warning once.
 
 Built in #13217: the switch is in the app's Wallet safety screen, off
 unless turned on. Coax derives the key (`m/44'/1237'/0'/0/0`), signs the
-link challenge and wipes the key (`verse/wallet-vault.coax`); Swift never
+link challenge and wipes the key (`pay/wallet-vault.coax`); Swift never
 holds it. Turning it off removes that key from the account. Agents use
 one seed by default: `openagents nostr new` makes 12 words and derives the
 agent's NIP-06 key from them, and the same words derive its wallets
@@ -257,7 +257,7 @@ the credit's msat rounded up to the sat (`wp_total`). Before a paid call, the
 API reads the account's limit, count and freshest L2 in one query: once the
 count reaches the limit, the call gets the wallet's step-up answer (401,
 `step_up: L2-fresh`) until a login of the account proves L2 again
-(`wp_credit` in `coax/web/api/wallet-policy.coax`). A call's cost is known only
+(`wp_credit` in `pay/wallet-policy.coax`). A call's cost is known only
 after it is answered, so the last call under the limit can pass it by its own
 cost. A key that no person's account holds, and an agent's key, aren't held to
 a person's limit; an agent spends within its grant.

@@ -1,4 +1,4 @@
-// wallet-vault.coax's C (wallet-vault.generated.c) as one unit of the API (#13217). It loads Coax
+// pay/wallet-vault-store.coax's C (wallet-vault.generated.c) as one unit of the API (#13217). It loads Coax
 // libraries that other generated units load too (bytes, SHA-256, JSON, base64, BIP-39, scrypt),
 // and those export their procedures: the same names twice in one binary. Here every export of
 // this unit but its own (wv_slots, wv_vault, wv_count, wv_object, wv_slot, wv_credential, wv_b64,

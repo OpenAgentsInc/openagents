@@ -49,7 +49,7 @@ Paid from your wallet straight to the maker's own Lightning Address.
 | Invoices asked of makers' wallets, all players | 60 a minute |
 | The maker's wallet's time to answer | 5 seconds |
 
-This section is made from the server's own numbers (`coax/web/api/makers.c`, `makerpay-policy.coax`).
+This section is made from the server's own numbers (`coax/web/api/makers.c`, `pay/makerpay-policy.coax`).
 
 ## Talking to characters
 

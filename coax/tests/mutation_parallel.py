@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parent
 COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'bin/coax'))
 TIMEOUT = int(os.environ.get('COAX_MUTATION_TIMEOUT', '3600'))
-QUICK_REAL = ['verse/wallet.coax', 'coax/lib/compiler/mutation-schedule.coax', 'coax/lib/compiler/budget.coax',
+QUICK_REAL = ['pay/wallet.coax', 'coax/lib/compiler/mutation-schedule.coax', 'coax/lib/compiler/budget.coax',
               'coax/lib/crypto/bytes.coax', 'coax/lib/nostr/hex.coax']
 
 CASES = {

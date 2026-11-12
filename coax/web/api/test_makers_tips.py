@@ -1,4 +1,4 @@
-# Tips for a realm's maker (makers.c, makerpay-policy.coax, migrations/0154_maker_direct_pay.sql;
+# Tips for a realm's maker (makers.c, pay/makerpay-policy.coax, migrations/0154_maker_direct_pay.sql;
 # owner decision D6, #13210): a tip goes from the player's wallet straight to the maker's own
 # Lightning Address. The fake Spark wallet test_inference.py serves also plays every Lightning
 # Address service here (test.sh builds the API so its LNURL fetches go to it, https://host/path as

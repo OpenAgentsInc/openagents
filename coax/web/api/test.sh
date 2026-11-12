@@ -103,11 +103,11 @@ work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:
 "$cli_coax" c "$here/auth-recover-crypto.coax" --run-steps 250000000 --library --header "$work/auth-recover-crypto.generated.h" > "$work/auth-recover-crypto.generated.c"
 "$cli_coax" c "$here/passkey-policy.coax" --library --header "$work/passkey-policy.generated.h" > "$work/passkey-policy.generated.c"
 "$cli_coax" c "$here/passkey-verify.coax" --run-steps 250000000 --library --header "$work/passkey-verify.generated.h" > "$work/passkey-verify.generated.c"
-"$cli_coax" c "$here/lnaddr-policy.coax" --run-steps 250000000 --library --header "$work/lnaddr-policy.generated.h" > "$work/lnaddr-policy.generated.c"
+"$cli_coax" c "$repo_root/pay/lnaddr-policy.coax" --run-steps 250000000 --library --header "$work/lnaddr-policy.generated.h" > "$work/lnaddr-policy.generated.c"
 "$cli_coax" c "$here/auth-device-policy.coax" --library --header "$work/auth-device-policy.generated.h" > "$work/auth-device-policy.generated.c"
 "$cli_coax" c "$here/auth-device-crypto.coax" --run-steps 250000000 --library --header "$work/auth-device-crypto.generated.h" > "$work/auth-device-crypto.generated.c"
-"$cli_coax" c "$here/wallet-policy.coax" --library --header "$work/wallet-policy.generated.h" > "$work/wallet-policy.generated.c"
-"$cli_coax" c "$here/wallet-vault.coax" --run-steps 250000000 --library --header "$work/wallet-vault.generated.h" > "$work/wallet-vault.generated.c"
+"$cli_coax" c "$repo_root/pay/wallet-policy.coax" --library --header "$work/wallet-policy.generated.h" > "$work/wallet-policy.generated.c"
+"$cli_coax" c "$repo_root/pay/wallet-vault-store.coax" --run-steps 250000000 --library --header "$work/wallet-vault.generated.h" > "$work/wallet-vault.generated.c"
 "$cli_coax" c "$here/ticket-sign.coax" --run-steps 250000000 --library --header "$work/ticket-sign.generated.h" > "$work/ticket-sign.generated.c"
 # OA_LNADDR_TEST_FETCH: this build's Lightning Address fetches go to the fake services on SPARK_PORT
 # (test_makers_tips.py); the image is built without it and fetches only public https hosts.

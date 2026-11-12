@@ -6,8 +6,8 @@
 // may run only while the worst case still fits the free tier plus the budget
 // the host sets from the account's balance. Saturating arithmetic: nothing
 // here can overflow or trap.
-//   coax/bin/coax test verse/voice-meter.coax
-//   coax/bin/coax mutate verse/voice-meter.coax
+//   coax/bin/coax test pay/voice-meter.coax
+//   coax/bin/coax mutate pay/voice-meter.coax
 #authority;
 
 FREE_MS :: 600000;

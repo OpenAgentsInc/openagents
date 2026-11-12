@@ -30,7 +30,7 @@ tool_main :: () -> int #export_c #effects(all) {
   archive := fv_path(p[..], root, "psionic/build/parakeet/libpsionic-parakeet.a");
   if fs_kind(archive) != FS_FILE { tool_errln("Build the shared CLI/Parakeet helper first."); return 1; }
   deadline := proc_now_ms() + 840000; out: [16777216] u8;
-  sources := [6] string.["verse/voice.coax", "verse/voice-wire.coax", "verse/voice-floor.coax", "verse/voice-meter.coax", "verse/voice-asr.coax", "verse/voice-host/voice-reply.coax"];
+  sources := [6] string.["verse/voice.coax", "verse/voice-wire.coax", "verse/voice-floor.coax", "pay/voice-meter.coax", "verse/voice-asr.coax", "verse/voice-host/voice-reply.coax"];
   names := [6] string.["VoiceEngine", "VoiceWire", "VoiceFloor", "VoiceMeter", "VoiceAsr", "VoiceReply"];
   newest := fs_mtime_ns(compiler); stamp := fs_mtime_ns(archive); if stamp > newest { newest = stamp; }
   for source: sources { b: [4096] u8; t := fs_mtime_ns(fs_join(root, source, b[..])); if t > newest { newest = t; } }

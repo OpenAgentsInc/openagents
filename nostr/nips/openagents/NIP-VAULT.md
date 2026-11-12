@@ -581,7 +581,7 @@ removed the Rust crates above from the tree:
   byte for byte.
 - `coax/lib/nostr/vault-wallet.coax` is the [wallet seed backup](#wallet-seed-backup).
 - The service is `coax/web/api/wallet.c` (`GET` and `POST
-  /api/wallet/backup`), with its rules in `wallet-policy.coax`.
+  /api/wallet/backup`), with its rules in `pay/wallet-policy.coax`.
 
 Tier `sealed` is implemented in Rust (#11743):
 

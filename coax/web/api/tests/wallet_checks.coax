@@ -1,4 +1,4 @@
-// The wallet's encrypted backup and daily limit (wallet.c, wallet-policy.coax, wallet-vault.coax,
+// The wallet's encrypted backup and daily limit (wallet.c, pay/wallet-policy.coax, pay/wallet-vault-store.coax,
 // migration 0163; #13217), run by test.sh after auth_device_checks.coax. Backups are made here by
 // the code the apps use (coax/lib/nostr/vault-wallet.coax) from TEST SECRETS ONLY; a software
 // passkey (passkey_soft.coax) stands in for a phone's, and its "PRF output" is a fixed test value

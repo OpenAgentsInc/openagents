@@ -65,7 +65,7 @@ bool verse_packs_route(const request *q); // verse_packs.c: private human packs,
 bool realms_route(const request *q);      // realms.c: build your own realm
 bool makers_route(const request *q);      // makers.c: a realm's maker and their claim
 bool upgrades_route(const request *q);    // makers.c: listed fairy upgrades, paid straight to their maker
-void makers_init(void);                   // checks makers.c's numbers against makerpay-policy.coax
+void makers_init(void);                   // checks makers.c's numbers against pay/makerpay-policy.coax
 void makers_print_limits(FILE *out);      // api --limits: the tips and upgrades section of /docs/limits
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
 bool anime_route(const request *q);        // anime.c: typed Anime Lab directions

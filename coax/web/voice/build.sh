@@ -16,7 +16,7 @@ mkdir -p "$work"
 cflags=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -std=c11 -O2
         -ffp-contract=off -fno-fast-math -w -I"$work" -I"$repo/verse/platform")
 objects=()
-for src in "$repo"/verse/voice.coax "$repo"/verse/voice-wire.coax "$repo"/verse/voice-floor.coax "$repo"/verse/voice-meter.coax; do
+for src in "$repo"/verse/voice.coax "$repo"/verse/voice-wire.coax "$repo"/verse/voice-floor.coax "$repo"/pay/voice-meter.coax; do
   name="$(basename "$src" .coax)"
   base="$(printf '%s' "$name" | awk -F- '{for(i=1;i<=NF;i++) printf toupper(substr($i,1,1)) substr($i,2)}')"
   [[ "$base" == "Voice" ]] && base=VoiceEngine

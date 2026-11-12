@@ -495,7 +495,7 @@ Building with `coax lib --release` gives exactly the same result, because
 release builds keep bounds checks. There's no error value to return and no
 way for C to catch it. If a host needs to survive bad input, it has to
 check the input before the call, or the Coax procedure has to return a
-result the host can test, the way `verse/wallet.coax` returns `-1` for
+result the host can test, the way `pay/wallet.coax` returns `-1` for
 an amount it won't convert.
 
 Coax also trusts the count it's given. If C says a view has 3 elements
@@ -614,7 +614,7 @@ regenerated header against the Swift table. The app does
 exactly this in `apps/openagents-ios/OpenAgents/Wallet/WalletRules.swift`:
 
 ```swift
-/// verse/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
+/// pay/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
 /// import the header's cast macros). The header's layout checks pin Flow.
 enum Pay { static let idle: coax_t_Pay = 0, quoted: coax_t_Pay = 1, sending: coax_t_Pay = 2, succeeded: coax_t_Pay = 3, notSent: coax_t_Pay = 4, unknown: coax_t_Pay = 5 }
 ```
@@ -916,7 +916,7 @@ does what `coax lib` does to the program: the Coax `main`, if there is
 one, becomes an unused static function, so there's no C `main` to clash
 with the app's.
 
-The comment about the wallet is worth reading twice. `verse/wallet.coax`
+The comment about the wallet is worth reading twice. `pay/wallet.coax`
 is marked `#authority` (Chapter 11), so every compile of it runs its
 checks. If a change breaks a payment rule, the `coax c` in this loop fails,
 the build phase fails, and Xcode never produces an app with the broken

@@ -1,7 +1,7 @@
 // The wallet's backup card and daily limit as the app decides them (docs/auth/wallets-and-custody.md,
 // decision D4; #13217). Swift does the effects (the network, the Keychain, the passkey prompt) and
 // hands this file plain values; this file decides. The sealing and opening are
-// verse/wallet-vault.coax's and coax/lib/nostr/vault-wallet.coax's.
+// pay/wallet-vault.coax's and coax/lib/nostr/vault-wallet.coax's.
 //
 //   verse_backup_card   what the wallet screen's backup card shows
 //   verse_backup_newer  whether an epoch raises the highest this phone has made or opened (the rollback floor)
@@ -12,8 +12,8 @@
 // Our server answers whether a payment needs a fresh proof that it is you; it can't stop one,
 // so the app is what keeps the limit. A changed app, or the wallet's words used somewhere else,
 // isn't held by it.
-//   coax/bin/coax test verse/wallet-backup.coax
-//   coax/bin/coax mutate verse/wallet-backup.coax
+//   coax/bin/coax test pay/wallet-backup.coax
+//   coax/bin/coax mutate pay/wallet-backup.coax
 #authority;
 
 // What the backup card shows.

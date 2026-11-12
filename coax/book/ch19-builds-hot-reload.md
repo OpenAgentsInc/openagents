@@ -229,7 +229,7 @@ authority requires all its checks to pass. A matching cached passing result
 can discharge that obligation, but a changed input invalidates it. Without
 `#authority`, ordinary `#test` bodies wait for `coax test`.
 
-For example, `verse/wallet.coax` guards payment admission. Its generated
+For example, `pay/wallet.coax` guards payment admission. Its generated
 library cannot be replaced after a failed check. Code generation is not
 permission to send a payment; the runtime still applies the wallet's rules.
 

@@ -614,7 +614,7 @@ static void start_turn(session *s, const oa_voice_control *c) {
   s->done_cover = 0;
   s->done_cut_ms = 0;
   s->done_text[0] = 0;
-  // voice-meter.coax decides whether this turn may run at all (worst case:
+  // pay/voice-meter.coax decides whether this turn may run at all (worst case:
   // the longest turn the host accepts plus the longest reply).
   oa_voice_config cfg;
   oa_voice_get_config(s->v, &cfg);
@@ -662,7 +662,7 @@ static void maybe_recognize(session *s) {
   bool early = verse_voice_reply_recognize_early(silence, ms_of(s->voiced_end), ms_of(cover));
   bool cadence = s->nflight == 0 && s->tn - s->partial_at >= PARTIAL_EVERY;
   if (!early && !cadence) return;
-  // voice-meter.coax decides whether re-sending the turn so far fits; the
+  // pay/voice-meter.coax decides whether re-sending the turn so far fits; the
   // usage is recorded like any other recognized audio.
   uint64_t ms = ms_of(s->tn);
   if (!oa_voice_meter_may_run(s->acct->m, ms, 0)) return;

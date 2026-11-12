@@ -103,7 +103,7 @@ A small Coax service, `verse-signer`, holds the Nostr key and the wallet.
 - Other domains send requests over a socket: sign this event, pay this
   invoice. Every request passes an `#authority` policy: which kinds of
   event, which recipients, amounts per request and per day, rate limits.
-  `verse/wallet.coax` is already `#authority`; the signer adds the process
+  `pay/wallet.coax` is already `#authority`; the signer adds the process
   boundary around it.
 - A request outside policy becomes an approval in the world. Nothing waits
   silently.

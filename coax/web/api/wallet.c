@@ -1,6 +1,6 @@
 // The wallet's encrypted seed backup and its daily spend limit (docs/auth/wallets-and-custody.md,
-// decision D4; #13217). What may happen is wallet-policy.coax's (#authority); what a backup's
-// slots and object must be is coax/lib/nostr/vault-wallet.coax's, through wallet-vault.coax (the
+// decision D4; #13217). What may happen is pay/wallet-policy.coax's (#authority); what a backup's
+// slots and object must be is coax/lib/nostr/vault-wallet.coax's, through pay/wallet-vault-store.coax (the
 // same code the apps seal and open with). The rows are 0163's.
 //
 //   GET  /api/wallet                    the daily limit, what the last 24 hours counted, a raise that
@@ -42,7 +42,7 @@
 #include <string.h>
 #include <time.h>
 
-// wallet-policy.coax's verdicts (WP_*), checked against it at start.
+// pay/wallet-policy.coax's verdicts (WP_*), checked against it at start.
 enum { WP_OK = 0, WP_STEP_UP = 1, WP_LIMITED = 2, WP_BAD_AMOUNT = 3, WP_REPLAY = 4, WP_BAD_LIMIT = 5, WP_SAME = 6, WP_LOWER_NOW = 7,
        WP_RAISE_LATER = 8, WP_NO_RAISE = 9, WP_CONFLICT = 10, WP_BAD_SLOTS = 11, WP_NEEDS_RECOVERY = 12, WP_NEEDS_PASSKEY = 13,
        WP_BAD_OBJECT = 14, WP_NOT_YOUR_PASSKEY = 15, WP_NO_BACKUP = 16, WP_NOT_YOURS = 17 };
@@ -50,7 +50,7 @@ enum { WV_PRF = 1, WV_RECOVERY = 2, WV_NOSTR = 3 };
 #define SLOTS_MAX 24576
 #define OBJECT_MAX 4096
 
-// wallet-vault.coax's exports (wallet-vault-unit.c): wv_slots, wv_vault, wv_count, wv_object,
+// pay/wallet-vault-store.coax's exports (wallet-vault-unit.c): wv_slots, wv_vault, wv_count, wv_object,
 // wv_slot, wv_credential, wv_b64, wv_unb64. passkey-verify.coax's pv_b64url is how auth.passkeys
 // keeps a credential id (base64url).
 typedef coax_t_WvSlot wv_slot_t;

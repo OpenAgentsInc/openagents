@@ -9,7 +9,7 @@
  * "the old behavior"). Never renumber, reorder, or repurpose anything below.
  *
  * The logic lives in Coax (verse/voice.coax, voice-wire.coax,
- * voice-floor.coax, voice-meter.coax); verse/platform/voice.c only owns
+ * voice-floor.coax, pay/voice-meter.coax); verse/platform/voice.c only owns
  * storage and forwards to the Coax exports. Design: docs/voice/coax-native-voice.md.
  * Schema: proto/openagents/voice/v1alpha1/voice.proto. Every enum value below
  * is numbered exactly as that proto.

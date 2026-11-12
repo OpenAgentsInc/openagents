@@ -2,7 +2,7 @@ import UIKit
 
 /// Buy bitcoin with dollars through MoonPay or Cash App, Breez's two
 /// providers. The SDK makes the provider's page for this wallet;
-/// verse/wallet.coax checks the amount, passes the page and moves the
+/// pay/wallet.coax checks the amount, passes the page and moves the
 /// purchase (verse_wallet_buy_step), so one answer opens one page. After
 /// the page opens, the screen shows what the SDK reports coming in.
 final class BuyViewController: WalletForm {

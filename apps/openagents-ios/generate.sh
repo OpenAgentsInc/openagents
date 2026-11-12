@@ -26,7 +26,7 @@ for name in home player grid cast camera wallet haunt hud benchmarks; do
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
   debug_flags=()
   if [[ "${CONFIGURATION:-Debug}" == Debug ]]; then debug_flags+=(--debug-info --source-map "$out/$base.map.json"); fi
-  src=verse; case "$name" in player|camera) src=aethyr ;; esac   # the engine modules (#12609)
+  src=verse; case "$name" in player|camera) src=aethyr ;; wallet) src=pay ;; esac   # the engine modules (#12609); the wallet's rules are the Payments context's (#13320)
   "$compiler" c "$src/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
@@ -35,22 +35,23 @@ done
 # names that cannot collide with verse/platform/voice.h on a
 # case-insensitive disk (so the engine is VoiceEngine, not Voice). Floor and
 # meter are #authority: their checks run in this compile.
-for pair in voice:VoiceEngine voice-wire:VoiceWire voice-floor:VoiceFloor voice-meter:VoiceMeter; do
-  "$compiler" c "verse/${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
+# The meter is the Payments context's (pay/, #13320).
+for pair in verse/voice:VoiceEngine verse/voice-wire:VoiceWire verse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
+  "$compiler" c "${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
   mv "$out/${pair##*:}.c.tmp" "$out/${pair##*:}.c"
 done
 # Phone sign-in (verse/phone-signin.coax, #authority): which codes the phone
 # signs for and the NIP-98 request it writes.
 "$compiler" c verse/phone-signin.coax --library --header "$out/PhoneSignin.h" > "$out/PhoneSignin.c.tmp"
 mv "$out/PhoneSignin.c.tmp" "$out/PhoneSignin.c"
-# The wallet's encrypted backup and daily limit (#13217, both #authority): verse/wallet-backup.coax
-# is what the app shows and does; verse/wallet-vault.coax is the sealing and opening
+# The wallet's encrypted backup and daily limit (#13217, both #authority): pay/wallet-backup.coax
+# is what the app shows and does; pay/wallet-vault.coax is the sealing and opening
 # (coax/lib/nostr/vault-wallet.coax). The second loads Coax libraries PhoneSignin loads too, so the
 # app compiles it through OpenAgents/Platform/WalletVaultUnit.c, which gives the shared exports
 # names of their own.
-"$compiler" c verse/wallet-backup.coax --library --header "$out/WalletBackup.h" > "$out/WalletBackup.c.tmp"
+"$compiler" c pay/wallet-backup.coax --library --header "$out/WalletBackup.h" > "$out/WalletBackup.c.tmp"
 mv "$out/WalletBackup.c.tmp" "$out/WalletBackup.c"
-"$compiler" c verse/wallet-vault.coax --library --run-steps 250000000 --header "$out/WalletVault.h" > "$out/WalletVault.c.tmp"
+"$compiler" c pay/wallet-vault.coax --library --run-steps 250000000 --header "$out/WalletVault.h" > "$out/WalletVault.c.tmp"
 mv "$out/WalletVault.c.tmp" "$out/WalletVault.c"
 "$compiler" metal verse/light.coax > "$out/HomeShaders.txt.tmp"
 "$compiler" metal verse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
