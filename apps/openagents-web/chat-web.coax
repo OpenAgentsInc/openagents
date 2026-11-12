@@ -78,6 +78,16 @@ CW_MODEL_NOTES :: [10] string.["Google. Answers from what it knows", "Google. An
   "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web",
   "On this computer, through Coder. Your login, your files, a shell", "On this computer, through Coder. Your login, your files, a shell",
   "On this computer, through Coder. Google's agent, your files, a shell", "On this computer, through Coder. Our own agent, your files, a shell"];
+// The agents: OpenAgents (a model answers, on the web), and the four on this machine through Coder.
+// Each has its own short list of models; "" is the agent's own default.
+CW_AGENTS :: 5;
+CW_AGENT_NAMES :: [5] string.["OpenAgents", "Claude Code", "Codex", "Antigravity", "Microcoder"];
+CW_LM :: 4;   // a local agent's models, at most
+CW_LM_N :: [4] int.[4, 1, 4, 3];
+CW_LM_NAMES :: [16] string.["Default", "Haiku 5.5", "Sonnet 5.5", "Opus 5.5",   "Default", "", "", "",
+  "Default", "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon",   "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", ""];
+CW_LM_IDS :: [16] string.["", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",   "", "", "", "",
+  "", "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon",   "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", ""];
 CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
@@ -103,6 +113,9 @@ ChatWeb :: struct {
   who: [CW_MESSAGES] int;            // CW_YOU or CW_AGENT
   view: int;                         // CW_CHAT, or CW_SETTINGS in the transcript's place
   menu: bool;                        // the model menu is open
+  amenu: bool;                       // the agent menu is open
+  hosted: int;                       // the model OpenAgents last had, for coming back to it
+  lm: [4] int;                       // each local agent's chosen model
   model: int;                        // the model the next message goes to
   known: bool;                       // the account has been read
   known_asked: bool;                 // and that it has been asked for, whatever came back
@@ -184,6 +197,13 @@ cw_model :: (s: [] ChatWeb) -> int {
   if m < 0 || m >= CW_MODELS { return 0; }
   if cw_local_model(m) && s[0].local != 1 { return 0; }
   return ifx cw_claude_model(m) && !cw_connected(s) then 0 else m;
+}
+// The agent the next message goes to: 0 OpenAgents, else the local agent's place + 1.
+cw_agent :: (s: [] ChatWeb) -> int { m := cw_model(s); return ifx cw_local_model(m) then m - CW_HOSTED + 1 else 0; }
+// A local agent's chosen model, within its list.
+cw_lm :: (s: [] ChatWeb, agent: int) -> int {
+  counts := CW_LM_N; k := s[0].lm[agent - 1];
+  return ifx k < 0 || k >= counts[agent - 1] then 0 else k;
 }
 cw_sel :: (s: [] ChatWeb) -> string { return cast(string) s[0].sel[0..<s[0].sel_n]; }
 // A request for the host: a POST of the body, or a GET when there is none. False while another is in flight.
@@ -342,15 +362,26 @@ cw_build :: (s: [] ChatWeb) {
   tr_attr(t, f, AT_FOCUS, "");
   gear := k_icon_button(t, "settings", IC_SETTINGS, ifx s[0].view == CW_SETTINGS then "Back to the chat" else "Settings");
   if s[0].view == CW_SETTINGS { tr_attr(t, gear, AT_STATE, "done"); }
-  names := CW_MODEL_NAMES; notes := CW_MODEL_NOTES;
-  k_select_begin(t, u, "model", names[cw_model(s)], "Model", s[0].menu);
-  if s[0].menu {
-    buf: [UI_ID] u8;
-    for m: 0..<CW_MODELS {
-      if (cw_claude_model(m) && !cw_connected(s)) || (cw_local_model(m) && s[0].local != 1) { continue; }
-      r := k_row(t, u, tr_join(buf[..], "model.", m), names[m], notes[m], m == cw_model(s));
+  names := CW_MODEL_NAMES; agents := CW_AGENT_NAMES; lnames := CW_LM_NAMES; counts := CW_LM_N;
+  agent := cw_agent(s);
+  buf: [UI_ID] u8;
+  // the agent, where there is more than one to choose: Coder on this machine adds its four
+  if s[0].local == 1 {
+    k_select_begin(t, u, "agent", agents[agent], "Agent", s[0].amenu);
+    if s[0].amenu { for a: 0..<CW_AGENTS { r := k_row(t, u, tr_join(buf[..], "agent.", a), agents[a], "", a == agent); } }
+    k_select_end(t, s[0].amenu);
+  }
+  // its model
+  k_select_begin(t, u, "model", ifx agent == 0 then names[cw_model(s)] else lnames[(agent - 1) * CW_LM + cw_lm(s, agent)], "Model", s[0].menu);
+  if s[0].menu && agent == 0 {
+    for m: 0..<CW_HOSTED {
+      if cw_claude_model(m) && !cw_connected(s) { continue; }
+      r := k_row(t, u, tr_join(buf[..], "model.", m), names[m], "", m == cw_model(s));
     }
     if !cw_connected(s) { hint := k_meta(t, "model.hint", "Connect a Claude account in Settings to choose Claude models."); }
+  }
+  if s[0].menu && agent > 0 {
+    for m: 0..<counts[agent - 1] { r := k_row(t, u, tr_join(buf[..], "lm.", m), lnames[(agent - 1) * CW_LM + m], "", m == cw_lm(s, agent)); }
   }
   k_select_end(t, s[0].menu);
   stoppable := s[0].live && !s[0].stopping;
@@ -529,7 +560,11 @@ cw_local_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
     return cw_go(s, CF_LSEND, "/local/send", cast(string) body[0..<n]);
   }
   n := json_raw(body[..], 0, "{\"task\":"); n = json_write_string(body[..], n, text);
-  n = json_raw(body[..], n, ",\"engine\":"); n = json_write_string(body[..], n, ids[model]); n = json_raw(body[..], n, "}");
+  n = json_raw(body[..], n, ",\"engine\":"); n = json_write_string(body[..], n, ids[model]);
+  lids := CW_LM_IDS; agent := model - CW_HOSTED + 1;
+  lid := lids[(agent - 1) * CW_LM + cw_lm(s, agent)];
+  if lid.count > 0 { n = json_raw(body[..], n, ",\"model\":"); n = json_write_string(body[..], n, lid); }
+  n = json_raw(body[..], n, "}");
   return cw_go(s, CF_RUN, "/local/run", cast(string) body[0..<n]);
 }
 // The digit after a part: "model.2" after "model." is 2, else -1.
@@ -589,7 +624,7 @@ cw_send :: (s: [] ChatWeb) {
     if !cw_local_send(s, model, cw_text(s, s[0].count - 1)) { s[0].count -= 1; s[0].total -= 1; s[0].pool_n = s[0].at[s[0].count]; return; }
     s[0].echo = true; s[0].lrun = true; s[0].error_n = 0; s[0].sends += 1;
     s[0].csel_n = 0; s[0].watching = false;   // from here the session Coder runs is what is shown
-    s[0].draft_n = 0; s[0].view = CW_CHAT; s[0].menu = false;
+    s[0].draft_n = 0; s[0].view = CW_CHAT; s[0].menu = false; s[0].amenu = false;
     dm_value(s[0].dom[..], "composer", "");
     return;
   }
@@ -930,10 +965,26 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     if s[0].view == CW_SETTINGS { again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); }   // the account as it is now (a login since the page opened)
   }
   else if kind == CW_CLICK && id == "settings.back" { s[0].view = CW_CHAT; }
-  else if kind == CW_CLICK && id == "model" { s[0].menu = !s[0].menu; }
+  else if kind == CW_CLICK && id == "model" { s[0].menu = !s[0].menu; s[0].amenu = false; }
+  else if kind == CW_CLICK && id == "agent" { s[0].amenu = !s[0].amenu; s[0].menu = false; }
+  else if kind == CW_CLICK && cw_index(id, "agent.") >= 0 {
+    a := cw_index(id, "agent.");
+    if a < CW_AGENTS && s[0].local == 1 {
+      if cw_agent(s) == 0 { s[0].hosted = cw_model(s); }
+      s[0].model = ifx a == 0 then s[0].hosted else CW_HOSTED + a - 1;
+    }
+    s[0].amenu = false;
+    dm_focus(s[0].dom[..], "composer");
+  }
+  else if kind == CW_CLICK && cw_index(id, "lm.") >= 0 {
+    counts := CW_LM_N; agent := cw_agent(s); m := cw_index(id, "lm.");
+    if agent > 0 && m < counts[agent - 1] { s[0].lm[agent - 1] = m; }
+    s[0].menu = false;
+    dm_focus(s[0].dom[..], "composer");
+  }
   else if kind == CW_CLICK && cw_index(id, "model.") >= 0 {
     m := cw_index(id, "model.");
-    if m < CW_MODELS && (!cw_claude_model(m) || cw_connected(s)) && (!cw_local_model(m) || s[0].local == 1) { s[0].model = m; }
+    if m < CW_HOSTED && (!cw_claude_model(m) || cw_connected(s)) { s[0].model = m; }
     s[0].menu = false;
     dm_focus(s[0].dom[..], "composer");   // a model chosen: the caret is back in the field
   }
@@ -1286,7 +1337,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   for i: 0..<40 { b := coaxial_chatweb_frame(s, 0.1, true); }
   #assert s[0].local == -1 && !coaxial_chatweb_asking(s) && tr_find(s[0].tree[..], "side") < 0;
   cw_test_press(s, "model"); b := coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_find(s[0].tree[..], "model.0") >= 0 && tr_find(s[0].tree[..], "model.6") < 0;
+  #assert tr_find(s[0].tree[..], "model.0") >= 0 && tr_find(s[0].tree[..], "model.6") < 0 && tr_find(s[0].tree[..], "agent") < 0;
 
   tl: [1] CwTest; l := tl[0].s[..];
   cw_test_local(l, CW_T_SESSIONS);
@@ -1294,10 +1345,28 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   #assert l[0].local == 1 && l[0].ns == 2 && tr_find(t, "side") >= 0 && tr_find(t, "side.new") >= 0;
   #assert tr_text_of(t, tr_find(t, "s.0.t")) == "fix the build" && tr_text_of(t, tr_find(t, "s.0.m")) == "claude" && tr_text_of(t, tr_find(t, "s.1.m")) == "microcoder";
   #assert tr_text_of(t, tr_find(t, "side.run")) == "Running" && tr_text_of(t, tr_find(t, "side.recent")) == "Coder" && tr_attr_of(t, tr_find(t, "s.0"), AT_STATE) == "busy" && tr_find(t, "s.0.busy") >= 0 && tr_find(t, "s.1.busy") < 0;
+  // two short menus: the agent, and that agent's models
+  cw_test_press(l, "agent"); b = coaxial_chatweb_frame(l, 0.016, true);
+  #assert tr_find(t, "agent.0") >= 0 && tr_find(t, "agent.4") >= 0 && tr_text_of(t, tr_find(t, "agent.4.t")) == "Microcoder" && tr_find(t, "model.0") < 0;
+  cw_test_press(l, "agent.4"); b = coaxial_chatweb_frame(l, 0.016, true);
+  #assert l[0].model == 9 && cw_agent(l) == 4 && !l[0].amenu && tr_text_of(t, tr_find(t, "agent.l")) == "Microcoder" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 3.8 Flash";
   cw_test_press(l, "model"); b = coaxial_chatweb_frame(l, 0.016, true);
-  #assert tr_find(t, "model.6") >= 0 && tr_find(t, "model.9") >= 0 && tr_find(t, "model.3") < 0;
-  cw_test_press(l, "model.7"); b = coaxial_chatweb_frame(l, 0.016, true);
-  #assert l[0].model == 7 && cw_model(l) == 7;
+  #assert tr_find(t, "lm.0") >= 0 && tr_find(t, "lm.2") >= 0 && tr_find(t, "lm.3") < 0 && tr_find(t, "model.0") < 0;
+  cw_test_press(l, "lm.2"); b = coaxial_chatweb_frame(l, 0.016, true);
+  #assert cw_lm(l, 4) == 2 && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 4 Carbon";
+  cw_test_type(l, "composer", "go");
+  cw_test_enter(l, "composer");
+  if cw_test_door(l) != "/local/run" { cw_test_answer(l, 200, ifx cw_test_door(l) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
+  #assert cw_test_door(l) == "/local/run" && cw_test_body(l) == "{\"task\":\"go\",\"engine\":\"micro\",\"model\":\"gemini-4-carbon\"}";
+  // back to OpenAgents: the model it had
+  tm: [1] CwTest; m := tm[0].s[..];
+  cw_test_local(m, CW_T_SESSIONS);
+  cw_test_press(m, "model"); b = coaxial_chatweb_frame(m, 0.016, true);
+  cw_test_press(m, "model.2");
+  cw_test_press(m, "agent"); b = coaxial_chatweb_frame(m, 0.016, true); cw_test_press(m, "agent.2");
+  #assert m[0].model == 7 && cw_agent(m) == 2;
+  cw_test_press(m, "agent"); b = coaxial_chatweb_frame(m, 0.016, true); cw_test_press(m, "agent.0");
+  #assert m[0].model == 2 && cw_agent(m) == 0;
   #assert cw_number("s.12", "s.") == 12 && cw_number("s.0", "s.") == 0 && cw_number("s.", "s.") == -1 && cw_number("s.1x", "s.") == -1 && cw_number("side.new", "s.") == -1 && cw_number("s.1234", "s.") == -1;
 }
 
