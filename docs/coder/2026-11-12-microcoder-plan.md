@@ -225,6 +225,61 @@ Known limits: U11's check takes 23 to 43 s; U3 is smaller than N3 and N4;
 U8 and U11 touch the same large app file; parts of U3, U5, U6, U7, U10, U11
 and U12 need a service, browser or C build and are not tested.
 
+## Microcoder RLM, and the verdict it is put to (2026-11-12, before any fresh-task run)
+
+The owner asked for Recursive Language Models (`coax/lib/rlm/`, #13367) to
+be connected to Microcoder. The result is a second way to run it, "RLM
+code" (`coax/lib/rlm/code.coax`): the repository stays in the environment
+and the model writes code against it (`search`, `lines`, `edit`, `sh`), so
+file contents never sit in its prompt and nothing is compacted.
+
+What the coordinator's own tests on the seen tasks N1 to N6 showed (one to
+four runs each, about $80):
+
+- **Argon as the model** passed N1, N2 and N3 on the first try, faster than
+  Antigravity, at about Antigravity's cost. N4 passed once in four.
+- **Changing the conversation's shape did not lower cost:** a smaller
+  output cap, a larger one, and a manager with workers each cost more.
+  Vertex serves a growing prompt's cache from two calls back, so what a run
+  costs is how much new text the model reads.
+- **Flash as the model** (90 turns) passed N1, N2, N3 and N6 on every run
+  at $0.41 to $1.81 and 161 to 436 s, where Antigravity spent $1.22 to
+  $3.97 and 304 to 900 s. It passed N5 two times in five and N4 never.
+- **Flash, then Argon reviewing its diff** passed N5 three times in three
+  (Argon made the fixing edit once) for about $0.35 and a minute more.
+- Gemini 4 Argon asked for free text with code in it often wrote a native
+  function call, which Vertex refuses; the model now answers in a schema
+  (`c083ac8779`).
+
+**The configuration judged ("Microcoder RLM"):**
+
+1. `code.coax run --root-model gemini-3.8-flash --max-turns 90 --max-usd 2
+   --max-minutes 8 --max-depth 1` on the task.
+2. `code.coax run` on Gemini 4 Argon (low), `--max-usd 2.5 --max-minutes 7
+   --max-depth 1`, with the task, what `git status` shows and the first
+   pass's summary, told to check each requirement against the code, run the
+   task's checks and fix or finish.
+
+Both at `--profile danger-full-access` in a throwaway worktree, as the
+earlier harness runs were. The two passes together can't pass 15 minutes.
+
+**Against:** Antigravity through Coder on Gemini 4 Argon at low thinking
+with its watchdog, as in every earlier round. That is each harness at its
+best measured setting, not the same model: Microcoder RLM mostly runs
+Flash. Antigravity on Flash was measured on 2026-11-11 (5 of 6, slower and
+with more steps than on Argon).
+
+**Tasks and runs.** U1 to U12, hashes above. One round first: each task
+once on both harnesses, started together, two pairs at once. A second round
+only if the first leaves the money for it (the owner's $200 cap) and
+Microcoder RLM is not behind on passes by three or more.
+
+**Conditions,** over the judged rounds, as above: passes not behind; total
+cost at most 60% of Antigravity's and cheaper on at least 10 of 12 tasks;
+median wall time at most 75% and faster on at least 10 of 12. A run over 15
+minutes fails. Costs are from the rates card (Flash $1.50 / $0.15 / $7.50,
+Argon $4.00 / $0.20 / $20.00 per million input, cached, output tokens).
+
 ## Cost and order of work
 
 Within $200 of Google credits from 2026-11-12:
