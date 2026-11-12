@@ -44,7 +44,7 @@ eg_sky_tick :: (v: [] RmServer, k: int) {
   v: [1] RmServer;
   rm_init(v[..]);
   rm_clock(v[..], 0, at + block - 1000);
-  ev := "GET /api/room/relay/everglade/pair-sky HTTP/1.1\r\n\r\n";
+  ev := "GET /api/room/relay/everglade/pair-e2-sky HTTP/1.1\r\n\r\n";
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   eg_test_drain(v[..], box[..]);
@@ -75,7 +75,7 @@ eg_sky_test_room :: (v: [] RmServer, hi: int, lo: int, at: int, w: [] u8, dice: 
   rm_init(v);
   rm_dice_key(v, hi, lo);
   rm_clock(v, 0, at);
-  if rm_join(v, 0, "GET /api/room/relay/everglade/dice-key HTTP/1.1\r\n\r\n") != 0 { return -1; }
+  if rm_join(v, 0, "GET /api/room/relay/everglade/pair-e2-dice-key HTTP/1.1\r\n\r\n") != 0 { return -1; }
   k := eg_room_at(v, v[0].conns[0].relay);
   dice[0] = v[0].eg[k].rules[0].b[0].dice[0].state;
   seed[0] = v[0].eg[k].seed;

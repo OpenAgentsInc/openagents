@@ -156,7 +156,7 @@ tool_main :: () -> int #export_c #effects(all) {
   room := rs_num(args_at(a[..], 3));
   dir := args_at(a[..], 4);
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-drift-", room);
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-drift-", room);
   hold_b: [1024] u8; held_b: [1024] u8;
   hold := fs_join(dir, "hold", hold_b[..]); held := fs_join(dir, "held", held_b[..]);
   log_b: [1024] u8; notes := fs_join(dir, "bots-heard.txt", log_b[..]);   // bot 0's casts heard and refusals, as they come

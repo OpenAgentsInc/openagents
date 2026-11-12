@@ -2,7 +2,7 @@
 // Optional observation adapters. Socket ownership comes from the production
 // seat lookup; observation state retires with RmConn, never with a seat index.
 #test "latency adapter follows actual input admission and final queued D without altering gameplay (#12840)" #steps 4000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-latency",1,false);b:[256]u8;
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-latency",1,false);b:[256]u8;
   #assert rm_lt_request(v[..],0,"I 1 0 0 0 0 0",1,1,b[..])== -1;
   #assert rm_lt_request(v[..],0,"@1 i 1 1 1",1000000,1000001,b[..])==0;
   #assert rm_lt_active(v[..],k, SeatId.{value = 0})&&!rm_lt_active(v[..],-1, SeatId.{value = 0})&&!rm_lt_active(v[..],k, SeatId.{value = EG_SEATS});
@@ -20,7 +20,7 @@
   #assert rm_lt_request(v[..],0,"@1 p 1 1",1,1,b[..])==0&&rm_lt_tail(v[..],0)== -1;
 }
 #test "latency adapters refuse stale sockets, invalid seats and malformed final snapshots (#12840)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-latency-stale",1,false);b:[256]u8;
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-latency-stale",1,false);b:[256]u8;
   #assert rm_lt_request(v[..],0,"@1 p 7 1",1,2,b[..])>0;
   #assert !rm_lt_active(v[..],k, SeatId.{value = 0})&&rm_lt_tail(v[..],0)== -1;
   #assert rm_lt_request(v[..],-1,"@1 p 8 1",1000001,1000001,b[..])==0;

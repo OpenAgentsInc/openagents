@@ -104,7 +104,7 @@ tool_main :: () -> int #export_c #effects(all) {
   klass := ifx args_count(a[..]) > 3 then args_at(a[..], 3) else "druid";
   flags := ifx args_count(a[..]) > 4 then args_at(a[..], 4) else "64";
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-hprejoin-", rs_stamp());
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-hprejoin-", rs_stamp());
   // 0 the player, 1 the page that keeps the room running, 2 the player again
   c: [3] RelayConn; h: [3] HrHeard; seq: [3] int; live: [3] bool;
   ua: [1024] u8; ub: [1024] u8; uc: [1024] u8;

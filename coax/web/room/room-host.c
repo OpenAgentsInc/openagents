@@ -999,8 +999,6 @@ int main(int argc, char **argv) {
   bool required = !(must && !strcmp(must, "0"));
   /* which shard of the instance directory this is (oa-room 1, oa-room-K K: room-directory.coax) */
   const char *shard = getenv("OA_ROOM_SHARD");
-  /* every room is Everglade II's (docs/decisions/0005-production-room-runs-everglade-ii.md, #13267) */
-  rm_e2_only(view(), true);
   if (shard && *shard) rm_shard(view(), atoi(shard));
   /* a room VM's shard names where its pages connect, and reports its health every 5 s (#13179) */
   { const char *ep = getenv("OA_ROOM_ENDPOINT"); if (ep && *ep && !rm_endpoint(view(), (coax_string){ep, (int64_t)strlen(ep)})) fprintf(stderr, "room: OA_ROOM_ENDPOINT is not a wss:// URL ending in /: not named\n"); }

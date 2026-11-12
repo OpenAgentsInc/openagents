@@ -287,7 +287,7 @@ eg_load :: (a: [] Args, e2: bool) -> int {
     if !ok || proc_start(h) != 0 { tool_errln("load: can't start a room's process (run it from the repository's root)"); return 1; }
   }
   all := true; line: [8192] u8;
-  print("{\"players\":%,\"realm\":\"%", players, ifx e2 then "pair-e2-load-" else "pair-load-"); print("%\",\"rooms\":[", stamp);
+  print("{\"players\":%,\"realm\":\"%", players, ifx e2 then "pair-e2-load-" else "pair-e2-load-"); print("%\",\"rooms\":[", stamp);
   for k: 0..<rooms {
     json := 0; verdict := false;
     while true {
@@ -321,7 +321,7 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   open := 0;
   t_open := rs_now();
   for i: 0..<players {
-    k := rs_put(nm[..], 0, ifx e2 then "pair-e2-load-" else "pair-load-"); k = rs_int(nm[..], k, stamp); k = rs_put(nm[..], k, "-"); k = rs_int(nm[..], k, room);
+    k := rs_put(nm[..], 0, ifx e2 then "pair-e2-load-" else "pair-e2-load-"); k = rs_int(nm[..], k, stamp); k = rs_put(nm[..], k, "-"); k = rs_int(nm[..], k, room);
     n := rs_put(u[..], 0, base);
     if shard > 0 { n = rs_put(u[..], n, "/api/room/s"); n = rs_int(u[..], n, shard); n = rs_put(u[..], n, "/relay/everglade/"); }
     else { n = rs_put(u[..], n, "/api/room/relay/everglade/"); }

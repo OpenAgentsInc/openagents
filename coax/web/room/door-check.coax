@@ -122,7 +122,7 @@ tool_main :: () -> int #export_c #effects(all) {
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8841", b[..]);
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-door-", rs_stamp());
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-door-", rs_stamp());
   sa: [1] DcSeat; sb: [1] DcSeat;
   if url.count == 0 || !dc_open(sa[..], url, "p-doorcheck-a", "Door A") || !dc_open(sb[..], url, "p-doorcheck-b", "Door B") {
     tool_err("door-check: can't open "); tool_errln(url); print("fails\n"); return 1;

@@ -132,7 +132,7 @@ tool_main :: () -> int #export_c #effects(all) {
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-bridge-", rs_stamp());
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-bridge-", rs_stamp());
   c: [BC_SEATS] RelayConn; h: [BC_SEATS] BcHeard; seq: [BC_SEATS] int;
   ua: [1024] u8; ub: [1024] u8;
   url_a := rs_ticketed(ua[..], url, "p-bridgecheck-a", "Bridge A"); url_b := rs_ticketed(ub[..], url, "p-bridgecheck-b", "Bridge B");

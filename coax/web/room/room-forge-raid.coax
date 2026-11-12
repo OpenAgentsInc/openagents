@@ -49,7 +49,7 @@ fg_raid_api :: (v:[]RmServer,req:string)->int {
 #test "local forge event starts real armies doubles only the cult refuses overflow and stops without deleting authored NPCs" #steps 2000000000 {
   v:[1]RmServer;rm_init(v[..]);get:="GET /api/playtest/forge/raid HTTP/1.1\r\n\r\n";
   #assert rm_forge_api(v[..],get)==403;v[0].dev.on=true;v[0].dev.admin=true;#assert rm_forge_api(v[..],get)==409;
-  rm_clock(v[..],0,1762190000000);#assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-forge HTTP/1.1\r\n\r\n")==0;
+  rm_clock(v[..],0,1762190000000);#assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-e2-forge HTTP/1.1\r\n\r\n")==0;
   k:=eg_room_at(v[..],v[0].conns[0].relay);rm_heard(v[..],0,"H 5 ranger.0.0.0 druid 0 Editor");r:=ev_rules(v[..],k);
   #assert r[0].raid[0].limit==64;
   for id:1..<9 {_:=e5rf_spawn(r,ForgeNpc.{id=id,group=1,kind=1});}

@@ -108,10 +108,10 @@ tool_main :: () -> int #export_c #effects(all) {
   if on < 0 { tool_err("boat-check: can't read "); tool_errln(ctl); return 2; }
   own := cast(string) orig[0..<on];
   stamp := rs_stamp();
-  cb: [64] u8; cn := rs_put(cb[..], 0, "pair-boat-"); cn = rs_int(cb[..], cn, stamp);
+  cb: [64] u8; cn := rs_put(cb[..], 0, "pair-e2-boat-"); cn = rs_int(cb[..], cn, stamp);
   code := cast(string) cb[0..<cn];
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-boat-", stamp);
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-boat-", stamp);
   sa: [1] BcSeat; sb: [1] BcSeat;
   if url.count == 0 || !bc_open(sa[..], url, "p-boatcheck-a", "Boat A") || !bc_open(sb[..], url, "p-boatcheck-b", "Boat B") {
     tool_err("boat-check: can't open "); tool_errln(url); print("fails\n"); return 1;

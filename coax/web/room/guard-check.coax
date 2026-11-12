@@ -96,7 +96,7 @@ tool_main :: () -> int #export_c #effects(all) {
   u: [1024] u8;
   stamp := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else rs_stamp();
   hold := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 0;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-guard-", stamp);
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-guard-", stamp);
   c: [1] RelayConn; h: [1] GcHeard; seq: [1] int;
   ut: [1024] u8;
   url_t := rs_ticketed(ut[..], url, "p-guardcheck-a", "Guard Check");

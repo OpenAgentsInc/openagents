@@ -104,7 +104,7 @@ eg_dg_state :: (entry: string) -> bool {
   #assert eg_dg_state("s 1 0 7 1") && eg_dg_state("SAbc") && eg_dg_state("x 4") && eg_dg_state("n 1 - a b 0 -") && eg_dg_state("w 1 2");
   #assert !eg_dg_state("e hit 1 2 3 0") && !eg_dg_state("o 4") && !eg_dg_state("e town") && !eg_dg_state("s") && !eg_dg_state("S");
   rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
-  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-wt-gate HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-gate HTTP/1.1\r\n\r\n") == 0;
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
   k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
   rm_wt_heard(v[..], 0, "I 1 100 0 0 0 0 0 0"); #assert v[0].eg[k].seat[0].q_n == 0;   // not a WebTransport session: nothing
@@ -145,8 +145,8 @@ wt_test_live :: (m: [] WireMirror) -> int { n := 0; for e: 0..<WIRE_MIRROR { if 
   v: [1] RmServer; box: [1] EgInbox;
   rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   rm_wt_conn(v[..], 0, true);
-  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-wt-state HTTP/1.1\r\n\r\n") == 0;
-  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-wt-state HTTP/1.1\r\n\r\n") == 1;
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-state HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-wt-state HTTP/1.1\r\n\r\n") == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   b: [96] u8; seen: [2] WtSeen; ws_most := 0;
@@ -230,7 +230,7 @@ wt_sim_run :: (loss: int, rtt: int, jitter: int, seed: int, ticks: int, out: [] 
   sim[0].seed = seed; sim[0].loss = loss; sim[0].rtt = rtt; sim[0].jitter = jitter;
   rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   rm_wt_conn(v[..], 0, true);
-  _ := rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-wt-sim HTTP/1.1\r\n\r\n"); _2 := rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-wt-sim HTTP/1.1\r\n\r\n");
+  _ := rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-sim HTTP/1.1\r\n\r\n"); _2 := rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-wt-sim HTTP/1.1\r\n\r\n");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
   b: [96] u8; age: [2] [1200] int; an := 0;

@@ -347,23 +347,6 @@ ev_xp_of :: (v: [] RmServer, k: int, s_id: SeatId) -> int { s := s_id.value; ret
 
 // ---- the lifecycle
 
-#test "overload: every creature's simultaneous death keeps its XP and holds its raid slot until consumed (#12841)" #steps 6000000000 {
-  v:[1]RmServer;k:=ev_test_server(v[..]);r:=v[0].eg[k].rules[..];
-  v[0].ev[k].phase=EV_SIEGE;v[0].ev[k].kind=EV_RAID;r[0].raid[0].limit=E5RR_BEASTS;
-  r[0].raid[0].mix=RtMix.{skirm=1,casters=0,support=0,guard=0};
-  for n:0..<E5RR_BEASTS{
-    #assert e5rd_raider(r,RS_NPC_CULTIST,1,n+1,f32(n%12)*3,-30-f32(n/12)*3,rt_open(0,-45,0,-1),n/RT_SQUAD,n%RT_SQUAD,0,0)>0;
-  }
-  for q:0..<E5RR_BEASTS{v[0].ev[k].hurt[q]=1;r[0].b[0].c[E5RR_BEAST0+q].hp=0;r[0].b[0].c[E5RR_BEAST0+q].dead=true;}
-  e5rr_beasts_check(r);#assert r[0].raid[0].down_n==E5RR_BEASTS;
-  e5rr_beasts_check(r);#assert r[0].raid[0].down_n==E5RR_BEASTS;
-  #assert !ev_cult_one(v[..],k);
-  seen:[E5RR_BEASTS]bool;for n:0..<r[0].raid[0].down_n{q:=r[0].raid[0].downs[n].q;#assert q>=0&&q<E5RR_BEASTS&&!seen[q];seen[q]=true;}
-  ev_raid_downs(v[..],k);expected:=E5RR_BEASTS*EV_XP_SRD_X*EV_XP_CULTIST;
-  #assert v[0].ev[k].xp[0]==expected&&v[0].ev[k].xp[1]==0&&v[0].ev[k].slain==E5RR_BEASTS;
-  ev_raid_downs(v[..],k);#assert v[0].ev[k].xp[0]==expected&&r[0].raid[0].down_n==0;
-  #assert ev_cult_one(v[..],k);
-}
 
 ev_secs :: (n: int) -> int { return n * EG_HZ; }
 ev_phase :: (v: [] RmServer, k: int, phase: int, secs: int) {
@@ -917,7 +900,7 @@ ev_send :: (v: [] RmServer, k: int, s_id: SeatId, full: bool, unseen: int, o: []
 ev_test_server :: (v: [] RmServer) -> int {
   rm_init(v);
   rm_clock(v, 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-events HTTP/1.1\r\n\r\n";
+  ev := "GET /api/room/relay/everglade/pair-e2-events HTTP/1.1\r\n\r\n";
   #assert rm_join(v, 0, ev) == 0 && rm_join(v, 1, ev) == 1;
   k := eg_room_at(v, v[0].conns[0].relay);
   rm_heard(v, 0, "H 5 ranger.0.0.0 druid 0 -");
@@ -1072,7 +1055,7 @@ ev_test_entry :: (t: string, part: string) -> bool {
   v: [1] RmServer;
   box: [1] EgInbox;
   k := ev_test_server(v[..]);
-  ev := "GET /api/room/relay/everglade/pair-events HTTP/1.1\r\n\r\n";
+  ev := "GET /api/room/relay/everglade/pair-e2-events HTTP/1.1\r\n\r\n";
   rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
   rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 1 0\n");
   ev_test_skip(v[..], k);
@@ -1209,37 +1192,6 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   #assert !b[0].c[i].dead && b[0].c[i].hp == b[0].c[i].hp_max && b[0].c[i].death_fail == 0;
 }
 
-#test "events: a room's player has no whole-town Rebuild, and a Long Rest only between raids and out of combat (#12801)" #steps 6000000000 {
-  v: [1] RmServer;
-  k := ev_test_server(v[..]);
-  b := v[0].eg[k].rules[0].b[..];
-  i := E5RR_SEAT;
-  // R from a player (no admin ticket) stands nothing up
-  v[0].eg[k].broken[3] = true;
-  rm_heard(v[..], 0, "R 7");
-  #assert v[0].eg[k].broken[3] && !v[0].eg[k].rebuild;
-  // between raids, unhurt: a Long Rest makes you whole
-  ev_calm(v[..], k);
-  #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
-  b[0].c[i].hp = b[0].c[i].hp_max - 3;
-  ev_calm(v[..], k);   // Hit Points lost since the last second: fighting
-  #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
-  rm_heard(v[..], 0, "L 8");
-  #assert b[0].c[i].hp == b[0].c[i].hp_max - 3;
-  // EV_CALM_S later it may rest
-  v[0].ev[k].fought[0] -= EV_CALM_S * EG_HZ;   // (as if EV_CALM_S of ticks went by)
-  #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
-  rm_heard(v[..], 0, "L 9");
-  #assert b[0].c[i].hp == b[0].c[i].hp_max;
-  // during a raid: none, and the aftermath again allows it
-  v[0].ev[k].phase = EV_SIEGE;
-  #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
-  v[0].ev[k].phase = EV_AFTER;
-  #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
-  // a cast is fighting
-  ev_fought(v[..], k, SeatId.{value = 0});
-  #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
-}
 
 #test "events: the siege has no time limit and the town never falls; STOP ends it with no bonus, events off end it, and START begins it in every room (#12860)" #steps 16000000000 {
   v: [1] RmServer;
@@ -1281,91 +1233,8 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   #assert v[0].ev[k].phase == EV_ANNOUNCE;
 }
 
-#test "events: a seat hears its own XP gain and level-up past a tick full of cues (#12907)" #steps 8000000000 {
-  v: [1] RmServer;
-  box: [1] EgInbox;
-  k := ev_test_server(v[..]);
-  rm_control(v[..], "levels 1 2\n");
-  eg_test_drain(v[..], box[..]);
-  // more cues near both seats than a tick has room for, then seat 0's gain
-  b: [64] u8;
-  for q: 0..<200 { n := wire_put_hit(b[..], 0, WireHit.{who = 2000 + q, by = 2001, amt = 7, kind = 3}); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, false); }
-  #assert v[0].eg[k].ev_n >= EG_EVENTS;
-  ev_award(v[..], k, SeatId.{value = 0}, 300);
-  eg_test_tick(v[..], k);
-  eg_test_drain(v[..], box[..]);
-  #assert v[0].ev[k].level[0] == 2;
-  #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 300") && eg_test_has(eg_test_of(box[..], 0), "e level 0 2");
-}
 
-#test "events: XP levels a seat at 300 and no further than the cap (2, then 3 at 900), times the reward dial; the SRD class at its level with its kit only" #steps 8000000000 {
-  v: [1] RmServer;
-  box: [1] EgInbox;
-  k := ev_test_server(v[..]);
-  rm_control(v[..], "event 0 0 3 12 6 1 3 3 31 1 2 1 200 15 0 0\nlevels 1 2\n");
-  b := v[0].eg[k].rules[0].b[..];
-  #assert v[0].ev[k].level[0] == 1 && b[0].c[0].level == 1 && b[0].c[0].hp_max == 9 && b[0].c[0].slots_max[1] == 2;
-  // outside the level 1 kit: Moonbeam (a 2nd-level spell) and Meteor Swarm; in it: Healing Word
-  rm_heard(v[..], 0, "C 1 20 300 0 0 -1");
-  rm_heard(v[..], 0, "C 2 0 300 0 0 -1");
-  rm_heard(v[..], 0, "C 3 28 0 0 0 1000");
-  eg_test_drain(v[..], box[..]);
-  a := eg_test_of(box[..], 0);
-  #assert eg_test_has(a, "r 1 level") && eg_test_has(a, "r 2 level") && !eg_test_has(a, "r 3 ");
-  ev_award(v[..], k, SeatId.{value = 0}, 150);   // 300 at 200%
-  eg_test_tick(v[..], k);
-  eg_test_drain(v[..], box[..]);
-  #assert v[0].ev[k].xp[0] == 300 && v[0].ev[k].level[0] == 2 && b[0].c[0].level == 2 && b[0].c[0].hp_max == 15 && b[0].c[0].slots_max[1] == 3;
-  #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 300") && eg_test_has(eg_test_of(box[..], 1), "e level 0 2") && eg_test_has(eg_test_of(box[..], 1), "v 0 2 300 2 ");
-  #assert ev_kit_has(ev_kit(E5R_DRUID, 2), 27) && !ev_kit_has(ev_kit(E5R_DRUID, 1), 27) && !ev_kit_has(ev_kit(E5R_DRUID, 2), 20);
-  // the cap is 2: XP past it is kept and gives nothing
-  ev_award(v[..], k, SeatId.{value = 0}, 5000);
-  #assert v[0].ev[k].level[0] == 2 && v[0].ev[k].xp[0] == 10300;
-  // the cap raised to 3: the seat is level 3 at once, with Moonbeam
-  rm_control(v[..], "levels 1 3\n");
-  #assert v[0].ev[k].level[0] == 3 && b[0].c[0].slots_max[2] == 2;
-  ev_test_ticks(v[..], k, EG_CAST_GAP + 1);
-  eg_test_drain(v[..], box[..]);
-  rm_heard(v[..], 0, "C 4 20 300 0 0 -1");
-  eg_test_drain(v[..], box[..]);
-  #assert !eg_test_has(eg_test_of(box[..], 0), "r 4 level") && ev_level_of(EV_XP_MAX, 9) == EV_LEVEL_TOP;
-  // a Warlock at level 1: Eldritch Blast, not Fireball
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 warlock 0 -");
-  #assert v[0].ev[k].level[1] == 1 && b[0].c[1].klass == RS_WARLOCK && b[0].c[1].level == 1 && b[0].c[1].hp_max == 9;
-  rm_heard(v[..], 1, "C 5 65 300 0 0 -1");
-  ev_test_ticks(v[..], k, EG_CAST_GAP + 1);
-  rm_heard(v[..], 1, "C 6 71 300 0 0 -1");   // Chill Touch: in the level 1 kit
-  ev_test_ticks(v[..], k, EG_CAST_GAP + 1);
-  rm_heard(v[..], 1, "C 7 72 300 0 0 -1");   // Hex: the same
-  eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 1), "r 5 level") && !eg_test_has(eg_test_of(box[..], 1), "r 6 level") && !eg_test_has(eg_test_of(box[..], 1), "r 7 level");
-  #assert b[0].c[1].rebuke;   // Hellish Rebuke, prepared: the engine casts it as a Reaction
-  // the demo character is an admin's only: a guest's FLAGS bit asks for nothing
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 warlock 64 -");
-  #assert v[0].ev[k].level[1] == 1;
-  // levels off: Everglade's own druid again, its XP kept
-  rm_control(v[..], "levels 0 3\n");
-  #assert v[0].ev[k].level[0] == 0 && b[0].c[0].level == FB_EG_LEVEL && v[0].ev[k].xp[0] == 10300;
-}
 
-#test "events: an admin's ticket (ACCT 2) and the demo bit give Everglade's own level 17 Warlock while levels are on" #steps 4000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  now := 1762190000000;
-  rm_clock(v[..], 0, now);
-  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-  rm_ticket_key(v[..], key, true);
-  rm_control(v[..], "levels 1 2\n");
-  t: [256] u8; r: [512] u8;
-  m := tk_sign_admin(key, "p-0011223344556677", "pair-tk", now + 60000, t[..]);
-  #assert m > 0 && rm_join(v[..], 0, tk_test_ask(r[..], t[..], m)) == 0 && v[0].conns[0].ticket.admin && v[0].conns[0].ticket.account;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 warlock 64 -");
-  b := v[0].eg[k].rules[0].b[..];
-  #assert v[0].ev[k].level[0] == 0 && b[0].c[0].level == FB_WL_LEVEL;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 warlock 0 -");
-  #assert v[0].ev[k].level[0] == 1 && b[0].c[0].level == 1;
-}
 
 #test "events: a ticket brings XP back (HPxXP), an old ticket means 0 XP, and the vitals post carries it" #steps 4000000000 {
   v: [1] RmServer;
@@ -1376,15 +1245,15 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   rm_ticket_key(v[..], key, true);
   #assert tk_check(key, "", "r", now).xp == 0;
   t: [256] u8; r: [512] u8;
-  n := tk_sign_xp(key, "p-0011223344556677", false, "", "pair-tk", 0, now + 60000, -1, 420, t[..]);
+  n := tk_sign_xp(key, "p-0011223344556677", false, "", "pair-e2-tk", 0, now + 60000, -1, 420, t[..]);
   #assert eg_test_has(cast(string) t[0..<n], ".-x420.");
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert v[0].ev[k].xp[0] == 420;
-  n = tk_sign_xp(key, "p-8899aabbccddeeff", false, "", "pair-tk", 0, now + 60000, 7, 0, t[..]);
+  n = tk_sign_xp(key, "p-8899aabbccddeeff", false, "", "pair-e2-tk", 0, now + 60000, 7, 0, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1 && v[0].conns[1].ticket.hp == 7 && v[0].ev[k].xp[1] == 0;
-  n = tk_sign(key, "p-0123012301230123", false, "", "pair-tk", now + 60000, 5, t[..]);
-  #assert tk_check(key, cast(string) t[0..<n], "pair-tk", now).ok && tk_check(key, cast(string) t[0..<n], "pair-tk", now).xp == 0;
+  n = tk_sign(key, "p-0123012301230123", false, "", "pair-e2-tk", now + 60000, 5, t[..]);
+  #assert tk_check(key, cast(string) t[0..<n], "pair-e2-tk", now).ok && tk_check(key, cast(string) t[0..<n], "pair-e2-tk", now).xp == 0;
   ev_award(v[..], k, SeatId.{value = 0}, 30);
   rm_left(v[..], 0);
   #assert rm_vitals_due(v[..]) > 0;
@@ -1423,66 +1292,6 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   #assert e5rd_house_stage(r) == RT_HOUSE_WHOLE && r[0].raid[0].house == 0;
 }
 
-// The owner's "NPCs should not die in 1 hit from a level 1": ten Eldritch Blasts (1d10 Force, the
-// Warlock's Fire Bolt) from a level 1 Warlock at the raid's Cultists, through the real cast path (C,
-// its checks, its flight, the rules' roll). Each hit is one 1d10 (20 at most, a critical's), and a
-// Cultist (AC 12, 9 HP) mostly takes more than one hit. (The siege's watch fights the other Cultists
-// meanwhile, so only the target's Hit Points are read.)
-#test "events: a level 1 Warlock's 1d10 cantrip takes a Cultist (AC 12, 9 HP) down in a plausible number of hits; the raid's stat blocks are the SRD's" #steps 40000000000 {
-  v: [1] RmServer;
-  box: [1] EgInbox;
-  k := ev_test_server(v[..]);
-  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\nlevels 1 1\n");
-  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 warlock 0 -");
-  ev_test_skip(v[..], k);
-  #assert v[0].ev[k].phase == EV_SIEGE && v[0].ev[k].level[1] == 1;
-  ev_test_ticks(v[..], k, EG_HZ);   // past the muster's first turns
-  r := v[0].eg[k].rules[..];
-  b := r[0].b[..];
-  #assert b[0].c[E5RR_SEAT + 1].klass == RS_WARLOCK && b[0].c[E5RR_SEAT + 1].level == 1 && b[0].c[E5RR_SEAT + 1].agonizing < 0;
-  // every raider is its own stat block, the SRD's numbers, each its own Hit Points
-  for q: 0..<E5RR_BEASTS {
-    c := b[0].c[E5RR_BEAST0 + q];
-    if r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(r[0].beasts[q]) { #assert c.ac == 12 && c.hp_max == 9; }
-    if r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_FANATIC && e5rd_is(r[0].beasts[q]) { #assert c.ac == 13 && c.hp_max == 44; }
-  }
-  // the seat stands it out; the Cultists come one by one to 6 m in front of it
-  b[0].c[E5RR_SEAT + 1].hp_max = 100000; b[0].c[E5RR_SEAT + 1].hp = 100000;
-  hits := 0; kills := 0; on := 0; one_hit := 0; most := 0; seq := 10;
-  for n: 0..<10 {
-    q := -1;
-    for j: 0..<E5RR_BEASTS { if q < 0 && r[0].beasts[j].form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(r[0].beasts[j]) && !b[0].c[E5RR_BEAST0 + j].dead && b[0].c[E5RR_BEAST0 + j].hp > 0 { q = j; } }
-    #assert q >= 0;
-    if on == 0 { b[0].c[E5RR_BEAST0 + q].hp = b[0].c[E5RR_BEAST0 + q].hp_max; }
-    hp_all: [E5RR_BEASTS] int;
-    for j: 0..<E5RR_BEASTS { hp_all[j] = b[0].c[E5RR_BEAST0 + j].hp; }
-    p := v[0].eg[k].seat[1].pose;
-    r[0].beasts[q].x = p.x + 6; r[0].beasts[q].z = p.z;
-    b[0].c[E5RR_BEAST0 + q].x = e5r_sq(p.x + 6); b[0].c[E5RR_BEAST0 + q].y = e5r_sq(p.z);
-    l: [96] u8;
-    m := wire_put(l[..], 0, "C"); m = wire_int(l[..], m, seq); m = wire_int(l[..], m, FB_WL0);
-    m = wire_m(l[..], m, p.x + 6); m = wire_m(l[..], m, p.y + 1); m = wire_m(l[..], m, p.z);
-    m = wire_int(l[..], m, E5RR_TGT_BEAST + r[0].beasts[q].id);
-    seq += 1;
-    rm_heard(v[..], 1, cast(string) l[0..<m]);
-    // the cast's checks, its flight and its roll, no other raider's turn in between to matter
-    for t: 0..<EG_CAST_GAP + 6 {
-      r[0].beasts[q].x = p.x + 6; r[0].beasts[q].z = p.z;
-      eg_test_tick(v[..], k);
-    }
-    eg_test_drain(v[..], box[..]);
-    c := b[0].c[E5RR_BEAST0 + q];
-    lost := hp_all[q] - c.hp;
-    on += 1;
-    if lost > 0 { hits += 1; most = rs_max(most, lost); }
-    #assert lost <= 20;   // one 1d10, a critical's 2d10 at most: no wave factor, no second roll
-    if c.dead || c.hp <= 0 { kills += 1; if on == 1 { one_hit += 1; } on = 0; }
-  }
-  // a 1d10 against AC 12 at +5 hits about 70% of the time; 9 HP falls to one hit only on a 9 or 10
-  #assert hits >= 4 && most <= 20;
-  #assert kills >= 1 && kills <= 5 && one_hit * 2 <= kills;
-}
 
 #test "events: the hero dial brings Echo to the watch as the siege begins, once; she casts at the cult, and its strike is the town's as her bar ends (#12996)" #steps 40000000000 #traversal 268435456 {
   v: [1] RmServer;

@@ -172,17 +172,17 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   rm_ticket_key(v[..], key, true);
   t: [256] u8; r: [512] u8;
-  n := tk_sign(key, "p-00000000000000aa", false, "", "pair-blk", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-blk")) == 0;
-  n = tk_sign(key, "p-00000000000000bb", false, "", "pair-blk", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-blk")) == 1;
+  n := tk_sign(key, "p-00000000000000aa", false, "", "pair-e2-blk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-blk")) == 0;
+  n = tk_sign(key, "p-00000000000000bb", false, "", "pair-e2-blk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-blk")) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
   im := v[0].eg[k].im[..];
   rm_heard(v[..], 0, "K p-00000000000000bb p-00000000000000cc");
   #assert im[0].blocks[0] == 2 && im[0].blocks[1] == 0;
   // cc sits: withheld from seat 0 at once
-  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-blk", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-blk")) == 2;
+  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-e2-blk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-e2-blk")) == 2;
   #assert im[0].blocks[0] == 6;
   // bb leaves: held for them, still withheld; their grace over, gone
   rm_left(v[..], 1);
@@ -208,12 +208,13 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   rm_ticket_key(v[..], key, true);
   t: [256] u8; r: [512] u8;
   box: [1] EgInbox;
-  n := tk_sign(key, "p-00000000000000aa", false, "", "pair-im", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-im")) == 0;
-  n = tk_sign(key, "p-00000000000000bb", false, "", "pair-im", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-im")) == 1;
-  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-im", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-im")) == 2;
+  n := tk_sign(key, "p-00000000000000aa", false, "", "pair-e2-im", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-im")) == 0;
+  n = tk_sign(key, "p-00000000000000bb", false, "", "pair-e2-im", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-im")) == 1;
+  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-e2-im", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-e2-im")) == 2;
+  for c: 0..<3 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }   // placed once its hello comes
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for q: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_test_ent(box[..], 0, 1).id == 1 && eg_test_ent(box[..], 2, 1).id == 1;
@@ -244,12 +245,12 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   #assert eg_test_ent(box[..], 0, 2).id == 2;
   c: [4] int;
   im_counts(v[0].eg[k].im[..], SeatId.{value = 0}, c[..]);
-  #assert c[0] == 4 && rm_st_relevant(v[..], k, SeatId.{value = 0}) == 4;   // itself, seats 1 and 2, and the town's doors (room-wide)
+  #assert c[0] == 5 && rm_st_relevant(v[..], k, SeatId.{value = 0}) == 5;   // itself, seats 1 and 2, and Everglade II's two room-wide entities
 }
 
 #test "interest (#12845): the party health channel cannot disclose a distant player's position" #steps 4000000000 {
   v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],0,1762190000000);
-  req:="GET /api/room/relay/everglade/pair-fields HTTP/1.1\r\n\r\n";
+  req:="GET /api/room/relay/everglade/pair-e2-fields HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..],0,req)==0 && rm_join(v[..],1,req)==1;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
   rm_heard(v[..],0,"H 5 ranger.0.0.0 druid 0 Ash");
@@ -277,10 +278,10 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   t: [256] u8; r: [512] u8;
   box: [1] EgInbox;
   // bb (a Warlock) and cc are in first: bb 55 m off the gate at (37.21, 41.13), cc 300 m off
-  n := tk_sign(key, "p-00000000000000bb", false, "", "pair-imw", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 0;
-  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-imw", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 1;
+  n := tk_sign(key, "p-00000000000000bb", false, "", "pair-e2-imw", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-imw")) == 0;
+  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-e2-imw", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-imw")) == 1;
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 warlock 0 -");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
@@ -288,8 +289,8 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   rm_eg_moved(v[..], k, SeatId.{value = 1}, 0, 300.17, 0, 0, 0, 0, 0, 0, 1, 0, 0);
   for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // aa joins on seat 2 and says at once that it blocks bb, as the page's hello does
-  n = tk_sign(key, "p-00000000000000aa", false, "", "pair-imw", now + 60000, -1, t[..]);
-  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 2;
+  n = tk_sign(key, "p-00000000000000aa", false, "", "pair-e2-imw", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-e2-imw")) == 2;
   rm_heard(v[..], 2, "K p-00000000000000bb");
   heard: [65536] u8; hn := 0;
   for q: 0..<60 {

@@ -58,6 +58,9 @@ eg_room_at :: (v: [] RmServer, r: int) -> int {
 eg_room_of :: (v: [] RmServer, r: int) -> int {
   k := eg_room_at(v, r);
   if k >= 0 { return k; }
+  // every room is Everglade II's (docs/decisions/0005-production-room-runs-everglade-ii.md, #13267):
+  // a v1 room's code has no simulation here (v1's room is the frozen build's, everglade/server/legacy/v1.sh)
+  if !(r >= 0 && r < RELAYS && v[0].relays[r].live && eg_e2_code(cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n])) { return -1; }
   for q: 0..<EG_ROOMS {
     if v[0].eg[q].live { continue; }
     v[0].eg[q].initialized=false;v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;

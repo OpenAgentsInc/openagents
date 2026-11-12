@@ -145,7 +145,7 @@ tool_main :: () -> int #export_c #effects(all) {
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
   u: [1024] u8;
   stamp := rs_stamp();
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-sim-", stamp);
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-sim-", stamp);
   // each run's own players: a fixed id came back with the last run's saved HP (down, once the watch
   // had struck it) and WANTED, and couldn't walk or cast
   ida: [48] u8; idb: [48] u8; idc: [48] u8;

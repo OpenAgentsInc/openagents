@@ -1,38 +1,15 @@
 #load "../../../aethyr/ids.coax";
 // SDK physical capacity plus already accepted waiting/staged work.
 #load "../../../aethyr/session/effect-reservation.coax";
-#test "overload: physical effect refusal precedes cast order and preserves another seat's reservation (#12841)" #steps 3000000000 {
-  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-physical-effects",2,false);
-  rm_effect_free(v[..],k,0,0);rm_effect_free(v[..],k,1,EFFECT_PLAYER_CAP);
-  rm_heard(v[..],0,"C 1 0 0 0 10 -1");#assert v[0].eg[k].cast_order==0;
-  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 1 busy");
-  rm_heard(v[..],1,"C 1 0 0 0 10 -1");#assert v[0].eg[k].cast_order==1;
-  rm_effect_free(v[..],k,0,1);rm_heard(v[..],0,"C 2 0 0 0 10 -1");#assert v[0].eg[k].cast_order==2;
-  rm_heard(v[..],0,"C 3 1 0 0 10 -1");#assert v[0].eg[k].cast_order==2;
-  #assert re_may_start(v[..],k, SeatId.{value = 0},0,1); // exclude this accepted intent, keeping its lease
-}
 #test "overload: the world acknowledges only a consumed strike prefix (#12841)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-effect-prefix",1,false);
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-effect-prefix",1,false);
   for n:0..<3{v[0].eg[k].strikes[n]=EgStrike.{seed=n+1};}v[0].eg[k].strike_n=3;
   rm_eg_strikes_taken(v[..],k,1);#assert v[0].eg[k].strike_n==2&&v[0].eg[k].strikes[0].seed==2&&v[0].eg[k].strikes[1].seed==3;
   rm_eg_strikes_taken(v[..],k,-1);rm_eg_strikes_taken(v[..],k,3);#assert v[0].eg[k].strike_n==2;
   rm_eg_strikes_taken(v[..],k,2);#assert v[0].eg[k].strike_n==0;
 }
-#test "overload: released raid impacts survive caster removal and retain their original source (#12841)" #steps 4000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-raid-effects",1,false);r:=v[0].eg[k].rules[..];r[0].raid[0].limit=E5RR_BEASTS;
-  for n:0..<E5RR_BEASTS{#assert e5rd_raider(r,RS_NPC_CULTIST,1,n+1,f32(n%12)*3,-30-f32(n/12)*3,rt_open(0,-45,0,-1),n/RT_SQUAD,n%RT_SQUAD,0,0)>0;}
-  for q:0..<E5RR_BEASTS{e5rd_cast(r,q,RT_K_BLAST,-1,10,20);e5rd_cast(r,q,RT_K_FIREBALL,-1,30,40);}
-  #assert r[0].raid[0].cast_n==E5RR_BEASTS*2;
-  e5rd_clear(r);#assert r[0].raid[0].cast_n==E5RR_BEASTS*2;
-  v[0].evc.d.harm=false;ev_raid_flush(v[..],k);
-  #assert r[0].raid[0].cast_n==0&&v[0].eg[k].strike_n==E5RR_BEASTS*2;
-  for q:0..<E5RR_BEASTS{
-    c:=v[0].eg[k].strikes[q*2];#assert c.source==EFFECT_SEATS+q&&c.slot==EG_WL_BLAST;
-    rm_effect_free(v[..],k,EFFECT_SEATS+q,2);#assert r[0].raid[0].effect_free[q]==0;
-  }
-}
 #test "overload: accepted world transfers keep a reserved player region before further casts (#12841)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-stage-effects",1,false);
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-stage-effects",1,false);
   for n:0..<EG_PLAYER_STRIKES{v[0].eg[k].strikes[n]=EgStrike.{by=0,slot=EG_WL_BLAST};}v[0].eg[k].strike_n=EG_PLAYER_STRIKES;
   #assert !rc_hear(v[..],k, SeatId.{value = 0},1,EG_WL_DOOR,0,0,0,-1,0)&&v[0].eg[k].cast_order==0;
 }

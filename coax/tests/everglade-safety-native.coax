@@ -4,7 +4,7 @@
 #import "Basic";
 #load "../web/room/room.coax";
 native_seat_lifetime :: () #effects(all) {
-  v:[1]RmServer;k:=rc_test_room(v[..],"handles",2,false);r:=v[0].eg[k].relay;
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-handles",2,false);r:=v[0].eg[k].relay;
   old:=eg_seat_ref(v[..],k,SeatId.{value=0});
   #assert handle_present(old) && eg_seat_ref_live(v[..],k,old);
   eg_rejoin(v[..],r,0,SeatId.{value=0});

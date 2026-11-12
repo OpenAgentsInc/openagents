@@ -150,7 +150,7 @@ bc_full_pump::(p:[]BcPage,room:int){for i:0..<p.count{bc_poll(p[i..<i+1],true);b
 // Sixteen actual seated consumers, then distinct candidates17..32. The extra
 // process owns socket16, leaving this process one slot for each refusal/probe.
 bc_full::(port:int,room:int,exe:string)->int{
-  code:="pair-capacity-full";p:[15]BcPage;pb:[24]u8;n:=rs_int(pb[..],0,port);none:[1]string;
+  code:="pair-e2-capacity-full";p:[15]BcPage;pb:[24]u8;n:=rs_int(pb[..],0,port);none:[1]string;
   argv:=[5]string.[exe,"peer",cast(string)pb[0..<n],code,"25"];peer:=bc_start(argv[..],none[0..<0]);start:=rs_now();opened:=peer>=0;
   for i:0..<15{pid:[32]u8;pn:=rs_int(pid[..],rs_put(pid[..],0,"full-"),i);opened=bc_open(p[i..<i+1],port,code,cast(string)pid[0..<pn])&&opened;}
   admitted:=false;out:[16384]u8;next:=start+11000;
@@ -182,7 +182,7 @@ bc_stress::(dir:string,port:int,room:int,secs:int,control:bool,casters:int)->int
   p:[10]BcPage;opened:=true;join_deadline:=rs_now()+10000;join_retries:=0;
   for i:0..<10{pid:[48]u8;n:=rs_put(pid[..],0,"stress-");n=rs_int(pid[..],n,i);one:=false;attempts:=0;
     while !one&&bc_join_again(attempts,rs_now(),join_deadline){
-      attempts+=1;one=bc_open_as(p[i..<i+1],port,"/api/room/relay/everglade/",ifx i==8 then "pair-stress-healthy" else "pair-stress-busy",cast(string)pid[0..<n],i<8&&i%2==1);
+      attempts+=1;one=bc_open_as(p[i..<i+1],port,"/api/room/relay/everglade/",ifx i==8 then "pair-e2-stress-healthy" else "pair-e2-stress-busy",cast(string)pid[0..<n],i<8&&i%2==1);
       for q:0..<i{bc_poll(p[q..<q+1],false);}
       if !one{join_retries+=1;proc_sleep(100);}
     }opened=opened&&one;
@@ -192,7 +192,7 @@ bc_stress::(dir:string,port:int,room:int,secs:int,control:bool,casters:int)->int
   stalled:=false;released:=false;publication:=false;slow_rejoined:=false;slow_closed:=0;waiting_max:=0;
   while opened&&rs_now()-start<secs*1000{now:=rs_now();age:=now-start;
     for i:0..<10{if i!=9||age<15000||age>=50000{bc_poll(p[i..<i+1],age>2000);}}
-    if age>=50000&&!slow_rejoined&&p[9].closed{slow_closed+=1;ignored_slow_release:=relay_conn_close(p[9].c[..],1000);p[9]=BcPage.{};slow_rejoined=bc_open_as(p[9..<10],port,"/api/room/relay/everglade/","pair-stress-busy","stress-9",false);}
+    if age>=50000&&!slow_rejoined&&p[9].closed{slow_closed+=1;ignored_slow_release:=relay_conn_close(p[9].c[..],1000);p[9]=BcPage.{};slow_rejoined=bc_open_as(p[9..<10],port,"/api/room/relay/everglade/","pair-e2-stress-busy","stress-9",false);}
     if age>=15000&&slow_before==0{slow_before=p[9].tick;}if age>=55000&&slow_after==0{slow_after=p[9].tick;}
     if !stalled&&age>=20000{stalled=bc_file(dir,"mode","stall");}
     if !released&&age>=55000{released=bc_file(dir,"mode","healthy");}
@@ -257,10 +257,10 @@ tool_main::()->int #export_c #effects(all) {
     while room>=0&&rs_now()<until{if bc_get(port,"/health",out[..])>0{live=true;break;}proc_sleep(10);}
     unready:=live&&bc_get(port,"/ready",out[..])<0;cold:=true;
     startup_paths:=[3]string.["/api/room/relay/everglade/","/api/room/s1/relay/everglade/","/api/room/s1/s1/relay/everglade/"];
-    p:[3]BcPage;for i:0..<3{if bc_open_on(p[i..<i+1],port,startup_paths[i],"pair-startup","startup"){cold=false;ignored_cold_close:=relay_conn_close(p[i].c[..],1000);}}
+    p:[3]BcPage;for i:0..<3{if bc_open_on(p[i..<i+1],port,startup_paths[i],"pair-e2-startup","startup"){cold=false;ignored_cold_close:=relay_conn_close(p[i].c[..],1000);}}
     ignored_release_world:=bc_file(dir,"mode","healthy");until=rs_now()+10000;ready:=false;
     while room>=0&&rs_now()<until{if bc_get(port,"/ready",out[..])>0{ready=true;break;}ignored_startup_line:=proc_line(room,10,out[..]);}
-    connected:=ready&&bc_open_on(p[0..<1],port,startup_paths[1],"pair-startup","startup");until=rs_now()+2000;
+    connected:=ready&&bc_open_on(p[0..<1],port,startup_paths[1],"pair-e2-startup","startup");until=rs_now()+2000;
     while connected&&p[0].frames==0&&rs_now()<until{bc_poll(p[0..<1],false);proc_sleep(2);}
     if connected{ignored_warm_close:=relay_conn_close(p[0].c[..],1000);}bc_stop(room);ignored_stop_fixture:=bc_file(dir,"stop","1");bc_stop(fixture);ignored_remove_fixture:=fs_remove(dir);
     print("startup native: healthy=% unready=% all_three_cold_paths_refused=% ready_after_publication=% sharded_connected=% frames=%\n",live,unready,cold,ready,connected,p[0].frames);
@@ -270,11 +270,11 @@ tool_main::()->int #export_c #effects(all) {
   while room>=0&&rs_now()<until{if bc_get(port,"/ready",out[..])>0{ready=true;break;}ignored_20:=proc_line(room,10,out[..]);}
   if full{result:=ifx ready then bc_full(port,room,cast(string)exe[0..<en]) else 1;bc_stop(room);ignored_full_stop:=bc_file(dir,"stop","1");bc_stop(fixture);ignored_full_remove:=fs_remove(dir);return result;}
   if stress{result:=ifx ready then bc_stress(dir,port,room,secs,control,casters) else 1;bc_stop(room);ignored_stress_stop:=bc_file(dir,"stop","1");bc_stop(fixture);ignored_stress_remove:=fs_remove(dir);return result;}
-  page:[16]BcPage;opened:=ready&&bc_open(page[0..<1],port,"pair-overload", "overload-a")&&bc_open(page[1..<2],port,"pair-healthy","overload-b");
+  page:[16]BcPage;opened:=ready&&bc_open(page[0..<1],port,"pair-e2-overload", "overload-a")&&bc_open(page[1..<2],port,"pair-e2-healthy","overload-b");
   ignored_21:=bc_file(dir,"mode",ifx warm then "healthy" else "stall");start:=rs_now();next:=start;health_at:=start;bad:=0;pending_max:=0;health_ok:=0;casts:=0;pages:=2;publication:=false;peer:= -1;capacity_sampled:=false;capacity_seen:=false;
   while opened&&rs_now()-start<secs*1000{
     now:=rs_now();local_pages:=ifx pages==16 then 15 else pages;for i:0..<local_pages{bc_poll(page[i..<i+1],now-start>2000);}
-    if warm&&pages<16&&now-start>=pages*1000{b:[64]u8;n:=rs_put(b[..],0,"pair-warm-");n=rs_int(b[..],n,pages);
+    if warm&&pages<16&&now-start>=pages*1000{b:[64]u8;n:=rs_put(b[..],0,"pair-e2-warm-");n=rs_int(b[..],n,pages);
       if pages==15{
         seconds:[24]u8;sn:=rs_int(seconds[..],0,secs-(now-start)/1000);
         peer_args:=[5]string.[cast(string)exe[0..<en],"peer",cast(string)pb[0..<pn],cast(string)b[0..<n],cast(string)seconds[0..<sn]];

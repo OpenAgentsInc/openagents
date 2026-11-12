@@ -125,7 +125,7 @@ tool_main :: () -> int #export_c #effects(all) {
   rounds := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else 6;
   if rounds < 1 { rounds = 1; }
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-cast-", room);
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-cast-", room);
   c: [CC_BOTS] RelayConn; b: [CC_BOTS] CcBot;
   for i: 0..<CC_BOTS {
     ub: [1024] u8; pid: [32] u8; nm: [32] u8;

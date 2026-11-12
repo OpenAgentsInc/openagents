@@ -257,7 +257,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
 }
 
 #test "directory: a socket's path names its shard; sN/ comes out of the request line (#12717)" {
-  #assert rm_path_shard("GET /api/room/s2/relay/everglade/everglade-17?t=x HTTP/1.1\r\n\r\n") == 2;
+  #assert rm_path_shard("GET /api/room/s2/relay/everglade/everglade2-17?t=x HTTP/1.1\r\n\r\n") == 2;
   #assert rm_path_shard("GET /api/room/s12/relay/everglade/a HTTP/1.1\r\n\r\n") == 12;
   #assert rm_path_shard("GET /api/room/relay/everglade/a HTTP/1.1\r\n\r\n") == 0;
   #assert rm_path_shard("GET /api/room/orbit-league/a HTTP/1.1\r\n\r\n") == 0;
@@ -266,9 +266,9 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   #assert rm_path_shard("GET /api/room/s123/relay/x/a HTTP/1.1\r\n\r\n") == -1;
   #assert rm_path_shard("GET /api/room/s2relay/x/a HTTP/1.1\r\n\r\n") == -1;
   b: [256] u8;
-  n := rm_path_unshard("GET /api/room/s2/relay/everglade/everglade-17?t=x HTTP/1.1\r\nCookie: a\r\n\r\n", b[..]);
-  #assert cast(string) b[0..<n] == "GET /api/room/relay/everglade/everglade-17?t=x HTTP/1.1\r\n\r\n";
-  #assert rm_path_unshard("GET /api/room/s2/relay/everglade/everglade-17?t=x HTTP/1.1\r\n\r\n", b[0..<20]) == -1;
+  n := rm_path_unshard("GET /api/room/s2/relay/everglade/everglade2-17?t=x HTTP/1.1\r\nCookie: a\r\n\r\n", b[..]);
+  #assert cast(string) b[0..<n] == "GET /api/room/relay/everglade/everglade2-17?t=x HTTP/1.1\r\n\r\n";
+  #assert rm_path_unshard("GET /api/room/s2/relay/everglade/everglade2-17?t=x HTTP/1.1\r\n\r\n", b[0..<20]) == -1;
 }
 
 #test "directory: a shard seats only its own path and tickets; v2 tickets are shard 1's (#12717)" #steps 2000000000 {
@@ -280,18 +280,18 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   rm_shard(v[..], 2);
   t: [256] u8; r: [512] u8;
   // a ticket for shard 2, through shard 2's path: sits
-  n := tk_sign_on(key, "p-0000000000000001", false, "", "everglade-17", 2, 1000000, -1, t[..]);
-  k := tk_add(r[..], 0, "GET /api/room/s2/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\nHost: x\r\n\r\n");
+  n := tk_sign_on(key, "p-0000000000000001", false, "", "everglade2-17", 2, 1000000, -1, t[..]);
+  k := tk_add(r[..], 0, "GET /api/room/s2/relay/everglade/everglade2-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\nHost: x\r\n\r\n");
   #assert rm_join(v[..], 0, cast(string) r[0..<k]) == 0;
   // the same ticket through shard 3's path: refused (the load balancer sent it to the wrong shard)
-  k = tk_add(r[..], 0, "GET /api/room/s3/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+  k = tk_add(r[..], 0, "GET /api/room/s3/relay/everglade/everglade2-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
   #assert rm_join(v[..], 1, cast(string) r[0..<k]) < 0;
   // a ticket for shard 1 (v3 or v2) on shard 2: refused, so one code never runs on two shards
-  n = tk_sign_on(key, "p-0000000000000002", false, "", "everglade-17", 1, 1000000, -1, t[..]);
-  k = tk_add(r[..], 0, "GET /api/room/s2/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+  n = tk_sign_on(key, "p-0000000000000002", false, "", "everglade2-17", 1, 1000000, -1, t[..]);
+  k = tk_add(r[..], 0, "GET /api/room/s2/relay/everglade/everglade2-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
   #assert rm_join(v[..], 2, cast(string) r[0..<k]) < 0;
-  n = tk_sign(key, "p-0000000000000003", false, "", "everglade-17", 1000000, -1, t[..]);
-  k = tk_add(r[..], 0, "GET /api/room/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+  n = tk_sign(key, "p-0000000000000003", false, "", "everglade2-17", 1000000, -1, t[..]);
+  k = tk_add(r[..], 0, "GET /api/room/relay/everglade/everglade2-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
   #assert rm_join(v[..], 3, cast(string) r[0..<k]) < 0;
 }
 // Its own check, as a check holds one RmServer (#12899).
@@ -302,8 +302,8 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   rm_ticket_key(w[..], key, true);
   t: [256] u8; r: [512] u8;
-  n := tk_sign(key, "p-0000000000000003", false, "", "everglade-17", 1000000, -1, t[..]);
-  k := tk_add(r[..], 0, "GET /api/room/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+  n := tk_sign(key, "p-0000000000000003", false, "", "everglade2-17", 1000000, -1, t[..]);
+  k := tk_add(r[..], 0, "GET /api/room/relay/everglade/everglade2-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
   #assert w[0].shard == 1 && rm_join(w[..], 0, cast(string) r[0..<k]) == 0;
 }
 
@@ -322,13 +322,13 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   t: [256] u8; r: [512] u8;
   for p: 0..<2 {
     pid := ifx p == 0 then "p-00000000000000a1" else "p-00000000000000a2";
-    n := tk_sign_on(key, pid, false, "", "everglade-2", 3, 1000000, -1, t[..]);
-    k := tk_add(r[..], 0, "GET /api/room/s3/relay/everglade/everglade-2?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+    n := tk_sign_on(key, pid, false, "", "everglade2-2", 3, 1000000, -1, t[..]);
+    k := tk_add(r[..], 0, "GET /api/room/s3/relay/everglade/everglade2-2?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
     #assert rm_join(v[..], p, cast(string) r[0..<k]) == p;
   }
   rm_clock(v[..], 0, 990500);
   n := rm_directory_due(v[..]);
-  #assert cast(string) v[0].dir.out[0..<n] == "t 990500\ns 3 15\nr everglade-2 2 p-00000000000000a1 p-00000000000000a2\n";
+  #assert cast(string) v[0].dir.out[0..<n] == "t 990500\ns 3 15\nr everglade2-2 2 p-00000000000000a1 p-00000000000000a2\n";
   // its MAC is the body's, under the key
   want: [64] u8;
   kb: [64] u8; for i: 0..<key.count { kb[i] = key[i]; }
@@ -336,7 +336,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   #assert hmac_sha256_checked(kb[0..<key.count], v[0].dir.out[0..<n], mac[..], false) == SHA_OK;
   for i: 0..<32 { want[i * 2] = tk_hex(cast(int) (mac[i] >> 4)); want[i * 2 + 1] = tk_hex(cast(int) (mac[i] & 15)); }
   #assert cast(string) want[..] == cast(string) v[0].dir.mac[..];
-  #assert cast(string) v[0].dir.mac[..] == "d5afc780d6e83ce559b7d0f00ca32f8f45c3e7e70639ab6c6b774740b650fdd3";   // Python's hmac
+  #assert cast(string) v[0].dir.mac[..] == "0bcda6cc84d75ca8e8d364fb94705047ddb9bf98b157c0671429495c8b1e5910";   // Python's hmac
   // the same a second later: not due; five seconds on: due again
   rm_clock(v[..], 0, 991500);
   #assert rm_directory_due(v[..]) == 0;
@@ -346,10 +346,10 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   kd := eg_room_at(v[..], v[0].conns[1].relay);
   rm_left(v[..], 0);
   d0 := rm_directory_due(v[..]);
-  #assert d0 == 0 || eg_test_has(cast(string) v[0].dir.out[0..<d0], "r everglade-2 2 ");
+  #assert d0 == 0 || eg_test_has(cast(string) v[0].dir.out[0..<d0], "r everglade2-2 2 ");
   rm_clock(v[..], EG_GRACE_MS + 1000, 995500);
   if rm_eg_begin(v[..], kd) {}
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 15\nr everglade-2 1 p-00000000000000a2\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 15\nr everglade2-2 1 p-00000000000000a2\n";
   // the last leaves: the room closes, and one report says so; then nothing until something changes
   rm_left(v[..], 1);
   rm_clock(v[..], 2 * EG_GRACE_MS + 2000, 995500);

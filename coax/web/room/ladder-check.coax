@@ -136,7 +136,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if arrive < 0 || arrive > 5 { tool_errln("ladder-check: arrive takes 1 to 5"); return 2; }
   goal := ifx arrive > 0 then arrive else 3;
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-ladder-", rs_stamp());
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-ladder-", rs_stamp());
   c: [2] RelayConn; h: [2] LcHeard; seq: [2] int;
   ua: [1024] u8; ub: [1024] u8;
   // the outlaw a new player each run: the room's own note of a player from the last 5 minutes outranks

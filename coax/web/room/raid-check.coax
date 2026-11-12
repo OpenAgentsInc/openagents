@@ -237,7 +237,7 @@ tool_main :: () -> int #export_c #effects(all) {
   secs := ifx args_count(a[..]) > 2 then rc_max(rs_num(args_at(a[..], 2)), 10) else 150;
   u: [1024] u8;
   room := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else rs_stamp();
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-raid-", room);
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-raid-", room);
   proxy_b:[24]u8;proxy_text:=proc_getenv("RAID_PROXY_BASE",proxy_b[..]);proxy_base:=ifx proxy_text=="" then 0 else args_whole(proxy_text);
   if rc_proxy_port(proxy_base,n-1)<0{tool_errln("RAID_PROXY_BASE must leave three permitted adjacent loopback ports");return 2;}
   skew_b:[8]u8;skew:=rc_skew(proc_has_env("RAID_SKEW"),proc_getenv("RAID_SKEW",skew_b[..]));if skew<0{return 2;}
@@ -252,7 +252,7 @@ tool_main :: () -> int #export_c #effects(all) {
   for i: 0..<n {
     ub: [1024] u8; pid: [32] u8; nm: [32] u8;
     proxy_url:[1024]u8;dial:=url;
-    if proxy_base>0{pb:[64]u8;pn2:=rs_int(pb[..],rs_put(pb[..],0,"ws://127.0.0.1:"),rc_proxy_port(proxy_base,i));dial=rs_url(proxy_url[..],cast(string)pb[0..<pn2],"/api/room/relay/everglade/","pair-raid-",room);}
+    if proxy_base>0{pb:[64]u8;pn2:=rs_int(pb[..],rs_put(pb[..],0,"ws://127.0.0.1:"),rc_proxy_port(proxy_base,i));dial=rs_url(proxy_url[..],cast(string)pb[0..<pn2],"/api/room/relay/everglade/","pair-e2-raid-",room);}
     identity:=raid_identity(room,SeatId.{value=i},pid[..]);pn:=identity.count;
     mn := rs_int(nm[..], rs_put(nm[..], 0, "Raid "), i);
     ui := rs_ticketed(ub[..], dial, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);

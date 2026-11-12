@@ -517,8 +517,8 @@ rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
   rm_ticket_key(v[..], key, true);
   t: [256] u8; r: [512] u8;
   // a ticket with w3: the seat sits WANTED 3, and the host lays it on the town once
-  n := tk_sign_wanted(key, "p-0011223344556677", false, "", "pair-tk", 0, now + 60000, -1, 40, 3, t[..]);
-  #assert eg_test_has(cast(string) t[0..<n], ".-x40w3.") && tk_check(key, cast(string) t[0..<n], "pair-tk", now).wanted == 3;
+  n := tk_sign_wanted(key, "p-0011223344556677", false, "", "pair-e2-tk", 0, now + 60000, -1, 40, 3, t[..]);
+  #assert eg_test_has(cast(string) t[0..<n], ".-x40w3.") && tk_check(key, cast(string) t[0..<n], "pair-e2-tk", now).wanted == 3;
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert v[0].eg[k].wanted[0] == 3 && rm_eg_want_take(v[..], k, SeatId.{value = 0}) == 3 && rm_eg_want_take(v[..], k, SeatId.{value = 0}) == 0;
@@ -529,7 +529,7 @@ rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
   rm_left(v[..], 0);
   #assert rm_vitals_due(v[..]) > 0 && eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 40 4 ");
   // back within the seat's grace (#12792): the same seat, its live level kept and no seed
-  n = tk_sign_xp(key, "p-0011223344556677", false, "", "pair-tk", 0, now + 120000, -1, 40, t[..]);
+  n = tk_sign_xp(key, "p-0011223344556677", false, "", "pair-e2-tk", 0, now + 120000, -1, 40, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   #assert v[0].eg[k].wanted[0] == 4 && v[0].eg[k].seat[0].want_seed == 0;
   rm_left(v[..], 0);
@@ -541,16 +541,16 @@ rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
   #assert v[0].eg[k].wanted[0] == 4 && v[0].eg[k].seat[0].want_seed == 4;
   // a WANTED level out of range is refused, even signed
   x: [256] u8;
-  m := tk_add(x[..], 0, "v2.p-0011223344556677.0.-.pair-tk."); m = rv_int(x[..], m, now + 120000); m = tk_add(x[..], m, ".-x40w9");
+  m := tk_add(x[..], 0, "v2.p-0011223344556677.0.-.pair-e2-tk."); m = rv_int(x[..], m, now + 120000); m = tk_add(x[..], m, ".-x40w9");
   mac: [64] u8;
   #assert tk_mac(key, cast(string) x[0..<m], mac[..]);
   m = tk_add(x[..], m, "."); m = tk_add(x[..], m, cast(string) mac[..]);
-  #assert !tk_check(key, cast(string) x[0..<m], "pair-tk", now + 60000).ok;
+  #assert !tk_check(key, cast(string) x[0..<m], "pair-e2-tk", now + 60000).ok;
   // and the same text with w2 checks
-  m = tk_add(x[..], 0, "v2.p-0011223344556677.0.-.pair-tk."); m = rv_int(x[..], m, now + 120000); m = tk_add(x[..], m, ".-x40w2");
+  m = tk_add(x[..], 0, "v2.p-0011223344556677.0.-.pair-e2-tk."); m = rv_int(x[..], m, now + 120000); m = tk_add(x[..], m, ".-x40w2");
   #assert tk_mac(key, cast(string) x[0..<m], mac[..]);
   m = tk_add(x[..], m, "."); m = tk_add(x[..], m, cast(string) mac[..]);
-  #assert tk_check(key, cast(string) x[0..<m], "pair-tk", now + 60000).wanted == 2;
+  #assert tk_check(key, cast(string) x[0..<m], "pair-e2-tk", now + 60000).wanted == 2;
 }
 
 // Seat 0's creature in the room of conn 0's relay.
@@ -563,7 +563,7 @@ rv_test_c0 :: (v: [] RmServer) -> RsCreature {
 rv_test_back :: (v: [] RmServer, key: string, pid: string, admin: bool, hello: string, hp: int, dead: bool) -> RsCreature {
   t: [256] u8; r: [512] u8;
   now := v[0].wall_ms;
-  n := ifx admin then tk_sign_admin_wanted(key, pid, "", "pair-tk", 0, now + 60000, 0, t[..]) else tk_sign_xp(key, pid, false, "", "pair-tk", 0, now + 60000, -1, 0, t[..]);
+  n := ifx admin then tk_sign_admin_wanted(key, pid, "", "pair-e2-tk", 0, now + 60000, 0, t[..]) else tk_sign_xp(key, pid, false, "", "pair-e2-tk", 0, now + 60000, -1, 0, t[..]);
   _ := rm_join(v, 0, tk_test_ask(r[..], t[..], n));
   rm_heard(v, 0, hello);
   k := eg_room_at(v, v[0].conns[0].relay);
@@ -571,7 +571,7 @@ rv_test_back :: (v: [] RmServer, key: string, pid: string, admin: bool, hello: s
   c[0].hp = hp; c[0].dead = dead;
   rm_left(v, 0);
   rm_clock(v, 0, now + 20000);
-  n = ifx admin then tk_sign_admin_wanted(key, pid, "", "pair-tk", 0, now + 80000, 0, t[..]) else tk_sign_xp(key, pid, false, "", "pair-tk", 0, now + 80000, -1, 0, t[..]);
+  n = ifx admin then tk_sign_admin_wanted(key, pid, "", "pair-e2-tk", 0, now + 80000, 0, t[..]) else tk_sign_xp(key, pid, false, "", "pair-e2-tk", 0, now + 80000, -1, 0, t[..]);
   _ = rm_join(v, 0, tk_test_ask(r[..], t[..], n));
   rm_heard(v, 0, hello);
   return rv_test_c0(v);
@@ -585,7 +585,7 @@ rv_test_back :: (v: [] RmServer, key: string, pid: string, admin: bool, hello: s
   rm_ticket_key(v[..], key, true);
   t: [256] u8; r: [512] u8;
   // the other page keeps the room running
-  n := tk_sign_xp(key, "p-ffffeeeeddddcccc", false, "", "pair-tk", 0, now + 600000, -1, 0, t[..]);
+  n := tk_sign_xp(key, "p-ffffeeeeddddcccc", false, "", "pair-e2-tk", 0, now + 600000, -1, 0, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 0;
   // the druid: its hello builds nothing new
   c := rv_test_back(v[..], key, "p-0000000000000001", false, "H 5 ranger.0.0.0 druid 0 -", 5, false);
@@ -603,7 +603,7 @@ rv_test_back :: (v: [] RmServer, key: string, pid: string, admin: bool, hello: s
   c = rv_test_back(v[..], key, "p-0000000000000005", false, "H 5 ranger.0.0.0 warlock 0 -", 0, true);
   #assert c.hp == 0 && c.dead;
   // a ticket's 0 from another server still means full (its player fell there)
-  n = tk_sign_xp(key, "p-0000000000000006", false, "", "pair-tk", 0, v[0].wall_ms + 60000, 0, 0, t[..]);
+  n = tk_sign_xp(key, "p-0000000000000006", false, "", "pair-e2-tk", 0, v[0].wall_ms + 60000, 0, 0, t[..]);
   _ := rm_join(v[..], 0, tk_test_ask(r[..], t[..], n));
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
   c = rv_test_c0(v[..]);

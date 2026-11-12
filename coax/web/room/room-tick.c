@@ -40,7 +40,7 @@ static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "p
 #define ROOM_LATENCY_STEP(k,s,seq,began,ended) ((void)0)
 #define ROOM_LATENCY_SERIALIZED(k,simulation,began,ended) ((void)0)
 #endif
-/* Everglade II's room k (#13053, room-everglade.coax rm_eg_e2): each seat at the glade when it sits, its
+/* Everglade II's room k (#13053): each seat at the glade when it sits, its
    queued inputs through Everglade II's movement step (room-world.c world2_*), the rules' tick, and
    every seat's D frame queued. Its land has no town, river, watch or pieces to step. */
 static void everglade2_place(int k, int s, float *pose) {
@@ -110,6 +110,5 @@ static bool everglade_room_tick(int k) {
     return false;
   }
   ROOM_PROFILE_PHASE(0,phase_start);
-  if (!rm_eg_e2(view(), k)) return false;   /* a v1 room: the room binary refuses its code (rm_e2_only) */
   return everglade2_room_tick(k, room_work_start);
 }

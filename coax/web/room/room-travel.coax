@@ -85,7 +85,7 @@ trv_room :: (v: [] RmServer, code: string) -> int {
   }
   return -1;
 }
-// The realm of an instance code: up to its last '-' ("everglade-3" is everglade's).
+// The realm of an instance code: up to its last '-' ("everglade2-3" is everglade's).
 trv_realm :: (code: string) -> string {
   i := code.count - 1;
   while i > 0 && code[i] != '-' { i -= 1; }

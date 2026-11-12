@@ -146,8 +146,8 @@ tool_main :: () -> int #export_c #effects(all) {
   slow_s := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 10;
   after_s := ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 10;
   _ := fs_remove(slow_file);
-  code: [32] u8; cn := rs_int(code[..], rs_put(code[..], 0, "pair-throttle-"), rs_stamp());
-  if args_count(a[..]) > 5 { cn = rs_int(code[..], rs_put(code[..], 0, "pair-drift-"), rs_num(args_at(a[..], 5))); }
+  code: [32] u8; cn := rs_int(code[..], rs_put(code[..], 0, "pair-e2-throttle-"), rs_stamp());
+  if args_count(a[..]) > 5 { cn = rs_int(code[..], rs_put(code[..], 0, "pair-e2-drift-"), rs_num(args_at(a[..], 5))); }
   urls: [2] [256] u8; un: [2] int;
   for i: 0..<2 {
     b: [64] u8; bn := rs_int(b[..], rs_put(b[..], 0, "ws://127.0.0.1:"), ifx i == 0 then room else proxy);

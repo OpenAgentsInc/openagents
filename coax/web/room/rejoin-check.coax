@@ -87,7 +87,7 @@ tool_main :: () -> int #export_c #effects(all) {
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-rejoin-", rs_stamp());
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-e2-rejoin-", rs_stamp());
   c: [4] RelayConn; h: [4] RjHeard;   // 0 A's first socket, 1 B, 2 A's second, 3 A's third
   for i: 0..<4 { c[i].h = -1; }
   ua: [1024] u8; ub: [1024] u8;

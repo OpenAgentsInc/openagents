@@ -153,7 +153,7 @@ tool_main :: () -> int #export_c #effects(all) {
   players := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else 17;
   seconds := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else 10;
   if players < 1 || players > FC_MAX || seconds < 3 { tool_errln("usage: coax/web/tool.sh coax/web/room/fanout-check.coax [SITE] [players 1..256] [seconds >= 3] (from the repository's root)"); return 2; }
-  rb: [32] u8; rn := rs_int(rb[..], rs_put(rb[..], 0, "pair-fan-"), rs_stamp());
+  rb: [32] u8; rn := rs_int(rb[..], rs_put(rb[..], 0, "pair-e2-fan-"), rs_stamp());
   realm := cast(string) rb[0..<rn];
   groups := (players + FC_GROUP - 1) / FC_GROUP;
   hs: [FC_MAX / FC_GROUP] int;

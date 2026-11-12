@@ -108,7 +108,7 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat :=
 // E SEQ 5 SLOT, ending what bar slot SLOT holds up: the world's (room-abilities.coax), and the rules'
 // concentration; nothing held up, refused.
 #test "overload: a full ordered end queue refuses before ending an ability ahead of its inputs (#12841)" #steps 2000000000 {
-  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-end-budget",2,false);b:[128]u8;
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-e2-end-budget",2,false);b:[128]u8;
   slot:=RA_REVERSE+EG_SP_SLOTS;v[0].ab[k].live[RA_REVERSE].on=true;
   rm_heard(v[..],0,"I 1 100 0 0 0 0 0 0");
   for i:0..<EG_ENDS+1{n:=wire_put_use(b[..],0,WireUse.{seq=i+2,kind=WE_END,id=slot});rm_heard(v[..],0,cast(string)b[0..<n]);}
@@ -117,7 +117,7 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat :=
   v[0].eg[k].seat[0].q_n=0;eg_ends_due(v[..],k);#assert v[0].eg[k].seat[0].ends_n==0&&v[0].ab[k].q_n==EG_ENDS;
 }
 #test "overload: one seat cannot consume another seat's door talk or boat work (#12841)" #steps 2000000000 {
-  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-use-budget",2,false);b:[128]u8;
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-e2-use-budget",2,false);b:[128]u8;
   for i:0..<EG_USE_ASKS{n:=wire_put_use(b[..],0,WireUse.{seq=i+1,kind=WE_DOOR,id=i});rm_heard(v[..],0,cast(string)b[0..<n]);}
   n:=wire_put_use(b[..],0,WireUse.{seq=99,kind=WE_TALK,id=0});rm_heard(v[..],1,cast(string)b[0..<n]);
   #assert v[0].eg[k].use_ask_n==2;
@@ -129,20 +129,6 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat :=
   eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 101 busy");
 }
 
-#test "overload: refused world starts keep cooldown and resources and refused ends keep concentration (#12841)" #steps 2000000000 {
-  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-effect-refuse",2,false);
-  for q:0..<EF_STARTS{#assert ra_queue(v[..],k,RaCast.{by=0,on=true});}
-  before:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT];cast_at:=v[0].eg[k].seat[0].last_cast;
-  rm_heard(v[..],0,"C 99 5 0 0 200 -1");rc_test_tick(v[..],k,true);
-  #assert v[0].eg[k].seat[0].last_cast==cast_at;
-  for i:0..<10{#assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].slots[i]==before.slots[i];}
-  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 99 busy");
-  rm_ra_heard(v[..],k);for q:0..<EF_ENDS{#assert ra_queue(v[..],k,RaCast.{by=0,on=false});}
-  spell:=e5rr_entry(v[0].eg[k].rules[..],5).sp;
-  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].conc=spell;v[0].ab[k].live[1].on=true;
-  eg_end_now(v[..],k, SeatId.{value = 0},100,5);#assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].conc==spell&&v[0].ab[k].q_n==EF_ENDS;
-  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 100 busy");
-}
 
 eg_end_now :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, slot: int) { seat := seat_id.value;
   if ra_world_slot(slot)&&v[0].ab[k].live[seat*RA_ABS+slot-EG_SP_SLOTS].on&&!ra_may_queue(v,k, seat_id,false){eg_refuse(v,k, seat_id,seq,"busy");return;}

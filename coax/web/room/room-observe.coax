@@ -2,7 +2,7 @@
 // Read production state; never substitute HTTP success, expiry or an ACK for
 // durable acceptance. These exports have no admission or persistence effects.
 #test "capacity input observations use actual pending inputs and preserve unknown clock ages (#12843)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-input-age",3,false);o:[5]int;
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-input-age",3,false);o:[5]int;
   v[0].mono_ms=1000;v[0].eg[k].seat[0].q_n=2;v[0].eg[k].seat[0].q[0].at=850;v[0].eg[k].seat[0].q[1].at=920;
   v[0].eg[k].seat[1].q_n=1;v[0].eg[k].seat[1].q[0].at=950;v[0].eg[k].seat[1].late=4;
   rm_st_inputs(v[..],o[..]);#assert o[0]==3&&o[1]==150&&o[2]==2&&o[3]==4&&o[4]==0;
@@ -22,7 +22,7 @@ rm_st_inputs::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out[4]>0{out[1]= -1;}
 }
 #test "capacity observations distinguish native slots, connected seats, grace holds and initial gates (#12840)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-capacity-observe",3,false);o:[6]int;
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-capacity-observe",3,false);o:[6]int;
   v[0].eg[k].seat[1].conn= -1;v[0].eg[k].seat[1].held=true;
   v[0].eg[k].seat[2].placed=false;
   rm_st_capacity(v[..],o[..]);
@@ -46,7 +46,7 @@ rm_st_inputs::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   #assert !rm_st_saved(v[..],-1, SeatId.{value = 0},out[..])&&!rm_st_saved(v[..],k, SeatId.{value = EG_SEATS},out[..]);
 }
 #test "vitals: legacy abandonment and refusal are not durable acceptance (#12840)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-legacy-observe",1,false);
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-legacy-observe",1,false);
   // A legacy producer may advance its outbox cursor after expiry. The durable
   // marker is separate and starts unknown, including a bare historical 2xx.
   v[0].conns[0].ticket=Ticket.{ok=true,pid_n=3,owner=9};v[0].conns[0].ticket.pid[0]='p';v[0].conns[0].ticket.pid[1]='-';v[0].conns[0].ticket.pid[2]='z';
@@ -67,14 +67,14 @@ rm_st_inputs::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   #assert v[0].vit.gave_up==1&&v[0].vit.v[i].durable_rev==rev&&v[0].vit.v[i].acked>rev;
 }
 #test "vitals: serialized row gauges name their own worst room and seat (#12840)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-row-observe",2,false);o:[9]int;
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-row-observe",2,false);o:[9]int;
   v[0].st.rows_last[k*EG_SEATS]=3;v[0].st.left_last[k*EG_SEATS]=8;
   v[0].st.rows_last[k*EG_SEATS+1]=7;v[0].st.left_last[k*EG_SEATS+1]=2;
   rm_st_rows(v[..],o[..]);#assert o[3]==10&&o[4]==10&&o[5]==k&&o[6]==0&&o[7]==3&&o[8]==8;
   v[0].eg[k].seat[0].live=false;rm_st_rows(v[..],o[..]);#assert o[3]==7&&o[4]==2&&o[6]==1;
 }
 #test "vitals: local ACK timing consumes only a final actually queued frame for that seat (#12840)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-queued-ack",1,false);v[0].eg[k].seat[0].ack=9;v[0].eg[k].seat[0].ack_at=1250;
+  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-queued-ack",1,false);v[0].eg[k].seat[0].ack=9;v[0].eg[k].seat[0].ack_at=1250;
   #assert rm_st_sent_ack(v[..],0,"D 4 9 2 0 s 0 0 1 2")== -1;
   #assert rm_st_sent_ack(v[..],0,"D 4 8 0 0 s 0 0 1 2")== -1;
   #assert rm_st_sent_ack(v[..],0,"D 4 9 0 0 s 0 0 1 2")==1250;

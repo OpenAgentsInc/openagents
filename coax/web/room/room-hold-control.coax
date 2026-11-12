@@ -4,35 +4,35 @@
 
 #test "paired development holds name one person and refuse public or invalid target commands" #steps 2000000000 {
   v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],0,1762190000000);
-  #assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-named HTTP/1.1\r\n\r\n")==0;
+  #assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-e2-named HTTP/1.1\r\n\r\n")==0;
   rm_heard(v[..],0,"H 5 ranger.0.0.0 druid 0 -");
   k:=eg_room_at(v[..],v[0].conns[0].relay);
   e5rr_start(v[0].eg[k].rules[..],7);e5rr_test_people(v[0].eg[k].rules[..]);
   v[0].eg[k].seat[0].pose.x=3;v[0].eg[k].seat[0].pose.z=0.7;
-  rm_control(v[..],"hold-person pair-named 0 77 1\n");
+  rm_control(v[..],"hold-person pair-e2-named 0 77 1\n");
   #assert !rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==0;
   v[0].dev.on=true;
-  rm_control(v[..],"hold-person pair-named 0 1 1\n");
+  rm_control(v[..],"hold-person pair-e2-named 0 1 1\n");
   #assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==1;
-  rm_control(v[..],"hold-person pair-named 0 77 1\n");
+  rm_control(v[..],"hold-person pair-e2-named 0 77 1\n");
   #assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==77;
   out:[E5RR_OUT_FLOATS]f32;e5rr_folk_out(v[0].eg[k].rules[..],1,out[..]);#assert (cast(int)out[3]&RS_PARALYZED)!=0;
   e5rr_folk_out(v[0].eg[k].rules[..],0,out[..]);#assert (cast(int)out[3]&RS_PARALYZED)==0;
-  rm_control(v[..],"hold-person pair-named 0 77 1\n");#assert !rm_eg_hold_take(v[..],k,SeatId.{value=0});
-  rm_control(v[..],"hold-person pair-named 0 78 47\nhold-person pair-named 0 79 1 extra\nhold-person pair-named 0 80\nhold-person pair-named 9 81 1\n");
+  rm_control(v[..],"hold-person pair-e2-named 0 77 1\n");#assert !rm_eg_hold_take(v[..],k,SeatId.{value=0});
+  rm_control(v[..],"hold-person pair-e2-named 0 78 47\nhold-person pair-e2-named 0 79 1 extra\nhold-person pair-e2-named 0 80\nhold-person pair-e2-named 9 81 1\n");
   #assert !rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==77;
-  rm_control(v[..],"hold-person pair-named \nhold-person pair-named 0 \nhold-person pair-named 0 77 \nhold-person pair-named 0 0 1\nhold-person pair-named 0 bad 1\nhold-person missing 0 83 1\n");
+  rm_control(v[..],"hold-person pair-e2-named \nhold-person pair-e2-named 0 \nhold-person pair-e2-named 0 77 \nhold-person pair-e2-named 0 0 1\nhold-person pair-e2-named 0 bad 1\nhold-person missing 0 83 1\n");
   #assert !rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==77;
   v[0].eg[k].seat[0].pose.x= -27.5;v[0].eg[k].seat[0].pose.z=1.6;
-  rm_control(v[..],"hold-person pair-named 0 84 1\n");
+  rm_control(v[..],"hold-person pair-e2-named 0 84 1\n");
   #assert !rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==77;
   v[0].eg[k].seat[0].pose.x= -27;
-  rm_control(v[..],"hold-person pair-named 0 85 1\n");
+  rm_control(v[..],"hold-person pair-e2-named 0 85 1\n");
   #assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==85;
   v[0].dev.on=false;v[0].ctl.local=true;
-  rm_control(v[..],"hold-person pair-named 0 82 1\n");#assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==82;
+  rm_control(v[..],"hold-person pair-e2-named 0 82 1\n");#assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==82;
   v[0].dev.on=true;
-  rm_control(v[..],"hold-person pair-named 0 86 1\n");#assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==86;
+  rm_control(v[..],"hold-person pair-e2-named 0 86 1\n");#assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==86;
 }
 
 // The first room's actual nearest target becomes the second room's explicit
