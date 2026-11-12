@@ -11,6 +11,9 @@ The limit is how many sats the app pays in any 24 hours before it asks you to co
 with your passkey or key. It starts at 20,000 sats. The page shows the limit and how much the last
 24 hours counted.
 
+Model calls paid from your service credit count toward the same limit. The page's count for the
+last 24 hours includes them.
+
 A payment of more than 100,000 sats to somewhere you haven't paid before always asks first,
 whatever the limit.
 
@@ -36,6 +39,14 @@ the app trusts our answer, so the limit doesn't protect you from us. We still ca
 money, because we never have your wallet's keys. The limit protects
 you from someone who has your unlocked phone or your login. It doesn't protect you from someone
 who has your wallet's words.
+
+### Service credit
+
+Service credit is the credit your Nostr key buys for model calls. We hold it, so we enforce the
+limit on it ourselves. Each model call paid from credit counts toward your account's last 24
+hours, rounded up to the sat. Once that count reaches the limit, the next call paid from credit is
+refused until you confirm it's you: confirm it with your passkey here, then the app's calls go
+again for five minutes. To stop asking, raise the limit.
 
 If you think someone else is in your account, freeze it on
 [/settings/data](/settings/data/index.md). Freezing ends every login. The app on a phone that

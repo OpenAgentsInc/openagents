@@ -301,7 +301,7 @@ wl_press :: (s: [] Wl, h: int) {
 WL_PARA :: 7.8; WL_CAPS :: 6.6;
 WL_OUT_WORDS :: "Log in to see your wallet's daily limit and its backup.";
 WL_LIMIT_WORDS :: "Lowering counts at once. Raising takes 24 hours, and every way you log in is told.";
-WL_WHERE_WORDS :: "Your wallet's keys are on your phone. The OpenAgents app checks this limit before it pays, and asks you to confirm it's you to pay more. We can't stop a payment made with your wallet words somewhere else.";
+WL_WHERE_WORDS :: "Your wallet's keys are on your phone. The OpenAgents app checks this limit before it pays, and asks you to confirm it's you to pay more. We can't stop a payment made with your wallet words somewhere else. Model calls paid from your service credit count toward the limit too, and we hold them to it ourselves.";
 WL_BACKUP_WORDS :: "Only your passkey or your wallet recovery code opens the backup. We can't. We never ask for your wallet recovery code on this website.";
 WL_BACKED_UP :: "BACKED UP";
 WL_NO_BACKUP :: "NO BACKUP YET. BACK UP YOUR WALLET IN THE OPENAGENTS APP ON YOUR PHONE.";
