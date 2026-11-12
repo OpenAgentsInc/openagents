@@ -47,13 +47,21 @@ source, emitted by `coax spirv` where iOS uses `coax metal`.
 
 ## Not done
 
-- **An account login.** The app has none yet. Its device key is ready for it
-  ([`../../shared/host/android/device-key.c`](../../shared/host/android/device-key.c):
-  a P-256 key in the Android Keystore, in StrongBox when the phone has it,
-  made with no prompt). To check it on an emulator or a phone, run
-  `adb shell setprop debug.oa.devicekey 1`, open the app and read
-  `adb logcat -d -s oa-device-key`: it makes a key, signs, verifies, reopens
-  and forgets it.
+- **Logging in with a signer app.** The list's Log in opens your account's
+  card (`../../everglade-desktop/account.coax`): an email and its 6-digit
+  code, or "Log in with a key", which signs with a key made on this phone
+  and kept only encrypted. A NIP-55 signer app (Amber) or a NIP-46
+  `bunker://` URL isn't offered yet. The login's rules are
+  `../../shared/app-login.coax` and `app-login-flow.coax`; this app's side
+  (HTTPS, the Keystore, files) is
+  [`../../shared/host/android/app-login.c`](../../shared/host/android/app-login.c).
+  A development build logs in to staging with
+  `adb shell setprop debug.oa.origin https://staging.openagents.com`, and
+  `adb logcat -d -s oa-login` lists each request's path and status. The
+  device key it binds the login to is
+  [`device-key.c`](../../shared/host/android/device-key.c) (its self-check:
+  `adb shell setprop debug.oa.devicekey 1`, open the app, read
+  `adb logcat -d -s oa-device-key`).
 
 - **Turning the phone to look.** iOS has it (the Gyro switch); the Android host doesn't read the gyro yet, so the switch isn't shown.
 

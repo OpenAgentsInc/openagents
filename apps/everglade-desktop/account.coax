@@ -1,0 +1,178 @@
+// Everglade's apps: your account, a card over the list of worlds (GitHub #13229). A host that can
+// log in to openagents.com offers it (sc_login_offer: the Android app today); then the list shows
+// "Log in" at its top right, or "Account" once logged in, and the card opens over the list:
+//
+//   logged out   Email, SEND CODE, LOG IN WITH A KEY (this phone's own key), CLOSE
+//   code sent    the code from the email, LOG IN, USE ANOTHER EMAIL, CLOSE
+//   logged in    "Logged in as" who the server says, LOG OUT, CLOSE
+//
+// and under them what the server said, in its own words. The card holds no login: it hands the
+// host what the person asked for (sc_login_take) and shows what the host's login says
+// (sc_login_show; the requests and their rules are apps/shared/app-login-flow.coax's). The one text
+// box is the shared edit buffer (components/core/edit.coax), the email's and then the code's.
+//   coax/bin/coax test --library apps/everglade-desktop/scenes.coax --only "account"
+#load "../../components/core/edit.coax";
+
+AC_NONE :: 0; AC_EMAIL :: 1; AC_CODE :: 2; AC_KEY :: 3; AC_LOGOUT :: 4; AC_BACK :: 5;
+// What the host's login says (app-login-flow.coax's ALF_OUT, ALF_CODE, ALF_IN).
+AC_OUT :: 0; AC_SENT :: 1; AC_IN :: 2;
+// The card's buttons, and the field.
+AC_B_NONE :: -1; AC_B_FIELD :: 0; AC_B_MAIN :: 1; AC_B_OTHER :: 2; AC_B_CLOSE :: 3; AC_B_OPEN :: 4;
+AC_WORDS :: 400; AC_WHO :: 160; AC_TYPED :: 254;
+
+AcCard :: struct {
+  offered: bool; open: bool; focus: bool;
+  state: int; busy: bool;
+  box: [1] EditBuf;                 // the email while logged out, the code once it is sent
+  email: [AC_TYPED] u8; email_n: int;   // the email, kept while the code is typed
+  action: int; text: [AC_TYPED] u8; text_n: int;
+  press: int;
+  words: [AC_WORDS] u8; words_n: int;
+  who: [AC_WHO] u8; who_n: int;
+}
+
+ac_main_label :: (c: [] AcCard) -> string {
+  if c[0].state == AC_IN { return "Log out"; }
+  return ifx c[0].state == AC_SENT then "Log in" else "Send code";
+}
+ac_other_label :: (c: [] AcCard) -> string {
+  if c[0].state == AC_IN { return ""; }
+  return ifx c[0].state == AC_SENT then "Use another email" else "Log in with a key";
+}
+ac_field_label :: (c: [] AcCard) -> string { return ifx c[0].state == AC_SENT then "Code from the email" else "Email"; }
+
+// ---- the boxes, in points (the list's left edge and width)
+
+ac_width :: (s: []Scenes) -> f32 { w := s[0].width - 2 * sc_left(s); if w > 560 { w = 560; } if w < 120 { w = 120; } return w; }
+ac_open_box :: (s: []Scenes) -> HudBox {
+  return HudBox.{x = sc_left(s) + ac_width(s) - 112, y = s[0].safe_top + 40, width = 112, height = 34};
+}
+ac_box :: (s: []Scenes, which: int) -> HudBox {
+  left := sc_left(s); w := ac_width(s); top := s[0].safe_top + 150;
+  if which == AC_B_OPEN { return ac_open_box(s); }
+  if which == AC_B_FIELD { return HudBox.{x = left, y = top + 18, width = w, height = 48}; }
+  return HudBox.{x = left, y = top + 18 + 64 * cast(f32) which, width = w, height = 50};
+}
+ac_in :: (b: HudBox, x: f32, y: f32) -> bool { return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height; }
+// Which of the card's parts a point is on (only those shown), else AC_B_NONE.
+ac_at :: (s: []Scenes, c: [] AcCard, x: f32, y: f32) -> int {
+  if !c[0].offered || s[0].scene != SC_LIST { return AC_B_NONE; }
+  if !c[0].open { return ifx ac_in(ac_open_box(s), x, y) then AC_B_OPEN else AC_B_NONE; }
+  for b: AC_B_FIELD..<AC_B_OPEN {
+    if b == AC_B_FIELD && c[0].state == AC_IN { continue; }
+    if b == AC_B_OTHER && c[0].state == AC_IN { continue; }
+    if ac_in(ac_box(s, b), x, y) { return b; }
+  }
+  return AC_B_NONE;
+}
+
+// ---- what the person does
+
+ac_ask :: (c: [] AcCard, action: int, text: string) {
+  c[0].action = action; c[0].text_n = 0;
+  for ch: text { if c[0].text_n == AC_TYPED { break; } c[0].text[c[0].text_n] = ch; c[0].text_n += 1; }
+}
+// The main button, or Enter in the box.
+ac_submit :: (c: [] AcCard) {
+  if c[0].busy { return; }
+  if c[0].state == AC_IN { ac_ask(c, AC_LOGOUT, ""); return; }
+  if c[0].state == AC_SENT { ac_ask(c, AC_CODE, eb_text(c[0].box[..])); return; }
+  ac_ask(c, AC_EMAIL, eb_text(c[0].box[..]));
+}
+ac_press :: (s: []Scenes, c: [] AcCard, b: int) {
+  if b == AC_B_OPEN { c[0].open = true; c[0].focus = c[0].state != AC_IN; return; }
+  if b == AC_B_CLOSE { c[0].open = false; c[0].focus = false; return; }
+  if b == AC_B_FIELD { c[0].focus = true; return; }
+  if c[0].busy { return; }
+  if b == AC_B_MAIN { ac_submit(c); return; }
+  if b == AC_B_OTHER { ac_ask(c, ifx c[0].state == AC_SENT then AC_BACK else AC_KEY, ""); c[0].focus = false; }
+}
+// A press: phase 0 down, 2 up. true when it was the card's (or its button's), so the list
+// doesn't take it.
+ac_pointer :: (s: []Scenes, c: [] AcCard, x: f32, y: f32, phase: int) -> bool {
+  if !c[0].offered || s[0].scene != SC_LIST { return false; }
+  at := ac_at(s, c, x, y);
+  if phase == 0 { c[0].press = at; return at != AC_B_NONE || c[0].open; }
+  was := c[0].press; c[0].press = AC_B_NONE;
+  if phase == 2 && was != AC_B_NONE && was == at { ac_press(s, c, at); }
+  return was != AC_B_NONE || c[0].open;
+}
+// A typed character into the box: printable ASCII, 8 Backspace, 13 Enter. true when the card took it.
+ac_char :: (c: [] AcCard, ch: int) -> bool {
+  if !c[0].open || !c[0].focus || c[0].state == AC_IN { return false; }
+  e := c[0].box[..];
+  if ch == 13 { ac_submit(c); return true; }
+  if ch == 8 { eb_delete_to(e, eb_prev_boundary(e, e[0].caret)); return true; }
+  if ch < 32 || ch > 126 || e[0].n >= AC_TYPED { return ch >= 32 && ch <= 126; }
+  one := [1] u8.[cast(u8) ch];
+  _ = eb_insert(e, cast(string) one[..]);
+  return true;
+}
+// What the host's login says now. The box follows: the email comes back when the code is
+// forgotten, and is emptied for the code.
+ac_show :: (c: [] AcCard, state: int, busy: bool, words: string, who: string) {
+  if state != c[0].state {
+    if state == AC_SENT { c[0].email_n = 0; for ch: eb_text(c[0].box[..]) { if c[0].email_n < AC_TYPED { c[0].email[c[0].email_n] = ch; c[0].email_n += 1; } } eb_clear(c[0].box[..]); }
+    else if state == AC_OUT { eb_set(c[0].box[..], cast(string) c[0].email[0..<c[0].email_n]); }
+    else { eb_clear(c[0].box[..]); c[0].focus = false; }
+  }
+  c[0].state = state; c[0].busy = busy;
+  c[0].words_n = 0; for ch: words { if c[0].words_n < AC_WORDS { c[0].words[c[0].words_n] = ch; c[0].words_n += 1; } }
+  c[0].who_n = 0; for ch: who { if c[0].who_n < AC_WHO { c[0].who[c[0].who_n] = ch; c[0].who_n += 1; } }
+}
+
+// ---- drawing
+
+ac_button :: (out: []f32, at: int, b: HudBox, pen: HdPen, label: string, d: f32, on: bool) -> int {
+  n := hd_rect(out, at, b, pen, ifx on then 2 else 1, ifx on then 0.9f32 else 0.4f32);
+  return eg_text(out, n, label, b.x + 16, b.y + b.height * 0.5 + 6, 17, d, EG_TITLE, ifx on then EG_WHITE else EG_DIM);
+}
+// The words, cut into lines that fit the width, from y down.
+ac_lines :: (out: []f32, at: int, text: string, x: f32, y: f32, w: f32, d: f32) -> int {
+  n := at; from := 0; base := y;
+  while from < text.count {
+    to := from; last_space := -1;
+    while to < text.count && eg_width(text[from..<to + 1], 14, EG_BODY) <= w { if text[to] == ' ' { last_space = to; } to += 1; }
+    if to < text.count && last_space > from { to = last_space + 1; }
+    if to == from { to = from + 1; }
+    n = eg_text(out, n, text[from..<to], x, base, 14, d, EG_BODY, EG_MID);
+    from = to; base += 20;
+  }
+  return n;
+}
+// The Log in (or Account) button on the list.
+ac_open_button :: (s: []Scenes, c: [] AcCard, out: []f32, at: int, d: f32) -> int {
+  if !c[0].offered || c[0].open || s[0].scene != SC_LIST { return at; }
+  pen := HdPen.{d = d, cyan = true, top = 0, bottom = s[0].height, sans = false};
+  label := ifx c[0].state == AC_IN then "Account" else "Log in";
+  b := ac_open_box(s);
+  n := hd_rect(out, at, b, pen, 1, 0.7);
+  return eg_text(out, n, label, b.x + (b.width - eg_width(label, 15, EG_TITLE)) * 0.5, b.y + 22, 15, d, EG_TITLE, EG_WHITE);
+}
+// The card, in place of the list's rows.
+ac_card :: (s: []Scenes, c: [] AcCard, out: []f32, at: int, d: f32) -> int {
+  pen := HdPen.{d = d, cyan = true, top = 0, bottom = s[0].height, sans = false};
+  left := sc_left(s); top := s[0].safe_top; w := ac_width(s);
+  n := eg_text(out, at, "Your account", left + 1, top + 94, 18, d, EG_TITLE, EG_MID);
+  live := !c[0].busy;
+  if c[0].state == AC_IN {
+    f := ac_box(s, AC_B_FIELD);
+    n = eg_text(out, n, "Logged in as", f.x, f.y + 16, 14, d, EG_BODY, EG_DIM);
+    n = eg_text(out, n, cast(string) c[0].who[0..<c[0].who_n], f.x, f.y + 40, 19, d, EG_TITLE, EG_WHITE);
+  } else {
+    f := ac_box(s, AC_B_FIELD);
+    n = eg_text(out, n, ac_field_label(c), f.x, f.y - 6, 14, d, EG_BODY, EG_DIM);
+    n = hd_rect(out, n, f, pen, ifx c[0].focus then 2 else 1, ifx c[0].focus then 0.9f32 else 0.5f32);
+    typed := eb_text(c[0].box[..]);
+    // The end of a long email, so the caret's side shows.
+    shown := typed; while shown.count > 0 && eg_width(shown, 18, EG_BODY) > f.width - 40 { shown = shown[1..<shown.count]; }
+    n = eg_text(out, n, shown, f.x + 14, f.y + 31, 18, d, EG_BODY, EG_WHITE);
+    if c[0].focus { n = eg_text(out, n, "_", f.x + 15 + eg_width(shown, 18, EG_BODY), f.y + 31, 18, d, EG_BODY, EG_ACCENT); }
+  }
+  n = ac_button(out, n, ac_box(s, AC_B_MAIN), pen, ac_main_label(c), d, live);
+  other := ac_other_label(c);
+  if other.count > 0 { n = ac_button(out, n, ac_box(s, AC_B_OTHER), pen, other, d, live); }
+  n = ac_button(out, n, ac_box(s, AC_B_CLOSE), pen, "Close", d, true);
+  close := ac_box(s, AC_B_CLOSE);
+  return ac_lines(out, n, cast(string) c[0].words[0..<c[0].words_n], left, close.y + close.height + 30, w, d);
+}

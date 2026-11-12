@@ -3,6 +3,7 @@
 #include "workshop.h"
 #include "face.h"
 #include <stdlib.h>
+#include <string.h>
 
 static coax_v_t_Scenes at(void *state) { return (coax_v_t_Scenes){(coax_t_Scenes *)state, 1}; }
 
@@ -36,3 +37,15 @@ int32_t eg_claims(void *state, float x, float y) { return sc_claims(at(state), x
 void eg_runs(void *state, int32_t world, int32_t runs) { sc_host_runs(at(state), world, runs != 0); }
 int32_t eg_on_worlds(void *state, float x, float y) { return sc_on_worlds(at(state), x, y) ? 1 : 0; }
 void eg_opening(void *state, int32_t opening) { sc_host_opening(at(state), opening != 0); }
+void eg_login_offer(void *state) { sc_login_offer(at(state)); }
+int32_t eg_login_wants_keys(void *state) { return sc_login_wants_keys(at(state)) ? 1 : 0; }
+int32_t eg_login_open(void *state) { return sc_login_open(at(state)) ? 1 : 0; }
+int32_t eg_login_char(void *state, int32_t ch) { return sc_login_char(at(state), ch) ? 1 : 0; }
+int32_t eg_login_take(void *state, char *out, int32_t cap, int32_t *n) {
+  int64_t m = sc_login_text(at(state), (coax_v_u8){(uint8_t *)out, cap < 0 ? 0 : cap});
+  *n = (int32_t)m;
+  return (int32_t)sc_login_take(at(state));
+}
+void eg_login_show(void *state, int32_t login_state, int32_t busy, const char *words, const char *who) {
+  sc_login_show(at(state), login_state, busy != 0, (coax_string){words, (int64_t)strlen(words)}, (coax_string){who, (int64_t)strlen(who)});
+}

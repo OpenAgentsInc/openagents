@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.openagents.everglade" android:versionCode="1" android:versionName="0.1.0">
   <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35" />
+  <!-- Your account: logging in to openagents.com (apps/shared/host/android/app-login.c). -->
+  <uses-permission android:name="android.permission.INTERNET" />
   <uses-feature android:name="android.hardware.vulkan.version" android:version="0x401000" android:required="true" />
   <application android:label="Everglade" android:icon="@mipmap/ic_launcher" android:hasCode="false" android:extractNativeLibs="true">
     <activity android:name="android.app.NativeActivity" android:exported="true"

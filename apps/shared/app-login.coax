@@ -1,0 +1,523 @@
+// The native apps' login to openagents.com: the decisions, with no effects (docs/auth/
+// sessions-and-tokens.md, "App login"; coax/web/api/auth.c; GitHub #13229). A host sends the
+// requests and keeps the record; everything it decides is here:
+//
+//   - the bodies it posts: /api/auth/email/start {"client":"app","email"}, /api/auth/email/verify
+//     {"code","pending"}, /api/auth/nostr/challenge {"client":"app"}, /api/auth/nostr
+//     {"challenge","label":"app"} (signed NIP-98 over that URL and these bytes) and
+//     /api/auth/refresh {"refresh_token"};
+//   - what a logged-in answer is: an oa_at_ access token, an oa_rt_ refresh token, how long the
+//     access token lasts (an hour if unsaid), the account, and whether the server bound the login to
+//     the device key (then every refresh carries OA-Device-Proof, signed over the refresh token's
+//     SHA-256: al_token_hash);
+//   - what a request does next: nothing while logged out, the access token while it has more than a
+//     minute left, else a refresh;
+//   - what a refresh's answer means: new tokens; sign again on the server's clock (400,
+//     device_proof "clock", now_ms); the login ended (401: forget the tokens and the device key);
+//     or a refusal that keeps the login (a limit, a network failure);
+//   - the words to show: the server's own {"error"}, else a plain fallback;
+//   - the record a host keeps (encrypted by the host, al_record and al_read_record) and the
+//     device's name it sends (OA-Device-Name: printable ASCII, at most 80).
+//
+// The iOS app keeps the same rules in Swift (apps/openagents-ios/OpenAgents/SignIn/AppAuth.swift),
+// written before this file; Android (apps/everglade-mobile/android) uses this one.
+//   coax/bin/coax test apps/shared/app-login.coax
+#authority;
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+
+AL_TOKEN :: 96;              // an oa_at_ or oa_rt_ token: the prefix, 52 and 6 characters
+AL_ACCOUNT :: 64;            // the account's id as the server writes it
+AL_MARGIN_MS :: 60000;       // an access token with less left than this is renewed first
+AL_LIFE_S :: 3600;           // an access token's life when the answer doesn't say
+AL_NAME :: 80;               // OA-Device-Name's most characters
+AL_NODES :: 256;             // JSON nodes in one answer we read
+AL_RECORD :: 512;            // the record's bytes
+AL_FALLBACK :: "That didn't work. Try again.";
+AL_UNREACHABLE :: "Couldn't reach openagents.com. Check the connection and try again.";
+
+// What a request does next (al_next).
+AL_LOGGED_OUT :: 0; AL_USE_ACCESS :: 1; AL_REFRESH :: 2;
+// What a refresh's answer means (al_refresh_outcome).
+AL_REFRESHED :: 0; AL_CLOCK :: 1; AL_ENDED :: 2; AL_KEPT :: 3;
+
+AlTokens :: struct {
+  access: [AL_TOKEN] u8; access_n: int;
+  refresh: [AL_TOKEN] u8; refresh_n: int;
+  until_ms: int;                     // when the access token ends, the device's clock
+  account: [AL_ACCOUNT] u8; account_n: int;
+  bound: bool;                       // the server bound this login to the device key
+}
+
+al_access :: (t: [] AlTokens) -> string #effects(all) { return cast(string) t[0].access[0..<t[0].access_n]; }
+al_refresh :: (t: [] AlTokens) -> string #effects(all) { return cast(string) t[0].refresh[0..<t[0].refresh_n]; }
+al_account :: (t: [] AlTokens) -> string #effects(all) { return cast(string) t[0].account[0..<t[0].account_n]; }
+al_has :: (t: [] AlTokens) -> bool #effects(all) { return t[0].access_n > 0 && t[0].refresh_n > 0; }
+
+// ---- checks first
+
+AL_AT :: "oa_at_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+AL_RT :: "oa_rt_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+al_t_login :: () -> string #effects(all) { return "{\"state\":\"logged-in\",\"account\":\"acct_7\",\"new\":false,\"access_token\":\"oa_at_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"refresh_token\":\"oa_rt_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"expires_in\":3600,\"device_bound\":true}"; }
+
+#test "the bodies: sorted keys, the app's client, and JSON escapes" {
+  out: [256] u8;
+  n := al_email_start_body("a@b.co", out[..]);
+  #assert cast(string) out[0..<n] == "{\"client\":\"app\",\"email\":\"a@b.co\"}";
+  n = al_email_start_body(" Me\"x@b.co\n", out[..]);
+  #assert cast(string) out[0..<n] == "{\"client\":\"app\",\"email\":\"Me\\\"x@b.co\"}";
+  n = al_email_verify_body("123456", "pend_1", out[..]);
+  #assert cast(string) out[0..<n] == "{\"code\":\"123456\",\"pending\":\"pend_1\"}";
+  n = al_email_verify_body(" 12 34 56 ", "p", out[..]);
+  #assert cast(string) out[0..<n] == "{\"code\":\"123456\",\"pending\":\"p\"}";
+  n = al_challenge_body(out[..]);
+  #assert cast(string) out[0..<n] == "{\"client\":\"app\"}";
+  n = al_key_login_body("ch_9", out[..]);
+  #assert cast(string) out[0..<n] == "{\"challenge\":\"ch_9\",\"label\":\"app\"}";
+  t: [1] AlTokens; #assert al_read_login(al_t_login(), 1000, "", false, t[..]);
+  n = al_refresh_body(t[..], out[..]);
+  #assert cast(string) out[0..<n] == "{\"refresh_token\":\"oa_rt_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\"}";
+  #assert al_email_start_body("a@b.co", out[0..<10]) == -1 && al_key_login_body("ch_9", out[0..<5]) == -1;
+  #assert al_email_verify_body("123456", "p", out[0..<8]) == -1 && al_challenge_body(out[0..<4]) == -1 && al_refresh_body(t[..], out[0..<12]) == -1;
+}
+
+#test "nothing to send: an empty email, a code with no digits, no pending, no challenge, no tokens" {
+  out: [256] u8; t: [1] AlTokens;
+  #assert al_email_start_body("   ", out[..]) == -1 && al_email_start_body("", out[..]) == -1 && al_email_start_body("ab", out[..]) == -1;
+  #assert al_email_start_body("a@b", out[..]) > 0 && al_email_start_body(" a@b ", out[..]) == 30;
+  #assert al_email_verify_body("abc", "p", out[..]) == -1 && al_email_verify_body("12345", "p", out[..]) == -1 && al_email_verify_body("1234567", "p", out[..]) == -1;
+  #assert al_email_verify_body("12345/", "p", out[..]) == -1 && al_email_verify_body("12345:", "p", out[..]) == -1 && al_email_verify_body("012349", "p", out[..]) > 0;
+  #assert al_email_verify_body("123456", "", out[..]) == -1;
+  #assert al_key_login_body("", out[..]) == -1 && al_refresh_body(t[..], out[..]) == -1;
+}
+
+#test "a logged-in answer: both tokens with their prefixes, the hour, the account, the binding" {
+  t: [1] AlTokens;
+  #assert al_read_login(al_t_login(), 5000, "", false, t[..]);
+  #assert al_access(t[..]) == AL_AT && al_refresh(t[..]) == AL_RT && al_account(t[..]) == "acct_7" && t[0].bound && t[0].until_ms == 5000 + 3600000;
+  // A refresh's answer has no account and no binding: the login keeps its own.
+  u: [1] AlTokens;
+  #assert al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"expires_in\":60}", 7, al_account(t[..]), t[0].bound, u[..]);
+  #assert al_access(u[..]) == "oa_at_C" && al_refresh(u[..]) == "oa_rt_D" && al_account(u[..]) == "acct_7" && u[0].bound && u[0].until_ms == 60007;
+  #assert al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"device_bound\":false}", 7, "x", true, u[..]);
+  #assert !u[0].bound && al_account(u[..]) == "x" && u[0].until_ms == 7 + AL_LIFE_S * 1000;
+  #assert al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"device_bound\":7}", 7, "", false, u[..]) && !u[0].bound;
+  // Anything else is not a login, and leaves what it was given untouched.
+  v: [1] AlTokens; v[0] = t[0];
+  #assert !al_read_login("{\"access_token\":\"oa_rt_C\",\"refresh_token\":\"oa_rt_D\"}", 7, "", false, v[..]) && al_access(v[..]) == AL_AT;
+  #assert !al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_at_D\"}", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":\"oa_at_C\"}", 7, "", false, v[..]) && !al_read_login("{\"refresh_token\":\"oa_rt_C\"}", 7, "", false, v[..]);
+  #assert !al_read_login("not json", 7, "", false, v[..]) && !al_read_login("", 7, "", false, v[..]) && !al_read_login("[]", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":7,\"refresh_token\":\"oa_rt_D\"}", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":\"oa_at_\",\"refresh_token\":\"oa_rt_D\"}", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_\"}", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"expires_in\":0}", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"expires_in\":-5}", 7, "", false, v[..]);
+  #assert al_access(v[..]) == AL_AT;
+  #assert al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"expires_in\":1}", 7, "", false, v[..]) && v[0].until_ms == 1007 && v[0].account_n == 0;
+  #assert al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"expires_in\":\"9\"}", 7, "", false, v[..]) && v[0].until_ms == 7 + AL_LIFE_S * 1000;
+  // A token longer than we keep is no login.
+  ok: [AL_TOKEN + 60] u8; m := 0;
+  for c: "{\"refresh_token\":\"oa_rt_D\",\"access_token\":\"oa_at_" { ok[m] = c; m += 1; }
+  head := m;
+  while m < head + AL_TOKEN - 6 { ok[m] = 'y'; m += 1; }
+  ok[m] = '"'; ok[m + 1] = '}';
+  #assert al_read_login(cast(string) ok[0..<m + 2], 7, "", false, v[..]) && v[0].access_n == AL_TOKEN;
+  ok[m] = 'y'; ok[m + 1] = '"'; ok[m + 2] = '}';
+  #assert !al_read_login(cast(string) ok[0..<m + 3], 7, "", false, v[..]);
+  // An account longer than we keep is cut, never spilled.
+  acct: [AL_ACCOUNT + 10] u8; for i: 0..<acct.count { acct[i] = 'k'; }
+  #assert al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\"}", 7, cast(string) acct[..], false, v[..]) && v[0].account_n == AL_ACCOUNT;
+}
+
+#test "next: logged out, the access token with over a minute left, else a refresh" {
+  t: [1] AlTokens;
+  #assert al_next(t[..], 0) == AL_LOGGED_OUT;
+  #assert al_read_login(al_t_login(), 0, "", false, t[..]);
+  #assert al_next(t[..], 0) == AL_USE_ACCESS && al_next(t[..], 3600000 - 60001) == AL_USE_ACCESS;
+  #assert al_next(t[..], 3600000 - 60000) == AL_REFRESH && al_next(t[..], 3600000 * 2) == AL_REFRESH;
+  u: [1] AlTokens; u[0] = t[0]; u[0].refresh_n = 0; #assert al_next(u[..], 0) == AL_LOGGED_OUT;
+  u[0] = t[0]; u[0].access_n = 0; #assert al_next(u[..], 0) == AL_LOGGED_OUT;
+}
+
+#test "a refresh's answer: new tokens, the server's clock, the end of the login, or kept" {
+  #assert al_refresh_outcome(200, al_t_login()) == AL_REFRESHED && al_refresh_outcome(299, al_t_login()) == AL_REFRESHED;
+  #assert al_refresh_outcome(200, "{}") == AL_KEPT;   // a 200 that is no login renews nothing
+  clock := "{\"error\":\"Your clock is off.\",\"device_proof\":\"clock\",\"now_ms\":1700000000000}";
+  #assert al_refresh_outcome(400, clock) == AL_CLOCK && al_now_ms(clock) == 1700000000000;
+  #assert al_refresh_outcome(401, clock) == AL_ENDED;
+  #assert al_refresh_outcome(400, "{\"device_proof\":\"clock\"}") == AL_KEPT && al_now_ms("{\"device_proof\":\"clock\"}") == 0;
+  #assert al_refresh_outcome(400, "{\"device_proof\":\"clock\",\"now_ms\":0}") == AL_KEPT && al_refresh_outcome(400, "{\"device_proof\":\"clock\",\"now_ms\":1}") == AL_CLOCK;
+  #assert al_refresh_outcome(400, "{\"device_proof\":\"replay\",\"now_ms\":5}") == AL_KEPT && al_refresh_outcome(400, "{\"device_proof\":\"clocks\",\"now_ms\":5}") == AL_KEPT;
+  #assert al_refresh_outcome(409, clock) == AL_KEPT && al_refresh_outcome(300, al_t_login()) == AL_KEPT && al_refresh_outcome(199, al_t_login()) == AL_KEPT;
+  #assert al_refresh_outcome(401, "{\"error\":\"Log in again.\"}") == AL_ENDED && al_refresh_outcome(401, "") == AL_ENDED;
+  #assert al_refresh_outcome(429, "{\"error\":\"Too many.\"}") == AL_KEPT && al_refresh_outcome(500, "") == AL_KEPT && al_refresh_outcome(0, "") == AL_KEPT;
+  #assert al_now_ms("nope") == 0 && al_now_ms("{\"now_ms\":-4}") == 0 && al_now_ms("{\"now_ms\":\"5\"}") == 0 && al_now_ms("{\"now_ms\":1}") == 1;
+}
+
+#test "the words: the server's own, else a fallback; nothing reached says so" {
+  out: [400] u8;
+  n := al_words(429, "{\"error\":\"Too many codes. Try again at 3:42 PM.\"}", out[..]);
+  #assert cast(string) out[0..<n] == "Too many codes. Try again at 3:42 PM.";
+  n = al_words(400, "{\"error\":\"Say \\\"yes\\\".\"}", out[..]);
+  #assert cast(string) out[0..<n] == "Say \"yes\".";
+  n = al_words(1, "{\"error\":\"one\"}", out[..]); #assert cast(string) out[0..<n] == "one";
+  n = al_words(500, "{\"error\":\"\"}", out[..]); #assert cast(string) out[0..<n] == AL_FALLBACK;
+  n = al_words(500, "{\"error\":5}", out[..]); #assert cast(string) out[0..<n] == AL_FALLBACK;
+  n = al_words(502, "<html>", out[..]); #assert cast(string) out[0..<n] == AL_FALLBACK;
+  n = al_words(0, "{\"error\":\"x\"}", out[..]); #assert cast(string) out[0..<n] == AL_UNREACHABLE;
+  n = al_words(-1, "", out[..]); #assert cast(string) out[0..<n] == AL_UNREACHABLE;
+  #assert al_words(429, "{\"error\":\"Too many codes.\"}", out[0..<5]) == -1;
+  #assert al_words(0, "", out[0..<5]) == -1;
+  #assert al_put(out[0..<3], "abc") == 3 && al_put(out[0..<2], "abc") == -1 && cast(string) out[0..<3] == "abc";
+}
+
+#test "a field: the pending value and the challenge, as strings only" {
+  out: [64] u8;
+  n := al_field("{\"state\":\"sent\",\"pending\":\"pe_1\"}", "pending", out[..]);
+  #assert cast(string) out[0..<n] == "pe_1";
+  #assert al_field("{\"state\":\"sent\"}", "pending", out[..]) == -1 && al_field("{\"pending\":3}", "pending", out[..]) == -1;
+  #assert al_field("{\"pending\":\"\"}", "pending", out[..]) == -1 && al_field("x", "pending", out[..]) == -1 && al_field("[\"pending\"]", "pending", out[..]) == -1;
+  #assert al_field("{\"challenge\":\"abcdef\"}", "challenge", out[0..<3]) == -1;
+}
+
+#test "the record round-trips, and anything else reads as logged out" {
+  t: [1] AlTokens; #assert al_read_login(al_t_login(), 1234, "", false, t[..]);
+  out: [AL_RECORD] u8;
+  n := al_record(t[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"access\":\"oa_at_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"account\":\"acct_7\",\"bound\":true,\"refresh\":\"oa_rt_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"until_ms\":3601234}";
+  u: [1] AlTokens;
+  #assert al_read_record(cast(string) out[0..<n], u[..]) && al_access(u[..]) == AL_AT && al_refresh(u[..]) == AL_RT && al_account(u[..]) == "acct_7" && u[0].bound && u[0].until_ms == 3601234;
+  t[0].bound = false; n = al_record(t[..], out[..]);
+  #assert al_read_record(cast(string) out[0..<n], u[..]) && !u[0].bound;
+  #assert al_record(t[..], out[0..<20]) == -1;
+  e: [1] AlTokens; #assert al_record(e[..], out[..]) == -1;
+  #assert !al_read_record("", u[..]) && !u[0].bound && u[0].access_n == 0 && u[0].refresh_n == 0 && u[0].until_ms == 0;
+  #assert al_read_record(cast(string) out[0..<n], u[..]);
+  #assert !al_read_record("{\"access\":\"oa_at_A\",\"refresh\":\"x\",\"until_ms\":1}", u[..]) && u[0].access_n == 0;
+  #assert !al_read_record("{\"access\":\"x\",\"refresh\":\"oa_rt_B\",\"until_ms\":1}", u[..]);
+  #assert !al_read_record("{\"access\":\"oa_at_A\",\"refresh\":\"oa_rt_B\"}", u[..]) && u[0].access_n == 0;
+  #assert !al_read_record("{\"access\":\"oa_at_A\",\"refresh\":\"oa_rt_B\",\"until_ms\":\"1\"}", u[..]);
+  #assert !al_read_record("[1]", u[..]);
+  #assert al_read_record("{\"access\":\"oa_at_A\",\"refresh\":\"oa_rt_B\",\"until_ms\":0}", u[..]) && u[0].until_ms == 0 && u[0].account_n == 0 && !u[0].bound;
+  #assert !al_read_record("{\"access\":\"oa_at_A\",\"refresh\":\"oa_rt_B\",\"until_ms\":-1}", u[..]);
+}
+
+#test "the device's name: printable ASCII, at most 80, never empty" {
+  out: [AL_NAME + 8] u8;
+  n := al_device_name("Pixel 8", out[..]); #assert cast(string) out[0..<n] == "Pixel 8";
+  odd := [11] u8.['P', 'i', 10, 'x', 'e', 'l', 9, ' ', '8', 127, 31];
+  n = al_device_name(cast(string) odd[..], out[..]); #assert cast(string) out[0..<n] == "Pixel 8";
+  ctl := [2] u8.[10, 9];
+  n = al_device_name(cast(string) ctl[..], out[..]); #assert cast(string) out[0..<n] == "Android phone";
+  n = al_device_name("  ~ ", out[..]); #assert cast(string) out[0..<n] == "  ~ ";
+  long: [100] u8; for i: 0..<100 { long[i] = 'a'; }
+  #assert al_device_name(cast(string) long[..], out[..]) == AL_NAME;
+  #assert al_device_name("Pixel 8", out[0..<3]) == 3 && cast(string) out[0..<3] == "Pix";
+}
+
+#test "the refresh token's SHA-256, as the device proof signs it" {
+  out: [64] u8;
+  #assert al_token_hash("abc", out[..]) == 64 && cast(string) out[..] == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  #assert al_token_hash("abc", out[0..<63]) == -1;
+}
+
+#test "who is logged in, from /api/auth/account: a masked email, else a key, else the account" {
+  out: [160] u8;
+  n := al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"a...@b.co\"],\"keys\":[]}", out[..]);
+  #assert cast(string) out[0..<n] == "a...@b.co";
+  n = al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[],\"keys\":[{\"pubkey\":\"0123456789abcdef0123\"}]}", out[..]);
+  #assert cast(string) out[0..<n] == "key 01234567";
+  n = al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"\"],\"keys\":[{\"pubkey\":\"0123\"}]}", out[..]);
+  #assert cast(string) out[0..<n] == "key 0123";
+  n = al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[],\"keys\":[{\"pubkey\":\"\"}]}", out[..]);
+  #assert cast(string) out[0..<n] == "acct_7";
+  n = al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[3],\"keys\":[{\"pubkey\":5}]}", out[..]);
+  #assert cast(string) out[0..<n] == "acct_7";
+  #assert al_who("{\"logged_in\":false,\"account\":\"acct_7\"}", out[..]) == -1 && al_who("{\"logged_in\":true}", out[..]) == -1 && al_who("x", out[..]) == -1;
+  #assert al_who("{\"logged_in\":true,\"account\":\"acct_7\"}", out[0..<3]) == -1;
+  #assert al_who("{\"logged_in\":true,\"keys\":[{\"pubkey\":\"0123456789\"}]}", out[0..<11]) == -1;
+  #assert al_who("{\"logged_in\":true,\"keys\":[{\"pubkey\":\"0123456789\"}]}", out[0..<12]) == 12;
+}
+
+#test "the edges: one-character values, a first byte off, numbers that aren't whole" {
+  t: [1] AlTokens; t[0].access_n = 1; t[0].refresh_n = 1; #assert al_has(t[..]);
+  t[0].refresh_n = 0; #assert !al_has(t[..]);
+  out: [256] u8;
+  n := al_email_start_body("!a@b!", out[..]); #assert cast(string) out[0..<n] == "{\"client\":\"app\",\"email\":\"!a@b!\"}";
+  #assert al_field("{\"pending\":\"x\"}", "pending", out[..]) == 1;
+  v: [1] AlTokens;
+  #assert !al_read_login("{\"access_token\":\"Xa_at_C\",\"refresh_token\":\"oa_rt_D\"}", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"Xa_rt_D\"}", 7, "", false, v[..]);
+  #assert !al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"expires_in\":1.5}", 7, "", false, v[..]);
+  #assert al_read_login("{\"access_token\":\"oa_at_C\",\"refresh_token\":\"oa_rt_D\",\"account\":\"a\"}", 7, "keep", false, v[..]) && al_account(v[..]) == "a";
+  #assert al_now_ms("{\"now_ms\":1.5}") == 0;
+  #assert al_refresh_outcome(400, "{\"device_proof\":\"clock\",\"now_ms\":1.5}") == AL_KEPT;
+  n = al_words(400, "{\"error\":\"!\"}", out[..]); #assert cast(string) out[0..<n] == "!";
+  u: [1] AlTokens;
+  #assert !al_read_record("{\"access\":\"oa_at_A\",\"refresh\":\"oa_rt_B\",\"until_ms\":1.5}", u[..]);
+  #assert al_read_record("{\"access\":\"oa_at_A\",\"refresh\":\"oa_rt_B\",\"until_ms\":1,\"account\":\"z\"}", u[..]) && al_account(u[..]) == "z";
+  n = al_device_name("X", out[..]); #assert cast(string) out[0..<n] == "X";
+  h: [64] u8; tok: [AL_TOKEN + 1] u8; for i: 0..<tok.count { tok[i] = 'r'; }
+  #assert al_token_hash(cast(string) tok[0..<AL_TOKEN], h[..]) == 64 && al_token_hash(cast(string) tok[..], h[..]) == -1;
+}
+
+#test "who: one-character items, the mask's dots, a short out" {
+  out: [160] u8;
+  n := al_who("{\"logged_in\":true,\"emails\":[\"x\"]}", out[..]); #assert cast(string) out[0..<n] == "x";
+  dots := [12] u8.['{', '"', 'e', 'm', 'a', 'i', 'l', 's', '"', ':', '[', '"'];
+  doc: [64] u8; m := 0;
+  for c: "{\"logged_in\":true," { doc[m] = c; m += 1; }
+  for i: 1..<12 { doc[m] = dots[i]; m += 1; }
+  doc[m] = 'a'; m += 1;
+  for k: 0..<2 { doc[m] = 0xe2; doc[m + 1] = 0x80; doc[m + 2] = 0xa2; m += 3; }
+  for c: "@b.co\"]}" { doc[m] = c; m += 1; }
+  n = al_who(cast(string) doc[0..<m], out[..]); #assert cast(string) out[0..<n] == "a**@b.co";
+  n = al_who(cast(string) doc[0..<m], out[0..<4]); #assert n == 4 && cast(string) out[0..<4] == "a**@";
+  // the bytes at each edge: 127 is kept, 128 and 191 are inside a character, 192 begins one
+  m = 0;
+  for c: "{\"logged_in\":true,\"emails\":[\"a" { doc[m] = c; m += 1; }
+  edge := [4] u8.[127, 128, 191, 192];
+  for e: edge { doc[m] = e; m += 1; }
+  for c: "b\"]}" { doc[m] = c; m += 1; }
+  n = al_who(cast(string) doc[0..<m], out[..]);
+  #assert n == 4 && out[0] == 'a' && out[1] == 127 && out[2] == '*' && out[3] == 'b';
+  n = al_who("{\"logged_in\":true,\"keys\":[{\"pubkey\":\"a\"}]}", out[..]); #assert cast(string) out[0..<n] == "key a";
+  #assert al_who("{\"logged_in\":true,\"keys\":[{\"pubkey\":\"a\"}]}", out[0..<3]) == -1;
+  #assert al_who("{\"logged_in\":true,\"keys\":[{\"pubkey\":\"ab\"}]}", out[0..<5]) == -1;
+  #assert al_who("{\"logged_in\":true,\"keys\":[{\"pubkey\":\"ab\"}]}", out[0..<6]) == 6;
+}
+
+// ---- the bodies
+
+// An email as typed: without the spaces round it; at least a@b.
+al_trim :: (s: string) -> string #effects(all) {
+  a := 0; b := s.count;
+  while a < b && s[a] <= ' ' { a += 1; }
+  while b > a && s[b - 1] <= ' ' { b -= 1; }
+  return s[a..<b];
+}
+al_email_start_body :: (email: string, out: [] u8) -> int #effects(all) {
+  e := al_trim(email);
+  if e.count < 3 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "client"); jo_str(o[..], "app"); jo_key(o[..], "email"); jo_str(o[..], e); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// The code's six digits, wherever the person put spaces.
+al_email_verify_body :: (code: string, pending: string, out: [] u8) -> int #effects(all) {
+  d: [6] u8; n := 0;
+  for c: code {
+    if c == ' ' { continue; }
+    if c < '0' || c > '9' || n == 6 { return -1; }
+    d[n] = c; n += 1;
+  }
+  if n != 6 || pending.count == 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "code"); jo_str(o[..], cast(string) d[..]); jo_key(o[..], "pending"); jo_str(o[..], pending); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+al_challenge_body :: (out: [] u8) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "client"); jo_str(o[..], "app"); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// The body the key signs (NIP-98 binds its SHA-256) and the server reads.
+al_key_login_body :: (challenge: string, out: [] u8) -> int #effects(all) {
+  if challenge.count == 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "challenge"); jo_str(o[..], challenge); jo_key(o[..], "label"); jo_str(o[..], "app"); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+al_refresh_body :: (t: [] AlTokens, out: [] u8) -> int #effects(all) {
+  if !al_has(t) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "refresh_token"); jo_str(o[..], al_refresh(t)); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// ---- reading answers
+
+// A string member's bytes into out (unescaped): its length, or -1 when it is absent, not a
+// string, empty or too long. A text that doesn't parse has no members.
+al_str :: (d: Jv, key: string, out: [] u8) -> int #effects(all) {
+  at := jv_get(d, 0, key);
+  if jv_kind(d, at) != JV_STRING { return -1; }
+  n := jv_str(d, at, out);
+  return ifx n > 0 then n else -1;
+}
+al_field :: (answer: string, key: string, out: [] u8) -> int #effects(all) {
+  nodes: [AL_NODES] JvNode; d: [1] Jv;
+  _ = jv_parse(d[..], answer, nodes[..]);
+  return al_str(d[0], key, out);
+}
+al_prefixed :: (s: [] u8, n: int, prefix: string) -> bool #effects(all) {
+  if n <= prefix.count { return false; }
+  for i: 0..<prefix.count { if s[i] != prefix[i] { return false; } }
+  return true;
+}
+// The two tokens of an answer, each with its prefix; false when either is missing.
+al_tokens :: (d: Jv, access: string, refresh: string, t: [] AlTokens) -> bool #effects(all) {
+  t[0].access_n = al_str(d, access, t[0].access[..]);
+  t[0].refresh_n = al_str(d, refresh, t[0].refresh[..]);
+  return al_prefixed(t[0].access[..], t[0].access_n, "oa_at_") && al_prefixed(t[0].refresh[..], t[0].refresh_n, "oa_rt_");
+}
+
+// A logged-in answer (a login's or a refresh's) into into[0]: its tokens, the access token's end on
+// the device's clock now_ms, the account (else keep_account) and the binding (else keep_bound).
+// false, and into[0] untouched, when it is not one.
+al_read_login :: (answer: string, now_ms: int, keep_account: string, keep_bound: bool, into: [] AlTokens) -> bool #effects(all) {
+  nodes: [AL_NODES] JvNode; d: [1] Jv;
+  _ = jv_parse(d[..], answer, nodes[..]);
+  t: [1] AlTokens;
+  if !al_tokens(d[0], "access_token", "refresh_token", t[..]) { return false; }
+  life := AL_LIFE_S;
+  e := jv_get(d[0], 0, "expires_in");
+  if jv_kind(d[0], e) == JV_NUMBER { life = jv_int(d[0], e, 0); if life < 1 { return false; } }
+  t[0].until_ms = now_ms + life * 1000;
+  t[0].account_n = al_str(d[0], "account", t[0].account[..]);
+  if t[0].account_n == -1 {
+    t[0].account_n = 0;
+    for c: keep_account { if t[0].account_n == AL_ACCOUNT { break; } t[0].account[t[0].account_n] = c; t[0].account_n += 1; }
+  }
+  b := jv_kind(d[0], jv_get(d[0], 0, "device_bound"));
+  t[0].bound = keep_bound;
+  if b == JV_TRUE { t[0].bound = true; }
+  if b == JV_FALSE { t[0].bound = false; }
+  into[0] = t[0];
+  return true;
+}
+
+al_next :: (t: [] AlTokens, now_ms: int) -> int #effects(all) {
+  if !al_has(t) { return AL_LOGGED_OUT; }
+  return ifx t[0].until_ms - now_ms > AL_MARGIN_MS then AL_USE_ACCESS else AL_REFRESH;
+}
+
+// The server's clock from a clock refusal, or 0.
+al_now_ms :: (answer: string) -> int #effects(all) {
+  nodes: [AL_NODES] JvNode; d: [1] Jv;
+  _ = jv_parse(d[..], answer, nodes[..]);
+  at := jv_get(d[0], 0, "now_ms");
+  if jv_kind(d[0], at) != JV_NUMBER { return 0; }
+  v := jv_int(d[0], at, 0);
+  return ifx v >= 1 then v else 0;
+}
+al_refresh_outcome :: (status: int, answer: string) -> int #effects(all) {
+  if status >= 200 && status < 300 {
+    nodes: [AL_NODES] JvNode; d: [1] Jv; t: [1] AlTokens;
+    _ = jv_parse(d[..], answer, nodes[..]);
+    return ifx al_tokens(d[0], "access_token", "refresh_token", t[..]) then AL_REFRESHED else AL_KEPT;
+  }
+  if status == 401 { return AL_ENDED; }
+  if status == 400 {
+    w: [16] u8;
+    n := al_field(answer, "device_proof", w[..]);
+    if n == 5 && cast(string) w[0..<5] == "clock" && al_now_ms(answer) != 0 { return AL_CLOCK; }
+  }
+  return AL_KEPT;
+}
+
+al_put :: (out: [] u8, s: string) -> int #effects(all) {
+  if s.count > out.count { return -1; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+// What to tell the person after a refusal: the server's {"error"} as given, else the fallback;
+// status 0 (or below) is a request that reached nothing.
+al_words :: (status: int, answer: string, out: [] u8) -> int #effects(all) {
+  if status <= 0 { return al_put(out, AL_UNREACHABLE); }
+  w: [400] u8;
+  n := al_field(answer, "error", w[..]);
+  if n != -1 { return al_put(out, cast(string) w[0..<n]); }
+  return al_put(out, AL_FALLBACK);
+}
+
+// Who /api/auth/account says is logged in, to show: the first masked email, else the first key's
+// first 8 hex digits, else the account's id. -1 when it says nobody.
+al_who :: (answer: string, out: [] u8) -> int #effects(all) {
+  nodes: [AL_NODES] JvNode; d: [1] Jv;
+  _ = jv_parse(d[..], answer, nodes[..]);
+  if !jv_bool(d[0], jv_get(d[0], 0, "logged_in")) { return -1; }
+  n := al_first(d[0], jv_get(d[0], 0, "emails"), "", out);
+  if n != -1 { return n; }
+  h: [8] u8;
+  n = al_first(d[0], jv_get(d[0], 0, "keys"), "pubkey", h[..]);
+  if n != -1 {
+    p := al_put(out, "key ");
+    if p == -1 || p + n > out.count { return -1; }
+    for i: 0..<n { out[p + i] = h[i]; }
+    return p + n;
+  }
+  return al_str(d[0], "account", out);
+}
+// The first item of a list (or that item's member key) as a string, cut to out: its length, or -1.
+al_first :: (d: Jv, list: int, key: string, out: [] u8) -> int #effects(all) {
+  at := jv_at(d, list, 0);
+  if key != "" { at = jv_get(d, at, key); }
+  if jv_kind(d, at) != JV_STRING { return -1; }
+  // The faces draw ASCII: a character outside it (the mask's dots) shows as one '*'.
+  n := 0;
+  for c: jv_raw(d, at) {
+    if n == out.count { break; }
+    if c < 128 { out[n] = c; n += 1; continue; }
+    if c >= 192 { out[n] = '*'; n += 1; }
+  }
+  return ifx n > 0 then n else -1;
+}
+
+// ---- what a host keeps
+
+// The record, before the host encrypts it: its length, or -1 (logged out, or out too small).
+al_record :: (t: [] AlTokens, out: [] u8) -> int #effects(all) {
+  if !al_has(t) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "access"); jo_str(o[..], al_access(t));
+  jo_key(o[..], "account"); jo_str(o[..], al_account(t));
+  jo_key(o[..], "bound"); jo_bool(o[..], t[0].bound);
+  jo_key(o[..], "refresh"); jo_str(o[..], al_refresh(t));
+  jo_key(o[..], "until_ms"); jo_int(o[..], t[0].until_ms);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// A record back into into[0]; false (and into[0] logged out) when it isn't one.
+al_read_record :: (text: string, into: [] AlTokens) -> bool #effects(all) {
+  empty: AlTokens; into[0] = empty;
+  nodes: [AL_NODES] JvNode; d: [1] Jv;
+  _ = jv_parse(d[..], text, nodes[..]);
+  t: [1] AlTokens;
+  if !al_tokens(d[0], "access", "refresh", t[..]) { return false; }
+  u := jv_get(d[0], 0, "until_ms");
+  if jv_kind(d[0], u) != JV_NUMBER { return false; }
+  t[0].until_ms = jv_int(d[0], u, -1);
+  if t[0].until_ms < 0 { return false; }
+  t[0].account_n = al_str(d[0], "account", t[0].account[..]);
+  if t[0].account_n == -1 { t[0].account_n = 0; }
+  t[0].bound = jv_bool(d[0], jv_get(d[0], 0, "bound"));
+  into[0] = t[0];
+  return true;
+}
+
+// OA-Device-Name: the printable ASCII of what the phone calls itself, at most 80 (or out's size).
+al_device_name :: (raw: string, out: [] u8) -> int #effects(all) {
+  n := 0;
+  for c: raw {
+    if n == out.count || n == AL_NAME { break; }
+    if c >= ' ' && c <= '~' { out[n] = c; n += 1; }
+  }
+  if n == 0 { return al_put(out, "Android phone"); }
+  return n;
+}
+
+// The refresh token's SHA-256 as 64 hex digits, as OA-Device-Proof signs it.
+al_token_hash :: (token: string, out: [] u8) -> int #effects(all) {
+  if out.count < 64 { return -1; }
+  b: [AL_TOKEN] u8;
+  if token.count > AL_TOKEN { return -1; }
+  for i: 0..<token.count { b[i] = token[i]; }
+  h: [32] u8;
+  _ = sha256_hash_checked(b[0..<token.count], h[..], false);   // bounded and apart: it can't refuse
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = digits[cast(int) (h[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (h[i] & 15)]; }
+  return 64;
+}

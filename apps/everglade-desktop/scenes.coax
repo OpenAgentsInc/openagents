@@ -19,6 +19,7 @@
 // list, and the Worlds button that brings you back to it (Escape does too, outside a realm).
 //   coax/bin/coax test --library apps/everglade-desktop/scenes.coax --only "scenes"
 #load "workshop.coax";
+#load "account.coax";   // your account's card, on a host that offers a login (sc_login_offer)
 
 SC_LIST :: 0; SC_MAIN :: 1; SC_WORKSHOP :: 2; SC_RANGE :: 3; SC_EXPERIMENTAL :: 4; SC_BTCLAB :: 5;
 SC_WORLDS :: 5;
@@ -38,6 +39,7 @@ Scenes :: struct {
   realm_range: bool;                  // and the Archery Range's
   realm_btclab: bool;                 // and the Bitcoin Lab's
   opening: bool;                      // the host is still opening the realm of the world that is open (sc_host_opening)
+  card: [1] AcCard;                   // your account (account.coax)
 }
 
 sc_name :: (world: int) -> string {
@@ -120,7 +122,9 @@ sc_list :: (s: []Scenes, out: []f32, d: f32) -> int {
   pen := HdPen.{d = d, cyan = true, top = 0, bottom = s[0].height, sans = false};
   left := sc_left(s); top := s[0].safe_top; n := 0;
   n = eg_text(out, n, "Everglade", left, top + 66, 40, d, EG_TITLE, EG_WHITE);
+  if s[0].scene == SC_LIST && s[0].card[0].open { return ac_card(s, s[0].card[..], out, n, d); }
   if s[0].scene == SC_LIST {
+    n = ac_open_button(s, s[0].card[..], out, n, d);
     n = eg_text(out, n, "Choose a world", left + 1, top + 94, 18, d, EG_TITLE, EG_MID);
     for i: 0..<SC_WORLDS {
       b := sc_row(s, i); world := i + 1; here := sc_runs(s, world);
@@ -177,7 +181,7 @@ sc_worlds_button :: (s: []Scenes, out: []f32, at: int, d: f32) -> int {
 sc_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 sc_max_vertices :: () -> int #export_c #effects(all) { return WS_MAX_VERTICES; }
 sc_state_size :: () -> int #export_c #effects(all) { return size_of(Scenes); }
-sc_state_init :: (s: []Scenes) #export_c #effects(all) { s[0] = Scenes.{}; s[0].press_row = -1; }
+sc_state_init :: (s: []Scenes) #export_c #effects(all) { s[0] = Scenes.{}; s[0].press_row = -1; s[0].card[0].press = AC_B_NONE; }
 sc_draw :: (s: []Scenes, out: []f32, width: f32, height: f32, d: f32, dt: f32) -> int #export_c #effects(all) { return sc_frame(s, out, width, height, d, dt); }
 // Which world is open (SC_*), and which place the host draws behind it (SC_PLACE_*).
 sc_scene :: (s: []Scenes) -> int #export_c #effects(all) { return s[0].scene; }
@@ -204,6 +208,7 @@ sc_host_opening :: (s: []Scenes, opening: bool) #export_c #effects(all) { s[0].o
 // open a world.
 sc_key :: (s: []Scenes, key: int, down: bool) -> bool #export_c #effects(all) {
   if key == -1 { a := ws_key(s[0].workshop[..], -1, true); s[0].press_row = -1; s[0].press_back = false; return true; }
+  if s[0].scene == SC_LIST && s[0].card[0].open { if key == 27 && down { s[0].card[0].open = false; s[0].card[0].focus = false; } return true; }
   if key == 27 { if down && s[0].scene != SC_LIST { sc_open(s, SC_LIST); } return true; }
   if s[0].scene == SC_WORKSHOP { return ws_key(s[0].workshop[..], key, down); }
   if s[0].scene == SC_LIST && down && key >= 49 && key < 49 + SC_WORLDS { sc_open(s, key - 48); return true; }
@@ -212,6 +217,7 @@ sc_key :: (s: []Scenes, key: int, down: bool) -> bool #export_c #effects(all) {
 // A press: phase 0 down, 1 moved, 2 up; points from the top left. The Worlds button and the list
 // take it first; a scene gets the rest.
 sc_pointer :: (s: []Scenes, x: f32, y: f32, phase: int) #export_c #effects(all) {
+  if ac_pointer(s, s[0].card[..], x, y, phase) { s[0].took = true; s[0].press_row = -1; return; }
   if phase == 0 {
     s[0].took = false; s[0].press_back = sc_on_back(s, x, y);
     s[0].press_row = ifx s[0].scene == SC_LIST then sc_row_at(s, x, y) else -1;
@@ -261,6 +267,29 @@ sc_turns :: (s: []Scenes) -> bool #export_c #effects(all) { return s[0].scene ==
 sc_turn :: (s: []Scenes, yaw: f32, pitch: f32) #export_c #effects(all) {
   if s[0].scene == SC_WORKSHOP { ws_turn(s[0].workshop[..], yaw, pitch); }
 }
+// Your account (account.coax). A host that can log in offers it; the list then has Log in.
+sc_login_offer :: (s: []Scenes) #export_c #effects(all) { s[0].card[0].offered = true; }
+// 1 while the card's box takes typing: the host shows the keyboard.
+sc_login_wants_keys :: (s: []Scenes) -> bool #export_c #effects(all) {
+  c := s[0].card[..];
+  return c[0].offered && c[0].open && c[0].focus && c[0].state != AC_IN && s[0].scene == SC_LIST;
+}
+// 1 while the card is open (a phone's Back closes it: sc_key 27).
+sc_login_open :: (s: []Scenes) -> bool #export_c #effects(all) { return s[0].card[0].open && s[0].scene == SC_LIST; }
+// A typed character: printable ASCII, 8 Backspace, 13 Enter.
+sc_login_char :: (s: []Scenes, ch: int) -> bool #export_c #effects(all) { return s[0].scene == SC_LIST && ac_char(s[0].card[..], ch); }
+// What the person asked for (AC_EMAIL with the email, AC_CODE with the code, AC_KEY, AC_LOGOUT,
+// AC_BACK), once: sc_login_text first, then sc_login_take, which clears it.
+sc_login_text :: (s: []Scenes, out: []u8) -> int #export_c #effects(all) {
+  c := s[0].card[..]; n := ifx c[0].text_n < out.count then c[0].text_n else out.count;
+  for i: 0..<n { out[i] = c[0].text[i]; }
+  return n;
+}
+sc_login_take :: (s: []Scenes) -> int #export_c #effects(all) { a := s[0].card[0].action; s[0].card[0].action = AC_NONE; return a; }
+// What the host's login says: AC_OUT, AC_SENT or AC_IN, whether a request is under way, the
+// server's words and who is logged in.
+sc_login_show :: (s: []Scenes, state: int, busy: bool, words: string, who: string) #export_c #effects(all) { ac_show(s[0].card[..], state, busy, words, who); }
+
 // Where you stand, for the host's model: nobody stands on the list or a card.
 sc_you :: (s: []Scenes, out: []f32) -> bool #export_c #effects(all) {
   if s[0].scene == SC_WORKSHOP { return ws_you(s[0].workshop[..], out); }
@@ -406,4 +435,46 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   // turned on its side it is wide: the middle of the top edge, as on a desktop
   sc_safe(s[..], 59, 0, 21); n = sc_draw(s[..], out[..], 874, 402, 3, 0.016);
   b = sc_back(s[..]); #assert b.y < 40 && b.x > 874 * 0.5 - 92 && b.x < 874 * 0.5;
+}
+#test "account: offered, the list has Log in; the card sends the email, takes the code, shows who is logged in, logs out" {
+  s: [1] Scenes; sc_state_init(s[..]); out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; txt: [300] u8;
+  sc_pad(s[..], 0, 0); sc_safe(s[..], 0, 59, 34);
+  plain := sc_draw(s[..], out[..], 402, 874, 3, 0.016);
+  b := ac_open_box(s[..]); sc_pointer(s[..], b.x + 4, b.y + 4, 0); sc_pointer(s[..], b.x + 4, b.y + 4, 2);
+  #assert !s[0].card[0].open && !sc_login_wants_keys(s[..]);   // not offered: nothing there
+  sc_login_offer(s[..]);
+  #assert sc_draw(s[..], out[..], 402, 874, 3, 0.016) > plain;
+  b = ac_open_box(s[..]); #assert b.x + b.width <= 402 && sc_row_at(s[..], b.x + 4, b.y + 4) == -1;
+  sc_pointer(s[..], b.x + 4, b.y + 4, 0); sc_pointer(s[..], b.x + 4, b.y + 4, 2);
+  #assert s[0].card[0].open && sc_login_wants_keys(s[..]) && sc_scene(s[..]) == SC_LIST;
+  n := sc_draw(s[..], out[..], 402, 874, 3, 0.016); #assert n > 0;
+  // a press where a row was opens no world while the card is up; 1 to 5 open none either
+  r := sc_row(s[..], 1); sc_pointer(s[..], r.x + 9, r.y + 9, 0); sc_pointer(s[..], r.x + 9, r.y + 9, 2);
+  #assert sc_scene(s[..]) == SC_LIST && sc_key(s[..], 50, true) && sc_scene(s[..]) == SC_LIST;
+  for ch: "me@b.coo" { #assert sc_login_char(s[..], cast(int) ch); }
+  #assert sc_login_char(s[..], 8) && sc_login_char(s[..], 13) && sc_login_take(s[..]) == AC_EMAIL;
+  #assert cast(string) txt[0..<sc_login_text(s[..], txt[..])] == "me@b.co" && sc_login_take(s[..]) == AC_NONE;
+  sc_login_show(s[..], AC_OUT, true, "", "");
+  m := ac_box(s[..], AC_B_MAIN); sc_pointer(s[..], m.x + 4, m.y + 4, 0); sc_pointer(s[..], m.x + 4, m.y + 4, 2);
+  #assert sc_login_take(s[..]) == AC_NONE;   // busy: the buttons wait
+  sc_login_show(s[..], AC_SENT, false, "We sent a 6-digit code to your email. Type it here.", "");
+  #assert eb_text(s[0].card[0].box[..]) == "" && sc_draw(s[..], out[..], 402, 874, 3, 0.016) > 0;
+  for ch: "123456" { #assert sc_login_char(s[..], cast(int) ch); }
+  sc_pointer(s[..], m.x + 4, m.y + 4, 0); sc_pointer(s[..], m.x + 4, m.y + 4, 2);
+  #assert sc_login_take(s[..]) == AC_CODE && cast(string) txt[0..<sc_login_text(s[..], txt[..])] == "123456";
+  // Use another email: the email comes back to the box
+  o := ac_box(s[..], AC_B_OTHER); sc_pointer(s[..], o.x + 4, o.y + 4, 0); sc_pointer(s[..], o.x + 4, o.y + 4, 2);
+  #assert sc_login_take(s[..]) == AC_BACK;
+  sc_login_show(s[..], AC_OUT, false, "", ""); #assert eb_text(s[0].card[0].box[..]) == "me@b.co";
+  sc_pointer(s[..], o.x + 4, o.y + 4, 0); sc_pointer(s[..], o.x + 4, o.y + 4, 2);
+  #assert sc_login_take(s[..]) == AC_KEY && !sc_login_wants_keys(s[..]);
+  sc_login_show(s[..], AC_IN, false, "", "m**@b.co");
+  #assert !sc_login_wants_keys(s[..]) && !sc_login_char(s[..], 65) && sc_draw(s[..], out[..], 402, 874, 3, 0.016) > 0;
+  sc_pointer(s[..], m.x + 4, m.y + 4, 0); sc_pointer(s[..], m.x + 4, m.y + 4, 2);
+  #assert sc_login_take(s[..]) == AC_LOGOUT;
+  c := ac_box(s[..], AC_B_CLOSE); sc_pointer(s[..], c.x + 4, c.y + 4, 0); sc_pointer(s[..], c.x + 4, c.y + 4, 2);
+  #assert !s[0].card[0].open && sc_draw(s[..], out[..], 402, 874, 3, 0.016) > 0;
+  // Escape closes it too
+  sc_pointer(s[..], b.x + 4, b.y + 4, 0); sc_pointer(s[..], b.x + 4, b.y + 4, 2); #assert s[0].card[0].open;
+  #assert sc_login_open(s[..]) && sc_key(s[..], 27, true) && !s[0].card[0].open && !sc_login_open(s[..]);
 }

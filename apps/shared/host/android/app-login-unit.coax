@@ -1,0 +1,55 @@
+// The Android app's login unit (GitHub #13229): app-login-flow.coax's flow and NIP-98's signing,
+// compiled to C for app-login.c, which does the effects (HTTPS, the Keystore, files). Its own unit,
+// apart from the scene's, because secp256k1's tables take long to build and only the login signs.
+//   coax/bin/coax c apps/shared/host/android/app-login-unit.coax --run-steps 250000000 --library --header app-login-unit.h
+#load "../../app-login-flow.coax";
+#load "../../../../coax/lib/nostr/nip98_sign.coax";
+
+alu_size :: () -> int #export_c #effects(all) { return size_of(AlFlow); }
+alu_open :: (f: [] AlFlow, record: string) #export_c #effects(all) { alf_open(f, record); }
+alu_email :: (f: [] AlFlow, text: string) -> bool #export_c #effects(all) { return alf_email(f, text); }
+alu_code :: (f: [] AlFlow, text: string) -> bool #export_c #effects(all) { return alf_code(f, text); }
+alu_back :: (f: [] AlFlow) #export_c #effects(all) { alf_back(f); }
+alu_key :: (f: [] AlFlow) -> bool #export_c #effects(all) { return alf_key(f); }
+alu_who :: (f: [] AlFlow, now_ms: int) -> bool #export_c #effects(all) { return alf_who(f, now_ms); }
+alu_logout :: (f: [] AlFlow) -> bool #export_c #effects(all) { return alf_logout(f); }
+alu_answer :: (f: [] AlFlow, status: int, answer: string, now_ms: int) -> bool #export_c #effects(all) { return alf_answer(f, status, answer, now_ms); }
+
+alu_copy :: (s: string, out: [] u8) -> int #effects(all) { n := al_put(out, s); return ifx n < 0 then 0 else n; }
+// The request to send now.
+alu_post :: (f: [] AlFlow) -> bool #export_c #effects(all) { return f[0].method == ALF_POST; }
+alu_path :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_path(f), out); }
+alu_body :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_body(f), out); }
+alu_auth :: (f: [] AlFlow) -> int #export_c #effects(all) { return f[0].auth; }
+alu_access :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_access(f), out); }
+alu_device :: (f: [] AlFlow) -> bool #export_c #effects(all) { return f[0].device; }
+alu_proof_ms :: (f: [] AlFlow) -> int #export_c #effects(all) { return f[0].proof_ms; }
+alu_proof_hash :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_proof_hash(f), out); }
+// What the host does after, and what the card shows.
+alu_state :: (f: [] AlFlow) -> int #export_c #effects(all) { return f[0].state; }
+alu_keep :: (f: [] AlFlow) -> bool #export_c #effects(all) { return f[0].keep; }
+alu_forget_device :: (f: [] AlFlow) -> bool #export_c #effects(all) { return f[0].forget_device; }
+alu_record :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alf_record(f, out); }
+alu_words :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_words(f), out); }
+alu_who_text :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_who_text(f), out); }
+alu_device_name :: (raw: string, out: [] u8) -> int #export_c #effects(all) { return al_device_name(raw, out); }
+// "Nostr <base64 event>" for a POST of body to url, signed by key (32 bytes) with aux (32) and a
+// 16-byte nonce at now_s: its length, or -1 (a key that is no secp256k1 key, among others).
+alu_sign :: (key: [] u8, aux: [] u8, nonce: [] u8, now_s: int, url: string, body: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [ALF_BODY] u8;
+  n := al_put(b[..], body);
+  if n < 0 { return -1; }
+  return n98s_header(key, aux, nonce, now_s, url, "POST", b[0..<n], true, out);
+}
+
+#test "the unit: a key login's request, signed" {
+  f: [1] AlFlow; alu_open(f[..], "");
+  #assert alu_key(f[..]) && alu_post(f[..]) && alu_answer(f[..], 200, "{\"challenge\":\"ch\"}", 0) && alu_auth(f[..]) == ALF_AUTH_NOSTR;
+  body: [ALF_BODY] u8; bn := alu_body(f[..], body[..]);
+  key: [32] u8; aux: [32] u8; nonce: [16] u8; key[31] = 1;
+  out: [N98S_HEADER] u8;
+  n := alu_sign(key[..], aux[..], nonce[..], 1700000000, "https://openagents.com/api/auth/nostr", cast(string) body[0..<bn], out[..]);
+  #assert n > 100 && cast(string) out[0..<6] == "Nostr ";
+  zero: [32] u8;
+  #assert alu_sign(zero[..], aux[..], nonce[..], 1700000000, "https://openagents.com/api/auth/nostr", cast(string) body[0..<bn], out[..]) == -1;
+}

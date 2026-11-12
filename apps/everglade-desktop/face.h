@@ -51,6 +51,19 @@ int32_t eg_key(void *state, int32_t key, int32_t down);
 int32_t eg_you(void *state, float *out5);
 // The view: the eye, its right, up and forward (four floats each, the forward's last the focal length in pixels); 0 before the first frame.
 int32_t eg_camera(void *state, float width, float height, float scale, float *out16);
+// Your account (account.coax, GitHub #13229). A host that can log in to openagents.com offers it;
+// the list then has Log in, which opens the card. eg_login_wants_keys is 1 while its box takes
+// typing (show the keyboard), eg_login_open while it is open (Back closes it: eg_key 27). A typed
+// character: printable ASCII, 8 Backspace, 13 Enter; 1 when taken. eg_login_take gives what the
+// person asked for once (1 email, 2 code, 3 a key, 4 log out, 5 another email; 0 none), with its
+// text in out (at most cap bytes, its length in *n). eg_login_show: what the host's login says:
+// state 0 logged out, 1 code sent, 2 logged in; busy; the server's words; who (NUL-ended).
+void eg_login_offer(void *state);
+int32_t eg_login_wants_keys(void *state);
+int32_t eg_login_open(void *state);
+int32_t eg_login_char(void *state, int32_t ch);
+int32_t eg_login_take(void *state, char *out, int32_t cap, int32_t *n);
+void eg_login_show(void *state, int32_t login_state, int32_t busy, const char *words, const char *who);
 
 // Your model (model.coax, model-face.c): the web's player model from Everglade II's pack.
 void *egm_new(void);

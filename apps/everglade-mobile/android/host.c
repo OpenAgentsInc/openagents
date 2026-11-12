@@ -4,6 +4,9 @@
 // scene (workshop.coax), the temple's parts and Aethyr shaders (emitted by `coax spirv`), and your
 // model. This file is to Android what Engine.swift and ios/Sources/main.swift are to iOS.
 //
+// Your account: the list's Log in opens a card (account.coax) whose requests app-login.c sends on
+// its own thread; the soft keyboard comes up while its box takes typing.
+//
 // Touch: a drag that starts on the left side is a stick that moves you; one that starts on the
 // right side looks round; a tap there jumps; a second finger there pinches to zoom.
 #include <android_native_app_glue.h>
@@ -14,11 +17,13 @@
 #include <jni.h>
 #include <math.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/system_properties.h>
 #include <time.h>
 #include "../../shared/host/android/device-key.h"
+#include "../../shared/host/android/app-login.h"
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "face.h"
@@ -571,7 +576,52 @@ static float scale(void) {
   return d > 0 && d < 10000 ? (float)d / 160.0f : 1.0f;
 }
 
+// The account card and the login's thread: what the person asked for goes to the login, what the
+// login says comes back to the card, and the keyboard follows the card's box.
+static uint32_t login_seen = (uint32_t)-1; static int keyboard_up;
+// The soft keyboard, up or down. ANativeActivity_showSoftInput asks for it on NativeActivity's
+// content view, which Android ignores ("not served": the window's own view is the one the keyboard
+// serves), so this asks InputMethodManager for it on the window's view.
+static void keyboard(int up) {
+  JNIEnv *e = g.env; jobject act = g.app->activity->clazz;
+  if ((*e)->PushLocalFrame(e, 16) != 0) { (*e)->ExceptionClear(e); return; }
+  jclass act_c = (*e)->GetObjectClass(e, act), ctx_c = (*e)->FindClass(e, "android/content/Context");
+  jclass win_c = (*e)->FindClass(e, "android/view/Window"), view_c = (*e)->FindClass(e, "android/view/View");
+  jclass imm_c = (*e)->FindClass(e, "android/view/inputmethod/InputMethodManager");
+  if ((*e)->ExceptionCheck(e)) goto out;
+  jmethodID service = (*e)->GetMethodID(e, act_c, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+  jmethodID window = (*e)->GetMethodID(e, act_c, "getWindow", "()Landroid/view/Window;");
+  jmethodID decor = (*e)->GetMethodID(e, win_c, "getDecorView", "()Landroid/view/View;");
+  jmethodID token = (*e)->GetMethodID(e, view_c, "getWindowToken", "()Landroid/os/IBinder;");
+  jmethodID show = (*e)->GetMethodID(e, imm_c, "showSoftInput", "(Landroid/view/View;I)Z");
+  jmethodID hide = (*e)->GetMethodID(e, imm_c, "hideSoftInputFromWindow", "(Landroid/os/IBinder;I)Z");
+  jfieldID name = (*e)->GetStaticFieldID(e, ctx_c, "INPUT_METHOD_SERVICE", "Ljava/lang/String;");
+  if ((*e)->ExceptionCheck(e)) goto out;
+  jobject imm = (*e)->CallObjectMethod(e, act, service, (*e)->GetStaticObjectField(e, ctx_c, name));
+  jobject w = (*e)->CallObjectMethod(e, act, window);
+  if ((*e)->ExceptionCheck(e) || !imm || !w) goto out;
+  jobject v = (*e)->CallObjectMethod(e, w, decor);
+  if ((*e)->ExceptionCheck(e) || !v) goto out;
+  if (up) (*e)->CallBooleanMethod(e, imm, show, v, (jint)0);
+  else (*e)->CallBooleanMethod(e, imm, hide, (*e)->CallObjectMethod(e, v, token), (jint)0);
+out:
+  if ((*e)->ExceptionCheck(e)) (*e)->ExceptionClear(e);
+  (*e)->PopLocalFrame(e, NULL);
+}
+static void login_poll(void) {
+  char text[256]; int32_t n = 0;
+  int32_t kind = eg_login_take(g.state, text, (int32_t)sizeof text, &n);
+  if (kind != 0) oa_app_login_ask(kind, text, n);
+  memset(text, 0, sizeof text);
+  int st = 0; bool busy = false; char words[400], who[160];
+  uint32_t gen = oa_app_login_status(&st, &busy, words, sizeof words, who, sizeof who);
+  if (gen != login_seen) { login_seen = gen; eg_login_show(g.state, st, busy ? 1 : 0, words, who); }
+  int want = eg_login_wants_keys(g.state);
+  if (want != keyboard_up) { keyboard_up = want; keyboard(want); }
+}
+
 static void frame(void) {
+  login_poll();
   double t = now(); float dt = (float)(t - g.last); g.last = t;
   if (dt > 0.1f) dt = 0.1f;
   if (g.jump_up > 0 && t >= g.jump_up) { g.jump_up = 0; eg_key(g.state, 32, 0); }
@@ -661,8 +711,41 @@ static void let_go(void) {
   eg_key(g.state, -1, 1); eg_pad(g.state, 0, 0);
   g.stick = g.look = g.pinch = -1;
 }
+// The character a key makes, as Java's KeyEvent.getUnicodeChar says (the keyboard's own map, with
+// Shift and the rest): 0 for none.
+static int key_char(const AInputEvent *ev) {
+  JNIEnv *e = g.env;
+  jclass c = (*e)->FindClass(e, "android/view/KeyEvent");
+  if ((*e)->ExceptionCheck(e) || !c) { (*e)->ExceptionClear(e); return 0; }
+  jmethodID make = (*e)->GetMethodID(e, c, "<init>", "(JJIIII)V"), get = (*e)->GetMethodID(e, c, "getUnicodeChar", "(I)I");
+  if ((*e)->ExceptionCheck(e) || !make || !get) { (*e)->ExceptionClear(e); (*e)->DeleteLocalRef(e, c); return 0; }
+  int32_t meta = AKeyEvent_getMetaState(ev);
+  jobject k = (*e)->NewObject(e, c, make, (jlong)AKeyEvent_getDownTime(ev), (jlong)AKeyEvent_getEventTime(ev), (jint)AKeyEvent_getAction(ev), (jint)AKeyEvent_getKeyCode(ev), (jint)AKeyEvent_getRepeatCount(ev), (jint)meta);
+  int ch = 0;
+  if (!(*e)->ExceptionCheck(e) && k) { ch = (*e)->CallIntMethod(e, k, get, (jint)meta); }
+  if ((*e)->ExceptionCheck(e)) { (*e)->ExceptionClear(e); ch = 0; }
+  if (k) (*e)->DeleteLocalRef(e, k);
+  (*e)->DeleteLocalRef(e, c);
+  return ch;
+}
+// A key: Back closes the account card; while its box takes typing, the rest go to it.
+static int32_t key(AInputEvent *ev) {
+  int32_t code = AKeyEvent_getKeyCode(ev), down = AKeyEvent_getAction(ev) == AKEY_EVENT_ACTION_DOWN;
+  if (code == AKEYCODE_BACK) {
+    if (!eg_login_open(g.state)) return 0;
+    if (down) { eg_key(g.state, 27, 1); eg_key(g.state, 27, 0); }
+    return 1;
+  }
+  if (!eg_login_wants_keys(g.state)) return 0;
+  if (!down) return 1;
+  if (code == AKEYCODE_DEL) return eg_login_char(g.state, 8);
+  if (code == AKEYCODE_ENTER || code == AKEYCODE_NUMPAD_ENTER) return eg_login_char(g.state, 13);
+  int ch = key_char(ev);
+  return ch > 0 ? eg_login_char(g.state, ch) : 0;
+}
 static int32_t input(struct android_app *app, AInputEvent *ev) {
   (void)app;
+  if (AInputEvent_getType(ev) == AINPUT_EVENT_TYPE_KEY) return g.state ? key(ev) : 0;
   if (AInputEvent_getType(ev) != AINPUT_EVENT_TYPE_MOTION) return 0;
   int32_t action = AMotionEvent_getAction(ev), what = action & AMOTION_EVENT_ACTION_MASK;
   size_t which = (size_t)((action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT);
@@ -751,6 +834,13 @@ void android_main(struct android_app *app) {
   g.state = eg_new();
   if (!g.state) STOP("Everglade: no memory for the scene.");
   eg_pad(g.state, 0, 0);   // a touch screen: the scene shows the touch hint
+  // Your account. A development build may log in somewhere else:
+  // `adb shell setprop debug.oa.origin https://staging.openagents.com`.
+  {
+    char origin[PROP_VALUE_MAX] = "";
+    if (__system_property_get("debug.oa.origin", origin) <= 0 || strncmp(origin, "https://", 8) != 0) snprintf(origin, sizeof origin, "%s", "https://openagents.com");
+    if (oa_app_login_start(app->activity->vm, app->activity->internalDataPath, origin)) eg_login_offer(g.state);
+  }
   g.last = now();
   int opened = 0, loaded = 0, frames = 0; double since = now();
   for (;;) {

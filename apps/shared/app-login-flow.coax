@@ -1,0 +1,270 @@
+// The native apps' login, in order (GitHub #13229): which request comes next and what its answer
+// does, over app-login.coax's decisions. No effects: a host sends each request the flow writes and
+// gives it the answer, until the flow has nothing more to send.
+//
+//   f: [1] AlFlow;
+//   if alf_email(f[..], typed) { while true {                      // or alf_code, alf_key, alf_who, alf_logout
+//     (status, answer) := host_send(f);   // f[0].method, origin + alf_path(f), alf_body(f), and:
+//                                          //   auth BEARER: "Authorization: Bearer " + alf_access(f)
+//                                          //   auth NOSTR:  NIP-98 over that URL and body, signed by the app's key
+//                                          //   device:      OA-Device-Key, -Platform, -Store, -Name
+//                                          //   proof_ms>0:  OA-Device-Proof over POST, the URL, proof_ms and alf_proof_hash(f)
+//     if !alf_answer(f[..], status, answer, now_ms) { break; }
+//   } }
+//   then keep alf_record(f) when f[0].keep is set (al_record), and forget the device key when
+//   f[0].forget_device is set.
+//
+// A logged-in request (alf_who here) uses the access token while it has over a minute left, else
+// refreshes first; a refresh the server refuses with its clock is signed once more on its clock; a
+// refresh it refuses with 401 ends the login here too (the tokens and the device key go). Logging
+// out forgets the login at once and tells the server, whatever it answers.
+//   coax/bin/coax test apps/shared/app-login-flow.coax
+#load "app-login.coax";
+
+ALF_GET :: 0; ALF_POST :: 1;
+ALF_AUTH_NONE :: 0; ALF_AUTH_BEARER :: 1; ALF_AUTH_NOSTR :: 2;
+// Where the login is, as the screen shows it.
+ALF_OUT :: 0; ALF_CODE :: 1; ALF_IN :: 2;
+// The answer the flow waits for.
+ALF_S_NONE :: 0; ALF_S_EMAIL_START :: 1; ALF_S_EMAIL_VERIFY :: 2; ALF_S_CHALLENGE :: 3; ALF_S_KEY_LOGIN :: 4;
+ALF_S_REFRESH :: 5; ALF_S_WHO :: 6; ALF_S_LOGOUT :: 7;
+ALF_PATH :: 64; ALF_BODY :: 512; ALF_WORDS :: 400; ALF_WHO :: 160; ALF_PENDING :: 160;
+ALF_SENT :: "We sent a 6-digit code to your email. Type it here.";
+
+AlFlow :: struct {
+  t: [1] AlTokens;
+  state: int;                       // ALF_OUT, ALF_CODE, ALF_IN
+  step: int;                        // ALF_S_*
+  pending: [ALF_PENDING] u8; pending_n: int;
+  // The request to send now.
+  method: int; path: [ALF_PATH] u8; path_n: int; body: [ALF_BODY] u8; body_n: int;
+  auth: int; device: bool; proof_ms: int;
+  proof_hash: [64] u8;
+  clock_retried: bool;              // a refresh signed again on the server's clock, once
+  // What a host does after.
+  keep: bool;                       // the login changed: keep alf_record (or clear it when logged out)
+  forget_device: bool;              // the login ended: forget the device key
+  // What the screen says.
+  words: [ALF_WORDS] u8; words_n: int;
+  who: [ALF_WHO] u8; who_n: int;
+}
+
+alf_path :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].path[0..<f[0].path_n]; }
+alf_body :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].body[0..<f[0].body_n]; }
+alf_words :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].words[0..<f[0].words_n]; }
+alf_who_text :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].who[0..<f[0].who_n]; }
+alf_access :: (f: [] AlFlow) -> string #effects(all) { return al_access(f[0].t[..]); }
+alf_proof_hash :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].proof_hash[..]; }
+
+// A flow over a kept record (or none): logged in when the record is one.
+alf_open :: (f: [] AlFlow, record: string) #effects(all) {
+  fresh: AlFlow; f[0] = fresh;
+  if al_read_record(record, f[0].t[..]) { f[0].state = ALF_IN; }
+}
+
+alf_say :: (f: [] AlFlow, s: string) #effects(all) { n := al_put(f[0].words[..], s); f[0].words_n = ifx n < 0 then 0 else n; }
+alf_refused :: (f: [] AlFlow, status: int, answer: string) #effects(all) { n := al_words(status, answer, f[0].words[..]); f[0].words_n = ifx n < 0 then 0 else n; }
+
+// Sets the request; false (and nothing to send) when the body didn't fit or wasn't given.
+alf_request :: (f: [] AlFlow, step: int, method: int, path: string, body_n: int, auth: int, device: bool) -> bool #effects(all) {
+  if body_n < 0 { f[0].step = ALF_S_NONE; return false; }
+  f[0].step = step; f[0].method = method; f[0].body_n = body_n; f[0].auth = auth; f[0].device = device; f[0].proof_ms = 0;
+  f[0].path_n = al_put(f[0].path[..], path);
+  return true;
+}
+
+// ---- what a person starts
+
+// "Send code": the code goes to the email. false when there is no email to send to.
+alf_email :: (f: [] AlFlow, email: string) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
+  ok := alf_request(f, ALF_S_EMAIL_START, ALF_POST, "/api/auth/email/start", al_email_start_body(email, f[0].body[..]), ALF_AUTH_NONE, false);
+  if !ok { alf_say(f, "Type your email."); }
+  return ok;
+}
+// "Log in" with the code from the email.
+alf_code :: (f: [] AlFlow, code: string) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
+  ok := f[0].state == ALF_CODE && alf_request(f, ALF_S_EMAIL_VERIFY, ALF_POST, "/api/auth/email/verify", al_email_verify_body(code, cast(string) f[0].pending[0..<f[0].pending_n], f[0].body[..]), ALF_AUTH_NONE, true);
+  if !ok { alf_say(f, "Type the 6-digit code from the email."); }
+  return ok;
+}
+// "Use another email": back to the email, the code forgotten.
+alf_back :: (f: [] AlFlow) #effects(all) {
+  if f[0].state == ALF_CODE { f[0].state = ALF_OUT; f[0].pending_n = 0; f[0].words_n = 0; }
+}
+// "Log in with a key": the server's challenge first.
+alf_key :: (f: [] AlFlow) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
+  return alf_request(f, ALF_S_CHALLENGE, ALF_POST, "/api/auth/nostr/challenge", al_challenge_body(f[0].body[..]), ALF_AUTH_NONE, false);
+}
+// Who is logged in (an authorized GET /api/auth/account), refreshing first when the access token
+// is stale. false while logged out.
+alf_who :: (f: [] AlFlow, now_ms: int) -> bool #effects(all) {
+  f[0].keep = false; f[0].forget_device = false; f[0].clock_retried = false;
+  next := al_next(f[0].t[..], now_ms);
+  if next == AL_LOGGED_OUT { return false; }
+  if next == AL_REFRESH { return alf_refresh(f, now_ms); }
+  return alf_request(f, ALF_S_WHO, ALF_GET, "/api/auth/account", 0, ALF_AUTH_BEARER, false);
+}
+// "Log out": forgotten here at once; the server is told (with the access token, while it has one).
+alf_logout :: (f: [] AlFlow) -> bool #effects(all) {
+  had := al_has(f[0].t[..]);
+  if had { f[0].body_n = al_put(f[0].body[..], "{}"); }
+  sent := had && alf_request(f, ALF_S_LOGOUT, ALF_POST, "/api/auth/logout", f[0].body_n, ALF_AUTH_BEARER, false);
+  // The request reads the access token before it is forgotten: keep it until it is sent.
+  alf_forget(f, "");
+  if sent { f[0].step = ALF_S_LOGOUT; }
+  return sent;
+}
+alf_forget :: (f: [] AlFlow, words: string) #effects(all) {
+  access: [AL_TOKEN] u8; an := f[0].t[0].access_n;
+  for i: 0..<an { access[i] = f[0].t[0].access[i]; }
+  empty: AlTokens; f[0].t[0] = empty;
+  // A logout still sends the old access token once (alf_access); nothing else can use it.
+  for i: 0..<an { f[0].t[0].access[i] = access[i]; }
+  f[0].t[0].access_n = an;
+  f[0].state = ALF_OUT; f[0].pending_n = 0; f[0].who_n = 0; f[0].keep = true; f[0].forget_device = true;
+  alf_say(f, words);
+}
+
+alf_refresh :: (f: [] AlFlow, ms: int) -> bool #effects(all) {
+  if !alf_request(f, ALF_S_REFRESH, ALF_POST, "/api/auth/refresh", al_refresh_body(f[0].t[..], f[0].body[..]), ALF_AUTH_NONE, false) { return false; }
+  if f[0].t[0].bound { f[0].proof_ms = ms; if al_token_hash(al_refresh(f[0].t[..]), f[0].proof_hash[..]) != 64 { return false; } }
+  return true;
+}
+
+// ---- the answers
+
+// What the answer to the request does; true when another request is ready to send.
+alf_answer :: (f: [] AlFlow, status: int, answer: string, now_ms: int) -> bool #effects(all) {
+  step := f[0].step; f[0].step = ALF_S_NONE;
+  ok := status >= 200 && status < 300;
+  if step == ALF_S_EMAIL_START {
+    if ok { n := al_field(answer, "pending", f[0].pending[..]); if n > 0 { f[0].pending_n = n; f[0].state = ALF_CODE; alf_say(f, ALF_SENT); return false; } }
+    alf_refused(f, status, answer); return false;
+  }
+  if step == ALF_S_EMAIL_VERIFY || step == ALF_S_KEY_LOGIN {
+    if ok && al_read_login(answer, now_ms, "", false, f[0].t[..]) {
+      f[0].state = ALF_IN; f[0].pending_n = 0; f[0].keep = true; f[0].words_n = 0;
+      return alf_request(f, ALF_S_WHO, ALF_GET, "/api/auth/account", 0, ALF_AUTH_BEARER, false);
+    }
+    alf_refused(f, status, answer); return false;
+  }
+  if step == ALF_S_CHALLENGE {
+    ch: [128] u8; n := ifx ok then al_field(answer, "challenge", ch[..]) else -1;
+    if n > 0 { return alf_request(f, ALF_S_KEY_LOGIN, ALF_POST, "/api/auth/nostr", al_key_login_body(cast(string) ch[0..<n], f[0].body[..]), ALF_AUTH_NOSTR, true); }
+    alf_refused(f, status, answer); return false;
+  }
+  if step == ALF_S_REFRESH {
+    outcome := al_refresh_outcome(status, answer);
+    if outcome == AL_REFRESHED {
+      account: [AL_ACCOUNT] u8; an := f[0].t[0].account_n;
+      for i: 0..<an { account[i] = f[0].t[0].account[i]; }
+      if al_read_login(answer, now_ms, cast(string) account[0..<an], f[0].t[0].bound, f[0].t[..]) {
+        f[0].keep = true;
+        return alf_request(f, ALF_S_WHO, ALF_GET, "/api/auth/account", 0, ALF_AUTH_BEARER, false);
+      }
+    }
+    if outcome == AL_CLOCK && !f[0].clock_retried { f[0].clock_retried = true; return alf_refresh(f, al_now_ms(answer)); }
+    if outcome == AL_ENDED { w: [ALF_WORDS] u8; n := al_words(status, answer, w[..]); alf_forget(f, ifx n > 0 then cast(string) w[0..<n] else ""); empty: AlTokens; f[0].t[0] = empty; return false; }
+    alf_refused(f, status, answer); return false;
+  }
+  if step == ALF_S_WHO {
+    if ok { n := al_who(answer, f[0].who[..]); if n > 0 { f[0].who_n = n; return false; } }
+    alf_refused(f, status, answer); return false;
+  }
+  if step == ALF_S_LOGOUT { empty: AlTokens; f[0].t[0] = empty; return false; }
+  return false;
+}
+
+// The record a host keeps now: its length, or 0 when logged out (the host deletes what it kept).
+alf_record :: (f: [] AlFlow, out: [] u8) -> int #effects(all) {
+  if f[0].state != ALF_IN { return 0; }
+  n := al_record(f[0].t[..], out);
+  return ifx n < 0 then 0 else n;
+}
+
+// ---- checks
+
+ALF_T_LOGIN :: "{\"state\":\"logged-in\",\"account\":\"acct_7\",\"access_token\":\"oa_at_A1\",\"refresh_token\":\"oa_rt_R1\",\"expires_in\":3600,\"device_bound\":true}";
+ALF_T_ME :: "{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"m...@b.co\"],\"keys\":[]}";
+
+#test "email: the code goes out, the code logs in, the account is asked with the new token" {
+  f: [1] AlFlow; alf_open(f[..], "");
+  #assert f[0].state == ALF_OUT && !alf_code(f[..], "123456") && alf_words(f[..]) == "Type the 6-digit code from the email.";
+  #assert !alf_email(f[..], " ") && alf_words(f[..]) == "Type your email." && f[0].step == ALF_S_NONE;
+  #assert alf_email(f[..], "me@b.co") && f[0].method == ALF_POST && alf_path(f[..]) == "/api/auth/email/start" && alf_body(f[..]) == "{\"client\":\"app\",\"email\":\"me@b.co\"}" && f[0].auth == ALF_AUTH_NONE && !f[0].device;
+  #assert !alf_answer(f[..], 429, "{\"error\":\"Too many codes.\"}", 0) && f[0].state == ALF_OUT && alf_words(f[..]) == "Too many codes.";
+  #assert alf_email(f[..], "me@b.co") && !alf_answer(f[..], 200, "{\"state\":\"sent\"}", 0) && f[0].state == ALF_OUT && alf_words(f[..]) == AL_FALLBACK;
+  #assert alf_email(f[..], "me@b.co") && !alf_answer(f[..], 200, "{\"state\":\"sent\",\"pending\":\"pe_1\"}", 0) && f[0].state == ALF_CODE && alf_words(f[..]) == ALF_SENT;
+  #assert !alf_code(f[..], "12") && f[0].state == ALF_CODE;
+  #assert alf_code(f[..], "123 456") && alf_path(f[..]) == "/api/auth/email/verify" && alf_body(f[..]) == "{\"code\":\"123456\",\"pending\":\"pe_1\"}" && f[0].device && f[0].words_n == 0;
+  #assert !alf_answer(f[..], 400, "{\"error\":\"That code isn't right.\"}", 0) && f[0].state == ALF_CODE && alf_words(f[..]) == "That code isn't right." && !f[0].keep;
+  #assert alf_code(f[..], "123456") && alf_answer(f[..], 200, ALF_T_LOGIN, 1000);
+  #assert f[0].state == ALF_IN && f[0].keep && f[0].method == ALF_GET && alf_path(f[..]) == "/api/auth/account" && f[0].auth == ALF_AUTH_BEARER && alf_access(f[..]) == "oa_at_A1" && !f[0].device;
+  #assert !alf_answer(f[..], 200, ALF_T_ME, 1000) && alf_who_text(f[..]) == "m...@b.co";
+  out: [AL_RECORD] u8; n := alf_record(f[..], out[..]);
+  g: [1] AlFlow; alf_open(g[..], cast(string) out[0..<n]);
+  #assert n > 0 && g[0].state == ALF_IN && al_account(g[0].t[..]) == "acct_7" && g[0].t[0].bound;
+  alf_back(f[..]); #assert f[0].state == ALF_IN;
+}
+
+#test "use another email: back from the code" {
+  f: [1] AlFlow; alf_open(f[..], "garbage");
+  #assert f[0].state == ALF_OUT;
+  #assert alf_email(f[..], "me@b.co") && !alf_answer(f[..], 200, "{\"pending\":\"pe_1\"}", 0) && f[0].state == ALF_CODE;
+  alf_back(f[..]); #assert f[0].state == ALF_OUT && f[0].pending_n == 0 && f[0].words_n == 0 && !alf_code(f[..], "123456");
+}
+
+#test "a key: the challenge, then the signed login with the device's key" {
+  f: [1] AlFlow; alf_open(f[..], "");
+  #assert alf_key(f[..]) && alf_path(f[..]) == "/api/auth/nostr/challenge" && alf_body(f[..]) == "{\"client\":\"app\"}" && f[0].auth == ALF_AUTH_NONE;
+  #assert !alf_answer(f[..], 0, "", 0) && alf_words(f[..]) == AL_UNREACHABLE;
+  #assert alf_key(f[..]) && !alf_answer(f[..], 200, "{}", 0) && alf_words(f[..]) == AL_FALLBACK;
+  #assert alf_key(f[..]) && !alf_answer(f[..], 500, "{\"challenge\":\"c\"}", 0);
+  #assert alf_key(f[..]) && alf_answer(f[..], 200, "{\"challenge\":\"ch_1\",\"url\":\"x\"}", 0);
+  #assert f[0].method == ALF_POST && alf_path(f[..]) == "/api/auth/nostr" && alf_body(f[..]) == "{\"challenge\":\"ch_1\",\"label\":\"app\"}" && f[0].auth == ALF_AUTH_NOSTR && f[0].device;
+  #assert !alf_answer(f[..], 401, "{\"error\":\"That signature isn't good.\"}", 0) && f[0].state == ALF_OUT && alf_words(f[..]) == "That signature isn't good.";
+  #assert alf_key(f[..]) && alf_answer(f[..], 200, "{\"challenge\":\"ch_2\"}", 0) && alf_answer(f[..], 200, ALF_T_LOGIN, 0) && f[0].state == ALF_IN && f[0].keep;
+  #assert !alf_answer(f[..], 401, "{\"error\":\"Log in again.\"}", 0) && alf_words(f[..]) == "Log in again." && f[0].state == ALF_IN;
+}
+
+#test "who: the access token while fresh, a signed refresh when stale, the clock once, the end on 401" {
+  f: [1] AlFlow; alf_open(f[..], "");
+  #assert !alf_who(f[..], 0);
+  #assert alf_key(f[..]) && alf_answer(f[..], 200, "{\"challenge\":\"c\"}", 0) && alf_answer(f[..], 200, ALF_T_LOGIN, 0);
+  #assert alf_who(f[..], 1000) && f[0].step == ALF_S_WHO && f[0].auth == ALF_AUTH_BEARER;
+  // Stale: a refresh, signed now over the refresh token's hash.
+  #assert alf_who(f[..], 3600000) && f[0].step == ALF_S_REFRESH && alf_path(f[..]) == "/api/auth/refresh" && alf_body(f[..]) == "{\"refresh_token\":\"oa_rt_R1\"}" && f[0].proof_ms == 3600000 && f[0].auth == ALF_AUTH_NONE && !f[0].device;
+  h: [64] u8; #assert al_token_hash("oa_rt_R1", h[..]) == 64 && alf_proof_hash(f[..]) == cast(string) h[..];
+  // The server's clock: once more on its time, then not again.
+  clock := "{\"error\":\"Your clock is off.\",\"device_proof\":\"clock\",\"now_ms\":5000000}";
+  #assert alf_answer(f[..], 400, clock, 3600000) && f[0].step == ALF_S_REFRESH && f[0].proof_ms == 5000000;
+  #assert !alf_answer(f[..], 400, clock, 3600000) && alf_words(f[..]) == "Your clock is off." && f[0].state == ALF_IN;
+  // Renewed: the new pair keeps the account and the binding, then the account is asked.
+  #assert alf_who(f[..], 3600000) && alf_answer(f[..], 200, "{\"access_token\":\"oa_at_A2\",\"refresh_token\":\"oa_rt_R2\",\"expires_in\":3600}", 3600000);
+  #assert f[0].keep && f[0].step == ALF_S_WHO && alf_access(f[..]) == "oa_at_A2" && al_account(f[0].t[..]) == "acct_7" && f[0].t[0].bound && f[0].t[0].until_ms == 7200000;
+  #assert !alf_answer(f[..], 200, ALF_T_ME, 0) && alf_who_text(f[..]) == "m...@b.co";
+  // A limit keeps the login.
+  #assert alf_who(f[..], 7200000) && !alf_answer(f[..], 429, "{\"error\":\"Too many.\"}", 0) && f[0].state == ALF_IN && !f[0].keep && !f[0].forget_device;
+  // 401: the login ended. The tokens and the device key go.
+  #assert alf_who(f[..], 7200000) && !alf_answer(f[..], 401, "{\"error\":\"Log in again.\"}", 0);
+  #assert f[0].state == ALF_OUT && f[0].keep && f[0].forget_device && !al_has(f[0].t[..]) && f[0].t[0].access_n == 0 && alf_words(f[..]) == "Log in again." && !alf_who(f[..], 0);
+  out: [AL_RECORD] u8; #assert alf_record(f[..], out[..]) == 0;
+}
+
+#test "an unbound login refreshes with no proof; a 200 that isn't a login keeps it" {
+  f: [1] AlFlow; alf_open(f[..], "{\"access\":\"oa_at_A\",\"account\":\"a\",\"bound\":false,\"refresh\":\"oa_rt_B\",\"until_ms\":0}");
+  #assert f[0].state == ALF_IN && alf_who(f[..], 5) && f[0].step == ALF_S_REFRESH && f[0].proof_ms == 0;
+  #assert !alf_answer(f[..], 200, "{}", 5) && f[0].state == ALF_IN && alf_words(f[..]) == AL_FALLBACK && !f[0].keep;
+}
+
+#test "log out: forgotten at once, the server told with the old access token" {
+  f: [1] AlFlow; alf_open(f[..], "{\"access\":\"oa_at_A\",\"account\":\"a\",\"bound\":true,\"refresh\":\"oa_rt_B\",\"until_ms\":9}");
+  #assert alf_logout(f[..]) && f[0].state == ALF_OUT && f[0].keep && f[0].forget_device && !al_has(f[0].t[..]);
+  #assert alf_path(f[..]) == "/api/auth/logout" && alf_body(f[..]) == "{}" && f[0].auth == ALF_AUTH_BEARER && alf_access(f[..]) == "oa_at_A";
+  #assert !alf_answer(f[..], 500, "", 0) && alf_access(f[..]) == "" && f[0].state == ALF_OUT;
+  #assert !alf_logout(f[..]) && f[0].step == ALF_S_NONE;
+  #assert !alf_answer(f[..], 200, "", 0);
+}
