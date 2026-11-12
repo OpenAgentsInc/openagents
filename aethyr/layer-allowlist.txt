@@ -238,7 +238,7 @@ context coax/lib/nostr/eval/report.coax -> coax/lib/agent/claude/fields.coax  # 
 context coax/lib/nostr/nipkeys.coax -> coax/lib/bitcoin/tx.coax  # seeded (#13317)
 context coax/lib/nostr/nipkeys_sign.coax -> coax/lib/bitcoin/sighash.coax  # seeded (#13317)
 context coax/lib/nostr/nipkeys_possess.coax -> coax/lib/bitcoin/segwit.coax  # NIP-KEYS possession: the challenge's P2WPKH address (#13366); moves with nipkeys.coax's and nipkeys_sign.coax's lines above
-context coax/lib/nostr/nipkeys_proof.coax -> coax/lib/bitcoin/bip322.coax  # NIP-KEYS possession: the BIP-322 verifier (#13366); moves with the lines above
+context coax/lib/nostr/nipkeys_proof.coax -> coax/lib/bitcoin/bip322.coax  # NIP-KEYS possession: the BIP-322 verifier (#13366, rebaselined in #13369); moves with the lines above
 context coax/lib/systemone/answers.coax -> coax/lib/agent/claude/fields.coax  # seeded (#13317)
 context coax/lib/systemone/transport.coax -> coax/lib/agent/claude/transport.coax  # seeded (#13317)
 context coax/lib/x402/x402.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
