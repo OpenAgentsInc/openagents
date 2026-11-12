@@ -1,14 +1,17 @@
-// /worlds' public made realms (realmlist.coax): GET /api/playtest/realms/listed
-// (coax/web/api/migrations/0101_realm_list.sql), asked once by the page's face. Its
-// answer comes as "STATUS\n" then the body (coax/web/host.js):
+// /worlds' public made realms on the wire (compliance plan step E11, GitHub #13250):
+// GET /api/playtest/realms/listed (coax/web/api/migrations/0101_realm_list.sql), asked once by the
+// list page's face (apps/openagents-web/realmlist.coax). Its answer comes as "STATUS\n" then the
+// body (coax/web/host.js):
 //   total N
 //   SLUG|TITLE|LINE|YYYY-MM-DDTHH:MM|STYLE     one a line, newest first
-// This file decides which rows go on the page: a row with exactly those five fields,
-// a realm address for a slug, a title and the time; the first ones that fit in the
-// room the built-in realms leave, and how many more there are. The server lists only
-// public realms; this never adds a row it didn't send. Anything else (no answer, a
-// refusal, an older API's 404) adds nothing.
-//   coax/bin/coax test apps/openagents-web/realms-listed.coax --library
+// The one reader of that answer, and of a row's fields by "|" (listed_field: aethyr/forge/lists.coax
+// and the /og page read their rows with it too). It decides which rows go on the page: a row with
+// exactly those five fields, a realm address for a slug, a title and the time; the first ones that
+// fit in the room the built-in realms leave, and how many more there are. The server lists only
+// public realms; this never adds a row it didn't send. Anything else (no answer, a refusal, an
+// older API's 404) adds nothing. proto/verse/realm-lists-v1.json names the lines and holds a row
+// as the server answers it; aethyr/forge/lists-goldens.coax holds it through this file.
+//   coax/bin/coax test aethyr/forge/listed.coax --library
 #authority;
 
 LISTED_URL :: "/api/playtest/realms/listed";

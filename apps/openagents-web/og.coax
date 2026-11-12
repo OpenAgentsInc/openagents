@@ -15,6 +15,7 @@
 // name, line and tasks done; any other page's, its title and line.
 
 #load "projects.coax";
+#load "../../aethyr/forge/listed.coax";   // a row's fields by "|": the made realms' rows are the server's (GET /api/playtest/realms/made)
 
 OG_MAX_VERTICES :: 200000;
 OG_DATA :: 131072;
@@ -63,12 +64,7 @@ coaxial_og_bind :: (h: [] OgHost) #export_c #effects(all) {
 
 og_cell :: (s: [] OgState, r: int, col: int) -> string {
   if r < 0 || r >= s[0].row_n { return ""; }
-  i := s[0].row_at[r]; to := s[0].row_end[r]; c := 0;
-  while c < col && i < to { if s[0].data[i] == '|' { c += 1; } i += 1; }
-  if c < col { return ""; }
-  j := i;
-  while j < to && s[0].data[j] != '|' { j += 1; }
-  return cast(string) s[0].data[i..<j];
+  return listed_field(cast(string) s[0].data[s[0].row_at[r]..<s[0].row_end[r]], col);   // a row's field by "|" (aethyr/forge/listed.coax)
 }
 og_index :: (s: [] OgState) {
   s[0].row_n = 0; at := 0; n := s[0].data_n;

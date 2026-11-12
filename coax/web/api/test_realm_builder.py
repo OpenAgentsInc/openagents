@@ -444,6 +444,19 @@ def realm_builder_checks():
             got = re.sub(r'^plan \d+$', "plan 41", got, flags=re.M)
             got = re.sub(r'"plan": \d+', '"plan": 41', got)
         check("board fixture: " + stp["name"], st == stp["status"] and got == stp["reply"], (st, got))
+    # the lists the planner's model writes (proto/verse/realm-lists-v1.json "model_steps"): an ask's and a
+    # revision's answers and the feature list, on the realm the board fixture made; ids are 41 in the fixture
+    lfx = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "proto", "verse", "realm-lists-v1.json")))
+    for stp in lfx["model_steps"]:
+        if "model" in stp:
+            builder_mode["text"] = json.dumps(stp["model"])
+        if stp.get("wait"):
+            time.sleep(2.1)
+        st, raw, _ = call(stp["method"], "/api/playtest/realms" + stp["path"], stp["body"].encode() if stp["method"] == "POST" else None,
+                          {"Content-Type": "application/json", "X-Verse-Player": fx_key})
+        got = re.sub(r'^(ask|plan) \d+', r'\1 41', raw.decode(), flags=re.M)
+        got = re.sub(r'"plan": \d+', '"plan": 41', got)
+        check("lists fixture: " + stp["name"], st == stp["status"] and got == stp["reply"], (st, got))
     time.sleep(3.2)
     gcs_server.shutdown()
     builder_fake.shutdown()

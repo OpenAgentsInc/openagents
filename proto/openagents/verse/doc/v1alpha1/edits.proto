@@ -10,6 +10,7 @@ import "openagents/options/v1alpha1/options.proto";
 //   POST .../<slug>/switch                      SwitchRequest   -> SwitchReply
 //   POST .../<slug>/revise                      ReviseRequest   -> ReviseReply
 //   POST .../<slug>/asks                        AskRequest      -> text lines
+//   POST .../<slug>/asks/doc                    AskDocRequest   -> text lines
 //   POST .../<slug>/asks/<id>/done              AskDoneRequest  -> DeleteReply
 //   POST .../<slug>/asks/<id>/delete, .../rows/<key>/delete   -> DeleteReply
 //   POST .../<slug>/describe                    DescribeRequest -> DescribeReply
@@ -65,10 +66,11 @@ message ReviseRequest {
   optional int64 rev = 1 [json_name = "rev"];
   optional string prompt = 2 [json_name = "prompt"];
 }
-// 200 from .../revise: the new plan's number and whether the board changed.
+// 200 from .../revise: the new plan's number and how many of the board's
+// rows changed.
 message ReviseReply {
   optional int64 plan = 1 [json_name = "plan"];
-  optional bool changed = 2 [json_name = "changed"];
+  optional int32 changed = 2 [json_name = "changed"];
   optional int64 rev = 3 [json_name = "rev"];
 }
 
@@ -76,6 +78,14 @@ message ReviseReply {
 message AskRequest {
   optional int64 rev = 1 [json_name = "rev"];
   optional string words = 2 [json_name = "words"];
+}
+// A design document dropped on the feature list: its file name and its bytes
+// in base64 (.md, .txt, .pdf or .docx). Every change it asks for becomes an
+// ask.
+message AskDocRequest {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string name = 2 [json_name = "name"];
+  optional string data = 3 [json_name = "data"];
 }
 // A site admin marks an ask's code done: the commit that built it.
 message AskDoneRequest {
@@ -111,10 +121,10 @@ message PlaceRequest {
   optional double yaw = 5 [json_name = "yaw"];
 }
 // 200 from .../place: placed (its owner's or an admin's), or proposed to the
-// owner (a visitor's).
+// owner (a visitor's: the proposal's number).
 message PlaceReply {
   optional bool placed = 1 [json_name = "placed"];
-  optional bool proposed = 2 [json_name = "proposed"];
+  optional int64 proposed = 2 [json_name = "proposed"];
   optional int64 rev = 3 [json_name = "rev"];
 }
 // 200 from accepting or declining a proposal.

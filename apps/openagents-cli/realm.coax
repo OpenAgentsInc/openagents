@@ -72,13 +72,11 @@ realm_edit_doc :: (a: [] Args, profile: string, slug: string, rev: int, out: [] 
   if n <= 0 || n > REALM_DOC_MAX { return realm_edit_refuse(400,"--doc is a nonempty file of at most 360 KiB",-1,out); }
   encoded: [491520] u8; en := b64_encode(cast(string) bytes[0..<n],encoded[..]);
   if en < 0 { return realm_edit_refuse(400,"the document did not encode",-1,out); }
-  buf: [REALM_DOC_BODY] u8; o: [1] Jo; jo_start(o[..],buf[..]); jo_obj(o[..]);
-  jo_key(o[..],"rev"); jo_int(o[..],rev);
-  jo_key(o[..],"name"); jo_str(o[..],fs_base(file));
-  jo_key(o[..],"data"); jo_str(o[..],cast(string) encoded[0..<en]); jo_end(o[..]);
-  if o[0].bad { return realm_edit_refuse(400,"the document is too large",-1,out); }
+  buf: [REALM_DOC_BODY] u8;
+  bn := forge_ask_doc_body(rev,fs_base(file),cast(string) encoded[0..<en],buf[..]);   // edits.proto's AskDocRequest (aethyr/forge/change.coax)
+  if bn < 0 { return realm_edit_refuse(400,"the document is too large",-1,out); }
   path: [256] u8;
-  return api_call(a,profile,"POST",realm_path(slug,"/edit-v1/asks/doc",path[..]),jo_text(o[..]),out);
+  return api_call(a,profile,"POST",realm_path(slug,"/edit-v1/asks/doc",path[..]),cast(string) buf[0..<bn],out);
 }
 
 // expected < 1 means read the revision now. Batch calls instead carry the last

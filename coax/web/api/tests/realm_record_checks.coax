@@ -3,7 +3,8 @@
 // record routes (mine, visibility, publish, published), and proto/verse/realm-made-v1.json a realm
 // and its forks (made.proto), and proto/verse/realm-spec-v1.json a realm's spec lines as its owner,
 // a visitor and a fork read them, and proto/verse/realm-edits-v1.json the edits (edits.proto) as
-// the pages and the CLI send them. For each fixture this seeds that realm, makes each call as
+// the pages and the CLI send them, and proto/verse/realm-lists-v1.json the panes, the proposals,
+// the listed and made rows and the card's want. For each fixture this seeds that realm, makes each call as
 // the fixture's owner, a stranger or nobody, and requires the server's status and body byte for
 // byte; a step with "sql" runs that statement instead (the publish that pins an engine: this run's
 // API has a bucket with no engine page) and requires its one value. A key named in a step's "vary"
@@ -20,7 +21,7 @@
 #load "../../../lib/net/http.coax";
 #load "../../../lib/json/json.coax";
 
-RRC_FIXTURES :: [4] string.["proto/verse/realm-record-v1.json", "proto/verse/realm-made-v1.json", "proto/verse/realm-spec-v1.json", "proto/verse/realm-edits-v1.json"];
+RRC_FIXTURES :: [5] string.["proto/verse/realm-record-v1.json", "proto/verse/realm-made-v1.json", "proto/verse/realm-spec-v1.json", "proto/verse/realm-edits-v1.json", "proto/verse/realm-lists-v1.json"];
 RRC_BYTES :: 262144;
 Rrc :: struct { api: [256] u8; api_n: int; psql: [1024] u8; psql_n: int; db: [1024] u8; db_n: int; pass: int; fail: int; }
 
@@ -81,6 +82,17 @@ rrc_vary :: (got: string, want: string, key: string, out: [] u8) -> string {
   return ifx n < 0 then got else cast(string) out[0..<n];
 }
 
+// got with the number after `lead` at the start of its first such line replaced by want's, in out.
+rrc_lead_at :: (text: string, lead: string) -> int {
+  for i: 0..<text.count - lead.count + 1 { if (i == 0 || text[i - 1] == '\n') && text[i..<i + lead.count] == lead { return i + lead.count; } }
+  return -1;
+}
+rrc_vary_line :: (got: string, want: string, lead: string, out: [] u8) -> string {
+  g := rrc_lead_at(got, lead); w := rrc_lead_at(want, lead);
+  if g < 0 || w < 0 || rrc_number_end(got, g) == g || rrc_number_end(want, w) == w { return got; }
+  n := rrc_put(out, 0, got[0..<g]); n = rrc_put(out, n, want[w..<rrc_number_end(want, w)]); n = rrc_put(out, n, got[rrc_number_end(got, g)..<got.count]);
+  return ifx n < 0 then got else cast(string) out[0..<n];
+}
 // One fixture: its realm seeded, each step made and held, its realm cleaned away. False when it could not run.
 rrc_run :: (t: [] Rrc, fixture: string) -> bool {
   text: [RRC_BYTES] u8; tn := fs_read(fixture, text[..]);
@@ -139,7 +151,20 @@ rrc_run :: (t: [] Rrc, fixture: string) -> bool {
       kb2: [64] u8; kn := jv_str(f[0], jv_at(f[0], vary, k), kb2[..]);
       if kn > 0 { got = rrc_vary(got, want, cast(string) kb2[0..<kn], vb[..]); }
     }
-    rrc_check(t[..], name, "reply", got, want);
+    // "vary_line": a line that starts with this text and a number the run decides (a proposal's id):
+    // the number is the fixture's before the bodies are compared
+    lb: [RRC_BYTES] u8; lp: [32] u8; lead := rrc_str(f[0], s, "vary_line", lp[..]);
+    if lead != "" { got = rrc_vary_line(got, want, lead, lb[..]); }
+    // "has_line": the answer lists every realm the database has, so the fixture's line need only be one of them
+    if jv_kind(f[0], jv_get(f[0], s, "has_line")) == JV_TRUE {
+      found := false; at := 0;
+      for end: 0..<got.count + 1 {
+        if end < got.count && got[end] != '\n' { continue; }
+        if got[at..<end] == want { found = true; }
+        at = end + 1;
+      }
+      rrc_check(t[..], name, "a line of the reply", ifx found then want else got, want);
+    } else { rrc_check(t[..], name, "reply", got, want); }
     print("ok %\n", name);
   }
   if rrc_sql(t[..], rrc_str(f[0], realm, "clean", cl[..]), out[..]) < 0 { t[0].fail += 1; }

@@ -50,6 +50,7 @@ cg_rewrite :: (request: string, body: string, buf: [] u8) -> int {
   if request == "ReviseRequest" { return forge_words_body(rev, "prompt", cg_s(d, 0, "prompt", a[..]), false, buf); }
   if request == "AskRequest" { return forge_words_body(rev, "words", cg_s(d, 0, "words", a[..]), false, buf); }
   if request == "AskDoneRequest" { return forge_words_body(rev, "commit", cg_s(d, 0, "commit", a[..]), false, buf); }
+  if request == "AskDocRequest" { return forge_ask_doc_body(rev, cg_s(d, 0, "name", a[..]), cg_s(d, 0, "data", b[..]), buf); }
   if request == "LoreRequest" { return forge_lore_body(rev, cg_s(d, 0, "who", a[..]), cg_s(d, 0, "text", b[..]), false, buf); }
   if request == "PlaceRequest" {
     // the numbers go back as they were written

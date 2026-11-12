@@ -48,7 +48,7 @@ room coax/web/room/room-control.coax  # the control poll and its reply; E8, wave
 room coax/web/room/room-checkpoint.coax  # the checkpoint post and its receipt JSON; E7, wave 2 (#13250)
 room coax/web/room/room-dev.coax  # the local API stand-in hand-builds player, ticket, rooms and realm JSON; E11, wave 2 (#13250)
 route coax/web/api/player.c  # player, progress, tickets, room reports; E5 (#13248) for the ticket, then E7, E8 and E11, wave 2 (#13250). Its items route (room_items) is everglade.item-op.v1: the answer through the codec, the request still read with SQL jsonb (#13291)
-route coax/web/api/realms.c  # E11, wave 2: the realm routes on the api.v1 envelope (#13250)
+route coax/web/api/realms.c  # E11: every body has a schema, a fixture and a route test; two readers are not on a codec yet: coax/lib/media/realm_seat.coax splits the spec's character lines itself (toolchain may not load aethyr/forge/spec.coax), and coax/web/card.js reads the card's want (#13250)
 route coax/web/api/seats.c  # E11, wave 2 (#13250)
 route coax/web/api/verse_packs.c  # E11, wave 2 (#13250)
 route coax/web/api/rooms.c  # E8, wave 2: the room reports (#13250)

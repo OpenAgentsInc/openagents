@@ -7,6 +7,7 @@
 //   POST .../<slug>/revise     {"prompt":WORDS}                                 forge_words_body
 //   POST .../<slug>/asks       {"words":WORDS}                                  forge_words_body
 //   POST .../<slug>/asks/<id>/done   {"commit":HASH}                            forge_words_body
+//   POST .../<slug>/asks/doc   {"name":FILE,"data":BASE64}                      forge_ask_doc_body
 //   POST .../<slug>/place      {"thing":THING,"x":X,"z":Z,"yaw":YAW}            forge_place_body
 //   POST .../<slug>/lore       {"who":WHO,"text":TEXT}                          forge_lore_body
 //   POST .../<slug>/quest      {"giver":WHO,"ask":ASK,"steps":[..],"reward":R}  forge_quest_body
@@ -105,6 +106,14 @@ forge_quest_body :: (rev: int, giver: string, ask: string, steps: [] string, rew
   jo_put(o[..], "],\"reward\":"); forge_change_quote(o[..], reward, drop);
   return forge_change_done(o[..]);
 }
+// POST .../<slug>/asks/doc from the CLI: a design document's file name and its bytes in base64
+// (the pages' host builds the same body from a picked file).
+forge_ask_doc_body :: (rev: int, name: string, data: string, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  forge_change_open(o[..], rev);
+  jo_put(o[..], "\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"data\":"); jo_quoted(o[..], data);
+  return forge_change_done(o[..]);
+}
 // What a deletion answered (POST .../asks/<id>/delete, .../rows/<key>/delete): true when it has a
 // "deleted" member (the row or ask is gone), false when it is only switched off for now
 // ({"ask": ID, "state": ...}) or the body is no object.
@@ -152,6 +161,13 @@ forge_change_deleted :: (body: string) -> bool {
   #assert cast(string) buf[0..<n] == "{\"rev\":5,\"giver\":\"Old Mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\"],\"reward\":\"\"}";
   n = forge_quest_body(5, "M", "", three[0..<0], "", false, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\":5,\"giver\":\"M\",\"ask\":\"\",\"steps\":[],\"reward\":\"\"}" && forge_quest_body(5, "M", "", three[0..<0], "", false, buf[0..<n - 1]) == -1;
+}
+#test "a design document's body" {
+  buf: [128] u8;
+  n := forge_ask_doc_body(4, "idea \"one\".txt", "SG9yc2Vz", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":4,\"name\":\"idea \\\"one\\\".txt\",\"data\":\"SG9yc2Vz\"}" && forge_ask_doc_body(4, "idea.txt", "SG9yc2Vz", buf[0..<20]) == -1;
+  n = forge_ask_doc_body(0, "a.md", "", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"name\":\"a.md\",\"data\":\"\"}";
 }
 #test "what a deletion answered" {
   #assert forge_change_deleted("{\"deleted\": true, \"reverted\": false}") && forge_change_deleted("{\"rev\": 3, \"deleted\": true}") && !forge_change_deleted("{\"ask\": 4, \"state\": \"removing\"}");

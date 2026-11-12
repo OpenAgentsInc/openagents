@@ -350,6 +350,11 @@
    "name": "an admin marks an ask's code done",
    "request": "AskDoneRequest",
    "body": "{\"rev\":41,\"commit\":\"abcdef0\"}"
+  },
+  {
+   "name": "the CLI drops a design document on the list",
+   "request": "AskDocRequest",
+   "body": "{\"rev\":41,\"name\":\"idea.txt\",\"data\":\"SG9yc2VzLCBhbmQgYSBkcmFnb24u\"}"
   }
  ]
 }

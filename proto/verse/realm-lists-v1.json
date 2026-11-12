@@ -1,0 +1,326 @@
+{
+ "profile": "realm-lists-v1",
+ "about": "A realm's other text answers (GitHub #13250): the feature list and what adding to it answers, a revision's answer, the edit panes, the proposals, the listed realms, the made realms' rows for /og, and the card's want. \"lines\" names every line. \"steps\" are calls to a seeded public realm as its owner and as a visitor (the fixture's second key is a player's) with the status and body the server answers today: \"vary_line\" names a line's start whose number the run decides, and \"has_line\" says the answer lists every realm in the database and the fixture's line is one of them. \"model_steps\" need the planner's model: coax/web/api/test_realm_builder.py makes them as the owner of the realm proto/verse/realm-board-v1.json made (fixture-marsh), with the ask's and the plan's numbers written 41. aethyr/forge/lists.coax, spec.coax and listed.coax read the lines; aethyr/forge/lists-goldens.coax holds them through those files; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "check": "coax/web/tool.sh aethyr/forge/lists-goldens.coax proto/verse/realm-lists-v1.json",
+ "codec": "aethyr/forge/lists.coax",
+ "lines": [
+  {
+   "key": "ask",
+   "form": "ask ID STATE KIND WORDS",
+   "says": "the feature list: an ask, newest first; STATE applied, waiting or removing, KIND ask or remove",
+   "example": "ask 41 waiting ask a waterfall"
+  },
+  {
+   "key": "ask (answer)",
+   "form": "ask ID STATE",
+   "says": "what adding an ask answers first: applied or waiting (\"ask 0 gone\" when its plan is gone); the board's rows follow",
+   "example": "ask 41 applied"
+  },
+  {
+   "key": "plan",
+   "form": "plan N",
+   "says": "what a revision answers first: the new plan's number; the board's rows follow",
+   "example": "plan 41"
+  },
+  {
+   "key": "doc",
+   "form": "doc N M applied K waiting",
+   "says": "what a dropped document answers first: how many asks it made, applied and waiting; the rows follow",
+   "example": "doc 3 2 applied 1 waiting"
+  },
+  {
+   "key": "row",
+   "form": "row KEY 0|1 LABEL",
+   "says": "a row of the board, as in the spec (aethyr/forge/spec.coax)",
+   "example": "row trees 1 6 dead trees"
+  },
+  {
+   "key": "rev",
+   "form": "rev N",
+   "says": "under edit-v1/: the realm's revision now, the last line",
+   "example": "rev 7"
+  },
+  {
+   "key": "lore",
+   "form": "lore WHO|TEXT",
+   "says": "a character's lore; a bar in the text is written as a space",
+   "example": "lore old-mott|He kept the bridge."
+  },
+  {
+   "key": "quest",
+   "form": "quest GIVER|ASK|STEP|STEP|STEP|REWARD",
+   "says": "a giver's quest: what it asks, three steps and its reward",
+   "example": "quest old-mott|Bring my oar|Find the oar|||A lantern"
+  },
+  {
+   "key": "P",
+   "form": "P ID|WHO|THING|X|Z|YAW|BEFORE|AFTER",
+   "says": "a visitor's placed thing waiting for its owner: who, the thing, where, and how many of it the realm has before and after",
+   "example": "P 41|Visitor itor|barrel|0|3.8|1.57|0|1"
+  },
+  {
+   "key": "total",
+   "form": "total N",
+   "says": "the listed realms' first line: how many public realms there are",
+   "example": "total 12"
+  },
+  {
+   "key": "listed row",
+   "form": "SLUG|TITLE|LINE|YYYY-MM-DDTHH:MM|STYLE",
+   "says": "a public realm on /worlds, newest first (aethyr/forge/listed.coax)",
+   "example": "farm|Farm|A meadow by day|2026-10-31T09:05|lowpoly"
+  },
+  {
+   "key": "made row",
+   "form": "PATH|made||TITLE|LINE|URL|IMAGE|ALT|IMAGE_KIND|1200|630|KB|ERRORS|WARNINGS|",
+   "says": "a made realm as a row of /og's table: its page, its link preview's words and picture, and what is missing",
+   "example": "/realms/list-fixture|made||List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the Verse.|https://openagents.com/worlds/list-fixture|/og/default.jpg|List Fixture|default|1200|630|0|no picture of its own yet (its owner's next visit takes one)|line written from what is in it|"
+  },
+  {
+   "key": "want",
+   "form": "want | no",
+   "says": "GET .../card: whether this visitor's page should take the realm's picture",
+   "example": "want"
+  }
+ ],
+ "realm": {
+  "slug": "list-fixture",
+  "player_key": "list-fixture-player-key-0001",
+  "stranger_key": "list-fixture-visitor-key-0002",
+  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-list-fixture', encode(sha256(convert_to('list-fixture-player-key-0001', 'UTF8')), 'hex'), 1), ('p-list-visitor', encode(sha256(convert_to('list-fixture-visitor-key-0002', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-list-fixture', 'p-list-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) VALUES ('list-fixture', 'made-list-fixture', 'List Fixture', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"variant\":\"pine\",\"count\":6},{\"feature\":\"character\",\"name\":\"Old Mott\",\"role\":\"the ferryman\"}]', '{\"build\":true,\"jump\":true}', 4102444800000, 'public');",
+  "clean": "DELETE FROM verse.realm_proposals WHERE slug = 'list-fixture'; DELETE FROM verse.realm_lore WHERE slug = 'list-fixture'; DELETE FROM verse.realm_quests WHERE slug = 'list-fixture'; DELETE FROM verse.realm_publications WHERE slug = 'list-fixture'; DELETE FROM verse.realm_revisions WHERE slug = 'list-fixture'; DELETE FROM verse.made_realms WHERE slug = 'list-fixture'; DELETE FROM verse.worlds WHERE id = 'made-list-fixture'; DELETE FROM verse.players WHERE id IN ('p-list-fixture', 'p-list-visitor');"
+ },
+ "steps": [
+  {
+   "name": "its owner writes lore",
+   "method": "POST",
+   "path": "/list-fixture/lore",
+   "as": "owner",
+   "body": "{\"who\":\"old-mott\",\"text\":\"He kept the bridge | and the oar.\"}",
+   "status": 200,
+   "reply": "{\"who\": \"old-mott\", \"saved\": true}",
+   "message": "LoreReply",
+   "request": "LoreRequest"
+  },
+  {
+   "name": "its owner gives a quest",
+   "method": "POST",
+   "path": "/list-fixture/quest",
+   "as": "owner",
+   "body": "{\"giver\":\"old-mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\",\"\",\"\"],\"reward\":\"A lantern\"}",
+   "status": 200,
+   "reply": "{\"giver\": \"old-mott\", \"saved\": true}",
+   "message": "QuestReply",
+   "request": "QuestRequest"
+  },
+  {
+   "name": "the panes",
+   "method": "GET",
+   "path": "/list-fixture/panes",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "lore old-mott|He kept the bridge   and the oar.\nquest old-mott|Bring my oar|Find the oar|||A lantern\n",
+   "message": "Panes"
+  },
+  {
+   "name": "a visitor reads no panes",
+   "method": "GET",
+   "path": "/list-fixture/panes",
+   "as": "stranger",
+   "body": "",
+   "status": 200,
+   "reply": "",
+   "message": "Empty"
+  },
+  {
+   "name": "panes are read, not posted",
+   "method": "POST",
+   "path": "/list-fixture/panes",
+   "as": "owner",
+   "body": "{}",
+   "status": 405,
+   "reply": "{\"error\":\"GET the panes\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "a visitor's placed thing is proposed",
+   "method": "POST",
+   "path": "/list-fixture/place",
+   "as": "stranger",
+   "body": "{\"thing\":\"barrel\",\"x\":0.00,\"z\":3.80,\"yaw\":1.57}",
+   "status": 200,
+   "reply": "{\"proposed\": 1}",
+   "message": "PlaceReply",
+   "request": "PlaceRequest",
+   "vary": [
+    "proposed"
+   ]
+  },
+  {
+   "name": "the proposals, to its owner",
+   "method": "GET",
+   "path": "/list-fixture/proposals",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "P 1|Visitor itor|barrel|0|3.8|1.57|0|1\n",
+   "message": "Proposals",
+   "vary_line": "P "
+  },
+  {
+   "name": "a visitor sees no proposals",
+   "method": "GET",
+   "path": "/list-fixture/proposals",
+   "as": "stranger",
+   "body": "",
+   "status": 200,
+   "reply": "",
+   "message": "Empty"
+  },
+  {
+   "name": "the feature list with nothing asked",
+   "method": "GET",
+   "path": "/list-fixture/asks",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "",
+   "message": "Empty"
+  },
+  {
+   "name": "the card: its owner should take its picture",
+   "method": "GET",
+   "path": "/list-fixture/card",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "want",
+   "message": "CardWant"
+  },
+  {
+   "name": "the card: a visitor should not",
+   "method": "GET",
+   "path": "/list-fixture/card",
+   "as": "stranger",
+   "body": "",
+   "status": 200,
+   "reply": "no",
+   "message": "CardWant"
+  },
+  {
+   "name": "a card that is no picture",
+   "method": "POST",
+   "path": "/list-fixture/card",
+   "as": "owner",
+   "body": "{}",
+   "status": 400,
+   "reply": "{\"error\":\"a 1200x630 JPEG\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "the listed realms have it",
+   "method": "GET",
+   "path": "/listed",
+   "as": "none",
+   "body": "",
+   "status": 200,
+   "reply": "list-fixture|List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the Verse.|2099-12-31T18:00|lowpoly",
+   "message": "ListedRow",
+   "has_line": true
+  },
+  {
+   "name": "the made realms' rows for /og have it",
+   "method": "GET",
+   "path": "/made",
+   "as": "none",
+   "body": "",
+   "status": 200,
+   "reply": "/realms/list-fixture|made||List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the Verse.|https://openagents.com/worlds/list-fixture|/og/default.jpg|List Fixture|default|1200|630|0|no picture of its own yet (its owner's next visit takes one)|line written from what is in it|",
+   "message": "MadeRow",
+   "has_line": true
+  },
+  {
+   "name": "the lists are read, not posted",
+   "method": "POST",
+   "path": "/listed",
+   "as": "none",
+   "body": "{}",
+   "status": 405,
+   "reply": "{\"error\":\"GET the rows\"}",
+   "message": "ErrorReply"
+  }
+ ],
+ "model_steps": [
+  {
+   "name": "an ask the planner applies, as lines",
+   "method": "POST",
+   "path": "/fixture-marsh/asks?as=lines",
+   "body": "{\"words\":\"blue lanterns\"}",
+   "status": 200,
+   "reply": "ask 41 applied\nplan 41\nrow water 1 Large pond\nrow trees 1 6 dead trees\nrow lanterns 1 6 blue lanterns\nrow character:old-mott 1 Old Mott, keeps the bridge\n",
+   "message": "AskAnswer",
+   "model": {
+    "name": "x",
+    "style": "painterly",
+    "ground": "forest",
+    "time": "night",
+    "features": [
+     {
+      "feature": "water",
+      "on": true,
+      "size": "large"
+     },
+     {
+      "feature": "trees",
+      "on": true,
+      "variant": "dead",
+      "count": 6
+     },
+     {
+      "feature": "lanterns",
+      "on": true,
+      "colour": "blue",
+      "count": 6
+     },
+     {
+      "feature": "character",
+      "on": true,
+      "name": "Old Mott",
+      "role": "keeps the bridge"
+     }
+    ]
+   },
+   "wait": true
+  },
+  {
+   "name": "the feature list",
+   "method": "GET",
+   "path": "/fixture-marsh/asks",
+   "body": "",
+   "status": 200,
+   "reply": "ask 41 applied ask blue lanterns\n",
+   "message": "Asks"
+  },
+  {
+   "name": "the planner revises the board, as lines",
+   "method": "POST",
+   "path": "/fixture-marsh/revise?as=lines",
+   "body": "{\"prompt\":\"night, and blue lanterns\"}",
+   "status": 200,
+   "reply": "plan 41\nrow water 1 Large pond\nrow trees 1 6 dead trees\nrow lanterns 1 6 blue lanterns\nrow character:old-mott 1 Old Mott, keeps the bridge\n",
+   "message": "ReviseAnswer",
+   "wait": true
+  },
+  {
+   "name": "the planner revises the board",
+   "method": "POST",
+   "path": "/fixture-marsh/revise",
+   "body": "{\"prompt\":\"night, and blue lanterns\"}",
+   "status": 200,
+   "reply": "{\"plan\": 41, \"changed\": 4}",
+   "message": "ReviseReply",
+   "wait": true
+  }
+ ]
+}
