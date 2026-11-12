@@ -175,51 +175,54 @@ work); change 3 needs no run.
 
 ## How "clearly better" will be judged
 
-The definition is committed before any final run, as before.
+The owner capped further spend at $200 of Google credits (2026-11-12), so
+the verdict is on one model and two runs a task. The definition is
+committed before any final run, as before.
 
 - **A fresh unseen set.** N1 to N6 are now seen. A separate agent builds
-  twelve new tasks, U1 to U12, from this repository's history. They are
-  multi-file changes and bug fixes, judged by tests that run, of the size
-  of N3 and N4. No Microcoder agent sees them until the verdict ends.
-- **The runs.**
-  - Three runs per task per harness, on Argon and then on Carbon.
-  - The two harnesses run as pairs that start together.
-  - A run that hits 15 minutes fails.
-  - Antigravity runs at its current engine: low thinking and the stall
-    watchdog.
-- **The conditions.** On each model:
-  1. Passes: Microcoder is not behind. A lead in passes is claimed only
-     when it is at least two standard deviations of the count difference.
-     With 36 runs a side at an 80% pass rate, that is a lead of about 7.
-  2. Cost: Microcoder's total is at most 60% of Antigravity's, and it is
-     cheaper on at least 10 of the 12 tasks (a sign test at p < 0.05).
-  3. Time: Microcoder's median is at most 75% of Antigravity's, and it is
-     faster on at least 10 of the 12 tasks.
+  twelve new tasks, U1 to U12, from this repository's history: multi-file
+  changes and bug fixes of the size of N3 and N4, judged by tests that run.
+  No Microcoder agent sees them until the verdict ends.
+- **The runs.** Two runs per task per harness on Gemini 4 Argon at low
+  thinking, as pairs that start together. A run that hits 15 minutes fails.
+  Antigravity runs at its current engine (low thinking, the stall
+  watchdog). Carbon is not judged.
+- **The conditions:**
+  1. Passes: Microcoder is not behind (24 runs a side). A lead in passes is
+     claimed only beyond two standard deviations of the count difference.
+  2. Cost: Microcoder's total is at most 60% of Antigravity's, and its
+     average is cheaper on at least 10 of the 12 tasks (a sign test at
+     p < 0.05).
+  3. Time: Microcoder's median is at most 75% of Antigravity's, and its
+     average is faster on at least 10 of the 12 tasks.
 
-  "Clearly better" means all three on both models. Passes may stay level,
-  since both harnesses already pass most tasks. The lead has to come
-  through as large, consistent margins on cost and time that a fresh set
-  can't put down to noise.
+  "Clearly better" means all three. The lead is expected in cost and time,
+  with passes level; a fresh set and a per-task sign test make that lead
+  hard to put down to noise.
 
 ## Cost and order of work
 
-| Step | Spend (Google credits) |
-| --- | --- |
-| Phase 1, changes 1 and 2: one round on N1, N2, N5, N6 and six tuning tasks | about $25 |
-| Change 3: offline | $0 |
-| Phase 2: the probe, then one round with the new shape | about $30 |
-| The fresh set, Argon: 72 runs | about $175 |
-| The fresh set, Carbon: 72 runs | about $350 |
+Within $200 of Google credits from 2026-11-12:
 
-Order: Phase 1, then the probe. The fresh set is built in parallel by a
-separate agent. Then Phase 2, then Argon's verdict. Carbon's verdict comes
-only if Argon's conditions hold.
+| Step | Spend |
+| --- | --- |
+| Phase 1, changes 1 and 2: one run each of N4, N3, N1 and three tuning tasks, against their recorded runs | about $15 |
+| Change 3: offline | $0 |
+| Phase 2: the request-shape probe | about $5 |
+| Phase 2: one check round with the winning shape (six runs) | about $10 |
+| The verdict: 12 tasks, 2 runs a side, 48 runs | about $115 |
+| Reserve, for a rerun of a broken task or a failed setup | about $55 |
+
+Order: Phase 1 is built and checked; the fresh set is built in parallel;
+then the probe and the shape change; then the verdict. A step that shows no
+gain on its check is removed and not paid for again. Change 6 (a larger
+window) is built only if the probe makes it cheap, and needs the owner's
+sign-off for `AF_REQUEST`.
 
 ## Decisions for the owner
 
-1. **The budget** for the above: about $230 for everything through Argon's
-   verdict, and $350 more for Carbon's.
-2. **Sign-off for `AF_REQUEST`** (change 6), and the read limit already
-   changed in `native-profile.coax` (recorded in `NEEDS_OWNER.md`).
-3. **Whether the verdict above is the right bar:** passes level, with
-   large, consistent leads on cost and time on both models.
+1. **Sign-off for `AF_REQUEST`** (change 6), only if the probe makes a
+   larger window cheap; and the read limit already changed in
+   `native-profile.coax` (recorded in `NEEDS_OWNER.md`).
+2. **Whether the verdict above is the right bar:** passes level, with
+   large, consistent leads on cost and time, on Argon.
