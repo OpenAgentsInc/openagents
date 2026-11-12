@@ -1,6 +1,7 @@
 {
   "name": "Aethyr Physics Lab records",
   "version": 1,
+  "check": "coax/web/tool.sh aethyr/lab/physics-lab-profile.coax proto/aethyr/physics-lab-v1.json",
   "scope": "Lab-only files; no network or product contract",
   "byte_order": "little endian",
   "scalar": "IEEE 754 binary64; initial physical values rounded to binary32 then promoted",

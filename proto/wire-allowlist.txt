@@ -108,7 +108,6 @@ profile proto/verse/everglade-familiar-state-v1.json  # no check; E1, then one c
 profile proto/verse/everglade-familiar-step-v1.json  # no check; E1, then one codec in E2 (#13244)
 profile proto/verse/everglade-find-familiar-v1.json  # no check; E1, then one codec in E2 (#13244)
 profile proto/verse/everglade-healers-kit-v1.json  # no check; E1, then one codec in E2 (#13244)
-profile proto/aethyr/physics-lab-v1.json  # no check; aethyr/lab/physics-record.coax pins its own literals, not this file; outside the plan's inventory (#13250)
 
 # Outside the two audited areas. No step owns these yet; the tracker does.
 route coax/web/api/access.c  # access and auth v2: hand-built bodies; the api.v1 envelope (#13250)
