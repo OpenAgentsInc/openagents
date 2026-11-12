@@ -502,6 +502,16 @@ pp_only_docs :: (changed: string) -> bool {
 }
 
 // The checks for a push whose merge base with main is base and whose changes are `changed`;
+// Which checks run (PP_RUN_* bits). wire-check reads the tree's compiler (registry rows name
+// coax/bin/coax), and the suites need it too, so a checkout without one (a fresh worktree before
+// coax/build.sh) runs the other report checks and names the two as skipped: a missing compiler
+// never refuses a push.
+PP_RUN_TOOLS :: 1; PP_RUN_PARITY :: 2; PP_RUN_WIRE :: 4; PP_RUN_LAYER :: 8; PP_RUN_SUITES :: 16;
+pp_plan :: (has_compiler: bool, tests: bool) -> int {
+  run := PP_RUN_TOOLS | PP_RUN_PARITY | PP_RUN_LAYER;
+  if has_compiler { run |= PP_RUN_WIRE; if tests { run |= PP_RUN_SUITES; } }
+  return run;
+}
 // 1 when one failed, 0 otherwise (a check cut off by the time limit or with no host is named).
 // The report checks read the checkout; the suites run on a host from commit itself.
 pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: string) -> int {
@@ -517,13 +527,17 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   lc := [4] string.["coax/web/tool.sh", "layer-check", "--base", base];
   sl := [5] string.["coax/web/tool.sh", "suites", "--since", base, "--list"];
   rs := [2] string.["coax/remote/remote.sh", "status"];
-  ok := pp_start(jobs[0..<1], "tools-check", tc[..], none);
-  ok = pp_start(jobs[1..<2], "everglade-parity", ep[..], none) && ok;
-  ok = pp_start(jobs[2..<3], "wire-check", wc[..], none) && ok;
-  ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
   tests := true;
   hb: [64] u8;
   if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
+  has_compiler := fs_exists("coax/bin/coax");
+  run := pp_plan(has_compiler, tests);
+  if !has_compiler { print("prepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\n"); }
+  ok := pp_start(jobs[0..<1], "tools-check", tc[..], none);
+  ok = pp_start(jobs[1..<2], "everglade-parity", ep[..], none) && ok;
+  if (run & PP_RUN_WIRE) != 0 { ok = pp_start(jobs[2..<3], "wire-check", wc[..], none) && ok; }
+  ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
+  tests = (run & PP_RUN_SUITES) != 0;
   if tests {
     ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;
     ok = pp_start(jobs[5..<6], "remote.sh status", rs[..], none) && ok;
@@ -825,6 +839,11 @@ PP_T_HIST :: "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa other-agent\n\n:000000 1
   #assert pp_load(st[..], ":100644 100755 1111111111111111111111111111111111111111 1111111111111111111111111111111111111111 M\tx.sh\n") && st[0].done[0];
   // unsorted input still finds its files
   #assert pp_load(st[..], ":100644 100644 1111111 2222222 M\tz\n:100644 100644 1111111 2222222 M\ta\n") && !st[0].sorted && pp_find(st[..], "a") == 1 && pp_find(st[..], "q") == -1;
+}
+#test "a checkout with no compiler skips wire-check and the suites, never refuses for it" {
+  #assert pp_plan(true, true) == PP_RUN_TOOLS | PP_RUN_PARITY | PP_RUN_WIRE | PP_RUN_LAYER | PP_RUN_SUITES;
+  #assert (pp_plan(true, false) & PP_RUN_SUITES) == 0 && (pp_plan(true, false) & PP_RUN_WIRE) != 0;
+  #assert pp_plan(false, true) == PP_RUN_TOOLS | PP_RUN_PARITY | PP_RUN_LAYER && pp_plan(false, false) == pp_plan(false, true);
 }
 #test "the checks' inputs: free hosts, touched suites, documents" {
   #assert pp_free_host("oa-build-1 us-central1-a RUNNING 10.0.0.1 free slots: 2\n") && !pp_free_host("oa-build-1 us-central1-a RUNNING 10.0.0.1 free slots: 0\noa-build-2 us-central1-a TERMINATED - free slots: -\n");

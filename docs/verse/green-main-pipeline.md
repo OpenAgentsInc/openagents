@@ -152,6 +152,12 @@ Anything still running then is stopped and named as skipped; the
 after-landing check runs it. With no free host, the touched suites are
 skipped with a note. `OA_PREPUSH_TESTS=0` skips them.
 
+A checkout with no `coax/bin/coax` (a fresh worktree before `coax/build.sh`)
+skips `wire-check`, whose registry rows name that file, and the suites, with a
+note; the other report checks still run. A missing compiler never refuses a
+push. Until 2026-11-11 21:00 it did: `wire-check` failed on the missing file
+and the hook refused every push from a fresh worktree (reported on #13265).
+
 Measured on 2026-11-11 for a one-commit push of a new tool: the rules took
 0.1 to 0.3 seconds, the four report checks 1 to 3 seconds each in parallel,
 and `check.sh only` of the touched suite on a host 12 to 15 seconds (about
