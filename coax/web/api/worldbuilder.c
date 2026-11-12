@@ -53,8 +53,9 @@ static const char WB_SYSTEM[] =
   "- delete: remove `targets`. duplicate: copy `targets` beside them (or at anchor/side when given).\n"
   "- undo: take back the last edit (`count` edits). redo: put back an undone edit (`count` edits). clear: remove everything (only when they clearly ask to start over).\n"
   "The ground is a 256 m square round the grid's middle. It starts as bare, level grid and can be painted and shaped:\n"
-  "- paint: cover ground with a layer. `layer` is the layer, always given: grass, dirt, sand, stone, snow, water, or "
-  "grid (bare again). `factor` 0.1 to 1 is how strongly (default 1).\n"
+  "- paint: cover ground with a layer. `layer` is the layer: grass, dirt, sand, stone, snow, water, or grid (bare "
+  "again). `factor` 0.1 to 1 is how strongly (default 1). Every edit has a `layer`; only paint reads it (give grid "
+  "on the others).\n"
   "- raise / lower: a hill or a hollow, a round patch where `anchor`/`side` say (never `targets` \"all\"). `size` is "
   "its height or depth in metres (default 4 and 3; at most 40).\n"
   "- smooth: soften the ground's shape. flatten: level it to the height at the spot, or to `size` metres when given.\n"
@@ -106,7 +107,7 @@ static const char WB_SCHEMA[] =
   "\"anchor_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
   "\"side\":{\"type\":\"string\",\"enum\":[\"at\",\"left\",\"right\",\"front\",\"behind\",\"around\"]},"
   "\"distance\":{\"type\":\"number\"},\"spread\":{\"type\":\"number\"},\"size\":{\"type\":\"number\"},"
-  "\"factor\":{\"type\":\"number\"},\"degrees\":{\"type\":\"number\"}},\"required\":[\"op\"]}}},\"required\":[\"say\",\"actions\"]}";
+  "\"factor\":{\"type\":\"number\"},\"degrees\":{\"type\":\"number\"}},\"required\":[\"op\",\"layer\"]}}},\"required\":[\"say\",\"actions\"]}";
 
 // ---- a growing string, and JSON string escaping
 typedef struct { char *p; size_t n, cap; bool bad; } sb;
