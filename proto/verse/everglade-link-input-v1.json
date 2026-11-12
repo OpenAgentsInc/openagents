@@ -1,5 +1,6 @@
 {
   "identity": "everglade-link-input-v1",
+  "check": "coax/web/tool.sh apps/openagents-web/everglade-link-profile.coax proto/verse/everglade-link-input-v1.json",
   "command": "J1",
   "base_session": "everglade-session-v5",
   "scope": "opt-in local Link experiment; matching room required",
@@ -33,5 +34,22 @@
       128
     ]
   },
-  "unchanged": "I retains its original five bits and session version 5 identity"
+  "unchanged": "I retains its original five bits and session version 5 identity",
+  "fixtures": [
+    {
+      "values": {"SEQ": 9, "KX": 20, "KY": 100, "PX": 0, "PY": 0, "THETA": 10000, "B": 162, "HEARD": 30},
+      "text": "J1 9 20 100 0 0 10000 162 30"
+    },
+    {
+      "values": {"SEQ": 41, "KX": -50, "KY": 0, "PX": 12, "PY": -8, "THETA": -15708, "B": 353, "HEARD": 40},
+      "text": "J1 41 -50 0 12 -8 -15708 353 40"
+    }
+  ],
+  "refused": [
+    "I 9 20 100 0 0 10000 162 30",
+    "J1 9 20 100 0 0 10000 1 30",
+    "J1 9 20 100 0 0 10000 224 30",
+    "J1 9 20 100 0 0 10000 544 30",
+    "J1 9 20 100 0 0 10000 32"
+  ]
 }

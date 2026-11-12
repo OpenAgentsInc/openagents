@@ -1,0 +1,101 @@
+// Hold proto/verse/everglade-link-input-v1.json to apps/openagents-web/everglade-link-wire.coax:
+// field order, bit constants, admission masks, and exact J1 fixture bytes.
+//   coax/web/tool.sh apps/openagents-web/everglade-link-profile.coax proto/verse/everglade-link-input-v1.json
+#import "Basic";
+#load "everglade-link-wire.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+ELP_FILE :: 16384;
+ELP_FIELDS :: [8] string.["SEQ", "KX", "KY", "PX", "PY", "THETA", "B", "HEARD"];
+
+elp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+elp_read_j1 :: (text: string, out: [] WireIn) -> bool {
+  if text.count < 3 || text[0..<3] != "J1 " { return false; }
+  r := [1] WireRd.[wire_rd(text, 2)];
+  v := wire_read_in(text, r[..]);
+  if !r[0].ok || r[0].at != text.count || !wire_link_input_ok(v.b) { return false; }
+  out[0] = v;
+  return true;
+}
+elp_check :: (d: Jv) -> bool {
+  tb: [4][256] u8;
+  if elp_str(d, jv_get(d, 0, "identity"), tb[0][..]) != "everglade-link-input-v1" { return false; }
+  if elp_str(d, jv_get(d, 0, "command"), tb[0][..]) != "J1" { return false; }
+  fields := jv_get(d, 0, "fields");
+  if jv_len(d, fields) != ELP_FIELDS.count { return false; }
+  for i: 0..<ELP_FIELDS.count {
+    if elp_str(d, jv_at(d, fields, i), tb[0][..]) != ELP_FIELDS[i] { return false; }
+  }
+  bits := jv_get(d, 0, "bits");
+  bit_keys := [9] string.["1", "2", "4", "8", "16", "32", "64", "128", "256"];
+  bit_vals := [9] int.[WB_RUN, WB_JUMP, WB_DIVE, WB_RISE, WB_SINK, WBL_LINK, WBL_ROLL, WBL_FLIP, WBL_JUMP];
+  for i: 0..<bit_keys.count {
+    if jv_get(d, bits, bit_keys[i]) < 0 || bit_vals[i] != (1 << i) { return false; }
+  }
+  adm := jv_get(d, 0, "admission");
+  allowed := jv_int(d, jv_get(d, adm, "allowed_mask"), -1);
+  req := jv_int(d, jv_get(d, adm, "required_mask"), -1);
+  conf := jv_get(d, adm, "conflicting_masks");
+  if allowed != 511 || req != WBL_LINK || jv_len(d, conf) != 2 { return false; }
+  if jv_int(d, jv_at(d, conf, 0), -1) != WBL_ROLL || jv_int(d, jv_at(d, conf, 1), -1) != WBL_FLIP { return false; }
+  for b: 0..<1024 {
+    want := (b & allowed) == b && (b & req) != 0 && !((b & WBL_ROLL) != 0 && (b & WBL_FLIP) != 0);
+    if wire_link_input_ok(b) != want { return false; }
+  }
+  fixtures := jv_get(d, 0, "fixtures");
+  if jv_len(d, fixtures) < 2 { return false; }
+  for i: 0..<jv_len(d, fixtures) {
+    row := jv_at(d, fixtures, i);
+    v := jv_get(d, row, "values");
+    theta_fine := jv_int(d, jv_get(d, v, "THETA"), -999999);
+    in_val := WireIn.{
+      seq = jv_int(d, jv_get(d, v, "SEQ"), -999999),
+      kx = jv_int(d, jv_get(d, v, "KX"), -999999),
+      ky = jv_int(d, jv_get(d, v, "KY"), -999999),
+      px = jv_int(d, jv_get(d, v, "PX"), -999999),
+      py = jv_int(d, jv_get(d, v, "PY"), -999999),
+      theta = f32(theta_fine) / 10000.0,
+      b = jv_int(d, jv_get(d, v, "B"), -1),
+      heard = jv_int(d, jv_get(d, v, "HEARD"), -999999),
+    };
+    if !wire_link_input_ok(in_val.b) { return false; }
+    want_text := elp_str(d, jv_get(d, row, "text"), tb[1][..]);
+    out: [256] u8;
+    wn := wire_put_link_in(out[..], 0, in_val);
+    if cast(string) out[0..<wn] != want_text { return false; }
+    got: [1] WireIn;
+    if !elp_read_j1(want_text, got[..]) { return false; }
+    if got[0].seq != in_val.seq || got[0].kx != in_val.kx || got[0].ky != in_val.ky || got[0].px != in_val.px || got[0].py != in_val.py || wire_fine(got[0].theta) != theta_fine || got[0].b != in_val.b || got[0].heard != in_val.heard { return false; }
+  }
+  refused := jv_get(d, 0, "refused");
+  if jv_len(d, refused) < 3 { return false; }
+  for i: 0..<jv_len(d, refused) {
+    bad := elp_str(d, jv_at(d, refused, i), tb[2][..]);
+    got: [1] WireIn;
+    if elp_read_j1(bad, got[..]) { return false; }
+  }
+  return true;
+}
+#test "Link input v1 profile tool rejects tampered masks and frames" {
+  nodes: [512] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"identity\":\"everglade-link-input-v1\",\"command\":\"J1\"}", nodes[..]);
+  #assert !elp_check(d[0]);
+  got: [1] WireIn;
+  #assert elp_read_j1("J1 9 20 100 0 0 10000 162 30", got[..]) && got[0].seq == 9;
+  #assert !elp_read_j1("J1 9 20 100 0 0 10000 162 30 99", got[..]);
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: everglade-link-profile FILE.json"); return 2; }
+  text: [ELP_FILE] u8; n := fs_read(args_at(a[..], 0), text[..]);
+  nodes: [1024] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("everglade-link-profile: cannot parse JSON"); return 2; }
+  if !elp_check(d[0]) { print("everglade-link-input-v1: profile fails\n"); return 1; }
+  print("everglade-link-input-v1: profile holds\n");
+  return 0;
+}

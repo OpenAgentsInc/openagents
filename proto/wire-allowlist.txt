@@ -109,7 +109,6 @@ route coax/web/api/verse_packs.c  # E11, wave 2 (#13250)
 route coax/web/api/rooms.c  # E8, wave 2: the room reports (#13250)
 route coax/web/api/room.c  # wave 2: presence and room chat JSON; decide with the room servers' reach (#13250)
 route coax/web/api/worldbuilder.c  # E12, wave 2, after #13226 (#13250)
-profile proto/verse/everglade-link-input-v1.json  # no check; E1 (#13244)
 profile proto/verse/everglade-familiar-v1.json  # no check; E1, then one codec in E2 (#13244)
 profile proto/verse/everglade-familiar-cure-v1.json  # no check; E1, then one codec in E2 (#13244)
 profile proto/verse/everglade-familiar-lifecycle-v1.json  # no check; E1, then one codec in E2 (#13244)
@@ -155,6 +154,7 @@ proto proto/openagents/options/v1alpha2/numeric.proto  # in no profile by name; 
 
 # Codecs outside their owning context's folders (#13316).
 codec everglade-session-v5 apps/openagents-web/everglade-wire.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
+codec everglade-link-input-v1 apps/openagents-web/everglade-link-wire.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
 codec orbit-session-v2 apps/openagents-web/orbit-session.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
 codec openagents.account.v1alpha1 coax/web/api/agent-wire.coax  # identity codec outside coax/web/api/auth* (#13316)
 codec openagents.metareal.haunt.v1alpha1 verse/haunt.coax  # engine codec still lives in verse/ (#13316)
