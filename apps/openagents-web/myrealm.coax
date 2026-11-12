@@ -34,7 +34,7 @@
 
 #load "font.coax";
 #load "ui.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "access.coax";   // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
 #load "../../verse/style-preset.coax";

@@ -21,7 +21,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "textkeys.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "save.coax";
 #load "place.coax";
 #load "world.coax";

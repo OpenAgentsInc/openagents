@@ -1,8 +1,8 @@
 # 10. Hold 60 frames per second
 
 > **Status: partly implemented.** Drawing, fading and culling are in
-> [`apps/openagents-web/everglade2.coax`](../../apps/openagents-web/everglade2.coax),
-> [`apps/openagents-web/everglade2-cull.coax`](../../apps/openagents-web/everglade2-cull.coax)
+> [`everglade/client/client.coax`](../client/client.coax),
+> [`everglade/client/cull.coax`](../client/cull.coax)
 > and [`apps/openagents-web/gpu/everglade2-cull.coax`](../../apps/openagents-web/gpu/everglade2-cull.coax).
 > The graphics governor is Aethyr's [`aethyr/quality.coax`](../../aethyr/quality.coax).
 > This chapter names functions and has no source listings yet.
@@ -135,7 +135,7 @@ them. The receipt is
 
 ## The checks
 
-In `apps/openagents-web/everglade2.coax`:
+In `everglade/client/client.coax`:
 
 - `#test "a piece keeps its place and size at every distance and only fades"`.
 - `#test "the woods' pieces never move, grow or swap as you walk, and come back
@@ -159,7 +159,7 @@ In `verse/everglade2/field.coax`:
 - `#test "the grass's reach: every distance shrinks with it, and the finest
   tier hands over to the next with nothing moving"`.
 
-In `apps/openagents-web/everglade2-cull.coax`:
+In `everglade/client/cull.coax`:
 
 - `#test "the cull's matrix projects every point as the kit stage's
   fivelab_project does"`.

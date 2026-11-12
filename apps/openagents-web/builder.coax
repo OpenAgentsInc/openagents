@@ -31,7 +31,7 @@
 
 #load "font.coax";
 #load "ui.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "access.coax";
 #load "../../aethyr/budget.coax";
 

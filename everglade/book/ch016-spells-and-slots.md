@@ -156,7 +156,7 @@ and makes the save too. Under Everglade's world profile, the Wizard is spared.
   executor only when a canonical effect program maps to it"`.
 - `aethyr/rules/srd/turn-order-checks.coax`, `#test "every executable spell's
   timed duration and Concentration match the pinned source"`.
-- `apps/openagents-web/everglade2.coax`, `#test "Everglade II shows a matching
+- `everglade/client/client.coax`, `#test "Everglade II shows a matching
   cast refusal over the hotbar and retires it after four seconds"` and `#test
   "Everglade II lifts the cooldown it predicted for a cast the room refused; an
   older cast's refusal changes nothing (#13046)"`.

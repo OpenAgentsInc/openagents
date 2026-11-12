@@ -136,7 +136,7 @@ In `verse/everglade2/ground.coax`:
 - `#test "the canopy AO matches an independent sampling of the sky, and the bake
   publishes onto its key and state only"`.
 
-In `apps/openagents-web/everglade2.coax`:
+In `everglade/client/client.coax`:
 
 - `#test "every frame writes the camera's environment: the glade's noon in the
   glade, the canopy's in the woods"`.

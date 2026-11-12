@@ -121,7 +121,7 @@ mode="${COAXIAL_MODE:-release}"
 opt=-Os; lto=(-flto)
 if [[ "$mode" == dev ]]; then opt=-O1; lto=(); fi
 # The Coax build profile follows the mode: `#if BUILD_DEBUG { ... }` (coax/spec.md 10.5) is in a dev
-# build and never in a release (Everglade II's admin mode, apps/openagents-web/everglade2-admin.coax).
+# build and never in a release (Everglade II's admin mode, everglade/client/admin.coax).
 # A unit whose closure has no BUILD_DEBUG emits the same C either way, so only such a unit's cache
 # key names the profile.
 profile=(--build-profile release); [[ "$mode" == dev ]] && profile=(--build-profile development)

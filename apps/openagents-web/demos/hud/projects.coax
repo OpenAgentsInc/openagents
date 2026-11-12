@@ -3,7 +3,7 @@
 // All contacts, capacity, traces and events below are synthetic demo fixtures.
 // coax/bin/coax test apps/openagents-web/demos/hud/projects.coax --library
 #load "../../../../aethyr/ui/draw.coax";
-#load "../../analytics.coax";
+#load "../../../../coax/web/analytics.coax";
 #load "arwes-demo.coax";
 
 ProjectsState :: struct {

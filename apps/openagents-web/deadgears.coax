@@ -18,7 +18,7 @@
 //   coax/bin/coax test apps/openagents-web/deadgears.coax --steps 4000000000
 
 #load "font.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "../../verse/deadgears/rules.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../aethyr/budget.coax";

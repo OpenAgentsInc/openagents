@@ -1,7 +1,7 @@
 // The class kits (#13025, #13058): a Character Create class's hotbar at a level, how each of its
 // abilities aims (the way you face, nothing picked for you), and how each sounds. Everglade
 // Experimental plays them against its monsters (experimental-combat.coax), Everglade II through its
-// room (everglade2-cast.coax), and the room takes Everglade II's casts by them
+// room (everglade/client/cast.coax), and the room takes Everglade II's casts by them
 // (coax/web/room/room-everglade.coax eg_e2_cast). Nothing here rolls or draws: the SRD 5e engine
 // (aethyr/rules/srd/, through fivebar.coax) says what each ability is.
 //
@@ -251,7 +251,7 @@ xc_kit :: (c: int) -> int {
   if c == FB_CL_RANGER { return XC_KIT_BOW; }
   return -1;
 }
-// ---- sound: every ability its own (experimental-sound.coax plays them, varied each time)
+// ---- sound: every ability its own (everglade/sound.coax plays them, varied each time)
 // start: as you use it (a blow's whoosh as the swing starts); layer: under the cast; hit: where it
 // lands on a monster; miss: where a spell meets no one or a monster dodges it. Names are Everglade's
 // bank (aethyr/audio/everglade-sfx.txt) or Experimental's own (aethyr/audio/experimental-sfx.coax).

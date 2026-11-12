@@ -1,7 +1,7 @@
 // Firm reason: 1 (it runs in the page: it wraps the page's WebAssembly frame to read its probes)
 // The in-page half of coax/web/everglade2-crowd.coax: added before the page's own scripts in each
 // headless Chrome. It changes nothing the page does. Each frame it notes when the frame began, how
-// long the Coax frame took, the most names drawn in one frame (namesMax), and Everglade II's room probes (everglade2.coax e2_net_probe): the room's
+// long the Coax frame took, the most names drawn in one frame (namesMax), and Everglade II's room probes (everglade/client/client.coax e2_net_probe): the room's
 // state and seat, the others drawn, the first other's drawn place, the re-runs and the last one's
 // move. report() sums them for the window since mark().
 (() => {

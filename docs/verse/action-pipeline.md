@@ -77,7 +77,7 @@ Every usable action declares its feel (`DeedFeel`):
 
 `deed_feel_missing` names what an action lacks. A check fails when any usable
 action lacks any of the four. Everglade's table is `xf_feel` in
-`apps/openagents-web/class-feel.coax`. Its check walks every class's bar at
+`everglade/client/class-feel.coax`. Its check walks every class's bar at
 every level from 1 to 6, and every monster action Everglade fields.
 
 ## Where the code lives
@@ -86,8 +86,8 @@ every level from 1 to 6, and every monster action Everglade fields.
 | --- | --- | --- |
 | Engine | `aethyr/action/deed.coax` | The bar, the ask and answer, the bearing type, the feel contract, the show |
 | Engine (SRD rules) | `aethyr/rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
-| Game | `apps/openagents-web/class-feel.coax` | Everglade's feel for every class ability and monster action |
-| Zone | `everglade2-cast.coax`, `experimental-combat.coax`, `everglade-spells.coax` | Each realm wires its press, its authority's answer and its bar to the pipeline |
+| Game | `everglade/client/class-feel.coax` | Everglade's feel for every class ability and monster action |
+| Zone | `everglade/client/cast.coax`, `experimental-combat.coax`, `everglade-spells.coax` | Each realm wires its press, its authority's answer and its bar to the pipeline |
 
 Zones only wire it in. They hold no copies of the pipeline.
 
@@ -113,5 +113,5 @@ icon.
 ```sh
 coax/bin/coax test aethyr/action/deed.coax --library
 coax/bin/coax test aethyr/rules/srd/condition-bearing-checks.coax --library
-coax/bin/coax test apps/openagents-web/class-feel.coax --library
+coax/bin/coax test everglade/client/class-feel.coax --library
 ```

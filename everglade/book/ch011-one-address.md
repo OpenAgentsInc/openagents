@@ -5,7 +5,7 @@
 > `domain` block of the `everglade2` entry in
 > [`apps/openagents-web/realms.json`](../../apps/openagents-web/realms.json),
 > into `apps/openagents-web/realms/everglade2/domain/`. The page side is in
-> `everglade2-create.coax` and `everglade2.coax`. The load balancer's routes
+> `everglade/client/create.coax` and `everglade/client/client.coax`. The load balancer's routes
 > are set by hand and written down in
 > [`docs/verse/everglade-domain.md`](../../docs/verse/everglade-domain.md).
 > Not built yet: the release smoke and golden for the domain, and
@@ -94,13 +94,13 @@ room's checkpoint restores your class, level and health. The address bar says
 
 ## The checks
 
-In `apps/openagents-web/everglade2-create.coax`:
+In `everglade/client/create.coax`:
 
 - `#test "/play is Character Create without a kept character, the world with
   one"`. It also asserts that `/player` and openagents.com's
   `/worlds/everglade2` are not the play page.
 
-In `apps/openagents-web/everglade2.coax`:
+In `everglade/client/client.coax`:
 
 - `#test "/play keeps where you stand, once you have moved"`.
 - `#test "/play starts you where you stood, told to the room; never in the

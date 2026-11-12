@@ -38,9 +38,9 @@
 // through net_view by what draws them (everglade-rangers.coax).
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "net:"
 
-#load "socket.coax";
+#load "../../coax/web/socket.coax";
 #load "../../everglade/shared/everglade-wire.coax";
-#load "everglade-net-core.coax";   // the states' ring, the jitter buffer, the clock: Everglade II's page keeps them too (#13054)
+#load "../../everglade/client/net-core.coax";   // the states' ring, the jitter buffer, the clock: Everglade II's page keeps them too (#13054)
 #load "../../aethyr/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
@@ -647,7 +647,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     clock := net_tick_t(n, d.tick);
     if d.part == 0 && (d.tick != n[0].tick || n[0].ticks == 0) {
       // the jitter buffer: how late each state comes, its spread, and the states' interval
-      // (everglade-net-core.coax net_jitter_heard, net_jitter_delay)
+      // (everglade/client/net-core.coax net_jitter_heard, net_jitter_delay)
       j := net_jitter_heard(NetJitter.{late_mean = n[0].late_mean, jitter = n[0].jitter, interval = n[0].interval}, n[0].ticks, net_now(n), clock, n[0].tick_t);
       n[0].late_mean = j.late_mean; n[0].jitter = j.jitter; n[0].interval = j.interval;
       n[0].delay = net_jitter_delay(j);

@@ -303,7 +303,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").repl
 // hand-over's scale), still moving: a slow swirl and rings running out, on the compositor, so it
 // moves while the engine compiles. No black panel, but the bar stays, low on a dark strip, so a
 // slow first load shows real progress (owner, 2026-11-09); the engine then
-// draws the same light and opens the world through it (everglade2-create.coax). A failure still
+// draws the same light and opens the world through it (everglade/client/create.coax). A failure still
 // says what failed.
 const PORTAL_ARRIVAL_CSS = `html.portal.gpu,html.portal.gpu body{background:#86c39d}
 html.portal.gpu #coaxial-load{overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#a1e2be 0%,#91d5b1 40%,#87cfac 75%,#7fcaaa 100%)}

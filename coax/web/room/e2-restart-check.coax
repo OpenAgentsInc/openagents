@@ -1,7 +1,7 @@
 // Everglade II's restart check (#13057): a local room server (bin/room --dev, the API's stand-in with
 // its checkpoint store, room-dev.coax) is killed (SIGKILL) while its players run down the path, then
 // started again on the same port and store. Each player is a native socket that does what the page
-// does (everglade2-net.coax): it mints a player key, asks for a v4 seat ticket (?checkpoint=2), sends
+// does (everglade/client/net.coax): it mints a player key, asks for a v4 seat ticket (?checkpoint=2), sends
 // its build and hello, an input every 1/30 s, and when the room goes it waits the page's first retry
 // (750 to 1250 ms), asks a fresh ticket and sits again, its hello first saying where it stood (A).
 // Then once more with no A (a page from before #13057): the room puts it where its last checkpoint
@@ -165,7 +165,7 @@ rx_phase :: (bots: [] RxBot, n: int, bin: string, ports: [] int, dir: string, st
     k := proc_kill(rooms[from], 15);
     gone_by := rs_now() + 12000;
     while rs_now() < gone_by { now := rs_now(); open := 0; for i: 0..<n { rx_pump(bots[i..<i + 1], now, false); if bots[i].open { open += 1; } } if open == 0 { break; } proc_sleep(2); }
-    // as the page does (everglade2-net.coax e2n_down): its first retry 750 to 1250 ms after the word
+    // as the page does (everglade/client/net.coax e2n_down): its first retry 750 to 1250 ms after the word
     for i: 0..<n { spread := ifx n > 1 then n - 1 else 1; bots[i].down_at = rs_now(); bots[i].retry_at = killed + 750 + 500 * i / spread; bots[i].seat = -1; }
   } else {
     k := proc_kill(rooms[from], 9); w := proc_wait(rooms[from], 5000); r := proc_release(rooms[from]);

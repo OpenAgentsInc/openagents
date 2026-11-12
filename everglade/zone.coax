@@ -30,7 +30,7 @@
 #load "../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
 #load "../apps/openagents-web/fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "shared/everglade-move-types.coax";   // what a face hands Everglade's movement step (everglade-step.coax)
-#load "../apps/openagents-web/experimental-sound.coax" as exsound;
+#load "sound.coax" as exsound;
 #load "../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held
 #load "../aethyr/cam/gyro.coax" as gy;          // a phone's turn looks and aims (#13189)
 #load "../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (dash.coax, wired in experimental-combat.coax xc_sprint_frame)

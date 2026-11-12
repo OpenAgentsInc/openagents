@@ -11,7 +11,7 @@
 
 #load "font.coax";
 #load "ui.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../aethyr/budget.coax";
 

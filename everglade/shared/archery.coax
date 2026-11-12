@@ -2,7 +2,7 @@
 // flight is the engine's (aethyr/action/archery.coax, bow.coax) and the Longbow the game's
 // (everglade/longbow.coax), as in Everglade Experimental and the Archery Range (everglade/zone-bow.coax).
 // What only this zone knows is here: where its ground is, how big its monsters stand, and how near
-// where the room has an archer a launch must be. The page (everglade2-arrows.coax) predicts with these and
+// where the room has an archer a launch must be. The page (everglade/client/arrows.coax) predicts with these and
 // the room (everglade/server/arrows.coax) decides with them, so both fly the same arrow.
 //   coax/bin/coax test --library everglade/shared/archery.coax
 #load "move.coax";
@@ -18,7 +18,7 @@ E2AR_HAND_LOW :: 0.4; E2AR_HAND_HIGH :: 4.5;   // m over the land a launch may b
 // What an arrow flies among is what you walk among (#13166): the trunks and rocks round a point are
 // the walker's own (everglade/shared/move.coax e2m_world), from the planting the page draws and the room
 // steps by, so where an arrow stops is where a trunk or rock is drawn, on the page and in the room alike.
-// The planting: the page's (everglade2.coax) or the room's (E2MoveGround).
+// The planting: the page's (everglade/client/client.coax) or the room's (E2MoveGround).
 E2ArLand :: struct { items: [] f32; kinds: [] u8; first: [] int; planted: bool; }   // E2ArLand.{}: none planted (the glade's own and the camp's only)
 // The trunks and rocks round where an arrow last asked, kept while it stays within E2AR_NEAR of there.
 E2ArNear :: struct { bodies: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32; nb: int; nh: int; x: f32; z: f32; ok: bool; }

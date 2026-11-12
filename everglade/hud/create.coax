@@ -7,7 +7,7 @@
 // emits), then the words (eg_create_words). With a layout trace attached (aethyr/ui/trace.coax)
 // eg_create_trace puts the panels, each box in the panel that holds it and its arrows first.
 // A zone loads this beside charactercreator.coax as cc (class-bar.coax's way).
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "eg create"
+//   coax/bin/coax test --library everglade/client/client.coax --only "eg create"
 
 EG_CB_EMPTY :: 0; EG_CB_ROW :: 1; EG_CB_NAME :: 2; EG_CB_TAB :: 3; EG_CB_BUTTON :: 4;
 EG_CB_TEXT :: 0; EG_CB_DIM :: 1; EG_CB_BAD :: 2;   // a value's ink: plain, dim (a hint), bad (said back)

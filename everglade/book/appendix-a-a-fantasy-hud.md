@@ -77,7 +77,7 @@ In `apps/openagents-web/charactercreator.coax`:
   it does not know"`.
 - `#test "eg map: you in the middle, ahead up; the clock reads the day"`.
 
-In `apps/openagents-web/everglade2-create.coax`:
+In `everglade/client/create.coax`:
 
 - `#test "create: the wardrobe fits a phone held either way and a desktop, a
   finger's size, clear of you"`.

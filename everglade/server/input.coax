@@ -266,7 +266,7 @@ eg_level_up :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool { seat := seat_
   else if was.hp < was.hp_max { b[0].c[me].hp = rs_max(1, rs_min(was.hp + b[0].c[me].hp_max - was.hp_max, b[0].c[me].hp_max)); }
   return true;
 }
-// V LOOK KIND: Everglade II's Change character (everglade2-net.coax e2n_change: the Esc menu's, through
+// V LOOK KIND: Everglade II's Change character (everglade/client/net.coax e2n_change: the Esc menu's, through
 // Character Create, and the admin CLASSES and LEVEL menus): a seated player's look, and, where the page
 // decides (eg_page_decides), its SRD class and level as a hello says them. Not while they
 // are down or dead or the guard fights them, and the new character comes in no less hurt than the

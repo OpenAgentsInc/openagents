@@ -524,13 +524,13 @@ wire_read_you :: (t: string, r: [] WireRd) -> WireYou {
   if wire_more(t, r) { y.rest = wire_num(t, r); y.rest_said = r[0].ok; }
   return y;
 }
-// V LOOK KIND: Change character (everglade2-net.coax e2n_change): your seat sits again as this look
+// V LOOK KIND: Change character (everglade/client/net.coax e2n_change): your seat sits again as this look
 // and class (everglade/server/input.coax eg_heard_change).
 WireChange :: struct { look: string; kind: string; }
 wire_put_change :: (out: [] u8, at: int, c: WireChange) -> int { return wire_text(out, wire_text(out, wire_put(out, at, "V"), c.look), c.kind); }
 wire_read_change :: (t: string, r: [] WireRd) -> WireChange { c: WireChange; c.look = wire_word(t, r); c.kind = wire_word(t, r); return c; }
 // X VERB [ARG] | X at XMM ZMM YAW: a local room's admin lines (everglade/server/admin.coax), from
-// everglade2-admin.coax. at: metres and radians x 1000; every other verb one word or none.
+// everglade/client/admin.coax. at: metres and radians x 1000; every other verb one word or none.
 WIRE_X_HEAL :: "heal"; WIRE_X_GOD :: "god"; WIRE_X_KO :: "ko"; WIRE_X_AT :: "at"; WIRE_X_GUARD :: "guard"; WIRE_X_CLASS :: "class";
 WireAdmin :: struct { verb: string; arg: string; x: int; z: int; yaw: int; }
 wire_put_admin :: (out: [] u8, at: int, a: WireAdmin) -> int {
@@ -1209,7 +1209,7 @@ wire_seat_put :: (st: [] WireSeat, h: [] WireHist, q: int, out: [] u8, at: int) 
 // How often an entity's row goes, in ticks (#13165): by its distance over its weight (wire_rel), so a
 // player counts half as far as a zone and a townsperson a third farther. Within WIRE_EVERY_NEAR m of
 // weighed distance every tick (30 Hz), within WIRE_EVERY_MID every second (15 Hz), past it every third
-// (10 Hz): a third is a 100 ms step, inside the page's least interpolation delay (everglade-net-core.coax).
+// (10 Hz): a third is a 100 ms step, inside the page's least interpolation delay (everglade/client/net-core.coax).
 WIRE_EVERY_NEAR :: 24.0; WIRE_EVERY_MID :: 60.0;
 // the fields a far row may wait on: where it is and how it moves (X Y Z YAW, the velocity, CARRY)
 WIRE_MOTION :: (1 << WS_X) | (1 << WS_Y) | (1 << WS_Z) | (1 << WS_YAW) | (1 << WS_VX) | (1 << WS_VY) | (1 << WS_VZ) | (1 << WS_CARRY);

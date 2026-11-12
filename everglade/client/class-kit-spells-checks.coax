@@ -4,13 +4,13 @@
 // is named beside it; those checks run the shared battle with fixed dice against the pinned text.
 // These checks hold the manifest equal to the kits, every record to its canonical source entry, and
 // every spell to its own sound and look.
-//   coax/bin/coax test apps/openagents-web/class-kit-spells-checks.coax --library
+//   coax/bin/coax test everglade/client/class-kit-spells-checks.coax --library
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-#load "../../everglade/shared/class-kit.coax";
+#load "../shared/class-kit.coax";
 #load "class-look.coax";
 #load "../../aethyr/rules/srd/catalog.coax";
 #load "../../aethyr/audio/experimental-sfx.coax";

@@ -17,13 +17,13 @@
 // are the engine's (aethyr/net/shots.coax); this file gives them this zone's bodies, aim, sounds and puffs.
 // A room from before arrows says no a and no d: your arrow then flies and lands as this page reckons
 // it, and the Attack is the room's old one, at once.
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 bow"
+//   coax/bin/coax test --library everglade/client/client.coax --only "e2 bow"
 
 // Everglade II's arrows: every arrow this page draws, and the room's word on each.
 E2Bow :: struct {
-  ar: [1] arch.Archer;                 // yours and the others' (its draw is everglade2-mouse.coax's)
+  ar: [1] arch.Archer;                 // yours and the others' (its draw is everglade/client/mouse.coax's)
   net: [1] NetShots;                   // the room's word on each (aethyr/net/shots.coax)
-  strength: f32 = 1;                   // the draw your next loose had (everglade2-mouse.coax e2m_loose)
+  strength: f32 = 1;                   // the draw your next loose had (everglade/client/mouse.coax e2m_loose)
   near: [1] E2ArNear;                  // the trunks and rocks round where an arrow or the crosshair last asked (#13166)
 }
 // The planting this page draws, which your step walks among too (everglade/shared/move.coax e2m_world).

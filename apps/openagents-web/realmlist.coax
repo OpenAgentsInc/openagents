@@ -21,7 +21,7 @@
 #load "font.coax";
 #load "textkeys.coax";
 #load "realms/list.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "access.coax";
 #load "realms-listed.coax";
 

@@ -45,7 +45,7 @@
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
 #load "fivelab-siege.coax";
 #load "fivelab-film.coax";   // ?stage=armies, siege, horde: film stages for clips (docs/verse/clips.md)
-#load "experimental-sound.coax" as exsound;
+#load "../../everglade/sound.coax" as exsound;
 #load "../../verse/experimental-comparison.coax" as compare;
 #load "../../verse/experimental-biomes.coax" as biomes;
 #load "../../verse/experimental-aribeth.coax" as nwna;

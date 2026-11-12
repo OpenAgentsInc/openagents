@@ -81,7 +81,7 @@ go.
 `collide_hulls` tests three slices, from your step height to your height. The
 walk test measures your distance from a hull's sides at the same heights
 (`e2t_side` in
-[`apps/openagents-web/everglade2-walk-test.coax`](../../apps/openagents-web/everglade2-walk-test.coax)):
+[`everglade/client/walk-test.coax`](../client/walk-test.coax)):
 
 ```text
 slice i      height above your feet
@@ -102,7 +102,7 @@ across its top.
 
 ## The checks
 
-In `apps/openagents-web/everglade2-walk-test.coax`, through the real controller
+In `everglade/client/walk-test.coax`, through the real controller
 step:
 
 - `#test "walking into the glade's mossy rock from three sides stops you at its
@@ -125,14 +125,14 @@ In `everglade/shared/move.coax`:
 - `#test "every tree kind has a trunk sized to it"`.
 - `#test "a step past the edge slides along it, or stays where it started"`.
 
-In `verse/everglade2/forest.coax` and `apps/openagents-web/everglade2.coax`:
+In `verse/everglade2/forest.coax` and `everglade/client/client.coax`:
 
 - `#test "nothing of the glade's stands on the path out"`.
 - `#test "wherever you may not go on, thick woods stand: no edge on open
   ground"`.
 
 ```sh
-coax/bin/coax test --library apps/openagents-web/everglade2-walk-test.coax
+coax/bin/coax test --library everglade/client/walk-test.coax
 coax/bin/coax test --library everglade/shared/move.coax
 ```
 

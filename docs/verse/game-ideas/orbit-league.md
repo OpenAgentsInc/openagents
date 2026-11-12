@@ -84,7 +84,7 @@ each pixel, so none of them alias or turn to moire at any distance.
 | Phone thumbs and buttons | Sticks, hotbar slots, long-press tooltips | `verse/grid.coax` (sticks), `verse/hud.coax`, Everglade's hotbar |
 | Deterministic replays | Ice Cream Man's seeded rules replay traces against a reference | `verse/icecream/replay.c`, `verse/icecream/trace.coax` |
 | Rooms and names over players | The Grid's multiplayer (positions five times a second) | `apps/openagents-web/thegrid-people.coax`, `apps/openagents-web/room.coax` |
-| Analytics per realm | Counted actions, sent every 30 s | `apps/openagents-web/analytics.coax` |
+| Analytics per realm | Counted actions, sent every 30 s | `coax/web/analytics.coax` |
 
 ## What the engine needs
 

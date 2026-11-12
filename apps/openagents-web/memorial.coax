@@ -16,7 +16,7 @@
 
 #load "font.coax";
 #load "../../coax/lib/json/json.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 40000;

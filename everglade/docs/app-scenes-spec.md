@@ -62,7 +62,7 @@ under the left thumb.
 ## 4. Bringing the web's worlds into the apps
 
 The main flow is the web's `everglade2` app
-(`apps/openagents-web/everglade2.coax`, with Character Create inside it).
+(`everglade/client/client.coax`, with Character Create inside it).
 Experimental is the web's `fivelab` app (`apps/openagents-web/fivelab.coax`),
 and the Archery Range is the web's `archery-range` app
 (`apps/openagents-web/archery-range.coax`). Both hold an Everglade zone

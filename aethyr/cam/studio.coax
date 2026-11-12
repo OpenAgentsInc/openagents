@@ -1,7 +1,7 @@
 // Character Create's cameras (GitHub #13087): the studio that looks at your character from the south,
 // the run from it into the world (a sweep behind you, then the follow camera through a cinematic
 // hand-back, handback.coax), the lens that frames you in the gap a phone's wardrobe leaves, and the
-// walk behind you down the road. Everglade II's Character Create (everglade2-create.coax) and
+// walk behind you down the road. Everglade II's Character Create (everglade/client/create.coax) and
 // Experimental's (charactercreator.coax, charactercreator-walk.coax) wire them. A zone holds the eye
 // over its own land: these return shots before that (cam_hold_eye, cam_studio_shot).
 //

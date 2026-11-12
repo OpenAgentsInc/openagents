@@ -4,7 +4,7 @@
 #load "splash.coax";
 #load "../../verse/hud.coax";
 #load "../../coax/lib/nostr/json.coax";
-#load "socket.coax";
+#load "../../coax/web/socket.coax";
 #load "pylon-policy.coax";
 #load "connect-pylon-content.coax";
 PL_MAX :: 64;

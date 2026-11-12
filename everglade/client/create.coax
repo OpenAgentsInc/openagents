@@ -8,7 +8,7 @@
 // the camera swings round behind you, you run out of the glade and down the path on your own while
 // the camera keeps its own track, and it eases into the follow camera, where the keys are yours. Any
 // key or a click skips to that hand-off. One page, one world, one renderer: nothing loads.
-// Loaded into everglade2.coax, so it shares its E2, its glade, its path and figs.
+// Loaded into everglade/client/client.coax, so it shares its E2, its glade, its path and figs.
 
 E2C_FIELDS :: 13;        // the wardrobe's fields (charactercreator.coax change and value, 0 to 12)
 E2C_BOXES :: 26;
@@ -280,7 +280,7 @@ e2c_reply :: (s: [] E2, t: string) {
 }
 // Change character (the Esc menu): the studio again, here where you stand, with your character as it
 // is (its class and level the bar's). USE IN EVERGLADE takes you back to the world where you were, and
-// the room sits you as the new character (everglade2-net.coax e2n_change). Not while you are down.
+// the room sits you as the new character (everglade/client/net.coax e2n_change). Not while you are down.
 e2c_change_character :: (s: [] E2) -> bool {
   c := s[0].cz[..]; cr := s[0].creator[..];
   c[0].menu = false;
@@ -421,7 +421,7 @@ e2c_action :: (s: [] E2) {
   s[0].action = 0;
   e2_message(s[..], E2C_KEPT, cast(string) b[0..<m]);
   #assert !e2c_creating(s[..]) && !e2c_running(s[..]) && s[0].you_x == x0 && s[0].you_z == z0 && e2c_class_of(s[..]) == FB_CL_RANGER;
-  // with no room the change waits; the room is told once seated (everglade2-net.coax e2n_change)
+  // with no room the change waits; the room is told once seated (everglade/client/net.coax e2n_change)
   #assert !e2n_change(s[0].net[..]);
 }
 // ---- the layout and the panel
@@ -676,7 +676,7 @@ e2c_class_card :: (s: [] E2, l: [] cc.HudList, out: [] f32, at: int, f: f32, wor
 }
 
 // ---- NAME: typed into the host's keyboard field over its box (a phone's keyboard comes up), checked
-// for the API's shape at once (player-name.coax), then POSTed (everglade2-net.coax e2n_rename) before the
+// for the API's shape at once (player-name.coax), then POSTed (everglade/client/net.coax e2n_rename) before the
 // seat ticket is asked, so the room's row for you, and the name over your head, carry it.
 E2C_BACKSPACE :: -3; E2C_ENTER :: -2; E2C_ESCAPE :: -1;
 e2c_name_shown :: (s: [] E2) -> string {

@@ -52,14 +52,14 @@ whole-mode/cinematic mutation coverage or complete camera frame-rate parity.
   and `studio.coax` (`cc_view`, `walk_view`). A camera trace of each zone's old and new
   code over the same walk, looks, keys, zooms, mouselook, autowalk, Character Create run
   and village walls gives the same bits.
-- **Everglade II** (`apps/openagents-web/everglade2.coax`): the follow camera's
+- **Everglade II** (`everglade/client/client.coax`): the follow camera's
   look up, ground clamp, press and trunk pull-in are `cam_centred` with
   Everglade II's mode (`e2_mode`); the former `e2_pitch`, `e2_ray`,
   `e2_ground_room`, `e2_eye_pitch`, `e2_press`, `e2_sphere_room` and `e2_shot`
   bodies are removed. Headless before/after on the same path: identical camera
   probes (room along the ray, eye height) after drags up and down, wasm frame
   p50 1.94 ms (main) and 1.88 ms (this), 60 FPS.
-- **Everglade II Character Create** (`everglade2-create.coax`): the run is a
+- **Everglade II Character Create** (`everglade/client/create.coax`): the run is a
   cinematic (`cam_cut_*`): its end turns the orbit to the run's look (retain)
   and the hand-back eases from the run's framing, still on you, into the follow
   camera over 1.5 s.
@@ -96,5 +96,5 @@ coax/bin/coax test aethyr/cam/chase.coax --library
 coax/bin/coax test aethyr/cam/studio.coax --library
 coax/bin/coax test aethyr/cam/boom.coax --library
 coax/bin/coax test aethyr/cam/overhead.coax --library
-coax/bin/coax test --library apps/openagents-web/everglade2.coax
+coax/bin/coax test --library everglade/client/client.coax
 ```

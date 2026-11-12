@@ -11,8 +11,8 @@ hands you the walk. There is one page, one Wasm world, one renderer and one cloc
 the whole way: nothing loads, nothing fades, and no frame or iframe opens. The
 address bar changes to `/worlds/everglade2` in place (`history.replaceState`).
 
-The studio and the run are Coax in `apps/openagents-web/everglade2-create.coax`,
-loaded into `everglade2.coax`. The wardrobe's choices and record are
+The studio and the run are Coax in `everglade/client/create.coax`,
+loaded into `everglade/client/client.coax`. The wardrobe's choices and record are
 `charactercreator.coax`'s (`Creator`, `change`, `value`, `save`), with the class
 added to the record (`CC3`). The glade is Everglade II's own
 (`docs/verse/everglade2.md`).
@@ -116,9 +116,9 @@ The source license is CC0 1.0 Universal (`License_Source.txt`).
 ## Build and check
 
 ```sh
-coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "create:"
+coax/bin/coax test --library everglade/client/client.coax --only "create:"
 coax/bin/coax test --library aethyr/render/adoption.coax
-cd apps/openagents-web && ../../coax/web/wasm.sh everglade2.coax everglade2-face.c \
+cd apps/openagents-web && ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c \
   build/everglade2.wasm everglade-step.coax ../../aethyr/sticks.coax
 bun coax/web/realms.ts
 coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:8873
@@ -257,10 +257,10 @@ USE IN EVERGLADE saves first. Nothing moves until the save is confirmed
 Any key or a click during the run skips to step 3. The key is used for the skip
 and does nothing else. The address bar says `/worlds/everglade2` from the start
 of the run (action 19, `history.replaceState`). The run is in
-`everglade2-create.coax` (`e2c_walk`, `e2c_shot`, `e2c_frame`). Everglade II
+`everglade/client/create.coax` (`e2c_walk`, `e2c_shot`, `e2c_frame`). Everglade II
 doesn't show the class bar yet.
 
-Check: `coax/bin/coax test --library apps/openagents-web/everglade2-create.coax`
+Check: `coax/bin/coax test --library everglade/client/create.coax`
 (the "create:" tests).
 
 ## Compact sidebar

@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The page keeps each remote entity's last 8
 > server states and draws it a delay behind the server clock, a delay that
-> adapts to how late and how irregular the frames are (`everglade-net-core.coax`, which Everglade II's page shares,
+> adapts to how late and how irregular the frames are (`everglade/client/net-core.coax`, which Everglade II's page shares,
 > #12706). Since wire 3 every remote entity is drawn from this one buffer,
 > townsfolk included: 100 ms or more as jitter grows, velocity for
 > `NET_AHEAD` ms on a gap, then held. Townsfolk drawn walking in place fell
@@ -28,7 +28,7 @@ entity at the server time `now − delay`, between the two states that
 bracket it, the yaw turning the short way. Past the newest state, the
 entity goes on by its velocity for at most `NET_AHEAD` 150 ms, then holds.
 
-<!-- source: apps/openagents-web/everglade-net-core.coax interp-buffer -->
+<!-- source: everglade/client/net-core.coax interp-buffer -->
 ```jai
 // A state into an entity's ring, oldest first: one no newer than the newest replaces it.
 net_push :: (en: [] NetEnt, p: NetState) {

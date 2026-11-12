@@ -2,7 +2,7 @@
 // sections 4 to 6, all of it still a proposal). The kinds of golem and the rank each needs, the three
 // steps that make one, the materials, and the five ranks. The craft isn't built, so nothing here is
 // held or spent: a zone shows it as the bench's window and says the craft isn't open yet. Everglade II
-// stands the bench beside Pansopher (apps/openagents-web/everglade2-bench.coax).
+// stands the bench beside Pansopher (everglade/client/bench.coax).
 //   coax/bin/coax test --library everglade/world/golem-bench.coax
 #module "everglade.golembench";
 

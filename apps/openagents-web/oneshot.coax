@@ -23,7 +23,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "font.coax";
-#load "socket.coax";
+#load "../../coax/web/socket.coax";
 #load "oneshot-table.coax";
 #load "../../aethyr/shot.coax" as ash;
 #load "../../aethyr/space.coax" as asp;

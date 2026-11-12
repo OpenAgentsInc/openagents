@@ -1,4 +1,4 @@
-// Everglade II's path guard on the page (everglade/server/guard.coax walks him; everglade2-net.coax
+// Everglade II's path guard on the page (everglade/server/guard.coax walks him; everglade/client/net.coax
 // keeps the room's words on him). He is drawn as everyone is, a Character Create body (e2_body) dressed
 // in the Quaternius knight's armour this pack carries: the armet, the round pauldrons, the plate
 // cuirass, the armoured arms, the greaves and the sabatons, the Ultimate RPG Sword in his right hand. He is drawn a jitter buffer behind, where
@@ -7,7 +7,7 @@
 // the shared glade light every body takes. A new guard, and one coming into view, thins in; a fallen
 // one plays his fall, lies, then thins out. Blows at him and his at you show their Hit Points over
 // the body struck and sound where they land.
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only guard
+//   coax/bin/coax test --library everglade/client/client.coax --only guard
 
 E2GD_DOWN :: 3; E2GD_NONE :: 4;   // his states as the room says them (everglade/server/guard.coax E2GD_*)
 E2GD_FAR :: 110.0;           // m: past this he is not drawn; from E2GD_FAR - E2GD_EDGE he thins
@@ -114,7 +114,7 @@ e2gd_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
 }
 
 // His Sword (the pack's glade/weapon1, the Ultimate RPG Sword) in his right fist: the shared held kit
-// (charactercreator.coax held_pieces, everglade2.coax e2_held) as the shortsword's, thinned as he is.
+// (charactercreator.coax held_pieces, everglade/client/client.coax e2_held) as the shortsword's, thinned as he is.
 E2GD_SWORD :: 3;   // the shortsword's kit (charactercreator.coax CC_KIT_MESH 1, the Sword)
 e2gd_sword :: (s: [] E2, at: E2Drawn, from: int, drop: f32) -> E2Drawn { return e2_held(s, at, from, E2GD_SWORD, false, 0, false, drop); }
 

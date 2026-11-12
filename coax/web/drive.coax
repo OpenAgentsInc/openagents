@@ -337,9 +337,9 @@ dv_word_path :: (t: [] Dv, word: string, app_dir: string) {
   dv_s(t, w);
 }
 #test "the rebuild command comes from build.sh's line for the module" {
-  sh := "# a comment build/x.wasm\" wasm.sh\n\"$here/../../coax/web/wasm.sh\" \"$here/everglade2.coax\" \"$here/everglade2-face.c\" \"$here/build/everglade2.wasm\" \\\n  \"$here/../../everglade/shared/everglade-step.coax\" \"$a/sticks.coax\" &\nnext\n";
+  sh := "# a comment build/x.wasm\" wasm.sh\n\"$here/../../coax/web/wasm.sh\" \"$here/../../everglade/client/client.coax\" \"$here/everglade2-face.c\" \"$here/build/everglade2.wasm\" \\\n  \"$here/../../everglade/shared/everglade-step.coax\" \"$a/sticks.coax\" &\nnext\n";
   t: [1] Dv;
-  #assert dv_rebuild(sh, "apps/openagents-web", "everglade2", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/everglade2.coax apps/openagents-web/everglade2-face.c apps/openagents-web/build/everglade2.wasm everglade/shared/everglade-step.coax aethyr/sticks.coax";
+  #assert dv_rebuild(sh, "apps/openagents-web", "everglade2", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh everglade/client/client.coax apps/openagents-web/everglade2-face.c apps/openagents-web/build/everglade2.wasm everglade/shared/everglade-step.coax aethyr/sticks.coax";
   #assert dv_rebuild(sh, "apps/openagents-web", "fivelab", t[..]) == "coax/remote/remote.sh run -- apps/openagents-web/build.sh";
   #assert dv_rebuild("\"$here/../../coax/web/wasm.sh\" x \"$here/build/a.wasm\" &\n", "d", "a", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh x d/build/a.wasm";
 }

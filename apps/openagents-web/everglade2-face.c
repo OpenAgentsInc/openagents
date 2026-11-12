@@ -1,16 +1,16 @@
-// Everglade v2's C face for the browser (coax/web/host.js): scalar Wasm exports over everglade2.coax,
+// Everglade v2's C face for the browser (coax/web/host.js): scalar Wasm exports over everglade/client/client.coax,
 // which says what is round you, where you may stand and what is drawn. It decides nothing.
 // The controller steps your body as fivelab-face.c's Player mode does: everglade-step.coax
 // (aethyr/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
 // (aethyr/sticks.coax). The scene is three stores: the records (the glade, its grass, your
 // character's parts), the clips baked once (into the state, sized by fivelab-bodies.coax), and the
 // kit pieces in view this frame.
-// In a room (everglade2-net.coax, #13054) the controller steps at the room's rate, 1/30 s, each step's
+// In a room (everglade/client/net.coax, #13054) the controller steps at the room's rate, 1/30 s, each step's
 // input sent; the room's word on you starts you again where it has you and re-runs the inputs it
 // hasn't stepped, the difference eased out of the draw (as everglade5e-face.c does for Everglade).
-// Analytics (analytics.coax, everglade2-track.coax): the face keeps the page's Track and what e2_track
+// Analytics (analytics.coax, everglade/client/track.coax): the face keeps the page's Track and what e2_track
 // saw last frame, hands it the page's messages, keys and pointer, and sends its batches (analytics-face.h).
-#include "everglade2.h"
+#include "client.h"     /* everglade/client/client.coax's header */
 #include "Everglade-step.h"
 #include "Sticks.h"
 #include "face-address.h"
@@ -37,7 +37,7 @@ static coax_t_Player player;
 static coax_t_Sticks sticks;
 static float width, height, dpr;
 static double now;
-/* the room (everglade2-net.coax): the step's clock and the next step's speculation, the seat ticket's
+/* the room (everglade/client/net.coax): the step's clock and the next step's speculation, the seat ticket's
    POST and the player key's mint (POST /api/playtest/player, kept by the host as action 5) */
 static float step_acc, step_jump_held;
 static coax_t_Player step_next;   /* the step this frame's input will make next: where you are drawn toward (#13167) */
@@ -78,7 +78,7 @@ EXPORT("coaxial_state_init") void coaxial_state_init(cx_face_addr state) { coax_
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_e2_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_e2_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_e2_uniform_floats(); }
-// The pixels the host draws at most (host.js drawn): the graphics governor's (everglade2.coax e2_pixel_budget).
+// The pixels the host draws at most (host.js drawn): the graphics governor's (everglade/client/client.coax e2_pixel_budget).
 /* golden mode (host.js coaxial_golden): the governor holds the screen's rung (e2_quality_frame) */
 static bool golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
@@ -91,7 +91,7 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
 }
 
 /* The host's instance cull (host.js "Instance culling", gpu/everglade2-cull.coax): the block
-   everglade2-cull.coax fills after each frame's scene. */
+   everglade/client/cull.coax fills after each frame's scene. */
 static float cull_u[100];
 static uint32_t cull_buckets[2 * 36 * 3], cull_runs[4 * 384], cull_draws[384];
 static int64_t cull_n;
@@ -111,7 +111,7 @@ static coax_t_Player step_frame(cx_face_addr state, coax_t_Player p, coax_t_EgMo
 static coax_t_Player step_once(cx_face_addr state, coax_t_Player p, coax_t_EgMoveIn input, float dt) {
   return step_frame(state, p, input, dt, dt);   /* the room steps 1/30 s, not the clock's count (room-world.c world2_step) */
 }
-/* The room's commands (everglade2-net.coax's pipe) to the host, in order: open, send, close, and the
+/* The room's commands (everglade/client/net.coax's pipe) to the host, in order: open, send, close, and the
    seat ticket's ask (op 4: the path, a newline, the body). */
 static void net_drain(cx_face_addr state) {
   int64_t c = e2_net_pipe(at(state));
@@ -133,7 +133,7 @@ static void net_drain(cx_face_addr state) {
         ticket_url_n = cut; ticket_body_n = bn; ticket_due = true;
       }
     }
-    else if (op == 9) {   /* your name's POST (everglade2-net.coax e2n_rename): its path, a newline, the body */
+    else if (op == 9) {   /* your name's POST (everglade/client/net.coax e2n_rename): its path, a newline, the body */
       const uint8_t *b = (const uint8_t *)(uintptr_t)from;
       uint32_t cut = 0; while (cut < len && b[cut] != '\n') cut++;
       uint32_t bn = cut < len ? len - cut - 1 : 0;
@@ -144,7 +144,7 @@ static void net_drain(cx_face_addr state) {
   e2_net_pipe_done(at(state));
 }
 /* The seat ticket's and your name's POSTs, with the player key; a page with no key mints one first.
-   The name goes first: the ticket waits for its answer (everglade2-net.coax e2n_step), so it carries it. */
+   The name goes first: the ticket waits for its answer (everglade/client/net.coax e2n_step), so it carries it. */
 static void ticket_out(void) {
   if (!facts_seen || (!ticket_due && !name_due)) return;
   if (!has_player) {
@@ -182,7 +182,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   width = w; height = h; dpr = scale; now += dt;
   quality_state = state; e2_quality_frame(at(state), dt, w, h, scale, golden);
   if (e2_start(at(state))) player = verse_player_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
-  /* Character Create's run starts from you as the studio drew you (everglade2-create.coax e2c_walk) */
+  /* Character Create's run starts from you as the studio drew you (everglade/client/create.coax e2c_walk) */
   if (e2_reseat(at(state))) player = verse_player_place(player.pos.x, 0, player.pos.z, e2_at(state)->you_face);
   float frame = dt;
   float step = verse_player_counts(player, frame);
@@ -270,7 +270,7 @@ EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return 
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
 EXPORT("coaxial_shadow_draws_v1") cx_face_addr coaxial_shadow_draws_v1(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->shadow.e; }
 EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(cx_face_addr state) { return draw_n > 0 ? (uint32_t)e2_at(state)->shadow_n : 0u; }
-/* The key light's shadow tiles (aethyr/render/cascades.coax, everglade2.coax e2_shadows; coax/web/host.js shadowLayout). */
+/* The key light's shadow tiles (aethyr/render/cascades.coax, everglade/client/client.coax e2_shadows; coax/web/host.js shadowLayout). */
 EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr state, int32_t coarse, int32_t which) { return (uint32_t)e2_shadow_atlas(at(state), coarse, which); }
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return (int32_t)e2_shadow_field(at(state), field); }
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { e2_shadow_event(at(state), kind, arg); }
@@ -307,7 +307,7 @@ EXPORT("coaxial_cull_v1") int32_t coaxial_cull_v1(cx_face_addr state, int32_t fi
     case 3: return (int32_t)(uintptr_t)cull_buckets;
     case 4: return (int32_t)cull_u[97];   /* E2Q_BUCKETS */
     case 5: return 2;
-    case 6: return 1048576;   /* everglade2.coax E2_KIT_BASE */
+    case 6: return 1048576;   /* everglade/client/client.coax E2_KIT_BASE */
     case 7: return (int32_t)(uintptr_t)cull_draws;
   }
   return -1;
@@ -390,13 +390,13 @@ EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind,
   e2_message(at(state), kind, (coax_string){(const char *)inbox, length});
   if (kind >= 256 && kind < 512) net_drain(state);
 }
-// Character Create's actions (everglade2-create.coax): 16 keeps the record, 19 says the address.
+// Character Create's actions (everglade/client/create.coax): 16 keeps the record, 19 says the address.
 EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) { return (int32_t)e2_action(at(state)); }
 EXPORT("coaxial_outbox") cx_face_addr coaxial_outbox(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(cx_face_addr state) { return (uint32_t)e2_at(state)->out_n; }
 /* the allocations those bytes and the media packet's are in, whole (host contract v1) */
 EXPORT("coaxial_outbox_capacity") uint32_t coaxial_outbox_capacity(cx_face_addr state) { return (uint32_t)sizeof e2_at(state)->outbox.e; }
-// The class pane's picture for the host to draw (coax/web/host.js coaxial_media): everglade2-create.coax e2c_media.
+// The class pane's picture for the host to draw (coax/web/host.js coaxial_media): everglade/client/create.coax e2c_media.
 EXPORT("coaxial_media") cx_face_addr coaxial_media(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->media.e; }
 EXPORT("coaxial_media_len") uint32_t coaxial_media_len(cx_face_addr state) { return (uint32_t)e2_at(state)->media_n; }
 EXPORT("coaxial_media_capacity") uint32_t coaxial_media_capacity(cx_face_addr state) { return (uint32_t)sizeof e2_at(state)->media.e; }
@@ -409,7 +409,7 @@ EXPORT("coaxial_drive_out") cx_face_addr coaxial_drive_out(cx_face_addr state) {
 EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(cx_face_addr state) { return (uint32_t)e2_drive_out(at(state)).count; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, int32_t field) { return (int32_t)e2_probe(at(state), field); }
 
-// ---- the casts (#13058, everglade2-cast.coax): their effects, drawn after the scene and depth-tested
+// ---- the casts (#13058, everglade/client/cast.coax): their effects, drawn after the scene and depth-tested
 // against it (everglade2-fx.wgsl, host.js particles: puffs of 12 floats), and their sounds, the
 // host's to play once each (sounds:/realms/everglade/sfx/ and the bank Experimental renders).
 EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_E2 *)0)->casts.e[0].puffs.e[0].out); }

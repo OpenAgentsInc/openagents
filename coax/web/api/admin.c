@@ -345,7 +345,7 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
 }
 
 // Everglade (everglade.world, Everglade II and Character Create: page 'everglade2', its events in
-// apps/openagents-web/everglade2-track.coax and coax/web/host.js lifeBeacon;
+// everglade/client/track.coax and coax/web/host.js lifeBeacon;
 // docs/analytics/2026-11-09-everglade-analytics-audit.md): how far each visit got, step by step, where
 // they came in, each day, what went wrong and what they did, and the sessions. Same filter as the rest:
 // the team and automation are left out unless asked for.

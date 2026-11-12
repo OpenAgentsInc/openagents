@@ -11,7 +11,7 @@
 // E2_FIELD_FAR, where the meadow's own ground carries on. A tuft never moves, turns, grows, widens
 // or swaps for another: its place, turn, height and width are its fine cell's alone, and distance
 // only fades it. Where a tier hands over to the next, the tufts left are exactly the next tier's,
-// whole. The page (apps/openagents-web/everglade2.coax e2_field) draws the blocks of 16 by 16 cells
+// whole. The page (everglade/client/client.coax e2_field) draws the blocks of 16 by 16 cells
 // in view.
 #load "forest.coax";
 

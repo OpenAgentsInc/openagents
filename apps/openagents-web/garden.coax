@@ -29,7 +29,7 @@
 //   coax/bin/coax test apps/openagents-web/garden.coax
 
 #load "font.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "save.coax";
 #load "../../aethyr/camera.coax";
 #load "../../aethyr/throw.coax";

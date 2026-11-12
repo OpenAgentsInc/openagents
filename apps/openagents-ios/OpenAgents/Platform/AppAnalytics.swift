@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 /// The app's own events, sent the way every openagents.com page sends its
-/// (apps/openagents-web/analytics.coax): batches of {"sid", "events"} to
+/// (coax/web/analytics.coax): batches of {"sid", "events"} to
 /// /api/analytics/events, page "app". The web pages in the app send their
 /// own events; the server knows them as the app's by the User-Agent
 /// ("OpenAgentsApp/<build>"). No words, no names: ids the app chose.

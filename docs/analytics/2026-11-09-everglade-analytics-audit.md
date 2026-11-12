@@ -6,7 +6,7 @@ change added and what is still missing.
 
 ## How the system works
 
-1. **Sender.** Each Coax app loads `apps/openagents-web/analytics.coax`
+1. **Sender.** Each Coax app loads `coax/web/analytics.coax`
    (`Track`). The host (`coax/web/host.js`) passes page facts, hide, show,
    leave and error messages (kinds 600-604) to the app. The app batches events
    and posts them to `POST /api/analytics/events`, with a session id of `c`
@@ -39,26 +39,26 @@ says otherwise. Paths are relative to the repository root.
 |---|---|---|---|---|
 | openagents.com landing (newland) | `load-engine`, `card`, `click`, `key`, `open` (`newland-face.c:206-262`) | unchanged | newland | HOME and the overview |
 | Create-character click on the landing | `click` with no name (`newland.coax:1391`, `newland-portal.coax:69`) | **gap**, see below | newland | not as its own step |
-| Hand-over through the portal | none | `portal-shown` (`id` door or lander, `ms`) | `everglade2-track.coax:67` | HOW FAR VISITS GOT, WAYS IN |
+| Hand-over through the portal | none | `portal-shown` (`id` door or lander, `ms`) | `everglade/client/track.coax:67` | HOW FAR VISITS GOT, WAYS IN |
 | Arrival on everglade.world (`/`, `/play`, `?via=portal`) | none | `session-start`, `page-view` (path, query) from `Track` | `analytics.coax`, `everglade2-face.c:348` | WAYS IN, SESSIONS |
 | Engine loaded | none | `load-engine` (`ms`) | `everglade2-face.c:246` | LOADING |
-| World loaded | none | `load-world` (`ms`, `mobile`) | `everglade2-track.coax:62` | LOADING, HOW FAR VISITS GOT |
+| World loaded | none | `load-world` (`ms`, `mobile`) | `everglade/client/track.coax:62` | LOADING, HOW FAR VISITS GOT |
 | No WebGPU, no GPU adapter, shader failure | none | `load-fail` (`msg`, `webgpu`) | `host.js:3781`, `host.js:3793` | LOADING, WHAT WENT WRONG |
 | GPU device lost | none | `gpu-lost` (`msg`) | `host.js:1052` | LOADING, WHAT WENT WRONG |
 | Renderer or engine stopped | none | `crash` (`msg`) | `host.js:2868`, `host.js:3204` | LOADING, WHAT WENT WRONG |
 | Script errors | `error` (host message 604) | unchanged, now counted for Everglade | `analytics.coax` | LOADING, WHAT WENT WRONG |
-| Character Create opened | none | `create-open` (`id` portal or direct) | `everglade2-track.coax:74` | HOW FAR VISITS GOT |
-| Character Create choices | none | `create-pick` (field), `create-class`, `create-level`, once each | `everglade2-track.coax:78-80` | WHAT THEY DID |
-| Name entered | none | `create-name` (`ok`) | `everglade2-track.coax:84` | HOW FAR VISITS GOT |
-| Character not saved | none | `fail` `create-save` | `everglade2-track.coax:87` | WHAT WENT WRONG |
-| Character done | none | `create-done` (class, level, seconds in Create) | `everglade2-track.coax:91` | HOW FAR VISITS GOT |
-| Run out into the glade | none | `run-end` (seconds) | `everglade2-track.coax:99` | HOW FAR VISITS GOT |
-| First spawn | none | `spawn` (`id` create or kept, class, level, `ms`) | `everglade2-track.coax:105` | HOW FAR VISITS GOT, SESSIONS |
-| Joined the shared room | none | `room-join` (`ms`); `fail` room, version or elsewhere | `everglade2-track.coax:111-117` | HOW FAR VISITS GOT, LOADING |
-| The graphics quality, 20 s in | none | `graphics` (`class`, `gpu`, `vendor`, `arch`, `mode`, `start`, `rung`, `settled`, `fps`) | `everglade2-track.coax` `e2_track` | none yet |
-| Combat | none | 30-second `tally`: `cast_<spell>`, `refused`, `bow`, `hit_<foe>`, `hurt_<foe>`, `kill_<foe>` | `everglade2-track.coax:120-129` | WHAT THEY DID, HOW FAR VISITS GOT |
-| Death | none | `death` (`id` the foe, or other) | `everglade2-track.coax:138` | WHAT THEY DID |
-| XP and level-ups | none | `tally` `xp`; `level-up` (`n`) | `everglade2-track.coax:132-134` | WHAT THEY DID |
+| Character Create opened | none | `create-open` (`id` portal or direct) | `everglade/client/track.coax:74` | HOW FAR VISITS GOT |
+| Character Create choices | none | `create-pick` (field), `create-class`, `create-level`, once each | `everglade/client/track.coax:78-80` | WHAT THEY DID |
+| Name entered | none | `create-name` (`ok`) | `everglade/client/track.coax:84` | HOW FAR VISITS GOT |
+| Character not saved | none | `fail` `create-save` | `everglade/client/track.coax:87` | WHAT WENT WRONG |
+| Character done | none | `create-done` (class, level, seconds in Create) | `everglade/client/track.coax:91` | HOW FAR VISITS GOT |
+| Run out into the glade | none | `run-end` (seconds) | `everglade/client/track.coax:99` | HOW FAR VISITS GOT |
+| First spawn | none | `spawn` (`id` create or kept, class, level, `ms`) | `everglade/client/track.coax:105` | HOW FAR VISITS GOT, SESSIONS |
+| Joined the shared room | none | `room-join` (`ms`); `fail` room, version or elsewhere | `everglade/client/track.coax:111-117` | HOW FAR VISITS GOT, LOADING |
+| The graphics quality, 20 s in | none | `graphics` (`class`, `gpu`, `vendor`, `arch`, `mode`, `start`, `rung`, `settled`, `fps`) | `everglade/client/track.coax` `e2_track` | none yet |
+| Combat | none | 30-second `tally`: `cast_<spell>`, `refused`, `bow`, `hit_<foe>`, `hurt_<foe>`, `kill_<foe>` | `everglade/client/track.coax:120-129` | WHAT THEY DID, HOW FAR VISITS GOT |
+| Death | none | `death` (`id` the foe, or other) | `everglade/client/track.coax:138` | WHAT THEY DID |
+| XP and level-ups | none | `tally` `xp`; `level-up` (`n`) | `everglade/client/track.coax:132-134` | WHAT THEY DID |
 | Session length and return visits | `session-start`, hide, show, leave from `Track` | unchanged, now on for Everglade | `analytics.coax` | BY DAY (PEOPLE, CAME BACK), SESSIONS |
 | Quests, chat, party | none | none: Everglade II has none of these yet | not applicable | not applicable |
 | Admin mode | none | none: it exists only in dev builds | not applicable | not applicable |
@@ -67,9 +67,9 @@ says otherwise. Paths are relative to the repository root.
 
 ## What this change added
 
-- **Everglade events.** `apps/openagents-web/everglade2-track.coax` turns
+- **Everglade events.** `everglade/client/track.coax` turns
   Everglade's own state into events, so the game logic itself needs no
-  analytics calls. `everglade2-net.coax` counts your seat's hits, harm, kills,
+  analytics calls. `everglade/client/net.coax` counts your seat's hits, harm, kills,
   XP and level from the room's wire lines. `everglade2-face.c` starts `Track`
   and sends its batches. Two `#test`s cover the flow and the per-seat XP.
 - **Load failures and crashes.** `host.js` sends a `sendBeacon` for
@@ -113,7 +113,7 @@ says otherwise. Paths are relative to the repository root.
 
 ## How it was checked
 
-- The Coax checks pass: `everglade2.coax` (the flow and the per-seat XP checks)
+- The Coax checks pass: `everglade/client/client.coax` (the flow and the per-seat XP checks)
   and `admin.coax` (48 of 48).
 - The API checks pass: `test_capture.py`, `test_dashboard.py`, `test_team.py`,
   `test_everglade.py` and `test_health.py`.

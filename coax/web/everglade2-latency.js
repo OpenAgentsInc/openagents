@@ -2,7 +2,7 @@
 // The in-page half of coax/web/everglade2-latency.coax: added before the page's own scripts in each
 // headless Chrome. It changes nothing the page does. It notes when each input reached the engine
 // (a key, a mouse button, the mouse's travel) and, each frame, when the frame ended and what the
-// engine's probes said then (everglade2.coax e2_probe). since(name, column, from) is the time from
+// engine's probes said then (everglade/client/client.coax e2_probe). since(name, column, from) is the time from
 // the first input called `name` at or after `from` to the end of the first frame whose probe in
 // `column` differs from what it was before that input.
 (() => {

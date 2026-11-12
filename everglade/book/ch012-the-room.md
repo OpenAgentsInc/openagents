@@ -2,9 +2,9 @@
 
 > **Status: partly implemented.** Everglade II runs as rooms on the room
 > server (#13053 to #13058). The page's side is
-> [`apps/openagents-web/everglade2-net.coax`](../../apps/openagents-web/everglade2-net.coax),
+> [`everglade/client/net.coax`](../client/net.coax),
 > on the shared client half in
-> [`everglade-net-core.coax`](../../apps/openagents-web/everglade-net-core.coax).
+> [`everglade/client/net-core.coax`](../client/net-core.coax).
 > The server's side is
 > [`coax/web/room/room-everglade.coax`](../../coax/web/room/room-everglade.coax)
 > and `world2_*` in `coax/web/room/room-world.c`. Both step you with
@@ -37,13 +37,13 @@ room.
 | --- | --- | --- |
 | The room's world | Everglade II's land, path, woods, colliders and pace. The room picks it by the room code `everglade2-N`. | `eg_e2_code` in `room-everglade.coax`; `world2_prepare`, `world2_place`, `world2_step` in `room-world.c` |
 | The shared step | Where you may stand, the trunk and rock colliders, and the pace. The page and the room both load it. | `everglade/shared/move.coax` |
-| Joining | The page asks the API for a seat ticket for the realm `everglade2`. The API places you in an instance on a shard. The socket opens with the ticket. | `everglade2-net.coax`; [Aethyr chapter 88](../../aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
-| The hello | The page sends its build and a hello with your Character Create record and your name. | `everglade2-net.coax` |
-| Your own movement | The page steps you at the room's rate, 30 steps a second, and sends each step's input. When the room's answer differs, the page re-runs your inputs from the room's position. | `everglade2-net.coax`, `everglade2-face.c` |
-| The other players | The room's rows go into a ring. The page draws each player a jitter buffer behind. | `everglade-net-core.coax` |
-| Their bodies | One draw path draws you and the others: each player's own character, gait, jumps and facing. | `e2_remotes_draw` and `e2_body` in `everglade2.coax` |
-| Casts | The room checks the slot, the aim, a 0.8 s cooldown and the range. Then it sends the cast to every page within 120 m. | `everglade2-cast.coax`, `room-everglade.coax` |
-| Interest | The room sends you the players within 110 m and drops them past 130 m. The page fades a body in and out over 0.6 s. | `room-interest.coax`, `everglade2.coax` |
+| Joining | The page asks the API for a seat ticket for the realm `everglade2`. The API places you in an instance on a shard. The socket opens with the ticket. | `everglade/client/net.coax`; [Aethyr chapter 88](../../aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
+| The hello | The page sends its build and a hello with your Character Create record and your name. | `everglade/client/net.coax` |
+| Your own movement | The page steps you at the room's rate, 30 steps a second, and sends each step's input. When the room's answer differs, the page re-runs your inputs from the room's position. | `everglade/client/net.coax`, `everglade2-face.c` |
+| The other players | The room's rows go into a ring. The page draws each player a jitter buffer behind. | `everglade/client/net-core.coax` |
+| Their bodies | One draw path draws you and the others: each player's own character, gait, jumps and facing. | `e2_remotes_draw` and `e2_body` in `everglade/client/client.coax` |
+| Casts | The room checks the slot, the aim, a 0.8 s cooldown and the range. Then it sends the cast to every page within 120 m. | `everglade/client/cast.coax`, `room-everglade.coax` |
+| Interest | The room sends you the players within 110 m and drops them past 130 m. The page fades a body in and out over 0.6 s. | `room-interest.coax`, `everglade/client/client.coax` |
 
 A room seats 16 players (`EG_SEATS` in `room-everglade.coax`, `WIRE_SEATS` on
 the page). When the room you ask for is full, the API places you in another

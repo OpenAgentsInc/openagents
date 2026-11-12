@@ -269,7 +269,7 @@ Three realms use these modules:
   Everglade zone (`everglade/zone.coax`), which loads it.
 - **The Archery Range** (`apps/openagents-web/archery-range.coax`, a module of
   its own): it adds no bow code, only its targets, its colliders and its tally.
-- **Everglade II** (`apps/openagents-web/everglade2-mouse.coax`): its own mouse
+- **Everglade II** (`everglade/client/mouse.coax`): its own mouse
   buttons, and the room resolves the arrow. The draw's frame, what the body
   shows and the sounds are the shared ones.
 
@@ -280,5 +280,5 @@ coax/bin/coax test aethyr/action/archery.coax --library
 coax/bin/coax test everglade/longbow.coax --library
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/fivelab.coax --only "experimental combat"
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax --only "archery range"
-coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 mouse"
+coax/remote/remote.sh run -- coax/bin/coax test --library everglade/client/client.coax --only "e2 mouse"
 ```

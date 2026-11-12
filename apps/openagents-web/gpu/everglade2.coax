@@ -1,6 +1,6 @@
 // Everglade v2's passes (docs/verse/everglade2.md): Character Create's glade light and materials on
 // Everglade v2's land (verse/everglade2/forest.coax), the woods' kit pieces drawn instanced from the
-// page's visible-piece store (apps/openagents-web/everglade2.coax), and a key-light shadow map that
+// page's visible-piece store (everglade/client/client.coax), and a key-light shadow map that
 // follows the player.
 #load "fivelab.coax";
 #load "../../../verse/everglade2/field.coax";
@@ -91,7 +91,7 @@ e2_field_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->FivelabS {
  o=e2_kit_place(id,v4(x,e2_height(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),c,u,vertices);
  o.dye.x=1.0f32-shown;return o;
 }
-// An Everglade kit prop (21: the pack's M rows, everglade2-bench.coax): its 12-word vertex (position,
+// An Everglade kit prop (21: the pack's M rows, everglade/client/bench.coax): its 12-word vertex (position,
 // normal and uv as floats, then the tint's bytes under its layer), turned by the record's c.x, c.y
 // (sine, cosine) and set at a; shaded as a textured model (10).
 e2_prop_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
@@ -118,10 +118,10 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst);}
  if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}}
  o:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);
- // a monster's frame (18) or a held weapon (19, everglade/server/creatures.coax, everglade2-guard.coax):
+ // a monster's frame (18) or a held weapon (19, everglade/server/creatures.coax, everglade/client/guard.coax):
  // its record's f.w is the share of its pixels the dither drops as it thins in or out
  if (instance<cast(u32)65536) {m0:=objects[cast(int)instance];if (m0.d.w>17.5f32 && m0.d.w<19.5f32) {o.dye.x=m0.f.w;}}
- // Character Create's arrival (everglade2-create.coax): your character pops up from its feet, u[99]
+ // Character Create's arrival (everglade/client/create.coax): your character pops up from its feet, u[99]
  // the share it is still short of its size (below 0 a little over it), for your records,
  // u[101] up to u[102]
  fi:=cast(f32)instance;
@@ -157,7 +157,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
  #assert seen>100 && faded>0;
 }
 // ---- the key light's shadow tiles (aethyr/render/cascades.coax cascade_rows; the page's
-// E2_U_CASCADE, everglade2.coax e2_shadows): up to four tiles of one depth atlas round the eye, each
+// E2_U_CASCADE, everglade/client/client.coax e2_shadows): up to four tiles of one depth atlas round the eye, each
 // a ring further out, each snapped to its own texels in the light's space and drawn again only once
 // the eye walks past its step. The header says how many and which is drawn this frame; each tile has
 // its rect in the atlas, its rows across, up and in depth, its filter and its edge. As Everglade's
@@ -363,7 +363,7 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
  indirect:=mul3(albedo,scale3(cg_hemisphere(u,n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
  colour:=add3(indirect,mul3(albedo,cg_irradiance(u,n,direct,0,visibility)));
- // the developer's light views (?light=ambient|direct, everglade2.coax e2_light_view; u[51], 0 off): one term, no albedo
+ // the developer's light views (?light=ambient|direct, everglade/client/client.coax e2_light_view; u[51], 0 off): one term, no albedo
  lv:=u[51];if (lv>0.5f32 && lv<2.5f32) {lt:=ifx lv<1.5f32 then scale3(cg_hemisphere(u,n),ao*fill) else scale3(cg_sun_colour(u),direct*visibility);return v4(lt.x,lt.y,lt.z,0);}
  if (foliage) {
   // Thin leaves transmit rear sunlight; volume normals and ambient mask stay separate.
@@ -395,7 +395,7 @@ CcDeriv :: struct {px:V3;py:V3;ux:V2;uy:V2;}
 // The character surface: the part's material (mats: three vec4s a colour layer, aethyr/character/
 // material.coax cm_pack), its normal and ORM maps from the pack's linear data layers, lit by the
 // glade's sun, sky and the camera-side fill. u[60] 1 is the film quality (portraits and
-// turntables, everglade2-create.coax); u[61] 1 turns the maps off (before/after captures).
+// turntables, everglade/client/create.coax); u[61] 1 turns the maps off (before/after captures).
 cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visibility:f32,mats:[]V4,data:Tex2DArray,sheet:Sampler,d:CcDeriv)->V4 {
  m:=objects[cast(int)s.who];at:=cast(int)s.slice*3;ma:=mats[at];mb:=mats[at+1];mc:=mats[at+2];kind:=cast(int)(ma.w+0.5f32);
  albedo:=cc_albedo(v3(tex.x,tex.y,tex.z),s.dye,s.tint,v3(ma.x,ma.y,ma.z),mc.z>0.5f32);
@@ -473,7 +473,7 @@ everglade2_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f3
   return v4(c.x,c.y,c.z,1.0f32);
 }
 
-// Character Create's class pane (everglade2-create.coax e2c_pane_uniforms): u[52..55] and u[56..59],
+// Character Create's class pane (everglade/client/create.coax e2c_pane_uniforms): u[52..55] and u[56..59],
 // device px, each a glass box like the wardrobe's (0 opacity outside, 0.58 inside), with its rim.
 e2_in_box :: (p:V2,x0:f32,y0:f32,x1:f32,y1:f32)->bool {return x1>x0 && p.x>=x0 && p.x<=x1 && p.y>=y0 && p.y<=y1;}
 e2_pane_cover :: (p:V2,u:[]f32)->f32 {return ifx e2_in_box(p,u[52],u[53],u[54],u[55]) || e2_in_box(p,u[56],u[57],u[58],u[59]) then 0.58f32 else 0.0f32;}
@@ -487,7 +487,7 @@ e2_pane_edge :: (p:V2,u:[]f32)->f32 {return fmax(e2_box_edge(p,u[52],u[53],u[54]
  #assert e2_pane_cover(v2(1100,200),u[..])>0.5f32 && e2_pane_cover(v2(900,200),u[..])==0 && e2_pane_cover(v2(1100,600),u[..])==0;
  #assert e2_pane_edge(v2(1000.2f32,200),u[..])>0.5f32 && e2_pane_edge(v2(1100,200),u[..])==0;
 }
-// Character Create's arrival through Everglade's portal (everglade2-create.coax): u[96] how much of the
+// Character Create's arrival through Everglade's portal (everglade/client/create.coax): u[96] how much of the
 // view the portal's light still holds, u[97] its clock, u[98] its swell, u[100] how far the glade has
 // opened through it from the middle. The light is gpu/portal.coax's, at the scale the homepage handed
 // over (PORTAL_HANDOFF half diagonals); the glade opens from the middle through rings that shimmer,

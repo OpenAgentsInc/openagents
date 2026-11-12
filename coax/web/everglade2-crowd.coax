@@ -93,7 +93,7 @@ ec_enter :: (c: [] Cdp) -> bool {
   a := cdp_call(c, "Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}", CDP_CALL_MS) >= 0;
   return cdp_call(c, "Input.dispatchKeyEvent", "{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}", CDP_CALL_MS) >= 0 && a;
 }
-// The names the pages take (Character Create's NAME), and the probes' hash of a name (everglade2.coax e2_name_hash).
+// The names the pages take (Character Create's NAME), and the probes' hash of a name (everglade/client/client.coax e2_name_hash).
 EC_NAMES :: [3] string.["Crowd Alpha", "Crowd Bravo", "Crowd Charlie"];
 ec_hash :: (t: string) -> int { h := 2166136261; for ch: t { h = ((h ^ cast(int) ch) * 16777619) & 0xffffffff; } return h & 0x7fffffff; }
 // NAME: pressed, the old text cleared, t typed and Enter; then its answer waited for (e2_probe 65).
@@ -145,7 +145,7 @@ ec_shot :: (c: [] Cdp, dir: string, what: string, k: int) {
   if n > 0 && fs_write(btext(q[..]), cast(string) pic[0..<n]) { print("  picture %\n", btext(q[..])); }
 }
 EC_CASTS :: 4;
-// A digit key pressed and let go (the class bar's slot keys, everglade2-cast.coax e2k_key).
+// A digit key pressed and let go (the class bar's slot keys, everglade/client/cast.coax e2k_key).
 ec_digit :: (c: [] Cdp, d: int) -> bool {
   q: [1] Buf;
   bput(q[..], "{\"type\":\"keyDown\",\"key\":\""); bint(q[..], d); bput(q[..], "\",\"code\":\"Digit"); bint(q[..], d);

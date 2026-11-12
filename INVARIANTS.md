@@ -5697,7 +5697,7 @@ Places that are one world, such as Character Create and Everglade II (#13018,
 action 19 (`history.replaceState`, same origin only) rather than load it or open
 it in a frame. (`zone-host.js` and action 18 remain only for the old fivelab
 creator that Everglade Experimental builds on.) Check:
-`apps/openagents-web/everglade2-create.coax` "create:" tests (the save, action 19
+`everglade/client/create.coax` "create:" tests (the save, action 19
 to `/worlds/everglade2` and the run with no load).
 
 Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
@@ -6481,7 +6481,7 @@ this. The starting level is the server's `OA_ROOM_START_LEVEL` (default 1).
 Checks: room `room.coax` "seat class:", the two authority files' tests and
 `coax mutate` (zero survivors), `seat-ticket-profile.coax` on
 `proto/verse/seat-ticket-v5.json`, the API's `room_checks.coax` "room-class:",
-and `everglade2-net.coax` "your seat's class and level are the room's".
+and `everglade/client/net.coax` "your seat's class and level are the room's".
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
 lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative
@@ -6674,7 +6674,7 @@ stands, never by a hard radius or by one piece standing in for its neighbours.
 The frame depends only on where the eye is, so walking away and back gives the
 same instances. The key light's shadow tiles snap to whole light-space texels
 (`aethyr/render/cascades.coax`), so shadows stay fixed to the land.
-Checks: `apps/openagents-web/everglade2.coax` "a piece keeps its place and size
+Checks: `everglade/client/client.coax` "a piece keeps its place and size
 at every distance and only fades", "the woods' pieces never move, grow or swap
 as you walk, and come back the same", "Everglade II's shadow tiles: ...";
 `apps/openagents-web/gpu/everglade2.coax` "a grass tuft stands in one place at
@@ -7662,7 +7662,7 @@ realm (`myrealm`) that authors no time of day and no mist writes its style block
 baseline's bounds (GitHub #13066). Checks: `coax test aethyr/render/environment-frame.coax`
 (`#authority`, zero mutants), `coax test aethyr/render/painterly.coax` ("the glade record draws
 exactly the constants"), the `every frame writes the camera's environment` checks in
-`apps/openagents-web/everglade2.coax` and `fivelab.coax`, `coax test verse/style-preset.coax`
+`everglade/client/client.coax` and `fivelab.coax`, `coax test verse/style-preset.coax`
 ("a made painterly realm with nothing authored is the glade's resolved light"), and
 `docs/verification/aethyr-lighting-p1-6-2026-11-08/`.
 
@@ -7675,7 +7675,7 @@ developer's light views (`?light=ambient|direct|pregrade|postgrade|regions`,
 the ordinary frame) and a readout of the camera's region weights, ambient, key and grade, and they
 never change the record the passes read. Checks: `coax test aethyr/render/painterly.coax` ("the sky
 plate's tint is 1 under the glade"), `coax test aethyr/render/environment-debug.coax`, the `?light=`
-check in `apps/openagents-web/everglade2.coax`, and the Phase 1 receipt
+check in `everglade/client/client.coax`, and the Phase 1 receipt
 `docs/verification/aethyr-lighting-p1-2026-11-08/`.
 
 

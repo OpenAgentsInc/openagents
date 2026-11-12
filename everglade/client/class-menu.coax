@@ -1,10 +1,10 @@
 // Everglade Experimental's CLASSES column (experimental-combat.coax), shared with Everglade II's
-// local admin mode (everglade2-admin.coax): the twelve SRD 5.2.1 classes, LEVEL 1 to 6, and REST
+// local admin mode (everglade/client/admin.coax): the twelve SRD 5.2.1 classes, LEVEL 1 to 6, and REST
 // (SHORT, SLEEP, WATCH, HIT DIE, END REST). This unit lays the column out, draws it
 // and says what a point in it is; each world applies the choice its own way (Experimental to its
 // offline battle, Everglade II through its room). Its loader loads charactercreator.coax as cc and
 // class-kit.coax (XC_CL_UP).
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "class menu"
+//   coax/bin/coax test --library everglade/client/client.coax --only "class menu"
 
 CM_HEAD :: 32.0; CM_ROW :: 24.0; CM_ROWS_TOP :: 40.0; CM_GAP :: 8.0;   // CSS px: its header, its rows, the gap above it
 CM_CLASSES :: 12; CM_LEVELS :: 6;

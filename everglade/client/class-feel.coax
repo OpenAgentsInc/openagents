@@ -8,9 +8,9 @@
 // cp_feel_clip for Everglade II and Experimental). The effect and the sound are class-look.coax's and
 // class-kit.coax's, so what a feel declares is what plays.
 //
-// Game-wide: Everglade II (everglade2-cast.coax) and Everglade Experimental (experimental-combat.coax)
+// Game-wide: Everglade II (everglade/client/cast.coax) and Everglade Experimental (experimental-combat.coax)
 // load it; zones only wire it in.
-//   coax/bin/coax test apps/openagents-web/class-feel.coax
+//   coax/bin/coax test everglade/client/class-feel.coax
 #load "class-look.coax";
 #load "../../aethyr/rules/srd/condition-bearing.coax";
 
@@ -49,7 +49,7 @@ xf_feel :: (klass: int, a: FbAb) -> DeedFeel {
 xf_struck_feel :: () -> DeedFeel { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_HIT, sound = "hit", move = DeedMove.still}; }
 
 // The monster actions Everglade fields: Everglade II's wolves, goblins and path guard
-// (everglade2-monsters.coax, everglade2-guard.coax) and Experimental's dungeon (verse/experimental-hostiles.coax).
+// (everglade/client/creatures.coax, everglade/client/guard.coax) and Experimental's dungeon (verse/experimental-hostiles.coax).
 XF_MON_WOLF_BITE :: 0; XF_MON_GOBLIN_BLADE :: 1; XF_MON_GOBLIN_SHOT :: 2; XF_MON_GUARD_BLOW :: 3;
 XF_MON_IMP :: 4; XF_MON_GREMLIN :: 5; XF_MON_BRUTE :: 6; XF_MON_FIEND :: 7; XF_MON_BOSS :: 8;
 XF_MON_GUARD_SHOT :: 9;   // the path guard's Longbow, out of his reach (everglade/server/guard.coax)

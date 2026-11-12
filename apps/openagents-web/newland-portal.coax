@@ -9,7 +9,7 @@
 //      shimmer;
 //   3. as soon as the light covers the view, the tab goes on to Everglade on its own domain
 //      (PORTAL_URL, Character Create there), whose arrival (realms.ts PORTAL_ARRIVAL_CSS, then
-//      everglade2-create.coax) opens on the same light, with its loading bar, while the world loads.
+//      everglade/client/create.coax) opens on the same light, with its loading bar, while the world loads.
 // Nothing of Everglade loads here: the browser keeps each site's downloads apart (its HTTP cache is
 // split by the address in the bar), so what openagents.com fetched would be fetched again under
 // everglade.world. The tab goes there as early as the light allows instead, and the page's head
@@ -27,7 +27,7 @@ PORTAL_DAIS :: 2.5;      // the dais's radius
 PORTAL_FLY :: 2.1;       // s: the camera flies to the portal and into it
 PORTAL_HOLD :: 0.1;      // s: past the flight, the latest the page goes on, should the light not cover the view
 PORTAL_THROUGH :: 3.0;   // the face's radius at the hand-over, in half view diagonals (gpu/portal.coax PORTAL_HANDOFF)
-PORTAL_WALL :: 600000;   // the shimmer's clock: the wall clock's ms modulo this, in seconds (everglade2-create.coax)
+PORTAL_WALL :: 600000;   // the shimmer's clock: the wall clock's ms modulo this, in seconds (everglade/client/create.coax)
 PORTAL_MOTES :: 18;
 
 Portal :: struct {

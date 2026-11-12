@@ -43,7 +43,7 @@ held_weapon :: (s:Creator,b:[]figs.Bodies,out:[]f32,n:int)->int {
 // turn and the three pose words, figs.bd_record): the weapon (a bow on bow_matrix in the left fist, a
 // two-hander in both, else the right fist), and for the bow its string in two halves to the nock and, while
 // nocked and drawn, the arrow. Each piece a pack mesh (glade/weapon M) and its matrix: the caller
-// writes the records and draws (weapon_record here, everglade2.coax e2_held its own lists).
+// writes the records and draws (weapon_record here, everglade/client/client.coax e2_held its own lists).
 CC_HELD :: 4;
 HeldPieces :: struct { n:int; mesh:[CC_HELD]int; w:[CC_HELD][12]f32; }
 held_put :: (h:[]HeldPieces,m:int,w:[12]f32) { if h[0].n<CC_HELD {h[0].mesh[h[0].n]=m;h[0].w[h[0].n]=w;h[0].n+=1;} }

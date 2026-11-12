@@ -1,6 +1,6 @@
 // Everglade II's admin mode: the owner's local panel to do anything in the world. It is never in a
 // release build and never on a public page:
-//   - everglade2.coax calls into this unit only inside `#if BUILD_DEBUG` blocks, and coax/web/wasm.sh
+//   - everglade/client/client.coax calls into this unit only inside `#if BUILD_DEBUG` blocks, and coax/web/wasm.sh
 //     compiles a release (COAXIAL_MODE unset or release) with --build-profile release, so a release
 //     everglade2.wasm has none of it (apps/openagents-web/build.sh checks the bytes for E2A_MARK);
 //   - in a dev build it turns on only on a page served from 127.0.0.1 or localhost whose address
@@ -16,7 +16,7 @@
 // admin rows: HEAL, GOD, NOCLIP, CLICK TP (the next click on the ground takes you there), GO TO
 // (type X Z, Enter), the time of day, the guard (kill, reset, off and on), the path 50 m either way,
 // and where you stand. The frame rate is the corner's (e2_fps).
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "admin"
+//   coax/bin/coax test --library everglade/client/client.coax --only "admin"
 
 E2A_MARK :: "ADMIN MODE · LOCAL ONLY";   // the panel's title: build.sh fails a release whose wasm holds it
 E2A_FIRST :: 9;      // the first admin box in class-menu.coax's grid (0-4 REST, 5 empty, 6-8 the title row)
@@ -38,7 +38,7 @@ E2Admin :: struct {
   down: bool;               // a press began on the panel
   said: [48] u8; said_n: int; said_at: f32 = -100;   // what the last action did
   sent: int; warps: int;    // X lines sent, teleports asked (e2_probe 996, 997)
-  class_due: bool;          // CLASSES or LEVEL chosen: the room is told (V, everglade2-net.coax e2n_change) once the bar has it
+  class_due: bool;          // CLASSES or LEVEL chosen: the room is told (V, everglade/client/net.coax e2n_change) once the bar has it
 }
 
 // ---- turning it on: the page facts' url (message 600)
@@ -189,7 +189,7 @@ e2a_label :: (s: [] E2, i: int, b: [] u8) -> string {
   return "PATH +50 M";
 }
 
-// ---- input: everglade2.coax's e2_key, e2_pointer and e2_wheel ask here first (dev builds only)
+// ---- input: everglade/client/client.coax's e2_key, e2_pointer and e2_wheel ask here first (dev builds only)
 e2a_key :: (s: [] E2, key: int) -> bool {
   a := s[0].adm[..];
   if !a[0].on { return false; }
@@ -277,7 +277,7 @@ e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
   e2a_fly(s, dt);
   // the room sits your seat as the class and level chosen (its hellos can be held by its ticket's checkpoint)
   if a[0].class_due && e2n_open(s[0].net[..]) {
-    // the same line as Change character (everglade2-net.coax e2n_change)
+    // the same line as Change character (everglade/client/net.coax e2n_change)
     if e2n_change(s[0].net[..]) { a[0].class_due = false; s[0].adm[0].sent += 1; }
   }
   if !a[0].shown { cr[0].dev_animations = false; return at; }

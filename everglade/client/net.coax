@@ -3,7 +3,7 @@
 // (coax/web/room/room-everglade.coax eg_e2_code: everglade2-N, a check's pair-e2-*), whose world steps
 // you as this page does (everglade/shared/move.coax). This file holds the socket, the seat ticket, the
 // clock, your inputs and the server's word on you, and the other players as the room says them,
-// drawn a jitter buffer behind (everglade-net-core.coax, which Everglade's page shares). The face
+// drawn a jitter buffer behind (everglade/client/net-core.coax, which Everglade's page shares). The face
 // (everglade2-face.c) carries its pipe to the host and steps you at the room's rate.
 //
 // The order of a join: the page facts (message 600) name the room's host and your player id; a seat
@@ -11,15 +11,15 @@
 // the socket opens with it; the room's y seats you; the page sends its build (WirePins) and hello with
 // your Character Create record as its look and your name; the room's rows follow. A dropped socket
 // comes back on a doubling, jittered wait, each open with a fresh ticket.
-#load "socket.coax";
-#load "everglade-net-core.coax";
-#load "../../everglade/shared/player-name.coax";
-#load "../../everglade/shared/class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
-#load "analytics.coax";   // fact_of; and the page's Track (everglade2-track.coax)
+#load "../../coax/web/socket.coax";
+#load "net-core.coax";
+#load "../shared/player-name.coax";
+#load "../shared/class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
+#load "../../coax/web/analytics.coax";   // fact_of; and the page's Track (everglade/client/track.coax)
 #load "../../aethyr/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
 #load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)
 #load "../../aethyr/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
-#load "../../everglade/server/creature-wire.coax";   // the guard's and the monsters' frames, the room's codec (#13246)
+#load "../server/creature-wire.coax";   // the guard's and the monsters' frames, the room's codec (#13246)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -30,7 +30,7 @@ E2N_PIPE_NAME :: 9;             // the pipe's POST of your name: /api/playtest/p
 E2N_HOLD_MS :: 4000;            // the run waits this long at most for its seat before it walks on its own
 E2N_SAY :: 48;
 E2N_CASTS :: 16;                // the others' casts heard and not yet played (e2n_cast_due)
-E2N_SHOTS :: 16;                // the room's words on arrows heard and not yet drawn (everglade2-arrows.coax e2bw_step)
+E2N_SHOTS :: 16;                // the room's words on arrows heard and not yet drawn (everglade/client/arrows.coax e2bw_step)
 // The room over WebTransport (#13176): ?transport=wt asks for it, ?transport=ws keeps the WebSocket;
 // with neither, E2N_WT_DEFAULT on a shard's own endpoint (a room VM, whose UDP the room answers; the
 // load balancer's path carries TCP only). The host falls back to the WebSocket where WebTransport
@@ -70,7 +70,7 @@ E2Net :: struct {
   seat: int = -1; sat: bool; lost: bool; stale: bool; elsewhere: bool;
   ents: [E2N_ENTS] NetEnt;
   hz: int = WIRE_HZ; w_tick: int; w_t: int; worlds: int;
-  w_day: int = -1;              // the room's ms into its day at w_tick (W), -1 before one is heard: the light's clock (everglade2.coax e2_light)
+  w_day: int = -1;              // the room's ms into its day at w_tick (W), -1 before one is heard: the light's clock (everglade/client/client.coax e2_light)
   tick: int; tick_t: int;
   late_mean: f32; jitter: f32; interval: f32 = 33; delay: int = NET_LOW; ticks: int;
   lag: f32 = NET_LOW; rt: int; drawn_at: int;
@@ -81,7 +81,7 @@ E2Net :: struct {
   hello_due: bool;
   change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
   // the room sat your seat at another class or level than yours (its n row: the ticket's, or a level its
-  // XP gave, #13259): taken as yours, the bar and Character Create's record too (everglade2.coax)
+  // XP gave, #13259): taken as yours, the bar and Character Create's record too (everglade/client/client.coax)
   served: bool;
   // where you stand (the face's, each frame), and whether this page sat before: sitting again after a
   // lost or restarted room, the hello says it first (A), so the room puts you back here (#13057)
@@ -110,7 +110,7 @@ E2Net :: struct {
   // the arrows' ids heard, loosed and ended: on WebTransport each word comes as a datagram and on the
   // combat stream (coax/web/room/room-wt.coax rm_wt_hasten), and is taken once (a seat's room numbers them from 1)
   shot_ids: [1] NetSeen; end_ids: [1] NetSeen;
-  mine_cast: E2nCast;           // your last cast the room took, as it said it (everglade2-cast.coax e2k_taken plays it)
+  mine_cast: E2nCast;           // your last cast the room took, as it said it (everglade/client/cast.coax e2k_taken plays it)
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
@@ -124,7 +124,7 @@ E2Net :: struct {
   rest_known: bool; rest_code: int; rest_dice: int; rest_seq: int; rest_sent: int; rest_refused: int; rest_refused_at: int = -100000;
   // your bar as the room's rules hold it (b N V ..., #13046): known once this socket's room has said it
   kit_known: bool; kit: [1] WireKit;
-  // What you did and what befell you, counted as the room says it, for analytics (everglade2-track.coax
+  // What you did and what befell you, counted as the room says it, for analytics (everglade/client/track.coax
   // reads the counts each frame): by foe, 0 a wolf, 1 a goblin, 2 the guard (E2N_FOE_*), your blows that
   // landed, theirs that landed on you, the ones that fell after you hurt them; your XP gained and the
   // level the room last raised you to (e xp, e level); your last cast's slot; who last hurt you.
@@ -540,7 +540,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     if d.part == 0 && (d.tick != n[0].tick || n[0].ticks == 0) {
       j := net_jitter_heard(NetJitter.{late_mean = n[0].late_mean, jitter = n[0].jitter, interval = n[0].interval}, n[0].ticks, e2n_now(n), clock, n[0].tick_t);
       n[0].late_mean = j.late_mean; n[0].jitter = j.jitter; n[0].interval = j.interval;
-      f := net_map_follow(n[0].late_mean, n[0].ticks); n[0].w_t += f; n[0].late_mean -= f32(f);   // the tick map follows a drift (everglade-net-core.coax)
+      f := net_map_follow(n[0].late_mean, n[0].ticks); n[0].w_t += f; n[0].late_mean -= f32(f);   // the tick map follows a drift (everglade/client/net-core.coax)
       n[0].delay = net_jitter_delay(j);
       n[0].ticks += 1;
     }
@@ -628,7 +628,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     en[0].name_n = nm;
     return;
   }
-  if c == 'e' && (wire_is(t, "e xp") || wire_is(t, "e level")) {   // aimed at your seat: counted (everglade2-track.coax)
+  if c == 'e' && (wire_is(t, "e xp") || wire_is(t, "e level")) {   // aimed at your seat: counted (everglade/client/track.coax)
     xp := wire_is(t, "e xp");
     r[0] = wire_rd(t, ifx xp then 4 else 7);
     g := wire_read_gain(t, r[..]); ss := g.ss; v := g.v;

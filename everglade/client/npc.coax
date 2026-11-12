@@ -5,8 +5,8 @@
 // it, picked with 1 to 9, a click or a tap. Esc, Farewell or walking E2P_LEAVE m off ends it. He is
 // the page's own (every page draws him at the same spot); the room doesn't know him, so he walks
 // nowhere and nothing strikes him.
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only pansopher
-#load "../../everglade/world/pansopher.coax";
+//   coax/bin/coax test --library everglade/client/client.coax --only pansopher
+#load "../world/pansopher.coax";
 
 E2P_Z :: -9.0;            // m: where he stands, down from the glade's middle
 E2P_ACROSS :: -3.0;       // m: across from the path's middle at E2P_Z (west of it)

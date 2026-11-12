@@ -1,7 +1,7 @@
 // Experimental's own synthesized effects (aethyr/audio/experimental-sfx.coax through
-// experimental-sound.coax), rendered once when the host starts audio and played by name: the host's
+// everglade/sound.coax), rendered once when the host starts audio and played by name: the host's
 // coaxial_sound_bank and coaxial_sound_bank_len (coax/web/host.js soundBank). A face whose app loads
-// experimental-sound.coax includes this once, after its own header and EXPORT: 5E Lab's and
+// everglade/sound.coax includes this once, after its own header and EXPORT: 5E Lab's and
 // Everglade Experimental's (fivelab-face.c), Everglade II's (everglade2-face.c, #13058).
 #ifndef EXPERIMENTAL_SOUND_BANK_H
 #define EXPERIMENTAL_SOUND_BANK_H

@@ -16,7 +16,7 @@
 #load "../../verse/hud/frame.coax";
 #load "newland-network.coax";
 #load "newland-xp.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "../../verse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
 #load "newland-walkers.coax";
 #load "newland-portal.coax";   // Everglade's portal and "Create your character": the way into Character Create

@@ -1,4 +1,4 @@
-// Everglade II's admin mode, the room's side (apps/openagents-web/everglade2-admin.coax): X lines from
+// Everglade II's admin mode, the room's side (everglade/client/admin.coax): X lines from
 // a seat, taken only by a room on this machine. rm_admin_local turns them on, and only for a room
 // started with --dev (the API's local stand-in) and listening on 127.0.0.1 (room-host.c; Cloud Run's
 // PORT binds 0.0.0.0, and production has no --dev). Every other room drops every X line unread, so

@@ -1,6 +1,6 @@
 // Everglade II's movement world (docs/verse/everglade2.md, docs/verse/2026-11-07-everglade-multiplayer-audit.md):
 // where you may stand, the trunks and rocks that stop you, and Everglade II's pace. The page
-// (everglade2.coax, everglade2-face.c) and the room server (coax/web/room/room-world.c, its
+// (everglade/client/client.coax, everglade2-face.c) and the room server (coax/web/room/room-world.c, its
 // Everglade II rooms) both #load this file and step the same controller (everglade-step.coax) on it,
 // so the page's prediction and the room's word on you agree. Plain numbers only: no drawing.
 //   coax/bin/coax test --library everglade/shared/move.coax
@@ -17,7 +17,7 @@ E2_RUN_SPEED :: 4.25; E2_WALK_SPEED :: 1.5;   // m/s
 E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // aethyr/locomotion.coax LocomotionProfile's defaults
 e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running then f32(E2_RUN_SPEED) / f32(E2_BASE_RUN) else f32(E2_WALK_SPEED) / f32(E2_BASE_WALK); }
 
-// Where a new seat stands: the glade's middle, facing the studio's camera (everglade2.coax e2_start):
+// Where a new seat stands: the glade's middle, facing the studio's camera (everglade/client/client.coax e2_start):
 // E2_SPAWN_X, E2_SPAWN_Z and E2_SPAWN_FACE are the map's named spawn (verse/everglade2/points.coax, #13078).
 
 // ---- where you may stand: the glade, the path's corridor, the clearings and the brook's banks

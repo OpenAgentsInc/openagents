@@ -48,10 +48,10 @@
 #load "../../aethyr/walk-substep-policy.coax" as xtravel;
 #load "../../aethyr/rules/srd/press-budget.coax";
 #load "../../everglade/shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
-#load "class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
-#load "class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
-#load "cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
-#load "class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
+#load "../../everglade/client/class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
+#load "../../everglade/client/class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
+#load "../../everglade/client/cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
+#load "../../everglade/client/class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "../../everglade/dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
 #load "../../aethyr/action/sprint.coax" as sprint;   // the sprint (engine): its pace and steering
 #load "../../verse/experimental-terrain.coax" as xmeadow;

@@ -34,7 +34,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "StEffect =st_add st_cond st_word st_tags_draw st_bodies_draw st_draw_on _cond E2K_CONDITION E2K_EFFECT e2k_health_text WC_SLOWED WC_BOUND WC_HALTED fx_lasting condition_icon",
     files = ""},
   EfFeature.{name = "hud", title = "HUD parts", required = true, issue = 13083,
-    owners = "everglade/hud/ aethyr/ui/ verse/hud.coax verse/hud/ apps/openagents-web/class-look.coax apps/openagents-web/class-menu.coax",
+    owners = "everglade/hud/ aethyr/ui/ verse/hud.coax verse/hud/ everglade/client/class-look.coax everglade/client/class-menu.coax",
     marks = "_hud =hud =layout draw_panel draw_player draw_top draw_sliders xc_frame_box xc_slot_box _bar_desk _bar_card =sp_bar pt_draw",
     files = "hotbar"},
   EfFeature.{name = "class-bars", title = "class bars", required = true, issue = 13084,
@@ -54,7 +54,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "E2Plate _plates remote_plate REMOTE_PLATE PLATE_NEAR _plate_seen =Label _labels =labels draw_names np_named name_point name_hidden md_plate nameplate name_plate",
     files = "nameplate"},
   EfFeature.{name = "spell-effects", title = "spell effects", required = true, issue = 13086,
-    owners = "aethyr/fx/ apps/openagents-web/class-look.coax verse/everglade/gpu-fx.coax",
+    owners = "aethyr/fx/ everglade/client/class-look.coax verse/everglade/gpu-fx.coax",
     marks = "sp_fx SpPuff SpMeteor FX_FIRE =FX_BOLT sp_glow sp_shards sp_bolt_jag =spell_col fx_spot fx_col fx_attacks fx_cause fx_event MOCK_FX fx_feat lw_fx lw_spell_col =Fx =add_fx draw_fx net_draw_ wl_draw",
     files = ""},
   EfFeature.{name = "camera", title = "camera", required = true, issue = 13087,
@@ -71,8 +71,8 @@ EF_FEATURES :: [11] EfFeature.[
 EfZone :: struct { name: string; paths: string; entries: string; uses: string; }
 EF_ZONES :: [4] EfZone.[
   EfZone.{name = "everglade-ii",
-    paths = "apps/openagents-web/everglade2 everglade/server/ coax/web/room/room-everglade.coax",
-    entries = "apps/openagents-web/everglade2.coax coax/web/room/room-everglade.coax",
+    paths = "everglade/client/ everglade/server/ coax/web/room/room-everglade.coax",
+    entries = "everglade/client/client.coax coax/web/room/room-everglade.coax",
     uses = "bow damage-numbers area-targeting conditions hud class-bars dash name-plates spell-effects camera"},
   EfZone.{name = "experimental",
     paths = "apps/openagents-web/fivelab apps/openagents-web/charactercreator apps/openagents-web/experimental- verse/experimental-",

@@ -2,24 +2,24 @@
 // class-kit.coax xk_bar_at, Everglade Experimental's bar at that level), pressed with 1 to 9 or a click.
 // It aims as Experimental's does, ahead of you and never at anyone for you (xc_aim_for, xc_aim_point),
 // and looks and sounds as it does (class-look.coax xc_look_of, class-kit.coax xc_sound,
-// experimental-sound.coax). Everglade II has no monsters and its players can't harm each other: a cast
+// everglade/sound.coax). Everglade II has no monsters and its players can't harm each other: a cast
 // has no harmful target. The server now resolves self effects and cast costs through
 // shared rules; this page predicts presentation. A bolt flies to its range and fizzles, a blow swings at the air,
 // an area opens ahead.
 //
 // A press asks first (aethyr/action/deed.coax, docs/verse/action-pipeline.md, #13072): your bearing
 // (the SRD conditions on the room's row of you) must let you act, the slot must not be cooling down,
-// what the room's rules hold of it must not be spent (b, everglade2-net.coax e2n_slot), and every
+// what the room's rules hold of it must not be spent (b, everglade/client/net.coax e2n_slot), and every
 // ability declares its feel (class-feel.coax). When this page's own answer is yes it plays at once
 // (#13157): your press is never held for the room's round trip. It goes to the room in the same frame
-// (everglade2-net.coax e2n_cast: C SEQ SLOT AX AY AZ -1), which takes it when the slot is your class's
+// (everglade/client/net.coax e2n_cast: C SEQ SLOT AX AY AZ -1), which takes it when the slot is your class's
 // and tells every page near (e cast SS SLOT AX AY AZ SEED, coax/web/room/room-everglade.coax
 // eg_e2_cast). The room's yes confirms what is already playing. Its refusal (r SEQ WHY), or no word in
 // 1.5 s, takes it back: the effects and sounds fade out over E2K_FADE s, the clip on your body stops,
-// a loosed arrow fades (everglade2-arrows.coax), the slot greys and its cooldown lifts. Nothing the
+// a loosed arrow fades (everglade/client/arrows.coax), the slot greys and its cooldown lifts. Nothing the
 // press showed has harmed anyone: only the room rolls and spends. Another's plays here when the
 // picture of it reaches the tick it came with, from where it is drawn, at its seed.
-// everglade2.coax loads this beside class-look.coax and experimental-sound.coax (as exsound).
+// everglade/client/client.coax loads this beside class-look.coax and everglade/sound.coax (as exsound).
 
 E2K_LATER :: 8;      // sounds waiting a moment: a bolt's fizzle where it ends
 E2K_GAIN_START :: 0.55; E2K_GAIN_LAYER :: 0.32; E2K_GAIN_MISS :: 0.4;   // as Experimental's (xc_cast_sound)
@@ -54,7 +54,7 @@ E2Cast :: struct {
   area: [1] aa.AreaAim;                    // a placed area armed: its square or circle on the ground at the crosshair (aethyr/action/area-aim.coax)
   opened: aa.AreaAim; opened_sp: int = -1; // your last area where it opened (Thunderwave's cube, Entangle's square), shown until its until
   aimed_x: f32; aimed_z: f32;              // where your last cast was aimed
-  loosing: bool;                           // the bow's loose is pressing its Attack now (everglade2-mouse.coax e2m_loose)
+  loosing: bool;                           // the bow's loose is pressing its Attack now (everglade/client/mouse.coax e2m_loose)
   rolled: int;                             // your presses whose presentation was taken back (the room refused, or never answered)
 }
 
@@ -100,7 +100,7 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
   if !e.ok { return 0; }
   now := s[0].clock;
   if mine { k[0].shown += 1; }
-  // a bow's Attack is its arrow (everglade2-arrows.coax): the loose, its flight and where it ends are
+  // a bow's Attack is its arrow (everglade/client/arrows.coax): the loose, its flight and where it ends are
   // drawn and heard there, and nothing flashes where it was aimed
   if xc_kit(c) == XC_KIT_BOW && e.ab.kind == FB_ATTACK { act[0].at = now; act[0].clip = -1; return 1; }
   started := xc_look_start(k[0].puffs[..], xc_look_of(e.ab, px, py, pz, face, fxp_v(ax, ay, az)), now, f32(seed % 9973));
@@ -114,7 +114,7 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
     e2k_later(k, now + fly, ifx d.miss.count > 0 then d.miss else "fizzle", ax, az, d.rate, mine);
   }
   // a blow's slash or a spell's cast, as Experimental's (cast-pose.coax; no weapon drawn here, so no cleave)
-  // a bow's arrow is the bow's own pose (its draw and follow-through, everglade2-mouse.coax and e2_remote_aim)
+  // a bow's arrow is the bow's own pose (its draw and follow-through, everglade/client/mouse.coax and e2_remote_aim)
   act[0].at = now; act[0].clip = ifx xc_kit(c) == XC_KIT_BOW && e.ab.kind == FB_ATTACK then -1 else cp_cast_clip(xc_kit(c), e.aim.kind == XC_AIM_MELEE, false);
   return started;
 }
@@ -169,7 +169,7 @@ e2k_press :: (s: [] E2, i: int) -> bool {
   if s[0].clock - k[0].cool_at < f32(XC_COOL) { return false; }
   c := k[0].klass; a := k[0].bar[i];
   // a Ranger's Attack is the Longbow's: its key or its slot draws, and looses at full draw, as the
-  // left button does and as Experimental's key does (everglade2-mouse.coax)
+  // left button does and as Experimental's key does (everglade/client/mouse.coax)
   if a.kind == FB_ATTACK && !k[0].loosing && e2m_archer(s) { return e2m_draw(s, true); }
   m := xc_aim_for(a, xk_weapon(c));
   face := e2_show_face(s); fx := sin(face); fz := cos(face);   // mouselook: the camera's way
@@ -185,8 +185,8 @@ e2k_press :: (s: [] E2, i: int) -> bool {
     return true;
   }
   p0 := xc_aim_point(a, m, s[0].you_x, s[0].you_z, fx, fz);
-  p := e2gd_aim(s, m, p0, fx, fz);   // at the path's guard when he is before you (everglade2-guard.coax)
-  if p[0] == p0[0] && p[1] == p0[1] { p = e2mn_aim(s, m, p0, fx, fz); }   // else at a monster before you (everglade2-monsters.coax)
+  p := e2gd_aim(s, m, p0, fx, fz);   // at the path's guard when he is before you (everglade/client/guard.coax)
+  if p[0] == p0[0] && p[1] == p0[1] { p = e2mn_aim(s, m, p0, fx, fz); }   // else at a monster before you (everglade/client/creatures.coax)
   return e2k_cast(s, i, face, p[0], p[1]);
 }
 // Where the crosshair meets the ground: along the camera's line from the eye, the first step under the
@@ -399,7 +399,7 @@ e2k_step :: (s: [] E2) {
     }
     if f <= 0 { pf[0].on[q] = false; }
   }
-  e2bw_puffs(s, pf);   // the arrows in the air and stuck (everglade2-arrows.coax)
+  e2bw_puffs(s, pf);   // the arrows in the air and stuck (everglade/client/arrows.coax)
   _ := fxp_close(pf);
 }
 
@@ -504,7 +504,7 @@ e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
     e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", c, "");
     cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, c[0], c[1], c[2], c[3], "card");
   }
-  // your health and what holds you are on the portrait plate (everglade2.coax e2_world_view, everglade/hud/parts.coax eg_world)
+  // your health and what holds you are on the portrait plate (everglade/client/client.coax e2_world_view, everglade/hud/parts.coax eg_world)
   // Healer's Kit, the companion and rest: the menus your portrait opens (nothing of them over the bar)
   n = e2k_side_bar(s, out, n);
   refused := e2n_rest_message(s[0].net[..]);   // a refused cast greys its slot instead (#13072)

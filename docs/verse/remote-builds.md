@@ -700,7 +700,7 @@ header:
 ```sh
 coax/remote/remote.sh run -- bash -c 'cd coax && web/tool.sh tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
   apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax \
-  apps/openagents-web/everglade2.coax:everglade/shared/move.coax \
+  everglade/client/client.coax:everglade/shared/move.coax \
   apps/openagents-web/charactercreator.coax:verse/character-glade.coax'
 ```
 

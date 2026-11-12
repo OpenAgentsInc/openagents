@@ -9,7 +9,7 @@
 // project-page-verify). trust_relay turns that off for the native catch-up
 // suite, whose simulated relay sends made-up ids and zero signatures; the
 // page never sets it.
-#load "socket.coax";
+#load "../../coax/web/socket.coax";
 #load "project-fold.coax";
 #load "project-links.coax";
 project_frame_verified :: (frame: [] u8) -> bool #foreign #effects(all);

@@ -31,7 +31,7 @@ disagree.
 | --- | --- | --- |
 | Whether you have a character | The browser. A new player goes to Character Create and a returning player goes to `/play`. | [Chapter 11](ch011-one-address.md) |
 | Your character's look and name | The browser, sent in the hello | [Chapter 12](ch012-the-room.md) |
-| Where you stood | The room's checkpoint, saved every 5 seconds, and the page's last drawn position | `room-checkpoint.coax`, `everglade2-net.coax` |
+| Where you stood | The room's checkpoint, saved every 5 seconds, and the page's last drawn position | `room-checkpoint.coax`, `everglade/client/net.coax` |
 | Who you are | Your player key and the seat ticket the API signs | [Aethyr chapter 88](../../aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
 
 ## The method

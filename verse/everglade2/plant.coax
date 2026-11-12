@@ -1,7 +1,7 @@
 // Everglade v2's planting (docs/verse/everglade2.md): which Stylized Nature kit pieces stand where
 // in the woods round the path and the clearing, as a pure function of the land
 // (verse/everglade2/forest.coax). The pack tool (verse/tools/assets/everglade2_pack.coax) packs
-// the pieces named here; the page (apps/openagents-web/everglade2.coax) plants them at load and
+// the pieces named here; the page (everglade/client/client.coax) plants them at load and
 // draws the ones in view. The glade's own composition stays in the glade's pack mesh.
 #load "forest.coax";
 #load "meadow.coax";   // the open meadow's understory, shared with the druid's field
@@ -19,11 +19,11 @@ E2_KIT_NAME :: [36] string.["CommonTree_1","CommonTree_2","CommonTree_3","Common
 E2_TREES :: 15;          // kits 0 to 14 are trees
 E2_GRASS :: 33;          // kits 33 to 35 are the glade's grass, as tufts
 E2_LODS :: 3;
-// How far each kit reaches (metres: past E2_FAR_START of it the kit thins out by rank, everglade2.coax
+// How far each kit reaches (metres: past E2_FAR_START of it the kit thins out by rank, everglade/client/client.coax
 // e2_piece_shown), and where a tree's levels of detail start.
 E2_KIT_FAR :: [36] f32.[165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,
  95,95,95,80,80, 110,110,110,240,240, 45,45,45,26,45,55,40,26, 42,42,42];
-E2_LOD1 :: 32.0; E2_LOD2 :: 52.0;   // past these a tree draws its level 1, then 2 (cross-faded: everglade2.coax e2_piece_looks)
+E2_LOD1 :: 32.0; E2_LOD2 :: 52.0;   // past these a tree draws its level 1, then 2 (cross-faded: everglade/client/client.coax e2_piece_looks)
 E2_CELL :: 16.0;         // metres a planting cell
 E2_CELLS_X :: 27; E2_CELLS_Z :: 46;
 E2_CELL_X0 :: -200.0; E2_CELL_Z0 :: 80.0;   // the first cell's west and north... south edge: cells run to -z

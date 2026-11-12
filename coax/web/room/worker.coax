@@ -451,7 +451,7 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
     if !fs_write(wk_text(dest[..]),wk_text(manifest[..])){return 1;}
     if only{print("retained native C in %\n",keep);return 0;}
   }
-  // The room's unit and the city's both carry apps/openagents-web/analytics.coax's exports (build.sh
+  // The room's unit and the city's both carry coax/web/analytics.coax's exports (build.sh
   // makes the room's copies local to it): here the room's are renamed in its object, room_dup_NAME.
   room_names: [1] WkNames; other: [1] WkNames;
   for ui: 0..<WK_N {

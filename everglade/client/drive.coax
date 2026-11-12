@@ -2,8 +2,8 @@
 // (you, the others in the room, the path's guard, the wolves and goblins, by the room's own slots, so
 // an id stays the same while that creature lives), and how its world operations turn into a player's
 // input: walking is the keys' forward along the way drv_steer says, and a use presses the bar's slot as
-// 1 to 9 would (everglade2-cast.coax e2k_press, a deed the room answers).
-// everglade2.coax loads this after the cast, the guard and the monsters.
+// 1 to 9 would (everglade/client/cast.coax e2k_press, a deed the room answers).
+// everglade/client/client.coax loads this after the cast, the guard and the monsters.
 
 // The frame's entities, from what the room last said (the same rows the guard and monsters draw from).
 e2d_frame :: (s: [] E2) {

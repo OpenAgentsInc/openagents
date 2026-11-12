@@ -221,7 +221,7 @@ staging before promoting a release.
 
 ## Analytics
 
-Every page sends the common events in `apps/openagents-web/analytics.coax`:
+Every page sends the common events in `coax/web/analytics.coax`:
 the session's start, the engine loaded, the world entered, alive every
 30 s, and the world left. Realms add their own through helpers such as
 `track_walk` and `track_tally`. No words and no personal data are recorded.

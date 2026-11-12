@@ -3,7 +3,7 @@
 > **Status: partly implemented.** The path is a set of pure functions in
 > [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax)
 > (`e2_road_x`, `e2_road_dist`, `e2_level`, `e2_path`). The walk along it is in
-> [`apps/openagents-web/everglade2.coax`](../../apps/openagents-web/everglade2.coax).
+> [`everglade/client/client.coax`](../client/client.coax).
 > The code moves into `everglade/world/` later, so this chapter names functions
 > and has no source listings yet.
 
@@ -121,12 +121,12 @@ In `verse/everglade2/forest.coax`:
   asserts that the path swings more than 25 m from side to side.
 - `#test "the valley rises away from the path into wooded ridges"`.
 
-In `apps/openagents-web/everglade2.coax`:
+In `everglade/client/client.coax`:
 
 - `#test "a page's ?at= says how far down the path you start"`.
 - `#test "the walk steers along the path and into the clearing"`.
 
-In `apps/openagents-web/everglade2-walk-test.coax`:
+In `everglade/client/walk-test.coax`:
 
 - The three whole-path runs, at the middle and a metre to each side
   ([chapter 8](ch008-if-you-can-see-it-you-can-walk-to-it.md)).

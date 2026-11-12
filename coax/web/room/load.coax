@@ -244,7 +244,7 @@ eg_hear :: (p: [] EgPlayer, r: [] EgRun, t: string, now: int) {
     p[0].seen[en.id] = true;
   }
   if p[0].seat >= 0 { me := wire_mirror_of(p[0].m[..], p[0].seat); if me.id >= 0 { p[0].x = me.x; p[0].z = me.z; } }
-  // the casts it heard, as the page reads them (everglade2-net.coax e2n_entry)
+  // the casts it heard, as the page reads them (everglade/client/net.coax e2n_entry)
   rd: [1] WireRd; rd[0] = wire_rd(t, 1); d := wire_read_d(t, rd[..]);
   if rd[0].ok {
     from := rd[0].at;

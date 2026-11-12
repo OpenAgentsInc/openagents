@@ -4,10 +4,10 @@
 // release looses it at the reticle (docs/verse/bow-combat.md). The draw's frame is the engine's
 // archer (aethyr/action/archery.coax) and its sounds Everglade's Longbow (everglade/longbow.coax),
 // as in every zone; only the buttons and the room's Attack are this zone's. The left button while drawing lets it
-// down. Any other press is the world's (everglade2.coax e2_pointer): a click looks again, a drag turns.
-// The arrow is the Ranger's Attack through the room, as the bar's (everglade2-cast.coax e2k_press), and
-// it is drawn the frame you let go (everglade2-arrows.coax, #13157).
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 mouse"
+// down. Any other press is the world's (everglade/client/client.coax e2_pointer): a click looks again, a drag turns.
+// The arrow is the Ranger's Attack through the room, as the bar's (everglade/client/cast.coax e2k_press), and
+// it is drawn the frame you let go (everglade/client/arrows.coax, #13157).
+//   coax/bin/coax test --library everglade/client/client.coax --only "e2 mouse"
 
 E2Mouse :: struct {
   draw: [1] bow.BowDraw;      // the Longbow's draw, the aim pose's ease

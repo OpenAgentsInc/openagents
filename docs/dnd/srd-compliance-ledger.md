@@ -511,7 +511,7 @@ inventory acquisition or world state projection. No issue closes on this audit.
 
 The slice's enabled spell manifest is the 24 spells the twelve class kits
 enable at levels 1–6: 23 shown on the bars plus the Sorcerer and Wizard's
-Shield Reaction (`apps/openagents-web/class-kit-spells-checks.coax`, held
+Shield Reaction (`everglade/client/class-kit-spells-checks.coax`, held
 equal to the kits). All 24 are executable and each has an SRD resolution check
 (`kit-cantrips-checks`, `kit-spells-checks`, `kit-spells-high-checks`), its
 canonical metadata, its own sound and its own look. The checks found and fixed

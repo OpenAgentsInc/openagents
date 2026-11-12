@@ -1,5 +1,5 @@
 // The 2nd- and 3rd-level spells the twelve class kits show at levels 1-6 (#13043;
-// manifest: apps/openagents-web/class-kit-spells-checks.coax), each resolved
+// manifest: everglade/client/class-kit-spells-checks.coax), each resolved
 // through the shared battle against its SRD 5.2.1 text with fixed dice (d6 3,
 // d8 4, d10 5, d20 10), so each number is read off the page.
 //   coax/bin/coax test --library aethyr/rules/srd/kit-spells-high-checks.coax

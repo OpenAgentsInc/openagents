@@ -1,7 +1,7 @@
 // Everglade v2, piece 1 (GitHub #13023, docs/verse/everglade2.md): the land round Character
 // Create's glade and the long path out of it. Every function here is a pure function of position,
 // so the pack's ground (verse/tools/assets/everglade2_pack.coax), the planting
-// (verse/everglade2/plant.coax), the walk (apps/openagents-web/everglade2.coax) and the shader
+// (verse/everglade2/plant.coax), the walk (everglade/client/client.coax) and the shader
 // (apps/openagents-web/gpu/everglade2.coax) all read the same land. Inside the glade it is the
 // glade's own (verse/character-glade.coax): the same hills, path and autumn.
 #load "../character-glade.coax";

@@ -384,7 +384,7 @@ cullstream=$!
 timed cull-fixture in_repo coax/web/tool.sh aethyr/tools/cull-fixture.coax "$here/build" > /dev/null &
 cullfixture=$!
 # /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/verse/everglade2.md).
-timed everglade2 "$here/../../coax/web/wasm.sh" "$here/everglade2.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
+timed everglade2 "$here/../../coax/web/wasm.sh" "$here/../../everglade/client/client.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
 everglade2=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
@@ -519,7 +519,7 @@ wait "$archery_range"
 wait "$bitcoin_lab_walk"
 wait "$nostr_lab_walk"
 wait "$everglade2"
-# Everglade II's admin mode is a dev build's only (everglade2-admin.coax, wasm.sh's --build-profile):
+# Everglade II's admin mode is a dev build's only (everglade/client/admin.coax, wasm.sh's --build-profile):
 # a release everglade2.wasm holding its panel's words or its room lines is refused.
 if [[ "${COAXIAL_MODE:-release}" != dev ]] && LC_ALL=C grep -a -q -e 'ADMIN MODE' -e 'CLICK TP' -e 'X guard' "$here/build/everglade2.wasm"; then
   echo "build.sh: build/everglade2.wasm is a release build with admin mode in it" >&2; exit 1

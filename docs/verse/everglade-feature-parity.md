@@ -13,7 +13,7 @@ wires it in.
 
 | Zone | Its files | Entry units the check follows |
 | --- | --- | --- |
-| Everglade II (`everglade-ii`) | `apps/openagents-web/everglade2*.coax`, the room's `everglade/server/*.coax` and `room-everglade.coax` | `everglade2.coax`, `room-everglade.coax` |
+| Everglade II (`everglade-ii`) | `apps/openagents-web/everglade2*.coax`, the room's `everglade/server/*.coax` and `room-everglade.coax` | `everglade/client/client.coax`, `room-everglade.coax` |
 | Experimental (`experimental`) | `apps/openagents-web/fivelab*.coax`, `charactercreator*.coax`, `experimental-*.coax`, and `verse/experimental-*.coax` | `fivelab.coax` (the module for both `/worlds/everglade-experimental` and the 5E Lab) |
 | Everglade v1 (`everglade-v1`) | `apps/openagents-web/everglade.coax` and `everglade-*.coax` | `everglade.coax` |
 
@@ -54,7 +54,7 @@ three, as Experimental does.
 
 | Zone | Draw and arrows | Carry (the bow in hand or on the back) |
 | --- | --- | --- |
-| Everglade II | Shared: `E2Mouse` holds a `bow.BowDraw` (everglade2-mouse.coax); `e2m_draw` and `e2m_loose` wire it; `everglade/held-kit.coax` `held_bow_layer` lays the pose (`e2m_figure`). | Shared: `e2_held` places the kit through `held_pieces` (everglade/held-kit.coax). |
+| Everglade II | Shared: `E2Mouse` holds a `bow.BowDraw` (everglade/client/mouse.coax); `e2m_draw` and `e2m_loose` wire it; `everglade/held-kit.coax` `held_bow_layer` lays the pose (`e2m_figure`). | Shared: `e2_held` places the kit through `held_pieces` (everglade/held-kit.coax). |
 | Experimental | Shared: `xc_bow_begin`, `xc_bow_loose` and `xc_bow_step` (everglade/zone-bow.coax) call `bow.coax`; arrows draw through `aethyr/fx/puff.coax` `fxp_arrow_at`. | Shared: `held_weapon`, `bow_string`, `bow_basis` and `bow_matrix` are `everglade/held-kit.coax`'s; `experimental_figure` calls its `held_bow_layer`. No bow on the back. |
 | Everglade v1 | Absent for players. NPC bows are local sticks (`rp_person_at` everglade-raid-preview.coax:325, `watch_missiles_draw` everglade-watch.coax:451). | Absent. |
 
@@ -67,7 +67,7 @@ the shared presentation queue feeds (`aethyr/action/react.coax`, #13072).
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared: `everglade2.coax` adds its numbers with `fl.floats_*` and draws them with `eg_numbers_look` and `eg_numbers_ink`. |
+| Everglade II | Shared: `everglade/client/client.coax` adds its numbers with `fl.floats_*` and draws them with `eg_numbers_look` and `eg_numbers_ink`. |
 | Experimental | Shared: the combat, the 5E Lab, the Archery Range and the damage over you (`Hostiles.taken`) all call `everglade/hud/numbers.coax`. |
 | Everglade v1 | Local: `WatchPop` everglade-watch.coax:34, `watch_pop` :617, `watch_pops_draw` :656; condition words through `st_pops_frame` everglade-status.coax:139. |
 
@@ -83,7 +83,7 @@ its caster).
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared: Entangle's square is armed and placed through `area-aim.coax`; Thunderwave's cube shows ahead of you over its slot and where it opened after a cast; monsters inside the area light their plates (`e2k_area_marks`, `e2k_area_holds` everglade2-cast.coax). |
+| Everglade II | Shared: Entangle's square is armed and placed through `area-aim.coax`; Thunderwave's cube shows ahead of you over its slot and where it opened after a cast; monsters inside the area light their plates (`e2k_area_marks`, `e2k_area_holds` everglade/client/cast.coax). |
 | Experimental | Shared: Thunderwave's cube is `xk_spell_area` drawn by `xc_area_draw` and resolved by `area_aim_contains`; the 5E Lab's `board_areas` outlines each battle zone through `xk_zone_area`. |
 | Everglade v1 | Local: `sp_aim` everglade-spells.coax:627, `sp_ring` :1989, `ab_aim_ring` everglade-abilities.coax:1175, and one ring a spell family (`gv_aim_ring` everglade-grove.coax:819, `ci_aim_ring` everglade-circle.coax:1064, `po_aim_ring` everglade-polar.coax:337, `st_aim_ring` everglade-storm.coax:529, `wd_aim_ring` everglade-wild.coax:828). |
 
@@ -96,7 +96,7 @@ clock of an effect a page counts down (`CdClock`).
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared rules and display: `e2k_vitals_text` everglade2-cast.coax says them with `cd_held_text`; the room keeps its effects' clocks as `CdClock` (`rm_eg_held_left` room-everglade.coax). |
+| Everglade II | Shared rules and display: `e2k_vitals_text` everglade/client/cast.coax says them with `cd_held_text`; the room keeps its effects' clocks as `CdClock` (`rm_eg_held_left` room-everglade.coax). |
 | Experimental | Shared rules and display: `fx_marks` fivelab.coax takes its conditions' marks from `cd_icons`. |
 | Everglade v1 | Local: its own status table (`StEffect` everglade-status.coax:22, `st_cond` :79, `st_tags_draw` :209) and wire bits (`WC_SLOWED`, `WC_BOUND`, `WC_HALTED` everglade-wire.coax:139-142) that mirror `RS_*` without loading the engine. |
 
@@ -176,7 +176,7 @@ placed plates in FANTASY with `eg_plates` in `everglade/hud/parts.coax`.
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Wired: `e2_heads` everglade2.coax adds the others, the familiars, the monsters (`e2mn_plate_add`) and the guard (`e2gd_plate_add`) and draws them with `eg_plates`. |
+| Everglade II | Wired: `e2_heads` everglade/client/client.coax adds the others, the familiars, the monsters (`e2mn_plate_add`) and the guard (`e2gd_plate_add`) and draws them with `eg_plates`. |
 | Experimental | Wired: `xc_frame` experimental-combat.coax adds the crates, the monsters and your familiar, and `lab_pack_titles` fivelab.coax the private packs' titles; both draw with `eg_plates`. The 5E Lab (`lab_heads3` fivelab.coax) places with the shared module and draws in its own strokes, because it keeps SCIFI's blend. |
 | Everglade v1 | Local: `Label` and `labels` everglade.coax:3734, `name_point` :3817, other players' plates (`remote_plate_at` everglade-rangers.coax:525, `rangers_labels` :543), `room_labels` everglade-room.coax:109, and the moderator's `md_plate` everglade-moderate.coax:86. |
 
@@ -190,7 +190,7 @@ starts) and `verse/everglade/gpu-fx.coax`.
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared: `e2k_play` everglade2-cast.coax:84 and `e2k_step` :154 start and emit puffs through `class-look.coax` and `puff.coax`. |
+| Everglade II | Shared: `e2k_play` everglade/client/cast.coax:84 and `e2k_step` :154 start and emit puffs through `class-look.coax` and `puff.coax`. |
 | Experimental | Shared: the combat (`xc_look` experimental-combat.coax) through `class-look.coax`; the 5E Lab, its Siege and its Warlock hand each battle event to `fxe_event` (aethyr/fx/battle.coax) through `lab_effect` fivelab.coax, and the flat view draws the same causes with `fxf_of` (aethyr/fx/flat.coax). |
 | Everglade v1 | Local: its own puff system in everglade-spells.coax (`SpPuff` :156, `sp_fx` :1097, `sp_glow` :1199) and net-drawn effects (`net_draw_*` everglade-net.coax:1766-1863). The Warlock uses `puff.coax` (everglade-warlock.coax:27). |
 
@@ -203,7 +203,7 @@ and `aethyr/follow.coax`.
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared: the follow step, ground ring, trunks and mouselook framing (`aethyr/cam/chase.coax`, wired in `e2_chase_step` everglade2.coax), and Character Create's studio, run and lens (`aethyr/cam/studio.coax`, wired in `e2c_view` and `e2c_view_lens` everglade2-create.coax). |
+| Everglade II | Shared: the follow step, ground ring, trunks and mouselook framing (`aethyr/cam/chase.coax`, wired in `e2_chase_step` everglade/client/client.coax), and Character Create's studio, run and lens (`aethyr/cam/studio.coax`, wired in `e2c_view` and `e2c_view_lens` everglade/client/create.coax). |
 | Experimental | Shared: the 5E Lab's follow step (`chase.coax`, `lab_chase_step` fivelab.coax) and spectator camera (`aethyr/cam/overhead.coax`, `lab_view_zoom`, `lab_view_home`, `lab_view_pan`); the world's over-the-shoulder boom (`aethyr/cam/boom.coax`, `cc_view` charactercreator.coax), studio and walk (`studio.coax`, `cc_view` and `walk_view` charactercreator-walk.coax). |
 | Everglade v1 | Shared orbit (`aethyr/camera.coax`, everglade.coax:62); local framing in `camera_frame` everglade.coax:3547, `cz_frame_shot` everglade-create.coax:500 and `everglade_place_camera` everglade-place.coax:63. |
 

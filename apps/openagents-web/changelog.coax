@@ -1,7 +1,7 @@
 // The release history, drawn on WebGPU with the shared Filament/sans font.
 // Content is generated from coax/CHANGELOG.md; browser glue transports effects.
 #load "font.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "changelog-content.coax";
 
 VERTEX_FLOATS :: 12;

@@ -6,8 +6,8 @@
 // golem to shape, how the one picked is made, your golems, orders and reports, the materials and the
 // ranks. The craft isn't built, so its counts are nought and Shape says so. Esc, E, Close or walking
 // E2B_LEAVE m off shuts it. The page's own, like Pansopher: the room doesn't know it, so it stops no one.
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only bench
-#load "../../everglade/world/golem-bench.coax";
+//   coax/bin/coax test --library everglade/client/client.coax --only bench
+#load "../world/golem-bench.coax";
 
 E2B_Z :: -12.4;           // m: where the table's middle stands, down from the glade's middle
 E2B_ACROSS :: -3.6;       // m: across from the path's middle (west of it, as Pansopher)

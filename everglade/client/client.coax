@@ -7,33 +7,33 @@
 // verse/tools/assets/everglade2_pack.coax, and the passes gpu/everglade2.coax. everglade2-face.c steps
 // the controller (everglade-step.coax) as fivelab-face.c does; this unit says what is round you,
 // where you may stand, and what is drawn.
-#load "charactercreator.coax" as cc;
-#load "fivelab-bodies.coax" as figs;
-#load "../../everglade/shared/everglade-move-types.coax";
-#load "../../everglade/shared/move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
-#load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
+#load "../../apps/openagents-web/charactercreator.coax" as cc;
+#load "../../apps/openagents-web/fivelab-bodies.coax" as figs;
+#load "../shared/everglade-move-types.coax";
+#load "../shared/move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
+#load "net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
 #load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)
-#load "experimental-sound.coax" as exsound;
-#load "../../everglade/hud/class-bar.coax";   // Everglade's class menus under your portrait: class features and rest, every zone's (the game)
-#load "../../everglade/hud/windows.coax";   // Everglade's HUD windows and marks: talk, the workbench, the bar's marks, the wedge (#13083)
-#load "../../everglade/hud/class-resource.coax";   // Everglade's class resource bar: Rages, Focus (#13084)
-#load "../../everglade/hud/create.coax";    // Everglade's Character Create panel and the world's menu (#13083)
-#load "everglade2-sight.coax";   // ... from this zone's land, trunks, rocks and camp
+#load "../sound.coax" as exsound;
+#load "../hud/class-bar.coax";   // Everglade's class menus under your portrait: class features and rest, every zone's (the game)
+#load "../hud/windows.coax";   // Everglade's HUD windows and marks: talk, the workbench, the bar's marks, the wedge (#13083)
+#load "../hud/class-resource.coax";   // Everglade's class resource bar: Rages, Focus (#13084)
+#load "../hud/create.coax";    // Everglade's Character Create panel and the world's menu (#13083)
+#load "sight.coax";   // ... from this zone's land, trunks, rocks and camp
 #load "../../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
-#load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
-#load "everglade2-guard.coax";  // the path's guard, as the room walks him
-#load "everglade2-monsters.coax";   // the wolves and the goblins, as the room moves them
-#load "everglade2-wild.coax";   // the glade's cat (everglade/creatures/cat.coax), and ?stage=cat
-#load "everglade2-npc.coax";    // Pansopher, the Golemancy trainer, and his talk (everglade/world/pansopher.coax)
-#load "everglade2-bench.coax";  // the Golemancer's Workbench beside him and its window (everglade/world/golem-bench.coax)
+#load "cast.coax";   // the bar here, and everyone's casts through the room (#13058)
+#load "guard.coax";  // the path's guard, as the room walks him
+#load "creatures.coax";   // the wolves and the goblins, as the room moves them
+#load "wild.coax";   // the glade's cat (everglade/creatures/cat.coax), and ?stage=cat
+#load "npc.coax";    // Pansopher, the Golemancy trainer, and his talk (everglade/world/pansopher.coax)
+#load "bench.coax";  // the Golemancer's Workbench beside him and its window (everglade/world/golem-bench.coax)
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
 #load "../../aethyr/quality.coax";
 #load "../../aethyr/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
-#load "everglade2-create.coax";   // Character Create, in this world: /worlds/character-creator
+#load "create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "../../aethyr/character/material.coax" as cmat;   // the characters' material table (#13012)
-#load "everglade2-cull.coax";   // what the host's instance cull reads each frame (#13050)
+#load "cull.coax";   // what the host's instance cull reads each frame (#13050)
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../../verse/everglade2/environment.coax";   // the world's places and their light (#13065)
 #load "../../aethyr/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
@@ -41,21 +41,21 @@
 #load "../../aethyr/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
 #load "../../aethyr/action/bow.coax" as bow;   // the Ranger's Longbow, drawn with the right button
 #load "../../aethyr/action/archery.coax" as arch;   // the archer's frame: the draw eases, comes due and shows on the body (engine)
-#load "../../everglade/longbow.coax";   // Everglade's Longbow: its sounds (game)
+#load "../longbow.coax";   // Everglade's Longbow: its sounds (game)
 #load "class-feel.coax";        // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";        // a cast's body clip and the bow's aim pose: Experimental's
-#load "everglade2-mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws
-#load "../../everglade/shared/archery.coax";   // this zone's ground and bodies for an arrow, the room's too (#13157)
+#load "mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws
+#load "../shared/archery.coax";   // this zone's ground and bodies for an arrow, the room's too (#13157)
 #load "../../aethyr/net/shots.coax";   // the room's word on each arrow (engine, #13157)
-#load "everglade2-arrows.coax";    // the arrows: yours drawn at once, everyone's the room's
+#load "arrows.coax";    // the arrows: yours drawn at once, everyone's the room's
 #load "class-menu.coax";        // Experimental's CLASSES column, for admin mode
-#load "everglade2-admin.coax";  // admin mode: dev builds on this machine only, every call below in #if BUILD_DEBUG
-#load "everglade2-track.coax";  // what players do, as analytics.coax events (the face keeps the Track)
-#load "everglade2-stage.coax";  // ?stage=: the path and the empty clearing for film, the HUD off
+#load "admin.coax";  // admin mode: dev builds on this machine only, every call below in #if BUILD_DEBUG
+#load "track.coax";  // what players do, as analytics.coax events (the face keeps the Track)
+#load "stage.coax";  // ?stage=: the path and the empty clearing for film, the HUD off
 #load "../../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, as Experimental's
 #load "../../aethyr/action/area-aim.coax" as aa;   // ground targeting for a placed area (Entangle's square)
 #load "../../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
-#load "everglade2-drive.coax";   // ... wired to this world
+#load "drive.coax";   // ... wired to this world
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 32768;     // strokes: the frame rate in the bottom right corner
@@ -119,13 +119,13 @@ E2 :: struct {
   clock: f32; width: f32; height: f32; k: f32 = 1;
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
   shade: [3] f32; casc: [1] CascadeState;
-  cz: [1] E2Create;                      // Character Create's studio and its run (everglade2-create.coax)
+  cz: [1] E2Create;                      // Character Create's studio and its run (everglade/client/create.coax)
   outbox: [1024] u8; out_n: int; action: int;   // the host action this frame (5 keep the player key, 16 keep the record, 19 the address)
   player_key: [1024] u8; player_key_n: int;      // a minted player key waiting for the host action (e2_keep_player)
   reseat: bool;                          // the controller to take you as the studio drew you (everglade2-face.c)
-  media: [6144] u8; media_n: int;        // the pictures this frame names for the host (the class pane's, everglade2-create.coax; the bar's, everglade2-cast.coax)
-  casts: [1] E2Cast;                      // your class's bar and everyone's casts (everglade2-cast.coax)
-  // the room (everglade2-net.coax): the others, each with its own animation, its jump and its look
+  media: [6144] u8; media_n: int;        // the pictures this frame names for the host (the class pane's, everglade/client/create.coax; the bar's, everglade/client/cast.coax)
+  casts: [1] E2Cast;                      // your class's bar and everyone's casts (everglade/client/cast.coax)
+  // the room (everglade/client/net.coax): the others, each with its own animation, its jump and its look
   net: [1] E2Net; staged: bool;          // staged: ?at= or ?walk, a shot that opens no room
   ranim: [E2N_ENTS] figs.BdAnim; rair: [E2N_ENTS] bool; rair_at: [E2N_ENTS] f32; rland_at: [E2N_ENTS] f32; rlife: [E2N_ENTS] int;
   // each slot's fade (0 gone, 1 whole) and what it last drew, so one coming into your view (the room's
@@ -135,20 +135,20 @@ E2 :: struct {
   rtmp: [1] cc.Creator;                  // a remote's look: your creator's catalog with its record (e2_remote_look)
   heads: [E2_REMOTES] E2Head; head_n: int;     // the others' heads this frame (e2_remotes_draw): their plates, the map's dots, the reticle
   plates: [1] cc.HudPlates;                      // the frame's plates over bodies (e2_heads: aethyr/ui/hud-plates.coax)
-  // what floats over each body shows while the body does (everglade2-sight.coax): each one's share, fading
+  // what floats over each body shows while the body does (everglade/client/sight.coax): each one's share, fading
   sight_rem: [E2_REMOTES] cc.HudSight; sight_mon: [12] cc.HudSight; sight_guard: cc.HudSight; sight_dt: f32 = 1; sight_at: f32 = -1;
   cy: f32;                                       // the picture's centre row (e2c_view_lens: the studio frames you off centre)
   env: [1] envf.EnvFrame;                        // the light: the world's environment set, its clock and the record each frame writes (e2_light)
   light_view: int; light_text: [1] envd.EnvDebugText;   // ?light=VIEW (developer-only, off by default) and its readout (e2_light_readout)
   net_view: bool; net_text: [1] NetStatsText; link_text: [1] NetConnText;   // ?net: the netcode readout (e2_net_readout, aethyr/net/stats.coax)
-  guard: [1] E2GuardLook;                        // the path's guard as drawn (everglade2-guard.coax)
-  mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade2-mouse.coax)
-  bows: [1] E2Bow;                               // the arrows in the air and stuck (everglade2-arrows.coax)
-  adm: [1] E2Admin;                              // admin mode (everglade2-admin.coax): set and read in dev builds only
-  monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade2-monsters.coax)
-  wild: [1] E2Wild;                              // the glade's cat (everglade2-wild.coax)
-  npc: [1] E2Npc;                                // Pansopher and his talk (everglade2-npc.coax)
-  bench: [1] E2Bench;                            // the Golemancer's Workbench (everglade2-bench.coax)
+  guard: [1] E2GuardLook;                        // the path's guard as drawn (everglade/client/guard.coax)
+  mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade/client/mouse.coax)
+  bows: [1] E2Bow;                               // the arrows in the air and stuck (everglade/client/arrows.coax)
+  adm: [1] E2Admin;                              // admin mode (everglade/client/admin.coax): set and read in dev builds only
+  monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade/client/creatures.coax)
+  wild: [1] E2Wild;                              // the glade's cat (everglade/client/wild.coax)
+  npc: [1] E2Npc;                                // Pansopher and his talk (everglade/client/npc.coax)
+  bench: [1] E2Bench;                            // the Golemancer's Workbench (everglade/client/bench.coax)
   hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
   zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
   drive: [1] Drive;                              // the agent driver (aethyr/agent/drive.coax): off until a driver speaks
@@ -385,7 +385,7 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
     return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
   }
   if h != 0 { s[0].autowalk = false; }
-  dm := e2d_move_in(s); if dm.ok && h == 0 { return dm.in; }   // an agent's walk-to, face or use (everglade2-drive.coax)
+  dm := e2d_move_in(s); if dm.ok && h == 0 { return dm.in; }   // an agent's walk-to, face or use (everglade/client/drive.coax)
   // asleep, as the room's rules hold you: your keys move nothing until you wake (WATCH, END)
   if e2n_asleep(s[0].net[..]) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
   // down, or held by a condition (your bearing, aethyr/rules/srd/condition-bearing.coax): your keys move nothing, as the room steps you
@@ -601,7 +601,7 @@ e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
   return false;
 }
 // host.js's pointer with its button (0 left, 2 right): the cast's and the bow's first
-// (everglade2-mouse.coax), then the rest as e2_pointer.
+// (everglade/client/mouse.coax), then the rest as e2_pointer.
 e2_pointer_buttons :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
   if !s[0].cz[0].menu && e2b_pointer(s, x, y, phase) { return true; }   // the workbench's window before a click casts
@@ -1185,7 +1185,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   hud := e2_overlay(s, out, dt);
   e2d_bar(s);
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
-  if s[0].wild[0].stage || s[0].stage != E2ST_NONE { hud = 0; s[0].media_n = 0; }   // a staged shot (?stage=cat, everglade2-stage.coax) draws no HUD: no strokes, no bar pictures
+  if s[0].wild[0].stage || s[0].stage != E2ST_NONE { hud = 0; s[0].media_n = 0; }   // a staged shot (?stage=cat, everglade/client/stage.coax) draws no HUD: no strokes, no bar pictures
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
   return hud;
 }
@@ -1623,7 +1623,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   fig := ifx e2c_creating(s) then e2c_figure(s) else e2k_figure(e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at), s[0].casts[0].me[0], s[0].clock);
   // mouselook backpedal: the rig has no backpedal clip, so the gait plays backwards while you face the camera
   if mlook.ml_on(s[0].ml[0]) && axis(s[0].held, HOLD_W, HOLD_S) < 0 && !s[0].airborne && (fig.clip == figs.BD_RUN || fig.clip == figs.BD_WALK) { fig.phase = -fig.phase; }
-  if !e2c_creating(s) { fig = e2m_figure(s, fig); }   // the bow drawn (everglade2-mouse.coax)
+  if !e2c_creating(s) { fig = e2m_figure(s, fig); }   // the bow drawn (everglade/client/mouse.coax)
   #if BUILD_DEBUG { fig = e2a_figure(s, fig); }
   s[0].cz[0].fig0 = rec;
   d := e2_body(s, c, fig, E2Drawn.{rec = rec, n = n, sn = sn});
@@ -1631,12 +1631,12 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   s[0].cz[0].fig1 = d.rec;
   if d.n > 0 { s[0].cz[0].drawn += 1; }
   d = e2_familiars_draw(s,d);
-  d = e2w_draw(s, d);               // the glade's cat (everglade2-wild.coax)
-  d = e2p_draw(s, d, bdt);          // Pansopher (everglade2-npc.coax)
-  d = e2b_draw(s, d);               // his workbench (everglade2-bench.coax)
-  d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade2-net.coax)
-  d = e2gd_draw(s, d, bdt);          // the path's guard (everglade2-guard.coax)
-  d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade2-monsters.coax)
+  d = e2w_draw(s, d);               // the glade's cat (everglade/client/wild.coax)
+  d = e2p_draw(s, d, bdt);          // Pansopher (everglade/client/npc.coax)
+  d = e2b_draw(s, d);               // his workbench (everglade/client/bench.coax)
+  d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade/client/net.coax)
+  d = e2gd_draw(s, d, bdt);          // the path's guard (everglade/client/guard.coax)
+  d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade/client/creatures.coax)
   rec = d.rec; n = d.n; sn = d.sn;
   n = e2_pieces(s, s[0].draws[..], n, false);
   n = e2_field(s, s[0].draws[..], n);
@@ -1681,12 +1681,12 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // 145, 146 the bar's first slot's middle (device pixels), 147 the slot the pointer is over (-1 none)
   if field == 145 || field == 146 { k := s[0].casts[..]; b := e2k_box(k, 0, s[0].width, s[0].height, s[0].k); return cast(int)(ifx field == 145 then (b[0] + b[2]) / 2 else (b[1] + b[3]) / 2); }
   if field == 147 { return s[0].casts[0].hover; }
-  if field >= 150 && field < 160 { return e2m_probe(s, field); }   // the mouse buttons (everglade2-mouse.coax)
+  if field >= 150 && field < 160 { return e2m_probe(s, field); }   // the mouse buttons (everglade/client/mouse.coax)
   // the latency check's (coax/web/everglade2-latency.coax): 190, 191 where you are drawn (mm), 192 the
-  // way your body faces as drawn (mrad), 193 your own casts' presentations begun (everglade2-cast.coax e2k_play)
+  // way your body faces as drawn (mrad), 193 your own casts' presentations begun (everglade/client/cast.coax e2k_play)
   if field == 190 { return cast(int)(s[0].you_x * 1000); } if field == 191 { return cast(int)(s[0].you_z * 1000); }
   if field == 192 { return cast(int)(e2_show_face(s) * 1000); } if field == 193 { return s[0].casts[0].shown; }
-  if field >= 194 && field <= 199 { return e2bw_probe(s, field); }   // the arrows (everglade2-arrows.coax)
+  if field >= 194 && field <= 199 { return e2bw_probe(s, field); }   // the arrows (everglade/client/arrows.coax)
   if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
   if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
   // 9 the bake's publish status (0 live, -1 not yet), 10 the baked AO at you (thousandths), 11 its crowns
@@ -1706,7 +1706,7 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // 18 the others that came into your view and thinned in, 19 pops (a body cut off more than E2_POP
   // shown), 87 the bodies thinning out this frame (e2_remotes_draw)
   if field == 18 { return s[0].fade_ins; } if field == 19 { return s[0].pops; } if field == 87 { return s[0].ghosts; }
-  if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
+  if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade/client/create.coax)
   // rest (#13046), for a check that presses its controls: 30 the room's rest code (WIRE_REST_*, -1 not
   // said yet), 31 the controls shown, 32 and 33 the first's and the last's requests (RS_REST_*), 34 to
   // 37 their centres in the REST menu (canvas px: x, y, x, y; 132 to 134 open it), 38 your x (cm), 39 a rest refusal shown (1)
@@ -1717,7 +1717,7 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
     j := ifx field == 32 || field == 34 || field == 35 then 0 else rn - 1; if field < 34 { return reqs[j]; }
     r := e2k_menu_centre(s, EG_SIDE_REST, EG_DO_REST + j); return cast(int)(ifx (field - 34) % 2 == 0 then r[0] else r[1]); }
   // the casts (#13058): 82 yours sent to the room, 83 others' played here, 88 yours the room said
-  // back, 89 cast sounds played (everglade2-cast.coax)
+  // back, 89 cast sounds played (everglade/client/cast.coax)
   if field == 82 { return s[0].net[0].cast_sent; } if field == 83 { return s[0].casts[0].others; }
   if field == 88 { return s[0].net[0].cast_mine; } if field == 89 { return s[0].casts[0].audio[0].played; }
   if (field >= 40 && field < 66 + E2_REMOTES) || (field >= 84 && field <= 86) { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
@@ -1751,7 +1751,7 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   return -1;
 }
 
-// ---- the room (#13054): what the face asks of everglade2-net.coax, and the others drawn
+// ---- the room (#13054): what the face asks of everglade/client/net.coax, and the others drawn
 
 // Your look for the room's hello: the record Character Create keeps for you.
 e2_net_look :: (s: [] E2) {
@@ -1911,7 +1911,7 @@ e2_floats_draw :: (s: [] E2, out: [] f32, at: int) -> int {
     l := cc.eg_numbers_look(s[0].floats[..], q, now);
     if !l.ok { continue; }
     n := s[0].floats[0].items[q];
-    // only while the body it rose off shows (everglade2-sight.coax)
+    // only while the body it rose off shows (everglade/client/sight.coax)
     if eg_view_ahead(view, l.x, l.y, l.z) < 0.5 || !e2_sight_shows(s, n.x, n.y - 1.2, n.z, 1.2) { continue; }
     // Everglade's damage number (everglade/hud/numbers.coax, placed by windows.coax eg_float_over): red when you took it, small
     // "miss"; a critical hit drawn larger over it (floats_look's size)
@@ -1959,7 +1959,7 @@ e2_remote_aim :: (s: [] E2, slot: int) -> f32 {
   return ifx t < 0 || t > f32(bow.BOW_FOLLOW) then 0.0f32 else 1 - t / f32(bow.BOW_FOLLOW);
 }
 // Your own kit: the class Character Create has (in the studio the one picked), drawn and nocked as
-// the mouse draws it (everglade2-mouse.coax).
+// the mouse draws it (everglade/client/mouse.coax).
 e2_my_held :: (s: [] E2, d: E2Drawn, from: int) -> E2Drawn {
   m := s[0].mouse[0];
   klass := ifx e2c_creating(s) then e2c_class_of(s) else s[0].casts[0].klass;
@@ -2073,7 +2073,7 @@ e2_plate_view :: (s: [] E2) -> cc.HudPlateView {
 }
 // The plates over bodies, Everglade's shared ones (aethyr/ui/hud-plates.coax places them,
 // everglade/hud/parts.coax eg_plates draws them): the others' names, the familiars' names and health,
-// the monsters' and the guard's. Each shows while its body does (everglade2-sight.coax), whole within
+// the monsters' and the guard's. Each shows while its body does (everglade/client/sight.coax), whole within
 // HUD_PLATE_NEAR m and gone past HUD_PLATE_FAR; a farther name over a nearer one lifts clear of it.
 e2_heads :: (s: [] E2, out: [] f32, at: int) -> int {
   p := s[0].plates[..]; view := e2_plate_view(s);

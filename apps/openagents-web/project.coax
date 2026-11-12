@@ -20,7 +20,7 @@
 #load "font.coax";
 #load "projects/baked.coax";   // every project with a page (`openagents project bake`)
 #load "project-live.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "project-intro.coax";
 // Separately compiled checked admission policy; no authority checks attach to the UI graph.
 project_row_count_fits :: (count:int,maximum:int)->bool #foreign #effects(all);

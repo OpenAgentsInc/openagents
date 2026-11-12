@@ -3,7 +3,7 @@
 // spaces together, and nothing that reads as an address (http, www, .com, .net, .org, discord,
 // onlyfans). The API also refuses its blocked words, which only it holds; a page checks the shape at
 // once and says the API's refusal for the rest. Names are not unique: the player id is who you are.
-// Loaded by everglade2-create.coax (Character Create's NAME) and coax/web/room/room-dev.coax (the
+// Loaded by everglade/client/create.coax (Character Create's NAME) and coax/web/room/room-dev.coax (the
 // local API's stand-in), so the two say the same.
 //   coax/bin/coax test --library everglade/shared/player-name.coax
 

@@ -1,9 +1,9 @@
 // The body clip a cast plays, shared by Everglade Experimental (experimental-combat.coax xc_press)
-// and Everglade II (everglade2-cast.coax e2k_play). A blow is the slash, or with a two-hander held
+// and Everglade II (everglade/client/cast.coax e2k_play). A blow is the slash, or with a two-hander held
 // its owned cleave; a spell is the cast. (A drawn bow's aim pose is the held kit's:
 // everglade/held-kit.coax held_bow_layer.) Its loader loads charactercreator.coax as cc and
 // fivelab-bodies.coax as figs.
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "cast pose"
+//   coax/bin/coax test --library everglade/client/client.coax --only "cast pose"
 
 // Kit `kit`'s blow (cc.CC_KITS, -1 none). `held`: the world draws the weapon in hand (Experimental),
 // so a two-hander's blow is its owned cleave; a world drawing no weapons (Everglade II) slashes.

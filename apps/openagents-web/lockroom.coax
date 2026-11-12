@@ -13,7 +13,7 @@
 //   u N · o TICK TEXT · h TICK HASH · s TICK BYTES · c INDEX BASE64 · e · k (keep-alive)
 //   coax/bin/coax test apps/openagents-web/stair.coax --only lockroom
 
-#load "socket.coax";
+#load "../../coax/web/socket.coax";
 
 LR_OFF :: 0; LR_JOINING :: 1; LR_ALONE :: 2; LR_SYNC :: 3; LR_PLAY :: 4; LR_LOST :: 5; LR_FULL :: 6;
 LR_ORDER :: 80;          // an order's text, at most

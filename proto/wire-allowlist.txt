@@ -44,7 +44,7 @@ shape resume-envelope-v4  # signed, shared, exported to C; E5 adds fixtures (#13
 shape realm-save-aesv  # E10, wave 2: CRC-32, stored in IndexedDB and verse.progress; a golden (#13250)
 shape everglade-city-edits  # wave 2: eg-edit 1 in verse/everglade/edits.coax (#13250)
 room coax/web/room/room-relay.coax  # y j l m, the t pong and the rooms JSON; E2 (#13245)
-shape everglade2-familiar-page-codec  # the page writes M1 M3-M7 U1 and reads m1-m8 u1 with its own code in everglade2-net.coax; the room's codec (everglade/server/familiar.coax, aid.coax) is the one the profiles check; E2 (#13245), or #13276 deletes the familiar frames
+shape everglade2-familiar-page-codec  # the page writes M1 M3-M7 U1 and reads m1-m8 u1 with its own code in everglade/client/net.coax; the room's codec (everglade/server/familiar.coax, aid.coax) is the one the profiles check; E2 (#13245), or #13276 deletes the familiar frames
 room coax/web/room/room-ticket.coax  # parses and signs seat tickets v2 and v3; E5 (#13248); v5 it reads through aethyr/session/seat-ticket.coax (#13260)
 room coax/web/room/room-vitals.coax  # the vitals report and its receipt; E8, wave 2 (#13250)
 room coax/web/room/room-directory.coax  # the directory report; E8, wave 2 (#13250)

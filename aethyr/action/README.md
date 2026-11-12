@@ -71,7 +71,7 @@ Interpolated drawing never senses.
 
 ## The action pipeline (#13072)
 
-- **Everglade II** (`everglade2-cast.coax`): a press asks with your bearing from the room's row of
+- **Everglade II** (`everglade/client/cast.coax`): a press asks with your bearing from the room's row of
   you (`rs_bearing_of`) and plays only when the room's `e cast` for your seat comes back. A refusal
   or a timeout greys the slot. The bow's draw asks before it starts (`e2k_ready`).
 - **Everglade Experimental** (`experimental-combat.coax xc_press`): the local rules answer in the
@@ -80,7 +80,7 @@ Interpolated drawing never senses.
 - **Everglade v1** (`everglade-spells.coax sp_cast`): in a room, the cast bar and its sparks start
   on the room's `e cast` for your seat (`sp_taken`), never on the press.
 - The SRD mapping is `aethyr/rules/srd/condition-bearing.coax`. Everglade's feel for every class
-  ability and monster action is `apps/openagents-web/class-feel.coax`.
+  ability and monster action is `everglade/client/class-feel.coax`.
 
 ```sh
 coax/bin/coax test aethyr/action/deed.coax --library

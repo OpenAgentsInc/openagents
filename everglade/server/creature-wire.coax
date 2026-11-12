@@ -1,6 +1,6 @@
 // Everglade II's creature frames: the path guard (g2, g3) and the monsters (h2, h3). The one codec
 // both sides load: the room writes them (guard.coax, creatures.coax) and the page reads them
-// (apps/openagents-web/everglade2-net.coax). Profile proto/verse/everglade2-combat-v1.json, doc
+// (everglade/client/net.coax). Profile proto/verse/everglade2-combat-v1.json, doc
 // docs/protocol/everglade-guard-monsters-v1.md (#13246); its check runs these functions:
 //   coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v1.json
 // Whole numbers a space apart (everglade-wire.coax wire_int). The guard's X Z are mm and his YAW
@@ -16,7 +16,7 @@
 //   coax/bin/coax test everglade/server/creature-wire.coax
 #load "../shared/everglade-wire.coax";
 
-EGC_MONS :: 12;     // the monsters the frames name at most (creatures.coax E2M_N, everglade2-net.coax E2N_MONS)
+EGC_MONS :: 12;     // the monsters the frames name at most (creatures.coax E2M_N, everglade/client/net.coax E2N_MONS)
 EGC_SEATS :: 64;    // a SEAT or FOE is below this, or -1 for none
 EGC_GUARD_HIT :: 1; EGC_GUARD_BLOW :: 2; EGC_GUARD_CRIT :: 4; EGC_GUARD_SHOT :: 5; EGC_GUARD_SHOT_CRIT :: 6;
 EGC_MON_BLOW :: 1; EGC_MON_HIT :: 2; EGC_MON_LOOSED :: 3; EGC_MON_FELL :: 4;

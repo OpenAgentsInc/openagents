@@ -155,7 +155,7 @@ while their body shows from the camera. One engine path decides it:
    The health bar uses the same answer as its plate.
 
 Everglade II gathers its trunks, rocks and the camp's props
-(`everglade2-sight.coax`), and Everglade Experimental its village, castle and
+(`everglade/client/sight.coax`), and Everglade Experimental its village, castle and
 dungeon walls (`xc_sight_in`). Everglade v1 doesn't use it yet.
 
 ## The HUD system map
@@ -173,11 +173,11 @@ Each part is engine (any realm), game (every Everglade zone) or zone wiring
 | Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `apps/openagents-web/charactercreator.coax` |
 | Game | Unit frames (`eg_portrait`: your portrait plate, and your target's frame as its red mirror: a gold-rimmed medallion, a glass plate, the health bar with its damage trail), bar tray, a slot's cooldown sweep (`eg_slot_sweep`), map ring, name plates with their trails (`eg_plates`), the screen's red edges (`eg_vignette`), place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
 | Game | The class menus: the class features (Healer's Kit, Wild Companion, Find Familiar) and the rest menu with how the rest stands. Nothing of them is a button over the action bar (GitHub #13147): a press on your portrait plate opens them, hung under it (`eg_side_geo`, `eg_side_press`, `eg_side_draw`). Knocking out has no control on screen; in Experimental K turns it on and off | `everglade/hud/class-bar.coax` |
-| Game | The CLASSES and LEVEL picker shared by Everglade's test pages: buttons a finger tall on phones and tablets, the classes as a grid that keeps over the action bar, the wild-shape swap (`cm_pick`, `cm_pick_hit`, `cm_pick_draw`) | `apps/openagents-web/class-menu.coax` |
+| Game | The CLASSES and LEVEL picker shared by Everglade's test pages: buttons a finger tall on phones and tablets, the classes as a grid that keeps over the action bar, the wild-shape swap (`cm_pick`, `cm_pick_hit`, `cm_pick_draw`) | `everglade/client/class-menu.coax` |
 | Game | The upright phone (#13189): `zone_compact` says when a zone's HUD is compact (a touch screen, portrait, under 700 points wide). The bar is one row with MORE opening the rest (`xc_slot`, `xc_more_box`), with no class plate over it (`eg_bar_frame` with no initial); the GFX, FPS and coordinate lines show only with `?net` (`xc_corner`); GYRO over JUMP opens the gyro's menu (`zt_gyro`, `zt_gyro_menu` on `hud_menu`) | `everglade/zone-touch.coax`, `apps/openagents-web/experimental-combat.coax`; the gyro in `aethyr/cam/gyro.coax` |
 | Game | The faces' widths | `everglade/hud/fonts.coax`; the faces in `realms.json` |
-| Zone wiring | Everglade II: its facts and its room's requests | `e2_world_view` in `everglade2.coax`; `e2k_facts`, `e2k_menu_do`, `e2k_side_bar` in `everglade2-cast.coax`; its colliders and land for sight in `everglade2-sight.coax`; plates in `e2_heads` (`everglade2.coax`), which adds the monsters' and the guard's from `everglade2-monsters.coax` and `everglade2-guard.coax` |
-| Zone wiring | Character Create's wardrobe | `everglade2-create.coax` |
+| Zone wiring | Everglade II: its facts and its room's requests | `e2_world_view` in `everglade/client/client.coax`; `e2k_facts`, `e2k_menu_do`, `e2k_side_bar` in `everglade/client/cast.coax`; its colliders and land for sight in `everglade/client/sight.coax`; plates in `e2_heads` (`everglade/client/client.coax`), which adds the monsters' and the guard's from `everglade/client/creatures.coax` and `everglade/client/guard.coax` |
+| Zone wiring | Character Create's wardrobe | `everglade/client/create.coax` |
 | Zone wiring | Everglade Experimental: its facts for the class menus and its rest requests (`xc_facts`, `xc_side_act`), where the picker sits (`xc_pick`), the coordinates and FPS lifted over the bar (`hud_floor`), and its walls and meadow for sight (`xc_sight_in`) | `experimental-combat.coax` |
 
 Everglade v1 (`/worlds/everglade` and `/worlds/everglade-classic`) draws its HUD

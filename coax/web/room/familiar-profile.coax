@@ -6,7 +6,7 @@
 // values name those fields in that order; a request's text read by the room gives back its values; a
 // reply's values written by the room give exactly its text; every "malformed" request is refused by the
 // room's reader; and the enumerations (forms, spirits, orders, status, modes, max_rows) are the room's.
-// The page (apps/openagents-web/everglade2-net.coax) still writes and reads these frames with its own
+// The page (everglade/client/net.coax) still writes and reads these frames with its own
 // code: E2 (#13245) or the row replication of #13276 replaces it.
 //   coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-v1.json
 #import "Basic";

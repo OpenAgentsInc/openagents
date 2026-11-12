@@ -29,7 +29,7 @@
 //   coax/bin/coax test apps/openagents-web/villa.coax --steps 200000000   (the stone route check ~155M)
 
 #load "font.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "../../aethyr/camera.coax";
 #load "../../aethyr/throw.coax";
 #load "../../aethyr/follower.coax" as follow;

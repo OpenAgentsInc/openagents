@@ -2,7 +2,7 @@
 // look, keys and walk; its room before the ground and the trunks; a drag's and the wheel's turn and
 // zoom; and mouselook's over-the-shoulder framing. A zone passes its own inputs, its land (the
 // CamGround ring it fills from its own height function) and its trunks (cam_trunk), and keeps nothing
-// of the camera's own: Everglade II (everglade2.coax e2_chase_step) and Experimental's lab
+// of the camera's own: Everglade II (everglade/client/client.coax e2_chase_step) and Experimental's lab
 // (fivelab.coax lab_chase_step) wire it.
 //
 // Two looks share the step. With look_up (Everglade II's centred mode, modes.coax) a drag's tilt goes

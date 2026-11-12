@@ -7,8 +7,8 @@
 // The v2 profile's wire is orbit-session.coax and orbit-snapshot.coax.
 
 #load "ui-core.coax";      // Box (the match's state keeps the page's button boxes), put_int
-#load "analytics.coax";    // the match's goal and end events
-#load "socket.coax";       // the match's state keeps the page's socket pipe
+#load "../../coax/web/analytics.coax";    // the match's goal and end events
+#load "../../coax/web/socket.coax";      // the match's state keeps the page's socket pipe
 #load "../../aethyr/vehicle.coax";
 #load "../../aethyr/gravity.coax";
 #load "../../aethyr/thrust.coax";

@@ -21,7 +21,7 @@
 //   coax/bin/coax test apps/openagents-web/belt.coax --library   (long checks declare measured #steps)
 
 #load "font.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "../../aethyr/orbit.coax";
 #load "../../aethyr/spacecam.coax";
 #load "../../aethyr/command.coax";

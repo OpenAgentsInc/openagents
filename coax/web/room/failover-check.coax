@@ -1,6 +1,6 @@
 // The shard directory's failover check (#13179, docs/deployment/room-vm.md): players on a real site
 // lose their room server mid-session and come back on their own. Each player is a native socket that
-// does what the page does (everglade2-net.coax): it mints a player key at API (POST
+// does what the page does (everglade/client/net.coax): it mints a player key at API (POST
 // /api/playtest/player), asks the directory for a seat (/api/playtest/room-ticket/everglade2?realm=
 // everglade2, as a page that names no room), and opens the endpoint the answer names (a room VM's
 // shard, wss://room-staging.openagents.com/api/room/s1/), or the site's /api/room/sK/ when it names
@@ -67,7 +67,7 @@ fo_sit :: (b: [] FoBot, api: string) -> bool {
   tb: [6144] u8; tk: [4400] u8; rb: [64] u8; sb: [16] u8; eb: [256] u8;
   path: [160] u8;
   pn := rs_put(path[..], 0, "/api/playtest/room-ticket/");
-  if b[0].code_n > 0 { pn = rs_put(path[..], pn, cast(string) b[0].code[0..<b[0].code_n]); pn = rs_put(path[..], pn, "?realm=everglade2&checkpoint=2&rest=1"); }   // as the page asks (everglade2-net.coax)
+  if b[0].code_n > 0 { pn = rs_put(path[..], pn, cast(string) b[0].code[0..<b[0].code_n]); pn = rs_put(path[..], pn, "?realm=everglade2&checkpoint=2&rest=1"); }   // as the page asks (everglade/client/net.coax)
   else { pn = rs_put(path[..], pn, "everglade2?realm=everglade2&checkpoint=2&rest=1"); }
   ans := fo_post(api, cast(string) path[0..<pn], cast(string) b[0].key[0..<b[0].key_n], tb[..]);
   ticket := fo_field(ans, "ticket", tk[..]); room := fo_field(ans, "room", rb[..]);

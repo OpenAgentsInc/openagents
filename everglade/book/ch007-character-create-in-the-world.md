@@ -1,8 +1,8 @@
 # 7. Character Create in the world
 
 > **Status: partly implemented.** The studio and the run out of it are
-> [`apps/openagents-web/everglade2-create.coax`](../../apps/openagents-web/everglade2-create.coax),
-> loaded into `everglade2.coax`. The wardrobe's choices and record are in
+> [`everglade/client/create.coax`](../client/create.coax),
+> loaded into `everglade/client/client.coax`. The wardrobe's choices and record are in
 > `charactercreator.coax`. Other agents are editing both files now, so this
 > chapter names functions and has no source listings. See
 > [`docs/verse/character-creator.md`](../../docs/verse/character-creator.md).
@@ -77,7 +77,7 @@ cover up to 85 m of the path.
 
 ## The checks
 
-In `apps/openagents-web/everglade2-create.coax`:
+In `everglade/client/create.coax`:
 
 - `#test "create: USE IN EVERGLADE keeps the record with its class, then runs
   and says Everglade II's address"`.
@@ -98,7 +98,7 @@ The capture in
 shows the studio and the walk out.
 
 ```sh
-coax/bin/coax test --library apps/openagents-web/everglade2.coax
+coax/bin/coax test --library everglade/client/client.coax
 ```
 
 ## Mistakes

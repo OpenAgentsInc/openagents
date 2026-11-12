@@ -1,5 +1,5 @@
 // Analytics capture: POST /api/analytics/events takes a page's batch
-// (apps/openagents-web/analytics.coax: {"sid", "events": [...], "auto"}) and
+// (coax/web/analytics.coax: {"sid", "events": [...], "auto"}) and
 // keeps it in analytics.events with what this request says about the visit:
 // the address, the User-Agent, the host, the automation marks the playtest
 // reads (header X-Verse-Automation, cookie verse-automation) and the load

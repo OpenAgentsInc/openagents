@@ -1,7 +1,7 @@
 // Everglade II's arrows, the room's (#13157): a Ranger's Attack looses a real arrow, and the room
 // flies it. The flight is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's
 // (everglade/longbow.coax) and this zone's ground and bodies everglade/shared/archery.coax's, which the page
-// predicts with too (apps/openagents-web/everglade2-arrows.coax). What crosses the socket and how far
+// predicts with too (everglade/client/arrows.coax). What crosses the socket and how far
 // back the room rewinds are aethyr/net/projectile.coax and rewind.coax, any realm's.
 //
 // A page that looses says the launch (F SEQ ...) just before the Attack's own request (C, the same SEQ).

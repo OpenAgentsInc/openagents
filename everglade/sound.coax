@@ -8,8 +8,8 @@
 // bed is a looping ~NAME line. The host drains the lines once a frame (fivelab-face.c
 // coaxial_sounds_len); what combat plays comes from experimental-combat.coax (xc_cue).
 #module "verse.experimentalsound";
-#load "../../aethyr/audio/experimental-sfx.coax";
-#load "../../aethyr/audio/everglade-bank.coax";
+#load "../aethyr/audio/experimental-sfx.coax";
+#load "../aethyr/audio/everglade-bank.coax";
 
 ExperimentalSound :: struct {lines:[4096]u8;n:int;ready:bool;x:f32;z:f32;distance:f32;steps:int;bed_at:f32 = -3;time:f32;hp:int;hits:int;seed:u64 = 0x9e3779b97f4a7c15;voice:int;played:int;build_at:f32 = -9;}
 

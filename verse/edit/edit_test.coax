@@ -3,7 +3,7 @@
 //   coax/bin/coax test verse/edit/edit_test.coax
 
 #load "../../apps/openagents-web/font.coax";
-#load "../../apps/openagents-web/analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "edit.coax";
 
 VERTEX_FLOATS :: 16;

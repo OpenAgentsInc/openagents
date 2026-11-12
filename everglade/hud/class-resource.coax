@@ -3,7 +3,7 @@
 // The bar's slots come from the shared kit (everglade/shared/class-kit.coax xk_bar_at), the
 // counts from the room's word on them (xk_room_slot), the most from the rules (fb_cl_hero). A zone
 // loads this beside windows.coax, fills EgResource with eg_resource_of and draws it.
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "eg resource"
+//   coax/bin/coax test --library everglade/client/client.coax --only "eg resource"
 // Spell slots are on the portrait plate (everglade/hud/parts.coax); this is the other resources.
 
 EgResource :: struct { name: string; left: int; max: int; on: bool; }

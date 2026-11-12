@@ -5,7 +5,7 @@
 // (dead), and gets up only once it regains Hit Points. The body's pose and the locks on its input come
 // from its bearing (condition-bearing.coax rs_bearing, aethyr/action/deed.coax); this is only the saves.
 // Its loader has the rules (battle.coax): class-kit.coax loads it for Everglade's zones and room.
-//   coax/bin/coax test apps/openagents-web/everglade2.coax --only "death save line"
+//   coax/bin/coax test everglade/client/client.coax --only "death save line"
 
 // The saves as a page holds them: from a creature's Hit Points, death and its row's word.
 RsDeathSaves :: struct {

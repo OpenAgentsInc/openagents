@@ -125,7 +125,7 @@ the wire, so the room knows exactly which feature you pressed.
   profile recharges spent resources on the existing cooldown"`.
 - `everglade/shared/class-kit.coax`, `#test "class kits: a slot names one
   ability at every level; a level's bar holds only its own"`.
-- `apps/openagents-web/everglade2.coax`, `#test "Everglade II's bar is your
+- `everglade/client/client.coax`, `#test "Everglade II's bar is your
   class's at your level: a level 5 Fighter's Action Surge goes by its own wire
   slot (#13046)"`.
 - `everglade/shared/cast-rules-checks.coax`, `#test "Everglade II takes

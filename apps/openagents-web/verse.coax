@@ -33,7 +33,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "textkeys.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "world.coax";
 #load "realms.coax";
 #load "galaxy.coax";

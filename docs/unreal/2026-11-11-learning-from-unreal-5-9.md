@@ -424,7 +424,7 @@ physics bodies and resimulates from a corrected frame.
 
 **The gap.**
 - Prediction is written per feature: walking in `everglade5e-face.c` and
-  `everglade-net.coax`, casts in `everglade2-cast.coax`, arrows in their
+  `everglade-net.coax`, casts in `everglade/client/cast.coax`, arrows in their
   own path.
 - Mounts, boats and dash have no shared predicted model.
 - The drift check still finds too many corrections (#12778).

@@ -7,8 +7,8 @@
 // camera, which sits low at its eye level, where its turned head looks (egcat.EG_CAT_LOOK off its
 // body's facing, so the sit shows in three-quarter view), and closes in slowly over ten seconds. A
 // staged shot opens no room.
-//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only cat
-#load "../../everglade/creatures/cat.coax" as egcat;
+//   coax/bin/coax test --library everglade/client/client.coax --only cat
+#load "../creatures/cat.coax" as egcat;
 
 E2W_CAT_X :: 2.4; E2W_CAT_Z :: -4.2; E2W_CAT_YAW :: 2.6;   // its home in the glade, south-east of you
 E2W_CAT_SEED :: 293;

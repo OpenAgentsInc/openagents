@@ -16,7 +16,7 @@ next player joins another.
 
 Character Create (`/worlds/character-creator`) is a place in this world: its studio stands in the
 glade, and USE IN EVERGLADE runs you out of the glade and down the path, then hands you the keys
-(`apps/openagents-web/everglade2-create.coax`, `docs/verse/character-creator.md`).
+(`everglade/client/create.coax`, `docs/verse/character-creator.md`).
 
 The studio shows a class pane beside the wardrobe. On a desktop it is a glass panel at the right
 of the screen. On a phone it is two narrow columns in the sky on either side of your character. It
@@ -220,7 +220,7 @@ sheen and hair highlights.
 ### The cat (#13112)
 
 The glade has a cat (`everglade/creatures/cat.coax`, the game layer's, wired in by
-`apps/openagents-web/everglade2-wild.coax`): a black and white tuxedo cat. It sits, stands, wanders
+`everglade/client/wild.coax`): a black and white tuxedo cat. It sits, stands, wanders
 within 5 m of its home south-east of where you start, and when you come within 4 m it sits and
 turns to look at you. Its sitting head is turned 0.8 rad to its left (`EG_CAT_LOOK`), so the cat
 turns its body that much away from you and you see the sit in three-quarter view.
@@ -239,7 +239,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
 
 ## The page
 
-`apps/openagents-web/everglade2.coax` and `everglade2-face.c` run the page:
+`everglade/client/client.coax` and `everglade2-face.c` run the page:
 
 - The face steps Everglade's controller (`everglade-step.coax`). The page lifts your feet onto
   the land, and keeps you in the glade's 26 m circle, on the path's corridor, or in the
@@ -252,7 +252,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   `verse/tools/assets/everglade2_rock_hulls.coax` into `verse/everglade2/rock-hulls.coax`, whose
   check compares each hull to its mesh's bounds. Both are scaled and turned with the placed
   piece, the glade's own trees and rocks included; the page and the room step you on the same
-  hulls. Pebbles, a few centimetres high, don't stop you. `everglade2-walk-test.coax` walks into
+  hulls. Pebbles, a few centimetres high, don't stop you. `everglade/client/walk-test.coax` walks into
   the glade's mossy rock from three sides, steps onto a low rock, jumps onto the mossy rock and
   stands on its top, walks into a trunk, and runs the whole path from the glade to the clearing
   down its middle and a metre to each side without being held up.
@@ -306,7 +306,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   reads the finest tile that covers a point.
 
 - The GPU leaves out the kit pieces nothing shows (#13050). The page still picks the pieces and
-  their levels and fades; `everglade2-cull.coax` hands the host each frame's camera and runs, and
+  their levels and fades; `everglade/client/cull.coax` hands the host each frame's camera and runs, and
   `gpu/everglade2-cull.coax` tests each picked piece's box against the frustum and the depth
   pyramid in two phases (`coax/web/instance-cull.js`). The first phase tests against last
   frame's pyramid and draws what passes. The pyramid is then built from that depth, and the
@@ -343,7 +343,7 @@ Everglade II builds in seconds:
 
 ```sh
 cd apps/openagents-web
-../../coax/web/wasm.sh everglade2.coax everglade2-face.c build/everglade2.wasm \
+../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
   everglade-step.coax ../../aethyr/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/everglade2.coax \
@@ -384,7 +384,7 @@ cursor: a click on the world takes the mouse for looking, and Tab or Escape free
 
 ## Mouse buttons
 
-As in Everglade Experimental, while the mouse looks round (`everglade2-mouse.coax`):
+As in Everglade Experimental, while the mouse looks round (`everglade/client/mouse.coax`):
 
 - The left button casts your last pressed slot, or your Attack.
 - A Ranger's right button held draws the Longbow and its release looses the arrow at the reticle,
@@ -398,7 +398,7 @@ To open it, build a dev `everglade2.wasm` and run a local room and page server:
 
 ```sh
 cd apps/openagents-web
-COAXIAL_MODE=dev ../../coax/web/wasm.sh everglade2.coax everglade2-face.c build/everglade2.wasm \
+COAXIAL_MODE=dev ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
   everglade-step.coax ../../aethyr/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static
@@ -408,7 +408,7 @@ Then open `http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:89
 
 Admin mode works only on this machine. Three checks guard it:
 
-- It exists only in dev builds. `everglade2.coax` calls `everglade2-admin.coax` only inside
+- It exists only in dev builds. `everglade/client/client.coax` calls `everglade/client/admin.coax` only inside
   `#if BUILD_DEBUG` blocks. `coax/web/wasm.sh` compiles with `--build-profile release` unless
   `COAXIAL_MODE=dev`, so the release linker drops the unit's code. `build.sh` fails a release
   `everglade2.wasm` that contains the panel's words or its room lines.

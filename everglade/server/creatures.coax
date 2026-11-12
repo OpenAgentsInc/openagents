@@ -20,7 +20,7 @@
 // The room tells each page the monsters within EG_VIEW m (h2: ACT 1 a blow, 2 a shot, its tell from
 // ACT_TICK; FOE a seat or -1) and their events (h3: a blow or arrow at a seat, AMOUNT 0 a miss; harm at
 // one; an arrow loosed with its flight; a fall) through the creature frames' codec, creature-wire.coax
-// (proto/verse/everglade2-combat-v1.json). The pages draw them (apps/openagents-web/everglade2-monsters.coax).
+// (proto/verse/everglade2-combat-v1.json). The pages draw them (everglade/client/creatures.coax).
 #load "creature-wire.coax";   // h2 and h3: the one codec the page reads them with (#13246)
 
 // The way (dx, dz) points, in radians as atan2(dx, dz) (within a few thousandths: a creature's facing).
@@ -166,7 +166,7 @@ e2mo_move :: (mo: [] E2Mon, tx: f32, tz: f32, speed: f32, dt: f32, stop: f32) ->
   return st;
 }
 // The yaw stays within a half turn of 0: a wolf circling its quarry turns one way lap after lap, and a
-// yaw that grew with each lap would pass what the pages take in an h2 row (everglade2-net.coax).
+// yaw that grew with each lap would pass what the pages take in an h2 row (everglade/client/net.coax).
 e2mo_wrap :: (a: f32) -> f32 { d := a; while d > 3.14159265 { d -= 6.2831853; } while d < -3.14159265 { d += 6.2831853; } return d; }
 e2mo_turn :: (yaw: f32, goal: f32, rate: f32, dt: f32) -> f32 {
   d := e2mo_wrap(goal - yaw);

@@ -27,7 +27,7 @@ RM_WT_ROUTES :: [12] NetRoute.[
   NetRoute.{word = "u1", channel = NET_LOOT},        // an aid's count
 ];
 // gate: the inputs (I, J1) a datagram repeats; casts and launches (C, F) come both ways, on the stream
-// and in the datagrams until acknowledged (everglade2-net.coax e2n_send), each heard once (#13187)
+// and in the datagrams until acknowledged (everglade/client/net.coax e2n_send), each heard once (#13187)
 RmWt :: struct { on: bool; gate: [1] NetGate; casts: [1] NetSeen; looses: [1] NetSeen; dgrams: int; spilled: int; oob: int; }
 
 // Conn conn is (on) or is no longer a WebTransport session: what it counted starts again.
@@ -49,7 +49,7 @@ rm_wt_channel_of :: (text: string) -> int {
 }
 // Whether a frame on a reliable stream goes as a datagram too, now and again next tick (room-wt.c
 // wt_out): an arrow loosed (a) or ended (d), which the page draws from the moment it names and takes
-// once by its id (everglade2-net.coax e2n_shot_word). A resend's wait on the stream would show late.
+// once by its id (everglade/client/net.coax e2n_shot_word). A resend's wait on the stream would show late.
 rm_wt_hasten :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) { return wire_is(text, "a") || wire_is(text, "d"); }
 // A datagram from session conn: its frames, '\n' apart, each one heard (NET_SAME made whole); an input
 // (I or J1) only the first time its number comes (each datagram repeats the ones the room hasn't

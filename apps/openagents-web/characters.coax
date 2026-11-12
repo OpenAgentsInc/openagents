@@ -16,7 +16,7 @@
 // server can swap this code in while the page runs.
 
 #load "font.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "../../aethyr/motion.coax";
 #load "../../aethyr/budget.coax";
 

@@ -176,7 +176,7 @@ whose host says nothing, as Cloud Run's idle shards do, so a dead VM or a
 `switch run` never strands placement. `GET /api/playtest/room-shards` lists
 every shard's state, endpoint, players, tick p95 and instance count.
 
-The page (`everglade2-net.coax`) opens the ticket's endpoint when it names
+The page (`everglade/client/net.coax`) opens the ticket's endpoint when it names
 one, and the load balancer's `/api/room/sK/` otherwise. When its socket goes
 it asks the directory again, naming the realm, so a shard that died places
 its players on a live one; the room restores each from the API's store.

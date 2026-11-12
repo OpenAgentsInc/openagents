@@ -44,7 +44,7 @@ eg_bow_button :: (button: int, phase: int, a: arch.Archer) -> int {
   return EG_BOW_NOTHING;
 }
 
-// ---- the sounds: a cue's name in the bank (apps/openagents-web/experimental-sound.coax), how loud, how fast
+// ---- the sounds: a cue's name in the bank (everglade/sound.coax), how loud, how fast
 EgBowCue :: struct { name: string; gain: f32; rate: f32 = 1; }
 // The limbs creak as the string comes back.
 eg_bow_draw_cue :: () -> EgBowCue { return EgBowCue.{name = "bow-draw", gain = 0.4}; }

@@ -5,7 +5,7 @@
 // with its rest controls, a slot's card shown, and admin mode. It prints each finding once; see
 // hud-overlap.coax.
 //   coax/web/tool.sh apps/openagents-web/hud-overlap-everglade2.coax
-#load "everglade2.coax";
+#load "../../everglade/client/client.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "hud-overlap.coax";
 

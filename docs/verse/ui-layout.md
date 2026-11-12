@@ -137,7 +137,7 @@ more findings than before.
    Points, the ANIMATIONS browser, and the CLASSES column (`class-menu.coax`).
 2. The bar: `xc_slot_at`, the class and target line, the rest, aid and familiar
    controls, and the hover card.
-3. Character Create (`everglade2-create.coax`): the title, DRAG, the wardrobe,
+3. Character Create (`everglade/client/create.coax`): the title, DRAG, the wardrobe,
    the class pane, and the bottom buttons.
 4. Everglade II's other parts: GFX, the light readout and admin mode.
 5. The fantasy HUD's parts, which come from `aethyr/ui/hud-style.coax` and

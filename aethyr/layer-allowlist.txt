@@ -72,8 +72,9 @@ everglade-up everglade/zone.coax -> apps/openagents-web/charactercreator.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/druid-scene.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/experimental-combat.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/experimental-objects.coax
-everglade-up everglade/zone.coax -> apps/openagents-web/experimental-sound.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/fivelab-bodies.coax
+everglade-up everglade/client/client.coax -> apps/openagents-web/charactercreator.coax  # Everglade's client moved out of apps/openagents-web/; Character Create's scene follows it (#13268)
+everglade-up everglade/client/client.coax -> apps/openagents-web/fivelab-bodies.coax  # Everglade's client moved out of apps/openagents-web/; the figures follow it (#13268)
 
 # Product code loads test code
 tests aethyr/actors/behavior-plan.coax -> aethyr/actors/tests/behavior-plan.coax
@@ -259,3 +260,5 @@ context coax/web/project/landing-nostr.coax -> psionic/lib/pylon/beacon.coax  # 
 context coax/web/room/room-write.coax -> coax/lib/nostr/hex.coax  # seeded (#13317)
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/event_sign.coax  # seeded (#13317)
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/nip44-key.coax  # seeded (#13317)
+context everglade/client/class-feel.coax -> aethyr/rules/srd/condition-bearing.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
+context everglade/client/client.coax -> aethyr/rules/srd/condition-display.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)

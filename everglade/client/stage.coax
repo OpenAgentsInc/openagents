@@ -23,7 +23,7 @@ E2ST_NONE :: 0; E2ST_PATH_FLY :: 1; E2ST_PATH_WALK :: 2; E2ST_CLEARING_EMPTY :: 
 E2ST_LEAD :: 2.0;            // seconds the shot holds its first key: the recorder's --skip lead-up
 E2ST_DAY :: 0.70;            // the day's fraction (0.5 noon): late afternoon, the sun low over the woods
 E2ST_EYE :: 1.7;             // a standing eye, metres over the ground
-E2ST_RANGER :: 7;            // the class the bow-fight plays (everglade2-create.coax E2C_CLASS_NAMES)
+E2ST_RANGER :: 7;            // the class the bow-fight plays (everglade/client/create.coax E2C_CLASS_NAMES)
 E2ST_CLOSE :: 2.0;           // m from the goblin the bow-fight's Ranger stops: inside the Attack's reach (class-kit.coax XC_REACH)
 E2ST_LEVEL :: 5;             // at level 5, with the Hit Points to stand against the camp
 E2ST_SHOT_EVERY :: 1.8;      // s between the bow-fight's arrows: a draw, held, then the loose
@@ -162,7 +162,7 @@ e2st_row :: (rows: [] f32, k: int, at: f32, ex: f32, ey: f32, ez: f32, lx: f32, 
   rows[r] = at; rows[r + 1] = ex; rows[r + 2] = ey; rows[r + 3] = ez; rows[r + 4] = lx; rows[r + 5] = ly; rows[r + 6] = lz; rows[r + 7] = f32(ease);
 }
 
-// ---- the page's hooks (everglade2.coax): the facts, the shot, the walk, the light
+// ---- the page's hooks (everglade/client/client.coax): the facts, the shot, the walk, the light
 e2st_facts :: (s: [] E2, t: string) {
   s[0].stage = e2st_named(net_query(fact_of(t, "url"), "stage"));
   if s[0].stage == E2ST_NONE { return; }
@@ -255,7 +255,7 @@ e2st_move_in :: (s: [] E2) -> EgMoveIn {
   still := EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
   if e2st_time(s) < f32(E2ST_LEAD) * 0.5 { return still; }
   if s[0].stage == E2ST_BOW_FIGHT {
-    // up to the goblin to within a Shortsword's reach, where the Ranger's Attack lands (everglade2-cast.coax e2mn_aim)
+    // up to the goblin to within a Shortsword's reach, where the Ranger's Attack lands (everglade/client/cast.coax e2mn_aim)
     g := e2st_target(s); dx := g[0] - s[0].you_x; dz := g[2] - s[0].you_z;
     if dx * dx + dz * dz < E2ST_CLOSE * E2ST_CLOSE { return still; }
     return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(figs.atan2(dx, dz))};

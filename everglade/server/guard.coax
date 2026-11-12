@@ -9,7 +9,7 @@
 // The room tells the pages his state (g2, each tick he changes and once a second when he doesn't) and
 // each blow (g3: AMOUNT 0 a miss; each of his turn's attacks is its own, E2G_BLOW_S apart) through the
 // creature frames' codec, creature-wire.coax (proto/verse/everglade2-combat-v1.json).
-// The pages draw him a jitter buffer behind, as they draw each other (everglade2-guard.coax).
+// The pages draw him a jitter buffer behind, as they draw each other (everglade/client/guard.coax).
 // His Dash is Everglade's (everglade/dash.coax): his run times eg_dash_rate from when he takes it.
 #load "../dash.coax";
 #load "creature-wire.coax";   // g2 and g3: the one codec the page reads them with (#13246)

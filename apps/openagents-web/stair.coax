@@ -13,7 +13,7 @@
 //   coax/bin/coax test apps/openagents-web/stair.coax --steps 3000000000   (the three-maps check ~2.03B)
 
 #load "font.coax";
-#load "analytics.coax";
+#load "../../coax/web/analytics.coax";
 #load "../../verse/rules/srd5-combat.coax";
 #load "stair-tables.coax";
 #load "stair-coop.coax";

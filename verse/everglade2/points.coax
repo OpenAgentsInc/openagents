@@ -7,10 +7,10 @@
 // Metres, z north (the path runs south, to lower z), face 0 north. The spawn is a world place (the
 // glade's middle). Every other point stands on the path: its x is metres across from the path's
 // middle at its z (0 on it; forest.coax e2_road_x(z) is where the middle is), and its z is the path's
-// own: a page's ?at=METRES starts you METRES down it, at z -METRES (everglade2.coax e2_query_at).
+// own: a page's ?at=METRES starts you METRES down it, at z -METRES (everglade/client/client.coax e2_query_at).
 #load "../../aethyr/world/points.coax";
 
-// Where a new seat stands: the glade's middle, facing the studio's camera (everglade2.coax e2_start).
+// Where a new seat stands: the glade's middle, facing the studio's camera (everglade/client/client.coax e2_start).
 E2_SPAWN_X :: 0.0; E2_SPAWN_Z :: 0.0; E2_SPAWN_FACE :: 3.14159265;
 E2_CLEAR_Z :: -470.0;  // the clearing at the path's end: its middle's z (x on the path)
 
@@ -40,7 +40,7 @@ e2_point :: (name: string) -> MapPoint {
   names := E2_POINT_NAME; at := E2_POINT_AT;
   return map_point(E2_POINTS_ZONE, names[..], at[..], name);
 }
-// How far down the path a path point stands, whole metres: its ?at= (everglade2.coax e2_query_at).
+// How far down the path a path point stands, whole metres: its ?at= (everglade/client/client.coax e2_query_at).
 e2_point_at :: (p: MapPoint) -> int { return cast(int) (-p.z + 0.5); }
 #test "Everglade II's named points are whole, each listed once, and down the path from the glade" {
   names := E2_POINT_NAME; at := E2_POINT_AT;

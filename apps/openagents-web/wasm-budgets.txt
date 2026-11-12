@@ -116,20 +116,20 @@ bitcoin-lab-walk 2950000
 # about 3% headroom.
 nostr-lab-walk 3630000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
-# brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
+# brought it to 300,331 bytes; Character Create's studio and run in its world (everglade/client/create.coax,
 # #13023) to 319,706; about 6% headroom.
 # main reached 342,695 bytes; the two-handed blend rules add 8: 342,703 measured; about 2% headroom.
 # The glade's admitted terrain tile, material table and canopy bake (aethyr/terrain-tile.coax with its
 # SHA-256 identity, aethyr/render/bake.coax, #12995): 359,019 measured; about 4% headroom.
 # Texel-snapped shadow tiles (aethyr/render/cascades.coax) and rank-faded pieces (#13023): 365,055 measured;
 # about 5% headroom.
-# The room (everglade2-net.coax: its socket, the jitter buffer, the re-run, the others' bodies and their
+# The room (everglade/client/net.coax: its socket, the jitter buffer, the re-run, the others' bodies and their
 # names, #13054): 399,063; Character Create's NAME and the names kept clear of each other (#13056): 407,698 measured; about 3% headroom.
 # The shared terrain set (verse/everglade2/ground.coax, #13059: 21 admitted tiles, the seam checks and the
 # catalog record reader): 425,803 measured; about 5% headroom.
-# The class bar and everyone's casts through the room (everglade2-cast.coax, #13058): the twelve classes'
+# The class bar and everyone's casts through the room (everglade/client/cast.coax, #13058): the twelve classes'
 # kits at level 1 on the SRD engine's spell and feature tables (class-kit.coax, fivebar.coax), their
-# effects (aethyr/fx/puff.coax and its looks) and Experimental's sounds (experimental-sound.coax: the
+# effects (aethyr/fx/puff.coax and its looks) and Experimental's sounds (everglade/sound.coax: the
 # Everglade bank's names and the synthesized effects' recipes): 632,261 measured; about 4% headroom.
 # Levels 1 to 6 (#13046): each class's level 1 to 6 bars and catalog (class-kit.coax xk_bar_at), the
 # LEVEL row, the room's word on the bar (b frames: on-icon counts and held frames) and a refused
@@ -143,13 +143,13 @@ nostr-lab-walk 3630000
 # Rock hulls in aethyr walk/collide/query (7afe501d33) and Revivify's room target (#13030): 755,675 bytes measured.
 # Mouselook (aethyr/cam/mouselook.coax: the mouse turns the camera with no button held, Tab and Alt
 # free the cursor) and its shared reticle (aethyr/cam/reticle.coax), on main with its rock colliders at 755,675: 758,899 bytes measured.
-# The path's guard (everglade2-guard.coax: his armoured body, his walk and fall between the room's words,
-# the plate, the hit marks and his cues; everglade2-net.coax's g2/g3 words), on main at 758,899:
+# The path's guard (everglade/client/guard.coax: his armoured body, his walk and fall between the room's words,
+# the plate, the hit marks and his cues; everglade/client/net.coax's g2/g3 words), on main at 758,899:
 # 765,129 bytes measured; about 2.6% headroom.
-# The wolves and goblins (everglade2-monsters.coax: their frames, fades, arrows, plates, marks and wedge; the guard's
+# The wolves and goblins (everglade/client/creatures.coax: their frames, fades, arrows, plates, marks and wedge; the guard's
 # Sword and a swing for each of his attacks), on main with the mouse's cast and bow and admin mode (b089816462):
 # 793,466 bytes measured; about 2.7% headroom.
-# Analytics (everglade2-track.coax and the Track, docs/analytics/2026-11-09-everglade-analytics-audit.md) on main with
+# Analytics (everglade/client/track.coax and the Track, docs/analytics/2026-11-09-everglade-analytics-audit.md) on main with
 # #13071's GFX control: 818,675 bytes measured on macOS.
 # The fantasy HUD (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax; everglade/hud/): the portrait plate,
 # map ring, bar tray, side bar and menus, the phone studio, and plates that show only while their body
@@ -163,7 +163,7 @@ nostr-lab-walk 3630000
 # Main at 4ca2379f0e already measured 956,592 bytes, over 955,000. The shared plates (aethyr/ui/hud-plates.coax:
 # reach, order, lift or fold, and everglade/hud/parts.coax eg_plates, #13088) take Everglade II to 958,822;
 # about 0.6% headroom.
-# The staged shots for film (everglade2-stage.coax, #13093: ?stage= path-fly, path-walk, clearing-empty,
+# The staged shots for film (everglade/client/stage.coax, #13093: ?stage= path-fly, path-walk, clearing-empty,
 # clearing-walk-in and bow-fight on the engine's camera track) and the released-attack rules (#13120):
 # 965,799 bytes measured on the remote hosts at 8efb639b8d; about 0.5% headroom.
 # The HUD layout trace (#13076) on main, and the side bar's menu room and emblem clearance (#13092):

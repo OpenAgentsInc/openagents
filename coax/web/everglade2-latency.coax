@@ -26,7 +26,7 @@
 #load "../lib/net/cdp.coax";
 
 EL_TRIALS :: 16;
-EL_RANGER :: 7;   // everglade2-create.coax E2C_CLASS_NAMES
+EL_RANGER :: 7;   // everglade/client/create.coax E2C_CLASS_NAMES
 
 Buf :: struct { b: [8192] u8; n: int; bad: bool; }
 bput :: (o: [] Buf, s: string) {

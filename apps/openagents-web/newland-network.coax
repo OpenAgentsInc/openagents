@@ -1,6 +1,6 @@
 // Live homepage: two generic socket pipes, Coax verification, bounded
 // historical catch-up and atomic per-project publication. No signing keys.
-#load "socket.coax";
+#load "../../coax/web/socket.coax";
 #load "../../coax/lib/nostr/json.coax";
 #load "newland-targets.coax";
 #load "home-capacity.coax";

@@ -96,7 +96,7 @@ rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #expo
   if !rm_eg_live(v, k) || s < 0 || s >= EG_SEATS || out.count < 3 || !v[0].eg[k].seat[s].live { return false; }
   st := v[0].eg[k].seat[s];
   // a local --dev room (room-dev.coax) takes the page's own place as it is: a capture's or a check's
-  // ?at= start down the path (everglade2.coax e2_query_local); production never does
+  // ?at= start down the path (everglade/client/client.coax e2_query_local); production never does
   if v[0].dev.on && st.claim && e2_may_stand(st.claim_x, st.claim_z) { out[0] = st.claim_x; out[1] = st.claim_z; out[2] = st.claim_yaw; return true; }
   if !st.back { return false; }
   // a place pressed against the walkable land's edge, which the wire's and the save's rounding put

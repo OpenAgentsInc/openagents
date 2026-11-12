@@ -6,7 +6,7 @@
 //   - times every requestAnimationFrame (p50, p95, p99, the worst; FPS) and the GPU's passes
 //     (coaxialPassTimer: the median and p95 of the first pass's start to the last one's end);
 //   - takes the Wasm memories before and after the walk (an allocation during travel grows one);
-//   - reads the ground's facts (everglade2.coax e2_probe 90 to 98): its route (1 the pack's record),
+//   - reads the ground's facts (everglade/client/client.coax e2_probe 90 to 98): its route (1 the pack's record),
 //     tiles, sets published, refusals, the first refusal, KiB resident, the set's and the glade
 //     tile's revision words, and queries off the tiles.
 //   coax/web/tool.sh coax/web/everglade2-terrain-check.coax http://127.0.0.1:PORT [OUT.tsv] [--size WxH] [--dpr N] [--seconds S]

@@ -22,10 +22,10 @@ change one?"
 | What | File | Owns |
 | --- | --- | --- |
 | The registry entry | [`apps/openagents-web/realms.json`](../../apps/openagents-web/realms.json), entry `everglade2` | Its address, title, module, assets, golden settings and domain |
-| The page | [`apps/openagents-web/everglade2.coax`](../../apps/openagents-web/everglade2.coax) | The frame, the camera, drawing, the class bar and the room's view |
+| The page | [`everglade/client/client.coax`](../client/client.coax) | The frame, the camera, drawing, the class bar and the room's view |
 | The host face | `apps/openagents-web/everglade2-face.c` | The exports the browser host calls, such as `coaxial_frame` |
 | Movement | [`everglade/shared/move.coax`](../shared/move.coax) | Where you may stand, the pace, trunks and rock hulls |
-| Character Create | [`apps/openagents-web/everglade2-create.coax`](../../apps/openagents-web/everglade2-create.coax) | The studio, the arrival and the run into the world |
+| Character Create | [`everglade/client/create.coax`](../client/create.coax) | The studio, the arrival and the run into the world |
 | The GPU passes | [`apps/openagents-web/gpu/everglade2.coax`](../../apps/openagents-web/gpu/everglade2.coax) | The ground, kit pieces, grass and characters, in Coax compiled to WGSL |
 | The land | [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax) | Height, path, woods, clearing and colour, as pure functions |
 | The planting | [`verse/everglade2/plant.coax`](../../verse/everglade2/plant.coax) | Which kit piece stands where |
@@ -53,7 +53,7 @@ Build the compiler once, then the page and its shader module:
 ```sh
 coax/build.sh
 cd apps/openagents-web
-../../coax/web/wasm.sh everglade2.coax everglade2-face.c build/everglade2.wasm \
+../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
   everglade-step.coax ../../aethyr/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/everglade2.coax \
@@ -84,7 +84,7 @@ Tests sit next to the code that they check. Run one file's tests:
 coax/bin/coax test --library verse/everglade2/forest.coax
 coax/bin/coax test --library verse/everglade2/plant.coax
 coax/bin/coax test --library everglade/shared/move.coax
-coax/bin/coax test --library apps/openagents-web/everglade2-walk-test.coax
+coax/bin/coax test --library everglade/client/walk-test.coax
 ```
 
 A test states a fact about the world in words, then asserts it. For example,
@@ -108,7 +108,7 @@ and across the ground's seam at 360 m. It passes only when the ground loads from
 the pack with no refusal and no memory growth. Its receipt is in
 [`docs/verification/everglade2-terrain-2026-11-08/`](../../docs/verification/everglade2-terrain-2026-11-08/).
 
-The page reports its state through `e2_probe` in `everglade2.coax`. Each probe
+The page reports its state through `e2_probe` in `everglade/client/client.coax`. Each probe
 number is one fact, such as the ground's route (probe 90) or the canopy light
 at your position (probe 10). A capture tool reads probes, not pixels, wherever
 it can.
@@ -135,7 +135,7 @@ safe:
    path that is too straight fails it.
 2. `plant.coax` replants the woods from the new path and asserts that no piece
    stands on it.
-3. `everglade2-walk-test.coax` runs the whole path through the real controller
+3. `everglade/client/walk-test.coax` runs the whole path through the real controller
    and asserts that nothing holds you up.
 4. The ground tiles are solid along a ribbon round the path (`e2g_solid` and
    `e2g_ribbon_x` in `ground.coax`), so they follow the new path once you
