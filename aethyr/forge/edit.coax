@@ -567,6 +567,9 @@ FORGE_SCENE_SCALE :: 4;
 FORGE_SCENE_DELETE :: 5;
 FORGE_SCENE_DUPLICATE :: 6;
 FORGE_SCENE_CLEAR :: 7;
+FORGE_SCENE_LAND :: 8;        // a step that changed the land under the things (#13225)
+FORGE_LAND_SAMPLE :: 12;      // bytes a land sample keeps: its height's bits, four material ids, four weights
+FORGE_LAND_HEAD :: 16;        // a land step's rectangle: i0, j0, width, height (u32 each)
 
 ForgeItem :: struct { id: int; mesh: int; x: f32; y: f32; z: f32; yaw: f32; scale: f32 = 1; }
 ForgeItemOp :: struct { kind: int; had: bool; b: ForgeItem; has: bool; a: ForgeItem; }
@@ -575,12 +578,20 @@ ForgeSceneState :: struct {
   n: int; next_id: int;
   op_n: int; step_n: int; done: int; saved: int;
   open: bool; open_kind: int; open_first: int;
+  land_n: int;      // bytes of `land` the land steps hold
+  land_rev: int;    // changes whenever the land does (an edit, an undo, a redo)
 }
+// The land is optional: a scene on a terrain tile (aethyr/terrain-tile.coax) hands its samples
+// (`land_side` a side: heights by rows from the south, four material ids and four weights a sample)
+// and `land`, the bytes its land steps keep. A land step is the rectangle of samples an edit changed,
+// as they were before it; undo swaps them with the land's, so the same bytes then hold the edit for redo.
+// Item steps index `ops`, land steps index `land`; both stand in one order in `steps`.
 ForgeScene :: struct {
   st: [] ForgeSceneState;
   items: [] ForgeItem;
   ops: [] ForgeItemOp;
   steps: [] ForgeStep;
+  land_side: int; heights: [] f32; land_ids: [] u8; land_weights: [] u8; land: [] u8;
 }
 
 forge_scene_reset :: (s: ForgeScene) {
@@ -640,22 +651,44 @@ forge_scene_apply :: (s: ForgeScene, o: ForgeItemOp) -> bool {
   return false;
 }
 
-// Drop the oldest committed step to make room in `ops` or `steps`.
+// Where the first `upto` steps' records end in `ops` (land false) or in `land` (land true).
+forge_scene_end_of :: (s: ForgeScene, upto: int, land: bool) -> int {
+  k := upto;
+  while k > 0 {
+    k -= 1;
+    if (s.steps[k].kind == FORGE_SCENE_LAND) == land { return s.steps[k].first + s.steps[k].count; }
+  }
+  return 0;
+}
+// Drop the oldest committed step to make room in `ops`, `land` or `steps`.
 forge_scene_drop_oldest :: (s: ForgeScene) -> bool {
   if s.st[0].step_n <= 0 { return false; }
   drop := s.steps[0].count;
-  total := s.st[0].op_n;
-  for j: 0..<total - drop { s.ops[j] = s.ops[j + drop]; }
-  s.st[0].op_n -= drop;
-  s.st[0].open_first -= drop;
+  land := s.steps[0].kind == FORGE_SCENE_LAND;
+  if land {
+    for j: 0..<s.st[0].land_n - drop { s.land[j] = s.land[j + drop]; }
+    s.st[0].land_n -= drop;
+  } else {
+    for j: 0..<s.st[0].op_n - drop { s.ops[j] = s.ops[j + drop]; }
+    s.st[0].op_n -= drop;
+    s.st[0].open_first -= drop;
+  }
   for k: 0..<s.st[0].step_n - 1 {
     s.steps[k] = s.steps[k + 1];
-    s.steps[k].first -= drop;
+    if (s.steps[k].kind == FORGE_SCENE_LAND) == land { s.steps[k].first -= drop; }
   }
   s.st[0].step_n -= 1;
   s.st[0].done -= 1;
   s.st[0].saved = ifx s.st[0].saved > 0 then s.st[0].saved - 1 else -1;
   return true;
+}
+// The redo branch goes: a new change lands after an undo.
+forge_scene_branch :: (s: ForgeScene) {
+  if s.st[0].done >= s.st[0].step_n { return; }
+  if s.st[0].saved > s.st[0].done { s.st[0].saved = -1; }
+  s.st[0].op_n = forge_scene_end_of(s, s.st[0].done, false);
+  s.st[0].land_n = forge_scene_end_of(s, s.st[0].done, true);
+  s.st[0].step_n = s.st[0].done;
 }
 
 // Start a compound edit step (`scatter`, multi-object `move`/`delete`, `clear`). The redo branch
@@ -665,7 +698,7 @@ forge_scene_begin :: (s: ForgeScene, kind: int) {
   if s.st[0].open { return; }
   s.st[0].open = true;
   s.st[0].open_kind = kind;
-  s.st[0].open_first = ifx s.st[0].done > 0 then s.steps[s.st[0].done - 1].first + s.steps[s.st[0].done - 1].count else 0;
+  s.st[0].open_first = forge_scene_end_of(s, s.st[0].done, false);
 }
 // The open step's changes so far (none while the redo branch still stands: nothing was pushed).
 forge_scene_open_count :: (s: ForgeScene) -> int {
@@ -709,11 +742,7 @@ forge_scene_push :: (s: ForgeScene, o: ForgeItemOp) -> bool {
     if !grouped { s.st[0].open = false; }
     return false;
   }
-  if s.st[0].done < s.st[0].step_n {   // the first change of a step made after an undo: the redo branch goes
-    if s.st[0].saved > s.st[0].done { s.st[0].saved = -1; }
-    s.st[0].step_n = s.st[0].done;
-    s.st[0].op_n = s.st[0].open_first;
-  }
+  forge_scene_branch(s);   // the first change of a step made after an undo: the redo branch goes
   while s.st[0].op_n >= s.ops.count {
     if !forge_scene_drop_oldest(s) {   // one step bigger than the whole log: take the change back
       _ = forge_scene_apply(s, forge_item_inverse(o));
@@ -808,6 +837,11 @@ forge_scene_saved :: (s: ForgeScene) { s.st[0].saved = s.st[0].done; }
 forge_scene_undo :: (s: ForgeScene) -> bool {
   if !forge_scene_can_undo(s) { return false; }
   st := s.steps[s.st[0].done - 1];
+  if st.kind == FORGE_SCENE_LAND {
+    if !forge_scene_land_swap(s, st) { return false; }
+    s.st[0].done -= 1;
+    return true;
+  }
   k := st.first + st.count;
   while k > st.first {
     k -= 1;
@@ -824,6 +858,11 @@ forge_scene_undo :: (s: ForgeScene) -> bool {
 forge_scene_redo :: (s: ForgeScene) -> bool {
   if !forge_scene_can_redo(s) { return false; }
   st := s.steps[s.st[0].done];
+  if st.kind == FORGE_SCENE_LAND {
+    if !forge_scene_land_swap(s, st) { return false; }
+    s.st[0].done += 1;
+    return true;
+  }
   for k: st.first..<st.first + st.count {
     if !forge_scene_apply(s, s.ops[k]) {
       j := k;
@@ -835,10 +874,95 @@ forge_scene_redo :: (s: ForgeScene) -> bool {
   return true;
 }
 
-// Replay the applied steps of `from` onto `s` as steps of its own; false at the first step whose before diverges.
+// ---- the land's steps
+
+forge_land_ok :: (s: ForgeScene) -> bool {
+  p := s.land_side * s.land_side;
+  return s.land_side >= 2 && s.heights.count == p && s.land_ids.count == p * 4 && s.land_weights.count == p * 4;
+}
+forge_land_u32 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+forge_land_put_u32 :: (b: [] u8, at: int, v: int) { for k: 0..<4 { b[at + k] = cast(u8) ((v >> (k * 8)) & 255); } }
+// A land step's samples and the land's own change places.
+forge_scene_land_swap :: (s: ForgeScene, st: ForgeStep) -> bool {
+  if !forge_land_ok(s) || st.count < FORGE_LAND_HEAD || st.first + st.count > s.st[0].land_n { return false; }
+  i0 := forge_land_u32(s.land, st.first); j0 := forge_land_u32(s.land, st.first + 4);
+  w := forge_land_u32(s.land, st.first + 8); h := forge_land_u32(s.land, st.first + 12);
+  if w < 1 || h < 1 || i0 + w > s.land_side || j0 + h > s.land_side || st.count != FORGE_LAND_HEAD + w * h * FORGE_LAND_SAMPLE { return false; }
+  at := st.first + FORGE_LAND_HEAD;
+  for j: j0..<j0 + h { for i: i0..<i0 + w {
+    k := j * s.land_side + i;
+    kept := forge_land_u32(s.land, at);
+    forge_land_put_u32(s.land, at, cast(int) f32_bits(s.heights[k]));
+    s.heights[k] = f32_from_bits(cast(u32) kept);
+    for q: 0..<4 {
+      a := s.land[at + 4 + q]; s.land[at + 4 + q] = s.land_ids[k * 4 + q]; s.land_ids[k * 4 + q] = a;
+      b := s.land[at + 8 + q]; s.land[at + 8 + q] = s.land_weights[k * 4 + q]; s.land_weights[k * 4 + q] = b;
+    }
+    at += FORGE_LAND_SAMPLE;
+  } }
+  s.st[0].land_rev += 1;
+  return true;
+}
+forge_land_same :: (s: ForgeScene, was_h: [] f32, was_ids: [] u8, was_w: [] u8, k: int) -> bool {
+  if f32_bits(s.heights[k]) != f32_bits(was_h[k]) { return false; }
+  for q: 0..<4 { if s.land_ids[k * 4 + q] != was_ids[k * 4 + q] || s.land_weights[k * 4 + q] != was_w[k * 4 + q] { return false; } }
+  return true;
+}
+// Record a land edit already made in place as one step. `was_*` are the land as it stood before
+// the edit; samples i0..i1 by j0..j1 (both ends in) are where it may differ. The step keeps the
+// smallest rectangle that holds every changed sample; an edit that changed none leaves no step
+// (false). An edit too big for `land` even alone is taken back, and false.
+forge_scene_land_step :: (s: ForgeScene, was_h: [] f32, was_ids: [] u8, was_w: [] u8, i0: int, j0: int, i1: int, j1: int) -> bool {
+  if !forge_land_ok(s) || s.st[0].open || s.steps.count <= 0 { return false; }
+  if was_h.count != s.heights.count || was_ids.count != s.land_ids.count || was_w.count != s.land_weights.count { return false; }
+  side := s.land_side;
+  a0 := ifx i0 < 0 then 0 else i0; b0 := ifx j0 < 0 then 0 else j0;
+  a1 := ifx i1 > side - 1 then side - 1 else i1; b1 := ifx j1 > side - 1 then side - 1 else j1;
+  lo_i := side; hi_i := -1; lo_j := side; hi_j := -1;
+  for j: b0..<b1 + 1 { for i: a0..<a1 + 1 {
+    if forge_land_same(s, was_h, was_ids, was_w, j * side + i) { continue; }
+    if i < lo_i { lo_i = i; } if i > hi_i { hi_i = i; }
+    if j < lo_j { lo_j = j; } if j > hi_j { hi_j = j; }
+  } }
+  if hi_i < 0 { return false; }
+  w := hi_i - lo_i + 1; h := hi_j - lo_j + 1;
+  need := FORGE_LAND_HEAD + w * h * FORGE_LAND_SAMPLE;
+  forge_scene_branch(s);
+  while need <= s.land.count && (s.st[0].land_n + need > s.land.count || s.st[0].step_n >= s.steps.count) {
+    if !forge_scene_drop_oldest(s) { break; }
+  }
+  if s.st[0].land_n + need > s.land.count || s.st[0].step_n >= s.steps.count {
+    for j: lo_j..<hi_j + 1 { for i: lo_i..<hi_i + 1 {
+      k := j * side + i;
+      s.heights[k] = was_h[k];
+      for q: 0..<4 { s.land_ids[k * 4 + q] = was_ids[k * 4 + q]; s.land_weights[k * 4 + q] = was_w[k * 4 + q]; }
+    } }
+    return false;
+  }
+  first := s.st[0].land_n;
+  forge_land_put_u32(s.land, first, lo_i); forge_land_put_u32(s.land, first + 4, lo_j);
+  forge_land_put_u32(s.land, first + 8, w); forge_land_put_u32(s.land, first + 12, h);
+  at := first + FORGE_LAND_HEAD;
+  for j: lo_j..<hi_j + 1 { for i: lo_i..<hi_i + 1 {
+    k := j * side + i;
+    forge_land_put_u32(s.land, at, cast(int) f32_bits(was_h[k]));
+    for q: 0..<4 { s.land[at + 4 + q] = was_ids[k * 4 + q]; s.land[at + 8 + q] = was_w[k * 4 + q]; }
+    at += FORGE_LAND_SAMPLE;
+  } }
+  s.st[0].land_n = first + need;
+  s.steps[s.st[0].step_n] = ForgeStep.{kind = FORGE_SCENE_LAND, first = first, count = need};
+  s.st[0].step_n += 1;
+  s.st[0].done = s.st[0].step_n;
+  s.st[0].land_rev += 1;
+  return true;
+}
+
+// Replay the applied item steps of `from` onto `s` as steps of its own; false at the first step whose
+// before diverges, and at a land step (the land's samples aren't in the log to replay).
 forge_scene_replay :: (s: ForgeScene, from: ForgeScene) -> bool {
   for i: 0..<from.st[0].done {
     st := from.steps[i];
+    if st.kind == FORGE_SCENE_LAND { return false; }
     forge_scene_begin(s, st.kind);
     for k: st.first..<st.first + st.count {
       if !forge_scene_push(s, from.ops[k]) { forge_scene_cancel(s); return false; }
@@ -1183,4 +1307,45 @@ forge_test_scene :: (t: [] ForgeTestScene) -> ForgeScene {
   #assert sm.st[0].n == 10 && sm.st[0].step_n == 3 && sm.st[0].op_n == 6;
   #assert forge_scene_undo(sm) && forge_scene_undo(sm) && forge_scene_undo(sm) && !forge_scene_can_undo(sm);
   #assert sm.st[0].n == 4 && forge_scene_redo(sm) && sm.st[0].n == 6;
+}
+
+ForgeTestLand :: struct { h: [25] f32; ids: [100] u8; w: [100] u8; was_h: [25] f32; was_ids: [100] u8; was_w: [100] u8; pool: [340] u8; }
+forge_test_keep :: (l: [] ForgeTestLand) { for k: 0..<25 { l[0].was_h[k] = l[0].h[k]; } for k: 0..<100 { l[0].was_ids[k] = l[0].ids[k]; l[0].was_w[k] = l[0].w[k]; } }
+#test "land steps stand in one order with item steps: undo and redo swap the changed rectangle, and the oldest goes when the bytes fill" {
+  st: [1] ForgeSceneState; items: [8] ForgeItem; ops: [8] ForgeItemOp; steps: [8] ForgeStep;
+  l: [1] ForgeTestLand;
+  for k: 0..<25 { l[0].ids[k * 4] = 0; l[0].w[k * 4] = 255; for q: 1..<4 { l[0].ids[k * 4 + q] = 255; } }
+  s := ForgeScene.{st = st[..], items = items[..], ops = ops[..], steps = steps[..], land_side = 5, heights = l[0].h[..], land_ids = l[0].ids[..], land_weights = l[0].w[..], land = l[0].pool[..]};
+  // nothing changed: no step
+  forge_test_keep(l[..]);
+  #assert !forge_scene_land_step(s, l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], 0, 0, 4, 4) && !forge_scene_can_undo(s);
+  // a hill on two samples, then a thing, then paint on one sample
+  forge_test_keep(l[..]); l[0].h[12] = 3; l[0].h[13] = 1.5;
+  #assert forge_scene_land_step(s, l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], 0, 0, 4, 4);
+  #assert st[0].step_n == 1 && steps[0].kind == FORGE_SCENE_LAND && steps[0].count == FORGE_LAND_HEAD + 2 * FORGE_LAND_SAMPLE && st[0].land_rev == 1;
+  rock := forge_scene_place(s, 2, 1.0, 0.0, 1.0, 0.0, 1.0);
+  forge_test_keep(l[..]); l[0].ids[6 * 4] = 3; l[0].ids[6 * 4 + 1] = 0; l[0].w[6 * 4] = 200; l[0].w[6 * 4 + 1] = 55;
+  #assert forge_scene_land_step(s, l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], 1, 1, 1, 1) && st[0].step_n == 3;
+  // undo walks back through paint, the thing and the hill; redo forward again
+  #assert forge_scene_undo(s) && l[0].ids[6 * 4] == 0 && l[0].w[6 * 4] == 255 && l[0].w[6 * 4 + 1] == 0 && l[0].h[12] == 3;
+  #assert forge_scene_undo(s) && st[0].n == 0 && l[0].h[12] == 3;
+  #assert forge_scene_undo(s) && l[0].h[12] == 0 && l[0].h[13] == 0 && !forge_scene_can_undo(s);
+  #assert forge_scene_redo(s) && l[0].h[12] == 3 && l[0].h[13] == 1.5;
+  #assert forge_scene_redo(s) && st[0].n == 1 && forge_scene_redo(s) && l[0].ids[6 * 4] == 3 && l[0].w[6 * 4 + 1] == 55 && !forge_scene_can_redo(s);
+  // a new land edit after an undo drops the redo branch, its bytes too
+  #assert forge_scene_undo(s) && forge_scene_undo(s);
+  forge_test_keep(l[..]); l[0].h[0] = -2;
+  #assert forge_scene_land_step(s, l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], 0, 0, 4, 4) && !forge_scene_can_redo(s) && st[0].step_n == 2 && st[0].op_n == 0;
+  #assert st[0].land_n == 2 * FORGE_LAND_HEAD + 3 * FORGE_LAND_SAMPLE;
+  // the whole land (25 samples, 316 bytes) fits only once the older land steps go; an item step between them stays in order
+  rock = forge_scene_place(s, 2, 1.0, 0.0, 1.0, 0.0, 1.0);
+  forge_test_keep(l[..]); for k: 0..<25 { l[0].h[k] = 7; }
+  #assert forge_scene_land_step(s, l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], 0, 0, 4, 4);
+  #assert st[0].land_n == FORGE_LAND_HEAD + 25 * FORGE_LAND_SAMPLE && st[0].step_n == 2 && steps[0].kind == FORGE_SCENE_PLACE && steps[1].first == 0;
+  #assert forge_scene_undo(s) && l[0].h[0] == -2 && l[0].h[12] == 3 && forge_scene_undo(s) && st[0].n == 0 && !forge_scene_can_undo(s);
+  // an edit too big for the bytes even alone is taken back
+  small: [100] u8;
+  t := ForgeScene.{st = st[..], items = items[..], ops = ops[..], steps = steps[..], land_side = 5, heights = l[0].h[..], land_ids = l[0].ids[..], land_weights = l[0].w[..], land = small[..]};
+  forge_test_keep(l[..]); for k: 0..<25 { l[0].h[k] = 9; }
+  #assert !forge_scene_land_step(t, l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], 0, 0, 4, 4) && l[0].h[0] == -2 && l[0].h[12] == 3;
 }

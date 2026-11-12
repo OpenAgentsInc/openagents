@@ -2,7 +2,9 @@
 // centre. What you type goes to /api/worldbuilder/act (coax/web/api/worldbuilder.c), which asks
 // the model for typed edits; worldbuilder-plan.coax carries them out on Aethyrforge's scene edit
 // log (aethyr/forge/edit.coax), drawn here from the Quaternius pack (worldbuilder_pack.coax), each
-// mesh one instanced draw. A tap or click on the ground says where "here" is. The chat box edits
+// mesh one instanced draw. The things stand on the world's ground, an Aethyr terrain tile
+// (worldbuilder-land.coax) painted and shaped by chat or with the brush bar over the chat box, and
+// drawn from its samples in one draw. A tap or click on the ground says where "here" is. The chat box edits
 // components/core/edit.coax's EditBuf with the site's keys (textkeys.coax), and the HUD and its
 // buttons (SEND, UNDO, REDO) are drawn by components/kit/controls.coax in the Verse skin. The
 // world is kept in this browser (the slot's save, host action 4).
@@ -17,11 +19,12 @@
 #load "../../components/backend/gpu.coax";
 #load "textkeys.coax";
 #load "worldbuilder-plan.coax";
+#load "../../aethyr/ground-query.coax";
 
 VERTEX_FLOATS :: GP_VERTEX_FLOATS;
 MAX_VERTICES :: 8192;
-VIEW_AT :: 8; HERE_AT :: 24; EYE_AT :: 28; RAY_AT :: 32;
-UNIFORM_FLOATS :: 44;
+VIEW_AT :: 8; HERE_AT :: 24; EYE_AT :: 28; RAY_AT :: 32; BRUSH_AT :: 44; LAYERS_AT :: 48;
+UNIFORM_FLOATS :: 132;   // 33 vec4s (gpu/worldbuilder.bindings)
 
 KEY_ESCAPE :: -1;   KEY_ENTER :: -2;    KEY_BACKSPACE :: -3; KEY_LEFT :: -4;
 KEY_RIGHT :: -5;    KEY_UP :: -6;       KEY_DOWN :: -7;      KEY_HOME :: -8;
@@ -39,32 +42,53 @@ WB_INSTANCES :: 12288;  // pieces drawn: a building is a dozen or so
 TYPED :: 300;
 REPLY :: 200;
 BODY :: 15000;
-SAVE_CAP :: 262144;
+SAVE_CAP :: 1310720;    // a kept world's text at most: its things, then its ground (worldbuilder-face.c's inbox holds as much)
 ACT_URL :: "/api/worldbuilder/act";
 STATUS_URL :: "/api/worldbuilder/status";
 RECENT :: 24;
 PRESENT :: 60;
 FOV :: 0.9;
 PITCH_LO :: 0.18; PITCH_HI :: 1.45;
-DIST_LO :: 3.0; DIST_HI :: 160.0;
+DIST_LO :: 3.0; DIST_HI :: 160.0; DIST_FAR :: 420.0;   // the nearest view, the farthest of a small scene, and of any
+FRAME_WAIT :: 4.0;      // seconds after the person moves the view before a command may frame it again
 TAP_SLOP :: 8.0;        // CSS pixels a press may move and still be a tap
 DOUBLE_S :: 0.35;       // seconds between clicks of a double or triple click
 
 HIT_BUTTON :: 1;
 HIT_FIELD :: 2;
-BTN_SEND :: 0; BTN_UNDO :: 1; BTN_REDO :: 2;
+HIT_TOOL :: 3;          // the brush bar's tools (a tab: a the row's first, b its place in the row)
+HIT_LAYER :: 4;         // ... its layers
+HIT_SLIDE :: 5;         // ... its sliders (a: SLIDE_SIZE or SLIDE_STRENGTH)
+BTN_SEND :: 0; BTN_UNDO :: 1; BTN_REDO :: 2; BTN_FRAME :: 3;
+// The brush bar's tools: LOOK turns the view and taps "here"; the others act on the ground under a drag.
+TOOL_LOOK :: 0; TOOL_PAINT :: 1; TOOL_RAISE :: 2; TOOL_LOWER :: 3; TOOL_SMOOTH :: 4; TOOL_FLATTEN :: 5;
+TOOLS :: 6;
+TOOL_NAMES :: [TOOLS] string.["LOOK", "PAINT", "RAISE", "LOWER", "SMOOTH", "FLATTEN"];
+PAINTS :: 7;            // the layers a brush paints, in the bar's order; GRID takes paint off
+PAINT_NAMES :: [PAINTS] string.["GRASS", "DIRT", "SAND", "STONE", "SNOW", "WATER", "GRID"];
+PAINT_LAYER :: [PAINTS] int.[L_GRASS, L_DIRT, L_SAND, L_STONE, L_SNOW, L_WATER, L_GRID];
+SLIDE_SIZE :: 0; SLIDE_STRENGTH :: 1;
+BRUSH_LO :: 1.0; BRUSH_HI :: 40.0;   // a brush's radius, metres
 REPLY_PLAIN :: 0; REPLY_NOTICE :: 1;
 
-WB_UNDER :: 256; WB_OVER :: 256; WB_LINES :: 32; WB_HITS :: 16; WB_POOL :: 2048;
+WB_UNDER :: 256; WB_OVER :: 256; WB_LINES :: 48; WB_HITS :: 40; WB_POOL :: 2048;
 
 WorldBuilder :: struct {
   started: bool;
   time: f32; width: f32; height: f32; dpr: f32; still: bool; golden: bool;
   // the camera: it looks at (tx, tz) from dist away, turned yaw (0 looks along -z), pitch down
   tx: f32; tz: f32; gx: f32; gz: f32; yaw: f32; pitch: f32 = 0.6; dist: f32 = 26;
+  ty: f32;                            // the ground's height under what it looks at
+  goal_dist: f32 = 26; framing: bool; // a frame eases the distance too, until the person moves the view
+  moved_at: f32 = -100;               // when the person last turned, zoomed or tapped the view
   // pointers: one drags the view or selects in the chat box, two pinch the view nearer
   down: bool; down_id: int; down_x: f32; down_y: f32; last_x: f32; last_y: f32; moved: bool;
-  down_kind: int; down_btn: int = -1; hover_kind: int; hover_btn: int = -1; press_btn: int = -1;
+  down_kind: int; down_btn: int = -1; hover_kind: int; hover_btn: int = -1; hover_b: int = -1; press_btn: int = -1;
+  // the brush: its tool and layer, its radius (metres) and strength (0 to 1), where it is on the ground,
+  // the stroke under way and the slider a pointer holds
+  tool: int; paint: int; brush_r: f32 = 8; brush_s: f32 = 0.6;
+  brush_x: f32; brush_z: f32; brush_shown: bool; stroking: bool; slide: int = -1;
+  slide_x: [2] f32; slide_w: f32;     // the sliders' tracks this frame, logical pixels
   two: bool; two_id: int; two_x: f32; two_y: f32; pinch: f32;
   // "here": the spot last tapped
   has_here: bool; here_x: f32; here_z: f32; here_at: f32;
@@ -85,7 +109,7 @@ WorldBuilder :: struct {
   saved: [SAVE_CAP] u8; saved_n: int; saved_waiting: bool; saved_version: int;
   outbox: [SAVE_CAP] u8; out_n: int; action: int;
   drawn_version: int = -1;
-  draws: [WB_MESHES * 4] u32; draw_n: int;
+  draws: [(WB_MESHES + 1) * 4] u32; draw_n: int;
   objects: [WB_INSTANCES * INSTANCE_FLOATS] f32; inst_n: int;
   view: [16] f32; eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32;
   // the glyph and icon atlas (coax/web/gpui.js) and the control kit's sheet
@@ -94,6 +118,10 @@ WorldBuilder :: struct {
   under: [WB_UNDER] Prim; over: [WB_OVER] Prim; lines: [WB_LINES] SheetLine; hits: [WB_HITS] SheetHit; pool: [WB_POOL] u8;
   nu: int; no: int; nh: int;
   field: [4] f32;
+  // the ground as the GPU keeps it (wb_land_gpu), and the versions the face sends the stores by
+  ground: [WB_LAND_SAMPLES * 4] f32; ground_seen: int = -1; ground_version: int;
+  land_seated: int = -1;              // the ground version the things were last seated on
+  scene_version: int;
 }
 REQ_ACT :: 1; REQ_STATUS :: 2;
 
@@ -102,6 +130,7 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
 most_i :: (a: int, b: int) -> int { if a > b { return a; } return b; }
+clamp_i :: (a: int, low: int, high: int) -> int { return ifx a < low then low else ifx a > high then high else a; }
 
 put :: (buf: [] u8, at: int, text: string) -> int {
   n := at;
@@ -188,6 +217,8 @@ take_act :: (s: [] WorldBuilder, text: string) {
   st := status_of(text); body := body_of(text);
   if st == 200 {
     sum := wb_answer(s[0].world[..], s[0].cat[..], wb_view(s), body);
+    // the view frames what was built, unless the person moved it a moment ago
+    if (sum.placed > 0 || sum.changed > sum.ground) && s[0].world[0].n > 0 && s[0].time - s[0].moved_at > FRAME_WAIT { frame_all(s); }
     s[0].heard_n = 0;
     s[0].text_undo_live = false;
     if sum.say_n > 0 { set_reply(s, cast(string) sum.say[0..<sum.say_n], REPLY_PLAIN); }
@@ -329,12 +360,12 @@ can_send :: (s: [] WorldBuilder) -> bool {
 }
 
 undo :: (s: [] WorldBuilder) {
-  if s[0].waiting { return; }
+  if s[0].waiting || s[0].stroking { return; }
   s[0].text_undo_live = false;
   if wb_undo(s[0].world[..]) { s[0].reply_n = 0; } else { set_reply(s, "Nothing to undo.", REPLY_PLAIN); }
 }
 redo :: (s: [] WorldBuilder) {
-  if s[0].waiting { return; }
+  if s[0].waiting || s[0].stroking { return; }
   s[0].text_undo_live = false;
   if wb_redo(s[0].world[..]) { s[0].reply_n = 0; } else { set_reply(s, "Nothing to redo.", REPLY_PLAIN); }
 }
@@ -378,6 +409,7 @@ pump :: (s: [] WorldBuilder) {
     s[0].saved_version = v;
     s[0].out_n = wb_save(s[0].world[..], s[0].cat[..], s[0].outbox[..]);
     s[0].action = ACT_KEEP;
+    if s[0].world[0].unkept { set_reply(s, "This ground is too detailed to keep in this browser: its things are kept, its ground isn't.", REPLY_NOTICE); }
   }
 }
 worldbuilder_action :: (s: [] WorldBuilder) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
@@ -414,6 +446,9 @@ worldbuilder_key :: (s: [] WorldBuilder, key: int, down: bool, mods: int) -> boo
       return true;
     }
   }
+
+  // Cmd/Ctrl+. frames everything built (the FRAME button's key)
+  if key == '.' && (mods & (MOD_CTRL | MOD_META)) != 0 { frame_all(s); return true; }
 
   // Cmd or Ctrl: the keys every typed box on the site shares (textkeys.coax)
   cmd := tk_command(key, mods);
@@ -489,7 +524,8 @@ worldbuilder_key :: (s: [] WorldBuilder, key: int, down: bool, mods: int) -> boo
   return false;
 }
 worldbuilder_blur :: (s: [] WorldBuilder) #export_c #effects(all) {
-  s[0].down = false; s[0].two = false; s[0].press_btn = -1; s[0].down_kind = 0; s[0].down_btn = -1;
+  stroke_end(s);
+  s[0].down = false; s[0].two = false; s[0].press_btn = -1; s[0].down_kind = 0; s[0].down_btn = -1; s[0].slide = -1; s[0].brush_shown = false;
 }
 
 wb_scale :: (s: [] WorldBuilder) -> f32 { return hi(s[0].dpr, 0.5); }
@@ -510,30 +546,103 @@ field_offset :: (s: [] WorldBuilder, lx: f32) -> int {
   return text_offset(s[0].atlas[..], sk.body.face, eb_text(s[0].ed[..]), ifx tx < 0 then 0.0f32 else tx);
 }
 
-// Where a screen point's ray meets the ground.
+// Where a screen point's ray meets the ground: the terrain tile where it is shaped (Aethyr's exact
+// ground ray, aethyr/ground-query.coax), else the level floor.
 ground_at :: (s: [] WorldBuilder, x: f32, y: f32) -> WbSpot {
   nx := x / hi(s[0].width, 1) * 2 - 1; ny := 1 - y / hi(s[0].height, 1) * 2;
   rx := s[0].fwd[0] + nx * s[0].right[0] + ny * s[0].up[0];
   ry := s[0].fwd[1] + nx * s[0].right[1] + ny * s[0].up[1];
   rz := s[0].fwd[2] + nx * s[0].right[2] + ny * s[0].up[2];
+  l := s[0].world[0].land[..];
+  if l[0].on && !l[0].bare {
+    hit := ground_ray(wb_land_ground(), l[0].heights[..], world_point(s[0].eye[0], s[0].eye[1], s[0].eye[2]), world_point(rx, ry, rz), 2000, GROUND_RAY_CELLS);
+    if hit.status == GroundRayStatus.ok && hit.hit { return WbSpot.{x = hit.point.x, z = hit.point.z, ok = true}; }
+  }
   if ry > -0.0001 { return WbSpot.{}; }
   t := -s[0].eye[1] / ry;
-  if t > 2000 { return WbSpot.{}; }
+  if t > 2000 || t < 0 { return WbSpot.{}; }
   return WbSpot.{x = s[0].eye[0] + rx * t, z = s[0].eye[2] + rz * t, ok = true};
 }
 set_here :: (s: [] WorldBuilder, x: f32, y: f32) {
   g := ground_at(s, x, y);
   if !g.ok { return; }
   s[0].has_here = true; s[0].here_x = g.x; s[0].here_z = g.z; s[0].here_at = s[0].time;
+  s[0].gx = g.x; s[0].gz = g.z; s[0].framing = false; s[0].moved_at = s[0].time;
 }
+
+// ---- the view: framing what was built (#13224)
+
+// The farthest the view may pull back: further for a scene that reaches further.
+dist_far :: (s: [] WorldBuilder) -> f32 {
+  idx: [WB_OBJECTS] int; n := 0;
+  for i: 0..<s[0].world[0].n { idx[n] = i; n += 1; }
+  g := wb_group(s[0].world[..], s[0].cat[..], idx[0..<n]);
+  return clamp(hi(cast(f32) DIST_HI, g.r * 3.2), DIST_HI, DIST_FAR);
+}
+// Sends the view to hold everything built, filling most of it: the middle of the things and far
+// enough back for their reach on the narrower way of the screen. An empty world frames the middle.
+frame_all :: (s: [] WorldBuilder) {
+  idx: [WB_OBJECTS] int; n := 0;
+  for i: 0..<s[0].world[0].n { idx[n] = i; n += 1; }
+  g := wb_group(s[0].world[..], s[0].cat[..], idx[0..<n]);
+  aspect := s[0].width / hi(s[0].height, 1);
+  t: f32 = 1 / tan(cast(f32) FOV * 0.5);
+  sx := t / hi(aspect, 0.3); sy := t;
+  if aspect < 1 { sx = t * 0.9; sy = sx * aspect; }
+  s[0].gx = ifx g.ok then g.x else 0.0f32; s[0].gz = ifx g.ok then g.z else 0.0f32;
+  reach := ifx g.ok then hi(g.r, 3) else 9.0f32;
+  s[0].goal_dist = clamp(reach * hi(sx, sy) * 1.3 + 2, DIST_LO, dist_far(s));
+  s[0].framing = true;
+}
+// The person moved the view themselves: a frame under way stops, and commands leave it be a while.
+view_moved :: (s: [] WorldBuilder) { s[0].framing = false; s[0].moved_at = s[0].time; }
+
+// ---- the brush
+
+brush_tool :: (s: [] WorldBuilder) -> int { return s[0].tool - 1; }   // the ground's tool (worldbuilder-land.coax LT_*)
+stroke_dab :: (s: [] WorldBuilder, dt: f32) {
+  layers := PAINT_LAYER;
+  wb_stroke_dab(s[0].world[..], brush_tool(s), layers[s[0].paint], s[0].brush_x, s[0].brush_z, s[0].brush_r, s[0].brush_s, dt);
+}
+stroke_end :: (s: [] WorldBuilder) {
+  if !s[0].stroking { return; }
+  s[0].stroking = false;
+  if wb_stroke_end(s[0].world[..]) { s[0].reply_n = 0; }
+}
+// The GPU's copy of the ground, made again when a sample changed.
+ground_store :: (s: [] WorldBuilder) {
+  l := s[0].world[0].land[..];
+  if !l[0].on || l[0].version == s[0].ground_seen { return; }
+  s[0].ground_seen = l[0].version;
+  wb_land_gpu(l, s[0].ground[..]);
+  s[0].ground_version += 1;
+}
+worldbuilder_ground_bytes :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return WB_LAND_SAMPLES * 16; }
+worldbuilder_ground_version :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return s[0].ground_version; }
+worldbuilder_scene_version :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return s[0].scene_version; }
 
 button_enabled :: (s: [] WorldBuilder, btn: int) -> bool {
   if btn == BTN_SEND { return can_send(s) && s[0].ed[0].n > 0; }
-  if btn == BTN_UNDO { return wb_can_undo(s[0].world[..]) && !s[0].waiting; }
+  if btn == BTN_UNDO { return wb_can_undo(s[0].world[..]) && !s[0].waiting && !s[0].stroking; }
   if btn == BTN_REDO { return wb_can_redo(s[0].world[..]) && !s[0].waiting; }
+  if btn == BTN_FRAME { return s[0].cat_ready; }
   return false;
 }
 
+// A slider's value from where the pointer is on its track.
+slide_to :: (s: [] WorldBuilder, lx: f32) {
+  if s[0].slide < 0 { return; }
+  v := slider_value(s[0].slide_x[s[0].slide], s[0].slide_w, lx);
+  if s[0].slide == SLIDE_SIZE { s[0].brush_r = cast(f32) BRUSH_LO + v * v * (cast(f32) BRUSH_HI - cast(f32) BRUSH_LO); }
+  else { s[0].brush_s = hi(v, 0.05); }
+}
+// The brush's place on the ground under the pointer.
+brush_to :: (s: [] WorldBuilder, x: f32, y: f32) -> bool {
+  g := ground_at(s, x, y);
+  if !g.ok { return false; }
+  s[0].brush_x = g.x; s[0].brush_z = g.z; s[0].brush_shown = true;
+  return true;
+}
 worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   wb_begin(s);
   k := wb_scale(s);
@@ -541,11 +650,15 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
   if phase == POINTER_MOVE && !s[0].down {
     hi_idx := hit_at(s, lx, ly);
     s[0].hover_kind = ifx hi_idx >= 0 then s[0].hits[hi_idx].kind else 0;
-    s[0].hover_btn = ifx hi_idx >= 0 && s[0].hits[hi_idx].kind == HIT_BUTTON then s[0].hits[hi_idx].a else -1;
+    s[0].hover_btn = ifx hi_idx >= 0 then s[0].hits[hi_idx].a else -1;
+    s[0].hover_b = ifx hi_idx >= 0 then s[0].hits[hi_idx].b else -1;
+    s[0].brush_shown = false;
+    if hi_idx < 0 && s[0].tool != TOOL_LOOK && kind == 0 { _ = brush_to(s, x, y); }
     return false;
   }
   if phase == POINTER_DOWN {
     if s[0].down && !s[0].two && id != s[0].down_id {
+      stroke_end(s);
       s[0].two = true; s[0].two_id = id; s[0].two_x = x; s[0].two_y = y;
       dx := x - s[0].last_x; dy := y - s[0].last_y; s[0].pinch = sqrt(dx * dx + dy * dy);
       s[0].moved = true;
@@ -555,8 +668,18 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
     s[0].moved = false;
     hi_idx := hit_at(s, lx, ly);
     s[0].down_kind = ifx hi_idx >= 0 then s[0].hits[hi_idx].kind else 0;
-    s[0].down_btn = ifx hi_idx >= 0 && s[0].hits[hi_idx].kind == HIT_BUTTON then s[0].hits[hi_idx].a else -1;
-    s[0].press_btn = s[0].down_btn;
+    s[0].down_btn = ifx hi_idx >= 0 then s[0].hits[hi_idx].a else -1;
+    s[0].hover_b = ifx hi_idx >= 0 then s[0].hits[hi_idx].b else -1;
+    s[0].press_btn = ifx s[0].down_kind == HIT_BUTTON then s[0].down_btn else -1;
+    if s[0].down_kind == HIT_SLIDE { s[0].slide = s[0].down_btn; slide_to(s, lx); }
+    if s[0].down_kind == HIT_TOOL { s[0].tool = clamp_i(s[0].down_btn + s[0].hover_b, 0, TOOLS - 1); s[0].brush_shown = false; }
+    if s[0].down_kind == HIT_LAYER { s[0].paint = clamp_i(s[0].down_btn + s[0].hover_b, 0, PAINTS - 1); }
+    // a brush goes down on the ground: its stroke begins, and acts at once (a tap is a dab)
+    if s[0].down_kind == 0 && s[0].tool != TOOL_LOOK && s[0].cat_ready && !s[0].waiting && brush_to(s, x, y) {
+      wb_stroke_begin(s[0].world[..], s[0].brush_x, s[0].brush_z);
+      s[0].stroking = true;
+      stroke_dab(s, 1.0 / 30.0);
+    }
     if s[0].down_kind == HIT_FIELD {
       e := s[0].ed[..];
       off := field_offset(s, lx);
@@ -592,12 +715,17 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
           eb_select_to(e, off);
         }
         s[0].ed_follow = true; s[0].caret_at = s[0].time;
+      } else if s[0].down_kind == HIT_SLIDE && !s[0].two {
+        slide_to(s, lx);
+      } else if s[0].stroking {
+        _ = brush_to(s, x, y);
       } else if s[0].down_kind == 0 {
         dx := x - s[0].last_x; dy := y - s[0].last_y;
         if !s[0].moved && abs(x - s[0].down_x) + abs(y - s[0].down_y) > TAP_SLOP * k { s[0].moved = true; }
-        if s[0].moved && !s[0].two {
+        if s[0].moved && !s[0].two && s[0].tool == TOOL_LOOK {
           s[0].yaw -= dx / k * 0.006;
           s[0].pitch = clamp(s[0].pitch + dy / k * 0.005, PITCH_LO, PITCH_HI);
+          view_moved(s);
         }
       }
       s[0].last_x = x; s[0].last_y = y;
@@ -605,7 +733,7 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
     if s[0].two {
       ddx := s[0].two_x - s[0].last_x; ddy := s[0].two_y - s[0].last_y;
       d := sqrt(ddx * ddx + ddy * ddy);
-      if s[0].pinch > 1 && d > 1 { s[0].dist = clamp(s[0].dist * s[0].pinch / d, DIST_LO, DIST_HI); }
+      if s[0].pinch > 1 && d > 1 { s[0].dist = clamp(s[0].dist * s[0].pinch / d, DIST_LO, dist_far(s)); view_moved(s); }
       s[0].pinch = d;
     }
     return true;
@@ -614,8 +742,11 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
   if s[0].two && id == s[0].two_id { s[0].two = false; return true; }
   if id != s[0].down_id { return true; }
   was_kind := s[0].down_kind; was_btn := s[0].down_btn;
-  s[0].down = false; s[0].two = false; s[0].press_btn = -1; s[0].down_kind = 0; s[0].down_btn = -1;
-  if phase == POINTER_UP && !s[0].moved {
+  stroked := s[0].stroking;
+  stroke_end(s);
+  s[0].down = false; s[0].two = false; s[0].press_btn = -1; s[0].down_kind = 0; s[0].down_btn = -1; s[0].slide = -1;
+  if kind != 0 { s[0].brush_shown = false; }   // a finger lifted: no brush hangs where it was
+  if phase == POINTER_UP && !s[0].moved && !stroked {
     hi_idx := hit_at(s, lx, ly);
     now_kind := ifx hi_idx >= 0 then s[0].hits[hi_idx].kind else 0;
     now_btn := ifx hi_idx >= 0 && now_kind == HIT_BUTTON then s[0].hits[hi_idx].a else -1;
@@ -623,17 +754,22 @@ worldbuilder_pointer :: (s: [] WorldBuilder, x: f32, y: f32, phase: int, kind: i
       if was_btn == BTN_SEND { send_typed(s); }
       else if was_btn == BTN_UNDO { undo(s); }
       else if was_btn == BTN_REDO { redo(s); }
-    } else if was_kind == 0 && now_kind == 0 { set_here(s, x, y); }
+      else if was_btn == BTN_FRAME { frame_all(s); }
+    } else if was_kind == 0 && now_kind == 0 && s[0].tool == TOOL_LOOK { set_here(s, x, y); }
   }
   return true;
 }
+// The wheel pulls the view back or in by a share of how far it is, so a step feels the same near and far.
 worldbuilder_wheel :: (s: [] WorldBuilder, dy: f32) -> bool #export_c #effects(all) {
-  s[0].dist = clamp(s[0].dist * exp(dy * 0.0015), DIST_LO, DIST_HI);
+  s[0].dist = clamp(s[0].dist * exp(clamp(dy, -400, 400) * 0.0015), DIST_LO, dist_far(s));
+  view_moved(s);
   return true;
 }
 worldbuilder_cursor :: (s: [] WorldBuilder) -> int #export_c #effects(all) {
   if s[0].hover_kind == HIT_FIELD { return 3; }
   if s[0].hover_kind == HIT_BUTTON && button_enabled(s, s[0].hover_btn) { return 1; }
+  if s[0].hover_kind == HIT_TOOL || s[0].hover_kind == HIT_LAYER || s[0].hover_kind == HIT_SLIDE { return 1; }
+  if s[0].tool != TOOL_LOOK && s[0].hover_kind == 0 { return 2; }
   return 0;
 }
 
@@ -644,7 +780,7 @@ view_rows :: (s: [] WorldBuilder) {
   hx := sin(s[0].yaw); hz := -cos(s[0].yaw);
   cp := cos(s[0].pitch); sp := sin(s[0].pitch);
   fx := hx * cp; fy := -sp; fz := hz * cp;
-  ex := s[0].tx - fx * s[0].dist; ey := -fy * s[0].dist; ez := s[0].tz - fz * s[0].dist;
+  ex := s[0].tx - fx * s[0].dist; ey := s[0].ty - fy * s[0].dist; ez := s[0].tz - fz * s[0].dist;
   rx := -fz; rz := fx; rl := sqrt(rx * rx + rz * rz); rx /= rl; rz /= rl;   // f × (0, 1, 0)
   ux := -rz * fy; uy := rz * fx - rx * fz; uz := rx * fy;                    // r × f
   t: f32 = 1 / tan(cast(f32) FOV * 0.5);
@@ -682,21 +818,32 @@ pieces_of :: (s: [] WorldBuilder, m: int) -> int { return ifx wb_is_building(s[0
 // The scene: one draw a mesh of the pack, its instances' rows, rebuilt when the world changes.
 scene :: (s: [] WorldBuilder) {
   w := s[0].world[..]; c := s[0].cat[..];
-  if !s[0].cat_ready || s[0].drawn_version == w[0].version { return; }
-  s[0].drawn_version = w[0].version;
+  l := w[0].land[..];
+  if !s[0].cat_ready || (s[0].drawn_version == w[0].version && s[0].land_seated == l[0].version) { return; }
+  s[0].drawn_version = w[0].version; s[0].land_seated = l[0].version; s[0].scene_version += 1;
   counts: [WB_MESHES] int; start: [WB_MESHES] int;
   // the things that fit, in order (every thing but past WB_INSTANCES pieces)
   total := 0; upto := 0;
   while upto < w[0].n {
     m := w[0].objs[upto].mesh;
-    if total + pieces_of(s, m) > WB_INSTANCES { break; }
+    if total + pieces_of(s, m) > WB_INSTANCES - 1 { break; }
     total += pieces_of(s, m);
     if wb_is_building(c, m) { for p: 0..<c[0].part_n[m] { counts[c[0].parts[c[0].part_first[m] + p].mesh] += 1; } }
     else { counts[m] += 1; }
     upto += 1;
   }
   s[0].draw_n = 0;
-  at := 0;
+  // the ground first: one draw of the tile's cells, six vertices each, no index buffer (the top bit
+  // of its base instance says so, coax/web/host.js); its row 0 of the store only says "the ground".
+  // A level, bare Grid needs none: the page's background is that floor.
+  for q: 0..<INSTANCE_FLOATS { s[0].objects[q] = 0; }
+  s[0].objects[15] = 1;
+  if l[0].on && !l[0].bare {
+    s[0].draws[0] = 0; s[0].draws[1] = cast(u32) (WB_LAND_CELLS * WB_LAND_CELLS * 6);
+    s[0].draws[2] = 0x80000000; s[0].draws[3] = 1;
+    s[0].draw_n = 1;
+  }
+  at := 1;
   for m: 0..<c[0].real_n {
     start[m] = at;
     if counts[m] == 0 { continue; }
@@ -714,11 +861,11 @@ scene :: (s: [] WorldBuilder) {
       for p: 0..<c[0].part_n[o.mesh] {
         q := c[0].parts[c[0].part_first[o.mesh] + p];
         x := o.x + k * (co * q.x + sn * q.z); z := o.z + k * (-sn * q.x + co * q.z);
-        rows_of(s, q.mesh, x, k * q.y, z, o.yaw + q.yaw, k, start[q.mesh] * INSTANCE_FLOATS);
+        rows_of(s, q.mesh, x, wb_land_y(l, o.x, o.z) + k * q.y, z, o.yaw + q.yaw, k, start[q.mesh] * INSTANCE_FLOATS);
         start[q.mesh] += 1;
       }
     } else {
-      rows_of(s, o.mesh, o.x, 0, o.z, o.yaw, o.scale, start[o.mesh] * INSTANCE_FLOATS);
+      rows_of(s, o.mesh, o.x, wb_land_y(l, o.x, o.z), o.z, o.yaw, o.scale, start[o.mesh] * INSTANCE_FLOATS);
       start[o.mesh] += 1;
     }
   }
@@ -747,6 +894,35 @@ wb_button :: (sh: [] Sheet, m: TextMeasure, sk: UiSkin, s: [] WorldBuilder, x: f
   return w;
 }
 
+// Tabs in rows no wider than max_w, each row centred on cx: how many rows, and the rows drawn (a
+// tab's hit: a its row's first label, b its place in the row). Returns the height used.
+wb_tab_fit :: (m: TextMeasure, sk: UiSkin, max_w: f32, labels: [] string, from: int) -> int {
+  w: f32 = 0; e := from;
+  while e < labels.count {
+    tw := ceil(measure_width(m, sk.label.face, labels[e])) + 2 * sk.control_pad + sk.space / 2;
+    if e > from && w + tw > max_w { break; }
+    w += tw; e += 1;
+  }
+  return e;
+}
+wb_tab_rows_count :: (m: TextMeasure, sk: UiSkin, max_w: f32, labels: [] string) -> int {
+  n := 0; i := 0;
+  while i < labels.count { i = wb_tab_fit(m, sk, max_w, labels, i); n += 1; }
+  return n;
+}
+wb_tab_rows :: (sh: [] Sheet, m: TextMeasure, sk: UiSkin, cx: f32, y: f32, max_w: f32, labels: [] string, active: int, hot: int, hit_kind: int) -> f32 {
+  h: f32 = 0; i := 0;
+  while i < labels.count {
+    e := wb_tab_fit(m, sk, max_w, labels, i);
+    w: f32 = 0;
+    for k: i..<e { w += ceil(measure_width(m, sk.label.face, labels[k])) + 2 * sk.control_pad + sk.space / 2; }
+    _ = tabs(sh, m, sk, cx - (w - sk.space / 2) * 0.5, y + h, labels[i..<e], active - i, hot - i, hit_kind, i);
+    h += sk.control_h + sk.space * 0.5;
+    i = e;
+  }
+  return h;
+}
+
 wb_centred :: (sh: [] Sheet, m: TextMeasure, cx: f32, y: f32, line_h: f32, face: int, color: Rgba, text: string) -> f32 {
   w := measure_width(m, face, text);
   return sheet_text(sh, m, -1, cx - w * 0.5, y, line_h, face, color, text);
@@ -764,7 +940,7 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
 
   sh: [1] Sheet;
   sh[0] = Sheet.{under = s[0].under[..], over = s[0].over[..], lines = s[0].lines[..], hits = s[0].hits[..], pool = s[0].pool[..],
-                 hover_kind = s[0].hover_kind, hover_a = s[0].hover_btn};
+                 hover_kind = s[0].hover_kind, hover_a = s[0].hover_btn, hover_b = s[0].hover_b};
 
   buf: [240] u8;
 
@@ -775,6 +951,10 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   ux := lw - g - btns_w;
   _ = wb_button(sh[..], m, sk, s, ux, g, "UNDO", BTN_UNDO, false);
   _ = wb_button(sh[..], m, sk, s, ux + uw + sk.space, g, "REDO", BTN_REDO, false);
+  // FRAME brings everything built into view (Cmd/Ctrl+.): beside them, under them on a phone
+  fw0 := button_width(m, sk, "FRAME");
+  if phone { _ = wb_button(sh[..], m, sk, s, lw - g - fw0, g + sk.control_h + sk.space, "FRAME", BTN_FRAME, false); }
+  else { _ = wb_button(sh[..], m, sk, s, ux - sk.space - fw0, g, "FRAME", BTN_FRAME, false); btns_w += fw0 + sk.space; }
 
   // WorldBuilder, how full the world is, and the shared limits, top left in a Verse panel
   cn := put_int(buf[..], 0, s[0].world[0].n); cn = put(buf[..], cn, " of "); cn = put_int(buf[..], cn, WB_OBJECTS); cn = put(buf[..], cn, " things");
@@ -877,7 +1057,7 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   if e[0].n > 0 {
     _ = sheet_text(sh[..], m, -1, pen_x, ty, sk.body.line, sk.body.face, sk.ink, typed);
   } else {
-    hint := ifx s[0].world[0].n == 0 then "Put a tree here" else "Say what to build";
+    hint := ifx s[0].world[0].n == 0 && s[0].world[0].land[0].bare then "Put a tree here" else "Say what to build";
     _ = sheet_text(sh[..], m, -1, tx, ty, sk.body.line, sk.body.face, sk.faint, hint);
   }
   blink := s[0].still || cast(int) floor((s[0].time - s[0].caret_at) * 2) % 2 == 0;
@@ -885,6 +1065,53 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
     sheet_fill(sh[..], pen_x + caret_x, ty + 2, 2, sk.body.line - 4, 0, sk.accent);
   }
   sheet_unclip(sh[..]);
+
+  // the brush bar over the chat box and its line: the tools; then, for a brush, what it paints and
+  // how wide and how strong it is
+  tool_names := TOOL_NAMES; paint_names := PAINT_NAMES;
+  bar_w := lo(lw - 2 * g, 680);
+  in_w := bar_w - 2 * sk.pad;
+  tool_rows := wb_tab_rows_count(m, sk, in_w, tool_names[..]);
+  paint_rows := ifx s[0].tool == TOOL_PAINT then wb_tab_rows_count(m, sk, in_w, paint_names[..]) else 0;
+  row_h := sk.control_h + sk.space * 0.5;
+  slide_two := in_w < 430;
+  slide_rows := ifx s[0].tool == TOOL_LOOK then 0 else ifx slide_two then 2 else 1;
+  bar_h := cast(f32) (tool_rows + paint_rows + slide_rows) * row_h - sk.space * 0.5 + 2 * sk.space;
+  by1 := fy0 - sk.space - sk.body.line - sk.space - sk.small.line - 2;
+  by0 := by1 - bar_h;
+  bx0 := (lw - bar_w) * 0.5;
+  if s[0].cat_ready {
+    sh[0].nu = uiskin_panel(sh[0].under, sh[0].nu, sk, bx0, by0, bar_w, bar_h);
+    sheet_hit(sh[..], HIT_FIELD + 100, 0, 0, bx0, by0, bar_w, bar_h);   // the bar itself takes a press: no brush or tap goes through it
+    cy2 := by0 + sk.space;
+    hot_tool := ifx s[0].hover_kind == HIT_TOOL then s[0].hover_btn + s[0].hover_b else -1;
+    cy2 += wb_tab_rows(sh[..], m, sk, lw * 0.5, cy2, in_w, tool_names[..], s[0].tool, hot_tool, HIT_TOOL);
+    if s[0].tool == TOOL_PAINT {
+      hot_paint := ifx s[0].hover_kind == HIT_LAYER then s[0].hover_btn + s[0].hover_b else -1;
+      cy2 += wb_tab_rows(sh[..], m, sk, lw * 0.5, cy2, in_w, paint_names[..], s[0].paint, hot_paint, HIT_LAYER);
+    }
+    if s[0].tool != TOOL_LOOK {
+      // SIZE and STRENGTH: a label, the slider, its value
+      zn := put(buf[..], 0, "SIZE "); zn = put_int(buf[..], zn, cast(int) (s[0].brush_r + 0.5)); zn = put(buf[..], zn, " m");
+      size_label := sheet_pool(sh[..], cast(string) buf[0..<zn]);
+      zn = put(buf[..], 0, "STRENGTH "); zn = put_int(buf[..], zn, cast(int) (s[0].brush_s * 100 + 0.5)); zn = put(buf[..], zn, "%");
+      strength_label := sheet_pool(sh[..], cast(string) buf[0..<zn]);
+      lab_w := measure_width(m, sk.small.face, "STRENGTH 100%") + sk.space;
+      cell_w := ifx slide_two then in_w else (in_w - sk.space * 2) * 0.5;
+      track := hi(cell_w - lab_w, 60);
+      s[0].slide_w = track;
+      x_a := bx0 + sk.pad;
+      x_b := ifx slide_two then x_a else x_a + cell_w + sk.space * 2;
+      y_b := ifx slide_two then cy2 + row_h else cy2;
+      ty2 := (sk.control_h - sk.small.line) * 0.5;
+      _ = sheet_text(sh[..], m, -1, x_a, cy2 + ty2, sk.small.line, sk.small.face, sk.muted, size_label);
+      s[0].slide_x[SLIDE_SIZE] = x_a + lab_w;
+      slider(sh[..], sk, x_a + lab_w, cy2, track, sqrt(clamp((s[0].brush_r - cast(f32) BRUSH_LO) / (cast(f32) BRUSH_HI - cast(f32) BRUSH_LO), 0, 1)), HIT_SLIDE, SLIDE_SIZE);
+      _ = sheet_text(sh[..], m, -1, x_b, y_b + ty2, sk.small.line, sk.small.face, sk.muted, strength_label);
+      s[0].slide_x[SLIDE_STRENGTH] = x_b + lab_w;
+      slider(sh[..], sk, x_b + lab_w, y_b, track, s[0].brush_s, HIT_SLIDE, SLIDE_STRENGTH);
+    }
+  }
 
   // over the chat box: the words sent while waiting, resting or flood notices, the model's reply, or the ground hint
   ry := fy0 - sk.space - sk.body.line;
@@ -906,6 +1133,9 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
     line := sheet_pool(sh[..], cast(string) s[0].reply[0..<s[0].reply_n]);
     tone := ifx s[0].reply_kind == REPLY_NOTICE then sk.warning else sk.ink;
     _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.body.line, sk.body.face, tone, line);
+  } else if s[0].tool != TOOL_LOOK && s[0].cat_ready {
+    hint := ifx phone then "Drag on the ground to use the brush · pinch to zoom · LOOK turns the view" else "Drag on the ground to use the brush · scroll to zoom · LOOK turns the view";
+    _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.small.line, sk.small.face, sk.muted, hint);
   } else if !s[0].has_here && s[0].cat_ready {
     hint := ifx phone then "Tap the ground to say where \"here\" is · drag to turn · pinch to zoom" else "Click the ground to say where \"here\" is · drag to turn · scroll to zoom";
     _ = wb_centred(sh[..], m, lw * 0.5, ry, sk.small.line, sk.small.face, sk.muted, hint);
@@ -928,11 +1158,18 @@ worldbuilder_frame :: (s: [] WorldBuilder, out: [] f32, uniforms: [] f32, width:
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
   s[0].ed[0].clock = s[0].time;
-  // the view glides to the spot last tapped
-  if s[0].has_here { s[0].gx = s[0].here_x; s[0].gz = s[0].here_z; }
+  // the view glides to where it was sent: the spot last tapped, or a frame of what was built
   glide := ifx held then 1.0f32 else 1 - exp(-step * 4);
   s[0].tx += (s[0].gx - s[0].tx) * glide; s[0].tz += (s[0].gz - s[0].tz) * glide;
+  if s[0].framing {
+    s[0].dist += (s[0].goal_dist - s[0].dist) * glide;
+    if abs(s[0].goal_dist - s[0].dist) < 0.01 { s[0].dist = s[0].goal_dist; s[0].framing = false; }
+  }
+  s[0].ty += (wb_land_y(s[0].world[0].land[..], s[0].tx, s[0].tz) - s[0].ty) * glide;
+  // a brush held down acts every frame
+  if s[0].stroking { stroke_dab(s, step); }
   pump(s);
+  ground_store(s);
   scene(s);
   for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx held then 20.0f32 else s[0].time;
@@ -949,6 +1186,11 @@ worldbuilder_frame :: (s: [] WorldBuilder, out: [] f32, uniforms: [] f32, width:
     uniforms[EYE_AT + i] = s[0].eye[i]; uniforms[RAY_AT + i] = s[0].fwd[i];
     uniforms[RAY_AT + 4 + i] = s[0].right[i]; uniforms[RAY_AT + 8 + i] = s[0].up[i];
   }
+  if s[0].tool != TOOL_LOOK && (s[0].brush_shown || s[0].stroking) && !s[0].golden {
+    uniforms[BRUSH_AT] = s[0].brush_x; uniforms[BRUSH_AT + 1] = s[0].brush_r; uniforms[BRUSH_AT + 2] = s[0].brush_z;
+    uniforms[BRUSH_AT + 3] = ifx s[0].stroking then 1.0f32 else 0.7f32;
+  }
+  wb_land_looks(uniforms, LAYERS_AT);
   return draw_ui(s, out);
 }
 worldbuilder_golden :: (s: [] WorldBuilder, on: bool) #export_c #effects(all) { s[0].golden = on; }
@@ -1079,11 +1321,12 @@ tap_btn :: (s: [] WorldBuilder, btn: int) -> bool {
   v := wb_view(s[..]);
   sum := wb_answer(s[0].world[..], s[0].cat[..], v, "A place|nature/rock-1|5|||origin||at||||||\nA place|nature/birch-1|2|||origin||at||||||\nA place|nature/rock-1|1|||origin||right||||||\n");
   scene(s[..]);
-  #assert s[0].draw_n == 2 && s[0].draws[0] == 0 && s[0].draws[3] == 2 && s[0].draws[4] == 30 && s[0].draws[6] == 2 && s[0].draws[7] == 6;
+  #assert s[0].draw_n == 2 && s[0].draws[0] == 0 && s[0].draws[2] == 1 && s[0].draws[3] == 2 && s[0].draws[4] == 30 && s[0].draws[6] == 3 && s[0].draws[7] == 6;
   // a rock's corner (0, 0, 0) in its box lands at its spot less half its 1 m footprint, at scale 1 unturned
   o := s[0].world[0].objs[0];
-  #assert abs(s[0].objects[2 * INSTANCE_FLOATS + 5] - 0.6 * o.scale) < 0.001;
-  #assert worldbuilder_store_bytes(s[..]) == 8 * 64;
+  #assert abs(s[0].objects[3 * INSTANCE_FLOATS + 5] - 0.6 * o.scale) < 0.001;
+  // the store's row 0 is the ground's, though a level bare Grid draws none
+  #assert worldbuilder_store_bytes(s[..]) == 9 * 64 && s[0].objects[15] == 1;
 }
 #test "a building draws as its pieces, each turned and placed with it" {
   s: [1] WorldBuilder;
@@ -1093,7 +1336,7 @@ tap_btn :: (s: [] WorldBuilder, btn: int) -> bool {
   scene(s[..]);
   // eight meshes: five walls (the straight one three times), the corner (four), the roof (two: the
   // cottage's and the one alone) and the gable (two)
-  #assert s[0].draw_n == 8 && s[0].inst_n == 16 && worldbuilder_store_bytes(s[..]) == 16 * 64;
+  #assert s[0].draw_n == 8 && s[0].inst_n == 17 && worldbuilder_store_bytes(s[..]) == 17 * 64;
   #assert s[0].draws[5 * 4 + 3] == 4 && s[0].draws[6 * 4 + 3] == 2;
   // the cottage's roof stands 3 m up
   #assert abs(s[0].objects[s[0].draws[6 * 4 + 2] * INSTANCE_FLOATS + 7] - 3) < 0.001;
@@ -1189,4 +1432,98 @@ tap_btn :: (s: [] WorldBuilder, btn: int) -> bool {
   #assert worldbuilder_key(s[..], KEY_BACKSPACE, true, MOD_ALT) && typed_now(s[..]) == "add ";
   #assert worldbuilder_key(s[..], 'a', true, MOD_META) && worldbuilder_key(s[..], KEY_BACKSPACE, true, 0) && s[0].ed[0].n == 0;
   #assert !worldbuilder_key(s[..], 'r', true, MOD_META);   // Cmd+R stays the browser's
+}
+
+// A press and a lift at device pixels (x, y).
+tap_at :: (s: [] WorldBuilder, x: f32, y: f32) -> bool { return worldbuilder_pointer(s, x, y, POINTER_DOWN, 0, 1) && worldbuilder_pointer(s, x, y, POINTER_UP, 0, 1); }
+tab_hit :: (s: [] WorldBuilder, kind: int, index: int) -> SheetHit {
+  for k: 0..<s[0].nh { if s[0].hits[k].kind == kind && s[0].hits[k].a + s[0].hits[k].b == index { return s[0].hits[k]; } }
+  return SheetHit.{};
+}
+tap_tab :: (s: [] WorldBuilder, kind: int, index: int) -> bool {
+  h := tab_hit(s, kind, index);
+  if h.w <= 0 { return false; }
+  d := wb_scale(s);
+  return tap_at(s, (h.x + h.w * 0.5) * d, (h.y + h.h * 0.5) * d);
+}
+#test "the brush bar: a tool and a layer, a drag on the ground paints and shapes it, one undo a stroke; things stay on the ground" #steps 4000000000 {
+  s: [1] WorldBuilder;
+  ready(s[..]);
+  _ = frame(s[..]);
+  w := s[0].world[..]; l := w[0].land[..];
+  _ = wb_answer(w, s[0].cat[..], wb_view(s[..]), "A place|nature/rock-1|1|||origin||at||||||\n");
+  _ = frame(s[..]);
+  #assert s[0].draw_n == 1 && s[0].tool == TOOL_LOOK && tab_hit(s[..], HIT_LAYER, 0).w == 0;
+  #assert worldbuilder_action(s[..]) == ACT_KEEP;
+  worldbuilder_action_done(s[..]);
+  // RAISE: a drag across the middle of the screen lifts the ground there, and the rock with it
+  #assert tap_tab(s[..], HIT_TOOL, TOOL_RAISE) && s[0].tool == TOOL_RAISE && !s[0].has_here;
+  _ = frame(s[..]);
+  #assert worldbuilder_pointer(s[..], 800, 500, POINTER_DOWN, 0, 1) && s[0].stroking;
+  for k: 0..<20 { _ = worldbuilder_pointer(s[..], 800 + cast(f32) k, 500, POINTER_MOVE, 0, 1); _ = frame(s[..]); }
+  yaw := s[0].yaw;
+  #assert worldbuilder_pointer(s[..], 820, 500, POINTER_UP, 0, 1) && !s[0].stroking && s[0].yaw == yaw && !s[0].has_here;
+  top := wb_land_y(l, 0, 0);
+  #assert top > 1 && !l[0].bare && w[0].fg[0].step_n == 2;
+  _ = frame(s[..]);
+  // the ground draws first, one draw without an index buffer; the rock stands on the hill; the GPU's copy has its height
+  #assert s[0].draw_n == 2 && s[0].draws[1] == 393216 && s[0].draws[2] == 0x80000000 && s[0].draws[6] == 1;
+  #assert abs(s[0].objects[INSTANCE_FLOATS + 7] - top) < 0.001 && s[0].ground[(128 * WB_LAND_SIDE + 128) * 4] == top;
+  #assert worldbuilder_ground_version(s[..]) > 0 && worldbuilder_action(s[..]) == ACT_KEEP && has(cast(string) s[0].outbox[0..<s[0].out_n], "~H 128 ");
+  worldbuilder_action_done(s[..]);
+  // PAINT sand at full strength: the layers show, the strength slider sets it
+  #assert tap_tab(s[..], HIT_TOOL, TOOL_PAINT);
+  _ = frame(s[..]);
+  #assert tap_tab(s[..], HIT_LAYER, 2) && s[0].paint == 2;
+  d := wb_scale(s[..]);
+  // the strength slider's far end is full strength; the size slider's near end the smallest brush
+  for k: 0..<s[0].nh {
+    h := s[0].hits[k];
+    if h.kind != HIT_SLIDE { continue; }
+    px := ifx h.a == SLIDE_STRENGTH then (h.x + h.w) * d - 1 else h.x * d + 1;
+    #assert worldbuilder_pointer(s[..], px, (h.y + h.h * 0.5) * d, POINTER_DOWN, 0, 1) && worldbuilder_pointer(s[..], px, (h.y + h.h * 0.5) * d, POINTER_UP, 0, 1);
+  }
+  #assert s[0].brush_s > 0.98 && s[0].brush_r < 1.1 && s[0].tool == TOOL_PAINT;
+  s[0].brush_r = 8;
+  _ = frame(s[..]);
+  #assert tap_at(s[..], 800, 300);
+  at := (cast(int) floor(s[0].brush_z + 128.5)) * WB_LAND_SIDE + cast(int) floor(s[0].brush_x + 128.5);
+  #assert terrain_edit_share(wb_land_edit(l), at, L_SAND) > 0.9 && w[0].fg[0].step_n == 3;
+  _ = frame(s[..]);
+  #assert s[0].ground[at * 4 + 1] >= 230 * 65536;
+  // Cmd+Z takes the paint back, then the hill; the rock comes down with it
+  #assert worldbuilder_key(s[..], 'z', true, MOD_META) && terrain_edit_share(wb_land_edit(l), at, L_SAND) == 0;
+  #assert worldbuilder_key(s[..], 'z', true, MOD_META) && l[0].bare;
+  _ = frame(s[..]);
+  #assert s[0].draw_n == 1 && s[0].objects[INSTANCE_FLOATS + 7] == 0;
+  // LOOK again: a tap says where here is
+  #assert tap_tab(s[..], HIT_TOOL, TOOL_LOOK) && tap_at(s[..], 800, 300) && s[0].has_here;
+}
+#test "FRAME and a command bring everything built into view; the person's own move is left alone a while" {
+  s: [1] WorldBuilder;
+  ready(s[..]);
+  _ = frame(s[..]);
+  worldbuilder_requested(s[..], 0);
+  type_in(s[..], "a row of houses");
+  #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
+  worldbuilder_requested(s[..], 1);
+  worldbuilder_message(s[..], MSG_HTTP + 1, "200\nS Houses.\nA place|village/house-1|1|||origin||at||||||\nA place|village/house-1|1|||origin||right|60|||||\n");
+  // two houses some 70 m apart: the view goes to their middle and pulls back to hold them
+  #assert s[0].framing && s[0].gx > 25 && s[0].goal_dist > 50 && s[0].goal_dist < 160;
+  for k: 0..<240 { _ = frame(s[..]); }
+  #assert !s[0].framing && abs(s[0].dist - s[0].goal_dist) < 0.02 && abs(s[0].tx - s[0].gx) < 0.1;
+  // the wheel moves it by a share of the distance, and a command right after leaves the view where the person put it
+  far := s[0].dist;
+  #assert worldbuilder_wheel(s[..], -200) && abs(s[0].dist - far * 0.7408182) < 0.01;
+  near := s[0].dist;
+  type_in(s[..], "another");
+  #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
+  worldbuilder_requested(s[..], 2);
+  worldbuilder_message(s[..], MSG_HTTP + 2, "200\nS One more.\nA place|village/house-1|1|||origin||left|80|||||\n");
+  #assert !s[0].framing && s[0].dist == near;
+  // FRAME (the button, or Cmd/Ctrl+.) frames all three
+  _ = frame(s[..]);
+  #assert tap_btn(s[..], BTN_FRAME) && s[0].framing && s[0].goal_dist > far;
+  s[0].framing = false;
+  #assert worldbuilder_key(s[..], '.', true, MOD_CTRL) && s[0].framing;
 }

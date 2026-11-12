@@ -17,7 +17,7 @@ COAXIAL_IMPORT("coaxial_http") int32_t coaxial_http(cx_face_addr url, uint32_t u
 
 static coax_t_WorldBuilder *state_at(uint32_t state) { return (coax_t_WorldBuilder *)(uintptr_t)state; }
 static coax_v_t_WorldBuilder at(uint32_t state) { return (coax_v_t_WorldBuilder){state_at(state), 1}; }
-static uint8_t inbox[262144];
+static uint8_t inbox[1310720];   // a kept world comes back through it (worldbuilder.coax SAVE_CAP)
 static uint8_t catalog[262144];
 
 // After every call: the page's request, if it has one.
@@ -30,7 +30,7 @@ static void drain(uint32_t state) {
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
-  return (uint32_t)(sizeof(coax_t_WorldBuilder) * 1000003u + offsetof(coax_t_WorldBuilder, ed) * 7u + offsetof(coax_t_WorldBuilder, outbox) * 13u + 0x57424c45u);
+  return (uint32_t)(sizeof(coax_t_WorldBuilder) * 1000003u + offsetof(coax_t_WorldBuilder, ed) * 7u + offsetof(coax_t_WorldBuilder, outbox) * 13u + 0x57424c46u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_WorldBuilder); }
 EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_WorldBuilder(state_at(state)); }
@@ -91,12 +91,22 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 }
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)worldbuilder_draw_count(at(state)); }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->objects); }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)k; return (uint32_t)(uintptr_t)state_at(state)->objects.e; }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)k; return (uint32_t)worldbuilder_store_bytes(at(state)); }
+// Two stores: the instances' rows, and the ground's samples (worldbuilder-land.coax wb_land_gpu). Each
+// is sent again only when its version changes.
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2u; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
+  return k == 0 ? (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->objects) : (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->ground);
+}
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
+  return k == 0 ? (uint32_t)(uintptr_t)state_at(state)->objects.e : (uint32_t)(uintptr_t)state_at(state)->ground.e;
+}
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
+  return k == 0 ? (uint32_t)worldbuilder_store_bytes(at(state)) : (uint32_t)worldbuilder_ground_bytes(at(state));
+}
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
+  return k == 0 ? (uint32_t)worldbuilder_scene_version(at(state)) : (uint32_t)worldbuilder_ground_version(at(state));
+}
 // The store is copied only when the world changed (its version), not every frame.
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { (void)k; return (uint32_t)state_at(state)->drawn_version; }
 
 // The atlas (coax/web/gpui.js): what to rasterize, then where it went.
 EXPORT("coaxial_gpui_glyphs") int32_t gpui_glyphs(void) { return (int32_t)worldbuilder_glyph_count(); }

@@ -4,7 +4,8 @@
 //   POST /api/worldbuilder/act   the page's JSON (what was typed, the tapped spot, the camera, what is
 //                                in the world): never read here, handed to the model as the user's turn
 //                                -> 200 lines (worldbuilder.lines in migrations/0141_worldbuilder.sql):
-//                                   "S say" then "A op|asset|count|..." an edit a line
+//                                   "S say" then "A op|asset|count|..." an edit a line (a ground edit's
+//                                   asset is its layer: worldbuilder-land.coax)
 //                                   429 "flood WAIT_MS": this address sent too many at once
 //                                   429 "resting": the day's $50 is spent, until midnight Chicago time
 //                                   400 nothing typed or too long; 502 the model didn't answer
@@ -41,7 +42,7 @@ static const char WB_SYSTEM[] =
   "x runs to the right and z toward the viewer at the start; y is up. Answer only with the JSON the schema "
   "allows: `say`, one short friendly line (at most 60 characters), and `actions`, the edits in order.\n"
   "Edits (op):\n"
-  "- place: put `count` (default 1) of `asset`, an exact name from the catalogue. Where: `anchor`, `side` and "
+  "- place: put `count` (default 1) of `asset`, an exact name from the catalogue (never a ground layer). Where: `anchor`, `side` and "
   "`distance`. Several (count > 1) spread within `spread` metres of that spot (0: automatic). `size` scales "
   "them (1 = as made). For natural things mix variants: several place edits with different names (birch-1, "
   "birch-3, ...). Up to 200 things per edit.\n"
@@ -50,6 +51,18 @@ static const char WB_SYSTEM[] =
   "- scale: multiply the size of `targets` by `factor` (bigger 1.5, much bigger 2.5, smaller 0.66).\n"
   "- delete: remove `targets`. duplicate: copy `targets` beside them (or at anchor/side when given).\n"
   "- undo: take back the last edit (`count` edits). redo: put back an undone edit (`count` edits). clear: remove everything (only when they clearly ask to start over).\n"
+  "The ground is a 256 m square round the grid's middle. It starts as bare, level grid and can be painted and shaped:\n"
+  "- paint: cover ground with a layer. `asset` is the layer: grass, dirt, sand, stone, snow, water, or grid (bare "
+  "again). `factor` 0.1 to 1 is how strongly (default 1).\n"
+  "- raise / lower: a hill or a hollow. `size` is its height or depth in metres (default 4 and 3; at most 40).\n"
+  "- smooth: soften the ground's shape. flatten: level it to the height at the spot, or to `size` metres when given.\n"
+  "Where a ground edit acts: `targets` \"all\" = the whole ground (cover everything in grass); `anchor` \"edge\" with "
+  "`side` = a strip along that edge of the world as they see it, `spread` metres wide (a beach along the left); "
+  "otherwise a round patch, `spread` metres in radius (default 8 to 10), at `anchor`/`side`/`distance` as for place "
+  "(a hill here; flatten around the house: anchor \"named\" with the house in `anchor_names`, where `spread` is the "
+  "margin round it). A pond or lake is a lower and then a paint of water on the same spot, the paint a little "
+  "smaller. A path or road is a few paint edits of dirt in a row. Things already placed stay on the ground as it "
+  "changes. To start the ground over: flatten with targets \"all\" and size 0, then paint grid with targets \"all\".\n"
   "Targets: \"last\" = what the last edit placed or changed (it, that, them, those); \"names\" = every object "
   "whose asset is in `names` (exact names from the world's present list); \"nearest\" = the one object nearest "
   "the anchor spot (among `names` when given); \"all\" = everything.\n"
@@ -79,11 +92,11 @@ static const char WB_BUILDINGS[] =
 
 static const char WB_SCHEMA[] =
   "{\"type\":\"object\",\"properties\":{\"say\":{\"type\":\"string\"},\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
-  "\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\"]},"
+  "\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\",\"paint\",\"raise\",\"lower\",\"smooth\",\"flatten\"]},"
   "\"asset\":{\"type\":\"string\"},\"count\":{\"type\":\"integer\"},"
   "\"targets\":{\"type\":\"string\",\"enum\":[\"last\",\"names\",\"nearest\",\"all\"]},"
   "\"names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
-  "\"anchor\":{\"type\":\"string\",\"enum\":[\"here\",\"view\",\"last\",\"named\",\"origin\",\"self\"]},"
+  "\"anchor\":{\"type\":\"string\",\"enum\":[\"here\",\"view\",\"last\",\"named\",\"origin\",\"self\",\"edge\"]},"
   "\"anchor_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
   "\"side\":{\"type\":\"string\",\"enum\":[\"at\",\"left\",\"right\",\"front\",\"behind\",\"around\"]},"
   "\"distance\":{\"type\":\"number\"},\"spread\":{\"type\":\"number\"},\"size\":{\"type\":\"number\"},"

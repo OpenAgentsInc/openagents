@@ -2,17 +2,30 @@
 // apps/openagents-web/worldbuilder.wgsl: build with coax/web/wgsl-module.coax
 // (worldbuilder.module, worldbuilder.bindings beside it).
 //
-// Three passes: the sky and the Grid's floor behind (where each pixel's ray meets the ground, a
-// line a metre and a brighter one every ten, the tapped spot's ring on it); the pack's meshes,
-// instanced, a draw a mesh (scene_vs, scene_fs); and the shared component shader over all
+// Three passes: the sky and the Grid's endless floor behind (where each pixel's ray meets y = 0, a
+// line a metre and a brighter one every ten); the scene (scene_vs, scene_fs): the ground, one draw
+// of the terrain tile's cells straight from its samples (worldbuilder-land.coax, #13225), and the
+// pack's meshes, instanced, a draw a mesh; and the shared component shader over all
 // (components/backend/gpu-shader.coax: panels, buttons, bars and chat box).
+// The ground's materials are Aethyr's (aethyr/render/terrain-shade.coax): each layer's procedural
+// albedo from the page's material table, weighted by the sample's painted shares; the bare Grid is
+// the floor's own look, so the tile's edge meets the endless floor without a seam.
 // The uniform block, read from a []f32 at these offsets (floats):
 //   size 0, time 2, fade 3, still 4
 //   the view's rows 8, 12, 16, 20 (clip = rows · world)
 //   here 24: x, 0, z, how strongly it is shown
 //   eye 28, ray 32 (forward), rx 36, uy 40 (a pixel's ray: fwd + ndc.x · rx + ndc.y · uy)
+//   the brush 44: x, its radius, z, how strongly its ring is shown
+//   the layers from 48, twelve floats each: colour a and its noise's frequency; colour b and the
+//   second noise's; the two noises' shares, the gain and its noise's share
 #load "../../../aethyr/render/sampling.coax";
+#load "../../../aethyr/render/terrain-shade.coax";
 #load "../../../components/backend/gpu-shader.coax";
+
+WB_U_BRUSH :: 44;
+WB_U_LAYERS :: 48;
+WB_GROUND_SIDE :: 257;     // samples a side (worldbuilder-land.coax WB_LAND_SIDE)
+WB_GROUND_HALF :: 128.0;   // metres from the middle to the tile's edge
 
 // Colour as the screen shows it: a rough sRGB encode of the linear light.
 worldbuilder_out :: (c:V3)->V3 {
@@ -27,6 +40,41 @@ worldbuilder_line :: (v:V2,w:V2)->f32 {
   g:V2=wg_div_f2f2(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(v,0.5f32)),0.5f32)),w);
   return 1.0f32-fmin(fmin(g.x,g.y),1.0f32);
 }
+// The Grid's floor at xz: dark, a line a metre and a brighter one every ten, the axes brighter
+// still. w1 is a pixel's reach on the ground, fog how much of it the distance leaves, lines how
+// strongly the lines show (painted ground keeps them faint).
+worldbuilder_floor :: (xz:V2,w1:V2,fog:f32,lines:f32)->V3 {
+  fine:f32=worldbuilder_line(xz,w1);
+  coarse:f32=worldbuilder_line(wg_div_f2f(xz,10.0f32),wg_div_f2f(w1,10.0f32));
+  // lines thinner than a pixel fade instead of shimmering
+  fineFade:f32=1.0f32-smoothstep(0.08f32,0.45f32,fmax(w1.x,w1.y));
+  axes:f32=1.0f32-fmin(fmin(abs(xz.x)/w1.x,abs(xz.y)/w1.y)*0.6f32,1.0f32);
+  ground:V3=v3(0.012f32,0.02f32,0.03f32);
+  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(0.05f32,0.16f32,0.22f32),fine*fineFade*0.55f32*fog*lines));
+  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(0.1f32,0.32f32,0.42f32),coarse*fog*lines));
+  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(0.2f32,0.42f32,0.5f32),axes*0.5f32*fog*lines));
+  return ground;
+}
+// The marks on the ground, as light: the tapped spot's ring and soft disc, and the brush's ring.
+worldbuilder_marks :: (xz:V2,w1:V2,u:[]f32)->V3 {
+  px:f32=fmax(wg_length2(w1)*1.2f32,0.02f32);
+  hd:f32=wg_length2(v2(xz.x-u[24],xz.y-u[26]));
+  ring:f32=1.0f32-smoothstep(0.0f32,px,abs(hd-0.6f32));
+  disc:f32=exp((-hd)*hd*3.0f32)*0.35f32;
+  c:V3=wg_mul_f3f(v3(1.0f32,0.86f32,0.45f32),(ring+disc)*u[27]);
+  bd:f32=wg_length2(v2(xz.x-u[WB_U_BRUSH],xz.y-u[WB_U_BRUSH+2]));
+  rim:f32=1.0f32-smoothstep(0.0f32,px*1.5f32,abs(bd-u[WB_U_BRUSH+1]));
+  core:f32=1.0f32-smoothstep(0.0f32,px*1.5f32,abs(bd-(u[WB_U_BRUSH+1]*0.35f32)));
+  wash:f32=(1.0f32-smoothstep(u[WB_U_BRUSH+1]*0.35f32,u[WB_U_BRUSH+1],bd))*0.06f32;
+  return wg_add_f3f3(c,wg_mul_f3f(v3(0.35f32,1.0f32,0.95f32),(rim+(core*0.35f32)+wash)*u[WB_U_BRUSH+3]));
+}
+// One layer's albedo at xz, linear (aethyr/render/terrain-shade.coax's equations from the page's table).
+worldbuilder_layer :: (k:int,xz:V2,u:[]f32)->V3 {
+  at:int=WB_U_LAYERS+(k*12);
+  t:f32=clampf(aethyr_terrain_blend_t(xz.x,xz.y,u[at+3],u[at+8],0.0f32,u[at+7],u[at+9],0.0f32),0.0f32,1.0f32);
+  gain:f32=aethyr_terrain_gain(xz.x,xz.y,u[at+10],u[at+11],0.37f32,0.0f32);
+  return v3(aethyr_terrain_decode(u[at],u[at+4],t,gain),aethyr_terrain_decode(u[at+1],u[at+5],t,gain),aethyr_terrain_decode(u[at+2],u[at+6],t,gain));
+}
 worldbuilder_bg_fs :: (pos:V4,u:[]f32)->V4 {
   p:V2=v2(pos.x,pos.y);
   ndc:V2=v2(((p.x/u[0])*2.0f32)-1.0f32,1.0f32-((p.y/u[1])*2.0f32));
@@ -40,22 +88,10 @@ worldbuilder_bg_fs :: (pos:V4,u:[]f32)->V4 {
   hit:V3=wg_add_f3f3(v3(u[28],u[29],u[30]),wg_mul_f3f(ray,fmin(t,4000.0f32)));
   xz:V2=v2(hit.x,hit.z);
   w1:V2=wg_max_f2f2(wg_fwidth_f2(xz),v2(0.0001f32,0.0001f32));
-  fine:f32=worldbuilder_line(xz,w1);
-  coarse:f32=worldbuilder_line(wg_div_f2f(xz,10.0f32),wg_div_f2f(w1,10.0f32));
-  // lines thinner than a pixel fade instead of shimmering
-  fineFade:f32=1.0f32-smoothstep(0.08f32,0.45f32,fmax(w1.x,w1.y));
-  axes:f32=1.0f32-fmin(fmin(abs(hit.x)/w1.x,abs(hit.z)/w1.y)*0.6f32,1.0f32);
   dist:f32=t*rl;
   fog:f32=exp((-dist)*0.012f32);
-  ground:V3=v3(0.012f32,0.02f32,0.03f32);
-  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(0.05f32,0.16f32,0.22f32),fine*fineFade*0.55f32*fog));
-  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(0.1f32,0.32f32,0.42f32),coarse*fog));
-  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(0.2f32,0.42f32,0.5f32),axes*0.5f32*fog));
-  // the tapped spot: a ring and a soft disc
-  hd:f32=wg_length2(v2(hit.x-u[24],hit.z-u[26]));
-  ring:f32=1.0f32-smoothstep(0.0f32,fmax(wg_length2(w1)*1.2f32,0.02f32),abs(hd-0.6f32));
-  disc:f32=exp((-hd)*hd*3.0f32)*0.35f32;
-  ground=wg_add_f3f3(ground,wg_mul_f3f(v3(1.0f32,0.86f32,0.45f32),(ring+disc)*u[27]));
+  ground:V3=worldbuilder_floor(xz,w1,fog,1.0f32);
+  ground=wg_add_f3f3(ground,worldbuilder_marks(xz,w1,u));
   ground=wg_mix_f3f3f(sky,ground,fog*0.85f32+0.15f32);
   edge:f32=ifx down then smoothstep(0.0f32,0.02f32,-up) else 0.0f32;
   c:V3=wg_mul_f3f(wg_mix_f3f3f(sky,ground,edge),u[3]);
@@ -65,7 +101,45 @@ worldbuilder_bg_fs :: (pos:V4,u:[]f32)->V4 {
 // position as unorm16 in its mesh's box (the instance's rows fold the box in), an octahedral
 // normal, a uv in half floats and its sRGB colour with its texture layer (255: none)
 WorldbuilderObject :: struct {r0:V4; r1:V4; r2:V4; material:V4; }
-WorldbuilderS :: struct {pos:V4; world:V3; normal:V3; uv:V2; tint:V3; slice:u32 #flat; }
+WorldbuilderS :: struct {pos:V4; world:V3; normal:V3; uv:V2; tint:V3; slice:u32 #flat; la:V3; lb:V3; ground:u32 #flat; }
+// One sample of the ground: its place on the tile and what the page keeps for it (height, then its
+// six painted layers' shares as bytes, three a float).
+worldbuilder_sample :: (ground:[]V4,i:int,j:int)->V4 {
+  ci:int=ifx i<0 then 0 else ifx i>(WB_GROUND_SIDE-1) then WB_GROUND_SIDE-1 else i;
+  cj:int=ifx j<0 then 0 else ifx j>(WB_GROUND_SIDE-1) then WB_GROUND_SIDE-1 else j;
+  return ground[(cj*WB_GROUND_SIDE)+ci];
+}
+worldbuilder_shares :: (packed:f32)->V3 {
+  a:f32=floor(packed/65536.0f32);
+  b:f32=floor((packed-(a*65536.0f32))/256.0f32);
+  c:f32=(packed-(a*65536.0f32))-(b*256.0f32);
+  return v3(c/255.0f32,b/255.0f32,a/255.0f32);
+}
+// The ground's vertex: six a cell, two triangles split from its south-west corner to its
+// north-east one (aethyr/terrain-tile.coax), its normal from the samples either side.
+worldbuilder_ground_vs :: (id:u32,u:[]f32,ground:[]V4)->WorldbuilderS {
+  ox:[6]int=[6]int.[0,1,1,0,0,1];
+  oz:[6]int=[6]int.[0,1,0,0,1,1];
+  v:int=cast(int)id;
+  cell:int=v/6;
+  k:int=v%6;
+  i:int=(cell%(WB_GROUND_SIDE-1))+ox[k];
+  j:int=(cell/(WB_GROUND_SIDE-1))+oz[k];
+  g:V4=worldbuilder_sample(ground,i,j);
+  w:V3=v3((cast(f32)i)-WB_GROUND_HALF,g.x,(cast(f32)j)-WB_GROUND_HALF);
+  wp:V4=v4(w.x,w.y,w.z,1.0f32);
+  o:WorldbuilderS;
+  o.pos=v4(wg_dot4(wg_at4(u,8),wp),wg_dot4(wg_at4(u,12),wp),wg_dot4(wg_at4(u,16),wp),wg_dot4(wg_at4(u,20),wp));
+  o.world=w;
+  o.normal=wg_normalize3(v3(worldbuilder_sample(ground,i-1,j).x-worldbuilder_sample(ground,i+1,j).x,2.0f32,worldbuilder_sample(ground,i,j-1).x-worldbuilder_sample(ground,i,j+1).x));
+  o.uv=v2(w.x,w.z);
+  o.tint=v3(1.0f32,1.0f32,1.0f32);
+  o.slice=255;
+  o.ground=1;
+  o.la=worldbuilder_shares(g.y);
+  o.lb=worldbuilder_shares(g.z);
+  return o;
+}
 worldbuilder_octa :: (o:V2)->V3 {
   x:f32=(o.x*2.0f32)-1.0f32;
   y:f32=(o.y*2.0f32)-1.0f32;
@@ -78,7 +152,10 @@ worldbuilder_octa :: (o:V2)->V3 {
   }
   return wg_normalize3(v3(x,y,z));
 }
-worldbuilder_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]WorldbuilderObject)->WorldbuilderS {
+worldbuilder_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]WorldbuilderObject,ground:[]V4)->WorldbuilderS {
+  if (objects[cast(int)instance].material.w>0.5f32) {
+    return worldbuilder_ground_vs(id,u,ground);
+  }
   b:u32=mul_wrap(id,4);
   w0:u32=vertices[cast(int)b];
   w1:u32=vertices[cast(int)add_wrap(b,1)];
@@ -104,12 +181,52 @@ worldbuilder_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]W
   rgb:V4=wg_unpack4x8unorm(w3);
   o.tint=wg_mul_f3f3(v3(rgb.x*rgb.x,rgb.y*rgb.y,rgb.z*rgb.z),v3(m.material.x,m.material.y,m.material.z));
   o.slice=w3>>24;
+  o.la=v3(0.0f32,0.0f32,0.0f32);
+  o.lb=v3(0.0f32,0.0f32,0.0f32);
+  o.ground=0;
   return o;
 }
+// The ground's colour: its layers' albedos by their shares, the bare Grid's floor for what is left,
+// lit as the things are, with the Grid's lines faint over what is painted and the marks on top.
+worldbuilder_ground_fs :: (s:WorldbuilderS,u:[]f32,w1:V2)->V3 {
+  xz:V2=v2(s.world.x,s.world.z);
+  d:f32=wg_length3(wg_sub_f3f3(s.world,v3(u[28],u[29],u[30])));
+  fog:f32=exp((-d)*0.012f32);
+  painted:f32=clampf(((((s.la.x+s.la.y)+s.la.z)+s.lb.x)+s.lb.y)+s.lb.z,0.0f32,1.0f32);
+  albedo:V3=wg_mul_f3f(worldbuilder_layer(1,xz,u),s.la.x);
+  albedo=wg_add_f3f3(albedo,wg_mul_f3f(worldbuilder_layer(2,xz,u),s.la.y));
+  albedo=wg_add_f3f3(albedo,wg_mul_f3f(worldbuilder_layer(3,xz,u),s.la.z));
+  albedo=wg_add_f3f3(albedo,wg_mul_f3f(worldbuilder_layer(4,xz,u),s.lb.x));
+  albedo=wg_add_f3f3(albedo,wg_mul_f3f(worldbuilder_layer(5,xz,u),s.lb.y));
+  albedo=wg_add_f3f3(albedo,wg_mul_f3f(worldbuilder_layer(6,xz,u),s.lb.z));
+  n:V3=wg_normalize3(s.normal);
+  sun:f32=fmax(0.0f32,wg_dot3(n,wg_normalize3(v3(-0.45f32,0.8f32,0.4f32))));
+  sky:V3=wg_mix_f3f3f(v3(0.16f32,0.15f32,0.14f32),v3(0.34f32,0.4f32,0.48f32),(n.y*0.5f32)+0.5f32);
+  lit:V3=wg_add_f3f3(sky,wg_mul_f3f(v3(1.0f32,0.94f32,0.84f32),sun*0.95f32));
+  // water takes the sky where the eye grazes it
+  view:V3=wg_normalize3(wg_sub_f3f3(v3(u[28],u[29],u[30]),s.world));
+  graze:f32=pow(1.0f32-clampf(wg_dot3(n,view),0.0f32,1.0f32),3.0f32);
+  c:V3=wg_mul_f3f3(albedo,lit);
+  c=wg_add_f3f3(c,wg_mul_f3f(v3(0.2f32,0.34f32,0.46f32),graze*s.lb.z));
+  // far ground sinks into the night, as the things do
+  c=wg_mix_f3f3f(v3(0.004f32,0.008f32,0.02f32),c,exp((-d)*0.008f32));
+  // the bare Grid shows through where nothing is painted, its slopes lit a little so shaped ground reads
+  slope:f32=0.35f32+(0.65f32*clampf((sun*1.25f32)+0.1f32,0.0f32,1.0f32));
+  bare:V3=wg_mul_f3f(worldbuilder_floor(xz,w1,fog,1.0f32),ifx n.y>0.9995f32 then 1.0f32 else slope*1.6f32);
+  skyc:V3=v3(0.035f32,0.06f32,0.09f32);
+  bare=wg_mix_f3f3f(skyc,bare,fog*0.85f32+0.15f32);
+  c=wg_mix_f3f3f(bare,wg_add_f3f3(c,wg_mul_f3f(worldbuilder_floor(xz,w1,fog,1.0f32),0.5f32*painted)),painted);
+  return wg_add_f3f3(c,wg_mul_f3f(worldbuilder_marks(xz,w1,u),fog*0.85f32+0.15f32));
+}
 worldbuilder_scene_fs :: (s:WorldbuilderS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
+  // derivatives and the texture first: they need every pixel
+  w1:V2=wg_max_f2f2(wg_fwidth_f2(v2(s.world.x,s.world.z)),v2(0.0001f32,0.0001f32));
   textured:bool=s.slice<255;
   layer:s32=ifx textured then cast(s32)(s.slice) else 0;
   tex:V4=render_sample_layer8(sheets,sheet,s.uv,layer);
+  if (s.ground==1) {
+    return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(worldbuilder_ground_fs(s,u,w1),u[3])),1.0f32);
+  }
   if (textured&&(tex.w<0.4f32)) {
     gpu_demote_helper();
   }
