@@ -1,5 +1,5 @@
 # Chat
 
-A direct chat with the OpenAgents agent for general questions. It reads a fresh copy of the public [OpenAgents repository](https://github.com/OpenAgentsInc/openagents) (main) and the web, says which files it read, and can't change anything. Pick Claude Haiku 5.5, Sonnet 5.5 or Opus 5.5 for each conversation. Under Key you can use your own Anthropic API key or Claude subscription token. Theme switches the page between the skins on [/components](/components): Zeron (the default), Everglade, Verse and Terminal. Your browser remembers the one you pick.
+The OpenAgents chat, being rebuilt from nothing. For now the page is one thing: a box to type in, at the foot of the window, with Send. Enter or Send takes what you typed and clears the box. Nothing is sent anywhere yet, and nothing is kept.
 
-Admins only for now. An admin logs in with their Nostr key: `coax/web/api/admin.sh chat` in the OpenAgents repo, or with the OpenAgents phone app at [/login](/login). Anyone else sees only Log in.
+The page before this one is at [/chat-gpu](/chat-gpu/index.md). The parts this one is built from are on [/components](/components/index.md).

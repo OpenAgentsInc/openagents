@@ -1,5 +1,13 @@
 # /chat
 
+**Changed 2026-11-11.** `/chat` is being rebuilt from nothing
+([audit](audits/2026-11-11-chat-zero-base-audit.md)). The new page is
+`apps/openagents-web/chat-web.coax`: for now only the composer, drawn by the
+browser, which sends nothing yet. Everything below describes the page before
+it, which is now at `/chat-gpu` (`chat.coax`, `chat-gpu/index.html`) and still
+talks to the same API. In production `/chat-gpu` reaches the site only after
+`coax/web/api/lb.sh` has been run with its new path rule.
+
 [openagents.com/chat](https://openagents.com/chat) is a direct chat with a
 Claude agent for general questions about OpenAgents. It runs on the Coax
 Claude Agent SDK through the same hosted runner as the project agent

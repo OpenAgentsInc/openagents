@@ -1,0 +1,312 @@
+// openagents.com/components: the frames set (components/kit/frames.coax) in
+// the mono skin, drawn by the browser through the browser backend
+// (components/backend/dom.coax). Every component is on the page and works:
+// buttons count their presses, the composer sends, a tool call opens, rows
+// and the menu pick, a notice's buttons answer, Replay enters everything
+// again. docs/audits/2026-11-11-chat-zero-base-audit.md, sections 10 and 11.
+//
+// The page builds its tree only when something changed or is still
+// entering, and the backend sends only what differs, so a still page does no
+// work. The host (coax/web/dom-host.js) applies the commands and reports
+// presses, typing and framed nodes' sizes.
+//   coax/bin/coax test components/gallery/web.coax
+
+#load "../kit/frames.coax";
+#load "../backend/dom.coax";
+
+WG_INBOX :: 4096;      // a press's or a field's text from the host
+WG_DRAFT :: 1024;
+WG_SENT :: 4;          // messages the composer has sent, kept
+WG_CSS :: 16384;
+WG_CLICK :: 1; WG_INPUT :: 2; WG_SUBMIT :: 3;
+WG_ROWS :: [3] string.["Zero-base the chat", "Why the runner ran out of memory", "Port the frames to SVG"];
+WG_ROW_META :: [3] string.["Opus 5.5 · Nov 11 21:40", "Sonnet 5.5 · Nov 11 14:02", "Haiku 5.5 · Nov 10 09:15"];
+WG_MODELS :: [3] string.["Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
+WG_MODEL_NOTES :: [3] string.["For complex work", "For everyday tasks", "Fastest for quick answers"];
+WG_ANSWER :: "The page reads `/api/chat/state` every **2 seconds** and rebuilds the whole transcript from it. Three things follow:\n\n- an answer appears only when its turn ends\n- a stopped turn loses what was written\n- nothing marks where a long chat was cut\n\nThe fix is on the server first: keep each line of the session record, then stream it. See [the audit](/docs/audits/2026-11-11-chat-zero-base-audit.md).\n\n| Limit | Value |\n| --- | --- |\n| Turns sent | 40 |\n| Tools a turn | 12 |";
+WG_CODE :: "dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {\n  // compare the tree with what was last sent, by id\n  // write only what changed\n}";
+
+WebPage :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  presses: int;
+  tool_open: bool;
+  row: int; model: int;
+  answer: int;                       // the approval notice: 0 not answered, 1 allowed, 2 denied
+  draft: [WG_DRAFT] u8; draft_n: int;
+  sent: [WG_SENT] [WG_DRAFT] u8; sent_n: [WG_SENT] int; nsent: int;
+  clip: [WG_DRAFT] u8; clip_n: int;  // text for the host to copy, until it has
+  inbox: [WG_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [WG_CSS] u8;
+  ui: [1] Ui;
+  doc: [1] MdDoc;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+wg_section :: (t: [] Tree, id: string, title: string, note: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_SECTION, "sec");
+  h := tr_leaf(t, tr_cat(ida[..], id, ".h"), TG_H2, "sec-h", title);
+  if note.count > 0 { n := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_P, "sec-n", note); }
+  return i;
+}
+
+wg_build :: (s: [] WebPage) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8; buf2: [UI_ID] u8;
+  tr_begin(t);
+  page := tr_open(t, "page", TG_MAIN, "page");
+
+  top := tr_open(t, "top", TG_DIV, "col");
+  hd := k_header(t, u, "title", "Components");
+  tr_close(t);
+  lede := tr_leaf(t, "lede", TG_P, "lede", "The components the OpenAgents chat is being rebuilt from: a small set, each a frame around content, in black, white and grey. The browser draws them, so the text here is real text: select it, search it, zoom it, have it read aloud.");
+  bar := tr_open(t, "top.bar", TG_DIV, "rowf");
+  rp := k_button(t, u, "replay", "Replay the entrance", BS_PLAIN);
+  tr_close(t);
+  tr_close(t);
+
+  sec := wg_section(t, "buttons", "Button", "An octagon and a label. The primary action is the inverse. A disabled one is dashed.");
+  row := tr_open(t, "buttons.row", TG_DIV, "rowf");
+  b1 := k_button(t, u, "press.primary", "Send", BS_PRIMARY);
+  b2 := k_button(t, u, "press.plain", "New chat", BS_PLAIN);
+  b3 := k_button(t, u, "press.stop", "Stop", BS_PLAIN);
+  b4 := k_button(t, u, "press.off", "Unavailable", BS_DISABLED);
+  tr_close(t);
+  count := tr_leaf(t, "buttons.count", TG_P, "meta", tr_cat(buf2[..], tr_join(buf[..], "Pressed ", s[0].presses), ifx s[0].presses == 1 then " time" else " times"));
+  tr_close(t);
+
+  sec = wg_section(t, "fields", "Field and composer", "Real text fields: the keyboard, paste, spell check and the phone's keys are the browser's. Enter sends; Shift and Enter makes a line.");
+  f := k_field(t, u, "name", "Name this chat", "Name this chat");
+  c := k_composer(t, u, "composer", "Ask the OpenAgents agent", "Opus 5.5", "Send", s[0].draft_n > 0);
+  tr_close(t);
+
+  sec = wg_section(t, "talk", "Conversation", "The person's message is in a dim frame. A tool call is a row that opens. The agent's answer is plain Markdown on the ground, with no frame and no effect: it is for reading.");
+  th := tr_open(t, "thread", TG_DIV, "thread");
+  m1 := k_user(t, u, "msg.0", "Why does the chat feel slow?");
+  tool := k_tool(t, u, "tool.1", "Read", "apps/openagents-web/chat.coax", s[0].tool_open, "path: apps/openagents-web/chat.coax", "1,536 lines. WC_BUSY :: 2.0; // seconds between reads while a turn waits or runs");
+  if s[0].doc[0].nb == 0 { n := md_parse(s[0].doc[..], WG_ANSWER, 0); }
+  ans := k_agent(t, u, "msg.1", s[0].doc[..]);
+  meta := k_meta(t, "msg.1.meta", "Opus 5.5 · OpenAgents key · $0.0412");
+  for k: 0..<s[0].nsent {
+    m := k_user(t, u, tr_join(buf[..], "sent.", k), cast(string) s[0].sent[k][0..<s[0].sent_n[k]]);
+  }
+  tr_close(t);
+  tr_close(t);
+
+  sec = wg_section(t, "code", "Code block", "Its language and Copy in a strip, then the code, which scrolls sideways before it wraps.");
+  cb := k_code(t, u, "code.1", "coax", WG_CODE);
+  tr_close(t);
+
+  sec = wg_section(t, "notices", "Notice", "Between two lines, bright. It says its kind in words, since there is no red to say it.");
+  n1 := k_notice(t, u, "notice.error", "Error", "The runner didn't answer. Your message is back in the composer.");
+  tr_close(t);
+  n2 := k_notice(t, u, "notice.ask", "Approval needed", "The agent wants to run: git push origin main");
+  ask := tr_open(t, "notice.ask.row", TG_DIV, "rowf");
+  if s[0].answer == 0 {
+    a1 := k_button(t, u, "allow", "Allow", BS_PRIMARY);
+    a2 := k_button(t, u, "deny", "Deny", BS_PLAIN);
+  } else {
+    said := tr_leaf(t, "notice.ask.said", TG_SPAN, "meta", ifx s[0].answer == 1 then "Allowed" else "Denied");
+    a3 := k_link(t, "ask.again", "Ask again");
+  }
+  tr_close(t);
+  tr_close(t);
+  tr_close(t);
+
+  sec = wg_section(t, "rows", "Row", "A conversation in the list. The current one is bright over an underline.");
+  list := tr_open(t, "list", TG_NAV, "list");
+  tr_attr(t, list, AT_LABEL, "Chats");
+  titles := WG_ROWS; metas := WG_ROW_META;
+  for k: 0..<3 { r := k_row(t, u, tr_join(buf[..], "row.", k), titles[k], metas[k], k == s[0].row); }
+  tr_close(t);
+  tr_close(t);
+
+  sec = wg_section(t, "menus", "Menu", "Rows in a panel: the model for the next turn.");
+  menu := k_menu(t, u, "menu", "Model");
+  models := WG_MODELS; notes := WG_MODEL_NOTES;
+  for k: 0..<3 { r := k_row(t, u, tr_join(buf[..], "model.", k), models[k], notes[k], k == s[0].model); }
+  tr_close(t);
+  tr_close(t);
+
+  foot := tr_open(t, "foot", TG_FOOTER, "md");
+  credit := tr_open(t, "credit", TG_P, "");
+  c1 := tr_leaf(t, "credit.0", TG_SPAN, "", "The frames and their motion are ");
+  c2 := tr_leaf(t, "credit.1", TG_A, "", "ARWES");
+  tr_attr(t, c2, AT_HREF, "https://github.com/arwes/arwes/tree/bdbaa0324900ee978d42036d1304a053c1fe54b5");
+  c3 := tr_leaf(t, "credit.2", TG_SPAN, "", " by Romel Perez, ported to Coax, under the ");
+  c4 := tr_leaf(t, "credit.3", TG_A, "", "MIT license");
+  tr_attr(t, c4, AT_HREF, "https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/LICENSE");
+  c5 := tr_leaf(t, "credit.4", TG_SPAN, "", ". The earlier components, drawn on the GPU, are at ");
+  c6 := tr_leaf(t, "credit.5", TG_A, "", "/components-gpu");
+  tr_attr(t, c6, AT_HREF, "/components-gpu");
+  c7 := tr_leaf(t, "credit.6", TG_SPAN, "", ".");
+  tr_close(t);
+  tr_close(t);
+
+  tr_close(t);
+}
+
+wg_id_is :: (id: string, part: string) -> bool { return id.count >= part.count && cast(string) id[0..<part.count] == part; }
+// The digit after a part: "row.2" after "row." is 2.
+wg_index :: (id: string, part: string) -> int {
+  if !wg_id_is(id, part) || id.count != part.count + 1 { return -1; }
+  c := id[part.count];
+  return ifx c >= '0' && c <= '9' then cast(int) (c - '0') else -1;
+}
+wg_send :: (s: [] WebPage) {
+  lo := 0; hi := s[0].draft_n;
+  while lo < hi && (s[0].draft[lo] == ' ' || s[0].draft[lo] == '\n') { lo += 1; }
+  while hi > lo && (s[0].draft[hi - 1] == ' ' || s[0].draft[hi - 1] == '\n') { hi -= 1; }
+  if hi <= lo { return; }
+  // the newest WG_SENT stay
+  if s[0].nsent >= WG_SENT {
+    for k: 1..<WG_SENT { s[0].sent[k - 1] = s[0].sent[k]; s[0].sent_n[k - 1] = s[0].sent_n[k]; }
+    s[0].nsent = WG_SENT - 1;
+  }
+  k := s[0].nsent;
+  for i: lo..<hi { s[0].sent[k][i - lo] = s[0].draft[i]; }
+  s[0].sent_n[k] = hi - lo; s[0].nsent += 1;
+  s[0].draft_n = 0;
+  dm_value(s[0].dom[..], "composer", "");
+}
+wg_click :: (s: [] WebPage, id: string) {
+  if id == "replay" { ui_replay(s[0].ui[..]); }
+  else if id == "press.primary" || id == "press.plain" || id == "press.stop" { s[0].presses += 1; }
+  else if id == "tool.1" { s[0].tool_open = !s[0].tool_open; }
+  else if id == "allow" { s[0].answer = 1; }
+  else if id == "deny" { s[0].answer = 2; }
+  else if id == "ask.again" { s[0].answer = 0; }
+  else if id == "composer.send" { wg_send(s); }
+  else if id == "code.1.copy" { s[0].clip_n = 0; for c: WG_CODE { if s[0].clip_n < WG_DRAFT { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } } }
+  else if wg_index(id, "row.") >= 0 { s[0].row = wg_index(id, "row."); }
+  else if wg_index(id, "model.") >= 0 { s[0].model = wg_index(id, "model."); }
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+// One frame: builds and flushes if something changed or is entering. Bytes of commands to apply (at coaxial_kit_out).
+coaxial_kit_frame :: (s: [] WebPage, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    n := mono_frames(s[0].sets[..]);
+    s[0].ready = true; s[0].dirty = true;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_css(s[0].css[..]);
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  wg_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }   // the host clears the page; the next frame sends it whole
+  return bytes;
+}
+coaxial_kit_busy :: (s: [] WebPage) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// A press (1), a field's text (2: the inbox holds it) or Enter in a field (3), on the node in this slot.
+coaxial_kit_event :: (s: [] WebPage, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count == 0 { return; }
+  if kind == WG_CLICK { wg_click(s, id); }
+  else if kind == WG_INPUT && id == "composer" {
+    n := ifx length < 0 then 0 else ifx length > WG_DRAFT then WG_DRAFT else ifx length > WG_INBOX then WG_INBOX else length;
+    for i: 0..<n { s[0].draft[i] = s[0].inbox[i]; }
+    s[0].draft_n = n;
+  }
+  else if kind == WG_SUBMIT && id == "composer" { wg_send(s); }
+  s[0].dirty = true;
+}
+coaxial_kit_size :: (s: [] WebPage, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_kit_clip :: (s: [] WebPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
+coaxial_kit_clip_done :: (s: [] WebPage) #export_c #effects(all) { if s.count > 0 { s[0].clip_n = 0; } }
+coaxial_kit_inbox_cap :: () -> int #export_c #effects(all) { return WG_INBOX; }
+
+// ---------------------------------------------------------------- checks
+
+WgTest :: struct { s: [1] WebPage; }
+
+#test "the page builds every component, sends itself once, and then is still" {
+  h: [1] WgTest; s := h[0].s[..];
+  n := coaxial_kit_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert n > 4000 && t[0].lost == 0 && t[0].depth == 0 && t[0].n > 120 && t[0].n < TR_NODES;
+  #assert s[0].dom[0].out[0] == DC_STYLE && !coaxial_kit_busy(s);
+  #assert tr_find(t, "press.primary") > 0 && tr_find(t, "composer") > 0 && tr_find(t, "tool.1") > 0 && tr_find(t, "code.1.pre") > 0;
+  #assert tr_find(t, "notice.error") > 0 && tr_find(t, "row.2") > 0 && tr_find(t, "model.0") > 0 && tr_find(t, "msg.1.b0") > 0;
+  #assert coaxial_kit_frame(s, 0.016, true) == 0;
+}
+
+#test "a press, a pick and an answer each change only their own nodes" {
+  h: [1] WgTest; s := h[0].s[..];
+  n := coaxial_kit_frame(s, 0.016, true);
+  d := s[0].dom[..];
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "press.plain"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].presses == 1 && d[0].sent == 1 && tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "buttons.count")) == "Pressed 1 time";
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "press.off"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].presses == 1 && n == 0;
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "row.2"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].row == 2 && d[0].sent == 4;   // one row loses its frame mark and its current mark, the other gains both
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "tool.1"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].tool_open && dm_find(d, "tool.1.out") >= 0;
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "allow"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].answer == 1 && dm_find(d, "allow") < 0 && dm_find(d, "ask.again") >= 0;
+}
+
+#test "the composer sends what was typed, trimmed, clears its field and keeps the newest four" {
+  h: [1] WgTest; s := h[0].s[..];
+  n := coaxial_kit_frame(s, 0.016, true);
+  d := s[0].dom[..];
+  field := dm_find(d, "composer");
+  #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
+  text := "  hello there \n";
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_kit_event(s, WG_INPUT, field, text.count);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert !tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
+  coaxial_kit_event(s, WG_SUBMIT, field, 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].nsent == 1 && s[0].draft_n == 0 && tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "sent.0.p")) == "hello there";
+  #assert dm_test_count(d, n, DC_VALUE) == 1;
+  for k: 0..<5 {
+    s[0].inbox[0] = cast(u8) ('a' + k);
+    coaxial_kit_event(s, WG_INPUT, field, 1);
+    coaxial_kit_event(s, WG_CLICK, dm_find(d, "composer.send"), 0);
+    n = coaxial_kit_frame(s, 0.016, true);
+  }
+  #assert s[0].nsent == WG_SENT && tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "sent.3.p")) == "e";
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "code.1.copy"), 0);
+  #assert coaxial_kit_clip(s) == WG_CODE.count;
+  coaxial_kit_clip_done(s);
+  #assert coaxial_kit_clip(s) == 0;
+}
+
+#test "everything enters, then stops; Replay enters it again; a size brings a frame" {
+  h: [1] WgTest; s := h[0].s[..];
+  n := coaxial_kit_frame(s, 0.016, false);
+  #assert coaxial_kit_busy(s);
+  d := s[0].dom[..];
+  coaxial_kit_size(s, dm_find(d, "press.primary"), 96, 33);
+  n = coaxial_kit_frame(s, 0.016, false);
+  #assert dm_test_count(d, n, DC_FRAME) == 1;
+  for k: 0..<40 { n = coaxial_kit_frame(s, 0.1, false); }
+  #assert !coaxial_kit_busy(s) && coaxial_kit_frame(s, 0.016, false) == 0;
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "replay"), 0);
+  n = coaxial_kit_frame(s, 0.016, false);
+  #assert coaxial_kit_busy(s) && dm_test_count(d, n, DC_FRAME) == 1;
+}

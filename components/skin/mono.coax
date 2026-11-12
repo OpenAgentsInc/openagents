@@ -1,0 +1,174 @@
+// The mono skin: black, white and the greys between, for text surfaces the
+// browser draws (docs/audits/2026-11-11-chat-zero-base-audit.md, section 11).
+// It is the look of the frames set (components/kit/frames.coax): ARWES's
+// frames, with no hue anywhere. State is shown by brightness, fill, line
+// style and words, never by colour.
+//
+// A skin is tokens and frames. Here the tokens are CSS custom properties and
+// the rules that read them (mono_css writes the page's whole stylesheet: no
+// stylesheet is written by hand), and the frames are ARWES frame settings
+// (mono_frames), which the browser backend turns into SVG paths. Motion times
+// are here too. Layout in the rules is flex only.
+//   coax/bin/coax test components/skin/mono.coax
+
+#load "../core/arwes/frames.coax";
+
+// The frames a component asks for, by role. Each is one of ARWES's kinds with its settings.
+MF_BUTTON :: 0; MF_PANEL :: 1; MF_FIELD :: 2; MF_NOTICE :: 3; MF_HEADER :: 4; MF_ROW :: 5; MF_BUBBLE :: 6;
+MF_COUNT :: 7;
+// ARWES's kinds (frames.coax af_frame_settings): 0 underline, 1 lines, 2 corners, 3 octagon, 7 header.
+MONO_KINDS :: [7] int.[3, 2, 0, 1, 7, 0, 2];
+mono_kind :: (role: int) -> int { kinds := MONO_KINDS; return ifx role >= 0 && role < MF_COUNT then kinds[role] else 2; }
+mono_frames :: (out: [] AfSettings) -> int {
+  if out.count < MF_COUNT { return 0; }
+  for role: 0..<MF_COUNT { out[role] = af_settings(mono_kind(role)); }
+  out[MF_BUTTON].square = 8;
+  out[MF_PANEL].corner_length = 12; out[MF_PANEL].corner_width = 1;
+  out[MF_BUBBLE].corner_length = 8; out[MF_BUBBLE].corner_width = 1;
+  out[MF_FIELD].square = 8;
+  out[MF_ROW].square = 6;
+  out[MF_NOTICE].small_line_length = 12; out[MF_NOTICE].large_line_width = 1; out[MF_NOTICE].small_line_width = 2;
+  out[MF_HEADER].deco_width = 3;
+  return MF_COUNT;
+}
+
+// Motion, in seconds. A frame assembles; frames born together enter a stagger apart; a label types in.
+MONO_ENTER :: 0.55;
+MONO_STAGGER :: 0.035;
+MONO_STAGGER_MOST :: 0.6;      // the last of many still starts within this
+MONO_TEXT_MOST :: 0.7;
+MONO_TEXT_RATE :: 70.0;        // characters a second
+
+mc :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+// The page's stylesheet. Bytes written.
+mono_css :: (out: [] u8) -> int {
+  n := 0;
+  // tokens
+  n = mc(out, n, ":root{--ground:#000;--surface:#0a0a0a;--raised:#161616;--line-dim:#2a2a2a;--line:#6b6b6b;--line-bright:#fff;");
+  n = mc(out, n, "--ink:#f2f2f2;--ink-muted:#9a9a9a;--ink-faint:#5c5c5c;");
+  n = mc(out, n, "--sans:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;");
+  n = mc(out, n, "--mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:dark}");
+  n = mc(out, n, "@font-face{font-family:'Geist';src:url(/build/zeron/Geist.ttf);font-weight:400;font-display:swap}");
+  n = mc(out, n, "@font-face{font-family:'Geist';src:url(/build/zeron/Geist-Medium.ttf);font-weight:500;font-display:swap}");
+  n = mc(out, n, "@font-face{font-family:'Geist';src:url(/build/zeron/Geist-SemiBold.ttf);font-weight:600;font-display:swap}");
+  n = mc(out, n, "@font-face{font-family:'Geist Mono';src:url(/build/zeron/GeistMono.ttf);font-weight:400 600;font-display:swap}");
+  // the page and its still background: grid lines and dots
+  n = mc(out, n, "*{box-sizing:border-box}html,body{margin:0;background:var(--ground);color:var(--ink)}");
+  n = mc(out, n, "body{font:14px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;");
+  // ARWES's grid lines and dots at one distance (40 px, its site's): a 1 px line along each edge of the
+  // tile and a 2 px square dot on each corner, so a dot sits where the lines cross and nowhere else
+  n = mc(out, n, "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E");
+  n = mc(out, n, "%3Cpath fill='%23121212' d='M0 0h40v.5H0zM0 39.5h40v.5H0zM0 0h.5v40H0zM39.5 0h.5v40h-.5z'/%3E");
+  n = mc(out, n, "%3Cpath fill='%23474747' d='M0 0h1v1H0zM39 0h1v1h-1zM0 39h1v1H0zM39 39h1v1h-1z'/%3E%3C/svg%3E\");");
+  n = mc(out, n, "background-size:40px 40px;background-position:center top;background-attachment:fixed}");
+  n = mc(out, n, "::selection{background:#fff;color:#000}");
+  // a frame: the SVG behind a node's content, its three layers
+  n = mc(out, n, "[data-frame]{position:relative;isolation:isolate}");
+  n = mc(out, n, "svg.fr{position:absolute;inset:0;width:100%;height:100%;z-index:-1;overflow:visible;pointer-events:none}");
+  n = mc(out, n, ".fr-bg{fill:var(--frame-bg,var(--surface));stroke:none}");
+  n = mc(out, n, ".fr-line{fill:none;stroke:var(--frame-line,var(--line))}");
+  n = mc(out, n, ".fr-deco{fill:none;stroke:var(--frame-deco,var(--line-bright))}");
+  n = mc(out, n, ".fr-deco.fr-fill{fill:var(--frame-deco,var(--line-bright));stroke:none}");
+  n = mc(out, n, ".fr-bg,.fr-line,.fr-deco{transition:fill .15s,stroke .15s}");
+  // the page
+  n = mc(out, n, ".page{max-width:920px;margin:0 auto;padding:32px 16px 96px;display:flex;flex-direction:column;gap:44px}");
+  n = mc(out, n, ".hd{padding:14px 18px 16px;display:flex;flex-direction:column;gap:6px}");
+  n = mc(out, n, ".hd-t{margin:0;font:500 13px/1.4 var(--mono);letter-spacing:.2em;text-transform:uppercase}");
+  n = mc(out, n, ".lede{margin:0;color:var(--ink-muted);max-width:68ch}");
+  n = mc(out, n, ".sec{display:flex;flex-direction:column;gap:14px}");
+  n = mc(out, n, ".sec-h{margin:0;font:500 11px/1.4 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--ink-muted)}");
+  n = mc(out, n, ".sec-n{margin:0;color:var(--ink-faint);max-width:68ch;font-size:13px}");
+  n = mc(out, n, ".rowf{display:flex;flex-wrap:wrap;gap:12px;align-items:center}");
+  n = mc(out, n, ".col{display:flex;flex-direction:column;gap:14px}");
+  n = mc(out, n, ".meta{margin:0;font:11px/1.4 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}");
+  n = mc(out, n, ".sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}");
+  n = mc(out, n, ".tx::after{content:'\\25AE';margin-left:2px;color:var(--ink-muted)}");
+  // button: an octagon; primary is the inverse
+  n = mc(out, n, ".btn{appearance:none;border:0;background:none;color:var(--ink);font:500 11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;");
+  n = mc(out, n, "padding:11px 18px;cursor:pointer;transition:color .15s;--frame-deco:var(--line)}");
+  n = mc(out, n, ".btn:hover{--frame-bg:var(--raised);--frame-line:var(--line-bright)}");
+  n = mc(out, n, ".btn:focus-visible{outline:none;--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
+  n = mc(out, n, ".btn:active{--frame-bg:#262626}");
+  n = mc(out, n, ".btn[data-state=primary]{color:#000;--frame-bg:#fff;--frame-line:#fff;--frame-deco:#fff}");
+  n = mc(out, n, ".btn[data-state=primary]:hover{--frame-bg:#d4d4d4;--frame-line:#d4d4d4}");
+  n = mc(out, n, ".btn[disabled]{color:var(--ink-faint);cursor:default;--frame-bg:transparent;--frame-line:var(--line-dim);--frame-deco:var(--line-dim)}");
+  n = mc(out, n, ".btn[disabled] .fr-line{stroke-dasharray:3 3}");
+  // a quiet text button
+  n = mc(out, n, ".lk{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;cursor:pointer;padding:6px 8px}");
+  n = mc(out, n, ".lk:hover,.lk:focus-visible{color:#fff;outline:none}");
+  // field and composer
+  n = mc(out, n, "textarea{display:block;width:100%;resize:none;border:0;outline:0;background:none;color:var(--ink);font:14px/1.6 var(--sans);padding:0}");
+  n = mc(out, n, "textarea::placeholder{color:var(--ink-faint)}");
+  n = mc(out, n, ".field{padding:10px 12px;max-width:420px;width:100%;--frame-bg:transparent}");
+  n = mc(out, n, ".field:focus-within{--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
+  n = mc(out, n, ".composer{padding:14px 16px 10px;display:flex;flex-direction:column;gap:8px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".composer:focus-within{--frame-line:var(--line);--frame-deco:var(--line-bright)}");
+  n = mc(out, n, ".composer-r{display:flex;justify-content:space-between;align-items:center;gap:12px}");
+  // messages: the person's in a dim frame, the agent's plain on the ground
+  n = mc(out, n, ".thread{display:flex;flex-direction:column;gap:18px}");
+  n = mc(out, n, ".msg-user{align-self:flex-end;max-width:72%;padding:10px 14px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".msg-user p{margin:0;white-space:pre-wrap}");
+  n = mc(out, n, ".md{max-width:72ch;display:flex;flex-direction:column;gap:12px}");
+  n = mc(out, n, ".md p,.md ul,.md ol,.md blockquote{margin:0}.md ul,.md ol{padding-left:20px;display:flex;flex-direction:column;gap:4px}");
+  n = mc(out, n, ".md code{font:13px/1.5 var(--mono);background:var(--raised);padding:1px 5px}");
+  n = mc(out, n, ".md a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line)}");
+  n = mc(out, n, ".md a:hover{text-decoration-color:#fff}.md strong{font-weight:600;color:#fff}");
+  n = mc(out, n, ".md blockquote{padding-left:12px;border-left:1px solid var(--line);color:var(--ink-muted)}");
+  n = mc(out, n, ".md table{border-collapse:collapse;font-size:13px}.md th,.md td{text-align:left;padding:6px 14px 6px 0;border-bottom:1px solid var(--line-dim)}");
+  n = mc(out, n, ".md th{font:500 11px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-muted)}");
+  // tool call
+  n = mc(out, n, ".tool{--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".tool-h{appearance:none;border:0;background:none;color:var(--ink);display:flex;gap:12px;align-items:baseline;width:100%;padding:9px 14px;cursor:pointer;text-align:left;font:inherit}");
+  n = mc(out, n, ".tool-h:hover .tool-x,.tool-h:focus-visible .tool-x{color:#fff}.tool-h:focus-visible{outline:none}");
+  n = mc(out, n, ".tool-k{font:500 11px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase}");
+  n = mc(out, n, ".tool-d{color:var(--ink-muted);font:13px/1.4 var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}");
+  n = mc(out, n, ".tool-x{color:var(--ink-faint);font:11px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase}");
+  n = mc(out, n, ".tool-b{border-top:1px solid var(--line-dim);padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px}");
+  n = mc(out, n, "pre{margin:0;font:13px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink)}");
+  // code block
+  n = mc(out, n, ".code{--frame-line:var(--line-dim);--frame-deco:var(--line);max-width:100%}");
+  n = mc(out, n, ".code-h{display:flex;justify-content:space-between;align-items:center;padding:4px 6px 4px 14px;border-bottom:1px solid var(--line-dim)}");
+  n = mc(out, n, ".code pre{padding:12px 14px;white-space:pre;overflow-x:auto}");
+  // notice
+  n = mc(out, n, ".notice{padding:14px 16px;display:flex;flex-direction:column;gap:8px;max-width:72ch;--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
+  n = mc(out, n, ".notice-k{margin:0;font:600 11px/1.4 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:#fff}");
+  n = mc(out, n, ".notice-t{margin:0}");
+  // rows and the menu
+  n = mc(out, n, ".list{display:flex;flex-direction:column;gap:2px;width:300px;max-width:100%}");
+  n = mc(out, n, ".row{appearance:none;border:0;background:none;text-align:left;color:var(--ink-muted);padding:9px 12px;cursor:pointer;display:flex;flex-direction:column;gap:2px;font:inherit;width:100%;transition:color .15s}");
+  n = mc(out, n, ".row:hover,.row:focus-visible{color:var(--ink);background:var(--surface);outline:none}");
+  n = mc(out, n, ".row[aria-current=true]{color:#fff;background:none;--frame-bg:var(--surface);--frame-line:var(--line-bright);--frame-deco:#fff}");
+  n = mc(out, n, ".row-t{font-size:14px;line-height:1.4}");
+  n = mc(out, n, ".menu{width:300px;max-width:100%;padding:6px;display:flex;flex-direction:column;gap:2px;--frame-line:var(--line)}");
+  // the chat page: the composer alone, at the foot of the window
+  n = mc(out, n, ".chat{min-height:100dvh;max-width:792px;margin:0 auto;padding:16px;display:flex;flex-direction:column;justify-content:flex-end}");
+  n = mc(out, n, "@media (max-width:600px){.page{padding:20px 16px 64px;gap:36px}.list,.menu{width:100%}.msg-user{max-width:88%}}");
+  n = mc(out, n, "@media (prefers-reduced-motion:reduce){*{transition:none!important}}");
+  return n;
+}
+
+#test "every role has an ARWES kind and its settings, and the stylesheet fits and has no hue" {
+  sets: [MF_COUNT] AfSettings;
+  #assert mono_frames(sets[..]) == MF_COUNT && mono_frames(sets[0..<2]) == 0;
+  #assert mono_kind(MF_BUTTON) == 3 && mono_kind(MF_PANEL) == 2 && mono_kind(MF_FIELD) == 0 && mono_kind(MF_NOTICE) == 1 && mono_kind(MF_HEADER) == 7;
+  #assert sets[MF_BUTTON].square == 8 && sets[MF_PANEL].corner_length == 12;
+  css: [16384] u8; n := mono_css(css[..]);
+  #assert n > 4000 && n < 16000;
+  // every #rgb or #rrggbb in it is a grey: its channels are equal
+  i := 0; greys := 0;
+  while i < n {
+    if css[i] == '#' {
+      j := i + 1;
+      while j < n && ((css[j] >= '0' && css[j] <= '9') || (css[j] >= 'a' && css[j] <= 'f')) { j += 1; }
+      digits := j - i - 1;
+      if digits == 3 { #assert css[i + 1] == css[i + 2] && css[i + 2] == css[i + 3]; greys += 1; }
+      if digits == 6 { #assert css[i + 1] == css[i + 3] && css[i + 3] == css[i + 5] && css[i + 2] == css[i + 4] && css[i + 4] == css[i + 6]; greys += 1; }
+      i = j;
+    } else { i += 1; }
+  }
+  #assert greys > 20;
+}

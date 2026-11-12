@@ -135,6 +135,7 @@ for pm in m["pathMatchers"]:
         for match in ({"fullPathMatch": "/admin/analytics"}, {"prefixMatch": "/admin/analytics/"},
                       {"fullPathMatch": "/login"}, {"prefixMatch": "/login/"},
                       {"fullPathMatch": "/chat"}, {"prefixMatch": "/chat/"},
+                      {"fullPathMatch": "/chat-gpu"}, {"prefixMatch": "/chat-gpu/"},   # the page before the rebuilt /chat
                       {"fullPathMatch": "/.well-known/apple-app-site-association"}):
             if next(iter(match.values())) not in have:
                 rule["matchRules"].append(match); changed = True

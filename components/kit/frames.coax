@@ -1,0 +1,373 @@
+// The frames set: the components a text surface is built from when the
+// browser draws it (docs/audits/2026-11-11-chat-zero-base-audit.md, section
+// 11). Each is a frame around content, as ARWES's own examples build theirs:
+// a button is an octagon and a label, a panel is corners around its rows.
+// A component builds nodes in the tree (components/core/tree.coax) and
+// nothing else. It doesn't know it is drawn by a browser: the frame's kind,
+// its settings, every measure and every colour are the skin's
+// (components/skin/mono.coax), and the backend draws it.
+//
+// Motion is ARWES's (components/core/arwes/motion.coax), computed here from
+// the time the page supplies: a frame assembles when its node first appears,
+// nodes that appear together enter a stagger apart, and a short label types
+// in. Nothing moves once a node has entered, and with reduced motion nothing
+// moves at all. A label that types in keeps its whole text in the node for a
+// screen reader and for Find; the typed copy is hidden from both.
+//
+// The components: frame, text, button, link, field, composer, the person's
+// message, the agent's message (Markdown), meta line, tool call, code block,
+// notice, row, header, menu.
+//   coax/bin/coax test components/kit/frames.coax
+
+#load "../core/tree.coax";
+#load "../core/markdown.coax";
+#load "../core/arwes/motion.coax";
+#load "../skin/mono.coax";
+
+UI_BIRTHS :: 384;
+UI_ID :: 96;          // bytes of an id built here
+BS_PLAIN :: 0; BS_PRIMARY :: 1; BS_DISABLED :: 2;
+
+// When a node first appeared: its id's hash and the second it starts to enter.
+UiBirth :: struct { h: int; born: f32; seen: bool; }
+Ui :: struct {
+  now: f32;
+  reduced: bool;               // the person asked for less motion: everything is entered at once
+  births: [UI_BIRTHS] UiBirth; nb: int;
+  fresh: int;                  // nodes that first appeared in this build
+  busy: bool;                  // something is still entering: build again next frame
+}
+
+// A build starts: the time, and nothing seen yet.
+ui_begin :: (u: [] Ui, now: f32, reduced: bool) {
+  u[0].now = now; u[0].reduced = reduced; u[0].fresh = 0; u[0].busy = false;
+  for k: 0..<u[0].nb { u[0].births[k].seen = false; }
+}
+// A build ends: what wasn't built this time is forgotten, so it enters again if it comes back.
+ui_end :: (u: [] Ui) {
+  kept := 0;
+  for k: 0..<u[0].nb {
+    if u[0].births[k].seen { u[0].births[kept] = u[0].births[k]; kept += 1; }
+  }
+  u[0].nb = kept;
+}
+// Everything enters again (a page's Replay).
+ui_replay :: (u: [] Ui) { u[0].nb = 0; }
+// How far the node with this id has entered, 0 to 1, over `seconds`.
+ui_progress :: (u: [] Ui, id: string, seconds: f32) -> f32 {
+  if u[0].reduced { return 1; }
+  h := tr_hash(id);
+  at := -1;
+  for k: 0..<u[0].nb { if u[0].births[k].h == h { at = k; break; } }
+  if at < 0 {
+    if u[0].nb >= UI_BIRTHS { return 1; }
+    wait := cast(f32) u[0].fresh * MONO_STAGGER;
+    if wait > MONO_STAGGER_MOST { wait = MONO_STAGGER_MOST; }
+    at = u[0].nb; u[0].nb += 1;
+    u[0].births[at] = UiBirth.{h = h, born = u[0].now + wait, seen = true};
+    u[0].fresh += 1;
+  }
+  u[0].births[at].seen = true;
+  p := am_progress(u[0].now - u[0].births[at].born, seconds, 0);
+  if u[0].now < u[0].births[at].born { p = 0; }
+  if p < 1 { u[0].busy = true; }
+  return p;
+}
+
+// ---------------------------------------------------------------- the components
+
+// Frame: a node with one of the skin's frames behind it, assembling as it enters. Close it with tr_close.
+k_frame :: (t: [] Tree, u: [] Ui, id: string, tag: int, cls: string, role: int) -> int {
+  i := tr_open(t, id, tag, cls);
+  tr_frame(t, i, mono_kind(role), role, ui_progress(u, id, MONO_ENTER));
+  return i;
+}
+// Text: a short label that types in. Its whole text is in the node from the start.
+k_text :: (t: [] Tree, u: [] Ui, id: string, tag: int, cls: string, text: string) -> int {
+  count := ar_text_length(text);
+  seconds := ar_text_duration(ifx count < 0 then 0 else count, MONO_TEXT_MOST, MONO_TEXT_RATE);
+  p := ui_progress(u, id, seconds);
+  if p >= 1 || count < 0 { return tr_leaf(t, id, tag, cls, text); }
+  i := tr_open(t, id, tag, cls);
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  whole := tr_leaf(t, tr_cat(ida[..], id, ".all"), TG_SPAN, "sr", text);
+  part: [512] u8;
+  n := ar_text_sequence(text, p, true, part[..]);
+  if n < 0 { n = 0; }
+  typed := tr_leaf(t, tr_cat(idb[..], id, ".typed"), TG_SPAN, "tx", cast(string) part[0..<n]);
+  tr_attr(t, typed, AT_HIDDEN, "true");
+  tr_close(t);
+  return i;
+}
+// Button: an octagon and its label. Primary is the inverse; a disabled one is dashed and can't be pressed.
+k_button :: (t: [] Tree, u: [] Ui, id: string, label: string, state: int) -> int {
+  i := k_frame(t, u, id, TG_BUTTON, "btn", MF_BUTTON);
+  if state == BS_PRIMARY { tr_attr(t, i, AT_STATE, "primary"); }
+  if state == BS_DISABLED { tr_attr(t, i, AT_DISABLED, ""); }
+  ida: [UI_ID] u8;
+  l := tr_leaf(t, tr_cat(ida[..], id, ".l"), TG_SPAN, "btn-l", label);
+  tr_close(t);
+  return i;
+}
+// Link: a quiet text button, with no frame (Copy in a code block's strip).
+k_link :: (t: [] Tree, id: string, label: string) -> int { return tr_leaf(t, id, TG_BUTTON, "lk", label); }
+// Field: one or more lines of typing over an underline.
+k_field :: (t: [] Tree, u: [] Ui, id: string, placeholder: string, label: string) -> int {
+  ida: [UI_ID] u8;
+  i := k_frame(t, u, tr_cat(ida[..], id, ".frame"), TG_DIV, "field", MF_FIELD);
+  f := tr_open(t, id, TG_TEXTAREA, "");
+  tr_attr(t, f, AT_PLACEHOLDER, placeholder); tr_attr(t, f, AT_LABEL, label); tr_attr(t, f, AT_ROWS, "1");
+  tr_close(t);
+  tr_close(t);
+  return f;
+}
+// Composer: the field a message is written in, its note on the left and Send on the right.
+k_composer :: (t: [] Tree, u: [] Ui, id: string, placeholder: string, note: string, send: string, can_send: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  i := k_frame(t, u, tr_cat(ida[..], id, ".frame"), TG_DIV, "composer", MF_PANEL);
+  f := tr_open(t, id, TG_TEXTAREA, "");
+  tr_attr(t, f, AT_PLACEHOLDER, placeholder); tr_attr(t, f, AT_LABEL, placeholder); tr_attr(t, f, AT_ROWS, "2");
+  tr_close(t);
+  r := tr_open(t, tr_cat(idb[..], id, ".row"), TG_DIV, "composer-r");
+  m := tr_leaf(t, tr_cat(idc[..], id, ".note"), TG_SPAN, "meta", note);
+  b := k_button(t, u, tr_cat(idd[..], id, ".send"), send, ifx can_send then BS_PRIMARY else BS_DISABLED);
+  tr_close(t);
+  tr_close(t);
+  return f;
+}
+// The person's message: their words in a dim frame, on the right.
+k_user :: (t: [] Tree, u: [] Ui, id: string, text: string) -> int {
+  ida: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_DIV, "msg-user", MF_BUBBLE);
+  p := tr_leaf(t, tr_cat(ida[..], id, ".p"), TG_P, "", text);
+  tr_close(t);
+  return i;
+}
+// A line under an answer: the model, whose key, the cost.
+k_meta :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_P, "meta", text); }
+
+// A block's or an item's text with its runs as inline nodes under the open node.
+k_inline :: (t: [] Tree, doc: [] MdDoc, id: string, text: string, runs: [] MdRun) {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  at := 0; k := 0; part := 0;
+  while at < text.count {
+    to := text.count; tag := TG_SPAN; link := "";
+    if k < runs.count && runs[k].from <= at {
+      r := runs[k];
+      to = ifx r.to > text.count then text.count else r.to;
+      if (r.marks & MD_LINK) != 0 { tag = TG_A; link = md_link(doc, r); }
+      else if r.style == MD_CODE { tag = TG_CODE; }
+      else if r.style == MD_BOLD || (r.marks & MD_STRONG) != 0 { tag = TG_STRONG; }
+      else if (r.marks & MD_ITALIC) != 0 { tag = TG_EM; }
+      else if (r.marks & MD_STRIKE) != 0 { tag = TG_DEL; }
+      k += 1;
+    } else if k < runs.count { to = ifx runs[k].from > text.count then text.count else runs[k].from; }
+    if to <= at { break; }
+    n := tr_leaf(t, tr_join(idb[..], tr_cat(ida[..], id, "."), part), tag, "", cast(string) text[at..<to]);
+    if tag == TG_A { tr_attr(t, n, AT_HREF, link); }
+    at = to; part += 1;
+  }
+}
+// Code block: its language and Copy in a strip, then the code.
+k_code :: (t: [] Tree, u: [] Ui, id: string, lang: string, code: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_DIV, "code", MF_PANEL);
+  h := tr_open(t, tr_cat(ida[..], id, ".h"), TG_DIV, "code-h");
+  l := tr_leaf(t, tr_cat(idb[..], id, ".lang"), TG_SPAN, "meta", ifx lang.count > 0 then lang else "text");
+  c := k_link(t, tr_cat(idc[..], id, ".copy"), "Copy");
+  tr_close(t);
+  p := tr_leaf(t, tr_cat(idd[..], id, ".pre"), TG_PRE, "", code);
+  tr_close(t);
+  return i;
+}
+// The agent's message: its Markdown as plain nodes on the ground. Reading text gets no frame and no effect.
+k_agent :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "md");
+  for b: 0..<doc[0].nb {
+    block := doc[0].blocks[b];
+    bid := tr_join(idb[..], tr_cat(ida[..], id, ".b"), b);
+    if block.kind == MB_PARA {
+      p := tr_open(t, bid, TG_P, "");
+      k_inline(t, doc, bid, md_block_text(doc, b), md_block_runs(doc, b));
+      tr_close(t);
+    } else if block.kind == MB_CODE {
+      c := k_code(t, u, bid, md_lang(doc, b), md_block_text(doc, b));
+    } else if block.kind == MB_LIST || block.kind == MB_QUOTE {
+      l := tr_open(t, bid, ifx block.kind == MB_QUOTE then TG_BLOCKQUOTE else ifx block.ordered then TG_OL else TG_UL, "");
+      for q: 0..<block.items {
+        item := block.item0 + q;
+        iid := tr_join(idc[..], tr_cat(ida[..], bid, ".i"), q);
+        li := tr_open(t, iid, ifx block.kind == MB_QUOTE then TG_P else TG_LI, "");
+        k_inline(t, doc, iid, md_item_text(doc, item), md_item_runs(doc, item));
+        tr_close(t);
+      }
+      tr_close(t);
+    } else if block.kind == MB_TABLE && block.cols > 0 {
+      tb := tr_open(t, bid, TG_TABLE, "");
+      rows := block.items / block.cols;
+      for r: 0..<rows {
+        rid := tr_join(idc[..], tr_cat(ida[..], bid, ".r"), r);
+        row := tr_open(t, rid, TG_TR, "");
+        for c: 0..<block.cols {
+          item := block.item0 + r * block.cols + c;
+          idd: [UI_ID] u8; ide: [UI_ID] u8;
+          cid := tr_join(ide[..], tr_cat(idd[..], rid, ".c"), c);
+          cell := tr_open(t, cid, ifx r == 0 then TG_TH else TG_TD, "");
+          k_inline(t, doc, cid, md_item_text(doc, item), md_item_runs(doc, item));
+          tr_close(t);
+        }
+        tr_close(t);
+      }
+      tr_close(t);
+    }
+  }
+  tr_close(t);
+  return i;
+}
+// Tool call: what the agent did and to what, on one row that opens onto what it sent and what came back.
+k_tool :: (t: [] Tree, u: [] Ui, id: string, what: string, detail: string, open: bool, input: string, output: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8; idf: [UI_ID] u8; idg: [UI_ID] u8;
+  i := k_frame(t, u, tr_cat(ida[..], id, ".frame"), TG_DIV, "tool", MF_PANEL);
+  h := tr_open(t, id, TG_BUTTON, "tool-h");
+  tr_attr(t, h, AT_EXPANDED, ifx open then "true" else "false");
+  a := tr_leaf(t, tr_cat(idb[..], id, ".what"), TG_SPAN, "tool-k", what);
+  b := tr_leaf(t, tr_cat(idc[..], id, ".detail"), TG_SPAN, "tool-d", detail);
+  c := tr_leaf(t, tr_cat(idd[..], id, ".x"), TG_SPAN, "tool-x", ifx open then "Hide" else "Show");
+  tr_close(t);
+  if open {
+    body := tr_open(t, tr_cat(ide[..], id, ".body"), TG_DIV, "tool-b");
+    m := tr_leaf(t, tr_cat(idf[..], id, ".in"), TG_PRE, "", input);
+    o := tr_leaf(t, tr_cat(idg[..], id, ".out"), TG_PRE, "", output);
+    tr_close(t);
+  }
+  tr_close(t);
+  return i;
+}
+// Notice: something the person must see, between two lines: its kind in words, then what happened. Close it with tr_close.
+k_notice :: (t: [] Tree, u: [] Ui, id: string, kind: string, text: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_DIV, "notice", MF_NOTICE);
+  tr_attr(t, i, AT_ROLE, "status");
+  a := tr_leaf(t, tr_cat(ida[..], id, ".k"), TG_P, "notice-k", kind);
+  b := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_P, "notice-t", text);
+  return i;
+}
+// Row: a conversation in a list or a choice in a menu. The current one has an underline.
+k_row :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_BUTTON, "row");
+  if current {
+    tr_frame(t, i, mono_kind(MF_ROW), MF_ROW, ui_progress(u, tr_cat(ida[..], id, ".on"), MONO_ENTER));
+    tr_attr(t, i, AT_CURRENT, "true");
+  }
+  a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "row-t", title);
+  if meta.count > 0 { b := tr_leaf(t, tr_cat(idb[..], id, ".m"), TG_SPAN, "meta", meta); }
+  tr_close(t);
+  return i;
+}
+// Header: the page's or a conversation's title, typed in. Close it with tr_close.
+k_header :: (t: [] Tree, u: [] Ui, id: string, title: string) -> int {
+  ida: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_HEADER, "hd", MF_HEADER);
+  h := k_text(t, u, tr_cat(ida[..], id, ".t"), TG_H1, "hd-t", title);
+  return i;
+}
+// Menu: rows in a panel. Close it with tr_close.
+k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
+  i := k_frame(t, u, id, TG_DIV, "menu", MF_PANEL);
+  tr_attr(t, i, AT_ROLE, "group"); tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a node enters over its time, later ones a stagger after, and reduced motion enters at once" {
+  us: [1] Ui; u := us[..];
+  ui_begin(u, 10, false);
+  #assert ui_progress(u, "a", 1) == 0 && ui_progress(u, "b", 1) == 0 && u[0].busy && u[0].fresh == 2;
+  ui_end(u);
+  ui_begin(u, 10.5, false);
+  a := ui_progress(u, "a", 1); b := ui_progress(u, "b", 1);
+  #assert a == 0.5 && b < a && b > 0 && u[0].busy;
+  ui_end(u);
+  ui_begin(u, 12, false);
+  #assert ui_progress(u, "a", 1) == 1 && ui_progress(u, "b", 1) == 1 && !u[0].busy;
+  ui_end(u);
+  // b is not built: it is forgotten, and enters again when it comes back
+  ui_begin(u, 13, false);
+  #assert ui_progress(u, "a", 1) == 1;
+  ui_end(u);
+  #assert u[0].nb == 1;
+  ui_begin(u, 14, false);
+  #assert ui_progress(u, "b", 1) == 0;
+  ui_end(u);
+  ui_begin(u, 14, true);
+  #assert ui_progress(u, "c", 1) == 1 && !u[0].busy;
+  ui_replay(u);
+  #assert u[0].nb == 0;
+}
+
+#test "a button is a framed node and its label; a disabled one says so" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  tr_begin(t); ui_begin(u, 0, true);
+  a := k_button(t, u, "send", "Send", BS_PRIMARY);
+  b := k_button(t, u, "wait", "Wait", BS_DISABLED);
+  #assert t[0].n == 4 && t[0].nodes[a].tag == TG_BUTTON && tr_class(t, a) == "btn" && t[0].nodes[a].frame == mono_kind(MF_BUTTON) + 1;
+  #assert t[0].nodes[a].progress == 1 && tr_attr_of(t, a, AT_STATE) == "primary" && !tr_has(t, a, AT_DISABLED);
+  #assert tr_id(t, a + 1) == "send.l" && tr_text_of(t, a + 1) == "Send" && t[0].nodes[a + 1].parent == a;
+  #assert tr_has(t, b, AT_DISABLED) && !tr_has(t, b, AT_STATE) && t[0].depth == 0;
+}
+
+#test "a label types in with its whole text present, then is plain text" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  tr_begin(t); ui_begin(u, 0, false);
+  i := k_text(t, u, "title", TG_H1, "hd-t", "COMPONENTS");
+  ui_end(u);
+  tr_begin(t); ui_begin(u, 0.07, false);
+  i = k_text(t, u, "title", TG_H1, "hd-t", "COMPONENTS");
+  #assert t[0].n == 3 && !t[0].nodes[i].has_text && u[0].busy;
+  #assert tr_class(t, i + 1) == "sr" && tr_text_of(t, i + 1) == "COMPONENTS";
+  typed := tr_text_of(t, i + 2);
+  #assert typed.count > 0 && typed.count < 10 && tr_attr_of(t, i + 2, AT_HIDDEN) == "true" && typed == cast(string) "COMPONENTS"[0..<typed.count];
+  ui_end(u);
+  tr_begin(t); ui_begin(u, 5, false);
+  i = k_text(t, u, "title", TG_H1, "hd-t", "COMPONENTS");
+  #assert t[0].n == 1 && tr_text_of(t, i) == "COMPONENTS" && !u[0].busy;
+}
+
+#test "an answer's Markdown becomes paragraphs, inline nodes, a list and a code block" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..]; docs: [1] MdDoc; doc := docs[..];
+  n := md_parse(doc, "It reads `chat.coax` and **stops**. See [the audit](/a).\n\n- one\n- two\n\n```sh\nls\n```", 0);
+  #assert n == 3;
+  tr_begin(t); ui_begin(u, 0, true);
+  i := k_agent(t, u, "m", doc);
+  p := tr_find(t, "m.b0");
+  #assert p > 0 && t[0].nodes[p].tag == TG_P && !t[0].nodes[p].has_text;
+  code := tr_find(t, "m.b0.1");
+  #assert code > 0 && t[0].nodes[code].tag == TG_CODE && tr_text_of(t, code) == "chat.coax";
+  strong := tr_find(t, "m.b0.3");
+  #assert t[0].nodes[strong].tag == TG_STRONG && tr_text_of(t, strong) == "stops";
+  found := false;
+  for k: 0..<t[0].n { if t[0].nodes[k].tag == TG_A { found = tr_text_of(t, k) == "the audit" && tr_attr_of(t, k, AT_HREF) == "/a"; } }
+  #assert found;
+  li := tr_find(t, "m.b1.i1");
+  #assert t[0].nodes[li].tag == TG_LI && t[0].nodes[t[0].nodes[li].parent].tag == TG_UL && tr_text_of(t, tr_find(t, "m.b1.i1.0")) == "two";
+  pre := tr_find(t, "m.b2.pre");
+  #assert t[0].nodes[pre].tag == TG_PRE && tr_text_of(t, pre) == "ls" && tr_text_of(t, tr_find(t, "m.b2.lang")) == "sh";
+  #assert t[0].depth == 0 && t[0].lost == 0;
+}
+
+#test "a tool call opens onto what it sent and what came back; a current row is framed" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  tr_begin(t); ui_begin(u, 0, true);
+  a := k_tool(t, u, "tool.1", "Read", "docs/chat.md", false, "in", "out");
+  #assert tr_find(t, "tool.1.body") < 0 && tr_attr_of(t, tr_find(t, "tool.1"), AT_EXPANDED) == "false" && tr_text_of(t, tr_find(t, "tool.1.x")) == "Show";
+  tr_begin(t);
+  a = k_tool(t, u, "tool.1", "Read", "docs/chat.md", true, "in", "out");
+  #assert tr_text_of(t, tr_find(t, "tool.1.out")) == "out" && tr_attr_of(t, tr_find(t, "tool.1"), AT_EXPANDED) == "true";
+  r := k_row(t, u, "row.1", "Zero-base the chat", "Opus 5.5", true);
+  q := k_row(t, u, "row.2", "Other", "", false);
+  #assert t[0].nodes[r].frame > 0 && tr_attr_of(t, r, AT_CURRENT) == "true" && t[0].nodes[q].frame == 0 && tr_find(t, "row.2.m") < 0;
+  #assert t[0].depth == 0;
+}

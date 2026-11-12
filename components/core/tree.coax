@@ -1,0 +1,185 @@
+// The node tree: what a text surface is made of when the browser draws it
+// (docs/audits/2026-11-11-chat-zero-base-audit.md, sections 10 and 11). A
+// page builds it from its state: each node has a stable id, a tag, a class,
+// its text or its children, a few attributes, and the frame drawn behind it
+// if it has one. A component (components/kit/frames.coax) only builds nodes.
+// The browser backend (components/backend/dom.coax) compares each tree with
+// the last one it sent and writes the changes for the host to apply.
+//
+// An id is the part and its name ("composer.send", "row.3"), as in the
+// element table (elements.coax), never an index that moves when another row
+// comes or goes. A node holds text or children, not both.
+//   coax/bin/coax test components/core/tree.coax
+
+TR_NODES :: 512;      // nodes in one tree
+TR_POOL :: 131072;    // bytes of ids, classes, text and attribute values
+TR_DEPTH :: 32;       // open nodes at once
+
+// Tags, and their names in the browser.
+TG_DIV :: 0; TG_SPAN :: 1; TG_BUTTON :: 2; TG_TEXTAREA :: 3; TG_A :: 4; TG_H1 :: 5; TG_H2 :: 6; TG_H3 :: 7;
+TG_P :: 8; TG_UL :: 9; TG_OL :: 10; TG_LI :: 11; TG_PRE :: 12; TG_CODE :: 13; TG_SECTION :: 14; TG_HEADER :: 15;
+TG_NAV :: 16; TG_MAIN :: 17; TG_STRONG :: 18; TG_EM :: 19; TG_BLOCKQUOTE :: 20; TG_DEL :: 21; TG_FOOTER :: 22;
+TG_TABLE :: 23; TG_TR :: 24; TG_TH :: 25; TG_TD :: 26;
+TG_COUNT :: 27;
+TG_NAMES :: [27] string.["div", "span", "button", "textarea", "a", "h1", "h2", "h3", "p", "ul", "ol", "li", "pre", "code",
+  "section", "header", "nav", "main", "strong", "em", "blockquote", "del", "footer", "table", "tr", "th", "td"];
+
+// Attributes, and their names in the browser. AT_FRAME is set by tr_frame.
+AT_HREF :: 0; AT_LABEL :: 1; AT_PLACEHOLDER :: 2; AT_ROLE :: 3; AT_HIDDEN :: 4; AT_EXPANDED :: 5; AT_PRESSED :: 6;
+AT_DISABLED :: 7; AT_STATE :: 8; AT_FRAME :: 9; AT_CURRENT :: 10; AT_ROWS :: 11; AT_LANG :: 12; AT_LIVE :: 13;
+AT_FOCUS :: 14;      // the field the page opens with the caret in
+AT_COUNT :: 15;
+AT_NAMES :: [15] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
+  "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus"];
+
+TrNode :: struct {
+  id_at: int; id_n: int;
+  parent: int;                 // its parent's index, or -1 at the top
+  tag: int;
+  cls_at: int; cls_n: int;
+  text_at: int; text_n: int; has_text: bool;
+  has: int;                    // which attributes are set, a bit each
+  val_at: [AT_COUNT] int; val_n: [AT_COUNT] int;
+  frame: int;                  // 0 none, else the frame's kind + 1 (arwes/frames.coax: 0 underline ... 8 circle)
+  frame_set: int;              // which of the skin's frame settings
+  progress: f32;               // the frame's assembly, 0 to 1
+}
+
+Tree :: struct {
+  nodes: [TR_NODES] TrNode; n: int;
+  pool: [TR_POOL] u8; pool_n: int;
+  stack: [TR_DEPTH] int; depth: int;
+  lost: int;                   // nodes that didn't fit
+}
+
+tr_begin :: (t: [] Tree) { t[0].n = 0; t[0].pool_n = 0; t[0].depth = 0; t[0].lost = 0; }
+// Text into the pool: where it starts. What doesn't fit is cut.
+tr_put :: (t: [] Tree, s: string) -> int {
+  at := t[0].pool_n; n := at;
+  for c: s { if n >= TR_POOL { break; } t[0].pool[n] = c; n += 1; }
+  t[0].pool_n = n;
+  return at;
+}
+tr_str :: (t: [] Tree, at: int, n: int) -> string { return cast(string) t[0].pool[at..<at + n]; }
+tr_id :: (t: [] Tree, i: int) -> string { return tr_str(t, t[0].nodes[i].id_at, t[0].nodes[i].id_n); }
+tr_class :: (t: [] Tree, i: int) -> string { return tr_str(t, t[0].nodes[i].cls_at, t[0].nodes[i].cls_n); }
+tr_text_of :: (t: [] Tree, i: int) -> string { return tr_str(t, t[0].nodes[i].text_at, t[0].nodes[i].text_n); }
+tr_attr_of :: (t: [] Tree, i: int, key: int) -> string { return tr_str(t, t[0].nodes[i].val_at[key], t[0].nodes[i].val_n[key]); }
+tr_bit :: (key: int) -> int { b := 1; for k: 0..<key { b *= 2; } return b; }
+tr_has :: (t: [] Tree, i: int, key: int) -> bool { return (t[0].nodes[i].has & tr_bit(key)) != 0; }
+
+// Opens a node under the open one: its index, or -1 when the tree is full
+// (tr_close still pairs with it). An id is needed; a tag outside the list is a div.
+tr_open :: (t: [] Tree, id: string, tag: int, cls: string) -> int {
+  if t[0].depth >= TR_DEPTH { t[0].lost += 1; return -1; }
+  if t[0].n >= TR_NODES || id.count == 0 {
+    t[0].lost += 1;
+    t[0].stack[t[0].depth] = -1; t[0].depth += 1;
+    return -1;
+  }
+  i := t[0].n; t[0].n += 1;
+  node: TrNode;
+  node.parent = -1;
+  // the nearest open node that was kept
+  d := t[0].depth - 1;
+  while d >= 0 { if t[0].stack[d] >= 0 { node.parent = t[0].stack[d]; break; } d -= 1; }
+  node.tag = ifx tag >= 0 && tag < TG_COUNT then tag else TG_DIV;
+  before := t[0].pool_n;
+  node.id_at = tr_put(t, id); node.id_n = t[0].pool_n - before;
+  before = t[0].pool_n;
+  node.cls_at = tr_put(t, cls); node.cls_n = t[0].pool_n - before;
+  t[0].nodes[i] = node;
+  t[0].stack[t[0].depth] = i; t[0].depth += 1;
+  return i;
+}
+tr_close :: (t: [] Tree) { if t[0].depth > 0 { t[0].depth -= 1; } }
+tr_text :: (t: [] Tree, i: int, text: string) {
+  if i < 0 || i >= t[0].n { return; }
+  before := t[0].pool_n;
+  t[0].nodes[i].text_at = tr_put(t, text); t[0].nodes[i].text_n = t[0].pool_n - before;
+  t[0].nodes[i].has_text = true;
+}
+tr_attr :: (t: [] Tree, i: int, key: int, value: string) {
+  if i < 0 || i >= t[0].n || key < 0 || key >= AT_COUNT { return; }
+  before := t[0].pool_n;
+  t[0].nodes[i].val_at[key] = tr_put(t, value); t[0].nodes[i].val_n[key] = t[0].pool_n - before;
+  t[0].nodes[i].has = t[0].nodes[i].has | tr_bit(key);
+}
+// The frame behind a node: its kind (arwes/frames.coax), which of the skin's settings, and how far it is assembled.
+tr_frame :: (t: [] Tree, i: int, kind: int, set: int, progress: f32) {
+  if i < 0 || i >= t[0].n || kind < 0 { return; }
+  t[0].nodes[i].frame = kind + 1; t[0].nodes[i].frame_set = set; t[0].nodes[i].progress = progress;
+  tr_attr(t, i, AT_FRAME, "1");
+}
+// A node holding only text.
+tr_leaf :: (t: [] Tree, id: string, tag: int, cls: string, text: string) -> int {
+  i := tr_open(t, id, tag, cls);
+  tr_text(t, i, text);
+  tr_close(t);
+  return i;
+}
+tr_find :: (t: [] Tree, id: string) -> int {
+  for i: 0..<t[0].n { if tr_id(t, i) == id { return i; } }
+  return -1;
+}
+
+// A text's hash, for telling whether it changed. It stays under 46 bits, so hash * 131 + a byte never overflows.
+TR_HASH :: 70368744177663;
+tr_hash :: (s: string) -> int {
+  h := 7 + s.count;
+  for c: s { h = (h * 131 + cast(int) c) & TR_HASH; }
+  return h;
+}
+
+// An id from a part and a number: "row." and 3 is "row.3".
+tr_join :: (out: [] u8, part: string, k: int) -> string {
+  n := 0;
+  for c: part { if n < out.count { out[n] = c; n += 1; } }
+  digits: [20] u8; d := 0; x := ifx k < 0 then 0 else k;
+  if x == 0 { digits[0] = '0'; d = 1; }
+  while x > 0 && d < digits.count { digits[d] = cast(u8) ('0' + x % 10); x /= 10; d += 1; }
+  while d > 0 && n < out.count { d -= 1; out[n] = digits[d]; n += 1; }
+  return cast(string) out[0..<n];
+}
+// An id from two parts: "msg.4" and ".p" is "msg.4.p".
+tr_cat :: (out: [] u8, a: string, b: string) -> string {
+  n := 0;
+  for c: a { if n < out.count { out[n] = c; n += 1; } }
+  for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+#test "nodes nest under the open one and keep their ids, classes, text and attributes" {
+  ts: [1] Tree; t := ts[..];
+  tr_begin(t);
+  a := tr_open(t, "page", TG_MAIN, "page");
+  b := tr_open(t, "send", TG_BUTTON, "btn");
+  tr_attr(t, b, AT_LABEL, "Send");
+  c := tr_leaf(t, "send.l", TG_SPAN, "btn-l", "Send");
+  tr_close(t);
+  d := tr_leaf(t, "note", TG_P, "", "hello");
+  tr_close(t);
+  #assert a == 0 && b == 1 && c == 2 && d == 3 && t[0].n == 4 && t[0].depth == 0;
+  #assert t[0].nodes[b].parent == a && t[0].nodes[c].parent == b && t[0].nodes[d].parent == a && t[0].nodes[a].parent == -1;
+  #assert tr_id(t, c) == "send.l" && tr_class(t, c) == "btn-l" && tr_text_of(t, c) == "Send" && t[0].nodes[c].has_text;
+  #assert tr_has(t, b, AT_LABEL) && tr_attr_of(t, b, AT_LABEL) == "Send" && !tr_has(t, b, AT_HREF) && !t[0].nodes[b].has_text;
+  #assert tr_find(t, "note") == 3 && tr_find(t, "none") < 0;
+  tr_frame(t, b, 3, 1, 0.5);
+  #assert t[0].nodes[b].frame == 4 && t[0].nodes[b].frame_set == 1 && tr_has(t, b, AT_FRAME);
+}
+
+#test "ids join, and a node with no id or past the end is not kept but still closes" {
+  ts: [1] Tree; t := ts[..];
+  tr_begin(t);
+  buf: [32] u8; buf2: [32] u8;
+  #assert tr_join(buf[..], "row.", 12) == "row.12" && tr_join(buf[..], "row.", 0) == "row.0";
+  #assert tr_cat(buf2[..], "msg.4", ".p") == "msg.4.p";
+  a := tr_open(t, "a", TG_DIV, "");
+  x := tr_open(t, "", TG_DIV, "");
+  y := tr_leaf(t, "inside", TG_SPAN, "", "kept under a");
+  tr_close(t);
+  tr_close(t);
+  #assert x == -1 && t[0].lost == 1 && t[0].depth == 0 && t[0].nodes[y].parent == a;
+  tr_text(t, -1, "nothing"); tr_attr(t, -1, AT_HREF, "/"); tr_frame(t, -1, 0, 0, 1);
+  #assert t[0].n == 2;
+}

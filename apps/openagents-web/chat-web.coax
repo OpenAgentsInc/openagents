@@ -1,0 +1,133 @@
+// openagents.com/chat, rebuilt from nothing (docs/audits/2026-11-11-chat-zero-base-audit.md):
+// the first piece, and for now the only one. The page is the composer at the
+// foot of the window: a real text field and Send. Enter or Send takes what
+// was typed and clears the field. Nothing is sent anywhere yet and nothing is
+// kept: there is no transcript, no list and no agent behind it. The page
+// before this one is /chat-gpu (chat.coax).
+//
+// The browser draws it: the frames set (components/kit/frames.coax) in the
+// mono skin, through the browser backend (components/backend/dom.coax) and
+// coax/web/dom-host.js. This is its module for coax/web/wasm.sh, with
+// chat-web-face.c.
+//   coax/bin/coax test apps/openagents-web/chat-web.coax
+
+#load "../../components/kit/frames.coax";
+#load "../../components/backend/dom.coax";
+
+CW_INBOX :: 16384;     // a field's text from the host
+CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
+CW_CSS :: 16384;
+CW_CLICK :: 1; CW_INPUT :: 2; CW_SUBMIT :: 3;
+
+ChatWeb :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  draft: [CW_DRAFT] u8; draft_n: int;
+  sends: int;                        // messages taken so far
+  inbox: [CW_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [CW_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+// Whether the draft has anything but spaces and line breaks.
+cw_has_words :: (s: [] ChatWeb) -> bool {
+  for i: 0..<s[0].draft_n { c := s[0].draft[i]; if c != ' ' && c != '\n' && c != '\t' && c != '\r' { return true; } }
+  return false;
+}
+cw_build :: (s: [] ChatWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  tr_begin(t);
+  page := tr_open(t, "chat", TG_MAIN, "chat");
+  f := k_composer(t, u, "composer", "Ask anything", "Enter to send", "Send", cw_has_words(s));
+  tr_attr(t, f, AT_FOCUS, "");
+  tr_close(t);
+}
+// Takes the message: the field is cleared. Nothing else happens to it yet.
+cw_send :: (s: [] ChatWeb) {
+  if !cw_has_words(s) { return; }
+  s[0].sends += 1;
+  s[0].draft_n = 0;
+  dm_value(s[0].dom[..], "composer", "");
+}
+
+coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    n := mono_frames(s[0].sets[..]);
+    s[0].ready = true; s[0].dirty = true;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_css(s[0].css[..]);
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  cw_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if kind == CW_INPUT && id == "composer" {
+    n := ifx length < 0 then 0 else ifx length > CW_DRAFT then CW_DRAFT else length;
+    for i: 0..<n { s[0].draft[i] = s[0].inbox[i]; }
+    s[0].draft_n = n;
+  }
+  else if kind == CW_SUBMIT && id == "composer" { cw_send(s); }
+  else if kind == CW_CLICK && id == "composer.send" { cw_send(s); }
+  else { return; }
+  s[0].dirty = true;
+}
+coaxial_chatweb_size :: (s: [] ChatWeb, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_chatweb_inbox_cap :: () -> int #export_c #effects(all) { return CW_INBOX; }
+
+CwTest :: struct { s: [1] ChatWeb; }
+
+#test "the page is the composer alone; Send is off until there are words" {
+  h: [1] CwTest; s := h[0].s[..];
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert n > 0 && t[0].n == 7 && t[0].lost == 0 && tr_class(t, 0) == "chat";
+  #assert t[0].nodes[tr_find(t, "composer")].tag == TG_TEXTAREA && tr_has(t, tr_find(t, "composer"), AT_FOCUS);
+  #assert tr_has(t, tr_find(t, "composer.send"), AT_DISABLED) && coaxial_chatweb_frame(s, 0.016, true) == 0;
+  d := s[0].dom[..];
+  spaces := "  \n ";
+  for i: 0..<spaces.count { s[0].inbox[i] = spaces[i]; }
+  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), spaces.count);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
+  coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
+  #assert s[0].sends == 0;
+}
+
+#test "Enter or Send takes the message and clears the field" {
+  h: [1] CwTest; s := h[0].s[..];
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  d := s[0].dom[..];
+  text := "hello";
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), text.count);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED) && tr_attr_of(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_STATE) == "primary";
+  coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].sends == 1 && s[0].draft_n == 0 && dm_test_count(d, n, DC_VALUE) == 1;
+  #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), text.count);
+  coaxial_chatweb_event(s, CW_CLICK, dm_find(d, "composer.send"), 0);
+  #assert s[0].sends == 2;
+}

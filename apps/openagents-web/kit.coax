@@ -1,0 +1,4 @@
+// openagents.com/components: the frames set in the mono skin, drawn by the
+// browser (components/gallery/web.coax). This is its module for
+// coax/web/wasm.sh, with kit-face.c; the host is coax/web/dom-host.js.
+#load "../../components/gallery/web.coax";

@@ -22,7 +22,9 @@ undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
 | A text box: typing, selection, caret, undo, paste, IME | The edit buffer | `components/core/edit.coax` |
 | Cmd/Ctrl+A, C, X, V and word deletion in a box on the website | The site's text keys | `apps/openagents-web/textkeys.coax` |
 | Buttons, toggles, sliders, tabs, lists, panels, bars | The control kit, drawn in a skin | `components/kit/controls.coax`, `components/skin/` |
-| A chat composer, transcript, Markdown, tool chips | The chat set | `components/zeron/`, `components/core/markdown.coax` |
+| A text surface on the web (a chat, a settings page, a document): buttons, fields, a composer, messages, tool calls, code blocks, notices, rows, menus | The frames set in the mono skin, drawn by the browser | `components/kit/frames.coax`, `components/skin/mono.coax`, `components/core/tree.coax`, `components/backend/dom.coax`, `coax/web/dom-host.js`; see them at `/components` |
+| ARWES frames, easings, the animator, text effects, backgrounds | The ARWES ports | `components/core/arwes/` |
+| A chat on the GPU (the desktop app): composer, transcript, Markdown, tool chips | The earlier chat set | `components/zeron/`, `components/core/markdown.coax` |
 | Measuring and wrapping text, fonts | Layout | `components/layout/` |
 | A game HUD: bars, hotbar, windows, numbers | The HUD sets | `components/kit/hud.coax`, `everglade/hud/`, `verse/hud.coax` |
 | Drawing UI on the GPU or in a terminal | Backends | `components/backend/` |

@@ -1,0 +1,347 @@
+// The browser backend: a node tree (components/core/tree.coax) to the
+// changes a browser has to make (docs/audits/2026-11-11-chat-zero-base-audit.md,
+// sections 10 and 11). It keeps what it last sent, a slot per node, compares
+// each new tree with it by id, and writes a short list of commands: make a
+// node, put it after its sibling, set its text, class or an attribute, draw
+// its frame, take it away. The host (coax/web/dom-host.js) applies them and
+// holds no logic. Nothing is written for a node that didn't change, so a page
+// that is still sends nothing.
+//
+// A frame is ARWES's (components/core/arwes/frames.coax): the host reports a
+// framed node's size (dm_size), this file computes the frame's points for
+// that size and sends them, and the host draws them as SVG paths behind the
+// node's content. The same points are what the GPU backend strokes.
+//
+// The commands, each a byte then its fields (u16 and u32 little-endian, a
+// string its u32 length then its bytes, a slot 0xFFFF for none):
+//   1 make     slot u16, tag string, id string
+//   2 remove   slot u16
+//   3 place    slot u16, parent u16, after u16      (after none: first in its parent)
+//   4 text     slot u16, string
+//   5 class    slot u16, string
+//   6 attr     slot u16, key string, value string
+//   7 unattr   slot u16, key string
+//   8 frame    slot u16, runs u8, then for each run: layer u8 (0 ground, 1 line, 2 decoration),
+//              fill u8, alpha u16 (thousandths), stroke u16 (64ths of a px), points u16,
+//              then x and y as i32 in 64ths of a px for each point
+//   9 style    string                                (the page's stylesheet, once)
+//  10 value    slot u16, string                      (what a field holds, when the page sets it)
+// This is the module's own memory read by its own host, as the vertex buffer
+// is, not a wire shape: nothing stores it and nothing else reads it.
+//   coax/bin/coax test components/backend/dom.coax
+
+#load "../core/tree.coax";
+#load "../core/arwes/frames.coax";
+
+DM_OUT :: 524288;      // bytes of commands one flush can hold
+DM_ID :: 64;           // bytes of an id kept
+DM_NONE :: 65535;
+DC_MAKE :: 1; DC_REMOVE :: 2; DC_PLACE :: 3; DC_TEXT :: 4; DC_CLASS :: 5; DC_ATTR :: 6; DC_UNATTR :: 7; DC_FRAME :: 8; DC_STYLE :: 9; DC_VALUE :: 10;
+DM_VALUE :: 1024;      // bytes of a field's value the page can set
+
+DomSlot :: struct {
+  live: bool; seen: bool;
+  id: [DM_ID] u8; id_n: int;
+  parent: int; after: int;        // slots, -1 for none
+  text_h: int; has_text: bool;
+  cls_h: int;
+  has: int; attr_h: [AT_COUNT] int;
+  frame_h: int;
+  w: f32; h: f32;                 // its size, as the host last reported it
+}
+Dom :: struct {
+  slots: [TR_NODES] DomSlot;
+  of: [TR_NODES] int;             // a node's slot, this flush
+  last: [TR_NODES] int;           // the last child placed under a node, as a slot
+  out: [DM_OUT] u8; out_n: int;
+  overflow: bool;                 // a flush that ran out of room: the next one sends everything again
+  styled: bool;
+  keep: bool;                     // dm_style wrote its command: the next flush adds to it
+  sent: int;                      // commands written by the last flush
+  value_id: [DM_ID] u8; value_id_n: int;          // a field whose value the page set (dm_value), until a flush sends it
+  value: [DM_VALUE] u8; value_n: int; value_set: bool;
+}
+
+dm_u8 :: (d: [] Dom, v: int) {
+  if d[0].out_n >= DM_OUT { d[0].overflow = true; return; }
+  d[0].out[d[0].out_n] = cast(u8) (v & 255); d[0].out_n += 1;
+}
+dm_u16 :: (d: [] Dom, v: int) { dm_u8(d, v); dm_u8(d, v / 256); }
+dm_u32 :: (d: [] Dom, v: int) { dm_u16(d, v & 65535); dm_u16(d, (v / 65536) & 65535); }
+// A signed value in 64ths, as a u32 in two's complement.
+dm_fixed :: (d: [] Dom, v: f32) {
+  x := ifx v >= 0 then cast(int) (v * 64 + 0.5) else -cast(int) (0.5 - v * 64);
+  if x < 0 { x += 4294967296; }
+  dm_u32(d, x);
+}
+dm_str :: (d: [] Dom, s: string) {
+  if d[0].out_n + s.count + 4 > DM_OUT { d[0].overflow = true; return; }
+  dm_u32(d, s.count);
+  for c: s { d[0].out[d[0].out_n] = c; d[0].out_n += 1; }
+}
+dm_slot_ref :: (d: [] Dom, slot: int) { dm_u16(d, ifx slot < 0 then DM_NONE else slot); }
+dm_slot_id :: (d: [] Dom, slot: int) -> string {
+  if slot < 0 || slot >= TR_NODES || !d[0].slots[slot].live { return ""; }
+  return cast(string) d[0].slots[slot].id[0..<d[0].slots[slot].id_n];
+}
+dm_find :: (d: [] Dom, id: string) -> int {
+  for s: 0..<TR_NODES { if d[0].slots[s].live && dm_slot_id(d, s) == id { return s; } }
+  return -1;
+}
+dm_free :: (d: [] Dom) -> int {
+  for s: 0..<TR_NODES { if !d[0].slots[s].live { return s; } }
+  return -1;
+}
+// The host's report of a framed node's size. True when it changed (the page builds again).
+dm_size :: (d: [] Dom, slot: int, w: f32, h: f32) -> bool {
+  if slot < 0 || slot >= TR_NODES || !d[0].slots[slot].live { return false; }
+  if d[0].slots[slot].w == w && d[0].slots[slot].h == h { return false; }
+  d[0].slots[slot].w = w; d[0].slots[slot].h = h;
+  return true;
+}
+// Sets what a field holds (clearing a composer once its message is sent). The next flush sends it.
+dm_value :: (d: [] Dom, id: string, text: string) {
+  d[0].value_id_n = 0; d[0].value_n = 0;
+  for c: id { if d[0].value_id_n < DM_ID { d[0].value_id[d[0].value_id_n] = c; d[0].value_id_n += 1; } }
+  for c: text { if d[0].value_n < DM_VALUE { d[0].value[d[0].value_n] = c; d[0].value_n += 1; } }
+  d[0].value_set = true;
+}
+// Forgets what was sent: the next flush makes every node again (a host that started over).
+dm_reset :: (d: [] Dom) {
+  for s: 0..<TR_NODES { d[0].slots[s].live = false; }
+  d[0].styled = false; d[0].keep = false; d[0].overflow = false; d[0].out_n = 0;
+}
+// The page's stylesheet, sent before the first flush's nodes.
+dm_style :: (d: [] Dom, css: string) {
+  if d[0].styled { return; }
+  d[0].out_n = 0; d[0].sent = 0;
+  dm_u8(d, DC_STYLE); dm_str(d, css);
+  d[0].styled = true; d[0].keep = true; d[0].sent += 1;
+}
+
+// A node's frame at its slot's size: the command, kept only if its points changed.
+dm_frame :: (d: [] Dom, slot: int, kind: int, set: AfSettings, progress: f32) {
+  w := d[0].slots[slot].w; h := d[0].slots[slot].h;
+  if !(w > 0) || !(h > 0) { return; }
+  points: [256] AfPoint;
+  n := af_frame_settings(kind, HudBox.{x = 0, y = 0, width = w, height = h}, set, progress, points[..]);
+  start := d[0].out_n;
+  dm_u8(d, DC_FRAME); dm_u16(d, slot);
+  runs_at := d[0].out_n; dm_u8(d, 0);
+  runs := 0; i := 0;
+  while i < n && runs < 255 {
+    e := i + 1;
+    while e < n && !points[e].move { e += 1; }
+    p := points[i];
+    dm_u8(d, p.layer); dm_u8(d, ifx p.fill then 1 else 0);
+    dm_u16(d, cast(int) (ifx p.alpha <= 0 then 0.0f32 else ifx p.alpha >= 1 then 1000.0f32 else p.alpha * 1000));
+    dm_u16(d, cast(int) (ifx p.stroke <= 0 then 0.0f32 else p.stroke * 64));
+    dm_u16(d, e - i);
+    for k: i..<e { dm_fixed(d, points[k].x); dm_fixed(d, points[k].y); }
+    runs += 1; i = e;
+  }
+  if d[0].overflow { return; }
+  d[0].out[runs_at] = cast(u8) runs;
+  hash := tr_hash(cast(string) d[0].out[start..<d[0].out_n]);
+  if hash == d[0].slots[slot].frame_h { d[0].out_n = start; return; }
+  d[0].slots[slot].frame_h = hash; d[0].sent += 1;
+}
+
+// Writes the changes from what was last sent to tree t into d.out, and
+// returns their bytes. sets: the skin's frame settings (a node's frame_set
+// picks one). After a flush that overflowed, nothing it wrote is to be
+// applied: call dm_reset, have the host clear the page, and flush again.
+dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {
+  if !d[0].keep { d[0].out_n = 0; d[0].sent = 0; }   // the stylesheet written just before stays in front
+  d[0].keep = false;
+  for s: 0..<TR_NODES { d[0].slots[s].seen = false; }
+  root_last := -1;
+  for i: 0..<t[0].n {
+    node := t[0].nodes[i];
+    id := tr_id(t, i);
+    slot := dm_find(d, id);
+    fresh := slot < 0 || d[0].slots[slot].seen;   // a second node with one id gets its own slot
+    if fresh {
+      slot = dm_free(d);
+      if slot < 0 { d[0].of[i] = -1; d[0].last[i] = -1; continue; }
+      blank: DomSlot;
+      blank.live = true; blank.parent = -2; blank.after = -2;
+      blank.id_n = 0;
+      for c: id { if blank.id_n < DM_ID { blank.id[blank.id_n] = c; blank.id_n += 1; } }
+      d[0].slots[slot] = blank;
+      tags := TG_NAMES;
+      dm_u8(d, DC_MAKE); dm_u16(d, slot); dm_str(d, tags[node.tag]); dm_str(d, id);
+      d[0].sent += 1;
+    }
+    d[0].slots[slot].seen = true;
+    d[0].of[i] = slot; d[0].last[i] = -1;
+    // its place: under its parent, after the sibling placed before it
+    parent := ifx node.parent < 0 then -1 else d[0].of[node.parent];
+    after := ifx node.parent < 0 then root_last else d[0].last[node.parent];
+    if node.parent < 0 { root_last = slot; } else { d[0].last[node.parent] = slot; }
+    if d[0].slots[slot].parent != parent || d[0].slots[slot].after != after {
+      dm_u8(d, DC_PLACE); dm_u16(d, slot); dm_slot_ref(d, parent); dm_slot_ref(d, after);
+      d[0].slots[slot].parent = parent; d[0].slots[slot].after = after; d[0].sent += 1;
+    }
+    cls := tr_class(t, i);
+    ch := tr_hash(cls);
+    if fresh && cls.count > 0 || !fresh && ch != d[0].slots[slot].cls_h {
+      dm_u8(d, DC_CLASS); dm_u16(d, slot); dm_str(d, cls); d[0].sent += 1;
+    }
+    d[0].slots[slot].cls_h = ch;
+    if node.has_text {
+      text := tr_text_of(t, i);
+      th := tr_hash(text);
+      if !d[0].slots[slot].has_text || th != d[0].slots[slot].text_h {
+        dm_u8(d, DC_TEXT); dm_u16(d, slot); dm_str(d, text); d[0].sent += 1;
+      }
+      d[0].slots[slot].text_h = th;
+    } else if d[0].slots[slot].has_text {
+      dm_u8(d, DC_TEXT); dm_u16(d, slot); dm_str(d, ""); d[0].sent += 1;
+    }
+    d[0].slots[slot].has_text = node.has_text;
+    names := AT_NAMES;
+    for key: 0..<AT_COUNT {
+      bit := tr_bit(key);
+      now := (node.has & bit) != 0; was := (d[0].slots[slot].has & bit) != 0;
+      if now {
+        value := tr_attr_of(t, i, key);
+        vh := tr_hash(value);
+        if !was || vh != d[0].slots[slot].attr_h[key] {
+          dm_u8(d, DC_ATTR); dm_u16(d, slot); dm_str(d, names[key]); dm_str(d, value); d[0].sent += 1;
+        }
+        d[0].slots[slot].attr_h[key] = vh;
+      } else if was {
+        dm_u8(d, DC_UNATTR); dm_u16(d, slot); dm_str(d, names[key]); d[0].sent += 1;
+      }
+    }
+    d[0].slots[slot].has = node.has;
+    if node.frame > 0 && node.frame_set >= 0 && node.frame_set < sets.count {
+      dm_frame(d, slot, node.frame - 1, sets[node.frame_set], node.progress);
+    } else { d[0].slots[slot].frame_h = 0; }
+  }
+  for s: 0..<TR_NODES {
+    if d[0].slots[s].live && !d[0].slots[s].seen {
+      dm_u8(d, DC_REMOVE); dm_u16(d, s); d[0].sent += 1;
+      d[0].slots[s].live = false;
+    }
+  }
+  if d[0].value_set {
+    slot := dm_find(d, cast(string) d[0].value_id[0..<d[0].value_id_n]);
+    if slot >= 0 { dm_u8(d, DC_VALUE); dm_u16(d, slot); dm_str(d, cast(string) d[0].value[0..<d[0].value_n]); d[0].sent += 1; }
+    d[0].value_set = false;
+  }
+  return ifx d[0].overflow then 0 else d[0].out_n;
+}
+
+// ---------------------------------------------------------------- checks
+
+dm_test_page :: (t: [] Tree, label: string, with_note: bool) {
+  tr_begin(t);
+  a := tr_open(t, "page", TG_MAIN, "page");
+  b := tr_open(t, "send", TG_BUTTON, "btn");
+  tr_frame(t, b, 3, 0, 1);
+  l := tr_leaf(t, "send.l", TG_SPAN, "btn-l", label);
+  tr_close(t);
+  if with_note { n := tr_leaf(t, "note", TG_P, "", "hello"); }
+  tr_close(t);
+}
+// How many commands of one kind a flush wrote.
+dm_test_count :: (d: [] Dom, bytes: int, want: int) -> int {
+  n := 0; i := 0;
+  while i < bytes {
+    op := cast(int) d[0].out[i];
+    if op == want { n += 1; }
+    i += 1;
+    if op == DC_MAKE { i += 2; i += 4 + dm_test_u32(d, i); i += 4 + dm_test_u32(d, i); }
+    else if op == DC_REMOVE { i += 2; }
+    else if op == DC_PLACE { i += 6; }
+    else if op == DC_TEXT || op == DC_CLASS || op == DC_VALUE { i += 2; i += 4 + dm_test_u32(d, i); }
+    else if op == DC_ATTR { i += 2; i += 4 + dm_test_u32(d, i); i += 4 + dm_test_u32(d, i); }
+    else if op == DC_UNATTR { i += 2; i += 4 + dm_test_u32(d, i); }
+    else if op == DC_FRAME {
+      i += 2; runs := cast(int) d[0].out[i]; i += 1;
+      for r: 0..<runs { points := cast(int) d[0].out[i + 6] + cast(int) d[0].out[i + 7] * 256; i += 8 + points * 8; }
+    }
+    else if op == DC_STYLE { i += 4 + dm_test_u32(d, i); }
+    else { return -1; }
+  }
+  return n;
+}
+dm_test_u32 :: (d: [] Dom, i: int) -> int {
+  return cast(int) d[0].out[i] + cast(int) d[0].out[i + 1] * 256 + cast(int) d[0].out[i + 2] * 65536 + cast(int) d[0].out[i + 3] * 16777216;
+}
+
+#test "the first flush makes every node; the same tree again sends nothing" {
+  ts: [1] Tree; t := ts[..]; ds: [1] Dom; d := ds[..];
+  sets: [1] AfSettings; sets[0] = af_settings(3);
+  dm_test_page(t, "Send", true);
+  n := dm_flush(d, t, sets[..]);
+  #assert n > 0 && dm_test_count(d, n, DC_MAKE) == 4 && dm_test_count(d, n, DC_PLACE) == 4;
+  #assert dm_test_count(d, n, DC_TEXT) == 2 && dm_test_count(d, n, DC_CLASS) == 3 && dm_test_count(d, n, DC_ATTR) == 1;
+  #assert dm_test_count(d, n, DC_FRAME) == 0;   // no size yet
+  #assert dm_slot_id(d, 1) == "send" && dm_find(d, "note") == 3;
+  n = dm_flush(d, t, sets[..]);
+  #assert n == 0 && d[0].sent == 0;
+}
+
+#test "one changed label is one command, and a node that goes is removed" {
+  ts: [1] Tree; t := ts[..]; ds: [1] Dom; d := ds[..];
+  sets: [1] AfSettings; sets[0] = af_settings(3);
+  dm_test_page(t, "Send", true);
+  n := dm_flush(d, t, sets[..]);
+  dm_test_page(t, "Stop", true);
+  n = dm_flush(d, t, sets[..]);
+  #assert d[0].sent == 1 && dm_test_count(d, n, DC_TEXT) == 1;
+  dm_test_page(t, "Stop", false);
+  n = dm_flush(d, t, sets[..]);
+  #assert d[0].sent == 1 && dm_test_count(d, n, DC_REMOVE) == 1 && dm_find(d, "note") < 0;
+  dm_test_page(t, "Stop", true);
+  n = dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_MAKE) == 1 && dm_test_count(d, n, DC_PLACE) == 1 && dm_find(d, "note") == 3;
+}
+
+#test "a frame is sent once its node has a size, and again only when its points change" {
+  ts: [1] Tree; t := ts[..]; ds: [1] Dom; d := ds[..];
+  sets: [1] AfSettings; sets[0] = af_settings(3);
+  dm_test_page(t, "Send", false);
+  n := dm_flush(d, t, sets[..]);
+  slot := dm_find(d, "send");
+  #assert dm_size(d, slot, 120, 32) && !dm_size(d, slot, 120, 32) && !dm_size(d, 400, 1, 1);
+  n = dm_flush(d, t, sets[..]);
+  #assert d[0].sent == 1 && dm_test_count(d, n, DC_FRAME) == 1;
+  n = dm_flush(d, t, sets[..]);
+  #assert n == 0;
+  #assert dm_size(d, slot, 140, 32);
+  n = dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_FRAME) == 1;
+}
+
+#test "a node that moves before its sibling is placed again, and the stylesheet goes first" {
+  ts: [1] Tree; t := ts[..]; ds: [1] Dom; d := ds[..];
+  sets: [1] AfSettings; sets[0] = af_settings(3);
+  dm_style(d, "body{margin:0}");
+  tr_begin(t);
+  a := tr_leaf(t, "a", TG_P, "", "a"); b := tr_leaf(t, "b", TG_P, "", "b");
+  n := dm_flush(d, t, sets[..]);
+  #assert d[0].out[0] == DC_STYLE && dm_test_count(d, n, DC_STYLE) == 1 && dm_test_count(d, n, DC_MAKE) == 2;
+  tr_begin(t);
+  b = tr_leaf(t, "b", TG_P, "", "b"); a = tr_leaf(t, "a", TG_P, "", "a");
+  n = dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_PLACE) == 2 && dm_test_count(d, n, DC_MAKE) == 0 && dm_test_count(d, n, DC_STYLE) == 0;
+  dm_value(d, "a", "typed"); dm_value(d, "a", "");
+  n = dm_flush(d, t, sets[..]);
+  #assert d[0].sent == 1 && dm_test_count(d, n, DC_VALUE) == 1;
+  n = dm_flush(d, t, sets[..]);
+  #assert n == 0;
+  dm_reset(d);
+  n = dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_MAKE) == 2;
+}
+
+#test "fixed-point values are in 64ths, two's complement" {
+  ds: [1] Dom; d := ds[..];
+  dm_fixed(d, 1.5); dm_fixed(d, -1);
+  #assert dm_test_u32(d, 0) == 96 && dm_test_u32(d, 4) == 4294967232;
+  #assert tr_hash("abc") != tr_hash("abd") && tr_hash("") != tr_hash("a");
+}
