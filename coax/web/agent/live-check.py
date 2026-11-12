@@ -143,11 +143,12 @@ if MODE == "chat":
             sys.exit(1)
     auth = subprocess.run([SIGN, "--key", KEY, "GET", ORIGIN + "/api/admin/login"], capture_output=True, text=True, check=True).stdout.strip()
     s, _, h = chat_http("GET", "/api/admin/login?auth=" + urllib.parse.quote(auth, safe="") + "&next=chat")
-    tok = next((c.split(";")[0].split("=", 1)[1] for c in (h.get_all("Set-Cookie") or []) if "Path=/api/chat" in c), "")
-    check("the admin login opens /chat", s == 303 and len(tok) == 64, s)
+    # the site session (auth.c): __Host-oa_session=oas_...
+    tok = next((c.split(";")[0] for c in (h.get_all("Set-Cookie") or []) if c.startswith("__Host-oa_session=oas_")), "")
+    check("the admin login opens /chat", s == 303 and tok != "", s)
     if failed:
         sys.exit(1)
-    H = {"Cookie": "oa_admin=" + tok, "Origin": ORIGIN, "Content-Type": "application/json"}
+    H = {"Cookie": tok, "Origin": ORIGIN, "Content-Type": "application/json"}
     t0 = time.time()
     s, b, _ = chat_http("POST", "/api/chat/send", json.dumps({"text": "Reply with the one word: ok", "model": "claude-haiku-5-5"}).encode(), H)
     r = json.loads(b) if s == 200 else {}
