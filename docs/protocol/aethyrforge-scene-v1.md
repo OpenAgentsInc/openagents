@@ -28,6 +28,9 @@ not public publishing. Unsupported items fail explicitly; no asset generation.
 The desktop supplies a private `scene-session.json` with schema
 `aethyrforge.scene-session.v1`, exact loopback API origin, observed player
 centimetres and monotonic observation time. The tool refuses a stale session
-or a non-loopback origin. `AETHYRFORGE_SCENE_SESSION` selects that file for an
+or a non-loopback origin. Its format is
+[scene session v1](../../proto/aethyrforge/scene-session-v1.schema.json); the
+app and the tool share one codec, `apps/aethyrforge-desktop/scene-session.coax`.
+`AETHYRFORGE_SCENE_SESSION` selects that file for an
 isolated app/test. The desktop also supplies Coder's context file describing
 these commands. All persistent state stays under `~/.openagents/`.

@@ -1,0 +1,74 @@
+// Checks proto/aethyrforge/scene-session-v1.schema.json against scene-session.coax (#13244): each
+// fixture's fields written by fs_session_put give exactly its wire, which fs_session at its now_ms
+// takes (with its api and position) or refuses as the fixture says; every malformed session is
+// refused; and the schema's id and freshness are the codec's.
+//   coax/web/tool.sh apps/aethyrforge-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json
+#import "Basic";
+#load "scene-session.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+SSP_FILE :: 32768;
+SSP_PATH :: "proto/aethyrforge/scene-session-v1.schema.json";
+SSP_CHECK :: "coax/web/tool.sh apps/aethyrforge-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json";
+SSP_NONE :: -999999999;
+
+ssp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+ssp_fixture :: (d: Jv, fx: int) -> bool {
+  wb: [1024] u8;
+  wire := ssp_str(d, jv_get(d, fx, "wire"), wb[..]);
+  v: [6] int; keys := [6] string.["port", "x_cm", "z_cm", "pid", "observed_ms", "now_ms"];
+  for i: 0..<6 { v[i] = jv_int(d, jv_get(d, fx, keys[i]), SSP_NONE); if v[i] == SSP_NONE { return false; } }
+  acc := jv_get(d, fx, "accepts");
+  if wire == "" || (jv_kind(d, acc) != JV_TRUE && jv_kind(d, acc) != JV_FALSE) { return false; }
+  out: [1024] u8;
+  n := fs_session_put(out[..], v[0], v[1], v[2], v[3], v[4]);
+  if n <= 0 || cast(string) out[0..<n] != wire { print("fs_session_put gives %\n", ifx n > 0 then cast(string) out[0..<n] else ""); return false; }
+  s: [1] ForgeSceneSession;
+  ok := fs_session(wire, v[5], s[..]);
+  if ok != (jv_kind(d, acc) == JV_TRUE) { return false; }
+  if !ok { return true; }
+  api: [64] u8; an := fss_int(api[..], fss_put(api[..], 0, FS_SESSION_ORIGIN), v[0]);
+  return s[0].x == v[1] && s[0].z == v[2] && cast(string) s[0].api[0..<s[0].n] == cast(string) api[0..<an];
+}
+
+ssp_check :: (d: Jv, path: string) -> bool {
+  tb: [512] u8;
+  if path.count < SSP_PATH.count || path[path.count - SSP_PATH.count..<path.count] != SSP_PATH { print("not %\n", SSP_PATH); return false; }
+  if ssp_str(d, jv_get(d, 0, "check"), tb[..]) != SSP_CHECK || ssp_str(d, jv_get(d, 0, "codec"), tb[..]) != "apps/aethyrforge-desktop/scene-session.coax" { print("check, codec\n"); return false; }
+  if ssp_str(d, jv_get(d, jv_get(d, jv_get(d, 0, "properties"), "schema"), "const"), tb[..]) != FS_SESSION_SCHEMA { print("schema const\n"); return false; }
+  if jv_int(d, jv_get(d, 0, "fresh_ms"), -1) != FS_SESSION_FRESH_MS { print("fresh_ms\n"); return false; }
+  fixtures := jv_get(d, 0, "fixtures");
+  if jv_kind(d, fixtures) != JV_ARRAY || jv_len(d, fixtures) < 2 { return false; }
+  took := false; refused := false;
+  for i: 0..<jv_len(d, fixtures) {
+    f := jv_at(d, fixtures, i);
+    if !ssp_fixture(d, f) { print("fixture % fails\n", i); return false; }
+    if jv_kind(d, jv_get(d, f, "accepts")) == JV_TRUE { took = true; } else { refused = true; }
+  }
+  if !took || !refused { print("fixtures: one taken and one refused at least\n"); return false; }
+  bad := jv_get(d, 0, "malformed");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { return false; }
+  for i: 0..<jv_len(d, bad) {
+    b: [1024] u8; t := ssp_str(d, jv_at(d, bad, i), b[..]);
+    s: [1] ForgeSceneSession;
+    if fs_session(t, 0, s[..]) { print("malformed % taken: %\n", i, t); return false; }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: scene-session-profile PROFILE.json"); return 2; }
+  path := args_at(a[..], 0);
+  text: [SSP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [1024] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("scene-session-profile: cannot parse JSON"); return 2; }
+  if !ssp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

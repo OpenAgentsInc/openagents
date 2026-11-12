@@ -7,6 +7,7 @@
 #load "chat-run.coax";        // a turn on the shared turn runner, in this process (the Mac's chat.m through chat-face.c)
 #load "scene-context.coax";
 #load "voice-coder.coax";
+#load "scene-session.coax";   // the scene session file the app writes (fgc_scene_session)
 #load "microphone.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json-f64.coax";

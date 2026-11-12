@@ -3,20 +3,12 @@
 #authority;
 #load "../../verse/everglade/edits.coax";
 #load "../../coax/lib/json/json.coax";
+#load "scene-session.coax";   // aethyrforge.scene-session.v1, the app's session file: its one codec (#13244)
 ForgeSceneCommand :: struct {op:int;item:int=-1;count:int=1;stack:bool;size:int=100;located:bool;x:int;z:int;group:int;dx:int;dz:int;}
 ForgeScenePlan :: struct {ok:bool;edits:EgEdits;group:int;count:int;searched:int;}
-ForgeSceneSession :: struct {api:[128]u8;n:int;x:int;z:int;}
 FS_PLACE :: 1;FS_MOVE :: 2;FS_REMOVE :: 3;
 FS_INVALID_INT :: 9223372036854775807;
 FS_FIELDS :: [10]string.["op","item","count","arrangement","size_percent","x_cm","z_cm","group","dx_cm","dz_cm"];
-
-#test "scene sessions bind a fresh exact loopback origin and bounded observed player position" {
-  s:[1]ForgeSceneSession;
-  good:="{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234\",\"x_cm\":0,\"z_cm\":-5000,\"observed_ms\":100}";
-  #assert fs_session(good,100,s[..]) && s[0].x==0 && s[0].z==-5000 && cast(string)s[0].api[0..<s[0].n]=="http://127.0.0.1:1234";
-  #assert fs_session(good,5100,s[..]) && !fs_session(good,5101,s[..]) && !fs_session(good,99,s[..]);
-  for bad:[5]string.["{}","[]","{\"schema\":\"wrong\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://example.com:1234\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234/x\"}"] {#assert !fs_session(bad,100,s[..]);}
-}
 
 #test "scene commands admit catalogue rows and stacks and reject ambiguous or malformed input" {
   c:[1]ForgeSceneCommand;
@@ -64,21 +56,6 @@ FS_FIELDS :: [10]string.["op","item","count","arrangement","size_percent","x_cm"
   invalid:=[29]string.["\"crate\"","{\"op\":1}","{\"op\":\"place\",\"item\":0}","{\"op\":\"place\",\"item\":\"crate\",\"count\":null}","{\"op\":\"place\",\"item\":\"crate\",\"size_percent\":true}","{\"op\":\"place\",\"item\":\"crate\",\"arrangement\":false}","{\"op\":\"place\",\"item\":\"crate\",\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":-16001,\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":16001,\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0,\"z_cm\":-16001}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":0,\"z_cm\":16001}","{\"op\":\"place\",\"item\":\"crate\",\"x_cm\":\"0\",\"z_cm\":0}","{\"op\":\"place\",\"item\":\"crate\",\"group\":1}","{\"op\":\"place\",\"item\":\"crate\",\"dx_cm\":1}","{\"op\":\"place\",\"item\":\"crate\",\"dz_cm\":1}","{\"op\":\"move\",\"group\":1000001}","{\"op\":\"move\",\"group\":1,\"dx_cm\":-16001}","{\"op\":\"move\",\"group\":1,\"dx_cm\":16001}","{\"op\":\"move\",\"group\":1,\"dz_cm\":-16001}","{\"op\":\"move\",\"group\":1,\"dz_cm\":16001}","{\"op\":\"move\",\"group\":1,\"item\":\"crate\"}","{\"op\":\"remove\",\"group\":1,\"count\":1}","{\"op\":\"remove\",\"group\":1,\"size_percent\":100}","{\"op\":\"move\",\"group\":1,\"arrangement\":\"row\"}","{\"op\":\"move\",\"group\":1,\"x_cm\":0}","{\"op\":\"move\",\"group\":1,\"z_cm\":0}","{\"op\":\"remove\"}","{\"op\":\"move\",\"group\":1.5}","{\"op\":\"place\",\"item\":\"crate\",\"count\":99999999}"];
   for text:invalid {#assert !fs_command(text,c[..]);}
 }
-#test "scene session ports positions and age boundaries are enforced" {
-  s:[1]ForgeSceneSession;
-  for port:[2]string.["1","65535"] {
-    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=raw_put(b[..],n,port);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":-16000,\"z_cm\":16000}");
-    #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x== -16000 && s[0].z==16000;
-    #assert s[0].n==17+port.count && cast(string)s[0].api[17..<s[0].n]==port;
-  }
-  for port:[7]string.["","0","65536","123456","/","a","1/"] {
-    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=raw_put(b[..],n,port);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":0,\"z_cm\":0}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
-  }
-  for tail:[9]string.["\"x_cm\":0,\"z_cm\":0","\"observed_ms\":-1,\"x_cm\":0,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":-16001,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":16001,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":0,\"z_cm\":-16001","\"observed_ms\":0,\"x_cm\":0,\"z_cm\":16001","\"observed_ms\":0,\"x_cm\":0","\"observed_ms\":0,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":\"0\",\"z_cm\":0"] {
-    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1\",");n=raw_put(b[..],n,tail);n=raw_put(b[..],n,"}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
-  }
-  #assert !fs_session("oops",0,s[..]);
-}
 #test "scene staging is bounded atomic and preserves document flags across group edits" {
   c:=ForgeSceneCommand.{op=FS_PLACE,item=0,count=1};e:EgEdits;
   p:=fs_plan(e,c,600,-1200);#assert p.ok && p.searched==1 && p.edits.things[0].x==6 && p.edits.things[0].z== -10;
@@ -116,16 +93,6 @@ FS_FIELDS :: [10]string.["op","item","count","arrangement","size_percent","x_cm"
     expected:=[8]f32.[6,8,4,10,2,12,0,14];
     #assert p.edits.things[e.n].x==expected[i%8] && p.edits.things[e.n].z==(ifx i<8 then -10.0f32 else -8.0f32);
     e=p.edits;
-  }
-}
-#test "scene origin validation separates its prefix digit count numeric range and coordinate ends" {
-  s:[1]ForgeSceneSession;
-  for port:[3]string.["10","9","00001"] {
-    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=raw_put(b[..],n,port);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":16000,\"z_cm\":-16000}");
-    #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x==16000 && s[0].z== -16000;
-  }
-  for api:[5]string.["","x","http://127.0.0.2:1","http://127.0.0.1:000001","http://127.0.0.1::"] {
-    b:[512]u8;n:=raw_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"");n=raw_put(b[..],n,api);n=raw_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":0,\"z_cm\":0}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
   }
 }
 fs_field :: (key:string)->int #effects(all) {for k:0..<FS_FIELDS.count {if key==FS_FIELDS[k] {return k;}}return FS_FIELDS.count;}
@@ -194,18 +161,4 @@ fs_plan :: (before:EgEdits,c:ForgeSceneCommand,px:int,pz:int)->ForgeScenePlan #e
     if valid {p.ok=true;p.edits=after;p.group=group;p.count=c.count;return p;}
   }
   return p;
-}
-fs_session :: (text:string,now:int,out:[]ForgeSceneSession)->bool #effects(all) {
-  nodes:[24]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
-  v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!="aethyrforge.scene-session.v1" {return false;}
-  api:=jv_raw(v,jv_get(v,0,"api"));prefix:="http://127.0.0.1:";
-  if api[0..<lo_i(api.count,prefix.count)]!=prefix {return false;}
-  if api.count-prefix.count>5 {return false;}
-  port:=0;for i:prefix.count..<api.count {if api[i]<'0' || api[i]>'9' {return false;}port=port*10+cast(int)(api[i]-'0');}
-  if port<1 || port>65535 {return false;}
-  stamp:=jv_int(v,jv_get(v,0,"observed_ms"),-1);
-  // Missing or mistyped coordinates lie immediately below the valid interval.
-  x:=jv_int(v,jv_get(v,0,"x_cm"),-16001);z:=jv_int(v,jv_get(v,0,"z_cm"),-16001);
-  if stamp<0 || now<stamp || now-stamp>5000 || x < -16000 || x>16000 || z < -16000 || z>16000 {return false;}
-  out[0].n=api.count;for i:0..<api.count {out[0].api[i]=api[i];}out[0].x=x;out[0].z=z;return true;
 }

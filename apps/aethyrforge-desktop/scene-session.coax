@@ -1,0 +1,98 @@
+// The desktop app's scene session, aethyrforge.scene-session.v1 (#13244): the file the app rewrites
+// every half second while a scene is open (Sources/app.m updateSceneSession, through chat-face.c
+// fgc_scene_session) and `aethyrforge scene` reads (scene-cli.coax) to reach the app's local API and
+// the player's position. The one codec: fs_session_put writes it, fs_session reads it. Profile
+// proto/aethyrforge/scene-session-v1.schema.json; its check runs both:
+//   coax/web/tool.sh apps/aethyrforge-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json
+#authority;
+#load "../../coax/lib/json/json.coax";
+FS_SESSION_SCHEMA :: "aethyrforge.scene-session.v1";
+FS_SESSION_ORIGIN :: "http://127.0.0.1:";   // the api is this loopback origin and a port, nothing more
+FS_SESSION_FRESH_MS :: 5000;                // a session older than this is the app gone
+FS_SESSION_CM :: 16000;                     // x_cm and z_cm are within this either way
+ForgeSceneSession :: struct {api:[128]u8;n:int;x:int;z:int;}
+
+#test "scene sessions bind a fresh exact loopback origin and bounded observed player position" {
+  s:[1]ForgeSceneSession;
+  good:="{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234\",\"x_cm\":0,\"z_cm\":-5000,\"observed_ms\":100}";
+  #assert fs_session(good,100,s[..]) && s[0].x==0 && s[0].z==-5000 && cast(string)s[0].api[0..<s[0].n]=="http://127.0.0.1:1234";
+  #assert fs_session(good,5100,s[..]) && !fs_session(good,5101,s[..]) && !fs_session(good,99,s[..]);
+  for bad:[5]string.["{}","[]","{\"schema\":\"wrong\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://example.com:1234\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234/x\"}"] {#assert !fs_session(bad,100,s[..]);}
+}
+#test "scene session ports positions and age boundaries are enforced" {
+  s:[1]ForgeSceneSession;
+  for port:[2]string.["1","65535"] {
+    b:[512]u8;n:=fss_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=fss_put(b[..],n,port);n=fss_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":-16000,\"z_cm\":16000}");
+    #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x== -16000 && s[0].z==16000;
+    #assert s[0].n==17+port.count && cast(string)s[0].api[17..<s[0].n]==port;
+  }
+  for port:[7]string.["","0","65536","123456","/","a","1/"] {
+    b:[512]u8;n:=fss_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=fss_put(b[..],n,port);n=fss_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":0,\"z_cm\":0}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
+  }
+  for tail:[9]string.["\"x_cm\":0,\"z_cm\":0","\"observed_ms\":-1,\"x_cm\":0,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":-16001,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":16001,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":0,\"z_cm\":-16001","\"observed_ms\":0,\"x_cm\":0,\"z_cm\":16001","\"observed_ms\":0,\"x_cm\":0","\"observed_ms\":0,\"z_cm\":0","\"observed_ms\":0,\"x_cm\":\"0\",\"z_cm\":0"] {
+    b:[512]u8;n:=fss_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1\",");n=fss_put(b[..],n,tail);n=fss_put(b[..],n,"}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
+  }
+  #assert !fs_session("oops",0,s[..]);
+}
+#test "scene origin validation separates its prefix digit count numeric range and coordinate ends" {
+  s:[1]ForgeSceneSession;
+  for port:[3]string.["10","9","00001"] {
+    b:[512]u8;n:=fss_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=fss_put(b[..],n,port);n=fss_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":16000,\"z_cm\":-16000}");
+    #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x==16000 && s[0].z== -16000;
+  }
+  for api:[5]string.["","x","http://127.0.0.2:1","http://127.0.0.1:000001","http://127.0.0.1::"] {
+    b:[512]u8;n:=fss_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"");n=fss_put(b[..],n,api);n=fss_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":0,\"z_cm\":0}");#assert !fs_session(cast(string)b[0..<n],0,s[..]);
+  }
+}
+#test "the app's session is written in one order and read back by the CLI's reader" {
+  b:[512]u8;s:[1]ForgeSceneSession;
+  n:=fs_session_put(b[..],51234,-120,4500,321,1794000000123);
+  #assert cast(string)b[0..<n]=="{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:51234\",\"x_cm\":-120,\"z_cm\":4500,\"pid\":321,\"observed_ms\":1794000000123}";
+  #assert fs_session(cast(string)b[0..<n],1794000000123,s[..]) && s[0].x== -120 && s[0].z==4500 && cast(string)s[0].api[0..<s[0].n]=="http://127.0.0.1:51234";
+  n=fs_session_put(b[..],1,0,0,0,0);#assert cast(string)b[0..<n]=="{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1\",\"x_cm\":0,\"z_cm\":0,\"pid\":0,\"observed_ms\":0}";
+  n=fs_session_put(b[..],65535,16000,-16000,1,0);#assert fs_session(cast(string)b[0..<n],0,s[..]) && cast(string)s[0].api[17..<s[0].n]=="65535";
+  #assert fs_session_put(b[..],0,0,0,0,0)== -1 && fs_session_put(b[..],65536,0,0,0,0)== -1;
+  // too small for the whole: none, never a cut file
+  full:=fs_session_put(b[..],1,0,0,0,0);#assert fs_session_put(b[0..<full],1,0,0,0,0)==full && fs_session_put(b[0..<full-1],1,0,0,0,0)== -1;
+  #assert fss_int(b[0..<2],0,123)==2 && fss_put(b[0..<1],0,"ab")==1;
+}
+
+fss_put :: (out:[]u8,at:int,t:string)->int #effects(all) {
+  n:=at;for c:t {if n>=out.count {return n;}out[n]=c;n+=1;}return n;
+}
+// v (not negative) in decimal at at.
+fss_int :: (out:[]u8,at:int,v:int)->int #effects(all) {
+  digits:[20]u8;c:=0;x:=v;
+  while true {digits[c]=cast(u8)(48+x%10);c+=1;x/=10;if x==0 {break;}}
+  n:=at;while c>0 {if n>=out.count {return n;}c-=1;out[n]=digits[c];n+=1;}
+  return n;
+}
+// The session the app writes: its api's port, the player's position (cm), its pid and the moment
+// (ms of its monotonic clock). -1 when the port is no port or out can't hold the whole file.
+fs_session_put :: (out:[]u8,port:int,x_cm:int,z_cm:int,pid:int,observed_ms:int)->int #export_c #effects(all) {
+  if port<1 || port>65535 {return -1;}
+  api:[32]u8;an:=fss_int(api[..],fss_put(api[..],0,FS_SESSION_ORIGIN),port);
+  j:[1]Jo;jo_start(j[..],out);jo_obj(j[..]);
+  jo_key(j[..],"schema");jo_str(j[..],FS_SESSION_SCHEMA);jo_key(j[..],"api");jo_str(j[..],cast(string)api[0..<an]);
+  jo_key(j[..],"x_cm");jo_int(j[..],x_cm);jo_key(j[..],"z_cm");jo_int(j[..],z_cm);
+  jo_key(j[..],"pid");jo_int(j[..],pid);jo_key(j[..],"observed_ms");jo_int(j[..],observed_ms);
+  jo_end(j[..]);
+  if j[0].bad {return -1;}
+  return j[0].n;
+}
+// A session as `aethyrforge scene` reads it at now (ms): false unless it names this schema, an exact
+// loopback origin and port, a moment within FS_SESSION_FRESH_MS, and a bounded position.
+fs_session :: (text:string,now:int,out:[]ForgeSceneSession)->bool #effects(all) {
+  nodes:[24]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
+  v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!=FS_SESSION_SCHEMA {return false;}
+  api:=jv_raw(v,jv_get(v,0,"api"));prefix:=FS_SESSION_ORIGIN;
+  for c,i:prefix {if i>=api.count || api[i]!=c {return false;}}
+  if api.count-prefix.count>5 {return false;}
+  port:=0;for i:prefix.count..<api.count {if api[i]<'0' || api[i]>'9' {return false;}port=port*10+cast(int)(api[i]-'0');}
+  if port<1 || port>65535 {return false;}
+  stamp:=jv_int(v,jv_get(v,0,"observed_ms"),-1);
+  // Missing or mistyped coordinates lie immediately below the valid interval.
+  x:=jv_int(v,jv_get(v,0,"x_cm"),-FS_SESSION_CM-1);z:=jv_int(v,jv_get(v,0,"z_cm"),-FS_SESSION_CM-1);
+  if stamp<0 || now<stamp || now-stamp>FS_SESSION_FRESH_MS || x < -FS_SESSION_CM || x>FS_SESSION_CM || z < -FS_SESSION_CM || z>FS_SESSION_CM {return false;}
+  out[0].n=api.count;for i:0..<api.count {out[0].api[i]=api[i];}out[0].x=x;out[0].z=z;return true;
+}

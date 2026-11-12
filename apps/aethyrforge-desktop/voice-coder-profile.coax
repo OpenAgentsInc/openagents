@@ -1,4 +1,5 @@
-// Checks proto/coder/voice-input-v1.schema.json against voice-coder.coax fv_message.
+// Checks proto/coder/voice-input-v1.schema.json against voice-coder.coax: fv_message reads each
+// example as it says, and fv_page_script, the page's writer, posts the schema id with both kinds.
 //
 //   coax/web/tool.sh apps/aethyrforge-desktop/voice-coder-profile.coax proto/coder/voice-input-v1.schema.json
 #import "Basic";
@@ -30,9 +31,21 @@ vcp_schema_id :: (v: Jv) -> string {
   return vcp_str(v, sch, "const");
 }
 
+// Whether the page's script (fv_page_script, the writer) posts this schema id with each kind it names.
+vcp_has :: (t: string, part: string) -> bool {
+  if part.count > t.count { return false; }
+  for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return true; } }
+  return false;
+}
+vcp_writes :: (id: string, kind: string) -> bool {
+  b: [256] u8; n := 0;
+  for part: [4] string.["{schema:'", id, "',kind:'", kind] { for c: part { b[n] = c; n += 1; } }
+  return vcp_has(fv_page_script(), cast(string) b[0..<n]);
+}
 vcp_check :: (v: Jv) -> bool {
   if vcp_str(v, 0, "check").count == 0 { return false; }
-  if vcp_schema_id(v).count == 0 { return false; }
+  if vcp_schema_id(v).count == 0 || vcp_schema_id(v) != FV_SCHEMA { return false; }
+  if !vcp_writes(FV_SCHEMA, "final'") || !vcp_writes(FV_SCHEMA, "cancel'") { return false; }
   exs := jv_get(v, 0, "examples");
   if jv_kind(v, exs) != JV_ARRAY || jv_len(v, exs) < 4 { return false; }
   msg_buf: [16385] u8;

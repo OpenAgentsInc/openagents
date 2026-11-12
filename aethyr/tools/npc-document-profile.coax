@@ -1,0 +1,93 @@
+// Checks proto/aethyrforge/npcs-v1.schema.json against aethyr/forge/npc-document.coax (#13244):
+// each fixture's values written by fnd_write give exactly its wire, its wire read by fnd_read gives
+// back its values, every malformed document is refused, and the kinds, actions, target kinds and
+// population bound the profile names are npc-command.coax's.
+// Usage: coax/web/tool.sh aethyr/tools/npc-document-profile.coax proto/aethyrforge/npcs-v1.schema.json
+#import "Basic";
+#load "../forge/npc-document.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+NDP_FILE :: 65536;
+NDP_NODES :: 4096;
+NDP_PATH :: "proto/aethyrforge/npcs-v1.schema.json";
+NDP_CHECK :: "coax/web/tool.sh aethyr/tools/npc-document-profile.coax proto/aethyrforge/npcs-v1.schema.json";
+NDP_TARGETS :: [5] string.["npc", "person", "player", "creature", "building"];
+NDP_ACTIONS :: [3] string.["stop", "attack", "move"];
+
+ndp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+ndp_same :: (a: ForgeNpc, b: ForgeNpc) -> bool {
+  return a.id == b.id && a.group == b.group && a.kind == b.kind && a.action == b.action && a.x == b.x && a.z == b.z && a.target_kind == b.target_kind && a.target == b.target;
+}
+
+ndp_fixture :: (d: Jv, fx: int) -> bool {
+  wbuf: [8192] u8;
+  wire := ndp_str(d, jv_get(d, fx, "wire"), wbuf[..]);
+  if wire.count == 0 { return false; }
+  doc: ForgeNpcs;
+  doc.version = jv_int(d, jv_get(d, fx, "version"), -1); doc.serial = jv_int(d, jv_get(d, fx, "serial"), -1); doc.groups = jv_int(d, jv_get(d, fx, "groups"), -1);
+  rows := jv_get(d, fx, "npcs");
+  if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) > FNP_MAX { return false; }
+  for i: 0..<jv_len(d, rows) {
+    r := jv_at(d, rows, i);
+    if jv_kind(d, r) != JV_ARRAY || jv_len(d, r) != 8 { return false; }
+    c: [8] int;
+    for q: 0..<8 { c[q] = jv_int(d, jv_at(d, r, q), -999999999); if c[q] == -999999999 { return false; } }
+    doc.npcs[i] = ForgeNpc.{id = c[0], group = c[1], kind = c[2], action = c[3], x = c[4], z = c[5], target_kind = c[6], target = c[7]};
+  }
+  doc.n = jv_len(d, rows);
+  out: [8192] u8;
+  n := fnd_write(doc, out[..]);
+  if n <= 0 || cast(string) out[0..<n] != wire { print("fnd_write gives %\n", cast(string) out[0..<n]); return false; }
+  back: [1] ForgeNpcs;
+  if !fnd_read(wire, back[..]) { return false; }
+  if back[0].version != doc.version || back[0].serial != doc.serial || back[0].groups != doc.groups || back[0].n != doc.n { return false; }
+  for i: 0..<doc.n { if !ndp_same(back[0].npcs[i], doc.npcs[i]) { return false; } }
+  return true;
+}
+
+ndp_check :: (d: Jv, path: string) -> bool {
+  tb: [512] u8;
+  if path.count < NDP_PATH.count || path[path.count - NDP_PATH.count..<path.count] != NDP_PATH { print("not %\n", NDP_PATH); return false; }
+  if ndp_str(d, jv_get(d, 0, "check"), tb[..]) != NDP_CHECK || ndp_str(d, jv_get(d, 0, "codec"), tb[..]) != "aethyr/forge/npc-document.coax" { print("check, codec\n"); return false; }
+  props := jv_get(d, 0, "properties");
+  if ndp_str(d, jv_get(d, jv_get(d, props, "schema"), "const"), tb[..]) != "aethyrforge.npcs.v1" { print("schema const\n"); return false; }
+  // The enumerations and the bound are npc-command.coax's.
+  kinds := jv_get(d, 0, "kinds");
+  if jv_kind(d, kinds) != JV_ARRAY || jv_len(d, kinds) != FNP_KINDS.count { return false; }
+  for i: 0..<FNP_KINDS.count { if ndp_str(d, jv_at(d, kinds, i), tb[..]) != FNP_KINDS[i] { print("kinds\n"); return false; } }
+  actions := jv_get(d, 0, "actions"); want_a := [3] int.[FNP_STOP, FNP_ATTACK, FNP_MOVE];
+  if jv_kind(d, actions) != JV_OBJECT || jv_len(d, actions) != 3 { return false; }
+  for i: 0..<3 { m := jv_at(d, actions, i); if jv_key(d, m) != NDP_ACTIONS[i] || jv_int(d, m, -1) != want_a[i] { print("actions\n"); return false; } }
+  targets := jv_get(d, 0, "target_kinds"); want_t := [5] int.[FNP_NPC, FNP_PERSON, FNP_PLAYER, FNP_CREATURE, FNP_BUILDING];
+  if jv_kind(d, targets) != JV_OBJECT || jv_len(d, targets) != 5 { return false; }
+  for i: 0..<5 { m := jv_at(d, targets, i); if jv_key(d, m) != NDP_TARGETS[i] || jv_int(d, m, -1) != want_t[i] { print("target_kinds\n"); return false; } }
+  if jv_int(d, jv_get(d, 0, "max_npcs"), -1) != FNP_MAX { print("max_npcs\n"); return false; }
+
+  fixtures := jv_get(d, 0, "fixtures");
+  if jv_kind(d, fixtures) != JV_ARRAY || jv_len(d, fixtures) < 2 { return false; }
+  for i: 0..<jv_len(d, fixtures) { if !ndp_fixture(d, jv_at(d, fixtures, i)) { print("fixture % fails\n", i); return false; } }
+  bad := jv_get(d, 0, "malformed");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { return false; }
+  for i: 0..<jv_len(d, bad) {
+    b: [4096] u8; t := ndp_str(d, jv_at(d, bad, i), b[..]);
+    out: [1] ForgeNpcs;
+    if fnd_read(t, out[..]) { print("malformed % taken: %\n", i, t); return false; }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: npc-document-profile PROFILE.json"); return 2; }
+  path := args_at(a[..], 0);
+  text: [NDP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [NDP_NODES] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("npc-document-profile: cannot parse JSON"); return 2; }
+  if !ndp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

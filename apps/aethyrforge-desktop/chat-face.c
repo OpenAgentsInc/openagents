@@ -12,6 +12,12 @@ void fgv_cancel(void) {fv_cancel((coax_v_t_ForgeVoiceCoder){&voice,1},0);}
 int64_t fgv_message(const uint8_t *p,int64_t n,bool available,bool busy) {
   return fv_message((coax_v_t_ForgeVoiceCoder){&voice,1},(coax_string){(const char *)p,n},available,busy);
 }
+int64_t fgv_page_script(uint8_t *out,int64_t cap) {
+  coax_string s=fv_page_script();if(s.count>cap)return -1;memcpy(out,s.data,(size_t)s.count);return s.count;
+}
+int64_t fgc_scene_session(int64_t port,int64_t x_cm,int64_t z_cm,int64_t pid,int64_t observed_ms,uint8_t *out,int64_t cap) {
+  return fs_session_put((coax_v_u8){out,cap},port,x_cm,z_cm,pid,observed_ms);
+}
 int64_t fgv_copy(uint8_t *p,int64_t cap) {
   if(voice.n>cap) return -1;memcpy(p,voice.text.e,(size_t)voice.n);return voice.n;
 }

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/aethyrforge/scene-session-v1.schema.json",
+  "profile": "scene-session-v1",
+  "version": 1,
+  "codec": "apps/aethyrforge-desktop/scene-session.coax",
+  "check": "coax/web/tool.sh apps/aethyrforge-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json",
+  "title": "Aethyrforge local scene session v1",
+  "description": "The 0600 file the desktop app rewrites every half second while a scene is open (fs_session_put, through chat-face.c fgc_scene_session) and `aethyrforge scene` reads (fs_session) to reach the app's local API. Keys in this order.",
+  "type": "object",
+  "required": ["schema", "api", "x_cm", "z_cm", "observed_ms"],
+  "properties": {
+    "schema": {"const": "aethyrforge.scene-session.v1"},
+    "api": {"type": "string", "pattern": "^http://127\\.0\\.0\\.1:[0-9]{1,5}$", "description": "The app's loopback origin; port 1 to 65535"},
+    "x_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+    "z_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+    "pid": {"type": "integer", "minimum": 0, "description": "The app's process; written, not read"},
+    "observed_ms": {"type": "integer", "minimum": 0, "description": "The app's monotonic clock in ms when written"}
+  },
+  "fresh_ms": 5000,
+  "fixtures": [
+    {"name": "a fresh session", "port": 51234, "x_cm": -120, "z_cm": 4500, "pid": 321, "observed_ms": 1794000000123, "now_ms": 1794000000500,
+     "wire": "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:51234\",\"x_cm\":-120,\"z_cm\":4500,\"pid\":321,\"observed_ms\":1794000000123}", "accepts": true},
+    {"name": "at the bounds", "port": 65535, "x_cm": 16000, "z_cm": -16000, "pid": 1, "observed_ms": 0, "now_ms": 5000,
+     "wire": "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:65535\",\"x_cm\":16000,\"z_cm\":-16000,\"pid\":1,\"observed_ms\":0}", "accepts": true},
+    {"name": "stale: the app is gone", "port": 1, "x_cm": 0, "z_cm": 0, "pid": 7, "observed_ms": 100, "now_ms": 5101,
+     "wire": "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1\",\"x_cm\":0,\"z_cm\":0,\"pid\":7,\"observed_ms\":100}", "accepts": false},
+    {"name": "no position yet", "port": 8800, "x_cm": -16001, "z_cm": -16001, "pid": 7, "observed_ms": 100, "now_ms": 100,
+     "wire": "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:8800\",\"x_cm\":-16001,\"z_cm\":-16001,\"pid\":7,\"observed_ms\":100}", "accepts": false}
+  ],
+  "malformed": [
+    "{}",
+    "oops",
+    "{\"schema\":\"aethyrforge.scene-session.v2\",\"api\":\"http://127.0.0.1:1\",\"x_cm\":0,\"z_cm\":0,\"observed_ms\":0}",
+    "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://example.com:1\",\"x_cm\":0,\"z_cm\":0,\"observed_ms\":0}",
+    "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:65536\",\"x_cm\":0,\"z_cm\":0,\"observed_ms\":0}",
+    "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1/x\",\"x_cm\":0,\"z_cm\":0,\"observed_ms\":0}",
+    "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1\",\"x_cm\":0,\"observed_ms\":0}",
+    "{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1\",\"x_cm\":0,\"z_cm\":0}"
+  ]
+}

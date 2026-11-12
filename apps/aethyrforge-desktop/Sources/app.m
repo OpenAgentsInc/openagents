@@ -281,11 +281,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   if (!self.smoke || [self has:@"--voice-smoke"] || [self has:@"--voice-warm-smoke"])
     script(@"globalThis.coaxialVoicePrepareCapture = capture => webkit.messageHandlers.forgeVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'prepare',capture});\n"
            @"globalThis.coaxialVoiceCancelCapture = capture => webkit.messageHandlers.forgeVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'cancel',capture});\n");
-  script(@"globalThis.coaxialVoiceFinal = e => {\n"
-         @"  webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));\n"
-         @"  return true;\n"
-         @"};\n"
-         @"globalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));\n");
+  { uint8_t vs[1024]; int64_t vn = fgv_page_script(vs, sizeof vs); if (vn > 0) script([[NSString alloc] initWithBytes:vs length:(NSUInteger)vn encoding:NSUTF8StringEncoding]); }
   config.websiteDataStore = WKWebsiteDataStore.nonPersistentDataStore;
   if (self.offlineReportURL) script(@"globalThis.__forgeRoomWorkers=0;const NativeWorker=Worker;globalThis.Worker=class extends NativeWorker{constructor(...args){super(...args);__forgeRoomWorkers++;}};");
   if (self.setupProfileURL) script(@"globalThis.__forgeErrors=[];addEventListener('error',e=>__forgeErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__forgeErrors.push(String(e.reason)));");
@@ -745,14 +741,17 @@ static int cb_changed(void *u) {
     if (h) value = [NSString stringWithFormat:@"{\"x_cm\":%ld,\"z_cm\":%ld}", lround(mf_probe(h, 0) / 10.0), lround(mf_probe(h, 2) / 10.0)];
   }];
   if (!value) value = [self js:@"JSON.stringify({x_cm:Math.round(coaxial.fieldProbe(0)/10),z_cm:Math.round(coaxial.fieldProbe(2)/10)})"] ?: @"{}";
-  NSMutableDictionary *data = [forge_parse(value) mutableCopy] ?: [NSMutableDictionary dictionary];
-  data[@"schema"] = @"aethyrforge.scene-session.v1";
-  data[@"api"] = [NSString stringWithFormat:@"http://127.0.0.1:%@", self.pageURL.port];
-  data[@"pid"] = @(getpid());
+  NSDictionary *at = forge_parse(value);
+  NSNumber *x = [at isKindOfClass:NSDictionary.class] ? at[@"x_cm"] : nil, *z = [at isKindOfClass:NSDictionary.class] ? at[@"z_cm"] : nil;
   struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
-  data[@"observed_ms"] = @((int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000);
-  if (self.stopping) return;
-  forge_write(forge_json(data), session);
+  // The file's bytes are scene-session.coax's (fs_session_put); a position the page
+  // didn't give is left outside the reader's bounds, as before, so the CLI waits for a fresh one.
+  uint8_t b[512];
+  int64_t n = fgc_scene_session(self.pageURL.port.integerValue, [x isKindOfClass:NSNumber.class] ? x.longLongValue : -16001,
+                                [z isKindOfClass:NSNumber.class] ? z.longLongValue : -16001, getpid(),
+                                (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000, b, sizeof b);
+  if (self.stopping || n <= 0) return;
+  forge_write([[NSString alloc] initWithBytes:b length:(NSUInteger)n encoding:NSUTF8StringEncoding], session);
   [NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions : @0600} ofItemAtPath:session.path error:nil];
 }
 - (NSString *)launchState {

@@ -21,7 +21,10 @@ and group orders are atomic. Capacity is 32 authored NPCs and the room's free
 creature slots. The tool supplies `base`; a concurrent command returns 409.
 
 The host atomically saves the Coax-authored NPC document separately from the
-object document, then commits it to the room. Definitions and orders survive
+object document, then commits it to the room. Its format is
+[NPCs document v1](../../proto/aethyrforge/npcs-v1.schema.json), written and
+read by `aethyr/forge/npc-document.coax` and checked by
+`aethyr/tools/npc-document-profile.coax`. Definitions and orders survive
 reopening. Combat HP and movement are playtest state and start afresh on a new
 room. Spawning does not start an automatic raid or let the raid controller
 replace explicit orders. The simulation uses existing SRD stat blocks, damage,

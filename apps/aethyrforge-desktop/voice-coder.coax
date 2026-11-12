@@ -4,6 +4,13 @@
 #load "chat-policy.coax";
 #load "../../coax/lib/json/json.coax";
 ForgeVoiceCoder :: struct {ticket:int=0;armed:bool=false;text:[16384]u8;n:int;}
+// aethyrforge.voice-coder.v1 (proto/coder/voice-input-v1.schema.json): the voice page posts it to the
+// app's forgeVoiceCoder handler through the two functions fv_page_script defines (Sources/app.m injects
+// them, through chat-face.c fgv_page_script), and fv_message reads it. This file is its one codec (#13244).
+FV_SCHEMA :: "aethyrforge.voice-coder.v1";
+#test "the page's script writes the messages fv_message reads" {
+  #assert fv_page_script()=="globalThis.coaxialVoiceFinal = e => {\n  webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));\n  return true;\n};\nglobalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));\n";
+}
 
 #test "empty final packets consume their capture without dispatch" {
   s:[1]ForgeVoiceCoder;t:=fv_arm(s[..]);
@@ -63,10 +70,15 @@ fv_take :: (s:[]ForgeVoiceCoder,ticket:int,final:bool,available:bool,busy:bool,t
   if busy {return 2;}
   for i:0..<text.count {s[0].text[i]=text[i];}s[0].n=text.count;return 1;
 }
+// The page's two functions: coaxialVoiceFinal(e) posts a final transcript ({ticket, text}) and
+// coaxialVoiceStopped(ticket) a cancel, each as one aethyrforge.voice-coder.v1 message.
+fv_page_script :: ()->string #export_c #effects(all) {
+  return "globalThis.coaxialVoiceFinal = e => {\n  webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));\n  return true;\n};\nglobalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));\n";
+}
 fv_message :: (s:[]ForgeVoiceCoder,line:string,available:bool,busy:bool)->int #export_c #effects(all) {
   nodes:[32]JvNode;d:[1]Jv;
   if !jv_parse(d[..],line,nodes[..]) {return 0;}
-  v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!="aethyrforge.voice-coder.v1" {return 0;}
+  v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!=FV_SCHEMA {return 0;}
   ticket:=jv_int(v,jv_get(v,0,"ticket"),0);k:=jv_raw(v,jv_get(v,0,"kind"));
   if k=="cancel" {if ticket>0 {fv_cancel(s,ticket);}return 0;}
   if k!="final" {return 0;}

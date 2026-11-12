@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/aethyrforge/npcs-v1.schema.json",
+  "profile": "npcs-v1",
+  "version": 1,
+  "codec": "aethyr/forge/npc-document.coax",
+  "check": "coax/web/tool.sh aethyr/tools/npc-document-profile.coax proto/aethyrforge/npcs-v1.schema.json",
+  "title": "Aethyrforge authored NPCs document v1",
+  "description": "The NPC document the local host saves beside the object document (docs/protocol/aethyrforge-npcs-v1.md). Written and read by fnd_write and fnd_read; keys in this order.",
+  "type": "object",
+  "required": ["schema", "version", "serial", "groups", "npcs"],
+  "properties": {
+    "schema": {"const": "aethyrforge.npcs.v1"},
+    "version": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "serial": {"type": "integer", "minimum": 0, "maximum": 1000000, "description": "The highest NPC id handed out; every id is at most this"},
+    "groups": {"type": "integer", "minimum": 0, "maximum": 1000000, "description": "The highest group handed out; every group is at most this"},
+    "npcs": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": ["id", "group", "kind", "action", "x_cm", "z_cm", "target_kind", "target_id"],
+        "properties": {
+          "id": {"type": "integer", "minimum": 1, "maximum": 1000000, "description": "Unique in the document"},
+          "group": {"type": "integer", "minimum": 1, "maximum": 1000000},
+          "kind": {"type": "integer", "minimum": 0, "maximum": 2, "description": "0 cultist, 1 villager, 2 guard"},
+          "action": {"type": "integer", "minimum": 0, "maximum": 2, "description": "0 stop, 1 attack, 2 move"},
+          "x_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+          "z_cm": {"type": "integer", "minimum": -16000, "maximum": 16000},
+          "target_kind": {"type": "integer", "minimum": 0, "maximum": 5, "description": "0 none unless attacking; 1 npc, 2 person, 3 player, 4 creature, 5 building"},
+          "target_id": {"type": "integer", "minimum": 0, "maximum": 1000000}
+        }
+      }
+    }
+  },
+  "kinds": ["cultist", "villager", "guard"],
+  "actions": {"stop": 0, "attack": 1, "move": 2},
+  "target_kinds": {"npc": 1, "person": 2, "player": 3, "creature": 4, "building": 5},
+  "max_npcs": 32,
+  "fixtures": [
+    {
+      "name": "two-npcs-one-attacking-a-building",
+      "wire": "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":4,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":1,\"kind\":0,\"action\":1,\"x_cm\":600,\"z_cm\":-1200,\"target_kind\":5,\"target_id\":9},{\"id\":7,\"group\":2,\"kind\":1,\"action\":0,\"x_cm\":-600,\"z_cm\":1200,\"target_kind\":0,\"target_id\":0}]}",
+      "version": 4, "serial": 7, "groups": 2,
+      "npcs": [[1, 1, 0, 1, 600, -1200, 5, 9], [7, 2, 1, 0, -600, 1200, 0, 0]]
+    },
+    {
+      "name": "guard-moving-at-the-bounds",
+      "wire": "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":1000000,\"serial\":1000000,\"groups\":1000000,\"npcs\":[{\"id\":1000000,\"group\":1000000,\"kind\":2,\"action\":2,\"x_cm\":-16000,\"z_cm\":16000,\"target_kind\":0,\"target_id\":0}]}",
+      "version": 1000000, "serial": 1000000, "groups": 1000000,
+      "npcs": [[1000000, 1000000, 2, 2, -16000, 16000, 0, 0]]
+    },
+    {
+      "name": "empty",
+      "wire": "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":0,\"groups\":0,\"npcs\":[]}",
+      "version": 0, "serial": 0, "groups": 0,
+      "npcs": []
+    }
+  ],
+  "malformed": [
+    "{}",
+    "oops",
+    "{\"schema\":\"aethyrforge.npcs.v2\",\"version\":0,\"serial\":0,\"groups\":0,\"npcs\":[]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":-1,\"serial\":0,\"groups\":0,\"npcs\":[]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":0,\"groups\":1000001,\"npcs\":[]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":1,\"kind\":0,\"action\":0,\"x_cm\":0,\"z_cm\":0,\"target_kind\":0,\"target_id\":0},{\"id\":1,\"group\":1,\"kind\":0,\"action\":0,\"x_cm\":0,\"z_cm\":0,\"target_kind\":0,\"target_id\":0}]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":8,\"group\":1,\"kind\":0,\"action\":0,\"x_cm\":0,\"z_cm\":0,\"target_kind\":0,\"target_id\":0}]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":3,\"kind\":0,\"action\":0,\"x_cm\":0,\"z_cm\":0,\"target_kind\":0,\"target_id\":0}]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":1,\"kind\":3,\"action\":0,\"x_cm\":0,\"z_cm\":0,\"target_kind\":0,\"target_id\":0}]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":1,\"kind\":0,\"action\":1,\"x_cm\":0,\"z_cm\":0,\"target_kind\":5,\"target_id\":60}]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":1,\"kind\":0,\"action\":0,\"x_cm\":0,\"z_cm\":0,\"target_kind\":5,\"target_id\":9}]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":1,\"kind\":0,\"action\":0,\"x_cm\":16001,\"z_cm\":0,\"target_kind\":0,\"target_id\":0}]}",
+    "{\"schema\":\"aethyrforge.npcs.v1\",\"version\":0,\"serial\":7,\"groups\":2,\"npcs\":[{\"id\":1,\"group\":1,\"kind\":0,\"action\":0,\"x_cm\":0,\"target_kind\":0,\"target_id\":0}]}"
+  ]
+}

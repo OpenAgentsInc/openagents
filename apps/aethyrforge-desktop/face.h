@@ -64,6 +64,10 @@ int64_t fgv_arm(void);
 void fgv_cancel(void);
 int64_t fgv_message(const uint8_t *p, int64_t n, bool available, bool busy);
 int64_t fgv_copy(uint8_t *p, int64_t cap);
+// The voice page's two functions that post aethyrforge.voice-coder.v1 (voice-coder.coax fv_page_script).
+int64_t fgv_page_script(uint8_t *out, int64_t cap);
+// The scene session file's bytes, aethyrforge.scene-session.v1 (scene-session.coax fs_session_put); -1 when it doesn't fit.
+int64_t fgc_scene_session(int64_t port, int64_t x_cm, int64_t z_cm, int64_t pid, int64_t observed_ms, uint8_t *out, int64_t cap);
 int64_t fgc_read(const uint8_t *p, int64_t n);
 int64_t fgc_copy(int64_t field, uint8_t *p, int64_t cap);
 bool fgc_send(bool busy, const uint8_t *p, int64_t n);
