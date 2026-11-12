@@ -153,8 +153,10 @@ static void deliver(PGconn *db, long long notice_id, const char *acct, const cha
     if (!email[0]) continue;
     char to[600], subj[200], body[2400], message[3600], id[128], err[300];
     auth_json_esc(email, to, sizeof to); auth_json_esc(subject, subj, sizeof subj); auth_json_esc(text, body, sizeof body);
-    snprintf(message, sizeof message, "{\"to\":\"%s\",\"subject\":\"OpenAgents security: %s\",\"idempotency_key\":\"notice-%lld-%d\",\"text\":\"%s\"}",
-             to, subj, notice_id, i, body);
+    // The key names the account too: staging and production share one mail account, and their
+    // notice ids both start at 1 (a reused key with other words is refused, 409).
+    snprintf(message, sizeof message, "{\"to\":\"%s\",\"subject\":\"OpenAgents security: %s\",\"idempotency_key\":\"notice-%s-%lld-%d\",\"text\":\"%s\"}",
+             to, subj, acct, notice_id, i, body);
     int s = email_send(db, message, id, err, sizeof err);
     if (s > 1) { failed++; api_log("auth: notice %lld email: %s", notice_id, err); } else emailed++;
     memset(email, 0, sizeof email); memset(message, 0, sizeof message);

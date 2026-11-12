@@ -166,22 +166,24 @@ for pm in m["pathMatchers"]:
         rules.sort(key=lambda r: r["priority"])
         changed = True
         print("url map: production " + want[0]["fullPathMatch"] + " to " + to)
-# /settings/agents is the site's own page (an owner's agents and grants, #13211): it goes to the
-# bucket ahead of the old-settings redirect above, on both hosts.
+# /settings/agents (an owner's agents and grants, #13211) and /settings/security (ways in, step-up
+# and recovery, #13212, #13213) are the site's own pages: they go to the bucket ahead of the
+# old-settings redirect above, on both hosts.
 for pm in m["pathMatchers"]:
     if pm["name"] not in ("production", "staging"): continue
     rules = pm.setdefault("routeRules", [])
     bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/" + ("coaxial-openagents-web" if pm["name"] == "production" else "coaxial-openagents-web-staging")
-    want = [{"fullPathMatch": "/settings/agents"}, {"prefixMatch": "/settings/agents/"}]
-    rule = next((r for r in rules if r.get("matchRules") == want), None)
-    old = next((r["priority"] for r in rules if r.get("urlRedirect", {}).get("pathRedirect") == "/login" and {"prefixMatch": "/settings/"} in r.get("matchRules", [])), 40)
-    if rule and rule.get("service") == bucket and rule["priority"] < old: continue
-    if rule: rules.remove(rule)
-    free = next(p for p in range(2, old) if p not in {r["priority"] for r in rules})
-    rules.append({"priority": free, "matchRules": want, "service": bucket})
-    rules.sort(key=lambda r: r["priority"])
-    changed = True
-    print(f"url map: {pm['name']} /settings/agents is the site's page")
+    for page in ("agents", "security"):
+        want = [{"fullPathMatch": f"/settings/{page}"}, {"prefixMatch": f"/settings/{page}/"}]
+        rule = next((r for r in rules if r.get("matchRules") == want), None)
+        old = next((r["priority"] for r in rules if r.get("urlRedirect", {}).get("pathRedirect") == "/login" and {"prefixMatch": "/settings/"} in r.get("matchRules", [])), 40)
+        if rule and rule.get("service") == bucket and rule["priority"] < old: continue
+        if rule: rules.remove(rule)
+        free = next(p for p in range(2, old) if p not in {r["priority"] for r in rules})
+        rules.append({"priority": free, "matchRules": want, "service": bucket})
+        rules.sort(key=lambda r: r["priority"])
+        changed = True
+        print(f"url map: {pm['name']} /settings/{page} is the site's page")
 # The galaxy is retired (2026-10-31): /verse/galaxy, /verse/galaxy/ and anything under it move for
 # good to /worlds (it was /realms until 2026-11-02), the query dropped, on both hosts (smoke.sh checks
 # it), ahead of the /verse/ rule.
