@@ -1,8 +1,8 @@
 # Indexed repos: a codebase a chat can read and change without cloning it (spec)
 
 Status: accepted, 2026-11-11, and revised the same evening (see
-[What changed in review](#what-changed-in-review)). Phase 1 is being built
-under the tracking issue named there. Code was first read at `0942bd418b`.
+[What changed in review](#what-changed-in-review)). Phase 1 is tracked in
+[#13326](https://github.com/OpenAgentsInc/openagents/issues/13326). Code was first read at `0942bd418b`.
 
 ## Summary
 
