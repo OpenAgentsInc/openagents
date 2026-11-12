@@ -17,6 +17,7 @@
 
 #load "../../components/core/edit.coax";
 #load "../../components/kit/controls.coax";
+#load "../../components/layout/flex.coax";
 #load "../../components/skin/verse.coax";
 #load "../../components/backend/gpu.coax";
 #load "textkeys.coax";
@@ -133,6 +134,7 @@ WorldBuilder :: struct {
   ground: [WB_LAND_SAMPLES * 4] f32; ground_seen: int = -1; ground_version: int;
   land_seated: int = -1;              // the ground version the things were last seated on
   scene_version: int;
+  fx: [1] FxTree;                     // the top's layout (wb_top_layout)
 }
 REQ_ACT :: 1; REQ_STATUS :: 2;
 
@@ -231,7 +233,7 @@ wb_view :: (s: [] WorldBuilder) -> WbView {
     fx := s[0].cam_fwd[0]; fz := s[0].cam_fwd[2];
     fl := sqrt(fx * fx + fz * fz);
     if fl < 0.0001 { fx = 0; fz = -1; fl = 1; }
-    return WbView.{has_here = true, here_x = s[0].me_x, here_z = s[0].me_z, view_x = s[0].me_x + fx / fl * 6, view_z = s[0].me_z + fz / fl * 6, yaw = s[0].cam_yaw};
+    return WbView.{has_here = true, here_x = s[0].me_x, here_z = s[0].me_z, view_x = s[0].me_x + fx / fl * 6, view_z = s[0].me_z + fz / fl * 6, yaw = s[0].cam_yaw, walker = true};
   }
   return WbView.{has_here = s[0].has_here, here_x = s[0].here_x, here_z = s[0].here_z, view_x = s[0].gx, view_z = s[0].gz, yaw = s[0].yaw};
 }
@@ -329,11 +331,15 @@ put_json_text :: (b: [] u8, at: int, t: string) -> int {
 build_act :: (s: [] WorldBuilder, words: string) -> int {
   b := s[0].req_body[..]; w := s[0].world[..]; c := s[0].cat[..];
   n := put(b, 0, "{\"text\":"); n = put_json_text(b, n, words);
+  // here, the camera and the way it looks, as the edits will read them (wb_view): walking, here is
+  // where your character stands and the camera is the follow camera behind it
+  v := wb_view(s);
+  n = put(b, n, ",\"walking\":"); n = put(b, n, ifx v.walker then "true" else "false");
   n = put(b, n, ",\"here\":");
-  if s[0].has_here { n = put(b, n, "["); n = wb_put_num(b, n, s[0].here_x); n = put(b, n, ","); n = wb_put_num(b, n, s[0].here_z); n = put(b, n, "]"); }
+  if v.has_here { n = put(b, n, "["); n = wb_put_num(b, n, v.here_x); n = put(b, n, ","); n = wb_put_num(b, n, v.here_z); n = put(b, n, "]"); }
   else { n = put(b, n, "null"); }
-  n = put(b, n, ",\"cam\":{\"x\":"); n = wb_put_num(b, n, s[0].gx); n = put(b, n, ",\"z\":"); n = wb_put_num(b, n, s[0].gz);
-  n = put(b, n, ",\"looks\":["); n = wb_put_num(b, n, sin(s[0].yaw)); n = put(b, n, ","); n = wb_put_num(b, n, -cos(s[0].yaw)); n = put(b, n, "]}");
+  n = put(b, n, ",\"cam\":{\"x\":"); n = wb_put_num(b, n, ifx v.walker then s[0].cam_eye[0] else s[0].gx); n = put(b, n, ",\"z\":"); n = wb_put_num(b, n, ifx v.walker then s[0].cam_eye[2] else s[0].gz);
+  n = put(b, n, ",\"looks\":["); n = wb_put_num(b, n, sin(v.yaw)); n = put(b, n, ","); n = wb_put_num(b, n, -cos(v.yaw)); n = put(b, n, "]}");
   // what the world holds: each asset and how many
   n = put(b, n, ",\"present\":{");
   counts: [WB_MESHES] int;
@@ -982,6 +988,59 @@ wb_centred :: (sh: [] Sheet, m: TextMeasure, cx: f32, y: f32, line_h: f32, face:
   return sheet_text(sh, m, -1, cx - w * 0.5, y, line_h, face, color, text);
 }
 
+// Where the top's boxes go (fx_layout's nodes): `panel` the WorldBuilder panel, and the buttons from
+// `buttons` on, in the order of `labels`. Wide, one row: the panel, then the buttons at the right
+// edge. Narrow (a phone), a column: the buttons in rows at the right, as many to a row as fit, then
+// the panel under them. Nothing overlaps at any width.
+WbTop :: struct { panel: int; buttons: int; }
+wb_top_layout :: (t: [] FxTree, m: TextMeasure, sk: UiSkin, lw: f32, g: f32, phone: bool, want_w: f32, hud_h: f32, labels: [] string) -> WbTop {
+  fx_reset(t);
+  root := fx_add(t, -1);
+  fx_pad(t, root, g, g, g, g);
+  inner := hi(lw - 2 * g, 0);
+  out: WbTop;
+  if !phone {
+    t[0].nodes[root].direction = FX_ROW; t[0].nodes[root].gap = g; t[0].nodes[root].align = FX_START;
+    out.panel = fx_add(t, root);
+    t[0].nodes[out.panel].width = want_w; t[0].nodes[out.panel].height = hud_h;
+    fx_flex(t, out.panel, 0, 1, FX_AUTO);
+    gap := fx_add(t, root); fx_flex(t, gap, 1, 1, 0);
+    row := fx_add(t, root);
+    t[0].nodes[row].direction = FX_ROW; t[0].nodes[row].gap = sk.space;
+    for k: 0..<labels.count {
+      b := fx_add(t, row);
+      if k == 0 { out.buttons = b; }
+      t[0].nodes[b].width = button_width(m, sk, labels[k]); t[0].nodes[b].height = sk.control_h; fx_flex(t, b, 0, 0, FX_AUTO);
+    }
+    fx_flex(t, row, 0, 0, FX_AUTO);
+    fx_layout(t, lw, FX_AUTO);
+    return out;
+  }
+  t[0].nodes[root].direction = FX_COLUMN; t[0].nodes[root].gap = sk.space; t[0].nodes[root].align = FX_START;
+  // rows of buttons, right-aligned, each holding as many as fit
+  first := true; k := 0;
+  while k < labels.count {
+    row := fx_add(t, root);
+    t[0].nodes[row].direction = FX_ROW; t[0].nodes[row].gap = sk.space; t[0].nodes[row].justify = FX_END;
+    t[0].nodes[row].self = FX_STRETCH; t[0].nodes[row].height = sk.control_h;
+    used: f32 = 0; in_row := 0;
+    while k < labels.count {
+      bw := button_width(m, sk, labels[k]);
+      if in_row > 0 && used + sk.space + bw > inner { break; }
+      b := fx_add(t, row);
+      if first { out.buttons = b; first = false; }
+      t[0].nodes[b].width = bw; t[0].nodes[b].height = sk.control_h; fx_flex(t, b, 0, 0, FX_AUTO);
+      used += ifx in_row > 0 then sk.space + bw else bw;
+      in_row += 1; k += 1;
+    }
+  }
+  out.panel = fx_add(t, root);
+  t[0].nodes[out.panel].width = lo(want_w, inner); t[0].nodes[out.panel].height = hud_h;
+
+  fx_layout(t, lw, FX_AUTO);
+  return out;
+}
+
 draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   a := s[0].atlas[..];
   a[0].frame += 1;
@@ -998,25 +1057,6 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
 
   buf: [240] u8;
 
-  // UNDO and REDO side by side, top right: free, no model asked
-  uw := button_width(m, sk, "UNDO");
-  rw := button_width(m, sk, "REDO");
-  btns_w := uw + sk.space + rw;
-  ux := lw - g - btns_w;
-  _ = wb_button(sh[..], m, sk, s, ux, g, "UNDO", BTN_UNDO, false);
-  _ = wb_button(sh[..], m, sk, s, ux + uw + sk.space, g, "REDO", BTN_REDO, false);
-  // FRAME brings everything built into view (Cmd/Ctrl+.): beside them, under them on a phone
-  fw0 := button_width(m, sk, "FRAME");
-  // WALK or OVERVIEW (Tab): your character's view, or the view from above
-  view_label := ifx walking(s) then "OVERVIEW" else "WALK";
-  vw0 := button_width(m, sk, view_label);
-  if phone {
-    _ = wb_button(sh[..], m, sk, s, lw - g - fw0, g + sk.control_h + sk.space, "FRAME", BTN_FRAME, false);
-    if s[0].walk_ok { _ = wb_button(sh[..], m, sk, s, lw - g - fw0 - sk.space - vw0, g + sk.control_h + sk.space, view_label, BTN_VIEW, false); }
-  } else {
-    _ = wb_button(sh[..], m, sk, s, ux - sk.space - fw0, g, "FRAME", BTN_FRAME, false); btns_w += fw0 + sk.space;
-    if s[0].walk_ok { _ = wb_button(sh[..], m, sk, s, ux - sk.space - fw0 - sk.space - vw0, g, view_label, BTN_VIEW, false); btns_w += vw0 + sk.space; }
-  }
   // a phone's thumb stick, where the thumb is (the zone's: everglade/zone-touch.coax decides it)
   if s[0].stick_on && walking(s) {
     r0: f32 = 46; r1: f32 = 20;
@@ -1039,14 +1079,28 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   lim_w := measure_width(m, sk.small.face, limits);
   pace_w := measure_width(m, sk.small.face, pace);
   want_w := hi(hi(title_w, lim_w), pace_w) + 2 * sk.pad;
-  max_hud_w := hi(lw - 3 * g - btns_w, 160);
-  hud_w := lo(want_w, max_hud_w);
   hud_body := sk.small.line * 2 + 4 + (ifx s[0].known then sk.bar_h + 6 else 0.0f32);
   hud_h := panel_height(sk, hud_body, true);
-  inside := panel(sh[..], m, sk, g, g, hud_w, hud_h, "WorldBuilder");
-  count_x := g + sk.pad + measure_width(m, sk.title.face, "WorldBuilder") + sk.space * 1.5;
-  if count_x + measure_width(m, sk.small.face, count) <= g + hud_w - sk.pad {
-    _ = sheet_text(sh[..], m, -1, count_x, g + sk.pad + (sk.title.line - sk.small.line) * 0.5, sk.small.line, sk.small.face, sk.accent, count);
+
+  // The top: the panel and the buttons (WALK or OVERVIEW, FRAME, UNDO, REDO), laid out by the
+  // component system's flex (components/layout/flex.coax). Wide, one row: the panel left, the
+  // buttons right. On a phone the buttons go above the panel, in as many rows as they need.
+  view_label := ifx walking(s) then "OVERVIEW" else "WALK";
+  labels := [4] string.[view_label, "FRAME", "UNDO", "REDO"];
+  ids := [4] int.[BTN_VIEW, BTN_FRAME, BTN_UNDO, BTN_REDO];
+  first := ifx s[0].walk_ok then 0 else 1;   // no WALK or OVERVIEW until your character is there
+  top := wb_top_layout(s[0].fx[..], m, sk, lw, g, phone, want_w, hud_h, labels[first..<4]);
+  fx := s[0].fx[..];
+  for k: first..<4 {
+    nd := fx[0].nodes[top.buttons + k - first];
+    _ = wb_button(sh[..], m, sk, s, nd.x, nd.y, labels[k], ids[k], false);
+  }
+  pnode := fx[0].nodes[top.panel];
+  hud_x := pnode.x; hud_y := pnode.y; hud_w := pnode.w;
+  inside := panel(sh[..], m, sk, hud_x, hud_y, hud_w, hud_h, "WorldBuilder");
+  count_x := hud_x + sk.pad + measure_width(m, sk.title.face, "WorldBuilder") + sk.space * 1.5;
+  if count_x + measure_width(m, sk.small.face, count) <= hud_x + hud_w - sk.pad {
+    _ = sheet_text(sh[..], m, -1, count_x, hud_y + sk.pad + (sk.title.line - sk.small.line) * 0.5, sk.small.line, sk.small.face, sk.accent, count);
   }
   cy := inside.y;
   _ = sheet_text(sh[..], m, -1, inside.x, cy, sk.small.line, sk.small.face, sk.muted, limits);
@@ -1357,7 +1411,7 @@ tap_btn :: (s: [] WorldBuilder, btn: int) -> bool {
   type_in(s[..], "put a \"tree\" here");
   #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
   #assert s[0].waiting && s[0].req_ready && s[0].req_what == REQ_ACT && s[0].ed[0].n == 0;
-  #assert has(body(s[..]), "{\"text\":\"put a \\\"tree\\\" here\",\"here\":[") && has(body(s[..]), "\"present\":{}");
+  #assert has(body(s[..]), "{\"text\":\"put a \\\"tree\\\" here\",\"walking\":false,\"here\":[") && has(body(s[..]), "\"present\":{}");
   worldbuilder_requested(s[..], 1);
   // a second line can't go while one is out
   type_in(s[..], "more");

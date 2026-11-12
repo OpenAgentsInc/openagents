@@ -5,7 +5,8 @@
 //                                in the world): never read here, handed to the model as the user's turn
 //                                -> 200 lines (worldbuilder.lines in migrations/0141_worldbuilder.sql):
 //                                   "S say" then "A op|asset|count|..." an edit a line (a ground edit's
-//                                   asset is its layer: worldbuilder-land.coax)
+//                                   asset is its layer, the answer's `layer`: worldbuilder-land.coax,
+//                                   migrations/0159_worldbuilder_layer.sql)
 //                                   429 "flood WAIT_MS": this address sent too many at once
 //                                   429 "resting": the day's $50 is spent, until midnight Chicago time
 //                                   400 nothing typed or too long; 502 the model didn't answer
@@ -52,9 +53,10 @@ static const char WB_SYSTEM[] =
   "- delete: remove `targets`. duplicate: copy `targets` beside them (or at anchor/side when given).\n"
   "- undo: take back the last edit (`count` edits). redo: put back an undone edit (`count` edits). clear: remove everything (only when they clearly ask to start over).\n"
   "The ground is a 256 m square round the grid's middle. It starts as bare, level grid and can be painted and shaped:\n"
-  "- paint: cover ground with a layer. `asset` is the layer: grass, dirt, sand, stone, snow, water, or grid (bare "
-  "again). `factor` 0.1 to 1 is how strongly (default 1).\n"
-  "- raise / lower: a hill or a hollow. `size` is its height or depth in metres (default 4 and 3; at most 40).\n"
+  "- paint: cover ground with a layer. `layer` is the layer, always given: grass, dirt, sand, stone, snow, water, or "
+  "grid (bare again). `factor` 0.1 to 1 is how strongly (default 1).\n"
+  "- raise / lower: a hill or a hollow, a round patch where `anchor`/`side` say (never `targets` \"all\"). `size` is "
+  "its height or depth in metres (default 4 and 3; at most 40).\n"
   "- smooth: soften the ground's shape. flatten: level it to the height at the spot, or to `size` metres when given.\n"
   "Where a ground edit acts: `targets` \"all\" = the whole ground (cover everything in grass); `anchor` \"edge\" with "
   "`side` = a strip along that edge of the world as they see it, `spread` metres wide (a beach along the left); "
@@ -76,7 +78,11 @@ static const char WB_SYSTEM[] =
   "Sides are as seen from their camera: left, right, front (toward them), behind (away from them: further "
   "back), around (a ring round the anchor), at (on the spot). `distance` is metres beyond the anchor's edge "
   "(0: just clear of it).\n"
-  "The user's message is JSON: text (what they typed), here ([x, z] or null), cam (x, z and the way it looks), "
+  "When `walking` is true they are walking their character on the ground: `here` is where it stands, the camera is "
+  "just behind it and `looks` is the way they face. Then \"me\", \"I\" and \"you\" are that character: anchor "
+  "\"here\" with side front (ahead of them, in front of me), left, right or behind (behind me), or at (just ahead, "
+  "where they can see it). \"Ahead\" or \"in front of me\" is side front.\n"
+  "The user's message is JSON: text (what they typed), walking, here ([x, z] or null), cam (x, z and the way it looks), "
   "present (asset names in the world and how many), recent (the newest objects: id, asset, x, z, size) and "
   "last (the asset names the last edit touched).\n"
   "Prefer assets whose name and tags fit the words. If nothing fits, place the closest thing and say so. "
@@ -93,7 +99,7 @@ static const char WB_BUILDINGS[] =
 static const char WB_SCHEMA[] =
   "{\"type\":\"object\",\"properties\":{\"say\":{\"type\":\"string\"},\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
   "\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\",\"paint\",\"raise\",\"lower\",\"smooth\",\"flatten\"]},"
-  "\"asset\":{\"type\":\"string\"},\"count\":{\"type\":\"integer\"},"
+  "\"asset\":{\"type\":\"string\"},\"layer\":{\"type\":\"string\",\"enum\":[\"grass\",\"dirt\",\"sand\",\"stone\",\"snow\",\"water\",\"grid\"]},\"count\":{\"type\":\"integer\"},"
   "\"targets\":{\"type\":\"string\",\"enum\":[\"last\",\"names\",\"nearest\",\"all\"]},"
   "\"names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
   "\"anchor\":{\"type\":\"string\",\"enum\":[\"here\",\"view\",\"last\",\"named\",\"origin\",\"self\",\"edge\"]},"

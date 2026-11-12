@@ -59,7 +59,10 @@ WbAct :: struct {
 }
 // Where the person is looking from: the tapped spot (if any), the middle of the view, and the
 // camera's yaw (0 looks along -z; left and right, toward and away follow it).
-WbView :: struct { has_here: bool; here_x: f32; here_z: f32; view_x: f32; view_z: f32; yaw: f32; }
+// `walker`: here is your character on the ground, under a follow camera that looks along yaw
+// (worldbuilder-walk.coax); then what goes "here", ahead of you or beside you goes where you can see
+// it (wb_walk_spot).
+WbView :: struct { has_here: bool; here_x: f32; here_z: f32; view_x: f32; view_z: f32; yaw: f32; walker: bool; }
 WbWorld :: struct {
   fg: [1] ForgeSceneState;
   objs: [WB_OBJECTS] ForgeItem; n: int;
@@ -329,6 +332,24 @@ wb_side_dir :: (v: WbView, side: int) -> WbDir {
 
 // A spot and how far its things reach from it.
 WbSpot :: struct { x: f32; z: f32; r: f32; ok: bool; }
+WB_WALK_AHEAD :: 8.0;   // metres ahead of your character, past the thing's own reach, that a thing put by you goes
+// Walking, where a thing of reach r asked for by your character goes: "here" or "in front of me" a
+// little way ahead where the follow camera sees it, never on top of you; "on my left" or "right"
+// ahead and to that side; "behind me" behind you. ok is false when the edit isn't about your
+// character (another anchor, or not walking), and the anchor and side decide as usual.
+wb_walk_spot :: (v: WbView, a: WbAct, r: f32) -> WbSpot {
+  if !v.walker || a.anchor != A_HERE || a.side == S_AROUND { return WbSpot.{}; }
+  f := wb_away(v); rt := wb_right(v);
+  gap := wb_hi(a.distance, 0);
+  if a.side == S_BEHIND { far := r + 1.5 + gap; return WbSpot.{x = v.here_x - f.x * far, z = v.here_z - f.z * far, r = r, ok = true}; }
+  ahead := WB_WALK_AHEAD + r + (ifx a.side == S_AT || a.side == S_FRONT then gap else 0.0f32);
+  x := v.here_x + f.x * ahead; z := v.here_z + f.z * ahead;
+  if a.side == S_LEFT || a.side == S_RIGHT {
+    side := r + 1 + gap; sign := ifx a.side == S_RIGHT then 1.0f32 else -1.0f32;
+    x += rt.x * side * sign; z += rt.z * side * sign;
+  }
+  return WbSpot.{x = x, z = z, r = r, ok = true};
+}
 // The middle and reach of a set of objects (by index).
 wb_group :: (w: [] WbWorld, c: [] WbCat, idx: [] int) -> WbSpot {
   if idx.count == 0 { return WbSpot.{}; }
@@ -422,9 +443,11 @@ wb_place :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct) -> WbDone {
   size := ifx a.size > 0.05 && a.size < 20 then a.size else 1.0f32;
   r := wb_radius(c, a.asset) * size;
   p := wb_anchor(w, c, v, a);
-  if a.side != S_AT && a.side != S_AROUND {
+  spread_r := ifx count > 1 then (ifx a.spread > 0 then a.spread else r * 1.3 * sqrt(cast(f32) count)) else r;
+  walk := wb_walk_spot(v, a, spread_r);
+  if walk.ok { p = WbSpot.{x = walk.x, z = walk.z, ok = true}; }
+  else if a.side != S_AT && a.side != S_AROUND {
     d := wb_side_dir(v, a.side);
-    spread_r := ifx count > 1 then (ifx a.spread > 0 then a.spread else r * 1.3 * sqrt(cast(f32) count)) else r;
     far := p.r + spread_r + wb_hi(a.distance, 0) + 0.4;
     p.x += d.x * far; p.z += d.z * far;
   }
@@ -445,7 +468,7 @@ wb_place :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct) -> WbDone {
   if count == 1 {
     x := p.x; z := p.z;
     // put where nothing stands, unless it was asked for on a tapped spot or a thing's side
-    nudge := a.anchor == A_VIEW || a.anchor == A_ORIGIN || (a.anchor == A_HERE && !v.has_here);
+    nudge := a.anchor == A_VIEW || a.anchor == A_ORIGIN || (a.anchor == A_HERE && !v.has_here) || walk.ok;
     if nudge {
       k := 0;
       while k < 64 && !wb_clear(w, c, x, z, r, 0) {
@@ -492,7 +515,9 @@ wb_move :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct, idx: [] int) -> WbD
     p := wb_anchor(w, c, v, a);
     // the anchor may be one of the things moved ("last"): then it is where they are now
     tx := p.x; tz := p.z;
-    if a.side != S_AT && a.side != S_AROUND {
+    walk := wb_walk_spot(v, a, g.r);
+    if walk.ok { tx = walk.x; tz = walk.z; }
+    else if a.side != S_AT && a.side != S_AROUND {
       d := wb_side_dir(v, a.side);
       far := p.r + g.r + wb_hi(a.distance, 0) + 0.4;
       tx += d.x * far; tz += d.z * far;
@@ -548,8 +573,13 @@ wb_duplicate :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct, idx: [] int) -
 // Where a ground edit acts: everything (targets all), a strip along the world's edge on a side as
 // the camera sees it (anchor edge), or a disc at the anchor, beside it on a side, or round a thing.
 wb_land_shape :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct, reach: f32) -> TerrainEditShape {
-  if a.targets == T_ALL { return terrain_edit_box(-WB_LAND_HALF, -WB_LAND_HALF, WB_LAND_HALF, WB_LAND_HALF, 0); }
+  // the whole ground: a paint, a smoothing or a levelling of it all. A hill or hollow is a shape on
+  // the ground, so a raise or lower of "all" (which would lift the whole ground and show nothing)
+  // makes one where the anchor and side say.
+  if wb_land_all(a) { return terrain_edit_box(-WB_LAND_HALF, -WB_LAND_HALF, WB_LAND_HALF, WB_LAND_HALF, 0); }
   r := wb_lo(wb_hi(ifx a.spread > 0 then a.spread else reach, 1), WB_LAND_HALF);
+  walk := wb_walk_spot(v, a, r * 0.7);
+  if walk.ok && a.anchor != A_EDGE { return terrain_edit_disc(walk.x, walk.z, r); }
   if a.anchor == A_EDGE {
     d := wb_side_dir(v, ifx a.side == S_AT || a.side == S_AROUND then S_LEFT else a.side);
     wide := ifx a.spread > 0 then wb_lo(a.spread, WB_LAND_HALF) else 16.0f32;
@@ -571,6 +601,7 @@ wb_land_shape :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct, reach: f32) -
   } else { r += p.r; }
   return terrain_edit_disc(x, z, wb_lo(r, WB_LAND_HALF));
 }
+wb_land_all :: (a: WbAct) -> bool { return a.targets == T_ALL && a.op != OP_RAISE && a.op != OP_LOWER; }
 // One ground edit, as one undo step.
 wb_land_act :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct) -> WbDone {
   done: WbDone;
@@ -579,7 +610,7 @@ wb_land_act :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct) -> WbDone {
   if tool == LT_PAINT && a.layer < 0 { return done; }
   wb_land_begin(l);
   wb_land_keep(l);
-  all := a.targets == T_ALL;
+  all := wb_land_all(a);
   shape := wb_land_shape(w, c, v, a, ifx tool == LT_PAINT then 8.0f32 else ifx tool == LT_FLATTEN then 4.0f32 else 10.0f32);
   strength := ifx a.factor > 0 && a.factor < 1 then wb_hi(a.factor, 0.05) else 1.0f32;
   r: TerrainEditRect;
@@ -981,6 +1012,29 @@ WB_PIECES_CAT :: "M village/wall-plaster-door-round 0 9 1 -1 0 -0.205 1 3.12 0.2
   steps := w[0].fg[0].step_n;
   s = wb_one(w[..], c[..], v, "A paint|grass||||origin||at||3|||\n");
   #assert s.edits == 0 && w[0].fg[0].step_n == steps;
+}
+#test "walking: grass everywhere, a hill to my right and a cottage in front of me land where the follow camera sees them" #steps 4000000000 {
+  // the phone run of #13324: the model's answer as it came (paint with its layer, raise of "all",
+  // place with no side), from your character at (0, 4) facing -z under a camera behind it
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  w: [1] WbWorld; l := w[0].land[..];
+  v := WbView.{has_here = true, here_x = 0, here_z = 4, view_x = 0, view_z = -2, yaw = 0, walker = true};
+  s := wb_one(w[..], c[..], v, "S Covered in grass, raised a hill, and added a house.\nA paint|grass||all|||||||||\nA raise|||all||view||right||12|5||\nA place|village/house-1|1|all||||||0|1||\n");
+  #assert s.edits == 3 && cast(string) s.say[0..<s.say_n] == "Covered in grass, raised a hill, and added a house.";
+  // the grass is everywhere; the hill is a hill to the right of the view, not the whole ground lifted
+  #assert terrain_edit_share(wb_land_edit(l), 0, L_GRASS) == 1 && l[0].heights[0] == 0;
+  #assert wb_land_y(l, 8, -2) > 2 && wb_land_y(l, -12, -2) == 0;
+  // the house is ahead of you (toward -z) by more than its own reach, never on top of you
+  h := w[0].objs[0];
+  #assert h.z < 4 - WB_WALK_AHEAD && h.z > 4 - WB_WALK_AHEAD - 12 && wb_abs(h.x) < 6;
+  // on my left and right: ahead of you and to that side; behind me: behind you
+  s = wb_one(w[..], c[..], v, "A place|nature/birch-1|1|||here||left||||||\nA place|nature/rock-1|1|||here||right||||||\nA place|nature/rock-2|1|||here||behind||||||\n");
+  b := w[0].objs[1]; r := w[0].objs[2]; k := w[0].objs[3];
+  #assert b.x < -3 && b.z < 4 - WB_WALK_AHEAD && r.x > 0.5 && r.z < 4 - WB_WALK_AHEAD && k.z > 4.5;
+  // not walking, "here" is the tapped spot, as before
+  v.walker = false;
+  s = wb_one(w[..], c[..], v, "A place|nature/rock-1|1|||here||at||||||\n");
+  #assert w[0].objs[4].x == 0 && w[0].objs[4].z == 4;
 }
 #test "a brush stroke is one undo step; the ground is kept with the world and comes back the same to a centimetre" #steps 4000000000 {
   c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
