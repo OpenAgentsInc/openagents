@@ -72,6 +72,13 @@ chat_store() {  # suffix ("" or -staging)
 
 # 4Gi (the most one CPU takes): the files a turn writes, and what a refresh of /chat's checkout
 # fetches, are held in memory beside the CLI's 300-500 MB a turn (GitHub #13252).
+# A variable's value on the live service, or nothing: OA_REPO_URL is set by
+# coax/web/repo/vm-deploy.sh connect (docs/deployment/repo-vm.md), and --set-env-vars
+# would drop it, so each deploy carries it over.
+live_env() {  # service name
+  gcloud run services describe "$1" --project "$project" --region "$region" --format=json 2>/dev/null |
+    python3 -I -c 'import json, sys; e = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", []); print(next((x.get("value", "") for x in e if x["name"] == sys.argv[1]), ""))' "$2" 2>/dev/null || true
+}
 deploy() {  # service api-origin repos-secret model chat-suffix
   chat_store "$5"
   local secrets="OA_RUNNER_KEY=oa-agent-runner-key:latest,ANTHROPIC_API_KEY=openagents-anthropic-api-key:latest,OA_CHAT_SEAL_KEY=oa-chat-credential-key$5:latest" repos="" n=0 entry slug url key
@@ -85,6 +92,7 @@ deploy() {  # service api-origin repos-secret model chat-suffix
       repos+="${repos:+;}$slug=$url=/secrets/k$n/key"
     done
   fi
+  local repo_url; repo_url="$(live_env "$1" OA_REPO_URL)"
   gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \
     --no-allow-unauthenticated --service-account "$sa" --no-cpu-throttling \
     --port 8080 --cpu 1 --memory 4Gi --min-instances 0 --max-instances 1 --concurrency 20 --timeout 900 \
@@ -92,7 +100,7 @@ deploy() {  # service api-origin repos-secret model chat-suffix
     --add-volume "name=sessions,type=cloud-storage,bucket=$project-oa-chat-sessions$5,mount-options=uid=1000;gid=1000" \
     --add-volume-mount volume=sessions,mount-path=/sessions \
     --set-secrets "$secrets" \
-    --set-env-vars "^|^OA_API_ORIGIN=$2|OA_AGENT_MODEL=$4|OA_AGENT_REPOS=$repos|OA_CHAT_SESSIONS=/sessions" --quiet 2>&1 | grep -E "ERROR|revision" || true
+    --set-env-vars "^|^OA_API_ORIGIN=$2|OA_AGENT_MODEL=$4|OA_AGENT_REPOS=$repos|OA_CHAT_SESSIONS=/sessions${repo_url:+|OA_REPO_URL=$repo_url}" --quiet 2>&1 | grep -E "ERROR|revision" || true
   gcloud run services add-iam-policy-binding "$1" --project "$project" --region "$region" \
     --member "serviceAccount:$invoker" --role roles/run.invoker --quiet >/dev/null
   echo "  ok    $1 ($n repositories)"

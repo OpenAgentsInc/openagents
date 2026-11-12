@@ -1,0 +1,41 @@
+# One repo service process on the repo VM (docs/deployment/repo-vm.md, #13326): oa-repo@production
+# on port 8080 and oa-repo@staging on port 8081, each as its own unprivileged user
+# (oa-repo-production, oa-repo-staging). /etc/oa-repo/%i.env holds the unit's listen address, data
+# directory, repos and git; /etc/oa-repo/%i.secret.env its grant key (root, 0600; vm-deploy.sh writes
+# it from Secret Manager). systemd reads both as root before it drops to the unit's user.
+[Unit]
+Description=Indexed repo service %i
+After=network-online.target
+Wants=network-online.target
+# never run on the boot disk: the mirrors live on the data disk mounted here
+RequiresMountsFor=/var/lib/oa-repo
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=/etc/oa-repo/%i.env
+EnvironmentFile=/etc/oa-repo/%i.secret.env
+ExecStart=/opt/oa-repo/%i/oa-repo --listen ${OA_REPO_LISTEN}
+User=oa-repo-%i
+Group=oa-repo-%i
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65536
+# files the service makes (mirrors, the index) are its user's alone
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/oa-repo
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

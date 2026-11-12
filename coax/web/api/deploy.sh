@@ -77,6 +77,13 @@ runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64
 # Our team (team.conf): kind:value,... ; its visits are our own testing, not usage.
 team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "player" || $1 == "email_sha256" || $1 == "pubkey") { print $1 ":" $2 }' | paste -sd, - || true)"
 
+# A variable's value on the live service, or nothing: OA_REPO_URL is set by
+# coax/web/repo/vm-deploy.sh connect (docs/deployment/repo-vm.md), and --set-env-vars
+# would drop it, so each deploy carries it over.
+live_env() {  # service name
+  gcloud run services describe "$1" --project "$project" --region "$region" --format=json 2>/dev/null |
+    python3 -I -c 'import json, sys; e = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", []); print(next((x.get("value", "") for x in e if x["name"] == sys.argv[1]), ""))' "$2" 2>/dev/null || true
+}
 deploy() {  # service runtime-secret host agent-projects-secret runner-service drops-folder owner-secret
   # Migrations first, as the owner role, in a job with this image; the service's own role has no
   # DDL and owns nothing (coax/web/api/db/roles.coax, docs/auth/data-and-backups.md). A failed
@@ -139,6 +146,8 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   [[ -n "$spark" ]] && env+="~OA_SPARK_URL=$spark"
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="~OA_AGENT_WAKE_URL=$wake/wake"
+  local repo_url; repo_url="$(live_env "$1" OA_REPO_URL)"
+  [[ -n "$repo_url" ]] && env+="~OA_REPO_URL=$repo_url"
   local release
   release="$(python3 -c 'import uuid; print(uuid.uuid4())')"
   env+="~OA_BUILD_SHA=$commit~OA_RELEASE_ID=$release"
