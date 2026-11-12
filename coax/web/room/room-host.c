@@ -759,7 +759,7 @@ static void world_ask(void) {
   if (dev_dir) {
     free(dev_world); dev_world = dev_read("world-everglade.json", &dev_world_n);
     if (!dev_world || dev_world[0] != '{') { fprintf(stderr, "room: --dev %s has no world-everglade.json\n", dev_dir); exit(1); }
-    int64_t preparing=now_us();world_edits(dev_world, (int64_t)dev_world_n);world_publication_us=now_us()-preparing;warm_rooms();rm_eg_placed_reset(view());
+    int64_t preparing=now_us();world_edits(dev_world, (int64_t)dev_world_n);world_publication_us=now_us()-preparing;warm_rooms();
     printf("room: the local world (%zu bytes) laid over the rooms\n", dev_world_n);
     return;
   }
@@ -829,7 +829,7 @@ static void poster_hear(void) {
     coax_string body={buf+head,(int64_t)len};
     if(lane==POST_CHECKPOINT)rm_checkpoint_answer(view(),batch,status,body);
     else if(lane==POST_VITALS)rm_vitals_answer(view(),batch,status,body);
-    else if(lane==POST_WORLD&&ok){int64_t preparing=now_us();world_edits(body.data,body.count);world_publication_us=now_us()-preparing;warm_rooms();rm_eg_placed_reset(view());printf("room: the realm's world (%zu bytes) laid over the rooms\n",len);}
+    else if(lane==POST_WORLD&&ok){int64_t preparing=now_us();world_edits(body.data,body.count);world_publication_us=now_us()-preparing;warm_rooms();printf("room: the realm's world (%zu bytes) laid over the rooms\n",len);}
     else if(lane==POST_CONTROL&&ok){
       rm_control(view(),body);
       if(server->ctl.edit_known&&server->ctl.edit!=edit_asked){edit_asked=server->ctl.edit;bg_world_changed(background());}

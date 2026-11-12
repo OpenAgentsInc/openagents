@@ -79,7 +79,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for c: 0..<EG_CASTS { v[0].eg[q].casts[c].on = false; }
     v[0].eg[q].cast_order = 0; v[0].eg[q].hurts[0] = HbBatch.{};
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
-    // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
+    // v1's town state at rest (Everglade II never sets it; it goes with the seat record trim, #13267)
     v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
     for t: 0..<WIRE_TREES { v[0].eg[q].tree_on[t] = false; }
     v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;

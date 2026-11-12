@@ -369,3 +369,16 @@ eg_heard_missed :: (v: [] RmServer, k: int, seat_id: SeatId) { seat := seat_id.v
   st[0].pieces = 0; st[0].town_end = true;
   v[0].st.towns += 1;
 }
+// e pburn I ON, or e pgone I: placed thing I alight or out, or burnt through.
+eg_put_placed :: (e: [] u8, kind: int, i: int, on: bool) -> int {
+  if kind == 5 { return wire_int(e, wire_put(e, 0, "e pgone"), i); }
+  return wire_int(e, wire_int(e, wire_put(e, 0, "e pburn"), i), ifx on then 1 else 0);
+}
+eg_put_break :: (e: [] u8, piece: int, a: f32, b: f32, c: f32) -> int {
+  n := wire_put(e, 0, "e break"); n = wire_int(e, n, piece); n = wire_m(e, n, a); n = wire_m(e, n, b); n = wire_m(e, n, c);
+  return n;
+}
+eg_put_burn :: (e: [] u8, piece: int, on: bool) -> int {
+  n := wire_put(e, 0, "e burn"); n = wire_int(e, n, piece); n = wire_int(e, n, ifx on then 1 else 0);
+  return n;
+}

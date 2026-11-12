@@ -40,19 +40,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     rd: [1] WireRd; rd[0] = wire_rd(text, 1);
     u := wire_read_use(text, rd[..]);
     if !rd[0].ok || eg_fields(text) != 4 { return; }
-    // a door: the world opens or shuts it for every seat, its collider with it; a talk: the townsperson
-    // stops and faces that seat on every page (-1 lets them go). The world checks the reach (rm_eg_use_asks).
-    // a rowboat (#12861): the world seats it in boat ID (its float, -1 the nearest) when free and in
-    // reach, or takes it out of the one it rows
-    if u.kind == WE_DOOR || u.kind == WE_TALK || u.kind == WE_BOAT {
-      if u.kind == WE_DOOR && (u.id < 0 || u.id >= WIRE_DOOR_WORD * WIRE_DOOR_WORDS) { return; }
-      if u.kind == WE_BOAT && (u.id < -1 || u.id >= 999) { return; }
-      if u.kind == WE_TALK && (u.id < -1 || u.id >= 999) { return; }
-      uses:=0;releases:=0;for q:0..<v[0].eg[k].use_ask_n{code:=v[0].eg[k].use_ask[q];if code/1000%1000!=seat{continue;}if code%1000==0{releases+=1;}else{uses+=1;}}
-      if !ef_use_admit(u.id== -1,uses,releases)||v[0].eg[k].use_ask_n>=EG_USE_ASKS{eg_refuse(v,k, seat_id,u.seq,"busy");return;}
-      v[0].eg[k].use_ask[v[0].eg[k].use_ask_n]=eg_use_code(u.kind, seat_id,u.id);v[0].eg[k].use_ask_n+=1;
-      return;
-    }
+    // v1's doors, talks and rowboats were its world's (the frozen build's, docs/decisions/0005): refused below
     // the quest board is the page's (its own quest stages): only ending a slot is
     if u.kind != WE_END { eg_refuse(v, k, seat_id, u.seq, "unbuilt"); return; }
     // an end takes its place among the seat's inputs, as a cast does (rc_ready): with inputs sent
@@ -68,28 +56,6 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   }
   if c == 'L' { e2_heard_old_rest(v, k, seat_id, text); return; }
   if c == 'Z' { e2_heard_rest(v, k, seat_id, text); return; }   // an Everglade II rest (everglade/server/rest.coax)   // a Long Rest (room-events.coax ev_rest_ok)
-  if c == 'R' {
-    // a room's town is rebuilt by the room (the aftermath's ev_rebuild) or by an admin, never a player's R (#12801)
-    if !eg_ticket(v, k, seat_id).admin { rr0: [1] WireRd; rr0[0] = wire_rd(text, 1); eg_refuse(v, k, seat_id, wire_num(text, rr0[..]), "admin"); return; }
-    // the world stands its pieces and people up (rm_eg_rebuild), the rules the people, every page hears it:
-    // if no spell struck the town in the last EG_REBUILD_QUIET s, and at most once every EG_REBUILD_EVERY s (spec 6.6)
-    rr: [1] WireRd; rr[0] = wire_rd(text, 1);
-    seq := wire_num(text, rr[..]);
-    now := v[0].eg[k].tick;
-    if now - v[0].eg[k].broke_at < EG_REBUILD_QUIET * EG_HZ { eg_refuse(v, k, seat_id, seq, "breaking"); return; }
-    if now - v[0].eg[k].rebuilt_at < EG_REBUILD_EVERY * EG_HZ { eg_refuse(v, k, seat_id, seq, "cooldown"); return; }
-    v[0].eg[k].rebuilt_at = now;
-    v[0].eg[k].rebuild = true;
-    e5rr_folk_restore(v[0].eg[k].rules[..]);
-    e5rr_zombies_clear(v[0].eg[k].rules[..]);   // the Warlock's Zombies fall with it
-    e5rd_wall_whole(v[0].eg[k].rules[..]);      // the palisade whole: the raid's breaches shut
-    for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
-    for q: 0..<CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; }
-    p := v[0].eg[k].seat[seat].pose;
-    b: [32] u8;
-    eg_event(v, k, cast(string) b[0..<wire_put_rebuilt(b[..], 0)], p.x, p.z, true);
-    return;
-  }
 }
 // Seat seat's page heard tick `heard` whole: what went out that tick is its page's (rows, n and w
 // entries), and its snapshots end once it is one of them.
@@ -115,18 +81,6 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat :=
   #assert v[0].eg[k].seat[0].ends_n==EG_ENDS&&v[0].ab[k].q_n==0;
   eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 6 busy");
   v[0].eg[k].seat[0].q_n=0;eg_ends_due(v[..],k);#assert v[0].eg[k].seat[0].ends_n==0&&v[0].ab[k].q_n==EG_ENDS;
-}
-#test "overload: one seat cannot consume another seat's door talk or boat work (#12841)" #steps 2000000000 {
-  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-e2-use-budget",2,false);b:[128]u8;
-  for i:0..<EG_USE_ASKS{n:=wire_put_use(b[..],0,WireUse.{seq=i+1,kind=WE_DOOR,id=i});rm_heard(v[..],0,cast(string)b[0..<n]);}
-  n:=wire_put_use(b[..],0,WireUse.{seq=99,kind=WE_TALK,id=0});rm_heard(v[..],1,cast(string)b[0..<n]);
-  #assert v[0].eg[k].use_ask_n==2;
-  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 2 busy");
-  n=wire_put_use(b[..],0,WireUse.{seq=100,kind=WE_TALK,id= -1});rm_heard(v[..],0,cast(string)b[0..<n]);
-  #assert v[0].eg[k].use_ask_n==3&&rm_eg_use_ask(v[..],k,2)==eg_use_code(WE_TALK, SeatId.{value = 0},-1);
-  n=wire_put_use(b[..],0,WireUse.{seq=101,kind=WE_BOAT,id= -1});rm_heard(v[..],0,cast(string)b[0..<n]);
-  #assert v[0].eg[k].use_ask_n==3;
-  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 101 busy");
 }
 
 

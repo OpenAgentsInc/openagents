@@ -180,7 +180,7 @@ rv_join :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   noted := i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_KEEP_MS;
   if noted { hp = rs_max(v[0].vit.v[i].hp, 0); dead = v[0].vit.v[i].dead && hp == 0; }
   // its WANTED level (#12794): this server's note from the last 5 minutes, else the ticket's (the
-  // API's, which only a room's signed report writes); the host lays it on the town (rm_eg_want_take)
+  // API's, which only a room's signed report writes); kept and reported (v1's town laid it, #13267)
   want := tk.wanted;
   if i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_WANTED_MS { want = v[0].vit.v[i].wanted; }
   if want > 0 && want <= 5 { v[0].eg[k].seat[s].want_seed = want; v[0].eg[k].wanted[s] = want; }
@@ -516,22 +516,22 @@ rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
   key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   rm_ticket_key(v[..], key, true);
   t: [256] u8; r: [512] u8;
-  // a ticket with w3: the seat sits WANTED 3, and the host lays it on the town once
+  // a ticket with w3: the seat sits WANTED 3
   n := tk_sign_wanted(key, "p-0011223344556677", false, "", "pair-e2-tk", 0, now + 60000, -1, 40, 3, t[..]);
   #assert eg_test_has(cast(string) t[0..<n], ".-x40w3.") && tk_check(key, cast(string) t[0..<n], "pair-e2-tk", now).wanted == 3;
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  #assert v[0].eg[k].wanted[0] == 3 && rm_eg_want_take(v[..], k, SeatId.{value = 0}) == 3 && rm_eg_want_take(v[..], k, SeatId.{value = 0}) == 0;
+  #assert v[0].eg[k].wanted[0] == 3;
   // the town makes it 4; the seat leaves, and its note goes at once (a flush), WANTED with it
   #assert rm_vitals_due(v[..]) > 0;
   rm_vitals_local(v[..]);
   v[0].eg[k].wanted[0] = 4;
   rm_left(v[..], 0);
   #assert rm_vitals_due(v[..]) > 0 && eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 40 4 ");
-  // back within the seat's grace (#12792): the same seat, its live level kept and no seed
+  // back within the seat's grace (#12792): the same seat, its live level kept
   n = tk_sign_xp(key, "p-0011223344556677", false, "", "pair-e2-tk", 0, now + 120000, -1, 40, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
-  #assert v[0].eg[k].wanted[0] == 4 && v[0].eg[k].seat[0].want_seed == 0;
+  #assert v[0].eg[k].wanted[0] == 4;
   rm_left(v[..], 0);
   // back after it, within 5 minutes, with a ticket that has none: this server's note
   rm_clock(v[..], EG_GRACE_MS + 1000, now + 60000);

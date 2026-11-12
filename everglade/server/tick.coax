@@ -260,3 +260,6 @@ eg_crime :: (v: [] RmServer, k: int, by: int, who: int, x: f32, z: f32) {
   v[0].eg[k].folk_by[who] = seat;
   if v[0].eg[k].crime_n < EG_CRIMES { v[0].eg[k].crimes[v[0].eg[k].crime_n] = EgCrime.{by = seat, x = x, z = z}; v[0].eg[k].crime_n += 1; }
 }
+// Seat s moved in one jump this tick (room-world.c world_cut_take: placed, teleported, into or out of a
+// boat): its next row is a WARP, so no page draws it between (#12835).
+rm_eg_cut :: (v: [] RmServer, k: int, s_id: SeatId) #export_c #effects(all) { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].cut = true; } }

@@ -28,13 +28,12 @@
 // clock moves on, and each tick each seat gets its D frame.
 
 // Split by concern into everglade/server/ (#13267): the records (seat.coax), seats and lifecycle
-// (seats.coax), input (input.coax), casts (casts.coax), the tick (tick.coax), what a seat hears (send.coax), v1's town
-// (legacy/town.coax) and the checks (room-checks.coax). The game's shared files stay loaded here.
+// (seats.coax), input (input.coax), casts (casts.coax), the tick (tick.coax), what a seat hears (send.coax)
+// and the checks (room-checks.coax). v1's town is the frozen build's (docs/decisions/0005). The game's shared files stay loaded here.
 #load "../../../everglade/server/seat.coax";
 #load "../../../everglade/server/seats.coax";
 #load "../../../everglade/server/input.coax";
 #load "../../../everglade/server/casts.coax";
 #load "../../../everglade/server/tick.coax";
-#load "../../../everglade/server/legacy/town.coax";
 #load "../../../everglade/server/send.coax";
 #load "../../../everglade/server/room-checks.coax";

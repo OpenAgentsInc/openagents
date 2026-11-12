@@ -72,6 +72,67 @@ eg_test_drain :: (v: [] RmServer, box: [] EgInbox) {
 // What conn c's page holds of entity id (WireS id -1: nothing).
 eg_test_ent :: (box: [] EgInbox, c: int, id: int) -> WireS { return wire_mirror_of(box[0].m[c..<c + 1], id); }
 eg_test_of :: (box: [] EgInbox, c: int) -> string { return cast(string) box[0].t[c * 16384..<c * 16384 + box[0].n[c]]; }
+// v1 town state the send checks still load their tables with (from everglade/server/legacy/town.coax,
+// #13267): Everglade II never sets it. It goes with the seat record trim (P1.1 step 3).
+// Piece `piece` broke (KIND 1, thrown at A B C m/s) or caught or went out (KIND 2, A 1 alight) in the
+// world, standing at (x, z): every page hears it, near or far, for every page's town is the same.
+// KIND 3: a Repair stood structure `piece` up (everglade-repair.coax RP_*: a group, or a placed thing
+// past CR_REPAIR_PLACED0), its pieces whole (rm_eg_piece_up, from the host first). KIND 4 and 5: placed thing
+// `piece` caught or went out (A 1 alight), or burnt through and broke apart (everglade-placed-fire.coax).
+rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c: f32, x: f32, z: f32) #effects(all) {
+  if !rm_eg_live(v, k) || piece < 0 { return; }
+  e: [96] u8; n := 0;
+  if kind == 3 {
+    q := piece - CR_REPAIR_PLACED0;
+    if q >= 0 && q < CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; }
+    n = wire_int(e[..], wire_put(e[..], 0, "e mend"), piece);
+    eg_event(v, k, cast(string) e[0..<n], x, z, true);
+    return;
+  }
+  if kind == 4 || kind == 5 {
+    if piece >= CR_PLACED_MAX { return; }
+    if kind == 4 { v[0].eg[k].placed_burn[piece] = a > 0.5; } else { v[0].eg[k].placed_gone[piece] = true; v[0].eg[k].placed_burn[piece] = false; }
+    n = eg_put_placed(e[..], kind, piece, a > 0.5);
+    eg_event(v, k, cast(string) e[0..<n], x, z, true);
+    return;
+  }
+  if piece >= EG_PIECES { return; }
+  if kind == 1 {
+    v[0].eg[k].broken[piece] = true; v[0].eg[k].burning[piece] = false;
+    e5rd_wall_broke(v[0].eg[k].rules[..], x, z);   // a palisade post down opens a raid's breach (#12747)
+    n = eg_put_break(e[..], piece, a, b, c);
+  } else {
+    v[0].eg[k].burning[piece] = a > 0.5;
+    n = eg_put_burn(e[..], piece, a > 0.5);
+  }
+  eg_event(v, k, cast(string) e[0..<n], x, z, true);
+}
+// Piece i stands whole again (a Repair): late pages hear nothing of it.
+rm_eg_piece_up :: (v: [] RmServer, k: int, i: int) #effects(all) {
+  if !rm_eg_live(v, k) || i < 0 || i >= EG_PIECES { return; }
+  v[0].eg[k].broken[i] = false; v[0].eg[k].burning[i] = false;
+}
+// Person i as pages hear them (X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE), and seat s's WANTED level.
+// A new mode starts its clock (T0), a new spell its own.
+rm_eg_folk :: (v: [] RmServer, k: int, i: int, at: [] f32) #effects(all) {
+  if !rm_eg_live(v, k) || i < 0 || i >= E5R_FOLK || at.count < 7 { return; }
+  // the first 7 floats (X Y Z YAW MODE CLIP OUTDOORS) are the person; the cast's three (SINCE KIND
+  // FOE) may be missing: not casting
+  full: [EG_FOLK_FLOATS] f32;
+  full[7] = -1; full[9] = -1;
+  for q: 0..<(ifx at.count < EG_FOLK_FLOATS then at.count else EG_FOLK_FLOATS) { full[q] = at[q]; }
+  e := v[0].eg[k..<k + 1];
+  fo := i * EG_FOLK_FLOATS;
+  mode := cast(int) full[4];
+  if mode != e[0].folk_mode[i] || e[0].folk_since[i] == 0 { e[0].folk_mode[i] = mode; e[0].folk_since[i] = ifx e[0].tick < 1 then 1 else e[0].tick; }
+  was := e[0].folk[fo + 7];
+  if full[7] >= 0 && (was < 0 || full[7] < was || e[0].folk_cast[i] == 0) {
+    c := e[0].tick - cast(int) (full[7] * f32(EG_HZ));
+    e[0].folk_cast[i] = ifx c < 1 then 1 else c;
+  }
+  for q: 0..<EG_FOLK_FLOATS { e[0].folk[fo + q] = full[q]; }
+  e[0].folk_on = true;
+}
 // Whether what a conn heard has a state frame (D) in it.
 eg_test_d :: (t: string) -> bool { return (t.count > 1 && t[0] == 'D' && t[1] == ' ') || eg_test_has(t, "|D "); }
 eg_test_has :: (t: string, part: string) -> bool {
@@ -531,53 +592,6 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   }
   #assert v[0].st.cue_drop > dropped && v[0].st.out_b > 0 && v[0].st.cue_b > 0;
 }
-#test "everglade room: the watch's Hold Person on a seat is an effect entity on every page, its start and length the rules' time left, gone when it ends" #steps 2000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  rm_control(v[..], "levels 0 2\n");
-  rm_clock(v[..], 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-e2-fx HTTP/1.1\r\n\r\n";
-  box: [1] EgInbox;
-  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
-  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  id := WIRE_ID_MADE + EG_FX_ID + 1 * WE_WATCH + WE_HOLD_PERSON;
-  // the world holds seat 1 for 3 s: a row on both pages
-  rm_eg_held_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 3.0);
-  t0 := v[0].eg[k].tick;
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  for c: 0..<2 {
-    e := eg_test_ent(box[..], c, id);
-    #assert e.kind == WK_EFFECT && e.owner == WIRE_TGT_SEAT + 1 && e.p1 == WE_HOLD_PERSON && e.p2 == WC_PARALYZED && e.t0 == t0 && e.dur == 3 * WIRE_HZ;
-  }
-  // a tick on, less left: the same row (no bytes); then it ends: gone on both
-  rm_eg_held_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 2.96);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_ent(box[..], 0, id).t0 == t0 && !eg_test_has(eg_test_of(box[..], 0), "s 1150003 ");
-  rm_eg_held_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 0);
-  for t: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  #assert eg_test_ent(box[..], 0, id).id < 0 && eg_test_ent(box[..], 1, id).id < 0;
-}
-#test "everglade room: a control hold line holds its seat in its room once a stamp, and none in another room (#12886)" #steps 2000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  rm_clock(v[..], 0, 1762190000000);
-  box: [1] EgInbox;
-  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-hold HTTP/1.1\r\n\r\n") == 0 && rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-hold HTTP/1.1\r\n\r\n") == 1;
-  #assert rm_join(v[..], 2, "GET /api/room/relay/everglade/pair-e2-other HTTP/1.1\r\n\r\n") == 0;
-  k := eg_room_at(v[..], v[0].conns[0].relay); o := eg_room_at(v[..], v[0].conns[2].relay);
-  for c: 0..<3 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }
-  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_tick(v[..], o); eg_test_drain(v[..], box[..]); }
-  rm_control(v[..], "levels 0 2\nhold pair-e2-hold 1 77\n");
-  #assert !rm_eg_hold_take(v[..], k, SeatId.{value = 0}) && rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], o, SeatId.{value = 1});
-  // the control is asked again with the same line: laid once
-  rm_control(v[..], "levels 0 2\nhold pair-e2-hold 1 77\n");
-  #assert !rm_eg_hold_take(v[..], k, SeatId.{value = 1});
-  // a new stamp, a seat not there, a word short: only the first holds
-  rm_control(v[..], "hold pair-e2-hold 1 78\nhold pair-e2-hold 9 79\nhold pair-e2-hold 0\n");
-  #assert rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], k, SeatId.{value = 0});
-}
 #test "everglade room: a player new to a seat is a new life of its row, and a jump the world says is a WARP (#12835)" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
@@ -603,51 +617,6 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 -");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 1, 0).life == a1.life + 1;
-}
-#test "everglade room: a control place line puts its seat beside a rowboat once a stamp, in a local room only (#12861)" #steps 2000000000 {
-  for local: 0..<2 {
-    v: [1] RmServer;
-    rm_init(v[..]);
-    if local == 1 { rm_control_local(v[..]); }
-    rm_clock(v[..], 0, 1762190000000);
-    box: [1] EgInbox;
-    #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-place HTTP/1.1\r\n\r\n") == 0 && rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-place HTTP/1.1\r\n\r\n") == 1;
-    k := eg_room_at(v[..], v[0].conns[0].relay);
-    for c: 0..<2 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }
-    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-    rm_control(v[..], "place pair-e2-place 1 2 50\nplace pair-e2-place 0 0 51\n");
-    if local == 0 { #assert rm_eg_place_take(v[..], k, SeatId.{value = 0}) == -1 && rm_eg_place_take(v[..], k, SeatId.{value = 1}) == -1; continue; }
-    #assert rm_eg_place_take(v[..], k, SeatId.{value = 1}) == 2 && rm_eg_place_take(v[..], k, SeatId.{value = 0}) == 0 && rm_eg_place_take(v[..], k, SeatId.{value = 1}) == -1;
-    // asked again: laid once; an older stamp, a boat past the three, a seat not there: none
-    rm_control(v[..], "place pair-e2-place 1 2 50\nplace pair-e2-place 0 1 49\nplace pair-e2-place 0 3 60\nplace pair-e2-place 9 0 61\n");
-    #assert rm_eg_place_take(v[..], k, SeatId.{value = 0}) == -1 && rm_eg_place_take(v[..], k, SeatId.{value = 1}) == -1;
-    rm_control(v[..], "place pair-e2-place 0 1 62\n");
-    #assert rm_eg_place_take(v[..], k, SeatId.{value = 0}) == 1;
-  }
-}
-#test "everglade room: \"dice fixed\" fixes a local room's dice and those made after it, never a production room's (#12887)" #steps 2000000000 {
-  for local: 0..<2 {
-    v: [1] RmServer;
-    rm_init(v[..]);
-    if local == 1 { rm_control_local(v[..]); }
-    rm_clock(v[..], 0, 1762190000000);
-    #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-dice-a HTTP/1.1\r\n\r\n") == 0;
-    k := eg_room_at(v[..], v[0].conns[0].relay);
-    rm_control(v[..], "pvp 1\ndice fixed\n");
-    #assert v[0].eg[k].rules[0].b[0].dice[0].fixed == (local == 1) && rm_eg_dice_fixed(v[..], k) == (local == 1);
-    #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-dice-b HTTP/1.1\r\n\r\n") == 0;
-    o := eg_room_at(v[..], v[0].conns[1].relay);
-    #assert o != k && v[0].eg[o].rules[0].b[0].dice[0].fixed == (local == 1);
-    if local == 1 {
-      d := v[0].eg[k].rules[0].b[0].dice[..];
-      #assert rs_roll(d, 20) == 10 && rs_roll(d, 8) == 4 && rs_roll(d, 1) == 1 && rs_d20(d, 1).roll == 10;
-    }
-    // an answer without the line keeps it; "dice random" ends it
-    rm_control(v[..], "pvp 1\n");
-    #assert v[0].eg[k].rules[0].b[0].dice[0].fixed == (local == 1);
-    rm_control(v[..], "dice random\n");
-    #assert !v[0].eg[k].rules[0].b[0].dice[0].fixed && !v[0].eg[o].rules[0].b[0].dice[0].fixed;
-  }
 }
 #test "everglade room: a 250 ms link's TCP resend preserves every earned movement input" #steps 2000000000 {
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
@@ -984,178 +953,8 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert r[0].klass[0] == E5R_CL0 + FB_CL_WIZARD;
 }
 
-#test "everglade room: a rowboat's E goes to the world, and each boat is a row on every page with its rower (#12861)" #steps 2000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  rm_clock(v[..], 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-e2-boat HTTP/1.1\r\n\r\n";
-  box: [1] EgInbox;
-  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  // seat 0 asks to board float 26: the world's to decide, no refusal
-  rm_heard(v[..], 0, "E 1 3 26");
-  #assert rm_eg_use_asks(v[..], k) == 1 && rm_eg_use_ask(v[..], k, 0) == eg_use_code(WE_BOAT, SeatId.{value = 0}, 26);
-  #assert !eg_test_has(eg_test_of(box[..], 0), "r 1 ");
-  rm_eg_use_asks_heard(v[..], k);
-  // the world seated it and rowed it on: both pages hear the boat, its rower seat 0, the oars mid-stroke
-  b: [7] f32;
-  b[0] = -40; b[1] = 0.4; b[2] = 21.5; b[3] = 1.2; b[4] = 0; b[5] = 0.25; b[6] = 26;
-  rm_eg_boat(v[..], k, 0, b[..]);
-  b[4] = -1; b[5] = -1; b[6] = 27; b[0] = 60;
-  rm_eg_boat(v[..], k, 1, b[..]);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  id := WIRE_ID_MADE + WIRE_BOAT_EID;
-  for q: 0..<2 {
-    e := eg_test_ent(box[..], q, id);
-    #assert e.kind == WK_BOAT && e.owner == 0 && e.p1 == 26 && e.p2 == 250 && abs(e.x + 40) < 0.02 && abs(e.z - 21.5) < 0.02;
-    m := eg_test_ent(box[..], q, id + 1);
-    #assert m.kind == WK_BOAT && m.owner == -1 && m.p2 == -1 && abs(m.x - 60) < 0.02;
-  }
-  // a boat past the floats there are is dropped
-  rm_heard(v[..], 1, "E 2 3 999");
-  #assert rm_eg_use_asks(v[..], k) == 0;
-}
 
-#test "everglade room: forest state survives blocks late joins rebuilds and sparse record reuse (#12940)" #steps 6000000000 {
-  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-e2-forest HTTP/1.1\r\n\r\n";
-  box: [1] EgInbox;
-  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
-  #assert EG_SLOT_ABS == 61 && EG_SLOT_DOORS == 255 && EG_SLOT_TREE + WIRE_TREES <= WIRE_SLOTS && IM_ENTS >= WIRE_SLOTS;
-  b := [16] f32.[7, -80, 2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 1, 3.4, 40];
-  rm_eg_tree(v[..], k, 1, b[..]); im_block(v[0].eg[k].im[..], SeatId.{value = 0}, SeatId.{value = 1}, true);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  for c: 0..<2 {
-    w := eg_test_ent(box[..], c, 1162001);
-    #assert w.kind == 26 && w.clip == 7 && w.owner == 1 && w.cond == 1 && w.hp == 250 && w.max == 500 && w.temp == 100;
-    #assert w.x == -80 && w.y == 2 && w.z == -15 && w.p1 == 1000 && w.p2 == -200 && w.t0 == 600 && w.dur == 1500 && w.form == 40000;
-    #assert abs(w.carry - 3.4) < 0.001;
-  }
-  // Burnt trees remain in the state after their fire ends, including a late joiner's snapshot.
-  b[4] = 2; b[9] = 1; b[10] = 1; b[12] = 0; b[13] = -1;
-  rm_eg_tree(v[..], k, 1, b[..]);
-  #assert rm_join(v[..], 2, ev) == 2; rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 C");
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  for c: 0..<3 { #assert eg_test_ent(box[..], c, 1162001).hp == 1000 && eg_test_ent(box[..], c, 1162001).g == 2; }
-  // A partial or invalid host record never overwrites the complete state.
-  b[9] = -1; rm_eg_tree(v[..], k, 1, b[..]); b[9] = 0; rm_eg_tree(v[..], k, 1, b[0..<15]);
-  #assert v[0].eg[k].tree[1].hp == 1000;
-  life := eg_test_ent(box[..], 0, 1162001).life;
-  b[0] = 8; b[9] = 1; rm_eg_tree(v[..], k, 1, b[..]);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  for c: 0..<3 { w := eg_test_ent(box[..], c, 1162001); #assert w.clip == 8 && w.life > life; }
-  rm_eg_tree(v[..], k, 1, b[0..<0]);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  for c: 0..<3 { #assert eg_test_ent(box[..], c, 1162001).id == -1; }
-  // Every sparse record fits without displacing the original entities. Drop a multipart snapshot
-  // for a fourth page: no incomplete ACK, then the complete retry restores the entire forest.
-  for q: 1..<WIRE_TREES {
-    b[0] = f32(q - 1); b[1] = -180 + f32(q); rm_eg_tree(v[..], k, q, b[..]);
-  }
-  #assert rm_join(v[..], 3, ev) == 3; rm_heard(v[..], 3, "H 5 ranger.0.0.0 druid 0 D"); box[0].lose[3] = true;
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert !box[0].lose[3] && box[0].m[3].heard == 0;
-  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  for q: 1..<WIRE_TREES {
-    w := eg_test_ent(box[..], 3, FOREST_EID + q);
-    #assert w.kind == WK_TREE && w.clip == q - 1 && w.hp == 1000;
-  }
-  #assert v[0].eg[k].im[0].over == 0;
-}
-#test "everglade room: a door one seat uses is the world's to open (and a talk the world's to hold), every seat's row says it is open, and a late joiner's snapshot has it" #steps 2000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  rm_clock(v[..], 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-e2-door HTTP/1.1\r\n\r\n";
-  box: [1] EgInbox;
-  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  doors := WIRE_ID_MADE + EG_DOORS_ID;
-  #assert eg_test_ent(box[..], 0, doors).kind == WK_DOORS && eg_test_ent(box[..], 0, doors).p1 == 0;   // every door shut
-  // seat 0's E on door 5, and seat 1's talk to spot 3 and letting go, wait for the world (the host: rm_eg_use_asks), no refusal
-  rm_heard(v[..], 0, "E 1 2 5"); rm_heard(v[..], 1, "E 1 1 3"); rm_heard(v[..], 1, "E 2 1 -1");
-  #assert rm_eg_use_asks(v[..], k) == 3 && rm_eg_use_ask(v[..], k, 0) == eg_use_code(WE_DOOR, SeatId.{value = 0}, 5);
-  #assert rm_eg_use_ask(v[..], k, 1) == 1001004 && rm_eg_use_ask(v[..], k, 2) == 1001000;
-  rm_eg_use_asks_heard(v[..], k);
-  rm_eg_doors(v[..], k, 0, 1 << 5);   // the world opened it
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert !eg_test_has(eg_test_of(box[..], 0), "r 1 ");
-  #assert eg_test_ent(box[..], 0, doors).p1 == 32 && eg_test_ent(box[..], 1, doors).p1 == 32;
-  // a seat that joins now has it open in its first snapshot
-  #assert rm_join(v[..], 2, ev) == 2;
-  rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 C");
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_ent(box[..], 2, doors).p1 == 32 && eg_test_ent(box[..], 2, doors).form == 0;   // the gates open
-  // a door past the doors there are is dropped
-  rm_heard(v[..], 1, "E 3 2 99");
-  #assert rm_eg_use_asks(v[..], k) == 0;
-  #assert E5R_FOLK == 47;   // the town's people, its responders too: watch.coax WATCH_ACTORS (everglade5e.coax checks it)
-  // the world shuts the town's gates (someone WANTED 4, #12794): every seat's row says so, its doors kept
-  rm_eg_gates(v[..], k, 1);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  for q: 0..<3 { #assert eg_test_ent(box[..], q, doors).form == 1 && eg_test_ent(box[..], q, doors).p1 == 32; }
-  // the south gate's leaf alight, then burnt through (#12932): its pages hear the world's bits whole
-  rm_eg_gates(v[..], k, 1 | (1 << 5));
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_ent(box[..], 0, doors).form == 33;
-  rm_eg_gates(v[..], k, 1 | 2);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_ent(box[..], 0, doors).form == 3;
-  rm_eg_gates(v[..], k, 0);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_ent(box[..], 0, doors).form == 0;
-}
 
-// #12862: a townsperson's row carries when their mode began (T0), so a page that sees a fall again, or
-// late, shows it where it is; a caster's spell (P2, DUR, OWNER) shows as it winds up; the watch's spells
-// in the air (e wm) reach the seat they are for wherever it stands, and a page near the caster.
-#test "everglade room: a fallen townsperson's row says when they fell, the same when they come back into view; a guard's spell at a far seat reaches it (#12862)" #steps 6000000000 {
-  v: [1] RmServer;
-  rm_init(v[..]);
-  rm_clock(v[..], 0, 1762190000000);
-  ev := "GET /api/room/relay/everglade/pair-e2-folk-t0 HTTP/1.1\r\n\r\n";
-  box: [1] EgInbox;
-  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
-  k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
-  for q: 0..<40 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  f: [EG_FOLK_FLOATS] f32;
-  // person 3 stands 10 m off, casting Hold Person (MS_HOLD 3) at seat 0, half a second in
-  f[0] = 10; f[1] = 0; f[2] = 0; f[3] = 0; f[4] = 2; f[5] = 9; f[6] = 1; f[7] = 0.5; f[8] = 3; f[9] = 0;
-  rm_eg_folk(v[..], k, 3, f[..]);
-  for q: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  r := eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
-  #assert r.id == WIRE_ID_FOLK + 3 && r.p2 == 4 && r.owner == WIRE_TGT_SEAT + 0 && r.dur > 0 && r.dur < v[0].eg[k].tick;
-  // they fall (WM_DEAD 6): T0 is that tick, and stays it
-  f[4] = 6; f[7] = -1; f[3] = 9;
-  rm_eg_folk(v[..], k, 3, f[..]);
-  fell := v[0].eg[k].tick;
-  for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  r = eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
-  #assert r.g == 6 && r.t0 == fell && r.p2 == 0;
-  // seat 0 walks 200 m off: the row goes; back: it comes again with the same T0
-  rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 200, 0, 0, 0, 0, 0, 0, 1, 0, 0);
-  for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  #assert eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3).id == -1;
-  rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0);
-  for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  r = eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
-  #assert r.id == WIRE_ID_FOLK + 3 && r.t0 == fell;
-  // a guard 300 m off casts at seat 1: seat 1 hears it fly, though far from the caster; seat 0 not
-  rm_eg_moved(v[..], k, SeatId.{value = 1}, 0, 0, 0, 5, 0, 0, 0, 0, 1, 0, 0);
-  m := [11] f32.[3, 7, 1, 300, 1.45, 0, 0, 1, 5, 0.3, 0.5];
-  rm_eg_missile(v[..], k, m[..]);
-  rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 0, 0, -300, 0, 0, 0, 0, 1, 0, 0);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 1), "e wm 3 7 1 30000 145 0 0 100 500 300 500") && !eg_test_has(eg_test_of(box[..], 0), "e wm");
-}
 
 #test "everglade II room executes self healing and refuses a speech-blocked spell before publishing" #steps 2000000000 {
   v:[1] RmServer; rm_init(v[..]); rm_clock(v[..],0,1762190000000);

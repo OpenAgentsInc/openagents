@@ -51,7 +51,7 @@ EXPORT("rw_clock") void rw_clock(double mono_ms, double wall) {
    --dev with no vitals URL (room-vitals.coax rm_vitals_local): offline play has no API to post to. */
 EXPORT("rw_vitals") void rw_vitals(void) { if (rm_vitals_due(view()) > 0) rm_vitals_local(view()); }
 /* The realm's published world (its JSON), laid over the room's plan, as room-host.c world_ask. */
-EXPORT("rw_edits") void rw_edits(int32_t n) { world_edits(buf, n); rm_eg_placed_reset(view()); }
+EXPORT("rw_edits") void rw_edits(int32_t n) { world_edits(buf, n); }
 /* The API's word on the rooms (room-control.coax lines), as room-host.c control_ask under --dev. */
 EXPORT("rw_control") void rw_control(int32_t n) { rm_control(view(), text(n)); }
 EXPORT("rw_join") int32_t rw_join(int32_t conn, int32_t n) { return (int32_t)rm_join(view(), conn, text(n)); }
