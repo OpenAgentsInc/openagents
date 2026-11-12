@@ -58,6 +58,12 @@ It builds on what exists today:
 - [`coax/lib/crypto`](../../coax/lib/crypto)
 - [`coax/lib/nostr/jcs.coax`](../../coax/lib/nostr/jcs.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A claim's key | `openagents.eval.v1` `Subject` and the locks it names ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)); the digest follows the canonical-bytes rule ([spec 7.4](../../docs/protocol/openagents-protocol-spec.md#74-canonical-bytes-and-hashing)) | Inside the report | Spec sketch; no `.proto` file. A digest depends on exact bytes, so this record needs a fixture before any codec changes ([chapter 52](ch052-the-compliance-rule.md)) |
+
 Planned paths: `openagents/eval/key.coax`.
 
 ## Sources

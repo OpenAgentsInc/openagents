@@ -55,6 +55,12 @@ It builds on what exists today:
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 - [`coder/tui/filter_eval.py`](../../coder/tui/filter_eval.py)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Test set, case and grader | `openagents.eval.v1` `Suite`, `Case`, `Grader` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189 (NIP-EVAL) | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/eval/suite.coax`.
 
 ## Sources

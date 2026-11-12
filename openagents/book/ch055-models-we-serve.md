@@ -1,4 +1,4 @@
-# 51. Models we serve
+# 55. Models we serve
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -57,6 +57,12 @@ It builds on what exists today:
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 - [`coax/lib/gateway/psionic.coax`](../../coax/lib/gateway/psionic.coax)
 - [`psionic/book/README.md`](../../psionic/book/README.md)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A served decision | `openagents.decision.v1alpha1` `SystemOneRequest`, `SystemOneResponse` ([`systemone.proto`](../../proto/openagents/decision/v1alpha1/systemone.proto)) | HTTP `POST /v1/systemone` on Psionic | In use on the server: the generated codec `psionic/lib/serve-proto.coax` |
 
 ## Sources
 

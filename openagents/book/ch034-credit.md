@@ -53,6 +53,12 @@ It builds on what exists today:
 - [`coax/lib/nostr/xp_keys.coax`](../../coax/lib/nostr/xp_keys.coax)
 - [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Award and revocation | `openagents.xp.v1` `Award`, `Revocation`, `Quest` ([spec 28.1](../../docs/protocol/openagents-protocol-spec.md#281-openagentsxpv1)) | Nostr kinds 3193, 3194 and 30193, public (NIP-XP) | Spec sketch; no `.proto` file. `coax/lib/nostr/xp_ledger.coax` handles the NIP's JSON |
+
 Planned paths: `openagents/eval/credit.coax`.
 
 ## Sources

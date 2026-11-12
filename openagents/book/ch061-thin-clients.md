@@ -1,4 +1,4 @@
-# 57. Thin clients
+# 61. Thin clients
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -63,6 +63,13 @@ It builds on what exists today:
 - [`coax/lib/tui`](../../coax/lib/tui)
 - [`coder/tui/coder.coax`](../../coder/tui/coder.coax)
 - [`coax/web`](../../coax/web)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| The stream a surface draws | `openagents.chat.v1` results and, for hosted runs, planned `openagents.agent.managed.v1alpha1` events ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1), [spec 18.2](../../docs/protocol/openagents-protocol-spec.md#182-openagentsagentmanagedv1); [compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C5) | HTTP stream; Nostr kinds 26900 and 27000 | Spec sketch; no `.proto` file. The web chat polls hand-written lines today |
+| State that follows you between surfaces | `openagents.sync.v1alpha1` ([chapter 51](ch051-sync-across-devices.md)) | Binary frames on one WebSocket | Planned |
 
 Planned paths: `openagents/agent/surfaces/`.
 

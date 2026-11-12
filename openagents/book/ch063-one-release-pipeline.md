@@ -1,4 +1,4 @@
-# 59. One release pipeline
+# 63. One release pipeline
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -58,6 +58,13 @@ It builds on what exists today:
 - [`apps/openagents-ios`](../../apps/openagents-ios)
 - [`apps/everglade-mobile`](../../apps/everglade-mobile)
 - [`os`](../../os)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Release status | `openagents.deploy.v1` `DeployStatus`, `LaneHead` ([spec 28.3](../../docs/protocol/openagents-protocol-spec.md#283-openagentsdeployv1)) | Nostr kinds 3205 and 30205 | Spec sketch; no `.proto` file |
+| A signed build others can rebuild | `openagents.attest.v1` `Release`, `Rebuild` ([spec 27.2](../../docs/protocol/openagents-protocol-spec.md#272-openagentsattestv1)) | Nostr kinds 3202 and 3203 (NIP-ATT) | Spec sketch; no `.proto` file |
 
 Planned paths: `openagents/release/`.
 

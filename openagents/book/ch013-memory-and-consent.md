@@ -52,6 +52,14 @@ It builds on what exists today:
 - [`coax/lib/nostr/nip44.coax`](../../coax/lib/nostr/nip44.coax)
 - [`coax/lib/access`](../../coax/lib/access)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A stored memory | `openagents.vault.v1` `VaultObject` with key slots ([spec 15.3](../../docs/protocol/openagents-protocol-spec.md#153-openagentsvaultv1)) | Nostr: ciphertext in a kind 3188 envelope (NIP-VAULT); a device also keeps a file | Spec sketch; no `.proto` file. `coax/lib/nostr/vault.coax` builds the `user` tier. Coder's memory log is a hash-chained file; a fixture to pin it is planned |
+| Who may see an input | `openagents.policy.v1` `DisclosurePolicy` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr: a private record (NIP-POL) | Spec sketch; no `.proto` file |
+| Consent to publish or share | None yet | Planned | Gap. This chapter's consent record needs a schema |
+
 Planned paths: `openagents/knowledge/memory.coax`.
 
 ## Sources

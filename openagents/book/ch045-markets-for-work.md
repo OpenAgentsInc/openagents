@@ -57,6 +57,13 @@ It builds on what exists today:
 - [`coax/lib/nostr/auto`](../../coax/lib/nostr/auto)
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Job terms, submission and acceptance | `openagents.labor.v1` `Terms`, `Submission`, `Acceptance` ([spec 26.3](../../docs/protocol/openagents-protocol-spec.md#263-openagentslaborv1)) | Nostr: private records in a kind 3188 envelope (NIP-LAB) | Spec sketch; no `.proto` file |
+| An offering and its order records | `openagents.market.v1` `Offering`, `Record` ([spec 26.2](../../docs/protocol/openagents-protocol-spec.md#262-openagentsmarketv1)) | Nostr kinds 3192 and 30192 (NIP-MKT) | Spec sketch; no `.proto` file. `coax/lib/nostr/mkt` handles the NIP's JSON |
+
 Planned paths: `openagents/pay/jobs.coax`.
 
 ## Sources

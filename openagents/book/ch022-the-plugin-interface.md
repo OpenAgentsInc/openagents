@@ -57,6 +57,13 @@ It builds on what exists today:
 - [`coax/lib/nostr/cap`](../../coax/lib/nostr/cap)
 - [`apps/openagents-cli/skill.coax`](../../apps/openagents-cli/skill.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Manifest and operation descriptor | `openagents.extension.v1` `Manifest`, `OperationDescriptor` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Inside a release event (chapter 38) | Spec sketch; no `.proto` file. `coax/lib/nostr/ext` handles the NIP's JSON. Coder's plugin manifests are plain files or signed NIP-78 events today |
+| Skill listing | `openagents.skill.v1` `Listing` ([spec 20.3](../../docs/protocol/openagents-protocol-spec.md#203-openagentsskillv1)) | Nostr kind 30188 (NIP-SKILL) | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/plugins/`.
 
 ## Sources

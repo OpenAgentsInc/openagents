@@ -3,9 +3,11 @@
 Building a composable general agent from scratch, in
 [Coax](../../coax/book/README.md).
 
-> **Status: a first draft of all 60 chapters, written 2026-11-10 for the
-> owner to edit.** Every chapter is a design draft. Nothing in this book is
-> built yet. Each chapter says what it plans to ship, and plans are marked
+> **Status: a first draft, for the owner to edit.** 60 chapters are design
+> drafts, written 2026-11-10. Four more (49 to 52) are outlines, added
+> 2026-11-11 with a protocol table in most chapters. The book's own code is
+> not built yet. Where a piece already exists in the repository, such as the
+> login and agent grants of chapter 50, the chapter says so. Plans are marked
 > as plans. The book gives no dates.
 
 OpenAgents builds open agents that people can own, inspect, improve and earn
@@ -30,16 +32,20 @@ carry it. Then it says what we build now and what it builds on.
 
 ## How to read it
 
-- **For the argument,** read chapters 1, 3, 5, 27, 37, 47 and 60. They give
+- **For the argument,** read chapters 1, 3, 5, 27, 37, 47 and 64. They give
   the loop, the composition, the typed front, the evidence rule, the market,
   the protocol and what 1.0 means.
+- **For the wire,** read chapters 46 to 52 beside
+  [the OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md)
+  and [`proto/`](../../proto/README.md). The spec says what the bytes are.
+  This book says why, and which chapter sends them.
 - **For one promise,** find it in the [plan's coverage table](PLAN.md#promise-coverage)
   and read the chapters listed there.
 - **To build,** follow the [order of work](PLAN.md#order-of-building). It
   follows section 7 of
   [the port audit](../../docs/audits/2026-11-10-episode-289-port-audit.md).
 - **To edit,** start with the [open questions](PLAN.md#open-questions-for-the-owner).
-  There are 73 of them, and several change what later chapters say.
+  There are 80 of them, and several change what later chapters say.
 
 What you need first: the Coax book's Parts I to III. Other books own the
 foundations, and this book links to them and does not repeat them:
@@ -68,19 +74,25 @@ Each part ends with something that runs.
 | IV. Plugins | 22–26 | Let other people add members: a plugin interface, a sandbox, grants, and a way to build a plugin by talking to the agent. | Ask for something the agent can't do, answer its questions, and watch it draft a plugin and its tests. |
 | V. Evidence | 27–36 | Make the rule that lets the composition grow without getting worse: a component is a candidate until evidence says what admitting it changed. | Re-run the repository map's adoption from 2026-09-29 in Coax, with a second key reproducing it, and get the same verdict. |
 | VI. The market | 37–45 | Open the member list to everyone and pay the people who fill it: a registry, pinned installs, paid calls, receipts, payouts, identity and reputation. | Publish a plugin under your own key, have another person's agent use it in a paid call, and receive your share over Lightning. |
-| VII. The protocol is the agent | 46–49 | Show that every step so far is a signed event on one open protocol, then open the same system to partner apps and to people who host it themselves. | A second implementation that reads only the public events rebuilds an agent's member list and the evidence behind it; a partner app answers through the API; a self-hosted instance installs a plugin from the public registry. |
-| VIII. Compute | 50–52 | Say where the models run: behind one gateway, on our own engine, and on machines that people lend for Bitcoin. | One request to the front is answered by a decision model running on a Pylon, and the Pylon's owner is paid for it. |
-| IX. The Verse | 53–56 | Put all of it in a world you can walk through: the same agent, your working agents, makers who are paid, and characters that decide. | Walk into a realm, see your agents working, buy something a maker listed, and watch a guard make a decision that a Pylon served and was paid for. |
-| X. Everywhere | 57–60 | Ship it: every surface as a thin client, a host for the one platform we lack, one release pipeline, and a plain statement of what 1.0 means. | The same version, built by one pipeline, installed from one download page on every platform Episode 289 named. |
+| VII. The protocol is the agent | 46–53 | Show that every step so far is a record with one schema, carried as a signed event, as an API body or as binary frames. Then open the same system to partner apps and to people who host it themselves. | A second implementation that reads only the public events rebuilds an agent's member list and the evidence behind it; a partner app answers through the API; an agent acts under a grant its owner approved; a self-hosted instance installs a plugin from the public registry. |
+| VIII. Compute | 54–56 | Say where the models run: behind one gateway, on our own engine, and on machines that people lend for Bitcoin. | One request to the front is answered by a decision model running on a Pylon, and the Pylon's owner is paid for it. |
+| IX. The Verse | 57–60 | Put all of it in a world you can walk through: the same agent, your working agents, makers who are paid, and characters that decide. | Walk into a realm, see your agents working, buy something a maker listed, and watch a guard make a decision that a Pylon served and was paid for. |
+| X. Everywhere | 61–64 | Ship it: every surface as a thin client, a host for the one platform we lack, one release pipeline, and a plain statement of what 1.0 means. | The same version, built by one pipeline, installed from one download page on every platform Episode 289 named. |
 
 ## What a chapter contains
 
 Every chapter file has the same sections:
 
 - **Premise.** One paragraph: what this chapter adds to what came before.
-- **Draft.** A few paragraphs of the prose, for the owner to edit.
+- **Draft.** A few paragraphs of the prose, for the owner to edit. An outline
+  chapter has an **Outline** here: one line for each point the draft will
+  make.
 - **What we build.** What the chapter will ship, the Coax libraries it
-  builds on (real paths, linked), and the paths it plans to add.
+  builds on (real paths, linked), and the paths it plans to add. A chapter
+  that sends, signs, stores or publishes a record ends this section with a
+  table, "On the protocol": the proto package and message that define the
+  record, the carriage it travels on, and whether that is in use today.
+  Chapter 49 explains the columns.
 - **Sources.** The episodes behind it, the old crates at `coder-v1.0.0`, the
   related [OpenAgents NIPs](../../nostr/nips/openagents/README.md), and the
   promises from the audit that it covers.
@@ -98,18 +110,26 @@ essays are at that tag too:
   describes that system at that time, and the new one has to earn its own.
 - An episode shows what was said or shown on that day. It does not show
   that a feature exists now.
-- Payments are Bitcoin and Lightning only.
+- Payments use Bitcoin rails only. This book builds on Bitcoin and Lightning.
+  The protocol also leaves room for Bitcoin-based stablecoins on Taproot
+  Assets, and for nothing off Bitcoin.
+- It is "Log in", never "Sign in". We never collect a phone number.
+- A record has one schema, in `proto/`. A chapter's status words for it are
+  "in use", "schema file", "spec sketch" and "planned" (chapter 49).
 - Routing is by typed decision or by embedding search, never by keyword
   matching.
 
 ## Status
 
-Written 2026-11-10. All 60 chapters are design drafts. The
+Written 2026-11-10; chapters 49 to 52 and the protocol tables added
+2026-11-11. 60 chapters are design drafts and four are outlines. The
 [registry](chapters.json) lists each chapter's part, promises, episodes,
-NIPs, the paths it builds on and the paths it plans.
+NIPs, the proto packages it names, the paths it builds on and the paths it
+plans.
 
 | Status | Meaning |
 | --- | --- |
+| outline | The chapter lists what it will say and build. Its draft is not written. |
 | design draft | The chapter says what will be built. The owner has not approved it yet. |
 | approved | The owner has edited the chapter, and work on it can start. |
 | partly implemented | Some of its examples run; the chapter says what remains. |
@@ -185,25 +205,29 @@ NIPs, the paths it builds on and the paths it plans.
 - [46. Signed JSON over WebSockets](ch046-signed-json-over-websockets.md) — design draft
 - [47. Every step is an event](ch047-every-step-is-an-event.md) — design draft
 - [48. The OpenAgents API](ch048-the-openagents-api.md) — design draft
-- [49. Host it yourself](ch049-host-it-yourself.md) — design draft
+- [49. One schema, three carriages](ch049-one-schema-three-carriages.md) — outline
+- [50. Accounts and agent grants](ch050-accounts-and-agent-grants.md) — outline
+- [51. Sync across devices](ch051-sync-across-devices.md) — outline
+- [52. The compliance rule](ch052-the-compliance-rule.md) — outline
+- [53. Host it yourself](ch053-host-it-yourself.md) — design draft
 
 ## VIII. Compute
 
-- [50. One gateway](ch050-one-gateway.md) — design draft
-- [51. Models we serve](ch051-models-we-serve.md) — design draft
-- [52. Pylons](ch052-pylons.md) — design draft
+- [54. One gateway](ch054-one-gateway.md) — design draft
+- [55. Models we serve](ch055-models-we-serve.md) — design draft
+- [56. Pylons](ch056-pylons.md) — design draft
 
 ## IX. The Verse
 
-- [53. The Verse is a surface](ch053-the-verse-is-a-surface.md) — design draft
-- [54. Agents you can meet](ch054-agents-you-can-meet.md) — design draft
-- [55. Realms and makers](ch055-realms-and-makers.md) — design draft
-- [56. A decision in the world](ch056-a-decision-in-the-world.md) — design draft
+- [57. The Verse is a surface](ch057-the-verse-is-a-surface.md) — design draft
+- [58. Agents you can meet](ch058-agents-you-can-meet.md) — design draft
+- [59. Realms and makers](ch059-realms-and-makers.md) — design draft
+- [60. A decision in the world](ch060-a-decision-in-the-world.md) — design draft
 
 ## X. Everywhere
 
-- [57. Thin clients](ch057-thin-clients.md) — design draft
-- [58. A Windows host](ch058-a-windows-host.md) — design draft
-- [59. One release pipeline](ch059-one-release-pipeline.md) — design draft
-- [60. What 1.0 means](ch060-what-one-point-zero-means.md) — design draft
+- [61. Thin clients](ch061-thin-clients.md) — design draft
+- [62. A Windows host](ch062-a-windows-host.md) — design draft
+- [63. One release pipeline](ch063-one-release-pipeline.md) — design draft
+- [64. What 1.0 means](ch064-what-one-point-zero-means.md) — design draft
 

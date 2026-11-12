@@ -50,6 +50,13 @@ It builds on what exists today:
 - [`apps/everglade-desktop/next.coax`](../../apps/everglade-desktop/next.coax)
 - [`coax/lib/agent/observe/claude-history.coax`](../../coax/lib/agent/observe/claude-history.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A subagent and its parent | `openagents.session.v1` `ChildSession` ([spec 18.3](../../docs/protocol/openagents-protocol-spec.md#183-openagentssessionv1)); a claim on a task is `openagents.coordination.v1` `Claim` ([spec 22.2](../../docs/protocol/openagents-protocol-spec.md#222-openagentscoordinationv1)) | Nostr: private records in a kind 3188 envelope | Spec sketch; no `.proto` file |
+| Tier rubric and the AI-call ledger | None yet ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C6) | Files on one machine | Hand-written JSON with two encoders. Step C6 leaves one |
+
 Planned paths: `openagents/agent/fleet.coax`.
 
 ## Sources

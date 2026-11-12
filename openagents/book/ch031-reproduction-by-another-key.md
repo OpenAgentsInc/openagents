@@ -54,6 +54,12 @@ It builds on what exists today:
 - [`coax/lib/nostr/keys.coax`](../../coax/lib/nostr/keys.coax)
 - [`coax/remote`](../../coax/remote)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Confirmation or dispute | `openagents.eval.v1` `Publication` that cites the first ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189, signed by the checker | Spec sketch; no `.proto` file. A reader verifies a signature over the bytes it received, never over bytes it wrote again ([spec 35](../../docs/protocol/openagents-protocol-spec.md#35-conformance-and-verification)) |
+
 Planned paths: `openagents/eval/check.coax`.
 
 ## Sources

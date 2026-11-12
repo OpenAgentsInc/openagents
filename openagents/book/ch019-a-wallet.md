@@ -19,8 +19,10 @@ both ends have a wallet.
 The wallet does four things. It gives you a way to be paid. It pays an invoice
 or an offer. It shows a balance. And it lists what came in and went out.
 
-We use Bitcoin and Lightning only. There are no other chains and no other
-tokens.
+We use Bitcoin rails only. This book builds on Bitcoin and Lightning. The
+protocol's amount type also leaves room for Bitcoin-based stablecoins on
+Taproot Assets, and for nothing off Bitcoin: no other chains, and no ecash for
+now.
 
 The archive has built this several times: an agent's balance in [Episode
 42](../../docs/transcripts/042.md), Lightning withdrawals in [Episode
@@ -33,7 +35,19 @@ says so.
 
 [Episode 207](../../docs/transcripts/207.md) gives the identity design: one
 seed phrase, with your Nostr key and your wallet key both derived from it.
-Chapter 43 builds on that.
+The owner narrowed that on 2026-11-11: one seed is an opt-in for people and
+the default for agents. Chapter 43 builds on that.
+
+The wallet is self-custodial. Its seed is made on your device. We store an
+encrypted backup that we can't open, so a new phone can restore it. The only
+balance we hold for you is service credit, which is small and can't be
+withdrawn. You can claim `name@openagents.com` as a Lightning Address, and
+money sent to it lands in your own wallet, never in ours. These are owner
+decisions ([wallets and custody](../../docs/auth/wallets-and-custody.md),
+[Lightning Addresses](../../docs/auth/lightning-addresses.md)). The address
+works today in forward mode: it forwards to a Lightning Address you already
+have. Paying into a wallet the app makes for you waits on that wallet's
+backend. The wallet library of this chapter is still a plan.
 
 The Coax tree has the Lightning primitives from Bitcoin From Scratch:
 invoices, offers, onion routing, channels and payment. It does not have a
@@ -49,6 +63,8 @@ A plan for what this chapter ships once the draft is approved:
 - The wallet as a member, and the wallet commands in the command line.
 - A test wallet on a test network, so every later chapter can run payments
   without real money.
+- A `name@openagents.com` Lightning Address you claim in one tap, which pays
+  into your own wallet.
 
 It builds on what exists today:
 
@@ -59,6 +75,13 @@ It builds on what exists today:
 - [`docs/lightning/README.md`](../../docs/lightning/README.md)
 - [`docs/lightning/breez-spark.md`](../../docs/lightning/breez-spark.md)
 - [`bitcoin/book/README.md`](../../bitcoin/book/README.md)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Balance, invoice and history | `openagents.payment.v1` `WalletView`, `Invoice`, `PaymentReceipt`; amounts are `openagents.common.v1` `Amount` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1), [spec 9.8](../../docs/protocol/openagents-protocol-spec.md#98-amounts)) | HTTP | Spec sketch; no `.proto` file |
+| A Lightning Address | `openagents.payment.v1` `LightningAddress` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)); the lookup and callback are LNURL's | HTTP: `/.well-known/lnurlp/NAME` | Built in forward mode ([Lightning Addresses](../../docs/auth/lightning-addresses.md), #13208). Paying a wallet we make for you is planned. LNURL is an external format |
 
 Planned paths: `openagents/wallet/`.
 
@@ -82,7 +105,5 @@ Planned paths: `openagents/wallet/`.
 1. What is the wallet built on: the Spark path the plan in `docs/lightning/`
    describes, our own Lightning node from `coax/lib/lightning`, or Spark first
    and our own later?
-2. What do we say about custody? Episode 290 calls the current design
-   "self-custodial-ish".
-3. Do we offer a way to buy Bitcoin with a card, as Episode 290 shows, and
+2. Do we offer a way to buy Bitcoin with a card, as Episode 290 shows, and
    through whom?

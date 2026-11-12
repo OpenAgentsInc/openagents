@@ -1,4 +1,4 @@
-# 58. A Windows host
+# 62. A Windows host
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.

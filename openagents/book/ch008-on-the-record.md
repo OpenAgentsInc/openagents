@@ -54,6 +54,13 @@ It builds on what exists today:
 - [`coax/lib/nostr/run`](../../coax/lib/nostr/run)
 - [`coax/lib/nostr/atif`](../../coax/lib/nostr/atif)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Run journal | `openagents.run.v1` `RunRecord` in a `RunRecordEnvelope`, with a `RunHead` ([spec 22.1](../../docs/protocol/openagents-protocol-spec.md#221-openagentsrunv1)) | Nostr kinds 3187 and 30186, encrypted (NIP-RUN) | Spec sketch; no `.proto` file. `coax/lib/nostr/run` handles the NIP's JSON. The local journal is a hash-chained binary file. It stays hand-packed, and a fixture to pin it is planned |
+| Trajectory | `openagents.trace.v1` `Manifest`, `Chunk` ([spec 21.4](../../docs/protocol/openagents-protocol-spec.md#214-openagentstracev1)) | Nostr kinds 3198 and 3199 (NIP-ATIF) | Spec sketch; no `.proto` file. `coax/lib/nostr/atif` handles the NIP's JSON |
+
 Planned paths: `openagents/agent/journal.coax`.
 
 ## Sources

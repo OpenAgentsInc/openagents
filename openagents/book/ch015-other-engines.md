@@ -53,7 +53,14 @@ It builds on what exists today:
 - [`coax/lib/agent/codex`](../../coax/lib/agent/codex)
 - [`coax/lib/agent/cursor`](../../coax/lib/agent/cursor)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
-- [`coder/tui/availability-policy.coax`](../../coder/tui/availability-policy.coax)
+- [`coax/lib/agent/engine/availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| What each engine speaks | Theirs: Claude Code stream-json, Codex JSON-RPC, ACP ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md)) | Their own | External. We register each format with a fixture and write no schema for it |
+| The engine named in the plan | A field of the plan (chapter 4); the engines we know are `openagents.session.v1` `Adapter` ([spec 18.3](../../docs/protocol/openagents-protocol-spec.md#183-openagentssessionv1)) | With the plan | Spec sketch; no `.proto` file |
 
 Planned paths: `openagents/agent/members/engines.coax`.
 

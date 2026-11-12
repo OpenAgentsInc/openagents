@@ -54,6 +54,13 @@ It builds on what exists today:
 - [`coax/lib/agent`](../../coax/lib/agent)
 - [`coder/book/README.md`](../../coder/book/README.md)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A task and its result | `openagents.exec.v1` `ExecRequest`, `ExecResult` ([spec 17.2](../../docs/protocol/openagents-protocol-spec.md#172-openagentsexecv1)) | Nostr kinds 25920 and 26920, encrypted (NIP-CJ); HTTP `POST /v1/jobs` | Spec sketch; no `.proto` file |
+| Coder's session log and stream records | Planned `openagents.session.log.v1alpha1`; `coder.observability`, `coder.reply-stream`, `coder.route` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), steps C1 to C3) | Files and a line stream | Hand-written JSON today. The compliance plan moves each to one codec |
+
 Planned paths: `openagents/agent/members/coder.coax`.
 
 ## Sources

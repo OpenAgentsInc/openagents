@@ -51,6 +51,12 @@ It builds on what exists today:
 - [`coax/lib/gateway/sse.coax`](../../coax/lib/gateway/sse.coax)
 - [`coax/lib/text`](../../coax/lib/text)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Conversation request, result and feedback | `openagents.chat.v1` `ConversationRequest`, `ConversationResult`, `ConversationFeedback` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) | Nostr kinds 25900, 26900 and 27000, encrypted (NIP-CJ); HTTP chat routes | Spec sketch; no `.proto` file. The reply stream to the page is hand-written lines today ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C9) |
+
 Planned paths: `openagents/agent/members/conversation.coax`.
 
 ## Sources

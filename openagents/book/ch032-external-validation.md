@@ -48,6 +48,12 @@ It builds on what exists today:
 - [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
 - [`coax/lib/nostr/event.coax`](../../coax/lib/nostr/event.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Validation and transfer results | `openagents.eval.v1` `Publication` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189, public | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/eval/validate.coax`.
 
 ## Sources

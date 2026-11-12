@@ -45,6 +45,12 @@ It builds on what exists today:
 - [`coax/lib/nostr/pol`](../../coax/lib/nostr/pol)
 - [`coax/lib/bounded.coax`](../../coax/lib/bounded.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Plan | None yet. The nearest are `openagents.chat.v1` `ConversationResult` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) and `openagents.program.v1` `Step` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | Planned: the stream a surface draws ([chapter 48](ch048-the-openagents-api.md)) | Gap. The plan needs a schema in `proto/` before any surface draws it ([chapter 52](ch052-the-compliance-rule.md)) |
+
 Planned paths: `openagents/agent/plan.coax`.
 
 ## Sources

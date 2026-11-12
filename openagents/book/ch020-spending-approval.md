@@ -32,6 +32,10 @@ the bound is yours. You may give an agent an allowance: an amount, a period,
 and what it may be spent on. We do not set a limit for you, and any limit you
 set is shown wherever the agent's spending appears.
 
+The cap check exists today. An agent's grant carries sats a day and sats a
+payment. You approve it after a fresh strong login, and the agent can never
+raise its own cap (chapter 50).
+
 An agent's wallet is separate from yours. Its key is its own, and what it can
 lose is what you put in it.
 
@@ -51,6 +55,14 @@ It builds on what exists today:
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 - [`coder/tui/approvals.coax`](../../coder/tui/approvals.coax)
 - [`coax/lib/bitcoin/treasury.coax`](../../coax/lib/bitcoin/treasury.coax)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| An agent's allowance | `openagents.account.v1alpha1` `Grant` with `SpendCaps`: sats a day and sats a payment ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use for the cap check at `POST /api/agent/spend` ([chapter 50](ch050-accounts-and-agent-grants.md)). The wallet behind it is this chapter's plan |
+| A spend request and its receipt | `openagents.payment.v1` `SpendRequest`, `SpendReceipt` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)) | Nostr: private records in a kind 3188 envelope (NIP-HOST) | Spec sketch; no `.proto` file |
+| Approval of one payment | `openagents.policy.v1` `ApprovalRequest`, `ApprovalDecision` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | With the plan's stream | Spec sketch; no `.proto` file |
 
 Planned paths: `openagents/wallet/approve.coax`.
 

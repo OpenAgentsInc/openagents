@@ -1,4 +1,4 @@
-# 56. A decision in the world
+# 60. A decision in the world
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -22,10 +22,10 @@ That is the same kind of question the front asks in chapter 5, and the same
 kind of model answers it, in a fraction of a second.
 
 So the scene uses everything. The world sends the decision through the gateway
-(chapter 50). A Pylon serves it (chapter 52). A second machine can recompute
+(chapter 54). A Pylon serves it (chapter 56). A second machine can recompute
 it, because the engine is deterministic. A receipt is written (chapter 41).
 The Pylon's owner is paid (chapter 42). The realm's maker chose the guard's
-questions, and published them as part of the realm (chapter 55).
+questions, and published them as part of the realm (chapter 59).
 
 This is why the Verse is in a book about agents. A world full of characters is
 a steady buyer of small decisions, and that demand is what a compute network
@@ -54,6 +54,14 @@ It builds on what exists today:
 - [`coax/lib/gateway/pylon.coax`](../../coax/lib/gateway/pylon.coax)
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 - [`docs/books/capstones/a-guard-decision-is-paid-for.md`](../../docs/books/capstones/a-guard-decision-is-paid-for.md)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| The guard's decision | `openagents.decision.v1alpha1` `SystemOneRequest`, `SystemOneResponse` ([`systemone.proto`](../../proto/openagents/decision/v1alpha1/systemone.proto)) | HTTP; Nostr kind 25910 to a Pylon | In use on the server: the generated codec `psionic/lib/serve-proto.coax` |
+| The Pylon's receipt | `openagents.pylon.v1alpha1` `ServiceReceipt` ([`mesh.proto`](../../proto/openagents/pylon/v1alpha1/mesh.proto)) | Nostr kind 3201 | Schema file: a projection of NIP-PYLON's JSON. The signed JSON stays the authority |
+| A question to a character | Planned `openagents.verse.npc.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step E4) | HTTP | Four hand-written client encoders today |
 
 ## Sources
 

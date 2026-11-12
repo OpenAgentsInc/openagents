@@ -31,8 +31,9 @@ surface supplies those and draws the result.
 
 There is one conversation, not a chat mode and a work mode. You can start a
 request on your phone and read the result in your terminal, because the
-session belongs to your key and not to the device. A hosted copy of the
-runtime serves surfaces that can't run the work themselves.
+conversation belongs to your account and not to the device. Chapter 51 builds
+the sync that moves it. A hosted copy of the runtime serves surfaces that
+can't run the work themselves.
 
 ## What we build
 
@@ -54,6 +55,13 @@ It builds on what exists today:
 - [`apps/openagents-ios`](../../apps/openagents-ios)
 - [`coax/web`](../../coax/web)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A message and its reply, between a surface and the hosted runtime | `openagents.chat.v1` `ConversationRequest`, `ConversationResult` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) | Nostr kinds 25900 and 26900, encrypted; HTTP chat routes | Spec sketch; no `.proto` file. Today's `/chat` routes write their own JSON ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), steps C5 and C9) |
+| One conversation on every device | `openagents.sync.v1alpha1`, a log per conversation ([chapter 51](ch051-sync-across-devices.md)) | Binary frames on one WebSocket | Planned |
+
 Planned paths: `openagents/agent/`.
 
 ## Sources
@@ -73,5 +81,7 @@ Planned paths: `openagents/agent/`.
 
 1. Which surfaces run the runtime on the device, and which always call the
    hosted service?
-2. Does a conversation sync between your devices as encrypted events on a
-   relay, through our service, or both?
+2. The [sync spec](../../docs/sync/README.md) recommends syncing a
+   conversation through our service, readable by the server at first
+   (chapter 51). Confirm that, and say which collections get end-to-end
+   encryption first.

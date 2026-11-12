@@ -51,6 +51,13 @@ It builds on what exists today:
 - [`coax/lib/nostr/cap`](../../coax/lib/nostr/cap)
 - [`coax/lib/nostr/agent`](../../coax/lib/nostr/agent)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Member descriptor | `openagents.capability.v1` `Definition`, listed by a `DiscoveryHead` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)) | Nostr kind 30180, public (NIP-CAP) | Spec sketch; no `.proto` file. The NIP's JSON, read and written by `coax/lib/nostr/cap`, is the definition today |
+| An agent's public definition | `openagents.agent.v1` `AgentDefinition`, `PublicDefinition` ([spec 18.1](../../docs/protocol/openagents-protocol-spec.md#181-openagentsagentv1)) | Nostr kind 30187; HTTP `/v1/agents` | Spec sketch; no `.proto` file. `coax/lib/nostr/agent` handles the NIP's JSON |
+
 Planned paths: `openagents/agent/members.coax`.
 
 ## Sources

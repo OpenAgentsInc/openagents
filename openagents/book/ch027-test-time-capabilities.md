@@ -56,6 +56,13 @@ It builds on what exists today:
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)
 - [`docs/books/glossary.md`](../../docs/books/glossary.md)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A claim and its evidence | `openagents.eval.v1` `Publication` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)); evidence types are in `openagents.common.v1` ([spec 9.4](../../docs/protocol/openagents-protocol-spec.md#94-evidence-observation-and-context-manifests)) | Nostr kind 3189, public (NIP-EVAL) | Spec sketch; no `.proto` file. `coax/lib/nostr/eval` handles the NIP's JSON |
+| Policy | `openagents.policy.v1` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr (NIP-POL) | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/eval/`.
 
 ## Sources

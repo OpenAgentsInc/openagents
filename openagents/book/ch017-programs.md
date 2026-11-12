@@ -56,6 +56,13 @@ It builds on what exists today:
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 - [`coax/lib/microcoder/loop.coax`](../../coax/lib/microcoder/loop.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Program and its steps | `openagents.program.v1` `Program`, `Step`, published by a `ProgramHead` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | Nostr kind 30182 (NIP-PRG) | Spec sketch; no `.proto` file |
+| A recorded step | `openagents.program.v1` `StepEnvelope` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | In the run journal (chapter 8) | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/agent/programs/`.
 
 ## Sources

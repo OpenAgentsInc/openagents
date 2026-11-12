@@ -1,4 +1,4 @@
-# 49. Host it yourself
+# 53. Host it yourself
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -57,6 +57,13 @@ It builds on what exists today:
 - [`os`](../../os)
 - [`coax/web`](../../coax/web)
 - [`LICENSE`](../../LICENSE)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| What an instance offers | `openagents.discovery.v1` `Manifest` ([spec 30.3](../../docs/protocol/openagents-protocol-spec.md#303-openagentsdiscoveryv1)) | HTTP | Spec sketch; no `.proto` file |
+| Everything else it sends | The same schemas as ours ([chapter 49](ch049-one-schema-three-carriages.md)) | All three carriages | A self-hosted instance passes the same fixtures ([chapter 52](ch052-the-compliance-rule.md)) |
 
 Planned paths: `openagents/selfhost/`.
 

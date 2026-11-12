@@ -51,6 +51,12 @@ It builds on what exists today:
 - [`psionic/lib/decision-calibration.coax`](../../psionic/lib/decision-calibration.coax)
 - [`psionic/lib/decision-quality.coax`](../../psionic/lib/decision-quality.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Labeled messages and calibration | `openagents.decision.v1` `CalibrationSet`, `CalibrationRecord` ([spec 16.1](../../docs/protocol/openagents-protocol-spec.md#161-openagentsdecisionv1)) | Files; not sent | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/agent/front/eval/`.
 
 ## Sources

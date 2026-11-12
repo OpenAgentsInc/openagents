@@ -51,6 +51,12 @@ It builds on what exists today:
 - [`coax/lib/nostr/kb`](../../coax/lib/nostr/kb)
 - [`coax/lib/nostr/event.coax`](../../coax/lib/nostr/event.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Knowledge entry, head and withdrawal | `openagents.knowledge.v1` `Entry`, `Head`, `Withdrawal` ([spec 20.4](../../docs/protocol/openagents-protocol-spec.md#204-openagentsknowledgev1)) | Nostr kinds 3190, 30190 and 3191, public (NIP-KB) | Spec sketch; no `.proto` file. `coax/lib/nostr/kb` handles the NIP's JSON |
+
 Planned paths: `openagents/knowledge/`.
 
 ## Sources
@@ -73,5 +79,5 @@ Planned paths: `openagents/knowledge/`.
 
 1. Which of the old tree's notes come back? Many were learned from benchmark
    tasks and need new evidence.
-2. Is every entry about OpenAgents public, or are some for signed-in people
+2. Is every entry about OpenAgents public, or are some for logged-in people
    only?

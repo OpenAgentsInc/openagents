@@ -16,7 +16,9 @@ paid usage of plugins that you create. This is promise P11.
 
 A payout runner reads the meter's totals. For each author it computes what is
 owed since the last payout and takes out what was already sent. If the amount
-is above a minimum, it pays the author's Lightning address or offer. It
+is above a minimum, it pays the author's own Lightning Address or offer. An
+author can use an address they already have or claim `name@openagents.com`.
+Either way the money lands in the author's own wallet (chapter 19). The runner
 records each payout as a signed record that cites the receipts it covers.
 
 The runner has to be boring. A payout has an ID, and running the same payout
@@ -56,6 +58,13 @@ It builds on what exists today:
 - [`coax/lib/bitcoin/treasury.coax`](../../coax/lib/bitcoin/treasury.coax)
 - [`coax/lib/nostr/nip57.coax`](../../coax/lib/nostr/nip57.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| What an author is owed and was paid | `openagents.ledger.v1` `Earnings`, `Statement` ([spec 26.6](../../docs/protocol/openagents-protocol-spec.md#266-openagentsledgerv1-and-openagentsbillingv1)) | HTTP; a signed payout record on Nostr | Spec sketch; no `.proto` file |
+| Where to pay an author | `openagents.payment.v1` `LightningAddress` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)) | HTTP: LNURL | Built in forward mode ([Lightning Addresses](../../docs/auth/lightning-addresses.md), #13208). LNURL is an external format |
+
 Planned paths: `openagents/pay/payout.coax`.
 
 ## Sources
@@ -80,5 +89,7 @@ Planned paths: `openagents/pay/payout.coax`.
    number of sats?
 3. When a plugin depends on another paid plugin, how is the price split
    between the two authors?
-4. Who holds the money between a paid call and the payout, and under what
-   custody?
+4. A tip goes straight from the payer to the maker's own wallet (owner
+   decision D6 in [docs/auth](../../docs/auth/decisions.md), built in #13210). A paid call
+   with a split can't always do that. Who holds the money between such a call
+   and the payout, and under what custody?

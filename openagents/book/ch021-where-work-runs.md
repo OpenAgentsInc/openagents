@@ -58,6 +58,14 @@ It builds on what exists today:
 - [`coax/remote`](../../coax/remote)
 - [`os`](../../os)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A request to a host and its reply | NIP-HOST's JSON; `openagents.host.v1` ([`host.proto`](../../proto/openagents/host/v1/host.proto), [spec 23.3](../../docs/protocol/openagents-protocol-spec.md#233-openagentshostv1)) has a different shape | Nostr kind 3188 envelope, or a REACH frame | `coax/lib/nostr/host` writes the NIP's JSON, which is the definition for `coder host` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md)). The schema file has no product consumer |
+| How to reach a host | `openagents.reach.v1` ([`reach.proto`](../../proto/openagents/reach/v1/reach.proto), [spec 23.4](../../docs/protocol/openagents-protocol-spec.md#234-openagentsreachv1)) | Frames on a direct channel | Schema file; no product consumer |
+| Terminals and environments | `openagents.terminal.v1`, `openagents.environment.v1` ([spec 23.5](../../docs/protocol/openagents-protocol-spec.md#235-openagentsterminalv1), [spec 23.2](../../docs/protocol/openagents-protocol-spec.md#232-openagentsenvironmentv1)) | Nostr kind 3188 envelope, or a REACH frame | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/agent/computers.coax`.
 
 ## Sources

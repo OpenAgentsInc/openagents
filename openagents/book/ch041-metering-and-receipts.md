@@ -52,6 +52,14 @@ It builds on what exists today:
 - [`coax/lib/quantity.coax`](../../coax/lib/quantity.coax)
 - [`coax/lib/gateway/usage-observation-checks.coax`](../../coax/lib/gateway/usage-observation-checks.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Receipt for a call | `openagents.receipt.v1` `ExecutionReceipt` ([spec 16.3](../../docs/protocol/openagents-protocol-spec.md#163-openagentsreceiptv1)) | HTTP: the `X-Receipt` header or a response field; Nostr: inside kinds 3204 and 3201 | Spec sketch; no `.proto` file |
+| Proof of payment | `openagents.payment.v1` `PaymentReceipt`, `PaymentEvidence` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)) | With the receipt | Spec sketch; no `.proto` file |
+| Totals | `openagents.ledger.v1` `Entry`, `Statement` ([spec 26.6](../../docs/protocol/openagents-protocol-spec.md#266-openagentsledgerv1-and-openagentsbillingv1)) | HTTP | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/pay/receipt.coax`, `openagents/pay/meter.coax`.
 
 ## Sources

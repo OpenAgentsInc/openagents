@@ -52,6 +52,12 @@ It builds on what exists today:
 - [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax)
 - [`apps/openagents-cli`](../../apps/openagents-cli)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| The log | Coder's transcript log, id `openagents.session.v1` on disk; planned package `openagents.session.log.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C1) | A file of JSON lines; not sent | Planned. Written by hand in `coax/lib/agent/session/log.coax` |
+
 Planned paths: `openagents/agent/loop.coax`.
 
 ## Sources

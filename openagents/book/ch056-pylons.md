@@ -1,4 +1,4 @@
-# 52. Pylons
+# 56. Pylons
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -28,7 +28,7 @@ day, who would be both sellers and buyers. Gamers.
 Demand is different this time because the buyer is in this book. The front
 makes a decision on every turn of every conversation. Decision models are
 small, and they run fast on ordinary hardware. Every guard and shopkeeper in
-the Verse makes decisions too (chapter 56). That is a steady stream of small
+the Verse makes decisions too (chapter 60). That is a steady stream of small
 paid jobs.
 
 A Pylon announces what it can serve. The gateway sends it requests. The work
@@ -58,6 +58,13 @@ It builds on what exists today:
 - [`apps/openagents-cli/pylon.coax`](../../apps/openagents-cli/pylon.coax)
 - [`docs/connect-a-pylon.md`](../../docs/connect-a-pylon.md)
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A Pylon's announcement | `openagents.pylon.v1` `Beacon` ([spec 27.1](../../docs/protocol/openagents-protocol-spec.md#271-openagentspylonv1)) | Nostr kind 30200, public (NIP-PYLON) | Spec sketch; no `.proto` file |
+| Service receipt and pool totals | `openagents.pylon.v1alpha1` `ServiceReceipt`, `PoolAggregate` ([`mesh.proto`](../../proto/openagents/pylon/v1alpha1/mesh.proto)) | Nostr kinds 3201 and 30201 | Schema file: a projection of NIP-PYLON's JSON. The signed JSON stays the authority |
 
 ## Sources
 

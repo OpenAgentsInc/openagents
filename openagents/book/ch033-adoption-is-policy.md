@@ -52,6 +52,13 @@ It builds on what exists today:
 - [`coax/lib/nostr/pol`](../../coax/lib/nostr/pol)
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Adoption | `openagents.policy.v1`, which holds adoption authority ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr (NIP-POL) | Spec sketch; no `.proto` file |
+| The defaults set | `openagents.extension.v1` `ComponentSet`, `SetSlot` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Inside a release event (chapter 38) | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/eval/adopt.coax`, `openagents/registry/defaults/`.
 
 ## Sources

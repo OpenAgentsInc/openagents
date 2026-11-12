@@ -53,6 +53,12 @@ It builds on what exists today:
 - [`coax/lib/nostr/dec`](../../coax/lib/nostr/dec)
 - [`coax/lib/nostr/cj`](../../coax/lib/nostr/cj)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Decision request and answer | `openagents.decision.v1alpha1` `SystemOneRequest`, `SystemOneResponse` ([`systemone.proto`](../../proto/openagents/decision/v1alpha1/systemone.proto); [spec 16.1](../../docs/protocol/openagents-protocol-spec.md#161-openagentsdecisionv1)) | HTTP `POST /api/v1/systemone`; Nostr kind 25910, encrypted (NIP-DEC) | In use on the server: the generated codec `psionic/lib/serve-proto.coax`. The client writes the JSON by hand in `coax/lib/systemone/request.coax`. The JSON contract stays the definition, and a fixture to pin it is planned ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md)) |
+
 Planned paths: `openagents/agent/front/`.
 
 ## Sources

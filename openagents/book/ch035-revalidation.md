@@ -55,6 +55,12 @@ It builds on what exists today:
 - [`coax/lib/gateway/usage-observation-checks.coax`](../../coax/lib/gateway/usage-observation-checks.coax)
 - [`coax/lib/clock.coax`](../../coax/lib/clock.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Quarantine and revocation | `openagents.extension.v1` `Revocation`, `Checkpoint` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr kinds 3185 and 30185, public (NIP-EXT) | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/eval/revalidate.coax`.
 
 ## Sources

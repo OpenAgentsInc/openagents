@@ -53,6 +53,12 @@ It builds on what exists today:
 - [`coder/tui/plugins.coax`](../../coder/tui/plugins.coax)
 - [`coax/lib/bounded.coax`](../../coax/lib/bounded.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A call into a plugin and a call back to the host | `openagents.program.v1` `PacketRequest`, `PacketResponse`, `HostCall` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | Binary, across the sandbox boundary | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/plugins/sandbox/`.
 
 ## Sources

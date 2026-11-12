@@ -1,4 +1,4 @@
-# 50. One gateway
+# 54. One gateway
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -30,6 +30,10 @@ restricts access, and working setups break.
 Being neutral does not make providers the same. They differ in tools, price,
 limits and how they fail. So the choice is a written policy: which provider is
 tried first for which job, and what happens when it is down or over its limit.
+The owner's standing rule for hosted models is Google first: Vertex before
+any other provider, with the others as fallbacks. Decisions go through the
+Decisions API, which tries our own decision model first (chapter 5).
+
 Chapter 6's lesson applies to every model call. One account running out of
 credits should never stop the agent.
 
@@ -59,6 +63,13 @@ It builds on what exists today:
 - [`coax/lib/gateway/openrouter.coax`](../../coax/lib/gateway/openrouter.coax)
 - [`coax/lib/gateway/psionic.coax`](../../coax/lib/gateway/psionic.coax)
 - [`coax/lib/gateway/pylon.coax`](../../coax/lib/gateway/pylon.coax)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A model request and its stream | `openagents.psionic.responses.v1alpha1` `CreateRequest`, `Response`, `StreamEvent` ([`responses.proto`](../../proto/openagents/psionic/responses/v1alpha1/responses.proto)); the wider package is `openagents.inference.v1` ([spec 16.2](../../docs/protocol/openagents-protocol-spec.md#162-openagentsinferencev1)) | HTTP, with a server-sent event stream | Schema file for the Psionic profile; the rest is a spec sketch. Each provider's request body is an external format |
+| Which route answered and what it cost | `openagents.decision.v1` `DecisionCall` ([spec 16.1](../../docs/protocol/openagents-protocol-spec.md#161-openagentsdecisionv1)); usage is in `openagents.common.v1` ([spec 9.9](../../docs/protocol/openagents-protocol-spec.md#99-usage)) | In the run journal (chapter 8) | Spec sketch; no `.proto` file |
 
 ## Sources
 

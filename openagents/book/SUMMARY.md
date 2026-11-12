@@ -72,24 +72,28 @@
 - [46. Signed JSON over WebSockets](ch046-signed-json-over-websockets.md) — design draft
 - [47. Every step is an event](ch047-every-step-is-an-event.md) — design draft
 - [48. The OpenAgents API](ch048-the-openagents-api.md) — design draft
-- [49. Host it yourself](ch049-host-it-yourself.md) — design draft
+- [49. One schema, three carriages](ch049-one-schema-three-carriages.md) — outline
+- [50. Accounts and agent grants](ch050-accounts-and-agent-grants.md) — outline
+- [51. Sync across devices](ch051-sync-across-devices.md) — outline
+- [52. The compliance rule](ch052-the-compliance-rule.md) — outline
+- [53. Host it yourself](ch053-host-it-yourself.md) — design draft
 
 ## VIII. Compute
 
-- [50. One gateway](ch050-one-gateway.md) — design draft
-- [51. Models we serve](ch051-models-we-serve.md) — design draft
-- [52. Pylons](ch052-pylons.md) — design draft
+- [54. One gateway](ch054-one-gateway.md) — design draft
+- [55. Models we serve](ch055-models-we-serve.md) — design draft
+- [56. Pylons](ch056-pylons.md) — design draft
 
 ## IX. The Verse
 
-- [53. The Verse is a surface](ch053-the-verse-is-a-surface.md) — design draft
-- [54. Agents you can meet](ch054-agents-you-can-meet.md) — design draft
-- [55. Realms and makers](ch055-realms-and-makers.md) — design draft
-- [56. A decision in the world](ch056-a-decision-in-the-world.md) — design draft
+- [57. The Verse is a surface](ch057-the-verse-is-a-surface.md) — design draft
+- [58. Agents you can meet](ch058-agents-you-can-meet.md) — design draft
+- [59. Realms and makers](ch059-realms-and-makers.md) — design draft
+- [60. A decision in the world](ch060-a-decision-in-the-world.md) — design draft
 
 ## X. Everywhere
 
-- [57. Thin clients](ch057-thin-clients.md) — design draft
-- [58. A Windows host](ch058-a-windows-host.md) — design draft
-- [59. One release pipeline](ch059-one-release-pipeline.md) — design draft
-- [60. What 1.0 means](ch060-what-one-point-zero-means.md) — design draft
+- [61. Thin clients](ch061-thin-clients.md) — design draft
+- [62. A Windows host](ch062-a-windows-host.md) — design draft
+- [63. One release pipeline](ch063-one-release-pipeline.md) — design draft
+- [64. What 1.0 means](ch064-what-one-point-zero-means.md) — design draft

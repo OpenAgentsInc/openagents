@@ -55,6 +55,13 @@ It builds on what exists today:
 - [`apps/openagents-cli/rules.coax`](../../apps/openagents-cli/rules.coax)
 - [`docs/cli/2026-11-01-openagents-cli-v1.md`](../../docs/cli/2026-11-01-openagents-cli-v1.md)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A command as a member | `openagents.capability.v1` `Definition` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)), generated from the command table | Nostr kind 30180 when published; MCP for other agents | Spec sketch; no `.proto` file. MCP is an external format |
+| A command's `--json` output | None yet ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C8) | Standard output | Hand-written JSON |
+
 Planned paths: `openagents/agent/members/cli.coax`.
 
 ## Sources

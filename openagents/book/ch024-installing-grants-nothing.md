@@ -54,6 +54,14 @@ It builds on what exists today:
 - [`coax/lib/nostr/run`](../../coax/lib/nostr/run)
 - [`coder/tui/gate.coax`](../../coder/tui/gate.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Lock | `openagents.common.v1` locks ([spec 9.2](../../docs/protocol/openagents-protocol-spec.md#92-locks)) | In the run journal (chapter 8) | Spec sketch; no `.proto` file |
+| Install, grant and admit | `openagents.extension.v1` `Release` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)), `openagents.capability.v1` `Grant` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)), `openagents.run.v1` `Admitted` ([spec 22.1](../../docs/protocol/openagents-protocol-spec.md#221-openagentsrunv1)) | Nostr: the release is public; grants and run records are private | Spec sketch; no `.proto` file |
+| Presence | `openagents.capability.v1` `Presence` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)) | Nostr: a private record in a kind 3188 envelope | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/plugins/lock.coax`.
 
 ## Sources

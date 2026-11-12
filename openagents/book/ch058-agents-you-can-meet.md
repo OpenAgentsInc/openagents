@@ -1,4 +1,4 @@
-# 54. Agents you can meet
+# 58. Agents you can meet
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -52,6 +52,13 @@ It builds on what exists today:
 - [`apps/everglade-desktop/next.coax`](../../apps/everglade-desktop/next.coax)
 - [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A public card for an agent that takes work | `openagents.agent.v1` `PublicDefinition` ([spec 18.1](../../docs/protocol/openagents-protocol-spec.md#181-openagentsagentv1)) | Nostr kind 30187, public (NIP-AGENT) | Spec sketch; no `.proto` file |
+| What the actor shows | The session's records (chapters 8 and 16) | As those chapters say | No new record |
 
 Planned paths: `openagents/agent/surfaces/golems.coax`.
 

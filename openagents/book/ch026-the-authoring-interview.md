@@ -57,6 +57,13 @@ It builds on what exists today:
 - [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
 - [`coax/lib/nostr/vault.coax`](../../coax/lib/nostr/vault.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| The drafted test set and plugin | `openagents.eval.v1` `EvalDraft` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | In the conversation result (chapter 9) | Spec sketch; no `.proto` file |
+| A login to another service | `openagents.vault.v1` `VaultObject` ([spec 15.3](../../docs/protocol/openagents-protocol-spec.md#153-openagentsvaultv1)) | Nostr: ciphertext in a kind 3188 envelope (NIP-VAULT) | Spec sketch; no `.proto` file. `coax/lib/nostr/vault.coax` builds the `user` tier |
+
 Planned paths: `openagents/eval/author/`.
 
 ## Sources

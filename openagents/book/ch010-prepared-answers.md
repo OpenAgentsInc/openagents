@@ -47,6 +47,12 @@ It builds on what exists today:
 - [`coax/lib/nostr/kb`](../../coax/lib/nostr/kb)
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Answer-bank entry | `openagents.chat.v1` `AnswerBankEntry` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) | A file the runtime loads | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/knowledge/answers/`.
 
 ## Sources

@@ -57,6 +57,12 @@ It builds on what exists today:
 - [`apps/openagents-cli/relay.coax`](../../apps/openagents-cli/relay.coax)
 - [`apps/openagents-cli/skill.coax`](../../apps/openagents-cli/skill.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Release, listing and revocation | `openagents.extension.v1` `Release`, `Listing`, `Revocation` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr kinds 3184, 30184 and 3185, public (NIP-EXT) | Spec sketch; no `.proto` file. `coax/lib/nostr/ext` handles the NIP's JSON |
+
 Planned paths: `openagents/registry/`.
 
 ## Sources

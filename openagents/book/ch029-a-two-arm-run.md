@@ -54,6 +54,12 @@ It builds on what exists today:
 - [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax)
 - [`coax/remote`](../../coax/remote)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Report | `openagents.eval.v1` `Report`, `Measurement`, `RunCoverage` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189, public | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/eval/run.coax`.
 
 ## Sources

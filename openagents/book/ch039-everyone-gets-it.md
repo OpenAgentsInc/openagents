@@ -55,6 +55,13 @@ It builds on what exists today:
 - [`coax/lib/crypto`](../../coax/lib/crypto)
 - [`coder/tui/plugins.coax`](../../coder/tui/plugins.coax)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A pinned install | `openagents.common.v1` locks ([spec 9.2](../../docs/protocol/openagents-protocol-spec.md#92-locks)) | A file on the device | Spec sketch; no `.proto` file |
+| The defaults update | `openagents.extension.v1` `ComponentSet`, `Registry` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr: a signed release | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/registry/install.coax`, `openagents/registry/defaults/`.
 
 ## Sources

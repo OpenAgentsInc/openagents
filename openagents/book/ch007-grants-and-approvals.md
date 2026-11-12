@@ -29,6 +29,10 @@ The person who owns a computer sets its policy. A paired phone can ask that
 computer to do something, but it can't widen what the owner allowed. Keys stay
 on the device that holds them.
 
+An agent that acts for you has its own key and a grant you approve: scopes,
+spend caps in sats and an expiry. An agent can never widen its own grant. That
+grant is the first record in this book whose schema is in use (chapter 50).
+
 [Episode 250](../../docs/transcripts/250.md) is the reason for this chapter.
 Agents invented commands and reported the wrong model, and the fix was typed
 capabilities and controls backed by evidence. The Coder book builds the
@@ -51,6 +55,14 @@ It builds on what exists today:
 - [`coder/tui/host_grants.coax`](../../coder/tui/host_grants.coax)
 - [`coax/lib/nostr/cap`](../../coax/lib/nostr/cap)
 - [`coax/lib/nostr/nipkeys.coax`](../../coax/lib/nostr/nipkeys.coax)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| A member's grant | `openagents.capability.v1` `Grant` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)) | Nostr: a private record in a kind 3188 envelope (NIP-CAP) | Spec sketch; no `.proto` file. `coax/lib/nostr/cap` handles the NIP's JSON |
+| Approval of one action | `openagents.policy.v1` `ApprovalRequest`, `ApprovalDecision` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr: a private record in a kind 3188 envelope (NIP-POL) | Spec sketch; no `.proto` file |
+| What an agent may do in its owner's name | `openagents.account.v1alpha1` `GrantRequest`, `Grant` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use: the generated codec `coax/web/api/agent-wire.coax` ([chapter 50](ch050-accounts-and-agent-grants.md)) |
 
 Planned paths: `openagents/agent/grants.coax`.
 

@@ -7,7 +7,8 @@
 
 The protocol is open to anyone who speaks it. This chapter adds the easier
 door for products that only want the result: one API, the same one our own
-apps use, that a partner app can build on.
+apps use, that a partner app can build on. It is a second carriage of the same
+schema, not a second protocol.
 
 ## Draft
 
@@ -21,9 +22,26 @@ message and get back an answer, a plan to approve, or a stream of work.
 
 So there is one API, over HTTP and WebSocket. A request carries a message and
 its context. The reply streams what the runtime produces: the route, the plan,
-any approval to ask the person for, each step and the result. Keys identify
-the caller. Limits are published. The API is described in a machine-readable
-file, so a partner's coding agent can write the client.
+any approval to ask the person for, each step and the result. A session, an
+agent's API key or a signed request identifies the caller, and an agent's key
+carries its grant (chapter 50). Limits are published. The API is described in
+a machine-readable file, so a partner's coding agent can write the client.
+
+The bodies come from the same schema as the events. A request and each item in
+the reply stream are the JSON form of the messages chapter 47 lists, inside
+one envelope for errors, pages and repeat-safe requests. Where a record is
+also a NIP body, the API's JSON and the event's content are the same JSON. The
+plan is to generate the machine-readable file from the schema, so the two
+can't drift.
+
+There is a third carriage, and part of the API already uses it. Agent grants
+travel as binary protobuf, written by a codec that Coax generates from the
+schema. Binary suits frames, files and calls where both ends are ours. Chapter
+49 explains the three together.
+
+Today most of the site's routes write their own JSON. The [compliance
+plan](../../docs/protocol/2026-11-11-compliance-plan.md) orders the move onto
+the envelope.
 
 The rule that keeps the API honest is that our own apps use it. Chapter 2's
 hosted runtime is behind it. There is no private API with more in it.
@@ -51,11 +69,23 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`apps/openagents-cli/api.coax`](../../apps/openagents-cli/api.coax)
-- [`proto`](../../proto)
-- [`docs/protocol`](../../docs/protocol)
+- [`proto/README.md`](../../proto/README.md)
+- [`docs/protocol/openagents-protocol-spec.md`](../../docs/protocol/openagents-protocol-spec.md)
+- [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax)
+- [`coax/web/api/nip98.coax`](../../coax/web/api/nip98.coax)
 - [`coax/lib/net`](../../coax/lib/net)
 - [`coax/lib/gateway/sse.coax`](../../coax/lib/gateway/sse.coax)
 - [`coax/lib/access`](../../coax/lib/access)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| The envelope: errors, pages, repeat-safe requests | `openagents.api.v1` ([spec 10](../../docs/protocol/openagents-protocol-spec.md#10-openagentsapiv1-the-http-envelope)) | HTTP JSON | Spec sketch; no `.proto` file. Each route writes its own JSON |
+| A message in and the stream out | `openagents.chat.v1`; for hosted runs, planned `openagents.agent.managed.v1alpha1` events ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1), [spec 18.2](../../docs/protocol/openagents-protocol-spec.md#182-openagentsagentmanagedv1); [compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C5) | HTTP JSON and a stream | Hand-written JSON |
+| Who is calling | A NIP-98 signed event, an `oa_key_` API key or a session ([sessions and tokens](../../docs/auth/sessions-and-tokens.md)) | HTTP headers | Built. NIP-98 is an external format |
+| Agent grants | `openagents.account.v1alpha1` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use: the generated codec `coax/web/api/agent-wire.coax` |
+| The machine-readable description | `openagents.discovery.v1` `ApiDocument` ([spec 30.3](../../docs/protocol/openagents-protocol-spec.md#303-openagentsdiscoveryv1)), generated from the schema | HTTP | Planned |
 
 Planned paths: `openagents/api/`.
 
@@ -68,6 +98,8 @@ Planned paths: `openagents/api/`.
   - [Episode 242, *Khala, Collective Intelligence*](../../docs/transcripts/242.md): an API other tools can call
 - **Old code at `coder-v1.0.0`, crates:** `gateway`, `oa-auth`, `oa-tokens`, `push-gateway`, `tenancy`, `coder-sdk`, `coder-service`
 - **NIPs:** [NIP-CJ](../../nostr/nips/openagents/NIP-CJ.md), [NIP-AGENT](../../nostr/nips/openagents/NIP-AGENT.md), [NIP-KEYS](../../nostr/nips/openagents/NIP-KEYS.md)
+- **Also:**
+  - [The OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md), sections 8, 10 and 31
 - **Schemas:** [`proto/`](../../proto/README.md) defines every wire shape, by the [protocol specification](../../docs/protocol/openagents-protocol-spec.md); [`proto/registry.json`](../../proto/registry.json) lists each shape and its one codec
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P13
 

@@ -34,7 +34,9 @@ credit, and they build the reputation that makes a paid one credible.
 
 Episode 290 describes a second way to pay, for people who don't hold Bitcoin
 yet: a credits account filled by card, with a fee, and a discount for paying
-in Bitcoin. That is a plan with open terms, and it is listed below.
+in Bitcoin. That is a plan with open terms, and it is listed below. If we
+offer it, the balance is service credit: small, and not withdrawable. A card
+buys credit. It is never a rail an agent pays with.
 
 A price is the author's claim about value. Part V is the buyer's way to check
 it.
@@ -55,6 +57,13 @@ It builds on what exists today:
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 - [`coax/lib/nostr/mkt`](../../coax/lib/nostr/mkt)
 - [`coax/lib/gateway/rates.coax`](../../coax/lib/gateway/rates.coax)
+
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Payment required, payment and settlement | `openagents.x402.v1` `PaymentRequired`, `PaymentPayload`, `SettleResponse`, kept exactly as x402 defines them ([spec 26.4](../../docs/protocol/openagents-protocol-spec.md#264-openagentsx402v1)) | HTTP 402 body; a native record in a kind 3188 envelope (NIP-X402) | Spec sketch; no `.proto` file. `coax/lib/x402` has the settle and verify steps |
+| A price | `openagents.market.v1` `Offering` ([spec 26.2](../../docs/protocol/openagents-protocol-spec.md#262-openagentsmarketv1)) | Nostr kinds 3192 and 30192 (NIP-MKT) | Spec sketch; no `.proto` file. `coax/lib/nostr/mkt` handles the NIP's JSON |
 
 Planned paths: `openagents/pay/price.coax`.
 

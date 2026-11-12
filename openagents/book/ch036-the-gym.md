@@ -52,6 +52,13 @@ It builds on what exists today:
 - [`coax/remote`](../../coax/remote)
 - [`apps/openagents-web`](../../apps/openagents-web)
 
+On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
+
+| Record | Schema | Carriage | Today |
+| --- | --- | --- | --- |
+| Results board | `openagents.gym.v1` `ResultsPublication`, `Leaderboard` ([spec 21.2](../../docs/protocol/openagents-protocol-spec.md#212-openagentsgymv1)) | Nostr kind 3195, public | Spec sketch; no `.proto` file |
+| A run on the hosted runner | `openagents.gym.v1` `GymRequest`, `GymReply` ([spec 21.2](../../docs/protocol/openagents-protocol-spec.md#212-openagentsgymv1)) | Nostr (NIP-EVAL's Gym profile) | Spec sketch; no `.proto` file |
+
 Planned paths: `openagents/eval/gym/`.
 
 ## Sources
