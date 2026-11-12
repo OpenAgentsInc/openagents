@@ -122,6 +122,11 @@ wp_int :: (s: string) -> int {
 }
 // The whole number at key of the object at `at`.
 wp_key :: (d: Jv, at: int, key: string) -> int { return wp_int(jv_raw(d, jv_get(d, at, key))); }
+// Which of the character-state events a head is (everglade-wire.coax WIRE_OWN), or -1.
+wp_own :: (head: string) -> int {
+  for i: 0..<5 { if head == WIRE_OWN[i] { return i; } }
+  return -1;
+}
 // v's fields as written by the codec's writer for head: the frame's length in out, -1 for an unknown head.
 wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
   if head == "P" { return wire_put_pins(out, 0, WirePins.{engine = wp_int(f.v[0]), rules = wp_int(f.v[1]), content = wp_int(f.v[2])}); }
@@ -153,6 +158,7 @@ wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
   if head == "v" { return wire_put_you(out, 0, WireYou.{ss = wp_int(f.v[0]), level = wp_int(f.v[1]), xp = wp_int(f.v[2]), cap = wp_int(f.v[3]), lo = wp_int(f.v[4]), hi = wp_int(f.v[5]), rest_said = f.n > 6, rest = ifx f.n > 6 then wp_int(f.v[6]) else 0}); }
   if head == "e xp" { return wire_put_xp(out, 0, WireGain.{ss = wp_int(f.v[0]), v = wp_int(f.v[1])}); }
   if head == "e level" { return wire_put_level(out, 0, WireGain.{ss = wp_int(f.v[0]), v = wp_int(f.v[1])}); }
+  if wp_own(head) >= 0 { return wire_put_own(out, 0, wp_own(head), WireOwn.{ss = wp_int(f.v[0]), a = wp_int(f.v[1]), b = ifx f.n > 2 then wp_int(f.v[2]) else 0, c = ifx f.n > 3 then wp_int(f.v[3]) else 0}); }
   if head == "e rc" {
     c := WireRc.{id = wp_int(f.v[0]), k = wp_int(f.v[1]), ax = f32(wp_int(f.v[2])) / 100, ay = f32(wp_int(f.v[3])) / 100, az = f32(wp_int(f.v[4])) / 100, seed = wp_int(f.v[5])};
     if f.n > 6 { c.from = true; c.fx = f32(wp_int(f.v[6])) / 100; c.fy = f32(wp_int(f.v[7])) / 100; c.fz = f32(wp_int(f.v[8])) / 100; }
@@ -208,6 +214,10 @@ wp_read :: (head: string, t: string, got: [] WpVals, num: [] u8) -> bool {
   else if head == "L" { wp_n(got, num, at[..], wire_read_rest(t, r[..])); }
   else if head == "w" { w := wire_read_wanted(t, r[..]); wp_n(got, num, at[..], w.ss); wp_n(got, num, at[..], w.level); }
   else if head == "e xp" || head == "e level" { g := wire_read_gain(t, r[..]); wp_n(got, num, at[..], g.ss); wp_n(got, num, at[..], g.v); }
+  else if wp_own(head) >= 0 {
+    o := wire_read_own(t, r[..], wp_own(head)); own := [3] int.[o.a, o.b, o.c];
+    wp_n(got, num, at[..], o.ss); for i: 0..<WIRE_OWN_FIELDS[wp_own(head)] { wp_n(got, num, at[..], own[i]); }
+  }
   else if head == "e rc" {
     c := wire_read_rc(t, r[..]);
     for x: [5] int.[c.id, c.k, wire_cm(c.ax), wire_cm(c.ay), wire_cm(c.az)] { wp_n(got, num, at[..], x); }

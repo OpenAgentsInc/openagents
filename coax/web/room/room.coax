@@ -57,6 +57,7 @@
 #load "room-control.coax";
 #load "../../../aethyr/session/moderation.coax";   // moderation's rules and its one codec (#13302)
 #load "room-mod.coax";   // a moderator's commands, logged before they are done
+#load "room-items.coax";   // loot, quests and what is worn: the room's ledger operations (#13291, #13292)
 #load "background-budget.coax";
 #load "room-travel.coax";   // a player's travel between two rooms (#12850)
 #load "native-local-policy.coax";
@@ -114,6 +115,7 @@ RmServer :: struct {
   dev: RmDev;                            // --dev: the API's stand-in for local development (room-dev.coax)
   adm: RmE2Admin;                        // Everglade II's admin lines, a local room's only (everglade/server/admin.coax)
   mod: RmMod;                            // moderators' commands and their log's outbox (room-mod.coax, #13302)
+  itm: RmItems;                          // the content tables, each seat's character and the ledger's outbox (room-items.coax, #13291)
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
   trv: RmTravels;                        // journeys from one room to another in flight (room-travel.coax)
   e2land: [] E2MoveGround;               // Everglade II's planting, room-world.c's (everglade/server/arrows.coax rm_e2_land)

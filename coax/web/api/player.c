@@ -792,9 +792,11 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
 // oa-room's part (#12715): "t MS\nPID HP MAX XP\n..." (XP since #12739; a line without it keeps the XP) signed with the seat-ticket key (X-Room-Mac: the
 // hex HMAC-SHA256 of the body), within two minutes of now. Each seat's HP is kept by who the
 // player is, unless a newer one is already kept.
-// The inventory and reward ledger (#12849, migrations/0130_item_ledger.sql): one mutation, signed with
-// the seat-ticket key as vitals are, as JSON {id, op, pid, gen, ver, item, to, kind, sent}; the answer
-// is verse.item_apply's: {"status":..., "item":..., "replay":...}. Game items only.
+// The inventory and reward ledger (#12849, migrations/0130_item_ledger.sql; #13291): one operation, signed
+// with the shard's write key, as everglade.item-op.v1 (everglade/model/item-op.coax,
+// docs/protocol/everglade-item-op-v1.md): {id, op, pid, gen, ver, item, to, kind, sent} and a claim on the
+// character's record; the answer is the ledger's status and the character as the store now has it.
+// Game items only.
 // An item or checkpoint write signed with shard SIGNER's own key (#13260): refused (403, and true)
 // when the player's newest owner generation is another shard's and the write's generation (the
 // JSON field GEN) is not older (verse.room_owner_shard_ok, 0156). An older one is left to the fence
@@ -830,9 +832,37 @@ static char *item_dup(const PGresult *r, int row, int col) {   /* a cell, or NUL
 }
 static bool item_same(const char *a, const char *b) { return a && b && !strcmp(a, b); }
 static int64_t item_int(const char *s, int64_t none) { return s ? atoll(s) : none; }
-static void item_answer(const request *q, const char *status, const char *item, bool replay) {
-  char out[160];
-  snprintf(out, sizeof out, "{\"status\":\"%s\",\"item\":%s,\"replay\":%s}", status, item ? item : "null", replay ? "true" : "false");
+/* The character as the store has it now, for an answer (everglade.item-op.v1): the stored record with
+   the ledger's bag and version (character_op with no claim; rec "" when who has no record and can't
+   have one), the content kind of each item in the bag, and the inventory version. False when the
+   database failed. */
+static bool item_view(PGconn *db, const char *who, char *rec, size_t rec_cap, char *kinds, size_t kinds_cap, long long *ver) {
+  rec[0] = 0; snprintf(kinds, kinds_cap, "[]"); *ver = 0;
+  if (!who) return true;
+  const char *wv[1] = {who};
+  PGresult *r = PQexecParams(db, "SELECT coalesce((SELECT body::text FROM verse.characters WHERE who=$1),''),"
+    "'[' || coalesce((SELECT string_agg(id::text, ',' ORDER BY id) FROM (SELECT id FROM verse.items WHERE owner=$1 ORDER BY id LIMIT 33) i),'') || ']',"
+    "'[' || coalesce((SELECT string_agg(kind::text, ',' ORDER BY id) FROM (SELECT id, kind FROM verse.items WHERE owner=$1 ORDER BY id LIMIT 33) i),'') || ']',"
+    "coalesce((SELECT version FROM verse.inventories WHERE who=$1),0)", 1, NULL, wv, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || strlen(PQgetvalue(r, 0, 2)) >= kinds_cap) { PQclear(r); return false; }
+  const char *kept = PQgetvalue(r, 0, 0), *items = PQgetvalue(r, 0, 1);
+  *ver = atoll(PQgetvalue(r, 0, 3));
+  coax_string made = character_op((coax_string){kept, (int64_t)strlen(kept)}, (coax_string){who, (int64_t)strlen(who)}, (coax_string){items, (int64_t)strlen(items)},
+                                  *ver, 0, 0, 0, 0, 0, -1, 0, (coax_v_u8){(uint8_t *)rec, (int64_t)rec_cap - 1});
+  rec[made.count > 0 ? made.count : 0] = 0;
+  if (rec[0]) snprintf(kinds, kinds_cap, "%s", PQgetvalue(r, 0, 2));   /* a kind for each item in the record's bag */
+  PQclear(r);
+  return true;
+}
+/* The answer, every byte of it everglade/model/item-op.coax's (io_answer). */
+static void item_answer(const request *q, PGconn *db, const char *who, int64_t status, const char *item, bool replay) {
+  char rec[4097], kinds[512], out[8193];
+  long long ver = 0;
+  if (!item_view(db, who, rec, sizeof rec, kinds, sizeof kinds, &ver)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  coax_string a = io_answer(status, item ? atoll(item) : 0, replay, ver, (coax_string){kinds, (int64_t)strlen(kinds)}, (coax_string){rec, (int64_t)strlen(rec)},
+                            (coax_v_u8){(uint8_t *)out, (int64_t)sizeof out - 1});
+  if (a.count <= 0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  out[a.count] = 0;
   api_json(q->fd, 200, out);
 }
 static void room_items(const request *q, PGconn *db) {
@@ -843,9 +873,12 @@ static void room_items(const request *q, PGconn *db) {
   if (room_write_owner(q, db, signer, "gen")) return;   /* the shard that holds the player's seat (0156) */
   char body[4097]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   const char *bv[1] = {body};
-  /* the ask's fields: {id, op, pid, gen, ver, item, to, kind, sent}; a body that isn't JSON is a 400 */
+  /* the ask's fields (everglade.item-op.v1): {id, op, pid, gen, ver, item, to, kind, sent} and its claim on
+     the character's record {quest, from, stage, coin, xp, slot, wear}; a body that isn't JSON is a 400 */
   PGresult *r = PQexecParams(db, "SELECT j->>'id', j->>'op', verse.item_who(j->>'pid'), (j->>'gen')::bigint, (j->>'ver')::bigint, (j->>'item')::bigint, "
-    "CASE WHEN coalesce(j->>'to', '') = '' THEN NULL ELSE verse.item_who(j->>'to') END, (j->>'kind')::int, (j->>'sent')::bigint "
+    "CASE WHEN coalesce(j->>'to', '') = '' THEN NULL ELSE verse.item_who(j->>'to') END, (j->>'kind')::int, (j->>'sent')::bigint, "
+    "coalesce((j->>'quest')::bigint, 0), coalesce((j->>'from')::bigint, 0), coalesce((j->>'stage')::bigint, 0), coalesce((j->>'coin')::bigint, 0), "
+    "coalesce((j->>'xp')::bigint, 0), coalesce((j->>'slot')::bigint, -1), coalesce((j->>'wear')::bigint, 0) "
     "FROM (SELECT $1::jsonb j) s", 1, NULL, bv, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
@@ -855,20 +888,29 @@ static void room_items(const request *q, PGconn *db) {
   }
   char *id = item_dup(r, 0, 0), *opw = item_dup(r, 0, 1), *who = item_dup(r, 0, 2), *gen = item_dup(r, 0, 3), *ver = item_dup(r, 0, 4);
   char *item = item_dup(r, 0, 5), *to = item_dup(r, 0, 6), *kind = item_dup(r, 0, 7), *sent = item_dup(r, 0, 8);
+  int64_t c_quest = atoll(PQgetvalue(r, 0, 9)), c_from = atoll(PQgetvalue(r, 0, 10)), c_to = atoll(PQgetvalue(r, 0, 11)), c_coin = atoll(PQgetvalue(r, 0, 12));
+  int64_t c_xp = atoll(PQgetvalue(r, 0, 13)), c_slot = atoll(PQgetvalue(r, 0, 14)), c_wear = atoll(PQgetvalue(r, 0, 15));
   PQclear(r); r = NULL;
+  /* the claim as the ID's record keeps it: part of the payload */
+  char rider[160]; snprintf(rider, sizeof rider, "%lld,%lld,%lld,%lld,%lld,%lld,%lld", (long long)c_quest, (long long)c_from, (long long)c_to,
+                            (long long)c_coin, (long long)c_xp, (long long)c_slot, (long long)c_wear);
+  bool claims = character_claims(c_quest, c_coin, c_xp, c_slot);
   char *owner = NULL, *escrow = NULL, *made = NULL, *result = NULL;
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   char now_s[24]; snprintf(now_s, sizeof now_s, "%lld", (long long)now);
   coax_string id_s = {id ? id : "", id ? (int64_t)strlen(id) : 0};
-  int64_t op = item_op((coax_string){opw ? opw : "", opw ? (int64_t)strlen(opw) : 0});
+  coax_string op_s = {opw ? opw : "", opw ? (int64_t)strlen(opw) : 0};
+  /* "read": the character as the store has it; nothing changes and nothing is recorded */
+  if (item_reads(op_s)) { item_answer(q, db, who, who ? ITEM_OK : item_status((coax_string){"held", 4}), NULL, false); goto done; }
+  int64_t op = item_op(op_s);
   if (!progress_run(db, "BEGIN")) goto failed;
   /* one writer an operation ID at a time, and its record */
-  const char *iv[6] = {id ? id : "", opw, who, item, to, kind};
+  const char *iv[7] = {id ? id : "", opw, who, item, to, kind, rider};
   if (!(r = item_q(db, "SELECT pg_advisory_xact_lock(7731029, hashtext($1))", 1, iv, PGRES_TUPLES_OK))) goto failed;
   PQclear(r);
   if (!(r = item_q(db, "SELECT at_ms, op = $2, who = $3, item IS NOT DISTINCT FROM $4::bigint, to_who IS NOT DISTINCT FROM $5, "
-                       "kind IS NOT DISTINCT FROM $6::int, result, made FROM verse.item_ops WHERE id = $1", 6, iv, PGRES_TUPLES_OK))) goto failed;
+                       "kind IS NOT DISTINCT FROM $6::int AND coalesce(rider, '0,0,0,0,0,-1,0') = $7, result, made FROM verse.item_ops WHERE id = $1", 7, iv, PGRES_TUPLES_OK))) goto failed;
   bool seen = PQntuples(r) == 1;
   #define ITEM_T(c) (seen && PQgetvalue(r, 0, c)[0] == 't')
   int64_t g = item_gate(id_s, op, who != NULL, seen, seen ? atoll(PQgetvalue(r, 0, 0)) : 0, ITEM_T(1), ITEM_T(2), ITEM_T(3), ITEM_T(4), ITEM_T(5),
@@ -878,14 +920,14 @@ static void room_items(const request *q, PGconn *db) {
   PQclear(r); r = NULL;
   if (g != ITEM_GO) {
     if (!progress_run(db, "COMMIT")) goto failed;
-    if (g == ITEM_REPLAY) item_answer(q, result, made, true);
-    else { coax_string w = item_word(g); char ws[16]; snprintf(ws, sizeof ws, "%.*s", (int)w.count, w.data); item_answer(q, ws, NULL, false); }
+    if (g == ITEM_REPLAY) item_answer(q, db, who, item_status((coax_string){result, (int64_t)strlen(result)}), made, true);
+    else item_answer(q, db, who, g, NULL, false);
     goto done;
   }
   free(made); made = NULL;
   /* the item, locked; then every inventory it touches, locked in one order */
   bool live = false;
-  if (!item_creates(op) && item) {
+  if (item_names(op) && item) {
     const char *mv[1] = {item};
     if (!(r = item_q(db, "SELECT owner, escrow_to FROM verse.items WHERE id = $1::bigint FOR UPDATE", 1, mv, PGRES_TUPLES_OK))) goto failed;
     live = PQntuples(r) == 1;
@@ -907,17 +949,27 @@ static void room_items(const request *q, PGconn *db) {
   PQclear(r);
   if (!(r = item_q(db, "SELECT gen FROM verse.room_owners WHERE who = $1 FOR SHARE", 1, wv, PGRES_TUPLES_OK))) goto failed;
   int64_t newest = PQntuples(r) == 1 ? atoll(PQgetvalue(r, 0, 0)) : -1;
+  PQclear(r);
+  if (!(r = item_q(db, "SELECT count(*) FROM verse.items WHERE owner = $1", 1, wv, PGRES_TUPLES_OK))) goto failed;   /* under the inventory's lock */
+  int64_t held = atoll(PQgetvalue(r, 0, 0));
   PQclear(r); r = NULL;
   int64_t st = item_rule(op, item_int(gen, -1), newest, item_int(ver, -1), version, live, item_same(owner, who), escrow != NULL,
                          to != NULL, item_same(to, who), to_version, escrow_version);
+  st = item_room(op, st, held);   /* a full bag takes no grant */
   if (st == ITEM_OK) {
-    /* the rules' effects on the rows, and the outbox entry, in this transaction */
+    /* the rules' effects on the rows, the outbox entry and the character's record, in this transaction;
+       a claim the record refuses undoes them (the savepoint) and the answer is held */
+    if (!progress_run(db, "SAVEPOINT item_fx")) goto failed;
     if (item_creates(op)) {
       const char *cv[2] = {kind, who};
       if (!(r = item_q(db, "INSERT INTO verse.items (kind, owner) VALUES (coalesce($1::int, 0), $2) RETURNING id", 2, cv, PGRES_TUPLES_OK))) goto failed;
       made = strdup(PQgetvalue(r, 0, 0));
       PQclear(r);
-    } else {
+    } else if (item_destroys(op)) {
+      const char *dv[1] = {item};
+      if (!(r = item_q(db, "DELETE FROM verse.items WHERE id = $1::bigint", 1, dv, PGRES_COMMAND_OK))) goto failed;
+      PQclear(r);
+    } else if (item_names(op)) {
       const char *after_owner = item_moves(op) ? to : item_settles(op) ? escrow : owner;
       const char *after_escrow = item_escrows(op) ? to : item_clears(op) ? NULL : escrow;
       const char *uv[3] = {item, after_owner, after_escrow};
@@ -930,21 +982,44 @@ static void room_items(const request *q, PGconn *db) {
       if (!(r = item_q(db, "UPDATE verse.inventories SET version = version + 1 WHERE who = $1", 1, &bump[i], PGRES_COMMAND_OK))) goto failed;
       PQclear(r);
     }
-    const char *ov[6] = {opw, who, made ? made : item, item_settles(op) ? escrow : to, kind, now_s};
+    const char *ov[6] = {opw, who, made ? made : item_names(op) ? item : "0", item_settles(op) ? escrow : to, kind, now_s};   /* a claim names no item: 0 */
     if (!(r = item_q(db, "INSERT INTO verse.item_outbox (op, who, item, to_who, kind, at_ms) VALUES ($1, $2, $3::bigint, $4, $5::int, $6::bigint)",
                      6, ov, PGRES_COMMAND_OK))) goto failed;
     PQclear(r);
+    /* the record: the ledger's bag and version after the operation, then its claim (character-policy.coax) */
+    char kept[4097], next[4097], items[1024];
+    if (!(r = item_q(db, "SELECT coalesce((SELECT body::text FROM verse.characters WHERE who=$1 FOR UPDATE),''),"
+                         "'[' || coalesce((SELECT string_agg(id::text, ',' ORDER BY id) FROM (SELECT id FROM verse.items WHERE owner=$1 ORDER BY id LIMIT 33) i),'') || ']',"
+                         "(SELECT version FROM verse.inventories WHERE who=$1)", 1, wv, PGRES_TUPLES_OK))) goto failed;
+    if (PQntuples(r) != 1 || strlen(PQgetvalue(r, 0, 0)) >= sizeof kept || strlen(PQgetvalue(r, 0, 1)) >= sizeof items) goto failed;
+    snprintf(kept, sizeof kept, "%s", PQgetvalue(r, 0, 0)); snprintf(items, sizeof items, "%s", PQgetvalue(r, 0, 1));
+    int64_t inv = atoll(PQgetvalue(r, 0, 2));
+    PQclear(r); r = NULL;
+    coax_string rec = character_op((coax_string){kept, (int64_t)strlen(kept)}, (coax_string){who, (int64_t)strlen(who)}, (coax_string){items, (int64_t)strlen(items)},
+                                   inv, c_quest, c_from, c_to, c_coin, c_xp, c_slot, c_wear, (coax_v_u8){(uint8_t *)next, (int64_t)sizeof next - 1});
+    if (rec.count > 0) {
+      next[rec.count] = 0;
+      const char *cv[2] = {who, next};
+      if (!(r = item_q(db, "INSERT INTO verse.characters AS c (who, body, at_ms) VALUES ($1, $2::jsonb, verse.now_ms()) "
+                           "ON CONFLICT (who) DO UPDATE SET body = EXCLUDED.body, at_ms = EXCLUDED.at_ms WHERE c.body IS DISTINCT FROM EXCLUDED.body", 2, cv, PGRES_COMMAND_OK))) goto failed;
+      PQclear(r); r = NULL;
+    } else if (claims || op == item_op((coax_string){"claim", 5})) {
+      /* the record refused the claim: nothing of this operation is kept but its refusal */
+      if (!progress_run(db, "ROLLBACK TO SAVEPOINT item_fx")) goto failed;
+      free(made); made = NULL;
+      st = item_status((coax_string){"held", 4});
+    }
   }
   /* the answer is recorded, a refusal too, so a retry hears the same; a forgotten record is replaced */
   coax_string w = item_word(st); char ws[16]; snprintf(ws, sizeof ws, "%.*s", (int)w.count, w.data);
-  const char *rv[9] = {id, opw, who, item, to, kind, ws, made, now_s};   /* the payload as asked */
-  if (!(r = item_q(db, "INSERT INTO verse.item_ops (id, op, who, item, to_who, kind, result, made, at_ms) "
-                       "VALUES ($1, $2, $3, $4::bigint, $5, $6::int, $7, $8::bigint, $9::bigint) ON CONFLICT (id) DO UPDATE SET op = EXCLUDED.op, "
+  const char *rv[10] = {id, opw, who, item, to, kind, ws, made, now_s, rider};   /* the payload as asked */
+  if (!(r = item_q(db, "INSERT INTO verse.item_ops (id, op, who, item, to_who, kind, result, made, at_ms, rider) "
+                       "VALUES ($1, $2, $3, $4::bigint, $5, $6::int, $7, $8::bigint, $9::bigint, $10) ON CONFLICT (id) DO UPDATE SET op = EXCLUDED.op, "
                        "who = EXCLUDED.who, item = EXCLUDED.item, to_who = EXCLUDED.to_who, kind = EXCLUDED.kind, result = EXCLUDED.result, "
-                       "made = EXCLUDED.made, at_ms = EXCLUDED.at_ms", 9, rv, PGRES_COMMAND_OK))) goto failed;
+                       "made = EXCLUDED.made, at_ms = EXCLUDED.at_ms, rider = EXCLUDED.rider", 10, rv, PGRES_COMMAND_OK))) goto failed;
   PQclear(r); r = NULL;
   if (!progress_run(db, "COMMIT")) goto failed;
-  item_answer(q, ws, st != ITEM_OK ? NULL : made ? made : item, false);
+  item_answer(q, db, who, st, st != ITEM_OK ? NULL : made ? made : item, false);
   goto done;
 failed:
   if (r) PQclear(r);

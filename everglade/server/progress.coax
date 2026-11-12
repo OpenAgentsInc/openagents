@@ -55,7 +55,12 @@ ev_hello :: (v: [] RmServer, k: int, s_id: SeatId, flags: int) { s := s_id.value
 // XP for seat s (times the reward dial), its gain heard by everyone near it, a level-up by everyone.
 ev_award :: (v: [] RmServer, k: int, s_id: SeatId, base: int) { s := s_id.value;
   if base <= 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
-  amount := rs_max(base * v[0].evc.d.reward / 100, 1);
+  ev_gain(v, k, s_id, rs_max(base * v[0].evc.d.reward / 100, 1));
+}
+// XP for seat s as it stands: a quest's reward, which the character's record already has (room-items.coax),
+// and an award's after the dial.
+ev_gain :: (v: [] RmServer, k: int, s_id: SeatId, amount: int) { s := s_id.value;
+  if amount <= 0 || k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
   v[0].ev[k].xp[s] = rs_min(v[0].ev[k].xp[s] + amount, EV_XP_MAX);
   v[0].ev[k].earned[s] = true;
   p := v[0].eg[k].seat[s].pose;

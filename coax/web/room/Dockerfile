@@ -13,5 +13,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /room /usr/local/bin/room
 COPY compat/ /usr/share/coax/compat/
+# the content tables: loot, quests, dialogue, points (room-host.c content_load, #13294)
+COPY content/ /usr/share/everglade/
 USER nobody
 CMD ["room"]

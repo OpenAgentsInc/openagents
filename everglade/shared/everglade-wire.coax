@@ -23,7 +23,8 @@
 //   C SEQ SLOT AX AY AZ TGT        a cast: the bar slot, the aim, the target (-1 none; 0-999 a watch actor,
 //                                  1000 + SS a seat, 2000 + EID a creature)
 //   E SEQ KIND ID                  interact: KIND 1 talk to townsperson ID, 2 a door, 3 a boat, 4 a quest
-//                                  board, 5 end what bar slot ID holds up (its concentration)
+//                                  board, 5 end what bar slot ID holds up (its concentration), 6 talk to
+//                                  dialogue ID, 7 wear item ID, 8 empty equipment slot ID
 //   R SEQ                          ask for the rebuild
 //   L SEQ                          Everglade's whole-heal rest (an Everglade II room refuses it: r SEQ rest)
 //   V LOOK KIND                    Change character: your seat sits again as this look and class
@@ -60,6 +61,8 @@
 //                                  held, dead, left: everglade-cast-rules.coax, #12790); pages drop its strike
 //     w SS LEVEL                   a seat's WANTED level
 //     e xp SS AMOUNT | e level SS LEVEL  XP a seat earned, its level gone up (aimed at that seat)
+//     e quest SS QUEST STAGE | e item SS ITEM KIND SLOT | e coin SS COIN | e say SS DIALOGUE | e loot SS KIND
+//                                  what seat SS's character has, the server's record of it (wire_put_own below)
 //     e rc ID K AX AY AZ SEED [FX FY FZ] | e wm KIND CASTER FOE AX AY AZ BX BY BZ FLIGHT LIFE  a raid
 //                                  creature's cast, a guard's spell in flight
 //     e mend CODE | e pburn I ON | e pgone I  a Repair stood up; a placed thing alight or out, burnt through
@@ -162,6 +165,7 @@ WC_STOPPED :: WC_PARALYZED | WC_PETRIFIED | WC_RESTRAINED | WC_STUNNED | WC_UNCO
 WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4; WB_RISE :: 8; WB_SINK :: 16;   // (rise, sink: Levitate's keys held)
 // an interaction's KIND
 WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
+WE_SAY :: 6; WE_WEAR :: 7; WE_BARE :: 8;   // Everglade II (#13291, #13292): talk to dialogue ID (the content tables'), wear item ID, empty equipment slot ID
 
 WireIn :: struct #persisted { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)
 WireCast :: struct #persisted { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; }   // mode: the spell's (wire_mode), 0 sent as nothing
@@ -436,6 +440,51 @@ WireGain :: struct { ss: int; v: int; }
 wire_put_xp :: (out: [] u8, at: int, g: WireGain) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e xp"), g.ss), g.v); }
 wire_put_level :: (out: [] u8, at: int, g: WireGain) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e level"), g.ss), g.v); }
 wire_read_gain :: (t: string, r: [] WireRd) -> WireGain { g: WireGain; g.ss = wire_num(t, r); g.v = wire_num(t, r); return g; }
+// What seat SS's character has: the server's record of it (everglade/model/character.coax), aimed at
+// that seat when it sits and when it changes (coax/web/room/room-items.coax; #13291, #13292). A page
+// shows these and keeps no state of its own for them.
+//   e quest SS QUEST STAGE      a quest's stage (content IDs, everglade/model/content.coax)
+//   e item SS ITEM KIND SLOT    an item in the bag: its content kind and where it is worn (0 not worn, 1 to
+//                               10 the record's slots in order); KIND 0: the item is gone
+//   e coin SS COIN              the coin it holds
+//   e say SS DIALOGUE           the dialogue line it was just told
+//   e loot SS KIND              an item of this kind just dropped for it (its e item follows)
+WireOwn :: struct { ss: int; a: int; b: int; c: int; }
+WIRE_OWN :: [5] string.["e quest", "e item", "e coin", "e say", "e loot"];
+WIRE_OWN_FIELDS :: [5] int.[2, 3, 1, 1, 1];   // the numbers after SS
+WO_QUEST :: 0; WO_ITEM :: 1; WO_COIN :: 2; WO_SAY :: 3; WO_LOOT :: 4;
+wire_put_own :: (out: [] u8, at: int, what: int, o: WireOwn) -> int {
+  f := [3] int.[o.a, o.b, o.c];
+  n := wire_int(out, wire_put(out, at, WIRE_OWN[what]), o.ss);
+  for i: 0..<WIRE_OWN_FIELDS[what] { n = wire_int(out, n, f[i]); }
+  return n;
+}
+// Which of them t is (-1 none), and its numbers (r after the head).
+wire_own :: (t: string) -> int {
+  for i: 0..<5 { if wire_is(t, WIRE_OWN[i]) { return i; } }
+  return -1;
+}
+wire_read_own :: (t: string, r: [] WireRd, what: int) -> WireOwn {
+  o: WireOwn; f: [3] int;
+  o.ss = wire_num(t, r);
+  for i: 0..<WIRE_OWN_FIELDS[what] { f[i] = wire_num(t, r); }
+  o.a = f[0]; o.b = f[1]; o.c = f[2];
+  return o;
+}
+#test "e quest, e item, e coin, e say, e loot: written and read back; a missing field is refused" {
+  b: [64] u8; r: [1] WireRd;
+  n := wire_put_own(b[..], 0, WO_QUEST, WireOwn.{ss = 3, a = 1, b = 8}); t := cast(string) b[0..<n];
+  #assert t == "e quest 3 1 8" && wire_own(t) == WO_QUEST; r[0] = wire_rd(t, 7); q := wire_read_own(t, r[..], WO_QUEST); #assert r[0].ok && q.ss == 3 && q.a == 1 && q.b == 8 && q.c == 0;
+  n = wire_put_own(b[..], 0, WO_ITEM, WireOwn.{ss = 2, a = 4107, b = 3, c = 2}); t = cast(string) b[0..<n];
+  #assert t == "e item 2 4107 3 2" && wire_own(t) == WO_ITEM; r[0] = wire_rd(t, 6); im := wire_read_own(t, r[..], WO_ITEM); #assert r[0].ok && im.ss == 2 && im.a == 4107 && im.b == 3 && im.c == 2;
+  n = wire_put_own(b[..], 0, WO_COIN, WireOwn.{ss = 0, a = 1250}); t = cast(string) b[0..<n]; #assert t == "e coin 0 1250" && wire_own(t) == WO_COIN;
+  n = wire_put_own(b[..], 0, WO_SAY, WireOwn.{ss = 15, a = 2}); t = cast(string) b[0..<n]; #assert t == "e say 15 2" && wire_own(t) == WO_SAY;
+  n = wire_put_own(b[..], 0, WO_LOOT, WireOwn.{ss = 1, a = 3}); t = cast(string) b[0..<n]; #assert t == "e loot 1 3" && wire_own(t) == WO_LOOT;
+  r[0] = wire_rd(t, 6); l := wire_read_own(t, r[..], WO_LOOT); #assert r[0].ok && l.ss == 1 && l.a == 3;
+  t = "e item 2 4107 3"; r[0] = wire_rd(t, 6); im = wire_read_own(t, r[..], WO_ITEM); #assert !r[0].ok;
+  t = "e quest 3 1"; r[0] = wire_rd(t, 7); q = wire_read_own(t, r[..], WO_QUEST); #assert !r[0].ok;
+  #assert wire_own("e xp 3 70") == -1 && wire_own("e questx 1 1 1") == -1 && wire_own("") == -1;
+}
 // w SS LEVEL: a seat's WANTED level (wire_put_wanted above).
 WireWanted :: struct { ss: int; level: int; }
 wire_read_wanted :: (t: string, r: [] WireRd) -> WireWanted { w: WireWanted; w.ss = wire_num(t, r); w.level = wire_num(t, r); return w; }

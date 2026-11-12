@@ -1102,6 +1102,97 @@ rc_items :: (t: [] Ap) {
   s = ri_item(t, "it-n2", "melt", pl_id(b[..]), OwnerGeneration.{value = 0}, 0, ItemId.{value = 0}, "", 3, now, w[..]);
   ap_check(t, "items: an unknown operation is held and not recorded",
            s == "held" && ap_sql(t, "select count(*) from verse.item_ops where id = 'it-n2'", out[..]) == "0", ap_body(t));
+  rc_item_ops(t);
+}
+// One operation with a claim on the character's record (everglade.item-op.v1, everglade/model/item-op.coax):
+// its answer's status word in out. item 0: none.
+ri_op :: (t: [] Ap, id: string, op: string, pid: string, ver: int, item: int, kind: int, claim: string, out: [] u8) -> string {
+  b: [1] Sb;
+  sb(b[..], "{\"id\":\""); sb(b[..], id); sb(b[..], "\",\"op\":\""); sb(b[..], op); sb(b[..], "\",\"pid\":\""); sb(b[..], pid); sb(b[..], "\",\"gen\":0,\"ver\":"); sb_int(b[..], ver);
+  sb(b[..], ",\"item\":"); if item > 0 { sb_int(b[..], item); } else { sb(b[..], "null"); }
+  sb(b[..], ",\"to\":\"\",\"kind\":"); sb_int(b[..], kind); sb(b[..], ",\"sent\":"); sb_int(b[..], rc_wall_ms()); sb(b[..], ","); sb(b[..], claim); sb(b[..], "}");
+  st := rc_room_post(t, "/api/playtest/room-items", sb_text(b[..]), "");
+  if st != 200 { return "http"; }
+  return ap_member(ap_body(t), "status", out);
+}
+RI_NONE :: "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":0,\"slot\":-1,\"wear\":0";
+// Loot, rewards, what is worn and quest stages through the ledger (#13291, #13292, migration 0172): a
+// claim on the record applies with its operation, once; a forged or repeated claim changes nothing; a
+// page can't write any of it. The ledger starts empty here, so its reconciliation is this group's own.
+rc_item_ops :: (t: [] Ap) {
+  out: [8192] u8; w: [64] u8; q: [1] Sb; rq: [1] Sb;
+  d: [1] Player; e: [1] Player;
+  r := ap_player(t, d[..]); r = ap_player(t, e[..]);
+  ap_do(t, "truncate verse.items, verse.inventories, verse.item_ops, verse.item_outbox");
+  pid := pl_id(d[..]);
+  sb(rq[..], "select (body->>'coin') || ' ' || (body->>'xp') || ' ' || (body->'quests')::text || ' ' || (body->'bag')::text || ' ' || (body->>'inv') || ' ' || (body->'worn'->>1) from verse.characters where who = '"); sb(rq[..], pid); sb(rq[..], "'");
+  // a quest's reward: an item, coin and XP, and the quest's stage, in one operation
+  s := ri_op(t, "op-r1", "grant", pid, 0, 0, 3, "\"quest\":1,\"from\":0,\"stage\":1,\"coin\":25,\"xp\":100,\"slot\":-1,\"wear\":0", w[..]);
+  item := ap_member_int(ap_body(t), "item", 0);
+  ap_check(t, "item ops: a reward grants its item and pays its claim, and the answer is the character as the store has it",
+           s == "ok" && item > 0 && rc_is(ap_body(t), "replay", "false") && ap_member_int(ap_body(t), "ver", 0) == 1 && ap_member_int(ap_body(t), "rec.coin", 0) == 25
+           && ap_member_int(ap_body(t), "rec.xp", 0) == 100 && ap_member_int(ap_body(t), "kinds[0]", 0) == 3 && ap_member_int(ap_body(t), "rec.bag[0]", 0) == item, ap_body(t));
+  want: [1] Sb; sb(want[..], "25 100 [[1, 1]] ["); sb_int(want[..], item); sb(want[..], "] 1 0");
+  ap_check(t, "item ops: the record holds the claim", ap_sql(t, sb_text(rq[..]), out[..]) == sb_text(want[..]), "");
+  // the same operation again (its answer lost): the same item, nothing paid twice
+  s = ri_op(t, "op-r1", "grant", pid, 0, 0, 3, "\"quest\":1,\"from\":0,\"stage\":1,\"coin\":25,\"xp\":100,\"slot\":-1,\"wear\":0", w[..]);
+  ap_check(t, "item ops: the same reward again answers its record and pays nothing more",
+           s == "ok" && rc_is(ap_body(t), "replay", "true") && ap_member_int(ap_body(t), "item", 0) == item && ap_sql(t, sb_text(rq[..]), out[..]) == sb_text(want[..]), ap_body(t));
+  // the same claim under a new ID (a replayed reward): the quest is no longer at 0, so nothing is granted or paid
+  s = ri_op(t, "op-r2", "grant", pid, 1, 0, 3, "\"quest\":1,\"from\":0,\"stage\":1,\"coin\":25,\"xp\":100,\"slot\":-1,\"wear\":0", w[..]);
+  sb(q[..], "select count(*) from verse.items where owner = '"); sb(q[..], pid); sb(q[..], "'");
+  ap_check(t, "item ops: a replayed reward under a new ID is refused (held): no second item, coin or XP",
+           s == "held" && ap_sql(t, sb_text(q[..]), out[..]) == "1" && ap_sql(t, sb_text(rq[..]), out[..]) == sb_text(want[..]) && ap_member_int(ap_body(t), "ver", 0) == 1, ap_body(t));
+  s = ri_op(t, "op-r3", "claim", pid, 1, 0, 0, "\"quest\":1,\"from\":5,\"stage\":6,\"coin\":999,\"xp\":0,\"slot\":-1,\"wear\":0", w[..]);
+  ap_check(t, "item ops: a claim from a stage the quest is not at is refused (held)", s == "held" && ap_sql(t, sb_text(rq[..]), out[..]) == sb_text(want[..]), ap_body(t));
+  s = ri_op(t, "op-r1", "grant", pid, 0, 0, 3, "\"quest\":1,\"from\":0,\"stage\":1,\"coin\":9999,\"xp\":100,\"slot\":-1,\"wear\":0", w[..]);
+  ap_check(t, "item ops: an ID used again with another claim is a conflict", s == "conflict" && ap_sql(t, sb_text(rq[..]), out[..]) == sb_text(want[..]), ap_body(t));
+  // quest progress: one stage up from the stage it is at
+  s = ri_op(t, "op-q1", "claim", pid, 1, 0, 0, "\"quest\":1,\"from\":1,\"stage\":2,\"coin\":0,\"xp\":0,\"slot\":-1,\"wear\":0", w[..]);
+  ap_check(t, "item ops: a claim moves the quest one stage and advances the version", s == "ok" && ap_sql(t, "select body->'quests'->0->>1 from verse.characters where body->'quests'->0->>0 = '1' and body->>'coin' = '25'", out[..]) == "2" && ap_member_int(ap_body(t), "ver", 0) == 2 && rc_is(ap_body(t), "item", "null"), ap_body(t));
+  // wearing: an item the bag holds; not one it doesn't
+  wear: [1] Sb; sb(wear[..], "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":0,\"slot\":1,\"wear\":"); sb_int(wear[..], item);
+  s = ri_op(t, "op-w1", "claim", pid, 2, 0, 0, sb_text(wear[..]), w[..]);
+  ap_check(t, "item ops: an item in the bag is worn", s == "ok" && ap_member_int(ap_body(t), "rec.worn[1]", 0) == item && ap_member_int(ap_body(t), "ver", 0) == 3, ap_body(t));
+  s = ri_op(t, "op-w2", "claim", pid, 3, 0, 0, "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":0,\"slot\":2,\"wear\":999999", w[..]);
+  ap_check(t, "item ops: an item the bag doesn't hold can't be worn (held)", s == "held" && ap_member_int(ap_body(t), "rec.worn[2]", 0) == 0, ap_body(t));
+  s = ri_op(t, "op-w3", "claim", pid, 3, 0, 0, "\"quest\":0,\"from\":0,\"stage\":0,\"coin\":-26,\"xp\":0,\"slot\":-1,\"wear\":0", w[..]);
+  ap_check(t, "item ops: coin can't fall below 0 (held)", s == "held" && ap_member_int(ap_body(t), "rec.coin", 0) == 25, ap_body(t));
+  // read: the character as the store has it; nothing changes, nothing is recorded
+  s = ri_op(t, "op-read", "read", pid, 0, 0, 0, RI_NONE, w[..]);
+  ap_check(t, "item ops: a read answers the record, the kinds and the version, and records nothing",
+           s == "ok" && ap_member_int(ap_body(t), "ver", 0) == 3 && ap_member_int(ap_body(t), "rec.coin", 0) == 25 && ap_member_int(ap_body(t), "kinds[0]", 0) == 3
+           && ap_sql(t, "select count(*) from verse.item_ops where id = 'op-read'", out[..]) == "0", ap_body(t));
+  // consume: the item is gone, and comes off
+  s = ri_op(t, "op-c1", "consume", pid, 3, item, 0, RI_NONE, w[..]);
+  ap_check(t, "item ops: a consumed item is gone from the ledger, the bag and what is worn",
+           s == "ok" && ap_sql(t, sb_text(q[..]), out[..]) == "0" && ap_member_int(ap_body(t), "rec.worn[1]", 9) == 0 && ap_member_int(ap_body(t), "ver", 0) == 4 && ap_kind(ap_body(t), "rec.bag[0]") == 0, ap_body(t));
+  s = ri_op(t, "op-c1", "consume", pid, 3, item, 0, RI_NONE, w[..]);
+  ap_check(t, "item ops: the same consume again answers its record", s == "ok" && rc_is(ap_body(t), "replay", "true") && ap_member_int(ap_body(t), "ver", 0) == 4, ap_body(t));
+  s = ri_op(t, "op-c2", "consume", pid, 4, item, 0, RI_NONE, w[..]);
+  ap_check(t, "item ops: a consumed item can't be consumed again (no_item)", s == "no_item", ap_body(t));
+  // a full bag takes no grant
+  pe := pl_id(e[..]); full := true; idb: [1] Sb;
+  for i: 0..<32 {
+    sb_clear(idb[..]); sb(idb[..], "op-f"); sb_int(idb[..], i);
+    if ri_op(t, sb_text(idb[..]), "grant", pe, i, 0, 1, RI_NONE, w[..]) != "ok" { full = false; }
+  }
+  s = ri_op(t, "op-f32", "grant", pe, 32, 0, 1, RI_NONE, w[..]);
+  sb_clear(q[..]); sb(q[..], "select count(*) from verse.items where owner = '"); sb(q[..], pe); sb(q[..], "'");
+  ap_check(t, "item ops: a bag of 32 items is full: the next grant is refused (full), and its record still reads", full && s == "full" && ap_sql(t, sb_text(q[..]), out[..]) == "32" && ap_member_int(ap_body(t), "rec.bag[31]", 0) > 0, ap_body(t));
+  // a page can't write any of it: no MAC, a bad MAC, and what a page saves about itself
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], pl_key(d[..]));
+  h := [2] string.["Content-Type: application/json", sb_text(ph[..])];
+  forged := "{\"id\":\"op-forged\",\"op\":\"grant\",\"pid\":\"x\",\"gen\":0,\"ver\":4,\"item\":null,\"to\":\"\",\"kind\":3,\"sent\":1,\"quest\":1,\"from\":2,\"stage\":9,\"coin\":500,\"xp\":500,\"slot\":-1,\"wear\":0}";
+  st := ap_call(t, "POST", "/api/playtest/room-items", forged, h[..]);
+  st2 := rc_room_post(t, "/api/playtest/room-items", forged, "0000000000000000000000000000000000000000000000000000000000000000");
+  st3 := ap_call(t, "POST", "/api/playtest/room-state", "{\"coin\":500,\"quests\":[[1,9]],\"bag\":[1,2,3],\"worn\":[1,0,0,0,0,0,0,0,0,0]}", h[..]);
+  sb_clear(want[..]); sb(want[..], "25 100 [[1, 2]] [] 4 0");
+  ap_check(t, "item ops: a page's own post, a bad MAC and a page's saved state grant nothing and change no record",
+           st == 401 && st2 == 401 && ap_sql(t, sb_text(rq[..]), out[..]) == sb_text(want[..]) && ap_sql(t, "select count(*) from verse.item_ops where id = 'op-forged'", out[..]) == "0", ap_body(t));
+  ap_check(t, "item ops: the outbox has each applied change, a claim with item 0",
+           ap_sql(t, "select string_agg(op || ':' || (item > 0)::text, ' ' order by seq) from (select * from verse.item_outbox order by seq limit 4) o", out[..]) == "grant:true claim:false claim:false consume:true", "");
+  ap_check(t, "item ops: replaying the outbox gives the same items and versions (the ledger reconciles)", ap_sql(t, "select verse.item_reconcile()", out[..]) == "t", "");
 }
 
 // ---- stats --------------------------------------------------------------------------------------------

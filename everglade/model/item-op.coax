@@ -1,0 +1,181 @@
+// A room's ledger operation and the store's answer (#13291, AAA P4.2; docs/protocol/everglade-item-op-v1.md):
+// the one codec of `everglade.item-op.v1`. A room posts an operation to the API
+// (POST /api/playtest/room-items, signed with its shard's write key, purpose "items") and reads the
+// answer; the room's stand-in store (coax/web/room/room-items.coax) answers with the same bytes.
+//
+// The operation: an ID the room chose (the ledger applies it once: aethyr/session/ledger.coax), the
+// ledger's operation, the player, the room's owner generation, the inventory version it read, the
+// item or the kind of item to make, when it was first sent, and a claim on the character's record
+// applied with it, once (everglade/model/character.coax char_claim): a quest's stage from one value
+// to the next, coin, XP, an item worn.
+//   {"id":ID,"op":WORD,"pid":PID,"gen":N,"ver":N,"item":N|null,"to":"","kind":N,"sent":MS,
+//    "quest":N,"from":N,"stage":N,"coin":N,"xp":N,"slot":N,"wear":N}
+// WORD: read (the record as it is; nothing changes), grant, transfer, escrow, settle, cancel,
+// consume, claim. A room writes no transfer or escrow yet: "to" is always empty.
+//
+// The answer: the ledger's status, the item granted or named, whether it is the ID's recorded
+// answer, and the character as the store now has it: the inventory version, the record, and the
+// content kind of each item in its bag (in the bag's order). A room takes its copy of a character
+// from the answer and never keeps its own count.
+//   {"status":WORD,"item":N|null,"replay":BOOL,"ver":N,"kinds":[N...],"rec":RECORD|null}
+// The reader refuses any bytes but the ones the writer writes (it writes what it read and compares).
+//   coax/bin/coax test everglade/model/item-op.coax --library
+//   coax/bin/coax mutate everglade/model/item-op.coax --library --root-only
+#authority;
+#load "character.coax";
+#load "../../aethyr/session/ledger.coax";
+#load "item-op-checks.coax";   // the checks' fixtures
+
+IO_ID :: 80;          // bytes in an operation ID (the route's limit, item-policy.coax ITEM_ID_MAX)
+IO_PID :: 80;
+IO_ASK :: 640;        // the longest operation
+IO_ANSWER :: 8192;    // the longest answer: a full record and its kinds
+IO_READ :: 0;         // the record as it is; 1 to 7 are the ledger's operations (LOP_GRANT ... LOP_CLAIM)
+IO_OPS :: 8;
+IO_WORDS :: [IO_OPS] string.["read", "grant", "transfer", "escrow", "settle", "cancel", "consume", "claim"];
+IO_STATUSES :: 9;
+IO_STATUS :: [IO_STATUSES] string.["ok", "conflict", "stale", "version", "held", "full", "expired", "no_item", "exhausted"];
+
+ItemOp :: struct {
+  id: [IO_ID] u8; id_n: int;
+  op: int;
+  pid: [IO_PID] u8; pid_n: int;
+  gen: int; ver: int;
+  item: int;            // the item named (0 none)
+  kind: int;            // a grant's content kind
+  sent: int;            // ms: when it was first sent; a retry keeps it
+  claim: CharClaim;
+}
+ItemAnswer :: struct {
+  ok: bool;
+  status: int = -1;     // LEDGER_OK ... LEDGER_EXHAUSTED
+  item: int;            // 0 none
+  replay: bool;
+  ver: int;
+  kinds: [CHAR_BAG] int; kinds_n: int;
+  has: bool; rec: Character;   // the character's record, when the store has one
+}
+
+// The ledger operation a word names, or 0: none ("read" is no ledger operation).
+io_op :: (word: string) -> int #effects(all) {
+  for i: 1..<IO_OPS { if word == IO_WORDS[i] { return i; } }
+  return 0;
+}
+// A status's word ("held" for a number that is no status), and a word's status (-1 none).
+io_word :: (status: int) -> string #effects(all) { return ifx status >= 0 && status < IO_STATUSES then IO_STATUS[status] else "held"; }
+io_status :: (word: string) -> int #effects(all) {
+  for i: 0..<IO_STATUSES { if word == IO_STATUS[i] { return i; } }
+  return -1;
+}
+// The operation's bytes into out; "" for an operation that is none, or when out is too small.
+io_ask :: (a: ItemOp, out: [] u8) -> string #effects(all) {
+  if a.op < 0 || a.op >= IO_OPS { return ""; }
+  id := a.id; pid := a.pid;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) id[0..<a.id_n]);
+  jo_key(o[..], "op"); jo_str(o[..], IO_WORDS[a.op]);
+  jo_key(o[..], "pid"); jo_str(o[..], cast(string) pid[0..<a.pid_n]);
+  jo_key(o[..], "gen"); jo_int(o[..], a.gen);
+  jo_key(o[..], "ver"); jo_int(o[..], a.ver);
+  jo_key(o[..], "item"); if a.item > 0 { jo_int(o[..], a.item); } else { jo_null(o[..]); }
+  jo_key(o[..], "to"); jo_str(o[..], "");
+  jo_key(o[..], "kind"); jo_int(o[..], a.kind);
+  jo_key(o[..], "sent"); jo_int(o[..], a.sent);
+  jo_key(o[..], "quest"); jo_int(o[..], a.claim.quest);
+  jo_key(o[..], "from"); jo_int(o[..], a.claim.from);
+  jo_key(o[..], "stage"); jo_int(o[..], a.claim.to);
+  jo_key(o[..], "coin"); jo_int(o[..], a.claim.coin);
+  jo_key(o[..], "xp"); jo_int(o[..], a.claim.xp);
+  jo_key(o[..], "slot"); jo_int(o[..], a.claim.slot);
+  jo_key(o[..], "wear"); jo_int(o[..], a.claim.item);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// The answer's bytes into out. kinds: a JSON array of the bag's content kinds; rec: the record's
+// bytes (char_write), or "" for a character the store has no record of. "" when out is too small.
+io_answer :: (status: int, item: int, replay: bool, ver: int, kinds: string, rec: string, out: [] u8) -> string #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "status"); jo_str(o[..], io_word(status));
+  jo_key(o[..], "item"); if item > 0 { jo_int(o[..], item); } else { jo_null(o[..]); }
+  jo_key(o[..], "replay"); jo_bool(o[..], replay);
+  jo_key(o[..], "ver"); jo_int(o[..], ver);
+  jo_key(o[..], "kinds"); jo_raw(o[..], kinds);
+  jo_key(o[..], "rec"); if rec.count > 0 { jo_raw(o[..], rec); } else { jo_null(o[..]); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// The answer in text; not ok for anything but an answer in its one form: a record that reads
+// (char_read) or null, and a kind for each item in the record's bag.
+io_read :: (text: string) -> ItemAnswer #effects(all) {
+  a := ItemAnswer.{};
+  nodes: [384] JvNode; d: [1] Jv;
+  _ := jv_parse(d[..], text, nodes[..]);   // a failed parse leaves no nodes: no status, no record
+  for i: 0..<IO_STATUSES { if jv_raw_eq(jv_raw(d[0], jv_get(d[0], 0, "status")), IO_STATUS[i]) { a.status = i; } }
+  a.item = jv_int(d[0], jv_get(d[0], 0, "item"), 0);
+  a.replay = jv_bool(d[0], jv_get(d[0], 0, "replay"));
+  a.ver = jv_int(d[0], jv_get(d[0], 0, "ver"), a.ver);
+  a.kinds_n = char_list(d[0], jv_get(d[0], 0, "kinds"), CHAR_BAG, a.kinds[..]);
+  rec := jv_raw(d[0], jv_get(d[0], 0, "rec"));
+  if rec != "null" { a.rec = char_read(rec); a.has = a.rec.ok; }
+  kb: [CHAR_BAG * 12 + 2] u8; k: [1] Jo; jo_start(k[..], kb[..]); jo_arr(k[..]);
+  for i: 0..<a.kinds_n { jo_int(k[..], a.kinds[i]); }
+  jo_end(k[..]);
+  ob: [IO_ANSWER] u8;
+  a.ok = (rec == "null" || a.has) && a.kinds_n == a.rec.bag_n && io_answer(a.status, a.item, a.replay, a.ver, jo_text(k[..]), ifx a.has then rec else "", ob[..]) == text;
+  return a;
+}
+
+// ---- checks (proto/verse/everglade-item-op-v1.json holds the same fixtures)
+
+#test "item op: an operation writes its pinned bytes, each word and every field" {
+  o: [IO_ASK] u8;
+  #assert io_ask(io_fixture(), o[..]) == IO_ASK_WIRE;
+  r := io_fixture(); r.op = IO_READ; r.item = 0; r.kind = 0; r.claim = CharClaim.{};
+  #assert io_ask(r, o[..]) == "{\"id\":\"s3-1762190000-7\",\"op\":\"read\",\"pid\":\"p-a\",\"gen\":4,\"ver\":2,\"item\":null,\"to\":\"\",\"kind\":0,\"sent\":1762190000000,\"quest\":0,\"from\":0,\"stage\":0,\"coin\":0,\"xp\":0,\"slot\":-1,\"wear\":0}";
+  r.op = LOP_CONSUME; r.item = 12; #assert io_find(io_ask(r, o[..]), "\"op\":\"consume\",") > 0 && io_find(io_ask(r, o[..]), "\"item\":12,") > 0;
+  r.item = 1; #assert io_find(io_ask(r, o[..]), "\"item\":1,") > 0; r.item = -1; #assert io_find(io_ask(r, o[..]), "\"item\":null,") > 0;
+  r.op = LOP_CLAIM; #assert io_find(io_ask(r, o[..]), "\"op\":\"claim\",") > 0;
+  r.op = IO_OPS; #assert io_ask(r, o[..]) == ""; r.op = -1; #assert io_ask(r, o[..]) == ""; r.op = IO_OPS - 1;
+  short: [64] u8; #assert io_ask(r, short[..]) == "" && io_ask(r, o[..]).count > 0;
+  for i: 1..<IO_OPS { #assert io_op(IO_WORDS[i]) == i; }
+  #assert io_op("read") == 0 && io_op("") == 0 && io_op("grants") == 0 && io_op("claim") == LOP_CLAIM && io_op("grant") == LOP_GRANT && io_op("consume") == LOP_CONSUME && io_op("cancel") == LOP_CANCEL;
+  for s: 0..<IO_STATUSES { #assert io_status(io_word(s)) == s; }
+  #assert io_word(LEDGER_OK) == "ok" && io_word(LEDGER_EXHAUSTED) == "exhausted" && io_word(LEDGER_NO_ITEM) == "no_item" && io_word(9) == "held" && io_word(-1) == "held" && io_status("") == -1 && io_status("okay") == -1;
+  #assert io_find("abcabc", "bc") == 1 && io_find("abc", "abc") == 0 && io_find("abc", "c") == 2 && io_find("abc", "d") == -1 && io_find("abc", "abcd") == -1 && io_find("", "a") == -1 && io_find("ab", "bc") == -1;
+}
+#test "item op: an answer writes its pinned bytes and reads back the same answer" {
+  o: [IO_ANSWER] u8; rb: [CHAR_BODY] u8;
+  rec := char_write(char_fixture(), rb[..]);
+  #assert io_answer(LEDGER_OK, 12, false, 5, "[3,1,3]", rec, o[..]) == IO_ANSWER_WIRE;
+  a := io_read(IO_ANSWER_WIRE);
+  #assert a.ok && a.status == LEDGER_OK && a.item == 12 && !a.replay && a.ver == 5 && a.kinds_n == 3 && a.kinds[0] == 3 && a.kinds[1] == 1 && a.kinds[2] == 3 && a.has && char_same(a.rec, char_fixture());
+  // a refusal, replayed, for a character with no record
+  none := io_answer(LEDGER_VERSION, 0, true, 0, "[]", "", o[..]);
+  #assert none == IO_NONE_WIRE;
+  b := io_read(none); #assert b.ok && b.status == LEDGER_VERSION && b.item == 0 && b.replay && b.ver == 0 && b.kinds_n == 0 && !b.has && !b.rec.ok;
+  for s: 0..<IO_STATUSES { p: [IO_ANSWER] u8; #assert io_read(io_answer(s, 1, false, 9007199254740991, "[]", "", p[..])).status == s && io_read(io_answer(s, 1, false, 1, "[]", "", p[..])).ok; }
+  short: [32] u8; #assert io_answer(LEDGER_OK, 12, false, 5, "[3,1,3]", rec, short[..]) == "";
+  #assert io_answer(LEDGER_OK, 1, false, 5, "[]", "", o[..]) == "{\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[],\"rec\":null}";
+  #assert io_answer(LEDGER_OK, 1, false, 5, "[]", "7", o[..]) == "{\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[],\"rec\":7}";
+}
+#test "item op: a reader refuses every answer that is not one, in its one form" {
+  o: [IO_ANSWER + 64] u8; s := IO_ANSWER_WIRE;
+  #assert io_read(s).ok && !io_read("").ok && !io_read("{}").ok && !io_read(s[0..<s.count - 1]).ok && !io_read("null").ok;
+  #assert !io_read(char_swap(s, "\"status\":\"ok\"", "\"status\":\"fine\"", o[..])).ok && !io_read(char_swap(s, "\"status\":\"ok\"", "\"status\":3", o[..])).ok;
+  #assert !io_read(char_swap(s, "\"item\":12", "\"item\":\"12\"", o[..])).ok && !io_read(char_swap(s, "\"item\":12", "\"item\":0", o[..])).ok && !io_read(char_swap(s, "\"item\":12", "\"item\":-1", o[..])).ok;
+  #assert io_read(char_swap(s, "\"item\":12", "\"item\":null", o[..])).ok && io_read(char_swap(s, "\"item\":12", "\"item\":null", o[..])).item == 0;
+  #assert !io_read(char_swap(s, "\"replay\":false", "\"replay\":0", o[..])).ok && io_read(char_swap(s, "\"replay\":false", "\"replay\":true", o[..])).replay;
+  #assert !io_read(char_swap(s, "\"ver\":5", "\"ver\":\"5\"", o[..])).ok && !io_read(char_swap(s, "\"ver\":5,", "", o[..])).ok && !io_read(char_swap(s, "\"ver\":5", "\"ver\":5,\"x\":1", o[..])).ok;
+  // a kind for each item in the bag, no more and no fewer; a record that reads, or null
+  #assert !io_read(char_swap(s, "\"kinds\":[3,1,3]", "\"kinds\":[3,1]", o[..])).ok && !io_read(char_swap(s, "\"kinds\":[3,1,3]", "\"kinds\":[3,1,3,3]", o[..])).ok && !io_read(char_swap(s, "\"kinds\":[3,1,3]", "\"kinds\":3", o[..])).ok;
+  #assert !io_read(char_swap(s, "\"kinds\":[3,1,3]", "\"kinds\":[3,1,\"3\"]", o[..])).ok && !io_read(char_swap(s, "\"kinds\":[3,1,3]", "\"kinds\":[3, 1, 3]", o[..])).ok;
+  #assert !io_read(char_swap(s, "\"xp\":950", "\"xp\":-1", o[..])).ok && !io_read(char_swap(s, "\"rec\":{", "\"rec\":[{", o[..])).ok && !io_read(char_swap(s, "\"kinds\":[3,1,3]", "\"kinds\":[]", o[..])).ok;
+  #assert !io_read("{\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[3],\"rec\":null}").ok && !io_read("{\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[],\"rec\":nul}").ok;
+  #assert !io_read("{\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[],\"rec\":{}}").ok && !io_read("{\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[]}").ok;
+  #assert !io_read(" {\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[],\"rec\":null}").ok && !io_read("{\"status\":\"ok\",\"item\":1,\"replay\":false,\"ver\":5,\"kinds\":[],\"rec\":null} ").ok;
+  // a bag has CHAR_BAG items at most, so an answer has that many kinds at most
+  many := "[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]";
+  #assert !io_read(char_swap(s, "\"kinds\":[3,1,3]", char_splice("\"kinds\":", 8, 8, many, o[0..<200]), o[200..<o.count])).ok;
+  // the longest answer is IO_ANSWER bytes: a record's own limit is far below it
+  #assert s.count < IO_ANSWER;
+}

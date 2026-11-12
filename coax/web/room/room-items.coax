@@ -1,0 +1,684 @@
+// A room's ledger operations (#13291 AAA P4.2, #13292 AAA P4.3, #13294 AAA P4.5): loot, quest progress and
+// rewards, and what a character wears all change through the item ledger, each as one operation with an ID.
+// The room is the only writer; a page asks (E frames) and is told (e quest, e item, e coin, e say, e loot).
+//
+// The outbox. Each thing that happens (a kill, a point reached, a talk, an item worn) becomes an operation
+// (everglade/model/item-op.coax, everglade.item-op.v1): a grant, a consume or a claim, with a claim on the
+// character's record that the API applies with it, once. Operations leave in order, one at a time, each
+// posted to POST /api/playtest/room-items (room-host.c items_post, room-write purpose "items") and posted
+// again, the same bytes, until the API answers. The API keeps each ID once (aethyr/session/ledger.coax), so
+// an operation it took whose answer was lost is not applied twice. A quest's stage is a compare-and-set in
+// the claim, so a reward can't be paid twice even under a new ID.
+//
+// The character. The room holds no count of its own: each answer carries the character's record, the kind
+// of each item in its bag and its inventory version, and the room takes its copy from there. A seat's first
+// operation is a read. A player is told an item dropped only when the API has granted it.
+//
+// The content. Loot tables, quests, dialogue and points are the content tables' (aethyr/content/tables.coax,
+// everglade/model/content.coax), loaded at start (rm_content_load); a room with no content grants nothing.
+//
+// The stand-in. A --dev room with no API answers each operation itself (rm_items_local), with the same
+// rules: the ledger's in-memory store and the record's claim.
+#load "../../../everglade/model/item-op.coax";
+#load "../../../everglade/model/content.coax";
+
+RI_CHARS :: 320;          // characters with a seat here, or operations still to leave
+RI_BOX :: 256;            // operations waiting
+RI_RECEIPT_MS :: 15000;   // a post unanswered this long has failed (background-budget.coax BG_DEADLINE)
+RI_RETRY_MS :: 1000;      // the wait after a failed post; it doubles with each failure in a row,
+RI_RETRY_MAX_MS :: 16000; // up to this (an API that is down, or one from before this lane, is asked 4 times a minute)
+RI_TRIES :: 8;            // new IDs one operation may take when its inventory version was stale
+RI_TELL :: 8;             // entries a tick a seat is told of its own character
+RI_GONE :: 8;             // items gone that a seat is still to be told of
+RI_SYNC :: 0; RI_LOOT :: 1; RI_QUEST :: 2; RI_WEAR :: 3;
+
+RiChar :: struct {
+  live: bool;
+  pid: [IO_PID] u8; pid_n: int;
+  gen: int;                      // the seat ticket's owner generation
+  k: int = -1; seat: int = -1;   // where it sits (-1: it left; its operations still leave)
+  synced: bool;                  // an answer has brought its record
+  rec: Character; kinds: [CHAR_BAG] int; ver: int;
+  tell: int = -1;                // the next entry its seat is to be told (-1: all told)
+  gone: [RI_GONE] int; gone_n: int;
+}
+RiOp :: struct {
+  live: bool; seq: int;
+  c: int;                        // its character
+  why: int;
+  op: ItemOp;
+  text: [IO_ASK] u8; n: int;     // its bytes once first sent: a retry sends the same
+  tries: int;
+}
+// The stand-in's store: the ledger's in-memory store and each character's record.
+RiStore :: struct {
+  l: [1] ItemLedger;
+  pid: [CONTROL_CHARACTERS][IO_PID] u8; pid_n: [CONTROL_CHARACTERS] int; n: int;
+  rec: [CONTROL_CHARACTERS] Character;
+}
+RmItems :: struct {
+  doc: [1] ContentDoc; content: bool;
+  c: [RI_CHARS] RiChar;
+  at: [EG_ROOMS * EG_SEATS] int;   // each seat's character, plus 1 (0 none)
+  box: [RI_BOX] RiOp; seq: int; ids: int;
+  fly: bool; fly_i: int; fly_at: int; request: int; retry_at: int; fails: int;   // fails: failed posts in a row
+  out: [IO_ASK] u8; out_n: int; mac: [64] u8;
+  rng: int;
+  posts: int; applied: int; refused: int; failures: int; late: int; dropped: int; reissued: int; full: int;
+  store: [1] RiStore;
+}
+
+// ---- the content
+
+// The content tables, at start (room-host.c reads OA_ROOM_CONTENT): true when they are Everglade's.
+rm_content_load :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) {
+  v[0].itm.content = ct_read(v[0].itm.doc[..], text) && ec_ok(v[0].itm.doc[..]);
+  return v[0].itm.content;
+}
+// The content's revision (0 none): what the room's start line and its stats name.
+rm_content_rev :: (v: [] RmServer) -> int #export_c #effects(all) { return ifx v[0].itm.content then v[0].itm.doc[0].rev else 0; }
+
+// ---- characters
+
+ri_pid :: (v: [] RmServer, c: int) -> string { return cast(string) v[0].itm.c[c].pid[0..<v[0].itm.c[c].pid_n]; }
+// The character seated at seat s of room k, or -1.
+ri_seat :: (v: [] RmServer, k: int, s: int) -> int {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS { return -1; }
+  return v[0].itm.at[k * EG_SEATS + s] - 1;
+}
+// Whether any waiting operation is character c's.
+ri_busy :: (v: [] RmServer, c: int) -> bool {
+  for i: 0..<RI_BOX { if v[0].itm.box[i].live && v[0].itm.box[i].c == c { return true; } }
+  return false;
+}
+// A character sits at seat s of room k: its place here (the one it had, when its operations are still
+// leaving), and a read of its record. -1 when the room holds RI_CHARS characters.
+ri_open :: (v: [] RmServer, k: int, s: int, pid: string, gen: int) -> int {
+  c := -1;
+  for i: 0..<RI_CHARS { if v[0].itm.c[i].live && ri_pid(v, i) == pid { c = i; } }
+  if c < 0 { for i: 0..<RI_CHARS { if !v[0].itm.c[i].live && !ri_busy(v, i) { c = i; break; } } }
+  if c < 0 || pid.count < 1 || pid.count > IO_PID { return -1; }
+  was := v[0].itm.c[c];
+  v[0].itm.c[c] = RiChar.{live = true, pid_n = pid.count, gen = gen, k = k, seat = s};
+  for i: 0..<pid.count { v[0].itm.c[c].pid[i] = pid[i]; }
+  if was.live { v[0].itm.c[c].rec = was.rec; v[0].itm.c[c].kinds = was.kinds; v[0].itm.c[c].ver = was.ver; }   // until the read answers
+  v[0].itm.at[k * EG_SEATS + s] = c + 1;
+  _ := ri_push(v, c, RI_SYNC, IO_READ, 0, 0, CharClaim.{});
+  return c;
+}
+// Seat s of room k sat (seats.coax eg_join): its ticket's player and owner generation.
+ri_join :: (v: [] RmServer, k: int, seat_id: SeatId) {
+  tk := eg_ticket(v, k, seat_id);
+  if !tk.ok || k < 0 || k >= EG_ROOMS || seat_id.value < 0 || seat_id.value >= EG_SEATS { return; }
+  _ := ri_open(v, k, seat_id.value, cast(string) tk.pid[0..<tk.pid_n], tk.owner);
+}
+// Seat s of room k left: its character keeps its place only while operations of its are still to leave.
+ri_left :: (v: [] RmServer, k: int, seat_id: SeatId) {
+  c := ri_seat(v, k, seat_id.value);
+  if c < 0 { return; }
+  v[0].itm.at[k * EG_SEATS + seat_id.value] = 0;
+  v[0].itm.c[c].k = -1; v[0].itm.c[c].seat = -1;
+  if !ri_busy(v, c) { v[0].itm.c[c].live = false; }
+}
+
+// ---- the outbox
+
+// One more operation for character c. False when the outbox is full: the thing that happened is not
+// kept (counted in `full`).
+ri_push :: (v: [] RmServer, c: int, why: int, op: int, item: int, kind: int, claim: CharClaim) -> bool {
+  for i: 0..<RI_BOX {
+    if v[0].itm.box[i].live { continue; }
+    v[0].itm.seq += 1;
+    v[0].itm.box[i] = RiOp.{live = true, seq = v[0].itm.seq, c = c, why = why};
+    v[0].itm.box[i].op = ItemOp.{op = op, item = item, kind = kind, claim = claim, gen = v[0].itm.c[c].gen, pid_n = v[0].itm.c[c].pid_n};
+    v[0].itm.box[i].op.pid = v[0].itm.c[c].pid;
+    return true;
+  }
+  v[0].itm.full += 1;
+  return false;
+}
+// An operation leaves the outbox; a character with no seat and nothing more to leave gives up its place.
+ri_drop :: (v: [] RmServer, i: int) {
+  c := v[0].itm.box[i].c;
+  v[0].itm.box[i].live = false;
+  if v[0].itm.c[c].seat < 0 && !ri_busy(v, c) { v[0].itm.c[c].live = false; }
+}
+// Operations waiting.
+rm_items_pending :: (v: [] RmServer) -> int #export_c #effects(all) {
+  n := 0;
+  for i: 0..<RI_BOX { if v[0].itm.box[i].live { n += 1; } }
+  return n;
+}
+ri_failed :: (v: [] RmServer) {
+  wait := RI_RETRY_MS;
+  for i: 0..<v[0].itm.fails { if wait < RI_RETRY_MAX_MS { wait = wait * 2; } }
+  v[0].itm.fly = false; v[0].itm.failures += 1; v[0].itm.fails += 1; v[0].itm.retry_at = v[0].wall_ms + wait;
+}
+// The outbox's next post into itm.out, its MAC in itm.mac: its length, or 0 when nothing is due. One post
+// flies at a time; a failed or unanswered one goes again as it was.
+rm_items_due :: (v: [] RmServer) -> int #export_c #effects(all) {
+  v[0].itm.out_n = 0;
+  if v[0].itm.fly {
+    if v[0].wall_ms - v[0].itm.fly_at < RI_RECEIPT_MS { return 0; }
+    ri_failed(v);
+  }
+  if v[0].wall_ms < v[0].itm.retry_at { return 0; }
+  best := -1;
+  for i: 0..<RI_BOX { if v[0].itm.box[i].live && (best < 0 || v[0].itm.box[i].seq < v[0].itm.box[best].seq) { best = i; } }
+  if best < 0 { return 0; }
+  o := v[0].itm.box[best..<best + 1];
+  if o[0].n == 0 {
+    // first sent now: its ID (this shard, this process, a count), the inventory version the room holds, the time
+    if v[0].vit.gen == 0 { v[0].vit.gen = v[0].wall_ms; }   // this process's generation, the vitals' too
+    v[0].itm.ids += 1;
+    n := tk_add(o[0].op.id[..], 0, "s"); n = rv_int(o[0].op.id[..], n, v[0].shard); n = tk_add(o[0].op.id[..], n, "-");
+    n = rv_int(o[0].op.id[..], n, v[0].vit.gen); n = tk_add(o[0].op.id[..], n, "-"); n = rv_int(o[0].op.id[..], n, v[0].itm.ids);
+    o[0].op.id_n = n; o[0].op.ver = v[0].itm.c[o[0].c].ver; o[0].op.sent = v[0].wall_ms;
+    o[0].n = io_ask(o[0].op, o[0].text[..]).count;
+    if o[0].n == 0 { v[0].itm.dropped += 1; ri_drop(v, best); return 0; }
+  }
+  for i: 0..<o[0].n { v[0].itm.out[i] = o[0].text[i]; }
+  v[0].itm.out_n = o[0].n;
+  if !rm_write_mac(v, "items", cast(string) v[0].itm.out[0..<o[0].n], v[0].itm.mac[..]) { for i: 0..<64 { v[0].itm.mac[i] = '0'; } }
+  v[0].itm.request += 1; v[0].itm.fly = true; v[0].itm.fly_i = best; v[0].itm.fly_at = v[0].wall_ms; v[0].itm.posts += 1;
+  return o[0].n;
+}
+// The API's answer to post `request` (HTTP status, 0 when none came): an answer to another post, or to
+// none, is late and ignored. A refusal of the request itself (4xx) is final: the operation is dropped.
+// Anything else that is not an answer goes again.
+rm_items_answer :: (v: [] RmServer, request: int, status: int, body: string) #export_c #effects(all) {
+  if !v[0].itm.fly || request != v[0].itm.request { v[0].itm.late += 1; return; }
+  if status >= 400 && status < 500 { v[0].itm.fly = false; v[0].itm.fails = 0; v[0].itm.dropped += 1; ri_drop(v, v[0].itm.fly_i); return; }
+  a := io_read(body);
+  if status != 200 || !a.ok { ri_failed(v); return; }
+  v[0].itm.fly = false; v[0].itm.fails = 0;
+  ri_done(v, v[0].itm.fly_i, a);
+}
+// An answered operation: the character is the answer's; then what the status says.
+ri_done :: (v: [] RmServer, i: int, a: ItemAnswer) {
+  o := v[0].itm.box[i]; c := o.c; ch := v[0].itm.c[c..<c + 1];
+  if a.has {
+    // items the bag no longer holds: the seat is told each is gone; the rest it is told again, whole
+    for b: 0..<ch[0].rec.bag_n { if !char_holds(a.rec, ch[0].rec.bag[b]) && ch[0].gone_n < RI_GONE { ch[0].gone[ch[0].gone_n] = ch[0].rec.bag[b]; ch[0].gone_n += 1; } }
+    ch[0].rec = a.rec; ch[0].kinds = a.kinds; ch[0].synced = true; ch[0].tell = 0;
+  }
+  ch[0].ver = a.ver;
+  if a.status == LEDGER_VERSION && o.tries < RI_TRIES {
+    // the inventory changed since the room read it: again under a new ID, with the version just heard
+    v[0].itm.box[i].n = 0; v[0].itm.box[i].tries += 1; v[0].itm.reissued += 1;
+    return;
+  }
+  if a.status == LEDGER_STALE {
+    // another room owns the character now: nothing more of it leaves from here
+    for j: 0..<RI_BOX { if v[0].itm.box[j].live && v[0].itm.box[j].c == c { v[0].itm.refused += 1; ri_drop(v, j); } }
+    return;
+  }
+  ri_drop(v, i);
+  if a.status != LEDGER_OK { v[0].itm.refused += 1; return; }
+  v[0].itm.applied += 1;
+  if ch[0].seat >= 0 {
+    if o.op.claim.xp > 0 { ev_gain(v, ch[0].k, SeatId.{value = ch[0].seat}, o.op.claim.xp); }   // a quest's XP, as the record now has it
+    if o.why == RI_LOOT { _ := ri_event(v, c, WO_LOOT, o.op.kind, 0, 0); }
+  }
+  ri_pump(v, c);
+}
+
+// ---- what a seat is told
+
+// One entry aimed at character c's seat; false when the tick's events are full (it waits).
+ri_event :: (v: [] RmServer, c: int, what: int, a: int, b: int, d: int) -> bool {
+  k := v[0].itm.c[c].k; s := v[0].itm.c[c].seat;
+  if s < 0 || v[0].eg[k].ev_n >= EG_EVENTS || v[0].eg[k].ev_bytes + 48 > EG_EV_BYTES { return false; }
+  t: [48] u8;
+  n := wire_put_own(t[..], 0, what, WireOwn.{ss = s, a = a, b = b, c = d});
+  p := v[0].eg[k].seat[s].pose;
+  eg_event_who(v, k, cast(string) t[0..<n], p.x, p.z, false, 1 << s);
+  return true;
+}
+// Where item `item` of record r is worn: 1 to 10, or 0.
+ri_worn :: (r: Character, item: int) -> int {
+  for s: 0..<CHAR_WORN { if r.worn[s] == item { return s + 1; } }
+  return 0;
+}
+// Character c's seat hears its record: the items gone, then its coin, each quest and each item, RI_TELL a tick.
+ri_tell :: (v: [] RmServer, c: int) {
+  ch := v[0].itm.c[c..<c + 1];
+  if ch[0].seat < 0 || ch[0].tell < 0 { return; }
+  told := 0;
+  while ch[0].gone_n > 0 && told < RI_TELL {
+    if !ri_event(v, c, WO_ITEM, ch[0].gone[ch[0].gone_n - 1], 0, 0) { return; }
+    ch[0].gone_n -= 1; told += 1;
+  }
+  r := ch[0].rec; last := 1 + r.quest_n + r.bag_n;
+  while ch[0].tell < last && told < RI_TELL {
+    e := ch[0].tell; ok := false;
+    if e == 0 { ok = ri_event(v, c, WO_COIN, r.coin, 0, 0); }
+    else if e <= r.quest_n { ok = ri_event(v, c, WO_QUEST, r.quest[e - 1], r.stage[e - 1], 0); }
+    else { b := e - 1 - r.quest_n; ok = ri_event(v, c, WO_ITEM, r.bag[b], ch[0].kinds[b], ri_worn(r, r.bag[b])); }
+    if !ok { return; }
+    ch[0].tell = e + 1; told += 1;
+  }
+  if ch[0].tell >= last && ch[0].gone_n == 0 { ch[0].tell = -1; }
+}
+
+// ---- what happens
+
+// The stage character c's quest will be at once its waiting operations are answered.
+ri_soon :: (v: [] RmServer, c: int, quest: int) -> int {
+  n := char_stage(v[0].itm.c[c].rec, quest);
+  for i: 0..<RI_BOX { if v[0].itm.box[i].live && v[0].itm.box[i].c == c && v[0].itm.box[i].op.claim.quest == quest { n += 1; } }
+  return n;
+}
+// An item of content kind `kind` in character c's bag that no waiting operation uses up (0 none).
+ri_spare :: (v: [] RmServer, c: int, kind: int) -> int {
+  r := v[0].itm.c[c].rec;
+  for b: 0..<r.bag_n {
+    if v[0].itm.c[c].kinds[b] != kind { continue; }
+    used := false;
+    for i: 0..<RI_BOX { if v[0].itm.box[i].live && v[0].itm.box[i].c == c && v[0].itm.box[i].op.op == LOP_CONSUME && v[0].itm.box[i].op.item == r.bag[b] { used = true; } }
+    if !used { return r.bag[b]; }
+  }
+  return 0;
+}
+// What the server does for character c's quests without being asked: an item a quest wants brought, when
+// the bag has one, is used up; a reward owed is paid. Each is one operation whose claim moves the quest
+// from the stage it is at, so none is ever applied twice.
+ri_pump :: (v: [] RmServer, c: int) {
+  if !v[0].itm.content || !v[0].itm.c[c].synced { return; }
+  d := v[0].itm.doc[..]; rec := v[0].itm.c[c].rec;
+  for q: 0..<ct_rows(d, EC_QUEST) {
+    quest := ct_get(d, EC_QUEST, q, 0);
+    for round: 0..<RI_TELL {
+      soon := ri_soon(v, c, quest); n := eq_next(d, quest, soon);
+      claim := CharClaim.{quest = quest, from = soon, to = soon + 1};
+      if n.kind == EQ_BRING {
+        item := ri_spare(v, c, n.target);
+        if item == 0 || !ri_push(v, c, RI_QUEST, LOP_CONSUME, item, 0, claim) { break; }
+      } else if n.kind == EQ_REWARD {
+        // never more than the record can hold: the claim would be refused whole
+        claim.coin = rs_min(ct_get(d, EC_REWARD, n.row, EC_REWARD_COIN), CHAR_COIN_MAX - rec.coin);
+        claim.xp = rs_min(ct_get(d, EC_REWARD, n.row, EC_REWARD_XP), CHAR_XP_MAX - rec.xp);
+        kind := ct_get(d, EC_REWARD, n.row, EC_REWARD_ITEM);
+        if !ri_push(v, c, RI_QUEST, ifx kind != 0 then LOP_GRANT else LOP_CLAIM, 0, kind, claim) { break; }
+      } else { break; }
+    }
+  }
+}
+// Something happened to character c that a quest may ask for (a kill of creature `target`, a point
+// reached, a talk; EQ_TAKE and EQ_TALK together for one dialogue): each quest it advances moves one stage.
+ri_happened :: (v: [] RmServer, c: int, kind: int, target: int) {
+  if !v[0].itm.content || !v[0].itm.c[c].synced { return; }
+  d := v[0].itm.doc[..];
+  for q: 0..<ct_rows(d, EC_QUEST) {
+    quest := ct_get(d, EC_QUEST, q, 0); soon := ri_soon(v, c, quest);
+    if eq_advances(d, quest, soon, kind, target) || (kind == EQ_TALK && eq_advances(d, quest, soon, EQ_TAKE, target)) {
+      _ := ri_push(v, c, RI_QUEST, LOP_CLAIM, 0, 0, CharClaim.{quest = quest, from = soon, to = soon + 1});
+    }
+  }
+  ri_pump(v, c);
+}
+// A roll of 0 to 99 for a drop: the room's own, never a page's (a Lehmer generator, seeded by the clock).
+ri_roll :: (v: [] RmServer) -> int {
+  x := v[0].itm.rng;
+  if x == 0 { x = v[0].wall_ms % 2147483646 + 1; }
+  x = x * 48271 % 2147483647;
+  v[0].itm.rng = x;
+  return x / 1000 % EC_LOOT_WHOLE;
+}
+// Seat s of room k took part in killing a creature of the room's template `kind` (creatures.coax
+// e2_monsters_after): its drop, by the creature's loot table, and its quests' kills.
+ri_kill :: (v: [] RmServer, k: int, seat_id: SeatId, kind: int) {
+  c := ri_seat(v, k, seat_id.value);
+  if c < 0 || !v[0].itm.content { return; }
+  creature := ec_creature(v[0].itm.doc[..], kind);
+  if creature == 0 { return; }
+  drop := ec_drop(v[0].itm.doc[..], creature, ri_roll(v));
+  if drop != 0 { _ := ri_push(v, c, RI_LOOT, LOP_GRANT, 0, drop, CharClaim.{}); }
+  ri_happened(v, c, EQ_KILL, creature);
+}
+// Whether seat s of room k stands within content point `point`'s radius.
+ri_near :: (v: [] RmServer, k: int, s: int, point: int) -> bool {
+  d := v[0].itm.doc[..]; r := ct_find(d, EC_POINT, point);
+  if r < 0 { return false; }
+  p := v[0].eg[k].seat[s].pose;
+  dx := cast(int) (p.x * 100) - ct_get(d, EC_POINT, r, EC_POINT_X); dz := cast(int) (p.z * 100) - ct_get(d, EC_POINT, r, EC_POINT_Z);
+  rad := ct_get(d, EC_POINT, r, EC_POINT_R);
+  return dx * dx + dz * dz <= rad * rad;
+}
+// Seat s asks to talk to dialogue `dialogue` (E SEQ 6 ID): heard only standing where its speaker does.
+// The seat is told the line, and its quests take the talk. False when it is not heard.
+ri_say :: (v: [] RmServer, k: int, seat_id: SeatId, dialogue: int) -> bool {
+  c := ri_seat(v, k, seat_id.value);
+  if c < 0 || !v[0].itm.content { return false; }
+  d := v[0].itm.doc[..]; r := ct_find(d, EC_DIALOGUE, dialogue);
+  if r < 0 || !ri_near(v, k, seat_id.value, ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_POINT)) { return false; }
+  _ := ri_event(v, c, WO_SAY, dialogue, 0, 0);
+  ri_happened(v, c, EQ_TALK, dialogue);
+  return true;
+}
+// Seat s asks to wear item `item` (E SEQ 7 ID): one its bag holds, in the slot its kind is worn in.
+ri_wear :: (v: [] RmServer, k: int, seat_id: SeatId, item: int) -> bool {
+  c := ri_seat(v, k, seat_id.value);
+  if c < 0 || !v[0].itm.content || !v[0].itm.c[c].synced || item < 1 { return false; }
+  r := v[0].itm.c[c].rec;
+  for b: 0..<r.bag_n {
+    slot := ec_slot(v[0].itm.doc[..], v[0].itm.c[c].kinds[b]);
+    if r.bag[b] == item && slot >= 0 { return ri_push(v, c, RI_WEAR, LOP_CLAIM, 0, 0, CharClaim.{slot = slot, item = item}); }
+  }
+  return false;
+}
+// Seat s asks to empty equipment slot `slot` (E SEQ 8 ID).
+ri_bare :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int) -> bool {
+  c := ri_seat(v, k, seat_id.value);
+  if c < 0 || !v[0].itm.c[c].synced || slot < 0 || slot >= CHAR_WORN || v[0].itm.c[c].rec.worn[slot] == 0 { return false; }
+  return ri_push(v, c, RI_WEAR, LOP_CLAIM, 0, 0, CharClaim.{slot = slot, item = 0});
+}
+// Each tick of room k (tick.coax): every seat hears what is new of its character; once a second, a seat
+// standing in a point a quest of its asks it to reach has reached it.
+ri_tick :: (v: [] RmServer, k: int) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
+  second := v[0].eg[k].tick % EG_HZ == 0;
+  for s: 0..<EG_SEATS {
+    c := ri_seat(v, k, s);
+    if c < 0 || !v[0].eg[k].seat[s].live { continue; }
+    ri_tell(v, c);
+    if !second || !v[0].itm.content || !v[0].itm.c[c].synced { continue; }
+    d := v[0].itm.doc[..];
+    for q: 0..<ct_rows(d, EC_QUEST) {
+      n := eq_next(d, ct_get(d, EC_QUEST, q, 0), ri_soon(v, c, ct_get(d, EC_QUEST, q, 0)));
+      if n.kind == EQ_REACH && ri_near(v, k, s, n.target) { ri_happened(v, c, EQ_REACH, n.target); }
+    }
+  }
+}
+
+// ---- the stand-in store (a --dev room with no API; the checks' API)
+
+// An operation's ID as the in-memory ledger's number.
+ri_hash :: (id: string) -> int {
+  h := 0;   // the ID's digits (its shard, process and count), the last seventeen
+  for b: id { if b >= '0' && b <= '9' { h = h % 10000000000000000 * 10 + cast(int) (b - '0'); } }
+  return h;
+}
+// The store's character for pid: its number, a new one for a pid not yet seen, -1 when it holds no more.
+ri_store_char :: (st: [] RiStore, pid: string) -> int {
+  for i: 0..<st[0].n { if cast(string) st[0].pid[i][0..<st[0].pid_n[i]] == pid { return i; } }
+  if st[0].n >= CONTROL_CHARACTERS || pid.count > IO_PID { return -1; }
+  i := st[0].n; st[0].n += 1;
+  for b: 0..<pid.count { st[0].pid[i][b] = pid[b]; }
+  st[0].pid_n[i] = pid.count; st[0].rec[i] = char_new(pid, 1);
+  return i;
+}
+// Character c's record as the store has it now: its bag and version the ledger's, anything worn that the
+// bag no longer holds taken off.
+ri_store_view :: (st: [] RiStore, c: int) -> Character {
+  r := st[0].rec[c];
+  r.bag_n = 0;
+  for i: 0..<LEDGER_ITEMS {
+    m := st[0].l[0].items[i];
+    if m.live && m.owner.value == c { r.bag[r.bag_n] = i + 1; r.bag_n += 1; }
+  }
+  r.inv = st[0].l[0].version[c];
+  for s: 0..<CHAR_WORN { if !char_holds(r, r.worn[s]) { r.worn[s] = 0; } }
+  return r;
+}
+// The store's answer to an operation at time now (ms), into out: the ledger's rules for the items, the
+// record's claim with it, both or neither (player.c room_items does the same in one transaction).
+ri_store_answer :: (st: [] RiStore, a: ItemOp, now: int, out: [] u8) -> string {
+  pid := a.pid; kb: [CHAR_BAG * 12 + 2] u8; rb: [CHAR_BODY] u8;
+  c := ri_store_char(st, cast(string) pid[0..<a.pid_n]);
+  if c < 0 { return io_answer(LEDGER_HELD, 0, false, 0, "[]", "", out); }
+  status := LEDGER_OK; item := 0; replay := false;
+  if a.op != IO_READ {
+    id := a.id;
+    before := st[0].l[0];
+    ans := ledger_apply(st[0].l[..], LedgerAsk.{id = OperationId.{value = ri_hash(cast(string) id[0..<a.id_n])}, op = a.op, c = CharacterId.{value = c},
+                        gen = OwnerGeneration.{value = a.gen}, ver = a.ver, item = ItemId.{value = a.item - 1}, kind = a.kind, sent = a.sent}, now);
+    status = ans.status; replay = ans.replay; item = ans.item.value + 1;
+    if status == LEDGER_OK && !replay {
+      next := char_claim(ri_store_view(st, c), a.claim);
+      if next.ok { st[0].rec[c] = next; } else { st[0].l[0] = before; status = LEDGER_HELD; item = 0; }   // the claim refused: nothing of the operation is kept
+    }
+  }
+  view := ri_store_view(st, c); k: [1] Jo; jo_start(k[..], kb[..]); jo_arr(k[..]);
+  for i: 0..<LEDGER_ITEMS { m := st[0].l[0].items[i]; if m.live && m.owner.value == c { jo_int(k[..], m.kind); } }
+  jo_end(k[..]);
+  return io_answer(status, item, replay, view.inv, jo_text(k[..]), char_write(view, rb[..]), out);
+}
+// The stand-in answers the post in flight, as the API would. In a --dev room the store forgets its
+// operation IDs and outbox when they fill, so a long local session keeps playing.
+rm_items_local :: (v: [] RmServer) #export_c #effects(all) {
+  if !v[0].itm.fly { return; }
+  st := v[0].itm.store[..];
+  if st[0].l[0].out_n >= LEDGER_OUTBOX - 1 { st[0].l[0].out_n = 0; for i: 0..<LEDGER_OPS { st[0].l[0].ops[i].live = false; } }
+  ob: [IO_ANSWER] u8;
+  body := ri_store_answer(st, v[0].itm.box[v[0].itm.fly_i].op, v[0].wall_ms, ob[..]);
+  rm_items_answer(v, v[0].itm.request, 200, body);
+}
+
+// ---- checks. The checks' API is a store of its own (RiStore), apart from the room's, so it lives
+// through a room's restart as the API does.
+
+ri_test_init :: (v: [] RmServer, wall: int) {
+  rm_init(v); rm_clock(v, 1000, wall);
+  ok := rm_content_load(v, EC_FIXTURE);
+}
+// The post due, answered by the store as the API would; false when none was due.
+ri_test_post :: (v: [] RmServer, st: [] RiStore) -> bool {
+  if rm_items_due(v) == 0 { return false; }
+  ob: [IO_ANSWER] u8;
+  rm_items_answer(v, v[0].itm.request, 200, ri_store_answer(st, v[0].itm.box[v[0].itm.fly_i].op, v[0].wall_ms, ob[..]));
+  return true;
+}
+ri_test_drain :: (v: [] RmServer, st: [] RiStore) { for i: 0..<200 { if !ri_test_post(v, st) { break; } } }
+// How many live items of content kind `kind` the store holds, and how many outbox entries of op it wrote.
+ri_test_items :: (st: [] RiStore, kind: int) -> int {
+  n := 0;
+  for i: 0..<LEDGER_ITEMS { if st[0].l[0].items[i].live && st[0].l[0].items[i].kind == kind { n += 1; } }
+  return n;
+}
+ri_test_wrote :: (st: [] RiStore, op: int) -> int {
+  n := 0;
+  for i: 0..<st[0].l[0].out_n { if st[0].l[0].out[i].op == op { n += 1; } }
+  return n;
+}
+// Whether room k's events this tick hold `text`.
+ri_test_heard :: (v: [] RmServer, k: int, text: string) -> bool {
+  for e: 0..<v[0].eg[k].ev_n {
+    a := v[0].eg[k].ev_at[e];
+    if cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[e]] == text { return true; }
+  }
+  return false;
+}
+
+#test "items: a seat's character is read from the store before anything else, and its seat is told it whole" #steps 4000000000 {
+  v: [1] RmServer; st: [1] RiStore; ri_test_init(v[..], 1762190000000);
+  #assert v[0].itm.content && rm_content_rev(v[..]) == 1;
+  c := ri_open(v[..], 0, 0, "p-a", 7);
+  #assert c == 0 && ri_seat(v[..], 0, 0) == 0 && ri_seat(v[..], 0, 1) == -1 && ri_seat(v[..], -1, 0) == -1 && rm_items_pending(v[..]) == 1 && !v[0].itm.c[0].synced;
+  // nothing happens for a character not yet read: no drop, no quest
+  ri_kill(v[..], 0, SeatId.{value = 0}, 0); _ := ri_say(v[..], 0, SeatId.{value = 0}, 1);
+  n := rm_items_due(v[..]); body := cast(string) v[0].itm.out[0..<n];
+  #assert n > 0 && io_find(body, "\"op\":\"read\"") > 0 && io_find(body, "\"pid\":\"p-a\"") > 0 && io_find(body, "\"gen\":7") > 0 && io_find(body, "\"id\":\"s1-1762190000000-1\"") > 0;
+  #assert rm_items_due(v[..]) == 0;   // one post flies at a time
+  rm_items_local(v[..]);
+  #assert v[0].itm.c[0].synced && v[0].itm.c[0].rec.ok && char_who_is(v[0].itm.c[0].rec, "p-a") && v[0].itm.c[0].ver == 0 && v[0].itm.c[0].tell == 0;
+  ri_tell(v[..], 0); #assert ri_test_heard(v[..], 0, "e coin 0 0") && ri_test_heard(v[..], 0, "e say 0 1") && v[0].itm.c[0].tell == -1 && v[0].eg[0].ev_n == 2;   // (the line it was told, and its coin)
+  // a room with no content, or content that is not Everglade's, grants nothing
+  w: [1] RmServer; rm_init(w[..]); rm_clock(w[..], 1000, 1762190000000);
+  #assert !rm_content_load(w[..], "aethyr.content.v1 d 1\nreach 1\n") && !rm_content_load(w[..], "nope") && rm_content_rev(w[..]) == 0;
+  c = ri_open(w[..], 0, 0, "p-a", 7); rm_items_local(w[..]); #assert rm_items_due(w[..]) > 0; rm_items_local(w[..]);
+  ri_kill(w[..], 0, SeatId.{value = 0}, 0); #assert !ri_say(w[..], 0, SeatId.{value = 0}, 1) && !ri_wear(w[..], 0, SeatId.{value = 0}, 1) && rm_items_pending(w[..]) == 0;
+}
+#test "items: a quest from its giver to its reward, each step one ledger operation; the seat hears each change" #steps 4000000000 {
+  v: [1] RmServer; st: [1] RiStore; ri_test_init(v[..], 1762190000000);
+  seat := SeatId.{value = 0};
+  c := ri_open(v[..], 0, 0, "p-a", 7); ri_test_drain(v[..], st[..]);
+  // the Warden's first line: heard only where the Warden stands; the quest is taken
+  v[0].eg[0].seat[0].pose.z = -61.0; #assert !ri_say(v[..], 0, seat, 1);
+  v[0].eg[0].seat[0].pose.z = -59.0; #assert ri_say(v[..], 0, seat, 1) && !ri_say(v[..], 0, seat, 9) && ri_test_heard(v[..], 0, "e say 0 1");
+  ri_test_drain(v[..], st[..]); #assert char_stage(v[0].itm.c[0].rec, 1) == 1;
+  // four Wolves (the room's template 0); a Goblin is not one
+  ri_kill(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]); #assert char_stage(v[0].itm.c[0].rec, 1) == 1;
+  for i: 0..<4 { ri_kill(v[..], 0, seat, 0); }
+  #assert ri_soon(v[..], 0, 1) == 5; ri_test_drain(v[..], st[..]); #assert char_stage(v[0].itm.c[0].rec, 1) >= 5;
+  // more Wolves until two pelts have dropped: each pelt in the bag is used up as the quest asks
+  for i: 0..<40 { if char_stage(v[0].itm.c[0].rec, 1) >= 7 { break; } ri_kill(v[..], 0, seat, 0); ri_test_drain(v[..], st[..]); }
+  #assert char_stage(v[0].itm.c[0].rec, 1) == 7 && ri_test_wrote(st[..], LOP_CONSUME) == 2;
+  // the Warden again: the talk, then the reward at once: the cloak, 25 coin, 100 XP
+  #assert ri_say(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]);
+  r := v[0].itm.c[0].rec;
+  #assert char_stage(r, 1) == 9 && r.coin == 25 && r.xp == 100 && ri_test_items(st[..], 3) == 1 && ri_test_wrote(st[..], LOP_CONSUME) == 2;
+  // the cloak is worn in the slot its kind names, taken off, and worn again; another's item, or a pelt, is not
+  cloak := 0; for b: 0..<r.bag_n { if v[0].itm.c[0].kinds[b] == 3 { cloak = r.bag[b]; } }
+  #assert cloak > 0 && ri_wear(v[..], 0, seat, cloak) && !ri_wear(v[..], 0, seat, 999) && !ri_wear(v[..], 0, seat, 0) && !ri_bare(v[..], 0, seat, 1);
+  ri_test_drain(v[..], st[..]); #assert v[0].itm.c[0].rec.worn[1] == cloak;
+  #assert ri_bare(v[..], 0, seat, 1) && !ri_bare(v[..], 0, seat, 10) && !ri_bare(v[..], 0, seat, -1); ri_test_drain(v[..], st[..]); #assert v[0].itm.c[0].rec.worn[1] == 0;
+  #assert ri_wear(v[..], 0, seat, cloak); ri_test_drain(v[..], st[..]);
+  // told whole: coin, the quest's stage and the cloak in its slot
+  v[0].eg[0].ev_n = 0; v[0].eg[0].ev_bytes = 0; v[0].itm.c[0].tell = 0; ri_tell(v[..], 0); ri_tell(v[..], 0);
+  tb: [48] u8; n := wire_put_own(tb[..], 0, WO_ITEM, WireOwn.{ss = 0, a = cloak, b = 3, c = 2});
+  #assert ri_test_heard(v[..], 0, "e coin 0 25") && ri_test_heard(v[..], 0, "e quest 0 1 9") && ri_test_heard(v[..], 0, cast(string) tb[0..<n]);
+  // nothing more is owed: more kills and talks move nothing
+  ri_kill(v[..], 0, seat, 0); _ := ri_say(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]);
+  #assert char_stage(v[0].itm.c[0].rec, 1) == 9 && v[0].itm.c[0].rec.coin == 25 && ri_test_items(st[..], 3) == 1;
+  #assert ledger_reconcile(st[0].l[..], st[0].l[0].out_n) && v[0].itm.refused == 0 && v[0].itm.failures == 0;
+}
+#test "items: a lost answer, a late one, a refusal and a stale version: each operation is applied once or not at all" #steps 4000000000 {
+  v: [1] RmServer; st: [1] RiStore; ri_test_init(v[..], 1762190000000); ob: [IO_ANSWER] u8;
+  c := ri_open(v[..], 0, 0, "p-a", 7); ri_test_drain(v[..], st[..]);
+  #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 1, CharClaim.{});
+  // the API takes it, and its answer is lost: the same bytes go again after the wait, and answer the record
+  n := rm_items_due(v[..]); first: [IO_ASK] u8; for i: 0..<n { first[i] = v[0].itm.out[i]; }
+  lost := ri_store_answer(st[..], v[0].itm.box[v[0].itm.fly_i].op, v[0].wall_ms, ob[..]);
+  rm_items_answer(v[..], v[0].itm.request, 0, ""); #assert v[0].itm.failures == 1 && rm_items_pending(v[..]) == 1 && rm_items_due(v[..]) == 0;
+  rm_clock(v[..], v[0].mono_ms + RI_RETRY_MS, v[0].wall_ms + RI_RETRY_MS);
+  m := rm_items_due(v[..]); #assert m == n && cast(string) v[0].itm.out[0..<m] == cast(string) first[0..<n];
+  // an answer to the first post, come late, is not this post's
+  rm_items_answer(v[..], v[0].itm.request - 1, 200, lost); #assert v[0].itm.late == 1 && rm_items_pending(v[..]) == 1;
+  #assert ri_test_post(v[..], st[..]) == false;   // (it is in flight)
+  rm_items_answer(v[..], v[0].itm.request, 200, ri_store_answer(st[..], v[0].itm.box[v[0].itm.fly_i].op, v[0].wall_ms, ob[..]));
+  #assert rm_items_pending(v[..]) == 0 && ri_test_items(st[..], 1) == 1 && v[0].itm.applied == 2 && v[0].itm.c[0].rec.bag_n == 1 && ri_test_heard(v[..], 0, "e loot 0 1");
+  rm_items_answer(v[..], v[0].itm.request, 200, lost); #assert v[0].itm.late == 2;   // the same answer again: nothing flies
+  // no answer at all: after RI_RECEIPT_MS the post has failed and goes again
+  #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 2, CharClaim.{}) && rm_items_due(v[..]) > 0;
+  rm_clock(v[..], v[0].mono_ms + RI_RECEIPT_MS - 1, v[0].wall_ms + RI_RECEIPT_MS - 1); #assert rm_items_due(v[..]) == 0;
+  rm_clock(v[..], v[0].mono_ms + 1, v[0].wall_ms + 1); #assert rm_items_due(v[..]) == 0 && v[0].itm.failures == 2;
+  rm_clock(v[..], v[0].mono_ms + RI_RETRY_MS, v[0].wall_ms + RI_RETRY_MS); #assert ri_test_post(v[..], st[..]) && ri_test_items(st[..], 2) == 1 && v[0].itm.fails == 0;
+  // a body that is no answer, and a 5xx: again; a 4xx is the API's last word: dropped
+  #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 2, CharClaim.{}) && rm_items_due(v[..]) > 0;
+  rm_items_answer(v[..], v[0].itm.request, 200, "{\"status\":\"ok\"}"); #assert rm_items_pending(v[..]) == 1 && v[0].itm.failures == 3;
+  rm_clock(v[..], v[0].mono_ms + RI_RETRY_MS, v[0].wall_ms + RI_RETRY_MS); #assert rm_items_due(v[..]) > 0;
+  rm_items_answer(v[..], v[0].itm.request, 503, ""); #assert rm_items_pending(v[..]) == 1 && v[0].itm.failures == 4 && v[0].itm.fails == 2;
+  // the second failure in a row waits twice as long, and the wait never passes RI_RETRY_MAX_MS
+  rm_clock(v[..], v[0].mono_ms + RI_RETRY_MS, v[0].wall_ms + RI_RETRY_MS); #assert rm_items_due(v[..]) == 0;
+  rm_clock(v[..], v[0].mono_ms + RI_RETRY_MS, v[0].wall_ms + RI_RETRY_MS); #assert rm_items_due(v[..]) > 0;
+  for i: 0..<8 { rm_items_answer(v[..], v[0].itm.request, 0, ""); #assert v[0].itm.retry_at - v[0].wall_ms <= RI_RETRY_MAX_MS; rm_clock(v[..], v[0].mono_ms + RI_RETRY_MAX_MS, v[0].wall_ms + RI_RETRY_MAX_MS); #assert rm_items_due(v[..]) > 0; }
+  #assert v[0].itm.retry_at <= v[0].wall_ms && v[0].itm.fails == 10;
+  rm_items_answer(v[..], v[0].itm.request, 403, "{\"error\":\"another shard's player\"}"); #assert rm_items_pending(v[..]) == 0 && v[0].itm.dropped == 1 && ri_test_items(st[..], 2) == 1 && v[0].itm.fails == 0;
+  // the inventory changed under the room (another writer): refused as stale by version, sent again under a new ID with the version heard
+  other := io_fixture(); other.op = LOP_CLAIM; other.kind = 0; other.claim = CharClaim.{}; other.gen = 7; other.ver = v[0].itm.c[0].ver;
+  #assert io_read(ri_store_answer(st[..], other, v[0].wall_ms, ob[..])).status == LEDGER_OK;
+  #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 2, CharClaim.{}) && ri_test_post(v[..], st[..]) && rm_items_pending(v[..]) == 1 && v[0].itm.reissued == 1;
+  #assert ri_test_post(v[..], st[..]) && rm_items_pending(v[..]) == 0 && ri_test_items(st[..], 2) == 2;
+  // a forged or repeated claim is refused by the record and dropped: no item, no coin
+  #assert ri_push(v[..], 0, RI_QUEST, LOP_GRANT, 0, 3, CharClaim.{quest = 1, from = 8, to = 9, coin = 25});
+  ri_test_drain(v[..], st[..]); #assert v[0].itm.refused == 1 && ri_test_items(st[..], 3) == 0 && v[0].itm.c[0].rec.coin == 0;
+  // another room owns the character now: this room's operations for it are dropped, every one
+  #assert ledger_fence(st[0].l[..], CharacterId.{value = 0}, OwnerGeneration.{value = 8});
+  #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 1, CharClaim.{}) && ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 1, CharClaim.{});
+  ri_test_drain(v[..], st[..]); #assert rm_items_pending(v[..]) == 0 && v[0].itm.refused == 3 && ri_test_items(st[..], 1) == 1;
+  #assert ledger_reconcile(st[0].l[..], st[0].l[0].out_n);
+}
+#test "items: a character that leaves keeps its place until its operations have left; the outbox refuses when full" #steps 4000000000 {
+  v: [1] RmServer; st: [1] RiStore; ri_test_init(v[..], 1762190000000);
+  c := ri_open(v[..], 0, 3, "p-a", 7); ri_test_drain(v[..], st[..]);
+  #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 1, CharClaim.{});
+  v[0].eg[0].seat[3].live = true; ri_left(v[..], 0, SeatId.{value = 3});
+  #assert ri_seat(v[..], 0, 3) == -1 && v[0].itm.c[0].live && rm_items_pending(v[..]) == 1;
+  ri_test_drain(v[..], st[..]); #assert !v[0].itm.c[0].live && ri_test_items(st[..], 1) == 1;
+  // it sits again: a new read, and the item is in its bag
+  c = ri_open(v[..], 0, 2, "p-a", 7); ri_test_drain(v[..], st[..]); #assert c == 0 && v[0].itm.c[0].rec.bag_n == 1 && v[0].itm.c[0].kinds[0] == 1;
+  for i: 0..<RI_BOX { #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 1, CharClaim.{}); }
+  #assert !ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 1, CharClaim.{}) && v[0].itm.full == 1 && rm_items_pending(v[..]) == RI_BOX;
+}
+
+// One fault-injected play of the first quest by one player (#13291's done-when): kill, loot, bring, reward,
+// wear, with the API down, answering twice, losing answers, and answering late across a room's restart;
+// then log out, the room killed, and log in. Nothing is lost and nothing is doubled, and the ledger
+// reconciles to nothing.
+ri_test_play :: (seed: int) -> bool {
+  v: [1] RmServer; st: [1] RiStore; ob: [IO_ANSWER] u8;
+  wall := 1762190000000 + seed * 100000; rng := seed * 7919 + 17; kills := 0; restarts := 0;
+  late := ItemOp.{}; late_due := false;
+  ri_test_init(v[..], wall); seat := SeatId.{value = 0};
+  c := ri_open(v[..], 0, 0, "p-a", 7);
+  for step: 0..<2400 {
+    wall += 1100; rm_clock(v[..], 1000 + step * 1100, wall);
+    rec := v[0].itm.c[0].rec; stage := char_stage(rec, 1);
+    cloak := 0; for b: 0..<rec.bag_n { if v[0].itm.c[0].kinds[b] == 3 { cloak = rec.bag[b]; } }
+    done := stage == 9 && cloak > 0 && rec.worn[1] == cloak;
+    if done && rm_items_pending(v[..]) == 0 && !late_due { break; }
+    // the player's next act, from what the server has told it; only when nothing of its is waiting
+    if v[0].itm.c[0].synced && rm_items_pending(v[..]) == 0 {
+      if stage == 0 || stage == 7 { _ := ri_say(v[..], 0, seat, 1); }
+      else if stage < 7 && kills < 24 { ri_kill(v[..], 0, seat, 0); kills += 1; }
+      else if stage == 9 && cloak > 0 && rec.worn[1] != cloak { _ := ri_wear(v[..], 0, seat, cloak); }
+    }
+    // an old room's post that the API only now takes
+    if late_due && rng % 3 == 0 { _ := ri_store_answer(st[..], late, wall, ob[..]); late_due = false; }
+    if rm_items_due(v[..]) == 0 { continue; }
+    rng = rng * 48271 % 2147483647; fault := rng / 1000 % 10;
+    op := v[0].itm.box[v[0].itm.fly_i].op; request := v[0].itm.request;
+    if fault == 0 { rm_items_answer(v[..], request, 0, ""); }                                          // the API is down
+    else if fault == 1 { rm_items_answer(v[..], request, 502, "bad gateway"); }
+    else if fault == 2 { _ := ri_store_answer(st[..], op, wall, ob[..]); rm_items_answer(v[..], request, 0, ""); }   // taken, the answer lost
+    else if fault == 3 {                                                                               // answered twice
+      body := ri_store_answer(st[..], op, wall, ob[..]);
+      rm_items_answer(v[..], request, 200, body); rm_items_answer(v[..], request, 200, body);
+    } else if fault == 4 && restarts < 3 {                                                             // the room dies with the post in flight
+      late = op; late_due = true; restarts += 1;
+      ri_test_init(v[..], wall); c = ri_open(v[..], 0, 0, "p-a", 7);
+    } else { rm_items_answer(v[..], request, 200, ri_store_answer(st[..], op, wall, ob[..])); }
+  }
+  if late_due { _ := ri_store_answer(st[..], late, wall, ob[..]); }
+  // log out, the room killed, log in: the record is the store's
+  ri_left(v[..], 0, seat); ri_test_init(v[..], wall + 5000); c = ri_open(v[..], 0, 0, "p-a", 7); ri_test_drain(v[..], st[..]);
+  rec := v[0].itm.c[0].rec; pelts := ri_test_items(st[..], 1);
+  cloak := 0; for b: 0..<rec.bag_n { if v[0].itm.c[0].kinds[b] == 3 { cloak = rec.bag[b]; } }
+  if !v[0].itm.c[0].synced || char_stage(rec, 1) != 9 || rec.coin != 25 || rec.xp != 100 { return false; }           // the quest and its reward, once
+  if ri_test_items(st[..], 3) != 1 || cloak == 0 || rec.worn[1] != cloak { return false; }                             // one cloak, worn
+  if ri_test_wrote(st[..], LOP_CONSUME) != 2 || ri_test_wrote(st[..], LOP_GRANT) != pelts + 2 + 1 { return false; }   // every pelt granted is in the bag or was brought
+  if pelts + 2 > kills || rec.bag_n != pelts + 1 { return false; }                                                    // never more drops than kills
+  return ledger_reconcile(st[0].l[..], st[0].l[0].out_n);
+}
+#test "items: 1,000 fault-injected plays: nothing lost, nothing doubled, and the ledger reconciles" #steps 400000000000 {
+  bad := -1;
+  for seed: 0..<1000 { if !ri_test_play(seed) { bad = seed; break; } }
+  #assert bad == -1;
+}
+#test "items: a seated player's frames only ask: a talk far from its speaker, an item not held and an empty slot change nothing; the room's own kill counts" #steps 4000000000 {
+  v: [1] RmServer; ck_test_init(v[..]); #assert rm_content_load(v[..], EC_FIXTURE);
+  k := ck_test_join(v[..], 0, 7, CharacterCapture.{}); ck_test_place(v[..], k);
+  b: [256] u8; #assert rm_checkpoint_due(v[..]) > 0; rm_checkpoint_answer(v[..], 1, 200, ck_test_receipt(v[..], "applied", b[..]));
+  // the seat's first operation is the read of its record
+  #assert ri_seat(v[..], k, 0) == 0 && rm_items_pending(v[..]) == 1 && ri_pid(v[..], 0) == "p-a" && v[0].itm.c[0].gen == 7;
+  while rm_items_due(v[..]) > 0 { rm_items_local(v[..]); }
+  #assert v[0].itm.c[0].synced;
+  // a talk from 500 m away is not heard; standing by the Warden it is, and the quest is taken
+  v[0].eg[k].seat[0].pose.x = 500; v[0].eg[k].seat[0].pose.z = 0; rm_heard(v[..], 0, "E 9 6 1"); #assert rm_items_pending(v[..]) == 0;
+  v[0].eg[k].seat[0].pose.x = 0; rm_heard(v[..], 0, "E 10 6 1"); #assert rm_items_pending(v[..]) == 1;
+  while rm_items_due(v[..]) > 0 { rm_items_local(v[..]); }
+  #assert char_stage(v[0].itm.c[0].rec, 1) == 1;
+  // an item it doesn't hold, a slot with nothing in it, a dialogue that is none, v1's quest board: nothing
+  rm_heard(v[..], 0, "E 11 7 5"); rm_heard(v[..], 0, "E 12 8 1"); rm_heard(v[..], 0, "E 13 6 99"); rm_heard(v[..], 0, "E 14 4 1"); rm_heard(v[..], 0, "E 15 7 0");
+  #assert rm_items_pending(v[..]) == 0 && char_stage(v[0].itm.c[0].rec, 1) == 1;
+  // a Wolf the seat hurt falls in the room's own step: the quest's kill, by the room
+  mo := v[0].eg[k].monsters[0].mon[0..<1];
+  mo[0].q = 0; mo[0].id = 987654; mo[0].state = E2M_CHASE; mo[0].kind = E2M_WOLF; mo[0].hurt_by = 1;
+  e2_monsters_after(v[..], k);
+  #assert rm_items_pending(v[..]) >= 1 && ri_soon(v[..], 0, 1) == 2;
+  while rm_items_due(v[..]) > 0 { rm_items_local(v[..]); }
+  #assert char_stage(v[0].itm.c[0].rec, 1) == 2 && v[0].itm.refused == 0;
+  // it leaves: nothing of its waits, so its place is free
+  eg_left(v[..], v[0].conns[0].relay, SeatId.{value = 0}); #assert ri_seat(v[..], k, 0) == -1 && !v[0].itm.c[0].live;
+}

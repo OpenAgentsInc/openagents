@@ -365,6 +365,8 @@ e2_monsters_after :: (v: [] RmServer, k: int) {
     // its SRD XP, split evenly among the seats that hurt it
     n := 0; for s: 0..<EG_SEATS { if (mo[0].hurt_by & (1 << s)) != 0 && v[0].eg[k].seat[s].live { n += 1; } }
     if n > 0 { for s: 0..<EG_SEATS { if (mo[0].hurt_by & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, rs_max(E2M_XP[mo[0].kind] / n, 1)); } } }
+    // its drop and its place in their quests, by the content tables (coax/web/room/room-items.coax, #13291, #13292)
+    for s: 0..<EG_SEATS { if (mo[0].hurt_by & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ri_kill(v, k, SeatId.{value = s}, mo[0].kind); } }
   }
 }
 

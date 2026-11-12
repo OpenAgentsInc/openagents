@@ -27,9 +27,9 @@ A JSON object with exactly these 11 keys, written in this order:
 | `known` | Ability content IDs (#13286) learned past the class kit, ascending, no repeats, at most 32 | The room |
 | `bag` | Item IDs (`verse.items.id`), ascending, no repeats, at most 32 | The item ledger only |
 | `inv` | The ledger's inventory version | The item ledger only |
-| `worn` | 10 slots (head, body, hands, legs, feet, neck, ring, main, off, ranged): an item ID in `bag`, or 0; no item twice | The room |
-| `coin` | Copper pieces, 0 to 999,999,999. Game currency, never money | The room |
-| `quests` | `[quest content ID, stage]` pairs, stage 0 to 255, ascending by ID, no repeats, at most 32 | The room (#13292) |
+| `worn` | 10 slots (head, body, hands, legs, feet, neck, ring, main, off, ranged): an item ID in `bag`, or 0; no item twice | A claim (`char_claim`) |
+| `coin` | Copper pieces, 0 to 999,999,999. Game currency, never money | A claim (`char_claim`) |
+| `quests` | `[quest content ID, stage]` pairs, stage 0 to 255, ascending by ID, no repeats, at most 32. A stage only rises | A claim (`char_claim`, #13292) |
 
 The level is never stored. It is `srd_level_from(xp, floor, 6)`
 (`char_level`), from the rules' one table in
@@ -52,6 +52,12 @@ and takes off any worn item no longer in the kept bag.
 Items change only through the item ledger (`aethyr/session/ledger.coax`,
 #13291). The store fills `bag` and `inv` from the ledger when it loads a
 record.
+
+What is worn, coin and quests change only by a claim: what a room's ledger
+operation asks of the record, applied by the API with that operation, once
+(`char_claim`; [item operation v1](everglade-item-op-v1.md)). A claim's quest
+part names the stage the quest is at, so a claim sent twice changes nothing the
+second time.
 
 ## Where the record lives
 

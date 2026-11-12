@@ -104,6 +104,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_i
   rv_join(v, k, seat_id);   // the HP its player left with (room-vitals.coax, #12715)
   rv_back(v, k, seat_id);   // and where they stood in this room, if lately
   ev_join(v, k, seat_id);   // its XP and its character's level (room-events.coax, #12739)
+  ri_join(v, k, seat_id);   // its character's record: a read through the ledger's lane (coax/web/room/room-items.coax, #13291)
   v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;   // the realm's pvp row (room-control.coax, #12714)
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   b: [128] u8;
@@ -185,6 +186,7 @@ eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
   ck_capture(v, k, seat_id); rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
+  ri_left(v, k, seat_id);   // its ledger operations still leave (room-items.coax)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
   v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
   egb_leave(v[0].eg[k].rules[..], seat);

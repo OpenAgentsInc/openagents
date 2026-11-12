@@ -12912,7 +12912,7 @@ CREATE FUNCTION verse.item_reconcile() RETURNS boolean
 DECLARE e verse.item_outbox; ok boolean;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS item_r (id bigint PRIMARY KEY, kind int, owner text, escrow_to text) ON COMMIT DROP;
-  CREATE TEMP TABLE IF NOT EXISTS inv_r (who text PRIMARY KEY, version int) ON COMMIT DROP;
+  CREATE TEMP TABLE IF NOT EXISTS inv_r (who text PRIMARY KEY, version bigint) ON COMMIT DROP;
   DELETE FROM item_r; DELETE FROM inv_r;
   FOR e IN SELECT * FROM verse.item_outbox ORDER BY seq LOOP
     INSERT INTO inv_r VALUES (e.who, 0) ON CONFLICT DO NOTHING;
@@ -12921,6 +12921,8 @@ BEGIN
     ELSIF e.op = 'transfer' THEN UPDATE item_r SET owner = e.to_who WHERE id = e.item; UPDATE inv_r SET version = version + 1 WHERE who IN (e.who, e.to_who);
     ELSIF e.op = 'escrow' THEN UPDATE item_r SET escrow_to = e.to_who WHERE id = e.item; UPDATE inv_r SET version = version + 1 WHERE who = e.who;
     ELSIF e.op = 'settle' THEN UPDATE item_r SET owner = e.to_who, escrow_to = NULL WHERE id = e.item; UPDATE inv_r SET version = version + 1 WHERE who IN (e.who, e.to_who);
+    ELSIF e.op = 'consume' THEN DELETE FROM item_r WHERE id = e.item; UPDATE inv_r SET version = version + 1 WHERE who = e.who;
+    ELSIF e.op = 'claim' THEN UPDATE inv_r SET version = version + 1 WHERE who = e.who;
     ELSE UPDATE item_r SET escrow_to = NULL WHERE id = e.item; UPDATE inv_r SET version = version + 1 WHERE who = e.who;
     END IF;
   END LOOP;
@@ -21471,7 +21473,8 @@ CREATE TABLE verse.item_ops (
     kind integer,
     result text NOT NULL,
     made bigint,
-    at_ms bigint NOT NULL
+    at_ms bigint NOT NULL,
+    rider text
 );
 
 

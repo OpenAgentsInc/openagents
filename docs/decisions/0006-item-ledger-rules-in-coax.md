@@ -28,6 +28,6 @@ The item ledger existed twice. `aethyr/session/ledger.coax` (`#authority`, mutat
 
 - One set of checks covers both stores. `ledger.coax` and `item-policy.coax` are tested and mutated with zero survivors. `room_checks.coax` "items" runs the route against Postgres: duplicates, conflicts, versions, escrow, settles, fences, expiry, exhaustion, the outbox and the restore audit.
 - A new ledger rule goes into `ledger.coax`, and the route picks it up from there. The SQL side changes only when storage changes.
-- The route takes a few more round trips inside its transaction than the old single plpgsql call did. The items route is cold: nothing calls it in play until #13291.
+- The route takes a few more round trips inside its transaction than the old single plpgsql call did. The items route is cold: nothing calls it in play until #13291. (Since #13291 a room calls it for loot, quests and what is worn, with two more operations, `consume` and `claim`: [item operation v1](../protocol/everglade-item-op-v1.md).)
 - A settle's outbox entry names the escrow party as its receiver, in both stores.
 - The item's content kind is still a raw `int`. Its type comes from #13286.

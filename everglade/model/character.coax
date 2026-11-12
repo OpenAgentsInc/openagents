@@ -19,7 +19,12 @@
 //            and a room's write never changes them (char_accept). Items change only by ledger operations (#13291).
 //   worn     an item ID or 0 for each equipment slot (CHAR_WORN); every worn item is in the bag, once.
 //   coin     copper pieces. Coin is game currency, never money (AGENTS.md: Bitcoin-only money).
-//   quests   (quest content ID, stage) pairs, ascending by ID, no repeats (#13292 gives them meaning).
+//   quests   (quest content ID, stage) pairs, ascending by ID, no repeats. A stage counts what is
+//            done and paid (everglade/model/content.coax) and only rises.
+// What is worn, coin and quests change by a claim (char_claim): what a room's ledger operation asks
+// of the record, applied by the store with that operation, once (#13291, #13292). A claim's quest
+// part is a compare-and-set: it names the stage the quest is at, so a claim sent twice, or sent
+// from a stale read, changes nothing the second time.
 // A room's live fields stay columns in its world during the tick (#13274); this record crosses the
 // tick boundary only at seat (load) and checkpoint (capture).
 //   coax/bin/coax test everglade/model/character.coax --library
@@ -126,6 +131,46 @@ char_accept :: (kept: Character, room: Character) -> Character #effects(all) {
 char_holds :: (c: Character, item: int) -> bool #effects(all) {
   for i: 0..<c.bag_n { if c.bag[i] == item { return true; } }
   return false;
+}
+// The stage c's quest is at; 0 for a quest it has not taken.
+char_stage :: (c: Character, quest: int) -> int #effects(all) {
+  for i: 0..<c.quest_n { if c.quest[i] == quest { return c.stage[i]; } }
+  return 0;
+}
+
+// What a ledger operation asks of the record with it: a quest's stage from `from` to `to` (quest 0:
+// none), coin and XP added, and item `item` worn in slot `slot` (0: the slot emptied; slot below 0: none).
+CharClaim :: struct { quest: int; from: int; to: int; coin: int; xp: int; slot: int = -1; item: int; }
+// The record after a claim; not ok, and nothing changed, when the claim is refused:
+//   - the quest is not at `from` (0 for a quest not taken), `to` is not above it, or the record
+//     holds its CHAR_QUESTS quests and this is another;
+//   - XP would fall; coin would fall below 0;
+//   - the slot is not the record's, or the item is not in the bag;
+//   - anything the claim leaves breaks the record's rules (char_valid): a range, the lists' order.
+// An item already worn elsewhere moves to the slot.
+char_claim :: (c: Character, k: CharClaim) -> Character #effects(all) {
+  out := c;
+  if !c.ok || k.xp < 0 { return Character.{}; }
+  switch add_checked(c.coin, k.coin) { case none { return Character.{}; } case some(v) { out.coin = v; } }
+  switch add_checked(c.xp, k.xp) { case none { return Character.{}; } case some(v) { out.xp = v; } }
+  if k.quest != 0 {
+    at := 0;
+    while at < c.quest_n && c.quest[at] < k.quest { at += 1; }
+    has := at < c.quest_n && c.quest[at] == k.quest;
+    if (has && c.stage[at] != k.from) || (!has && (k.from != 0 || c.quest_n >= CHAR_QUESTS)) || k.to <= k.from { return Character.{}; }
+    if !has {
+      for i: 0..<c.quest_n - at { j := c.quest_n - i; out.quest[j] = out.quest[j - 1]; out.stage[j] = out.stage[j - 1]; }
+      out.quest[at] = k.quest; out.quest_n = c.quest_n + 1;
+    }
+    out.stage[at] = k.to;
+  }
+  if k.slot >= 0 {
+    if k.slot >= CHAR_WORN { return Character.{}; }
+    for s: 0..<CHAR_WORN { if out.worn[s] == k.item { out.worn[s] = 0; } }
+    out.worn[k.slot] = k.item;
+  }
+  if !char_valid(out) { return Character.{}; }
+  return out;
 }
 
 // Whether a list of n IDs is ascending without repeats, each 1 to top.
@@ -385,4 +430,51 @@ char_read :: (text: string) -> Character #effects(all) {
   wear := char_swap(s, "\"worn\":[0,9,0,0,0,0,0,4,0,0]", "\"worn\":[0,0,0,0,0,0,0,0,0,0]", b[..]); w2: [CHAR_BODY] u8;
   #assert char_read(char_swap(wear, "\"bag\":[4,9,12]", char_splice("\"bag\":", 6, 6, many, w2[..]), o[..])).ok;
   w3: [CHAR_BODY] u8; #assert !char_read(char_swap(wear, "\"bag\":[4,9,12]", char_splice("\"bag\":", 6, 6, more, w3[..]), o[..])).ok;
+}
+#test "character: a claim moves a quest's stage only from the stage it names, and only up" {
+  c := char_fixture();   // quests 3 at 0, 8 at 255
+  #assert char_stage(c, 3) == 0 && char_stage(c, 8) == 255 && char_stage(c, 5) == 0 && char_stage(c, 0) == 0;
+  a := char_claim(c, CharClaim.{quest = 3, from = 0, to = 1});
+  #assert a.ok && char_stage(a, 3) == 1 && char_stage(a, 8) == 255 && a.quest_n == 2 && a.coin == 1250 && a.xp == 950 && char_same(char_claim(a, CharClaim.{}), a);
+  // the same claim again finds the quest at 1: refused, and so is one from a stale stage, down, or to the same stage
+  #assert !char_claim(a, CharClaim.{quest = 3, from = 0, to = 1}).ok && !char_claim(a, CharClaim.{quest = 3, from = 2, to = 3}).ok;
+  #assert !char_claim(a, CharClaim.{quest = 3, from = 1, to = 1, coin = 5}).ok && !char_claim(a, CharClaim.{quest = 3, from = 1, to = 0}).ok && char_claim(a, CharClaim.{quest = 3, from = 1, to = 2}).ok;
+  #assert char_claim(a, CharClaim.{quest = 3, from = 1, to = 255}).ok && !char_claim(a, CharClaim.{quest = 3, from = 1, to = 256}).ok && !char_claim(c, CharClaim.{quest = 8, from = 255, to = 256}).ok;
+  // a quest not taken is at 0: it enters in ID order, before, between and after the others
+  b := char_claim(c, CharClaim.{quest = 5, from = 0, to = 1});
+  #assert b.ok && b.quest_n == 3 && b.quest[0] == 3 && b.quest[1] == 5 && b.quest[2] == 8 && b.stage[0] == 0 && b.stage[1] == 1 && b.stage[2] == 255;
+  f := char_claim(c, CharClaim.{quest = 1, from = 0, to = 4}); #assert f.ok && f.quest[0] == 1 && f.stage[0] == 4 && f.quest[1] == 3 && f.stage[1] == 0 && f.quest[2] == 8 && f.stage[2] == 255;
+  l := char_claim(c, CharClaim.{quest = 9, from = 0, to = 2}); #assert l.ok && l.quest[2] == 9 && l.stage[2] == 2 && l.quest[1] == 8 && l.stage[1] == 255;
+  #assert !char_claim(c, CharClaim.{quest = 5, from = 1, to = 2}).ok && !char_claim(c, CharClaim.{quest = -1, from = 0, to = 1}).ok && !char_claim(c, CharClaim.{quest = CHAR_CONTENT_MAX + 1, from = 0, to = 1}).ok;
+  #assert char_claim(c, CharClaim.{quest = CHAR_CONTENT_MAX, from = 0, to = 1}).ok;
+  e := char_new("p-e", 1); g := char_claim(e, CharClaim.{quest = 7, from = 0, to = 1}); #assert g.ok && g.quest_n == 1 && g.quest[0] == 7 && g.stage[0] == 1;
+  // a record with every quest it can hold takes no other, and still moves the ones it has
+  full := char_new("p-f", 1); for i: 0..<CHAR_QUESTS { full.quest[i] = i * 2 + 2; } full.quest_n = CHAR_QUESTS;
+  #assert !char_claim(full, CharClaim.{quest = 1, from = 0, to = 1}).ok && !char_claim(full, CharClaim.{quest = 99, from = 0, to = 1}).ok && char_claim(full, CharClaim.{quest = 64, from = 0, to = 1}).ok;
+  full.quest_n = CHAR_QUESTS - 1; t := char_claim(full, CharClaim.{quest = 1, from = 0, to = 1}); #assert t.ok && t.quest_n == CHAR_QUESTS && t.quest[CHAR_QUESTS - 1] == 62 && t.quest[1] == 2;
+  off := c; off.ok = false; #assert !char_claim(off, CharClaim.{}).ok;
+}
+#test "character: a claim adds coin and XP within the record's ranges, and never lowers XP" {
+  c := char_fixture();   // coin 1250, xp 950
+  a := char_claim(c, CharClaim.{coin = 25, xp = 100}); #assert a.ok && a.coin == 1275 && a.xp == 1050 && char_level(a) == 3;
+  #assert char_claim(c, CharClaim.{coin = -1250}).coin == 0 && char_claim(c, CharClaim.{coin = -1250}).ok && !char_claim(c, CharClaim.{coin = -1251}).ok;
+  #assert char_claim(c, CharClaim.{coin = CHAR_COIN_MAX - 1250}).coin == CHAR_COIN_MAX && !char_claim(c, CharClaim.{coin = CHAR_COIN_MAX - 1249}).ok;
+  #assert char_claim(c, CharClaim.{xp = CHAR_XP_MAX - 950}).xp == CHAR_XP_MAX && !char_claim(c, CharClaim.{xp = CHAR_XP_MAX - 949}).ok && !char_claim(c, CharClaim.{xp = -1}).ok && char_claim(c, CharClaim.{xp = 0}).ok;
+  #assert !char_claim(c, CharClaim.{coin = 9223372036854775807}).ok && !char_claim(c, CharClaim.{xp = 9223372036854775807}).ok;
+  // a refused part refuses the whole claim
+  #assert !char_claim(c, CharClaim.{quest = 3, from = 0, to = 1, coin = -2000}).ok && !char_claim(c, CharClaim.{quest = 3, from = 5, to = 6, coin = 10}).ok;
+  both := char_claim(c, CharClaim.{quest = 3, from = 0, to = 1, coin = 10, xp = 5}); #assert both.ok && both.coin == 1260 && both.xp == 955 && char_stage(both, 3) == 1;
+}
+#test "character: a claim wears an item the bag holds, moves it between slots, and empties a slot" {
+  c := char_fixture();   // bag 4, 9, 12; worn: slot 1 item 9, slot 7 item 4
+  a := char_claim(c, CharClaim.{slot = 0, item = 12}); #assert a.ok && a.worn[0] == 12 && a.worn[1] == 9 && a.worn[7] == 4;
+  #assert !char_claim(c, CharClaim.{slot = 0, item = 5}).ok && !char_claim(c, CharClaim.{slot = CHAR_WORN, item = 12}).ok && char_claim(c, CharClaim.{slot = CHAR_WORN - 1, item = 12}).worn[9] == 12;
+  m := char_claim(c, CharClaim.{slot = 2, item = 9}); #assert m.ok && m.worn[2] == 9 && m.worn[1] == 0 && m.worn[7] == 4;
+  z := char_claim(a, CharClaim.{slot = 3, item = 12}); #assert z.ok && z.worn[0] == 0 && z.worn[3] == 12;
+  same := char_claim(c, CharClaim.{slot = 1, item = 9}); #assert same.ok && char_same(same, c);
+  e := char_claim(c, CharClaim.{slot = 7, item = 0}); #assert e.ok && e.worn[7] == 0 && e.worn[1] == 9;
+  // no slot: nothing worn changes, whatever the item
+  n := char_claim(c, CharClaim.{slot = -1, item = 12}); #assert n.ok && char_same(n, c); n = char_claim(c, CharClaim.{item = 5}); #assert n.ok && char_same(n, c);
+  n = char_claim(c, CharClaim.{slot = -2, item = 5}); #assert n.ok && char_same(n, c);
+  #assert !char_claim(c, CharClaim.{slot = 0, item = -1}).ok;
 }

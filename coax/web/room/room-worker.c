@@ -49,7 +49,11 @@ EXPORT("rw_clock") void rw_clock(double mono_ms, double wall) {
 }
 /* Once a second: the players' vitals the room notes, kept by the room itself as room-host.c does under
    --dev with no vitals URL (room-vitals.coax rm_vitals_local): offline play has no API to post to. */
-EXPORT("rw_vitals") void rw_vitals(void) { if (rm_vitals_due(view()) > 0) rm_vitals_local(view()); }
+EXPORT("rw_vitals") void rw_vitals(void) {
+  if (rm_vitals_due(view()) > 0) rm_vitals_local(view());
+  /* the item ledger's operations (room-items.coax): offline, the room's stand-in store answers them */
+  for (int i = 0; i < 16 && rm_items_due(view()) > 0; i++) rm_items_local(view());
+}
 /* The realm's published world (its JSON), laid over the room's plan, as room-host.c world_ask. */
 EXPORT("rw_edits") void rw_edits(int32_t n) { world_edits(buf, n); }
 /* The API's word on the rooms (room-control.coax lines), as room-host.c control_ask under --dev. */

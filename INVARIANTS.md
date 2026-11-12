@@ -1481,13 +1481,20 @@ another payload under an ID is `conflict`, an ask first sent a day
 (`LEDGER_KEEP`, ms) ago or more is `expired`, a generation below the
 character's newest owner (`verse.room_owners`) is `stale`, a version other
 than the inventory's is `version`, a version with no next value is
-`exhausted`, and an escrowed item moves only by its settle or cancel. Each
+`exhausted`, and an escrowed item moves only by its settle or cancel. A
+`consume` uses an item up, and a `claim` changes no item (#13291). An
+operation can carry a claim on the character's record (a quest's stage from
+one value to the next, coin, XP, an item worn; `char_claim` in
+`everglade/model/character.coax`): the route applies the operation and its
+claim in one transaction, or neither, so a reward is paid once. A page can't
+write an item, coin, a quest's stage or a reward. Each
 change appends its `verse.item_outbox` entry in the same transaction, and
 replaying the outbox gives the same items, owners and versions
 (`verse.item_reconcile`). Only a room-key-signed post reaches it. The ledger
 holds game items only, never money. Checks: `aethyr/session/ledger.coax` and
 `coax/web/api/item-policy.coax` tests with `coax mutate` at zero survivors,
-and `coax/web/api/tests/room_checks.coax` items.
+`coax/web/api/tests/room_checks.coax` items and item ops, and
+`coax/web/room/room-items.coax` (1,000 fault-injected plays).
 
 ## Every moderator action is logged before it is done, and the log is never edited
 

@@ -1,0 +1,45 @@
+{
+  "profile": "everglade-item-op-v1",
+  "id": "everglade.item-op.v1",
+  "version": 1,
+  "title": "Everglade item operation v1",
+  "check": "coax/web/tool.sh everglade/model/tools/item-op-profile.coax proto/verse/everglade-item-op-v1.json",
+  "spec": "docs/protocol/everglade-item-op-v1.md",
+  "ask": {
+    "wire": "{\"id\":\"s3-1762190000-7\",\"op\":\"grant\",\"pid\":\"p-a\",\"gen\":4,\"ver\":2,\"item\":null,\"to\":\"\",\"kind\":3,\"sent\":1762190000000,\"quest\":1,\"from\":8,\"stage\":9,\"coin\":25,\"xp\":100,\"slot\":-1,\"wear\":0}"
+  },
+  "answers": [
+    {
+      "wire": "{\"status\":\"ok\",\"item\":12,\"replay\":false,\"ver\":5,\"kinds\":[3,1,3],\"rec\":{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}}",
+      "status": "ok",
+      "item": 12,
+      "replay": false,
+      "ver": 5,
+      "kinds": [
+        3,
+        1,
+        3
+      ],
+      "record": true
+    },
+    {
+      "wire": "{\"status\":\"version\",\"item\":null,\"replay\":true,\"ver\":0,\"kinds\":[],\"rec\":null}",
+      "status": "version",
+      "item": 0,
+      "replay": true,
+      "ver": 0,
+      "kinds": [],
+      "record": false
+    }
+  ],
+  "rejected": [
+    "",
+    "{}",
+    "{\"status\":\"ok\",\"item\":12,\"replay\":false,\"ver\":5,\"kinds\":[3,1,3],\"rec\":{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}",
+    "{\"status\":\"ok\",\"item\":12,\"replay\":false,\"ver\":5,\"kinds\":[3,1],\"rec\":{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}}",
+    "{\"status\":\"fine\",\"item\":12,\"replay\":false,\"ver\":5,\"kinds\":[3,1,3],\"rec\":{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}}",
+    "{\"status\":\"ok\",\"item\":12,\"replay\":false,\"ver\":5,\"kinds\":[3,1,3],\"rec\":{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":-1,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}}",
+    "{\"status\":\"ok\",\"item\":12,\"replay\":false,\"kinds\":[3,1,3],\"rec\":{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}}",
+    " {\"status\":\"ok\",\"item\":12,\"replay\":false,\"ver\":5,\"kinds\":[3,1,3],\"rec\":{\"v\":1,\"who\":\"p-a\",\"class\":\"srd-ranger\",\"xp\":950,\"floor\":2,\"known\":[7,31],\"bag\":[4,9,12],\"inv\":5,\"worn\":[0,9,0,0,0,0,0,4,0,0],\"coin\":1250,\"quests\":[[3,0],[8,255]]}}"
+  ]
+}

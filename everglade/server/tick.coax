@@ -181,6 +181,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_engine_events(v, k);
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
   ev_tick(v, k);       // once a second: the rises and the calm (progress.coax)
+  ri_tick(v, k);       // each seat hears its character's record; once a second, the points its quests ask it to reach (room-items.coax)
 }
 rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }

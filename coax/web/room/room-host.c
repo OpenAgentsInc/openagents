@@ -623,13 +623,13 @@ static void frames(int i) {
    curl, its config on stdin (so the MAC is in no argument list). The curls are started by a small
    poster process forked before the server's memory is taken (a fork of the full server can fail on
    Cloud Run). The main loop offers an atomic local datagram and never waits. */
-/* The seven lanes mirror background-budget.coax. Each has one serial SDK
+/* The eight lanes mirror background-budget.coax. Each has one serial SDK
    helper, one Coax-owned request identity and an atomic, bounded nonblocking
    datagram transport. A full SDK queue cannot stop the simulation, a control
    outage cannot queue behind saves, and no response prefix is published. */
-enum { POST_CONTROL, POST_WORLD, POST_VITALS, POST_CHECKPOINT, POST_DIRECTORY, POST_STATS, POST_MOD, POST_LANES };
+enum { POST_CONTROL, POST_WORLD, POST_VITALS, POST_CHECKPOINT, POST_DIRECTORY, POST_STATS, POST_MOD, POST_ITEMS, POST_LANES };
 #define POST_CAP 16640
-static int poster_fd[POST_LANES] = {-1,-1,-1,-1,-1,-1,-1};
+static int poster_fd[POST_LANES] = {-1,-1,-1,-1,-1,-1,-1,-1};
 static coax_v_t_BgBudget background(void) { return (coax_v_t_BgBudget){server->bg.e,1}; }
 static void poster_run(int fd, pid_t owner) {
   signal(SIGTERM,SIG_IGN); /* final saves continue during a process-group drain */
@@ -799,6 +799,41 @@ static void mod_post(void) {
   if (!post_report(POST_MOD, api_url("OA_ROOM_MOD_URL", "/api/playtest/room-mod-log", buf, sizeof buf), server->mod.mac.e, server->mod.out.e, n, batch))
     rm_mod_answer(view(), batch, 0, (coax_string){"", 0});
 }
+/* The item ledger's lane (room-items.coax, #13291): loot, quest stages and rewards, and what a character
+   wears, one operation a post (everglade.item-op.v1), each sent again as it was until the API answers.
+   --dev posts only when OA_ROOM_ITEMS_URL names an API; otherwise the room's stand-in store answers. */
+static void items_post(void) {
+  int64_t n = rm_items_due(view());
+  if (n <= 0) return;
+  const char *dev_url = getenv("OA_ROOM_ITEMS_URL");
+  if (dev_dir && !(dev_url && *dev_url)) { rm_items_local(view()); return; }
+  char buf[512];
+  int64_t request = server->itm.request;
+  if (!post_report(POST_ITEMS, api_url("OA_ROOM_ITEMS_URL", "/api/playtest/room-items", buf, sizeof buf), server->itm.mac.e, server->itm.out.e, n, request))
+    rm_items_answer(view(), request, 0, (coax_string){"", 0});
+}
+/* The content tables (aethyr-content-v1; room-items.coax rm_content_load, #13294), read once at start: the
+   file OA_ROOM_CONTENT names, else the repository's under --dev, else the one staged beside this binary
+   (stage.sh: src/everglade.content on a VM, /usr/share/everglade/ in the image). A file that is not
+   Everglade's content stops the room at once; with no file the room runs with no loot or quests. */
+static void content_load(void) {
+  static char text[65537], beside[1100];
+  const char *env = getenv("OA_ROOM_CONTENT");
+  const char *paths[4] = {env && *env ? env : NULL, dev_dir ? "everglade/content/everglade.content" : NULL, NULL, "/usr/share/everglade/everglade.content"};
+#ifdef __linux__
+  char exe[1024]; ssize_t en = readlink("/proc/self/exe", exe, sizeof exe - 1);
+  if (en > 0) { exe[en] = 0; char *slash = strrchr(exe, '/'); if (slash) { *slash = 0; snprintf(beside, sizeof beside, "%s/src/everglade.content", exe); paths[2] = beside; } }
+#endif
+  FILE *f = NULL; const char *path = NULL;
+  for (int i = 0; i < 4 && !f; i++) if (paths[i]) { path = paths[i]; f = fopen(path, "rb"); if (!f && i == 0) { fprintf(stderr, "room: OA_ROOM_CONTENT names %s, which can't be read\n", path); exit(1); } }
+  if (!f) { printf("room: no content tables: no loot or quests\n"); return; }
+  size_t n = fread(text, 1, sizeof text, f);
+  fclose(f);
+  if (n == 0 || n > 65536 || !rm_content_load(view(), (coax_string){text, (int64_t)n})) {
+    fprintf(stderr, "room: %s is not Everglade's content tables (coax/web/tool.sh everglade/model/tools/content-check.coax FILE)\n", path); exit(1);
+  }
+  printf("room: content tables revision %lld loaded from %s\n", (long long)rm_content_rev(view()), path);
+}
 static void checkpoint_post(void) {
   const char *dev_url=getenv("OA_ROOM_CHECKPOINT_URL");
   /* --dev with no API: the stand-in's store answers, as production's API does (#13057) */
@@ -823,6 +858,7 @@ static void poster_hear(void) {
     if(lane==POST_CHECKPOINT)rm_checkpoint_answer(view(),batch,status,body);
     else if(lane==POST_VITALS)rm_vitals_answer(view(),batch,status,body);
     else if(lane==POST_MOD)rm_mod_answer(view(),batch,status,body);
+    else if(lane==POST_ITEMS)rm_items_answer(view(),batch,status,body);
     else if(lane==POST_WORLD&&ok){int64_t preparing=now_us();world_edits(body.data,body.count);world_publication_us=now_us()-preparing;warm_rooms();printf("room: the realm's world (%zu bytes) laid over the rooms\n",len);}
     else if(lane==POST_CONTROL&&ok){
       rm_control(view(),body);
@@ -1004,6 +1040,7 @@ int main(int argc, char **argv) {
   const char *tkey = getenv("OA_ROOM_TICKET_KEY");
   const char *must = getenv("OA_ROOM_TICKET_REQUIRED");   /* "0": a join without a ticket sits with no id (while pages roll out) */
   bool required = !(must && !strcmp(must, "0"));
+  content_load();   /* the content tables: loot, quests, dialogue, points (#13294) */
   /* which shard of the instance directory this is (oa-room 1, oa-room-K K: room-directory.coax) */
   const char *shard = getenv("OA_ROOM_SHARD");
   if (shard && *shard) rm_shard(view(), atoi(shard));
@@ -1139,7 +1176,7 @@ int main(int argc, char **argv) {
       }
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); wt_note(); }
       if (now - last_stats >= ST_WINDOW_MS) { stats_window((now - last_stats) / 1000.0); last_stats = now; }
-      control_ask();poster_hear();if(!dev_dir)world_ask();checkpoint_post();mod_post();
+      control_ask();poster_hear();if(!dev_dir)world_ask();checkpoint_post();mod_post();items_post();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
         printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; }
         printf(", %lld events with no room in their tick\n", (long long)rm_eg_dropped(view()));

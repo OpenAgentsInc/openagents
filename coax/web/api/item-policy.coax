@@ -6,21 +6,18 @@
 //   coax/bin/coax test coax/web/api/item-policy.coax --library
 //   coax/bin/coax mutate coax/web/api/item-policy.coax --library --root-only
 #authority;
-#load "../../../aethyr/session/ledger.coax";
+#load "../../../everglade/model/item-op.coax";   // the route's words and its answer (everglade.item-op.v1); it loads the ledger's rules
 
 ITEM_ID_MAX :: 80;   // bytes in an operation ID on the wire
 
-// The operation a route word names, or 0 (none: the gate refuses it).
-item_op :: (word: string) -> int #export_c #effects(all) {
-  words := [5]string.["grant", "transfer", "escrow", "settle", "cancel"];
-  for i: 0..<5 { if word == words[i] { return i + 1; } }
-  return 0;
-}
+// The operation a route word names, or 0 (none: the gate refuses it); "read" asks for the record as
+// it is and is no ledger operation (item_reads).
+item_op :: (word: string) -> int #export_c #effects(all) { return io_op(word); }
+item_reads :: (word: string) -> bool #export_c #effects(all) { return word == IO_WORDS[IO_READ]; }
 // A status's route word.
-item_word :: (status: int) -> string #export_c #effects(all) {
-  words := [9]string.["ok", "conflict", "stale", "version", "held", "full", "expired", "no_item", "exhausted"];
-  return ifx status >= 0 && status < 9 then words[status] else "held";
-}
+item_word :: (status: int) -> string #export_c #effects(all) { return io_word(status); }
+// A route word's status (-1: none, which answers as held).
+item_status :: (word: string) -> int #export_c #effects(all) { return io_status(word); }
 // The ask before any inventory is read (ledger_gate): ID, its operation and writer; the ID's
 // record, if any (seen, applied at `at`, and whether each payload field equals the ask's).
 item_gate :: (id: string, op: int, known: bool, seen: bool, at: int, op_eq: bool, c_eq: bool, item_eq: bool, to_eq: bool, kind_eq: bool,
@@ -43,14 +40,24 @@ item_moves :: (op: int) -> bool #export_c #effects(all) { return ledger_moves(op
 item_settles :: (op: int) -> bool #export_c #effects(all) { return ledger_settles(op); }
 item_escrows :: (op: int) -> bool #export_c #effects(all) { return ledger_escrows(op); }
 item_clears :: (op: int) -> bool #export_c #effects(all) { return ledger_clears(op); }
+// A consumed item is gone; an operation that names an item reads it (every one but a grant and a claim).
+item_destroys :: (op: int) -> bool #export_c #effects(all) { return ledger_destroys(op); }
+item_names :: (op: int) -> bool #export_c #effects(all) { return ledger_names_item(op); }
+// The rule's answer for a writer who holds `held` items: a grant the rule allows is refused (full)
+// when the bag has no room for another (the character record's CHAR_BAG, the ledger's LEDGER_ITEMS).
+item_room :: (op: int, status: int, held: int) -> int #export_c #effects(all) {
+  return ifx status == LEDGER_OK && ledger_creates(op) && ledger_bag_full(held) then LEDGER_FULL else status;
+}
 
 #test "item route: words" {
   #assert item_op("grant") == LOP_GRANT && item_op("transfer") == LOP_TRANSFER && item_op("escrow") == LOP_ESCROW;
   #assert item_op("settle") == LOP_SETTLE && item_op("cancel") == LOP_CANCEL && item_op("") == 0 && item_op("Grant") == 0 && item_op("grants") == 0;
+  #assert item_op("consume") == LOP_CONSUME && item_op("claim") == LOP_CLAIM && item_op("read") == 0 && item_reads("read") && !item_reads("grant") && !item_reads("") && !item_reads("reads");
   #assert item_word(LEDGER_OK) == "ok" && item_word(LEDGER_CONFLICT) == "conflict" && item_word(LEDGER_STALE) == "stale";
   #assert item_word(LEDGER_VERSION) == "version" && item_word(LEDGER_HELD) == "held" && item_word(LEDGER_FULL) == "full";
   #assert item_word(LEDGER_EXPIRED) == "expired" && item_word(LEDGER_NO_ITEM) == "no_item" && item_word(LEDGER_EXHAUSTED) == "exhausted";
   #assert item_word(-1) == "held" && item_word(9) == "held";
+  #assert item_status("ok") == LEDGER_OK && item_status("held") == LEDGER_HELD && item_status("exhausted") == LEDGER_EXHAUSTED && item_status("") == -1 && item_word(item_status("nope")) == "held";
 }
 #test "item route: the gate" {
   a: [80]u8; for i: 0..<80 { a[i] = 'a'; }
@@ -88,9 +95,15 @@ item_clears :: (op: int) -> bool #export_c #effects(all) { return ledger_clears(
   #assert item_rule(LOP_CANCEL, 0, 0, 4, 4, true, true, false, false, false, 0, 0) == LEDGER_HELD;
 }
 #test "item route: effects" {
-  for op: 0..<7 {
+  for op: 0..<9 {
     #assert item_creates(op) == ledger_creates(op) && item_moves(op) == ledger_moves(op) && item_settles(op) == ledger_settles(op);
-    #assert item_escrows(op) == ledger_escrows(op) && item_clears(op) == ledger_clears(op);
+    #assert item_escrows(op) == ledger_escrows(op) && item_clears(op) == ledger_clears(op) && item_destroys(op) == ledger_destroys(op) && item_names(op) == ledger_names_item(op);
   }
+  #assert item_destroys(LOP_CONSUME) && !item_names(LOP_GRANT) && !item_names(LOP_CLAIM) && item_names(LOP_CONSUME);
+  // a bag with room takes a grant; a full bag refuses it; nothing else is the bag's business
+  #assert item_room(LOP_GRANT, LEDGER_OK, 31) == LEDGER_OK && item_room(LOP_GRANT, LEDGER_OK, 32) == LEDGER_FULL && item_room(LOP_GRANT, LEDGER_OK, 0) == LEDGER_OK;
+  #assert item_room(LOP_GRANT, LEDGER_VERSION, 32) == LEDGER_VERSION && item_room(LOP_CLAIM, LEDGER_OK, 32) == LEDGER_OK && item_room(LOP_CONSUME, LEDGER_OK, 32) == LEDGER_OK && item_room(LOP_TRANSFER, LEDGER_OK, 40) == LEDGER_OK;
+  #assert item_rule(LOP_CONSUME, 0, 0, 4, 4, true, true, false, false, false, 0, 0) == LEDGER_OK && item_rule(LOP_CONSUME, 0, 0, 4, 4, true, true, true, false, false, 0, 0) == LEDGER_HELD;
+  #assert item_rule(LOP_CLAIM, 0, 0, 4, 4, false, false, false, false, false, 0, 0) == LEDGER_OK && item_rule(LOP_CLAIM, 0, 0, 3, 4, false, false, false, false, false, 0, 0) == LEDGER_VERSION;
   #assert item_creates(LOP_GRANT) && item_moves(LOP_TRANSFER) && item_escrows(LOP_ESCROW) && item_settles(LOP_SETTLE) && item_clears(LOP_CANCEL);
 }

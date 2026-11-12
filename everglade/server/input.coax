@@ -41,7 +41,13 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     u := wire_read_use(text, rd[..]);
     if !rd[0].ok || eg_fields(text) != 4 { return; }
     // v1's doors, talks and rowboats were its world's (the frozen build's, docs/decisions/0005): refused below
-    // the quest board is the page's (its own quest stages): only ending a slot is
+    // a talk, an item worn and a slot emptied are the character's record's, asked for here and answered by the
+    // ledger (coax/web/room/room-items.coax, #13291, #13292); a page holds no quest stage or item of its own
+    if u.kind == WE_SAY || u.kind == WE_WEAR || u.kind == WE_BARE {
+      heard := ifx u.kind == WE_SAY then ri_say(v, k, seat_id, u.id) else ifx u.kind == WE_WEAR then ri_wear(v, k, seat_id, u.id) else ri_bare(v, k, seat_id, u.id);
+      if !heard { eg_refuse(v, k, seat_id, u.seq, "no"); }
+      return;
+    }
     if u.kind != WE_END { eg_refuse(v, k, seat_id, u.seq, "unbuilt"); return; }
     // an end takes its place among the seat's inputs, as a cast does (rc_ready): with inputs sent
     // before it still queued, it waits for them (eg_ends_due), and the inputs after it wait for it
