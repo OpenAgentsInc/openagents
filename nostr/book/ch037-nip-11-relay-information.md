@@ -852,7 +852,7 @@ the 400 answer: 276 bytes
 
 the client reads the document
   error: ok, name "OpenAgents Relay", software "https://github.com/OpenAgentsInc/openagents", version "r1"
-  supported_nips: 1 9 11 40 42 45 50 62 70 77
+  supported_nips: 1 9 11 17 40 42 45 50 59 62 70 77
   NIP-45 COUNT listed: true, NIP-50 search listed: true, NIP-77 Negentropy listed: true
 advertised against enforced
   max_message_length: advertised 131072, enforced 131072 ok
@@ -864,7 +864,7 @@ advertised against enforced
   default_limit: advertised 127, enforced 127 ok
   auth_required: advertised 0, enforced 0 ok
   restricted_writes: advertised 1, enforced 1 ok
-  supported_nips: 10 listed, relay implements 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77 ok
+  supported_nips: 12 listed, relay implements 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77 ok
   0 mismatches
 
 each limit, at the limit and one past it
