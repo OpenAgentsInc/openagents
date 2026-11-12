@@ -176,7 +176,6 @@ e2mo_home_again :: (mo: [] E2Mon) { mo[0].state = E2M_RETURN; mo[0].foe = -1; mo
 
 // ---- the tick (before the rules' step): spawns, notices, chases, blows and arrows
 e2_monsters_tick :: (v: [] RmServer, k: int) {
-  if !v[0].eg[k].e2 { return; }
   ms := e2mo_room(v, k); r := v[0].eg[k].rules[..]; b := r[0].b[..];
   t := v[0].eg[k].tick; dt := 1.0f32 / f32(EG_HZ);
   respawn := e2mo_hz(ifx v[0].dev.on then f32(E2M_RESPAWN_DEV_S) else f32(E2M_RESPAWN_S));
@@ -345,7 +344,6 @@ e2mo_arrows :: (v: [] RmServer, k: int, t: int) {
 
 // ---- after the rules' step: the fallen
 e2_monsters_after :: (v: [] RmServer, k: int) {
-  if !v[0].eg[k].e2 { return; }
   ms := e2mo_room(v, k); r := v[0].eg[k].rules[..]; b := r[0].b[..]; t := v[0].eg[k].tick;
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
@@ -365,7 +363,6 @@ e2_monsters_after :: (v: [] RmServer, k: int) {
 // A seat's cast at a monster: the creature it harms, when aimed within E2M_AIM m of one standing and not
 // on its way home (-1 none).
 e2_monster_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int {
-  if !v[0].eg[k].e2 { return -1; }
   ms := e2mo_room(v, k); best := f32(E2M_AIM); got := -1;
   for m: 0..<E2M_N {
     mo := ms[0].mon[m];
@@ -392,7 +389,6 @@ e2_monster_struck :: (v: [] RmServer, k: int, s: int, i: int, hp_before: int) {
 // For the path's guard: the creature of a monster that struck at a player standing within `reach` m of
 // (x, z) in the last ten seconds and is still fighting (-1 none), and where it is.
 e2_monster_assailant :: (v: [] RmServer, k: int, x: f32, z: f32, reach: f32) -> int {
-  if !v[0].eg[k].e2 { return -1; }
   ms := e2mo_room(v, k); t := v[0].eg[k].tick; best := reach * 3; got := -1;
   for m: 0..<E2M_N {
     mo := ms[0].mon[m];
@@ -424,7 +420,6 @@ e2_monster_at :: (v: [] RmServer, k: int, i: int) -> [2] f32 {
 // This tick's questions from `first` on: a monster at home whose nearest quarry is within its notice,
 // and an archer about to draw. How many in all.
 e2_monster_sights :: (v: [] RmServer, k: int, first: int) -> int {
-  if !v[0].eg[k].e2 { return first; }
   ms := e2mo_room(v, k); next := first;
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
@@ -445,7 +440,6 @@ e2_monster_sights :: (v: [] RmServer, k: int, first: int) -> int {
   return next;
 }
 e2_monster_ray :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool {
-  if !v[0].eg[k].e2 { return false; }
   ms := e2mo_room(v, k);
   for m: 0..<E2M_N {
     mo := ms[0].mon[m];
@@ -457,7 +451,6 @@ e2_monster_ray :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool {
   return false;
 }
 e2_monster_seen :: (v: [] RmServer, k: int, q: int, clear: bool) {
-  if !v[0].eg[k].e2 { return; }
   ms := e2mo_room(v, k);
   for m: 0..<E2M_N { if ms[0].mon[m].ray == q { ms[0].mon[m].seen = clear; } }
 }

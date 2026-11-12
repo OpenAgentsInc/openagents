@@ -161,7 +161,7 @@ e2g_opportunity :: (v: [] RmServer, k: int, g: [] E2Guard, foe: int) {
 // The trunks round the guard this tick, from the room's world (room-tick.c, room-world.c world2_near):
 // (x, z, radius) each. A room with no world (a check) hands none.
 rm_e2_guard_near :: (v: [] RmServer, k: int, near: [] f32) #export_c #effects(all) {
-  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || !v[0].eg[k].e2 { return; }
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
   g := v[0].eg[k].guard[..]; n := rs_min(near.count / 3, E2G_NEAR);
   for i: 0..<n * 3 { g[0].near[i] = near[i]; }
   g[0].near_n = n;
@@ -254,7 +254,6 @@ e2g_fight :: (v: [] RmServer, k: int, g: [] E2Guard, on: int, tx: f32, tz: f32, 
 // The room's tick, before the rules step: a new guard when due, his walk or his chase, and his body's
 // square in the battle. The foe's Hit Points are kept to tell his blows.
 e2_guard_tick :: (v: [] RmServer, k: int) {
-  if !v[0].eg[k].e2 { return; }
   g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
   dt := 1.0f32 / f32(EG_HZ); t := v[0].eg[k].tick;
   if g[0].q < 0 {
@@ -309,7 +308,6 @@ e2_guard_tick :: (v: [] RmServer, k: int) {
 }
 // After the rules' step: his blows told, his hurts told, his fall.
 e2_guard_after :: (v: [] RmServer, k: int) {
-  if !v[0].eg[k].e2 { return; }
   g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
   if g[0].q < 0 { return; }
   q := g[0].q; i := E5RR_BEAST0 + q; bt := r[0].beasts[q..<q + 1][0];
@@ -358,7 +356,7 @@ e2g_blows :: (v: [] RmServer, k: int, i: int) {
 // A seat's cast at the guard: the creature it harms, when it is aimed within E2G_AIM m of him (-1 none).
 e2_guard_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int {
   g := v[0].eg[k].guard[0];
-  if !v[0].eg[k].e2 || g.q < 0 || g.state == E2G_DOWN { return -1; }
+  if g.q < 0 || g.state == E2G_DOWN { return -1; }
   dx := ax - g.x; dz := az - g.z;
   return ifx dx * dx + dz * dz <= f32(E2G_AIM * E2G_AIM) then E5RR_BEAST0 + g.q else -1;
 }
@@ -401,7 +399,7 @@ e2_guard_snapshot :: (v: [] RmServer, k: int, s: int) {
 }
 // Where his body stands for the movement step (room-world.c world2_step): false when there is none.
 rm_e2_guard_body :: (v: [] RmServer, k: int, out: [] f32) -> bool #export_c #effects(all) {
-  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || !v[0].eg[k].e2 || out.count < 2 { return false; }
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || out.count < 2 { return false; }
   g := v[0].eg[k].guard[0];
   if g.q < 0 { return false; }
   out[0] = g.x; out[1] = g.z;

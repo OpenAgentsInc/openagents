@@ -631,7 +631,7 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-drift-x HTTP/1.1\r\n\r\n") == -1;
   #assert rm_join(v[..], 2, "GET /api/room/relay/everglade/everglade2-1 HTTP/1.1\r\n\r\n") == 0;
   #assert rm_join(v[..], 3, "GET /api/room/relay/everglade/pair-e2-ab12 HTTP/1.1\r\n\r\n") == 0;
-  k := eg_room_at(v[..], v[0].conns[2].relay); #assert k >= 0 && v[0].eg[k].e2;
+  k := eg_room_at(v[..], v[0].conns[2].relay); #assert k >= 0;
 }
 #test "relay: an everglade socket's rate limits drop, count and at last close; other games are unlimited (relay item 4)" #steps 2000000000 {
   v: [1] RmServer;

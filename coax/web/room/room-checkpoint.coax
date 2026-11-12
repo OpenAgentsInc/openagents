@@ -146,7 +146,7 @@ ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   c.state[3]=rs_max(0,trv_repair_ticks()-(v[0].eg[k].tick-st.repaired));c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<CK_USES{c.state[16+q]=hero.uses[q];}
   // Everglade II also carries the seat's rest (profile 3)
-  rest:=CharacterRest.{};if v[0].eg[k].e2&&rs_carry_out(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;rest.more=true;for q:0..<CC_MORE{rest.uses[q]=hero.uses[CK_USES+q];}}
+  rest:=CharacterRest.{};if rs_carry_out(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;rest.more=true;for q:0..<CC_MORE{rest.uses[q]=hero.uses[CK_USES+q];}}
   e:=v[0].ck.slot[i];
   if e.latest.ok&&ck_same(e.latest,e.latest_rest,c,rest){
     // unchanged: when the accepted capture is this one, it still describes the character now, so the
@@ -178,12 +178,12 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].wanted[s]=c.n[12];v[0].eg[k].seat[s].want_seed=c.n[12];
   // a profile 3 rest resumes where it was, without offline credit; one that does not fit this body is dropped
   if c.n[0]==3&&tk.rest.more{for q:0..<CC_MORE{hero[0].uses[CK_USES+q]=rs_min(tk.rest.uses[q],hero[0].uses_max[CK_USES+q]);}}
-  if v[0].eg[k].e2&&c.n[0]==3&&tk.rest.on{_:=rs_carry_in(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,tk.rest.n[..]);v[0].eg[k].seat[s].rest_told= -1;}
+  if c.n[0]==3&&tk.rest.on{_:=rs_carry_in(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,tk.rest.n[..]);v[0].eg[k].seat[s].rest_told= -1;}
   r:=v[0].eg[k].relay;room:=c.room;v[0].eg[k].seat[s].back=false;
   // the same room's code, or for Everglade II any of its rooms: they are one land (#13057), so a
   // restarted or drained room's player comes back where they stood in whichever instance takes them
   here:=ifx r>=0 then cast(string)v[0].relays[r].code[0..<v[0].relays[r].code_n] else "";saved:=cast(string)room[0..<c.room_n];
-  if r>=0&&(saved==here||(v[0].eg[k].e2&&eg_e2_code(saved)&&eg_e2_code(here))){st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;st[0].back_at=rs_max(c.n[4],v[0].wall_ms-CF_BOUND);}
+  if r>=0&&(saved==here||(eg_e2_code(saved)&&eg_e2_code(here))){st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;st[0].back_at=rs_max(c.n[4],v[0].wall_ms-CF_BOUND);}
   // back_at: an idle character's capture keeps its first time (an unchanged one is not written again),
   // but the room never ran it more than CF_BOUND past its accepted capture, so that is the most a page's
   // claim may have moved

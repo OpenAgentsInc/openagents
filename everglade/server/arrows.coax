@@ -170,7 +170,6 @@ e2a_empty :: (v: [] RmServer, k: int, tag: E2ArrowTag) {
 }
 // The tick (after the monsters have moved): this tick's bodies are written down, then every arrow flies to it.
 e2_arrows_tick :: (v: [] RmServer, k: int) {
-  if !v[0].eg[k].e2 { return; }
   e2a_remember(v, k);
   a := e2a_room(v, k);
   if e2a_flying(a) == 0 { return; }   // (epoch may be below 0: a room younger than E2A_LEAD ticks)
@@ -204,7 +203,7 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   rm_heard(v, 0, cast(string) b[0..<n]);
 }
 #test "e2 arrows: a Ranger's loose is an arrow the room flies; the page hears it by id and where it stuck" #steps 4000000000 #traversal 1073741824 {
-  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-arrows"); #assert k >= 0 && v[0].eg[k].e2;
+  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-arrows"); #assert k >= 0;
   a := v[0].eg[k].arrows[..]; out: [262144] u8;
   for q: 0..<10 { e2mt_tick(v[..], k); }
   _ := e2rt_heard(v[..], 0, out[..]);

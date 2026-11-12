@@ -194,10 +194,6 @@ ev_control_done :: (v: [] RmServer) {
   }
   if d.levels != v[0].evc.levels || d.cap != v[0].evc.cap {
     v[0].evc.levels = d.levels; v[0].evc.cap = d.cap;
-    for k: 0..<EG_ROOMS {
-      if !v[0].eg[k].live { continue; }
-      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { ev_build(v, k, SeatId.{value = s}); } }
-    }
   }
 }
 
@@ -256,27 +252,6 @@ ev_kit_has :: (kit: EvKit, slot: int) -> bool {
   if slot >= FB_WL0 { q := slot - FB_WL0; return q < 62 && (kit.hi & (1 << q)) != 0; }
   return slot >= 0 && slot < 62 && (kit.lo & (1 << slot)) != 0;
 }
-// Seat s's character as the levels switch says: the SRD class at its XP's level, or Everglade's own
-// (level 0). Not Everglade II's, whose seats sit at their ticket's level and rise with their XP (room-everglade.coax eg_level_up). Its Hit Points carry over (full stays full; a level gained adds its Hit Points).
-ev_build :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
-  if v[0].eg[k].e2 { return; }   // Everglade II: its seat's class's level, its ticket's or its XP's (room-everglade.coax eg_hello_class, eg_level_up; #13259)
-  demo := v[0].ev[k].demo[s] && eg_ticket(v, k, s_id).admin;
-  want := ifx v[0].evc.d.levels && !demo then ev_level(v, v[0].ev[k].xp[s]) else 0;
-  if want == v[0].ev[k].level[s] { return; }
-  b := v[0].eg[k].rules[0].b[..];
-  i := E5RR_SEAT + s;
-  c := b[0].c[i];
-  n: [1] RsCreature;
-  n[0] = e5rr_hero_of(v[0].eg[k].rules[0].klass[s], want);   // a Character Create class: the SRD class, at level 1 at least
-  n[0].turn_at = c.turn_at; n[0].round_at = c.round_at; n[0].x = c.x; n[0].y = c.y;
-  up := want > v[0].ev[k].level[s] && v[0].ev[k].level[s] > 0;
-  if c.dead || c.hp <= 0 { n[0].hp = 0; n[0].dead = c.dead; }
-  else if c.hp >= c.hp_max { n[0].hp = n[0].hp_max; }
-  else if up { n[0].hp = rs_min(c.hp + n[0].hp_max - c.hp_max, n[0].hp_max); }
-  else { n[0].hp = rs_max(rs_min(c.hp, n[0].hp_max), 1); }
-  b[0].c[i] = n[0];
-  v[0].ev[k].level[s] = want;
-}
 // Whether seat s's character has bar slot `slot` (entry a) in its kit, and a spell slot for it.
 ev_may_cast :: (v: [] RmServer, k: int, s_id: SeatId, slot: int, a: FbAb) -> bool { s := s_id.value;
   lv := v[0].ev[k].level[s];
@@ -292,28 +267,25 @@ ev_hello :: (v: [] RmServer, k: int, s_id: SeatId, flags: int) { s := s_id.value
   demo := (flags & EV_DEMO_FLAG) != 0;
   if demo == v[0].ev[k].demo[s] { return; }
   v[0].ev[k].demo[s] = demo;
-  ev_build(v, k, s_id);
 }
 // XP for seat s (times the reward dial), its gain heard by everyone near it, a level-up by everyone.
 ev_award :: (v: [] RmServer, k: int, s_id: SeatId, base: int) { s := s_id.value;
   if base <= 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
   amount := rs_max(base * v[0].evc.d.reward / 100, 1);
-  was := ev_level(v, v[0].ev[k].xp[s]);
   v[0].ev[k].xp[s] = rs_min(v[0].ev[k].xp[s] + amount, EV_XP_MAX);
   v[0].ev[k].earned[s] = true;
   p := v[0].eg[k].seat[s].pose;
   b: [64] u8;
   // Everglade II: its class's level from the same table, up to 6 (room-everglade.coax eg_level_up, #13259)
-  if v[0].eg[k].e2 { was = fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]); _ := eg_level_up(v, k, s_id); }
+  was := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]); _ := eg_level_up(v, k, s_id);
   // aimed at the seat (ev_who): the gainer always hears its own gain and level-up, however busy the
   // tick (the outcomes' room, no cue allowance); the seats near it hear them as cues
   n := wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e xp"), s), amount);
   eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, false, 1 << s);
-  now := ifx v[0].eg[k].e2 then fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]) else ev_level(v, v[0].ev[k].xp[s]);
+  now := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]);
   if now > was {
     n = wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e level"), s), now);
     eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, true, 1 << s);
-    ev_build(v, k, s_id);
   }
 }
 
@@ -337,12 +309,11 @@ ev_join :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
     if i >= 0 && v[0].vit.v[i].xp > xp { xp = v[0].vit.v[i].xp; }
     v[0].ev[k].xp[s] = ev_clamp(xp, 0, EV_XP_MAX);
   }
-  ev_build(v, k, s_id);
-  // a returning player's HP is theirs at the new level too (rv_join set it on Everglade's own)
+  // a returning player's HP is theirs at the new level too
   rv_hp_back(v, k, s_id);
 }
 // Seat s's class changed (its hello's CLASS: e5rr_join_as built Everglade's own): built at its level again.
-ev_class :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value; v[0].ev[k].level[s] = 0; ev_build(v, k, s_id); }
+ev_class :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value; v[0].ev[k].level[s] = 0; }
 ev_xp_of :: (v: [] RmServer, k: int, s_id: SeatId) -> int { s := s_id.value; return ifx k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS then v[0].ev[k].xp[s] else 0; }
 
 // ---- the lifecycle

@@ -102,41 +102,17 @@ rc_ranged :: (a: FbAb) -> bool { return a.kind == FB_SPELL && a.tg != FB_SELF; }
 // released now asks whether its caster sees where it lands. How many.
 rm_eg_sights :: (v: [] RmServer, k: int) -> int #export_c #effects(all) {
   if !rm_eg_live(v, k) { return 0; }
-  if v[0].eg[k].e2 {
-    fg_sync(v,k);   // resolve changed NPC orders before sampling reaction sight
-    return e2_familiar_sights(v,k,e2_monster_sights(v,k,e2_aid_sights(v,k)));   // the familiar's last
-  }
-  n := 0;
-  for q: 0..<EG_CASTS {
-    c := v[0].eg[k].casts[q..<q + 1];
-    c[0].sight = 0; c[0].ask = -1;
-    if !c[0].on { continue; }
-    due := (c[0].phase == RC_WAIT && rc_ready(v, k, c[0])) || (c[0].phase == RC_BAR && v[0].eg[k].tick >= c[0].release);
-    if !due { continue; }
-    a := e5rr_entry(v[0].eg[k].rules[..], c[0].slot);
-    if a.tg == FB_SELF { continue; }
-    c[0].ask = n; n += 1;
-  }
-  return n;
+  fg_sync(v,k);   // resolve changed NPC orders before sampling reaction sight
+  return e2_familiar_sights(v,k,e2_monster_sights(v,k,e2_aid_sights(v,k)));   // the familiar's last
 }
 // Question q: the caster's feet (FX FY FZ) and where the cast lands (AX AY AZ).
 rm_eg_sight :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_c #effects(all) {
   if !rm_eg_live(v, k) || out.count < 6 { return false; }
-  if v[0].eg[k].e2 { return e2_aid_ray(v,k,q,out) || e2_familiar_ray(v,k,q,out) || e2_monster_ray(v,k,q,out); }
-  for c: 0..<EG_CASTS {
-    cs := v[0].eg[k].casts[c];
-    if !cs.on || cs.ask != q { continue; }
-    me := v[0].eg[k].seat[cs.seat].pose;
-    at := rc_landing(v, k, cs);
-    out[0] = me.x; out[1] = me.y; out[2] = me.z; out[3] = at.x; out[4] = at.y; out[5] = at.z;
-    return true;
-  }
-  return false;
+  return e2_aid_ray(v,k,q,out) || e2_familiar_ray(v,k,q,out) || e2_monster_ray(v,k,q,out);
 }
 rm_eg_sight_is :: (v: [] RmServer, k: int, q: int, clear: bool) #export_c #effects(all) {
   if !rm_eg_live(v, k) { return; }
-  if v[0].eg[k].e2 { e2_aid_seen(v,k,q,clear); e2_familiar_seen(v,k,q,clear); e2_monster_seen(v,k,q,clear); return; }
-  for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].ask == q { v[0].eg[k].casts[c].sight = ifx clear then 1 else 2; } }
+  e2_aid_seen(v,k,q,clear); e2_familiar_seen(v,k,q,clear); e2_monster_seen(v,k,q,clear); return;
 }
 
 // ---- the phases

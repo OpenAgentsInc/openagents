@@ -48,7 +48,6 @@ eg_e2_code :: (code: string) -> bool {
   #assert !eg_e2_code("everglade-1") && !eg_e2_code("everglade2") && !eg_e2_code("everglade20-1") && !eg_e2_code("pair-drift-x") && !eg_e2_code("pair-e2-");
 }
 // Room k runs Everglade II's world (the host steps its seats on world2_*, room-tick.c).
-rm_eg_e2 :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return rm_eg_live(v, k) && v[0].eg[k].e2; }
 
 eg_room_at :: (v: [] RmServer, r: int) -> int {
   for k: 0..<EG_ROOMS { if v[0].eg[k].live && v[0].eg[k].relay == r { return k; } }
@@ -64,7 +63,6 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
   for q: 0..<EG_ROOMS {
     if v[0].eg[q].live { continue; }
     v[0].eg[q].initialized=false;v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
-    v[0].eg[q].e2 = r >= 0 && r < RELAYS && v[0].relays[r].live && eg_e2_code(cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n]);
     v[0].eg[q].work[0]=WorkBudget.{};
     v[0].eg[q].effect_known=false;v[0].eg[q].house_free=0;for s:0..<EG_SEATS{v[0].eg[q].effect_free[s]=0;}
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
@@ -92,15 +90,13 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     e5rr_start(v[0].eg[q].rules[..], 1);
     v[0].eg[q].rules[0].b[0].dice[0].state = rm_dice_draw(v);   // never from the seed above (#13258)
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
-    if v[0].eg[q].e2 {
-      rules:=v[0].eg[q].rules[..];
-      rules[0].z_shift=E5RR_E2_Z_SHIFT;
-      rules[0].b[0].h=E5R_SIDE+E5RR_E2_Z_SHIFT;
-      e2_rest_start(v,q); e5rr_enable_familiars(rules);
-      v[0].eg[q].guard[0] = E2Guard.{};
-      v[0].eg[q].monsters[0] = E2Monsters.{};
-      v[0].eg[q].arrows[0] = E2Arrows.{};
-    }   // Everglade II's rests are the shared rules' (everglade/server/rest.coax)
+    rules:=v[0].eg[q].rules[..];
+    rules[0].z_shift=E5RR_E2_Z_SHIFT;
+    rules[0].b[0].h=E5R_SIDE+E5RR_E2_Z_SHIFT;
+    e2_rest_start(v,q); e5rr_enable_familiars(rules);   // Everglade II's rests are the shared rules' (everglade/server/rest.coax)
+    v[0].eg[q].guard[0] = E2Guard.{};
+    v[0].eg[q].monsters[0] = E2Monsters.{};
+    v[0].eg[q].arrows[0] = E2Arrows.{};
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
     v[0].eg[q].initialized=true;
@@ -119,7 +115,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_i
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
-  if v[0].eg[k].e2 { v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].healer_kit = 10; }
+  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].healer_kit = 10;
   rv_join(v, k, seat_id);   // the HP its player left with (room-vitals.coax, #12715)
   rv_back(v, k, seat_id);   // and where they stood in this room, if lately
   ev_join(v, k, seat_id);   // its XP and its character's level (room-events.coax, #12739)
@@ -271,7 +267,6 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc01", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 0;
   #assert eg_test_v5_join(v[..], 1, "p-00112233aabbcc02", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  #assert v[0].eg[k].e2;
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
   rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-20 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }

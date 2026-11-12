@@ -45,7 +45,7 @@ rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #expo
   st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
   st[0].step_at = i.at;
   // Everglade II: a body the rules hold still (asleep, held) takes no walk or jump from its keys
-  if v[0].eg[k].e2 && v[0].eg[k].rules[0].live[s] && rs_locomotion_scale(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s) <= 0 { i.kx = 0; i.ky = 0; i.px = 0; i.py = 0; i.b = i.b & (255 - WB_JUMP); }
+  if v[0].eg[k].rules[0].live[s] && rs_locomotion_scale(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s) <= 0 { i.kx = 0; i.ky = 0; i.px = 0; i.py = 0; i.b = i.b & (255 - WB_JUMP); }
   st[0].step_kx = i.kx; st[0].step_ky = i.ky; st[0].step_px = i.px; st[0].step_py = i.py; st[0].step_b = i.b;
   out[0] = i.seq; out[1] = i.kx; out[2] = i.ky; out[3] = i.px; out[4] = i.py; out[5] = i.theta; out[6] = i.b;
   return true;
@@ -56,7 +56,7 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
   st := v[0].eg[k].seat[s..<s + 1];
   was := st[0].pose; was_placed := st[0].placed;
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
-  if v[0].eg[k].e2 { e2_rest_step(v, k, s_id, seq, was, was_placed); }
+  e2_rest_step(v, k, s_id, seq, was, was_placed);
   accepted:=net_accepted_result(st[0].ack,seq);
   if accepted.advanced { st[0].ack=accepted.seq;st[0].ack_at=st[0].step_at; }
   first := !st[0].placed && st[0].checkpoint_hello;
@@ -64,7 +64,7 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
   if first { ck_capture(v, k, s_id); }   // its first capture, which its gameplay waits on (#13184)
   r:=v[0].eg[k].rules[..];
   e5rr_place(r,s,x,z);
-  if v[0].eg[k].e2 && was_placed && r[0].b[0].truth_zones!=0 {
+  if was_placed && r[0].b[0].truth_zones!=0 {
     rs_truth_enter(r[0].b[..],E5RR_SEAT+s,e5r_sq(was.x),e5rr_z_cell(r,was.z));
   }
 }
@@ -73,7 +73,7 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
 rm_eg_unplaced :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
   if !(k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k, s_id).schema!=2)) { return false; }
   st := v[0].eg[k].seat[s];
-  return !v[0].eg[k].e2 || st.hello || v[0].mono_ms - st.joined_ms >= EG_E2_HELLO_MS;
+  return st.hello || v[0].mono_ms - st.joined_ms >= EG_E2_HELLO_MS;
 }
 // Where seat s of Everglade II's room k is first put (#13057), into out (x, z, facing): where its page
 // says it stands (A) when it may stand there and is no farther from where the room last had it (back:
@@ -115,7 +115,7 @@ rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #expo
 }
 #test "an Everglade II room puts a restarted room's player where their page stands, within what they could have run" #steps 4000000000 {
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 50000, 1800000060000);
-  v[0].eg[0].live = true; v[0].eg[0].e2 = true; st := v[0].eg[0].seat[0..<1]; st[0].live = true; out: [3] f32;
+  v[0].eg[0].live = true; st := v[0].eg[0].seat[0..<1]; st[0].live = true; out: [3] f32;
   #assert !rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]);   // nowhere saved: the spawn
   // saved 4 s ago at the path's start; the page says it ran 15 m on: 4.25 m/s x 4 s + 2 m reaches it
   st[0].back = true; st[0].back_x = 0; st[0].back_z = -10; st[0].back_yaw = 3.1; st[0].back_at = 1800000056000;
@@ -138,7 +138,6 @@ rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #expo
   st[0].joined_ms = 49500; #assert !rm_eg_unplaced(v[..], 0, SeatId.{value = 0});
   st[0].hello = true; #assert rm_eg_unplaced(v[..], 0, SeatId.{value = 0});
   st[0].hello = false; rm_clock(v[..], 50600, 1800000060600); #assert rm_eg_unplaced(v[..], 0, SeatId.{value = 0});
-  v[0].eg[0].e2 = false; st[0].joined_ms = 50600; #assert rm_eg_unplaced(v[..], 0, SeatId.{value = 0});   // Everglade's rooms never wait
 }
 RM_GLADE_FLAG :: 128;   // verse/everglade/glade-zone.coax EZ_GLADE_FLAG (the room server doesn't load the plan: keep them alike)
 // A seat whose hello came from Character Create (FLAGS EZ_GLADE_FLAG, apps/openagents-web/everglade-create.coax):
@@ -175,11 +174,11 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_ends_due(v, k);
   rc_tick_first(v, k);
   fg_sync(v,k);
-  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); e2_arrows_tick(v,k); }
+  e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); e2_arrows_tick(v,k);
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
-  if v[0].eg[k].e2 { e2_admin_after(v,k); }
+  e2_admin_after(v,k);
   e2_guard_after(v,k); e2_monsters_after(v,k);
-  if v[0].eg[k].e2 { e2_rest_tell_all(v, k); e2_kit_tell_all(v, k); }
+  e2_rest_tell_all(v, k); e2_kit_tell_all(v, k);
   fg_hits(v,k);
   rc_tick_last(v, k);
   eg_engine_events(v, k);
@@ -193,7 +192,7 @@ rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
     // a restored seat waiting for its first receipt is held: no world yet, while the others play on (#13185)
     if !ck_can_play(v,k,SeatId.{value=s}) { continue; }
     eg_send(v,k,SeatId.{value=s});
-    if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); e2_guard_snapshot(v,k,s); e2_monsters_snapshot(v,k,s); }
+    e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); e2_guard_snapshot(v,k,s); e2_monsters_snapshot(v,k,s);
   }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }

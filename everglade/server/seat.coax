@@ -214,7 +214,6 @@ EgRoom :: struct {
   live: bool; relay: int = -1;
   // Everglade II's room (#13053): its world is Everglade II's land, path and woods (apps/openagents-web/
   // everglade2-move.coax, room-world.c world2_*), with no town, river or watch
-  e2: bool;
   e2_casts: int;   // the casts its seats made, taken (eg_e2_cast)
   tick: int; seed: int;
   ev_dropped: int;               // events a tick had no room for (EG_EVENTS, EG_EV_BYTES), since the host last asked
