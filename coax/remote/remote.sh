@@ -70,20 +70,44 @@ now() { date +%s; }
 record() {   # kind host seconds note: one ledger line, its cost the seconds at the host's rate
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(now)" "$1" "$2" "$3" "$(awk -v s="$3" -v r="$rate" 'BEGIN { printf "%.4f", s / 3600 * r }')" "$4" >> "$ledger"
 }
-spent() {   # seconds: the estimated spend over that window
-  [[ -f "$ledger" ]] || { echo 0; return; }
-  awk -F'\t' -v since="$(( $(now) - $1 ))" '$1 >= since { s += $5 } END { printf "%.2f", s }' "$ledger"
+# One cap for every machine (#13255): each ledger is copied to the bucket as
+# ledgers/HOST-ID.tsv, and the others come back into $state/ledgers/, at most
+# every 5 minutes and in the background, so spent() counts every machine's
+# jobs (OA_REMOTE_SHARED_LEDGERS=0: this ledger alone).
+shared_ledgers="${OA_REMOTE_SHARED_LEDGERS:-gs://openagentsgemini-coax-build-cache/pipeline/ledgers}"
+ledger_id="$(hostname -s 2> /dev/null || hostname)-$(printf '%s' "$state" | shasum -a 256 | cut -c1-8)"
+ledger_sync() {
+  [[ "$shared_ledgers" != 0 ]] && command -v gcloud > /dev/null || return 0
+  mkdir -p "$state/ledgers"
+  [[ ! -f "$state/ledgers/.synced" ]] || (( $(now) - $(cat "$state/ledgers/.synced") >= 300 )) || return 0
+  now > "$state/ledgers/.synced"
+  ( [[ ! -f "$ledger" ]] || timeout 60 gcloud storage cp -q "$ledger" "$shared_ledgers/$ledger_id.tsv"
+    mkdir -p "$state/ledgers/all" && timeout 60 gcloud storage rsync -q "$shared_ledgers" "$state/ledgers/all"
+  ) < /dev/null > /dev/null 2>&1 7>&- 8>&- 9>&- &
+}
+spent() {   # seconds: the estimated spend over that window, on every machine
+  ledger_sync
+  local others=() f
+  for f in "$state/ledgers/all/"*.tsv; do [[ ! -f "$f" || "$(basename "$f" .tsv)" == "$ledger_id" ]] || others+=("$f"); done
+  [[ -f "$ledger" || ${#others[@]} -gt 0 ]] || { echo 0; return; }
+  cat ${ledger:+"$ledger"} ${others[@]+"${others[@]}"} 2> /dev/null |
+    awk -F'\t' -v since="$(( $(now) - $1 ))" '$1 >= since { s += $5 } END { printf "%.2f", s }'
 }
 under_budget() { awk -v s="$(spent 86400)" -v d="$daily" 'BEGIN { exit !(s < d) }'; }
 
 lock() {   # FILE CMD...: CMD under an exclusive lock
   if command -v flock > /dev/null; then flock "$@"; else lockf -k "$@"; fi
 }
+# SSH's shared connections: a socket path over about 104 bytes (with ssh's own
+# suffix) fails, and every ssh_to with it, so a long OA_REMOTE_STATE keeps them
+# in /tmp (the watcher's ~/.openagents/pipeline/remote on coderos, #13255).
+cm_dir="$state"
+if (( ${#state} > 45 )); then cm_dir="/tmp/oa-remote-cm-$(id -u)"; mkdir -p "$cm_dir" && chmod 700 "$cm_dir"; fi
 ssh_to() {   # NAME IP CMD...
   local name="$1" ip="$2"; shift 2
   ssh -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile="$known" -o HostKeyAlias="$name" \
     -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=20 -o ServerAliveCountMax=6 \
-    -o ControlMaster=auto -o ControlPath="$state/cm-%C" -o ControlPersist=300 -o LogLevel=ERROR "coax@$ip" "$@"
+    -o ControlMaster=auto -o ControlPath="$cm_dir/cm-%C" -o ControlPersist=300 -o LogLevel=ERROR "coax@$ip" "$@"
 }
 hosts() {   # name zone status ip, one host a line
   gcloud compute instances list --project "$project" --filter=labels.oa-remote=build \
