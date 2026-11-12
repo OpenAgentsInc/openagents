@@ -2,7 +2,7 @@
 // are retained as named slots for the neutral inspector; textures stay source-side.
 #load "gltf-access.coax";
 #load "source-names.coax";
-#load "gltf-scene-checks.coax";
+#load "gltf-scene-checks.coax" #test;
 #authority;
 AgScene :: struct {nodes:int;node_joint:[512]int;skin_count:int;skin_joint:[512]int;shape_first:[512]int;shape_count:[512]int;}
 ag_name :: (g:[]AgFile,node:int,key:string,prefix:string,index:int)->AnimName #effects(all) {

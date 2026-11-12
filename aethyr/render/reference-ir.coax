@@ -139,7 +139,7 @@ rq_ir_put_u64 :: (memory:[]u32,v:RQValue,lane:int,n:u64) #effects(all) {
 rq_ir_f32 :: (memory:[]u32,v:RQValue,lane:int)->f32 #effects(all) {words:=rq_ir_value_words(memory,v);return f32_from_bits(words[lane*v.words]);}
 rq_ir_put_f32 :: (memory:[]u32,v:RQValue,lane:int,f:f32) #effects(all) {words:=rq_ir_value_words(memory,v);words[lane*v.words]=f32_bits(f);}
 
-#load "tests/reference-ir-checks.coax";
+#load "tests/reference-ir-checks.coax" #test;
 
 rq_ir_local :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,f:RQFrame,id:int)->RQValue #effects(all) {
  if id<0 || id>=rq_ir_proc(meta,f.proc,2) {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
@@ -694,41 +694,41 @@ rq_ir_shape_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) #effects(all) {
  rq_ir_fail(m,RQStatus.unsupported);
 }
 
-#load "tests/reference-ir-scalar-checks.coax";
+#load "tests/reference-ir-scalar-checks.coax" #test;
 
-#load "tests/reference-ir-admission-checks.coax";
+#load "tests/reference-ir-admission-checks.coax" #test;
 
-#load "tests/reference-ir-convert-checks.coax";
+#load "tests/reference-ir-convert-checks.coax" #test;
 
-#load "tests/reference-ir-storage-checks.coax";
+#load "tests/reference-ir-storage-checks.coax" #test;
 
-#load "tests/reference-ir-run-checks.coax";
+#load "tests/reference-ir-run-checks.coax" #test;
 
-#load "tests/reference-ir-gpu-checks.coax";
-#load "tests/reference-ir-type-checks.coax";
-#load "tests/reference-ir-shape-checks.coax";
+#load "tests/reference-ir-gpu-checks.coax" #test;
+#load "tests/reference-ir-type-checks.coax" #test;
+#load "tests/reference-ir-shape-checks.coax" #test;
 // The syntax envelope is independent of the runtime work allowance.
 rq_ir_block_count_ok :: (count:int)->bool #effects(all) {return cast,trunc(u64)count<=1000000;}
-#load "tests/reference-ir-arena-checks.coax";
+#load "tests/reference-ir-arena-checks.coax" #test;
 
-#load "tests/reference-ir-transport-extra-checks.coax";
-#load "tests/reference-ir-prepare-budget-checks.coax";
+#load "tests/reference-ir-transport-extra-checks.coax" #test;
+#load "tests/reference-ir-prepare-budget-checks.coax" #test;
 
-#load "tests/reference-ir-control-checks.coax";
+#load "tests/reference-ir-control-checks.coax" #test;
 
-#load "tests/reference-ir-texture-extra-checks.coax";
+#load "tests/reference-ir-texture-extra-checks.coax" #test;
 
-#load "tests/reference-ir-private-checks.coax";
+#load "tests/reference-ir-private-checks.coax" #test;
 
-#load "tests/reference-ir-statement-checks.coax";
+#load "tests/reference-ir-statement-checks.coax" #test;
 
-#load "tests/reference-ir-array-query-checks.coax";
+#load "tests/reference-ir-array-query-checks.coax" #test;
 
-#load "tests/reference-ir-call-checks.coax";
+#load "tests/reference-ir-call-checks.coax" #test;
 
-#load "tests/reference-ir-place-checks.coax";
+#load "tests/reference-ir-place-checks.coax" #test;
 
-#load "tests/reference-ir-value-extra-checks.coax";
+#load "tests/reference-ir-value-extra-checks.coax" #test;
 
-#load "tests/reference-ir-flow-extra-checks.coax";
-#load "tests/reference-ir-short-circuit-checks.coax";
+#load "tests/reference-ir-flow-extra-checks.coax" #test;
+#load "tests/reference-ir-short-circuit-checks.coax" #test;

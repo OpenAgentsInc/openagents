@@ -2,7 +2,7 @@
 // An Unreal source plan names data assets. The native adapter creates its
 // own data-only project; it never runs this source project's modules.
 #load "document.coax";
-#load "unreal-source-checks.coax";
+#load "unreal-source-checks.coax" #test;
 #authority;
 AuAsset :: struct {path:[1024]u8;path_n:int;name:AnimName;face:bool;}
 AuSource :: struct {project:[4096]u8;project_n:int;profile:int;meshes:int;clips:int;mesh:[8]AuAsset;clip:[64]AuAsset;}

@@ -23,9 +23,9 @@ RRFormat :: enum u8 {f32;half;unorm8;}
 RRScalar :: struct {status:RQStatus;value:f32;}
 RRPixel :: struct {depth:f32=1;colour:RQColor;aux:RQColor;}
 RRStored :: struct {status:RQStatus;written:bool;pixel:RRPixel;}
-#load "tests/reference-raster-checks.coax";
-#load "tests/reference-raster-subpixel-checks.coax";
-#load "tests/reference-raster-guard-checks.coax";
+#load "tests/reference-raster-checks.coax" #test;
+#load "tests/reference-raster-subpixel-checks.coax" #test;
+#load "tests/reference-raster-guard-checks.coax" #test;
 
 rr_layout_status :: (l:RRLayout)->RQStatus #effects(all) {
  if l.count<0 {return RQStatus.resource;}if l.count>RR_WORDS {return RQStatus.capacity;}return RQStatus.ok;

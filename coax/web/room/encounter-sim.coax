@@ -26,6 +26,7 @@
 #import "Basic";
 #run_steps 250000000;   // secp256k1's tables: the room loads the seat ticket's v5 check
 #load "room.coax";
+#load "../../../everglade/server/room-checks.coax";   // this program runs the fixture as code
 #load "encounter-table.coax";
 #load "script-player.coax";   // the scripted player's choice, the bots' too (#13296)
 #load "../../lib/sys/tool.coax";

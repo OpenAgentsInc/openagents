@@ -24,7 +24,7 @@
 #authority;
 #load "character.coax";
 #load "../../aethyr/session/ledger.coax";
-#load "item-op-checks.coax";   // the checks' fixtures
+#load "item-op-checks.coax" #test;   // the checks' fixtures
 
 IO_ID :: 80;          // bytes in an operation ID (the route's limit, item-policy.coax ITEM_ID_MAX)
 IO_PID :: 80;

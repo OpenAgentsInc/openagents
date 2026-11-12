@@ -2,7 +2,7 @@
 #module "aethyr.render.active.lanes";
 #authority;
 RQActiveLanes :: struct {count:int;lanes:[4]int;}
-#load "tests/active-lanes-checks.coax";
+#load "tests/active-lanes-checks.coax" #test;
 rq_active_lanes :: (mask:u32)->RQActiveLanes #effects(all) {
  r:RQActiveLanes;bits:=mask&15;lane:=0;
  while bits!=0 {

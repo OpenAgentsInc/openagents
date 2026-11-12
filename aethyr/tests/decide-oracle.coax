@@ -153,3 +153,5 @@ do_replay :: (live: [] DoRun, r: [] DoRun) {
   while replay_tick(s) < s.n[REPLAY_MARKS] { do_step(r, s); }
   do_tally(r, s);
 }
+// The checks' session: a new record, all zeros (the replay oracle's backing).
+dc_session :: (b: [] ReplayBacking) -> ReplaySession #effects(all) { return replay_backing(b); }

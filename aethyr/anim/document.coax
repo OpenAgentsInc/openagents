@@ -5,7 +5,7 @@
 #load "../core/assets.coax";
 #load "pose.coax";
 #load "field-catalog.coax";
-#load "document-checks.coax";
+#load "document-checks.coax" #test;
 #authority;
 #load "json.coax";
 AnimPack :: struct {id:AssetId;bytes:[]u8;}

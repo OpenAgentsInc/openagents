@@ -9,8 +9,8 @@
 ActorCandidate :: struct {id:int;generation:int;x:int;y:int;z:int;eligible:bool=true;clear:bool;}
 ActorPerception :: struct {tick:int= -1;target:int;generation:int;last_seen:int= -1;lost:int;seen:bool;alert:bool;culled:bool;reason:int;memory:senses.Memory;}
 ActorSensed :: struct {status:int=ACTOR_INVALID;state:ActorPerception;flags:u32;work:int;}
-#load "tests/perception.coax";
-#load "tests/perception-matrix.coax";
+#load "tests/perception.coax" #test;
+#load "tests/perception-matrix.coax" #test;
 actor_point_ok :: (x:int,y:int,z:int)->bool #effects(all) {return x>= -1000000 && x<=1000000 && y>= -1000000 && y<=1000000 && z>= -1000000 && z<=1000000;}
 actor_perceive :: (p:ActorParameters,old:ActorPerception,tick:int,self:int,x:int,y:int,z:int,focus_x:int,focus_z:int,candidates:[]const ActorCandidate)->ActorSensed #effects(all) {
  out:=ActorSensed.{state=old};if !actor_parameters_ok(p) || tick<0 || tick>1000000000 || old.tick!=tick-1 || self<1 || !actor_point_ok(x,y,z) || !actor_flat_point_ok(focus_x,focus_z) || old.last_seen< -1 || old.last_seen>old.tick || old.target<0 || old.generation<0 || old.generation>entities.ENTITY_GEN_MASK+1 || (old.target==0)!=(old.generation==0) || old.lost<0 || !actor_memory_ok(old.memory,old.tick) {return out;}

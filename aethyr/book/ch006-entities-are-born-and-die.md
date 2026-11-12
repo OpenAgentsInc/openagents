@@ -347,7 +347,7 @@ column for each, walks the live entities, and despawns about one in five.
 After every flush, the store and the model must hold the same IDs with the
 same values, and nothing else.
 
-<!-- source: aethyr/core/entity.coax model -->
+<!-- source: aethyr/tests/entity-oracle.coax model -->
 ```jai
 oracle_model_run :: (seed: int) -> bool #effects(all) {
   b: [1] OracleBacking; w := oracle_store(b[..]);

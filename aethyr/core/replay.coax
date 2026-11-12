@@ -20,7 +20,7 @@
 
 #module "aethyr.replay";
 #load "input.coax";
-#load "../tests/replay-oracle.coax";   // the checks' session backing and a small realm
+#load "../tests/replay-oracle.coax" #test;   // the checks' session backing and a small realm
 
 // book:begin envelope
 // Where an event comes from. Controls and network updates are streams, latest-wins: the gate

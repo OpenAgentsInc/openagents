@@ -30,7 +30,7 @@
 //   coax/bin/coax mutate pay/lnaddr-policy.coax --root-only
 #load "../coax/lib/lnaddr/lnurl.coax";
 #load "makerpay-policy.coax";   // paying a maker's own address (makers.c, #13210): the same LNURL rules, the same C file
-#load "../coax/tests/lnaddr/profile_fixtures.coax";   // signed kind 0 events for "Add to my Nostr profile" (#13209)
+#load "../coax/tests/lnaddr/profile_fixtures.coax" #test;   // signed kind 0 events for "Add to my Nostr profile" (#13209)
 #authority;
 #run_steps 250000000;
 

@@ -1,6 +1,6 @@
 // Pose operations shared by document layers and admitted legacy source adapters.
 #load "pose.coax";
-#load "layer-core-checks.coax";
+#load "layer-core-checks.coax" #test;
 #authority;
 LayerCycle :: struct {clock:f32;segment:int;}
 LayerDue :: struct {state:LayerCycle;due:bool;}

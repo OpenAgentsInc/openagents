@@ -10,7 +10,7 @@ StateRestoreTicket :: struct {
  status:int=STATE_INVALID;mode:int;target:assets.AssetId;hold:StateVariantTicket;
  source:StateSchema;migration:StateMigration;words:[STATE_SAVE_WORDS]int;n:int;retry:StateRetry;
 }
-#load "tests/restore.coax";
+#load "tests/restore.coax" #test;
 state_restore_draft :: (schema:StateSchema,world:StateWorld,refs:StateRefs,fence:int,t:StateRestoreTicket)->StateDraft #effects(all) {
  if !assets.asset_same(t.target,state_schema_id(schema)) {return StateDraft.{status=STATE_SCHEMA};}
  if t.mode==STATE_RESTORE_LOAD {if t.n<0 || t.n>STATE_SAVE_WORDS {return StateDraft.{};}return state_load(t.source,schema,world.facts,refs,fence,t.hold.command,t.words[0..<t.n],t.migration).draft;}

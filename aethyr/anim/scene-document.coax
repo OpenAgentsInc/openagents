@@ -1,6 +1,6 @@
 #load "performance-document.coax";
 #load "../cam/cinematic.coax";
-#load "scene-document-checks.coax";
+#load "scene-document-checks.coax" #test;
 #authority;
 AnimPath :: struct {count:int;time:[32]f32;point:[32]Point;yaw:[32]f32;}
 AnimSceneCast :: struct {name:AnimName;rig:int;look:int;performance:int;path:AnimPath;}

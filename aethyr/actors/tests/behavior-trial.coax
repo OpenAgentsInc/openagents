@@ -2,6 +2,8 @@
 #module "aethyr.actors.behavior_trial";
 #import "Basic";
 #load "../behavior.coax";
+#load "definitions.coax";   // this program runs the fixture as code
+#load "behavior-plan.coax";   // this program runs the fixture as code
 #load "../behavior-plan.coax";
 #load "../definitions.coax";
 #load "../../state/declarations.coax" as state;

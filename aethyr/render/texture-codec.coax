@@ -11,7 +11,7 @@ RenderTexelResult :: struct {status:RenderTextureStatus;colour:RQColor;}
 RenderTextureLevel :: struct {width:int;height:int;offset:u64;row_bytes:u64;layer_bytes:u64;}
 RenderTextureResult :: struct {status:RenderTextureStatus;bad_level:int=-1;bad_texel:int=-1;pixels:int;}
 RTProduct :: struct {valid:bool;bytes:u64;}
-#load "tests/texture-codec-checks.coax";
+#load "tests/texture-codec-checks.coax" #test;
 
 render_texture_srgb :: (byte:u8)->f32 #effects(all) {
  c:=f64(byte)/255.0;

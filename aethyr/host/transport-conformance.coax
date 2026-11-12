@@ -1,6 +1,6 @@
 // Actual transport callback data, order, slot exhaustion and deferred opens.
 // Cross-connection completion order may vary; each message-kind stream may not.
-#load "tests/transport-observations.coax";
+#load "tests/transport-observations.coax" #test;
 #authority;
 #test "transport accepts actual browser events and cross-socket scheduling only" {
   rows:=htc_test_rows();#assert htc_transport(rows[..],0);

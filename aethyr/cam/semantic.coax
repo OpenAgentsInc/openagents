@@ -10,7 +10,7 @@
 
 CamCentredSelected :: struct {value:CamCentred;eye:body.CamEye;}
 CamShotSelected :: struct {shot:Shot;eye:body.CamEye;}
-#load "tests/semantic.coax";
+#load "tests/semantic.coax" #test;
 
 cam_semantic_point :: (p:Point)->spatial.WorldPoint #effects(all) {return spatial.world_point(p.x,p.y,p.z);}
 cam_centred_selected :: (m:CamMode,g:[]CamGround,o:Orbit,w:scene.SelectedWorld)->CamCentredSelected #effects(all) {

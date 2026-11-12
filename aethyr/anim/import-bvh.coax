@@ -3,7 +3,7 @@
 // callers never infer units from a character's size.
 #load "import-build.coax";
 #load "source-names.coax";
-#load "import-bvh-checks.coax";
+#load "import-bvh-checks.coax" #test;
 #authority;
 AiTokens :: struct {text:string;at:int;bad:bool;}
 ai_token :: (s:[]AiTokens)->string #effects(all) {t:=s[0].text;while s[0].at<t.count && t[s[0].at]<=32 {s[0].at+=1;}a:=s[0].at;if a==t.count {return "";}if t[a]=='{' || t[a]=='}' {s[0].at+=1;}else {while s[0].at<t.count && t[s[0].at]>32 && t[s[0].at]!='{' && t[s[0].at]!='}' {s[0].at+=1;}}return t[a..<s[0].at];}

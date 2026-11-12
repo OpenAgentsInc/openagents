@@ -20,7 +20,7 @@
 //   coax/bin/coax test aethyr/content/tables.coax --library
 //   coax/bin/coax mutate aethyr/content/tables.coax --library --root-only
 #authority;
-#load "tables-checks.coax";   // the checks' fixture and helpers
+#load "tables-checks.coax" #test;   // the checks' fixture and helpers
 
 CT_MAGIC :: "aethyr.content.v1";
 CT_BODY :: 65536;         // the longest document, in bytes

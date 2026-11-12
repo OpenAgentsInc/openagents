@@ -4,7 +4,7 @@
 #authority;
 RAS_URLS :: 128;
 RasPlan :: struct {ok:bool;count:int;urls:[RAS_URLS][4096]u8;lengths:[RAS_URLS]int;profile:int;slug:[4096]u8;slug_count:int;}
-#load "tests/asset-staging-checks.coax";
+#load "tests/asset-staging-checks.coax" #test;
 ras_url :: (s:string)->bool #effects(all) {
   if s.count<2 || s[0]!='/' {return false;}
   begin:=1;

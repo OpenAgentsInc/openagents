@@ -50,7 +50,7 @@
 #load "../physics/ground.coax";
 #load "../../coax/lib/quantity.coax" as tt_units;
 #load "../../coax/lib/crypto/sha256-kernel.coax";
-#load "../tests/terrain-tile-oracle.coax";
+#load "../tests/terrain-tile-oracle.coax" #test;
 
 // book:begin tile-types
 TERRAIN_TILE_VERSION :: 1;

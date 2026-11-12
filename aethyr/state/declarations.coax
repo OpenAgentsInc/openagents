@@ -16,7 +16,7 @@ StateField :: struct {
 StateSchema :: struct {id:int;revision:int=1;day_ticks:int=5529600;n:int;fields:[STATE_FIELDS]StateField;}
 StateEntity :: struct {id:int;generation:int;}
 StateRefs :: struct {entities:[]const StateEntity;content:[]const assets.AssetId;}
-#load "tests/declarations.coax";
+#load "tests/declarations.coax" #test;
 state_int :: (value:int)->StateValue #effects(all) {return StateValue.{integer=value};}
 state_bool :: (value:bool)->StateValue #effects(all) {return StateValue.{kind=STATE_BOOL,integer=ifx value then 1 else 0};}
 state_value_ok :: (f:StateField,v:StateValue,refs:StateRefs)->bool #effects(all) {

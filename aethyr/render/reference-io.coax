@@ -9,7 +9,7 @@ RQInterface :: struct {
 }
 RQParameter :: struct {status:RQStatus;ty:int;word_offset:int;words:int;kind:int;shape:int;stride:int;name_id:int;}
 RQIOField :: struct {status:RQStatus;ty:int;word_offset:int;words:int;byte_offset:int;location:int=-1;position:bool;flat:bool;depth:bool;}
-#load "tests/reference-io-checks.coax";
+#load "tests/reference-io-checks.coax" #test;
 
 rq_ir_vector_width :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int)->int #effects(all) {
  if p.status!=RQStatus.ok || cast,trunc(u64)ty>=cast(u64)p.types || rq_ir_type(meta,ty,0)!=7 {return 0;}

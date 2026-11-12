@@ -1,5 +1,5 @@
 #load "rig-document.coax";
-#load "clip-document-checks.coax";
+#load "clip-document-checks.coax" #test;
 #authority;
 AnimEvent :: struct {at:f32;kind:int;joint:int;}
 AnimClip :: struct {

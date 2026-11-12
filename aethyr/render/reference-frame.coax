@@ -43,7 +43,7 @@ RFResult :: struct {
  geometry:RenderGeometryStatus;frame:RenderFrameStatus;shader_steps:int;pixel_steps:int;
  pass_steps:[14]int;draws:int;written:int;
 }
-#load "tests/reference-frame-checks.coax";
+#load "tests/reference-frame-checks.coax" #test;
 rf_catalog_layout :: (profile:int,pass:RenderPassId,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout #effects(all) {return rf_shader_layout(profile,cast(int)pass,p,tree,meta);}
 rf_shader_use :: (profile:int,index:int,slot:int)->RenderUse #effects(all) {
  if index==13 {return render_media_use(slot);}return render_catalog_use(profile,cast(RenderPassId)index,slot);

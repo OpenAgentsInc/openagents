@@ -4,7 +4,7 @@
 #module "aethyr.collide";
 #authority;
 #load "query.coax";
-#load "../tests/collide-oracle.coax";
+#load "../tests/collide-oracle.coax" #test;
 
 COLLIDE_MAX_PASSES :: 16;
 COLLIDE_MAX_SHAPES :: 4096;

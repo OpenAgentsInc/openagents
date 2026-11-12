@@ -41,7 +41,7 @@ ActorArchetype :: struct {
 }
 ActorCompileStatus :: enum u8 {ok;capacity;version;identity;parent;cycle;parameter;binding;profile;schema;field;manifest;resource;plan;}
 ActorCompiled :: struct {status:ActorCompileStatus;definition:int;detail:int;archetype:ActorArchetype;}
-#load "tests/definitions.coax";
+#load "tests/definitions.coax" #test;
 
 actor_parameter_schema :: ()->StateSchema #effects(all) {
  s:=StateSchema.{id=12992001,day_ticks=1,n=ACTOR_PARAMETERS};

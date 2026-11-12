@@ -3,7 +3,7 @@
 #authority;
 #load "../../../aethyr/core/ids.coax";
 #load "../../lib/json/json.coax";
-#load "tests/checkpoint-fixture.coax";
+#load "tests/checkpoint-fixture.coax" #test;
 CP_KEYS :: [17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
 CP_LOW :: [17]int.[1,1,1,1,1,1,1,1,1,0,1,0,0,-10000000,-10000000,-10000000,-1000000];
 CP_HIGH :: [17]int.[1,2147483647,9007199254740991,9007199254740991,9007199254740991,9007199254740991,2147483647,2147483647,2147483647,99999,99999,9999999,5,10000000,10000000,10000000,1000000];

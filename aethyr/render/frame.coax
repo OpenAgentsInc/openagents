@@ -3,7 +3,7 @@
 // descriptors are checked before callers form upload views or submit work.
 #module "aethyr.render.frame";
 #load "types.coax";
-#load "../tests/render-frame-checks.coax";
+#load "../tests/render-frame-checks.coax" #test;
 #authority;
 
 render_frame_limits_ok :: (rf_l: RenderFrameLimits) -> bool #effects(all) {

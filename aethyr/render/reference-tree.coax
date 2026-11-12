@@ -7,7 +7,7 @@
 RENDER_TREE_BYTES :: 2097152;
 RenderTreeStatus :: enum u8 {ok;malformed;overflow;unsupported;capacity;budget;}
 RenderTreeText :: struct {status:RenderTreeStatus;count:int;version:int=-1;bad_byte:int=-1;work:int;}
-#load "tests/reference-tree-checks.coax";
+#load "tests/reference-tree-checks.coax" #test;
 render_tree_space :: (byte:u8)->bool #effects(all) {return byte==9 || byte==10 || byte==13 || byte==32;}
 render_tree_measure :: (bytes:[]u8,max_bytes:int)->RenderTreeText #effects(all) {
  r:RenderTreeText;

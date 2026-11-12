@@ -1,5 +1,5 @@
 // Observed bank identities and draining packet spans from the real browser host.
-#load "tests/browser-audio-span-observations.coax";
+#load "tests/browser-audio-span-observations.coax" #test;
 #authority;
 AUDIO_BANK_BROWSER_WORDS :: 54;
 #test "browser bank and packet observations admit the complete six-mode workload" {

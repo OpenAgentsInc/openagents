@@ -5,6 +5,7 @@
 // Usage: coax/web/tool.sh everglade/model/tools/item-op-profile.coax proto/verse/everglade-item-op-v1.json
 #import "Basic";
 #load "../item-op.coax";
+#load "../item-op-checks.coax";   // the tool runs the codec's check fixtures as code
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 

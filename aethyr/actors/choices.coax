@@ -7,8 +7,8 @@ ACTOR_CHOSEN :: 0; ACTOR_HELD :: 1; ACTOR_COOLDOWN :: 2; ACTOR_INTERRUPTED :: 3;
 ActorBrain :: struct {tick:int= -1;rule:int= -1;until:int;ready:[ACTOR_RULES]int;last:int= -1;draws:int #counter;}
 ActorKnowledge :: struct {tick:int;flags:u32;culled:bool;}
 ActorChoice :: struct {status:int=ACTOR_INVALID;brain:ActorBrain;verb:int;goal:int;weight:int;work:int;reason:int=ACTOR_COOLDOWN;}
-#load "tests/choices.coax";
-#load "tests/choices-matrix.coax";
+#load "tests/choices.coax" #test;
+#load "tests/choices-matrix.coax" #test;
 actor_guard :: (r:ActorRule,flags:u32)->bool #effects(all) {return (flags&r.require)==r.require && (flags&r.forbid)==0;}
 actor_choose :: (p:ActorParameters,b:ActorBrain,k:ActorKnowledge,seed:int,stream:int)->ActorChoice #effects(all) {
  out:=ActorChoice.{brain=b};if !actor_parameters_ok(p) || k.tick<0 || k.tick>1000000000 || b.tick!=k.tick-1 || k.flags>127 || b.rule< -1 || b.rule>=p.n || b.last< -1 || b.last>=p.n || b.until<0 || b.until>1000000000 || b.draws<0 || b.draws>=1000000000 {return out;}

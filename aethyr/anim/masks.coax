@@ -1,7 +1,7 @@
 // Named joint sets resolve through the declared mannequin map. Helpers inherit
 // their nearest mapped ancestor; face membership is explicit in the rig.
 #load "rig-document.coax";
-#load "masks-checks.coax";
+#load "masks-checks.coax" #test;
 #authority;
 layer_mask_slot :: (mask:int,slot:int,face:bool)->bool #effects(all) {
  if mask==0 {return true;}if mask==1 {return face;}if mask==2 {return face || slot==5 || slot==6;}

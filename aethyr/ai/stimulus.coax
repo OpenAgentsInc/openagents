@@ -13,7 +13,7 @@
 #module "aethyr.ai.stimulus";
 #authority;
 #load "../physics/query.coax";
-#load "../tests/stimulus-oracle.coax";   // the checks' brute-force line of sight
+#load "../tests/stimulus-oracle.coax" #test;   // the checks' brute-force line of sight
 
 // book:begin senses
 SENSE_MEMORY :: 8;             // stimuli one creature remembers at most

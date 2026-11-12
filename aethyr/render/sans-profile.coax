@@ -30,7 +30,7 @@ RenderSansGlyph :: struct {
   valid: bool; code: u32; index: int = -1; column: int; row: int;
   x_half: int; y_half: int; x: f32; y: f32;
 }
-#load "tests/sans-profile-checks.coax";
+#load "tests/sans-profile-checks.coax" #test;
 
 // One coverage byte per texel, or four equal RGBA bytes after premultiplying
 // the white glyph. Every rsp_mip is independently rasterized at its own font size.

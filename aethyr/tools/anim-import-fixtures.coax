@@ -1,6 +1,8 @@
 // Original, small source files for native and headless import checks.
 #import "Basic";
 #load "anim-import-io.coax";
+#load "../anim/import-face-checks.coax";   // this program runs the fixture as code
+#load "../anim/gltf-scene-checks.coax";   // this program runs the fixture as code
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}root:=args_at(a[..],0);if fs_kind(root)!=FS_DIR {return 1;}path:[4096]u8;binary:[252]u8;ag_character_bytes(binary[..]);csv:[4096]u8;n:=ai_csv_fixture(csv[..]);#assert fs_write(fs_join(root,"made.gltf",path[..]),AG_CHARACTER) && fs_write(fs_join(root,"made.bin",path[..]),cast(string)binary[..]) && fs_write(fs_join(root,"made.bvh",path[..]),AI_BVH) && fs_write(fs_join(root,"made.csv",path[..]),cast(string)csv[0..<n]);return 0;
 }

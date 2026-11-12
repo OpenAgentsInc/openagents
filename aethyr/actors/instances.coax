@@ -31,7 +31,7 @@ ActorReceipt :: struct {status:ActorStatus=ActorStatus.invalid;key:ActorKey;}
 ActorLifeEvent :: struct {key:ActorKey;kind:int;}
 ActorLifecycle :: struct {status:ActorStatus=ActorStatus.invalid;n:int;events:[ACTOR_POOL_SLOTS]ActorLifeEvent;}
 ActorTransfer :: struct {status:ActorStatus=ActorStatus.invalid;key:ActorKey;interrupted:bool;event:BehaviorEvent;}
-#load "tests/instances.coax";
+#load "tests/instances.coax" #test;
 
 actor_pool_open :: (epoch:int,tick:int,capacity:int,caps:[3]int)->ActorPool #effects(all) {
  if epoch<1 || epoch>BEHAVIOR_COUNTER_MAX || tick<0 || tick>BEHAVIOR_COUNTER_MAX || capacity<1 || capacity>ACTOR_POOL_SLOTS {return ActorPool.{};}

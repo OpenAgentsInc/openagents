@@ -2,7 +2,7 @@
 #load "transport-conformance.coax";
 #authority;
 HostOpeningObservation :: struct {path:string;origin:string;cookie:string;accepted:int;}
-#load "tests/socket-context-observations.coax";
+#load "tests/socket-context-observations.coax" #test;
 hsc_cases :: ()->[6]HostOpeningObservation #effects(all) {
  origin:="http://127.0.0.1:9172";
  return [6]HostOpeningObservation.[

@@ -216,7 +216,7 @@ ow_claims :: (w: [] OwWorld, i: int) -> int #effects(all) {
 }
 
 // ---- checks
-#load "../tests/owners-oracle.coax";
+#load "../tests/owners-oracle.coax" #test;
 
 #test "owners: a fight across the line at zero link delay is the fight inside one owner" {
   w: [1] OwWorld;

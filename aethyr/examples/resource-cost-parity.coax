@@ -2,6 +2,7 @@
 #module "aethyr.examples.resourcecost";
 #import "Basic";
 #load "../world/resource-admission.coax";
+#load "../world/tests/resource-cost-fixture.coax";   // the example runs the fixture as code
 
 RESOURCE_TRANSCRIPT_WORDS :: 40;
 resource_cost_transcript :: () -> [RESOURCE_TRANSCRIPT_WORDS] int #effects(all) {

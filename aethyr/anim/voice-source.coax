@@ -4,7 +4,7 @@
 #load "../audio/host-wav.coax";
 #load "../audio/wav.coax";
 #load "../audio/speak.coax";
-#load "voice-source-checks.coax";
+#load "voice-source-checks.coax" #test;
 #authority;
 VoiceSource :: struct {valid:bool;track:string;wave:[]u8;wave_at:int;}
 voice_text_size :: (n:int)->bool #effects(all) {return n>=1 && n<=ANIM_DOCUMENT_BYTES;}

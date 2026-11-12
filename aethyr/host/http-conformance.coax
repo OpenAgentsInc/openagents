@@ -1,6 +1,6 @@
 // Observed request/return/callback bytes from the actual host adapters.
 // Expected physical peer paths are authored independently of the normalizer.
-#load "tests/http-target-observations.coax";
+#load "tests/http-target-observations.coax" #test;
 #authority;
 HtuCase :: struct {input:string;target:string;}
 htu_cases :: ()->[10]HtuCase #effects(all) {

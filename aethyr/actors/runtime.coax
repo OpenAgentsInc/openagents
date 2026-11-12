@@ -13,8 +13,8 @@
 #load "../core/entity.coax" as entities;
 #load "../move/walk.coax" as walking;
 #authority;
-#load "tests/runtime.coax";
-#load "tests/runtime-edges.coax";
+#load "tests/runtime.coax" #test;
+#load "tests/runtime-edges.coax" #test;
 ActorAnchor :: struct {id:int;x:int;z:int;}
 ActorTarget :: struct {handle:Handle(entities.Entity);x:int;y:int;z:int;eligible:bool=true;}
 ActorStepWorld :: struct {

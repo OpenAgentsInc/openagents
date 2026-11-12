@@ -17,7 +17,7 @@
 //   coax/bin/coax mutate everglade/model/events.coax --library --root-only
 #authority;
 #load "character.coax";
-#load "events-checks.coax";   // the checks' fixtures
+#load "events-checks.coax" #test;   // the checks' fixtures
 
 EV_GRANTED :: 0; EV_LEVELLED :: 1;
 EV_IDS :: [2] string.["items.item.granted.v1", "characters.character.levelled.v1"];

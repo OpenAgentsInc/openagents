@@ -26,8 +26,8 @@ ActorAuthor :: struct {format:int=1;id:int;revision:int=1;parent:int;overrides:u
 ActorProfile :: struct {valid:bool;id:int;revision:int;schema:assets.AssetId;content:assets.AssetId;parameters:ActorParameters;order:[ACTOR_EXEC_PHASES]int;}
 ActorCatalogue :: struct {status:int;n:int;items:[ACTOR_PROFILES]ActorProfile;}
 ACTOR_OK :: 0; ACTOR_INVALID :: 1; ACTOR_CYCLE :: 2; ACTOR_CAPACITY :: 3; ACTOR_STALE :: 4; ACTOR_RESOURCES :: 5; ACTOR_EXHAUSTED :: 6;
-#load "tests/profile.coax";
-#load "tests/profile-matrix.coax";
+#load "tests/profile.coax" #test;
+#load "tests/profile-matrix.coax" #test;
 actor_inherit :: (base:ActorParameters,own:ActorParameters,mask:u32)->ActorParameters #effects(all) {
  p:=base;
  if (mask&1)!=0 {p.controller=own.controller;p.physics=own.physics;p.animation=own.animation;p.speed=own.speed;p.radius=own.radius;}

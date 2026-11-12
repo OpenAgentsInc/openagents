@@ -13,8 +13,8 @@ StateVariant :: struct {id:int;test:StateProgram;owners:[6]int;content:[6]assets
 StateVariants :: struct {n:int;items:[STATE_VARIANTS]StateVariant;}
 StateWorld :: struct {facts:StateStore;variant:int= -1;members:[6]ResourceReference;}
 StateVariantTicket :: struct {status:int=STATE_INVALID;command:StateCommand;variant:int= -1;members:[6]ResourceReference;}
-#load "tests/variants.coax";
-#load "tests/variants-matrix.coax";
+#load "tests/variants.coax" #test;
+#load "tests/variants-matrix.coax" #test;
 state_program :: (schema:StateSchema,refs:StateRefs,terms:[]const StateTerm,root:int)->StateProgram #effects(all) {
  p:StateProgram;if !state_schema_ok(schema,refs) || terms.count<1 || terms.count>32 || root<0 || root>=terms.count {return p;}
  p.schema=schema.id;p.version=schema.revision;p.n=terms.count;p.root=root;

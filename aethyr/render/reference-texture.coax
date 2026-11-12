@@ -6,7 +6,7 @@
 #authority;
 RFTextureNeed :: struct {status:RenderTextureStatus;format:RenderTexelFormat;pixels:int;}
 RFTextureDecoded :: struct {status:RenderTextureStatus;bad_level:int=-1;bad_texel:int=-1;texture:RQTexture;}
-#load "tests/reference-texture-checks.coax";
+#load "tests/reference-texture-checks.coax" #test;
 rf_texture_format :: (name:string)->RenderTexelFormat #effects(all) {
  if name=="rgba8unorm" {return RenderTexelFormat.rgba8;}if name=="rgba8unorm-srgb" {return RenderTexelFormat.rgba8_srgb;}
  if name=="bgra8unorm" {return RenderTexelFormat.bgra8;}if name=="bgra8unorm-srgb" {return RenderTexelFormat.bgra8_srgb;}

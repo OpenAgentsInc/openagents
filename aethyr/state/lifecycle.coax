@@ -14,7 +14,7 @@ StateCommand :: struct {
  jump:bool;day:int;phase:int;n:int;patches:[8]StatePatch;
 }
 StateDraft :: struct {status:int=STATE_INVALID;state:StateStore;day_changed:bool;}
-#load "tests/lifecycle.coax";
+#load "tests/lifecycle.coax" #test;
 state_construct :: (schema:StateSchema,refs:StateRefs,epoch:int)->StateStore #effects(all) {
  s:StateStore;if epoch<1 || epoch>STATE_COUNTER_MAX || !state_schema_ok(schema,refs) {return s;}
  s.ready=true;s.schema=schema.id;s.version=schema.revision;s.epoch=epoch;

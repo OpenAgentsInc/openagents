@@ -1,6 +1,6 @@
 // Session versions retain only the one changed document, not copies of meshes.
 #load "direction.coax";
-#load "direction-history-checks.coax";
+#load "direction-history-checks.coax" #test;
 #authority;
 AD_HISTORY_BYTES :: 32768;
 AdVersion :: struct {parent:int= -1;part:int;base:AssetId;id:AssetId;before_n:int;after_n:int;before:[AD_HISTORY_BYTES]u8;after:[AD_HISTORY_BYTES]u8;}

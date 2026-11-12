@@ -4,7 +4,9 @@
 # ("# why (#1234)"), and a line that excuses nothing now fails. Lines:
 #   aethyr-up FROM -> TO      an engine or rules file loads from verse/, apps/, everglade/ or coax/web/
 #   everglade-up FROM -> TO   a game file loads from apps/
-#   tests FROM -> TO          an engine, game, API or room file that is not support code loads a tests/ file
+#   tests FROM -> TO          an engine, game, API or room file that is not support code loads a tests/ file with a
+#                             plain #load; a module loads its checks with #load "FILE" #test; (#13383).
+#                             None is listed and none may be added.
 #   context FROM -> TO        a file in one bounded context loads another not in its contexts.txt "may load" list
 # Seeded when the check landed: aethyr-up 57, everglade-up 7, tests 126.
 
@@ -24,133 +26,6 @@ aethyr-up aethyr/world/weather.coax -> verse/water-weather.coax
 # The game loads from the web app
 
 # Product code loads test code
-tests aethyr/actors/behavior-plan.coax -> aethyr/actors/tests/behavior-plan.coax
-tests aethyr/actors/behavior.coax -> aethyr/actors/tests/behavior.coax
-tests aethyr/actors/choices.coax -> aethyr/actors/tests/choices-matrix.coax
-tests aethyr/actors/choices.coax -> aethyr/actors/tests/choices.coax
-tests aethyr/actors/definitions.coax -> aethyr/actors/tests/definitions.coax
-tests aethyr/actors/instances.coax -> aethyr/actors/tests/instances.coax
-tests aethyr/actors/lab.coax -> aethyr/actors/tests/lab.coax
-tests aethyr/actors/model.coax -> aethyr/actors/tests/model.coax
-tests aethyr/actors/navigation.coax -> aethyr/actors/tests/navigation-matrix.coax
-tests aethyr/actors/navigation.coax -> aethyr/actors/tests/navigation.coax
-tests aethyr/actors/perception.coax -> aethyr/actors/tests/perception-matrix.coax
-tests aethyr/actors/perception.coax -> aethyr/actors/tests/perception.coax
-tests aethyr/actors/phases.coax -> aethyr/actors/tests/phases.coax
-tests aethyr/actors/pool.coax -> aethyr/actors/tests/pool-edges.coax
-tests aethyr/actors/pool.coax -> aethyr/actors/tests/pool.coax
-tests aethyr/actors/profile.coax -> aethyr/actors/tests/profile-matrix.coax
-tests aethyr/actors/profile.coax -> aethyr/actors/tests/profile.coax
-tests aethyr/actors/resources.coax -> aethyr/actors/tests/resources.coax
-tests aethyr/actors/runtime.coax -> aethyr/actors/tests/runtime-edges.coax
-tests aethyr/actors/runtime.coax -> aethyr/actors/tests/runtime.coax
-tests aethyr/actors/signals.coax -> aethyr/actors/tests/signals.coax
-tests aethyr/ai/decide.coax -> aethyr/tests/decide-oracle.coax
-tests aethyr/ai/stimulus.coax -> aethyr/tests/stimulus-oracle.coax
-tests aethyr/anim/echo-pack.coax -> aethyr/tests/echo-rig-policy-checks.coax
-tests aethyr/anim/face-pack.coax -> aethyr/tests/face-pack-checks.coax
-tests aethyr/cam/attention.coax -> aethyr/cam/tests/attention-matrix.coax
-tests aethyr/cam/attention.coax -> aethyr/cam/tests/attention-world.coax
-tests aethyr/cam/attention.coax -> aethyr/cam/tests/attention.coax
-tests aethyr/cam/eye.coax -> aethyr/cam/tests/eye.coax
-tests aethyr/cam/semantic.coax -> aethyr/cam/tests/semantic.coax
-tests aethyr/core/checkpoint.coax -> aethyr/tests/checkpoint-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/physics/collide.coax -> aethyr/tests/collide-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/core/entity.coax -> aethyr/tests/entity-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/move/follower.coax -> aethyr/tests/follower-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/physics/ground-contact.coax -> aethyr/tests/ground-contact-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/physics/ground-query.coax -> aethyr/tests/ground-ray-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/physics/ground.coax -> aethyr/tests/ground-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/host/audio-bank-browser-conformance.coax -> aethyr/host/tests/browser-audio-span-observations.coax
-tests aethyr/host/build-linux-action-packet.coax -> aethyr/render/tests/qualification-files.coax
-tests aethyr/host/http-conformance.coax -> aethyr/host/tests/http-target-observations.coax
-tests aethyr/host/local-conformance.coax -> aethyr/host/tests/local-route-observations.coax
-tests aethyr/host/media-notice-json.coax -> aethyr/host/tests/media-notice-json-fixture.coax
-tests aethyr/host/socket-context-conformance.coax -> aethyr/host/tests/socket-context-observations.coax
-tests aethyr/host/socket-tls-conformance.coax -> aethyr/host/tests/socket-tls-observations.coax
-tests aethyr/host/transport-conformance.coax -> aethyr/host/tests/transport-observations.coax
-tests aethyr/move/walk.coax -> aethyr/tests/locomotion-source-oracle.coax  # the velocity kernel folded into the walker with its oracle load; the load itself is as old (#13270)
-tests aethyr/core/math.coax -> aethyr/tests/math-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/world/nav/grid.coax -> aethyr/tests/nav-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/physics/query-scene.coax -> aethyr/tests/query-semantic-fixture.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/physics/query.coax -> aethyr/tests/query-heightfield.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/physics/query.coax -> aethyr/tests/query-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/render/active-lanes.coax -> aethyr/render/tests/active-lanes-checks.coax
-tests aethyr/render/asset-staging-policy.coax -> aethyr/render/tests/asset-staging-checks.coax
-tests aethyr/render/bake.coax -> aethyr/render/tests/bake-fixtures.coax
-tests aethyr/render/binding-sources.coax -> aethyr/render/tests/binding-sources-checks.coax
-tests aethyr/render/display-quantize.coax -> aethyr/render/tests/display-quantize-checks.coax
-tests aethyr/render/footprint.coax -> aethyr/render/tests/footprint-checks.coax
-tests aethyr/render/fragment-layout.coax -> aethyr/render/tests/fragment-layout-checks.coax
-tests aethyr/render/frame.coax -> aethyr/tests/render-frame-checks.coax
-tests aethyr/render/grass-root.coax -> aethyr/render/tests/grass-root-oracle.coax
-tests aethyr/render/host-bindings.coax -> aethyr/render/tests/host-bindings-checks.coax
-tests aethyr/render/host-textures.coax -> aethyr/render/tests/host-textures-checks.coax
-tests aethyr/render/package.coax -> aethyr/render/tests/package-checks.coax
-tests aethyr/render/raster-profile.coax -> aethyr/render/tests/raster-profile-checks.coax
-tests aethyr/render/reference-frame.coax -> aethyr/render/tests/reference-frame-checks.coax
-tests aethyr/render/reference-io.coax -> aethyr/render/tests/reference-io-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-admission-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-arena-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-array-query-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-call-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-control-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-convert-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-flow-extra-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-gpu-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-place-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-prepare-budget-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-private-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-run-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-scalar-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-shape-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-short-circuit-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-statement-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-storage-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-texture-extra-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-transport-extra-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-type-checks.coax
-tests aethyr/render/reference-ir.coax -> aethyr/render/tests/reference-ir-value-extra-checks.coax
-tests aethyr/render/reference-package.coax -> aethyr/render/tests/reference-package-checks.coax
-tests aethyr/render/reference-pipeline.coax -> aethyr/render/tests/reference-pipeline-checks.coax
-tests aethyr/render/reference-pipeline.coax -> aethyr/render/tests/reference-pipeline-work-checks.coax
-tests aethyr/render/reference-quad.coax -> aethyr/render/tests/reference-filter-checks.coax
-tests aethyr/render/reference-quad.coax -> aethyr/render/tests/reference-quad-checks.coax
-tests aethyr/render/reference-raster.coax -> aethyr/render/tests/reference-raster-checks.coax
-tests aethyr/render/reference-raster.coax -> aethyr/render/tests/reference-raster-guard-checks.coax
-tests aethyr/render/reference-raster.coax -> aethyr/render/tests/reference-raster-subpixel-checks.coax
-tests aethyr/render/reference-texture.coax -> aethyr/render/tests/reference-texture-checks.coax
-tests aethyr/render/reference-tree.coax -> aethyr/render/tests/reference-tree-checks.coax
-tests aethyr/render/resources.coax -> aethyr/render/tests/resources-checks.coax
-tests aethyr/render/sans-profile.coax -> aethyr/render/tests/sans-profile-checks.coax
-tests aethyr/render/staging-policy.coax -> aethyr/render/tests/staging-policy-checks.coax
-tests aethyr/render/texture-codec.coax -> aethyr/render/tests/texture-codec-checks.coax
-tests aethyr/core/replay.coax -> aethyr/tests/replay-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/session/character-checkpoint.coax -> aethyr/session/tests/character-checkpoint-fixture.coax
-tests aethyr/session/control.coax -> aethyr/tests/control-oracle.coax
-tests aethyr/session/travel.coax -> aethyr/tests/travel-oracle.coax
-tests aethyr/state/codec.coax -> aethyr/state/tests/codec-goldens.coax
-tests aethyr/state/codec.coax -> aethyr/state/tests/codec-matrix.coax
-tests aethyr/state/codec.coax -> aethyr/state/tests/codec.coax
-tests aethyr/state/declarations.coax -> aethyr/state/tests/declarations.coax
-tests aethyr/state/fixture.coax -> aethyr/state/tests/fixture.coax
-tests aethyr/state/lifecycle.coax -> aethyr/state/tests/lifecycle.coax
-tests aethyr/state/restore.coax -> aethyr/state/tests/restore.coax
-tests aethyr/state/variants.coax -> aethyr/state/tests/variants-matrix.coax
-tests aethyr/state/variants.coax -> aethyr/state/tests/variants.coax
-tests aethyr/world/terrain-tile.coax -> aethyr/tests/terrain-tile-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
-tests aethyr/world/cells.coax -> aethyr/tests/cells-oracle.coax
-tests aethyr/world/owners.coax -> aethyr/tests/owners-oracle.coax
-tests aethyr/world/resource-cost.coax -> aethyr/world/tests/resource-cost-fixture.coax
-tests aethyr/world/resource-manifest.coax -> aethyr/world/tests/resource-manifest-fixture.coax
-tests aethyr/world/resource-stream.coax -> aethyr/world/tests/resource-stream-fixture.coax
-tests aethyr/world/stream-walk-state.coax -> aethyr/world/tests/stream-walk-state-checks.coax
-tests aethyr/world/stream-walk.coax -> aethyr/world/tests/stream-walk-checks.coax
-tests coax/web/api/checkpoint-policy.coax -> coax/web/api/tests/checkpoint-fixture.coax  # inline #test fixture kept out of #authority module (#13315)
-tests pay/lnaddr-policy.coax -> coax/tests/lnaddr/profile_fixtures.coax  # inline #test fixtures kept out of #authority module for mutation testing (#13315)
-tests coax/web/room/room-checkpoint.coax -> coax/web/room/tests/checkpoint-fixture.coax  # inline #test helpers and fixtures loaded by room-checkpoint (#13315)
-tests everglade/server/battle.coax -> everglade/server/tests/battle-fixture.coax  # #test helpers kept out of the #authority battle's mutants (#13346, rebaselined in #13355)
 # The tests rule covers coax/web/api/ and coax/web/room/ since 94d1194a42 (#13315), and pay/ since #13320; its seeded lines only shrink.
 
 # Cross-context loads outside contexts.txt (#13317)

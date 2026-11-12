@@ -5,7 +5,7 @@
 #load "cut-document.coax";
 #load "../audio/speak.coax";
 #load "voice-source.coax";
-#load "project-checks.coax";
+#load "project-checks.coax" #test;
 #authority;
 SceneProject :: struct {
  ready:bool;error:int;bytes:[]u8;libraries:int;performances:int;voices:int;

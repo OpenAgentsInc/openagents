@@ -1,9 +1,9 @@
 // Engine-owned integration content for #12989 and the subsequent lifecycle,
 // streaming, action, actor, camera and terrain issues. All IDs are durable.
-#module "aethyr.examples.queryworld";
 #import "Basic";
 #load "../physics/query-fluid.coax";
 #load "../core/entity.coax" as entities;
+#load "../tests/entity-oracle.coax";   // the example runs the entity oracle as code
 #load "../physics/collide.coax";
 #load "../cam/follow.coax";
 #load "../ai/stimulus.coax";

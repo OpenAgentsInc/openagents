@@ -1,6 +1,6 @@
 #load "bundle-policy.coax";
 #load "library.coax";
-#load "bundle-checks.coax";
+#load "bundle-checks.coax" #test;
 #authority;
 anim_bundle_part :: (b:[]u8,k:int)->[]u8 #effects(all) {at:=12+k*8;first:=cast(int)anim_word(b,at);n:=cast(int)anim_word(b,at+4);return b[first..<first+n];}
 anim_bundle_load :: (b:[]u8,out:[]AnimLibrary)->int #effects(all) {

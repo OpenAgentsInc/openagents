@@ -3,7 +3,7 @@
 #load "action-packet-conformance.coax";
 #load "../render/tests/qualification-files.coax";
 #load "../../coax/lib/sys/args.coax";
-tool_main::()->int #export_c #effects(all) {
+tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3||args_count(a[..])>6||cxtool_os()!=2 {tool_errln("usage: build-linux-action-packet ROOT COMPILER NEW_OUT [--sanitize] [--prepared NORMAL_BUILD]");return 2;}
  root:=args_at(a[..],0);compiler:=args_at(a[..],1);out:=args_at(a[..],2);sanitize:=args_has(a[..],"--sanitize");prepared:=args_value(a[..],"--prepared","");for i:3..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize"&&args_at(a[..],i)!="--prepared"&&(i==3||args_at(a[..],i-1)!="--prepared") {return 2;}}if !fs_mkdir(out) {return 1;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
  paths:[32][4096]u8;inputs:[1]RtqInputs;env:[]string;stdout:[16777216]u8;stderr:[1048576]u8;

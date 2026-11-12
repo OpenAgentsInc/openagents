@@ -11,7 +11,6 @@
  b:[262190]u8;anim_bundle_put(b[..],0,0x31424c41);anim_bundle_put(b[..],4,262190);anim_bundle_put(b[..],8,1);anim_bundle_put(b[..],12,36);anim_bundle_put(b[..],16,1);anim_bundle_put(b[..],20,37);anim_bundle_put(b[..],24,262144);anim_bundle_put(b[..],28,262181);anim_bundle_put(b[..],32,9);#assert anim_bundle_valid(b[..]);anim_bundle_put(b[..],24,262145);#assert !anim_bundle_valid(b[..]);
  b[0]=0;#assert !anim_bundle_valid(b[..]);
 }
-anim_bundle_put :: (b:[]u8,at:int,value:u32) #effects(all) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}
 anim_test_bundle :: (b:[]u8) #effects(all) {for k:0..<b.count {b[k]=0;}for value,k:[9]u32.[0x31424c41,80,1,36,2,38,3,41,39] {anim_bundle_put(b,k*4,value);}}
 
 #forall "animation bundle spans match positive contiguous bounded windows" size:1..<8,cursor:0..<8,first:0..<8,n:0..<9 {

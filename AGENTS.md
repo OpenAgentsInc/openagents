@@ -173,7 +173,7 @@ coax/web/serve.sh apps/openagents-web       # the website with hot reload: http:
 coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
 coax/web/tool.sh components-check           # the component system's layers, no looks in a component, one Markdown parser (components/spec.md, #13153)
-coax/web/tool.sh layer-check                # no load from aethyr/ up into verse/, apps/, everglade/ or coax/web/, none from everglade/ into apps/, no product load of tests/; no engine module without a product consumer or a line in aethyr/consumers.txt (#13272); the allowlist only shrinks (aethyr/README.md "Layers", #13264)
+coax/web/tool.sh layer-check                # no load from aethyr/ up into verse/, apps/, everglade/ or coax/web/, none from everglade/ into apps/, no plain load of a tests/ file by product code (a module loads its checks with `#load "FILE" #test;`, #13383); no engine module without a product consumer or a line in aethyr/consumers.txt (#13272); the allowlist only shrinks (aethyr/README.md "Layers", #13264)
 coax/web/tool.sh prepush --replay COMMIT    # would the pre-push check refuse COMMIT? (--replay-check: the historical clobbers, #13265)
 coax/web/tool.sh wire-check                 # every wire shape is in proto/registry.json with one codec; the allowlist only shrinks (proto/README.md, #13236)
 coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/verse/fast-shots.md)

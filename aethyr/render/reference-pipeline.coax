@@ -25,7 +25,7 @@ RRPipeline :: struct {
 RRVertices :: struct {status:RQStatus;steps:int;vertices:[3]RRVertex;}
 RRShaded :: struct {status:RQStatus;steps:int;publish:u32;colour:[4]RQColor;aux:[4]RQColor;depth:[4]f32;}
 RRPassResult :: struct {status:RQStatus;steps:int;triangles:int;quads:int;fragments:int;written:int;}
-#load "tests/reference-pipeline-checks.coax";
+#load "tests/reference-pipeline-checks.coax" #test;
 
 rr_pipeline :: (p:RQProgram,tree:[]u32,meta:[]int)->RRPipeline #effects(all) {
  vs:=rq_ir_interface(p,tree,meta,0);if vs.status!=RQStatus.ok {return RRPipeline.{status=vs.status};}
@@ -218,4 +218,4 @@ rr_reference_pass_work_profile :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]in
  return result;
 }
 
-#load "tests/reference-pipeline-work-checks.coax";
+#load "tests/reference-pipeline-work-checks.coax" #test;

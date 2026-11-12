@@ -2,6 +2,7 @@
 #module "aethyr.examples.resourcestream";
 #import "Basic";
 #load "../world/resource-stream.coax";
+#load "../world/tests/resource-stream-fixture.coax";   // the example runs the fixture as code
 
 rs_parity_record :: (bytes: [] u8, at: int, event: ResourceAccepted) #effects(all) {
   resource_put64(bytes, at, event.tick); resource_put64(bytes, at + 8, event.key.owner);

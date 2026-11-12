@@ -2,7 +2,7 @@
 // continuation. Candidate cells are admitted as a bounded query before geometry is read.
 #module "aethyr.ground.contact";
 #load "ground-query.coax";
-#load "../tests/ground-contact-oracle.coax";
+#load "../tests/ground-contact-oracle.coax" #test;
 #authority;
 
 GROUND_CONTACT_CELLS :: 4096;

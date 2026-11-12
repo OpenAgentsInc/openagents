@@ -33,7 +33,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../aethyr/core/ids.coax";
 #load "../../rules/srd/advancement.coax";
-#load "character-checks.coax";   // the checks' fixture and helpers
+#load "character-checks.coax" #test;   // the checks' fixture and helpers
 
 CHAR_VERSION :: 1;
 CHAR_BODY :: 4096;        // the longest record, in bytes

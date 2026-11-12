@@ -1,7 +1,7 @@
 // Pure post-layer solvers. Targets are authored in character space; each call
 // starts from the current layered pose, never from a previous solved frame.
 #load "layers.coax";
-#load "fixup-checks.coax";
+#load "fixup-checks.coax" #test;
 FixupReport :: struct {feet:int;looks:int;hands:int;unreachable:int;unsupported:int;weighted_residuals:int;max_error:f32;pelvis_shift:f32;}
 fix_from_to :: (from:Point,to:Point)->Quat {
  if length(from)<0.000001 || length(to)<0.000001 {return Quat.{};}a:=unit_or(from,v3(0,1,0));b:=unit_or(to,v3(0,1,0));d:=dot(a,b);

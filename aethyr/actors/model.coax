@@ -7,7 +7,7 @@
 #load "../core/replay.coax" as replay;
 #authority;
 ActorModelTicket :: struct {status:int=ACTOR_INVALID;handle:Handle(entities.Entity);id:int;owner:int;world:int;nav:int;context:int;ask:decisions.DecideAsk;}
-#load "tests/model.coax";
+#load "tests/model.coax" #test;
 actor_model_ask :: (p:[]ActorExecPool,h:Handle(entities.Entity),session:replay.ReplaySession,now:int,world:int,nav:int,wait:int)->ActorModelTicket #effects(all) {
  t:ActorModelTicket;if p.count!=1 || !p[0].ready || now<0 || now!=p[0].tick || wait<1 || now>1000000000-wait || world<1 || nav<1 {return t;}
  store:=actor_entity_store(p);if !entities.entity_alive(store,h) || entities.entity_doomed(store,h) {t.status=ACTOR_STALE;return t;}

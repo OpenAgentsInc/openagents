@@ -30,14 +30,14 @@
 #load "../cam/follow.coax";  // the camera: Aethyr's follow, which every realm shares
 #load "../physics/collide.coax"; // checked capsule resolution and the trusted legacy adapters
 #load "../physics/collision-profiles.coax" as realm_collision;
-#load "player-collision-checks.coax";
+#load "player-collision-checks.coax" #test;
 #load "locomotion.coax";
 #load "walk-substep-policy.coax";
-#load "../tests/locomotion-source-oracle.coax";   // the velocity kernel's recorded oracle
-#load "echo-walk-checks.coax";
+#load "../tests/locomotion-source-oracle.coax" #test;   // the velocity kernel's recorded oracle
+#load "echo-walk-checks.coax" #test;
 #load "flight.coax";   // the per-step flight hook a flying realm declares (Fairy Forest)
 #load "walk-frame.coax";
-#load "walk-tuning-checks.coax";
+#load "walk-tuning-checks.coax" #test;
 #authority;
 
 PI :: 3.14159265;

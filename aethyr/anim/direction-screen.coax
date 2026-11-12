@@ -1,6 +1,6 @@
 // The same numerical scene report gates native and browser edits.
 #load "scene-check.coax";
-#load "direction-screen-checks.coax";
+#load "direction-screen-checks.coax" #test;
 #authority;
 ad_screen :: (text:string)->string #effects(all) {
  nodes:[8192]JvNode;d:[1]Jv;if anim_json(text,d[..],nodes[..])!=0 || !anim_schema(d[0],"anim.scene.check.v1") {return "scene report";}

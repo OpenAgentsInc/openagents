@@ -1,7 +1,7 @@
 // A mannequin slot has one rotational anchor. Canonical names disambiguate
 // folded helper aliases; ambiguous custom aliases require an explicit map.
 #load "rig-document.coax";
-#load "retarget-policy-checks.coax";
+#load "retarget-policy-checks.coax" #test;
 #authority;
 RtAnchors :: struct {joints:[65]int;count:int;}
 rt_joint_count :: (count:int)->bool #effects(all) {return count>=1 && count<=512;}

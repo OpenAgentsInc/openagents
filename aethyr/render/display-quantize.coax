@@ -2,7 +2,7 @@
 // A normalized GPU attachment's final conversion still needs actual probes.
 #load "../gpu/shader.coax";
 #authority;
-#load "tests/display-quantize-checks.coax";
+#load "tests/display-quantize-checks.coax" #test;
 render_display_unorm8_v1 :: (value:f32)->f32 #export_c #effects(all) {
  scaled:=clampf(value,0,1)*255.0f32;low:=floor(scaled);fraction:=scaled-low;integer:=cast(u32)low;
  if fraction>0.5f32 || (fraction==0.5f32 && (integer&1)!=0) {integer+=1;}

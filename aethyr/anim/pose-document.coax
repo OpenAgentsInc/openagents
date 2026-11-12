@@ -1,6 +1,6 @@
 // Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/anim/pose-document.coax
 #load "rig-document.coax";
-#load "pose-document-checks.coax";
+#load "pose-document-checks.coax" #test;
 #authority;
 AnimPose :: struct {ready:bool;name:AnimName;rig:AnimName;joints:int;joint:[65]int;rotation:[65]Quat;face_count:int;shapes:[ANIM_SHAPES]int;face:[ANIM_SHAPES]f32;}
 anim_pose_read :: (d:Jv,rigs:[]AnimRig,out:[]AnimPose)->int #effects(all) {

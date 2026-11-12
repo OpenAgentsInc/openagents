@@ -24,7 +24,7 @@ ResourceManifest :: struct {
   identity: assets.AssetId;
   entries: [RESOURCE_MANIFEST_MAX] ResourceEntry;
 }
-#load "tests/resource-manifest-fixture.coax";
+#load "tests/resource-manifest-fixture.coax" #test;
 
 #test "packed model manifests preserve the old model identity and require their new revision" {
   source: [48] u8; inputs := [1] [] u8.[source[..]];

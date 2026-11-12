@@ -3,7 +3,7 @@
 #module "aethyr.render.footprint";
 #authority;
 RenderFootprint :: struct {valid:bool;taps:int;du:f32;dv:f32;lod:f32;}
-#load "tests/footprint-checks.coax";
+#load "tests/footprint-checks.coax" #test;
 
 render_footprint_finite :: (x:f32)->bool #effects(all) {return x>=-3.4028234663852886e38f32 && x<=3.4028234663852886e38f32;}
 // Inputs are nonnegative and bounded by this profile. The identity is shared

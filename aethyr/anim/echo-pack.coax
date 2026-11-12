@@ -25,4 +25,4 @@ echo_rig_valid :: (b:[]u8)->bool #effects(all) {
   for f:0..<frames {for j:0..<tracks {p:=cursor+(f*tracks+j)*28;if !echo_rig_float_bytes(b[p..<p+28]) || !echo_rig_quat_ok(b[p+12..<p+28]) {return false;}}}cursor+=frames*tracks*28;
  }return cursor==b.count;
 }
-#load "../tests/echo-rig-policy-checks.coax";
+#load "../tests/echo-rig-policy-checks.coax" #test;

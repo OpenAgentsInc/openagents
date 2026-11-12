@@ -1,7 +1,7 @@
 // A native SDK mapping probe. This records the physical peer's path; it
 // does not claim that the echo peer is a room simulation.
 #load "transport-conformance.coax";
-#load "tests/local-route-observations.coax";
+#load "tests/local-route-observations.coax" #test;
 #authority;
 #test "local route keeps all nine actual SDK rows and metadata" {
   rows:=hcl_observed();#assert hcl_local_rows(rows[..],0) && !hcl_local_rows(rows[..],1) && !hcl_local_rows(rows[0..<8],0);

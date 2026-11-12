@@ -24,7 +24,7 @@ BehaviorWork :: struct {guards:int;sequences:int;draws:int;actions:int;}
 BehaviorStatus :: enum u8 {ok;plan;identity;state;clock;facts;context;feedback;exhausted;}
 BehaviorResult :: struct {status:BehaviorStatus;state:BehaviorState;command:BehaviorCommand;event_n:int;events:[2]BehaviorEvent;work:BehaviorWork;schedule:int= -1;anchor:int;}
 BehaviorScheduleChoice :: struct {row:int= -1;active:bool;anchor:int;slot:int= -1;guards:int;}
-#load "tests/behavior.coax";
+#load "tests/behavior.coax" #test;
 
 behavior_plan_shape :: (p:BehaviorPlan)->bool #effects(all) {
  if !p.valid || p.n<1 || p.n>BEHAVIOR_SEQUENCES || p.field_count<0 || p.field_count>ACTOR_FIELD_REFS ||

@@ -5,7 +5,7 @@
 #load "library.coax";
 #load "../audio/speak.coax";
 #load "project.coax";
-#load "scene-sample-checks.coax";
+#load "scene-sample-checks.coax" #test;
 ScenePathNow :: struct {position:Point;yaw:f32;}
 SceneLightNow :: struct {position:Point;colour:Point;intensity:f32;}
 scene_path :: (p:AnimPath,time:f32)->ScenePathNow {

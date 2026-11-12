@@ -8,7 +8,7 @@
 #load "reference-ir.coax";
 #authority;
 RFPackageTree :: struct {status:RQStatus;package_status:RenderPackageStatus;transport:RenderTreeText;program:RQProgram;}
-#load "tests/reference-package-checks.coax";
+#load "tests/reference-package-checks.coax" #test;
 rf_package_admit :: (json:string,profile:int,entries:[]RenderPackageEntry)->RenderPackage #effects(all) {
  p:=render_package_parse(json,entries);p.status=render_package_admit(p,profile,RenderDeviceCapabilities.{backend=RenderBackend.reference,helper_enabled=true,int64_enabled=true});return p;
 }

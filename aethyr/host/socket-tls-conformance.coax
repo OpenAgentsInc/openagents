@@ -17,7 +17,7 @@ hst_peer :: (rows:[]HostTlsOpening,untrusted_headers:int,wrong_name_headers:int)
  rows:=hst_observed_rows();#assert hst_client(rows[..],0);#assert !hst_client(rows[0..<17],0)&&!hst_client(rows[..],1);
  for i:0..<18 {for field:0..<8 {q:=rows;q[i][field]+=1;#assert !hst_client(q[..],0);}}
 }
-#load "tests/socket-tls-observations.coax";
+#load "tests/socket-tls-observations.coax" #test;
 hst_client :: (rows:[][8]int,dropped:int)->bool #export_c #effects(all) {
  if dropped!=0||rows.count!=18{return false;}at:=0;
  for uri,i:[4]string.["wss://localhost:9174/auth/a","wss://localhost:9175/auth/b","wss://localhost:9176/auth/c","wss://localhost:9174/auth/d"] {

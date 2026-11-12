@@ -5,6 +5,7 @@
 // Usage: coax/web/tool.sh everglade/model/tools/character-profile.coax FILE.schema.json
 #import "Basic";
 #load "../character.coax";
+#load "../character-checks.coax";   // the tool runs the record's check fixtures as code
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 

@@ -2,7 +2,7 @@
 // Live Link Face's wide CSV. Timecode rate is explicit (CLI default 60);
 // header names select curves, never their incidental column order.
 #load "import-build.coax";
-#load "import-face-checks.coax";
+#load "import-face-checks.coax" #test;
 #authority;
 AiCsv :: struct {text:string;at:int;bad:bool;}
 AiFaceRows :: struct {count:int;time:[2000]f64;values:[110000]f32;}

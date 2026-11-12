@@ -3,7 +3,7 @@
 // rt_apply requires distinct input and output snapshots.
 #load "retarget-policy.coax";
 #load "sample.coax";
-#load "retarget-checks.coax";
+#load "retarget-checks.coax" #test;
 RtPlan :: struct {
  source:RtAnchors;target:RtAnchors;source_for_target:[512]int;
  source_rest:[512]Quat;target_rest:[512]Quat;source_root_rest:Point;root_scale:f32=1;scaled:bool;paired:int;

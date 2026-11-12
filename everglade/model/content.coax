@@ -23,7 +23,7 @@
 //   coax/bin/coax mutate everglade/model/content.coax --library --root-only
 #authority;
 #load "../../aethyr/content/tables.coax";
-#load "content-checks.coax";   // the checks' fixture and helpers
+#load "content-checks.coax" #test;   // the checks' fixture and helpers
 
 EC_TABLES :: 10;
 EC_ABILITY :: 0; EC_CREATURE :: 1; EC_DIALOGUE :: 2; EC_ITEM :: 3; EC_LOOT :: 4; EC_POINT :: 5; EC_QUEST :: 6; EC_REWARD :: 7; EC_SPAWN :: 8; EC_STEP :: 9;

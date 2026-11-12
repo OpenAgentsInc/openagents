@@ -521,6 +521,7 @@ the walk's state and step are in
 <!-- source: aethyr/examples/replay-a-walk.coax example -->
 ```jai
 #load "../tests/replay-walk.coax";
+#load "../tests/replay-oracle.coax";   // this program runs the fixture as code
 #import "Basic";
 
 // A recorded walk of 240 uneven frames, its replay, and a replay with a fault planted at

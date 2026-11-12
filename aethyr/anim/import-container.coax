@@ -1,7 +1,7 @@
 // A bounded source container is data, never a program or a network request.
 #load "document.coax";
 #load "mannequin.coax";
-#load "import-container-checks.coax";
+#load "import-container-checks.coax" #test;
 #authority;
 AiGlb :: struct {ok:bool;json_first:int;json_size:int;binary_first:int;binary_size:int;}
 ai_format :: (path:string)->int #effects(all) {for suffix,k:[6]string.[".gltf",".glb",".bvh",".csv",".fbx",".unreal.json"] {if path.count>=suffix.count && mq_same(path[path.count-suffix.count..<path.count],suffix) {return k;}}return -1;}

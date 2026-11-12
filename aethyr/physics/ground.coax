@@ -5,7 +5,7 @@
 
 #module "aethyr.ground";
 #load "../../coax/lib/quantity.coax" as units;
-#load "../tests/ground-oracle.coax";
+#load "../tests/ground-oracle.coax" #test;
 #authority;
 
 GROUND_LIMIT :: 1000000.0;

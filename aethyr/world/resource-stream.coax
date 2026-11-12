@@ -45,7 +45,7 @@ ResourceStream :: struct {
 }
 ResourceLoad :: struct { status: ResourceStreamStatus = ResourceStreamStatus.invalid; reason: ResourceAdmissionStatus = ResourceAdmissionStatus.invalid; key: ResourceLoadKey; }
 ResourceAccepted :: struct { tick: int; key: ResourceLoadKey; }
-#load "tests/resource-stream-fixture.coax";
+#load "tests/resource-stream-fixture.coax" #test;
 
 #test "shared dependencies count once per concrete parent and publish only as a complete tick closure" {
   m := [1] ResourceManifest.[rs_fixture_manifest()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];

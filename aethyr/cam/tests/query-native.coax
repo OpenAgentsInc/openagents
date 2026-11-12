@@ -1,5 +1,6 @@
 #import "Basic";
 #load "../../../coax/lib/sys/tool.coax";
+#load "../../tests/entity-oracle.coax";   // this program runs the fixture as code
 #load "query-trial.coax";
 tool_main :: ()->int #export_c #effects(all) {
  out:[1]CameraTrial;

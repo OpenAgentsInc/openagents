@@ -3,7 +3,7 @@
 #module "aethyr.ground.query";
 #load "ground.coax";
 #load "../core/space.coax";
-#load "../tests/ground-ray-oracle.coax";
+#load "../tests/ground-ray-oracle.coax" #test;
 #authority;
 
 GROUND_RAY_CELLS :: 4096;

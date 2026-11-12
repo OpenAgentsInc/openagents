@@ -47,4 +47,4 @@ face_valid :: (b:[]u8)->bool #effects(all) {
   cursor+=frames*f.bones*28;
  }return cursor==b.count;
 }
-#load "../tests/face-pack-checks.coax";
+#load "../tests/face-pack-checks.coax" #test;

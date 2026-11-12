@@ -12,7 +12,8 @@
 // The rules, for a loading file that is not support code (below):
 //   aethyr-up     a file under aethyr/ or rules/ (the SRD rules, out of the engine since #13270) loads from verse/, apps/, everglade/ or coax/web/
 //   everglade-up  a file under everglade/ loads from apps/
-//   tests         a file under aethyr/, rules/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or test/ folder
+//   tests         a file under aethyr/, rules/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or
+//                 test/ folder with a plain #load; `#load "FILE" #test;` is how a module loads its checks (#13383)
 //   context       a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
 //   model-effects a model file listed in aethyr/model-files.txt declares #effects(all) (#13314)
 // And one gate with no allowlist (#13267 step 7, #13346): the room server's load closure (every file
@@ -69,7 +70,8 @@ LcCtxMap :: struct {
   n: int;
 }
 // One "#load" line of git grep's output: the loading file, its line and the path it names.
-LcLoad :: struct { ok: bool; from: string; line: int; rel: string; }
+// checks: a check load, `#load "REL" #test;` (#13383): how a module names its checks.
+LcLoad :: struct { ok: bool; from: string; line: int; rel: string; checks: bool; }
 
 // ---- text
 
@@ -119,6 +121,7 @@ lc_parse :: (row: string) -> LcLoad {
   n := 0;
   for k: a + 1..<b { n = n * 10 + cast(int) (row[k] - '0'); }
   l.ok = true; l.from = cast(string) row[0..<a]; l.line = n; l.rel = cast(string) text[p.count..<e];
+  l.checks = lc_starts(lc_trim(cast(string) text[e + 1..<text.count]), "#test");
   return l;
 }
 // dir joined with rel, with "." and ".." resolved, into out; "" when it climbs past the root
@@ -480,6 +483,9 @@ lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: Lc
     to := lc_resolve(lc_dir(l.from), l.rel, out[..]);
     if to.count == 0 { continue; }
     rule := lc_rule_ctx(l.from, to, ctxs, fc[..], tc[..]);
+    // A check load is how a module names its checks: no compile emits them (#13383). A plain
+    // load of a file in a tests folder ships it.
+    if l.checks && rule == LC_TESTS { continue; }
     if rule == 0 { continue; }
     // a file that loads the same path twice is one load
     if l.from == prev_from && cast(string) prev_to[0..<prev_n] == to { continue; }
@@ -492,7 +498,7 @@ lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: Lc
     if run.quiet { continue; }
     if rule == LC_UP_AETHYR { print("FAIL aethyr-up: %:% loads %. aethyr/ is the engine: it loads nothing from verse/, apps/, everglade/ or coax/web/. Fix: move what it needs down into aethyr/, or have the caller pass it in (%).\n", l.from, l.line, to, LC_HOW); }
     else if rule == LC_UP_EVERGLADE { print("FAIL everglade-up: %:% loads %. everglade/ is the game: it loads nothing from apps/. Fix: move what it needs into everglade/ or aethyr/ (%).\n", l.from, l.line, to, LC_HOW); }
-    else if rule == LC_TESTS { print("FAIL tests: %:% loads %, which is in a tests folder, and % is not a test, check or tool. Fix: move what both need out of the tests folder into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
+    else if rule == LC_TESTS { print("FAIL tests: %:% loads %, which is in a tests folder, with a plain #load, and % is not a test, check or tool. Fix: load a module's own checks with #load \"FILE\" #test; and move what product code needs out of the checks file into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
     else { print("FAIL context: %:% (%) loads % (%), which %'s line in % does not allow. Fix: move the dependency behind an allowed context or published contract (%).\n", l.from, l.line, ctxs.ctxs[fc[0]].slug, to, ctxs.ctxs[tc[0]].slug, ctxs.ctxs[fc[0]].slug, LC_CONTEXTS, LC_HOW); }
   }
   return bad;
@@ -834,6 +840,21 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   // the other trees are not judged here
   #assert lc_rule("rules/srd/a-probes.coax", "verse/experimental-hostiles.coax") == LC_UP_AETHYR && lc_rule("rules/srd/a.coax", "aethyr/tests/x.coax") == LC_TESTS && lc_rule("rules/srd/a.coax", "aethyr/core/math.coax") == 0;
   #assert lc_rule("verse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
+}
+#test "a check load of a file in a tests folder passes; a plain one fails" {
+  #assert lc_parse("a.coax:1:#load \"b.coax\" #test;").checks && lc_parse("a.coax:1:#load \"b.coax\"  #test ;").checks;
+  #assert !lc_parse("a.coax:1:#load \"b.coax\";").checks && !lc_parse("a.coax:1:#load \"b.coax\" as b;").checks && !lc_parse("a.coax:1:#load \"b.coax\"; // #test").checks;
+  used: [4] bool;
+  f: [LC_RULES] int;
+  #assert lc_judge("aethyr/move/walk.coax:26:#load \"tests/walk-fixture.coax\" #test;\naethyr/move/walk.coax:27:#load \"../tests/walk-oracle.coax\" #test;\n", "", "", used[..], LC_T_QUIET, f[..]) == 0 && f[LC_TESTS] == 0;
+  g: [LC_RULES] int;
+  #assert lc_judge("aethyr/move/walk.coax:27:#load \"../tests/walk-oracle.coax\";\npay/a.coax:2:#load \"tests/a.coax\";\n", "", "", used[..], LC_T_QUIET, g[..]) == 2 && g[LC_TESTS] == 2;
+  // a checks file is support code: it loads its fixtures plainly; a file outside the ruled folders is not judged
+  h: [LC_RULES] int;
+  #assert lc_judge("aethyr/move/walk-tuning-checks.coax:2:#load \"../tests/walk-fixture.coax\";\nverse/a.coax:2:#load \"tests/a.coax\";\n", "", "", used[..], LC_T_QUIET, h[..]) == 0;
+  // a check load up the layers is still an upward load
+  k: [LC_RULES] int;
+  #assert lc_judge("aethyr/move/walk.coax:3:#load \"../../verse/tests/x.coax\" #test;\n", "", "", used[..], LC_T_QUIET, k[..]) == 1 && k[LC_UP_AETHYR] == 1 && k[LC_TESTS] == 0;
 }
 #test "the seeded allowlist passes; a new upward load fails" {
   used: [8] bool; found: [LC_RULES] int;

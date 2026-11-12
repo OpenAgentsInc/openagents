@@ -15,7 +15,7 @@ ActorPlanStep :: struct {id:int;phase:int;reads:u32;writes:u32;}
 ActorPlan :: struct {valid:bool;n:int;steps:[ACTOR_TASKS]ActorPlanStep;}
 ActorPlanStatus :: enum u8 {ok;version;capacity;identity;phase;channels;dependency;cycle;conflict;}
 ActorPlanResult :: struct {status:ActorPlanStatus;task:int= -1;related:int= -1;plan:ActorPlan;}
-#load "tests/phases.coax";
+#load "tests/phases.coax" #test;
 
 // No partially compiled plan escapes. Dependency names are resolved once here;
 // the runtime receives only fixed task IDs in their execution order.

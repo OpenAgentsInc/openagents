@@ -376,7 +376,7 @@ cell_digest :: (w: [] CellWorld) -> int #effects(all) {
 }
 
 // ---- checks
-#load "../tests/cells-oracle.coax";
+#load "../tests/cells-oracle.coax" #test;
 
 #test "cell profile default preserves the historical policy and exact admitted declaration bounds" {
   p := CellRings.{};

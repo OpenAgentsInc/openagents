@@ -31,7 +31,7 @@
 #authority;
 #load "../world/terrain-tile.coax";
 #load "terrain-shade.coax";
-#load "tests/bake-fixtures.coax";
+#load "tests/bake-fixtures.coax" #test;
 
 // book:begin bake-types
 BAKE_VERSION :: 1;

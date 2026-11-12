@@ -7,9 +7,9 @@
 #load "../../../verse/anime/director.coax";
 #load "../../../verse/anime/render-profile.coax";
 #load "anime-route-policy.coax";
-#load "anime-director-checks.coax";
-#load "anime-director-render-checks.coax";
-#load "anime-director-wire-checks.coax";
+#load "anime-director-checks.coax" #test;
+#load "anime-director-render-checks.coax" #test;
+#load "anime-director-wire-checks.coax" #test;
 #load "../../../aethyr/anim/direction-select.coax";
 #authority;
 

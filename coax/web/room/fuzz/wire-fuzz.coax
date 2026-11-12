@@ -23,6 +23,7 @@
 // failed is a #test below.
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's check (room.coax)
 #load "../room.coax";
+#load "../../../../everglade/server/room-checks.coax";   // the fuzzer drives the room through its check helpers
 
 FZ_OK :: 0; FZ_NO_ROOM :: 1; FZ_OTHER_CHANGED :: 2;
 FZ_SENDER :: 0;            // the conn that says everything (seat 0)

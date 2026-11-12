@@ -1,6 +1,6 @@
 // glTF 2.0 single-buffer access, including interleaving and sparse overlays.
 #load "import-build.coax";
-#load "gltf-access-checks.coax";
+#load "gltf-access-checks.coax" #test;
 #authority;
 AgAccess :: struct {ok:bool;offset:int= -1;count:int;components:int;component:int;bytes:int;stride:int;normalized:bool;sparse:int;sparse_indices:int;sparse_bytes:int;sparse_values:int;}
 AgFile :: struct {d:Jv;binary:[]u8;bad:bool;}

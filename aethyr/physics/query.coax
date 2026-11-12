@@ -29,8 +29,8 @@
 #load "ground-contact.coax" as height_contacts;
 #load "../../coax/lib/quantity.coax" as quantities;
 #load "stand.coax";
-#load "../tests/query-oracle.coax";   // the checks' oracles
-#load "../tests/query-heightfield.coax";
+#load "../tests/query-oracle.coax" #test;   // the checks' oracles
+#load "../tests/query-heightfield.coax" #test;
 
 // book:begin rules
 QUERY_STEP_UP :: STAND_STEP;     // 0.55 m: the highest top a walker steps onto

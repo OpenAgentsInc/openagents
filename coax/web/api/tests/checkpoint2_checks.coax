@@ -3,6 +3,7 @@
 #load "api_harness.coax";
 #load "../../../../aethyr/session/resume-envelope.coax";
 #load "checkpoint2-runtime.coax";
+#load "../../../../aethyr/session/tests/character-checkpoint-fixture.coax";   // the fixture this program builds from
 c2_signed_post :: (t:[]Ap,path:string,body:string)->int {
   mac:[64]u8;_:=rt_mac(t[0].room_key,body,mac[..]);h:[1]Sb;sb(h[..],"X-Room-Mac: ");sb(h[..],cast(string)mac[..]);
   headers:=[2]string.["Content-Type: application/json",sb_text(h[..])];return ap_call(t,"POST",path,body,headers[..]);

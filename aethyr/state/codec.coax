@@ -7,9 +7,9 @@ STATE_SAVE_WORDS :: 538;
 STATE_FACT_MAGIC :: 1179866161;
 StateMigration :: struct {approved:bool;source:assets.AssetId;target:assets.AssetId;defaults:u32;clamp:u32;discard:u32;}
 StateLoaded :: struct {draft:StateDraft;defaulted:u32;repaired:u32;}
-#load "tests/codec.coax";
-#load "tests/codec-goldens.coax";
-#load "tests/codec-matrix.coax";
+#load "tests/codec.coax" #test;
+#load "tests/codec-goldens.coax" #test;
+#load "tests/codec-matrix.coax" #test;
 // Finite scalar selectors retain the second operand on a tie, including its
 // zero sign. Integer facts are bounded to 1e12 and convert to f64 exactly.
 state_fmin :: (a:f64,b:f64)->f64 #effects(all) {if a<b {return a;}return b;}

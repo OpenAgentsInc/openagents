@@ -1,7 +1,7 @@
 // ALP1 retains whole ALB1 libraries, admitted document text and voice tracks
 // in one immutable owner-local bank. Offsets never escape that bank.
 #load "bundle-policy.coax";
-#load "project-policy-checks.coax";
+#load "project-policy-checks.coax" #test;
 #authority;
 project_parts :: (b:[]u8)->int #effects(all) {return cast(int)anim_word(b,8)+cast(int)anim_word(b,12)+cast(int)anim_word(b,16)+2;}
 project_table_fits :: (size:int,count:int)->bool #effects(all) {return 20+count*8<=size;}

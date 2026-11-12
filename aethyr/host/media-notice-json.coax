@@ -1,6 +1,7 @@
 // Closed authored-image fixture: exact delivered byte arrays and readiness.
 #load "media-notice-observations.coax";
-#load "tests/media-notice-json-fixture.coax";
+#load "../../coax/lib/json/json.coax";
+#load "tests/media-notice-json-fixture.coax" #test;
 #authority;
 #test "notice JSON requires complete typed observations and actual delivered bytes" {
  bytes:[8192]u8;nodes:[2048]JvNode;doc:[1]Jv;

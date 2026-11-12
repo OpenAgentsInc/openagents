@@ -1,7 +1,7 @@
 // Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/anim/retarget-clip.coax
 #load "retarget.coax";
 #load "write.coax";
-#load "retarget-clip-checks.coax";
+#load "retarget-clip-checks.coax" #test;
 RtBake :: struct {clip:AnimClip;bytes:int= -1;dropped_curves:int;dropped_events:int;dropped_root:bool;}
 rt_bake :: (source:AnimRig,target:AnimRig,input:AnimClip,packs:[]AnimPack,plan:RtPlan,out:[]u8,start:int,receipt:AssetId)->RtBake {
  result:RtBake;c:AnimClip;c.ready=true;c.name=input.name;c.rig=target.name;c.frames=input.frames;c.rate=input.rate;c.length=input.length;c.looping=input.looping;c.source=input.source;c.receipt=receipt;c.role=input.role;c.joint_count=target.joints;

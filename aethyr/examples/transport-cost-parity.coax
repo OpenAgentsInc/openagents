@@ -1,6 +1,7 @@
 // Small public vectors: no large allocation is needed to plan a large raw input.
 #import "Basic";
 #load "../host/transport-manifest.coax";
+#load "../world/tests/resource-manifest-fixture.coax";   // this program runs the fixture as code
 transport_cost_words :: ()->[64]int #export_c #effects(all) {
   words:[64]int;pack_bytes:[512]u8;wire:=pack_test(600,pack_bytes[..]);parsed_pack:[1]PackRead;
   #assert pack_read(wire,parsed_pack[..]);entry:=parsed_pack[0].entries[2];

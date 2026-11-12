@@ -13,7 +13,7 @@ RenderHostClear :: struct {colour:[4]f32;depth:f32;}
 // Its two records leave both an opaque and a water record when water is enabled.
 RENDER_HOST_PIPELINE_TEMPLATE :: FrameCounts.{width=1,height=1,vertex_stride=1,hud_vertices=1,
   draw_count=2,water_draws=1,grass_instances=1,particle_instances=1,surface_vertices=1,caster_vertices=1,caster_instances=1};
-#load "tests/host-bindings-checks.coax";
+#load "tests/host-bindings-checks.coax" #test;
 
 render_host_binding_count :: (rhbd_profile:int,rhbd_set:int)->int #effects(all) {
   if rhbd_set==2 {return ifx render_catalog(rhbd_profile).features.media then render_media_binding_count() else -1;}

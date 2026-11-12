@@ -24,8 +24,8 @@ ActorExecPool :: struct {
  scan_cap:int;sense_cap:int;search_cap:int;choice_cap:int;refused:int;tick:int= -1;hooks:[3]int;
 }
 ActorSpawnResult :: struct {status:int=ACTOR_INVALID;handle:Handle(entities.Entity);id:int;}
-#load "tests/pool.coax";
-#load "tests/pool-edges.coax";
+#load "tests/pool.coax" #test;
+#load "tests/pool-edges.coax" #test;
 actor_entity_store :: (p:[]ActorExecPool)->entities.EntityStore #effects(all) {return entities.EntityStore.{gen=p[0].gen[..],live=p[0].live[..],born=p[0].born[..],doomed=p[0].doomed[..],ids=p[0].ids[..],free=p[0].free[..],spawns=p[0].spawns[..],n=p[0].n[..]};}
 actor_exec_pool_open :: (p:[]ActorExecPool,limits:ActorLimits)->bool #effects(all) {
  if p.count!=1 || p[0].ready || limits.capacity<1 || limits.capacity>ACTOR_EXEC_SLOTS || limits.scans<1 || limits.scans>256 || limits.senses<1 || limits.senses>256 || limits.search<1 || limits.search>2048 || limits.choices<1 || limits.choices>512 || (limits.bytes<size_of(ActorExecPool) || limits.bytes>16777216) {return false;}

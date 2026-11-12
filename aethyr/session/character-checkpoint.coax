@@ -14,7 +14,7 @@ CC_REST_HIGH :: [19]int.[2,3600000,20,1,1,1,3,3,86400000,86400000,86400000,86400
 // Metabolism, Magical Cunning, Faithful Steed), each 0 to CC_MORE_HIGH: profile 3's optional `uses`.
 CC_MORE :: 3; CC_MORE_HIGH :: 99;
 CharacterRest :: struct #persisted {on:bool; n:[CC_REST]int; more:bool=false; uses:[CC_MORE]int=[3]int.[0,0,0];}
-#load "tests/character-checkpoint-fixture.coax";
+#load "tests/character-checkpoint-fixture.coax" #test;
 #test "character checkpoint: a whole dead character, place and spent resources round trip" {
   c:=cc_fixture();out:[CC_BODY]u8;s:=cc_write(c,out[..]);d:=cc_read(s,true);
   #assert d.ok&&d.dead&&d.pid_n==3&&d.room_n==6;

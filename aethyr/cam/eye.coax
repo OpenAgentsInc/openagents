@@ -16,7 +16,7 @@ CamEye :: struct {
  status: queries.QueryStatus;
  collider: filters.ColliderRef;
 }
-#load "tests/eye.coax";
+#load "tests/eye.coax" #test;
 
 // One bounded sweep, at most 200 metres and a 2-metre eye radius. Safe means
 // the complete head-to-eye segment cleared that radius. A start inside a body

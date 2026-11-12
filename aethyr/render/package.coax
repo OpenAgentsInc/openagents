@@ -22,7 +22,7 @@ RenderPackage :: struct {
 }
 RenderPackageText :: struct {ok:bool;value:string;}
 
-#load "tests/package-checks.coax";
+#load "tests/package-checks.coax" #test;
 
 // Canonical package keys/names are plain JSON strings. Escaped spellings are
 // refused rather than returned as incorrectly decoded borrowed names.

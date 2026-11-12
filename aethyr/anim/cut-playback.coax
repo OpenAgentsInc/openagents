@@ -1,7 +1,7 @@
 // Map an edit clock onto admitted scene clocks. Incoming transition time
 // belongs to the new shot; the outgoing shot continues beyond its endpoint.
 #load "cut-document.coax";
-#load "cut-playback-checks.coax";
+#load "cut-playback-checks.coax" #test;
 #authority;
 CutMoment :: struct {ready:bool;shot:int;camera:int;time:f32;previous:int= -1;previous_time:f32;weight:f32=1;opacity:f32=1;}
 cut_play :: (cut:[]AnimCut,time:f32)->CutMoment #effects(all) {

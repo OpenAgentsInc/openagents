@@ -1,5 +1,5 @@
 #load "clip-document.coax";
-#load "performance-document-checks.coax";
+#load "performance-document-checks.coax" #test;
 #authority;
 ANIM_MASKS :: [8]string.["all","face","head","upper","arm_l","arm_r","hands","legs"];
 ANIM_LAYER_KINDS :: [5]string.["base","override","additive","face","fix-up"];

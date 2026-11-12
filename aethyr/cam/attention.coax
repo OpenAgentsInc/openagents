@@ -19,9 +19,9 @@
 #load "../physics/query.coax";
 #load "../physics/query-scene.coax" as scene;
 #authority;
-#load "tests/attention-world.coax";
-#load "tests/attention.coax";
-#load "tests/attention-matrix.coax";
+#load "tests/attention-world.coax" #test;
+#load "tests/attention.coax" #test;
+#load "tests/attention-matrix.coax" #test;
 
 ATTN_CANDIDATES :: 32;
 ATTN_LOCK :: 1; ATTN_TALK :: 2; ATTN_LOOK :: 4; ATTN_ACTION :: 8;

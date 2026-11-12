@@ -4,7 +4,7 @@
 #load "retarget.coax";
 #load "masks.coax";
 #load "layer-core.coax";
-#load "layers-checks.coax";
+#load "layers-checks.coax" #test;
 #authority;
 layer_evaluate :: (r:[]AnimRig,p:AnimPerformance,clips:[]AnimClip,packs:[]AnimPack,time:f32,disabled:u32,out:[]AnimSample) #effects(all) {
  if !p.ready || out.count<1 || r.count<1 {return;}

@@ -189,7 +189,7 @@ checkpoint_op :: (owner: int, tick: int, k: int) -> int #effects(all) { return r
 // book:end restore
 
 // ---- checks
-#load "../tests/checkpoint-oracle.coax";
+#load "../tests/checkpoint-oracle.coax" #test;
 
 #test "checkpoint: a restore from the newest checkpoint replays every step to the crash, with no model and no second grant" {
   c: [1] CoCapture; co_capture(c[..], DO_HOSTILE, 3);

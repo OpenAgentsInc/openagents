@@ -1,7 +1,7 @@
 // Schema shared by Decisions and the editor, independent of asset hashing.
 #load "json.coax";
 #load "field-catalog.coax";
-#load "direction-wire-checks.coax";
+#load "direction-wire-checks.coax" #test;
 #authority;
 AED_KINDS :: [13]string.["unmatched","speed","path","look-at","hand-to","hold","clip-swap","key","shot-add","shot-retime","cut-on-event","timing","shot-remove"];
 AD_FIELDS :: [8]string.["kind","actor","row","option","at","end","value","point"];

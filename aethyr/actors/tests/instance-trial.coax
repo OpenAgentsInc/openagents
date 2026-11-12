@@ -1,7 +1,11 @@
 // A lifecycle/selection trace on the actual paid clock and entity store.
-#module "aethyr.actors.instance_trial";
 #import "Basic";
 #load "../instances.coax";
+#load "behavior.coax";   // this program runs the fixture as code
+#load "../../tests/entity-oracle.coax";   // this program runs the fixture as code
+#load "../../world/tests/resource-stream-fixture.coax";   // this program runs the fixture as code
+#load "behavior-plan.coax";   // this program runs the fixture as code
+#load "definitions.coax";   // this program runs the fixture as code
 #load "../resources.coax";
 #load "../definitions.coax";
 #load "../behavior.coax";

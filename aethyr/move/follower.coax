@@ -11,7 +11,7 @@
 #load "../physics/ground.coax" as mesh;
 #load "../../coax/lib/quantity.coax" as units;
 #load "../physics/throw.coax";
-#load "../tests/follower-oracle.coax";
+#load "../tests/follower-oracle.coax" #test;
 
 FrameCursor :: struct { started: bool; frames: int; ticks: int; carry_ns: int; }
 FrameReceipt :: struct {

@@ -10,7 +10,7 @@ RenderHostTextureReceipt :: struct {
   status:RenderResourceStatus;named_index:int=-1;
   layout:RenderTextureLayout;source:RenderBindingSource;
 }
-#load "tests/host-textures-checks.coax";
+#load "tests/host-textures-checks.coax" #test;
 
 render_host_named_textures :: (rht_named:[]RenderHostNamedTexture)->RenderResourceStatus #effects(all) {
   if rht_named.count>RENDER_HOST_TEXTURES {return RenderResourceStatus.capacity;}

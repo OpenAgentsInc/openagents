@@ -88,7 +88,7 @@ SwWalk :: struct {
   observe_steps: bool; // optional retained replay observer, never a simulation input
 }
 #load "stream-walk-state.coax";
-#load "tests/stream-walk-checks.coax";
+#load "tests/stream-walk-checks.coax" #test;
 
 sw_entities :: (s: [] SwWalk) -> entities.EntityStore #effects(all) {
   return entities.EntityStore.{gen = s[0].entity[0].gen[..], live = s[0].entity[0].live[..], born = s[0].entity[0].born[..], doomed = s[0].entity[0].doomed[..],

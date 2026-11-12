@@ -46,7 +46,7 @@ ResourcePlan :: struct {
   content: assets.AssetId;
   cost: ResourceCost;
 }
-#load "tests/resource-cost-fixture.coax";
+#load "tests/resource-cost-fixture.coax" #test;
 
 #test "packed VPK vertices use a separate model revision and exact shared loader costs" {
   source: [96] u8;

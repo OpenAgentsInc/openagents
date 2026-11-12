@@ -11,7 +11,7 @@ RenderBindingSource :: struct {
  sampler_name:string;buffer_mode:resource_views.RenderBufferMode;
 }
 RBSAssetCounts :: struct {storage:int;meshes:int;layers:int;}
-#load "tests/binding-sources-checks.coax";
+#load "tests/binding-sources-checks.coax" #test;
 
 rbs_assets :: (assets:string)->RBSAssetCounts #effects(all) {
  result:=RBSAssetCounts.{};start:=0;

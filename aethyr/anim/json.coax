@@ -2,7 +2,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json.coax";
 #load "../core/points.coax";
-#load "json-checks.coax";
+#load "json-checks.coax" #test;
 #authority;
 ANIM_OK :: 0; ANIM_JSON :: 1; ANIM_SCHEMA :: 2; ANIM_LIMIT :: 3;
 ANIM_NAME :: 4; ANIM_NUMBER :: 5; ANIM_RANGE :: 6; ANIM_SKELETON :: 7;

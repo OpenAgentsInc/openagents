@@ -40,7 +40,7 @@ StateLab :: struct {
  strike:StateStrike;
  observe:bool;trace_n:int;trace_metrics:[19][28]f64;trace_ids:[19]assets.AssetId;
 }
-#load "tests/fixture.coax";
+#load "tests/fixture.coax" #test;
 #load "fixture-assets.coax";
 #load "fixture-runtime.coax";
 #load "fixture-view.coax";

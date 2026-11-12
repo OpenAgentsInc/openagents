@@ -25,7 +25,7 @@ BehaviorPlan :: struct {
 BehaviorPlanStatus :: enum u8 {ok;version;identity;capacity;schema;field;guard;action;anchor;schedule;profile;}
 BehaviorCompiled :: struct {status:BehaviorPlanStatus;row:int= -1;plan:BehaviorPlan;}
 BehaviorGuardResult :: struct {valid:bool;guard:BehaviorGuard;}
-#load "tests/behavior-plan.coax";
+#load "tests/behavior-plan.coax" #test;
 
 behavior_anchor :: (anchors:[]const int,id:int)->int #effects(all) {
  for anchor,i:anchors {if anchor==id {return i;}}return -1;

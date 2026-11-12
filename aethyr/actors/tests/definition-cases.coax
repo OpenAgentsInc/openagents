@@ -1,6 +1,7 @@
 // Native observations for the independent flattened-archetype oracle.
 #import "Basic";
 #load "../definitions.coax";
+#load "definitions.coax";   // this program runs the fixture as code
 #load "../../state/declarations.coax" as state;
 #load "../../state/variants.coax" as resources;
 main :: () #effects(all) {

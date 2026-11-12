@@ -1,5 +1,6 @@
 #import "Basic";
 #load "replay-wire-walk.coax";
+#load "replay-oracle.coax";   // this program runs the fixture as code
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 tool_main :: ()->int #export_c #effects(all) {

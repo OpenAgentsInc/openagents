@@ -8,7 +8,7 @@ RRRasterRounding :: enum u8 {analytic;nearest_even;nearest_positive;invalid;}
 RRXYClipping :: enum u8 {viewport;guard_band;invalid;}
 RRRasterProfile :: struct {rounding:RRRasterRounding;subpixel_bits:int;xy:RRXYClipping;guard_pixels:int;}
 RRCoordinate :: struct {status:RQStatus;value:f64;}
-#load "tests/raster-profile-checks.coax";
+#load "tests/raster-profile-checks.coax" #test;
 rr_raster_profile :: (name:string,bits:int)->RRRasterProfile #effects(all) {
  p:=RRRasterProfile.{rounding=RRRasterRounding.invalid,subpixel_bits=bits};
  if name=="analytic" {p.rounding=RRRasterRounding.analytic;}if name=="nearest-even" {p.rounding=RRRasterRounding.nearest_even;}if name=="nearest-positive" {p.rounding=RRRasterRounding.nearest_positive;}return p;

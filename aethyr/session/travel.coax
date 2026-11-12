@@ -243,7 +243,7 @@ travel_recover :: (w: [] TravelWorld, r: int) -> int #effects(reads, writes, tra
   #assert !travel_command(w[..], 0, 2, 1, 1) && w[0].rec[0].status == TRAVEL_COMMITTED && w[0].rooms[0].cut_until[2] == 0;
   #assert travel_activate(w[..]) == TRAVEL_OK && travel_route(w[..]) == TRAVEL_OK && travel_one_owner(w[..], 2);
 }
-#load "../tests/travel-oracle.coax";
+#load "../tests/travel-oracle.coax" #test;
 
 #test "travel: a journey moves the character once, with its profile, and its old commands are refused" {
   w: [1] TravelWorld;

@@ -118,7 +118,7 @@ actor_lab_frame :: (s:[]ActorLab,ns:int) #export_c #effects(all) {
  if s.count!=1 || !s[0].ready {return;}schedule:=clock.loop_accept_ns(s[0].world[0].clock,ns);count:=clock.loop_due(schedule);s[0].world[0].clock=schedule;
  for i:0..<count {actor_lab_step(s,schedule.ticks+i+1);s[0].world[0].clock=clock.loop_ran_some(schedule,i+1);if s[0].observe {actor_lab_observe(s);}}s[0].world[0].clock=clock.loop_ran(schedule);
 }
-#load "tests/lab.coax";
+#load "tests/lab.coax" #test;
 #load "lab-metrics.coax";
 
 // Two different adapters, one admitted world-axis rider input contract.

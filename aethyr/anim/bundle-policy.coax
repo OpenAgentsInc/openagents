@@ -1,6 +1,6 @@
 // ALB1 transports one rig, its clips and one immutable binary pack.
 #load "document.coax";
-#load "bundle-policy-checks.coax";
+#load "bundle-policy-checks.coax" #test;
 #authority;
 ANIM_BUNDLE_BYTES :: 67108864;
 anim_bundle_count :: (count:int)->bool #effects(all) {return count>=1 && count<=64;}
@@ -17,3 +17,5 @@ anim_bundle_valid :: (b:[]u8)->bool #effects(all) {
 anim_bundle_header_fits :: (size:int,count:int)->bool #effects(all) {return size>12+(count+2)*8;}
 anim_bundle_window :: (size:int,cursor:int,first:int,n:int)->bool #effects(all) {return first==cursor && n>=1 && n<=size-cursor;}
 anim_bundle_part_limit :: (part:int,n:int)->bool #effects(all) {return part==0 || n<=ANIM_DOCUMENT_BYTES;}
+// Writes one little-endian word of a bundle's header or directory (direction.coax repacks with it).
+anim_bundle_put :: (b:[]u8,at:int,value:u32) #effects(all) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}

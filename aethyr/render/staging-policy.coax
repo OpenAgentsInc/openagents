@@ -5,7 +5,7 @@
 RspProduct :: struct { name:[128]u8; name_count:int; hash:[64]u8; }
 RspPlan :: struct { ok:bool; count:int; rows:[31]RspProduct; }
 RspIdentity :: struct { ok:bool; profile:int; }
-#load "tests/staging-policy-checks.coax";
+#load "tests/staging-policy-checks.coax" #test;
 rsp_lower :: (c:u8)->bool #effects(all) {return c>='a' && c<='z';}
 rsp_digit :: (c:u8)->bool #effects(all) {return c>='0' && c<='9';}
 rsp_url :: (s:string)->bool #effects(all) {

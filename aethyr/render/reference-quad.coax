@@ -18,8 +18,8 @@ RQSampler :: struct {
 }
 RQSample :: struct {status:RQStatus;color:RQColor;}
 RQSamples :: struct {status:RQStatus;colors:[4]RQColor;}
-#load "tests/reference-quad-checks.coax";
-#load "tests/reference-filter-checks.coax";
+#load "tests/reference-quad-checks.coax" #test;
+#load "tests/reference-filter-checks.coax" #test;
 
 rq_derivative :: (q:RQQuad,axis:int,mode:RQDerivative)->RQQuad #effects(all) {
  r:RQQuad;if axis!=0 && axis!=1 {return r;}

@@ -2,7 +2,7 @@
 // glTF interpolation is evaluated at a recorded uniform rate. CUBICSPLINE
 // tangents are scaled by the source key interval; quaternions are normalized.
 #load "gltf-scene.coax";
-#load "gltf-animation-checks.coax";
+#load "gltf-animation-checks.coax" #test;
 #authority;
 AgChannel :: struct {node:int;kind:int;mode:int;width:int;time:AgAccess;data:AgAccess;}
 AgSpan :: struct {a:int;b:int;share:f32;dt:f32;}

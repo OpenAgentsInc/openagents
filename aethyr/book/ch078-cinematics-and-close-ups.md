@@ -166,6 +166,7 @@ coax/bin/coax run aethyr/examples/a-flight-and-a-flower.coax --release
 <!-- source: aethyr/examples/a-flight-and-a-flower.coax example -->
 ```jai
 #load "../tests/camera-take.coax";
+#load "../tests/replay-oracle.coax";   // this program runs the fixture as code
 #import "Basic";
 exit :: (code:s32) #foreign #effects(foreign);
 main :: () #effects(all) {

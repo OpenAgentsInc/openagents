@@ -1,7 +1,7 @@
 // Bounded FRG1 admission before the existing face-rig evaluator sees a block.
 #load "document.coax";
 #load "facerig.coax";
-#load "dna-pack-checks.coax";
+#load "dna-pack-checks.coax" #test;
 #authority;
 DnaHeader :: struct {ok:bool;controls:int;raws:int;psds:int;groups:int;joints:int;points:int;vertices:int;targets:int;expressions:int;}
 anim_dna_counts :: (controls:int,joints:int,points:int)->bool #effects(all) {return controls>=1 && controls<=1024 && joints>=1 && joints<=1024 && points>=1 && points<=1000000;}

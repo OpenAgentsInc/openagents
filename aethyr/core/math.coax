@@ -11,7 +11,7 @@
 //   coax/bin/coax mutate aethyr/core/math.coax
 
 #module "aethyr.math";
-#load "../tests/math-oracle.coax";   // the checks' closeness test
+#load "../tests/math-oracle.coax" #test;   // the checks' closeness test
 #authority;
 
 // Independent binary32 boundaries, checked before extending the implementation.

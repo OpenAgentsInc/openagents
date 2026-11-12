@@ -6,8 +6,8 @@ ACTOR_NAV_NONE :: 0; ACTOR_NAV_PENDING :: 1; ACTOR_NAV_SUCCESS :: 2; ACTOR_NAV_U
 ActorNavKey :: struct {actor:int;generation:int;owner:int;world:int;nav:int;profile:int;radius:int;request:int;}
 ActorNavigation :: struct {key:ActorNavKey;status:int;goal:int= -1;asked:int= -1;retry_at:int;still:int;serial:int #counter;}
 ActorNavResult :: struct {status:int=ACTOR_INVALID;navigation:ActorNavigation;}
-#load "tests/navigation.coax";
-#load "tests/navigation-matrix.coax";
+#load "tests/navigation.coax" #test;
+#load "tests/navigation-matrix.coax" #test;
 actor_nav_key_ok :: (k:ActorNavKey)->bool #effects(all) {return k.actor>0 && k.generation>0 && k.generation<=4096 && k.owner>0 && k.owner<=1000000000 && k.world>0 && k.world<=1000000000 && k.nav>0 && k.nav<=1000000000 && k.profile==0 && k.radius>=10 && k.radius<=80 && k.request>0 && k.request<=1000000000;}
 actor_nav_same :: (a:ActorNavKey,b:ActorNavKey)->bool #effects(all) {return a.actor==b.actor && a.generation==b.generation && a.owner==b.owner && a.world==b.world && a.nav==b.nav && a.profile==b.profile && a.radius==b.radius && a.request==b.request;}
 actor_nav_request :: (old:ActorNavigation,context:ActorNavKey,tick:int,goal:int)->ActorNavResult #effects(all) {

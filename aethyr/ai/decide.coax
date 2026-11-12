@@ -206,9 +206,8 @@ decide_digest :: (h: int, t: [] DecideTable) -> int #effects(all) {
 }
 
 // ---- checks
-#load "../tests/decide-oracle.coax";
+#load "../tests/decide-oracle.coax" #test;
 
-dc_session :: (b: [] ReplayBacking) -> ReplaySession #effects(all) { return replay_backing(b); }   // a new record: all zeros
 dc_seen :: (source: int, x: f32, tick: int) -> Memory #effects(all) {
   s: Senses;
   return memory_note(Memory.{}, s, Stimulus.{kind = StimulusKind.sight, source = source, at = world_point(x, 0, 2), tick = tick}).memory;

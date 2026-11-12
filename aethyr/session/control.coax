@@ -137,7 +137,7 @@ control_fence :: (f: [] ControlFence, c_id: CharacterId, gen: int) -> int #effec
 // book:end control-fence
 
 // ---- checks
-#load "../tests/control-oracle.coax";
+#load "../tests/control-oracle.coax" #test;
 
 #test "control: two rooms claim one character; one owns it, and the other is told it plays elsewhere" {
   d: [1] ControlDirectory;

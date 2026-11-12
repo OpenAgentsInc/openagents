@@ -5,7 +5,7 @@
 #load "query-filter.coax";
 #load "../core/entity.coax" as entities;
 #load "ground.coax" as terrain;
-#load "../tests/query-semantic-fixture.coax";
+#load "../tests/query-semantic-fixture.coax" #test;
 
 QUERY_HEIGHT_WORDS_MAX :: 65535;
 QueryWorld :: struct {

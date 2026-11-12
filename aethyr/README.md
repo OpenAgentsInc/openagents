@@ -30,7 +30,10 @@ headless captures. Reference engines stay in its ignored lab cache.
 Loads go down the layers, never up (#13264). `aethyr/` is the engine:
 nothing in it loads from `verse/`, `apps/`, `everglade/` or `coax/web/`.
 `everglade/` is the game on the engine: nothing in it loads from `apps/`.
-Product code in either folder does not load a file in a `tests/` folder.
+Product code in either folder does not ship its checks: a module loads its
+own checks file (one in a `tests/` folder, or `X-checks.coax` beside it) with
+a check load, `#load "FILE" #test;`, which the compiler checks and counts for
+coverage and never emits (#13383). A plain `#load` of a `tests/` file fails.
 Support code may load what it exercises: a path with a `tests`, `test`,
 `tools`, `examples`, `book`, `fixtures` or `lab` folder, a test or check
 file name (`checks.coax`, `X-checks.coax`, `check-X.coax`, `X_test.coax`),
@@ -44,8 +47,9 @@ only shrinks. A new line fails unless it ends with a reason and an issue
 number (`# why (#1234)`). A line that excuses nothing now also fails.
 
 To remove a line, make the load go. Move what the file needs down into its
-own layer, or have the caller pass it in. For a `tests` line, move the shared
-code out of `tests/` into a module. Then delete the line and run
+own layer, or have the caller pass it in. The `tests` rule has no line and
+takes none: load a module's checks with `#test`, and move code that product
+code calls out of the checks file into a module. Then delete the line and run
 `coax/web/tool.sh layer-check`.
 
 `coax/web/tool.sh layer-check --consumers` lists the engine modules that no

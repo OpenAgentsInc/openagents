@@ -1,6 +1,6 @@
 #load "scene-document.coax";
 #load "cut-lines.coax" as media_cut;
-#load "cut-document-checks.coax";
+#load "cut-document-checks.coax" #test;
 #authority;
 AnimCutShot :: struct {name:AnimName;camera:int;from:f32;to:f32;transition:int;blend:f32;}
 AnimCut :: struct {ready:bool;name:AnimName;scene:AnimName;fps:int;shots:int;shot:[128]AnimCutShot;length:f32;legacy:bool;composition:[1]media_cut.LbCut;}

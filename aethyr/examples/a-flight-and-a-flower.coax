@@ -1,5 +1,6 @@
 // book:begin example
 #load "../tests/camera-take.coax";
+#load "../tests/replay-oracle.coax";   // this program runs the fixture as code
 #import "Basic";
 exit :: (code:s32) #foreign #effects(foreign);
 main :: () #effects(all) {

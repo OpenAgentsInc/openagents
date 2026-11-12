@@ -99,7 +99,7 @@ GrassRootRanges :: struct { n:int;first:[128]int;count:[128]int; }
  g.cell=1.5f32;grass_root_ranges(out[..],v[..],h[..],g,0,0,4,2,2,3);
  #assert out[0].n==1 && out[0].count[0]==176;
 }
-#load "tests/grass-root-oracle.coax";
+#load "tests/grass-root-oracle.coax" #test;
 #test "every original instance agrees with the independent terrain/corner oracle" {
  seed:=19;
  for sample:0..<80 {

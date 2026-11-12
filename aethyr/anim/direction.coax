@@ -2,7 +2,7 @@
 // searched here. An edit is bound to immutable source bytes before publication.
 #load "project.coax";
 #load "write.coax";
-#load "direction-checks.coax";
+#load "direction-checks.coax" #test;
 #load "direction-select.coax";
 #authority;
 AdChange :: struct {code:int=ANIM_REFERENCE;part:int;n:int;}

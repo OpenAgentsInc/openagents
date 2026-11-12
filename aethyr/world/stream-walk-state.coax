@@ -6,7 +6,7 @@
 #authority;
 SW_STATE_BYTES :: 131072;
 SwStateBytes :: struct {bytes: [SW_STATE_BYTES] u8; n: int;}
-#load "tests/stream-walk-state-checks.coax";
+#load "tests/stream-walk-state-checks.coax" #test;
 
 #test "canonical words preserve high bits signed zero and all byte positions" {
   b: [1] SwStateBytes;

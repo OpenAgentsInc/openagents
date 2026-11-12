@@ -2,7 +2,7 @@
 #load "inspect-mesh.coax";
 #load "performance-document.coax";
 #load "../../coax/lib/text/ph_num.coax";
-#load "write-checks.coax";
+#load "write-checks.coax" #test;
 AwRigParts :: struct {rest:AnimPart;bind:AnimPart;bytes:int= -1;}
 AwPack :: struct {count:int;source:[512]AnimPart;output:[512]AnimPart;at:int;}
 aw_put :: (b:[]u8,at:int,value:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}

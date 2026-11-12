@@ -4,7 +4,7 @@
 #load "../render/registry.coax" as gpu;
 #authority;
 ActorResources :: struct {valid:bool;manifest:assets.AssetId;epoch:int;n:int;roots:[ACTOR_ROOTS]int;claims:[ACTOR_ROOTS]ResourceReference;}
-#load "tests/resources.coax";
+#load "tests/resources.coax" #test;
 actor_resources_hold :: (a:ActorArchetype,s:[]ResourceStream,m:[]ResourceManifest)->ActorResources #effects(all) {
  if !a.valid || a.root_count<0 || a.root_count>ACTOR_ROOTS || !resource_stream_bound(s,m) || s[0].closing || !assets.asset_same(a.manifest,m[0].identity) {return ActorResources.{};}
  next:=[1]ResourceStream.[s[0]];out:=ActorResources.{manifest=m[0].identity,epoch=s[0].epoch,n=a.root_count};

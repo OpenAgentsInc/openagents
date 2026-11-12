@@ -26,7 +26,7 @@ RenderBufferObserved :: struct {
  upload_bytes:u64;gpu_bytes:u64;offset:u64;alignment:u64=4;zero_initialized:bool;
 }
 RenderBufferView :: struct {status:RenderResourceStatus;offset:u64;bytes:u64;elements:u64;}
-#load "tests/resources-checks.coax";
+#load "tests/resources-checks.coax" #test;
 
 render_device_limit :: (actual:int)->int #effects(all) {
  // Same exact signed positive-part intersection used by raw host targets.

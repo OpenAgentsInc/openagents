@@ -1,4 +1,5 @@
 #load "../core/entity.coax";
+#load "entity-oracle.coax";   // this program runs the oracle as code
 #import "Basic";
 
 entity_id_admission :: () -> bool {

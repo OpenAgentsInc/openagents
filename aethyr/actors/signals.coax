@@ -8,7 +8,7 @@
 ACTOR_NOTICE_FEAR :: 1; ACTOR_NOTICE_INTEREST :: 2;
 ActorAttributes :: struct {valid:bool;moving:bool;interacting:bool;interruptible:bool;controlled:bool;airborne:bool;}
 ActorNotice :: struct {kind:int;source:int;generation:int;tick:int= -1;target:int;x:int;z:int;}
-#load "tests/signals.coax";
+#load "tests/signals.coax" #test;
 actor_attributes :: (p:[]ActorExecPool,h:Handle(entities.Entity))->ActorAttributes #effects(all) {
  out:ActorAttributes;if p.count!=1 || !p[0].ready {return out;}store:=actor_entity_store(p);if !entities.entity_alive(store,h) || entities.entity_doomed(store,h) {return out;}a:=p[0].actors[entities.entity_slot(h)];if a.id<1 {return out;}
  out.valid=true;out.moving=a.body.body.vel.x!=0 || a.body.body.vel.z!=0;out.controlled=a.controller==1;out.airborne=a.body.body.act==walking.Act.airborne;

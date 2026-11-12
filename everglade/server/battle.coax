@@ -1,5 +1,5 @@
 #authority;
-#load "tests/battle-fixture.coax";   // its checks' helpers, kept out of its mutants
+#load "tests/battle-fixture.coax" #test;   // its checks' helpers, kept out of its mutants
 // Everglade II's battle in a room (#13346): who the room's combatants are, where they stand on the
 // grid, and the room's step of aethyr's SRD battle (rules/srd/battle.coax). It decides combat,
 // so it is #authority and every procedure here has a check that runs it. It loads only its checks'
