@@ -122,6 +122,15 @@ schema, the tools and the limits. The model never sees a key, a path under
   loop itself before the step's commands, so there is nothing to quote. A
   gated run refuses them and asks for a command instead.
 - **`view`**: read files under the working directory, capped at 64 KB each.
+- **A fresh reader at the finish** (#13325): in Coder, when a run that
+  changed or ran something says it is finished, one separate call to Gemini
+  Flash at low thinking, which has seen none of the run, gets the task, the
+  final diff (`git diff HEAD`) and the new files. It lists what the task asks
+  for that it does not find there. An empty list takes the finish as it was.
+  Anything it lists goes back into the loop as one step, and the answer after
+  that is taken. Once a run, and never for a plain answer.
+- A reply that says `finished` and also carries edits, commands or views is
+  a working step: they run, and the run finishes in a turn of its own.
 - Nothing else in v1: no network tools, no editing outside the working
   directory. Writes happen through commands, so they show in the transcript.
 

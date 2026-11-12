@@ -35,6 +35,7 @@ MK_TURN_TEXT :: 1200;            // bytes of each task and reply kept
 MkKeys :: struct {
   read: bool;
   vx: [1] GwVertex;
+  vr: [1] GwVertex;              // the fresh reader's copy: a gateway's URL lives in its GwVertex
   or_key: [512] u8; nor: int;
   gm_key: [512] u8; ngm: int;
   keyfile: [1200] u8; nkf: int;
@@ -185,6 +186,21 @@ mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, model: string) -> 
     x := gw_plan_add(p, g, GW_OPENROUTER_FLASH, k[0].orh[..]);
   }
   return p[0].n;
+}
+
+// The fresh reader's plan (GitHub #13325, coax/lib/microcoder/loop.coax): Flash on Vertex, when
+// the run's own plan has a Vertex token (mk_plan first). One retry and 30 s of silence at most:
+// a finished run does not wait long for its reader. None for a replay of recorded answers,
+// which holds no answer for it. False when there is none: finishes are then taken unread.
+MK_READER_MODEL :: "gemini-3.8-flash";
+mk_plan_reader :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers) -> bool {
+  gw_plan_init(p, pb);
+  rb: [1024] u8;
+  if gw_env("GW_REPLAY", rb[..]).count > 0 || k[0].vx[0].nt == 0 { return false; }
+  k[0].vr[0] = k[0].vx[0];
+  if !gw_plan_add(p, gw_vertex_native(k[0].vr[..], MK_READER_MODEL), MK_READER_MODEL, k[0].none[0..<0]) { return false; }
+  p[0].retries = 1; p[0].backoff_ms = 2000; p[0].first_limit_ms = 30000; p[0].idle_limit_ms = 30000;
+  return true;
 }
 
 // The psionic engine's plan: one keyless gateway, the Chat Completions server

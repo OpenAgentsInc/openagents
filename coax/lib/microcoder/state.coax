@@ -276,6 +276,23 @@ mc_action_edit :: (st: [] McState, path: string, ok: bool, why: string) {
   x := mc_result_end(st, ws[0], ws[1]);
 }
 
+// Something said to the open action as a result of its own: {"KEY":"TEXT"} (key is a plain word).
+// The fresh reader's list comes back so (loop.coax). Compacted, it keeps its first 2,000 bytes.
+mc_action_said :: (st: [] McState, key: string, text: string) {
+  at := mc_result_start(st);
+  if at < 0 { return; }
+  ws: [2] int;
+  for w: 0..<2 {
+    room := ifx w == 0 then mc_room(st) else mc_croom(st);
+    n := json_raw(room, ifx w == 0 then at else mc_cresult_start(st), "{\"");
+    n = json_raw(room, n, key);
+    n = json_raw(room, n, "\":");
+    n = mc_write_cut(room, n, text, ifx w == 0 then 6000 else 2000, 0);
+    ws[w] = json_raw(room, n, "}");
+  }
+  x := mc_result_end(st, ws[0], ws[1]);
+}
+
 mc_action_end :: (st: [] McState) {
   if st[0].open < 0 { return; }
   st[0].nlog = json_raw(st[0].log, st[0].nlog, "]}");
@@ -504,6 +521,21 @@ mc_through_earlier :: (j: string) -> int {
   #assert json_valid(j) && cl_count(cl_raw(j, "actions.0.results")) == 8;
   #assert cl_str(ar[..], j, "actions.0.results.6.missing") == "too large to show with this step's other results: read parts of it with a command";
   #assert cl_str(ar[..], j, "actions.0.results.7.command") == "true";
+}
+
+#test "something said to a step is one of its results, whole in the step and in its compacted copy" {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  mc_action_begin(st[..], "done");
+  mc_action_said(st[..], "reader", "the task asks for a \"#test\";\nnone was added");
+  mc_action_end(st[..]);
+  mc_action_begin(st[..], "next"); mc_action_command(st[..], "true", 0, false, ""); mc_action_end(st[..]);
+  j := mc_state_json(st[..], t[0].out[..]);
+  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && cl_str(ar[..], j, "actions.0.results.0.reader") == "the task asks for a \"#test\";\nnone was added" && cl_str(ar[..], j, "actions.1.results.0.command") == "true";
+  mc_compact(st[..], st[0].nlog - st[0].act_at[1]);
+  j = mc_state_json(st[..], t[0].out[..]);
+  #assert json_valid(j) && st[0].nearly == 1 && cl_str(ar[..], j, "earlier.0.results.0.reader") == "the task asks for a \"#test\";\nnone was added";
 }
 
 #test "refused commands, failed edits and missing files are recorded as such" {

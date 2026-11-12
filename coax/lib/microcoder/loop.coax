@@ -35,12 +35,31 @@ MC_WAIT :: 0;                    // keep feeding events
 MC_TOOLS :: 1;                   // run mc_pending's commands and views, then mc_tools_done
 MC_AGAIN :: 2;                   // send mc_request again: the next step
 MC_ENDED :: 3;                   // the run is over: mc_ending, mc_reply
+MC_READ :: 4;                    // a finish waits for the fresh reader: run MC_READER_DIFF and MC_READER_FILES, send mc_reader_request, then mc_read_done
 
 MC_BAD_LIMIT :: 3;
 MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
 MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it whole), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory, 30 seconds each, output cut to its head and tail), then view (files shown whole in this step's results). Do everything you can in each turn; you see all the results in the next.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+
+// The fresh reader at the finish (GitHub #13325). A run that changed or ran something and says
+// it is finished is read once by a separate cheap call that has seen none of the run: it gets
+// the task, the final diff and the new files, and lists what the task asks for that it does not
+// find there. An empty list takes the finish as it was. Anything it lists goes back into the
+// loop as one step (a "reader" result), and the answer after that is taken. Once a run, never
+// for a plain answer, and only when the owner asks (reader). The loop asked itself the same
+// question in #13231 and passed its own work every time (4 of 4 runs).
+MC_READER_SYSTEM :: "You check whether another engineer's finished work covers what its task asked for. You get the task exactly as it was given, the final diff of the working tree (git diff) and the new files. You have seen nothing else: not the rest of the code, not what was run.\n\nList each thing the task asks for that is absent from the diff and the new files. Go through the task sentence by sentence: each file it says to write or change, each name it gives, each question it asks to be answered, each fact it asks to be kept, each check it asks to be added, each message it asks for and what the message must say, each limit on what may change. For each one that is absent, write one short sentence that quotes the task's words and says what is missing.\n\nYou see only the diff, so you cannot tell whether code is correct, compiles or passes: never list a doubt about how the code behaves. Do not suggest improvements and do not ask for more than the task asks. If nothing the task asks for is absent, answer with an empty list.\n\nAnswer with one JSON object: {\"unmet\": [\"...\"]}.";
+MC_READER_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"unmet\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"required\":[\"unmet\"]}";
+MC_READER_SCHEMA_NAME :: "reader_list";
+MC_READER_DIFF :: "git --no-pager diff HEAD";
+MC_READER_FILES :: "git ls-files --others --exclude-standard | head -n 20 | while IFS= read -r f; do if grep -Iq . -- \"$f\" 2>/dev/null; then echo \"== $f\"; head -c 16384 -- \"$f\"; echo; else echo \"== $f (empty, or not text)\"; fi; done";
+MC_READER_DIFF_BYTES :: 73728;   // of the diff the reader is given, at most
+MC_READER_FILES_BYTES :: 49152;  // and of the new files
+MC_READER_ITEMS :: 8;            // things the reader may list; each cut to 400 bytes
+MC_READER_LEAD :: "A reader who saw only the task, your final diff and your new files (nothing of your steps) did not find these things the task asks for:";
+MC_READER_TAIL :: "\nFor each one: if the reader is right, do it now; if the reader is wrong, leave it. Then finish again with your reply.";
 
 mc_ending_name :: (e: int) -> string {
   if e == MC_END_FINISHED { return "finished"; }
@@ -76,6 +95,10 @@ McLoop :: struct {
   ending: int;
   why: string;                   // no_capacity: the gateways' last reason
   reply: string;                 // finished or asked: what the user sees
+  reader: bool;                  // the owner wants a fresh reader at the finish (MC_READ)
+  read: bool;                    // the reader has been asked: once a run
+  acted: bool;                   // a step has run commands or edits
+  held: [8192] u8; nheld: int;   // the finish's reply, while the reader reads
 }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
@@ -165,6 +188,14 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   // dropped, and the run finishes in a turn of its own, once it has seen their results
   if l[0].pending[0].finished && (l[0].pending[0].nc > 0 || l[0].pending[0].ne > 0 || l[0].pending[0].nv > 0) { l[0].pending[0].finished = false; }
   a := l[0].pending[0];
+  if a.finished && mc_reader_due(l) {
+    // the finish waits for the fresh reader; its reply is held meanwhile
+    l[0].read = true;
+    n := ifx a.reply.count < l[0].held.count then a.reply.count else mc_back(a.reply, l[0].held.count);
+    for i: 0..<n { l[0].held[i] = a.reply[i]; }
+    l[0].nheld = n;
+    return MC_READ;
+  }
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }
   if a.asks { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED); }
   if a.nc == 0 && a.nv == 0 && a.ne == 0 {
@@ -174,6 +205,7 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     return MC_AGAIN;
   }
   l[0].idle = 0;
+  if a.nc > 0 || a.ne > 0 { l[0].acted = true; }
   mc_action_begin(l[0].st[..], a.rationale);
   if (a.nc > 0 || a.ne > 0) && l[0].local_work < MC_LOCAL_WORK_MIN {
     for i: 0..<a.ne { mc_action_edit(l[0].st[..], a.edits[i].path, false, "this request is not local work: answer without edits"); }
@@ -183,6 +215,60 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     if a.nv == 0 { mc_action_end(l[0].st[..]); return MC_AGAIN; }
   }
   return MC_TOOLS;
+}
+
+// Whether a finish answered now waits for the reader.
+mc_reader_due :: (l: [] McLoop) -> bool { return l[0].reader && !l[0].read && l[0].acted; }
+
+// The reader's request (MC_READ): the task, then diff (MC_READER_DIFF's output) and files
+// (MC_READER_FILES's), each cut to its limit, as plain text; nothing of the run's steps. Its
+// messages are empty when there is nothing to read or it would not fit a journaled request:
+// then call mc_read_done with "" and the finish is taken. Valid until the next mc_request.
+mc_reader_request :: (l: [] McLoop, diff: string, files: string) -> GwRequest {
+  none := GwRequest.{system = MC_READER_SYSTEM, messages = l[0].msgs[0..<0]};
+  if diff.count == 0 && files.count == 0 { return none; }
+  o := l[0].prompt;
+  n := json_raw(o, 0, "TASK:\n"); n = json_raw(o, n, l[0].st[0].task);
+  n = json_raw(o, n, "\n\nDIFF (git diff HEAD):\n");
+  n = json_raw(o, n, ifx diff.count == 0 then "(no tracked file changed)" else cast(string) diff[0..<mc_back(diff, ifx diff.count < MC_READER_DIFF_BYTES then diff.count else MC_READER_DIFF_BYTES)]);
+  if diff.count > MC_READER_DIFF_BYTES { n = json_raw(o, n, "\n[... the diff is cut here ...]"); }
+  n = json_raw(o, n, "\n\nNEW FILES:\n");
+  n = json_raw(o, n, ifx files.count == 0 then "(none)" else cast(string) files[0..<mc_back(files, ifx files.count < MC_READER_FILES_BYTES then files.count else MC_READER_FILES_BYTES)]);
+  if files.count > MC_READER_FILES_BYTES { n = json_raw(o, n, "\n[... the new files are cut here ...]"); }
+  if n < 0 || mc_escaped_size(cast(string) o[0..<n]) + MC_REQUEST_ROOM > MC_REQUEST_MAX { return none; }
+  l[0].msgs[0] = GwMessage.{role = "user", text = cast(string) o[0..<n]};
+  return GwRequest.{system = MC_READER_SYSTEM, messages = l[0].msgs[..], schema = MC_READER_SCHEMA, schema_name = MC_READER_SCHEMA_NAME, effort = "low"};
+}
+
+// The reader's whole answer ("" when it was not asked or its call failed). Nothing listed, or
+// an answer that is not the list: the finish is taken as it was. Else the list is the finishing
+// step's result and the run goes on (MC_AGAIN); the next finish is taken.
+mc_read_done :: (l: [] McLoop, text: string) -> int {
+  if l[0].ending != MC_END_NONE { return MC_ENDED; }
+  nb: [4096] u8; ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  n := json_raw(nb[..], 0, MC_READER_LEAD); k := 0;
+  if text.count > 0 && json_valid(text) && cl_valid(text, "a:unmet s:unmet.*") {
+    items := cl_raw(text, "unmet");
+    for i: 0..<cl_count(items) {
+      if k >= MC_READER_ITEMS { break; }
+      ar[0].at = 0; ar[0].full = false;
+      item := cl_text(ar[..], items, cl_item(items, i));
+      if item.count == 0 { continue; }
+      n = json_raw(nb[..], n, "\n- ");
+      n = json_raw(nb[..], n, cast(string) item[0..<mc_back(item, ifx item.count < 400 then item.count else 400)]);
+      k += 1;
+    }
+  }
+  n = json_raw(nb[..], n, MC_READER_TAIL);
+  if k == 0 || n < 0 {
+    l[0].reply = cast(string) l[0].held[0..<l[0].nheld];
+    mc_record_bare(l);
+    return mc_end(l, MC_END_FINISHED);
+  }
+  mc_action_begin(l[0].st[..], l[0].pending[0].rationale);
+  mc_action_said(l[0].st[..], "reader", cast(string) nb[0..<n]);
+  mc_action_end(l[0].st[..]);
+  return MC_AGAIN;
 }
 
 mc_record_bare :: (l: [] McLoop) {
@@ -231,6 +317,10 @@ McScript :: struct {
   calls: int;                    // requests sent
   ran: [16] string; nran: int;   // commands run, in order (copies in rb: the loop reuses its buffers each step)
   rb: [2048] u8; nrb: int;
+  reader: [] string; rat: int;   // the fresh reader's answers, in order ("" past the end: its call failed)
+  readings: int;                 // times the reader was asked
+  diff: string; files: string;   // what the reader's commands print
+  rsaw: [4096] u8; nrsaw: int;   // the reader's last request text, its start
 }
 
 mc_script_step :: (l: [] McLoop, s: [] McScript) -> int {
@@ -255,6 +345,19 @@ mc_script_step :: (l: [] McLoop, s: [] McScript) -> int {
 mc_script_run :: (l: [] McLoop, s: [] McScript) {
   for guard: 0..<50 {
     r := mc_script_step(l, s);
+    if r == MC_READ {
+      req := mc_reader_request(l, s[0].diff, s[0].files);
+      answer := "";
+      if req.messages.count > 0 {
+        #assert req.system == MC_READER_SYSTEM && req.schema == MC_READER_SCHEMA && req.effort == "low";
+        s[0].readings += 1;
+        t := req.messages[0].text;
+        s[0].nrsaw = ifx t.count < s[0].rsaw.count then t.count else s[0].rsaw.count;
+        for i: 0..<s[0].nrsaw { s[0].rsaw[i] = t[i]; }
+        if s[0].rat < s[0].reader.count { answer = s[0].reader[s[0].rat]; s[0].rat += 1; }
+      }
+      r = mc_read_done(l, answer);
+    }
     if r == MC_ENDED { return; }
     if r == MC_TOOLS {
       a := mc_pending(l);
@@ -290,6 +393,97 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
   #assert json_valid(req.messages[0].text);
   #assert l[0].st[0].nearly > before;      // compacted, not dropped
+}
+
+#test "the fresh reader: a finish after work is read once from the task, the diff and the new files only; nothing listed takes the finish as it was" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "fix the typo in a.txt", "{\"local_work\":0.9}", 0.9);
+  l[0].reader = true;
+  replies: [2] string;
+  replies[0] = "{\"rationale\":\"my secret plan\",\"edits\":[],\"commands\":[\"sed -i s/helo/hello/ a.txt\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  replies[1] = "{\"rationale\":\"done\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Fixed.\",\"ask\":\"none\"}";
+  answers: [1] string; answers[0] = "{\"unmet\":[]}";
+  s: [1] McScript; s[0].replies = replies[..]; s[0].reader = answers[..]; s[0].diff = "-helo\n+hello\n"; s[0].files = "== notes.md\nnew\n";
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "Fixed." && s[0].calls == 2 && s[0].readings == 1 && l[0].steps == 2;
+  saw := cast(string) s[0].rsaw[0..<s[0].nrsaw];
+  #assert saw == "TASK:\nfix the typo in a.txt\n\nDIFF (git diff HEAD):\n-helo\n+hello\n\n\nNEW FILES:\n== notes.md\nnew\n";
+  #assert ps_count(saw, "secret plan") == 0 && ps_count(saw, "sed -i") == 0;      // none of the run's steps
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  #assert json_valid(j) && cl_count(cl_raw(j, "actions")) == 2 && ps_count(j, "reader") == 0;
+}
+
+#test "the fresh reader: what it lists goes back as one step, and the finish after that is taken without a second reading" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "add a check and fix it", "{}", 1.0);
+  l[0].reader = true;
+  act := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  replies: [4] string; replies[0] = act;
+  replies[1] = "{\"rationale\":\"all done\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"first\",\"ask\":\"none\"}";
+  replies[2] = act;
+  replies[3] = "{\"rationale\":\"now done\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"second\",\"ask\":\"none\"}";
+  answers: [2] string; answers[0] = "{\"unmet\":[\"The task says \\\"add a check\\\": the diff adds none.\",\"\"]}"; answers[1] = "{\"unmet\":[\"never asked\"]}";
+  s: [1] McScript; s[0].replies = replies[..]; s[0].reader = answers[..]; s[0].diff = "+x\n";
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "second" && s[0].calls == 4 && s[0].readings == 1 && s[0].nran == 2;
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  said := cl_str(ar[..], j, "actions.1.results.0.reader");
+  #assert cl_str(ar[..], j, "actions.1.rationale") == "all done" && cl_count(cl_raw(j, "actions.1.results")) == 1 && cl_count(cl_raw(j, "actions")) == 4;
+  #assert ps_count(said, MC_READER_LEAD) == 1 && ps_count(said, "\n- The task says \"add a check\": the diff adds none.") == 1 && ps_count(said, "\n- ") == 1 && ps_count(said, "finish again") == 1;
+}
+
+#test "the fresh reader: never for a plain answer or when not asked for; a reader that fails, lists nothing or answers out of shape takes the finish; nothing to read asks no one" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  act := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  look := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[],\"view\":[\"a.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  fin := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}";
+  s: [1] McScript;
+  // a plain answer, and an answer after only viewing: nothing changed or ran, so no reader
+  mc_init(l[..], sb[..], lb[..], "{}", "what is 2+2", "{}", 1.0); l[0].reader = true;
+  r1: [2] string; r1[0] = look; r1[1] = fin;
+  s[0] = McScript.{replies = r1[..], diff = "+x\n"};
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 2 && s[0].readings == 0 && !l[0].read;
+  // not asked for: as before
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  r2: [2] string; r2[0] = act; r2[1] = fin;
+  s[0] = McScript.{replies = r2[..], diff = "+x\n"};
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 2 && s[0].readings == 0;
+  // the reader's call failed (""), or it answered something else: the finish is taken
+  bad := [4] string.["", "I think it is fine.", "{\"unmet\":\"all of it\"}", "{\"unmet\":[\"\"]}"];
+  for b: bad {
+    mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0); l[0].reader = true;
+    one: [1] string; one[0] = b;
+    s[0] = McScript.{replies = r2[..], reader = one[..], diff = "+x\n"};
+    mc_script_run(l[..], s[..]);
+    #assert l[0].ending == MC_END_FINISHED && l[0].reply == "done" && s[0].calls == 2 && s[0].readings == 1;
+  }
+  // no diff and no new file: no one is asked
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0); l[0].reader = true;
+  s[0] = McScript.{replies = r2[..]};
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "done" && s[0].readings == 0 && l[0].read;
+}
+
+#test "the fresh reader's request: the diff and the new files are cut to their limits, and one too long for a journaled request is not sent" #steps 200000000 {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  big: [120000] u8; for i: 0..<big.count { big[i] = 'd'; }
+  req := mc_reader_request(l[..], cast(string) big[..], cast(string) big[0..<60000]);
+  #assert req.messages.count == 1 && req.messages[0].text.count < MC_READER_DIFF_BYTES + MC_READER_FILES_BYTES + 200;
+  #assert ps_count(req.messages[0].text, "[... the diff is cut here ...]") == 1 && ps_count(req.messages[0].text, "[... the new files are cut here ...]") == 1;
+  for i: 0..<big.count { big[i] = 1; }        // a control byte is six inside the request
+  #assert mc_reader_request(l[..], cast(string) big[..], cast(string) big[..]).messages.count == 0;
+  #assert mc_reader_request(l[..], "", "").messages.count == 0;
+  // due only once the run has acted, and only once
+  l[0].reader = true;
+  #assert !mc_reader_due(l[..]);
+  l[0].acted = true;
+  #assert mc_reader_due(l[..]);
+  l[0].read = true;
+  #assert !mc_reader_due(l[..]);
 }
 
 #test "a finish that carries edits, commands or views runs them and is not taken; the next finish is" {
