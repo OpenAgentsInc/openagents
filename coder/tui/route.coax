@@ -16,12 +16,7 @@ cd_route :: (task: string, local: bool, r: [] AgRoute) { pb: [1400] u8; cg_route
 CD_DECIDE_MAX :: 32;
 
 // 0.962: three places are what a decision carries.
-cd_prob3 :: (out: [] u8, n: int, p: f64) -> int {
-  pm := cast(int) (p * 1000.0 + 0.5);
-  k := json_write_int(out, n, pm / 1000); k = json_raw(out, k, ".");
-  k = json_raw(out, k, ifx pm % 1000 < 10 then "00" else ifx pm % 1000 < 100 then "0" else "");
-  return json_write_int(out, k, pm % 1000);
-}
+cd_prob3 :: (out: [] u8, n: int, p: f64) -> int { return cst_prob3(out, n, p); }
 
 // Splits A,B,C into keys; the count, or -1 when there are too many or one is empty.
 cd_decide_options :: (options: string, keys: [] string) -> int {

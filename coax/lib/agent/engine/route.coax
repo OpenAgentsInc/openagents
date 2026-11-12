@@ -24,6 +24,7 @@
 
 #load "../../systemone/systemone.coax";
 #load "../../sys/fs.coax";
+#load "../session/stream.coax";
 #load "route-policy.coax";
 #load "availability.coax";
 
@@ -284,24 +285,7 @@ agr_text :: (r: [] AgRoute, out: [] u8) -> string {
 
 // The route as a session line ({"kind":"route",...}); ran is the engine that ran, "" for none.
 agr_json :: (r: [] AgRoute, ran: string, out: [] u8) -> string {
-  n := json_raw(out, 0, "{\"kind\":\"route\",\"ok\":"); n = json_raw(out, n, ifx r[0].ok then "true" else "false");
-  if r[0].nsource>0 {
-    n=json_raw(out,n,",\"schema\":\"coder.route.v2\",\"source\":"); n=json_write_string(out,n,cast(string)r[0].source[0..<r[0].nsource]);
-    n=json_raw(out,n,",\"model\":"); n=json_write_string(out,n,cast(string)r[0].model[0..<r[0].nmodel]);
-  }
-  if r[0].ok {
-    n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, agr_engine(r));
-    pm := cast(int) (r[0].probability * 1000.0 + 0.5);       // as 0.962: three places are what the decision carries
-    n = json_raw(out, n, ",\"probability\":"); n = json_write_int(out, n, pm / 1000); n = json_raw(out, n, ".");
-    n = json_raw(out, n, ifx pm % 1000 < 10 then "00" else ifx pm % 1000 < 100 then "0" else ""); n = json_write_int(out, n, pm % 1000);
-    n = json_raw(out, n, ",\"difficulty\":"); n = json_write_int(out, n, r[0].difficulty);
-    n = json_raw(out, n, ",\"effort\":"); n = json_write_string(out, n, cast(string) r[0].effort[0..<r[0].neffort]);
-  } else { n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
-  n = json_raw(out, n, ",\"eligible_mask\":"); n = json_write_int(out, n, r[0].eligible);
-  n = json_raw(out, n, ",\"blocked_mask\":"); n = json_write_int(out, n, r[0].blocked);
-  n = json_raw(out, n, ",\"allowed_mask\":"); n = json_write_int(out, n, r[0].allowed);
-  if ran.count > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, ran); }
-  n = json_raw(out, n, "}");
+  n := cst_route(out, r[0].ok, cast(string) r[0].source[0..<r[0].nsource], cast(string) r[0].model[0..<r[0].nmodel], agr_engine(r), r[0].probability, r[0].difficulty, cast(string) r[0].effort[0..<r[0].neffort], cast(string) r[0].why[0..<r[0].nwhy], r[0].eligible, r[0].blocked, r[0].allowed, ran);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 

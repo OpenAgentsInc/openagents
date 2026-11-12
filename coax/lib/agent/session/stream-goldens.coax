@@ -5,8 +5,7 @@
 // write each line byte for byte.
 
 #import "Basic";
-#load "writer.coax";
-#load "../engine/route.coax";
+#load "stream.coax";
 #load "../../json/json.coax";
 #load "../../sys/tool.coax";
 #load "../../sys/args.coax";
@@ -75,21 +74,7 @@ sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
     return cst_reply_end(out, sg_i(d, vs, "segment", 0));
   }
   if rec == "route" {
-    r: [1] AgRoute;
-    r[0].ok = sg_b(d, vs, "ok");
-    r[0].nsource = agr_cat(r[0].source[..], 0, sg_s(p[..], d, vs, "source"));
-    r[0].nmodel = agr_cat(r[0].model[..], 0, sg_s(p[..], d, vs, "model"));
-    r[0].nengine = agr_cat(r[0].engine[..], 0, sg_s(p[..], d, vs, "engine"));
-    r[0].probability = cast(f64) sg_i(d, vs, "probability_e3", 0) / 1000.0;
-    r[0].difficulty = sg_i(d, vs, "difficulty", 0);
-    r[0].neffort = agr_cat(r[0].effort[..], 0, sg_s(p[..], d, vs, "effort"));
-    r[0].nwhy = agr_cat(r[0].why[..], 0, sg_s(p[..], d, vs, "text"));
-    r[0].eligible = sg_i(d, vs, "eligible_mask", 0);
-    r[0].blocked = sg_i(d, vs, "blocked_mask", 0);
-    r[0].allowed = sg_i(d, vs, "allowed_mask", 0);
-    rb: [SG_LINE] u8;
-    line := agr_json(r[..], sg_s(p[..], d, vs, "ran"), rb[..]);
-    return sg_copy_line(line, out);
+    return cst_route(out, sg_b(d, vs, "ok"), sg_s(p[..], d, vs, "source"), sg_s(p[..], d, vs, "model"), sg_s(p[..], d, vs, "engine"), cast(f64) sg_i(d, vs, "probability_e3", 0) / 1000.0, sg_i(d, vs, "difficulty", 0), sg_s(p[..], d, vs, "effort"), sg_s(p[..], d, vs, "text"), sg_i(d, vs, "eligible_mask", 0), sg_i(d, vs, "blocked_mask", 0), sg_i(d, vs, "allowed_mask", 0), sg_s(p[..], d, vs, "ran"));
   }
   return -1;
 }
@@ -121,8 +106,8 @@ sg_check :: (raw: string, quiet: bool) -> int {
     wn := sg_encode(p[..], d, item, out[..]);
     got := ifx wn < 0 then "" else cast(string) out[0..<wn];
     same := wn >= 0 && got == want;
-    lnodes: [256] JvNode; lj: [1] Jv;
-    parsed := same && jv_parse(lj[..], got, lnodes[..]) && jv_kind(lj[0], 0) == JV_OBJECT;
+    lnodes: [256] JvNode; lj: [1] Jv; ar: [1] ClArena; ev: [1] CstEvent;
+    parsed := same && jv_parse(lj[..], got, lnodes[..]) && jv_kind(lj[0], 0) == JV_OBJECT && cst_read(ar[..], got, ev[..]) != CST_KIND_NONE;
     if !same {
       if !quiet { print("FAIL  % (%):\n  want: %\n  got:  %\n", name, rec, want, got); }
       bad += 1;
