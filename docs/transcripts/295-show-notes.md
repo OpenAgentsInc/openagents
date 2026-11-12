@@ -6,10 +6,13 @@ outline, not a script. The lines are written to be said out loud, in the
 voice of Episodes 290, 293 and 294. Read them, change the words, and say them
 your own way.
 
-Episode 294 walked a world, Bitcoin Lab. **There is no Nostr Lab yet.**
-Section 6 gives two tours: one of what's live today, and one of a Nostr Lab
-if you want it built before you record.
-[Check before recording](#check-before-recording) lists what to decide.
+Episode 294 walked a world, Bitcoin Lab. **Nostr Lab exists now, with four
+stations** (key pair, event, ID, signature; #13360, `6bd6a5c82a`). Section 6
+gives two tours: one in a terminal and the browser, and one in Nostr Lab.
+[Section 7](#7-the-nip-list) is the list of NIPs to read out, with what Nostr
+Lab shows for each one and what is still to build before recording (updated
+2026-11-12). [Check before recording](#check-before-recording) lists what to
+decide.
 
 ## The short version
 
@@ -148,20 +151,158 @@ Record in a terminal and the browser, full screen.
 Steps 1 to 7 follow the book's core path: shared secrets, the event model,
 the transport, a client and a relay (chapters 14 to 44).
 
-### Tour B: Nostr Lab (not built)
+### Tour B: Nostr Lab (four stations built)
 
 The Episode 294 format: a world on the Grid at
-`openagents.com/worlds/nostr-lab`, walked with your Everglade character.
-Stations in order: a key pair; an event taking shape field by field; the
-bytes flowing into SHA-256 and the ID coming out; the signature; a relay as
-a tower you send the event to; a second relay holding the same event; a
-changed letter breaking the signature; an encrypted message crossing between
-two keys.
+`openagents.com/worlds/nostr-lab`, walked with your Everglade character. It
+is unlisted: open it by the direct link, or with `?realms=all`.
 
-It would reuse Bitcoin Lab's stations for bytes, SHA-256 and the walking
-controls. If you want this tour, it needs building first.
+Built today: a key pair; an event taking shape field by field; the bytes
+going into SHA-256 and the ID coming out; the signature, and a changed
+letter breaking it. Each value is computed live by the book's own code.
 
-## 7. The OpenAgents NIPs
+The rest of the walk is one station per NIP in
+[section 7](#7-the-nip-list). Those stations are not built yet.
+
+## 7. The NIP list
+
+Read down the list. For each one: "we support this, it's implemented", and
+the Nostr Lab station that shows it.
+
+> Here's the official list of NIPs. I'm going to go down it. Everything I
+> read out is implemented, in Coax, from scratch, and you can walk up to it
+> in Nostr Lab.
+
+The official list is `nostr/nips/official/` (101 files, pinned). "Implemented"
+below means the library code exists in `coax/lib/nostr/`, with a book chapter,
+a runnable example and a separate check. Chapter numbers are Nostr From
+Scratch's.
+
+### Implemented, with a station in Nostr Lab today
+
+| NIP | What it is | Chapter | Station |
+| --- | --- | --- | --- |
+| 01 | Events, IDs and signatures | 17, 21 | The event, its bytes into SHA-256, the signature, the changed letter |
+| 19 | `npub`, `nsec`, `note` and the other bech32 names | 16 | The key pair shown as an npub |
+
+### Implemented and worth showing: stations to build
+
+The code is done. What is missing is the station. Listed in walking order.
+
+**The core: relays**
+
+| NIP | What it is | Chapter | What the station shows |
+| --- | --- | --- | --- |
+| 01 | `EVENT`, `REQ`, `OK`, `EOSE` over a WebSocket | 23, 24, 26 to 31 | A relay tower: send the event, get `OK`, ask for it back with a filter, check the signature yourself |
+| 11 | Relay information document | 37 | The tower's sign: its name and the NIPs it serves |
+| 42 | Logging in to a relay | 38 | The relay sends a challenge, you sign it, the gate opens |
+| 65 | Relay lists and the outbox model | 32 | A second tower holding the same event; your list says where to find you |
+| 09, 40, 62 | Delete, expire, vanish | 39 | An event removed on request, and one that expires by itself |
+| 77 | Negentropy sync | 43 | Two towers compare what they hold and trade only what's missing |
+| 13 | Proof of work | 56 | A nonce counting up until the ID starts with enough zeros |
+
+**Keys and logging in**
+
+| NIP | What it is | Chapter | What the station shows |
+| --- | --- | --- | --- |
+| 06 | Keys from seed words | 46 | Twelve words become a Nostr key (and the same words can give a Bitcoin wallet) |
+| 49 | Password-encrypted key backup (`ncryptsec`) | 47 | The key locked with a password, and a wrong password refused |
+| 46 | Remote signing | 48 | A signer in another place signs for the app; the app never holds the key |
+| 98 | HTTP auth | 49, 99 | A signed web request: how you log in to openagents.com with a key |
+| 05 | Names like `you@openagents.com` | 45 | A name looked up and matched to a key |
+
+**Private messages and encrypted group chat**
+
+| NIP | What it is | Chapter | What the station shows |
+| --- | --- | --- | --- |
+| 44 | Encrypted payloads | 14, 20 | A message crossing between two keys; the relay sees noise |
+| 59 | Gift wrap | 25 | The message sealed, then wrapped with a one-time key, so the relay can't see who sent it |
+| 17 | Private messages and group chat | 60 | Alice writes to Bob and Carol: three wraps, one each, and an outsider's key opens none |
+
+Say "encrypted group chat" for NIP-17. A group is the set of people the
+message names; each one gets their own wrapped copy. The MLS group chat NIP
+(NIP-EE) is marked `unrecommended` upstream and is out of scope below.
+
+**Lightning payments**
+
+| NIP | What it is | Chapter | What the station shows |
+| --- | --- | --- | --- |
+| 57 | Zaps | 71 | A zap request, a Lightning invoice that commits to it, and the receipt checked against both |
+| 47 | Nostr Wallet Connect | 72 | An app asks a wallet to pay over encrypted events; the wallet answers |
+| 75 | Zap goals | 71 | A goal filling as receipts are counted |
+| A3 | `payto` payment targets | 73 | A profile's Bitcoin and Lightning targets (others ignored: Bitcoin only) |
+
+Run these with test invoices. Don't present them as live payments.
+
+**What people build on it**
+
+| NIP | What it is | Chapter | What the station shows |
+| --- | --- | --- | --- |
+| 02 | Follow list | 45 | A follow list, and the newest one replacing the old |
+| 10, 22, 25 | Threads, comments, reactions | 50, 52 | A note, a reply and a like, linked by tags |
+| 23 | Long-form articles | 53 | An article that can be edited: same address, newer event |
+| 51 | Lists | 54 | A bookmark list with a public part and an encrypted part |
+| 29 | Relay-based groups | 59 | A group the relay runs: join, post, and a moderator removing a post |
+| 34 | Git on Nostr | 63, 98 | A repository, an issue and its status: what the project pages on openagents.com read |
+| 90 | Data vending machines | 65 | A job request, a result and the feedback: paying a machine for work |
+| 58 | Badges | 62 | A badge defined, awarded and worn |
+| 88 | Polls | 58 | A poll and one vote per key |
+| 50, 45 | Search and count | 40, 41 | Ask a relay to search, and to count |
+
+That is 29 stations after the four built ones. If time is short, build in
+this order and stop where the day ends: relays (01, 11, 42, 65), private
+messages (44, 59, 17), Lightning (57, 47), keys (06, 49, 98), then the rest.
+
+### Not implemented, and we should have it
+
+Small ones from the official list that a listener would expect. Each is a
+codec over events we already handle.
+
+| NIP | What it is | Why |
+| --- | --- | --- |
+| C7 | Chats (kind 9) | The message kind NIP-29 groups use; the group station needs it |
+| 7D | Forum threads (kind 11) | Same: the other thing people post in groups |
+| A4 | Public messages (kind 24) | Chapter 60 describes it and stops |
+| 39 | Linking a profile to other platforms | Chapter 45 says "not implemented" |
+| C0 | Code snippets (kind 1337) | Chapter 63 lists it as not built; it fits the Git station |
+| 34 | Pull requests (kinds 1618, 1619) | The rest of NIP-34; chapter 63 lists them as not built |
+
+Also open in the book, outside the NIP list:
+
+- **Chapter 99** (the website and sign-in) cites a file that was deleted
+  with the old login, so the book's check fails on it (#13362).
+- **Chapter 104** (agent treasuries, NIP-KEYS) is partly implemented.
+- **Chapter 103** (replace `relay.openagents.com`) belongs to the relay
+  replacement, #13361, which is in progress.
+
+### Out of scope for this episode
+
+Don't read these out as supported, and no station.
+
+- **Ecash, never built:** 60 (Cashu wallet), 61 (nutzaps) and 87 (mint
+  discovery). Bitcoin and Lightning only.
+- **Marked `unrecommended` upstream:** 04 (old encrypted DMs; we decrypt
+  only, to read old messages), 26 (delegation), 96 (HTTP file storage), EE
+  (MLS group chat, replaced upstream by the Marmot protocol) and BE
+  (Bluetooth). If you want MLS groups, that is a build of its own (RFC 9420),
+  not a station.
+- **Platform signers:** 07 (browser extension) and 55 (Android signer app).
+  The book describes them; the signing happens in someone else's program.
+  Logging in with a browser extension is in Tour A, step 8.
+- **Relay features waiting on a relay key:** 43 (relay access requests) and
+  NIP-29's relay-signed group events on the live relay.
+- **Implemented, but not worth a station:** 03, 18, 21, 24, 27, 30, 32, 35,
+  36, 37, 38, 48, 52, 53, 54, 56, 5A, 64, 66, 67, 68, 69, 70, 71, 73, 78,
+  84, 85, 86, 89, 92, 94, 99, A0, B0, B7, CC, CD and F4. One line covers
+  them: "and about forty more: calendars, wikis, live streams, statuses,
+  podcasts, chess."
+- **Block's NIPs** (`nostr/nips/block/`, chapters 87 to 92), except one
+  station: **NIP-OA**, an owner key authorizing an agent key.
+- **The OpenAgents NIPs** (`nostr/nips/openagents/`, chapters 75 to 86),
+  except one station: **NIP-PYLON**, a Pylon's beacon and a signed receipt
+  for work it did. Section 8 names the others without showing them.
+
+## 8. The OpenAgents NIPs
 
 Keep this short. It's the bridge to the next episodes.
 
@@ -177,7 +318,7 @@ requests (86). Chapter 102 runs one agent through all of it, offline.
 
 Say "offline" out loud. Don't present the full market as live.
 
-## 8. How to help
+## 9. How to help
 
 > If you're a developer, or you've got agents: point them at this.
 
@@ -194,7 +335,7 @@ Say "offline" out loud. Don't present the full market as live.
 
 > The repo's open. PRs welcome.
 
-## 9. Close
+## 10. Close
 
 > Bitcoin last time, Nostr this time. Money and identity, both from
 > scratch, both in the open, both on keys you hold. Next we put agents on
@@ -205,7 +346,10 @@ tour you recorded.
 
 ## Check before recording
 
-- **Pick the tour.** Tour A works today. Tour B needs Nostr Lab built first.
+- **Pick the tour.** Tour A works today. Tour B has four stations; the rest
+  are listed in section 7 and are not built yet.
+- **The NIP list (section 7):** read out only the NIPs whose station is
+  built by the time you record. The tables say which those are.
 - **Tour A, steps 1 to 7:** choose the commands. The book's runnable
   examples are in `nostr/examples/` (`events.coax`, `filters.coax`,
   `ecdh.coax`, `gift-wrap.coax`). Run them before recording, and decide
