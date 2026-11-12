@@ -462,7 +462,7 @@ List prices, us-central1, from the Cloud Billing catalog on 2026-11-09:
 wall time on the Mac at the host's whole price, each start plus its 15 idle
 minutes, and each creation as 15 minutes of setup. Concurrent jobs are each
 counted at the whole price, so the estimate errs high. `remote.sh cost`
-sums it. The default cap is $50 over 24 hours (raised from $15 by the owner on 2026-11-09; the pool was cut to 6 hosts on 2026-11-12, and a $25 cap there starved the green-main pipeline, so it stays $50) (`OA_REMOTE_DAILY_USD`); at
+sums it. The default cap is $75 over 24 hours (raised from $15 to $50 by the owner on 2026-11-09; the pool was cut to 6 hosts on 2026-11-12; raised to $75 that day when nine agents and the pipeline reached $46 by mid-afternoon and a refused pool stalls releases) (`OA_REMOTE_DAILY_USD`); at
 the cap no host starts and jobs run on the Mac.
 
 Expected: with eight agents at 10 heavy jobs a day each, about 10 host-hours a
