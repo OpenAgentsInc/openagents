@@ -2,6 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "openagents:verse:character-checkpoint:2",
   "title": "Character checkpoint v2",
+  "profile": "character-checkpoint-v2",
+  "version": 2,
+  "check": "coax/web/tool.sh aethyr/tools/character-checkpoint-profile.coax proto/verse/character-checkpoint-v2.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -284,5 +287,33 @@
         }
       }
     }
+  ],
+  "fixtures": [
+    {
+      "ingress": true,
+      "wire": "{\"v\":2,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]}",
+      "v": 2, "owner": 7, "process": 101, "rev": 3, "at": 1762190000000, "sent": 1762190000000,
+      "engine": 1, "rules": 1, "content": 1, "hp": 0, "max": 20, "xp": 350, "wanted": 2,
+      "x_mm": -1234, "y_mm": 200, "z_mm": -9876, "yaw_mrad": 1234,
+      "pid": "p-a", "room": "pair-a", "dead": true,
+      "state": [1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]
+    },
+    {
+      "ingress": false,
+      "wire": "{\"v\":2,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+      "v": 2, "owner": 12, "process": 42, "rev": 9, "at": 1762190050000,
+      "engine": 1, "rules": 1, "content": 1, "hp": 18, "max": 20, "xp": 1200, "wanted": 0,
+      "x_mm": 500, "y_mm": 0, "z_mm": 250, "yaw_mrad": -314,
+      "pid": "hero-1", "room": "dawn", "dead": false,
+      "state": [0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    }
+  ],
+  "rejected": [
+    "{}",
+    "{\"v\":3,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":5,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":21,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":false,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"P-A\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]}",
+    "{\"v\":2,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],\"rest\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}"
   ]
 }
