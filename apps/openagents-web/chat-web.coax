@@ -1,9 +1,14 @@
 // openagents.com/chat, rebuilt from nothing (docs/audits/2026-11-11-chat-zero-base-audit.md):
-// the first piece, and for now the only one. The page is the composer at the
-// foot of the window: a real text field and Send. Enter or Send takes what
-// was typed and clears the field. Nothing is sent anywhere yet and nothing is
-// kept: there is no transcript, no list and no agent behind it. The page
-// before this one is /chat-gpu (chat.coax).
+// the first pieces. The page is the composer at the foot of the window, a
+// real text field and Send, under a transcript of what you sent. Enter or
+// Send puts your message in the transcript and clears the field. Nothing is
+// sent anywhere yet and nothing answers: there is no agent behind it, and
+// the transcript is gone when the page is left. The page before this one is
+// /chat-gpu (chat.coax).
+//
+// The transcript keeps the newest CW_MESSAGES messages in CW_POOL bytes and
+// shows as many of the newest as fit CW_SHOWN bytes; when there are more, a
+// line above them says how many are not shown.
 //
 // The browser draws it: the frames set (components/kit/frames.coax) in the
 // mono skin, through the browser backend (components/backend/dom.coax) and
@@ -17,12 +22,17 @@
 CW_INBOX :: 16384;     // a field's text from the host
 CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
 CW_CSS :: 16384;
+CW_MESSAGES :: 128;    // messages kept
+CW_POOL :: 262144;     // bytes of their text kept
+CW_SHOWN :: 98304;     // bytes of text the page shows at once (the tree holds 131072)
 CW_CLICK :: 1; CW_INPUT :: 2; CW_SUBMIT :: 3;
 
 ChatWeb :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
   draft: [CW_DRAFT] u8; draft_n: int;
-  sends: int;                        // messages taken so far
+  sends: int;                        // messages taken so far: the next one's number
+  at: [CW_MESSAGES] int; len: [CW_MESSAGES] int; count: int;   // the kept messages, oldest first, in the pool
+  pool: [CW_POOL] u8; pool_n: int;
   inbox: [CW_INBOX] u8;
   sets: [MF_COUNT] AfSettings;
   css: [CW_CSS] u8;
@@ -40,13 +50,45 @@ cw_build :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
   page := tr_open(t, "chat", TG_MAIN, "chat");
+  if s[0].count > 0 {
+    scroller := tr_open(t, "log", TG_DIV, "log");
+    th := tr_open(t, "thread", TG_DIV, "thread");
+    // the newest that fit, oldest of them first
+    first := s[0].count; shown := 0;
+    while first > 0 && shown + s[0].len[first - 1] <= CW_SHOWN { first -= 1; shown += s[0].len[first]; }
+    hidden := s[0].sends - (s[0].count - first);
+    buf: [UI_ID] u8; buf2: [UI_ID] u8;
+    if hidden > 0 { m := k_meta(t, "earlier", tr_cat(buf2[..], tr_join(buf[..], "", hidden), ifx hidden == 1 then " earlier message is not shown" else " earlier messages are not shown")); }
+    for k: first..<s[0].count {
+      m := k_user(t, u, tr_join(buf[..], "m.", s[0].sends - s[0].count + k), cast(string) s[0].pool[s[0].at[k]..<s[0].at[k] + s[0].len[k]]);
+    }
+    tr_close(t);
+    tr_close(t);
+  }
   f := k_composer(t, u, "composer", "Ask anything", "", "Send", cw_has_words(s));
   tr_attr(t, f, AT_FOCUS, "");
   tr_close(t);
 }
-// Takes the message: the field is cleared. Nothing else happens to it yet.
+// The oldest kept message goes: the rest move down the pool.
+cw_drop :: (s: [] ChatWeb) {
+  if s[0].count == 0 { return; }
+  gone := s[0].len[0];
+  for i: gone..<s[0].pool_n { s[0].pool[i - gone] = s[0].pool[i]; }
+  s[0].pool_n -= gone;
+  for k: 1..<s[0].count { s[0].at[k - 1] = s[0].at[k] - gone; s[0].len[k - 1] = s[0].len[k]; }
+  s[0].count -= 1;
+}
+// Takes the message: it goes into the transcript, without the space around it, and the field is cleared.
 cw_send :: (s: [] ChatWeb) {
   if !cw_has_words(s) { return; }
+  lo := 0; hi := s[0].draft_n;
+  while lo < hi && (s[0].draft[lo] == ' ' || s[0].draft[lo] == '\n' || s[0].draft[lo] == '\t' || s[0].draft[lo] == '\r') { lo += 1; }
+  while hi > lo && (s[0].draft[hi - 1] == ' ' || s[0].draft[hi - 1] == '\n' || s[0].draft[hi - 1] == '\t' || s[0].draft[hi - 1] == '\r') { hi -= 1; }
+  while s[0].count > 0 && (s[0].count >= CW_MESSAGES || s[0].pool_n + hi - lo > CW_POOL) { cw_drop(s); }
+  k := s[0].count;
+  s[0].at[k] = s[0].pool_n; s[0].len[k] = hi - lo;
+  for i: lo..<hi { s[0].pool[s[0].pool_n] = s[0].draft[i]; s[0].pool_n += 1; }
+  s[0].count += 1;
   s[0].sends += 1;
   s[0].draft_n = 0;
   dm_value(s[0].dom[..], "composer", "");
@@ -111,6 +153,30 @@ CwTest :: struct { s: [1] ChatWeb; }
   #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
   coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
   #assert s[0].sends == 0;
+}
+
+#test "a sent message is in the transcript, trimmed, in order; the oldest go when there are too many, and the page says so" {
+  h: [1] CwTest; s := h[0].s[..];
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  d := s[0].dom[..];
+  #assert tr_find(s[0].tree[..], "log") < 0;
+  text := "  first\nline two \n";
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), text.count);
+  coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "m.0.p")) == "first\nline two" && tr_find(t, "earlier") < 0;
+  #assert t[0].nodes[tr_find(t, "log")].parent == 0 && tr_find(t, "log") < tr_find(t, "composer");
+  for k: 0..<CW_MESSAGES + 2 {
+    s[0].inbox[0] = cast(u8) ('a' + k % 26);
+    coaxial_chatweb_event(s, CW_INPUT, dm_find(d, "composer"), 1);
+    coaxial_chatweb_event(s, CW_SUBMIT, dm_find(d, "composer"), 0);
+  }
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].count == CW_MESSAGES && s[0].sends == CW_MESSAGES + 3 && s[0].pool_n == CW_MESSAGES;
+  #assert tr_find(t, "m.0") < 0 && tr_find(t, "m.2") < 0 && tr_find(t, "m.3") > 0 && tr_text_of(t, tr_find(t, "m.3.p")) == "c";
+  #assert tr_text_of(t, tr_find(t, "earlier")) == "3 earlier messages are not shown" && t[0].lost == 0;
 }
 
 #test "Enter or Send takes the message and clears the field" {

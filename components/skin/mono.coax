@@ -60,13 +60,15 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, "@font-face{font-family:'Geist Mono';src:url(/build/zeron/GeistMono.ttf);font-weight:400 600;font-display:swap}");
   // the page and its still background: grid lines and dots
   n = mc(out, n, "*{box-sizing:border-box}html,body{margin:0;background:var(--ground);color:var(--ink)}");
-  n = mc(out, n, "body{font:14px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;");
-  // ARWES's grid lines and dots at one distance (40 px, its site's): a 1 px line along each edge of the
-  // tile and a 2 px square dot on each corner, so a dot sits where the lines cross and nowhere else
-  n = mc(out, n, "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E");
-  n = mc(out, n, "%3Cpath fill='%230b0b0b' d='M0 0h40v.5H0zM0 39.5h40v.5H0zM0 0h.5v40H0zM39.5 0h.5v40h-.5z'/%3E");
-  n = mc(out, n, "%3Cpath fill='%23262626' d='M0 0h1v1H0zM39 0h1v1h-1zM0 39h1v1H0zM39 39h1v1h-1z'/%3E%3C/svg%3E\");");
-  n = mc(out, n, "background-size:40px 40px;background-position:center top;background-attachment:fixed}");
+  n = mc(out, n, "body{font:14px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}");
+  // ARWES's grid lines and dots at one distance (40 px, its site's): a 1 px line each way through the
+  // middle of the tile and a 2 px square dot where they cross, so nothing is drawn across a tile's edge.
+  // It is its own fixed layer behind the page, so scrolling and coming back to the tab don't draw it again.
+  n = mc(out, n, "body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;");
+  n = mc(out, n, "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' shape-rendering='crispEdges'%3E");
+  n = mc(out, n, "%3Cpath fill='%230b0b0b' d='M0 20h40v1H0zM20 0h1v40h-1z'/%3E");
+  n = mc(out, n, "%3Cpath fill='%23262626' d='M19.5 19.5h2v2h-2z'/%3E%3C/svg%3E\");");
+  n = mc(out, n, "background-size:40px 40px;background-position:center top}");
   n = mc(out, n, "::selection{background:#fff;color:#000}");
   // a frame: the SVG behind a node's content, its three layers
   n = mc(out, n, "[data-frame]{position:relative;isolation:isolate}");
@@ -150,6 +152,9 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".menu{width:300px;max-width:100%;padding:6px;display:flex;flex-direction:column;gap:2px;--frame-line:var(--line)}");
   // the chat page: the composer alone, at the foot of the window
   n = mc(out, n, ".chat{height:100dvh;max-width:792px;margin:0 auto;padding:16px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}");
+  // the transcript fills what the composer leaves and scrolls inside itself, staying at its end as messages come
+  n = mc(out, n, ".log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column-reverse;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
+  n = mc(out, n, ".log .thread{padding:8px 0 20px}.msg-user p{overflow-wrap:anywhere}");
   // the chat page is as tall as the window and never scrolls or bounces: only what is inside it scrolls
   n = mc(out, n, "html:has(.chat),body:has(.chat){height:100%;overflow:hidden;overscroll-behavior:none}body:has(.chat){position:fixed;inset:0}");
   n = mc(out, n, "@media (max-width:600px){.page{padding:20px 16px 64px;gap:36px}.list,.menu{width:100%}.msg-user{max-width:88%}}");
