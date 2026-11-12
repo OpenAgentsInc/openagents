@@ -1,5 +1,5 @@
 // Shared Ocarina Lab material evaluation: original FMAT maps, UV1 masks, eye layers and GGX.
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 #load "../../../aethyr/render/sampling.coax";
 OgSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;uv1:V2;tangent:V4;colour:V4;material:f32;character:f32;}
 OgFoot :: struct {dx:V2;dy:V2;}

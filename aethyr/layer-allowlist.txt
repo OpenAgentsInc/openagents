@@ -10,11 +10,9 @@
 
 # The engine loads from a realm, a page or the game
 aethyr-up aethyr/anim/echo-pack.coax -> verse/valley/scan.coax
-aethyr-up aethyr/anim/morph-gpu.coax -> verse/gpu/wgsl.coax
 aethyr-up aethyr/anim/write.coax -> verse/tools/humans/ph_num.coax
 aethyr-up aethyr/character-appearance.coax -> everglade/scene/charactercreator-parts.coax  # its target moved from apps/openagents-web/ to everglade/scene/; the load itself is as old (#13268)
 aethyr-up aethyr/fx/gpu-puff.coax -> verse/everglade/gpu-fx.coax
-aethyr-up aethyr/fx/gpu-quads.coax -> verse/gpu/wgsl.coax
 aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
 aethyr-up aethyr/render/carriers/belt.coax -> apps/openagents-web/belt.coax
 aethyr-up aethyr/render/carriers/deadgears.coax -> apps/openagents-web/deadgears.coax
@@ -39,31 +37,13 @@ aethyr-up aethyr/render/carriers/verse.coax -> apps/openagents-web/verse.coax
 aethyr-up aethyr/render/carriers/villa.coax -> apps/openagents-web/villa.coax
 aethyr-up aethyr/render/carriers/watchtower.coax -> apps/openagents-web/watchtower.coax
 aethyr-up aethyr/render/carriers/waterlab.coax -> apps/openagents-web/waterlab.coax
-aethyr-up aethyr/render/character-material.coax -> verse/gpu/wgsl.coax
-aethyr-up aethyr/render/character.coax -> verse/gpu/wgsl.coax
 aethyr-up aethyr/render/character.coax -> verse/valley/echo-materials.coax
 aethyr-up aethyr/render/character.coax -> verse/valley/slay-lights.coax
-aethyr-up aethyr/render/contact-shade.coax -> verse/gpu/wgsl.coax
-aethyr-up aethyr/render/display-quantize.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/geometry/cull.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/media.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/noise.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/painterly.coax -> verse/gpu/wgsl.coax
-aethyr-up aethyr/render/raw-rgba.coax -> verse/gpu/wgsl.coax
-aethyr-up aethyr/render/ring8.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/sampling-core.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/sans-filter-core.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/stylized.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/render/stylized.coax -> verse/gpu/wgsl.coax
-aethyr-up aethyr/render/transfer.coax -> verse/gpu/wgsl.coax
 aethyr-up aethyr/rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax
 aethyr-up aethyr/rules/srd/hostile-permission-probes.coax -> verse/experimental-hostiles.coax
 aethyr-up aethyr/state/fixture.coax -> apps/openagents-web/save.coax
 aethyr-up aethyr/ui/draw.coax -> verse/hud/frame.coax
 aethyr-up aethyr/world/day.coax -> verse/style-preset.coax
-aethyr-up aethyr/world/stream-draw.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/world/stream-hud-shader.coax -> verse/gpu/shader.coax
-aethyr-up aethyr/world/stream-present-shader.coax -> verse/gpu/shader.coax
 aethyr-up aethyr/world/weather.coax -> verse/water-weather.coax
 
 # The game loads from the web app

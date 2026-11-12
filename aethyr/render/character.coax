@@ -12,7 +12,7 @@
 // Echo's word offsets and material slots are her pack's (verse/valley/); they move into the
 // character pack's own data with Character pack v1 (H3).
 //   coax/bin/coax test aethyr/render/character.coax
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 #load "sampling.coax";
 #load "pbr-env.coax";
 #load "filmic.coax";

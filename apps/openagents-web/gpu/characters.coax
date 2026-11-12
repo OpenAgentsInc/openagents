@@ -1,7 +1,7 @@
 // characters's shaders, the source of apps/openagents-web/characters.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (characters.module,
 // characters.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 
 // The characters realm (characters.coax): a night garden and the figures
 // standing in it, each a few dozen round cones (aethyr/figure.coax) melted

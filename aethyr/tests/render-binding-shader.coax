@@ -1,4 +1,4 @@
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 #test "binding fixture observes the supplied view extent and its last element" {
   rb_values:=[3]f32.[7,8,9];rb_result:=render_range_fs(v4(0,0,0,1),rb_values[..]);
   #assert rb_result.x==3 && rb_result.y==9 && rb_result.w==1;

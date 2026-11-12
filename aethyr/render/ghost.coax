@@ -14,7 +14,7 @@
 //   coax/bin/coax test aethyr/render/ghost.coax
 
 #module "aethyr.render.ghost";
-#load "noise.coax";   // and through it verse/gpu/shader.coax
+#load "noise.coax";   // and through it aethyr/gpu/shader.coax
 
 GHOST_BLEND :: 2;     // the host's scene blend profile for a ghost's draws: source over (1 adds, 0 is opaque)
 GHOST_CORE :: 0.16;   // how much of the ghost a face toward the eye covers

@@ -429,7 +429,7 @@ vertices, sized for Valley Lab's narrow simplifiers.
 tests. `coax wgsl --computes` emits them as compute entries in
 `apps/openagents-web/cull.wgsl`, and the cluster draw goes to `cull-draw.wgsl`.
 Atomics are Coax procedures (`gpu_atomic_add`, `gpu_atomic_max`,
-`gpu_atomic_min` in `verse/gpu/shader.coax`) over a binding marked `atomic`.
+`gpu_atomic_min` in `aethyr/gpu/shader.coax`) over a binding marked `atomic`.
 No WGSL is written by hand.
 
 - One thread a cluster applies `dag_draw`'s rule: the cluster is fine enough

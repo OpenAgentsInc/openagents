@@ -5,7 +5,7 @@
 // contact shading never darkens direct sunlight. Character Create's glade defined it (its
 // cg_normal_pack, cg_normal_unpack, cg_viewpoint and cg_contact_ao now call these). GPU-safe Coax.
 //   coax/bin/coax test aethyr/render/contact-shade.coax
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 
 #test "glade octahedral normal storage leaves room for indirect-light weight" {
  for i:0..<6 {n:=normalize3(v3(ifx i%2==0 then 0.3f32 else -0.3f32,ifx i<3 then 0.7f32 else -0.7f32,ifx i%3==0 then -0.4f32 else 0.4f32));p:=shade_normal_pack(n);r:=shade_normal_unpack(p);#assert dot3(n,r)>0.9999f32;}

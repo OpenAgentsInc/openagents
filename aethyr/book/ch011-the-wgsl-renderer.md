@@ -695,8 +695,8 @@ edge or depth mask needs its own stated oracle and count.
 
 Chapter 1 supplies the drawn state; chapter 2 fixes camera and screen
 spaces. Chapters 8–10 supply ground, a moving character and a following
-camera. The shader library in [verse/gpu/shader.coax](../../verse/gpu/shader.coax)
-and [verse/gpu/wgsl.coax](../../verse/gpu/wgsl.coax), Coax's
+camera. The shader library in [aethyr/gpu/shader.coax](../gpu/shader.coax)
+and [aethyr/gpu/wgsl.coax](../gpu/wgsl.coax), Coax's
 [GPU chapter](../../coax/book/ch17-gpu.md), and Psionic’s [compute subset](../../psionic/book/ch037-a-coax-compute-subset.md)
 provide the checked shader operations and target lowering. Coax’s R9
 target interfaces and R10 browser slice supply the host boundaries.

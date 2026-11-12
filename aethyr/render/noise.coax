@@ -3,7 +3,7 @@
 // The nonfinite0 fallback is a scalar CPU diagnostic convention. It is not
 // GPU input admission or a cross-backend guarantee for NaN/infinity.
 #module "aethyr.render.noise";
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 #authority;
 
 #forall "render noise integer words match an independent wrapping oracle" i:0..<6 {

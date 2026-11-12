@@ -11,7 +11,7 @@ mc_run :: (cmd:[]string,ok:bool,stdout:[]u8,stderr:[]u8)->ProcRun {
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..])||args_count(args[..])!=3{return 2;}
   compiler:=args_at(args[..],0);dir:=args_at(args[..],1);root:=args_at(args[..],2);if !fs_mkdir(dir){return 1;}
-  paths:[8][4096]u8;source:=fs_join(dir,"graphics.coax",paths[0][..]);library:=fs_join(root,"verse/gpu/shader.coax",paths[1][..]);
+  paths:[8][4096]u8;source:=fs_join(dir,"graphics.coax",paths[0][..]);library:=fs_join(root,"aethyr/gpu/shader.coax",paths[1][..]);
   #assert fs_write(source,"#load \"")&&fs_append(source,library)&&fs_append(source,"\";\nvs :: (vid:u32,iid:u32)->V4{return v4(0,0,0,1);}\nfs :: (pos:V4)->V4{a:=[2]f32.[1,2];return v4(a[0],a[1],0,1);}\n");
   out:[8388608]u8;err:[65536]u8;
   cmd:=[7]string.[compiler,"metal",source,"--vertex","vs","--fragment","fs"];r:=mc_run(cmd[..],true,out[..],err[..]);

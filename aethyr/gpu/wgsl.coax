@@ -6,7 +6,7 @@
 // sizes and loads by vector. The translation generates its componentwise
 // helpers (wg_add_f3f3 and the like) itself; these are the rest. Each is
 // ordinary Coax, so it runs on the CPU in checks and lowers to SPIR-V.
-//   coax/bin/coax test verse/gpu/wgsl.coax --library
+//   coax/bin/coax test aethyr/gpu/wgsl.coax --library
 #load "shader.coax";
 
 I2 :: struct {x:s32; y:s32;}

@@ -6,7 +6,7 @@
 FilmRGB :: struct {r:f32;g:f32;b:f32;}
 #test "Source film profile preserves middle grey and black before display encoding" {c:=film_rec709(film_rgb(0.18,0.18,0.18));#assert abs(c.r-0.18)<0.00001 && abs(c.g-0.18)<0.00001 && abs(c.b-0.18)<0.00001;c=film_rec709(film_rgb(0,0,0));#assert c.r<0.000001 && c.g<0.000001 && c.b<0.000001;}
 #test "film atan2 matches the quadrant angles" {#assert abs(film_atan2(1,1)-0.7853982)<0.000001 && abs(film_atan2(1,-1)-2.3561945)<0.000001 && abs(film_atan2(-1,-1)+2.3561945)<0.000001 && film_atan2(0,0)==0;}
-// atan2 by Abramowitz and Stegun 4.4.49 on [0, 1], the same polynomial as verse/gpu/wgsl.coax.
+// atan2 by Abramowitz and Stegun 4.4.49 on [0, 1], the same polynomial as aethyr/gpu/wgsl.coax.
 film_atan2 :: (y:f32,x:f32)->f32 {
  ax:=abs(x);ay:=abs(y);high:=film_max(ax,ay);if high==0 {return 0.0f32;}
  t:=film_min(ax,ay)/high;z:=t*t;p:=-0.0040540580f32;

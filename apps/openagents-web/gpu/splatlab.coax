@@ -8,7 +8,7 @@
 //   fx_vs/fs: the HUD's strokes (font.coax).
 //   bloom_fs and post_fs: the fire's glow (the light target's alpha is each pixel's bloom share),
 //     ACES tone and the sRGB curve, and the HUD strips' dark glass.
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 #load "splatlab-view.coax";
 
 SlBg :: struct {light:V4; aux:V4; }

@@ -1,6 +1,6 @@
 // Measured backend raster profile: all screen/clip vertex arithmetic stays
 // in the actual Coax shader. The host supplies only authored test deltas.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 RenderRasterProbeVaryings :: struct {position:V4;value:f32;}
 #test "raster probe produces the authored64 pixel triangle and unique vertex value" {
  rrp_u:=[4]f32.[0,0,0,0];

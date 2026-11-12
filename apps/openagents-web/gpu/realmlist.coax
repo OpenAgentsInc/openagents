@@ -1,7 +1,7 @@
 // realmlist's shaders, the source of apps/openagents-web/realmlist.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (realmlist.module,
 // realmlist.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 
 // /worlds' two passes (realmlist.coax decides every number): a dark nebula,
 // dimmer than the splash's so the HUD reads over it, with the glass of up to

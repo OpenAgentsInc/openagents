@@ -133,7 +133,7 @@ export function pageInputs(name: string, p: Pages = goldenPages()): string[] {
   out.add(`${APP}/${m}.wgsl`)
   // a module written from Coax: its source, bindings and options (build.sh), and WGSL's vocabulary
   if (existsSync(join(ROOT, `${APP}/gpu/${m}.coax`))) for (const x of ["coax", "bindings", "module"]) out.add(`${APP}/gpu/${m}.${x}`)
-  if (existsSync(join(ROOT, `${APP}/gpu/${m}.coax`))) out.add("verse/gpu/wgsl.coax")
+  if (existsSync(join(ROOT, `${APP}/gpu/${m}.coax`))) out.add("aethyr/gpu/wgsl.coax")
   out.add(`coax/web/goldens/${name}.png`)   // a wrong golden fails the page as surely as a changed page
   out.add(`coax/web/goldens/linux/${name}.png`)
   const dir = page.path.split("?")[0].replace(/^\//, "")

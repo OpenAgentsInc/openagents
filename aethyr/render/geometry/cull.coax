@@ -19,7 +19,7 @@
 // A pyramid built from part of the frame only hides less, so testing next frame's first phase
 // against it is conservative.
 //   coax/bin/coax test aethyr/render/geometry/cull.coax --library
-#load "../../../verse/gpu/shader.coax";
+#load "../../gpu/shader.coax";
 
 // The uniform block, 92 floats (23 vec4s).
 CL_M :: 0;          // world to clip, 16 floats by columns (WebGPU depth: 0 near, 1 far)

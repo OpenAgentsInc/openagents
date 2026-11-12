@@ -1,7 +1,7 @@
 // The Grid crowd's shaders (gridcrowd.coax): build.sh writes apps/openagents-web/gridcrowd.wgsl
 // from this with coax/web/wgsl-module.coax (gridcrowd.module and gridcrowd.bindings beside it).
 // First translated by coax/web/wgsl-coax.coax from the Grid page's shader (thegrid.wgsl, 2d84c124dc^).
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 
 // The Grid crowd's passes (gridcrowd.coax, the staged crowd running into
 // the Everglade gate): the near-black field behind, the scene, and the

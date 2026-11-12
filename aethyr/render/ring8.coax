@@ -1,6 +1,6 @@
 // Canonical discrete directions for eight sectors and two rings per cap.
 // Source part: keep the caller's existing shader vector type owner.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 #authority;
 RenderRingDirection :: struct {valid:bool;direction:V2;}
 

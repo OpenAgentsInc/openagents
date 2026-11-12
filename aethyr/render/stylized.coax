@@ -32,8 +32,8 @@
 // The stores: `mesh` the kit's vertices (12 floats each), `objects` the records (16 floats each),
 // `heights` the ground table (4 floats a node).
 //   coax/bin/coax test --library aethyr/render/stylized.coax
-#load "../../verse/gpu/shader.coax";
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/shader.coax";
+#load "../gpu/wgsl.coax";
 #load "noise.coax";
 #load "stylized-layout.coax";
 #load "../arch/palette.coax";

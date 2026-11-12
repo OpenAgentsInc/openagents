@@ -11,7 +11,7 @@
 // Shape constants that are not profile channels (the cloud octaves' offsets and weights, the sky's
 // gradient and wisp shapes) stay here, as the evaluation's form.
 //   coax/bin/coax test aethyr/render/painterly.coax
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 #load "light.coax";       // verse_style_balanced, verse_style_haze_phase, verse_style_haze_window
 #load "sky.coax";         // verse_style_hash
 #load "post.coax";        // verse_style_saturation

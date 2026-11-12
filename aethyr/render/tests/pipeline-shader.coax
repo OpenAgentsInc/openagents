@@ -1,4 +1,4 @@
-#load "../../../verse/gpu/shader.coax";
+#load "../../gpu/shader.coax";
 RPAttributes :: struct {position:V4;value:f32;tag:u32;}
 RPVaryings :: struct {position:V4;value:V2;tag:u32 #flat;}
 RPTargets :: struct {colour:V4;aux:V4;}

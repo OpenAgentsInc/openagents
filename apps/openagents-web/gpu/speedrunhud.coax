@@ -1,7 +1,7 @@
 // The Speedrun HUD's shaders, the source of apps/openagents-web/speedrunhud.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (speedrunhud.module,
 // speedrunhud.bindings beside it). The nebula, the glass and the strokes are newland's (gpu/newland.coax).
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 
 // Two passes (speedrunhud.coax decides every number): the homepage's slow
 // nebula, dark, with the glass of up to sixteen HUD panels, then the strokes:

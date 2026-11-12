@@ -2,7 +2,7 @@
 // build.sh writes that module from this with coax/web/wgsl-module.coax (stair.module,
 // stair.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../aethyr/render/noise.coax";
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 
 // Hold the Stair (stair.coax): bg_fs draws the tower's floor seen from above
 // with a slight tilt: the back wall and its torches, flagstones lit by them,

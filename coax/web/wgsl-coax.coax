@@ -1,6 +1,6 @@
 // WGSL to Coax (docs/verse/native-gpu.md, G5 and G6): translates a realm's
 // hand-written WGSL into Coax shader procedures over the shader library
-// (verse/gpu/shader.coax and verse/gpu/wgsl.coax), so `coax spirv` lowers
+// (aethyr/gpu/shader.coax and aethyr/gpu/wgsl.coax), so `coax spirv` lowers
 // them and #test checks run them on the CPU.
 //
 // - Vector arithmetic becomes calls (Coax has no vector operators yet):

@@ -1,7 +1,7 @@
 // A first shader through `coax spirv --vertex quad_vs --fragment quad_fs`:
 // a full-screen triangle whose fragments read a storage buffer of colors,
 // a texture and the uniforms. verse/gpu/shader-check.sh draws it.
-#load "../shader.coax";
+#load "../../../aethyr/gpu/shader.coax";
 
 QuadOut :: struct {position:V4; uv:V2; band:u32;}
 

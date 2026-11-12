@@ -1,7 +1,7 @@
 // Texture-free HUD pass over the final corridor image, with premultiplied
 // alpha blending and depth disabled. Inputs are Aethyr's 12-word HUD vertices.
 #module "aethyr.world.streamhudshader";
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 ShVertex :: struct {a: V4; b: V4; c: V4;}
 ShVarying :: struct {position: V4; place: V2; shape: V4; tint: V4;}
 #test "HUD projection uses actual viewport and retains every stroke field" {

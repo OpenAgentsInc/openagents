@@ -12,7 +12,7 @@
 // Characters stay matte (2026-11-07, c90c2b0a20): dielectric roughness never drops below
 // CM_MATTE_ROUGH, so no key highlight is brighter than the old Blinn lobe's 0.12.
 //   coax/bin/coax test aethyr/render/character-material.coax
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 
 CM_SKIN :: 0;
 CM_CLOTH :: 1;

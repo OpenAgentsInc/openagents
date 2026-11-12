@@ -1,6 +1,6 @@
 // Measured XY guard-band profile: all screen/clip vertex arithmetic stays
 // in the actual Coax shader. The host supplies only authored test deltas.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 RenderRasterProbeVaryings :: struct {position:V4;value:f32;}
 #test "raster probe produces the authored64 pixel guard band triangle and unique vertex value" {
  rrp_u:=[4]f32.[0,0,0,0];

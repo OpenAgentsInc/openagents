@@ -325,7 +325,7 @@ realm's faces.
   - a layer file that loads a layer after it in the order core, layout,
     paint, skin, backend fails; so does a component (`kit/`) that loads a
     backend, and any of them loading a file outside `components/` (the
-    shader's library, `verse/gpu/wgsl.coax`, is the one exception);
+    shader's library, `aethyr/gpu/wgsl.coax`, is the one exception);
   - a colour literal or a named face in `kit/` or in the chat set
     (`components/zeron/`) fails, outside checks (since 2026-11-11 for the
     chat set: its colours and faces are its skin's roles); so does a size,

@@ -80,8 +80,8 @@ ih_module :: (out: string, name: string, wgsl: string, times: int) -> bool {
   text := ih_replace(cast(string) src[0..<n], IH_COAX_SIN, r, dst[..], times);
   if text.count == 0 { tool_err("int-hash: the sin hashes are not where they were in "); tool_errln(name); return false; }
   cb: [1024] u8; lb: [2048] u8;
-  lib := ih_cat3("#load \"", fs_cwd(cb[..]), "/verse/gpu/wgsl.coax\";", lb[..]);
-  text = ih_replace(text, "#load \"../gpu/wgsl.coax\";", lib, tmp[..], 1);
+  lib := ih_cat3("#load \"", fs_cwd(cb[..]), "/aethyr/gpu/wgsl.coax\";", lb[..]);
+  text = ih_replace(text, "#load \"../../aethyr/gpu/wgsl.coax\";", lib, tmp[..], 1);
   if text.count > 0 { text = ih_replace(text, "#load \"../style.coax\";", "#load \"style.coax\";", dst[..], 1); }
   if text.count == 0 { tool_err("int-hash: the loads are not where they were in "); tool_errln(name); return false; }
   gpu := fs_join(out, name, p[..]);

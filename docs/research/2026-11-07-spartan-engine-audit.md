@@ -184,7 +184,7 @@ This is the part that matters most for Everglade II.
 
 | Area | Aethyr/Verse | Where |
 | --- | --- | --- |
-| Shaders | Coax lowered to WGSL (`coax wgsl`) for the browser, and to SPIR-V and Metal for native hosts. Shared functions run on the CPU in `#test` blocks. | `coax/web/wgsl-module.coax`, `verse/gpu/wgsl.coax`, `verse/gpu/spirv.coax`, `verse/gpu/metal-pass.coax` |
+| Shaders | Coax lowered to WGSL (`coax wgsl`) for the browser, and to SPIR-V and Metal for native hosts. Shared functions run on the CPU in `#test` blocks. | `coax/web/wgsl-module.coax`, `aethyr/gpu/wgsl.coax`, `verse/gpu/spirv.coax`, `verse/gpu/metal-pass.coax` |
 | Draws | The CPU picks visible pieces and sorts them into one instanced draw per kit piece and LOD: about 75 draws per frame. No compute pass and no indirect draws in the web pages. | `apps/openagents-web/everglade2.coax:626-670` |
 | Grass | Placed by the vertex shader from the cell hash, in four nested tiers fixed to the land (0.5/1/2/4 m cells out to 28/40/52/140 m). Each coarser tuft is one of the four finer tufts it covers. Past 16 m, tufts drop out by rank and the survivors widen. | `verse/everglade2/field.coax`, `apps/openagents-web/gpu/everglade2.coax:52-74` |
 | Trees | Three LODs at hard distances: whole to 36 m, crown cards to 70 m. Past 70 m only items with `q % 3 == 0` remain, scaled 1.3x. Past 160 m only `q % 6 == 0`, scaled 1.5x. | `verse/everglade2/plant.coax:21-23`, `apps/openagents-web/everglade2.coax:648-663` |

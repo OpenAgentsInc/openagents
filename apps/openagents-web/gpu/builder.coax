@@ -1,7 +1,7 @@
 // builder's shaders, the source of apps/openagents-web/builder.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (builder.module,
 // builder.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 
 // Build your own realm's two passes: verse.wgsl's night and plates (the playtest's look), and the
 // strokes over it. Every place and size comes from builder.coax. Kept in step with verse.wgsl.

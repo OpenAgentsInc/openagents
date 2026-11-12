@@ -1,5 +1,5 @@
 // The Nature reference's bright cyan sky, wind and warm/cool outdoor light.
-// Loaded after verse/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
+// Loaded after aethyr/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
 #load "../../../verse/character-glade.coax";
 #load "character-glade-light.coax";
 #load "../../../verse/everglade2/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)

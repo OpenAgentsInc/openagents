@@ -1,6 +1,6 @@
 // Independent format, bilinear and mip precision observations. Uniform UV/LOD
 // exclude raster interpolation. This does not prescribe a universal GPU rule.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 filter_format_uv :: (x:f32,y:f32)->V2 {return v2((0.5f32+x)*0.5f32,(0.5f32+y)*0.5f32);}
 #test "filter format probe keeps two-dimensional texel fractions independent" {
  #assert filter_format_uv(0,1).x==0.25 && filter_format_uv(0,1).y==0.75;

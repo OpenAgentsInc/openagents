@@ -1,6 +1,6 @@
 // Independent hardware linear-filter fraction probe. Constant per-draw UVs
 // exclude raster interpolation; authored black/white texels expose weights.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 filter_probe_uv :: (fraction:f32)->V2 {return v2((0.5f32+fraction)*0.5f32,0.5);}
 #test "filter precision probe supplies exact texel-center and midpoint coordinates" {
  #assert filter_probe_uv(0).x==0.25 && filter_probe_uv(1).x==0.75 && filter_probe_uv(0.5).x==0.5;

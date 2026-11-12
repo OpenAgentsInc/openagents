@@ -1,6 +1,6 @@
 // Small host-ABI fixture only. Production graphics parity uses the real G5
 // sources, resources and complete admitted render plan, not this flat image.
-#load "../../../verse/gpu/shader.coax";
+#load "../../gpu/shader.coax";
 HfvInput :: struct {a:V4;b:V4;c:V4;}
 HfvVarying :: struct {position:V4;}
 #test "host fixture fullscreen triangle and uniform colour have exact binary values" {

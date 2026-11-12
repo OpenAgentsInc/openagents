@@ -4,7 +4,7 @@
 // cg_decode, cg_encode and cg_shoulder are now delegates of these). GPU-safe Coax; the scalar pieces
 // are exported to C, as aethyr/render/light.coax's are, so the CPU and the shaders share them.
 //   coax/bin/coax test aethyr/render/transfer.coax
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 
 #test "the transfer decodes display colour once and round trips neutral grey" {
  #assert abs(transfer_linear(0.5)-0.214041)<0.00001;

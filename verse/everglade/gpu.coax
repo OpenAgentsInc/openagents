@@ -4,7 +4,7 @@
 // GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../aethyr/render/sampling.coax";
 #load "../../aethyr/render/noise.coax";
-#load "../gpu/wgsl.coax";
+#load "../../aethyr/gpu/wgsl.coax";
 #load "../style.coax";
 #load "gpu-glade.coax";   // the glade south of the South Gate (#13018)
 #load "../../aethyr/render/filmic.coax";

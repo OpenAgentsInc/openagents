@@ -13,8 +13,8 @@
 // The uniform block is floats: the picture's size 0, the clock 2, the mirror flag 3, the eye 4, its
 // right 8, up 12 and forward 16 with the focal length in pixels at 19, and where you stand 20.
 //   coax/bin/coax test --library everglade/workshop/gpu/temple.coax
-#load "../../../verse/gpu/shader.coax";
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/shader.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 #load "../../../aethyr/render/noise.coax";
 #load "../layout.coax";
 

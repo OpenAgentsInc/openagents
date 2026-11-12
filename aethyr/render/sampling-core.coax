@@ -1,6 +1,6 @@
 // Shader source part: it joins the caller's existing shader-library types.
 // Logical8x filtering is this shared Coax loop, not opaque driver anisotropy.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 #load "footprint.coax" as footprint;
 #authority;
 RenderFilteredColor :: struct {valid:bool;colour:V4;}

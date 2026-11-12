@@ -22,7 +22,7 @@
 //   coax/bin/coax test aethyr/render/terrain-shade.coax
 //   coax/bin/coax mutate aethyr/render/terrain-shade.coax --root-only
 
-#load "noise.coax";   // and through it verse/gpu/shader.coax
+#load "noise.coax";   // and through it aethyr/gpu/shader.coax
 
 #test "the value noise is the realms' lattice noise, smoothed between its corners" {
   #assert aethyr_terrain_noise(1, 2) == render_noise2(1, 2);
@@ -108,7 +108,7 @@
 // ---- materials
 
 // Value noise on the integer lattice: render_noise2 at the four corners, smoothed (3t^2 - 2t^3).
-// a + (b - a) t, as verse/gpu/shader.coax's mix, under its own name: a realm that loads this beside
+// a + (b - a) t, as aethyr/gpu/shader.coax's mix, under its own name: a realm that loads this beside
 // another `mix` (aethyr/points.coax's) reads one meaning.
 aethyr_terrain_mix :: (a:f32,b:f32,t:f32)->f32 #export_c #effects(all) {return a+(b-a)*t;}
 aethyr_terrain_noise :: (x:f32,z:f32)->f32 #export_c #effects(all) {

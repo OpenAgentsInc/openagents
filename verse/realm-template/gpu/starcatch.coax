@@ -1,8 +1,8 @@
 // Star Catcher's shaders (the realm template, verse/SKILL.md): copied to
 // apps/openagents-web/gpu/<module>.coax, build.sh writes apps/openagents-web/<module>.wgsl from it
 // with coax/web/wgsl-module.coax (<module>.module and <module>.bindings beside it). Shaders are
-// Coax (verse/gpu/shader.coax, wgsl.coax); no WGSL is written by hand.
-#load "../../../verse/gpu/wgsl.coax";
+// Coax (aethyr/gpu/shader.coax, wgsl.coax); no WGSL is written by hand.
+#load "../../../aethyr/gpu/wgsl.coax";
 
 // Star Catcher (starcatch.coax): bg_fs draws a night sky (a gradient, a few
 // twinkling far stars, a moon) over a dark hill; a red flush when a star

@@ -1,6 +1,6 @@
 // Explicit finite-colour conversion for the optional display experiment.
 // A normalized GPU attachment's final conversion still needs actual probes.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 #authority;
 #load "tests/display-quantize-checks.coax";
 render_display_unorm8_v1 :: (value:f32)->f32 #export_c #effects(all) {

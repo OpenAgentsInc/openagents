@@ -25,7 +25,7 @@
 // The camera is the page's pinhole, read from its uniforms as aethyr/fx/gpu-puff.coax reads it:
 // size 0, eye 16 (then the focal length, px), forward 20 (then the centre's x), right 24 (then
 // the centre's y), up 28. Depth is the raster scene's (everglade/scene/gpu/fivelab.coax fivelab_project).
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 #load "../render/noise.coax";
 
 QFX_SKY :: 0.0f32; QFX_FLOOR :: 1.0f32; QFX_PANEL :: 2.0f32; QFX_GLYPH :: 3.0f32; QFX_GLOW :: 4.0f32; QFX_BEAM :: 5.0f32;

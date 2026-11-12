@@ -1,5 +1,5 @@
 // Bilinear repeat sampling of bounded, admitted RGBA8 GPU storage streams.
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 #test "Raw texture sampling retains texel centres, bilinear centres and negative repeat" {
  b:=[4]u32.[0xff0000ff,0xff00ff00,0xffff0000,0xffffffff];a:=raw_rgb_sample(b[..],0,2,v2(0.25,0.25));#assert a.x==1 && a.y==0 && a.z==0;
  a=raw_rgb_sample(b[..],0,2,v2(0.5,0.5));#assert a.x==0.5 && a.y==0.5 && a.z==0.5;

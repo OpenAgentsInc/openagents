@@ -2,7 +2,7 @@
 // weights and explicit LOD interpolation. Hardware filtering is not consulted.
 // Source part: retain the shader library's existing logical owner.
 #load "sans-profile.coax";
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 #authority;
 RSANS_FILTER_WIDTH :: cast(s32)(SANS_COLUMNS*SANS_CELL);
 RSANS_FILTER_HEIGHT :: cast(s32)(SANS_ROWS*SANS_CELL);

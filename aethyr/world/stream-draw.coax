@@ -2,7 +2,7 @@
 // platform hosts bind actual admitted GPU objects.
 #module "aethyr.world.streamdraw";
 #authority;
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 SwVertex :: struct {position: V3; normal: V3; uv: V2;}
 SwVarying :: struct {position: V4; uv: V2; normal: V3;}
 #test "streaming projection applies object placement once and preserves forward depth" {

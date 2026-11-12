@@ -2,7 +2,7 @@
 // build.sh writes that module from this with coax/web/wgsl-module.coax (deadgears.module,
 // deadgears.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../aethyr/render/noise.coax";
-#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/gpu/wgsl.coax";
 #load "../../../aethyr/render/ring8.coax";
 
 // DeadgearsU, a uniform block, is read from a []f32 at these offsets (floats):

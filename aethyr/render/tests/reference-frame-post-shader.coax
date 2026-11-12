@@ -1,6 +1,6 @@
 // Purpose-built conformance shaders with Fairy Forest's actual seven entry
 // interfaces. Binary fractions keep the independent whole-graph oracle exact.
-#load "../../../verse/gpu/shader.coax";
+#load "../../gpu/shader.coax";
 RFGTargets :: struct {colour:V4;aux:V4;}
 RFGObject :: struct {a:V4;b:V4;c:V4;d:V4;}
 RFGWater :: struct {position:V4;tag:u32 #flat;}

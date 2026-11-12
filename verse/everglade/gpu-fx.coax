@@ -2,7 +2,7 @@
 // with coax/web/wgsl-module.coax (gpu-fx.module, gpu-fx.bindings), and coax spirv lowers it for
 // the GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../aethyr/render/noise.coax";
-#load "../gpu/wgsl.coax";
+#load "../../aethyr/gpu/wgsl.coax";
 #load "../style.coax";
 
 // Everglade's spell fire and smoke (everglade-spells.coax sp_fx): soft camera-facing puffs drawn

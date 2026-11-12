@@ -10,7 +10,7 @@
     "aethyr/particles.coax",
     "verse/light.coax",
     "aethyr/command.coax",
-    "verse/gpu/shader.coax",
+    "aethyr/gpu/shader.coax",
     "verse/kms/starcatch-light.coax",
     "psionic/kernels/norm/agent/a1.coax",
     "psionic/kernels/norm/agent/a2.coax",

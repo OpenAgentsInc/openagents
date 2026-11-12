@@ -1,5 +1,5 @@
 // Sparse CSR morph application shared by Coax GPU vertex programs.
-#load "../../verse/gpu/wgsl.coax";
+#load "../gpu/wgsl.coax";
 #load "morph.coax";
 MorphVertex :: struct {position:V3;normal:V3;}
 #test "GPU morph inputs add position and normal deltas, and zero weights preserve source bits" {

@@ -1,5 +1,5 @@
 // The production media rectangle shader, formerly inline in host.js.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 #load "media-profile.coax";
 #load "display-quantize.coax";
 MediaVaryings :: struct {position:V4;uv:V2;}

@@ -1,7 +1,7 @@
 // Independent fixed-function precision probe. All authored clip coordinates
 // are binary-exact, all three vertices are inside the64x64 viewport, and the
 // sampled pixel is interior. Host deltas do not change coverage-bin identity.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 RenderDepthPlaneProbe :: struct {position:V4;value:f32;}
 #test "depth plane probe keeps authored screen and depth inputs binary exact" {
  dpp_u:=[4]f32.[0,0,0,0];dpp_a:=render_depth_plane_probe_vs(0,0,dpp_u[..]);dpp_b:=render_depth_plane_probe_vs(1,0,dpp_u[..]);dpp_c:=render_depth_plane_probe_vs(2,0,dpp_u[..]);

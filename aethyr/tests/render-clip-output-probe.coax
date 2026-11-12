@@ -1,6 +1,6 @@
 // Feed recorded f32 vertex outputs directly to rasterization. This isolates
 // raster/projection precision from the production vertex shader's arithmetic.
-#load "../../verse/gpu/shader.coax";
+#load "../gpu/shader.coax";
 ClipOutputProbe :: struct {pos:V4;basis:V3;}
 #test "clip output probe preserves all four homogeneous words and vertex basis" {
  u:=[12]f32.[1,2,3,4,5,6,7,8,9,10,11,12];
