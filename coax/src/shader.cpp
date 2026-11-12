@@ -29,7 +29,7 @@ struct ShaderTree {
   void refuse(Loc loc, const std::string &what) {
     if (ok) error_at(file->src, loc, "E0704", what + " is outside the SPIR-V lowering",
                      "coax spirv --vertex/--fragment lowers f32, bool, s32, u32 and int, structs and fixed arrays of them, "
-                     "views of them as an entry's storage, the textures and samplers of verse/gpu/shader.coax, if/else, "
+                     "views of them as an entry's storage, the textures and samplers of aethyr/gpu/shader.coax, if/else, "
                      "for and while loops with break and continue, and acyclic calls");
     ok = false;
   }
@@ -101,7 +101,7 @@ struct ShaderTree {
     refuse(e->loc, "this constant");
   }
 
-  // The GPU's procedures in verse/gpu/shader.coax: their CPU bodies serve checks.
+  // The GPU's procedures in aethyr/gpu/shader.coax: their CPU bodies serve checks.
   static uint32_t gpu_intrinsic(const std::string &n) {
     static const char *names[] = {"", "gpu_discard", "gpu_sample", "gpu_sample_level", "gpu_sample_layer", "gpu_sample_layer_level",
                                   "gpu_sample_layer_bias", "gpu_load", "gpu_load_depth", "gpu_compare", "gpu_width", "gpu_height",

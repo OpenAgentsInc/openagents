@@ -13,9 +13,13 @@ module = "#module", string, ";" ;
 export = "#export", identifier, { ",", identifier }, ";" ;
 (* Names the module's own declarations; a module with any list keeps the
    rest private. Valid only in a unit that belongs to a logical module. *)
-load = "#load", string, [ "as", identifier ], ";" ;
+load = "#load", string, [ "as", identifier | "#test" ], ";" ;
 (* The aliased form names a .coax path whose unit claims a #module; types,
    procedures, constants and enums are then written alias.Name. *)
+(* The #test form is a check load. A unit reached from the entry only through
+   check loads is a check unit: checked and counted for coverage with the
+   program, never emitted, with any procedure that calls into it. main or an
+   #export_c procedure that reaches one is E0616. *)
 (* Source loads form a bounded acyclic graph; each canonical source loads once.
    Paths and descriptor imports resolve relative to their declaring source. *)
 import = "#import", string, ";" ;

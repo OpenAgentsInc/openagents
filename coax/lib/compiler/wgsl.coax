@@ -353,7 +353,7 @@ wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int #effects(all
   s[0].pool=r+2+ids.count;
   return r;
 }
-// The GPU procedures (verse/gpu/shader.coax) as WGSL's: discard, the samples, loads, the
+// The GPU procedures (aethyr/gpu/shader.coax) as WGSL's: discard, the samples, loads, the
 // depth compare (at level 0, as SPIR-V's explicit-level compare), a texture's size and
 // a fragment's derivatives.
 // In a module, the atomics (19 to 21) of a storage buffer bound `atomic`: its element at an index,
@@ -440,7 +440,7 @@ wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) 
     p:=cast(int)wg_next(s,tree);n:=cast(int)wg_next(s,tree);
     if p>=s[0].procs || n!=wg_params(tree,w,p) {wg_fail(s,1);return;}
     if wg_is_dot(tree,names,w,p) {
-      // verse/gpu/shader.coax's dot2, dot3 and dot4 are WGSL's dot, rounded as the GPU's own
+      // aethyr/gpu/shader.coax's dot2, dot3 and dot4 are WGSL's dot, rounded as the GPU's own
       // (a sum of products written out rounds otherwise, which a sin hash turns into other noise)
       wg_put(s,out,"dot(");wg_expr(s,tree,names,w,out);wg_put(s,out,", ");wg_expr(s,tree,names,w,out);wg_put(s,out,")");
       return;

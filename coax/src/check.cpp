@@ -390,7 +390,7 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   std::vector<StructDecl*> structs,templates;for(auto *d:file->structs)(d->generic?templates:structs).push_back(d);
   for(int64_t id=state.instances;id;id=nodes[(size_t)id].chain){
     if(nodes[(size_t)id].kind==COAX_CK_Tag_struct_){auto *d=checked_ref<StructDecl>(objects,id);d->end=d->origin->end;if(!d->generic)structs.push_back(d);continue;}
-    auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=nodes[(size_t)id].origin==id?false:o->authority;p->root_source=nodes[(size_t)id].origin==id?false:o->root_source;concrete.push_back(p);}
+    auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=nodes[(size_t)id].origin==id?false:o->authority;p->root_source=nodes[(size_t)id].origin==id?false:o->root_source;p->check_unit=nodes[(size_t)id].origin==id?false:o->check_unit;concrete.push_back(p);}
   file->procs=to_slice(arena,concrete);file->generics=to_slice(arena,generic);file->structs=to_slice(arena,structs);file->generic_structs=to_slice(arena,templates);
   file->check_input.reset();laps.lap("check.transfer");return true;
 }

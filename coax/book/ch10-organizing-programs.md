@@ -138,6 +138,15 @@ instances or helpers that only those checks reach. Loading
 `coax/lib/bounded.coax`, whose checks instantiate `Bounded` over `int`, `u8`,
 `string` and a record, adds only the instance your program uses.
 
+A unit whose checks need helpers, fixtures or an oracle keeps them in a file
+of their own and loads it with `#test`: `#load "hud-checks.coax" #test;`. That
+is a check load. The file is checked with the unit, its `#test` and `#forall`
+bodies run wherever the unit is compiled, and they count toward the unit's
+`#authority` coverage. No compile emits its procedures, so a page that loads
+the unit ships none of them. A procedure that calls into a check unit is a
+check's helper, and is left out with it. `main` and exported procedures are
+always emitted, so they can't reach a check unit (E0616).
+
 The result is cached in `~/.cache/coax-check/`, or in `$COAX_CHECK_CACHE`
 when you set it. Its key is the compiler binary's SHA-256, the options that
 change checking, and every unit in the library's closure. Edit the library,

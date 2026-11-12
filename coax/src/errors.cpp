@@ -196,7 +196,7 @@ const ErrorInfo ERRORS[] = {
     {"E0503", "retired in 0.6.0", "Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0."},
     {"E0504", "proto imports are CPU-only", "Generated binary codecs are CPU code and cannot be compiled as Metal shaders."},
     // ---- E06xx: source units ----
-    {"E0600", "invalid source load", "Use #load \"part.coax\"; at file scope with a nonempty, NUL-free path, or #load \"part.coax\" as name; to bind its module to an alias. Loads are literal source inputs, never compile-time effects."},
+    {"E0600", "invalid source load", "Use #load \"part.coax\"; at file scope with a nonempty, NUL-free path, #load \"part.coax\" as name; to bind its module to an alias, or #load \"part-checks.coax\" #test; to load a unit's checks. Loads are literal source inputs, never compile-time effects."},
     {"E0601", "source unit cannot be read", "The resolved source must be a readable regular file. Relative paths are resolved beside the unit containing #load."},
     {"E0602", "source load cycle", "A source unit loaded a canonical path that is still active. Break the cycle; completed shared dependencies load only once."},
     {"E0603", "source graph budget exceeded", "One compilation admits at most 4096 distinct source units, 32 active units, 64 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading. A build above three quarters of any of these gets a near-limit note."},
@@ -212,6 +212,7 @@ const ErrorInfo ERRORS[] = {
     {"E0613", "malformed export list", "#export takes file-scope identifiers separated by ',' and ends with ';': #export hud_slot, HudRect; A unit exports at most 512 names."},
     {"E0614", "reexport in an export list", "An export list names only its module's own declarations; alias.Name is a reexport, which is not supported."},
     {"E0615", "export outside a logical module", "#export belongs to a unit under a logical module. Claim one with #module, or load the file from a unit that does."},
+    {"E0616", "emitted code calls a check unit", "A unit reached only through #load \"FILE.coax\" #test; is a check unit: its procedures are checked and counted for coverage and never emitted, and neither is a procedure that calls one. main and an #export_c procedure are always emitted, so they may not reach one. Load the file without #test, or move the procedure."},
     // ---- E07xx: device code ----
     {"E0700", "outside the CUDA compute subset", "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item. A kernel with for thread: 0..<T loops (T a multiple of 32 up to 1024) runs T threads per item: a thread loop writes a shared array only at the elements its thread owns, code between thread loops never writes one, and shared arrays fit in 32 KiB."},
     {"E0701", "CUDA module has no kernel", "coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c."},

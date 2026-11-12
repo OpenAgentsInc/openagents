@@ -2912,7 +2912,7 @@ TypeWriter header_types(const File *file) {
   types.header = true;
   for (const ProcDecl *p : file->procs) {
     // A #foreign prototype names its view parameters' types too.
-    if (!p->export_c && !p->foreign) continue;
+    if ((!p->export_c && !p->foreign) || p->check_unit) continue;
     types.need(p->ret);
     for (const Param &prm : p->params) types.need(prm.type);
   }
@@ -3698,13 +3698,82 @@ static std::set<const ProcDecl *> called_instances(const File *file) {
     stmt(st->then_); stmt(st->else_);
     for(const SwitchCase *arm:st->cases)stmt(arm->body);
   };
-  for (const ProcDecl *p : file->procs) if (!p->origin) stmt(p->body);
+  for (const ProcDecl *p : file->procs) if (!p->origin && !p->check_unit) stmt(p->body);
   while (!work.empty()) {
     const ProcDecl *p = work.back();
     work.pop_back();
     stmt(p->body);
   }
   return reached;
+}
+
+// Check code and E0616. A check unit (one the entry reaches only through
+// `#load "FILE" #test;`) is checked with the program and never emitted. A
+// procedure that calls one of its procedures, directly or through others, is
+// check code too (a check's helper that happens to sit in a product unit), so
+// it is marked like them and left out with them: what is emitted then calls
+// none of it. Only main and an #export_c procedure must be emitted, so one of
+// those reaching a check unit is the error.
+bool check_unit_calls(File *file) {
+  bool any = false;
+  for (const auto &unit : file->src->units) any = any || unit->check_unit;
+  if (!any) return true;
+  // Each procedure's calls, once.
+  struct Call { const ProcDecl *callee; const Expr *at; };
+  std::map<const ProcDecl *, std::vector<Call>> calls;
+  std::vector<Call> *into = nullptr;
+  std::function<void(const Expr *)> expr = [&](const Expr *e) {
+    if (!e) return;
+    if (e->proc) into->push_back({e->proc, e});
+    if (e->mutation_proc) into->push_back({e->mutation_proc, e});
+    expr(e->lhs); expr(e->rhs); expr(e->third);
+    for (const Expr *a : e->args) expr(a);
+    for (const FieldInit &f : e->fields) expr(f.value);
+  };
+  std::function<void(const Stmt *)> stmt = [&](const Stmt *st) {
+    if (!st) return;
+    expr(st->expr); expr(st->expr2); expr(st->target);
+    for (const Stmt *c : st->body) stmt(c);
+    stmt(st->then_); stmt(st->else_);
+    for(const SwitchCase *arm:st->cases)stmt(arm->body);
+  };
+  for (ProcDecl *p : file->procs) {
+    if (p->check_unit || p->foreign) continue;
+    into = &calls[p];
+    stmt(p->body);
+  }
+  // To a fixed point: a caller of check code is check code. why: the call that made it so.
+  std::map<const ProcDecl *, Call> why;
+  for (bool changed = true; changed;) {
+    changed = false;
+    for (ProcDecl *p : file->procs) {
+      if (p->check_unit || p->foreign) continue;
+      for (const Call &c : calls[p]) {
+        if (!c.callee->check_unit) continue;
+        p->check_unit = true;
+        why[p] = c;
+        changed = true;
+        break;
+      }
+    }
+  }
+  bool ok = true;
+  for (const ProcDecl *p : file->procs) {
+    auto found = why.find(p);
+    if (found == why.end() || !(p->export_c || str_eq(p->name, "main"))) continue;
+    // Follow the calls down to the check unit's own procedure.
+    const ProcDecl *last = found->second.callee;
+    for (auto next = why.find(last); next != why.end(); next = why.find(last)) last = next->second.callee;
+    const ProcDecl *first = found->second.callee;
+    const std::string name = [](const ProcDecl *d) { return "'" + to_std((d->origin ? d->origin : d)->name) + "'"; }(first);
+    const std::string end = "'" + to_std((last->origin ? last->origin : last)->name) + "'";
+    error_at(file->src, found->second.at->loc, "E0616",
+             "'" + to_std(p->name) + "' is emitted and calls " + name + (first == last ? "" : ", which reaches " + end) +
+                 ", which a check load (#load ... #test;) brought in",
+             "a check unit's procedures are for #test and #forall; move " + end + " into a unit loaded without #test");
+    ok = false;
+  }
+  return ok;
 }
 
 size_t g_instance_c_bytes = 0;
@@ -3742,7 +3811,7 @@ static size_t split_function_bytes(const File *file, const EmitOptions &opts, co
   em.unit_ct_ids = &ids; em.unit_ct_values = &values;
   size_t bytes = 0;
   for (const ProcDecl *p : file->procs)
-    if (!p->origin || called.count(p)) bytes += em.function(p).size();
+    if (!p->check_unit && (!p->origin || called.count(p))) bytes += em.function(p).size();
   return bytes;
 }
 
@@ -3753,7 +3822,7 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   TimedLaps laps;
   const std::set<const ProcDecl *> called = called_instances(file);
   laps.lap("emit.instances");
-  auto emitted = [&](const ProcDecl *p) { return !p->origin || called.count(p); };
+  auto emitted = [&](const ProcDecl *p) { return !p->check_unit && (!p->origin || called.count(p)); };
   // Each procedure's unit: runs of a source file's own procedures, then instances.
   std::map<const ProcDecl *, uint64_t> unit_of;
   std::string run_key, last_path;
@@ -3859,7 +3928,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   TimedLaps laps;  // --timings: emit.instances, emit.functions, emit.inits, emit.shows, emit.types, emit.values, emit.assemble
   const std::set<const ProcDecl *> called = called_instances(file);
   laps.lap("emit.instances");
-  auto emitted = [&](const ProcDecl *p) { return !p->origin || called.count(p); };
+  auto emitted = [&](const ProcDecl *p) { return !p->check_unit && (!p->origin || called.count(p)); };
   for (const ProcDecl *p : file->procs) {
     if (!emitted(p)) continue;
     const ProcDecl *o = p->origin ? p->origin : p;
@@ -4244,7 +4313,7 @@ std::string emit_header(const File *file) {
       for (const Field &f : t->struct_decl->fields) reach(f.type);
   };
   for (const ProcDecl *p : file->procs) {
-    if (!p->export_c && !p->foreign) continue;
+    if ((!p->export_c && !p->foreign) || p->check_unit) continue;
     reach(p->ret);
     for (const Param &prm : p->params) reach(prm.type);
   }
@@ -4280,15 +4349,15 @@ std::string emit_header(const File *file) {
   s += "#ifndef COAX_STRING_DEFINED\n#define COAX_STRING_DEFINED\ntypedef struct { const char *data; int64_t count; } coax_string;\n#endif\n\n";
   s += types.out + asserts + "\n";
   for (const ProcDecl *p : file->procs)
-    if (p->export_c) s += em.prototype(p, true) + ";\n";
+    if (p->export_c && !p->check_unit) s += em.prototype(p, true) + ";\n";
   for (Type t : types.done)
     if (host_default(t)) s += "void coax_default_" + tag(t) + "(" + c_type(t) + " *p);\n";
   bool any_foreign = false;
-  for (const ProcDecl *p : file->procs) any_foreign = any_foreign || p->foreign;
+  for (const ProcDecl *p : file->procs) any_foreign = any_foreign || (p->foreign && !p->check_unit);
   if (any_foreign) {
     s += "\n/* Provided by the host (#foreign). */\n";
     for (const ProcDecl *p : file->procs)
-      if (p->foreign) s += em.prototype(p, true) + ";\n";
+      if (p->foreign && !p->check_unit) s += em.prototype(p, true) + ";\n";
   }
   s += "\n#ifdef __cplusplus\n}\n#undef _Bool\n#endif\n#undef COAX_LAYOUT\n#undef COAX_ALIGNOF\n";
   return s;

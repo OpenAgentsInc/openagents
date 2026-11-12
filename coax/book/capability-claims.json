@@ -349,7 +349,7 @@
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "b5ab1bae7ffe1ab22391ab41254b23b6dbb9458c5e4ec0315107dccbac2e6dca"
+          "sha256": "d30c997f204dc12743e1b7fa854b5871ad5b39484be4ce37cb6c540830d572d0"
         },
         {
           "path": "docs/verse/native-gpu.md",
@@ -453,11 +453,11 @@
       "evidence": [
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "b5ab1bae7ffe1ab22391ab41254b23b6dbb9458c5e4ec0315107dccbac2e6dca"
+          "sha256": "d30c997f204dc12743e1b7fa854b5871ad5b39484be4ce37cb6c540830d572d0"
         },
         {
           "path": "coax/src/shader.cpp",
-          "sha256": "ad2e700b6536f76901f95aaf64aaeb5a779a8c8a77060d8d1956bdbdeb6a2612"
+          "sha256": "481c1463f51421b1e0c9d0dcde12470bc0d223482f213e8f0a912d1f7022c51f"
         },
         {
           "path": "docs/verse/native-gpu.md",

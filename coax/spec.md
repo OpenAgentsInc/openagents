@@ -1888,12 +1888,28 @@ One compilation admits 4096 canonical units, 32 active units, 64 MiB of source
 bytes and 512 load directives per physical unit (E0603), and a unit exports at
 most 512 names (E0613). These limits bound the input itself, so they are fixed,
 with stated memory bounds: 64 MiB of source text, a 64 KiB read buffer per
-active unit (2 MiB of stack) and 56- and 40-byte scratch records per load and
-export (28 KiB and 20 KiB). A build above three quarters of any of them gets a
+active unit (2 MiB of stack) and 64- and 40-byte scratch records per load and
+export (32 KiB and 20 KiB). A build above three quarters of any of them gets a
 near-limit note (16.2). Invalid loads are
 E0600, unreadable/nonregular files E0601, and unbalanced composed units E0604.
 Reads check the source-byte budget before allocation and while reading. These
 bounds are not a whole-process sandbox or a bound on every compiler allocation.
+
+A check load, `#load "part-checks.coax" #test;`, loads a unit's checks without
+shipping them. The loaded file is composed, checked and evaluated exactly as a
+plain load's is: its `#test` and `#forall` bodies run with the program's, and
+they count toward `#authority` execution coverage (E0380) and mutation
+testing in every compilation that reaches the loader. A unit that the entry
+reaches only through check loads is a check unit, and so is everything only it
+loads. No compile emits a check unit's procedures: they are absent from
+`coax c`, `build`, `lib` and `run` output and from `coax header`, and so are
+generic instances that only they call. A procedure that calls a check unit's
+procedure, directly or through other procedures, is check code as well,
+wherever it is declared (a check's helper beside the code it checks): it is
+left out with them, so emitted code calls none of it. `main` and `#export_c`
+procedures are always emitted, so one of them reaching a check unit is E0616.
+A unit also reached through a plain load is not a check unit. A check load takes
+no alias. A source with no check load compiles to the same C as before.
 
 `#authority` belongs to a physical source unit. Loading an unmarked unit does
 not mark its procedures, and loading a marked unit retains its obligations.

@@ -152,6 +152,59 @@ class Sources(unittest.TestCase):
         self.success("check",main,"--library")
         self.assertIn("0 survived",self.success("mutate",main))
 
+    def test_check_loads_are_checked_counted_and_never_emitted(self):
+        # #13383: a module's checks sit in a unit it loads with #test. They run and
+        # count for coverage wherever the module is compiled; no compile emits them.
+        module='#authority;\n#load "m-checks.coax" #test;\nm_twice :: (x:int)->int #effects(all) {return x+x;}\n'
+        mod=self.write("m.coax",module)
+        self.write("m-checks.coax",'#load "m-more.coax";\nm_helper :: (x:int)->int #effects(all) {return m_twice(x);}\n'
+                   'm_pick :: (x:$T)->$T #effects(all) {return x;}\n#test "twice" {#assert m_helper(3)==6 && m_pick(4)==4 && m_more()==7;}\n')
+        self.write("m-more.coax",'m_more :: ()->int #effects(all) {return 7;}\n')
+        page=self.write("page.coax",'#import "Basic";\n#load "m.coax";\nmain :: () {print("%\\n", m_twice(21));}')
+        self.success("check",mod);self.success("test",mod);self.success("check",page)
+        for mode in [[],["--release"]]:
+            self.assertEqual(self.success("run",page,*mode),"42\n")
+        for c in [self.success("c",page),self.success("c",mod,"--library")]:
+            self.assertIn("m_twice",c)
+            for name in ["m_helper","m_pick","m_more"]: self.assertNotIn(name,c)
+        self.assertEqual(len(json.loads(self.success("deps",page))["sources"]),4)
+        # The same sources with a plain load emit the helpers, as they always did.
+        mod.write_text(module.replace(" #test;",";"))
+        plain=self.success("c",page)
+        for name in ["m_helper","m_more"]: self.assertIn(name,plain)
+        # Without its checks the module is not covered, alone or in a page.
+        mod.write_text(module.replace('#load "m-checks.coax" #test;\n',''))
+        self.error(mod,"E0380",mod);self.error(page,"E0380",mod)
+        # A procedure that calls into a check unit is check code too: left out, and no error
+        # while nothing emitted needs it.
+        mod.write_text(module+'m_probe :: (x:int)->int #effects(all) {return m_more()+m_pick(x);}\n'
+                       'm_outer :: (x:int)->int #effects(all) {return m_probe(x)+1;}\n#test "probe" {#assert m_outer(1)==9;}\n')
+        self.success("check",mod)
+        self.assertEqual(self.success("run",page),"42\n")
+        for c in [self.success("c",page),self.success("c",mod,"--library")]:
+            self.assertIn("m_twice",c)
+            for name in ["m_probe","m_outer","m_more","m_pick","m_helper"]: self.assertNotIn(name,c)
+        # main and an exported procedure are always emitted: one that reaches a check unit is E0616,
+        # directly, through a helper, or through a generic instance.
+        mod.write_text(module.replace("return x+x;","return m_more()-7+x+x;"))
+        hit=next(r for r in self.error(page,"E0616",page) if r["code"]=="E0616")
+        self.assertIn("'main'",hit["message"]);self.assertIn("m_twice",hit["message"]);self.assertIn("m_more",hit["message"])
+        self.success("check",mod)
+        mod.write_text(module.replace("m_twice :: (x:int)->int #effects(all) {return x+x;}","m_twice :: (x:int)->int #export_c #effects(all) {return m_pick(x)+x;}"))
+        hit=next(r for r in self.error(mod,"E0616",mod) if r["code"]=="E0616")
+        self.assertIn("m_twice",hit["message"]);self.assertIn("m_pick",hit["message"])
+        # A unit some plain load also reaches is not a check unit.
+        mod.write_text(module.replace("return x+x;","return m_more()+x+x-7;"))
+        page.write_text('#import "Basic";\n#load "m-more.coax";\n#load "m.coax";\nmain :: () {print("%\\n", m_twice(21));}')
+        self.assertEqual(self.success("run",page),"42\n")
+        both=self.success("c",page)
+        self.assertIn("m_more",both);self.assertNotIn("m_helper",both)
+        # A check load is `#load "FILE" #test;` and takes no alias.
+        for directive in ['#load "m-checks.coax" #test','#load "m-checks.coax" #tests;','#load "m-checks.coax" test;',
+                          '#load "m-checks.coax" #test as m;','#load "m-checks.coax" as m #test;','#load #test "m-checks.coax";']:
+            mod.write_text(module.replace('#load "m-checks.coax" #test;',directive))
+            self.error(mod,"E0600",mod)
+
     def test_relative_proto_input_uses_declaring_unit(self):
         profile=ROOT.parent/"proto/descriptors/ios-home.pb"
         (self.base/"adapter").mkdir()

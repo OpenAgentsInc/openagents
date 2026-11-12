@@ -106,8 +106,8 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
   bool exhausted = false;  // E0603: no further load can fit, so loading stops
   std::vector<int64_t> finished; // units in the order their loads completed
   src->path = path;
-  std::function<bool(const std::string &, int64_t, const Source *, Loc, int64_t)> visit;
-  visit = [&](const std::string &display, int64_t depth, const Source *parent, Loc directive, int64_t from) {
+  std::function<bool(const std::string &, int64_t, const Source *, Loc, int64_t, bool)> visit;
+  visit = [&](const std::string &display, int64_t depth, const Source *parent, Loc directive, int64_t from, bool checks) {
     std::error_code ec;
     auto canonical = std::filesystem::canonical(display, ec);
     if (ec || !std::filesystem::is_regular_file(canonical, ec)) {
@@ -120,7 +120,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     auto found = SU_visit({names.data(),(int64_t)names.size()}, {states.data(),(int64_t)states.size()}, {key.data(),(int64_t)key.size()});
     if (found.action == 1) {
       units[(size_t)found.index]->loaders.push_back({from,directive.offset});
-      if (from>=0) units[(size_t)from]->source->loads.push_back((int32_t)found.index);
+      if (from>=0) {units[(size_t)from]->source->loads.push_back((int32_t)found.index);units[(size_t)from]->source->check_loads.push_back(checks);}
       return true;
     }
     if (found.action == 2) {
@@ -153,7 +153,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     // A unit that fails is finished, not active: a later load of it is no cycle.
     auto stop=[&]{u->state=2;return false;};
     if (from>=0) u->loaders.push_back({from,directive.offset});
-    if (from>=0) units[(size_t)from]->source->loads.push_back((int32_t)self);
+    if (from>=0) {units[(size_t)from]->source->loads.push_back((int32_t)self);units[(size_t)from]->source->check_loads.push_back(checks);}
     Source local;local.path=display;local.text=u->source->text;
     std::vector<Token> tokens;
     // A resident compiler may hold this unit's lex from an earlier compile of the same bytes.
@@ -250,12 +250,25 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
       std::filesystem::path next(std::string(r.path.data,(size_t)r.path.count));
       if (next.is_relative()) next=std::filesystem::path(display).parent_path()/next;
       Loc at{1,1,(int32_t)r.begin};for(const auto &t:tokens)if(t.loc.offset==at.offset){at=t.loc;break;}
-      if (!visit(next.lexically_normal().string(),depth+1,&local,at,self)) {loaded=false;if (exhausted || error_limit()) break;continue;}
+      if (!visit(next.lexically_normal().string(),depth+1,&local,at,self,r.checks)) {loaded=false;if (exhausted || error_limit()) break;continue;}
       if (r.alias.count) u->source->aliases.push_back({std::string(r.alias.data,(size_t)r.alias.count),u->source->loads.back(),(int32_t)r.alias_begin});
     }
     u->state=2;finished.push_back(self);return loaded;
   };
-  if (!visit(path,0,src,{1,1,0},-1)) return false;
+  if (!visit(path,0,src,{1,1,0},-1,false)) return false;
+  // A check unit is one the entry reaches only through a check load (#load "FILE" #test;).
+  {
+    std::vector<bool> product(units.size(),false);std::vector<size_t> work{0};product[0]=true;
+    while (!work.empty()) {
+      const SourceUnit &u=*units[work.back()]->source;work.pop_back();
+      for (size_t i=0;i<u.loads.size();i++) {
+        const size_t next=(size_t)u.loads[i];
+        if (u.check_loads[i] || product[next]) continue;
+        product[next]=true;work.push_back(next);
+      }
+    }
+    for (size_t i=0;i<units.size();i++) units[i]->source->check_unit=!product[i];
+  }
   int32_t line=1;
   for (const auto &u:units) {
     u->source->begin=(int32_t)src->text.size();u->source->first_line=line;

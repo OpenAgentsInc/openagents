@@ -154,6 +154,12 @@ struct SourceUnit {
   bool claims = false;
   std::string module;
   std::vector<int32_t> loads; // indices in Source::units this unit #loads, in written order
+  // `#load "FILE.coax" #test;`: for each of loads, whether it is a check load. A unit
+  // reached from the entry only through check loads is a check unit: its procedures are
+  // checked and counted for coverage, and no compile emits them, nor a procedure
+  // that calls one (E0616 when that procedure is main or an #export_c one).
+  std::vector<bool> check_loads;
+  bool check_unit = false;
   // `#load "FILE.coax" as NAME;`: the alias, the loaded unit, the alias offset in this unit.
   struct Alias { std::string name; int32_t target = 0; int32_t offset = 0; };
   std::vector<Alias> aliases;
@@ -603,6 +609,7 @@ struct ProcDecl {
   Type ret = &T_VOID;
   Stmt *body = nullptr;
   bool root_source = true;
+  bool check_unit = false; // check code, never emitted: declared in a check unit (SourceUnit::check_unit) or a caller of such
   bool authority = false; // obligation belongs to the authored source unit
   bool export_c = false;
   bool foreign = false;  // #foreign: a C symbol the host provides; no body
@@ -763,6 +770,9 @@ struct EmitOptions {
   uint64_t split_unit = 512 << 10;  // --split-unit BYTES: one translation unit per this many bytes of procedures' C
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
+// Marks the procedures that reach a check unit as check code (never emitted);
+// E0616, and false, when main or an #export_c procedure is one of them.
+bool check_unit_calls(File *file);
 // Verification emission borrows the original checked graph. Its procedure
 // and check lists are a separate admitted plan, never a copied or rewritten File.
 struct NativeCheckDomain {

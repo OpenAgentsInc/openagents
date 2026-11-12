@@ -295,6 +295,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   for (auto *p:procs) {
     p->authority=src->units.empty()?nodes[(size_t)result.root].flag:source_authority(src,p->loc);
     p->root_source=src->units.empty() || source_point(src,p->loc).path==src->units.front()->path;
+    if(const SourceUnit *unit=source_unit_at(src,p->loc))p->check_unit=unit->check_unit;
   }
   // The entry file's #run_steps N; (a loaded file's never reaches the parser).
   if(nodes[(size_t)result.root].value) out->run_steps=nodes[(size_t)result.root].value;

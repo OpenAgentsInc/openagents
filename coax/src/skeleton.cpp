@@ -185,7 +185,7 @@ bool skeleton_make(const Source *src, const std::vector<Token> &tk, const std::s
     const SourceUnit &unit = *src->units[u];
     // (Whether a unit's checks are left out as a library's is in its items: they are there or not.)
     text += tree_path(unit.canonical) + "\x1f" + unit.module + "\x1f" + (unit.claims ? "c" : "-") + (unit.authority ? "a" : "-");
-    for (int32_t load : unit.loads) text += "\x1fload " + std::to_string(load);
+    for (size_t l = 0; l < unit.loads.size(); l++) text += (unit.check_loads[l] ? "\x1f""check load " : "\x1fload ") + std::to_string(unit.loads[l]);
     for (const auto &a : unit.aliases) text += "\x1f" "alias " + a.name + " " + std::to_string(a.target);
     for (const auto &e : unit.exports) text += "\x1f" "export " + e.name;
     text += "\n";
