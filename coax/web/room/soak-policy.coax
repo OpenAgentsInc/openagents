@@ -1,0 +1,156 @@
+// The soak's verdict (#13296, AAA P5.2; docs/deployment/soak.md): what a two-hour run of the full
+// fleet must hold, decided here from the facts soak.coax gathers. The targets are the service
+// levels' (coax/web/api/service-policy.coax): the tick's p99, the oldest unsaved checkpoint, the
+// ticket's p95. A run fails when:
+//   empty        nobody was seated
+//   slow tick    2 or more of the room's 10 s windows had a tick p99 over 10 ms (one is a spike:
+//                the tick level allows a tenth of a minute in two hours)
+//   leak         the room's resident memory grew 64 MB or more between the run's second and last
+//                quarters (their medians): the first quarter is the fleet sitting down
+//   checkpoint   2 or more windows had a checkpoint unsaved for more than 15 s
+//   ticket       the tickets' p95 was over 300 ms
+//   version      the room refused a bot's build: the bots and the room are two releases, so the
+//                run measured nothing
+//   blind        fewer than half the room's windows could be read
+//   lost         at the end fewer than nine in ten of the most ever seated were still seated
+// A failing run names every reason; the nightly files them as an issue (coax/remote/after.sh).
+#authority;
+#load "../api/service-policy.coax";
+
+SK_EMPTY :: 1; SK_SLOW_TICK :: 2; SK_LEAK :: 4; SK_CHECKPOINT :: 8; SK_TICKET :: 16; SK_VERSION :: 32; SK_BLIND :: 64; SK_LOST :: 128;
+SK_BITS :: 8;
+SK_SLOW_WINDOWS :: 2;
+SK_LEAK_KB :: 65536;
+SK_KEPT_PERCENT :: 90;
+
+// A run's facts. seated_most: the most bots seated at once; seated_end: at the end; slow_windows:
+// windows with a tick p99 over the target; unsaved_windows: windows with a checkpoint unsaved past
+// the target; memory_early_kb and memory_late_kb: the medians of the second and last quarters
+// (-1: not read); ticket_p95_ms: -1 when no ticket was asked of an API; version_refused: hellos the
+// room refused for their build; windows_read of windows_due: the room's windows the run could read.
+SkFacts :: struct {
+  seated_most: int; seated_end: int; slow_windows: int; unsaved_windows: int;
+  memory_early_kb: int = -1; memory_late_kb: int = -1; ticket_p95_ms: int = -1;
+  version_refused: int; windows_read: int; windows_due: int;
+}
+
+#test "a run that held: everyone seated, quick ticks, flat memory, saved checkpoints, quick tickets" {
+  f := SkFacts.{seated_most = 96, seated_end = 96, memory_early_kb = 700000, memory_late_kb = 700100, ticket_p95_ms = 40, windows_read = 700, windows_due = 720};
+  #assert sk_verdict(f) == 0;
+  f.slow_windows = 1; f.unsaved_windows = 1;   // one spike of each is not a failure
+  #assert sk_verdict(f) == 0;
+  f.ticket_p95_ms = -1;   // a room played with no API asks no tickets
+  #assert sk_verdict(f) == 0;
+  f.memory_early_kb = -1; f.memory_late_kb = 900000;   // memory not read is not a leak
+  #assert sk_verdict(f) == 0;
+  f.memory_early_kb = 900000; f.memory_late_kb = -1;
+  #assert sk_verdict(f) == 0;
+}
+#test "each way a run fails" {
+  ok := SkFacts.{seated_most = 96, seated_end = 96, memory_early_kb = 700000, memory_late_kb = 700100, ticket_p95_ms = 40, windows_read = 700, windows_due = 720};
+  f := ok; f.seated_most = 0; f.seated_end = 0;
+  #assert sk_verdict(f) == SK_EMPTY;
+  f = ok; f.slow_windows = 2;
+  #assert sk_verdict(f) == SK_SLOW_TICK;
+  f = ok; f.memory_late_kb = 700000 + 65536;
+  #assert sk_verdict(f) == SK_LEAK;
+  f.memory_late_kb = 700000 + 65535;
+  #assert sk_verdict(f) == 0;
+  f = ok; f.unsaved_windows = 2;
+  #assert sk_verdict(f) == SK_CHECKPOINT;
+  f = ok; f.ticket_p95_ms = 301;
+  #assert sk_verdict(f) == SK_TICKET;
+  f.ticket_p95_ms = 300;
+  #assert sk_verdict(f) == 0;
+  f = ok; f.version_refused = 1;
+  #assert sk_verdict(f) == SK_VERSION;
+  f = ok; f.windows_read = 359;
+  #assert sk_verdict(f) == SK_BLIND;
+  f.windows_read = 360;
+  #assert sk_verdict(f) == 0;
+  f = ok; f.windows_due = 0; f.windows_read = 0;   // a run too short for a window is not blind
+  #assert sk_verdict(f) == 0;
+  f = ok; f.seated_end = 86;   // 86 of 96 is under nine in ten
+  #assert sk_verdict(f) == SK_LOST;
+  f.seated_end = 87;
+  #assert sk_verdict(f) == 0;
+  f = ok; f.slow_windows = 5; f.memory_late_kb = 900000; f.seated_end = 10;
+  #assert sk_verdict(f) == SK_SLOW_TICK + SK_LEAK + SK_LOST;
+  // one bot seated is a fleet; nine of ten kept is kept
+  f = ok; f.seated_most = 1; f.seated_end = 1;
+  #assert sk_verdict(f) == 0;
+  f = ok; f.seated_most = 10; f.seated_end = 9;
+  #assert sk_verdict(f) == 0;
+  f.seated_end = 8;
+  #assert sk_verdict(f) == SK_LOST;
+  // memory from nothing is still read
+  f = ok; f.memory_early_kb = 0; f.memory_late_kb = 65536;
+  #assert sk_verdict(f) == SK_LEAK;
+  // a ticket p95 of 0 ms is a reading, and a fine one
+  f = ok; f.ticket_p95_ms = 0;
+  #assert sk_verdict(f) == 0;
+}
+#test "what a window counts as: slow past the tick's target, unsaved past the checkpoint's" {
+  #assert sk_slow(10001) && !sk_slow(10000) && !sk_slow(0) && !sk_slow(-1);
+  #assert sk_unsaved(15001) && !sk_unsaved(15000) && !sk_unsaved(-1);
+}
+#test "each reason has its word, and the words of a verdict are a comma apart" {
+  #assert sk_word(SK_EMPTY) == "empty" && sk_word(SK_SLOW_TICK) == "slow-tick" && sk_word(SK_LEAK) == "leak" && sk_word(SK_CHECKPOINT) == "checkpoint";
+  #assert sk_word(SK_TICKET) == "ticket" && sk_word(SK_VERSION) == "version" && sk_word(SK_BLIND) == "blind" && sk_word(SK_LOST) == "lost";
+  #assert sk_word(0) == "" && sk_word(3) == "" && sk_word(256) == "";
+  #assert sk_bits() == 8;
+  b: [96] u8;
+  #assert sk_words(0, b[..]) == "" && sk_words(SK_LEAK, b[..]) == "leak" && sk_words(SK_SLOW_TICK + SK_LEAK + SK_LOST, b[..]) == "slow-tick,leak,lost";
+  #assert sk_words(255, b[..]) == "empty,slow-tick,leak,checkpoint,ticket,version,blind,lost";
+  #assert sk_words(SK_SLOW_TICK + SK_LEAK, b[0..<10]) == "" && sk_words(SK_SLOW_TICK + SK_LEAK, b[0..<13]) == "" && sk_words(SK_SLOW_TICK + SK_LEAK, b[0..<14]) == "slow-tick,leak";
+  #assert sk_words(256 + SK_LEAK, b[..]) == "leak" && sk_words(256, b[..]) == "";   // a bit past the last is no reason
+  #assert sk_words(SK_LEAK, b[0..<4]) == "leak" && sk_words(SK_LEAK, b[0..<3]) == "";
+}
+
+// Whether a window's tick p99 (microseconds; negative: not read) is slow, and its oldest unsaved
+// checkpoint (ms) too old.
+sk_slow :: (tick_p99_us: int) -> bool #export_c #effects(all) { return tick_p99_us > sv_target(SV_TICK); }
+sk_unsaved :: (unsaved_ms: int) -> bool #export_c #effects(all) { return unsaved_ms > sv_target(SV_CHECKPOINT); }
+
+// The run's failures as SK_* bits; 0 holds.
+sk_verdict :: (f: SkFacts) -> int #effects(all) {
+  bits := 0;
+  if f.seated_most <= 0 { return SK_EMPTY; }
+  if f.slow_windows >= SK_SLOW_WINDOWS { bits += SK_SLOW_TICK; }
+  // memory not read early is no leak; not read late (-1) it is under any early reading
+  if f.memory_early_kb >= 0 && f.memory_late_kb - f.memory_early_kb >= SK_LEAK_KB { bits += SK_LEAK; }
+  if f.unsaved_windows >= SK_SLOW_WINDOWS { bits += SK_CHECKPOINT; }
+  if f.ticket_p95_ms > sv_ticket_p95_ms() { bits += SK_TICKET; }   // none asked (-1) is over nothing
+  if f.version_refused > 0 { bits += SK_VERSION; }
+  if f.windows_read * 2 < f.windows_due { bits += SK_BLIND; }
+  if f.seated_end * 100 < f.seated_most * SK_KEPT_PERCENT { bits += SK_LOST; }
+  return bits;
+}
+sk_bits :: () -> int #effects(all) { return SK_BITS; }
+sk_word :: (bit: int) -> string #effects(all) {
+  if bit == SK_EMPTY { return "empty"; }
+  if bit == SK_SLOW_TICK { return "slow-tick"; }
+  if bit == SK_LEAK { return "leak"; }
+  if bit == SK_CHECKPOINT { return "checkpoint"; }
+  if bit == SK_TICKET { return "ticket"; }
+  if bit == SK_VERSION { return "version"; }
+  if bit == SK_BLIND { return "blind"; }
+  if bit == SK_LOST { return "lost"; }
+  return "";
+}
+// The verdict's words, a comma apart, into out ("" when it holds, or when they don't fit).
+sk_words :: (bits: int, out: [] u8) -> string #effects(all) {
+  n := 0; any := false;
+  for k: 0..<SK_BITS {
+    bit := 1 << k;
+    if (bits & bit) == 0 { continue; }
+    w := sk_word(bit);
+    need := w.count;
+    if any { need += 1; }
+    if n + need > out.count { return ""; }
+    if any { out[n] = ','; n += 1; }
+    for x: w { out[n] = x; n += 1; }
+    any = true;
+  }
+  return cast(string) out[0..<n];
+}

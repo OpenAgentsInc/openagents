@@ -1,0 +1,316 @@
+// The soak (#13296, AAA P5.2; docs/deployment/soak.md): the full fleet of protocol bots (bots.coax)
+// against a room for hours, with the room watched the whole time, one verdict (soak-policy.coax)
+// and one dated capacity record (coax/web/api/soak-record.coax). Nightly it plays staging with the real database
+// for two hours (coax/remote/after.sh, on a build host); a release's canary and the API's load
+// checks run the same tool shorter.
+//
+//   coax/web/tool.sh coax/web/room/soak.coax run --origin https://staging.openagents.com
+//        --vitals https://room-staging.openagents.com/api/room/s1/vitals --players 32 --seconds 7200
+//        [--out FILE] [--day YYYY-MM-DD] [--commit HEX] [--env staging] [--realm pair-e2-soak]
+//        [--reconnect 900] [--travel 600] [--direct]
+//     Starts the bots, and while they play reads the room's last 10 s window every 5 s (its tick's
+//     p50, p95 and p99, its players, its resident memory, its oldest unsaved checkpoint) and times
+//     the API's health. At the end it prints the record and the verdict's words, and writes the
+//     record to FILE. --direct: ORIGIN is a room's own address (no API: a local room), tickets
+//     self-signed. Exits 0 when the run holds, 1 when it fails, 2 when it could not run.
+//   coax/web/tool.sh coax/web/room/soak.coax self-check ROOM_BIN [PORT]
+//     The check of the check, on this machine: a --dev room of ROOM_BIN (coax/web/room/build.sh)
+//     played three times for a minute by 16 bots: as built (must hold), with a seeded slow tick
+//     (OA_ROOM_FAULT_TICK_US: must fail slow-tick) and with a seeded leak (OA_ROOM_FAULT_LEAK_KB:
+//     must fail leak). Exits 0 when all three verdicts are those.
+//   coax/web/tool.sh coax/web/room/soak.coax publish FILE ORIGIN
+//     Posts FILE's record to ORIGIN's API (POST /api/playtest/capacity-record), signed as a room's
+//     `capacity` write with OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY from the environment.
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's check, loaded with the socket
+#load "room-socket.coax";
+#load "room-post.coax";
+#load "soak-policy.coax";
+#load "../api/soak-record.coax";
+#load "capacity-client.coax";
+#load "../../lib/sys/fs.coax";
+
+SO_SAMPLES :: 4096;           // windows kept (a 2 hour run has 720)
+SO_VITALS :: 32768;
+SO_STEP_MS :: 5000;
+SO_ROOMS :: 32;
+
+SoOpts :: struct {
+  origin: string; vitals: string; players: int; seconds: int; out: string; day: string; commit: string; env: string;
+  realm: string; reconnect: int; travel: int; direct: bool;
+  key_env: string;   // "OA_ROOM_TICKET_KEY=..." for the bots, when the run's room has a key of its own (the self-check's --dev room)
+}
+SoRun :: struct {
+  // the room's windows, each once
+  n: int; p50: [SO_SAMPLES] int; p95: [SO_SAMPLES] int; p99: [SO_SAMPLES] int; mem: [SO_SAMPLES] int; unsaved: [SO_SAMPLES] int; refused: [SO_SAMPLES] int;
+  last: [SO_VITALS] u8; last_n: int;
+  // the bots
+  seated: [SO_ROOMS] int; seated_most: int; seated_end: int; ack_p95: int = -1; bytes: int;
+  ask: [CF_HIST] int; api: [CF_HIST] int;
+  rejoined: int; kills: int; version_refused: int; finished: bool;
+}
+
+// The number after "\nKEY=" in a report (or at its start), times `scale`, rounded; -1 when the
+// report has no such line or it is no number.
+so_value :: (text: string, key: string, scale: f64) -> int {
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    if end - at > key.count && text[at..<at + key.count] == key && text[at + key.count] == '=' {
+      v := args_number(text[at + key.count + 1..<end]);
+      if !v.ok || v.value < 0 { return -1; }
+      return cast(int) (v.value * scale + 0.5);
+    }
+    at = end + 1;
+  }
+  return -1;
+}
+#test "a report's numbers: ms to microseconds, whole KB, a line that isn't there" {
+  r := "shard=1\nplayers=40\nprocess resident kb=75640\nticks a second=30.0\ntick p50 ms=0.02\ntick p95 ms=2.97\ntick p99 ms=3.01\nplayers p99 ms=0.08\ncheckpoint unsaved age ms most=5100\n";
+  #assert so_value(r, "tick p99 ms", 1000) == 3010 && so_value(r, "tick p50 ms", 1000) == 20 && so_value(r, "tick p95 ms", 1000) == 2970;
+  #assert so_value(r, "players", 1) == 40 && so_value(r, "process resident kb", 1) == 75640 && so_value(r, "checkpoint unsaved age ms most", 1) == 5100;
+  #assert so_value(r, "shard", 1) == 1 && so_value(r, "p99 ms", 1000) == -1 && so_value(r, "nothing", 1) == -1 && so_value("", "players", 1) == -1;
+  #assert so_value("players=many\n", "players", 1) == -1;
+}
+// The median of v[from..<to] (-1 when none is read: a value below 0 is not one).
+so_median :: (v: [] int, from: int, to: int) -> int {
+  t: [SO_SAMPLES] int; n := 0;
+  for i: from..<to { if v[i] >= 0 { t[n] = v[i]; n += 1; } }
+  if n == 0 { return -1; }
+  for i: 1..<n { x := t[i]; j := i; while j > 0 && t[j - 1] > x { t[j] = t[j - 1]; j -= 1; } t[j] = x; }
+  return t[n / 2];
+}
+so_most :: (v: [] int, n: int) -> int { m := -1; for i: 0..<n { if v[i] > m { m = v[i]; } } return m; }
+#test "the medians of a run's second and last quarters; the worst window" {
+  v: [16] int;
+  for i: 0..<16 { v[i] = 100 + i * 10; }
+  #assert so_median(v[..], 4, 8) == 160 && so_median(v[..], 12, 16) == 240 && so_median(v[..], 3, 3) == -1;
+  v[5] = -1; v[6] = -1;
+  #assert so_median(v[..], 4, 8) == 170 && so_most(v[..], 16) == 250 && so_most(v[..], 0) == -1;
+}
+// One read of the room's last window: kept when it is a new one.
+so_window :: (r: [] SoRun, text: string) {
+  if text.count == 0 || text.count > SO_VITALS || r[0].n >= SO_SAMPLES { return; }
+  if text.count == r[0].last_n && text == cast(string) r[0].last[0..<r[0].last_n] { return; }
+  for i: 0..<text.count { r[0].last[i] = text[i]; }
+  r[0].last_n = text.count;
+  p99 := so_value(text, "tick p99 ms", 1000);
+  if p99 < 0 { return; }   // "no window yet"
+  k := r[0].n; r[0].n += 1;
+  r[0].p50[k] = so_value(text, "tick p50 ms", 1000); r[0].p95[k] = so_value(text, "tick p95 ms", 1000); r[0].p99[k] = p99;
+  r[0].mem[k] = so_value(text, "process resident kb", 1); r[0].unsaved[k] = so_value(text, "checkpoint unsaved age ms most", 1);
+  r[0].refused[k] = so_value(text, "transport refused frames a second", 10);
+}
+#test "a window is counted once, however often it is read" {
+  r: [1] SoRun;
+  so_window(r[..], "tick p99 ms=3.01\nprocess resident kb=100\n");
+  so_window(r[..], "tick p99 ms=3.01\nprocess resident kb=100\n");
+  so_window(r[..], "no window yet\n");
+  so_window(r[..], "tick p99 ms=12.5\nprocess resident kb=120\ncheckpoint unsaved age ms most=16000\ntransport refused frames a second=1.5\n");
+  #assert r[0].n == 2 && r[0].p99[0] == 3010 && r[0].p99[1] == 12500 && r[0].mem[1] == 120 && r[0].unsaved[0] == -1 && r[0].unsaved[1] == 16000;
+  #assert r[0].refused[0] == -1 && r[0].refused[1] == 15;
+}
+// A line of the bots: a room's window (B), its totals (F).
+so_bots :: (r: [] SoRun, t: string) {
+  if !(rs_starts(t, "B ") || rs_starts(t, "F ")) { return; }
+  room := rs_num(rs_field(t, 1));
+  at := 0; f := 0; while at < t.count && f < 2 { if t[at] == ' ' { f += 1; } at += 1; }
+  nodes: [512] JvNode; j: [1] Jv;
+  if room < 1 || room > SO_ROOMS || !jv_parse(j[..], t[at..<t.count], nodes[..]) { return; }
+  seated := jv_int(j[0], jv_path(j[0], 0, "seated"), 0);
+  if t[0] == 'F' {
+    r[0].seated_end += seated;
+    r[0].rejoined += jv_int(j[0], jv_path(j[0], 0, "rejoined"), 0); r[0].kills += jv_int(j[0], jv_path(j[0], 0, "kills"), 0);
+    r[0].version_refused += jv_int(j[0], jv_path(j[0], 0, "version_refused"), 0);
+    r[0].bytes += jv_int(j[0], jv_path(j[0], 0, "bytes"), 0);
+    return;
+  }
+  r[0].seated[room - 1] = seated;
+  all := 0; for k: 0..<SO_ROOMS { all += r[0].seated[k]; }
+  if all > r[0].seated_most { r[0].seated_most = all; }
+  ack := jv_int(j[0], jv_path(j[0], 0, "ack_p95_ms"), -1);
+  if ack > r[0].ack_p95 { r[0].ack_p95 = ack; }
+  list := jv_path(j[0], 0, "ask_ms");
+  for k: 0..<jv_len(j[0], list) { ms := jv_int(j[0], jv_at(j[0], list, k), -1); if ms >= 0 { r[0].ask[ifx ms >= CF_HIST then CF_HIST - 1 else ms] += 1; } }
+}
+#test "the bots' lines: the most seated at once over the rooms, the ticket times, the totals" {
+  r: [1] SoRun;
+  so_bots(r[..], "B 1 {\"seated\":16,\"ack_p95_ms\":35,\"ask_ms\":[40,50,60]}");
+  so_bots(r[..], "B 2 {\"seated\":12,\"ack_p95_ms\":31,\"ask_ms\":[]}");
+  so_bots(r[..], "B 1 {\"seated\":15,\"ack_p95_ms\":52,\"ask_ms\":[9000]}");
+  #assert r[0].seated_most == 28 && r[0].ack_p95 == 52 && r[0].ask[40] == 1 && r[0].ask[CF_HIST - 1] == 1 && cf_quantile(r[0].ask[..], 500) == 50;
+  so_bots(r[..], "F 1 {\"seated\":15,\"rejoined\":7,\"kills\":3,\"version_refused\":0,\"bytes\":1000}");
+  so_bots(r[..], "F 2 {\"seated\":12,\"rejoined\":2,\"kills\":1,\"version_refused\":1,\"bytes\":500}");
+  #assert r[0].seated_end == 27 && r[0].rejoined == 9 && r[0].kills == 4 && r[0].version_refused == 1 && r[0].bytes == 1500;
+  so_bots(r[..], "bots {\"seated\":99}"); so_bots(r[..], "B 99 {\"seated\":99}"); so_bots(r[..], "B 1 not json");
+  #assert r[0].seated_most == 28;
+}
+// A run's facts for the policy, and its record.
+so_facts :: (r: [] SoRun, seconds: int, direct: bool) -> SkFacts {
+  f := SkFacts.{seated_most = r[0].seated_most, seated_end = r[0].seated_end, version_refused = r[0].version_refused};
+  for i: 0..<r[0].n { if sk_slow(r[0].p99[i]) { f.slow_windows += 1; } if sk_unsaved(r[0].unsaved[i]) { f.unsaved_windows += 1; } }
+  n := r[0].n;
+  f.memory_early_kb = so_median(r[0].mem[..], n / 4, n / 2); f.memory_late_kb = so_median(r[0].mem[..], n - n / 4, n);
+  f.ticket_p95_ms = ifx direct then -1 else cf_quantile(r[0].ask[..], 950);
+  f.windows_read = n; f.windows_due = ifx seconds > 40 then (seconds - 30) / 10 else 0;
+  return f;
+}
+#test "a run's facts: the slow and unsaved windows counted, memory by quarters, the windows due" {
+  r: [1] SoRun;
+  for i: 0..<16 { r[0].p99[i] = 900; r[0].mem[i] = 1000 + i * 100; r[0].unsaved[i] = 0; }
+  r[0].n = 16; r[0].p99[3] = 10001; r[0].p99[9] = 20000; r[0].unsaved[4] = 15001;
+  r[0].seated_most = 16; r[0].seated_end = 16; r[0].ask[40] = 10;
+  f := so_facts(r[..], 190, false);
+  #assert f.slow_windows == 2 && f.unsaved_windows == 1 && f.memory_early_kb == 1600 && f.memory_late_kb == 2400 && f.ticket_p95_ms == 40 && f.windows_read == 16 && f.windows_due == 16;
+  #assert so_facts(r[..], 190, true).ticket_p95_ms == -1 && so_facts(r[..], 30, true).windows_due == 0;
+}
+// UTC's date at Unix ms, YYYY-MM-DD, into out (a civil date from the day count).
+so_day :: (ms: int, out: [] u8) -> string {
+  z := ms / 86400000 + 719468;
+  era := z / 146097; doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400; doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153; d := doy - (153 * mp + 2) / 5 + 1;
+  m := ifx mp < 10 then mp + 3 else mp - 9;
+  if m <= 2 { y += 1; }
+  n := sr_int(out, 0, y); n = sr_put(out, n, "-");
+  if m < 10 { n = sr_put(out, n, "0"); } n = sr_int(out, n, m); n = sr_put(out, n, "-");
+  if d < 10 { n = sr_put(out, n, "0"); } n = sr_int(out, n, d);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+#test "a Unix time's date" {
+  b: [16] u8;
+  #assert so_day(0, b[..]) == "1970-01-01" && so_day(1762990000000, b[..]) == "2025-11-12" && so_day(951782400000, b[..]) == "2000-02-29" && so_day(1794528000000, b[..]) == "2026-11-13";
+}
+
+// The run: the bots started, the room and the API watched until they end. False when the bots could not start.
+so_play :: (o: SoOpts, r: [] SoRun) -> bool {
+  nb: [16] u8; sb: [16] u8; rb: [16] u8; tb: [16] u8;
+  h := proc_new();
+  ok := proc_arg(h, "coax/web/tool.sh") && proc_arg(h, "coax/web/room/bots.coax") && proc_arg(h, "run") && proc_arg(h, o.origin) &&
+        proc_arg(h, cast(string) nb[0..<rs_int(nb[..], 0, o.players)]) && proc_arg(h, cast(string) sb[0..<rs_int(sb[..], 0, o.seconds)]) &&
+        proc_arg(h, "--realm") && proc_arg(h, o.realm) && proc_arg(h, "--reconnect") && proc_arg(h, cast(string) rb[0..<rs_int(rb[..], 0, o.reconnect)]) &&
+        proc_arg(h, "--travel") && proc_arg(h, cast(string) tb[0..<rs_int(tb[..], 0, o.travel)]) && proc_arg(h, "--window") && proc_arg(h, "60");
+  if o.direct { ok = ok && proc_arg(h, "--direct"); }
+  if o.key_env.count > 0 { ok = ok && proc_env(h, o.key_env); }
+  if !ok || proc_start(h) != 0 { r0 := proc_release(h); return false; }
+  w: [1] HttpWork; body: [SO_VITALS] u8; line: [8192] u8; none: [1] string;
+  hu: [512] u8; health := cast(string) hu[0..<rs_put(hu[..], rs_put(hu[..], 0, o.origin), "/api/playtest/health")];
+  next := rs_now() + SO_STEP_MS; t_end := rs_now() + (o.seconds + 240) * 1000;
+  while rs_now() < t_end {
+    n := proc_line(h, 200, line[..]);
+    if n >= 0 {
+      t := cast(string) line[0..<n];
+      so_bots(r, t);
+      if rs_starts(t, "bots ") { r[0].finished = true; print("%\n", t); }
+    } else if n != PROC_TIMEOUT { break; }
+    if rs_now() >= next {
+      next += SO_STEP_MS;
+      got := http_do(w[..], "GET", o.vitals, none[0..<0], "", 4000, 0, body[..]);
+      if got.error == HTTP_OK && got.code == 200 { so_window(r, cast(string) body[0..<got.n]); }
+      if !o.direct {
+        t0 := rs_now();
+        hg := http_do(w[..], "GET", health, none[0..<0], "", 4000, 0, body[..]);
+        if hg.error == HTTP_OK && hg.code == 200 { ms := rs_now() - t0; r[0].api[ifx ms >= CF_HIST then CF_HIST - 1 else ms] += 1; }
+      }
+    }
+  }
+  wt := proc_wait(h, 5000); if wt == PROC_RUNNING { k := proc_kill(h, PROC_SIGKILL); wt = proc_wait(h, 2000); }
+  rl := proc_release(h);
+  return true;
+}
+// The record of a run and its verdict (bits), written into out.
+so_record :: (o: SoOpts, r: [] SoRun, bits: int, out: [] u8) -> string {
+  f := so_facts(r, o.seconds, o.direct);
+  db: [16] u8; wb: [96] u8;
+  rec := SoakRecord.{day = ifx o.day.count > 0 then o.day else so_day(cxproc_wall_us() / 1000, db[..]), t = cxproc_wall_us() / 1000, env = o.env, commit = o.commit};
+  v := [17] int.[o.seconds, o.players, r[0].seated_most, so_most(r[0].p50[..], r[0].n), so_most(r[0].p95[..], r[0].n), so_most(r[0].p99[..], r[0].n), f.slow_windows,
+                 so_most(r[0].refused[..], r[0].n), so_most(r[0].unsaved[..], r[0].n), f.ticket_p95_ms, ifx o.direct then -1 else cf_quantile(r[0].api[..], 950), r[0].ack_p95,
+                 f.memory_early_kb, f.memory_late_kb, ifx r[0].seated_most > 0 && o.seconds > 0 then r[0].bytes / r[0].seated_most / o.seconds else 0, r[0].rejoined, r[0].kills];
+  for k: 0..<17 { rec.n[SR_FIRST_NUMBER + k] = v[k]; }
+  rec.failed = sk_words(bits, wb[..]);
+  return soak_record_write(rec, out);
+}
+// One whole run: 0 holds, 1 fails, 2 it could not run; bits[0] its verdict.
+so_run :: (o: SoOpts, bits: [] int) -> int {
+  r: [1] SoRun;
+  if !so_play(o, r[..]) { tool_errln("soak: the bots did not start (run it from the repository's root)"); return 2; }
+  if !r[0].finished { tool_errln("soak: the bots did not finish"); }
+  f := so_facts(r[..], o.seconds, o.direct);
+  bits[0] = sk_verdict(f);
+  out: [SR_BODY] u8;
+  rec := so_record(o, r[..], bits[0], out[..]);
+  if rec.count == 0 { tool_errln("soak: the record could not be written (--day, --commit, --env)"); return 2; }
+  print("%", rec);
+  if o.out.count > 0 && !fs_write(o.out, rec) { tool_err("soak: cannot write "); tool_errln(o.out); return 2; }
+  wb: [96] u8;
+  if bits[0] == 0 { print("soak: holds: % seated for % s over % windows\n", r[0].seated_most, o.seconds, r[0].n); return 0; }
+  print("soak: fails: %\n", sk_words(bits[0], wb[..]));
+  return 1;
+}
+
+// `self-check ROOM_BIN [PORT]`: a local room three times: as built, with a slow tick, with a leak.
+so_self :: (bin: string, port: int) -> int {
+  names := [3] string.["as built", "a seeded slow tick", "a seeded leak"];
+  envs := [3] string.["", "OA_ROOM_FAULT_TICK_US=20000", "OA_ROOM_FAULT_LEAK_KB=4096"];
+  want := [3] int.[0, SK_SLOW_TICK, SK_LEAK];
+  failed := 0;
+  for k: 0..<3 {
+    pb: [16] u8; ps := cast(string) pb[0..<rs_int(pb[..], 0, port + k)];
+    h := proc_new();
+    ok := proc_arg(h, bin) && proc_arg(h, "--port") && proc_arg(h, ps) && proc_arg(h, "--dev") && proc_arg(h, "coax/web/room/dev") &&
+          proc_env(h, "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret") && proc_quiet(h);
+    if envs[k].count > 0 { ok = ok && proc_env(h, envs[k]); }
+    if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("soak: the room did not start"); return 2; }
+    ob: [128] u8; vb: [128] u8;
+    o := SoOpts.{players = 16, seconds = 60, env = "local", commit = "0000000", realm = "pair-e2-soak", reconnect = 20, travel = 0, direct = true,
+                    key_env = "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret"};
+    o.origin = cast(string) ob[0..<rs_int(ob[..], rs_put(ob[..], 0, "ws://localhost:"), port + k)];
+    o.vitals = cast(string) vb[0..<rs_put(vb[..], rs_int(vb[..], rs_put(vb[..], 0, "http://127.0.0.1:"), port + k), "/api/room/vitals")];
+    // the room's health first
+    w: [1] HttpWork; body: [4096] u8; none: [1] string; up := false;
+    hu: [128] u8; hurl := cast(string) hu[0..<rs_put(hu[..], rs_int(hu[..], rs_put(hu[..], 0, "http://127.0.0.1:"), port + k), "/health")];
+    for q: 0..<100 { if !up { g := http_do(w[..], "GET", hurl, none[0..<0], "", 1000, 0, body[..]); if g.error == HTTP_OK && g.code == 200 { up = true; } else { proc_sleep(100); } } }
+    bits: [1] int; st := 2;
+    if up { st = so_run(o, bits[..]); }
+    kl := proc_kill(h, PROC_SIGTERM); wt := proc_wait(h, 10000); if wt == PROC_RUNNING { kl = proc_kill(h, PROC_SIGKILL); wt = proc_wait(h, 2000); }
+    rl := proc_release(h);
+    // the fault's own failure and no other of the room's (lost or blind would be the harness's)
+    good := st != 2 && (ifx want[k] == 0 then bits[0] == 0 else (bits[0] & want[k]) != 0);
+    print("soak self-check: %: % (verdict bits %, wanted %)\n", names[k], ifx good then "ok" else "FAIL", bits[0], want[k]);
+    if !good { failed += 1; }
+  }
+  if failed > 0 { print("soak self-check: % of 3 failed\n", failed); return 1; }
+  print("soak self-check: a clean room holds, a seeded slow tick and a seeded leak each fail the run\n");
+  return 0;
+}
+
+// `publish FILE ORIGIN`: the record, checked, posted as a room's capacity write.
+so_publish :: (file: string, origin: string) -> int {
+  rec: [SR_BODY] u8; n := fs_read(file, rec[..]);
+  if n <= 0 || !soak_record_check(cast(string) rec[0..<n]) { tool_err("soak: not a capacity record: "); tool_errln(file); return 2; }
+  w: [1] HttpWork; out: [1024] u8; got: [1] int; u: [512] u8;
+  url := cast(string) u[0..<rs_put(u[..], rs_put(u[..], 0, origin), "/api/playtest/capacity-record")];
+  st := rp_post(w[..], url, "capacity", cast(string) rec[0..<n], 20000, out[..], got[..]);
+  if st < 0 { tool_errln("soak: no OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY to sign the record with"); return 2; }
+  print("soak: % answered % %\n", url, st, cast(string) out[0..<got[0]]);
+  return ifx st == 200 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/soak.coax run --origin URL --vitals URL --players N --seconds S [--out FILE] | self-check ROOM_BIN [PORT] | publish FILE ORIGIN"); return 2; }
+  cmd := args_at(a[..], 0);
+  if cmd == "self-check" && args_count(a[..]) >= 2 { return so_self(args_at(a[..], 1), ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else 28470); }
+  if cmd == "publish" && args_count(a[..]) == 3 { return so_publish(args_at(a[..], 1), args_at(a[..], 2)); }
+  if cmd != "run" { tool_errln("soak: run, self-check or publish"); return 2; }
+  o := SoOpts.{};
+  o.origin = args_value(a[..], "--origin", ""); o.vitals = args_value(a[..], "--vitals", "");
+  o.players = rs_num(args_value(a[..], "--players", "96")); o.seconds = rs_num(args_value(a[..], "--seconds", "7200"));
+  o.out = args_value(a[..], "--out", ""); o.day = args_value(a[..], "--day", ""); o.commit = args_value(a[..], "--commit", "0000000");
+  o.direct = args_has(a[..], "--direct");
+  o.env = args_value(a[..], "--env", ifx o.direct then "local" else "staging"); o.realm = args_value(a[..], "--realm", "pair-e2-soak");
+  o.reconnect = rs_num(args_value(a[..], "--reconnect", "900")); o.travel = rs_num(args_value(a[..], "--travel", "600"));
+  if o.origin.count == 0 || o.vitals.count == 0 || o.players < 1 || o.seconds < 30 { tool_errln("soak: --origin, --vitals, --players >= 1, --seconds >= 30"); return 2; }
+  bits: [1] int;
+  return so_run(o, bits[..]);
+}

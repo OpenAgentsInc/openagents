@@ -1,0 +1,251 @@
+{
+  "profile": "openagents.capacity-record",
+  "version": 1,
+  "description": "Capacity record v1 (#13296, docs/deployment/soak.md): one night's soak of the full fleet, as the soak writes it, posts it to POST /api/playtest/capacity-record (signed as a room's `capacity` write), the API stores it whole and GET /api/playtest/capacity answers it. Text: a `capacity 1` line, then one `KEY VALUE` line for each field in order, every line always, a newline after the last. One codec, coax/web/api/soak-record.coax.",
+  "check": "coax/web/tool.sh coax/web/api/soak-record-profile.coax proto/verse/capacity-record-v1.json",
+  "fields": [
+    {
+      "key": "day",
+      "value": "YYYY-MM-DD, the night"
+    },
+    {
+      "key": "t",
+      "value": "Unix ms the run ended"
+    },
+    {
+      "key": "env",
+      "value": "staging, production or local"
+    },
+    {
+      "key": "commit",
+      "value": "7 to 40 lower-case hex digits: the bots' build"
+    },
+    {
+      "key": "seconds",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "players",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "seated",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "tick_p50_us",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "tick_p95_us",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "tick_p99_us",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "slow_windows",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "refused_ds",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "checkpoint_ms",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "ticket_p95_ms",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "api_p95_ms",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "ack_p95_ms",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "memory_early_kb",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "memory_late_kb",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "bytes_per_player_s",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "rejoined",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "kills",
+      "value": "a whole number, -1 when it was not read"
+    },
+    {
+      "key": "verdict",
+      "value": "`holds`, or `fails ` and the reasons a comma apart (soak-policy.coax)"
+    }
+  ],
+  "numbers": [
+    "seconds",
+    "players",
+    "seated",
+    "tick_p50_us",
+    "tick_p95_us",
+    "tick_p99_us",
+    "slow_windows",
+    "refused_ds",
+    "checkpoint_ms",
+    "ticket_p95_ms",
+    "api_p95_ms",
+    "ack_p95_ms",
+    "memory_early_kb",
+    "memory_late_kb",
+    "bytes_per_player_s",
+    "rejoined",
+    "kills"
+  ],
+  "records": [
+    {
+      "why": "a night that held",
+      "day": "2026-11-12",
+      "t": 1762990000000,
+      "env": "staging",
+      "commit": "1afd85d5a2",
+      "numbers": [
+        7200,
+        96,
+        92,
+        310,
+        900,
+        2400,
+        0,
+        2,
+        5100,
+        41,
+        38,
+        47,
+        734000,
+        735200,
+        15300,
+        598,
+        340
+      ],
+      "failed": "",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n"
+    },
+    {
+      "why": "a night that failed for a slow tick and a leak, its checkpoint age not read",
+      "day": "2026-11-12",
+      "t": 1762990000000,
+      "env": "staging",
+      "commit": "1afd85d5a2",
+      "numbers": [
+        7200,
+        96,
+        92,
+        310,
+        900,
+        14100,
+        9,
+        2,
+        -1,
+        41,
+        38,
+        47,
+        734000,
+        901000,
+        15300,
+        598,
+        340
+      ],
+      "failed": "slow-tick,leak",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 14100\nslow_windows 9\nrefused_ds 2\ncheckpoint_ms -1\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 901000\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict fails slow-tick,leak\n"
+    },
+    {
+      "why": "a local room's run: no API, so no ticket or API times",
+      "day": "2026-11-12",
+      "t": 1762990000000,
+      "env": "local",
+      "commit": "0000000",
+      "numbers": [
+        60,
+        16,
+        16,
+        100,
+        200,
+        300,
+        0,
+        2,
+        0,
+        -1,
+        -1,
+        35,
+        75000,
+        75100,
+        9000,
+        30,
+        0
+      ],
+      "failed": "",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv local\ncommit 0000000\nseconds 60\nplayers 16\nseated 16\ntick_p50_us 100\ntick_p95_us 200\ntick_p99_us 300\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 0\nticket_p95_ms -1\napi_p95_ms -1\nack_p95_ms 35\nmemory_early_kb 75000\nmemory_late_kb 75100\nbytes_per_player_s 9000\nrejoined 30\nkills 0\nverdict holds\n"
+    }
+  ],
+  "refused": [
+    {
+      "why": "no newline after the verdict",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds"
+    },
+    {
+      "why": "a line after the verdict",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\nmore 1\n"
+    },
+    {
+      "why": "another version",
+      "body": "capacity 2\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n"
+    },
+    {
+      "why": "a field missing",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nverdict holds\n"
+    },
+    {
+      "why": "two fields out of order",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nseated 92\nplayers 96\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n"
+    },
+    {
+      "why": "an environment that is none of the three",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv prod\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n"
+    },
+    {
+      "why": "a number below -1",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills -2\nverdict holds\n"
+    },
+    {
+      "why": "a number with a leading zero",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 092\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n"
+    },
+    {
+      "why": "a verdict that is neither",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict ok\n"
+    },
+    {
+      "why": "a failed verdict with no reason",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict fails \n"
+    },
+    {
+      "why": "a date that is not one",
+      "body": "capacity 1\nday 2026-11-1\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n"
+    },
+    {
+      "why": "a record from before refused_ds (a field missing in the middle)",
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n"
+    }
+  ]
+}

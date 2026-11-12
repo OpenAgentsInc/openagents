@@ -12,6 +12,7 @@
 ST_MSG_SNAPSHOT :: 2;    // data-text: the build's snapshot
 ST_MSG_LIVE :: 61;       // data-lines: GitHub's commit list for main, as JSON
 ST_MSG_SERVICE :: 62;    // data-lines: /api/playtest/service-health, as JSON
+ST_MSG_CAPACITY :: 63;   // data-lines: /api/playtest/capacity, last night's capacity record (text lines)
 ST_MSG_PAGE :: 600;      // the host's page facts: now=<milliseconds>
 ST_COMMITS :: 30;
 ST_MAX_VERTICES :: 220000;
@@ -110,6 +111,7 @@ St :: struct {
   build:[40]u8;build_n:int;build_time:int;green:[40]u8;green_n:int;
   queue:int;rejected:int;red:int;day:int;week:int;trailers:int;hosts:int;slots:int;jobs:int;cents:int;
   n:int;commits:[ST_COMMITS]StCommit;live:bool;now:int;now_at:f32;
+  cp_got:bool;cp_holds:bool;cp_seated:int;cp_seconds:int;cp_tick_us:int;cp_day:[10]u8;cp_why:[96]u8;cp_why_n:int;
   sv_got:bool;sv_share:[3]int;sv_met:[3]int;sv_total:[3]int;sv_target:[3]int;sv_objective:[3]int;sv_alerts:int;sv_alert:[120]u8;sv_alert_n:int;
   rail_x:f32;rail_y:f32;rail_step:f32;rail_n:int;rows_y:f32;rows_n:int;pick:int=-1;
 }
@@ -251,6 +253,55 @@ st_service :: (s:[]St,text:string) {
   }
   s[0].sv_alerts=n;s[0].sv_got=true;
 }
+// Last night's capacity record (capacity record v1, coax/web/api/soak-record.coax; #13296): its
+// lines are "KEY VALUE". The value of KEY's line, "" when there is none.
+st_line :: (text:string,key:string)->string {
+  at:=0;
+  while at<text.count {
+    end:=at;while end<text.count && text[end]!=10 {end+=1;}
+    if end-at>key.count+1 && st_is(text,at,key) && text[at+key.count]==32 {return text[at+key.count+1..<end];}
+    at=end+1;
+  }
+  return "";
+}
+st_capacity :: (s:[]St,text:string) {
+  if !st_is(text,0,"capacity 1\n") {return;}
+  day:=st_line(text,"day");verdict:=st_line(text,"verdict");
+  if day.count!=10 || verdict.count==0 {return;}
+  for i:0..<10 {s[0].cp_day[i]=day[i];}
+  s[0].cp_seated=st_int(st_line(text,"seated"));s[0].cp_seconds=st_int(st_line(text,"seconds"));s[0].cp_tick_us=st_signed(st_line(text,"tick_p99_us"));
+  s[0].cp_holds=verdict=="holds";s[0].cp_why_n=0;
+  if !s[0].cp_holds && verdict.count>6 {k:=0;for i:6..<verdict.count {if k<96 {s[0].cp_why[k]=verdict[i];k+=1;}}s[0].cp_why_n=k;}
+  s[0].cp_got=true;
+}
+// The capacity line: what last night's soak held, or why it failed.
+st_capacity_text :: (s:[]St,b:[]u8)->int {
+  n:=st_add(b,0,"Capacity: ");
+  if s[0].cp_holds {
+    n=st_add_int(b,n,s[0].cp_seated);n=st_add(b,n," players held for ");
+    if s[0].cp_seconds>=3600 {n=st_add_int(b,n,s[0].cp_seconds/3600);n=st_add(b,n,ifx s[0].cp_seconds/3600==1 then " hour" else " hours");}
+    else {n=st_add_int(b,n,s[0].cp_seconds/60);n=st_add(b,n," minutes");}
+    n=st_add(b,n," in the soak of ");n=st_add(b,n,cast(string)s[0].cp_day[..]);
+    if s[0].cp_tick_us>=0 {n=st_add(b,n,", worst tick p99 ");n=st_add_int(b,n,s[0].cp_tick_us/1000);n=st_add(b,n,".");n=st_add_int(b,n,s[0].cp_tick_us%1000/100);n=st_add(b,n," ms");}
+    return st_add(b,n,".");
+  }
+  n=st_add(b,n,"the soak of ");n=st_add(b,n,cast(string)s[0].cp_day[..]);n=st_add(b,n," failed (");
+  n=st_add(b,n,cast(string)s[0].cp_why[0..<s[0].cp_why_n]);n=st_add(b,n,") with ");n=st_add_int(b,n,s[0].cp_seated);
+  return st_add(b,n," players seated.");
+}
+#test "last night's capacity record gives the players held, the day and the worst tick; a failed night says why" {
+  s:[1]St;b:[200]u8;
+  st_capacity(s[..],"capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n");
+  #assert s[0].cp_got && s[0].cp_holds && s[0].cp_seated==92 && s[0].cp_seconds==7200 && s[0].cp_tick_us==2400;
+  #assert cast(string)b[0..<st_capacity_text(s[..],b[..])]=="Capacity: 92 players held for 2 hours in the soak of 2026-11-12, worst tick p99 2.4 ms.";
+  st_capacity(s[..],"capacity 1\nday 2026-11-13\nseconds 600\nseated 40\ntick_p99_us -1\nverdict fails slow-tick,leak\n");
+  #assert !s[0].cp_holds && cast(string)b[0..<st_capacity_text(s[..],b[..])]=="Capacity: the soak of 2026-11-13 failed (slow-tick,leak) with 40 players seated.";
+  st_capacity(s[..],"capacity 1\nday 2026-11-14\nseconds 600\nseated 48\ntick_p99_us -1\nverdict holds\n");
+  #assert cast(string)b[0..<st_capacity_text(s[..],b[..])]=="Capacity: 48 players held for 10 minutes in the soak of 2026-11-14.";
+  t:[1]St;st_capacity(t[..],"{\"error\":\"no capacity record\"}");#assert !t[0].cp_got;
+  st_capacity(t[..],"capacity 1\nday 2026-11-12\n");#assert !t[0].cp_got;
+  #assert st_line("a 1\nseated 92\n","seated")=="92" && st_line("unseated 9\nseated 92\n","seated")=="92" && st_line("seated\n","seated")=="" && st_line("","seated")=="";
+}
 // A share in parts per million as a percent with two places: 979508 is "97.95%".
 st_pct :: (b:[]u8,at:int,ppm:int)->int {
   h:=hi_int(0,ppm)/100;n:=st_add_int(b,at,h/100);n=st_add(b,n,".");if h%100<10 {n=st_add(b,n,"0");}
@@ -265,6 +316,7 @@ st_message :: (s:[]St,kind:int,text:string) #export_c #effects(all) {
   if kind==ST_MSG_SNAPSHOT {st_snapshot(s,text);}
   if kind==ST_MSG_LIVE {st_live(s,text);}
   if kind==ST_MSG_SERVICE {st_service(s,text);}
+  if kind==ST_MSG_CAPACITY {st_capacity(s,text);}
   if kind==ST_MSG_PAGE {st_facts(s,text);}
 }
 st_same :: (a:[]u8,b:[]u8)->bool {for i:0..<40 {if a[i]!=b[i] {return false;}}return true;}
@@ -470,7 +522,14 @@ st_body :: (s:[]St,out:[]f32,at:int,p:Pen,still:bool)->int {
     }
     ak:=st_text(p,INK_DIM);if s[0].sv_alerts>0 {ak=st_tone(p,2);ak.sans=true;ak.scale=0;}
     v=st_para(out,v,cast(string)buf[0..<n],x,y,w,8.2,ak,d,tall[..]);
-    y+=tall[0]+34;
+    y+=tall[0]+ifx s[0].cp_got then 10 else 34;
+    // Last night's soak: the capacity it held (docs/deployment/soak.md, #13296).
+    if s[0].cp_got {
+      cb:[200]u8;cn:=st_capacity_text(s,cb[..]);
+      ck:=st_text(p,INK_DIM);if !s[0].cp_holds {ck=st_tone(p,2);ck.sans=true;ck.scale=0;}
+      v=st_para(out,v,cast(string)cb[0..<cn],x,y,w,8.2,ck,d,tall[..]);
+      y+=tall[0]+34;
+    }
   }
 
   // main, newest on the right.

@@ -575,13 +575,14 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | --- | --- |
 | Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
-| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `coder-since BASE`, `coder`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`, `fuzz [HOURS]`) |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE [PROD]`, `coder-since BASE`, `coder`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room [PROD]`, `tools [PROD]`, `e2 PROD`, `counts BASE`, `fuzz [HOURS]`, `soak [SECONDS [PLAYERS [DAY]]]`) |
 | The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`, `flaky`) |
 | The build hosts' pinned nixpkgs (#13256) | `coax/remote/nixpkgs.rev` |
 | The allowlist counts (#13266) | `coax/remote/counts.sh` (`show [REV]`, `check BASE [REV]`) |
 | The comparing gates' own check (#13266) | `coax/remote/test-after.sh` |
 | The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
 | The room's fuzzers (#13283): a minute each in the room check, and a nightly long run | `coax/web/room/fuzz/fuzz.sh` (`slice`, `long`, `replay`); `after.sh` runs `check.sh fuzz` on a green head once a day (`OA_AFTER_FUZZ_HOURS`, 4) and files an issue when it stops on an input |
+| The nightly soak (#13296): a shard's fleet of protocol bots on staging for two hours, a dated capacity record | `coax/web/room/soak.coax`, `coax/web/room/bots.coax`; `after.sh` runs `check.sh soak` on a green head once a day (`OA_AFTER_SOAK_SECONDS`, 7200; `OA_AFTER_SOAK_PLAYERS`, 32; `OA_AFTER_SOAK=0` turns it off), keeps the record in `releases/after/soak/DAY.txt`, posts it to the APIs and files an issue when the run fails ([the soak](../deployment/soak.md)) |
 | Releases from `main-green` | `coax/web/release.sh` |
 | The pre-push check (#13265) | `coax/remote/hooks/pre-push`, `coax/web/prepush.coax` |
 | Shared settings | `coax/remote/pipeline-lib.sh` |

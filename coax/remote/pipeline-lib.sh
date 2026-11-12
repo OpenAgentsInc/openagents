@@ -159,6 +159,31 @@ pl_service_watch() {
   done
 }
 
+# A night's capacity record (#13296, docs/deployment/soak.md) to each API in OA_SOAK_PUBLISH
+# (production's and staging's; 0: none), so the status page shows it: coax/web/room/soak.coax publish
+# posts it as a room's `capacity` write, signed with shard 1's write key (Secret Manager
+# oa-room-write-key-s1) or, while the API still takes it, the shared seat-ticket key. The key goes
+# from Secret Manager into the tool's environment and nowhere else. Without gcloud, a key or this
+# checkout's compiler, the record stays in the results (releases/after/soak/DAY.txt) and a line says so.
+pl_soak_publish() {   # record-file
+  local rec="$1" origin root key="" name
+  [[ "${OA_SOAK_PUBLISH:-}" != 0 && -s "$rec" ]] || return 0
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+  [[ -x "$root/coax/bin/coax" ]] || { pl_say "soak: this checkout has no compiler: the record is not published ($rec)"; return 0; }
+  for name in oa-room-write-key-s1 oa-room-ticket-key; do
+    key="$(CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}" gcloud secrets versions access latest --secret "$name" --project "${OA_REMOTE_PROJECT:-openagentsgemini}" 2> /dev/null)" && [[ -n "$key" ]] && break
+    key=""
+  done
+  [[ -n "$key" ]] || { pl_say "soak: no room key could be read: the record is not published ($rec)"; return 0; }
+  for origin in ${OA_SOAK_PUBLISH:-https://openagents.com https://staging.openagents.com}; do
+    if [[ "$name" == oa-room-write-key-s1 ]]; then
+      (cd "$root" && OA_ROOM_WRITE_KEY="$key" OA_ROOM_SHARD=1 coax/web/tool.sh coax/web/room/soak.coax publish "$rec" "$origin") > /dev/null 2>&1
+    else
+      (cd "$root" && OA_ROOM_TICKET_KEY="$key" coax/web/tool.sh coax/web/room/soak.coax publish "$rec" "$origin") > /dev/null 2>&1
+    fi && pl_say "soak: the night's record is on $origin" || pl_say "soak: $origin did not take the night's record"
+  done
+}
+
 # The red list (releases/after/red.json): one entry per failing check on main
 # that has a culprit. Fields: id, check, culprit, subject, agent, issue,
 # opened (Unix time), status (open, fixed or reverted), revert (the revert

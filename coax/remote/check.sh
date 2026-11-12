@@ -43,6 +43,11 @@
 #   coax/remote/check.sh tools [PROD]     reports and room
 #   coax/remote/check.sh fuzz [HOURS]     the room's fuzzers for HOURS (4) on OA_FUZZ_WORKERS (9) processes:
 #                                         after.sh's nightly run (coax/web/room/fuzz/fuzz.sh long, #13283)
+#   coax/remote/check.sh soak [SECONDS [PLAYERS [DAY]]]
+#                                         the nightly soak (#13296, docs/deployment/soak.md): the room build, the
+#                                         soak's own check (a seeded slow tick and a seeded leak must each fail
+#                                         a local run), then PLAYERS (32: staging's shard) protocol bots on staging's rooms for
+#                                         SECONDS (7200); the night's record in build/pipeline/capacity.txt
 #   coax/remote/check.sh e2 PROD          the room build and Everglade II's pair: this commit
 #                                         against production's commit PROD (#13266)
 #   coax/remote/check.sh counts BASE      no allowlist count raised since BASE (coax/remote/counts.sh)
@@ -276,6 +281,7 @@ room() {
   step room-build coax/web/room/build.sh || { status=1; return; }
   step room-webtransport coax/web/room/wt-check.sh 9441 || status=1
   step encounter-ttk coax/web/tool.sh coax/web/room/encounter-sim.coax --check docs/dnd/encounter-ttk.md || status=1
+  step bot-bars coax/web/tool.sh coax/web/room/encounter-sim.coax --check-bars coax/web/room/bot-bars.coax || status=1   # the bots' bars are the classes' (#13296)
   step room-fuzz coax/web/room/fuzz/fuzz.sh slice "${OA_FUZZ_SLICE:-60}" || status=1   # the wire and framing fuzzers, a minute each (#13283)
   [[ -z "${1:-}" ]] || e2_gate "$1" || status=1
 }
@@ -442,6 +448,12 @@ run() {   # mode arg: one check
     visuals) visuals ;;
     room) room "$arg" ;;
     fuzz) step fuzz coax/web/room/fuzz/fuzz.sh long "${arg:-4}" "${OA_FUZZ_WORKERS:-9}" || status=1 ;;
+    soak)   # also: PLAYERS DAY. The self-check first: a soak that can't fail is no check.
+        step room-build coax/web/room/build.sh || { status=1; return 0; }
+        step soak-self-check coax/web/tool.sh coax/web/room/soak.coax self-check coax/web/room/bin/room $(( 21000 + RANDOM % 9000 )) || { status=1; return 0; }
+        step soak coax/web/tool.sh coax/web/room/soak.coax run --origin "${OA_SOAK_ORIGIN:-https://staging.openagents.com}" \
+          --vitals "${OA_SOAK_VITALS:-https://room-staging.openagents.com/api/room/s1/vitals}" --env "${OA_SOAK_ENV:-staging}" \
+          --players "${also[0]:-32}" --seconds "${arg:-7200}" ${also[1]:+--day "${also[1]}"} --commit "$(git rev-parse HEAD)" --out "$out/capacity.txt" || status=1 ;;
     api) api "${arg:-1/1}" ;;
     tools) reports; room "$arg" ;;
     e2) [[ -n "$arg" ]] || return 2

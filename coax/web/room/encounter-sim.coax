@@ -21,10 +21,13 @@
 // (the after-landing check runs that against docs/dnd/encounter-ttk.md: coax/remote/check.sh room).
 //   coax/web/tool.sh coax/web/room/encounter-sim.coax [--seeds N] [--write FILE] [--check FILE]
 //                                                      [--class NAME] [--level L] [--encounter wolves|guard]
+// --bars FILE writes the bots' table (bot-bars.coax: each class's bar as the scripted player sees
+// it, script-player.coax) and --check-bars FILE fails when FILE is stale (#13296).
 #import "Basic";
 #run_steps 250000000;   // secp256k1's tables: the room loads the seat ticket's v5 check
 #load "room.coax";
 #load "encounter-table.coax";
+#load "script-player.coax";   // the scripted player's choice, the bots' too (#13296)
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/args.coax";
 #load "../../lib/sys/fs.coax";
@@ -56,6 +59,59 @@ es_harms :: (a: FbAb) -> bool {
   if a.kind == FB_READY || a.kind == FB_WORLD || a.kind == FB_RITUAL || a.kind == FB_INSPIRE || a.kind == FB_TURN { return false; }
   return !(a.kind == FB_SPELL && a.sp == SP_ZONE_OF_TRUTH);
 }
+// A bar's entry as the scripted player sees it (script-player.coax): its wire slot (-1: not in the
+// class's catalogue), what it is for, a levelled spell's level, and the two rules a spell can carry.
+es_entry :: (c: int, a: FbAb, cat_i: int) -> SpEntry {
+  e := SpEntry.{slot = ifx cat_i >= 0 then xk_slot(c, cat_i) else -1};
+  e.role = (ifx es_heals(a) then SP_HEAL else 0) + (ifx es_buff(a) then SP_BUFF else 0) + (ifx es_harms(a) then SP_HARM else 0);
+  if a.kind == FB_SPELL {
+    e.lvl = a.lvl;
+    e.conc = rs_spell(a.sp).concentration; e.humanoid = rs_spell(a.sp).humanoid_only;
+  }
+  return e;
+}
+// Class c's bar at `level`, as the scripted player sees it: how many entries.
+es_bar :: (c: int, level: int, out: [] SpEntry) -> int {
+  bar: [XC_SLOTS] FbAb; nb := xk_bar_at(c, level, bar[..]);
+  cat: [XC_SLOTS] FbAb; nc := xk_catalog(c, cat[..]);
+  for i: 0..<nb {
+    at := -1;
+    for j: 0..<nc { if at < 0 && xc_id(cat[j]) == xc_id(bar[i]) { at = j; } }
+    out[i] = es_entry(c, bar[i], at);
+  }
+  return nb;
+}
+// The bots' table (bot-bars.coax, #13296): every class's bar at levels 1 to ES_LEVELS, as source.
+ES_BARS_HEAD :: "// Written by `coax/web/tool.sh coax/web/room/encounter-sim.coax --bars coax/web/room/bot-bars.coax` (#13296):\n// each class's bar at levels 1 to 6 as the scripted player sees it (script-player.coax SpEntry), for the\n// protocol bots, which can't load the rules beside the socket (both name things rs_). Don't edit it:\n// `encounter-sim.coax --check-bars coax/web/room/bot-bars.coax` (the room check) fails when it is stale.\n// One row an entry: CLASS LEVEL SLOT ROLE SPELL-LEVEL CONCENTRATION HUMANOIDS-ONLY.\n";
+es_bars_text :: (out: [] u8) -> int {
+  n := es_put(out, 0, ES_BARS_HEAD);
+  rows := 0;
+  body: [ES_TEXT] u8; m := 0;
+  for c: 0..<12 { for l: 1..<ES_LEVELS + 1 {
+    e: [XC_SLOTS] SpEntry; nb := es_bar(c, l, e[..]);
+    for i: 0..<nb {
+      if e[i].slot < 0 || e[i].role == SP_OTHER { continue; }
+      v := [7] int.[c, l, e[i].slot, e[i].role, e[i].lvl, ifx e[i].conc then 1 else 0, ifx e[i].humanoid then 1 else 0];
+      m = es_put(body[..], m, "  ");
+      for q: 0..<7 { d: [24] u8; m = es_put(body[..], m, es_dec(v[q], d[..])); m = es_put(body[..], m, ifx q < 6 then ", " else ",\n"); }
+      rows += 1;
+    }
+  } }
+  d: [24] u8;
+  n = es_put(out, n, "BB_ROWS :: "); n = es_put(out, n, es_dec(rows, d[..])); n = es_put(out, n, ";\nBB_COLS :: 7;\nBB :: [");
+  n = es_put(out, n, es_dec(rows * 7, d[..])); n = es_put(out, n, "] int.[\n");
+  n = es_put(out, n, cast(string) body[0..<m]);
+  n = es_put(out, n, "];\n");
+  return n;
+}
+es_dec :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  t: [24] u8; k := 0; x := v;
+  while x > 0 { t[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { out[i] = t[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+
 // Resources a creature holds: spell slots, limited uses and Focus (into r[0] now, r[1] most).
 es_res :: (c: RsCreature, r: [] int) {
   r[0] = c.focus; r[1] = c.focus_max;
@@ -127,6 +183,8 @@ es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: boo
   at: [XC_SLOTS] int;
   for i: 0..<nb { at[i] = -1; for j: 0..<nc { if at[i] < 0 && xc_id(cat[j]) == xc_id(bar[i]) { at[i] = j; } } }
   used: [XC_SLOTS] bool;
+  sb: [XC_SLOTS] SpEntry;
+  for i: 0..<nb { sb[i] = es_entry(c, bar[i], at[i]); }
   foes: [ES_PACK_N] int; hp_was: [ES_PACK_N] int;
   _ := es_foes(v, k, enc, foes[..]);
   for j: 0..<ES_PACK_N { hp_was[j] = ifx foes[j] >= 0 then b[0].c[foes[j]].hp else 0; }
@@ -144,29 +202,24 @@ es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: boo
       for j: 0..<ES_PACK_N { if foes[j] >= 0 { p := es_at(v, k, foes[j]); d := (p[0] - px) * (p[0] - px) + (p[1] - pz) * (p[1] - pz); if d < best { best = d; fx = p[0]; fz = p[1]; near = foes[j]; } } }
       took := false;
       hurt := b[0].c[me].hp * 2 < b[0].c[me].hp_max;
-      for i: 0..<nb {
-        if took || !hurt || at[i] < 0 || !es_heals(bar[i]) { continue; }
-        seq += 1; took = es_press(v, k, c, at[i], seq, px, pz);
-        if took && trace { print("  t % heal %: me %\n", t - t0, bar[i].name, b[0].c[me].hp); }
-      }
-      for i: 0..<nb {
-        if took || used[i] || at[i] < 0 || !es_buff(bar[i]) { continue; }
-        seq += 1; took = es_press(v, k, c, at[i], seq, px, pz); used[i] = took;
-        if took && trace { print("  t % buff %\n", t - t0, bar[i].name); }
-      }
-      // levelled harm, highest first; then the rest in the bar's order
-      for lv: 0..<10 {
-        for i: 0..<nb {
-          a := bar[i];
-          if took || at[i] < 0 || !es_harms(a) { continue; }
-          if lv < 9 && (a.kind != FB_SPELL || a.lvl != 9 - lv) { continue; }
-          if lv == 9 && a.kind == FB_SPELL && a.lvl > 0 { continue; }
-          if a.kind == FB_SPELL && rs_spell(a.sp).concentration && b[0].c[me].conc >= 0 { continue; }
-          if a.kind == FB_SPELL && rs_spell(a.sp).humanoid_only && near >= 0 && !b[0].c[near].humanoid { continue; }   // Hold Person on a Wolf
-          seq += 1; took = es_press(v, k, c, at[i], seq, fx, fz);
-          if took && out.first < 0 { out.first = t; }
-          if took && trace { print("  t % harm %: foes", t - t0, a.name); for j: 0..<ES_PACK_N { print(" %", ifx foes[j] >= 0 then b[0].c[foes[j]].hp else -1); } print(" me %\n", b[0].c[me].hp); }
-        }
+      // the scripted player's order (script-player.coax); the first the room takes is its press
+      plan: [XC_SLOTS * 3] int;
+      np := sp_plan(sb[..], nb, hurt, used[..], b[0].c[me].conc >= 0, near < 0 || b[0].c[near].humanoid, plan[..]);
+      // a plan's order is heals (when hurt), then buffs, then harm: which part entry q is in
+      nh := 0; nf := 0;
+      for i: 0..<nb { if hurt && (sb[i].role & SP_HEAL) != 0 { nh += 1; } if (sb[i].role & SP_BUFF) != 0 && !used[i] { nf += 1; } }
+      for q: 0..<np {
+        i := plan[q];
+        if took || at[i] < 0 { continue; }
+        part := ifx q < nh then SP_HEAL else ifx q < nh + nf then SP_BUFF else SP_HARM;
+        own := part != SP_HARM;
+        seq += 1; took = es_press(v, k, c, at[i], seq, ifx own then px else fx, ifx own then pz else fz);
+        if !took { continue; }
+        if part == SP_BUFF { used[i] = true; }
+        if part == SP_HARM && out.first < 0 { out.first = t; }
+        if trace && part == SP_HEAL { print("  t % heal %: me %\n", t - t0, bar[i].name, b[0].c[me].hp); }
+        if trace && part == SP_BUFF { print("  t % buff %\n", t - t0, bar[i].name); }
+        if trace && part == SP_HARM { print("  t % harm %: foes", t - t0, bar[i].name); for j: 0..<ES_PACK_N { print(" %", ifx foes[j] >= 0 then b[0].c[foes[j]].hp else -1); } print(" me %\n", b[0].c[me].hp); }
       }
       if !took { next = t + ES_RETRY; }
     }
@@ -229,6 +282,22 @@ tool_main :: () -> int #export_c #effects(all) {
     m := fs_read(check, pinned[..]);
     if m <= 0 { tool_err("encounter-sim: cannot read "); tool_errln(check); return 2; }
     old_n = es_table_read(cast(string) pinned[0..<m], old[..]);
+  }
+  bars := args_value(a[..], "--bars", ""); check_bars := args_value(a[..], "--check-bars", "");
+  if bars.count > 0 || check_bars.count > 0 {
+    bt: [ES_TEXT] u8; bn := es_bars_text(bt[..]);
+    if bars.count > 0 {
+      if !fs_write(bars, cast(string) bt[0..<bn]) { tool_err("encounter-sim: cannot write "); tool_errln(bars); return 2; }
+      print("encounter-sim: wrote %\n", bars);
+      return 0;
+    }
+    was: [ES_TEXT] u8; wn := fs_read(check_bars, was[..]);
+    if wn != bn || cast(string) was[0..<wn] != cast(string) bt[0..<bn] {
+      print("encounter-sim: % is stale: coax/web/tool.sh coax/web/room/encounter-sim.coax --bars % writes it again\n", check_bars, check_bars);
+      return 1;
+    }
+    print("encounter-sim: % matches the classes' bars\n", check_bars);
+    return 0;
   }
   v: [1] RmServer;
   text: [ES_TEXT] u8; n := es_put(text[..], 0, ES_TITLE); n = es_put(text[..], n, ES_HEAD);

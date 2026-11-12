@@ -26,6 +26,17 @@ args_load :: (a: [] Args) -> bool {
   }
   return true;
 }
+// The path this tool was started by (argv's first) into out, when it names a file (it has a '/':
+// coax/web/tool.sh starts a tool by its built image's path); "" otherwise. A tool that starts copies
+// of itself starts this, and skips tool.sh's build check each time.
+tool_self :: (out: [] u8) -> string {
+  if cxargs_count() < 1 { return ""; }
+  k := cxargs_len(0);
+  if k <= 0 || k > out.count { return ""; }
+  slash := false;
+  for j: 0..<k { out[j] = cast,trunc(u8) cxargs_byte(0, j); if out[j] == '/' { slash = true; } }
+  return ifx slash then cast(string) out[0..<k] else "";
+}
 tool_os :: () -> int { return cxtool_os(); }
 // Writes s to stderr (no newline added).
 tool_err :: (s: string) {

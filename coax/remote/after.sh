@@ -95,7 +95,8 @@
 # OA_AFTER_STALE_COMMITS (40),
 # OA_AFTER_FLAKY_TRIES (3), OA_AFTER_PAGES (0: no pages), OA_AFTER_PAGES_GAP
 # (3600), OA_AFTER_FUZZ (0: no nightly fuzz), OA_AFTER_FUZZ_GAP (86400),
-# OA_AFTER_FUZZ_HOURS (4), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS... in
+# OA_AFTER_FUZZ_HOURS (4), OA_AFTER_SOAK (0: no nightly soak), OA_AFTER_SOAK_GAP (86400),
+# OA_AFTER_SOAK_SECONDS (7200), OA_AFTER_SOAK_PLAYERS (32: staging's one shard), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS... in
 # place of the remote check, for scratch runs), and
 # coax/remote/pipeline-lib.sh's OA_PIPELINE_*.
 set -uo pipefail
@@ -113,6 +114,9 @@ retries="${OA_AFTER_RETRIES:-2}"
 pages_gap="${OA_AFTER_PAGES_GAP:-3600}"
 fuzz_gap="${OA_AFTER_FUZZ_GAP:-86400}"
 fuzz_hours="${OA_AFTER_FUZZ_HOURS:-4}"
+soak_gap="${OA_AFTER_SOAK_GAP:-86400}"
+soak_seconds="${OA_AFTER_SOAK_SECONDS:-7200}"
+soak_players="${OA_AFTER_SOAK_PLAYERS:-32}"
 compiler_mode="${OA_AFTER_COMPILER:-auto}"
 width="${OA_BISECT_WIDTH:-4}"
 bisect_checks="${OA_BISECT_CHECKS:-4}"
@@ -566,6 +570,46 @@ $(tail -n 40 "$dir/out" 2> /dev/null | cut -c1-300)
   ) 8>&- 7>&- &
 }
 
+# The nightly soak (#13296, docs/deployment/soak.md, coax/remote/check.sh soak): at most every
+# OA_AFTER_SOAK_GAP seconds, on a head that went green, OA_AFTER_SOAK_PLAYERS protocol bots play
+# staging's rooms for OA_AFTER_SOAK_SECONDS from one host slot, in the background. The night's
+# capacity record comes back in RESULTS/HEAD/soak, is kept by its date in RESULTS/soak/DAY.txt, and
+# goes to the APIs (pipeline-lib.sh pl_soak_publish: the status page shows it). A run that fails
+# (a slow tick, a leak, an unsaved checkpoint, slow tickets, lost seats) files an issue with the
+# record and the log's end. Staging's alerts mail nobody.
+soak_of() {   # head
+  [[ "${OA_AFTER_SOAK:-1}" != 0 && -z "${OA_AFTER_CHECK:-}" ]] || return 0
+  due last-soak "$soak_gap" || return 0
+  date +%s > "$results/last-soak"
+  local head="$1" dir="$results/$1/soak" day
+  day="$(TZ=America/Chicago date +%F)"
+  mkdir -p "$dir" "$results/soak"
+  (
+    OA_REMOTE_TIMEOUT=$(( soak_seconds + 2700 )) "$here/remote.sh" run --commit "$head" --out "$dir" --no-fallback -- coax/remote/check.sh soak "$soak_seconds" "$soak_players" "$day" > "$dir/out" 2>&1
+    s=$?
+    rec="$dir/build/pipeline/capacity.txt"
+    if [[ -s "$rec" ]]; then cp "$rec" "$results/soak/$day.txt"; pl_soak_publish "$rec"; fi
+    if (( s == 1 )); then
+      gh issue create --repo "$pl_repo" --title "Nightly soak: the fleet's soak failed at ${head:0:10} ($day)" --body "\`coax/remote/check.sh soak $soak_seconds $soak_players\` on \`$head\` did not hold (#13296, docs/deployment/soak.md). The verdict line names why: a slow tick, a leak, a checkpoint unsaved too long, slow tickets, a build the room refused, or seats lost. Staging's room and API are what it played; the log and the record are in \`$dir/\` on the coordinator's machine.
+
+The record:
+
+\`\`\`
+$(cat "$rec" 2> /dev/null || echo "none was written")
+\`\`\`
+
+The log's end:
+
+\`\`\`
+$(tail -n 30 "$dir/build/pipeline/soak.log" 2> /dev/null | cut -c1-300)
+\`\`\`" > /dev/null 2>&1
+      pl_say "after: the nightly soak failed at ${head:0:10} ($dir/out)"
+    else
+      pl_say "after: the nightly soak at ${head:0:10}: status $s$([[ -s "$rec" ]] && echo ", $(grep -E '^(seated|verdict) ' "$rec" | tr '\n' ' ')")"
+    fi
+  ) 8>&- 7>&- &
+}
+
 due() {   # stamp seconds: whether the stamp is that old, or missing
   [[ ! -f "$results/$1" ]] || (( $(date +%s) - $(cat "$results/$1") >= $2 ))
 }
@@ -619,6 +663,7 @@ go_green() {   # head green kind started jobs note
     pl_alarm_clear "\`$pl_green\` moved to ${head:0:10} after a green $kind run."
     pages_of "$head"
     fuzz_of "$head"
+    soak_of "$head"
   else
     pl_say "after: green ($kind run$6), but $pl_green could not move to ${head:0:10}"
   fi

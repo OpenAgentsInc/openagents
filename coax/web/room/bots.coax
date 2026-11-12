@@ -1,0 +1,711 @@
+// Protocol bots (#13296, AAA P5.2): headless players that speak the room's wire with no browser, for
+// the nightly soak (soak.coax), a release's canary (coax/web/release-set.coax) and the API's load
+// checks (#13300). A bot is the tools' one wire client (room-socket.coax: the socket, the seat
+// ticket, the page's mirror of D) played by the encounter simulator's scripted player
+// (script-player.coax, over the bars bot-bars.coax). Each bot:
+//   sits     as a page does: a guest player from the API, a seat ticket from the directory for the
+//            realm (it places the bot in an instance), the shard's own endpoint, P, then the hello;
+//            or, with no API (a local room, a check), a ticket it signs itself for REALM-ROOM
+//   moves    an input every 1/30 s: down the path past the wolf packs and back, or at the nearest monster in view
+//   fights   the scripted player's press each time a cast can go: a heal when hurt, its buffs once a
+//            fight, then harm at the nearest monster (h2), counted when the room takes it (e cast)
+//   earns    the XP and levels the room grants it (e xp, e level): each grant is a monster it helped
+//            fell (kills). Loot has no wire message yet (#13291 moves rewards onto the item ledger);
+//            a bot counts XP in its place
+//   A bot the directory places on a shard that does not answer (staging runs one shard) asks three
+//   times and is then out for the run (unplaced), so it does not spend the address's ticket limit.
+//   reconnects  every --reconnect seconds: it closes its socket, asks the directory again and sits
+//            where it stood (A), timed from the close to its first state
+//   travels  every --travel seconds: T to the realm's next instance; on g it joins that one
+// A process holds at most 16 sockets (CXSOCK_MAX), so `run` starts one `room` process for every 16 bots.
+//
+//   coax/web/tool.sh coax/web/room/bots.coax run ORIGIN PLAYERS SECONDS [--realm pair-e2-soak]
+//        [--direct] [--reconnect 900] [--travel 600] [--window 60] [--stamp N]
+//     ORIGIN: the API's (https://staging.openagents.com), or with --direct a room's
+//     (ws://localhost:8830; tickets signed with OA_ROOM_TICKET_KEY when the environment has it).
+//     Prints each room process's lines as they come, "B ROOM {json}" a window and "F ROOM {json}" at
+//     the end, then one "bots {json}" line: the run's totals. Exits 0 when it ran.
+//   coax/web/tool.sh coax/web/room/bots.coax room ORIGIN PLAYERS SECONDS ROOM [options]   one process's bots
+//   coax/web/tool.sh coax/web/room/bots.coax seat ORIGIN REALM CODE KEY   one ticket ask: "A STATUS MS KEY BODY"
+//   coax/web/tool.sh coax/web/room/bots.coax fault ORIGIN MS SECONDS [EACH]
+//     The API's load check (#13300): for SECONDS, EACH (2) queries of MS ms at a time on ORIGIN's API
+//     (POST /api/playtest/fault/slow, signed with OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY; an API
+//     without OA_API_FAULTS answers 404). Prints how many it held. Run it beside `run`.
+//
+// The bots are tagged as tests: their realm is pair-* (left out of every rooms list and count), their
+// names "Bot R-K". From one address the API seats at most 120 a minute (its limit, kept on purpose).
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#load "room-socket.coax";
+#load "../../lib/net/http.coax";
+#load "../../../everglade/server/creature-wire.coax";   // the monsters' frames, as the page reads them
+#load "script-player.coax";
+#load "bot-bars.coax";
+#load "capacity-client.coax";   // input-to-ACK timing and its quantiles
+#load "room-post.coax";         // a load check's signed fault (#13300)
+
+BT_SEATS :: 16;
+BT_ROOMS :: 32;               // room processes at most (512 bots)
+BT_BAR :: 24;                 // a bar's entries at most (class-kit.coax XC_SLOTS)
+BT_LEVELS :: 6;               // the levels bot-bars.coax has
+BT_IDLE :: 0; BT_ASKING :: 1; BT_PLAYING :: 2; BT_WAIT :: 3; BT_OUT :: 4;
+BT_ASKS :: 96;                // a window's ticket times kept, each
+BT_CAST_MS :: 400;            // between presses
+BT_REACH :: 2.5;              // m: as near a monster as a bot walks
+BT_SIGHT :: 60.0;             // m: a monster farther is not gone after
+BT_PATROL :: 330.0;           // m down the path from where it first stood (past the third wolf pack, creatures.coax e2mo_home), then back
+
+Bot :: struct {
+  state: int; until: int;
+  key: [128] u8; key_n: int;
+  code: [48] u8; code_n: int;
+  ask: int = -1; ask_at: int;
+  seat: int = -1; level: int = 1;
+  seq: int; steps: int; t0: int; next_c: int; next_t: int;
+  x: f32; z: f32; y: f32; hp: int; max: int; placed: bool; z0: f32; dir: f32 = -1;
+  was_x: f32; was_z: f32; was_at: int; dodge_until: int;
+  m: [1] WireMirror; tm: [1] CfTiming;
+  mons: EgcMons; mons_at: int;
+  used: [BT_BAR] bool; turn: int; fight_at: int;
+  cast_seq: int; cast_i: int = -1;
+  next_reconnect: int; next_travel: int;
+  rejoin_from: int; rejoining: bool; first_d: bool;
+  d_at: int; d_tick: int; down: bool;
+  travel_seq: int;
+  sit_fails: int;               // sockets that would not open, in a row: three and the bot is out (BT_OUT)
+}
+// One window's counts (and the run's, summed).
+BtStats :: struct {
+  seated: int; d: int; bytes: int; stalls: int; dropped: int; lost: int;
+  asks: int; ask_ok: int; ask_limited: int; ask_full: int; ask_failed: int; ask_ms: [CF_HIST] int;
+  ask_list: [BT_ASKS] int; ask_n: int;   // the window's ticket times, each (soak.coax counts the run's p95 from them)
+  casts: int; taken: int; refused: int; blows: int; kills: int; xp: int; levels: int; downs: int;
+  reconnects: int; rejoined: int; rejoin_ms_most: int; travels: int; travelled: int; travel_refused: int;
+  version_refused: int;
+  unplaced: int;                // bots the directory placed where no room answers (three sockets that would not open): out for the run
+}
+
+bt_code :: (b: [] Bot) -> string { return cast(string) b[0].code[0..<b[0].code_n]; }
+bt_key :: (b: [] Bot) -> string { return cast(string) b[0].key[0..<b[0].key_n]; }
+bt_keep :: (out: [] u8, s: string) -> int { n := ifx s.count > out.count then out.count else s.count; for i: 0..<n { out[i] = s[i]; } return n; }
+bt_hist :: (h: [] int, ms: int) { k := ifx ms < 0 then 0 else (ifx ms >= CF_HIST then CF_HIST - 1 else ms); h[k] += 1; }
+
+// Class c's bar at `level` from the table (bot-bars.coax): how many entries.
+bt_bar :: (c: int, level: int, out: [] SpEntry) -> int {
+  l := ifx level < 1 then 1 else (ifx level > BT_LEVELS then BT_LEVELS else level);
+  n := 0;
+  for r: 0..<BB_ROWS {
+    o := r * BB_COLS;
+    if BB[o] != c || BB[o + 1] != l || n >= out.count { continue; }
+    out[n] = SpEntry.{slot = BB[o + 2], role = BB[o + 3], lvl = BB[o + 4], conc = BB[o + 5] != 0, humanoid = BB[o + 6] != 0};
+    n += 1;
+  }
+  return n;
+}
+#test "every class has a bar at every level, and a level past the table plays the last" {
+  e: [BT_BAR] SpEntry;
+  for c: 0..<RS_CL_N { for l: 1..<BT_LEVELS + 1 {
+    n := bt_bar(c, l, e[..]);
+    #assert n > 0;
+    harm := false;
+    for i: 0..<n { #assert e[i].slot >= 128 + c * 24 && e[i].slot < 128 + (c + 1) * 24; if (e[i].role & SP_HARM) != 0 { harm = true; } }
+    #assert harm;
+  } }
+  a: [BT_BAR] SpEntry; b: [BT_BAR] SpEntry;
+  #assert bt_bar(3, 9, a[..]) == bt_bar(3, BT_LEVELS, b[..]) && bt_bar(3, 0, a[..]) == bt_bar(3, 1, b[..]);
+}
+
+// The nearest monster a bot would fight: its row in mons, or -1.
+bt_foe :: (b: [] Bot, now: int) -> int {
+  if now - b[0].mons_at > 2000 { return -1; }
+  best := -1; near: f32 = BT_SIGHT * BT_SIGHT;
+  for q: 0..<b[0].mons.count {
+    r := b[0].mons.row[q];
+    if r.hp <= 0 || r.state == 3 || r.state == 4 { continue; }   // creatures.coax E2M_DEAD, E2M_GONE
+    dx := f32(r.x) / 100 - b[0].x; dz := f32(r.z) / 100 - b[0].z;
+    d := dx * dx + dz * dz;
+    if d < near { near = d; best = q; }
+  }
+  return best;
+}
+#test "a bot goes after the nearest monster standing, in sight, heard lately" {
+  b: [1] Bot; b[0].mons_at = 1000;
+  b[0].mons.count = 3;
+  b[0].mons.row[0] = EgcMon.{m = 0, x = 1000, z = 0, hp = 5, max = 11};
+  b[0].mons.row[1] = EgcMon.{m = 1, x = 300, z = 0, hp = 0, max = 11, state = 3};
+  b[0].mons.row[2] = EgcMon.{m = 2, x = 0, z = -500, hp = 11, max = 11};
+  #assert bt_foe(b[..], 1500) == 2;
+  b[0].mons.row[2].state = 4;
+  #assert bt_foe(b[..], 1500) == 0;
+  #assert bt_foe(b[..], 3001) == -1;
+  b[0].mons.row[0].x = 7000;
+  #assert bt_foe(b[..], 1500) == -1;
+}
+
+// A child of this tool: its own built image when it was started by one (no build check a child),
+// else through coax/web/tool.sh.
+bt_self :: (h: int) -> bool {
+  pb: [4096] u8; self := tool_self(pb[..]);
+  if self.count > 0 { return proc_arg(h, self); }
+  return proc_arg(h, "coax/web/tool.sh") && proc_arg(h, "coax/web/room/bots.coax");
+}
+
+// What a bot hears, counted into s.
+bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
+  s[0].bytes += t.count;
+  if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); return; }
+  if rs_starts(t, "r ") {
+    seq := rs_num(rs_field(t, 1));
+    if rs_field(t, 2) == "version" { s[0].version_refused += 1; return; }
+    if seq == b[0].travel_seq && seq > 0 { s[0].travel_refused += 1; b[0].travel_seq = 0; return; }
+    if seq == b[0].cast_seq && b[0].cast_i >= 0 { s[0].refused += 1; b[0].cast_i = -1; b[0].turn += 1; }
+    return;
+  }
+  if rs_starts(t, "g ") {   // the travel was taken: this room is left, the next joined
+    s[0].travelled += 1; b[0].travel_seq = 0;
+    b[0].code_n = bt_keep(b[0].code[..], rs_field(t, 1));
+    b[0].rejoining = true; b[0].rejoin_from = now;
+    return;
+  }
+  if rs_starts(t, "h2 ") { got := egc_mon_read(t); if got.ok { b[0].mons = got; b[0].mons_at = now; } return; }
+  if rs_starts(t, "h3 ") {
+    h := egc_mon_hit_read(t);
+    if h.ok && h.seat == b[0].seat && h.kind == EGC_MON_HIT { s[0].blows += 1; }
+    return;
+  }
+  if !rs_starts(t, "D ") { return; }
+  s[0].d += 1;
+  rd: [1] WireRd; rd[0] = wire_rd(t, 1); d := wire_read_d(t, rd[..]);
+  if !rd[0].ok { return; }
+  if d.tick > b[0].d_tick {
+    if b[0].d_at > 0 && now - b[0].d_at >= 100 { s[0].stalls += 1; }
+    if b[0].d_tick > 0 && d.tick > b[0].d_tick + 1 { s[0].dropped += d.tick - b[0].d_tick - 1; }
+    b[0].d_tick = d.tick; b[0].d_at = now;
+  }
+  if !b[0].first_d {
+    b[0].first_d = true;
+    if b[0].rejoin_from > 0 { ms := now - b[0].rejoin_from; s[0].rejoined += 1; if ms > s[0].rejoin_ms_most { s[0].rejoin_ms_most = ms; } b[0].rejoin_from = 0; }
+  }
+  cf_ack(b[0].tm[..], d.ack, now);
+  _ := wire_mirror_frame(b[0].m[..], t);
+  if b[0].seat >= 0 {
+    me := wire_mirror_of(b[0].m[..], b[0].seat);
+    if me.id >= 0 {
+      b[0].x = me.x; b[0].y = me.y; b[0].z = me.z;
+      if !b[0].placed { b[0].placed = true; b[0].z0 = me.z; b[0].was_x = me.x; b[0].was_z = me.z; b[0].was_at = now; }
+      down := me.max > 0 && me.hp <= 0;
+      if down && !b[0].down { s[0].downs += 1; }
+      b[0].down = down; b[0].hp = me.hp; b[0].max = me.max;
+    }
+  }
+  from := rd[0].at;
+  for q: 0..<wire_entries(t, from) {
+    e := wire_entry(t, from, q);
+    if wire_is(e, "e cast") {
+      rc: [1] WireRd; rc[0] = wire_rd(e, 6); ce := wire_read_cast_e(e, rc[..]);
+      if rc[0].ok && ce.ss == b[0].seat && b[0].cast_i >= 0 {
+        s[0].taken += 1;
+        if b[0].cast_i < BT_BAR { b[0].used[b[0].cast_i] = true; }
+        b[0].cast_i = -1; b[0].turn = 0;
+      }
+    }
+    if wire_is(e, "e xp") && rs_num(rs_field(e, 2)) == b[0].seat { s[0].xp += rs_num(rs_field(e, 3)); s[0].kills += 1; }   // XP is granted for a monster it helped fell
+    if wire_is(e, "e level") && rs_num(rs_field(e, 2)) == b[0].seat { s[0].levels += 1; b[0].level = rs_num(rs_field(e, 3)); }
+    if wire_is(e, "v") {
+      ry: [1] WireRd; ry[0] = wire_rd(e, 1); you := wire_read_you(e, ry[..]);
+      if ry[0].ok && you.ss == b[0].seat && you.level >= 1 { b[0].level = you.level; }
+    }
+  }
+}
+#test "a bot hears its seat, its casts taken and refused, its blows and its XP" {
+  b: [1] Bot; s: [1] BtStats;
+  bt_hear(b[..], s[..], "y 3 1 1700000000000", 10);
+  #assert b[0].seat == 3;
+  b[0].cast_seq = 7; b[0].cast_i = 2;
+  bt_hear(b[..], s[..], "r 7 range", 20);
+  #assert s[0].refused == 1 && b[0].cast_i == -1 && b[0].turn == 1;
+  b[0].cast_seq = 8; b[0].cast_i = 1;
+  bt_hear(b[..], s[..], "D 40 5 0 0 e cast 3 130 100 0 200 99;e xp 3 25;e level 3 2;e xp 4 50", 30);
+  #assert s[0].taken == 1 && b[0].used[1] && b[0].turn == 0 && s[0].xp == 25 && s[0].levels == 1 && b[0].level == 2 && s[0].d == 1;
+  bt_hear(b[..], s[..], "h3 41 2 5 3 6", 40);
+  bt_hear(b[..], s[..], "h3 42 4 5 3 0", 40);
+  bt_hear(b[..], s[..], "h3 42 2 5 4 6", 40);
+  #assert s[0].blows == 1 && s[0].kills == 1;   // the kill: its XP's grant, above
+  bt_hear(b[..], s[..], "r 0 version", 50);
+  #assert s[0].version_refused == 1;
+  b[0].travel_seq = 9;
+  bt_hear(b[..], s[..], "r 9 full", 60);
+  #assert s[0].travel_refused == 1 && b[0].travel_seq == 0;
+  bt_hear(b[..], s[..], "g pair-e2-soak-2", 70);
+  #assert s[0].travelled == 1 && bt_code(b[..]) == "pair-e2-soak-2" && b[0].rejoining;
+  // a state 150 ms after the last is a stall; a tick skipped is a drop
+  bt_hear(b[..], s[..], "D 41 5 0 0", 100);
+  bt_hear(b[..], s[..], "D 44 5 0 0", 260);
+  #assert s[0].stalls == 1 && s[0].dropped == 2;
+}
+
+BtOpts :: struct { origin: string; realm: string; direct: bool; reconnect: int; travel: int; window: int; rooms: int; stamp: int; until: int; }   // until: when the run ends (no reconnect or travel begins in its last 30 s)
+
+// The socket's URL for instance `code` with ticket t (the API's answer `body`), into out.
+bt_url :: (o: BtOpts, body: string, code: string, ticket: string, out: [] u8) -> string {
+  nodes: [512] JvNode; j: [1] Jv; eb: [256] u8; n := 0;
+  ep := "";
+  if jv_parse(j[..], body, nodes[..]) {
+    at := jv_path(j[0], 0, "endpoint");
+    if at >= 0 && jv_kind(j[0], at) == JV_STRING { k := jv_str(j[0], at, eb[..]); if k > 0 { ep = cast(string) eb[0..<k]; } }
+  }
+  if ep.count > 0 { n = rs_put(out, 0, ep); n = rs_put(out, n, "relay/everglade/"); }
+  else {
+    // the load balancer's path for the shard the directory named
+    shard := 1;
+    if jv_parse(j[..], body, nodes[..]) { at := jv_path(j[0], 0, "shard"); if at >= 0 { shard = rs_num(jv_raw(j[0], at)); } }
+    base := o.origin;
+    if rs_starts(base, "https://") { n = rs_put(out, 0, "wss://"); n = rs_put(out, n, base[8..<base.count]); }
+    else if rs_starts(base, "http://") { n = rs_put(out, 0, "ws://"); n = rs_put(out, n, base[7..<base.count]); }
+    else { n = rs_put(out, 0, base); }
+    n = rs_put(out, n, "/api/room/s"); n = rs_int(out, n, ifx shard < 1 then 1 else shard); n = rs_put(out, n, "/relay/everglade/");
+  }
+  n = rs_put(out, n, code); n = rs_put(out, n, "?t="); n = rs_put(out, n, ticket);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+#test "a bot's socket is the shard's own endpoint when the ticket names one, else the load balancer's path" {
+  u: [512] u8; o := BtOpts.{origin = "https://staging.openagents.com"};
+  #assert bt_url(o, "{\"ticket\":\"T\",\"room\":\"pair-e2-soak-1\",\"shard\":1,\"endpoint\":\"wss://room-staging.openagents.com/api/room/s1/\"}", "pair-e2-soak-1", "T", u[..])
+    == "wss://room-staging.openagents.com/api/room/s1/relay/everglade/pair-e2-soak-1?t=T";
+  #assert bt_url(o, "{\"ticket\":\"T\",\"room\":\"pair-e2-soak-3\",\"shard\":2}", "pair-e2-soak-3", "T", u[..]) == "wss://staging.openagents.com/api/room/s2/relay/everglade/pair-e2-soak-3?t=T";
+}
+
+// Starts the child that asks the API for bot b's seat (and its player key the first time).
+bt_ask :: (o: BtOpts, b: [] Bot, s: [] BtStats, now: int) {
+  h := proc_new();
+  ok := bt_self(h) && proc_arg(h, "seat") && proc_arg(h, o.origin) && proc_arg(h, o.realm) &&
+        proc_arg(h, ifx b[0].code_n > 0 then bt_code(b) else o.realm) && proc_arg(h, ifx b[0].key_n > 0 then bt_key(b) else "-");
+  if !ok || proc_start(h) != 0 { r := proc_release(h); s[0].ask_failed += 1; b[0].state = BT_WAIT; b[0].until = now + 5000; return; }
+  b[0].ask = h; b[0].ask_at = now; b[0].state = BT_ASKING; s[0].asks += 1;
+}
+// The hello, after P (and A when it sits again where it stood).
+bt_hello :: (c: [] RelayConn, b: [] Bot, room: int, i: int) -> bool {
+  m: [160] u8;
+  ok := relay_conn_send(c, cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
+  if b[0].placed { ok = relay_conn_send(c, cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].x, y = b[0].y, z = b[0].z})]) && ok; }
+  nm: [32] u8; k := rs_int(nm[..], rs_put(nm[..], rs_int(nm[..], rs_put(nm[..], 0, "Bot "), room), "-"), i);
+  n := wire_put_hello(m[..], 0, WireHello.{look = "ranger.0.0.0", kind = RS_CL_KIND[i % RS_CL_N], flags = 0, name = cast(string) nm[0..<k]});
+  return relay_conn_send(c, cast(string) m[0..<n]) && ok;
+}
+// Bot b sits on url: its socket open and its hello sent, or it waits and asks again.
+bt_sit :: (c: [] RelayConn, b: [] Bot, s: [] BtStats, url: string, room: int, i: int, now: int) {
+  if c[0].h >= 0 { r := relay_conn_close(c, 1000); }
+  up := url.count > 0 && relay_conn_open(c, url);
+  if !up || !bt_hello(c, b, room, i) {
+    // a seat whose room does not answer: asked again 5, 10, then 20 s later, and after three in a row the
+    // bot is out (the directory placed it on a shard this environment does not run: staging has one)
+    s[0].lost += 1; b[0].sit_fails += 1;
+    if b[0].sit_fails >= 3 && !b[0].placed { b[0].state = BT_OUT; s[0].unplaced += 1; return; }
+    b[0].state = BT_WAIT; b[0].until = now + 5000 * (1 << (ifx b[0].sit_fails > 3 then 3 else b[0].sit_fails - 1)); return;
+  }
+  b[0].sit_fails = 0;
+  b[0].state = BT_PLAYING; b[0].seat = -1; b[0].first_d = false; b[0].d_tick = 0; b[0].d_at = 0; b[0].cast_i = -1; b[0].rejoining = false;
+  b[0].m[0] = WireMirror.{}; b[0].tm[0] = CfTiming.{};
+  b[0].t0 = now; b[0].steps = 0; b[0].next_c = now + 2000 + (i * 211) % 3000; b[0].next_t = now + (i * 31) % 1000;
+}
+// The answer of bot b's ask, when it has come: "A STATUS MS KEY BODY".
+bt_answer :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: int, now: int) {
+  line: [8192] u8;
+  n := proc_line(b[0].ask, 0, line[..]);
+  if n == PROC_TIMEOUT && now - b[0].ask_at < 40000 { return; }
+  w := proc_wait(b[0].ask, 2000); if w == PROC_RUNNING { k := proc_kill(b[0].ask, PROC_SIGKILL); w = proc_wait(b[0].ask, 2000); }
+  r := proc_release(b[0].ask); b[0].ask = -1;
+  t := ifx n > 0 then cast(string) line[0..<n] else "";
+  if !rs_starts(t, "A ") { s[0].ask_failed += 1; b[0].state = BT_WAIT; b[0].until = now + 5000; return; }
+  status := rs_num(rs_field(t, 1)); ms := rs_num(rs_field(t, 2)); key := rs_field(t, 3);
+  if key != "-" && b[0].key_n == 0 { b[0].key_n = bt_keep(b[0].key[..], key); }
+  at := 0; f := 0; while at < t.count && f < 4 { if t[at] == ' ' { f += 1; } at += 1; }
+  body := t[at..<t.count];
+  if status == 200 {
+    s[0].ask_ok += 1; bt_hist(s[0].ask_ms[..], ms);
+    if s[0].ask_n < BT_ASKS { s[0].ask_list[s[0].ask_n] = ms; s[0].ask_n += 1; }
+    nodes: [512] JvNode; j: [1] Jv; tk: [4200] u8; rm: [64] u8; tn := 0;
+    if jv_parse(j[..], body, nodes[..]) {
+      ta := jv_path(j[0], 0, "ticket"); if ta >= 0 { tn = jv_str(j[0], ta, tk[..]); }
+      ra := jv_path(j[0], 0, "room"); if ra >= 0 { k := jv_str(j[0], ra, rm[..]); if k > 0 { b[0].code_n = bt_keep(b[0].code[..], cast(string) rm[0..<k]); } }
+    }
+    u: [4800] u8;
+    url := ifx tn > 0 && b[0].code_n > 0 then bt_url(o, body, bt_code(b), cast(string) tk[0..<tn], u[..]) else "";
+    bt_sit(c, b, s, url, room, i, now);
+    return;
+  }
+  if status == 429 { s[0].ask_limited += 1; b[0].state = BT_WAIT; b[0].until = now + 15000 + (i * 977) % 20000; return; }
+  if status == 503 { s[0].ask_full += 1; b[0].state = BT_WAIT; b[0].until = now + 30000; return; }
+  s[0].ask_failed += 1; b[0].state = BT_WAIT; b[0].until = now + 10000;
+}
+// With no API: a ticket the bot signs itself for REALM-ROOM (or the instance it travelled to).
+bt_direct :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: int, now: int) {
+  if b[0].code_n == 0 { cb: [48] u8; k := rs_int(cb[..], rs_put(cb[..], rs_put(cb[..], 0, o.realm), "-"), room); b[0].code_n = bt_keep(b[0].code[..], cast(string) cb[0..<k]); }
+  u: [1024] u8; ut: [2048] u8; id: [48] u8;
+  n := rs_put(u[..], rs_put(u[..], rs_put(u[..], 0, o.origin), "/api/room/relay/everglade/"), bt_code(b));
+  // a stamp in the id: two runs' bots are never one player to a room that still holds the last run's seats
+  ik := rs_int(id[..], rs_put(id[..], rs_int(id[..], rs_put(id[..], rs_int(id[..], rs_put(id[..], 0, "p-bot-"), o.stamp), "-"), room), "-"), i);
+  url := rs_ticketed(ut[..], cast(string) u[0..<n], cast(string) id[0..<ik], "");   // no name in the ticket: its fields are a dot apart
+  s[0].asks += 1; s[0].ask_ok += 1;
+  bt_sit(c, b, s, url, room, i, now);
+}
+
+// One step of a playing bot at `now`: its input when one is due, a press, a ping, a travel, a reconnect.
+bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: int, now: int) {
+  m: [256] u8;
+  due := b[0].t0 + (i * 7) % 33 + b[0].steps * 1000 / 30;
+  foe := bt_foe(b, now);
+  if now >= due {
+    b[0].steps += 1;
+    wx: f32 = 0; wz: f32 = 0; ahead := 0; run := 0;
+    if b[0].placed && !b[0].down {
+      if foe >= 0 {
+        r := b[0].mons.row[foe];
+        wx = f32(r.x) / 100 - b[0].x; wz = f32(r.z) / 100 - b[0].z;
+        ahead = ifx wx * wx + wz * wz > BT_REACH * BT_REACH then 100 else 0;
+      } else {
+        // down the path past the wolf packs and back at a run, each bot a little to one side of its middle
+        if b[0].z < b[0].z0 - BT_PATROL { b[0].dir = 1; }
+        if b[0].z > b[0].z0 + 2 { b[0].dir = -1; }
+        tz := b[0].z + b[0].dir * 8;
+        wx = rs_road_x(tz) + (f32(i % 5) - 2) * 0.8 - b[0].x; wz = tz - b[0].z;
+        ahead = 100; run = 1;
+      }
+      // no ground made in 3 s of walking: a tree or a rock; round it for 2 s
+      if now - b[0].was_at >= 3000 {
+        dx := b[0].x - b[0].was_x; dz := b[0].z - b[0].was_z;
+        if ahead > 0 && dx * dx + dz * dz < 1 { b[0].dodge_until = now + 2000; }
+        b[0].was_x = b[0].x; b[0].was_z = b[0].z; b[0].was_at = now;
+      }
+      if now < b[0].dodge_until { t := wx; wx = -wz; wz = t; ahead = 100; }
+    }
+    // the camera's yaw (aethyr/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
+    yaw := rs_atan2(wx, wz) + 3.14159265;
+    if yaw > 3.14159265 { yaw -= 6.2831853; }
+    b[0].seq += 1; cf_input(b[0].tm[..], b[0].seq, now);
+    n := wire_put_in(m[..], 0, WireIn.{seq = b[0].seq, ky = ahead, theta = yaw, b = run, heard = b[0].m[0].heard});
+    if !relay_conn_send(c, cast(string) m[0..<n]) { s[0].lost += 1; b[0].state = BT_WAIT; b[0].until = now + 2000; return; }
+  }
+  if now >= b[0].next_t {
+    n := rs_int(m[..], rs_put(m[..], 0, "t "), now);
+    _ := relay_conn_send(c, cast(string) m[0..<n]);
+    b[0].next_t = now + 1000;
+  }
+  // a fight over (no monster in sight for 10 s): its buffs are for the next one
+  if foe >= 0 { b[0].fight_at = now; }
+  if foe < 0 && b[0].fight_at > 0 && now - b[0].fight_at > 10000 { for q: 0..<BT_BAR { b[0].used[q] = false; } b[0].fight_at = 0; b[0].turn = 0; }
+  if now >= b[0].next_c && b[0].placed && !b[0].down && b[0].seat >= 0 {
+    b[0].next_c = now + BT_CAST_MS;
+    if b[0].cast_i >= 0 && now - b[0].tm[0].at[b[0].cast_seq % CF_RING] < 3000 { return; }   // the last press still unanswered
+    bar: [BT_BAR] SpEntry; nb := bt_bar(i % RS_CL_N, b[0].level, bar[..]);
+    plan: [BT_BAR * 3] int;
+    hurt := b[0].max > 0 && b[0].hp * 2 < b[0].max;
+    np := sp_plan(bar[..], nb, hurt, b[0].used[..], false, foe < 0 || b[0].mons.row[foe].kind == 1, plan[..]);   // creatures.coax E2M_GOBLIN: a Humanoid
+    // with no foe near, only what it presses on itself
+    own := 0;
+    for q: 0..<nb { if hurt && (bar[q].role & SP_HEAL) != 0 { own += 1; } if (bar[q].role & SP_BUFF) != 0 && !b[0].used[q] { own += 1; } }
+    near := false; fx := b[0].x; fz := b[0].z;
+    if foe >= 0 { r := b[0].mons.row[foe]; fx = f32(r.x) / 100; fz = f32(r.z) / 100; dx := fx - b[0].x; dz := fz - b[0].z; near = dx * dx + dz * dz < 18 * 18; }
+    count := ifx near then np else (ifx own < np then own else np);
+    if count > 0 {
+      q := b[0].turn % count; e := bar[plan[q]];
+      at_self := q < own;
+      b[0].seq += 1; b[0].cast_seq = b[0].seq; b[0].cast_i = plan[q]; cf_input(b[0].tm[..], b[0].seq, now);
+      n := wire_put_cast(m[..], 0, WireCast.{seq = b[0].seq, slot = e.slot, ax = ifx at_self then b[0].x else fx, ay = b[0].y + 1, az = ifx at_self then b[0].z else fz});
+      if relay_conn_send(c, cast(string) m[0..<n]) { s[0].casts += 1; }
+    }
+  }
+  if o.travel > 0 && now >= b[0].next_travel && b[0].placed && now < o.until - 30000 {
+    b[0].next_travel = now + o.travel * 1000;
+    // the realm's next instance, round the run's rooms
+    cur := 0; code := bt_code(b); at := code.count;
+    while at > 0 && code[at - 1] >= '0' && code[at - 1] <= '9' { at -= 1; }
+    cur = rs_num(code[at..<code.count]);
+    if o.rooms > 1 && at > 0 {
+      to: [48] u8; k := rs_int(to[..], rs_put(to[..], 0, code[0..<at]), cur % o.rooms + 1);
+      b[0].seq += 1; b[0].travel_seq = b[0].seq;
+      n := wire_put_travel(m[..], 0, b[0].seq, cast(string) to[0..<k]);
+      if relay_conn_send(c, cast(string) m[0..<n]) { s[0].travels += 1; }
+    }
+  }
+  if o.reconnect > 0 && now >= b[0].next_reconnect && now < o.until - 30000 {
+    b[0].next_reconnect = now + o.reconnect * 1000;
+    s[0].reconnects += 1; b[0].rejoining = true; b[0].rejoin_from = now;
+  }
+}
+
+bt_json :: (s: [] BtStats, tm: [] CfTiming, n: int, secs: int, room: int, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  // the bots' input-to-ACK times together
+  all: [CF_HIST] int;
+  for i: 0..<n { for k: 0..<CF_HIST { all[k] += tm[i].hist[k]; } }
+  jo_obj(o[..]);
+  jo_key(o[..], "room"); jo_int(o[..], room);
+  jo_key(o[..], "seconds"); jo_int(o[..], secs);
+  jo_key(o[..], "bots"); jo_int(o[..], n);
+  jo_key(o[..], "seated"); jo_int(o[..], s[0].seated);
+  jo_key(o[..], "d"); jo_int(o[..], s[0].d);
+  jo_key(o[..], "bytes"); jo_int(o[..], s[0].bytes);
+  jo_key(o[..], "stalls"); jo_int(o[..], s[0].stalls);
+  jo_key(o[..], "dropped"); jo_int(o[..], s[0].dropped);
+  jo_key(o[..], "lost"); jo_int(o[..], s[0].lost);
+  jo_key(o[..], "ack_p50_ms"); jo_int(o[..], cf_quantile(all[..], 500));
+  jo_key(o[..], "ack_p95_ms"); jo_int(o[..], cf_quantile(all[..], 950));
+  jo_key(o[..], "ack_p99_ms"); jo_int(o[..], cf_quantile(all[..], 990));
+  jo_key(o[..], "asks"); jo_int(o[..], s[0].asks);
+  jo_key(o[..], "ask_ok"); jo_int(o[..], s[0].ask_ok);
+  jo_key(o[..], "ask_limited"); jo_int(o[..], s[0].ask_limited);
+  jo_key(o[..], "ask_full"); jo_int(o[..], s[0].ask_full);
+  jo_key(o[..], "ask_failed"); jo_int(o[..], s[0].ask_failed);
+  jo_key(o[..], "ask_p50_ms"); jo_int(o[..], cf_quantile(s[0].ask_ms[..], 500));
+  jo_key(o[..], "ask_p95_ms"); jo_int(o[..], cf_quantile(s[0].ask_ms[..], 950));
+  jo_key(o[..], "ask_ms"); jo_arr(o[..]); for i: 0..<s[0].ask_n { jo_int(o[..], s[0].ask_list[i]); } jo_end(o[..]);
+  jo_key(o[..], "casts"); jo_int(o[..], s[0].casts);
+  jo_key(o[..], "taken"); jo_int(o[..], s[0].taken);
+  jo_key(o[..], "refused"); jo_int(o[..], s[0].refused);
+  jo_key(o[..], "blows"); jo_int(o[..], s[0].blows);
+  jo_key(o[..], "kills"); jo_int(o[..], s[0].kills);
+  jo_key(o[..], "xp"); jo_int(o[..], s[0].xp);
+  jo_key(o[..], "levels"); jo_int(o[..], s[0].levels);
+  jo_key(o[..], "downs"); jo_int(o[..], s[0].downs);
+  jo_key(o[..], "reconnects"); jo_int(o[..], s[0].reconnects);
+  jo_key(o[..], "rejoined"); jo_int(o[..], s[0].rejoined);
+  jo_key(o[..], "rejoin_ms_most"); jo_int(o[..], s[0].rejoin_ms_most);
+  jo_key(o[..], "travels"); jo_int(o[..], s[0].travels);
+  jo_key(o[..], "travelled"); jo_int(o[..], s[0].travelled);
+  jo_key(o[..], "travel_refused"); jo_int(o[..], s[0].travel_refused);
+  jo_key(o[..], "version_refused"); jo_int(o[..], s[0].version_refused);
+  jo_key(o[..], "unplaced"); jo_int(o[..], s[0].unplaced);
+  jo_end(o[..]);
+  return jo_text(o[..]);
+}
+// b's counts added to a (the times too; seated is the latest).
+bt_sum :: (a: [] BtStats, b: [] BtStats) {
+  a[0].seated = b[0].seated;
+  a[0].d += b[0].d; a[0].bytes += b[0].bytes; a[0].stalls += b[0].stalls; a[0].dropped += b[0].dropped; a[0].lost += b[0].lost;
+  a[0].asks += b[0].asks; a[0].ask_ok += b[0].ask_ok; a[0].ask_limited += b[0].ask_limited; a[0].ask_full += b[0].ask_full; a[0].ask_failed += b[0].ask_failed;
+  for k: 0..<CF_HIST { a[0].ask_ms[k] += b[0].ask_ms[k]; }
+  a[0].casts += b[0].casts; a[0].taken += b[0].taken; a[0].refused += b[0].refused; a[0].blows += b[0].blows; a[0].kills += b[0].kills;
+  a[0].xp += b[0].xp; a[0].levels += b[0].levels; a[0].downs += b[0].downs;
+  a[0].reconnects += b[0].reconnects; a[0].rejoined += b[0].rejoined;
+  if b[0].rejoin_ms_most > a[0].rejoin_ms_most { a[0].rejoin_ms_most = b[0].rejoin_ms_most; }
+  a[0].travels += b[0].travels; a[0].travelled += b[0].travelled; a[0].travel_refused += b[0].travel_refused; a[0].version_refused += b[0].version_refused;
+  a[0].unplaced += b[0].unplaced;
+}
+
+// One process's bots: `players` of them (16 at most) for `seconds`, room number `room` (from 1).
+bt_room :: (o_in: BtOpts, players: int, seconds: int, room: int) -> int {
+  if players < 1 || players > BT_SEATS { return 2; }
+  o := o_in;
+  c: [BT_SEATS] RelayConn; b: [BT_SEATS] Bot; win: [1] BtStats; all: [1] BtStats; wtm: [BT_SEATS] CfTiming;
+  t0 := rs_now(); until := t0 + seconds * 1000; next_win := t0 + o.window * 1000;
+  o.until = until;
+  for i: 0..<players {
+    b[i].until = t0 + ((room - 1) * BT_SEATS + i) * 600;   // a seat every 0.6 s across the fleet: 100 asks a minute, under the API's 120 an address
+    b[i].state = BT_WAIT;
+    b[i].next_reconnect = t0 + (ifx o.reconnect > 0 then o.reconnect * 1000 * (i + 1) / players + 30000 else 0);
+    b[i].next_travel = t0 + (ifx o.travel > 0 then o.travel * 1000 * (i + 1) / players + 45000 else 0);
+  }
+  while true {
+    now := rs_now();
+    if now >= until { break; }
+    got := false;
+    for i: 0..<players {
+      bi := b[i..<i + 1]; ci := c[i..<i + 1];
+      if bi[0].state == BT_WAIT && now >= bi[0].until { if o.direct { bt_direct(o, ci, bi, win[..], room, i, now); } else { bt_ask(o, bi, win[..], now); } }
+      if bi[0].state == BT_ASKING { bt_answer(o, ci, bi, win[..], room, i, now); }
+      if bi[0].state != BT_PLAYING { continue; }
+      if ci[0].h < 0 { win[0].lost += 1; bi[0].state = BT_WAIT; bi[0].until = now + 2000; bi[0].rejoin_from = now; continue; }
+      while true {
+        r := relay_conn_poll(ci, 0);
+        if r != RC_TEXT { break; }
+        bt_hear(bi, win[..], cast(string) ci[0].text[0..<ci[0].text_n], rs_now()); got = true;
+      }
+      if ci[0].h < 0 || ci[0].eof { win[0].lost += 1; r := relay_conn_close(ci, 1000); bi[0].state = BT_WAIT; bi[0].until = now + 2000; bi[0].rejoin_from = now; continue; }
+      if bi[0].rejoining {   // a reconnect, or a travel taken: the socket goes and the bot sits again
+        r := relay_conn_close(ci, 1000);
+        bi[0].state = BT_WAIT; bi[0].until = now; bi[0].rejoining = false;
+        continue;
+      }
+      bt_play(o, ci, bi, win[..], room, i, now);
+    }
+    if now >= next_win {
+      next_win += o.window * 1000;
+      win[0].seated = 0; for i: 0..<players { if b[i].state == BT_PLAYING && b[i].first_d { win[0].seated += 1; } }
+      for i: 0..<players { wtm[i] = b[i].tm[0]; for k: 0..<CF_HIST { b[i].tm[0].hist[k] = 0; } }
+      out: [4096] u8;
+      print("B % %\n", room, bt_json(win[..], wtm[..], players, o.window, room, out[..]));
+      bt_sum(all[..], win[..]); win[0] = BtStats.{};
+    }
+    if !got { proc_sleep(1); }
+  }
+  win[0].seated = 0; for i: 0..<players { if b[i].state == BT_PLAYING && b[i].first_d { win[0].seated += 1; } }
+  // the last, part window's line first (its ticket times, each), then the run's totals
+  if win[0].asks > 0 || win[0].d > 0 {
+    for i: 0..<players { wtm[i] = b[i].tm[0]; }
+    lo: [4096] u8;
+    print("B % %\n", room, bt_json(win[..], wtm[..], players, o.window, room, lo[..]));
+  }
+  bt_sum(all[..], win[..]);
+  for i: 0..<players { wtm[i] = CfTiming.{}; }
+  out: [4096] u8;
+  print("F % %\n", room, bt_json(all[..], wtm[..], players, seconds, room, out[..]));
+  for i: 0..<players {
+    if c[i].h >= 0 { r := relay_conn_close(c[i..<i + 1], 200); }
+    if b[i].ask >= 0 { k := proc_kill(b[i].ask, PROC_SIGKILL); w := proc_wait(b[i].ask, 2000); r := proc_release(b[i].ask); }
+  }
+  return 0;
+}
+
+// `seat ORIGIN REALM CODE KEY`: one ask of the directory, as a page's: "A STATUS MS KEY BODY".
+bt_seat :: (origin: string, realm: string, code: string, key_in: string) -> int {
+  w: [1] HttpWork; out: [8192] u8; kb: [128] u8; key := key_in;
+  if key == "-" {
+    h := [1] string.["Content-Type: application/json"];
+    u: [512] u8; n := rs_put(u[..], rs_put(u[..], 0, origin), "/api/playtest/player");
+    got := http_do(w[..], "POST", cast(string) u[0..<n], h[..], "{}", 30000, 0, out[..]);
+    if got.error != HTTP_OK || got.code != 200 { print("A % 0 - {}\n", ifx got.error == HTTP_OK then got.code else 0); return 0; }
+    nodes: [64] JvNode; j: [1] Jv;
+    if !jv_parse(j[..], cast(string) out[0..<got.n], nodes[..]) { print("A 0 0 - {}\n"); return 0; }
+    k := jv_str(j[0], jv_path(j[0], 0, "key"), kb[..]);
+    if k <= 0 { print("A 0 0 - {}\n"); return 0; }
+    key = cast(string) kb[0..<k];
+  }
+  ph: [200] u8; pn := rs_put(ph[..], rs_put(ph[..], 0, "X-Verse-Player: "), key);
+  h := [2] string.["Content-Type: application/json", cast(string) ph[0..<pn]];
+  u: [512] u8;
+  n := rs_put(u[..], rs_put(u[..], rs_put(u[..], rs_put(u[..], rs_put(u[..], 0, origin), "/api/playtest/room-ticket/"), code), "?realm="), realm);
+  n = rs_put(u[..], n, "&checkpoint=2&rest=1");
+  t0 := rs_now();
+  got := http_do(w[..], "POST", cast(string) u[0..<n], h[..], "{}", 30000, 0, out[..]);
+  ms := rs_now() - t0;
+  // the body on one line
+  for i: 0..<got.n { if out[i] == '\n' || out[i] == '\r' { out[i] = ' '; } }
+  print("A % % % %\n", ifx got.error == HTTP_OK then got.code else 0, ms, key, ifx got.error == HTTP_OK then cast(string) out[0..<got.n] else "{}");
+  return 0;
+}
+
+// `fault ORIGIN MS SECONDS [EACH]`: slow queries held on the API, EACH at a time (each a child of this tool).
+bt_fault :: (origin: string, ms: int, seconds: int, each: int) -> int {
+  if each > 1 {
+    hs: [16] int; n := 0; mb: [16] u8; sb: [16] u8; held := 0; line: [128] u8;
+    for i: 0..<(ifx each > 16 then 16 else each) {
+      h := proc_new();
+      ok := bt_self(h) && proc_arg(h, "fault") && proc_arg(h, origin) &&
+            proc_arg(h, cast(string) mb[0..<rs_int(mb[..], 0, ms)]) && proc_arg(h, cast(string) sb[0..<rs_int(sb[..], 0, seconds)]) && proc_arg(h, "1");
+      if ok && proc_start(h) == 0 { hs[n] = h; n += 1; } else { r := proc_release(h); }
+    }
+    for i: 0..<n {
+      k := proc_line(hs[i], (seconds + 30) * 1000, line[..]);
+      if k > 0 && rs_starts(cast(string) line[0..<k], "fault ") { held += rs_num(rs_field(cast(string) line[0..<k], 1)); }
+      w := proc_wait(hs[i], 5000); r := proc_release(hs[i]);
+    }
+    print("fault % held of % ms each, % at a time, % s\n", held, ms, n, seconds);
+    return ifx held > 0 then 0 else 1;
+  }
+  w: [1] HttpWork; out: [1024] u8; got: [1] int; u: [512] u8; held := 0; refused := 0;
+  url := cast(string) u[0..<rs_put(u[..], rs_put(u[..], 0, origin), "/api/playtest/fault/slow")];
+  until := rs_now() + seconds * 1000;
+  while rs_now() < until {
+    bb: [64] u8; n := rs_int(bb[..], rs_put(bb[..], rs_int(bb[..], rs_put(bb[..], 0, "fault "), ms), " "), cxproc_wall_us() / 1000);
+    st := rp_post(w[..], url, "fault", cast(string) bb[0..<n], 15000, out[..], got[..]);
+    if st == 200 { held += 1; } else { refused += 1; proc_sleep(200); }
+    if st < 0 { tool_errln("bots: no OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY to sign a fault with"); return 2; }
+    if refused > 20 && held == 0 { break; }
+  }
+  print("fault % held\n", held);
+  return 0;
+}
+
+// `run`: a room process for every 16 bots; their lines as they come; the run's totals at the end.
+bt_run :: (o: BtOpts, players: int, seconds: int, opts: [] string) -> int {
+  rooms := (players + BT_SEATS - 1) / BT_SEATS;
+  if rooms > BT_ROOMS { tool_errln("bots: 512 players at most"); return 2; }
+  hs: [BT_ROOMS] int; done: [BT_ROOMS] bool; nb: [16] u8; sb: [16] u8; kb: [16] u8; rb: [16] u8;
+  sn := rs_int(sb[..], 0, seconds);
+  for k: 0..<rooms {
+    n := ifx k == rooms - 1 then players - k * BT_SEATS else BT_SEATS;
+    h := proc_new(); hs[k] = h;
+    ok := bt_self(h) && proc_arg(h, "room") && proc_arg(h, o.origin) &&
+          proc_arg(h, cast(string) nb[0..<rs_int(nb[..], 0, n)]) && proc_arg(h, cast(string) sb[0..<sn]) && proc_arg(h, cast(string) kb[0..<rs_int(kb[..], 0, k + 1)]);
+    for x: opts { ok = ok && proc_arg(h, x); }
+    ok = ok && proc_arg(h, "--rooms") && proc_arg(h, cast(string) rb[0..<rs_int(rb[..], 0, rooms)]);
+    if !ok || proc_start(h) != 0 { tool_errln("bots: can't start a room's process (run it from the repository's root)"); return 1; }
+  }
+  line: [8192] u8; left := rooms; finals := 0;
+  totals: [18] int;
+  keys := [18] string.["seated", "d", "bytes", "stalls", "dropped", "lost", "asks", "ask_ok", "ask_limited", "ask_failed", "casts", "taken", "refused", "kills", "xp", "rejoined", "travelled", "version_refused"];
+  t_end := rs_now() + (seconds + 180) * 1000;
+  while left > 0 && rs_now() < t_end {
+    idle := true;
+    for k: 0..<rooms {
+      if done[k] { continue; }
+      n := proc_line(hs[k], 20, line[..]);
+      if n == PROC_TIMEOUT { continue; }
+      idle = false;
+      if n < 0 { done[k] = true; left -= 1; continue; }
+      t := cast(string) line[0..<n];
+      if rs_starts(t, "B ") || rs_starts(t, "F ") { print("%\n", t); }
+      if rs_starts(t, "F ") {
+        finals += 1;
+        at := 0; f := 0; while at < t.count && f < 2 { if t[at] == ' ' { f += 1; } at += 1; }
+        nodes: [256] JvNode; j: [1] Jv;
+        if jv_parse(j[..], t[at..<t.count], nodes[..]) { for q: 0..<18 { p := jv_path(j[0], 0, keys[q]); if p >= 0 { totals[q] += rs_num(jv_raw(j[0], p)); } } }
+      }
+    }
+    if idle { proc_sleep(5); }
+  }
+  for k: 0..<rooms { w := proc_wait(hs[k], 5000); if w == PROC_RUNNING { x := proc_kill(hs[k], PROC_SIGKILL); w = proc_wait(hs[k], 2000); } r := proc_release(hs[k]); }
+  out: [2048] u8; jo: [1] Jo; jo_start(jo[..], out[..]);
+  jo_obj(jo[..]);
+  jo_key(jo[..], "players"); jo_int(jo[..], players);
+  jo_key(jo[..], "rooms"); jo_int(jo[..], rooms);
+  jo_key(jo[..], "finished"); jo_int(jo[..], finals);
+  jo_key(jo[..], "seconds"); jo_int(jo[..], seconds);
+  for q: 0..<18 { jo_key(jo[..], keys[q]); jo_int(jo[..], totals[q]); }
+  jo_end(jo[..]);
+  print("bots %\n", jo_text(jo[..]));
+  return ifx finals == rooms then 0 else 1;
+}
+
+bt_opts :: (a: [] Args) -> BtOpts {
+  o := BtOpts.{};
+  o.realm = args_value(a, "--realm", "pair-e2-soak");
+  o.direct = args_has(a, "--direct");
+  o.reconnect = rs_num(args_value(a, "--reconnect", "900"));
+  o.travel = rs_num(args_value(a, "--travel", "600"));
+  o.window = rs_num(args_value(a, "--window", "60"));
+  o.rooms = rs_num(args_value(a, "--rooms", "1"));
+  o.stamp = rs_num(args_value(a, "--stamp", "0"));
+  if o.window < 5 { o.window = 5; }
+  return o;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/bots.coax run ORIGIN PLAYERS SECONDS [--realm R] [--direct] [--reconnect S] [--travel S] [--window S]"); return 2; }
+  cmd := args_at(a[..], 0);
+  if cmd == "fault" && args_count(a[..]) >= 4 { return bt_fault(args_at(a[..], 1), rs_num(args_at(a[..], 2)), rs_num(args_at(a[..], 3)), ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 2); }
+  if cmd == "seat" && args_count(a[..]) == 5 { return bt_seat(args_at(a[..], 1), args_at(a[..], 2), args_at(a[..], 3), args_at(a[..], 4)); }
+  o := bt_opts(a[..]);
+  if cmd == "room" && args_count(a[..]) >= 5 {
+    o.origin = args_at(a[..], 1);
+    return bt_room(o, rs_num(args_at(a[..], 2)), rs_num(args_at(a[..], 3)), rs_num(args_at(a[..], 4)));
+  }
+  if cmd == "run" && args_count(a[..]) >= 4 {
+    o.origin = args_at(a[..], 1);
+    players := rs_num(args_at(a[..], 2)); seconds := rs_num(args_at(a[..], 3));
+    if players < 1 || seconds < 10 { tool_errln("bots: PLAYERS >= 1, SECONDS >= 10"); return 2; }
+    if o.stamp == 0 { o.stamp = rs_stamp(); }
+    // the options a room process reads, as given (the stamp fixed for all of them)
+    opts: [16] string; n := 0; rm: [64] u8; rc: [16] u8; tv: [16] u8; wn: [16] u8; st: [16] u8;
+    opts[n] = "--realm"; n += 1; opts[n] = o.realm; n += 1;
+    if o.direct { opts[n] = "--direct"; n += 1; }
+    opts[n] = "--reconnect"; n += 1; opts[n] = cast(string) rc[0..<rs_int(rc[..], 0, o.reconnect)]; n += 1;
+    opts[n] = "--travel"; n += 1; opts[n] = cast(string) tv[0..<rs_int(tv[..], 0, o.travel)]; n += 1;
+    opts[n] = "--window"; n += 1; opts[n] = cast(string) wn[0..<rs_int(wn[..], 0, o.window)]; n += 1;
+    opts[n] = "--stamp"; n += 1; opts[n] = cast(string) st[0..<rs_int(st[..], 0, o.stamp)]; n += 1;
+    return bt_run(o, players, seconds, opts[0..<n]);
+  }
+  tool_errln("bots: run ORIGIN PLAYERS SECONDS, room ORIGIN PLAYERS SECONDS ROOM, or seat ORIGIN REALM CODE KEY");
+  return 2;
+}
