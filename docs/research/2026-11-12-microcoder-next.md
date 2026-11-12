@@ -24,6 +24,7 @@ what was measured and whether the piece stayed.
 | A command's time limit | Kept (66b316de85) | H6's own checks ran (120 s) where they had been killed (30 s) |
 | A finish that carries edits | Fixed (96ee94bc29) | Flash dropped its edits on the first tiny task; Argon in 2 of 113 finishes |
 | Verdict, round 1 of 2 | Run on N1 to N6 | Passes 4 to 4, cost $13.03 against at least $15.94, median 426 s against 639 s; round 2 waits for the owner (budget) |
+| Field runs on Carbon | Read offline, no change made | 46 runs on real issues: 20 finished, 26 ended on a limit. Every wrong commit traced came from a run that ended on a limit, which the finish reader (item 2) never sees |
 
 The build the verdict runs use is 93455e7032: the round 2 loop of #13231
 with the finish fix, the seeded first step, the read budget, the economy
@@ -473,6 +474,78 @@ shared that load.
 Round 2 has not been run. Its cost, about $29 at round 1's rate, would take
 this issue past its $49 and the owner's $200 for this work, so it waits for
 the owner.
+
+## Field runs on Carbon (2026-11-12, read offline)
+
+On 2026-11-12 the coordinator ran Microcoder on `gemini-4-carbon` at low
+effort on coderos-4080 for this repository's protocol and DDD issues
+(#13240, #13241, #13244, #13247, #13248, #13312 to #13322, #13339, #13348).
+It used the round 1 verdict build or later, with the seed, the read budget,
+economy and 120 s commands. These runs were not built for this issue and
+were not paid from its budget. They are read here from Coder's session
+logs and the worktrees' reflogs. No model was called for this section.
+
+| Ending | Runs | Cost | Median calls | Median commands | Repeated commands | Median wall time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Finished | 20 | $22.27 | 13 | 44 | 21% | 374 s |
+| Command limit (128) | 14 | $37.35 | 31 | 128 | 17% | 632 s |
+| Time limit (15 min) | 12 | $26.04 | 25 | 83 | 13% | 904 s |
+| **All** | **46** | **$85.67** | | | | |
+
+Costs are at the card's Carbon rates ($4.00, $0.20 cached, $20.00 output
+per million tokens). "Repeated" is a command run again with the same text
+in the same run. 16 of the 20 runs that finished were follow-ups or narrow
+briefs that named the first edit; 4 were a first try at an issue.
+
+**Wide tasks end on a limit before any work.** A run sends about four
+commands a call, so the 128-command limit comes at about 31 calls, half of
+the 64 the run allows. In the briefs that failed, "reading budget: N views"
+and "your first command must be an edit" did not change this. With the
+view count capped, the model read through `cat`, `sed -n` and `nl -ba`
+instead. A higher command limit would probably move these runs to the time
+limit, where 12 more ended at about 83 commands.
+
+**The wrong work came from runs that ended on a limit.** The coordinator
+found four cases. Each was traced to the run before the coordinator's
+correction:
+
+| What was wrong | The run that made it | How it ended |
+| --- | --- | --- |
+| An asset-pack golden that failed its own test (#13244) | 08:00 UTC; the commit landed at 08:07, inside the run | command limit, 632 s |
+| A seat-ticket writer whose bytes failed its own `#assert` (#13248, d91d4f3291) | 09:23 UTC | command limit, 729 s |
+| Mutants marked equivalent with a wrong reason (#13339) | 08:17 UTC | time limit, 905 s |
+| Edits left in place, not committed (#13317) | 07:45 UTC | command limit, 896 s |
+
+None came from a run that finished. The fresh reader of item 2 ran only on
+a finish, so it could not have seen any of them. It stays removed. A check
+that would reach these cases has to act when a run ends on a limit, or
+before the model commits. Two options, neither built:
+
+- When a run ends on a limit, the ending lists the commits the run made
+  and the files it left changed, so that the caller does not take a
+  half-done tree for a result.
+- A `git commit` in a run is preceded by the last test command the run
+  ran, and its exit code. This needs a rule for which commands are tests,
+  so it is the larger change.
+
+**The seed does not decide these outcomes.** Briefs that name long files
+seed large first steps. The largest were 255 KB and 141 KB files, each cut
+to 64 KB, and a 197 KB file. In 8 of the 46 runs the second call's input
+was less than 80% of the first, so the seed step was compacted away after
+one call. Runs whose first call had 30,000 tokens or more finished 9 times
+in 24. Runs with smaller first calls finished 11 times in 22. That gap is
+within noise, and the large briefs are also the wide tasks. So the seed
+stays as kept. A size cap on seeded views (for example 16 KB a file) would
+save part of one call's input on these briefs. Its effect on passes has
+not been measured.
+
+**A note on blinding.** While listing session logs for this section, the
+author of this addition saw the first 1,800 characters of the prompts of
+two unseen tasks, N3 and N4, and their first-call token counts. Their
+round 1 runs are in the same log folder. Nothing in Microcoder changed
+after that. The verdict's build is fixed at 93455e7032 by the definition
+above, so round 2 is unaffected. Any tuning after the verdict should still
+count N3 and N4 as seen.
 
 ## Spend
 
