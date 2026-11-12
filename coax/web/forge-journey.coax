@@ -29,7 +29,7 @@
 FJ_SHOT :: 25165824;
 // the pages' buttons (builder.coax, myrealm.coax)
 B_TYPE :: 1; B_MAKE :: 2; B_SKIP :: 5;
-PH_ASK :: 0; PH_BOARD :: 2; PH_SETUP :: 5;
+PH_ASK :: 0; PH_BOARD :: 2; PH_SETUP :: 5; PH_INVITE :: 6;
 R_BUILD :: 3; R_MOVE :: 13; R_UNDO :: 14; R_SAVE :: 15; R_PUBLISH :: 16; R_FORK :: 17;
 // myrealm.coax realm_probe: what the owner reads of the version live
 LIVE_SAME :: 1; LIVE_SAVED :: 2; LIVE_UNSAVED :: 3;
@@ -246,7 +246,11 @@ went_to :: (r: [] Run, c: [] Cdp, from: string, out: [] u8, ms: int) -> int {
 }
 
 generate :: (r: [] Run, c: [] Cdp, stamp: string) -> bool {
-  if !wait_probe(c, 0, PH_SETUP, 60000) && probe(c, 0) != PH_ASK { return why_n(r, "the builder never started", probe(c, 0)); }
+  if !wait_probe(c, 0, PH_SETUP, 60000) && probe(c, 0) != PH_ASK {
+    // builder.coax PH_INVITE: /api/playtest/access said make 0. The site is invite only for this visitor, and the journey has no invite.
+    if probe(c, 0) == PH_INVITE { return why_n(r, "realm making is invite only on this site (make 0), and the journey has no invite: the builder shows its invite screen", PH_INVITE); }
+    return why_n(r, "the builder never started", probe(c, 0));
+  }
   // SKIP is ignored while the page is busy (a pick on its way), so tap, give the page a moment, and
   // go on until the setup ends, rather than a fixed number of taps
   skip_until := proc_now_ms() + 20000;
