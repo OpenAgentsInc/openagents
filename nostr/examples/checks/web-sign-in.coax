@@ -4,56 +4,119 @@
 #load "../web-sign-in.coax";
 
 // book:begin check
-// NIP-06's first vector, as published in nostr/nips/official/06.md.
+// NIP-06's two vectors, as published in nostr/nips/official/06.md.
+NIP06_KEY :: "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a";
 NIP06_PUBKEY :: "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917";
 NIP06_NPUB :: "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
-// The same login made by a Python script that shares no code with Coax:
-// BIP-39's seed with hashlib.pbkdf2_hmac, BIP-32 with hmac and integer
-// arithmetic, then coax/tests/nostr/nip59_reference.py's BIP-340 signer and
-// NIP-01 serializer, with aux all zero, and base64.b64encode.
-PY_HEADER :: "Nostr eyJpZCI6ImE1NDE0ZmI3ODUwNTVlYjU4NWE5MWQ5YmFjMjUyY2ExZGNhYTM1YzE2ZWZhOGEwMDJiZDRlMTQxNzk0NmNlOTQiLCJwdWJrZXkiOiIxNzE2MmM5MjFkYzRkMjUxOGY5YTEwMWRiMzM2OTVkZjFhZmI1NmFiODJmNWZmM2U1ZGE2ZWVjM2NhNWNkOTE3IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9hdXRoL2tleSJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjUzNzE0ODlkZDEwMDE3ODI0MDc3MDNmYzg4YzMwMWFjYTM4YmUyODY0OWFhN2YxZjY4YmRiNTJjZjU3NjAxNGEiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJmODkzODNjMzJlZGMxZDg4ZTVkOGU1MDFkOGZlMjEwNWY4ZDMzNzA3ZTJjMTMzYTI2NzEzYThkMjExZDUxMzFjYmRkNTI2YjM5YzViYmY3Nzk2ZGFkZDYyZTFhZjkwZmM0MDY0ODg1MmQ3OGEzODY2MzQwYWY0NWE2NWYzNjI1YyJ9";
-// SHA-256 of {"kind":"login"}, from Python's hashlib.
-PY_LOGIN_SHA256 :: "5371489dd1001782407703fc88c301aca38be28649aa7f1f68bdb52cf576014a";
+NIP06_KEY2 :: "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add";
+NIP06_PUBKEY2 :: "d41b22899549e1f3d335a31002cfd382174006e166d3e658e3a5eecdb6463573";
+// The example's first login made by Python, which shares no code with Coax:
+// the payload with hashlib.sha256, then coax/tests/nostr/nip59_reference.py's
+// NIP-01 serializer and BIP-340 signer on NIP-06's published key with aux
+// all zero, and base64.b64encode.
+PY_PAYLOAD :: "c1ac31c1d8ce5836fc782d33cd051b7a45e75871b64be20753364cd13a22012b";
+PY_HEADER :: "Nostr eyJpZCI6ImVjYTllODBlZGIwYWE5ODg3NDY0ZmRmM2UxZDYxYzk2NTM1OGRjMzZlMzlmZGVjNjFiNGJmYmQwOTBjMTFhZmUiLCJwdWJrZXkiOiIxNzE2MmM5MjFkYzRkMjUxOGY5YTEwMWRiMzM2OTVkZjFhZmI1NmFiODJmNWZmM2U1ZGE2ZWVjM2NhNWNkOTE3IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAzMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9hdXRoL25vc3RyIl0sWyJtZXRob2QiLCJQT1NUIl0sWyJwYXlsb2FkIiwiYzFhYzMxYzFkOGNlNTgzNmZjNzgyZDMzY2QwNTFiN2E0NWU3NTg3MWI2NGJlMjA3NTMzNjRjZDEzYTIyMDEyYiJdLFsibm9uY2UiLCIwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSJdXSwiY29udGVudCI6IiIsInNpZyI6IjliY2IyMWIxZWI5ODVlZWRhZjAxMmZhOGU0ODQ2MWVlNjBiZWRkZjdmNGEzZjUxNTUyMmQwODc3MDRkYWI4MmQ5ZTQyNjcxMDdmZDVkMmE4ZmMxNzk0YjNlNWFkMWQzZGM5MzJjYmM5ZGRlYzY1ODhmNWJkYzlkOWNmNTY2ZDhlIn0=";
+SIGNED_MS :: (T0 + 30) * 1000;   // PY_HEADER's created_at
 
-once :: (header: string, now: int) -> int {
-  s: [1] Server; t: [32] u8;
-  return login(s[..], ORIGIN, header, LOGIN_BODY, now, t[..]).status;
+unhex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK;
+  #assert r.written == out.count;
+}
+// PY_HEADER on a fresh server whose challenge was issued age_ms before now_ms.
+once :: (s: [] Server, now_ms: int, age_ms: int) -> Answer {
+  none: [1] u8; t: [32] u8; b: [100] u8;
+  challenge(s, CH1, now_ms - age_ms);
+  return login(s, ORIGIN, PY_HEADER, none[0..<0], login_body(CH1, b[..]), now_ms, t[..]);
 }
 
-#test "the words give NIP-06's published key, and the login matches Python's byte for byte" #steps 4000000000 {
-  c := client_words(MNEMONIC);
-  #assert c.ok && cast(string) c.npub[0..<c.nnpub] == NIP06_NPUB;
-  #assert cast(string) c.words[0..<c.nwords] == MNEMONIC;
-  hb: [1024] u8;
-  header := client_sign(c, LOGIN_URL, CREATED, LOGIN_BODY, hb[..]);
-  #assert header == PY_HEADER;
-  ev: [1024] u8;
+#test "the words give NIP-06's published keys, and the login matches Python's byte for byte" #steps 8000000000 {
+  key: [32] u8; cli: [32] u8; want: [32] u8; np: [80] u8;
+  unhex(NIP06_KEY, want[..]);
+  #assert nip06_key(PERSON_WORDS, key[..]) && cast(string) key[..] == cast(string) want[..];
+  #assert cast(string) np[0..<nip06_npub(key[..], np[..])] == NIP06_NPUB;
+  unhex(NIP06_KEY2, want[..]);
+  #assert nip06_key(CLI_WORDS, cli[..]) && cast(string) cli[..] == cast(string) want[..];
+  b: [100] u8; hb: [N98S_HEADER] u8; ev: [N98S_EVENT] u8;
+  header := sign(key[..], 1, T0 + 30, LOGIN_URL, "POST", login_body(CH1, b[..]), true, hb[..]);
+  #assert header == PY_HEADER && header.count == 718;
   d := base64_decode_checked(header[6..<header.count], ev[..], false);
-  #assert d.error == NC_OK && d.written == 486 && header.count == 654;
-  // the pubkey and payload hash sit at fixed places in the event
-  #assert cast(string) ev[83..<147] == NIP06_PUBKEY;
-  #assert cast(string) ev[268..<332] == PY_LOGIN_SHA256;
+  #assert d.error == NC_OK && d.written == 533;
+  // the pubkey and the payload hash sit at the places the chapter works out
+  #assert cast(string) ev[83..<147] == NIP06_PUBKEY && cast(string) ev[270..<334] == PY_PAYLOAD;
 }
-#test "the 60-second window, both edges, on a fresh server each time" #steps 4000000000 {
-  #assert once(PY_HEADER, CREATED - 60) == 200 && once(PY_HEADER, CREATED + 60) == 200;
-  #assert once(PY_HEADER, CREATED - 61) == 401 && once(PY_HEADER, CREATED + 61) == 401;
+#test "the 60-second window, both edges, on a fresh server each time" #steps 8000000000 {
+  a: [1] Server; b: [1] Server; c: [1] Server; d: [1] Server;
+  #assert once(a[..], SIGNED_MS - 60000, 1000).status == 200 && once(b[..], SIGNED_MS + 60999, 1000).status == 200;
+  early := once(c[..], SIGNED_MS - 61000, 1000); late := once(d[..], SIGNED_MS + 61000, 1000);
+  #assert early.status == 401 && late.status == 401 && late.why == "created_at is not within 60 s" && early.why == late.why;
+  // a refused signature uses up nothing
+  #assert c[0].nseen == 0 && d[0].nseen == 0 && d[0].nsessions == 0 && !d[0].challenges[0].done;
 }
-#test "one login, one session; a replay and every refusal leave the store as it was" #steps 4000000000 {
-  s: [1] Server; t: [32] u8; u: [32] u8;
+#test "a challenge is good for five minutes and once; its refusal still uses up the signature" #steps 8000000000 {
+  a: [1] Server; b: [1] Server; none: [1] u8; t: [32] u8; body: [100] u8;
+  #assert once(a[..], SIGNED_MS, CHALLENGE_MS - 1).status == 200 && a[0].challenges[0].done;
+  r := once(b[..], SIGNED_MS, CHALLENGE_MS);
+  #assert r.status == 401 && r.words == "That challenge has ended. Ask for a new one." && b[0].nseen == 1 && b[0].nsessions == 0;
+  challenge(b[..], CH1, SIGNED_MS);
+  r = login(b[..], ORIGIN, PY_HEADER, none[0..<0], login_body(CH1, body[..]), SIGNED_MS, t[..]);
+  #assert r.status == 401 && r.words == "That signature was used already." && !b[0].challenges[1].done;
+}
+#test "one login makes one account and one session; the refusals before the signature leave the server as it was" #steps 8000000000 {
+  s: [1] Server; none: [1] u8; t: [32] u8; u: [32] u8; body: [100] u8;
   t[0] = 1; u[0] = 2;
-  #assert login(s[..], ORIGIN, PY_HEADER, LOGIN_BODY, CREATED, t[..]).status == 200;
-  #assert login(s[..], ORIGIN, PY_HEADER, LOGIN_BODY, CREATED, u[..]).status == 401;
-  #assert s[0].nseen == 1 && s[0].nsessions == 1;
-  #assert session(s[..], t[..], CREATED) == NIP06_PUBKEY && session(s[..], u[..], CREATED) == "";
-  #assert login(s[..], "http://openagents.com", PY_HEADER, LOGIN_BODY, CREATED, u[..]).status == 403;
-  #assert login(s[..], ORIGIN, PY_HEADER, "{\"kind\": \"login\"}", CREATED, u[..]).status == 400;
-  #assert s[0].nseen == 1 && s[0].nsessions == 1;
-  #assert session(s[..], t[..], CREATED + SESSION_SECONDS - 1) == NIP06_PUBKEY;
-  #assert session(s[..], t[..], CREATED + SESSION_SECONDS) == "";
+  b := login_body(CH1, body[..]);
+  challenge(s[..], CH1, SIGNED_MS);
+  #assert login(s[..], "http://openagents.com", PY_HEADER, none[0..<0], b, SIGNED_MS, t[..]).status == 403;
+  #assert login(s[..], ORIGIN, "Bearer x", none[0..<0], b, SIGNED_MS, t[..]).status == 401;
+  #assert s[0].nseen == 0 && s[0].nsessions == 0 && s[0].accounts == 0;
+  // no Origin at all: an app or a tool
+  r := login(s[..], "", PY_HEADER, none[0..<0], b, SIGNED_MS, t[..]);
+  #assert r.status == 200 && r.made && r.account == 1 && s[0].nseen == 1 && s[0].nsessions == 1 && s[0].nkeys == 1;
+  #assert cast(string) s[0].keys[0].pubkey[..] == NIP06_PUBKEY;
+  w := resolve(s[..], "GET", "/api/auth/account", "", t[..], "", SIGNED_MS + 1);
+  #assert w.account == 1 && w.level == 2 && w.l2_age_ms == 1 && !w.nostr;
+  #assert resolve(s[..], "GET", "/api/auth/account", "", u[..], "", SIGNED_MS + 1).kind == AP_NOBODY;
+  // the cookie with a signature is two credentials, whatever the signature
+  #assert resolve(s[..], "GET", "/api/auth/account", PY_HEADER, t[..], "", SIGNED_MS + 1).refused == 400;
 }
-#test "a wrong checksum signs nothing" #steps 4000000000 {
-  c := client_words("leader monkey parrot ring guide accident before fence cannon height naive naive");
-  hb: [1024] u8;
-  #assert !c.ok && client_sign(c, LOGIN_URL, CREATED, LOGIN_BODY, hb[..]) == "";
+#test "a session's clocks, and L2-fresh for five minutes" {
+  s: [1] Server; t: [32] u8;
+  t[0] = 1; s[0].accounts = 1;
+  session_new(s[..], 1, 2, SIGNED_MS, t[..]);
+  #assert session_state(s[..], t[..], SIGNED_MS + AP_ROTATE_MS - 1) == "good";
+  #assert session_state(s[..], t[..], SIGNED_MS + AP_WEB_IDLE_MS - 1) == "good, and due a new token";
+  #assert session_state(s[..], t[..], SIGNED_MS + AP_WEB_IDLE_MS) == "ended";
+  fresh := resolve(s[..], "POST", "/api/auth/unlink", "", t[..], "", SIGNED_MS + AP_FRESH_MS);
+  #assert gate(s[..], AP_L2_FRESH, true, fresh).status == 200;
+  stale := resolve(s[..], "POST", "/api/auth/unlink", "", t[..], "", SIGNED_MS + AP_FRESH_MS + 1);
+  #assert gate(s[..], AP_L2_FRESH, true, stale).status == 401 && gate(s[..], AP_L2, true, stale).status == 200;
+  // used every day, a session still ends 180 days after it began
+  s[0].sessions[0].seen_ms = SIGNED_MS + AP_WEB_ABSOLUTE_MS - 1;
+  #assert session_state(s[..], t[..], SIGNED_MS + AP_WEB_ABSOLUTE_MS - 1) != "ended";
+  #assert session_state(s[..], t[..], SIGNED_MS + AP_WEB_ABSOLUTE_MS) == "ended";
+  #assert resolve(s[..], "GET", "/api/auth/account", "", t[..], "", SIGNED_MS + AP_WEB_ABSOLUTE_MS).kind == AP_NOBODY && s[0].sessions[0].ended;
+  logout(s[..], t[..], SIGNED_MS);
+  #assert gate(s[..], AP_ACCOUNT, false, resolve(s[..], "GET", "/api/auth/ways", "", t[..], "", SIGNED_MS)).status == 401;
+}
+#test "a device login: ten minutes, once, and never a key that is another account's" #steps 8000000000 {
+  s: [1] Server; cli: [32] u8; e: [32] u8; p: [32] u8; hb: [N98S_HEADER] u8;
+  unhex(NIP06_KEY2, cli[..]);
+  e[0] = 1; p[0] = 2; s[0].accounts = 2;
+  session_new(s[..], 1, 1, SIGNED_MS, e[..]);   // account 1: email only, no key
+  session_new(s[..], 2, 2, SIGNED_MS, p[..]);   // account 2: logged in at L2
+  body := "{\"machine\":\"box\"}";
+  url := "https://openagents.com/api/auth/device/start?as=lines";
+  #assert device_start(s[..], sign(cli[..], 1, T0 + 30, url, "POST", "{\"machine\":\"\"}", true, hb[..]), "{\"machine\":\"\"}", SIGNED_MS, DEV_ID, DEV_CODE).status == 400;
+  #assert device_start(s[..], sign(cli[..], 2, T0 + 30, url, "POST", body, true, hb[..]), body, SIGNED_MS, DEV_ID, DEV_CODE).status == 200;
+  #assert cast(string) s[0].devices[0].pubkey[..] == NIP06_PUBKEY2 && s[0].ndevices == 1;
+  // an email session may link a key while the account has nothing stronger; then it has
+  #assert device_approve(s[..], ORIGIN, e[..], DEV_CODE, SIGNED_MS + DEVICE_MS).status == 410;
+  #assert device_approve(s[..], ORIGIN, e[..], DEV_CODE, SIGNED_MS + DEVICE_MS - 1).status == 200;
+  #assert strong(s[..], 1) == 1 && s[0].keys[0].account == 1 && cast(string) s[0].keys[0].machine[0..<s[0].keys[0].nmachine] == "box";
+  #assert gate(s[..], AP_HUMAN, true, resolve(s[..], "POST", "/api/auth/device/approve", "", e[..], "", SIGNED_MS)).status == 401;
+  // the same key asks again: account 2 can't take it
+  #assert device_start(s[..], sign(cli[..], 3, T0 + 30, url, "POST", body, true, hb[..]), body, SIGNED_MS, DEV_ID2, DEV_CODE2).status == 200;
+  #assert device_approve(s[..], ORIGIN, p[..], DEV_CODE2, SIGNED_MS + 1).status == 409 && strong(s[..], 2) == 0;
 }
 // book:end check

@@ -1,27 +1,53 @@
-the words
-checksum: true, entropy: 7e91e681dd067802c50aa8216d564a89
+the key
 npub: npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu
-last word naive: checksum false
-the login
-event (486 bytes): {"id":"a5414fb785055eb585a91d9bac252ca1dcaa35c16efa8a002bd4e1417946ce94","pubkey":"17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917","created_at":1790000000,"kind":27235,"tags":[["u","https://openagents.com/api/auth/key"],["method","POST"],["payload","5371489dd1001782407703fc88c301aca38be28649aa7f1f68bdb52cf576014a"]],"content":"","sig":"f89383c32edc1d88e5d8e501d8fe2105f8d33707e2c133a26713a8d211d5131cbdd526b39c5bbf7796dadd62e1af90fc40648852d78a3866340af45a65f3625c"}
-header value: 654 bytes
-the server, now = created_at + 30
-first use: 200, signed-in
-session: 17162c921dc4d251...
-same header again: 401, {"error":"not signed"} (event id already used)
-same header at created_at + 61: 401, {"error":"not signed"} (created_at is not within 60 s)
-refusals, on a fresh server
-Origin https://evil.example: 403, {"error":"cross-site"}
-no Authorization: 403, {"error":"cross-site"}
-body {"kind":"logout"}: 400, {"error":"not a login"}
-signed for staging: 401, {"error":"not signed"} (the u tag is not this URL)
-no payload tag: 401, {"error":"not signed"} (no payload tag)
-the original, after those refusals: 200
-client refusals
-url with a quote: ""
-entropy 7f7f: derive -1
-the session
-a cookie the server never issued: ""
-29 days later: 17162c921dc4d251...
-30 days later: ""
-after logout: ""
+a login: POST /api/auth/nostr
+body: {"challenge":"1111111111111111111111111111111111111111111111111111111111111111"}
+event (533 bytes): {"id":"eca9e80edb0aa9887464fdf3e1d61c965358dc36e39fdec61b4bfbd090c11afe","pubkey":"17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917","created_at":1790000030,"kind":27235,"tags":[["u","https://openagents.com/api/auth/nostr"],["method","POST"],["payload","c1ac31c1d8ce5836fc782d33cd051b7a45e75871b64be20753364cd13a22012b"],["nonce","01010101010101010101010101010101"]],"content":"","sig":"9bcb21b1eb985eedaf012fa8e48461ee60beddf7f4a3f515522d087704dab82d9e4267107fd5d2a8fc1794b3e5ad1d3dc932cbc9ddec6588f5bdc9d9cf566d8e"}
+header value: 718 bytes
+first use: 200, logged-in, account 1, new
+same header again: 401, That signature was used already.
+a new signature over the spent challenge: 401, That challenge has ended. Ask for a new one.
+refusals, with a second challenge open
+Origin https://evil.example: 403, Not from this site.
+no Authorization: 401, Sign the challenge with your key (NIP-98).
+a session cookie and a signature: 400, Log out first, or send only the signature.
+signed 61 s ago: 401, That signature isn't good for this request. [created_at is not within 60 s]
+signed for staging: 401, That signature isn't good for this request. [the u tag is not this URL]
+signed for another body: 401, That signature isn't good for this request. [the payload tag is not this body]
+body not signed: 401, Sign the body too (a payload tag).
+no challenge in the body: 400, Ask for a challenge first.
+the first of these, from this site: 200, logged-in, account 1
+a challenge 5 minutes old: 401, That challenge has ended. Ask for a new one.
+signer refusals
+a URL with a quote: ""
+a key of 32 zero bytes: ""
+the sessions
+first cookie, 1 hour after login: good
+24 hours after: good, and due a new token
+30 days after, unused: ended
+after logout: ended
+a cookie the server never issued: no such session
+second cookie, POST /api/auth/unlink 5 minutes after login: 200, admitted
+1 ms later: 401, Log in again with your key or passkey to do this.
+openagents login
+body: {"machine":"dev box-1"}
+start, not signed: 401, Sign it with the new key (NIP-98).
+start: 200, started
+link: https://openagents.com/login/device#code=00112233445566778899aabbccddeeff
+poll: 200, waiting; the CLI: keep waiting
+poll signed by another key: 404, no such request; the CLI: refused: stop
+approve, not logged in: 401, Log in first.
+approve, logged in by email: 401, You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.
+approve from https://evil.example: 403, Not from this site.
+approve another code: 404, That code isn't good.
+approve: 200, approved, account 1
+approve again: 409, That computer was approved already, or its key is another account's.
+poll: 200, approved, account 1; the CLI: approved: stop
+account 1 has 2 keys; the new one is cli:dev box-1
+a second start: 200, started
+approve 10 minutes later: 410, That code expired: run openagents login again.
+poll: 200, expired; the CLI: expired: stop
+the CLI's requests after login
+GET /api/auth/ways: account 1, L2, proved 0 ms ago
+the account rule: 200, admitted
+POST /api/auth/unlink, the L2-fresh rule: 200, admitted

@@ -1,175 +1,437 @@
-// Chapter 99: signing in to openagents.com with the words account. The
-// client is the website's own Coax (coax/lib/nostr/weblogin.coax); the
-// server's NIP-98 check is the API's own Coax (coax/web/api/nip98.coax).
-// The route and session rules are private.c's auth_route and the SQL of
-// migrations 0019 and 0067, written here in memory with a fixed clock.
+// Chapter 99: logging in to openagents.com with a Nostr key, and the CLI's
+// `openagents login`. The signer is the CLI's own (coax/lib/nostr/nip98_sign.coax),
+// the server's NIP-98 check is the API's own (coax/web/api/nip98.coax), and
+// every decision about who may do what is the API's own policy
+// (coax/web/api/auth-policy.coax, agent-policy.coax) or the CLI's own rules
+// (apps/openagents-cli/account_rules.coax). What auth.c and agents.c keep in
+// Postgres (challenges, used event IDs, keys, sessions, device requests) is
+// written here in memory, with a fixed clock and fixed tokens.
 // book:begin client
-#load "../../coax/lib/nostr/weblogin.coax";
+#load "../../coax/lib/nostr/nip06.coax";
+#load "../../coax/lib/nostr/nip98_sign.coax";
 #load "../../coax/web/api/nip98.coax";
+#load "../../coax/web/api/auth-policy.coax";
+#load "../../coax/web/api/agent-policy.coax";
+#load "../../apps/openagents-cli/account_rules.coax";
 #import "Basic";
 
-// NIP-06's first published vector. A published test mnemonic: never sign
-// with words you use anywhere else.
-MNEMONIC :: "leader monkey parrot ring guide accident before fence cannon height naive bean";
 ORIGIN :: "https://openagents.com";
-LOGIN_URL :: "https://openagents.com/api/auth/key";
-LOGIN_BODY :: "{\"kind\":\"login\"}";
-CREATED :: 1790000000;
+// NIP-06's two published vectors (nostr/nips/official/06.md). Published test
+// words: never sign with them, or with words you use anywhere else, outside
+// an example.
+PERSON_WORDS :: "leader monkey parrot ring guide accident before fence cannon height naive bean";
+CLI_WORDS :: "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade";
+T0 :: 1790000000;   // the clock's start, in seconds
 
-// The page's steps: check the typed words and keep their entropy as hex,
-// then derive the words and npub. Each weblogin call derives the key it
-// needs and zeroes it before it returns.
-Client :: struct { hex: [32] u8; words: [160] u8; nwords: int; npub: [80] u8; nnpub: int; ok: bool; }
-client_words :: (typed: string) -> Client {
-  c: Client;
-  if !weblogin_check(typed, c.hex[..]) { return c; }
-  both := weblogin_derive(cast(string) c.hex[..], c.words[..], c.npub[..]);
-  if both <= 0 { return c; }
-  c.nwords = both / 256; c.nnpub = both % 256; c.ok = true;
-  return c;
+// Text as bytes, in buf.
+bytes :: (text: string, buf: [] u8) -> [] u8 {
+  for i: 0..<text.count { buf[i] = text[i]; }
+  return buf[0..<text.count];
 }
-// "Nostr <base64>" for POST url with body at created_at, signed with aux
-// all zero (the page passes 32 random bytes), into out; "" when refused.
-client_sign :: (c: Client, url: string, created_at: int, body: string, out: [] u8) -> string {
-  aux: [32] u8;
-  h := c.hex;
-  n := weblogin_sign(cast(string) h[..], url, created_at, body, aux[..], out);
-  if n <= 0 { return ""; }
+// The Authorization value for one request, made as the CLI's acct_call makes
+// it: n98s_header, with the body bound unless the request is a GET. The CLI
+// draws aux and the nonce at random; here aux is zero and the nonce is 16
+// copies of one byte, so every run signs the same bytes. "" when the signer
+// refuses.
+sign :: (key: [] u8, nonce: u8, now_s: int, url: string, method: string, body: string, bind: bool, out: [] u8) -> string {
+  aux: [32] u8; n16: [16] u8; bb: [256] u8;
+  for i: 0..<16 { n16[i] = nonce; }
+  n := n98s_header(key, aux[..], n16[..], now_s, url, method, bytes(body, bb[..]), bind, out);
+  if n < 0 { return ""; }
   return cast(string) out[0..<n];
 }
 // book:end client
 
-// book:begin route
-// The server's state: event IDs already used (the API's projects.seen) and
-// site sessions (signin.sessions: the token's SHA-256, the pubkey, the expiry).
-Session :: struct { token_sha: [32] u8; pubkey: [64] u8; expires: int; }
-Server :: struct { seen: [8] [64] u8; nseen: int; sessions: [4] Session; nsessions: int; }
-SESSION_SECONDS :: 30 * 86400;
-Answer :: struct { status: int; why: string; }
-
-// One POST /api/auth/key, in auth_route's order: the Origin and the
-// Authorization scheme, the body, NIP-98 with a payload tag, first use of
-// the event ID. On 200 it stores a session for token, the cookie's value.
-login :: (s: [] Server, origin: string, authorization: string, body: string, now: int,
-          token: [] u8) -> Answer {
-  a: Answer;
-  if origin != ORIGIN || authorization.count < 6 || authorization[0..<6] != "Nostr " {
-    a.status = 403; a.why = "{\"error\":\"cross-site\"}"; return a;
-  }
-  if body != LOGIN_BODY { a.status = 400; a.why = "{\"error\":\"not a login\"}"; return a; }
-  work: [N98_WORK] u8; out: [N98_OUT] u8; b: [64] u8;
-  for i: 0..<body.count { b[i] = body[i]; }
-  r := nip98_check_coax(authorization, "POST", LOGIN_URL, b[0..<body.count], now, work[..], out[..]);
-  if r.error != N98_OK { a.status = 401; a.why = nip98_error_text(r.error); return a; }
-  if r.payload == 0 { a.status = 401; a.why = "no payload tag"; return a; }
-  for k: 0..<s[0].nseen {
-    if cast(string) s[0].seen[k][..] == cast(string) out[0..<64] { a.status = 401; a.why = "event id already used"; return a; }
-  }
-  if s[0].nseen == 8 || s[0].nsessions == 4 { a.status = 503; a.why = "store full"; return a; }
-  for i: 0..<64 { s[0].seen[s[0].nseen][i] = out[i]; }
-  s[0].nseen += 1;
-  // signin.api('key'): a new session bound to the event's pubkey, 30 days
-  k := s[0].nsessions;
-  #assert sha256_hash_checked(token, s[0].sessions[k].token_sha[..], false) == SHA_OK;
-  for i: 0..<64 { s[0].sessions[k].pubkey[i] = out[64 + i]; }
-  s[0].sessions[k].expires = now + SESSION_SECONDS;
-  s[0].nsessions += 1;
-  a.status = 200; a.why = "signed-in";
-  return a;
+// book:begin server
+// The server's rows. A challenge and a session token are kept only as their
+// SHA-256 (auth.pending, auth.sessions); an event ID is kept until its window
+// has passed (auth.nip98_seen); a key belongs to one account (auth.nostr_keys).
+Challenge :: struct { sha: [32] u8; expires_ms: int; done: bool; }
+Key :: struct { pubkey: [64] u8; account: int; machine: [64] u8; nmachine: int; }   // nmachine > 0: labelled cli:MACHINE
+Session :: struct { token_sha: [32] u8; account: int; level: int; created_ms: int; seen_ms: int; rotated_ms: int; l2_ms: int; ended: bool; }
+Server :: struct {
+  challenges: [4] Challenge; nchallenges: int;
+  seen: [16] [64] u8; nseen: int;
+  keys: [4] Key; nkeys: int; accounts: int;
+  sessions: [4] Session; nsessions: int;
+  devices: [4] Device; ndevices: int;
 }
-// signin.session(token): the pubkey of an unexpired session, or "".
-session :: (s: [] Server, token: [] u8, now: int) -> string {
-  h: [32] u8;
-  #assert sha256_hash_checked(token, h[..], false) == SHA_OK;
-  for k: 0..<s[0].nsessions {
-    if cast(string) s[0].sessions[k].token_sha[..] == cast(string) h[..] && s[0].sessions[k].expires > now {
-      return cast(string) s[0].sessions[k].pubkey[..];
+CHALLENGE_MS :: 5 * AP_MINUTE_MS;
+// An answer: the status and the words the client gets. why stays on the server.
+Answer :: struct { status: int; words: string; why: string; account: int; made: bool; }
+no :: (status: int, words: string) -> Answer { a: Answer; a.status = status; a.words = words; return a; }
+
+sha :: (text: string, out: [] u8) {
+  b: [128] u8;
+  #assert sha256_hash_checked(bytes(text, b[..]), out, false) == SHA_OK;
+}
+key_of :: (s: [] Server, pubkey: string) -> int {
+  for k: 0..<s[0].nkeys { if cast(string) s[0].keys[k].pubkey[..] == pubkey { return k; } }
+  return -1;
+}
+// How many keys an account has: its strong ways in. The API also counts
+// passkeys, device keys and unspent recovery codes.
+strong :: (s: [] Server, account: int) -> int {
+  n := 0;
+  for k: 0..<s[0].nkeys { if s[0].keys[k].account == account { n += 1; } }
+  return n;
+}
+
+// Who is asking (auth.c's resolve): the request's one credential. A NIP-98
+// signature is its key at L2, proved now, and the key's account when it has
+// one. A session cookie is its session's account and level, unless
+// ap_session says the session has ended.
+Who :: struct { refused: int; why: string; kind: int; nostr: bool; payload: bool; id: [64] u8; pubkey: [64] u8;
+                account: int; level: int; l2_age_ms: int = -1; session: int = -1; }
+resolve :: (s: [] Server, method: string, target: string, authorization: string, cookie: [] u8, body: string, now_ms: int) -> Who {
+  w: Who;
+  nostr := authorization.count >= 6 && authorization[0..<6] == "Nostr ";
+  two := ap_credentials(nostr, false, cookie.count > 0);
+  if two != AP_OK { w.refused = ap_status(two); w.why = ap_words(two); return w; }
+  if nostr {
+    // the URL the event must name: this site's origin and the request's target
+    url: [300] u8; u := 0;
+    for c: ORIGIN { url[u] = c; u += 1; }
+    for c: target { url[u] = c; u += 1; }
+    work: [N98_WORK] u8; out: [N98_OUT] u8; bb: [256] u8;
+    r := nip98_check_coax(authorization, method, cast(string) url[0..<u], bytes(body, bb[..]), now_ms / 1000, work[..], out[..]);
+    if r.error != N98_OK { w.refused = 401; w.why = nip98_error_text(r.error); return w; }
+    for i: 0..<64 { w.id[i] = out[i]; w.pubkey[i] = out[64 + i]; }
+    w.nostr = true; w.payload = r.payload > 0; w.kind = AP_PERSON; w.level = 2; w.l2_age_ms = 0;
+    k := key_of(s, cast(string) w.pubkey[..]);
+    if k >= 0 { w.account = s[0].keys[k].account; }
+    return w;
+  }
+  if cookie.count > 0 {
+    h: [32] u8;
+    #assert sha256_hash_checked(cookie, h[..], false) == SHA_OK;
+    for k: 0..<s[0].nsessions {
+      x := s[0].sessions[k];
+      if x.ended || cast(string) x.token_sha[..] != cast(string) h[..] { continue; }
+      if ap_session(false, now_ms, x.created_ms, x.seen_ms, x.rotated_ms) == AP_SESSION_ENDED { s[0].sessions[k].ended = true; continue; }
+      w.kind = AP_PERSON; w.account = x.account; w.level = x.level; w.session = k;
+      w.l2_age_ms = ifx x.l2_ms > 0 then now_ms - x.l2_ms else -1;
+      s[0].sessions[k].seen_ms = now_ms;
     }
   }
-  return "";
+  return w;
 }
-// signin.api('logout'): the cookie's session ends.
-logout :: (s: [] Server, token: [] u8) {
-  h: [32] u8;
-  #assert sha256_hash_checked(token, h[..], false) == SHA_OK;
-  for k: 0..<s[0].nsessions {
-    if cast(string) s[0].sessions[k].token_sha[..] == cast(string) h[..] { s[0].sessions[k].expires = 0; }
+// The gate (auth.c's auth_gate) for a route's rule: ap_admit on who is
+// asking, then ap_limited_admit for an email session on an account that has
+// a key.
+gate :: (s: [] Server, rule: int, write: bool, w: Who) -> Answer {
+  v := AP_LOG_IN;
+  if w.refused == 400 { v = AP_TWO_CREDENTIALS; }
+  if w.refused == 0 {
+    v = ap_admit(rule, w.kind, w.level, w.l2_age_ms, false, false);
+    if v == AP_OK { v = ap_limited_admit(rule, write, ap_limited(w.level, strong(s, w.account))); }
   }
+  if v == AP_OK { return no(200, "admitted"); }
+  return no(ap_status(v), ap_words(v));
 }
-// book:end route
 
-// Print one request's answer.
-show :: (label: string, s: [] Server, origin: string, authorization: string, body: string, now: int, token: [] u8) {
-  a := login(s, origin, authorization, body, now, token);
-  // a refused login answers {"error":"not signed"}; the reason stays on the server
-  if a.status == 401 { print("%: 401, {\"error\":\"not signed\"} (%)\n", label, a.why); return; }
-  print("%: %, %\n", label, a.status, a.why);
+// POST /api/auth/nostr/challenge: 64 hex digits to sign over, good for five
+// minutes and for one login. The server draws them at random.
+challenge :: (s: [] Server, ch: string, now_ms: int) {
+  k := s[0].nchallenges;
+  sha(ch, s[0].challenges[k].sha[..]);
+  s[0].challenges[k].expires_ms = now_ms + CHALLENGE_MS;
+  s[0].nchallenges += 1;
 }
-// A signed kind-27235 event from this client with other tags, as a header,
-// for a refusal that weblogin_sign never produces.
-sign_tags :: (c: Client, tags: string, created_at: int, ev: [] u8, out: [] u8) -> string {
-  words: [160] u8; key: [32] u8; aux: [32] u8;
-  h := c.hex;
-  #assert wl_key(cast(string) h[..], words[..], key[..]) > 0;
-  work: [1] NostrSignWork; scratch: [1024] u8; r := EVENT_MORE;
-  while r == EVENT_MORE {
-    r = nostr_event_sign_step(key[..], aux[..], created_at, WL_LOGIN_KIND, tags, "", work[..], scratch[..], ev, false);
+// The challenge in the body {"challenge":"<64 hex>"}, or "".
+challenge_of :: (body: string) -> string {
+  pre := "{\"challenge\":\"";
+  if body.count != pre.count + 66 || body[0..<pre.count] != pre || body[body.count - 2..<body.count] != "\"}" { return ""; }
+  return body[pre.count..<pre.count + 64];
+}
+// A new session for an account (auth.session_new). token is the cookie's
+// value; only its SHA-256 is kept.
+session_new :: (s: [] Server, account: int, level: int, now_ms: int, token: [] u8) {
+  k := s[0].nsessions;
+  #assert sha256_hash_checked(token, s[0].sessions[k].token_sha[..], false) == SHA_OK;
+  s[0].sessions[k].account = account; s[0].sessions[k].level = level;
+  s[0].sessions[k].created_ms = now_ms; s[0].sessions[k].seen_ms = now_ms; s[0].sessions[k].rotated_ms = now_ms;
+  s[0].sessions[k].l2_ms = ifx level == 2 then now_ms else 0;
+  s[0].nsessions += 1;
+}
+// POST /api/auth/nostr, in auth.c's order (auth_api_route, then nostr_login).
+// The first failure answers. On 200 the answer sets the session cookie to
+// token. The rate limits are not modelled.
+login :: (s: [] Server, origin: string, authorization: string, cookie: [] u8, body: string, now_ms: int, token: [] u8) -> Answer {
+  // a page's request names its Origin; apps and tools send none
+  if origin != "" && origin != ORIGIN { return no(403, "Not from this site."); }
+  w := resolve(s, "POST", "/api/auth/nostr", authorization, cookie, body, now_ms);
+  if w.refused == 400 { return no(400, "Log out first, or send only the signature."); }
+  if w.refused != 0 { a := no(401, "That signature isn't good for this request."); a.why = w.why; return a; }
+  if !w.nostr { return no(401, "Sign the challenge with your key (NIP-98)."); }
+  if !w.payload { return no(401, "Sign the body too (a payload tag)."); }
+  ch := challenge_of(body);
+  if ch == "" { return no(400, "Ask for a challenge first."); }
+  // auth.nostr_spend: the event ID once, then the challenge once
+  for k: 0..<s[0].nseen {
+    if cast(string) s[0].seen[k][..] == cast(string) w.id[..] { return no(401, "That signature was used already."); }
   }
-  for i: 0..<32 { key[i] = 0; }
-  #assert r > 0;
-  n := wl_put(out, 0, "Nostr ");
-  e := base64_encode_checked(cast(string) ev[0..<r], out[n..<out.count], false);
-  return cast(string) out[0..<n + e.written];
+  for i: 0..<64 { s[0].seen[s[0].nseen][i] = w.id[i]; }
+  s[0].nseen += 1;
+  h: [32] u8; open := -1;
+  sha(ch, h[..]);
+  for k: 0..<s[0].nchallenges {
+    c := s[0].challenges[k];
+    if cast(string) c.sha[..] == cast(string) h[..] && !c.done && c.expires_ms > now_ms { open = k; }
+  }
+  if open < 0 { return no(401, "That challenge has ended. Ask for a new one."); }
+  s[0].challenges[open].done = true;
+  // auth.account_for_key: the key's account, made on its first login
+  a := no(200, "logged-in");
+  if w.account == 0 {
+    s[0].accounts += 1; w.account = s[0].accounts; a.made = true;
+    for i: 0..<64 { s[0].keys[s[0].nkeys].pubkey[i] = w.pubkey[i]; }
+    s[0].keys[s[0].nkeys].account = w.account;
+    s[0].nkeys += 1;
+  }
+  session_new(s, w.account, 2, now_ms, token);
+  a.account = w.account;
+  return a;
 }
+// POST /api/auth/logout: this session ends.
+logout :: (s: [] Server, cookie: [] u8, now_ms: int) {
+  w := resolve(s, "POST", "/api/auth/logout", "", cookie, "", now_ms);
+  if w.session >= 0 { s[0].sessions[w.session].ended = true; }
+}
+// book:end server
+
+// book:begin device
+// `openagents login` on the server (agents.c's device, and the SQL of
+// migrations 0098 and 0147): a request the CLI's new key starts and polls,
+// and a logged-in person approves by its code. The code is kept only as its
+// SHA-256.
+Device :: struct { id: [16] u8; code_sha: [32] u8; pubkey: [64] u8; machine: [64] u8; nmachine: int; expires_ms: int; account: int; }
+DEVICE_MS :: 10 * AP_MINUTE_MS;
+
+// The name in the body {"machine":"NAME"}, or "".
+machine_of :: (body: string) -> string {
+  pre := "{\"machine\":\"";
+  if body.count < pre.count + 2 || body[0..<pre.count] != pre || body[body.count - 2..<body.count] != "\"}" { return ""; }
+  return body[pre.count..<body.count - 2];
+}
+// POST /api/auth/device/start, signed by the CLI's key. The server draws id
+// (16 hex) and code (32 hex) at random; the code is in this answer only.
+device_start :: (s: [] Server, authorization: string, body: string, now_ms: int, id: string, code: string) -> Answer {
+  w := resolve(s, "POST", "/api/auth/device/start?as=lines", authorization, bytes("", s[0].seen[0][0..<0]), body, now_ms);
+  if w.refused != 0 || !w.nostr { return no(401, "Sign it with the new key (NIP-98)."); }
+  m := machine_of(body);
+  if m.count == 0 || m.count > 64 { return no(400, "name the machine"); }
+  d := s[0].ndevices;
+  for i: 0..<16 { s[0].devices[d].id[i] = id[i]; }
+  sha(code, s[0].devices[d].code_sha[..]);
+  for i: 0..<64 { s[0].devices[d].pubkey[i] = w.pubkey[i]; }
+  for i: 0..<m.count { s[0].devices[d].machine[i] = m[i]; }
+  s[0].devices[d].nmachine = m.count;
+  s[0].devices[d].expires_ms = now_ms + DEVICE_MS;
+  s[0].ndevices += 1;
+  return no(200, "started");
+}
+// GET /api/auth/device/ID, signed by the key that started it: waiting,
+// approved or expired. Another key's signature is answered as if there were
+// no such request.
+device_poll :: (s: [] Server, authorization: string, target: string, id: string, now_ms: int) -> Answer {
+  w := resolve(s, "GET", target, authorization, bytes("", s[0].seen[0][0..<0]), "", now_ms);
+  if w.refused != 0 || !w.nostr { return no(401, "Sign it with the new key (NIP-98)."); }
+  for d: 0..<s[0].ndevices {
+    x := s[0].devices[d];
+    if cast(string) x.id[..] != id || cast(string) x.pubkey[..] != cast(string) w.pubkey[..] { continue; }
+    if x.account != 0 { a := no(200, "approved"); a.account = x.account; return a; }
+    if x.expires_ms <= now_ms { return no(200, "expired"); }
+    return no(200, "waiting");
+  }
+  return no(404, "no such request");
+}
+// POST /api/auth/device/approve {code}, from a logged-in person's page: the
+// gate's human rule, this site's Origin, ag_link, then auth.device_link. On
+// 200 the CLI's key is the session's account's, labelled cli:MACHINE.
+device_approve :: (s: [] Server, origin: string, cookie: [] u8, code: string, now_ms: int) -> Answer {
+  w := resolve(s, "POST", "/api/auth/device/approve", "", cookie, "", now_ms);
+  g := gate(s, AP_HUMAN, true, w);
+  if g.status != 200 { return g; }
+  if origin != "" && origin != ORIGIN { return no(403, "Not from this site."); }
+  v := ag_link(w.level, strong(s, w.account) > 0);
+  if v != AG_OK { return no(ag_status(v), ag_words(v)); }
+  h: [32] u8; d := -1;
+  sha(code, h[..]);
+  for k: 0..<s[0].ndevices { if cast(string) s[0].devices[k].code_sha[..] == cast(string) h[..] { d = k; } }
+  if d < 0 { return no(404, "That code isn't good."); }
+  x := s[0].devices[d];
+  held := key_of(s, cast(string) x.pubkey[..]);
+  taken := "That computer was approved already, or its key is another account's.";
+  if x.account != 0 { return no(409, taken); }
+  if x.expires_ms <= now_ms { return no(410, "That code expired: run openagents login again."); }
+  if held >= 0 && s[0].keys[held].account != w.account { return no(409, taken); }
+  s[0].devices[d].account = w.account;
+  if held < 0 {
+    k := s[0].nkeys;
+    s[0].keys[k].pubkey = x.pubkey; s[0].keys[k].account = w.account;
+    s[0].keys[k].machine = x.machine; s[0].keys[k].nmachine = x.nmachine;
+    s[0].nkeys += 1;
+  }
+  a := no(200, "approved"); a.account = w.account;
+  return a;
+}
+// book:end device
+
+// Print one answer; a reason the server keeps to itself goes in brackets.
+show :: (label: string, a: Answer) {
+  print("%: %, %", label, a.status, a.words);
+  if a.status == 200 && a.account != 0 { print(", account %", a.account); }
+  if a.made { print(", new"); }
+  if a.why != "" { print(" [%]", a.why); }
+  print("\n");
+}
+// The session cookie's state now, by ap_session, without using the session.
+session_state :: (s: [] Server, cookie: [] u8, now_ms: int) -> string {
+  h: [32] u8;
+  #assert sha256_hash_checked(cookie, h[..], false) == SHA_OK;
+  for k: 0..<s[0].nsessions {
+    x := s[0].sessions[k];
+    if cast(string) x.token_sha[..] != cast(string) h[..] { continue; }
+    if x.ended { return "ended"; }
+    state := ap_session(false, now_ms, x.created_ms, x.seen_ms, x.rotated_ms);
+    if state == AP_SESSION_ENDED { return "ended"; }
+    return ifx state == AP_SESSION_ROTATE then "good, and due a new token" else "good";
+  }
+  return "no such session";
+}
+// The body {"challenge":"CH"} in out.
+login_body :: (ch: string, out: [] u8) -> string {
+  n := 0;
+  for c: "{\"challenge\":\"" { out[n] = c; n += 1; }
+  for c: ch { out[n] = c; n += 1; }
+  for c: "\"}" { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+poll_word :: (state: int) -> string {
+  words := [5] string.["keep waiting", "approved: stop", "expired: stop", "out of time: stop", "refused: stop"];
+  return words[state];
+}
+
+LOGIN_URL :: "https://openagents.com/api/auth/nostr";
+CH1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+CH2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+CH3 :: "3333333333333333333333333333333333333333333333333333333333333333";
+CH4 :: "4444444444444444444444444444444444444444444444444444444444444444";
+DEV_ID :: "00a1b2c3d4e5f607";
+DEV_CODE :: "00112233445566778899aabbccddeeff";
+DEV_ID2 :: "10a1b2c3d4e5f607";
+DEV_CODE2 :: "ffeeddccbbaa99887766554433221100";
 
 // book:begin main
 main :: () {
-  print("the words\n");
-  c := client_words(MNEMONIC);
-  print("checksum: %, entropy: %\n", c.ok, cast(string) c.hex[..]);
-  print("npub: %\n", cast(string) c.npub[0..<c.nnpub]);
-  bad := client_words("leader monkey parrot ring guide accident before fence cannon height naive naive");
-  print("last word naive: checksum %\n", bad.ok);
+  ms := T0 * 1000;
+  s: [1] Server; none: [1] u8; nobody := none[0..<0];
+  t1: [32] u8; t2: [32] u8; t3: [32] u8; t4: [32] u8;   // the server's session tokens, fixed here
+  for i: 0..<32 { t1[i] = cast(u8) (i + 1); t2[i] = cast(u8) (i + 51); t3[i] = cast(u8) (i + 101); t4[i] = cast(u8) (i + 151); }
 
-  print("the login\n");
-  hb: [1024] u8;
-  header := client_sign(c, LOGIN_URL, CREATED, LOGIN_BODY, hb[..]);
-  ev: [1024] u8;
+  print("the key\n");
+  key: [32] u8; np: [80] u8;
+  #assert nip06_key(PERSON_WORDS, key[..]);
+  print("npub: %\n", cast(string) np[0..<nip06_npub(key[..], np[..])]);
+
+  print("a login: POST /api/auth/nostr\n");
+  challenge(s[..], CH1, ms);
+  b1: [100] u8; body1 := login_body(CH1, b1[..]);
+  print("body: %\n", body1);
+  hb: [N98S_HEADER] u8; ev: [N98S_EVENT] u8;
+  header := sign(key[..], 1, T0 + 30, LOGIN_URL, "POST", body1, true, hb[..]);
   d := base64_decode_checked(header[6..<header.count], ev[..], false);
   print("event (% bytes): %\n", d.written, cast(string) ev[0..<d.written]);
   print("header value: % bytes\n", header.count);
+  show("first use", login(s[..], ORIGIN, header, nobody, body1, ms + 30000, t1[..]));
+  show("same header again", login(s[..], ORIGIN, header, nobody, body1, ms + 31000, t2[..]));
+  h2: [N98S_HEADER] u8;
+  show("a new signature over the spent challenge", login(s[..], ORIGIN, sign(key[..], 2, T0 + 32, LOGIN_URL, "POST", body1, true, h2[..]), nobody, body1, ms + 32000, t2[..]));
 
-  print("the server, now = created_at + 30\n");
-  s: [1] Server; now := CREATED + 30;
-  t1: [32] u8; for i: 0..<32 { t1[i] = cast(u8) (i + 1); }   // the server's projects.token(), fixed here
-  show("first use", s[..], ORIGIN, header, LOGIN_BODY, now, t1[..]);
-  print("session: %...\n", session(s[..], t1[..], now)[0..<16]);
-  show("same header again", s[..], ORIGIN, header, LOGIN_BODY, now, t1[..]);
-  show("same header at created_at + 61", s[..], ORIGIN, header, LOGIN_BODY, CREATED + 61, t1[..]);
+  print("refusals, with a second challenge open\n");
+  challenge(s[..], CH2, ms + 40000);
+  b2: [100] u8; body2 := login_body(CH2, b2[..]); now := ms + 41000;
+  h3: [N98S_HEADER] u8; h4: [N98S_HEADER] u8; h5: [N98S_HEADER] u8; h6: [N98S_HEADER] u8; h7: [N98S_HEADER] u8;
+  good := sign(key[..], 3, T0 + 41, LOGIN_URL, "POST", body2, true, h3[..]);
+  show("Origin https://evil.example", login(s[..], "https://evil.example", good, nobody, body2, now, t2[..]));
+  show("no Authorization", login(s[..], ORIGIN, "", nobody, body2, now, t2[..]));
+  show("a session cookie and a signature", login(s[..], ORIGIN, good, t1[..], body2, now, t2[..]));
+  show("signed 61 s ago", login(s[..], ORIGIN, sign(key[..], 4, T0 - 20, LOGIN_URL, "POST", body2, true, h4[..]), nobody, body2, now, t2[..]));
+  show("signed for staging", login(s[..], ORIGIN, sign(key[..], 5, T0 + 41, "https://staging.openagents.com/api/auth/nostr", "POST", body2, true, h5[..]), nobody, body2, now, t2[..]));
+  show("signed for another body", login(s[..], ORIGIN, sign(key[..], 6, T0 + 41, LOGIN_URL, "POST", body1, true, h6[..]), nobody, body2, now, t2[..]));
+  show("body not signed", login(s[..], ORIGIN, sign(key[..], 7, T0 + 41, LOGIN_URL, "POST", body2, false, h7[..]), nobody, body2, now, t2[..]));
+  show("no challenge in the body", login(s[..], ORIGIN, sign(key[..], 8, T0 + 41, LOGIN_URL, "POST", "{}", true, h4[..]), nobody, "{}", now, t2[..]));
+  show("the first of these, from this site", login(s[..], ORIGIN, good, nobody, body2, now, t2[..]));
+  challenge(s[..], CH3, ms + 50000);
+  b3: [100] u8; body3 := login_body(CH3, b3[..]);
+  show("a challenge 5 minutes old", login(s[..], ORIGIN, sign(key[..], 9, T0 + 350, LOGIN_URL, "POST", body3, true, h5[..]), nobody, body3, ms + 350000, t3[..]));
+  print("signer refusals\n");
+  zero: [32] u8;
+  print("a URL with a quote: \"%\"\n", sign(key[..], 1, T0, "https://x\"y/api/auth/nostr", "POST", body1, true, h6[..]));
+  print("a key of 32 zero bytes: \"%\"\n", sign(zero[..], 1, T0, LOGIN_URL, "POST", body1, true, h6[..]));
 
-  print("refusals, on a fresh server\n");
-  f: [1] Server;
-  show("Origin https://evil.example", f[..], "https://evil.example", header, LOGIN_BODY, now, t1[..]);
-  show("no Authorization", f[..], ORIGIN, "", LOGIN_BODY, now, t1[..]);
-  show("body {\"kind\":\"logout\"}", f[..], ORIGIN, header, "{\"kind\":\"logout\"}", now, t1[..]);
-  sb: [1024] u8;
-  staging := client_sign(c, "https://staging.openagents.com/api/auth/key", CREATED, LOGIN_BODY, sb[..]);
-  show("signed for staging", f[..], ORIGIN, staging, LOGIN_BODY, now, t1[..]);
-  e2: [1024] u8; nb: [2048] u8;
-  nopay := sign_tags(c, "[[\"u\",\"https://openagents.com/api/auth/key\"],[\"method\",\"POST\"]]", CREATED, e2[..], nb[..]);
-  show("no payload tag", f[..], ORIGIN, nopay, LOGIN_BODY, now, t1[..]);
-  print("the original, after those refusals: %\n", login(f[..], ORIGIN, header, LOGIN_BODY, now, t1[..]).status);
-  print("client refusals\n");
-  qb: [1024] u8;
-  print("url with a quote: \"%\"\n", client_sign(c, "https://x\"y/api/auth/key", CREATED, LOGIN_BODY, qb[..]));
-  print("entropy 7f7f: derive %\n", weblogin_derive("7f7f", c.words[..], c.npub[..]));
+  print("the sessions\n");
+  login_ms := ms + 30000; hour := 60 * AP_MINUTE_MS;
+  print("first cookie, 1 hour after login: %\n", session_state(s[..], t1[..], login_ms + hour));
+  print("24 hours after: %\n", session_state(s[..], t1[..], login_ms + AP_ROTATE_MS));
+  print("30 days after, unused: %\n", session_state(s[..], t1[..], login_ms + AP_WEB_IDLE_MS));
+  logout(s[..], t1[..], login_ms + hour);
+  print("after logout: %\n", session_state(s[..], t1[..], login_ms + hour));
+  print("a cookie the server never issued: %\n", session_state(s[..], t4[..], login_ms + hour));
+  // the second login's session: L2 since ms + 41000
+  unlink := gate(s[..], AP_L2_FRESH, true, resolve(s[..], "POST", "/api/auth/unlink", "", t2[..], "", now + AP_FRESH_MS));
+  show("second cookie, POST /api/auth/unlink 5 minutes after login", unlink);
+  unlink = gate(s[..], AP_L2_FRESH, true, resolve(s[..], "POST", "/api/auth/unlink", "", t2[..], "", now + AP_FRESH_MS + 1));
+  show("1 ms later", unlink);
 
-  print("the session\n");
-  t2: [32] u8; for i: 0..<32 { t2[i] = cast(u8) (100 + i); }
-  print("a cookie the server never issued: \"%\"\n", session(s[..], t2[..], now));
-  print("29 days later: %...\n", session(s[..], t1[..], now + 29 * 86400)[0..<16]);
-  print("30 days later: \"%\"\n", session(s[..], t1[..], now + SESSION_SECONDS));
-  logout(s[..], t1[..]);
-  print("after logout: \"%\"\n", session(s[..], t1[..], now + 60));
+  print("openagents login\n");
+  cli: [32] u8;
+  #assert nip06_key(CLI_WORDS, cli[..]);
+  mb: [AR_MACHINE_MAX] u8; sb: [100] u8;
+  machine := ar_machine("  dev box\t1 ", mb[..]);
+  n := 0;
+  for c: "{\"machine\":" { sb[n] = c; n += 1; }
+  n += ar_json_str(machine, sb[n..<sb.count]);
+  sb[n] = '}'; n += 1;
+  start := cast(string) sb[0..<n];
+  print("body: %\n", start);
+  at := ms + 1000000; at_s := T0 + 1000;
+  show("start, not signed", device_start(s[..], "", start, at, DEV_ID, DEV_CODE));
+  show("start", device_start(s[..], sign(cli[..], 10, at_s, "https://openagents.com/api/auth/device/start?as=lines", "POST", start, true, h3[..]), start, at, DEV_ID, DEV_CODE));
+  lb: [300] u8;
+  print("link: %\n", ar_link(ORIGIN, DEV_CODE, lb[..]));
+  target := "/api/auth/device/00a1b2c3d4e5f607?as=lines";
+  poll_url := "https://openagents.com/api/auth/device/00a1b2c3d4e5f607?as=lines";
+  deadline := at + DEVICE_MS;
+  p := device_poll(s[..], sign(cli[..], 11, at_s + 2, poll_url, "GET", "", false, h3[..]), target, DEV_ID, at + 2000);
+  print("poll: %, %; the CLI: %\n", p.status, p.words, poll_word(ar_poll(p.status, p.words, at + 2000, deadline)));
+  p = device_poll(s[..], sign(key[..], 12, at_s + 2, poll_url, "GET", "", false, h3[..]), target, DEV_ID, at + 2000);
+  print("poll signed by another key: %, %; the CLI: %\n", p.status, p.words, poll_word(ar_poll(p.status, p.words, at + 2000, deadline)));
+  session_new(s[..], 1, 1, at, t3[..]);   // an email login to account 1: a session at L1
+  show("approve, not logged in", device_approve(s[..], ORIGIN, nobody, DEV_CODE, at + 3000));
+  show("approve, logged in by email", device_approve(s[..], ORIGIN, t3[..], DEV_CODE, at + 3000));
+  show("approve from https://evil.example", device_approve(s[..], "https://evil.example", t2[..], DEV_CODE, at + 3000));
+  show("approve another code", device_approve(s[..], ORIGIN, t2[..], DEV_CODE2, at + 3000));
+  show("approve", device_approve(s[..], ORIGIN, t2[..], DEV_CODE, at + 3000));
+  show("approve again", device_approve(s[..], ORIGIN, t2[..], DEV_CODE, at + 4000));
+  p = device_poll(s[..], sign(cli[..], 13, at_s + 4, poll_url, "GET", "", false, h3[..]), target, DEV_ID, at + 4000);
+  print("poll: %, %, account %; the CLI: %\n", p.status, p.words, p.account, poll_word(ar_poll(p.status, p.words, at + 4000, deadline)));
+  k := s[0].keys[1];
+  print("account 1 has % keys; the new one is cli:%\n", strong(s[..], 1), cast(string) k.machine[0..<k.nmachine]);
+  // a second request that nobody approves
+  show("a second start", device_start(s[..], sign(cli[..], 14, at_s + 10, "https://openagents.com/api/auth/device/start?as=lines", "POST", start, true, h3[..]), start, at + 10000, DEV_ID2, DEV_CODE2));
+  late := at + 10000 + DEVICE_MS;
+  show("approve 10 minutes later", device_approve(s[..], ORIGIN, t2[..], DEV_CODE2, late));
+  p = device_poll(s[..], sign(cli[..], 15, at_s + 610, "https://openagents.com/api/auth/device/10a1b2c3d4e5f607?as=lines", "GET", "", false, h3[..]), "/api/auth/device/10a1b2c3d4e5f607?as=lines", DEV_ID2, late);
+  print("poll: %, %; the CLI: %\n", p.status, p.words, poll_word(ar_poll(p.status, p.words, late, late)));
+
+  print("the CLI's requests after login\n");
+  w := resolve(s[..], "GET", "/api/auth/ways?as=lines", sign(cli[..], 16, at_s + 700, "https://openagents.com/api/auth/ways?as=lines", "GET", "", false, h3[..]), nobody, "", at + 700000);
+  print("GET /api/auth/ways: account %, L%, proved % ms ago\n", w.account, w.level, w.l2_age_ms);
+  show("the account rule", gate(s[..], AP_ACCOUNT, false, w));
+  out := "{\"kind\":\"nostr\",\"id\":2}";
+  w = resolve(s[..], "POST", "/api/auth/unlink", sign(cli[..], 17, at_s + 700, "https://openagents.com/api/auth/unlink", "POST", out, true, h3[..]), nobody, out, at + 700000);
+  show("POST /api/auth/unlink, the L2-fresh rule", gate(s[..], AP_L2_FRESH, true, w));
 }
 // book:end main
