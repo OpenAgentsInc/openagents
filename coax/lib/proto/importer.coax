@@ -22,7 +22,7 @@ D_State :: struct {
 }
 #test "all admission policy endpoints" {
   c:=D_capacities();
-  #assert c.types==256 && c.fields==2048 && c.values==8192 && c.groups==65536 && c.files==256 && c.deps==8192 && c.symbols==65536 && c.arena==134217728 && c.output==8388608;
+  #assert c.types==512 && c.fields==2048 && c.values==8192 && c.groups==65536 && c.files==256 && c.deps==8192 && c.symbols==65536 && c.arena==134217728 && c.output==8388608;
   #assert D_input(8388608,"P") && !D_input(8388609,"P") && !D_input(0,"bad-");
   #assert D_type_count(0) && D_type_count(255) && !D_type_count(256) && !D_type_count(-1);
   #assert D_depth(0) && D_depth(31) && !D_depth(32) && !D_depth(-1);
@@ -166,7 +166,7 @@ D_Capacities :: struct {types:int;fields:int;values:int;groups:int;files:int;dep
 // symbols is the generated-name table: twice as many slots as the 32768-name
 // budget (D_symbol). arena is the scratch ceiling; the host starts smaller.
 D_capacities :: ()->D_Capacities #export_c #effects(all) {
-  return D_Capacities.{types=256,fields=2048,values=8192,groups=65536,files=256,deps=8192,symbols=65536,arena=D_ARENA_MAX,output=D_MAX_BYTES};
+  return D_Capacities.{types=512,fields=2048,values=8192,groups=65536,files=256,deps=8192,symbols=65536,arena=D_ARENA_MAX,output=D_MAX_BYTES};
 }
 D_ARENA_MAX :: 134217728;
 D_SCRATCH_EXHAUSTED :: "importer scratch budget";

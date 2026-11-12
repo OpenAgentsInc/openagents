@@ -372,6 +372,9 @@ main :: () {a:[4] u8;b:[4] u8;
         source=checked([COAX,'proto',ROOT/'proto/descriptors/owned.pb','--prefix','Live'])
         self.assertTrue(b'Live_FrameFeatures' in source, 'current owned profile lost FrameFeatures')
         self.assertTrue(b'Live_FrameDecision' in source, 'current owned profile lost FrameDecision')
+        # JSON-mapped messages (the json option) call the mapper's runtime, which
+        # a consumer loads beside the import (coax/proto.md); so does this check.
+        if b'_from_json ::' in source:source=b'#load "'+str(ROOT/'coax/lib/proto/json.coax').encode()+b'";\n'+source
         generated=self.d/'live-owned.coax';generated.write_bytes(source)
         checked([COAX,'check',generated,'--library'])
 

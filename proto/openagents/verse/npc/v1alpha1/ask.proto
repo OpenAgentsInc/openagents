@@ -32,18 +32,17 @@ message NpcAsk {
   option (openagents.options.v1alpha1.max_message_bytes) = 24576;
   // The character's id: its name, lower case, a dash for a space
   // (verse/talk-id.coax). Another id, or a persona object, is a 400.
+  // npc, world and realm are [a-z0-9-]+; aethyr/talk/wire.coax's npc_id_ok
+  // checks it (the importer's grammar option has only "nonempty-no-nul").
   optional string npc = 1 [json_name = "npc", (openagents.options.v1alpha1.required_value) = true,
-                           (openagents.options.v1alpha1.max_bytes) = 64,
-                           (openagents.options.v1alpha1.grammar) = "[a-z0-9-]+"];
+                           (openagents.options.v1alpha1.max_bytes) = 64];
   // Where the character lives. Neither, or an unknown one, is a 404.
   oneof place {
     // A built-in world: everglade, fairy-forest or haunted-house; its
     // people are compiled into the API (coax/web/api/npc-personas.coax).
-    string world = 2 [json_name = "world", (openagents.options.v1alpha1.max_bytes) = 64,
-                      (openagents.options.v1alpha1.grammar) = "[a-z0-9-]+"];
+    string world = 2 [json_name = "world", (openagents.options.v1alpha1.max_bytes) = 64];
     // A made realm's slug; its characters come from the realm's document.
-    string realm = 3 [json_name = "realm", (openagents.options.v1alpha1.max_bytes) = 48,
-                      (openagents.options.v1alpha1.grammar) = "[a-z0-9-]+"];
+    string realm = 3 [json_name = "realm", (openagents.options.v1alpha1.max_bytes) = 48];
   }
   // This visit's stamp. The character remembers the player's words from
   // other visits. The server keeps the first 64 characters.

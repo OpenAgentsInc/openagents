@@ -119,7 +119,7 @@ message types. Standalone `.options` files are not read by this importer.
 Default runtime limits are 1 MiB per message, 64 nested edges and 524,288 total
 field/packed-element visits across a validation. Descriptor limits are 8 MiB,
 400,000 visited wire metadata items (40,000 per descriptor object),
-256 files, 256 messages, 256 enums with 8,192 values total, 256 fields
+256 files, 512 messages, 512 enums with 8,192 values total, 256 fields
 per message, 2,048 fields total, 32 nested declaration
 levels, 256 bytes per identifier/prefix, 4 KiB package/file names,
 32 package components, 16 KiB metadata text values, 256 oneofs per message,
