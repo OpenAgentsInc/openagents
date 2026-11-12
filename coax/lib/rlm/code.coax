@@ -6,7 +6,7 @@
 //   coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F)
 //     [--root-model gemini-4-argon] [--sub-model gemini-3.8-flash] [--root-effort low]
 //     [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write]
-//     [--trace F] [--log F]
+//     [--manager] [--max-depth 2] [--trace F] [--log F]   (--manager: the root delegates to workers, README.md)
 //   coax/web/tool.sh coax/lib/rlm/code.coax selftest    the checks on a scratch git repo, scripted model
 //
 // Effects ride the RLM's suspend, memo and rerun (run.coax): a call of an environment function
@@ -30,7 +30,20 @@
 #load "../json/json.coax";
 
 RC_JSON_NOTE :: "How to reply: one JSON object with two string fields. \"code\" is the Python to run this turn, as plain code with no ``` fence (it is run as one repl block). \"final\" stays \"\" while you work. When the task is done and its checks pass, reply with \"code\": \"\" and your summary in \"final\". You can also finish inside code, in the same turn as the last check, by calling FINAL(summary) under an if that tests the check passed (r = sh(...), then if r[\"exit\"] == 0: FINAL(...) on the next lines); that saves a turn.\n\n";
-RC_SYSTEM :: "You are a coding agent. The repository you work on is in your environment, not in this conversation. You work in it by writing Python in ```repl blocks; each turn every block runs in order and you see only what it printed (at most {SHOWN} characters a block). Variables persist across turns. What you print fills your window, which is small; files and variables cost nothing. Print only the lines you need, and keep what you find in variables.\n\nThe REPL runs a subset of Python: None, bool, int (no floats), str, list, dict; f-strings; list comprehensions; a if c else b; assignment (also a, b = ... and x[i] = ...), += -=, if/elif/else, for, while, break, continue; print len str repr int bool abs list dict range enumerate zip sum min max sorted; the common str, list and dict methods. Not supported: def, lambda, class, try, with, return, import of anything, set, slices with a step. Write the steps inline.\n\nThe repository (paths are relative to its root):\n- files(prefix=\"\"): the tracked paths, as a list\n- read(path): a file's text; lines(path, a, b): lines a to b numbered; count_lines(path)\n- search(pattern, prefix=\"\", limit=200, regex=False): matching lines as \"path:line:text\" strings (git grep; a fixed string unless regex=True, then an extended regex)\n- edit(path, old, new): replaces old, which must be in the file exactly once; returns the changed lines numbered, or text starting \"edit failed:\" with the nearest lines numbered\n- replace_lines(path, a, b, text): replaces lines a to b with text (a = b + 1 inserts before line a); returns the new lines numbered\n- write(path, text): creates or replaces a whole file\n- sh(cmd, seconds=120): runs a shell command at the root; returns {\"exit\": int, \"out\": str, \"timed_out\": bool} with the whole output\n- grep(pattern, text): the lines of text that match; chunk(text, size)\n- llm_query(prompt), llm_query_batched(prompts): a sub-model that sees only the prompt (about {SUBCHARS} characters at most) and answers with a str\n- FINAL(summary) ends the task; SHOW_VARS() names your variables\n\nWork this way: find the code with search, then look at the lines you need with lines. When several files need the same kind of look, have sub-models read whole files with llm_query_batched and answer focused questions or draft edits. Make changes with edit or replace_lines, in a loop when the same change applies to several places, and print their results. Run the checks the task names with sh and print only the failing lines (r['out'][-2000:] or grep). Call FINAL(summary) only after those checks pass.";
+RC_SYSTEM :: "You are a coding agent. The repository you work on is in your environment, not in this conversation. You work in it by writing Python in ```repl blocks; each turn every block runs in order and you see only what it printed (at most {SHOWN} characters a block). Variables persist across turns. What you print fills your window, which is small; files and variables cost nothing. Print only the lines you need, and keep what you find in variables.\n\nThe REPL runs a subset of Python: None, bool, int (no floats), str, list, dict; f-strings; list comprehensions; a if c else b; assignment (also a, b = ... and x[i] = ...), += -=, if/elif/else, for, while, break, continue; print len str repr int bool abs list dict range enumerate zip sum min max sorted; the common str, list and dict methods. Not supported: def, lambda, class, try, with, return, import of anything, set, slices with a step. Write the steps inline.\n\nThe repository (paths are relative to its root):\n- files(prefix=\"\"): the tracked paths, as a list\n- read(path): a file's text; lines(path, a, b): lines a to b numbered; count_lines(path)\n- search(pattern, prefix=\"\", limit=200, regex=False): matching lines as \"path:line:text\" strings (git grep; a fixed string unless regex=True, then an extended regex)\n- edit(path, old, new): replaces old, which must be in the file exactly once; returns the changed lines numbered, or text starting \"edit failed:\" with the nearest lines numbered\n- replace_lines(path, a, b, text): replaces lines a to b with text (a = b + 1 inserts before line a); returns the new lines numbered\n- write(path, text): creates or replaces a whole file\n- sh(cmd, seconds=120): runs a shell command at the root; returns {\"exit\": int, \"out\": str, \"timed_out\": bool} with the whole output\n- outline(path): the file's top-level definitions (functions, types, constants, tests) with their line numbers: a cheap map of a file before you look at its lines\n- grep(pattern, text): the lines of text that match; chunk(text, size)\n- llm_query(prompt), llm_query_batched(prompts): a sub-model that sees only the prompt (about {SUBCHARS} characters at most) and answers with a str\n- rlm_query(brief), rlm_query_batched(briefs): {RLMQ}\n- FINAL(summary) ends the task; SHOW_VARS() names your variables\n\nWork this way: find the code with search, then look at the lines you need with lines. When several files need the same kind of look, have sub-models read whole files with llm_query_batched and answer focused questions or draft edits. Make changes with edit or replace_lines, in a loop when the same change applies to several places, and print their results. Run the checks the task names with sh and print only the failing lines (r['out'][-2000:] or grep). Call FINAL(summary) only after those checks pass.{WORKER}";
+
+// What rlm_query is, where it starts a worker (RLMQ in RC_SYSTEM), and where it can't.
+RC_RLMQ_ON :: "a worker, a coding agent with these same functions on this same repository and a fresh conversation of its own, does the part of the task the brief describes and returns its short report as a str (batched: one after another, the reports in order). The worker sees only its brief, so a brief must stand alone";
+RC_RLMQ_OFF :: "here the same as llm_query (a worker can't start workers)";
+
+// A worker's part of its system prompt ({WORKER} in RC_SYSTEM), and its first message's opening.
+RC_WORKER_NOTE :: "\n\nYou are a worker: a manager split a larger task into parts and gave you one. Do exactly the part your brief describes and nothing else; other workers do the other parts, so change only the files your brief names. Run the check your brief names. Then end with FINAL(a short report: what you changed, with files and line ranges, the check's result, and anything the manager must know). The report is all the manager sees of your work: keep it short and exact.";
+RC_WORKER_FIRST :: "Your part of the task, from the manager:\n\n";
+
+// The manager (--manager): it plans and delegates, and never reads or edits code itself.
+RC_MANAGER_SYSTEM :: "You are the manager of a coding task. The repository is in your environment, not in this conversation. You plan and delegate; you never read or edit code yourself. Workers do: each is a coding agent with a fresh conversation of its own that reads, edits and checks the repository and reports back in a few lines.\n\nYou work by writing Python in ```repl blocks; each turn every block runs in order and you see only what it printed (at most {SHOWN} characters a block). Variables persist across turns. The REPL runs a subset of Python: None, bool, int (no floats), str, list, dict; f-strings; list comprehensions; a if c else b; assignment, += -=, if/elif/else, for, while, break, continue; print len str repr int bool abs list dict range enumerate zip sum min max sorted; the common str, list and dict methods. Not supported: def, lambda, class, try, with, return, import of anything, set, slices with a step.\n\nYour functions (paths are relative to the repository's root):\n- files(prefix=\"\"): the tracked paths; count_lines(path)\n- search(pattern, prefix=\"\", limit=200, regex=False): matching lines as \"path:line:text\" (git grep; a fixed string unless regex=True)\n- outline(path): a file's top-level definitions with their line numbers\n- sh(cmd, seconds=120): {\"exit\": int, \"out\": str, \"timed_out\": bool}; for the task's checks, not for reading code\n- rlm_query(brief): a worker does the part of the task the brief describes and returns its report as a str; rlm_query_batched(briefs): several workers, one after another, their reports in order\n- llm_query(prompt), llm_query_batched(prompts): a plain model that sees only the prompt\n- FINAL(summary) ends the task\nread, lines, edit, replace_lines and write are not yours: they fail here.\n\nWork this way: find where the work is with search and outline. Split the task into parts that each touch their own files. Give each worker a complete brief: its part of the task, the exact names and values the task states for that part, the files and line ranges to look at, and the check to run. A worker sees only its brief. After the workers, run the task's checks yourself with sh and print only the failing lines. If a check fails, send a worker back with the failing lines and what to fix. Call FINAL(summary) when the checks pass.";
+RC_MANAGER_DENY :: [5] string.["read", "lines", "edit", "replace_lines", "write"];
+RC_MANAGER_WHY :: "is not available to the manager: give reading and editing to a worker with rlm_query(brief); find where the work is with search, outline and count_lines";
 
 RC_FIRST :: "Your task:\n\n";
 
@@ -42,7 +55,7 @@ RC_OUT_MOST :: 8388608;          // bytes of a command's output kept whole
 RC_SHOW :: 262144;               // bytes of numbered lines one call returns
 RC_SH_MOST :: 600;               // seconds one command may take
 
-RC_OPS :: [9] string.["files", "read", "lines", "count_lines", "search", "edit", "replace_lines", "write", "sh"];
+RC_OPS :: [10] string.["files", "read", "lines", "count_lines", "search", "edit", "replace_lines", "write", "sh", "outline"];
 
 // The workspace an effect works in, its buffers and its counts.
 RcEnv :: struct {
@@ -53,7 +66,7 @@ RcEnv :: struct {
   show: [RC_SHOW] u8;
   full: [4096] u8; real: [4096] u8; cmd: [65536] u8; why: [1024] u8;
   reads: int; acts: int;         // what np_read_budget and np_budget count
-  ops: [9] int; failed: int; refused: int; writes: int;
+  ops: [10] int; failed: int; refused: int; writes: int;
 }
 
 // One effect's result: the text for the memo; fail ends the block with it as its error.
@@ -167,7 +180,7 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
   op := q.f[0];
   k := -1; for o, i: RC_OPS { if o == op { k = i; } }
   if k < 0 { return rc_fail(rs_cat(r, "no such function: ", op)); }
-  acts := k >= 5;
+  acts := k >= 5 && k <= 8;     // edit, replace_lines, write, sh; the rest (outline too) are reads
   now := rc_now(st); deadline := st[0].spent.started_ms + st[0].limits.max_ms;
   ok := ifx acts then np_budget(false, env[0].acts, now, deadline) else np_read_budget(env[0].reads, now, deadline);
   if !ok {
@@ -251,6 +264,7 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
     return rc_fail(rs_cat(r, rs_cat(r, op, "(): "), f.why));
   }
   if op == "read" { return rc_ok(rs_copy(r, f.text)); }
+  if op == "outline" { return rc_ok(rc_outline(r, path, f.text)); }
   if op == "count_lines" { at := r[0].nh; x := rs_put_int(r, rp_lines(f.text)); return rc_ok(rs_take(r, at)); }
   a := rc_int(q.f[2]); b := rc_int(q.f[3]);
   if op == "lines" { return rc_ok(rc_numbered(env, r, f.text, ifx a < 1 then 1 else a, ifx b < 1 then -1 else b)); }
@@ -281,6 +295,44 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
   lo := ifx a > 2 then a - 2 else 1;
   hi := a + added + 1;
   return rc_ok(rc_numbered(env, r, now_text, lo, hi));
+}
+
+// outline(path): the top-level definitions of text, numbered as lines() numbers them. In Coax,
+// the lines at the margin that define (NAME :: ...: procedures, structs, constants) and #test and
+// #forall; in Markdown the headings; elsewhere the lines at the margin that start with a defining
+// word (def, class, fn, struct, ...), look like a C definition (a '(' and no ';' at the end), or
+// set a capitalised constant. Each line is cut to 160 bytes.
+RC_OUTLINE_WORDS :: [24] string.["def", "class", "async", "fn", "pub", "func", "function", "struct", "enum", "union", "type", "typedef", "impl", "trait", "interface", "const", "let", "var", "export", "static", "module", "package", "#define", "mod"];
+rc_outline_line :: (ext: string, line: string) -> bool {
+  if line.count == 0 { return false; }
+  c := line[0];
+  if ext == ".md" { return c == '#'; }
+  if ext == ".coax" { return (c != ' ' && c != 9 && c != '/' && rs_find_sub(line, " :: ", 0) > 0) || rs_word(line) == "#test" || rs_word(line) == "#forall"; }
+  if c == ' ' || c == 9 || c == '}' || c == '{' || c == ')' || c == ']' || c == '/' || c == '*' || c == 13 { return false; }
+  w := rs_word(line);
+  for k: RC_OUTLINE_WORDS { if w == k { return true; } }
+  if c == '#' || c == '@' { return false; }
+  last := line[line.count - 1];
+  if rs_find_sub(line, "(", 0) > 0 && last != ';' && last != ',' { return true; }
+  return c >= 'A' && c <= 'Z' && rs_find_sub(line, " = ", 0) > 0;
+}
+rc_outline :: (r: [] Rs, path: string, text: string) -> string {
+  dot := rs_rfind_sub(path, ".");
+  ext := ifx dot >= 0 then cast(string) path[dot..<path.count] else "";
+  at := r[0].nh; ok := true; i := 0; n := 1;
+  while i < text.count && ok {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[i..<e];
+    if line.count > 0 && line[line.count - 1] == 13 { line = cast(string) line[0..<line.count - 1]; }
+    if rc_outline_line(ext, line) {
+      for w: [5] int.[100000, 10000, 1000, 100, 10] { if n < w { ok = ok && rs_putc(r, ' '); } }
+      ok = ok && rs_put_int(r, n) && rs_putc(r, 9) && rs_put(r, cast(string) line[0..<ifx line.count > 160 then 160 else line.count]) && rs_putc(r, 10);
+    }
+    i = e + 1; n += 1;
+  }
+  if !ok { r[0].nh = at; return "[outline: the run's memory is full]"; }
+  if r[0].nh == at { return "[no top-level definitions found: look with lines(path, a, b)]"; }
+  return rs_take(r, at);
 }
 
 // The byte where line k (from 1) starts; the text's end past its last line.
@@ -328,6 +380,8 @@ rc_drive :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, task: string, live: bool)
       calls = st[0].root_calls + st[0].sub_calls;
       lb: [256] u8; n := rp_put(lb[..], 0, "rlm code: turn "); n = rp_put_int(lb[..], n, st[0].turns);
       n = rp_put(lb[..], n, ", sub-calls "); n = rp_put_int(lb[..], n, st[0].sub_calls);
+      n = rp_put(lb[..], n, ", workers "); n = rp_put_int(lb[..], n, st[0].nkids);
+      if st[0].nlev > 1 { n = rp_put(lb[..], n, " (worker "); n = rp_put_int(lb[..], n, st[0].nkids); n = rp_put(lb[..], n, " turn "); n = rp_put_int(lb[..], n, st[0].levels[st[0].nlev - 1].turn); n = rp_put(lb[..], n, ")"); }
       n = rp_put(lb[..], n, ", effects "); n = rp_put_int(lb[..], n, env[0].reads + env[0].acts);
       n = rp_put(lb[..], n, ", card micro-USD "); n = rp_put_int(lb[..], n, st[0].spent.usd_micros);
       n = rp_put(lb[..], n, ", "); n = rp_put_int(lb[..], n, (cxproc_now_ms() - t0) / 1000); n = rp_put(lb[..], n, " s");
@@ -354,24 +408,30 @@ RcMem :: struct {
   out: [4194304] u8; trace: [16777216] u8; reply: [RLM_SLOTS * RLM_REPLY_MAX] u8;
   snap_names: [2 * RC_NAMES] string; snap_vals: [2 * RC_NAMES] RsVal; snap_lists: [2 * RC_LISTS] RsList; snap_cells: [2 * RC_CELLS] RsVal;
   st: [1] RlmState; r: [1] Rs;
+  none: [1] string;
   live: [1] RlmLive;
   env: [1] RcEnv;
   task: [1048576] u8;
   cwd: [4096] u8;
 }
 
-RC_LIMITS :: RlmLimits.{max_turns = 40, max_usd_micros = 5000000, max_ms = 900000};
+RC_LIMITS :: RlmLimits.{max_depth = 2, max_turns = 40, max_usd_micros = 5000000, max_ms = 900000};   // depth 2: rlm_query at the root starts a worker, a worker's is a plain sub-call
 
-// A run's state over the workspace at cwd (canonical), with the code prompts.
-rc_init :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string) {
+// A run's state over the workspace at cwd (canonical), with the code prompts; manager: the root
+// plans and delegates (RC_MANAGER_SYSTEM), and read, lines, edit, replace_lines and write fail there.
+rc_init :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, manager: bool) {
   a := RlmArenas.{heap = m[0].heap[..], cells = m[0].cells[..], lists = m[0].lists[..], toks = m[0].toks[..], nodes = m[0].nodes[..], names = m[0].vnames[..], vals = m[0].vals[..], memo = m[0].memo[..], memo_fail = m[0].memo_fail[..], pend = m[0].pend[..], out = m[0].out[..], trace = m[0].trace[..], reply = m[0].reply[..], snap_names = m[0].snap_names[..], snap_vals = m[0].snap_vals[..], snap_lists = m[0].snap_lists[..], snap_cells = m[0].snap_cells[..]};
   rlm_init(m[0].r[..], m[0].st[..], a, limits);
   m[0].r[0].env_on = true;
   m[0].st[0].system_tpl = RC_SYSTEM; m[0].st[0].first_tpl = RC_FIRST; m[0].st[0].budget = true;
+  m[0].st[0].child_tpl = RC_SYSTEM; m[0].st[0].child_first = RC_WORKER_FIRST; m[0].st[0].worker_note = RC_WORKER_NOTE;
+  m[0].st[0].rlmq_on = RC_RLMQ_ON; m[0].st[0].rlmq_off = RC_RLMQ_OFF;
+  m[0].r[0].root_deny = m[0].none[0..<0]; m[0].r[0].deny_why = RC_MANAGER_WHY;
+  if manager { m[0].st[0].system_tpl = RC_MANAGER_SYSTEM; m[0].r[0].root_deny = RC_MANAGER_DENY[..]; }
   e := m[0].env[..];
   e[0].cwd = cwd; e[0].profile = profile;
   e[0].reads = 0; e[0].acts = 0; e[0].failed = 0; e[0].refused = 0; e[0].writes = 0;
-  for i: 0..<9 { e[0].ops[i] = 0; }
+  for i: 0..<RC_OPS.count { e[0].ops[i] = 0; }
 }
 
 // The run's JSON line.
@@ -401,11 +461,37 @@ rc_report :: (m: [] RcMem, o: [] Jo, buf: [] u8, ms: int) -> string {
   jo_key(o, "sub"); jo_obj(o); jo_key(o, "input"); jo_int(o, st[0].sub_in); jo_key(o, "cached"); jo_int(o, st[0].sub_cached); jo_key(o, "output"); jo_int(o, st[0].sub_out); jo_end(o);
   jo_end(o);
   jo_key(o, "usd_micros"); jo_int(o, st[0].spent.usd_micros);
+  // the root level's own calls, then each worker's: together the totals above
+  jo_key(o, "mode"); jo_str(o, ifx m[0].r[0].root_deny.count > 0 then "manager" else "single");
+  jo_key(o, "max_depth"); jo_int(o, st[0].limits.max_depth);
+  jo_key(o, "root_level"); rc_use_json(o, st[0].d0);
+  jo_key(o, "workers"); jo_arr(o);
+  for i: 0..<st[0].nkids {
+    k := st[0].kids[i];
+    jo_obj(o);
+    jo_key(o, "depth"); jo_int(o, k.depth);
+    jo_key(o, "parent_turn"); jo_int(o, k.parent_turn);
+    jo_key(o, "turns"); jo_int(o, k.turns);
+    jo_key(o, "ending"); jo_str(o, k.ending);
+    jo_key(o, "brief_bytes"); jo_int(o, k.brief_bytes);
+    jo_key(o, "report_bytes"); jo_int(o, k.report_bytes);
+    jo_key(o, "use"); rc_use_json(o, k.use);
+    jo_end(o);
+  }
+  jo_end(o);
   jo_key(o, "unpriced"); jo_int(o, st[0].unpriced);
   jo_key(o, "wall_s"); jo_int(o, (ms + 500) / 1000);
   jo_key(o, "final"); jo_str(o, st[0].answer);
   jo_end(o);
   return jo_text(o);
+}
+
+rc_use_json :: (o: [] Jo, u: RlmUse) {
+  jo_obj(o);
+  jo_key(o, "calls"); jo_int(o, u.calls); jo_key(o, "root_calls"); jo_int(o, u.root_calls); jo_key(o, "sub_calls"); jo_int(o, u.sub_calls);
+  jo_key(o, "input"); jo_int(o, u.input); jo_key(o, "cached"); jo_int(o, u.cached); jo_key(o, "output"); jo_int(o, u.output);
+  jo_key(o, "usd_micros"); jo_int(o, u.usd_micros);
+  jo_end(o);
 }
 
 rc_run :: (a: [] Args) -> int {
@@ -422,7 +508,10 @@ rc_run :: (a: [] Args) -> int {
     task = cast(string) m[0].task[0..<n];
   }
   if task.count == 0 { tool_errln("rlm code: give --task TEXT or --task-file F"); return 2; }
-  rc_init(m, rlm_arg_limits(a, RC_LIMITS), cwd, args_value(a, "--profile", "workspace-write"));
+  manager := args_has(a, "--manager");
+  limits := rlm_arg_limits(a, RC_LIMITS);
+  if manager && limits.max_depth < 2 { tool_errln("rlm code: --manager needs --max-depth 2 or more (its workers are rlm_query's child runs)"); return 2; }
+  rc_init(m, limits, cwd, args_value(a, "--profile", "workspace-write"), manager);
   r := m[0].r[..]; st := m[0].st[..];
   task = rs_copy(r, task);
   why := rlm_live_models(st, m[0].live[..], a);
@@ -431,6 +520,7 @@ rc_run :: (a: [] Args) -> int {
     // the root answers in a schema, so Gemini writes no native function call (run.coax, RLM_ROOT_SCHEMA)
     st[0].model[0].root_schema = RLM_ROOT_SCHEMA;
     task = rs_cat(r, RC_JSON_NOTE, task);
+    st[0].child_first = rs_cat(r, RC_JSON_NOTE, RC_WORKER_FIRST);   // workers reply in it too
   }
   t0 := cxproc_now_ms();
   rc_drive(m[0].env[..], r, st, task, true);
@@ -451,7 +541,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cmd := args_at(a, 0);
   if cmd == "run" { return rc_run(a); }
   if cmd == "selftest" { return rc_selftest(args_value(a, "--profile", "workspace-write")); }
-  tool_errln("usage: code.coax run --cwd DIR (--task TEXT | --task-file F) [--root-model M] [--sub-model M] [--root-effort E] [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write] [--trace F] [--log F]");
+  tool_errln("usage: code.coax run --cwd DIR (--task TEXT | --task-file F) [--manager] [--max-depth 2] [--root-model M] [--sub-model M] [--root-effort E] [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write] [--trace F] [--log F]");
   tool_errln("       code.coax selftest [--profile P]");
   return 2;
 }
@@ -472,6 +562,14 @@ tool_main :: () -> int #export_c #effects(all) {
 #test "the prompts: the system prompt names every function the environment has, and the turn note says the budget" {
   for spec: RS_ENV { #assert rs_count_sub(RC_SYSTEM, rs_word(spec)) > 0; }
   for op, i: RC_OPS { #assert rs_word(RS_ENV[i]) == op; }
+  // the manager's prompt names what it keeps and what it lost, and what it lost is the environment's
+  for f: [10] string.["files(", "count_lines(", "search(", "outline(", "sh(", "llm_query(", "llm_query_batched(", "rlm_query(", "rlm_query_batched(", "FINAL("] { #assert rs_count_sub(RC_MANAGER_SYSTEM, f) > 0; }
+  #assert rs_count_sub(RC_MANAGER_SYSTEM, "read, lines, edit, replace_lines and write are not yours") == 1;
+  for d: RC_MANAGER_DENY {
+    k := -1; for op, i: RC_OPS { if op == d { k = i; } }
+    #assert k >= 0;
+  }
+  #assert rs_count_sub(RC_SYSTEM, "{WORKER}") == 1 && rs_count_sub(RC_SYSTEM, "{RLMQ}") == 1 && rs_count_sub(RC_MANAGER_SYSTEM, "{WORKER}") == 0;
 }
 
 // ---------------------------------------------------------------- the self-test (real files and commands)
@@ -511,8 +609,9 @@ rc_file :: (m: [] RcMem, cwd: string, name: string) -> string {
 }
 
 // A fresh state over cwd for the checks: scripted models with roots and subs.
-rc_scripted :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, roots: [] string, subs: [] string) {
-  rc_init(m, limits, cwd, profile);
+rc_scripted :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, roots: [] string, subs: [] string) { rc_scripted_as(m, limits, cwd, profile, roots, subs, false); }
+rc_scripted_as :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, roots: [] string, subs: [] string, manager: bool) {
+  rc_init(m, limits, cwd, profile, manager);
   md := m[0].st[0].model[..];
   md[0].scripted = true; md[0].root_script = roots; md[0].sub_script = subs;
 }
@@ -528,6 +627,11 @@ rc_selftest :: (profile: string) -> int {
   ok := fs_write(fs_join(cwd, "a.py", pb[..]), "def foo():\n    return 1\n") && fs_write(fs_join(cwd, "b.py", pb[..]), "import a\n\nprint(a.foo())\n");
   ok = ok && fs_write(fs_join(cwd, "test.sh", pb[..]), "grep -q 'def bar' a.py && grep -q 'a.bar()' b.py && ! grep -q 'fo[o]' a.py b.py && echo 'test ok'\n");
   ok = ok && fs_write(fs_join(cwd, "notes.txt", pb[..]), "alpha\nbeta\ngamma\n") && fs_write(fs_join(outside, "secret.txt", pb[..]), "secret\n");
+  // the manager's two parts, its check, and two files to outline
+  ok = ok && fs_mkdir(fs_join(cwd, "m", pb[..])) && fs_write(fs_join(cwd, "m/m1.py", pb[..]), "x = 1\n");
+  ok = ok && fs_write(fs_join(cwd, "m/m2.py", pb[..]), "y = 2\n") && fs_write(fs_join(cwd, "m/check.sh", pb[..]), "grep -q 'x = 10' m/m1.py && grep -q 'y = 20' m/m2.py && echo 'check ok'\n");
+  ok = ok && fs_write(fs_join(cwd, "o.coax", pb[..]), "// top\nFOO :: 3;\nBar :: struct {\n  x: int;\n}\nbaz :: (a: int) -> int {\n  return a;\n}\n#test \"baz\" {\n  #assert baz(1) == 1;\n}\n");
+  ok = ok && fs_write(fs_join(cwd, "o.py", pb[..]), "import os\n\nX = 1\n\ndef f(a):\n    return a\n\nclass C:\n    pass\n");
   if !ok { tool_errln("selftest: could not write the fixture"); return 1; }
   sb: [8192] u8; n := rp_put(sb[..], 0, "ln -s "); n = rc_quote(sb[..], n, fs_join(outside, "secret.txt", pb[..]));
   n = rp_put(sb[..], n, " link.txt && git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -qm fixture");
@@ -539,7 +643,9 @@ rc_selftest :: (profile: string) -> int {
   print("selftest: workspace % (profile %)\n", cwd, profile);
 
   rc_scripted(m, RC_LIMITS, cwd, profile, none[0..<0], none[0..<0]);
-  rc_expect(c[..], "files() lists the tracked paths, and a prefix narrows them", cast(string) ob[0..<rc_block(m, "print(files(), files('b'))", ob[..])], "['a.py', 'b.py', 'link.txt', 'notes.txt', 'test.sh'] ['b.py']\n");
+  rc_expect(c[..], "files() lists the tracked paths, and a prefix narrows them", cast(string) ob[0..<rc_block(m, "print(files(), files('b'))", ob[..])], "['a.py', 'b.py', 'link.txt', 'm/check.sh', 'm/m1.py', 'm/m2.py', 'notes.txt', 'o.coax', 'o.py', 'test.sh'] ['b.py']\n");
+  rc_expect(c[..], "outline: a Coax file's definitions, constants and tests with their line numbers", cast(string) ob[0..<rc_block(m, "print(outline('o.coax'))", ob[..])], "     2\tFOO :: 3;\n     3\tBar :: struct {\n     6\tbaz :: (a: int) -> int {\n     9\t#test \"baz\" {\n\n");
+  rc_expect(c[..], "outline: another file's definitions by a simple rule, and a note when there are none", cast(string) ob[0..<rc_block(m, "print(outline('o.py'))\nprint(outline('notes.txt'))", ob[..])], "     3\tX = 1\n     5\tdef f(a):\n     8\tclass C:\n\n[no top-level definitions found: look with lines(path, a, b)]\n");
   rc_expect(c[..], "read, lines and count_lines", cast(string) ob[0..<rc_block(m, "t = read('a.py')\nprint(len(t), count_lines('a.py'))\nprint(lines('a.py', 2, 9))", ob[..])], "24 2\n     2\t    return 1\n\n");
   rc_expect(c[..], "search: fixed strings by default, path:line:text", cast(string) ob[0..<rc_block(m, "print(search('foo('))", ob[..])], "['a.py:1:def foo():', 'b.py:3:print(a.foo())']\n");
   rc_expect(c[..], "search: a regex when asked, under a prefix, at most limit", cast(string) ob[0..<rc_block(m, "print(search('fo+\\\\(', regex=True), search('foo', 'b.py'), len(search('o', limit=2)), search('nothing here'))", ob[..])], "['a.py:1:def foo():', 'b.py:3:print(a.foo())'] ['b.py:3:print(a.foo())'] 2 []\n");
@@ -583,6 +689,50 @@ rc_selftest :: (profile: string) -> int {
   rc_expect_true(c[..], "the report line", rc_has(line, "\"ending\":\"final\"") && rc_has(line, "\"edit\":2") && rc_has(line, "\"tokens\":{\"root\":{\"input\":") && rc_has(line, "\"wall_s\":1,"), line);
   print("%\n", line);
   rc_expect_true(c[..], "the turn note says the turn, the dollars and the minutes", rc_has(st[0].msgs[2].text, "Turn 2/40 ($0.00 of $5.00 spent, 0 of 15 minutes used):"), st[0].msgs[2].text);
+
+  // a manager delegates two parts to two workers; each edits its own file and reports
+  rc_scripted_as(m, RC_LIMITS, cwd, profile, none[0..<0], none[0..<0], true);
+  e = cast(string) ob[0..<rc_block(m, "print(outline('m/m1.py'))\nprint(read('m/m1.py'))", ob[..])];
+  rc_expect(c[..], "the manager's read is refused, and says to delegate it", e, "Error: line 2: read() is not available to the manager: give reading and editing to a worker with rlm_query(brief); find where the work is with search, outline and count_lines");
+  e = cast(string) ob[0..<rc_block(m, "x = edit('m/m1.py', 'x', 'z')", ob[..])];
+  rc_expect_true(c[..], "the manager's edit is refused before any effect", rc_has(e, "edit() is not available to the manager") && rc_file(m, cwd, "m/m1.py") == "x = 1\n", e);
+  mroots := [6] string.[
+    "Find the parts.\n```repl\nprint(search('= ', 'm/'))\nlog = sh('echo manager >> mlog.txt')\nreps = rlm_query_batched(['Set x to 10 in m/m1.py (line 1). Check: grep x m/m1.py', 'Set y to 20 in m/m2.py (line 1). Check: grep y m/m2.py'])\nz = sh('echo after >> mlog.txt')\nfor rep in reps:\n    print(rep)\n```",
+    "```repl\nw = sh('echo w1 >> mlog.txt')\nprint(edit('m/m1.py', 'x = 1', 'x = 10'))\nr = sh('grep x m/m1.py')\nif r['exit'] == 0:\n    FINAL('m/m1.py line 1: x = 10; grep passes')\n```",
+    "```repl\nprint(read('m/m2.py'))\n```",
+    "```repl\nw = sh('echo w2 >> mlog.txt')\nprint(replace_lines('m/m2.py', 1, 1, 'y = 20'))\n```",
+    "FINAL(m/m2.py line 1: y = 20)",
+    "```repl\nr = sh('sh m/check.sh')\nprint(r['out'])\nif r['exit'] == 0:\n    FINAL('both parts done: ' + reps[0] + ' | ' + reps[1])\n```"];
+  rc_scripted_as(m, RC_LIMITS, cwd, profile, mroots[..], none[0..<0], true);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Set x to 10 in m/m1.py and y to 20 in m/m2.py; sh m/check.sh checks it.", false);
+  st = m[0].st[..];
+  tr := cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect(c[..], "the manager's run ends with FINAL and the workers' reports", st[0].answer, "both parts done: m/m1.py line 1: x = 10; grep passes | m/m2.py line 1: y = 20");
+  rc_expect_true(c[..], "each worker edited its own file", rc_file(m, cwd, "m/m1.py") == "x = 10\n" && rc_file(m, cwd, "m/m2.py") == "y = 20\n", rc_file(m, cwd, "m/m2.py"));
+  rc_expect(c[..], "no effect is done twice: not on reruns of a worker's block, nor of the manager's", rc_file(m, cwd, "mlog.txt"), "manager\nw1\nw2\nafter\n");
+  k0 := st[0].kids[0]; k1 := st[0].kids[1]; d0 := st[0].d0;
+  rc_expect_true(c[..], "the accounting: the manager's 2 calls, worker 1's 1 turn, worker 2's 3, and they add up to the totals",
+    st[0].nkids == 2 && st[0].child_runs == 2 && d0.calls == 2 && d0.root_calls == 2 && k0.turns == 1 && k0.use.calls == 1 && k1.turns == 3 && k1.use.calls == 3 && k0.ending == "final" && k1.ending == "final" && k0.parent_turn == 1
+    && d0.calls + k0.use.calls + k1.use.calls == st[0].spent.calls && d0.input + k0.use.input + k1.use.input == st[0].in_tokens && d0.output + k0.use.output + k1.use.output == st[0].out_tokens
+    && d0.usd_micros + k0.use.usd_micros + k1.use.usd_micros == st[0].spent.usd_micros && k0.use.input > 0 && st[0].turns == 2, tr);
+  rc_expect_true(c[..], "the trace shows each worker's turns and effects indented under the call that started it",
+    rc_has(tr, "\n    === child 1 starts (depth 1), its brief: ===\n    Set x to 10") && rc_has(tr, "\n    === depth 1 turn 1 ===\n") && rc_has(tr, "\n    --- effect edit(m/m1.py, x = 1, x = 10) -> ") && rc_has(tr, "\n    === child 2 ends: final, 3 turns, 3 calls") && rc_has(tr, "\n=== depth 0 turn 2 ===\n"), tr);
+  wsys := rlm_system(m[0].r[..], st, 1); msys := rlm_system(m[0].r[..], st, 0);
+  rc_expect_true(c[..], "the worker's system prompt is the coding one with the worker's part, the manager's its own", rc_has(wsys, "You are a coding agent.") && rc_has(wsys, "You are a worker:") && rc_has(wsys, "rlm_query(brief), rlm_query_batched(briefs): here the same as llm_query") && rc_has(msys, "You are the manager") && !rc_has(msys, "You are a worker"), wsys);
+  line = rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect_true(c[..], "the report line has the root level's use and each worker's", rc_has(line, "\"mode\":\"manager\"") && rc_has(line, "\"root_level\":{\"calls\":2,") && rc_has(line, "\"workers\":[{\"depth\":1,\"parent_turn\":1,\"turns\":1,\"ending\":\"final\"") && rc_has(line, "{\"depth\":1,\"parent_turn\":1,\"turns\":3,"), line);
+  print("%\n", line);
+
+  // a worker that hits a limit ends the run cleanly: its manager's block stops at the rlm_query
+  lroots := [5] string.[
+    "```repl\nb = sh('echo before >> lim.txt')\nrep = rlm_query('Append w to lim.txt.')\na = sh('echo after >> lim.txt')\n```",
+    "```repl\nw = sh('echo w >> lim.txt')\n```", "```repl\nprint(1)\n```", "FINAL(never)", "FINAL(never)"];
+  rc_scripted_as(m, RlmLimits.{max_depth = 2, max_calls = 3, max_turns = 40, max_ms = 900000}, cwd, profile, lroots[..], none[0..<0], true);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Append w to lim.txt.", false);
+  st = m[0].st[..]; tr = cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect_true(c[..], "a worker past the call limit ends the run without an answer, and nothing after its rlm_query runs",
+    st[0].stop == RLM_STOP_CALLS && st[0].answer == "" && st[0].nkids == 1 && st[0].kids[0].ending == "limit" && st[0].kids[0].turns == 2 && st[0].spent.calls == 3 && st[0].nlev == 0
+    && rc_file(m, cwd, "lim.txt") == "before\nw\n" && rc_has(tr, "Error: line 2: rlm_query stopped: the call limit was reached"), tr);
 
   // limits
   rc_scripted(m, RC_LIMITS, cwd, profile, none[0..<0], none[0..<0]);

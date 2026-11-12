@@ -94,6 +94,8 @@ Rs :: struct {
   final_set: bool; final_val: RsVal;
   depth: int;                    // the run's depth: 0 at the root
   env_on: bool;                  // the code environment's functions (RS_ENV) are defined; code.coax serves them
+  root_deny: [] const string;          // functions of RS_ENV refused at depth 0 (code.coax's manager): calling one fails with deny_why
+  deny_why: string;
 }
 
 rs_nil :: () -> RsVal { return RsVal.{}; }
@@ -1901,7 +1903,12 @@ rs_builtin :: (r: [] Rs, name: string, a: RsArgs) -> RsVal {
     return rs_nil();
   }
   if r[0].env_on {
-    for spec: RS_ENV { if rs_word(spec) == name { return rs_env(r, spec, a); } }
+    for spec: RS_ENV {
+      if rs_word(spec) == name {
+        if r[0].depth == 0 { for d: r[0].root_deny { if d == name { rs_fail(r, name, "() ", r[0].deny_why); return rs_nil(); } } }
+        return rs_env(r, spec, a);
+      }
+    }
   }
   if r[0].env_on && name == "open" { rs_fail(r, "open() is not available: use read(path), lines(path, a, b) and write(path, text)", "", ""); return rs_nil(); }
   if name == "open" || name == "exec" || name == "eval" || name == "input" || name == "__import__" || name == "compile" {
@@ -1944,9 +1951,9 @@ rs_ask :: (r: [] Rs, kind: int, q: RsVal) -> RsVal {
 // A call becomes one request, the name and its arguments joined by zero bytes, that suspends the
 // block as a sub-model call does (RS_ASK_FX); the driver does the effect once, and its result
 // comes back from the memo on every later pass.
-RS_ENV :: [9] string.["files prefix:s=", "read path:s", "lines path:s a:i b:i", "count_lines path:s",
+RS_ENV :: [10] string.["files prefix:s=", "read path:s", "lines path:s a:i b:i", "count_lines path:s",
   "search pattern:s prefix:s= limit:i=200 regex:b=0", "edit path:s old:s new:s", "replace_lines path:s a:i b:i text:s",
-  "write path:s text:s", "sh cmd:s seconds:i=120"];
+  "write path:s text:s", "sh cmd:s seconds:i=120", "outline path:s"];
 
 // The first word of s.
 rs_word :: (s: string) -> string { e := 0; while e < s.count && s[e] != ' ' { e += 1; } return cast(string) s[0..<e]; }

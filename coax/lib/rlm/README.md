@@ -97,6 +97,8 @@ of the cap and the minutes used. With `env_on`, the language has the workspace's
 | `replace_lines(path, a, b, text)` | lines a..b become text (`a = b + 1` inserts); the new lines numbered |
 | `write(path, text)` | a whole file |
 | `sh(cmd, seconds=120)` | `{"exit", "out", "timed_out"}`, the whole output; in Microcoder's sandbox profile (`--profile`, default `workspace-write`) |
+| `outline(path)` | the file's top-level definitions, numbered as `lines` numbers them: in Coax the margin lines with `NAME :: ` (procedures, structs, constants) and `#test`/`#forall`; in Markdown the headings; elsewhere margin lines that start with a defining word, look like a C definition, or set a capitalised constant |
+| `rlm_query(brief)`, `rlm_query_batched(briefs)` | at the root, a worker (below); in a worker, a plain sub-call |
 
 **Effects ride the memo.** A call of one of them suspends the block as `llm_query` does
 (`RS_ASK_FX`, the driver's phase `L_FX`): the request is the name and arguments joined by zero
@@ -108,8 +110,27 @@ with the reason. Limits: the run's `policy.coax` limits on model calls, time and
 Microcoder's counts (`native-profile.coax`): 512 reads (`files`, `read`, `lines`, `count_lines`,
 `search`) and 128 commands and edits a run; past one, the effect is refused and the run stops.
 
+**Workers** (GitHub #13367, #13325). One conversation that carries the whole task grows by a few
+thousand tokens a turn, so its cost is quadratic in turns. `--max-depth` is 2 here, so `rlm_query`
+at the root starts a worker: a child level on the driver's stack (as above) that is a whole coding
+agent, with the same functions on the same workspace, a frame of variables and a conversation of
+its own, the coding prompt with a worker's part ("do exactly the part in your brief, run the check
+it names, end with FINAL(a short report)") and its brief as its first message, in the root's JSON
+schema too. Its effects ride the same memo and rerun as the root's, in its own blocks' memo; its
+FINAL text goes into the parent's memo as `rlm_query`'s value, so a rerun of the parent's block
+takes it from there and the worker never runs again. The workers of a batch run one after another,
+not at once (no two ever touch the workspace together). Every limit is the run's: calls, time,
+money, and the 512 reads and 128 commands and edits are shared by the root and all its workers. A
+worker a limit stops ends the parent's block at its `rlm_query` ("rlm_query stopped: ..."), and the
+run ends there. In a worker `rlm_query` is a plain sub-call: workers start no workers.
+
+**The manager** (`--manager`, off by default): the root plans and delegates. Its prompt
+(`RC_MANAGER_SYSTEM`) gives it `files`, `count_lines`, `search`, `outline`, `sh`, `llm_query(_batched)`,
+`rlm_query(_batched)` and `FINAL`; `read`, `lines`, `edit`, `replace_lines` and `write` fail at the
+root, before any effect, with a note to give them to a worker (script.coax `root_deny`).
+
 ```sh
-coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F) [--root-model gemini-4-argon] \
+coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F) [--manager] [--max-depth 2] [--root-model gemini-4-argon] \
   [--sub-model gemini-3.8-flash] [--root-effort low] [--max-turns 40] [--max-usd 5] [--max-minutes 15] \
   [--profile workspace-write] [--trace F] [--log F]
 coax/web/tool.sh coax/lib/rlm/code.coax selftest      # every function, confinement, reruns, a whole run, limits: a scratch git repo, the scripted model
@@ -117,8 +138,11 @@ coax/web/tool.sh coax/lib/rlm/code.coax selftest      # every function, confinem
 
 It prints one JSON line: `ending` (`final`, `limit`, `no answer`), turns, root and sub calls,
 effects by function, input, cached and output tokens per role, the card's price, wall seconds and
-the `FINAL` text; `--trace` writes every reply, block output and effect (with its result's size),
-`--log` appends the line. The exit is 0 with a final answer, else 3.
+the `FINAL` text; then `mode` (`manager` or `single`), `root_level` (the root's own calls, by role,
+tokens and price) and `workers` (each one's depth, the parent turn that started it, turns, ending,
+brief and report sizes, and the same use), which add up to the totals. `--trace` writes every
+reply, block output and effect (with its result's size), each worker's indented under the call
+that started it, with its brief and a line of its use when it ends; `--log` appends the line. The exit is 0 with a final answer, else 3.
 
 ## Files
 

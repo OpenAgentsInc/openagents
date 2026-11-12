@@ -52,6 +52,27 @@ RlmState :: struct {
   // first message's opening, before the question (else rlm_first's); budget: each turn's note
   // also says what is spent of the cost cap and the minutes used
   system_tpl: string; first_tpl: string; budget: bool;
+  // a child's own prompts (code.coax's workers): its system prompt's template (else system_tpl)
+  // and its first message's opening, before its brief (else rlm_first's); {WORKER} in a template
+  // is worker_note in a child and nothing at the root; {RLMQ} says what rlm_query does at that depth
+  child_tpl: string; child_first: string; worker_note: string; rlmq_on: string; rlmq_off: string;
+  // what the root level's own calls (root and sub) used, and each child run's (RlmKid); the
+  // two add up to the totals above
+  d0: RlmUse;
+  kids: [RLM_KIDS] RlmKid; nkids: int;
+}
+
+// What some calls used: their count by role, tokens and the card's price.
+RlmUse :: struct { calls: int; root_calls: int; sub_calls: int; input: int; cached: int; output: int; usd_micros: int; }
+
+// A child run (a worker, in code.coax): where it ran, what it used and how it ended.
+RLM_KIDS :: 128;                 // child runs a run may start; past it rlm_query is refused
+RlmKid :: struct {
+  depth: int; parent: int;       // the parent's kid index, -1 for the root
+  parent_turn: int;              // the parent's turn that started it
+  turns: int; use: RlmUse;
+  ending: string;                // "final", "limit" or "no answer"
+  brief_bytes: int; report_bytes: int;
 }
 
 // The arenas a run uses, all the caller's: heap bytes, list cells and headers, tokens, nodes,
@@ -90,8 +111,15 @@ rlm_set_files :: (r: [] Rs, st: [] RlmState, names: [] string, texts: [] string)
   rs_define(r, "files", l);
 }
 
+// The trace: a child's lines are indented four spaces a level, under the call that started it.
 rlm_tr :: (st: [] RlmState, s: string) {
-  for c: s { if st[0].ntr < st[0].trace.count { st[0].trace[st[0].ntr] = c; st[0].ntr += 1; } }
+  ind := ifx st[0].nlev > 0 then 4 * st[0].levels[st[0].nlev - 1].depth else 0;
+  for c: s {
+    if ind > 0 && (st[0].ntr == 0 || st[0].trace[st[0].ntr - 1] == 10) {
+      for i: 0..<ind { if st[0].ntr < st[0].trace.count { st[0].trace[st[0].ntr] = ' '; st[0].ntr += 1; } }
+    }
+    if st[0].ntr < st[0].trace.count { st[0].trace[st[0].ntr] = c; st[0].ntr += 1; }
+  }
 }
 rlm_tr_int :: (r: [] Rs, st: [] RlmState, v: int) {
   at := r[0].nh;
@@ -110,6 +138,9 @@ rlm_allowed :: (st: [] RlmState, role: int, prompt_bytes: int) -> bool {
   if v != RLM_OK { st[0].failed = rlm_stop_name(v); }
   return v == RLM_OK;
 }
+// The name of the limit that stopped the run (the caller's own, code.coax's, in failed).
+rlm_stop_name_of :: (st: [] RlmState) -> string { return ifx st[0].failed.count > 0 then st[0].failed else rlm_stop_name(st[0].stop); }
+
 // Counts slot's call: its tokens and price.
 rlm_count :: (st: [] RlmState, role: int, slot: int) {
   s := st[0].model[0].slots[slot];
@@ -121,6 +152,14 @@ rlm_count :: (st: [] RlmState, role: int, slot: int) {
   if s.usage.ok && s.usage.card_usd_micros < 0 { st[0].unpriced += 1; }
   if role == RLM_ROOT { st[0].root_in += s.usage.input_tokens; st[0].root_out += s.usage.output_tokens; st[0].root_usd_micros += usd; st[0].root_cached += s.usage.cached_tokens; }
   else { st[0].sub_in += s.usage.input_tokens; st[0].sub_out += s.usage.output_tokens; st[0].sub_usd_micros += usd; st[0].sub_cached += s.usage.cached_tokens; }
+  // and to the level that made it: the root's own, or the child run's
+  kid := ifx st[0].nlev > 0 then st[0].levels[st[0].nlev - 1].kid else -1;
+  u := ifx kid >= 0 then st[0].kids[kid].use else st[0].d0;
+  u.calls += 1;
+  if role == RLM_ROOT { u.root_calls += 1; } else { u.sub_calls += 1; }
+  if s.usage.ok { u.input += s.usage.input_tokens; u.output += s.usage.output_tokens; u.cached += s.usage.cached_tokens; }
+  u.usd_micros += usd;
+  if kid >= 0 { st[0].kids[kid].use = u; } else { st[0].d0 = u; }
 }
 
 // Adds an answer to the block's memo (fail: the block ends with text as its error).
@@ -246,6 +285,7 @@ rlm_has_code :: (text: string) -> bool { return rlm_block(text, 0).found; }
 
 rlm_system :: (r: [] Rs, st: [] RlmState, depth: int) -> string {
   at := r[0].nh; s := ifx st[0].system_tpl.count > 0 then st[0].system_tpl else RLM_SYSTEM; i := 0; ok := true;
+  if depth > 0 && st[0].child_tpl.count > 0 { s = st[0].child_tpl; }
   while i < s.count {
     if s[i] == '{' {
       e := rs_find_sub(s, "}", i);
@@ -256,6 +296,8 @@ rlm_system :: (r: [] Rs, st: [] RlmState, depth: int) -> string {
         on := rlm_depth_route(depth, st[0].limits.max_depth) == RLM_ROUTE_CHILD;
         ok = ok && rs_put(r, ifx on then "recursion is on here" else "recursion is off here");
       }
+      if key == "WORKER" && depth > 0 { ok = ok && rs_put(r, st[0].worker_note); }
+      if key == "RLMQ" { ok = ok && rs_put(r, ifx rlm_depth_route(depth, st[0].limits.max_depth) == RLM_ROUTE_CHILD then st[0].rlmq_on else st[0].rlmq_off); }
       if key == "FILES" && depth == 0 && st[0].ndocs > 0 { ok = ok && rs_put(r, "; it joins several files, each after a line ==> path <==\n- `files`: the list of their paths, and `doc(path)`: one file's text"); }
       i = e + 1; continue;
     }
@@ -344,6 +386,13 @@ rlm_put_usd :: (r: [] Rs, micros: int) -> bool {
 
 // The first message of a run: the question, the context's size, the first turn's note.
 rlm_first :: (r: [] Rs, st: [] RlmState, question: string, depth: int) -> string {
+  if depth > 0 && st[0].child_first.count > 0 {
+    // a worker: its opening, then its brief (the child's context)
+    b := rs_get(r, "context");
+    at := r[0].nh;
+    if !(rs_put(r, st[0].child_first) && rs_put(r, ifx b.kind == RS_STR then b.s else question) && rs_put(r, "\n\n")) { r[0].nh = at; return ""; }
+    return rs_cat(r, rs_take(r, at), rlm_turn_note(r, st, 1, st[0].limits.max_turns));
+  }
   if depth == 0 && st[0].first_tpl.count > 0 {
     at := r[0].nh;
     if !(rs_put(r, st[0].first_tpl) && rs_put(r, question) && rs_put(r, "\n\n")) { r[0].nh = at; return ""; }
@@ -426,11 +475,12 @@ RlmLevel :: struct {
   save_frame: int; save_nv: int; save_nn: int; save_nt: int; save_depth: int; save_nm: int;
   save_final: bool; save_fval: RsVal;
   answer: string;
+  kid: int;                      // the child run's record (st.kids), -1 at the root
 }
 
 rlm_push_level :: (st: [] RlmState, question: string, ctx: RsVal, depth: int, out_base: int) -> bool {
   if st[0].nlev >= RLM_LEVELS { return false; }
-  st[0].levels[st[0].nlev] = RlmLevel.{phase = L_START, question = question, ctx = ctx, depth = depth, out_base = out_base};
+  st[0].levels[st[0].nlev] = RlmLevel.{phase = L_START, question = question, ctx = ctx, depth = depth, out_base = out_base, kid = -1};
   st[0].nlev += 1;
   return true;
 }
@@ -488,6 +538,7 @@ rlm_step_call :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
     return;
   }
   if reply.count == 0 { v[0].phase = L_END; return; }
+  if v[0].kid >= 0 { st[0].kids[v[0].kid].turns = v[0].turn; }   // a child's turns: those that got a reply
   v[0].errors = 0;
   if !rlm_push(r, st, "assistant", reply) { st[0].failed = "too many messages"; v[0].phase = L_END; return; }
   rlm_tr(st, "=== depth "); rlm_tr_int(r, st, v[0].depth); rlm_tr(st, " turn "); rlm_tr_int(r, st, v[0].turn); rlm_tr(st, " ===\n"); rlm_tr(st, reply); rlm_tr(st, "\n");
@@ -548,9 +599,18 @@ rlm_step_pass :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
 // Starts the next child for the waiting level v, or, when none is left, runs v's block again.
 rlm_next_child :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
   while v[0].serve_i < v[0].serve_n {
-    if st[0].stop == RLM_OK {
-      st[0].child_runs += 1;
-      if rlm_push_level(st, RLM_CHILD_QUESTION, rs_strv(r[0].pend[v[0].serve_base + v[0].serve_i]), v[0].depth + 1, v[0].out_base) { return; }
+    if st[0].stop == RLM_OK && st[0].nkids >= RLM_KIDS {
+      rlm_memo(r, "rlm_query was refused: the run has started its 128 child runs", true);
+    } else if st[0].stop == RLM_OK {
+      brief := r[0].pend[v[0].serve_base + v[0].serve_i];
+      if rlm_push_level(st, RLM_CHILD_QUESTION, rs_strv(brief), v[0].depth + 1, v[0].out_base) {
+        st[0].child_runs += 1;
+        k := st[0].nkids; st[0].nkids += 1;
+        st[0].kids[k] = RlmKid.{depth = v[0].depth + 1, parent = v[0].kid, parent_turn = v[0].turn, brief_bytes = brief.count, ending = "no answer"};
+        st[0].levels[st[0].nlev - 1].kid = k;
+        rlm_tr(st, "=== child "); rlm_tr_int(r, st, k + 1); rlm_tr(st, " starts (depth "); rlm_tr_int(r, st, v[0].depth + 1); rlm_tr(st, "), its brief: ===\n"); rlm_tr(st, brief); rlm_tr(st, "\n");
+        return;
+      }
       rlm_memo(r, "rlm_query: recursion is too deep", true);
     } else {
       rlm_memo(r, rs_cat(r, "rlm_query stopped: ", rs_cat(r, rlm_stop_name(st[0].stop), " was reached")), true);
@@ -569,11 +629,22 @@ rlm_step_end :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
     r[0].final_set = v[0].save_final; r[0].final_val = v[0].save_fval; st[0].nm = v[0].save_nm;
   }
   answer := v[0].answer;
+  k := v[0].kid;
+  if k >= 0 {
+    st[0].kids[k].ending = ifx answer.count > 0 && st[0].stop == RLM_OK then "final" else ifx st[0].stop != RLM_OK then "limit" else "no answer";
+    st[0].kids[k].report_bytes = answer.count;
+    u := st[0].kids[k].use;
+    rlm_tr(st, "=== child "); rlm_tr_int(r, st, k + 1); rlm_tr(st, " ends: "); rlm_tr(st, st[0].kids[k].ending); rlm_tr(st, ", ");
+    rlm_tr_int(r, st, st[0].kids[k].turns); rlm_tr(st, " turns, "); rlm_tr_int(r, st, u.calls); rlm_tr(st, " calls, "); rlm_tr_int(r, st, u.input); rlm_tr(st, " tokens in, ");
+    rlm_tr_int(r, st, u.output); rlm_tr(st, " out, "); rlm_tr_int(r, st, u.usd_micros); rlm_tr(st, " micro-USD ===\n");
+  }
   st[0].nlev -= 1;
   if st[0].nlev == 0 { st[0].answer = answer; return; }
-  // the parent waits on this child: its answer into the parent's memo, then the next child
+  // the parent waits on this child: its answer into the parent's memo, then the next child; a
+  // child a limit stopped ends the parent's block too, so nothing after its rlm_query runs
   p := st[0].levels[st[0].nlev - 1..<st[0].nlev];
-  rlm_memo(r, answer, false);
+  if st[0].stop != RLM_OK { rlm_memo(r, rs_cat(r, "rlm_query stopped: ", rs_cat(r, rlm_stop_name_of(st), " was reached")), true); }
+  else { rlm_memo(r, answer, false); }
   p[0].serve_i += 1;
   rlm_next_child(r, st, p);
 }
@@ -621,6 +692,7 @@ rlm_fx_resume :: (r: [] Rs, st: [] RlmState) {
 // Starts a run on question: step it with rlm_step while st.nlev > 0 (rlm_run does).
 rlm_start :: (r: [] Rs, st: [] RlmState, question: string) {
   st[0].spent = RlmSpent.{started_ms = rm_now(st[0].model[..])};
+  st[0].d0 = RlmUse.{}; st[0].nkids = 0;
   st[0].stop = RLM_OK; st[0].failed = ""; st[0].answer = ""; st[0].nlev = 0;
   // the question is copied into the heap: everything the run keeps is the run's own
   x := rlm_push_level(st, rs_copy(r, question), rs_nil(), 0, 0);
@@ -815,6 +887,10 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
   #assert r[0].frame == 0 && st[0].nlev == 0 && st[0].top_c == 0;
   // the root's own variables are back after the child
   #assert rs_find(r, "secret") >= 0;
+  // the child's use is its own, the root level's its own, and they add up; its turns are indented in the trace
+  #assert st[0].nkids == 1 && st[0].kids[0].turns == 2 && st[0].kids[0].ending == "final" && st[0].kids[0].use.calls == 2 && st[0].d0.calls == 1;
+  #assert st[0].d0.input + st[0].kids[0].use.input == st[0].in_tokens && st[0].d0.usd_micros + st[0].kids[0].use.usd_micros == st[0].spent.usd_micros;
+  #assert rs_find_sub(cast(string) st[0].trace[0..<st[0].ntr], "\n    === depth 1 turn 1 ===\n    ```repl\n    print(context)\n", 0) > 0;
   subs := [1] string.["plain answer"];
   roots1 := [1] string.["```repl\nFINAL(rlm_query('data'))\n```"];
   rlm_test_run(r, mem, RlmLimits.{max_depth = 1}, roots1[..], subs[..]);
