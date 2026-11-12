@@ -1,0 +1,6 @@
+mode: public signet; Esplora https://mempool.space/signet/api
+chain tip: block 330559
+Nothing to spend. The treasury's receive 0, tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2, holds nothing on the signet https://mempool.space/signet/api serves (tip 330559).
+Missing: signet coins at that address. A person must claim them from a signet faucet, by hand, to tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2 (at least 5000 sat), wait for one confirmation, and run this command again.
+Nothing was signed and nothing was broadcast.
+exit status 3

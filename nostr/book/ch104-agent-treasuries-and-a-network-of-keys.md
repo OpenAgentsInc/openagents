@@ -87,7 +87,7 @@ checked, for the `tr` wallets that come next.
 | [coax/tests/bitcoin/sighash_vectors.coax](../../coax/tests/bitcoin/sighash_vectors.coax) | BIP-143's examples and BIP-341's wallet vectors, copied by [make_sighash_vectors.py](../../coax/tests/bitcoin/make_sighash_vectors.py) |
 | [coax/lib/nostr/nipkeys_carry.coax](../../coax/lib/nostr/nipkeys_carry.coax) | KEYS records sealed into, and opened from, 3188 private artifacts. `#authority` |
 | [nostr/tools/treasury.coax](../tools/treasury.coax) | The key agent and the coordinator as a command-line tool over a relay |
-| [coax/tests/nostr/treasury_regtest.py](../../coax/tests/nostr/treasury_regtest.py) | The network run against Bitcoin Core, in regtest or on a private signet |
+| [coax/tests/nostr/treasury_regtest.py](../../coax/tests/nostr/treasury_regtest.py) | The network run against Bitcoin Core, in regtest or on a private signet, and the public signet path through Esplora |
 | [nostr/examples/agent-treasury.coax](../examples/agent-treasury.coax) | The example |
 | [nostr/examples/checks/agent-treasury.coax](../examples/checks/agent-treasury.coax) | Its independent checks |
 
@@ -1327,6 +1327,57 @@ are the same on both chains, so this adds the addresses and nothing more.
 It is not the public signet: the node has no peers and nothing reaches
 anyone else.
 
+### The public signet path
+
+`CHAIN=public-signet` is the third mode. It runs no chain of its own. It
+reads and writes the public signet through an Esplora HTTP API
+(`https://mempool.space/signet/api` unless `ESPLORA` names another), and
+keeps Bitcoin Core offline, started with `-signet -connect=0`: no peers and
+no blocks, only Core's decoder, script interpreter and signer.
+
+1. It asks for the unspent outputs at receive 0. With none it prints the
+   address, says a person must claim coins to it, and exits 3. Nothing is
+   signed or sent. That is what it does today.
+2. With one, it reads the funding transaction, checks the txid, amount and
+   script itself, and writes the two requests for that outpoint: 70% to
+   receive 1 and the rest, less a 500 sat fee, to change 0. Both are the
+   treasury's own scripts, so no coin leaves the wallet. The second
+   request's PSBT pays receive 2 instead. The relay, the three key agents
+   and the coordinator run as in the other modes.
+3. Before the broadcast it checks the transaction without a chain. The
+   harness reads the bytes: inputs, outputs, fee (at least 1 sat/vB, at
+   most 1,000 sat, the lowest signer ceiling), dust. It verifies each
+   witness script against the xpubs and each signature over its own BIP-143
+   digest, in pure Python. Offline Core decodes the transaction to the same
+   txid and outputs, and Core's script interpreter runs every input:
+   `signrawtransactionwithkey` with no keys and the spent outputs given
+   signs nothing and reports `complete` only when every input verifies. The
+   harness also gives Core the same transaction with an amount one satoshi
+   off, and Core must refuse it. Two things can't be checked without the
+   chain: that the output is still unspent, and a node's mempool policy
+   (`testmempoolaccept` needs the UTXO set). The broadcast itself answers
+   both.
+4. It writes the transaction to a state file, sends it with `POST /tx`, and
+   polls its status until a block holds it. After 45 minutes without one it
+   exits 4. A rerun reads the state file and waits for the same
+   transaction; it never builds a second spend.
+5. Recovery uses Core alone. `descriptorprocesspsbt` takes the wallet
+   record's descriptor with alice's and keyco's account keys, and a PSBT
+   that spends the confirmed spend's two outputs to receive 3, with each
+   `witness_utxo` read back through Esplora. Core signs with its own signer
+   and needs no wallet scan. The same checks, the same broadcast and wait.
+
+No coins have been claimed, so this has not run on the public signet. It
+was rehearsed on 2026-11-12 with `REHEARSE=1`: the harness starts the
+private signet node, funds receive 0 from it, and serves the five Esplora
+endpoints on 127.0.0.1 from that node, with a block a few seconds after
+each broadcast. The public path ran against that URL unchanged, and passed:
+all three agents signed, all three refused the other payee, the spend
+confirmed, and Core's offline recovery confirmed
+([the record](../../docs/verification/2026-11-12-nostr-ch104-public-signet-path/README.md)).
+A rehearsal is not the public signet: what is left is the one command in
+[Not built](#not-built), after a person claims the coins.
+
 ## The example
 
 The example is
@@ -1800,9 +1851,18 @@ come from the Python reference.
 - **A broadcast on the public signet.** The spend and the recovery run in
   regtest and on a private signet, where Bitcoin Core runs the script. The
   public signet needs signet coins, and the public faucets hand them out
-  only behind a captcha or a GitHub sign-in. The same tools broadcast
-  through a public signet node once a faucet pays the treasury's receive 0,
-  `tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2`.
+  only behind a captcha or a GitHub sign-in, so nothing has been broadcast
+  there. The path is built and rehearsed (`CHAIN=public-signet`,
+  [Over the network](#over-the-network)): today it finds nothing at the
+  treasury's receive 0,
+  `tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2`, says so
+  and exits 3. Once a person has claimed faucet coins to that address by
+  hand, one command spends them, waits for the block, and recovers them
+  with Bitcoin Core:
+
+  ```shell
+  nostr/relay/build.sh && { coax/web/tool.sh nostr/tools/treasury.coax >/dev/null 2>&1; nix shell nixpkgs#bitcoind -c env CHAIN=public-signet OUT=$HOME/.openagents/ch104-public-signet python3 coax/tests/nostr/treasury_regtest.py; }
+  ```
 - **Miniscript spends.** Wallets with a recovery path are admitted (their
   descriptor is recomputed), but the signer refuses their spends as
   `not_built`; three or more paths refuse at admission.

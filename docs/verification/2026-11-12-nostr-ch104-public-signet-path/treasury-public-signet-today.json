@@ -1,0 +1,11 @@
+{
+ "mode": "public signet",
+ "esplora": "https://mempool.space/signet/api",
+ "receive_0": "tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2",
+ "tip_at_start": 330559,
+ "passed": false,
+ "stopped": {
+  "status": 3,
+  "why": "Nothing to spend. The treasury's receive 0, tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2, holds nothing on the signet https://mempool.space/signet/api serves (tip 330559).\nMissing: signet coins at that address. A person must claim them from a signet faucet, by hand, to tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2 (at least 5000 sat), wait for one confirmation, and run this command again.\nNothing was signed and nothing was broadcast."
+ }
+}

@@ -1,0 +1,78 @@
+{
+ "mode": "rehearsal: the public path on a private signet (-signetchallenge=51) behind a local stand-in for Esplora",
+ "esplora": "http://127.0.0.1:38729",
+ "receive_0": "tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2",
+ "tip_at_start": 102,
+ "core": {
+  "version": "/Satoshi:31.1.0/",
+  "chain": "signet",
+  "blocks": 0,
+  "connections": 0,
+  "peers": []
+ },
+ "agents_signed_first_refused_second": true,
+ "coordinator": {
+  "request_1_exit": 0,
+  "request_2_exit": 3
+ },
+ "funding": {
+  "txid": "c18e355feb6928cf1c18ba94b5f678ca0d4f36e81724d7101c298de3d2cd2b1e",
+  "vout": 1,
+  "value_sat": 60000,
+  "block_height": 102,
+  "url": "http://127.0.0.1:38729/tx/c18e355feb6928cf1c18ba94b5f678ca0d4f36e81724d7101c298de3d2cd2b1e"
+ },
+ "spend": {
+  "txid": "74d94518fefb10428fc2b8ef957e2d1438d890ef2727dab651d4c74141802e0d",
+  "vsize": 201,
+  "fee_sat": 500,
+  "sat_per_vb": 2.49,
+  "hex": "020000000001011e2bcdd2e38d291c10d72417e8364f0dca78f6b594ba181ccf2869eb5f358ec10100000000fdffffff02b2a2000000000000220020555087554c5b26875af655966e01efc934bb760f4fc951f585f1f39f9f0f7b87ba45000000000000220020108dd2a02dce6bec96de704f7383e5b9c94e8fa489efa12b939de5777ab2009f04004830450221009ea4d35114835d4664379bd234afba1750da442f722117bfb0ecc8df88114d09022064f8c357631b1f1bf739e853d99899241c2d7cece3efc13591f77a18dcd42cd301473044022062bdacd748997f0fab6a555aaec4ab95bb3cfdfa412a4f96ce4c062315dd90a4022058a0ff573e28303d0dba21c2a151e8bc5a47133463eba7dab2f38ea11daf0a4f01695221027ae41a7f786c8d6e8397a1a1b1f9099315fd201fa8afe680cadb206bacc39f74210360ab78dedf69085d7e544d9f567f4a526ed518f13e26dd4efb76b34e607b1d942103e47364df38f1c86aee6e3e16fad7668c2f70ef35db4b34a7076c5bc13733f9b453ae00000000",
+  "pay_sat": 41650,
+  "change_sat": 17850,
+  "broadcast": true,
+  "url": "http://127.0.0.1:38729/tx/74d94518fefb10428fc2b8ef957e2d1438d890ef2727dab651d4c74141802e0d",
+  "block_height": 103,
+  "block_hash": "00000112e685cd23d32f2baa3be1f551cad0fb40d78ab34f8f44c63655805a8a",
+  "outputs_are_the_request": true
+ },
+ "recovery": {
+  "txid": "68759dee4d4788e94b3dea52ea17575c2fc747b5bbf4aa2e889b31e1a383edd5",
+  "vsize": 262,
+  "fee_sat": 500,
+  "sat_per_vb": 1.91,
+  "hex": "020000000001020d2e804141c7d451b6da2727ef90d838142d7e95efb8c28f4210fbfe1845d9740000000000fdffffff0d2e804141c7d451b6da2727ef90d838142d7e95efb8c28f4210fbfe1845d9740100000000fdffffff0178e6000000000000220020adc67f4960f55c116a5ef645b1e876d791d39e22321ced6307612249b25ad8cd04004730440220574ee9fa5b45ba375b83fdac2156f06c70416534e3b845ac35b1d834322e9f5002200cfc62cd484598521c7c220828c6b306cbda63b39aa483211c27181d0d40a1e901473044022032ba271a85cbfb840788227f843f9af827de4b1aeabdc71c0e98d66290c52d8002203e4c0cc773dbd8c0a3362635063ce9d7339bd955892f7bbc8c86b4c168414b8c016952210290cc50f18cc6fccba99c7058fea8f5fb79c85c59b93bc606a7a5ab56101c32e5210363fd2c474bc68e8156c72ed56c694c2256dd9fc314228982fafca7d10d9ed9dc2103ce35d54b28935d0518dcecd1aa58e7df53283aeb126c20113589aa6608492e2b53ae040047304402203924a74d1109b42f254941027ca9ee7334224b2af20e9c62f8c7cd9274becfe302200e5bebed18e92a7b8a8b5d7f7e10811e663337f43f1dab64e0897f4e5b9bc0fc0147304402206a50573f56eb3657560bf34c3befae789c295330c1a9495cafec6695e7ae257d02204f1996981884713bc7246fbd7ec97472d75f40f1eedba87e8bfcbd55d0cb945e01695221039623e29aa9a9ec786ed334f8c8e4e07036e0e208c0cb6ac235f576a554f3b63521039901be32f0732bdb2db53d590006cbe26af53d1496917765c310b86c041406332103c6bebbc4f0d18c00a3910cbc814eb5d8a7de47ba2ea707fba376e764cc0f3cd153ae00000000",
+  "out_sat": 59000,
+  "broadcast": true,
+  "spent": [
+   [
+    "74d94518fefb10428fc2b8ef957e2d1438d890ef2727dab651d4c74141802e0d",
+    0
+   ],
+   [
+    "74d94518fefb10428fc2b8ef957e2d1438d890ef2727dab651d4c74141802e0d",
+    1
+   ]
+  ],
+  "url": "http://127.0.0.1:38729/tx/68759dee4d4788e94b3dea52ea17575c2fc747b5bbf4aa2e889b31e1a383edd5",
+  "block_height": 104,
+  "block_hash": "000001a18c5f8ec09b2e94bcb44334a0eb1ac95e6e6362be412b1b17754037c6",
+  "outputs_are_receive_3": true,
+  "spent_the_spends_outputs": true
+ },
+ "checked_before_broadcast": [
+  "this file reads the transaction: version 2, locktime 0, the inputs are the expected outpoints, the outputs are the stated amounts and treasury scripts",
+  "fee at least 1 sat/vB and at most 1000 sat; every output at least 330 sat (dust); standard size",
+  "each witness script hashes to the spent P2WSH program and is the 2-of-3 derived here from the three xpubs",
+  "each signature is strict DER, low S, SIGHASH_ALL, and verifies over the BIP-143 digest computed here, in key order (pure Python ECDSA)",
+  "Bitcoin Core (offline) decodes it to the same txid, size and outputs (decoderawtransaction)",
+  "Bitcoin Core's script interpreter accepts every input against the spent outputs with the standard flags (signrawtransactionwithkey, no keys), and refuses the same transaction when an amount is one satoshi off",
+  "the spent transaction, read through Esplora, hashes to its txid and holds the amount and script signed for"
+ ],
+ "not_checked_before_broadcast": [
+  "that the spent output is still unspent: only Esplora's answer says so; no node of ours holds the public signet's UTXO set",
+  "a node's mempool policy as a whole (testmempoolaccept needs the UTXO set); the broadcast itself is that check",
+  "that Esplora tells the truth about confirmations: the block heights are its answers, and anyone can open the URLs"
+ ],
+ "passed": true
+}
