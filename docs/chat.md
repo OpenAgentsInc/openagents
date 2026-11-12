@@ -210,8 +210,9 @@ in the instance's memory. On 2026-11-11 that took 103 seconds and then ran out o
 runner's 2 GiB, and the page said "the repository could not be reached"
 (GitHub #13252). With 4 GiB the same cold start answered, in 29 seconds
 on staging and 103 seconds on production (whose older image left less out).
-With the checkout in the image, a cold start on staging refreshed 158
-changed files in 1.5 seconds and answered 7.1 seconds after sending.
+With the checkout in the image, a first message on production after it had
+scaled to zero was taken in 1.9 seconds, refreshed the checkout in 2.1
+seconds, had the engine running at 8.4 seconds and its answer at 9.4 seconds.
 
 Two things made a refresh of the image's copy slow, and both are handled in
 `chat_checkout`:
