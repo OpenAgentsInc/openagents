@@ -25,10 +25,16 @@ secret only when it exists:
 Two more secrets hold a key between steps and no deploy reads them:
 `oa-room-ticket-signing-key-next` and `oa-room-write-master-next`.
 
-The commands below run from the `openagents` checkout with the owner's
-`gcloud` login. They pipe each key from `openssl` or Secret Manager straight
-into the next command, so no key reaches the terminal, a file or the shell
-history. Set the project once:
+Production ran steps 1 to 4 on 2026-11-12 (API `oa-api-00130-jgk`, rooms
+`71e8c86ac6`). Step 5 waits for the owner.
+
+The commands below run from the `openagents` checkout, with the owner's
+`gcloud` login or the automation account
+(`CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config`). `coax/web/tool.sh` needs
+the compiler, so run `coax/build.sh` first in a fresh worktree. The commands
+pipe each key from `openssl` or Secret Manager straight into the next command,
+so no key reaches the terminal, a file or the shell history. Set the project
+once:
 
 ```sh
 P=openagentsgemini
@@ -76,8 +82,10 @@ OA_ROOM_WRITE_MASTER="$(gcloud secrets versions access latest --secret oa-room-w
   gcloud secrets create oa-room-write-key-s$K --project $P --replication-policy automatic --data-file=-
 ```
 
-Deploy the rooms (`vm-deploy.sh secret`, then the room deploy). Each shard
-prints `writes signed as shard K with its own key`. Check the admin room view:
+Deploy the rooms (`vm-deploy.sh secret`, `vm-deploy.sh setup`, then the
+room deploy). `setup` installs the unit that reads `/etc/oa-room/sK-write.env`;
+a VM set up before #13260 has the old unit, and its shards keep signing with
+the shared key. Each shard prints `writes signed as shard K with its own key`. Check the admin room view:
 every shard's stats and directory rows keep updating.
 
 Do step 2 before step 3. An API without the master refuses a shard's own

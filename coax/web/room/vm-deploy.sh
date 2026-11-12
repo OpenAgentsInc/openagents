@@ -331,7 +331,7 @@ import json, sys
 m = json.load(sys.stdin)
 for pm in m["pathMatchers"]:
     rooms = sorted({r["service"].rsplit("/", 1)[-1] for r in pm.get("routeRules", []) if "/oa-room" in r.get("service", "")})
-    if rooms: print(f"url map {pm[\"name\"]}: {\" \".join(rooms)}")'
+    if rooms: print("url map " + pm["name"] + ": " + " ".join(rooms))'
   for k in $(seq 1 "$shards") staging; do echo "$k: $(health "$k" | head -1 | cut -c1-160)"; done
 }
 
