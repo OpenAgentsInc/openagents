@@ -40,6 +40,7 @@
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
+#load "../../aethyr/forge/record.coax";   // a publish's reply (record.proto)
 #load "../../aethyr/forge/doc.coax";   // the realm document and its edits (aethyr/forge/edit.coax): a move, undo, the bodies and replies (realm.proto)
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
@@ -796,7 +797,7 @@ forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
     return;
   }
   if what == REQ_PUBLISH {
-    if status == 200 { s[0].published_rev = hi_int(r.rev, 0); set_note(s, "Published."); return; }
+    if status == 200 { p := forge_read_published(body); s[0].published_rev = ifx p.ok then p.rev else 0; set_note(s, "Published."); return; }   // record.proto's PublishReply (aethyr/forge/record.coax)
     set_note(s, ifx status == 409 then changed else "Not published. Try again.");
     return;
   }
@@ -3764,7 +3765,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert s[0].shown[BTN_PUBLISH] && !s[0].shown[BTN_SAVE] && s[0].shown[BTN_UNDO];
   tap_box(s[..], t[..], s[0].boxes[BTN_PUBLISH]);
   #assert url_is(s[..], "/api/playtest/realms/forge-court/publish") && body_is(s[..], "{\"rev\":4}");
-  answered(s[..], t[..], 6, "200\n{\"published\": true, \"rev\": 4, \"sha256\": \"ab\", \"listed\": false}");
+  answered(s[..], t[..], 6, "200\n{\"rev\": 4, \"engine\": null, \"listed\": false, \"sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"published\": true}");
   #assert s[0].published_rev == 4 && note_is(s[..], "Published.") && realm_probe(s[..], 62) == LIVE_SAME;
   m = frame_of(s[..], t[..], 2560, 1600);
   #assert !s[0].shown[BTN_PUBLISH];

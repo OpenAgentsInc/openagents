@@ -1,0 +1,100 @@
+syntax = "proto3";
+package openagents.verse.doc.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// A made realm's record (compliance plan step E11, GitHub #13250): the bodies
+// of the realm routes that say what a realm is to its owner, beside its
+// document (realm.proto). coax/web/api/realms.c serves them; the server builds
+// each in SQL and answers jsonb's text (keys by length, then by bytes; ", "
+// and ": " between items). aethyr/forge/record.coax is the one writer and
+// reader; proto/verse/realm-record-v1.json pins the bytes, checked through the
+// codec (aethyr/forge/record-goldens.coax) and through the API's routes
+// (coax/web/api/tests/realm_record_checks.coax).
+//
+//   GET  /api/playtest/realms/mine               MineReply, or with ?as=lines
+//        "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY" a line (the same fields)
+//   POST /api/playtest/realms/<slug>/visibility  VisibilityRequest -> VisibilityReply
+//   POST /api/playtest/realms/<slug>/publish     RevRequest (realm.proto) with
+//        PublishRequest's listed -> PublishReply
+//   GET  /api/playtest/realms/<slug>/published   PublishRecord
+// Anything SQL refuses is RouteError with the route's status. json_name is the
+// key on the wire.
+
+// GET .../mine: the caller's made realms, newest first; none is {"realms": []}.
+message MineReply {
+  repeated MineRealm realms = 1 [json_name = "realms"];
+}
+
+// One of the caller's realms. `published` is the revision published, 0 when
+// never. With ?as=lines the same fields are one line, LISTED as 1 or 0.
+message MineRealm {
+  optional string slug = 1 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string name = 2 [json_name = "name"];
+  optional int32 rev = 3 [json_name = "rev"];
+  optional int32 published = 4 [json_name = "published"];
+  optional bool listed = 5 [json_name = "listed"];
+  optional string visibility = 6 [json_name = "visibility"];
+}
+
+// POST .../visibility: private, unlisted or public. Under .../edit-v1/ it
+// also carries the revision read, and a realm changed since is a Conflict
+// (realm.proto).
+message VisibilityRequest {
+  optional int32 rev = 1 [json_name = "rev"];
+  optional string visibility = 2 [json_name = "visibility"];
+}
+
+// 200 from .../visibility: what it is now and was, and whether the realm's
+// page in the site bucket was written (unlisted, public) or removed (private).
+// Under .../edit-v1/ the change is a revision, and `rev` is the realm's now.
+message VisibilityReply {
+  optional string slug = 1 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string visibility = 2 [json_name = "visibility"];
+  optional string was = 3 [json_name = "was"];
+  optional bool page = 4 [json_name = "page"];
+  optional int32 rev = 5 [json_name = "rev"];
+}
+
+// POST .../publish on a made realm: the revision there now and, when given,
+// whether the realm is listed.
+message PublishRequest {
+  optional int32 rev = 1 [json_name = "rev"];
+  optional bool listed = 2 [json_name = "listed"];
+}
+
+// 200 from .../publish on a made realm: the revision published, its
+// document's hash, and the SHA-256 of the engine manifest pinned with it
+// (null on a server with no site bucket: nothing is pinned). A publish that
+// says `listed` also answers who sees the realm now (listed is public).
+message PublishReply {
+  optional bool published = 1 [json_name = "published"];
+  optional int32 rev = 2 [json_name = "rev"];
+  optional string sha256 = 3 [json_name = "sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional bool listed = 4 [json_name = "listed"];
+  optional string engine = 5 [json_name = "engine", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string visibility = 6 [json_name = "visibility"];
+}
+
+// GET .../published: the newest publish record. `n` counts the realm's
+// records; `engine` is the manifest's text (aethyr-engine 1, the
+// engine-pin-manifest-v1 row) and `engine_sha256` its hash; `why` is
+// "publish", or "first" for a realm published before pins.
+message PublishRecord {
+  optional string slug = 1 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional int32 n = 2 [json_name = "n"];
+  optional int32 rev = 3 [json_name = "rev"];
+  optional string sha256 = 4 [json_name = "sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string engine = 5 [json_name = "engine"];
+  optional string engine_sha256 = 6 [json_name = "engine_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string why = 7 [json_name = "why"];
+  optional int64 ms = 8 [json_name = "ms"];
+}
+
+// A refusal a realm route's SQL decides: what was wrong, in a few words, as
+// jsonb's text ({"error": "no such world"}). The refusals realms.c answers
+// itself are the API's ErrorReply ({"error":"not json"},
+// openagents/api/v1alpha1/error.proto).
+message RouteError {
+  optional string error = 1 [json_name = "error"];
+}

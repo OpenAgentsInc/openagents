@@ -1,0 +1,132 @@
+// The realm record's fixture through the API's routes (compliance plan step E11, GitHub #13250):
+// proto/verse/realm-record-v1.json names a made realm and a run of calls to coax/web/api/realms.c's
+// record routes (mine, visibility, publish, published). This seeds that realm, makes each call as
+// the fixture's owner, a stranger or nobody, and requires the server's status and body byte for
+// byte; a step with "sql" runs that statement instead (the publish that pins an engine: this run's
+// API has a bucket with no engine page) and requires its one value. A key named in a step's "vary"
+// holds a number the run decides (a time): its digits are the fixture's before the bodies are
+// compared. The same file is written and read through aethyr/forge/record.coax by
+// aethyr/forge/record-goldens.coax, so the codec and the server give the same bytes. Local
+// isolated API and database only.
+//   API=http://127.0.0.1:PORT PGURL=... PSQL=... coax/web/tool.sh coax/web/api/tests/realm_record_checks.coax
+// tool.sh: tls
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/net/http.coax";
+#load "../../../lib/json/json.coax";
+
+RRC_FIXTURE :: "proto/verse/realm-record-v1.json";
+RRC_BYTES :: 262144;
+Rrc :: struct { api: [256] u8; api_n: int; psql: [1024] u8; psql_n: int; db: [1024] u8; db_n: int; pass: int; fail: int; }
+
+rrc_put :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+rrc_check :: (t: [] Rrc, name: string, what: string, got: string, want: string) {
+  if got == want { t[0].pass += 1; return; }
+  t[0].fail += 1;
+  print("FAIL % (%)\n  got:  %\n  want: %\n", name, what, got, want);
+}
+rrc_sql :: (t: [] Rrc, sql: string, out: [] u8) -> int {
+  a := [8] string.[cast(string) t[0].psql[0..<t[0].psql_n], "-XAt", "-v", "ON_ERROR_STOP=1", "--dbname", cast(string) t[0].db[0..<t[0].db_n], "-c", sql];
+  err: [8192] u8;
+  r := proc_run(a[..], 15000, out, err[..]);
+  if r.status != 0 { tool_err(cast(string) err[0..<r.err_n]); return -1; }
+  n := r.out_n;
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r') { n -= 1; }
+  return n;
+}
+// One call under /api/playtest/realms as the player key (none when ""): its status, and its body in out.
+RrcGot :: struct { code: int; n: int; }
+rrc_call :: (t: [] Rrc, method: string, path: string, key: string, body: string, out: [] u8) -> RrcGot {
+  ub: [512] u8; n := rrc_put(ub[..], 0, cast(string) t[0].api[0..<t[0].api_n]);
+  n = rrc_put(ub[..], n, "/api/playtest/realms"); n = rrc_put(ub[..], n, path);
+  hb: [128] u8; hn := rrc_put(hb[..], 0, "X-Verse-Player: "); hn = rrc_put(hb[..], hn, key);
+  hs := [2] string.["Content-Type: application/json", cast(string) hb[0..<hn]];
+  w: [1] HttpWork;
+  got := http_do(w[..], method, cast(string) ub[0..<n], ifx key == "" then hs[0..<1] else hs[..], body, 10000, 0, out);
+  if got.error != HTTP_OK { return RrcGot.{code = -1}; }
+  return RrcGot.{code = got.code, n = got.n};
+}
+// A string member of a fixture object, unescaped into out ("" when absent).
+rrc_str :: (j: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(j, jv_get(j, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// Where the number after "KEY": starts in text, or -1.
+rrc_number_at :: (text: string, key: string) -> int {
+  mb: [64] u8; mn := rrc_put(mb[..], 0, "\""); mn = rrc_put(mb[..], mn, key); mn = rrc_put(mb[..], mn, "\": ");
+  if mn < 0 { return -1; }
+  mark := cast(string) mb[0..<mn];
+  for i: 0..<text.count - mark.count + 1 { if text[i..<i + mark.count] == mark { return i + mark.count; } }
+  return -1;
+}
+rrc_number_end :: (text: string, at: int) -> int {
+  e := at;
+  while e < text.count && text[e] >= '0' && text[e] <= '9' { e += 1; }
+  return e;
+}
+// got with the number after "KEY": replaced by want's, in out; got as it is when either has none.
+rrc_vary :: (got: string, want: string, key: string, out: [] u8) -> string {
+  g := rrc_number_at(got, key); w := rrc_number_at(want, key);
+  if g < 0 || w < 0 || rrc_number_end(got, g) == g || rrc_number_end(want, w) == w { return got; }
+  n := rrc_put(out, 0, got[0..<g]); n = rrc_put(out, n, want[w..<rrc_number_end(want, w)]); n = rrc_put(out, n, got[rrc_number_end(got, g)..<got.count]);
+  return ifx n < 0 then got else cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Rrc;
+  base := proc_getenv("API", t[0].api[..]); t[0].api_n = base.count;
+  psql := proc_getenv("PSQL", t[0].psql[..]); t[0].psql_n = psql.count;
+  db := proc_getenv("PGURL", t[0].db[..]); t[0].db_n = db.count;
+  if base.count < 18 || base[0..<17] != "http://127.0.0.1:" || db == "" || psql == "" {
+    tool_errln("set local API=http://127.0.0.1:PORT, PGURL and PSQL"); return 2;
+  }
+  text: [RRC_BYTES] u8; tn := fs_read(RRC_FIXTURE, text[..]);
+  nodes: [4096] JvNode; f: [1] Jv;
+  if tn <= 0 || !jv_parse(f[..], cast(string) text[0..<tn], nodes[..]) { tool_errln("realm_record_checks: the fixture did not read"); return 2; }
+  realm := jv_get(f[0], 0, "realm");
+  kb: [64] u8; key := rrc_str(f[0], realm, "player_key", kb[..]);
+  sk: [64] u8; stranger := rrc_str(f[0], realm, "stranger_key", sk[..]);
+  out: [RRC_BYTES] u8; seed: [8192] u8; cl: [1024] u8;
+  if key == "" || stranger == "" { tool_errln("realm_record_checks: the fixture names no keys"); return 2; }
+  _ := rrc_sql(t[..], rrc_str(f[0], realm, "clean", cl[..]), out[..]);   // a run that stopped early left its realm
+  if rrc_sql(t[..], rrc_str(f[0], realm, "seed", seed[..]), out[..]) < 0 { tool_errln("realm_record_checks: the seed did not run"); return 1; }
+  steps := jv_get(f[0], 0, "steps");
+  for i: 0..<jv_len(f[0], steps) {
+    s := jv_at(f[0], steps, i);
+    nb: [160] u8; name := rrc_str(f[0], s, "name", nb[..]);
+    rp: [16384] u8; want := rrc_str(f[0], s, "reply", rp[..]);
+    got := "";
+    if jv_get(f[0], s, "sql") >= 0 {
+      qb: [8192] u8; n := rrc_sql(t[..], rrc_str(f[0], s, "sql", qb[..]), out[..]);
+      got = ifx n < 0 then "" else cast(string) out[0..<n];
+    } else {
+      mb: [16] u8; method := rrc_str(f[0], s, "method", mb[..]);
+      pb: [256] u8; path := rrc_str(f[0], s, "path", pb[..]);
+      ab: [16] u8; who := rrc_str(f[0], s, "as", ab[..]);
+      bb: [4096] u8; body := rrc_str(f[0], s, "body", bb[..]);
+      r := rrc_call(t[..], method, path, ifx who == "owner" then key else ifx who == "stranger" then stranger else "", body, out[..]);
+      sc: [16] u8; sn := 0; code := r.code;
+      if code < 0 { sc[0] = '-'; sn = 1; code = 1; }
+      cd: [16] u8; cn := 0; c := code; while c > 0 { cd[cn] = cast(u8) ('0' + c % 10); c /= 10; cn += 1; }
+      for k: 0..<cn { sc[sn] = cd[cn - 1 - k]; sn += 1; }
+      rrc_check(t[..], name, "status", cast(string) sc[0..<sn], jv_raw(f[0], jv_get(f[0], s, "status")));
+      got = ifx r.code < 0 then "" else cast(string) out[0..<r.n];
+    }
+    vb: [RRC_BYTES] u8; vary := jv_get(f[0], s, "vary");
+    for k: 0..<jv_len(f[0], vary) {
+      kb2: [64] u8; kn := jv_str(f[0], jv_at(f[0], vary, k), kb2[..]);
+      if kn > 0 { got = rrc_vary(got, want, cast(string) kb2[0..<kn], vb[..]); }
+    }
+    rrc_check(t[..], name, "reply", got, want);
+    print("ok %\n", name);
+  }
+  if rrc_sql(t[..], rrc_str(f[0], realm, "clean", cl[..]), out[..]) < 0 { t[0].fail += 1; }
+  print("% realm record checks passed, % failed\n", t[0].pass, t[0].fail);
+  return ifx t[0].fail == 0 then 0 else 1;
+}

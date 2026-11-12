@@ -1,0 +1,280 @@
+{
+ "about": "A made realm's record on the wire (record.proto, GitHub #13250), taken from what the server answers today: seed the realm, make each call under /api/playtest/realms as its owner, a stranger (a key no player has) or nobody, and the server answers with this status and body; a step with \"sql\" runs that statement and gets this value (the publish that pins an engine). A key in \"vary\" is a number the run decides. \"message\" names the body's message in record.proto (MineLines: the ?as=lines text; Conflict is realm.proto's; ErrorReply is the API's own refusal, proto/openagents/api/v1alpha1/error.proto) and \"request\" the request's. aethyr/forge/record-goldens.coax reads and writes every body through aethyr/forge/record.coax; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "schema": "proto/openagents/verse/doc/v1alpha1/record.proto",
+ "realm": {
+  "slug": "record-fixture",
+  "player_key": "record-fixture-player-key-0001",
+  "stranger_key": "record-fixture-stranger-key-0002",
+  "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-record-fixture', encode(sha256(convert_to('record-fixture-player-key-0001', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-record-fixture', 'p-record-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms) VALUES ('record-fixture', 'made-record-fixture', 'Record \"Fixture\"', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"count\":4}]', '{\"fly\":false,\"jump\":true}', 1);",
+  "clean": "DELETE FROM verse.realm_publications WHERE slug = 'record-fixture'; DELETE FROM verse.realm_revisions WHERE slug = 'record-fixture'; DELETE FROM verse.made_realms WHERE slug = 'record-fixture'; DELETE FROM verse.worlds WHERE id = 'made-record-fixture'; DELETE FROM verse.players WHERE id = 'p-record-fixture';"
+ },
+ "steps": [
+  {
+   "name": "the owner's realms",
+   "method": "GET",
+   "path": "/mine",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "{\"realms\": [{\"rev\": 1, \"name\": \"Record \\\"Fixture\\\"\", \"slug\": \"record-fixture\", \"listed\": false, \"published\": 1, \"visibility\": \"private\"}]}",
+   "message": "MineReply"
+  },
+  {
+   "name": "the owner's realms as lines",
+   "method": "GET",
+   "path": "/mine?as=lines",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "realm record-fixture|1|1|0|Record \"Fixture\"|private\n",
+   "message": "MineLines"
+  },
+  {
+   "name": "a stranger has none",
+   "method": "GET",
+   "path": "/mine",
+   "as": "stranger",
+   "body": "",
+   "status": 200,
+   "reply": "{\"realms\": []}",
+   "message": "MineReply"
+  },
+  {
+   "name": "a stranger has no lines",
+   "method": "GET",
+   "path": "/mine?as=lines",
+   "as": "stranger",
+   "body": "",
+   "status": 200,
+   "reply": "",
+   "message": "MineLines"
+  },
+  {
+   "name": "nobody has none",
+   "method": "GET",
+   "path": "/mine",
+   "as": "none",
+   "body": "",
+   "status": 200,
+   "reply": "{\"realms\": []}",
+   "message": "MineReply"
+  },
+  {
+   "name": "mine is read, not posted",
+   "method": "POST",
+   "path": "/mine",
+   "as": "owner",
+   "body": "{}",
+   "status": 405,
+   "reply": "{\"error\":\"GET your worlds\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "no record before a publish",
+   "method": "GET",
+   "path": "/record-fixture/published",
+   "as": "owner",
+   "body": "",
+   "status": 404,
+   "reply": "{\"error\": \"not pinned\"}",
+   "message": "RouteError"
+  },
+  {
+   "name": "a visibility that is none of the three",
+   "method": "POST",
+   "path": "/record-fixture/visibility",
+   "as": "owner",
+   "body": "{\"visibility\":\"open\"}",
+   "status": 400,
+   "reply": "{\"error\": \"visibility is private, unlisted or public\"}",
+   "message": "RouteError",
+   "request": "VisibilityRequest"
+  },
+  {
+   "name": "a body that is not JSON",
+   "method": "POST",
+   "path": "/record-fixture/visibility",
+   "as": "owner",
+   "body": "{\"visibility\"",
+   "status": 400,
+   "reply": "{\"error\":\"not json\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "visibility is posted",
+   "method": "GET",
+   "path": "/record-fixture/visibility",
+   "as": "owner",
+   "body": "",
+   "status": 405,
+   "reply": "{\"error\":\"POST {visibility}\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "a private realm is not there for a stranger",
+   "method": "POST",
+   "path": "/record-fixture/visibility",
+   "as": "stranger",
+   "body": "{\"visibility\":\"public\"}",
+   "status": 404,
+   "reply": "{\"error\":\"no such world\"}",
+   "message": "ErrorReply",
+   "request": "VisibilityRequest"
+  },
+  {
+   "name": "its owner makes it unlisted",
+   "method": "POST",
+   "path": "/record-fixture/visibility",
+   "as": "owner",
+   "body": "{\"visibility\":\"unlisted\"}",
+   "status": 200,
+   "reply": "{\"was\": \"private\", \"slug\": \"record-fixture\", \"visibility\": \"unlisted\", \"page\": false}",
+   "message": "VisibilityReply",
+   "request": "VisibilityRequest"
+  },
+  {
+   "name": "a stranger may not change it",
+   "method": "POST",
+   "path": "/record-fixture/visibility",
+   "as": "stranger",
+   "body": "{\"visibility\":\"public\"}",
+   "status": 403,
+   "reply": "{\"error\": \"only approved creators and admins change who sees a world\"}",
+   "message": "RouteError",
+   "request": "VisibilityRequest"
+  },
+  {
+   "name": "its owner makes it public from the revision read",
+   "method": "POST",
+   "path": "/record-fixture/edit-v1/visibility",
+   "as": "owner",
+   "body": "{\"rev\":1,\"visibility\":\"public\"}",
+   "status": 200,
+   "reply": "{\"rev\": 2, \"was\": \"unlisted\", \"slug\": \"record-fixture\", \"visibility\": \"public\", \"page\": false}",
+   "message": "VisibilityReply",
+   "request": "VisibilityRequest"
+  },
+  {
+   "name": "a visibility from a stale revision",
+   "method": "POST",
+   "path": "/record-fixture/edit-v1/visibility",
+   "as": "owner",
+   "body": "{\"rev\":7,\"visibility\":\"private\"}",
+   "status": 409,
+   "reply": "{\"rev\": 2, \"error\": \"changed since\"}",
+   "message": "Conflict",
+   "request": "VisibilityRequest"
+  },
+  {
+   "name": "its owner makes it private again",
+   "method": "POST",
+   "path": "/record-fixture/visibility",
+   "as": "owner",
+   "body": "{\"visibility\":\"private\"}",
+   "status": 200,
+   "reply": "{\"was\": \"public\", \"slug\": \"record-fixture\", \"visibility\": \"private\", \"page\": false}",
+   "message": "VisibilityReply",
+   "request": "VisibilityRequest"
+  },
+  {
+   "name": "a publish from a stale revision",
+   "method": "POST",
+   "path": "/record-fixture/publish",
+   "as": "owner",
+   "body": "{\"rev\":7}",
+   "status": 409,
+   "reply": "{\"rev\": 2, \"error\": \"changed since\"}",
+   "message": "Conflict",
+   "request": "PublishRequest"
+  },
+  {
+   "name": "a publish with no revision",
+   "method": "POST",
+   "path": "/record-fixture/publish",
+   "as": "owner",
+   "body": "{}",
+   "status": 400,
+   "reply": "{\"error\": \"a revision\"}",
+   "message": "RouteError"
+  },
+  {
+   "name": "a stranger may not publish",
+   "method": "POST",
+   "path": "/record-fixture/publish",
+   "as": "stranger",
+   "body": "{\"rev\":2}",
+   "status": 404,
+   "reply": "{\"error\":\"no such world\"}",
+   "message": "ErrorReply",
+   "request": "PublishRequest"
+  },
+  {
+   "name": "a publish this server can't pin",
+   "method": "POST",
+   "path": "/record-fixture/publish",
+   "as": "owner",
+   "body": "{\"rev\":2}",
+   "status": 503,
+   "reply": "{\"error\": \"the engine build can't be pinned; nothing was published\"}",
+   "message": "RouteError",
+   "request": "PublishRequest"
+  },
+  {
+   "name": "a publish with no site bucket pins nothing",
+   "sql": "SELECT (x - 'status')::text FROM verse.realm_publish_pinned('record-fixture', '{\"rev\":2}', 'record-fixture-player-key-0001', false, false, NULL) x",
+   "reply": "{\"rev\": 2, \"engine\": null, \"listed\": false, \"sha256\": \"40baf9be8aeedf9e27afb546bf9912d19e431a51a5ef30ff03a7ffe62a5ea608\", \"published\": true}",
+   "message": "PublishReply"
+  },
+  {
+   "name": "a listed publish pins the engine",
+   "sql": "SELECT (x - 'status')::text FROM verse.realm_publish_pinned('record-fixture', '{\"rev\":2,\"listed\":true}', 'record-fixture-player-key-0001', false, false, $t$<!doctype html>\n<html><body>\n<canvas id=\"coaxial\"></canvas>\n<link rel=\"preload\" href=\"/build/myrealm.0e7b9526d8a2.wasm\" as=\"fetch\" crossorigin><script type=\"module\" src=\"/coaxial/host.9ca333f3d8b0.js\" data-app=\"myrealm\" data-realm=\"built\" data-slot=\"built\" data-voice=\"made-realm\" data-style=\"lowpoly\" data-clock=\"fixed:0.5\" data-assets=\"\n  pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack\" data-voice-wasm=\"/build/voice.71d76f28966b.wasm\" data-wasm=\"/build/myrealm.0e7b9526d8a2.wasm\" data-wgsl=\"/build/myrealm.224131021ece.wgsl\"></script>\n</body>\n</html>\n$t$) x",
+   "reply": "{\"rev\": 2, \"engine\": \"1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006\", \"listed\": true, \"sha256\": \"40baf9be8aeedf9e27afb546bf9912d19e431a51a5ef30ff03a7ffe62a5ea608\", \"published\": true, \"visibility\": \"public\"}",
+   "message": "PublishReply",
+   "request": "PublishRequest",
+   "body": "{\"rev\":2,\"listed\":true}"
+  },
+  {
+   "name": "the publish record",
+   "method": "GET",
+   "path": "/record-fixture/published",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "{\"n\": 1, \"ms\": 1794513059395, \"rev\": 2, \"why\": \"publish\", \"slug\": \"record-fixture\", \"engine\": \"aethyr-engine 1\\ntype module\\nsrc /coaxial/host.9ca333f3d8b0.js\\ndata-app myrealm\\ndata-realm built\\ndata-slot built\\ndata-voice made-realm\\ndata-style lowpoly\\ndata-clock fixed:0.5\\ndata-assets pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack\\ndata-voice-wasm /build/voice.71d76f28966b.wasm\\ndata-wasm /build/myrealm.0e7b9526d8a2.wasm\\ndata-wgsl /build/myrealm.224131021ece.wgsl\\n\", \"sha256\": \"40baf9be8aeedf9e27afb546bf9912d19e431a51a5ef30ff03a7ffe62a5ea608\", \"engine_sha256\": \"1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006\"}",
+   "message": "PublishRecord",
+   "vary": [
+    "ms"
+   ]
+  },
+  {
+   "name": "the record is read, not posted",
+   "method": "POST",
+   "path": "/record-fixture/published",
+   "as": "owner",
+   "body": "{}",
+   "status": 405,
+   "reply": "{\"error\":\"GET the record\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "the owner's realms after the publish",
+   "method": "GET",
+   "path": "/mine",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "{\"realms\": [{\"rev\": 2, \"name\": \"Record \\\"Fixture\\\"\", \"slug\": \"record-fixture\", \"listed\": true, \"published\": 2, \"visibility\": \"public\"}]}",
+   "message": "MineReply"
+  },
+  {
+   "name": "the lines after the publish",
+   "method": "GET",
+   "path": "/mine?as=lines",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "realm record-fixture|2|2|1|Record \"Fixture\"|public\n",
+   "message": "MineLines"
+  }
+ ]
+}

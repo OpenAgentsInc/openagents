@@ -180,7 +180,8 @@
       "openagents/verse/npc/v1alpha1/ask.proto"
     ],
     "verse-doc": [
-      "openagents/verse/doc/v1alpha1/realm.proto"
+      "openagents/verse/doc/v1alpha1/realm.proto",
+      "openagents/verse/doc/v1alpha1/record.proto"
     ],
     "repo": [
       "openagents/repo/v1alpha1/repo.proto"

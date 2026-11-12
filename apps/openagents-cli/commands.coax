@@ -816,19 +816,23 @@ rc_degrees_ok :: (value: string, max: int) -> bool #effects(all) {
   whole := 0; digits := 0;
   while i < value.count && value[i] >= '0' && value[i] <= '9' { whole = whole * 10 + cast(int) (value[i] - '0'); i += 1; digits += 1; }
   if digits == 0 || digits > 3 { return false; }
-  frac := 0; places := 0;
+  part := false; places := 0;   // part: a decimal that isn't 0
   if i < value.count && value[i] == '.' {
     i += 1;
-    while i < value.count && value[i] >= '0' && value[i] <= '9' { frac = frac * 10 + cast(int) (value[i] - '0'); i += 1; places += 1; }
+    while i < value.count && value[i] >= '0' && value[i] <= '9' { if value[i] != '0' { part = true; } i += 1; places += 1; }
     if places == 0 || places > 2 { return false; }
   }
   if i != value.count { return false; }
-  return whole < max || (whole == max && frac == 0);
+  return whole < max || (whole == max && !part);
 }
 #test "seat inputs: degrees, targets, seconds, tools and things" {
   #assert rc_value("turn","90") && rc_value("turn","-180") && rc_value("turn","45.5") && rc_value("turn","-0.25") && rc_value("turn","180.0");
   #assert !rc_value("turn","181") && !rc_value("turn","180.5") && !rc_value("turn","") && !rc_value("turn","-") && !rc_value("turn","1e2") && !rc_value("turn","9.") && !rc_value("turn","1.234") && !rc_value("turn","+5");
   #assert rc_value("pitch","-60") && !rc_value("pitch","61") && !rc_value("pitch","60.01");
+  // each bound of the digits: a ':' is past '9', four digits are too many, a 9 is a decimal, a zero decimal is none
+  #assert !rc_value("turn","1:") && !rc_value("turn","0090") && rc_value("turn","1.9") && !rc_value("turn","1.:") && !rc_value("turn","180.10") && rc_value("turn","180.00") && !rc_value("turn","180.01") && rc_value("turn","179.99");
+  del: [3] u8; del[0] = 'a'; del[1] = 127; del[2] = 'b';
+  #assert !rc_value("target",cast(string) del[..]);
   #assert rc_value("seconds","1") && rc_value("seconds","30") && !rc_value("seconds","0") && !rc_value("seconds","31") && !rc_value("seconds","2.5");
   #assert rc_value("tool","jump") && rc_value("tool","map") && rc_value("tool","build") && !rc_value("tool","fly") && !rc_value("tool","Jump");
   #assert rc_value("thing","barrel") && rc_value("thing","lantern") && !rc_value("thing","boat") && !rc_value("thing","");
@@ -1414,69 +1418,5 @@ rb_help :: (out: [] u8) -> string #effects(all) {
     }
   }
   return ifx n == -1 then "" else cast(string) out[0..<n];
-}
-
-// realm list's text: one aligned row a realm under a header, from the
-// server's "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY" lines
-// (published 0: never); "realms 0" when there are none. A line of another
-// shape is kept as it came. Its length, or -1 when out is short.
-#test "realm list reads as aligned columns, not pipe rows" {
-  out: [1024] u8;
-  t := "realm night-garden|1|1|0|Night Garden|private\nrealm walled-garden|12|0|1|Walled Garden|public\n";
-  n := cli_realm_rows(t, out[..]);
-  #assert n > 0 && cast(string) out[0..<n] == "SLUG           VISIBILITY  REV  PUBLISHED  NAME\nnight-garden   private     1    1          Night Garden\nwalled-garden  public      12   never      Walled Garden\n";
-  n = cli_realm_rows("", out[..]);
-  #assert cast(string) out[0..<n] == "realms 0\n";
-  n = cli_realm_rows("\n\n", out[..]);
-  #assert cast(string) out[0..<n] == "realms 0\n";
-  n = cli_realm_rows("realm a|2|2|0|A|unlisted\nnote x", out[..]);
-  #assert cast(string) out[0..<n] == "SLUG  VISIBILITY  REV  PUBLISHED  NAME\na     unlisted    2    2          A\nnote x\n";
-  n = cli_realm_rows("realm a|2|2|0|A|", out[..]);
-  #assert cast(string) out[0..<n] == "SLUG  VISIBILITY  REV  PUBLISHED  NAME\na     public      2    2          A\n";
-  #assert cli_realm_rows(t, out[0..<40]) == -1 && cli_realm_rows("", out[0..<3]) == -1;
-  n = cli_realm_rows("note x", out[..]);
-  #assert cast(string) out[0..<n] == "note x\n";
-  n = cli_realm_rows("\nrealm abcdefg|2|2|0|A|unlisted", out[..]);
-  #assert cast(string) out[0..<n] == "SLUG     VISIBILITY  REV  PUBLISHED  NAME\nabcdefg  unlisted    2    2          A\n";
-  n = cli_realm_rows("realm a-very-long-realm-slug-name|123456|99|0|N|private", out[..]);
-  #assert cast(string) out[0..<n] == "SLUG                         VISIBILITY  REV  PUBLISHED  NAME\na-very-long-realm-slug-name  private     123456 99         N\n";
-}
-cli_realm_rows :: (text: string, out: [] u8) -> int #effects(all) {
-  slug_w := 4; rows := false; at := 0;
-  for end: 0..<text.count + 1 {
-    if end < text.count && text[end] != '\n' { continue; }
-    line := text[at..<end]; at = end + 1;
-    if !cli_prefix(line,"realm ") { continue; }
-    k := cli_field(line[6..<line.count],0).count;
-    while slug_w < k { slug_w += 1; }
-    rows = true;
-  }
-  n := 0;
-  if rows {
-    n = cli_cell(out,n,"SLUG",slug_w + 2); n = cli_cell(out,n,"VISIBILITY",12); n = cli_cell(out,n,"REV",5); n = cli_cell(out,n,"PUBLISHED",11); n = forge_put(out,n,"NAME\n");
-  }
-  at = 0; others := false;
-  for end: 0..<text.count + 1 {
-    if end < text.count && text[end] != '\n' { continue; }
-    line := text[at..<end]; at = end + 1;
-    if line.count == 0 { continue; }
-    if !cli_prefix(line,"realm ") { n = forge_put(out,n,line); n = forge_put(out,n,"\n"); others = true; continue; }
-    r := line[6..<line.count];
-    vis := cli_field(r,5); pub := cli_field(r,2);
-    n = cli_cell(out,n,cli_field(r,0),slug_w + 2);
-    n = cli_cell(out,n,ifx vis == "" then "public" else vis,12);
-    n = cli_cell(out,n,cli_field(r,1),5);
-    n = cli_cell(out,n,ifx pub == "0" then "never" else pub,11);
-    n = forge_put(out,n,cli_field(r,4)); n = forge_put(out,n,"\n");
-  }
-  if !rows && !others { n = forge_put(out,n,"realms 0\n"); }
-  return n;
-}
-// text, then spaces to width (at least one).
-cli_cell :: (out: [] u8, at: int, text: string, width: int) -> int #effects(all) {
-  n := forge_put(out,forge_put(out,at,text)," ");
-  w := text.count + 1;
-  while w < width { n = forge_put(out,n," "); w += 1; }
-  return n;
 }
 
