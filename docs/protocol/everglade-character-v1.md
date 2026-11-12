@@ -53,6 +53,32 @@ Items change only through the item ledger (`aethyr/session/ledger.coax`,
 #13291). The store fills `bag` and `inv` from the ledger when it loads a
 record.
 
+## Where the record lives
+
+The API keeps one record per character in `verse.characters`
+(`coax/web/api/migrations/0169_characters.sql`), keyed by the identity the
+item ledger uses. SQL checks the shape only; the rules are Coax's, through
+`coax/web/api/character-policy.coax`:
+
+- **Seat ticket.** `room_ticket` (`player.c`) locks the row and brings the
+  record up to what the server holds: the class kept once (migration 0160),
+  the greatest XP a room reported, and the realm's starting level as the
+  floor. It fills `bag` and `inv` from the ledger. The ticket then signs the
+  record's class and the level its XP gives, so the room seats the character
+  from the record. A page's hello and its browser save never set either.
+- **Checkpoint.** An accepted capture (`room_checkpoint`) raises the record's
+  XP through the write rule above, in the same transaction.
+- **Browser save.** The page keeps the character's look, plus the class and
+  level it picked in Character Create. The class is a request that the server
+  keeps once, at the first entry. The level is honoured only on an admin's
+  test ticket. Nothing in the save changes a kept class, a player's level,
+  the XP or the items (`coax/web/api/tests/room_checks.coax` "character:",
+  `everglade/server/seats.coax` "seat class:").
+
+The migration filled a record for every character the server knew: the class
+kept once, the greatest XP across `room_vitals` and both checkpoint tables,
+floor 1, and empty lists.
+
 ## Versions and migration
 
 - `v` names the version. A reader accepts only the versions it knows; a newer
