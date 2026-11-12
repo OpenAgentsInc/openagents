@@ -213,8 +213,7 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   status := MC_WAIT;
   rn := 0;
   for i: 0..<n {
-    // a finish that will get its look first (loop.coax mc_review) streams no reply: the one taken does
-    if ev[i].kind == GW_EV_TEXT && !(l[0].review && !l[0].reviewed && l[0].acted) { rn += mc_rs_feed(r[0].rs[..], ev[i].text, r[0].rbuf[rn..<r[0].rbuf.count]); }
+    if ev[i].kind == GW_EV_TEXT { rn += mc_rs_feed(r[0].rs[..], ev[i].text, r[0].rbuf[rn..<r[0].rbuf.count]); }
     status = mc_feed(l, ev[i]);
   }
   if rn > 0 { k = mc_run_put(out, k, McRunEvent.{kind = MR_REPLY, text = cast(string) r[0].rbuf[0..<rn]}); }

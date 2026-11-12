@@ -235,7 +235,6 @@ tool_main :: () -> int #export_c #effects(all) {
     h[0].ncur = mk_keep(h[0].cur[..], tk);
     fx := mk_facts(h[..], ifx tool_os() == TOOL_LINUX then "Linux" else "macOS", cd, facts[..]);
     mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
-    run[0].l[0].review = true;       // a coding run gets one look at its diff before a finish is taken
     gated := cl_bool(msg, "gated");
     run[0].gated = gated.ok && gated.value; run[0].asking = false;
     profile:=cl_str(ar[..],msg,"sandbox");

@@ -76,20 +76,7 @@ McLoop :: struct {
   ending: int;
   why: string;                   // no_capacity: the gateways' last reason
   reply: string;                 // finished or asked: what the user sees
-  review: bool;                  // the owner wants one look at the work before a finish is taken (mc_take)
-  reviewed: bool;                // that look has been given
-  acted: bool;                   // a step has run commands or edits
-  nb: [4400] u8;                 // the review's note
 }
-
-// The look before a finish is taken (GitHub #13231): when a run that has run commands or edits
-// says it is finished, the loop gives it, once, the final diff and any new untracked files
-// (their first 8 KB each, at most 20 of them), with the task again and this instruction; the
-// next answer is taken as it is. A step of the one loop, its results like any other's.
-MC_REVIEW_COMMANDS :: [2] string.[
-  "git --no-pager diff",
-  "git ls-files --others --exclude-standard | head -n 20 | while IFS= read -r f; do echo \"== $f\"; head -c 8192 -- \"$f\"; echo; done"];
-MC_REVIEW_NOTE :: "You said you were finished. Before that is taken: the last step's results are the final diff and the new untracked files. Check each requirement the task states, one by one, against them. If every one is met, finish again with your reply. If not, keep working. The task again: ";
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
 mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environment: string, task: string, route: string, local_work: f64) {
@@ -175,7 +162,6 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   l[0].steps += 1;
   l[0].bad = 0;
   a := l[0].pending[0];
-  if a.finished && l[0].review && !l[0].reviewed && l[0].acted { return mc_review(l); }
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }
   if a.asks { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED); }
   if a.nc == 0 && a.nv == 0 && a.ne == 0 {
@@ -185,7 +171,6 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     return MC_AGAIN;
   }
   l[0].idle = 0;
-  if a.nc > 0 || a.ne > 0 { l[0].acted = true; }
   mc_action_begin(l[0].st[..], a.rationale);
   if (a.nc > 0 || a.ne > 0) && l[0].local_work < MC_LOCAL_WORK_MIN {
     for i: 0..<a.ne { mc_action_edit(l[0].st[..], a.edits[i].path, false, "this request is not local work: answer without edits"); }
@@ -194,24 +179,6 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     l[0].pending[0].nc = 0; l[0].pending[0].ne = 0;
     if a.nv == 0 { mc_action_end(l[0].st[..]); return MC_AGAIN; }
   }
-  return MC_TOOLS;
-}
-
-// The finish waits for one look at the work: this step runs the review's commands, and the
-// note asks the model to check the task's requirements against them.
-mc_review :: (l: [] McLoop) -> int {
-  l[0].reviewed = true;
-  mc_action_begin(l[0].st[..], l[0].pending[0].rationale);
-  cmds := MC_REVIEW_COMMANDS;
-  r := McAction.{rationale = l[0].pending[0].rationale};
-  for c, i: cmds { r.commands[i] = c; }
-  r.nc = cmds.count;
-  l[0].pending[0] = r;
-  t := l[0].st[0].task;
-  n := json_raw(l[0].nb[..], 0, MC_REVIEW_NOTE);
-  k := ifx t.count > 4000 then mc_back(t, 4000) else t.count;
-  n = json_raw(l[0].nb[..], n, cast(string) t[0..<k]);
-  mc_note(l[0].st[..], ifx n < 0 then MC_REVIEW_NOTE else cast(string) l[0].nb[0..<n]);
   return MC_TOOLS;
 }
 
@@ -320,49 +287,6 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
   #assert json_valid(req.messages[0].text);
   #assert l[0].st[0].nearly > before;      // compacted, not dropped
-}
-
-#test "review: a finish after work gets one look at the diff and new files, then the next answer is taken" {
-  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
-  mc_init(l[..], sb[..], lb[..], "{}", "fix the typo in a.txt", "{\"local_work\":0.9}", 0.9);
-  l[0].review = true;
-  replies: [3] string;
-  replies[0] = "{\"rationale\":\"fix\",\"edits\":[],\"commands\":[\"sed -i s/helo/hello/ a.txt\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-  replies[1] = "{\"rationale\":\"done\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Fixed.\",\"ask\":\"none\"}";
-  replies[2] = "{\"rationale\":\"checked\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Fixed: helo is hello.\",\"ask\":\"none\"}";
-  s: [1] McScript; s[0].replies = replies[..];
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 3 && l[0].reply == "Fixed: helo is hello." && l[0].reviewed;
-  rc := MC_REVIEW_COMMANDS;
-  #assert s[0].nran == 3 && s[0].ran[1] == rc[0] && s[0].ran[2] == rc[1];
-  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
-  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  #assert cl_str(ar[..], j, "actions.1.results.0.command") == "git --no-pager diff" && cl_count(cl_raw(j, "actions.1.results")) == 2;
-  #assert ps_count(cast(string) l[0].st[0].notes[0..<l[0].st[0].nn], "Check each requirement the task states") == 1 && ps_count(cast(string) l[0].st[0].notes[0..<l[0].st[0].nn], "fix the typo in a.txt") == 1;
-}
-
-#test "review: once a run; never for a plain answer; never when the owner didn't ask" {
-  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
-  act := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-  fin := "{\"rationale\":\"x\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}";
-  // work, finish (looked at), more work, finish: taken
-  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0); l[0].review = true;
-  r1: [4] string; r1[0] = act; r1[1] = fin; r1[2] = act; r1[3] = fin;
-  s: [1] McScript; s[0] = McScript.{replies = r1[..]};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 4 && s[0].nran == 4 && l[0].reply == "done";   // a second look would have asked a 5th call of a script that has none
-  // a plain answer: no work, no look
-  mc_init(l[..], sb[..], lb[..], "{}", "what is 2+2", "{}", 1.0); l[0].review = true;
-  r2: [1] string; r2[0] = fin;
-  s[0] = McScript.{replies = r2[..]};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 1 && !l[0].reviewed;
-  // not asked for: as before
-  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
-  r3: [2] string; r3[0] = act; r3[1] = fin;
-  s[0] = McScript.{replies = r3[..]};
-  mc_script_run(l[..], s[..]);
-  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 2 && !l[0].reviewed;
 }
 
 #test "'what is 2+2' finishes in one step with no commands" {
