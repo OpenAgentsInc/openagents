@@ -102,6 +102,7 @@ RmRoom :: struct {
   cars: [ROOM_PLAYERS] RigidBody;
 }
 RmServer :: struct {
+  e2_only: bool;     // runs Everglade II only: a v1 room's code is refused (the room binary sets it, docs/decisions/0005, #13267)
   orbit_generation:SeatGeneration;
   bg:[1]BgBudget;
   forge:RmForge;
@@ -1328,3 +1329,6 @@ rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -
   rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 128 -");
   #assert rm_eg_glade(v[..], k, SeatId.{value = 1}) && !v[0].eg[k].seat[1].placed;
 }
+
+// The room binary runs Everglade II only (room-host.c main, docs/decisions/0005-production-room-runs-everglade-ii.md, #13267).
+rm_e2_only :: (v: [] RmServer, on: bool) #export_c #effects(all) { v[0].e2_only = on; }

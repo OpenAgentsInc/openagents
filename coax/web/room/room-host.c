@@ -334,7 +334,6 @@ static int64_t rooms_warm_us;
 static void warm_rooms(void) {
   if(rooms_warmed)return;
   int64_t preparing=now_us();
-  for(int k=0;k<WORLD_ROOMS;k++)if(!everglade_prepare(k))return;
   rooms_warmed=world_ready();
   rooms_warm_us=now_us()-preparing;
 }
@@ -502,12 +501,9 @@ static void opening(int i) {
     if (len + want > c->n && len + want < IN_CAP) return;   /* the rest of the body is still coming */
     coax_string whole = {(const char *)c->in, (int64_t)(len + want <= c->n ? len + want : c->n)};
     /* Coax proposes the floor probes and consumes the actual world's answers. */
+    /* the floor probes were v1's city's (world_forge_open): Everglade II's rooms have no forge floor, so none is open (#13267) */
     int64_t probes = rm_forge_probe(view(), whole);
-    if (probes > 0) { float xy[2]; int k = (int)rm_forge_probe_at(view(), 0, (coax_v_f32){xy, 2}); world_forge_prepare(k); }
-    for (int64_t p = 0; p < probes; p++) {
-      float xy[2]; int k = (int)rm_forge_probe_at(view(), p, (coax_v_f32){xy, 2});
-      rm_forge_probe_open(view(), p, world_forge_open(k, xy[0], xy[1]));
-    }
+    for (int64_t p = 0; p < probes; p++) rm_forge_probe_open(view(), p, false);
     int fs = (int)rm_forge_api(view(), whole);
     if (fs > 0) {
       if (fs == 200 && server->forge.pending) {
@@ -1003,6 +999,8 @@ int main(int argc, char **argv) {
   bool required = !(must && !strcmp(must, "0"));
   /* which shard of the instance directory this is (oa-room 1, oa-room-K K: room-directory.coax) */
   const char *shard = getenv("OA_ROOM_SHARD");
+  /* every room is Everglade II's (docs/decisions/0005-production-room-runs-everglade-ii.md, #13267) */
+  rm_e2_only(view(), true);
   if (shard && *shard) rm_shard(view(), atoi(shard));
   /* a room VM's shard names where its pages connect, and reports its health every 5 s (#13179) */
   { const char *ep = getenv("OA_ROOM_ENDPOINT"); if (ep && *ep && !rm_endpoint(view(), (coax_string){ep, (int64_t)strlen(ep)})) fprintf(stderr, "room: OA_ROOM_ENDPOINT is not a wss:// URL ending in /: not named\n"); }

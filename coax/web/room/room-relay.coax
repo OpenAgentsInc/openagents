@@ -139,8 +139,9 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   if r < 0 { return st_refuse(v, ST_NO_ROOM); }
   local:=native_local_path(v[0].ctl.local,cast(string)game[0..<ns[0]],cast(string)code[0..<ns[1]]);
   v[0].relays[r].seats=native_local_seats(local,v[0].relays[r].seats);
-  // an everglade room needs one of the server's simulations (room-everglade.coax EG_ROOMS)
-  if v[0].relays[r].limited && eg_room_of(v, r) < 0 {
+  // an everglade room needs one of the server's simulations (everglade/server/seat.coax EG_ROOMS); a server
+  // that runs Everglade II only (the room binary, docs/decisions/0005, #13267) has none for a v1 room's code
+  if v[0].relays[r].limited && ((v[0].e2_only && !eg_e2_code(cast(string) code[0..<ns[1]])) || eg_room_of(v, r) < 0) {
     if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
     return st_refuse(v, ST_NO_ROOM);
   }
@@ -622,6 +623,16 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   rm_heard(v[..], 1, "t x");
   #assert v[0].q_n == 0;
   #assert rl_is_ping("t 0") && rl_is_ping("t -5") && !rl_is_ping("t ") && !rl_is_ping("t 1 2") && !rl_is_ping("tt 1");
+}
+#test "relay: a server that runs Everglade II only refuses a v1 room's code and seats an Everglade II room's (#13267)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_e2_only(v[..], true);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/everglade-1 HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-drift-x HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_join(v[..], 2, "GET /api/room/relay/everglade/everglade2-1 HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 3, "GET /api/room/relay/everglade/pair-e2-ab12 HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[2].relay); #assert k >= 0 && v[0].eg[k].e2;
 }
 #test "relay: an everglade socket's rate limits drop, count and at last close; other games are unlimited (relay item 4)" #steps 2000000000 {
   v: [1] RmServer;

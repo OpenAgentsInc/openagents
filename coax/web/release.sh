@@ -26,8 +26,8 @@
 # never stop a release; more of them always do, page by page. After the promote
 # the same two checks run on production; a new failure rolls back.
 #
-# The Everglade drift check holds to the same rule: when the release changes Everglade, a drift
-# it fails here, twice, stops the release only if production's commit holds it.
+# The Everglade drift check is v1's and runs on the frozen tree (everglade/server/legacy/v1.sh drift,
+# docs/decisions/0005): no release runs it.
 #
 # Everything else is a report and never stops a release: tools-check,
 # everglade-parity (no zone-local copy of a shared Everglade feature, #13075),
@@ -250,41 +250,10 @@ broke=$(broken_by_release "$out" "$base_smoke" "$tree/coax/web/smoke.sh" "$stagi
 [[ -z "$broke" ]] || { echo "release $commit: STOPPED. staging smoke fails where production passes; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
 lap smoke "$t"
 
-# The Everglade drift check (#12778, coax/web/everglade-drift.coax): a release that changes Everglade's
-# page, its room or the engine under them plays it on this release's build (deploy.sh built the page
-# here). It stops the release when it fails here and holds on production's commit, a drift this
-# release causes; when production's commit fails it too, it is a report.
-# It runs alongside the staging starts walk (#13133); its stop messages print when both are done.
-drift_check() {
-everglade='^(apps/openagents-web/everglade|coax/web/room/|everglade/server/|coax/web/room-worker\.js|coax/web/host\.js|coax/web/everglade-drift|aethyr/|verse/everglade/|verse/grid\.coax)'
-if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full" | grep -Eq "$everglade"; then
-  t=$(now)
-  # A failure is confirmed by a second run before it counts, as the other checks' are: the first run
-  # shares the Mac with the starts walk's Chromes, and its position probe then fails by millimetres
-  # (#13137). The second waits for the walk to end.
-  # bounded: in its own process group, so its servers and Chromes go with it however it ends (a server
-  # a stopped run left on the drift's ports kept every later run's pages from coming up, #13195).
-  drift_run() { (cd "$tree" && coax/web/room/build.sh && bounded 2400 coax/web/tool.sh everglade-drift) > "$reports/drift" 2>&1; }
-  walk_done() { local n=0; while [[ ! -e "$reports/starts-done" ]] && (( n++ < 400 )); do sleep 5; done; }
-  if drift_run; then echo "  drift      holds"
-  elif cp "$reports/drift" "$reports/drift-first" && walk_done && drift_run; then echo "  drift      holds on a second run, once the starts walk was done (the first failed beside it: $(grep -cE '^DRIFT ' "$reports/drift-first") probe(s))"
-  else
-    old="$(mktemp -d)/production"
-    git -C "$repo" worktree add -q --detach "$old" "${passed%% *}"
-    if compiler "$old" > /dev/null &&
-       (cd "$old" && coax/web/room/build.sh && apps/openagents-web/build.sh && bounded 2400 coax/web/tool.sh everglade-drift) > "$reports/drift-production" 2>&1; then
-      git -C "$repo" worktree remove --force "$old"
-      echo "release $commit: STOPPED. the Everglade drift check fails here and holds on production's ${passed:0:10}; production is untouched:" >&2
-      grep -E '^DRIFT ' "$reports/drift" | head -20 | sed 's/^/  /' >&2
-      return 1
-    fi
-    git -C "$repo" worktree remove --force "$old"
-    echo "  report     the Everglade drift check fails here and on production's ${passed:0:10} (not stopping): $(tail -1 "$reports/drift")"
-  fi
-  lap drift "$t"
-fi
-
-}
+# The Everglade drift check (#12778, coax/web/everglade-drift.coax) plays v1's page against v1's room.
+# The room runs Everglade II only (docs/decisions/0005-production-room-runs-everglade-ii.md, #13267), so
+# v1's drift runs on the frozen tree (everglade/server/legacy/v1.sh drift), whose result no release changes.
+drift_check() { echo "  drift      v1's, on the frozen tree (everglade/server/legacy/v1.sh drift): no release changes it"; }
 drift_out="$reports/drift-run"
 drift_check > "$drift_out" 2>&1 & drift_job=$!
 

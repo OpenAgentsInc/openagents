@@ -21,10 +21,10 @@ fi
 source_prefix=""
 [[ -z "${COAX_FAST_EDIT:-}" ]] || source_prefix="$source_root/"
 (cd "$source_root" && "$coax" c "${source_prefix}coax/web/room/room.coax" --library --header "$work/room.h") > "$work/room.c"
-# Everglade's headless world for the everglade rooms (room-world.c): the city's unit (everglade.coax,
-# nothing drawn), the controller's (everglade-step.coax, with aethyr/player.coax) and the units the
-# city links beside them, as apps/openagents-web/build.sh links the page's.
-units=(apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax)
+# The controller's unit beside the room's (everglade-step.coax, with aethyr/player.coax): Everglade II's
+# rooms step every seat with it on their land (room-world.c world2_*), as the page does. v1's city and
+# its units are the frozen build's (everglade/server/legacy/v1.sh, docs/decisions/0005, #13267).
+units=(apps/openagents-web/everglade-step.coax)
 for u in "${units[@]}"; do
   n="$(basename "$u" .coax)"
   (cd "$source_root" && "$coax" c "${source_prefix}$u" --library --header "$work/$n.h" > "$work/$n.c")
@@ -52,15 +52,12 @@ for u in "${units[@]}"; do
   objs+=("$work/$n.o")
 done
 wait
-# Units that load the same Coax module each carry its #export_c procedures (the room's unit and the
-# city's both carry apps/openagents-web/analytics.coax's; since 010c25bbed guard-guide-policy carries
-# aethyr/input.coax's input_runs, coax.json's S_hash/S_hex and the crypto bytes' cb_* that the city and
-# the room have too). The same source makes the same code, so one copy is the program's: the city's
-# units in order, then the room's, each defining globally only what no unit before it did; a unit's
-# later copies are made local to it (the Dockerfile does the same).
+# Units that load the same Coax module each carry its #export_c procedures. The same source makes the
+# same code, so one copy is the program's: the controller's unit, then the room's, each defining
+# globally only what no unit before it did; a unit's later copies are made local to it (compile.sh too).
 seen="$work/seen.syms"; : > "$seen"
-own=("$work/everglade.o")
-for u in "${units[@]:1}"; do own+=("$work/$(basename "$u" .coax).o"); done
+own=()
+for u in "${units[@]}"; do own+=("$work/$(basename "$u" .coax).o"); done
 own+=("$work/room.o")
 objs=()
 for o in "${own[@]}"; do
@@ -77,9 +74,6 @@ for o in "${own[@]}"; do
 done
 cc -std=c11 -O2 "${strict[@]}" -w -I"$work" -c "$here/room-world.c" -o "$work/room-world.o"
 cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -c "$here/room-math.c" -o "$work/room-math.o"
-# the pack's catalog, the bounds the world's pieces break with (room-catalog.coax)
-"$root/coax/web/tool.sh" "$here/room-catalog.coax" "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$work/room-catalog.c"
-cc -std=c11 -O2 -w -c "$work/room-catalog.c" -o "$work/room-catalog.o"
 # WebTransport (room-wt.c, #13176): the vendored QUIC stack (third_party/, built once into build/quic)
 # and the session layer, wt.c
 "$here/third_party/build.sh" "$here/build/quic" >/dev/null
@@ -87,7 +81,7 @@ T="$here/third_party"
 quic=(-DNGTCP2_STATICLIB -DNGHTTP3_STATICLIB -I"$T/ngtcp2/lib/includes" -I"$T/ngtcp2/crypto/includes" -I"$T/nghttp3/lib/includes" -I"$T/picotls/include")
 cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE "${quic[@]}" -c "$here/wt.c" -o "$work/wt.o"
 cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
-  "${fast_flags[@]}" "$work/room-world.o" "$work/room-catalog.o" "$work/room-math.o" "$work/wt.o" "$here/build/quic/libquic.a" "${objs[@]}" "${fast_objects[@]}" -lm "${fast_libs[@]}" -o "$out"
+  "${fast_flags[@]}" "$work/room-world.o" "$work/room-math.o" "$work/wt.o" "$here/build/quic/libquic.a" "${objs[@]}" "${fast_objects[@]}" -lm "${fast_libs[@]}" -o "$out"
 # the simulation calls none of the C library's (room-math.c's in their place)
 if nm -u "$out" | grep -E '^_?_*(sin|cos|tan|exp|log|pow)f?$|sincos'; then echo "build.sh: $out calls the C library's math above (room-math.c, #12893)" >&2; exit 1; fi
 # the started server holds every declared default (room-host.c --start-check, room.coax rm_start_check)
