@@ -2,6 +2,7 @@
 #load "../../../aethyr/ids.coax";
 #load "../../../apps/openagents-web/everglade2-move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
 #load "../../../apps/openagents-web/class-kit.coax";
+#load "../../../aethyr/session/seat-class.coax";   // a seat's class and level: the ticket's, never a hello's level (#13259)
 #load "../../../aethyr/rules/srd/condition-display.coax";   // the conditions' words, icons and clocks, every zone's (#13082)
 #load "../../../apps/openagents-web/everglade2-rules.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
 // The room server's Everglade rooms: the server is the authority (spec
@@ -158,6 +159,10 @@ EgSeat :: struct {
   // (mono ms): its first place waits for its hello, EG_E2_HELLO_MS at most
   claim: bool; claim_x: f32; claim_z: f32; claim_yaw: f32; hello: bool; joined_ms: int;
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
+  // its class and level are set (its first hello, eg_hello_class): a hello after that changes neither
+  // (#13259); class_report: the class came from the hello, its ticket naming none, so the room reports it
+  // to the API to keep (room-vitals.coax)
+  sat_class: bool; class_report: bool;
   last_cast: int = -1000;
   loose: NetLoose;               // an arrow's launch its page said, kept for the Attack's request of the same number (room-e2-arrows.coax)
   aid: E2Aid;
@@ -452,6 +457,7 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat
   n.back = o.back; n.back_x = o.back_x; n.back_y = o.back_y; n.back_z = o.back_z; n.back_yaw = o.back_yaw; n.back_at = o.back_at;
   n.hello = o.hello; n.joined_ms = o.joined_ms;
   n.look = o.look; n.look_n = o.look_n; n.klass = o.klass; n.klass_n = o.klass_n; n.flags = o.flags; n.name = o.name; n.name_n = o.name_n;
+  n.sat_class = o.sat_class; n.class_report = o.class_report;
   n.last_cast = o.last_cast; n.repaired = o.repaired;
   n.checkpoint_hello = o.checkpoint_hello;
   n.want_seed = o.want_seed; n.hold_due = o.hold_due; n.back_hp = o.back_hp; n.back_dead = o.back_dead;
@@ -788,9 +794,9 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   st[0].look_n = eg_word(cast(string)h.look[0..<h.look_n], st[0].look[..]);
   kind := cast(string)h.kind[0..<h.kind_n];
   // a capture's class bit says Everglade's druid or Warlock; a Character Create class (srd-*, #13024)
-  // comes with the hello and stands
+  // comes with the ticket, else with the first hello (eg_hello_class)
   if tk.schema == 2 && tk.capture.ok && fb_cl_of_kind(kind) < 0 { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
-  eg_seat_kind(v, k, seat_id, kind);
+  eg_hello_class(v, k, seat_id, tk, kind);
   st[0].flags = eg_clamp(h.flags, 0, 255);
   st[0].rep[0].packed = (st[0].flags & WIRE_HELLO_PACKED) != 0;   // its rows go bit-packed (everglade-wire.coax, #13165)
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
@@ -842,9 +848,64 @@ eg_ticket :: (v: [] RmServer, k: int, seat_id: SeatId) -> Ticket { seat := seat_
   if c < 0 || c >= CONNS || !v[0].conns[c].live { return v[0].eg[k].tk[seat]; }   // held, or its socket closing (eg_left): the one it sat with
   return v[0].conns[c].ticket;
 }
+// Whether seat seat_id's page decides its class and level (#13259, aethyr/session/seat-class.coax): it
+// is the only party there. A seat with a ticket: the API signed it for one of the realm's admins (ACCT 2:
+// the admin CLASSES and LEVEL menus), or the local API stand-in's admin seats it (room-dev.coax: --dev,
+// on unless OA_ROOM_DEV_ADMIN=0). A seat without: the room holds no ticket key (its checks, and the
+// browser's own offline room, room-worker.c, whose rm_control_local says so too). Everywhere else
+// (production's rooms) the ticket's class and level, and the seat's XP, decide.
+eg_page_decides :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool {
+  if v[0].dev.on && v[0].dev.admin { return true; }
+  tk := eg_ticket(v, k, seat_id);
+  if tk.ok { return tk.admin; }
+  return v[0].ctl.local || (v[0].tkey_n == 0 && v[0].tkeys.n == 0);
+}
+// A hello's class (kind: its CLASS word, srd-CLASS or srd-CLASS-L, druid or warlock) for seat seat_id:
+// once an Everglade II seat sits, a hello changes neither class nor level (seat_class_source). Its first hello sits
+// it as its ticket's class (Everglade II's, c=), else the hello's, at its ticket's level (l=) or its
+// XP's, whichever is more, never the hello's; where the page decides (eg_page_decides), as the hello
+// says. A class the hello chose in a ticketed seat is reported to the API, which keeps it (class_report).
+eg_hello_class :: (v: [] RmServer, k: int, seat_id: SeatId, ticket: Ticket, kind: string) { seat := seat_id.value;
+  tk := ticket;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  page := eg_page_decides(v, k, seat_id);
+  ext := cast(string) tk.ext[0..<tk.ext_n];
+  given := ifx v[0].eg[k].e2 then tk5_ext(ext, "c") else "";   // the API keeps Everglade II's class
+  // Everglade's own rooms take each hello's class, as its CHARACTER picker sends it (everglade-classes.coax
+  // cl_set), at its levels switch's level; Everglade II's seat sits once
+  from := seat_class_source(page, st[0].sat_class && v[0].eg[k].e2, seat_class_ok(given) && fb_cl_of_kind(given) >= 0);
+  if from == SEAT_CLASS_KEEP { return; }
+  st[0].sat_class = true;
+  word := ifx from == SEAT_CLASS_TICKET then given else kind;
+  c := fb_cl_of_kind(word);
+  if c < 0 { eg_seat_kind(v, k, seat_id, word); return; }   // Everglade's own druid or Warlock: its levels switch builds them (room-events.coax)
+  lv := seat_level_start(page, fb_cl_level_of_kind(word), seat_level_word(tk5_ext(ext, "l")), ev_xp_of(v, k, seat_id));
+  b: [EG_NAME] u8; n := fb_cl_kind_at(c, lv, b[..]);
+  eg_seat_kind(v, k, seat_id, cast(string) b[0..<n]);
+  st[0].class_report = from == SEAT_CLASS_HELLO && !page && tk.ok && v[0].eg[k].e2;
+}
+// Seat seat_id's XP rose (room-events.coax ev_award): an Everglade II class's level rises with it
+// through the one table (seat_level_up), never falls; a level gained adds its Hit Points, as
+// Everglade's own levels do (ev_build). True when it rose.
+eg_level_up :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  word := cast(string) st[0].klass[0..<st[0].klass_n];
+  c := fb_cl_of_kind(word);
+  if !v[0].eg[k].e2 || c < 0 { return false; }
+  now := fb_cl_level_of_kind(word);
+  due := seat_level_up(now, ev_xp_of(v, k, seat_id));
+  if due == now { return false; }
+  me := E5RR_SEAT + seat; b := v[0].eg[k].rules[0].b[..];
+  was := b[0].c[me];
+  w: [EG_NAME] u8; n := fb_cl_kind_at(c, due, w[..]);
+  eg_seat_kind(v, k, seat_id, cast(string) w[0..<n]);
+  if was.dead || was.hp <= 0 { b[0].c[me].hp = 0; b[0].c[me].dead = was.dead; }
+  else if was.hp < was.hp_max { b[0].c[me].hp = rs_max(1, rs_min(was.hp + b[0].c[me].hp_max - was.hp_max, b[0].c[me].hp_max)); }
+  return true;
+}
 // V LOOK KIND: Everglade II's Change character (everglade2-net.coax e2n_change: the Esc menu's, through
-// Character Create, and the admin CLASSES and LEVEL menus): a seated player's look and SRD class, as a
-// hello says them, which a ticket's checkpoint would otherwise hold to its first hello. Not while they
+// Character Create, and the admin CLASSES and LEVEL menus): a seated player's look, and, where the page
+// decides (eg_page_decides), its SRD class and level as a hello says them. Not while they
 // are down or dead or the guard fights them, and the new character comes in no less hurt than the
 // old: its Hit Points the same share of its most.
 eg_heard_change :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
@@ -857,11 +918,16 @@ eg_heard_change :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { sea
   if b[0].c[me].dead || b[0].c[me].hp <= 0 || v[0].eg[k].guard[0].foe == seat { return; }
   hp := b[0].c[me].hp; most := rs_max(b[0].c[me].hp_max, 1);
   st[0].look_n = eg_word(look, st[0].look[..]);
+  // the look always; the class and level only where the page decides them (#13259): elsewhere the
+  // ticket's stand, and nothing a page sends sits it again (nor fills its Hit Points and slots)
+  if !eg_page_decides(v, k, seat_id) { return; }
+  st[0].sat_class = true;
   eg_seat_kind(v, k, seat_id, kind);
   b[0].c[me].hp = rs_max(1, rs_min(b[0].c[me].hp_max, (hp * b[0].c[me].hp_max + most - 1) / most));
 }
-// Seat seat_id's class (a hello's CLASS, or a local admin's "X class", room-e2-admin.coax): its rules
-// seat sits again as that class at its level when either changed.
+// Seat seat_id's class and level as a hello's CLASS word says them (the word eg_hello_class and
+// eg_level_up decided, Change character's where the page decides, or a local admin's "X class",
+// room-e2-admin.coax): its rules seat sits again as that class at its level when either changed.
 eg_seat_kind :: (v: [] RmServer, k: int, seat_id: SeatId, kind: string) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
   st[0].klass_n = eg_word(kind, st[0].klass[..]);
@@ -2760,7 +2826,11 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_heard(v[..],0,cast(string)msg[0..<n]);
   #assert v[0].eg[k].e2_casts==1 && v[0].eg[k].seat[0].protection_water_used;
   #assert c[0].materials[1].count==0 && c[0].conc==SP_PROTECTION_GOOD_EVIL;
+  // a hello again changes nothing (#13259); Change character in the page's own room sits it at 4, and
+  // the new preset does not fill the holy water again
   rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-paladin-4 0 -");
+  #assert c[0].level==3 && c[0].materials[1].count==0;
+  rm_heard(v[..],0,"V ranger.0.0.0 srd-paladin-4");
   #assert c[0].level==4 && c[0].materials[1].count==0;
 }
 
@@ -2819,11 +2889,11 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_heard(v[..],0,cast(string)msg[0..<n]);
   #assert !b[0].c[ally].dead && b[0].c[ally].hp==1 && b[0].c[me].slots[3]==slots-1;
   #assert room[0].seat[0].revivify_diamond_used && b[0].c[me].materials[1].count==0;
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-cleric-6 0 -");
-  #assert b[0].c[me].materials[1].count==0;
+  rm_heard(v[..],0,"V ranger.0.0.0 srd-cleric-6");   // Change character (the page's own room: #13259)
+  #assert b[0].c[me].level==6 && b[0].c[me].materials[1].count==0;
 }
 
-#test "everglade II room: a seat sits at the level its hello says, casts that level's kit, and hears its bar's counts (#13046)" #steps 4000000000 {
+#test "everglade II room: in the page's own room a seat sits at the level its first hello says, casts that level's kit, and hears its bar's counts (#13046); a hello again changes nothing (#13259)" #steps 4000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
   rm_clock(v[..], 0, 1762190000000);
@@ -2855,8 +2925,14 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   // its bar's count for Action Surge went down with it, at once
   w := e2_kit(v[..], k, 0); at := -1; for i: 0..<fn { if five[i].kind == FB_SURGE { at = i; } }
   #assert w.n == fn && w.v[at] == wire_kit_v(uses - 1, false) && v[0].eg[k].seat[0].kit_told == e2_kit_hash(w);
-  // a hello at another level sits it again at that level
+  // a hello at another level changes nothing (#13259): not the level, and not the spent Action Surge
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-2 0 -");
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard-6 0 -");
+  eg_test_tick(v[..], k);
+  #assert r[0].b[0].c[E5RR_SEAT].level == 5 && r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && r[0].b[0].c[E5RR_SEAT].uses[RS_USE_SURGE] == uses - 1;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
+  // here the page decides (no ticket key): Change character sits it at level 2
+  rm_heard(v[..], 0, "V ranger.0.0.0 srd-fighter-2");
   eg_test_tick(v[..], k);
   #assert r[0].b[0].c[E5RR_SEAT].level == 2;
 }
@@ -3179,4 +3255,114 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   eg_test_tick(v[..],k); inbox:[1] EgInbox; eg_test_drain(v[..],inbox[..]);
   projected:=eg_test_ent(inbox[..],0,0);
   #assert projected.hp==b[0].c[0].hp && projected.max==b[0].c[0].hp_max && projected.temp==7;
+}
+
+// ---- a seat's class and level are the server's (#13259, aethyr/session/seat-class.coax)
+
+// A room holding the API's v5 public key (the checks' TK5_TEST_PUB), and a join with a v5 ticket the
+// checks' key signs for pid in room, its XP and EXT as given (ACCT acct): its seat, or -1.
+eg_test_v5_room :: (v: [] RmServer) {
+  rm_init(v); rm_clock(v, 0, 1762190000000);
+  #assert rm_ticket_pubkeys(v, TK5_TEST_PUB, true);
+}
+eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: string, xp: int, ext: string) -> int {
+  t: [TK5_TEXT] u8; r: [TK5_TEXT + 256] u8;
+  s := tk5_test_sign(TK5_TEST_SECRET, pid, acct, "", room, 1, 1762190000000 + 600000, -1, xp, 0, 0, ext, 1, "", t[..]);
+  #assert s.count > 0;
+  return rm_join(v, conn, tk_test_ask_in(r[..], t[..], s.count, room));
+}
+#test "seat class: Everglade II's top level is its class kits' (#13259)" {
+  #assert SEAT_LEVEL_TOP == XK_LEVELS && SEAT_LEVEL_TOP == FB_CL_LEVELS;
+  for c: 0..<FB_CL_N { #assert seat_class_ok(FB_CL_KIND[c]); }
+}
+#test "seat class: a level 1 character's ticket and a hello that says level 6 (or 20) sit at level 1; a hello or Change character again changes nothing and fills nothing (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]);
+  #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc01", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 0;
+  #assert eg_test_v5_join(v[..], 1, "p-00112233aabbcc02", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert v[0].eg[k].e2;
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-20 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := E5RR_SEAT;
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 1 && b[0].c[me + 1].level == 1 && r[0].klass[1] == E5R_CL0 + FB_CL_FIGHTER;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter" && !v[0].eg[k].seat[0].class_report;
+  // hurt, and Second Wind spent: a hello again (another level, another class), and Change character, change nothing
+  b[0].c[me].hp = 3; hp_max := b[0].c[me].hp_max; b[0].c[me].uses[RS_USE_WIND] = 0;
+  for line: [4] string.["H 5 ranger.0.0.0 srd-fighter-6 0 -", "H 5 ranger.0.0.0 srd-wizard-5 0 -", "H 5 ranger.0.0.0 srd-fighter-20 0 -", "V ranger.1.2.3 srd-fighter-6"] { rm_heard(v[..], 0, line); }
+  eg_test_tick(v[..], k);
+  #assert b[0].c[me].level == 1 && r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].hp == 3 && b[0].c[me].hp_max == hp_max && b[0].c[me].uses[RS_USE_WIND] == 0;
+  // the look is the page's: Change character took it
+  #assert cast(string) v[0].eg[k].seat[0].look[0..<v[0].eg[k].seat[0].look_n] == "ranger.1.2.3";
+}
+#test "seat class: a ticket's l=5 sits at 5 whatever the hello says; a ticket with no class takes the first hello's, once, and reports it (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]);
+  #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc03", 1, "pair-e2-lv5", 0, "c=srd-fighter,l=5") == 0;
+  #assert eg_test_v5_join(v[..], 1, "p-00112233aabbcc04", 0, "pair-e2-lv5", 0, "l=1") == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");     // the ticket's Fighter, at its 5
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-wizard-6 0 -");   // no class signed: the hello's Wizard, at the ticket's 1
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := E5RR_SEAT;
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 5 && b[0].c[me].extra_attack > 0;
+  #assert r[0].klass[1] == E5R_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
+  #assert !v[0].eg[k].seat[0].class_report && v[0].eg[k].seat[1].class_report;
+  // once: a later hello's class is not taken
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-6 0 -"); eg_test_tick(v[..], k);
+  #assert r[0].klass[1] == E5R_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
+}
+#test "seat class: XP crossing a level raises an Everglade II seat through the one table, and its player hears it (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]); box: [1] EgInbox;
+  #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc05", 1, "pair-e2-xp", 250, "c=srd-fighter,l=1") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  b := v[0].eg[k].rules[0].b[..]; me := E5RR_SEAT;
+  #assert v[0].ev[k].xp[0] == 250 && b[0].c[me].level == 1;
+  b[0].c[me].hp = b[0].c[me].hp_max - 2; was_max := b[0].c[me].hp_max;
+  eg_test_drain(v[..], box[..]);
+  ev_award(v[..], k, SeatId.{value = 0}, 49);   // 299: still level 1
+  #assert b[0].c[me].level == 1;
+  ev_award(v[..], k, SeatId.{value = 0}, 1);    // 300: level 2, its Hit Points added
+  #assert srd_xp_at(2) == 300 && v[0].ev[k].xp[0] == 300 && b[0].c[me].level == 2 && b[0].c[me].hp_max > was_max && b[0].c[me].hp == b[0].c[me].hp_max - 2;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-2";
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "e level 0 2");
+  ev_award(v[..], k, SeatId.{value = 0}, 6200);  // 6500: level 5
+  #assert b[0].c[me].level == 5;
+  ev_award(v[..], k, SeatId.{value = 0}, 100000);   // past 14000: 6, the top
+  #assert b[0].c[me].level == 6 && cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-6";
+}
+#test "seat class: a v2 or v3 ticket's seat (the shared key, until the room keys roll out) sits at its XP's level, never the hello's; an admin's v5 ticket at the hello's (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; now := 1762190000000;
+  n := tk_sign_owner(key, "p-00112233aabbcc06", true, "", "pair-e2-old", 0, now + 600000, -1, 0, 0, 0, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-old")) == 0;
+  n = tk_sign_owner(key, "p-00112233aabbcc07", true, "", "pair-e2-old", 1, now + 600000, -1, 6500, 0, 0, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-old")) == 1;
+  #assert eg_test_v5_join(v[..], 2, "p-00112233aabbcc08", 2, "pair-e2-old", 0, "c=srd-fighter,l=1") == 2;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-cleric-6 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-cleric-6 0 -");
+  rm_heard(v[..], 2, "H 5 ranger.0.0.0 srd-rogue-4 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  rr := v[0].eg[k].rules[..]; b := rr[0].b[..]; me := E5RR_SEAT;
+  #assert rr[0].klass[0] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1 && v[0].eg[k].seat[0].class_report;
+  #assert rr[0].klass[1] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me + 1].level == 5;
+  // the admin's (ACCT 2: the admin CLASSES and LEVEL menus): the hello's class and level, and Change character's
+  #assert rr[0].klass[2] == E5R_CL0 + FB_CL_ROGUE && b[0].c[me + 2].level == 4 && !v[0].eg[k].seat[2].class_report;
+  rm_heard(v[..], 2, "V ranger.0.0.0 srd-bard-2"); eg_test_tick(v[..], k);
+  #assert rr[0].klass[2] == E5R_CL0 + FB_CL_BARD && b[0].c[me + 2].level == 2;
+  // and nobody else's Change character sits them again
+  rm_heard(v[..], 0, "V ranger.0.0.0 srd-bard-2"); eg_test_tick(v[..], k);
+  #assert rr[0].klass[0] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1;
+  // the vitals post carries the classes the hellos chose, to keep (the first: verse.room_class_once)
+  #assert rm_vitals_due(v[..]) > 0;
+  post := cast(string) v[0].vit.out[0..<v[0].vit.out_n];
+  #assert eg_test_has(post, "p-00112233aabbcc06 ") && eg_test_has(post, " c=srd-cleric\n") && !eg_test_has(post, "c=srd-rogue") && !eg_test_has(post, "c=srd-bard");
+  one := 0; for i: 0..<post.count - 2 { if post[i..<i + 3] == " c=" { one += 1; } }
+  #assert one == 2;   // the two old tickets' seats; not the admin's
 }

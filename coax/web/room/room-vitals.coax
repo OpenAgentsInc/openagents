@@ -38,6 +38,9 @@ RoomVital :: struct {
   dead: bool;       // it was dead, not only down at 0 (#12883)
   xp: int;          // the XP it has (room-events.coax)
   wanted: int;      // its WANTED level, the room's (room-everglade.coax wanted; 0 none, #12794)
+  // the Everglade II class its first hello chose, its ticket naming none (room-everglade.coax class_report,
+  // #13259; "" none): its lines carry it, and the API keeps a character's first class (verse.room_class_once)
+  klass: [SEAT_CLASS_TEXT] u8; klass_n: int;
   at: int;          // wall ms it was noted
   rev: int;         // these values' revision (RmVitals.rev when they changed)
   rev_at: int;      // wall ms they changed: the report's AT, which orders HP at the API
@@ -124,6 +127,14 @@ rv_note_seat :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   i := rv_find(v, pid);
   if i >= 0 && tk.owner > v[0].vit.v[i].owner { v[0].vit.v[i].owner = tk.owner; }   // its lines go as the newest owner here
   st := v[0].eg[k].seat[s];
+  // its first class, to keep (#13259): a new revision, so the next post carries it
+  kc := fb_cl_of_kind(cast(string) st.klass[0..<st.klass_n]);
+  if i >= 0 && st.class_report && kc >= 0 && v[0].vit.v[i].klass_n == 0 {
+    w := FB_CL_KIND[kc];
+    for q: 0..<w.count { v[0].vit.v[i].klass[q] = w[q]; }
+    v[0].vit.v[i].klass_n = w.count;
+    v[0].vit.rev += 1; v[0].vit.v[i].rev = v[0].vit.rev; v[0].vit.v[i].rev_at = v[0].wall_ms;
+  }
   r := v[0].eg[k].relay;
   if i < 0 || !st.placed || r < 0 { return; }
   e := v[0].vit.v[i..<i + 1];
@@ -193,7 +204,8 @@ rv_hp_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
 // Its count (0 nothing to post now). The body:
 //   t MS                          when it was signed (the API takes it within two minutes)
 //   o SHARD GEN BATCH             who reports: this shard, this process's generation, the post's number
-//   PID HP MAX XP WANTED REV AT   a player's values at revision REV, changed at AT (wall ms)
+//   PID HP MAX XP WANTED REV AT   a player's values at revision REV, changed at AT (wall ms), then its owner
+//                                 generation (#12834) and " c=CLASS", the class to keep (#13259), when it has them
 // The operation ID of a line is (SHARD, GEN, PID, REV). GEN lets the API refuse a replaced process's
 // reports once the directory fences owners (#12797).
 rm_vitals_due :: (v: [] RmServer) -> int #export_c #effects(all) {
@@ -231,12 +243,13 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c #effects(all) {
     // resumed) hears f from the API and ends the seat, as the owner's lease lapses in the contract
     seated := e.owner > 0 && v[0].wall_ms - e.at <= 2 * VITALS_EVERY_MS && v[0].wall_ms - e.sent_at >= VITALS_OWNER_MS;
     if !e.live || (e.rev <= e.acked && !seated) { continue; }
-    if m >= VITALS_BATCH || n + e.pid_n + 100 > o.count { break; }
+    if m >= VITALS_BATCH || n + e.pid_n + 120 > o.count { break; }
     n = tk_add(o, n, cast(string) e.pid[0..<e.pid_n]); n = tk_add(o, n, " "); n = rv_int(o, n, e.hp);
     n = tk_add(o, n, " "); n = rv_int(o, n, e.max); n = tk_add(o, n, " "); n = rv_int(o, n, e.xp);
     n = tk_add(o, n, " "); n = rv_int(o, n, e.wanted); n = tk_add(o, n, " "); n = rv_int(o, n, e.rev);
     n = tk_add(o, n, " "); n = rv_int(o, n, e.rev_at);
     if e.owner > 0 { n = tk_add(o, n, " "); n = rv_int(o, n, e.owner); }   // the owner generation (#12834)
+    if e.klass_n > 0 { n = tk_add(o, n, " c="); n = tk_add(o, n, cast(string) e.klass[0..<e.klass_n]); }   // the class to keep (#13259)
     n = tk_add(o, n, "\n");
     v[0].vit.fly_i[m] = i; v[0].vit.fly_rev[m] = e.rev; v[0].vit.fly_owner[m] = e.owner;v[0].vit.fly_capture_at[m]=e.rev_at; m += 1;
     v[0].vit.v[i].sent_at = v[0].wall_ms;

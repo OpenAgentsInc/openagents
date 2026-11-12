@@ -6,3 +6,4 @@
 #run_steps 250000000;
 #load "../../../aethyr/session/seat-ticket.coax";
 #load "../room/room-write.coax";
+#load "../../../aethyr/session/seat-class.coax";   // the EXT's class and level (#13259)

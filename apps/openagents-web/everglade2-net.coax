@@ -79,6 +79,9 @@ E2Net :: struct {
   off_x: f32; off_y: f32; off_z: f32;
   hello_due: bool;
   change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
+  // the room sat your seat at another class or level than yours (its n row: the ticket's, or a level its
+  // XP gave, #13259): taken as yours, the bar and Character Create's record too (everglade2.coax)
+  served: bool;
   // where you stand (the face's, each frame), and whether this page sat before: sitting again after a
   // lost or restarted room, the hello says it first (A), so the room puts you back here (#13057)
   at_x: f32; at_z: f32; at_yaw: f32; at_known: bool; sat_before: bool; again: bool; agains: int;
@@ -570,6 +573,11 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     en[0].id_n = net_copy(en[0].id[..], w.id);
     en[0].look_n = net_copy(en[0].look[..], w.look);
     n[0].ent_class[k] = fb_cl_of_kind(w.kind);
+    // yours: the class and level the room says (#13259), not told back to it; not while your own change waits to go
+    sc := fb_cl_of_kind(w.kind); sl := xk_level(fb_cl_level_of_kind(w.kind));
+    if w.ss == n[0].seat && sc >= 0 && !n[0].change_due && (sc != n[0].klass || sl != n[0].level) {
+      n[0].klass = sc; n[0].level = sl; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].served = true;
+    }
     nm := 0;
     for ch: w.name { if nm >= NET_NAME { break; } if ch < 32 { continue; } en[0].name[nm] = ch; nm += 1; }
     en[0].name_n = nm;
@@ -1302,4 +1310,30 @@ e2n_vitals :: (n:[] E2Net)->WireS {
   row:=wire_mirror_of(n[0].mir[..],n[0].seat);
   if row.id!=n[0].seat || row.kind!=WK_PLAYER || row.max<=0 || row.hp<0 || row.hp>row.max || row.temp<0 { return WireS.{id=-1}; }
   return row;
+}
+#test "your seat's class and level are the room's: its n row sets them, and the page tells the room nothing back (#13259)" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].mono = 1000;
+  e2n_set_class(n[..], FB_CL_FIGHTER, 6);   // Character Create said a level 6 Fighter
+  e2n_record(n[..], "y 1 0 1000");
+  e2n_step(n[..], 1000);
+  #assert n[0].seat == 1 && !n[0].change_due;
+  d := WireD.{tick = 5};
+  b: [160] u8;
+  // the room sat you at the ticket's level 1
+  m := wire_put_n(b[..], 0, WireN.{ss = 1, id = "p-1", look = "ranger.0.0.0", kind = "srd-fighter", flags = 0, name = "Ash"});
+  e2n_entry(n[..], cast(string) b[0..<m], d);
+  #assert n[0].klass == FB_CL_FIGHTER && n[0].level == 1 && n[0].served && !n[0].hello_due && !n[0].change_due;
+  // a level its XP gave
+  m = wire_put_n(b[..], 0, WireN.{ss = 1, id = "p-1", look = "ranger.0.0.0", kind = "srd-fighter-2", flags = 0, name = "Ash"});
+  n[0].served = false; e2n_entry(n[..], cast(string) b[0..<m], d);
+  #assert n[0].level == 2 && n[0].served && !n[0].change_due;
+  // another seat's row is theirs
+  m = wire_put_n(b[..], 0, WireN.{ss = 2, id = "p-2", look = "ranger.0.0.0", kind = "srd-wizard-5", flags = 0, name = "Bo"});
+  n[0].served = false; e2n_entry(n[..], cast(string) b[0..<m], d);
+  #assert n[0].klass == FB_CL_FIGHTER && n[0].level == 2 && !n[0].served;
+  // your own change waiting to go is not undone by a row from before it
+  e2n_set_class(n[..], FB_CL_BARD, 3);
+  m = wire_put_n(b[..], 0, WireN.{ss = 1, id = "p-1", look = "ranger.0.0.0", kind = "srd-fighter-2", flags = 0, name = "Ash"});
+  e2n_entry(n[..], cast(string) b[0..<m], d);
+  #assert n[0].klass == FB_CL_BARD && n[0].level == 3 && n[0].change_due;
 }

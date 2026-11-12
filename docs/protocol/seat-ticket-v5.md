@@ -62,14 +62,40 @@ With two keys, a ticket under either one seats. That is a rotation's overlap
 
 `EXT` carries signed facts that later changes add without a new version.
 Names are 1 to 8 of `[a-z]`, in strictly ascending order; values are 1 to 24
-of `[a-z0-9-]`. Version 5 defines no names. A reader ignores a name it does
+of `[a-z0-9-]`. Version 5 defines `c` and `l` (below). A reader ignores a name it does
 not know, so the API can sign a new item before every room reads it, and
 rooms and the API deploy in either order. A room that needs an item treats a
 ticket without it as its own rule decides; the format never makes it
 optional or required.
 
-The planned items are #13259's class and level, for example
-`c=srd-fighter,l=5`. To add one, document its name and value here, write it
+### `c` and `l`: the character's class and level (#13259)
+
+| Item | Value |
+| --- | --- |
+| `c` | The class the API keeps for the character (`verse.room_vitals.character_class`, migration 0160): `srd-` and 3 to 12 lowercase letters, such as `srd-fighter`. Left out when the API keeps none yet. |
+| `l` | The character's level, one digit 1 to 6: the level its stored XP gives through the one table (`aethyr/rules/srd/advancement.coax`), at least the realm's starting level (`OA_ROOM_START_LEVEL`, 1 to 6, default 1). |
+
+The API writes them with `seat_ticket_v5_class_ext`
+(`aethyr/session/seat-class.coax`, through `stk_class_ext_c`). An Everglade II
+room seats a ticketed player as the ticket says:
+
+- The hello's level is never taken.
+- The hello's class is taken only when the ticket has no `c` (the character's
+  first seat). The room then reports that class on its signed vitals line as
+  ` c=CLASS`, and the API keeps it only if it keeps none (`verse.room_class_once`).
+- Once a seat sits, a hello changes neither class nor level, and Change
+  character (`V`) changes only the look. A seat's level rises only when its XP
+  crosses a level of the table.
+- A v2, v3 or v4 ticket has no `EXT`. The room still takes the class from the
+  first hello and fixes it for the seat. The level comes from the ticket's
+  signed XP. These tickets are never refused for this.
+- The page decides class and level only where it is the only party: a ticket
+  the API signed for one of the realm's admins (ACCT 2), the local API
+  stand-in's admin (`room-dev.coax`), and a room with no ticket keys (the
+  page's own worker room and the checks). See `room-everglade.coax`
+  `eg_page_decides`.
+
+To add another item, document its name and value here, write it
 in the API's call to `seat_ticket_v5_write` (the `ext` argument, which the
 writer checks), and read it in the room with
 `tk5_ext(cast(string) t.ext[0..<t.ext_n], "c")`. Add a fixture for it to the

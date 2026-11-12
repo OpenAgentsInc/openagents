@@ -1,7 +1,9 @@
 // Seat ticket v5's fixtures (proto/verse/seat-ticket-v5.json; #13260): each ticket's values written by the
 // one writer (aethyr/session/seat-ticket.coax seat_ticket_v5_write) with the fixture's throwaway keys and
 // zero aux give exactly the fixture's bytes; the reader takes each back with the room's public keys and
-// gives back its values; and every "refused" entry is refused.
+// gives back its values; a ticket with "class_from" (the API's kept class, "" none, and its starting
+// level "start", #13259) has the EXT seat_ticket_v5_class_ext writes from them, and the room reads back
+// "class" and "level" from it; and every "refused" entry is refused.
 //   coax/web/tool.sh coax/web/room/seat-ticket-profile.coax proto/verse/seat-ticket-v5.json
 // On a mismatch it prints the bytes the writer made, so a new fixture is written from the codec once and
 // then pinned.
@@ -11,6 +13,7 @@
 #import "Basic";
 #run_steps 250000000;
 #load "../../../aethyr/session/seat-ticket.coax";
+#load "../../../aethyr/session/seat-class.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";
@@ -87,6 +90,13 @@ tool_main :: () -> int #export_c #effects(all) {
     same = same && t.shard == shard && t.expires == expires && t.hp == hp && t.xp == xp && t.wanted == wanted && t.owner == owner && t.schema == profile;
     same = same && cast(string) t.ext[0..<t.ext_n] == (ifx ext == "-" then "" else ext) && t.capture.ok == (profile == 2 && saved != "-");
     if !same { tool_err("seat-ticket-profile: ticket "); tool_err(sp_text(d[0], row, "why", tb[0][..])); tool_errln(": the reader did not give its values back"); failed += 1; }
+    if jv_get(d[0], row, "class_from") >= 0 {
+      eb: [SEAT_EXT_TEXT] u8; cb: [3][64] u8;
+      made := seat_ticket_v5_class_ext(sp_text(d[0], row, "class_from", cb[0][..]), xp, jv_int(d[0], jv_get(d[0], row, "start"), -9), eb[..]);
+      e := cast(string) t.ext[0..<t.ext_n];
+      read := made == ext && tk5_ext(e, "c") == sp_text(d[0], row, "class", cb[1][..]) && seat_level_word(tk5_ext(e, "l")) == jv_int(d[0], jv_get(d[0], row, "level"), -9);
+      if !read { tool_err("seat-ticket-profile: ticket "); tool_err(sp_text(d[0], row, "why", tb[0][..])); tool_errln(": its class and level are not the API's EXT"); failed += 1; }
+    }
   }
   refused := jv_get(d[0], 0, "refused");
   for i: 0..<jv_len(d[0], refused) {

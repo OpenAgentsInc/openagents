@@ -250,6 +250,8 @@ bool stk_secret_c(const char *text, unsigned char out[32]);
 size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, const char *name, const char *room, int shard,
                    long long expires, int hp, int xp, int wanted, long long owner, const char *ext, int profile, const char *saved,
                    char *out, size_t cap);
+/* the EXT's class and level (aethyr/session/seat-class.coax, #13259) */
+size_t stk_class_ext_c(const char *klass, int xp, int start, char *out, size_t cap);
 static void b64url(char *out, size_t cap, const unsigned char *b, size_t n) {
   static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   size_t o = 0;
@@ -400,7 +402,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
                                  "CASE WHEN rv.wanted_by IS NOT NULL AND rv.wanted_at > extract(epoch FROM clock_timestamp()) * 1000 - 300000 THEN rv.wanted END, rv.look, rv.class, "
                                  "EXISTS (SELECT 1 FROM verse.room_kicks k WHERE k.player = p.id AND k.until_ms > extract(epoch FROM clock_timestamp()) * 1000), "
                                  "(SELECT string_agg(b.blocked, ',' ORDER BY b.at_ms DESC) FROM (SELECT * FROM verse.player_blocks WHERE player = p.id ORDER BY at_ms DESC LIMIT 32) b), "
-                                 "coalesce(rv.xp, 0) "
+                                 "coalesce(rv.xp, 0), rv.character_class "
                                  "FROM verse.players p LEFT JOIN verse.accounts a ON a.id = p.account "
                                  "LEFT JOIN verse.room_vitals rv ON rv.who = coalesce(p.account, p.id) "
                                  "WHERE p.key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0);
@@ -426,6 +428,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   char look[40] = "", klass[24] = "";
   if (!PQgetisnull(r, 0, 5)) ticket_word(look, sizeof look, PQgetvalue(r, 0, 5));
   if (!PQgetisnull(r, 0, 6)) ticket_word(klass, sizeof klass, PQgetvalue(r, 0, 6));
+  char kept_class[24] = "";   /* Everglade II's class, kept once (0160, #13259) */
+  if (!PQgetisnull(r, 0, 10)) snprintf(kept_class, sizeof kept_class, "%s", PQgetvalue(r, 0, 10));
   // who this player blocks (verse.player_blocks, #12714), 32 at most: the page hides their bodies
   char blocked[32 * 24 + 8] = "";
   if (!PQgetisnull(r, 0, 8)) {
@@ -539,7 +543,12 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   char resumed[4097]; const char *ticket=text;
   if (v5) {
     /* the one v5 writer (ticket-sign-unit.c): shard 0 (no directory) is shard 1's, as a v2 ticket is */
-    if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, "-", resume == 1 ? 2 : 1, saved, resumed, sizeof resumed)) {
+    /* the character's class, kept once (0160), and the level its XP gives, at least the realm's starting
+       level (OA_ROOM_START_LEVEL, 1 to 6, default 1: the server's, never the page's): the room seats it so (#13259) */
+    char ext[40] = "-";
+    const char *sl = getenv("OA_ROOM_START_LEVEL");
+    if (!stk_class_ext_c(kept_class, xp, sl && sl[0] ? atoi(sl) : 1, ext, sizeof ext)) snprintf(ext, sizeof ext, "-");
+    if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, ext, resume == 1 ? 2 : 1, saved, resumed, sizeof resumed)) {
       api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
     }
     ticket = resumed;
@@ -676,7 +685,7 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
   api_json(q->fd, 200, wanted ? "{\"kept\":true,\"refused\":\"wanted\"}" : "{\"kept\":true}");
 }
 // A vitals post with operation IDs (#12793; room-vitals.coax rm_vitals_due, migrations/0124): each line
-// "PID HP MAX XP WANTED REV AT" applied once by (SHARD, GEN, PID, REV) in verse.room_vital_apply, its
+// "PID HP MAX XP WANTED REV AT [OWNER] [c=CLASS]" applied once by (SHARD, GEN, PID, REV) in verse.room_vital_apply, its
 // own statement, so a line kept stays kept whatever happens to the next. The answer, text/plain:
 //   receipt GEN BATCH CODES      one letter a line, in order: a d s u (0124), f an older owner's (0127), x a line it couldn't read
 // A database failure is a 500 with no receipt: the room sends the post again, and the lines already
@@ -711,6 +720,15 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
       }
       code = PQgetvalue(r, 0, 0)[0];
       PQclear(r);
+      /* " c=CLASS": the class the character's first hello chose, its ticket naming none (#13259): kept
+         once (0160), so a later one changes nothing; not for an older owner's line */
+      const char *cl = strstr(one, " c=");
+      if (cl && code != 'f') {
+        const char *cv[2] = {pid, cl + 3};
+        PGresult *cr = PQexecParams(db, "SELECT verse.room_class_once($1, $2)", 2, NULL, cv, NULL, NULL, 0);
+        if (PQresultStatus(cr) != PGRES_TUPLES_OK) api_log("room-class: %s", PQerrorMessage(db));
+        PQclear(cr);
+      }
     }
     codes[cn++] = code;
     line = next;

@@ -6436,6 +6436,22 @@ any key during it only skips. Checks: `fivebar-test.coax` "Character Create",
 `room.coax` "Character Create class", `everglade5e.coax` "create:" and "classes:".
 (Character Create now opens in Everglade II, #13023, so the browser walk into
 Everglade's Commons was removed.)
+Everglade II's class and level are the server's (#13259). The API keeps a
+character's class once (`verse.room_class_once`, migration 0160, from the room's
+` c=CLASS` vitals token) and signs it with the level its stored XP gives into
+the v5 ticket's EXT (`c=srd-fighter,l=5`; `aethyr/session/seat-class.coax`).
+The room never takes a hello's level for a ticketed seat. It takes the hello's
+class only when the ticket names none. A re-hello, and Change character for a
+non-admin, never changes class or level and never refills Hit Points or slots.
+Level rises only as XP crosses the one table (`aethyr/rules/srd/advancement.coax`,
+the only XP-per-level table). The page decides only for an admin's ticket (ACCT
+2), the dev stand-in's admin, and a room with no ticket keys. A v2/v3/v4 ticket
+seats at its XP's level with its first hello's class, and is never refused for
+this. The starting level is the server's `OA_ROOM_START_LEVEL` (default 1).
+Checks: room `room.coax` "seat class:", the two authority files' tests and
+`coax mutate` (zero survivors), `seat-ticket-profile.coax` on
+`proto/verse/seat-ticket-v5.json`, the API's `room_checks.coax` "room-class:",
+and `everglade2-net.coax` "your seat's class and level are the room's".
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
 lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative

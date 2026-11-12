@@ -125,6 +125,7 @@ size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, co
                    long long expires, int hp, int xp, int wanted, long long owner, const char *ext, int profile, const char *saved,
                    char *out, size_t cap);
 int stk_room_write_c(const char *masters, const char *signer, const char *purpose, const char *body, size_t n, const char *mac);
+size_t stk_class_ext_c(const char *klass, int xp, int start, char *out, size_t cap);
 
 static coax_string stk_text(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
 bool stk_secret_c(const char *text, unsigned char out[32]) {
@@ -148,6 +149,15 @@ size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, co
   if (t.count <= 0 || t.count > 4096) { out[0] = 0; return 0; }
   out[t.count] = 0;
   return (size_t)t.count;
+}
+// The ticket's EXT for a character's kept class and XP (seat-class.coax seat_ticket_v5_class_ext,
+// #13259) into out (cap at least 33), its length; 0 when it could not be written.
+size_t stk_class_ext_c(const char *klass, int xp, int start, char *out, size_t cap) {
+  if (cap < 33) return 0;
+  coax_string e = seat_ticket_v5_class_ext(stk_text(klass), xp, start, (coax_v_u8){(uint8_t *)out, 32});
+  if (e.count <= 0 || e.count > 32) { out[0] = 0; return 0; }
+  out[e.count] = 0;
+  return (size_t)e.count;
 }
 // A room shard's write checked against the API's write masters (room-write.coax room_write_check): the
 // shard (1 to 99) that signed it, or 0.

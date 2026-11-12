@@ -20,11 +20,12 @@
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "events:"
 
 #load "everglade-raid-scale.coax";   // the raid's waves for the players present, as the server builds them
+#load "../../aethyr/rules/srd/advancement.coax";   // each level's XP: the one table, the room's too (#13259)
 EGE_DEMO_FLAG :: 64;        // room-events.coax EV_DEMO_FLAG
 EGE_IDLE :: 0; EGE_ANNOUNCE :: 1; EGE_END :: 5; EGE_AFTER :: 6; EGE_SIEGE :: 7; EGE_STAND :: 8;
 EGE_HELD :: 1; EGE_OFF :: 3;   // HELD: the camp fell to the town
 EGE_WARDED :: 1; EGE_EXPOSED :: 2;
-EGE_XP2 :: 300; EGE_XP3 :: 900;
+
 EGE_UP_SECS :: 4.0;         // the level-up notice's seconds on screen
 EGE_LEADER :: "DARIAN ODIODEI";
 // the druid's bar in a level's kit, left to right: cantrips, the prepared spells, the rebuild
@@ -447,7 +448,7 @@ ege_level_words :: (s: [] Everglade, b: [] u8) -> int {
   if !e[0].mine { return 0; }
   if e[0].level <= 0 { return ifx e[0].levels then ege_put(b, 0, "DEMO CHARACTER") else 0; }
   n := ege_int(b, ege_put(b, 0, "LEVEL "), e[0].level);
-  next := ifx e[0].level == 1 then EGE_XP2 else ifx e[0].level == 2 then EGE_XP3 else 0;
+  next := ifx e[0].level == 1 || e[0].level == 2 then srd_xp_at(e[0].level + 1) else 0;
   if e[0].level >= e[0].cap || next == 0 {
     n = ege_int(b, ege_put(b, n, " · "), e[0].xp); n = ege_put(b, n, " XP · CAP "); return ege_int(b, n, e[0].cap);
   }
@@ -461,8 +462,7 @@ ege_xp_share :: (s: [] Everglade) -> f32 {
   e := ege_of(s);
   if e[0].level <= 0 { return 0; }
   if e[0].level >= e[0].cap || e[0].level >= 3 { return 1; }
-  from := ifx e[0].level == 1 then 0 else EGE_XP2;
-  to := ifx e[0].level == 1 then EGE_XP2 else EGE_XP3;
+  from := srd_xp_at(e[0].level); to := srd_xp_at(e[0].level + 1);
   return clamp01(f32(e[0].xp - from) / f32(to - from));
 }
 // What the level brought, for its notice (the SRD 5.2.1 class tables, as the server builds them).

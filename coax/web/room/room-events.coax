@@ -36,7 +36,7 @@
 // Levels (spec 6): with `levels 1`, each seat's character is the SRD 5.2.1 Druid or Fiend Warlock at
 // the level its XP gives (300 for 2, 900 for 3, never past the cap), built by the engine's rs_druid
 // and rs_warlock, with that level's kit of the bar and nothing more (ev_kit): a cast of a slot outside
-// it is refused ("r SEQ level"). Everglade's own level 9 druid and level 17 Warlock stay as a demo
+// it is refused ("r SEQ level"). Everglade II's classes level by the same table, to 6 (eg_level_up). Everglade's own level 9 druid and level 17 Warlock stay as a demo
 // character for the realm's admins (their ticket's ACCT 2 and the hello's FLAGS bit EV_DEMO_FLAG).
 // XP counts and saves either way: the vitals report carries it (room-vitals.coax) and the seat ticket
 // brings it back (room-ticket.coax).
@@ -49,8 +49,8 @@ EV_OUT_NONE :: 0; EV_OUT_HELD :: 1; EV_OUT_OFF :: 3;   // HELD: the camp fell to
 EV_ARCH_AWAY :: 0; EV_ARCH_WARDED :: 1; EV_ARCH_EXPOSED :: 2; EV_ARCH_GONE :: 3;
 // the phases' lengths, seconds (spec 3.2)
 EV_ANNOUNCE_S :: 30; EV_WAVE_S :: 90; EV_LULL_S :: 15; EV_CLIMAX_S :: 180; EV_END_S :: 5; EV_AFTER_S :: 60;
-// levels (SRD 5.2.1, Character Advancement): XP for level 2 and 3; 3 is the cap
-EV_XP2 :: 300; EV_XP3 :: 900; EV_LEVEL_TOP :: 3;   // the cap is a dial (EvDials.cap), 1 to EV_LEVEL_TOP
+// levels (SRD 5.2.1, Character Advancement: aethyr/rules/srd/advancement.coax, the one table); 3 is the cap
+EV_LEVEL_TOP :: 3;   // the cap is a dial (EvDials.cap), 1 to EV_LEVEL_TOP
 // The raid's XP, every number of it here (spec 4.1, 6.4 and 7), each times the reward dial. A raider
 // gives EV_XP_SRD_X times its SRD XP, split evenly among every seat that hurt it (the SRD's split
 // among those who took part). A ward stone gives EV_XP_WARD the same way; one of the watch nothing.
@@ -204,7 +204,7 @@ ev_control_done :: (v: [] RmServer) {
 // ---- levels and XP
 
 // The level XP gives, up to the cap (1 to EV_LEVEL_TOP).
-ev_level_of :: (xp: int, cap: int) -> int { l := ifx xp >= EV_XP3 then 3 else (ifx xp >= EV_XP2 then 2 else 1); return ev_clamp(l, 1, ev_clamp(cap, 1, EV_LEVEL_TOP)); }
+ev_level_of :: (xp: int, cap: int) -> int { return srd_level_from(xp, 1, ev_clamp(cap, 1, EV_LEVEL_TOP)); }
 ev_level :: (v: [] RmServer, xp: int) -> int { return ev_level_of(xp, v[0].evc.d.cap); }
 
 // ---- the kits: what a character has at each level, as bar slots (SRD 5.2.1, the classes' tables)
@@ -257,9 +257,9 @@ ev_kit_has :: (kit: EvKit, slot: int) -> bool {
   return slot >= 0 && slot < 62 && (kit.lo & (1 << slot)) != 0;
 }
 // Seat s's character as the levels switch says: the SRD class at its XP's level, or Everglade's own
-// (level 0). Not Everglade II's, whose seats sit at their hello's level (room-everglade.coax). Its Hit Points carry over (full stays full; a level gained adds its Hit Points).
+// (level 0). Not Everglade II's, whose seats sit at their ticket's level and rise with their XP (room-everglade.coax eg_level_up). Its Hit Points carry over (full stays full; a level gained adds its Hit Points).
 ev_build :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
-  if v[0].eg[k].e2 { return; }   // Everglade II: the level its Character Create record chose (its hello's, #13046), never XP's
+  if v[0].eg[k].e2 { return; }   // Everglade II: its seat's class's level, its ticket's or its XP's (room-everglade.coax eg_hello_class, eg_level_up; #13259)
   demo := v[0].ev[k].demo[s] && eg_ticket(v, k, s_id).admin;
   want := ifx v[0].evc.d.levels && !demo then ev_level(v, v[0].ev[k].xp[s]) else 0;
   if want == v[0].ev[k].level[s] { return; }
@@ -303,11 +303,13 @@ ev_award :: (v: [] RmServer, k: int, s_id: SeatId, base: int) { s := s_id.value;
   v[0].ev[k].earned[s] = true;
   p := v[0].eg[k].seat[s].pose;
   b: [64] u8;
+  // Everglade II: its class's level from the same table, up to 6 (room-everglade.coax eg_level_up, #13259)
+  if v[0].eg[k].e2 { was = fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]); _ := eg_level_up(v, k, s_id); }
   // aimed at the seat (ev_who): the gainer always hears its own gain and level-up, however busy the
   // tick (the outcomes' room, no cue allowance); the seats near it hear them as cues
   n := wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e xp"), s), amount);
   eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, false, 1 << s);
-  now := ev_level(v, v[0].ev[k].xp[s]);
+  now := ifx v[0].eg[k].e2 then fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]) else ev_level(v, v[0].ev[k].xp[s]);
   if now > was {
     n = wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e level"), s), now);
     eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, true, 1 << s);

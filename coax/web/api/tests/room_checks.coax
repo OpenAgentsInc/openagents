@@ -1104,6 +1104,18 @@ rc_vitals_checks :: (t: [] Ap) {
   ok = st == 200 && rv_receipt(t, gen + 5, 7, "a"); sb_clear(why[..]); sb(why[..], ap_body(t));
   ap_check(t, "room-vitals: another process's revisions are its own; XP still only rises", ok && ap_sql(t, sb_text(xp[..]), out[..]) == "160", sb_text(why[..]));
 
+  // the class a first hello chose (#13259, migrations/0160): kept once, from a signed line only
+  cq: [1] Sb; sb(cq[..], "select coalesce(character_class, '-') from verse.room_vitals where who = '"); sb(cq[..], pid); sb(cq[..], "'");
+  ap_check(t, "room-class: a character has no class kept before a room reports one", ap_sql(t, sb_text(cq[..]), out[..]) == "-", "");
+  rv_line(l[..], pid, "6 10 160 4 2", now - 200); sb(l[..], " c=srd-wizard"); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen + 5, 8, one[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  ok = st == 200 && rv_receipt(t, gen + 5, 8, "a"); sb_clear(why[..]); sb(why[..], ap_body(t));
+  ap_check(t, "room-class: a vitals line's c=CLASS is kept, and the line is applied as before", ok && ap_sql(t, sb_text(cq[..]), out[..]) == "srd-wizard", sb_text(why[..]));
+  rv_line(l[..], pid, "6 10 160 4 3", now - 100); sb(l[..], " c=srd-fighter"); one[0] = sb_text(l[..]);
+  rv_body(b[..], gen + 5, 9, one[..], 3); st = rc_vitals(t, sb_text(b[..]), "");
+  ap_check(t, "room-class: a later class changes nothing: the first is kept", st == 200 && ap_sql(t, sb_text(cq[..]), out[..]) == "srd-wizard", ap_body(t));
+  ap_check(t, "room-class: a class word that is not one is refused by the store", ap_sql(t, "select coalesce(verse.room_class_once('p-nobody00000000', 'srd-fighter'), '-') || ' ' || coalesce(verse.room_class_once('x', 'srd-Fighter-5'), '-')", out[..]) == "- -", "");
+
   // WANTED is the room's: a page can't clear it, and the next ticket brings the room's level back
   ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], pl_key(p[..]));
   h := [2] string.["Content-Type: application/json", sb_text(ph[..])];

@@ -1172,7 +1172,9 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2_material_uniforms(s, u);
   u[E2_U_LIGHT_VIEW] = envd.env_view_word(s[0].light_view);
   e2_shadows(s, u);
-  // the studio's class is your character's once you are back in the world (Change character's too)
+  // the studio's class is your character's once you are back in the world (Change character's too); the
+  // room's when it sat you otherwise (its ticket's class and level, #13259)
+  if s[0].net[0].served && !e2c_creating(s) { s[0].creator[0].klass = s[0].net[0].klass; s[0].creator[0].level = s[0].net[0].level; s[0].net[0].served = false; }
   e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); if !e2c_creating(s) { e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s)); }
   // the bow first, so an arrow loosed this frame is flown and drawn this frame
   e2m_step(s, dt); e2bw_step(s); e2k_step(s); e2k_area_step(s); e2gd_hits(s); e2mn_hits(s);
