@@ -81,7 +81,8 @@ CW_MODEL_NOTES :: [10] string.["Google. Answers from what it knows", "Google. An
 CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
-CW_CL_EVERY :: 15.0;   // seconds between reads of them   // Coder on this machine: its sessions, one's log, a new one, a message, Stop
+CW_CL_EVERY :: 15.0;   // seconds between reads of them
+CW_CL_LIVE :: 3.0;     // seconds between fresh copies of the one shown, so turns made elsewhere (a terminal) appear   // Coder on this machine: its sessions, one's log, a new one, a message, Stop
 CW_LIST_EVERY :: 3.0;  // seconds between reads of the sessions
 CW_LOG_EVERY :: 1.0;   // and of the shown session's log while it runs
 CW_LOG_WAIT :: 20;     // reads that may find no log before the session is called gone (one just started writes its log a moment later)
@@ -124,6 +125,8 @@ ChatWeb :: struct {
   cl_at: f32; cl_asked: bool;
   import_due: int;                   // a conversation chosen there (its place + 1): Coder is asked for it as a session
   csel: [40] u8; csel_n: int;        // the one shown
+  watch_at: f32; watching: bool;     // it is copied again now and then; the log just asked for is such a fresh copy
+  csize: int;                        // the copy's size when it was last read
   sel: [24] u8; sel_n: int;          // the session the transcript shows (none: a new chat)
   log_next: int;                     // where its log is read from next (under 0: its end)
   log_due: bool;                     // read it now
@@ -352,7 +355,7 @@ cw_build :: (s: [] ChatWeb) {
   stoppable := s[0].live && !s[0].stopping;
   // a session on this machine that is running: Stop, unless something is typed (it becomes its next turn)
   if s[0].lrun && !s[0].live { k_composer_end(t, u, "composer", ifx cw_has_words(s) then "Send" else "Stop", true); }
-  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE))); }
+  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT))); }
   tr_close(t);
 }
 
@@ -479,6 +482,13 @@ cw_log_read :: (s: [] ChatWeb, body: string) {
       first = false;
       next := cl_int(line, "next"); size := cl_int(line, "size");
       if !next.ok { return; }
+      if s[0].watching {
+        // a fresh copy of a Claude Code conversation: the same size is the same conversation, and nothing changes
+        s[0].watching = false;
+        if size.ok && size.value == s[0].csize { s[0].log_next = next.value; return; }
+        s[0].count = 0; s[0].pool_n = 0; s[0].total = 0;
+      }
+      if size.ok && s[0].csel_n > 0 { s[0].csize = size.value; }
       if s[0].log_next < 0 { s[0].lrun = true; }   // a session opened at its end is running until its ending is read
       s[0].log_next = next.value;
       s[0].log_due = size.ok && next.value < size.value;   // more is waiting
@@ -565,7 +575,7 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
-  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE { s[0].send_due = true; return; }   // a background read is out: the message goes when it is back
+  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT { s[0].send_due = true; return; }   // a background read is out: the message goes when it is back
   if s[0].flight != CF_NONE { return; }
   s[0].send_due = false;
   lo := 0; hi := s[0].draft_n;
@@ -577,6 +587,7 @@ cw_send :: (s: [] ChatWeb) {
     cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, 0);
     if !cw_local_send(s, model, cw_text(s, s[0].count - 1)) { s[0].count -= 1; s[0].total -= 1; s[0].pool_n = s[0].at[s[0].count]; return; }
     s[0].echo = true; s[0].lrun = true; s[0].error_n = 0; s[0].sends += 1;
+    s[0].csel_n = 0; s[0].watching = false;   // from here the session Coder runs is what is shown
     s[0].draft_n = 0; s[0].view = CW_CHAT; s[0].menu = false;
     dm_value(s[0].dom[..], "composer", "");
     return;
@@ -758,10 +769,12 @@ cw_end :: (s: [] ChatWeb, status: int) {
     ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
     now := cl_str(ar[..], body, "id");
     if status != 200 || now.count == 0 || now.count > 23 { s[0].csel_n = 0; cw_say(s, "Coder couldn't open that conversation."); return; }
+    again := s[0].sel_n > 0 && now == cw_sel(s);
     cw_show(s, now, true);
-    s[0].model = CW_HOSTED;   // a message here goes on in Claude Code
+    s[0].watching = again; s[0].watch_at = s[0].time;
+    if !again { s[0].model = CW_HOSTED; s[0].csize = 0; }   // a message here goes on in Claude Code
   }
-  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE) { cw_send(s); } else if kind == CF_TURN {
+  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT) { cw_send(s); } else if kind == CF_TURN {
     if status == 200 { cw_turn_read(s, body); }
     else if status != 0 { cw_fail(s, status); s[0].turn = 0; }   // with no answer at all, it is read again
   }
@@ -776,6 +789,13 @@ cw_tick :: (s: [] ChatWeb) {
       body: [96] u8; k := s[0].import_due - 1;
       n := cw_put(body[..], 0, "{\"ref\":\""); n = cw_put(body[..], n, cast(string) s[0].cid[k][0..<s[0].cid_n[k]]); n = cw_put(body[..], n, "\"}");
       if cw_go(s, CF_IMPORT, "/local/import", cast(string) body[0..<n]) { s[0].import_due = 0; }
+      return;
+    }
+    if s[0].csel_n > 0 && s[0].sel_n > 0 && !s[0].lrun && !s[0].log_due && s[0].time - s[0].watch_at >= CW_CL_LIVE {
+      // the conversation shown, copied again
+      body: [96] u8;
+      n := cw_put(body[..], 0, "{\"ref\":\""); n = cw_put(body[..], n, cast(string) s[0].csel[0..<s[0].csel_n]); n = cw_put(body[..], n, "\"}");
+      if cw_go(s, CF_IMPORT, "/local/import", cast(string) body[0..<n]) { s[0].watch_at = s[0].time; }
       return;
     }
     if s[0].stop_due && s[0].sel_n > 0 {
@@ -1246,7 +1266,7 @@ cw_test_local :: (s: [] ChatWeb, sessions: string) {
   if cw_test_door(s) == "/local/claude" { cw_test_answer(s, 200, CW_T_CLAUDE); }
   b = coaxial_chatweb_frame(s, 0.016, true);
 }
-CW_T_CLAUDE :: "{\"schema\":\"coder.session-reader.v1\",\"sessions\":[{\"session_id\":\"7fe255eb-ec54-4f77-b7b3-64252ee8d7ff\",\"path\":\"/p\",\"title\":\"Show notes\"},{\"session_id\":\"0bf9aebd-0000-4f77-b7b3-64252ee8d7ff\",\"title\":\"Everglade\"}]}";
+CW_T_CLAUDE :: "{\"sessions\":[{\"session_id\":\"7fe255eb-ec54-4f77-b7b3-64252ee8d7ff\",\"path\":\"/p\",\"title\":\"Show notes\"},{\"session_id\":\"0bf9aebd-0000-4f77-b7b3-64252ee8d7ff\",\"title\":\"Everglade\"}]}";
 CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state\":\"running\",\"turns\":1,\"steps\":4,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"fix the build\\nand more\"},{\"id\":\"20261111-010101-001\",\"engine\":\"microcoder\",\"state\":\"finished\",\"turns\":2,\"steps\":9,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"add a test\"}]";
 
 #test "where Coder answers, its sessions are listed beside the chat and its agents are in the menu; elsewhere neither shows" {
@@ -1374,7 +1394,26 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   b = coaxial_chatweb_frame(s, 0.016, true);
   #assert cw_test_door(s) == "/local/log?id=20261111-155359-510&after=-1" && tr_attr_of(t, tr_find(t, "c.0"), AT_CURRENT) == "true";
   cw_test_answer(s, 200, "{\"next\":60,\"size\":60}\n{\"kind\":\"reply\",\"text\":\"Done.\"}\n{\"kind\":\"end\",\"ending\":\"finished\"}\n");
-  #assert s[0].count == 1 && !s[0].lrun;
+  #assert s[0].count == 1 && !s[0].lrun && s[0].csize == 60;
+  // it is copied again every few seconds: the same size changes nothing, a longer one is shown afresh
+  for i: 0..<45 {
+    b = coaxial_chatweb_frame(s, 0.1, true);
+    if !coaxial_chatweb_asking(s) { continue; }
+    if cw_test_door(s) == "/local/import" { break; }
+    cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS);
+  }
+  #assert cw_test_door(s) == "/local/import";
+  cw_test_answer(s, 200, "{\"id\":\"20261111-155359-510\"}");
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/local/log?id=20261111-155359-510&after=-1" && s[0].watching;
+  cw_test_answer(s, 200, "{\"next\":60,\"size\":60}\n{\"kind\":\"reply\",\"text\":\"Done.\"}\n{\"kind\":\"end\",\"ending\":\"finished\"}\n");
+  #assert s[0].count == 1 && s[0].total == 1;
+  s[0].watch_at = s[0].time - CW_CL_LIVE;
+  for i: 0..<6 { b = coaxial_chatweb_frame(s, 0.016, true); if coaxial_chatweb_asking(s) && cw_test_door(s) != "/local/import" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); } }
+  cw_test_answer(s, 200, "{\"id\":\"20261111-155359-510\"}");
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_answer(s, 200, "{\"next\":90,\"size\":90}\n{\"kind\":\"reply\",\"text\":\"Done.\"}\n{\"kind\":\"reply\",\"text\":\"More.\"}\n{\"kind\":\"end\",\"ending\":\"finished\"}\n");
+  #assert s[0].count == 2 && s[0].total == 2 && cw_text(s, 1) == "More." && s[0].csize == 90;
   cw_test_type(s, "composer", "go on");
   cw_test_enter(s, "composer");
   #assert cw_test_door(s) == "/local/send" && cw_test_body(s) == "{\"id\":\"20261111-155359-510\",\"message\":\"go on\"}";
