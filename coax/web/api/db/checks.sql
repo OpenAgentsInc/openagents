@@ -13,6 +13,12 @@ UNION ALL
 SELECT 'runtime can''t ' || p || ' ' || c.oid::regclass
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace, unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) p
 WHERE c.relkind IN ('r', 'p') AND c.relowner = 'oa_analytics'::regrole AND NOT has_table_privilege(:'runtime', c.oid, p)
+  -- the append-only logs: grants.sql takes UPDATE and DELETE back from the runtime role
+  AND NOT (p IN ('UPDATE', 'DELETE') AND c.oid IN (to_regclass('auth.audit'), to_regclass('verse.mod_log')))
+UNION ALL
+SELECT 'runtime may ' || p || ' on the append-only log ' || c.oid::regclass
+FROM pg_class c, unnest(ARRAY['UPDATE', 'DELETE']) p
+WHERE c.oid IN (to_regclass('auth.audit'), to_regclass('verse.mod_log')) AND has_table_privilege(:'runtime', c.oid, p)
 UNION ALL
 SELECT 'runtime owns ' || c.oid::regclass FROM pg_class c WHERE c.relowner = :'runtime'::regrole
 UNION ALL

@@ -390,6 +390,10 @@ if asu -U oa_analytics -c "DELETE FROM verse.mod_log" 2>/dev/null; then echo "mo
 if asu -U oa_analytics -c "TRUNCATE verse.mod_log" 2>/dev/null; then echo "moderation: the log's owner truncated it" >&2; exit 1; fi
 [[ "$(asu -U oa_analytics -c "SELECT count(*) FROM verse.mod_log WHERE reason = 'a check'")" == 1 ]] || { echo "moderation: the log's check row is gone" >&2; exit 1; }
 echo "  ok    the moderation log is append-only for the API's role, its owner and anyone else"
+# roles.coax's catalog check (db/checks.sql) knows both logs: the role without UPDATE and DELETE on them is right.
+roles_said="$(asu -U oa_analytics -v runtime=oa_api_check -f "$here/db/checks.sql")" || { echo "roles: db/checks.sql does not run" >&2; exit 1; }
+if grep -E "append-only log|can't (UPDATE|DELETE) (auth\.audit|verse\.mod_log)" <<<"$roles_said"; then echo "roles: db/checks.sql is wrong about the append-only logs" >&2; exit 1; fi
+echo "  ok    the roles' catalog check takes the append-only logs as they are"
 fi
 if grep -q "ERROR: AddressSanitizer\|runtime error" "$work/api.log"; then cat "$work/api.log"; exit 1; fi
 echo "api: checks passed in $((SECONDS - began)) s"
