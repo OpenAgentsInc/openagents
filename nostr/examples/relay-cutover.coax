@@ -8,8 +8,8 @@
 // again; store B, the shadow relay, missed one write. The equality check
 // names the missing event, the shadow comparer explains the one answer it
 // changes, and the cutover gate stays shut until both are clean.
-#load "../relay/relay_import_run.coax";
-#load "../relay/relay_shadow.coax";
+#load "../../nostr/relay/relay_import_run.coax";
+#load "../../nostr/relay/relay_shadow.coax";
 #load "../../coax/lib/nostr/fixtures/relay_export.coax";
 #import "Basic";
 

@@ -2,8 +2,8 @@
 // hashes at compile time in about 90,000 steps, near the default 100,000.
 #run_steps 1000000;
 // book:begin example
-#load "../relay/filter_read.coax";
-#load "../relay/store_policy.coax";
+#load "../../nostr/relay/filter_read.coax";
+#load "../../nostr/relay/store_policy.coax";
 #import "Basic";
 
 READ :: [6] string.["ok", "json", "field", "type", "space", "invalid"];

@@ -1,8 +1,8 @@
 // book:begin example
 #load "../../coax/lib/nostr/store.coax";
-#load "../relay/store_file.coax";
-#load "../relay/store_recover.coax";
-#load "../relay/store_delete.coax";
+#load "../../nostr/relay/store_file.coax";
+#load "../../nostr/relay/store_recover.coax";
+#load "../../nostr/relay/store_delete.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
 

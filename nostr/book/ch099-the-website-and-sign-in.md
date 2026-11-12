@@ -593,8 +593,9 @@ which the C read past and the Coax refuses as `bad object`. Both refuse.
 
 ### The API's own tests
 
-[test_private_phone_key.py](../../coax/web/api/test_private_phone_key.py)
-drives the real route against Postgres: a signed login gets the cookie
+`coax/web/api/test_private_phone_key.py` (removed with the old login
+routes in #13207, when every login moved to auth.c) drove the real route
+against Postgres: a signed login gets the cookie
 (HttpOnly, Secure, Lax, 30 days), and a replay, a wrong `u`, a wrong
 payload, a stale event, no signature, another site's page and another body
 are refused. It needs the API's `test.sh` (Postgres and the macOS paths it

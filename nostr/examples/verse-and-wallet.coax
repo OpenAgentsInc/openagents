@@ -9,7 +9,7 @@
 #load "../../coax/lib/nostr/nip47.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #load "../../coax/lib/nostr/store.coax";
-#load "../relay/relay_route.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/filter.coax";
 #load "../../pay/wallet.coax";
 

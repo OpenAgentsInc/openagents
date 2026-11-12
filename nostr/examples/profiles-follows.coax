@@ -3,7 +3,7 @@
 #load "../../coax/lib/nostr/follows.coax";
 #load "../../coax/lib/nostr/nip05.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
-#load "../relay/store_core.coax";
+#load "../../nostr/relay/store_core.coax";
 #import "Basic";
 
 META :: [8] string.["ok", "event", "kind", "json", "shape", "duplicate key", "field", "output"];

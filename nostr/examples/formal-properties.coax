@@ -1,5 +1,5 @@
 // book:begin example
-#load "../relay/store_index.coax";
+#load "../../nostr/relay/store_index.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
 

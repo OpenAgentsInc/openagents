@@ -1,6 +1,6 @@
 // book:begin example
 #load "../../coax/lib/net/ws_server.coax";
-#load "../relay/relay_route.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/hex.coax";
 #import "Basic";
 

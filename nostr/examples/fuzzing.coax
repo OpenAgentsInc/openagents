@@ -2,7 +2,7 @@
 // hashes at compile time in about 90,000 steps, near the default 100,000.
 #run_steps 1000000;
 // book:begin example
-#load "../relay/filter_read.coax";
+#load "../../nostr/relay/filter_read.coax";
 #load "../../coax/lib/nostr/nip19-core.coax";
 #load "../../coax/lib/nostr/nip44.coax";
 #load "../../coax/lib/net/ws.coax";

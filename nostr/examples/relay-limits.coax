@@ -2,10 +2,10 @@
 // hashes at compile time in about 90,000 steps, near the default 100,000.
 #run_steps 1000000;
 // book:begin example
-#load "../relay/relay_server.coax";
-#load "../relay/relay_route.coax";
-#load "../relay/relay_rate.coax";
-#load "../relay/store_core.coax";
+#load "../../nostr/relay/relay_server.coax";
+#load "../../nostr/relay/relay_route.coax";
+#load "../../nostr/relay/relay_rate.coax";
+#load "../../nostr/relay/store_core.coax";
 #load "../../coax/lib/net/relay_poll_budget.coax";
 #import "Basic";
 

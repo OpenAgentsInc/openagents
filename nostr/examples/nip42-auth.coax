@@ -1,6 +1,6 @@
 // book:begin example
-#load "../relay/relay_server.coax";
-#load "../relay/relay_route.coax";
+#load "../../nostr/relay/relay_server.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/nip42-event.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";

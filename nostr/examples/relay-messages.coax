@@ -3,7 +3,7 @@
 #run_steps 1000000;
 // book:begin example
 #load "../../coax/lib/nostr/message_agree.coax";
-#load "../relay/filter_read.coax";
+#load "../../nostr/relay/filter_read.coax";
 #import "Basic";
 
 // Status names, in the order of each file's constants.
