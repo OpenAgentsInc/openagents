@@ -76,9 +76,12 @@ pl_publish() {
 # another machine (its name in releases/after/watcher-host).
 pl_mirror() {
   [[ "$pl_shared" != 0 ]] || return 1
-  # This machine's watcher holds watch.lock: its own files are the state.
-  pl_trylock "$pl_dir/releases/after/watch.lock" true || return 1
-  local m="$pl_dir/mirror" t host at
+  # This machine's watcher writes the heartbeat and no watcher-host: its own
+  # files are the state. (Not watch.lock: a stopped watcher's jobs still hold it
+  # until they end.)
+  local m="$pl_dir/mirror" t host at hb=0
+  [[ ! -f "$pl_dir/releases/after/heartbeat" ]] || hb="$(cat "$pl_dir/releases/after/heartbeat")"
+  [[ -s "$pl_dir/releases/after/watcher-host" ]] || (( $(date +%s) - hb >= 300 )) || return 1
   mkdir -p "$m"
   if [[ -f "$m/fetched" ]] && (( $(date +%s) - $(cat "$m/fetched") < 20 )); then
     [[ -s "$pl_dir/releases/after/watcher-host" ]]; return
