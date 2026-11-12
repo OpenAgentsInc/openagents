@@ -29,9 +29,9 @@
 #
 # Cost per month (list prices, us-central1): e2-small $12.23; boot disk 10 GB and data
 # disk 10 GB pd-balanced $2.00; the address in use $3.65; hourly snapshots of a store under
-# 1 GB, a few cents; the bucket, under a cent. About $18. The smallest that passes the
-# relay's capacity check (256 connections, relay_flood.py) with the store in memory: GCP is
-# over its monthly cap, so nothing larger. staging-rust is billed by the hour (its forwarding
+# 1 GB, a few cents; the bucket, under a cent. About $18. GCP is over its monthly cap, so
+# nothing larger unless the store's size needs it (#13361: the store is in memory, 2 KiB a
+# record). staging-rust is billed by the hour (its forwarding
 # rule $0.025) and is deleted after the rehearsal, so it carries no monthly cost.
 set -euo pipefail
 export LC_ALL=C
