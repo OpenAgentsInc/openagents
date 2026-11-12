@@ -1,0 +1,303 @@
+// A uniform spatial grid, engine-wide (#13178, moved here from aethyr/net/grid.coax for the World,
+// #13274): which of a world's entities stand within a radius of a point, without looking at every
+// entity. A realm makes the grid with a cell size, puts each entity's slot where it stands once a
+// step, and asks. A query looks only at the cells the radius overlaps and returns exactly the slots
+// within it, as a scan of every entity would (the brute-force check below).
+//
+// Cells hash into the grid's lists (`head`, a power of two of them). An entity moves between lists
+// only when it changes cell, and a query skips a list's entries of other cells, so two cells
+// sharing a list never return an entity twice. Slots are the caller's: its table index.
+//
+// All storage is the realm's own: a SpatialGrid is views, so passing one copies only the views and
+// every write reaches the grid. Every link is stored plus one, so storage of zeros is an empty
+// grid (a C host's memory starts so). aethyr/net/grid.coax is the fixed-size grid a room's
+// interest uses, on these procedures.
+//   coax/bin/coax test aethyr/core/spatial.coax
+//   coax/bin/coax mutate aethyr/core/spatial.coax
+#module "aethyr.spatial";
+#authority;
+
+// book:begin grid
+SPATIAL_FAR :: 1000000;      // cells: a coordinate this many cells out or more (or NaN) is in cell SPATIAL_FAR + 1
+SPATIAL_COUNT :: 0;          // n: slots in the grid
+SPATIAL_VISITS :: 1;         // n: slots queries have looked at (the cost), since init
+SPATIAL_COUNTERS :: 2;
+
+SpatialGrid :: struct {
+  head: [] int;                 // each list's first slot, plus one (0 empty); a power of two of them
+  next: [] int; prev: [] int;   // each slot's neighbours in its list, plus one
+  at: [] int;                   // the list each slot is in, plus one (0 not in the grid)
+  cx: [] int; cz: [] int;       // its cell
+  x: [] f32; z: [] f32;         // where it stands
+  cell: [] f32;                 // [0]: a cell's side, m
+  n: [] int;                    // the counters
+}
+
+// Whether the views make a grid: a power of two of lists, one element a slot in every slot view,
+// and room for the cell size and the counters.
+spatial_shaped :: (g: SpatialGrid) -> bool #effects(all) {
+  b := g.head.count; c := g.next.count;
+  if b < 1 || (b & (b - 1)) != 0 || c < 1 { return false; }
+  if g.prev.count != c || g.at.count != c || g.cx.count != c || g.cz.count != c || g.x.count != c || g.z.count != c { return false; }
+  return g.cell.count >= 1 && g.n.count >= SPATIAL_COUNTERS;
+}
+// An empty grid of cells `cell` metres a side: false, and nothing changed, for views that are not
+// a grid. A cell of 0 or less (or NaN) puts every slot in one cell.
+spatial_init :: (g: SpatialGrid, cell: f32) -> bool #effects(all) {
+  if !spatial_shaped(g) { return false; }
+  for b: 0..<g.head.count { g.head[b] = 0; }
+  for i: 0..<g.next.count { g.next[i] = 0; g.prev[i] = 0; g.at[i] = 0; g.cx[i] = 0; g.cz[i] = 0; g.x[i] = 0; g.z[i] = 0; }
+  g.cell[0] = cell; g.n[SPATIAL_COUNT] = 0; g.n[SPATIAL_VISITS] = 0;
+  return true;
+}
+spatial_coord :: (g: SpatialGrid, v: f32) -> int #effects(all) {
+  q := v / g.cell[0];
+  if !(q == q) || q >= f32(SPATIAL_FAR) || q <= -f32(SPATIAL_FAR) { return SPATIAL_FAR + 1; }
+  return cast(int) floor(q);
+}
+spatial_bucket :: (g: SpatialGrid, cx: int, cz: int) -> int #effects(all) {
+  return (cx * 73856093 + cz * 19349663) & (g.head.count - 1);
+}
+spatial_has :: (g: SpatialGrid, i: int) -> bool #effects(all) { return i >= 0 && i < g.at.count && g.at[i] != 0; }
+spatial_count :: (g: SpatialGrid) -> int #effects(all) { return g.n[SPATIAL_COUNT]; }
+
+spatial_unlink :: (g: SpatialGrid, i: int) #effects(all) {
+  p := g.prev[i] - 1; n := g.next[i] - 1;
+  if p >= 0 { g.next[p] = n + 1; } else { g.head[g.at[i] - 1] = n + 1; }
+  if n >= 0 { g.prev[n] = p + 1; }
+  g.at[i] = 0;
+  g.n[SPATIAL_COUNT] -= 1;
+}
+
+// Slot i stands at (x, z). False (and nothing changed) for a slot the grid has no element for.
+spatial_put :: (g: SpatialGrid, i: int, x: f32, z: f32) -> bool #effects(all) {
+  if i < 0 || i >= g.at.count { return false; }
+  cx := spatial_coord(g, x); cz := spatial_coord(g, z);
+  g.x[i] = x; g.z[i] = z;
+  if g.at[i] != 0 {
+    if g.cx[i] == cx && g.cz[i] == cz { return true; }
+    spatial_unlink(g, i);
+  }
+  b := spatial_bucket(g, cx, cz);
+  first := g.head[b];
+  g.cx[i] = cx; g.cz[i] = cz; g.at[i] = b + 1; g.prev[i] = 0; g.next[i] = first;
+  if first > 0 { g.prev[first - 1] = i + 1; }
+  g.head[b] = i + 1;
+  g.n[SPATIAL_COUNT] += 1;
+  return true;
+}
+// Slot i leaves the grid.
+spatial_drop :: (g: SpatialGrid, i: int) #effects(all) {
+  if spatial_has(g, i) { spatial_unlink(g, i); }
+}
+
+// The slots within r metres of (x, z), into out (as many as fit); how many there are.
+spatial_query :: (g: SpatialGrid, x: f32, z: f32, r: f32, out: [] int) -> int #effects(all) {
+  x0 := spatial_coord(g, x - r); x1 := spatial_coord(g, x + r);
+  z0 := spatial_coord(g, z - r); z1 := spatial_coord(g, z + r);
+  n := 0;
+  for cx: x0..<x1 + 1 {
+    for cz: z0..<z1 + 1 {
+      i := g.head[spatial_bucket(g, cx, cz)] - 1;
+      while i >= 0 {
+        if g.cx[i] == cx && g.cz[i] == cz {
+          g.n[SPATIAL_VISITS] += 1;
+          dx := g.x[i] - x; dz := g.z[i] - z;
+          if dx * dx + dz * dz <= r * r { if n < out.count { out[n] = i; } n += 1; }
+        }
+        i = g.next[i] - 1;
+      }
+    }
+  }
+  return n;
+}
+// book:end grid
+
+// The checks' grid: 1,024 slots and 1,024 lists, a radius kept beside it (cells of half the radius).
+SpatialCheck :: struct {
+  head: [1024] int; next: [1024] int; prev: [1024] int; at: [1024] int; cx: [1024] int; cz: [1024] int;
+  x: [1024] f32; z: [1024] f32; cell: [1] f32; n: [SPATIAL_COUNTERS] int; radius: f32;
+}
+sc_grid :: (b: [] SpatialCheck) -> SpatialGrid #effects(all) {
+  return SpatialGrid.{head = b[0].head[..], next = b[0].next[..], prev = b[0].prev[..], at = b[0].at[..], cx = b[0].cx[..], cz = b[0].cz[..],
+    x = b[0].x[..], z = b[0].z[..], cell = b[0].cell[..], n = b[0].n[..]};
+}
+sc_init :: (b: [] SpatialCheck, radius: f32) #effects(all) { b[0].radius = radius; _ := spatial_init(sc_grid(b), radius / 2); }
+sc_coord :: (b: [] SpatialCheck, v: f32) -> int #effects(all) { return spatial_coord(sc_grid(b), v); }
+sc_bucket :: (cx: int, cz: int) -> int #effects(all) { return (cx * 73856093 + cz * 19349663) & 1023; }
+sc_has :: (b: [] SpatialCheck, i: int) -> bool #effects(all) { return spatial_has(sc_grid(b), i); }
+sc_put :: (b: [] SpatialCheck, i: int, x: f32, z: f32) -> bool #effects(all) { return spatial_put(sc_grid(b), i, x, z); }
+sc_drop :: (b: [] SpatialCheck, i: int) #effects(all) { spatial_drop(sc_grid(b), i); }
+sc_query :: (b: [] SpatialCheck, x: f32, z: f32, out: [] int) -> int #effects(all) { return spatial_query(sc_grid(b), x, z, b[0].radius, out); }
+
+// ---- checks
+
+#test "grid: views that are not a grid are refused whole; init empties what a grid held" {
+  b: [1] SpatialCheck; g := sc_grid(b[..]); out: [4] int;
+  #assert spatial_shaped(g) && spatial_init(g, 4);
+  #assert spatial_put(g, 5, 1, 1) && spatial_put(g, 6, 9, 1) && spatial_query(g, 1, 1, 2, out[..]) == 1 && spatial_count(g) == 2 && g.n[SPATIAL_VISITS] == 1;
+  // three in one cell off both axes, so their links and cells are not zeros
+  #assert spatial_put(g, 7, 9, 9) && spatial_put(g, 8, 9, 9) && spatial_put(g, 9, 9, 9) && g.next[9] == 9 && g.prev[8] == 10 && g.cz[8] == 2 && g.cx[8] == 2;
+  spatial_drop(g, 8); spatial_drop(g, 9); spatial_drop(g, 7); #assert g.next[9] == 8 && g.prev[8] == 10;   // links drops leave behind, for init to clear
+  // the lists cells hash into, as the layout has them, masked by the grid's own number of lists
+  #assert spatial_bucket(g, 0, 0) == 0 && spatial_bucket(g, 1, 0) == (73856093 & 1023) && spatial_bucket(g, 0, 1) == (19349663 & 1023);
+  #assert spatial_bucket(g, 2, 3) == ((2 * 73856093 + 3 * 19349663) & 1023) && spatial_bucket(g, -1, 0) == ((-73856093) & 1023) && spatial_bucket(g, 3, 5) == 50;
+  two := g; two.head = b[0].head[0..<2]; #assert spatial_bucket(two, 1, 0) == 1 && spatial_bucket(two, 1, 1) == 0 && spatial_bucket(two, 2, 0) == 0;
+  // one view wrong at a time: each is refused, and the grid keeps what it held
+  bad := g; bad.head = b[0].head[0..<1000]; #assert !spatial_shaped(bad) && !spatial_init(bad, 4);   // not a power of two
+  bad = g; bad.head = b[0].head[0..<0]; #assert !spatial_shaped(bad);
+  bad = g; bad.next = b[0].next[0..<0]; bad.prev = bad.next; bad.at = bad.next; bad.cx = bad.next; bad.cz = bad.next; bad.x = b[0].x[0..<0]; bad.z = bad.x; #assert !spatial_shaped(bad);
+  bad = g; bad.prev = b[0].prev[0..<1023]; #assert !spatial_shaped(bad);
+  bad = g; bad.at = b[0].at[0..<1023]; #assert !spatial_shaped(bad);
+  bad = g; bad.cx = b[0].cx[0..<1023]; #assert !spatial_shaped(bad);
+  bad = g; bad.cz = b[0].cz[0..<1023]; #assert !spatial_shaped(bad);
+  bad = g; bad.x = b[0].x[0..<1023]; #assert !spatial_shaped(bad);
+  bad = g; bad.z = b[0].z[0..<1023]; #assert !spatial_shaped(bad);
+  bad = g; bad.cell = b[0].cell[0..<0]; #assert !spatial_shaped(bad);
+  bad = g; bad.n = b[0].n[0..<1]; #assert !spatial_shaped(bad) && !spatial_init(bad, 4);
+  #assert spatial_count(g) == 2 && spatial_has(g, 5) && g.cell[0] == 4;
+  // one list and one slot is a grid; two lists are, three are not
+  one := g; one.head = b[0].head[0..<1]; #assert spatial_shaped(one);
+  one.head = b[0].head[0..<2]; #assert spatial_shaped(one);
+  tiny := SpatialGrid.{head = b[0].head[0..<1], next = b[0].next[0..<1], prev = b[0].prev[0..<1], at = b[0].at[0..<1], cx = b[0].cx[0..<1], cz = b[0].cz[0..<1], x = b[0].x[0..<1], z = b[0].z[0..<1], cell = b[0].cell[..], n = b[0].n[..]};
+  #assert spatial_shaped(tiny);
+  // init empties every list, every slot and both counters
+  #assert spatial_init(g, 8) && spatial_count(g) == 0 && g.n[SPATIAL_VISITS] == 0 && !spatial_has(g, 5) && !spatial_has(g, 6) && g.cell[0] == 8;
+  for i: 0..<1024 { #assert g.head[i] == 0 && g.next[i] == 0 && g.prev[i] == 0 && g.at[i] == 0 && g.cx[i] == 0 && g.cz[i] == 0 && g.x[i] == 0 && g.z[i] == 0; }
+  #assert spatial_query(g, 1, 1, 2, out[..]) == 0;
+}
+
+#test "grid: a cell is the radius over its rings; coordinates past the far cell share one" {
+  g: [1] SpatialCheck;
+  #assert spatial_count(sc_grid(g[..])) == 0 && !sc_has(g[..], 0);
+  sc_init(g[..], 40); #assert g[0].cell[0] == 20 && g[0].radius == 40;
+  #assert sc_coord(g[..], 19.9) == 0 && sc_coord(g[..], 20) == 1 && sc_coord(g[..], -0.1) == -1 && sc_coord(g[..], -20) == -1 && sc_coord(g[..], -20.5) == -2;
+  zero := 0.0f32; nan := zero / zero;
+  #assert sc_coord(g[..], nan) == SPATIAL_FAR + 1 && sc_coord(g[..], 1.0e30) == SPATIAL_FAR + 1 && sc_coord(g[..], -1.0e30) == SPATIAL_FAR + 1;
+  #assert sc_coord(g[..], f32(SPATIAL_FAR) * 20) == SPATIAL_FAR + 1 && sc_coord(g[..], -f32(SPATIAL_FAR) * 20) == SPATIAL_FAR + 1;
+  #assert sc_coord(g[..], f32(SPATIAL_FAR) * 20 - 40) == SPATIAL_FAR - 2 && sc_coord(g[..], 40 - f32(SPATIAL_FAR) * 20) == 2 - SPATIAL_FAR;
+  // the lists cells hash into, as the layout has them
+  #assert sc_bucket(0, 0) == 0 && sc_bucket(1, 0) == (73856093 & 1023) && sc_bucket(0, 1) == (19349663 & 1023);
+  #assert sc_bucket(2, 3) == ((2 * 73856093 + 3 * 19349663) & 1023) && sc_bucket(-1, 0) == ((-73856093) & 1023);
+  // no radius: every slot in one cell, and a query finds those exactly where it asks
+  h: [1] SpatialCheck; sc_init(h[..], 0); out: [4] int;
+  #assert sc_put(h[..], 1, 5, 5) && sc_put(h[..], 2, -7, 3);
+  #assert sc_query(h[..], 5, 5, out[..]) == 1 && out[0] == 1 && h[0].n[SPATIAL_VISITS] == 2;
+  // a negative radius is its size
+  m: [1] SpatialCheck; sc_init(m[..], -10);
+  #assert sc_put(m[..], 1, 3, 4) && sc_put(m[..], 2, 30, 0) && sc_query(m[..], 0, 0, out[..]) == 1 && out[0] == 1;
+}
+#test "grid: put, move, drop; the edge of the radius is in; slots outside the grid are refused" {
+  g: [1] SpatialCheck; sc_init(g[..], 5);
+  out: [16] int;
+  #assert sc_put(g[..], 3, 3, 4) && sc_put(g[..], 7, 30, 0) && sc_put(g[..], 0, -3, -4) && g[0].n[SPATIAL_COUNT] == 3;
+  #assert !sc_put(g[..], -1, 0, 0) && !sc_put(g[..], 1024, 0, 0) && g[0].n[SPATIAL_COUNT] == 3;
+  #assert sc_has(g[..], 3) && !sc_has(g[..], 4) && !sc_has(g[..], -1) && !sc_has(g[..], 1024);
+  n := sc_query(g[..], 0, 0, out[..]);   // (3, 4) and (-3, -4) are exactly 5 m off
+  #assert n == 2 && ((out[0] == 3 && out[1] == 0) || (out[0] == 0 && out[1] == 3));
+  #assert sc_query(g[..], 0.01, 0, out[..]) == 1 && out[0] == 3;
+  // a move within its cell, and across cells: found where it stands now
+  #assert sc_put(g[..], 7, 31, 1) && g[0].n[SPATIAL_COUNT] == 3 && sc_query(g[..], 31, 1, out[..]) == 1;
+  #assert sc_put(g[..], 7, 1, 1) && g[0].n[SPATIAL_COUNT] == 3;
+  n = sc_query(g[..], 3, 3, out[..]); #assert n == 2;
+  #assert sc_query(g[..], 30, 0, out[..]) == 0;
+  sc_drop(g[..], 7); #assert g[0].n[SPATIAL_COUNT] == 2 && !sc_has(g[..], 7) && sc_query(g[..], 3, 3, out[..]) == 1;
+  sc_drop(g[..], 7); sc_drop(g[..], -1); sc_drop(g[..], 1024); #assert g[0].n[SPATIAL_COUNT] == 2;
+  // more than out holds: the count is all of them, out the first
+  for i: 20..<40 { _ := sc_put(g[..], i, 100, 100); }
+  small: [4] int; #assert sc_query(g[..], 100, 100, small[..]) == 20 && small[3] >= 20;
+}
+#test "grid: a list's head, middle and tail each leave and come back; slot 0 too; nothing is found that left" {
+  g: [1] SpatialCheck; sc_init(g[..], 2);   // 1 m cells
+  out: [8] int;
+  // slots 0, 1, 2 in one cell: the list is 2, 1, 0
+  for i: 0..<3 { #assert sc_put(g[..], i, 0.5, 0.5); }
+  sc_drop(g[..], 1);   // the middle
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 2;
+  sc_drop(g[..], 2);   // the head: 0 is the head now
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 0;
+  sc_drop(g[..], 0);   // slot 0, the last
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 0 && g[0].n[SPATIAL_COUNT] == 0;
+  // 1 and 0 again (0 the head); 0 moves to another cell as its list's head, then leaves
+  #assert sc_put(g[..], 1, 0.5, 0.5) && sc_put(g[..], 0, 0.5, 0.5);
+  #assert sc_put(g[..], 0, 9.5, 9.5);
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 1;
+  sc_drop(g[..], 0);
+  #assert sc_query(g[..], 9.5, 9.5, out[..]) == 0 && sc_query(g[..], 0.5, 0.5, out[..]) == 1;
+  // the tail moves away and back, then the head leaves: both lists stay whole
+  #assert sc_put(g[..], 4, 0.5, 0.5) && sc_put(g[..], 5, 0.5, 0.5);   // list 5, 4, 1
+  #assert sc_put(g[..], 1, 9.5, 9.5);   // 1 leaves the tail, for an empty list, then leaves
+  sc_drop(g[..], 1);
+  #assert sc_query(g[..], 9.5, 9.5, out[..]) == 0 && sc_query(g[..], 0.5, 0.5, out[..]) == 2;
+  #assert sc_put(g[..], 1, 9.5, 9.5) && sc_put(g[..], 3, 9.5, 9.5);   // 9.5's list 3, 1
+  sc_drop(g[..], 3);
+  #assert sc_query(g[..], 9.5, 9.5, out[..]) == 1 && out[0] == 1;
+  sc_drop(g[..], 1);
+  #assert sc_query(g[..], 9.5, 9.5, out[..]) == 0;
+  sc_drop(g[..], 5);
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 4 && g[0].n[SPATIAL_COUNT] == 1;
+  // slot 0 ahead of the one that leaves: the list goes on from it
+  #assert sc_put(g[..], 0, 0.5, 0.5);   // list 0, 4
+  sc_drop(g[..], 4);
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 0;
+}
+#test "grid: a query looks at its cells' slots only, once each, though other cells share their lists" {
+  g: [1] SpatialCheck; sc_init(g[..], 2);   // 1 m cells: a query near a cell's middle covers 5 x 5 cells
+  out: [8] int;
+  // a cell far off whose list is (0, 0)'s, in the same row and in the same column
+  c := 1; while c < 4096 && sc_bucket(c, 0) != sc_bucket(0, 0) { c += 1; }
+  d := 1; while d < 4096 && sc_bucket(0, d) != sc_bucket(0, 0) { d += 1; }
+  #assert c > 4 && c < 4096 && d > 4 && d < 4096;
+  #assert sc_put(g[..], 1, 0.5, 0.5) && sc_put(g[..], 2, f32(c) + 0.5, 0.5) && sc_put(g[..], 3, 0.5, f32(d) + 0.5);
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 1 && g[0].n[SPATIAL_VISITS] == 1;
+  #assert sc_query(g[..], f32(c) + 0.5, 0.5, out[..]) == 1 && out[0] == 2 && g[0].n[SPATIAL_VISITS] == 2;
+  #assert sc_query(g[..], 0.5, f32(d) + 0.5, out[..]) == 1 && out[0] == 3 && g[0].n[SPATIAL_VISITS] == 3;
+  // the window is the cells the radius's square overlaps: 2 m around (0.5, 0.5) is cells -2 to 2
+  #assert sc_put(g[..], 4, 2.6, 0.5) && sc_put(g[..], 5, -1.6, 0.5) && sc_put(g[..], 6, 3.1, 0.5);
+  v := g[0].n[SPATIAL_VISITS];
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 1 && g[0].n[SPATIAL_VISITS] == v + 3;   // 1, and 4 and 5 just past 2 m; never 6
+  #assert sc_put(g[..], 7, 0.5, 2.6) && sc_put(g[..], 8, 0.5, 3.1);
+  v = g[0].n[SPATIAL_VISITS];
+  #assert sc_query(g[..], 0.5, 0.5, out[..]) == 1 && g[0].n[SPATIAL_VISITS] == v + 4;
+}
+SPATIAL_WALK :: 300;
+#forall "grid: through a random walk of puts, moves and drops, every query is the brute-force scan's answer" seed: 1..<6 #steps 200000000 {
+  g: [1] SpatialCheck;
+  s := seed * 7919;
+  on: [SPATIAL_WALK] bool; x: [SPATIAL_WALK] f32; z: [SPATIAL_WALK] f32; want: [SPATIAL_WALK] bool; got: [SPATIAL_WALK] int;
+  for t: 0..<8 {
+    if t % 4 == 0 { s = (s * 1103515245 + 12345) & 0x7fffffff; sc_init(g[..], f32(10 + (s >> 8) % 140)); for i: 0..<SPATIAL_WALK { on[i] = false; } }
+    for i: 0..<SPATIAL_WALK {
+      s = (s * 1103515245 + 12345) & 0x7fffffff; r := (s >> 8) % 10;
+      if r == 0 { sc_drop(g[..], i); on[i] = false; continue; }
+      s = (s * 1103515245 + 12345) & 0x7fffffff; a := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      s = (s * 1103515245 + 12345) & 0x7fffffff; b := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      if !on[i] || r < 4 { x[i] = a; z[i] = b; } else { x[i] += a / 40; z[i] += b / 40; }
+      #assert sc_put(g[..], i, x[i], z[i]); on[i] = true;
+    }
+    count := 0; for i: 0..<SPATIAL_WALK { if on[i] { count += 1; } }
+    #assert g[0].n[SPATIAL_COUNT] == count;
+    for q: 0..<4 {
+      s = (s * 1103515245 + 12345) & 0x7fffffff; px := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      s = (s * 1103515245 + 12345) & 0x7fffffff; pz := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      m := 0; r2 := g[0].radius * g[0].radius;
+      for i: 0..<SPATIAL_WALK { dx := x[i] - px; dz := z[i] - pz; want[i] = on[i] && dx * dx + dz * dz <= r2; if want[i] { m += 1; } }
+      n := sc_query(g[..], px, pz, got[..]);
+      #assert n == m;
+      for k: 0..<n { #assert want[got[k]]; want[got[k]] = false; }   // each once
+    }
+  }
+}
+#test "grid: a query at 1,000 entities over a kilometre looks at a small part of them" {
+  g: [1] SpatialCheck; sc_init(g[..], 110);
+  s := 13178;
+  for i: 0..<1000 {
+    s = (s * 1103515245 + 12345) & 0x7fffffff; a := f32((s >> 8) % 100000) / 100.0 - 500.0;
+    s = (s * 1103515245 + 12345) & 0x7fffffff; b := f32((s >> 8) % 100000) / 100.0 - 500.0;
+    _ := sc_put(g[..], i, a, b);
+  }
+  out: [1000] int; found := 0;
+  for q: 0..<100 { found += sc_query(g[..], g[0].x[q], g[0].z[q], out[..]); }
+  // a scan looks at 1,000 a query; the grid at the cells around 110 m (about a fifth of the square)
+  #assert g[0].n[SPATIAL_VISITS] < 100 * 1000 / 4 && found > 100 && found < 100 * 1000 / 8;
+}

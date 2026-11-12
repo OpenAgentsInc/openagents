@@ -170,7 +170,7 @@ tool_main :: () -> int #export_c #effects(all) {
     rb_setup(w[..], n);
     for t: 1..<RB_TICKS + 1 { rb_move(w[..]); a := cxproc_now_ns(); s_a += rb_after(w[..], t); t_a += cxproc_now_ns() - a; }
     print("entities % clients %: before % us/tick (% rows/client/tick), after % us/tick (% rows/client/tick), grid visits % (query % priority % order % us)\n",
-          n, n, t_b / RB_TICKS / 1000, s_b / RB_TICKS / n, t_a / RB_TICKS / 1000, s_a / RB_TICKS / n, w[0].grid[0].visits / RB_TICKS, w[0].tq / RB_TICKS / 1000, w[0].tp / RB_TICKS / 1000, w[0].to / RB_TICKS / 1000); w[0].tq = 0; w[0].tp = 0; w[0].to = 0;
+          n, n, t_b / RB_TICKS / 1000, s_b / RB_TICKS / n, t_a / RB_TICKS / 1000, s_a / RB_TICKS / n, net_grid_visits(w[0].grid[..]) / RB_TICKS, w[0].tq / RB_TICKS / 1000, w[0].tp / RB_TICKS / 1000, w[0].to / RB_TICKS / 1000); w[0].tq = 0; w[0].tp = 0; w[0].to = 0;
   }
   b := rb_glade(false); a := rb_glade(true);
   print("crowded glade (you + 200 within 40 m): before % B/s (% rows/s, % waited/s, oldest % ticks), after % B/s (% rows/s, % waited/s, oldest % ticks)\n",

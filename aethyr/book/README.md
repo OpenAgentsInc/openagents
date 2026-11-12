@@ -331,5 +331,6 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [102. Ask, act, present](ch102-ask-act-present.md) | Partly implemented: native C and browser Wasm (ask, answer and show; one bearing from SRD conditions; a feel contract) | Every action of every class and monster asks, waits for the authority's answer and only then presents; one bearing drives the pose, the input lock and the hotbar from a body's conditions; and a check fails when an action lacks an animation, an effect, a sound or a movement. Zones wire the pipeline in and hold no copy of it. Not built: a runnable example and the remaining shared modules (#13079 to #13088). |
+| [103. One world: columns, systems and a spatial index](ch103-one-world.md) | Partly implemented: native C (the World on the entity store and the spatial grid; a 2,000-entity session replayed by digest) | A realm's entities live in one `World`: the entity store, component columns keyed by slot, an ordered system list whose declared reads and writes are checked, and a spatial grid. Two runs of a 2,000-entity session through three systems give the same digest at every step. |
 
 [Appendix A](appendix-mmo-gap-analysis.md) compares these chapters with an MMO-capable engine, capability by capability, and links the issues for each gap.

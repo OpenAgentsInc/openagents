@@ -222,9 +222,9 @@ im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] Im
   // those within the exit radius, from the grid (the cells around the seat only)
   enter2 := f32(IM_ENTER * IM_ENTER);
   near: [IM_ENTS] int;
-  looked := im[0].grid[0].visits;
+  looked := net_grid_visits(im[0].grid[..]);
   found := net_grid_query(im[0].grid[..], x, z, near[..]);
-  im[0].visits += im[0].grid[0].visits - looked;
+  im[0].visits += net_grid_visits(im[0].grid[..]) - looked;
   for c: 0..<(ifx found < IM_ENTS then found else IM_ENTS) {
     i = near[c];
     if im[0].mark[i] == im[0].mark_n { continue; }   // taken: its own, or room-wide

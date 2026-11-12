@@ -560,6 +560,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/one-world.coax",
+      "chapter": "aethyr/book/ch103-one-world.md",
+      "stdout": "aethyr/fixtures/one-world.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

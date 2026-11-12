@@ -143,6 +143,7 @@
 **XIII. Actions and conditions**
 
 - [102. Ask, act, present](ch102-ask-act-present.md) — partly implemented
+- [103. One world: columns, systems and a spatial index](ch103-one-world.md) — partly implemented
 
 **Appendices**
 

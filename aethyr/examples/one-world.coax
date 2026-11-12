@@ -1,0 +1,98 @@
+// book:begin example
+#load "../core/world.coax";
+#load "../core/replay.coax";
+#import "Basic";
+
+// Two thousand walkers in one World, stepped by three systems in one order:
+//   steer  reads the transform and the kind, writes the body: drifters circle the middle, seekers
+//          head for it, and a walker in a crowd (the index's answer) hurries
+//   move   reads the body, writes the transform
+//   wear   reads the transform, writes health and the kind: far from the middle a walker tires; a
+//          spent one despawns and a new one is spawned at the middle
+// The session runs twice. The second run is a replay: each step's digest must be the recording's.
+FIELD :: 2000;
+STEPS :: 120;
+SYS_STEER :: 1; SYS_MOVE :: 2; SYS_WEAR :: 3;
+Session :: struct { marks: [STEPS] int; events: [1] ReplayEvent; channels: [REPLAY_SOURCES] ReplayChannel; n: [REPLAY_COUNTERS] int; }
+
+build :: (b: [] WorldStore) -> World {
+  w := world_of(b, FIELD + 400);
+  _ := world_init(w, 4);
+  _ := world_system(w, SYS_STEER, WORLD_TRANSFORM | WORLD_KIND, WORLD_BODY);
+  _ := world_system(w, SYS_MOVE, WORLD_BODY, WORLD_TRANSFORM);
+  _ := world_system(w, SYS_WEAR, WORLD_TRANSFORM, WORLD_HEALTH | WORLD_KIND);
+  _ := world_audit(w, true);
+  s := 13274;
+  for k: 0..<FIELD {
+    made := world_spawn(w, WORLD_TRANSFORM | WORLD_BODY | WORLD_HEALTH | WORLD_KIND); i := entity_slot(made.handle);
+    s = (s * 1103515245 + 12345) & 0x7fffffff; _ := world_set_f(w, WF_X, i, f32((s >> 8) % 20000) / 100.0 - 100.0);
+    s = (s * 1103515245 + 12345) & 0x7fffffff; _ := world_set_f(w, WF_Z, i, f32((s >> 8) % 20000) / 100.0 - 100.0);
+    _ := world_set_i(w, WI_HP, i, 20); _ := world_set_i(w, WI_KIND, i, k % 2);
+  }
+  _ := world_commit(w);
+  return w;
+}
+steer :: (w: World) {
+  near: [8] int;
+  for i: 0..<world_high(w) {
+    if world_at(w, i) == ENTITY_NONE { continue; }
+    x := world_f(w, WF_X, i); z := world_f(w, WF_Z, i);
+    hurry: f32 = ifx world_near(w, x, z, 3, near[..]) > 6 then 2.0f32 else 1.0f32;
+    if world_i(w, WI_KIND, i) == 0 { _ := world_set_f(w, WF_VX, i, -z * 0.02 * hurry); _ := world_set_f(w, WF_VZ, i, x * 0.02 * hurry); }
+    else { _ := world_set_f(w, WF_VX, i, -x * 0.01 * hurry); _ := world_set_f(w, WF_VZ, i, -z * 0.01 * hurry); }
+  }
+}
+move :: (w: World) {
+  for i: 0..<world_high(w) {
+    if world_at(w, i) == ENTITY_NONE { continue; }
+    _ := world_set_f(w, WF_X, i, world_f(w, WF_X, i) + world_f(w, WF_VX, i));
+    _ := world_set_f(w, WF_Z, i, world_f(w, WF_Z, i) + world_f(w, WF_VZ, i));
+  }
+}
+wear :: (w: World) {
+  for i: 0..<world_high(w) {
+    h := world_at(w, i);
+    if h == ENTITY_NONE { continue; }
+    x := world_f(w, WF_X, i); z := world_f(w, WF_Z, i);
+    if x * x + z * z <= 90.0 * 90.0 { continue; }
+    hp := world_i(w, WI_HP, i) - 1;
+    _ := world_set_i(w, WI_HP, i, hp);
+    if hp > 0 { continue; }
+    world_despawn(w, h);
+    made := world_spawn(w, WORLD_TRANSFORM | WORLD_BODY | WORLD_HEALTH | WORLD_KIND);
+    if made.handle != ENTITY_NONE { _ := world_set_i(w, WI_HP, entity_slot(made.handle), 20); _ := world_set_i(w, WI_KIND, entity_slot(made.handle), 1); }
+  }
+}
+step :: (w: World) -> bool {
+  if !world_step_begin(w) { return false; }
+  if world_system_begin(w, SYS_STEER) { steer(w); world_system_end(w); }
+  if world_system_begin(w, SYS_MOVE) { move(w); world_system_end(w); }
+  if world_system_begin(w, SYS_WEAR) { wear(w); world_system_end(w); }
+  return world_step_end(w);
+}
+
+main :: () {
+  a: [1] WorldStore; b: [1] WorldStore; k: [1] Session;
+  s := ReplaySession.{events = k[0].events[..], marks = k[0].marks[..], channels = k[0].channels[..], n = k[0].n[..]};
+  w := build(a[..]);
+  print("built: % entities, cap %, digest %\n", world_count(w), world_cap(w), world_digest(w));
+  replay_record(s, world_digest(w), 13274);
+  for t: 0..<STEPS { if step(w) { replay_stepped(s, world_digest(w)); } }
+  print("recorded: tick %, % entities, % born in all, digest %\n", world_tick(w), world_count(w), w.ents.n[ENTITY_NEXT_ID], world_digest(w));
+  print("violations %, audited %, skipped %\n", world_violations(w), w.n[WORLD_AUDITED], w.n[WORLD_SKIPPED]);
+  v := build(b[..]);
+  print("replay starts: %\n", replay_play(s, world_digest(v)));
+  for t: 0..<STEPS { if step(v) { replay_stepped(s, world_digest(v)); } }
+  print("replay matched: %, first step that differs %\n", replay_matched(s), replay_diverged(s));
+  // A system that reaches past its declaration: move writes health. The write is refused and counted.
+  _ := world_step_begin(v);
+  if world_system_begin(v, SYS_STEER) { world_system_end(v); }
+  if world_system_begin(v, SYS_MOVE) {
+    print("move writes health: %, health still %\n", world_set_i(v, WI_HP, 0, 0), v.i[WI_HP * world_cap(v)]);
+    world_system_end(v);
+  }
+  print("violations %, by system %, asked for % (health %, a write %)\n", world_violations(v), v.n[WORLD_FIRST], v.n[WORLD_FIRST_WHAT], WORLD_HEALTH, WORLD_WROTE);
+  // and a step that skips a system does not close
+  print("a step without wear closes: %\n", world_step_end(v));
+}
+// book:end example

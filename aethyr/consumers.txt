@@ -11,6 +11,7 @@
 # program is deleted; git keeps it.
 
 # P2: one world
+adopt aethyr/core/world.coax #13275  # the room core holds its seats and entities in one World; rows come from its columns (#13276)
 adopt aethyr/world/ #13280  # cells, owners, resource manifests and the streaming walk become the one world's cells and paged packs
 adopt aethyr/physics/sim/ #13279  # the scene, broad and narrow phase and batched rigid bodies go behind query_*; the legacy rigid and contact modules retire onto them
 adopt aethyr/physics/query-fluid.coax #13279  # fluid and trigger volumes are answered by the same broadphase

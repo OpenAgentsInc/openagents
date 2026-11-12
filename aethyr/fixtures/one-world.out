@@ -1,0 +1,8 @@
+built: 2000 entities, cap 2400, digest 1220032810
+recorded: tick 120, 1898 entities, 2417 born in all, digest 2329652596
+violations 0, audited 0, skipped 0
+replay starts: true
+replay matched: true, first step that differs -1
+move writes health: false, health still 20
+violations 1, by system 2, asked for 260 (health 4, a write 256)
+a step without wear closes: false
