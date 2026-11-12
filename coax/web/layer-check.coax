@@ -10,10 +10,11 @@
 //   coax/bin/coax test coax/web/layer-check.coax --library
 //
 // The rules, for a loading file that is not support code (below):
-//   aethyr-up    a file under aethyr/ loads from verse/, apps/, everglade/ or coax/web/
-//   everglade-up a file under everglade/ loads from apps/
-//   tests        a file under aethyr/, everglade/, coax/web/api/ or coax/web/room/ loads a file in a tests/ or test/ folder
-//   context      a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
+//   aethyr-up     a file under aethyr/ loads from verse/, apps/, everglade/ or coax/web/
+//   everglade-up  a file under everglade/ loads from apps/
+//   tests         a file under aethyr/, everglade/, coax/web/api/ or coax/web/room/ loads a file in a tests/ or test/ folder
+//   context       a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
+//   model-effects a model file listed in aethyr/model-files.txt declares #effects(all) (#13314)
 // Support code is a test, check, tool, example or book file, which may load what it exercises:
 //   a path with a folder named tests, test, tools, examples, book, fixtures or lab;
 //   a file named test_X, test-X, check-X, check.E, checks.E, X_test.E, X-test.E, X-check.E,
@@ -35,6 +36,7 @@
 
 LC_ALLOW :: "aethyr/layer-allowlist.txt";
 LC_CONTEXTS :: "contexts.txt";
+LC_MODELS :: "aethyr/model-files.txt";
 LC_HOW :: "aethyr/README.md, \"Layers\"";
 LC_BUF :: 16777216;      // git grep's and git ls-files' output, and the largest file read
 LC_MODS :: 8192;         // engine modules tracked by --consumers
@@ -42,9 +44,9 @@ LC_LINES :: 4096;        // allowlist lines tracked
 LC_MAX_CTX :: 64;        // bounded contexts in contexts.txt
 LC_MAX_PFX :: 32;        // folder/file prefixes or allowed dependencies per context
 
-// The rules, by index (0: none).
-LC_UP_AETHYR :: 1; LC_UP_EVERGLADE :: 2; LC_TESTS :: 3; LC_CONTEXT :: 4; LC_RULES :: 5;
-LC_NAMES :: [5] string.["", "aethyr-up", "everglade-up", "tests", "context"];
+// The rules, by index (0: none). LC_ALLOW_RULES bounds allowlisted load rules; model-effects is never allowlisted.
+LC_UP_AETHYR :: 1; LC_UP_EVERGLADE :: 2; LC_TESTS :: 3; LC_CONTEXT :: 4; LC_ALLOW_RULES :: 5; LC_MODEL_EFFECTS :: 5; LC_RULES :: 6;
+LC_NAMES :: [6] string.["", "aethyr-up", "everglade-up", "tests", "context", "model-effects"];
 
 LcRun :: struct { quiet: bool; }
 LcCtx :: struct {
@@ -343,8 +345,58 @@ lc_word :: (s: string, k: int) -> string {
 lc_entry_rule :: (entry: string) -> int {
   if lc_word(entry, 2) != "->" || lc_word(entry, 1).count == 0 || lc_word(entry, 3).count == 0 || lc_word(entry, 4).count > 0 { return 0; }
   name := lc_word(entry, 0);
-  for r: 1..<LC_RULES { if LC_NAMES[r] == name { return r; } }
+  for r: 1..<LC_ALLOW_RULES { if LC_NAMES[r] == name { return r; } }
   return 0;
+}
+
+// ---- model-effects (#13314)
+
+// First 1-based line in `src` where code (outside `//` comments) contains `#effects(all)`, or 0.
+lc_model_all_line :: (src: string) -> int {
+  i := 0; line := 1;
+  while i < src.count {
+    j := i;
+    while j < src.count && src[j] != '\n' { j += 1; }
+    row := cast(string) src[i..<j];
+    e := row.count;
+    if row.count >= 2 {
+      for k: 0..<row.count - 1 {
+        if row[k] == '/' && row[k + 1] == '/' { e = k; break; }
+      }
+    }
+    if lc_has(cast(string) row[0..<e], "#effects(all)") { return line; }
+    i = j + 1; line += 1;
+  }
+  return 0;
+}
+// Checks one model file's source: returns 1 and increments found[LC_MODEL_EFFECTS] if it declares `#effects(all)`.
+lc_judge_model_source :: (path: string, src: string, run: LcRun, found: [] int) -> int {
+  line := lc_model_all_line(src);
+  if line == 0 { return 0; }
+  found[LC_MODEL_EFFECTS] += 1;
+  if !run.quiet {
+    print("FAIL model-effects: %:% declares #effects(all). Model files listed in % do no I/O by construction; narrow to #effects(reads, writes, traps) or tighter (#13314).\n", path, line, LC_MODELS);
+  }
+  return 1;
+}
+// Checks every path listed in `models` (one path a line; `#` comments and blank lines skipped).
+lc_judge_models_fs :: (models: string, buf: [] u8, run: LcRun, found: [] int, checked: [] int) -> int {
+  bad := 0; i := 0;
+  while i < models.count {
+    j := i;
+    while j < models.count && models[j] != '\n' { j += 1; }
+    path := lc_entry(cast(string) models[i..<j]); i = j + 1;
+    if path.count == 0 { continue; }
+    checked[0] += 1;
+    n := fs_read(path, buf);
+    if n < 0 {
+      found[LC_MODEL_EFFECTS] += 1; bad += 1;
+      if !run.quiet { print("FAIL model-effects: % listed in % could not be read.\n", path, LC_MODELS); }
+      continue;
+    }
+    bad += lc_judge_model_source(path, cast(string) buf[0..<n], run, found);
+  }
+  return bad;
 }
 
 // ---- the judgment
@@ -493,6 +545,10 @@ tool_main :: () -> int #export_c #effects(all) {
   if ctxs_n < 0 { print("layer-check: no % here; run from the repository root\n", LC_CONTEXTS); return 2; }
   ctxs := lc_parse_contexts(cast(string) ctext[0..<ctxs_n]);
   if !ctxs.ok { print("layer-check: invalid line in %: \"%\"\n", LC_CONTEXTS, ctxs.bad); return 2; }
+  mtext: [65536] u8;
+  mn := fs_read(LC_MODELS, mtext[..]);
+  if mn < 0 { print("layer-check: no % here; run from the repository root\n", LC_MODELS); return 2; }
+  models := cast(string) mtext[0..<mn];
 
   loads_buf: [LC_BUF] u8; tools_buf: [1048576] u8; body: [LC_BUF] u8;
   grep := [6] string.["git", "grep", "-nE", "^#load \"", "--", "*.coax"];
@@ -532,9 +588,10 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
 
-  used: [LC_LINES] bool; found: [LC_RULES] int;
+  used: [LC_LINES] bool; found: [LC_RULES] int; model_checked: [1] int;
   bad := lc_judge_with_contexts(loads, tools, allow, ctxs, used[..], run, found[..]);
   bad += lc_judge_allow(allow, used[..], run);
+  bad += lc_judge_models_fs(models, body[..], run, found[..], model_checked[..]);
 
   // the allowlist against the base's copy: it only shrinks
   added: [1] int;
@@ -562,7 +619,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
 
   total := found[1] + found[2] + found[3] + found[4];
-  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, total % loads across the layers (each needs a line in %), % failed\n", found[1], found[2], found[3], found[4], total, LC_ALLOW, bad);
+  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, bad);
   return ifx bad == 0 then 0 else 1;
 }
 
@@ -666,6 +723,16 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/
   u4: [8] bool; f4: [LC_RULES] int;
   #assert lc_judge_with_contexts("aethyr/session/tests/t.coax:1:#load \"../../../coax/lib/bitcoin/tx.coax\";\n", "", "", ctxs, u4[..], LC_T_QUIET, f4[..]) == 0;
   #assert !lc_parse_contexts("engine folders: aethyr/ may load: nope\n").ok && !lc_parse_contexts("engine aethyr/\n").ok;
+}
+#test "model-effects: a listed file with #effects(all) fails, one with narrow effects passes" {
+  found: [LC_RULES] int;
+  narrow := "// Narrowed from #effects(all)\nf :: (x: int) -> int #effects(reads, writes, traps) { return x + 1; }\ng :: () -> int #effects() { return 0; }\n";
+  #assert lc_judge_model_source("aethyr/session/ledger.coax", narrow, LC_T_QUIET, found[..]) == 0 && found[LC_MODEL_EFFECTS] == 0;
+  wide := "f :: (x: int) -> int #effects(reads, writes, traps) { return x; }\nbad :: () #effects(all) {}\n";
+  #assert lc_model_all_line(wide) == 2;
+  #assert lc_judge_model_source("aethyr/session/ledger.coax", wide, LC_T_QUIET, found[..]) == 1 && found[LC_MODEL_EFFECTS] == 1;
+  // model-effects is never allowlisted
+  #assert lc_entry_rule("model-effects aethyr/session/ledger.coax -> a") == 0;
 }
 #test "consumers: a module a product loads, directly or through another module, is consumed" {
   mods := [4] string.["aethyr/a.coax", "aethyr/b.coax", "aethyr/c.coax", "aethyr/d.coax"];
