@@ -102,7 +102,9 @@ verse_wallet_nostr_proof :: (entropy: [] u8, aux: [] u8, nonce: [] u8, created_a
 }
 verse_wallet_nostr_proof_work :: (entropy: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, out: [] u8, w: [] VbKey) -> int #effects(all) {
   h: [N98S_HEADER] u8; n := -1;
-  if vb_key_derive(entropy, w) { n = n98s_header(w[0].key[..], aux, nonce, created_at, url, "POST", aux[0..<0], false, h[..]); }
+  // No body: with bind false n98s_header reads no body bytes, so it is handed aux whole (an empty
+  // slice's bounds would be numbers no check could tell apart).
+  if vb_key_derive(entropy, w) { n = n98s_header(w[0].key[..], aux, nonce, created_at, url, "POST", aux, false, h[..]); }
   w[0] = VbKey.{};
   if n == -1 || n - 6 > out.count { return -1; }
   for i: 0..<n - 6 { out[i] = h[6 + i]; }
