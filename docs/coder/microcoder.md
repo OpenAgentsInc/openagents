@@ -132,7 +132,7 @@ output size. A run ends as one of:
 
 | Ending | When |
 | --- | --- |
-| `finished` | The model says `finished` with a `reply` |
+| `finished` | The model says `finished` with a `reply`. In Coder, a run that has run commands or edits first gets one more step: the final `git diff` and the new untracked files, with the task again and a note to check each of its requirements against them; the next answer is taken (#13231) |
 | `asked` | `ask: question`; the reply is the question |
 | `bad_replies` | Three replies in a row that fail the schema |
 | `no_capacity` | Every gateway in the plan refused or failed before the first token |
