@@ -1,0 +1,265 @@
+// oa-repo, the indexed repo service (docs/repos/2026-11-11-indexed-repos.md, "The service";
+// GitHub #13326; runbook docs/deployment/repo-vm.md): coax/lib/repo behind a socket and grants.
+// serve.c is the host: it listens, reads one HTTP request a connection, and hands its route,
+// Authorization header and body here; it fetches the mirrors on a timer. This file decides
+// everything above the socket:
+//
+//   POST /api/repo/call    a RepoRequest (openagents.repo.v1alpha1, wire.coax) with a grant that
+//                          allows reading its repo: answered by rp_call as a RepoAnswer
+//   POST /api/repo/fetch   a RepoRequest naming only its repo, with a fetch grant: the mirror is
+//                          made if missing and fetched; the answer names main's commit
+//   GET /healthz           "ok" (serve.c answers it)
+//
+// A refusal is a RepoAnswer too, with the status: 400 for a body that isn't a RepoRequest, 401
+// for no grant, 403 for a grant that doesn't allow the call (rg_why says why), 404 for a repo
+// this service doesn't hold, 200 for everything rp_call answers (ok or not). The repos are
+// configuration (OA_REPO_REPOS, "slug=url;slug=url"); mirrors live in OA_REPO_DIR/mirrors/SLUG.git.
+// Nothing here runs anything from a repository: git reads objects of a bare mirror (repo.coax).
+//   coax/bin/coax test coax/web/repo/serve.coax
+//   coax/web/tool.sh coax/web/repo/serve-check.coax   the service, built and called over HTTP
+#load "../../lib/repo/wire.coax";
+#load "grant-mac.coax";
+
+RS_CALL :: 1; RS_FETCH :: 2;
+RS_DIR :: 1024;
+RS_REPOS :: 16;
+
+RsReply :: struct { status: int; n: int; op: int; }
+
+// A repo's URL from the configuration, or "" when it holds no such slug.
+rs_url :: (conf: string, slug: string) -> string {
+  at := 0;
+  while at < conf.count {
+    e := at;
+    while e < conf.count && conf[e] != ';' { e += 1; }
+    eq := at;
+    while eq < e && conf[eq] != '=' { eq += 1; }
+    if eq < e && cast(string) conf[at..<eq] == slug && rg_slug_ok(slug) { return cast(string) conf[eq + 1..<e]; }
+    at = e + 1;
+  }
+  return "";
+}
+// The slug of entry k of the configuration, or "" past the last.
+rs_slug_at :: (conf: string, k: int) -> string {
+  at := 0; i := 0;
+  while at < conf.count {
+    e := at;
+    while e < conf.count && conf[e] != ';' { e += 1; }
+    eq := at;
+    while eq < e && conf[eq] != '=' { eq += 1; }
+    if eq > at && eq < e { if i == k { return cast(string) conf[at..<eq]; } i += 1; }
+    at = e + 1;
+  }
+  return "";
+}
+// DIR/mirrors/SLUG.git into out: its length, or 0 when it doesn't fit.
+rs_mirror_dir :: (dir: string, slug: string, out: [] u8) -> int {
+  if dir.count + slug.count + 13 > out.count { return 0; }
+  n := rp_put(out, 0, dir); n = rp_put(out, n, "/mirrors/"); n = rp_put(out, n, slug); n = rp_put(out, n, ".git");
+  return n;
+}
+// The grant in an Authorization header: what follows "Bearer ", or "".
+rs_bearer :: (header: string) -> string {
+  if header.count <= 7 || cast(string) header[0..<7] != "Bearer " { return ""; }
+  return cast(string) header[7..<header.count];
+}
+// A refusal as a RepoAnswer, with its status.
+rs_refuse :: (status: int, why: string, out: [] u8) -> RsReply {
+  n := rw_answer_write(rp_fail(why), "", out);
+  return RsReply.{status = ifx n > 0 then status else 500, n = n};
+}
+// What a call wants of its grant.
+rs_want :: (kind: int) -> int { return ifx kind == RS_FETCH then RG_WANT_FETCH else RG_WANT_READ; }
+// The status of a grant's verdict.
+rs_grant_status :: (verdict: int) -> int { return ifx verdict == RG_OK then 200 else 403; }
+
+// One request: kind is RS_CALL or RS_FETCH (serve.c has matched the route and the method). work
+// is git's scratch (RP_FILE_MOST bytes); out takes the RepoAnswer's JSON (RW_ANSWER_MAX bytes).
+repo_serve :: (kind: int, authorization: string, body: string, conf: string, dir: string, git: string, key: string, now: int, work: [] u8, out: [] u8) -> RsReply #export_c #effects(all) {
+  nodes: [2048] JvNode; wire: [RW_REQUEST_MAX] u8;
+  c := rw_request_read(body, nodes[..], wire[..]);
+  if !c.ok { return rs_refuse(400, "the body is not a RepoRequest (openagents.repo.v1alpha1)", out); }
+  token := rs_bearer(authorization);
+  if token.count == 0 { return rs_refuse(401, "the call carries no grant", out); }
+  verdict := rg_check(key, token, c.repo, rs_want(kind), now);
+  if verdict != RG_OK { return rs_refuse(rs_grant_status(verdict), rg_why(verdict), out); }
+  url := rs_url(conf, c.repo);
+  if url.count == 0 { return rs_refuse(404, "this service holds no such repository", out); }
+  md: [RS_DIR] u8; mn := rs_mirror_dir(dir, c.repo, md[..]);
+  if mn == 0 { return rs_refuse(500, "the mirror's directory is too long", out); }
+  m := RpMirror.{git = git, dir = cast(string) md[0..<mn]};
+  q := c.q;
+  if kind == RS_FETCH {
+    if !rp_mirror_make(m, url) || !rp_mirror_fetch(m) { return rs_refuse(502, "the mirror could not be fetched", out); }
+    q = RpRequest.{op = RP_RESOLVE, at = "main"};
+  }
+  text: [RP_ANSWER] u8;
+  a := rp_call(m, q, work, text[..]);
+  n := rw_answer_write(a, ifx a.ok then cast(string) text[0..<a.n] else "", out);
+  if n == 0 { return RsReply.{status = 500, n = 0, op = q.op}; }
+  return RsReply.{status = 200, n = n, op = q.op};
+}
+
+// Makes each configured repo's mirror if it is missing and fetches it. How many failed.
+repo_fetch_all :: (conf: string, dir: string, git: string) -> int #export_c #effects(all) {
+  failed := 0;
+  for k: 0..<RS_REPOS {
+    slug := rs_slug_at(conf, k);
+    if slug.count == 0 { break; }
+    url := rs_url(conf, slug);
+    md: [RS_DIR] u8; mn := rs_mirror_dir(dir, slug, md[..]);
+    m := RpMirror.{git = git, dir = cast(string) md[0..<mn]};
+    if url.count == 0 || mn == 0 || !rp_mirror_make(m, url) || !rp_mirror_fetch(m) { failed += 1; }
+  }
+  return failed;
+}
+// ---------------------------------------------------------------- HTTP, above serve.c's socket
+
+RS_HEAD_MAX :: 16384;          // a request's head
+RS_BODY_MAX :: 65536;          // a request's body (a RepoRequest is at most RW_REQUEST_MAX)
+RS_HEALTH :: 3;
+// A request's head as read so far. state: 0 when more bytes are needed, 200 when the head is
+// whole and routed, else the status to refuse with (400, 404, 405, 411, 413, 501).
+RsHead :: struct { state: int; route: int; head_n: int; length: int; auth_from: int; auth_to: int; }
+
+rs_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+rs_ieq :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if rs_lower(a[i]) != rs_lower(b[i]) { return false; } }
+  return true;
+}
+// Where the head ends (after its blank line), or 0 when it hasn't yet.
+rs_head_end :: (bytes: string) -> int {
+  for i: 3..<bytes.count { if bytes[i - 3] == '\r' && bytes[i - 2] == '\n' && bytes[i - 1] == '\r' && bytes[i] == '\n' { return i + 1; } }
+  return 0;
+}
+// The route a target and method name: RS_CALL, RS_FETCH or RS_HEALTH, else the status to refuse with.
+rs_route :: (method: string, target: string) -> RsHead {
+  h: RsHead; h.state = 200;
+  if target == "/healthz" { h.route = RS_HEALTH; if method != "GET" { h.state = 405; } return h; }
+  if target == "/api/repo/call" { h.route = RS_CALL; }
+  else if target == "/api/repo/fetch" { h.route = RS_FETCH; }
+  else { h.state = 404; return h; }
+  if method != "POST" { h.state = 405; }
+  return h;
+}
+// Reads a request's head from the bytes read so far: its route, its body's length and where the
+// Authorization header's value is. Strict: CRLF line ends, one Content-Length of at most
+// RS_BODY_MAX on a POST, no Transfer-Encoding.
+repo_head :: (bytes: string) -> RsHead #export_c #effects(all) {
+  end := rs_head_end(bytes);
+  if end == 0 { h0: RsHead; h0.state = ifx bytes.count >= RS_HEAD_MAX then 413 else 0; return h0; }
+  if end > RS_HEAD_MAX { h1: RsHead; h1.state = 413; return h1; }
+  line_end := 0;
+  while bytes[line_end] != '\r' { line_end += 1; }
+  sp1 := 0;
+  while sp1 < line_end && bytes[sp1] != ' ' { sp1 += 1; }
+  sp2 := sp1 + 1;
+  while sp2 < line_end && bytes[sp2] != ' ' { sp2 += 1; }
+  bad: RsHead; bad.state = 400;
+  if sp1 == 0 || sp2 >= line_end || sp2 == sp1 + 1 { return bad; }
+  version := cast(string) bytes[sp2 + 1..<line_end];
+  if version != "HTTP/1.1" && version != "HTTP/1.0" { return bad; }
+  h := rs_route(cast(string) bytes[0..<sp1], cast(string) bytes[sp1 + 1..<sp2]);
+  h.head_n = end;
+  lengths := 0;
+  at := line_end + 2;
+  while at < end - 2 {
+    e := at;
+    while bytes[e] != '\r' { e += 1; }
+    if bytes[e + 1] != '\n' { return bad; }
+    colon := at;
+    while colon < e && bytes[colon] != ':' { colon += 1; }
+    if colon == at || colon == e { return bad; }
+    name := cast(string) bytes[at..<colon];
+    v := colon + 1;
+    while v < e && (bytes[v] == ' ' || bytes[v] == '\t') { v += 1; }
+    ve := e;
+    while ve > v && (bytes[ve - 1] == ' ' || bytes[ve - 1] == '\t') { ve -= 1; }
+    value := cast(string) bytes[v..<ve];
+    if rs_ieq(name, "content-length") {
+      lengths += 1;
+      n := rp_number(value);
+      if n < 0 || value.count == 0 || value.count > 9 { return bad; }
+      h.length = n;
+    } else if rs_ieq(name, "transfer-encoding") {
+      if h.state == 200 { h.state = 501; }
+    } else if rs_ieq(name, "authorization") {
+      h.auth_from = v; h.auth_to = ve;
+    }
+    at = e + 2;
+  }
+  if lengths > 1 { return bad; }
+  if h.state != 200 { return h; }
+  if h.route != RS_HEALTH && lengths == 0 { h.state = 411; }
+  else if h.length > RS_BODY_MAX { h.state = 413; }
+  return h;
+}
+rs_reason :: (status: int) -> string {
+  if status == 200 { return "OK"; }
+  if status == 400 { return "Bad Request"; }
+  if status == 401 { return "Unauthorized"; }
+  if status == 403 { return "Forbidden"; }
+  if status == 404 { return "Not Found"; }
+  if status == 405 { return "Method Not Allowed"; }
+  if status == 411 { return "Length Required"; }
+  if status == 413 { return "Content Too Large"; }
+  if status == 501 { return "Not Implemented"; }
+  if status == 502 { return "Bad Gateway"; }
+  if status == 503 { return "Service Unavailable"; }
+  return "Internal Server Error";
+}
+// A response's head for a body of length bytes (JSON, or plain text when !json), into out: its length.
+repo_response_head :: (status: int, length: int, json: bool, out: [] u8) -> int #export_c #effects(all) {
+  n := rp_put(out, 0, "HTTP/1.1 "); n = rp_put_int(out, n, status); n = rp_put(out, n, " "); n = rp_put(out, n, rs_reason(status));
+  n = rp_put(out, n, ifx json then "\r\nContent-Type: application/json\r\nContent-Length: " else "\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ");
+  n = rp_put_int(out, n, length);
+  return rp_put(out, n, "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+}
+
+// The op's name, for serve.c's log line.
+repo_op_name :: (op: int) -> string #export_c #effects(all) {
+  ops := RP_OPS;
+  return ifx op >= 1 && op < ops.count then ops[op] else "-";
+}
+
+#test "the configuration names repos by slug, in order" {
+  conf := "openagents=https://github.com/OpenAgentsInc/openagents.git;b=https://x/b.git";
+  #assert rs_url(conf, "openagents") == "https://github.com/OpenAgentsInc/openagents.git" && rs_url(conf, "b") == "https://x/b.git";
+  #assert rs_url(conf, "c") == "" && rs_url(conf, "") == "" && rs_url(conf, "openagent") == "" && rs_url("", "b") == "" && rs_url("B=x", "B") == "";
+  #assert rs_slug_at(conf, 0) == "openagents" && rs_slug_at(conf, 1) == "b" && rs_slug_at(conf, 2) == "" && rs_slug_at(";;a=1;", 0) == "a" && rs_slug_at("=x;a", 0) == "";
+  out: [64] u8;
+  n := rs_mirror_dir("/var/lib/oa-repo", "openagents", out[..]);
+  #assert cast(string) out[0..<n] == "/var/lib/oa-repo/mirrors/openagents.git" && rs_mirror_dir("/var/lib/oa-repo/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "openagents", out[..]) == 0 && rs_mirror_dir("/d", "openagents", out[0..<25]) == 25 && rs_mirror_dir("/d", "openagents", out[0..<24]) == 0;
+}
+
+#test "a grant comes as a bearer token, and a verdict is 200 or 403" {
+  #assert rs_bearer("Bearer v1.a") == "v1.a" && rs_bearer("Bearer ") == "" && rs_bearer("bearer v1.a") == "" && rs_bearer("") == "" && rs_bearer("Basic v1.aaaa") == "";
+  #assert rs_grant_status(RG_OK) == 200 && rs_grant_status(RG_EXPIRED) == 403 && rs_grant_status(RG_MALFORMED) == 403;
+  #assert rs_want(RS_CALL) == RG_WANT_READ && rs_want(RS_FETCH) == RG_WANT_FETCH;
+}
+
+#test "a request's head is routed, its body measured and its grant found" {
+  r := "POST /api/repo/call HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer v1.a \r\ncontent-length: 12\r\n\r\n{\"repo\":\"a\"}";
+  h := repo_head(r);
+  #assert h.state == 200 && h.route == RS_CALL && h.length == 12 && h.head_n == r.count - 12 && cast(string) r[h.auth_from..<h.auth_to] == "Bearer v1.a";
+  #assert repo_head("POST /api/repo/call HTTP/1.1\r\nContent-Length: 1").state == 0;
+  #assert repo_head("GET /healthz HTTP/1.0\r\n\r\n").route == RS_HEALTH && repo_head("GET /healthz HTTP/1.0\r\n\r\n").state == 200;
+  #assert repo_head("POST /healthz HTTP/1.1\r\nContent-Length: 0\r\n\r\n").state == 405 && repo_head("GET /api/repo/fetch HTTP/1.1\r\n\r\n").state == 405;
+  #assert repo_head("POST /api/repo/fetch HTTP/1.1\r\nContent-Length: 2\r\n\r\n").route == RS_FETCH;
+  #assert repo_head("GET /x HTTP/1.1\r\n\r\n").state == 404 && repo_head("GET /healthz HTTP/2\r\n\r\n").state == 400 && repo_head("GET  HTTP/1.1\r\n\r\n").state == 400;
+  #assert repo_head("POST /api/repo/call HTTP/1.1\r\n\r\n").state == 411;
+  #assert repo_head("POST /api/repo/call HTTP/1.1\r\nContent-Length: 65537\r\n\r\n").state == 413 && repo_head("POST /api/repo/call HTTP/1.1\r\nContent-Length: 65536\r\n\r\n").state == 200;
+  #assert repo_head("POST /api/repo/call HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\n").state == 400;
+  #assert repo_head("POST /api/repo/call HTTP/1.1\r\nContent-Length: -1\r\n\r\n").state == 400 && repo_head("POST /api/repo/call HTTP/1.1\r\nContent-Length:\r\n\r\n").state == 400;
+  #assert repo_head("POST /api/repo/call HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n").state == 501;
+  #assert repo_head("POST /api/repo/call HTTP/1.1\r\nno colon\r\n\r\n").state == 400 && repo_head("POST /api/repo/call HTTP/1.1\r\n: x\r\n\r\n").state == 400;
+  big: [RS_HEAD_MAX] u8; for i: 0..<big.count { big[i] = 'a'; }
+  #assert repo_head(cast(string) big[..]).state == 413 && repo_head(cast(string) big[0..<100]).state == 0;
+  out: [256] u8;
+  n := repo_response_head(403, 17, true, out[..]);
+  #assert cast(string) out[0..<n] == "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: 17\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+  n = repo_response_head(200, 3, false, out[..]);
+  #assert cast(string) out[0..<n] == "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 3\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+  #assert rs_reason(401) == "Unauthorized" && rs_reason(404) == "Not Found" && rs_reason(411) == "Length Required" && rs_reason(413) == "Content Too Large" && rs_reason(501) == "Not Implemented" && rs_reason(502) == "Bad Gateway" && rs_reason(503) == "Service Unavailable" && rs_reason(500) == "Internal Server Error" && rs_reason(400) == "Bad Request" && rs_reason(405) == "Method Not Allowed";
+}

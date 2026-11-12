@@ -1,0 +1,112 @@
+// oa-repo's grants, signed and checked (docs/repos/2026-11-11-indexed-repos.md, "Who may do what";
+// GitHub #13326). grant.coax (#authority) decides what a grant's words allow; this file makes a
+// grant's MAC and checks it: HMAC-SHA256, in lowercase hex, of everything before the MAC's dot,
+// under the 32-byte key the minter and the service share (Secret Manager oa-repo-grant-key and
+// oa-repo-grant-key-staging, 64 hex digits). The runner mints a read grant per turn
+// (runner-sign.coax, runner_coax_repo_grant); the service checks every call (serve.coax).
+// A key or a grant is never printed or logged.
+//   coax/bin/coax test coax/web/repo/grant-mac.coax
+#authority;
+#load "grant.coax";
+#load "../../lib/crypto/hmac.coax";
+
+RG_KEY_HEX :: 64;
+RG_TOKEN_MAX :: 2 + 1 + RG_SLUG + 1 + 7 + 1 + 11 + 1 + RG_SESSION + 1 + RG_MAC;
+
+rg_nibble :: (c: u8) -> int #effects(all) {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// The key's 32 bytes from its 64 lowercase hex digits (openssl rand -hex 32). False for anything else.
+rg_key :: (hex: string, key: [] u8) -> bool #effects(all) {
+  if hex.count != RG_KEY_HEX { return false; }
+  for i: 0..<32 {
+    hi := rg_nibble(hex[2 * i]); lo := rg_nibble(hex[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    key[i] = cast(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+// The MAC of covered under the key, as 64 lowercase hex digits into out[0..<64]. False for a bad key.
+rg_mac :: (key_hex: string, covered: string, out: [] u8) -> bool #effects(all) {
+  key: [32] u8; mac: [32] u8; text: [RG_TOKEN_MAX] u8;
+  if covered.count > text.count || !rg_key(key_hex, key[..]) { return false; }
+  for i: 0..<covered.count { text[i] = covered[i]; }
+  status := hmac_sha256_checked(key[..], text[0..<covered.count], mac[..], false);
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = digits[cast(int) (mac[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (mac[i] & 15)]; }
+  return status == 0;
+}
+rg_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+// A grant for repo, mode ("read", "propose" or "fetch"), until expires, for session, into out:
+// its length, or 0 when a word is not one a grant may hold, the key is bad or out is too small.
+rg_mint :: (key_hex: string, repo: string, mode: string, expires: int, session: string, out: [] u8) -> int #effects(all) {
+  if !rg_slug_ok(repo) || rg_mode(mode) == 0 || !rg_session_ok(session) { return 0; }
+  digits: [12] u8; d := 0; v := expires;
+  while v > 0 && d < 12 { digits[d] = cast(u8) ('0' + v % 10); v = v / 10; d += 1; }
+  if d == 0 || d > 11 { return 0; }   // rg_time's range: 1 to 11 digits
+  t: [RG_TOKEN_MAX] u8; n := rg_put(t[..], 0, "v1."); n = rg_put(t[..], n, repo); n = rg_put(t[..], n, "."); n = rg_put(t[..], n, mode); n = rg_put(t[..], n, ".");
+  while d > 0 { d -= 1; t[n] = digits[d]; n += 1; }
+  n = rg_put(t[..], n, "."); n = rg_put(t[..], n, session);
+  mac: [RG_MAC] u8;
+  if !rg_mac(key_hex, cast(string) t[0..<n], mac[..]) || n + 1 + RG_MAC > out.count { return 0; }
+  n = rg_put(t[..], n, "."); n = rg_put(t[..], n, cast(string) mac[..]);
+  for i: 0..<n { out[i] = t[i]; }
+  return n;
+}
+// Whether token is a grant made under the key that allows want on repo at now: RG_OK, or why not
+// (rg_why words it). The MAC is checked before anything the grant says is believed.
+rg_check :: (key_hex: string, token: string, repo: string, want: int, now: int) -> int #effects(all) {
+  g := rg_parse(token);
+  if !g.ok { return RG_MALFORMED; }
+  mac: [RG_MAC] u8;
+  if !rg_mac(key_hex, g.covered, mac[..]) || !rg_mac_same(cast(string) mac[..], g.mac) { return RG_MALFORMED; }
+  return rg_allows(g, repo, want, now);
+}
+
+RG_T_KEY :: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+#test "the MAC is HMAC-SHA256 in lowercase hex (RFC 4231, case 1)" {
+  out: [RG_MAC] u8;
+  #assert rg_mac("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b000000000000000000000000", "Hi There", out[..]);
+  // a 20-byte key is padded with zeros to the block, so the 32-byte key with 12 zero bytes is the same key
+  #assert cast(string) out[..] == "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7";
+  #assert !rg_mac("0b0b", "x", out[..]) && !rg_mac("zz0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "x", out[..]);
+  key: [32] u8;
+  #assert rg_key("ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", key[..]) && key[0] == 255 && key[1] == 1 && key[31] == 31;
+  #assert !rg_key("FF0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", key[..]) && !rg_key("0g0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", key[..]);
+  #assert !rg_key("ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1", key[..]);
+  #assert rg_nibble('0') == 0 && rg_nibble('9') == 9 && rg_nibble('a') == 10 && rg_nibble('f') == 15 && rg_nibble('/') == -1 && rg_nibble(':') == -1 && rg_nibble('`') == -1 && rg_nibble('g') == -1 && rg_nibble('A') == -1;
+  long: [RG_TOKEN_MAX + 1] u8; for i: 0..<long.count { long[i] = 'a'; }
+  #assert rg_mac(RG_T_KEY, cast(string) long[0..<RG_TOKEN_MAX], out[..]) && !rg_mac(RG_T_KEY, cast(string) long[..], out[..]);
+}
+
+#test "a minted grant parses, checks under its key, and under no other" {
+  out: [RG_TOKEN_MAX] u8;
+  n := rg_mint(RG_T_KEY, "openagents", "read", 1794450000, "chat-31", out[..]);
+  t := cast(string) out[0..<n];
+  #assert n == 2 + 1 + 10 + 1 + 4 + 1 + 10 + 1 + 7 + 1 + 64 && cast(string) out[0..<38] == "v1.openagents.read.1794450000.chat-31.";
+  #assert rg_check(RG_T_KEY, t, "openagents", RG_WANT_READ, 1794449000) == RG_OK;
+  #assert rg_check(RG_T_KEY, t, "openagents", RG_WANT_CHANGE, 1794449000) == RG_NOT_ALLOWED;
+  #assert rg_check(RG_T_KEY, t, "other", RG_WANT_READ, 1794449000) == RG_OTHER_REPO;
+  #assert rg_check(RG_T_KEY, t, "openagents", RG_WANT_READ, 1794450000) == RG_EXPIRED;
+  #assert rg_check("ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", t, "openagents", RG_WANT_READ, 1794449000) == RG_MALFORMED;
+  // a changed mode ("prad") no longer parses, and a changed expiry no longer matches the MAC
+  forged: [RG_TOKEN_MAX] u8; for i: 0..<n { forged[i] = out[i]; }
+  forged[14] = 'p'; forged[15] = 'r';
+  #assert rg_check(RG_T_KEY, cast(string) forged[0..<n], "openagents", RG_WANT_READ, 1794449000) == RG_MALFORMED;
+  for i: 0..<n { forged[i] = out[i]; }
+  forged[20] = '5';
+  #assert rg_check(RG_T_KEY, cast(string) forged[0..<n], "openagents", RG_WANT_READ, 1794449000) == RG_MALFORMED;
+  #assert rg_mint(RG_T_KEY, "Open", "read", 5, "s", out[..]) == 0 && rg_mint(RG_T_KEY, "a", "write", 5, "s", out[..]) == 0;
+  #assert rg_mint(RG_T_KEY, "a", "read", 0, "s", out[..]) == 0 && rg_mint(RG_T_KEY, "a", "read", 5, "s.x", out[..]) == 0;
+  #assert rg_mint("bad", "a", "read", 5, "s", out[..]) == 0;
+  #assert rg_mint(RG_T_KEY, "a", "fetch", 5, "s", out[..]) > 0 && rg_mint(RG_T_KEY, "a", "read", 1, "s", out[..]) == 78;
+  #assert rg_mint(RG_T_KEY, "a", "read", 99999999999, "s", out[..]) == 88 && rg_mint(RG_T_KEY, "a", "read", 100000000000, "s", out[..]) == 0;
+  #assert rg_parse(cast(string) out[0..<88]).expires == 99999999999 && rg_mint(RG_T_KEY, "a", "read", -5, "s", out[..]) == 0 && rg_mint(RG_T_KEY, "a", "read", 1000000000000, "s", out[..]) == 0;
+  #assert rg_mint(RG_T_KEY, "a", "read", 9, "s", out[0..<78]) == 78 && rg_mint(RG_T_KEY, "a", "read", 9, "s", out[0..<77]) == 0;
+}

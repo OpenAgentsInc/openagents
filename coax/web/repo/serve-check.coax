@@ -1,0 +1,213 @@
+// oa-repo, built and called over HTTP (#13326). It builds a small repository with git, starts the
+// service binary (coax/web/repo/build.sh) on a free local port with a test key, and asks it what a
+// runner would: a fetch with a fetch grant, then reads with a read grant, each answer read through
+// wire.coax. Then every refusal: no grant, a grant under another key, an expired one, one for
+// another repo or mode, a repo the service doesn't hold, a body that isn't a RepoRequest, a route
+// or method it doesn't serve, a body too large. `coax test` can't start processes, so this does.
+//   coax/web/repo/build.sh /tmp/oa-repo && coax/web/tool.sh coax/web/repo/serve-check.coax /tmp/oa-repo
+//
+// With --measure it times a deployed service instead: N reads and N searches at main through
+// URL, with a read grant minted from the key in KEY_FILE (64 hex digits; never printed), and
+// prints the 50th and 95th percentiles. The spec's bar: reads under 300 ms, searches under 1.5 s.
+//   coax/web/tool.sh coax/web/repo/serve-check.coax --measure http://10.128.0.5:8081 --key-file F [--repo openagents] [--n 40]
+// tool.sh: tls
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "serve.coax";
+#load "../../lib/net/http.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+SC_KEY :: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+SC_KEY_ENV :: "OA_REPO_GRANT_KEY=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+SC_OTHER_KEY :: "ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+ScState :: struct { w: [1] HttpWork; body: [RW_ANSWER_MAX] u8; nodes: [8192] JvNode; wire: [RP_ANSWER + 1024] u8; req: [RW_REQUEST_MAX] u8; }
+ScGot :: struct { http: int; code: int; got: RwGot; }
+
+sc_check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+sc_has :: (s: string, part: string) -> bool {
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+// The wall clock in Unix seconds (a grant's expiry is one), from date(1): proc_now_ms is monotonic.
+sc_now :: () -> int {
+  argv := [2] string.["date", "+%s"]; out: [64] u8; err: [64] u8;
+  r := proc_run(argv[..], 5000, out[..], err[..]);
+  return ifx r.status == 0 then rp_number(cast(string) out[0..<r.out_n]) else 0;
+}
+sc_url :: (base: string, route: string, out: [] u8) -> string { n := rp_put(out, 0, base); n = rp_put(out, n, route); return cast(string) out[0..<n]; }
+
+// One POST: the body as given, the grant (if any) as a bearer token.
+sc_post :: (s: [] ScState, base: string, route: string, grant: string, body: string) -> ScGot {
+  u: [512] u8; auth: [512] u8; hn := 0;
+  hdr: [2] string; hdr[hn] = "Content-Type: application/json"; hn += 1;
+  if grant.count > 0 { an := rp_put(auth[..], 0, "Authorization: Bearer "); an = rp_put(auth[..], an, grant); hdr[hn] = cast(string) auth[0..<an]; hn += 1; }
+  r := http_do(s[0].w[..], "POST", sc_url(base, route, u[..]), hdr[0..<hn], body, 30000, 0, s[0].body[..]);
+  g := ScGot.{http = r.error, code = r.code};
+  if r.error == HTTP_OK { g.got = rw_answer_read(cast(string) s[0].body[0..<r.n], s[0].nodes[..], s[0].wire[..]); }
+  return g;
+}
+sc_call :: (s: [] ScState, base: string, grant: string, repo: string, q: RpRequest) -> ScGot {
+  n := rw_request_write(repo, q, s[0].req[..]);
+  return sc_post(s, base, "/api/repo/call", grant, cast(string) s[0].req[0..<n]);
+}
+sc_grant :: (key: string, repo: string, mode: string, expires: int, out: [] u8) -> string {
+  n := rg_mint(key, repo, mode, expires, "serve-check", out);
+  return cast(string) out[0..<n];
+}
+// git in the seed repository's working tree.
+sc_seed :: (dir: string, a: [] string) -> bool {
+  argv: [16] string; n := 0;
+  fixed := [11] string.["git", "-C", dir, "-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"];
+  for f: fixed { argv[n] = f; n += 1; }
+  for x: a { argv[n] = x; n += 1; }
+  out: [4096] u8; err: [1024] u8;
+  r := proc_run(argv[0..<n], 20000, out[..], err[..]);
+  return r.started == 0 && r.status == 0;
+}
+
+sc_local :: (bin: string) -> int {
+  bad := 0;
+  tmp: [1024] u8; p: [1024] u8; p2: [1024] u8; p3: [1024] u8;
+  dir := fs_temp("oa-repo-check-", tmp[..]);
+  src := fs_join(dir, "seed", p[..]);
+  ok := fs_mkdir(fs_join(src, "docs", p2[..]));
+  init := [2] string.["init", "--quiet"];
+  ok = ok && sc_seed(src, init[..]);
+  ok = ok && fs_write(fs_join(src, "README.md", p2[..]), "# Seed\n\nNeedle here.\n");
+  latin := [17] u8.['a', 'l', 'p', 'h', 'a', '\n', 'b', 'e', 't', 'a', ' ', 'c', 'a', 'f', 0xe9, '\n', 'z'];   // a Latin-1 byte: mended to '?'
+  ok = ok && fs_write(fs_join(src, "docs/a.md", p2[..]), cast(string) latin[..]);
+  add := [2] string.["add", "-A"];
+  ok = ok && sc_seed(src, add[..]);
+  one := [4] string.["commit", "--quiet", "-m", "one: the seed"];
+  ok = ok && sc_seed(src, one[..]);
+  bad += sc_check(ok, "a seed repository");
+
+  port := 20000 + proc_now_ms() % 20000;
+  listen: [64] u8; ln := rp_put(listen[..], 0, "127.0.0.1:"); ln = rp_put_int(listen[..], ln, port);
+  base: [64] u8; bn := rp_put(base[..], 0, "http://127.0.0.1:"); bn = rp_put_int(base[..], bn, port);
+  b := cast(string) base[0..<bn];
+  e1: [1200] u8; e2: [1200] u8;
+  n1 := rp_put(e1[..], 0, "OA_REPO_DIR="); n1 = rp_put(e1[..], n1, fs_join(dir, "data", p3[..]));
+  n2 := rp_put(e2[..], 0, "OA_REPO_REPOS=seed="); n2 = rp_put(e2[..], n2, src);
+  h := proc_new();
+  started := h >= 0 && proc_arg(h, bin) && proc_arg(h, "--listen") && proc_arg(h, cast(string) listen[0..<ln])
+    && proc_env(h, SC_KEY_ENV) && proc_env(h, cast(string) e1[0..<n1]) && proc_env(h, cast(string) e2[0..<n2])
+    && proc_env(h, "OA_REPO_FETCH_S=3600") && proc_quiet(h) && proc_start(h) == 0;
+  bad += sc_check(started, "the service starts");
+  if !started { return 1; }
+  st: [1] ScState; s := st[..];
+  u: [512] u8; health: [64] u8; up := false; none: [1] string;
+  for tries: 0..<100 {
+    r := http_do(s[0].w[..], "GET", sc_url(b, "/healthz", u[..]), none[0..<0], "", 2000, 0, health[..]);
+    if r.error == HTTP_OK && r.code == 200 && cast(string) health[0..<r.n] == "ok\n" { up = true; break; }
+    proc_sleep(100);
+  }
+  bad += sc_check(up, "GET /healthz answers ok");
+
+  now := sc_now();
+  gb: [256] u8; fb: [256] u8;
+  read := sc_grant(SC_KEY, "seed", "read", now + 600, gb[..]);
+  fetch := sc_grant(SC_KEY, "seed", "fetch", now + 600, fb[..]);
+  body: [256] u8; bl := rw_request_write("seed", RpRequest.{}, body[..]);
+  f := sc_post(s, b, "/api/repo/fetch", fetch, cast(string) body[0..<bl]);
+  bad += sc_check(f.code == 200 && f.got.ok && f.got.a.ok && rp_commit_ok(cast(string) f.got.a.commit[..]), "a fetch grant fetches, and the answer names main's commit");
+  head: [40] u8; for i: 0..<40 { head[i] = f.got.a.commit[i]; }
+  hc := cast(string) head[..];
+
+  g := sc_call(s, b, read, "seed", RpRequest.{op = RP_RESOLVE, at = "main"});
+  bad += sc_check(g.code == 200 && g.got.a.ok && cast(string) g.got.a.commit[..] == hc && sc_has(g.got.text, "one: the seed"), "resolve main: the commit and its subject");
+  g = sc_call(s, b, read, "seed", RpRequest.{op = RP_READ, at = hc, path = "README.md\ndocs/a.md"});
+  bad += sc_check(g.code == 200 && g.got.a.ok && sc_has(g.got.text, "== README.md") && sc_has(g.got.text, "Needle here.") && sc_has(g.got.text, "beta caf?"), "read: two files in one call, a byte that isn't UTF-8 mended");
+  g = sc_call(s, b, read, "seed", RpRequest.{op = RP_SEARCH, at = hc, pattern = "needle", fold = true});
+  bad += sc_check(g.code == 200 && g.got.a.ok && sc_has(g.got.text, "README.md:3:Needle here."), "search: ignoring case");
+  g = sc_call(s, b, read, "seed", RpRequest.{op = RP_READ, at = hc, path = "../etc/passwd"});
+  bad += sc_check(g.code == 200 && g.got.ok && !g.got.a.ok && sc_has(g.got.a.error, "not one inside"), "a path outside the repository is the library's refusal, in words");
+
+  gx: [256] u8;
+  g = sc_call(s, b, "", "seed", RpRequest.{op = RP_RESOLVE, at = "main"});
+  bad += sc_check(g.code == 401 && g.got.ok && !g.got.a.ok, "no grant: 401");
+  g = sc_call(s, b, sc_grant(SC_OTHER_KEY, "seed", "read", now + 600, gx[..]), "seed", RpRequest.{op = RP_RESOLVE, at = "main"});
+  bad += sc_check(g.code == 403 && sc_has(g.got.a.error, "not one this service reads"), "a grant under another key: 403");
+  g = sc_call(s, b, sc_grant(SC_KEY, "seed", "read", now - 5, gx[..]), "seed", RpRequest.{op = RP_RESOLVE, at = "main"});
+  bad += sc_check(g.code == 403 && sc_has(g.got.a.error, "expired"), "an expired grant: 403");
+  g = sc_call(s, b, sc_grant(SC_KEY, "other", "read", now + 600, gx[..]), "seed", RpRequest.{op = RP_RESOLVE, at = "main"});
+  bad += sc_check(g.code == 403 && sc_has(g.got.a.error, "another repository"), "a grant for another repository: 403");
+  g = sc_post(s, b, "/api/repo/fetch", read, cast(string) body[0..<bl]);
+  bad += sc_check(g.code == 403 && sc_has(g.got.a.error, "does not allow"), "a read grant does not fetch: 403");
+  g = sc_call(s, b, fetch, "seed", RpRequest.{op = RP_RESOLVE, at = "main"});
+  bad += sc_check(g.code == 403, "a fetch grant does not read: 403");
+  g = sc_call(s, b, sc_grant(SC_KEY, "nope", "read", now + 600, gx[..]), "nope", RpRequest.{op = RP_RESOLVE, at = "main"});
+  bad += sc_check(g.code == 404 && sc_has(g.got.a.error, "no such repository"), "a repository the service doesn't hold: 404");
+  g = sc_post(s, b, "/api/repo/call", read, "{\"op\":7}");
+  bad += sc_check(g.code == 400, "a body that isn't a RepoRequest: 400");
+  g = sc_post(s, b, "/api/repo/nothing", read, "{}");
+  bad += sc_check(g.code == 404, "a route it doesn't serve: 404");
+  r := http_do(s[0].w[..], "GET", sc_url(b, "/api/repo/call", u[..]), none[0..<0], "", 5000, 0, s[0].body[..]);
+  bad += sc_check(r.error == HTTP_OK && r.code == 405, "GET on a POST route: 405");
+  big: [70000] u8; for i: 0..<big.count { big[i] = ' '; }
+  g = sc_post(s, b, "/api/repo/call", read, cast(string) big[..]);
+  bad += sc_check(g.code == 413, "a body over 64 KB: 413");
+
+  _ = proc_kill(h, 15); _ = proc_wait(h, 5000); _ = proc_release(h);
+  rm := [3] string.["rm", "-rf", dir];
+  o: [64] u8; er: [64] u8; _ = proc_run(rm[..], 20000, o[..], er[..]);
+  if bad == 0 { print("oa-repo serve-check: ok\n"); } else { print("oa-repo serve-check: % failed\n", bad); }
+  return ifx bad == 0 then 0 else 1;
+}
+
+// The p-th percentile of n times (sorted here), in ms.
+sc_pct :: (ms: [] int, n: int, p: int) -> int {
+  for i: 1..<n { k := i; while k > 0 && ms[k - 1] > ms[k] { t := ms[k]; ms[k] = ms[k - 1]; ms[k - 1] = t; k -= 1; } }
+  if n == 0 { return 0; }
+  at := (n * p + 99) / 100 - 1;
+  return ms[ifx at < 0 then 0 else at];
+}
+
+sc_measure :: (base: string, key_file: string, repo: string, n: int) -> int {
+  kb: [128] u8; kn := fs_read(key_file, kb[..]);
+  while kn > 0 && (kb[kn - 1] == '\n' || kb[kn - 1] == ' ') { kn -= 1; }
+  if kn != RG_KEY_HEX { print("measure: the key file does not hold 64 hex digits\n"); return 2; }
+  gb: [256] u8;
+  grant := sc_grant(cast(string) kb[0..<kn], repo, "read", sc_now() + 1800, gb[..]);
+  st: [1] ScState; s := st[..];
+  g := sc_call(s, base, grant, repo, RpRequest.{op = RP_RESOLVE, at = "main"});
+  if g.code != 200 || !g.got.a.ok { print("measure: resolve failed (http % status %)\n", g.http, g.code); return 1; }
+  head: [40] u8; for i: 0..<40 { head[i] = g.got.a.commit[i]; }
+  hc := cast(string) head[..];
+  print("measure: % at %\n", repo, hc);
+  reads := [6] string.["README.md", "AGENTS.md", "coax/lib/repo/repo.coax", "docs/repos/2026-11-11-indexed-repos.md\ncoax/lib/repo/rules.coax", "coax/web/agent/chat.coax", "proto/README.md"];
+  finds := [6] string.["rp_call", "wc_ask", "RG_LIFE", "tool_main ::", "indexed repo", "ScState"];
+  rt: [400] int; ft: [400] int; most := ifx n > 400 then 400 else n; failed := 0;
+  for i: 0..<most {
+    t0 := proc_now_ms();
+    a := sc_call(s, base, grant, repo, RpRequest.{op = RP_READ, at = hc, path = reads[i % 6]});
+    rt[i] = proc_now_ms() - t0;
+    if a.code != 200 || !a.got.a.ok { failed += 1; }
+    t1 := proc_now_ms();
+    b := sc_call(s, base, grant, repo, RpRequest.{op = RP_SEARCH, at = hc, pattern = finds[i % 6]});
+    ft[i] = proc_now_ms() - t1;
+    if b.code != 200 || !b.got.a.ok { failed += 1; }
+  }
+  r50 := sc_pct(rt[..], most, 50); r95 := sc_pct(rt[..], most, 95); f50 := sc_pct(ft[..], most, 50); f95 := sc_pct(ft[..], most, 95);
+  print("measure: % reads p50 % ms p95 % ms (bar 300 ms); % searches p50 % ms p95 % ms (bar 1500 ms); % failed\n", most, r50, r95, most, f50, f95, failed);
+  return ifx failed == 0 && r95 < 300 && f95 < 1500 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  loaded := args_load(a[..]);
+  if loaded && args_has(a[..], "--measure") {
+    n := rp_number(args_value(a[..], "--n", "40"));
+    return sc_measure(args_value(a[..], "--measure", ""), args_value(a[..], "--key-file", ""), args_value(a[..], "--repo", "openagents"), ifx n < 1 then 40 else n);
+  }
+  if !loaded || args_count(a[..]) < 1 { print("usage: serve-check.coax BIN | --measure URL --key-file F [--repo R] [--n N]\n"); return 2; }
+  return sc_local(args_at(a[..], 0));
+}
