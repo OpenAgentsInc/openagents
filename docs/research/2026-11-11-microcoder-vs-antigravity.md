@@ -1,10 +1,11 @@
 # Microcoder against Antigravity on Gemini
 
-**Round 4 (2026-11-12): stopped at the cheap check, no verdict run.**
-Thinking by step (the plan and every finish at medium, the rest at low)
-turned H4 from fail to pass in its one run. It also raised T1's cost by 42%
-and its time by about 80%, past the agreed 30% limit. Round 2's verdict still
-stands.
+**Round 4, Argon, three runs per task (2026-11-12): not proven.** Microcoder
+passed 34 of 42 runs to Antigravity's 35 and cost $27.37 to $38.19. Its median
+wall time tied at 155 s. On H5–H8 it passed 8 of 12 to 9, cost less ($8.79 to
+$10.61) and was slower (179 s to 157 s). See "Round 4 verdict".
+
+**Carbon arm:** see "Carbon".
 
 **Round 3 (2026-11-12): stopped at the cheap check, no verdict run.** One
 more look at the final diff and new files before a finish is taken
@@ -119,16 +120,109 @@ thinking level by step. The budget was $50 more.
   add a full call to a run that otherwise takes 3: cost rose 42% ($0.17
   against $0.12) and time about 80% (44 s against 19 s and 30 s). That passes
   the agreed 30% limit, and every short task will pay the same.
-- **So it stopped there**, as agreed. The 3-runs-per-task verdict (42 runs a
-  harness) wasn't spent.
+- **It stopped there at first**, as agreed. The coordinator then overrode
+  the rule and asked for the verdict (next section).
 
-c2e1e45103 stays on `main` for the coordinator to decide: it is one commit to
-revert. Its gain was one H4 run, not measured beyond the cheap check, so by
-the owner's rule it shouldn't stay without a measurement.
+c2e1e45103 stayed on `main` for the verdict. The recommendation after it is
+below.
 
-### What blocks the goal, and the next lever
+### Round 4 verdict (Argon, three runs per task)
 
-- **The blocker is still the round 2 verdict:** 22 against 24 of 28 runs.
+**The stop rule was overridden.** The cheap check above stopped on a rule set
+as a percentage: T1's cost or time must not rise more than 30%. The
+coordinator overrode it because the absolute amounts were small. On T1 the
+42% was $0.05 and the time rise about 25 s. The definition's measure is the
+total cost and median time across all tasks.
+
+**The runs:**
+
+- **Microcoder:** all 42 runs at one build, c2e1e45103 (thinking by step).
+  The four cheap-check runs at that build count as run 1 of T1, T3, T4 and
+  H4.
+- **Antigravity:** its 28 earlier runs plus one new run of each of the 14
+  tasks at c2e1e45103. Its engine is unchanged since round 1, at its
+  uniformly low default.
+- **Thinking levels differ:** Microcoder's differ by step (the plan and each
+  finish at medium, the rest at low). Antigravity's are uniformly low.
+- **Stopped early:** I stopped the arm when Microcoder had 8 fails and so
+  could no longer reach Antigravity's 35. The three Microcoder runs already
+  going finished, so all 42 have results.
+- **Wall times are confounded:** Microcoder's round 4 runs ran alongside the
+  Carbon arm, up to 8 runs at once on one machine. Most of Antigravity's ran
+  in earlier rounds under lighter load. Seconds per call show the load:
+  Microcoder 21.4 here against 14.8 in round 2.
+
+| Task | Harness | Runs | Passed | Wall s (each) | Cost $ (each) | Calls | s/call | Input tok/call | Cached % |
+| --- | --- | ---: | ---: | --- | --- | --- | ---: | ---: | ---: |
+| H1 | mc-argon | 3 | 3 | 74, 84, 74 | 0.28, 0.28, 0.27 | 5, 5, 5 | 15.5 | 11,794 | 0 |
+| H1 | agy-argon | 3 | 3 | 139, 84, 127 | 0.42, 0.34, 0.45 | 11, 9, 12 | 10.9 | 25,691 | 72 |
+| H2 | mc-argon | 3 | 3 | 190, 248, 68 | 0.44, 0.51, 0.40 | 7, 6, 6 | 26.6 | 23,428 | 37 |
+| H2 | agy-argon | 3 | 3 | 246, 134, 372 | 0.94, 0.67, 0.86 | 26, 16, 25 | 11.2 | 40,030 | 85 |
+| H3 | mc-argon | 3 | 3 | 134, 391, 212 | 0.59, 0.98, 0.99 | 8, 15, 11 | 21.7 | 22,595 | 32 |
+| H3 | agy-argon | 3 | 3 | 194, 191, 176 | 1.28, 0.86, 1.31 | 16, 17, 18 | 11.0 | 72,754 | 83 |
+| H4 | mc-argon | 3 | 3 | 255, 204, 212 | 1.24, 1.29, 0.44 | 16, 14, 6 | 18.6 | 27,723 | 35 |
+| H4 | agy-argon | 3 | 2 | 203, 275, 404 | 1.94, 1.40, 2.77 | 20, 16, 30 | 13.4 | 100,264 | 84 |
+| H5 | mc-argon | 3 | 2 | 99, 188, 308 | 0.37, 0.38, 0.60 | 6, 8, 5 | 31.3 | 23,467 | 34 |
+| H5 | agy-argon | 3 | 3 | 63, 55, 61 | 0.53, 0.67, 0.57 | 4, 4, 4 | 14.9 | 50,234 | 37 |
+| H6 | mc-argon | 3 | 3 | 771, 900, 315 | 1.36, 1.77, 1.73 | 23, 25, 26 | 26.8 | 30,342 | 54 |
+| H6 | agy-argon | 3 | 3 | 184, 159, 155 | 1.08, 1.16, 1.12 | 12, 17, 13 | 11.9 | 80,954 | 82 |
+| H7 | mc-argon | 3 | 3 | 92, 171, 60 | 0.35, 0.26, 0.28 | 6, 5, 5 | 20.2 | 11,731 | 7 |
+| H7 | agy-argon | 3 | 3 | 238, 288, 384 | 0.78, 0.95, 1.05 | 20, 22, 19 | 14.9 | 35,506 | 84 |
+| H8 | mc-argon | 3 | 0 | 89, 289, 81 | 0.44, 0.82, 0.44 | 4, 11, 4 | 24.1 | 22,486 | 21 |
+| H8 | agy-argon | 3 | 0 | 172, 154, 106 | 1.15, 0.60, 0.94 | 10, 6, 6 | 19.6 | 76,809 | 69 |
+| T1 | mc-argon | 3 | 3 | 44, 65, 37 | 0.17, 0.17, 0.18 | 4, 4, 4 | 12.2 | 9,879 | 0 |
+| T1 | agy-argon | 3 | 3 | 36, 23, 30 | 0.15, 0.23, 0.25 | 4, 3, 4 | 8.2 | 23,971 | 45 |
+| T2 | mc-argon | 3 | 3 | 354, 165, 146 | 1.58, 0.49, 0.71 | 25, 6, 9 | 16.6 | 31,505 | 52 |
+| T2 | agy-argon | 3 | 3 | 74, 182, 93 | 0.71, 1.28, 0.64 | 10, 11, 10 | 11.3 | 62,079 | 73 |
+| T3 | mc-argon | 3 | 1 | 93, 167, 143 | 0.42, 0.34, 0.21 | 6, 4, 4 | 28.8 | 16,017 | 10 |
+| T3 | agy-argon | 3 | 2 | 71, 78, 101 | 0.45, 0.48, 0.66 | 7, 9, 7 | 10.9 | 41,234 | 66 |
+| T4 | mc-argon | 3 | 3 | 87, 215, 136 | 0.41, 0.68, 1.08 | 6, 9, 10 | 17.5 | 24,556 | 23 |
+| T4 | agy-argon | 3 | 3 | 165, 164, 105 | 1.30, 1.23, 1.11 | 8, 8, 8 | 18.1 | 110,682 | 73 |
+| T5 | mc-argon | 3 | 3 | 246, 288, 235 | 1.65, 1.51, 0.88 | 16, 17, 10 | 17.9 | 26,943 | 30 |
+| T5 | agy-argon | 3 | 3 | 249, 284, 301 | 2.42, 1.49, 1.58 | 22, 16, 17 | 15.2 | 90,246 | 79 |
+| T6 | mc-argon | 3 | 1 | 87, 53, 33 | 0.16, 0.12, 0.12 | 5, 4, 4 | 13.4 | 5,992 | 0 |
+| T6 | agy-argon | 3 | 1 | 31, 27, 20 | 0.09, 0.17, 0.09 | 3, 4, 3 | 7.8 | 15,174 | 50 |
+
+| Tasks | Harness | Runs | Passed | Total cost $ | Median wall s | Calls | s/call | Input tok/call | Output tok/call |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | mc-argon | 42 | 34 | 27.37 | 155 | 379 | 21.4 | 24,137 | 513 |
+| all | agy-argon | 42 | 35 | 38.19 | 155 | 507 | 13.0 | 64,297 | 480 |
+| hold | mc-argon | 24 | 20 | 16.49 | 189 | 232 | 23.7 | 24,545 | 509 |
+| hold | agy-argon | 24 | 20 | 23.84 | 174 | 353 | 12.9 | 61,446 | 501 |
+| seen | mc-argon | 18 | 14 | 10.88 | 139 | 147 | 17.7 | 23,492 | 520 |
+| seen | agy-argon | 18 | 15 | 14.35 | 85 | 154 | 13.2 | 70,832 | 433 |
+
+| Condition | Microcoder | Antigravity | Met |
+| --- | --- | --- | --- |
+| Passes, all 14 tasks (42 runs each) | 34 | 35 | **no** |
+| Total cost, all tasks | $27.37 | $38.19 | yes |
+| Median wall time, all tasks | 155 s | 155 s | **no** (tied) |
+| Passes, H5–H8 (12 runs each) | 8 | 9 | **no** |
+| Total cost, H5–H8 | $8.79 | $10.61 | yes |
+| Median wall time, H5–H8 | 179 s | 157 s | **no** |
+
+**Verdict on Argon: not proven.** H8 fails every run of both harnesses (see
+H5–H8). Without it the passes are 34 to 35 of 39.
+
+**What thinking by step adds per run:** averaged over the 14 tasks, against
+the round 2 build (78ab78f450, 2 runs a task):
+
+- **Cost:** +$0.13 a run ($0.52 to $0.65, about +25%).
+- **Wall time:** +82 s a run (111 s to 193 s). Most of that is likely the
+  heavier machine load described above, not the thinking itself.
+- **Passes:** 22 of 28 (79%) at the round 2 build, 34 of 42 (81%) at this
+  one.
+- **By task:** H4 went from 0 of 2 to 3 of 3. T6 went from 2 of 2 to 1 of 3,
+  and T3 from 1 of 2 to 1 of 3.
+
+**Recommendation: revert c2e1e45103.** Its pass change is within the noise of
+these run counts, and it costs about a quarter more per run. By the owner's
+rule, an addition without a measured gain comes out. The Carbon arm runs at
+the same build, so its result is noted in "Carbon" before the revert.
+
+### What blocked round 4's cheap check, and the lever it named
+
+- **The blocker was still the round 2 verdict:** 22 against 24 of 28 runs.
 - **Spending thinking at the finish costs a call on every task**, which
   breaks the cost and time budget on short ones.
 - **A cheaper variant to measure next:** keep the medium plan step but re-ask
