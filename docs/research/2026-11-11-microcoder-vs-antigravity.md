@@ -5,7 +5,11 @@ passed 34 of 42 runs to Antigravity's 35 and cost $27.37 to $38.19. Its median
 wall time tied at 155 s. On H5–H8 it passed 8 of 12 to 9, cost less ($8.79 to
 $10.61) and was slower (179 s to 157 s). See "Round 4 verdict".
 
-**Carbon arm:** see "Carbon".
+**Carbon, three runs per task (2026-11-12): not proven, by 5 seconds.**
+Microcoder met every condition but one. It passed 37 of 42 runs to
+Antigravity's 35, cost $54.03 to $56.18 and took a median 325 s to 355 s. On
+H5–H8 it cost less ($14.37 to $14.56) but its median time was 386 s to 381 s.
+See "Carbon".
 
 **Round 3 (2026-11-12): stopped at the cheap check, no verdict run.** One
 more look at the final diff and new files before a finish is taken
@@ -70,6 +74,127 @@ one or two passes is within noise; the report gives counts, not rates.
   three-file change and a reading task. Nobody tuning Microcoder looked at
   them before the final runs.
 
+
+## Carbon
+
+The owner asked for Gemini 4 Carbon to be tested too. This arm ran in
+parallel with the Argon round 4 verdict, with its own budget.
+
+### Setup
+
+- **Model and location:** `gemini-4-carbon`, location `us`. Both harnesses
+  ran at their low default:
+  - **Microcoder:** at the Argon round 4 build, c2e1e45103, with thinking by
+    step. Its plan call and each finish call go to Carbon at medium, with the
+    90 s limit and the fall back to low.
+  - **Antigravity:** at the same Coder, whose engine is unchanged since round
+    1 (low by default, the stall watchdog on).
+- **Runs:** three of each of the 14 tasks per harness. The definition's
+  Carbon line was committed before the runs, first at 2 runs and then raised
+  to 3 when the budget rose.
+- **Concurrency:** at most 4 Carbon runs at once, interleaved between the two
+  harnesses. The first 14 runs of each harness also had up to 4 Argon runs
+  going beside them. Each run's concurrency at its start is in the run
+  records.
+- **No runs reused:** the speed agent's two Antigravity Carbon runs (T2 and
+  T5) were not reused. Their Coder, 2620f8fe9c, predates e7e07ba706, which
+  changed `cursor.coax`, so the engine code isn't the same.
+- **Limit hits count as fails:** a run that hit the 15-minute limit counts as
+  a fail for its harness, whatever its check says (the coordinator's rule for
+  this arm). There were five: Antigravity H4 twice, H7 once and T5 once;
+  Microcoder T5 once. Three of Antigravity's four passed their check at the
+  cut.
+- **Cost for cut Antigravity runs:** a turn cut at the limit writes no usage
+  for its last part. Those runs' tokens were read from Antigravity's
+  conversation store (`gen_metadata`), as the task-fit doc did. The store
+  matched the usage lines of finished runs exactly (H1 and T5's third run).
+
+### Quota and stalls
+
+- **429s:** one, in one Antigravity run (H5), which still passed.
+- **Microcoder:** 4 calls went silent and were retried by the gateway's stall
+  watch. One plan call at medium failed and fell back to low. No 429s.
+- **Antigravity:** its watchdog cancelled a silent turn and asked it to
+  continue 11 times, in 7 runs.
+- **Quota didn't make the arm unusable:** every run produced a result.
+
+### Results
+
+| Task | Harness | Runs | Passed | Wall s (each) | Cost $ (each) | Calls | s/call | Input tok/call | Cached % |
+| --- | --- | ---: | ---: | --- | --- | --- | ---: | ---: | ---: |
+| H1 | mc-carbon | 3 | 3 | 72, 69, 63 | 0.31, 0.30, 0.31 | 5, 5, 5 | 13.6 | 12,300 | 0 |
+| H1 | agy-carbon | 3 | 3 | 98, 248, 140 | 0.26, 0.69, 0.38 | 9, 15, 11 | 13.9 | 34,576 | 83 |
+| H2 | mc-carbon | 3 | 3 | 252, 176, 212 | 1.02, 1.11, 0.88 | 14, 15, 13 | 15.2 | 24,310 | 44 |
+| H2 | agy-carbon | 3 | 3 | 412, 156, 226 | 0.96, 0.46, 0.47 | 26, 22, 15 | 12.6 | 46,082 | 91 |
+| H3 | mc-carbon | 3 | 3 | 406, 272, 606 | 0.84, 1.09, 2.06 | 13, 14, 22 | 26.2 | 25,308 | 44 |
+| H3 | agy-carbon | 3 | 3 | 335, 289, 479 | 1.27, 1.67, 1.44 | 24, 26, 30 | 13.8 | 113,085 | 94 |
+| H4 | mc-carbon | 3 | 1 | 602, 497, 596 | 2.68, 3.10, 3.22 | 28, 32, 37 | 17.5 | 35,746 | 46 |
+| H4 | agy-carbon | 3 | 0 | 900, 900, 687 | 6.20, 4.30, 3.20 | 36, 37, 31 | 23.9 | 128,963 | 81 |
+| H5 | mc-carbon | 3 | 3 | 116, 177, 126 | 0.64, 0.93, 0.76 | 6, 10, 10 | 16.1 | 28,109 | 35 |
+| H5 | agy-carbon | 3 | 3 | 259, 197, 94 | 0.87, 1.11, 0.61 | 7, 8, 7 | 25.0 | 86,188 | 73 |
+| H6 | mc-carbon | 3 | 3 | 608, 719, 586 | 1.24, 1.99, 1.52 | 21, 31, 29 | 23.6 | 31,783 | 65 |
+| H6 | agy-carbon | 3 | 3 | 375, 386, 243 | 1.31, 1.33, 1.20 | 27, 27, 20 | 13.6 | 102,649 | 94 |
+| H7 | mc-carbon | 3 | 3 | 320, 538, 352 | 1.05, 0.95, 1.04 | 13, 10, 11 | 35.6 | 26,293 | 56 |
+| H7 | agy-carbon | 3 | 2 | 511, 900, 608 | 1.20, 0.74, 1.43 | 34, 22, 41 | 20.8 | 55,798 | 93 |
+| H8 | mc-carbon | 3 | 1 | 419, 487, 201 | 1.91, 1.11, 1.23 | 26, 12, 14 | 21.3 | 29,323 | 46 |
+| H8 | agy-carbon | 3 | 2 | 224, 512, 387 | 1.28, 2.06, 1.41 | 16, 20, 22 | 19.4 | 121,716 | 90 |
+| T1 | mc-carbon | 3 | 3 | 73, 40, 67 | 0.17, 0.18, 0.17 | 4, 4, 4 | 14.9 | 9,865 | 0 |
+| T1 | agy-carbon | 3 | 3 | 102, 42, 211 | 0.19, 0.20, 0.22 | 6, 6, 7 | 18.7 | 27,301 | 77 |
+| T2 | mc-carbon | 3 | 3 | 465, 510, 556 | 2.67, 1.27, 1.70 | 30, 20, 22 | 21.3 | 33,935 | 55 |
+| T2 | agy-carbon | 3 | 3 | 204, 683, 289 | 1.05, 0.78, 1.19 | 22, 18, 23 | 18.7 | 90,483 | 93 |
+| T3 | mc-carbon | 3 | 3 | 305, 376, 298 | 1.18, 1.27, 0.91 | 14, 15, 14 | 22.8 | 26,056 | 49 |
+| T3 | agy-carbon | 3 | 3 | 417, 499, 439 | 1.47, 0.66, 0.97 | 29, 16, 16 | 22.2 | 63,090 | 90 |
+| T4 | mc-carbon | 3 | 3 | 425, 426, 282 | 1.62, 1.22, 1.30 | 22, 15, 17 | 21.0 | 33,261 | 55 |
+| T4 | agy-carbon | 3 | 3 | 110, 428, 487 | 1.09, 1.17, 1.83 | 11, 13, 17 | 25.0 | 145,947 | 90 |
+| T5 | mc-carbon | 3 | 2 | 329, 900, 599 | 2.57, 2.99, 2.69 | 29, 22, 25 | 24.1 | 32,028 | 32 |
+| T5 | agy-carbon | 3 | 2 | 585, 900, 856 | 2.84, 2.60, 3.39 | 48, 40, 49 | 17.1 | 166,769 | 96 |
+| T6 | mc-carbon | 3 | 3 | 38, 87, 134 | 0.16, 0.31, 0.35 | 5, 8, 7 | 13.0 | 11,528 | 29 |
+| T6 | agy-carbon | 3 | 2 | 48, 39, 96 | 0.25, 0.15, 0.30 | 8, 7, 5 | 9.2 | 23,832 | 74 |
+
+| Tasks | Harness | Runs | Passed | Total cost $ | Median wall s | Calls | s/call | Input tok/call | Output tok/call |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | mc-carbon | 42 | 37 | 54.03 | 325 | 673 | 21.4 | 29,390 | 807 |
+| all | agy-carbon | 42 | 35 | 56.18 | 355 | 874 | 18.3 | 100,586 | 474 |
+| hold | mc-carbon | 24 | 20 | 31.29 | 336 | 396 | 21.4 | 29,386 | 834 |
+| hold | agy-carbon | 24 | 19 | 35.86 | 355 | 533 | 17.9 | 91,063 | 475 |
+| seen | mc-carbon | 18 | 17 | 22.74 | 317 | 277 | 21.3 | 29,396 | 769 |
+| seen | agy-carbon | 18 | 16 | 20.33 | 353 | 341 | 18.9 | 115,471 | 473 |
+
+| Condition | Microcoder | Antigravity | Met |
+| --- | --- | --- | --- |
+| Passes, all 14 tasks (42 runs each) | 37 | 35 | yes |
+| Total cost, all tasks | $54.03 | $56.18 | yes |
+| Median wall time, all tasks | 325 s | 355 s | yes |
+| Total cost, H5–H8 | $14.37 | $14.56 | yes |
+| Median wall time, H5–H8 | 386 s | 381 s | **no** |
+
+H5–H8 passes: 10 of 12 each. H1–H8 together: Microcoder passed 20 of 24 runs
+for $31.29, at a median 336 s. Antigravity passed 19 for $35.86, at 355 s.
+
+**Verdict on Carbon: not proven.** Every condition holds except the hold-out
+median wall time, which Microcoder lost by 5 s (386 s against 381 s). That is
+far inside the noise of 12 runs. The cost margin on H5–H8 ($0.19) is just as
+thin, so it shouldn't be read as a clear lead either.
+
+What the Carbon arm shows:
+
+- **Passes:** Microcoder held Carbon better. Its one fail beyond H4 and H8
+  was a T5 run cut at the limit. Antigravity lost four runs to the limit,
+  three of which had passed their check by then.
+- **Prompt size and cache:** Antigravity's prompts were 3.4 times
+  Microcoder's (100,586 input tokens a call against 29,390). Antigravity
+  cached 81–96% of its input, Microcoder 0–65%.
+- **Cost:** about even, on 23% fewer calls for Microcoder (673 against 874).
+- **Output:** Microcoder writes more per call (807 tokens against 474). Its
+  medium plan and finish calls think longer on Carbon than on Argon.
+
+### Spend
+
+- **Carbon arm:** $110.21 of Google credits. That includes Antigravity's cut
+  runs at their recovered usage.
+- **Argon round 4 verdict:** $40.80.
+- **Together:** $151.01 of the $200 limit, just over the $150 aim.
+- **All recorded runs since the start:** $221.68.
 
 ## Round 4
 
