@@ -69,6 +69,7 @@ static char app_dir[PATH_MAX], host_dir[PATH_MAX], build_cmd[PATH_MAX + 64];
 static bool static_mode;
 static char cache_control[64] = "public, max-age=300";
 static int api_port;   // --api: /api/ requests go to 127.0.0.1:api_port
+static int local_port; // --local: /local/ requests go to `coder mcp --http` on 127.0.0.1:local_port (its local routes)
 static double throttle_bytes, latency_ms, next_send_ms;
 static bool shaping_send;
 static int shaping_fd = -1;
@@ -346,6 +347,39 @@ static void proxy_api(client *c) {
   close(fd);
   drop(c);
 }
+// A /local/ request to Coder on this machine (`coder mcp --http PORT`, coder/tui/mcp_http.coax): /local/X
+// goes on as /X with the header Coder's local routes ask for. Those routes start agents with a shell, so
+// only this server's own pages may use them: the browser must say the request is same-origin
+// (Sec-Fetch-Site, which a page can't set), and Coder checks the Origin again.
+static void proxy_local(client *c, const char *url) {
+  const char *line_end = strstr(c->buf, "\r\n");
+  bool same = false;
+  for (const char *p = c->buf; line_end && (p = strstr(p, "\r\n")) && p[2] && p[2] != '\r'; p += 2)
+    if (!strncasecmp(p + 2, "Sec-Fetch-Site:", 15)) { const char *v = p + 17; while (*v == ' ') v++; same = !strncmp(v, "same-origin\r", 12); }
+  if (!line_end || !same) { respond(c->fd, 403, "Forbidden", "application/json", "{\"error\":\"only this page may use Coder\"}", 38); drop(c); return; }
+  int fd = private_fd(socket(AF_INET, SOCK_STREAM, 0));
+  struct sockaddr_in a = {0};
+  a.sin_family = AF_INET; a.sin_port = htons((uint16_t)local_port);
+  inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+  if (fd < 0 || connect(fd, (struct sockaddr *)&a, sizeof a)) {
+    if (fd >= 0) close(fd);
+    respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"Coder is not running here\"}", 36); drop(c); return;
+  }
+  char method[8] = {0}, first[1200];
+  sscanf(c->buf, "%7s", method);
+  int n = snprintf(first, sizeof first, "%s %s HTTP/1.1\r\nX-Coder-Local: 1", method, url + 6);
+  send_all(fd, first, (size_t)n);
+  send_all(fd, line_end, c->n - (size_t)(line_end - c->buf));
+  pid_t pid = fork();
+  if (pid == 0) {
+    char tmp[16384]; ssize_t k;
+    while ((k = recv(fd, tmp, sizeof tmp, 0)) > 0) send_all(c->fd, tmp, (size_t)k);
+    _exit(0);
+  }
+  if (pid < 0) respond(c->fd, 503, "Service Unavailable", "application/json", "{\"error\":\"the dev server is busy\"}", 35);
+  close(fd);
+  drop(c);
+}
 // Whether the request's body (Content-Length) is all in.
 static bool body_in(const client *c) {
   const char *end = strstr(c->buf, "\r\n\r\n");
@@ -374,6 +408,7 @@ static void handle_request(client *c) {
   }
   char method[8] = {0}, url[1024] = {0};
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
+  if (local_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/local/", 7)) { proxy_local(c, url); return; }
   if (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET")) {
     respond(c->fd, 405, "Method Not Allowed", "text/plain", "GET only\n", 9); drop(c); return;
   }
@@ -401,7 +436,7 @@ static void on_readable(client *c) {
   ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - 1 - c->n, 0);
   if (k <= 0) { drop(c); return; }
   c->n += (size_t)k; c->buf[c->n] = 0;
-  if (strstr(c->buf, "\r\n\r\n") && (!api_port || body_in(c))) handle_request(c);
+  if (strstr(c->buf, "\r\n\r\n") && ((!api_port && !local_port) || body_in(c))) handle_request(c);
   else if (c->n >= sizeof c->buf - 1) drop(c);
 }
 
@@ -573,6 +608,7 @@ int main(int argc, char **argv) {
     }
     else if (!strcmp(argv[i], "--build") && i + 1 < argc) cmd = argv[++i];
     else if (!strcmp(argv[i], "--api") && i + 1 < argc) api_port = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--local") && i + 1 < argc) local_port = atoi(argv[++i]);
     else if (!app && argv[i][0]!='-') app = argv[i];
     else { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }
   }

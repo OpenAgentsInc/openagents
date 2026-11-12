@@ -57,20 +57,32 @@ CW_ASK :: 40960;       // bytes of the conversation sent with a message
 CW_REQUEST :: 61440;   // the request's JSON (the door takes 64 KB)
 CW_EVENT :: 32768;     // one event of the stream
 CW_ERROR :: 320;
-CW_RESP :: 131072;     // an answer that isn't a stream (a turn, the account)
+CW_RESP :: 262144;     // an answer that isn't a stream (a turn, the account, a piece of a session's log)
+CW_SESS :: 50;         // Coder sessions listed beside the chat
+CW_TOOL_LINE :: 160;   // a tool call's line, at most
+CW_TOOL_MOST :: 4000;  // one run of tool calls, at most
 CW_KEY :: 400;         // a pasted key's most
 CW_TOOLS :: 2048;      // the running turn's tools, as lines
 CW_META :: 64;         // the line under an answer
-CW_YOU :: 0; CW_AGENT :: 1;
+CW_YOU :: 0; CW_AGENT :: 1; CW_TOOL :: 2;   // a message is the person's, an answer, or a run of tool calls (a line each)
 CW_CHAT :: 0; CW_SETTINGS :: 1;
 // The models, Gemini's first: a Claude one is offered only while a Claude account is connected.
-CW_MODELS :: 6; CW_GEMINIS :: 3;
-CW_MODEL_IDS :: [6] string.["google/gemini-3.8-flash", "google/gemini-4-argon", "google/gemini-4-carbon", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"];
-CW_MODEL_NAMES :: [6] string.["Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5"];
-CW_MODEL_NOTES :: [6] string.["Google. Answers from what it knows", "Google. Answers from what it knows", "Google. Answers from what it knows",
-  "Your Claude account. Reads our code and the web", "Your Claude account. Reads our code and the web", "Your Claude account. Reads our code and the web"];
-// What is in flight: one request at a time.
+// The models: Google's, Claude's on the connected account (the hosted agent), and the agents on this
+// machine through Coder (`coder mcp --http`, coder/tui/mcp_http.coax), offered only where Coder answers.
+CW_MODELS :: 10; CW_GEMINIS :: 3; CW_HOSTED :: 6;
+CW_MODEL_IDS :: [10] string.["google/gemini-3.8-flash", "google/gemini-4-argon", "google/gemini-4-carbon", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
+  "claude", "codex", "antigravity", "micro"];
+CW_MODEL_NAMES :: [10] string.["Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5",
+  "Claude Code", "Codex", "Antigravity", "Microcoder"];
+CW_MODEL_NOTES :: [10] string.["Google. Answers from what it knows", "Google. Answers from what it knows", "Google. Answers from what it knows",
+  "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web",
+  "On this computer, through Coder. Your login, your files, a shell", "On this computer, through Coder. Your login, your files, a shell",
+  "On this computer, through Coder. Google's agent, your files, a shell", "On this computer, through Coder. Our own agent, your files, a shell"];
 CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
+CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12;   // Coder on this machine: its sessions, one's log, a new one, a message, Stop
+CW_LIST_EVERY :: 3.0;  // seconds between reads of the sessions
+CW_LOG_EVERY :: 1.0;   // and of the shown session's log while it runs
+CW_LOG_WAIT :: 20;     // reads that may find no log before the session is called gone (one just started writes its log a moment later)
 CA_NONE :: 0; CA_KEY :: 1; CA_TOKEN :: 2;   // the connected Claude credential's kind
 CW_POLL :: 1.0;        // seconds between reads of a Claude turn
 CW_SYSTEM :: "You are OpenAgents, answering in the chat on openagents.com. Speak as \"we\" for OpenAgents. Be direct and brief, and use Markdown where it helps. You can't use tools, read files or the web, or remember earlier conversations yet; say so plainly if asked to. You have no knowledge base about OpenAgents yet, so if you aren't sure of a fact about OpenAgents, say you aren't sure. If asked which model you are, say exactly this and never guess another version: the model answering is ";
@@ -89,6 +101,7 @@ ChatWeb :: struct {
   menu: bool;                        // the model menu is open
   model: int;                        // the model the next message goes to
   known: bool;                       // the account has been read
+  known_asked: bool;                 // and that it has been asked for, whatever came back
   claude: int; last4: [8] u8; last4_n: int; expired: bool;   // the connected Claude credential (CA_*), never the key
   key: [CW_KEY] u8; key_n: int;      // a key being typed in Settings, wiped once sent
   note: [CW_ERROR] u8; note_n: int;  // what Settings last said (a key that didn't work, Connected, Removed)
@@ -101,6 +114,20 @@ ChatWeb :: struct {
   working: [CW_ERROR] u8; working_n: int;   // what the running turn says it is doing
   tools: [CW_TOOLS] u8; tools_n: int; ntools: int;   // its tools so far, a line each
   meta: [CW_MESSAGES] [CW_META] u8; meta_n: [CW_MESSAGES] int;   // the line under each answer: who wrote it
+  local: int;                        // Coder on this machine: 0 not asked yet, 1 it answers, -1 it doesn't
+  ns: int; sid: [CW_SESS] [24] u8; sid_n: [CW_SESS] int;   // its sessions, newest first
+  seng: [CW_SESS] [12] u8; seng_n: [CW_SESS] int; srun: [CW_SESS] bool;
+  stask: [CW_SESS] [96] u8; stask_n: [CW_SESS] int;
+  sel: [24] u8; sel_n: int;          // the session the transcript shows (none: a new chat)
+  log_next: int;                     // where its log is read from next (under 0: its end)
+  log_due: bool;                     // read it now
+  lrun: bool;                        // it is running
+  echo: bool;                        // the next message of the person's in the log is one this page already shows
+  stop_due: bool;                    // Stop was pressed on it
+  send_due: bool;                    // Send was pressed while a background read was out
+  log_miss: int;                     // reads in a row that found no log
+  list_at: f32; log_at: f32;
+  scratch: [CW_RESP] u8;
   live: bool;                        // the last message is an answer still coming
   status: int;                       // the stream's HTTP status once a piece has come
   cut: bool;                         // the answer passed CW_ANSWER: the rest was not kept
@@ -137,14 +164,17 @@ cw_has_words :: (s: [] ChatWeb) -> bool {
 }
 cw_text :: (s: [] ChatWeb, k: int) -> string { return cast(string) s[0].pool[s[0].at[k]..<s[0].at[k] + s[0].len[k]]; }
 
-cw_claude_model :: (model: int) -> bool { return model >= CW_GEMINIS; }
+cw_claude_model :: (model: int) -> bool { return model >= CW_GEMINIS && model < CW_HOSTED; }
+cw_local_model :: (model: int) -> bool { return model >= CW_HOSTED; }
 cw_connected :: (s: [] ChatWeb) -> bool { return s[0].claude != CA_NONE && !s[0].expired; }
 // The model the next message goes to: the one chosen, unless it is Claude's and no account is connected.
 cw_model :: (s: [] ChatWeb) -> int {
   m := s[0].model;
   if m < 0 || m >= CW_MODELS { return 0; }
+  if cw_local_model(m) && s[0].local != 1 { return 0; }
   return ifx cw_claude_model(m) && !cw_connected(s) then 0 else m;
 }
+cw_sel :: (s: [] ChatWeb) -> string { return cast(string) s[0].sel[0..<s[0].sel_n]; }
 // A request for the host: a POST of the body, or a GET when there is none. False while another is in flight.
 cw_go :: (s: [] ChatWeb, kind: int, url: string, body: string) -> bool {
   if s[0].flight != CF_NONE { return false; }
@@ -152,6 +182,36 @@ cw_go :: (s: [] ChatWeb, kind: int, url: string, body: string) -> bool {
   s[0].request_n = cw_put(s[0].request[..], 0, body);
   s[0].flight = kind; s[0].ask = true; s[0].resp_n = 0; s[0].status = 0;
   return true;
+}
+// The sessions beside the chat: a new chat, the Coder sessions running on this machine now (whoever
+// started them: this page, the terminal, another agent), then the few that ended most recently.
+CW_RECENT :: 8;
+cw_side_row :: (s: [] ChatWeb, k: int) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8;
+  title := cast(string) s[0].stask[k][0..<s[0].stask_n[k]];
+  r := k_row(t, u, tr_join(buf[..], "s.", k), ifx title.count > 0 then title else "(no message)", cast(string) s[0].seng[k][0..<s[0].seng_n[k]], cast(string) s[0].sid[k][0..<s[0].sid_n[k]] == cw_sel(s));
+  if s[0].srun[k] { tr_attr(t, r, AT_STATE, "running"); }
+}
+cw_side :: (s: [] ChatWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  side := tr_open(t, "side", TG_NAV, "side");
+  tr_attr(t, side, AT_LABEL, "Chats");
+  fresh := k_row(t, u, "side.new", "New chat", "", s[0].sel_n == 0);
+  running := 0;
+  for k: 0..<s[0].ns { if s[0].srun[k] { running += 1; } }
+  if running > 0 { h := k_meta(t, "side.run", "Running"); }
+  for k: 0..<s[0].ns { if s[0].srun[k] { cw_side_row(s, k); } }
+  recent := 0;
+  for k: 0..<s[0].ns {
+    if s[0].srun[k] || recent >= CW_RECENT { continue; }
+    shown := cast(string) s[0].sid[k][0..<s[0].sid_n[k]] == cw_sel(s);
+    if cast(string) s[0].seng[k][0..<s[0].seng_n[k]] == "echo" && !shown { continue; }   // Coder's own test agent
+    if recent == 0 { h := k_meta(t, "side.recent", "Recent"); }
+    cw_side_row(s, k);
+    recent += 1;
+  }
+  tr_close(t);
 }
 cw_settings_card :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
@@ -200,6 +260,19 @@ cw_transcript :: (s: [] ChatWeb) {
     id := tr_join(buf[..], "m.", number);
     text := cw_text(s, k);
     if s[0].who[k] == CW_YOU { m := k_user(t, u, id, text); continue; }
+    if s[0].who[k] == CW_TOOL {
+      // a run of tool calls, a line each
+      box := tr_open(t, id, TG_DIV, "tools");
+      at := 0; line := 0; ide: [UI_ID] u8; idf: [UI_ID] u8;
+      while at < text.count {
+        e := at;
+        while e < text.count && text[e] != '\n' { e += 1; }
+        tl := tr_leaf(t, tr_join(idf[..], tr_cat(ide[..], id, ".t."), line), TG_P, "work", cast(string) text[at..<e]);
+        at = e + 1; line += 1;
+      }
+      tr_close(t);
+      continue;
+    }
     // an answer: what has come of it, as Markdown
     coming := s[0].live && k + 1 == s[0].count;
     if !coming && text.count == 0 { continue; }   // it got no answer: the notice below says why
@@ -233,6 +306,7 @@ cw_transcript :: (s: [] ChatWeb) {
     }
     tr_close(t);
   }
+  if s[0].lrun { w := tr_leaf(t, "l.work", TG_P, "work", "Working"); tr_attr(t, w, AT_ROLE, "status"); }
   if s[0].error_n > 0 {
     n := k_notice(t, u, "failed", "Error", cast(string) s[0].error[0..<s[0].error_n]);
     tr_close(t);
@@ -245,8 +319,9 @@ cw_build :: (s: [] ChatWeb) {
   tr_begin(t);
   s[0].marking = false;
   page := tr_open(t, "chat", TG_MAIN, "chat");
+  if s[0].local == 1 { cw_side(s); }
   if s[0].view == CW_SETTINGS { cw_settings_card(s); }
-  else if s[0].count > 0 { cw_transcript(s); }
+  else if s[0].count > 0 || s[0].lrun { cw_transcript(s); }
   f := k_composer_begin(t, u, "composer", "Ask anything");
   tr_attr(t, f, AT_FOCUS, "");
   gear := k_icon_button(t, "settings", IC_SETTINGS, ifx s[0].view == CW_SETTINGS then "Back to the chat" else "Settings");
@@ -255,13 +330,17 @@ cw_build :: (s: [] ChatWeb) {
   k_select_begin(t, u, "model", names[cw_model(s)], "Model", s[0].menu);
   if s[0].menu {
     buf: [UI_ID] u8;
-    most := ifx cw_connected(s) then CW_MODELS else CW_GEMINIS;
-    for m: 0..<most { r := k_row(t, u, tr_join(buf[..], "model.", m), names[m], notes[m], m == cw_model(s)); }
+    for m: 0..<CW_MODELS {
+      if (cw_claude_model(m) && !cw_connected(s)) || (cw_local_model(m) && s[0].local != 1) { continue; }
+      r := k_row(t, u, tr_join(buf[..], "model.", m), names[m], notes[m], m == cw_model(s));
+    }
     if !cw_connected(s) { hint := k_meta(t, "model.hint", "Connect a Claude account in Settings to choose Claude models."); }
   }
   k_select_end(t, s[0].menu);
   stoppable := s[0].live && !s[0].stopping;
-  k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && s[0].flight == CF_NONE));
+  // a session on this machine that is running: Stop, unless something is typed (it becomes its next turn)
+  if s[0].lrun && !s[0].live { k_composer_end(t, u, "composer", ifx cw_has_words(s) then "Send" else "Stop", true); }
+  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG))); }
   tr_close(t);
 }
 
@@ -305,6 +384,114 @@ cw_copy_of :: (id: string) -> int {
   for i: 2..<id.count - 5 { c := id[i]; if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
   return n;
 }
+// A run of tool calls: one more line onto the last message when it is such a run with room, else a new one.
+cw_tool :: (s: [] ChatWeb, label: string) {
+  e := 0; while e < label.count && e < CW_TOOL_LINE && label[e] != '\n' { e += 1; }
+  line := cast(string) label[0..<e];
+  if line.count == 0 { return; }
+  k := s[0].count - 1;
+  if k >= 0 && s[0].who[k] == CW_TOOL && s[0].at[k] + s[0].len[k] == s[0].pool_n && s[0].len[k] + line.count + 1 <= CW_TOOL_MOST && s[0].pool_n + line.count + 1 <= CW_POOL {
+    s[0].pool[s[0].pool_n] = '\n'; s[0].pool_n += 1;
+    for c: line { s[0].pool[s[0].pool_n] = c; s[0].pool_n += 1; }
+    s[0].len[k] += line.count + 1;
+    return;
+  }
+  cw_add(s, line, CW_TOOL, 0);
+}
+// The number after a part: "s.12" after "s." is 12, else -1.
+cw_number :: (id: string, part: string) -> int {
+  if id.count <= part.count || id.count > part.count + 3 || cast(string) id[0..<part.count] != part { return -1; }
+  n := 0;
+  for i: part.count..<id.count { c := id[i]; if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+// The transcript emptied, for another session or a new chat.
+cw_clear :: (s: [] ChatWeb) {
+  s[0].count = 0; s[0].pool_n = 0; s[0].total = 0; s[0].error_n = 0;
+  s[0].live = false; s[0].lrun = false; s[0].echo = false; s[0].stop_due = false; s[0].turn = 0; s[0].conv = 0;
+}
+// Shows session id from where its log ends (tail) or starts.
+cw_show :: (s: [] ChatWeb, id: string, tail: bool) {
+  s[0].sel_n = cw_put(s[0].sel[..], 0, id);
+  s[0].log_next = ifx tail then -1 else 0; s[0].log_due = true; s[0].log_miss = 0;
+}
+// The sessions as Coder lists them (`coder ls --json`: an array, newest first).
+cw_list_read :: (s: [] ChatWeb, body: string) {
+  ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+  path: [48] u8; part: [24] u8;
+  n := 0;
+  while n < CW_SESS {
+    ar[0].at = 0; ar[0].full = false;
+    id := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".id"));
+    if id.count == 0 { break; }
+    s[0].sid_n[n] = cw_put(s[0].sid[n][..], 0, id);
+    s[0].seng_n[n] = cw_put(s[0].seng[n][..], 0, cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".engine")));
+    s[0].srun[n] = cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".state")) == "running";
+    task := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".task"));
+    e := 0; while e < task.count && e < 96 && task[e] != '\n' { e += 1; }
+    s[0].stask_n[n] = cw_put(s[0].stask[n][..], 0, cast(string) task[0..<e]);
+    n += 1;
+  }
+  s[0].ns = n;
+}
+// A piece of the shown session's log: a line saying where the next piece starts, then the log's own
+// lines (coax/lib/agent/session/writer.coax). A message of the person's, a tool call, an edit, a reply
+// and the ending each go into the transcript.
+cw_log_read :: (s: [] ChatWeb, body: string) {
+  ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+  at := 0; first := true;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    ar[0].at = 0; ar[0].full = false;
+    if first {
+      first = false;
+      next := cl_int(line, "next"); size := cl_int(line, "size");
+      if !next.ok { return; }
+      if s[0].log_next < 0 { s[0].lrun = true; }   // a session opened at its end is running until its ending is read
+      s[0].log_next = next.value;
+      s[0].log_due = size.ok && next.value < size.value;   // more is waiting
+      continue;
+    }
+    kind := cl_str(ar[..], line, "kind");
+    if kind == "user" {
+      if s[0].echo { s[0].echo = false; } else { cw_add(s, cl_str(ar[..], line, "text"), CW_YOU, 0); }
+      s[0].lrun = true;
+    } else if kind == "session" { s[0].lrun = true; }
+    else if kind == "tool" { cw_tool(s, cl_str(ar[..], line, "label")); }
+    else if kind == "diff" {
+      edit: [CW_TOOL_LINE] u8;
+      n := cw_put(edit[..], 0, "Edit "); n = cw_put(edit[..], n, cl_str(ar[..], line, "path"));
+      cw_tool(s, cast(string) edit[0..<n]);
+    } else if kind == "reply" {
+      text := cl_str(ar[..], line, "text");
+      if text.count > CW_ANSWER { text = cast(string) text[0..<CW_ANSWER]; }
+      if text.count > 0 { cw_add(s, text, CW_AGENT, 0); }
+    } else if kind == "end" {
+      s[0].lrun = false; s[0].stop_due = false;
+      ending := cl_str(ar[..], line, "ending");
+      if ending == "failed" || ending == "expired" {
+        why := cl_str(ar[..], line, "text");
+        cw_say(s, ifx why.count > 0 then why else "The session ended before it finished.");
+      }
+    }
+  }
+}
+// A message for an agent on this machine: a new Coder session, or the shown session's next turn.
+cw_local_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
+  ids := CW_MODEL_IDS;
+  body: [CW_REQUEST] u8;
+  if s[0].sel_n > 0 {
+    n := json_raw(body[..], 0, "{\"id\":"); n = json_write_string(body[..], n, cw_sel(s));
+    n = json_raw(body[..], n, ",\"message\":"); n = json_write_string(body[..], n, text); n = json_raw(body[..], n, "}");
+    return cw_go(s, CF_LSEND, "/local/send", cast(string) body[0..<n]);
+  }
+  n := json_raw(body[..], 0, "{\"task\":"); n = json_write_string(body[..], n, text);
+  n = json_raw(body[..], n, ",\"engine\":"); n = json_write_string(body[..], n, ids[model]); n = json_raw(body[..], n, "}");
+  return cw_go(s, CF_RUN, "/local/run", cast(string) body[0..<n]);
+}
 // The digit after a part: "model.2" after "model." is 2, else -1.
 cw_index :: (id: string, part: string) -> int {
   if id.count != part.count + 1 || cast(string) id[0..<part.count] != part { return -1; }
@@ -320,7 +507,7 @@ cw_complete :: (s: [] ChatWeb, model: int) -> bool {
   if first == s[0].count && s[0].count > 0 { first = s[0].count - 1; }   // the message itself always goes
   messages: [CW_MESSAGES] GwMessage; n := 0;
   for k: first..<s[0].count {
-    if s[0].len[k] == 0 { continue; }   // an answer that never came
+    if s[0].len[k] == 0 || s[0].who[k] == CW_TOOL { continue; }   // an answer that never came, or tool calls
     messages[n] = GwMessage.{role = ifx s[0].who[k] == CW_AGENT then "assistant" else "user", text = cw_text(s, k)};
     n += 1;
   }
@@ -348,11 +535,23 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // Takes the message: it goes into the transcript, without the space around it, the field is cleared,
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_send :: (s: [] ChatWeb) {
-  if s[0].live || s[0].flight != CF_NONE || !cw_has_words(s) { return; }
+  if s[0].live || !cw_has_words(s) { return; }
+  if s[0].flight == CF_LIST || s[0].flight == CF_LOG { s[0].send_due = true; return; }   // a background read is out: the message goes when it is back
+  if s[0].flight != CF_NONE { return; }
+  s[0].send_due = false;
   lo := 0; hi := s[0].draft_n;
   while lo < hi && (s[0].draft[lo] == ' ' || s[0].draft[lo] == '\n' || s[0].draft[lo] == '\t' || s[0].draft[lo] == '\r') { lo += 1; }
   while hi > lo && (s[0].draft[hi - 1] == ' ' || s[0].draft[hi - 1] == '\n' || s[0].draft[hi - 1] == '\t' || s[0].draft[hi - 1] == '\r') { hi -= 1; }
   model := cw_model(s);
+  if cw_local_model(model) {
+    // an agent on this machine: the message shows at once, and the session's log brings the rest
+    cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, 0);
+    if !cw_local_send(s, model, cw_text(s, s[0].count - 1)) { s[0].count -= 1; s[0].total -= 1; s[0].pool_n = s[0].at[s[0].count]; return; }
+    s[0].echo = true; s[0].lrun = true; s[0].error_n = 0; s[0].sends += 1;
+    s[0].draft_n = 0; s[0].view = CW_CHAT; s[0].menu = false;
+    dm_value(s[0].dom[..], "composer", "");
+    return;
+  }
   cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, CW_ANSWER);
   sent := ifx cw_claude_model(model) then cw_turn_send(s, model, cw_text(s, s[0].count - 1)) else cw_complete(s, model);
   cw_add(s, "", CW_AGENT, CW_ANSWER);
@@ -482,7 +681,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
   s[0].flight = CF_NONE;
   body := cast(string) s[0].resp[0..<s[0].resp_n];
   if kind == CF_ACCOUNT {
-    s[0].known = status == 200;
+    s[0].known = status == 200; s[0].known_asked = true;
     if status == 200 { cw_account(s, body, "claude."); }
   } else if kind == CF_KEY {
     if status == 200 { cw_account(s, body, ""); s[0].expired = false; s[0].note_n = cw_put(s[0].note[..], 0, "Connected. Choose a Claude model in the menu beside the gear."); }
@@ -503,14 +702,55 @@ cw_end :: (s: [] ChatWeb, status: int) {
     c := cl_int(body, "c"); turn := cl_int(body, "turn");
     if !c.ok || !turn.ok { cw_fail(s, 0); return; }
     s[0].conv = c.value; s[0].turn = turn.value; s[0].asked_at = s[0].time;
-  } else if kind == CF_TURN {
+  } else if kind == CF_LIST {
+    if status == 200 { s[0].local = 1; cw_list_read(s, body); }
+    else if s[0].local == 0 { s[0].local = -1; }
+  } else if kind == CF_LOG {
+    if status == 200 { s[0].log_miss = 0; cw_log_read(s, body); }
+    else if status == 404 && s[0].log_miss < CW_LOG_WAIT { s[0].log_miss += 1; s[0].lrun = true; }   // a session just started has no log yet: read again
+    else if status == 404 { s[0].lrun = false; cw_say(s, "That session's log is gone."); }
+  } else if kind == CF_RUN {
+    // the new session's ID, on a line of its own
+    e := 0; while e < body.count && ((body[e] >= '0' && body[e] <= '9') || body[e] == '-') { e += 1; }
+    if status != 200 || e == 0 || e > 23 { s[0].lrun = false; s[0].echo = false; cw_say(s, ifx body.count > 0 && body.count < CW_ERROR then body else "Coder couldn't start that. Is it running on this computer?"); return; }
+    cw_show(s, cast(string) body[0..<e], false);
+    s[0].list_at = s[0].time - CW_LIST_EVERY;
+  } else if kind == CF_LSEND {
+    ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+    now := cl_str(ar[..], body, "id");
+    if status != 200 || now.count == 0 || now.count > 23 { s[0].lrun = false; s[0].echo = false; cw_say(s, ifx body.count > 0 && body.count < CW_ERROR then body else "Coder couldn't take that message."); return; }
+    if now != cw_sel(s) { cw_show(s, now, false); }   // an ended session continues in a new one
+    s[0].log_due = true; s[0].list_at = s[0].time - CW_LIST_EVERY;
+  } else if kind == CF_LSTOP {
+    s[0].log_due = true;
+  }
+  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG) { cw_send(s); } else if kind == CF_TURN {
     if status == 200 { cw_turn_read(s, body); }
     else if status != 0 { cw_fail(s, status); s[0].turn = 0; }   // with no answer at all, it is read again
   }
 }
 // What a frame sends for a Claude turn at work: Stop once, then a read each CW_POLL seconds.
 cw_tick :: (s: [] ChatWeb) {
-  if !s[0].live || s[0].turn <= 0 || s[0].flight != CF_NONE { return; }
+  if s[0].flight != CF_NONE { return; }
+  if s[0].local == 1 && !s[0].live {
+    // Coder on this machine: Stop once, the shown session's log while it runs, and the sessions now and then
+    url: [96] u8; num: [24] u8;
+    if s[0].stop_due && s[0].sel_n > 0 {
+      body: [64] u8;
+      n := cw_put(body[..], 0, "{\"id\":\""); n = cw_put(body[..], n, cw_sel(s)); n = cw_put(body[..], n, "\"}");
+      if cw_go(s, CF_LSTOP, "/local/stop", cast(string) body[0..<n]) { s[0].stop_due = false; }
+      return;
+    }
+    if s[0].sel_n > 0 && (s[0].log_due || (s[0].lrun && s[0].time - s[0].log_at >= CW_LOG_EVERY)) {
+      n := cw_put(url[..], 0, "/local/log?id="); n = cw_put(url[..], n, cw_sel(s)); n = cw_put(url[..], n, "&after=");
+      n = cw_put(url[..], n, ifx s[0].log_next < 0 then "-1" else tr_join(num[..], "", s[0].log_next));
+      if cw_go(s, CF_LOG, cast(string) url[0..<n], "") { s[0].log_at = s[0].time; s[0].log_due = false; }
+      return;
+    }
+    if s[0].time - s[0].list_at >= CW_LIST_EVERY { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
+  }
+  if s[0].local == 0 && s[0].known_asked && !s[0].live && s[0].time > 0.2 { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
+  if !s[0].live || s[0].turn <= 0 { return; }
   url: [96] u8; num: [24] u8;
   if s[0].stopping && !s[0].stop_sent && s[0].conv > 0 {
     body: [64] u8;
@@ -563,7 +803,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   return bytes;
 }
 // Whether the host is to call again next frame: something changed or is moving, or a Claude turn is at work.
-coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating || (s[0].live && s[0].turn > 0)); }
+coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating || (s[0].live && s[0].turn > 0) || s[0].local >= 0); }
 coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   if kind == CW_PIECE {
@@ -585,7 +825,25 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_SUBMIT && id == "composer" { cw_send(s); }
   else if kind == CW_SUBMIT && id == "claude.key" { cw_connect(s); }
-  else if kind == CW_CLICK && id == "composer.send" { if s[0].live { cw_stop(s); } else { cw_send(s); } }
+  else if kind == CW_CLICK && id == "composer.send" {
+    if s[0].live { cw_stop(s); }
+    else if s[0].lrun && !cw_has_words(s) { s[0].stop_due = true; }
+    else { cw_send(s); }
+  }
+  else if kind == CW_CLICK && id == "side.new" { cw_clear(s); s[0].sel_n = 0; s[0].view = CW_CHAT; dm_focus(s[0].dom[..], "composer"); }
+  else if kind == CW_CLICK && cw_number(id, "s.") >= 0 {
+    k := cw_number(id, "s.");
+    if k < s[0].ns && !s[0].live {
+      cw_clear(s);
+      cw_show(s, cast(string) s[0].sid[k][0..<s[0].sid_n[k]], true);
+      // its agent is the one a message here goes to
+      ids := CW_MODEL_IDS; eng := cast(string) s[0].seng[k][0..<s[0].seng_n[k]];
+      for m: CW_HOSTED..<CW_MODELS { if ids[m] == eng || (eng == "microcoder" && ids[m] == "micro") { s[0].model = m; } }
+      if !cw_local_model(s[0].model) { s[0].model = CW_HOSTED; }
+      s[0].view = CW_CHAT;
+      dm_focus(s[0].dom[..], "composer");
+    }
+  }
   else if kind == CW_CLICK && id == "settings" {
     s[0].view = ifx s[0].view == CW_SETTINGS then CW_CHAT else CW_SETTINGS; s[0].menu = false; s[0].note_n = 0;
     if s[0].view == CW_SETTINGS { again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); }   // the account as it is now (a login since the page opened)
@@ -594,7 +852,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   else if kind == CW_CLICK && id == "model" { s[0].menu = !s[0].menu; }
   else if kind == CW_CLICK && cw_index(id, "model.") >= 0 {
     m := cw_index(id, "model.");
-    if m < CW_MODELS && (!cw_claude_model(m) || cw_connected(s)) { s[0].model = m; }
+    if m < CW_MODELS && (!cw_claude_model(m) || cw_connected(s)) && (!cw_local_model(m) || s[0].local == 1) { s[0].model = m; }
     s[0].menu = false;
     dm_focus(s[0].dom[..], "composer");   // a model chosen: the caret is back in the field
   }
@@ -889,11 +1147,13 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert cw_test_door(s) == "/api/chat/turn?t=31" && coaxial_chatweb_asking(s);
   cw_test_answer(s, 200, "{\"status\":\"done\",\"answer\":\"It draws **/chat-gpu**.\",\"error\":\"\",\"working\":\"\",\"tools\":[{\"name\":\"Read\",\"detail\":\"a\"}]}");
   n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert !s[0].live && !s[0].stopping && s[0].turn == 0 && cw_text(s, 1) == "It draws **/chat-gpu**." && !coaxial_chatweb_busy(s);
+  #assert !s[0].live && !s[0].stopping && s[0].turn == 0 && cw_text(s, 1) == "It draws **/chat-gpu**.";
   #assert tr_text_of(t, tr_find(t, "m.1.meta")) == "Claude Opus 5.5 · 1 tool" && tr_find(t, "m.1.copy") > 0;
   // the next one goes to the same conversation; a turn that fails says why
   cw_test_type(s, "composer", "and?");
   cw_test_enter(s, "composer");
+  // the page was asking whether Coder is here: the message waits for that answer, then goes
+  if cw_test_door(s) == "/local/sessions" { #assert s[0].send_due; cw_test_answer(s, 404, ""); }
   #assert cw_test_body(s) == "{\"c\":\"7\",\"text\":\"and?\",\"model\":\"claude-opus-5-5\"}";
   cw_test_answer(s, 200, "{\"c\": 7, \"turn\": 32}");
   for k: 0..<12 { n = coaxial_chatweb_frame(s, 0.1, true); }
@@ -921,4 +1181,125 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert tr_find(t, "m.0") < 0 && tr_find(t, tr_join(b1[..], "m.", gone - 1)) < 0 && tr_find(t, tr_join(b2[..], "m.", gone)) > 0;
   #assert tr_class(t, tr_find(t, tr_join(b3[..], "m.", s[0].total - 1))) == "msg-ai";
   #assert tr_text_of(t, tr_find(t, "earlier")) == tr_cat(b4[..], tr_join(b1[..], "", gone), " earlier messages are not shown") && t[0].lost == 0 && t[0].depth == 0;
+}
+
+// Coder answers on this machine: the account is read, then the sessions.
+cw_test_local :: (s: [] ChatWeb, sessions: string) {
+  cw_test_open(s, "{\"claude\":null}");
+  for i: 0..<4 { b := coaxial_chatweb_frame(s, 0.1, true); }
+  cw_test_answer(s, 200, sessions);
+  b := coaxial_chatweb_frame(s, 0.016, true);
+}
+CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state\":\"running\",\"turns\":1,\"steps\":4,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"fix the build\\nand more\"},{\"id\":\"20261111-010101-001\",\"engine\":\"microcoder\",\"state\":\"finished\",\"turns\":2,\"steps\":9,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"add a test\"}]";
+
+#test "where Coder answers, its sessions are listed beside the chat and its agents are in the menu; elsewhere neither shows" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  for i: 0..<4 { b := coaxial_chatweb_frame(s, 0.1, true); }
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/sessions" && coaxial_chatweb_ask(s) == 0;
+  cw_test_answer(s, 404, "not found");
+  for i: 0..<40 { b := coaxial_chatweb_frame(s, 0.1, true); }
+  #assert s[0].local == -1 && !coaxial_chatweb_asking(s) && tr_find(s[0].tree[..], "side") < 0;
+  cw_test_press(s, "model"); b := coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(s[0].tree[..], "model.0") >= 0 && tr_find(s[0].tree[..], "model.6") < 0;
+
+  tl: [1] CwTest; l := tl[0].s[..];
+  cw_test_local(l, CW_T_SESSIONS);
+  t := l[0].tree[..];
+  #assert l[0].local == 1 && l[0].ns == 2 && tr_find(t, "side") >= 0 && tr_find(t, "side.new") >= 0;
+  #assert tr_text_of(t, tr_find(t, "s.0.t")) == "fix the build" && tr_text_of(t, tr_find(t, "s.0.m")) == "claude" && tr_text_of(t, tr_find(t, "s.1.m")) == "microcoder";
+  #assert tr_text_of(t, tr_find(t, "side.run")) == "Running" && tr_text_of(t, tr_find(t, "side.recent")) == "Recent" && tr_attr_of(t, tr_find(t, "s.0"), AT_STATE) == "running";
+  cw_test_press(l, "model"); b = coaxial_chatweb_frame(l, 0.016, true);
+  #assert tr_find(t, "model.6") >= 0 && tr_find(t, "model.9") >= 0 && tr_find(t, "model.3") < 0;
+  cw_test_press(l, "model.7"); b = coaxial_chatweb_frame(l, 0.016, true);
+  #assert l[0].model == 7 && cw_model(l) == 7;
+  #assert cw_number("s.12", "s.") == 12 && cw_number("s.0", "s.") == 0 && cw_number("s.", "s.") == -1 && cw_number("s.1x", "s.") == -1 && cw_number("side.new", "s.") == -1 && cw_number("s.1234", "s.") == -1;
+}
+
+#test "a message to an agent on this machine starts a Coder session, and its log fills the transcript" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_local(s, CW_T_SESSIONS);
+  s[0].model = 6;
+  cw_test_type(s, "composer", "fix it");
+  cw_test_enter(s, "composer");
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"fix it\",\"engine\":\"claude\"}";
+  #assert s[0].count == 1 && s[0].lrun && s[0].echo && !s[0].live;
+  cw_test_answer(s, 200, "20261112-050000-001\n");
+  #assert cw_sel(s) == "20261112-050000-001" && s[0].log_next == 0;
+  b := coaxial_chatweb_frame(s, 0.016, true);
+  // its log isn't written yet: that is no error, and it is read again
+  cw_test_answer(s, 404, "");
+  #assert s[0].lrun && s[0].error_n == 0 && s[0].log_miss == 1;
+  for i: 0..<14 {
+    b = coaxial_chatweb_frame(s, 0.1, true);
+    if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/sessions" { cw_test_answer(s, 200, CW_T_SESSIONS); }
+  }
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261112-050000-001&after=0";
+  cw_test_answer(s, 200, "{\"next\":300,\"size\":300}\n{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\"}\n{\"kind\":\"user\",\"text\":\"fix it\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"result\",\"text\":\"a\"}\n{\"kind\":\"tool\",\"label\":\"Read(a.md)\\nmore\"}\n{\"kind\":\"diff\",\"path\":\"a.md\",\"adds\":1,\"dels\":0}\n");
+  // the person's message is not shown twice, and the tool calls are one run
+  #assert s[0].count == 2 && s[0].who[1] == CW_TOOL && cw_text(s, 1) == "Bash(ls)\nRead(a.md)\nEdit a.md" && s[0].lrun && s[0].log_next == 300 && !s[0].echo;
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_find(t, "l.work") >= 0 && tr_text_of(t, tr_find(t, "m.1.t.1")) == "Read(a.md)" && tr_text_of(t, tr_find(t, "composer.send.l")) == "Stop";
+  // read again a second later, from where the last piece ended
+  for i: 0..<14 {
+    b = coaxial_chatweb_frame(s, 0.1, true);
+    if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/sessions" { cw_test_answer(s, 200, CW_T_SESSIONS); }
+  }
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261112-050000-001&after=300";
+  cw_test_answer(s, 200, "{\"next\":420,\"size\":420}\n{\"kind\":\"reply\",\"text\":\"Fixed.\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":5,\"steps\":2}\n");
+  #assert s[0].count == 3 && s[0].who[2] == CW_AGENT && cw_text(s, 2) == "Fixed." && !s[0].lrun;
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "l.work") < 0;
+  // a second message goes to the same session; an ended one continues in a new session, which is then shown
+  for i: 0..<40 { b = coaxial_chatweb_frame(s, 0.1, true); if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, CW_T_SESSIONS); } }
+  cw_test_type(s, "composer", "and the docs");
+  cw_test_enter(s, "composer");
+  #assert cw_test_door(s) == "/local/send" && cw_test_body(s) == "{\"id\":\"20261112-050000-001\",\"message\":\"and the docs\"}";
+  cw_test_answer(s, 200, "{\"id\":\"20261112-050100-002\"}");
+  #assert cw_sel(s) == "20261112-050100-002" && s[0].log_next == 0 && s[0].count == 4 && s[0].echo;
+}
+
+#test "a session chosen beside the chat is shown from its log's end; Stop asks Coder to stop it" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_local(s, CW_T_SESSIONS);
+  cw_test_press(s, "s.0");
+  #assert cw_sel(s) == "20261112-042601-123" && s[0].model == 6 && s[0].count == 0;
+  b := coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/local/log?id=20261112-042601-123&after=-1";
+  cw_test_answer(s, 200, "{\"next\":90,\"size\":90}\n{\"kind\":\"user\",\"text\":\"fix the build\"}\n{\"kind\":\"reply\",\"text\":\"On it.\"}\n");
+  #assert s[0].count == 2 && s[0].who[0] == CW_YOU && s[0].lrun;
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_attr_of(s[0].tree[..], tr_find(s[0].tree[..], "s.0"), AT_CURRENT) == "true";
+  cw_test_press(s, "composer.send");
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/local/stop" && cw_test_body(s) == "{\"id\":\"20261112-042601-123\"}";
+  cw_test_answer(s, 200, "stopped");
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_answer(s, 200, "{\"next\":140,\"size\":140}\n{\"kind\":\"end\",\"ending\":\"stopped\",\"ms\":5,\"steps\":2}\n");
+  #assert !s[0].lrun && s[0].error_n == 0;
+  // the microcoder session picks Microcoder; a new chat empties the transcript
+  cw_test_press(s, "s.1");
+  #assert s[0].model == 9 && cw_sel(s) == "20261111-010101-001";
+  cw_test_answer(s, 200, "x");
+  cw_test_press(s, "side.new");
+  #assert s[0].sel_n == 0 && s[0].count == 0;
+}
+
+#test "beside the chat: what is running, then only the few most recent that ended, and never Coder's test agent" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  list: [8192] u8; n := cw_put(list[..], 0, "[");
+  num: [24] u8;
+  for k: 0..<14 {
+    if k > 0 { n = cw_put(list[..], n, ","); }
+    n = cw_put(list[..], n, "{\"id\":\"20261112-0000"); n = cw_put(list[..], n, tr_join(num[..], "", 10 + k));
+    n = cw_put(list[..], n, ifx k == 1 then "\",\"engine\":\"echo\"" else "\",\"engine\":\"codex\"");
+    n = cw_put(list[..], n, ifx k == 12 then ",\"state\":\"running\"" else ",\"state\":\"finished\"");
+    n = cw_put(list[..], n, ",\"task\":\"t\"}");
+  }
+  n = cw_put(list[..], n, "]");
+  cw_test_local(s, cast(string) list[0..<n]);
+  t := s[0].tree[..];
+  #assert s[0].ns == 14 && tr_find(t, "s.12") >= 0 && tr_find(t, "s.0") >= 0 && tr_find(t, "s.1") < 0;   // running, newest, not echo
+  #assert tr_find(t, "s.8") >= 0 && tr_find(t, "s.9") < 0 && tr_find(t, "s.13") < 0;   // eight that ended: 0, 2..8
 }

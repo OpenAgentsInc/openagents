@@ -191,6 +191,13 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, "@media (prefers-reduced-motion:reduce){.msg-ai,.acts{animation:none}}");
   // the chat page is as tall as the window and never scrolls or bounces: only what is inside it scrolls
   n = mc(out, n, "html:has(.chat),body:has(.chat){height:100%;overflow:hidden;overscroll-behavior:none}body:has(.chat){position:fixed;inset:0}");
+  // the sessions beside the chat: every Coder session on this machine, newest first
+  n = mc(out, n, ".side{position:fixed;left:0;top:0;bottom:0;width:264px;padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;overscroll-behavior:contain;border-right:1px solid var(--line-dim);scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
+  n = mc(out, n, ".side .row{padding:7px 10px}.side .row-t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .row .meta{text-transform:none;letter-spacing:0;font:11px/1.4 var(--mono)}.side>.meta{padding:10px 10px 4px}");
+  n = mc(out, n, ".side .row[data-state=running] .meta{color:var(--ink)}");
+  n = mc(out, n, ".chat:has(.side){margin-left:max(280px,calc(50% - 396px))}");
+  n = mc(out, n, ".tools{display:flex;flex-direction:column;gap:2px;margin:10px 0}.tools .work{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
+  n = mc(out, n, "@media (max-width:760px){.side{display:none}.chat:has(.side){margin-left:auto}}");
   n = mc(out, n, "@media (max-width:600px){.page{padding:20px 16px 64px;gap:36px}.list,.menu{width:100%}.msg-user{max-width:88%}}");
   n = mc(out, n, "@media (prefers-reduced-motion:reduce){*{transition:none!important}}");
   return n;

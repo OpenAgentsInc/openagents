@@ -83,11 +83,125 @@ cd_http_held :: (ss: [] CdHttpSessions, sid: string) -> int {
   return -1;
 }
 
+// The local routes: what a page on this machine (openagents.com/chat under development, through the
+// dev server's /local/ proxy) uses to show every Coder session and drive them. Beside /mcp, with the
+// same Origin rule, and one more: every request carries "X-Coder-Local: 1", a header a page on another
+// site can't send without a preflight this server never answers. So a link, an image or a form
+// somewhere else can't start a session here.
+//   GET  /sessions                    `coder ls --json`: every session, newest first
+//   GET  /log?id=ID&after=N           the session log's complete lines from byte N (-1: its last
+//                                     CD_LOCAL_CHUNK bytes), after one line {"next":N,"size":Z}
+//   POST /run   {"task","engine","model","effort","cwd"}   a detached session; the body is its ID
+//   POST /send  {"id","message"}      the session's next turn (an ended one continues in a new session)
+//   POST /stop  {"id"}
+CD_LOCAL_CHUNK :: 240000;
+
+// A session ID as Coder makes them: digits and dashes.
+cd_local_id_ok :: (id: string) -> bool {
+  if id.count == 0 || id.count > 40 { return false; }
+  for c: id { if !((c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// The value of name in a target's query ("/log?id=7&after=3" and "after" is "3"); "" when it is absent.
+cd_local_query :: (target: string, name: string) -> string {
+  at := 0; while at < target.count && target[at] != '?' { at += 1; }
+  at += 1;
+  while at < target.count {
+    e := at; while e < target.count && target[e] != '&' { e += 1; }
+    if e - at > name.count && target[at + name.count] == '=' && cast(string) target[at..<at + name.count] == name { return cast(string) target[at + name.count + 1..<e]; }
+    at = e + 1;
+  }
+  return "";
+}
+// Where to read a log of size bytes from, asked for after (a byte offset; under 0 for its end).
+cd_local_from :: (size: int, after: int) -> int {
+  if after < 0 { return ifx size > CD_LOCAL_CHUNK then size - CD_LOCAL_CHUNK else 0; }
+  return ifx after > size then size else after;
+}
+// The complete lines of chunk, which starts at byte from of a log (cut: from is inside a line, so
+// the first is dropped). RpSpan-like: where they start and end in chunk.
+CdLocalSpan :: struct { at: int; end: int; }
+cd_local_lines :: (chunk: string, cut: bool) -> CdLocalSpan {
+  at := 0;
+  if cut { while at < chunk.count && chunk[at] != 10 { at += 1; } if at < chunk.count { at += 1; } }
+  end := chunk.count;
+  while end > at && chunk[end - 1] != 10 { end -= 1; }
+  return CdLocalSpan.{at = at, end = end};
+}
+cd_local_log :: (id: string, after: int, out: [] u8) -> string {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  pb: [1400] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".jsonl");
+  path := cast(string) pb[0..<pn];
+  size := fs_size(path);
+  if dir.count == 0 || size < 0 { return ""; }
+  from := cd_local_from(size, after);
+  chunk: [CD_LOCAL_CHUNK] u8;
+  got := fs_read_at(path, from, chunk[..]);
+  if got < 0 { got = 0; }
+  span := cd_local_lines(cast(string) chunk[0..<got], after < 0 && from > 0);
+  // a line longer than a chunk is passed over, so a reader never stalls on it
+  next := ifx span.end > span.at then from + span.end else ifx got == CD_LOCAL_CHUNK then from + got else from + span.at;
+  tb: [24] u8;
+  n := cd_cat(out, 0, "{\"next\":"); n = cd_cat(out, n, cd_itoa(next, tb[..])); n = cd_cat(out, n, ",\"size\":"); n = cd_cat(out, n, cd_itoa(size, tb[..])); n = cd_cat(out, n, "}\n");
+  if span.end > span.at { n = cd_cat(out, n, cast(string) chunk[span.at..<span.end]); }
+  return cast(string) out[0..<n];
+}
+// Whether target is one of the local routes.
+cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop"; }
+cd_local_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
+  r: CdHttpReply;
+  if cd_http_header(head, "x-coder-local") != "1" { r.status = 403; return r; }
+  target := cd_http_word(head, 1); verb := cd_http_word(head, 0);
+  q := 0; while q < target.count && target[q] != '?' { q += 1; }
+  path := cast(string) target[0..<q];
+  get := path == "/sessions" || path == "/log";
+  if verb != (ifx get then "GET" else "POST") { r.status = 405; return r; }
+  ok: [1] bool; a: [12] string; na := 0;
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  if path == "/sessions" { a[0] = "ls"; a[1] = "--json"; r.body = cd_mcp_coder(a[0..<2], out, ok[..]); r.status = ifx ok[0] then 200 else 500; return r; }
+  if path == "/log" {
+    id := cd_local_query(target, "id"); after := cd_local_query(target, "after");
+    if !cd_local_id_ok(id) { r.status = 400; return r; }
+    r.body = cd_local_log(id, ifx after.count == 0 || after[0] == '-' then -1 else cd_atoi(after), out);
+    r.status = ifx r.body.count > 0 then 200 else 404;
+    return r;
+  }
+  id := cl_str(ar[..], body, "id");
+  if path == "/run" {
+    task := cl_str(ar[..], body, "task");
+    if task.count == 0 { r.status = 400; return r; }
+    a[0] = "run"; a[1] = task; a[2] = "--detach"; na = 3;
+    names := [4] string.["engine", "model", "effort", "cwd"]; flags := [4] string.["--engine", "--model", "--effort", "--cwd"];
+    for k: 0..<names.count { v := cl_str(ar[..], body, names[k]); if v.count > 0 { a[na] = flags[k]; a[na + 1] = v; na += 2; } }
+    r.body = cd_mcp_coder(a[0..<na], out, ok[..]);
+  } else if !cd_local_id_ok(id) { r.status = 400; return r; }
+  else if path == "/send" {
+    msg := cl_str(ar[..], body, "message");
+    if msg.count == 0 { r.status = 400; return r; }
+    said := cd_mcp_send_message(id, msg, out, ok[..]);
+    // the session the message went to: this one, or the new one an ended session continues in
+    lead := "The session had ended; the conversation continues in ";
+    now := id;
+    if said.count > lead.count && cast(string) said[0..<lead.count] == lead {
+      e := lead.count; while e < said.count && ((said[e] >= '0' && said[e] <= '9') || said[e] == '-') { e += 1; }
+      now = cast(string) said[lead.count..<e];
+    }
+    if ok[0] && cd_local_id_ok(now) {
+      idb: [48] u8; k := cd_cat(idb[..], 0, now);
+      n := cd_cat(out, 0, "{\"id\":\""); n = cd_cat(out, n, cast(string) idb[0..<k]); n = cd_cat(out, n, "\"}");
+      r.body = cast(string) out[0..<n];
+    } else { r.body = said; ok[0] = false; }
+  } else { a[0] = "stop"; a[1] = id; r.body = cd_mcp_coder(a[0..<2], out, ok[..]); }
+  r.status = ifx ok[0] then 200 else 500;
+  return r;
+}
+
 cd_http_reply :: (head: string, body: string, ss: [] CdHttpSessions, fresh: string, out: [] u8) -> CdHttpReply {
   r: CdHttpReply;
   if !cd_http_origin_ok(cd_http_header(head, "origin")) { r.status = 403; return r; }
   target := cd_http_word(head, 1);
   q := 0; while q < target.count && target[q] != '?' { q += 1; }
+  if cd_local_route(cast(string) target[0..<q]) { return cd_local_reply(head, body, out); }
   if cast(string) target[0..<q] != "/mcp" { r.status = 404; return r; }
   verb := cd_http_word(head, 0);
   sid := cd_http_header(head, "mcp-session-id");
@@ -214,4 +328,37 @@ cd_cmd_mcp_http :: (port: int) -> int {
   #assert cd_http_reply(sh, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}", ss[..], "fa", out[..]).status == 404;   // ended
   #assert cd_http_origin_ok("http://127.0.0.1:8080") && cd_http_origin_ok("") && cd_http_origin_ok("http://[::1]");
   #assert !cd_http_origin_ok("http://localhost.evil.example") && !cd_http_origin_ok("http://localhost:80x") && !cd_http_origin_ok("null");
+}
+
+#test "the local routes: only with the header a page elsewhere can't send, and only well-formed asks" {
+  out: [65536] u8; ss: [1] CdHttpSessions;
+  #assert cd_http_reply("GET /sessions HTTP/1.1\r\n\r\n", "", ss[..], "f", out[..]).status == 403;
+  #assert cd_http_reply("POST /run HTTP/1.1\r\n\r\n", "{\"task\":\"x\"}", ss[..], "f", out[..]).status == 403;
+  #assert cd_http_reply("POST /run HTTP/1.1\r\nX-Coder-Local: 1\r\nOrigin: https://evil.example\r\n\r\n", "{\"task\":\"x\"}", ss[..], "f", out[..]).status == 403;
+  #assert cd_http_reply("POST /sessions HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "", ss[..], "f", out[..]).status == 405;
+  #assert cd_http_reply("GET /run HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "", ss[..], "f", out[..]).status == 405;
+  #assert cd_http_reply("POST /run HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "{}", ss[..], "f", out[..]).status == 400;
+  #assert cd_http_reply("POST /send HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "{\"id\":\"../x\",\"message\":\"m\"}", ss[..], "f", out[..]).status == 400;
+  #assert cd_http_reply("POST /send HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "{\"id\":\"2026-1\"}", ss[..], "f", out[..]).status == 400;
+  #assert cd_http_reply("POST /stop HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "{}", ss[..], "f", out[..]).status == 400;
+  #assert cd_http_reply("GET /log?id=..%2Fx HTTP/1.1\r\nX-Coder-Local: 1\r\n\r\n", "", ss[..], "f", out[..]).status == 400;
+  #assert cd_local_id_ok("20261110-152212-593") && !cd_local_id_ok("") && !cd_local_id_ok("a") && !cd_local_id_ok("1/2") && !cd_local_id_ok("1.2");
+  #assert cd_local_query("/log?id=7&after=30", "id") == "7" && cd_local_query("/log?id=7&after=30", "after") == "30" && cd_local_query("/log?id=7", "after") == "" && cd_local_query("/log", "id") == "" && cd_local_query("/log?xid=7", "id") == "";
+  #assert cd_local_route("/log") && cd_local_route("/sessions") && cd_local_route("/run") && cd_local_route("/send") && cd_local_route("/stop") && !cd_local_route("/mcp") && !cd_local_route("/");
+}
+
+#test "a log is read in complete lines: from a byte, or its last chunk" {
+  #assert cd_local_from(100, -1) == 0 && cd_local_from(CD_LOCAL_CHUNK + 50, -1) == 50 && cd_local_from(100, 40) == 40 && cd_local_from(100, 400) == 100 && cd_local_from(100, 0) == 0;
+  s := cd_local_lines("ab\ncd\nef", false);
+  #assert s.at == 0 && s.end == 6;
+  s = cd_local_lines("ab\ncd\nef", true);
+  #assert s.at == 3 && s.end == 6;
+  s = cd_local_lines("abcdef", false);
+  #assert s.at == 0 && s.end == 0;
+  s = cd_local_lines("abcdef", true);
+  #assert s.at == 6 && s.end == 6;
+  s = cd_local_lines("", false);
+  #assert s.at == 0 && s.end == 0;
+  s = cd_local_lines("ab\n", false);
+  #assert s.at == 0 && s.end == 3;
 }
