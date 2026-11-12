@@ -13,7 +13,7 @@ Money is Bitcoin only: on-chain, Lightning, Spark and Taproot Assets.
 | One seed for Nostr and Bitcoin | Built and checked in Coax: NIP-06, BIP-84 and BIP-86 from one phrase, plus a public card | [book ch121](../../bitcoin/book/ch121-one-seed-for-nostr-and-bitcoin.md) |
 | Agent treasuries | 2-of-3 (agent, owner, recovery) with a timelocked recovery path, plus a capped hot wallet; scripts and PSBT flow run, network half waits for the node | [book ch122](../../bitcoin/book/ch122-agent-treasuries.md), [NIP-KEYS](../../nostr/nips/openagents/NIP-KEYS.md) |
 | Encrypted personal data | NIP-VAULT: key slots (device, Nostr key, passkey PRF, recovery code) over one master key; tier `user` built in Coax | [NIP-VAULT](../../nostr/nips/openagents/NIP-VAULT.md), `coax/lib/nostr/vault.coax` |
-| Custodial balances we hold | Inference credit in msat per key (`inference.credit`), and maker tips received into and paid out of our Spark wallet (`makers.tips`) | `coax/web/api/migrations/0066_inference_credit.sql`, `0073_maker_tips.sql` |
+| Custodial balances we hold | Inference credit in msat per key (`inference.credit`). Maker tips no longer pass through our Spark wallet: since #13210 they go from the player's wallet to the maker's own Lightning Address | `coax/web/api/migrations/0066_inference_credit.sql`, `0154_maker_direct_pay.sql` |
 | Operator treasury | The MDK treasury container and payout dispatcher (#4698, #4699, #4700, closed) were an operator wallet, not user custody | GitHub issues |
 
 ## The options
@@ -49,13 +49,13 @@ custody.
    in our ledger, capped (say 100,000 sats an account, shown), spendable
    only on our services, never withdrawable or sendable to another person.
    That is prepaid service, not a wallet.
-3. **Maker tips pay the maker directly (decision D6, decided).** Today a
-   player pays our wallet and we pay the maker. That is accepting value
-   from one person and transmitting it to another, which is what
-   money-transmission rules cover. So tips and upgrade shares change to go
-   straight from the player's wallet to the maker's Lightning Address,
-   with us only fetching and showing the invoice. The first-tip bonus
-   becomes a separate payment from our wallet to the maker.
+3. **Maker tips pay the maker directly (decision D6, built in #13210).**
+   Before, a player paid our wallet and we paid the maker. That is
+   accepting value from one person and transmitting it to another, which
+   is what money-transmission rules cover. Tips and upgrade purchases now
+   go straight from the player's wallet to the maker's Lightning Address,
+   with us only fetching, checking and showing the invoice. The first-tip
+   bonus is a separate payment from our wallet to the maker.
 4. **`name@openagents.com` Lightning Addresses, paying the person's own
    wallet.** Anyone can claim one in one tap. The invoice is made for the
    person's own Spark wallet, which receives even while the phone is

@@ -12,18 +12,27 @@
 //   POST /api/admin/makers/<realm>/code        an admin (cookie or NIP-98): a new one-time code
 //                                              -> 200 {realm, code, link}; the code is never logged or kept
 //
-// Tips (ev-maker-tips, migrations/0073_maker_tips.sql), Bitcoin over Lightning through our Spark wallet:
-//   POST /api/playtest/makers/<realm>/tip {sats}        -> 200 {invoice, payment_hash, sats, expires}: our
-//                                                         wallet's invoice; 404 unclaimed, 429, 502 no wallet
-//   POST /api/playtest/makers/<realm>/tip/<hash>        -> 200 {state: open|paid|expired, sats, payout, to}:
-//                                                         asks our wallet whether it is paid and settles it once
+// Tips (docs/verse/makers.md; owner decision D6, #13210): Bitcoin over Lightning, from the player's
+// wallet straight to the maker's own Lightning Address. Nothing of the player's enters our wallet.
+//   POST /api/playtest/makers/<realm>/tip {sats}        -> 200 {invoice, payment_hash, sats, expires, confirm, to}: the
+//                                                         maker's own invoice, asked by our server (the player's
+//                                                         network address never reaches the maker's service) and
+//                                                         checked: the exact amount, the description hash, the expiry.
+//                                                         404 unclaimed, 503 the maker changed address (ask again), 429, 502
+//   POST /api/playtest/makers/<realm>/tip/<hash> [{preimage}]
+//                                                      -> 200 {state: open|paid|expired, sats, confirm, to, bonus}:
+//                                                         paid only when confirmed, by the maker's service (LUD-21)
+//                                                         or by the preimage the player's wallet reports; counted
+//                                                         once. 402 a preimage that isn't this invoice's
 //   POST /api/admin/makers/<realm>/gift {sats}          an admin's gift from our wallet to the maker
 //   GET  /api/admin/makers/payouts, POST .../payouts/run   the payouts as lines; run the due ones now
-// A settled tip queues its payout in the same transaction; a child process sends due payouts from
-// our wallet to the maker's Lightning address (quote, keep the maker's invoice, send that invoice
-// once, ask our wallet what became of it) and retries a failed one later, backing off. The maker
-// gets the tip less the routing fee; the first player tip to each maker also carries
-// OA_MAKER_FIRST_TIP_BONUS_SATS (1,000; 0 ends the launch bonus).
+// Every rule is makerpay-policy.coax's (mp_*, in lnaddr-policy.generated.h); the LNURL fetch and its
+// checks are lnaddr.c's and coax/lib/lnaddr/lnurl.coax's. Our wallet sends only our own money: a
+// maker's first confirmed tip carries OA_MAKER_FIRST_TIP_BONUS_SATS (1,000; 0 ends the launch
+// bonus) as a payment of its own, and an admin's gift. A child process sends due payouts (quote,
+// keep the maker's invoice, send that invoice once, ask our wallet what became of it) and retries a
+// failed one later, backing off. A tip paid into our wallet before D6 is settled and paid out the
+// old way; none is made after.
 //   OA_TIP_MIN_SATS, OA_TIP_MAX_SATS   a tip's bounds (10, 100,000)
 //   OA_MAKER_DAY_PAYOUT_SATS           what payouts may send in a Chicago day (50,000)
 //
@@ -32,6 +41,7 @@
 // travels in the link's fragment and the request body, never a path or query, so it never
 // reaches a load balancer's logs.
 #include "api.h"
+#include "lnaddr-policy.generated.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -41,6 +51,11 @@
 
 #define PREFIX "/api/playtest/makers/"
 #define ADMIN_PREFIX "/api/admin/makers/"
+
+// makerpay-policy.coax's numbers this file names; makers_init checks them against the Coax.
+enum { MP_TIP = 0, MP_UPGRADE = 1, MP_NO_PROOF = 0, MP_BY_VERIFY = 1, MP_BY_WALLET = 2, MP_OK = 0, MP_MOVED = 2, MP_BAD = 4,
+       MP_FAKE = 10, MP_NO_TIP = 11, MP_S_PAID = 3, MP_S_FAKE = 5, MP_SRC_TIP = 0, MP_SRC_UPGRADE = 1, MP_SRC_BONUS = 2, MP_SRC_GIFT = 3 };
+static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
 
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
@@ -128,15 +143,19 @@ static void outcome(PGconn *db, const char *tip, const char *what, const char *f
 static void run_payouts(PGconn *db) {
   const char *cap[1] = {env_or("OA_MAKER_DAY_PAYOUT_SATS", "50000")};
   for (int k = 0; k < 8; k++) {
-    PGresult *r = PQexecParams(db, "SELECT x->>'tip', x->>'lightning', x->>'sats', x->>'invoice', x->>'expired', x->>'realm' "
+    PGresult *r = PQexecParams(db, "SELECT x->>'tip', x->>'lightning', x->>'sats', x->>'invoice', x->>'expired', x->>'realm', x->>'source', x->>'direct' "
                                    "FROM makers.payout_next(150, $1::bigint) x WHERE x IS NOT NULL", 1, NULL, cap, NULL, NULL, 0);
     if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("makers: payouts: %s", PQerrorMessage(db)); PQclear(r); return; }
     char tip[80], ln[160], sats[24], inv[2100], realm[80]; bool expired = !strcmp(PQgetvalue(r, 0, 4), "true");
     snprintf(tip, sizeof tip, "%s", PQgetvalue(r, 0, 0)); snprintf(ln, sizeof ln, "%s", PQgetvalue(r, 0, 1));
     snprintf(sats, sizeof sats, "%s", PQgetvalue(r, 0, 2)); snprintf(inv, sizeof inv, "%s", PQgetvalue(r, 0, 3));
     snprintf(realm, sizeof realm, "%s", PQgetvalue(r, 0, 5));
+    const char *sv = PQgetvalue(r, 0, 6);
+    int source = !strcmp(sv, "bonus") ? MP_SRC_BONUS : !strcmp(sv, "gift") ? MP_SRC_GIFT : !strcmp(sv, "upgrade") ? MP_SRC_UPGRADE : !strcmp(sv, "tip") ? MP_SRC_TIP : -1;
+    bool direct = !strcmp(PQgetvalue(r, 0, 7), "true");
     PQclear(r);
     char body[2400], state[32], fee[24], err[200], *w = NULL;
+    if (!mp_payout(source, direct)) { outcome(db, tip, "failed", NULL, "not ours to send: the player paid the maker", false); continue; }
     if (inv[0]) {   // an invoice kept before: what became of it?
       snprintf(body, sizeof body, "{\"invoice\":\"%s\"}", inv);
       long st = api_spark("/sent", body, 40, &w);
@@ -167,7 +186,9 @@ static void run_payouts(PGconn *db) {
         }
         api_log("makers: a first tip's bonus waits for funding");
       }
-      snprintf(body, sizeof body, "{\"address\":\"%s\",\"sats\":%s,\"comment\":\"A tip from a player of %s on OpenAgents\"}", ln, sats, realm);
+      snprintf(body, sizeof body, source == MP_SRC_BONUS ? "{\"address\":\"%s\",\"sats\":%s,\"comment\":\"Your first tip on %s: a bonus from OpenAgents\"}"
+                                : source == MP_SRC_GIFT ? "{\"address\":\"%s\",\"sats\":%s,\"comment\":\"A gift from OpenAgents for %s\"}"
+                                : "{\"address\":\"%s\",\"sats\":%s,\"comment\":\"A tip from a player of %s on OpenAgents\"}", ln, sats, realm);
       long st = api_spark("/quote", body, 40, &w);
       if (st != 200) { jget(db, w, "error", err, sizeof err); free(w); outcome(db, tip, "failed", NULL, *err ? err : "no invoice from the address", true); continue; }
       char hash[80], amount[24], expiry[24];
@@ -190,6 +211,19 @@ static void run_payouts(PGconn *db) {
     else outcome(db, tip, "failed", NULL, st ? (*err ? err : "our wallet refused it") : "our wallet did not answer", false);   // unknown: ask /sent next time
   }
 }
+// What the player's wallet reported with this request, for the child that answers it: the preimage
+// ("" for none), and whether the wallet reports one at all.
+static char asked_pre[100];
+static bool asked_reports;
+static void read_wallet(const request *q, PGconn *db) {
+  asked_pre[0] = 0; asked_reports = false;
+  if (!q->body_len || q->body_len > 512) return;
+  char body[520], reports[8];
+  memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  jget(db, body, "preimage", asked_pre, sizeof asked_pre);
+  jget(db, body, "reports", reports, sizeof reports);
+  asked_reports = !strcmp(reports, "true");
+}
 // In a child of its own (the wallet takes seconds): answer fd with tip_answer when it's set, then
 // send what is due.
 typedef void (*answer_fn)(int fd, PGconn *db, const char *slug, const char *a, const char *b);
@@ -211,33 +245,104 @@ static void sql_answer(int fd, PGconn *db, const char *sql, int n, const char *c
   else api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   PQclear(r);
 }
-// A new tip: its terms, our wallet's invoice, kept. a: the body; b: "1" when our team asks.
+// ---- a payment straight to the maker (makerpay-policy.coax decides; lnaddr.c asks the address)
+static void mp_refuse(int fd, int64_t code) {
+  coax_string w = mp_text(code);
+  char json[400];
+  snprintf(json, sizeof json, "{\"error\":\"%.*s\"}", (int)w.count, w.data);
+  api_json(fd, (int)mp_status(code), json);
+}
+// The maker's own invoice for sats, from their address addr, checked and kept: a tip for realm slug
+// (listing NULL) or player key's purchase of listing. reports: the player's wallet reports the
+// preimage. Answers fd.
+static void direct_new(int fd, PGconn *db, const char *slug, const char *listing, const char *key, const char *addr, const char *sats,
+                       const char *team, bool reports, long recent) {
+  int kind = listing ? MP_UPGRADE : MP_TIP;
+  int64_t code = mp_limit(recent);
+  if (code != MP_OK) { mp_refuse(fd, code); return; }
+  static lnaddr_quote q;
+  int64_t lu = lnaddr_invoice_of(db, addr, atoll(sats) * 1000, &q);
+  code = mp_quote(lu);
+  if (code != MP_OK) { api_log("makers: %s's address refused %lld", slug, (long long)lu); mp_refuse(fd, code); return; }
+  // the maker's address now: still the one the invoice came from?
+  const char *fv[2] = {slug, listing};
+  PGresult *f = PQexecParams(db, listing ? "SELECT lightning FROM makers.listings WHERE id = $2::bigint AND state = 'approved' AND $1::text IS NOT NULL"
+                                         : "SELECT lightning FROM makers.realms WHERE realm = $1 AND $2::text IS NULL", 2, NULL, fv, NULL, NULL, 0);
+  bool claimed = PQresultStatus(f) == PGRES_TUPLES_OK && PQntuples(f) == 1;
+  bool same = claimed && !strcmp(PQgetvalue(f, 0, 0), addr);
+  PQclear(f);
+  code = mp_issue(kind, claimed, same, q.verify[0] != 0, reports);
+  if (code != MP_OK) { mp_refuse(fd, code); return; }
+  char exp[24];
+  snprintf(exp, sizeof exp, "%lld", q.expires);
+  const char *kv[10] = {slug, listing, key, addr, sats, q.pr, q.payment_hash, q.verify, exp, team};
+  PGresult *k = PQexecParams(db, "SELECT (x->>'status')::int FROM makers.direct_keep($1, $2::bigint, makers.player_of($3), $4, $5::bigint, $6, $7, $8, $9::bigint, $10::boolean) x",
+                             10, NULL, kv, NULL, NULL, 0);
+  int kept = PQresultStatus(k) == PGRES_TUPLES_OK && PQntuples(k) == 1 ? atoi(PQgetvalue(k, 0, 0)) : 500;
+  if (kept == 500) api_log("makers: keep: %s", PQerrorMessage(db));
+  PQclear(k);
+  if (kept == 500) { api_json(fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (kept != 200) { mp_refuse(fd, kept == 502 ? MP_BAD : mp_issue(kind, kept != 404, false, true, true)); return; }
+  const char *av[3] = {q.payment_hash, q.pr, exp};
+  sql_answer(fd, db, "SELECT 200, (jsonb_build_object('invoice', $2::text, 'payment_hash', $1::text, 'expires', $3::bigint) || makers.direct_shown($1))::text", 3, av);
+  api_log("makers: %s's own invoice shown", slug);
+}
+// Where a direct payment stands, confirmed here when it can be: by the preimage the player's wallet
+// reported (pre, "" for none), else by the maker's service (LUD-21). facts is makers.direct_facts'
+// answer. Counted once; a first tip's bonus queued as our own payment. Answers fd.
+static void direct_check(int fd, PGconn *db, const char *slug, const char *hash, const char *pre, const char *facts) {
+  char found[8], direct[8], paid[8], expired[8], verify[1100], purchase[8], had[8], got[65] = "";
+  jget(db, facts, "found", found, sizeof found); jget(db, facts, "direct", direct, sizeof direct); jget(db, facts, "paid", paid, sizeof paid);
+  jget(db, facts, "expired", expired, sizeof expired); jget(db, facts, "verify", verify, sizeof verify);
+  jget(db, facts, "purchase", purchase, sizeof purchase); jget(db, facts, "had_bonus", had, sizeof had);
+  bool is_paid = !strcmp(paid, "true");
+  int proof = MP_NO_PROOF; bool ok = false;
+  if (!is_paid && pre[0]) { proof = MP_BY_WALLET; ok = mp_proof(cs(pre), cs(hash)); if (ok) snprintf(got, sizeof got, "%s", pre); }
+  else if (!is_paid && verify[0]) { proof = MP_BY_VERIFY; ok = lnaddr_settled(verify, hash, got); }
+  int64_t state = mp_check(!strcmp(found, "true"), !strcmp(direct, "true"), is_paid, proof, ok, !strcmp(expired, "true"));
+  if (mp_counts(state)) {
+    char bonus[24];
+    snprintf(bonus, sizeof bonus, "%lld", (long long)mp_bonus(!strcmp(purchase, "true") ? MP_UPGRADE : MP_TIP, state, !strcmp(had, "true"),
+                                                                atoll(env_or("OA_MAKER_FIRST_TIP_BONUS_SATS", "1000"))));
+    const char *cv[4] = {hash, proof == MP_BY_VERIFY ? "verify" : "wallet", got, bonus};
+    PGresult *k = PQexecParams(db, "SELECT (x->>'status')::int FROM makers.direct_confirm($1, $2, $3, $4::bigint) x", 4, NULL, cv, NULL, NULL, 0);
+    int st = PQresultStatus(k) == PGRES_TUPLES_OK && PQntuples(k) == 1 ? atoi(PQgetvalue(k, 0, 0)) : 500;
+    if (st == 500) api_log("makers: confirm: %s", PQerrorMessage(db));
+    PQclear(k);
+    if (st != 200) { api_json(fd, st == 500 ? 500 : 409, "{\"error\":\"not counted; ask again\"}"); return; }
+    api_log("makers: a payment to %s's maker confirmed by %s", slug, cv[1]);
+  }
+  int status = (int)mp_state_status(state);
+  if (status != 200) { mp_refuse(fd, state == MP_S_FAKE ? MP_FAKE : MP_NO_TIP); return; }
+  coax_string word = mp_state_text(state);
+  char st[16];
+  snprintf(st, sizeof st, "%.*s", (int)word.count, word.data);
+  const char *av[2] = {hash, st};
+  sql_answer(fd, db, "SELECT 200, (jsonb_build_object('state', $2::text) || makers.direct_shown($1))::text", 2, av);
+}
+// A tip: the terms, then the maker's own invoice. a: the body; b: "true" when our team asks.
 static void tip_new(int fd, PGconn *db, const char *slug, const char *body, const char *team) {
   const char *v[4] = {slug, body, env_or("OA_TIP_MIN_SATS", "10"), env_or("OA_TIP_MAX_SATS", "100000")};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'sats', x->>'memo', "
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'sats', x->>'lightning', "
                                  "(SELECT count(*) FROM makers.tips WHERE created > now() - interval '1 minute') "
                                  "FROM makers.tip_terms($1, $2, $3::bigint, $4::bigint) x", 4, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: tip: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) { api_json(fd, status, PQgetvalue(r, 0, 1)); PQclear(r); return; }
-  if (atoi(PQgetvalue(r, 0, 4)) >= 60) { api_json(fd, 429, "{\"error\":\"too many tips at once; try again in a minute\"}"); PQclear(r); return; }
-  char sats[24], ask[400], *w = NULL;
-  snprintf(sats, sizeof sats, "%s", PQgetvalue(r, 0, 2));
-  const char *mv[1] = {PQgetvalue(r, 0, 3)};
-  PGresult *j = PQexecParams(db, "SELECT json_build_object('sats', $2::bigint, 'memo', $1::text, 'expiry', 900)::text", 2, NULL, (const char *[]){mv[0], sats}, NULL, NULL, 0);
-  snprintf(ask, sizeof ask, "%s", PQresultStatus(j) == PGRES_TUPLES_OK ? PQgetvalue(j, 0, 0) : "{}");
-  PQclear(j); PQclear(r);
-  long st = api_spark("/invoice", ask, 30, &w);
-  if (st != 200 || !w) { free(w); api_json(fd, 502, "{\"error\":\"our wallet did not make an invoice; try again soon\"}"); return; }
-  char inv[2100], hash[80], msat[24], exp[24];
-  jget(db, w, "invoice", inv, sizeof inv); jget(db, w, "payment_hash", hash, sizeof hash); jget(db, w, "amount_msat", msat, sizeof msat); jget(db, w, "expiry", exp, sizeof exp);
-  free(w);
-  const char *iv[7] = {slug, sats, inv, hash, msat, exp, team};
-  sql_answer(fd, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.tip_issue($1, $2::bigint, $3, $4, $5::bigint, $6::bigint, $7::boolean) x", 7, iv);
+  char sats[24], addr[200];
+  snprintf(sats, sizeof sats, "%s", PQgetvalue(r, 0, 2)); snprintf(addr, sizeof addr, "%s", PQgetvalue(r, 0, 3));
+  long recent = atol(PQgetvalue(r, 0, 4));
+  PQclear(r);
+  direct_new(fd, db, slug, NULL, NULL, addr, sats, team, false, recent);
 }
-// Is it paid? Our wallet's record of the invoice, settled once.
-static void tip_check(int fd, PGconn *db, const char *slug, const char *hash, const char *unused) {
-  (void)unused;
+// Is a tip paid? b: the preimage the player's wallet reported, or "". A tip whose invoice was our
+// wallet's (before D6) is settled from our wallet's record, once, as it always was.
+static void tip_check(int fd, PGconn *db, const char *slug, const char *hash, const char *pre) {
+  const char *dv[2] = {hash, slug};
+  PGresult *d = PQexecParams(db, "SELECT x::text, (x->>'found')::boolean AND NOT (x->>'direct')::boolean FROM makers.direct_facts($1, $2, NULL, NULL) x", 2, NULL, dv, NULL, NULL, 0);
+  if (PQresultStatus(d) != PGRES_TUPLES_OK || PQntuples(d) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(d); return; }
+  if (strcmp(PQgetvalue(d, 0, 1), "t")) { direct_check(fd, db, slug, hash, pre, PQgetvalue(d, 0, 0)); PQclear(d); return; }
+  PQclear(d);
   const char *v[2] = {slug, hash};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'state', x->>'invoice', (x - 'status' - 'invoice')::text FROM makers.tip_state($1, $2) x", 2, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
@@ -247,9 +352,9 @@ static void tip_check(int fd, PGconn *db, const char *slug, const char *hash, co
   PQclear(r);
   long st = api_spark("/paid", body, 30, &w);
   if (st == 200 && w) {
-    char state[32], amount[24], pre[80];
-    jget(db, w, "state", state, sizeof state); jget(db, w, "amount_msat", amount, sizeof amount); jget(db, w, "preimage", pre, sizeof pre);
-    const char *sv[5] = {hash, state, *amount ? amount : NULL, pre, env_or("OA_MAKER_FIRST_TIP_BONUS_SATS", "1000")};
+    char state[32], amount[24], opre[80];
+    jget(db, w, "state", state, sizeof state); jget(db, w, "amount_msat", amount, sizeof amount); jget(db, w, "preimage", opre, sizeof opre);
+    const char *sv[5] = {hash, state, *amount ? amount : NULL, opre, env_or("OA_MAKER_FIRST_TIP_BONUS_SATS", "1000")};
     PGresult *k = PQexecParams(db, "SELECT x->>'status' FROM makers.tip_settle($1, $2, $3::bigint, $4, $5::bigint) x", 5, NULL, sv, NULL, NULL, 0);
     if (PQresultStatus(k) != PGRES_TUPLES_OK) api_log("makers: settle: %s", PQerrorMessage(db));
     else if (!strcmp(PQgetvalue(k, 0, 0), "200")) api_log("makers: a tip for %s paid", slug);
@@ -336,7 +441,9 @@ bool makers_route(const request *q) {
   }
   if (post && !strncmp(what, "tip/", 4)) {
     if (!hex64(what + 4)) { api_json(q->fd, 404, "{\"error\":\"no such tip\"}"); return true; }
-    in_child(q->fd, slug, what + 4, NULL, tip_check);
+    if (q->body_len > 512) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+    read_wallet(q, db);
+    in_child(q->fd, slug, what + 4, asked_pre, tip_check);
     return true;
   }
   if (!*what && !post) {
@@ -365,45 +472,45 @@ bool makers_route(const request *q) {
 // ---- listed upgrades (ev-asset-upgrades, migrations/0077_fairy_upgrades.sql, docs/verse/makers.md)
 //   GET  /api/playtest/upgrades/fairy             -> 200 {top: the three approved fairies, wearing, pending (an admin's), admin}
 //   POST /api/playtest/upgrades/fairy {name, by, look, sats, lightning}   a logged-in maker lists one; it waits for an admin
-//   POST /api/playtest/upgrades/<id>/buy {pay: "sats"}     -> 200 {invoice, payment_hash, sats, expires}: our wallet's invoice
-//   POST /api/playtest/upgrades/<id>/buy {pay: "credit"}   -> 200 {state: paid, look, credit_msat}: from the logged-in key's
-//                                                            inference credit; 401 not logged in, 402 not enough
-//   POST /api/playtest/upgrades/<id>/buy/<hash>   -> 200 {state: open|paid|expired, look, payout}: settled once when paid
+//   POST /api/playtest/upgrades/<id>/buy {pay: "sats", reports?}   -> 200 {invoice, payment_hash, sats, expires, confirm}: the
+//                                                            maker's own invoice (as a tip's). reports: the player's
+//                                                            wallet reports the preimage. 422 when neither that wallet
+//                                                            nor the maker's service could confirm the payment.
+//                                                            {pay: "credit"} -> 400: service credit never buys an upgrade
+//   POST /api/playtest/upgrades/<id>/buy/<hash> [{preimage}]   -> 200 {state: open|paid|expired, look, confirm}: yours
+//                                                            once confirmed, counted once; 402 a preimage not this invoice's
 //   POST /api/playtest/upgrades/<id>/wear          wear what you bought (id 0: the fairy you made)
 //   GET  /api/admin/upgrades, POST /api/admin/upgrades/<id>/approve|reject   an admin's
 // The buyer is the playtest player (X-Verse-Player): what they wear goes out with the room's presence
-// (verse.room_seen), so everyone in the forest draws it. A paid purchase is a tip for the listing's
-// maker: its payout is queued in the same transaction and sent by run_payouts.
+// (verse.room_seen), so everyone in the forest draws it. The price goes from the buyer's wallet
+// straight to the listing's Lightning Address (owner decision D6, #13210); it never enters ours.
 #define UP_PREFIX "/api/playtest/upgrades/"
 #define UP_ADMIN "/api/admin/upgrades"
 
-// A new purchase in sats: the terms, our wallet's invoice, kept. id: the listing; key: the player key; team "true"/"false".
-static void buy_new(int fd, PGconn *db, const char *id, const char *key, const char *team) {
+// A new purchase: the terms, then the maker's own invoice. id: the listing; key: the player key;
+// flags: "t" or "f" for our team, then for a wallet that reports the preimage.
+static void buy_new(int fd, PGconn *db, const char *id, const char *key, const char *flags) {
   const char *v[2] = {id, key};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'sats', x->>'memo', "
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lightning')::text, x->>'sats', x->>'lightning', "
                                  "(SELECT count(*) FROM makers.tips WHERE created > now() - interval '1 minute') "
                                  "FROM makers.buy_terms($1::bigint, makers.player_of($2)) x", 2, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("upgrades: buy: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) { api_json(fd, status, PQgetvalue(r, 0, 1)); PQclear(r); return; }
-  if (atoi(PQgetvalue(r, 0, 4)) >= 60) { api_json(fd, 429, "{\"error\":\"too many at once; try again in a minute\"}"); PQclear(r); return; }
-  char sats[24], ask[400], *w = NULL;
-  snprintf(sats, sizeof sats, "%s", PQgetvalue(r, 0, 2));
-  const char *jv[2] = {PQgetvalue(r, 0, 3), sats};
-  PGresult *j = PQexecParams(db, "SELECT json_build_object('sats', $2::bigint, 'memo', $1::text, 'expiry', 900)::text", 2, NULL, jv, NULL, NULL, 0);
-  snprintf(ask, sizeof ask, "%s", PQresultStatus(j) == PGRES_TUPLES_OK ? PQgetvalue(j, 0, 0) : "{}");
-  PQclear(j); PQclear(r);
-  long st = api_spark("/invoice", ask, 30, &w);
-  if (st != 200 || !w) { free(w); api_json(fd, 502, "{\"error\":\"our wallet did not make an invoice; try again soon\"}"); return; }
-  char inv[2100], hash[80], msat[24], exp[24];
-  jget(db, w, "invoice", inv, sizeof inv); jget(db, w, "payment_hash", hash, sizeof hash); jget(db, w, "amount_msat", msat, sizeof msat); jget(db, w, "expiry", exp, sizeof exp);
-  free(w);
-  const char *iv[7] = {id, key, inv, hash, *msat ? msat : "0", *exp ? exp : "0", team};
-  sql_answer(fd, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.buy_issue($1::bigint, makers.player_of($2), $3, $4, $5::bigint, $6::bigint, $7::boolean) x", 7, iv);
-  if (*hash) api_log("upgrades: an invoice for listing %s", id);
+  char sats[24], addr[200];
+  snprintf(sats, sizeof sats, "%s", PQgetvalue(r, 0, 2)); snprintf(addr, sizeof addr, "%s", PQgetvalue(r, 0, 3));
+  long recent = atol(PQgetvalue(r, 0, 4));
+  PQclear(r);
+  direct_new(fd, db, id, id, key, addr, sats, flags[0] == 't' ? "true" : "false", flags[1] == 't', recent);
 }
-// Is a purchase paid? Our wallet's record of its invoice, settled once. idhash: "<id>/<hash>"; key: the player key.
+// Is a purchase paid? The preimage the player's wallet reported is asked_pre. A purchase whose
+// invoice was our wallet's (before D6) is settled from our wallet's record, once, as it always was.
 static void buy_check(int fd, PGconn *db, const char *id, const char *hash, const char *key) {
+  const char *dv[3] = {hash, id, key};
+  PGresult *d = PQexecParams(db, "SELECT x::text, (x->>'found')::boolean AND NOT (x->>'direct')::boolean FROM makers.direct_facts($1, NULL, $2::bigint, makers.player_of($3)) x", 3, NULL, dv, NULL, NULL, 0);
+  if (PQresultStatus(d) != PGRES_TUPLES_OK || PQntuples(d) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(d); return; }
+  if (strcmp(PQgetvalue(d, 0, 1), "t")) { direct_check(fd, db, id, hash, asked_pre, PQgetvalue(d, 0, 0)); PQclear(d); return; }
+  PQclear(d);
   const char *v[3] = {id, hash, key};
   const char *q = "SELECT (x->>'status')::int, x->>'state', x->>'invoice', (x - 'status' - 'invoice')::text FROM makers.buy_state($1::bigint, $2, makers.player_of($3)) x";
   PGresult *r = PQexecParams(db, q, 3, NULL, v, NULL, NULL, 0);
@@ -494,6 +601,8 @@ bool upgrades_route(const request *q) {
   }
   if (!strncmp(what, "buy/", 4)) {
     if (!hex64(what + 4)) { api_json(q->fd, 404, "{\"error\":\"no such purchase\"}"); return true; }
+    if (q->body_len > 512) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+    read_wallet(q, db);
     char hash[65]; snprintf(hash, sizeof hash, "%s", what + 4);
     char keyc[160]; snprintf(keyc, sizeof keyc, "%s", key);
     // in_child hands answer_with (fd, db, slug, a, b): the listing, the hash, the player key
@@ -514,18 +623,34 @@ bool upgrades_route(const request *q) {
   bool team = in && admin_is(who);
   if (!team && api_header(q, "Cookie", cookies, sizeof cookies))
     for (const char *c = strstr(cookies, "oa_team=1"); c && !team; c = strstr(c + 1, "oa_team=1")) team = c == cookies || c[-1] == ' ' || c[-1] == ';';
-  if (!strcmp(pay, "credit")) {
-    const char *v[4] = {id, key, in ? who : NULL, team ? "true" : "false"};
-    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.buy_credit($1::bigint, makers.player_of($2), $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("upgrades: credit: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return true; }
-    int status = atoi(PQgetvalue(r, 0, 0));
-    api_json(q->fd, status, PQgetvalue(r, 0, 1));
-    PQclear(r);
-    if (status == 200) { api_log("upgrades: listing %s bought with credit", id); in_child(-1, id, NULL, NULL, NULL); }
-    return true;
-  }
-  if (*pay && strcmp(pay, "sats")) { api_json(q->fd, 400, "{\"error\":\"pay with sats or credit\"}"); return true; }
+  int64_t code = mp_pay(cs(pay));   // sats only: service credit never buys an upgrade
+  if (code != MP_OK) { mp_refuse(q->fd, code); return true; }
+  read_wallet(q, db);
+  char flags[3] = {team ? 't' : 'f', asked_reports ? 't' : 'f', 0};
   char keyc[160]; snprintf(keyc, sizeof keyc, "%s", key);
-  in_child(q->fd, id, keyc, team ? "true" : "false", buy_new);
+  in_child(q->fd, id, keyc, flags, buy_new);
   return true;
+}
+
+// makers.c's numbers against makerpay-policy.coax, at start.
+void makers_init(void) {
+  bool ok = mp_issue(MP_TIP, true, true, false, false) == MP_OK && mp_issue(MP_UPGRADE, true, true, false, false) != MP_OK
+         && mp_issue(MP_TIP, true, false, true, true) == MP_MOVED && mp_quote(23) == MP_BAD && mp_status(MP_FAKE) == 402 && mp_status(MP_NO_TIP) == 404
+         && mp_check(true, true, false, MP_BY_VERIFY, true, false) == MP_S_PAID && mp_check(true, true, false, MP_BY_WALLET, false, false) == MP_S_FAKE
+         && mp_check(true, true, false, MP_NO_PROOF, true, false) != MP_S_PAID && mp_counts(MP_S_PAID) && !mp_counts(MP_S_FAKE)
+         && mp_bonus(MP_TIP, MP_S_PAID, false, 7) == 7 && mp_bonus(MP_UPGRADE, MP_S_PAID, false, 7) == 0
+         && mp_payout(MP_SRC_BONUS, true) && mp_payout(MP_SRC_GIFT, true) && !mp_payout(MP_SRC_TIP, true) && !mp_payout(MP_SRC_UPGRADE, true)
+         && mp_payout(MP_SRC_TIP, false) && mp_payout(MP_SRC_UPGRADE, false) && mp_pay(cs("credit")) != MP_OK && mp_pay(cs("sats")) == MP_OK;
+  if (!ok) { fprintf(stderr, "api: makers.c and makerpay-policy.coax disagree on their numbers\n"); exit(2); }
+}
+
+// /docs/limits (api --limits), after the Lightning Address section: what a tip or a purchase is held to.
+void makers_print_limits(FILE *out) {
+  fprintf(out, "\n## Tips and upgrades\n\nPaid from your wallet straight to the maker's own Lightning Address.\n\n"
+               "| What | Limit |\n| --- | --- |\n");
+  fprintf(out, "| A tip | %s to %s sats, within what the maker's wallet takes |\n", env_or("OA_TIP_MIN_SATS", "10"), env_or("OA_TIP_MAX_SATS", "100000"));
+  fprintf(out, "| An upgrade's price | %s to %s sats |\n", env_or("OA_UPGRADE_MIN_SATS", "10"), env_or("OA_UPGRADE_MAX_SATS", "100000"));
+  fprintf(out, "| Invoices asked of makers' wallets, all players | %lld a minute |\n", (long long)mp_per_min());
+  fprintf(out, "| The maker's wallet's time to answer | 5 seconds |\n");
+  fprintf(out, "\nThis section is made from the server's own numbers (`coax/web/api/makers.c`, `makerpay-policy.coax`).\n");
 }

@@ -54,7 +54,7 @@
 #load "fairytools.coax";   // tools made with CRAFT
 #load "fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
 #load "fairymap.coax";     // the map: the park from above with its names
-#load "fairyupgrade.coax"; // UPGRADE: fairies made by players, bought with sats or credit (ev-asset-upgrades)
+#load "fairyupgrade.coax"; // UPGRADE: fairies made by players, paid in sats straight to their maker (ev-asset-upgrades, #13210)
 #load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;

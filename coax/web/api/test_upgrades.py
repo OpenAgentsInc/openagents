@@ -1,7 +1,8 @@
-# Listed upgrades (ev-asset-upgrades, makers.c, migrations/0077_fairy_upgrades.sql) against the fake Spark
-# wallet test_inference.py serves and the payout fakes test_makers_tips.py adds: a maker lists a fairy,
-# an admin approves it, it shows under UPGRADE, a player buys it with sats or with credit, wears it,
-# everyone in the room sees its look, and the maker's share is paid out once.
+# Listed upgrades (makers.c, makerpay-policy.coax, migrations/0077_fairy_upgrades.sql and 0154_maker_direct_pay.sql)
+# against the fake Lightning Address services test_makers_tips.py adds: a maker lists a fairy, an admin
+# approves it, it shows under UPGRADE, a player buys it by paying the maker's own invoice, wears it
+# once the payment is confirmed, and everyone in the room sees its look. Service credit never buys one
+# (owner decision D6, #13210).
 # test.py runs this file after test_makers_tips.py (the name sorts after it) and uses its helpers.
 import tempfile
 
@@ -28,7 +29,6 @@ def up_call(method, path, obj=None, player=None, keyfile=None, origin=True):
     except ValueError: return s, b.decode()
 
 
-wallet["extra"] = {"/quote": tw_quote, "/send": tw_send, "/sent": tw_sent}   # test_makers_tips.py took them off at its end
 up_ann, up_bo = up_mint(), up_mint()
 fairy = {"name": "Moonmoth Queen", "by": "Ted", "look": UP_LOOK, "sats": 500, "lightning": "ted@getalby.com"}
 
@@ -66,33 +66,36 @@ check("upgrades: an approved listing shows under UPGRADE", s == 200 and [x["id"]
       and b["top"][1]["name"] == "Moonmoth Queen" and b["top"][1]["by"] == "Ted" and b["top"][1]["sats"] == 500
       and b["top"][1]["look"] == UP_LOOK and b["top"][1]["owned"] is False, (s, b))
 
-# sats: our wallet's invoice, paid, settled once
+# sats: the maker's own invoice, confirmed, counted once
+up_invoices = sum(1 for p, _ in wallet["asked"] if p == "/invoice"); up_payouts = sql("select count(*) from makers.payouts")
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "sats"})
 check("upgrades: buying needs a player", s == 403, (s, b))
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "sats"}, player=up_ann["key"])
 up_hash = b.get("payment_hash", ""); up_inv = b.get("invoice", "")
-check("upgrades: buying with sats is our wallet's invoice for the price", s == 200 and up_inv.startswith("lnbc") and b["sats"] == 500 and len(up_hash) == 64
-      and wallet["last"]["sats"] == 500 and "Moonmoth Queen" in wallet["last"]["memo"], (s, b))
+check("upgrades: buying is the maker's own invoice for the price", s == 200 and up_hash in ln["made"] and up_inv == ln["made"][up_hash]["pr"] and b["sats"] == 500
+      and ln["made"][up_hash]["msat"] == 500000 and ln["made"][up_hash]["address"] == "ted@getalby.com" and b["confirm"] == "verify", (s, b))
+check("upgrades: the buyer never learns the maker's address or its service", "getalby" not in json.dumps(b) and "verify/" not in json.dumps(b), b)
+check("upgrades: our wallet made no invoice", sum(1 for p, _ in wallet["asked"] if p == "/invoice") == up_invoices)
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash}", {}, player=up_bo["key"])
 check("upgrades: someone else's purchase isn't theirs to see", s == 404, (s, b))
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash}", {"preimage": ln["made"][up_hash]["pre"]}, player=up_bo["key"])
+check("upgrades: or to confirm", s == 404, (s, b))
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash}", {}, player=up_ann["key"])
 check("upgrades: unpaid, it is open", s == 200 and b["state"] == "open", (s, b))
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash}", {"preimage": "11" * 32}, player=up_ann["key"])
+check("upgrades: a fake preimage buys nothing", s == 402, (s, b))
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/wear", {}, player=up_ann["key"])
 check("upgrades: not bought, not worn", s == 403, (s, b))
-tw["send_mode"] = ["completed"]; up_sends = len(tw["sends"])
-wallet["paid"][up_inv]["state"] = "completed"
+ln["settled"].add(up_hash)
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash}", {}, player=up_ann["key"])
-check("upgrades: paid, it is bought and its look comes back", s == 200 and b["state"] == "paid" and b["look"] == UP_LOOK, (s, b))
+check("upgrades: the maker's service says settled: it is bought and its look comes back", s == 200 and b["state"] == "paid" and b["look"] == UP_LOOK and b["id"] == up_id, (s, b))
 check("upgrades: the purchase is kept once in the replay ledger", sql(f"select count(*) from inference.used_payments where replay_key like '%{up_hash}'") == "1")
-check("upgrades: the maker's payout is sent to their address, the price less the fee",
-      tw_wait(lambda: tw_payout(up_hash) == "sent|500|0") and sql(f"select source || '|' || lightning from makers.payouts where tip = '{up_hash}'") == "upgrade|ted@getalby.com",
-      tw_payout(up_hash))
-check("upgrades: the quote asked the maker's address for the price", any(q["address"] == "ted@getalby.com" and q["sats"] == 500 for q in tw["quotes"]), tw["quotes"][-2:])
+check("upgrades: kept as paid straight to the maker, with its proof",
+      sql(f"select direct::text || '|' || confirmed_by || '|' || paid_with || '|' || lightning from makers.tips where payment_hash = '{up_hash}'") == "true|verify|sats|ted@getalby.com")
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash}", {}, player=up_ann["key"])
-time.sleep(0.5)
-check("upgrades: asked again, nothing is paid twice", s == 200 and b["state"] == "paid" and len(tw["sends"]) == up_sends + 1
-      and sql(f"select count(*) from makers.payouts where tip = '{up_hash}'") == "1", (s, b, len(tw["sends"]) - up_sends))
-check("upgrades: the first purchase carries no first-tip bonus", sql(f"select bonus_sats from makers.payouts where tip = '{up_hash}'") == "0")
+check("upgrades: asked again, it is counted once", s == 200 and b["state"] == "paid"
+      and sql(f"select count(*) from inference.used_payments where replay_key like '%{up_hash}'") == "1", (s, b))
+check("upgrades: a purchase has no payout from our wallet and no first-tip bonus", sql("select count(*) from makers.payouts") == up_payouts)
 
 s, b = up_call("GET", "/api/playtest/upgrades/fairy", player=up_ann["key"])
 check("upgrades: the buyer wears it, and owns it", s == 200 and b["wearing"]["id"] == up_id and b["wearing"]["look"] == UP_LOOK
@@ -116,26 +119,43 @@ check("upgrades: back in the fairy you made, the room carries no look", s == 200
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/wear", {}, player=up_ann["key"])
 check("upgrades: what you bought you wear again", s == 200 and b["look"] == UP_LOOK, (s, b))
 
-# credit: the inference credit ledger
-s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "credit"}, player=up_bo["key"])
-check("upgrades: credit needs a login", s == 401, (s, b))
-sql(f"insert into inference.credit (pubkey, msat) values ('{up_buyer_pk}', 400000) on conflict (pubkey) do update set msat = 400000")
+# service credit never buys an upgrade (decision D4: credit pays only for our own services)
+sql(f"insert into inference.credit (pubkey, msat) values ('{up_buyer_pk}', 600000) on conflict (pubkey) do update set msat = 600000")
 s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "credit"}, player=up_bo["key"], keyfile=up_buyer_key)
-check("upgrades: not enough credit is a 402, and nothing is taken", s == 402 and b["credit_msat"] == 400000 and sql(f"select msat from inference.credit where pubkey = '{up_buyer_pk}'") == "400000", (s, b))
-sql(f"update inference.credit set msat = 600000 where pubkey = '{up_buyer_pk}'")
-up_sends = len(tw["sends"])
-time.sleep(1.1)   # a NIP-98 event is its second and its body: the same one again is a replay
-s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "credit"}, player=up_bo["key"], keyfile=up_buyer_key)
-check("upgrades: bought with credit, the price comes out of it", s == 200 and b["state"] == "paid" and b["look"] == UP_LOOK and b["credit_msat"] == 100000
-      and sql(f"select msat from inference.credit where pubkey = '{up_buyer_pk}'") == "100000", (s, b))
-up_ctip = sql(f"select payment_hash from makers.tips where listing = {up_id} and paid_with = 'credit'")
-check("upgrades: a credit purchase pays the maker too", tw_wait(lambda: tw_payout(up_ctip) == "sent|500|0") and len(tw["sends"]) == up_sends + 1, tw_payout(up_ctip))
-time.sleep(1.1)
-s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "credit"}, player=up_bo["key"], keyfile=up_buyer_key)
-check("upgrades: what was bought with credit isn't sold again", s == 409, (s, b))
+check("upgrades: credit is refused by name, and nothing is taken", s == 400 and "credit" in b["error"] and "Bitcoin" in b["error"]
+      and sql(f"select msat from inference.credit where pubkey = '{up_buyer_pk}'") == "600000"
+      and sql(f"select count(*) from makers.tips where listing = {up_id} and buyer = '{up_bo['id']}'") == "0", (s, b))
+check("upgrades: the old rule's function refuses too", sql(f"select makers.buy_credit({up_id}, '{up_bo['id']}', '{up_buyer_pk}', false)->>'status'") == "400"
+      and sql(f"select msat from inference.credit where pubkey = '{up_buyer_pk}'") == "600000")
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "card"}, player=up_bo["key"])
+check("upgrades: sats is the only way to pay", s == 400, (s, b))
+
+# a maker whose service can't confirm: offered only to a wallet that reports the payment
+ln["verify"] = False
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "sats"}, player=up_bo["key"])
+check("upgrades: no way to confirm, no invoice: nobody pays for something we couldn't deliver", s == 422 and "invoice" not in b and "confirm" in b["error"]
+      and sql(f"select count(*) from makers.tips where listing = {up_id} and buyer = '{up_bo['id']}'") == "0", (s, b))
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "sats", "reports": True}, player=up_bo["key"])
+up_hash2 = b.get("payment_hash", "")
+check("upgrades: a wallet that reports the payment gets the maker's invoice", s == 200 and b["confirm"] == "wallet" and up_hash2 in ln["made"], (s, b))
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash2}", {}, player=up_bo["key"])
+check("upgrades: unconfirmed, it is not theirs", s == 200 and b["state"] == "open" and up_call("POST", f"/api/playtest/upgrades/{up_id}/wear", {}, player=up_bo["key"])[0] == 403, (s, b))
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash2}", {"preimage": ln["made"][up_hash]["pre"]}, player=up_bo["key"])
+check("upgrades: the first buyer's preimage doesn't buy it for the second", s == 402, (s, b))
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy/{up_hash2}", {"preimage": ln["made"][up_hash2]["pre"]}, player=up_bo["key"])
+check("upgrades: the wallet's preimage hashes to the invoice: bought", s == 200 and b["state"] == "paid" and b["look"] == UP_LOOK, (s, b))
+ln["verify"] = True
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id}/buy", {"pay": "sats"}, player=up_bo["key"])
+check("upgrades: what was bought isn't sold again", s == 409, (s, b))
+check("upgrades: still no payout of a buyer's money", sql("select count(*) from makers.payouts") == up_payouts)
 up_call("POST", RF, {"x": 2, "z": 2, "after": 0}, player=up_bo["key"])
 s, b = up_call("POST", RF, {"x": 1, "z": 1, "after": 0}, player=up_ann["key"])
-check("upgrades: and the credit buyer is seen in it too", {o["id"]: o for o in b.get("others", [])}.get(up_bo["id"], {}).get("look") == UP_LOOK, b)
+check("upgrades: and the second buyer is seen in it too", {o["id"]: o for o in b.get("others", [])}.get(up_bo["id"], {}).get("look") == UP_LOOK, b)
+# a listing whose maker changes address between the ask and the invoice
+ln["hook"] = lambda: sql(f"update makers.listings set lightning = 'moved@wallet.example' where id = {up_id2}")
+s, b = up_call("POST", f"/api/playtest/upgrades/{up_id2}/buy", {"pay": "sats"}, player=up_bo["key"])
+ln["hook"] = None
+check("upgrades: the maker changed address while we asked: no invoice, ask again", s == 503 and "changed" in b["error"], (s, b))
 s, b = up_call("POST", f"/api/admin/upgrades/{up_id}/reject", {}, keyfile=os.environ["ADMIN_KEY"])
 s, b = up_call("GET", "/api/playtest/upgrades/fairy", player=up_ann["key"])
 up_call("POST", RF, {"x": 1, "z": 1, "after": 0}, player=up_ann["key"])
@@ -144,4 +164,3 @@ check("upgrades: a rejected listing leaves UPGRADE and the room", up_id not in [
       and "look" not in {o["id"]: o for o in b2["others"]}[up_ann["id"]], (b, b2))
 check("upgrades: a page of another site can't buy",
       call("POST", f"/api/playtest/upgrades/{up_id2}/buy", b"{}", {"Origin": "https://evil.example", "X-Verse-Player": up_bo["key"]})[0] == 403)
-wallet["extra"] = {}

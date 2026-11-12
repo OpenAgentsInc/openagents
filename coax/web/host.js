@@ -51,7 +51,9 @@
 //   coaxial_pad(state, x, y, button) a controller's left stick (x right, y forward) and first button, once a frame
 //   coaxial_hash(state, length) the location's hash (without '#') in the inbox, at load and on every change
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
-//                             out: 1 navigates to the outbox's URL (under data-root, if the page has one; or an https:// URL), 2 copies its text, 3 makes it the
+//                             out: 1 navigates to the outbox's URL (under data-root, if the page has one; or an https:// URL; a
+//                             lightning: invoice is paid by this browser's WebLN wallet when it has one, whose
+//                             preimage comes back as message 615, else it opens the device's wallet), 2 copies its text, 3 makes it the
 //                             location's hash (empty: none), in place, 4 keeps it in this browser (one
 //                             text per save slot, in IndexedDB, else localStorage; given back on the next visit as
 //                             message 4; the slot is the page's data-slot, a realm's own, else the app's name), 5 keeps it as the browser's playtest player ({key, id, account},
@@ -3684,7 +3686,15 @@ function after(gesture, tap = false) {
     if(!packet){call("coaxial_action_done");send(604,"Action output unavailable");return;}
     const text = new TextDecoder().decode(packet.view.slice());
     call("coaxial_action_done");
-    if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) tabLocation.assign(text); else if (text.startsWith("/")) navigateTo(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
+    // A Lightning invoice goes to a wallet. One in this browser (WebLN: the app's own wallet, an
+    // extension) pays it here and reports the preimage, which the page hears as message 615 and
+    // sends on as proof (docs/verse/makers.md); with none, or when it declines, the device's wallet opens.
+    if (code === 1 && /^lightning:ln[a-z0-9]+$/i.test(text) && typeof globalThis.webln?.sendPayment === "function") {
+      Promise.resolve(globalThis.webln.enable?.()).then(() => globalThis.webln.sendPayment(text.slice(10)))
+        .then((paid) => { const pre = String(paid?.preimage ?? "").toLowerCase(); if (/^[0-9a-f]{64}$/.test(pre)) send(615, pre); })
+        .catch(() => tabLocation.assign(text));
+    }
+    else if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) tabLocation.assign(text); else if (text.startsWith("/")) navigateTo(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
     // A copy or cut: the app chose the text (never a masked field's); this runs
     // inside the key event, so the browser lets it reach the clipboard.
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});

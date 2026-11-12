@@ -44,7 +44,9 @@ secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 "$cli_coax" c "$here/lnaddr-policy.coax" --run-steps 250000000 --library --header "$work/lnaddr-policy.generated.h" > "$work/lnaddr-policy.generated.c"
 "$cli_coax" c "$here/auth-device-policy.coax" --library --header "$work/auth-device-policy.generated.h" > "$work/auth-device-policy.generated.c"
 "$cli_coax" c "$here/auth-device-crypto.coax" --run-steps 250000000 --library --header "$work/auth-device-crypto.generated.h" > "$work/auth-device-crypto.generated.c"
-$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+# OA_LNADDR_TEST_FETCH: this build's Lightning Address fetches go to the fake services on SPARK_PORT
+# (test_makers_tips.py); the image is built without it and fetches only public https hosts.
+$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH -fsanitize=address,undefined \
   -I"$work" -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
   -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c "$here"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "$here"/auth.c "$work"/auth-policy.generated.c "$here"/auth-seal-unit.c "$here"/lnaddr.c "$here"/lnaddr-unit.c "$here"/agents.c "$here"/agent-wire-unit.c "$here"/agent-attest-unit.c "$here"/auth-recover.c "$work"/auth-recover-policy.generated.c "$here"/auth-life.c "$work"/auth-life-policy.generated.c "$here"/auth-recover-crypto-unit.c "$here"/auth-device.c "$work"/auth-device-policy.generated.c "$here"/auth-device-crypto-unit.c "$here"/passkeys.c "$work"/passkey-policy.generated.c "$here"/passkey-verify-unit.c \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
@@ -145,7 +147,7 @@ OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake
 OA_PROJECT_KEK="$(openssl rand -hex 32)" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \
 OA_DROPS_GCS="http://127.0.0.1:$GCS_PORT" OA_DROPS_TOKEN=test-gcs OA_DROPS_BUCKET=drops-test OA_DROPS_PREFIX=test OA_DRAFT_URL="http://127.0.0.1:$GCS_PORT/model" OA_VILLA_URL="http://127.0.0.1:$GCS_PORT/villa-model" \
 OA_INFERENCE_URL="http://127.0.0.1:$INFER_PORT/chat/completions" OA_INFERENCE_TOKEN=test-token OA_INFERENCE_DAILY_REQUESTS=5 \
-OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark \
+OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark OA_LNADDR_TEST_PORT="$SPARK_PORT" \
 OA_WORKOS_CLIENT_ID=client_test \
 OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=device-a@example.com,device-b@example.com,life-a@example.com,life-c@example.com,life-d@example.com,life-f@example.com,life-h@example.com,owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,solo@example.com,pk@example.com,newcomer@example.com OA_EMAIL_BACKOFF_MS=10 \
 OA_AUTH_SEAL_KEY="1:$(openssl rand -hex 32),2:$(openssl rand -hex 32)" OA_AUTH_LOOKUP_PEPPER="1:$(openssl rand -hex 32)" \

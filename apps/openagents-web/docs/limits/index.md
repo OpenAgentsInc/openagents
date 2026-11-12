@@ -35,3 +35,16 @@ On name@openagents.com. A wallet shows the limit's words when it refuses.
 | Wait before a new destination takes effect | 24 hours (72 for an account with only email) |
 
 This section is made from the Lightning Address server's own numbers (`coax/web/api/lnaddr.c`).
+
+## Tips and upgrades
+
+Paid from your wallet straight to the maker's own Lightning Address.
+
+| What | Limit |
+| --- | --- |
+| A tip | 10 to 100000 sats, within what the maker's wallet takes |
+| An upgrade's price | 10 to 100000 sats |
+| Invoices asked of makers' wallets, all players | 60 a minute |
+| The maker's wallet's time to answer | 5 seconds |
+
+This section is made from the server's own numbers (`coax/web/api/makers.c`, `makerpay-policy.coax`).

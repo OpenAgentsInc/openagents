@@ -3,6 +3,7 @@
 #include <libpq-fe.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 typedef struct {
@@ -62,7 +63,9 @@ bool villa_route(const request *q);       // villa.c
 bool verse_packs_route(const request *q); // verse_packs.c: private human packs, a key a session
 bool realms_route(const request *q);      // realms.c: build your own realm
 bool makers_route(const request *q);      // makers.c: a realm's maker and their claim
-bool upgrades_route(const request *q);    // makers.c: listed fairy upgrades, bought with sats or credit
+bool upgrades_route(const request *q);    // makers.c: listed fairy upgrades, paid straight to their maker
+void makers_init(void);                   // checks makers.c's numbers against makerpay-policy.coax
+void makers_print_limits(FILE *out);      // api --limits: the tips and upgrades section of /docs/limits
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
 bool anime_route(const request *q);        // anime.c: typed Anime Lab directions
 bool worldbuilder_route(const request *q); // worldbuilder.c: /create-world's chat, the day's $50 cap and anti-flood
@@ -157,3 +160,8 @@ void auth_notice(PGconn *db, const char *acct, const char *what, const char *sub
 bool lnaddr_route(const request *q);       // /.well-known/lnurlp/*, /lnurlp/*, /api/lightning/address* (lnaddr.c)
 void lnaddr_print_limits(FILE *out);      // api --limits: the Lightning Address section of /docs/limits
 void lnaddr_init(void);                   // checks lnaddr.c's numbers against the Coax
+// Paying a maker's own Lightning Address (makers.c, #13210): the address's invoice for msat, asked by
+// our server and checked (lnurl.coax's code, 0 for an invoice we may show), and LUD-21's answer.
+typedef struct { char pr[2100]; char payment_hash[65]; char verify[1100]; long long expires; } lnaddr_quote;
+int64_t lnaddr_invoice_of(PGconn *db, const char *to, long long msat, lnaddr_quote *q);
+bool lnaddr_settled(const char *verify_url, const char *payment_hash, char preimage[65]);

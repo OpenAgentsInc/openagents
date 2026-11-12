@@ -121,6 +121,8 @@ class FakeWallet(http.server.BaseHTTPRequestHandler):
         wallet["asked"].append((self.path, self.headers.get("Authorization")))
         if self.path == "/rate" and wallet["rate"]:
             return self.reply(200, {"usd_per_btc": wallet["rate"]})
+        if "get" in wallet:   # other files' GET routes (test_makers_tips.py: the fake Lightning Address services)
+            return wallet["get"](self)
         self.reply(502, {"error": "the wallet failed"})
 
     def do_POST(self):

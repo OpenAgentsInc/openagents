@@ -22,6 +22,7 @@
 //   coax/bin/coax test coax/web/api/lnaddr-policy.coax
 //   coax/bin/coax mutate coax/web/api/lnaddr-policy.coax --root-only
 #load "../../lib/lnaddr/lnurl.coax";
+#load "makerpay-policy.coax";   // paying a maker's own address (makers.c, #13210): the same LNURL rules, the same C file
 #authority;
 #run_steps 250000000;
 

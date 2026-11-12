@@ -259,8 +259,15 @@ Decision D6 moves tips and upgrade purchases off our wallet:
    bought with service credit, because credit is spendable only on our
    own services (decision D4).
 
-This replaces the payout runner in `makers.tips` and `makers.payouts`
-([makers](../verse/makers.md)).
+Status: built (GitHub #13210). This replaced the payout runner for tips
+and upgrades in `makers.tips` and `makers.payouts`; our wallet now sends
+only the first-tip bonus and an admin's gift. The rules are
+`coax/web/api/makerpay-policy.coax`; the fetch and its checks are
+`lnaddr_invoice_of` and `lnaddr_settled` in `coax/web/api/lnaddr.c`, on the
+same `lnurl.coax` rules as forward mode. A maker's `name@openagents.com`
+address is read from our own rows and its forward target is asked, exactly
+as its callback would. The threat list and the limits are in
+[makers](../verse/makers.md#threats-and-their-checks).
 
 ## Agents
 

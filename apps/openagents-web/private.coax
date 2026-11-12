@@ -103,12 +103,15 @@ POST_DLOOK :: 19;          // page 7: /api/auth/device/look {code}
 POST_DAPPROVE :: 20;       // page 7: /api/auth/device/approve {code}
 H_DAPPROVE :: 51;          // page 7: APPROVE
 PV_MACHINE :: 64;          // a computer's name, as the server keeps it
-// page 5: a tip for a realm's maker (ev-maker-tips): pick the sats, pay our wallet's invoice, see it reach them
+// page 5: a tip for a realm's maker (docs/verse/makers.md, #13210): pick the sats, pay the maker's own invoice from
+// your wallet, see it confirmed. PAID only when the maker's wallet service says it arrived or the paying wallet
+// reports the preimage; a tip nobody can confirm is SENT FROM YOUR WALLET.
 POST_TIP :: 16; POST_TIP_CHECK :: 17; ASK_MAKER :: 4;
-H_TIP0 :: 37; H_TIP_COPY :: 40; H_TIP_WALLET :: 41; H_TIP_AGAIN :: 42;   // H_TIP0 + 0, 1, 2: the amounts
-TIP_PICK :: 0; TIP_ASKING :: 1; TIP_SHOWN :: 2; TIP_PAID :: 3; TIP_EXPIRED :: 4;
-TIP_POLL :: 3.0;           // seconds between asks while an invoice waits, or a payout
-TIP_WATCH :: 180.0;        // how long a paid tip's payout is watched
+H_TIP0 :: 37; H_TIP_COPY :: 40; H_TIP_WALLET :: 41; H_TIP_AGAIN :: 42; H_TIP_SENT :: 43;   // H_TIP0 + 0, 1, 2: the amounts
+TIP_PICK :: 0; TIP_ASKING :: 1; TIP_SHOWN :: 2; TIP_PAID :: 3; TIP_EXPIRED :: 4; TIP_SENT :: 5;
+TIP_POLL :: 3.0;           // seconds between asks while an invoice waits
+TIP_WATCH :: 180.0;        // how long a tip sent from the wallet is still asked about
+PV_PREIMAGE :: 615;        // the host's message: the preimage a wallet in this browser reported for the invoice it paid (WebLN)
 PV_CODE :: 1100;           // a QR's text: a phone code's URL, or "lightning:" and a tip's invoice
 PV_TIP_SATS :: [3] int.[100, 1000, 5000];
 PV_TIP_WORDS :: [3] string.["100 SATS", "1,000 SATS", "5,000 SATS"];
@@ -195,7 +198,7 @@ PrivateState :: struct {
   dev_machine: [PV_MACHINE] u8; dev_machine_n: int;
   // page 5: a tip (the maker's name is cname)
   maker_status: int; tip_state: int; tip_sats: int; tip_at: f32; tip_polled: f32;
-  tip_hash: [64] u8; tip_inv: [PV_CODE] u8; tip_inv_n: int; tip_payout: [16] u8; tip_payout_n: int;
+  tip_hash: [64] u8; tip_inv: [PV_CODE] u8; tip_inv_n: int; tip_by_wallet: bool; tip_pre: [64] u8; tip_pre_n: int;   // only the paying wallet can confirm it; the preimage it reported
   inbox: [] u8;                  // PrivateHost's
 }
 
@@ -476,20 +479,22 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
       s[0].qr_text_n = s[0].code_n;   // a Spark invoice (~487 bytes) is past byte mode's 412
       s[0].qr_want = true; s[0].qr_size = 0;
       s[0].tip_state = TIP_SHOWN; s[0].tip_at = s[0].time; s[0].tip_polled = s[0].time;
+      s[0].tip_by_wallet = pv_value(bytes, i, "confirm") == "wallet"; s[0].tip_pre_n = 0;
     } else {
       s[0].tip_state = TIP_PICK;
-      word := ifx code == 0 || code >= 500 then "OUR WALLET DIDN'T ANSWER: TRY AGAIN" else pv_error(bytes, i);
+      word := pv_error(bytes, i);
+      if code == 0 || word.count == 0 { word = "NO ANSWER: TRY AGAIN"; }
       s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, word);
     }
     return;
   }
   if kind == POST_TIP_CHECK {
     s[0].tip_polled = s[0].time;
+    if code == 402 { s[0].tip_pre_n = 0; }   // not this invoice's preimage: it proves nothing
     if code != 200 { return; }
-    st := pv_value(bytes, i, "state"); po := pv_value(bytes, i, "payout");
+    st := pv_value(bytes, i, "state");
     if st == "paid" && s[0].tip_state != TIP_PAID { s[0].tip_state = TIP_PAID; s[0].tip_at = s[0].time; }
     else if st == "expired" && s[0].tip_state == TIP_SHOWN { s[0].tip_state = TIP_EXPIRED; }
-    if po.count <= 16 { s[0].tip_payout_n = pv_put(s[0].tip_payout[..], 0, po); }
     return;
   }
   if kind == POST_DLOOK {
@@ -763,6 +768,11 @@ pv_active :: (s: [] PrivateState) -> int {
 }
 pv_hex_ok :: (t: string) -> bool {
   if t.count != 32 { return false; }
+  for c: t { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+pv_hex64 :: (t: string) -> bool {
+  if t.count != 64 { return false; }
   for c: t { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
   return true;
 }
@@ -1309,10 +1319,11 @@ pv_tip_ask :: (s: [] PrivateState, sats: int) {
   b = pv_number(s[0].body[..], b, sats);
   s[0].body_n = pv_put(s[0].body[..], b, "}");
   s[0].post_kind = POST_TIP; s[0].post_id = -1;
-  s[0].tip_sats = sats; s[0].tip_state = TIP_ASKING; s[0].claim_note_n = 0; s[0].tip_payout_n = 0;
+  s[0].tip_sats = sats; s[0].tip_state = TIP_ASKING; s[0].claim_note_n = 0; s[0].tip_pre_n = 0;
 }
-// Each frame on page 5: who the maker is, once; then, while an invoice waits or a paid tip's payout
-// is on its way, ask how it stands every TIP_POLL seconds.
+// Each frame on page 5: who the maker is, once; then, while an invoice waits (or a tip sent from the
+// wallet may still be confirmed), ask how it stands every TIP_POLL seconds, with the preimage the
+// paying wallet reported when there is one.
 pv_tip_due :: (s: [] PrivateState) {
   if s[0].maker_status == 0 && s[0].slug_n > 0 && s[0].ask_id < 0 && s[0].ask_n == 0 {
     n := pv_put(s[0].ask[..], 0, "/api/playtest/makers/");
@@ -1320,14 +1331,18 @@ pv_tip_due :: (s: [] PrivateState) {
     s[0].ask_kind = ASK_MAKER; s[0].maker_status = 1;
   }
   waiting := s[0].tip_state == TIP_SHOWN;
-  watching := s[0].tip_state == TIP_PAID && cast(string) s[0].tip_payout[0..<s[0].tip_payout_n] != "sent" && s[0].time - s[0].tip_at < TIP_WATCH;
+  watching := s[0].tip_state == TIP_SENT && s[0].time - s[0].tip_at < TIP_WATCH;
   if (!waiting && !watching) || s[0].post_kind != 0 || s[0].time - s[0].tip_polled < TIP_POLL { return; }
   s[0].tip_polled = s[0].time;
   n := pv_put(s[0].post[..], 0, "/api/playtest/makers/");
   n = pv_put(s[0].post[..], n, pv_slug(s));
   n = pv_put(s[0].post[..], n, "/tip/");
   s[0].post_n = pv_put(s[0].post[..], n, cast(string) s[0].tip_hash[0..<64]);
-  s[0].body_n = pv_put(s[0].body[..], 0, "{}");
+  if s[0].tip_pre_n == 64 {
+    b := pv_put(s[0].body[..], 0, "{\"preimage\":\"");
+    b = pv_put(s[0].body[..], b, cast(string) s[0].tip_pre[0..<64]);
+    s[0].body_n = pv_put(s[0].body[..], b, "\"}");
+  } else { s[0].body_n = pv_put(s[0].body[..], 0, "{}"); }
   s[0].post_kind = POST_TIP_CHECK; s[0].post_id = -1;
 }
 // OPEN <REALM>: back to the realm a tip or claim page is for.
@@ -1377,14 +1392,14 @@ pv_tip :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
       x += chip_width(PV_TIP_WORDS[k], 7 * d, p) + 10 * d;
     }
     f.y += 30 * d;
-    if s[0].tip_state == TIP_ASKING { f.v = put(out, f.v, "MAKING AN INVOICE", x0, f.y, 6.5 * d, dim); f.y += 20 * d; }
+    if s[0].tip_state == TIP_ASKING { f.v = put(out, f.v, "GETTING THE MAKER'S INVOICE", x0, f.y, 6.5 * d, dim); f.y += 20 * d; }
     if s[0].claim_note_n > 0 {
       f.y -= 12 * d;
       f = pv_text(s, out, f, cast(string) s[0].claim_note[0..<s[0].claim_note_n], x0, colw, BODY, pv_ink(p, INK_WHITE), 2, true, 0);
       f.y += 12 * d;
     }
     f.y -= 12 * d;
-    f = pv_text(s, out, f, "IN BITCOIN, OVER LIGHTNING. THE MAKER GETS ALL OF IT BUT THE ROUTING FEE.", x0, colw, 6, dim, 3, true, 0);
+    f = pv_text(s, out, f, "IN BITCOIN, OVER LIGHTNING, FROM YOUR WALLET STRAIGHT TO THE MAKER'S.", x0, colw, 6, dim, 3, true, 0);
   } else if s[0].tip_state == TIP_SHOWN || s[0].tip_state == TIP_EXPIRED {
     amount: [40] u8;
     an := pv_put(amount[..], 0, "PAY ");
@@ -1398,21 +1413,25 @@ pv_tip :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
       f.v = pv_chip(s, out, f.v, "OPEN WALLET", x0, f.y, H_TIP_WALLET, true, p, true, 0);
       f.v = pv_chip(s, out, f.v, "COPY INVOICE", x0 + chip_width("OPEN WALLET", 7 * d, p) + 10 * d, f.y, H_TIP_COPY, false, p, true, 0);
       f.y += 30 * d;
-      f.v = put(out, f.v, "WAITING FOR THE PAYMENT", x0, f.y, 6.5 * d, dim);
+      // a maker's wallet that can't tell us a tip arrived: the payer says when it is sent
+      if s[0].tip_by_wallet { f.v = pv_chip(s, out, f.v, "I PAID", x0, f.y, H_TIP_SENT, false, p, true, 0); }
+      else { f.v = put(out, f.v, "WAITING FOR THE PAYMENT", x0, f.y, 6.5 * d, dim); }
     } else {
       f.v = put(out, f.v, "THIS INVOICE EXPIRED", x0, f.y + 10 * d, 7 * d, dim);
       f.y += 30 * d;
       f.v = pv_chip(s, out, f.v, "NEW INVOICE", x0, f.y, H_TIP_AGAIN, true, p, true, 0);
     }
   } else {
-    f.v = put(out, f.v, "PAID. THANK YOU", x0, f.y, 9 * d, orange);
+    // PAID only with a confirmation; otherwise what we know: it left the payer's wallet
+    paid := s[0].tip_state == TIP_PAID;
+    f.v = put(out, f.v, ifx paid then "PAID. THANK YOU" else "SENT FROM YOUR WALLET", x0, f.y, 9 * d, ifx paid then orange else white);
     f.y += 26 * d;
-    line: [220] u8;
-    payout := cast(string) s[0].tip_payout[0..<s[0].tip_payout_n];
-    ln := pv_put(line[..], 0, ifx payout == "sent" then "" else "ON ITS WAY TO ");
-    ln = pv_upper(line[..], ln, cast(string) s[0].cname[0..<s[0].cname_n]);
-    if payout == "sent" { ln = pv_put(line[..], ln, " GOT YOUR TIP"); }
-    f.v = put_fit(out, f.v, cast(string) line[0..<ln], x0, f.y, 7 * d, white, colw);
+    if paid {
+      line: [220] u8;
+      ln := pv_upper(line[..], 0, cast(string) s[0].cname[0..<s[0].cname_n]);
+      ln = pv_put(line[..], ln, " GOT YOUR TIP");
+      f.v = put_fit(out, f.v, cast(string) line[0..<ln], x0, f.y, 7 * d, white, colw);
+    }
     f.y += 30 * d;
     back: [96] u8;
     bn := pv_put(back[..], 0, "BACK TO ");
@@ -2200,6 +2219,7 @@ pv_act :: (s: [] PrivateState, target: int) {
   else if target >= H_TIP0 && target < H_TIP0 + 3 { pv_tip_ask(s, PV_TIP_SATS[target - H_TIP0]); }
   else if target == H_TIP_COPY && s[0].tip_inv_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].tip_inv[0..<s[0].tip_inv_n]); s[0].action = TK_ACT_COPY; s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, "COPIED"); }
   else if target == H_TIP_WALLET && s[0].code_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].code_url[0..<s[0].code_n]); s[0].action = PV_NAVIGATE; }
+  else if target == H_TIP_SENT && s[0].tip_state == TIP_SHOWN { s[0].tip_state = TIP_SENT; s[0].tip_at = s[0].time; s[0].qr_size = 0; s[0].claim_note_n = 0; }
   else if target == H_TIP_AGAIN { s[0].tip_state = TIP_PICK; s[0].qr_size = 0; s[0].tip_inv_n = 0; s[0].claim_note_n = 0; }
   if target == H_WSHOW { s[0].acct_show = !s[0].acct_show; }
   else if target == H_WCOPY && s[0].acct_words_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].acct_words[0..<s[0].acct_words_n]); s[0].action = TK_ACT_COPY; pv_acct_say(s, "COPIED"); }
@@ -2369,6 +2389,12 @@ coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_
     return;
   }
   if kind == PV_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
+  // a wallet in this browser paid the invoice and reported its preimage: ask now, with it
+  if kind == PV_PREIMAGE {
+    waits := s[0].page == 5 && (s[0].tip_state == TIP_SHOWN || s[0].tip_state == TIP_SENT);
+    if waits && pv_hex64(text) { for i: 0..<64 { s[0].tip_pre[i] = text[i]; } s[0].tip_pre_n = 64; s[0].tip_polled = -1000; s[0].tip_at = s[0].time; }
+    return;
+  }
   if kind == PV_FACTS { pv_facts(s, text); return; }
   // this browser's account (/login and a claim read it): 16 bytes as hex
   words_page := s[0].page == 2 || s[0].page == 4 || s[0].page == 6 || s[0].page == 7;
@@ -3112,7 +3138,7 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
     #assert cast(string) s[0].claim_note[0..<s[0].claim_note_n] == (ifx k == 0 then "SLOW DOWN: OPEN THE LINK AGAIN IN A MINUTE" else "NOT SENT: OPEN THE LINK AGAIN");
   }
 }
-#test "a tip page names the maker, asks our wallet for an invoice, shows its QR and follows it to the maker" {
+#test "a tip page names the maker, asks for the maker's own invoice, shows its QR and says PAID only when confirmed" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
   out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 5);
@@ -3146,17 +3172,75 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   s[0].time += TIP_POLL + 0.1;
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/playtest/makers/orbit-league/tip/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{}";
   coaxial_private_posted(s[..], 3);
-  pv_answer(s[..], 3, "200\n{\"state\": \"paid\", \"sats\": 1000, \"payout\": \"queued\", \"to\": \"Topher\"}");
+  pv_answer(s[..], 3, "200\n{\"state\": \"open\", \"sats\": 1000, \"confirm\": \"verify\", \"to\": \"Topher\"}");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].tip_state == TIP_SHOWN && !pv_has_hit(s[..], H_TIP_SENT);   // the maker's service will say: no I PAID
+  s[0].time += TIP_POLL + 0.1;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  coaxial_private_posted(s[..], 4);
+  pv_answer(s[..], 4, "200\n{\"state\": \"paid\", \"sats\": 1000, \"confirm\": \"verify\", \"to\": \"Topher\"}");
   #assert s[0].tip_state == TIP_PAID;
   s[0].time += TIP_POLL + 0.1;
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
-  #assert s[0].post_kind == POST_TIP_CHECK;   // the payout is followed
-  coaxial_private_posted(s[..], 4);
-  pv_answer(s[..], 4, "200\n{\"state\": \"paid\", \"sats\": 1000, \"payout\": \"sent\", \"to\": \"Topher\"}");
+  #assert s[0].post_n == 0 && pv_has_hit(s[..], H_COPEN);   // paid: no more asking
+}
+#test "a tip nobody can confirm is SENT FROM YOUR WALLET, never PAID; a wallet's preimage confirms it" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 5);
+  t := "orbit-league";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n := pv_fresh(s[..], out[..], u[..], 390, 844);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "200\n{\"realm\": \"orbit-league\", \"name\": \"Topher\", \"pubkey\": \"ab\"}");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  pv_act(s[..], H_TIP0);
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, "502\n{\"error\": \"The maker's Lightning Address didn't answer; try again soon\"}");
+  #assert s[0].tip_state == TIP_PICK && cast(string) s[0].claim_note[0..<s[0].claim_note_n] == "The maker's Lightning Address didn't answer; try again soon";
+  pv_act(s[..], H_TIP0);
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, "200\n{\"invoice\": \"lnbc1u1pexampleinvoice0002\", \"payment_hash\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"sats\": 100, \"confirm\": \"wallet\"}");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].tip_state == TIP_SHOWN && s[0].tip_by_wallet && pv_has_hit(s[..], H_TIP_SENT);
+  // a preimage that isn't one is ignored; one for another page is too
+  bad := "xyz";
+  for i: 0..<bad.count { s[0].inbox[i] = bad[i]; }
+  coaxial_private_message(s[..], PV_PREIMAGE, bad.count);
+  #assert s[0].tip_pre_n == 0;
+  pv_act(s[..], H_TIP_SENT);
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].tip_state == TIP_SENT && pv_has_hit(s[..], H_COPEN) && pv_has_hit(s[..], H_TIP_AGAIN) && !pv_has_hit(s[..], H_TIP_WALLET);
+  // still asked about for a while, and never PAID on the payer's word
   s[0].time += TIP_POLL + 0.1;
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
-  #assert s[0].post_n == 0 && pv_has_hit(s[..], H_COPEN);   // sent: no more asking
+  #assert s[0].post_kind == POST_TIP_CHECK && cast(string) s[0].body[0..<s[0].body_n] == "{}";
+  coaxial_private_posted(s[..], 3);
+  pv_answer(s[..], 3, "200\n{\"state\": \"open\", \"sats\": 100, \"confirm\": \"wallet\"}");
+  #assert s[0].tip_state == TIP_SENT;
+  pv_answer(s[..], 3, "200\n{\"state\": \"expired\", \"sats\": 100, \"confirm\": \"wallet\"}");
+  #assert s[0].tip_state == TIP_SENT;   // sent stays sent: it may have arrived
+  // the wallet that paid reports the preimage: asked at once, with it
+  pre := "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+  for i: 0..<pre.count { s[0].inbox[i] = pre[i]; }
+  coaxial_private_message(s[..], PV_PREIMAGE, pre.count);
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].post_kind == POST_TIP_CHECK;
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"preimage\":\"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\"}";
+  coaxial_private_posted(s[..], 4);
+  pv_answer(s[..], 4, "402\n{\"error\": \"That preimage isn't this invoice's\"}");
+  #assert s[0].tip_state == TIP_SENT && s[0].tip_pre_n == 0;   // a fake one proves nothing
+  coaxial_private_message(s[..], PV_PREIMAGE, pre.count);
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  coaxial_private_posted(s[..], 5);
+  pv_answer(s[..], 5, "200\n{\"state\": \"paid\", \"sats\": 100, \"confirm\": \"wallet\", \"to\": \"Topher\"}");
+  #assert s[0].tip_state == TIP_PAID;
+  s[0].time += TIP_WATCH + TIP_POLL;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].post_n == 0;
 }
 #test "a tip page for an unclaimed realm offers nothing to pay" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];

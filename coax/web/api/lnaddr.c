@@ -198,6 +198,7 @@ static size_t take(char *data, size_t size, size_t n, void *user) {
   b->p = p; memcpy(b->p + b->n, data, k); b->n += k; b->p[b->n] = 0;
   return k;
 }
+#ifndef OA_LNADDR_TEST_FETCH
 static curl_socket_t open_public(void *refused, curlsocktype purpose, struct curl_sockaddr *a) {
   (void)purpose;
   bool ok = false;
@@ -206,6 +207,7 @@ static curl_socket_t open_public(void *refused, curlsocktype purpose, struct cur
   if (!ok) { *(bool *)refused = true; return CURL_SOCKET_BAD; }
   return socket(a->family, a->socktype, a->protocol);
 }
+#endif
 // GET url: the HTTP status (0 unreached or refused), the body into *out (malloc'd) and its length.
 static long fetch(const char *url, char **out, size_t *len) {
   *out = NULL; *len = 0;
@@ -213,8 +215,20 @@ static long fetch(const char *url, char **out, size_t *len) {
   if (!h) return 0;
   fetched b = {0}; bool refused = false;
   struct curl_slist *hd = curl_slist_append(NULL, "Accept: application/json");
+#ifdef OA_LNADDR_TEST_FETCH
+  // test.sh's build only, never the image's: every fetch goes to the fake Lightning Address
+  // service the checks run on this machine (https://host/path -> http://127.0.0.1:PORT/host/path).
+  // The URL rules above this function are the real ones; only the wire changes.
+  char local[2 * 1100 + 3 * 8300 + 3 * 1300];
+  snprintf(local, sizeof local, "http://127.0.0.1:%s/%s", env_or("OA_LNADDR_TEST_PORT", "1"), !strncmp(url, "https://", 8) ? url + 8 : "refused");
+  curl_easy_setopt(h, CURLOPT_URL, local);
+  curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http");
+#else
   curl_easy_setopt(h, CURLOPT_URL, url);
   curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "https");
+  curl_easy_setopt(h, CURLOPT_OPENSOCKETFUNCTION, open_public);
+  curl_easy_setopt(h, CURLOPT_OPENSOCKETDATA, &refused);
+#endif
   curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "https");
   curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 0L);
   curl_easy_setopt(h, CURLOPT_NOPROXY, "*");
@@ -223,8 +237,6 @@ static long fetch(const char *url, char **out, size_t *len) {
   curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, UPSTREAM_TIMEOUT_MS);
   curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, UPSTREAM_TIMEOUT_MS);
   curl_easy_setopt(h, CURLOPT_MAXFILESIZE, (long)UPSTREAM_MAX);
-  curl_easy_setopt(h, CURLOPT_OPENSOCKETFUNCTION, open_public);
-  curl_easy_setopt(h, CURLOPT_OPENSOCKETDATA, &refused);
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
   long status = 0;
@@ -388,6 +400,68 @@ static void lookup(const request *q, PGconn *db, const char *input) {
   reply_n(q, 200, out, m);
 }
 
+// The forward target's invoice for msat, asked by our server and checked: its payRequest (a minute's
+// cache), the amount within both ranges, the note and zap request it takes, then its callback's
+// invoice read by lu_forward_invoice (the network, the exact amount, the description hash of its
+// own metadata or the zap request, the expiry). lnurl.coax's code; *limit is the msat or
+// characters a refusal names, *http 502 when the target is at fault and 200 when the payer is.
+static int64_t forward_invoice(const char *target, long long max_msat, bool comments_on, int64_t msat, const char *comment, bool payerdata, const char *zap,
+                               coax_t_LuForwarded *v, int64_t *limit, int *http) {
+  const char *text; coax_t_LuUpstream u;
+  *limit = 0; *http = 502;
+  int64_t code = upstream_pay(target, &text, &u);
+  if (code != LU_OK) return code;
+  *http = 200;
+  int64_t min = u.min < LU_MIN_MSAT ? LU_MIN_MSAT : u.min, max = u.max < max_msat ? u.max : max_msat;
+  code = lu_check_amount(msat, min, max, false);
+  if (code != LU_OK) { *limit = code == LU_TOO_SMALL ? min : max; return code; }
+  int64_t allowed = !comments_on ? 0 : u.comments < LU_COMMENT_MAX ? u.comments : LU_COMMENT_MAX;
+  code = lu_check_note(cs(comment), allowed);
+  if (code != LU_OK) { *limit = allowed; return code; }
+  if (payerdata) return LU_PAYERDATA;   // we never pass a payer's details on
+  if (zap[0] && !u.nostr) return LU_ZAP;
+  code = lu_check_zap(cs(zap), msat);
+  if (code != LU_OK) return code;
+  *http = 502;
+  static uint8_t meta[8200];
+  int64_t mn = lu_upstream_metadata_decoded((coax_string){text, (int64_t)strlen(text)}, u, cv(meta, sizeof meta));
+  uint8_t hash[32];
+  if (mn < 0 || !lu_description_hash((coax_string){(const char *)meta, mn}, cs(""), cs(zap), cv(hash, 32))) return LU_UPSTREAM_BAD;
+  char up_callback[1100];
+  snprintf(up_callback, sizeof up_callback, "%.*s", (int)u.nc, (const char *)u.callback.e);
+  static uint8_t url[1100 + 3 * 8300 + 3 * 1300 + 64];
+  int64_t un = lu_upstream_callback(cs(up_callback), msat, cs(comment), cs(zap), cv(url, sizeof url - 1));
+  if (un < 0) return LU_UPSTREAM_BAD;
+  url[un] = 0;
+  char *body; size_t len;
+  long status = fetch((const char *)url, &body, &len);
+  if (status == 0) return LU_UPSTREAM;
+  code = lu_forward_invoice((coax_string){body, (int64_t)len}, network(), msat, cv(hash, 32), (int64_t)time(NULL), (coax_v_t_LuForwarded){v, 1});
+  free(body);
+  return code;
+}
+
+// Keeps a forwarded invoice and holds its name, together: the first invoice holds the name for good.
+// The invoice's payment hash (hex), text and the target's LUD-21 URL ("" for none) come back.
+static bool keep_invoice(PGconn *db, const address *a, const char *name, int64_t msat, const coax_t_LuForwarded *v, const char *zap, const char *comment,
+                         char ph[65], char pr[2100], char verify[1100]) {
+  char rev[24], amt[24];
+  hex_of(v->ph.e, 32, ph);
+  snprintf(pr, 2100, "%.*s", (int)v->npr, (const char *)v->pr.e);
+  snprintf(verify, 1100, "%.*s", (int)v->nv, (const char *)v->verify.e);
+  snprintf(rev, sizeof rev, "%lld", a->revision); snprintf(amt, sizeof amt, "%lld", (long long)msat);
+  const char *w[9] = {ph, name, rev, amt, pr, verify[0] ? verify : NULL, zap[0] ? zap : NULL, comment[0] ? comment : NULL, a->account};
+  PGresult *res = PQexecParams(db,
+    "WITH i AS (INSERT INTO pay.invoices (payment_hash, name, revision, mode, amount_msat, pr, verify_url, zap_request, comment) "
+    "VALUES ($1, $2, $3::bigint, 'forward', $4::bigint, $5, $6, $7, $8) ON CONFLICT (payment_hash) DO NOTHING RETURNING 1) "
+    "INSERT INTO pay.name_holds (name, skeleton, account, reason) SELECT $2, a.skeleton, $9, 'paid' FROM pay.addresses a "
+    "WHERE a.name = $2 ON CONFLICT (name) DO NOTHING", 9, NULL, w, NULL, NULL, 0);
+  bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+  if (!ok) api_log("lnaddr: invoice row for %s: %s", name, PQerrorMessage(db));
+  PQclear(res);
+  return ok;
+}
+
 static void callback(const request *q, PGconn *db, const char *input) {
   coax_t_LnaddrResult r; char name[40], tag[80], key[65];
   if (!read_name(input, &r, name, tag)) { lnurl_error(q, 404, LU_BAD_NAME, 0); return; }
@@ -410,52 +484,16 @@ static void callback(const request *q, PGconn *db, const char *input) {
   if (mode_of(&a) != LA_FORWARD) { lnurl_error(q, 200, LU_NOT_RECEIVING, 0); return; }   // spark: its backend, when deployed
 
   // ---- forward mode: the target's own payRequest and invoice, checked
-  const char *text; coax_t_LuUpstream u;
-  code = upstream_pay(a.forward_to, &text, &u);
-  if (code != LU_OK) { lnurl_error(q, 502, code, 0); return; }
-  int64_t min = u.min < LU_MIN_MSAT ? LU_MIN_MSAT : u.min, max = u.max < a.max_msat ? u.max : a.max_msat;
-  code = lu_check_amount(msat, min, max, false);
-  if (code != LU_OK) { lnurl_error(q, 200, code, code == LU_TOO_SMALL ? min : max); return; }
-  int64_t allowed = !a.comments_on ? 0 : u.comments < LU_COMMENT_MAX ? u.comments : LU_COMMENT_MAX;
-  code = lu_check_note(cs(comment), allowed);
-  if (code != LU_OK) { lnurl_error(q, 200, code, allowed); return; }
-  if (payerdata[0]) { lnurl_error(q, 200, LU_PAYERDATA, 0); return; }   // we never pass a payer's details on
-  if (zap[0] && !u.nostr) { lnurl_error(q, 200, LU_ZAP, 0); return; }
-  code = lu_check_zap(cs(zap), msat);
-  if (code != LU_OK) { lnurl_error(q, 200, code, 0); return; }
-  static uint8_t meta[8200];
-  int64_t mn = lu_upstream_metadata_decoded((coax_string){text, (int64_t)strlen(text)}, u, cv(meta, sizeof meta));
-  uint8_t hash[32];
-  if (mn < 0 || !lu_description_hash((coax_string){(const char *)meta, mn}, cs(""), cs(zap), cv(hash, 32))) { lnurl_error(q, 502, LU_UPSTREAM_BAD, 0); return; }
-  char up_callback[1100];
-  snprintf(up_callback, sizeof up_callback, "%.*s", (int)u.nc, (const char *)u.callback.e);
-  static uint8_t url[1100 + 3 * 8300 + 3 * 1300 + 64];
-  int64_t un = lu_upstream_callback(cs(up_callback), msat, cs(comment), cs(zap), cv(url, sizeof url - 1));
-  if (un < 0) { lnurl_error(q, 502, LU_UPSTREAM_BAD, 0); return; }
-  url[un] = 0;
-  char *body; size_t len;
-  long status = fetch((const char *)url, &body, &len);
-  if (status == 0) { lnurl_error(q, 502, LU_UPSTREAM, 0); return; }
   static coax_t_LuForwarded v;
-  code = lu_forward_invoice((coax_string){body, (int64_t)len}, network(), msat, cv(hash, 32), (int64_t)time(NULL), (coax_v_t_LuForwarded){&v, 1});
-  free(body);
-  if (code != LU_OK) { api_log("lnaddr: %s's forward target answered %ld, refused %lld", name, status, (long long)code); lnurl_error(q, 502, code, 0); return; }
-  char ph[65], pr[2100], verify[1100], rev[24], amt[24];
-  hex_of(v.ph.e, 32, ph);
-  snprintf(pr, sizeof pr, "%.*s", (int)v.npr, (const char *)v.pr.e);
-  snprintf(verify, sizeof verify, "%.*s", (int)v.nv, (const char *)v.verify.e);
-  snprintf(rev, sizeof rev, "%lld", a.revision); snprintf(amt, sizeof amt, "%lld", (long long)msat);
-  // The invoice row and the name's hold, together: the first invoice holds the name for good.
-  const char *w[9] = {ph, name, rev, amt, pr, verify[0] ? verify : NULL, zap[0] ? zap : NULL, comment[0] ? comment : NULL, a.account};
-  PGresult *res = PQexecParams(db,
-    "WITH i AS (INSERT INTO pay.invoices (payment_hash, name, revision, mode, amount_msat, pr, verify_url, zap_request, comment) "
-    "VALUES ($1, $2, $3::bigint, 'forward', $4::bigint, $5, $6, $7, $8) ON CONFLICT (payment_hash) DO NOTHING RETURNING 1) "
-    "INSERT INTO pay.name_holds (name, skeleton, account, reason) SELECT $2, a.skeleton, $9, 'paid' FROM pay.addresses a "
-    "WHERE a.name = $2 ON CONFLICT (name) DO NOTHING", 9, NULL, w, NULL, NULL, 0);
-  bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
-  if (!ok) api_log("lnaddr: invoice row for %s: %s", name, PQerrorMessage(db));
-  PQclear(res);
-  if (!ok) { say(q, 503, "busy"); return; }
+  int64_t limit = 0; int http = 200;
+  code = forward_invoice(a.forward_to, a.max_msat, a.comments_on, msat, comment, payerdata[0] != 0, zap, &v, &limit, &http);
+  if (code != LU_OK) {
+    if (code == LU_INVOICE || http == 502) api_log("lnaddr: %s's forward target refused %lld", name, (long long)code);
+    lnurl_error(q, http, code, limit);
+    return;
+  }
+  char ph[65], pr[2100], verify[1100];
+  if (!keep_invoice(db, &a, name, msat, &v, zap, comment, ph, pr, verify)) { say(q, 503, "busy"); return; }
   static uint8_t out[4096];
   int64_t m = lu_callback_json(cs(domain()), cs(name), cs(pr), cs(ph), cv(out, sizeof out));
   reply_n(q, 200, out, m);
@@ -477,24 +515,62 @@ static void verify(const request *q, PGconn *db, const char *hash) {
   snprintf(pre, sizeof pre, "%s", PQgetvalue(r, 0, 2));
   bool settled = !strcmp(PQgetvalue(r, 0, 3), "t");
   PQclear(r);
-  if (!settled && url[0]) {
-    char *body; size_t len;
-    long status = fetch(url, &body, &len);
-    if (status) {
-      coax_t_LuVerify got;
-      if (lu_verify_read((coax_string){body, (int64_t)len}, cs(hash), (coax_v_t_LuVerify){&got, 1}) == LU_OK && got.settled) {
-        snprintf(pre, sizeof pre, "%.*s", (int)got.np, (const char *)got.preimage.e);
-        const char *w[2] = {hash, pre};
-        PGresult *u = PQexecParams(db, "UPDATE pay.invoices SET settled_at = now(), preimage = $2 WHERE payment_hash = $1 AND settled_at IS NULL", 2, NULL, w, NULL, NULL, 0);
-        PQclear(u);
-        settled = true;
-      }
-      free(body);
-    }
+  if (!settled && lnaddr_settled(url, hash, pre)) {
+    const char *w[2] = {hash, pre};
+    PGresult *u = PQexecParams(db, "UPDATE pay.invoices SET settled_at = now(), preimage = $2 WHERE payment_hash = $1 AND settled_at IS NULL", 2, NULL, w, NULL, NULL, 0);
+    PQclear(u);
+    settled = true;
   }
   uint8_t out[2400];
   int64_t m = lu_verify_json(settled, cs(settled ? pre : ""), cs(pr), cv(out, sizeof out));
   reply_n(q, 200, out, m);
+}
+
+// ---------------------------------------------------------------- paying a maker (makers.c, #13210)
+// The invoice of any Lightning Address for msat, asked by our server (the player's network address
+// never reaches the maker's service) and checked as a forwarded invoice is. An address of ours is
+// read from our own rows and its target asked, exactly as its callback would; any other address is
+// asked itself. lnurl.coax's code; LU_OK fills q.
+int64_t lnaddr_invoice_of(PGconn *db, const char *to, long long msat, lnaddr_quote *q) {
+  memset(q, 0, sizeof *q);
+  static coax_t_LuForwarded v;
+  int64_t limit = 0; int http = 0;
+  if (mp_ours(cs(to), cs(domain()))) {
+    uint8_t in[80]; coax_t_LnaddrResult r; char name[40], tag[80];
+    int64_t n = mp_ours_name(cs(to), cv(in, sizeof in - 1));
+    if (n < 0) return LU_BAD_NAME;
+    in[n] = 0;
+    if (!read_name((const char *)in, &r, name, tag)) return LU_BAD_NAME;
+    address a;
+    if (!by_name(db, name, &a)) return LU_UPSTREAM;
+    int64_t code = issue_code(&a);
+    if (code != LU_OK) return code;
+    if (mode_of(&a) != LA_FORWARD) return LU_NOT_RECEIVING;
+    code = forward_invoice(a.forward_to, a.max_msat, false, msat, "", false, "", &v, &limit, &http);
+    if (code != LU_OK) return code;
+    if (!keep_invoice(db, &a, name, msat, &v, "", "", q->payment_hash, q->pr, q->verify)) return LU_UPSTREAM;
+  } else {
+    int64_t code = forward_invoice(to, lu_limit(1), false, msat, "", false, "", &v, &limit, &http);
+    if (code != LU_OK) return code;
+    hex_of(v.ph.e, 32, q->payment_hash);
+    snprintf(q->pr, sizeof q->pr, "%.*s", (int)v.npr, (const char *)v.pr.e);
+    snprintf(q->verify, sizeof q->verify, "%.*s", (int)v.nv, (const char *)v.verify.e);
+  }
+  q->expires = (long long)mp_invoice_expires(cs(q->pr));
+  return q->expires > 0 ? LU_OK : LU_INVOICE;
+}
+// LUD-21: whether the service at verify_url says the invoice with payment_hash (hex) is settled,
+// with a preimage that hashes to it (lu_verify_read: a claim we can't check is not settled). The
+// preimage (hex) comes back.
+bool lnaddr_settled(const char *verify_url, const char *payment_hash, char preimage[65]) {
+  preimage[0] = 0;
+  char *body; size_t len;
+  if (!verify_url[0] || !fetch(verify_url, &body, &len)) return false;
+  coax_t_LuVerify got;
+  bool settled = lu_verify_read((coax_string){body, (int64_t)len}, cs(payment_hash), (coax_v_t_LuVerify){&got, 1}) == LU_OK && got.settled;
+  free(body);
+  if (settled) snprintf(preimage, 65, "%.*s", (int)got.np, (const char *)got.preimage.e);
+  return settled;
 }
 
 // ---------------------------------------------------------------- the holder's routes

@@ -1,9 +1,9 @@
 // Listed upgrades (ev-asset-upgrades, docs/verse/makers.md "Fairy upgrades"): someone makes a
 // better fairy and lists it; an admin approves it; UPGRADE, beside your fairy, opens the top three
 // (GET /api/playtest/upgrades/fairy, coax/web/api/makers.c). TRY puts one on you while the pane is
-// open; BUY pays its price in sats (our Spark wallet's invoice, as a QR and a wallet link, polled until
-// it is paid) and CREDIT from your inference credit; the maker is paid like a tip. What you bought
-// you wear, and the room carries it, so everyone in the forest sees you as it (room.coax "look").
+// open; BUY pays its price in sats from your wallet straight to its maker (the maker's own invoice, as
+// a QR and a wallet link, asked about until the maker's wallet service confirms it; #13210). What you
+// bought you wear, and the room carries it, so everyone in the forest sees you as it (room.coax "look").
 // An admin sees the listings waiting, with APPROVE and REJECT. Names are the server's, at most 40
 // characters, drawn as glyphs and cut to fit; orange is for Bitcoin only.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 2000000000
@@ -11,7 +11,7 @@
 FFU_TOP :: 3;
 FFU_NAME :: 40;
 FFU_LOOK :: 52;
-FFU_CODE :: 1100;           // "lightning:" and our wallet's invoice
+FFU_CODE :: 1100;           // "lightning:" and the maker's invoice
 FFU_QR :: 5929;             // every QR version's grid (coax/lib/qr)
 FFU_BUTTONS :: 24;
 FFU_POLL :: 3.0;            // seconds between asks while an invoice is shown
@@ -21,7 +21,7 @@ FFU_GET :: 1; FFU_BUY :: 2; FFU_CHECK :: 3; FFU_WEAR :: 4; FFU_DECIDE :: 5;
 // A purchase in sats.
 BUY_NONE :: 0; BUY_ASKING :: 1; BUY_SHOWN :: 2; BUY_PAID :: 3; BUY_EXPIRED :: 4;
 // What a button does.
-UB_CHIP :: 1; UB_CLOSE :: 2; UB_TRY :: 3; UB_BUY :: 4; UB_CREDIT :: 5; UB_WEAR :: 6; UB_OWN :: 7;
+UB_CHIP :: 1; UB_CLOSE :: 2; UB_TRY :: 3; UB_BUY :: 4; UB_WEAR :: 6; UB_OWN :: 7;
 UB_WALLET :: 8; UB_BACK :: 9; UB_APPROVE :: 10; UB_REJECT :: 11;
 // Bitcoin orange.
 BTC_R :: 0.97; BTC_G :: 0.58; BTC_B :: 0.1;
@@ -42,10 +42,11 @@ Upgrade :: struct {
   trying: int;                    // a row tried on while the pane is open (1 + it), 0 none
   tried: [1] Worn;
   // what to send
-  ask_get: bool; ask_buy: int; ask_credit: bool; ask_check: bool; ask_wear: int; ask_decide: int; decide_yes: bool;
+  ask_get: bool; ask_buy: int; ask_check: bool; ask_wear: int; ask_decide: int; decide_yes: bool;
   // a purchase in sats
   buying: int; buy_state: int; buy_sats: int; buy_row: int;
   hash: [64] u8;
+  pre: [64] u8; pre_n: int;       // the preimage the paying wallet reported (the host's message 615), sent with the next ask
   code: [FFU_CODE] u8; code_n: int;
   qr: [FFU_QR] u8; qr_size: int; qr_want: bool;
   qr_text: [FFU_CODE] u8; qr_text_n: int;   // the code in capitals: a QR's alphanumeric mode holds a whole invoice
@@ -135,11 +136,13 @@ ffu_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c #effects(all) 
   g := s[0].upgrade[..];
   o := 0;
   if kind == FFU_BUY {
-    o = ffs_put(out, 0, ifx g[0].ask_credit then "{\"pay\":\"credit\"}" else "{\"pay\":\"sats\"}");
+    o = ffs_put(out, 0, "{\"pay\":\"sats\"}");
     g[0].buying = g[0].ask_buy; g[0].ask_buy = 0;
-    if !g[0].ask_credit { g[0].buy_state = BUY_ASKING; }
+    g[0].buy_state = BUY_ASKING;
   } else if kind == FFU_WEAR { o = ffs_put(out, 0, "{}"); g[0].scratch[0] = 0; }
-  else if kind == FFU_CHECK || kind == FFU_DECIDE { o = ffs_put(out, 0, "{}"); }
+  else if kind == FFU_CHECK && g[0].pre_n == 64 {
+    o = ffs_put(out, 0, "{\"preimage\":\""); o = ffs_put(out, o, cast(string) g[0].pre[0..<64]); o = ffs_put(out, o, "\"}");
+  } else if kind == FFU_CHECK || kind == FFU_DECIDE { o = ffs_put(out, 0, "{}"); }
   if kind == FFU_WEAR { g[0].buy_row = g[0].ask_wear; g[0].ask_wear = -1; }
   if kind == FFU_DECIDE { g[0].ask_decide = 0; }
   return ifx o > 0 then o else 0;
@@ -214,26 +217,21 @@ ffu_answer :: (s: [] Fairy, kind: int, answer: string) #export_c #effects(all) {
         for k: 0..<g[0].code_n { c := g[0].code[k]; g[0].qr_text[k] = ifx c >= 97 && c <= 122 then c - 32 else c; }
         g[0].qr_text_n = g[0].code_n;
         g[0].qr_want = true; g[0].qr_size = 0;
-        g[0].buy_state = BUY_SHOWN; g[0].polled = s[0].time;
+        g[0].buy_state = BUY_SHOWN; g[0].polled = s[0].time; g[0].pre_n = 0;
         g[0].buy_sats = cast(int) room_field_num(t, obj, "sats");
-        return;
-      }
-      if ffu_value(t, obj, "state") == "paid" {   // with credit: yours now
-        ffu_wear_look(g, g[0].buying, ffu_value(t, obj, "look"));
-        g[0].trying = 0; g[0].ask_get = true;
-        ffu_say(s, "IT'S YOURS: EVERYONE SEES YOU IN IT");
         return;
       }
     }
     g[0].buy_state = BUY_NONE;
-    ffu_say(s, ifx status == 401 then "LOG IN TO PAY WITH CREDIT" else ifx status == 402 then "NOT ENOUGH CREDIT"
-              else ifx status == 409 then "IT'S YOURS ALREADY" else ifx status == 404 then "IT ISN'T LISTED NOW"
-              else ifx status == 429 then "TOO MANY AT ONCE: TRY AGAIN IN A MINUTE" else "OUR WALLET DIDN'T ANSWER: TRY AGAIN");
+    ffu_say(s, ifx status == 409 then "IT'S YOURS ALREADY" else ifx status == 404 then "IT ISN'T LISTED NOW"
+              else ifx status == 422 then "THIS MAKER'S WALLET CAN'T CONFIRM A PURCHASE"
+              else ifx status == 429 then "TOO MANY AT ONCE: TRY AGAIN IN A MINUTE" else "THE MAKER'S WALLET DIDN'T ANSWER: TRY AGAIN");
     if status == 409 || status == 404 { g[0].ask_get = true; }
     return;
   }
   if kind == FFU_CHECK {
     g[0].polled = s[0].time;
+    if status == 402 { g[0].pre_n = 0; }   // not this invoice's preimage: it proves nothing
     if status != 200 || !ok { return; }
     st := ffu_value(t, obj, "state");
     if st == "paid" && g[0].buy_state == BUY_SHOWN {
@@ -258,6 +256,14 @@ ffu_answer :: (s: [] Fairy, kind: int, answer: string) #export_c #effects(all) {
 ffu_tick :: (s: [] Fairy) {
   g := s[0].upgrade[..];
   if g[0].buy_state == BUY_SHOWN && s[0].time - g[0].polled > f64(FFU_POLL) { g[0].ask_check = true; g[0].polled = s[0].time; }
+}
+// A wallet in this browser paid the invoice and reported its preimage (the host's message 615): ask now, with it.
+ffu_preimage :: (s: [] Fairy, text: string) #export_c #effects(all) {
+  g := s[0].upgrade[..];
+  if g[0].buy_state != BUY_SHOWN || text.count != 64 { return; }
+  for c: text { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return; } }
+  for i: 0..<64 { g[0].pre[i] = text[i]; }
+  g[0].pre_n = 64; g[0].ask_check = true; g[0].polled = s[0].time;
 }
 // The face encoded code into qr: status 0 and the grid's side, else nothing to show.
 ffu_qr_wanted :: (s: [] Fairy) -> bool #export_c #effects(all) { return s[0].upgrade[0].qr_want; }
@@ -291,10 +297,10 @@ ffu_act :: (s: [] Fairy, kind: int, arg: int) {
     return;
   }
   if kind == UB_WEAR { g[0].ask_wear = l[0].id; return; }
-  if kind == UB_BUY || kind == UB_CREDIT {
+  if kind == UB_BUY {
     if g[0].ask_buy > 0 || g[0].buy_state == BUY_ASKING { return; }
-    g[0].ask_buy = l[0].id; g[0].ask_credit = kind == UB_CREDIT; g[0].buy_sats = l[0].sats;
-    if kind == UB_BUY { g[0].buy_state = BUY_ASKING; }
+    g[0].ask_buy = l[0].id; g[0].buy_sats = l[0].sats;
+    g[0].buy_state = BUY_ASKING;
   }
 }
 
@@ -468,7 +474,7 @@ ffu_pane :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
     plate(s, u, qb, 1.0, 0);
     if g[0].buy_state == BUY_SHOWN { n = ffu_qr_draw(g, out, n, cx, y, side); }
     else {
-      word := ifx g[0].buy_state == BUY_EXPIRED then "THE INVOICE EXPIRED" else "OUR WALLET IS MAKING AN INVOICE";
+      word := ifx g[0].buy_state == BUY_EXPIRED then "THE INVOICE EXPIRED" else "GETTING THE MAKER'S INVOICE";
       n = ffs_text(s, out, n, word, cx - lo(text_width(word, cap), side) * 0.5, y + side * 0.5, cap, side, 0.8, false);
     }
     y += side + 10 * k + big;
@@ -510,9 +516,7 @@ ffu_pane :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
       wearing := g[0].wearing == l[0].id;
       n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + 2 * bw + 8 * k, y1 = y + bh}, ifx wearing then "WEARING" else "WEAR", UB_WEAR, i, cap, false);
     } else {
-      n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + bw, y1 = y + bh}, "BUY", UB_BUY, i, cap, true);
-      bx += bw + 8 * k;
-      n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + bw, y1 = y + bh}, "CREDIT", UB_CREDIT, i, cap, false);
+      n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + 2 * bw + 8 * k, y1 = y + bh}, "BUY", UB_BUY, i, cap, true);
     }
     y += bh + 10 * k;
   }
@@ -588,17 +592,30 @@ ffu_pane :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
   big: [200] u8;
   url := cast(string) big[0..<ffu_url(s[..], FFU_CHECK, big[..])];
   #assert url[0..<29] == "/api/playtest/upgrades/7/buy/" && url[29..<url.count] == hash;
+  #assert cast(string) big[0..<ffu_body(s[..], FFU_CHECK, big[..])] == "{}";
   ffu_answer(s[..], FFU_CHECK, "200\n{\"state\":\"open\",\"sats\":500}");
   #assert g[0].buy_state == BUY_SHOWN;
-  ffu_answer(s[..], FFU_CHECK, "200\n{\"state\":\"paid\",\"sats\":500,\"look\":\"120140210ff3399000000ffffff6633cc00ffaaff66ccffffff\",\"payout\":\"queued\"}");
+  // the paying wallet reports a preimage: asked at once, with it; a fake one is dropped
+  ffu_preimage(s[..], "nothex");
+  #assert g[0].pre_n == 0 && ffu_next(s[..]) == 0;
+  ffu_preimage(s[..], "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+  #assert ffu_next(s[..]) == FFU_CHECK;
+  #assert cast(string) big[0..<ffu_body(s[..], FFU_CHECK, big[..])] == "{\"preimage\":\"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\"}";
+  ffu_answer(s[..], FFU_CHECK, "402\n{\"error\":\"That preimage isn't this invoice's\"}");
+  #assert g[0].buy_state == BUY_SHOWN && g[0].pre_n == 0;
+  ffu_answer(s[..], FFU_CHECK, "200\n{\"state\":\"paid\",\"sats\":500,\"look\":\"120140210ff3399000000ffffff6633cc00ffaaff66ccffffff\",\"confirm\":\"verify\"}");
   #assert g[0].buy_state == BUY_PAID && g[0].wearing == 7 && g[0].trying == 0;
   ffu_close(s[..]);
   #assert ffu_worn(s[..])[0].on && ffu_worn(s[..])[0].tinted && ffu_worn(s[..])[0].tint[0] == 1.0;   // you, in it
-  // credit, and its refusals
-  ffu_act(s[..], UB_CREDIT, 1);
-  #assert ffu_next(s[..]) == FFU_BUY && cast(string) u[0..<ffu_body(s[..], FFU_BUY, u[..])] == "{\"pay\":\"credit\"}";
-  ffu_answer(s[..], FFU_BUY, "401\n{\"error\":\"log in to pay with credit\"}");
-  #assert cast(string) g[0].note[0..<g[0].note_n] == "LOG IN TO PAY WITH CREDIT" && g[0].wearing == 7;
+  // sats only, and the maker's refusals: a wallet that can't confirm a purchase, one that doesn't answer
+  ffu_act(s[..], UB_BUY, 1);
+  #assert ffu_next(s[..]) == FFU_BUY && cast(string) u[0..<ffu_body(s[..], FFU_BUY, u[..])] == "{\"pay\":\"sats\"}";
+  ffu_answer(s[..], FFU_BUY, "422\n{\"error\":\"This maker's wallet can't confirm a purchase\"}");
+  #assert cast(string) g[0].note[0..<g[0].note_n] == "THIS MAKER'S WALLET CAN'T CONFIRM A PURCHASE" && g[0].wearing == 7 && g[0].buy_state == BUY_NONE;
+  ffu_act(s[..], UB_BUY, 1);
+  #assert ffu_next(s[..]) == FFU_BUY && cast(string) u[0..<ffu_body(s[..], FFU_BUY, u[..])] == "{\"pay\":\"sats\"}";
+  ffu_answer(s[..], FFU_BUY, "502\n{\"error\":\"The maker's Lightning Address didn't answer; try again soon\"}");
+  #assert cast(string) g[0].note[0..<g[0].note_n] == "THE MAKER'S WALLET DIDN'T ANSWER: TRY AGAIN" && g[0].wearing == 7 && g[0].buy_state == BUY_NONE;
   // others: the room's look
   r := s[0].room[..];
   #assert room_take(r, "200\n{\"others\":[{\"id\":\"p-1\",\"name\":\"A\",\"x\":1,\"y\":0,\"z\":2,\"yaw\":0,\"look\":\"120140210ff3399000000ffffff6633cc00ffaaff66ccffffff\"},{\"id\":\"p-2\",\"name\":\"B\",\"x\":3,\"y\":0,\"z\":4,\"yaw\":0}],\"messages\":[],\"last\":0}") == 200;

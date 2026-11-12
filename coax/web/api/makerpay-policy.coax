@@ -1,0 +1,358 @@
+// Paying a maker (docs/auth/lightning-addresses.md, "Paying makers' own
+// addresses"; docs/verse/makers.md; owner decision D6; GitHub #13210). A tip
+// or an upgrade purchase goes from the player's wallet straight to the
+// maker's own Lightning Address. It never enters our wallet. makers.c
+// gathers the facts (the rows, the maker's answer, what the player's wallet
+// reported) and keeps what this file decides; it decides nothing itself.
+// The LNURL rules (where we may fetch, the invoice's amount, description
+// hash and expiry, LUD-21) are coax/lib/lnaddr/lnurl.coax.
+//
+//   the invoice     the maker's own, fetched by our server and checked there;
+//                   shown only while the maker's address is still the one we
+//                   asked (a maker who changes address mid-payment gets a new
+//                   invoice, never the old one)
+//   it counts       only when confirmed: the maker's service says settled
+//                   with a preimage (LUD-21), or the player's wallet reports
+//                   a preimage; either way SHA-256 of the preimage is the
+//                   invoice's payment hash. Once: a second confirmation of
+//                   the same payment changes nothing.
+//   otherwise       "Sent from your wallet": nothing is counted or delivered
+//   an upgrade      is delivered only when confirmed, so one is offered only
+//                   where a confirmation can come: the maker's service has
+//                   LUD-21, or the player pays from a wallet that reports
+//                   the preimage. Never bought with service credit.
+//   the bonus       a maker's first confirmed tip: a separate payment from
+//                   our wallet to the maker's address. Our money.
+//   payouts         our wallet sends only our own money: a bonus or an
+//                   admin's gift. A tip or purchase paid to our wallet
+//                   before this rule is still paid out; none is made after.
+//
+//   coax/bin/coax test coax/web/api/makerpay-policy.coax
+//   coax/bin/coax mutate coax/web/api/makerpay-policy.coax --root-only
+#load "../../lib/lnaddr/lnurl.coax";
+#authority;
+#run_steps 250000000;
+
+MP_TIP :: 0; MP_UPGRADE :: 1;                       // what is paid for
+MP_NO_PROOF :: 0; MP_BY_VERIFY :: 1; MP_BY_WALLET :: 2;   // how a payment was, or can be, confirmed
+MP_SRC_TIP :: 0; MP_SRC_UPGRADE :: 1; MP_SRC_BONUS :: 2; MP_SRC_GIFT :: 3;   // a payout's source
+MP_PER_MIN :: 60;                                   // invoices asked of makers' addresses a minute, all players
+
+MP_OK :: 0;
+MP_UNCLAIMED :: 1;
+MP_MOVED :: 2;
+MP_DOWN :: 3;
+MP_BAD :: 4;
+MP_RANGE :: 5;
+MP_CANT_CONFIRM :: 6;
+MP_NO_CREDIT :: 7;
+MP_PAY :: 8;
+MP_BUSY :: 9;
+MP_FAKE :: 10;
+MP_NO_TIP :: 11;
+MP_REFUSALS :: 12;
+MP_WHY :: [MP_REFUSALS] string.[
+  "ok",   // never shown: mp_text(MP_OK) is ""
+  "Nobody has claimed this world yet",
+  "The maker changed their Lightning Address; ask for a new invoice",
+  "The maker's Lightning Address didn't answer; try again soon",
+  "The maker's Lightning Address sent an invoice that doesn't check, so we didn't show it",
+  "The maker's Lightning Address doesn't take that amount",
+  "This maker's wallet can't confirm a purchase; pay from a wallet that reports the payment",
+  "Upgrades are paid in Bitcoin, straight to the maker; service credit pays only for our own services",
+  "Pay with sats",
+  "Too many invoices at once: the limit is 60 a minute; try again in a minute",
+  "That preimage isn't this invoice's",
+  "No such payment",
+];
+MP_STATUS :: [MP_REFUSALS] int.[200, 404, 503, 502, 502, 400, 422, 400, 400, 429, 402, 404];
+
+// A check's answer: where a payment stands.
+MP_S_NONE :: 0;      // no such payment
+MP_S_OPEN :: 1;      // not confirmed, the invoice still live
+MP_S_EXPIRED :: 2;   // not confirmed, the invoice past its time
+MP_S_PAID :: 3;      // confirmed now: count it, once
+MP_S_KNOWN :: 4;     // confirmed before: nothing changes
+MP_S_FAKE :: 5;      // a preimage that isn't this invoice's: nothing changes
+
+#test "every refusal has its own line and its own status" {
+  for c: 1..<MP_REFUSALS {
+    #assert mp_text(c).count > 10 && mp_status(c) >= 400 && mp_status(c) < 600;
+    for j: 1..<c { #assert mp_text(c) != mp_text(j); }
+  }
+  #assert mp_text(MP_OK) == "" && mp_text(-1) == "" && mp_text(MP_REFUSALS) == "";
+  #assert mp_status(MP_OK) == 200 && mp_status(-1) == 500 && mp_status(MP_REFUSALS) == 500;
+  #assert mp_status(MP_UNCLAIMED) == 404 && mp_status(MP_MOVED) == 503 && mp_status(MP_DOWN) == 502 && mp_status(MP_BAD) == 502;
+  #assert mp_status(MP_RANGE) == 400 && mp_status(MP_CANT_CONFIRM) == 422 && mp_status(MP_NO_CREDIT) == 400 && mp_status(MP_PAY) == 400;
+  #assert mp_status(MP_BUSY) == 429 && mp_status(MP_FAKE) == 402 && mp_status(MP_NO_TIP) == 404;
+}
+
+#test "an upgrade is paid in sats; service credit is refused by name" {
+  #assert mp_pay("") == MP_OK && mp_pay("sats") == MP_OK;
+  #assert mp_pay("credit") == MP_NO_CREDIT;
+  #assert mp_pay("card") == MP_PAY && mp_pay("SATS") == MP_PAY && mp_pay("credits") == MP_PAY && mp_pay("sat") == MP_PAY;
+}
+
+#test "the limit counts this request: 60 a minute pass, the 61st waits" {
+  #assert mp_limit(0) == MP_OK && mp_limit(59) == MP_OK;
+  #assert mp_limit(60) == MP_BUSY && mp_limit(61) == MP_BUSY;
+  #assert MP_PER_MIN == 60 && mp_per_min() == 60 && mp_limit(mp_per_min() - 1) == MP_OK && mp_limit(mp_per_min()) == MP_BUSY;
+}
+
+#test "the maker's answer: only a checked invoice passes; each failure has its own refusal" {
+  #assert mp_quote(LU_OK) == MP_OK;
+  #assert mp_quote(LU_UPSTREAM) == MP_DOWN;
+  #assert mp_quote(LU_TOO_SMALL) == MP_RANGE && mp_quote(LU_TOO_BIG) == MP_RANGE;
+  #assert mp_quote(LU_INVOICE) == MP_BAD && mp_quote(LU_UPSTREAM_BAD) == MP_BAD && mp_quote(LU_UPSTREAM_REFUSED) == MP_BAD;
+  // an address of ours that is off, suspended, retired or not receiving, and anything unknown: no invoice
+  for c: 1..<LU_REFUSALS + 2 { #assert mp_quote(c) != MP_OK; }
+  #assert mp_quote(LU_NOT_RECEIVING) == MP_BAD && mp_quote(LU_OFF) == MP_BAD && mp_quote(LU_AMOUNT) == MP_BAD && mp_quote(-1) == MP_BAD;
+  #assert mp_quote(LU_WHOLE_SATS) == MP_BAD && mp_quote(LU_UPSTREAM - 1) == MP_BAD && mp_quote(LU_UPSTREAM + 1) == MP_BAD;
+}
+
+#test "showing the invoice: a claimed maker whose address is still the one we asked" {
+  #assert mp_issue(MP_TIP, true, true, true, false) == MP_OK;
+  #assert mp_issue(MP_TIP, true, true, false, false) == MP_OK;   // a tip may go unconfirmed: it just doesn't count
+  #assert mp_issue(MP_TIP, false, true, true, true) == MP_UNCLAIMED;
+  #assert mp_issue(MP_TIP, true, false, true, true) == MP_MOVED;   // the maker changed address mid-payment
+  #assert mp_issue(MP_TIP, false, false, true, true) == MP_UNCLAIMED;
+  #assert mp_issue(MP_UPGRADE, true, true, true, false) == MP_OK;
+  #assert mp_issue(MP_UPGRADE, true, true, false, true) == MP_OK;
+  #assert mp_issue(MP_UPGRADE, true, true, false, false) == MP_CANT_CONFIRM;
+  #assert mp_issue(MP_UPGRADE, false, true, false, false) == MP_UNCLAIMED;
+  #assert mp_issue(MP_UPGRADE, true, false, false, false) == MP_MOVED;
+  #assert mp_issue(7, true, true, false, false) == MP_CANT_CONFIRM;   // anything not a tip is delivered, so it needs a confirmation
+}
+
+#test "how a payment can be confirmed" {
+  #assert mp_confirms(true) == MP_BY_VERIFY && mp_confirms(false) == MP_BY_WALLET;
+}
+
+#test "a preimage proves a payment only when its SHA-256 is the payment hash" {
+  // SHA-256 of 32 zero bytes
+  zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  hash := "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925";
+  #assert mp_proof(zero, hash);
+  #assert !mp_proof(hash, hash) && !mp_proof(zero, zero);
+  #assert !mp_proof("0000000000000000000000000000000000000000000000000000000000000001", hash);
+  #assert !mp_proof("", hash) && !mp_proof(zero, "") && !mp_proof(zero[0..<63], hash) && !mp_proof(zero, hash[0..<63]);
+  #assert !mp_proof(zero, "66687AADF862BD776C8FC18B8E9F8E20089714856EE233B3902A591D0D5F2925");   // rows keep lowercase
+  #assert !mp_proof("000000000000000000000000000000000000000000000000000000000000000g", hash);
+}
+
+#test "a check: it counts once, only with a proof that holds" {
+  // found, direct, paid, proof, proof_ok, expired
+  #assert mp_check(true, true, false, MP_BY_VERIFY, true, false) == MP_S_PAID;
+  #assert mp_check(true, true, false, MP_BY_WALLET, true, false) == MP_S_PAID;
+  #assert mp_check(true, true, false, MP_BY_VERIFY, true, true) == MP_S_PAID;    // proven after the invoice's time: still paid
+  #assert mp_check(true, true, false, MP_BY_WALLET, true, true) == MP_S_PAID;
+  #assert mp_check(true, true, true, MP_BY_VERIFY, true, false) == MP_S_KNOWN;   // a replayed confirmation
+  #assert mp_check(true, true, true, MP_BY_WALLET, true, false) == MP_S_KNOWN;
+  #assert mp_check(true, true, true, MP_BY_WALLET, false, false) == MP_S_KNOWN;  // paid stays paid whatever comes later
+  #assert mp_check(true, true, true, MP_NO_PROOF, false, true) == MP_S_KNOWN;
+  #assert mp_check(true, true, false, MP_BY_WALLET, false, false) == MP_S_FAKE;  // a fake preimage
+  #assert mp_check(true, true, false, MP_BY_WALLET, false, true) == MP_S_FAKE;
+  #assert mp_check(true, true, false, MP_BY_VERIFY, false, false) == MP_S_OPEN;  // the maker's service doesn't say settled
+  #assert mp_check(true, true, false, MP_BY_VERIFY, false, true) == MP_S_EXPIRED;
+  #assert mp_check(true, true, false, MP_NO_PROOF, false, false) == MP_S_OPEN;
+  #assert mp_check(true, true, false, MP_NO_PROOF, false, true) == MP_S_EXPIRED;
+  #assert mp_check(true, true, false, MP_NO_PROOF, true, false) == MP_S_OPEN;    // "ok" with no proof named is no proof
+  #assert mp_check(true, true, false, MP_NO_PROOF, true, true) == MP_S_EXPIRED;
+  #assert mp_check(true, true, false, 3, true, false) == MP_S_OPEN && mp_check(true, true, false, -1, true, false) == MP_S_OPEN;
+  #assert mp_check(false, true, false, MP_BY_VERIFY, true, false) == MP_S_NONE;
+  #assert mp_check(false, true, true, MP_BY_WALLET, true, false) == MP_S_NONE;
+  // a payment made to our wallet before D6 is never confirmed this way
+  #assert mp_check(true, false, false, MP_BY_WALLET, true, false) == MP_S_NONE;
+  #assert mp_check(true, false, true, MP_BY_VERIFY, true, false) == MP_S_NONE;
+}
+
+#test "only a payment confirmed now is counted; only confirmed ones deliver" {
+  #assert mp_counts(MP_S_PAID);
+  #assert !mp_counts(MP_S_KNOWN) && !mp_counts(MP_S_OPEN) && !mp_counts(MP_S_EXPIRED) && !mp_counts(MP_S_FAKE) && !mp_counts(MP_S_NONE);
+  #assert !mp_counts(-1) && !mp_counts(6);
+  #assert mp_delivered(MP_S_PAID) && mp_delivered(MP_S_KNOWN);
+  #assert !mp_delivered(MP_S_OPEN) && !mp_delivered(MP_S_EXPIRED) && !mp_delivered(MP_S_FAKE) && !mp_delivered(MP_S_NONE);
+  #assert !mp_delivered(-1) && !mp_delivered(6);
+  #assert mp_state_status(MP_S_NONE) == 404 && mp_state_status(MP_S_FAKE) == 402;
+  #assert mp_state_status(MP_S_OPEN) == 200 && mp_state_status(MP_S_EXPIRED) == 200 && mp_state_status(MP_S_PAID) == 200 && mp_state_status(MP_S_KNOWN) == 200;
+  #assert mp_state_status(-1) == 404 && mp_state_status(6) == 404;
+  #assert mp_state_text(MP_S_OPEN) == "open" && mp_state_text(MP_S_EXPIRED) == "expired" && mp_state_text(MP_S_PAID) == "paid" && mp_state_text(MP_S_KNOWN) == "paid";
+  #assert mp_state_text(MP_S_NONE) == "" && mp_state_text(MP_S_FAKE) == "" && mp_state_text(-1) == "" && mp_state_text(6) == "";
+}
+
+#test "the first-tip bonus: our own sats, once a maker, for a confirmed tip only" {
+  #assert mp_bonus(MP_TIP, MP_S_PAID, false, 1000) == 1000;
+  #assert mp_bonus(MP_TIP, MP_S_PAID, true, 1000) == 0;      // the maker had one
+  #assert mp_bonus(MP_UPGRADE, MP_S_PAID, false, 1000) == 0; // a purchase carries none
+  #assert mp_bonus(7, MP_S_PAID, false, 1000) == 0;
+  #assert mp_bonus(MP_TIP, MP_S_KNOWN, false, 1000) == 0;    // a replay earns nothing
+  #assert mp_bonus(MP_TIP, MP_S_OPEN, false, 1000) == 0 && mp_bonus(MP_TIP, MP_S_FAKE, false, 1000) == 0;
+  #assert mp_bonus(MP_TIP, MP_S_EXPIRED, false, 1000) == 0 && mp_bonus(MP_TIP, MP_S_NONE, false, 1000) == 0;
+  #assert mp_bonus(MP_TIP, MP_S_PAID, false, 0) == 0 && mp_bonus(MP_TIP, MP_S_PAID, false, -5) == 0;   // the launch bonus ended
+  #assert mp_bonus(MP_TIP, MP_S_PAID, false, 1) == 1;
+}
+
+#test "our wallet pays out only our own money; a direct payment never has a payout of the player's" {
+  #assert mp_payout(MP_SRC_BONUS, true) && mp_payout(MP_SRC_BONUS, false);
+  #assert mp_payout(MP_SRC_GIFT, true) && mp_payout(MP_SRC_GIFT, false);
+  #assert !mp_payout(MP_SRC_TIP, true) && !mp_payout(MP_SRC_UPGRADE, true);
+  // paid into our wallet before D6: still owed to the maker
+  #assert mp_payout(MP_SRC_TIP, false) && mp_payout(MP_SRC_UPGRADE, false);
+  #assert !mp_payout(-1, false) && !mp_payout(4, false) && !mp_payout(-1, true) && !mp_payout(4, true);
+}
+
+#test "an address of ours is resolved here, never fetched; any other is fetched" {
+  #assert mp_ours("alice@openagents.com", "openagents.com") && mp_ours("Alice@OpenAgents.com", "openagents.com");
+  #assert mp_ours("alice@staging.openagents.com", "staging.openagents.com") && mp_ours("a@x.openagents.com", "staging.openagents.com");
+  #assert !mp_ours("alice@getalby.com", "openagents.com") && !mp_ours("alice@notopenagents.com", "openagents.com");
+  #assert !mp_ours("openagents.com", "openagents.com") && !mp_ours("", "openagents.com") && !mp_ours("@openagents.com", "openagents.com");
+  #assert !mp_ours("xopenagents.com", "openagents.com") && !mp_ours("x.openagents.com", "openagents.com");
+  #assert mp_ours("a@example.org", "example.org") && !mp_ours("a@example.org", "") && !mp_ours("a@openagents.com.evil.io", "example.org");
+  #assert !mp_ours("a@b@openagents.com", "openagents.com") && !mp_ours("@a@openagents.com", "openagents.com");
+  #assert !mp_ours("a@@openagents.com", "openagents.com") && !mp_ours("a@openagents.com@", "openagents.com");
+  // a domain of exactly 256 bytes is read; one more is not
+  long: [300] u8; for i: 0..<300 { long[i] = 'a'; }
+  tail := ".openagents.com";
+  long[0] = 'n'; long[1] = '@';
+  for i: 0..<tail.count { long[2 + 256 - tail.count + i] = tail[i]; }
+  #assert mp_ours(cast(string) long[0..<258], "example.org");
+  for i: 0..<tail.count { long[2 + 256 - tail.count + i] = 'a'; long[2 + 257 - tail.count + i] = tail[i]; }
+  #assert !mp_ours(cast(string) long[0..<259], "example.org");
+  n: [64] u8;
+  #assert mp_ours_name("Alice+tips@openagents.com", n[..]) == 10 && cast(string) n[0..<10] == "alice+tips";
+  #assert mp_ours_name("a@openagents.com", n[..]) == 1 && cast(string) n[0..<1] == "a";
+  #assert mp_ours_name("@openagents.com", n[..]) == -1 && mp_ours_name("alice", n[..]) == -1 && mp_ours_name("", n[..]) == -1;
+  #assert mp_ours_name("a@b@c", n[..]) == -1 && mp_ours_name("@a@c", n[..]) == -1;
+  #assert mp_ours_name("alice@openagents.com", n[0..<4]) == -1 && mp_ours_name("alice@openagents.com", n[0..<5]) == 5;
+  #assert mp_at("a@b") == 1 && mp_at("ab@c") == 2 && mp_at("@b") == 0 && mp_at("ab") == 0 && mp_at("") == 0 && mp_at("a@b@c") == 0 && mp_at("@a@c") == 0;
+}
+
+#test "when an invoice runs out: its own timestamp and expiry" #steps 400000000 {
+  // BOLT 11's examples: "1 cup coffee" lives 60 seconds; the long one a week from 1572468703
+  #assert mp_invoice_expires(INVOICE_ROWS[1].text) == cast(int) INVOICE_ROWS[1].timestamp + 60;
+  #assert mp_invoice_expires(INVOICE_ROWS[10].text) == 1572468703 + 604800;
+  #assert mp_invoice_expires("lnbc1notaninvoice") == -1 && mp_invoice_expires("") == -1;
+}
+
+mp_text :: (code: int) -> string #export_c #effects(all) {
+  if code <= MP_OK || code >= MP_REFUSALS { return ""; }
+  return MP_WHY[code];
+}
+// The HTTP status of a refusal (200 for MP_OK).
+mp_status :: (code: int) -> int #export_c #effects(all) {
+  if code < MP_OK || code >= MP_REFUSALS { return 500; }
+  return MP_STATUS[code];
+}
+// What an upgrade may be paid with: sats ("" is sats). Service credit never.
+mp_pay :: (pay: string) -> int #export_c #effects(all) {
+  if pay == "" || pay == "sats" { return MP_OK; }
+  if pay == "credit" { return MP_NO_CREDIT; }
+  return MP_PAY;
+}
+// The limit, for the page that lists it (/docs/limits).
+mp_per_min :: () -> int #export_c #effects(all) { return MP_PER_MIN; }
+// The limit on invoices asked of makers' addresses; count is the last
+// minute's, before this request.
+mp_limit :: (count: int) -> int #export_c #effects(all) {
+  if count >= MP_PER_MIN { return MP_BUSY; }
+  return MP_OK;
+}
+// The maker's address's answer, as lnurl.coax read it (lu_forward_invoice
+// checked the invoice: the network, the exact amount, the description hash,
+// the expiry).
+mp_quote :: (lu: int) -> int #export_c #effects(all) {
+  if lu == LU_OK { return MP_OK; }
+  if lu == LU_UPSTREAM { return MP_DOWN; }
+  if lu == LU_TOO_SMALL || lu == LU_TOO_BIG { return MP_RANGE; }
+  return MP_BAD;
+}
+// Whether a checked invoice may be shown. claimed: the maker (a realm's, or
+// an approved listing's) is there; same_address: their address now is the
+// one the invoice came from; has_verify: the maker's service gave a LUD-21
+// URL we may fetch; reports: the player's wallet reports the preimage.
+mp_issue :: (kind: int, claimed: bool, same_address: bool, has_verify: bool, reports: bool) -> int #export_c #effects(all) {
+  if !claimed { return MP_UNCLAIMED; }
+  if !same_address { return MP_MOVED; }
+  if kind != MP_TIP && !has_verify && !reports { return MP_CANT_CONFIRM; }
+  return MP_OK;
+}
+// How the page can learn a payment arrived.
+mp_confirms :: (has_verify: bool) -> int #export_c #effects(all) {
+  return ifx has_verify then MP_BY_VERIFY else MP_BY_WALLET;
+}
+// Whether a preimage (64 lowercase hex digits) is the payment hash's.
+mp_proof :: (preimage: string, payment_hash: string) -> bool #export_c #effects(all) {
+  return x402_preimage_matches(preimage, payment_hash);
+}
+// Where a payment stands after a check. direct: its invoice is the maker's
+// own; proof: MP_BY_VERIFY (the maker's service answered) or MP_BY_WALLET
+// (the player's wallet gave a preimage); proof_ok: lu_verify_read said
+// settled, or mp_proof held.
+mp_check :: (found: bool, direct: bool, paid: bool, proof: int, proof_ok: bool, expired: bool) -> int #export_c #effects(all) {
+  if !found || !direct { return MP_S_NONE; }
+  if paid { return MP_S_KNOWN; }
+  named := proof == MP_BY_VERIFY || proof == MP_BY_WALLET;
+  if named && proof_ok { return MP_S_PAID; }
+  if proof == MP_BY_WALLET { return MP_S_FAKE; }
+  return ifx expired then MP_S_EXPIRED else MP_S_OPEN;
+}
+// Whether a check's answer adds to the maker's count (once: MP_S_KNOWN doesn't).
+mp_counts :: (state: int) -> bool #export_c #effects(all) { return state == MP_S_PAID; }
+// Whether what was bought is the buyer's.
+mp_delivered :: (state: int) -> bool #export_c #effects(all) { return state == MP_S_PAID || state == MP_S_KNOWN; }
+mp_state_status :: (state: int) -> int #export_c #effects(all) {
+  if state == MP_S_FAKE { return 402; }
+  if state == MP_S_OPEN || state == MP_S_EXPIRED || state == MP_S_PAID || state == MP_S_KNOWN { return 200; }
+  return 404;
+}
+// The page's word for it.
+mp_state_text :: (state: int) -> string #export_c #effects(all) {
+  if state == MP_S_OPEN { return "open"; }
+  if state == MP_S_EXPIRED { return "expired"; }
+  if state == MP_S_PAID || state == MP_S_KNOWN { return "paid"; }
+  return "";
+}
+// The sats our wallet sends a maker for their first confirmed tip.
+// had_one: a bonus was already queued for this maker.
+mp_bonus :: (kind: int, state: int, had_one: bool, bonus_sats: int) -> int #export_c #effects(all) {
+  if kind != MP_TIP || state != MP_S_PAID || had_one || bonus_sats < 1 { return 0; }
+  return bonus_sats;
+}
+// Whether our wallet may pay out for a payment row. direct: the player paid
+// the maker's own invoice, so nothing of theirs is with us.
+mp_payout :: (source: int, direct: bool) -> bool #export_c #effects(all) {
+  if source == MP_SRC_BONUS || source == MP_SRC_GIFT { return true; }
+  if source == MP_SRC_TIP || source == MP_SRC_UPGRADE { return !direct; }
+  return false;
+}
+// Where an address's one '@' is; 0 when it has none, more than one, or starts with it.
+mp_at :: (address: string) -> int #effects(all) {
+  at := address.count; count := 0;
+  for i: 0..<address.count { if address[i] == '@' { at = i; count += 1; } }
+  if count != 1 { return 0; }
+  return at;
+}
+// Whether a maker's address is one of ours (name@our domain, or under
+// openagents.com): lnaddr.c then reads where it forwards from our own rows.
+mp_ours :: (address: string, our_domain: string) -> bool #export_c #effects(all) {
+  at := mp_at(address);
+  if at == 0 { return false; }
+  low: [256] u8; n := address.count - at - 1;
+  if n > low.count { return false; }
+  for i: 0..<n { low[i] = lnaddr_lower_byte(address[at + 1 + i]); }
+  domain := cast(string) low[0..<n];
+  return lu_under(domain, "openagents.com") || lu_under(domain, our_domain);
+}
+// The name (with its +tag) of an address, lowercased. Its length, or -1.
+mp_ours_name :: (address: string, out: [] u8) -> int #export_c #effects(all) {
+  at := mp_at(address);
+  if at == 0 || at > out.count { return -1; }
+  for i: 0..<at { out[i] = lnaddr_lower_byte(address[i]); }
+  return at;
+}
+// When an invoice runs out (its timestamp and expiry, Unix seconds), or -1.
+mp_invoice_expires :: (pr: string) -> int #export_c #effects(all) {
+  inv: [1] Invoice;
+  if invoice_decode_vartime(pr, inv[..]) != INV_OK { return -1; }
+  return cast(int) inv[0].timestamp + cast(int) inv[0].expiry;
+}

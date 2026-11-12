@@ -611,6 +611,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   start(state);
   if (kind != 600 && edit_face_message(ed(state), kind, (coax_string){(const char *)inbox, length})) { edit_face_drain(ed(state)); return; }   /* the board's typing and answers first */
   if (kind == 1) { fairy_typed(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (kind == 615) { ffu_preimage(at(state), (coax_string){(const char *)inbox, length}); return; }   /* a wallet here paid UPGRADE's invoice: its preimage */
   if (talk_message(state, kind, length)) return;
   if (social_message(state, kind, length)) return;
   if (course_message(state, kind, length)) return;
