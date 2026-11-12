@@ -16,7 +16,7 @@
 cxproc_platform :: ()->int #foreign #effects(all);
 cxproc_flush_timeout :: (h:int,ms:int)->int #foreign #effects(all);
 
-MC_COMMAND_SECONDS :: 30;
+MC_COMMAND_SECONDS :: MC_COMMAND_DEFAULT;
 MC_VIEW_BYTES :: 65536;
 MC_VIEW_BINARY :: "[a binary file: not shown]";
 MC_KEEP_HEAD :: 5900;            // with the tail and the gap line, under the state's 6,000 + 6,000 cut

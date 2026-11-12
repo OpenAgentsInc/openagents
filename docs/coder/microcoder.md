@@ -114,7 +114,8 @@ schema, the tools and the limits. The model never sees a key, a path under
 ### Tools in v1
 
 - **`commands`**: run in the working directory through
-  `coax/platform/process-native.c`, with a timeout per command (30 s) and the
+  `coax/platform/process-native.c`, with a timeout per command (30 s; 120 s in
+  Coder, which tells the model so in `environment.command_seconds`) and the
   output capped. A run in Coder has 15 minutes (`MC_RUN_MS`). With `local_work` under 0.5 the loop is told not to run
   commands, and any it returns are refused with a note in state.
 - **`edits`**: exact replacements under the working directory (`old` must

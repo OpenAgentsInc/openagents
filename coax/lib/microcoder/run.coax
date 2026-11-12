@@ -7,7 +7,8 @@
 //
 // Infrastructure only: the Mac app's Lab and /chat call this when the
 // owner asks for the wiring. Model calls never block a poll; a step's
-// commands run inside the poll that starts them (30 s each at most).
+// commands run inside the poll that starts them (30 s each at most, or the owner's
+// command_seconds).
 //
 // Checks: coax test coax/lib/microcoder/run.coax --library (no main of its own).
 
@@ -137,6 +138,7 @@ McRun :: struct {
   gated: bool;                   // each command waits for mc_run_answer: the host's hooks and approvals decide
   ask_ticket:int;
   asking: bool; ask_i: int;      // the pending action's command waiting for an answer
+  command_seconds: int;          // a command's time limit; 0 is MC_COMMAND_SECONDS (an unattended owner gives more, and tells the model in the facts)
   seed: bool;                    // before the first call, look up what the task names (mc_run_seed)
   seeded: bool;
   rbuf: [4096] u8;               // this poll's reply bytes
@@ -331,7 +333,7 @@ mc_run_failed :: (r:[]McRun,out:[]McRunEvent,k:int)->int {
 // One command run, its result recorded and given out.
 mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int {
   if !mc_run_intent(r,AjKind.command_intent,command) {return mc_run_failed(r,out,k);}
-  seconds:=MC_COMMAND_SECONDS;
+  seconds:=ifx r[0].command_seconds>0 then r[0].command_seconds else MC_COMMAND_SECONDS;
   if r[0].journal.count>0 {left:=(r[0].deadline-cxproc_now_ms())/1000;if left<seconds {seconds=left;}if seconds<1 {r[0].refused="time limit reached: a run has 15 minutes";return mc_run_failed(r,out,k);}}
   res := mc_run_command_profile(r[0].cwd, command, seconds, r[0].tb[0].out[..],r[0].profile);
   metadata:[128]u8;m:=json_raw(metadata[..],0,"exit=");m=json_write_int(metadata[..],m,res.exit);
