@@ -147,6 +147,7 @@ route coax/web/api/drops.c  # drops: hand-built bodies; the api.v1 envelope (#13
 route coax/web/api/email.c  # admin email: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/inference.c  # inference and credit: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/jobs.c  # jobs: hand-built bodies; the api.v1 envelope (#13250)
+route coax/web/api/lnaddr.c  # Lightning Addresses: the LNURL bodies are lnurl.coax's (the lnurl row); the holder's /api/lightning/address bodies are hand-built; the api.v1 envelope (#13250)
 route coax/web/api/makers.c  # makers and upgrades: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/mesh.c  # /v1/systemone, JSON parsed in mesh-policy.coax: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/private.c  # private projects: hand-built bodies; the api.v1 envelope (#13250)
