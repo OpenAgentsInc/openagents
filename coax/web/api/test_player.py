@@ -129,7 +129,9 @@ check("join by email gives the guest's key an account of its own", status == 200
 acct = joined["player"]["account"]
 check("the join is a playtester row, the email lower-cased",
       sql("select email||' '||player||' '||sid||' '||how from analytics.playtesters where sid='s1'") == "kiki@example.com v123 s1 email")
-check("the account keeps no email", sql(f"select coalesce(email, '-') from verse.accounts where id='{acct}'") == "-")
+check("the account keeps no email (verse.accounts has no email column, #13207)",
+      sql(f"select count(*) from verse.accounts where id='{acct}'") == "1"
+      and sql("select count(*) from information_schema.columns where table_schema='verse' and table_name='accounts' and column_name='email'") == "0")
 check("no route shows the email", b"kiki@example.com" not in json.dumps([pt("GET", "player", key=guest["key"]), pt("GET", f"world/{wid}/owner")]).encode())
 check("the guest's world is still theirs", pt("GET", "player", key=guest["key"])[1] == {"id": guest["id"], "account": acct, "worlds": [wid]})
 check("joining again keeps the key and its account",
