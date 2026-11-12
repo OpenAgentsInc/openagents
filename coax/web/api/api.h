@@ -86,6 +86,8 @@ char *drops_site_read(const char *name);   // a text object from the site's buck
 bool drops_site_write_bytes(const char *name, const char *type, const unsigned char *data, size_t n);
 void realms_refresh_pages(void);   // realms.c: on start, made realms' pages written with an older template
 bool jobs_route(const request *q);        // jobs.c: POST /api/jobs/<job>, Cloud Scheduler (OIDC) or an admin
+char *service_watch(PGconn *db, const char *day);   // service.c: the minute's alerts (service-policy.coax, #13297)
+bool service_route(const request *q);     // service.c: GET /api/playtest/service-health
 bool email_route(const request *q);       // email.c: POST /api/admin/email, through Resend
 // Mail through Resend (email.c): 0 sent, 1 sent before under the same key, else an HTTP status with err.
 int email_send(PGconn *db, const char *message, char id[128], char *err, size_t errcap);

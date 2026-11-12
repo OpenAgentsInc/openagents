@@ -73,3 +73,50 @@ check("jobs: 7:00 Chicago is 12:00 UTC before the change and 13:00 after", utc =
 local = sql("SELECT string_agg(to_char(t AT TIME ZONE 'America/Chicago', 'MM-DD HH24:MI'), ' ' ORDER BY t) FROM unnest(ARRAY["
             "timestamptz '2026-10-31 12:00Z', '2026-11-01 13:00Z', '2026-11-02 13:00Z']) t")
 check("jobs: and those runs are each 7:00 in Chicago", local == "10-31 07:00 11-01 07:00 11-02 07:00", local)
+
+# The service watch (service.c, service-policy.coax, docs/deployment/service-levels.md, #13297): it runs
+# on every call (no claim on the day), opens an alert for what holds, resolves what stopped, and mails
+# each change to OA_ALERT_TO (test.sh: owner@example.com, through test_email.py's fake Resend).
+check("service-watch: an unauthenticated call is refused", job("/api/jobs/service-watch")[0] == 401)
+now_ms = int(sql("SELECT verse.room_now()"))
+sql("DELETE FROM verse.room_shards WHERE shard = 97; DELETE FROM verse.room_stats WHERE shard = 97")
+sql("INSERT INTO verse.room_shards (shard, rooms_cap, at, seen_at, endpoint) VALUES (97, 0, %d, %d, 'wss://room.openagents.com:4497/api/room/s97/')"
+    % (now_ms - 60000, now_ms - 60000))
+
+
+def stats_report(gen, p95, failures, fenced, unsaved):
+    body = ("t %d\nprocess generation=%d\nshard=97\nplayers=2\ntick p95 ms=%.2f\ntick p99 ms=%.2f\ncheckpoint failures=%d\n"
+            "checkpoint stale owner refusals=%d\ncheckpoint unsaved age ms most=%d\n") % (now_ms, gen, p95, p95, failures, fenced, unsaved)
+    sql("INSERT INTO verse.room_stats (shard, body) VALUES (97, $b$%s$b$)" % body)
+
+
+stats_report(4, 12.5, 2, 0, 1000)    # the first report of a process counts nothing yet
+stats_report(4, 12.5, 3, 3, 31000)   # one more failure, three fenced, unsaved past the loss bound
+s, b = job("/api/jobs/service-watch", "good.token")
+opened = sorted(a["key"] for a in b.get("result", {}).get("sync", {}).get("opened", [])) if s == 200 else []
+check("service-watch: a shard silent for a minute, its slow ticks, its failed, fenced and unsaved checkpoints open alerts",
+      s == 200 and b.get("state") == "ran" and all(k in opened for k in ["silent:97", "tick:97", "checkpoint-failures:97", "fenced:97", "unsaved:97"]), (s, b))
+s, b = job("/api/jobs/service-watch", "good.token")
+check("service-watch: runs again at once, and an alert already open opens nothing", s == 200 and b["result"]["sync"]["opened"] == [], (s, b))
+if "mail_seen" in globals():
+    mail = [m["body"] for m in mail_seen if "shard 97: stopped reporting" in m["body"].get("subject", "")]
+    check("service-watch: the opened alert is mailed to the owner with its runbook line",
+          len(mail) == 1 and mail[0].get("to") == ["owner@example.com"] and mail[0]["subject"].startswith("[production] ") and "vm-deploy.sh status" in mail[0].get("text", ""), mail)
+s, b, _ = call("GET", "/api/playtest/service-health")
+h = json.loads(b) if s == 200 else {}
+check("service-health: the three service levels and the open alerts, for anyone",
+      s == 200 and [l["name"] for l in h.get("levels", [])] == ["tick time", "join time", "checkpoint age"]
+      and h["levels"][0]["target"] == 10000 and h["levels"][1]["objective_ppm"] == 950000
+      and any(a["key"] == "silent:97" and a["title"] == "shard 97: stopped reporting for 20 s" for a in h.get("alerts", [])), b)
+check("service-health: shard 97's minute counts against tick time and checkpoint age",
+      h.get("levels") and h["levels"][0]["total"] >= 1 and h["levels"][0]["worst"] >= 12500 and h["levels"][2]["worst"] >= 31000, h.get("levels"))
+now_ms = int(sql("SELECT verse.room_now()"))
+sql("UPDATE verse.room_shards SET at = %d, seen_at = %d WHERE shard = 97; DELETE FROM verse.room_stats WHERE shard = 97" % (now_ms, now_ms))
+s, b = job("/api/jobs/service-watch", "good.token")
+resolved = sorted(a["key"] for a in b.get("result", {}).get("sync", {}).get("resolved", [])) if s == 200 else []
+check("service-watch: reporting again, its alerts resolve", s == 200 and all(k in resolved for k in ["silent:97", "tick:97", "unsaved:97"]), (s, b))
+sql("UPDATE verse.room_shards SET draining = 5, gen = 5, at = %d, seen_at = %d WHERE shard = 97" % (now_ms - 60000, now_ms - 60000))
+s, b = job("/api/jobs/service-watch", "good.token")
+check("service-watch: a drained shard's silence is no alert", s == 200 and "silent:97" not in [a["key"] for a in b["result"]["sync"]["opened"]], (s, b))
+sql("DELETE FROM verse.room_shards WHERE shard = 97; DELETE FROM verse.room_minutes WHERE shard = 97")
+job("/api/jobs/service-watch", "good.token")

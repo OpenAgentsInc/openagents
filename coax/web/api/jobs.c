@@ -4,6 +4,8 @@
 // service account. A job runs once per Chicago day; a run already done says so,
 // and an admin can run a day again by hand (?day=YYYY-MM-DD&again=1).
 //
+// The every-minute jobs (EVERY: service-watch) run on each call, with no claim on the day.
+//
 //   POST /api/jobs/<job>[?day=...&again=1]
 //     the scheduler (OIDC, OA_JOBS_CALLER, audience OA_API_ORIGIN/api/jobs) or an admin
 //     200 {"job","day","state":"ran"|"already ran","result"}; 401 anyone else; 404 no such job
@@ -92,6 +94,10 @@ static const struct { const char *name; char *(*run)(PGconn *db, const char *day
   {"heartbeat", job_heartbeat},   // proves the schedule: one run each morning
   {"auth-sweep", job_auth_sweep},
 };
+// Jobs that run on every call, not once a day: the minute's service watch (service.c, #13297).
+static const struct { const char *name; char *(*run)(PGconn *db, const char *day); } EVERY[] = {
+  {"service-watch", service_watch},
+};
 
 bool jobs_route(const request *q) {
   if (strncmp(q->path, "/api/jobs/", 10)) return false;
@@ -106,6 +112,16 @@ bool jobs_route(const request *q) {
   if (!scheduler(q, db)) {
     if (admin_who(q, db, who)) { api_json(q->fd, 401, "{\"error\":\"the scheduler or an admin only\"}"); return true; }
     by_admin = true;
+  }
+  for (size_t i = 0; which < 0 && i < sizeof EVERY / sizeof EVERY[0]; i++) {
+    if (strcmp(name, EVERY[i].name)) continue;
+    char *result = EVERY[i].run(db, "");
+    if (!result) { api_log("job %s: failed", name); api_json(q->fd, 500, "{\"error\":\"the job failed\"}"); return true; }
+    size_t n = strlen(result) + 128; char *out = malloc(n);
+    if (out) { snprintf(out, n, "{\"job\":\"%s\",\"state\":\"ran\",\"result\":%s}", name, result); api_json(q->fd, 200, out); free(out); }
+    else api_json(q->fd, 500, "{\"error\":\"out of memory\"}");
+    free(result);
+    return true;
   }
   if (which < 0) { api_json(q->fd, 404, "{\"error\":\"no such job\"}"); return true; }
   char day[16] = "", again[8] = "";

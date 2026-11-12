@@ -22,6 +22,7 @@
 // Routes:
 //   GET  /api/playtest/health      a database round trip
 //   POST /api/analytics/events     a page's analytics batch (analytics.ingest in SQL)
+//   GET  /api/playtest/service-health  the service levels and open alerts (service.c, #13297)
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
 //   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)
@@ -319,6 +320,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (room_route(&q)) return;
   if (seats_route(&q)) return;
   if (verse_packs_route(&q)) return;
+  if (service_route(&q)) return;   // the service levels and alerts (service.c, #13297)
   if (realms_route(&q)) return;   // before the players': /api/playtest/realms...
   if (player_route(&q)) return;
   if (private_route(&q)) return;

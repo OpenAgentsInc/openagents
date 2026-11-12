@@ -16252,6 +16252,26 @@ CREATE FUNCTION verse.room_max() RETURNS integer
 
 
 --
+-- Name: room_minutes_add(); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.room_minutes_add() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  m bigint := (extract(epoch FROM NEW.at) * 1000)::bigint / 60000 * 60000;
+  p int := coalesce(verse.room_stat(NEW.body, 'players'), 0)::int;
+  t bigint := round(verse.room_stat(NEW.body, 'tick p99 ms') * 1000)::bigint;
+  u bigint := verse.room_stat(NEW.body, 'checkpoint unsaved age ms most')::bigint;
+BEGIN
+  INSERT INTO verse.room_minutes AS r (shard, minute, reports, players, tick_p99_us, unsaved_ms) VALUES (NEW.shard, m, 1, p, t, u)
+  ON CONFLICT (shard, minute) DO UPDATE SET reports = r.reports + 1, players = greatest(r.players, EXCLUDED.players),
+    tick_p99_us = greatest(r.tick_p99_us, EXCLUDED.tick_p99_us), unsaved_ms = greatest(r.unsaved_ms, EXCLUDED.unsaved_ms);
+  RETURN NULL;
+END $$;
+
+
+--
 -- Name: room_now(); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -16725,6 +16745,16 @@ CREATE FUNCTION verse.room_shard_seen(k integer, ep text, p integer, t integer) 
 
 
 --
+-- Name: room_stat(text, text); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.room_stat(b text, name text) RETURNS numeric
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT nullif(substring(b FROM '\n' || name || '=(-?[0-9]{1,15}(\.[0-9]{1,6})?)\n'), '')::numeric $$;
+
+
+--
 -- Name: room_state(integer, bigint); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -17049,6 +17079,121 @@ CREATE FUNCTION verse.seats_mine(acct text) RETURNS jsonb
     AS $$
   SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'slug', slug, 'hosted', hosted, 'opened_ms', opened_ms, 'kept_ms', kept_ms) ORDER BY id DESC), '[]')
   FROM verse.seats WHERE account = acct AND closed_ms IS NULL $$;
+
+
+--
+-- Name: service_levels(bigint, integer, bigint, bigint, bigint); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.service_levels(now_ms bigint, days integer, tick_us bigint, join_ms bigint, ckpt_ms bigint) RETURNS TABLE(which integer, good bigint, total bigint, worst bigint, daily jsonb)
+    LANGUAGE sql STABLE
+    AS $$
+  WITH m AS (
+    SELECT to_char(to_timestamp(minute / 1000.0) AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD') AS day, tick_p99_us, unsaved_ms
+    FROM verse.room_minutes WHERE minute >= now_ms - days::bigint * 86400000 AND players > 0
+  ), j AS (
+    SELECT to_char(to_timestamp(e.ms / 1000.0) AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD') AS day,
+           (e.ms - greatest(e.ms - (e.p->>'ms')::float8,
+              coalesce((SELECT max(s.ms) FROM analytics.events s WHERE s.sid = e.sid AND s.ev IN ('create-done', 'portal-shown')
+                        AND s.ms <= e.ms AND s.ms >= e.ms - 3600000), 0)))::bigint AS wait
+    FROM analytics.events e
+    WHERE e.ev = 'room-join' AND e.ms >= now_ms - days::bigint * 86400000 AND e.auto IS DISTINCT FROM 'team'
+      AND jsonb_typeof(e.p->'ms') = 'number' AND (e.p->>'ms')::float8 >= 0
+  ), v AS (
+    SELECT 0 AS which, day, tick_p99_us AS value, tick_p99_us <= tick_us AS ok FROM m WHERE tick_p99_us IS NOT NULL
+    UNION ALL SELECT 1, day, wait, wait <= join_ms FROM j
+    UNION ALL SELECT 2, day, unsaved_ms, unsaved_ms <= ckpt_ms FROM m WHERE unsaved_ms IS NOT NULL
+  ), d AS (
+    SELECT which, day, count(*) FILTER (WHERE ok) AS good, count(*) AS total FROM v GROUP BY 1, 2
+  )
+  SELECT w.which, coalesce((SELECT sum(d.good) FROM d WHERE d.which = w.which), 0)::bigint,
+         coalesce((SELECT sum(d.total) FROM d WHERE d.which = w.which), 0)::bigint,
+         (SELECT max(v.value) FROM v WHERE v.which = w.which)::bigint,
+         coalesce((SELECT jsonb_agg(jsonb_build_array(d.day, d.good, d.total) ORDER BY d.day) FROM d WHERE d.which = w.which), '[]'::jsonb)
+  FROM (VALUES (0), (1), (2)) w(which) ORDER BY w.which $$;
+
+
+--
+-- Name: service_mail(jsonb, text, text, text, bigint); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.service_mail(sync jsonb, to_addr text, env text, origin text, now_ms bigint) RETURNS SETOF jsonb
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT jsonb_build_object('to', to_addr,
+    'subject', '[' || env || '] ' || CASE WHEN t.what = 'opened' THEN '' ELSE 'resolved: ' END || (a->>'title'),
+    'text', CASE WHEN t.what = 'opened' THEN 'Opened ' ELSE 'Resolved ' END
+            || to_char(to_timestamp(CASE WHEN t.what = 'opened' THEN (a->>'opened_ms')::bigint ELSE now_ms END / 1000.0) AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD HH24:MI')
+            || ' Chicago time, on ' || env || E'.\n\n' || (a->>'title')
+            || CASE WHEN t.what = 'opened' AND a->>'todo' <> '' THEN E'\n\nDo: ' || (a->>'todo') ELSE '' END
+            || E'\n\nNow: ' || origin || E'/api/playtest/service-health\nRunbook: https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/service-levels.md\n',
+    'idempotency_key', 'service-alert-' || env || '-' || (a->>'id') || '-' || t.what)
+  FROM (SELECT 'opened' AS what, jsonb_array_elements(coalesce(sync->'opened', '[]'::jsonb)) AS a
+        UNION ALL SELECT 'resolved', jsonb_array_elements(coalesce(sync->'resolved', '[]'::jsonb))) t $$;
+
+
+--
+-- Name: service_shard_facts(bigint, bigint, bigint, bigint, bigint); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.service_shard_facts(now_ms bigint, slow_us bigint, w_slow bigint, w_fail bigint, w_fenced bigint) RETURNS TABLE(shard integer, addressed boolean, draining boolean, silent_ms bigint, slow integer, failures integer, fenced integer, unsaved_ms bigint)
+    LANGUAGE sql STABLE
+    AS $$
+  WITH r AS (
+    SELECT s.shard, (extract(epoch FROM s.at) * 1000)::bigint AS at_ms,
+           verse.room_stat(s.body, 'process generation') AS gen,
+           round(verse.room_stat(s.body, 'tick p95 ms') * 1000) AS p95_us,
+           verse.room_stat(s.body, 'checkpoint failures') AS fails,
+           verse.room_stat(s.body, 'checkpoint stale owner refusals') AS fences,
+           verse.room_stat(s.body, 'checkpoint unsaved age ms most') AS unsaved
+    FROM verse.room_stats s
+    WHERE s.at >= to_timestamp((now_ms - greatest(w_slow, w_fail, w_fenced) - 60000) / 1000.0)
+  ), d AS (
+    SELECT r.*, lag(gen) OVER w AS gen0, lag(fails) OVER w AS fails0, lag(fences) OVER w AS fences0
+    FROM r WINDOW w AS (PARTITION BY r.shard ORDER BY r.at_ms)
+  ), x AS (
+    SELECT d.shard, d.at_ms, d.p95_us, d.unsaved,
+           CASE WHEN d.gen0 IS NULL THEN 0 WHEN d.gen0 = d.gen THEN greatest(coalesce(d.fails - d.fails0, 0), 0) ELSE coalesce(d.fails, 0) END AS dfail,
+           CASE WHEN d.gen0 IS NULL THEN 0 WHEN d.gen0 = d.gen THEN greatest(coalesce(d.fences - d.fences0, 0), 0) ELSE coalesce(d.fences, 0) END AS dfence
+    FROM d
+  )
+  SELECT k.shard, k.endpoint IS NOT NULL, coalesce(k.draining IS NOT NULL AND k.draining = k.gen, false),
+         now_ms - greatest(coalesce(k.at, 0), coalesce(k.seen_at, 0)),
+         (SELECT count(*) FROM x WHERE x.shard = k.shard AND x.at_ms > now_ms - w_slow AND x.p95_us > slow_us)::int,
+         coalesce((SELECT sum(x.dfail) FROM x WHERE x.shard = k.shard AND x.at_ms > now_ms - w_fail), 0)::int,
+         coalesce((SELECT sum(x.dfence) FROM x WHERE x.shard = k.shard AND x.at_ms > now_ms - w_fenced), 0)::int,
+         coalesce((SELECT max(x.unsaved) FROM x WHERE x.shard = k.shard AND x.at_ms > now_ms - w_slow), 0)::bigint
+  FROM verse.room_shards k ORDER BY k.shard $$;
+
+
+--
+-- Name: service_sync(bigint, jsonb); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.service_sync(now_ms bigint, alerts jsonb) RETURNS jsonb
+    LANGUAGE sql
+    AS $$
+  WITH want AS (
+    SELECT DISTINCT ON (a->>'key') a->>'key' AS key, coalesce(a->>'title', a->>'key') AS title, coalesce(a->>'do', '') AS todo
+    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(alerts) = 'array' THEN alerts ELSE '[]'::jsonb END) a
+    WHERE jsonb_typeof(a) = 'object' AND a->>'key' IS NOT NULL
+  ), opened AS (
+    INSERT INTO verse.service_alerts (key, title, todo, opened_ms) SELECT w.key, w.title, w.todo, now_ms FROM want w
+    ON CONFLICT (key) WHERE resolved_ms IS NULL DO NOTHING
+    RETURNING id, key, title, todo, opened_ms
+  ), resolved AS (
+    UPDATE verse.service_alerts a SET resolved_ms = now_ms
+    WHERE a.resolved_ms IS NULL AND NOT EXISTS (SELECT 1 FROM want w WHERE w.key = a.key)
+    RETURNING a.id, a.key, a.title, a.todo, a.opened_ms
+  ), aged AS (
+    DELETE FROM verse.room_minutes WHERE minute < now_ms - 400::bigint * 86400000 RETURNING 1
+  ), forgotten AS (
+    DELETE FROM verse.service_alerts WHERE resolved_ms < now_ms - 400::bigint * 86400000 RETURNING 1
+  )
+  SELECT jsonb_build_object(
+    'opened', coalesce((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.key) FROM opened o), '[]'::jsonb),
+    'resolved', coalesce((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.key) FROM resolved r), '[]'::jsonb),
+    'open', (SELECT count(*) FROM verse.service_alerts WHERE resolved_ms IS NULL) + (SELECT count(*) FROM opened) - (SELECT count(*) FROM resolved)) $$;
 
 
 --
@@ -21755,6 +21900,21 @@ CREATE TABLE verse.room_kicks (
 
 
 --
+-- Name: room_minutes; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.room_minutes (
+    shard integer NOT NULL,
+    minute bigint NOT NULL,
+    reports integer DEFAULT 0 NOT NULL,
+    players integer DEFAULT 0 NOT NULL,
+    tick_p99_us bigint,
+    unsaved_ms bigint,
+    CONSTRAINT room_minutes_shard_check CHECK (((shard >= 1) AND (shard <= 99)))
+);
+
+
+--
 -- Name: room_owners; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -21934,6 +22094,39 @@ CREATE SEQUENCE verse.seats_id_seq
 --
 
 ALTER SEQUENCE verse.seats_id_seq OWNED BY verse.seats.id;
+
+
+--
+-- Name: service_alerts; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.service_alerts (
+    id bigint NOT NULL,
+    key text NOT NULL,
+    title text NOT NULL,
+    todo text DEFAULT ''::text NOT NULL,
+    opened_ms bigint NOT NULL,
+    resolved_ms bigint
+);
+
+
+--
+-- Name: service_alerts_id_seq; Type: SEQUENCE; Schema: verse; Owner: -
+--
+
+CREATE SEQUENCE verse.service_alerts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: service_alerts_id_seq; Type: SEQUENCE OWNED BY; Schema: verse; Owner: -
+--
+
+ALTER SEQUENCE verse.service_alerts_id_seq OWNED BY verse.service_alerts.id;
 
 
 --
@@ -22447,6 +22640,13 @@ ALTER TABLE ONLY verse.sandbox_pieces ALTER COLUMN id SET DEFAULT nextval('verse
 --
 
 ALTER TABLE ONLY verse.seats ALTER COLUMN id SET DEFAULT nextval('verse.seats_id_seq'::regclass);
+
+
+--
+-- Name: service_alerts id; Type: DEFAULT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.service_alerts ALTER COLUMN id SET DEFAULT nextval('verse.service_alerts_id_seq'::regclass);
 
 
 --
@@ -23917,6 +24117,14 @@ ALTER TABLE ONLY verse.room_kicks
 
 
 --
+-- Name: room_minutes room_minutes_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.room_minutes
+    ADD CONSTRAINT room_minutes_pkey PRIMARY KEY (shard, minute);
+
+
+--
 -- Name: room_owners room_owners_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -23986,6 +24194,14 @@ ALTER TABLE ONLY verse.sandbox_pieces
 
 ALTER TABLE ONLY verse.seats
     ADD CONSTRAINT seats_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: service_alerts service_alerts_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.service_alerts
+    ADD CONSTRAINT service_alerts_pkey PRIMARY KEY (id);
 
 
 --
@@ -24708,6 +24924,20 @@ CREATE INDEX room_instances_realm ON verse.room_instances USING btree (realm, n)
 
 
 --
+-- Name: room_minutes_minute; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX room_minutes_minute ON verse.room_minutes USING btree (minute);
+
+
+--
+-- Name: room_stats_at; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX room_stats_at ON verse.room_stats USING btree (at);
+
+
+--
 -- Name: room_stats_shard_at; Type: INDEX; Schema: verse; Owner: -
 --
 
@@ -24740,6 +24970,20 @@ CREATE INDEX seats_open ON verse.seats USING btree (account) WHERE (closed_ms IS
 --
 
 CREATE INDEX seats_player ON verse.seats USING btree (player) WHERE (closed_ms IS NULL);
+
+
+--
+-- Name: service_alerts_open; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE UNIQUE INDEX service_alerts_open ON verse.service_alerts USING btree (key) WHERE (resolved_ms IS NULL);
+
+
+--
+-- Name: service_alerts_opened; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX service_alerts_opened ON verse.service_alerts USING btree (opened_ms);
 
 
 --
@@ -25013,6 +25257,13 @@ CREATE TRIGGER progress_count BEFORE INSERT OR UPDATE ON verse.progress FOR EACH
 --
 
 CREATE TRIGGER realm_plans_palette AFTER UPDATE OF board ON verse.realm_plans FOR EACH ROW EXECUTE FUNCTION verse.realm_plans_palette();
+
+
+--
+-- Name: room_stats room_minutes_after_stats; Type: TRIGGER; Schema: verse; Owner: -
+--
+
+CREATE TRIGGER room_minutes_after_stats AFTER INSERT ON verse.room_stats FOR EACH ROW EXECUTE FUNCTION verse.room_minutes_add();
 
 
 --

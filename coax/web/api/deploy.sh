@@ -61,7 +61,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy item-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto ticket-sign; do
+for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy item-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto ticket-sign service-policy; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 # The money rules are the Payments context's (pay/, #13320): SOURCE:GENERATED.
@@ -105,6 +105,8 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   fi
   echo "  ok    migrations ($6)"
   local secrets="OA_API_DATABASE=$2:latest" env="^~^OA_ADMIN_PUBKEYS=$admins~OA_AGENT_RUNNER_PUBKEYS=$runners~OA_TEAM=$team~OA_API_ORIGIN=https://$3~OA_DROPS_BUCKET=openagentsgemini-project-drops~OA_DROPS_PREFIX=$6" wake
+  # Service alerts (service.c, #13297): each one opened or resolved is mailed to the owner's phone.
+  env+="~OA_ALERT_TO=chris@openagents.com"
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   # Publishing a project from a drop (drops.c, rc-publish): the key that seals project keys, the relay,
   # the site's bucket; staging's projects go on the relay as private, so no list shows them.

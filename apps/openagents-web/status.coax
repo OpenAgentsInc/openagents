@@ -2,13 +2,16 @@
 // (docs/verse/status-page.md). The Grid, text, frames and buttons are
 // newland.coax's. Two texts feed it, both through the host's existing
 // messages: the snapshot the build wrote into the page (message 2,
-// coax/web/status-data.coax) and main's newest commits from GitHub's public
-// API (message 61). Nothing here decides anything: it draws what it is told.
+// coax/web/status-data.coax), main's newest commits from GitHub's public
+// API (message 61) and the API's service health (message 62: the three service
+// levels and the open alerts, docs/deployment/service-levels.md). Nothing here
+// decides anything: it draws what it is told.
 //   coax/bin/coax test apps/openagents-web/status.coax
 #load "newland.coax";
 
 ST_MSG_SNAPSHOT :: 2;    // data-text: the build's snapshot
 ST_MSG_LIVE :: 61;       // data-lines: GitHub's commit list for main, as JSON
+ST_MSG_SERVICE :: 62;    // data-lines: /api/playtest/service-health, as JSON
 ST_MSG_PAGE :: 600;      // the host's page facts: now=<milliseconds>
 ST_COMMITS :: 30;
 ST_MAX_VERTICES :: 220000;
@@ -42,6 +45,18 @@ ST_LIVE_FIXTURE :: "[\n  {\n    \"sha\": \"aaaaaaaaaabbbbbbbbbbccccccccccddddddd
   st_snapshot(s[..],"build 0123456789abcdef0123456789abcdef01234567 1794259000\nc 0123456789abcdef0123456789abcdef01234567 1794258000 - One line\n");
   st_live(s[..],"{\"message\":\"API rate limit exceeded\"}");
   #assert !s[0].live && s[0].n==1;
+}
+ST_SERVICE_FIXTURE :: "{\"env\":\"production\",\"now_ms\":1,\"days\":30,\"levels\":[{\"name\":\"tick time\",\"target\":10000,\"unit\":\"us\",\"objective_ppm\":999000,\"good\":9,\"total\":10,\"share_ppm\":900000,\"met\":0,\"worst\":12000,\"daily\":[]},{\"name\":\"join time\",\"target\":5000,\"unit\":\"ms\",\"objective_ppm\":950000,\"good\":239,\"total\":244,\"share_ppm\":979508,\"met\":1,\"worst\":9088,\"daily\":[[\"2026-11-12\",239,244]]},{\"name\":\"checkpoint age\",\"target\":15000,\"unit\":\"ms\",\"objective_ppm\":999000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]}],\"alerts\":[{\"key\":\"silent:3\",\"title\":\"shard 3: stopped reporting for 20 s\",\"opened_ms\":1,\"resolved_ms\":null},{\"key\":\"tick:4\",\"title\":\"shard 4: tick p95 over 10 ms\",\"opened_ms\":1,\"resolved_ms\":null}],\"resolved_day\":[{\"key\":\"fenced:1\",\"title\":\"shard 1: fenced\",\"opened_ms\":1,\"resolved_ms\":2}]}";
+#test "the service health gives each level's share, target and verdict, and the open alerts but not the resolved" {
+  s:[1]St;
+  st_service(s[..],ST_SERVICE_FIXTURE);
+  #assert s[0].sv_got && s[0].sv_total[0]==10 && s[0].sv_share[0]==900000 && s[0].sv_met[0]==0 && s[0].sv_target[0]==10000;
+  #assert s[0].sv_met[1]==1 && s[0].sv_share[1]==979508 && s[0].sv_objective[1]==950000 && s[0].sv_met[2]==-1 && s[0].sv_total[2]==0;
+  #assert s[0].sv_alerts==2 && cast(string)s[0].sv_alert[0..<s[0].sv_alert_n]=="shard 3: stopped reporting for 20 s";
+  b:[32]u8;
+  #assert cast(string)b[0..<st_pct(b[..],0,979508)]=="97.95%" && cast(string)b[0..<st_pct(b[..],0,1000000)]=="100.00%" && cast(string)b[0..<st_pct(b[..],0,999050)]=="99.90%";
+  t:[1]St;st_service(t[..],"{\"error\":\"no database\"}");#assert !t[0].sv_got;
+  st_service(t[..],"{\"levels\":[],\"alerts\":[]}");#assert !t[0].sv_got;
 }
 #test "dates turn into seconds and seconds into a short age" {
   #assert st_unix("1970-01-01T00:00:00Z")==0 && st_unix("2000-03-01T00:00:00Z")==951868800;
@@ -95,6 +110,7 @@ St :: struct {
   build:[40]u8;build_n:int;build_time:int;green:[40]u8;green_n:int;
   queue:int;rejected:int;red:int;day:int;week:int;trailers:int;hosts:int;slots:int;jobs:int;cents:int;
   n:int;commits:[ST_COMMITS]StCommit;live:bool;now:int;now_at:f32;
+  sv_got:bool;sv_share:[3]int;sv_met:[3]int;sv_total:[3]int;sv_target:[3]int;sv_objective:[3]int;sv_alerts:int;sv_alert:[120]u8;sv_alert_n:int;
   rail_x:f32;rail_y:f32;rail_step:f32;rail_n:int;rows_y:f32;rows_n:int;pick:int=-1;
 }
 
@@ -211,6 +227,35 @@ st_live :: (s:[]St,text:string) {
   }
   if n>0 {s[0].n=n;s[0].live=true;}
 }
+// A signed whole number at the start of t (as JSON writes one).
+st_signed :: (t:string)->int {if t.count>0 && t[0]==45 {return -st_int(t[1..<t.count]);}return st_int(t);}
+// The service health (coax/web/api/service.c GET /api/playtest/service-health): each of the three
+// levels' members in the order the API writes them, then the open alerts (up to "resolved_day").
+st_service :: (s:[]St,text:string) {
+  at:=st_member(text,0,"levels");if at<0 {return;}
+  for i:0..<3 {
+    t:=st_member(text,at,"target");o:=ifx t<0 then -1 else st_member(text,t,"objective_ppm");
+    c:=ifx o<0 then -1 else st_member(text,o,"total");p:=ifx c<0 then -1 else st_member(text,c,"share_ppm");
+    m:=ifx p<0 then -1 else st_member(text,p,"met");
+    if m<0 {return;}
+    s[0].sv_target[i]=st_int(text[t..<text.count]);s[0].sv_objective[i]=st_int(text[o..<text.count]);
+    s[0].sv_total[i]=st_int(text[c..<text.count]);s[0].sv_share[i]=st_int(text[p..<text.count]);s[0].sv_met[i]=st_signed(text[m..<text.count]);at=m;
+  }
+  a:=st_member(text,at,"alerts");if a<0 {return;}
+  end:=st_member(text,a,"resolved_day");if end<0 {end=text.count;}
+  n:=0;s[0].sv_alert_n=0;q:=a;
+  while true {
+    q=st_member(text,q,"title");if q<0 || q>=end || text[q]!=34 {break;}
+    if n==0 {k:=0;i:=q+1;while i<text.count && text[i]!=34 && k<120 {s[0].sv_alert[k]=text[i];k+=1;i+=1;}s[0].sv_alert_n=k;}
+    n+=1;
+  }
+  s[0].sv_alerts=n;s[0].sv_got=true;
+}
+// A share in parts per million as a percent with two places: 979508 is "97.95%".
+st_pct :: (b:[]u8,at:int,ppm:int)->int {
+  h:=hi_int(0,ppm)/100;n:=st_add_int(b,at,h/100);n=st_add(b,n,".");if h%100<10 {n=st_add(b,n,"0");}
+  return st_add(b,st_add_int(b,n,h%100),"%");
+}
 st_facts :: (s:[]St,text:string) {
   p:=ifx st_is(text,0,"now=") then 4 else st_after(text,0,"\nnow=");
   if p>=0 {s[0].now=st_int(text[p..<text.count])/1000;s[0].now_at=s[0].time;}
@@ -219,6 +264,7 @@ st_message :: (s:[]St,kind:int,text:string) #export_c #effects(all) {
   if s.count<1 {return;}
   if kind==ST_MSG_SNAPSHOT {st_snapshot(s,text);}
   if kind==ST_MSG_LIVE {st_live(s,text);}
+  if kind==ST_MSG_SERVICE {st_service(s,text);}
   if kind==ST_MSG_PAGE {st_facts(s,text);}
 }
 st_same :: (a:[]u8,b:[]u8)->bool {for i:0..<40 {if a[i]!=b[i] {return false;}}return true;}
@@ -398,6 +444,34 @@ st_body :: (s:[]St,out:[]f32,at:int,p:Pen,still:bool)->int {
     }
   }
   y+=cast(f32)((4+cols-1)/cols)*(th+12)+10;
+
+  // The service levels over 30 days and the open alerts (docs/deployment/service-levels.md).
+  if s[0].sv_got {
+    v=put(out,v,"SERVICE, LAST 30 DAYS",x*d,(y+8)*d,6.6*d,dim);y+=24;
+    sc:=ifx w>=640 then 3 else 1;sh:f32=88.0f32;sw:=(w-cast(f32)(sc-1)*12)/cast(f32)sc;
+    for i:0..<3 {
+      col:=i%sc;row:=i/sc;tb:=Box.{x0=x+cast(f32)col*(sw+12),y0=y+cast(f32)row*(sh+12),x1=x+cast(f32)col*(sw+12)+sw,y1=y+cast(f32)row*(sh+12)+sh};
+      n=0;m=0;
+      if s[0].sv_total[i]>0 {n=st_pct(buf[..],0,s[0].sv_share[i]);} else {n=st_add(buf[..],0,"NO DATA YET");}
+      ms:=ifx i==0 then s[0].sv_target[i]/1000 else s[0].sv_target[i];
+      if i==0 {m=st_add(sub[..],0,"tick p99 under ");m=st_add_int(sub[..],m,ms);m=st_add(sub[..],m," ms, minutes with players");}
+      if i==1 {m=st_add(sub[..],0,"Play to seated under ");m=st_add_int(sub[..],m,ms/1000);m=st_add(sub[..],m," s");}
+      if i==2 {m=st_add(sub[..],0,"oldest unsaved checkpoint under ");m=st_add_int(sub[..],m,ms/1000);m=st_add(sub[..],m," s");}
+      m=st_add(sub[..],m,". Goal ");m=st_pct(sub[..],m,s[0].sv_objective[i]);
+      label:=ifx i==0 then "TICK TIME" else ifx i==1 then "JOIN TIME" else "CHECKPOINT AGE";
+      v=st_tile(out,v,p,tb,label,cast(string)buf[0..<n],cast(string)sub[0..<m],ifx s[0].sv_met[i]==1 then ok else ifx s[0].sv_met[i]==0 then bad else white);
+    }
+    y+=cast(f32)((3+sc-1)/sc)*(sh+12)+4;
+    n=0;
+    if s[0].sv_alerts==0 {n=st_add(buf[..],0,"No open alerts.");}
+    else {
+      n=st_add_int(buf[..],0,s[0].sv_alerts);n=st_add(buf[..],n,ifx s[0].sv_alerts==1 then " open alert: " else " open alerts, the newest: ");
+      n=st_add(buf[..],n,cast(string)s[0].sv_alert[0..<s[0].sv_alert_n]);n=st_add(buf[..],n,".");
+    }
+    ak:=st_text(p,INK_DIM);if s[0].sv_alerts>0 {ak=st_tone(p,2);ak.sans=true;ak.scale=0;}
+    v=st_para(out,v,cast(string)buf[0..<n],x,y,w,8.2,ak,d,tall[..]);
+    y+=tall[0]+34;
+  }
 
   // main, newest on the right.
   v=put(out,v,"MAIN, NEWEST ON THE RIGHT",x*d,(y+8)*d,6.2*d,dim);y+=40;

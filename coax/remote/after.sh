@@ -945,7 +945,8 @@ if (( watch == 1 )); then
   fi
   # This machine is the watcher now; other machines read its state (pl_publish).
   rm -f "$results/watcher-host"
-  ( while kill -0 $$ 2> /dev/null; do date +%s > "$results/heartbeat"; pl_publish; sleep 60; done ) 7>&- &
+  # Beside it, the service alerts passed on to the agents (pipeline-lib.sh pl_service_watch, #13297).
+  ( while kill -0 $$ 2> /dev/null; do date +%s > "$results/heartbeat"; pl_service_watch; pl_publish; sleep 60; done ) 7>&- &
   while true; do
     once
     stale_check

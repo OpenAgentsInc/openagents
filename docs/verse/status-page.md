@@ -38,14 +38,16 @@ so.
 
 | File | Role |
 | --- | --- |
-| `apps/openagents-web/status.coax` | The page: reads the two texts, lays out and draws. Loads `newland.coax` for the Grid, text, frames and buttons |
+| `apps/openagents-web/status.coax` | The page: reads the three texts, lays out and draws. Loads `newland.coax` for the Grid, text, frames and buttons |
 | `apps/openagents-web/status-face.c` | The Wasm exports. Scalars only |
 | `coax/web/status-data.coax` | A Coax tool that writes the snapshot into `status/index.html` and `status/index.md`. `build.sh` runs it on a release build |
-| `apps/openagents-web/status/index.html` | The page shell. `data-text` holds the snapshot, `data-lines` names GitHub's commit list, `data-wgsl` names the homepage's shader |
+| `apps/openagents-web/status/index.html` | The page shell. `data-text` holds the snapshot, `data-lines` names GitHub's commit list (message 61) and the API's service health (message 62), `data-wgsl` names the homepage's shader |
 
-The host already delivers `data-text` as message 2 and the text at
-`data-lines` as the message it names (61 here), so the page needs no host
-change.
+The host delivers `data-text` as message 2 and each `KIND:URL` in
+`data-lines` (separated by spaces) as the message it names. Message 62 is
+`/api/playtest/service-health`, which the page draws as "Service, last 30
+days": the three service levels and the open alerts
+([service levels](../deployment/service-levels.md)).
 
 ```sh
 coax/bin/coax test apps/openagents-web/status.coax      # the page's checks

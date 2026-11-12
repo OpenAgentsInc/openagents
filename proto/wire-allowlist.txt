@@ -55,6 +55,7 @@ room coax/web/room/room-catalog.coax  # a second VPK1 pack reader beside aethyr/
 route coax/web/api/player.c  # player, progress, tickets, room reports; E5 (#13248) for the ticket, then E7, E8 and E11, wave 2 (#13250)
 route coax/web/api/realms.c  # E11, wave 2: the realm routes on the api.v1 envelope (#13250)
 route coax/web/api/seats.c  # E11, wave 2 (#13250)
+route coax/web/api/service.c  # the service-health JSON and the service-watch job result (#13297); E11, wave 2 (#13250)
 route coax/web/api/verse_packs.c  # E11, wave 2 (#13250)
 route coax/web/api/rooms.c  # E8, wave 2: the room reports (#13250)
 route coax/web/api/room.c  # wave 2: presence and room chat JSON; decide with the room servers' reach (#13250)

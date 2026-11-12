@@ -13,6 +13,8 @@
 #   OA_PIPELINE_DIR      logs, results and the red list (default ~/.openagents/pipeline)
 #   OA_PIPELINE_ISSUES   0: file no GitHub issues and write no comments (scratch runs)
 #   OA_PIPELINE_NOTIFY   a command run as CMD AGENT MESSAGE-FILE for each message to an agent
+#   OA_SERVICE_AGENT     who hears the service alerts the watcher passes on (default foreman)
+#   OA_SERVICE_ORIGINS   the sites whose alerts it reads (default production and staging); 0: none
 #
 # A scratch run points every name elsewhere, for example
 #   OA_PIPELINE_MAIN=scratch/gm/main OA_PIPELINE_GREEN=scratch/gm/main-green \
@@ -124,6 +126,37 @@ pl_message() {   # agent text
     $OA_PIPELINE_NOTIFY "$agent" "$file" || pl_say "OA_PIPELINE_NOTIFY failed for $agent"
   fi
   rm -f "$file"
+}
+
+# The service alerts (#13297, docs/deployment/service-levels.md). The API opens and resolves them
+# every minute (coax/web/api/service.c) and mails the owner; the watcher passes each one opened or
+# resolved on to the agents' coordinator as a message (its inbox and OA_PIPELINE_NOTIFY), and says
+# so when a site's service health stops answering for 3 minutes. Run each minute beside the
+# heartbeat, on the watcher's machine only. Its memory: OA_PIPELINE_DIR/service-ENV (key TAB title).
+pl_service_watch() {
+  local origin env f j open n key title agent="${OA_SERVICE_AGENT:-foreman}"
+  [[ "${OA_SERVICE_ORIGINS:-}" != 0 ]] || return 0
+  for origin in ${OA_SERVICE_ORIGINS:-https://openagents.com https://staging.openagents.com}; do
+    env="${origin#*://}"; env="${env%%.*}"; [[ "$env" != openagents ]] || env=production
+    f="$pl_dir/service-$env"
+    if ! j="$(curl -fsS --max-time 20 "$origin/api/playtest/service-health" 2> /dev/null)" ||
+       ! open="$(jq -r '.alerts[] | "\(.key)\t\(.title)"' <<< "$j" 2> /dev/null)"; then
+      n=$(( $(cat "$f.down" 2> /dev/null || echo 0) + 1 )); echo "$n" > "$f.down"
+      (( n != 3 )) || pl_message "$agent" "Service alert ($env): $origin/api/playtest/service-health has not answered for 3 minutes, so its alerts can't be read. Check oa-api's health (docs/deployment/service-levels.md)."
+      continue
+    fi
+    if [[ -f "$f.down" ]] && (( $(cat "$f.down") >= 3 )); then pl_message "$agent" "Service alert ($env): $origin/api/playtest/service-health answers again."; fi
+    rm -f "$f.down"; touch "$f"
+    while IFS=$'\t' read -r key title; do
+      [[ -n "$key" ]] || continue
+      cut -f1 "$f" | grep -qxF -- "$key" || pl_message "$agent" "Service alert ($env) opened: $title. Runbook: docs/deployment/service-levels.md. Now: $origin/api/playtest/service-health"
+    done <<< "$open"
+    while IFS=$'\t' read -r key title; do
+      [[ -n "$key" ]] || continue
+      printf '%s\n' "$open" | cut -f1 | grep -qxF -- "$key" || pl_message "$agent" "Service alert ($env) resolved: $title."
+    done < "$f"
+    printf '%s\n' "$open" | sed '/^$/d' > "$f"
+  done
 }
 
 # The red list (releases/after/red.json): one entry per failing check on main

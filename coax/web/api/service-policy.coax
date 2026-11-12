@@ -1,0 +1,194 @@
+// Service levels and alerts for the rooms and the API (#13297; docs/deployment/service-levels.md).
+// service.c gathers the facts (each room shard's reports from verse.room_stats and verse.room_shards,
+// the database's connections, the month's per-minute rollup in verse.room_minutes and the pages'
+// room-join events) and SQL stores what this file decides; the host decides nothing.
+//
+// The three service levels: what a good minute or a good join is, and the share that must be good.
+//   tick time        a shard-minute with players is good when its tick p99 is at most 10 ms; 99.9%
+//                    (a tick is 33 ms at 30 a second; measured p99 is 0.5 to 2.5 ms on the VM)
+//   join time        a join is good when the room seats the player within 5 s of Play; 95%
+//   checkpoint age   a shard-minute with players is good when its oldest unsaved checkpoint is at
+//                    most 15 s old; 99.9% (a capture every 5 s, an answer within 6 s)
+//
+// The alerts, each a key per shard (or one for the database), opened and resolved every minute:
+//   silent           a shard that named its address stopped reporting for 20 s, not while draining
+//   tick             2 or more reports in 2 minutes with a tick p95 over 10 ms
+//   checkpoint-failures  a checkpoint post failed in the last 5 minutes
+//   fenced           3 or more checkpoints refused for a newer owner in 10 minutes
+//   unsaved          a checkpoint unsaved for 30 s: the room holds that player's encounter (CF_BOUND)
+//   db-connections   80% of the database's connections in use
+#authority;
+
+SV_TICK :: 0; SV_JOIN :: 1; SV_CHECKPOINT :: 2;
+SV_TICK_P99_US :: 10000;
+SV_JOIN_MS :: 5000;
+SV_CHECKPOINT_MS :: 15000;
+SV_TICK_PPM :: 999000; SV_JOIN_PPM :: 950000; SV_CHECKPOINT_PPM :: 999000;
+SV_DAYS :: 30;
+
+SV_A_SILENT :: 1; SV_A_TICK :: 2; SV_A_FAILURES :: 4; SV_A_FENCED :: 8; SV_A_UNSAVED :: 16;
+SV_SILENT_MS :: 20000;
+SV_HEARD_MS :: 86400000;   // a shard silent longer than a day is retired, not down
+SV_SLOW_P95_US :: 10000; SV_SLOW_REPORTS :: 2;
+SV_FENCED_MOST :: 3;
+SV_UNSAVED_MS :: 30000;
+SV_DB_PERCENT :: 80;
+// The windows the facts are counted over, in ms: slow ticks and unsaved age, failures, fencing.
+SV_W_SLOW :: 0; SV_W_FAILURES :: 1; SV_W_FENCED :: 2;
+
+#test "the three service levels: their targets and the share that must be good" {
+  #assert sv_target(SV_TICK) == 10000 && sv_target(SV_JOIN) == 5000 && sv_target(SV_CHECKPOINT) == 15000;
+  #assert sv_target(3) == -1 && sv_target(-1) == -1;
+  #assert sv_objective_ppm(SV_TICK) == 999000 && sv_objective_ppm(SV_JOIN) == 950000 && sv_objective_ppm(SV_CHECKPOINT) == 999000;
+  #assert sv_objective_ppm(3) == 0 && sv_objective_ppm(-1) == 0;
+  #assert sv_days() == 30;
+  #assert sv_name(SV_TICK) == "tick time" && sv_name(SV_JOIN) == "join time" && sv_name(SV_CHECKPOINT) == "checkpoint age";
+  #assert sv_name(3) == "" && sv_name(-1) == "";
+}
+#test "a minute or a join is good at its target and bad past it" {
+  #assert sv_good(SV_TICK, 10000) && !sv_good(SV_TICK, 10001) && sv_good(SV_TICK, 0);
+  #assert sv_good(SV_JOIN, 5000) && !sv_good(SV_JOIN, 5001);
+  #assert sv_good(SV_CHECKPOINT, 15000) && !sv_good(SV_CHECKPOINT, 15001);
+  #assert !sv_good(SV_TICK, -1) && !sv_good(3, 0);
+}
+#test "a service level is met when the good share reaches its objective; none counted is no answer" {
+  #assert sv_met(SV_TICK, 999, 1000) == 1 && sv_met(SV_TICK, 998, 1000) == 0;
+  #assert sv_met(SV_JOIN, 95, 100) == 1 && sv_met(SV_JOIN, 94, 100) == 0;
+  #assert sv_met(SV_CHECKPOINT, 1000, 1000) == 1 && sv_met(SV_CHECKPOINT, 9989, 10000) == 0;
+  #assert sv_met(SV_TICK, 0, 0) == -1 && sv_met(SV_JOIN, 0, -1) == -1 && sv_met(3, 1, 1) == -1;
+  #assert sv_met(SV_JOIN, 2, 1) == 1;   // more good than counted is not a miss
+  #assert sv_met(SV_JOIN, 950000, 1000001) == 0;   // short by under a millionth is still short
+  #assert sv_share_ppm(1, 1) == 1000000 && sv_share_ppm(1, 3) == 333333 && sv_share_ppm(3, 3) == 1000000 && sv_share_ppm(0, 0) == -1 && sv_share_ppm(1, -2) == -1;
+}
+#test "a shard that named its address and stops reporting for 20 s is silent, unless it drained or retired" {
+  #assert sv_shard_alerts(true, false, 20000, 0, 0, 0, 0) == SV_A_SILENT;
+  #assert sv_shard_alerts(true, false, 19999, 0, 0, 0, 0) == 0;
+  #assert sv_shard_alerts(false, false, 60000, 0, 0, 0, 0) == 0;          // Cloud Run's shards name none and idle to zero
+  #assert sv_shard_alerts(true, true, 60000, 0, 0, 0, 0) == 0;            // a drain (a deploy, switch run) is no outage
+  #assert sv_shard_alerts(true, false, 86399999, 0, 0, 0, 0) == SV_A_SILENT;
+  #assert sv_shard_alerts(true, false, 86400000, 0, 0, 0, 0) == 0;         // a day gone: retired
+}
+#test "slow ticks, failed and fenced checkpoints, and a checkpoint at the loss bound each raise their own" {
+  #assert sv_shard_alerts(true, false, 0, 2, 0, 0, 0) == SV_A_TICK && sv_shard_alerts(true, false, 0, 1, 0, 0, 0) == 0;
+  #assert sv_shard_alerts(true, false, 0, 0, 1, 0, 0) == SV_A_FAILURES && sv_shard_alerts(true, false, 0, 0, 0, 0, 0) == 0;
+  #assert sv_shard_alerts(true, false, 0, 0, 0, 3, 0) == SV_A_FENCED && sv_shard_alerts(true, false, 0, 0, 0, 2, 0) == 0;
+  #assert sv_shard_alerts(true, false, 0, 0, 0, 0, 30000) == SV_A_UNSAVED && sv_shard_alerts(true, false, 0, 0, 0, 0, 29999) == 0;
+  #assert sv_shard_alerts(true, false, 30000, 5, 2, 4, 40000) == 31;
+  #assert sv_shard_alerts(false, true, 0, 5, 2, 4, 40000) == 30;          // a draining shard's last reports still count
+}
+#test "the database alerts at 80% of its connections" {
+  #assert sv_db_alert(80, 100) && !sv_db_alert(79, 100) && sv_db_alert(100, 100) && sv_db_alert(1, 1) && !sv_db_alert(79, 99);
+  #assert !sv_db_alert(0, 0) && !sv_db_alert(5, -1);
+}
+#test "the windows the facts are counted over" {
+  #assert sv_window(SV_W_SLOW) == 120000 && sv_window(SV_W_FAILURES) == 300000 && sv_window(SV_W_FENCED) == 600000;
+  #assert sv_window(3) == 0 && sv_window(-1) == 0 && sv_slow_p95_us() == 10000;
+}
+#test "each alert has its key, its words and its runbook line" {
+  #assert sv_alert_key(SV_A_SILENT) == "silent" && sv_alert_key(SV_A_TICK) == "tick" && sv_alert_key(SV_A_FAILURES) == "checkpoint-failures";
+  #assert sv_alert_key(SV_A_FENCED) == "fenced" && sv_alert_key(SV_A_UNSAVED) == "unsaved" && sv_alert_key(0) == "" && sv_alert_key(32) == "";
+  #assert sv_alert_text(SV_A_SILENT) == "stopped reporting for 20 s";
+  #assert sv_alert_text(SV_A_TICK) == "tick p95 over 10 ms twice in 2 minutes";
+  #assert sv_alert_text(SV_A_FAILURES) == "a checkpoint post failed in the last 5 minutes";
+  #assert sv_alert_text(SV_A_FENCED) == "3 or more checkpoints fenced in 10 minutes";
+  #assert sv_alert_text(SV_A_UNSAVED) == "a checkpoint unsaved for 30 s: its player's encounter is held";
+  #assert sv_alert_text(0) == "" && sv_alert_text(32) == "";
+  #assert sv_alert_do(SV_A_SILENT) == "coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run";
+  #assert sv_alert_do(SV_A_TICK) == "/admin/rooms: which workload grew; roll back the room (vm-deploy.sh rollback) if a release did it";
+  #assert sv_alert_do(SV_A_FAILURES) == "the API's log for room-checkpoint; the database and oa-api's health";
+  #assert sv_alert_do(SV_A_FENCED) == "a character playing on two shards: the directory's placement and the seat tickets' owners";
+  #assert sv_alert_do(SV_A_UNSAVED) == "the checkpoint store: oa-api's 5xx and the database; the room's checkpoint retries";
+  #assert sv_alert_do(0) == "" && sv_alert_do(32) == "";
+  #assert sv_db_text() == "80% or more of the database's connections in use";
+  #assert sv_db_do() == "Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances";
+  #assert sv_alert_bits() == 5;
+}
+
+sv_target :: (which: int) -> int #export_c #effects(all) {
+  if which == SV_TICK { return SV_TICK_P99_US; }
+  if which == SV_JOIN { return SV_JOIN_MS; }
+  if which == SV_CHECKPOINT { return SV_CHECKPOINT_MS; }
+  return -1;
+}
+sv_objective_ppm :: (which: int) -> int #export_c #effects(all) {
+  if which == SV_TICK { return SV_TICK_PPM; }
+  if which == SV_JOIN { return SV_JOIN_PPM; }
+  if which == SV_CHECKPOINT { return SV_CHECKPOINT_PPM; }
+  return 0;
+}
+sv_name :: (which: int) -> string #export_c #effects(all) {
+  if which == SV_TICK { return "tick time"; }
+  if which == SV_JOIN { return "join time"; }
+  if which == SV_CHECKPOINT { return "checkpoint age"; }
+  return "";
+}
+sv_days :: () -> int #export_c #effects(all) { return SV_DAYS; }
+// Whether one minute's (or one join's) number meets its target. Units: tick in microseconds, the
+// others in milliseconds.
+sv_good :: (which: int, value: int) -> bool #export_c #effects(all) {
+  return value >= 0 && value <= sv_target(which);
+}
+// The good share in parts per million, -1 when nothing was counted.
+sv_share_ppm :: (good: int, total: int) -> int #export_c #effects(all) {
+  if total <= 0 { return -1; }
+  return good * 1000000 / total;
+}
+// 1 met, 0 missed, -1 nothing counted (or no such service level).
+sv_met :: (which: int, good: int, total: int) -> int #export_c #effects(all) {
+  o := sv_objective_ppm(which);
+  if o == 0 || total <= 0 { return -1; }
+  return ifx good * 1000000 >= o * total then 1 else 0;
+}
+
+// A shard's alerts, as SV_A_* bits. addressed: its last report named its address (a VM unit);
+// draining: its last report said it drains; silent_ms: since it last reported; slow: reports with
+// a tick p95 over SV_SLOW_P95_US in the slow window; failures: checkpoint posts that failed in the
+// failures window; fenced: checkpoints refused for a newer owner in the fenced window; unsaved_ms:
+// the oldest unsaved checkpoint in the slow window.
+sv_shard_alerts :: (addressed: bool, draining: bool, silent_ms: int, slow: int, failures: int, fenced: int, unsaved_ms: int) -> int #export_c #effects(all) {
+  bits := 0;
+  if addressed && !draining && silent_ms >= SV_SILENT_MS && silent_ms < SV_HEARD_MS { bits += SV_A_SILENT; }
+  if slow >= SV_SLOW_REPORTS { bits += SV_A_TICK; }
+  if failures > 0 { bits += SV_A_FAILURES; }
+  if fenced >= SV_FENCED_MOST { bits += SV_A_FENCED; }
+  if unsaved_ms >= SV_UNSAVED_MS { bits += SV_A_UNSAVED; }
+  return bits;
+}
+sv_alert_bits :: () -> int #export_c #effects(all) { return 5; }
+sv_db_alert :: (connections: int, most: int) -> bool #export_c #effects(all) {
+  return most > 0 && connections * 100 >= most * SV_DB_PERCENT;
+}
+sv_window :: (which: int) -> int #export_c #effects(all) {
+  if which == SV_W_SLOW { return 120000; }
+  if which == SV_W_FAILURES { return 300000; }
+  if which == SV_W_FENCED { return 600000; }
+  return 0;
+}
+sv_slow_p95_us :: () -> int #export_c #effects(all) { return SV_SLOW_P95_US; }
+sv_alert_key :: (bit: int) -> string #export_c #effects(all) {
+  if bit == SV_A_SILENT { return "silent"; }
+  if bit == SV_A_TICK { return "tick"; }
+  if bit == SV_A_FAILURES { return "checkpoint-failures"; }
+  if bit == SV_A_FENCED { return "fenced"; }
+  if bit == SV_A_UNSAVED { return "unsaved"; }
+  return "";
+}
+sv_alert_text :: (bit: int) -> string #export_c #effects(all) {
+  if bit == SV_A_SILENT { return "stopped reporting for 20 s"; }
+  if bit == SV_A_TICK { return "tick p95 over 10 ms twice in 2 minutes"; }
+  if bit == SV_A_FAILURES { return "a checkpoint post failed in the last 5 minutes"; }
+  if bit == SV_A_FENCED { return "3 or more checkpoints fenced in 10 minutes"; }
+  if bit == SV_A_UNSAVED { return "a checkpoint unsaved for 30 s: its player's encounter is held"; }
+  return "";
+}
+// The runbook line for each (docs/deployment/service-levels.md says the same).
+sv_alert_do :: (bit: int) -> string #export_c #effects(all) {
+  if bit == SV_A_SILENT { return "coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run"; }
+  if bit == SV_A_TICK { return "/admin/rooms: which workload grew; roll back the room (vm-deploy.sh rollback) if a release did it"; }
+  if bit == SV_A_FAILURES { return "the API's log for room-checkpoint; the database and oa-api's health"; }
+  if bit == SV_A_FENCED { return "a character playing on two shards: the directory's placement and the seat tickets' owners"; }
+  if bit == SV_A_UNSAVED { return "the checkpoint store: oa-api's 5xx and the database; the room's checkpoint retries"; }
+  return "";
+}
+sv_db_text :: () -> string #export_c #effects(all) { return "80% or more of the database's connections in use"; }
+sv_db_do :: () -> string #export_c #effects(all) { return "Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances"; }

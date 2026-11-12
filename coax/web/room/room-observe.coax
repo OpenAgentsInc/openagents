@@ -103,6 +103,33 @@ rm_st_saved::(v:[]RmServer,k:int, s_id: SeatId,out:[]int)->bool #export_c #effec
   out[7]=e[0].rev;out[8]=ifx e[0].rev>e[0].acked then 1 else 0;
   if e[0].durable_rev>0&&e[0].durable_owner==tk.owner{out[2]=e[0].durable_process;out[3]=e[0].durable_rev;out[10]=e[0].durable_capture_at;out[4]=rs_max(0,v[0].wall_ms-e[0].durable_capture_at);out[5]=rs_max(0,v[0].wall_ms-e[0].durable_at);out[11]=1;}return true;
 }
+#test "checkpoint unsaved age: the oldest change no receipt covers, counted from the state the API last accepted (#13297)" #steps 2000000000 {
+  v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],100000,1762190000000);#assert rm_st_unsaved_ms(v[..])==0;
+  c:=CharacterCapture.{ok=true};c.n[3]=5;
+  v[0].ck.slot[0]=CheckpointSlot.{live=true,latest=c,acked=5,accepted=true,accepted_mono=10000};   // saved: nothing unsaved, however old
+  #assert rm_st_unsaved_ms(v[..])==0;
+  v[0].ck.slot[1]=CheckpointSlot.{live=true,latest=c,acked=4,accepted=true,accepted_mono=93000};#assert rm_st_unsaved_ms(v[..])==7000;
+  v[0].ck.slot[2]=CheckpointSlot.{live=true,latest=c,acked=0,since_mono=88000};   // none accepted yet: from its restore
+  #assert rm_st_unsaved_ms(v[..])==12000;
+  v[0].ck.slot[3]=CheckpointSlot.{live=true,latest=c,acked=0,capture_mono=86000};   // no restore either: from its capture
+  #assert rm_st_unsaved_ms(v[..])==14000;
+  v[0].ck.slot[3].live=false;#assert rm_st_unsaved_ms(v[..])==12000;
+  v[0].ck.slot[2].latest.ok=false;#assert rm_st_unsaved_ms(v[..])==7000;
+  v[0].ck.slot[1].acked=5;#assert rm_st_unsaved_ms(v[..])==0;
+}
+// The checkpoint service level's number (#13297, docs/deployment/service-levels.md): over the slots
+// holding a capture no receipt covers yet, the most time since the state the API last accepted for
+// it (since its restore when none was accepted in this process, else since that capture); 0 when all
+// is saved. An unchanged capture moves accepted_mono on (ck_capture), so an idle player stays near 0,
+// and a slot whose player left counts only while its last capture is unsaved.
+rm_st_unsaved_ms::(v:[]RmServer)->int #export_c #effects(all) {
+  most:=0;
+  for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if !e[0].live||!e[0].latest.ok||e[0].latest.n[3]<=e[0].acked{continue;}
+    from:=e[0].capture_mono;if e[0].accepted{from=e[0].accepted_mono;}else if e[0].since_mono>0{from=e[0].since_mono;}
+    most=rs_max(most,v[0].mono_ms-from);
+  }
+  return most;
+}
 rm_st_saves::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<28{return;}for q:0..<28{out[q]=0;}
   out[0]=rm_checkpoint_pending(v);out[1]=ifx v[0].ck.fly then 1 else 0;
