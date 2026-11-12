@@ -1,0 +1,80 @@
+// Checks proto/coder/voice-input-v1.schema.json against voice-coder.coax fv_message.
+//
+//   coax/web/tool.sh apps/aethyrforge-desktop/voice-coder-profile.coax proto/coder/voice-input-v1.schema.json
+#import "Basic";
+#load "voice-coder.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+VCP_FILE :: 65536;
+VCP_NODES :: 1024;
+
+vcp_str :: (d: Jv, obj: int, key: string) -> string {
+  at := jv_get(d, obj, key);
+  return ifx jv_kind(d, at) == JV_STRING then jv_raw(d, at) else "";
+}
+
+vcp_accepts :: (msg: string) -> bool {
+  s: [1] ForgeVoiceCoder;
+  t := fv_arm(s[..]);
+  if t != 1 { return false; }
+  rc := fv_message(s[..], msg, true, false);
+  return rc == 1 || !s[0].armed;
+}
+
+vcp_schema_id :: (v: Jv) -> string {
+  props := jv_get(v, 0, "properties");
+  if jv_kind(v, props) != JV_OBJECT { return ""; }
+  sch := jv_get(v, props, "schema");
+  if jv_kind(v, sch) != JV_OBJECT { return ""; }
+  return vcp_str(v, sch, "const");
+}
+
+vcp_check :: (v: Jv) -> bool {
+  if vcp_str(v, 0, "check").count == 0 { return false; }
+  if vcp_schema_id(v).count == 0 { return false; }
+  exs := jv_get(v, 0, "examples");
+  if jv_kind(v, exs) != JV_ARRAY || jv_len(v, exs) < 4 { return false; }
+  msg_buf: [16385] u8;
+  k := v.nodes[exs].first;
+  while k != -1 {
+    if jv_kind(v, k) != JV_OBJECT { return false; }
+    if vcp_str(v, k, "name").count == 0 { return false; }
+    acc_at := jv_get(v, k, "accepts");
+    if jv_kind(v, acc_at) != JV_TRUE && jv_kind(v, acc_at) != JV_FALSE { return false; }
+    want := jv_kind(v, acc_at) == JV_TRUE;
+    mn := jv_str(v, jv_get(v, k, "message"), msg_buf[..]);
+    if mn < 0 { return false; }
+    got := vcp_accepts(cast(string) msg_buf[0..<mn]);
+    if got != want { return false; }
+    k = v.nodes[k].next;
+  }
+  return true;
+}
+
+#test "voice-input-v1 examples match fv_message" {
+  #assert vcp_accepts("{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"ticket\":1,\"text\":\"hello\"}");
+  #assert !vcp_accepts("{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"partial\",\"ticket\":1,\"text\":\"x\"}");
+  #assert vcp_accepts("{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"cancel\",\"ticket\":1}");
+  #assert !vcp_accepts("{\"schema\":\"wrong\",\"kind\":\"final\",\"ticket\":1,\"text\":\"x\"}");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 {
+    tool_errln("usage: voice-coder-profile.coax <profile.json>"); return 2;
+  }
+  raw: [VCP_FILE] u8;
+  n := fs_read(args_at(args[..], 0), raw[..]);
+  if n < 0 { tool_errln("voice-coder-profile: cannot read profile"); return 2; }
+  nodes: [VCP_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) raw[0..<n], nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    print("profile fails\n"); return 1;
+  }
+  id := vcp_schema_id(d[0]);
+  if !vcp_check(d[0]) {
+    print("%: profile fails\n", id); return 1;
+  }
+  print("%: profile holds\n", id);
+  return 0;
+}
