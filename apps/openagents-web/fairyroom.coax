@@ -103,6 +103,20 @@ ffs_has_id :: (ids: [] u8, ns: [] int, count: int, id: string) -> bool {
   for i: 0..<count { if cast(string) ids[i * ROOM_ID..<i * ROOM_ID + ns[i]] == id { return true; } }
   return false;
 }
+// Whether an answer's body has `word` in it.
+ffs_says :: (answer: string, word: string) -> bool {
+  if word.count == 0 || word.count > answer.count { return false; }
+  for i: 0..<answer.count - word.count + 1 { if answer[i..<i + word.count] == word { return true; } }
+  return false;
+}
+// A line or a message a moderator's mute or ban stopped (#13302: 403 {"error": "muted" | "banned"}):
+// what to tell you, "" when the answer is neither. Sending it again changes nothing, so the line says why.
+ffs_silenced :: (status: int, answer: string) -> string {
+  if status != 403 { return ""; }
+  if ffs_says(answer, "\"muted\"") { return "A MODERATOR MUTED YOU: THE OTHERS DON'T SEE WHAT YOU WRITE"; }
+  if ffs_says(answer, "\"banned\"") { return "THIS ACCOUNT IS BANNED: THE OTHERS DON'T SEE WHAT YOU WRITE"; }
+  return "";
+}
 ffs_toast :: (s: [] Fairy, text: string) {
   g := s[0].social[..];
   g[0].toast_n = ffs_copy(g[0].toast[..], text);
@@ -271,12 +285,14 @@ ffs_answer :: (s: [] Fairy, kind: int, answer: string) #export_c #effects(all) {
   slow := status == 429;
   if kind == ASK_CHAT {
     if status == 200 { g[0].line_n = 0; g[0].said += 1; return; }
-    ffs_toast(s, ifx slow then "A LITTLE SLOWER: WAIT A MOMENT" else "THAT DIDN'T REACH THE OTHERS: TRY AGAIN");
+    quiet := ffs_silenced(status, answer);
+    ffs_toast(s, ifx quiet.count > 0 then quiet else ifx slow then "A LITTLE SLOWER: WAIT A MOMENT" else "THAT DIDN'T REACH THE OTHERS: TRY AGAIN");
     return;
   }
   if kind == ASK_MESSAGE {
     if status == 200 { g[0].msg_n_typed = 0; g[0].written += 1; g[0].ask_inbox = true; ffs_toast(s, "SENT"); return; }
-    ffs_toast(s, ifx slow then "A LITTLE SLOWER: WAIT A MOMENT" else ifx status == 403 then "YOU CAN WRITE TO PLAYERS YOU HAVE MET" else "NOT SENT: TRY AGAIN");
+    quiet := ffs_silenced(status, answer);
+    ffs_toast(s, ifx quiet.count > 0 then quiet else ifx slow then "A LITTLE SLOWER: WAIT A MOMENT" else ifx status == 403 then "YOU CAN WRITE TO PLAYERS YOU HAVE MET" else "NOT SENT: TRY AGAIN");
     return;
   }
   if kind == ASK_BLOCK {
@@ -814,6 +830,18 @@ ffs_track_here :: (t: [] Track, here: int, full: bool) #export_c #effects(all) {
   #assert ffs_next(s[..]) == ASK_CHAT;
   ffs_answer(s[..], ASK_CHAT, "429\n{}");
   #assert ffs_chat_line(s[..]) == "again" && cast(string) s[0].social[0].toast[0..<s[0].social[0].toast_n] == "A LITTLE SLOWER: WAIT A MOMENT";
+  // a moderator's mute or ban (#13302): the line says so, not "try again"
+  ffs_answer(s[..], ASK_CHAT, "403\n{\"error\": \"muted\", \"until\": 0}");
+  #assert cast(string) s[0].social[0].toast[0..<s[0].social[0].toast_n] == "A MODERATOR MUTED YOU: THE OTHERS DON'T SEE WHAT YOU WRITE" && s[0].social[0].said == 1;
+  ffs_answer(s[..], ASK_CHAT, "403\n{\"error\":\"banned\",\"until\":5}");
+  #assert cast(string) s[0].social[0].toast[0..<s[0].social[0].toast_n] == "THIS ACCOUNT IS BANNED: THE OTHERS DON'T SEE WHAT YOU WRITE";
+  ffs_answer(s[..], ASK_MESSAGE, "403\n{\"error\": \"muted\"}");
+  #assert cast(string) s[0].social[0].toast[0..<s[0].social[0].toast_n] == "A MODERATOR MUTED YOU: THE OTHERS DON'T SEE WHAT YOU WRITE";
+  ffs_answer(s[..], ASK_MESSAGE, "403\n{\"error\": \"not met\"}");
+  #assert cast(string) s[0].social[0].toast[0..<s[0].social[0].toast_n] == "YOU CAN WRITE TO PLAYERS YOU HAVE MET";
+  ffs_answer(s[..], ASK_CHAT, "500\n{\"error\": \"muted\"}");
+  #assert cast(string) s[0].social[0].toast[0..<s[0].social[0].toast_n] == "THAT DIDN'T REACH THE OTHERS: TRY AGAIN";
+  #assert ffs_says("abc", "bc") && ffs_says("abc", "abc") && !ffs_says("abc", "abcd") && !ffs_says("abc", "") && !ffs_says("", "a") && !ffs_says("abc", "ac");
   t: [1] Track;
   track_init(t[..], "fairy-forest");
   #assert track_message(t[..], HOST_PAGE, "tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793200000000\nnav=1");

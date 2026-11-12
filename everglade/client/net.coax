@@ -31,6 +31,9 @@ E2N_PIPE_TICKET :: 4;           // the pipe's ask for a seat ticket: the API pat
 E2N_PIPE_NAME :: 9;             // the pipe's POST of your name: /api/playtest/player/name, a newline, the body
 E2N_HOLD_MS :: 4000;            // the run waits this long at most for its seat before it walks on its own
 E2N_SAY :: 48;
+E2N_BAR_NONE :: 0; E2N_BAR_KICKED :: 1; E2N_BAR_BANNED :: 2;
+E2N_BAR_TEXT :: 96;
+E2N_BAR_ASK_MS :: 600000;       // with no end said, the page asks for a seat again this often, not on the lost socket's short waits
 E2N_CASTS :: 16;                // the others' casts heard and not yet played (e2n_cast_due)
 E2N_SHOTS :: 16;                // the room's words on arrows heard and not yet drawn (everglade/client/arrows.coax e2bw_step)
 // The room over WebTransport (#13176): ?transport=wt asks for it, ?transport=ws keeps the WebSocket;
@@ -102,6 +105,9 @@ E2Net :: struct {
   wout: [NET_DATAGRAM_MAX] u8;   // a frame as the pipe carries it (net_conn_frame, net_conn_input)
   said: [E2N_SAY] u8; said_n: int; said_at: int;
   full: [E2N_SAY] u8; full_n: int; full_at: int = -100000;   // a full room, as said over the bar (e2n_full_message, #13263)
+  // a moderator's kick or ban, as the seat ticket's refusal said it (#13302): which (E2N_BAR_*), when it
+  // ends on the wall clock (ms; 0 no end, or not said), and the line over the bar (e2n_barred_message)
+  barred: int; barred_until: int; barred_text: [E2N_BAR_TEXT] u8;
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
   ent_class: [E2N_ENTS] int;    // each other player's class (FB_CL_*, -1 none) from its n row's CLASS: the kit their body carries
@@ -262,6 +268,15 @@ e2n_realm_instance :: (code: string) -> bool {
 // The ticket's answer: the ticket, the instance and shard the directory placed you in, your name.
 e2n_ticket :: (n: [] E2Net, answer: string) {
   n[0].ticket_asked = false; n[0].ticket_n = 0;
+  if answer.count > 4 && answer[0..<4] == "403\n" {
+    // a moderator kicked or banned this account (player.c room_ticket, moderation-policy.coax): the page
+    // says so over the bar and plays on alone
+    why := net_json_field(answer, "error");
+    if why == "banned" || why == "kicked" {
+      e2n_barred(n, ifx why == "banned" then E2N_BAR_BANNED else E2N_BAR_KICKED, net_number(net_json_field(answer, "until"))); return;
+    }
+  }
+  n[0].barred = E2N_BAR_NONE; n[0].barred_until = 0;
   if answer.count <= 4 || answer[0..<4] != "200\n" {
     // every room is full: the API says how many wait, and the page asks again (player.c room_ticket)
     if answer[0..<4] == "503\n" && net_json_field(answer, "waiting").count > 0 { e2n_full(n, "", ""); }
@@ -332,6 +347,69 @@ e2n_room_name :: (t: [] u8, at: int, code: string, other: string) -> int {
 e2n_full_message :: (n: [] E2Net) -> string {
   age := n[0].mono - n[0].full_at;
   return ifx age >= 0 && age < E2N_FULL_MS then cast(string) n[0].full[0..<n[0].full_n] else "";
+}
+// A seat refused for a kick or a ban. The socket's short waits are for a lost connection; this asks
+// again when the kick or ban ends, or every E2N_BAR_ASK_MS when no end was said, and never sooner
+// than a minute.
+e2n_barred :: (n: [] E2Net, kind: int, until: int) {
+  e2n_down(n);
+  n[0].barred = kind; n[0].barred_until = ifx until > 0 then until else 0;
+  wait := E2N_BAR_ASK_MS;
+  if n[0].barred_until > 0 { wait = nc_lo(nc_hi(n[0].barred_until - e2n_now(n), 60000), 6 * 3600000); }
+  n[0].retry = n[0].mono + wait;
+}
+// How long is left, in a player's words: ms rounded up to whole minutes under two hours, whole hours
+// under two days, else whole days. Writes at `at`, returns the new end.
+e2n_time_left :: (t: [] u8, at: int, ms: int) -> int {
+  minutes := (nc_hi(ms, 1) + 59999) / 60000;
+  if minutes < 120 { k := wire_int(t, at, minutes); return wire_put(t, k, ifx minutes == 1 then " MINUTE" else " MINUTES"); }
+  hours := (minutes + 59) / 60;
+  if hours < 48 { k := wire_int(t, at, hours); return wire_put(t, k, " HOURS"); }
+  k := wire_int(t, at, (hours + 23) / 24); return wire_put(t, k, " DAYS");
+}
+// The line over the bar while a kick or a ban holds ("" when none): what happened, and when it ends
+// if the refusal said. You keep playing; only the others are gone.
+e2n_barred_message :: (n: [] E2Net) -> string {
+  if n[0].barred == E2N_BAR_NONE { return ""; }
+  t := n[0].barred_text[..];
+  k := wire_put(t, 0, ifx n[0].barred == E2N_BAR_BANNED then "THIS ACCOUNT IS BANNED FROM PLAYING WITH OTHERS" else "A MODERATOR REMOVED YOU FROM THIS ROOM");
+  left := n[0].barred_until - e2n_now(n);
+  if n[0].barred_until > 0 && left > 0 {
+    k = wire_put(t, k, ifx n[0].barred == E2N_BAR_BANNED then " FOR" else " · BACK IN");
+    k = e2n_time_left(t, k, left);
+  }
+  return cast(string) t[0..<k];
+}
+#test "a kick or a ban: the seat ticket's refusal is said over the bar with when it ends, and the page asks again then" {
+  n: [1] E2Net; n[0].mono = 5000; n[0].offset = 1000000;   // the wall clock is 1,005,000
+  e2n_ticket(n[..], "403\n{\"error\":\"banned\",\"until\":0}");
+  #assert n[0].barred == E2N_BAR_BANNED && n[0].barred_until == 0 && n[0].state == E2N_DOWN && n[0].ticket_n == 0 && !n[0].ticket_asked;
+  #assert e2n_barred_message(n[..]) == "THIS ACCOUNT IS BANNED FROM PLAYING WITH OTHERS";
+  #assert n[0].retry == 5000 + E2N_BAR_ASK_MS;
+  // a ban with an end: said in whole minutes, hours or days, and asked again when it ends
+  e2n_ticket(n[..], "403\n{\"error\":\"banned\",\"until\":1905000}");   // 15 minutes on
+  #assert e2n_barred_message(n[..]) == "THIS ACCOUNT IS BANNED FROM PLAYING WITH OTHERS FOR 15 MINUTES" && n[0].retry == 5000 + 900000;
+  n[0].mono += 899000; #assert e2n_barred_message(n[..]) == "THIS ACCOUNT IS BANNED FROM PLAYING WITH OTHERS FOR 1 MINUTE";
+  n[0].mono += 2000; #assert e2n_barred_message(n[..]) == "THIS ACCOUNT IS BANNED FROM PLAYING WITH OTHERS";   // its time has passed: the next ask says
+  n[0].mono = 5000;
+  e2n_ticket(n[..], "403\n{\"error\":\"kicked\",\"until\":87405000}");   // a day on
+  #assert n[0].barred == E2N_BAR_KICKED && e2n_barred_message(n[..]) == "A MODERATOR REMOVED YOU FROM THIS ROOM · BACK IN 24 HOURS";
+  #assert n[0].retry == 5000 + 6 * 3600000;   // asked again at most six hours on
+  e2n_ticket(n[..], "403\n{\"error\":\"kicked\"}");
+  #assert e2n_barred_message(n[..]) == "A MODERATOR REMOVED YOU FROM THIS ROOM" && n[0].barred_until == 0;
+  e2n_ticket(n[..], "403\n{\"error\":\"banned\",\"until\":1010000}");   // five seconds on: never asked sooner than a minute
+  #assert n[0].retry == 5000 + 60000;
+  // the times, rounded up: 119 minutes, then hours, then days
+  b: [32] u8;
+  #assert cast(string) b[0..<e2n_time_left(b[..], 0, 1)] == " 1 MINUTE" && cast(string) b[0..<e2n_time_left(b[..], 0, 60001)] == " 2 MINUTES";
+  #assert cast(string) b[0..<e2n_time_left(b[..], 0, 119 * 60000)] == " 119 MINUTES" && cast(string) b[0..<e2n_time_left(b[..], 0, 120 * 60000)] == " 2 HOURS";
+  #assert cast(string) b[0..<e2n_time_left(b[..], 0, 47 * 3600000)] == " 47 HOURS" && cast(string) b[0..<e2n_time_left(b[..], 0, 48 * 3600000)] == " 2 DAYS" && cast(string) b[0..<e2n_time_left(b[..], 0, 49 * 3600000)] == " 3 DAYS";
+  // any other refusal is not a ban, and a seat ticket lifts the line
+  e2n_ticket(n[..], "403\n{\"error\":\"forbidden\"}");
+  #assert n[0].barred == E2N_BAR_NONE && e2n_barred_message(n[..]) == "" && n[0].state == E2N_DOWN;
+  e2n_ticket(n[..], "403\n{\"error\":\"banned\",\"until\":0}"); #assert n[0].barred == E2N_BAR_BANNED;
+  e2n_ticket(n[..], "200\n{\"ticket\":\"t.1\",\"room\":\"everglade2-3\"}");
+  #assert n[0].barred == E2N_BAR_NONE && n[0].ticket_n == 3 && e2n_barred_message(n[..]) == "";
 }
 e2n_name_is :: (n: [] E2Net, name: string) {
   m := 0;
