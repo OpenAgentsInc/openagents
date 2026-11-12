@@ -11,10 +11,10 @@
 // NIP-42 write authentication waits on nip42.coax (#f426): rs_admit_policy
 // takes auth_required and authed, and AUTH is answered "restricted" until
 // then (RS_AUTH_OFF), as the Rust relay does when NIP-42 is not configured.
-#load "../net/ws_server.coax";
+#load "../../coax/lib/net/ws_server.coax";
 #load "message_server.coax";
 #load "filter_read.coax";
-#load "../../tests/nostr/relay_server_fixtures.coax";
+#load "../../coax/tests/nostr/relay_server_fixtures.coax";
 #authority;
 
 RS_MAX_MESSAGE :: 131072; RS_MAX_SUBS :: 32; RS_MAX_FILTERS :: 16; RS_MAX_LIMIT :: 127;
@@ -543,7 +543,7 @@ rs_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent) -> bool #effects(all) 
 
 // ---- NIP-11 ---------------------------------------------------------------
 
-// The same bytes as relay_route.coax's RR_NIP11, which coax/relay/relay.coax
+// The same bytes as relay_route.coax's RR_NIP11, which nostr/relay/relay.coax
 // serves (nostr/examples/checks/relay-info.coax checks that they agree).
 RS_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 #test "the NIP-11 document is JSON and states the limits in force" {

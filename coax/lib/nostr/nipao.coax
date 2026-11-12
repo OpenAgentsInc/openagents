@@ -38,7 +38,7 @@
 #load "nip44-key.coax";
 #load "event.coax";
 #load "../crypto/schnorr_fast.coax";
-#load "store_admit.coax";
+#load "../../../nostr/relay/store_admit.coax";
 #load "../../tests/nostr/private_state_vectors.coax";
 #load "../../tests/nostr/nipao_fixtures.coax";
 #authority;

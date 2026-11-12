@@ -52,7 +52,7 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`coax/lib/nostr/relay_server.coax`](../../coax/lib/nostr/relay_server.coax)
+- [`nostr/relay/relay_server.coax`](../../nostr/relay/relay_server.coax)
 - [`coax/lib/gateway`](../../coax/lib/gateway)
 - [`os`](../../os)
 - [`coax/web`](../../coax/web)

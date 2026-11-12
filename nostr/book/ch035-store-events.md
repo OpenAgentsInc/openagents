@@ -34,19 +34,19 @@ before `OK`, and crash recovery that cuts only a partial last write.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [store_policy.coax](../../coax/lib/nostr/store_policy.coax) | `ns_class`, `ns_before`, `ns_expired` | chapter 22's kind classes, the byte order of two IDs, and NIP-40 expiry (`#authority`) |
-| [store_core.coax](../../coax/lib/nostr/store_core.coax) | `ns_store_plan`, `ns_store_apply`, `ns_store_admit` | every decision: verified only, one record per ID, replacement, ephemeral, room; split into a plan and its application so a file can record the plan first (`#authority`) |
+| [store_policy.coax](../../nostr/relay/store_policy.coax) | `ns_class`, `ns_before`, `ns_expired` | chapter 22's kind classes, the byte order of two IDs, and NIP-40 expiry (`#authority`) |
+| [store_core.coax](../../nostr/relay/store_core.coax) | `ns_store_plan`, `ns_store_apply`, `ns_store_admit` | every decision: verified only, one record per ID, replacement, ephemeral, room; split into a plan and its application so a file can record the plan first (`#authority`) |
 | | `ns_store_duplicate`, `ns_store_compact`, `ns_store_room` | the same ID again; dropping replaced records and expired regular events when the table or arena is full |
-| [store_dedup_policy.coax](../../coax/lib/nostr/store_dedup_policy.coax) | `ns_original_before` | the order of two exact originals: byte by byte, then the shorter first (`#authority`) |
+| [store_dedup_policy.coax](../../nostr/relay/store_dedup_policy.coax) | `ns_original_before` | the order of two exact originals: byte by byte, then the shorter first (`#authority`) |
 | [store.coax](../../coax/lib/nostr/store.coax) | `rsd_rec`, `rsd_verified`, `rsd_admit`, `rsd_query` | the relay's face: copies chapter 34's `RsAdmit` into a record and calls store_core |
-| [store_file.coax](../../coax/lib/nostr/store_file.coax) | `ns_file_header`, `ns_file_next`, `ns_file_replay_reason` | the file's framing and replay's reading rule (`#authority`) |
-| [store_recover.coax](../../coax/lib/nostr/store_recover.coax) | `nsr_region`, `nsr_frame`, `nsr_replayed` | what replay does at each frame: read on, stop, cut or refuse (`#authority`) |
-| [store_saved.coax](../../coax/lib/nostr/store_saved.coax) | `rsd_admit_saved`, `rsd_replay` | the glue: save before apply, and the replay loop over the host's file |
+| [store_file.coax](../../nostr/relay/store_file.coax) | `ns_file_header`, `ns_file_next`, `ns_file_replay_reason` | the file's framing and replay's reading rule (`#authority`) |
+| [store_recover.coax](../../nostr/relay/store_recover.coax) | `nsr_region`, `nsr_frame`, `nsr_replayed` | what replay does at each frame: read on, stop, cut or refuse (`#authority`) |
+| [store_saved.coax](../../nostr/relay/store_saved.coax) | `rsd_admit_saved`, `rsd_replay` | the glue: save before apply, and the replay loop over the host's file |
 | [store-file-native.c](../../coax/platform/store-file-native.c) | `cxstore_load`, `cxstore_commit`, `cxstore_truncate` | the C host: read, append with `pwrite` and `fsync`, truncate |
 
 The registry also lists
-[store_snapshot.coax](../../coax/lib/nostr/store_snapshot.coax) and
-[store_dedup_rewrite.coax](../../coax/lib/nostr/store_dedup_rewrite.coax).
+[store_snapshot.coax](../../nostr/relay/store_snapshot.coax) and
+[store_dedup_rewrite.coax](../../nostr/relay/store_dedup_rewrite.coax).
 They frame and rewrite a bounded snapshot (an `NSLG` header, a count, then
 length-prefixed originals) from the store's first ingress work. The relay
 doesn't use them: its file is the append-only log below.
@@ -349,8 +349,8 @@ The whole program:
 <!-- source: nostr/examples/store-events.coax example -->
 ```jai
 #load "../../coax/lib/nostr/store.coax";
-#load "../../coax/lib/nostr/store_file.coax";
-#load "../../coax/lib/nostr/store_recover.coax";
+#load "../../nostr/relay/store_file.coax";
+#load "../../nostr/relay/store_recover.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #load "../../coax/lib/nostr/event_verify_fast.coax";
 #import "Basic";
@@ -366,7 +366,7 @@ REASON :: [12] string.["accepted", "duplicate", "superseded", "bad event", "bad 
   "auth kind", "tags", "time", "expired", "auth required", "full"];
 
 // A store with room for six records, and its file. The file is a byte
-// buffer here: coax/relay/relay.coax keeps it on disk through
+// buffer here: nostr/relay/relay.coax keeps it on disk through
 // coax/platform/store-file-native.c, which `coax run` doesn't link.
 Store :: struct {
   arena: [4096] u8; recs: [6] RsdRec;

@@ -33,13 +33,13 @@ application/nostr+json`: name, pubkey, `supported_nips`, software, version and
 | --- | --- | --- |
 | [ws_server.coax](../../coax/lib/net/ws_server.coax) | `wss_request`, `wss_media` | reads the request head: `WSS_OK` for a valid upgrade, `WSS_NIP11` for a plain `GET` whose `Accept` names `application/nostr+json`, a refusal code otherwise (chapter 27) |
 | | `wss_http_write` | one HTTP/1.1 response with the CORS headers, then the connection closes |
-| [relay_route.coax](../../coax/lib/nostr/relay_route.coax) | `rr_http` | the action for a head: wait, upgrade, NIP-11 or 400 (`#authority`) |
+| [relay_route.coax](../../nostr/relay/relay_route.coax) | `rr_http` | the action for a head: wait, upgrade, NIP-11 or 400 (`#authority`) |
 | | `RR_NIP11` | the document `relay.coax` serves |
 | | `rr_nip11_pow`, `rr_nip13_at` | with `--pow`, NIP-13 added to `supported_nips` and `min_pow_difficulty` to `limitation` (`#authority`) |
-| [relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `RS_MAX_MESSAGE`, `RS_MAX_SUBS`, `RS_MAX_TAGS`, `RS_FUTURE`, `rs_limit` | the limits the document advertises (`#authority`) |
+| [relay_server.coax](../../nostr/relay/relay_server.coax) | `RS_MAX_MESSAGE`, `RS_MAX_SUBS`, `RS_MAX_TAGS`, `RS_FUTURE`, `rs_limit` | the limits the document advertises (`#authority`) |
 | | `RS_NIP11`, `rs_nip11` | a second copy of the document with its own checks; the same bytes as `RR_NIP11` since this chapter |
-| [message_server.coax](../../coax/lib/nostr/message_server.coax) | `MS_SUB_MAX`, `ms_sub_ok` | subscription ids of 1 to 64 characters |
-| [relay.coax](../../coax/relay/relay.coax) | `ry_http` | the relay program: reads the head and writes the answer |
+| [message_server.coax](../../nostr/relay/message_server.coax) | `MS_SUB_MAX`, `ms_sub_ok` | subscription ids of 1 to 64 characters |
+| [relay.coax](../../nostr/relay/relay.coax) | `ry_http` | the relay program: reads the head and writes the answer |
 
 There is no client-side NIP-11 reader in `coax/lib/nostr/`. The example
 defines a small one, `info_read`, with its checks; it isn't library code yet.
@@ -261,7 +261,7 @@ The answer to one request, as `ry_http` writes it:
 
 <!-- source: nostr/examples/relay-info.coax answer -->
 ```jai
-// What the relay does with one HTTP request head, as coax/relay/relay.coax's
+// What the relay does with one HTTP request head, as nostr/relay/relay.coax's
 // ry_http does it, with the socket replaced by out: wss_request reads the
 // head, rr_http picks the action, and the answer is written into out.
 Answer :: struct { status: int; action: int; n: int; }
@@ -421,8 +421,8 @@ The whole program:
 
 <!-- source: nostr/examples/relay-info.coax example -->
 ```jai
-#load "../../coax/lib/nostr/relay_server.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../nostr/relay/relay_server.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/nip77.coax";
 #import "Basic";
 
@@ -433,7 +433,7 @@ NOW :: 1000;
 // ---- the server side: one request head, one answer -------------------------
 
 // book:begin answer
-// What the relay does with one HTTP request head, as coax/relay/relay.coax's
+// What the relay does with one HTTP request head, as nostr/relay/relay.coax's
 // ry_http does it, with the socket replaced by out: wss_request reads the
 // head, rr_http picks the action, and the answer is written into out.
 Answer :: struct { status: int; action: int; n: int; }
@@ -1095,7 +1095,7 @@ check claimed it stated the limits in force, and since NIP-42 writes it
 didn't. The checks file's `RS_NIP11 == RR_NIP11` check failed first; then
 `RS_NIP11` became the same bytes. No procedure changed.
 `relay_server.coax`'s 251 checks pass, and on 2026-11-01
-`coax mutate coax/lib/nostr/relay_server.coax --root-only` killed 340 of
+`coax mutate nostr/relay/relay_server.coax --root-only` killed 340 of
 340 mutants.
 
 ### The supported_nips update

@@ -24,7 +24,7 @@ list, inclusive times, and absent lists distinct from empty ones.
 | [filter.coax](../../coax/lib/nostr/filter.coax) | `nf_valid(f)` | Whether a `NostrFilter` is inside the bounded profile: lowercase hex, kinds 0–65535, at most 64 entries per list, one ASCII letter per tag name with no repeats, tag values at most 256 UTF-8 bytes, times and limit within 2^53 (`#authority`) |
 | | `nf_match(f, event)` | Whether a parsed event passes every condition of one valid filter |
 | | `nf_write(f, out, overlap)` | The filter as JSON, in the field order `ids`, `authors`, `kinds`, tags, `since`, `until`, `limit` |
-| [filter_read.coax](../../coax/lib/nostr/filter_read.coax) | `filter_read(text, f, space)` | One filter object's JSON into a `NostrFilter` whose lists point into caller storage (`FrSpace`); returns `FR_OK` or a refusal (`#authority`) |
+| [filter_read.coax](../../nostr/relay/filter_read.coax) | `filter_read(text, f, space)` | One filter object's JSON into a `NostrFilter` whose lists point into caller storage (`FrSpace`); returns `FR_OK` or a refusal (`#authority`) |
 
 `filter_read.coax` loads `filter.coax`, which loads chapter 21's
 `event.coax`. A filter has no heap: `filter_read` decodes each string into
@@ -209,8 +209,8 @@ initial query: it keeps the events `nf_match` accepts, inserts each in
 
 <!-- source: nostr/examples/filters.coax example -->
 ```jai
-#load "../../coax/lib/nostr/filter_read.coax";
-#load "../../coax/lib/nostr/store_policy.coax";
+#load "../../nostr/relay/filter_read.coax";
+#load "../../nostr/relay/store_policy.coax";
 #import "Basic";
 
 READ :: [6] string.["ok", "json", "field", "type", "space", "invalid"];
@@ -650,7 +650,7 @@ the library were not mutated for this chapter.
 lists, AND across fields and inclusive times, the first tag value with JSON
 escapes, every byte value as a hex digit and as a tag name, the 64-entry and
 256-byte bounds, all 52 tag names, forged tag spans, and a parsed fixture
-event. [filter_read.coax](../../coax/lib/nostr/filter_read.coax) checks the
+event. [filter_read.coax](../../nostr/relay/filter_read.coax) checks the
 round trip through `nf_write`, every refusal status and the storage limits.
 
 [coax/tests/nostr/FILTER.md](../../coax/tests/nostr/FILTER.md) records, for

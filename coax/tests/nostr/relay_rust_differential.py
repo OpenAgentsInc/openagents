@@ -12,7 +12,7 @@ written down in the R1 records), or unexplained (a failure). Events are
 signed with relay_session.py's TEST-ONLY keys. It never connects to a public
 relay; inside the sandbox there is no network but loopback.
 
-  coax/relay/build.sh OUT --sanitize    # the Coax relay, outside the sandbox
+  nostr/relay/build.sh OUT --sanitize    # the Coax relay, outside the sandbox
   RUN_BINDS="NOBLE_DIR OUT_DIR" RUN_ENV="COAX_RELAY=OUT BUN=... NOBLE=..." \\
     coax/tests/nostr/rust_relay_sandbox.sh run python3 -I coax/tests/nostr/relay_rust_differential.py
 

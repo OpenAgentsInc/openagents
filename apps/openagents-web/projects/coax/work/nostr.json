@@ -4061,7 +4061,7 @@
       ],
       "body": "coax/nostr.md section 17, R1. A server WebSocket (handshake, masked reads, unmasked writes, limits, close) and the NIP-01 server: EVENT admission with id and BIP-340 verification, REQ subscriptions matched by filter.coax over stored and new events, EOSE, CLOSE, OK and CLOSED with the standard prefixes, NOTICE; NIP-11; NIP-40 expiration; replaceable and addressable ordering (newest, lowest id on a tie); NIP-42 required for writes; the Rust relay's advertised limits. Storage is the verified append-only log of nostr-event-store and the store_*.coax slices (fsync'd, indexed, replayed on start), not a second store. Uses message.coax (#6015) and nip42.coax (#f426). Never touches relay.openagents.com or its database.",
       "files": [
-        "coax/lib/nostr/relay_server.coax",
+        "nostr/relay/relay_server.coax",
         "coax/lib/net/",
         "coax/platform/"
       ],

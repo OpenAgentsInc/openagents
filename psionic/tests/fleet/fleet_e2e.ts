@@ -180,7 +180,7 @@ async function rawLocalPeer(mode:string){
 }
 try{
   if(!process.env.FLEET)await build("psionic/platform/fleet-build.sh",[join(out,"fleet"),"sanitized"])
-  if(process.env.FLEET_SCOPE!=="peers"&&!process.env.RELAY_BIN)await build("coax/relay/build.sh",[relay,"--sanitize"])
+  if(process.env.FLEET_SCOPE!=="peers"&&!process.env.RELAY_BIN)await build("nostr/relay/build.sh",[relay,"--sanitize"])
   if(process.env.FLEET_SCOPE!=="peers"&&!process.env.PYLON)await build("psionic/platform/pylon-build.sh",[join(out,"pylon"),"sanitized"])
   if(process.env.FLEET_SCOPE!=="peers"&&!process.env.SERVE)await build("psionic/platform/serve-build.sh",[join(out,"serve"),"release","plain"])
   for(const path of (process.env.FLEET_SCOPE==="peers"?[fleet]:[fleet,relay,pylon,serve]))assert(existsSync(path),"missing binary "+path)

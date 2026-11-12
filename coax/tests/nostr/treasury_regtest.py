@@ -7,7 +7,7 @@ coordinator outage is recovered with Bitcoin Core's own descriptor wallet.
   BITCOIN_BIN=DIR COAX_RELAY=EXE TREASURY=EXE OUT=DIR python3 coax/tests/nostr/treasury_regtest.py
 
 BITCOIN_BIN holds the official bitcoind and bitcoin-cli (SHA256SUMS checked
-by the caller); COAX_RELAY is coax/relay/build.sh's relay; TREASURY is
+by the caller); COAX_RELAY is nostr/relay/build.sh's relay; TREASURY is
 nostr/tools/treasury.coax built by coax/web/tool.sh. Everything runs on
 127.0.0.1 in regtest: test keys only (SHA-256("chapter 104 <name>")), coins
 with no value.

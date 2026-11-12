@@ -36,8 +36,8 @@ NIP-59.
 | File | What it does |
 | --- | --- |
 | [nostr/examples/differential.coax](../examples/differential.coax) | The method in Coax: the relay's query against NIP-01's filter text over 500 generated cases, a seeded fault and its minimization |
-| [coax/lib/nostr/store.coax](../../coax/lib/nostr/store.coax) | `rsd_query`, the query that `coax/relay/relay.coax` answers a REQ with |
-| [coax/lib/nostr/filter_read.coax](../../coax/lib/nostr/filter_read.coax), [filter.coax](../../coax/lib/nostr/filter.coax) | The REQ filter reader and `nf_match` (chapter 23) |
+| [coax/lib/nostr/store.coax](../../coax/lib/nostr/store.coax) | `rsd_query`, the query that `nostr/relay/relay.coax` answers a REQ with |
+| [nostr/relay/filter_read.coax](../../nostr/relay/filter_read.coax), [filter.coax](../../coax/lib/nostr/filter.coax) | The REQ filter reader and `nf_match` (chapter 23) |
 | [coax/tests/nostr/relay_rust_differential.py](../../coax/tests/nostr/relay_rust_differential.py) | The Coax relay against the Rust relay, 114 observations, run by `rust_relay_differential.sh` in the sandbox `rust_relay_sandbox.sh` builds |
 | [coax/tests/nostr/relay_differential.py](../../coax/tests/nostr/relay_differential.py) | The Coax relay against relay.openagents.com's recorded answers to the project page's five REQs |
 
@@ -195,7 +195,7 @@ code. Each event goes into a fresh store through `ns_store_admit`, so
 replacement and ephemeral kinds behave as in the relay. The filter is
 written as REQ JSON and read with `filter_read`. `rsd_query` answers at
 `ASK`, one minute after the events were admitted, as
-`coax/relay/relay.coax` does. Signatures and ids are not part of this
+`nostr/relay/relay.coax` does. Signatures and ids are not part of this
 differential; chapter 34 covers admission, and the records hold the fields
 admission reads.
 
@@ -204,7 +204,7 @@ admission reads.
 // Implementation 1: the relay. Each event goes into a fresh store through
 // ns_store_admit (replacement, ephemeral kinds); the filter goes through
 // filter_read, as a REQ does; rsd_query answers at ASK, exactly as
-// coax/relay/relay.coax does. The answer is event numbers, in the relay's
+// nostr/relay/relay.coax does. The answer is event numbers, in the relay's
 // order. fault plants one bug: until compared with >= instead of >.
 Relay :: struct { arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; }
 relay_answer :: (c: Case, fault: bool, out: [] int) -> int {

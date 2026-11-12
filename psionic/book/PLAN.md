@@ -264,7 +264,7 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 | 8 | The relay end-to-end test, the shared connection (`relay_conn.coax`) and reader (`relay_read.coax`) | claude-relay-e2e, openagents-d7 | landed `32269ea6a4`, `relay_conn` `3ff79c8d61` (1,140, 0), `relay_read` `4d2d9050d6` (5,371, 0) |
 | 9–11 | Beacon (`30200`), decision jobs (`25910`/`26910`/`27010`), NIP-65 (`10002`) in `psionic/lib/pylon/` | claude-pylon | landed `2f489e00d9` (2,346 and 1,237 mutants, 0 survivors) |
 | — | Compiler source-graph cap 64 → 128 units | openagents-d7 | landed `cfe213bcfa` |
-| — | A Coax relay to test against (`coax/relay/`, durable with `--store`) | claude-relay-server, claude-relay-r1b, claude-store | R1 on main: `b872d72ccb`, `edab4a2ecd`; see coax/nostr.md section 17 |
+| — | A Coax relay to test against (`nostr/relay/`, durable with `--store`) | claude-relay-server, claude-relay-r1b, claude-store | R1 on main: `b872d72ccb`, `edab4a2ecd`; see coax/nostr.md section 17 |
 
 All four owner decisions are made (`NEEDS_OWNER.md`): the `auth` signature
 over the Pylon key is made by the agent that creates the real key, once

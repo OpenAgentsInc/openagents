@@ -26,7 +26,7 @@ other side sends and writes what its own side sends.
 | [message.coax](../../coax/lib/nostr/message.coax) | `nostr_message_read(text)` | The client's reader: one relay frame (`EVENT`, `OK`, `EOSE`, `CLOSED`, `NOTICE`) into a `NostrMessage` of spans into `text`, or a refusal (`#authority`) |
 | | `nostr_message_event_verify_vartime(text, out, overlap)` | Reads an `EVENT` frame and verifies the event it carries with chapter 21's verifier |
 | | `nostr_message_write_event`, `_req`, `_close` | The client's writers: `["EVENT",<event>]`, `["REQ",<sub>,<filter>...]` and `["CLOSE",<sub>]`; each returns the frame's length or -1 |
-| [message_server.coax](../../coax/lib/nostr/message_server.coax) | `ms_read(text)` | The relay's reader: one client frame (`EVENT`, `REQ`, `CLOSE`, `AUTH`, `COUNT`) into an `MsMsg` with the decoded subscription id and the byte ranges of the event or filters (`#authority`) |
+| [message_server.coax](../../nostr/relay/message_server.coax) | `ms_read(text)` | The relay's reader: one client frame (`EVENT`, `REQ`, `CLOSE`, `AUTH`, `COUNT`) into an `MsMsg` with the decoded subscription id and the byte ranges of the event or filters (`#authority`) |
 | | `ms_write_event`, `ms_write_ok`, `ms_write_eose`, `ms_write_closed`, `ms_write_notice` | The relay's writers; each returns the frame's length or -1 |
 | [message_agree.coax](../../coax/lib/nostr/message_agree.coax) | `ma_prefixes`, `ma_sub`, `ma_relay_frames`, `ma_client_frames` | Ties the two codecs together: the same bounds, the same prefixes, and each side reads what the other writes. The relay doesn't build when they disagree |
 
@@ -228,7 +228,7 @@ content, so the example shows that the bytes are copied, not rewritten.
 <!-- source: nostr/examples/relay-messages.coax example -->
 ```jai
 #load "../../coax/lib/nostr/message_agree.coax";
-#load "../../coax/lib/nostr/filter_read.coax";
+#load "../../nostr/relay/filter_read.coax";
 #import "Basic";
 
 // Status names, in the order of each file's constants.
@@ -711,7 +711,7 @@ chapter.
 of the captured transcript, every prefix word and a `#forall` over all 256
 byte values as a prefix character, every refusal status, the string and
 frame bounds, a tampered id reaching the verifier, and the client writers'
-exact bytes. [message_server.coax](../../coax/lib/nostr/message_server.coax)
+exact bytes. [message_server.coax](../../nostr/relay/message_server.coax)
 checks every client frame and refusal, the 16-filter and frame bounds, and
 the relay writers' exact bytes. [message_agree.coax](../../coax/lib/nostr/message_agree.coax)
 fails the build when the two codecs' bounds or prefixes drift, and checks

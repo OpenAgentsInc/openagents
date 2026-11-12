@@ -2,7 +2,7 @@
 // by store_file.py through store_file_host.c: each run is one phase over the
 // same file, and prints its observations with sfm_out for the driver to
 // compare with the expected state it computes itself.
-#load "../../lib/nostr/store_saved.coax";
+#load "../../../nostr/relay/store_saved.coax";
 #load "store_fixtures.coax";
 
 sfm_phase :: () -> int #foreign #effects(all);

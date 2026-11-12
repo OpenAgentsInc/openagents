@@ -51,7 +51,7 @@
 // Not here: the Rust relay's NIP-29 private and hidden groups, which read
 // group state the Coax relay doesn't hold (NEEDS_OWNER, "Coax relay
 // cutover").
-#load "filter.coax";
+#load "../../coax/lib/nostr/filter.coax";
 #authority;
 
 RP_STORED :: 1;   // a REQ, COUNT or sync without a search

@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 /* A TCP listener and its accepted connections for Coax on Linux and macOS,
-   through #foreign scalars only (the relay host, coax/relay/). Effects only:
+   through #foreign scalars only (the relay host, nostr/relay/). Effects only:
    bind, listen, accept, poll, read, write, close and the clocks. Every
    decision (HTTP, WebSocket, Nostr, limits beyond these buffers) is Coax.
 

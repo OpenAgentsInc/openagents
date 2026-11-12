@@ -894,7 +894,7 @@ release compiler in `~/.cache/coax-release`. The full mutation run
 
 ### The relay's groups
 
-Since chapter 103's wiring, `coax/relay/relay.coax` started with
+Since chapter 103's wiring, `nostr/relay/relay.coax` started with
 `--groups` puts every `EVENT` to `g29_admit` after its signature, the rate
 limit and NIP-86's `n86_admit`:
 

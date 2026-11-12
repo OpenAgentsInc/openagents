@@ -14,7 +14,7 @@
 // stops on one line. The split follows store.coax and store_core.coax: the
 // decisions here have cheap checks for mutation, and the file that calls
 // the verifier is checked by chapter 103's example checks.
-#load "store.coax";
+#load "../../coax/lib/nostr/store.coax";
 #authority;
 
 // book:begin outcomes

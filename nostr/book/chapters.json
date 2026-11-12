@@ -329,7 +329,7 @@
    ],
    "source": [
     "coax/lib/nostr/metadata.coax",
-    "coax/lib/nostr/store_policy.coax",
+    "nostr/relay/store_policy.coax",
     "coax/lib/nostr/tags.coax",
     "nostr/examples/checks/kinds-tags.coax",
     "nostr/examples/kinds-tags.coax"
@@ -350,7 +350,7 @@
    ],
    "source": [
     "coax/lib/nostr/filter.coax",
-    "coax/lib/nostr/filter_read.coax",
+    "nostr/relay/filter_read.coax",
     "nostr/examples/checks/filters.coax",
     "nostr/examples/filters.coax"
    ],
@@ -375,7 +375,7 @@
    "source": [
     "coax/lib/nostr/message.coax",
     "coax/lib/nostr/message_agree.coax",
-    "coax/lib/nostr/message_server.coax",
+    "nostr/relay/message_server.coax",
     "nostr/examples/relay-messages.coax",
     "nostr/examples/checks/relay-messages.coax"
    ],
@@ -383,7 +383,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/relay/relay.coax",
+    "nostr/relay/relay.coax",
     "coax/web/project/landing-nostr.coax"
    ]
   },
@@ -449,7 +449,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/lib/nostr/relay_server.coax"
+    "nostr/relay/relay_server.coax"
    ]
   },
   {
@@ -606,10 +606,10 @@
     "coax:24"
    ],
    "source": [
-    "coax/lib/nostr/relay_route.coax",
-    "coax/lib/nostr/relay_server.coax",
-    "coax/lib/nostr/store_admit.coax",
-    "coax/relay/relay.coax",
+    "nostr/relay/relay_route.coax",
+    "nostr/relay/relay_server.coax",
+    "nostr/relay/store_admit.coax",
+    "nostr/relay/relay.coax",
     "nostr/examples/relay-admit.coax",
     "nostr/examples/checks/relay-admit.coax"
    ],
@@ -617,7 +617,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/relay/relay.coax"
+    "nostr/relay/relay.coax"
    ]
   },
   {
@@ -632,12 +632,12 @@
    ],
    "source": [
     "coax/lib/nostr/store.coax",
-    "coax/lib/nostr/store_core.coax",
-    "coax/lib/nostr/store_dedup_policy.coax",
-    "coax/lib/nostr/store_dedup_rewrite.coax",
-    "coax/lib/nostr/store_file.coax",
-    "coax/lib/nostr/store_recover.coax",
-    "coax/lib/nostr/store_snapshot.coax",
+    "nostr/relay/store_core.coax",
+    "nostr/relay/store_dedup_policy.coax",
+    "nostr/relay/store_dedup_rewrite.coax",
+    "nostr/relay/store_file.coax",
+    "nostr/relay/store_recover.coax",
+    "nostr/relay/store_snapshot.coax",
     "nostr/examples/store-events.coax",
     "nostr/examples/checks/store-events.coax"
    ],
@@ -645,7 +645,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/lib/nostr/store_saved.coax"
+    "nostr/relay/store_saved.coax"
    ]
   },
   {
@@ -661,7 +661,7 @@
    "source": [
     "coax/lib/nostr/filter.coax",
     "coax/lib/nostr/store.coax",
-    "coax/lib/nostr/store_index.coax",
+    "nostr/relay/store_index.coax",
     "nostr/examples/match-indexes.coax",
     "nostr/examples/checks/match-indexes.coax"
    ],
@@ -669,7 +669,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/lib/nostr/relay_store.coax"
+    "nostr/relay/relay_store.coax"
    ]
   },
   {
@@ -682,8 +682,8 @@
     34
    ],
    "source": [
-    "coax/lib/nostr/relay_route.coax",
-    "coax/lib/nostr/relay_server.coax",
+    "nostr/relay/relay_route.coax",
+    "nostr/relay/relay_server.coax",
     "nostr/examples/relay-info.coax",
     "nostr/examples/checks/relay-info.coax"
    ],
@@ -691,7 +691,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/relay/relay.coax"
+    "nostr/relay/relay.coax"
    ]
   },
   {
@@ -716,7 +716,7 @@
    ],
    "adopted_by": [
     "apps/openagents-cli/relay.coax",
-    "coax/relay/relay.coax",
+    "nostr/relay/relay.coax",
     "psionic/lib/pylon/run.coax"
    ]
   },
@@ -730,10 +730,10 @@
     35
    ],
    "source": [
-    "coax/lib/nostr/relay_server.coax",
-    "coax/lib/nostr/store_core.coax",
-    "coax/lib/nostr/store_policy.coax",
-    "coax/lib/nostr/store_delete.coax",
+    "nostr/relay/relay_server.coax",
+    "nostr/relay/store_core.coax",
+    "nostr/relay/store_policy.coax",
+    "nostr/relay/store_delete.coax",
     "nostr/examples/delete-expire-vanish.coax",
     "nostr/examples/checks/delete-expire-vanish.coax"
    ],
@@ -741,7 +741,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/lib/nostr/store_saved.coax"
+    "nostr/relay/store_saved.coax"
    ]
   },
   {
@@ -755,8 +755,8 @@
    ],
    "source": [
     "coax/lib/nostr/nip45.coax",
-    "coax/lib/nostr/store_index.coax",
-    "coax/lib/nostr/message_server.coax",
+    "nostr/relay/store_index.coax",
+    "nostr/relay/message_server.coax",
     "nostr/examples/count-events.coax",
     "nostr/examples/checks/count-events.coax"
    ],
@@ -764,7 +764,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/lib/nostr/relay_store.coax"
+    "nostr/relay/relay_store.coax"
    ]
   },
   {
@@ -778,8 +778,8 @@
    ],
    "source": [
     "coax/lib/nostr/nip50.coax",
-    "coax/lib/nostr/filter_read.coax",
-    "coax/lib/nostr/store_index.coax",
+    "nostr/relay/filter_read.coax",
+    "nostr/relay/store_index.coax",
     "nostr/examples/search.coax",
     "nostr/examples/checks/search.coax"
    ],
@@ -787,7 +787,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/lib/nostr/relay_store.coax"
+    "nostr/relay/relay_store.coax"
    ]
   },
   {
@@ -809,7 +809,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/relay/relay.coax"
+    "nostr/relay/relay.coax"
    ]
   },
   {
@@ -846,10 +846,10 @@
    ],
    "source": [
     "coax/lib/net/relay_poll_budget.coax",
-    "coax/lib/nostr/relay_server.coax",
-    "coax/lib/nostr/relay_rate.coax",
-    "coax/lib/nostr/relay_route.coax",
-    "coax/lib/nostr/store_core.coax",
+    "nostr/relay/relay_server.coax",
+    "nostr/relay/relay_rate.coax",
+    "nostr/relay/relay_route.coax",
+    "nostr/relay/store_core.coax",
     "nostr/examples/relay-limits.coax",
     "nostr/examples/checks/relay-limits.coax"
    ],
@@ -857,7 +857,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/relay/relay.coax"
+    "nostr/relay/relay.coax"
    ]
   },
   {
@@ -874,7 +874,7 @@
     "coax/lib/nostr/follows.coax",
     "coax/lib/nostr/metadata.coax",
     "coax/lib/nostr/nip05.coax",
-    "coax/lib/nostr/store_core.coax",
+    "nostr/relay/store_core.coax",
     "nostr/examples/checks/profiles-follows.coax",
     "nostr/examples/profiles-follows.coax"
    ],
@@ -1133,7 +1133,7 @@
     "cpu"
    ],
    "adopted_by": [
-    "coax/relay/relay.coax"
+    "nostr/relay/relay.coax"
    ]
   },
   {
@@ -1971,7 +1971,7 @@
     93
    ],
    "source": [
-    "coax/lib/nostr/filter_read.coax",
+    "nostr/relay/filter_read.coax",
     "coax/lib/nostr/store.coax",
     "coax/tests/nostr/relay_differential.py",
     "coax/tests/nostr/relay_rust_differential.py",
@@ -2208,10 +2208,10 @@
     94
    ],
    "source": [
-    "coax/lib/nostr/relay_import.coax",
-    "coax/lib/nostr/relay_import_run.coax",
-    "coax/lib/nostr/relay_equal.coax",
-    "coax/lib/nostr/relay_shadow.coax",
+    "nostr/relay/relay_import.coax",
+    "nostr/relay/relay_import_run.coax",
+    "nostr/relay/relay_equal.coax",
+    "nostr/relay/relay_shadow.coax",
     "coax/lib/nostr/fixtures/relay_export.coax",
     "coax/tests/nostr/relay_export_fixture.py",
     "nostr/examples/relay-cutover.coax",

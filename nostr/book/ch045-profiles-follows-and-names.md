@@ -26,7 +26,7 @@ follow list replaces an older one in the store.
 | [metadata.coax](../../coax/lib/nostr/metadata.coax) | `nostr_metadata_parse`, `nostr_metadata_read` | Reads kind 0 `name`, `about` and `picture` (chapter 22) |
 | [nip05.coax](../../coax/lib/nostr/nip05.coax) | `nip05_parse`, `nip05_url`, `nip05_from_metadata`, `nip05_check` | Splits an identifier, writes its URL, reads `nip05` from kind 0 content, checks a response |
 | [follows.coax](../../coax/lib/nostr/follows.coax) | `nostr_follow` | Reads one tag of a kind 3 event as a follow |
-| [store_core.coax](../../coax/lib/nostr/store_core.coax) | `ns_store_admit` | Stores verified events and replaces replaceable ones by chapter 22's rule |
+| [store_core.coax](../../nostr/relay/store_core.coax) | `ns_store_admit` | Stores verified events and replaces replaceable ones by chapter 22's rule |
 
 `nip05.coax` and `follows.coax` are new in this chapter. Both are
 `#authority` files.
@@ -197,7 +197,7 @@ the three lists to a store, and shows fifteen refusals.
 #load "../../coax/lib/nostr/follows.coax";
 #load "../../coax/lib/nostr/nip05.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
-#load "../../coax/lib/nostr/store_core.coax";
+#load "../../nostr/relay/store_core.coax";
 #import "Basic";
 
 META :: [8] string.["ok", "event", "kind", "json", "shape", "duplicate key", "field", "output"];

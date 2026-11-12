@@ -1003,7 +1003,7 @@ def main():
             TLS_ARGS = ['--tls-cert', str(d / 'leaf.pem'), '--tls-key', str(d / 'leaf.key')]
         exe = d / 'relay'
         t0 = time.monotonic()
-        subprocess.run([str(ROOT / 'coax/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([str(ROOT / 'nostr/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
         print('build %.1f s' % (time.monotonic() - t0))
         with open(d / 'relay.err', 'w') as log:
             store = d / 'events.log'

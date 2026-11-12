@@ -1,5 +1,5 @@
 // Fixture-only export: match flags and bytes are untrusted framing data.
-#load "../../lib/nostr/store_dedup_rewrite.coax";
+#load "../../../nostr/relay/store_dedup_rewrite.coax";
 store_rewrite_test :: (old:[]u8,text:string,matches:[]bool,out:[]u8,overlap:bool)->NsDedupFrame #export_c #effects(all) {
  return ns_dedup_rewrite(old,text,matches,out,overlap);
 }

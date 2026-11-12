@@ -27,14 +27,14 @@ prefixes, and route each frame from one connection.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [relay_route.coax](../../coax/lib/nostr/relay_route.coax) | `rr_frame_read`, `rr_message`, `rr_writes_need_auth`, `rr_authed` | which handler a frame and a message go to; whether a write needs a NIP-42 key, and whether the connection has one (`#authority`) |
-| [message_server.coax](../../coax/lib/nostr/message_server.coax) | `ms_read`, `ms_write_ok`, `ms_write_notice` | chapter 24's relay codec: the client frame in, the reply out |
-| [relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `rs_admit_read`, `rs_admit_policy`, `rs_admit_verified` | reads the event, recomputes its id and applies the policy; then admits only a verified result for the same id (`#authority`) |
+| [relay_route.coax](../../nostr/relay/relay_route.coax) | `rr_frame_read`, `rr_message`, `rr_writes_need_auth`, `rr_authed` | which handler a frame and a message go to; whether a write needs a NIP-42 key, and whether the connection has one (`#authority`) |
+| [message_server.coax](../../nostr/relay/message_server.coax) | `ms_read`, `ms_write_ok`, `ms_write_notice` | chapter 24's relay codec: the client frame in, the reply out |
+| [relay_server.coax](../../nostr/relay/relay_server.coax) | `rs_admit_read`, `rs_admit_policy`, `rs_admit_verified` | reads the event, recomputes its id and applies the policy; then admits only a verified result for the same id (`#authority`) |
 | | `rs_prefix`, `rs_text`, `rs_accepted` | each reason's prefix, text and verdict |
-| [store.coax](../../coax/lib/nostr/store.coax), [store_core.coax](../../coax/lib/nostr/store_core.coax) | `rsd_admit` | the in-memory store's verdict: new, duplicate, superseded or full (store_core is `#authority`) |
+| [store.coax](../../coax/lib/nostr/store.coax), [store_core.coax](../../nostr/relay/store_core.coax) | `rsd_admit` | the in-memory store's verdict: new, duplicate, superseded or full (store_core is `#authority`) |
 | [event.coax](../../coax/lib/nostr/event.coax) | `nostr_event_read`, `nostr_event_verify_vartime` | chapter 21's reader and BIP-340 verifier |
-| [store_admit.coax](../../coax/lib/nostr/store_admit.coax) | `ns_admit_one` | exact-byte verification and single-event snapshot staging for the durable store (chapter 35) |
-| [relay.coax](../../coax/relay/relay.coax) | `ry_message`, `ry_event` | the relay program: moves bytes and calls the procedures above |
+| [store_admit.coax](../../nostr/relay/store_admit.coax) | `ns_admit_one` | exact-byte verification and single-event snapshot staging for the durable store (chapter 35) |
+| [relay.coax](../../nostr/relay/relay.coax) | `ry_message`, `ry_event` | the relay program: moves bytes and calls the procedures above |
 
 `relay.coax` has a `main` and calls the host's sockets, so the example
 can't load it. The example's `relay_message` repeats `ry_message` and
@@ -202,7 +202,7 @@ The admission step itself:
 
 <!-- source: nostr/examples/relay-admit.coax admit -->
 ```jai
-// One text message from a client, handled as coax/relay/relay.coax's
+// One text message from a client, handled as nostr/relay/relay.coax's
 // ry_message and ry_event handle it, with the socket and the clock replaced:
 // the reply the relay sends.
 relay_message :: (r: [] Relay, frame: string, now: int) -> string {
@@ -230,7 +230,7 @@ The whole program:
 <!-- source: nostr/examples/relay-admit.coax example -->
 ```jai
 #load "../../coax/lib/nostr/store.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
 
@@ -257,7 +257,7 @@ Relay :: struct {
 relay_init :: (r: [] Relay) { r[0].store[0].arena = r[0].arena[..]; r[0].store[0].recs = r[0].recs[..]; }
 
 // book:begin admit
-// One text message from a client, handled as coax/relay/relay.coax's
+// One text message from a client, handled as nostr/relay/relay.coax's
 // ry_message and ry_event handle it, with the socket and the clock replaced:
 // the reply the relay sends.
 relay_message :: (r: [] Relay, frame: string, now: int) -> string {

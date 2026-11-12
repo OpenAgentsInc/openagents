@@ -72,7 +72,7 @@ It builds on what exists today:
 
 - [`coax/lib/nostr/event.coax`](../../coax/lib/nostr/event.coax)
 - [`coax/lib/nostr/relay.coax`](../../coax/lib/nostr/relay.coax)
-- [`coax/lib/nostr/relay_server.coax`](../../coax/lib/nostr/relay_server.coax)
+- [`nostr/relay/relay_server.coax`](../../nostr/relay/relay_server.coax)
 - [`coax/lib/nostr/nip59.coax`](../../coax/lib/nostr/nip59.coax)
 - [`nostr/book/README.md`](../../nostr/book/README.md)
 - [`apps/openagents-cli/relay.coax`](../../apps/openagents-cli/relay.coax)

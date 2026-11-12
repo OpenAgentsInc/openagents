@@ -21,7 +21,7 @@ Part V, A relay. Result: NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and
 - One round for either side, and rounds repeated until the client knows
   the IDs it has and the server lacks (`have`) and the reverse (`need`).
 - The frame limit, and how a message that would pass it ends early.
-- The relay process (`coax/relay/relay.coax`) answers `NEG-OPEN`,
+- The relay process (`nostr/relay/relay.coax`) answers `NEG-OPEN`,
   `NEG-MSG` and `NEG-CLOSE` with this file's server side, since chapter
   103's wiring; see [The relay's sessions](#the-relays-sessions).
   Replication between Coax relays is not built; see
@@ -626,7 +626,7 @@ strings. Each side selects its items with the sync's filter through
 <!-- source: nostr/examples/negentropy-sync.coax example -->
 ```jai
 #load "../../coax/lib/nostr/nip77.coax";
-#load "../../coax/lib/nostr/store_index.coax";
+#load "../../nostr/relay/store_index.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
 
@@ -1226,7 +1226,7 @@ On 2026-11-01, `coax test` ran 477 checks, including the loaded files' own, in a
 
 ### The relay's sessions
 
-`coax/relay/relay.coax` answers the frames with this file's server side.
+`nostr/relay/relay.coax` answers the frames with this file's server side.
 The decisions are `relay_route.coax`'s (`#authority`, root-only mutation
 573 of 573 on 2026-11-01); the items are `relay_store.coax`'s
 `rd_neg_items`:

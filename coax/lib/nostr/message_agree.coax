@@ -2,7 +2,7 @@
 // client codec (message.coax, #6015, #authority) without loading either into
 // the other: each keeps its own constants and its own mutation graph, and
 // the top-level #asserts below fail the build when they drift. Not
-// #authority: it decides nothing. coax/relay/relay.coax loads it, so the
+// #authority: it decides nothing. nostr/relay/relay.coax loads it, so the
 // relay does not build when the two disagree.
 //
 // What must agree: the frame bound, the filter bound, the subscription-id
@@ -12,7 +12,7 @@
 // writes: OK, EOSE, CLOSED, NOTICE and EVENT from the relay, REQ, CLOSE and
 // EVENT from a client.
 #load "message.coax";
-#load "message_server.coax";
+#load "../../../nostr/relay/message_server.coax";
 
 #assert MS_MAX_FRAME == NM_MAX_FRAME && MS_MAX_FILTERS == NM_MAX_FILTERS && MS_SUB_MAX == NM_MAX_SUB;
 #assert MS_PREFIXES == NM_PREFIXES.count + 1;

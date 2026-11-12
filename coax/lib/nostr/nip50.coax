@@ -29,7 +29,7 @@
 //   computed exactly, so a hash collision adds work, never a result. Like
 //   chapter 36's index it is built whole and refused once the store changes.
 //
-// - The relay (coax/relay/relay.coax, through relay_store.coax) answers
+// - The relay (nostr/relay/relay.coax, through relay_store.coax) answers
 //   searches with n50_scan: the same answer as n50_query, with every
 //   record a candidate instead of one term's entries. The word index is
 //   built whole and goes stale on every write, and n50_build's sorted
@@ -39,7 +39,7 @@
 // Not built: an index the relay keeps up to date as events arrive, tag
 // search, the language:, domain:, sentiment: and nsfw: extensions, and
 // stemming or Unicode case folding. Not #authority, like store_index.coax.
-#load "store_index.coax";
+#load "../../../nostr/relay/store_index.coax";
 
 N50_MAX_TERMS :: 16;
 // n50_parse's results.

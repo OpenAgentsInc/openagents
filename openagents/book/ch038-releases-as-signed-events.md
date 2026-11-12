@@ -52,7 +52,7 @@ It builds on what exists today:
 
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)
 - [`coax/lib/nostr/relay.coax`](../../coax/lib/nostr/relay.coax)
-- [`coax/lib/nostr/relay_server.coax`](../../coax/lib/nostr/relay_server.coax)
+- [`nostr/relay/relay_server.coax`](../../nostr/relay/relay_server.coax)
 - [`coax/lib/nostr/event_sign.coax`](../../coax/lib/nostr/event_sign.coax)
 - [`apps/openagents-cli/relay.coax`](../../apps/openagents-cli/relay.coax)
 - [`apps/openagents-cli/skill.coax`](../../apps/openagents-cli/skill.coax)

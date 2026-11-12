@@ -6,7 +6,7 @@
 // rs_replace's newest-then-lowest-id rule, ephemeral not stored), query by
 // filter (newest first, rs_limit, expired events left out) and expiry at
 // read time. Every record entered through rs_admit's verified result.
-#load "../../lib/nostr/relay_server.coax";
+#load "../../../nostr/relay/relay_server.coax";
 
 RSD_MAX :: 2048; RSD_ARENA :: 4194304;
 RsdRec :: struct { live: bool; e: NostrEvent; from: int; to: int; expiration: int; kclass: int; d: [256] u8; d_n: int; }

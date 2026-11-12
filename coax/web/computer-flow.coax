@@ -13,7 +13,7 @@
 // browser off the computer. It reads the pane through coaxial.guardProbe(2400 + f) (verse/edit/
 // edit.coax redit_probe: 4 * b + 0..3 button b's box, 96 the pane, 97 the view).
 //
-//   coax/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+//   nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
 //   OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
 //   COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
 //     /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax

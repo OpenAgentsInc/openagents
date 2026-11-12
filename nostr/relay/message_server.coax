@@ -8,7 +8,7 @@
 // nip42.coax's (#f426). Values follow message.coax: sub ids of 1..64
 // characters, frames up to MS_MAX_FRAME bytes, the NIP-01 machine-readable
 // prefixes plus NIP-42's auth-required.
-#load "json.coax";
+#load "../../coax/lib/nostr/json.coax";
 #authority;
 
 MS_MAX_FRAME :: 270336; MS_MAX_FILTERS :: 16; MS_SUB_MAX :: 64;

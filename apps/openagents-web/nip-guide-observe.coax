@@ -8,7 +8,7 @@
 #load "../../coax/lib/nostr/nip42.coax";
 #load "../../coax/lib/nostr/nip44.coax";
 #load "../../coax/lib/nostr/nip98-observe.coax";
-#load "../../coax/lib/nostr/relay_server.coax";
+#load "../../nostr/relay/relay_server.coax";
 #load "../../coax/lib/crypto/scrypt_admission.coax";
 
 // Frozen public production NIP-11 observation, 2026-10-30. A declaration

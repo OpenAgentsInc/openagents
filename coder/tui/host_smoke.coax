@@ -16,7 +16,7 @@
 // A host to point a browser or another harness at, by hand (a relay URL
 // names a host, never an IP literal: relay_uri.coax refuses ws://127.0.0.1):
 //
-//   coax/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+//   nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
 //   OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
 //   CODER_HOME=/tmp/host-home coder/tui/coder.sh host allow ID    # when the browser's request shows
 
@@ -235,9 +235,9 @@ tool_main :: () -> int #export_c #effects(all) {
   // the relay, built into the temporary folder, on a port picked from the clock
   relay_b: [1100] u8; relay_bin := sm_in_tmp(s, "relay", relay_b[..]);
   rp_b: [1] Rp; rp := rp_b[..];
-  build := [2] string.["coax/relay/build.sh", relay_bin];
+  build := [2] string.["nostr/relay/build.sh", relay_bin];
   sm_exec(s, rp, build[..], 600000);
-  if rp[0].status != 0 { tool_errln("host_smoke: coax/relay/build.sh failed"); return 1; }
+  if rp[0].status != 0 { tool_errln("host_smoke: nostr/relay/build.sh failed"); return 1; }
   port := 20000 + (proc_now_ms() / 7) % 30000;
   pb: [16] u8; ports := sm_itoa(port, pb[..]);
   un := sm_cat(s[0].url[..], 0, "ws://localhost:"); s[0].nurl = sm_cat(s[0].url[..], un, ports);   // a host name: relay URLs never take an IP literal

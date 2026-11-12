@@ -21,7 +21,7 @@ that survive a restart, and NIP-62 kind-62 requests to vanish.
   deleted event can't come back after a restart.
 - NIP-62: a kind 62 request that names this relay (or `ALL_RELAYS`) removes
   every event by its pubkey up to its `created_at` and keeps them out.
-- The relay (`coax/relay/relay.coax`) admits every event through this code
+- The relay (`nostr/relay/relay.coax`) admits every event through this code
   (`rsd_admit_deleting` in `store_saved.coax`, called by `relay_store.coax`)
   and rebuilds the tombstones on replay (`rsd_replay_deleting`). A covered
   event gets OK false "blocked: a deletion request covers this event".
@@ -32,10 +32,10 @@ that survive a restart, and NIP-62 kind-62 requests to vanish.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [store_policy.coax](../../coax/lib/nostr/store_policy.coax) | `ns_expired`, `ns_delete_id`, `ns_delete_address` | NIP-40's expiry test and NIP-09's two rules: same ID and author, never a kind 5; same address and author, no newer than the request (`#authority`) |
-| [relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `rs_expiration`, `rs_live`, `rs_admit_policy` | reads the `expiration` tag and refuses an expired event at admission (`invalid: event has expired`) |
-| [store_core.coax](../../coax/lib/nostr/store_core.coax) | `ns_store_visible`, `ns_store_compact`, `ns_store_retire` | hides an expired record from queries, drops expired regular events at compaction, and retires a record |
-| [store_delete.coax](../../coax/lib/nostr/store_delete.coax) | `nsd_read`, `nsd_covers`, `nsd_apply`, `nsd_plan`, `nsd_apply_plan`, `nsd_admit` | new in this chapter: reads a kind 5 or kind 62 request into tombstones, decides what each covers, retires it, and refuses covered events at admission (`#authority`) |
+| [store_policy.coax](../../nostr/relay/store_policy.coax) | `ns_expired`, `ns_delete_id`, `ns_delete_address` | NIP-40's expiry test and NIP-09's two rules: same ID and author, never a kind 5; same address and author, no newer than the request (`#authority`) |
+| [relay_server.coax](../../nostr/relay/relay_server.coax) | `rs_expiration`, `rs_live`, `rs_admit_policy` | reads the `expiration` tag and refuses an expired event at admission (`invalid: event has expired`) |
+| [store_core.coax](../../nostr/relay/store_core.coax) | `ns_store_visible`, `ns_store_compact`, `ns_store_retire` | hides an expired record from queries, drops expired regular events at compaction, and retires a record |
+| [store_delete.coax](../../nostr/relay/store_delete.coax) | `nsd_read`, `nsd_covers`, `nsd_apply`, `nsd_plan`, `nsd_apply_plan`, `nsd_admit` | new in this chapter: reads a kind 5 or kind 62 request into tombstones, decides what each covers, retires it, and refuses covered events at admission (`#authority`) |
 
 `store_delete.coax` is new. Its checks were written first, and `coax mutate
 --root-only` on it kills 267 of 267 mutants.
@@ -80,7 +80,7 @@ request's `created_at` as `until`.
 `nsd_covers` decides whether tombstone `k` covers a record. It reuses
 `store_policy.coax`'s two NIP-09 rules:
 
-<!-- source: coax/lib/nostr/store_delete.coax covers -->
+<!-- source: nostr/relay/store_delete.coax covers -->
 ```jai
 nsd_covers :: (tb: [] NsdTombs, k: int, c: RsdRec) -> bool #effects(all) {
   t := tb[0].t[k]; r := c;
@@ -129,7 +129,7 @@ nsd_chain :: (tb: [] NsdTombs, h: int, c: RsdRec) -> bool #effects(all) {
 
 `nsd_apply` adds one tombstone and retires every live record it covers:
 
-<!-- source: coax/lib/nostr/store_delete.coax apply -->
+<!-- source: nostr/relay/store_delete.coax apply -->
 ```jai
 // Adds t and retires the live records it covers: how many, or -1 (nothing
 // changed) when the table is full. With the store's lookups an e or a tag
@@ -210,7 +210,7 @@ store doesn't index `p` tags.
 Admission puts the tombstones in front of the store and applies a request
 after it is stored:
 
-<!-- source: coax/lib/nostr/store_delete.coax admit -->
+<!-- source: nostr/relay/store_delete.coax admit -->
 ```jai
 // One event's admission with deletion and vanish: refuse (NSD_DELETED) what
 // a tombstone covers, refuse (NSD_NO_ROOM) a request whose tombstones don't
@@ -397,9 +397,9 @@ The whole program:
 <!-- source: nostr/examples/delete-expire-vanish.coax example -->
 ```jai
 #load "../../coax/lib/nostr/store.coax";
-#load "../../coax/lib/nostr/store_file.coax";
-#load "../../coax/lib/nostr/store_recover.coax";
-#load "../../coax/lib/nostr/store_delete.coax";
+#load "../../nostr/relay/store_file.coax";
+#load "../../nostr/relay/store_recover.coax";
+#load "../../nostr/relay/store_delete.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
 
@@ -820,7 +820,7 @@ array, other kinds), kind 62 with this relay, another relay, `ALL_RELAYS`
 and lowercase `all_relays`, and admission: unverified, no room, a duplicate
 request, a deleted event as other bytes, and a request the store refuses.
 On 2026-11-01 they passed, and `coax mutate
-coax/lib/nostr/store_delete.coax --root-only` killed 267 of 267 mutants. The
+nostr/relay/store_delete.coax --root-only` killed 267 of 267 mutants. The
 first run left 11 survivors; the fixes were checks for an `a` value with a
 bad hex digit and a tags value that is not an array, a check that a request
 with two tombstones counts both, rewriting the `a` reader so that `:` can't

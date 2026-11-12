@@ -22,7 +22,7 @@ counts, and HyperLogLog with 256 registers whose offset comes from the filter.
 - The estimate: how many distinct pubkeys made a sketch.
 - `CLOSED` when the relay refuses to count, and `NOTICE` when the
   subscription ID is too bad to close.
-- The relay (`coax/relay/relay.coax`) answers `COUNT` with this code:
+- The relay (`nostr/relay/relay.coax`) answers `COUNT` with this code:
   `relay_route.coax` routes it (`RR_COUNT`), the request is charged as a REQ
   against the rate limit, and `relay_store.coax`'s `rd_count` calls
   `n45_answer` over a current index.
@@ -33,9 +33,9 @@ counts, and HyperLogLog with 256 registers whose offset comes from the filter.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [message_server.coax](../../coax/lib/nostr/message_server.coax) | `ms_read` | reads a `COUNT` frame like a `REQ`: verb, subscription ID, filter spans (`#authority`) |
-| [relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `rs_req`, `rs_filter` | a REQ's filter rules: empty arrays, `#e`/`#p` hex, query cost (`#authority`) |
-| [store_index.coax](../../coax/lib/nostr/store_index.coax) | `nsi_query_limit` | chapter 36's indexed query with the caller's limit in place of the filter's |
+| [message_server.coax](../../nostr/relay/message_server.coax) | `ms_read` | reads a `COUNT` frame like a `REQ`: verb, subscription ID, filter spans (`#authority`) |
+| [relay_server.coax](../../nostr/relay/relay_server.coax) | `rs_req`, `rs_filter` | a REQ's filter rules: empty arrays, `#e`/`#p` hex, query cost (`#authority`) |
+| [store_index.coax](../../nostr/relay/store_index.coax) | `nsi_query_limit` | chapter 36's indexed query with the caller's limit in place of the filter's |
 | [nip45.coax](../../coax/lib/nostr/nip45.coax) | `n45_count`, `n45_answer` | new: the exact count through the index, and the relay's reply to a `COUNT` frame |
 | [nip45.coax](../../coax/lib/nostr/nip45.coax) | `n45_offset`, `n45_hll_add`, `n45_hll_merge`, `n45_hll_estimate`, `n45_hll_write`, `n45_hll_read` | new: the sketch |
 | [nip45.coax](../../coax/lib/nostr/nip45.coax) | `n45_write_request`, `n45_write_response`, `n45_read_response` | new: the client's request and the relay's answer as frames |

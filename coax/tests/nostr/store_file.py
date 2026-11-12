@@ -31,7 +31,7 @@ def literal(path, name):
     m = re.search(name + r' :: "((?:[^"\\]|\\.)*)";', src)
     return re.sub(r'\\(.)', lambda g: g.group(1), m.group(1)).encode()
 
-A = literal('coax/lib/nostr/store_admit.coax', 'NS_VALID_TEST')
+A = literal('nostr/relay/store_admit.coax', 'NS_VALID_TEST')
 B = literal('coax/tests/nostr/store_fixtures.coax', 'SVC_REORDERED')
 C = literal('coax/tests/nostr/store_fixtures.coax', 'SVC_ESCAPED')
 assert sorted([A, B, C]) == [B, C, A]

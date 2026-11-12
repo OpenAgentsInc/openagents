@@ -6,7 +6,7 @@
 // narrows which records are read, so it never changes which events match:
 // the generated check below compares 4,000 answers with store.coax's rsd_query scan.
 //
-// The relay (coax/relay/relay.coax) answers REQ through it. The index is
+// The relay (nostr/relay/relay.coax) answers REQ through it. The index is
 // built whole from the store (nsi_build); nsi_add takes one appended record
 // in place (what an admission that didn't compact adds), and the index is
 // refused once the store changes in any other way (a compaction renumbers
@@ -17,7 +17,7 @@
 // relay's whole graph under every mutation run. Its checks are below and in
 // nostr/examples/checks/match-indexes.coax (the five project REQs against
 // relay.openagents.com's recording).
-#load "store.coax";
+#load "../../coax/lib/nostr/store.coax";
 
 // Plans: which index answered a filter.
 NSI_REFUSED :: -1; NSI_NONE :: 0; NSI_ID :: 1; NSI_AUTHOR_KIND :: 2; NSI_AUTHOR :: 3; NSI_TAG :: 4; NSI_TIME :: 5;

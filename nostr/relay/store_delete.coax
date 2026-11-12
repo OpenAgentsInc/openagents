@@ -13,9 +13,9 @@
 // rsd_replay) through nsd_admit rebuilds them. A deletion request never
 // deletes another deletion request, and kind 5 never deletes a kind 62.
 // Not built: NIP-62's deletion of gift wraps (kind 1059) that p-tag the
-// pubkey, and the relay (coax/relay/relay.coax) does not call this file yet.
+// pubkey, and the relay (nostr/relay/relay.coax) does not call this file yet.
 #load "store_core.coax";
-#load "json.coax";
+#load "../../coax/lib/nostr/json.coax";
 #authority;
 
 // What a tombstone covers.

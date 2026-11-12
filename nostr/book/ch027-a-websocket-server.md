@@ -7,7 +7,7 @@ unmasked one, writes unmasked frames and closes. Like chapter 26's client,
 the code does no I/O. It reads bytes from a buffer and writes bytes into
 one, so this chapter drives a whole session with byte buffers and opens no
 socket. Chapter 28 covers sockets and TLS, and the Coax relay in
-`coax/relay/` moves the bytes.
+`nostr/relay/` moves the bytes.
 
 ## What this chapter teaches
 
@@ -33,12 +33,12 @@ socket. Chapter 28 covers sockets and TLS, and the Coax relay in
 | | `wss_frame_write(op, payload, out)` | one unmasked, final server frame |
 | | `wss_close_write(code, out)` | a server close frame |
 | [ws.coax](../../coax/lib/net/ws.coax) | `ws_accept_of`, `ws_take`, `ws_close_code`, `ws_error_code` | shared with the client: the accept value, message assembly, close payloads and the close code for a refusal |
-| [relay_route.coax](../../coax/lib/nostr/relay_route.coax) | `rr_http`, `rr_frame_read`, `rr_frame_event` | the relay's decision for each status and event |
+| [relay_route.coax](../../nostr/relay/relay_route.coax) | `rr_http`, `rr_frame_read`, `rr_frame_event` | the relay's decision for each status and event |
 
 `ws_server.coax` is `#authority`: it decides what the relay admits. It
 loads `ws.coax`, so the server and the client share one SHA-1, one accept
 computation, one UTF-8 check and one list of close codes. The relay program
-[coax/relay/relay.coax](../../coax/relay/relay.coax) calls these procedures
+[nostr/relay/relay.coax](../../nostr/relay/relay.coax) calls these procedures
 from `ry_http` and `ry_frames`; the example below copies that loop without
 the sockets.
 
@@ -241,7 +241,7 @@ The example:
 <!-- source: nostr/examples/websocket-server.coax example -->
 ```jai
 #load "../../coax/lib/net/ws_server.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/hex.coax";
 #import "Basic";
 

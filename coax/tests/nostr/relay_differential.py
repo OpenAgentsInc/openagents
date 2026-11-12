@@ -50,7 +50,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='coax-relay-diff-') as tmp:
         d = Path(tmp)
         exe = d / 'relay'
-        subprocess.run([str(ROOT / 'coax/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([str(ROOT / 'nostr/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
         with open(d / 'relay.err', 'w') as log:
             p, port = rs.start(exe, log)
             try:

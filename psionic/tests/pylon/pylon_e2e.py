@@ -110,7 +110,7 @@ def main():
 
 
 def build(out, env):
-    subprocess.run([str(ROOT / 'coax/relay/build.sh'), str(out / 'relay'), '--sanitize'], check=True, env=env, stdout=subprocess.DEVNULL)
+    subprocess.run([str(ROOT / 'nostr/relay/build.sh'), str(out / 'relay'), '--sanitize'], check=True, env=env, stdout=subprocess.DEVNULL)
     subprocess.run([str(ROOT / 'psionic/platform/pylon-build.sh'), str(out / 'pylon-build'), 'sanitized', '--test-trust'], check=True, env=env,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not ENGINE and not os.environ.get('SERVE'):

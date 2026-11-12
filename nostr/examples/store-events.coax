@@ -1,7 +1,7 @@
 // book:begin example
 #load "../../coax/lib/nostr/store.coax";
-#load "../../coax/lib/nostr/store_file.coax";
-#load "../../coax/lib/nostr/store_recover.coax";
+#load "../relay/store_file.coax";
+#load "../relay/store_recover.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #load "../../coax/lib/nostr/event_verify_fast.coax";
 #import "Basic";
@@ -17,7 +17,7 @@ REASON :: [12] string.["accepted", "duplicate", "superseded", "bad event", "bad 
   "auth kind", "tags", "time", "expired", "auth required", "full"];
 
 // A store with room for six records, and its file. The file is a byte
-// buffer here: coax/relay/relay.coax keeps it on disk through
+// buffer here: nostr/relay/relay.coax keeps it on disk through
 // coax/platform/store-file-native.c, which `coax run` doesn't link.
 Store :: struct {
   arena: [4096] u8; recs: [6] RsdRec;

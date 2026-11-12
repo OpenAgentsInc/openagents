@@ -1,6 +1,6 @@
 // The Coax relay's routing decisions (relay-server-r1, coax/nostr.md section
 // 17): which reply goes to which connection and subscription, and the
-// per-connection NIP-42 state. coax/relay/relay.coax moves bytes and calls
+// per-connection NIP-42 state. nostr/relay/relay.coax moves bytes and calls
 // these; relay_server.coax decides admission and REQ policy; nip42.coax
 // decides whether an AUTH event answers the challenge.
 //
@@ -30,7 +30,7 @@
 // - Kind 22242 is never stored or broadcast: relay_server.coax refuses it as
 //   an EVENT (RS_AUTH_KIND) and AUTH never reaches the store or fan-out.
 //
-// Checks: coax test coax/lib/nostr/relay_route.coax --library (no main of its own).
+// Checks: coax test nostr/relay/relay_route.coax --library (no main of its own).
 #authority;
 
 // ---- mirrored codes (tied to their sources in relay.coax) -----------------

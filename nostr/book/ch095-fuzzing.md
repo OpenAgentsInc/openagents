@@ -30,7 +30,7 @@ counts as a finding, and turns each finding into a short regression input.
 | [nostr/examples/fuzzing.coax](../examples/fuzzing.coax) | The generator, the mutator, one target per reader, the toy reader with two planted bugs, the guided fuzzer and the shrinker |
 | [nostr/examples/checks/fuzzing.coax](../examples/checks/fuzzing.coax) | Checks against Python integers and hand-derived values |
 | [coax/lib/nostr/json.coax](../../coax/lib/nostr/json.coax) | The JSON reader (chapter 17) |
-| [coax/lib/nostr/filter_read.coax](../../coax/lib/nostr/filter_read.coax) | The filter reader (chapter 23) |
+| [nostr/relay/filter_read.coax](../../nostr/relay/filter_read.coax) | The filter reader (chapter 23) |
 | [coax/lib/nostr/event.coax](../../coax/lib/nostr/event.coax) | The event reader (chapter 21) |
 | [coax/lib/net/ws.coax](../../coax/lib/net/ws.coax) | The frame reader (chapter 26) |
 | [coax/lib/nostr/nip19-core.coax](../../coax/lib/nostr/nip19-core.coax) | NIP-19 TLV encoding and decoding (chapter 16) |

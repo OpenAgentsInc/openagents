@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* The verified Nostr store's append-only file (coax/lib/nostr/store_saved.coax).
+/* The verified Nostr store's append-only file (nostr/relay/store_saved.coax).
    File effects only: framing, replay and every admission decision are Coax.
    The host calls cxstore_set_path before the Coax program starts. */
 int cxstore_set_path(const char *path);

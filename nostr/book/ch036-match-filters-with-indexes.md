@@ -24,10 +24,10 @@ events match.
 
 | File | What it holds |
 | --- | --- |
-| `coax/lib/nostr/store_index.coax` | New in this chapter: `NsiIndex`, `nsi_build`, `nsi_query`, its checks, and the generated check that compares the index with the scan |
+| `nostr/relay/store_index.coax` | New in this chapter: `NsiIndex`, `nsi_build`, `nsi_query`, its checks, and the generated check that compares the index with the scan |
 | `coax/lib/nostr/store.coax` | `rsd_query`, the scan: every record, `nf_match`, then `ns_store_insert` |
-| `coax/lib/nostr/store_core.coax` | `ns_store_newer` (the order), `ns_store_insert` (the cut at the limit), `ns_store_visible` |
-| `coax/lib/nostr/relay_server.coax` | `rs_limit`, `rs_cost`, `rs_req` and the limits `RS_MAX_SUBS`, `RS_MAX_FILTERS`, `RS_MAX_LIMIT`, `RS_MAX_COST` |
+| `nostr/relay/store_core.coax` | `ns_store_newer` (the order), `ns_store_insert` (the cut at the limit), `ns_store_visible` |
+| `nostr/relay/relay_server.coax` | `rs_limit`, `rs_cost`, `rs_req` and the limits `RS_MAX_SUBS`, `RS_MAX_FILTERS`, `RS_MAX_LIMIT`, `RS_MAX_COST` |
 | `coax/lib/nostr/filter.coax` | `nf_match`, chapter 23's matcher |
 | `nostr/examples/match-indexes.coax` | The example |
 | `nostr/examples/checks/match-indexes.coax` | The hand-worked counts as checks |
@@ -35,8 +35,8 @@ events match.
 `store_index.coax` is not `#authority`, for the same reason as `store.coax`:
 loading `store.coax` brings the relay's whole graph into every mutation run.
 
-The relay answers REQ through the index: `coax/relay/relay.coax` keeps it
-beside the store in `coax/lib/nostr/relay_store.coax`. After each admission
+The relay answers REQ through the index: `nostr/relay/relay.coax` keeps it
+beside the store in `nostr/relay/relay_store.coax`. After each admission
 `nsi_add` takes the one appended record in place; an admission that may have
 compacted the store (`relay_route.coax`'s `rr_may_compact`) marks it stale,
 and `nsi_build` rebuilds it before the next query.
@@ -134,7 +134,7 @@ neither does one whose `since` is after its `until`, so `nsi_query` returns
 0 without reading. A refused index, one that was never
 built or whose store has changed since, returns `n = -1`.
 
-<!-- source: coax/lib/nostr/store_index.coax query -->
+<!-- source: nostr/relay/store_index.coax query -->
 ```jai
 // Reads record i as a candidate: inserted into out in query order when it is
 // visible, matches f and is not already there.
@@ -323,7 +323,7 @@ The whole program:
 
 <!-- source: nostr/examples/match-indexes.coax example -->
 ```jai
-#load "../../coax/lib/nostr/store_index.coax";
+#load "../../nostr/relay/store_index.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
 
@@ -724,7 +724,7 @@ coax/bin/coax test nostr/examples/checks/match-indexes.coax --run-steps 25000000
 
 ### The library's checks
 
-`coax/bin/coax test coax/lib/nostr/store_index.coax` runs eight `#test`s.
+`coax/bin/coax test nostr/relay/store_index.coax` runs eight `#test`s.
 The first is this chapter's worked example again, built from unsigned
 records with the same authors, kinds, times, tags and first two ID bytes
 (`NOW` is 1000). It asserts every entry of the three orders and the nine
@@ -777,7 +777,7 @@ filters themselves.
 
 Run on 2026-11-01: all 310 checks of `store_index.coax` (with the store
 and relay checks it loads) pass, and the checks file passes. `coax mutate
-coax/lib/nostr/store_index.coax --root-only` made 588 mutants and
+nostr/relay/store_index.coax --root-only` made 588 mutants and
 killed all of them: zero survivors. The file is not `#authority`, and no
 mutant is marked equivalent.
 

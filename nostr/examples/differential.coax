@@ -125,7 +125,7 @@ event_rec :: (e: Ev) -> RsdRec {
 // Implementation 1: the relay. Each event goes into a fresh store through
 // ns_store_admit (replacement, ephemeral kinds); the filter goes through
 // filter_read, as a REQ does; rsd_query answers at ASK, exactly as
-// coax/relay/relay.coax does. The answer is event numbers, in the relay's
+// nostr/relay/relay.coax does. The answer is event numbers, in the relay's
 // order. fault plants one bug: until compared with >= instead of >.
 Relay :: struct { arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; }
 relay_answer :: (c: Case, fault: bool, out: [] int) -> int {

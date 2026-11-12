@@ -12,7 +12,7 @@ The book is published at https://openagents.gitbook.io/nostr-from-scratch.
 
 The code the book teaches lives in the Coax library, not here:
 [`coax/lib/crypto/`](../coax/lib/crypto/), [`coax/lib/nostr/`](../coax/lib/nostr/),
-[`coax/lib/net/`](../coax/lib/net/) and the relay in [`coax/relay/`](../coax/relay/).
+[`coax/lib/net/`](../coax/lib/net/) and the relay in [`nostr/relay/`](../nostr/relay/).
 The plan for that code is [coax/nostr.md](../coax/nostr.md). A chapter is
 filled in as its code and checks land.
 

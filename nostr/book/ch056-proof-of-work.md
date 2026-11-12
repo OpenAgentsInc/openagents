@@ -639,7 +639,7 @@ example's own `main` was not run; its output is pinned by the fixture.
 - Delegated proof of work: a service that mines for a client. The miner
   already needs only the public key; the service and its payment are not
   built.
-- A per-kind or per-key difficulty. `coax/relay/relay.coax` takes one
+- A per-kind or per-key difficulty. `nostr/relay/relay.coax` takes one
   difficulty for every EVENT (`--pow BITS`, default 0, off), checks it with
   `nip13_admit` before the signature, and advertises it as NIP-11's
   `limitation.min_pow_difficulty`

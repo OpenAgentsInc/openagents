@@ -13,9 +13,9 @@
 //
 // In memory only: a restart forgets every event. No NIP-09 deletion or
 // tombstones, no durable file, no trusted recovery (#966b).
-#load "relay_server.coax";
-#load "store_core.coax";
-#load "relay_private.coax";
+#load "../../../nostr/relay/relay_server.coax";
+#load "../../../nostr/relay/store_core.coax";
+#load "../../../nostr/relay/relay_private.coax";
 
 #test "the store's results are the relay's reasons" {
   #assert NSS_ACCEPT == RS_ACCEPT && NSS_DUP == RS_DUP && NSS_SUPERSEDED == RS_SUPERSEDED;

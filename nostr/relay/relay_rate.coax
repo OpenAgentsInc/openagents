@@ -19,7 +19,7 @@
 // reqs_per_minute and events_per_minute_per_key are this relay's names,
 // and NIP-11 clients ignore fields they don't know.
 //
-// This unit loads nothing and only decides. coax/relay/relay.coax (R1)
+// This unit loads nothing and only decides. nostr/relay/relay.coax (R1)
 // does not call it yet: the running relay has no rate limits.
 #authority;
 

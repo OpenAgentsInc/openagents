@@ -3,7 +3,7 @@
 // address identifier). A typed tag is a reading of the signed tags, not
 // evidence that the referenced event, pubkey or relay exists or is trusted.
 #load "event.coax";
-#load "store_policy.coax";
+#load "../../../nostr/relay/store_policy.coax";
 #authority;
 
 NT_OK :: 0; NT_EVENT :: 1; NT_INDEX :: 2; NT_SHAPE :: 3; NT_HEX :: 4;

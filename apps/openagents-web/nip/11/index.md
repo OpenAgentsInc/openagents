@@ -24,8 +24,8 @@ A supported_nips list is a declaration, not a conformance proof. Production and 
 
 ## Source
 
-- [coax/lib/nostr/relay_route.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/relay_route.coax)
-- [coax/lib/nostr/relay_server.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/relay_server.coax)
+- [nostr/relay/relay_route.coax](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/relay/relay_route.coax)
+- [nostr/relay/relay_server.coax](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/relay/relay_server.coax)
 
 ## Verification records
 

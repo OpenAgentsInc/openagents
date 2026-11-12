@@ -30,15 +30,15 @@ once and shows what the relay does when each budget runs out.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [relay_rate.coax](../../coax/lib/nostr/relay_rate.coax) | `rt_take` | one message against one fixed window (`#authority`, new in this chapter) |
+| [relay_rate.coax](../../nostr/relay/relay_rate.coax) | `rt_take` | one message against one fixed window (`#authority`, new in this chapter) |
 | | `rt_event`, `rt_req`, `rt_key_slot` | an `EVENT`'s connection and key windows, a `REQ`'s connection window, and the table of keys |
 | | `RtConfig`, `rt_default`, `rt_config_ok` | the configurable limits: 120 `EVENT`s and 120 `REQ`s per connection and 60 `EVENT`s per key, a minute each |
 | | `rt_prefix`, `rt_text`, `rt_nip11` | the `rate-limited:` reasons, and the limits written into the NIP-11 document |
-| [relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `RS_MAX_*`, `rs_req`, `rs_sub_open`, `rs_admit_policy` | the R1 limits: frames, subscriptions, filters, query cost, tags, `created_at` (`#authority`) |
-| [relay_route.coax](../../coax/lib/nostr/relay_route.coax) | `rr_free_slot`, `rr_deadline`, `rr_frame_read`, `rr_message` | connection slots, deadlines, frame refusals and the `NOTICE` or `CLOSED` choice (`#authority`) |
-| [store_core.coax](../../coax/lib/nostr/store_core.coax) | `RSD_MAX`, `RSD_ARENA`, `ns_store_admit` | the store's record and byte caps (`#authority`) |
+| [relay_server.coax](../../nostr/relay/relay_server.coax) | `RS_MAX_*`, `rs_req`, `rs_sub_open`, `rs_admit_policy` | the R1 limits: frames, subscriptions, filters, query cost, tags, `created_at` (`#authority`) |
+| [relay_route.coax](../../nostr/relay/relay_route.coax) | `rr_free_slot`, `rr_deadline`, `rr_frame_read`, `rr_message` | connection slots, deadlines, frame refusals and the `NOTICE` or `CLOSED` choice (`#authority`) |
+| [store_core.coax](../../nostr/relay/store_core.coax) | `RSD_MAX`, `RSD_ARENA`, `ns_store_admit` | the store's record and byte caps (`#authority`) |
 | [relay_poll_budget.coax](../../coax/lib/net/relay_poll_budget.coax) | `rcp_step` | the client side: a bound on the work one poll may do (`#authority`) |
-| [relay.coax](../../coax/relay/relay.coax) | `ry_serve`, `ry_req`, `ry_event` | the R1 relay program, which calls the procedures above |
+| [relay.coax](../../nostr/relay/relay.coax) | `ry_serve`, `ry_req`, `ry_event` | the R1 relay program, which calls the procedures above |
 
 `relay.coax` calls `relay_rate.coax`: each connection has an `RtConn`, the
 relay one `RtKeys`, `ry_event` charges an EVENT once its signature holds
@@ -99,7 +99,7 @@ counter has a start time and a count:
 window, so a corrected clock never locks a client out for longer than a
 minute.
 
-<!-- source: coax/lib/nostr/relay_rate.coax take -->
+<!-- source: nostr/relay/relay_rate.coax take -->
 ```jai
 // Whether w no longer counts at now: never opened, RT_WINDOW seconds old,
 // or opened after now (the clock went back).
@@ -334,7 +334,7 @@ don't know, so `rt_nip11` adds three of this relay's own to the
 document and the decisions together. A configuration with a limit below 1
 or above 1,000,000 is refused, and no document is written:
 
-<!-- source: coax/lib/nostr/relay_rate.coax nip11 -->
+<!-- source: nostr/relay/relay_rate.coax nip11 -->
 ```jai
 // The relay's document base with cfg's three limits added to its
 // limitation object: the length written, or -1. The limitation object must
@@ -724,11 +724,11 @@ killed them).
 
 ### The library change
 
-`coax/lib/nostr/relay_rate.coax` is new, `#authority`, and loads nothing.
+`nostr/relay/relay_rate.coax` is new, `#authority`, and loads nothing.
 Its seven checks were written first. On 2026-11-01:
 
-- `coax test coax/lib/nostr/relay_rate.coax --library`: 7 of 7 pass.
-- `coax mutate coax/lib/nostr/relay_rate.coax --library`: 215 mutants,
+- `coax test nostr/relay/relay_rate.coax --library`: 7 of 7 pass.
+- `coax mutate nostr/relay/relay_rate.coax --library`: 215 mutants,
   215 killed, 0 survived, with no mutant marked equivalent. The first runs
   left 9 and then 4 alive; each was killed by a new check or by restating
   code whose mutants could not be observed (the document search became a

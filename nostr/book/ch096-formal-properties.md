@@ -41,9 +41,9 @@ a count you can work out by hand.
 | [nostr/examples/formal-properties.coax](../examples/formal-properties.coax) | The alphabet, the specification, the five property checks with their planted bugs, and the output |
 | [nostr/examples/checks/formal-properties.coax](../examples/checks/formal-properties.coax) | The worked table, the domain counts, every property as `#forall` on a slice of its domain, and every counterexample as a regression test |
 | [coax/lib/nostr/filter.coax](../../coax/lib/nostr/filter.coax) | `nf_match` and `nf_write` (chapter 23) |
-| [coax/lib/nostr/relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `rs_sub_open` and `rs_sub_matches`: a subscription's filters |
-| [coax/lib/nostr/store_core.coax](../../coax/lib/nostr/store_core.coax) | `ns_store_admit`: replacement (chapter 35) |
-| [coax/lib/nostr/store.coax](../../coax/lib/nostr/store.coax), [store_index.coax](../../coax/lib/nostr/store_index.coax) | `rsd_query`, the scan, and `nsi_query`, the indexed query (chapter 36) |
+| [nostr/relay/relay_server.coax](../../nostr/relay/relay_server.coax) | `rs_sub_open` and `rs_sub_matches`: a subscription's filters |
+| [nostr/relay/store_core.coax](../../nostr/relay/store_core.coax) | `ns_store_admit`: replacement (chapter 35) |
+| [coax/lib/nostr/store.coax](../../coax/lib/nostr/store.coax), [store_index.coax](../../nostr/relay/store_index.coax) | `rsd_query`, the scan, and `nsi_query`, the indexed query (chapter 36) |
 | [coax/lib/crypto/schnorr.coax](../../coax/lib/crypto/schnorr.coax) | `nostr_verify_vartime` (Bitcoin chapter 23) |
 | [coax/lib/nostr/event_sign.coax](../../coax/lib/nostr/event_sign.coax) | `nostr_event_sign_step` and the event reader's verification (Bitcoin chapter 24) |
 
@@ -229,7 +229,7 @@ subscription when any of them matches. The relay stores a subscription's
 filters as JSON text and reads them back when an event arrives
 (`rs_sub_matches`), so this property also checks `nf_write` and
 `filter_read` on every filter of its domain. Each `REQ` goes through
-`rs_req` first, as `coax/relay/relay.coax` does: `rs_sub_open` trusts its
+`rs_req` first, as `nostr/relay/relay.coax` does: `rs_sub_open` trusts its
 caller to have admitted the filters, though it refuses a message `ms_read`
 refused, such as an unterminated array, as `RS_FRAME`.
 

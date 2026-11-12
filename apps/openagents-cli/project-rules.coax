@@ -296,7 +296,7 @@ PR_DIGITS :: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 PR_BASE :: 62;
 PR_LONG :: 10;
 PR_RANK :: 256;              // the longest rank we write
-PR_RELAY_MAX_TAGS :: 256;    // the relay's tag limit (RS_MAX_TAGS, coax/lib/nostr/relay_server.coax)
+PR_RELAY_MAX_TAGS :: 256;    // the relay's tag limit (RS_MAX_TAGS, nostr/relay/relay_server.coax)
 PR_ORDER_FIXED_TAGS :: 3;    // an order's d, a and alt tags
 
 #test "rank digits and comparison" {

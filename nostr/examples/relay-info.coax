@@ -2,8 +2,8 @@
 // hashes at compile time in about 90,000 steps, near the default 100,000.
 #run_steps 1000000;
 // book:begin example
-#load "../../coax/lib/nostr/relay_server.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../relay/relay_server.coax";
+#load "../relay/relay_route.coax";
 #load "../../coax/lib/nostr/nip77.coax";
 #import "Basic";
 
@@ -14,7 +14,7 @@ NOW :: 1000;
 // ---- the server side: one request head, one answer -------------------------
 
 // book:begin answer
-// What the relay does with one HTTP request head, as coax/relay/relay.coax's
+// What the relay does with one HTTP request head, as nostr/relay/relay.coax's
 // ry_http does it, with the socket replaced by out: wss_request reads the
 // head, rr_http picks the action, and the answer is written into out.
 Answer :: struct { status: int; action: int; n: int; }

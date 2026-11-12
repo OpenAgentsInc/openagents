@@ -15,8 +15,8 @@
 // it without downloading every event. Its range fingerprints are sums, not
 // a collision-resistant hash; that is why the verdict rests on the digest,
 // and a digest difference that Negentropy can't name is its own verdict.
-#load "store.coax";
-#load "nip77.coax";
+#load "../../coax/lib/nostr/store.coax";
+#load "../../coax/lib/nostr/nip77.coax";
 #authority;
 
 // book:begin types

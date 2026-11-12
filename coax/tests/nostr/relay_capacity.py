@@ -84,7 +84,7 @@ def main():
         d = Path(tmp)
         exe = d / 'relay'
         t0 = time.monotonic()
-        subprocess.run([str(ROOT / 'coax/relay/build.sh'), str(exe)] + (['--sanitize'] if sanitize else []), check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([str(ROOT / 'nostr/relay/build.sh'), str(exe)] + (['--sanitize'] if sanitize else []), check=True, stdout=subprocess.DEVNULL)
         print('build %.1f s%s' % (time.monotonic() - t0, ' (ASan/UBSan)' if sanitize else ''))
         now = int(time.time())
         t0 = time.monotonic()

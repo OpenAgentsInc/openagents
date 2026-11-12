@@ -12,7 +12,7 @@
 // filter_read_search reads it.
 // The result is checked with nf_valid before it is returned. Reading grants
 // nothing: a filter only selects.
-#load "filter.coax";
+#load "../../coax/lib/nostr/filter.coax";
 #authority;
 
 FR_OK :: 0; FR_JSON :: 1; FR_FIELD :: 2; FR_TYPE :: 3; FR_SPACE :: 4; FR_INVALID :: 5;

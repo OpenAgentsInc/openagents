@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the Coax relay (R1) to OUT (default coax/relay/bin/relay).
-#   coax/relay/build.sh [OUT] [--sanitize]     ASan+UBSan with --sanitize
+# Builds the Coax relay (R1) to OUT (default nostr/relay/bin/relay).
+#   nostr/relay/build.sh [OUT] [--sanitize]     ASan+UBSan with --sanitize
 # Links tls-native.c for --tls-cert/--tls-key (OpenSSL from Nix on Linux,
 # through coax/platform/tls-env.sh). -O2 with Coax's checked arithmetic (an
 # overflow stops the relay rather than wrapping): replay re-verifies every

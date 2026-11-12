@@ -46,7 +46,7 @@ requests (28934, 28936).
 The helpers and data for each file's checks are in
 `coax/tests/nostr/nip86_fixtures.coax`, `nip66_fixtures.coax` and
 `nip43_fixtures.coax`, so that mutation changes the library and not the
-checks. `coax/relay/relay.coax` serves NIP-86 with `--admin` (see
+checks. `nostr/relay/relay.coax` serves NIP-86 with `--admin` (see
 [The relay's endpoint](#the-relays-endpoint)); NIP-66 and NIP-43 are not
 wired into it.
 
@@ -909,7 +909,7 @@ rerun.
 
 ### The relay's endpoint
 
-Since chapter 103's wiring, `coax/relay/relay.coax` started with
+Since chapter 103's wiring, `nostr/relay/relay.coax` started with
 `--admin PUBKEY` (64 hex digits; up to 4 keys) serves this endpoint on its
 own URL:
 

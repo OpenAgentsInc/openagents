@@ -56,7 +56,7 @@
       "gap": "Coax needs authorized deletion, durable tombstones and recovery that cannot resurrect deleted events.",
       "sources": [
         "coax/nostr.md",
-        "coax/lib/nostr/store_core.coax"
+        "nostr/relay/store_core.coax"
       ],
       "demo": "relay",
       "status": "relay",
@@ -106,8 +106,8 @@
       "coverage": "The Coax relay serves its own NIP-11 document. The production relay publishes a separate capability document.",
       "gap": "A supported_nips list is a declaration, not a conformance proof. Production and Coax relay capabilities differ.",
       "sources": [
-        "coax/lib/nostr/relay_route.coax",
-        "coax/lib/nostr/relay_server.coax"
+        "nostr/relay/relay_route.coax",
+        "nostr/relay/relay_server.coax"
       ],
       "demo": "relay",
       "status": "coax",
@@ -261,8 +261,8 @@
       "coverage": "The Coax relay checks expiration during admission and queries. Its store retains expired replacement heads so older versions do not return.",
       "gap": "Expiration is not a deletion guarantee, and a relay cannot erase copies held elsewhere.",
       "sources": [
-        "coax/lib/nostr/relay_server.coax",
-        "coax/lib/nostr/store_core.coax"
+        "nostr/relay/relay_server.coax",
+        "nostr/relay/store_core.coax"
       ],
       "demo": "expiration",
       "status": "coax",
@@ -290,7 +290,7 @@
       "sources": [
         "coax/lib/nostr/nip42.coax",
         "coax/lib/nostr/nip42-event.coax",
-        "coax/lib/nostr/relay_route.coax"
+        "nostr/relay/relay_route.coax"
       ],
       "demo": "auth",
       "status": "coax",
@@ -343,8 +343,8 @@
       "coverage": "The production relay advertises NIP-45. The Coax R1 relay currently reports COUNT as unsupported.",
       "gap": "COUNT responses and their limits need a Coax implementation before that relay advertises this NIP.",
       "sources": [
-        "coax/lib/nostr/message_server.coax",
-        "coax/lib/nostr/relay_server.coax"
+        "nostr/relay/message_server.coax",
+        "nostr/relay/relay_server.coax"
       ],
       "demo": "relay",
       "status": "relay",
@@ -497,7 +497,7 @@
       "gap": "AUTH alone does not implement NIP-70. The event author must be bound to the authenticated connection under the protected-event rules.",
       "sources": [
         "coax/nostr.md",
-        "coax/lib/nostr/relay_route.coax"
+        "nostr/relay/relay_route.coax"
       ],
       "demo": "relay",
       "status": "relay",

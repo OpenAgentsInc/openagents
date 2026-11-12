@@ -22,7 +22,7 @@ the standard tags `e`, `p`, `a` and `d`.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [store_policy.coax](../../coax/lib/nostr/store_policy.coax) | `ns_class(kind)` | The kind's class: `NS_ORDINARY`, `NS_REPLACEABLE`, `NS_EPHEMERAL` or `NS_ADDRESSABLE` (`#authority`) |
+| [store_policy.coax](../../nostr/relay/store_policy.coax) | `ns_class(kind)` | The kind's class: `NS_ORDINARY`, `NS_REPLACEABLE`, `NS_EPHEMERAL` or `NS_ADDRESSABLE` (`#authority`) |
 | | `ns_same_key(a, b)` | Whether two events share one replaceable address: kind and author, and for an addressable kind the `d` value |
 | | `ns_newer(a, b)` | Whether `a` replaces `b`: later `created_at`, or the same second and a lower ID |
 | [tags.coax](../../coax/lib/nostr/tags.coax) | `nostr_tag(event, index)` | Reads the index'th tag of a parsed event into a `NostrTag`; checks `e`, `p`, `a` and `d`, counts the values of any other tag (`#authority`) |
@@ -675,7 +675,7 @@ example's procedures and the library were not mutated for this chapter.
 `e` shape with and without relay, marker and author, `p` relays, 23 `a`
 addresses at each refusal and bound, the first `d` tag, values at 256 and
 257 bytes, forged event spans, and every byte value after `ws://`.
-[store_policy.coax](../../coax/lib/nostr/store_policy.coax) checks the
+[store_policy.coax](../../nostr/relay/store_policy.coax) checks the
 range boundaries, the address identity and the newest-then-lowest-ID rule.
 [metadata.coax](../../coax/lib/nostr/metadata.coax) checks optional and
 unknown fields, the content bound at 65,536 bytes, duplicate keys and

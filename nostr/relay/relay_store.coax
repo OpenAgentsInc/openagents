@@ -1,4 +1,4 @@
-// The Coax relay's store (coax/relay/relay.coax): the verified store
+// The Coax relay's store (nostr/relay/relay.coax): the verified store
 // (store.coax, store_saved.coax for --store) with chapter 36's indexes kept
 // beside it and NIP-09/NIP-62 deletion (store_delete.coax) in admission.
 // Every admission goes through rd_admit and every REQ through rd_query.
@@ -29,9 +29,9 @@
 #load "store_saved.coax";
 #load "store_index.coax";
 #load "relay_route.coax";
-#load "nip45.coax";
-#load "nip50.coax";
-#load "nip77.coax";
+#load "../../coax/lib/nostr/nip45.coax";
+#load "../../coax/lib/nostr/nip50.coax";
+#load "../../coax/lib/nostr/nip77.coax";
 
 RD_TOMBS_EXTRA :: 8192;       // tombstones beyond the input's, for new requests (--tombstones)
 RD_WORK :: RS_MAX_TAGS;       // one request's tombstones (one per tag at most)

@@ -29,7 +29,7 @@ quota=[b'z']+[b'x'*262144]*3+[b'y'*(262144-1)];assert sum(map(len,quota))==10485
 add('payload quota refuses growing replacement',frame(quota),b'aa',[1,0,0,0,0],False)
 quota=[b'zz']+[b'x'*262144]*3+[b'y'*(262144-2)];assert sum(map(len,quota))==1048576
 add('payload quota permits shrinking replacement',frame(quota),b'a',[1,0,0,0,0],True,frame([b'a']+quota[1:]),duplicates=1)
-inputs=[COMPILER,SOURCE,ROOT/'coax/lib/nostr/store_dedup_rewrite.coax',T/'store_dedup_rewrite_wasm.c',T/'store_dedup_rewrite_wasm.cjs',pathlib.Path(__file__).resolve()];hashes={str(p):digest(p) for p in inputs};reports=[]
+inputs=[COMPILER,SOURCE,ROOT/'nostr/relay/store_dedup_rewrite.coax',T/'store_dedup_rewrite_wasm.c',T/'store_dedup_rewrite_wasm.cjs',pathlib.Path(__file__).resolve()];hashes={str(p):digest(p) for p in inputs};reports=[]
 with tempfile.TemporaryDirectory(prefix='coax-store-rewrite-') as tmp:
  d=pathlib.Path(tmp);cases=d/'cases.json';cases.write_text(json.dumps(rows));fixture_hash=digest(cases)
  for mode,flags in [('checked',[]),('release',['--release'])]:

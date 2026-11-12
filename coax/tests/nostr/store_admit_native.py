@@ -5,7 +5,7 @@ import base64,copy,ctypes as C,hashlib,json,pathlib,random,struct,subprocess,tem
 import secp_field as base
 from oracle import NativeOracle,DEFAULT_LIBRARY,schnorr_verify
 from make_event_fixtures import canonical
-ROOT=base.ROOT;SOURCE=ROOT/'coax/lib/nostr/store_admit.coax';T=ROOT/'coax/tests/nostr';COMPILER=base.COMPILER
+ROOT=base.ROOT;SOURCE=ROOT/'nostr/relay/store_admit.coax';T=ROOT/'coax/tests/nostr';COMPILER=base.COMPILER
 def sha(p):return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
 def run(*args):return subprocess.run([str(x) for x in args],check=True,capture_output=True,text=True).stdout
 class View(C.Structure):_fields_=[('data',C.c_void_p),('count',C.c_int64)]
@@ -24,7 +24,7 @@ for i in range(16):
  invalid=copy.deepcopy(event);invalid['content']+='!';add('bad-id-'+str(i),json.dumps(invalid,separators=(',',':')),1)
  if kind!=20000:add('short-output-'+str(i),text,3,1)
 add('malformed','{',1);add('missing','{}',1);add('overlap','{}',2,2048,True)
-inputs=[COMPILER,SOURCE,ROOT/'coax/lib/nostr/store_policy.coax',ROOT/'coax/lib/nostr/store_snapshot.coax',ROOT/'coax/lib/nostr/store_layout.coax',pathlib.Path(__file__).resolve(),T/'store_admit_wasm.c',T/'store_admit_wasm.cjs',DEFAULT_LIBRARY];hashes={str(p):sha(p) for p in inputs};results=[]
+inputs=[COMPILER,SOURCE,ROOT/'nostr/relay/store_policy.coax',ROOT/'nostr/relay/store_snapshot.coax',ROOT/'nostr/relay/store_layout.coax',pathlib.Path(__file__).resolve(),T/'store_admit_wasm.c',T/'store_admit_wasm.cjs',DEFAULT_LIBRARY];hashes={str(p):sha(p) for p in inputs};results=[]
 with tempfile.TemporaryDirectory(prefix='coax-store-admit-') as td:
  d=pathlib.Path(td);fixtures=d/'cases.json';fixtures.write_text(json.dumps(rows));fixture_hash=sha(fixtures)
  for mode,flags in [('checked',[]),('release',['--release'])]:

@@ -1,6 +1,6 @@
 // book:begin example
-#load "../../coax/lib/nostr/relay_server.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../relay/relay_server.coax";
+#load "../relay/relay_route.coax";
 #load "../../coax/lib/nostr/nip42-event.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
@@ -8,7 +8,7 @@
 // Both clocks are fixed: the relay's and the client's read this Unix time
 // (2026-10-28T19:13:41Z), the time of nip42_events.ts's signed fixtures.
 NOW :: 1793214821;
-// The relay's own URL (coax/relay/relay.coax --url) and the one the client
+// The relay's own URL (nostr/relay/relay.coax --url) and the one the client
 // dialed: two spellings of one relay.
 RELAY_URL :: "wss://relay.example.com/";
 CLIENT_URL :: "WSS://Relay.Example.COM:443";
@@ -80,7 +80,7 @@ relay_open :: (c: [] RelayConn, gen: int, challenge: string) -> string {
 }
 
 // book:begin relay
-// One AUTH frame from the client, handled as coax/relay/relay.coax's
+// One AUTH frame from the client, handled as nostr/relay/relay.coax's
 // ry_message and ry_auth handle it, with the socket and the clock replaced:
 // the reply the relay sends.
 relay_auth :: (c: [] RelayConn, frame: string, now: int) -> string {

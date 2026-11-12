@@ -39,7 +39,7 @@ open, and how to check it.
   - `coax/lib/crypto/ecdsa_sign.coax`: RFC 6979 nonces, low-S, DER output.
 - **Bitcoin:** `coax/lib/bitcoin/sighash.coax` (BIP-143, and BIP-341
   key-path).
-- **Coax relay:** `coax/relay/` with `relay_route.coax`, `relay_server.coax`
+- **Coax relay:** `nostr/relay/` with `relay_route.coax`, `relay_server.coax`
   and `relay_store.coax` now serves:
   - always: the store index, NIP-09/62 deletion, rate limits (`--rate`),
     COUNT (NIP-45), search (NIP-50), protected events (NIP-70) and
@@ -114,7 +114,7 @@ python3 psionic/tests/book.py --book nostr                        # structure, s
 python3 psionic/tests/book.py --book nostr --coax coax/bin/coax   # every example; > 15 min under load
 coax/bin/coax test nostr/examples/checks/NAME.coax                # one chapter's checks
 coax/bin/coax mutate FILE --root-only --shard I/N                 # shard so each command stays under 15 min
-coax/relay/build.sh && python3 coax/tests/nostr/relay_session.py  # the relay, ASan/UBSan
+nostr/relay/build.sh && python3 coax/tests/nostr/relay_session.py  # the relay, ASan/UBSan
 ```
 
 The whole-book example run doesn't fit in 15 minutes on a loaded machine.

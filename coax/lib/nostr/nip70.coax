@@ -36,7 +36,7 @@
 // nip70_protect is the client's side: it appends ["-"] to a tags array
 // (unchanged when one is there) before the event is signed.
 #load "tags.coax";
-#load "relay_route.coax";
+#load "../../../nostr/relay/relay_route.coax";
 #authority;
 
 // book:begin codes

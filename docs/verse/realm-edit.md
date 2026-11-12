@@ -270,7 +270,7 @@ serves the realm from staging with this checkout's module and an owner's spec sw
 page's writes in the browser, and reads the pane through `coaxial.guardProbe(2400 + f)`
 (`redit_probe`: the buttons' boxes, the pane, the view). Run it from the repository's root:
 
-    coax/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+    nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
     OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
     COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
       /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
@@ -284,7 +284,7 @@ which edits that file the way the realm tool does), it also checks two things. T
 when the job's edit lands: the page's revision, `realm_probe` 2, goes up by one. And STOP stops a
 long job while it runs. No Claude or Codex login is used:
 
-    coax/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+    nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
     printf '#!/bin/sh\nexec %s/coax/web/tool.sh %s/coder/tui/claude_standin.coax "$@"\n' "$PWD" "$PWD" > /tmp/bin/claude && chmod 755 /tmp/bin/claude
     printf 'realm\nname Pine Test\nground forest\ntime day\nrev 1\nfeature trees pine 6\n' > /tmp/spec.txt
     PATH=/tmp/bin:$PATH CLAUDE_STANDIN_SPEC=/tmp/spec.txt OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 \

@@ -34,8 +34,8 @@ part between them: the challenge, the signed answer and the relay's check.
 | | `nip42_judge`, `nip42_admit_fields` | the relay's check of an AUTH event's fields; the key is returned only on `N42_OK` |
 | | `nip42_input`, `nip42_send_fields` | the adapter to chapter 29's `relay.coax`: the challenge is kept only when `relay.coax` takes it, and the answer is sent only when the relay would admit it |
 | [nip42-event.coax](../../coax/lib/nostr/nip42-event.coax) | `nip42_admit`, `nip42_send` | the same two calls on whole event JSON: `nostr_event_verify_vartime` (relay) or `nostr_event_read` (client) first, then the field check. It decides nothing itself, so it is not `#authority` |
-| [relay_route.coax](../../coax/lib/nostr/relay_route.coax) (`#authority`) | `rr_challenge`, `rr_auth`, `rr_authed`, `rr_auth_prefix`, `rr_auth_text` | the challenge's hex, the connection's admitted keys (at most 8, each once) and the `OK` text for each result |
-| [relay.coax](../../coax/relay/relay.coax) | `ry_challenge`, `ry_auth` | the relay program: a challenge after the 101, and each client `AUTH` through the procedures above |
+| [relay_route.coax](../../nostr/relay/relay_route.coax) (`#authority`) | `rr_challenge`, `rr_auth`, `rr_authed`, `rr_auth_prefix`, `rr_auth_text` | the challenge's hex, the connection's admitted keys (at most 8, each once) and the `OK` text for each result |
+| [relay.coax](../../nostr/relay/relay.coax) | `ry_challenge`, `ry_auth` | the relay program: a challenge after the 101, and each client `AUTH` through the procedures above |
 
 `relay.coax` has a `main` and calls the host's sockets, so the example
 can't load it. The example's `relay_auth` repeats `ry_message`'s route and
@@ -256,7 +256,7 @@ The relay's handling of one `AUTH` frame:
 
 <!-- source: nostr/examples/nip42-auth.coax relay -->
 ```jai
-// One AUTH frame from the client, handled as coax/relay/relay.coax's
+// One AUTH frame from the client, handled as nostr/relay/relay.coax's
 // ry_message and ry_auth handle it, with the socket and the clock replaced:
 // the reply the relay sends.
 relay_auth :: (c: [] RelayConn, frame: string, now: int) -> string {
@@ -284,8 +284,8 @@ The whole program:
 
 <!-- source: nostr/examples/nip42-auth.coax example -->
 ```jai
-#load "../../coax/lib/nostr/relay_server.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../nostr/relay/relay_server.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/nip42-event.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
@@ -293,7 +293,7 @@ The whole program:
 // Both clocks are fixed: the relay's and the client's read this Unix time
 // (2026-10-28T19:13:41Z), the time of nip42_events.ts's signed fixtures.
 NOW :: 1793214821;
-// The relay's own URL (coax/relay/relay.coax --url) and the one the client
+// The relay's own URL (nostr/relay/relay.coax --url) and the one the client
 // dialed: two spellings of one relay.
 RELAY_URL :: "wss://relay.example.com/";
 CLIENT_URL :: "WSS://Relay.Example.COM:443";
@@ -365,7 +365,7 @@ relay_open :: (c: [] RelayConn, gen: int, challenge: string) -> string {
 }
 
 // book:begin relay
-// One AUTH frame from the client, handled as coax/relay/relay.coax's
+// One AUTH frame from the client, handled as nostr/relay/relay.coax's
 // ry_message and ry_auth handle it, with the socket and the clock replaced:
 // the reply the relay sends.
 relay_auth :: (c: [] RelayConn, frame: string, now: int) -> string {

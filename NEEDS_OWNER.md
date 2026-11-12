@@ -133,7 +133,7 @@ unless it says otherwise:
 
 1. **Private reads: ported whole (2026-11-03), three questions left.** The
    Coax relay now serves gift wraps and OpenAgents' private kinds exactly as
-   the Rust relay does (`coax/lib/nostr/relay_private.coax`; all 33
+   the Rust relay does (`nostr/relay/relay_private.coax`; all 33
    private-read observations in the Rust differential match). Yours:
    a. **Private and hidden NIP-29 groups** are not ported: the Rust relay
       reads `relay_group` and `relay_group_member`, which the Coax relay
@@ -648,7 +648,7 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
 
 ## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
 
-The importer (`coax/lib/nostr/relay_import.coax`, `relay_import_run.coax`),
+The importer (`nostr/relay/relay_import.coax`, `relay_import_run.coax`),
 the event-set equality check (`relay_equal.coax`) and the shadow comparer
 (`relay_shadow.coax`) are built and checked offline; nothing touched
 production. The runbook is in `nostr/book/ch103-replace-relay-openagents-com.md`

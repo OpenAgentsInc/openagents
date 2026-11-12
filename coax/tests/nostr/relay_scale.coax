@@ -145,7 +145,7 @@ tool_main :: () -> int #export_c #effects(all) {
   relay := args_value(a[..], "--relay", "");
   if relay.count == 0 {
     relay = fs_join(dir, "relay", p0[..]);
-    b := [2] string.["coax/relay/build.sh", relay];
+    b := [2] string.["nostr/relay/build.sh", relay];
     r := rx_run(b[..], 10, out[..]);
     if r.status != 0 { print("relay_scale: the relay did not build\n"); return 1; }
   }

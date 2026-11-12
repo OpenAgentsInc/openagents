@@ -32,7 +32,7 @@ other `key:value` extension ignored.
   ignored, and the filter still runs.
 - How the answers differ from the Rust relay's: it matched substrings and
   ordered by time.
-- How the relay uses it: `coax/relay/relay.coax` reads `REQ` filters with
+- How the relay uses it: `nostr/relay/relay.coax` reads `REQ` filters with
   `rs_req_search` and answers a filter with `search` through
   `relay_store.coax`'s `rd_req_filter`, which calls `n50_scan`: the same
   answer as `n50_query`, with every record a candidate instead of one
@@ -48,14 +48,14 @@ other `key:value` extension ignored.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [filter_read.coax](../../coax/lib/nostr/filter_read.coax) | `filter_read_search` | new: chapter 23's reader, plus the `search` key (`#authority`) |
+| [filter_read.coax](../../nostr/relay/filter_read.coax) | `filter_read_search` | new: chapter 23's reader, plus the `search` key (`#authority`) |
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_next`, `n50_key`, `n50_tf` | new: words, a word's index key, and how often a word occurs |
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_parse` | new: a search string into terms and extensions |
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_build` | new: the word index over the store |
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_query`, `n50_score`, `n50_insert` | new: the answer, best first |
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_scan` | the same answer without the word index, which the relay uses |
-| [relay_store.coax](../../coax/lib/nostr/relay_store.coax) | `rd_req`, `rd_req_filter`, `rd_sub_matches` | the relay's search: `REQ` admission, the stored answer and live delivery |
-| [store_index.coax](../../coax/lib/nostr/store_index.coax) | `nsi_query_limit` | chapter 36's query, used when a search has no words |
+| [relay_store.coax](../../nostr/relay/relay_store.coax) | `rd_req`, `rd_req_filter`, `rd_sub_matches` | the relay's search: `REQ` admission, the stored answer and live delivery |
+| [store_index.coax](../../nostr/relay/store_index.coax) | `nsi_query_limit` | chapter 36's query, used when a search has no words |
 
 `nip50.coax` is new. Its checks were written first, and `coax mutate
 --root-only` on it kills 434 of 434 mutants. It is not `#authority`, for the
@@ -67,7 +67,7 @@ seven, and `search` is one of them. That stays true: a relay that doesn't
 answer searches must still refuse them. `filter_read_search` is a second
 entry to the same reader that also accepts `search`. Both call `fr_read`,
 which takes a flag. The old checks pass unchanged, a new check covers the
-key, and `coax mutate coax/lib/nostr/filter_read.coax --root-only` kills
+key, and `coax mutate nostr/relay/filter_read.coax --root-only` kills
 263 of 263 mutants.
 
 ## The search field
@@ -808,7 +808,7 @@ field with `include:spam` instead of finding the first `:`, and the
 rarest-term choice starts from the first term instead of a sentinel range.
 
 `filter_read.coax` gained one check, and `coax mutate
-coax/lib/nostr/filter_read.coax --root-only` killed 263 of 263 mutants
+nostr/relay/filter_read.coax --root-only` killed 263 of 263 mutants
 after one reordering (the first run left 2 survivors on a range test that
 the `search` branch made unreachable).
 

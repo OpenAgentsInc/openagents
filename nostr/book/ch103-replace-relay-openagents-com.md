@@ -37,14 +37,14 @@ differing answer, and a runbook for the cutover and the rollback.
 
 | File | What it does |
 | --- | --- |
-| [coax/lib/nostr/relay_import.coax](../../coax/lib/nostr/relay_import.coax) | `#authority`: what each export line's result counts as, the tally and the import verdict |
-| [coax/lib/nostr/relay_import_run.coax](../../coax/lib/nostr/relay_import_run.coax) | `ri_line` and `ri_import`: each line read and verified as a live EVENT, then offered to the store |
-| [coax/lib/nostr/relay_equal.coax](../../coax/lib/nostr/relay_equal.coax) | `#authority`: a store's set at a time, its digest, and the comparison that names the difference with Negentropy |
-| [coax/lib/nostr/relay_shadow.coax](../../coax/lib/nostr/relay_shadow.coax) | `#authority`: the shadow replay and its four classes |
+| [nostr/relay/relay_import.coax](../../nostr/relay/relay_import.coax) | `#authority`: what each export line's result counts as, the tally and the import verdict |
+| [nostr/relay/relay_import_run.coax](../../nostr/relay/relay_import_run.coax) | `ri_line` and `ri_import`: each line read and verified as a live EVENT, then offered to the store |
+| [nostr/relay/relay_equal.coax](../../nostr/relay/relay_equal.coax) | `#authority`: a store's set at a time, its digest, and the comparison that names the difference with Negentropy |
+| [nostr/relay/relay_shadow.coax](../../nostr/relay/relay_shadow.coax) | `#authority`: the shadow replay and its four classes |
 | [coax/lib/nostr/fixtures/relay_export.coax](../../coax/lib/nostr/fixtures/relay_export.coax) | The six-line export, written by [relay_export_fixture.py](../../coax/tests/nostr/relay_export_fixture.py) from the 2026-10-28 capture |
 | [nostr/examples/relay-cutover.coax](../examples/relay-cutover.coax) | The rehearsal: import, a shadow store that missed a write, equality, the shadow and the gate |
-| [coax/lib/nostr/store_fresh.coax](../../coax/lib/nostr/store_fresh.coax) | `#authority`: the freshness checkpoint: when a store and its policy journal are fresh, rolled back or forked against it, when a start may go on, and its one-line text |
-| [coax/relay/durable.coax](../../coax/relay/durable.coax) | The relay's `--import`, `--check-store` and `--checkpoint`: hashing, reading the export, printing the counts and the served set's digest |
+| [nostr/relay/store_fresh.coax](../../nostr/relay/store_fresh.coax) | `#authority`: the freshness checkpoint: when a store and its policy journal are fresh, rolled back or forked against it, when a start may go on, and its one-line text |
+| [nostr/relay/durable.coax](../../nostr/relay/durable.coax) | The relay's `--import`, `--check-store` and `--checkpoint`: hashing, reading the export, printing the counts and the served set's digest |
 | [coax/tests/nostr/relay_scale.coax](../../coax/tests/nostr/relay_scale.coax) | Import and restart at scale against [relay_scale_oracle.py](../../coax/tests/nostr/relay_scale_oracle.py), an independent oracle, and three restores the checkpoint refuses |
 
 The store is chapter 35's (`store.coax`, `store_core.coax`), the admission
@@ -84,7 +84,7 @@ production database. The runbook below gives the query.
 An export line goes through the same checks as an EVENT from a client. The
 importer adds four outcomes that only an export has:
 
-<!-- source: coax/lib/nostr/relay_import.coax outcomes -->
+<!-- source: nostr/relay/relay_import.coax outcomes -->
 ```jai
 // The Rust relay's import-jsonl line limit (MAX_JSONL_EVENT_BYTES), which is
 // also the relay's message limit.
@@ -111,7 +111,7 @@ RI_INCOMPLETE :: 2;  // the store doesn't hold the export (cut, too long, full):
 A cut export is the case to catch first: a copy that stopped partway ends
 in a line with no `\n`. The line checks come before any parsing:
 
-<!-- source: coax/lib/nostr/relay_import.coax frame -->
+<!-- source: nostr/relay/relay_import.coax frame -->
 ```jai
 // The checks on a line before it is read as an event.
 ri_frame :: (line: string, ended: bool) -> int #effects(all) {
@@ -130,12 +130,12 @@ ri_check :: (r: RsAdmit) -> int #effects(all) {
 ```
 
 Then each line is read, its id recomputed and its signature verified, the
-cheap checks first, exactly as `coax/relay/relay.coax` admits an EVENT.
+cheap checks first, exactly as `nostr/relay/relay.coax` admits an EVENT.
 The clock is the export's time, so an event that had expired by then is
 refused as expired, and one dated more than 15 minutes after it is refused
 as too far in the future. No NIP-42 login is asked for:
 
-<!-- source: coax/lib/nostr/relay_import_run.coax line -->
+<!-- source: nostr/relay/relay_import_run.coax line -->
 ```jai
 // Imports one line: every id and signature checked again, then the store.
 // now is the export's time: an event expired by then is refused.
@@ -169,7 +169,7 @@ never serve. A store that holds every good line but refused some is a
 question for the owner: the Rust relay verified signatures too, so a
 forged line in its export means its database or the copy was changed.
 
-<!-- source: coax/lib/nostr/relay_import.coax verdict -->
+<!-- source: nostr/relay/relay_import.coax verdict -->
 ```jai
 // The verdict: incomplete when the store can't hold what the export holds
 // (events or tombstones), refused when any line was refused (a line an
@@ -197,7 +197,7 @@ events it no longer serves. The set that counts is what a relay serves at
 a time `now`: its live, unexpired records. Each becomes a NIP-77 item, its
 `created_at` and id, sorted by time and then by id:
 
-<!-- source: coax/lib/nostr/relay_equal.coax items -->
+<!-- source: nostr/relay/relay_equal.coax items -->
 ```jai
 // The store's set at now, sorted: the count (at most out.count).
 re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int #effects(all) {
@@ -248,7 +248,7 @@ decide and the second to name the difference:
   sorted lists, the simplest correct way, and compare its answer with
   Negentropy's over 24 generated pairs of 5 to 650 items.
 
-<!-- source: coax/lib/nostr/relay_equal.coax compare -->
+<!-- source: nostr/relay/relay_equal.coax compare -->
 ```jai
 // Compares sorted item lists a and b. q and r hold one Negentropy message
 // each way; d.only_a and d.only_b are the caller's, and so is d.max_rounds,
@@ -297,7 +297,7 @@ every write to both relays, and readers ask both. Chapter 94's method
 compares the answers: run both, normalize each answer to its ids in order,
 compare, and classify every difference.
 
-<!-- source: coax/lib/nostr/relay_shadow.coax classify -->
+<!-- source: nostr/relay/relay_shadow.coax classify -->
 ```jai
 sh_same :: (a: NegId, b: NegId) -> bool #effects(all) {
   for k: 0..<32 { if a.b[k] != b.b[k] { return false; } }
@@ -499,7 +499,7 @@ says how.
 ### Before: what must be true first
 
 1. The relay modules in the next section that the Rust relay's NIP-11
-   document advertises are wired into `coax/relay/relay.coax`, or the
+   document advertises are wired into `nostr/relay/relay.coax`, or the
    owner decides which advertised NIPs are dropped (R2). The parity table
    is [2026-11-03-coax-relay-parity.md](../../docs/verification/2026-11-03-coax-relay-parity.md):
    NIP-77 and NIP-86 are wired, NIP-29 up to the relay key, NIP-43 needs
@@ -705,7 +705,7 @@ has the numbers. In short:
 
 ## What the relay doesn't use yet
 
-`coax/relay/relay.coax` loads `relay_store.coax` (the store, `store_saved.coax`,
+`nostr/relay/relay.coax` loads `relay_store.coax` (the store, `store_saved.coax`,
 with chapter 36's index beside it), `nip42-event.coax`, `relay_route.coax`
 and `message_agree.coax`. The table says which modules from Part V and
 Part VI are wired into it, and what the rest still need.

@@ -1,6 +1,6 @@
 // book:begin example
 #load "../../coax/lib/nostr/store.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../relay/relay_route.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #import "Basic";
 
@@ -27,7 +27,7 @@ Relay :: struct {
 relay_init :: (r: [] Relay) { r[0].store[0].arena = r[0].arena[..]; r[0].store[0].recs = r[0].recs[..]; }
 
 // book:begin admit
-// One text message from a client, handled as coax/relay/relay.coax's
+// One text message from a client, handled as nostr/relay/relay.coax's
 // ry_message and ry_event handle it, with the socket and the clock replaced:
 // the reply the relay sends.
 relay_message :: (r: [] Relay, frame: string, now: int) -> string {

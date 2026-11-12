@@ -26,7 +26,7 @@ The demo builds an unsigned fixture template. It does not sign or send an AUTH e
 
 - [coax/lib/nostr/nip42.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/nip42.coax)
 - [coax/lib/nostr/nip42-event.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/nip42-event.coax)
-- [coax/lib/nostr/relay_route.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/relay_route.coax)
+- [nostr/relay/relay_route.coax](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/relay/relay_route.coax)
 
 ## Verification records
 

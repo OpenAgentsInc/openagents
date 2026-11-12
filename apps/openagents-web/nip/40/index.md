@@ -24,8 +24,8 @@ Expiration is not a deletion guarantee, and a relay cannot erase copies held els
 
 ## Source
 
-- [coax/lib/nostr/relay_server.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/relay_server.coax)
-- [coax/lib/nostr/store_core.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/store_core.coax)
+- [nostr/relay/relay_server.coax](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/relay/relay_server.coax)
+- [nostr/relay/store_core.coax](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/relay/store_core.coax)
 
 ## Verification records
 

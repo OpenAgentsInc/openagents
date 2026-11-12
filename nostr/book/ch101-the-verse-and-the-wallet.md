@@ -39,7 +39,7 @@ units, and adds only the glue between them (`publish`, `receive`, `draw_x`,
 | File | Procedure | What it decides | Chapter |
 | --- | --- | --- | --- |
 | [event_sign.coax](../../coax/lib/nostr/event_sign.coax), [event.coax](../../coax/lib/nostr/event.coax) | `nostr_event_sign_step`, `nostr_event_verify_vartime` | signing and verifying events | 13, 21 |
-| [relay_server.coax](../../coax/lib/nostr/relay_server.coax), [store.coax](../../coax/lib/nostr/store.coax), [relay_route.coax](../../coax/lib/nostr/relay_route.coax) | `rs_admit_read`, `rs_admit_verified`, `rsd_admit`, `rr_fanout`, `rr_deliver` | whether the relay accepts an event, and who gets it | 34, 35, 38 |
+| [relay_server.coax](../../nostr/relay/relay_server.coax), [store.coax](../../coax/lib/nostr/store.coax), [relay_route.coax](../../nostr/relay/relay_route.coax) | `rs_admit_read`, `rs_admit_verified`, `rsd_admit`, `rr_fanout`, `rr_deliver` | whether the relay accepts an event, and who gets it | 34, 35, 38 |
 | [filter.coax](../../coax/lib/nostr/filter.coax) | `nf_match`, `nf_write` | whether a subscription asks for an event | 23 |
 | [nipmv.coax](../../coax/lib/nostr/nipmv.coax) | `mv_frame_read`, `mv_order`, `mv_online` | a pose frame for this world, its order, and presence | 85 |
 | [nip57.coax](../../coax/lib/nostr/nip57.coax), [nip75.coax](../../coax/lib/nostr/nip75.coax) | `n57_pay`, `n57_request_tags`, `n57_invoice`, `n57_receipt`, `n75_tally` | the zap request, the receipt, and the goal's count | 71 |
@@ -261,7 +261,7 @@ The constants come first:
 #load "../../coax/lib/nostr/nip47.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #load "../../coax/lib/nostr/store.coax";
-#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../nostr/relay/relay_route.coax";
 #load "../../coax/lib/nostr/filter.coax";
 #load "../../pay/wallet.coax";
 

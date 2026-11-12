@@ -314,7 +314,7 @@ it even from key 1, and three broken events are refused.
 
 <!-- source: nostr/examples/protected-events.coax example -->
 ```jai
-#load "../../coax/lib/nostr/relay_server.coax";
+#load "../../nostr/relay/relay_server.coax";
 #load "../../coax/lib/nostr/nip42-event.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
 #load "../../coax/lib/nostr/nip70.coax";
@@ -747,7 +747,7 @@ the fixture.
 
 ### What is not built
 
-- `coax/relay/relay.coax` calls `nip70_admit` with `accepts` true and the
+- `nostr/relay/relay.coax` calls `nip70_admit` with `accepts` true and the
   connection's `RrAuth`, after the signature check and the rate limit. What
   is not built there: a fresh `["AUTH", challenge]` with an
   `auth-required:` answer. The relay already asks for a key before any

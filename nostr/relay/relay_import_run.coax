@@ -7,7 +7,7 @@
 // nostr/examples/checks/relay-cutover.coax, run once rather than under every
 // mutant of relay_import.coax.
 #load "relay_import.coax";
-#load "event_verify_fast.coax";
+#load "../../coax/lib/nostr/event_verify_fast.coax";
 
 // book:begin line
 // Imports one line: every id and signature checked again, then the store.
@@ -55,7 +55,7 @@ ri_import :: (s: [] RsdStore, export: string, now: int, scratch: [] u8, rep: [] 
   ri_import(s[..], cast(string) b[0..<RI_T_LINE.count + 1], 1793220000, scratch[..], rep[..], o[0..<0]);
   #assert rep[0].count[RS_BAD_ID] == 1 && rep[0].first_refused == 1 && s[0].n == 0 && o[0] == RS_TIME;
 }
-#load "fixtures/relay_export.coax";
+#load "../../coax/lib/nostr/fixtures/relay_export.coax";
 // Two verified lines: the export's first (stored) and its forgery (line 5).
 #test "a real line is stored, a forged one refused at BIP-340" #steps 2000000000 {
   arena: [8192] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
