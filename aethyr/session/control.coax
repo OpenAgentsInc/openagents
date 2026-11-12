@@ -57,16 +57,16 @@ ControlFence :: struct { gen: [CONTROL_CHARACTERS] int #counter; counts: [CONTRO
 ControlGrant :: struct { status: int; gen: int; }
 // book:end control-profile
 
-control_known :: (c_id: CharacterId) -> bool #effects(all) { c := c_id.value; return c >= 0 && c < CONTROL_CHARACTERS; }
-control_count :: (counts: [] int, status: int) -> int #effects(all) { counts[status] += 1; return status; }
+control_known :: (c_id: CharacterId) -> bool #effects(reads, writes, traps) { c := c_id.value; return c >= 0 && c < CONTROL_CHARACTERS; }
+control_count :: (counts: [] int, status: int) -> int #effects(reads, writes, traps) { counts[status] += 1; return status; }
 // The generation after gen, or none past CONTROL_GEN_MAX: exhausted, never wrapped (#12927).
-control_next :: (gen: int) -> int? #effects(all) { if gen >= CONTROL_GEN_MAX { return null; } return add_checked(gen, 1); }
+control_next :: (gen: int) -> int? #effects(reads, writes, traps) { if gen >= CONTROL_GEN_MAX { return null; } return add_checked(gen, 1); }
 
 // book:begin control-directory
 // Room `room` asks for character c. A room already holding it (a duplicate or a retry) gets its own
 // generation back with the lease renewed; another room's live lease refuses; otherwise the next
 // generation.
-control_acquire :: (d: [] ControlDirectory, c_id: CharacterId, room: int) -> ControlGrant #effects(all) { c := c_id.value;
+control_acquire :: (d: [] ControlDirectory, c_id: CharacterId, room: int) -> ControlGrant #effects(reads, writes, traps) { c := c_id.value;
   if !control_known( CharacterId.{value = c}) { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_UNKNOWN)}; }
   e := d[0].entries[c];
   live := e.held && d[0].now < e.until;
@@ -85,7 +85,7 @@ control_acquire :: (d: [] ControlDirectory, c_id: CharacterId, room: int) -> Con
   }
 }
 // Whether (room, gen) is character c's live owner now.
-control_holds :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int #effects(all) { c := c_id.value;
+control_holds :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int #effects(reads, writes, traps) { c := c_id.value;
   if !control_known( CharacterId.{value = c}) { return CONTROL_UNKNOWN; }
   e := d[0].entries[c];
   if gen < e.gen { return CONTROL_STALE; }
@@ -93,14 +93,14 @@ control_holds :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int
   return CONTROL_OK;
 }
 // The owner renews its lease; a lapsed or superseded owner is refused.
-control_renew :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int #effects(all) { c := c_id.value;
+control_renew :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int #effects(reads, writes, traps) { c := c_id.value;
   v := control_holds(d, CharacterId.{value = c}, room, gen);
   if v == CONTROL_OK { d[0].entries[c].until = d[0].now + CONTROL_LEASE; }
   return control_count(d[0].counts[..], v);
 }
 // The owner lets go (the player left, or travels on). A second release is not held, and changes
 // nothing; the generation stays, so the next owner's is higher.
-control_release :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int #effects(all) { c := c_id.value;
+control_release :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int #effects(reads, writes, traps) { c := c_id.value;
   v := control_holds(d, CharacterId.{value = c}, room, gen);
   if v == CONTROL_OK { d[0].entries[c].held = false; }
   return control_count(d[0].counts[..], v);
@@ -108,7 +108,7 @@ control_release :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: i
 // The owner hands character c to room `to` (travel, #12850) in one directory write: `to` holds it
 // at the next generation, so the source's writes are stale from here on. Refused unless (room, gen)
 // is the live owner, or when no generation is left.
-control_transfer :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int, to: int) -> ControlGrant #effects(all) { c := c_id.value;
+control_transfer :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int, to: int) -> ControlGrant #effects(reads, writes, traps) { c := c_id.value;
   v := control_holds(d, CharacterId.{value = c}, room, gen);
   if v != CONTROL_OK { return ControlGrant.{status = control_count(d[0].counts[..], v), gen = gen}; }
   next := control_next(gen);
@@ -121,14 +121,14 @@ control_transfer :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: 
   }
 }
 // The directory's clock moves on.
-control_tick :: (d: [] ControlDirectory, ticks: int) #effects(all) { d[0].now += ticks; }
+control_tick :: (d: [] ControlDirectory, ticks: int) #effects(reads, writes, traps) { d[0].now += ticks; }
 // book:end control-directory
 
 // book:begin control-fence
 // A recipient's check of a write or command for character c carrying generation gen: lower than
 // the newest it has accepted is stale; equal or higher is accepted and becomes the newest. The
 // store and the command gate use it; the directory has already issued gen to someone.
-control_fence :: (f: [] ControlFence, c_id: CharacterId, gen: int) -> int #effects(all) { c := c_id.value;
+control_fence :: (f: [] ControlFence, c_id: CharacterId, gen: int) -> int #effects(reads, writes, traps) { c := c_id.value;
   if !control_known( CharacterId.{value = c}) { return control_count(f[0].counts[..], CONTROL_UNKNOWN); }
   if gen < f[0].gen[c] { return control_count(f[0].counts[..], CONTROL_STALE); }
   f[0].gen[c] = gen;
