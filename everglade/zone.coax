@@ -8,7 +8,7 @@
 //   apps/openagents-web/archery-range.coax    the Archery Range
 //
 // It is built from the engine's and the game's modules and loads them:
-//   the scene: the meadow, your figure, the mounts, a zone's own standing things   apps/openagents-web/charactercreator.coax (cc)
+//   the scene: the meadow, your figure, the mounts, a zone's own standing things   everglade/scene/charactercreator.coax (cc)
 //   your class's bar and the SRD rules against the monsters                         apps/openagents-web/experimental-combat.coax
 //   the bow: this zone's ground, walls and bodies for the engine's archer           zone-bow.coax (aethyr/action/archery.coax, longbow.coax)
 //   riding: E, the saddle, the dragon's Fire Breath                                 zone-ride.coax (mounts.coax, zone-mounts.coax)
@@ -17,7 +17,7 @@
 // The scene and the class bar still live in the app directory; they move here when Character Create
 // and Experimental's combat are split from their pages.
 //   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax
-#load "../apps/openagents-web/charactercreator.coax" as cc;
+#load "scene/charactercreator.coax" as cc;
 #load "../verse/experimental-village.coax" as village;
 #load "../verse/experimental-hostiles.coax" as hostile;
 #load "../verse/experimental-dungeon.coax" as xdungeon;
@@ -28,7 +28,7 @@
 #load "../aethyr/space.coax" as asp;
 #load "../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
 #load "../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
-#load "../apps/openagents-web/fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
+#load "scene/bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "shared/everglade-move-types.coax";   // what a face hands Everglade's movement step (everglade-step.coax)
 #load "sound.coax" as exsound;
 #load "../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held
@@ -68,7 +68,7 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
 put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
 
-// A zone's state. The Creator is the scene (apps/openagents-web/charactercreator.coax); XcCombat is
+// A zone's state. The Creator is the scene (everglade/scene/charactercreator.coax); XcCombat is
 // your class, its bar and the rules' battle (experimental-combat.coax).
 EgZone :: struct {
   xc: [1] XcCombat;
@@ -81,7 +81,7 @@ EgZone :: struct {
   breath_puff_at: f32 = -100;   // when the breath's torrent last left the dragon's jaws (zone-ride.coax zone_breath_stream)
   puffs: [1] FxPuffs;   // the effects as puffs (aethyr/fx/puff.coax)
   held: int; shift: bool;   // the keys held (HOLD_*), and Shift
-  // the figures (apps/openagents-web/fivelab-bodies.coax): their playback, the frame's instances (the face's objects store) and the shadow tiles' draws
+  // the figures (everglade/scene/bodies.coax): their playback, the frame's instances (the face's objects store) and the shadow tiles' draws
   bodies: [1] figs.Bodies;
   records: [figs.BD_RECORDS * figs.BD_REC_FLOATS] f32;
   shadow_draws: [4096] u32; shadow_n: int;

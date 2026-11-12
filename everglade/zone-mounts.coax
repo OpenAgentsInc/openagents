@@ -7,7 +7,7 @@
 //
 // A fragment of charactercreator.coax's module (it loads this; the Creator holds the mounts, the
 // ground and the zone's boxes). Its checks run with that file's:
-//   coax/bin/coax test --library apps/openagents-web/charactercreator.coax --only "mounts"
+//   coax/bin/coax test --library everglade/scene/charactercreator.coax --only "mounts"
 
 // The white horse: just ahead and right of where you appear (you face +Z), clear of every box (the
 // spawn's safe radius only calms monsters), facing the open meadow past spawn (67 m clear at a gallop).
@@ -55,7 +55,7 @@ xh_reach :: (s: []Creator, k: int) -> f32 {
   r := mount.mount_reach(egm.eg_tune(s[0].mounts[0], k));
   return ifx r < 4 then 4.0f32 else r;
 }
-// Your pelvis's height standing, for the body you wear (fivelab-bodies.coax BD_RIDE_HIP).
+// Your pelvis's height standing, for the body you wear (everglade/scene/bodies.coax BD_RIDE_HIP).
 xh_hip :: (s:[]Creator) -> f32 { return figs.BD_RIDE_HIP[ifx s[0].female then 1 else 0]; }
 // E from where you stand, your conditions as bearing b: what happened (egm.EG_PRESS_*).
 xh_press :: (s: []Creator, now: f32, b: DeedBearing) -> int {

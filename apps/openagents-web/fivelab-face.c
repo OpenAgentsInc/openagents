@@ -3,7 +3,7 @@
 // (aethyr/rules/srd/) and its drawing. It decides nothing.
 // gpu/fivelab.coax's bg_fs draws the grid, the glade and the log's glass, writing the glade's
 // depth; scene_vs/scene_fs the figures (Everglade's pack: its catalog here, its vertices, indices
-// and layers on the GPU), from two stores: the frame's instances (fivelab-bodies.coax bd_build)
+// and layers on the GPU), from two stores: the frame's instances (everglade/scene/bodies.coax bd_build)
 // and the clips baked once (bd_bake); fx_fs the strokes lab_frame writes, and fivelab-fx.wgsl the
 // glade's effects (puffs), drawn after the figures, depth-tested.
 // Player mode walks your hero on Everglade's controller, as everglade-face.c does: everglade-step.coax
@@ -26,7 +26,7 @@ static bool golden;
 // the most figures) are the Lab's records, in its state: the module's own memory stays under host.js's 8 MiB start.
 static uint8_t catalog[65536];
 static coax_t_People rig;
-static float bake[6453720];        // fivelab-bodies.coax BD_BAKE_FLOATS
+static float bake[6453720];        // everglade/scene/bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;

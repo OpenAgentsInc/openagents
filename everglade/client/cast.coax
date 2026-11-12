@@ -403,7 +403,7 @@ e2k_step :: (s: [] E2) {
   _ := fxp_close(pf);
 }
 
-// A body's cast or blow over its gait (fivelab-bodies.coax bd_layer): standing it takes the whole
+// A body's cast or blow over its gait (everglade/scene/bodies.coax bd_layer): standing it takes the whole
 // body; on the move only the upper body, the walk or run keeping the hips and legs. It eases in and
 // out over BD_LAYER_FADE, so nothing pops. A remote's gait comes from its own motion and its act from
 // the wire, so others see the same layered pose.

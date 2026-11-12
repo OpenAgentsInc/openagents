@@ -9,7 +9,7 @@
 // slot, banner and damage-number styles) plus drawers that turn a HUD part into primitives
 // (HudPrim: filled rounded boxes, rings, lines, pie sweeps and soft shadows) in screen points,
 // y down. A realm's renderer turns the primitives into its own vertices (Everglade:
-// apps/openagents-web/charactercreator.coax hud_emit). Text is the realm's: a style says which face,
+// everglade/scene/charactercreator.coax hud_emit). Text is the realm's: a style says which face,
 // colour and size each text role takes (hud_text), never how glyphs are drawn.
 // coax/bin/coax test aethyr/ui/hud-style.coax --library
 #load "hud.coax";

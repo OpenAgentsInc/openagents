@@ -8,7 +8,7 @@
 #load "../../aethyr/world/build-work.coax" as bw;
 #load "../../aethyr/world/build-site.coax" as bsite;
 #load "../../aethyr/world/building.coax" as bframe;
-#load "../../everglade/world/housewright.coax" as hwc;
+#load "../world/housewright.coax" as hwc;
 #load "../../aethyr/world/build-work-mesh.coax" as bwm;
 
 CC_CREWS :: 32;            // as many as the glade's build sites
@@ -33,7 +33,7 @@ cc_crew_worker :: (s:Creator,c:CcCrew,phase:f32)->bw.BuildWorker {
  st:[hwc.HW_MOST_STOCKS]bw.BuildStock;r:[hwc.HW_MOST_STOCKS]int;m:=hwc.hw_tier_stocks(c.tier,st[..],r[..]);
  return bw.bw_builder(p[0..<n],st[0..<m],hwc.HW_REACH[c.tier],c.v_last,c.v_now,c.progress,phase);
 }
-// The clip a builder's act plays (fivelab-bodies.coax numbers: BD_CLIPS + a preview clip).
+// The clip a builder's act plays (everglade/scene/bodies.coax numbers: BD_CLIPS + a preview clip).
 cc_crew_clip :: (w:bw.BuildWorker)->int {
  if w.act==bw.BW_FETCH {return figs.BD_WALK;}
  if w.act==bw.BW_PICK {return figs.BD_CLIPS+figs.PREVIEW_UAL1_PICKUP_TABLE;}

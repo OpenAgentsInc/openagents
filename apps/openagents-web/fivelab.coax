@@ -28,7 +28,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "font.coax";
-#load "charactercreator.coax" as cc;
+#load "../../everglade/scene/charactercreator.coax" as cc;
 #load "../../verse/experimental-village.coax" as village;
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as xdungeon;
@@ -40,7 +40,7 @@
 #load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
 #load "../../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
 #load "../../aethyr/fx/flat.coax";     // the flat view draws the same effects from above
-#load "fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
+#load "../../everglade/scene/bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "../../everglade/shared/everglade-move-types.coax";   // what fivelab-face.c hands Everglade's movement step (everglade-step.coax)
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
 #load "fivelab-siege.coax";
@@ -205,7 +205,7 @@ Lab :: struct {
   vx: f32; vz: f32; vyaw: f32; vpitch: f32; vzoom: f32;   // how the camera flies on the keys held (the zone's held)
   fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
-  // the figures (fivelab-bodies.coax): their playback, and the squares the Horde filled afresh
+  // the figures (everglade/scene/bodies.coax): their playback, and the squares the Horde filled afresh
   fresh: [LAB_MAX] bool;
   // Player mode's camera and your body: Everglade's free orbit (aethyr/camera.coax) behind the body
   // Everglade's controller walks (fivelab-face.c: aethyr/walk.coax through everglade-step.coax)
@@ -320,7 +320,7 @@ take_events :: (s: [] Lab) {
   }
 }
 // One battle event as the figures' clips: a blow swings, a cast or a shot plays the spell clip, a
-// hurt figure is knocked back (fivelab-bodies.coax figs.bd_cue).
+// hurt figure is knocked back (everglade/scene/bodies.coax figs.bd_cue).
 cue_event :: (s: [] Lab, e: RsEvent) {
   b := bt(s);
   if e.by < 0 || e.by >= b[0].n { return; }

@@ -49,7 +49,7 @@ The arm's swing carries it forward and back. The carry changes with the clip,
 as the bow hand's pose does (`bow_move_body`).
 
 While you carry the bow, a pose layer moves the bow arm (`bd_arm_layer` in
-`apps/openagents-web/fivelab-bodies.coax`, and `fivelab_arm` in the figure
+`everglade/scene/bodies.coax`, and `fivelab_arm` in the figure
 shader, for any body record flagged a bow carrier):
 
 - Standing (the idle), the elbow opens most of the way, so the arm hangs
@@ -168,7 +168,7 @@ launch.
 
 No library has bow clips for the Universal Animation Library's rig, so the draw
 is keyed in Coax on the rig (`aethyr/action/bow-pose.coax`) and baked once with
-the other clips, as clip `BD_BOW` (`fivelab-bodies.coax` `bd_bake_bow`). It has
+the other clips, as clip `BD_BOW` (`everglade/scene/bodies.coax` `bd_bake_bow`). It has
 13 frames: 11 draws from strength 0 to 1, then two of the release. Each frame
 starts from the idle stance:
 

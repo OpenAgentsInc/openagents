@@ -62,7 +62,7 @@ faces.
 ## How a realm uses a style
 
 Everglade's renderer is in
-[`apps/openagents-web/charactercreator.coax`](../../apps/openagents-web/charactercreator.coax):
+[`everglade/scene/charactercreator.coax`](../../everglade/scene/charactercreator.coax):
 
 - `EG_HUD` names the realm's style, `HUD_FANTASY`, and `eg_tokens()` returns its
   tokens.
@@ -170,7 +170,7 @@ Each part is engine (any realm), game (every Everglade zone) or zone wiring
 | Engine | Sight for plates, health bars, names and damage numbers: a body as the visibility service's target, the settled answer faded over 0.15 s | `aethyr/ui/hud-sight.coax` on `aethyr/visibility.coax` |
 | Engine | Where plates over bodies go: reach, order, lift or fold | `aethyr/ui/hud-plates.coax` |
 | Engine | The straight-alpha HUD blend and the two-face glyph atlas | `coax/web/host.js` (`coaxial_fx_alpha_v1`, `sansAtlas`) |
-| Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `apps/openagents-web/charactercreator.coax` |
+| Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `everglade/scene/charactercreator.coax` |
 | Game | Unit frames (`eg_portrait`: your portrait plate, and your target's frame as its red mirror: a gold-rimmed medallion, a glass plate, the health bar with its damage trail), bar tray, a slot's cooldown sweep (`eg_slot_sweep`), map ring, name plates with their trails (`eg_plates`), the screen's red edges (`eg_vignette`), place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
 | Game | The class menus: the class features (Healer's Kit, Wild Companion, Find Familiar) and the rest menu with how the rest stands. Nothing of them is a button over the action bar (GitHub #13147): a press on your portrait plate opens them, hung under it (`eg_side_geo`, `eg_side_press`, `eg_side_draw`). Knocking out has no control on screen; in Experimental K turns it on and off | `everglade/hud/class-bar.coax` |
 | Game | The CLASSES and LEVEL picker shared by Everglade's test pages: buttons a finger tall on phones and tablets, the classes as a grid that keeps over the action bar, the wild-shape swap (`cm_pick`, `cm_pick_hit`, `cm_pick_draw`) | `everglade/client/class-menu.coax` |

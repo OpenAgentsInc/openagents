@@ -20,7 +20,7 @@ wires it in.
 Some files sit under one zone's paths but serve more than one zone:
 
 - Everglade II loads Experimental's `charactercreator.coax` (as `cc`, for its
-  text and font) and `fivelab-bodies.coax` (the figures).
+  text and font) and `everglade/scene/bodies.coax` (the figures).
 - Everglade II and Experimental both load v1's `everglade-move-types.coax`,
   and Experimental's movement runs on v1's `everglade-step.coax`.
 
@@ -156,7 +156,7 @@ layer in `everglade/mounts.coax` (with the rider's keys) and
 `everglade/zone-mounts.coax` (mounts standing in a zone: E, the saddle, the
 prompt) and `everglade/zone-ride.coax` (a zone's keys handed to them, the
 dragon's Fire Breath). Experimental and the Archery Range ride through them
-(`bd_ride_posed` fivelab-bodies.coax poses the rider). The manifest
+(`bd_ride_posed` everglade/scene/bodies.coax poses the rider). The manifest
 lists the feature as not required yet, and any zone-local mount code (`Mount`,
 `mount_up`, `Horse`, a zone's own `ride_pose` and so on) fails the check. A
 wrapper of the shared `ride_pose` and a wiring file named for its horse pass

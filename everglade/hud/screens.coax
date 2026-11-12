@@ -4,7 +4,7 @@
 // Create's boxes on a desk and on a phone, a framed box, a framed prompt and a box's corners as a
 // Box. Plain data in, vertices out. Loaded by charactercreator.coax beside parts.coax, so the zones
 // that load charactercreator as cc call them as cc.eg_*.
-//   coax/bin/coax test apps/openagents-web/charactercreator.coax --only "eg plain"
+//   coax/bin/coax test everglade/scene/charactercreator.coax --only "eg plain"
 
 // A box from its corners, x0, y0, x1, y1.
 eg_box4 :: (r: [4] f32) -> Box { return Box.{x0 = r[0], y0 = r[1], x1 = r[2], y1 = r[3]}; }

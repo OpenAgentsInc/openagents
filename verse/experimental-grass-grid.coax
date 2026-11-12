@@ -7,7 +7,7 @@
 // Here the seeds of a group are kept sorted by the cell of a fixed grid they stand in, and inside a
 // cell in the order they were tried (so the first of a cell's seeds are still an even thinning of
 // it). A page then draws a cell's seeds as one run of instances, only the cells its view can see,
-// nearest first (apps/openagents-web/charactercreator.coax meadow_cull). The pack's builder sorts
+// nearest first (everglade/scene/charactercreator.coax meadow_cull). The pack's builder sorts
 // them (exg_sort), verse/tools/assets/grass_cells.coax sorts a pack that has them unsorted and
 // writes where each cell's seeds start (verse/experimental-grass-baked.coax).
 //   coax/bin/coax test verse/experimental-grass-grid.coax

@@ -23,7 +23,7 @@ static uint8_t inbox[4096];
 // zone's records, in its state: the module's own memory stays under host.js's 8 MiB start.
 static uint8_t catalog[65536];
 static coax_t_People rig;
-static float bake[6453720];        // fivelab-bodies.coax BD_BAKE_FLOATS
+static float bake[6453720];        // everglade/scene/bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;

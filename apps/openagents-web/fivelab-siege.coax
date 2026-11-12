@@ -403,7 +403,7 @@ siege_kind :: (c: RsCreature, l: [] u8, at: int) -> int {
   return put(l, n, RS_NPC_NAME[c.npc]);
 }
 
-// ---- the Siege's looks (fivelab-bodies.coax bd_look 13 to 16) and effects
+// ---- the Siege's looks (everglade/scene/bodies.coax bd_look 13 to 16) and effects
 
 // A siege figure's look: the watch in its blue tabards (Guards, Veterans), Knights as paladins,
 // Scouts as rangers, Priests as clerics, Mages as Evokers; Cultists in rough brown robes and

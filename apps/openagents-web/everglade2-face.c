@@ -3,7 +3,7 @@
 // The controller steps your body as fivelab-face.c's Player mode does: everglade-step.coax
 // (aethyr/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
 // (aethyr/sticks.coax). The scene is three stores: the records (the glade, its grass, your
-// character's parts), the clips baked once (into the state, sized by fivelab-bodies.coax), and the
+// character's parts), the clips baked once (into the state, sized by everglade/scene/bodies.coax), and the
 // kit pieces in view this frame.
 // In a room (everglade/client/net.coax, #13054) the controller steps at the room's rate, 1/30 s, each step's
 // input sent; the room's word on you starts you again where it has you and re-runs the inputs it

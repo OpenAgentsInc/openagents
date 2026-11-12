@@ -187,7 +187,7 @@ in the range. The range's module is an Everglade zone with the range on it.
 | The bow in the hand, its string, the draw pose | [`everglade/held-kit.coax`](../held-kit.coax) | Game |
 | The horse and the red dragon, and the rider's keys | [`everglade/mounts.coax`](../mounts.coax) | Game |
 | The mounts standing in a zone: E, the saddle, the prompt | [`everglade/zone-mounts.coax`](../zone-mounts.coax) | Game |
-| The scene: the meadow, your Ranger, the mounts drawn | `apps/openagents-web/charactercreator.coax` | App directory (section 9) |
+| The scene: the meadow, your Ranger, the mounts drawn | `everglade/scene/charactercreator.coax` | App directory (section 9) |
 | The Ranger's bar and the Longbow's rules | `apps/openagents-web/experimental-combat.coax`, `class-kit.coax`, `aethyr/rules/srd/` | App directory (section 9) |
 | Where things are | [`everglade/range/layout.coax`](../range/layout.coax) | The range |
 | Ring points and the tally | [`everglade/range/score.coax`](../range/score.coax) | The range |
@@ -260,7 +260,7 @@ lines.
 ## 10. What is not done
 
 - **The scene and the class bar still live in the app directory.**
-  `apps/openagents-web/charactercreator.coax` (the meadow, your figure, the
+  `everglade/scene/charactercreator.coax` (the meadow, your figure, the
   mounts drawn) and `apps/openagents-web/experimental-combat.coax` (the class
   bar and the SRD rules against the monsters) are loaded by
   `everglade/zone.coax` from where they are. They belong in `everglade/`. Each

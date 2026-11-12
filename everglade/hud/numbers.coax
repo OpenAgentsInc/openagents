@@ -5,7 +5,7 @@
 // spell's damage to many into one total, and points to a blow that struck you from off screen. A zone
 // only wires these in: it adds from its own authority's events, and projects each number with its own
 // camera. Nothing here changes what the ruleset applied.
-//   coax/bin/coax test apps/openagents-web/charactercreator.coax --only "eg numbers"
+//   coax/bin/coax test everglade/scene/charactercreator.coax --only "eg numbers"
 
 #load "../../aethyr/action/floats.coax" as fnum;
 
@@ -106,7 +106,7 @@ eg_fold_total :: (g: [] EgFolds, q: int, b: [] u8) -> string {
 // the striker is on screen (you see who struck).
 EG_STRUCK :: 1.2;
 // The bearing of (side, ahead): 0 ahead, clockwise, in [-pi, pi], within 2e-5 rad. Its own, since the
-// zones that load this declare atan2 twice over (aethyr/walk.coax, fivelab-bodies.coax).
+// zones that load this declare atan2 twice over (aethyr/walk.coax, everglade/scene/bodies.coax).
 eg_bearing :: (side: f32, ahead: f32) -> f32 {
   ax := abs(ahead); ay := abs(side);
   if ax == 0 && ay == 0 { return 0; }

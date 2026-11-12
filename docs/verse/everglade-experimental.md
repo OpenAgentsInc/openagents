@@ -151,7 +151,7 @@ You fight the monsters with your class's level 1 kit
 - The weapon keeps clear of your body. The head is a 12 cm sphere and the neck a capsule,
   and the weapon's real mesh boxes must stay at least 8 cm from both and outside a 15 cm
   torso capsule. The Blender script checks this every 1/120 s on the library rig and fails
-  the bake if the weapon comes closer. Tests in `apps/openagents-web/charactercreator.coax`
+  the bake if the weapon comes closer. Tests in `everglade/scene/charactercreator.coax`
   check it again every 1/60 s after retargeting onto both game bodies, through every clip and
   through the blends into and out of the cleave, the jump and the idle-to-run change.
 - The `.blend` source, the GLB and

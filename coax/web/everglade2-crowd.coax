@@ -35,7 +35,7 @@
 //      sound and puffs are undone and fade (107, 108). With --shot, DIR/levels-K.jpg.
 //   --layer, after the runs and before the walk: page 0 runs (W held) and casts (key 1), and with --shot
 //      DIR/layer-run-0..2.jpg are three of its frames mid-cast (the legs in the run's stride, the arms
-//      casting: fivelab-bodies.coax bd_layer) and DIR/layer-remote-1.jpg page 1's view of it; then it
+//      casting: everglade/scene/bodies.coax bd_layer) and DIR/layer-remote-1.jpg page 1's view of it; then it
 //      stands, casts again, and DIR/layer-stand-0.jpg is the standing cast, the whole body's.
 // Nothing opens on screen and no sound plays. Each Chrome this starts is closed before it exits.
 #import "Basic";

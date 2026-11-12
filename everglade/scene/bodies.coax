@@ -17,7 +17,7 @@
 // Skeleton takes its square at once, so the body is handed to a corpse of its own to finish).
 // Far figures leave off their hair (bd_build's LOD); the farthest, a few pixels tall, are 13 blocks
 // on the same bones, 156 triangles for some 10,000; figures out of view are not drawn.
-//   coax/bin/coax test --library apps/openagents-web/fivelab-bodies.coax
+//   coax/bin/coax test --library everglade/scene/bodies.coax
 
 #module "openagents.fivelab.bodies";
 

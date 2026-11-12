@@ -268,7 +268,11 @@ Everglade's code is currently spread across the repository:
 | What | Where it is now |
 | --- | --- |
 | The land, planting, ground and light | `verse/everglade2/` |
-| The page, movement, casting, room and Character Create in the world | `apps/openagents-web/everglade2*.coax` |
+| The client: the page's units, casting, the room's client and Character Create in the world | `everglade/client/` |
+| What the client and the room both load: movement, the class kits, the casts' rules, the wire | `everglade/shared/` |
+| The room's rules | `everglade/server/` |
+| Character Create's scene and the figures, which Experimental shares | `everglade/scene/` |
+| The page's C face, which builds `build/everglade2.wasm` | `apps/openagents-web/everglade2-face.c` |
 | The asset pack | `verse/tools/assets/everglade2_pack.coax` |
 | Experimental's combat and hostiles | `apps/openagents-web/experimental-*.coax`, `verse/experimental-*.coax` |
 | SRD rules | `aethyr/rules/srd/` |

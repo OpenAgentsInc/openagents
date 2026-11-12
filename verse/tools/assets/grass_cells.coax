@@ -3,7 +3,7 @@
 // (character_glade_pack.coax gp_grass_seeds) sorts the seeds it writes the same way. This sorts a
 // pack that holds them unsorted, where they are (no byte of the pack moves but the seeds of each
 // "C glade/grassK" row), and writes where each cell's seeds start as Coax, which the page reads
-// (apps/openagents-web/charactercreator.coax meadow_cull):
+// (everglade/scene/charactercreator.coax meadow_cull):
 //
 //   gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
 //   coax/web/tool.sh verse/tools/assets/grass_cells.coax --sort /tmp/glade.pack /tmp/glade-new.pack verse/experimental-grass-baked.coax

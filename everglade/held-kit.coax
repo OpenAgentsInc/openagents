@@ -7,8 +7,8 @@
 // arrow is nocked.
 //
 // A fragment of charactercreator.coax's module (it loads this where the code used to stand): it
-// reads that module's Creator and fivelab-bodies.coax as figs. Its checks run with that file's:
-//   coax/bin/coax test --library apps/openagents-web/charactercreator.coax --only "bow"
+// reads that module's Creator and everglade/scene/bodies.coax as figs. Its checks run with that file's:
+//   coax/bin/coax test --library everglade/scene/charactercreator.coax --only "bow"
 // ---- the weapon in your hand (#13025): a melee class's kit, on the right hand's bone, its grip in the fist.
 // A kit: which of the pack's weapons (glade/weapon0 Axe_Double, 1 Sword, 2 Sword_Golden, 3 Sword_big), its scale
 // from the source, and where along the blade (+Y, source units) the fist closes.
@@ -284,7 +284,7 @@ bow_carry_mix :: (a:f32,b:f32,m:f32)->f32 {return a+(b-a)*m;}
 // CC_BOW_CARRY_TURN toward ahead. On the move (bow_move) the legs swing through where the standing lower
 // limb hangs, so the bow comes more upright, its top a little ahead and its string a little more ahead
 // (the CC_BOW_WALK_ values), and the arm's swing carries it fore and aft. The bow arm hangs out from
-// the body and a little ahead meanwhile (fivelab-bodies.coax bd_arm_out, on the GPU fivelab_arm). The
+// the body and a little ahead meanwhile (everglade/scene/bodies.coax bd_arm_out, on the GPU fivelab_arm). The
 // bow turns from the carry to the drawn hold as the aim comes in to CC_BOW_CARRY_TO.
 CC_BOW_CARRY_TILT :: 0.3;    // radians
 CC_BOW_CARRY_TURN :: 0.1;    // radians: the string nearly straight in, close to the bow seen from ahead
@@ -323,7 +323,7 @@ bow_string_medial :: (w:[12]f32,yaw:f32,at:[3]f32)->f32 {
  return abs(gx)-abs(sx);
 }
 // A bow carrier's body records, from to to (their flags, record float 15): the bow arm out on the GPU
-// (fivelab-bodies.coax BD_ARM_FLAG), a figure's own records only (flags below 4: not a block or a kit).
+// (everglade/scene/bodies.coax BD_ARM_FLAG), a figure's own records only (flags below 4: not a block or a kit).
 bow_arm_records :: (out:[]f32,from:int,to:int) {
  for i:from..<to {f:=out[i*24+15];if f>=0 && f<3.5 {out[i*24+15]=f+f32(figs.BD_ARM_FLAG);}}
 }
@@ -412,7 +412,7 @@ cc_unit :: (v:[3]f32)->[3]f32 {
 // The bow's aim pose over a0, for any body: `aim` how far the aim has come in (bow.bow_aim), `draw`
 // how far the string is back, `nocked` an arrow still on it, `loose_age` seconds since the last
 // loose. Its keyed draw (aethyr/action/bow-pose.coax, baked as figs.BD_BOW) lies over the upper
-// body through the shared layer (fivelab-bodies.coax bd_layer): standing the whole body draws; on
+// body through the shared layer (everglade/scene/bodies.coax bd_layer): standing the whole body draws; on
 // the move the walk keeps the legs.
 held_bow_layer :: (a0: figs.BdAnim, aim: f32, draw: f32, nocked: bool, loose_age: f32, clock: f32) -> figs.BdAnim {
   if aim <= 0.001 { return a0; }

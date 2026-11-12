@@ -116,7 +116,7 @@ square to `across`, the way from your right to your left) the inner point lies t
 the outer one. Above 0, the inner side faces the body.
 
 The realm owns the posing. Experimental's check (`cc_bow_sweep` in
-`apps/openagents-web/charactercreator.coax`) samples every frame of every
+`everglade/scene/charactercreator.coax`) samples every frame of every
 base clip and of the bow's draw and release, on both bodies, and places the
 bow with the same `bow_matrix` and `bow_string_points` that draw it. The
 body's capsules run joint to joint: upper arms and forearms, thighs and

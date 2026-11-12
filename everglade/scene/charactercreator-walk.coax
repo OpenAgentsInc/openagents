@@ -13,7 +13,7 @@
 CC_WALK_SECONDS :: 30.0;   // from the first step to the end of the road, inside the gate
 CC_WALK_LEAD :: 0.35;      // the controls fade and the character turns before it steps off
 CC_WALK_ACCEL :: 1.2;      // seconds to reach walking pace
-CC_WALK_STRIDE :: 1.3;     // metres a walk cycle covers (the engine's gait, fivelab-bodies.coax)
+CC_WALK_STRIDE :: 1.3;     // metres a walk cycle covers (the engine's gait, everglade/scene/bodies.coax)
 CC_WALK_UI :: 0.5;         // seconds the controls take to fade
 CC_WALK_CAMERA :: 3.0;     // seconds the camera takes to swing behind the character
 CC_WALK_FADE :: 0.9;       // seconds of the host's cross-fade into Everglade (or the fade to black before the page changes)

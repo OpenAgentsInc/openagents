@@ -31,7 +31,7 @@ IMPACT = 0.46                 # share of the cleave at its impact (0.55 s of 1.2
 FIST_ALONG = 0.08             # metres from the wrist to the fist's middle, toward the knuckles
 FIST_PALM = 0.035             # and toward the palm
 FINGERS = ("thumb_", "index_", "middle_", "ring_", "pinky_")
-# Each weapon as the game holds it (apps/openagents-web/charactercreator.coax CC_KIT_*): the metres
+# Each weapon as the game holds it (everglade/scene/charactercreator.coax CC_KIT_*): the metres
 # between the fists, its scale from the source, where the right fist closes (source units up the
 # weapon), and its mesh's bounds as boxes (source y0, y1, x0, x1, z0, z1; x is the edge, y up the haft).
 WEAPONS = {

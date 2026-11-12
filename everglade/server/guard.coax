@@ -14,7 +14,7 @@
 #load "../dash.coax";
 #load "creature-wire.coax";   // g2 and g3: the one codec the page reads them with (#13246)
 
-E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, fivelab-bodies.coax BD_RUN_FROM)
+E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, everglade/scene/bodies.coax BD_RUN_FROM)
 E2G_CHASE :: E2_RUN_SPEED; // m/s: after the one who struck him, a run as fast as yours (everglade/shared/move.coax)
 E2G_REACH_FT :: 5;          // his Longsword's reach (feet), measured as the rules measure an Opportunity Attack
 E2G_NEAR :: 24;             // trunks round him, for his steering (room-tick.c E2G_NEAR_C)

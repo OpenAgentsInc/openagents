@@ -1,12 +1,12 @@
 // Everglade for desktop: your model. You are the web's player model: Character Create's default
 // character (charactercreator.coax), its Quaternius parts from Everglade II's pack, skinned from
-// the same baked clips (fivelab-bodies.coax) by the same vertex math (Model.metal, from
+// the same baked clips (everglade/scene/bodies.coax) by the same vertex math (Model.metal, from
 // gpu/fivelab.coax fivelab_scene_vs). The host gives this the pack's catalog, uploads the bake and
 // draws the records; workshop.coax's ws_you says where you stand and what you are doing.
 // A unit of its own: charactercreator.coax and aethyr/walk.coax can't share one (each has an atan2).
 //   coax/bin/coax test --library apps/everglade-desktop/model.coax --only "your model"
-#load "../openagents-web/charactercreator.coax" as cc;
-#load "../openagents-web/fivelab-bodies.coax" as figs;
+#load "../../everglade/scene/charactercreator.coax" as cc;
+#load "../../everglade/scene/bodies.coax" as figs;
 
 WS_MODEL_PARTS :: 48;     // records at most: 40 worn pieces, a head, hair and a beard
 WS_STRIDE_WALK :: 1.3;    // metres one loop of the walk covers (people-rig.coax PEOPLE_DISTANCE)

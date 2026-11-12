@@ -73,7 +73,7 @@ Quaternius parts from Everglade II's pack (`everglade2.pack`, copied into
 the app).
 
 - **Same code.** `model.coax` loads the web's `charactercreator.coax` and
-  `fivelab-bodies.coax` for the parts you wear, the baked clips and each
+  `everglade/scene/bodies.coax` for the parts you wear, the baked clips and each
   frame's draw records.
 - **Same vertex math.** `Model.metal` skins each vertex as the web's
   `fivelab_scene_vs` does, with the same dye and eye rules.

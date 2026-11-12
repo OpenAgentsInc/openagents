@@ -701,7 +701,7 @@ header:
 coax/remote/remote.sh run -- bash -c 'cd coax && web/tool.sh tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
   apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax \
   everglade/client/client.coax:everglade/shared/move.coax \
-  apps/openagents-web/charactercreator.coax:verse/character-glade.coax'
+  everglade/scene/charactercreator.coax:verse/character-glade.coax'
 ```
 
 The same change makes a cold compile cheaper: a large store the parser and

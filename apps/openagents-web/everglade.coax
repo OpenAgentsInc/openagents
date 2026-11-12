@@ -105,7 +105,7 @@
 #load "../../aethyr/budget.coax";
 #load "../../aethyr/flyover.coax";   // #fly=PATH: the flyover benchmark's camera (coax/web/flyover.coax, #13017)
 #load "everglade-glade.coax";   // the glade south of the South Gate, Character Create's, in this world (#13018)
-#load "charactercreator-font.coax";   // AR Kai C's advances, for Character Create's labels
+#load "../../everglade/scene/charactercreator-font.coax";   // AR Kai C's advances, for Character Create's labels
 #load "everglade-create.coax";   // Character Create: this world in the studio at the glade's clearing (#13018)
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's

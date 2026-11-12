@@ -27,7 +27,7 @@ static coax_t_WorldBuilder *state_at(uint32_t state) { return &walk_at(state)->b
 static coax_v_t_WorldBuilder at(uint32_t state) { return (coax_v_t_WorldBuilder){state_at(state), 1}; }
 static coax_t_EgZone *zone_at(uint32_t state) { return &walk_at(state)->z.e[0]; }
 static coax_v_t_EgZone zone(uint32_t state) { return (coax_v_t_EgZone){zone_at(state), 1}; }
-// The people's catalog; the rig the clips are baked from, and the bake (fivelab-bodies.coax BD_BAKE_FLOATS).
+// The people's catalog; the rig the clips are baked from, and the bake (everglade/scene/bodies.coax BD_BAKE_FLOATS).
 static uint8_t people_catalog[65536];
 static coax_t_People rig;
 static float bake[6453720];

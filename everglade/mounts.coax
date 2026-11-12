@@ -91,7 +91,7 @@ EG_REFUSED_S :: 2.0;       // seconds "No room to step down" shows
 EG_PRESS_NONE :: 0; EG_PRESS_MOUNTED :: 1; EG_PRESS_DISMOUNTED :: 2; EG_PRESS_NO_ROOM :: 3; EG_PRESS_REFUSED :: 4; EG_PRESS_LAND_FIRST :: 5;
 // The kinds of mount.
 EG_HORSE :: 0; EG_DRAGON :: 1;
-// The seat a rider's legs take on each kind (fivelab-bodies.coax BD_SEAT_*: the same order).
+// The seat a rider's legs take on each kind (everglade/scene/bodies.coax BD_SEAT_*: the same order).
 EG_SEAT_OF :: [2] int.[0, 1];
 // SRD 5.2.1, Adult Red Dragon: Huge, Speed 40 ft, Fly 80 ft. The model is 14 m from snout to tail; its
 // body's capsule, the reach to mount from its flank, and the step off clear of a folded wing. Nothing
@@ -299,7 +299,7 @@ eg_saddle :: (m: EgMounts, k: int, ground: f32, now: f32) -> [3] f32 {
   f := mount_frame(h, EG_HORSE_CLIP);
   return mount_seat(h, mount_feet(h, ground), [3] f32.[EG_SADDLE[f * 3], EG_SADDLE[f * 3 + 1] + f32(EG_HORSE_SEAT_UP), EG_SADDLE[f * 3 + 2]]);   // a jump lifts the saddle with the horse
 }
-// The seat your legs take on what you ride (fivelab-bodies.coax BD_SEAT_*).
+// The seat your legs take on what you ride (everglade/scene/bodies.coax BD_SEAT_*).
 eg_seat :: (m: EgMounts) -> int { return ifx m.riding >= 0 then EG_SEAT_OF[m.kind[m.riding]] else 0; }
 // Where you are while you ride (ground: under the horse) and your pelvis's height standing (hip): from
 // where you stood to the saddle and back as you mount and get off.

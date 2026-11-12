@@ -5,7 +5,7 @@
 // banner and the frame rate's plaque. Plain data in, vertices out: Everglade II and Everglade
 // Experimental both draw through these. Each part lays its frames (hud_emit) before its words, so
 // the words sit on the iron. Sizes are CSS px times k (device px a CSS px).
-//   coax/bin/coax test apps/openagents-web/charactercreator.coax --only "eg "
+//   coax/bin/coax test everglade/scene/charactercreator.coax --only "eg "
 
 // What a unit frame says: your portrait plate, or your target's frame beside it. A number the page
 // does not know yet is left out, never guessed: max 0 (no room yet) draws no health bar; ac 0 no

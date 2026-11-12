@@ -2,7 +2,7 @@
 // torches and its monsters. The scene packer (verse/tools/assets/character_glade_pack.coax gp_dungeon)
 // places the Quaternius Modular Dungeon pieces from these functions, the walker and the camera
 // (experimental-village.coax) and the monsters (experimental-hostiles.coax) collide with the same
-// boxes, and Character Create (apps/openagents-web/charactercreator.coax) lights it from the same
+// boxes, and Character Create (everglade/scene/charactercreator.coax) lights it from the same
 // torches and draws only the parts near you.
 //
 // The dungeon is a walled, roofed block on a 5 m grid, 11 cells west to east by 22 north to south,

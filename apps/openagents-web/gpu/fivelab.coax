@@ -14,7 +14,7 @@
 //    toon bands, cool shadows and haze (verse/style.coax), and writes its depth, so the figures
 //    stand in it.
 // The figures are scene_vs/scene_fs: the Quaternius people Everglade's NPCs wear (the realm's pack,
-// verse/tools/people.py's parts), skinned on the GPU from the clips fivelab-bodies.coax bakes once
+// verse/tools/people.py's parts), skinned on the GPU from the clips everglade/scene/bodies.coax bakes once
 // into the bake store (three rows of four a joint, 65 joints a frame), an instance a part a figure
 // (FivelabObj, the objects store), lit in the glade's bands.
 // Either way the log panel's dark glass goes over it. fx_vs/fx_fs draw the strokes
@@ -445,7 +445,7 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
 // 16 bits over a 2.5 m box, the layer and the vertex's kind, the normal in three signed bytes, uv in
 // 16 bits, four joints and four weights in bytes), skinned on the GPU by up to four joints of a baked
 // frame of the bake store, a second frame mixed in while a clip fades into the next.
-// FivelabObj, an instance a part a figure (fivelab-bodies.coax bd_record):
+// FivelabObj, an instance a part a figure (everglade/scene/bodies.coax bd_record):
 //   a: where it stands x, y, z (m), its yaw
 //   b: its frame's first row in the bake, the frame it fades from, how much of that one, the part's
 //      first vertex word in the pack
@@ -457,7 +457,7 @@ FivelabObj :: struct {a:V4; b:V4; c:V4; d:V4; e:V4; f:V4; }
 FivelabS :: struct {pos:V4; world:V3; normal:V3; uv:V2; slice:u32 #flat; tint:V3; dye:V4 #flat; local:V3; who:u32 #flat; }
 FIVELAB_SPAN :: 2.5f32;
 FivelabSkinned :: struct {p:V3; n:V3; }
-// The action layer (fivelab-bodies.coax bd_upper, bd_gait_share): joint j's share of an action laid
+// The action layer (everglade/scene/bodies.coax bd_upper, bd_gait_share): joint j's share of an action laid
 // over the gait on the move. 0 the root, pelvis and legs (55 to 64), 1 the arms, neck and head, the
 // spine partly. A record's b.z below 1.5 is the whole body's share of the second row; from 2 up a
 // layer's code, 2 + the upper body's share * 255 + 256 * the legs' * 255.
@@ -484,7 +484,7 @@ fivelab_gait_share :: (code:f32,j:u32)->f32 {
   #assert abs(fivelab_gait_share(c,2)-(0.2f32*0.4f32+0.6f32))<0.001;
 }
 fivelab_mix4 :: (a:V4,b:V4,t:f32)->V4 { return v4(a.x+((b.x-a.x)*t),a.y+((b.y-a.y)*t),a.z+((b.z-a.z)*t),a.w+((b.w-a.w)*t)); }
-// The bow arm (fivelab-bodies.coax bd_arm_layer, #13073): on a bow carrier's records (flag bit 8), on
+// The bow arm (everglade/scene/bodies.coax bd_arm_layer, #13073): on a bow carrier's records (flag bit 8), on
 // the idle, walk, run and jump loop frames, the left arm's joints (8 to 30) turned FIVELAB_ARM_OUT about
 // the figure's forward axis, then FIVELAB_ARM_FWD ahead, through the shoulder where the frame has it;
 // then joints 9 to 30 opened FIVELAB_ELBOW_OPEN of the elbow's bend about its hinge; standing (the idle)
@@ -551,7 +551,7 @@ fivelab_arm :: (row:u32,j:u32,m:FivelabRows,bake:[]V4)->FivelabRows {
   ao:f32=FIVELAB_ARM_MOVE_OUT; af:f32=FIVELAB_ARM_MOVE_FWD; ak:f32=FIVELAB_ELBOW_MOVE_OPEN;
   if still { ao=FIVELAB_ARM_OUT; af=FIVELAB_ARM_FWD; ak=FIVELAB_ELBOW_OPEN; }
   ca:f32=cos(ao); sa:f32=sin(ao); cf:f32=cos(af); sf:f32=sin(af);
-  // the shoulder turn's rows (fivelab-bodies.coax bd_arm_turn): out about +Z, then ahead about the side axis
+  // the shoulder turn's rows (everglade/scene/bodies.coax bd_arm_turn): out about +Z, then ahead about the side axis
   r1:FivelabRows;r1.a=v4(ca,-sa,0.0f32,0.0f32);r1.c=v4(cf*sa,cf*ca,sf,0.0f32);r1.e=v4(-sf*sa,-sf*ca,cf,0.0f32);
   t1:FivelabRows=fivelab_turn_at(r1,p);
   if (j==cast(u32)8) { return fivelab_aff(t1,m); }
@@ -559,7 +559,7 @@ fivelab_arm :: (row:u32,j:u32,m:FivelabRows,bake:[]V4)->FivelabRows {
   w:V4=fivelab_at(fivelab_aff(t1,fivelab_joint(row,cast(u32)10,bake)),qw);
   return fivelab_aff(fivelab_turn_at(fivelab_elbow_open(p,e,w,ak),e),fivelab_aff(t1,m));
 }
-#test "the shader's bow arm turns as the bodies' does (fivelab-bodies.coax bd_arm_layer)" {
+#test "the shader's bow arm turns as the bodies' does (everglade/scene/bodies.coax bd_arm_layer)" {
   bake:[15800]V4;
   for i:0..<15800 { k:=i%3; bake[i]=v4(ifx k==0 then 1.0f32 else 0.0f32,ifx k==1 then 1.0f32 else 0.0f32,ifx k==2 then 1.0f32 else 0.0f32,0.0f32); }
   id:=FivelabRows.{a=bake[0],c=bake[1],e=bake[2]};
@@ -651,7 +651,7 @@ fivelab_gaunt :: (p:V3)->V3 {
   }
   return q;
 }
-// A far figure as 13 blocks on its bones (fivelab-bodies.coax BD_BLOCK_PX): hips, chest, head, the
+// A far figure as 13 blocks on its bones (everglade/scene/bodies.coax BD_BLOCK_PX): hips, chest, head, the
 // arms' two halves, thighs, shins and feet, each a box in the bind pose (the male body's joints,
 // people-rig.coax PEOPLE_BIND_M) carried by its one joint, 36 vertices a box, none indexed. Per
 // box: its joint, middle, half sizes and what it is (0 skin, 1 cloth, 2 the cloth's darker half,

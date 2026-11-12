@@ -146,7 +146,7 @@ cache for each run; 2026-11-09):
 | Unit | Checks | Before | After | Check phase before | Check phase after |
 | --- | --- | --- | --- | --- | --- |
 | `apps/openagents-web/status.coax` | 90 | 84.6 s | 5.8 s | 83.0 s | 1.4 s |
-| `apps/openagents-web/charactercreator.coax` | 439 | 68.3 s | 39.7 s | 26.0 s | 2.3 s |
+| `everglade/scene/charactercreator.coax` | 439 | 68.3 s | 39.7 s | 26.0 s | 2.3 s |
 | `apps/openagents-web/fivelab.coax` | 1,256 | 144.5 s | 44.5 s | 104.5 s | 7.2 s |
 
 The check phase is the `authority` time. In fivelab's, the evaluator spent

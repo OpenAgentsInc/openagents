@@ -2,7 +2,7 @@
 // keeps the room's words on him). He is drawn as everyone is, a Character Create body (e2_body) dressed
 // in the Quaternius knight's armour this pack carries: the armet, the round pauldrons, the plate
 // cuirass, the armoured arms, the greaves and the sabatons, the Ultimate RPG Sword in his right hand. He is drawn a jitter buffer behind, where
-// the room had him; his gait comes from how far he goes (fivelab-bodies.coax bd_step), so his feet
+// the room had him; his gait comes from how far he goes (everglade/scene/bodies.coax bd_step), so his feet
 // keep to the ground; his feet stand on the land's admitted triangles (e2g_y) as yours do; he takes
 // the shared glade light every body takes. A new guard, and one coming into view, thins in; a fallen
 // one plays his fall, lies, then thins out. Blows at him and his at you show their Hit Points over

@@ -1,6 +1,6 @@
 // Firm reason: 1 (browser host: the glue between the page's DOM, a same-origin frame and Coax's wasm)
 // Action 18: open another Coaxial page in place while this one still runs, as Character Create
-// does while the character walks to Everglade (apps/openagents-web/charactercreator-walk.coax).
+// does while the character walks to Everglade (everglade/scene/charactercreator-walk.coax).
 // The page is loaded for real, by its own host.js, in a full-window frame under this page's
 // canvas (which is opaque, so nothing of it shows): its engine, shaders, packs, textures and room
 // seat, up to its first drawn frame. Then its world loop is paused until it is shown. Progress

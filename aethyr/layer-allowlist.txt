@@ -68,13 +68,10 @@ aethyr-up aethyr/world/stream-present-shader.coax -> verse/gpu/shader.coax
 aethyr-up aethyr/world/weather.coax -> verse/water-weather.coax
 
 # The game loads from the web app
-everglade-up everglade/zone.coax -> apps/openagents-web/charactercreator.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/druid-scene.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/experimental-combat.coax
 everglade-up everglade/zone.coax -> apps/openagents-web/experimental-objects.coax
-everglade-up everglade/zone.coax -> apps/openagents-web/fivelab-bodies.coax
-everglade-up everglade/client/client.coax -> apps/openagents-web/charactercreator.coax  # Everglade's client moved out of apps/openagents-web/; Character Create's scene follows it (#13268)
-everglade-up everglade/client/client.coax -> apps/openagents-web/fivelab-bodies.coax  # Everglade's client moved out of apps/openagents-web/; the figures follow it (#13268)
+everglade-up everglade/scene/charactercreator.coax -> apps/openagents-web/font.coax  # Character Create's scene moved out of apps/openagents-web/; the site's stroke font is next (#13268)
 
 # Product code loads test code
 tests aethyr/actors/behavior-plan.coax -> aethyr/actors/tests/behavior-plan.coax

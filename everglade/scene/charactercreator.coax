@@ -1,8 +1,8 @@
 // Aethyr's live Quaternius wardrobe. Shared people parts, skinning and baked clips;
 // no cloned geometry or per-outfit skeleton. Used by fivelab's character-creator route.
 #module "openagents.charactercreator";
-#load "font.coax";
-#load "../../everglade/dragon-clips.coax" as dragon;   // the Shapechange dragon's baked frames
+#load "../../apps/openagents-web/font.coax";
+#load "../dragon-clips.coax" as dragon;   // the Shapechange dragon's baked frames
 #load "../../verse/character-glade.coax" as glade;
 #load "../../verse/experimental-terrain.coax" as meadow;
 #load "../../verse/experimental-grass-grid.coax" as ggrid;    // the glade's grass seeds by cell (meadow_cull)
@@ -14,11 +14,11 @@
 #load "../../aethyr/query.coax" as query;
 #load "../../aethyr/space.coax" as world;
 #load "charactercreator-font.coax";
-#load "../../everglade/hud/fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
+#load "../hud/fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
 #load "../../aethyr/ui/hud-menu.coax";   // the engine's HUD style layer (hud-style.coax) and widgets; Everglade draws in FANTASY (docs/verse/hud-styles.md)
-#load "../../everglade/hud/parts.coax";   // Everglade's HUD parts in that style (the game's, every zone's)
-#load "../../everglade/hud/screens.coax";   // Everglade's plain HUD parts: the clip list, health, the boxes (#13083)
-#load "../../everglade/hud/numbers.coax";   // Everglade's damage numbers, every zone's (#13080)
+#load "../hud/parts.coax";   // Everglade's HUD parts in that style (the game's, every zone's)
+#load "../hud/screens.coax";   // Everglade's plain HUD parts: the clip list, health, the boxes (#13083)
+#load "../hud/numbers.coax";   // Everglade's damage numbers, every zone's (#13080)
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as dungeon;
 #load "../../verse/experimental-aribeth.coax" as aribeth;
@@ -26,18 +26,18 @@
 #load "charactercreator-crew.coax";   // the builders at the build sites (#13108)
 #load "../../aethyr/character-appearance.coax" as appearance;
 VERTEX_FLOATS :: 16;
-#load "fivelab-bodies.coax" as figs;
+#load "bodies.coax" as figs;
 #load "../../aethyr/action/attach-overlap.coax" as overlap;   // a held item through the body (#13073)
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's world: the mouse looks round with no button held
 #load "../../aethyr/cam/firstperson.coax" as fpcam;   // zoomed all the way in, the camera is your eyes
 #load "../../aethyr/action/mount.coax" as mount;
 #load "../../aethyr/action/deed.coax";       // your bearing, as the mounts ask with it
-#load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
+#load "../mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "../../aethyr/world/props.coax" as wprops;   // a zone's own standing things: what you walk into and an arrow sticks in
-#load "../../everglade/zone-mounts.coax";   // Everglade's horse and red dragon standing in a zone: placed, mounted, ridden, their prompt (game)
+#load "../zone-mounts.coax";   // Everglade's horse and red dragon standing in a zone: placed, mounted, ridden, their prompt (game)
 #load "../../aethyr/cam/track.coax" as trk;   // a ?stage= setup's camera track (fivelab.coax lab_stage)
 #load "../../aethyr/world/build-site.coax" as bs;          // build sites at any progress (#13106)
-#load "../../everglade/world/housewright.coax" as hw;      // the house tiers' parts
+#load "../world/housewright.coax" as hw;      // the house tiers' parts
 #load "../../aethyr/world/building.coax" as building;
 
 // Shared with Everglade II: sampled frames over the last half second.
@@ -383,7 +383,7 @@ experimental_figure :: (s:[]Creator,a0:figs.BdAnim)->figs.BdAnim {
  // a drawn bow: its aim pose over what you were doing (everglade/held-kit.coax held_bow_layer)
  if !(s[0].dev_animations && s[0].preview_clip>=0) && !s[0].airborne {a=held_bow_layer(a,s[0].aim,s[0].draw,s[0].nocked,s[0].clock-s[0].loose_at,s[0].clock);}
  if !(s[0].dev_animations && s[0].preview_clip>=0) && s[0].swing_clip>=0 && s[0].clock-s[0].swing_at<figs.bd_seconds(s[0].swing_clip) {
-  // a blow: its clip over what you were doing (fivelab-bodies.coax bd_layer): standing the whole body,
+  // a blow: its clip over what you were doing (everglade/scene/bodies.coax bd_layer): standing the whole body,
   // on the run the upper body only, the run keeping the legs
   g:=a;
   // a two-hander's blow is over its hold, never over the jump's free arms (they'd carry the weapon into you)
@@ -396,7 +396,7 @@ experimental_figure :: (s:[]Creator,a0:figs.BdAnim)->figs.BdAnim {
 experimental_swing_weight :: (s:[]Creator)->f32 {
  return figs.bd_layer_weight(s[0].clock-s[0].swing_at,figs.bd_seconds(s[0].swing_clip));
 }
-#load "../../everglade/held-kit.coax";   // the weapon in your hand: every class's kit, the Ranger's bow carried and drawn (#13079)
+#load "../held-kit.coax";   // the weapon in your hand: every class's kit, the Ranger's bow carried and drawn (#13079)
 // ---- a two-hander's room (#13025): the weapon's mesh as boxes, kept 8 cm off the head and neck and out of
 // the torso in every pose the game shows (verse/tools/assets/two_hand_clips.py checks the same in Blender).
 // Each kit's boxes in source units: y0, y1 (up the haft), x0, x1 (the edge), z0, z1, from Axe_Double and Sword_big.
@@ -445,7 +445,7 @@ two_hand_room :: (pal:[]f32,bind:[6][3]f32,k:int)->[3]f32 {
  torso:=cc_capsule_room(w,k,s1,[3]f32.[s3[0]+su[0]*0.08,s3[1]+su[1]*0.08,s3[2]+su[2]*0.08],0.15);
  return [3]f32.[head,neck,torso];
 }
-// The baked pose (palette rows) of clip c at frame f, sampled from its rig as fivelab-bodies.coax bakes it,
+// The baked pose (palette rows) of clip c at frame f, sampled from its rig as everglade/scene/bodies.coax bakes it,
 // through the caller's scratch Skin sk (each joint's pose is written before it is read), not a new one a call.
 cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,sk:[]figs.Skin,female:bool,c:int,f:int,out:[]f32) {
  if c==figs.BD_BOW {figs.bd_bow_pose(ppl,ifx female then 1 else 0,f,out);return;}
@@ -456,7 +456,7 @@ cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,sk:[]figs.Skin,female:bool,c:in
 }
 // The least room, over every pose a two-hander shows, into room (three a row: head, neck, torso): rows 0 to 5
 // the six owned clips played alone at 60 a second on both bodies; then the blends a frame of the game shows
-// (experimental_figure, mixed as fivelab-bodies.coax bd_record and the shader mix them), each kit's rows 6 to 11:
+// (experimental_figure, mixed as everglade/scene/bodies.coax bd_record and the shader mix them), each kit's rows 6 to 11:
 // the cleave from standing, the cleave on the run, a standing jump, a running jump, a cleave in the air, and
 // the hold's idle to run and back.
 CC_ROOM_ROWS :: 18;

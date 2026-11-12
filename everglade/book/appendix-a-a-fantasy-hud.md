@@ -5,7 +5,7 @@
 > parts are in
 > [`everglade/hud/parts.coax`](../../everglade/hud/parts.coax),
 > and its renderer is in
-> [`apps/openagents-web/charactercreator.coax`](../../apps/openagents-web/charactercreator.coax).
+> [`everglade/scene/charactercreator.coax`](../scene/charactercreator.coax).
 > [HUD styles](../../docs/verse/hud-styles.md) is the reference.
 > This appendix names functions and has no source listings yet.
 
@@ -71,7 +71,7 @@ In `aethyr/ui/hud-style.coax`:
 - The style named `"fantasy"` is FANTASY, and anything else is SCIFI.
 - A tray leaves each slot's picture clear.
 
-In `apps/openagents-web/charactercreator.coax`:
+In `everglade/scene/charactercreator.coax`:
 
 - `#test "eg portrait: a plate with the name, the class, health and AC; nothing
   it does not know"`.

@@ -7,8 +7,8 @@
 // verse/tools/assets/everglade2_pack.coax, and the passes gpu/everglade2.coax. everglade2-face.c steps
 // the controller (everglade-step.coax) as fivelab-face.c does; this unit says what is round you,
 // where you may stand, and what is drawn.
-#load "../../apps/openagents-web/charactercreator.coax" as cc;
-#load "../../apps/openagents-web/fivelab-bodies.coax" as figs;
+#load "../scene/charactercreator.coax" as cc;
+#load "../scene/bodies.coax" as figs;
 #load "../shared/everglade-move-types.coax";
 #load "../shared/move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
 #load "net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
