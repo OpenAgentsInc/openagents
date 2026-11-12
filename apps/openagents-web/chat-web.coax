@@ -82,12 +82,12 @@ CW_MODEL_NOTES :: [10] string.["Google. Answers from what it knows", "Google. An
 // Each has its own short list of models; "" is the agent's own default.
 CW_AGENTS :: 5;
 CW_AGENT_NAMES :: [5] string.["OpenAgents", "Claude Code", "Codex", "Antigravity", "Microcoder"];
-CW_LM :: 4;   // a local agent's models, at most
-CW_LM_N :: [4] int.[4, 1, 4, 3];
-CW_LM_NAMES :: [16] string.["Default", "Haiku 5.5", "Sonnet 5.5", "Opus 5.5",   "Default", "", "", "",
-  "Default", "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon",   "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", ""];
-CW_LM_IDS :: [16] string.["", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",   "", "", "", "",
-  "", "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon",   "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", ""];
+CW_LM :: 5;   // a local agent's models, at most
+CW_LM_N :: [4] int.[5, 1, 4, 3];
+CW_LM_NAMES :: [20] string.["Default", "Fable 5.2", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5",   "Default", "", "", "", "",
+  "Default", "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "",   "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "", ""];
+CW_LM_IDS :: [20] string.["", "claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",   "", "", "", "", "",
+  "", "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "",   "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "", ""];
 CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
@@ -1513,4 +1513,19 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   #assert s[0].flight == CF_NONE && coaxial_chatweb_stop(s) && s[0].log_due;
   b = coaxial_chatweb_frame(s, 0.016, true);
   #assert s[0].flight == CF_LOG && cw_test_door(s) == "/local/log?id=20261112-042601-123&after=-1";
+}
+
+#test "Claude Code's models start with Fable 5.2, and the one chosen goes with the message" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_local(s, CW_T_SESSIONS);
+  s[0].model = CW_HOSTED;
+  b := coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_press(s, "model"); b = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "lm.0.t")) == "Default" && tr_text_of(t, tr_find(t, "lm.1.t")) == "Fable 5.2" && tr_text_of(t, tr_find(t, "lm.4.t")) == "Haiku 5.5" && tr_find(t, "lm.5") < 0;
+  cw_test_press(s, "lm.1");
+  cw_test_type(s, "composer", "go");
+  cw_test_enter(s, "composer");
+  if cw_test_door(s) != "/local/run" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
+  #assert cw_test_body(s) == "{\"task\":\"go\",\"engine\":\"claude\",\"model\":\"claude-fable-5-2\"}";
 }
