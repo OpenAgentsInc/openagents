@@ -12,7 +12,8 @@
 # The counts: parity-known and parity-gaps (everglade/features.coax EF_KNOWN and
 # EF_GAPS), components-to-move (coax/web/components-check.coax CC_TO_MOVE),
 # wire-allowlist (the lines of proto/wire-allowlist.txt), tools-port (the lines of
-# coax/tools-port.txt) and layer-RULE (aethyr/layer-allowlist.txt's lines per rule).
+# coax/tools-port.txt), layer-RULE (aethyr/layer-allowlist.txt's lines per rule)
+# and sql-rules-routes (coax/web/api/*.c calling plpgsql functions in schema.sql).
 #
 # The rule. Walking BASE..REV (first parent), the baseline of a count starts at
 # its value at BASE and falls with it: the lowest value since BASE. REV is red
@@ -25,8 +26,8 @@
 # the growth is not red. A count that falls is the new baseline.
 set -uo pipefail
 export LC_ALL=C
-CN_FILES=(everglade/features.coax coax/web/components-check.coax proto/wire-allowlist.txt coax/tools-port.txt aethyr/layer-allowlist.txt)
-CN_NAMES="parity-known parity-gaps components-to-move wire-allowlist tools-port layer-aethyr-up layer-everglade-up layer-tests"
+CN_FILES=(everglade/features.coax coax/web/components-check.coax proto/wire-allowlist.txt coax/tools-port.txt aethyr/layer-allowlist.txt coax/web/api/schema.sql ':(glob)coax/web/api/*.c')
+CN_NAMES="parity-known parity-gaps components-to-move wire-allowlist tools-port layer-aethyr-up layer-everglade-up layer-tests sql-rules-routes"
 cn_show() {   # rev: NAME VALUE lines (a count whose file is missing at REV is left out)
   local r="$1"
   git show "$r:everglade/features.coax" 2> /dev/null | sed -nE 's/^EF_KNOWN :: \[([0-9]+)\].*/parity-known \1/p; s/^EF_GAPS :: \[([0-9]+)\].*/parity-gaps \1/p'
@@ -36,9 +37,20 @@ cn_show() {   # rev: NAME VALUE lines (a count whose file is missing at REV is l
     git cat-file -e "$r:${f#*:}" 2> /dev/null || continue
     echo "${f%%:*} $(git show "$r:${f#*:}" | grep -cvE '^[[:space:]]*(#|$)')"
   done
-  git cat-file -e "$r:aethyr/layer-allowlist.txt" 2> /dev/null || return 0
-  git show "$r:aethyr/layer-allowlist.txt" |
-    awk '!/^[[:space:]]*(#|$)/ { n[$1]++ } END { split("aethyr-up everglade-up tests", k, " "); for (i = 1; i <= 3; i++) print "layer-" k[i], n[k[i]] + 0 }'
+  if git cat-file -e "$r:aethyr/layer-allowlist.txt" 2> /dev/null; then
+    git show "$r:aethyr/layer-allowlist.txt" |
+      awk '!/^[[:space:]]*(#|$)/ { n[$1]++ } END { split("aethyr-up everglade-up tests", k, " "); for (i = 1; i <= 3; i++) print "layer-" k[i], n[k[i]] + 0 }'
+  fi
+  if git cat-file -e "$r:coax/web/api/schema.sql" 2> /dev/null; then
+    local fns
+    fns="$(git show "$r:coax/web/api/schema.sql" | awk '
+      /^CREATE (OR REPLACE )?FUNCTION / { fn = $0; sub(/^CREATE (OR REPLACE )?FUNCTION /, "", fn); sub(/\(.*/, "", fn) }
+      /LANGUAGE / && fn != "" { if ($0 ~ /LANGUAGE plpgsql([;[:space:]]|$)/ && fn ~ /\./) print fn "("; fn = "" }
+    ' | sort -u)"
+    n=0
+    [[ -z "$fns" ]] || n="$(git grep -Fl -f <(printf '%s\n' "$fns") "$r" -- ':(glob)coax/web/api/*.c' 2> /dev/null | wc -l | tr -d ' ')"
+    echo "sql-rules-routes $n"
+  fi
 }
 cn_rebaselined() {   # commit: the names its "Rebaseline: NAME: why" trailers name
   git log -1 --format='%(trailers:key=Rebaseline,valueonly,separator=%x0a)' "$1" 2> /dev/null |

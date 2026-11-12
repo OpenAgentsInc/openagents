@@ -1,5 +1,16 @@
 # Coax in the API service
 
+## Where API rules go (#13321)
+
+A new API rule is `#authority` Coax in a `*-policy.coax` file (`seats.c` + `seat-policy.coax` is the pattern). The policy module takes plain facts and returns the decision, verified with `#test`, `#forall`, and `coax mutate` with zero survivors.
+
+SQL stores rows, guards versions and uniqueness, and writes the outbox; it does not decide policy. The C route file (`coax/web/api/*.c`) is a thin adapter that moves facts in and answers out, and performs host I/O.
+
+A route whose rules live in `plpgsql` moves to a `*-policy.coax` file when it is next changed for another reason (and cites this file). Do not do a standalone sweep. `sql-rules-routes` in `coax/remote/counts.sh` counts `coax/web/api/*.c` files calling `LANGUAGE plpgsql` functions in `coax/web/api/schema.sql` so the count can only go down.
+
+
+## How Coax links into the API
+
 The API (`api.c` and its handlers) is C, and Coax emits C, so Coax modules
 link straight into it:
 
