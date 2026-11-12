@@ -280,6 +280,39 @@ median wall time at most 75% and faster on at least 10 of 12. A run over 15
 minutes fails. Costs are from the rates card (Flash $1.50 / $0.15 / $7.50,
 Argon $4.00 / $0.20 / $20.00 per million input, cached, output tokens).
 
+### Round 1 on the fresh tasks: stopped after four pairs, Microcoder RLM not better (2026-11-12)
+
+Run as defined above (the RLM tool and Coder at `3a96677c63`). The
+coordinator stopped the round after U1 to U4 had finished on both sides and
+U5 on Antigravity's, because the result was already clear and the money was
+better kept. U1 to U6 are now seen; U7 to U12 are not.
+
+| Task | Microcoder RLM | Antigravity |
+| --- | --- | --- |
+| U1 | pass, 724 s, $3.13 (Flash 84 turns to its $2 cap, then Argon 17 turns) | pass, 720 s, $2.18 |
+| U2 | fail, 388 s, $2.52 (Flash stopped at 11 turns; Argon hit its $2.50 cap) | fail, cut at 900 s (cost not read) |
+| U3 | pass, 729 s, $3.35 (Flash to its cap; Argon to its time limit) | pass, 360 s, $2.41 |
+| U4 | pass, 776 s, $2.32 | pass, 522 s, $1.62 |
+| U5 | not finished | pass, 275 s, $0.98 |
+
+- **Passes level (3 of 4 each), and Microcoder RLM dearer and slower on
+  every finished pair:** about 40% more money and up to twice the time. No
+  condition for cost or time can be met from here.
+- **Why the tests on N1 to N6 did not carry over.** On these tasks Flash
+  used its whole budget (80 turns and $1.90) without finishing, and Argon
+  then did 17 to 20 turns of its own. On N1 to N6 Flash usually finished in
+  30 to 55 turns and Argon's pass was a minute. Those six were also the
+  tasks the configuration was chosen on, by the coordinator, in single
+  runs.
+- **What stands from the RLM work:** the repository-in-the-environment
+  agent on Argon passed wide tasks the JSON-action loop failed (N1, N2, N3
+  first try; no failed edits), at Antigravity's speed or better and about
+  its cost; and a root that answers in a schema. What does not stand: any
+  claim that it is cheaper or faster than Antigravity on unseen work.
+
+Spend on this section's work: about $105 of the owner's $200 (about $80 on
+the tests on seen tasks, about $25 on this round).
+
 ## Cost and order of work
 
 Within $200 of Google credits from 2026-11-12:
