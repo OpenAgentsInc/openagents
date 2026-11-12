@@ -9,6 +9,7 @@
       ],
       "namespace": "openagents.",
       "exclude": [
+        "openagents/options/v1alpha1/json.proto",
         "openagents/options/v1alpha2/numeric.proto"
       ]
     },

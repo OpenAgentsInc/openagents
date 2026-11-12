@@ -3,7 +3,7 @@
 #load "release-model.coax";
 IMPLEMENTATION_VERSION :: "0.52.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [141]ReleaseFeature.[
+CATALOGUE :: [142]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -121,6 +121,7 @@ CATALOGUE :: [141]ReleaseFeature.[
   ReleaseFeature.{id="foreign.views",section="Capabilities",name="Borrowed views across `#foreign`",meaning="A #foreign parameter may be a [] view of integers, floats or bool, passed as the {data, count} struct; the host reads and writes it during the call only (no retention, transfer or asynchronous use), views may overlap; other views, arrays and view results are E0376; compile-time and check execution refuse host calls (E0404)",status="partial",introduced="0.38.0"},
   ReleaseFeature.{id="generics.constraints",section="Capabilities",name="Generic constraints",meaning="$T: equatable, ordered, numeric or copyable; bodies check against the constraint and calls outside it are refused with an instantiation trace (E0805-E0808)",status="partial",introduced="0.40.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
+  ReleaseFeature.{id="proto.json",section="Capabilities",name="`#import_proto` JSON mapper",meaning="Opt-in bounded JSON writer and reader per message: json_name keys in field-number order, contract constants, presence-driven null and zero, optional 64-bit numbers; refuses float, double and enum",status="works",introduced="0.52.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Rejects direct local fixed-array view/string returns and simple aliases, slices and casts. Helper returns and retained stores have separate bounded profiles; general ownership remains unchecked",status="works",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.returns",section="Capabilities",name="Bounded returned-borrow diagnostics",meaning="Resolved helper and aggregate return projections retain known caller, static and local origins; a concrete local witness reports E0383 even beside an incomplete arm. Recursion and unmodeled helper writes remain explicit manual status, not a safe empty result. Resource exhaustion is E0381; retained caller-state and general region lifetimes remain separate",status="partial",introduced="0.46.0"},

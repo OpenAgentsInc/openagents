@@ -1,0 +1,354 @@
+{
+ "note": "JSON mapper fixtures for json_map.proto, checked by json_map.py through the generated C ABI; entries with oracle true are also checked against Python protobuf json_format (--oracle); the errors with oracle false are inputs Python accepts and the mapper refuses (an exponent, url-safe base64, and the quirks of Python with arrays for messages), or constants Python does not know. wire is hex; errors are the wire runtime numbers (coax/proto.md).",
+ "round_trips": [
+  {
+   "name": "every kind at its extremes",
+   "message": "Scalars",
+   "json": "{\"i64\":\"-9223372036854775808\",\"u64\":\"18446744073709551615\",\"i32\":-2147483648,\"fixed64Value\":\"18446744073709551615\",\"fixed32Value\":4294967295,\"flag\":true,\"text\":\"q\\\"\\\\\\n\\t\\u0001\\u001fé😀/\",\"blob\":\"AP8B\",\"u32\":4294967295,\"sf32\":-2147483648,\"sf64\":\"-9223372036854775808\",\"z32\":-2147483648,\"z64\":\"-9223372036854775808\",\"numbers\":[-1,2,0,2147483647],\"names\":[\"a\",\"\",\"ü\"],\"blobs\":[\"\",\"AP8=\",\"Zm9vYg==\"],\"child\":{\"text\":\"nested\",\"values\":[1,-1,0]},\"children\":[{},{\"text\":\"x\"}],\"title\":\"t\",\"opt\":0,\"note\":\"\",\"recurse\":{\"i64\":\"1\",\"recurse\":{\"flag\":true}},\"fixeds\":[\"0\",\"18446744073709551615\"],\"flags\":[true,false]}",
+   "wire": "088080808080808080800110ffffffffffffffffff011880808080f8ffffffff0121ffffffffffffffff2dffffffff30013a0f71225c0a09011fc3a9f09f98802f7f420300ff0148ffffffff0f550000008059000000000000008060ffffffff0f68ffffffffffffffffff017208010400feffffff0f7a01617a007a02c3bc82010082010200ff820104666f6f628a01160a066e6573746564120c01ffffffffffffffffff01009201009201030a01789a010174b00100ba0100c201070801c201023001ca01100000000000000000ffffffffffffffffd201020100",
+   "oracle": true
+  },
+  {
+   "name": "empty",
+   "message": "Scalars",
+   "json": "{}",
+   "wire": "",
+   "oracle": true
+  },
+  {
+   "name": "positive extremes",
+   "message": "Scalars",
+   "json": "{\"i64\":\"9223372036854775807\",\"u64\":\"1\",\"i32\":2147483647,\"sf32\":2147483647,\"sf64\":\"9223372036854775807\",\"z32\":2147483647,\"z64\":\"9223372036854775807\"}",
+   "wire": "08ffffffffffffffff7f100118ffffffff0755ffffff7f59ffffffffffffff7f60feffffff0f68feffffffffffffffff01",
+   "oracle": true
+  },
+  {
+   "name": "oneof number zero is present",
+   "message": "Scalars",
+   "json": "{\"rank\":\"0\"}",
+   "wire": "a00100",
+   "oracle": true
+  },
+  {
+   "name": "oneof empty message",
+   "message": "Scalars",
+   "json": "{\"nested\":{}}",
+   "wire": "aa0100",
+   "oracle": true
+  },
+  {
+   "name": "oneof empty string",
+   "message": "Scalars",
+   "json": "{\"title\":\"\"}",
+   "wire": "9a0100",
+   "oracle": true
+  },
+  {
+   "name": "optional zero and empty",
+   "message": "Scalars",
+   "json": "{\"opt\":0,\"note\":\"\"}",
+   "wire": "b00100ba0100",
+   "oracle": true
+  },
+  {
+   "name": "empty nested message",
+   "message": "Scalars",
+   "json": "{\"child\":{}}",
+   "wire": "8a0100",
+   "oracle": true
+  },
+  {
+   "name": "inner",
+   "message": "Inner",
+   "json": "{\"text\":\"a\",\"values\":[-2147483648,2147483647]}",
+   "wire": "0a0161120f80808080f8ffffffff01ffffffff07",
+   "oracle": true
+  },
+  {
+   "name": "the attempt line of coder/tui/observability-checks.coax",
+   "message": "Attempt",
+   "json": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"gateway\":\"vertex\",\"model\":\"test\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":12,\"output_tokens\":2,\"cached_tokens\":0,\"usd_micros\":3,\"card_estimate_usd_micros\":3}",
+   "wire": "1a067665727465782204746573743204646f6e6538c801400c4802500058037803",
+   "oracle": false
+  },
+  {
+   "name": "every attempt field, 64-bit numbers unquoted",
+   "message": "Attempt",
+   "json": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"engine\":\"micro\",\"scope\":\"request_attempt\",\"gateway\":\"g\",\"model\":\"m\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"input_tokens\":-1,\"output_tokens\":9223372036854775807,\"cached_tokens\":-9223372036854775808,\"usd_micros\":0,\"reasoning_tokens\":1,\"cache_write_tokens\":2,\"provider_cost_usd_micros\":3,\"card_estimate_usd_micros\":4,\"model_source\":\"attempt_configuration\"}",
+   "wire": "0a056d6963726f120f726571756573745f617474656d70741a016722016d2a036c6f773204646f6e6540ffffffffffffffffff0148ffffffffffffffff7f508080808080808080800158006001680270037804820115617474656d70745f636f6e66696775726174696f6e",
+   "oracle": false
+  },
+  {
+   "name": "absent fields as null",
+   "message": "Nulls",
+   "json": "{\"kind\":\"nulls\",\"count\":null,\"child\":null,\"word\":null}",
+   "wire": "",
+   "oracle": false
+  },
+  {
+   "name": "present fields beside nulls",
+   "message": "Nulls",
+   "json": "{\"kind\":\"nulls\",\"count\":\"0\",\"child\":{},\"word\":null,\"digit\":0,\"on\":false}",
+   "wire": "0800120020002800",
+   "oracle": false
+  },
+  {
+   "name": "a null oneof member is the other one absent",
+   "message": "Nulls",
+   "json": "{\"kind\":\"nulls\",\"count\":null,\"child\":null,\"word\":\"\"}",
+   "wire": "1a00",
+   "oracle": false
+  }
+ ],
+ "reads": [
+  {
+   "name": "implicit zeros are not written",
+   "message": "Scalars",
+   "json": "{\"i64\":\"0\",\"u64\":0,\"flag\":false,\"text\":\"\",\"blob\":\"\",\"numbers\":[],\"names\":[]}",
+   "wire": "",
+   "oracle": true
+  },
+  {
+   "name": "numbers as strings and 64-bit as numbers",
+   "message": "Scalars",
+   "json": "{\"i32\":\"-5\",\"u32\":\"7\",\"i64\":5,\"u64\":18446744073709551615,\"fixeds\":[1,\"2\"],\"numbers\":[\"3\"]}",
+   "wire": "080510ffffffffffffffffff0118fbffffffffffffffff014807720106ca011001000000000000000200000000000000",
+   "oracle": true
+  },
+  {
+   "name": "null is absent",
+   "message": "Scalars",
+   "json": "{\"child\":null,\"i64\":null,\"title\":null,\"names\":null,\"opt\":null}",
+   "wire": "",
+   "oracle": true
+  },
+  {
+   "name": "unknown keys are skipped",
+   "message": "Scalars",
+   "json": "{\"zzz\":[1,{\"a\":[null]}],\"u32\":1,\"I32\":5,\"u_32\":2}",
+   "wire": "4801",
+   "oracle": true
+  },
+  {
+   "name": "member order is kept on the wire",
+   "message": "Scalars",
+   "json": "{\"u32\":1,\"i64\":\"2\"}",
+   "wire": "08024801",
+   "oracle": true
+  },
+  {
+   "name": "whitespace",
+   "message": "Scalars",
+   "json": " { \"u32\" : 1 , \"names\" : [ \"a\" ] } ",
+   "wire": "48017a0161",
+   "oracle": true
+  },
+  {
+   "name": "escaped keys",
+   "message": "Scalars",
+   "json": "{\"\\u0075\\u0033\\u0032\":9}",
+   "wire": "4809",
+   "oracle": true
+  },
+  {
+   "name": "-0 is zero",
+   "message": "Scalars",
+   "json": "{\"i32\":-0,\"opt\":-0}",
+   "wire": "b00100",
+   "oracle": true
+  },
+  {
+   "name": "base64 without padding",
+   "message": "Scalars",
+   "json": "{\"blob\":\"Zg\"}",
+   "wire": "420166",
+   "oracle": true
+  },
+  {
+   "name": "constants in any order, other keys skipped",
+   "message": "Attempt",
+   "json": "{\"schema\":\"coder.observability.v2\",\"prompt\":\"hidden\",\"kind\":\"attempt\",\"engine\":null,\"status\":200}",
+   "wire": "38c801",
+   "oracle": false
+  },
+  {
+   "name": "nulls read as absent",
+   "message": "Nulls",
+   "json": "{\"kind\":\"nulls\",\"count\":null,\"child\":null,\"word\":null}",
+   "wire": "",
+   "oracle": false
+  }
+ ],
+ "writes": [
+  {
+   "name": "unknown wire fields are not written",
+   "message": "Scalars",
+   "wire": "48019a06020102",
+   "json": "{\"u32\":1}",
+   "oracle": true
+  },
+  {
+   "name": "unpacked repeated numbers are written in order",
+   "message": "Scalars",
+   "wire": "70027004",
+   "json": "{\"numbers\":[1,2]}",
+   "oracle": true
+  }
+ ],
+ "errors": [
+  {
+   "name": "duplicate key",
+   "message": "Scalars",
+   "json": "{\"u32\":1,\"u32\":2}",
+   "error": 3,
+   "oracle": true
+  },
+  {
+   "name": "duplicate repeated key",
+   "message": "Scalars",
+   "json": "{\"names\":[\"a\"],\"names\":[\"b\"]}",
+   "error": 3,
+   "oracle": true
+  },
+  {
+   "name": "two oneof members",
+   "message": "Scalars",
+   "json": "{\"title\":\"a\",\"rank\":\"1\"}",
+   "error": 3,
+   "oracle": true
+  },
+  {
+   "name": "uint32 out of range",
+   "message": "Scalars",
+   "json": "{\"u32\":4294967296}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "int32 out of range",
+   "message": "Scalars",
+   "json": "{\"i32\":-2147483649}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "negative unsigned",
+   "message": "Scalars",
+   "json": "{\"u64\":\"-1\"}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "fraction",
+   "message": "Scalars",
+   "json": "{\"i32\":1.5}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "exponent",
+   "message": "Scalars",
+   "json": "{\"i32\":1e2}",
+   "error": 7,
+   "oracle": false
+  },
+  {
+   "name": "string for number field",
+   "message": "Scalars",
+   "json": "{\"text\":1}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "array for message",
+   "message": "Scalars",
+   "json": "{\"child\":[]}",
+   "error": 7,
+   "oracle": false
+  },
+  {
+   "name": "not an object",
+   "message": "Scalars",
+   "json": "[]",
+   "error": 7,
+   "oracle": false
+  },
+  {
+   "name": "syntax",
+   "message": "Scalars",
+   "json": "{",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "null in a repeated field",
+   "message": "Scalars",
+   "json": "{\"numbers\":[1,null]}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "bad base64",
+   "message": "Scalars",
+   "json": "{\"blob\":\"A!==\"}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "url-safe base64",
+   "message": "Scalars",
+   "json": "{\"blob\":\"-_8=\"}",
+   "error": 7,
+   "oracle": false
+  },
+  {
+   "name": "number for bool",
+   "message": "Scalars",
+   "json": "{\"flag\":1}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "message element not an object",
+   "message": "Scalars",
+   "json": "{\"children\":[1]}",
+   "error": 7,
+   "oracle": true
+  },
+  {
+   "name": "invalid UTF-8",
+   "message": "Scalars",
+   "json": "{\"text\":\"ÿ\"}",
+   "error": 4,
+   "oracle": true
+  },
+  {
+   "name": "missing constant",
+   "message": "Attempt",
+   "json": "{\"kind\":\"attempt\"}",
+   "error": 7,
+   "oracle": false
+  },
+  {
+   "name": "wrong constant",
+   "message": "Attempt",
+   "json": "{\"kind\":\"other\",\"schema\":\"coder.observability.v2\"}",
+   "error": 7,
+   "oracle": false
+  },
+  {
+   "name": "duplicate constant",
+   "message": "Attempt",
+   "json": "{\"kind\":\"attempt\",\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\"}",
+   "error": 3,
+   "oracle": false
+  },
+  {
+   "name": "constant not a string",
+   "message": "Nulls",
+   "json": "{\"kind\":1}",
+   "error": 7,
+   "oracle": false
+  }
+ ]
+}

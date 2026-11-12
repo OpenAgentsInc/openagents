@@ -1,0 +1,82 @@
+syntax = "proto3";
+package coax.test.json;
+import "openagents/options/v1alpha1/json.proto";
+
+// JSON mapper fixtures (coax/proto.md, "JSON mapper"); json_map.py checks
+// them through the generated C ABI, and with --oracle against Python
+// protobuf's json_format.
+message Inner {
+  option (openagents.options.v1alpha1.json) = "";
+  string text = 1;
+  repeated int32 values = 2;
+}
+
+// Every kind the mapper maps, under protobuf JSON's default rules.
+message Scalars {
+  option (openagents.options.v1alpha1.json) = "";
+  int64 i64 = 1;
+  uint64 u64 = 2;
+  int32 i32 = 3;
+  fixed64 fixed64_value = 4;
+  fixed32 fixed32_value = 5;
+  bool flag = 6;
+  string text = 7;
+  bytes blob = 8;
+  uint32 u32 = 9;
+  sfixed32 sf32 = 10;
+  sfixed64 sf64 = 11;
+  sint32 z32 = 12;
+  sint64 z64 = 13;
+  repeated sint32 numbers = 14;
+  repeated string names = 15;
+  repeated bytes blobs = 16;
+  Inner child = 17;
+  repeated Inner children = 18;
+  oneof choice {
+    string title = 19;
+    uint64 rank = 20;
+    Inner nested = 21;
+  }
+  optional uint32 opt = 22;
+  optional string note = 23;
+  Scalars recurse = 24;
+  repeated fixed64 fixeds = 25;
+  repeated bool flags = 26;
+}
+
+// The attempt line of coder/tui/observability-checks.coax: the fields of
+// proto/openagents/coder/observability/v2/events.proto, keys as they are on
+// the wire, plus usd_micros, which that proto lacks. Step C3 (#13240) fixes
+// the real proto; the numbers here put usd_micros where the line has it.
+message Attempt {
+  option (openagents.options.v1alpha1.json) = "kind=attempt;schema=coder.observability.v2";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  optional string engine = 1;
+  string scope = 2;
+  string gateway = 3;
+  string model = 4;
+  optional string requested_effort = 5 [json_name = "requested_effort"];
+  string outcome = 6;
+  int32 status = 7;
+  optional int64 input_tokens = 8 [json_name = "input_tokens"];
+  optional int64 output_tokens = 9 [json_name = "output_tokens"];
+  optional int64 cached_tokens = 10 [json_name = "cached_tokens"];
+  optional int64 usd_micros = 11 [json_name = "usd_micros"];
+  optional int64 reasoning_tokens = 12 [json_name = "reasoning_tokens"];
+  optional int64 cache_write_tokens = 13 [json_name = "cache_write_tokens"];
+  optional int64 provider_cost_usd_micros = 14 [json_name = "provider_cost_usd_micros"];
+  optional int64 card_estimate_usd_micros = 15 [json_name = "card_estimate_usd_micros"];
+  string model_source = 16 [json_name = "model_source"];
+}
+
+// Absent fields written as null.
+message Nulls {
+  option (openagents.options.v1alpha1.json) = "kind=nulls";
+  optional int64 count = 1 [(openagents.options.v1alpha1.json_null) = true];
+  Inner child = 2 [(openagents.options.v1alpha1.json_null) = true];
+  oneof pick {
+    string word = 3 [(openagents.options.v1alpha1.json_null) = true];
+    uint32 digit = 4;
+  }
+  optional bool on = 5;
+}

@@ -1,0 +1,22 @@
+syntax = "proto3";
+package openagents.options.v1alpha1;
+
+import "google/protobuf/descriptor.proto";
+
+// JSON mapper annotations for #import_proto (coax/proto.md, "JSON mapper").
+// Numbers are provisional, like options.proto's. Kept out of the owned
+// profile, as numeric.proto is, so no published descriptor changes.
+extend google.protobuf.MessageOptions {
+  // The message gets a generated JSON writer and reader. The value lists the
+  // constant members written first and required on read, in order, as
+  // "key=value" pairs joined by ";": "kind=attempt;schema=coder.observability.v2".
+  // An empty value maps the message with no constants.
+  string json = 51010;
+  // 64-bit integers are JSON numbers, not protobuf JSON's quoted strings.
+  bool json_int64_numbers = 51011;
+}
+extend google.protobuf.FieldOptions {
+  // An absent field is written as null instead of left out. Only for a
+  // singular field with presence (optional, oneof member or message).
+  bool json_null = 51012;
+}

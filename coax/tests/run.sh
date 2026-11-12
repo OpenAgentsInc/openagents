@@ -240,6 +240,7 @@ unit_proto_cap() { tests/proto/check-cap.sh; }
 unit_proto() { python3 tests/proto_import.py; }
 unit_proto_policy() { python3 tests/proto/presence_policy.py; }
 unit_proto_message() { python3 tests/proto/message_limit.py; }
+unit_proto_json() { python3 tests/proto/json_map.py --sanitize && "$COAX" test lib/proto/json.coax && "$COAX" mutate lib/proto/json.coax --root-only; }
 unit_verify() { python3 tests/verify.py; }
 unit_wire_checks() { "$COAX" test tests/proto/runtime.coax; }
 unit_generated_checks() { python3 tests/nostr/proto_wire_parity.py && "$COAX" test tests/nostr/proto_event_validation.coax && "$COAX" test tests/nostr/proto_fi_validation.coax; }
@@ -284,7 +285,7 @@ UNITS=(pass fail examples pulse python native strict_math native_checks lexer pa
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded kept clock debugging nostr constant_time wrapping integer_ops nominal_ids handles effect_contracts transactions compat mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
-  unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial)
+  unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial proto_json)
 
 usage() { echo "usage: tests/run.sh [--list | --only UNIT... | --part I/N]" >&2; exit 2; }
 selected=()

@@ -1,0 +1,377 @@
+// The JSON mapper's runtime (coax/proto.md, "JSON mapper"). #import_proto
+// generates, for a message with the openagents.options.v1alpha1.json option,
+// NAME_to_json and NAME_from_json; their bodies call these procedures. A
+// program that uses them loads this file. JSON text goes through
+// coax/lib/json/ (its parser, and its writer for keys and escaped strings);
+// bytes through coax/lib/text/base64.coax. What is here: integers as JSON
+// numbers or quoted strings, and protobuf wire bytes built from JSON values
+// into one caller buffer.
+//
+// Errors are the wire runtime's numbers (coax/proto.md): 2 LIMIT, 3 DUPLICATE,
+// 6 ALIAS, 7 VALUE. A procedure that writes wire bytes returns the new end,
+// or the error negated.
+#authority;
+#load "../json/json.coax";
+#load "../text/base64.coax";
+
+PJ_LIMIT :: 2;
+PJ_DUPLICATE :: 3;
+PJ_VALUE :: 7;
+
+// ---- JSON out ---------------------------------------------------------------
+
+#test "integers as numbers and as protobuf JSON's quoted strings" {
+  b:[128]u8;o:[1]Jo;
+  jo_start(o[..],b[..]);jo_arr(o[..]);
+  pj_u64(o[..],0,false);pj_u64(o[..],18446744073709551615,true);pj_u64(o[..],10,false);
+  pj_s64(o[..],-9223372036854775808,true);pj_s64(o[..],-1,false);pj_s64(o[..],9223372036854775807,false);pj_s64(o[..],0,true);
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..])=="[0,\"18446744073709551615\",10,\"-9223372036854775808\",-1,9223372036854775807,\"0\"]";
+  jo_start(o[..],b[0..<3]);pj_u64(o[..],1234,false);#assert o[0].bad;
+  jo_start(o[..],b[0..<4]);pj_u64(o[..],1234,false);#assert !o[0].bad && jo_text(o[..])=="1234";
+}
+#test "bytes as padded standard base64, refused when out is short" {
+  b:[32]u8;o:[1]Jo;data:=[4]u8.[0,255,1,62];
+  jo_start(o[..],b[..]);jo_arr(o[..]);pj_b64(o[..],data[..]);pj_b64(o[..],data[0..<0]);jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..])=="[\"AP8BPg==\",\"\"]";
+  jo_start(o[..],b[0..<9]);pj_b64(o[..],data[..]);#assert o[0].bad;
+  jo_start(o[..],b[0..<10]);pj_b64(o[..],data[..]);#assert !o[0].bad && o[0].n==10;
+  jo_start(o[..],b[0..<10]);o[0].bad=true;pj_b64(o[..],data[..]);#assert o[0].n<10;
+}
+// An integer's decimal digits, with a minus sign when negative, as a number
+// or inside quotes.
+pj_digits :: (o:[] Jo,negative:bool,magnitude:u64,quoted:bool) #effects(all) {
+  digits:[20]u8;at:=20;x:=magnitude;
+  while true {at-=1;digits[at]=cast(u8)(x%10)+48;x=x/10;if x==0 {break;}}
+  jo_value(o);
+  if quoted {jo_byte(o,'"');}
+  if negative {jo_byte(o,'-');}
+  jo_put(o,cast(string)digits[at..<20]);
+  if quoted {jo_byte(o,'"');}
+}
+pj_u64 :: (o:[] Jo,v:u64,quoted:bool) #effects(all) {pj_digits(o,false,v,quoted);}
+pj_s64 :: (o:[] Jo,v:s64,quoted:bool) #effects(all) {
+  if v<0 {pj_digits(o,true,cast(u64)(-(v+1))+1,quoted);} else {pj_digits(o,false,cast(u64)v,quoted);}
+}
+// Bytes as a quoted, padded, standard-alphabet base64 string.
+pj_b64 :: (o:[] Jo,data:[] u8) #effects(all) {
+  jo_value(o);jo_byte(o,'"');
+  if !o[0].bad {
+    n:=b64_encode(cast(string)data,o[0].buf[o[0].n..<o[0].buf.count]);
+    if pj_failed(n) {o[0].bad=true;} else {o[0].n+=n;}
+  }
+  jo_byte(o,'"');
+}
+
+// ---- JSON in ----------------------------------------------------------------
+
+#test "parse failures: syntax is VALUE, running out of nodes is LIMIT" {
+  nodes:[4]JvNode;d:[1]Jv;
+  #assert pj_parse(d[..],"{\"a\":1}",nodes[..])==0;
+  #assert pj_parse(d[..],"{\"a\":}",nodes[..])==PJ_VALUE;
+  #assert pj_parse(d[..],"[1,2,3,4]",nodes[..])==PJ_LIMIT;
+  // a syntax error at the byte numbered like the node count is still VALUE
+  // when the nodes could never run out
+  #assert pj_parse(d[..],"[1,",nodes[0..<3])==PJ_VALUE && d[0].err==3;
+  #assert pj_parse(d[..],"[1,2,3]",nodes[0..<3])==PJ_LIMIT;
+}
+// Parses text into nodes: 0, LIMIT when nodes ran out, otherwise VALUE.
+// Nodes never run out when there are as many as text has bytes.
+pj_parse :: (d:[] Jv,text:string,nodes:[] JvNode)->u32 #effects(all) {
+  if jv_parse(d,text,nodes) {return 0;}
+  if nodes.count<text.count && d[0].err==nodes.count {return PJ_LIMIT;}
+  return PJ_VALUE;
+}
+
+#test "varints, keys and fixed-width values, refused past the end" {
+  b:[16]u8;
+  #assert pj_varint(b[..],0,300)==2 && b[0]==172 && b[1]==2;
+  #assert pj_varint(b[..],0,18446744073709551615)==10 && b[9]==1 && b[8]==255;
+  #assert pj_varint(b[0..<1],0,300)==-PJ_LIMIT && pj_varint(b[0..<2],0,300)==2 && pj_varint(b[0..<1],0,127)==1;
+  #assert pj_key(b[..],0,1,2)==1 && b[0]==10 && pj_key(b[..],0,16,0)==2 && b[0]==128 && b[1]==1;
+  #assert pj_fixed(b[..],0,0x0102030405060708,8)==8 && b[0]==8 && b[7]==1;
+  #assert pj_fixed(b[..],0,0xffffffff,4)==4 && b[3]==255 && b[4]==4;
+  #assert pj_fixed(b[0..<3],0,1,4)==-PJ_LIMIT && pj_fixed(b[0..<4],0,1,4)==4;
+}
+pj_varint :: (out:[] u8,at:int,value:u64)->int #effects(all) {
+  v:=value;pos:=at;
+  while pos<out.count {
+    if v<128 {out[pos]=cast(u8)v;return pos+1;}
+    out[pos]=cast,trunc(u8)(v&127)|128;pos+=1;v=v>>7;
+  }
+  return -PJ_LIMIT;
+}
+pj_key :: (out:[] u8,at:int,number:u32,wt:int)->int #effects(all) {return pj_varint(out,at,cast(u64)number*8+cast(u64)wt);}
+// value's low count bytes, little-endian.
+pj_fixed :: (out:[] u8,at:int,value:u64,count:int)->int #effects(all) {
+  if count>out.count-at {return -PJ_LIMIT;}
+  for i:0..<count {out[at+i]=cast,trunc(u8)(value>>(i*8));}
+  return at+count;
+}
+
+#test "a length-delimited field: key, one byte for the length, moved up for a longer one" {
+  b:[16]u8;
+  s:=pj_open(b[..],0,2);#assert s==2 && b[0]==18;
+  b[2]='h';b[3]='i';
+  #assert pj_close(b[..],s,4)==4 && b[1]==2 && b[2]=='h' && b[3]=='i';
+  #assert pj_open(b[0..<1],0,2)==-PJ_LIMIT && pj_open(b[0..<2],0,2)==2 && pj_open(b[0..<0],0,2)==-PJ_LIMIT;
+  #assert pj_open(b[0..<2],0,16)==-PJ_LIMIT;
+  big:[16400]u8;s=pj_open(big[..],0,1);
+  #assert pj_close(big[..],s,s)==2 && big[1]==0;
+  for i:0..<128 {big[s+i]=cast(u8)i;}
+  #assert pj_close(big[..],s,s+127)==2+127 && big[1]==127 && big[2]==0 && big[128]==126;
+  #assert pj_close(big[..],s,s+128)==3+128 && big[1]==128 && big[2]==1 && big[3]==0 && big[130]==127;
+  #assert pj_close(big[0..<130],s,s+128)==-PJ_LIMIT && pj_close(big[0..<131],s,s+128)==131;
+  #assert pj_close(big[..],s,s+16384)==4+16384 && big[1]==128 && big[2]==128 && big[3]==1;
+}
+// Starts field number's length-delimited value: the key, then one byte for
+// the length. Returns where the payload starts.
+pj_open :: (out:[] u8,at:int,number:u32)->int #effects(all) {
+  k:=pj_key(out,at,number,2);
+  if pj_failed(k) || k>=out.count {return -PJ_LIMIT;}
+  return k+1;
+}
+// Ends a value started at start (pj_open's result) whose payload ends at
+// end: writes its length before it, moving the payload up when the length
+// takes more than one byte. Returns the end, or LIMIT when out has no room.
+pj_close :: (out:[] u8,start:int,end:int)->int #effects(all) {
+  n:=end-start;size:=1;x:=n;
+  while x>=128 {x=x>>7;size+=1;}
+  if size-1>out.count-end {return -PJ_LIMIT;}
+  for i:0..<n {out[end+size-2-i]=out[end-1-i];}
+  return pj_varint(out,start-1,cast(u64)n)+n;
+}
+
+#test "integers from numbers and strings, by kind, with their wire encodings" {
+  nodes:[64]JvNode;d:[1]Jv;
+  t:="[0,-1,\"-1\",2147483647,-2147483648,2147483648,-2147483649,4294967295,4294967296,9223372036854775807,-9223372036854775808,\"18446744073709551615\",18446744073709551616,-0,1.5,1e2,\"\",\"-\",\"1x\",\"\\u0031\",true,null,\"+1\",99999999999999999999]";
+  #assert jv_parse(d[..],t,nodes[..]);
+  v:=d[0];e:=jv_at(v,0,0);
+  #assert pj_integer(v,e,5).raw==0 && pj_integer(v,e,5).error==0;
+  e=jv_at(v,0,1);
+  #assert pj_integer(v,e,5).raw==18446744073709551615 && pj_integer(v,e,3).raw==18446744073709551615;
+  #assert pj_integer(v,e,17).raw==1 && pj_integer(v,e,18).raw==1 && pj_integer(v,e,15).raw==18446744073709551615;
+  #assert pj_integer(v,e,13).error==PJ_VALUE && pj_integer(v,e,4).error==PJ_VALUE && pj_integer(v,e,7).error==PJ_VALUE && pj_integer(v,e,6).error==PJ_VALUE;
+  #assert pj_integer(v,jv_at(v,0,2),3).raw==18446744073709551615 && pj_integer(v,jv_at(v,0,2),3).error==0;
+  #assert pj_integer(v,jv_at(v,0,3),5).raw==2147483647 && pj_integer(v,jv_at(v,0,3),17).raw==4294967294;
+  #assert pj_integer(v,jv_at(v,0,4),5).raw==18446744071562067968 && pj_integer(v,jv_at(v,0,4),17).raw==4294967295 && pj_integer(v,jv_at(v,0,4),15).error==0;
+  #assert pj_integer(v,jv_at(v,0,5),5).error==PJ_VALUE && pj_integer(v,jv_at(v,0,5),15).error==PJ_VALUE && pj_integer(v,jv_at(v,0,5),17).error==PJ_VALUE && pj_integer(v,jv_at(v,0,5),13).raw==2147483648;
+  #assert pj_integer(v,jv_at(v,0,6),5).error==PJ_VALUE && pj_integer(v,jv_at(v,0,6),3).raw==18446744071562067967;
+  #assert pj_integer(v,jv_at(v,0,7),13).raw==4294967295 && pj_integer(v,jv_at(v,0,7),7).raw==4294967295;
+  #assert pj_integer(v,jv_at(v,0,8),13).error==PJ_VALUE && pj_integer(v,jv_at(v,0,8),7).error==PJ_VALUE && pj_integer(v,jv_at(v,0,8),4).raw==4294967296;
+  #assert pj_integer(v,jv_at(v,0,9),3).raw==9223372036854775807 && pj_integer(v,jv_at(v,0,9),18).raw==18446744073709551614 && pj_integer(v,jv_at(v,0,9),5).error==PJ_VALUE;
+  e=jv_at(v,0,10);
+  #assert pj_integer(v,e,3).raw==9223372036854775808 && pj_integer(v,e,16).error==0 && pj_integer(v,e,18).raw==18446744073709551615;
+  #assert pj_integer(v,jv_at(v,0,11),4).raw==18446744073709551615 && pj_integer(v,jv_at(v,0,11),6).error==0 && pj_integer(v,jv_at(v,0,11),3).error==PJ_VALUE;
+  #assert pj_integer(v,jv_at(v,0,12),4).error==PJ_VALUE && pj_integer(v,jv_at(v,0,12),6).error==PJ_VALUE;
+  #assert pj_integer(v,jv_at(v,0,13),4).raw==0 && pj_integer(v,jv_at(v,0,13),4).error==0;
+  for i:14..<24 {#assert pj_integer(v,jv_at(v,0,i),3).error==PJ_VALUE;}
+  #assert pj_integer(v,jv_at(v,0,20),8).raw==1 && pj_integer(v,jv_at(v,0,20),8).error==0 && pj_integer(v,jv_at(v,0,0),8).error==PJ_VALUE;
+  #assert jv_parse(d[..],"false",nodes[..]) && pj_integer(d[0],0,8).raw==0 && pj_integer(d[0],0,8).error==0;
+}
+#test "integer edges: the overflow guard, the int64 limit and digits only" {
+  nodes:[16]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"[\"18446744073709551620\",9223372036854775808,\"1:\",\"/\",\"\",\"-\",\"--1\",\"-0\"]",nodes[..]);
+  v:=d[0];
+  #assert pj_integer(v,jv_at(v,0,0),4).error==PJ_VALUE && pj_integer(v,jv_at(v,0,1),3).error==PJ_VALUE && pj_integer(v,jv_at(v,0,1),4).raw==9223372036854775808;
+  for i:2..<7 {#assert pj_integer(v,jv_at(v,0,i),4).error==PJ_VALUE;}
+  #assert pj_integer(v,jv_at(v,0,7),5).raw==0 && pj_integer(v,jv_at(v,0,7),5).error==0;
+}
+#test "a long payload's length takes three bytes" {
+  big:[16400]u8;s:=pj_open(big[..],0,1);
+  for i:0..<16384 {big[s+i]=cast(u8)(i%251+1);}
+  #assert s==2 && pj_close(big[..],s,s+16384)==16388 && big[1]==128 && big[2]==128 && big[3]==1;
+  #assert big[4]==1 && big[5]==2 && big[16387]==cast(u8)(16383%251+1);
+  #assert pj_fixed(big[0..<8],6,0,4)==-PJ_LIMIT && pj_fixed(big[0..<8],4,0,4)==8;
+}
+#test "base64 that cannot fit marks the writer bad even when its closing quote fits" {
+  b:[8]u8;o:[1]Jo;data:=[6]u8.[1,2,3,4,5,6];
+  jo_start(o[..],b[..]);pj_b64(o[..],data[..]);#assert o[0].bad;
+}
+PjNum :: struct {raw:u64;error:u32;}
+// A JSON integer for a field of protobuf kind (FieldDescriptorProto.Type), as
+// the value the wire carries: two's complement for int32, int64 and sfixed,
+// zigzag for sint, as it is for unsigned. Takes a number or a string holding
+// one, for every integer kind, as protobuf's JSON parsers do; no fraction,
+// exponent or plus sign. Kind 8 (bool) takes only true and false.
+pj_integer :: (d:Jv,at:int,kind:int)->PjNum #effects(all) {
+  bad:=PjNum.{error=PJ_VALUE};t:=jv_kind(d,at);
+  if kind==8 {
+    if t==JV_TRUE {return PjNum.{raw=1};}
+    if t==JV_FALSE {return PjNum.{};}
+    return bad;
+  }
+  if t!=JV_NUMBER && t!=JV_STRING {return bad;}
+  s:=jv_raw(d,at);i:=0;negative:=false;
+  if i<s.count && s[i]=='-' {negative=true;i+=1;}
+  if i>=s.count {return bad;}
+  magnitude:u64=0;
+  for j:i..<s.count {
+    c:=s[j];if c<'0' || c>'9' {return bad;}
+    digit:=cast(u64)(c-'0');
+    if magnitude>1844674407370955161 || (magnitude==1844674407370955161 && digit>5) {return bad;}
+    magnitude=magnitude*10+digit;
+  }
+  signed:=kind==3 || kind==5 || kind==15 || kind==16 || kind==17 || kind==18;
+  wide:=kind==3 || kind==4 || kind==6 || kind==16 || kind==18;
+  limit:u64=4294967295;
+  if signed && wide {limit=9223372036854775807;} else if signed {limit=2147483647;} else if wide {limit=18446744073709551615;}
+  if negative && magnitude!=0 {
+    if !signed || magnitude>limit+1 {return bad;}
+    if kind==17 || kind==18 {return PjNum.{raw=(magnitude-1)*2+1};}
+    complement:=18446744073709551615-magnitude+1;
+    return PjNum.{raw=complement};
+  }
+  if magnitude>limit {return bad;}
+  if kind==17 || kind==18 {return PjNum.{raw=magnitude*2};}
+  return PjNum.{raw=magnitude};
+}
+
+#test "singular values: key and value, zero left out unless the field has presence" {
+  nodes:[16]JvNode;d:[1]Jv;b:[64]u8;
+  #assert jv_parse(d[..],"[0,7,-1,true,\"h\\u00e9\",\"AP8=\",\"\",null,{},\"  \"]",nodes[..]);
+  v:=d[0];
+  #assert pj_scalar(v,jv_at(v,0,0),5,b[..],0,1,false)==0;
+  #assert pj_scalar(v,jv_at(v,0,0),5,b[..],0,1,true)==2 && b[0]==8 && b[1]==0;
+  #assert pj_scalar(v,jv_at(v,0,1),13,b[..],0,2,false)==2 && b[0]==16 && b[1]==7;
+  #assert pj_scalar(v,jv_at(v,0,2),5,b[..],0,1,false)==11 && b[10]==1;
+  #assert pj_scalar(v,jv_at(v,0,2),15,b[..],0,1,false)==5 && b[0]==13 && b[4]==255;
+  #assert pj_scalar(v,jv_at(v,0,2),16,b[..],0,1,false)==9 && b[0]==9 && b[8]==255;
+  #assert pj_scalar(v,jv_at(v,0,1),7,b[..],0,1,false)==5 && b[0]==13 && b[1]==7;
+  #assert pj_scalar(v,jv_at(v,0,1),6,b[..],0,1,false)==9 && b[0]==9 && b[1]==7;
+  #assert pj_scalar(v,jv_at(v,0,3),8,b[..],3,1,false)==5 && b[3]==8 && b[4]==1;
+  #assert pj_scalar(v,jv_at(v,0,4),9,b[..],0,3,false)==5 && b[0]==26 && b[1]==3 && b[2]=='h' && b[3]==0xc3 && b[4]==0xa9;
+  #assert pj_scalar(v,jv_at(v,0,5),12,b[..],0,4,false)==4 && b[0]==34 && b[1]==2 && b[2]==0 && b[3]==255;
+  #assert pj_scalar(v,jv_at(v,0,6),9,b[..],0,3,false)==0 && pj_scalar(v,jv_at(v,0,6),12,b[..],0,4,false)==0;
+  #assert pj_scalar(v,jv_at(v,0,6),9,b[0..<0],0,3,false)==0 && pj_scalar(v,jv_at(v,0,6),12,b[0..<0],0,4,false)==0;
+  #assert pj_scalar(v,jv_at(v,0,9),12,b[..],0,4,false)==0 && pj_scalar(v,jv_at(v,0,9),12,b[..],0,4,true)==2;
+  #assert pj_scalar(v,jv_at(v,0,6),9,b[..],0,3,true)==2 && b[1]==0;
+  #assert pj_scalar(v,jv_at(v,0,7),5,b[..],0,1,true)==-PJ_VALUE && pj_scalar(v,jv_at(v,0,8),9,b[..],0,1,true)==-PJ_VALUE;
+  #assert pj_scalar(v,jv_at(v,0,1),9,b[..],0,1,true)==-PJ_VALUE && pj_scalar(v,jv_at(v,0,4),5,b[..],0,1,true)==-PJ_VALUE;
+  // a packed element: no key
+  #assert pj_scalar(v,jv_at(v,0,1),13,b[..],0,0,true)==1 && b[0]==7;
+  #assert pj_scalar(v,jv_at(v,0,1),13,b[0..<0],0,1,false)==-PJ_LIMIT && pj_scalar(v,jv_at(v,0,1),13,b[0..<1],0,1,false)==-PJ_LIMIT && pj_scalar(v,jv_at(v,0,4),9,b[0..<4],0,3,false)==-PJ_LIMIT && pj_scalar(v,jv_at(v,0,4),9,b[0..<5],0,3,false)==5;
+}
+#test "bytes: escapes, bad base64 and short room are refused" {
+  nodes:[8]JvNode;d:[1]Jv;b:[16]u8;
+  #assert jv_parse(d[..],"[\"AP\\u0038=\",\"A!==\",\"AAAA\",\"Zg\",\"Zm9v Yg==\"]",nodes[..]);
+  v:=d[0];
+  #assert pj_scalar(v,jv_at(v,0,0),12,b[..],0,1,false)==-PJ_VALUE;
+  #assert pj_scalar(v,jv_at(v,0,1),12,b[..],0,1,false)==-PJ_VALUE;
+  #assert pj_scalar(v,jv_at(v,0,2),12,b[0..<4],0,1,false)==-PJ_LIMIT && pj_scalar(v,jv_at(v,0,2),12,b[0..<5],0,1,false)==5;
+  #assert pj_scalar(v,jv_at(v,0,4),12,b[0..<6],0,1,false)==6 && b[2]=='f' && b[5]=='b' && pj_scalar(v,jv_at(v,0,4),12,b[0..<5],0,1,false)==-PJ_LIMIT;
+  #assert pj_scalar(v,jv_at(v,0,3),12,b[..],0,1,false)==3 && b[1]==1 && b[2]=='f';
+}
+#test "a result is an error when it is negative; a position, zero included, is not" {
+  #assert pj_failed(-1) && pj_failed(-PJ_LIMIT) && !pj_failed(0) && !pj_failed(1);
+}
+pj_failed :: (n:int)->bool #effects(all) {return n<0;}
+#test "string and bytes payloads: unescaped text, base64 with no escapes" {
+  b:[8]u8;
+  #assert pj_text("a\\u0062",b[..])==2 && b[0]=='a' && b[1]=='b' && pj_text("abc",b[0..<2])==-PJ_LIMIT;
+  #assert pj_bytes("AP8=",b[..])==2 && b[0]==0 && b[1]==255 && pj_bytes("AP8=",b[0..<1])==-PJ_LIMIT;
+  #assert pj_bytes("A\\u0050",b[..])==-PJ_VALUE && pj_bytes("A!==",b[..])==-PJ_VALUE && pj_bytes(" ",b[0..<0])==0;
+  #assert pj_bytes("AAAAAA==",b[0..<4])==4 && pj_bytes("AAAAAA==",b[0..<3])==-PJ_LIMIT;
+}
+// A JSON string's raw text unescaped into out: its length, or LIMIT.
+pj_text :: (raw:string,out:[] u8)->int #effects(all) {
+  n:=jv_unescape(raw,out);
+  if n==-1 {return -PJ_LIMIT;}
+  return n;
+}
+// Base64 (a JSON string's raw text, so escapes are refused) decoded into out:
+// its length, LIMIT when out is short, or VALUE.
+pj_bytes :: (raw:string,out:[] u8)->int #effects(all) {
+  digits:=0;for c:raw {if c!='=' && c!=' ' {digits+=1;}}
+  if digits*6/8>out.count {return -PJ_LIMIT;}
+  n:=b64_decode(raw,out);
+  if n==-1 {return -PJ_VALUE;}
+  return n;
+}
+// A singular value (number 0: a packed element, written without a key).
+// keep: write a zero, false or empty value, for a field with presence.
+pj_scalar :: (d:Jv,at:int,kind:int,out:[] u8,pos:int,number:u32,keep:bool)->int #effects(all) {
+  if kind==9 || kind==12 {
+    if jv_kind(d,at)!=JV_STRING {return -PJ_VALUE;}
+    raw:=jv_raw(d,at);
+    if raw.count==0 && !keep {return pos;}
+    s:=pj_open(out,pos,number);if pj_failed(s) {return s;}
+    n:=ifx kind==9 then pj_text(raw,out[s..<out.count]) else pj_bytes(raw,out[s..<out.count]);
+    if pj_failed(n) {return n;}
+    if n==0 && !keep {return pos;}
+    return pj_close(out,s,s+n);
+  }
+  v:=pj_integer(d,at,kind);
+  if v.error!=0 {return -cast(int)v.error;}
+  if v.raw==0 && !keep {return pos;}
+  wt:=0;width:=0;
+  if kind==6 || kind==16 {wt=1;width=8;}
+  if kind==7 || kind==15 {wt=5;width=4;}
+  p:=pos;
+  if number!=0 {p=pj_key(out,p,number,wt);if pj_failed(p) {return p;}}
+  if width!=0 {return pj_fixed(out,p,v.raw,width);}
+  return pj_varint(out,p,v.raw);
+}
+
+#test "repeated values: numbers packed, strings one field each, nulls refused" {
+  nodes:[16]JvNode;d:[1]Jv;b:[64]u8;
+  #assert jv_parse(d[..],"[[1,0,300],[\"a\",\"\"],[],[1,null],7,[\"x\",1]]",nodes[..]);
+  v:=d[0];
+  #assert pj_scalars(v,jv_at(v,0,0),13,b[..],0,5)==6 && b[0]==42 && b[1]==4 && b[2]==1 && b[3]==0 && b[4]==172 && b[5]==2;
+  #assert pj_scalars(v,jv_at(v,0,1),9,b[..],0,2)==5 && b[0]==18 && b[1]==1 && b[2]=='a' && b[3]==18 && b[4]==0;
+  #assert pj_scalars(v,jv_at(v,0,2),13,b[..],9,5)==9 && pj_scalars(v,jv_at(v,0,2),9,b[..],9,5)==9;
+  #assert pj_scalars(v,jv_at(v,0,3),13,b[..],0,5)==-PJ_VALUE && pj_scalars(v,jv_at(v,0,4),13,b[..],0,5)==-PJ_VALUE;
+  #assert pj_scalars(v,jv_at(v,0,5),9,b[..],0,5)==-PJ_VALUE;
+  #assert pj_scalars(v,jv_at(v,0,0),13,b[0..<1],0,5)==-PJ_LIMIT && pj_scalars(v,jv_at(v,0,0),13,b[0..<5],0,5)==-PJ_LIMIT && pj_scalars(v,jv_at(v,0,0),13,b[0..<6],0,5)==6;
+}
+// A JSON array for a repeated field: numbers and bools packed in one field,
+// strings and bytes one field each.
+pj_scalars :: (d:Jv,at:int,kind:int,out:[] u8,pos:int,number:u32)->int #effects(all) {
+  if jv_kind(d,at)!=JV_ARRAY {return -PJ_VALUE;}
+  x:=d.nodes[at].first;
+  if x==-1 {return pos;}
+  text:=kind==9 || kind==12;
+  s:=pos;
+  if !text {s=pj_open(out,pos,number);if pj_failed(s) {return s;}}
+  p:=s;
+  while x!=-1 {
+    if text {p=pj_scalar(d,x,kind,out,p,number,true);} else {p=pj_scalar(d,x,kind,out,p,0,true);}
+    if pj_failed(p) {return p;}
+    x=d.nodes[x].next;
+  }
+  if text {return p;}
+  return pj_close(out,s,p);
+}
+
+#test "a constant member must be the string it names" {
+  nodes:[8]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"[\"attempt\",\"att\\u0065mpt\",\"other\",1]",nodes[..]);
+  v:=d[0];
+  #assert pj_const(v,jv_at(v,0,0),"attempt") && pj_const(v,jv_at(v,0,1),"attempt");
+  #assert !pj_const(v,jv_at(v,0,2),"attempt") && !pj_const(v,jv_at(v,0,3),"1");
+}
+pj_const :: (d:Jv,at:int,value:string)->bool #effects(all) {
+  return jv_kind(d,at)==JV_STRING && jv_raw_eq(jv_raw(d,at),value);
+}
+
+#test "a member by key: its index, -1 when absent, DUPLICATE when twice" {
+  nodes:[16]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"{\"a\":1,\"b\":2,\"\\u0061b\":3,\"ab\":4,\"c\":null}",nodes[..]);
+  v:=d[0];
+  #assert pj_member(v,0,"a")==1 && pj_member(v,0,"b")==2 && pj_member(v,0,"c")==5 && pj_member(v,0,"x")==-1;
+  #assert pj_member(v,0,"ab")==-PJ_DUPLICATE;
+  #assert jv_parse(d[..],"{}",nodes[..]) && pj_member(d[0],0,"a")==-1;
+}
+// The member of object at whose key (compared unescaped) is key: its node,
+// -1 when there is none, or DUPLICATE negated when there are two.
+pj_member :: (d:Jv,at:int,key:string)->int #effects(all) {
+  found:=-1;c:=d.nodes[at].first;
+  while c!=-1 {
+    if jv_raw_eq(jv_key(d,c),key) {
+      if found!=-1 {return -PJ_DUPLICATE;}
+      found=c;
+    }
+    c=d.nodes[c].next;
+  }
+  return found;
+}

@@ -10,9 +10,9 @@ D_tighter_message_limit :: (n:u64)->bool #effects(all) {return n>0 && n<cast(u64
  #assert D_tighter_message_limit(1048575) && !D_tighter_message_limit(1048576) && !D_tighter_message_limit(1048577);
 }
 D_Wire :: struct {number:u32;wt:u8;raw:u64;data:string;next:int;present:bool;}
-D_Opts :: struct {n:[10] u64;text:[10] string;bits:u32;map_entry:bool;}
+D_Opts :: struct {n:[13] u64;text:[13] string;bits:u32;map_entry:bool;}
 D_Type :: struct {full:string;name:string;wire:string;first:int;count:int;groups:int;group_count:int;opts:D_Opts;}
-D_Field :: struct {name:string;type_name:string;number:u32;label:int;kind:int;oneof:int=-1;optional:bool;opts:D_Opts;target:string;}
+D_Field :: struct {name:string;type_name:string;number:u32;label:int;kind:int;oneof:int=-1;optional:bool;opts:D_Opts;target:string;json:string;}
 D_Value :: struct {name:string;number:s64;}
 D_State :: struct {
   types:[] D_Type;enums:[] D_Type;fields:[] D_Field;values:[] D_Value;groups:[] string;files:[] string;deps:[] string;
@@ -265,13 +265,13 @@ D_options :: (s:[] D_State,wire:string,tag:u32,message:bool)->D_Opts #effects(al
       if seen[f.number] {D_fail(s,"duplicate descriptor option");return o;}seen[f.number]=true;
       if f.number==7 {if f.wt!=0 {D_fail(s,"invalid numeric policy option");}o.map_entry=f.raw!=0;}continue;
     }
-    if f.number<51000 || f.number>51009 {D_fail(s,"unsupported policy option");return o;}
+    if f.number<51000 || f.number>51012 {D_fail(s,"unsupported policy option");return o;}
     n:=cast(int)f.number-51000;
-    allowed:=(message && (n==0 || n==1 || n==6)) || (!message && (n==2 || n==3 || n==4 || n==5 || n==7 || n==8 || n==9));
+    allowed:=(message && (n==0 || n==1 || n==6 || n==10 || n==11)) || (!message && (n==2 || n==3 || n==4 || n==5 || n==7 || n==8 || n==9 || n==12));
     if !allowed || D_has_option(o,n) {D_fail(s,"unsupported or duplicate descriptor option");return o;}
     o.bits=o.bits | (cast(u32)1<<n);
-    if n==5 || n==6 || n==7 {o.text[n]=D_text(s,D_bytes(s,f));}
-    else {if f.wt!=0 || f.raw>9223372036854775807 || (n==4 && f.raw>1) || (n==9 && f.raw>4294967295) {D_fail(s,"invalid numeric policy option");return o;}o.n[n]=f.raw;}
+    if n==5 || n==6 || n==7 || n==10 {o.text[n]=D_text(s,D_bytes(s,f));}
+    else {if f.wt!=0 || f.raw>9223372036854775807 || ((n==4 || n==11 || n==12) && f.raw>1) || (n==9 && f.raw>4294967295) {D_fail(s,"invalid numeric policy option");return o;}o.n[n]=f.raw;}
   }return o;
 }
 D_leaf :: (t:string)->string #effects(all) {at:=0;for c,i:t {if c==46 {at=i+1;}}return t[at..<t.count];}
@@ -305,7 +305,7 @@ D_message :: (s:[] D_State,t:string,parent:string,depth:int) #effects(all) {
     s[0].groups[s[0].ng]=name;s[0].ng+=1;m.group_count+=1;
   }}
   at=0;while at<t.count && s[0].error=="" {raw:=D_scan(s,t,at);at=raw.next;if raw.number!=2 {continue;}
-    q:=D_bytes(s,raw);D_object(s,q);f:=D_Field.{name=D_ident(s,q,1),type_name=D_get(s,q,6),opts=D_options(s,q,8,false)};
+    q:=D_bytes(s,raw);D_object(s,q);f:=D_Field.{name=D_ident(s,q,1),type_name=D_get(s,q,6),opts=D_options(s,q,8,false),json=D_get(s,q,10)};
     number:=D_integer(s,q,3);label:=D_integer(s,q,4);kind:=D_integer(s,q,5);optional:=D_integer(s,q,17);
     if !D_field_number(number) {D_fail(s,"invalid field number");return;}
     if !(label==1 || label==3) || kind<1 || kind>18 || kind==10 || D_one(s,q,2).present || D_one(s,q,7).present {D_fail(s,"unsupported field shape");return;}
@@ -346,7 +346,7 @@ D_parse :: (s:[] D_State,raw:string,prefix:string) #effects(all) {
       if !D_storage(s[0].nd,s[0].deps.count) {D_fail(s,"descriptor dependency budget");return;}
       s[0].deps[s[0].nd]=D_text(s,D_bytes(s,f));s[0].nd+=1;
     }}
-    if name=="google/protobuf/descriptor.proto" || name=="openagents/options/v1alpha1/options.proto" || name=="openagents/options/v1alpha2/numeric.proto" {continue;}
+    if name=="google/protobuf/descriptor.proto" || name=="openagents/options/v1alpha1/options.proto" || name=="openagents/options/v1alpha1/json.proto" || name=="openagents/options/v1alpha2/numeric.proto" {continue;}
     if D_get(s,t,12)!="proto3" || D_one(s,t,7).present || D_one(s,t,14).present {D_fail(s,"only proto3 data descriptors are supported");return;}
     if !D_package(pkg) {D_fail(s,"invalid/oversized package");return;}
     parent:="";if pkg!="" {parts:=[2] string.[".",pkg];parent=G_cat(s,parts[..]);}
@@ -359,9 +359,14 @@ D_parse :: (s:[] D_State,raw:string,prefix:string) #effects(all) {
   for i:0..<s[0].nt {
     m:=s[0].types[i];D_symbol(s,m.name);
     if s[0].error!="" {return;}
+    json:=D_has_option(m.opts,10);
+    if D_has_option(m.opts,11) && !json {D_fail(s,"json_int64_numbers needs the json option");return;}
     for j:m.first..<m.first+m.count {f:=s[0].fields[j];
+      if json {D_json_field(s,f);if s[0].error!="" {return;}}
+      if D_has_option(f.opts,12) && !(json && f.label!=3 && (f.optional || f.oneof>=0 || f.kind==11)) {D_fail(s,"json_null needs a JSON-mapped singular field with presence");return;}
       if f.kind==11 || f.kind==14 {
-        found:=false;if f.kind==11 {for k:0..<s[0].nt {if s[0].types[k].full==f.type_name {f.target=s[0].types[k].name;found=true;}}}
+        found:=false;if f.kind==11 {for k:0..<s[0].nt {if s[0].types[k].full==f.type_name {f.target=s[0].types[k].name;found=true;
+          if json && !D_has_option(s[0].types[k].opts,10) {D_fail(s,"a JSON-mapped message field needs a JSON-mapped message type");return;}}}}
         else {for k:0..<s[0].ne {if s[0].enums[k].full==f.type_name {found=true;}}}
         if !found {D_fail(s,"missing descriptor dependency or type mismatch");return;}
       }else {if f.type_name!="" {D_fail(s,"scalar has type_name");return;}}
@@ -369,6 +374,7 @@ D_parse :: (s:[] D_State,raw:string,prefix:string) #effects(all) {
       if f.optional {count:=0;for k:m.first..<m.first+m.count {if s[0].fields[k].oneof==f.oneof {count+=1;}}if count!=1 {D_fail(s,"invalid synthetic oneof");return;}}
       s[0].fields[j]=f;
     }
+    if json {D_json_names(s,m);if s[0].error!="" {return;}}
   }
   for i:0..<s[0].ne {D_symbol(s,s[0].enums[i].name);if s[0].error!="" {return;}}
   D_forget(s);
@@ -595,6 +601,108 @@ G_api :: (s:[] D_State,m:D_Type,p:string) #effects(all) {
   a[9]=condition;G_line(s,"$1_unknown :: (msg:$1,cursor:int)->$0Field {if msg.error!=0 {return $0Field.{error=msg.error};}checked:=$1_decode(msg.wire);if checked.error!=0 {return $0Field.{error=checked.error};}pos:=cursor;while true {f:=$0scan(msg.wire,pos);if f.error!=0 || f.done {return f;}pos=f.next;if !($9) {return f;}}return $0Field.{done=true};}",a[..]);
   for i:m.first..<m.first+m.count {f:=s[0].fields[i];G_args(s,m,f,p,a[..]);G_line(s,"$1_FIELD_$2 :: $5;",a[..]);if f.label==3 {G_iterator(s,m,f,p);}else {G_getter(s,m,f,p);}G_writer(s,m,f,p,false);G_writer(s,m,f,p,true);}
 }
+// The JSON mapper (coax/proto.md, "JSON mapper"): a message with the json
+// option (openagents/options/v1alpha1/json.proto) also gets NAME_to_json and
+// NAME_from_json, which call coax/lib/proto/json.coax. Field names, constant
+// keys and values become Coax and JSON string literals unescaped, so they are
+// printable ASCII without quote, backslash, ";" or "=".
+D_json_text :: (t:string)->bool #effects(all) {
+  if t.count==0 || t.count>256 {return false;}
+  for c:t {if c<32 || c>126 || c==34 || c==92 || c==59 || c==61 {return false;}}
+  return true;
+}
+// One "key=value" constant of the json option, starting at at; next is where
+// the following one starts.
+D_Member :: struct {key:string;value:string;next:int;ok:bool;}
+D_json_member :: (t:string,at:int)->D_Member #effects(all) {
+  eq:=at;while eq<t.count && t[eq]!=61 {eq+=1;}
+  if eq>=t.count {return D_Member.{};}
+  end:=eq+1;while end<t.count && t[end]!=59 {end+=1;}
+  return D_Member.{key=t[at..<eq],value=t[eq+1..<end],next=end+1,ok=D_json_text(t[at..<eq]) && D_json_text(t[eq+1..<end]) && end+1!=t.count};
+}
+D_json_field :: (s:[] D_State,f:D_Field) #effects(all) {
+  if f.kind==1 || f.kind==2 || f.kind==14 {D_fail(s,"the JSON mapper does not map float, double or enum fields");return;}
+  if !D_json_text(f.json) {D_fail(s,"invalid JSON field name");}
+}
+// At most 16 constants, and no key twice among constants and field names.
+D_json_names :: (s:[] D_State,m:D_Type) #effects(all) {
+  t:=m.opts.text[10];keys:[16] string;count:=0;at:=0;
+  while at<t.count {
+    c:=D_json_member(t,at);
+    if !c.ok || count>=16 {D_fail(s,"invalid json option constants");return;}
+    keys[count]=c.key;count+=1;at=c.next;
+  }
+  for i:0..<count {
+    for j:0..<i {if keys[j]==keys[i] {D_fail(s,"duplicate JSON key");return;}}
+    for j:m.first..<m.first+m.count {if s[0].fields[j].json==keys[i] {D_fail(s,"duplicate JSON key");return;}}
+  }
+  for i:m.first..<m.first+m.count {for j:m.first..<i {if s[0].fields[j].json==s[0].fields[i].json {D_fail(s,"duplicate JSON key");return;}}}
+}
+// The statement that writes v, a field's value, as JSON.
+G_json_put :: (s:[] D_State,f:D_Field,a:[] string,quoted:string)->string #effects(all) {
+  a[9]=quoted;
+  if f.kind==11 {return G_fmt(s,"e:=$3__json_put(v,o);if e!=0 {return e;}",a);}
+  if f.kind==9 {return "jo_str(o,v);";}
+  if f.kind==12 {return "pj_b64(o,v);";}
+  if f.kind==8 {return "jo_bool(o,v);";}
+  if f.kind==3 || f.kind==16 || f.kind==18 {return G_fmt(s,"pj_s64(o,v,$9);",a);}
+  if f.kind==4 || f.kind==6 {return G_fmt(s,"pj_u64(o,v,$9);",a);}
+  if f.kind==7 || f.kind==13 {return "pj_u64(o,cast(u64)v,false);";}
+  return "pj_s64(o,cast(s64)v,false);";
+}
+// When a present singular value is written: always for a field with
+// presence, otherwise when it is not zero, false or empty.
+G_json_shown :: (f:D_Field)->string #effects(all) {
+  if f.optional || f.oneof>=0 || f.kind==11 {return "true";}
+  if f.kind==8 {return "v";}
+  if f.kind==9 || f.kind==12 {return "v.count>0";}
+  return "v!=0";
+}
+G_json :: (s:[] D_State,m:D_Type,p:string) #effects(all) {
+  a:[10] string;a[0]=p;a[1]=m.name;t:=m.opts.text[10];
+  quoted:="true";if m.opts.n[11]!=0 {quoted="false";}
+  G_line(s,"$1_to_json :: (msg:$1,out:[] u8)->$0View {if msg.error!=0 {return $0View.{error=msg.error};} c:=$1_decode(msg.wire);if c.error!=0 {return $0View.{error=c.error};} if bytes_overlap(msg.wire,out) {return $0View.{error=$0ALIAS};} o:[1] Jo;jo_start(o[..],out);e:=$1__json_put(msg,o[..]);if e==0 && o[0].bad {e=$0LIMIT;} if e!=0 {return $0View.{error=e};} return $0View.{wire=out[0..<o[0].n]};}",a[..]);
+  G_line(s,"$1_from_json :: (text:string,nodes:[] JvNode,out:[] u8)->$1 {if bytes_overlap(text,out) {return $1.{error=$0ALIAS};} d:[1] Jv;e:=pj_parse(d[..],text,nodes);if e!=0 {return $1.{error=e};} n:=$1__json_get(d[0],0,out,0);if n<0 {return $1.{error=cast(u32)(-n)};} return $1_decode(out[0..<n]);}",a[..]);
+  // Writer: the constants, then the fields in field-number order.
+  G_line(s,"$1__json_put :: (msg:$1,o:[] Jo)->u32 {jo_obj(o);",a[..]);
+  at:=0;while at<t.count {c:=D_json_member(t,at);at=c.next;a[2]=c.key;a[9]=c.value;G_line(s,"jo_key(o,\"$2\");jo_str(o,\"$9\");",a[..]);}
+  last:u32=0;
+  for step:0..<m.count {
+    f:=s[0].fields[G_json_next(s,m,last)];last=f.number;G_args(s,m,f,p,a[..]);
+    a[4]=G_json_put(s,f,a[..],quoted);a[8]=G_json_shown(f);a[9]=f.json;
+    if f.label==3 {G_line(s,"{each:=$1_iter_$2(msg);if each.error!=0 {return each.error;} if each.has_value {jo_key(o,\"$9\");jo_arr(o);while each.has_value {v:=each.value;$4each=$1_next_$2(each);} jo_end(o);} if each.error!=0 {return each.error;}}",a[..]);}
+    else {
+      G_write(s,G_fmt(s,"{f:=$0find(msg.wire,$5);if f.error!=0 {return f.error;} if !f.done {v:=$7;if $8 {jo_key(o,\"$9\");$4}}",a[..]));
+      if f.opts.n[12]!=0 {G_write(s,G_fmt(s," else {jo_key(o,\"$9\");jo_null(o);}",a[..]));}
+      G_write(s,"}\n");
+    }
+  }
+  G_line(s,"jo_end(o);return 0;}",a[..]);
+  // Reader: the constants, then the fields in field-number order, so the
+  // wire bytes are in that order whatever the members' order. null is
+  // absent; unknown keys are skipped; a key twice is DUPLICATE.
+  G_line(s,"$1__json_get :: (d:Jv,at:int,out:[] u8,pos:int)->int {if jv_kind(d,at)!=JV_OBJECT {return -$0VALUE;} p:=pos;",a[..]);
+  at=0;while at<t.count {c:=D_json_member(t,at);at=c.next;a[2]=c.key;a[9]=c.value;
+    G_line(s,"{c:=pj_member(d,at,\"$2\");if c==-1 {return -$0VALUE;} if c<0 {return c;} if !pj_const(d,c,\"$9\") {return -$0VALUE;}}",a[..]);}
+  last=0;
+  for step:0..<m.count {
+    f:=s[0].fields[G_json_next(s,m,last)];last=f.number;G_args(s,m,f,p,a[..]);a[9]=f.json;a[6]=G_num(s,f.kind);
+    a[4]="false";if f.optional || f.oneof>=0 {a[4]="true";}
+    G_write(s,G_fmt(s,"{c:=pj_member(d,at,\"$9\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {",a[..]));
+    if f.kind==11 && f.label==3 {G_write(s,G_fmt(s,"if jv_kind(d,c)!=JV_ARRAY {return -$0VALUE;} x:=d.nodes[c].first;while x!=-1 {s:=pj_open(out,p,$5);if s<0 {return s;} e:=$3__json_get(d,x,out,s);if e<0 {return e;} p=pj_close(out,s,e);if p<0 {return p;} x=d.nodes[x].next;}",a[..]));}
+    else if f.kind==11 {G_write(s,G_fmt(s,"s:=pj_open(out,p,$5);if s<0 {return s;} e:=$3__json_get(d,c,out,s);if e<0 {return e;} p=pj_close(out,s,e);if p<0 {return p;}",a[..]));}
+    else if f.label==3 {G_write(s,G_fmt(s,"p=pj_scalars(d,c,$6,out,p,$5);if p<0 {return p;}",a[..]));}
+    else {G_write(s,G_fmt(s,"p=pj_scalar(d,c,$6,out,p,$5,$4);if p<0 {return p;}",a[..]));}
+    G_write(s,"}}\n");
+  }
+  G_line(s,"return p;}",a[..]);
+}
+// The field of m with the smallest number above last.
+G_json_next :: (s:[] D_State,m:D_Type,last:u32)->int #effects(all) {
+  best:=-1;
+  for i:m.first..<m.first+m.count {x:=s[0].fields[i].number;if x>last && (best<0 || x<s[0].fields[best].number) {best=i;}}
+  return best;
+}
 // PB_ is a reserved substitution marker in the owned runtime template.
 // The build checks exact emitted runtime bytes; it is not user-supplied code.
 G_runtime :: (s:[] D_State,text:string,prefix:string) #effects(all) {
@@ -621,7 +729,7 @@ G_generate :: (s:[] D_State,raw:string,prefix:string,runtime:string)->int #expor
     for j:e.first..<e.first+e.count {if j>e.first {G_write(s," || ");}a[5]=G_num(s,s[0].values[j].number);G_write(s,G_fmt(s,"value==$5",a[..]));}G_write(s,";}\n");
   }
   for i:0..<s[0].nt {m:=s[0].types[i];a:=[2] string.[m.full,m.name];G_line(s,"// $0 -> $1",a[..]);G_line(s,"$1 :: struct {wire:[] u8;error:u32;}",a[..]);G_line(s,"$1_Option :: struct {value:$1;present:bool;error:u32;}",a[..]);}
-  for i:0..<s[0].nt {G_check(s,s[0].types[i],p);G_api(s,s[0].types[i],p);}
+  for i:0..<s[0].nt {G_check(s,s[0].types[i],p);G_api(s,s[0].types[i],p);if D_has_option(s[0].types[i].opts,10) {G_json(s,s[0].types[i],p);}}
   if s[0].error!="" {return 0;}G_collisions(s);if s[0].error!="" {return 0;}return s[0].written;
 }
 
@@ -1045,7 +1153,8 @@ G_generate :: (s:[] D_State,raw:string,prefix:string,runtime:string)->int #expor
   types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
   arena:[4096] u8;output:[1] u8;symbols:[256] string;
   state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
-  fixture:=[39] u8.[10,37,10,10,116,101,115,116,46,112,114,111,116,111,18,4,116,101,115,116,34,9,10,1,77,58,4,144,244,24,1,98,6,112,114,111,116,111,51];
+  // 51010 to 51012 are the JSON mapper's options now; this fixture carries 51013.
+  fixture:=[39] u8.[10,37,10,10,116,101,115,116,46,112,114,111,116,111,18,4,116,101,115,116,34,9,10,1,77,58,4,168,244,24,1,98,6,112,114,111,116,111,51];
   D_parse(state[..],cast(string)fixture[..],"P");
   #assert state[0].error=="unsupported policy option";
 }
@@ -1791,4 +1900,232 @@ G_generate :: (s:[] D_State,raw:string,prefix:string,runtime:string)->int #expor
   if choice==1 {#assert code=="if f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nif f.raw>4294967295 { return P__pb_Check.{error=P__pb_VALUE}; }\nif f.raw>0 { return P__pb_Check.{error=P__pb_VALUE}; }\n";}
   if choice==2 {#assert code=="if f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nif f.raw>4294967295 { return P__pb_Check.{error=P__pb_VALUE}; }\nif f.raw>65535 { return P__pb_Check.{error=P__pb_VALUE}; }\n";}
  }
+}
+
+#test "JSON mapper descriptor refusal: json_int64_numbers needs the json option 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[47] u8.[10,45,10,7,116,46,112,114,111,116,111,18,1,116,34,23,10,1,65,18,12,10,1,120,24,1,32,1,40,3,82,1,120,58,4,152,244,24,1,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="json_int64_numbers needs the json option";
+}
+#test "JSON mapper descriptor refusal: json_null needs a JSON-mapped singular field with presence 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[53] u8.[10,51,10,7,116,46,112,114,111,116,111,18,1,116,34,29,10,1,65,18,18,10,1,120,24,1,32,1,40,3,66,4,160,244,24,1,82,1,120,58,4,146,244,24,0,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="json_null needs a JSON-mapped singular field with presence";
+}
+#test "JSON mapper descriptor refusal: json_null needs a JSON-mapped singular field with presence 1" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[59] u8.[10,57,10,7,116,46,112,114,111,116,111,18,1,116,34,35,10,1,65,18,24,10,1,120,24,1,32,3,40,11,50,4,46,116,46,65,66,4,160,244,24,1,82,1,120,58,4,146,244,24,0,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="json_null needs a JSON-mapped singular field with presence";
+}
+#test "JSON mapper descriptor refusal: json_null needs a JSON-mapped singular field with presence 2" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[58] u8.[10,56,10,7,116,46,112,114,111,116,111,18,1,116,34,34,10,1,65,18,23,10,1,120,24,1,32,1,40,3,66,4,160,244,24,1,72,0,82,1,120,136,1,1,66,4,10,2,95,120,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="json_null needs a JSON-mapped singular field with presence";
+}
+#test "JSON mapper descriptor refusal: a JSON-mapped message field needs a JSON-mapped message type 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[58] u8.[10,56,10,7,116,46,112,114,111,116,111,18,1,116,34,29,10,1,65,18,18,10,1,120,24,1,32,1,40,11,50,4,46,116,46,66,82,1,120,58,4,146,244,24,0,34,3,10,1,66,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="a JSON-mapped message field needs a JSON-mapped message type";
+}
+#test "JSON mapper descriptor refusal: a JSON-mapped message field needs a JSON-mapped message type 1" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[64] u8.[10,62,10,7,116,46,112,114,111,116,111,18,1,116,34,29,10,1,65,18,18,10,1,120,24,1,32,1,40,11,50,4,46,116,46,66,82,1,120,58,4,146,244,24,0,34,9,10,1,66,58,4,152,244,24,1,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="a JSON-mapped message field needs a JSON-mapped message type";
+}
+#test "JSON mapper descriptor refusal: the JSON mapper does not map float double or enum fields 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[47] u8.[10,45,10,7,116,46,112,114,111,116,111,18,1,116,34,23,10,1,65,18,12,10,1,120,24,1,32,1,40,1,82,1,120,58,4,146,244,24,0,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="the JSON mapper does not map float, double or enum fields";
+}
+#test "JSON mapper descriptor refusal: duplicate JSON key 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[56] u8.[10,54,10,7,116,46,112,114,111,116,111,18,1,116,34,32,10,1,65,18,15,10,1,120,24,1,32,1,40,3,82,4,107,105,110,100,58,10,146,244,24,6,107,105,110,100,61,97,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="duplicate JSON key";
+}
+#test "JSON mapper descriptor refusal: invalid JSON field name 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[49] u8.[10,47,10,7,116,46,112,114,111,116,111,18,1,116,34,25,10,1,65,18,14,10,1,120,24,1,32,1,40,3,82,3,97,59,98,58,4,146,244,24,0,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="invalid JSON field name";
+}
+#test "JSON mapper descriptor refusal: unsupported or duplicate descriptor option 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[50] u8.[10,48,10,7,116,46,112,114,111,116,111,18,1,116,34,26,10,1,65,18,21,10,1,120,24,1,32,1,40,3,66,7,146,244,24,3,97,61,98,82,1,120,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="unsupported or duplicate descriptor option";
+}
+#test "JSON mapper descriptor refusal: unsupported or duplicate descriptor option 1" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[47] u8.[10,45,10,7,116,46,112,114,111,116,111,18,1,116,34,23,10,1,65,18,12,10,1,120,24,1,32,1,40,3,82,1,120,58,4,160,244,24,1,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="unsupported or duplicate descriptor option";
+}
+#test "JSON mapper descriptor refusal: unsupported or duplicate descriptor option 2" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[47] u8.[10,45,10,7,116,46,112,114,111,116,111,18,1,116,34,23,10,1,65,18,18,10,1,120,24,1,32,1,40,3,66,4,152,244,24,1,82,1,120,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="unsupported or duplicate descriptor option";
+}
+#test "JSON mapper descriptor refusal: invalid numeric policy option 0" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[51] u8.[10,49,10,7,116,46,112,114,111,116,111,18,1,116,34,27,10,1,65,18,12,10,1,120,24,1,32,1,40,3,82,1,120,58,8,146,244,24,0,152,244,24,2,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="invalid numeric policy option";
+}
+#test "JSON mapper descriptor refusal: invalid numeric policy option 1" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[4096] u8;output:[1] u8;symbols:[256] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  fixture:=[64] u8.[10,62,10,7,116,46,112,114,111,116,111,18,1,116,34,40,10,1,65,18,23,10,1,120,24,1,32,1,40,3,66,4,160,244,24,2,72,0,82,1,120,136,1,1,58,4,146,244,24,0,66,4,10,2,95,120,98,6,112,114,111,116,111,51];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  #assert state[0].error=="invalid numeric policy option";
+}
+#test "a descriptor with the JSON options generates the mapper beside the codec" {
+  types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
+  arena:[262144] u8;output:[65536] u8;symbols:[1024] string;
+  state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  // openagents/options/v1alpha1/json.proto (a stub, skipped like options.proto), then t.proto: message A
+  // with json "k=v" and json_int64_numbers: oneof string w first, then optional int64 snake_name (json_name snakeName) and B child,
+  // each with json_null; message B with json "" (no int64 numbers) and int64 n.
+  fixture:=[230] u8.[10,40,10,38,111,112,101,110,97,103,101,110,116,115,47,111,112,116,105,111,110,115,47,118,49,97,108,112,104,97,49,47,106,115,111,110,46,112,114,111,116,111,10,185,1,10,7,116,46,112,114,111,116,111,18,1,116,34,137,1,10,1,65,18,40,10,10,115,110,97,107,101,95,110,97,109,101,24,1,32,1,40,3,66,4,160,244,24,1,72,1,82,9,115,110,97,107,101,78,97,109,101,136,1,1,18,32,10,5,99,104,105,108,100,24,2,32,1,40,11,50,4,46,116,46,66,66,4,160,244,24,1,82,5,99,104,105,108,100,18,20,10,1,119,24,3,32,1,40,9,66,4,160,244,24,1,72,0,82,1,119,58,11,146,244,24,3,107,61,118,152,244,24,1,66,6,10,4,112,105,99,107,66,13,10,11,95,115,110,97,107,101,95,110,97,109,101,34,23,10,1,66,18,12,10,1,110,24,1,32,1,40,3,82,1,110,58,4,146,244,24,0,98,6,112,114,111,116,111,51];
+  n:=G_generate(state[..],cast(string)fixture[..],"P","");
+  #assert state[0].error=="" && n==14692;
+  #assert cast(string)output[8027..<8539]=="P_A_to_json :: (msg:P_A,out:[] u8)->P__pb_View {if msg.error!=0 {return P__pb_View.{error=msg.error};} c:=P_A_decode(msg.wire);if c.error!=0 {return P__pb_View.{error=c.error};} if bytes_overlap(msg.wire,out) {return P__pb_View.{error=P__pb_ALIAS};} o:[1] Jo;jo_start(o[..],out);e:=P_A__json_put(msg,o[..]);if e==0 && o[0].bad {e=P__pb_LIMIT;} if e!=0 {return P__pb_View.{error=e};} return P__pb_View.{wire=out[0..<o[0].n]};}\nP_A_from_json :: (text:string,nodes:[] JvNode,out:[] u8)->P_A {if bytes_overlap(text,o";
+  #assert cast(string)output[8539..<9051]=="ut) {return P_A.{error=P__pb_ALIAS};} d:[1] Jv;e:=pj_parse(d[..],text,nodes);if e!=0 {return P_A.{error=e};} n:=P_A__json_get(d[0],0,out,0);if n<0 {return P_A.{error=cast(u32)(-n)};} return P_A_decode(out[0..<n]);}\nP_A__json_put :: (msg:P_A,o:[] Jo)->u32 {jo_obj(o);\njo_key(o,\"k\");jo_str(o,\"v\");\n{f:=P__pb_find(msg.wire,1);if f.error!=0 {return f.error;} if !f.done {v:=cast,trunc(s64) f.raw;if true {jo_key(o,\"snakeName\");pj_s64(o,v,false);}} else {jo_key(o,\"snakeName\");jo_null(o);}}\n{f:=P__pb_find(msg.wire,2)";
+  #assert cast(string)output[9051..<9563]==";if f.error!=0 {return f.error;} if !f.done {v:=P_B.{wire=f.payload};if true {jo_key(o,\"child\");e:=P_B__json_put(v,o);if e!=0 {return e;}}} else {jo_key(o,\"child\");jo_null(o);}}\n{f:=P__pb_find(msg.wire,3);if f.error!=0 {return f.error;} if !f.done {v:=cast(string) f.payload;if true {jo_key(o,\"w\");jo_str(o,v);}} else {jo_key(o,\"w\");jo_null(o);}}\njo_end(o);return 0;}\nP_A__json_get :: (d:Jv,at:int,out:[] u8,pos:int)->int {if jv_kind(d,at)!=JV_OBJECT {return -P__pb_VALUE;} p:=pos;\n{c:=pj_member(d,at,\"k\");if c==";
+  #assert cast(string)output[9563..<10075]=="-1 {return -P__pb_VALUE;} if c<0 {return c;} if !pj_const(d,c,\"v\") {return -P__pb_VALUE;}}\n{c:=pj_member(d,at,\"snakeName\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,3,out,p,1,true);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"child\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {s:=pj_open(out,p,2);if s<0 {return s;} e:=P_B__json_get(d,c,out,s);if e<0 {return e;} p=pj_close(out,s,e);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"w\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_N";
+  #assert cast(string)output[10075..<10587]=="ULL {p=pj_scalar(d,c,9,out,p,3,true);if p<0 {return p;}}}\nreturn p;}\nP_B__check :: (wire:[] u8,depth:int,budget:int,required:bool,canonical:bool)->P__pb_Check {\nif !P__pb_message_admitted(depth,wire.count) {return P__pb_Check.{error=P__pb_LIMIT};}\nleft:=budget;pos:=0;\nseen_n:bool=false;\nwhile pos<wire.count {\nif left<=0 {return P__pb_Check.{error=P__pb_LIMIT};} left-=1;\nf:=P__pb_scan(wire,pos);if f.error!=0 {return P__pb_Check.{error=f.error};} if canonical && !P__pb_minimal(wire,f) {return P__pb_Check.{err";
+  #assert cast(string)output[10587..<11099]=="or=P__pb_WIRE};} pos=f.next;\nif f.number==1 {\nif seen_n {return P__pb_Check.{error=P__pb_DUPLICATE};}\nif f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nseen_n=true;\n}\n}\nreturn P__pb_Check.{left=left};}\nP_B_new :: ()->P_B {return P_B.{};}\nP_B_decode :: (wire:[] u8)->P_B {c:=P_B__check(wire,P__pb_root_depth(),P__pb_default_fields(),P__pb_require_fields(),false);if c.error!=0 {return P_B.{error=c.error};}return P_B.{wire=wire};}\nP_B_decode_minimal :: (wire:[] u8)->P_B {c:=P_B__check(wire,P__pb_root_depth()";
+  #assert cast(string)output[11099..<11611]==",P__pb_default_fields(),P__pb_require_fields(),true);if c.error!=0 {return P_B.{error=c.error};}return P_B.{wire=wire};}\nP_B_encode :: (msg:P_B,out:[] u8)->P__pb_View {if msg.error!=0 {return P__pb_View.{error=msg.error};} c:=P_B__check(msg.wire,P__pb_root_depth(),P__pb_default_fields(),P__pb_require_fields(),false);if c.error!=0 {return P__pb_View.{error=c.error};} return P__pb_copy(msg.wire,out);}\nP_B_unknown :: (msg:P_B,cursor:int)->P__pb_Field {if msg.error!=0 {return P__pb_Field.{error=msg.error};}chec";
+  #assert cast(string)output[11611..<12123]=="ked:=P_B_decode(msg.wire);if checked.error!=0 {return P__pb_Field.{error=checked.error};}pos:=cursor;while true {f:=P__pb_scan(msg.wire,pos);if f.error!=0 || f.done {return f;}pos=f.next;if !(f.number==1) {return f;}}return P__pb_Field.{done=true};}\nP_B_FIELD_n :: 1;\nP_B_get_n :: (msg:P_B)->P__pb_S64 {\nif msg.error!=0 {return P__pb_S64.{error=msg.error};}checked:=P_B_decode(msg.wire);if checked.error!=0 {return P__pb_S64.{error=checked.error};}\nf:=P__pb_find(msg.wire,1);return P__pb_S64.{value=cast,trunc(s6";
+  #assert cast(string)output[12123..<12635]=="4) f.raw,present=!f.done,error=f.error};}\nP_B_set_n :: (msg:P_B,value:s64,out:[] u8)->P_B {\nif msg.error!=0 {return P_B.{error=msg.error};} checked:=P_B__check(msg.wire,P__pb_root_depth(),P__pb_default_fields(),P__pb_partial_fields(),false);if checked.error!=0 {return P_B.{error=checked.error};}\nremoved_fields:= [1] u32.[1];\ndata:[] u8;txt:=\"\";raw:u64=0;is_text:=false;\nraw=cast,trunc(u64) value;\nresult:=P__pb_rewrite(msg.wire,removed_fields[..],1,0,raw,data,txt,is_text,false,out);\nif result.error!=0 {return";
+  #assert cast(string)output[12635..<13147]==" P_B.{error=result.error};} final:=P_B__check(result.wire,P__pb_root_depth(),P__pb_default_fields(),P__pb_partial_fields(),false);if final.error!=0 {return P_B.{error=final.error};}return P_B.{wire=result.wire};}\nP_B_clear_n :: (msg:P_B,out:[] u8)->P_B {\nif msg.error!=0 {return P_B.{error=msg.error};} checked:=P_B__check(msg.wire,P__pb_root_depth(),P__pb_default_fields(),P__pb_partial_fields(),false);if checked.error!=0 {return P_B.{error=checked.error};}\nremoved_fields:= [1] u32.[1];\ndata:[] u8;txt:=\"\";raw";
+  #assert cast(string)output[13147..<13659]==":u64=0;is_text:=false;\nresult:=P__pb_rewrite(msg.wire,removed_fields[..],1,0,raw,data,txt,is_text,true,out);\nif result.error!=0 {return P_B.{error=result.error};} final:=P_B__check(result.wire,P__pb_root_depth(),P__pb_default_fields(),P__pb_partial_fields(),false);if final.error!=0 {return P_B.{error=final.error};}return P_B.{wire=result.wire};}\nP_B_to_json :: (msg:P_B,out:[] u8)->P__pb_View {if msg.error!=0 {return P__pb_View.{error=msg.error};} c:=P_B_decode(msg.wire);if c.error!=0 {return P__pb_View.{err";
+  #assert cast(string)output[13659..<14171]=="or=c.error};} if bytes_overlap(msg.wire,out) {return P__pb_View.{error=P__pb_ALIAS};} o:[1] Jo;jo_start(o[..],out);e:=P_B__json_put(msg,o[..]);if e==0 && o[0].bad {e=P__pb_LIMIT;} if e!=0 {return P__pb_View.{error=e};} return P__pb_View.{wire=out[0..<o[0].n]};}\nP_B_from_json :: (text:string,nodes:[] JvNode,out:[] u8)->P_B {if bytes_overlap(text,out) {return P_B.{error=P__pb_ALIAS};} d:[1] Jv;e:=pj_parse(d[..],text,nodes);if e!=0 {return P_B.{error=e};} n:=P_B__json_get(d[0],0,out,0);if n<0 {return P_B.{erro";
+  #assert cast(string)output[14171..<14683]=="r=cast(u32)(-n)};} return P_B_decode(out[0..<n]);}\nP_B__json_put :: (msg:P_B,o:[] Jo)->u32 {jo_obj(o);\n{f:=P__pb_find(msg.wire,1);if f.error!=0 {return f.error;} if !f.done {v:=cast,trunc(s64) f.raw;if v!=0 {jo_key(o,\"n\");pj_s64(o,v,true);}}}\njo_end(o);return 0;}\nP_B__json_get :: (d:Jv,at:int,out:[] u8,pos:int)->int {if jv_kind(d,at)!=JV_OBJECT {return -P__pb_VALUE;} p:=pos;\n{c:=pj_member(d,at,\"n\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,3,out,p,1,false);if p<0 {return p;}}}\nre";
+  #assert cast(string)output[14683..<14692]=="turn p;}\n";
+}
+#test "the JSON mapper writes and reads every kind in field-number order" {
+  fields:[16] D_Field;
+  fields[0]=D_Field.{name="c",number=3,label=1,kind=11,target="P_C",json="c"};fields[0].opts.n[12]=1;
+  fields[1]=D_Field.{name="a",number=1,label=1,kind=9,json="a"};
+  fields[2]=D_Field.{name="kids",number=2,label=3,kind=11,target="P_C",json="kids"};
+  fields[3]=D_Field.{name="b",number=4,label=1,kind=12,json="b"};
+  fields[4]=D_Field.{name="f",number=5,label=1,kind=8,json="f"};
+  fields[5]=D_Field.{name="i64",number=6,label=1,kind=3,json="i64"};
+  fields[6]=D_Field.{name="sf64",number=7,label=1,kind=16,json="sf64",oneof=1,optional=true};fields[6].opts.n[12]=1;
+  fields[7]=D_Field.{name="z64",number=8,label=1,kind=18,json="z64",oneof=0};
+  fields[8]=D_Field.{name="u64",number=9,label=3,kind=4,json="u64"};
+  fields[9]=D_Field.{name="f64",number=10,label=1,kind=6,json="f64"};
+  fields[10]=D_Field.{name="f32",number=11,label=1,kind=7,json="f32"};
+  fields[11]=D_Field.{name="u32",number=12,label=1,kind=13,json="u32"};
+  fields[12]=D_Field.{name="i32",number=13,label=1,kind=5,json="i32"};
+  fields[13]=D_Field.{name="sf32",number=14,label=1,kind=15,json="sf32"};
+  fields[14]=D_Field.{name="z32",number=15,label=1,kind=17,json="z32"};
+  fields[15]=D_Field.{name="names",number=16,label=3,kind=9,json="names"};
+  arena:[65536]u8;output:[16384]u8;
+  state:=[1]D_State.[D_State.{fields=fields[..],arena=arena[..],output=output[..]}];
+  m:=D_Type.{name="P_M",count=16};m.opts.text[10]="kind=x;schema=y";
+  G_json(state[..],m,"P__pb_");
+  one:=D_Type.{name="P_N",first=5,count=1};one.opts.n[11]=1;
+  start:=state[0].written;G_json(state[..],one,"P__pb_");
+  #assert state[0].error=="" && start==6314 && state[0].written==7516;
+  #assert cast(string)output[0..<512]=="P_M_to_json :: (msg:P_M,out:[] u8)->P__pb_View {if msg.error!=0 {return P__pb_View.{error=msg.error};} c:=P_M_decode(msg.wire);if c.error!=0 {return P__pb_View.{error=c.error};} if bytes_overlap(msg.wire,out) {return P__pb_View.{error=P__pb_ALIAS};} o:[1] Jo;jo_start(o[..],out);e:=P_M__json_put(msg,o[..]);if e==0 && o[0].bad {e=P__pb_LIMIT;} if e!=0 {return P__pb_View.{error=e};} return P__pb_View.{wire=out[0..<o[0].n]};}\nP_M_from_json :: (text:string,nodes:[] JvNode,out:[] u8)->P_M {if bytes_overlap(text,o";
+  #assert cast(string)output[512..<1024]=="ut) {return P_M.{error=P__pb_ALIAS};} d:[1] Jv;e:=pj_parse(d[..],text,nodes);if e!=0 {return P_M.{error=e};} n:=P_M__json_get(d[0],0,out,0);if n<0 {return P_M.{error=cast(u32)(-n)};} return P_M_decode(out[0..<n]);}\nP_M__json_put :: (msg:P_M,o:[] Jo)->u32 {jo_obj(o);\njo_key(o,\"kind\");jo_str(o,\"x\");\njo_key(o,\"schema\");jo_str(o,\"y\");\n{f:=P__pb_find(msg.wire,1);if f.error!=0 {return f.error;} if !f.done {v:=cast(string) f.payload;if v.count>0 {jo_key(o,\"a\");jo_str(o,v);}}}\n{each:=P_M_iter_kids(msg);if each.erro";
+  #assert cast(string)output[1024..<1536]=="r!=0 {return each.error;} if each.has_value {jo_key(o,\"kids\");jo_arr(o);while each.has_value {v:=each.value;e:=P_C__json_put(v,o);if e!=0 {return e;}each=P_M_next_kids(each);} jo_end(o);} if each.error!=0 {return each.error;}}\n{f:=P__pb_find(msg.wire,3);if f.error!=0 {return f.error;} if !f.done {v:=P_C.{wire=f.payload};if true {jo_key(o,\"c\");e:=P_C__json_put(v,o);if e!=0 {return e;}}} else {jo_key(o,\"c\");jo_null(o);}}\n{f:=P__pb_find(msg.wire,4);if f.error!=0 {return f.error;} if !f.done {v:=f.payload;if v.";
+  #assert cast(string)output[1536..<2048]=="count>0 {jo_key(o,\"b\");pj_b64(o,v);}}}\n{f:=P__pb_find(msg.wire,5);if f.error!=0 {return f.error;} if !f.done {v:=f.raw!=0;if v {jo_key(o,\"f\");jo_bool(o,v);}}}\n{f:=P__pb_find(msg.wire,6);if f.error!=0 {return f.error;} if !f.done {v:=cast,trunc(s64) f.raw;if v!=0 {jo_key(o,\"i64\");pj_s64(o,v,true);}}}\n{f:=P__pb_find(msg.wire,7);if f.error!=0 {return f.error;} if !f.done {v:=cast,trunc(s64) f.raw;if true {jo_key(o,\"sf64\");pj_s64(o,v,true);}} else {jo_key(o,\"sf64\");jo_null(o);}}\n{f:=P__pb_find(msg.wire,8);if f.";
+  #assert cast(string)output[2048..<2560]=="error!=0 {return f.error;} if !f.done {v:=cast(s64) P__pb_sint(f.raw);if true {jo_key(o,\"z64\");pj_s64(o,v,true);}}}\n{each:=P_M_iter_u64(msg);if each.error!=0 {return each.error;} if each.has_value {jo_key(o,\"u64\");jo_arr(o);while each.has_value {v:=each.value;pj_u64(o,v,true);each=P_M_next_u64(each);} jo_end(o);} if each.error!=0 {return each.error;}}\n{f:=P__pb_find(msg.wire,10);if f.error!=0 {return f.error;} if !f.done {v:=f.raw;if v!=0 {jo_key(o,\"f64\");pj_u64(o,v,true);}}}\n{f:=P__pb_find(msg.wire,11);if ";
+  #assert cast(string)output[2560..<3072]=="f.error!=0 {return f.error;} if !f.done {v:=cast(u32) f.raw;if v!=0 {jo_key(o,\"f32\");pj_u64(o,cast(u64)v,false);}}}\n{f:=P__pb_find(msg.wire,12);if f.error!=0 {return f.error;} if !f.done {v:=cast(u32) f.raw;if v!=0 {jo_key(o,\"u32\");pj_u64(o,cast(u64)v,false);}}}\n{f:=P__pb_find(msg.wire,13);if f.error!=0 {return f.error;} if !f.done {v:=cast,trunc(s32) f.raw;if v!=0 {jo_key(o,\"i32\");pj_s64(o,cast(s64)v,false);}}}\n{f:=P__pb_find(msg.wire,14);if f.error!=0 {return f.error;} if !f.done {v:=cast,trunc(s32) f.raw";
+  #assert cast(string)output[3072..<3584]==";if v!=0 {jo_key(o,\"sf32\");pj_s64(o,cast(s64)v,false);}}}\n{f:=P__pb_find(msg.wire,15);if f.error!=0 {return f.error;} if !f.done {v:=cast(s32) P__pb_sint(f.raw);if v!=0 {jo_key(o,\"z32\");pj_s64(o,cast(s64)v,false);}}}\n{each:=P_M_iter_names(msg);if each.error!=0 {return each.error;} if each.has_value {jo_key(o,\"names\");jo_arr(o);while each.has_value {v:=each.value;jo_str(o,v);each=P_M_next_names(each);} jo_end(o);} if each.error!=0 {return each.error;}}\njo_end(o);return 0;}\nP_M__json_get :: (d:Jv,at:int,out:[";
+  #assert cast(string)output[3584..<4096]=="] u8,pos:int)->int {if jv_kind(d,at)!=JV_OBJECT {return -P__pb_VALUE;} p:=pos;\n{c:=pj_member(d,at,\"kind\");if c==-1 {return -P__pb_VALUE;} if c<0 {return c;} if !pj_const(d,c,\"x\") {return -P__pb_VALUE;}}\n{c:=pj_member(d,at,\"schema\");if c==-1 {return -P__pb_VALUE;} if c<0 {return c;} if !pj_const(d,c,\"y\") {return -P__pb_VALUE;}}\n{c:=pj_member(d,at,\"a\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,9,out,p,1,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"kids\");if c<-1 {return c;} if c";
+  #assert cast(string)output[4096..<4608]==">=0 && jv_kind(d,c)!=JV_NULL {if jv_kind(d,c)!=JV_ARRAY {return -P__pb_VALUE;} x:=d.nodes[c].first;while x!=-1 {s:=pj_open(out,p,2);if s<0 {return s;} e:=P_C__json_get(d,x,out,s);if e<0 {return e;} p=pj_close(out,s,e);if p<0 {return p;} x=d.nodes[x].next;}}}\n{c:=pj_member(d,at,\"c\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {s:=pj_open(out,p,3);if s<0 {return s;} e:=P_C__json_get(d,c,out,s);if e<0 {return e;} p=pj_close(out,s,e);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"b\");if c<-1 {return c;} if c";
+  #assert cast(string)output[4608..<5120]==">=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,12,out,p,4,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"f\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,8,out,p,5,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"i64\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,3,out,p,6,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"sf64\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,16,out,p,7,true);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"z64\");";
+  #assert cast(string)output[5120..<5632]=="if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,18,out,p,8,true);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"u64\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalars(d,c,4,out,p,9);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"f64\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,6,out,p,10,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"f32\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,7,out,p,11,false);if p<0 {return p;}}}\n{c:=p";
+  #assert cast(string)output[5632..<6144]=="j_member(d,at,\"u32\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,13,out,p,12,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"i32\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,5,out,p,13,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"sf32\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,15,out,p,14,false);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"z32\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,17,out,p,15,f";
+  #assert cast(string)output[6144..<6656]=="alse);if p<0 {return p;}}}\n{c:=pj_member(d,at,\"names\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalars(d,c,9,out,p,16);if p<0 {return p;}}}\nreturn p;}\nP_N_to_json :: (msg:P_N,out:[] u8)->P__pb_View {if msg.error!=0 {return P__pb_View.{error=msg.error};} c:=P_N_decode(msg.wire);if c.error!=0 {return P__pb_View.{error=c.error};} if bytes_overlap(msg.wire,out) {return P__pb_View.{error=P__pb_ALIAS};} o:[1] Jo;jo_start(o[..],out);e:=P_N__json_put(msg,o[..]);if e==0 && o[0].bad {e=P__pb_LIMIT;";
+  #assert cast(string)output[6656..<7168]=="} if e!=0 {return P__pb_View.{error=e};} return P__pb_View.{wire=out[0..<o[0].n]};}\nP_N_from_json :: (text:string,nodes:[] JvNode,out:[] u8)->P_N {if bytes_overlap(text,out) {return P_N.{error=P__pb_ALIAS};} d:[1] Jv;e:=pj_parse(d[..],text,nodes);if e!=0 {return P_N.{error=e};} n:=P_N__json_get(d[0],0,out,0);if n<0 {return P_N.{error=cast(u32)(-n)};} return P_N_decode(out[0..<n]);}\nP_N__json_put :: (msg:P_N,o:[] Jo)->u32 {jo_obj(o);\n{f:=P__pb_find(msg.wire,6);if f.error!=0 {return f.error;} if !f.done {v:=c";
+  #assert cast(string)output[7168..<7516]=="ast,trunc(s64) f.raw;if v!=0 {jo_key(o,\"i64\");pj_s64(o,v,false);}}}\njo_end(o);return 0;}\nP_N__json_get :: (d:Jv,at:int,out:[] u8,pos:int)->int {if jv_kind(d,at)!=JV_OBJECT {return -P__pb_VALUE;} p:=pos;\n{c:=pj_member(d,at,\"i64\");if c<-1 {return c;} if c>=0 && jv_kind(d,c)!=JV_NULL {p=pj_scalar(d,c,3,out,p,6,false);if p<0 {return p;}}}\nreturn p;}\n";
+}
+#test "JSON names and constants: printable ASCII without quote, backslash, semicolon or equals" {
+  long:[257]u8;for i:0..<257 {long[i]='a';}
+  #assert !D_json_text("") && D_json_text("a") && D_json_text(cast(string)long[0..<256]) && !D_json_text(cast(string)long[..]);
+  edge:=[8]u8.[31,32,126,127,34,92,59,61];
+  for c,i:edge {one:=[1]u8.[c];#assert D_json_text(cast(string)one[..])==(i==1 || i==2);}
+  #assert D_json_text("coder.observability.v2") && D_json_text("input_tokens");
+}
+#test "json option constants split into key=value members" {
+  m:=D_json_member("kind=attempt;schema=x",0);
+  #assert m.ok && m.key=="kind" && m.value=="attempt" && m.next==13;
+  m=D_json_member("kind=attempt;schema=x",13);
+  #assert m.ok && m.key=="schema" && m.value=="x" && m.next==22;
+  #assert !D_json_member("a=b;",0).ok && D_json_member("a=b;",0).next==4;
+  #assert !D_json_member("=b",0).ok && !D_json_member("a=",0).ok && !D_json_member("a=;b=c",0).ok;
+  #assert !D_json_member("ab",0).ok && D_json_member("ab",0).next==0 && !D_json_member("a=b=c",0).ok && !D_json_member("a;b=c",0).ok;
+}
+#test "a JSON-mapped field: no float, double or enum, and a usable name" {
+  arena:[64]u8;state:=[1]D_State.[D_State.{arena=arena[..]}];
+  kinds:=[18]int.[1,2,3,4,5,6,7,8,9,11,12,13,14,15,16,17,18,10];
+  for k:kinds {
+    state[0].error="";D_json_field(state[..],D_Field.{kind=k,json="x"});
+    #assert (state[0].error=="the JSON mapper does not map float, double or enum fields")==(k==1 || k==2 || k==14);
+    #assert (state[0].error=="")==!(k==1 || k==2 || k==14);
+  }
+  state[0].error="";D_json_field(state[..],D_Field.{kind=9,json="a=b"});#assert state[0].error=="invalid JSON field name";
+  state[0].error="";D_json_field(state[..],D_Field.{kind=9});#assert state[0].error=="invalid JSON field name";
+}
+#test "json option constants: at most sixteen, each key once among constants and fields" {
+  fields:[3]D_Field;fields[0].json="a";fields[1].json="b";fields[2].json="c";
+  state:=[1]D_State.[D_State.{fields=fields[..]}];
+  m:=D_Type.{first=0,count=3};
+  m.opts.text[10]="k0=v;k1=v;k2=v;k3=v;k4=v;k5=v;k6=v;k7=v;k8=v;k9=v;ka=v;kb=v;kc=v;kd=v;ke=v;kf=v";
+  D_json_names(state[..],m);#assert state[0].error=="";
+  m.opts.text[10]="k0=v;k1=v;k2=v;k3=v;k4=v;k5=v;k6=v;k7=v;k8=v;k9=v;ka=v;kb=v;kc=v;kd=v;ke=v;kf=v;kg=v";
+  D_json_names(state[..],m);#assert state[0].error=="invalid json option constants";
+  bad:=[6]string.["x=1;x=2","x=1;b=2","c=1","x=1;","x","y=1;z=2;y=3"];
+  want:=[6]string.["duplicate JSON key","duplicate JSON key","duplicate JSON key","invalid json option constants","invalid json option constants","duplicate JSON key"];
+  for t,i:bad {state[0].error="";m.opts.text[10]=t;D_json_names(state[..],m);#assert state[0].error==want[i];}
+  m.opts.text[10]="";fields[2].json="a";state[0].error="";D_json_names(state[..],m);#assert state[0].error=="duplicate JSON key";
+  m.count=2;state[0].error="";D_json_names(state[..],m);#assert state[0].error=="";
+  fields[1].json="a";state[0].error="";D_json_names(state[..],m);#assert state[0].error=="duplicate JSON key";
+  m.first=1;m.count=2;fields[1].json="b";fields[2].json="b";state[0].error="";D_json_names(state[..],m);#assert state[0].error=="duplicate JSON key";
+}
+#test "the next JSON field is the lowest number above the last, the first of a tie" {
+  fields:[4]D_Field;fields[0].number=7;fields[1].number=3;fields[2].number=3;fields[3].number=9;
+  state:=[1]D_State.[D_State.{fields=fields[..]}];m:=D_Type.{first=0,count=4};
+  #assert G_json_next(state[..],m,0)==1 && G_json_next(state[..],m,3)==0 && G_json_next(state[..],m,7)==3 && G_json_next(state[..],m,9)==-1;
+  m.first=1;m.count=3;#assert G_json_next(state[..],m,0)==1 && G_json_next(state[..],m,8)==3;
 }

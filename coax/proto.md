@@ -111,7 +111,8 @@ nested messages, open enums, repeated fields, explicit optional presence and
 oneofs. It rejects proto2, editions, groups, maps, extension fields/ranges,
 uninterpreted options and unknown custom options. RPC services are not generated.
 The annotation definitions `google/protobuf/descriptor.proto`,
-`openagents/options/v1alpha1/options.proto`, and
+`openagents/options/v1alpha1/options.proto`,
+`openagents/options/v1alpha1/json.proto`, and
 `openagents/options/v1alpha2/numeric.proto` are metadata, not generated product
 message types. Standalone `.options` files are not read by this importer.
 
@@ -170,6 +171,88 @@ string|[]u8) -> bool`, `f32_bits`, `f64_bits`, `f32_from_bits`,
 NaNs/infinities and signed zero without aliasing violations. Compile-time float
 values must remain finite; address-overlap queries cannot run at compile time.
 
+## JSON mapper
+
+A message with the `json` option from
+`openagents/options/v1alpha1/json.proto` also gets a bounded JSON writer and
+reader. The mapper is opt-in per message, so imports without the option
+generate the same code as before. A program that uses it must
+`#load "coax/lib/proto/json.coax"`, which loads the JSON writer and reader in
+`coax/lib/json/` and base64 in `coax/lib/text/`.
+
+```coax
+#import_proto "events.pb" as N;
+#load "coax/lib/proto/json.coax";
+// to JSON: the text is written into out; the view's wire field holds it
+line:=N_Attempt_to_json(message,out[..]);
+// from JSON: protobuf wire bytes are written into out, then decoded
+nodes:[512] JvNode;
+back:=N_Attempt_from_json(text,nodes[..],out[..]);
+```
+
+`M_to_json(msg, out) -> View` decodes `msg` first and writes one compact JSON
+object. `M_from_json(text, nodes, out) -> M` parses into the caller's `nodes`,
+writes wire bytes into `out` and returns the decoded message. Both use only
+caller buffers, refuse overlapping input and output with `ALIAS`, and return
+`LIMIT` when `out` or `nodes` is too small. Give `nodes` at least
+`text.count` entries to rule out a node `LIMIT`.
+
+| Option | Where | Meaning |
+| --- | --- | --- |
+| `json = 51010` (string) | message | Turns the mapper on. The value lists constant members as `key=value` pairs joined by `;`, for example `kind=attempt;schema=coder.observability.v2`. An empty value means no constants. |
+| `json_int64_numbers = 51011` (bool) | message | 64-bit integers are JSON numbers instead of protobuf JSON's quoted strings. |
+| `json_null = 51012` (bool) | field | An absent field is written as `null`. Only for a singular field with presence. |
+
+The writer emits the constants first, in the option's order, then each field
+under its `json_name` in field-number order. Strings go through
+`coax/lib/json/`'s escaper. Presence decides what is written:
+
+- A field with presence (optional, oneof member or message) is written when
+  it is set, even when it is zero. With `json_null`, an absent one is
+  written as `null`.
+- A field without presence is left out when it is zero, empty or false.
+- A repeated field is left out when it is empty.
+- 32-bit integers are numbers. 64-bit integers are quoted strings unless the
+  message has `json_int64_numbers`. Bytes are standard base64 with padding.
+
+The reader accepts the members in any order and writes the wire bytes in
+field-number order. It requires each constant with its exact value, treats
+`null` as absent, skips unknown keys, and returns `DUPLICATE` for a key that
+appears twice or for two members of one oneof. Integers are accepted as
+numbers or as strings with no escapes, and are range-checked by type.
+Strings are unescaped and must be valid UTF-8.
+
+The mapper refuses these shapes at the directive, with E0502:
+
+- float, double and enum fields;
+- a JSON name or constant that is empty, longer than 256 bytes, or not
+  printable ASCII, or that contains `"`, `\`, `;` or `=`;
+- more than 16 constants, a malformed constant list, or a key used twice
+  among the constants and field names;
+- a message field whose type has no `json` option;
+- `json_int64_numbers` without `json`, and `json_null` on a repeated field,
+  a field without presence, or a message without `json`.
+
+Deliberate differences from protobuf JSON:
+
+- Only `json_name` keys are read; proto field names are not.
+- Bytes must be standard base64 with no escapes. URL-safe base64 is refused.
+- Integers cannot have fractions or exponents.
+- An array where a message is expected, and a top-level value that is not an
+  object, return `VALUE`.
+- Unknown binary fields are not written to JSON.
+
+Evidence: `python3 coax/tests/proto/json_map.py --sanitize` runs 63 cases from
+`coax/tests/proto/json_map_cases.json` through the generated C ABI, checked
+and release, in both directions. Every shorter output buffer must return
+`LIMIT`. Under ASan and UBSan it runs every case at every capacity and a
+seeded 400-input mutation sweep. The cases cover every mapped scalar type,
+optional, repeated, nested and oneof fields, nulls, and the `attempt` line
+from `coder/tui/observability-checks.coax` byte for byte. With `--oracle` and
+`PROTOC`, Python protobuf's `json_format` agrees on 34 cases and the
+descriptor rebuilds byte for byte. `coax/lib/proto/json.coax` is
+`#authority` and has zero mutation survivors.
+
 ## Evidence and remaining gates
 
 ```sh
@@ -187,7 +270,7 @@ code runs under ASan/UBSan. The oracle checks both wire directions with pinned
 protoc and reproducibility of the synthetic scalar descriptor fixture.
 
 This ships descriptor ingestion and its codec layer. Product migration,
-JSON/JWS/Nostr conversion, canonical hashing, cryptographic verification,
+JWS/Nostr conversion, JSON for messages without the mapper option, canonical hashing, cryptographic verification,
 admission, HOST/REACH runtime behavior, transport clients and domain validators
 remain separate work. A decoded Event is not verified or authorized. Existing
 hand-written mobile home/protocol adapters remain until consumer parity is
