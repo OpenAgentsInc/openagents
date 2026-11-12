@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (a thin wrapper: gcloud, ssh and scp around the relay's VM)
-# The Coax relay on a GCE VM for relay.openagents.com (#13361; runbook
+# The Coax relay on a GCE VM, which serves relay.openagents.com since 2026-11-12 (#13361; runbook
 # nostr/book/ch103-replace-relay-openagents-com.md). Every resource it makes:
 #   VM        oa-relay-1, e2-small, Debian 12, us-central1-a, network tag oa-relay
 #   address   oa-relay-1-ip (static external, us-central1)
@@ -21,8 +21,11 @@
 #   nostr/relay/vm.sh ship BINARY       install a relay binary (nostr/relay/build.sh's, built on a
 #                                       Debian 12 build host) as /opt/nostr-relay/relay-SHA, then current
 #   nostr/relay/vm.sh cert              a certificate for relay, relay-staging and relay-coax.openagents.com
-#                                       by DNS-01 (below); cert-renew-by-http moves renewals to HTTP-01
+#                                       by DNS-01 (below), before the name points here
+#   nostr/relay/vm.sh cert-renew-by-http   after: the certificate by HTTP-01 for relay and relay-coax,
+#                                       which certbot.timer then renews alone (done 2026-11-12)
 #   nostr/relay/vm.sh start | stop | restart | status | logs [N]
+#   nostr/relay/vm.sh enable            start the relay at boot (done at the cutover, 2026-11-12)
 #   nostr/relay/vm.sh ssh -- CMD...     run CMD on the VM (as root)
 #   nostr/relay/vm.sh staging-rust up | down   the rollback rehearsal's load balancer in front of the
 #                                       Rust relay for relay-staging.openagents.com (below)
@@ -191,8 +194,17 @@ printf "%s\n" "#!/bin/sh" "echo \"\$CERTBOT_VALIDATION\" > /root/acme/pending-\$
   on 'tail -5 /root/acme/certbot.log; test -f /etc/letsencrypt/live/relay.openagents.com/fullchain.pem && /etc/letsencrypt/renewal-hooks/deploy/nostr-relay && echo "certificate installed"'
   for rec in "${ids[@]}"; do cf DELETE "/dns_records/$rec" >/dev/null && echo "removed TXT record $rec"; done
 }
+# After the cutover: the certificate again, by HTTP-01 on port 80, for the two names that point
+# here (relay-staging's record was removed after the rehearsal), so certbot.timer renews it
+# alone from then on. --no-directory-hooks: this issue doesn't restart the relay (a restart
+# replays the store, 2 to 4.5 minutes); the files are copied and the relay reads them at its
+# next start. Each later renewal (every 60 days) runs the deploy hook, which restarts it.
 renew_by_http() {
-  on "certbot certonly --non-interactive --standalone --preferred-challenges http --cert-name relay.openagents.com --force-renewal $(printf -- '-d %s ' "${names[@]}")"
+  on "certbot certonly --non-interactive --standalone --preferred-challenges http --cert-name relay.openagents.com --renew-with-new-domains --force-renewal --no-directory-hooks -d relay.openagents.com -d relay-coax.openagents.com &&
+src=/etc/letsencrypt/live/relay.openagents.com &&
+install -o nostr-relay -g nostr-relay -m 0400 \$src/fullchain.pem /etc/nostr-relay/tls/fullchain.pem &&
+install -o nostr-relay -g nostr-relay -m 0400 \$src/privkey.pem /etc/nostr-relay/tls/privkey.pem &&
+certbot certificates 2>/dev/null | grep -E 'Domains|Expiry' && systemctl is-enabled certbot.timer"
 }
 
 # The rollback rehearsal's other side (step 7): relay-staging.openagents.com can't be a Cloud
@@ -254,7 +266,7 @@ case "${1:-}" in
   create) create ;;
   setup) setup ;;
   ship) ship "${2:?BINARY}" ;;
-  start|stop|restart) on "systemctl $1 nostr-relay" ;;
+  start|stop|restart|enable) on "systemctl $1 nostr-relay" ;;
   status) on "systemctl status nostr-relay --no-pager -n 0; systemctl is-active oa-relay-cp.timer" ;;
   logs) on "journalctl -u nostr-relay --no-pager -n ${2:-40}" ;;
   ssh) shift; [[ "${1:-}" == "--" ]] && shift; on "$*" ;;

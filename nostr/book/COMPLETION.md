@@ -136,6 +136,11 @@ owner's cutover approval. Keep the Rust relay available until those exits
 pass. Configurable capacity does not authorize reading production data or
 changing DNS.
 
+The owner asked for the cutover on 2026-11-12 (#13361) and it ran that day,
+from restored backups: relay.openagents.com is the Coax relay, with the Rust
+relay as the fallback
+([record](../../docs/verification/2026-11-12-coax-relay-cutover/README.md)).
+
 ## 4. Connect the offline integrations to applications
 
 | Integration | What exists | Required next result | Other book |

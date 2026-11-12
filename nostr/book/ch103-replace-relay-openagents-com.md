@@ -6,10 +6,13 @@
 > export, the rollback rehearsal and a shadow period ran on 2026-11-05
 > against relay.openagents.com's public answers
 > ([record](../../docs/verification/2026-11-05-coax-relay-cutover/README.md)).
-> The production cutover itself (step 15) is a production deploy and waits
-> in NEEDS_OWNER.md, "Coax relay cutover".
+> **The cutover ran on 2026-11-12** (#13361): relay.openagents.com is the
+> Coax relay, and the Rust relay is the fallback
+> ([record](../../docs/verification/2026-11-12-coax-relay-cutover/README.md),
+> [what ran](#what-ran-on-2026-11-12-the-cutover)).
 
-relay.openagents.com still runs the Rust relay from before the reset. This
+Until 2026-11-12 relay.openagents.com ran the Rust relay from before the
+reset. This
 chapter builds the tools for phase R3 of coax/nostr.md section 17, moving
 the relay's data and traffic to the Coax relay, and writes down the steps
 that use them. The examples read a recorded capture; the export and the
@@ -489,12 +492,13 @@ so it passes the id check and fails only at BIP-340, with the relay's own
 
 ## The runbook
 
-The steps below are the R3 plan. Steps that change production (making the
-Rust relay read-only, pointing relay.openagents.com at the Coax relay) are
-production deploys and wait in the workspace's `NEEDS_OWNER.md`. The
-export, the shadow period and the rollback rehearsal ran on 2026-11-05;
+The steps below are the R3 plan. Steps that change production (pointing
+relay.openagents.com at the Coax relay) are production deploys; the owner
+asked for them on 2026-11-12 (#13361). The export, the shadow period and the
+rollback rehearsal first ran on 2026-11-05;
 [What ran against the live relay](#what-ran-against-the-live-relay-2026-11-05)
-says how.
+says how. [What ran on 2026-11-12](#what-ran-on-2026-11-12-the-cutover) is
+the cutover itself, and where it differs from these steps.
 
 ### Before: what must be true first
 
@@ -703,6 +707,58 @@ has the numbers. In short:
   Writes don't go to both relays through a proxy: that changes production
   routing, so the mirror stands in for it.
 
+### What ran on 2026-11-12: the cutover
+
+The [record](../../docs/verification/2026-11-12-coax-relay-cutover/README.md)
+has every number, resource and command. Where the run differs from the
+steps above, the owner decided it in #13361:
+
+- **Export (steps 4 to 6).** The Rust relay's database is a Cloud SQL
+  database, so the backup is a Cloud SQL backup restored into a throwaway
+  instance, and the query is
+  [nostr/relay/export.sql](../../nostr/relay/export.sql) (a `SELECT`: `COPY`
+  doubles every backslash). The last export had 602,080 rows, 589,700 of
+  them kind 3188 host envelopes. There were no private or hidden NIP-29
+  groups and no ban or allow lists.
+- **Retention.** The owner chose to keep a kind 3188 for 7 days
+  (`rs_retained`, chapter 39's expiration). The import refuses older ones
+  "expired", and the equality check's oracle,
+  [relay_export_served.py](../../coax/tests/nostr/relay_export_served.py),
+  leaves them out.
+- **Import and equality (steps 7 to 9, 12).** `--store-capacity 150000`.
+  The equality check is the digest: an independent oracle over the export
+  against `relay --check-store` at the same `--now`. Right before the
+  cutover both gave 37,633 events and the same digest.
+- **Catch-up.** A subscription can't mirror private kinds, so the writes
+  the Rust relay took after an export come from the next restored backup:
+  [nostr/relay/export-delta.sql](../../nostr/relay/export-delta.sql) gives
+  the rows after an `ingest_seq`, and `relay_live_cutover.py publish` sends
+  them over one NIP-42 connection. The only lines refused were Pylon
+  beacons that had already expired.
+- **Shadow period (steps 10 to 12).** 2 hours 20 minutes instead of a
+  week, the owner's decision: 28 rounds, 392 answer pairs, 387 matching.
+  The other five are in the first 10 minutes and are explained (the Pylon's
+  beacon before the mirror delivered it, and the run's own check note).
+- **Read-only (steps 14, 16).** The Rust relay has no read-only switch.
+  It stays writable at its Cloud Run address, and the writes it took in the
+  hour after the cutover (Cloud Run ends a WebSocket after 3,600 s) were
+  carried over with the same delta export.
+- **Cutover (step 15).** One DNS record: relay.openagents.com from a CNAME
+  to Cloud Run to an A record for the VM, at 15:43 Chicago. Public resolvers
+  had it in 5 seconds.
+- **After.** NIP-11, a write and read-back, the website's subscriptions
+  compared with the fallback's, `openagents nostr publish`, the Pylon's
+  beacon and the website's Nostr login all passed.
+- **Rollback (steps 18, 19).** The record put back, then
+  `relay --export OUT --from 111803475` (the store file's size at the
+  cutover) and `relay_live_cutover.py publish OUT` to the Rust relay.
+
+Two limits to know. An event with a string over 64 KiB is refused
+"invalid: malformed event": that is chapter 17's bound in the shared event
+profile, not the relay's 131,072-byte message limit, and no event the relay
+serves needs more. A restart replays the store and checks every signature
+again, about 2 minutes on the e2-small VM and up to 4.5.
+
 ## What the relay doesn't use yet
 
 `nostr/relay/relay.coax` loads `relay_store.coax` (the store, `store_saved.coax`,
@@ -783,7 +839,9 @@ coax/bin/coax test nostr/examples/checks/relay-cutover.coax
 Run on 2026-11-01: the checks above, the mutation runs above, and the
 example in debug and release with its transcript. Run on 2026-11-05: the
 export, the import, the rollback rehearsal and a shadow period (above). Not
-run: anything against the relay's database or backups, and the cutover.
+run then: anything against the relay's database or backups, and the cutover.
+Run on 2026-11-12: both, from restored backups
+([record](../../docs/verification/2026-11-12-coax-relay-cutover/README.md)).
 The R1 differential and flood records describe the earlier bounded relay:
 [2026-10-30-coax-relay-r1-rust-differential.md](../../docs/verification/2026-10-30-coax-relay-r1-rust-differential.md)
 and
@@ -814,9 +872,10 @@ keeps that qualification separate from the owner-approved migration.
 - In the example, a forged status is refused at BIP-340, and the one event
   the shadow store missed is named, explains the one answer it changes,
   and is put back.
-- The cutover and the rollback rehearsal are written down and wait for the
-  owner; so does the R2 wiring they depend on. The store's size is
-  `--store-capacity`.
+- The cutover ran on 2026-11-12: relay.openagents.com is the Coax relay,
+  and the Rust relay is the fallback. The R2 wiring the owner dropped from
+  NIP-11 (29, 65, 67, 94, 98 and the extensions) is still to do. The
+  store's size is `--store-capacity`.
 
 ## Dependencies
 

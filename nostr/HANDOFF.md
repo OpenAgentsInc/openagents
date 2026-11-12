@@ -79,9 +79,10 @@ open, and how to check it.
 4. **Relay signing key.** Decide whether the relay may hold one. NIP-43 and
    NIP-29's relay-signed group events need it, so neither is wired. This is
    tied to the pending Pylon key-file decision.
-5. **relay.openagents.com cutover (chapter 103).** The export, the shadow
-   period, the DNS cutover and the rollback rehearsal. The importer, the
-   equality check and the shadow comparer are built and checked offline.
+5. **relay.openagents.com cutover (chapter 103).** Done on 2026-11-12
+   (#13361): relay.openagents.com is the Coax relay and the Rust relay is
+   the fallback
+   ([record](../docs/verification/2026-11-12-coax-relay-cutover/README.md)).
 
 ### Not built or not run
 
