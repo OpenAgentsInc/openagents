@@ -4,7 +4,7 @@
 # ("# why (#1234)"), and a line that excuses nothing now fails. Lines:
 #   aethyr-up FROM -> TO      an engine file loads from verse/, apps/, everglade/ or coax/web/
 #   everglade-up FROM -> TO   a game file loads from apps/
-#   tests FROM -> TO          an engine or game file that is not support code loads a tests/ file
+#   tests FROM -> TO          an engine, game, API or room file that is not support code loads a tests/ file
 # Seeded when the check landed: aethyr-up 57, everglade-up 7, tests 126.
 
 # The engine loads from a realm, a page or the game
@@ -202,3 +202,6 @@ tests aethyr/world/resource-manifest.coax -> aethyr/world/tests/resource-manifes
 tests aethyr/world/resource-stream.coax -> aethyr/world/tests/resource-stream-fixture.coax
 tests aethyr/world/stream-walk-state.coax -> aethyr/world/tests/stream-walk-state-checks.coax
 tests aethyr/world/stream-walk.coax -> aethyr/world/tests/stream-walk-checks.coax
+tests coax/web/api/checkpoint-policy.coax -> coax/web/api/tests/checkpoint-fixture.coax  # inline #test fixture kept out of #authority module (#13315)
+tests coax/web/api/lnaddr-policy.coax -> coax/tests/lnaddr/profile_fixtures.coax  # inline #test fixtures kept out of #authority module for mutation testing (#13315)
+tests coax/web/room/room-checkpoint.coax -> coax/web/room/tests/checkpoint-fixture.coax  # inline #test helpers and fixtures loaded by room-checkpoint (#13315)
