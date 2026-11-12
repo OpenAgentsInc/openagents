@@ -59,13 +59,17 @@ At `max_depth` (1 by default, as in the paper) `rlm_query` is a plain sub-call.
 
 **Ending.** `FINAL(x)` or `FINAL_VAR(name)` in code ends the run at once; a line `FINAL(...)` or
 `FINAL_VAR(...)` in a reply with no code block ends it too (the paper's form). A reply with neither
-gets a note. After `max_turns` one closing call asks for `FINAL(...)`.
+gets a note. A root reply the provider refuses (Gemini's `MALFORMED_FUNCTION_CALL`) gets a note
+and the turn goes again, up to three in a row, as the reference's `max_errors`. After `max_turns`
+one closing call asks for `FINAL(...)`.
 
 **Limits** (`policy.coax`, `#authority`, every mutant killed): before every call, root or sub, at
 every depth, `rlm_may_call` refuses when the run has made `max_calls` calls, used `max_ms`, or when
 what it has spent plus the least the call can cost (its prompt's input tokens at the rates card's
 input price) would pass `max_usd_micros`; a model off the card is refused while a cap is set. A
-refused sub-call ends its block with the limit's name; the run then stops with the answer it has.
+refused sub-call ends its block with the limit's name, the model sees that output, and the run
+ends there: a final answer the block already gave stands, otherwise the run has none (a closing
+call would pass the limit too).
 Per block: `max_steps` interpreter steps; per sub-call: `max_prompt_bytes`; per turn: `max_shown`
 bytes of output shown to the root. The arenas the caller passes are the memory limit.
 
@@ -84,12 +88,14 @@ recursion on the scripted model.
 | `model.coax` | Root and sub models: gateway plans in up to eight slots, or a scripted model |
 | `run.coax` | The driver: prompts, turns, blocks, snapshots and reruns, child levels, FINAL, accounting, the trace; and the checks |
 | `rlm.coax` | The command line (below), the OOLONG-style task builder and its scoring |
+| `replay.sh`, `fixtures/replay/` | A recorded live run replayed through the gateway's `GW_REPLAY`, nothing sent; fails unless the answer matches |
 
 ## Use it
 
 ```sh
 coax/bin/coax test coax/lib/rlm/run.coax          # the checks (about a second)
 coax/bin/coax mutate coax/lib/rlm/policy.coax --root-only
+coax/lib/rlm/replay.sh                            # the recorded run over the gateway's replay path
 coax/web/tool.sh coax/lib/rlm/rlm.coax ask --dir coax/lib/microcoder --ext .coax \
   --question "Which limits does Microcoder enforce, and where?" --trace /tmp/rlm.trace
 coax/web/tool.sh coax/lib/rlm/rlm.coax base --file ctx.txt --question Q --window 96000   # one plain call, cut to fit
