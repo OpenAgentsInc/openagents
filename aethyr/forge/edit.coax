@@ -549,6 +549,298 @@ forge_after :: (a: string, b: string) -> bool {
   return false;
 }
 
+// ---- a scene of placed things (#13226): parameterised by the caller's slices so a small fixture
+// and a 4,096-thing world share one typed operation log with compound steps, undo and redo.
+// Each atomic change names what stood there before (`had`, `b`) and after (`has`, `a`), is refused
+// unless the scene still matches `b`, and undoes by swapping before and after. Compound edits
+// (scattering a meadow, moving a group, clearing the world) bracket their changes with
+// forge_scene_begin/forge_scene_end so undo and redo step the whole edit at once.
+
+FORGE_SCENE_ITEMS :: 4096;
+FORGE_SCENE_OPS :: 8192;
+FORGE_SCENE_STEPS :: 128;
+
+FORGE_SCENE_PLACE :: 1;
+FORGE_SCENE_MOVE :: 2;
+FORGE_SCENE_ROTATE :: 3;
+FORGE_SCENE_SCALE :: 4;
+FORGE_SCENE_DELETE :: 5;
+FORGE_SCENE_DUPLICATE :: 6;
+FORGE_SCENE_CLEAR :: 7;
+
+ForgeItem :: struct { id: int; mesh: int; x: f32; y: f32; z: f32; yaw: f32; scale: f32 = 1; }
+ForgeItemOp :: struct { kind: int; had: bool; b: ForgeItem; has: bool; a: ForgeItem; }
+ForgeStep :: struct { kind: int; first: int; count: int; }
+ForgeSceneState :: struct {
+  n: int; next_id: int;
+  op_n: int; step_n: int; done: int; saved: int;
+  open: bool; open_kind: int; open_first: int;
+}
+ForgeScene :: struct {
+  st: [] ForgeSceneState;
+  items: [] ForgeItem;
+  ops: [] ForgeItemOp;
+  steps: [] ForgeStep;
+}
+
+forge_scene_reset :: (s: ForgeScene) {
+  s.st[0] = ForgeSceneState.{};
+}
+
+forge_same_item :: (p: ForgeItem, q: ForgeItem) -> bool {
+  return p.id == q.id && p.mesh == q.mesh && p.x == q.x && p.y == q.y && p.z == q.z && p.yaw == q.yaw && p.scale == q.scale;
+}
+
+forge_item_inverse :: (o: ForgeItemOp) -> ForgeItemOp {
+  return ForgeItemOp.{kind = o.kind, had = o.has, b = o.a, has = o.had, a = o.b};
+}
+
+// Items stand in ascending `id` order so removing and restoring a subset puts every item back where it stood.
+forge_scene_lower :: (s: ForgeScene, id: int) -> int {
+  lo := 0; hi := s.st[0].n;
+  while lo < hi {
+    mid := lo + (hi - lo) / 2;
+    if s.items[mid].id < id { lo = mid + 1; } else { hi = mid; }
+  }
+  return lo;
+}
+
+forge_scene_find :: (s: ForgeScene, id: int) -> int {
+  at := forge_scene_lower(s, id);
+  return ifx at < s.st[0].n && s.items[at].id == id then at else -1;
+}
+
+// Apply one atomic item operation; refused unless the item is still as the operation says it was.
+forge_scene_apply :: (s: ForgeScene, o: ForgeItemOp) -> bool {
+  n := s.st[0].n;
+  if o.had && o.has {
+    if o.b.id != o.a.id { return false; }
+    i := forge_scene_find(s, o.b.id);
+    if i < 0 || !forge_same_item(s.items[i], o.b) { return false; }
+    s.items[i] = o.a;
+    return true;
+  }
+  if !o.had && o.has {
+    if n >= s.items.count || forge_scene_find(s, o.a.id) >= 0 { return false; }
+    at := forge_scene_lower(s, o.a.id);
+    k := n;
+    while k > at { s.items[k] = s.items[k - 1]; k -= 1; }
+    s.items[at] = o.a;
+    s.st[0].n = n + 1;
+    if o.a.id >= s.st[0].next_id { s.st[0].next_id = o.a.id + 1; }
+    return true;
+  }
+  if o.had && !o.has {
+    i := forge_scene_find(s, o.b.id);
+    if i < 0 || !forge_same_item(s.items[i], o.b) { return false; }
+    for j: i..<n - 1 { s.items[j] = s.items[j + 1]; }
+    s.st[0].n = n - 1;
+    return true;
+  }
+  return false;
+}
+
+// Drop the oldest committed step to make room in `ops` or `steps`.
+forge_scene_drop_oldest :: (s: ForgeScene) -> bool {
+  if s.st[0].step_n <= 0 { return false; }
+  drop := s.steps[0].count;
+  total := s.st[0].op_n;
+  for j: 0..<total - drop { s.ops[j] = s.ops[j + drop]; }
+  s.st[0].op_n -= drop;
+  s.st[0].open_first -= drop;
+  for k: 0..<s.st[0].step_n - 1 {
+    s.steps[k] = s.steps[k + 1];
+    s.steps[k].first -= drop;
+  }
+  s.st[0].step_n -= 1;
+  s.st[0].done -= 1;
+  s.st[0].saved = ifx s.st[0].saved > 0 then s.st[0].saved - 1 else -1;
+  return true;
+}
+
+// Start a compound edit step (`scatter`, multi-object `move`/`delete`, `clear`). Redo past `done` goes.
+forge_scene_begin :: (s: ForgeScene, kind: int) {
+  if s.st[0].open { return; }
+  if s.st[0].done < s.st[0].step_n {
+    if s.st[0].saved > s.st[0].done { s.st[0].saved = -1; }
+    s.st[0].op_n = ifx s.st[0].done > 0 then s.steps[s.st[0].done - 1].first + s.steps[s.st[0].done - 1].count else 0;
+    s.st[0].step_n = s.st[0].done;
+  }
+  s.st[0].open = true;
+  s.st[0].open_kind = kind;
+  s.st[0].open_first = s.st[0].op_n;
+}
+
+// Commit the open step as one undo entry; an edit that changed nothing leaves no undo entry.
+forge_scene_end :: (s: ForgeScene) -> bool {
+  if !s.st[0].open { return false; }
+  count := s.st[0].op_n - s.st[0].open_first;
+  if count <= 0 { s.st[0].open = false; return false; }
+  if s.steps.count <= 0 { return false; }
+  while s.st[0].step_n >= s.steps.count {
+    if !forge_scene_drop_oldest(s) { return false; }
+  }
+  count = s.st[0].op_n - s.st[0].open_first;
+  s.steps[s.st[0].step_n] = ForgeStep.{kind = s.st[0].open_kind, first = s.st[0].open_first, count = count};
+  s.st[0].step_n += 1;
+  s.st[0].done = s.st[0].step_n;
+  s.st[0].open = false;
+  return true;
+}
+
+forge_scene_cancel :: (s: ForgeScene) {
+  if !s.st[0].open { return; }
+  k := s.st[0].op_n;
+  while k > s.st[0].open_first {
+    k -= 1;
+    ok := forge_scene_apply(s, forge_item_inverse(s.ops[k]));
+  }
+  s.st[0].op_n = s.st[0].open_first;
+  s.st[0].open = false;
+}
+
+// Record and apply one atomic operation: inside the open compound step, or as a one-op step of its own.
+forge_scene_push :: (s: ForgeScene, o: ForgeItemOp) -> bool {
+  if s.ops.count <= 0 || s.steps.count <= 0 { return false; }
+  grouped := s.st[0].open;
+  if !grouped { forge_scene_begin(s, o.kind); }
+  while s.st[0].op_n >= s.ops.count {
+    if !forge_scene_drop_oldest(s) {
+      if !grouped { s.st[0].open = false; }
+      return false;
+    }
+  }
+  if !forge_scene_apply(s, o) {
+    if !grouped { s.st[0].open = false; }
+    return false;
+  }
+  s.ops[s.st[0].op_n] = o;
+  s.st[0].op_n += 1;
+  return ifx grouped then true else forge_scene_end(s);
+}
+
+// Read an item from a saved scene with no undo history.
+forge_scene_load :: (s: ForgeScene, mesh: int, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> int {
+  if s.st[0].n >= s.items.count { return -1; }
+  id := s.st[0].next_id; s.st[0].next_id += 1;
+  s.items[s.st[0].n] = ForgeItem.{id = id, mesh = mesh, x = x, y = y, z = z, yaw = yaw, scale = scale};
+  s.st[0].n += 1;
+  return id;
+}
+
+forge_scene_add_op :: (s: ForgeScene, kind: int, mesh: int, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> int {
+  if s.st[0].n >= s.items.count { return -1; }
+  id := s.st[0].next_id;
+  item := ForgeItem.{id = id, mesh = mesh, x = x, y = y, z = z, yaw = yaw, scale = scale};
+  if !forge_scene_push(s, ForgeItemOp.{kind = kind, has = true, a = item}) { return -1; }
+  return id;
+}
+
+forge_scene_place :: (s: ForgeScene, mesh: int, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> int {
+  return forge_scene_add_op(s, FORGE_SCENE_PLACE, mesh, x, y, z, yaw, scale);
+}
+
+forge_scene_duplicate :: (s: ForgeScene, mesh: int, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> int {
+  return forge_scene_add_op(s, FORGE_SCENE_DUPLICATE, mesh, x, y, z, yaw, scale);
+}
+
+forge_scene_reshape :: (s: ForgeScene, kind: int, id: int, next: ForgeItem) -> bool {
+  i := forge_scene_find(s, id);
+  if i < 0 { return false; }
+  was := s.items[i];
+  if forge_same_item(was, next) { return false; }
+  return forge_scene_push(s, ForgeItemOp.{kind = kind, had = true, b = was, has = true, a = next});
+}
+
+forge_scene_move :: (s: ForgeScene, id: int, x: f32, y: f32, z: f32) -> bool {
+  i := forge_scene_find(s, id);
+  if i < 0 { return false; }
+  next := s.items[i]; next.x = x; next.y = y; next.z = z;
+  return forge_scene_reshape(s, FORGE_SCENE_MOVE, id, next);
+}
+
+forge_scene_rotate :: (s: ForgeScene, id: int, yaw: f32) -> bool {
+  i := forge_scene_find(s, id);
+  if i < 0 { return false; }
+  next := s.items[i]; next.yaw = yaw;
+  return forge_scene_reshape(s, FORGE_SCENE_ROTATE, id, next);
+}
+
+forge_scene_scale :: (s: ForgeScene, id: int, scale: f32) -> bool {
+  i := forge_scene_find(s, id);
+  if i < 0 { return false; }
+  next := s.items[i]; next.scale = scale;
+  return forge_scene_reshape(s, FORGE_SCENE_SCALE, id, next);
+}
+
+forge_scene_delete :: (s: ForgeScene, id: int) -> bool {
+  i := forge_scene_find(s, id);
+  if i < 0 { return false; }
+  return forge_scene_push(s, ForgeItemOp.{kind = FORGE_SCENE_DELETE, had = true, b = s.items[i]});
+}
+
+forge_scene_clear :: (s: ForgeScene) -> int {
+  if s.st[0].n == 0 { return 0; }
+  grouped := s.st[0].open;
+  if !grouped { forge_scene_begin(s, FORGE_SCENE_CLEAR); }
+  removed := 0;
+  while s.st[0].n > 0 {
+    last := s.items[s.st[0].n - 1];
+    if !forge_scene_push(s, ForgeItemOp.{kind = FORGE_SCENE_CLEAR, had = true, b = last}) { break; }
+    removed += 1;
+  }
+  if !grouped { ok := forge_scene_end(s); }
+  return removed;
+}
+
+forge_scene_can_undo :: (s: ForgeScene) -> bool { return !s.st[0].open && s.st[0].done > 0; }
+forge_scene_can_redo :: (s: ForgeScene) -> bool { return !s.st[0].open && s.st[0].done < s.st[0].step_n; }
+forge_scene_dirty :: (s: ForgeScene) -> bool { return s.st[0].done != s.st[0].saved; }
+forge_scene_saved :: (s: ForgeScene) { s.st[0].saved = s.st[0].done; }
+
+forge_scene_undo :: (s: ForgeScene) -> bool {
+  if !forge_scene_can_undo(s) { return false; }
+  st := s.steps[s.st[0].done - 1];
+  k := st.first + st.count;
+  while k > st.first {
+    k -= 1;
+    if !forge_scene_apply(s, forge_item_inverse(s.ops[k])) {
+      // roll forward anything already inverted in this step
+      for j: k + 1..<st.first + st.count { ok := forge_scene_apply(s, s.ops[j]); }
+      return false;
+    }
+  }
+  s.st[0].done -= 1;
+  return true;
+}
+
+forge_scene_redo :: (s: ForgeScene) -> bool {
+  if !forge_scene_can_redo(s) { return false; }
+  st := s.steps[s.st[0].done];
+  for k: st.first..<st.first + st.count {
+    if !forge_scene_apply(s, s.ops[k]) {
+      j := k;
+      while j > st.first { j -= 1; ok := forge_scene_apply(s, forge_item_inverse(s.ops[j])); }
+      return false;
+    }
+  }
+  s.st[0].done += 1;
+  return true;
+}
+
+// Replay the applied steps of `from` onto `s` as steps of its own; false at the first step whose before diverges.
+forge_scene_replay :: (s: ForgeScene, from: ForgeScene) -> bool {
+  for i: 0..<from.st[0].done {
+    st := from.steps[i];
+    forge_scene_begin(s, st.kind);
+    for k: st.first..<st.first + st.count {
+      if !forge_scene_push(s, from.ops[k]) { forge_scene_cancel(s); return false; }
+    }
+    if !forge_scene_end(s) { return false; }
+  }
+  return true;
+}
+
 #test "a name is a feature, a colon and an index" {
   #assert forge_key_ok("trees:3") && forge_key_ok("rocks:120") && forge_key_ok("a:0") && forge_key_ok("placed:7");
   #assert !forge_key_ok("trees") && !forge_key_ok(":3") && !forge_key_ok("trees:") && !forge_key_ok("Trees:3");
@@ -778,4 +1070,107 @@ forge_script :: (d: [] ForgeDoc) -> bool {
   }
   #assert !ok && who > FORGE_OPS && e[0].slot_n == who - 1 && e[0].done == FORGE_OPS;   // the log keeps its last 64 steps
   #assert forge_slot_text(e[..], "lore:w0") == cast(string) long[..];
+}
+
+ForgeTestScene :: struct {
+  st: [1] ForgeSceneState;
+  items: [FORGE_SCENE_ITEMS] ForgeItem;
+  ops: [FORGE_SCENE_OPS] ForgeItemOp;
+  steps: [FORGE_SCENE_STEPS] ForgeStep;
+}
+forge_test_scene :: (t: [] ForgeTestScene) -> ForgeScene {
+  return ForgeScene.{st = t[0].st[..], items = t[0].items[..], ops = t[0].ops[..], steps = t[0].steps[..]};
+}
+
+#test "scene edits: place, move, rotate, scale, duplicate, delete and clear each undo and redo cleanly" {
+  t: [1] ForgeTestScene; s := forge_test_scene(t[..]);
+  #assert !forge_scene_can_undo(s) && !forge_scene_can_redo(s) && !forge_scene_dirty(s);
+  #assert forge_scene_clear(s) == 0 && !forge_scene_can_undo(s);
+
+  tree := forge_scene_place(s, 1, 2.0, 0.0, -5.0, 0.25, 1.0);
+  rock := forge_scene_place(s, 2, 4.0, 0.0, -5.0, 0.0, 1.0);
+  house := forge_scene_place(s, 3, -6.0, 0.0, -5.0, 0.0, 1.0);
+  #assert tree == 0 && rock == 1 && house == 2 && s.st[0].n == 3 && forge_scene_dirty(s);
+
+  // no-op reshape records no step
+  steps_was := s.st[0].step_n;
+  #assert !forge_scene_move(s, house, -6.0, 0.0, -5.0) && s.st[0].step_n == steps_was;
+
+  #assert forge_scene_move(s, house, -6.0, 0.0, -9.0);
+  #assert forge_scene_rotate(s, house, 1.5);
+  #assert forge_scene_scale(s, house, 1.75);
+  dup := forge_scene_duplicate(s, 3, 2.0, 0.0, -9.0, 1.5, 1.75);
+  #assert dup == 3 && s.st[0].n == 4;
+
+  // delete rock in the middle: house and duplicate shift down; undo restores rock at index 1
+  #assert forge_scene_delete(s, rock) && s.st[0].n == 3 && s.items[1].id == house;
+  #assert forge_scene_undo(s) && s.st[0].n == 4 && s.items[1].id == rock && s.items[2].id == house;
+  #assert forge_scene_can_redo(s);
+  #assert forge_scene_redo(s) && s.st[0].n == 3 && !forge_scene_can_redo(s);
+
+  // clear removes all 3 in one step; undo puts all 3 back; redo clears again
+  #assert forge_scene_clear(s) == 3 && s.st[0].n == 0;
+  #assert forge_scene_undo(s) && s.st[0].n == 3 && s.items[1].z == -9.0 && s.items[1].yaw == 1.5 && s.items[1].scale == 1.75;
+  #assert forge_scene_redo(s) && s.st[0].n == 0;
+
+  // walk all the way back to empty, then all the way forward again
+  while forge_scene_can_undo(s) { #assert forge_scene_undo(s); }
+  #assert s.st[0].n == 0 && !forge_scene_dirty(s) && forge_scene_can_redo(s);
+  while forge_scene_can_redo(s) { #assert forge_scene_redo(s); }
+  #assert s.st[0].n == 0 && !forge_scene_can_redo(s);
+
+  // undo clear + undo delete + undo duplicate + undo scale/rotate/move -> back to initial 3 items
+  #assert forge_scene_undo(s) && forge_scene_undo(s) && forge_scene_undo(s);
+  #assert forge_scene_undo(s) && forge_scene_undo(s) && forge_scene_undo(s);
+  #assert s.st[0].n == 3 && s.items[2].z == -5.0 && s.items[2].yaw == 0.0 && s.items[2].scale == 1.0;
+
+  // a new edit after undo drops the redo branch
+  #assert forge_scene_can_redo(s);
+  #assert forge_scene_scale(s, tree, 2.0);
+  #assert !forge_scene_can_redo(s) && s.items[0].scale == 2.0;
+}
+
+#test "compound scatter, 4,096 placed things, oldest-step eviction, replay and stale-edit refusal" {
+  t: [1] ForgeTestScene; s := forge_test_scene(t[..]);
+  // a scatter of 65 items is one undo/redo step; an empty compound step leaves none
+  forge_scene_begin(s, FORGE_SCENE_PLACE);
+  #assert !forge_scene_end(s) && !forge_scene_can_undo(s);
+
+  forge_scene_begin(s, FORGE_SCENE_PLACE);
+  for i: 0..<65 {
+    id := forge_scene_place(s, i % 4, cast(f32) i * 0.5, 0.0, cast(f32) -i, 0.1, 1.0);
+    #assert id == i;
+  }
+  #assert forge_scene_end(s) && s.st[0].n == 65 && s.st[0].step_n == 1;
+  #assert forge_scene_undo(s) && s.st[0].n == 0 && forge_scene_can_redo(s);
+  #assert forge_scene_redo(s) && s.st[0].n == 65 && s.items[64].x == 32.0;
+
+  // fill all 4,096 slots across compound steps
+  while s.st[0].n < FORGE_SCENE_ITEMS {
+    forge_scene_begin(s, FORGE_SCENE_PLACE);
+    batch := ifx FORGE_SCENE_ITEMS - s.st[0].n > 200 then 200 else FORGE_SCENE_ITEMS - s.st[0].n;
+    for k: 0..<batch { #assert forge_scene_place(s, 1, cast(f32) k, 0.0, 0.0, 0.0, 1.0) >= 0; }
+    #assert forge_scene_end(s);
+  }
+  #assert s.st[0].n == FORGE_SCENE_ITEMS && forge_scene_place(s, 1, 0, 0, 0, 0, 1) == -1;
+
+  // replay onto an empty scene reproduces all 4,096 items; replay onto a diverged scene refuses
+  u: [1] ForgeTestScene; su := forge_test_scene(u[..]);
+  #assert forge_scene_replay(su, s) && su.st[0].n == FORGE_SCENE_ITEMS && forge_same_item(su.items[4095], s.items[4095]);
+  v: [1] ForgeTestScene; sv := forge_test_scene(v[..]);
+  loaded := forge_scene_load(sv, 9, 1, 0, 1, 0, 1);
+  #assert loaded == 0 && !forge_scene_replay(sv, s);
+
+  // small slice parameters evict the oldest whole step cleanly when ops or steps fill
+  small_st: [1] ForgeSceneState; small_items: [16] ForgeItem; small_ops: [6] ForgeItemOp; small_steps: [3] ForgeStep;
+  sm := ForgeScene.{st = small_st[..], items = small_items[..], ops = small_ops[..], steps = small_steps[..]};
+  for i: 0..<5 {
+    forge_scene_begin(sm, FORGE_SCENE_PLACE);
+    #assert forge_scene_place(sm, 1, cast(f32) i, 0, 0, 0, 1) >= 0;
+    #assert forge_scene_place(sm, 2, cast(f32) i, 0, 1, 0, 1) >= 0;
+    #assert forge_scene_end(sm);
+  }
+  #assert sm.st[0].n == 10 && sm.st[0].step_n == 3 && sm.st[0].op_n == 6;
+  #assert forge_scene_undo(sm) && forge_scene_undo(sm) && forge_scene_undo(sm) && !forge_scene_can_undo(sm);
+  #assert sm.st[0].n == 4 && forge_scene_redo(sm) && sm.st[0].n == 6;
 }

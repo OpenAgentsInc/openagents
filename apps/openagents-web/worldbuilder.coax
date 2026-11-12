@@ -602,7 +602,7 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   vertices = write(d, out, vertices, pace, tb.x0 + 14 * k, tb.y0 + 58 * k, fit_cap(pace, 6.5 * k, room), GAP, SPACE, cyan(k, 0.75), false, false);
 
   // UNDO, top right: free, no model asked
-  can_undo := s[0].world[0].undo_count > 0 && !s[0].waiting;
+  can_undo := wb_can_undo(s[0].world[..]) && !s[0].waiting;
   b := Box.{x0 = w - g - ub, y0 = g, x1 = w - g, y1 = g + 36 * k};
   s[0].boxes[BTN_UNDO] = b; s[0].shown[BTN_UNDO] = can_undo;
   if can_undo {

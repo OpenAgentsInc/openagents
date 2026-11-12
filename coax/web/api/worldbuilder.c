@@ -49,7 +49,7 @@ static const char WB_SYSTEM[] =
   "- rotate: turn `targets` by `degrees` (positive turns left, seen from above).\n"
   "- scale: multiply the size of `targets` by `factor` (bigger 1.5, much bigger 2.5, smaller 0.66).\n"
   "- delete: remove `targets`. duplicate: copy `targets` beside them (or at anchor/side when given).\n"
-  "- undo: take back the last edit (`count` edits). clear: remove everything (only when they clearly ask to start over).\n"
+  "- undo: take back the last edit (`count` edits). redo: put back an undone edit (`count` edits). clear: remove everything (only when they clearly ask to start over).\n"
   "Targets: \"last\" = what the last edit placed or changed (it, that, them, those); \"names\" = every object "
   "whose asset is in `names` (exact names from the world's present list); \"nearest\" = the one object nearest "
   "the anchor spot (among `names` when given); \"all\" = everything.\n"
@@ -79,7 +79,7 @@ static const char WB_BUILDINGS[] =
 
 static const char WB_SCHEMA[] =
   "{\"type\":\"object\",\"properties\":{\"say\":{\"type\":\"string\"},\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
-  "\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"clear\"]},"
+  "\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\"]},"
   "\"asset\":{\"type\":\"string\"},\"count\":{\"type\":\"integer\"},"
   "\"targets\":{\"type\":\"string\",\"enum\":[\"last\",\"names\",\"nearest\",\"all\"]},"
   "\"names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
