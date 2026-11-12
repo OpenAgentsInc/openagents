@@ -59,15 +59,11 @@ sg_encode :: (p: [] SgPool, d: Jv, item: int, out: [] u8) -> int {
     return cst_cx_model(out, sg_s(p[..], d, vs, "model"), sg_s(p[..], d, vs, "effort"));
   }
   if rec == "usage" {
-    l: [1] SwLog; ob: [SG_LINE] u8; l[0].out = ob[..]; l[0].json = true;
     scope := sg_s(p[..], d, vs, "scope");
     if scope == "thread_total" {
-      sw_cx_usage(l[..], sg_s(p[..], d, vs, "usage"), sg_b(d, vs, "client"), sg_s(p[..], d, vs, "thread_id"), sg_s(p[..], d, vs, "turn_id"));
-    } else {
-      sw_acp_usage(l[..], sg_s(p[..], d, vs, "engine"), sg_s(p[..], d, vs, "usage"));
+      return cst_cx_usage(out, sg_s(p[..], d, vs, "usage"), sg_b(d, vs, "client"), sg_s(p[..], d, vs, "thread_id"), sg_s(p[..], d, vs, "turn_id"));
     }
-    got: [SG_LINE] u8; n := sw_take(l[..], got[..]);
-    return sg_copy_line(cast(string) got[0..<n], out);
+    return cst_acp_usage(out, sg_s(p[..], d, vs, "engine"), sg_s(p[..], d, vs, "usage"));
   }
   if rec == "availability" {
     return sg_availability_current(sg_s(p[..], d, vs, "engine"), sg_i(d, vs, "retry_after_s", 0), sg_b(d, vs, "persisted"), out);

@@ -342,31 +342,14 @@ sw_cx_model :: (l: [] SwLog, model: string, effort: string) {
 }
 // thread and turn: "" when there is no Codex client (null).
 sw_cx_usage :: (l: [] SwLog, usage: string, client: bool, thread: string, turn: string) {
-  o := l[0].line[..]; total := cl_raw(usage, "total");
-  n := json_raw(o, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"scope\":\"thread_total\"");
-  n = json_raw(o, n, ",\"thread_id\":");
-  n = ifx client then json_write_string(o, n, thread) else json_raw(o, n, "null");
-  n = json_raw(o, n, ",\"turn_id\":");
-  n = ifx client then json_write_string(o, n, turn) else json_raw(o, n, "null");
-  for key: [6] string.["totalTokens", "inputTokens", "cachedInputTokens", "cacheWriteInputTokens", "outputTokens", "reasoningOutputTokens"] {
-    n = json_raw(o, n, ","); n = json_write_string(o, n, key); n = json_raw(o, n, ":");
-    v := cl_int(total, key); n = ifx v.ok && v.value >= 0 then json_write_int(o, n, v.value) else json_raw(o, n, "null");
-  }
-  n = json_raw(o, n, "}"); sw_put(l, n);
+  sw_put(l, cst_cx_usage(l[0].line[..], usage, client, thread, turn));
 }
 
 // An ACP agent's usage for one turn (session/prompt's usage: Antigravity's input, output,
 // cached and thought tokens), under ACP's own names; agy reports no cost.
 sw_acp_usage :: (l: [] SwLog, engine: string, usage: string) {
   if usage.count == 0 { return; }
-  o := l[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(o, n, engine);
-  n = json_raw(o, n, ",\"scope\":\"turn\"");
-  for key: [6] string.["totalTokens", "inputTokens", "cachedReadTokens", "cachedWriteTokens", "outputTokens", "thoughtTokens"] {
-    n = json_raw(o, n, ","); n = json_write_string(o, n, key); n = json_raw(o, n, ":");
-    v := cl_int(usage, key); n = ifx v.ok && v.value >= 0 then json_write_int(o, n, v.value) else json_raw(o, n, "null");
-  }
-  n = json_raw(o, n, ",\"cost_usd\":null}"); sw_put(l, n);
+  sw_put(l, cst_acp_usage(l[0].line[..], engine, usage));
 }
 
 // ---------------------------------------------------------------- checks
