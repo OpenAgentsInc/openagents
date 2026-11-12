@@ -22,6 +22,9 @@ T_CARD_TIME :: 2.4f32;        // the Digger's card interval
 T_MOVE_SHORT :: 1.9f32; T_MOVE_MAX :: 5.0f32; T_DRILL_REACH :: 2.6f32; T_BAD_CUT :: 2.0f32;
 T_SWEEP_EVERY :: 4.6f32; T_SWEEP_TIME :: 1.3f32; T_SWEEP_WARN :: 0.9f32; T_ARM :: 6.2f32;
 T_STUN_RANGE :: 2.0f32; T_STUN_TIME :: 12.0f32;
+T_HIT_RANGE :: 2.2f32; T_STAGGER :: 0.6f32; T_KNOCK :: 1.3f32; T_RAIDER_HP :: 2; T_IMPERIAL_HP :: 3; T_IMPERIAL_SPEED :: 3.0f32; T_PATROL :: 1.8f32;
+T_HEAT_SCRAP :: 10.0f32;      // a robot piece taken in a fight
+T_FOLLOW :: 7.5f32; T_BOT_GO :: 6.5f32;   // the Digger: keeping up with you, and driving to its work
 T_BANNER :: 2.0f32; T_MEMORY :: 15.0f32; T_FADE :: 1.2f32; T_PASS :: 2.2f32;
 T_RAIL :: 300.0f32; T_RAIL_PING :: 150.0f32; T_RAIL_SPEED :: 11.0f32; T_RAIL_SLOW :: 5.0f32; T_RAIL_FAST :: 20.0f32;
 
@@ -39,15 +42,18 @@ Z_VILLAGE :: 0; Z_RAIL :: 1; Z_MINE :: 2;
 PH_DAWN :: 0; PH_DAY :: 1; PH_DUSK :: 2; PH_NIGHT :: 3;
 // what you carry: hardware, cards, and the core
 H_ARM :: 0; H_TREADS :: 1; H_BATTERY :: 2; H_MOVE :: 3; H_DRILL :: 4; H_PLUS :: 5; H_CORE :: 6; HAVES :: 7;
-// the pickups on the ground: five parts and cards (the Battery lies by the rail line), three banned
-// pieces, and the DRILL+ card by the boss wall
-PICKS :: 9; PICK_BANNED :: 5; PICK_PLUS :: 8;
-RAIDERS :: 5; WALLS :: 28; BUTTONS :: 12;
-MSG_NONE :: 0; MSG_BAD_CUT :: 1; MSG_AIR :: 2; MSG_WEAK :: 3; MSG_OPEN :: 4; MSG_NEED :: 5; MSG_BROKE :: 7; MSG_DOWN :: 8; MSG_HIT :: 9; MSG_STUN :: 10; MSG_PICK :: 11; MSG_BANNED :: 12; MSG_CORE :: 13; MSG_PING :: 14; MSG_WAKE :: 15; MSG_FIRST :: 16;
+// the pickups on the ground: five parts and cards (the Battery lies by the rail line), the one blue
+// piece (the special part, DRILL+) hidden in the party's vault, and four battery cells
+PICKS :: 10; PICK_PLUS :: 5; PICK_CELL :: 6;
+// the party's people: five raiders dancing, four Imperial robots on patrol
+FOES :: 9; F_RAIDERS :: 5;
+WALLS :: 44; BUTTONS :: 12;
+BOT_FOLLOW :: 0; BOT_GO :: 1; BOT_RUN :: 2; BOT_FAIL :: 3;
+MSG_NONE :: 0; MSG_BAD_CUT :: 1; MSG_AIR :: 2; MSG_WEAK :: 3; MSG_OPEN :: 4; MSG_NEED :: 5; MSG_BROKE :: 7; MSG_DOWN :: 8; MSG_HIT :: 9; MSG_STUN :: 10; MSG_PICK :: 11; MSG_BANNED :: 12; MSG_CORE :: 13; MSG_PING :: 14; MSG_WAKE :: 15; MSG_FIRST :: 16; MSG_FOE :: 17; MSG_CELL :: 18; MSG_SMACK :: 19;
 B_SWEEP :: 1; B_CUT :: 2;
 
 // What a checkpoint keeps: the inventory you had at the post by the rover.
-SpSave :: struct { have: [HAVES] bool; taken: [PICKS] bool; slot: [3] bool; strip: [3] int; strip_n: int; banned: int; }
+SpSave :: struct { have: [HAVES] bool; taken: [PICKS] bool; slot: [3] bool; strip: [3] int; strip_n: int; scrap: int; cells: int; }
 
 SpGame :: struct {
   mode: int; zone: int; phase: int; t: f32;
@@ -55,13 +61,15 @@ SpGame :: struct {
   fwd: bool; back: bool; left: bool; right: bool; turn_l: bool; turn_r: bool;
   look_free: bool;             // the cursor is free (Escape, or the browser refused to hold it)
   hearts: int; heat: f32; hit_cool: f32;
-  have: [HAVES] bool; taken: [PICKS] bool; banned: int;
+  have: [HAVES] bool; taken: [PICKS] bool;
+  scrap: int; cells: int;      // robot pieces won in fights, battery cells found: to trade for battery juice later
   slot: [3] bool;              // the Digger's hardware slots: arm, treads, battery
   strip: [3] int; strip_n: int;
   save: SpSave;
   rubble_gone: bool; wall_gone: bool; at_crate: bool;
-  bot: bool; bot_z: f32; bot_from: f32; bot_step: int; bot_t: f32; bot_fail: f32; bot_wall: bool; bot_spin: f32;
-  rx: [RAIDERS] f32; rz: [RAIDERS] f32; rchase: [RAIDERS] bool;
+  bot: bool;                   // the Digger is built (its three slots are filled): it follows you
+  bot_state: int; bot_x: f32; bot_z: f32; bot_yaw: f32; bot_from: f32; bot_step: int; bot_t: f32; bot_fail: f32; bot_wall: bool; bot_spin: f32;
+  fx: [FOES] f32; fz: [FOES] f32; fhp: [FOES] int; fhost: [FOES] bool; fstag: [FOES] f32;
   stun: [3] f32; boss_t: f32; boss_down: bool; core_taken: bool;
   rail_s: f32; rail_v: f32; pinged: bool; pass_t: f32;
   banner: int; banner_t: f32; msg: int; msg_t: f32; mem_t: f32; flash: f32;
@@ -93,7 +101,14 @@ g_layout :: (g: [] SpGame) {
   g_wall(g, -44, -4, -10, -2, 9); g_wall(g, 4, 44, -10, -2, 10);            // the mine mouth
   g_wall(g, -44, -9, -24, -10, 11); g_wall(g, 9, 44, -24, -10, 10);         // the scrap room
   g_wall(g, -44, -3, -40, -24, 12); g_wall(g, 3, 44, -40, -24, 12);         // the tunnel
-  g_wall(g, -44, -15, -62, -40, 13); g_wall(g, 15, 44, -62, -40, 13);       // the party mine
+  // the party mine: a hall, and rooms off it to explore
+  g_wall(g, -17, -15, -62, -44.5, 7); g_wall(g, -17, -15, -41.5, -40, 7);   // hall | west rooms, a door to the bar
+  g_wall(g, -31, -27, -52, -50, 7); g_wall(g, -24, -17, -52, -50, 7);       // bar | workshop, a door
+  g_wall(g, -33, -31, -62, -59, 7); g_wall(g, -33, -31, -56, -40, 7);       // workshop | vault, a door
+  g_wall(g, -47, -43, -62, -40, 13);                                        // the vault's far wall
+  g_wall(g, 15, 17, -62, -52.5, 13); g_wall(g, 15, 17, -49.5, -40, 13);     // the catwalk's wall, a door to the lounge
+  g_wall(g, 17, 44, -44, -40, 13); g_wall(g, 17, 44, -62, -58, 13); g_wall(g, 29, 44, -58, -44, 13);
+  g_wall(g, -15, -11.5, -57, -46, 0);                                       // the main stage (drawn apart)
   g_wall(g, -15, -4, -63, -61, 9); g_wall(g, 4, 15, -63, -61, 9);           // the boss wall's shoulders
   g_wall(g, -44, -10, -82, -62, 14); g_wall(g, 10, 44, -82, -62, 14);       // the boss chamber
   g_wall(g, -44, 44, -92, -82, 15);
@@ -102,11 +117,17 @@ g_layout :: (g: [] SpGame) {
   g_wall(g, DECK_X - 0.12, DECK_X + 0.12, DECK_Z0 + RAMP, DECK_Z1 - RAMP, 0);   // the catwalk's rail, between its two ramps
   g_wall(g, -60, 60, 20, 24, 0); g_wall(g, -64, -44, -92, 24, 0); g_wall(g, 44, 64, -92, 24, 0);   // the edge of the map
 }
-pick_x :: (i: int) -> f32 { xs := [PICKS] f32.[-6, 6, 187, 5, 0, -10, -3, 13, 7]; return xs[i]; }
-pick_z :: (i: int) -> f32 { zs := [PICKS] f32.[-14, -13, 95, -20, -17, -46, -55, -51, -59]; return zs[i]; }
+pick_x :: (i: int) -> f32 { xs := [PICKS] f32.[-6, 6, 187, 5, 0, -40.5, -29, -19, 27, 13]; return xs[i]; }
+pick_z :: (i: int) -> f32 { zs := [PICKS] f32.[-14, -13, 95, -20, -17, -59.5, -42, -60, -46, -58.5]; return zs[i]; }
 pick_zone :: (i: int) -> int { return ifx i == H_BATTERY then Z_RAIL else Z_MINE; }
-raider_hx :: (i: int) -> f32 { xs := [RAIDERS] f32.[-8, 0, 5, -4, 7]; return xs[i]; }
-raider_hz :: (i: int) -> f32 { zs := [RAIDERS] f32.[-48, -45, -56, -58, -47]; return zs[i]; }
+// Where each of the party's people stands (a raider dances there) or patrols between (an Imperial robot).
+foe_ax :: (i: int) -> f32 { xs := [FOES] f32.[-6, -1, 4, -3, -22, 8.5, -24, -24, -38]; return xs[i]; }
+foe_az :: (i: int) -> f32 { zs := [FOES] f32.[-48, -52, -47, -45, -44, -45, -46, -57, -47]; return zs[i]; }
+foe_bx :: (i: int) -> f32 { xs := [FOES] f32.[-6, -1, 4, -3, -22, 8.5, -19, -29, -38]; return xs[i]; }
+foe_bz :: (i: int) -> f32 { zs := [FOES] f32.[-48, -52, -47, -45, -44, -57, -46, -57, -57]; return zs[i]; }
+g_foes :: (g: [] SpGame) {
+  for i: 0..<FOES { g[0].fx[i] = foe_ax(i); g[0].fz[i] = foe_az(i); g[0].fhp[i] = ifx i < F_RAIDERS then T_RAIDER_HP else T_IMPERIAL_HP; g[0].fhost[i] = false; g[0].fstag[i] = 0; }
+}
 weak_at :: (i: int) -> Point { a := ifx i == 0 then 0.0f32 else ifx i == 1 then 2.2f32 else -2.2f32; return v3(BOSS_X + sin(a) * 2.7, 1.5, BOSS_Z + cos(a) * 2.7); }
 // The rail line: s metres along it, a gentle curve north.
 rail_at :: (s: f32) -> Point { return v3(RAIL_X + sin(s * 0.03) * 8, 0, RAIL_Z + s); }
@@ -116,7 +137,7 @@ g_keep :: (g: [] SpGame) {
   for i: 0..<HAVES { g[0].save.have[i] = g[0].have[i]; }
   for i: 0..<PICKS { g[0].save.taken[i] = g[0].taken[i]; }
   for i: 0..<3 { g[0].save.slot[i] = g[0].slot[i]; g[0].save.strip[i] = g[0].strip[i]; }
-  g[0].save.strip_n = g[0].strip_n; g[0].save.banned = g[0].banned;
+  g[0].save.strip_n = g[0].strip_n; g[0].save.scrap = g[0].scrap; g[0].save.cells = g[0].cells;
 }
 // Back at the checkpoint outside the mine, with the inventory you had there: what was picked up
 // since is lost and lies where it was.
@@ -125,31 +146,39 @@ g_respawn :: (g: [] SpGame) {
   for i: 0..<HAVES { g[0].have[i] = g[0].save.have[i]; }
   for i: 0..<PICKS { g[0].taken[i] = g[0].save.taken[i]; }
   for i: 0..<3 { g[0].slot[i] = g[0].save.slot[i]; g[0].strip[i] = g[0].save.strip[i]; }
-  g[0].strip_n = g[0].save.strip_n; g[0].banned = g[0].save.banned;
+  g[0].strip_n = g[0].save.strip_n; g[0].scrap = g[0].save.scrap; g[0].cells = g[0].save.cells;
   if g[0].core_taken && !g[0].have[H_CORE] { g[0].core_taken = false; }
-  for i: 0..<RAIDERS { g[0].rx[i] = raider_hx(i); g[0].rz[i] = raider_hz(i); g[0].rchase[i] = false; }
-  g[0].bot = false;
+  g_foes(g);
+  g[0].bot = g[0].slot[0] && g[0].slot[1] && g[0].slot[2]; g_bot_home(g);
 }
 g_reset :: (g: [] SpGame) {
   g[0] = SpGame.{};
   g_layout(g);
   g[0].mode = M_TITLE; g[0].zone = Z_VILLAGE; g[0].phase = PH_DAWN; g[0].drag = -1;
   g[0].px = VIL_X; g[0].pz = VIL_Z - 3; g[0].yaw = 0; g[0].hearts = T_HEARTS; g[0].rail_v = T_RAIL_SPEED;
-  for i: 0..<RAIDERS { g[0].rx[i] = raider_hx(i); g[0].rz[i] = raider_hz(i); }
+  g_foes(g);
 }
 g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; }
-g_enter_mine :: (g: [] SpGame) { g[0].zone = Z_MINE; g[0].mode = M_PLAY; g[0].phase = PH_DAY; g[0].px = START_X; g[0].pz = START_Z; g[0].yaw = PI; g[0].pitch = 0; g_keep(g); }
+// The Digger beside you: where it stands when it is not at work.
+g_bot_home :: (g: [] SpGame) { g[0].bot_state = BOT_FOLLOW; g[0].bot_x = g[0].px - sin(g[0].yaw) * 1.7 - cos(g[0].yaw) * 1.1; g[0].bot_z = g[0].pz - cos(g[0].yaw) * 1.7 + sin(g[0].yaw) * 1.1; g[0].bot_yaw = g[0].yaw; }
+g_enter_mine :: (g: [] SpGame) { g[0].zone = Z_MINE; g[0].mode = M_PLAY; g[0].phase = PH_DAY; g[0].px = START_X; g[0].pz = START_Z; g[0].yaw = PI; g[0].pitch = 0; g_bot_home(g); g_keep(g); }
 
 // ---- Collision: a circle against boxes, the two walls that open, and the village's round room
-g_push :: (g: [] SpGame, x0: f32, x1: f32, z0: f32, z1: f32, r: f32) {
-  cx := clamp(g[0].px, x0, x1); cz := clamp(g[0].pz, z0, z1);
-  dx := g[0].px - cx; dz := g[0].pz - cz; d := sqrt(dx * dx + dz * dz);
-  if d >= r { return; }
-  if d > 0.0001 { g[0].px = cx + dx / d * r; g[0].pz = cz + dz / d * r; return; }
+push_pt :: (q: Point, x0: f32, x1: f32, z0: f32, z1: f32, r: f32) -> Point {
+  cx := clamp(q.x, x0, x1); cz := clamp(q.z, z0, z1);
+  dx := q.x - cx; dz := q.z - cz; d := sqrt(dx * dx + dz * dz);
+  if d >= r { return q; }
+  if d > 0.0001 { return v3(cx + dx / d * r, 0, cz + dz / d * r); }
   // inside the box: out through its nearest side
-  l := g[0].px - x0; rr := x1 - g[0].px; f := g[0].pz - z0; b := z1 - g[0].pz;
+  l := q.x - x0; rr := x1 - q.x; f := q.z - z0; b := z1 - q.z;
   m := lo(lo(l, rr), lo(f, b));
-  if m == l { g[0].px = x0 - r; } else if m == rr { g[0].px = x1 + r; } else if m == f { g[0].pz = z0 - r; } else { g[0].pz = z1 + r; }
+  if m == l { return v3(x0 - r, 0, q.z); }
+  if m == rr { return v3(x1 + r, 0, q.z); }
+  if m == f { return v3(q.x, 0, z0 - r); }
+  return v3(q.x, 0, z1 + r);
+}
+g_push :: (g: [] SpGame, x0: f32, x1: f32, z0: f32, z1: f32, r: f32) {
+  q := push_pt(v3(g[0].px, 0, g[0].pz), x0, x1, z0, z1, r); g[0].px = q.x; g[0].pz = q.z;
 }
 dist2 :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz)); }
 g_collide :: (g: [] SpGame) {
@@ -212,18 +241,38 @@ g_weak_near :: (g: [] SpGame) -> int {
 
 // ---- The Digger's run: its cards in order, one every T_CARD_TIME
 g_deploy :: (g: [] SpGame) {
-  if !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2]) || g[0].strip_n == 0 { g_say(g, MSG_NEED); return; }
-  g[0].bot = true; g[0].bot_wall = g[0].rubble_gone;
-  face := ifx g[0].bot_wall then WALL_Z + 1 else RUBBLE_Z + 1;
-  g[0].bot_z = face + T_MOVE_SHORT + T_MOVE_MAX; g[0].bot_from = g[0].bot_z;
-  g[0].bot_step = -1; g[0].bot_t = T_CARD_TIME - 0.8; g[0].bot_fail = 0; g[0].mode = M_PLAY;
+  if !g[0].bot || g[0].strip_n == 0 { g_say(g, MSG_NEED); return; }
+  // the Digger leaves your side and drives to its work
+  g[0].bot_state = BOT_GO; g[0].bot_wall = g[0].rubble_gone; g[0].bot_step = -1; g[0].bot_fail = 0; g[0].mode = M_PLAY;
+}
+bot_toward :: (g: [] SpGame, tx: f32, tz: f32, speed: f32, dt: f32) -> f32 {
+  dx := tx - g[0].bot_x; dz := tz - g[0].bot_z; d := sqrt(dx * dx + dz * dz);
+  if d < 0.0001 { return 0; }
+  step := lo(d, speed * dt);
+  g[0].bot_x += dx / d * step; g[0].bot_z += dz / d * step;
+  if d > 0.25 { g[0].bot_yaw = atan2(dx, dz); }
+  return d - step;
 }
 g_bot :: (g: [] SpGame, dt: f32) {
   if !g[0].bot { return; }
   face := ifx g[0].bot_wall then WALL_Z + 1 else RUBBLE_Z + 1;
-  if g[0].bot_fail > 0 { g[0].bot_fail -= dt; if g[0].bot_fail <= 0 { g[0].bot = false; } return; }
+  if g[0].bot_state == BOT_FOLLOW {
+    // always next to you: a step behind and to your right
+    tx := g[0].px - sin(g[0].yaw) * 1.7 - cos(g[0].yaw) * 1.1; tz := g[0].pz - cos(g[0].yaw) * 1.7 + sin(g[0].yaw) * 1.1;
+    d := dist2(g[0].bot_x, g[0].bot_z, tx, tz);
+    if d > 0.15 { left := bot_toward(g, tx, tz, T_FOLLOW * clamp(d / 1.5, 0.15, 1.6), dt); if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; } }
+    return;
+  }
+  if g[0].bot_state == BOT_FAIL { g[0].bot_fail -= dt; if g[0].bot_fail <= 0 { g[0].bot_state = BOT_FOLLOW; } return; }
+  if g[0].bot_state == BOT_GO {
+    // out to the middle of the cut first, then down it to where the cards begin
+    start := face + T_MOVE_SHORT + T_MOVE_MAX;
+    if g[0].bot_z > -1.5 && abs(g[0].bot_x) > 0.3 { left := bot_toward(g, 0, g[0].bot_z, T_BOT_GO, dt); return; }
+    if bot_toward(g, 0, start, T_BOT_GO, dt) < 0.05 { g[0].bot_state = BOT_RUN; g[0].bot_from = g[0].bot_z; g[0].bot_t = T_CARD_TIME - 0.6; g[0].bot_step = -1; g[0].bot_yaw = PI; }
+    return;
+  }
   cleared := ifx g[0].bot_wall then g[0].wall_gone else g[0].rubble_gone;
-  if cleared { return; }
+  if cleared { g[0].bot_state = BOT_FOLLOW; return; }
   card := ifx g[0].bot_step >= 0 && g[0].bot_step < g[0].strip_n then g[0].strip[g[0].bot_step] else -1;
   // MOVE drives forward to just short of what is in the way, at most T_MOVE_MAX
   if card == H_MOVE { g[0].bot_z = hi(hi(face + T_MOVE_SHORT, g[0].bot_from - T_MOVE_MAX), g[0].bot_z - dt * 4.2); }
@@ -236,11 +285,11 @@ g_bot :: (g: [] SpGame, dt: f32) {
   if card == H_DRILL || card == H_PLUS {
     if g[0].bot_z - face > T_DRILL_REACH { g_say(g, MSG_AIR); }
     else if g[0].bot_wall && card == H_DRILL { g_say(g, MSG_WEAK); }
-    else if g[0].bot_wall { g[0].wall_gone = true; g[0].flash = 0.5; g_say(g, MSG_BROKE); return; }
-    else { g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].flash = 0.5; g_say(g, MSG_OPEN); return; }
+    else if g[0].bot_wall { g[0].wall_gone = true; g[0].flash = 0.5; g_say(g, MSG_BROKE); g[0].bot_state = BOT_FOLLOW; return; }
+    else { g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].flash = 0.5; g_say(g, MSG_OPEN); g[0].bot_state = BOT_FOLLOW; return; }
   }
   g[0].bot_step += 1;
-  if g[0].bot_step >= g[0].strip_n { g[0].bot_fail = T_BAD_CUT; if g[0].msg == MSG_NONE || g[0].msg_t < 2.5 { g_say(g, MSG_BAD_CUT); } }
+  if g[0].bot_step >= g[0].strip_n { g[0].bot_state = BOT_FAIL; g[0].bot_fail = T_BAD_CUT; if g[0].msg == MSG_NONE || g[0].msg_t < 2.5 { g_say(g, MSG_BAD_CUT); } }
 }
 
 // ---- A step of the world
@@ -248,6 +297,11 @@ g_hurt :: (g: [] SpGame) {
   if g[0].hit_cool > 0 { return; }
   g[0].hearts -= 1; g[0].hit_cool = T_HIT_COOL; g[0].flash = 0.35; g_say(g, MSG_HIT);
   if g[0].hearts <= 0 { g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = T_BANNER; }
+}
+g_foe_walls :: (g: [] SpGame, i: int) {
+  q := v3(g[0].fx[i], 0, g[0].fz[i]);
+  for w: 0..<g[0].wall_n { o := w * 5; if g[0].walls[o + 4] > 1 { q = push_pt(q, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], 0.45); } }
+  g[0].fx[i] = q.x; g[0].fz[i] = q.z;
 }
 boss_arm :: (g: [] SpGame) -> f32 { if g[0].boss_t <= T_SWEEP_EVERY { return 2.6; } return 2.6 + (g[0].boss_t - T_SWEEP_EVERY) / T_SWEEP_TIME * TAU; }
 g_walk :: (g: [] SpGame, dt: f32) {
@@ -296,19 +350,24 @@ g_step :: (g: [] SpGame, dt: f32) {
   // Heat cools only by the rover or the stash crate; at the top the Emperor's sweep comes
   if g[0].heat > 0 && (near_rover(g, T_COOL_RANGE) || near_crate(g, T_COOL_RANGE)) { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); }
   if g[0].heat >= T_HEAT_MAX { g[0].mode = M_BANNER; g[0].banner = B_SWEEP; g[0].banner_t = T_BANNER; return; }
-  // raiders: wander at home, chase who they notice, give up at the catwalk or far away
+  // the party: raiders dance where they stand and fight only if you hit them; Imperial robots
+  // patrol, notice you (from further at higher Heat), chase, and give up at the catwalk or far away
   safe := on_deck(g[0].px, g[0].pz) || g[0].pz > -40.5 || g[0].pz < WALL_Z;
-  for i: 0..<RAIDERS {
-    d := dist2(g[0].px, g[0].pz, g[0].rx[i], g[0].rz[i]);
-    if !g[0].rchase[i] && !safe && d < T_NOTICE + g[0].heat * T_NOTICE_HEAT { g[0].rchase[i] = true; }
-    if g[0].rchase[i] && (safe || d > T_GIVE_UP) { g[0].rchase[i] = false; }
-    tx := raider_hx(i) + sin(g[0].t * 0.5 + cast(f32) i * 1.9) * 2.5; tz := raider_hz(i) + cos(g[0].t * 0.4 + cast(f32) i * 2.3) * 2.0;
-    sp := T_RAIDER_WANDER;
-    if g[0].rchase[i] { tx = g[0].px; tz = g[0].pz; sp = T_RAIDER_SPEED; }
-    ex := tx - g[0].rx[i]; ez := tz - g[0].rz[i]; el := sqrt(ex * ex + ez * ez);
-    if el > 0.05 { g[0].rx[i] += ex / el * lo(sp * dt, el); g[0].rz[i] += ez / el * lo(sp * dt, el); }
-    g[0].rx[i] = clamp(g[0].rx[i], -14, DECK_X - 3.6); g[0].rz[i] = clamp(g[0].rz[i], -60.5, -41);
-    if g[0].rchase[i] && d < T_RAIDER_REACH { g_hurt(g); }
+  for i: 0..<FOES {
+    if g[0].fhp[i] <= 0 { continue; }
+    if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; continue; }
+    imperial := i >= F_RAIDERS;
+    d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]);
+    if imperial && !g[0].fhost[i] && !safe && d < T_NOTICE + g[0].heat * T_NOTICE_HEAT { g[0].fhost[i] = true; }
+    if g[0].fhost[i] && (safe || d > T_GIVE_UP) { g[0].fhost[i] = false; }
+    k := 0.5 + 0.5 * sin(g[0].t * 0.35 + cast(f32) i * 1.7);
+    tx := foe_ax(i) + (foe_bx(i) - foe_ax(i)) * k; tz := foe_az(i) + (foe_bz(i) - foe_az(i)) * k;
+    sp := T_PATROL;
+    if g[0].fhost[i] { tx = g[0].px; tz = g[0].pz; sp = ifx imperial then T_IMPERIAL_SPEED else T_RAIDER_SPEED; }
+    ex := tx - g[0].fx[i]; ez := tz - g[0].fz[i]; el := sqrt(ex * ex + ez * ez);
+    if el > 0.05 { g[0].fx[i] += ex / el * lo(sp * dt, el); g[0].fz[i] += ez / el * lo(sp * dt, el); }
+    g_foe_walls(g, i);
+    if g[0].fhost[i] && d < T_RAIDER_REACH { g_hurt(g); }
   }
   // the banned bot: its arm sweeps round every T_SWEEP_EVERY; a stunned weak point wakes after T_STUN_TIME
   if g[0].wall_gone && !g[0].boss_down {
@@ -336,22 +395,43 @@ g_open_bay :: (g: [] SpGame) -> bool {
 // Put what you carry on the timeline: hardware into its slot, a card onto the strip (at a slot, or the next free one).
 g_place :: (g: [] SpGame, item: int, at: int) {
   if item < 0 || item > H_PLUS || !g[0].have[item] { return; }
-  if item <= H_BATTERY { g[0].slot[item] = true; return; }
+  if item <= H_BATTERY {
+    g[0].slot[item] = true;
+    if !g[0].bot && g[0].slot[0] && g[0].slot[1] && g[0].slot[2] { g[0].bot = true; g_bot_home(g); }   // built: it follows you from now on
+    return;
+  }
   if at >= 0 && at < g[0].strip_n { g[0].strip[at] = item; return; }
   if g[0].strip_n < 3 { g[0].strip[g[0].strip_n] = item; g[0].strip_n += 1; }
 }
 g_take :: (g: [] SpGame, i: int) {
   g[0].taken[i] = true; g[0].last_pick = i;
-  if i < PICK_BANNED { g[0].have[i] = true; g_say(g, MSG_PICK); return; }
-  // banned tech: each piece raises Heat, and so does the DRILL+ card
-  g[0].heat = lo(T_HEAT_MAX, g[0].heat + T_HEAT_PIECE);
-  if i == PICK_PLUS { g[0].have[H_PLUS] = true; g_say(g, MSG_PICK); } else { g[0].banned += 1; g_say(g, MSG_BANNED); }
+  if i >= PICK_CELL { g[0].cells += 1; g_say(g, MSG_CELL); return; }
+  if i < PICK_PLUS { g[0].have[i] = true; g_say(g, MSG_PICK); return; }
+  // the one blue piece: the special part, banned tech
+  g[0].have[H_PLUS] = true; g[0].heat = lo(T_HEAT_MAX, g[0].heat + T_HEAT_PIECE); g_say(g, MSG_PICK);
 }
+g_foe_near :: (g: [] SpGame) -> int {
+  best := -1; bd := T_HIT_RANGE;
+  if g[0].zone != Z_MINE { return -1; }
+  for i: 0..<FOES { if g[0].fhp[i] > 0 { d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]); if d < bd { bd = d; best = i; } } }
+  return best;
+}
+// F: stun a weak point of the banned bot, or hit whoever is in reach. A fight you win drops a
+// robot piece into your inventory (and a little Heat with it).
 g_stun :: (g: [] SpGame) {
   i := g_weak_near(g);
-  if i < 0 { return; }
-  g[0].stun[i] = T_STUN_TIME; g[0].flash = 0.25; g_say(g, MSG_STUN);
-  if g[0].stun[0] > 0 && g[0].stun[1] > 0 && g[0].stun[2] > 0 { g[0].boss_down = true; g_say(g, MSG_DOWN); }
+  if i >= 0 {
+    g[0].stun[i] = T_STUN_TIME; g[0].flash = 0.25; g_say(g, MSG_STUN);
+    if g[0].stun[0] > 0 && g[0].stun[1] > 0 && g[0].stun[2] > 0 { g[0].boss_down = true; g_say(g, MSG_DOWN); }
+    return;
+  }
+  f := g_foe_near(g);
+  if f < 0 { return; }
+  g[0].fhp[f] -= 1; g[0].fstag[f] = T_STAGGER; g[0].fhost[f] = true; g[0].flash = 0.2;
+  dx := g[0].fx[f] - g[0].px; dz := g[0].fz[f] - g[0].pz; d := hi(0.01, sqrt(dx * dx + dz * dz));
+  g[0].fx[f] += dx / d * T_KNOCK; g[0].fz[f] += dz / d * T_KNOCK; g_foe_walls(g, f);
+  if g[0].fhp[f] > 0 { g_say(g, MSG_SMACK); return; }
+  g[0].scrap += 1; g[0].heat = lo(T_HEAT_MAX, g[0].heat + T_HEAT_SCRAP); g_say(g, MSG_FOE);
 }
 // E: pick up what is in reach, board the rover at the ping, open the edit bay at the rover or crate.
 g_use :: (g: [] SpGame) {
@@ -430,7 +510,8 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) {
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); if g[0].bot { g_bot_home(g); } }
+g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }
   if n == 1 { return; }
@@ -443,12 +524,12 @@ g_stage :: (g: [] SpGame, n: int) {
   for i: 0..<5 { g[0].have[i] = true; g[0].taken[i] = true; }
   if n == 6 { g[0].slot[0] = true; g[0].strip[0] = H_MOVE; g[0].strip_n = 1; g[0].px = ROVER_X - 3; g[0].pz = ROVER_Z; g[0].mode = M_BAY; return; }
   for i: 0..<3 { g[0].slot[i] = true; }
-  g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2; g_keep(g);
+  g[0].bot = true; g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2; g_keep(g);
   g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].px = 0; g[0].pz = -29;
-  if n == 7 { g[0].bot = true; g[0].bot_z = RUBBLE_Z + 1 + T_MOVE_SHORT; return; }
-  g[0].phase = PH_NIGHT; g[0].px = 5; g[0].pz = -44; g[0].yaw = PI + 0.5; g[0].banned = 2; g[0].taken[5] = true; g[0].taken[6] = true; g[0].heat = 50;
+  if n == 7 { return; }
+  g[0].phase = PH_NIGHT; g[0].px = 5; g[0].pz = -44; g[0].yaw = PI + 0.5; g[0].scrap = 2; g[0].cells = 1; g[0].taken[PICK_CELL] = true; g[0].heat = 20;
   if n == 8 { return; }
-  g[0].banned = 3; g[0].taken[7] = true; g[0].taken[PICK_PLUS] = true; g[0].have[H_PLUS] = true; g[0].heat = 75; g[0].px = CRATE_X + 3; g[0].pz = CRATE_Z; g[0].strip[1] = H_PLUS;
+  g[0].taken[PICK_PLUS] = true; g[0].have[H_PLUS] = true; g[0].heat = 45; g[0].px = CRATE_X + 3; g[0].pz = CRATE_Z; g[0].strip[1] = H_PLUS;
   if n == 9 { g[0].at_crate = true; g[0].mode = M_BAY; return; }
   g[0].wall_gone = true; g[0].px = 3; g[0].pz = -64.5; g[0].yaw = PI; g[0].heat = 40; g[0].boss_t = T_SWEEP_EVERY - 0.3; g[0].stun[0] = 8;
   if n == 10 { return; }
@@ -457,6 +538,11 @@ g_stage :: (g: [] SpGame, n: int) {
   if n == 13 { g[0].mode = M_BANNER; g[0].banner = B_SWEEP; g[0].banner_t = 100; }
   if n == 14 { g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = 100; }
   if n == 15 { g[0].px = DECK_X + 1.5; g[0].pz = -50; g[0].yaw = PI; }
+  if n >= 16 { g[0].wall_gone = false; g[0].have[H_PLUS] = false; g[0].taken[PICK_PLUS] = false; g[0].heat = 20; }
+  if n == 16 { g[0].px = -37; g[0].pz = -44; g[0].yaw = PI; }                 // the vault and its one blue piece
+  if n == 17 { g[0].px = -19; g[0].pz = -43; g[0].yaw = PI * 1.5; }           // the bar
+  if n == 18 { g[0].px = 6; g[0].pz = -43; g[0].yaw = PI * 1.25; }            // the hall: stage, DJ, dance floor
+  if n == 19 { g[0].px = 19; g[0].pz = -51; g[0].yaw = PI * 0.5; }            // the lounge off the catwalk
 }
 
 // ---- The world, written once
@@ -498,15 +584,52 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     k := cast(f32) i;
     kit_pen(p, 34, MAT_GLOW, ifx i % 2 == 0 then t3(1.0, 0.36, 0.62) else t3(0.36, 0.86, 0.96));
     ball(buf, p, v3(-14 + k * 1.9, 6.5 + sin(k * 0.8) * 0.6, -41.5), 0.22, 8);
-    ball(buf, p, v3(-14.4, 6.0 + sin(k * 0.7) * 0.6, -42 - k * 1.2), 0.22, 8);
+    ball(buf, p, v3(14.4, 6.0 + sin(k * 0.7) * 0.6, -42 - k * 1.2), 0.22, 8);
   }
+  // the main stage on the hall's west side: a deck, the DJ's booth, speaker stacks, a truss of lamps
+  kit_pen(p, 35, MAT_CLOTH, t3(0.14, 0.11, 0.18));
+  block(buf, p, -13.25, 0, -51.5, 1.75, 1.0, 5.5);
+  kit_pen(p, 36, MAT_WORLD, t3(0.30, 0.22, 0.36));
+  block(buf, p, -12.6, 1.0, -51.5, 0.5, 1.0, 1.6);
+  kit_pen(p, 38, MAT_GLOW, t3(0.36, 0.86, 0.96));
+  block(buf, p, -12.05, 1.2, -51.5, 0.03, 0.6, 1.4);
   for i: 0..<2 {
-    x := ifx i == 0 then -13.0f32 else 8.0f32;
+    z := ifx i == 0 then -47.0f32 else -56.0f32;
     kit_pen(p, 35, MAT_CLOTH, INK());
-    block(buf, p, x, 0, -60, 1.1, 3.2, 0.8);
+    block(buf, p, -13.2, 1.0, z, 1.0, 3.4, 0.8);
     kit_pen(p, 36, MAT_GLOW, t3(1.0, 0.36, 0.62));
-    ball(buf, p, v3(x, 2.3, -59.1), 0.5, 10); ball(buf, p, v3(x, 0.9, -59.1), 0.6, 10);
+    ball(buf, p, v3(-12.2, 3.6, z), 0.5, 10); ball(buf, p, v3(-12.2, 2.1, z), 0.6, 10);
   }
+  kit_pen(p, 39, MAT_CLOTH, INK());
+  block(buf, p, -12.5, 6.4, -51.5, 0.12, 0.12, 5.5);
+  for i: 0..<6 { kit_pen(p, 34, MAT_GLOW, ifx i % 2 == 0 then t3(1.0, 0.36, 0.62) else t3(0.36, 0.86, 0.96)); ball(buf, p, v3(-12.5, 6.1, -56 + cast(f32) i * 1.8), 0.26, 8); }
+  // a neon strip over each door, so the rooms can be found
+  kit_pen(p, 53, MAT_GLOW, t3(0.36, 0.86, 0.96));
+  block(buf, p, -15.9, 3.2, -43, 0.05, 0.12, 1.5); block(buf, p, -25.5, 3.2, -50.9, 1.5, 0.12, 0.05); block(buf, p, 15.9, 4.1, -51, 0.05, 0.12, 1.5);
+  kit_pen(p, 54, MAT_GLOW, GLOW());
+  block(buf, p, -31.9, 3.2, -57.5, 0.05, 0.12, 1.5);
+  // the bar: a counter, stools, bottles
+  kit_pen(p, 55, MAT_WORLD, t3(0.40, 0.26, 0.34));
+  block(buf, p, -24, 0, -41.6, 5.5, 1.1, 0.6);
+  for i: 0..<5 { kit_pen(p, 66, MAT_CLOTH, INK()); tube(buf, p, frame_at(v3(-28 + cast(f32) i * 2, 0, -43), 0), 0.7, 0.25, 0.25, 0.25, 0.25, 8, true); kit_pen(p, 67, MAT_GLOW, ifx i % 2 == 0 then t3(1.0, 0.72, 0.30) else t3(1.0, 0.36, 0.62)); block(buf, p, -28.4 + cast(f32) i * 2, 1.1, -41.3, 0.1, 0.45, 0.1); }
+  // the workshop: benches and crates of raided parts
+  kit_crate(buf, p, frame_at(v3(-29, 0, -54.5), 0.3), 68, t3(0.52, 0.36, 0.42), INK(), t3(1.0, 0.72, 0.30), 1.4);
+  kit_crate(buf, p, frame_at(v3(-21, 0, -60.5), -0.2), 71, t3(0.52, 0.36, 0.42), INK(), t3(1.0, 0.72, 0.30), 1.2);
+  kit_pen(p, 74, MAT_WORLD, t3(0.36, 0.28, 0.40));
+  block(buf, p, -24, 0, -60.9, 2.4, 0.9, 0.5);
+  // the vault: a plinth for the one blue piece, and a ring of pylons
+  kit_pen(p, 75, MAT_WORLD, t3(0.26, 0.22, 0.38));
+  block(buf, p, pick_x(PICK_PLUS), 0, pick_z(PICK_PLUS), 0.7, 0.45, 0.7);
+  for i: 0..<4 { kit_pen(p, 76, MAT_GLOW, GLOW_INK()); tube(buf, p, frame_at(v3(-41.5 + cast(f32) (i % 2) * 2, 0, -60.6 + cast(f32) (i / 2) * 2.2), 0), 3.0, 0.1, 0.1, 0.1, 0.1, 6, true); }
+  // the lounge off the catwalk: low seats and a table lamp
+  kit_pen(p, 77, MAT_CLOTH, t3(0.50, 0.20, 0.40));
+  block(buf, p, 27.6, DECK_Y, -51, 0.8, 0.6, 5.0); block(buf, p, 23, DECK_Y, -57.2, 4.0, 0.6, 0.6);
+  kit_pen(p, 78, MAT_GLOW, t3(1.0, 0.72, 0.30));
+  ball(buf, p, v3(23, DECK_Y + 1.2, -51), 0.35, 10);
+  kit_pen(p, 79, MAT_WORLD, t3(0.36, 0.28, 0.40));
+  tube(buf, p, frame_at(v3(23, DECK_Y, -51), 0), 0.8, 0.9, 0.9, 0.9, 0.9, 10, true);
+  kit_pen(p, 32, MAT_WORLD, t3(0.48, 0.36, 0.44));
+  block(buf, p, 23, 0, -51, 6, DECK_Y, 7);
   // the blue glow: a beam over the boss chamber, seen from the passage
   kit_pen(p, 37, MAT_GLOW, GLOW());
   tube(buf, p, frame_at(v3(BOSS_X, 8, BOSS_Z), 0), 60, 0.5, 0.5, 0.2, 0.2, 8, false);
@@ -601,7 +724,16 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   // the smuggler
   y := ifx g[0].zone == Z_MINE then ground_y(g[0].px, g[0].pz) else 0.0f32;
   blink := g[0].hit_cool > 0 && fract(t * 8) < 0.5;
-  if !blink { kit_figure(buf, p, frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw), 1.0, 60, t3(0.76, 0.34, 0.20), t3(0.90, 0.72, 0.58), INK(), t3(0.93, 0.86, 0.70), g[0].stride); }
+  if !blink {
+    // the smuggler: a cylinder, with a visor band that shows which way it faces
+    pf := frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw);
+    kit_pen(p, 60, MAT_SKIN, t3(0.76, 0.34, 0.20));
+    tube(buf, p, pf, 1.6, 0.42, 0.42, 0.42, 0.42, 14, true);
+    kit_pen(p, 61, MAT_WINDOW, INK());
+    box(buf, p, kit_at(pf, 0, 1.25, 0.36), 0.3, 0.1, 0.08);
+    kit_pen(p, 62, MAT_SKIN, t3(0.93, 0.86, 0.70));
+    tube(buf, p, kit_at(pf, 0, 1.6, 0), 0.08, 0.46, 0.46, 0.46, 0.46, 14, true);
+  }
   if g[0].zone != Z_MINE { return; }
   if g[0].have[H_CORE] { kit_pen(p, 66, MAT_GLOW, blue); ball(buf, p, v3(g[0].px - sin(g[0].yaw) * 0.45, y + 1.2, g[0].pz - cos(g[0].yaw) * 0.45), 0.24, 10); }
   // pickups: hardware in sand and orange, cards as film frames, banned tech glowing blue
@@ -609,8 +741,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     if g[0].taken[i] || pick_zone(i) != Z_MINE { continue; }
     at := v3(pick_x(i), ground_y(pick_x(i), pick_z(i)) + 0.75 + sin(t * 2.2 + cast(f32) i) * 0.12, pick_z(i));
     f := frame_at(at, t * 1.2 + cast(f32) i);
-    if i == PICK_PLUS { kit_pen(p, 70 + i, MAT_GLOW, blue); box(buf, p, f, 0.42, 0.3, 0.03); kit_pen(p, 80 + i, MAT_FLAT, INK()); box(buf, p, f, 0.3, 0.2, 0.04); }
-    else if i >= PICK_BANNED { kit_pen(p, 70 + i, MAT_GLOW, blue); box(buf, p, frame_turn(f, 0, 0.6), 0.28, 0.28, 0.28); }
+    if i == PICK_PLUS { f = frame_move(f, v3(at.x, at.y + 0.55, at.z)); kit_pen(p, 70 + i, MAT_GLOW, blue); box(buf, p, frame_turn(f, 0, 0.6), 0.3, 0.3, 0.3); }
+    else if i >= PICK_CELL { kit_pen(p, 70 + i, MAT_GLOW, t3(1.0, 0.72, 0.30)); box(buf, p, f, 0.14, 0.26, 0.14); kit_pen(p, 80 + i, MAT_CLOTH, INK()); box(buf, p, kit_at(f, 0, 0.3, 0), 0.07, 0.05, 0.07); }
     else if i >= H_MOVE {
       kit_pen(p, 70 + i, MAT_FLAT, INK()); box(buf, p, f, 0.42, 0.3, 0.03);
       kit_pen(p, 80 + i, MAT_FLAT, PAPER()); box(buf, p, f, 0.3, 0.2, 0.04);
@@ -630,16 +762,44 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     for i: 0..<3 { block(buf, p, -2.4 + cast(f32) i * 2.4, 1 + cast(f32) i * 1.6, WALL_Z + 1.02, 0.07, 2.4, 0.02); }
   }
   if g[0].bot {
-    shake := ifx g[0].bot_fail > 0 then sin(t * 40) * 0.06 else 0.0f32;
-    kit_digger(buf, p, frame_at(v3(shake, 0, g[0].bot_z), PI), 1.2, 95, t3(0.93, 0.88, 0.76), INK(), HEAT(), ifx g[0].have[H_PLUS] then blue else t3(1.0, 0.72, 0.30), true, true, true, g[0].bot_spin);
+    shake := ifx g[0].bot_state == BOT_FAIL then sin(t * 40) * 0.06 else 0.0f32;
+    kit_digger(buf, p, frame_at(v3(g[0].bot_x + shake, ground_y(g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw), 0.85, 95, t3(0.93, 0.88, 0.76), INK(), HEAT(), ifx g[0].have[H_PLUS] then blue else t3(1.0, 0.72, 0.30), true, true, true, g[0].bot_spin);
   }
-  // raiders: dark silhouettes with one hot eye
-  for i: 0..<RAIDERS {
-    face := atan2(g[0].px - g[0].rx[i], g[0].pz - g[0].rz[i]);
-    f := frame_at(v3(g[0].rx[i], 0, g[0].rz[i]), ifx g[0].rchase[i] then face else t * 0.4 + cast(f32) i);
-    kit_figure(buf, p, f, 1.15, 100 + i * 5, t3(0.16, 0.12, 0.18), t3(0.16, 0.12, 0.18), t3(0.10, 0.08, 0.12), t3(0.30, 0.14, 0.20), t * (ifx g[0].rchase[i] then 9.0f32 else 3.0f32));
-    kit_pen(p, 104 + i * 5, MAT_GLOW, ifx g[0].rchase[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62));
-    box(buf, p, kit_at(f, 0, 1.9, 0.19), 0.12, 0.03, 0.02);
+  // the party's people: raiders dancing where they stand, Imperial robots on patrol
+  for i: 0..<FOES {
+    if g[0].fhp[i] <= 0 { continue; }
+    face := atan2(g[0].px - g[0].fx[i], g[0].pz - g[0].fz[i]);
+    fy := ground_y(g[0].fx[i], g[0].fz[i]);
+    reel := ifx g[0].fstag[i] > 0 then sin(t * 50) * 0.08 else 0.0f32;
+    if i < F_RAIDERS {
+      // a raider: dancing (a bounce and a sway) until someone starts a fight
+      dance := !g[0].fhost[i];
+      beat := t * 7.5 + cast(f32) i * 1.3;
+      f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else face);
+      kit_figure(buf, p, f, 1.15, 100 + i * 5, t3(0.16, 0.12, 0.18), t3(0.16, 0.12, 0.18), t3(0.10, 0.08, 0.12), t3(0.30, 0.14, 0.20), ifx dance then beat else t * 9);
+      kit_pen(p, 104 + i * 5, MAT_GLOW, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62));
+      box(buf, p, kit_at(f, 0, 1.9, 0.19), 0.12, 0.03, 0.02);
+    } else {
+      // an Imperial robot: white plates, an orange band, a red eye once it has seen you
+      k := 0.5 + 0.5 * sin(t * 0.35 + cast(f32) i * 1.7);
+      walk := atan2((foe_bx(i) - foe_ax(i)) * cos(t * 0.35 + cast(f32) i * 1.7), (foe_bz(i) - foe_az(i)) * cos(t * 0.35 + cast(f32) i * 1.7));
+      f := frame_at(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), ifx g[0].fhost[i] then face else walk);
+      kit_robot(buf, p, f, 0.8, 100 + i * 5, t3(0.92, 0.93, 0.96), HEAT(), ifx g[0].fhost[i] then t3(1.0, 0.22, 0.12) else t3(0.95, 0.95, 1.0), t3(0.20, 0.20, 0.28), ifx g[0].fhost[i] then 0.7 else 0.0f32);
+    }
+  }
+  // the DJ at the booth, the dance floor's tiles changing colour on the beat, beams from the truss
+  dj := frame_at(v3(-13.6, 1.0 + abs(sin(t * 7.5)) * 0.12, -51.5), PI * 0.5);
+  kit_figure(buf, p, dj, 1.2, 160, t3(0.36, 0.86, 0.96), t3(0.90, 0.72, 0.58), INK(), t3(1.0, 0.36, 0.62), t * 7.5);
+  step := cast(int) (t * 1.9);
+  for i: 0..<20 {
+    c := (i + (i / 5) + step) % 3;
+    kit_pen(p, 165 + (i % 3), MAT_GLOW, ifx c == 0 then t3(0.80, 0.22, 0.52) else ifx c == 1 then t3(0.20, 0.60, 0.74) else t3(0.42, 0.26, 0.66));
+    block(buf, p, -8 + cast(f32) (i % 5) * 3.2, 0.02, -56 + cast(f32) (i / 5) * 3.2, 1.5, 0.03, 1.5);
+  }
+  for i: 0..<4 {
+    a := t * 0.9 + cast(f32) i * 1.6;
+    kit_pen(p, 170 + i, MAT_GLOW, ifx i % 2 == 0 then t3(1.0, 0.36, 0.62) else t3(0.36, 0.86, 0.96));
+    limb(buf, p, v3(-12.5, 6.1, -55 + cast(f32) i * 2.4), v3(-4 + sin(a) * 6, 0.1, -50 + cos(a * 0.7) * 5), 0.05, 0.3, v3(0, 1, 0), 6);
   }
   // the banned bot, its arm and its three weak points
   bf := frame_at(v3(BOSS_X, 0, BOSS_Z), 0);
@@ -658,6 +818,21 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     ball(buf, p, v3(w.x, w.y + (ifx out then 0.0f32 else sin(t * 3 + cast(f32) i) * 0.1), w.z), 0.36, 12);
   }
   if g[0].boss_down && !g[0].core_taken { kit_pen(p, 145, MAT_GLOW, blue); ball(buf, p, v3(BOSS_X, 0.9 + sin(t * 2) * 0.15, BOSS_Z + 4.5), 0.4, 12); }
+}
+
+// The party's lamps (up to eight point lights): the stage in magenta, the dance floor in cyan,
+// each room in its own colour, and the blue glow of the vault and the boss chamber.
+g_lights :: (g: [] SpGame, l: [] f32) {
+  if g[0].zone != Z_MINE || (g[0].mode != M_PLAY && g[0].mode != M_BANNER) { return; }
+  t := g[0].t; beat := 0.75 + 0.25 * abs(sin(t * 7.5));
+  light_put(l, 0, v3(-10, 4, -51.5), 13, 1.0, 0.30, 0.62, 1.7 * beat);
+  light_put(l, 1, v3(-1 + sin(t * 0.9) * 5, 3, -50 + cos(t * 0.63) * 4), 10, 0.30, 0.86, 0.96, 1.5 * beat);
+  light_put(l, 2, v3(-24, 3, -45), 9, 1.0, 0.62, 0.30, 1.3);
+  light_put(l, 3, v3(-24, 3, -57), 9, 0.62, 0.40, 1.0, 1.1);
+  light_put(l, 4, v3(pick_x(PICK_PLUS), 2.2, pick_z(PICK_PLUS)), 10, 0.31, 0.70, 0.85, ifx g[0].taken[PICK_PLUS] then 0.5f32 else 2.0f32);
+  light_put(l, 5, v3(23, 3.5, -51), 9, 1.0, 0.70, 0.36, 1.3);
+  light_put(l, 6, v3(BOSS_X, 4, BOSS_Z + 3), 12, 0.31, 0.70, 0.85, 1.4);
+  light_put(l, 7, v3(CRATE_X, 2, CRATE_Z), 5, 0.31, 0.70, 0.85, 1.0);
 }
 
 // ---- The camera and the look
@@ -840,7 +1015,7 @@ ui_sprockets :: (out: [] f32, n: int, x0: f32, x1: f32, y: f32, s: f32, c: KitTi
 num :: (buf: [] u8, a: string, v: int, b: string) -> string { n := tput(buf, 0, a); n = tput_int(buf, n, v); n = tput(buf, n, b); return cast(string) buf[0..<n]; }
 card_name :: (c: int) -> string { return ifx c == H_MOVE then "MOVE" else ifx c == H_DRILL then "DRILL" else "DRILL+"; }
 item_name :: (i: int) -> string { return ifx i == H_ARM then "DRILL ARM" else ifx i == H_TREADS then "TREADS" else ifx i == H_BATTERY then "BATTERY" else card_name(i); }
-pick_name :: (i: int) -> string { return ifx i == PICK_PLUS then "DRILL+ card +25 HEAT" else ifx i >= PICK_BANNED then "Banned piece +25 HEAT" else ifx i == H_MOVE then "MOVE card" else ifx i == H_DRILL then "DRILL card" else ifx i == H_ARM then "Drill Arm" else ifx i == H_TREADS then "Treads" else "Battery"; }
+pick_name :: (i: int) -> string { return ifx i == PICK_PLUS then "DRILL+ special part +25 HEAT" else ifx i >= PICK_CELL then "Battery cell" else ifx i == H_MOVE then "MOVE card" else ifx i == H_DRILL then "DRILL card" else ifx i == H_ARM then "Drill Arm" else ifx i == H_TREADS then "Treads" else "Battery"; }
 msg_text :: (g: [] SpGame) -> string {
   m := g[0].msg;
   if m == MSG_BAD_CUT { return "Bad cut. Re-edit at the rover."; }
@@ -853,7 +1028,9 @@ msg_text :: (g: [] SpGame) -> string {
   if m == MSG_HIT { return "Hit. One heart lost."; }
   if m == MSG_STUN { return "Weak point stunned."; }
   if m == MSG_WAKE { return "A weak point woke up."; }
-  if m == MSG_BANNED { return "Banned piece. +25 Heat."; }
+  if m == MSG_FOE { return "Down. Robot piece taken. +10 Heat."; }
+  if m == MSG_SMACK { return "Hit. Once more."; }
+  if m == MSG_CELL { return "Battery cell found."; }
   if m == MSG_CORE { return "You have the core. Get it to the crate or the rover."; }
   if m == MSG_PING { return "Sensor ping. Something is buried near the marker."; }
   if m == MSG_FIRST { return "The sensor found something. Pick it up first."; }
@@ -926,13 +1103,14 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = ui_text(out, n, "OBJECTIVE", ox + 14 * k, cy0 + 24 * k, 9.5 * k, ink);
   n = ui_text(out, n, objective(g), ox + 14 * k, cy0 + 50 * k, 9 * k, ink);
   parts := (ifx g[0].have[H_ARM] then 1 else 0) + (ifx g[0].have[H_TREADS] then 1 else 0) + (ifx g[0].have[H_BATTERY] then 1 else 0);
-  if g[0].zone == Z_MINE && g[0].phase == PH_NIGHT { n = ui_text(out, n, num(buf[..], "Banned pieces ", g[0].banned, " / 3"), ox + 14 * k, cy0 + 74 * k, 9 * k, GLOW_INK()); }
+  if g[0].zone == Z_MINE && g[0].phase == PH_NIGHT { n = ui_text(out, n, num(buf[..], "Robot pieces ", g[0].scrap, ""), ox + 14 * k, cy0 + 74 * k, 9 * k, ink); n = ui_text(out, n, num(buf[..], "Cells ", g[0].cells, " / 4"), ox + 190 * k, cy0 + 74 * k, 9 * k, ink); }
   else if g[0].zone == Z_MINE { n = ui_text(out, n, num(buf[..], "Parts ", parts, " / 3"), ox + 14 * k, cy0 + 74 * k, 9 * k, ink); n = ui_text(out, n, num(buf[..], "Cards ", (ifx g[0].have[H_MOVE] then 1 else 0) + (ifx g[0].have[H_DRILL] then 1 else 0), " / 2"), ox + 150 * k, cy0 + 74 * k, 9 * k, ink); }
   // bottom centre: the key prompt
   prompt := ""; key := "E"; reach := g_reach(g);
   if g[0].mode == M_RIDE { prompt = "Speed up · slow down"; key = "W S"; }
   else if reach >= 0 { prompt = "PICK UP"; }
   else if g_weak_near(g) >= 0 { prompt = "Stun the weak point"; key = "F"; }
+  else if g_foe_near(g) >= 0 { prompt = ifx g_foe_near(g) < F_RAIDERS then "Fight the raider" else "Fight the Imperial robot"; key = "F"; }
   else if g[0].zone == Z_MINE && g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, BOSS_X, BOSS_Z + 4.5) < T_PICK_RANGE { prompt = "PICK UP · Banned core"; }
   else if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { prompt = "Board the rover"; }
   else if g[0].zone == Z_MINE && (near_rover(g, T_USE_RANGE) || near_crate(g, T_USE_RANGE)) { prompt = "Open the edit bay"; key = "TAB"; }
@@ -945,7 +1123,7 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
     n = ui_box(out, n, x0, y0, x0 + pw, y0 + 46 * k, 3 * k, ink);
     n = ui_cap(out, n, key, x0 + 12 * k, y0 + 9 * k, 26 * k, ink);
     n = ui_text(out, n, prompt, x0 + cw + 26 * k, y0 + 29 * k, 10.5 * k, ink);
-    if extra != "" { n = ui_text(out, n, "·", x0 + cw + 36 * k + pw0, y0 + 29 * k, 10.5 * k, ink); n = ui_text(out, n, extra, x0 + cw + 54 * k + pw0, y0 + 29 * k, 10.5 * k, ifx reach >= PICK_BANNED then GLOW_INK() else ink); }
+    if extra != "" { n = ui_text(out, n, "·", x0 + cw + 36 * k + pw0, y0 + 29 * k, 10.5 * k, ink); n = ui_text(out, n, extra, x0 + cw + 54 * k + pw0, y0 + 29 * k, 10.5 * k, ifx reach == PICK_PLUS then GLOW_INK() else ink); }
   }
   // the scanner gate: Heat is cool, pass
   if g[0].zone == Z_VILLAGE && (g[0].pass_t > 0 || g[0].pz > VIL_Z + 4) {
@@ -997,7 +1175,7 @@ g_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
     if g[0].have[i] && !g[0].slot[i] { g_hot(g, 24 * k, y, x1, y + 46 * k, 1000 + i); }
   }
   y := top + 246 * k;
-  n = ui_text(out, n, num(buf[..], "Banned pieces ", g[0].banned, " / 3"), 24 * k, y, 9 * k, blue);
+  n = ui_text(out, n, num(buf[..], "Robot pieces ", g[0].scrap, ""), 24 * k, y, 9 * k, ink); n = ui_text(out, n, num(buf[..], "Cells ", g[0].cells, ""), 190 * k, y, 9 * k, ink);
   if g[0].have[H_CORE] { n = ui_icon(out, n, 4, 34 * k, y + 22 * k, 16 * k, blue, k); n = ui_text(out, n, "Banned core · ready", 52 * k, y + 26 * k, 9 * k, blue); }
   // the window: a REC mark, SPLICE and SPLICE CORE
   n = ui_box(out, n, lx, top, rx, bot, 3 * k, ink);
@@ -1117,10 +1295,12 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   g_stage(g[..], 5);
   for i: 0..<5 { g[0].have[i] = true; }
   for i: 0..<3 { g[0].slot[i] = true; }
+  g[0].bot = true; g_bot_home(g[..]);
   g[0].strip[0] = H_DRILL; g[0].strip[1] = H_MOVE; g[0].strip_n = 2;
   g_deploy(g[..]);
+  #assert g[0].bot_state == BOT_GO;          // it leaves your side for its work
   for i: 0..<400 { g_bot(g[..], 0.05); }
-  #assert !g[0].rubble_gone && !g[0].bot;
+  #assert !g[0].rubble_gone && g[0].bot_state == BOT_FOLLOW && dist2(g[0].bot_x, g[0].bot_z, g[0].px, g[0].pz) < 3;   // and comes back
   g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL;
   g_deploy(g[..]);
   for i: 0..<400 { g_bot(g[..], 0.05); }
@@ -1142,21 +1322,32 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   g_deploy(g[..]);
   #assert !g[0].bot && g[0].msg == MSG_NEED;
   g_place(g[..], H_BATTERY, -1);
+  #assert g[0].bot && g[0].bot_state == BOT_FOLLOW;
   g_deploy(g[..]);
-  #assert g[0].bot;
+  #assert g[0].bot_state == BOT_GO;
 }
-#test "Heat 100 brings the sweep, and the checkpoint gives back only what it kept" {
+#test "a fight won drops a robot piece; Heat 100 brings the sweep; the checkpoint gives back only what it kept" {
   g := [1] SpGame.[SpGame.{}];
-  g_stage(g[..], 8);          // night, two banned pieces, Heat 50, none of it kept at the checkpoint
-  g[0].px = pick_x(7); g[0].pz = pick_z(7);
-  #assert g_key(g[..], 'e', true) && g[0].banned == 3 && g[0].heat == 75;
-  g[0].px = pick_x(PICK_PLUS); g[0].pz = pick_z(PICK_PLUS);
-  #assert g_key(g[..], 'e', true) && g[0].have[H_PLUS];
+  g_stage(g[..], 8);          // night: two robot pieces and a cell, none of them kept at the checkpoint
+  g[0].heat = 90; g[0].px = g[0].fx[0] + 1; g[0].pz = g[0].fz[0];
+  #assert g_key(g[..], 'f', true) && g[0].fhp[0] == 1 && g[0].fhost[0] && g[0].scrap == 2;
+  g[0].px = g[0].fx[0] + 1; g[0].pz = g[0].fz[0];
+  #assert g_key(g[..], 'f', true) && g[0].fhp[0] == 0 && g[0].scrap == 3 && g[0].heat == 100;
   g_step(g[..], 0.01);
   #assert g[0].mode == M_BANNER && g[0].banner == B_SWEEP;
   for i: 0..<300 { g_step(g[..], 0.02); }
-  #assert g[0].mode == M_PLAY && g[0].heat == 0 && g[0].banned == 0 && !g[0].have[H_PLUS] && !g[0].taken[PICK_PLUS] && !g[0].taken[5];
-  #assert g[0].have[H_MOVE] && g[0].slot[0] && g[0].pz == START_Z;
+  #assert g[0].mode == M_PLAY && g[0].heat == 0 && g[0].scrap == 0 && g[0].cells == 0 && !g[0].taken[PICK_CELL] && g[0].fhp[0] == T_RAIDER_HP;
+  #assert g[0].have[H_MOVE] && g[0].slot[0] && g[0].pz == START_Z && g[0].bot;
+}
+#test "raiders dance until hit; an Imperial robot notices and chases" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 8); g[0].heat = 0;
+  g[0].px = g[0].fx[1] + 1.5; g[0].pz = g[0].fz[1];
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert !g[0].fhost[1] && g[0].hearts == T_HEARTS && dist2(g[0].fx[1], g[0].fz[1], foe_ax(1), foe_az(1)) < 0.1;
+  g[0].px = g[0].fx[5] - 3; g[0].pz = g[0].fz[5] + 1;       // on the floor beside its patrol (the catwalk would be safe)
+  g_step(g[..], 0.02);
+  #assert g[0].fhost[5];
 }
 #test "walls stop the smuggler, and the catwalk is reached by its ramps" {
   g := [1] SpGame.[SpGame.{}];
@@ -1214,23 +1405,27 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   #assert g_key(g[..], -15, true) && g[0].mode == M_BAY;
   #assert g_key(g[..], '4', true); #assert g_key(g[..], '5', true); #assert g_key(g[..], '6', true);
   #assert g_key(g[..], '1', true); #assert g_key(g[..], '2', true); #assert g_key(g[..], -2, true);
-  for i: 0..<400 { g_step(g[..], 0.02); }
-  #assert g[0].rubble_gone && g[0].phase == PH_DUSK;
-  // into the passage: night. The party: banned pieces, never near a raider.
-  for i: 0..<RAIDERS { g[0].rx[i] = -14; g[0].rz[i] = -41; }
+  #assert g[0].bot && g[0].bot_state == BOT_GO;
+  for i: 0..<1500 { g_step(g[..], 0.02); }
+  #assert g[0].rubble_gone && g[0].phase == PH_DUSK && g[0].bot_state == BOT_FOLLOW;
+  // into the passage: night. The party's rooms: a cell in the bar, a fight, the one blue piece in the vault.
   g[0].px = 0; g[0].pz = -37; g_step(g[..], 0.02);
   #assert g[0].phase == PH_NIGHT;
-  g[0].px = pick_x(7); g[0].pz = pick_z(7) + 1;
-  #assert g_key(g[..], 'e', true) && g[0].banned == 1 && g[0].heat == 25;
-  g[0].px = pick_x(PICK_PLUS); g[0].pz = pick_z(PICK_PLUS) + 1;
-  #assert g_key(g[..], 'e', true) && g[0].have[H_PLUS] && g[0].heat == 50;
+  g[0].px = pick_x(PICK_CELL) + 1; g[0].pz = pick_z(PICK_CELL) - 1;
+  #assert g_key(g[..], 'e', true) && g[0].cells == 1;
+  g[0].px = g[0].fx[4] + 1; g[0].pz = g[0].fz[4];
+  #assert g_key(g[..], 'f', true);
+  g[0].px = g[0].fx[4] + 1; g[0].pz = g[0].fz[4];
+  #assert g_key(g[..], 'f', true) && g[0].scrap == 1 && g[0].heat == 10;
+  g[0].px = pick_x(PICK_PLUS) + 1; g[0].pz = pick_z(PICK_PLUS) + 1;
+  #assert g_key(g[..], 'e', true) && g[0].have[H_PLUS] && g[0].heat == 35;
   g[0].px = CRATE_X + 2; g[0].pz = CRATE_Z;
   for i: 0..<100 { g_step(g[..], 0.02); }
-  #assert g[0].heat < 50;                       // Heat cools at the crate
+  #assert g[0].heat < 35;                       // Heat cools at the crate
   #assert g_key(g[..], 'e', true) && g[0].mode == M_BAY;
   #assert g_key(g[..], 'c', true); #assert g_key(g[..], '1', true); #assert g_key(g[..], '3', true); #assert g_key(g[..], -2, true);
   g[0].px = 13; g[0].pz = -50;
-  for i: 0..<400 { g_step(g[..], 0.02); }
+  for i: 0..<1500 { g_step(g[..], 0.02); }
   #assert g[0].wall_gone;
   // the boss: a sweep costs a heart; three stuns power it down
   g[0].px = BOSS_X + 4; g[0].pz = BOSS_Z;

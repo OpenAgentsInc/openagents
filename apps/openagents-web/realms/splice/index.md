@@ -15,16 +15,24 @@ The run follows the Splice game design document, Tier 1 and Tier 2.
    ping stops it. Walk to the marker, pick up the Battery, and board again.
 4. **Day mine.** Pick up the Drill Arm, the Treads and the MOVE and DRILL cards.
 5. **Edit bay.** At the rover, drag the parts and cards onto the film-strip timeline and press
-   SPLICE. DRILL then MOVE is a bad cut; MOVE then DRILL opens the rubble.
-6. **Dusk, then night.** The passage leads to the raiders' party: five raiders on the floor, a
-   catwalk along the wall with a ramp at each end, and three banned pieces. Each banned piece
-   adds 25 Heat. Raiders notice you from further away as Heat rises and give up at the catwalk.
-7. **DRILL+.** The glowing card lies by the boss wall (it adds 25 Heat too). Put MOVE, DRILL+
-   on the strip at the stash crate; only DRILL+ breaks the boss wall.
-8. **The banned bot.** Its arm sweeps round every few seconds. Stun its three weak points with
-   F; a stunned point wakes after 12 seconds, so all three must be down together. Take its core.
-9. **The memory.** Splice the core at the crate or the rover. A hologram of the old world plays,
-   then SCENE RESTORED.
+   SPLICE. Once its three parts are in, the Digger is built and follows you everywhere. When you
+   deploy it, it leaves your side and drives to its work. DRILL then MOVE is a bad cut; MOVE then
+   DRILL opens the rubble.
+6. **Dusk, then night: the party.** The passage leads to a raiders' party: a hall with a main
+   stage, a DJ, a dance floor and lamps on the beat, and rooms off it to explore: a bar, a
+   workshop, a vault, and a lounge reached from the catwalk. Raiders dance where they stand and
+   only fight if you hit them. Imperial robots patrol; they notice you from further away as Heat
+   rises, chase you, and give up at the catwalk.
+7. **Fights.** F hits whoever is in reach. A raider goes down in two hits, an Imperial robot in
+   three. Each one you beat drops a robot piece into your inventory and adds 10 Heat.
+8. **Battery cells.** Four lie in the rooms. Cells and robot pieces are kept to trade for
+   battery juice later; nothing spends them yet.
+9. **The one blue piece.** The special part, DRILL+, is in the vault. It adds 25 Heat. Put
+   MOVE, DRILL+ on the strip at the stash crate; only DRILL+ breaks the boss wall.
+10. **The banned bot.** Its arm sweeps round every few seconds. Stun its three weak points with
+    F; a stunned point wakes after 12 seconds, so all three must be down together. Take its core.
+11. **The memory.** Splice the core at the crate or the rover. A hologram of the old world plays,
+    then SCENE RESTORED.
 
 Three hearts. At zero hearts or 100 Heat you are back at the checkpoint post by the rover with
 the inventory you had when you last stood there. Heat cools only by the rover or the stash crate.
@@ -37,7 +45,7 @@ the inventory you had when you last stood there. Heat cools only by the rover or
 - **TAB** opens and closes the edit bay at the rover or the stash crate.
 - In the edit bay, drag or click a part or card to place it. Keys also work: **1, 2, 3** cards,
   **4, 5, 6** parts, **C** clears the strip, **Enter** is SPLICE, **X** is SPLICE CORE.
-- **F** stuns a weak point within 2 m.
+- **F** stuns a weak point within 2 m, or hits a raider or an Imperial robot in reach.
 
 ## Look
 
@@ -53,7 +61,8 @@ presets: dawn, day, dusk and night.
 - Tier 3: the solar farm stop and the village trade stall.
 - The memory's caption lines are placeholders, and "1 of ? erased scenes" keeps the document's
   open count.
-- The characters are engine shapes until the art drops arrive.
+- The characters are engine shapes until the art drops arrive; the smuggler is a cylinder.
+- Nothing buys or sells yet: robot pieces and battery cells only count up.
 
 ## Source
 
@@ -66,7 +75,7 @@ presets: dawn, day, dusk and night.
   cel kits and mesh writers.
 
 A page script can stand the game at one beat with `coaxial.send(610, "N")`, N from 0 (title) to
-15, for stills and checks.
+19, for stills and checks.
 
 The fonts are in `realms/splice/assets/fonts/` with their Open Font Licences.
 

@@ -325,6 +325,9 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     pen := [1] Pen.[Pen.{}];
     g_live(g, live, pen[..]);
     s[0].live_n = pen[0].n;
+    lights: [LIGHTS * LIGHT_FLOATS] f32;
+    g_lights(g, lights[..]);
+    for i: 0..<LIGHTS * LIGHT_FLOATS { u[U_LIGHTS + i] = lights[i]; }
   }
   view_rows(u, view, width / height);
   if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
