@@ -3,7 +3,7 @@
 // lesson finished, then writes a picture of it from the GPU's own bytes. No private simulation: the
 // page is the built realm, its values the ones its Coax worked out in the browser.
 //   coax/web/tool.sh nostr-lab-check [BASE_URL] [OUT_DIR] [--size WxH] [--scale N] [--dwell SECONDS]
-//       [--from N] [--to N] [--frames] [--no-pictures] [--stand METRES] [--turn PIXELS] [--lift PIXELS]
+//       [--from N] [--to N] [--frames] [--no-pictures] [--screenshots] [--stand METRES] [--turn PIXELS] [--lift PIXELS]
 // --stand is how far before a station's face you stop (9). --turn drags the follow camera that many
 // pixels toward the station while you stand there, and back before you walk on; --lift drags it down
 // (the camera looks up).
@@ -13,13 +13,16 @@
 //   ffmpeg -framerate 30 -i OUT_DIR/frames/f%05d.jpg -c:v libx264 -pix_fmt yuv420p OUT.mp4
 // --no-pictures only walks and checks: a deployed site (staging, production) gives no GPU bytes to a
 // page (host.js captures on local pages only), so it is how the walk is checked there.
+// --screenshots takes its pictures (and --frames' frames) as the browser shows the page, for a
+// deployed site: run it with CDP_WEBGPU=swiftshader on Linux, where only the software adapter's canvas
+// is in a screenshot.
 // It exits 1, naming the station, when a lesson stopped or the walk did not reach it.
 #import "Basic";
 #load "lab-check-cdp.coax";
 
 NLC_FPS :: 30;
 
-NlcRun :: struct { pictures: bool = true; frames: bool; dir: string; frame: int; w: int; h: int; stand: int; turn: int; lift: int; }
+NlcRun :: struct { pictures: bool = true; screen: bool; frames: bool; dir: string; frame: int; w: int; h: int; stand: int; turn: int; lift: int; }
 
 nlc_cat :: (b: [] u8, n0: int, t: string) -> int { n := n0; for i: 0..<t.count { if n < b.count { b[n] = t[i]; n += 1; } } return n; }
 // The frame's file under dir: "frames/f00012.jpg".
@@ -34,11 +37,16 @@ nlc_step :: (c: [] Cdp, r: [] NlcRun, frames: int) -> bool {
   if r[0].frames {
     for k: 0..<frames {
       path: [4096] u8;
-      if !lab_check_capture(c, nlc_frame_path(r, path[..]), NLC_FPS, true) { return false; }
+      if r[0].screen {
+        if !nlc_plain_step(c, 1) || !lab_check_screenshot(c, nlc_frame_path(r, path[..]), true) { return false; }
+      } else if !lab_check_capture(c, nlc_frame_path(r, path[..]), NLC_FPS, true) { return false; }
       r[0].frame += 1;
     }
     return true;
   }
+  return nlc_plain_step(c, frames);
+}
+nlc_plain_step :: (c: [] Cdp, frames: int) -> bool {
   b: [96] u8; n := nlc_cat(b[..], 0, "coaxialClipStep("); n = ws_digits(b[..], n, frames); n = nlc_cat(b[..], n, ","); n = ws_digits(b[..], n, NLC_FPS); n = nlc_cat(b[..], n, ").then(v=>v===1)");
   return lab_check_eval(c, cast(string) b[0..<n]);
 }
@@ -103,7 +111,7 @@ nlc_run :: (c: [] Cdp, r: [] NlcRun, url: string, w: int, h: int, scale: int, dw
     if at != i { print("Nostr Lab: station %: the walk says you are at station %\n", i + 1, at + 1); return false; }
     state := ifx i >= 4 then nlc_probe(c, 100 + i - 4) else 1;
     path: [4096] u8; out := nlc_station_path(r[0].dir, i, path[..]);
-    if r[0].pictures && !lab_check_capture(c, out, NLC_FPS, false) { print("Nostr Lab: station %: no picture\n", i + 1); return false; }
+    if r[0].pictures && !(ifx r[0].screen then lab_check_screenshot(c, out, false) else lab_check_capture(c, out, NLC_FPS, false)) { print("Nostr Lab: station %: no picture\n", i + 1); return false; }
     if state != 1 { print("Nostr Lab: station %: its lesson is not finished (state %: 0 not worked out, below 0 the step it stopped at); picture %\n", i + 1, state, out); return false; }
     print("Nostr Lab: station % of %: lesson finished, % quads, picture %\n", i + 1, stations, nlc_probe(c, 3), ifx r[0].pictures then out else "(none: --no-pictures)");
     if !nlc_turn(c, r, ifx left then r[0].turn else -r[0].turn, -r[0].lift) { return false; }
@@ -125,7 +133,7 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_errln("usage: coax/web/tool.sh nostr-lab-check [BASE_URL] [OUT_DIR] [--size WxH] [--scale N] [--dwell SECONDS] [--from N] [--to N] [--frames] [--stand METRES] [--turn PIXELS] [--lift PIXELS]");
     return 2;
   }
-  r[0].frames = args_has(a[..], "--frames"); r[0].pictures = !args_has(a[..], "--no-pictures"); r[0].w = wh.w; r[0].h = wh.h;
+  r[0].frames = args_has(a[..], "--frames"); r[0].pictures = !args_has(a[..], "--no-pictures"); r[0].screen = args_has(a[..], "--screenshots"); r[0].w = wh.w; r[0].h = wh.h;
   r[0].stand = cast(int) (stand.value * 1000.0); r[0].turn = cast(int) turn.value; r[0].lift = cast(int) lift.value;
   unused := fs_mkdir(r[0].dir);
   if r[0].frames { fp: [4096] u8; unused2 := fs_mkdir(fs_join(r[0].dir, "frames", fp[..])); }

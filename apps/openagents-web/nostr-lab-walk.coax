@@ -223,7 +223,7 @@ nw_tone :: (tone: int) -> LabRgb {
 }
 NW_ROW_EVERY :: 0.45f32;   // seconds between one row starting and the next
 NW_CARD_BIG :: 1.45f32;    // a card's slab against the first four's: its letters are that much larger, to be read from the lane
-NW_ROW_TOP :: 2.805f32; NW_ROW_STEP :: 0.405f32; NW_ROW_LEFT :: 0.45f32; NW_VALUE_H :: 0.175f32; NW_LABEL_UP :: 0.22f32; NW_LABEL_H :: 0.15f32;   // the first row's value from the floor, a row's height, the rows' left edge, a value's letter height, its label above it and the label's letter height
+NW_ROW_TOP :: 2.805f32; NW_ROW_STEP :: 0.405f32; NW_ROW_LEFT :: 0.45f32; NW_ROW_LEFT_INNER :: 1.15f32; NW_VALUE_H :: 0.175f32; NW_LABEL_UP :: 0.22f32; NW_LABEL_H :: 0.15f32;   // the first row's value from the floor, a row's height, the rows' left edge, a value's letter height, its label above it and the label's letter height; NW_ROW_LEFT_INNER is the rows' left edge on a station right of the lane, where the slab's left edge is the one beside you and your character stands before it
 nw_rows_done :: (rows: int) -> f32 { return 0.3 + NW_ROW_EVERY * f32(rows) + 0.4; }
 nw_card :: (nk: [] NostrWalk, i: int, lit: f32) {
   w := nk[0].w[..]; x0 := lab_left(w, i); z := lab_face(w, i); t := lab_anim(w, i); now := lab_clock(w);
@@ -252,11 +252,12 @@ nw_card :: (nk: [] NostrWalk, i: int, lit: f32) {
     }
   }
   // the rows: each a small label with its value under it, the value as large as 42 letters fit
+  left := ifx w[0].side[i] > 0 then NW_ROW_LEFT_INNER else NW_ROW_LEFT;
   for k: 0..<c[0].rows {
     at := t - 0.3 - NW_ROW_EVERY * f32(k); if at <= 0 { break; }
     v := (NW_ROW_TOP - NW_ROW_STEP * f32(k)) * g; r := c[0].row[k];
-    lab_say(w, cast(string) r.label[0..<r.label_n], x0, z, NW_ROW_LEFT * g, v + NW_LABEL_UP * g, NW_LABEL_H * g, LAB_CYAN, 1.35);
-    lab_say(w, nw_typed(cast(string) r.text[0..<r.n], cast(int) (at * 110)), x0, z, NW_ROW_LEFT * g, v, NW_VALUE_H * g, nw_tone(r.tone), 1.25);
+    lab_say(w, cast(string) r.label[0..<r.label_n], x0, z, left * g, v + NW_LABEL_UP * g, NW_LABEL_H * g, LAB_CYAN, 1.35);
+    lab_say(w, nw_typed(cast(string) r.text[0..<r.n], cast(int) (at * 110)), x0, z, left * g, v, NW_VALUE_H * g, nw_tone(r.tone), 1.25);
   }
   // what held, then what was refused
   done := nw_rows_done(c[0].rows);
@@ -383,7 +384,7 @@ nw_test_card :: (c: [] NostrCard) {
   }
   #assert nw_rows_done(6) > 0.3 + NW_ROW_EVERY * 5 && nw_tone(NC_BAD).r > nw_tone(NC_BAD).g && nw_tone(NC_GOOD).g > nw_tone(NC_GOOD).r;
   // the layout: the longest value ends inside the slab, the last row stands clear of the two lines, the first clear of the strip
-  #assert NW_ROW_LEFT + lab_text_w(NC_TEXT, NW_VALUE_H) < LAB_PANEL_W - 0.3 && lab_text_w(NC_LINE, 0.21) < LAB_PANEL_W - 0.3;
+  #assert NW_ROW_LEFT + lab_text_w(NC_TEXT, NW_VALUE_H) < LAB_PANEL_W - 0.3 && NW_ROW_LEFT_INNER + lab_text_w(NC_TEXT, NW_VALUE_H) < LAB_PANEL_W - 0.1 && NW_ROW_LEFT_INNER > NW_ROW_LEFT + 0.5 && lab_text_w(NC_LINE, 0.21) < LAB_PANEL_W - 0.3;
   #assert NW_ROW_TOP - NW_ROW_STEP * f32(NC_ROWS - 1) > 0.42 + 0.21 + 0.1 && NW_ROW_TOP + NW_LABEL_UP + NW_LABEL_H < 3.4 - 0.17 && NW_LABEL_UP > NW_VALUE_H + 0.04 && NW_LABEL_UP + NW_LABEL_H < NW_ROW_STEP && lab_text_w(NC_NODE, 0.15) < 2 * 0.66;
 }
 #test "nostr lab walk: a card is worked out while you stand still or just before you reach it, one a frame" #steps 20000000000 #traversal 2000000000 {

@@ -35,3 +35,13 @@ lab_check_capture :: (c:[]Cdp,out:string,fps:int,jpeg:bool)->bool {
   png:[16777216]u8;m:=b64_decode(jv_raw(c[0].doc[0],v),png[..]);
   return m>0 && fs_write(out,cast(string)png[0..<m]);
 }
+// A picture of the page as the browser shows it (Page.captureScreenshot), written to `out` as PNG, or
+// JPEG when `jpeg`. For a deployed site, which gives a check no GPU bytes: the browser must composite
+// the WebGPU canvas itself, so on Linux it is started with CDP_WEBGPU=swiftshader (cdp.coax).
+lab_check_screenshot :: (c:[]Cdp,out:string,jpeg:bool)->bool {
+  r:=cdp_call(c,"Page.captureScreenshot",ifx jpeg then "{\"format\":\"jpeg\",\"quality\":92}" else "{\"format\":\"png\"}",60000);
+  if r<0 {return false;}
+  dd:=cdp_doc(c);data:=jv_get(dd,r,"data");if jv_kind(dd,data)!=JV_STRING {return false;}
+  png:[16777216]u8;m:=b64_decode(jv_raw(dd,data),png[..]);
+  return m>0 && fs_write(out,cast(string)png[0..<m]);
+}

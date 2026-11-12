@@ -444,7 +444,8 @@ lab_message :: (w: [] LabWalk, kind: int, t: string) -> bool {
   if kind != HOST_PAGE { return false; }
   lab_enter(w); zone_enter(s, t); w[0].in_app = lab_has(t, "ua=AethyrPageHost");
   v := lab_staged(w, t);
-  if v >= 1 && v <= w[0].n { s[0].put_z = w[0].at_z[v - 1] + 9; s[0].put_x = w[0].side[v - 1] * 0.8; }
+  // before station v: a step toward its side, or on the lane's middle before a larger slab (the camera turns to it)
+  if v >= 1 && v <= w[0].n { s[0].put_z = w[0].at_z[v - 1] + 9; s[0].put_x = ifx w[0].big[v - 1] > 1 then 0.0f32 else w[0].side[v - 1] * 0.8; }
   return true;
 }
 // On a local page, ?at=N names a place for shots and clips: 1 to n stands you before station N (the
