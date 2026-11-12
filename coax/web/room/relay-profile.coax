@@ -1,0 +1,165 @@
+// Hold the relay room's profile (proto/verse/room-relay-v1.json, #13245) to the codec the room and
+// every page in a relay room load: aethyr/net/relay-wire.coax. A frame's format ("you": "y SEAT N T
+// [G]") names its head and fields in the codec's order; each "frames" entry's values name those
+// fields in that order; the codec's writer gives exactly its text from them, and its reader gives
+// them back from the text; every "malformed" text is refused by the frame's reader; and max_seats
+// is the codec's.
+//   coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json
+#import "Basic";
+#load "../../../aethyr/net/relay-wire.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+RP_FILE :: 16384;
+RP_PATH :: "proto/verse/room-relay-v1.json";
+RP_NONE :: -999999999;
+RP_FRAMES :: [6] string.["you", "join", "left", "said", "ping", "pong"];
+RP_FORMATS :: [6] string.["y SEAT N T [G]", "j SEAT", "l SEAT", "m SEAT TEXT", "t MS", "t MS T"];
+
+rp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+// Word i of a format split on spaces, its brackets taken off; "" past the last.
+rp_word :: (s: string, i: int) -> string {
+  at := 0; w := 0;
+  while at < s.count {
+    while at < s.count && s[at] == ' ' { at += 1; }
+    start := at;
+    while at < s.count && s[at] != ' ' { at += 1; }
+    if start < at {
+      if w == i {
+        a := start; e := at;
+        if s[a] == '[' { a += 1; }
+        if e > a && s[e - 1] == ']' { e -= 1; }
+        return s[a..<e];
+      }
+      w += 1;
+    }
+  }
+  return "";
+}
+rp_format :: (frame: string) -> string {
+  for i: 0..<RP_FRAMES.count { if RP_FRAMES[i] == frame { return RP_FORMATS[i]; } }
+  return "";
+}
+
+// One "frames" entry: its values in the format's order, written by the codec to its text and read back.
+rp_frame :: (d: Jv, row: int) -> bool {
+  tb: [3][512] u8;
+  frame := rp_str(d, jv_get(d, row, "frame"), tb[0][..]);
+  text := rp_str(d, jv_get(d, row, "text"), tb[1][..]);
+  vals := jv_get(d, row, "values");
+  fmt := rp_format(frame);
+  if fmt == "" || jv_kind(d, vals) != JV_OBJECT { return false; }
+  k := jv_len(d, vals);
+  if k < 1 || k > 4 { return false; }
+  v: [4] int; body := "";
+  for i: 0..<k {
+    m := jv_at(d, vals, i);
+    if jv_key(d, m) != rp_word(fmt, i + 1) { return false; }
+    if frame == "said" && i == 1 {
+      if jv_kind(d, m) != JV_STRING { return false; }
+      body = rp_str(d, m, tb[2][..]);
+      continue;
+    }
+    v[i] = jv_int(d, m, RP_NONE);
+    if v[i] == RP_NONE { return false; }
+  }
+  out: [RLW_FRAME + 512] u8; n := -1;
+  if frame == "you" {
+    if k == 3 { n = rlw_put_you(out[..], v[0], v[1], v[2]); } else if k == 4 { n = rlw_put_you_gen(out[..], v[0], v[1], v[2], v[3]); } else { return false; }
+    g := rlw_read(text);
+    return cast(string) out[0..<n] == text && g.ok && g.kind == RLW_YOU && g.seat == v[0] && g.others == v[1] && g.clock == v[2] &&
+      g.gen_said == (k == 4) && (k == 3 || g.gen == v[3]);
+  }
+  if frame == "join" || frame == "left" {
+    if k != 1 { return false; }
+    n = ifx frame == "join" then rlw_put_join(out[..], v[0]) else rlw_put_left(out[..], v[0]);
+    g := rlw_read(text);
+    kind: u8 = RLW_LEFT;
+    if frame == "join" { kind = RLW_JOIN; }
+    return cast(string) out[0..<n] == text && g.ok && g.kind == kind && g.seat == v[0];
+  }
+  if frame == "said" {
+    if k != 2 { return false; }
+    n = rlw_text(out[..], rlw_put_said(out[..], v[0]), body);
+    g := rlw_read(text);
+    return cast(string) out[0..<n] == text && g.ok && g.kind == RLW_SAID && g.seat == v[0] && g.body == body;
+  }
+  if frame == "ping" {
+    if k != 1 { return false; }
+    n = rlw_put_ping(out[..], v[0]);
+    return cast(string) out[0..<n] == text && rlw_ping(text);
+  }
+  if frame == "pong" {
+    if k != 2 { return false; }
+    ping: [32] u8; pn := rlw_put_ping(ping[..], v[0]);
+    if !rlw_ping(cast(string) ping[0..<pn]) { return false; }
+    n = rlw_put_pong(out[..], cast(string) ping[0..<pn], v[1]);
+    g := rlw_read(text);
+    return cast(string) out[0..<n] == text && g.ok && g.kind == RLW_PONG && g.sent == v[0] && g.clock == v[1];
+  }
+  return false;
+}
+// Whether the frame's reader refuses text.
+rp_refused :: (frame: string, t: string) -> bool {
+  if frame == "ping" { return !rlw_ping(t); }
+  g := rlw_read(t);
+  want: u8 = RLW_PONG;
+  if frame == "you" { want = RLW_YOU; } else if frame == "join" { want = RLW_JOIN; } else if frame == "left" { want = RLW_LEFT; } else if frame == "said" { want = RLW_SAID; }
+  return !(g.ok && g.kind == want);
+}
+
+rp_check :: (d: Jv, path: string) -> bool {
+  tb: [2][512] u8;
+  if rp_str(d, jv_get(d, 0, "identity"), tb[0][..]) != "room-relay-v1" { print("identity\n"); return false; }
+  file := RP_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  if rp_str(d, jv_get(d, 0, "check"), tb[1][..]) != "coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json" { print("check: not this program\n"); return false; }
+  if rp_str(d, jv_get(d, 0, "codec"), tb[1][..]) != "aethyr/net/relay-wire.coax" { print("codec: not the relay's\n"); return false; }
+  for i: 0..<RP_FRAMES.count {
+    if rp_str(d, jv_get(d, 0, RP_FRAMES[i]), tb[1][..]) != RP_FORMATS[i] { print("format: %\n", RP_FRAMES[i]); return false; }
+  }
+  if jv_int(d, jv_get(d, 0, "max_seats"), -1) != RLW_SEATS { print("max_seats\n"); return false; }
+
+  // Every frame has a fixture, and each holds.
+  frames := jv_get(d, 0, "frames");
+  if jv_kind(d, frames) != JV_ARRAY { return false; }
+  for f: RP_FRAMES {
+    seen := false;
+    for i: 0..<jv_len(d, frames) { if rp_str(d, jv_get(d, jv_at(d, frames, i), "frame"), tb[1][..]) == f { seen = true; } }
+    if !seen { print("frames: none for %\n", f); return false; }
+  }
+  for i: 0..<jv_len(d, frames) {
+    if !rp_frame(d, jv_at(d, frames, i)) { print("frame %: %\n", i, rp_str(d, jv_get(d, jv_at(d, frames, i), "text"), tb[1][..])); return false; }
+    print("ok    %\n", rp_str(d, jv_get(d, jv_at(d, frames, i), "text"), tb[1][..]));
+  }
+
+  // Each frame's reader refuses its malformed texts, three at least.
+  bad := jv_get(d, 0, "malformed");
+  if jv_kind(d, bad) != JV_OBJECT || jv_len(d, bad) != RP_FRAMES.count { print("malformed: one list a frame\n"); return false; }
+  for f: RP_FRAMES {
+    list := jv_get(d, bad, f);
+    if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 3 { print("malformed: %\n", f); return false; }
+    for i: 0..<jv_len(d, list) {
+      t := rp_str(d, jv_at(d, list, i), tb[1][..]);
+      if !rp_refused(f, t) { print("malformed % taken: %\n", f, t); return false; }
+    }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: relay-profile PROFILE.json"); return 2; }
+  path := args_at(a[..], 0);
+  text: [RP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [1024] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("relay-profile: cannot parse JSON"); return 2; }
+  if !rp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

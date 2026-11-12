@@ -1,13 +1,16 @@
 // Hold Everglade II's familiar and Healer's Kit profiles (proto/verse/everglade-familiar*-v1.json,
 // everglade-find-familiar-v1.json and everglade-healers-kit-v1.json; #13244) to the room's codec for
 // them, the functions its handlers call: everglade/server/familiar.coax (e2_familiar_read and the
-// e2_familiar_put_* writers) and everglade/server/aid.coax (e2_aid_read, e2_aid_put). A profile's format
+// e2_familiar_put_* writers) and, for the kit, everglade/server/kit-wire.coax, the one codec the room
+// (aid.coax) and the page (everglade/client/net.coax) both load: egk_ask_put and egk_ask_read for U1,
+// egk_used_put and egk_used_read for u1, each frame written and read back (#13245). A profile's format
 // strings ("request": "M1 SEQ FORM SLOT", ...) name its frames' fields in order; each "frames" entry's
 // values name those fields in that order; a request's text read by the room gives back its values; a
 // reply's values written by the room give exactly its text; every "malformed" request is refused by the
-// room's reader; and the enumerations (forms, spirits, orders, status, modes, max_rows) are the room's.
-// The page (everglade/client/net.coax) still writes and reads these frames with its own
-// code: E2 (#13245) or the row replication of #13276 replaces it.
+// room's reader (the kit's "malformed_accepted" by the page's); and the enumerations (forms, spirits,
+// orders, status, modes, max_rows, the kit's max_left) are the room's.
+// The page (everglade/client/net.coax) still writes and reads the familiar frames with its own
+// code: #13276's row replication deletes them, or E2 (#13245) moves them.
 //   coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-v1.json
 #import "Basic";
 #run_steps 250000000;   // secp256k1's tables: the room loads the seat ticket's v5 check
@@ -115,7 +118,7 @@ fp_frame :: (d: Jv, row: int, kit: bool) -> bool {
   }
   if fp_request(head) {
     if kit != (head == "U1") { return false; }
-    if kit { return e2_aid_read(text) == v[0]; }
+    if kit { n = egk_ask_put(out[..], v[0]); return n == text.count && cast(string) out[0..<n] == text && egk_ask_read(text) == v[0]; }
     a := e2_familiar_read(text);
     if !a.ok || a.seq != v[0] { return false; }
     if a.wizard != (head == "M3") || a.step != (head == "M5") || a.touch != (head == "M6") || a.sense != (head == "M7") { return false; }
@@ -127,7 +130,7 @@ fp_frame :: (d: Jv, row: int, kit: bool) -> bool {
   }
   if head == "r" {
     reason := fp_word(fmt, 2);
-    if reason != (ifx kit then E2_AID_REFUSED else E2_FAMILIAR_REFUSED) { return false; }
+    if reason != (ifx kit then EGK_REFUSED else E2_FAMILIAR_REFUSED) { return false; }
     n = wire_put_refused(out[..], 0, v[0], reason);
   }
   else if head == "m1" { n = e2_familiar_put_done(out[..], 0, v[0], v[1]); }
@@ -137,7 +140,12 @@ fp_frame :: (d: Jv, row: int, kit: bool) -> bool {
   else if head == "m7" { n = e2_familiar_put_done(out[..], E2_FAMILIAR_SENSES, v[0], 0); }
   else if head == "m3" { n = e2_familiar_put_status(out[..], v[0], v[1]); }
   else if head == "m8" { n = e2_familiar_put_sense(out[..], v[0]); }
-  else if head == "u1" { if !kit { return false; } n = e2_aid_put(out[..], v[0], v[1]); }
+  else if head == "u1" {
+    if !kit { return false; }
+    n = egk_used_put(out[..], v[0], v[1]);
+    u := egk_used_read(text);
+    if !u.ok || u.seq != v[0] || u.left != v[1] { return false; }
+  }
   return n == text.count && cast(string) out[0..<n] == text;
 }
 
@@ -196,8 +204,18 @@ fp_check :: (d: Jv, path: string) -> bool {
   if requests && (jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3) { return false; }
   for i: 0..<jv_len(d, bad) {
     t := fp_str(d, jv_at(d, bad, i), tb[1][..]);
-    if kit && e2_aid_read(t) != 0 { print("malformed %: %\n", i, t); return false; }
+    if kit && egk_ask_read(t) != 0 { print("malformed %: %\n", i, t); return false; }
     if !kit && e2_familiar_read(t).ok { print("malformed %: %\n", i, t); return false; }
+  }
+  // The kit's outcome: the page's reader refuses each malformed one, and LEFT's bound is the codec's.
+  if kit {
+    if jv_int(d, jv_get(d, 0, "max_left"), -1) != EGK_LEFT_MOST { print("max_left\n"); return false; }
+    worse := jv_get(d, 0, "malformed_accepted");
+    if jv_kind(d, worse) != JV_ARRAY || jv_len(d, worse) < 3 { return false; }
+    for i: 0..<jv_len(d, worse) {
+      t := fp_str(d, jv_at(d, worse, i), tb[1][..]);
+      if egk_used_read(t).ok { print("malformed_accepted %: %\n", i, t); return false; }
+    }
   }
   return true;
 }

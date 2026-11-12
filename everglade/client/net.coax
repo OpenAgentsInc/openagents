@@ -20,6 +20,8 @@
 #load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)
 #load "../../aethyr/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
 #load "../server/creature-wire.coax";   // the guard's and the monsters' frames, the room's codec (#13246)
+#load "../server/kit-wire.coax";   // the Healer's Kit's frames, the room's codec (#13245)
+#load "../../aethyr/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -490,19 +492,19 @@ e2n_record :: (n: [] E2Net, t: string) {
     return;
   }
   if wire_is(t,"u1") {
-    aid:=[1]WireRd.[wire_rd(t,2)];
-    seq:=wire_num(t,aid[..]); left:=wire_num(t,aid[..]);
-    if aid[0].ok && !wire_more(t,aid[..]) && e2n_open(n) && seq==n[0].aid_seq && seq>3000000 && left>=0 && left<10 {
-      n[0].aid_left=left; n[0].aid_ok=true; n[0].aid_at=n[0].mono;
+    used:=egk_used_read(t);
+    if used.ok && e2n_open(n) && used.seq==n[0].aid_seq && used.seq>3000000 {
+      n[0].aid_left=used.left; n[0].aid_ok=true; n[0].aid_at=n[0].mono;
     }
     return;
   }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   if !r[0].ok { return; }
   c := t[0];
-  if c == 'y' {
-    seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
-    if seat < 0 { return; }
+  if c == RLW_YOU {
+    you := rlw_read(t);
+    if !you.ok { return; }
+    seat := you.seat; clock := you.clock;
     e2n_clear_familiars(n);
     n[0].seat = seat; n[0].sat = true; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
     n[0].again = n[0].sat_before; n[0].sat_before = true; n[0].back_pending = n[0].again;
@@ -510,13 +512,14 @@ e2n_record :: (n: [] E2Net, t: string) {
     n[0].shot_ids[0] = NetSeen.{}; n[0].end_ids[0] = NetSeen.{};
     for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
     if n[0].lost { n[0].lost = false; e2n_tell(n, "BACK IN THE ROOM"); }
-    if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
+    if clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
     n[0].hello_due = true; n[0].change_due = false; n[0].acked = n[0].seq; n[0].fix_due = false;
     return;
   }
-  if c == 't' {
-    sent := wire_num(t, r[..]); clock := wire_num(t, r[..]);
-    if !r[0].ok || sent > n[0].mono || sent <= 0 { return; }
+  if c == RLW_PONG {
+    pong := rlw_read(t);
+    sent := pong.sent; clock := pong.clock;
+    if !pong.ok || sent > n[0].mono || sent <= 0 { return; }
     rtt := n[0].mono - sent;
     q := n[0].pings % NET_PINGS;
     n[0].ping_rtt[q] = rtt; n[0].ping_off[q] = clock + rtt / 2 - n[0].mono;
@@ -813,7 +816,7 @@ e2n_step :: (n: [] E2Net, mono: int) {
   }
   if e2n_open(n) {
     if n[0].ping_at == 0 || mono - n[0].ping_at >= (ifx n[0].ping_n < 8 then 1000 else 10000) {
-      m := wire_put(n[0].out[..], 0, "t"); m = wire_int(n[0].out[..], m, mono);
+      m := rlw_put_ping(n[0].out[..], mono);
       e2n_send(n, m);
       n[0].ping_at = mono; n[0].ping_n += 1;
     }
@@ -925,7 +928,7 @@ e2n_aid :: (n:[] E2Net)->bool {
   if !e2n_open(n) || n[0].aid_left==0 { return false; }
   n[0].aid_seq=add_sat(n[0].aid_seq,1);
   n[0].aid_at=-100000;
-  count:=wire_int(n[0].out[..],wire_put(n[0].out[..],0,"U1"),n[0].aid_seq);
+  count:=egk_ask_put(n[0].out[..],n[0].aid_seq);
   e2n_send(n,count);
   return true;
 }

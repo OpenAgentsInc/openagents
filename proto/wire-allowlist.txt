@@ -37,11 +37,10 @@ proto proto/openagents/cli/dictation/v1/stream.proto  # C7, wave 2 (#13250)
 # Area 2: Everglade
 id aethyr.player.appearance.v1 aethyr/host/apple/PageHost.m  # the iOS host keeps the text under the id as its storage key and passes it unread; no parser here, and wire-check has no rule for a key yet (#13250)
 id aethyr.player.appearance.v1 coax/web/host.js  # the page host keeps the text under the id as its localStorage key and passes it unread; no parser here, and wire-check has no rule for a key yet (#13250)
-shape relay-frames  # y j l t m and the rooms JSON: no shared codec, five page parsers; E2 (#13245)
 shape seat-ticket  # v2 and v3: written by C snprintf in player.c and by tk_sign in room-ticket.coax; E5 (#13248). v5 is not here: one codec, aethyr/session/seat-ticket.coax (registry row seat-ticket-v5, #13260)
 shape resume-envelope-v4  # signed, shared, exported to C; E5 adds fixtures (#13248)
-room coax/web/room/room-relay.coax  # y j l m, the t pong and the rooms JSON; E2 (#13245)
-shape everglade2-familiar-page-codec  # the page writes M1 M3-M7 U1 and reads m1-m8 u1 with its own code in everglade/client/net.coax; the room's codec (everglade/server/familiar.coax, aid.coax) is the one the profiles check; E2 (#13245), or #13276 deletes the familiar frames
+room coax/web/room/room-relay.coax  # the rooms list JSON (rm_rooms), which the API builds in SQL too (verse.room_list); E8, wave 2, with rooms.c. Its frames are relay-wire.coax's since E2 (#13250)
+shape everglade2-familiar-page-codec  # the page writes M1 M3-M7 and reads m1-m8 with its own code in everglade/client/net.coax; the room's codec (everglade/server/familiar.coax) is the one the profiles check; on hold for #13276, which deletes the familiar frames, else E2 (#13245)
 room coax/web/room/room-ticket.coax  # parses and signs seat tickets v2 and v3; E5 (#13248); v5 it reads through aethyr/session/seat-ticket.coax (#13260)
 room coax/web/room/room-vitals.coax  # the vitals report and its receipt; E8, wave 2 (#13250)
 room coax/web/room/room-directory.coax  # the directory report; E8, wave 2 (#13250)

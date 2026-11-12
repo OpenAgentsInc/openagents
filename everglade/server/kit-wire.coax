@@ -1,0 +1,50 @@
+// Everglade II's Healer's Kit frames: the one codec both sides load. The page writes the request
+// and reads the outcome (everglade/client/net.coax); the room reads the request and writes the
+// outcome (aid.coax). Profile proto/verse/everglade-healers-kit-v1.json, doc
+// docs/protocol/everglade-healers-kit-v1.md (#13245); its check runs these functions:
+//   coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-healers-kit-v1.json
+// Whole numbers a space apart (everglade-wire.coax wire_int).
+//   U1 SEQ          use the kit on the nearest dying ally: SEQ rises with each ask, above 0
+//   u1 SEQ LEFT     it was used: the ask's SEQ and the kit's uses left
+//   r SEQ kit       it was not (everglade-wire.coax wire_put_refused, the reason EGK_REFUSED)
+// A reader takes a frame whole or not at all: a field missing, extra or out of range.
+//   coax/bin/coax test everglade/server/kit-wire.coax
+#load "../shared/everglade-wire.coax";
+
+EGK_REFUSED :: "kit";   // the refusal's reason
+EGK_LEFT_MOST :: 9;     // a new kit has ten uses (the SRD's): after one, LEFT is from 0 to this
+
+EgkUsed :: struct { ok: bool; seq: int; left: int; }
+
+// ---- U1
+egk_ask_put :: (out: [] u8, seq: int) -> int { return wire_int(out, wire_put(out, 0, "U1"), seq); }
+// The request's sequence, or 0 when the frame is no well-formed U1.
+egk_ask_read :: (t: string) -> int {
+  rd := [1] WireRd.[wire_rd(t, 2)];
+  seq := wire_num(t, rd[..]);
+  if !wire_is(t, "U1") || !rd[0].ok || wire_fields(t) != 2 || seq <= 0 { return 0; }
+  return seq;
+}
+
+// ---- u1
+egk_used_put :: (out: [] u8, seq: int, left: int) -> int { return wire_int(out, wire_int(out, wire_put(out, 0, "u1"), seq), left); }
+egk_used_read :: (t: string) -> EgkUsed {
+  if !wire_is(t, "u1") { return EgkUsed.{}; }
+  rd := [1] WireRd.[wire_rd(t, 2)];
+  u: EgkUsed;
+  u.seq = wire_num(t, rd[..]); u.left = wire_num(t, rd[..]);
+  u.ok = rd[0].ok && wire_fields(t) == 3 && u.seq > 0 && u.left >= 0 && u.left <= EGK_LEFT_MOST;
+  return u;
+}
+
+#test "kit wire: each frame written reads back, and a bad one is refused whole" {
+  b: [64] u8;
+  n := egk_ask_put(b[..], 3000001);
+  #assert cast(string) b[0..<n] == "U1 3000001" && egk_ask_read("U1 3000001") == 3000001;
+  for bad: [7] string.["U1", "U1 0", "U1 1 2", "U1 x", "U1  1", "U2 1", "U1 -4"] { #assert egk_ask_read(bad) == 0; }
+  n = egk_used_put(b[..], 3000001, 9);
+  #assert cast(string) b[0..<n] == "u1 3000001 9";
+  u := egk_used_read("u1 3000001 9"); #assert u.ok && u.seq == 3000001 && u.left == 9;
+  #assert egk_used_read("u1 7 0").ok && egk_used_read("u1 7 9").ok;
+  for bad: [8] string.["u1", "u1 7", "u1 7 10", "u1 7 -1", "u1 0 3", "u1 7 3 1", "u1 7  3", "U1 7 3"] { #assert !egk_used_read(bad).ok; }
+}

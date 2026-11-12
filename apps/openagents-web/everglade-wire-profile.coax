@@ -9,7 +9,8 @@
 //   - the row's fields ("row") are the codec's WS_* in order, and each row fixture (s) names its MASK's
 //     fields: written from its base (zeros, or "base") it is the frame, and read onto that base it is
 //     the row again ("expect": fields after the delta);
-//   - the relay's own frames (y, j, l, t) are whole numbers, as the page reads them;
+//   - the relay's own frames (y, j, l, t) are written and read by their codec, aethyr/net/relay-wire.coax
+//     (their own profile is proto/verse/room-relay-v1.json);
 //   - the seat ticket (owner generation and the rest, room-ticket.coax tk_check) reads to "expect" under
 //     its key, and each of "refused" is refused;
 //   - each named ACK, baseline and lifecycle field ("ack", "lifecycle") is a field of a message above,
@@ -20,6 +21,7 @@
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../../everglade/shared/everglade-wire.coax";
+#load "../../aethyr/net/relay-wire.coax";   // the relay's own frames (#13245)
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
@@ -72,15 +74,28 @@ wp_row_msg :: (d: Jv, e: int, frame: string, f: WpVals) -> bool {
   for q: 0..<WIRE_SF { if want[q] != got[q] { same = false; print("      %: row field % reads %, the profile expects %\n", frame, WP_ROW[q], cast(int) got[q], cast(int) want[q]); } }
   return same;
 }
-// A relay frame (y, j, l, t): its head and whole numbers, written and read as the page reads them.
+// A relay frame (y, j, l, t): written from its values and read back by the relay's codec (relay-wire.coax).
 wp_relay_msg :: (head: string, f: WpVals, frame: string) -> bool {
-  out: [WIRE_FRAME] u8;
-  wn := wire_put(out[..], 0, head);
-  for k: 0..<f.n { wn = wire_int(out[..], wn, wp_int(f.v[k])); }
-  if cast(string) out[0..<wn] != frame { print("      %: written as %\n", frame, cast(string) out[0..<wn]); return false; }
-  r: [1] WireRd; r[0] = wire_rd(frame, head.count);
-  for k: 0..<f.n { if wire_num(frame, r[..]) != wp_int(f.v[k]) { r[0].ok = false; } }
-  return r[0].ok && !wire_more(frame, r[..]);
+  out: [RLW_FRAME] u8; n := -1;
+  v: [4] int;
+  if f.n > 4 { return false; }
+  for k: 0..<f.n { v[k] = wp_int(f.v[k]); }
+  if head == "y" && f.n == 4 { n = rlw_put_you_gen(out[..], v[0], v[1], v[2], v[3]); }
+  else if head == "y" && f.n == 3 { n = rlw_put_you(out[..], v[0], v[1], v[2]); }
+  else if head == "j" && f.n == 1 { n = rlw_put_join(out[..], v[0]); }
+  else if head == "l" && f.n == 1 { n = rlw_put_left(out[..], v[0]); }
+  else if head == "t" && f.n == 2 {
+    ping: [32] u8; pn := rlw_put_ping(ping[..], v[0]);
+    if !rlw_ping(cast(string) ping[0..<pn]) { return false; }
+    n = rlw_put_pong(out[..], cast(string) ping[0..<pn], v[1]);
+  }
+  if n < 0 || cast(string) out[0..<n] != frame { print("      %: written as %\n", frame, ifx n < 0 then "" else cast(string) out[0..<n]); return false; }
+  g := rlw_read(frame);
+  if !g.ok || g.kind != head[0] { return false; }
+  if head == "t" { return g.sent == v[0] && g.clock == v[1]; }
+  if g.seat != v[0] { return false; }
+  if head == "y" { return g.others == v[1] && g.clock == v[2] && g.gen_said == (f.n == 4) && (f.n == 3 || g.gen == v[3]); }
+  return true;
 }
 // Whether HEAD.FIELD names a field of a message of the profile, of the row (s.NAME) or of the ticket.
 wp_names :: (d: Jv, ref: string) -> bool {

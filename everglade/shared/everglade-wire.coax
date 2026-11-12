@@ -657,6 +657,14 @@ wire_rest :: (t: string, r: [] WireRd) -> string {
 // A record's reader, past its letters ("p ...": at 1; "e cast ...": at 6).
 wire_rd :: (t: string, letters: int) -> WireRd { return WireRd.{at = letters, ok = t.count > letters && t[letters] == ' '}; }
 wire_is :: (t: string, head: string) -> bool { return t.count > head.count && t[0..<head.count] == head && t[head.count] == ' '; }
+// How many fields a frame has, its head one of them: one more than its spaces (0 for an empty frame).
+// A reader that takes a frame whole compares this, so a doubled or trailing space is refused.
+wire_fields :: (t: string) -> int {
+  if t.count == 0 { return 0; }
+  n := 1;
+  for c: t { if c == ' ' { n += 1; } }
+  return n;
+}
 
 wire_read_hello :: (t: string, r: [] WireRd) -> WireHello {
   h: WireHello;

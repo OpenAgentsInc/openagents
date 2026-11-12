@@ -1,10 +1,12 @@
 #load "../../../aethyr/ids.coax";
+#load "../../../aethyr/net/relay-wire.coax";   // the relay's own frames, the one codec the pages read them with (#13245)
 // The room server's relay (room-relay): rooms for any game, keyed by the game and a room code,
 // that carry each player's text frames to the others unread. The games on their own paths
 // (room-games.coax) are untouched; a relay room's WebSocket opens at
 //   /api/room/relay/GAME/CODE        GAME and CODE: 1 to RELAY_NAME of [a-z0-9-]
 // and up to rl_game_seats(GAME) players sit in it (16 for everglade, 4 for every other game),
-// the first in seat 0. Seats and counts are decimal numbers. What each hears:
+// the first in seat 0. Seats and counts are decimal numbers. What each hears (the frames' codec is
+// aethyr/net/relay-wire.coax, their profile proto/verse/room-relay-v1.json):
 //   y SEAT N T      you are in, at SEAT, with N others; T is the server's wall clock in ms (the first frame)
 //   y SEAT N T G    in an everglade room: G is the seat's generation, one more each time a socket takes it
 //                   (#12792). A closed socket's seat, when its ticket names the player, is held
@@ -122,13 +124,11 @@ rl_queue :: (v: [] RmServer, r: int, only: int, but: int, head: string, body: st
   v[0].q[k].n = head.count + body.count;
   v[0].q_n += 1;
 }
-// "K SEAT" (and a space after it when space): the seat in decimal.
-rl_head :: (buf: [] u8, kind: u8, seat_id: SeatId, space: bool) -> string { seat := seat_id.value;
-  buf[0] = kind; buf[1] = ' ';
-  n := put_int(buf, 2, seat);
-  if space { buf[n] = ' '; n += 1; }
-  return cast(string) buf[0..<n];
-}
+// The relay's frames for a seat, written by their codec (relay-wire.coax): "j SEAT", "l SEAT", and
+// the head "m SEAT " of a frame passed on.
+rl_joined :: (buf: [] u8, seat: SeatId) -> string { return cast(string) buf[0..<rlw_put_join(buf, seat.value)]; }
+rl_gone :: (buf: [] u8, seat: SeatId) -> string { return cast(string) buf[0..<rlw_put_left(buf, seat.value)]; }
+rl_said :: (buf: [] u8, seat: SeatId) -> string { return cast(string) buf[0..<rlw_put_said(buf, seat.value)]; }
 rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   game: [RELAY_NAME] u8; code: [RELAY_NAME] u8; ns: [2] int;
   if !rl_path(request, game[..], code[..], ns[..]) { return -1; }
@@ -202,10 +202,9 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat, ftok = RL_BURST * 1000, btok = RL_BYTES * 1000, refill_at = now, ticket = tk, gen = gen};
   h: [16] u8;
   // (taking a seat back, its held seat or its old socket is counted too: they are this player)
-  rest: [64] u8; k := put(rest[..], 0, " "); k = put_int(rest[..], k, rl_people(v, r) - (ifx back then 2 else 1));
-  k = put(rest[..], k, " "); k = put_int(rest[..], k, v[0].wall_ms);
-  if eg >= 0 { k = put(rest[..], k, " "); k = put_int(rest[..], k, gen.value); }
-  rl_queue(v, r, conn, -1, rl_head(h[..], 'y', SeatId.{value = seat}, false), cast(string) rest[0..<k]);
+  you: [RLW_FRAME] u8; others := rl_people(v, r) - (ifx back then 2 else 1);
+  k := ifx eg >= 0 then rlw_put_you_gen(you[..], seat, others, v[0].wall_ms, gen.value) else rlw_put_you(you[..], seat, others, v[0].wall_ms);
+  rl_queue(v, r, conn, -1, cast(string) you[0..<k], "");
   // who else sits: the other sockets' seats and the held ones, once each
   sat: [RELAY_SEATS] bool;
   for i: 0..<CONNS {
@@ -213,9 +212,9 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
     if i != conn && c.live && !c.kicked && c.relay == r && c.seat >= 0 && c.seat < RELAY_SEATS && c.seat != seat { sat[c.seat] = true; }
   }
   if eg >= 0 { for s: 0..<EG_SEATS { if s != seat && eg_held(v, eg, SeatId.{value = s}) { sat[s] = true; } } }
-  for s: 0..<RELAY_SEATS { if sat[s] { rl_queue(v, r, conn, -1, rl_head(h[..], 'j', SeatId.{value = s}, false), ""); } }
+  for s: 0..<RELAY_SEATS { if sat[s] { rl_queue(v, r, conn, -1, rl_joined(h[..], SeatId.{value = s}), ""); } }
   if back { eg_rejoin(v, r, conn, SeatId.{value = seat}); return seat; }   // the others still have them
-  rl_queue(v, r, -1, conn, rl_head(h[..], 'j', SeatId.{value = seat}, false), "");
+  rl_queue(v, r, -1, conn, rl_joined(h[..], SeatId.{value = seat}), "");
   if v[0].relays[r].limited { eg_join(v, r, conn, SeatId.{value = seat}); }
   return seat;
 }
@@ -302,7 +301,7 @@ rl_owner_drop :: (v: [] RmServer, pid: string, below: int, but: int) -> int {
       c := v[0].eg[k].seat[s].conn;
       if c >= 0 && c < CONNS && v[0].conns[c].live { rl_elsewhere(v, c); }
       h: [16] u8;
-      rl_queue(v, r, -1, c, rl_head(h[..], 'l', SeatId.{value = s}, false), "");
+      rl_queue(v, r, -1, c, rl_gone(h[..], SeatId.{value = s}), "");
       eg_left(v, r, SeatId.{value = s});
       n += 1;
     }
@@ -333,28 +332,19 @@ rl_allow :: (v: [] RmServer, conn: int, bytes: int) -> bool {
   if now - v[0].conns[conn].over_since >= RL_OVER_MS { v[0].conns[conn].kicked = true; }
   return false;
 }
-// "t MS": a clock ping (MS: up to 15 digits, an optional minus).
-rl_is_ping :: (text: string) -> bool {
-  if text.count < 3 || text.count > 18 || text[0] != 't' || text[1] != ' ' { return false; }
-  i := 2;
-  if text[i] == '-' { i += 1; }
-  if i >= text.count { return false; }
-  while i < text.count { if text[i] < '0' || text[i] > '9' { return false; } i += 1; }
-  return true;
-}
 rl_heard :: (v: [] RmServer, conn: int, text: string) {
   c := v[0].conns[conn];
   if v[0].relays[c.relay].limited && !rl_current(v, conn) { v[0].st.stale += 1; return; }
   if v[0].relays[c.relay].limited && !rl_allow(v, conn, text.count) { return; }
-  if rl_is_ping(text) {
-    b: [48] u8; k := put(b[..], 0, text); k = put(b[..], k, " "); k = put_int(b[..], k, v[0].wall_ms);
+  if rlw_ping(text) {   // "t MS": a clock ping, answered to its sender only
+    b: [48] u8; k := rlw_put_pong(b[..], text, v[0].wall_ms);
     rl_queue(v, c.relay, conn, -1, cast(string) b[0..<k], "");
     return;
   }
   // an everglade room is the server's world: its frames are intents, never passed on
   if v[0].relays[c.relay].limited { eg_heard(v, c.relay, SeatId.{value = c.seat}, text); return; }
   h: [16] u8;
-  rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'm', SeatId.{value = c.seat}, true), text);
+  rl_queue(v, c.relay, -1, conn, rl_said(h[..], SeatId.{value = c.seat}), text);
 }
 // Whether everglade socket conn is still its seat's: not kicked (replaced, refused, over its limits),
 // and of the seat's generation. Frames from any other are an old socket's, still in flight.
@@ -385,7 +375,7 @@ rl_left :: (v: [] RmServer, conn: int) {
     return;
   }
   h: [16] u8;
-  rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'l', SeatId.{value = c.seat}, false), "");
+  rl_queue(v, c.relay, -1, conn, rl_gone(h[..], SeatId.{value = c.seat}), "");
   if v[0].relays[c.relay].limited { eg_left(v, c.relay, SeatId.{value = c.seat}); }
   if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
 }
@@ -621,7 +611,7 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   // anything else that starts with t is a frame
   rm_heard(v[..], 1, "t x");
   #assert v[0].q_n == 0;
-  #assert rl_is_ping("t 0") && rl_is_ping("t -5") && !rl_is_ping("t ") && !rl_is_ping("t 1 2") && !rl_is_ping("tt 1");
+  #assert rlw_ping("t 0") && rlw_ping("t -5") && !rlw_ping("t ") && !rlw_ping("t 1 2") && !rlw_ping("tt 1");
 }
 #test "relay: the room refuses a v1 room's code and seats an Everglade II room's (#13267)" {
   v: [1] RmServer;

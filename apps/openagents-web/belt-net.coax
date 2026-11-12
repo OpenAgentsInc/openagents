@@ -158,7 +158,7 @@ net_pump :: (a: [] Belt, b: [] Belt) {
   for k: 0..<p[0].n {
     if p[0].op[k] != PIPE_SEND { continue; }
     buf: [LR_CHUNK * 2 + 16] u8;
-    n := lr_put(buf[..], 0, "m "); n = lr_put_int(buf[..], n, a[0].lock[0].seat); n = lr_put(buf[..], n, " ");
+    n := rlw_put_said(buf[..], a[0].lock[0].seat);   // as the relay heads it (aethyr/net/relay-wire.coax)
     n = lr_put(buf[..], n, pipe_bytes(p, k));
     belt_message(b, SOCKET_KIND + 4 * b[0].lock[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
   }
@@ -176,12 +176,12 @@ net_say :: (s: [] Belt, t: string) { belt_message(s, SOCKET_KIND + 4 * s[0].lock
   #assert cast(string) a[0].outbox[0..<44] == "https://openagents.com/worlds/belt-2200?coop";
   #assert b[0].lock[0].state == LR_JOINING && b[0].net_nudge;
   belt_socket_opened(a[..], 0); belt_socket_opened(b[..], 0);
-  net_say(a[..], "y 0 0");
+  net_say(a[..], "y 0 0 7");
   // alone, a's order is its own at once
   select_only(a[..], 0); mine_order(a[..]); go(a[..], true);
   #assert a[0].ships[0].mode == FLYING;
   for f: 0..<20 { net_frame(a[..], 0.05); pipe_drained(a[0].lock[0].pipe[..]); }
-  net_say(b[..], "y 1 1"); net_say(b[..], "j 0"); net_say(a[..], "j 1");
+  net_say(b[..], "y 1 1 7"); net_say(b[..], "j 0"); net_say(a[..], "j 1");
   for f: 0..<170 {
     net_frame(a[..], 0.05); net_frame(b[..], 0.05);
     if f == 20 { select_only(b[..], 1); mine_order(b[..]); go(b[..], false); }

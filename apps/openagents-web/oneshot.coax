@@ -24,6 +24,7 @@
 
 #load "../../aethyr/ui/font.coax";
 #load "../../coax/web/socket.coax";
+#load "../../aethyr/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
 #load "oneshot-table.coax";
 #load "../../aethyr/shot.coax" as ash;
 #load "../../aethyr/space.coax" as asp;
@@ -340,16 +341,8 @@ room_tell :: (s: [] Os, force: bool) {
   buf: [OS_FRAME] u8; n := os_encode(v[..], buf[..]);
   room_send(s, cast(string) buf[0..<n]);
 }
-// A number from the front of t (at[0] moves past it and one space).
-take_int :: (t: string, at: [] int) -> int {
-  i := at[0]; v := 0; neg := false;
-  if i < t.count && t[i] == '-' { neg = true; i += 1; }
-  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
-  if i < t.count && t[i] == ' ' { i += 1; }
-  at[0] = i;
-  return ifx neg then -v else v;
-}
-// What the relay says: y SEAT N (you are in), j SEAT, l SEAT, m SEAT TEXT. True when it was a socket's.
+// What the relay says (aethyr/net/relay-wire.coax): y SEAT N T (you are in), j SEAT, l SEAT, m SEAT TEXT.
+// True when it was a socket's.
 room_heard :: (s: [] Os, kind: int, t: string) -> bool {
   ev := socket_event(kind);
   if ev.id < 0 || ev.id != s[0].sock { return ev.id >= 0; }
@@ -358,23 +351,24 @@ room_heard :: (s: [] Os, kind: int, t: string) -> bool {
     say_note(s, ifx s[0].role == ROLE_GM then "No room for other screens: everyone plays on this device" else "The table closed");
     return true;
   }
-  if ev.event != SOCKET_FRAME || t.count < 2 { return true; }
-  at: [1] int; at[0] = 2;
-  if t[0] == 'y' {
-    s[0].my_seat = take_int(t, at[..]); s[0].link = LINK_IN;
+  if ev.event != SOCKET_FRAME { return true; }
+  f := rlw_read(t);
+  if !f.ok { return true; }
+  if f.kind == RLW_YOU {
+    s[0].my_seat = f.seat; s[0].link = LINK_IN;
     if s[0].role == ROLE_GM { room_tell(s, true); }
     else if s[0].role == ROLE_DISPLAY { room_send(s, "k|display"); }
     return true;
   }
-  if t[0] == 'j' { if s[0].role == ROLE_GM { room_tell(s, true); } return true; }
-  if t[0] == 'l' {
-    seat := take_int(t, at[..]);
+  if f.kind == RLW_JOIN { if s[0].role == ROLE_GM { room_tell(s, true); } return true; }
+  if f.kind == RLW_LEFT {
+    seat := f.seat;
     if s[0].role == ROLE_GM && seat >= 0 && seat < SEATS { s[0].seat_hero[seat] = -1; }
     return true;
   }
-  if t[0] != 'm' { return true; }
-  seat := take_int(t, at[..]);
-  body := t[at[0]..<t.count];
+  if f.kind != RLW_SAID { return true; }
+  seat := f.seat;
+  body := f.body;
   if s[0].role == ROLE_GM { gm_heard(s, seat, body); return true; }
   if body.count > 1 && body[0] == 'V' && body[1] == '|' { ok := os_decode(body, s[0].seen[..]); return true; }
   if body.count > 1 && body[0] == 'S' && body[1] == '|' {
@@ -1540,7 +1534,7 @@ pass_frames :: (from: [] Os, to: [] Os) {
   p := from[0].pipe[..];
   for c: 0..<p[0].n {
     if p[0].op[c] != PIPE_SEND { continue; }
-    buf: [OS_FRAME + 16] u8; n := put(buf[..], 0, "m "); n = put_int(buf[..], n, from[0].my_seat); n = put(buf[..], n, " ");
+    buf: [OS_FRAME + 16] u8; n := rlw_put_said(buf[..], from[0].my_seat);   // as the relay heads it (aethyr/net/relay-wire.coax)
     n = put(buf[..], n, pipe_bytes(p, c));
     os_message(to, SOCKET_KIND + 4 * to[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
   }
@@ -1650,7 +1644,7 @@ os_note :: (s: [] Os) -> string { return cast(string) s[0].note[0..<s[0].note_n]
   #assert os_code_ok(code) && pipe_bytes(gm[0].pipe[..], 0)[0..<39] == "wss://openagents.com/api/room/relay/one";
   pipe_drained(gm[0].pipe[..]);
   os_socket_opened(gm[..], 0);
-  os_message(gm[..], SOCKET_KIND + SOCKET_FRAME, "y 0 0");
+  os_message(gm[..], SOCKET_KIND + SOCKET_FRAME, "y 0 0 7");
   #assert gm[0].link == LINK_IN && gm[0].my_seat == 0;
   // the player's page: ?join=CODE
   buf: [200] u8; m := put(buf[..], 0, "url=https://openagents.com/worlds/one-shot?join="); m = put(buf[..], m, code); m = put(buf[..], m, "\ntab=p1\nnow=6\n");
@@ -1658,7 +1652,7 @@ os_note :: (s: [] Os) -> string { return cast(string) s[0].note[0..<s[0].note_n]
   #assert pl[0].role == ROLE_PLAYER && pl[0].view == V_CHARACTER && pl[0].link == LINK_JOINING;
   pipe_drained(pl[0].pipe[..]);
   os_socket_opened(pl[..], 0);
-  os_message(pl[..], SOCKET_KIND + SOCKET_FRAME, "y 1 1");
+  os_message(pl[..], SOCKET_KIND + SOCKET_FRAME, "y 1 1 7");
   os_message(gm[..], SOCKET_KIND + SOCKET_FRAME, "j 1");
   pass_frames(gm[..], pl[..]);
   #assert pl[0].seen[0].live && os_str(pl[0].seen[0].title[..], pl[0].seen[0].title_n) == OS_STARTER_TITLE;

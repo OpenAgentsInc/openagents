@@ -267,9 +267,12 @@ In `coax/web/room/room-relay.coax`, `room.coax` and `room-host.c`:
    `verse.room_max()`; every other game keeps 4 (`RELAY_GAME_SEATS`). Seats
    and counts are written as decimal numbers (`0` to `15`), not one
    character, and the first frame is `y SEAT N T`: `T` is the server's wall
-   clock in ms (Unix epoch), for clock sync. The existing games read the seat
-   as a decimal field and ignore the extra field (One-Shot's `take_int`,
-   `lockroom.coax`'s reader); `relay-check.coax` checks both.
+   clock in ms (Unix epoch), for clock sync. The room and every page read
+   and write the relay's frames with one codec, `aethyr/net/relay-wire.coax`
+   (profile `proto/verse/room-relay-v1.json`,
+   [room-relay-v1.md](../protocol/room-relay-v1.md)); `relay-check.coax`
+   checks the running relay. The Healer's Kit's `U1` and `u1` have one
+   codec too, `everglade/server/kit-wire.coax`.
 2. `CONNS` 512, `RELAYS` 64, `RELAY_QUEUE` 1024. Each frame's recipients are
    fixed when it is queued. The host drains the queue after every event and
    one event queues at most 17 frames, so the queue cannot fill; a full queue

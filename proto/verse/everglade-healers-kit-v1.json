@@ -6,6 +6,8 @@
   "request": "U1 SEQ",
   "accepted": "u1 SEQ LEFT",
   "refused": "r SEQ kit",
+  "codec": "everglade/server/kit-wire.coax",
+  "max_left": 9,
   "admission": "Positive increasing request sequence per connection. The room selects the nearest dying ally in contact, checks world line of sight, and spends the shared Action and one use.",
   "frames": [
     {"frame": "request", "values": {"SEQ": 3000001}, "text": "U1 3000001"},
@@ -19,5 +21,15 @@
     "U1 x",
     "U1  1",
     "U2 1"
+  ],
+  "malformed_accepted": [
+    "u1",
+    "u1 3000001",
+    "u1 3000001 10",
+    "u1 3000001 -1",
+    "u1 0 3",
+    "u1 3000001 9 1",
+    "u1 3000001  9",
+    "U1 3000001 9"
   ]
 }

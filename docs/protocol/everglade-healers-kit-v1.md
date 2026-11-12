@@ -13,4 +13,10 @@ the patient becomes Stable at 0 HP. Each new Everglade II room seat has
 one kit with ten uses. Class changes preserve its remaining uses.
 
 The sender receives `u1 SEQ LEFT` after success or `r SEQ kit` on
-refusal. Other pages receive the usual authoritative state updates.
+refusal. LEFT is from 0 to 9. Other pages receive the usual authoritative
+state updates.
+
+Profile: [`everglade-healers-kit-v1.json`](../../proto/verse/everglade-healers-kit-v1.json).
+Codec: `everglade/server/kit-wire.coax`. The page writes `U1` and reads
+`u1` with it, and the room reads `U1` and writes `u1` with it. A reader
+takes a frame whole or not at all.

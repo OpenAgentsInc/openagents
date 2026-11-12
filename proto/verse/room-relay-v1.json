@@ -1,0 +1,45 @@
+{
+  "identity": "room-relay-v1",
+  "check": "coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json",
+  "scope": "The relay room's own frames, for every game that sits in a relay room (coax/web/room/room-relay.coax): Everglade's rooms, and the games whose frames the relay passes on unread",
+  "transport": "WebSocket text frames on /api/room/relay/GAME/CODE; fields one space apart; whole numbers in decimal",
+  "doc": "docs/protocol/room-relay-v1.md",
+  "codec": "aethyr/net/relay-wire.coax",
+  "you": "y SEAT N T [G]",
+  "join": "j SEAT",
+  "left": "l SEAT",
+  "said": "m SEAT TEXT",
+  "ping": "t MS",
+  "pong": "t MS T",
+  "units": {
+    "SEAT": "a seat of the room, from 0; below max_seats",
+    "N": "how many others sit in the room",
+    "T": "the server's wall clock in milliseconds",
+    "G": "in an everglade room only: the seat's generation, one more each time a socket takes it",
+    "TEXT": "the sender's text frame as it was sent, any bytes; an everglade room passes none on",
+    "MS": "the page's own clock value, given back unchanged: up to 15 digits, an optional minus"
+  },
+  "max_seats": 16,
+  "frames": [
+    {"frame": "you", "values": {"SEAT": 0, "N": 0, "T": 7}, "text": "y 0 0 7"},
+    {"frame": "you", "values": {"SEAT": 1, "N": 1, "T": 7}, "text": "y 1 1 7"},
+    {"frame": "you", "values": {"SEAT": 12, "N": 15, "T": 1762190000123, "G": 2}, "text": "y 12 15 1762190000123 2"},
+    {"frame": "join", "values": {"SEAT": 13}, "text": "j 13"},
+    {"frame": "left", "values": {"SEAT": 3}, "text": "l 3"},
+    {"frame": "said", "values": {"SEAT": 0, "TEXT": "o 12 place 40 1"}, "text": "m 0 o 12 place 40 1"},
+    {"frame": "said", "values": {"SEAT": 15, "TEXT": " u 9"}, "text": "m 15  u 9"},
+    {"frame": "said", "values": {"SEAT": 2, "TEXT": ""}, "text": "m 2 "},
+    {"frame": "ping", "values": {"MS": 5000}, "text": "t 5000"},
+    {"frame": "ping", "values": {"MS": -5}, "text": "t -5"},
+    {"frame": "pong", "values": {"MS": 5000, "T": 1762190000123}, "text": "t 5000 1762190000123"},
+    {"frame": "pong", "values": {"MS": 77, "T": 7}, "text": "t 77 7"}
+  ],
+  "malformed": {
+    "you": ["y", "y 1", "y 1 1", "y 16 0 7", "y -1 0 7", "y 1 1 7 2 3", "y 1 x 7", "y 1 1 7 ", "y  1 1 7"],
+    "join": ["j", "j x", "j 16", "j 1 2", "j -1"],
+    "left": ["l", "l x", "l 16", "l 3 ", "l -1"],
+    "said": ["m", "m 2", "m 16 x", "m x y"],
+    "ping": ["t", "t ", "t -", "t 5 6", "t 5x", "t 1234567890123456789", "u 5"],
+    "pong": ["t 5000", "t 5000 7 1", "t x 7", "t 5000 7 "]
+  }
+}

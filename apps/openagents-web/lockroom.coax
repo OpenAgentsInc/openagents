@@ -14,6 +14,7 @@
 //   coax/bin/coax test apps/openagents-web/stair.coax --only lockroom
 
 #load "../../coax/web/socket.coax";
+#load "../../aethyr/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
 
 LR_OFF :: 0; LR_JOINING :: 1; LR_ALONE :: 2; LR_SYNC :: 3; LR_PLAY :: 4; LR_LOST :: 5; LR_FULL :: 6;
 LR_ORDER :: 80;          // an order's text, at most
@@ -355,12 +356,13 @@ lr_socket :: (L: [] Lock, kind: int, text: string, snap: [] u8) -> bool {
     if L[0].state != LR_FULL { L[0].state = LR_LOST; lr_say(L, "LOST THE ROOM: PLAYING ALONE"); }
     return true;
   }
-  if e.event != SOCKET_FRAME || text.count < 3 { return true; }
-  at: [1] int; at[0] = 2;
-  who := lr_int(text, at[..]);
-  if text[0] == 'y' {
+  if e.event != SOCKET_FRAME { return true; }
+  f := rlw_read(text);
+  if !f.ok { return true; }
+  who := f.seat;
+  if f.kind == RLW_YOU {
     L[0].seat = who;
-    others := lr_int(text, at[..]);
+    others := f.others;
     if others >= 2 || who >= 4 {
       L[0].state = LR_FULL; ok := pipe_close(L[0].pipe[..], L[0].sock); L[0].sock = -1; L[0].retry_t = 0;
       lr_say(L, ifx L[0].retries < LR_RETRIES then "THE ROOM IS FULL: TRYING AGAIN" else "THAT ROOM HAS TWO PLAYERS");
@@ -370,13 +372,13 @@ lr_socket :: (L: [] Lock, kind: int, text: string, snap: [] u8) -> bool {
     L[0].state = ifx others > 0 then LR_SYNC else LR_ALONE;
     return true;
   }
-  if text[0] == 'j' {
+  if f.kind == RLW_JOIN {
     if L[0].partner >= 0 && L[0].partner != who { return true; }   // a third: not ours
     L[0].partner = who;
     if L[0].state == LR_ALONE { L[0].want_snap = true; lr_say(L, "YOUR PARTNER JOINED"); }
     return true;
   }
-  if text[0] == 'l' {
+  if f.kind == RLW_LEFT {
     if who == L[0].partner {
       L[0].partner = -1;
       if L[0].state == LR_PLAY || L[0].state == LR_SYNC { lr_say(L, "YOUR PARTNER LEFT"); }
@@ -384,9 +386,8 @@ lr_socket :: (L: [] Lock, kind: int, text: string, snap: [] u8) -> bool {
     }
     return true;
   }
-  if text[0] != 'm' || who != L[0].partner { return true; }
-  body := text[at[0]..<text.count];
-  if body.count > 0 && body[0] == ' ' { body = body[1..<body.count]; }
+  if f.kind != RLW_SAID || who != L[0].partner { return true; }
+  body := f.body;
   if body.count == 0 { return true; }
   b: [1] int; b[0] = 1;
   c := body[0];
@@ -420,7 +421,7 @@ lr_pump :: (a: [] LrToy, b: [] LrToy) {
   for k: 0..<p[0].n {
     if p[0].op[k] != PIPE_SEND { continue; }
     buf: [LR_CHUNK * 2 + 16] u8;
-    n := lr_put(buf[..], 0, "m "); n = lr_put_int(buf[..], n, a[0].L[0].seat); n = lr_put(buf[..], n, " ");
+    n := rlw_put_said(buf[..], a[0].L[0].seat);   // as the relay heads it (aethyr/net/relay-wire.coax)
     n = lr_put(buf[..], n, pipe_bytes(p, k));
     ok := lr_socket(b[0].L[..], SOCKET_KIND + 4 * b[0].L[0].sock + SOCKET_FRAME, cast(string) buf[0..<n], b[0].snap[..]);
   }
@@ -463,13 +464,13 @@ lr_toy_say :: (c: [] LrToy, t: string) { ok := lr_socket(c[0].L[..], SOCKET_KIND
     x[0].L[0].rate = 60; x[0].L[0].check = 30; x[0].L[0].sock = 0; x[0].L[0].state = LR_JOINING;
   }
   // a is alone and plays on its own
-  lr_toy_say(a[..], "y 0 0");
+  lr_toy_say(a[..], "y 0 0 7");
   #assert a[0].L[0].state == LR_ALONE && lr_may_step(a[0].L[..]);
   #assert !lr_order(a[0].L[..], "add 5");
   for f: 0..<10 { lr_toy_frame(a[..]); pipe_drained(a[0].L[0].pipe[..]); }
   #assert a[0].L[0].tick == 40 && a[0].v == 40;
   // b comes: it waits; a sends its game
-  lr_toy_say(b[..], "y 1 1"); lr_toy_say(b[..], "j 0");
+  lr_toy_say(b[..], "y 1 1 7"); lr_toy_say(b[..], "j 0");
   #assert b[0].L[0].state == LR_SYNC && !lr_may_step(b[0].L[..]);
   lr_toy_say(a[..], "j 1");
   #assert a[0].L[0].want_snap;
@@ -494,7 +495,7 @@ lr_toy_say :: (c: [] LrToy, t: string) { ok := lr_socket(c[0].L[..], SOCKET_KIND
   #assert a[0].L[0].desyncs == d && a[0].L[0].state == LR_PLAY && b[0].L[0].state == LR_PLAY;
   // a third finds it full and tries again a few seconds on
   t: [1] LrToy; t[0].L[0].sock = 0; t[0].L[0].state = LR_JOINING; t[0].L[0].code_n = 2; t[0].L[0].origin_n = 3; t[0].L[0].game_n = 1;
-  lr_toy_say(t[..], "y 2 2");
+  lr_toy_say(t[..], "y 2 2 7");
   #assert t[0].L[0].state == LR_FULL && !lr_on(t[0].L[..]);
   pipe_drained(t[0].L[0].pipe[..]);
   for f: 0..<200 { lr_idle(t[0].L[..], 1.0 / 60.0); }

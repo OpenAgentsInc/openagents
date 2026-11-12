@@ -83,7 +83,11 @@ channel is its own stream, so a resend in one never holds up another.
   beside Everglade II's guard and monster frames
   ([doc](../../docs/protocol/everglade-guard-monsters-v1.md)). Their checks,
   `coax/web/room/transport-profile.coax` and `combat-profile.coax`, run the
-  codecs.
+  codecs. [`room-relay-v1.json`](../../proto/verse/room-relay-v1.json) pins
+  the relay room's own frames (`y j l m` and the clock's ping and pong,
+  [doc](../../docs/protocol/room-relay-v1.md)); `relay-wire.coax` is their
+  one codec, for the room and for every page in a relay room, and
+  `coax/web/room/relay-profile.coax` runs it.
 - **The overlay.** `?net` shows `LINK WT LOSS 1.2%` (state ticks lost on the
   way) and `KEY 3 STALE 7 WAIT 0` (snapshots, and the room's word each
   second: datagrams dropped stale and waiting now).

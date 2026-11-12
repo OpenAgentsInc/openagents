@@ -204,7 +204,7 @@ coop_pump :: (a: [] Stair, b: [] Stair) {
   for k: 0..<p[0].n {
     if p[0].op[k] != PIPE_SEND { continue; }
     buf: [LR_CHUNK * 2 + 16] u8;
-    n := lr_put(buf[..], 0, "m "); n = lr_put_int(buf[..], n, a[0].lock[0].seat); n = lr_put(buf[..], n, " ");
+    n := rlw_put_said(buf[..], a[0].lock[0].seat);   // as the relay heads it (aethyr/net/relay-wire.coax)
     n = lr_put(buf[..], n, pipe_bytes(p, k));
     stair_message(b, SOCKET_KIND + 4 * b[0].lock[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
   }
@@ -237,7 +237,7 @@ coop_say :: (s: [] Stair, t: string) { stair_message(s, SOCKET_KIND + 4 * s[0].l
   #assert link.count > 40 && link[0..<47] == "https://openagents.com/worlds/hold-the-stair?co";
   #assert b[0].lock[0].state == LR_JOINING && cast(string) b[0].lock[0].code[0..<6] == "abc234" && b[0].nudge;
   stair_socket_opened(a[..], 0); stair_socket_opened(b[..], 0);
-  coop_say(a[..], "y 0 0");
+  coop_say(a[..], "y 0 0 7");
   a[0].gold = 600;
   // alone, a places a fighter at once
   c0 := spot_near(a[..], 0.3);
@@ -245,7 +245,7 @@ coop_say :: (s: [] Stair, t: string) { stair_message(s, SOCKET_KIND + 4 * s[0].l
   #assert defender_at(a[..], c0) >= 0;
   for f: 0..<30 { stair_frame_step(a[..]); pipe_drained(a[0].lock[0].pipe[..]); }
   // b comes in
-  coop_say(b[..], "y 1 1"); coop_say(b[..], "j 0"); coop_say(a[..], "j 1");
+  coop_say(b[..], "y 1 1 7"); coop_say(b[..], "j 0"); coop_say(a[..], "j 1");
   #assert b[0].lock[0].state == LR_SYNC && a[0].lock[0].want_snap;
   c1 := spot_near(a[..], 0.6);
   for f: 0..<700 {

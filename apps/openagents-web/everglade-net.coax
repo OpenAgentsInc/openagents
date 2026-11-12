@@ -41,6 +41,7 @@
 #load "../../coax/web/socket.coax";
 #load "../../everglade/shared/everglade-wire.coax";
 #load "../../everglade/client/net-core.coax";   // the states' ring, the jitter buffer, the clock: Everglade II's page keeps them too (#13054)
+#load "../../aethyr/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 #load "../../aethyr/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
@@ -541,8 +542,7 @@ net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c #effec
   if ev.id >= 0 && ev.id == n[0].room_sock {
     // the room's socket beside the local host's: its seat makes it the page's (net_room_seated)
     if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR { net_room_failed(s, n); return true; }
-    r: [1] WireRd; r[0] = wire_rd(text, 1);
-    if ev.event == SOCKET_FRAME && text.count > 0 && text[0] == 'y' && r[0].ok && wire_num(text, r[..]) >= 0 {
+    if ev.event == SOCKET_FRAME && text.count > 0 && text[0] == RLW_YOU && rlw_read(text).ok {
       net_room_seated(n);
       n[0].frames_in += 1; n[0].bytes_in += text.count;
       net_record(s, n, text);
@@ -613,19 +613,21 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   if !r[0].ok { return; }
   c := t[0];
-  if c == 'y' {
-    seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
-    if seat < 0 { return; }
+  if c == RLW_YOU {
+    you := rlw_read(t);
+    if !you.ok { return; }
+    seat := you.seat; clock := you.clock;
     n[0].seat = seat; n[0].wanted = -1; n[0].sat = true; jn_seated(n);
     net_forget(n);
     if n[0].lost { n[0].lost = false; net_tell(s, n, "BACK IN THE ROOM"); }
-    if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
+    if clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
     n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false; n[0].rg_open = 0; n[0].rg_close = 0;
     return;
   }
-  if c == 't' {
-    sent := wire_num(t, r[..]); clock := wire_num(t, r[..]);
-    if !r[0].ok || sent > n[0].mono || sent <= 0 { return; }
+  if c == RLW_PONG {
+    pong := rlw_read(t);
+    sent := pong.sent; clock := pong.clock;
+    if !pong.ok || sent > n[0].mono || sent <= 0 { return; }
     rtt := n[0].mono - sent;
     q := n[0].pings % NET_PINGS;
     n[0].ping_rtt[q] = rtt; n[0].ping_off[q] = clock + rtt / 2 - n[0].mono;
@@ -1210,7 +1212,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   now := net_now(n);
   if net_open(s) {
     if n[0].ping_at == 0 || mono - n[0].ping_at >= (ifx n[0].ping_n < 8 then 1000 else 10000) {
-      m := wire_put(n[0].out[..], 0, "t"); m = wire_int(n[0].out[..], m, mono);
+      m := rlw_put_ping(n[0].out[..], mono);
       net_send(n, m);
       n[0].ping_at = mono; n[0].ping_n += 1;
     }

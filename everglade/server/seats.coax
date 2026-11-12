@@ -16,12 +16,7 @@ eg_hash :: (t: string) -> int {
   for c: t { h = ((h ^ cast(int) c) * 16777619) & 4294967295; }
   return ifx h == 0 then 1 else h;
 }
-eg_fields :: (t: string) -> int {
-  if t.count == 0 { return 0; }
-  n := 1;
-  for c: t { if c == ' ' { n += 1; } }
-  return n;
-}
+eg_fields :: (t: string) -> int { return wire_fields(t); }   // everglade-wire.coax
 eg_clamp :: (v: int, a: int, b: int) -> int { return ifx v < a then a else (ifx v > b then b else v); }
 // A word for a frame: letters, digits, '.', '-' and '_' only.
 eg_word :: (t: string, out: [] u8) -> int {
@@ -180,7 +175,7 @@ eg_grace_ends :: (v: [] RmServer, k: int) {
   for s: 0..<EG_SEATS {
     if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, SeatId.{value = s}) || net_session_holds(EG_GRACE_MS,v[0].eg[k].seat[s].held_at,v[0].mono_ms) { continue; }
     h: [16] u8;
-    rl_queue(v, r, -1, -1, rl_head(h[..], 'l', SeatId.{value = s}, false), "");
+    rl_queue(v, r, -1, -1, rl_gone(h[..], SeatId.{value = s}), "");
     eg_left(v, r, SeatId.{value = s});
     v[0].st.held_out += 1; out = true;
   }
