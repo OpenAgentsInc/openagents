@@ -1,0 +1,824 @@
+// /settings/wallet: your wallet's daily limit and its backup (docs/auth/wallets-and-custody.md,
+// #13217), drawn on the homepage's Grid like /settings/devices (login.coax's text and lines
+// helpers; newland.coax's frames and buttons; textkeys.coax's keys in the number box).
+//
+// What it shows: the daily limit and what the last 24 hours counted, a box for a new limit with
+// SET LIMIT (lower counts at once; higher waits 24 hours and needs a fresh confirmation), a raise
+// that is waiting with CANCEL, and the backup: whether it works, who can open it, and DELETE
+// BACKUP, which asks once more (PRESS AGAIN TO DELETE).
+//
+// A notice's link lands here as #cancel=TOKEN: the page cancels the raise with it, logged in or
+// not, and takes the token out of the address bar. A step that needs a fresh confirmation sends
+// you to /settings/security?step=1&next=THIS (with the number you typed) and back.
+//
+// What it talks to (coax/web/api/wallet.c), every answer as ?as=lines:
+//   GET  /api/wallet
+//   POST /api/wallet/limit/lower {daily_sat}, /api/wallet/limit {daily_sat}
+//   POST /api/wallet/limit/cancel {} or {t}, /api/wallet/backup/delete {}
+//   coax/bin/coax test apps/openagents-web/wallet.coax
+#load "login.coax";
+#load "textkeys.coax";
+
+WL_MAX_VERTICES :: 120000;
+WL_MSG_PAGE :: 600; WL_MSG_HTTP :: 512; WL_MSG_TYPED :: 1;
+WL_ACT_GO :: 1; WL_ACT_HASH :: 3;   // host.js: 3 puts the outbox in the address bar's hash (empty: none)
+WL_POST :: 1; WL_WANTED :: 4;
+WL_SLOTS :: 8;     // ways to open the backup shown; the page says when there are more
+WL_DIGITS :: 16;   // the longest number the server reads
+
+// Screens.
+WL_LOADING :: 0; WL_MAIN :: 1; WL_OUT :: 2;
+// The one request in flight.
+WR_NONE :: 0; WR_GET :: 1; WR_LOWER :: 2; WR_RAISE :: 3; WR_CANCEL :: 4; WR_LINK :: 5; WR_DELETE :: 6;
+// What can be pressed.
+WH_NONE :: -1; WH_HOME :: 0; WH_LOGIN :: 1; WH_FIELD :: 2; WH_SET :: 3; WH_CANCEL :: 4; WH_DELETE :: 5; WH_SECURITY :: 6; WH_HITS :: 7;
+// What opens a backup.
+WM_OTHER :: 0; WM_PASSKEY :: 1; WM_CODE :: 2; WM_NOSTR :: 3;
+
+WlSlot :: struct { method: int; live: bool; label: [80] u8; n: int; }
+
+Wl :: struct {
+  ready: bool; w: f32; h: f32; dpr: f32; time: f32;
+  screen: int; req: int; req_id: int = -1;
+  want: bool; url: [80] u8; url_n: int; body: [120] u8; body_n: int; flags: int;
+  action: int; outbox: [200] u8; out_n: int;
+  // the wallet, from GET /api/wallet
+  daily: int; spent: int; raise_sat: int; raise_at_ms: int; now_ms: int;
+  backup: bool; counts: bool; slots: [WL_SLOTS] WlSlot; slot_n: int; slot_total: int;
+  typed: [20] u8; typed_n: int; all: bool;        // the new limit: digits only
+  token: [64] u8; token_n: int; link: bool;       // a notice's #cancel= token, and whether it is still to send
+  armed: bool;                                    // DELETE BACKUP was pressed once
+  error: [300] u8; error_n: int; said: [300] u8; said_n: int;
+  panel: Box; scroll: f32; hits: [WH_HITS] Box; field: [4] f32;
+  px: f32; py: f32; down: bool; pressed: int = -1; focus: int = -1;
+}
+
+// ---------------------------------------------------------------- small things
+wl_err :: (s: [] Wl, t: string) { s[0].error_n = lg_set(s[0].error[..], t); s[0].said_n = 0; }
+wl_say :: (s: [] Wl, t: string) { s[0].said_n = lg_set(s[0].said[..], t); s[0].error_n = 0; }
+wl_quiet :: (s: [] Wl) { s[0].error_n = 0; s[0].said_n = 0; }
+wl_go :: (s: [] Wl, path: string) { s[0].out_n = lg_set(s[0].outbox[..], path); s[0].action = WL_ACT_GO; }
+wl_ask :: (s: [] Wl, req: int, url: string, body: string, flags: int) {
+  s[0].req = req; s[0].req_id = -1; s[0].want = true; s[0].flags = flags | WL_WANTED;
+  s[0].url_n = lg_set(s[0].url[..], url); s[0].body_n = lg_set(s[0].body[..], body);
+}
+wl_sent :: (s: [] Wl, id: int) #export_c #effects(all) { if s.count < 1 { return; } if id >= 0 { s[0].want = false; s[0].req_id = id; } }
+wl_typed :: (s: [] Wl) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
+wl_label :: (s: [] Wl, i: int) -> string { return cast(string) s[0].slots[i].label[0..<s[0].slots[i].n]; }
+// "1,234,567"
+wl_sats :: (b: [] u8, at: int, v: int) -> int {
+  digits: [24] u8; c := 0; x := v; if x <= 0 { digits[0] = '0'; c = 1; }
+  while x > 0 && c < 23 { digits[c] = cast(u8) ('0' + x % 10); x = x / 10; c += 1; }
+  n := at;
+  for i: 0..<c {
+    if i > 0 && (c - i) % 3 == 0 { n = lg_add(b, n, ","); }
+    if n < b.count { b[n] = digits[c - 1 - i]; n += 1; }
+  }
+  return n;
+}
+// A digit typed into the new limit: no leading zeros, WL_DIGITS at most.
+wl_digit :: (s: [] Wl, c: u8) {
+  if c < '0' || c > '9' { return; }
+  if s[0].typed_n == 1 && s[0].typed[0] == '0' { s[0].typed_n = 0; }
+  if s[0].typed_n < WL_DIGITS { s[0].typed[s[0].typed_n] = c; s[0].typed_n += 1; }
+}
+
+// ---------------------------------------------------------------- the page's facts and hash
+// ?limit=N in the page's url: the number typed before a trip to confirm it's you.
+wl_facts :: (s: [] Wl, text: string) {
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    if lg_is(text, at, "url=") {
+      q := at + 4; while q < end && text[q] != '?' && text[q] != '#' { q += 1; }
+      if q < end && text[q] == '?' {
+        i := q + 1;
+        while i < end && text[i] != '#' {
+          stop := i; while stop < end && text[stop] != '&' && text[stop] != '#' { stop += 1; }
+          if lg_is(text, i, "limit=") && stop > i + 6 && s[0].typed_n == 0 {
+            good := true; for k: i + 6..<stop { if text[k] < '0' || text[k] > '9' { good = false; } }
+            if good && stop - i - 6 <= WL_DIGITS { for k: i + 6..<stop { wl_digit(s, text[k]); } }
+          }
+          i = stop + 1;
+        }
+      }
+    }
+    at = end + 1;
+  }
+}
+// #cancel=TOKEN, from a notice: read once, cleared from the address bar.
+wl_hash :: (s: [] Wl, text: string) #export_c #effects(all) {
+  if s.count < 1 || s[0].token_n > 0 || !lg_is(text, 0, "cancel=") { return; }
+  t := text[7..<text.count];
+  s[0].out_n = 0; s[0].action = WL_ACT_HASH;
+  if t.count != 64 { wl_err(s, "That link isn't whole. Open it again from the email or message."); return; }
+  for c: t { if lg_hex(c) < 0 { wl_err(s, "That link isn't whole. Open it again from the email or message."); return; } }
+  s[0].token_n = lg_set(s[0].token[..], t); s[0].link = true;
+  wl_pump(s);
+}
+
+// ---------------------------------------------------------------- requests
+// The next request when nothing is in flight: a notice's link first, then the wallet.
+wl_pump :: (s: [] Wl) {
+  if s[0].req != WR_NONE || s[0].want { return; }
+  if s[0].link {
+    b: [120] u8; n := lg_add(b[..], 0, "{\"t\":\""); n = lg_add(b[..], n, cast(string) s[0].token[0..<s[0].token_n]); n = lg_add(b[..], n, "\"}");
+    s[0].link = false; wl_ask(s, WR_LINK, "/api/wallet/limit/cancel?as=lines", cast(string) b[0..<n], WL_POST); return;
+  }
+  if s[0].screen == WL_LOADING { wl_ask(s, WR_GET, "/api/wallet?as=lines", "", 0); }
+}
+wl_refresh :: (s: [] Wl) { wl_ask(s, WR_GET, "/api/wallet?as=lines", "", 0); }
+// The new limit goes where the server wants it: lower (or the same) counts now and needs no
+// prompt; higher waits 24 hours and needs a fresh confirmation.
+wl_set :: (s: [] Wl) {
+  if s[0].typed_n == 0 { wl_err(s, "Type the new daily limit, in sats."); return; }
+  want := lg_int(wl_typed(s));
+  b: [60] u8; n := lg_add(b[..], 0, "{\"daily_sat\":\""); n = lg_add_int(b[..], n, want); n = lg_add(b[..], n, "\"}");
+  wl_quiet(s);
+  if want <= s[0].daily { wl_ask(s, WR_LOWER, "/api/wallet/limit/lower?as=lines", cast(string) b[0..<n], WL_POST); }
+  else { wl_ask(s, WR_RAISE, "/api/wallet/limit?as=lines", cast(string) b[0..<n], WL_POST); }
+}
+
+// ---------------------------------------------------------------- answers
+wl_failed :: (s: [] Wl, status: int, lines: string) {
+  found: [1] bool; e := lg_value(lines, "error", found[..]);
+  if found[0] && e.count > 0 { wl_err(s, e); return; }
+  if status == 0 { wl_err(s, "We couldn't reach openagents.com. Check your connection and try again."); return; }
+  wl_err(s, "That didn't work. Try again.");
+}
+// A refusal for want of a fresh confirmation: to the step-up (or a new email code), then back
+// here, with the number typed for a raise.
+wl_wants_login :: (s: [] Wl, req: int, status: int, lines: string) -> bool {
+  if status != 401 { return false; }
+  found: [1] bool; _ = lg_value(lines, "step_up", found[..]);
+  step := found[0];
+  e := lg_value(lines, "error", found[..]);
+  if !step && !lg_is(e, 0, "Log in again with a new email code") { return false; }
+  b: [160] u8; n := lg_add(b[..], 0, ifx step then "/settings/security?step=1&next=" else "/login?next="); n = lg_add(b[..], n, "%2Fsettings%2Fwallet");
+  if req == WR_RAISE && s[0].typed_n > 0 { n = lg_add(b[..], n, "%3Flimit%3D"); n = lg_add(b[..], n, wl_typed(s)); }
+  wl_go(s, cast(string) b[0..<n]);
+  return true;
+}
+// The next space-separated word of line from at[0], which moves past it.
+wl_word :: (line: string, at: [] int) -> string {
+  a := at[0]; e := a;
+  while e < line.count && line[e] != ' ' { e += 1; }
+  at[0] = ifx e < line.count then e + 1 else e;
+  return line[a..<e];
+}
+// "slot <method> <created_at seconds> <live> <label to the line's end>"
+wl_slot :: (s: [] Wl, line: string) {
+  s[0].slot_total += 1;
+  if s[0].slot_n >= WL_SLOTS { return; }
+  at: [1] int; at[0] = 5;
+  r: WlSlot;
+  m := wl_word(line, at[..]); r.method = ifx m == "passkey" then WM_PASSKEY else ifx m == "recovery-code" then WM_CODE else ifx m == "nostr" then WM_NOSTR else WM_OTHER;
+  _ = wl_word(line, at[..]);
+  r.live = wl_word(line, at[..]) != "0";
+  r.n = lg_set(r.label[..], line[at[0]..<line.count]);
+  s[0].slots[s[0].slot_n] = r; s[0].slot_n += 1;
+}
+wl_got :: (s: [] Wl, lines: string) {
+  found: [1] bool;
+  s[0].daily = lg_int(lg_value(lines, "daily_sat", found[..])); s[0].spent = lg_int(lg_value(lines, "spent_sat", found[..]));
+  s[0].raise_sat = lg_int(lg_value(lines, "raise_sat", found[..])); s[0].raise_at_ms = lg_int(lg_value(lines, "raise_at_ms", found[..]));
+  s[0].now_ms = lg_int(lg_value(lines, "now_ms", found[..]));
+  s[0].backup = lg_value(lines, "backup", found[..]) == "1";
+  s[0].counts = s[0].backup && lg_value(lines, "counts", found[..]) != "0";
+  s[0].slot_n = 0; s[0].slot_total = 0; s[0].armed = false;
+  at := 0;
+  while at < lines.count {
+    end := at; while end < lines.count && lines[end] != '\n' { end += 1; }
+    if s[0].backup && lg_is(lines, at, "slot ") { wl_slot(s, lines[at..<end]); }
+    at = end + 1;
+  }
+}
+wl_answer :: (s: [] Wl, text: string) {
+  nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+  status := lg_int(text[0..<nl]);
+  lines := ifx nl < text.count then text[nl + 1..<text.count] else text[0..<0];
+  req := s[0].req; s[0].req = WR_NONE; s[0].req_id = -1;
+  ok := status >= 200 && status < 300; found: [1] bool;
+  if req == WR_GET {
+    if status == 401 || status == 403 { s[0].screen = WL_OUT; }
+    else if !ok { if s[0].screen == WL_LOADING { s[0].screen = WL_OUT; } wl_failed(s, status, lines); }
+    else { wl_got(s, lines); s[0].screen = WL_MAIN; }
+    wl_pump(s);   // a notice's link that came while this was asked
+    return;
+  }
+  s[0].armed = false;
+  if req == WR_LINK {
+    if ok { wl_cancelled(s, lines); } else { wl_failed(s, status, lines); }
+    wl_refresh(s); return;
+  }
+  if !ok {
+    if !wl_wants_login(s, req, status, lines) { wl_failed(s, status, lines); if status == 404 { wl_refresh(s); } }
+    return;
+  }
+  if req == WR_LOWER || req == WR_RAISE {
+    words := lg_value(lines, "words", found[..]);
+    wl_say(s, ifx found[0] && words.count > 0 then words else ifx req == WR_RAISE then "Your daily limit goes up in 24 hours." else "Your daily limit is set.");
+    s[0].typed_n = 0; s[0].all = false; wl_refresh(s); return;
+  }
+  if req == WR_CANCEL { wl_cancelled(s, lines); wl_refresh(s); return; }
+  if req == WR_DELETE { wl_say(s, "Your backup is deleted."); wl_refresh(s); }
+}
+wl_cancelled :: (s: [] Wl, lines: string) {
+  found: [1] bool; v := lg_value(lines, "daily_sat", found[..]);
+  if !found[0] { wl_say(s, "The raise is cancelled."); return; }
+  b: [120] u8; n := lg_add(b[..], 0, "The raise is cancelled. Your daily limit is still "); n = wl_sats(b[..], n, lg_int(v)); n = lg_add(b[..], n, " sats.");
+  wl_say(s, cast(string) b[0..<n]);
+}
+wl_message :: (s: [] Wl, kind: int, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if kind == WL_MSG_TYPED { wl_type(s, text); return; }
+  if kind == WL_MSG_PAGE { wl_facts(s, text); wl_pump(s); return; }
+  if kind >= WL_MSG_HTTP && kind < WL_MSG_HTTP + 64 && kind - WL_MSG_HTTP == s[0].req_id && s[0].req != WR_NONE { wl_answer(s, text); }
+}
+wl_page :: (s: [] Wl) #export_c #effects(all) { if s.count < 1 { return; } wl_pump(s); }
+wl_done :: (s: [] Wl) #export_c #effects(all) { if s.count < 1 { return; } s[0].action = 0; s[0].out_n = 0; }
+
+// ---------------------------------------------------------------- typing (the new limit)
+wl_typing :: (s: [] Wl) -> bool { return s[0].screen == WL_MAIN && s[0].focus == WH_FIELD; }
+wl_type :: (s: [] Wl, text: string) {
+  if !wl_typing(s) { return; }
+  if s[0].all { s[0].typed_n = 0; s[0].all = false; }
+  for c: text { wl_digit(s, c); }
+  wl_quiet(s); s[0].armed = false;
+}
+wl_wants_text :: (s: [] Wl) -> bool #export_c #effects(all) { return s.count > 0 && wl_typing(s); }
+wl_key_in :: (s: [] Wl, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  typing := wl_typing(s);
+  if typing {
+    c := tk_command(key, mods);
+    if c == TK_ALL { s[0].all = s[0].typed_n > 0; return true; }
+    if c == TK_COPY || c == TK_CUT { if c == TK_CUT && s[0].all { s[0].typed_n = 0; s[0].all = false; } return true; }
+    if c == TK_BROWSER { return false; }
+    if key == -3 {
+      if s[0].all { s[0].typed_n = 0; s[0].all = false; } else { s[0].typed_n = tk_back(wl_typed(s), mods); }
+      return true;
+    }
+    if key != -2 { s[0].all = false; }
+  }
+  if key == -2 {
+    h := ifx typing then WH_SET else s[0].focus;   // Enter in the box sets the limit
+    wl_press(s, h); return h >= 0;
+  }
+  if key == -1 && s[0].armed { s[0].armed = false; return true; }
+  if key == -15 {
+    order: [WH_HITS] int; n := wl_order(s, order[..]);
+    if n == 0 { return false; }
+    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
+    s[0].focus = ifx k >= n then order[0] else order[(k + 1) % n]; return true;   // nothing focused yet: the first control
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- pressing
+wl_press :: (s: [] Wl, h: int) {
+  if h < 0 { return; }
+  if h == WH_HOME { wl_go(s, "/"); return; }
+  if h == WH_LOGIN { wl_go(s, "/login?next=%2Fsettings%2Fwallet"); return; }
+  if h == WH_SECURITY { wl_go(s, "/settings/security"); return; }
+  if s[0].req != WR_NONE || s[0].screen != WL_MAIN { return; }
+  if h != WH_DELETE { s[0].armed = false; }
+  if h == WH_FIELD { s[0].focus = WH_FIELD; return; }
+  if h == WH_SET { wl_set(s); return; }
+  if h == WH_CANCEL {
+    if s[0].raise_sat <= 0 { return; }
+    wl_quiet(s); wl_ask(s, WR_CANCEL, "/api/wallet/limit/cancel?as=lines", "{}", WL_POST); return;
+  }
+  if h == WH_DELETE {
+    if !s[0].backup { return; }
+    wl_quiet(s);
+    if !s[0].armed { s[0].armed = true; return; }
+    wl_ask(s, WR_DELETE, "/api/wallet/backup/delete?as=lines", "{}", WL_POST);
+  }
+}
+
+// ---------------------------------------------------------------- words
+WL_PARA :: 7.8; WL_CAPS :: 6.6;
+WL_OUT_WORDS :: "Log in to see your wallet's daily limit and its backup.";
+WL_LIMIT_WORDS :: "Lowering counts at once. Raising takes 24 hours, and every way you log in is told.";
+WL_WHERE_WORDS :: "Your wallet's keys are on your phone. The OpenAgents app checks this limit before it pays, and asks you to confirm it's you to pay more. We can't stop a payment made with your wallet words somewhere else.";
+WL_BACKUP_WORDS :: "Only your passkey or your wallet recovery code opens the backup. We can't. We never ask for your wallet recovery code on this website.";
+WL_BACKED_UP :: "BACKED UP";
+WL_NO_BACKUP :: "NO BACKUP YET. BACK UP YOUR WALLET IN THE OPENAGENTS APP ON YOUR PHONE.";
+WL_BROKEN :: "THIS BACKUP'S PASSKEY WAS REMOVED. ONLY YOUR RECOVERY CODE OPENS IT NOW. BACK UP AGAIN IN THE APP.";
+WL_GONE :: "REMOVED FROM YOUR ACCOUNT";
+wl_daily_words :: (s: [] Wl, b: [] u8) -> string { n := wl_sats(b, 0, s[0].daily); n = lg_add(b, n, " SATS A DAY"); return cast(string) b[0..<n]; }
+wl_spent_words :: (s: [] Wl, b: [] u8) -> string {
+  n := wl_sats(b, 0, s[0].spent); n = lg_add(b, n, " OF "); n = wl_sats(b, n, s[0].daily); n = lg_add(b, n, " SATS IN THE LAST 24 HOURS");
+  return cast(string) b[0..<n];
+}
+// "23 HOURS 12 MINUTES", rounded up to the minute
+wl_left :: (b: [] u8, at: int, ms: int) -> int {
+  if ms <= 0 { return lg_add(b, at, "LESS THAN A MINUTE"); }
+  all := (ms + 59999) / 60000; hours := all / 60; minutes := all % 60; n := at;
+  if hours > 0 { n = lg_add_int(b, n, hours); n = lg_add(b, n, ifx hours == 1 then " HOUR" else " HOURS"); if minutes > 0 { n = lg_add(b, n, " "); } }
+  if minutes > 0 { n = lg_add_int(b, n, minutes); n = lg_add(b, n, ifx minutes == 1 then " MINUTE" else " MINUTES"); }
+  return n;
+}
+wl_raise_words :: (s: [] Wl, b: [] u8) -> string {
+  if s[0].raise_sat <= 0 { return ""; }
+  n := lg_add(b, 0, "GOES UP TO "); n = wl_sats(b, n, s[0].raise_sat); n = lg_add(b, n, " SATS IN "); n = wl_left(b, n, s[0].raise_at_ms - s[0].now_ms);
+  return cast(string) b[0..<n];
+}
+wl_backup_state :: (s: [] Wl) -> string { return ifx !s[0].backup then WL_NO_BACKUP else ifx s[0].counts then WL_BACKED_UP else WL_BROKEN; }
+wl_method_words :: (method: int) -> string {
+  return ifx method == WM_PASSKEY then "PASSKEY" else ifx method == WM_CODE then "RECOVERY CODE" else ifx method == WM_NOSTR then "NOSTR KEY" else "KEY";
+}
+// A passkey that is no longer on the account can't open the backup.
+wl_gone :: (s: [] Wl, i: int) -> bool { return s[0].slots[i].method == WM_PASSKEY && !s[0].slots[i].live; }
+wl_more_words :: (s: [] Wl, b: [] u8) -> string {
+  if s[0].slot_total <= s[0].slot_n { return ""; }
+  n := lg_add(b, 0, "AND "); n = lg_add_int(b, n, s[0].slot_total - s[0].slot_n); n = lg_add(b, n, " MORE");
+  return cast(string) b[0..<n];
+}
+wl_field_words :: (s: [] Wl, b: [] u8) -> string {
+  if s[0].typed_n == 0 { return ""; }
+  n := wl_sats(b, 0, lg_int(wl_typed(s))); return cast(string) b[0..<n];
+}
+
+// ---------------------------------------------------------------- layout
+wl_order :: (s: [] Wl, out: [] int) -> int {
+  n := 0;
+  if s[0].screen == WL_MAIN {
+    out[n] = WH_FIELD; n += 1; out[n] = WH_SET; n += 1;
+    if s[0].raise_sat > 0 { out[n] = WH_CANCEL; n += 1; }
+    if s[0].backup { out[n] = WH_DELETE; n += 1; }
+    out[n] = WH_SECURITY; n += 1;
+  }
+  if s[0].screen == WL_OUT { out[n] = WH_LOGIN; n += 1; }
+  out[n] = WH_HOME; n += 1;
+  return n;
+}
+wl_shown :: (s: [] Wl, h: int) -> bool { order: [WH_HITS] int; n := wl_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
+// How tall wrapped text is: sentences in login.coax's text face, capitals in the Grid's own,
+// measured as lg_para draws them.
+wl_tall :: (t: string, w: f32, cap: f32, caps: bool, p: Pen) -> f32 {
+  if t.count == 0 { return 0.0f32; }
+  if !caps { return lg_tall(t, w, cap); }
+  k := ink(p, INK_WHITE); n := 0; from := 0;
+  while from < t.count {
+    end := lg_break(t, from, w * p.d, cap * p.d, k); n += 1;
+    from = end; while from < t.count && t[from] == ' ' { from += 1; }
+  }
+  return cast(f32) n * cap * 2.1;
+}
+// Wrapped text at y, drawn when draw; tall[0] is its height either way.
+wl_text :: (out: [] f32, at: int, p: Pen, draw: bool, t: string, x: f32, y: f32, w: f32, caps: bool, kind: int, red: bool, tall: [] f32) -> int {
+  cap := ifx caps then cast(f32) WL_CAPS else cast(f32) WL_PARA;
+  tall[0] = wl_tall(t, w, cap, caps, p);
+  if !draw || t.count == 0 { return at; }
+  k := lg_text(p, kind); if caps { k = ink(p, kind); }
+  if red { k.red = 0.95; k.green = 0.45; k.blue = 0.40; }
+  below: [1] f32;
+  return lg_para(out, at, t, x, y, w, cap, k, p.d, below[..]);
+}
+wl_head :: (out: [] f32, at: int, p: Pen, draw: bool, head: string, x: f32, y: f32, w: f32) -> int {
+  if !draw { return at; }
+  d := p.d;
+  v := put(out, at, head, x * d, (y + 12) * d, 6.4 * d, ink(p, INK_DIM));
+  return rule(out, v, x * d, (y + 20) * d, (x + w) * d, (y + 20) * d, ink(p, INK_DIM), 0.25);
+}
+// The page laid out (and drawn when draw): one walk for both, so what is pressed is where it is
+// drawn. Returns the vertex count.
+wl_walk :: (s: [] Wl, out: [] f32, at: int, p: Pen, still: bool, draw: bool) -> int {
+  sw := hi(240, s[0].w); sh := hi(300, s[0].h);
+  pw := lo(520, sw - 32); px := (sw - pw) * 0.5;
+  top := (ifx sh > 720 then 110.0f32 else 80.0f32) - s[0].scroll;
+  x := px + 24; w := pw - 48; y := top + 66; d := p.d; v := at; b: [300] u8; tall: [1] f32;
+  if !draw { for i: 0..<WH_HITS { s[0].hits[i] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; } s[0].hits[WH_HOME] = Box.{x0 = px + pw - 64, y0 = top - 56, x1 = px + pw, y1 = top - 20}; }
+  if draw { v = put_fit(out, v, "YOUR WALLET", x * d, (top + 44) * d, (ifx p.phone then 13.0f32 else 15.0f32) * d, chrome(ink(p, INK_WHITE)), w * d); }
+  sc := s[0].screen;
+  if sc == WL_LOADING { if draw { v = put(out, v, "LOADING", x * d, (y + 14) * d, 7.0 * d, ink(p, INK_DIM)); } y += 40; }
+  if sc != WL_LOADING && (s[0].error_n > 0 || s[0].said_n > 0) {
+    bad := s[0].error_n > 0;
+    msg := ifx bad then cast(string) s[0].error[0..<s[0].error_n] else cast(string) s[0].said[0..<s[0].said_n];
+    v = wl_text(out, v, p, draw, msg, x, y, w, false, INK_BRIGHT, bad, tall[..]); y += tall[0] + 12;
+  }
+  if sc == WL_OUT {
+    v = wl_text(out, v, p, draw, WL_OUT_WORDS, x, y, w, false, INK_PALE, false, tall[..]); y += tall[0] + 16;
+    v = wl_btn(s, out, v, p, draw, WH_LOGIN, "LOG IN", true, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 20;
+  }
+  if sc == WL_MAIN {
+    // the daily limit
+    v = wl_head(out, v, p, draw, "DAILY LIMIT", x, y, w); y += 32;
+    if draw { v = put_fit(out, v, wl_daily_words(s, b[..]), x * d, (y + 14) * d, 10.0 * d, ink(p, INK_WHITE), w * d); } y += 28;
+    v = wl_text(out, v, p, draw, wl_spent_words(s, b[..]), x, y, w, true, INK_BRIGHT, false, tall[..]); y += tall[0] + 12;
+    if s[0].raise_sat > 0 {
+      v = wl_text(out, v, p, draw, wl_raise_words(s, b[..]), x, y, w, true, INK_WHITE, false, tall[..]); y += tall[0] + 10;
+      v = wl_btn(s, out, v, p, draw, WH_CANCEL, ifx s[0].req == WR_CANCEL then "CANCELLING" else "CANCEL", false, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 40}); y += 40 + 14;
+    }
+    y += 20;
+    if !draw { s[0].hits[WH_FIELD] = Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}; } else { v = wl_field(s, out, v, p, still, b[..]); }
+    y += 44 + 12;
+    v = wl_btn(s, out, v, p, draw, WH_SET, ifx s[0].req == WR_LOWER || s[0].req == WR_RAISE then "SETTING" else "SET LIMIT", true, Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 16;
+    v = wl_text(out, v, p, draw, WL_LIMIT_WORDS, x, y, w, false, INK_PALE, false, tall[..]); y += tall[0] + 10;
+    v = wl_text(out, v, p, draw, WL_WHERE_WORDS, x, y, w, false, INK_PALE, false, tall[..]); y += tall[0] + 22;
+    // the backup
+    v = wl_head(out, v, p, draw, "BACKUP", x, y, w); y += 32;
+    v = wl_text(out, v, p, draw, wl_backup_state(s), x, y, w, true, INK_WHITE, s[0].backup && !s[0].counts, tall[..]); y += tall[0] + 12;
+    for i: 0..<s[0].slot_n {
+      gone := wl_gone(s, i);
+      if draw {
+        v = rule(out, v, x * d, y * d, (x + w) * d, y * d, ink(p, INK_DIM), 0.25);
+        v = put(out, v, wl_method_words(s[0].slots[i].method), x * d, (y + 21) * d, 6.2 * d, ink(p, INK_DIM));
+        v = put_fit(out, v, wl_label(s, i), (x + 116) * d, (y + 22) * d, 7.8 * d, lg_text(p, ifx gone then INK_PALE else INK_BRIGHT), (w - 116) * d);
+        if gone { k := ink(p, INK_BRIGHT); k.red = 0.95; k.green = 0.45; k.blue = 0.40; v = put_fit(out, v, WL_GONE, (x + 116) * d, (y + 40) * d, 6.0 * d, k, (w - 116) * d); }
+      }
+      y += ifx gone then 52.0f32 else 34.0f32;
+    }
+    more := wl_more_words(s, b[..]);
+    if more.count > 0 { v = wl_text(out, v, p, draw, more, x, y, w, true, INK_DIM, false, tall[..]); y += tall[0] + 10; }
+    if s[0].backup {
+      y += 6;
+      v = wl_btn(s, out, v, p, draw, WH_DELETE, ifx s[0].req == WR_DELETE then "DELETING" else ifx s[0].armed then "PRESS AGAIN TO DELETE" else "DELETE BACKUP", s[0].armed,
+                 Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 44}); y += 44 + 16;
+    }
+    v = wl_text(out, v, p, draw, WL_BACKUP_WORDS, x, y, w, false, INK_PALE, false, tall[..]); y += tall[0] + 18;
+    if !draw { s[0].hits[WH_SECURITY] = Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + 28}; }
+    else {
+      hot := wl_hover(s, WH_SECURITY);
+      v = put(out, v, "SECURITY", x * d, (y + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
+      v = put_fit(out, v, "How you log in", (x + 84) * d, (y + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 84) * d);
+    }
+    y += 28 + 14;
+  }
+  if !draw {
+    s[0].panel = Box.{x0 = px, y0 = top, x1 = px + pw, y1 = y};
+    dd := hi(1, s[0].dpr); f := s[0].hits[WH_FIELD];
+    s[0].field[0] = f.x0 * dd; s[0].field[1] = f.y0 * dd; s[0].field[2] = f.x1 * dd; s[0].field[3] = f.y1 * dd;
+  }
+  return v;
+}
+wl_btn :: (s: [] Wl, out: [] f32, at: int, p: Pen, draw: bool, h: int, text: string, main: bool, box: Box) -> int {
+  if !draw { s[0].hits[h] = box; return at; }
+  b := s[0].hits[h]; if b.x1 <= b.x0 || !wl_shown(s, h) { return at; }
+  return button(out, at, lg_box(b, p.d), text, main, wl_hover(s, h), true, p, ifx s[0].req != WR_NONE then 0.55f32 else 1.0f32);
+}
+// The new limit's box: the number with its thousands separators, the limit in force as the hint.
+wl_field :: (s: [] Wl, out: [] f32, at: int, p: Pen, still: bool, b: [] u8) -> int {
+  d := p.d; f := s[0].hits[WH_FIELD]; on := s[0].focus == WH_FIELD; v := at;
+  v = put(out, v, "NEW DAILY LIMIT IN SATS", f.x0 * d, (f.y0 - 8) * d, 6.2 * d, ink(p, INK_DIM));
+  v = frame(out, v, lg_box(f, d), 6 * d, ink(p, ifx on then INK_WHITE else INK_DIM), ifx on then 0.85f32 else 0.45f32, p);
+  if s[0].typed_n == 0 && !on {
+    n := wl_sats(b, 0, s[0].daily);
+    return put_fit(out, v, cast(string) b[0..<n], (f.x0 + 14) * d, (f.y0 + 27) * d, 8.4 * d, lg_text(p, INK_FAINT), (f.x1 - f.x0 - 28) * d);
+  }
+  t := wl_field_words(s, b);
+  k := lg_text(p, ifx s[0].all then INK_BLUE else INK_WHITE);
+  v = put_fit(out, v, t, (f.x0 + 14) * d, (f.y0 + 27) * d, 8.4 * d, k, (f.x1 - f.x0 - 28) * d);
+  if on && (still || fract(s[0].time * 0.9) < 0.6) {
+    cx := (f.x0 + 14) * d + lo(text_width(t, 8.4 * d, k), (f.x1 - f.x0 - 30) * d) + 2 * d; cy := (f.y0 + 27) * d;
+    v = rule(out, v, cx, cy - 10 * d, cx, cy + 3 * d, lg_text(p, INK_WHITE), 0.9);
+  }
+  return v;
+}
+wl_pen :: (s: [] Wl, still: bool) -> Pen { d := hi(1, s[0].dpr); return Pen.{d = d, fade = 1, time = 5 + s[0].time, still = still, phone = s[0].w < 760}; }
+wl_layout :: (s: [] Wl) { none: [1] f32; _ = wl_walk(s, none[0..<0], 0, wl_pen(s, true), true, false); }
+wl_most :: (s: [] Wl) -> f32 { return hi(0, s[0].panel.y1 + s[0].scroll + 40 - s[0].h); }
+wl_wheel :: (s: [] Wl, dy: f32) #export_c #effects(all) { if s.count < 1 { return; } s[0].scroll = clamp(s[0].scroll + dy, 0, wl_most(s)); wl_layout(s); }
+wl_hit :: (s: [] Wl, x: f32, y: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return WH_NONE; }
+  for i: 0..<WH_HITS { b := s[0].hits[i]; if b.x1 > b.x0 && wl_shown(s, i) && inside(b, x, y) { return i; } }
+  return WH_NONE;
+}
+wl_hover :: (s: [] Wl, h: int) -> bool { return wl_hit(s, s[0].px, s[0].py) == h || s[0].focus == h; }
+wl_pointer :: (s: [] Wl, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  d := hi(1, s[0].dpr); px := x / d; py := y / d;
+  if phase == 1 && s[0].down && s[0].pressed < 0 { s[0].scroll = clamp(s[0].scroll - (py - s[0].py), 0, wl_most(s)); wl_layout(s); }   // a drag scrolls
+  s[0].px = px; s[0].py = py;
+  if phase == 0 {
+    s[0].down = true; s[0].pressed = wl_hit(s, px, py);
+    if s[0].pressed < 0 { s[0].armed = false; s[0].focus = -1; }   // a press on nothing takes the question back and leaves the box
+    return true;
+  }
+  if phase == 2 || phase == 3 {
+    was := s[0].down; s[0].down = false;
+    if was && phase == 2 && s[0].pressed >= 0 && wl_hit(s, px, py) == s[0].pressed { wl_press(s, s[0].pressed); wl_layout(s); }
+    return true;
+  }
+  return phase == 1 && s[0].down;
+}
+wl_cursor :: (s: [] Wl) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  h := wl_hit(s, s[0].px, s[0].py);
+  return ifx h == WH_FIELD then 3 else ifx h >= 0 then 1 else 0;
+}
+
+// ---------------------------------------------------------------- drawing
+wl_frame :: (s: [] Wl, world: [] LandState, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  d := hi(1, dpr); s[0].w = width / d; s[0].h = height / d; s[0].dpr = d; s[0].time += clamp(dt, 0, 0.1);
+  if !s[0].ready { s[0].ready = true; wl_pump(s); }
+  wl_layout(s);
+  if s[0].scroll > wl_most(s) { s[0].scroll = wl_most(s); wl_layout(s); }
+  p := wl_pen(s, still);
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still then 20.0f32 else 20 + s[0].time; u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  look := fv(0, 0, 0); c := cam(look, 0.785, 0.74, 40, width * 0.5, height * 0.62, width, Box.{x0 = 0, y0 = 0, x1 = width, y1 = height}, width, height);
+  v := floor_grid(out, 0, world, c, look, p);
+  b := s[0].panel; paper := lg_box(b, d);
+  for i: 0..<v { out[i * VERTEX_FLOATS + 6] *= ifx inside(paper, out[i * VERTEX_FLOATS], out[i * VERTEX_FLOATS + 1]) then 0.18f32 else 0.75f32; }
+  glass(u, 0, paper, 10 * d, 0.86, 0); u[5] = 1;
+  v = frame(out, v, paper, 10 * d, ink(p, INK_DIM), 0.55, p);
+  v = put(out, v, "OPENAGENTS", b.x0 * d, (b.y0 - 32) * d, 6.8 * d, ink(p, INK_DIM));
+  hb := s[0].hits[WH_HOME];
+  v = button(out, v, lg_box(hb, d), "HOME", false, wl_hover(s, WH_HOME), true, p, 1.0);
+  return wl_walk(s, out, v, p, still, true);
+}
+wl_max_vertices :: () -> int #export_c #effects(all) { return WL_MAX_VERTICES; }
+
+// ---------------------------------------------------------------- tests
+wl_new_at :: (s: [] Wl, url: string) {
+  s[0].w = 390; s[0].h = 844; s[0].dpr = 1;
+  b: [200] u8; n := lg_add(b[..], 0, "now=1794000000000\nurl="); n = lg_add(b[..], n, url);
+  wl_message(s, WL_MSG_PAGE, cast(string) b[0..<n]); wl_layout(s);
+}
+wl_new :: (s: [] Wl) { wl_new_at(s, "https://openagents.com/settings/wallet"); }
+wl_reply :: (s: [] Wl, id: int, text: string) { wl_sent(s, id); wl_message(s, WL_MSG_HTTP + id, text); wl_layout(s); }
+wl_url :: (s: [] Wl) -> string { return cast(string) s[0].url[0..<s[0].url_n]; }
+wl_body_of :: (s: [] Wl) -> string { return cast(string) s[0].body[0..<s[0].body_n]; }
+wl_out :: (s: [] Wl) -> string { return cast(string) s[0].outbox[0..<s[0].out_n]; }
+wl_error_of :: (s: [] Wl) -> string { return cast(string) s[0].error[0..<s[0].error_n]; }
+wl_said_of :: (s: [] Wl) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+// Type into the new limit's box, as a person does: press it, then the keys.
+wl_into :: (s: [] Wl, t: string) { wl_press(s, WH_FIELD); wl_message(s, WL_MSG_TYPED, t); }
+WL_T_LIMIT :: "daily_sat 20000\ndefault_sat 20000\nspent_sat 15001\nnew_destination_sat 100000\n";
+WL_T_BACKUP :: "backup 1\nvault 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\nepoch 2\ncreated_ms 1793000000000\nupdated_ms 1793900000000\nslot passkey 1794000000 1 Test phone\nslot recovery-code 1794000000 1 Recovery code\ncounts 1\n";
+// no raise waiting, a backup that works
+WL_T_MAIN :: "200\ndaily_sat 20000\ndefault_sat 20000\nspent_sat 15001\nnew_destination_sat 100000\nraise_sat 0\nraise_asked_ms 0\nraise_at_ms 0\nnow_ms 1794000000000\nlevel L2\nl2_age_ms 1234\nbackup 1\nvault 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\nepoch 2\ncreated_ms 1793000000000\nupdated_ms 1793900000000\nslot passkey 1794000000 1 Test phone\nslot recovery-code 1794000000 1 Recovery code\ncounts 1\n";
+// a raise to 50,000 that counts in 23 hours 12 minutes, and no backup
+WL_T_RAISE :: "200\ndaily_sat 20000\ndefault_sat 20000\nspent_sat 0\nnew_destination_sat 100000\nraise_sat 50000\nraise_asked_ms 1793997120000\nraise_at_ms 1794083520000\nnow_ms 1794000000000\nlevel L1\nl2_age_ms -1\nbackup 0\n";
+// a backup whose passkey left the account
+WL_T_BROKEN :: "200\ndaily_sat 5000\ndefault_sat 20000\nspent_sat 0\nnew_destination_sat 100000\nraise_sat 0\nraise_asked_ms 0\nraise_at_ms 0\nnow_ms 1794000000000\nlevel L2\nl2_age_ms 9\nbackup 1\nvault 00\nepoch 3\ncreated_ms 1\nupdated_ms 2\nslot passkey 1794000000 0 Old phone\nslot recovery-code 1794000000 1 Recovery code\nslot nostr 1794000000 1 My key\ncounts 0\n";
+WL_T_TOKEN :: "cancel=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+#test "wallet: the page asks for the wallet and shows the limit, what the day counted and the backup" {
+  s: [1] Wl; wl_new(s[..]);
+  #assert s[0].req == WR_GET && wl_url(s[..]) == "/api/wallet?as=lines" && s[0].flags == WL_WANTED;
+  wl_reply(s[..], 1, WL_T_MAIN);
+  #assert s[0].screen == WL_MAIN && s[0].daily == 20000 && s[0].spent == 15001 && s[0].raise_sat == 0 && s[0].now_ms == 1794000000000;
+  #assert s[0].backup && s[0].counts && s[0].slot_n == 2 && s[0].slot_total == 2;
+  #assert s[0].slots[0].method == WM_PASSKEY && s[0].slots[0].live && wl_label(s[..], 0) == "Test phone" && !wl_gone(s[..], 0);
+  #assert s[0].slots[1].method == WM_CODE && wl_label(s[..], 1) == "Recovery code";
+  b: [300] u8;
+  #assert wl_daily_words(s[..], b[..]) == "20,000 SATS A DAY";
+  #assert wl_spent_words(s[..], b[..]) == "15,001 OF 20,000 SATS IN THE LAST 24 HOURS";
+  #assert wl_raise_words(s[..], b[..]) == "" && wl_backup_state(s[..]) == "BACKED UP" && wl_more_words(s[..], b[..]) == "";
+  #assert wl_shown(s[..], WH_FIELD) && wl_shown(s[..], WH_SET) && wl_shown(s[..], WH_DELETE) && wl_shown(s[..], WH_SECURITY) && !wl_shown(s[..], WH_CANCEL) && !wl_shown(s[..], WH_LOGIN);
+  wl_press(s[..], WH_SECURITY);
+  #assert s[0].action == WL_ACT_GO && wl_out(s[..]) == "/settings/security";
+  wl_done(s[..]); wl_press(s[..], WH_HOME);
+  #assert wl_out(s[..]) == "/";
+}
+#test "wallet: sats have thousands separators, and the time a raise has left is in hours and minutes" {
+  b: [60] u8;
+  #assert cast(string) b[0..<wl_sats(b[..], 0, 0)] == "0" && cast(string) b[0..<wl_sats(b[..], 0, 999)] == "999";
+  #assert cast(string) b[0..<wl_sats(b[..], 0, 1000)] == "1,000" && cast(string) b[0..<wl_sats(b[..], 0, 15001)] == "15,001";
+  #assert cast(string) b[0..<wl_sats(b[..], 0, 100000)] == "100,000" && cast(string) b[0..<wl_sats(b[..], 0, 2100000000000000)] == "2,100,000,000,000,000";
+  #assert cast(string) b[0..<wl_left(b[..], 0, 83520000)] == "23 HOURS 12 MINUTES";
+  #assert cast(string) b[0..<wl_left(b[..], 0, 86400000)] == "24 HOURS" && cast(string) b[0..<wl_left(b[..], 0, 86400001)] == "24 HOURS 1 MINUTE";
+  #assert cast(string) b[0..<wl_left(b[..], 0, 3660000)] == "1 HOUR 1 MINUTE" && cast(string) b[0..<wl_left(b[..], 0, 3600000)] == "1 HOUR";
+  #assert cast(string) b[0..<wl_left(b[..], 0, 720000)] == "12 MINUTES" && cast(string) b[0..<wl_left(b[..], 0, 1)] == "1 MINUTE";
+  #assert cast(string) b[0..<wl_left(b[..], 0, 0)] == "LESS THAN A MINUTE" && cast(string) b[0..<wl_left(b[..], 0, -5000)] == "LESS THAN A MINUTE";
+  #assert wl_method_words(WM_PASSKEY) == "PASSKEY" && wl_method_words(WM_CODE) == "RECOVERY CODE" && wl_method_words(WM_NOSTR) == "NOSTR KEY" && wl_method_words(WM_OTHER) == "KEY";
+}
+#test "wallet: the box takes digits only, shows them with separators, and holds 16" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, WL_T_MAIN);
+  b: [60] u8;
+  wl_message(s[..], WL_MSG_TYPED, "5");
+  #assert s[0].typed_n == 0 && !wl_wants_text(s[..]);   // nothing is typed until the box is pressed
+  wl_into(s[..], "12,5oo 00 sats");
+  #assert wl_wants_text(s[..]) && wl_typed(s[..]) == "12500" && wl_field_words(s[..], b[..]) == "12,500";
+  #assert wl_key_in(s[..], -3, 0) && wl_typed(s[..]) == "1250";
+  #assert wl_key_in(s[..], 'a', 8) && s[0].all;
+  wl_message(s[..], WL_MSG_TYPED, "0");
+  #assert wl_typed(s[..]) == "0" && !s[0].all;
+  wl_message(s[..], WL_MSG_TYPED, "07");
+  #assert wl_typed(s[..]) == "7";   // no leading zeros
+  wl_message(s[..], WL_MSG_TYPED, "12345678901234567890");
+  #assert s[0].typed_n == 16 && wl_typed(s[..]) == "7123456789012345";
+  #assert wl_key_in(s[..], -3, 8) && s[0].typed_n == 0 && wl_field_words(s[..], b[..]) == "";
+  #assert !wl_key_in(s[..], 'r', 8);   // the browser's own keys stay the browser's
+  _ = wl_pointer(s[..], 2, 2, 0); _ = wl_pointer(s[..], 2, 2, 2);
+  #assert !wl_wants_text(s[..]) && s[0].focus == -1;
+}
+#test "wallet: a lower limit, or the same, goes to /limit/lower; a higher one goes to /limit" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, WL_T_MAIN);
+  wl_press(s[..], WH_SET);
+  #assert s[0].req == WR_NONE && wl_error_of(s[..]) == "Type the new daily limit, in sats.";
+  wl_into(s[..], "5000"); wl_press(s[..], WH_SET);
+  #assert s[0].req == WR_LOWER && wl_url(s[..]) == "/api/wallet/limit/lower?as=lines" && wl_body_of(s[..]) == "{\"daily_sat\":\"5000\"}" && s[0].flags == (WL_POST | WL_WANTED);
+  #assert s[0].error_n == 0;
+  wl_press(s[..], WH_CANCEL); wl_press(s[..], WH_DELETE);
+  #assert s[0].req == WR_LOWER && !s[0].armed;   // one request at a time
+  wl_reply(s[..], 2, "200\nstate lowered\ndaily_sat 5000\nwords Your daily limit is lower now.\n");
+  #assert wl_said_of(s[..]) == "Your daily limit is lower now." && s[0].typed_n == 0 && s[0].req == WR_GET && wl_url(s[..]) == "/api/wallet?as=lines";
+  wl_reply(s[..], 3, WL_T_BROKEN);
+  #assert s[0].daily == 5000 && wl_said_of(s[..]) == "Your daily limit is lower now.";
+  // the same number: the server says so
+  wl_into(s[..], "5000"); wl_press(s[..], WH_SET);
+  #assert s[0].req == WR_LOWER;
+  wl_reply(s[..], 4, "200\nstate same\ndaily_sat 5000\nwords That is already your daily limit.\n");
+  #assert wl_said_of(s[..]) == "That is already your daily limit." && s[0].req == WR_GET;
+  wl_reply(s[..], 5, WL_T_BROKEN);
+  // zero is a limit
+  wl_into(s[..], "0"); wl_press(s[..], WH_SET);
+  #assert s[0].req == WR_LOWER && wl_body_of(s[..]) == "{\"daily_sat\":\"0\"}";
+  wl_reply(s[..], 6, "400\nerror A daily limit is a whole number of sats, zero or more.\n");
+  #assert wl_error_of(s[..]) == "A daily limit is a whole number of sats, zero or more." && s[0].req == WR_NONE && wl_typed(s[..]) == "0";
+  // one more than the limit is a raise
+  wl_message(s[..], WL_MSG_TYPED, "5001"); wl_press(s[..], WH_SET);
+  #assert s[0].req == WR_RAISE && wl_url(s[..]) == "/api/wallet/limit?as=lines" && wl_body_of(s[..]) == "{\"daily_sat\":\"5001\"}";
+}
+#test "wallet: a raise waits 24 hours and shows the time left; CANCEL takes it back" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, WL_T_MAIN);
+  wl_into(s[..], "50000");
+  #assert wl_key_in(s[..], -2, 0);   // Enter in the box sets the limit
+  #assert s[0].req == WR_RAISE && wl_url(s[..]) == "/api/wallet/limit?as=lines" && wl_body_of(s[..]) == "{\"daily_sat\":\"50000\"}";
+  wl_reply(s[..], 2, "200\nstate waiting\ndaily_sat 20000\nraise_sat 50000\nraise_at_ms 1794083520000\nwords Your daily limit goes up in 24 hours. We told every way you log in. You can cancel until then.\n");
+  #assert wl_said_of(s[..]) == "Your daily limit goes up in 24 hours. We told every way you log in. You can cancel until then." && s[0].typed_n == 0 && s[0].req == WR_GET;
+  wl_reply(s[..], 3, WL_T_RAISE);
+  b: [300] u8;
+  #assert s[0].daily == 20000 && s[0].raise_sat == 50000 && wl_raise_words(s[..], b[..]) == "GOES UP TO 50,000 SATS IN 23 HOURS 12 MINUTES";
+  #assert wl_shown(s[..], WH_CANCEL) && !s[0].backup && !wl_shown(s[..], WH_DELETE) && wl_backup_state(s[..]) == WL_NO_BACKUP;
+  wl_press(s[..], WH_CANCEL);
+  #assert s[0].req == WR_CANCEL && wl_url(s[..]) == "/api/wallet/limit/cancel?as=lines" && wl_body_of(s[..]) == "{}" && s[0].flags == (WL_POST | WL_WANTED);
+  wl_reply(s[..], 4, "200\nstate cancelled\ndaily_sat 20000\n");
+  #assert wl_said_of(s[..]) == "The raise is cancelled. Your daily limit is still 20,000 sats." && s[0].req == WR_GET;
+  wl_reply(s[..], 5, WL_T_MAIN);
+  #assert s[0].raise_sat == 0 && !wl_shown(s[..], WH_CANCEL);
+  wl_press(s[..], WH_CANCEL);
+  #assert s[0].req == WR_NONE;   // nothing waits: nothing to cancel
+  // a raise someone else already cancelled: the server's words, and the page loads again
+  t: [1] Wl; wl_new(t[..]); wl_reply(t[..], 1, WL_T_RAISE);
+  wl_press(t[..], WH_CANCEL); wl_reply(t[..], 2, "404\nerror No raise is waiting.\n");
+  #assert wl_error_of(t[..]) == "No raise is waiting." && t[0].req == WR_GET;
+}
+#test "wallet: a raise without a fresh confirmation goes to confirm it's you and comes back with the number" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, WL_T_MAIN);
+  wl_into(s[..], "50000"); wl_press(s[..], WH_SET);
+  wl_reply(s[..], 2, "401\nerror Confirm it's you with your passkey or key to do this.\nstep_up L2-fresh\nmethods passkey nostr\n");
+  #assert s[0].action == WL_ACT_GO && wl_out(s[..]) == "/settings/security?step=1&next=%2Fsettings%2Fwallet%3Flimit%3D50000" && s[0].error_n == 0;
+  // back from the step-up: the number is in the box, and SET LIMIT sends it
+  t: [1] Wl; wl_new_at(t[..], "https://openagents.com/settings/wallet?limit=50000");
+  #assert wl_typed(t[..]) == "50000" && t[0].req == WR_GET;
+  wl_reply(t[..], 1, WL_T_MAIN); wl_press(t[..], WH_SET);
+  #assert t[0].req == WR_RAISE && wl_body_of(t[..]) == "{\"daily_sat\":\"50000\"}";
+  // an email-only login is told why, and goes the same way
+  wl_reply(t[..], 2, "401\nerror This login came from email alone. Log in with your passkey or key to use your wallet.\nstep_up L2-fresh\nmethods\n");
+  #assert wl_out(t[..]) == "/settings/security?step=1&next=%2Fsettings%2Fwallet%3Flimit%3D50000";
+  wl_done(t[..]); wl_press(t[..], WH_SET);
+  wl_reply(t[..], 3, "401\nerror Log in again with a new email code to do this (within 5 minutes).\n");
+  #assert wl_out(t[..]) == "/login?next=%2Fsettings%2Fwallet%3Flimit%3D50000";
+  // only a number comes back in ?limit=
+  a: [1] Wl; wl_new_at(a[..], "https://openagents.com/settings/wallet?limit=5x&x=1");
+  #assert a[0].typed_n == 0;
+  c: [1] Wl; wl_new_at(c[..], "https://openagents.com/settings/wallet?x=1&limit=007#top");
+  #assert wl_typed(c[..]) == "7";
+  e: [1] Wl; wl_new_at(e[..], "https://openagents.com/settings/wallet?limit=12345678901234567");
+  #assert e[0].typed_n == 0;
+}
+#test "wallet: DELETE BACKUP asks once more, then the backup goes and the page loads again" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, WL_T_MAIN);
+  wl_press(s[..], WH_DELETE);
+  #assert s[0].armed && s[0].req == WR_NONE;
+  // Escape, a press anywhere else, or another control takes the question back
+  #assert wl_key_in(s[..], -1, 0) && !s[0].armed && !wl_key_in(s[..], -1, 0);
+  wl_press(s[..], WH_DELETE); _ = wl_pointer(s[..], 2, 2, 0); _ = wl_pointer(s[..], 2, 2, 2);
+  #assert !s[0].armed && s[0].req == WR_NONE;
+  wl_press(s[..], WH_DELETE); wl_press(s[..], WH_FIELD);
+  #assert !s[0].armed;
+  wl_press(s[..], WH_DELETE); wl_press(s[..], WH_DELETE);
+  #assert s[0].req == WR_DELETE && wl_url(s[..]) == "/api/wallet/backup/delete?as=lines" && wl_body_of(s[..]) == "{}" && s[0].flags == (WL_POST | WL_WANTED);
+  wl_reply(s[..], 2, "200\nstate deleted\n");
+  #assert wl_said_of(s[..]) == "Your backup is deleted." && s[0].req == WR_GET && !s[0].armed;
+  wl_reply(s[..], 3, WL_T_RAISE);
+  #assert !s[0].backup && s[0].slot_n == 0 && !wl_shown(s[..], WH_DELETE);
+  wl_press(s[..], WH_DELETE);
+  #assert !s[0].armed && s[0].req == WR_NONE;
+  // without a fresh confirmation: to the step-up and back
+  t: [1] Wl; wl_new(t[..]); wl_reply(t[..], 1, WL_T_MAIN);
+  wl_press(t[..], WH_DELETE); wl_press(t[..], WH_DELETE);
+  wl_reply(t[..], 2, "401\nerror Confirm it's you with your passkey or key to do this.\nstep_up L2-fresh\nmethods passkey\n");
+  #assert t[0].action == WL_ACT_GO && wl_out(t[..]) == "/settings/security?step=1&next=%2Fsettings%2Fwallet" && !t[0].armed;
+  // a backup that is already gone
+  wl_done(t[..]); wl_press(t[..], WH_DELETE); wl_press(t[..], WH_DELETE);
+  wl_reply(t[..], 3, "404\nerror This account has no wallet backup.\n");
+  #assert wl_error_of(t[..]) == "This account has no wallet backup." && t[0].req == WR_GET;
+  wl_reply(t[..], 4, WL_T_RAISE);
+  wl_press(t[..], WH_CANCEL); wl_reply(t[..], 5, "0\n");
+  #assert wl_error_of(t[..]) == "We couldn't reach openagents.com. Check your connection and try again." && t[0].req == WR_NONE;
+  wl_press(t[..], WH_CANCEL); wl_reply(t[..], 6, "500\n");
+  #assert wl_error_of(t[..]) == "That didn't work. Try again.";
+}
+#test "wallet: a backup whose passkey left the account says it no longer works, and which passkey" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, WL_T_BROKEN);
+  #assert s[0].backup && !s[0].counts && wl_backup_state(s[..]) == "THIS BACKUP'S PASSKEY WAS REMOVED. ONLY YOUR RECOVERY CODE OPENS IT NOW. BACK UP AGAIN IN THE APP.";
+  #assert s[0].slot_n == 3 && wl_gone(s[..], 0) && wl_label(s[..], 0) == "Old phone" && !wl_gone(s[..], 1) && !wl_gone(s[..], 2);
+  #assert s[0].slots[2].method == WM_NOSTR && wl_label(s[..], 2) == "My key" && wl_shown(s[..], WH_DELETE);
+  // more ways to open it than the page holds: it says how many
+  t: [1] Wl; wl_new(t[..]);
+  wl_reply(t[..], 1, "200\ndaily_sat 1\nspent_sat 0\nraise_sat 0\nnow_ms 5\nbackup 1\nslot passkey 1 1 a\nslot passkey 1 1 b\nslot passkey 1 1 c\nslot passkey 1 1 d\nslot passkey 1 1 e\nslot passkey 1 1 f\nslot passkey 1 1 g\nslot passkey 1 1 h\nslot passkey 1 1 i\nslot recovery-code 1 1 j\ncounts 1\n");
+  b: [60] u8;
+  #assert t[0].slot_n == 8 && t[0].slot_total == 10 && wl_more_words(t[..], b[..]) == "AND 2 MORE" && wl_label(t[..], 7) == "h";
+  // no backup: nothing of one is read
+  n: [1] Wl; wl_new(n[..]); wl_reply(n[..], 1, "200\ndaily_sat 20000\nspent_sat 0\nraise_sat 0\nnow_ms 5\nbackup 0\n");
+  #assert !n[0].backup && !n[0].counts && n[0].slot_n == 0 && wl_backup_state(n[..]) == "NO BACKUP YET. BACK UP YOUR WALLET IN THE OPENAGENTS APP ON YOUR PHONE.";
+}
+#test "wallet: a notice's #cancel= link cancels the raise, logged in or not, and leaves the address bar" {
+  // logged in: the link came after the wallet was asked for
+  s: [1] Wl; wl_new(s[..]);
+  wl_hash(s[..], WL_T_TOKEN);
+  #assert s[0].action == WL_ACT_HASH && s[0].out_n == 0 && s[0].req == WR_GET;   // the token leaves the address bar
+  wl_done(s[..]);
+  wl_reply(s[..], 1, WL_T_RAISE);
+  #assert s[0].req == WR_LINK && wl_url(s[..]) == "/api/wallet/limit/cancel?as=lines" && s[0].flags == (WL_POST | WL_WANTED);
+  #assert wl_body_of(s[..]) == "{\"t\":\"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\"}";
+  wl_reply(s[..], 2, "200\nstate cancelled\ndaily_sat 20000\n");
+  #assert wl_said_of(s[..]) == "The raise is cancelled. Your daily limit is still 20,000 sats." && s[0].req == WR_GET;
+  wl_reply(s[..], 3, WL_T_MAIN);
+  #assert s[0].screen == WL_MAIN && s[0].raise_sat == 0 && s[0].req == WR_NONE && wl_said_of(s[..]) == "The raise is cancelled. Your daily limit is still 20,000 sats.";
+  wl_hash(s[..], WL_T_TOKEN);
+  #assert s[0].req == WR_NONE && s[0].action == 0;   // a link is used once
+  // logged out, and the link came first
+  t: [1] Wl; t[0].w = 390; t[0].h = 844; t[0].dpr = 1;
+  wl_hash(t[..], WL_T_TOKEN);
+  #assert t[0].req == WR_LINK;
+  wl_reply(t[..], 1, "200\nstate cancelled\ndaily_sat 20000\n");
+  #assert t[0].req == WR_GET;
+  wl_reply(t[..], 2, "401\nerror Log in first.\n");
+  #assert t[0].screen == WL_OUT && wl_said_of(t[..]) == "The raise is cancelled. Your daily limit is still 20,000 sats." && t[0].req == WR_NONE && wl_shown(t[..], WH_LOGIN);
+  // a link for a raise that isn't waiting: the server's words
+  a: [1] Wl; wl_new(a[..]); wl_hash(a[..], WL_T_TOKEN); wl_reply(a[..], 1, "401\nerror Log in first.\n");
+  #assert a[0].screen == WL_OUT && a[0].req == WR_LINK;
+  wl_reply(a[..], 2, "403\nerror That link isn't for a raise that is waiting.\n");
+  #assert wl_error_of(a[..]) == "That link isn't for a raise that is waiting." && a[0].req == WR_GET;
+  wl_reply(a[..], 3, "401\nerror Log in first.\n");
+  #assert a[0].screen == WL_OUT && wl_error_of(a[..]) == "That link isn't for a raise that is waiting.";
+  // a link cut short, or not hex, is never sent; another hash is nothing
+  c: [1] Wl; wl_new(c[..]); wl_hash(c[..], "cancel=0011");
+  #assert c[0].req == WR_GET && c[0].action == WL_ACT_HASH && wl_error_of(c[..]) == "That link isn't whole. Open it again from the email or message." && !c[0].link;
+  e: [1] Wl; wl_new(e[..]); wl_hash(e[..], "cancel=zz112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+  #assert !e[0].link && e[0].token_n == 0 && e[0].error_n > 0;
+  f: [1] Wl; wl_new(f[..]); wl_hash(f[..], "top");
+  #assert f[0].action == 0 && f[0].error_n == 0 && !f[0].link;
+}
+#test "wallet: logged out shows LOG IN and comes back here; an agent's login is shown the same" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, "401\nerror Log in first.\n");
+  #assert s[0].screen == WL_OUT && s[0].error_n == 0 && wl_shown(s[..], WH_LOGIN) && !wl_shown(s[..], WH_SET) && !wl_shown(s[..], WH_SECURITY) && !wl_shown(s[..], WH_DELETE);
+  wl_press(s[..], WH_SET); wl_press(s[..], WH_DELETE); wl_press(s[..], WH_FIELD);
+  #assert s[0].req == WR_NONE && !s[0].armed && !wl_wants_text(s[..]);
+  wl_press(s[..], WH_LOGIN);
+  #assert s[0].action == WL_ACT_GO && wl_out(s[..]) == "/login?next=%2Fsettings%2Fwallet";
+  a: [1] Wl; wl_new(a[..]); wl_reply(a[..], 1, "403\nerror Only a person can do this, not an agent.\n");
+  #assert a[0].screen == WL_OUT;
+  n: [1] Wl; wl_new(n[..]); wl_reply(n[..], 1, "0\n");
+  #assert n[0].screen == WL_OUT && wl_error_of(n[..]) == "We couldn't reach openagents.com. Check your connection and try again.";
+}
+#test "wallet: the keyboard alone works: Tab goes round the controls, Enter presses, Enter twice deletes" {
+  s: [1] Wl; wl_new(s[..]); wl_reply(s[..], 1, WL_T_MAIN);
+  #assert s[0].focus == -1 && !wl_key_in(s[..], -2, 0) && s[0].req == WR_NONE;   // Enter with nothing focused does nothing
+  #assert wl_key_in(s[..], -15, 0) && s[0].focus == WH_FIELD && wl_wants_text(s[..]);
+  wl_message(s[..], WL_MSG_TYPED, "100");
+  #assert wl_key_in(s[..], -15, 0) && s[0].focus == WH_SET && !wl_wants_text(s[..]);
+  #assert wl_key_in(s[..], -15, 0) && s[0].focus == WH_DELETE;
+  #assert wl_key_in(s[..], -2, 0) && s[0].armed && s[0].req == WR_NONE;
+  #assert wl_key_in(s[..], -2, 0) && s[0].req == WR_DELETE;
+  t: [1] Wl; wl_new(t[..]); wl_reply(t[..], 1, WL_T_RAISE);
+  #assert wl_key_in(t[..], -15, 0) && wl_key_in(t[..], -15, 0) && wl_key_in(t[..], -15, 0) && t[0].focus == WH_CANCEL;
+  #assert wl_key_in(t[..], -15, 0) && t[0].focus == WH_SECURITY && wl_key_in(t[..], -15, 0) && t[0].focus == WH_HOME;
+  #assert wl_key_in(t[..], -15, 0) && t[0].focus == WH_FIELD;   // and round again
+  #assert wl_key_in(t[..], -15, 0) && t[0].focus == WH_SET && wl_key_in(t[..], -2, 0) && t[0].req == WR_NONE && t[0].error_n > 0;   // SET LIMIT with nothing typed
+  #assert !wl_key_in(t[..], 65, 0) && !wl_key_in(t[..], -1, 0);
+  o: [1] Wl; wl_new(o[..]); wl_reply(o[..], 1, "401\nerror Log in first.\n");
+  #assert wl_key_in(o[..], -15, 0) && o[0].focus == WH_LOGIN && wl_key_in(o[..], -2, 0) && wl_out(o[..]) == "/login?next=%2Fsettings%2Fwallet";
+}
+#test "wallet: every shown control has a box inside the panel, on a phone and a desktop, and the page draws within its vertex budget" #steps 900000000 {
+  out: [WL_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  for k: 0..<2 {
+    for state: 0..<4 {
+      s: [1] Wl; wl_new(s[..]);
+      s[0].w = ifx k == 0 then 390.0f32 else 1280.0f32; s[0].h = ifx k == 0 then 844.0f32 else 800.0f32;
+      wl_reply(s[..], 1, ifx state == 0 then WL_T_MAIN else ifx state == 1 then WL_T_RAISE else ifx state == 2 then WL_T_BROKEN else "401\nerror Log in first.\n");
+      if state == 0 { wl_into(s[..], "123456"); wl_press(s[..], WH_DELETE); }
+      if state == 2 { wl_err(s[..], "That link isn't for a raise that is waiting."); }
+      wl_layout(s[..]);
+      order: [WH_HITS] int; n := wl_order(s[..], order[..]);
+      for i: 0..<n {
+        b := s[0].hits[order[i]];
+        #assert b.x1 > b.x0 && b.x0 >= s[0].panel.x0 && b.x1 <= s[0].panel.x1 + 1 && (order[i] == WH_HOME || (b.y0 >= s[0].panel.y0 && b.y1 <= s[0].panel.y1));
+        #assert wl_hit(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == order[i];
+      }
+      v := wl_frame(s[..], world[0..<0], out[..], u[..], s[0].w, s[0].h, 1, 0, true);
+      #assert v > 0 && v < WL_MAX_VERTICES;
+      f := s[0].hits[WH_FIELD];
+      #assert s[0].field[0] == f.x0 && s[0].field[3] == f.y1;
+    }
+  }
+}
