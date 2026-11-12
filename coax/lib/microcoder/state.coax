@@ -211,6 +211,10 @@ mc_result_end :: (st: [] McState, n: int, c: int) -> bool {
 // One command's result in the open action. exit is -1 when a signal or the
 // deadline ended it (timed_out says which).
 mc_action_command :: (st: [] McState, command: string, exit: int, timed_out: bool, output: string) {
+  mc_action_command_checked(st, command, exit, timed_out, output, "");
+}
+// The same, with last_check (a git commit's: how the last test or check before it ended) when not "".
+mc_action_command_checked :: (st: [] McState, command: string, exit: int, timed_out: bool, output: string, last_check: string) {
   at := mc_result_start(st);
   if at < 0 { return; }
   room := mc_room(st);
@@ -219,6 +223,7 @@ mc_action_command :: (st: [] McState, command: string, exit: int, timed_out: boo
   n = json_raw(room, n, ",\"exit\":");
   n = json_write_int(room, n, exit);
   if timed_out { n = json_raw(room, n, ",\"timed_out\":true"); }
+  if last_check.count > 0 { n = json_raw(room, n, ",\"last_check\":"); n = json_write_string(room, n, last_check); }
   n = json_raw(room, n, ",\"output\":");
   n = mc_write_cut(room, n, output, MC_OUTPUT_HEAD, MC_OUTPUT_TAIL);
   n = json_raw(room, n, "}");
@@ -228,6 +233,7 @@ mc_action_command :: (st: [] McState, command: string, exit: int, timed_out: boo
     n = mc_write_cut(room, n, command, 200, 0);
     n = json_raw(room, n, ",\"exit\":");
     n = json_write_int(room, n, exit);
+    if last_check.count > 0 { n = json_raw(room, n, ",\"last_check\":"); n = json_write_string(room, n, last_check); }
     n = json_raw(room, n, ",\"output\":\"[left out: this step's results filled its space]\"}");
   }
   cr := mc_croom(st);
@@ -236,6 +242,7 @@ mc_action_command :: (st: [] McState, command: string, exit: int, timed_out: boo
   c = json_raw(cr, c, ",\"exit\":");
   c = json_write_int(cr, c, exit);
   if timed_out { c = json_raw(cr, c, ",\"timed_out\":true"); }
+  if last_check.count > 0 { c = json_raw(cr, c, ",\"last_check\":"); c = json_write_string(cr, c, last_check); }
   c = json_raw(cr, c, ",\"output\":");
   c = mc_write_cut(cr, c, output, MC_BRIEF_OUTPUT, MC_BRIEF_OUTPUT);
   c = json_raw(cr, c, "}");

@@ -528,6 +528,9 @@ before the model commits. Two options, neither built:
   ran, and its exit code. This needs a rule for which commands are tests,
   so it is the larger change.
 
+Both are built in #13351 (docs/coder/microcoder.md, "Limits and endings"
+and "What a commit sees").
+
 **The seed does not decide these outcomes.** Briefs that name long files
 seed large first steps. The largest were 255 KB and 141 KB files, each cut
 to 64 KB, and a 197 KB file. In 8 of the 46 runs the second call's input

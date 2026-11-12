@@ -1238,7 +1238,8 @@ tr_micro_line :: (r: [] TrRun, line: string) {
       return;
     }
     if ending == "stopped" { tr_finish(r, TR_STOPPED, ""); return; }
-    wb: [1400] u8; wn := 0;
+    // a failed ending lists its commits and files (microcoder/run.coax, up to 8 KB)
+    wb: [9600] u8; wn := 0;
     if ending == "no_capacity" { r[0].ncause = tr_cat(r[0].cause[..], 0, "provider"); wn = tr_cat(wb[..], 0, "No model answered: "); wn = tr_cat(wb[..], wn, text); }
     else if ending == "bad_replies" { wn = tr_cat(wb[..], 0, "The model's replies didn't fit Microcoder's schema three times in a row."); }
     else if ending == "idle" { wn = tr_cat(wb[..], 0, "The model gave nothing to do and no reply three times in a row."); }

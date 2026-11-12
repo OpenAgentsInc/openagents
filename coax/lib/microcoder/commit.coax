@@ -1,0 +1,224 @@
+// What a commit sees (GitHub #13351): which commands in a run are tests or checks, which are a
+// git commit, and the line a commit's result carries about the last check before it.
+//
+// A field review of 46 runs (docs/research/2026-11-12-microcoder-next.md) found every wrong
+// commit in a run that ended on a limit; one was a golden committed while it failed its own
+// test. So a git commit's result in the state says how the run's last test or check ended:
+// passed, failed, or none since the last edit. The commit still runs; the model, and anyone
+// reading the run, sees what it was committed on.
+//
+// The rule is a small parser of the shell command, not a guess at its words: the command is cut
+// into simple commands at ; && || | & and newlines (not inside quotes), and each one is read by
+// its program and its first argument that is not an option:
+//
+//   check   coax|cargo|go|npm|pnpm|yarn|bun|deno|make|swift|zig  test|check|mutate
+//           pytest, ctest, or a program named *test.sh, *tests.sh, *check.sh or test*.sh
+//           tool.sh  *check            (coax/web/tool.sh wire-check, layer-check ...)
+//           python*  test*.py | *_test.py, or -m pytest|unittest
+//   commit  git [-C DIR] [-c K=V] commit
+//
+// Leading VAR=value words and the wrappers env, time, nice and timeout N are skipped, and
+// coax/remote/remote.sh run -- CMD is read as CMD. Anything else is neither.
+
+#load "../gateway/gateway.coax";
+
+MC_CMD_CHECK :: 1;
+MC_CMD_COMMIT :: 2;
+
+McWord :: struct { a: int; b: int; }
+
+mc_cmd_ends :: (s: string, tail: string) -> bool {
+  return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail;
+}
+mc_cmd_starts :: (s: string, head: string) -> bool {
+  return s.count >= head.count && cast(string) s[0..<head.count] == head;
+}
+
+// A word without the quotes around it, and its last path part.
+mc_cmd_word :: (c: string, w: McWord) -> string {
+  a := w.a; b := w.b;
+  if b - a >= 2 && (c[a] == '"' || c[a] == '\'') && c[b - 1] == c[a] { a += 1; b -= 1; }
+  return cast(string) c[a..<b];
+}
+mc_cmd_base :: (s: string) -> string {
+  i := s.count;
+  while i > 0 && s[i - 1] != '/' { i -= 1; }
+  return cast(string) s[i..<s.count];
+}
+
+// The first word at or after i that is not an option (-x, --x), or n.
+mc_cmd_arg :: (c: string, w: [] McWord, i: int, n: int) -> int {
+  k := i;
+  while k < n && mc_cmd_starts(mc_cmd_word(c, w[k]), "-") { k += 1; }
+  return k;
+}
+
+// What one simple command, words w[0..<n] of c, is: MC_CMD_CHECK, MC_CMD_COMMIT or 0.
+mc_cmd_simple :: (c: string, w: [] McWord, n: int) -> int {
+  i := 0;
+  while i < n {
+    s := mc_cmd_word(c, w[i]);
+    if mc_cmd_assign(s) || s == "env" || s == "time" || s == "nice" { i += 1; continue; }
+    if s == "timeout" { i += 2; continue; }
+    if mc_cmd_base(s) == "remote.sh" {
+      k := i + 1;
+      while k < n && mc_cmd_word(c, w[k]) != "--" { k += 1; }
+      i = k + 1; continue;
+    }
+    break;
+  }
+  if i >= n { return 0; }
+  prog := mc_cmd_base(mc_cmd_word(c, w[i]));
+  if prog == "git" {
+    k := i + 1;
+    while k < n {
+      o := mc_cmd_word(c, w[k]);
+      if o == "-C" || o == "-c" { k += 2; continue; }
+      if mc_cmd_starts(o, "-") { k += 1; continue; }
+      break;
+    }
+    return ifx k < n && mc_cmd_word(c, w[k]) == "commit" then MC_CMD_COMMIT else 0;
+  }
+  if prog == "pytest" || prog == "ctest" || mc_cmd_ends(prog, "test.sh") || mc_cmd_ends(prog, "tests.sh") || mc_cmd_ends(prog, "check.sh") || (mc_cmd_starts(prog, "test") && mc_cmd_ends(prog, ".sh")) { return MC_CMD_CHECK; }
+  k := mc_cmd_arg(c, w, i + 1, n);
+  sub := ifx k < n then mc_cmd_word(c, w[k]) else "";
+  if prog == "coax" || prog == "cargo" || prog == "go" || prog == "npm" || prog == "pnpm" || prog == "yarn" || prog == "bun" || prog == "deno" || prog == "make" || prog == "swift" || prog == "zig" {
+    return ifx sub == "test" || sub == "check" || sub == "mutate" then MC_CMD_CHECK else 0;
+  }
+  if prog == "tool.sh" { return ifx mc_cmd_ends(sub, "check") then MC_CMD_CHECK else 0; }
+  if mc_cmd_starts(prog, "python") {
+    for j: i + 1..<n - 1 {
+      if mc_cmd_word(c, w[j]) == "-m" { m := mc_cmd_word(c, w[j + 1]); if m == "pytest" || m == "unittest" { return MC_CMD_CHECK; } }
+    }
+    f := mc_cmd_base(sub);
+    if mc_cmd_ends(f, ".py") && (mc_cmd_starts(f, "test") || mc_cmd_ends(f, "_test.py")) { return MC_CMD_CHECK; }
+  }
+  return 0;
+}
+
+mc_cmd_assign :: (s: string) -> bool {
+  if s.count == 0 || s[0] == '-' { return false; }
+  for ch: s { if ch == '=' { return true; } }
+  return false;
+}
+
+MC_CMD_WORDS :: 64;
+
+// What a shell command is: MC_CMD_CHECK, MC_CMD_COMMIT, both, or 0 (the bits of its simple commands).
+mc_cmd_kind :: (c: string) -> int {
+  w: [MC_CMD_WORDS] McWord; n := 0;
+  kind := 0;
+  i := 0; q: u8 = 0; start := -1;
+  while i <= c.count {
+    ch: u8 = ifx i < c.count then c[i] else '\n';
+    if q != 0 {
+      if ch == q { q = 0; }
+      i += 1; continue;
+    }
+    if ch == '"' || ch == '\'' { if start < 0 { start = i; } q = ch; i += 1; continue; }
+    space := ch == ' ' || ch == '\t';
+    op := ch == ';' || ch == '&' || ch == '|' || ch == '\n' || ch == '(' || ch == ')';
+    if (space || op) && start >= 0 {
+      if n < MC_CMD_WORDS { w[n] = McWord.{a = start, b = i}; n += 1; }
+      start = -1;
+    }
+    if op { kind = kind | mc_cmd_simple(c, w[..], n); n = 0; }
+    else if !space && start < 0 { start = i; }
+    i += 1;
+  }
+  return kind;
+}
+
+// The last test or check a run ran, for its next commit.
+MC_CHECK_NEVER :: 0;             // none in this run yet
+MC_CHECK_PASSED :: 1;
+MC_CHECK_FAILED :: 2;
+MC_CHECK_STALE :: 3;             // one ran, and an edit came after it
+
+McLastCheck :: struct {
+  state: int;
+  exit: int;
+  timed_out: bool;
+  cmd: [300] u8; n: int;         // its command, cut
+}
+
+// A command ended: a check is remembered with how it ended.
+mc_check_ran :: (lc: [] McLastCheck, command: string, exit: int, timed_out: bool) {
+  if (mc_cmd_kind(command) & MC_CMD_CHECK) == 0 { return; }
+  lc[0].state = ifx exit == 0 && !timed_out then MC_CHECK_PASSED else MC_CHECK_FAILED;
+  lc[0].exit = exit; lc[0].timed_out = timed_out;
+  lc[0].n = ifx command.count < lc[0].cmd.count then command.count else lc[0].cmd.count;
+  for i: 0..<lc[0].n { lc[0].cmd[i] = command[i]; }
+}
+
+// An edit was applied: the last check no longer covers the tree.
+mc_check_edited :: (lc: [] McLastCheck) {
+  if lc[0].state != MC_CHECK_NEVER { lc[0].state = MC_CHECK_STALE; }
+}
+
+// The line a commit's result carries, into out.
+mc_check_line :: (lc: [] McLastCheck, out: [] u8) -> string {
+  if lc[0].state == MC_CHECK_NEVER { return "none: no test or check ran in this run before this commit"; }
+  if lc[0].state == MC_CHECK_STALE { return "none since the last edit: the last test or check ran before it"; }
+  n := json_raw(out, 0, ifx lc[0].state == MC_CHECK_PASSED then "passed: " else "failed ");
+  if lc[0].state == MC_CHECK_FAILED {
+    if lc[0].timed_out { n = json_raw(out, n, "(killed at its time limit): "); }
+    else { n = json_raw(out, n, "(exit "); n = json_write_int(out, n, lc[0].exit); n = json_raw(out, n, "): "); }
+  }
+  n = json_raw(out, n, cast(string) lc[0].cmd[0..<lc[0].n]);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "tests and checks are known by their program and first argument" {
+  #assert mc_cmd_kind("coax/bin/coax test coax/lib/nostr/nipkeys.coax") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("coax mutate pay/wallet.coax --jobs 4") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("cd coax && ./bin/coax check lib/x.coax 2>&1 | tail -5") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("coax/web/tool.sh wire-check") == MC_CMD_CHECK && mc_cmd_kind("coax/web/tool.sh layer-check") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("coax/remote/remote.sh run -- coax/bin/coax test a.coax") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("OA_X=1 timeout 60 cargo test -p foo") == MC_CMD_CHECK && mc_cmd_kind("go test ./...") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("make -j4 check") == MC_CMD_CHECK && mc_cmd_kind("pytest -q tests") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("coax/web/api/test.sh --part 1/2") == MC_CMD_CHECK && mc_cmd_kind("verse/test_voice.sh") == MC_CMD_CHECK && mc_cmd_kind("psionic/check.sh --only x") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("python3 verse/test_home.py") == MC_CMD_CHECK && mc_cmd_kind("python3 -m pytest x") == MC_CMD_CHECK && mc_cmd_kind("python3 a/b_test.py") == MC_CMD_CHECK;
+}
+
+#test "reading, building and editing are not checks; a quoted message or a grep for test is not one" {
+  #assert mc_cmd_kind("") == 0 && mc_cmd_kind("ls test") == 0 && mc_cmd_kind("git grep -n test") == 0;
+  #assert mc_cmd_kind("cat coax/tests/run.sh") == 0 && mc_cmd_kind("sed -n '1,20p' test.sh") == 0;
+  #assert mc_cmd_kind("coax/bin/coax c x.coax") == 0 && mc_cmd_kind("coax/web/tool.sh shot URL a.png") == 0;
+  #assert mc_cmd_kind("echo 'coax test x; git commit'") == 0 && mc_cmd_kind("python3 tools/pack.py") == 0 && mc_cmd_kind("make") == 0;
+  #assert mc_cmd_kind("git log --oneline") == 0 && mc_cmd_kind("git commit-tree x") == 0 && mc_cmd_kind("env") == 0;
+}
+
+#test "a git commit is found in a chain, with options before it, and beside a check" {
+  #assert mc_cmd_kind("git commit -m \"add the test\"") == MC_CMD_COMMIT;
+  #assert mc_cmd_kind("git add -A && git -C sub -c user.name=x commit -qm 'fix: test it'") == MC_CMD_COMMIT;
+  #assert mc_cmd_kind("coax test a.coax && git commit -am x") == (MC_CMD_CHECK | MC_CMD_COMMIT);
+  #assert mc_cmd_kind("git add a; git commit --amend --no-edit") == MC_CMD_COMMIT;
+}
+
+#test "a commit's line: the last check passed, failed, none since an edit, or none at all" {
+  lc: [1] McLastCheck; b: [400] u8;
+  #assert mc_check_line(lc[..], b[..]) == "none: no test or check ran in this run before this commit";
+  mc_check_edited(lc[..]);
+  #assert lc[0].state == MC_CHECK_NEVER;
+  mc_check_ran(lc[..], "ls", 0, false);
+  #assert lc[0].state == MC_CHECK_NEVER;
+  mc_check_ran(lc[..], "coax test a.coax", 1, false);
+  #assert mc_check_line(lc[..], b[..]) == "failed (exit 1): coax test a.coax";
+  mc_check_ran(lc[..], "coax test a.coax", -1, true);
+  #assert mc_check_line(lc[..], b[..]) == "failed (killed at its time limit): coax test a.coax";
+  mc_check_ran(lc[..], "coax test b.coax", 0, true);
+  #assert lc[0].state == MC_CHECK_FAILED;
+  mc_check_ran(lc[..], "coax test b.coax", 0, false);
+  #assert mc_check_line(lc[..], b[..]) == "passed: coax test b.coax";
+  mc_check_ran(lc[..], "cat x", 2, false);
+  #assert lc[0].state == MC_CHECK_PASSED;
+  mc_check_edited(lc[..]);
+  #assert mc_check_line(lc[..], b[..]) == "none since the last edit: the last test or check ran before it";
+  long: [400] u8; for i: 0..<long.count { long[i] = 'x'; }
+  long[0] = 'p'; long[1] = 'y'; long[2] = 't'; long[3] = 'e'; long[4] = 's'; long[5] = 't'; long[6] = ' ';
+  mc_check_ran(lc[..], cast(string) long[..], 0, false);
+  #assert lc[0].n == 300 && mc_check_line(lc[..], b[..]).count == 308;
+}

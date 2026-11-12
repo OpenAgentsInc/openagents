@@ -21,6 +21,7 @@
 // limits.
 
 #load "text_action.coax";
+#load "commit.coax";
 
 MC_END_NONE :: 0;
 MC_END_FINISHED :: 1;
@@ -41,7 +42,7 @@ MC_BAD_LIMIT :: 3;
 MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
-MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it whole), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; output cut to its head and tail), then view (files shown whole in this step's results). Do everything you can in each turn; you see all the results in the next.\n- Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), read the lines you need (sed -n 'A,Bp' FILE) rather than view a large file whole, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it whole), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; output cut to its head and tail), then view (files shown whole in this step's results). Do everything you can in each turn; you see all the results in the next.\n- Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), read the lines you need (sed -n 'A,Bp' FILE) rather than view a large file whole, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
 
 mc_ending_name :: (e: int) -> string {
   if e == MC_END_FINISHED { return "finished"; }
@@ -77,6 +78,7 @@ McLoop :: struct {
   ending: int;
   why: string;                   // no_capacity: the gateways' last reason
   reply: string;                 // finished or asked: what the user sees
+  check: [1] McLastCheck;        // the last test or check run, for a commit's result (commit.coax)
 }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
@@ -265,12 +267,19 @@ mc_record_bare :: (l: [] McLoop) {
 mc_pending :: (l: [] McLoop) -> McAction { return l[0].pending[0]; }
 
 // A command's result, in order.
+// A git commit's result also says how the last test or check before it ended (commit.coax).
 mc_command :: (l: [] McLoop, command: string, exit: int, timed_out: bool, output: string) {
-  mc_action_command(l[0].st[..], command, exit, timed_out, output);
+  lb: [400] u8;
+  line := ifx (mc_cmd_kind(command) & MC_CMD_COMMIT) != 0 then mc_check_line(l[0].check[..], lb[..]) else "";
+  mc_action_command_checked(l[0].st[..], command, exit, timed_out, output, line);
+  mc_check_ran(l[0].check[..], command, exit, timed_out);
 }
 
 // An edit's result: applied, or why not.
-mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) { mc_action_edit(l[0].st[..], path, ok, why); }
+mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) {
+  mc_action_edit(l[0].st[..], path, ok, why);
+  if ok { mc_check_edited(l[0].check[..]); }
+}
 
 // A viewed file's content, or found false with why.
 mc_view :: (l: [] McLoop, path: string, found: bool, content: string) {
@@ -301,6 +310,7 @@ McScript :: struct {
   calls: int;                    // requests sent
   ran: [16] string; nran: int;   // commands run, in order (copies in rb: the loop reuses its buffers each step)
   rb: [2048] u8; nrb: int;
+  fail: string;                  // a command that exits 1 (the others exit 0)
 }
 
 mc_script_step :: (l: [] McLoop, s: [] McScript) -> int {
@@ -328,13 +338,14 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
     if r == MC_ENDED { return; }
     if r == MC_TOOLS {
       a := mc_pending(l);
+      for i: 0..<a.ne { mc_edited(l, a.edits[i].path, true, ""); }
       for i: 0..<a.nc {
         if s[0].nran < 16 && s[0].nrb + a.commands[i].count <= s[0].rb.count {
           at := s[0].nrb;
           for c: a.commands[i] { s[0].rb[s[0].nrb] = c; s[0].nrb += 1; }
           s[0].ran[s[0].nran] = cast(string) s[0].rb[at..<s[0].nrb]; s[0].nran += 1;
         }
-        mc_command(l, a.commands[i], 0, false, "3\n");
+        mc_command(l, a.commands[i], ifx s[0].fail.count > 0 && a.commands[i] == s[0].fail then 1 else 0, false, "3\n");
       }
       for i: 0..<a.nv { mc_view(l, a.view[i], true, "contents"); }
       r = mc_tools_done(l);
@@ -390,6 +401,34 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   // more names than it keeps: the first ones stay
   mc_seed_scan("aa_1x bb_2x cc_3x dd_4x ee_5x ff_6x gg_7x hh_8x", s[..]);
   #assert s[0].nn == MC_SEED_NAMES && s[0].names[5] == "ff_6x";
+}
+
+#test "a git commit's result says how the last check before it ended: none, failed, passed, none since an edit" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "fix a and commit", "{}", 1.0);
+  replies: [5] string;
+  replies[0] = "{\"rationale\":\"commit first\",\"edits\":[{\"path\":\"a.txt\",\"old\":\"\",\"new\":\"x\"}],\"commands\":[\"git commit -qam one\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  replies[1] = "{\"rationale\":\"test, commit\",\"edits\":[],\"commands\":[\"coax test a.coax\",\"git add -A && git commit -qm two\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  replies[2] = "{\"rationale\":\"again\",\"edits\":[],\"commands\":[\"coax test b.coax\",\"git commit -qam three\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  replies[3] = "{\"rationale\":\"edit, commit\",\"edits\":[{\"path\":\"a.txt\",\"old\":\"x\",\"new\":\"y\"}],\"commands\":[\"git commit -qam four\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  replies[4] = "{\"rationale\":\"done\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Committed.\",\"ask\":\"none\"}";
+  s: [1] McScript; s[0].replies = replies[..]; s[0].fail = "coax test a.coax";
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && s[0].nran == 6;
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j);
+  #assert cl_str(ar[..], j, "actions.0.results.1.last_check") == "none: no test or check ran in this run before this commit";
+  #assert cl_raw(j, "actions.1.results.0.last_check").count == 0 && cl_int(j, "actions.1.results.0.exit").value == 1;
+  #assert cl_str(ar[..], j, "actions.1.results.1.last_check") == "failed (exit 1): coax test a.coax";
+  #assert cl_str(ar[..], j, "actions.2.results.1.last_check") == "passed: coax test b.coax";
+  #assert cl_str(ar[..], j, "actions.3.results.1.last_check") == "none since the last edit: the last test or check ran before it";
+  #assert ps_count(MC_SYSTEM, "A git commit's result carries last_check") == 1;
+  // a compacted commit keeps its line
+  mc_compact(l[0].st[..], 0);
+  j = mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ar[0].at = 0;
+  #assert cl_str(ar[..], j, "earlier.1.results.1.last_check") == "failed (exit 1): coax test a.coax";
 }
 
 #test "the system prompt says where a command's time limit is given" {

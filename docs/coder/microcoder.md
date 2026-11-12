@@ -148,6 +148,34 @@ output size. A run ends as one of:
 | `idle` | Three steps with no commands, no views and no reply |
 | `failed` | A journaled run (Coder) hit a limit, and the ending says which: 64 model calls, 128 commands and edits, 512 file views, or 15 minutes. Or the journal refused |
 
+A journaled run that ends `failed` also lists what it leaves (#13351), so
+the caller does not take a half-done tree for a result. The run records its
+start commit (`git rev-parse HEAD`) before the first call. The ending's text
+is the reason, then the commits the run made (`git log --oneline` from that
+commit, the last 40) and the files left changed or untracked
+(`git status --short`). Outside a git checkout it is the reason alone.
+
+### What a commit sees
+
+Before a `git commit`'s result goes into the state, the loop adds
+`last_check`: how the last test or check the run ran before it ended
+(#13351, `coax/lib/microcoder/commit.coax`). It is one of:
+
+- `passed: CMD`
+- `failed (exit N): CMD`, or `failed (killed at its time limit): CMD`
+- `none since the last edit: ...`, when an edit was applied after that check
+- `none: ...`, when no check ran in the run
+
+The commit still runs. Which commands are checks is read from the shell
+command: each simple command (split at `;`, `&&`, `||`, `|` and newlines,
+not inside quotes) by its program and first argument that is not an option.
+A check is `coax`, `cargo`, `go`, `make` and the like with `test`, `check`
+or `mutate`; `pytest` or `ctest`; a script named `*test.sh`, `*tests.sh`,
+`*check.sh` or `test*.sh`; `tool.sh *check`; or a Python test file. Leading
+`VAR=value`, `env`, `time`, `nice`, `timeout N` and `remote.sh run --` are
+read through. Only edits from `edits` make a check stale; a command's own
+writes are not tracked.
+
 ### What the Lab shows
 
 Each step is a row in the Lab transcript: the gateway and model, the

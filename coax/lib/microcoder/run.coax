@@ -144,6 +144,8 @@ McRun :: struct {
   rbuf: [4096] u8;               // this poll's reply bytes
   obuf: [131072] u8; nob: int;   // this poll's command outputs: the tools reuse their buffer per command
   tb: [1] McToolBuffers;
+  start: [64] u8; nstart: int;   // a journaled run's first commit (git rev-parse HEAD), for the commits a failed ending lists
+  work: [8192] u8;               // a failed ending's text: why, the commits made, the files left (tools.coax mc_work_list)
 }
 
 // A command's output kept for this poll's events (cut to what is left).
@@ -166,6 +168,8 @@ mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effo
   r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
   r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;r[0].reads=0;r[0].refused="";
   r[0].seeded = false;
+  r[0].nstart = 0;
+  if r[0].journal.count > 0 { r[0].nstart = mc_git_head(cwd, r[0].profile, r[0].tb[0].out[..], r[0].start[..]).count; }
   if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
 }
 
@@ -243,6 +247,10 @@ mc_run_end :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
   l := r[0].l[..];
   if r[0].journal.count>0 && !r[0].journal[0].flow.chain.failed && r[0].journal[0].flow.phase!=AfPhase.closed {
     if !jf_stop(r[0].journal,mc_ending_name(l[0].ending)) {l[0].ending=MC_END_FAILED;l[0].why="durable stop failed; inspect the journal before retrying";}
+  }
+  // A journaled run that ends failed (a limit, or the journal) lists what it leaves (GitHub #13351).
+  if l[0].ending == MC_END_FAILED && r[0].journal.count > 0 {
+    l[0].why = mc_work_list(r[0].cwd, cast(string) r[0].start[0..<r[0].nstart], r[0].profile, r[0].tb[0].out[..], l[0].why, r[0].work[..]);
   }
   text := ifx l[0].ending == MC_END_NO_CAPACITY || l[0].ending==MC_END_FAILED then l[0].why else l[0].reply;
   return mc_run_put(out, k, McRunEvent.{kind = MR_ENDED, ending = l[0].ending, text = text});

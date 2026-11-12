@@ -63,5 +63,21 @@ main :: () {
   j = mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ar[0].at = 0;
   ok = ok && cl_bool(j, "actions.1.results.0.applied").value && cl_str(ar[..], j, "actions.1.results.1.output") == "print(\"b2\")\n";
+  // what a failed run leaves (GitHub #13351): the commits since its start head, and the files left
+  g := "git -c user.name=smoke -c user.email=smoke@example.invalid";
+  gb: [512] u8; gn := 0;
+  gn = json_raw(gb[..], 0, "git init -q . && git add -A && "); gn = json_raw(gb[..], gn, g); gn = json_raw(gb[..], gn, " commit -qm start");
+  r = mc_run_command(dir, cast(string) gb[0..<gn], 30, b[0].out[..]);
+  hb: [64] u8;
+  head := mc_git_head(dir, "danger-full-access", b[0].out[..], hb[..]);
+  gn = json_raw(gb[..], 0, "echo one > c.swift && "); gn = json_raw(gb[..], gn, g); gn = json_raw(gb[..], gn, " commit -qam 'Run commit one' && echo two > new.txt");
+  r = mc_run_command(dir, cast(string) gb[0..<gn], 30, b[0].out[..]);
+  wb: [8192] u8;
+  w := mc_work_list(dir, head, "danger-full-access", b[0].out[..], "command limit reached", wb[..]);
+  print("work list (start %):\n%\n", head, w);
+  ok = ok && head.count == 40 && ps_count(w, "command limit reached\nCommits this run made (git log):\n") == 1 && ps_count(w, " Run commit one\n") == 1 && ps_count(w, " start") == 0;
+  ok = ok && ps_count(w, "Files left changed or untracked (git status --short):\n?? new.txt") == 1;
+  // outside a git checkout: the reason alone
+  ok = ok && mc_git_head("/", "danger-full-access", b[0].out[..], hb[..]) == "" && mc_work_list("/", "", "danger-full-access", b[0].out[..], "time limit reached", wb[..]) == "time limit reached";
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

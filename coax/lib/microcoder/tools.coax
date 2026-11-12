@@ -279,7 +279,76 @@ mc_run_tools :: (l: [] McLoop, cwd: string, b: [] McToolBuffers) -> int {
   return mc_tools_done(l);
 }
 
+// ---------------------------------------------------------------- what a run leaves
+
+// The commit a run starts from (GitHub #13351): git rev-parse HEAD in cwd, into out; "" outside a
+// git checkout or before its first commit. Read-only, so not journaled as an effect.
+mc_git_head :: (cwd: string, profile: string, o: [] McOutput, out: [] u8) -> string {
+  r := mc_run_command_profile(cwd, "git rev-parse --verify -q HEAD", 10, o, profile);
+  t := r.output;
+  while t.count > 0 && (t[t.count - 1] == '\n' || t[t.count - 1] == ' ') { t = cast(string) t[0..<t.count - 1]; }
+  if r.exit != 0 || t.count < 7 || t.count > out.count { return ""; }
+  for c: t { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return ""; } }
+  for i: 0..<t.count { out[i] = t[i]; }
+  return cast(string) out[0..<t.count];
+}
+
+// s at out[n..], cut with a note when it doesn't fit (room keeps space for what follows).
+mc_work_put :: (out: [] u8, n: int, s: string, room: int) -> int {
+  if n < 0 { return n; }
+  left := out.count - room - n;
+  if s.count <= left { return json_raw(out, n, s); }
+  note := "\n[... cut]";
+  if left < note.count { return n; }
+  k := mc_back(s, left - note.count);
+  m := json_raw(out, n, cast(string) s[0..<k]);
+  return json_raw(out, m, note);
+}
+
+// The ending's text when a run ends failed (a limit, or the journal): why, then the commits the run
+// made and the files it left changed or untracked, so the caller does not take a half-done tree
+// for a result. ok false: that git command failed, and its output says why.
+mc_work_text :: (why: string, commits: string, commits_ok: bool, status: string, status_ok: bool, out: [] u8) -> string {
+  n := mc_work_put(out, 0, why, 2048);
+  n = json_raw(out, n, "\nCommits this run made (git log):");
+  n = mc_work_put(out, n, ifx !commits_ok then " could not be listed: " else ifx commits.count == 0 then " none" else "\n", 1024);
+  n = mc_work_put(out, n, commits, 1024);
+  n = json_raw(out, n, ifx commits.count > 0 && commits[commits.count - 1] == '\n' then "" else "\n");
+  n = json_raw(out, n, "Files left changed or untracked (git status --short):");
+  n = mc_work_put(out, n, ifx !status_ok then " could not be listed: " else ifx status.count == 0 then " none" else "\n", 0);
+  n = mc_work_put(out, n, status, 0);
+  while n > 0 && out[n - 1] == '\n' { n -= 1; }
+  return ifx n < 0 then why else cast(string) out[0..<n];
+}
+
+// mc_work_text from git in cwd: the commits since start (the last 40; all of them when start is
+// ""), and git status. Outside a git checkout, why alone.
+mc_work_list :: (cwd: string, start: string, profile: string, o: [] McOutput, why: string, out: [] u8) -> string {
+  sb: [8192] u8;
+  st := mc_run_command_profile(cwd, "git status --short --untracked-files=all", 10, o, profile);
+  if st.exit != 0 { return why; }
+  ns := ifx st.output.count < sb.count then st.output.count else sb.count;
+  for i: 0..<ns { sb[i] = st.output[i]; }
+  cb: [160] u8;
+  c := json_raw(cb[..], 0, "git log --oneline --no-decorate -n 40");
+  if start.count > 0 { c = json_raw(cb[..], c, " "); c = json_raw(cb[..], c, start); c = json_raw(cb[..], c, "..HEAD"); }
+  if c < 0 { return why; }
+  lg := mc_run_command_profile(cwd, cast(string) cb[0..<c], 10, o, profile);
+  return mc_work_text(why, lg.output, lg.exit == 0, cast(string) sb[0..<ns], true, out);
+}
+
 // ---------------------------------------------------------------- checks
+
+#test "a failed run's text: why, then its commits and the files it left, or none, or why they could not be listed" {
+  b: [8192] u8;
+  #assert mc_work_text("command limit reached: a run has 128 commands and edits", "abc1234 Fix x\ndef5678 Add y\n", true, " M a.c\n?? b.c\n", true, b[..]) == "command limit reached: a run has 128 commands and edits\nCommits this run made (git log):\nabc1234 Fix x\ndef5678 Add y\nFiles left changed or untracked (git status --short):\n M a.c\n?? b.c";
+  #assert mc_work_text("time limit reached: a run has 15 minutes", "", true, "", true, b[..]) == "time limit reached: a run has 15 minutes\nCommits this run made (git log): none\nFiles left changed or untracked (git status --short): none";
+  #assert mc_work_text("w", "fatal: bad revision", false, "", true, b[..]) == "w\nCommits this run made (git log): could not be listed: fatal: bad revision\nFiles left changed or untracked (git status --short): none";
+  // a long status is cut, and the text stays in its buffer with the commits whole
+  big: [20000] u8; for i: 0..<big.count { big[i] = ifx i % 10 == 9 then '\n' else 'x'; }
+  t := mc_work_text("w", "abc1234 Fix x", true, cast(string) big[..], true, b[..]);
+  #assert t.count <= b.count && ps_count(t, "abc1234 Fix x\nFiles left") == 1 && ps_count(t, "[... cut]") == 1;
+}
 
 #test "output keeps a head and a tail and says how much it left out" {
   o: [1] McOutput;
