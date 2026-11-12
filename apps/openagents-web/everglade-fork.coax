@@ -15,6 +15,7 @@
 //       lowgrav    a third of the gravity (the face lifts you by everglade_gravity_lift while you're up)
 // Only typed choices: rule ids from the server, checked against the four this code implements.
 
+#load "../../aethyr/forge/made.coax";   // a fork's body, its answer, fork info and its publish (made.proto): one codec
 FK_RULES :: 4;
 FK_NIGHT :: 0; FK_WAVES :: 1; FK_NODESTROY :: 2; FK_LOWGRAV :: 3;
 FK_RULE_ID :: [FK_RULES] string.["night", "waves", "nodestroy", "lowgrav"];
@@ -204,32 +205,20 @@ fk_status :: (text: string) -> int {
 fk_body :: (text: string) -> string { i := 0; while i < text.count && text[i] != '\n' { i += 1; } return ifx i < text.count then text[i + 1..<text.count] else ""; }
 // What the pane shows: base, title, fork, from SLUG|NAME, maker, name, owner, published, rule ID 0|1 LABEL.
 fk_info :: (s: [] Everglade, body: string) {
+  fi: [1] ForgeForkInfo;
+  if !forge_read_fork_info(fi[..], body) { return; }   // made.proto's fork info (aethyr/forge/made.coax)
   f := s[0].fk[0];
   for r: 0..<FK_RULES { f.has[r] = false; f.on[r] = false; }
-  f.owner = false; f.published = false; f.from_n = 0; f.from_name_n = 0;
-  i := 0;
-  while i < body.count {
-    e := i; while e < body.count && body[e] != '\n' { e += 1; }
-    line := body[i..<e];
-    i = e + 1;
-    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
-    if sp >= line.count { continue; }
-    key := line[0..<sp]; rest := line[sp + 1..<line.count];
-    if key == "name" { f.name_n = fk_word(f.name[..], rest); }
-    else if key == "maker" { f.maker_n = fk_word(f.maker[..], rest); }
-    else if key == "owner" { f.owner = rest == "1"; }
-    else if key == "published" { f.published = rest == "1"; }
-    else if key == "from" {
-      bar := 0; while bar < rest.count && rest[bar] != '|' { bar += 1; }
-      f.from_n = ifx fk_slug_ok(rest[0..<bar]) then fk_put(f.from[..], 0, rest[0..<bar]) else 0;
-      f.from_name_n = ifx bar < rest.count then fk_word(f.from_name[..], rest[bar + 1..<rest.count]) else 0;
-    } else if key == "rule" {
-      a := 0; while a < rest.count && rest[a] != ' ' { a += 1; }
-      r := fk_rule_of(rest[0..<a]);
-      if r < 0 || a + 2 > rest.count { continue; }
-      f.has[r] = true; f.on[r] = rest[a + 1] == '1';
-      f.label_n[r] = ifx a + 3 <= rest.count then fk_word(f.label[r * FK_NAME..<(r + 1) * FK_NAME], rest[a + 3..<rest.count]) else 0;
-    }
+  f.name_n = fk_word(f.name[..], forge_fork_name(fi[..]));
+  f.maker_n = fk_word(f.maker[..], forge_fork_maker(fi[..]));
+  f.owner = fi[0].owner; f.published = fi[0].published;
+  f.from_n = ifx fk_slug_ok(forge_fork_from(fi[..])) then fk_put(f.from[..], 0, forge_fork_from(fi[..])) else 0;
+  f.from_name_n = fk_word(f.from_name[..], forge_fork_from_name(fi[..]));
+  for k: 0..<fi[0].rules_n {
+    r := fk_rule_of(forge_fork_rule_id(fi[..], k));
+    if r < 0 { continue; }
+    f.has[r] = true; f.on[r] = fi[0].rule_on[k];
+    f.label_n[r] = fk_word(f.label[r * FK_NAME..<(r + 1) * FK_NAME], forge_fork_rule_label(fi[..], k));
   }
   f.known = true;
   for r: 0..<FK_RULES { f.pick[r] = f.on[r]; }
@@ -255,16 +244,10 @@ fork_message :: (s: [] Everglade, kind: int, text: string) -> bool {
               else ifx st == 403 then "MAKING WORLDS IS INVITE ONLY FOR NOW" else "NOT FORKED: TRY AGAIN");
     return true;
   }
-  path := "";
-  i := 0;
-  while i < body.count {
-    e := i; while e < body.count && body[e] != '\n' { e += 1; }
-    if e - i > 5 && body[i..<i + 5] == "path " { path = body[i + 5..<e]; }
-    i = e + 1;
-  }
-  if path.count < 9 || (path[0..<8] != "/worlds/" && path[0..<8] != "/realms/") || !fk_slug_ok(path[8..<path.count]) { fk_say(s, "NOT FORKED: TRY AGAIN"); return true; }
+  made: [1] ForgeMade; made[0] = forge_read_made(body);   // made.proto's lines (aethyr/forge/made.coax)
+  if !made[0].ok || made[0].path_n == 0 || !fk_slug_ok(forge_made_slug(made[..])) { fk_say(s, "NOT FORKED: TRY AGAIN"); return true; }
   to: [FK_URL] u8;   // an API from before worlds says /realms/
-  m := fk_put(to[..], 0, "/worlds/"); m = fk_put(to[..], m, path[8..<path.count]);
+  m := fk_put(to[..], 0, "/worlds/"); m = fk_put(to[..], m, forge_made_slug(made[..]));
   fk_go(s, cast(string) to[0..<m]);
   return true;
 }
@@ -293,7 +276,8 @@ fork_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   else if hit == FB_CLOSE { s[0].fk[0].open = false; }
   else if hit == FB_MAKE { fork_it(s); }
   else if hit == FB_PUBLISH && s[0].fk[0].owner && !s[0].fk[0].req_ready && s[0].fk[0].req_what == FK_ASK_NONE {
-    fk_ask(s, FK_ASK_PUBLISH, "/publish", ifx s[0].fk[0].published then "{\"published\":false}" else "{\"published\":true}", true);
+    pb: [32] u8; pn := forge_fork_publish_body(!s[0].fk[0].published, pb[..]);   // made.proto's ForkPublishRequest
+    fk_ask(s, FK_ASK_PUBLISH, "/publish", cast(string) pb[0..<pn], true);
     fk_say(s, ifx s[0].fk[0].published then "TAKING IT OFF THE LIST" else "PUBLISHING");
   }
   else if hit == FB_ORIGINAL && s[0].fk[0].from_n > 0 {
@@ -308,16 +292,10 @@ fork_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
 fork_it :: (s: [] Everglade) {
   if !fk_has(s) { return; }
   if s[0].fk[0].going || s[0].fk[0].req_ready || s[0].fk[0].req_what != FK_ASK_NONE { return; }
-  body: [FK_BODY] u8;
-  n := fk_put(body[..], 0, "{\"rules\":[");
-  first := true;
-  for r: 0..<FK_RULES {
-    if !s[0].fk[0].pick[r] || !s[0].fk[0].has[r] { continue; }
-    if !first { n = fk_put(body[..], n, ","); }
-    n = fk_put(body[..], n, "\""); n = fk_put(body[..], n, FK_RULE_ID[r]); n = fk_put(body[..], n, "\"");
-    first = false;
-  }
-  n = fk_put(body[..], n, "]}");
+  body: [FK_BODY] u8; ids: [FK_RULES] string; k := 0;
+  for r: 0..<FK_RULES { if s[0].fk[0].pick[r] && s[0].fk[0].has[r] { ids[k] = FK_RULE_ID[r]; k += 1; } }
+  n := forge_fork_body(true, ids[0..<k], "", body[..]);   // made.proto's ForkRequest, {"rules":["a","b"]}
+  if n < 0 { return; }
   fk_ask(s, FK_ASK_FORK, "/fork?as=lines", cast(string) body[0..<n], true);
   s[0].fk[0].going = true;
   fk_say(s, "FORKING");

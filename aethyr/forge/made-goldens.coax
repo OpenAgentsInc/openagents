@@ -6,6 +6,8 @@
 //     json_names of MadeReply in proto/descriptors/verse-doc.pb (made.proto);
 //   - a MadeLines answer reads, names its own path and says whether its page was written;
 //   - a fork's body is what the codec writes for its rules and name, and its keys are ForkRequest's;
+//   - a fork pane's lines (fork info) read and are written back the same; a fork's publish body
+//     and answer are the codec's;
 //   - a refusal reads as one (RouteError, ErrorReply), and a lines caller's words are not JSON.
 // It also reads the lines coax/web/api/realm-wire.coax writes (the "lines" goldens of
 // proto/verse/realm-wire-v1alpha1.json), so the route's writer and this reader agree.
@@ -78,6 +80,21 @@ mg_reply :: (g: [] Mg, st: [] D_State, name: string, message: string, reply: str
     _ = mg_need(g, name, "the lines read: a slug, its own path and whether its page was written", m[0].ok && m[0].path_n > 0 && m[0].page_said && forge_made_goes(m[..], buf[..]) > 0);
     return;
   }
+  if message == "ForkInfo" {
+    f: [1] ForgeForkInfo;
+    if !mg_need(g, name, "the lines read as fork info", forge_read_fork_info(f[..], reply)) { return; }
+    w := forge_fork_info_lines(f[..], buf[..]);
+    mg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
+    return;
+  }
+  if message == "ForkPublishReply" {
+    r := forge_read_fork_published(reply);
+    if !mg_need(g, name, "the answer reads as a ForkPublishReply", r.ok) { return; }
+    w := forge_fork_published_json(r.listed, r.published, cast(string) r.vis[0..<r.vis_n], cast(string) r.description[0..<r.description_n], buf[..]);
+    mg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
+    _ = mg_need(g, name, "its keys are ForkPublishReply's", mg_keys(st, "ForkPublishReply", reply));
+    return;
+  }
   if message == "RouteError" || message == "ErrorReply" {
     _ = mg_need(g, name, "the answer reads as a refusal", forge_read_error(reply, e[..]) != "");
     return;
@@ -120,6 +137,13 @@ mg_run :: (text: string, wire: string, st: [] D_State) -> int {
     if !mg_need(g[..], name, "the step has a reply", rn >= 0) { continue; }
     mg_reply(g[..], st, name, message, cast(string) rb[0..<rn]);
     if request == "ForkRequest" && bn >= 0 { mg_request(g[..], st, name, cast(string) bb[0..<bn]); }
+    if request == "ForkPublishRequest" && bn >= 0 {
+      body := cast(string) bb[0..<bn]; pb: [64] u8; pj: [1] Jv; pn: [16] JvNode;
+      if mg_need(g[..], name, "the body is JSON with ForkPublishRequest's keys", jv_parse(pj[..], body, pn[..]) && mg_keys(st, "ForkPublishRequest", body)) {
+        w := forge_fork_publish_body(jv_kind(pj[0], jv_get(pj[0], 0, "published")) == JV_TRUE, pb[..]);
+        mg_same(g[..], name, "the body, written", ifx w < 0 then "" else cast(string) pb[0..<w], body);
+      }
+    }
   }
   // the lines the route writes (realm-wire.coax's goldens), read here
   wn: [8192] JvNode; w: [1] Jv; lines := 0;

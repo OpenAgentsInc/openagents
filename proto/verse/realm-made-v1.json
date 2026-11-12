@@ -1,12 +1,12 @@
 {
- "about": "A realm forked, on the wire (made.proto, GitHub #13250), taken from what the server answers today: seed the realm, make each call under /api/playtest/realms as its owner or a stranger (a key no player has), and the server answers with this status and body. \"message\" names the body: MadeReply (made.proto: SQL's object and the page realms.c adds), MadeLines (the ?as=lines text), RouteError (record.proto), ErrorReply (the API's own refusal) and ErrorWords (a refusal's words alone, for a caller that reads lines). \"request\" names the request's message. aethyr/forge/made-goldens.coax reads every answer and writes every fork's body through aethyr/forge/made.coax; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "about": "A realm forked, on the wire (made.proto, GitHub #13250), taken from what the server answers today: seed the realm, make each call under /api/playtest/realms as its owner or a stranger (a key no player has), and the server answers with this status and body. \"message\" names the body: MadeReply (made.proto: SQL's object and the page realms.c adds), MadeLines (the ?as=lines text), ForkInfo (a fork pane's lines), ForkPublishReply, RouteError (record.proto), ErrorReply (the API's own refusal) and ErrorWords (a refusal's words alone, for a caller that reads lines). \"request\" names the request's message. aethyr/forge/made-goldens.coax reads every answer and writes every fork's body through aethyr/forge/made.coax; coax/web/api/tests/realm_record_checks.coax makes the calls.",
  "schema": "proto/openagents/verse/doc/v1alpha1/made.proto",
  "realm": {
   "slug": "fork-fixture",
   "player_key": "fork-fixture-player-key-0001",
   "stranger_key": "fork-fixture-stranger-key-0002",
   "seed": "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-fork-fixture', encode(sha256(convert_to('fork-fixture-player-key-0001', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-fork-fixture', 'p-fork-fixture', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms) VALUES ('fork-fixture', 'made-fork-fixture', 'Fork Fixture', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"count\":4}]', '{\"fly\":false,\"jump\":true}', 1);",
-  "clean": "CREATE TEMP TABLE ff AS SELECT slug FROM verse.made_realms WHERE forked_from = 'fork-fixture' OR slug = 'fork-fixture'; DELETE FROM verse.realm_publications WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.realm_revisions WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.made_realms WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.worlds WHERE id IN (SELECT 'made-' || slug FROM ff); DELETE FROM verse.players WHERE id = 'p-fork-fixture';"
+  "clean": "CREATE TEMP TABLE ff AS SELECT m.slug FROM verse.made_realms m JOIN verse.worlds w ON w.id = m.world WHERE w.owner_player = 'p-fork-fixture'; DELETE FROM verse.realm_publications WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.realm_revisions WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.made_realms WHERE slug IN (SELECT slug FROM ff); DELETE FROM verse.worlds WHERE owner_player = 'p-fork-fixture'; DELETE FROM verse.players WHERE id = 'p-fork-fixture';"
  },
  "steps": [
   {
@@ -106,6 +106,101 @@
    "reply": "this world can't be forked",
    "message": "ErrorWords",
    "request": "ForkRequest"
+  },
+  {
+   "name": "Everglade's fork pane",
+   "method": "GET",
+   "path": "/everglade/fork",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "base everglade\ntitle Everglade\nfork 0\nmaker OpenAgents\nname Everglade\nowner 0\npublished 0\nrule night 0 Always night\nrule waves 0 Hostile waves\nrule nodestroy 0 No destruction\nrule lowgrav 0 Low gravity\n",
+   "message": "ForkInfo"
+  },
+  {
+   "name": "a made realm has no fork pane",
+   "method": "GET",
+   "path": "/fork-fixture/fork",
+   "as": "owner",
+   "body": "",
+   "status": 404,
+   "reply": "{\"error\":\"this world can't be forked\"}",
+   "message": "ErrorReply"
+  },
+  {
+   "name": "the pane forks Everglade with two rules",
+   "method": "POST",
+   "path": "/everglade/fork",
+   "as": "owner",
+   "body": "{\"rules\":[\"night\",\"waves\"]}",
+   "status": 200,
+   "reply": "{\"base\": \"everglade\", \"from\": \"everglade\", \"name\": \"Everglade Fork\", \"path\": \"/worlds/everglade-fork\", \"slug\": \"everglade-fork\", \"rules\": [\"night\", \"waves\"],\"page\":false}",
+   "message": "MadeReply",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "the CLI forks Everglade with a name, as lines",
+   "method": "POST",
+   "path": "/everglade/fork?as=lines",
+   "as": "owner",
+   "body": "{\"rules\":[],\"name\":\"Doomglade\"}",
+   "status": 200,
+   "reply": "slug doomglade\npath /worlds/doomglade\npage 0\n",
+   "message": "MadeLines",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a rule Everglade has not",
+   "method": "POST",
+   "path": "/everglade/fork",
+   "as": "owner",
+   "body": "{\"rules\":[\"nope\"]}",
+   "status": 400,
+   "reply": "{\"error\": \"not a rule here: nope\"}",
+   "message": "RouteError",
+   "request": "ForkRequest"
+  },
+  {
+   "name": "a fork's own pane",
+   "method": "GET",
+   "path": "/doomglade/fork",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "base everglade\ntitle Everglade\nfork 1\nfrom everglade|Everglade\nmaker OpenAgents\nname Doomglade\nowner 1\npublished 0\nrule night 0 Always night\nrule waves 0 Hostile waves\nrule nodestroy 0 No destruction\nrule lowgrav 0 Low gravity\n",
+   "message": "ForkInfo"
+  },
+  {
+   "name": "its owner lists the fork",
+   "method": "POST",
+   "path": "/doomglade/publish",
+   "as": "owner",
+   "body": "{\"published\":true}",
+   "status": 200,
+   "reply": "{\"listed\": true, \"published\": true, \"visibility\": \"public\", \"description\": \"A fork of Everglade on the Verse by OpenAgents, with the same rules.\"}",
+   "message": "ForkPublishReply",
+   "request": "ForkPublishRequest"
+  },
+  {
+   "name": "the pane after it is listed",
+   "method": "GET",
+   "path": "/doomglade/fork",
+   "as": "owner",
+   "body": "",
+   "status": 200,
+   "reply": "base everglade\ntitle Everglade\nfork 1\nfrom everglade|Everglade\nmaker OpenAgents\nname Doomglade\nowner 1\npublished 1\nrule night 0 Always night\nrule waves 0 Hostile waves\nrule nodestroy 0 No destruction\nrule lowgrav 0 Low gravity\n",
+   "message": "ForkInfo"
+  },
+  {
+   "name": "its owner takes it off the list",
+   "method": "POST",
+   "path": "/doomglade/publish",
+   "as": "owner",
+   "body": "{\"published\":false}",
+   "status": 200,
+   "reply": "{\"listed\": false, \"published\": false, \"visibility\": \"unlisted\", \"description\": \"A fork of Everglade on the Verse by OpenAgents, with the same rules.\"}",
+   "message": "ForkPublishReply",
+   "request": "ForkPublishRequest"
   }
  ]
 }

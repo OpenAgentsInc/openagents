@@ -47,3 +47,27 @@ message MadeReply {
   optional string base = 7 [json_name = "base", (openagents.options.v1alpha1.max_bytes) = 64];
   repeated string rules = 8 [json_name = "rules", (openagents.options.v1alpha1.max_count) = 16];
 }
+
+// A built-in realm's fork pane (docs/verse/realm-fork.md).
+//
+//   GET  /api/playtest/realms/<slug>/fork      text a line each, SQL's:
+//        base SLUG, title TITLE, fork 0|1, from SLUG|NAME (a fork only),
+//        maker MAKER, name NAME, owner 0|1, published 0|1, then
+//        "rule ID 0|1 LABEL" for each rule of the base
+//   POST /api/playtest/realms/<fork>/publish   ForkPublishRequest -> ForkPublishReply
+
+// POST .../<fork>/publish: list the fork (true, the default) or take it off
+// the list, and optionally its one-line description.
+message ForkPublishRequest {
+  optional bool published = 1 [json_name = "published"];
+  optional string description = 2 [json_name = "description"];
+}
+
+// 200 from a fork's publish: whether it is listed now, who sees it (listed
+// is public, off the list is unlisted) and the line its link preview shows.
+message ForkPublishReply {
+  optional bool published = 1 [json_name = "published"];
+  optional string description = 2 [json_name = "description"];
+  optional bool listed = 3 [json_name = "listed"];
+  optional string visibility = 4 [json_name = "visibility"];
+}
