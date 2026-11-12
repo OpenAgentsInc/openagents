@@ -53,7 +53,7 @@ create() {
     gcloud storage buckets create "gs://$bucket" --project "$project" --location "$region" \
       --uniform-bucket-level-access --public-access-prevention --retention-period 7d
     gcloud storage buckets update "gs://$bucket" --versioning
-    printf '{"rule":[{"action":{"type":"Delete"},"condition":{"isLive":false,"daysSinceNoncurrentTime":8}}]}\n' > "${TMPDIR:-/tmp}/oa-relay-lifecycle.json"
+    printf '{"rule":[{"action":{"type":"Delete"},"condition":{"age":8}}]}\n' > "${TMPDIR:-/tmp}/oa-relay-lifecycle.json"
     gcloud storage buckets update "gs://$bucket" --lifecycle-file "${TMPDIR:-/tmp}/oa-relay-lifecycle.json"
     yes y | gcloud storage buckets update "gs://$bucket" --lock-retention-period   # it asks, and --quiet answers no
   fi
@@ -102,7 +102,9 @@ cp=/var/lib/nostr-relay-cp/relay.cp; last=/var/lib/nostr-relay-cp/.pushed
 [ -f "\$cp" ] || exit 0
 if [ -f "\$last" ] && cmp -s "\$cp" "\$last"; then exit 0; fi
 cp "\$cp" "\$last.tmp"
-gcloud storage cp --quiet "\$last.tmp" gs://'"$bucket"'/relay.cp
+# A new object each time: the retention lock keeps every object 7 days, so none
+# can be overwritten; the newest name under relay.cp/ is the current checkpoint.
+gcloud storage cp --quiet "\$last.tmp" gs://'"$bucket"'/relay.cp/\$(date -u +%Y%m%dT%H%M%SZ)
 mv "\$last.tmp" "\$last"
 EOF
 chmod 0755 /usr/local/bin/oa-relay-cp-push
@@ -210,6 +212,12 @@ staging_rust_up() {
   exists g certificate-manager dns-authorizations describe "$sr-auth" || g certificate-manager dns-authorizations create "$sr-auth" --domain relay-staging.openagents.com
   auth_rec="$(g certificate-manager dns-authorizations describe "$sr-auth" --format 'value(dnsResourceRecord.name,dnsResourceRecord.data)')"
   echo "DNS authorization record: $auth_rec"
+  # Certificate Manager's DNS authorization: its CNAME at Cloudflare (removed by staging-rust down)
+  local an ad; read -r an ad <<< "$auth_rec"; an="${an%.}"; ad="${ad%.}"
+  if ! cf GET "/dns_records?type=CNAME&name=$an" | grep -q "\"content\":\"$ad\""; then
+    cf POST /dns_records "{\"type\":\"CNAME\",\"name\":\"$an\",\"content\":\"$ad\",\"proxied\":false,\"ttl\":60}" \
+      | python3 -c 'import sys,json;print("Cloudflare CNAME", json.load(sys.stdin)["result"]["id"])'
+  fi
   exists g certificate-manager certificates describe "$sr-cert" || g certificate-manager certificates create "$sr-cert" \
     --domains relay-staging.openagents.com --dns-authorizations "$sr-auth"
   exists g certificate-manager maps describe "$sr-certmap" || g certificate-manager maps create "$sr-certmap"
@@ -233,6 +241,10 @@ staging_rust_down() {
   g compute url-maps delete "$sr-map" --global --quiet || true
   g compute backend-services delete "$sr-bs" --global --quiet || true
   g compute network-endpoint-groups delete "$sr-neg" --region "$region" --quiet || true
+  local id
+  for id in $(cf GET "/dns_records?type=CNAME&name=_acme-challenge.relay-staging.openagents.com" | python3 -c 'import sys,json;[print(r["id"]) for r in json.load(sys.stdin)["result"]]'); do
+    cf DELETE "/dns_records/$id" >/dev/null && echo "removed Cloudflare CNAME $id"
+  done
 }
 
 case "${1:-}" in

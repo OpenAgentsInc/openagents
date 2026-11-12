@@ -17,6 +17,14 @@ Coax), so a bug in the Coax client can't hide the same bug in the relay.
       NIP-01 object a line. Prints lines, SHA-256 and the newest created_at.
   relay_live_cutover.py ids URL OUT.txt
       The sorted ids an anonymous reader gets from URL (ws:// or wss://).
+  relay_live_cutover.py pages [OTHER_URL] --url URL
+      The website's live subscriptions (AUTH, REQ, EOSE) through URL, compared
+      with OTHER_URL's answers when given.
+  relay_live_cutover.py rw --url URL
+      NIP-11, AUTH, a 10-minute note written and read back through URL.
+  relay_live_cutover.py publish EXPORT.jsonl --url URL
+      Each line sent as an EVENT on one NIP-42 connection (AUTH_URL names
+      the relay's URL): the cutover's catch-up of writes since the export.
   relay_live_cutover.py shadow LOCAL SECONDS LOG.jsonl [--url ...]
       LOCAL is a port on 127.0.0.1 or the Coax relay's ws:// or wss:// URL;
       AUTH_URL (environment) is the URL its NIP-42 answers name.
@@ -210,7 +218,12 @@ class Conn:
         self.send(['REQ', sub, flt])
         out = []
         while True:
-            m = self.recv()
+            # 60 s: the live relay can take longer than 20 s on a page of large
+            # events, and an EOSE or CLOSED only ends this REQ when it names
+            # this sub (a late answer to an earlier one must not end it).
+            m = self.recv(timeout=60)
+            if isinstance(m, list) and m[0] in ('EOSE', 'CLOSED') and len(m) > 1 and m[1] != sub:
+                continue
             if m is None or m[0] in ('EOSE', 'CLOSED'):
                 if m is not None and m[0] == 'EOSE':
                     self.send(['CLOSE', sub])
@@ -446,6 +459,124 @@ def shadow(local, seconds, log_path, url, period=300):
     print('shadow %ds %s' % (seconds, json.dumps(stats)))
 
 
+def rw(url, auth_url):
+    """One read and write check through a name (the rollback rehearsal and the
+    cutover's checks): NIP-11, then NIP-42 AUTH, a kind 1 note that expires in
+    10 minutes (NIP-40, so neither relay keeps it), its OK, and a REQ by its id
+    that must return it. Prints the relay's name and each step."""
+    u = urllib.parse.urlparse(url)
+    s = socket.create_connection((u.hostname, 443 if u.scheme == 'wss' else (u.port or 80)), timeout=15)
+    if u.scheme == 'wss':
+        s = ssl.create_default_context().wrap_socket(s, server_hostname=u.hostname)
+    s.sendall(('GET / HTTP/1.1\r\nHost: %s\r\nAccept: application/nostr+json\r\nConnection: close\r\n\r\n' % u.hostname).encode())
+    body = b''
+    while True:
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        body += chunk
+    s.close()
+    info = json.loads(body.split(b'\r\n\r\n', 1)[1].decode(errors='replace').strip() or '{}')
+    print('nip11 name=%r nips=%s' % (info.get('name'), info.get('supported_nips')), flush=True)
+    w = Ws(url)
+    ok_auth = w.auth(auth_url)
+    now = int(time.time())
+    e = signed(1, [['expiration', str(now + 600)], ['t', 'oa-relay-rehearsal']], 'relay rollback rehearsal (#13361)', now)
+    w.send(['EVENT', e])
+    ok = w.recv(timeout=20)
+    while isinstance(ok, list) and ok[0] != 'OK':
+        ok = w.recv(timeout=20)
+    got, _ = Ws(url).req('rw', {'ids': [e['id']]})
+    good = bool(ok_auth and isinstance(ok, list) and ok[2] and any(x['id'] == e['id'] for x in got))
+    print('auth %s, write %s, read back %d: %s' % (ok_auth, ok, len(got), 'ok' if good else 'FAILED'), flush=True)
+    if not good:
+        sys.exit(1)
+
+
+def pages(url, other=None):
+    """The website's live subscriptions through url (landing-nostr.coax's
+    filter shapes, chapter 103's post-cutover check): the AUTH challenge a
+    page receives on connect, then for each public project its repository
+    (30617 by d), project and status (30621, 30623 by d), issues (1621 by a),
+    and the issues' comments (1111 by E) and statuses (1630 to 1633 by e), each
+    answered and ended with EOSE. With other, the same REQs go there too and
+    each answer's ids must match (the fallback, during the first hour)."""
+    w = Ws(url)
+    for _ in range(10):
+        if w.challenge:
+            break
+        w.recv(timeout=3)
+    print('AUTH challenge on connect: %s' % ('yes' if w.challenge else 'NO'), flush=True)
+    bad = 0 if w.challenge else 1
+    projects, _ = w.req('p', {'kinds': [30621], 'limit': 127})
+    o = Ws(other) if other else None
+    n = 0
+    for p in projects:
+        d = next((t[1] for t in p['tags'] if t and t[0] == 'd' and len(t) > 1), '')
+        flts = [{'kinds': [30617], 'authors': [p['pubkey']], '#d': [d]},
+                {'kinds': [30621, 30623], 'authors': [p['pubkey']], '#d': [d]},
+                {'kinds': [1621], '#a': ['30621:%s:%s' % (p['pubkey'], d)], 'limit': 127}]
+        issues = []
+        for i, flt in enumerate(flts):
+            got, end = w.req('q%d' % i, flt)
+            n += 1
+            if not (isinstance(end, list) and end[0] == 'EOSE'):
+                bad += 1; print('no EOSE for %s %s: %s' % (d, flt, end), flush=True); continue
+            if i == 2:
+                issues = [e['id'] for e in got][:50]
+            if o:
+                theirs, _ = o.req('q%d' % i, flt)
+                if sorted(e['id'] for e in got) != sorted(e['id'] for e in theirs):
+                    bad += 1; print('differs for %s %s: %d here, %d there' % (d, flt, len(got), len(theirs)), flush=True)
+        if issues:
+            for i, flt in enumerate([{'kinds': [1111], '#E': issues}, {'kinds': [1630, 1631, 1632, 1633], '#e': issues}]):
+                got, end = w.req('c%d' % i, flt)
+                n += 1
+                if not (isinstance(end, list) and end[0] == 'EOSE'):
+                    bad += 1; print('no EOSE for %s comments/statuses: %s' % (d, end), flush=True)
+                elif o:
+                    theirs, _ = o.req('c%d' % i, flt)
+                    if sorted(e['id'] for e in got) != sorted(e['id'] for e in theirs):
+                        bad += 1; print('differs for %s %s: %d here, %d there' % (d, flt['kinds'], len(got), len(theirs)), flush=True)
+    print('pages: %d projects, %d REQs, %s' % (len(projects), n, 'ok' if not bad else '%d FAILED' % bad), flush=True)
+    if bad:
+        sys.exit(1)
+
+
+def publish(path, url, auth_url):
+    """Every line of a JSON-lines export sent as an EVENT to url over one
+    NIP-42-authenticated connection (the Coax relay takes writes from an
+    authenticated connection whatever the author): the cutover's catch-up of
+    the writes the Rust relay took after the export, private kinds included,
+    which no subscription can mirror. Counts each OK: stored, duplicate, or
+    refused with its reason."""
+    w = Ws(url)
+    if not w.auth(auth_url):
+        raise SystemExit('the relay refused NIP-42')
+    stats, reasons = {'lines': 0, 'stored': 0, 'duplicate': 0, 'refused': 0}, {}
+    for raw in open(path, 'rb'):
+        e = json.loads(raw)
+        stats['lines'] += 1
+        w.send(['EVENT', e])
+        ok = w.recv(timeout=20)
+        while isinstance(ok, list) and not (ok[0] == 'OK' and ok[1] == e['id']):
+            ok = w.recv(timeout=20)
+        if not isinstance(ok, list):
+            raise SystemExit('no OK for %s' % e['id'])
+        msg = str(ok[3])
+        if msg.startswith('duplicate:'):
+            stats['duplicate'] += 1
+        elif ok[2]:
+            stats['stored'] += 1
+        else:
+            stats['refused'] += 1
+            r = msg.split(':')[0]
+            reasons[r] = reasons.get(r, 0) + 1
+            print('refused %s kind %d: %s' % (e['id'], e['kind'], msg), flush=True)
+        time.sleep(0.012)   # under 6000 a minute
+    print('publish %s' % json.dumps({'stats': stats, 'reasons': reasons}))
+
+
 def main():
     a = sys.argv[1:]
     url = LIVE
@@ -457,6 +588,12 @@ def main():
         export(a[1], url)
     elif a[:1] == ['ids']:
         ids(a[1], a[2])
+    elif a[:1] == ['pages']:
+        pages(url, a[1] if len(a) > 1 else None)
+    elif a[:1] == ['rw']:
+        rw(url, os.environ.get('AUTH_URL', url))
+    elif a[:1] == ['publish']:
+        publish(a[1], url, os.environ.get('AUTH_URL', url))
     elif a[:1] == ['shadow']:
         period = int(os.environ.get('PERIOD', '300'))
         shadow(a[1], int(a[2]), a[3], url, period)
