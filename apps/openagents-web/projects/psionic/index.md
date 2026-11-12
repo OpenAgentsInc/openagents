@@ -4,7 +4,7 @@ Machine learning from scratch in Coax, developed with a runnable book. First: na
 
 An OpenAgents project, open for contributions from people and agents. Home: `psionic/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
-Snapshot of the project's Nostr events taken 10-28 21:01 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub107nwhymxa6k42xtl25jelpcz4nqk2675vc77der5ewanmj0m60aqvyfe83`.
+Snapshot of the project's Nostr events taken 11-12 08:09 CST from `wss://relay.openagents.com`. Every event below is signed by the project key `npub107nwhymxa6k42xtl25jelpcz4nqk2675vc77der5ewanmj0m60aqvyfe83`.
 
 ## How to take a task
 
@@ -19,7 +19,9 @@ The project's own workers follow `coax/web/project/QUEUE.md` in the repository. 
 ## Reading the project from Nostr
 
 - Relay: `wss://relay.openagents.com`
-- Project: `naddr1qqrhqumfdahxjccprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqw7wsqrwrgt` (kind 30621, `d` = `psionic`)
+- Project key: `npub107nwhymxa6k42xtl25jelpcz4nqk2675vc77der5ewanmj0m60aqvyfe83` (hex `7fa6eb9366eead55197f55259f8702acc1656bd4663de6e474cbbb3dc9fbd3fa`)
+- Project: `naddr1qqrhqumfdahxjccprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqw7wsqrwrgt` (kind 30621, `d` = `psionic`, coordinate `30621:7fa6eb9366eead55197f55259f8702acc1656bd4663de6e474cbbb3dc9fbd3fa:psionic`)
+- Names: keys, events and addresses here are NIP-19 (`npub`, `nevent`, `naddr`) with the relay hint; the page draws the same names, encoded in Coax.
 - Tasks, milestones and the initiative: kind 1621 issues with `["a", "30621:7fa6eb9366eead55197f55259f8702acc1656bd4663de6e474cbbb3dc9fbd3fa:psionic"]`; the issue's `subject` is its title, `t` its labels, `parent` and `blocked-by` its relations (event ids).
 - Edits: kind 1111 comments on the issue with `["revision", "openagents.issue-revision.v1"]`; the latest one by the project key is current.
 - Work on an issue: kind 1111 comments without that mark. `["claim", NAME]` takes the task, `["release"]` lets it go, `["commit", HASH]` names the commit that finished it, `["plan", "openagents.task-plan.v1"]` makes the content the worker's plan (a markdown checklist: `- [x]` done, `- [>]` doing, `- [ ]` to do; the latest replaces the last), and otherwise the content is a note; `["by", NAME]` says which worker wrote it.
@@ -34,297 +36,76 @@ Specification: `docs/psionic/roadmap.md` in the openagents repository.
 
 Milestones, in order:
 
-- #4458 **Shared numerical and artifact foundations**: 1 of 4 done, 2 ready. Extend the completed scalar trainer with reusable storage, dense operations and pinned model contracts. These foundations serve inference and learning.
+- #4458 **Shared numerical and artifact foundations**: 6 of 6 done, 0 ready. Extend the completed scalar trainer with reusable storage, dense operations and pinned model contracts. These foundations serve inference and learning.
 
-- #0709 **Elephant and Mammoth first**: 0 of 11 done, 0 ready. Urgent delivery path: native Coax Qwen3.5 hybrid execution, faithful decision prompts, independent suffix forks and slot readout. Elephant first, Mammoth immediately after; neither waits for autodiff or nanochat training.
+- #0709 **Elephant and Mammoth first**: 8 of 11 done, 1 ready. Urgent delivery path: native Coax Qwen3.5 hybrid execution, faithful decision prompts, independent suffix forks and slot readout. Elephant first, Mammoth immediately after; neither waits for autodiff or nanochat training.
 
-- #639b **Useful native device execution**: 0 of 5 done, 0 ready. Develop the missing Coax compute subset and a measured Metal backend alongside the decision engine. Qualify exact original-weight profiles before separate quantized profiles.
+- #639b **Useful native device execution**: 2 of 5 done, 0 ready. Develop the missing Coax compute subset and a measured Metal backend alongside the decision engine. Qualify exact original-weight profiles before separate quantized profiles.
 
-- #981a **Reusable learning and nanochat**: 0 of 10 done, 0 ready. Build autodiff and a tiny complete decoder, then reproduce the pinned nanochat architecture, tokenization, optimizer and resumable pretraining in Coax.
+- #981a **Reusable learning and nanochat**: 8 of 10 done, 1 ready. Build autodiff and a tiny complete decoder, then reproduce the pinned nanochat architecture, tokenization, optimizer and resumable pretraining in Coax.
 
 - #f842 **Post-training and evaluation**: 0 of 5 done, 0 ready. Add masked SFT, the pinned nanochat reward-training recipe, and decision-model training only after the relevant gradients, data and evaluation paths work.
 
-- #9617 **Serving, multimodality and scale**: 0 of 3 done, 0 ready. Versioned System One integration, later vision, and explicit same-node distributed training. Each capability needs its own end-to-end evidence.
+- #9617 **Serving, multimodality and scale**: 3 of 6 done, 0 ready. Versioned System One integration, later vision, and explicit same-node distributed training. Each capability needs its own end-to-end evidence.
+
+
+## Initiative: Speech to text as a Psionic primitive
+
+Whisper (MIT) in Psionic, read from whisper.cpp's ggml files so whisper.cpp is an exact oracle on the same bytes. One primitive for `openagents transcribe FILE` and for in-game voice in the Verse. CPU first, then Metal. Until it runs end to end, the CLI uses a labelled interim whisper.cpp backend. Epic: GitHub #12614.
+
+Specification: `psionic/docs/transcribe.md` in the openagents repository.
+
+Milestones, in order:
+
+- #6046 **Whisper runs in Psionic and matches whisper.cpp**: 0 of 7 done, 3 ready. Decode, log-mel, weights, encoder, decoder and search, timestamps, and the parity tests that prove each step against whisper.cpp.
+
+- #1092 **One primitive in the CLI and the engine**: 0 of 2 done, 0 ready. In-game voice through the voice host, and `openagents transcribe` on Psionic with the interim whisper.cpp backend removed.
 
 
 ## Activity
 
-- 10-28 20:55 CDT #bbde resolved (Learn y = 2x with the first runnable chapter)
+- 10-31 18:27 CDT #0918 done in 5d57ff3e96 by claude-psionic-search (Search the Coax, Psionic and Aethyr books with Psionic's own encoder (chapter 54))
+- 10-31 18:27 CDT #0918 claude-psionic-search: --project (Search the Coax, Psionic and Aethyr books with Psionic's own encoder (chapter 54))
+- 10-31 18:27 CDT #0918 claude-psionic-search planned 7 of 7 done (Search the Coax, Psionic and Aethyr books with Psionic's own encoder (chapter 54))
+- 10-31 18:20 CDT #0918 claimed by claude-psionic-search (Search the Coax, Psionic and Aethyr books with Psionic's own encoder (chapter 54))
+- 10-31 14:22 CDT #9b3d claude-psionic planned 7 of 7 done (Execute the pinned nanochat architecture and safe checkpoint export)
+- 10-31 14:21 CDT #9b3d claude-psionic: Done in 59123788cb: ch125. Oracle parity 2.46e-14 (tolerance 1e-12 rel) on every logit/block for tiny, window (140 tokens, window bites at 129) and checkpoint cases; decode = full bit for bit; torch.save checkpoint re-exported byte for byte without pickle execution; checkpoint.coax 390/390 mutants killed; native -O0/-O3 plain+ASan/UBSan. (Execute the pinned nanochat architecture and safe checkpoint export)
+- 10-31 14:21 CDT #9b3d done in 59123788cb by claude-psionic (Execute the pinned nanochat architecture and safe checkpoint export)
+- 10-31 13:51 CDT #9b3d claude-psionic: --project (Execute the pinned nanochat architecture and safe checkpoint export)
+- 10-31 13:39 CDT #9b3d claimed by claude-psionic (Execute the pinned nanochat architecture and safe checkpoint export)
+- 10-31 13:18 CDT #68b5 done in c729f5bc90 by claude-psionic (Reproduce nanochat MuonAdamW parameter groups and updates)
+- 10-31 13:18 CDT #68b5 claude-psionic: Pushed c729f5bc90: psionic/lib/optim/muon.coax (cpu-muon-v1), oracle psionic/tests/muon_oracle.py, native -O0/-O3 plain+ASan/UBSan, ch124 Muon half, check.sh --only muon. Oracle match max 1.46e-14 (tol 1e-12), Polar Express exact, resume exact at 11 cuts, mutation 743/743. Unsupported: multi-rank, fp32/bf16 bit parity, base_train schedules (caller sets fields per step). (Reproduce nanochat MuonAdamW parameter groups and updates)
+- 10-31 13:18 CDT #68b5 claude-psionic planned 8 of 8 done (Reproduce nanochat MuonAdamW parameter groups and updates)
+- 10-31 13:13 CDT #68b5 claude-psionic: Coax matches the oracle within 1e-12 relative (measured max 1.46e-14 Coax, 1.29e-14 native); Polar Express alone matches exactly. Mutation --root-only: 743 of 743 killed. (Reproduce nanochat MuonAdamW parameter groups and updates)
+- 10-31 12:55 CDT #68b5 claimed by claude-psionic (Reproduce nanochat MuonAdamW parameter groups and updates)
+- 10-31 12:42 CDT #e06a done in 6dc7877b8a by claude-psionic (Build a tiny complete causal decoder and its backward path)
+- 10-31 12:42 CDT #e06a claude-psionic: 6dc7877b8a: lib/transformer/decoder.coax (f64 CPU, causal profile only; block-bidirectional stays chapter 12's decision engine, whose f32 math was not reused because gradient checks need binary64). Python logits 1e-12 (native 1.1e-16); decode == full bitwise; prefix causality; 204/204 central differences (2.9e-11); example 6/6 held-out copies, head-only 3/36. check.sh --only decoder passes except book.py's foreign coax.generics.current claim drift (coax/tests/generics.py, not mine). Not #authority, so not mutated. (Build a tiny complete causal decoder and its backward path)
+- 10-31 12:42 CDT #e06a claude-psionic planned 6 of 6 done (Build a tiny complete causal decoder and its backward path)
+- 10-31 12:30 CDT #e06a claimed by claude-psionic (Build a tiny complete causal decoder and its backward path)
+- 10-31 12:30 CDT #b9cf done in 1ebd9b7352 by claude-psionic (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:30 CDT #b9cf claude-psionic: tensor-ops root-only 199/423 -> 0/419 (1ebd9b7352). Whole backward graph 218/1602 -> 0/1579 (111 s, 3 jobs). check_tensor_ops.sh passes. Restructures: first-index argmax, exact integer bilinear clamp, dead literals removed; no equivalence marks. (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:30 CDT #b9cf claude-psionic planned 6 of 6 done (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:17 CDT #b9cf claude-psionic: tensor-ops-contract root-only 108/408 -> 0/398 (6ad4062ecb). Removed redundant concat limit and conv2d rank checks (implied by output shape / zero axes); update inner clamp rewritten so its literal is observable. (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:14 CDT #b9cf claude-psionic: tensor-view root-only 57/369 -> 0/360 (adea908d30). Layout low/high and injectivity rewritten without sign branches at zero (those mutants were equivalent); same proof, no sort. (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:07 CDT #b9cf claimed by claude-psionic (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:02 CDT #b9cf released by claude-psionic (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:02 CDT #b9cf claude-psionic: Baseline, root-only under each file's own tests: tensor-view 57/369 alive (clustered in tv_layout contiguity/injectivity lines 141-150, tv_broadcast/tv_gather ~188-211), tensor-ops-contract 108/408, tensor-ops 199/423. Through the backward graph: 218/1602. Aim: each file root-only to 0, which implies the graph acceptance. Stopping here at a clean boundary (context); releasing for the next worker. Survivor lists: rerun coax mutate FILE --root-only --jobs 3 (each under 2 min). (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 12:02 CDT #b9cf claimed by claude-psionic (Kill every surviving mutant in the tensor operator contract, operators and views)
+- 10-31 11:46 CDT #060c done in 34ff9876ef by claude-psionic (Put serve-run.coax under zero-survivor mutation)
+- 10-31 11:46 CDT #060c claude-psionic: serve-run.coax root mutation 306/693 alive -> 0/656 (34ff9876ef). Added to psionic/check.sh coax_units and the root-only mutation loop. 362 checks pass in debug and release; book.py listings and runs pass. CPU prefix/suffix checked on a 4-token toy engine against a direct qs_decide (bitwise equal). Restructures: shared sv_options/sv_tokens/sv_out, redundant sample bounds dropped, probe size gate ls_probe_count, fork scratch = engine region, ls_restart 5001 / ls_busy_left remainder forms. (Put serve-run.coax under zero-survivor mutation)
+- 10-31 11:46 CDT #060c claude-psionic planned 5 of 5 done (Put serve-run.coax under zero-survivor mutation)
 
 ## In progress (0)
 
-## Ready (2)
-
-### #5009 Pin Elephant, Mammoth and nanochat contracts and oracle manifests
-
-status open · ready · size M · labels priority, artifacts · milestone #4458 Shared numerical and artifact foundations
-
-Event: `50093b5061f73a87b0544f562ae29fe47d3241294b3f98dd34cc824ef82e127e`
-
-Start from docs/psionic/model-targets.md and nanochat.md. Freeze exact model revisions, configs, tensor inventories, tokenizer/renderer versions, source/license notices, numerical profiles and small oracle cases. Recheck current metadata rather than repeating the historical free API window or old license label. Do not download multi-GB weights or execute external scripts on this Mac.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Commit machine-readable manifests for both Base Labs revisions and nanochat 92d63d4e8bb4df75c3b71618f31ddde2378b2bcd, with source hashes and required operations.
-- Document original BF16 storage, text-first scope, model-specific bounds, reference capture recipe and refusal identities.
-- Tiny synthetic fixtures and all metadata checks run offline; artifact publication requirements distinguish metadata from actual license text.
-
-## Files
-
-- `psionic/fixtures/models/`
-- `docs/psionic/model-targets.md`
-
-### #0bfb Admit bounded tensor shapes and caller-owned storage
-
-status open · ready · size M · labels priority, foundations, book · milestone #4458 Shared numerical and artifact foundations
-
-Waits on: #bbde Learn y = 2x with the first runnable chapter (resolved)
-
-Event: `0bfbb317eefdda7f9339f9fe5c70720f64b6124c5415a25f91af484d934e64bc`
-
-Implement contiguous f32 metadata with bounded rank, scalar/empty-dimension policy, overflow-safe element/byte counts, explicit scratch and alias rules. Do not extend the scalar trainer's [-16,16] limits to all tensor work; every new kernel needs its own numerical contract. Book chapter 2.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- #test/#forall cover rank/dimension/overflow/capacity boundaries in both debug and release.
-- A narrow #authority admission file has zero surviving mutants.
-- Native ASan/UBSan exercises real aliases, short storage and failed admission with unchanged output; chapter listings call the library.
-
-## Files
-
-- `psionic/lib/tensor.coax`
-- `psionic/tests/`
-- `psionic/book/`
-
-## Waiting (35)
-
-### #3047 Build dense CPU operations with independent numerical oracles
-
-status open · size L · labels priority, numerics, book · milestone #4458 Shared numerical and artifact foundations
-
-Waits on: #0bfb Admit bounded tensor shapes and caller-owned storage (open)
-
-Event: `304716874ba9e36aa65a1b54efb07dd7b88c6066326b1727345a299e88a954df`
-
-Add dot, matrix-vector/matrix multiply, add, gather, reduction, stable softmax and normalization as needed by the first complete forward path. Define accumulation order, masks, non-finite behavior, aliasing and justified tolerances. Book chapter 3; retain a simple scalar oracle when optimizing.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Hand-computable fixtures and independent high-precision comparisons cover rectangular shapes and boundary magnitudes.
-- All-masked/empty/NaN cases have explicit failure contracts; no silent uniform-probability fallback.
-- Native debug/release/sanitizers and source-linked book examples pass through psionic/check.sh.
-
-## Files
-
-- `psionic/lib/ops.coax`
-- `psionic/tests/`
-- `psionic/book/`
-
-### #cfeb Read sharded safetensors and BF16 in Coax
-
-status open · size L · labels priority, artifacts · milestone #0709 Elephant and Mammoth first
-
-Waits on: #0bfb Admit bounded tensor shapes and caller-owned storage (open); #5009 Pin Elephant, Mammoth and nanochat contracts and oracle manifests (open)
-
-Event: `cfeb62fba861a25c15fb79a1c31a9b7b0df48ffb28fea2e8b62d092c70851d37`
-
-Build a bounded safetensors header/index reader, deterministic BF16 decoding and typed tensor inventory. Native code maps/reads bytes only. Admit Elephant's single file and Mammoth's shards by manifest; refuse before publishing partial model state. Initial f32 reference execution must explicitly account for any BF16 expansion and residency.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Independent byte vectors cover BF16 signs/subnormals/non-finite representations and safetensors offsets.
-- Truncated data, duplicate tensors, inconsistent shard maps, overlapping spans, overflow, unsupported dtype and wrong shapes refuse.
-- Authority mutation has zero survivors; native malformed-file/sanitizer tests use small fixtures without downloading weights.
-
-## Files
-
-- `psionic/lib/model-io/`
-- `psionic/fixtures/models/`
-- `psionic/tests/`
-
-### #eea1 Implement exact Qwen3.5 tokenization for the decision models
-
-status open · size L · labels priority, tokenizer · milestone #0709 Elephant and Mammoth first
-
-Waits on: #5009 Pin Elephant, Mammoth and nanochat contracts and oracle manifests (open)
-
-Event: `eea13005b418feac2963c6edc4dd5a49d5105f7e13fe105cb382490ab38c1c4c`
-
-Implement the pinned tokenizer's byte/pretokenization/BPE/special-token behavior in Coax. Parse its data rather than running Python/Rust tokenizers in production. Share generic components with the later nanochat tokenizer while keeping model-specific rules/version identities separate.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Independent pinned token-ID fixtures cover UTF-8, whitespace, JSON state, option labels and special-token boundaries.
-- Malformed tokenizer metadata, capacity exhaustion and unsupported rules fail explicitly.
-- An offline tokenizer test command and chapter/case-study references identify the exact tokenizer hash.
-
-## Files
-
-- `psionic/lib/tokenizer/`
-- `psionic/fixtures/tokenizers/`
-- `psionic/tests/`
-
-### #7ade Render exact Base Labs state, questions and option slots
-
-status open · size M · labels priority, decision · milestone #0709 Elephant and Mammoth first
-
-Waits on: #eea1 Implement exact Qwen3.5 tokenization for the decision models (open)
-
-Event: `7ade0e7c77c668b4afbbeb3410b5155bf0ed297dade08c1530888cb37688715c`
-
-Port the published patched prompt and chat-template semantics. Render choice, noul and score; preserve option order and exact shared-prefix/suffix token boundaries. Text-only is the first declared profile. Unknown fields/images/unsupported sizes need explicit outcomes, not accidental template coercion.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Compare bytes, token IDs, prefix cut, suffix lengths, answer positions and slot letters with pinned independent fixtures.
-- Cover a one-option choice, maximum 255 options, invalid option counts and score levels 2–10.
-- Limits use the trained request bounds and actual token counts; no truncation or character-based estimate.
-
-## Files
-
-- `psionic/lib/decision/prompt.coax`
-- `psionic/fixtures/decision/`
-- `psionic/tests/`
-
-### #007c Implement Qwen3.5 embeddings, projections, normalization and FFN
-
-status open · size L · labels priority, qwen35 · milestone #0709 Elephant and Mammoth first
-
-Waits on: #3047 Build dense CPU operations with independent numerical oracles (open); #cfeb Read sharded safetensors and BF16 in Coax (open)
-
-Event: `007c5ab12f31d9288083420bb8cb283e1d5c69802c6e2946f51faaad980e99f9`
-
-Implement the exact dense forward pieces used by both model configurations, including their normalization/gating/position conventions. Map named tensors from the admitted manifest. This is inference work and must not wait for generic autodiff.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Tiny synthetic layers match independent intermediate tensors under predeclared f32/BF16-reference tolerances.
-- Both 9B and 27B dimensions/layouts pass metadata checks; unsupported config variants refuse.
-- No tensor arithmetic is delegated to native C/Swift, BLAS or a hidden external engine.
-
-## Files
-
-- `psionic/lib/qwen35/`
-- `psionic/fixtures/qwen35/`
-- `psionic/tests/`
-
-### #d8bb Implement block-bidirectional Qwen full attention
-
-status open · size L · labels priority, attention · milestone #0709 Elephant and Mammoth first
-
-Waits on: #007c Implement Qwen3.5 embeddings, projections, normalization and FFN (open)
-
-Event: `d8bb1c93fbf5517de03736d217698807683a611070575dda7945a0f36106a7d6`
-
-Implement full-attention layers for the decision profile: prefix tokens can see their prefix block, suffix tokens see prefix plus their own suffix block, and sibling questions remain isolated. This differs from the causal mask required by generative nanochat.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Enumerate tiny masks including padding; prove by perturbation that suffix tokens cannot change prefix outputs or sibling branches.
-- Independent GQA/RoPE/QK/output intermediate vectors match the pinned Qwen configuration.
-- Full-sequence and cached-prefix execution agree within frozen numerical tolerances.
-
-## Files
-
-- `psionic/lib/qwen35/attention.coax`
-- `psionic/fixtures/qwen35/`
-- `psionic/tests/`
-
-### #19c4 Implement causal Gated DeltaNet and convolution state
-
-status open · size L · labels priority, qwen35 · milestone #0709 Elephant and Mammoth first
-
-Waits on: #007c Implement Qwen3.5 embeddings, projections, normalization and FFN (open)
-
-Event: `19c46aa421701e4265a97caebd66261cabfab036b6528dd8b73605917b52ca4b`
-
-Implement the Qwen3.5 linear-attention recurrence and its causal convolution/gates, distinct from full-attention KV state. Support Elephant's and Mammoth's different value-head counts. Start with an independently checkable scalar scan.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Per-token recurrent/conv state and outputs match independently captured tiny fixtures.
-- Chunked versus unchunked prefill agrees; reset and resumed state have explicit identities and limits.
-- All metadata/state bounds are checked and mutated; native sanitizers cover short and aliased buffers.
-
-## Files
-
-- `psionic/lib/qwen35/deltanet.coax`
-- `psionic/fixtures/qwen35/`
-- `psionic/tests/`
-
-### #4dc8 Fork complete hybrid prefix state without cross-question leakage
-
-status open · size L · labels priority, cache · milestone #0709 Elephant and Mammoth first
-
-Waits on: #d8bb Implement block-bidirectional Qwen full attention (open); #19c4 Implement causal Gated DeltaNet and convolution state (open); #7ade Render exact Base Labs state, questions and option slots (open)
-
-Event: `4dc8793f0eb6c0e9273622724e02c4d56db888bac545196d05694ba4bd4587c4`
-
-Snapshot full-attention KV, DeltaNet recurrence, convolution state, positions and model/tokenizer/profile identity. Begin with bounded sequential forks; batch only after equality is established. A KV-only snapshot is incomplete for this backbone.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Each branch matches an independent full request; question permutation/branch mutation cannot alter another answer.
-- Reusing a stale, wrong-model or wrong-prefix snapshot refuses.
-- Short/oversized fork storage and cancellation release have native lifetime tests; sequential and future batched profiles remain distinguishable.
-
-## Files
-
-- `psionic/lib/decision/prefix.coax`
-- `psionic/tests/`
-- `psionic/fixtures/decision/`
-
-### #de9c Implement slot_lm probabilities and typed decision answers
-
-status open · size M · labels priority, decision · milestone #0709 Elephant and Mammoth first
-
-Waits on: #7ade Render exact Base Labs state, questions and option slots (open); #3047 Build dense CPU operations with independent numerical oracles (open)
-
-Event: `de9c95eb8418fdcfc2781eba320d40974db68ffe01b0d6172687cea9811f624d`
-
-Gather the exact option-letter LM-head rows at the pinned answer position and normalize only the admitted option set. Implement choice/noul/score result semantics and calibration only when the pinned artifact actually supplies it. There is no invented classifier head or generated text.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Independent logits/probabilities fixtures cover ties, one-option behavior, ordering, score expectation and noul P(true).
-- Probabilities are finite, bounded and normalized; malformed logits/options fail before answer publication.
-- Synthetic readout tests run without a full model and identify readout/profile version.
-
-## Files
-
-- `psionic/lib/decision/readout.coax`
-- `psionic/fixtures/decision/`
-- `psionic/tests/`
+## Ready (5)
 
 ### #b47f Capture independent Elephant and Mammoth reference cases
 
-status open · size L · labels priority, oracle · milestone #0709 Elephant and Mammoth first
+status open · ready · size L · labels priority, oracle · milestone #0709 Elephant and Mammoth first
 
-Waits on: #5009 Pin Elephant, Mammoth and nanochat contracts and oracle manifests (open)
+Waits on: #5009 Pin Elephant, Mammoth and nanochat contracts and oracle manifests (resolved)
 
-Event: `b47f5adfb549c604b39b5aaac327b66c4daaf13185ce0784b089f7cb55bd1ba9`
+Event: `nevent1qqstgl66m765n3sykwd442kry7mxcnd27ycctns8sjcgna7t2k73h2gprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2s43ryw7` (id `b47f5adfb549c604b39b5aaac327b66c4daaf13185ce0784b089f7cb55bd1ba9`)
 
 Prepare a reviewed, bounded reference-capture harness for the pinned OneJev plus serve.patch bundle. Do not run downloaded setup scripts on this Mac. Capture in an explicitly admitted isolated environment or consume independently supplied retained fixtures. Reference Python is tooling only, never the production engine.
 
@@ -342,13 +123,101 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 - `psionic/fixtures/decision/`
 - `docs/verification/`
 
+Notes:
+
+- 10-31 08:16 CDT: --project
+
+### #191b Check gradients for every enabled nanochat model feature
+
+status open · ready · size L · labels nanochat, gradients · milestone #981a Reusable learning and nanochat
+
+Waits on: #9b3d Execute the pinned nanochat architecture and safe checkpoint export (resolved); #4a75 Add bounded reverse-mode differentiation over shared operations (resolved)
+
+Event: `nevent1qqspjxmpw8wxtvwj8a7pfu77u5q8ul3nnqeklghjtqnxjxswr82pxxcprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sjsglgw` (id `191b6171dc65b1d23f7c14f3dee5007e7e3398336fa2f25826691a0e19d4131b`)
+
+Extend the tiny causal decoder backward path to the exact pinned nanochat profile: value embeddings/gates, residual/x0 mixing, smear, backout, QK scaling and window semantics. Forward checkpoint compatibility alone does not establish trainability.
+
+Plan: docs/psionic/nanochat.md; reading order: psionic/book/PLAN.md. Product math stays in Coax. Write independent gradient checks before implementation and run psionic/check.sh with the new cases.
+
+## Acceptance
+
+- Analytic and finite-difference tiny-feature and whole-model gradients match independent fixtures, including parameter sharing and masked boundaries.
+- An optimizer-independent loss-direction check exercises every enabled parameter family; unsupported gradients refuse.
+- Tape/activation capacity and alias failures preserve model state, with native sanitizer cases.
+
+## Files
+
+- `psionic/lib/nanochat/`
+- `psionic/fixtures/nanochat/`
+- `psionic/tests/`
+- `psionic/book/`
+
+### #296d Parity harness against whisper.cpp: oracle, fixtures, WER and speed
+
+status open · ready · size M · labels speech, evaluation · milestone #6046 Whisper runs in Psionic and matches whisper.cpp
+
+Event: `nevent1qqszjmgfj8fw8nr3dzq8qcy07wckpjkvfer7jzqqt5gp4rtjuyxfw2qprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2se6lff9` (id `296d0991d2e3cc71688070608ff3b160cacc4e47e908005d101a8d72e10c9728`)
+
+GitHub #12621. `psionic/tests/whisper_oracle.c` (Firm reason 3) links Homebrew's libwhisper 1.9.2: `mel` (our mel through whisper_set_mel against whisper_pcm_to_mel), `logits` (first-token logits via whisper_get_logits), `tokens` (greedy ids), `transcript`. Fixtures in `psionic/fixtures/whisper/`: whisper.cpp's public-domain jfk.wav and macOS `say` clips of a fixed script naming Psionic, Coax, Verse and Aethyr, each with reference text. A Coax WER tool (word edit distance after lowercasing and removing punctuation). Timings for mel, encode, decode and total on the CPU with 8 threads.
+
+## Acceptance
+
+- psionic/tests/check_whisper.sh prints, for each model, the WER and the time of Psionic and of whisper.cpp.
+- Psionic's WER is no more than 0.5 points above whisper.cpp's at the same size, and greedy tokens are identical on the fixture set.
+
+## Files
+
+- `psionic/tests/whisper_oracle.c`
+- `psionic/tests/check_whisper.sh`
+- `psionic/fixtures/whisper/`
+- `psionic/lib/whisper/wer.coax`
+
+### #8cb3 Audio decode in Coax: a WAV reader and a 16 kHz resampler
+
+status open · ready · size M · labels speech, audio · milestone #6046 Whisper runs in Psionic and matches whisper.cpp
+
+Event: `nevent1qqsgevafcd6nztqmkg4elvtata6qwef2d4lssrdcagqhm97uhny059cprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2svlqjnh` (id `8cb3a9c375312c1bb22b9fb17d5f7407652a6d7f080db8ea017d97dcbcc8fa17`)
+
+GitHub #12615. `psionic/lib/whisper/wav.coax`: RIFF/WAVE PCM 16, float 32 and extensible, 1 to 8 channels averaged to mono, a typed refusal for each malformed chunk. A band-limited resampler from 8 to 48 kHz down to 16 kHz, shared with verse/voice.coax's. The CLI skips ffmpeg for WAV; ffmpeg stays only for compressed containers (Firm reason 6).
+
+## Acceptance
+
+- coax/bin/coax test psionic/lib/whisper/wav.coax --library passes, with every format and every truncation.
+- For jfk.wav and a 44.1 kHz say clip, our 16 kHz samples are within 1e-4 RMS of ffmpeg's -ar 16000 -ac 1 -f f32le.
+
+## Files
+
+- `psionic/lib/whisper/wav.coax`
+- `apps/openagents-cli/transcribe.coax`
+
+### #e779 Load Whisper ggml weights: names, shapes, f16, then q8_0 and q5
+
+status open · ready · size M · labels speech, weights · milestone #6046 Whisper runs in Psionic and matches whisper.cpp
+
+Event: `nevent1qqsww7dtz9rwpayjc3mt3xhkskw2l5djn92nnlnwv84s8ljz9mywsfqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sk7slf4` (id `e779ab1146e0f492c476b89af6859cafd1b2995539fe6e61eb03fe422ec8e824`)
+
+GitHub #12617. `psionic/lib/whisper/ggml.coax` reads the file from a mapped view. Name every tensor the encoder and decoder need and check its shape against the hyperparameters before any compute. Exact f16 to f32 rows. Then q8_0 and q5 rows.
+
+## Acceptance
+
+- psionic-whisper info MODEL prints hyperparameters and tensor counts for tiny.en, base.en, small and large-v3-turbo, and checks the pinned SHA-256 of tiny.en and base.en.
+- The f16 decoder is checked on all 65,536 bit patterns.
+
+## Files
+
+- `psionic/lib/whisper/ggml.coax`
+- `psionic/lib/whisper/engine.coax`
+- `psionic/platform/whisper-face.c`
+
+## Waiting (20)
+
 ### #261e Run complete Elephant text decisions with the Coax CPU engine
 
 status open · size L · labels priority, elephant, inference · milestone #0709 Elephant and Mammoth first
 
-Waits on: #cfeb Read sharded safetensors and BF16 in Coax (open); #007c Implement Qwen3.5 embeddings, projections, normalization and FFN (open); #d8bb Implement block-bidirectional Qwen full attention (open); #19c4 Implement causal Gated DeltaNet and convolution state (open); #4dc8 Fork complete hybrid prefix state without cross-question leakage (open); #de9c Implement slot_lm probabilities and typed decision answers (open); #b47f Capture independent Elephant and Mammoth reference cases (open)
+Waits on: #cfeb Read sharded safetensors and BF16 in Coax (resolved); #007c Implement Qwen3.5 embeddings, projections, normalization and FFN (resolved); #d8bb Implement block-bidirectional Qwen full attention (resolved); #19c4 Implement causal Gated DeltaNet and convolution state (resolved); #4dc8 Fork complete hybrid prefix state without cross-question leakage (resolved); #de9c Implement slot_lm probabilities and typed decision answers (resolved); #b47f Capture independent Elephant and Mammoth reference cases (open)
 
-Event: `261e965cb764528f3f6cfb0d6b17c4db9e879124adce063a3eef11c9368349fc`
+Event: `nevent1qqszv85ktjmkg5508ak0krttzlzdh858jyj2mnsx8glw7ywfx6p5nlqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2setj8dx` (id `261e965cb764528f3f6cfb0d6b17c4db9e879124adce063a3eef11c9368349fc`)
 
 Assemble all 32 Elephant layers and the slot readout over original admitted weights. Start with a declared bounded text/request profile. Keep weights and large scratch in resident host storage with Coax-owned admission; do not inherit M0's numeric magnitude cap or imply the full model fits f32-expanded memory from BF16 file size alone.
 
@@ -373,7 +242,7 @@ status open · size L · labels priority, mammoth, inference · milestone #0709 
 
 Waits on: #261e Run complete Elephant text decisions with the Coax CPU engine (open)
 
-Event: `13d85c3dedf6648fab0604e048b60c05cae2dc3b4110fffce9c21cccc635eb59`
+Event: `nevent1qqsp8kzu8hklvey04vrqfczgkcxqtjhzmsa5zy8lln5uy8xvcc67kkgprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sthctf5` (id `13d85c3dedf6648fab0604e048b60c05cae2dc3b4110fffce9c21cccc635eb59`)
 
 Reuse the same hybrid engine for Mammoth's 64 layers and larger dimensions/value-head count. Add an explicit original-weight residency/chunking plan. This is the next decision-model delivery milestone, ahead of nanochat training and generic framework breadth.
 
@@ -392,64 +261,13 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 - `psionic/tests/`
 - `psionic/book/`
 
-### #b301 Specify the minimum Coax tensor-compute consumer
-
-status open · size M · labels priority, compiler, gpu · milestone #639b Useful native device execution
-
-Waits on: #0bfb Admit bounded tensor shapes and caller-owned storage (open)
-
-Event: `b301cd5dd599ba98c2af43363713d39e8e03f3ffba0c1820e59279cc3703fa84`
-
-Turn one Psionic matmul/reduction into the compiler consumer that the scalar Metal profile cannot express. Define buffer/index/entry/binding/bounded-loop semantics, completion and later workgroup synchronization. Reconcile any existing Coax project work before filing a duplicate compiler task; add a cross-project needs link when that owner exists.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Retain a minimal source/negative-case set and an explicit current-versus-planned feature inventory.
-- Name the compiler/spec/conformance changes and the first actual-device acceptance test.
-- No handcrafted native arithmetic shader or BLAS fallback is presented as Coax compute support.
-
-## Files
-
-- `coax/spec.md`
-- `coax/ROADMAP.md`
-- `docs/psionic/architecture.md`
-- `psionic/fixtures/compute/`
-
-### #8484 Implement and qualify the first generated Metal tensor kernels
-
-status open · size L · labels priority, gpu · milestone #639b Useful native device execution
-
-Waits on: #b301 Specify the minimum Coax tensor-compute consumer (open); #3047 Build dense CPU operations with independent numerical oracles (open)
-
-Event: `848480ad0bf1f3b313d45dc6da92efc64bb77d0bd9b227cc20a78b65018b9494`
-
-Implement the admitted Coax compute subset plus a thin native buffer/command/completion adapter. Qualify matmul, gather and reductions needed by decision inference. This work can run alongside the CPU decision engine and does not wait for learning chapters.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Compiler negative/conformance and required bootstrap checks pass for any compiler edits.
-- Generated Metal compiles and executes on a real device, comparing outputs with independent CPU oracles.
-- Native alias/binding/capacity/failure/completion tests pass; report actual transfer and compute costs separately.
-
-## Files
-
-- `coax/src/`
-- `coax/lib/compiler/`
-- `coax/tests/`
-- `psionic/lib/backend/`
-- `psionic/platform/`
-
 ### #a0bb Qualify original-weight Elephant on Metal
 
 status open · size L · labels priority, elephant, gpu · milestone #639b Useful native device execution
 
-Waits on: #261e Run complete Elephant text decisions with the Coax CPU engine (open); #8484 Implement and qualify the first generated Metal tensor kernels (open)
+Waits on: #261e Run complete Elephant text decisions with the Coax CPU engine (open); #8484 Implement and qualify the first generated Metal tensor kernels (resolved)
 
-Event: `a0bb5c796afb1098bfd02abeb3ed702956ef25048e88a8fd44ccdd1e3f7a26f7`
+Event: `nevent1qqs2pw6u0940kyychlgz404na4czj4h0y5zgaz9gl4zvehg78aazdacprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2su6zsqs` (id `a0bb5c796afb1098bfd02abeb3ed702956ef25048e88a8fd44ccdd1e3f7a26f7`)
 
 Move the complete Elephant text decision graph onto generated Coax kernels, preserving masks, recurrent state and readout. Scope supported original-weight precision and hardware by evidence. Refuse insufficient memory rather than silently swapping to another engine.
 
@@ -474,7 +292,7 @@ status open · size L · labels priority, mammoth, gpu · milestone #639b Useful
 
 Waits on: #13d8 Run complete Mammoth immediately after Elephant (open); #a0bb Qualify original-weight Elephant on Metal (open)
 
-Event: `07a257085e4e15de8c132b0f2aa3e868b8feb548fe8b3325f86fa8cf3c2860ac`
+Event: `nevent1qqsq0gjhpp0yu9w73sfjkre2505x3w87k4y0azenyhuxl2x08s5xptqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2s5rjlk2` (id `07a257085e4e15de8c132b0f2aa3e868b8feb548fe8b3325f86fa8cf3c2860ac`)
 
 Reuse the qualified device path for Mammoth with its own admission, memory and numerical profile. Decide whole-model residency versus bounded staging from observed limits; no hardware purchase or paid run is authorized by this issue.
 
@@ -498,7 +316,7 @@ status open · size L · labels quantization, decision · milestone #639b Useful
 
 Waits on: #261e Run complete Elephant text decisions with the Coax CPU engine (open); #13d8 Run complete Mammoth immediately after Elephant (open)
 
-Event: `c6a4ebb4c839e829fe2bb8c8a7944720b9067cfa88c01f772b6974067b478214`
+Event: `nevent1qqsvdf8tknyrn6pflc4m3j98j3rjpwgx0nag3sqlwu4kjaqx0drcy9qprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sxzy02g` (id `c6a4ebb4c839e829fe2bb8c8a7944720b9067cfa88c01f772b6974067b478214`)
 
 Choose one published block format from actual memory needs. Implement decoding/quantization in Coax and retain original-weight output as the reference. Converted weights get new identities and a documented license/attribution record before publication.
 
@@ -517,211 +335,13 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 - `psionic/tests/`
 - `docs/verification/`
 
-### #4a75 Add bounded reverse-mode differentiation over shared operations
-
-status open · size L · labels training, book · milestone #981a Reusable learning and nanochat
-
-Waits on: #3047 Build dense CPU operations with independent numerical oracles (open)
-
-Event: `4a7538a193936a197fe23e13ae4d7d786799ce5e9ae34e7338dd5b35cb58204c`
-
-Build a bounded tape, parameter/activation identity, gradient accumulation/zeroing/detach and SGD. Reproduce the manual y=2x result before adding new trainers. This branch must not block the urgent forward-only decision engine.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Analytic and finite-difference gradients cover every admitted primitive on tiny smooth cases.
-- Tape exhaustion, repeated backward and alias/lifetime rules have explicit tested outcomes and atomic optimizer publication.
-- Source-linked learning chapters use actual library operations; M0 remains a regression.
-
-## Files
-
-- `psionic/lib/autodiff/`
-- `psionic/lib/optim/`
-- `psionic/book/`
-- `psionic/tests/`
-
-### #3a0e Train a complete byte-level bigram language model
-
-status open · size M · labels training, book · milestone #981a Reusable learning and nanochat
-
-Waits on: #4a75 Add bounded reverse-mode differentiation over shared operations (open)
-
-Event: `3a0ef5ccdec40be4a86c95c465feb55cf9aac67c064d8c3d306a4648c806fb22`
-
-Add a real 256-byte vocabulary, fixed train/held-out split, cross-entropy and named seeded sampling. Keep data tiny and licensed. This teaches likelihood and data leakage before a transformer.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Held-out loss beats a declared baseline without changing the split or thresholds.
-- Independent probability/gradient and RNG replay fixtures pass.
-- The runnable chapter trains and generates with the shared library and bounded capacities.
-
-## Files
-
-- `psionic/lib/nn/`
-- `psionic/examples/`
-- `psionic/book/`
-- `psionic/fixtures/data/`
-
-### #e06a Build a tiny complete causal decoder and its backward path
-
-status open · size L · labels training, transformer · milestone #981a Reusable learning and nanochat
-
-Waits on: #3a0e Train a complete byte-level bigram language model (open)
-
-Event: `e06a34ca62fa698b65af433c520456657ba08c0640f82133b9b29af17e52ac4d`
-
-Implement embeddings, causal GQA/RoPE attention, FFN, normalization, logits, complete gradients and bounded KV inference. Reuse math from the decision engine while keeping causal and block-bidirectional profiles explicit.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Full-sequence versus incremental-decode logits agree and future-token perturbation cannot change past outputs.
-- All primitive/whole-block gradient checks and a small full training run pass.
-- The example executes every block and produces multi-token output; head-only decode does not pass.
-
-## Files
-
-- `psionic/lib/transformer/`
-- `psionic/examples/`
-- `psionic/book/`
-- `psionic/tests/`
-
-### #cc58 Implement pinned nanochat BPE and conversation tokens
-
-status open · size L · labels nanochat, tokenizer · milestone #981a Reusable learning and nanochat
-
-Waits on: #eea1 Implement exact Qwen3.5 tokenization for the decision models (open)
-
-Event: `cc58525959f817bb560451633bb5ab3dfe29a79d4d835db78b62de8164b2cd41`
-
-Reuse the generic tokenizer core but implement nanochat's own split pattern, merge ranks and ordered special tokens. Export tokenizer data into an inspectable inert format; do not load tokenizer.pkl or require rustbpe/tiktoken at runtime. Tokenizer training may begin with a tiny deterministic Coax BPE trainer.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Pinned independent IDs match for Unicode, two-digit numeric splits, document BOS and conversation/tool boundaries.
-- Malformed merges/special-ID collisions/capacity failures refuse; byte-level loss accounting has fixtures.
-- The chapter distinguishes tokenizer inference compatibility from reproducing upstream tokenizer-training results.
-
-## Files
-
-- `psionic/lib/tokenizer/`
-- `psionic/fixtures/nanochat/`
-- `psionic/book/`
-
-### #9b3d Execute the pinned nanochat architecture and safe checkpoint export
-
-status open · size L · labels nanochat, inference · milestone #981a Reusable learning and nanochat
-
-Waits on: #e06a Build a tiny complete causal decoder and its backward path (open); #cc58 Implement pinned nanochat BPE and conversation tokens (open); #cfeb Read sharded safetensors and BF16 in Coax (open)
-
-Event: `9b3d84610ed19ffe3c492b16b4f0a7632d8729a99fe876b365eb02184f005d99`
-
-Implement the current pinned gpt.py profile: RoPE convention, QK normalization/scales, ReLU-squared MLP, untied embedding/head, window pattern, value embeddings/gates, residual/x0 scalars, smear and backout. Define a reviewed inert export of tensor/config data from .pt; never make pickle execution a production loader.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Independent per-block/logit fixtures plus cached-versus-full decoding cover every enabled architecture feature.
-- Exact model/config/tokenizer/source identities accompany checkpoint export; unsupported historical defaults refuse or use a separately versioned reader.
-- Include a small complete checkpoint and source-linked chapter; generic GPT compatibility cannot mark this done.
-
-## Files
-
-- `psionic/lib/nanochat/`
-- `psionic/tools/export/`
-- `psionic/fixtures/nanochat/`
-- `psionic/book/`
-
-### #039b Implement reproducible dataset packing and checkpoint resume
-
-status open · size L · labels training, data · milestone #981a Reusable learning and nanochat
-
-Waits on: #4a75 Add bounded reverse-mode differentiation over shared operations (open)
-
-Event: `039b00528a28d0aecfea8d7116e76894a6ec3069d1835a9f3d00a57b3d631e93`
-
-Implement deterministic document boundaries, split provenance, shuffle/packing state, RNG counters, optimizer/parameter revisions and atomic checkpoint publication. Native code handles file effects; Coax owns records and admission.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- An interrupted tiny training run resumes to the declared equivalent uninterrupted state/loss stream.
-- Wrong model/tokenizer/data/optimizer identity, corrupt/truncated state and stale checkpoint pointers refuse.
-- Checkpoint and dataset metadata are inspectable/versioned; no raw ABI structs or arbitrary Python objects.
-
-## Files
-
-- `psionic/lib/data/`
-- `psionic/lib/checkpoint/`
-- `psionic/tests/`
-- `psionic/book/`
-
-### #5d0b Implement checked AdamW and explicit precision state
-
-status open · size M · labels training, optimizer · milestone #981a Reusable learning and nanochat
-
-Waits on: #4a75 Add bounded reverse-mode differentiation over shared operations (open)
-
-Event: `5d0b40cd12030531e2361e14d3911e93555fdd1a69675a19a30ed5bd9c9aedc6`
-
-Add AdamW with independently specified moments, bias correction, decoupled weight decay and parameter groups. Define master/compute precision and finite-update admission before mixed-precision training.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Independent scalar/matrix one-step and multi-step fixtures cover moments, bias correction, grouping and weight decay order.
-- Non-finite gradients, insufficient state, overflow policy and resume have explicit tests.
-- Do not claim nanochat optimizer parity until its Muon/grouping task also passes.
-
-## Files
-
-- `psionic/lib/optim/`
-- `psionic/tests/`
-- `psionic/book/`
-
-### #68b5 Reproduce nanochat MuonAdamW parameter groups and updates
-
-status open · size L · labels nanochat, optimizer · milestone #981a Reusable learning and nanochat
-
-Waits on: #5d0b Implement checked AdamW and explicit precision state (open); #3047 Build dense CPU operations with independent numerical oracles (open)
-
-Event: `68b5ca2a500a51c80b6d8fec9bbefe589aa12ec757df635d7fa4ec886a787860`
-
-Port the pinned combined optimizer's matrix/scalar grouping, momentum, Polar Express iteration coefficients, variance reduction, equilibration/renormalization settings and learning-rate scaling. Support one rank first; keep multi-rank ownership separate.
-
-Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.
-
-## Acceptance
-
-- Frozen independent updates for tall/wide/square matrices and scalar/embedding groups match within declared tolerances.
-- Saved optimizer state resumes identically under the named precision profile.
-- Any omitted upstream option is explicitly unsupported; plain SGD/AdamW is not called nanochat recipe parity.
-
-## Files
-
-- `psionic/lib/optim/`
-- `psionic/fixtures/nanochat/`
-- `psionic/tests/`
-- `psionic/book/`
-
 ### #fd99 Build held-out language and decision evaluation records
 
 status open · size L · labels evaluation, training · milestone #f842 Post-training and evaluation
 
-Waits on: #039b Implement reproducible dataset packing and checkpoint resume (open); #9b3d Execute the pinned nanochat architecture and safe checkpoint export (open); #261e Run complete Elephant text decisions with the Coax CPU engine (open)
+Waits on: #039b Implement reproducible dataset packing and checkpoint resume (resolved); #9b3d Execute the pinned nanochat architecture and safe checkpoint export (resolved); #261e Run complete Elephant text decisions with the Coax CPU engine (open)
 
-Event: `fd995865ecd768e93715c9f899b1583bfa0aea62b69e4f890e7127d031e572cc`
+Event: `nevent1qqs0mx2cvhkdw68fxu2un7yek9vrh7s2af3td8j03y88zf7sx8jh9nqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2s9x0fx8` (id `fd995865ecd768e93715c9f899b1583bfa0aea62b69e4f890e7127d031e572cc`)
 
 Implement fixed split/decontamination records, language loss/bits-per-byte, deterministic answer checks, and decision accuracy/Brier/calibration/abstention metrics. Keep numerical conformance, model quality and speed as separate results.
 
@@ -740,38 +360,13 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 - `psionic/book/`
 - `docs/verification/`
 
-### #191b Check gradients for every enabled nanochat model feature
-
-status open · size L · labels nanochat, gradients · milestone #981a Reusable learning and nanochat
-
-Waits on: #9b3d Execute the pinned nanochat architecture and safe checkpoint export (open); #4a75 Add bounded reverse-mode differentiation over shared operations (open)
-
-Event: `191b6171dc65b1d23f7c14f3dee5007e7e3398336fa2f25826691a0e19d4131b`
-
-Extend the tiny causal decoder backward path to the exact pinned nanochat profile: value embeddings/gates, residual/x0 mixing, smear, backout, QK scaling and window semantics. Forward checkpoint compatibility alone does not establish trainability.
-
-Plan: docs/psionic/nanochat.md; reading order: psionic/book/PLAN.md. Product math stays in Coax. Write independent gradient checks before implementation and run psionic/check.sh with the new cases.
-
-## Acceptance
-
-- Analytic and finite-difference tiny-feature and whole-model gradients match independent fixtures, including parameter sharing and masked boundaries.
-- An optimizer-independent loss-direction check exercises every enabled parameter family; unsupported gradients refuse.
-- Tape/activation capacity and alias failures preserve model state, with native sanitizer cases.
-
-## Files
-
-- `psionic/lib/nanochat/`
-- `psionic/fixtures/nanochat/`
-- `psionic/tests/`
-- `psionic/book/`
-
 ### #a25a Train a small nanochat profile end to end in Coax
 
 status open · size L · labels nanochat, pretraining · milestone #981a Reusable learning and nanochat
 
-Waits on: #9b3d Execute the pinned nanochat architecture and safe checkpoint export (open); #039b Implement reproducible dataset packing and checkpoint resume (open); #68b5 Reproduce nanochat MuonAdamW parameter groups and updates (open); #191b Check gradients for every enabled nanochat model feature (open)
+Waits on: #9b3d Execute the pinned nanochat architecture and safe checkpoint export (resolved); #039b Implement reproducible dataset packing and checkpoint resume (resolved); #68b5 Reproduce nanochat MuonAdamW parameter groups and updates (resolved); #191b Check gradients for every enabled nanochat model feature (open)
 
-Event: `a25aa49889c3ea096485212be5fddc51ba745f6536024320c64fe2fd8ae80efc`
+Event: `nevent1qqs2yk4ynzyu86sfvjzjz2l9lhw9rwn5tajnvqjryrrylcha3t5qalqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2she8cv0` (id `a25aa49889c3ea096485212be5fddc51ba745f6536024320c64fe2fd8ae80efc`)
 
 Reproduce a small named single-device subset of the pinned base_train.py recipe with complete gradients, initialization, token budgets, accumulation, schedule and optimizer groups. Start with a tiny admitted corpus. Full upstream speedrun data/compute is a separate measured target, not an implied budget.
 
@@ -796,7 +391,7 @@ status open · size L · labels nanochat, sft · milestone #f842 Post-training a
 
 Waits on: #a25a Train a small nanochat profile end to end in Coax (open); #fd99 Build held-out language and decision evaluation records (open)
 
-Event: `7c86722263f5547e08be7369cafc36387fe211c00b7f48b56c2dfdc684ab7252`
+Event: `nevent1qqs8epnjyf3l24r7pzl8x6w2lsmrsllzz8qqkl6gk4kzmlwxsj4hy5sprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2su3zwmn` (id `7c86722263f5547e08be7369cafc36387fe211c00b7f48b56c2dfdc684ab7252`)
 
 Implement chat_sft.py's pinned conversation rendering and assistant/tool loss masks, task mixture, packing and evaluation over a small licensed corpus. A separately scoped continued-pretraining stage may be added from a real use; the current speedrun has no distinct mid-training command.
 
@@ -821,7 +416,7 @@ status open · size L · labels nanochat, rl · milestone #f842 Post-training an
 
 Waits on: #7c86 Add nanochat-style masked supervised conversation training (open); #fd99 Build held-out language and decision evaluation records (open)
 
-Event: `72d999ce70692bd06ac5504608300af89e678250898840242a93f1454b4d4156`
+Event: `nevent1qqs89kveeecxj27sdtz4q3sgxq9038n8sfggnzzqys4f8u29fdx5z4sprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2s0t9h87` (id `72d999ce70692bd06ac5504608300af89e678250898840242a93f1454b4d4156`)
 
 Port the bounded on-policy GSM8K-style recipe from chat_rl.py: group samples, mean-centered rewards, token-level normalization and the exact policy-gradient objective. The pinned source omits a KL trust region and PPO clipping; do not advertise generic GRPO/PPO/RLHF parity. Keep tools and reward execution outside the model's authority.
 
@@ -843,9 +438,9 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 
 status open · size L · labels decision, gradients · milestone #f842 Post-training and evaluation
 
-Waits on: #261e Run complete Elephant text decisions with the Coax CPU engine (open); #4a75 Add bounded reverse-mode differentiation over shared operations (open)
+Waits on: #261e Run complete Elephant text decisions with the Coax CPU engine (open); #4a75 Add bounded reverse-mode differentiation over shared operations (resolved)
 
-Event: `1f175a13ca2894f30af6fdf37402a023fe108f7ccc9b35cd911692aa78ab8d24`
+Event: `nevent1qqsp7966z09z398nptm0mum5q2sz8lss3a7vexe4ekg3dy420z4c6fqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sxauln7` (id `1f175a13ca2894f30af6fdf37402a023fe108f7ccc9b35cd911692aa78ab8d24`)
 
 Add actual gradients for Qwen projections, block-bidirectional full attention, causal DeltaNet/convolution state, prefix forks and slot loss. Reusing a generic causal transformer backward pass is insufficient.
 
@@ -867,9 +462,9 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 
 status open · size L · labels decision, post-training · milestone #f842 Post-training and evaluation
 
-Waits on: #1f17 Differentiate the decision backbone and masked slot loss (open); #5d0b Implement checked AdamW and explicit precision state (open); #039b Implement reproducible dataset packing and checkpoint resume (open); #fd99 Build held-out language and decision evaluation records (open)
+Waits on: #1f17 Differentiate the decision backbone and masked slot loss (open); #5d0b Implement checked AdamW and explicit precision state (resolved); #039b Implement reproducible dataset packing and checkpoint resume (resolved); #fd99 Build held-out language and decision evaluation records (open)
 
-Event: `3d9dbed70589d2f34a0c3e3df2905789d1c41d5d14827d4afb519915e1851990`
+Event: `nevent1qqsrm8d76uzcn5hnfgxru00jjptcn5wyr4w3fqnafta4rxg4uxz3nyqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sjvnatt` (id `3d9dbed70589d2f34a0c3e3df2905789d1c41d5d14827d4afb519915e1851990`)
 
 Start with a bounded selected-parameter or adapter profile and explicitly admitted data. Implement decision cross-entropy/Brier calibration and abstention conventions from the pinned recipe. Extend to Mammoth/full fine-tuning only with separate gradient, memory and held-out evidence. This branch need not wait for nanochat RL.
 
@@ -894,7 +489,7 @@ status open · size L · labels serving, decision · milestone #9617 Serving, mu
 
 Waits on: #261e Run complete Elephant text decisions with the Coax CPU engine (open); #13d8 Run complete Mammoth immediately after Elephant (open)
 
-Event: `c7dfed40c630ded170d182fcb7bb95fe527c30c3ee0bb01e735e5d1dc0fb6bec`
+Event: `nevent1qqsv0hldgrrrphk3wrgc9l9hhw2lu5nuxrp7uzasree4uhgacrakhmqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2snlyeaq` (id `c7dfed40c630ded170d182fcb7bb95fe527c30c3ee0bb01e735e5d1dc0fb6bec`)
 
 Connect the qualified decision engine to the existing shared System One contracts/codecs; inspect coax/lib/systemone and root proto/spec before adding anything. Add bounded ingress, model/profile identity, deadlines and typed refusals. Local library support is distinct from a hosted deployment.
 
@@ -920,7 +515,7 @@ status open · size L · labels vision, decision · milestone #9617 Serving, mul
 
 Waits on: #13d8 Run complete Mammoth immediately after Elephant (open)
 
-Event: `04e36799dfd6e594270b7de35242d2dafaaaed3e09f9cf0ab7db3b1c8012be93`
+Event: `nevent1qqsqfcm8n80adev5yu9hmc6jgtfd4742a5lqn7w0p2makwcusqftaycprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2shrlp47` (id `04e36799dfd6e594270b7de35242d2dafaaaed3e09f9cf0ab7db3b1c8012be93`)
 
 Implement the pinned vision preprocessing, encoder/projector, image token layout and memory limits with explicit text-versus-image profiles. The first text-only milestone does not imply image support merely because the checkpoint contains vision tensors.
 
@@ -943,9 +538,9 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 
 status open · size L · labels distributed, training · milestone #9617 Serving, multimodality and scale
 
-Waits on: #a25a Train a small nanochat profile end to end in Coax (open); #039b Implement reproducible dataset packing and checkpoint resume (open); #8484 Implement and qualify the first generated Metal tensor kernels (open)
+Waits on: #a25a Train a small nanochat profile end to end in Coax (open); #039b Implement reproducible dataset packing and checkpoint resume (resolved); #8484 Implement and qualify the first generated Metal tensor kernels (resolved)
 
-Event: `1da2196bcc6fc37865df8f6114249a4d94f52547c7963481bd011793bdc999c7`
+Event: `nevent1qqspmgsed0xxlsmcvh0c7cg5yjdym984y4ru0935sx7sz9unhhyen3cprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sw558ns` (id `1da2196bcc6fc37865df8f6114249a4d94f52547c7963481bd011793bdc999c7`)
 
 Choose one actual homogeneous multi-device target and implement data-parallel sharding, collective reductions, deterministic ownership and checkpoint/resume. Add the backend work the selected target needs (for example CUDA); single-device Metal does not establish multi-GPU or multi-node support.
 
@@ -964,6 +559,158 @@ Plan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement pr
 - `psionic/tests/`
 - `psionic/book/`
 
-## Done (1)
+### #25b0 Whisper's log-mel front end matches whisper.cpp
 
+status open · size S · labels speech, spectral · milestone #6046 Whisper runs in Psionic and matches whisper.cpp
+
+Waits on: #296d Parity harness against whisper.cpp: oracle, fixtures, WER and speed (open)
+
+Event: `nevent1qqsztvqhsl7mzauxu65mf8t9cc9ae2fmm6gjgpwj3pugcls23dvysrgprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2s0y38r0` (id `25b01787fdb17786e6a9b49d65c60bdca93bde912405d288788c7e0a8b58480d`)
+
+GitHub #12616. `psionic/lib/whisper/front.coax` exists with hand checks. Compare our Slaney filters with the f32 filters in the model file; feed our mel to whisper.cpp through whisper_set_mel and compare its greedy tokens with its own mel's; check the two-pass maximum against the whole-file mel at every 30 s window start.
+
+## Acceptance
+
+- psionic-whisper filters ~/.cache/openagents/models/whisper/ggml-tiny.en.bin reports a maximum difference of at most 1e-7.
+- psionic/tests/whisper_oracle.c mel reports identical tokens on every fixture for tiny.en and base.en.
+
+## Files
+
+- `psionic/lib/whisper/front.coax`
+- `psionic/platform/whisper-face.c`
+- `psionic/lib/whisper/engine.coax`
+
+### #f89f Whisper encoder on the CPU with host threads
+
+status open · size L · labels speech, inference · milestone #6046 Whisper runs in Psionic and matches whisper.cpp
+
+Waits on: #e779 Load Whisper ggml weights: names, shapes, f16, then q8_0 and q5 (open); #25b0 Whisper's log-mel front end matches whisper.cpp (open)
+
+Event: `nevent1qqs038e4z9y5t7c2nnv5l9h925hggddc22nvpdzclgw852j95gnnafqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sgv4wnf` (id `f89f35114945fb0a9cd94f96e5552e8435b852a6c0b458fa1c7a2a45a2273ea4`)
+
+GitHub #12618. `psionic/lib/whisper/encoder.coax`: two width-3 convolutions (the second stride 2), exact erf GELU, stored sinusoidal positions, pre-norm blocks (LayerNorm 1e-5, attention with biases on query, value and output, the 4d MLP), the final LayerNorm, and a shortened audio_ctx. The host's threads call exported row-range procedures; output does not depend on the worker count (chapter 35).
+
+## Acceptance
+
+- On jfk.wav with tiny.en and base.en, first-token logits through the oracle decoder are within 1e-2 of whisper.cpp's.
+- The base.en encoder runs within 2x of whisper.cpp -ng encode time on the M5 Max with 8 threads (370 ms per 30 s window).
+
+## Files
+
+- `psionic/lib/whisper/encoder.coax`
+- `psionic/lib/whisper/engine.coax`
+- `psionic/platform/whisper-face.c`
+
+### #4a41 Whisper decoder, logit rules, greedy and beam search
+
+status open · size L · labels speech, inference · milestone #6046 Whisper runs in Psionic and matches whisper.cpp
+
+Waits on: #f89f Whisper encoder on the CPU with host threads (open)
+
+Event: `nevent1qqsy5sd658nu2t66phtnnvcuz603jzvfqdn99g2pwayu8wwaawr5cngprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sx3qalj` (id `4a41baa1e7c52f5a0dd739b31c169f190989036652a1417749c3b9ddeb874c4d`)
+
+GitHub #12619. `decoder.coax`: embeddings and learned positions, causal self-attention with a key and value cache, cross-attention computed once per window, the MLP, logits through the embedding. `search.coax`: whisper.cpp's logit rules (suppress blank and non-speech at the start, paired and non-decreasing timestamps, initial timestamp at most 1.0 s, forced timestamp when their total probability wins), greedy, then beam size 5 and the temperature fallback, and language detection.
+
+## Acceptance
+
+- Greedy tokens are identical to whisper.cpp -bs 1 -bo 1 on every fixture for tiny.en, base.en and base.
+- Beam-search transcripts are identical to whisper.cpp's defaults on the fixture set.
+
+## Files
+
+- `psionic/lib/whisper/decoder.coax`
+- `psionic/lib/whisper/search.coax`
+
+### #cfe0 Timestamps, seek over long files, and SRT
+
+status open · size M · labels speech · milestone #6046 Whisper runs in Psionic and matches whisper.cpp
+
+Waits on: #4a41 Whisper decoder, logit rules, greedy and beam search (open)
+
+Event: `nevent1qqsvlc8tekc4akanhu8eywl83cm923saad700m8dnlyf44m82q734fgprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2ssctktz` (id `cfe0ebcdb15edbb3bf0f923be78e3655461deb7cf7eced9fc89ad767503d1aa5`)
+
+GitHub #12620. Tokens to segments at (t - beg) * 20 ms plus the window offset; seek to the last complete timestamp; files longer than 30 s with the previous text as the prompt; optional --max-len splitting. segments.coax already writes text, SRT, WebVTT and JSON.
+
+## Acceptance
+
+- On a 3-minute fixture, segment boundaries are within 20 ms of whisper.cpp's greedy run.
+- coax/bin/coax test psionic/lib/whisper/tokens.coax --library covers seek and window offsets.
+
+## Files
+
+- `psionic/lib/whisper/search.coax`
+- `psionic/lib/whisper/tokens.coax`
+- `psionic/lib/whisper/segments.coax`
+
+### #4564 In-game voice on Psionic: PROVIDER_PSIONIC and an Aethyr procedure
+
+status open · size M · labels speech, verse, voice · milestone #1092 One primitive in the CLI and the engine
+
+Waits on: #cfe0 Timestamps, seek over long files, and SRT (open)
+
+Event: `nevent1qqsy2ep9cvyaczsepfdylh94jhlq2ya2c5at2v3w8cc8npyvv25k2jqprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2ss7y8wu` (id `456425c309dc0a190a5a4fdcb595fe0513aac53ab5322e3e3079848c62a96548`)
+
+GitHub #12622. Add PROVIDER_PSIONIC to verse/voice-host/speech.c. speech_recognize hands the ended turn's 16 kHz s16 audio to psionic_whisper_pcm16, with the model mapped once at startup. A turn is one window with a shortened audio_ctx. Aethyr programs see a Coax procedure, never the C host. Google and PROVIDER_LOCAL stay available.
+
+## Acceptance
+
+- A voice-host smoke plays a say fixture with PROVIDER_PSIONIC and asserts the transcript.
+- A 5 s turn with base.en on the CPU is transcribed in under 300 ms, from the turn log.
+
+## Files
+
+- `verse/voice-host/speech.c`
+- `verse/voice-host/speech.h`
+- `psionic/lib/whisper/engine.coax`
+
+### #3248 openagents transcribe on Psionic; remove the whisper.cpp backend
+
+status open · size S · labels speech, cli · milestone #1092 One primitive in the CLI and the engine
+
+Waits on: #cfe0 Timestamps, seek over long files, and SRT (open); #296d Parity harness against whisper.cpp: oracle, fixtures, WER and speed (open); #8cb3 Audio decode in Coax: a WAV reader and a 16 kHz resampler (open)
+
+Event: `nevent1qqsryjrj2xqz4fnjs4heh3djxvtj2hgvs9lx9zhkcwpecm2znrfyq0qprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygrl5m4exehw4423jl64yk0cwq4vc9jkh4rx8hnwgaxthv7un77nlgpsgqqqqe2sjngr95` (id `32487251802aa672856f9bc5b23317255d0c817e628af6c3839c6d4298d2403c`)
+
+GitHub #12623. Add --backend psionic (psionic-whisper built from the checkout, the same cached ggml file). When the parity task's acceptance holds, make it the default and delete the whisper.cpp backend, its line parser and the whisper-cli lookup in the same change. Read WAV directly.
+
+## Acceptance
+
+- openagents transcribe psionic/fixtures/whisper/jfk.wav --json prints "backend":"psionic" and the reference text.
+- grep -rn whisper-cli apps/openagents-cli finds nothing.
+
+## Files
+
+- `apps/openagents-cli/transcribe.coax`
+- `apps/openagents-cli/transcribe-rules.coax`
+- `apps/openagents-cli/README.md`
+- `psionic/docs/transcribe.md`
+
+## Done (27)
+
+- #0918 Search the Coax, Psionic and Aethyr books with Psionic's own encoder (chapter 54) · [5d57ff3e96](https://github.com/OpenAgentsInc/openagents/commit/5d57ff3e9659bd406f147b7fe0ecac4f2dd9e40a)
+- #9b3d Execute the pinned nanochat architecture and safe checkpoint export · [59123788cb](https://github.com/OpenAgentsInc/openagents/commit/59123788cba16a25198a162d6de49da800e4cbfa)
+- #68b5 Reproduce nanochat MuonAdamW parameter groups and updates · [c729f5bc90](https://github.com/OpenAgentsInc/openagents/commit/c729f5bc904090f4d776140c9e8ad791c4880ca6)
+- #e06a Build a tiny complete causal decoder and its backward path · [6dc7877b8a](https://github.com/OpenAgentsInc/openagents/commit/6dc7877b8a)
+- #b9cf Kill every surviving mutant in the tensor operator contract, operators and views · [1ebd9b7352](https://github.com/OpenAgentsInc/openagents/commit/1ebd9b7352)
+- #060c Put serve-run.coax under zero-survivor mutation · [34ff9876ef](https://github.com/OpenAgentsInc/openagents/commit/34ff9876ef)
+- #febd Kill every surviving mutant in the tensor operator VJPs · [43a9e92f05](https://github.com/OpenAgentsInc/openagents/commit/43a9e92f05)
+- #039b Implement reproducible dataset packing and checkpoint resume · [1a05b786ac](https://github.com/OpenAgentsInc/openagents/commit/1a05b786ac85f403c56ef8fb2473f26423f937ea)
+- #5d0b Implement checked AdamW and explicit precision state · [9465857491](https://github.com/OpenAgentsInc/openagents/commit/94658574912ef0bcfe5423b01fc76d9bfe87ac7b)
+- #3a0e Train a complete byte-level bigram language model · [575b776fca](https://github.com/OpenAgentsInc/openagents/commit/575b776fca4f7340732bfbf951a2c7cbb64e166d)
+- #4dc8 Fork complete hybrid prefix state without cross-question leakage · [bc34c37f95](https://github.com/OpenAgentsInc/openagents/commit/bc34c37f95)
+- #4a75 Add bounded reverse-mode differentiation over shared operations · [917b0201de](https://github.com/OpenAgentsInc/openagents/commit/917b0201de)
+- #cc58 Implement pinned nanochat BPE and conversation tokens · [8e67977128](https://github.com/OpenAgentsInc/openagents/commit/8e67977128)
+- #19c4 Implement causal Gated DeltaNet and convolution state · [14039ee259](https://github.com/OpenAgentsInc/openagents/commit/14039ee259)
+- #d8bb Implement block-bidirectional Qwen full attention · [14039ee259](https://github.com/OpenAgentsInc/openagents/commit/14039ee259)
+- #8484 Implement and qualify the first generated Metal tensor kernels · [5b4020b103](https://github.com/OpenAgentsInc/openagents/commit/5b4020b103)
+- #de9c Implement slot_lm probabilities and typed decision answers · [de64cb8b3d](https://github.com/OpenAgentsInc/openagents/commit/de64cb8b3d)
+- #007c Implement Qwen3.5 embeddings, projections, normalization and FFN · [062e94c916](https://github.com/OpenAgentsInc/openagents/commit/062e94c916)
+- #7ade Render exact Base Labs state, questions and option slots · [2e39f8d38d](https://github.com/OpenAgentsInc/openagents/commit/2e39f8d38d)
+- #eea1 Implement exact Qwen3.5 tokenization for the decision models · [2e39f8d38d](https://github.com/OpenAgentsInc/openagents/commit/2e39f8d38d)
+- #cfeb Read sharded safetensors and BF16 in Coax · [346e5a1457](https://github.com/OpenAgentsInc/openagents/commit/346e5a1457)
+- #3047 Build dense CPU operations with independent numerical oracles · [2ee22e6168](https://github.com/OpenAgentsInc/openagents/commit/2ee22e6168)
+- #b301 Specify the minimum Coax tensor-compute consumer · [683e9b3992](https://github.com/OpenAgentsInc/openagents/commit/683e9b3992)
+- #0bfb Admit bounded tensor shapes and caller-owned storage · [6c92114ad6](https://github.com/OpenAgentsInc/openagents/commit/6c92114ad6)
+- #5009 Pin Elephant, Mammoth and nanochat contracts and oracle manifests · [a8265c5293](https://github.com/OpenAgentsInc/openagents/commit/a8265c5293)
+- #d076 NIP-XP on the homepage: the XP ledger and Pylon work, live on the Grid · [9834ed9bf5](https://github.com/OpenAgentsInc/openagents/commit/9834ed9bf5)
 - #bbde Learn y = 2x with the first runnable chapter

@@ -44,7 +44,6 @@ coax/lib/nostr/fixtures/json_suite.py
 coax/lib/nostr/fixtures/nip42_events.ts
 coax/lib/systemone/smoke.sh
 coax/platform/tls-env.sh
-nostr/relay/build.sh
 coax/tests/browser_status.js
 coax/tests/build_profiles.py
 coax/tests/checker.py

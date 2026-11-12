@@ -1,0 +1,7 @@
+limit ?: parser_nesting at 95% (122 of 128, E0221)
+size fivelab: 3027797 bytes of 3045000 (99%)
+size archery-range: 2819595 bytes of 2850000 (98%)
+size project: 2363984 bytes of 2400000 (98%)
+size realmlist: 69167 bytes of 70000 (98%)
+size stair: 284556 bytes of 290000 (98%)
+size host-packs: 41659 bytes of 42000 (99%)

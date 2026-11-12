@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (a thin wrapper: coax c, coax header and cc, with tls-env.sh's flags)
 # Builds the Coax relay (R1) to OUT (default nostr/relay/bin/relay).
 #   nostr/relay/build.sh [OUT] [--sanitize]     ASan+UBSan with --sanitize
 # Links tls-native.c for --tls-cert/--tls-key (OpenSSL from Nix on Linux,

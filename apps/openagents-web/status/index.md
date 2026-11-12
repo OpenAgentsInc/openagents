@@ -4,11 +4,11 @@ How a change reaches production, and where things stand. The page at https://ope
 
 ## Now
 
-- Production runs `63e092cf684ef2778be89a337732d40fa27a402b`.
-- main-green: not set. No commit has passed the full check yet.
-- 222 commits on main in the 24 hours before this release, 1822 in 7 days. 9 of the day's commits name their agent.
-- Queue: 0 waiting, 0 sent back. Red list: 0.
-- Build hosts: 6 with 3 job slots each; 411 jobs in 24 hours.
+- Production runs `fa8065472257d3ae8232b0625b65a4d114914475`.
+- main-green: `0c1a9e8eba04d41a827f753c2982e454cb724973`.
+- 0 commits on main in the 24 hours before this release, 0 in 7 days. 0 of the day's commits name their agent.
+- Queue: 0 waiting, 2 sent back. Red list: 0.
+- Build hosts: 16 with 3 job slots each; 0 jobs in 24 hours.
 
 ## Live now
 
@@ -25,33 +25,33 @@ The green-main pipeline ([design](https://github.com/OpenAgentsInc/openagents/bl
 
 ## Recent commits
 
-- `63e092c` Everglade Experimental: the red dragon as a flying mount, and riding stages (#13113)
-- `683ab0c` Aethyr: the camera orbit check splits in two, each well under its step budget (#13115)
-- `575281d` wasm.sh: a unit past its compile headroom line stops a release build (#13115)
-- `a8c3a05` Experimental terrain: the building sites are a constant table, not a chain of tests (#13115)
-- `739fe14` Agent workflow audit: where agent time and tokens go, and the green-main cutover (#13102)
-- `272d885` Experimental: a builder at each build site, and its landings' sounds (#13108)
-- `c4c2d27` Housewright stages: a check that the camera never enters a house (#13107)
-- `7697b0f` Everglade's side bar: an open menu and its tip push the frame-rate plaque aside (#13103)
-- `e5c48a8` after.sh: a full run at most once an hour
-- `eec10a9` check.sh: report module sizes against a start stamp
-- `e023e90` Everglade Experimental: ?stage=house-* time-lapses own the camera, the sun and the clock (#13107)
-- `f0e14a9` Everglade parity: spell effects through one shared module (#13086)
-- `d1526b6` docs(293): owner decisions, the production format and what to collect for each beat
-- `ebdb247` AGENTS.md: the Agent: trailer and the red list
-- `22dac5e` release.sh: release origin/main-green by default
-- `e1e0cc4` Green-main pipeline: after.sh runs the full check on main and bisects a failure to its commit
-- `25b11c2` Plots and many build sites in Aethyr, Everglade's 16-plot town and its stages (#13109)
-- `e359372` Experimental: a build site sounds its busiest material in a quick rhythm (#13108)
-- `35a6455` Plans: seven implementation plans from a full audit, with an index
-- `ae48886` Build sites: the piles' meshes, bottom first, and the carried item (#13108)
-- `42b9c97` Build sites: material piles, a builder's trips and material sounds (#13108)
-- `30374a9` Green-main pipeline: the integrator checks queued branches and lands the green prefix
-- `c9e4770` remote builds: daily cap to $50 (owner, 2026-11-09)
-- `6785c3d` Episode 293: retime transcript and show notes to the recut video
-- `e50c65e` Everglade: the housewright time-lapse setups (#13107)
-- `661a7e2` Aethyr: the glade's day profile, so any realm can sweep a day (#13107)
-- `95362ab` Aethyr: a camera track any zone can load from a stage (#13107)
-- `909813c` Aethyr build sites: one progress value, the arriving part and the materials used (#13106)
-- `c54fb11` Aethyr HUD widgets: text fits its box, and side-bar rows are touch-sized on a tablet (#13103)
-- `b204699` Everglade: the red dragon model, its clips and its place in the glade pack
+- `fa80654` remote.sh snapshot
+- `0f46553` Nostr relay: 256 connections and TCP keepalive, for production (#13361 step 4)
+- `4854618` Nostr book: example loads name nostr/relay/ as the listings do; chapter 99's removed test
+- `7be9850` Nostr book: chapter 99's weblogin.coax back, chapter 86 names the moved microcoder
+- `9fa1b09` Nostr relay: NIP-11 lists 17 and 59, under the relay's own name (#13361 step 1)
+- `65a5c95` Nostr relay: move the relay program and its server-only files to nostr/relay/ (#13361 step 0)
+- `9c4fe97` Protocol E1: check the familiar and Healer's Kit profiles (#13244)
+- `1154830` Realm edits: server slot names for board rows, undo restores exact bytes (#13354)
+- `e0c2d69` CLI journey fake answers in the server's shapes (#13354)
+- `cebda14` /chat's Claude turns read the repository through oa-repo (#13326)
+- `a8b72f1` live-check.py chat: log in with the site session, as /chat does now (#13242)
+- `f3fe9a3` P1.1b: the room loads no Everglade v1 file; layer-check gates it (#13346, #13267 step 7)
+- `2d1d908` Protocol C5: the hosted runner's wire in one codec (#13242)
+- `df89020` Indexed repos: the service oa-repo (#13326)
+- `3fde47f` P1.1b: trim v1's town and cast queue from the room record (#13346)
+- `7c1f551` Indexed repos: the schema openagents.repo.v1alpha1, its one codec and goldens (#13326)
+- `d2241b7` P1.1b: delete v1's room rules, raid and forge files (#13346)
+- `01a1f57` P1.1b: everglade/server/battle.coax replaces v1's room rules (#13346)
+- `ef51b45` Microcoder: a failed ending lists the run's commits and files; a commit's result says how the last check ended (#13351)
+- `ca90f67` Protocol E6: realm document and edits on one schema and one fixture (#13249)
+- `5f894e0` Microcoder next (#13325): the Carbon field runs read offline; every wrong commit came from a run that ended on a limit
+- `86cac5e` Seat ticket HMAC writer: mutation-clean (#13248)
+- `d706f56` Seat ticket: player.c builds no ticket; v2-v4 come from seat_ticket_hmac_write (#13248)
+- `6ea58b1` Seat ticket: v2-v4 HMAC writer exported to C, checked byte for byte against player.c's (#13248)
+- `5882381` Protocol E4: the NPC ask's schema and one codec (#13247)
+- `78312c7` DDD.7: the item ledger has one rules owner, ledger.coax; SQL stores (#13318)
+- `6eec674` Protocol C3: stream records match their protos, profile coder-stream (#13240)
+- `ae59216` verse/voice_smoke.c: define POSIX/default feature macros and M_PI fallback (#13348)
+- `66d705a` seat-ticket: check HMAC writer against room tk_check profile (#13248)
+- `15a4948` seat-ticket: add tk_write for HMAC v2/v3/v4 seat tickets (#13248)
