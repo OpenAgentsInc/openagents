@@ -88,7 +88,7 @@ browser                                  Google Cloud
 | Page shell | `apps/openagents-web/chat/index.html`, `index.md` | 1.6 KB |
 | Page logic | `apps/openagents-web/chat.coax` | 1,536 lines |
 | C face (Wasm exports) | `apps/openagents-web/chat-face.c` | 107 lines |
-| Chat components | `components/zeron/` | 3,985 lines of Coax |
+| Chat components | `components/zeron/` | 3,938 lines of Coax |
 | Layers under them | `components/core`, `layout`, `paint`, `skin`, `backend`, `kit` | |
 | Browser host | `coax/web/host.js` (4,050 lines), `gpui.js` (198) | |
 | API | `coax/web/api/chat.c`, `migrations/0021_chat.sql`, `0139_chat_folders_tabs.sql` | |
