@@ -1,0 +1,23 @@
+Alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+Bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+Carol: dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+public messages (kind 24)
+M1 tags: [["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","wss://inbox.example.com"],["p","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["expiration","1761772800"]]
+M2 tags: [["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"]]
+M1: ok, from Alice, to Bob (wss://inbox.example.com) Carol, expires at T0+86400, 0 q tags
+M2: ok, from Bob, to Alice, no expiration, 0 q tags
+reactions to M1 (kind 7)
+X1, by Carol, with k 24: says it is about a public message: true
+X2, by Bob, without k: says it is about a public message: false
+each event's id
+M1: d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4, verified true
+M2: cc44cac1094456bb6cd874d476b65995423e878eb374acc9e6ae5c55a9e15876, verified true
+X1: db86d0b019babac0079d73c5c57278875dca0e5583b1e0e75c9ef63ec0630202, verified true
+X2: c5ac0097a274a20dc3863c12bd8b3cf294c69b92b0abf8de3b36eaa1b5171db2, verified true
+refusals
+message that answers M1 with an e tag: an e tag: no threads
+message to nobody: missing
+message, p of 8 digits: malformed
+message, expiration that is not a number: malformed
+message, q that cites nothing: malformed
+a kind 14 chat message read as a public message: kind

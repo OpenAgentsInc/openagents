@@ -1,0 +1,124 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/nip39.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The statuses of nip34.coax, then nip39.coax's 6.
+STATUS :: [7] string.["ok", "event", "kind", "missing", "malformed", "output", "bad platform name"];
+// BIP-340 test vectors 0 and 1's published secret keys. Never sign with a
+// real key in an example.
+KEYS :: [2] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef"];
+PEOPLE :: [2] string.["Alice", "Bob"];
+ALICE :: 0; BOB :: 1;
+T0 :: 1761686400;
+// Alice's claims: two platforms NIP-39 defines and one it doesn't. A
+// Matrix id has a colon of its own; the tag splits at the first one.
+CLAIMS :: "[[\"i\",\"github:alice-tea\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"],[\"i\",\"mastodon:tea.example/@alice\",\"109775066355589974\"],[\"i\",\"matrix:@alice:tea.example\",\"$proof-event\"]]";
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. Used for the refusals, which the readers refuse on their
+// kind and tags alone.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// A key's npub (chapter 16).
+npub_of :: (key: [32] u8, out: [] u8) -> string {
+  k := key;
+  r := nip19_encode_checked(N19_NPUB, cast(string) k[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+
+show :: (label: string, event: NostrEvent) {
+  e := nt_event_of(event); out: [4] N39Claim; r := n39_claims(e, out[..]);
+  print("%: %", label, STATUS[r.status]);
+  if r.status != N34_OK {
+    if r.at >= 0 { print(", at i tag %", r.at); }
+    print("\n"); return;
+  }
+  print(", % %\n", r.n, ifx r.n == 1 then "claim" else "claims");
+  for k: 0..<r.n {
+    url: [160] u8; n := n39_proof_url(e, out[k], url[..]);
+    print("  platform %, identity %, proof %\n", nt_raw(e, out[k].platform), nt_raw(e, out[k].identity), nt_raw(e, out[k].proof));
+    if n > 0 { print("    proof at %\n", cast(string) url[0..<n]); }
+    else { print("    no proof URL: %\n", ifx n39_platform(nt_raw(e, out[k].platform)) < 0 then "NIP-39 doesn't define this platform" else "the identity or proof doesn't fit the platform's layout"); }
+  }
+}
+
+main :: () {
+  secret: [2][32] u8; keys: [2][32] u8;
+  for k: 0..<2 { decode_hex(KEYS[k], secret[k][..]); }
+  buf: [2][8192] u8;
+  // Each public key comes from signing: sign an empty note first.
+  for k: 0..<2 { keys[k] = sign(secret[k][..], T0, 1, "[]", "", buf[0][..]).public_key; }
+  np: [2][64] u8; npub: [2] string;
+  for k: 0..<2 { npub[k] = npub_of(keys[k], np[k][..]); print("%: %\n", PEOPLE[k], npub[k]); }
+
+  print("Alice's identities (kind 10011)\n");
+  i1 := sign(secret[ALICE][..], T0, 10011, CLAIMS, "", buf[0][..]);
+  show("I1", i1);
+
+  print("the proof Alice publishes on each platform\n");
+  text: [160] u8; n := n39_text(npub[ALICE], text[..]);
+  #assert n > 0;
+  print("%\n", cast(string) text[0..<n]);
+
+  print("fetched proofs, checked for Alice's npub\n");
+  // What a client might download from the three URLs. Fetching is the
+  // client's; here the bodies are fixed text.
+  gist: [200] u8; g := json_raw(gist[..], 0, cast(string) text[0..<n]); g = json_raw(gist[..], g, "\n");
+  print("the gist, with NIP-39's text: %\n", n39_proves(cast(string) gist[0..<g], npub[ALICE]));
+  old: [200] u8; o := json_raw(old[..], 0, "Verifying my account on nostr My Public Key: \""); o = json_raw(old[..], o, npub[ALICE]); o = json_raw(old[..], o, "\"");
+  print("a post in an older wording: %\n", n39_proves(cast(string) old[0..<o], npub[ALICE]));
+  other: [200] u8; b := n39_text(npub[BOB], other[..]);
+  print("a gist that names Bob's key: %\n", n39_proves(cast(string) other[0..<b], npub[ALICE]));
+  print("a page that names no key: %\n", n39_proves("alice-tea has no public gists.", npub[ALICE]));
+
+  print("a newer list: it is the whole list, so two claims are withdrawn\n");
+  i2 := sign(secret[ALICE][..], T0 + 3600, 10011, "[[\"i\",\"github:alice-tea\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"]]", "", buf[1][..]);
+  show("I2, one hour later", i2);
+
+  print("each event's id\n");
+  h := n34_hex32(i1.id); print("I1: %, verified %\n", cast(string) h[..], i1.verified);
+  h = n34_hex32(i2.id); print("I2: %, verified %\n", cast(string) h[..], i2.verified);
+
+  print("refusals\n");
+  bad: [8192] u8;
+  show("a claim without a proof", unsigned(10011, "[[\"i\",\"github:alice-tea\",\"9721ce4e\"],[\"i\",\"twitter:alice_tea\"]]", bad[..]));
+  show("a claim with no colon", unsigned(10011, "[[\"i\",\"github\",\"9721ce4e\"]]", bad[..]));
+  show("a claim with no identity", unsigned(10011, "[[\"i\",\"github:\",\"9721ce4e\"]]", bad[..]));
+  show("a platform in capitals", unsigned(10011, "[[\"i\",\"GitHub:alice-tea\",\"9721ce4e\"]]", bad[..]));
+  show("five claims into room for four", unsigned(10011, "[[\"i\",\"a:1\",\"p\"],[\"i\",\"b:2\",\"p\"],[\"i\",\"c:3\",\"p\"],[\"i\",\"d:4\",\"p\"],[\"i\",\"e:5\",\"p\"]]", bad[..]));
+  show("a kind 0 profile read as identities", unsigned(0, "[]", bad[..]));
+  show("claims whose parts would change the URL", unsigned(10011, "[[\"i\",\"github:alice-tea/../bob\",\"9721ce4e\"],[\"i\",\"twitter:alice_tea\",\"1?ref=x\"],[\"i\",\"mastodon:tea.example\",\"1\"]]", bad[..]));
+  print("verification text for an nsec: %\n", n39_text("nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsl0kzwd", text[..]));
+}
+// book:end example

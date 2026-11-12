@@ -874,7 +874,10 @@
     "coax/lib/nostr/follows.coax",
     "coax/lib/nostr/metadata.coax",
     "coax/lib/nostr/nip05.coax",
+    "coax/lib/nostr/nip39.coax",
     "nostr/relay/store_core.coax",
+    "nostr/examples/checks/external-identities.coax",
+    "nostr/examples/external-identities.coax",
     "nostr/examples/checks/profiles-follows.coax",
     "nostr/examples/profiles-follows.coax"
    ],
@@ -1191,7 +1194,11 @@
    ],
    "source": [
     "coax/lib/nostr/nip29.coax",
+    "coax/lib/nostr/nip7d.coax",
     "coax/lib/nostr/nip72.coax",
+    "coax/lib/nostr/nipc7.coax",
+    "nostr/examples/chats-threads.coax",
+    "nostr/examples/checks/chats-threads.coax",
     "nostr/examples/groups-communities.coax",
     "nostr/examples/checks/groups-communities.coax"
    ],
@@ -1212,8 +1219,11 @@
    ],
    "source": [
     "coax/lib/nostr/nip17.coax",
+    "coax/lib/nostr/nipa4.coax",
     "coax/tests/nostr/nip17_reference.py",
+    "nostr/examples/checks/public-messages.coax",
     "nostr/examples/checks/private-messages.coax",
+    "nostr/examples/public-messages.coax",
     "nostr/examples/private-messages.coax"
    ],
    "qualified_targets": [
@@ -1273,9 +1283,13 @@
    "source": [
     "coax/lib/nostr/nip34-event.coax",
     "coax/lib/nostr/nip34-patch.coax",
+    "coax/lib/nostr/nip34-pr.coax",
     "coax/lib/nostr/nip34.coax",
+    "coax/lib/nostr/nipc0.coax",
     "nostr/examples/checks/repositories.coax",
-    "nostr/examples/repositories.coax"
+    "nostr/examples/checks/snippets-pull-requests.coax",
+    "nostr/examples/repositories.coax",
+    "nostr/examples/snippets-pull-requests.coax"
    ],
    "qualified_targets": [
     "cpu"
@@ -2089,8 +2103,12 @@
     49
    ],
    "source": [
+    "apps/openagents-cli/account_rules.coax",
     "apps/openagents-web/nip01-verify.coax",
-    "coax/lib/nostr/weblogin.coax",
+    "coax/lib/nostr/nip06.coax",
+    "coax/lib/nostr/nip98_sign.coax",
+    "coax/web/api/agent-policy.coax",
+    "coax/web/api/auth-policy.coax",
     "coax/web/api/nip98.coax",
     "nostr/examples/web-sign-in.coax",
     "nostr/examples/checks/web-sign-in.coax"
@@ -2100,7 +2118,9 @@
     "wasm"
    ],
    "adopted_by": [
-    "apps/openagents-web/private-face.c",
+    "apps/openagents-cli/account.coax",
+    "coax/web/api/agents.c",
+    "coax/web/api/auth.c",
     "coax/web/api/nostr.c"
    ]
   },

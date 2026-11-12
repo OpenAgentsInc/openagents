@@ -1,0 +1,147 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/nipc7.coax";
+#load "../../coax/lib/nostr/nip7d.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The statuses of nip34.coax, then nip22.coax's 6 and nip7d.coax's 7 and 8.
+STATUS :: [9] string.["ok", "event", "kind", "missing", "malformed", "output",
+  "parent kind differs from root kind", "elsewhere", "nested"];
+// BIP-340 test vectors 0, 1 and 2's published secret keys. Never sign with
+// a real key in an example.
+KEYS :: [3] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9"];
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+ALICE :: 0; BOB :: 1; CAROL :: 2;
+RELAY :: "wss://relay.example.com";
+T0 :: 1761686400;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. Used for the refusals, which the readers refuse on their
+// kind and tags alone.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// A tag list built from pieces of JSON text.
+Tags :: struct { b: [2048] u8; n: int; }
+put :: (t: [] Tags, s: string) { t[0].n = json_raw(t[0].b[..], t[0].n, s); #assert t[0].n > 0; }
+tags_of :: (t: [] Tags) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+// The tags of a comment on a comment: the root is the thread (E, K 11, P),
+// the parent is the reply it answers (e, k 1111, p). NIP-22 allows this;
+// NIP-7D asks clients to reply to the thread instead.
+nested_tags :: (t: [] Tags, thread: string, thread_author: string, reply: string, reply_author: string) {
+  put(t, "[[\"E\",\""); put(t, thread); put(t, "\",\""); put(t, RELAY); put(t, "\",\""); put(t, thread_author);
+  put(t, "\"],[\"K\",\"11\"],[\"P\",\""); put(t, thread_author); put(t, "\"],[\"e\",\""); put(t, reply); put(t, "\",\""); put(t, RELAY);
+  put(t, "\",\""); put(t, reply_author); put(t, "\"],[\"k\",\"1111\"],[\"p\",\""); put(t, reply_author); put(t, "\"]]");
+}
+
+// Which person a pubkey in a tag names.
+who :: (pk: [] [64] u8, raw: string) -> string {
+  for k: 0..<pk.count { if raw == cast(string) pk[k][..] { return PEOPLE[k]; } }
+  return "someone else";
+}
+
+show_chat :: (label: string, event: NostrEvent, first: string, pk: [] [64] u8) {
+  e := nt_event_of(event); c := nc7_chat(e);
+  print("%: %", label, STATUS[c.status]);
+  if c.status != N34_OK { print("\n"); return; }
+  if !c.parent.found { print(", % q tags, not a reply\n", c.quotes); return; }
+  print(", % q tag, a reply to % by %, found on %\n", c.quotes, ifx nt_raw(e, c.parent.v[0]) == first then "C1" else "another event",
+    who(pk, nt_raw(e, c.parent.v[2])), nt_raw(e, c.parent.v[1]));
+}
+show_reply :: (label: string, event: NostrEvent, thread: string, pk: [] [64] u8) {
+  e := nt_event_of(event); r := n7d_reply(e);
+  print("%: %", label, STATUS[r.status]);
+  if r.status != N34_OK && r.status != N7D_NESTED { print("\n"); return; }
+  print(", thread % by %\n", ifx nt_raw(e, r.thread.v[0]) == thread then "T1" else "another event", who(pk, nt_raw(e, r.author.v[0])));
+}
+
+main :: () {
+  secret: [3][32] u8; pk: [3][64] u8;
+  for k: 0..<3 { decode_hex(KEYS[k], secret[k][..]); }
+  buf: [5][8192] u8;
+  // Each public key comes from signing: sign an empty note first.
+  for k: 0..<3 { pk[k] = n34_hex32(sign(secret[k][..], T0, 1, "[]", "", buf[0][..]).public_key); }
+  for k: 0..<3 { print("%: %\n", PEOPLE[k], cast(string) pk[k][..]); }
+
+  print("chats (kind 9)\n");
+  c1 := sign(secret[ALICE][..], T0, 9, "[]", "GM", buf[0][..]);
+  id1 := n34_hex32(c1.id);
+  tags: [1024] u8;
+  n := nc7_reply_tags(cast(string) id1[..], RELAY, cast(string) pk[ALICE][..], tags[..]);
+  #assert n > 0;
+  print("C2 tags: %\n", cast(string) tags[0..<n]);
+  c2 := sign(secret[BOB][..], T0 + 30, 9, cast(string) tags[0..<n], "GM, Alice", buf[1][..]);
+  show_chat("C1", c1, cast(string) id1[..], pk[..]);
+  show_chat("C2", c2, cast(string) id1[..], pk[..]);
+
+  print("a thread (kind 11) and its replies (kind 1111)\n");
+  n = n7d_thread_tags("Which kettle?", tags[..]);
+  #assert n > 0;
+  t1 := sign(secret[CAROL][..], T0 + 120, 11, cast(string) tags[0..<n], "Gooseneck or plain?", buf[2][..]);
+  te := nt_event_of(t1); thread := n7d_thread(te);
+  print("T1: %, title \"%\"\n", STATUS[thread.status], nt_raw(te, thread.title.v[0]));
+  idt := n34_hex32(t1.id);
+  n = n7d_reply_tags(cast(string) idt[..], RELAY, cast(string) pk[CAROL][..], tags[..]);
+  #assert n > 0;
+  print("R1 tags: %\n", cast(string) tags[0..<n]);
+  r1 := sign(secret[ALICE][..], T0 + 180, 1111, cast(string) tags[0..<n], "Gooseneck. It pours slower.", buf[3][..]);
+  idr := n34_hex32(r1.id);
+  t: [1] Tags;
+  nested_tags(t[..], cast(string) idt[..], cast(string) pk[CAROL][..], cast(string) idr[..], cast(string) pk[ALICE][..]);
+  r2 := sign(secret[BOB][..], T0 + 240, 1111, tags_of(t[..]), "Slower is the point.", buf[4][..]);
+  show_reply("R1", r1, cast(string) idt[..], pk[..]);
+  show_reply("R2, Bob's answer to R1", r2, cast(string) idt[..], pk[..]);
+  print("R2 as a NIP-22 comment: %\n", STATUS[n22_comment(nt_event_of(r2)).status]);
+
+  print("each event's id\n");
+  all := [5] NostrEvent.[c1, c2, t1, r1, r2];
+  names := [5] string.["C1", "C2", "T1", "R1", "R2"];
+  for k: 0..<5 { h := n34_hex32(all[k].id); print("%: %, verified %\n", names[k], cast(string) h[..], all[k].verified); }
+
+  print("refusals\n");
+  bad: [8192] u8;
+  e := unsigned(9, "[[\"q\",\"5c83da77\"]]", bad[..]);
+  print("chat, q of 8 digits: %\n", STATUS[nc7_chat(nt_event_of(e)).status]);
+  e = unsigned(9, "[[\"q\"]]", bad[..]);
+  print("chat, q without a value: %\n", STATUS[nc7_chat(nt_event_of(e)).status]);
+  e = unsigned(1, "[]", bad[..]);
+  print("a kind 1 note read as a chat: %\n", STATUS[nc7_chat(nt_event_of(e)).status]);
+  e = unsigned(11, "[[\"title\"]]", bad[..]);
+  print("thread, title without a value: %\n", STATUS[n7d_thread(nt_event_of(e)).status]);
+  e = unsigned(1111, "[[\"K\",\"11\"],[\"E\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]]", bad[..]);
+  print("reply with K and E only, as NIP-7D's example: %\n", STATUS[n7d_reply(nt_event_of(e)).status]);
+  e = unsigned(1111, "[[\"E\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"K\",\"1\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"k\",\"1\"]]", bad[..]);
+  print("comment on a kind 1 note read as a thread reply: %\n", STATUS[n7d_reply(nt_event_of(e)).status]);
+  e = unsigned(1111, "[[\"E\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"K\",\"11\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"k\",\"1\"]]", bad[..]);
+  print("reply whose k is neither 11 nor 1111: %\n", STATUS[n7d_reply(nt_event_of(e)).status]);
+}
+// book:end example

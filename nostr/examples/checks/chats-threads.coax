@@ -1,0 +1,89 @@
+// The checks of chats-threads.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/chats-threads.coax --run-steps 250000000
+#load "../chats-threads.coax";
+
+// book:begin check
+// The ids and tags from a Python script written from NIP-01, NIP-C7, NIP-7D
+// and NIP-22 (it shares no code with Coax): the ids are hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PUB :: [3] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"];
+PY_ID :: [5] string.[
+  "f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680",
+  "c38a6f009d18565e779fb4163176e8af958e3a08d932a00c3c1adc5d3b705913",
+  "386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1",
+  "4777a42b623e988dc88a81123b3708831b68d6717cbca538a2e3f56dc1f82604",
+  "d0e9dda8ae20ea726b10f3fb8c018c77cb59d465b5bf00774ea56c6438a47d8a"];
+PY_C2 :: "[[\"q\",\"f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680\",\"wss://relay.example.com\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_T1 :: "[[\"title\",\"Which kettle?\"]]";
+PY_R1 :: "[[\"E\",\"386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"K\",\"11\"],[\"P\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"e\",\"386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"k\",\"11\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]]";
+PY_R2 :: "[[\"E\",\"386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"K\",\"11\"],[\"P\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"e\",\"4777a42b623e988dc88a81123b3708831b68d6717cbca538a2e3f56dc1f82604\",\"wss://relay.example.com\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"k\",\"1111\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_AUTHOR :: [5] int.[0, 1, 2, 0, 1];
+PY_AT :: [5] int.[0, 30, 120, 180, 240];
+PY_KIND :: [5] int.[9, 9, 11, 1111, 1111];
+PY_TAGS :: [5] string.["[]", PY_C2, PY_T1, PY_R1, PY_R2];
+PY_CONTENT :: [5] string.["GM", "GM, Alice", "Gooseneck or plain?", "Gooseneck. It pours slower.", "Slower is the point."];
+
+// Event i of the script with a zero signature, read with its id recomputed;
+// the signature is not checked.
+py :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[i]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[PY_AUTHOR[i]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + PY_AT[i]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, PY_KIND[i]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, PY_TAGS[i]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, PY_CONTENT[i]);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the ids are Python's, and so are the tags the library and the example write" {
+  buf: [5][4096] u8; scratch: [4096] u8;
+  for i: 0..<5 { e := py(i, buf[i][..], scratch[..]); #assert e.error == NE_OK && n34_same(e.computed_id, e.id); }
+  tags: [1024] u8;
+  n := nc7_reply_tags(PY_ID[0], RELAY, PUB[ALICE], tags[..]); #assert cast(string) tags[0..<n] == PY_C2;
+  n = n7d_thread_tags("Which kettle?", tags[..]); #assert cast(string) tags[0..<n] == PY_T1;
+  n = n7d_reply_tags(PY_ID[2], RELAY, PUB[CAROL], tags[..]); #assert cast(string) tags[0..<n] == PY_R1;
+  t: [1] Tags; nested_tags(t[..], PY_ID[2], PUB[CAROL], PY_ID[3], PUB[ALICE]); #assert tags_of(t[..]) == PY_R2;
+}
+
+// By hand: C1 has no q tag, so it starts a conversation. C2's one q tag
+// holds C1's id, so C2 is a reply to C1. T1 is a thread titled "Which
+// kettle?". R1's root (E, K 11) and parent (e, k 11) are both T1: a reply
+// to the thread. R2's root is T1 but its parent is R1, a comment (k 1111):
+// NIP-22 reads it, NIP-7D calls it nested.
+#test "Python's events read as worked by hand" {
+  buf: [5][4096] u8; scratch: [4096] u8; ev: [5] NtEvent;
+  for i: 0..<5 { ev[i] = nt_event_of(py(i, buf[i][..], scratch[..])); }
+  c := nc7_chat(ev[0]); #assert c.status == N34_OK && c.quotes == 0 && !c.parent.found;
+  c = nc7_chat(ev[1]); #assert c.status == N34_OK && c.quotes == 1 && c.parent.found;
+  #assert nt_raw(ev[1], c.parent.v[0]) == PY_ID[0] && nt_raw(ev[1], c.parent.v[1]) == RELAY && nt_raw(ev[1], c.parent.v[2]) == PUB[ALICE];
+  t := n7d_thread(ev[2]); #assert t.status == N34_OK && nt_raw(ev[2], t.title.v[0]) == "Which kettle?";
+  r := n7d_reply(ev[3]); #assert r.status == N34_OK && nt_raw(ev[3], r.thread.v[0]) == PY_ID[2] && nt_raw(ev[3], r.author.v[0]) == PUB[CAROL];
+  r = n7d_reply(ev[4]); #assert r.status == N7D_NESTED && nt_raw(ev[4], r.thread.v[0]) == PY_ID[2];
+  #assert n22_comment(ev[4]).status == N34_OK;
+  // Each reader refuses the other kinds: a chat view holds kind 9 only.
+  #assert nc7_chat(ev[2]).status == N34_KIND && nc7_chat(ev[3]).status == N34_KIND && n7d_thread(ev[0]).status == N34_KIND && n7d_reply(ev[2]).status == N34_KIND;
+}
+
+// NIP-C7's and NIP-7D's own examples. Where a NIP writes a placeholder such
+// as <event-id>, the check puts Python's id, relay and key in its place.
+#test "the NIPs' own examples" {
+  // NIP-C7: {"kind": 9, "content": "GM", "tags": []}.
+  c := nc7_chat(n34_event("[]", 9)); #assert c.status == N34_OK && !c.parent.found;
+  // NIP-C7: a reply, ["q", <event-id>, <relay-url>, <pubkey>].
+  e := n34_event(PY_C2, 9); c = nc7_chat(e); #assert c.status == N34_OK && c.parent.found && c.parent.values == 3;
+  // NIP-7D: {"kind": 11, "content": "Good morning", "tags": [["title", "GM"]]}.
+  e = n34_event("[[\"title\",\"GM\"]]", 11); t := n7d_thread(e); #assert t.status == N34_OK && nt_raw(e, t.title.v[0]) == "GM";
+  // NIP-7D's reply has K and E only. NIP-22, which it says replies "MUST
+  // use", requires the parent's e and k too: the example refuses as missing.
+  buf: [512] u8; n := json_raw(buf[..], 0, "[[\"K\",\"11\"],[\"E\",\""); n = json_raw(buf[..], n, PY_ID[2]);
+  n = json_raw(buf[..], n, "\",\"wss://relay.example.com\",\""); n = json_raw(buf[..], n, PUB[CAROL]); n = json_raw(buf[..], n, "\"]]");
+  #assert n7d_reply(n34_event(cast(string) buf[0..<n], 1111)).status == N34_MISSING;
+}
+// book:end check

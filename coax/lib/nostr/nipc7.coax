@@ -1,0 +1,129 @@
+// NIP-C7 chats read from a parsed event (nip34.coax's NtEvent and tag
+// readers): a chat message is a kind 9 event, and a reply is another kind 9
+// that quotes its parent in a q tag,
+// ["q", <event id>, <relay URL>, <pubkey>].
+//
+// A reading of the signed tags, not authority: it verifies no signature and
+// fetches nothing. A q tag may also cite other content, as NIP-18 lays it
+// out: an event id or an event address ("<kind>:<pubkey>:<d>"), then a relay
+// and, for an event id, its author. The parent is the first q tag that
+// holds an event id. Whether that event is a kind 9 is not known here: the
+// caller fetches it and reads it with nc7_chat, which refuses any other
+// kind. That refusal is also NIP-C7's rule for a chat view, which "MUST only
+// fetch kind 9 events".
+//
+// Not checked: that the content cites the parent with a nostr:nevent1 link,
+// as NIP-C7's example does, and the relay hint's spelling.
+#load "nip34.coax";
+#authority;
+
+NC7_KIND_CHAT :: 9;
+// What a q tag cites.
+NC7_NOTHING :: 0; NC7_ID :: 1; NC7_ADDRESS :: 2;
+
+// book:begin record
+// quotes counts the q tags. parent is the first q tag that holds an event
+// id; parent.found says the message is a reply. Its values are the id, the
+// relay and the author, as spans of the event's text.
+NC7Chat :: struct {status:int;quotes:int;parent:NtTag;}
+// book:end record
+
+NC7_ID_A :: "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36";
+NC7_KEY_A :: "f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca";
+NC7_ADDRESS_A :: "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:tea";
+
+#test "a chat message with no tags reads, and is not a reply" {
+ c:=nc7_chat(n34_event("[]",9));#assert c.status==N34_OK && c.quotes==0 && !c.parent.found;
+ c=nc7_chat(n34_event("[[\"t\",\"gm\"]]",9));#assert c.status==N34_OK && c.quotes==0 && !c.parent.found;
+}
+#test "a reply reads its parent's id, relay and author" {
+ buf:[512]u8;n:=nc7_reply_tags(NC7_ID_A,"wss://relay.example.com",NC7_KEY_A,buf[..]);#assert n>0;
+ e:=n34_event(cast(string)buf[0..<n],9);c:=nc7_chat(e);
+ #assert c.status==N34_OK && c.quotes==1 && c.parent.found && c.parent.values==3;
+ #assert nt_raw(e,c.parent.v[0])==NC7_ID_A && nt_raw(e,c.parent.v[1])=="wss://relay.example.com" && nt_raw(e,c.parent.v[2])==NC7_KEY_A;
+ // The id alone is enough, and an empty author is no author.
+ e=n34_event("[[\"q\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]",9);c=nc7_chat(e);
+ #assert c.status==N34_OK && c.parent.found && c.parent.values==1;
+ e=n34_event("[[\"q\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"\",\"\"]]",9);#assert nc7_chat(e).status==N34_OK;
+}
+#test "the parent is the first q tag that holds an event id" {
+ buf:[1024]u8;n:=json_raw(buf[..],0,"[[\"q\",\"");n=json_raw(buf[..],n,NC7_ADDRESS_A);n=json_raw(buf[..],n,"\",\"wss://r\"],[\"q\",\"");
+ n=json_raw(buf[..],n,NC7_ID_A);n=json_raw(buf[..],n,"\"],[\"q\",\"");n=json_raw(buf[..],n,NC7_KEY_A);n=json_raw(buf[..],n,"\"]]");
+ e:=n34_event(cast(string)buf[0..<n],9);c:=nc7_chat(e);
+ #assert c.status==N34_OK && c.quotes==3 && c.parent.found && nt_raw(e,c.parent.v[0])==NC7_ID_A;
+ #assert nc7_cites(e,nt_tag(e,"q",0))==NC7_ADDRESS && nc7_cites(e,nt_tag(e,"q",1))==NC7_ID;
+ // A message that quotes only an article is not a reply.
+ n=json_raw(buf[..],0,"[[\"q\",\"");n=json_raw(buf[..],n,NC7_ADDRESS_A);n=json_raw(buf[..],n,"\"]]");
+ c=nc7_chat(n34_event(cast(string)buf[0..<n],9));#assert c.status==N34_OK && c.quotes==1 && !c.parent.found;
+ // A profile's address has kind 0 and an empty d.
+ e=n34_event("[[\"q\",\"0:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:\"]]",9);#assert nc7_cites(e,nt_tag(e,"q",0))==NC7_ADDRESS && nc7_quotes(e)==1;
+ // An address may carry an author too: any author must be a pubkey.
+ n=json_raw(buf[..],0,"[[\"q\",\"");n=json_raw(buf[..],n,NC7_ADDRESS_A);n=json_raw(buf[..],n,"\",\"\",\"");n=json_raw(buf[..],n,NC7_KEY_A);n=json_raw(buf[..],n,"\"]]");
+ #assert nc7_quotes(n34_event(cast(string)buf[0..<n],9))==1;
+}
+#test "a chat refuses a q tag that cites nothing, a bad author, another kind and a bad event" {
+ #assert nc7_chat(n34_event("[[\"q\"]]",9)).status==N34_MALFORMED;
+ #assert nc7_chat(n34_event("[[\"q\",\"\"]]",9)).status==N34_MALFORMED;
+ #assert nc7_chat(n34_event("[[\"q\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f3\"]]",9)).status==N34_MALFORMED;
+ #assert nc7_chat(n34_event("[[\"q\",\"5C83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]",9)).status==N34_MALFORMED;
+ #assert nc7_chat(n34_event("[[\"q\",\"30023:f723:tea\"]]",9)).status==N34_MALFORMED;
+ #assert nc7_chat(n34_event("[[\"q\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"\",\"f723\"]]",9)).status==N34_MALFORMED;
+ #assert nc7_chat(n34_event("[[\"q\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"\",\"f\"]]",9)).status==N34_MALFORMED;
+ // A good q tag before a bad one doesn't save the event.
+ #assert nc7_chat(n34_event("[[\"q\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"q\",\"x\"]]",9)).status==N34_MALFORMED;
+ #assert nc7_quotes(n34_event("[[\"q\",\"x\"]]",9))==-1;
+ // A chat view shows kind 9 only.
+ #assert nc7_chat(n34_event("[]",1)).status==N34_KIND && nc7_chat(n34_event("[]",10)).status==N34_KIND && nc7_chat(n34_event("[]",8)).status==N34_KIND;
+ #assert nc7_chat(n34_event("[1]",9)).status==N34_EVENT;
+}
+#test "a reply's tags refuse ids that aren't 64 hex digits, and a short buffer" {
+ buf:[512]u8;small:[80]u8;
+ #assert nc7_reply_tags("5c83",  "wss://r",NC7_KEY_A,buf[..])==-1 && nc7_reply_tags(NC7_ID_A,"wss://r","f723",buf[..])==-1;
+ #assert nc7_reply_tags(NC7_ID_A,"wss://r",NC7_KEY_A,small[..])==-1;
+ n:=nc7_reply_tags(NC7_ID_A,"a\"b",NC7_KEY_A,buf[..]);#assert n>0;
+ e:=n34_event(cast(string)buf[0..<n],9);c:=nc7_chat(e);#assert c.status==N34_OK && nt_raw(e,c.parent.v[1])=="a\\\"b";
+}
+
+// book:begin quote
+// What one q tag cites: an event id, an event address, or nothing this
+// file reads. An author, when the tag carries one, must be a pubkey.
+nc7_cites :: (e:NtEvent,t:NtTag)->int #effects(all) {
+ raw:=nt_raw(e,t.v[0]);author:=nt_raw(e,t.v[2]);
+ // A tag without an author has an empty third span.
+ if author.count>0 && !nt_hex(author,64) {return NC7_NOTHING;}
+ if nt_hex(raw,64) {return NC7_ID;}
+ return ifx nt_coord(raw).kind>=0 then NC7_ADDRESS else NC7_NOTHING;
+}
+// How many q tags the event has, or -1 when one of them cites nothing.
+nc7_quotes :: (e:NtEvent)->int #effects(all) {
+ n:=nt_tags(e,"q");
+ for k:0..<n {if nc7_cites(e,nt_tag(e,"q",k))==NC7_NOTHING {return -1;}}
+ return n;
+}
+// book:end quote
+
+// book:begin chat
+// A kind 9 chat message. Every q tag must cite an event or an address; the
+// first one that holds an event id is the parent.
+nc7_chat :: (e:NtEvent)->NC7Chat #effects(all) {
+ c:NC7Chat;c.status=n34_start(e,NC7_KIND_CHAT);if c.status!=N34_OK {return c;}
+ c.quotes=nc7_quotes(e);
+ if c.quotes<0 {c.status=N34_MALFORMED;return c;}
+ for k:0..<c.quotes {
+  t:=nt_tag(e,"q",k);
+  if nc7_cites(e,t)==NC7_ID {c.parent=t;break;}
+ }
+ return c;
+}
+// book:end chat
+
+// book:begin reply
+// The tags of a reply to the kind 9 event id, by author, found on relay:
+// one q tag. The new length, or -1 when an id isn't 64 lowercase hex digits
+// or out is short.
+nc7_reply_tags :: (id:string,relay:string,author:string,out:[]u8)->int #effects(all) {
+ if !nt_hex(id,64) || !nt_hex(author,64) {return -1;}
+ n:=json_raw(out,0,"[[\"q\",\"");n=json_raw(out,n,id);n=json_raw(out,n,"\",");n=json_write_string(out,n,relay);
+ n=json_raw(out,n,",\"");n=json_raw(out,n,author);return json_raw(out,n,"\"]]");
+}
+// book:end reply

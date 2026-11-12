@@ -1,0 +1,84 @@
+// The checks of public-messages.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/public-messages.coax --run-steps 250000000
+#load "../public-messages.coax";
+
+// book:begin check
+// The ids and tags from a Python script written from NIP-01, NIP-A4 and NIP-25
+// (it shares no code with Coax): the ids are hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PUB :: [3] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"];
+PY_ID :: [4] string.[
+  "d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4",
+  "cc44cac1094456bb6cd874d476b65995423e878eb374acc9e6ae5c55a9e15876",
+  "db86d0b019babac0079d73c5c57278875dca0e5583b1e0e75c9ef63ec0630202",
+  "c5ac0097a274a20dc3863c12bd8b3cf294c69b92b0abf8de3b36eaa1b5171db2"];
+PY_M1 :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://inbox.example.com\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"expiration\",\"1761772800\"]]";
+PY_M2 :: "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_X1 :: "[[\"e\",\"d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"k\",\"24\"]]";
+PY_X2 :: "[[\"e\",\"d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_AUTHOR :: [4] int.[0, 1, 2, 1];
+PY_AT :: [4] int.[0, 600, 700, 800];
+PY_KIND :: [4] int.[24, 24, 7, 7];
+PY_TAGS :: [4] string.[PY_M1, PY_M2, PY_X1, PY_X2];
+PY_CONTENT :: [4] string.["Are you both coming on Friday?", "Yes. I will bring the kettle.", "+", "+"];
+
+// Event i of the script with a zero signature, read with its id recomputed;
+// the signature is not checked.
+py :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[i]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[PY_AUTHOR[i]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + PY_AT[i]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, PY_KIND[i]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, PY_TAGS[i]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, PY_CONTENT[i]);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the ids are Python's, and so are the tags the library and the example write" {
+  buf: [4][4096] u8; scratch: [4096] u8;
+  for i: 0..<4 { e := py(i, buf[i][..], scratch[..]); #assert e.error == NE_OK && n34_same(e.computed_id, e.id); }
+  tags: [1024] u8;
+  to := [2] string.[PUB[BOB], PUB[CAROL]]; relays := [2] string.[INBOX, ""];
+  n := na4_tags(to[..], relays[..], T0 + DAY, tags[..]); #assert cast(string) tags[0..<n] == PY_M1;
+  back := [1] string.[PUB[ALICE]];
+  n = na4_tags(back[..], relays[1..<2], 0, tags[..]); #assert cast(string) tags[0..<n] == PY_M2;
+  t: [1] Tags; reaction_tags(t[..], PY_ID[0], PUB[ALICE], "24"); #assert tags_of(t[..]) == PY_X1;
+  t[0].n = 0; reaction_tags(t[..], PY_ID[0], PUB[ALICE], ""); #assert tags_of(t[..]) == PY_X2;
+}
+
+// By hand: M1 has two p tags, Bob's with a relay and Carol's without, and
+// expires one day (86400 s) after T0. M2 has one p tag, Alice's, and no
+// expiration. Neither has an e or a q tag. X1 says k 24; X2 has no k.
+#test "Python's events read as worked by hand" {
+  buf: [4][4096] u8; scratch: [4096] u8; ev: [4] NtEvent;
+  for i: 0..<4 { ev[i] = nt_event_of(py(i, buf[i][..], scratch[..])); }
+  m := na4_message(ev[0]); #assert m.status == N34_OK && m.receivers == 2 && m.quotes == 0 && m.expires == T0 + 86400;
+  #assert nt_raw(ev[0], nt_tag(ev[0], "p", 0).v[0]) == PUB[BOB] && nt_raw(ev[0], nt_tag(ev[0], "p", 0).v[1]) == INBOX;
+  #assert nt_raw(ev[0], nt_tag(ev[0], "p", 1).v[0]) == PUB[CAROL] && nt_tag(ev[0], "p", 1).values == 1;
+  m = na4_message(ev[1]); #assert m.status == N34_OK && m.receivers == 1 && m.expires == -1 && nt_raw(ev[1], nt_tag(ev[1], "p", 0).v[0]) == PUB[ALICE];
+  #assert na4_about(ev[2]) && !na4_about(ev[3]);
+  // A reaction is not a message, and its e tag would refuse as one.
+  #assert na4_message(ev[2]).status == N34_KIND;
+  ev[2].kind = 24; #assert na4_message(ev[2]).status == NA4_THREAD;
+}
+
+// NIP-A4's own example, with Python's key and relay where it writes
+// <receiver> and <relay-url>, and its q tag layout,
+// ["q", "<event-id> or <event-address>", "<relay-url>", "<pubkey-if-a-regular-event>"].
+#test "NIP-A4's own layouts" {
+  buf: [1024] u8; n := json_raw(buf[..], 0, "[[\"p\",\""); n = json_raw(buf[..], n, PUB[BOB]); n = json_raw(buf[..], n, "\",\"wss://inbox.example.com\"]]");
+  e := n34_event(cast(string) buf[0..<n], 24); m := na4_message(e);
+  #assert m.status == N34_OK && m.receivers == 1 && nt_raw(e, nt_tag(e, "p", 0).v[1]) == "wss://inbox.example.com";
+  n = json_raw(buf[..], 0, "[[\"p\",\""); n = json_raw(buf[..], n, PUB[BOB]); n = json_raw(buf[..], n, "\"],[\"q\",\""); n = json_raw(buf[..], n, PY_ID[0]);
+  n = json_raw(buf[..], n, "\",\"wss://inbox.example.com\",\""); n = json_raw(buf[..], n, PUB[ALICE]); n = json_raw(buf[..], n, "\"],[\"q\",\"30023:"); n = json_raw(buf[..], n, PUB[ALICE]);
+  n = json_raw(buf[..], n, ":kettles\",\"wss://inbox.example.com\"]]");
+  m = na4_message(n34_event(cast(string) buf[0..<n], 24)); #assert m.status == N34_OK && m.quotes == 2;
+}
+// book:end check

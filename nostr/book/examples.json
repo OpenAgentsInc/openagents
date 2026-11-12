@@ -187,6 +187,18 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/external-identities.coax",
+      "chapter": "nostr/book/ch045-profiles-follows-and-names.md",
+      "stdout": "nostr/fixtures/external-identities.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 300
+    },
+    {
       "source": "nostr/examples/relay-connection.coax",
       "chapter": "nostr/book/ch029-a-relay-connection.md",
       "stdout": "nostr/fixtures/relay-connection.out",
@@ -338,6 +350,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/snippets-pull-requests.coax",
+      "chapter": "nostr/book/ch063-git-on-nostr.md",
+      "stdout": "nostr/fixtures/snippets-pull-requests.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 300
     },
     {
       "source": "nostr/examples/match-indexes.coax",
@@ -868,6 +892,18 @@
       "timeout": 300
     },
     {
+      "source": "nostr/examples/chats-threads.coax",
+      "chapter": "nostr/book/ch059-groups-and-communities.md",
+      "stdout": "nostr/fixtures/chats-threads.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 300
+    },
+    {
       "source": "nostr/examples/private-messages.coax",
       "chapter": "nostr/book/ch060-private-messages.md",
       "stdout": "nostr/fixtures/private-messages.out",
@@ -878,6 +914,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 400
+    },
+    {
+      "source": "nostr/examples/public-messages.coax",
+      "chapter": "nostr/book/ch060-private-messages.md",
+      "stdout": "nostr/fixtures/public-messages.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 300
     },
     {
       "source": "nostr/examples/relay-management.coax",

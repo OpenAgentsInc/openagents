@@ -1,0 +1,270 @@
+// NIP-34 pull requests, beyond nip34.coax and nip34-patch.coax: a pull
+// request (kind 1618), a pull request update (kind 1619), and which commit
+// is the pull request's tip after its updates.
+//
+// A patch (1617) carries the change in its content. A pull request carries
+// none: it names a commit (c, the tip of the branch) and at least one URL
+// to fetch it from (clone). NIP-34: "Patches SHOULD be used if each event
+// is under 60kb, otherwise PRs SHOULD be used." An update is a second
+// event, with NIP-22's E and P tags naming the pull request and its
+// author, that "changes the tip of a referenced PR event".
+//
+// What the readers ask of both kinds: an a tag naming the repository
+// (30617), every a a coordinate, c a commit id of 40 hex digits, a clone
+// tag with at least one URL, and merge-base, when present, 40 hex digits.
+// NIP-34 says a pull request "SHOULD include an a tag"; this reader
+// requires it, as n34_patch does, because the tip is worked out for one
+// repository. An update also needs E and P, each 64 hex digits.
+//
+// NIP-34 does not say whose update counts. n34_head counts an update only
+// when the pull request's own author signed it and it names the same
+// repository, so nobody else can move a pull request to another commit. Of
+// those, the newest decides (a tie in created_at goes to the lower id, as
+// n34_resolve breaks it). With none, the tip is the pull request's own c.
+//
+// n34_head trusts each event's pubkey, id and created_at: the caller
+// passes events from nostr_event_verify_vartime as N34Signed (nt_signed_of
+// in nip34-event.coax). It fetches no commit and does not check that the
+// new tip descends from the old one.
+//
+// Not built: a pull request's status. Kinds 1630 to 1633 apply to pull
+// requests too, but n34_resolve (nip34-patch.coax) reads only an issue or
+// a patch as its root.
+#load "nip34-patch.coax";
+#authority;
+
+N34_KIND_PULL :: 1618; N34_KIND_PULL_UPDATE :: 1619;
+
+// book:begin record
+// The tip of a branch: its commit (c), where to fetch it (clone, one or
+// more URLs) and, when given, the newest commit it shares with the target
+// branch (merge-base).
+N34Tip :: struct {status:int;commit:NtTag;clone:NtTag;base:NtTag;}
+// repo is the first 30617 coordinate. revises is an e tag: the root patch
+// this pull request replaces.
+N34Pull :: struct {status:int;repo:NtSpan;tip:N34Tip;subject:NtTag;branch:NtTag;revises:NtTag;labels:int;}
+// pull is the E tag (the pull request's id) and author the P tag.
+N34PullUpdate :: struct {status:int;repo:NtSpan;tip:N34Tip;pull:NtTag;author:NtTag;}
+N34Head :: struct {
+ status:int=N34_EVENT;   // N34_OK, or why the pull request doesn't read
+ commit:[40]u8;          // the tip: the winning update's c, or the pull request's
+ winner:int=-1;          // the winning update's index in the set, or -1
+ counted:int;            // updates of this pull request by its author
+ ignored:int;            // updates of it by anyone else, or naming another repository
+ refused:int;            // kind 1619 events that don't read
+}
+// book:end record
+
+N34_PR_A :: "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea";
+N34_PR_C1 :: "1111111111111111111111111111111111111111";
+N34_PR_C2 :: "2222222222222222222222222222222222222222";
+N34_PR_C3 :: "3333333333333333333333333333333333333333";
+N34_PR_OWNER :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+N34_PR_AUTHOR :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+N34_PR_ID :: "0101010101010101010101010101010101010101010101010101010101010101";
+
+#test "a pull request reads its repository, tip, subject, branch and labels" {
+ buf:[1024]u8;n:=n34_pull_tags(N34_PR_A,N34_PR_OWNER,"Count minutes","timer-minutes",N34_PR_C1,"https://git.example.com/carol/tea.git",buf[..]);#assert n>0;
+ e:=n34_event(cast(string)buf[0..<n],1618);p:=n34_pull(e);
+ #assert p.status==N34_OK && nt_raw(e,p.repo)==N34_PR_A && nt_raw(e,p.tip.commit.v[0])==N34_PR_C1 && nt_raw(e,p.tip.clone.v[0])=="https://git.example.com/carol/tea.git";
+ #assert nt_raw(e,p.subject.v[0])=="Count minutes" && nt_raw(e,p.branch.v[0])=="timer-minutes" && p.labels==0 && p.revises.n==0 && p.tip.base.n==0;
+ #assert nt_raw(e,nt_tag(e,"p",0).v[0])==N34_PR_OWNER;
+ // No subject and no branch name: the tags are left out.
+ n=n34_pull_tags(N34_PR_A,N34_PR_OWNER,"","",N34_PR_C1,"https://c",buf[..]);e=n34_event(cast(string)buf[0..<n],1618);p=n34_pull(e);
+ #assert p.status==N34_OK && p.subject.n==0 && p.branch.n==0;
+ #assert cast(string)buf[0..<n]=="[[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"],[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"]]";
+ // Labels, a root patch it revises, a merge base and two clone URLs.
+ tags:="[[\"a\",\"30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:x\"],[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"],[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:other\"],[\"t\",\"bug\"],[\"t\",\"timer\"],[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://a\",\"https://b\"],[\"e\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"merge-base\",\"2222222222222222222222222222222222222222\"]]";
+ e=n34_event(tags,1618);p=n34_pull(e);
+ #assert p.status==N34_OK && nt_raw(e,p.repo)==N34_PR_A && p.labels==2 && p.tip.clone.values==2 && nt_raw(e,p.revises.v[0])==N34_PR_ID && nt_raw(e,p.tip.base.v[0])==N34_PR_C2;
+ // A kind 0 coordinate is a coordinate.
+ #assert n34_pull(n34_event("[[\"a\",\"0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:\"],[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"],[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"]]",1618)).status==N34_OK;
+}
+#test "a pull request refuses no repository, no tip, no clone URL and bad ids" {
+ #assert n34_pull(n34_event("[[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"]]",1618)).status==N34_MISSING;
+ #assert n34_pull(n34_event("[[\"a\",\"30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"],[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"]]",1618)).status==N34_MISSING;
+ #assert n34_pull(n34_event("[[\"a\",\"x\"],[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"]]",1618)).status==N34_MALFORMED;
+ #assert n34_pull(n34_event("[[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"],[\"a\"],[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"]]",1618)).status==N34_MALFORMED;
+ good:="[[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"]";
+ rest:=[12]string.[",[\"clone\",\"https://c\"]]",",[\"c\",\"1111111111111111111111111111111111111111\"]]",",[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\"]]",
+  ",[\"c\"],[\"clone\",\"https://c\"]]",",[\"c\",\"111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"]]",",[\"c\",\"111111111111111111111111111111111111111G\"],[\"clone\",\"https://c\"]]",
+  ",[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"],[\"merge-base\"]]",",[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"],[\"merge-base\",\"2222\"]]",
+  ",[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"],[\"subject\"]]",",[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"],[\"branch-name\"]]",
+  ",[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"],[\"e\",\"0101\"]]",",[\"c\",\"1111111111111111111111111111111111111111\"],[\"clone\",\"https://c\"],[\"t\"]]"];
+ want:=[12]int.[N34_MISSING,N34_MISSING,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED];
+ for i:0..<12 {
+  buf:[512]u8;n:=json_raw(buf[..],0,good);n=json_raw(buf[..],n,rest[i]);
+  #assert n34_pull(n34_event(cast(string)buf[0..<n],1618)).status==want[i];
+ }
+ #assert n34_pull(n34_event("[]",1617)).status==N34_KIND && n34_pull(n34_event("[]",1619)).status==N34_KIND;
+ #assert n34_pull(n34_event("[1]",1618)).status==N34_EVENT;
+}
+#test "an update reads the pull request it moves, its author and the new tip" {
+ buf:[1024]u8;n:=n34_pull_update_tags(N34_PR_A,N34_PR_OWNER,N34_PR_ID,N34_PR_AUTHOR,N34_PR_C2,"https://git.example.com/carol/tea.git",buf[..]);#assert n>0;
+ e:=n34_event(cast(string)buf[0..<n],1619);u:=n34_pull_update(e);
+ #assert u.status==N34_OK && nt_raw(e,u.repo)==N34_PR_A && nt_raw(e,u.pull.v[0])==N34_PR_ID && nt_raw(e,u.author.v[0])==N34_PR_AUTHOR;
+ #assert nt_raw(e,u.tip.commit.v[0])==N34_PR_C2 && nt_raw(e,u.tip.clone.v[0])=="https://git.example.com/carol/tea.git" && nt_raw(e,nt_tag(e,"p",0).v[0])==N34_PR_OWNER;
+}
+#test "an update refuses a missing or bad E or P, and what a tip refuses" {
+ good:="[[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"],[\"c\",\"2222222222222222222222222222222222222222\"],[\"clone\",\"https://c\"]";
+ rest:=[6]string.[",[\"P\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",",[\"E\",\"0101010101010101010101010101010101010101010101010101010101010101\"]]",
+  ",[\"E\"],[\"P\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",",[\"E\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"P\"]]",
+  ",[\"E\",\"0101\"],[\"P\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",",[\"E\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"P\",\"cccc\"]]"];
+ want:=[6]int.[N34_MISSING,N34_MISSING,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED,N34_MALFORMED];
+ for i:0..<6 {
+  buf:[512]u8;n:=json_raw(buf[..],0,good);n=json_raw(buf[..],n,rest[i]);
+  #assert n34_pull_update(n34_event(cast(string)buf[0..<n],1619)).status==want[i];
+ }
+ // The lowercase e and p of a comment are not the pull request's E and P.
+ buf:[512]u8;n:=json_raw(buf[..],0,good);n=json_raw(buf[..],n,",[\"e\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]");
+ #assert n34_pull_update(n34_event(cast(string)buf[0..<n],1619)).status==N34_MISSING;
+ ep:=",[\"E\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"P\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]";
+ #assert n34_pull_update(n34_event("[[\"c\",\"2222222222222222222222222222222222222222\"],[\"clone\",\"https://c\"],[\"E\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"P\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",1619)).status==N34_MISSING;
+ n=json_raw(buf[..],0,"[[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"],[\"clone\",\"https://c\"]");n=json_raw(buf[..],n,ep);
+ #assert n34_pull_update(n34_event(cast(string)buf[0..<n],1619)).status==N34_MISSING;
+ n=json_raw(buf[..],0,good);n=json_raw(buf[..],n,ep);
+ #assert n34_pull_update(n34_event(cast(string)buf[0..<n],1619)).status==N34_OK;
+ #assert n34_pull_update(n34_event(cast(string)buf[0..<n],1618)).status==N34_KIND && n34_pull_update(n34_event(cast(string)buf[0..<n],1620)).status==N34_KIND;
+ #assert n34_pull_update(n34_event("[1]",1619)).status==N34_EVENT;
+}
+#test "the tags refuse ids and addresses of the wrong shape, no clone URL and a short buffer" {
+ buf:[1024]u8;small:[200]u8;
+ #assert n34_pull_tags("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea",N34_PR_OWNER,"s","b",N34_PR_C1,"https://c",buf[..])==-1;
+ #assert n34_pull_tags("x",N34_PR_OWNER,"s","b",N34_PR_C1,"https://c",buf[..])==-1 && n34_pull_tags(N34_PR_A,"aaaa","s","b",N34_PR_C1,"https://c",buf[..])==-1;
+ #assert n34_pull_tags(N34_PR_A,N34_PR_OWNER,"s","b","1111","https://c",buf[..])==-1 && n34_pull_tags(N34_PR_A,N34_PR_OWNER,"s","b",N34_PR_C1,"",buf[..])==-1;
+ #assert n34_pull_tags(N34_PR_A,N34_PR_OWNER,"s","b",N34_PR_C1,"https://c",small[..])==-1;
+ #assert n34_pull_update_tags("x",N34_PR_OWNER,N34_PR_ID,N34_PR_AUTHOR,N34_PR_C2,"https://c",buf[..])==-1 && n34_pull_update_tags(N34_PR_A,"aaaa",N34_PR_ID,N34_PR_AUTHOR,N34_PR_C2,"https://c",buf[..])==-1;
+ #assert n34_pull_update_tags(N34_PR_A,N34_PR_OWNER,"0101",N34_PR_AUTHOR,N34_PR_C2,"https://c",buf[..])==-1 && n34_pull_update_tags(N34_PR_A,N34_PR_OWNER,N34_PR_ID,"cccc",N34_PR_C2,"https://c",buf[..])==-1;
+ #assert n34_pull_update_tags(N34_PR_A,N34_PR_OWNER,N34_PR_ID,N34_PR_AUTHOR,"2222","https://c",buf[..])==-1 && n34_pull_update_tags(N34_PR_A,N34_PR_OWNER,N34_PR_ID,N34_PR_AUTHOR,N34_PR_C2,"",buf[..])==-1;
+ #assert n34_pull_update_tags(N34_PR_A,N34_PR_OWNER,N34_PR_ID,N34_PR_AUTHOR,N34_PR_C2,"https://c",small[..])==-1;
+ // The subject is escaped; a one-letter subject and branch are written.
+ n:=n34_pull_tags(N34_PR_A,N34_PR_OWNER,"a \"b\"","b",N34_PR_C1,"c",buf[..]);e:=n34_event(cast(string)buf[0..<n],1618);p:=n34_pull(e);
+ #assert p.status==N34_OK && nt_raw(e,p.subject.v[0])=="a \\\"b\\\"" && nt_raw(e,p.branch.v[0])=="b" && nt_raw(e,p.tip.clone.v[0])=="c";
+ n=n34_pull_tags(N34_PR_A,N34_PR_OWNER,"s","",N34_PR_C1,"c",buf[..]);e=n34_event(cast(string)buf[0..<n],1618);#assert nt_raw(e,n34_pull(e).subject.v[0])=="s";
+}
+
+// A pull request by key 0xcc with id 0x01 and tip C1, and an update of it.
+n34_pr_update :: (repo:string,pull:string,commit:string,out:[]u8)->N34Signed #effects(all) {
+ n:=n34_pull_update_tags(repo,N34_PR_OWNER,pull,N34_PR_AUTHOR,commit,"https://c",out);
+ return n34_parsed(1619,cast(string)out[0..<n],out);
+}
+#test "the newest update by the pull request's author is the tip; others are ignored" {
+ b:[8][1024]u8;
+ n:=n34_pull_tags(N34_PR_A,N34_PR_OWNER,"s","b",N34_PR_C1,"https://c",b[0][..]);
+ pull:=n34_as(n34_parsed(1618,cast(string)b[0][0..<n],b[0][..]),0xcc,10,0x01);
+ set:[6]N34Signed;h:=n34_head(pull,set[0..<0]);
+ #assert h.status==N34_OK && cast(string)h.commit[..]==N34_PR_C1 && h.winner==-1 && h.counted==0 && h.ignored==0 && h.refused==0;
+ set[0]=n34_as(n34_pr_update(N34_PR_A,N34_PR_ID,N34_PR_C2,b[1][..]),0xcc,20,0x20);   // the author moves the tip
+ set[1]=n34_as(n34_pr_update(N34_PR_A,N34_PR_ID,N34_PR_C3,b[2][..]),0xdd,40,0x21);   // someone else: ignored
+ set[2]=n34_as(n34_pr_update(N34_PR_A,N34_KEY_22,N34_PR_C3,b[3][..]),0xcc,50,0x22);  // another pull request
+ set[3]=n34_as(n34_parsed(1619,"[[\"c\",\"3333333333333333333333333333333333333333\"]]",b[4][..]),0xcc,60,0x23); // doesn't read: refused
+ set[4]=n34_as(n34_pr_update("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:coffee",N34_PR_ID,N34_PR_C3,b[5][..]),0xcc,70,0x24); // another repository: ignored
+ set[5]=n34_as(n34_pr_update(N34_PR_A,N34_PR_ID,N34_PR_C3,b[6][..]),0xcc,80,0x25);set[5].e.kind=1618;  // not an update
+ h=n34_head(pull,set[..]);
+ #assert h.status==N34_OK && cast(string)h.commit[..]==N34_PR_C2 && h.winner==0 && h.counted==1 && h.ignored==2 && h.refused==1;
+ // A later update by the author wins, in either order.
+ set[5].e.kind=1619;h=n34_head(pull,set[..]);#assert cast(string)h.commit[..]==N34_PR_C3 && h.winner==5 && h.counted==2;
+ rev:[6]N34Signed;for k:0..<6 {rev[k]=set[5-k];}
+ h=n34_head(pull,rev[..]);#assert cast(string)h.commit[..]==N34_PR_C3 && h.winner==0 && h.counted==2 && h.ignored==2 && h.refused==1;
+ // A tie in created_at goes to the lower id, in either order.
+ two:[2]N34Signed;two[0]=n34_as(set[0],0xcc,20,0x30);two[1]=n34_as(set[5],0xcc,20,0x2f);
+ h=n34_head(pull,two[..]);#assert h.winner==1 && cast(string)h.commit[..]==N34_PR_C3;
+ two[1]=n34_as(set[5],0xcc,20,0x31);h=n34_head(pull,two[..]);#assert h.winner==0 && cast(string)h.commit[..]==N34_PR_C2;
+ // An update whose event didn't parse is refused.
+ bad:[1]N34Signed;bad[0]=set[0];bad[0].e.ok=false;h=n34_head(pull,bad[..]);#assert h.refused==1 && h.counted==0 && cast(string)h.commit[..]==N34_PR_C1;
+ // A pull request that doesn't read says why, and has no tip.
+ h=n34_head(n34_as(n34_parsed(1618,"[]",b[7][..]),0xcc,10,0x01),set[..]);#assert h.status==N34_MISSING && h.winner==-1 && h.counted==0 && h.commit[0]==0;
+ #assert n34_head(set[0],set[..]).status==N34_KIND;
+}
+
+// book:begin target
+// The repository an event is for: the first a tag of kind 30617. Every a
+// tag must be a coordinate.
+n34_target :: (e:NtEvent,repo:[]NtSpan)->int #effects(all) {
+ s:=N34_OK;
+ for k:0..<nt_tags(e,"a") {
+  // A valueless a tag's first span is empty, which is no coordinate.
+  t:=nt_tag(e,"a",k);c:=nt_coord(nt_raw(e,t.v[0]));
+  if c.kind<0 {s=N34_MALFORMED;}
+  if c.kind==N34_KIND_REPO && repo[0].to==0 {repo[0]=t.v[0];}
+ }
+ return nt_and(s,ifx repo[0].to==0 then N34_MISSING else N34_OK);
+}
+// The tip both kinds carry: c and clone are required.
+n34_tip :: (e:NtEvent)->N34Tip #effects(all) {
+ r:N34Tip;r.commit=nt_tag(e,"c",0);r.clone=nt_tag(e,"clone",0);r.base=nt_tag(e,"merge-base",0);
+ s:=nt_and(nt_shape(r.commit,1,true),nt_shape(r.clone,1,true));
+ if s==N34_OK && !nt_hex(nt_raw(e,r.commit.v[0]),40) {s=N34_MALFORMED;}
+ // A valueless merge-base's first span is empty, which is no commit.
+ if s==N34_OK && r.base.n>0 && !nt_hex(nt_raw(e,r.base.v[0]),40) {s=N34_MALFORMED;}
+ r.status=s;return r;
+}
+// book:end target
+
+// book:begin pull
+// ---- 1618: a pull request.
+n34_pull :: (e:NtEvent)->N34Pull #effects(all) {
+ r:N34Pull;r.status=n34_start(e,N34_KIND_PULL);if r.status!=N34_OK {return r;}
+ repo:[1]NtSpan;s:=n34_target(e,repo[..]);r.repo=repo[0];r.tip=n34_tip(e);
+ r.subject=nt_tag(e,"subject",0);r.branch=nt_tag(e,"branch-name",0);r.revises=nt_tag(e,"e",0);r.labels=nt_each(e,"t",0);
+ s=nt_and(s,r.tip.status);s=nt_and(s,nt_shape(r.subject,1,false));s=nt_and(s,nt_shape(r.branch,1,false));
+ if r.labels<0 {s=nt_and(s,N34_MALFORMED);}
+ if r.revises.n>0 && !nt_hex(nt_raw(e,r.revises.v[0]),64) {s=nt_and(s,N34_MALFORMED);}
+ r.status=s;return r;
+}
+// ---- 1619: a pull request update. E and P are required.
+n34_pull_update :: (e:NtEvent)->N34PullUpdate #effects(all) {
+ r:N34PullUpdate;r.status=n34_start(e,N34_KIND_PULL_UPDATE);if r.status!=N34_OK {return r;}
+ repo:[1]NtSpan;s:=n34_target(e,repo[..]);r.repo=repo[0];r.tip=n34_tip(e);
+ r.pull=nt_tag(e,"E",0);r.author=nt_tag(e,"P",0);
+ s=nt_and(s,r.tip.status);s=nt_and(s,nt_shape(r.pull,1,true));s=nt_and(s,nt_shape(r.author,1,true));
+ if s==N34_OK && (!nt_hex(nt_raw(e,r.pull.v[0]),64) || !nt_hex(nt_raw(e,r.author.v[0]),64)) {s=N34_MALFORMED;}
+ r.status=s;return r;
+}
+// book:end pull
+
+// book:begin head
+// The pull request's tip after the updates in set.
+n34_head :: (pull:N34Signed,set:[]N34Signed)->N34Head #effects(all) {
+ out:N34Head;pe:=pull.e;p:=n34_pull(pe);
+ if p.status!=N34_OK {out.status=p.status;return out;}
+ out.status=N34_OK;id:=n34_hex32(pull.id);tip:=nt_raw(pe,p.tip.commit.v[0]);
+ for k:0..<set.count {
+  ev:=set[k];
+  if ev.e.kind!=N34_KIND_PULL_UPDATE {continue;}
+  ue:=ev.e;u:=n34_pull_update(ue);
+  if u.status!=N34_OK {out.refused+=1;continue;}
+  if nt_raw(ue,u.pull.v[0])!=cast(string)id[..] {continue;}
+  if !n34_same(ev.public_key,pull.public_key) || nt_raw(ue,u.repo)!=nt_raw(pe,p.repo) {out.ignored+=1;continue;}
+  out.counted+=1;
+  if out.winner<0 || n34_newer(ev,set[out.winner]) {out.winner=k;tip=nt_raw(ue,u.tip.commit.v[0]);}
+ }
+ for i:0..<40 {out.commit[i]=tip[i];}
+ return out;
+}
+// book:end head
+
+// book:begin tags
+// The tags both kinds start with: a (the repository's address), p (its
+// owner), c (the tip) and clone. -1 when a part has the wrong shape.
+n34_pr_start :: (repo:string,owner:string,commit:string,clone:string,out:[]u8)->int #effects(all) {
+ if nt_coord(repo).kind!=N34_KIND_REPO || !nt_hex(owner,64) || !nt_hex(commit,40) || clone.count==0 {return -1;}
+ n:=json_raw(out,0,"[[\"a\",");n=json_write_string(out,n,repo);n=json_raw(out,n,"],[\"p\",\"");n=json_raw(out,n,owner);
+ n=json_raw(out,n,"\"],[\"c\",\"");n=json_raw(out,n,commit);n=json_raw(out,n,"\"],[\"clone\",");n=json_write_string(out,n,clone);return json_raw(out,n,"]");
+}
+// A pull request's tags; an empty subject or branch name is left out. The
+// new length, or -1 when a part has the wrong shape or out is short.
+n34_pull_tags :: (repo:string,owner:string,subject:string,branch:string,commit:string,clone:string,out:[]u8)->int #effects(all) {
+ n:=n34_pr_start(repo,owner,commit,clone,out);
+ if subject.count>0 {n=json_raw(out,n,",[\"subject\",");n=json_write_string(out,n,subject);n=json_raw(out,n,"]");}
+ if branch.count>0 {n=json_raw(out,n,",[\"branch-name\",");n=json_write_string(out,n,branch);n=json_raw(out,n,"]");}
+ return json_raw(out,n,"]");
+}
+// An update's tags: the same start, then E (the pull request) and P (its
+// author). The new length, or -1.
+n34_pull_update_tags :: (repo:string,owner:string,pull:string,author:string,commit:string,clone:string,out:[]u8)->int #effects(all) {
+ if !nt_hex(pull,64) || !nt_hex(author,64) {return -1;}
+ n:=n34_pr_start(repo,owner,commit,clone,out);
+ n=json_raw(out,n,",[\"E\",\"");n=json_raw(out,n,pull);n=json_raw(out,n,"\"],[\"P\",\"");n=json_raw(out,n,author);return json_raw(out,n,"\"]]");
+}
+// book:end tags

@@ -1,0 +1,143 @@
+// NIP-7D forum threads read from a parsed event: a thread is a kind 11
+// event that should carry a title tag, and its replies are NIP-22 comments
+// (kind 1111, nip22.coax) whose root is the thread.
+//
+// A reading of the signed tags, not authority: it verifies no signature and
+// fetches nothing, so it doesn't know whether the event a reply names
+// exists or is a thread; it reads what the reply says, K "11".
+//
+// NIP-7D: "Replies should always be to the root kind 11 to avoid
+// arbitrarily nested reply hierarchies." n7d_reply reads the comment with
+// n22_comment, then asks that its root is an event (E) of kind 11 and that
+// its parent (e, k) is that same event. A comment on another comment of
+// the thread refuses with N7D_NESTED, with the thread still filled in, so
+// a client may show it flat. A comment whose root is anything else refuses
+// with N7D_ELSEWHERE.
+//
+// NIP-7D's own example reply carries only K and E. NIP-22 requires the
+// lowercase parent tags too, so that example refuses here as missing;
+// n7d_reply_tags writes all six tags.
+#load "nip22.coax";
+#authority;
+
+N7D_KIND_THREAD :: 11;
+// Past nip34.coax's N34_* statuses and nip22.coax's N22_KINDS (6).
+N7D_ELSEWHERE :: 7;   // the comment's root is not a kind 11 event
+N7D_NESTED :: 8;      // the comment answers something other than the thread itself
+
+// book:begin record
+N7DThread :: struct {status:int;title:NtTag;}
+// thread is the reply's E tag (the thread's id, a relay, its author) and
+// author its P tag, as spans of the reply's text.
+N7DReply :: struct {status:int;thread:NtTag;author:NtTag;}
+// book:end record
+
+N7D_ID :: "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36";
+N7D_OTHER :: "0202020202020202020202020202020202020202020202020202020202020202";
+N7D_KEY :: "f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca";
+
+#test "a thread reads its title, and reads without one" {
+ buf:[128]u8;n:=n7d_thread_tags("GM",buf[..]);#assert n>0 && cast(string)buf[0..<n]=="[[\"title\",\"GM\"]]";
+ e:=n34_event(cast(string)buf[0..<n],11);t:=n7d_thread(e);#assert t.status==N34_OK && t.title.n==1 && nt_raw(e,t.title.v[0])=="GM";
+ t=n7d_thread(n34_event("[]",11));#assert t.status==N34_OK && t.title.n==0;
+ n=n7d_thread_tags("a \"b\"",buf[..]);e=n34_event(cast(string)buf[0..<n],11);#assert nt_raw(e,n7d_thread(e).title.v[0])=="a \\\"b\\\"";
+ small:[12]u8;#assert n7d_thread_tags("GM",small[..])==-1;
+}
+#test "a thread refuses a title without a value, another kind and a bad event" {
+ #assert n7d_thread(n34_event("[[\"title\"]]",11)).status==N34_MALFORMED;
+ #assert n7d_thread(n34_event("[]",1)).status==N34_KIND && n7d_thread(n34_event("[]",12)).status==N34_KIND && n7d_thread(n34_event("[]",10)).status==N34_KIND;
+ #assert n7d_thread(n34_event("[1]",11)).status==N34_EVENT;
+}
+#test "a reply to the thread reads the thread's id, relay and author" {
+ buf:[1024]u8;n:=n7d_reply_tags(N7D_ID,"wss://relay.example.com",N7D_KEY,buf[..]);#assert n>0;
+ e:=n34_event(cast(string)buf[0..<n],1111);r:=n7d_reply(e);
+ #assert r.status==N34_OK && nt_raw(e,r.thread.v[0])==N7D_ID && nt_raw(e,r.thread.v[1])=="wss://relay.example.com" && nt_raw(e,r.thread.v[2])==N7D_KEY;
+ #assert nt_raw(e,r.author.v[0])==N7D_KEY;
+ // The tags are NIP-22's, so nip22.coax reads them too.
+ c:=n22_comment(e);#assert c.status==N34_OK && c.root.kind_value==11 && c.parent.kind_value==11 && nt_raw(e,c.parent.author.v[0])==N7D_KEY;
+}
+// A comment's tags: root scope and kind, then parent scope and kind.
+n7d_comment :: (root:string,root_id:string,root_kind:string,parent:string,parent_id:string,parent_kind:string,out:[]u8)->NtEvent #effects(all) {
+ n:=json_raw(out,0,"[[\"");n=json_raw(out,n,root);n=json_raw(out,n,"\",\"");n=json_raw(out,n,root_id);n=json_raw(out,n,"\"],[\"K\",\"");n=json_raw(out,n,root_kind);
+ n=json_raw(out,n,"\"],[\"");n=json_raw(out,n,parent);n=json_raw(out,n,"\",\"");n=json_raw(out,n,parent_id);n=json_raw(out,n,"\"],[\"k\",\"");n=json_raw(out,n,parent_kind);
+ n=json_raw(out,n,"\"]]");
+ return n34_event(cast(string)out[0..<n],1111);
+}
+#test "a reply to a reply refuses as nested, with the thread still read" {
+ buf:[1024]u8;
+ e:=n7d_comment("E",N7D_ID,"11","e",N7D_OTHER,"1111",buf[..]);r:=n7d_reply(e);
+ #assert r.status==N7D_NESTED && nt_raw(e,r.thread.v[0])==N7D_ID;
+ // A parent of kind 11 that is another event is not this thread either.
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"11","e",N7D_OTHER,"11",buf[..])).status==N7D_NESTED;
+ // A parent of kind 1111 with the thread's own id is still a comment's.
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"11","e",N7D_ID,"1111",buf[..])).status==N7D_NESTED;
+ // A parent that is not an event.
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"11","i","x","11",buf[..])).status==N7D_NESTED;
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"11","e",N7D_ID,"11",buf[..])).status==N34_OK;
+}
+#test "a comment on anything but a kind 11 event is elsewhere" {
+ buf:[1024]u8;
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"1","e",N7D_ID,"1",buf[..])).status==N7D_ELSEWHERE;
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"1111","e",N7D_ID,"1111",buf[..])).status==N7D_ELSEWHERE;
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"12","e",N7D_ID,"12",buf[..])).status==N7D_ELSEWHERE;
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"10","e",N7D_ID,"10",buf[..])).status==N7D_ELSEWHERE;
+ // An identifier (I) said to be of kind 11 is not an event.
+ #assert n7d_reply(n7d_comment("I","x","11","i","x","11",buf[..])).status==N7D_ELSEWHERE;
+ e:=n7d_comment("A","30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:x","11","e",N7D_ID,"11",buf[..]);
+ #assert n22_comment(e).status==N34_OK && n7d_reply(e).status==N7D_ELSEWHERE;
+}
+#test "a reply refuses what NIP-22 refuses, NIP-7D's own short example among it" {
+ // NIP-7D's example: K and E only.
+ e:=n34_event("[[\"K\",\"11\"],[\"E\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"wss://r\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"]]",1111);
+ #assert n7d_reply(e).status==N34_MISSING;
+ buf:[1024]u8;
+ #assert n7d_reply(n7d_comment("E","5c83","11","e",N7D_ID,"11",buf[..])).status==N34_MALFORMED;
+ #assert n7d_reply(n7d_comment("E",N7D_ID,"11","e",N7D_ID,"1",buf[..])).status==N22_KINDS;
+ e=n7d_comment("E",N7D_ID,"11","e",N7D_ID,"11",buf[..]);e.kind=1;#assert n7d_reply(e).status==N34_KIND;
+ #assert n7d_reply(n34_event("[1]",1111)).status==N34_EVENT;
+}
+#test "a reply's tags refuse ids that aren't 64 hex digits, and a short buffer" {
+ buf:[1024]u8;small:[300]u8;
+ #assert n7d_reply_tags("5c83","wss://r",N7D_KEY,buf[..])==-1 && n7d_reply_tags(N7D_ID,"wss://r","f723",buf[..])==-1;
+ #assert n7d_reply_tags(N7D_ID,"wss://r",N7D_KEY,small[..])==-1;
+}
+
+// book:begin thread
+// A kind 11 thread. The title is optional ("SHOULD"); a title tag without
+// a value refuses.
+n7d_thread :: (e:NtEvent)->N7DThread #effects(all) {
+ r:N7DThread;r.status=n34_start(e,N7D_KIND_THREAD);if r.status!=N34_OK {return r;}
+ r.title=nt_tag(e,"title",0);r.status=nt_shape(r.title,1,false);return r;
+}
+// A thread's tags: its title. The new length, or -1.
+n7d_thread_tags :: (title:string,out:[]u8)->int #effects(all) {
+ n:=json_raw(out,0,"[[\"title\",");n=json_write_string(out,n,title);return json_raw(out,n,"]]");
+}
+// book:end thread
+
+// book:begin reply
+// A kind 1111 comment as a reply to a thread: its root is an event of kind
+// 11, and its parent is that same event.
+n7d_reply :: (e:NtEvent)->N7DReply #effects(all) {
+ r:N7DReply;c:=n22_comment(e);r.status=c.status;if r.status!=N34_OK {return r;}
+ if c.root.at!='E' || c.root.kind_value!=N7D_KIND_THREAD {r.status=N7D_ELSEWHERE;return r;}
+ r.thread=c.root.ref;r.author=c.root.author;
+ if c.parent.at!='e' || c.parent.kind_value!=N7D_KIND_THREAD || nt_raw(e,c.parent.ref.v[0])!=nt_raw(e,c.root.ref.v[0]) {r.status=N7D_NESTED;}
+ return r;
+}
+// The tags of a reply to the thread id, by author, found on relay: NIP-22's
+// E, K and P for the root and e, k and p for the parent, which is the same
+// event. The new length, or -1 when an id isn't 64 lowercase hex digits or
+// out is short.
+n7d_reply_tags :: (thread:string,relay:string,author:string,out:[]u8)->int #effects(all) {
+ if !nt_hex(thread,64) || !nt_hex(author,64) {return -1;}
+ n:=json_raw(out,0,"[");names:="EKPekp";
+ for half:0..<2 {
+  n=json_raw(out,n,"[\"");n=json_raw(out,n,names[3*half..<3*half+1]);n=json_raw(out,n,"\",\"");n=json_raw(out,n,thread);n=json_raw(out,n,"\",");
+  n=json_write_string(out,n,relay);n=json_raw(out,n,",\"");n=json_raw(out,n,author);n=json_raw(out,n,"\"],[\"");
+  n=json_raw(out,n,names[3*half+1..<3*half+2]);n=json_raw(out,n,"\",\"11\"],[\"");n=json_raw(out,n,names[3*half+2..<3*half+3]);n=json_raw(out,n,"\",\"");
+  n=json_raw(out,n,author);n=json_raw(out,n,ifx half==0 then "\"]," else "\"]]");
+ }
+ return n;
+}
+// book:end reply

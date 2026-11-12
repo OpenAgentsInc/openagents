@@ -1,0 +1,81 @@
+// The checks of external-identities.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/external-identities.coax --run-steps 250000000
+#load "../external-identities.coax";
+
+// book:begin check
+// The ids and tags from a Python script written from NIP-01, NIP-19 and NIP-39
+// (it shares no code with Coax): the ids are hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PUB :: [2] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"];
+PY_ID :: [2] string.[
+  "d4c4f78642b8c4c1405fda3c47e2d8ba36491e997164ed17cf009e18a7a81828",
+  "e98d27f8f33f354af13f5dd27601478879510d388025fadc4689c122ddf38144"];
+PY_I1 :: "[[\"i\",\"github:alice-tea\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"],[\"i\",\"mastodon:tea.example/@alice\",\"109775066355589974\"],[\"i\",\"matrix:@alice:tea.example\",\"$proof-event\"]]";
+PY_I2 :: "[[\"i\",\"github:alice-tea\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"]]";
+PY_AUTHOR :: [2] int.[0, 0];
+PY_AT :: [2] int.[0, 3600];
+PY_KIND :: [2] int.[10011, 10011];
+PY_TAGS :: [2] string.[PY_I1, PY_I2];
+PY_CONTENT :: [2] string.["", ""];
+
+// Event i of the script with a zero signature, read with its id recomputed;
+// the signature is not checked.
+py :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[i]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[PY_AUTHOR[i]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + PY_AT[i]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, PY_KIND[i]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, PY_TAGS[i]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, PY_CONTENT[i]);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+// The npubs are the script's own Bech32 (BIP-173) of the two keys.
+PY_NPUB :: [2] string.[
+  "npub1lycg5qvjtrp3qjf5f7zl382j9x6nrjz9sdhenvyxq8c3808qxmus6gq266",
+  "npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a"];
+PY_TEXT :: "Verifying that I control the following Nostr public key: npub1lycg5qvjtrp3qjf5f7zl382j9x6nrjz9sdhenvyxq8c3808qxmus6gq266";
+
+#test "the ids, the npubs and the verification text are Python's" {
+  buf: [2][4096] u8; scratch: [4096] u8;
+  for i: 0..<2 { e := py(i, buf[i][..], scratch[..]); #assert e.error == NE_OK && n34_same(e.computed_id, e.id); }
+  #assert CLAIMS == PY_I1;
+  np: [64] u8; key: [32] u8;
+  for k: 0..<2 { decode_hex(PUB[k], key[..]); #assert npub_of(key, np[..]) == PY_NPUB[k]; }
+  text: [160] u8; n := n39_text(PY_NPUB[ALICE], text[..]); #assert cast(string) text[0..<n] == PY_TEXT;
+  #assert n39_proves(PY_TEXT, PY_NPUB[ALICE]) && !n39_proves(PY_TEXT, PY_NPUB[BOB]);
+}
+
+// By hand: I1 has three i tags. Each first value splits at its first colon:
+// "github" and "alice-tea"; "mastodon" and "tea.example/@alice"; "matrix"
+// and "@alice:tea.example" (the second colon stays in the identity). The
+// proof URLs follow NIP-39's layouts: gist.github.com/<identity>/<proof>
+// and https://<identity>/<proof>. NIP-39 defines no "matrix" claim type.
+#test "Python's events read as worked by hand" {
+  buf: [2][4096] u8; scratch: [4096] u8; out: [4] N39Claim; url: [160] u8;
+  e := nt_event_of(py(0, buf[0][..], scratch[..])); r := n39_claims(e, out[..]);
+  #assert r.status == N34_OK && r.n == 3;
+  #assert nt_raw(e, out[0].platform) == "github" && nt_raw(e, out[0].identity) == "alice-tea" && nt_raw(e, out[0].proof) == "9721ce4ee4fceb91c9711ca2a6c9a5ab";
+  #assert nt_raw(e, out[1].platform) == "mastodon" && nt_raw(e, out[1].identity) == "tea.example/@alice" && nt_raw(e, out[1].proof) == "109775066355589974";
+  #assert nt_raw(e, out[2].platform) == "matrix" && nt_raw(e, out[2].identity) == "@alice:tea.example" && nt_raw(e, out[2].proof) == "$proof-event";
+  n := n39_proof_url(e, out[0], url[..]); #assert cast(string) url[0..<n] == "https://gist.github.com/alice-tea/9721ce4ee4fceb91c9711ca2a6c9a5ab";
+  n = n39_proof_url(e, out[1], url[..]); #assert cast(string) url[0..<n] == "https://tea.example/@alice/109775066355589974";
+  #assert n39_proof_url(e, out[2], url[..]) == 0;
+  e = nt_event_of(py(1, buf[1][..], scratch[..])); r = n39_claims(e, out[..]);
+  #assert r.status == N34_OK && r.n == 1 && nt_raw(e, out[0].identity) == "alice-tea";
+}
+
+// NIP-39's own example event and the four URLs its claim types give.
+#test "NIP-39's example and its proof URLs" {
+  e := n34_event("[[\"i\",\"github:semisol\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"],[\"i\",\"twitter:semisol_public\",\"1619358434134196225\"],[\"i\",\"mastodon:bitcoinhackers.org/@semisol\",\"109775066355589974\"],[\"i\",\"telegram:1087295469\",\"nostrdirectory/770\"]]", 10011);
+  out: [4] N39Claim; r := n39_claims(e, out[..]); #assert r.status == N34_OK && r.n == 4;
+  want := [4] string.["https://gist.github.com/semisol/9721ce4ee4fceb91c9711ca2a6c9a5ab", "https://twitter.com/semisol_public/status/1619358434134196225",
+    "https://bitcoinhackers.org/@semisol/109775066355589974", "https://t.me/nostrdirectory/770"];
+  for k: 0..<4 { url: [160] u8; n := n39_proof_url(e, out[k], url[..]); #assert cast(string) url[0..<n] == want[k]; }
+}
+// book:end check

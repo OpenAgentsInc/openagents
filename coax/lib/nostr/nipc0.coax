@@ -1,0 +1,155 @@
+// NIP-C0 code snippets read from a parsed event: kind 1337 holds a piece of
+// code in its content, and optional tags describe it: l (the language),
+// name (usually a file name), extension, description, runtime, license
+// (repeatable), dep (repeatable) and repo.
+//
+// A reading of the signed tags, not authority: it verifies no signature,
+// runs no code and fetches no repository. Every tag is optional. What the
+// reader refuses is a tag that is present and breaks NIP-C0's own words:
+// - l is the "Programming language name (lowercase)": an uppercase A-Z
+//   refuses;
+// - extension is the "File extension (without the dot)": a leading dot
+//   refuses;
+// - repo "MUST be either a standard URL or ... the address of a NIP-34
+//   Git repository announcement event", "30617:<pubkey>:<d tag value>".
+//   Here a URL is a scheme (a letter, then letters, digits, '+', '-' or
+//   '.'), "://" and at least one more byte;
+// - a selected tag, a license or a dep without a value.
+//
+// Not checked: that a license is an SPDX identifier (the list is long and
+// changes), and that the name's extension agrees with the extension tag.
+#load "nip34.coax";
+#authority;
+
+NC0_KIND_SNIPPET :: 1337;
+// What the repo tag holds.
+NC0_NO_REPO :: 0; NC0_URL :: 1; NC0_ADDRESS :: 2;
+
+// book:begin record
+// Each tag is its first occurrence; licenses and deps count theirs (read
+// each with nt_tag(e,"license",k) and nt_tag(e,"dep",k)).
+NC0Snippet :: struct {
+ status:int;language:NtTag;name:NtTag;extension:NtTag;description:NtTag;runtime:NtTag;
+ repo:NtTag;repo_is:int;licenses:int;deps:int;
+}
+// The text of a snippet's tags, for nc0_tags. An empty one is left out.
+NC0Tags :: struct {language:string;extension:string;name:string;description:string;runtime:string;license:string;repo:string;}
+// book:end record
+
+// NIP-C0's own example.
+NC0_EXAMPLE :: "[[\"l\",\"javascript\"],[\"extension\",\"js\"],[\"name\",\"hello-world.js\"],[\"description\",\"A basic JavaScript function that prints 'Hello, Nostr!' to the console\"],[\"runtime\",\"node v18.15.0\"],[\"license\",\"MIT\"],[\"repo\",\"https://github.com/nostr-protocol/nostr\"]]";
+NC0_REPO :: "30617:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:tea-tools";
+
+#test "NIP-C0's example reads, and the writer writes it byte for byte" {
+ e:=n34_event(NC0_EXAMPLE,1337);s:=nc0_snippet(e);
+ #assert s.status==N34_OK && nt_raw(e,s.language.v[0])=="javascript" && nt_raw(e,s.extension.v[0])=="js" && nt_raw(e,s.name.v[0])=="hello-world.js";
+ #assert nt_raw(e,s.runtime.v[0])=="node v18.15.0" && s.licenses==1 && nt_raw(e,nt_tag(e,"license",0).v[0])=="MIT" && s.deps==0;
+ #assert s.repo_is==NC0_URL && nt_raw(e,s.repo.v[0])=="https://github.com/nostr-protocol/nostr" && s.description.n==1;
+ t:NC0Tags;t.language="javascript";t.extension="js";t.name="hello-world.js";t.description="A basic JavaScript function that prints 'Hello, Nostr!' to the console";
+ t.runtime="node v18.15.0";t.license="MIT";t.repo="https://github.com/nostr-protocol/nostr";
+ buf:[512]u8;n:=nc0_tags(t,buf[..]);#assert n>0 && cast(string)buf[0..<n]==NC0_EXAMPLE;
+ small:[200]u8;#assert nc0_tags(t,small[..])==-1;
+}
+#test "a snippet with no tags reads, and so do many licenses, deps and a repository address" {
+ s:=nc0_snippet(n34_event("[]",1337));#assert s.status==N34_OK && s.language.n==0 && s.repo_is==NC0_NO_REPO && s.licenses==0 && s.deps==0;
+ buf:[512]u8;n:=json_raw(buf[..],0,"[[\"license\",\"MIT\"],[\"license\",\"Apache-2.0\",\"https://www.apache.org/licenses/LICENSE-2.0\"],[\"dep\",\"left-pad\"],[\"dep\",\"is-odd\"],[\"dep\",\"is-even\"],[\"repo\",\"");
+ n=json_raw(buf[..],n,NC0_REPO);n=json_raw(buf[..],n,"\",\"wss://relay.example.com\"]]");
+ e:=n34_event(cast(string)buf[0..<n],1337);s=nc0_snippet(e);
+ #assert s.status==N34_OK && s.licenses==2 && s.deps==3 && s.repo_is==NC0_ADDRESS && nt_raw(e,s.repo.v[0])==NC0_REPO && nt_raw(e,s.repo.v[1])=="wss://relay.example.com";
+ // Empty tags are left out by the writer; no tags at all is "[]".
+ t:NC0Tags;n=nc0_tags(t,buf[..]);#assert cast(string)buf[0..<n]=="[]";
+ t.name="a \"b\".py";n=nc0_tags(t,buf[..]);#assert cast(string)buf[0..<n]=="[[\"name\",\"a \\\"b\\\".py\"]]";
+ t.name="";t.repo="x";n=nc0_tags(t,buf[..]);#assert cast(string)buf[0..<n]=="[[\"repo\",\"x\"]]";
+ t.language="c";n=nc0_tags(t,buf[..]);#assert cast(string)buf[0..<n]=="[[\"l\",\"c\"],[\"repo\",\"x\"]]";
+ // Digits and symbols in a language are not uppercase.
+ #assert nc0_snippet(n34_event("[[\"l\",\"c++\"]]",1337)).status==N34_OK && nc0_snippet(n34_event("[[\"l\",\"x86 @[`{asm}\"]]",1337)).status==N34_OK;
+}
+#test "a snippet refuses an uppercase language, a dotted extension and a repo that is neither" {
+ #assert nc0_snippet(n34_event("[[\"l\",\"JavaScript\"]]",1337)).status==N34_MALFORMED && nc0_snippet(n34_event("[[\"l\",\"rusT\"]]",1337)).status==N34_MALFORMED;
+ #assert nc0_snippet(n34_event("[[\"l\",\"A\"]]",1337)).status==N34_MALFORMED && nc0_snippet(n34_event("[[\"l\",\"Z\"]]",1337)).status==N34_MALFORMED;
+ #assert nc0_snippet(n34_event("[[\"extension\",\".js\"]]",1337)).status==N34_MALFORMED && nc0_snippet(n34_event("[[\"extension\",\"tar.gz\"]]",1337)).status==N34_OK;
+ #assert nc0_snippet(n34_event("[[\"extension\",\"\"]]",1337)).status==N34_OK && nc0_snippet(n34_event("[[\"extension\",\".\"]]",1337)).status==N34_MALFORMED;
+ bad:=[8]string.["github.com/nostr-protocol/nostr","://x","https://","1ttps://x","ht tps://x","30617:f723:tea-tools",
+  "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:tea-tools",""];
+ for i:0..<8 {
+  buf:[256]u8;n:=json_raw(buf[..],0,"[[\"repo\",\"");n=json_raw(buf[..],n,bad[i]);n=json_raw(buf[..],n,"\"]]");
+  s:=nc0_snippet(n34_event(cast(string)buf[0..<n],1337));#assert s.status==N34_MALFORMED && s.repo_is==NC0_NO_REPO;
+ }
+}
+#test "a snippet refuses valueless tags, another kind and a bad event" {
+ names:=[9]string.["l","name","extension","description","runtime","repo","license","dep","repo"];
+ for i:0..<9 {
+  buf:[64]u8;n:=json_raw(buf[..],0,"[[\"");n=json_raw(buf[..],n,names[i]);n=json_raw(buf[..],n,"\"]]");
+  #assert nc0_snippet(n34_event(cast(string)buf[0..<n],1337)).status==N34_MALFORMED;
+ }
+ // A valueless license or dep after a good one.
+ #assert nc0_snippet(n34_event("[[\"license\",\"MIT\"],[\"license\"]]",1337)).status==N34_MALFORMED;
+ #assert nc0_snippet(n34_event("[[\"dep\",\"left-pad\"],[\"dep\"]]",1337)).status==N34_MALFORMED;
+ #assert nc0_snippet(n34_event("[]",1)).status==N34_KIND && nc0_snippet(n34_event("[]",1336)).status==N34_KIND && nc0_snippet(n34_event("[]",1338)).status==N34_KIND;
+ #assert nc0_snippet(n34_event("[1]",1337)).status==N34_EVENT;
+}
+#test "a URL is a scheme, ://, and something after it" {
+ #assert nc0_url("https://github.com/nostr-protocol/nostr") && nc0_url("git+ssh://git@example.com/x.git") && nc0_url("a://b") && nc0_url("Z9+-.://b") && nc0_url("az://b") && nc0_url("AZ://b");
+ #assert !nc0_url("") && !nc0_url("://b") && !nc0_url("a://") && !nc0_url("a:/b") && !nc0_url("a:b") && !nc0_url("a//b") && nc0_url("a:///");
+ #assert !nc0_url("9a://b") && !nc0_url("+a://b") && !nc0_url("a b://c") && !nc0_url("a_b://c") && !nc0_url("a") && !nc0_url("a:") && !nc0_url("a:/");
+ // The bytes just outside each range.
+ #assert !nc0_url("`://b") && !nc0_url("{://b") && !nc0_url("@://b") && !nc0_url("[://b") && !nc0_url("a/://b") && !nc0_url("a:://b") && !nc0_url("a,://b") && !nc0_url("a*://b");
+ #assert nc0_url("a0://b") && nc0_url("a9://b");
+}
+
+// book:begin url
+// Whether raw is a URL as this file reads one: a scheme (a letter, then
+// letters, digits, '+', '-' or '.'), "://" and at least one more byte.
+nc0_url :: (raw:string)->bool #effects(all) {
+ i:=0;
+ while i<raw.count {
+  c:=raw[i];letter:=(c>='a' && c<='z') || (c>='A' && c<='Z');
+  if !(letter || (i>0 && ((c>='0' && c<='9') || c=='+' || c=='-' || c=='.'))) {break;}
+  i+=1;
+ }
+ return i>0 && raw.count>i+3 && raw[i..<i+3]=="://";
+}
+// book:end url
+
+// book:begin snippet
+// A kind 1337 code snippet.
+nc0_snippet :: (e:NtEvent)->NC0Snippet #effects(all) {
+ r:NC0Snippet;r.status=n34_start(e,NC0_KIND_SNIPPET);if r.status!=N34_OK {return r;}
+ r.language=nt_tag(e,"l",0);r.name=nt_tag(e,"name",0);r.extension=nt_tag(e,"extension",0);
+ r.description=nt_tag(e,"description",0);r.runtime=nt_tag(e,"runtime",0);r.repo=nt_tag(e,"repo",0);
+ r.licenses=nt_each(e,"license",0);r.deps=nt_each(e,"dep",0);
+ s:=nt_and(nt_shape(r.language,1,false),nt_shape(r.name,1,false));s=nt_and(s,nt_shape(r.extension,1,false));
+ s=nt_and(s,nt_shape(r.description,1,false));s=nt_and(s,nt_shape(r.runtime,1,false));
+ if r.licenses<0 || r.deps<0 {s=nt_and(s,N34_MALFORMED);}
+ for c:nt_raw(e,r.language.v[0]) {if c>='A' && c<='Z' {s=nt_and(s,N34_MALFORMED);}}
+ extension:=nt_raw(e,r.extension.v[0]);
+ if extension.count>0 && extension[0]=='.' {s=nt_and(s,N34_MALFORMED);}
+ // A valueless repo's first span is empty, which is neither.
+ if s==N34_OK && r.repo.n>0 {
+  repo:=nt_raw(e,r.repo.v[0]);
+  if nt_coord(repo).kind==N34_KIND_REPO {r.repo_is=NC0_ADDRESS;}
+  else if nc0_url(repo) {r.repo_is=NC0_URL;}
+  else {s=N34_MALFORMED;}
+ }
+ r.status=s;return r;
+}
+// book:end snippet
+
+// book:begin tags
+// One tag, ["name","text"], after the tags already written from 1 (the
+// opening bracket). An empty text writes nothing.
+nc0_tag :: (out:[]u8,at:int,name:string,text:string)->int #effects(all) {
+ if text.count==0 {return at;}
+ n:=at;
+ if n!=1 {n=json_raw(out,n,",");}
+ n=json_raw(out,n,"[\"");n=json_raw(out,n,name);n=json_raw(out,n,"\",");n=json_write_string(out,n,text);return json_raw(out,n,"]");
+}
+// A snippet's tags, in the order of NIP-C0's example. The new length, or
+// -1 when out is short. Read the result with nc0_snippet to check it.
+nc0_tags :: (t:NC0Tags,out:[]u8)->int #effects(all) {
+ n:=json_raw(out,0,"[");
+ n=nc0_tag(out,n,"l",t.language);n=nc0_tag(out,n,"extension",t.extension);n=nc0_tag(out,n,"name",t.name);
+ n=nc0_tag(out,n,"description",t.description);n=nc0_tag(out,n,"runtime",t.runtime);n=nc0_tag(out,n,"license",t.license);
+ n=nc0_tag(out,n,"repo",t.repo);return json_raw(out,n,"]");
+}
+// book:end tags

@@ -1,0 +1,243 @@
+// NIP-39 external identities read from a parsed event: a kind 10011 event
+// lists the accounts a key says it controls on other platforms, one i tag
+// each, ["i", "<platform>:<identity>", "<proof>"].
+//
+// A claim is what the key says, not a fact. It becomes evidence only when
+// a client fetches the proof from the platform and finds the key's npub in
+// it. This file does the offline parts: it reads the claims, works out the
+// URL where each known platform publishes the proof, writes the
+// verification text, and checks a fetched proof for the npub. It fetches
+// nothing and verifies no signature.
+//
+// The rules, from NIP-39:
+// - an i tag "MUST have two parameters"; later values are kept for
+//   "future extensibility" and not read;
+// - the first value splits at its first colon, so a platform name never
+//   contains one ("MUST NOT include :"). The platform and the identity are
+//   both non-empty;
+// - a platform name "SHOULD only include a-z, 0-9 and the characters
+//   ._-/". This reader refuses any other byte with N39_PLATFORM, so that
+//   two spellings of one platform never read as two platforms;
+// - a proof "SHOULD" hold "Verifying that I control the following Nostr
+//   public key: <npub>", and a client "SHOULD accept any proof ... that
+//   contains the user's npub", because older proofs use other words.
+//
+// The proof's URL is defined for github, twitter, mastodon, telegram,
+// bluesky and discord. n39_proof_url refuses an identity or a proof that
+// would change the URL's host or path: each part is letters, digits, '.',
+// '_' and '-', with exactly the slashes its platform's layout has, and a
+// Mastodon identity's one '@'.
+//
+// Kind 10011 is replaceable: the newest event is the whole list, and an
+// event with no i tag claims nothing. The store decides which is newest.
+#load "nip34.coax";
+#authority;
+
+N39_KIND_IDENTITIES :: 10011;
+// Past nip34.coax's N34_* statuses.
+N39_PLATFORM :: 6;   // a platform name is empty or has a byte outside a-z 0-9 . _ - /
+N39_TEXT :: "Verifying that I control the following Nostr public key: ";
+
+// book:begin record
+// One claim: spans of the event's text. A JSON escape in a value stays as
+// it is written.
+N39Claim :: struct {platform:NtSpan;identity:NtSpan;proof:NtSpan;}
+// n claims read into the caller's array; at is the refusing i tag, or -1.
+N39Claims :: struct {status:int;n:int;at:int=-1;}
+// book:end record
+
+// book:begin platforms
+// The platforms NIP-39 defines, and each proof's URL: before, then the
+// identity and between when the URL names the identity, then the proof.
+// slashes is how many '/' the proof has: telegram's is <channel>/<message>,
+// discord's <server>/<channel>/<message>.
+N39_PLATFORMS :: [6] string.["github","twitter","mastodon","telegram","bluesky","discord"];
+N39_BEFORE :: [6] string.["https://gist.github.com/","https://twitter.com/","https://","https://t.me/","https://bsky.app/profile/","https://discord.com/channels/"];
+N39_NAMED :: [6] bool.[true,true,true,false,true,false];
+N39_BETWEEN :: [6] string.["/","/status/","/","","/post/",""];
+N39_SLASHES :: [6] int.[0,0,0,1,0,2];
+N39_MASTODON :: 2;
+// book:end platforms
+
+// NIP-39's own example.
+N39_EXAMPLE :: "[[\"i\",\"github:semisol\",\"9721ce4ee4fceb91c9711ca2a6c9a5ab\"],[\"i\",\"twitter:semisol_public\",\"1619358434134196225\"],[\"i\",\"mastodon:bitcoinhackers.org/@semisol\",\"109775066355589974\"],[\"i\",\"telegram:1087295469\",\"nostrdirectory/770\"]]";
+N39_NPUB :: "npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3";
+
+#test "NIP-39's example reads as four claims" {
+ e:=n34_event(N39_EXAMPLE,10011);out:[4]N39Claim;r:=n39_claims(e,out[..]);
+ #assert r.status==N34_OK && r.n==4 && r.at==-1;
+ #assert nt_raw(e,out[0].platform)=="github" && nt_raw(e,out[0].identity)=="semisol" && nt_raw(e,out[0].proof)=="9721ce4ee4fceb91c9711ca2a6c9a5ab";
+ #assert nt_raw(e,out[1].platform)=="twitter" && nt_raw(e,out[1].identity)=="semisol_public" && nt_raw(e,out[1].proof)=="1619358434134196225";
+ #assert nt_raw(e,out[2].platform)=="mastodon" && nt_raw(e,out[2].identity)=="bitcoinhackers.org/@semisol";
+ #assert nt_raw(e,out[3].platform)=="telegram" && nt_raw(e,out[3].identity)=="1087295469" && nt_raw(e,out[3].proof)=="nostrdirectory/770";
+}
+#test "claims split at the first colon, keep extra values and may be none" {
+ out:[2]N39Claim;
+ e:=n34_event("[[\"i\",\"x/y.z_w-1:a:b\",\"\",\"later\"],[\"p\",\"x\"]]",10011);r:=n39_claims(e,out[..]);
+ #assert r.status==N34_OK && r.n==1 && nt_raw(e,out[0].platform)=="x/y.z_w-1" && nt_raw(e,out[0].identity)=="a:b" && nt_raw(e,out[0].proof)=="";
+ // The shortest claim: one byte each side of the colon.
+ e=n34_event("[[\"i\",\"a:b\",\"p\"]]",10011);r=n39_claims(e,out[..]);
+ #assert r.status==N34_OK && nt_raw(e,out[0].platform)=="a" && nt_raw(e,out[0].identity)=="b";
+ // An event with no i tag is an empty list.
+ r=n39_claims(n34_event("[]",10011),out[0..<0]);#assert r.status==N34_OK && r.n==0 && r.at==-1;
+}
+#test "claims refuse one value, no colon, an empty side and a bad platform name" {
+ out:[2]N39Claim;
+ r:=n39_claims(n34_event("[[\"i\",\"github:semisol\",\"1\"],[\"i\",\"github:semisol\"]]",10011),out[..]);#assert r.status==N34_MALFORMED && r.at==1 && r.n==0;
+ #assert n39_claims(n34_event("[[\"i\"]]",10011),out[..]).status==N34_MALFORMED;
+ #assert n39_claims(n34_event("[[\"i\",\"github\",\"1\"]]",10011),out[..]).status==N34_MALFORMED;
+ #assert n39_claims(n34_event("[[\"i\",\"github:\",\"1\"]]",10011),out[..]).status==N34_MALFORMED;
+ r=n39_claims(n34_event("[[\"i\",\":semisol\",\"1\"]]",10011),out[..]);#assert r.status==N39_PLATFORM && r.at==0;
+ bad:=[6]string.["GitHub","git hub","git\\u0068ub","git@hub","git,hub","git{hub"];
+ for i:0..<6 {
+  buf:[128]u8;n:=json_raw(buf[..],0,"[[\"i\",\"");n=json_raw(buf[..],n,bad[i]);n=json_raw(buf[..],n,":semisol\",\"1\"]]");
+  #assert n39_claims(n34_event(cast(string)buf[0..<n],10011),out[..]).status==N39_PLATFORM;
+ }
+ // More claims than the caller's array holds.
+ r=n39_claims(n34_event(N39_EXAMPLE,10011),out[..]);#assert r.status==N34_OUTPUT && r.n==0;
+ #assert n39_claims(n34_event("[]",10012),out[..]).status==N34_KIND && n39_claims(n34_event("[]",10010),out[..]).status==N34_KIND;
+ #assert n39_claims(n34_event("[1]",10011),out[..]).status==N34_EVENT;
+}
+#test "platform names are a-z, 0-9 and . _ - / only" {
+ #assert n39_name("github") && n39_name("a") && n39_name("z0.9_-/") && n39_name("az09");
+ #assert !n39_name("") && !n39_name("A") && !n39_name("Z") && !n39_name("a:b") && !n39_name("a b");
+ // The bytes just outside each range.
+ #assert !n39_name("`") && !n39_name("{") && !n39_name(",") && !n39_name(":") && !n39_name("^");
+}
+#test "the proof URLs are NIP-39's, for each platform it defines" {
+ e:=n34_event(N39_EXAMPLE,10011);out:[4]N39Claim;r:=n39_claims(e,out[..]);url:[128]u8;
+ n:=n39_proof_url(e,out[0],url[..]);#assert cast(string)url[0..<n]=="https://gist.github.com/semisol/9721ce4ee4fceb91c9711ca2a6c9a5ab";
+ n=n39_proof_url(e,out[1],url[..]);#assert cast(string)url[0..<n]=="https://twitter.com/semisol_public/status/1619358434134196225";
+ n=n39_proof_url(e,out[2],url[..]);#assert cast(string)url[0..<n]=="https://bitcoinhackers.org/@semisol/109775066355589974";
+ n=n39_proof_url(e,out[3],url[..]);#assert cast(string)url[0..<n]=="https://t.me/nostrdirectory/770";
+ e=n34_event("[[\"i\",\"bluesky:alice.bsky.social\",\"3kabcxyz\"],[\"i\",\"discord:alice#1234\",\"1/22/333\"]]",10011);r=n39_claims(e,out[..]);#assert r.n==2;
+ n=n39_proof_url(e,out[0],url[..]);#assert cast(string)url[0..<n]=="https://bsky.app/profile/alice.bsky.social/post/3kabcxyz";
+ n=n39_proof_url(e,out[1],url[..]);#assert cast(string)url[0..<n]=="https://discord.com/channels/1/22/333";
+ small:[20]u8;#assert n39_proof_url(e,out[0],small[..])==-1;
+ #assert n39_platform("github")==0 && n39_platform("discord")==5 && n39_platform("githu")==-1 && n39_platform("")==-1;
+}
+#test "a proof URL refuses an unknown platform and parts that would change the path" {
+ out:[1]N39Claim;url:[128]u8;
+ bad:=[14]string.["[[\"i\",\"gitlab:semisol\",\"1\"]]","[[\"i\",\"github:semi/sol\",\"1\"]]","[[\"i\",\"github:semisol\",\"1/2\"]]","[[\"i\",\"github:semisol\",\"\"]]",
+  "[[\"i\",\"github:semisol?x\",\"1\"]]","[[\"i\",\"twitter:semisol\",\"1#x\"]]","[[\"i\",\"mastodon:bitcoinhackers.org\",\"1\"]]","[[\"i\",\"mastodon:bitcoinhackers.org/semisol\",\"1\"]]",
+  "[[\"i\",\"mastodon:/@semisol\",\"1\"]]","[[\"i\",\"mastodon:a.org/@\",\"1\"]]","[[\"i\",\"telegram:1\",\"nostrdirectory\"]]","[[\"i\",\"telegram:1\",\"a//\"]]",
+  "[[\"i\",\"discord:alice\",\"1/22\"]]","[[\"i\",\"discord:alice\",\"1/22/333/4\"]]"];
+ for i:0..<14 {
+  e:=n34_event(bad[i],10011);r:=n39_claims(e,out[..]);#assert r.status==N34_OK;
+  #assert n39_proof_url(e,out[0],url[..])==0;
+ }
+ e:=n34_event("[[\"i\",\"mastodon:a.org/@b/@c\",\"1\"]]",10011);r:=n39_claims(e,out[..]);#assert n39_proof_url(e,out[0],url[..])==0;
+ e=n34_event("[[\"i\",\"mastodon:a.org/b@c\",\"1\"]]",10011);r=n39_claims(e,out[..]);#assert n39_proof_url(e,out[0],url[..])==0;
+}
+#test "a URL part is letters, digits, dot, underscore and hyphen, with exact slashes" {
+ #assert n39_part("aZ09._-",0,false) && n39_part("a/b",1,false) && n39_part("a/b/c",2,false) && n39_part("a",0,false) && n39_part("A",0,false) && n39_part("z",0,false) && n39_part("Z",0,false);
+ #assert !n39_part("",0,false) && !n39_part("a/b",0,false) && !n39_part("a",1,false) && !n39_part("/a",1,false) && !n39_part("a/",1,false) && !n39_part("a//b",2,false) && !n39_part("a/b",2,false);
+ #assert !n39_part("a b",0,false) && !n39_part("a%2f",0,false) && !n39_part("a@b",0,false) && !n39_part("a:b",0,false) && !n39_part("a\\u002fb",0,false);
+ // The bytes just outside each range.
+ #assert !n39_part("`",0,false) && !n39_part("{",0,false) && !n39_part("@",0,false) && !n39_part("[",0,false) && !n39_part(",",0,false) && !n39_part(":",0,false);
+ // ".." would climb a path.
+ #assert !n39_part("..",0,false) && !n39_part("a/../b",2,false) && n39_part("a..b",0,false) && n39_part(".a",0,false) && !n39_part(".",0,false) && !n39_part("a/.",1,false) && n39_part("a./b",1,false);
+ // A Mastodon identity: one '@', straight after the one slash.
+ #assert n39_part("a.org/@b",1,true) && n39_part("bitcoinhackers.org/@semisol",1,true);
+ #assert !n39_part("a.org/b",1,true) && !n39_part("a.org/@",1,true) && !n39_part("/@b",1,true) && !n39_part("@a/@b",1,true) && !n39_part("@a/b",1,true);
+ #assert !n39_part("a.org/@@b",1,true) && !n39_part("a.org/b@c",1,true) && !n39_part("a.org/@b/@c",2,true) && !n39_part("a.org/@b",1,false) && !n39_part("a.org",0,true);
+}
+#test "the verification text, and a proof counts when it holds the npub" {
+ buf:[160]u8;n:=n39_text(N39_NPUB,buf[..]);
+ #assert cast(string)buf[0..<n]=="Verifying that I control the following Nostr public key: npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3";
+ #assert n39_proves(cast(string)buf[0..<n],N39_NPUB);
+ // Older wording counts too; the npub may be first, last or the whole proof.
+ #assert n39_proves("Verifying my account on nostr My Public Key: \"npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3\"",N39_NPUB);
+ #assert n39_proves(N39_NPUB,N39_NPUB) && n39_proves("npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3!",N39_NPUB);
+ #assert !n39_proves("Verifying that I control the following Nostr public key: npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf",N39_NPUB);
+ #assert !n39_proves("",N39_NPUB) && !n39_proves("npub1",N39_NPUB);
+ // Anything that is not an npub proves nothing, the empty string above all.
+ #assert !n39_proves("some text","") && !n39_proves("some text","some") && !n39_proves("npub1 and more","npub1");
+ #assert !n39_proves("nsec1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3","nsec1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3");
+ #assert !n39_proves("npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3x","npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3x");
+ small:[60]u8;#assert n39_text(N39_NPUB,small[..])==-1;
+ #assert n39_text("nsec1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefmf3",buf[..])==-1;
+}
+
+// book:begin claims
+// Whether raw is a platform name: at least one byte, each a-z, 0-9 or one
+// of . _ - /.
+n39_name :: (raw:string)->bool #effects(all) {
+ for c:raw {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='.' || c=='_' || c=='-' || c=='/') {return false;}}
+ return raw.count>0;
+}
+// The claims of a kind 10011 event, in order, into out.
+n39_claims :: (e:NtEvent,out:[]N39Claim)->N39Claims #effects(all) {
+ r:N39Claims;r.status=n34_start(e,N39_KIND_IDENTITIES);if r.status!=N34_OK {return r;}
+ n:=nt_tags(e,"i");
+ if n>out.count {r.status=N34_OUTPUT;return r;}
+ for k:0..<n {
+  t:=nt_tag(e,"i",k);raw:=nt_raw(e,t.v[0]);colon:=0;r.at=k;
+  while colon<raw.count && raw[colon]!=':' {colon+=1;}
+  // No colon, or nothing after it, is no identity.
+  if t.values<2 || colon+1>=raw.count {r.status=N34_MALFORMED;return r;}
+  if !n39_name(raw[0..<colon]) {r.status=N39_PLATFORM;return r;}
+  out[k]=N39Claim.{platform=NtSpan.{from=t.v[0].from,to=t.v[0].from+colon},identity=NtSpan.{from=t.v[0].from+colon+1,to=t.v[0].to},proof=t.v[1]};
+ }
+ r.at=-1;r.n=n;return r;
+}
+// book:end claims
+
+// book:begin url
+// Which of NIP-39's platforms raw names, or -1.
+n39_platform :: (raw:string)->int #effects(all) {
+ for i:0..<N39_PLATFORMS.count {if raw==N39_PLATFORMS[i] {return i;}}
+ return -1;
+}
+// Whether raw can go into a URL's path as it is: letters, digits, '.', '_'
+// and '-', with exactly this many slashes, nothing empty between them and
+// no segment of dots only (".." would climb the path). With at, the part
+// after the first slash must start with one '@': a Mastodon identity,
+// <instance>/@<username>.
+n39_part :: (raw:string,slashes:int,at:bool)->bool #effects(all) {
+ seen:=0;length:=0;dots:=0;marked:=false;
+ for c:raw {
+  if c=='/' {
+   if dots==length {return false;}
+   seen+=1;length=0;dots=0;continue;
+  }
+  if c=='@' && at && seen==1 && length==0 && !marked {marked=true;continue;}
+  if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='.' || c=='_' || c=='-') {return false;}
+  length+=1;if c=='.' {dots+=1;}
+ }
+ return dots<length && seen==slashes && marked==at;
+}
+// The URL where the claim's proof is published. The new length; 0 for a
+// platform NIP-39 doesn't define, or an identity or proof that doesn't fit
+// its layout; -1 when out is short.
+n39_proof_url :: (e:NtEvent,c:N39Claim,out:[]u8)->int #effects(all) {
+ p:=n39_platform(nt_raw(e,c.platform));identity:=nt_raw(e,c.identity);proof:=nt_raw(e,c.proof);
+ if p<0 || !n39_part(proof,N39_SLASHES[p],false) {return 0;}
+ n:=json_raw(out,0,N39_BEFORE[p]);
+ if N39_NAMED[p] {
+  mastodon:=p==N39_MASTODON;
+  if !n39_part(identity,ifx mastodon then 1 else 0,mastodon) {return 0;}
+  n=json_raw(out,n,identity);n=json_raw(out,n,N39_BETWEEN[p]);
+ }
+ return json_raw(out,n,proof);
+}
+// book:end url
+
+// book:begin proof
+// Whether npub has the shape of one: "npub1" and 58 more characters. The
+// Bech32 checksum is chapter 16's check, not made here.
+n39_npub :: (npub:string)->bool #effects(all) {return npub.count==63 && npub[0..<5]=="npub1";}
+// The text a proof should hold. The new length, or -1 when npub isn't one
+// or out is short.
+n39_text :: (npub:string,out:[]u8)->int #effects(all) {
+ if !n39_npub(npub) {return -1;}
+ n:=json_raw(out,0,N39_TEXT);return json_raw(out,n,npub);
+}
+// Whether a fetched proof names the key: it contains the npub, in any
+// wording.
+n39_proves :: (body:string,npub:string)->bool #effects(all) {
+ if !n39_npub(npub) {return false;}
+ for i:0..<body.count-62 {if body[i..<i+63]==npub {return true;}}
+ return false;
+}
+// book:end proof

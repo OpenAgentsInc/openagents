@@ -1,0 +1,39 @@
+Alice: npub1lycg5qvjtrp3qjf5f7zl382j9x6nrjz9sdhenvyxq8c3808qxmus6gq266
+Bob: npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a
+Alice's identities (kind 10011)
+I1: ok, 3 claims
+  platform github, identity alice-tea, proof 9721ce4ee4fceb91c9711ca2a6c9a5ab
+    proof at https://gist.github.com/alice-tea/9721ce4ee4fceb91c9711ca2a6c9a5ab
+  platform mastodon, identity tea.example/@alice, proof 109775066355589974
+    proof at https://tea.example/@alice/109775066355589974
+  platform matrix, identity @alice:tea.example, proof $proof-event
+    no proof URL: NIP-39 doesn't define this platform
+the proof Alice publishes on each platform
+Verifying that I control the following Nostr public key: npub1lycg5qvjtrp3qjf5f7zl382j9x6nrjz9sdhenvyxq8c3808qxmus6gq266
+fetched proofs, checked for Alice's npub
+the gist, with NIP-39's text: true
+a post in an older wording: true
+a gist that names Bob's key: false
+a page that names no key: false
+a newer list: it is the whole list, so two claims are withdrawn
+I2, one hour later: ok, 1 claim
+  platform github, identity alice-tea, proof 9721ce4ee4fceb91c9711ca2a6c9a5ab
+    proof at https://gist.github.com/alice-tea/9721ce4ee4fceb91c9711ca2a6c9a5ab
+each event's id
+I1: d4c4f78642b8c4c1405fda3c47e2d8ba36491e997164ed17cf009e18a7a81828, verified true
+I2: e98d27f8f33f354af13f5dd27601478879510d388025fadc4689c122ddf38144, verified true
+refusals
+a claim without a proof: malformed, at i tag 1
+a claim with no colon: malformed, at i tag 0
+a claim with no identity: malformed, at i tag 0
+a platform in capitals: bad platform name, at i tag 0
+five claims into room for four: output
+a kind 0 profile read as identities: kind
+claims whose parts would change the URL: ok, 3 claims
+  platform github, identity alice-tea/../bob, proof 9721ce4e
+    no proof URL: the identity or proof doesn't fit the platform's layout
+  platform twitter, identity alice_tea, proof 1?ref=x
+    no proof URL: the identity or proof doesn't fit the platform's layout
+  platform mastodon, identity tea.example, proof 1
+    no proof URL: the identity or proof doesn't fit the platform's layout
+verification text for an nsec: -1

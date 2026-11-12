@@ -1,0 +1,141 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/nipa4.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The statuses of nip34.coax, then nipa4.coax's 6.
+STATUS :: [7] string.["ok", "event", "kind", "missing", "malformed", "output", "an e tag: no threads"];
+// BIP-340 test vectors 0, 1 and 2's published secret keys. Never sign with
+// a real key in an example.
+KEYS :: [3] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9"];
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+ALICE :: 0; BOB :: 1; CAROL :: 2;
+INBOX :: "wss://inbox.example.com";
+T0 :: 1761686400;
+DAY :: 86400;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. Used for the refusals, which the readers refuse on their
+// kind and tags alone.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// A tag list built from pieces of JSON text.
+Tags :: struct { b: [2048] u8; n: int; }
+put :: (t: [] Tags, s: string) { t[0].n = json_raw(t[0].b[..], t[0].n, s); #assert t[0].n > 0; }
+tags_of :: (t: [] Tags) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+// A NIP-25 reaction's tags: the event, its author and, when kind isn't
+// empty, the k tag that names the event's kind.
+reaction_tags :: (t: [] Tags, id: string, author: string, kind: string) {
+  put(t, "[[\"e\",\""); put(t, id); put(t, "\"],[\"p\",\""); put(t, author); put(t, "\"]");
+  if kind.count > 0 { put(t, ",[\"k\",\""); put(t, kind); put(t, "\"]"); }
+  put(t, "]");
+}
+
+// Which person a pubkey in a tag names.
+who :: (pk: [] [64] u8, raw: string) -> string {
+  for k: 0..<pk.count { if raw == cast(string) pk[k][..] { return PEOPLE[k]; } }
+  return "someone else";
+}
+
+show :: (label: string, event: NostrEvent, pk: [] [64] u8) {
+  e := nt_event_of(event); m := na4_message(e);
+  print("%: %", label, STATUS[m.status]);
+  if m.status != N34_OK { print("\n"); return; }
+  from := n34_hex32(event.public_key);
+  print(", from %, to", who(pk, cast(string) from[..]));
+  for k: 0..<m.receivers {
+    p := nt_tag(e, "p", k);
+    print(" %", who(pk, nt_raw(e, p.v[0])));
+    if p.values > 1 { print(" (%)", nt_raw(e, p.v[1])); }
+  }
+  if m.expires >= 0 { print(", expires at T0+%", m.expires - T0); } else { print(", no expiration"); }
+  print(", % q tags\n", m.quotes);
+}
+
+main :: () {
+  secret: [3][32] u8; pk: [3][64] u8;
+  for k: 0..<3 { decode_hex(KEYS[k], secret[k][..]); }
+  buf: [4][8192] u8;
+  // Each public key comes from signing: sign an empty note first.
+  for k: 0..<3 { pk[k] = n34_hex32(sign(secret[k][..], T0, 1, "[]", "", buf[0][..]).public_key); }
+  for k: 0..<3 { print("%: %\n", PEOPLE[k], cast(string) pk[k][..]); }
+
+  print("public messages (kind 24)\n");
+  tags: [1024] u8;
+  to := [2] string.[cast(string) pk[BOB][..], cast(string) pk[CAROL][..]];
+  relays := [2] string.[INBOX, ""];
+  n := na4_tags(to[..], relays[..], T0 + DAY, tags[..]);
+  #assert n > 0;
+  print("M1 tags: %\n", cast(string) tags[0..<n]);
+  m1 := sign(secret[ALICE][..], T0, 24, cast(string) tags[0..<n], "Are you both coming on Friday?", buf[0][..]);
+  // Bob's answer is a new message to Alice. No tag ties it to M1.
+  back := [1] string.[cast(string) pk[ALICE][..]];
+  n = na4_tags(back[..], relays[1..<2], 0, tags[..]);
+  #assert n > 0;
+  print("M2 tags: %\n", cast(string) tags[0..<n]);
+  m2 := sign(secret[BOB][..], T0 + 600, 24, cast(string) tags[0..<n], "Yes. I will bring the kettle.", buf[1][..]);
+  show("M1", m1, pk[..]);
+  show("M2", m2, pk[..]);
+
+  print("reactions to M1 (kind 7)\n");
+  id1 := n34_hex32(m1.id);
+  t: [1] Tags;
+  reaction_tags(t[..], cast(string) id1[..], cast(string) pk[ALICE][..], "24");
+  x1 := sign(secret[CAROL][..], T0 + 700, 7, tags_of(t[..]), "+", buf[2][..]);
+  t[0].n = 0; reaction_tags(t[..], cast(string) id1[..], cast(string) pk[ALICE][..], "");
+  x2 := sign(secret[BOB][..], T0 + 800, 7, tags_of(t[..]), "+", buf[3][..]);
+  print("X1, by Carol, with k 24: says it is about a public message: %\n", na4_about(nt_event_of(x1)));
+  print("X2, by Bob, without k: says it is about a public message: %\n", na4_about(nt_event_of(x2)));
+
+  print("each event's id\n");
+  all := [4] NostrEvent.[m1, m2, x1, x2];
+  names := [4] string.["M1", "M2", "X1", "X2"];
+  for k: 0..<4 { h := n34_hex32(all[k].id); print("%: %, verified %\n", names[k], cast(string) h[..], all[k].verified); }
+
+  print("refusals\n");
+  bad: [8192] u8;
+  t[0].n = 0; put(t[..], "[[\"p\",\""); put(t[..], cast(string) pk[ALICE][..]); put(t[..], "\"],[\"e\",\""); put(t[..], cast(string) id1[..]); put(t[..], "\"]]");
+  e := unsigned(24, tags_of(t[..]), bad[..]);
+  print("message that answers M1 with an e tag: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[]", bad[..]);
+  print("message to nobody: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[[\"p\",\"dff1d77f\"]]", bad[..]);
+  print("message, p of 8 digits: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"expiration\",\"tomorrow\"]]", bad[..]);
+  print("message, expiration that is not a number: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"q\",\"M1\"]]", bad[..]);
+  print("message, q that cites nothing: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(14, "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]", bad[..]);
+  print("a kind 14 chat message read as a public message: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+}
+// book:end example

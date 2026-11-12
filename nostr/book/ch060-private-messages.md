@@ -12,8 +12,9 @@ Part VI, Every NIP. Result: NIP-17 kind 14 chat messages sent as gift wraps
 to every participant, kind 10050 DM relay lists that decide where each wrap
 goes (and that nothing goes to a user without one), rooms named by their
 member set and ordered by time, and kind 15 file messages checked for their
-file tags. NIP-A4 public messages are described and not built; NIP-EE is
-`unrecommended` and not implemented.
+file tags; and NIP-A4 kind 24 public messages, which are signed plain
+text, read with their receivers, their expiration and the rule that they
+carry no `e` tag. NIP-EE is `unrecommended` and not implemented.
 
 ## What this chapter teaches
 
@@ -26,7 +27,9 @@ file tags. NIP-A4 public messages are described and not built; NIP-EE is
   anyone.
 - Kind 15 file messages with `file-type`, `encryption-algorithm`,
   `decryption-key`, `decryption-nonce` and `x`.
-- NIP-A4: kind 24 public messages, not encrypted. Not built here.
+- NIP-A4: a kind 24 public message is signed plain text that names its
+  receivers in `p` tags. Anyone can read it. It has no threads, so an `e`
+  tag refuses, and a reaction or zap to it must say `["k", "24"]`.
 - NIP-EE is `unrecommended`, superseded by the Marmot protocol; not
   implemented.
 
@@ -42,6 +45,10 @@ file tags. NIP-A4 public messages are described and not built; NIP-EE is
 | | `n17_extra`, `n17_file`, `n17_value`, `n17_rumor_tags` | The caller's tags, kind 15's file tags, one tag's first value, the rumor's tags |
 | [nip59.coax](../../coax/lib/nostr/nip59.coax) | `nip59_wrap_checked`, `nip59_unwrap_checked` | Chapter 25's rumor, seal and wrap |
 | [tags.coax](../../coax/lib/nostr/tags.coax), [relay_uri.coax](../../coax/lib/net/relay_uri.coax) | `nostr_tag`, `relay_uri` | Chapter 22's tag reader and chapter 28's relay URL check |
+| [nipa4.coax](../../coax/lib/nostr/nipa4.coax) | `na4_message(e)` | A kind 24 public message: its receivers, quotes and expiration, refusing an `e` tag (`#authority`) |
+| | `na4_about(e)` | Whether a reaction or a zap request says it is about a public message |
+| | `na4_tags(receivers, relays, expiration, out)` | A message's `p` tags and its `expiration` tag |
+| [nipc7.coax](../../coax/lib/nostr/nipc7.coax) | `nc7_quotes(e)` | Chapter 59's check that every `q` tag cites an event or an address |
 
 Nothing in `nip17.coax` draws randomness. The caller passes one chapter 25
 `Nip59Fresh` record per wrap (N+1 of them), and every admitted return zeroes
@@ -351,6 +358,136 @@ SHA-256(Carol ‖ Bob ‖ Alice) = `845f2643…96d1862f`. Bob's reply tags Alice
 and Carol: the same set, the same room. Alice's later message to Bob alone
 has members {Alice, Bob}: SHA-256(Bob ‖ Alice) = `21ef0f45…d1b71395`, a
 different room.
+
+## Public messages (NIP-A4)
+
+NIP-A4 is this chapter's opposite case. A kind 24 event is a message to
+one or more users that everyone can read. Its content is plain text, its
+author signs it like any other event, and each receiver is named in a `p`
+tag:
+
+```text
+["p", "<receiver>", "<relay-url>"]
+```
+
+Compare it with a kind 14 message:
+
+| | Kind 14 (NIP-17) | Kind 24 (NIP-A4) |
+| --- | --- | --- |
+| Signed | No. It is an unsigned rumor | Yes |
+| Encrypted | Yes, inside a seal and a gift wrap | No |
+| Who can read it | Its members | Anyone |
+| Where it goes | Each member's kind 10050 relays | Each receiver's NIP-65 inbox relays and the sender's outbox (chapter 32) |
+| Conversation | A room, named by its member set | None |
+
+NIP-A4 says so itself: "There MUST be no expectation of privacy in this
+kind", and "Avoid confusing this kind with Kind `14` rumors". Never put
+text in a kind 24 that you would put in a kind 14.
+
+The last row is the rule a reader has to enforce. A public message is
+meant for a notification screen, and it has no history: "There are no
+message chains. The concept of a 'thread', a 'thread root', or a
+'chatroom' does not exist in this system". An answer is a new message to
+the first sender, with no tag that ties the two together, and "`e` tags
+must not be used".
+
+`na4_message` in [nipa4.coax](../../coax/lib/nostr/nipa4.coax) reads a
+message through chapter 63's tag readers:
+
+<!-- source: coax/lib/nostr/nipa4.coax message -->
+```jai
+// A kind 24 public message.
+na4_message :: (e:NtEvent)->NA4Message #effects(all) {
+ m:NA4Message;m.status=n34_start(e,NA4_KIND_MESSAGE);if m.status!=N34_OK {return m;}
+ if nt_tags(e,"e")>0 {m.status=NA4_THREAD;return m;}
+ m.receivers=nt_each(e,"p",64);m.quotes=nc7_quotes(e);
+ if m.receivers<0 {m.status=N34_MALFORMED;return m;}
+ if m.receivers==0 {m.status=N34_MISSING;return m;}
+ if m.quotes<0 {m.status=N34_MALFORMED;return m;}
+ x:=nt_tag(e,"expiration",0);
+ if x.n>0 {
+  // A valueless expiration's first span is empty, which is no number.
+  at:=json_int(nt_raw(e,x.v[0]));
+  if !at.ok || at.value<0 {m.status=N34_MALFORMED;return m;}
+  m.expires=at.value;
+ }
+ return m;
+}
+```
+
+In order, it refuses:
+
+1. an event that is not kind 24 (`N34_KIND`);
+2. any `e` tag, whatever it holds (`NA4_THREAD`);
+3. a `p` tag that is not a pubkey of 64 lowercase hex digits
+   (`N34_MALFORMED`), and a message with no `p` tag at all
+   (`N34_MISSING`);
+4. a `q` tag that cites neither an event id nor an address
+   (`N34_MALFORMED`). NIP-A4 allows NIP-18 `q` tags; chapter 59's
+   `nc7_quotes` reads them;
+5. an `expiration` tag that is not a whole number of seconds
+   (`N34_MALFORMED`).
+
+NIP-A4 recommends NIP-40 `expiration` tags, because a message without a
+conversation stops making sense as time passes. The reader returns the
+time in `expires`, or -1. Dropping an expired event is the relay's and the
+client's NIP-40 rule (chapter 39), and is not decided here.
+
+A reaction or a zap to a public message must name its kind: "NIP-25
+reactions MUST add a `k` tag to `24`", and the same for NIP-57 zaps.
+`na4_about` reads that tag from a kind 7 reaction or a kind 9734 zap
+request:
+
+<!-- source: coax/lib/nostr/nipa4.coax about -->
+```jai
+// Whether a reaction (kind 7) or a zap request (kind 9734) says it is about
+// a public message: it carries ["k","24"].
+na4_about :: (e:NtEvent)->bool #effects(all) {return nt_count(e,"k",0,"24")>0;}
+```
+
+`na4_tags` writes a message's tags. It refuses an empty receiver list and
+a key that is not 64 lowercase hex digits:
+
+<!-- source: coax/lib/nostr/nipa4.coax tags -->
+```jai
+// A message's tags: one p tag for each receiver, with its relay when that
+// isn't empty, then the expiration when it is positive. The new length, or
+// -1 when there is no receiver, the lists differ in length, a key isn't 64
+// lowercase hex digits or out is short.
+na4_tags :: (receivers:[]string,relays:[]string,expiration:int,out:[]u8)->int #effects(all) {
+ if receivers.count==0 || relays.count!=receivers.count {return -1;}
+ n:=json_raw(out,0,"[");
+ for k:0..<receivers.count {
+  if !nt_hex(receivers[k],64) {return -1;}
+  if k>0 {n=json_raw(out,n,",");}
+  n=json_raw(out,n,"[\"p\",\"");n=json_raw(out,n,receivers[k]);n=json_raw(out,n,"\"");
+  if relays[k].count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,relays[k]);}
+  n=json_raw(out,n,"]");
+ }
+ if expiration>0 {n=json_raw(out,n,",[\"expiration\",\"");n=json_write_int(out,n,expiration);n=json_raw(out,n,"\"]");}
+ return json_raw(out,n,"]");
+}
+```
+
+### Worked example: Alice asks Bob and Carol in public
+
+`T0` is 1761686400. Work four events out by hand:
+
+| Event | Signer | Kind | Tags | Reads as |
+| --- | --- | --- | --- | --- |
+| M1 | Alice | 24 | `p` Bob with `wss://inbox.example.com`, `p` Carol, `expiration` T0+86400 | A message to Bob and Carol that expires in one day |
+| M2 | Bob | 24 | `p` Alice | A message to Alice with no expiration |
+| X1 | Carol | 7 | `e` M1, `p` Alice, `k` 24 | A reaction that says it is about a public message |
+| X2 | Bob | 7 | `e` M1, `p` Alice | A reaction that doesn't say so |
+
+1. M1 has two `p` tags, so `receivers` is 2. Its `expiration` value is
+   `1761772800`, which is T0 + 86400.
+2. M2 is Bob's answer. It has one `p` tag and nothing that points at M1:
+   no `e`, no `q`. A client shows it as a new message from Bob.
+3. X1 has `["k", "24"]`, so `na4_about` is true. X2 has no `k` tag, so it
+   is false, and a client that follows NIP-A4 doesn't count it.
+4. If Bob had answered with an `e` tag naming M1, as a kind 1 reply does,
+   the message would refuse with `NA4_THREAD`.
 
 ## The example
 
@@ -741,6 +878,205 @@ The book's checks run this program in debug and release builds and compare
 the output with
 [nostr/fixtures/private-messages.out](../fixtures/private-messages.out).
 
+### The public messages example
+
+A second example,
+[nostr/examples/public-messages.coax](../examples/public-messages.coax),
+signs M1, M2, X1 and X2 with BIP-340's test keys, verifies each one, reads
+them with `na4_message` and `na4_about`, and then reads six events that
+refuse.
+
+<!-- source: nostr/examples/public-messages.coax example -->
+```jai
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/nipa4.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The statuses of nip34.coax, then nipa4.coax's 6.
+STATUS :: [7] string.["ok", "event", "kind", "missing", "malformed", "output", "an e tag: no threads"];
+// BIP-340 test vectors 0, 1 and 2's published secret keys. Never sign with
+// a real key in an example.
+KEYS :: [3] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9"];
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+ALICE :: 0; BOB :: 1; CAROL :: 2;
+INBOX :: "wss://inbox.example.com";
+T0 :: 1761686400;
+DAY :: 86400;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. Used for the refusals, which the readers refuse on their
+// kind and tags alone.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// A tag list built from pieces of JSON text.
+Tags :: struct { b: [2048] u8; n: int; }
+put :: (t: [] Tags, s: string) { t[0].n = json_raw(t[0].b[..], t[0].n, s); #assert t[0].n > 0; }
+tags_of :: (t: [] Tags) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+// A NIP-25 reaction's tags: the event, its author and, when kind isn't
+// empty, the k tag that names the event's kind.
+reaction_tags :: (t: [] Tags, id: string, author: string, kind: string) {
+  put(t, "[[\"e\",\""); put(t, id); put(t, "\"],[\"p\",\""); put(t, author); put(t, "\"]");
+  if kind.count > 0 { put(t, ",[\"k\",\""); put(t, kind); put(t, "\"]"); }
+  put(t, "]");
+}
+
+// Which person a pubkey in a tag names.
+who :: (pk: [] [64] u8, raw: string) -> string {
+  for k: 0..<pk.count { if raw == cast(string) pk[k][..] { return PEOPLE[k]; } }
+  return "someone else";
+}
+
+show :: (label: string, event: NostrEvent, pk: [] [64] u8) {
+  e := nt_event_of(event); m := na4_message(e);
+  print("%: %", label, STATUS[m.status]);
+  if m.status != N34_OK { print("\n"); return; }
+  from := n34_hex32(event.public_key);
+  print(", from %, to", who(pk, cast(string) from[..]));
+  for k: 0..<m.receivers {
+    p := nt_tag(e, "p", k);
+    print(" %", who(pk, nt_raw(e, p.v[0])));
+    if p.values > 1 { print(" (%)", nt_raw(e, p.v[1])); }
+  }
+  if m.expires >= 0 { print(", expires at T0+%", m.expires - T0); } else { print(", no expiration"); }
+  print(", % q tags\n", m.quotes);
+}
+
+main :: () {
+  secret: [3][32] u8; pk: [3][64] u8;
+  for k: 0..<3 { decode_hex(KEYS[k], secret[k][..]); }
+  buf: [4][8192] u8;
+  // Each public key comes from signing: sign an empty note first.
+  for k: 0..<3 { pk[k] = n34_hex32(sign(secret[k][..], T0, 1, "[]", "", buf[0][..]).public_key); }
+  for k: 0..<3 { print("%: %\n", PEOPLE[k], cast(string) pk[k][..]); }
+
+  print("public messages (kind 24)\n");
+  tags: [1024] u8;
+  to := [2] string.[cast(string) pk[BOB][..], cast(string) pk[CAROL][..]];
+  relays := [2] string.[INBOX, ""];
+  n := na4_tags(to[..], relays[..], T0 + DAY, tags[..]);
+  #assert n > 0;
+  print("M1 tags: %\n", cast(string) tags[0..<n]);
+  m1 := sign(secret[ALICE][..], T0, 24, cast(string) tags[0..<n], "Are you both coming on Friday?", buf[0][..]);
+  // Bob's answer is a new message to Alice. No tag ties it to M1.
+  back := [1] string.[cast(string) pk[ALICE][..]];
+  n = na4_tags(back[..], relays[1..<2], 0, tags[..]);
+  #assert n > 0;
+  print("M2 tags: %\n", cast(string) tags[0..<n]);
+  m2 := sign(secret[BOB][..], T0 + 600, 24, cast(string) tags[0..<n], "Yes. I will bring the kettle.", buf[1][..]);
+  show("M1", m1, pk[..]);
+  show("M2", m2, pk[..]);
+
+  print("reactions to M1 (kind 7)\n");
+  id1 := n34_hex32(m1.id);
+  t: [1] Tags;
+  reaction_tags(t[..], cast(string) id1[..], cast(string) pk[ALICE][..], "24");
+  x1 := sign(secret[CAROL][..], T0 + 700, 7, tags_of(t[..]), "+", buf[2][..]);
+  t[0].n = 0; reaction_tags(t[..], cast(string) id1[..], cast(string) pk[ALICE][..], "");
+  x2 := sign(secret[BOB][..], T0 + 800, 7, tags_of(t[..]), "+", buf[3][..]);
+  print("X1, by Carol, with k 24: says it is about a public message: %\n", na4_about(nt_event_of(x1)));
+  print("X2, by Bob, without k: says it is about a public message: %\n", na4_about(nt_event_of(x2)));
+
+  print("each event's id\n");
+  all := [4] NostrEvent.[m1, m2, x1, x2];
+  names := [4] string.["M1", "M2", "X1", "X2"];
+  for k: 0..<4 { h := n34_hex32(all[k].id); print("%: %, verified %\n", names[k], cast(string) h[..], all[k].verified); }
+
+  print("refusals\n");
+  bad: [8192] u8;
+  t[0].n = 0; put(t[..], "[[\"p\",\""); put(t[..], cast(string) pk[ALICE][..]); put(t[..], "\"],[\"e\",\""); put(t[..], cast(string) id1[..]); put(t[..], "\"]]");
+  e := unsigned(24, tags_of(t[..]), bad[..]);
+  print("message that answers M1 with an e tag: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[]", bad[..]);
+  print("message to nobody: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[[\"p\",\"dff1d77f\"]]", bad[..]);
+  print("message, p of 8 digits: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"expiration\",\"tomorrow\"]]", bad[..]);
+  print("message, expiration that is not a number: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(24, "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"q\",\"M1\"]]", bad[..]);
+  print("message, q that cites nothing: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+  e = unsigned(14, "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]", bad[..]);
+  print("a kind 14 chat message read as a public message: %\n", STATUS[na4_message(nt_event_of(e)).status]);
+}
+```
+
+Run it from the repository root:
+
+```shell
+coax/bin/coax run nostr/examples/public-messages.coax --run-steps 250000000
+```
+
+The output matches the hand values:
+
+```text
+Alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+Bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+Carol: dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+public messages (kind 24)
+M1 tags: [["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","wss://inbox.example.com"],["p","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["expiration","1761772800"]]
+M2 tags: [["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"]]
+M1: ok, from Alice, to Bob (wss://inbox.example.com) Carol, expires at T0+86400, 0 q tags
+M2: ok, from Bob, to Alice, no expiration, 0 q tags
+reactions to M1 (kind 7)
+X1, by Carol, with k 24: says it is about a public message: true
+X2, by Bob, without k: says it is about a public message: false
+each event's id
+M1: d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4, verified true
+M2: cc44cac1094456bb6cd874d476b65995423e878eb374acc9e6ae5c55a9e15876, verified true
+X1: db86d0b019babac0079d73c5c57278875dca0e5583b1e0e75c9ef63ec0630202, verified true
+X2: c5ac0097a274a20dc3863c12bd8b3cf294c69b92b0abf8de3b36eaa1b5171db2, verified true
+refusals
+message that answers M1 with an e tag: an e tag: no threads
+message to nobody: missing
+message, p of 8 digits: malformed
+message, expiration that is not a number: malformed
+message, q that cites nothing: malformed
+a kind 14 chat message read as a public message: kind
+```
+
+The refusals:
+
+- A message that answers M1 with an `e` tag (`NA4_THREAD`).
+- A message with no `p` tag (`N34_MISSING`), and one whose `p` is 8 digits
+  (`N34_MALFORMED`).
+- An `expiration` of `tomorrow`, and a `q` tag that holds `M1` where an id
+  belongs (`N34_MALFORMED`).
+- A kind 14 chat message read as a public message (`N34_KIND`). The two
+  kinds never read as each other.
+
+The book's checks run this program in debug and release builds and compare
+the output with
+[nostr/fixtures/public-messages.out](../fixtures/public-messages.out).
+
 ## How the code is checked
 
 ### Checks in the example
@@ -929,6 +1265,124 @@ wraps, each opens in the other, and NIP-17's published wraps, made by
 another client, open in Coax. No deployed client (Amethyst, 0xchat) was
 run for this chapter, and no wrap was published to a live relay.
 
+### Checks of public messages
+
+The checks are in
+[nostr/examples/checks/public-messages.coax](../examples/checks/public-messages.coax),
+which loads the example. They compare the code with values it did not
+produce:
+
+- the ids of the four events, and the tags `na4_tags` and the example
+  write, against a Python script written from NIP-01, NIP-A4 and NIP-25;
+- each reading against the hand values above, on events rebuilt from
+  Python's ids, and X1 read as a kind 24, which refuses for its `e` tag;
+- NIP-A4's own example message and its `q` tag layout, with a key, an id
+  and a relay where the NIP writes placeholders.
+
+<!-- source: nostr/examples/checks/public-messages.coax check -->
+```jai
+// The ids and tags from a Python script written from NIP-01, NIP-A4 and NIP-25
+// (it shares no code with Coax): the ids are hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PUB :: [3] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"];
+PY_ID :: [4] string.[
+  "d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4",
+  "cc44cac1094456bb6cd874d476b65995423e878eb374acc9e6ae5c55a9e15876",
+  "db86d0b019babac0079d73c5c57278875dca0e5583b1e0e75c9ef63ec0630202",
+  "c5ac0097a274a20dc3863c12bd8b3cf294c69b92b0abf8de3b36eaa1b5171db2"];
+PY_M1 :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://inbox.example.com\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"expiration\",\"1761772800\"]]";
+PY_M2 :: "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_X1 :: "[[\"e\",\"d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"k\",\"24\"]]";
+PY_X2 :: "[[\"e\",\"d8a7c8e867879cb9364aa350bc4635ab6edd50e6e10d15a86f6ae90f0091dfb4\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_AUTHOR :: [4] int.[0, 1, 2, 1];
+PY_AT :: [4] int.[0, 600, 700, 800];
+PY_KIND :: [4] int.[24, 24, 7, 7];
+PY_TAGS :: [4] string.[PY_M1, PY_M2, PY_X1, PY_X2];
+PY_CONTENT :: [4] string.["Are you both coming on Friday?", "Yes. I will bring the kettle.", "+", "+"];
+
+// Event i of the script with a zero signature, read with its id recomputed;
+// the signature is not checked.
+py :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[i]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[PY_AUTHOR[i]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + PY_AT[i]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, PY_KIND[i]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, PY_TAGS[i]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, PY_CONTENT[i]);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the ids are Python's, and so are the tags the library and the example write" {
+  buf: [4][4096] u8; scratch: [4096] u8;
+  for i: 0..<4 { e := py(i, buf[i][..], scratch[..]); #assert e.error == NE_OK && n34_same(e.computed_id, e.id); }
+  tags: [1024] u8;
+  to := [2] string.[PUB[BOB], PUB[CAROL]]; relays := [2] string.[INBOX, ""];
+  n := na4_tags(to[..], relays[..], T0 + DAY, tags[..]); #assert cast(string) tags[0..<n] == PY_M1;
+  back := [1] string.[PUB[ALICE]];
+  n = na4_tags(back[..], relays[1..<2], 0, tags[..]); #assert cast(string) tags[0..<n] == PY_M2;
+  t: [1] Tags; reaction_tags(t[..], PY_ID[0], PUB[ALICE], "24"); #assert tags_of(t[..]) == PY_X1;
+  t[0].n = 0; reaction_tags(t[..], PY_ID[0], PUB[ALICE], ""); #assert tags_of(t[..]) == PY_X2;
+}
+
+// By hand: M1 has two p tags, Bob's with a relay and Carol's without, and
+// expires one day (86400 s) after T0. M2 has one p tag, Alice's, and no
+// expiration. Neither has an e or a q tag. X1 says k 24; X2 has no k.
+#test "Python's events read as worked by hand" {
+  buf: [4][4096] u8; scratch: [4096] u8; ev: [4] NtEvent;
+  for i: 0..<4 { ev[i] = nt_event_of(py(i, buf[i][..], scratch[..])); }
+  m := na4_message(ev[0]); #assert m.status == N34_OK && m.receivers == 2 && m.quotes == 0 && m.expires == T0 + 86400;
+  #assert nt_raw(ev[0], nt_tag(ev[0], "p", 0).v[0]) == PUB[BOB] && nt_raw(ev[0], nt_tag(ev[0], "p", 0).v[1]) == INBOX;
+  #assert nt_raw(ev[0], nt_tag(ev[0], "p", 1).v[0]) == PUB[CAROL] && nt_tag(ev[0], "p", 1).values == 1;
+  m = na4_message(ev[1]); #assert m.status == N34_OK && m.receivers == 1 && m.expires == -1 && nt_raw(ev[1], nt_tag(ev[1], "p", 0).v[0]) == PUB[ALICE];
+  #assert na4_about(ev[2]) && !na4_about(ev[3]);
+  // A reaction is not a message, and its e tag would refuse as one.
+  #assert na4_message(ev[2]).status == N34_KIND;
+  ev[2].kind = 24; #assert na4_message(ev[2]).status == NA4_THREAD;
+}
+
+// NIP-A4's own example, with Python's key and relay where it writes
+// <receiver> and <relay-url>, and its q tag layout,
+// ["q", "<event-id> or <event-address>", "<relay-url>", "<pubkey-if-a-regular-event>"].
+#test "NIP-A4's own layouts" {
+  buf: [1024] u8; n := json_raw(buf[..], 0, "[[\"p\",\""); n = json_raw(buf[..], n, PUB[BOB]); n = json_raw(buf[..], n, "\",\"wss://inbox.example.com\"]]");
+  e := n34_event(cast(string) buf[0..<n], 24); m := na4_message(e);
+  #assert m.status == N34_OK && m.receivers == 1 && nt_raw(e, nt_tag(e, "p", 0).v[1]) == "wss://inbox.example.com";
+  n = json_raw(buf[..], 0, "[[\"p\",\""); n = json_raw(buf[..], n, PUB[BOB]); n = json_raw(buf[..], n, "\"],[\"q\",\""); n = json_raw(buf[..], n, PY_ID[0]);
+  n = json_raw(buf[..], n, "\",\"wss://inbox.example.com\",\""); n = json_raw(buf[..], n, PUB[ALICE]); n = json_raw(buf[..], n, "\"],[\"q\",\"30023:"); n = json_raw(buf[..], n, PUB[ALICE]);
+  n = json_raw(buf[..], n, ":kettles\",\"wss://inbox.example.com\"]]");
+  m = na4_message(n34_event(cast(string) buf[0..<n], 24)); #assert m.status == N34_OK && m.quotes == 2;
+}
+```
+
+`nipa4.coax` has `#test` checks written with its code: a message to two
+receivers with and without relays, expirations of 0 and none, quotes of an
+event and an address, an `e` tag with and without a value, no receiver, a
+short, uppercase or second bad receiver, four bad expirations, the kinds
+on both sides of 24, the `k` tag in six spellings, and the tag writer with
+no receiver, uneven lists, a bad key and a short buffer.
+
+```shell
+coax/bin/coax test coax/lib/nostr/nipa4.coax
+coax/bin/coax test nostr/examples/checks/public-messages.coax --run-steps 250000000
+coax/bin/coax mutate coax/lib/nostr/nipa4.coax --root-only
+```
+
+On 2026-11-12, `coax test` passed all 53 checks of `nipa4.coax` and all
+392 of the example's checks (each count includes the loaded files'
+checks). `nipa4.coax` is `#authority`: it decides which events a client
+shows as public messages. `coax mutate --root-only` killed all 73 of its
+mutants, with none surviving and none marked equivalent. The first run
+left four survivors; each was killed by a new check (a one-letter relay,
+an expiration of 1) or by reordering two conditions so that each one
+decides a result of its own. The full mutation run
+(`COAX_MUTATION_FULL=1`) was not run.
+
 ## What is not built
 
 - Kind 7 reactions and kind 5 deletions inside a room, edits, and
@@ -938,8 +1392,11 @@ run for this chapter, and no wrap was published to a live relay.
   NIP-42 AUTH.
 - The file itself. Kind 15's tags are checked, but this stack has no
   AES-GCM, so the file's bytes are neither encrypted nor decrypted here.
-- NIP-A4 kind 24 public messages: plaintext, `p` tags for the receivers,
-  sent to their NIP-65 inbox relays and the sender's outbox (chapter 32).
+- For NIP-A4 public messages: sending a message to each receiver's
+  NIP-65 inbox relays and the sender's outbox (chapter 32's plan, not
+  called here), dropping a message after its expiration, NIP-92 `imeta`
+  tags, and checking that a `nostr:nevent1` link to a message says kind
+  24.
 - NIP-EE, MLS groups: `unrecommended`, superseded by the Marmot protocol,
   and listed as retired in chapter 70's table.
 
@@ -955,6 +1412,10 @@ run for this chapter, and no wrap was published to a live relay.
   messages by time and rumor id.
 - The wraps match an independent Python NIP-17 byte for byte, and NIP-17's
   own example opens.
+- A NIP-A4 public message is a signed, plain text kind 24 that anyone can
+  read. `na4_message` reads its receivers and expiration and refuses any
+  `e` tag, because the kind has no threads; `na4_about` reads the
+  `["k", "24"]` that a reaction or zap to it must carry.
 
 ## Dependencies
 

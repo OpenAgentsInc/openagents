@@ -1,0 +1,34 @@
+Alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+Bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+Carol: dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+Dave: 25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517
+the repository's address: 30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools
+a code snippet (kind 1337), by Carol
+S1 tags: [["l","rust"],["extension","rs"],["name","seconds.rs"],["description","Minutes and seconds as seconds"],["runtime","rustc 1.82"],["license","MIT"],["repo","30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools"]]
+S1: ok, language rust, extension rs, name seconds.rs, runtime "rustc 1.82", licenses 1, deps 0, repo is a repository's address
+S1's content, as its JSON text: fn seconds(minutes: u32, seconds: u32) -> u32 {\n    minutes * 60 + seconds\n}\n
+a pull request (kind 1618), by Carol
+PR1 tags: [["a","30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["c","9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6"],["clone","https://git.example.com/carol/tea-tools.git"],["subject","Count minutes past 59 seconds"],["branch-name","timer-minutes"]]
+PR1: ok, repository tea-tools (the address above), subject "Count minutes past 59 seconds", branch timer-minutes, tip 9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6, clone https://git.example.com/carol/tea-tools.git
+updates (kind 1619)
+U1 tags: [["a","30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["c","2b1d0c9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c"],["clone","https://git.example.com/carol/tea-tools.git"],["E","54c4d3eec90a68ba7625305610f782ced95cc56de287f19d368b5125ff1bd3a8"],["P","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]]
+U1: ok by Carol at T0+200, moves PR1 to 2b1d0c9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c
+U2: ok by Dave at T0+300, moves PR1 to 7e6d5c4b3a291807f6e5d4c3b2a190807f6e5d4c
+PR1 alone: ok, tip 9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6, from the pull request, counted 0, ignored 0, refused 0
+PR1 with U1 and U2: ok, tip 2b1d0c9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c, from U1, counted 1, ignored 1, refused 0
+PR1 with U2 only: ok, tip 9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6, from the pull request, counted 0, ignored 1, refused 0
+each event's id
+S1: cdee62118e1266c7871f0a4484d828062e47ce8fba14db75b5714f8922c8f5e9, verified true
+PR1: 54c4d3eec90a68ba7625305610f782ced95cc56de287f19d368b5125ff1bd3a8, verified true
+U1: 158583eda69df86ffe5cf803fa7c0117b222620ceda12f56b8ab016ee37f6e53, verified true
+U2: 8d9c61e0e53de8d1db8759e94fb7a322eb23439a38d836f1b9e52641432fe073, verified true
+refusals
+snippet, language in capitals: malformed
+snippet, extension with its dot: malformed
+snippet, repo that is neither a URL nor an address: malformed
+snippet, license without a value: malformed
+pull request without a clone URL: missing
+pull request, c of 8 digits: malformed
+pull request that names no repository: missing
+update that names no pull request: missing
+pull request tags with a tip of 8 digits: -1

@@ -1,0 +1,138 @@
+// NIP-A4 public messages read from a parsed event: kind 24 is a plain text
+// message to one or more users, each named in a p tag. The content is the
+// message. Anyone can read it: "There MUST be no expectation of privacy in
+// this kind." It is not a NIP-17 direct message (kind 14, never signed and
+// always gift wrapped); a kind 24 is signed and published as it is.
+//
+// A reading of the signed tags, not authority: it verifies no signature.
+// The rules it enforces are NIP-A4's:
+// - at least one p tag, and every p tag holds a pubkey;
+// - no e tag at all ("e tags must not be used"): there are no threads, so
+//   a message with one refuses with NA4_THREAD;
+// - every q tag cites an event id or an event address (nipc7.coax's
+//   reader of NIP-18's q tag);
+// - an expiration tag (NIP-40, recommended), when present, is a whole
+//   number of seconds. This file reads it; whether the message is still
+//   live at some time is the relay's NIP-40 rule, not decided here.
+//
+// na4_about reads the other half of the NIP: a reaction (kind 7) or a zap
+// request (kind 9734) to a public message "MUST" carry ["k","24"].
+//
+// Not checked: that the message went to each receiver's NIP-65 inbox
+// relays and the sender's outbox, imeta tags, and nevent links in content.
+#load "nipc7.coax";
+#authority;
+
+NA4_KIND_MESSAGE :: 24;
+// Past nip34.coax's N34_* statuses.
+NA4_THREAD :: 6;   // the message has an e tag
+
+// book:begin record
+// receivers counts the p tags (read each with nt_tag(e,"p",k): the pubkey,
+// then a relay). expires is the expiration tag's time, or -1 without one.
+NA4Message :: struct {status:int;receivers:int;quotes:int;expires:int=-1;}
+// book:end record
+
+NA4_BOB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+NA4_CAROL :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";
+NA4_ID :: "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36";
+
+#test "a message reads its receivers, their relays and its expiration" {
+ buf:[1024]u8;keys:=[2]string.[NA4_BOB,NA4_CAROL];relays:=[2]string.["wss://inbox.example.com",""];
+ n:=na4_tags(keys[..],relays[..],1761690000,buf[..]);#assert n>0;
+ e:=n34_event(cast(string)buf[0..<n],24);m:=na4_message(e);
+ #assert m.status==N34_OK && m.receivers==2 && m.quotes==0 && m.expires==1761690000;
+ #assert nt_raw(e,nt_tag(e,"p",0).v[0])==NA4_BOB && nt_raw(e,nt_tag(e,"p",0).v[1])=="wss://inbox.example.com";
+ #assert nt_raw(e,nt_tag(e,"p",1).v[0])==NA4_CAROL && nt_tag(e,"p",1).values==1;
+ // No expiration is -1, and one receiver is enough.
+ n=na4_tags(keys[0..<1],relays[0..<1],0,buf[..]);e=n34_event(cast(string)buf[0..<n],24);m=na4_message(e);
+ #assert m.status==N34_OK && m.receivers==1 && m.expires==-1 && nt_tags(e,"expiration")==0;
+ // An expiration of 0 reads as 0, not as none.
+ m=na4_message(n34_event("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"expiration\",\"0\"]]",24));#assert m.status==N34_OK && m.expires==0;
+}
+#test "a message may quote an event or an address" {
+ m:=na4_message(n34_event("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"q\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"wss://r\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"q\",\"30023:dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8:tea\"]]",24));
+ #assert m.status==N34_OK && m.quotes==2 && m.receivers==1;
+ #assert na4_message(n34_event("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"q\",\"x\"]]",24)).status==N34_MALFORMED;
+}
+#test "a message refuses an e tag, no receiver, a bad receiver and a bad expiration" {
+ #assert na4_message(n34_event("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]",24)).status==NA4_THREAD;
+ // The e tag refuses whatever it holds, and before anything else.
+ #assert na4_message(n34_event("[[\"e\"]]",24)).status==NA4_THREAD;
+ #assert na4_message(n34_event("[]",24)).status==N34_MISSING && na4_message(n34_event("[[\"q\",\"x\"]]",24)).status==N34_MISSING;
+ #assert na4_message(n34_event("[[\"p\"]]",24)).status==N34_MALFORMED && na4_message(n34_event("[[\"p\",\"dff1\"]]",24)).status==N34_MALFORMED;
+ #assert na4_message(n34_event("[[\"p\",\"DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659\"]]",24)).status==N34_MALFORMED;
+ #assert na4_message(n34_event("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"x\"]]",24)).status==N34_MALFORMED;
+ bad:=[4]string.["[\"expiration\"]","[\"expiration\",\"soon\"]","[\"expiration\",\"-1\"]","[\"expiration\",\"1.5\"]"];
+ for i:0..<4 {
+  buf:[256]u8;n:=json_raw(buf[..],0,"[[\"p\",\"");n=json_raw(buf[..],n,NA4_BOB);n=json_raw(buf[..],n,"\"],");n=json_raw(buf[..],n,bad[i]);n=json_raw(buf[..],n,"]");
+  m:=na4_message(n34_event(cast(string)buf[0..<n],24));#assert m.status==N34_MALFORMED && m.expires==-1;
+ }
+ #assert na4_message(n34_event("[]",14)).status==N34_KIND && na4_message(n34_event("[]",23)).status==N34_KIND && na4_message(n34_event("[]",25)).status==N34_KIND;
+ #assert na4_message(n34_event("[1]",24)).status==N34_EVENT;
+}
+#test "a reaction or zap request to a public message says k 24" {
+ #assert na4_about(n34_event("[[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"k\",\"24\"]]",7));
+ #assert na4_about(n34_event("[[\"k\",\"1\"],[\"k\",\"24\"]]",9734));
+ #assert !na4_about(n34_event("[[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]",7));
+ #assert !na4_about(n34_event("[[\"k\",\"1\"]]",7)) && !na4_about(n34_event("[[\"k\",\"240\"]]",7)) && !na4_about(n34_event("[[\"k\"]]",7));
+ #assert !na4_about(n34_event("[[\"K\",\"24\"]]",7)) && !na4_about(n34_event("[1]",7));
+}
+#test "a message's tags refuse no receiver, a bad key, uneven lists and a short buffer" {
+ buf:[1024]u8;small:[100]u8;keys:=[2]string.[NA4_BOB,NA4_CAROL];relays:=[2]string.["wss://a",""];
+ #assert na4_tags(keys[0..<0],relays[0..<0],0,buf[..])==-1 && na4_tags(keys[..],relays[0..<1],0,buf[..])==-1;
+ bad:=[2]string.[NA4_BOB,"dd30"];#assert na4_tags(bad[..],relays[..],0,buf[..])==-1;
+ #assert na4_tags(keys[..],relays[..],0,small[..])==-1;
+ n:=na4_tags(keys[0..<1],relays[1..<2],1,buf[..]);
+ #assert cast(string)buf[0..<n]=="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"expiration\",\"1\"]]";
+ one:=[1]string.["w"];n=na4_tags(keys[0..<1],one[..],0,buf[..]);
+ #assert cast(string)buf[0..<n]=="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"w\"]]";
+ n=na4_tags(keys[0..<1],relays[0..<1],-5,buf[..]);
+ #assert cast(string)buf[0..<n]=="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://a\"]]";
+}
+
+// book:begin message
+// A kind 24 public message.
+na4_message :: (e:NtEvent)->NA4Message #effects(all) {
+ m:NA4Message;m.status=n34_start(e,NA4_KIND_MESSAGE);if m.status!=N34_OK {return m;}
+ if nt_tags(e,"e")>0 {m.status=NA4_THREAD;return m;}
+ m.receivers=nt_each(e,"p",64);m.quotes=nc7_quotes(e);
+ if m.receivers<0 {m.status=N34_MALFORMED;return m;}
+ if m.receivers==0 {m.status=N34_MISSING;return m;}
+ if m.quotes<0 {m.status=N34_MALFORMED;return m;}
+ x:=nt_tag(e,"expiration",0);
+ if x.n>0 {
+  // A valueless expiration's first span is empty, which is no number.
+  at:=json_int(nt_raw(e,x.v[0]));
+  if !at.ok || at.value<0 {m.status=N34_MALFORMED;return m;}
+  m.expires=at.value;
+ }
+ return m;
+}
+// book:end message
+
+// book:begin about
+// Whether a reaction (kind 7) or a zap request (kind 9734) says it is about
+// a public message: it carries ["k","24"].
+na4_about :: (e:NtEvent)->bool #effects(all) {return nt_count(e,"k",0,"24")>0;}
+// book:end about
+
+// book:begin tags
+// A message's tags: one p tag for each receiver, with its relay when that
+// isn't empty, then the expiration when it is positive. The new length, or
+// -1 when there is no receiver, the lists differ in length, a key isn't 64
+// lowercase hex digits or out is short.
+na4_tags :: (receivers:[]string,relays:[]string,expiration:int,out:[]u8)->int #effects(all) {
+ if receivers.count==0 || relays.count!=receivers.count {return -1;}
+ n:=json_raw(out,0,"[");
+ for k:0..<receivers.count {
+  if !nt_hex(receivers[k],64) {return -1;}
+  if k>0 {n=json_raw(out,n,",");}
+  n=json_raw(out,n,"[\"p\",\"");n=json_raw(out,n,receivers[k]);n=json_raw(out,n,"\"");
+  if relays[k].count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,relays[k]);}
+  n=json_raw(out,n,"]");
+ }
+ if expiration>0 {n=json_raw(out,n,",[\"expiration\",\"");n=json_write_int(out,n,expiration);n=json_raw(out,n,"\"]");}
+ return json_raw(out,n,"]");
+}
+// book:end tags

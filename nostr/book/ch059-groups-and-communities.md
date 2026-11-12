@@ -10,8 +10,10 @@ NIP-72's older moderated communities: whether a moderator approved a post.
 Part VI, Every NIP. Result: the relay side of NIP-29 relay-based groups (the
 `h` tag, moderation kinds 9000 to 9009, join and leave requests 9021 and
 9022, `previous` references, and the 39000 to 39003 state the relay
-publishes), and NIP-72's approval check. NIP-7D threads, NIP-C7 chats and
-NIP-28 public chat are listed under [Not built](#not-built).
+publishes), NIP-72's approval check, and the client's readers for NIP-C7
+chats (kind 9 with `q` replies) and NIP-7D forum threads (kind 11 with
+kind 1111 replies). NIP-28 public chat is listed under
+[Not built](#not-built).
 
 ## What this chapter teaches
 
@@ -30,6 +32,10 @@ NIP-28 public chat are listed under [Not built](#not-built).
   signs them.
 - How a NIP-72 community decides that a post counts: a listed moderator
   must approve it.
+- What a NIP-C7 chat message is (kind 9), how a reply quotes its parent in
+  a `q` tag, and why a chat view fetches kind 9 only.
+- What a NIP-7D thread is (kind 11 with a `title`), and why its replies are
+  NIP-22 comments whose root and parent are both the thread.
 
 ## Where the code is
 
@@ -44,10 +50,21 @@ NIP-28 public chat are listed under [Not built](#not-built).
 | [nip29.coax](../../coax/lib/nostr/nip29.coax) | `g29_write_metadata`, `g29_write_admins`, `g29_write_members`, `g29_write_roles` | The tags of the 39000 to 39003 events the relay signs |
 | [nip72.coax](../../coax/lib/nostr/nip72.coax) | `n72_counts(community, post, approval)` | Whether an approval makes a post count in a community |
 | [nip72.coax](../../coax/lib/nostr/nip72.coax) | `n72_address(c, out)` | A community's address, `34550:<author>:<d>` |
+| [nipc7.coax](../../coax/lib/nostr/nipc7.coax) | `nc7_chat(e)` | A kind 9 chat message: its `q` tags, and the parent it replies to |
+| [nipc7.coax](../../coax/lib/nostr/nipc7.coax) | `nc7_cites(e, t)`, `nc7_quotes(e)` | What one `q` tag cites (an event id or an address), and whether every `q` tag cites something |
+| [nipc7.coax](../../coax/lib/nostr/nipc7.coax) | `nc7_reply_tags(id, relay, author, out)` | The `q` tag of a reply |
+| [nip7d.coax](../../coax/lib/nostr/nip7d.coax) | `n7d_thread(e)`, `n7d_thread_tags(title, out)` | A kind 11 thread and its title |
+| [nip7d.coax](../../coax/lib/nostr/nip7d.coax) | `n7d_reply(e)` | A kind 1111 comment as a reply to a thread: its root is a kind 11 event and its parent is that same event |
+| [nip7d.coax](../../coax/lib/nostr/nip7d.coax) | `n7d_reply_tags(thread, relay, author, out)` | The six NIP-22 tags of a reply to a thread |
 
-Both library files start with `#authority;`: `nip29.coax` decides
-admission to a group, and `nip72.coax` decides which posts a community
-shows.
+`nip29.coax` and `nip72.coax` start with `#authority;`: `nip29.coax`
+decides admission to a group, and `nip72.coax` decides which posts a
+community shows. `nipc7.coax` and `nip7d.coax` carry it too. They decide
+which events a chat view and a thread view show, and they read events
+through chapter 63's tag readers in
+[nip34.coax](../../coax/lib/nostr/nip34.coax) (`nt_tag`, `nt_hex`,
+`nt_coord`) and chapter 52's comment reader in
+[nip22.coax](../../coax/lib/nostr/nip22.coax).
 
 ## Groups on a relay
 
@@ -425,6 +442,177 @@ Mallory's approval names the same things, but Mallory is not listed: not a
 moderator. A second approval by Bob names P1's id instead of Carol's post:
 another post.
 
+## Chats and threads (NIP-C7 and NIP-7D)
+
+The posts in the worked group are kind 9 events. NIP-C7 defines that kind
+on its own: a chat message is a kind 9 event, and its content is the
+message. NIP-7D defines a second shape of conversation, the forum thread.
+A client reads both, and no relay has to decide anything, so each has one
+small reader. A reader takes a parsed event and returns a record whose
+`status` is `N34_OK` or the reason the event refuses. Neither reader
+verifies a signature or fetches an event: the caller passes events it has
+verified (chapter 21).
+
+### Chats
+
+A reply to a chat message is another kind 9 that quotes its parent in a
+`q` tag:
+
+```text
+["q", "<event id>", "<relay URL>", "<pubkey>"]
+```
+
+The `q` tag is NIP-18's (chapter 52), so a chat message may also quote
+other content by its address, `<kind>:<pubkey>:<d>`. `nc7_cites` says
+which of the two a tag holds, and `nc7_quotes` refuses the event when any
+`q` tag holds neither:
+
+<!-- source: coax/lib/nostr/nipc7.coax quote -->
+```jai
+// What one q tag cites: an event id, an event address, or nothing this
+// file reads. An author, when the tag carries one, must be a pubkey.
+nc7_cites :: (e:NtEvent,t:NtTag)->int #effects(all) {
+ raw:=nt_raw(e,t.v[0]);author:=nt_raw(e,t.v[2]);
+ // A tag without an author has an empty third span.
+ if author.count>0 && !nt_hex(author,64) {return NC7_NOTHING;}
+ if nt_hex(raw,64) {return NC7_ID;}
+ return ifx nt_coord(raw).kind>=0 then NC7_ADDRESS else NC7_NOTHING;
+}
+// How many q tags the event has, or -1 when one of them cites nothing.
+nc7_quotes :: (e:NtEvent)->int #effects(all) {
+ n:=nt_tags(e,"q");
+ for k:0..<n {if nc7_cites(e,nt_tag(e,"q",k))==NC7_NOTHING {return -1;}}
+ return n;
+}
+```
+
+`nc7_chat` reads the message. The parent is the first `q` tag that holds
+an event id. A message with no such tag starts a conversation.
+
+<!-- source: coax/lib/nostr/nipc7.coax chat -->
+```jai
+// A kind 9 chat message. Every q tag must cite an event or an address; the
+// first one that holds an event id is the parent.
+nc7_chat :: (e:NtEvent)->NC7Chat #effects(all) {
+ c:NC7Chat;c.status=n34_start(e,NC7_KIND_CHAT);if c.status!=N34_OK {return c;}
+ c.quotes=nc7_quotes(e);
+ if c.quotes<0 {c.status=N34_MALFORMED;return c;}
+ for k:0..<c.quotes {
+  t:=nt_tag(e,"q",k);
+  if nc7_cites(e,t)==NC7_ID {c.parent=t;break;}
+ }
+ return c;
+}
+```
+
+NIP-C7 ends with a rule for clients: "Clients that render a 'chat view' as
+a stream of ordered events MUST only fetch `kind 9` events". Two things
+follow for this reader:
+
+- `nc7_chat` refuses every other kind with `N34_KIND`, so a chat view built
+  on it never shows a note, a comment or a thread as a chat message.
+- The reader cannot know that the quoted event is a kind 9. The client
+  fetches the parent and reads it with `nc7_chat` too.
+
+`nc7_reply_tags` writes the one tag of a reply. It refuses an id or a key
+that is not 64 lowercase hex digits.
+
+<!-- source: coax/lib/nostr/nipc7.coax reply -->
+```jai
+// The tags of a reply to the kind 9 event id, by author, found on relay:
+// one q tag. The new length, or -1 when an id isn't 64 lowercase hex digits
+// or out is short.
+nc7_reply_tags :: (id:string,relay:string,author:string,out:[]u8)->int #effects(all) {
+ if !nt_hex(id,64) || !nt_hex(author,64) {return -1;}
+ n:=json_raw(out,0,"[[\"q\",\"");n=json_raw(out,n,id);n=json_raw(out,n,"\",");n=json_write_string(out,n,relay);
+ n=json_raw(out,n,",\"");n=json_raw(out,n,author);return json_raw(out,n,"\"]]");
+}
+```
+
+### Threads
+
+A thread is a kind 11 event. Its content opens the discussion, and it
+"SHOULD include a `title`". A reply is neither a kind 11 nor a kind 1:
+"Replies to `kind 11` MUST use NIP-22 `kind 1111` comments."
+
+A NIP-22 comment (chapter 52) names two things. Its uppercase tags `E`, `K`
+and `P` name the root, the item the whole discussion is about. Its
+lowercase tags `e`, `k` and `p` name the parent, the item this comment
+answers. NIP-7D adds one sentence: "Replies should always be to the root
+`kind 11` to avoid arbitrarily nested reply hierarchies." So in a reply to
+a thread the root and the parent are the same event.
+
+`n7d_reply` reads the comment with chapter 52's `n22_comment` and then
+asks for exactly that:
+
+<!-- source: coax/lib/nostr/nip7d.coax reply -->
+```jai
+// A kind 1111 comment as a reply to a thread: its root is an event of kind
+// 11, and its parent is that same event.
+n7d_reply :: (e:NtEvent)->N7DReply #effects(all) {
+ r:N7DReply;c:=n22_comment(e);r.status=c.status;if r.status!=N34_OK {return r;}
+ if c.root.at!='E' || c.root.kind_value!=N7D_KIND_THREAD {r.status=N7D_ELSEWHERE;return r;}
+ r.thread=c.root.ref;r.author=c.root.author;
+ if c.parent.at!='e' || c.parent.kind_value!=N7D_KIND_THREAD || nt_raw(e,c.parent.ref.v[0])!=nt_raw(e,c.root.ref.v[0]) {r.status=N7D_NESTED;}
+ return r;
+}
+// The tags of a reply to the thread id, by author, found on relay: NIP-22's
+// E, K and P for the root and e, k and p for the parent, which is the same
+// event. The new length, or -1 when an id isn't 64 lowercase hex digits or
+// out is short.
+n7d_reply_tags :: (thread:string,relay:string,author:string,out:[]u8)->int #effects(all) {
+ if !nt_hex(thread,64) || !nt_hex(author,64) {return -1;}
+ n:=json_raw(out,0,"[");names:="EKPekp";
+ for half:0..<2 {
+  n=json_raw(out,n,"[\"");n=json_raw(out,n,names[3*half..<3*half+1]);n=json_raw(out,n,"\",\"");n=json_raw(out,n,thread);n=json_raw(out,n,"\",");
+  n=json_write_string(out,n,relay);n=json_raw(out,n,",\"");n=json_raw(out,n,author);n=json_raw(out,n,"\"],[\"");
+  n=json_raw(out,n,names[3*half+1..<3*half+2]);n=json_raw(out,n,"\",\"11\"],[\"");n=json_raw(out,n,names[3*half+2..<3*half+3]);n=json_raw(out,n,"\",\"");
+  n=json_raw(out,n,author);n=json_raw(out,n,ifx half==0 then "\"]," else "\"]]");
+ }
+ return n;
+}
+```
+
+It has two refusals of its own:
+
+- `N7D_ELSEWHERE`: the comment's root is not an event of kind 11. The
+  comment belongs to an article, an issue or a web page, not to a thread.
+- `N7D_NESTED`: the root is a thread, but the parent is something else,
+  usually another comment (`k` is `1111`). NIP-22 allows that comment;
+  NIP-7D asks clients not to write it. The record still names the thread,
+  so a client can show the comment flat under the thread or leave it out.
+
+NIP-7D's own example reply carries only `K` and `E`. NIP-22 requires the
+parent's `e` and `k` too, so that example refuses here as `N34_MISSING`.
+`n7d_reply_tags` writes all six tags.
+
+### Worked example: two chats and one thread
+
+Alice, Bob and Carol sign with BIP-340's published test keys. Read five
+events by hand before the program runs:
+
+| Event | Signer | Kind | Tags | Reads as |
+| --- | --- | --- | --- | --- |
+| C1 | Alice | 9 | none | A chat message that starts a conversation |
+| C2 | Bob | 9 | `q` C1, the relay, Alice | A reply to C1 |
+| T1 | Carol | 11 | `title` "Which kettle?" | A thread |
+| R1 | Alice | 1111 | `E` T1, `K` 11, `P` Carol; `e` T1, `k` 11, `p` Carol | A reply to T1 |
+| R2 | Bob | 1111 | `E` T1, `K` 11, `P` Carol; `e` R1, `k` 1111, `p` Alice | Nested: it answers R1 |
+
+1. C1 has no `q` tag, so `quotes` is 0 and there is no parent.
+2. C2 has one `q` tag whose first value is 64 hex digits: an event id. It
+   is the parent, and it is C1's id.
+3. T1 is kind 11 with one `title` tag that has a value.
+4. R1 is a NIP-22 comment. Its root is `E` with `K` 11, so it is about a
+   thread. Its parent is `e` with `k` 11 and the same id as the root: a
+   reply to the thread.
+5. R2's root is the same thread, but its parent's `k` is 1111 and its id
+   is R1's. NIP-22's rule holds (a parent of kind 1111 is a comment under
+   the root), so `n22_comment` reads it. `n7d_reply` returns `N7D_NESTED`.
+
+A chat view over these five events shows C1 and C2. A thread view shows T1
+with R1 under it, and decides for itself what to do with R2.
+
 ## The example
 
 The example is
@@ -708,6 +896,219 @@ The book's checks run this program in debug and release builds and compare
 the output with
 [nostr/fixtures/groups-communities.out](../fixtures/groups-communities.out).
 
+### The chats and threads example
+
+A second example,
+[nostr/examples/chats-threads.coax](../examples/chats-threads.coax), signs
+the five events of the worked example with the same test keys, verifies
+each one, reads them with `nc7_chat`, `n7d_thread` and `n7d_reply`, and
+then reads seven events that refuse.
+
+<!-- source: nostr/examples/chats-threads.coax example -->
+```jai
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/nipc7.coax";
+#load "../../coax/lib/nostr/nip7d.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The statuses of nip34.coax, then nip22.coax's 6 and nip7d.coax's 7 and 8.
+STATUS :: [9] string.["ok", "event", "kind", "missing", "malformed", "output",
+  "parent kind differs from root kind", "elsewhere", "nested"];
+// BIP-340 test vectors 0, 1 and 2's published secret keys. Never sign with
+// a real key in an example.
+KEYS :: [3] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9"];
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+ALICE :: 0; BOB :: 1; CAROL :: 2;
+RELAY :: "wss://relay.example.com";
+T0 :: 1761686400;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. Used for the refusals, which the readers refuse on their
+// kind and tags alone.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// A tag list built from pieces of JSON text.
+Tags :: struct { b: [2048] u8; n: int; }
+put :: (t: [] Tags, s: string) { t[0].n = json_raw(t[0].b[..], t[0].n, s); #assert t[0].n > 0; }
+tags_of :: (t: [] Tags) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+// The tags of a comment on a comment: the root is the thread (E, K 11, P),
+// the parent is the reply it answers (e, k 1111, p). NIP-22 allows this;
+// NIP-7D asks clients to reply to the thread instead.
+nested_tags :: (t: [] Tags, thread: string, thread_author: string, reply: string, reply_author: string) {
+  put(t, "[[\"E\",\""); put(t, thread); put(t, "\",\""); put(t, RELAY); put(t, "\",\""); put(t, thread_author);
+  put(t, "\"],[\"K\",\"11\"],[\"P\",\""); put(t, thread_author); put(t, "\"],[\"e\",\""); put(t, reply); put(t, "\",\""); put(t, RELAY);
+  put(t, "\",\""); put(t, reply_author); put(t, "\"],[\"k\",\"1111\"],[\"p\",\""); put(t, reply_author); put(t, "\"]]");
+}
+
+// Which person a pubkey in a tag names.
+who :: (pk: [] [64] u8, raw: string) -> string {
+  for k: 0..<pk.count { if raw == cast(string) pk[k][..] { return PEOPLE[k]; } }
+  return "someone else";
+}
+
+show_chat :: (label: string, event: NostrEvent, first: string, pk: [] [64] u8) {
+  e := nt_event_of(event); c := nc7_chat(e);
+  print("%: %", label, STATUS[c.status]);
+  if c.status != N34_OK { print("\n"); return; }
+  if !c.parent.found { print(", % q tags, not a reply\n", c.quotes); return; }
+  print(", % q tag, a reply to % by %, found on %\n", c.quotes, ifx nt_raw(e, c.parent.v[0]) == first then "C1" else "another event",
+    who(pk, nt_raw(e, c.parent.v[2])), nt_raw(e, c.parent.v[1]));
+}
+show_reply :: (label: string, event: NostrEvent, thread: string, pk: [] [64] u8) {
+  e := nt_event_of(event); r := n7d_reply(e);
+  print("%: %", label, STATUS[r.status]);
+  if r.status != N34_OK && r.status != N7D_NESTED { print("\n"); return; }
+  print(", thread % by %\n", ifx nt_raw(e, r.thread.v[0]) == thread then "T1" else "another event", who(pk, nt_raw(e, r.author.v[0])));
+}
+
+main :: () {
+  secret: [3][32] u8; pk: [3][64] u8;
+  for k: 0..<3 { decode_hex(KEYS[k], secret[k][..]); }
+  buf: [5][8192] u8;
+  // Each public key comes from signing: sign an empty note first.
+  for k: 0..<3 { pk[k] = n34_hex32(sign(secret[k][..], T0, 1, "[]", "", buf[0][..]).public_key); }
+  for k: 0..<3 { print("%: %\n", PEOPLE[k], cast(string) pk[k][..]); }
+
+  print("chats (kind 9)\n");
+  c1 := sign(secret[ALICE][..], T0, 9, "[]", "GM", buf[0][..]);
+  id1 := n34_hex32(c1.id);
+  tags: [1024] u8;
+  n := nc7_reply_tags(cast(string) id1[..], RELAY, cast(string) pk[ALICE][..], tags[..]);
+  #assert n > 0;
+  print("C2 tags: %\n", cast(string) tags[0..<n]);
+  c2 := sign(secret[BOB][..], T0 + 30, 9, cast(string) tags[0..<n], "GM, Alice", buf[1][..]);
+  show_chat("C1", c1, cast(string) id1[..], pk[..]);
+  show_chat("C2", c2, cast(string) id1[..], pk[..]);
+
+  print("a thread (kind 11) and its replies (kind 1111)\n");
+  n = n7d_thread_tags("Which kettle?", tags[..]);
+  #assert n > 0;
+  t1 := sign(secret[CAROL][..], T0 + 120, 11, cast(string) tags[0..<n], "Gooseneck or plain?", buf[2][..]);
+  te := nt_event_of(t1); thread := n7d_thread(te);
+  print("T1: %, title \"%\"\n", STATUS[thread.status], nt_raw(te, thread.title.v[0]));
+  idt := n34_hex32(t1.id);
+  n = n7d_reply_tags(cast(string) idt[..], RELAY, cast(string) pk[CAROL][..], tags[..]);
+  #assert n > 0;
+  print("R1 tags: %\n", cast(string) tags[0..<n]);
+  r1 := sign(secret[ALICE][..], T0 + 180, 1111, cast(string) tags[0..<n], "Gooseneck. It pours slower.", buf[3][..]);
+  idr := n34_hex32(r1.id);
+  t: [1] Tags;
+  nested_tags(t[..], cast(string) idt[..], cast(string) pk[CAROL][..], cast(string) idr[..], cast(string) pk[ALICE][..]);
+  r2 := sign(secret[BOB][..], T0 + 240, 1111, tags_of(t[..]), "Slower is the point.", buf[4][..]);
+  show_reply("R1", r1, cast(string) idt[..], pk[..]);
+  show_reply("R2, Bob's answer to R1", r2, cast(string) idt[..], pk[..]);
+  print("R2 as a NIP-22 comment: %\n", STATUS[n22_comment(nt_event_of(r2)).status]);
+
+  print("each event's id\n");
+  all := [5] NostrEvent.[c1, c2, t1, r1, r2];
+  names := [5] string.["C1", "C2", "T1", "R1", "R2"];
+  for k: 0..<5 { h := n34_hex32(all[k].id); print("%: %, verified %\n", names[k], cast(string) h[..], all[k].verified); }
+
+  print("refusals\n");
+  bad: [8192] u8;
+  e := unsigned(9, "[[\"q\",\"5c83da77\"]]", bad[..]);
+  print("chat, q of 8 digits: %\n", STATUS[nc7_chat(nt_event_of(e)).status]);
+  e = unsigned(9, "[[\"q\"]]", bad[..]);
+  print("chat, q without a value: %\n", STATUS[nc7_chat(nt_event_of(e)).status]);
+  e = unsigned(1, "[]", bad[..]);
+  print("a kind 1 note read as a chat: %\n", STATUS[nc7_chat(nt_event_of(e)).status]);
+  e = unsigned(11, "[[\"title\"]]", bad[..]);
+  print("thread, title without a value: %\n", STATUS[n7d_thread(nt_event_of(e)).status]);
+  e = unsigned(1111, "[[\"K\",\"11\"],[\"E\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]]", bad[..]);
+  print("reply with K and E only, as NIP-7D's example: %\n", STATUS[n7d_reply(nt_event_of(e)).status]);
+  e = unsigned(1111, "[[\"E\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"K\",\"1\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"k\",\"1\"]]", bad[..]);
+  print("comment on a kind 1 note read as a thread reply: %\n", STATUS[n7d_reply(nt_event_of(e)).status]);
+  e = unsigned(1111, "[[\"E\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"K\",\"11\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"k\",\"1\"]]", bad[..]);
+  print("reply whose k is neither 11 nor 1111: %\n", STATUS[n7d_reply(nt_event_of(e)).status]);
+}
+```
+
+Run it from the repository root:
+
+```shell
+coax/bin/coax run nostr/examples/chats-threads.coax --run-steps 250000000
+```
+
+The output matches the hand values: C2 is a reply to C1, R1 is a reply to
+T1, and R2 is nested.
+
+```text
+Alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+Bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+Carol: dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+chats (kind 9)
+C2 tags: [["q","f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680","wss://relay.example.com","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"]]
+C1: ok, 0 q tags, not a reply
+C2: ok, 1 q tag, a reply to C1 by Alice, found on wss://relay.example.com
+a thread (kind 11) and its replies (kind 1111)
+T1: ok, title "Which kettle?"
+R1 tags: [["E","386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1","wss://relay.example.com","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["K","11"],["P","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["e","386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1","wss://relay.example.com","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["k","11"],["p","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]]
+R1: ok, thread T1 by Carol
+R2, Bob's answer to R1: nested, thread T1 by Carol
+R2 as a NIP-22 comment: ok
+each event's id
+C1: f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680, verified true
+C2: c38a6f009d18565e779fb4163176e8af958e3a08d932a00c3c1adc5d3b705913, verified true
+T1: 386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1, verified true
+R1: 4777a42b623e988dc88a81123b3708831b68d6717cbca538a2e3f56dc1f82604, verified true
+R2: d0e9dda8ae20ea726b10f3fb8c018c77cb59d465b5bf00774ea56c6438a47d8a, verified true
+refusals
+chat, q of 8 digits: malformed
+chat, q without a value: malformed
+a kind 1 note read as a chat: kind
+thread, title without a value: malformed
+reply with K and E only, as NIP-7D's example: missing
+comment on a kind 1 note read as a thread reply: elsewhere
+reply whose k is neither 11 nor 1111: parent kind differs from root kind
+```
+
+The refusals:
+
+- A `q` tag of 8 digits, or with no value, cites nothing
+  (`N34_MALFORMED`).
+- A kind 1 note is not a chat message (`N34_KIND`).
+- A `title` tag without a value (`N34_MALFORMED`).
+- NIP-7D's own short reply, with `K` and `E` only, lacks the parent tags
+  that NIP-22 requires (`N34_MISSING`).
+- A comment on a kind 1 note is not a reply to a thread
+  (`N7D_ELSEWHERE`).
+- A comment whose `k` is neither the root's kind nor 1111 breaks NIP-22's
+  own rule (`N22_KINDS`), before NIP-7D is asked.
+
+The book's checks run this program in debug and release builds and compare
+the output with
+[nostr/fixtures/chats-threads.out](../fixtures/chats-threads.out).
+
 ## How the code is checked
 
 ### Checks in the example
@@ -892,6 +1293,133 @@ ran in debug and release with the same output. These runs used the cached
 release compiler in `~/.cache/coax-release`. The full mutation run
 (`COAX_MUTATION_FULL=1`) and a mutation run of the example were not run.
 
+### Checks of chats and threads
+
+The checks are in
+[nostr/examples/checks/chats-threads.coax](../examples/checks/chats-threads.coax),
+which loads the example. They compare the code with values it did not
+produce:
+
+- the ids of the five events, and the tags of C2, T1, R1 and R2, against a
+  Python script written from NIP-01, NIP-C7, NIP-7D and NIP-22;
+- each reading against the hand values above, on events rebuilt from
+  Python's ids;
+- NIP-C7's and NIP-7D's own examples, with an id, a relay and a key where
+  the NIPs write placeholders.
+
+<!-- source: nostr/examples/checks/chats-threads.coax check -->
+```jai
+// The ids and tags from a Python script written from NIP-01, NIP-C7, NIP-7D
+// and NIP-22 (it shares no code with Coax): the ids are hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PUB :: [3] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"];
+PY_ID :: [5] string.[
+  "f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680",
+  "c38a6f009d18565e779fb4163176e8af958e3a08d932a00c3c1adc5d3b705913",
+  "386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1",
+  "4777a42b623e988dc88a81123b3708831b68d6717cbca538a2e3f56dc1f82604",
+  "d0e9dda8ae20ea726b10f3fb8c018c77cb59d465b5bf00774ea56c6438a47d8a"];
+PY_C2 :: "[[\"q\",\"f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680\",\"wss://relay.example.com\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_T1 :: "[[\"title\",\"Which kettle?\"]]";
+PY_R1 :: "[[\"E\",\"386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"K\",\"11\"],[\"P\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"e\",\"386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"k\",\"11\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]]";
+PY_R2 :: "[[\"E\",\"386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"K\",\"11\"],[\"P\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"e\",\"4777a42b623e988dc88a81123b3708831b68d6717cbca538a2e3f56dc1f82604\",\"wss://relay.example.com\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"k\",\"1111\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_AUTHOR :: [5] int.[0, 1, 2, 0, 1];
+PY_AT :: [5] int.[0, 30, 120, 180, 240];
+PY_KIND :: [5] int.[9, 9, 11, 1111, 1111];
+PY_TAGS :: [5] string.["[]", PY_C2, PY_T1, PY_R1, PY_R2];
+PY_CONTENT :: [5] string.["GM", "GM, Alice", "Gooseneck or plain?", "Gooseneck. It pours slower.", "Slower is the point."];
+
+// Event i of the script with a zero signature, read with its id recomputed;
+// the signature is not checked.
+py :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[i]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[PY_AUTHOR[i]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + PY_AT[i]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, PY_KIND[i]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, PY_TAGS[i]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, PY_CONTENT[i]);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the ids are Python's, and so are the tags the library and the example write" {
+  buf: [5][4096] u8; scratch: [4096] u8;
+  for i: 0..<5 { e := py(i, buf[i][..], scratch[..]); #assert e.error == NE_OK && n34_same(e.computed_id, e.id); }
+  tags: [1024] u8;
+  n := nc7_reply_tags(PY_ID[0], RELAY, PUB[ALICE], tags[..]); #assert cast(string) tags[0..<n] == PY_C2;
+  n = n7d_thread_tags("Which kettle?", tags[..]); #assert cast(string) tags[0..<n] == PY_T1;
+  n = n7d_reply_tags(PY_ID[2], RELAY, PUB[CAROL], tags[..]); #assert cast(string) tags[0..<n] == PY_R1;
+  t: [1] Tags; nested_tags(t[..], PY_ID[2], PUB[CAROL], PY_ID[3], PUB[ALICE]); #assert tags_of(t[..]) == PY_R2;
+}
+
+// By hand: C1 has no q tag, so it starts a conversation. C2's one q tag
+// holds C1's id, so C2 is a reply to C1. T1 is a thread titled "Which
+// kettle?". R1's root (E, K 11) and parent (e, k 11) are both T1: a reply
+// to the thread. R2's root is T1 but its parent is R1, a comment (k 1111):
+// NIP-22 reads it, NIP-7D calls it nested.
+#test "Python's events read as worked by hand" {
+  buf: [5][4096] u8; scratch: [4096] u8; ev: [5] NtEvent;
+  for i: 0..<5 { ev[i] = nt_event_of(py(i, buf[i][..], scratch[..])); }
+  c := nc7_chat(ev[0]); #assert c.status == N34_OK && c.quotes == 0 && !c.parent.found;
+  c = nc7_chat(ev[1]); #assert c.status == N34_OK && c.quotes == 1 && c.parent.found;
+  #assert nt_raw(ev[1], c.parent.v[0]) == PY_ID[0] && nt_raw(ev[1], c.parent.v[1]) == RELAY && nt_raw(ev[1], c.parent.v[2]) == PUB[ALICE];
+  t := n7d_thread(ev[2]); #assert t.status == N34_OK && nt_raw(ev[2], t.title.v[0]) == "Which kettle?";
+  r := n7d_reply(ev[3]); #assert r.status == N34_OK && nt_raw(ev[3], r.thread.v[0]) == PY_ID[2] && nt_raw(ev[3], r.author.v[0]) == PUB[CAROL];
+  r = n7d_reply(ev[4]); #assert r.status == N7D_NESTED && nt_raw(ev[4], r.thread.v[0]) == PY_ID[2];
+  #assert n22_comment(ev[4]).status == N34_OK;
+  // Each reader refuses the other kinds: a chat view holds kind 9 only.
+  #assert nc7_chat(ev[2]).status == N34_KIND && nc7_chat(ev[3]).status == N34_KIND && n7d_thread(ev[0]).status == N34_KIND && n7d_reply(ev[2]).status == N34_KIND;
+}
+
+// NIP-C7's and NIP-7D's own examples. Where a NIP writes a placeholder such
+// as <event-id>, the check puts Python's id, relay and key in its place.
+#test "the NIPs' own examples" {
+  // NIP-C7: {"kind": 9, "content": "GM", "tags": []}.
+  c := nc7_chat(n34_event("[]", 9)); #assert c.status == N34_OK && !c.parent.found;
+  // NIP-C7: a reply, ["q", <event-id>, <relay-url>, <pubkey>].
+  e := n34_event(PY_C2, 9); c = nc7_chat(e); #assert c.status == N34_OK && c.parent.found && c.parent.values == 3;
+  // NIP-7D: {"kind": 11, "content": "Good morning", "tags": [["title", "GM"]]}.
+  e = n34_event("[[\"title\",\"GM\"]]", 11); t := n7d_thread(e); #assert t.status == N34_OK && nt_raw(e, t.title.v[0]) == "GM";
+  // NIP-7D's reply has K and E only. NIP-22, which it says replies "MUST
+  // use", requires the parent's e and k too: the example refuses as missing.
+  buf: [512] u8; n := json_raw(buf[..], 0, "[[\"K\",\"11\"],[\"E\",\""); n = json_raw(buf[..], n, PY_ID[2]);
+  n = json_raw(buf[..], n, "\",\"wss://relay.example.com\",\""); n = json_raw(buf[..], n, PUB[CAROL]); n = json_raw(buf[..], n, "\"]]");
+  #assert n7d_reply(n34_event(cast(string) buf[0..<n], 1111)).status == N34_MISSING;
+}
+```
+
+`nipc7.coax` and `nip7d.coax` have `#test` checks written with their code.
+`nipc7.coax` checks a message with no tags, a reply with and without a
+relay and an author, a quoted article, a profile's kind 0 address, the
+first event id among several `q` tags, every `q` tag that refuses, the
+kinds on both sides of 9, and the reply tags with bad ids and a short
+buffer. `nip7d.coax` checks a thread with and without a title, a reply
+written by `n7d_reply_tags` and read back by both `n7d_reply` and
+`n22_comment`, four nested replies, five roots that are elsewhere,
+NIP-7D's short example, and what NIP-22 refuses.
+
+```shell
+coax/bin/coax test coax/lib/nostr/nipc7.coax
+coax/bin/coax test coax/lib/nostr/nip7d.coax
+coax/bin/coax test nostr/examples/checks/chats-threads.coax --run-steps 250000000
+coax/bin/coax mutate coax/lib/nostr/nipc7.coax --root-only
+coax/bin/coax mutate coax/lib/nostr/nip7d.coax --root-only
+```
+
+On 2026-11-12, `coax test` passed all 48 checks of `nipc7.coax`, all 56 of
+`nip7d.coax` and all 394 of the example's checks (each count includes the
+loaded files' checks). `coax mutate --root-only` killed all 47 mutants of
+`nipc7.coax` and all 99 of `nip7d.coax`, with none surviving and none
+marked equivalent. The first run of `nipc7.coax` left four survivors; each
+was killed by a new check (a one-letter author, a kind 0 address) or by
+removing a condition that could not change a result. The full mutation
+run (`COAX_MUTATION_FULL=1`) was not run.
+
 ### The relay's groups
 
 Since chapter 103's wiring, `nostr/relay/relay.coax` started with
@@ -950,9 +1478,12 @@ joins it, restarts, and finds the group whole: a second create is
   issuing the 9001 that answers a leave request.
 - Migration and forks: kind 10009 lists and following a group to a new
   relay.
-- The client side: NIP-7D threads (kind 11 with kind 1111 replies), NIP-C7
-  chats (kind 9 with `q` quotes), NIP-28 public chat (kinds 40 to 44), and
+- The client side of groups: NIP-28 public chat (kinds 40 to 44), and
   showing a group from its 39000 to 39003 events.
+- In chats and threads: fetching a reply's parent to see that it is a
+  kind 9, checking that a reply's content cites its parent with a
+  `nostr:nevent1` link as NIP-C7's example does, ordering a chat view by
+  time, and deciding how a thread view shows a nested reply.
 - NIP-72 approvals by `a` tag (for every version of a replaceable post),
   and checking that an approval's content is the approved event.
 
@@ -971,12 +1502,22 @@ joins it, restarts, and finds the group whole: a second create is
 - Kinds 39000 to 39005 are accepted only from the relay's own key.
 - In a NIP-72 community, a post counts only when a listed moderator's
   approval names the community, the post and its author.
+- A NIP-C7 chat message is a kind 9 event. `nc7_chat` reads its `q` tags,
+  takes the first one that holds an event id as the parent, and refuses
+  every other kind, so a chat view shows kind 9 only.
+- A NIP-7D thread is a kind 11 event with a `title`. `n7d_reply` reads a
+  kind 1111 comment as a reply only when its root and its parent are the
+  same kind 11 event; a comment on another comment is `N7D_NESTED`.
 
 ## Dependencies
 
 - [38. NIP-42 authentication](ch038-nip-42-authentication.md)
 - [34. Admit an event](ch034-admit-an-event.md)
 - [22. Kinds and tags](ch022-kinds-and-tags.md)
+
+The chats and threads sections also use chapter 52's NIP-22 comment reader
+([52. Reposts, reactions and comments](ch052-reposts-reactions-and-comments.md))
+and chapter 63's tag readers ([63. Git on Nostr](ch063-git-on-nostr.md)).
 
 ## Sources
 

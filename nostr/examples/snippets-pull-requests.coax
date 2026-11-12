@@ -1,0 +1,153 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/nip34-pr.coax";
+#load "../../coax/lib/nostr/nipc0.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+STATUS :: [6] string.["ok", "event", "kind", "missing", "malformed", "output"];
+REPO_IS :: [3] string.["none", "a URL", "a repository's address"];
+// BIP-340 test vectors 0, 1, 2 and 3's published secret keys. Never sign
+// with a real key in an example.
+KEYS :: [4] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710"];
+PEOPLE :: [4] string.["Alice", "Bob", "Carol", "Dave"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; DAVE :: 3;
+// The branch's tip when the pull request opens, after Carol's fix, and the
+// commit Dave tries to move it to.
+TIP_1 :: "9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6";
+TIP_2 :: "2b1d0c9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c";
+TIP_3 :: "7e6d5c4b3a291807f6e5d4c3b2a190807f6e5d4c";
+CLONE :: "https://git.example.com/carol/tea-tools.git";
+CODE :: "fn seconds(minutes: u32, seconds: u32) -> u32 {\n    minutes * 60 + seconds\n}\n";
+T0 :: 1761686400;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. Used for the refusals, which the readers refuse on their
+// kind and tags alone.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+who :: (keys: [] [32] u8, key: [32] u8) -> string {
+  for k: 0..<keys.count { if n34_same(keys[k], key) { return PEOPLE[k]; } }
+  return "someone else";
+}
+show_head :: (label: string, names: [] string, h: N34Head) {
+  print("%: %", label, STATUS[h.status]);
+  if h.status != N34_OK { print("\n"); return; }
+  tip := h.commit;
+  print(", tip %, from %, counted %, ignored %, refused %\n", cast(string) tip[..], ifx h.winner >= 0 then names[h.winner] else "the pull request", h.counted, h.ignored, h.refused);
+}
+
+main :: () {
+  secret: [4][32] u8; keys: [4][32] u8; pk: [4][64] u8;
+  for k: 0..<4 { decode_hex(KEYS[k], secret[k][..]); }
+  buf: [6][8192] u8;
+  // Each public key comes from signing: sign an empty note first.
+  for k: 0..<4 { keys[k] = sign(secret[k][..], T0, 1, "[]", "", buf[0][..]).public_key; pk[k] = n34_hex32(keys[k]); }
+  for k: 0..<4 { print("%: %\n", PEOPLE[k], cast(string) pk[k][..]); }
+  // Alice's repository from repositories.coax: "30617:<Alice>:tea-tools".
+  address: [128] u8; a := json_raw(address[..], 0, "30617:"); a = json_raw(address[..], a, cast(string) pk[ALICE][..]); a = json_raw(address[..], a, ":tea-tools");
+  repo := cast(string) address[0..<a];
+  print("the repository's address: %\n", repo);
+
+  print("a code snippet (kind 1337), by Carol\n");
+  tags: [2048] u8;
+  st: NC0Tags; st.language = "rust"; st.extension = "rs"; st.name = "seconds.rs"; st.description = "Minutes and seconds as seconds";
+  st.runtime = "rustc 1.82"; st.license = "MIT"; st.repo = repo;
+  n := nc0_tags(st, tags[..]);
+  #assert n > 0;
+  print("S1 tags: %\n", cast(string) tags[0..<n]);
+  s1 := sign(secret[CAROL][..], T0, 1337, cast(string) tags[0..<n], CODE, buf[0][..]);
+  se := nt_event_of(s1); s := nc0_snippet(se);
+  print("S1: %, language %, extension %, name %, runtime \"%\", licenses %, deps %, repo is %\n", STATUS[s.status], nt_raw(se, s.language.v[0]),
+    nt_raw(se, s.extension.v[0]), nt_raw(se, s.name.v[0]), nt_raw(se, s.runtime.v[0]), s.licenses, s.deps, REPO_IS[s.repo_is]);
+  print("S1's content, as its JSON text: %\n", se.original[se.content_from..<se.content_to]);
+
+  print("a pull request (kind 1618), by Carol\n");
+  n = n34_pull_tags(repo, cast(string) pk[ALICE][..], "Count minutes past 59 seconds", "timer-minutes", TIP_1, CLONE, tags[..]);
+  #assert n > 0;
+  print("PR1 tags: %\n", cast(string) tags[0..<n]);
+  pr := sign(secret[CAROL][..], T0 + 100, 1618, cast(string) tags[0..<n], "The timer stopped at 0:59. This counts whole minutes.", buf[1][..]);
+  pe := nt_event_of(pr); p := n34_pull(pe);
+  print("PR1: %, repository %, subject \"%\", branch %, tip %, clone %\n", STATUS[p.status], ifx nt_raw(pe, p.repo) == repo then "tea-tools (the address above)" else "another",
+    nt_raw(pe, p.subject.v[0]), nt_raw(pe, p.branch.v[0]), nt_raw(pe, p.tip.commit.v[0]), nt_raw(pe, p.tip.clone.v[0]));
+
+  print("updates (kind 1619)\n");
+  id := n34_hex32(pr.id);
+  set: [2] NostrEvent; names := [2] string.["U1", "U2"];
+  n = n34_pull_update_tags(repo, cast(string) pk[ALICE][..], cast(string) id[..], cast(string) pk[CAROL][..], TIP_2, CLONE, tags[..]);
+  #assert n > 0;
+  print("U1 tags: %\n", cast(string) tags[0..<n]);
+  set[0] = sign(secret[CAROL][..], T0 + 200, 1619, cast(string) tags[0..<n], "", buf[2][..]);
+  n = n34_pull_update_tags(repo, cast(string) pk[ALICE][..], cast(string) id[..], cast(string) pk[CAROL][..], TIP_3, "https://git.example.com/dave/tea-tools.git", tags[..]);
+  #assert n > 0;
+  set[1] = sign(secret[DAVE][..], T0 + 300, 1619, cast(string) tags[0..<n], "", buf[3][..]);
+  for k: 0..<2 {
+    ue := nt_event_of(set[k]); u := n34_pull_update(ue);
+    print("%: % by % at T0+%, moves %to %\n", names[k], STATUS[u.status], who(keys[..], set[k].public_key), set[k].created_at - T0,
+      ifx nt_raw(ue, u.pull.v[0]) == cast(string) id[..] then "PR1 " else "another pull request ", nt_raw(ue, u.tip.commit.v[0]));
+  }
+  signed: [2] N34Signed; for k: 0..<2 { signed[k] = nt_signed_of(set[k]); }
+  show_head("PR1 alone", names[..], n34_head(nt_signed_of(pr), signed[0..<0]));
+  show_head("PR1 with U1 and U2", names[..], n34_head(nt_signed_of(pr), signed[..]));
+  // Dave's update alone moves nothing.
+  dave_names := [1] string.["U2"];
+  show_head("PR1 with U2 only", dave_names[..], n34_head(nt_signed_of(pr), signed[1..<2]));
+
+  print("each event's id\n");
+  all := [4] NostrEvent.[s1, pr, set[0], set[1]];
+  all_names := [4] string.["S1", "PR1", "U1", "U2"];
+  for k: 0..<4 { h := n34_hex32(all[k].id); print("%: %, verified %\n", all_names[k], cast(string) h[..], all[k].verified); }
+
+  print("refusals\n");
+  bad: [8192] u8;
+  e := unsigned(1337, "[[\"l\",\"Rust\"]]", bad[..]);
+  print("snippet, language in capitals: %\n", STATUS[nc0_snippet(nt_event_of(e)).status]);
+  e = unsigned(1337, "[[\"extension\",\".rs\"]]", bad[..]);
+  print("snippet, extension with its dot: %\n", STATUS[nc0_snippet(nt_event_of(e)).status]);
+  e = unsigned(1337, "[[\"repo\",\"tea-tools\"]]", bad[..]);
+  print("snippet, repo that is neither a URL nor an address: %\n", STATUS[nc0_snippet(nt_event_of(e)).status]);
+  e = unsigned(1337, "[[\"license\"]]", bad[..]);
+  print("snippet, license without a value: %\n", STATUS[nc0_snippet(nt_event_of(e)).status]);
+  t: [1024] u8; m := json_raw(t[..], 0, "[[\"a\",\""); m = json_raw(t[..], m, repo); m = json_raw(t[..], m, "\"],[\"c\",\"9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6\"]]");
+  e = unsigned(1618, cast(string) t[0..<m], bad[..]);
+  print("pull request without a clone URL: %\n", STATUS[n34_pull(nt_event_of(e)).status]);
+  m = json_raw(t[..], 0, "[[\"a\",\""); m = json_raw(t[..], m, repo); m = json_raw(t[..], m, "\"],[\"c\",\"9c4f6e2b\"],[\"clone\",\"https://git.example.com/carol/tea-tools.git\"]]");
+  e = unsigned(1618, cast(string) t[0..<m], bad[..]);
+  print("pull request, c of 8 digits: %\n", STATUS[n34_pull(nt_event_of(e)).status]);
+  e = unsigned(1618, "[[\"c\",\"9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6\"],[\"clone\",\"https://git.example.com/carol/tea-tools.git\"]]", bad[..]);
+  print("pull request that names no repository: %\n", STATUS[n34_pull(nt_event_of(e)).status]);
+  m = json_raw(t[..], 0, "[[\"a\",\""); m = json_raw(t[..], m, repo); m = json_raw(t[..], m, "\"],[\"c\",\"2b1d0c9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c\"],[\"clone\",\"https://git.example.com/carol/tea-tools.git\"]]");
+  e = unsigned(1619, cast(string) t[0..<m], bad[..]);
+  print("update that names no pull request: %\n", STATUS[n34_pull_update(nt_event_of(e)).status]);
+  print("pull request tags with a tip of 8 digits: %\n", n34_pull_tags(repo, cast(string) pk[ALICE][..], "s", "b", "9c4f6e2b", CLONE, tags[..]));
+}
+// book:end example

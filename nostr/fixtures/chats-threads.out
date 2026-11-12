@@ -1,0 +1,27 @@
+Alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+Bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+Carol: dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+chats (kind 9)
+C2 tags: [["q","f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680","wss://relay.example.com","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"]]
+C1: ok, 0 q tags, not a reply
+C2: ok, 1 q tag, a reply to C1 by Alice, found on wss://relay.example.com
+a thread (kind 11) and its replies (kind 1111)
+T1: ok, title "Which kettle?"
+R1 tags: [["E","386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1","wss://relay.example.com","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["K","11"],["P","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["e","386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1","wss://relay.example.com","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["k","11"],["p","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]]
+R1: ok, thread T1 by Carol
+R2, Bob's answer to R1: nested, thread T1 by Carol
+R2 as a NIP-22 comment: ok
+each event's id
+C1: f9e8ae5406b60f1417b03ce2d7366cf0833d16aabbe09cdd92c616f48fff7680, verified true
+C2: c38a6f009d18565e779fb4163176e8af958e3a08d932a00c3c1adc5d3b705913, verified true
+T1: 386c56b8dae39d338b82bcc26fe5a80a6230e167c5f98004adda66118e44efc1, verified true
+R1: 4777a42b623e988dc88a81123b3708831b68d6717cbca538a2e3f56dc1f82604, verified true
+R2: d0e9dda8ae20ea726b10f3fb8c018c77cb59d465b5bf00774ea56c6438a47d8a, verified true
+refusals
+chat, q of 8 digits: malformed
+chat, q without a value: malformed
+a kind 1 note read as a chat: kind
+thread, title without a value: malformed
+reply with K and E only, as NIP-7D's example: missing
+comment on a kind 1 note read as a thread reply: elsewhere
+reply whose k is neither 11 nor 1111: parent kind differs from root kind
