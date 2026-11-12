@@ -40,7 +40,7 @@ MC_BAD_LIMIT :: 3;
 MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
-MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, actions (every step so far, in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory, 30 seconds each, output cut to its head and tail), then view (files shown whole in this step's results). Do everything you can in each turn; you see all the results in the next.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it whole), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory, 30 seconds each, output cut to its head and tail), then view (files shown whole in this step's results). Do everything you can in each turn; you see all the results in the next.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
 
 mc_ending_name :: (e: int) -> string {
   if e == MC_END_FINISHED { return "finished"; }
@@ -271,7 +271,7 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
 
 
 
-#test "a state too long for one request loses its earliest steps until it fits" #steps 200000000 {
+#test "a state too long for one request compacts its earliest steps until it fits" #steps 200000000 {
   sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
   mc_init(l[..], sb[..], lb[..], "{}", "x", "{}", 1.0);
   #assert mc_escaped_size("a\"b\\c\nd") == 10 && mc_escaped_size("abc") == 3;
@@ -282,11 +282,11 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   mc_file(l[0].st[..], "q", true, cast(string) q[..]);
   mc_action_command(l[0].st[..], "cat q", 0, false, cast(string) q[0..<12000]);
   mc_action_end(l[0].st[..]);
-  before := l[0].st[0].left_out;
+  before := l[0].st[0].nearly;
   req := mc_request(l[..]);
   #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
   #assert json_valid(req.messages[0].text);
-  #assert l[0].st[0].left_out > before;
+  #assert l[0].st[0].nearly > before;      // compacted, not dropped
 }
 
 #test "'what is 2+2' finishes in one step with no commands" {

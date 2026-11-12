@@ -87,20 +87,25 @@ MicroState {
   environment   // the Lab's Environment.facts: OS, app, hardware, agents, working directory
   task          // the user's message
   route         // Mammoth's decision: difficulty, effort, local_work
-  left_out      // how many of the earliest steps no longer fit, when some
-  actions[]     // every step in order: rationale and its results: edits,
+  earlier[]     // older steps, compacted: rationale, edits, commands with exit
+                //   codes and the start and end of each output, files viewed by size
+  actions[]     // the recent steps whole: rationale and its results: edits,
                 //   commands with exit codes and output head and tail
                 //   (6,000 bytes each), and the files it viewed (64 KB each)
   notes         // what the loop writes for itself between steps
 }
 ```
 
-The actions only grow at their end, so each step's prompt starts with the
-one before it and the provider's prompt cache serves that prefix. When the
-next step may not fit (160 KB of actions), or a request would pass the
-journal's 256 KB, the earliest steps leave in one go, down to about half. (Until #13231 it kept the last 12 actions in a ring
-and the last view's files after them, which broke the cached prefix on
-every step and dropped a viewed file at the next view.)
+The prompt is built for Vertex's implicit prompt cache, which serves a
+request's prefix at a tenth of the price. The facts, task and route come
+first and never change. `earlier` only grows at its end, and `actions` only
+grows at its end until the next compaction. When the recent steps would
+fill their 144 KB, all but the last 24 KB of them are compacted into
+`earlier` in one go, so the prefix through `earlier` stays cached and
+compaction comes once per 72 KB or more of new steps. A request also stays
+under the journal's 256 KB. (Until #13231 it kept the last 12 actions in a
+ring, then let the earliest whole steps leave; both broke the cached prefix
+often.)
 
 The prompt is the state as JSON, plus a short system prompt that names the
 schema, the tools and the limits. The model never sees a key, a path under
