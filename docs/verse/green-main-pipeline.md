@@ -118,6 +118,104 @@ coax/remote/submit.sh
 This pushes the branch to `refs/heads/queue/<agent>/<topic>` and adds it to
 the queue.
 
+### The pre-push check
+
+Issue [#13265](https://github.com/OpenAgentsInc/openagents/issues/13265).
+Every `git push` to `main` runs a check on the pusher's machine before the
+commits leave it. It is not a queue: the pusher runs it and pushes. It
+refuses a push when:
+
+1. **A commit undoes newer work on `main`.** For each file a pushed commit
+   changes, the check reads that file's changes on `main` in the 24 hours
+   before the commit's parent. If the commit's new content, or the file's
+   absence, equals the content the file had before one of those changes, the
+   commit undoes them. That is what a tree written from a stale snapshot
+   does, and only rarely what an edit does. The rule doesn't count changes by
+   the commit's own `Agent:`, commits earlier in the same push, and a deleted
+   file that git sees as moved. A file the message names is allowed: its
+   path, its file name, one of its folders of two or more levels with the
+   slash (`coax/web/room/`), or the hash of the commit it undoes.
+2. **The push isn't a fast-forward of `main`**, or deletes `main`.
+3. **A commit has no `Agent:` line.** A person writes `Agent: human-NAME`, or
+   pushes with `OA_PREPUSH_HUMAN=1`.
+4. **A check fails:** `tools-check`, `everglade-parity`, `wire-check` and
+   `layer-check` (the last two with `--base` set to the push's merge base),
+   and `coax test` of the suites the push changed, on a build host when
+   `remote.sh status` shows one with a free slot. A check that fails on
+   `main` already (an open entry on the red list) isn't counted. The checks
+   run only when the pushed commit is the checkout's `HEAD`, and only when
+   the push changes something that isn't a document.
+
+The checks share a time limit of 120 seconds (`OA_PREPUSH_SECONDS`).
+Anything still running then is stopped and named as skipped; the
+after-landing check runs it. With no free host, the touched suites are
+skipped with a note. `OA_PREPUSH_TESTS=0` skips them.
+
+Measured on 2026-11-11 for a one-commit push of a new tool: the rules took
+0.1 to 0.3 seconds, the four report checks 1 to 2 seconds each in parallel,
+and `coax test` of the touched suite on a host 10 to 12 seconds. The whole
+push paid 14 seconds of checks and 17 to 18 seconds in all. With
+`OA_PREPUSH_TESTS=0` it paid 3 seconds; with no free host, about 6 (the
+host status takes about 5). The first push from a new worktree also
+builds the tools, a few seconds more.
+
+**Why "since the base" means "since the commit's parent".** A push to `main`
+must be a fast-forward, so a pushed commit always sits on `main`'s tip, and
+nothing on `main` changed since its merge base. Both clobbers were like that.
+`7cdf01e725`'s parent is `f3480dd580`, and `bc5c6a5845`'s is `0d81202ed9`,
+yet their trees were written from older snapshots, so they undid the commits
+just before them. The rule therefore compares each file's new content with
+its own recent history.
+
+**Replayed.** `coax/web/tool.sh prepush --replay-check` judges the historical
+commits: `7cdf01e725` is refused (39 files undone) and `bc5c6a5845` is
+refused (7 files). Their fixes `ed4754f5f5` and `75cdc077b5`, which name the
+commits they undo, pass. An ordinary commit (`51a282ab2f`), a move of another
+agent's new file (`a566a4fc73`) and a deletion whose message names the file
+(`fb45a6170d`, "Zeron.metal is gone") pass too. The report checks run it
+(`check.sh reports`). Over the 400 commits on `main` up to `51a282ab2f`,
+the rule refused 5: `bc5c6a5845` and 4 intentional rewrites that deleted or
+reverted another agent's new file without naming it (`1dcf86bbc2`,
+`adefd2b821`, `a4bc225b22`, `ccf6427829`). Each would have passed with the
+file named in its message. `coax/web/tool.sh prepush --replay COMMIT` judges
+any commit.
+
+**Where the hooks live and how they are installed.** The hooks are tracked in
+`coax/remote/hooks/`: `pre-push`, and `post-checkout`, `post-commit` and
+`post-merge`, which call `git lfs` as `git lfs install` writes them. They
+are thin wrappers. The rules are Coax, in `coax/web/prepush.coax`, run by
+`coax/web/tool.sh prepush`. A clone turns the hooks on once:
+
+```sh
+git config core.hooksPath coax/remote/hooks
+```
+
+`core.hooksPath` is in the repository's shared config, so it applies to
+every worktree, and a relative path resolves against each worktree's root.
+Each worktree runs the hooks and the tool of its own commit. The main
+checkout on this Mac has it set. A worktree made from a commit before
+`coax/remote/hooks/` existed runs no hooks until it rebases. No tracked file
+uses Git LFS, so losing the LFS hooks there costs nothing.
+
+The hooks aren't in `.githooks/`. The main checkout holds an untracked
+`.githooks/` folder of the same four LFS hooks, which the config pointed at
+before. Tracking files at those paths would make `git pull --ff-only` in the
+main checkout refuse to overwrite them, even byte-identical ones. The
+untracked folder stays as it is, unused.
+
+In the after-landing watcher's sparse checkout (only `coax/remote`), the hook
+finds no `coax/web/tool.sh` and lets the integrator's pushes go unchecked;
+the integrator checks them itself. A fresh worktree with no compiler uses the
+newest one in `~/.cache/coax-release`. If the tool can't build or run, the
+hook prints a warning and lets the push go: a broken check never stops
+every agent. The hook stops after 300 seconds whatever happens.
+
+**Emergency bypass.** `OA_PREPUSH_BYPASS="why" git push ...` skips every rule
+and appends a line (time, checkout, refs, reason) to
+`~/.openagents/prepush-bypass.log`. Use it only when `main` itself needs the
+push to get green again. Don't use `git push --no-verify`: it skips the LFS
+hook too, and leaves no record.
+
 ### 3. The integrator checks branches in parallel and lands them in order
 
 The integrator, `coax/remote/integrate.sh`, runs as a long-lived watcher. Its
@@ -247,7 +345,11 @@ passes on production stops it) stays as it is.
 
 - Start worktrees from `origin/main-green` when it exists. A failure in that
   worktree is your own change's.
-- Put `Agent: <id>` in every commit message.
+- Put `Agent: <id>` in every commit message. The pre-push check refuses a
+  commit without one.
+- When the pre-push check refuses a commit for undoing newer work, rebase
+  and restore the other agent's files; name a file in the message only when
+  you mean to delete or restore it.
 - Run your own touched tests on the remote hosts while you work (#13077), then
   push `main`. Don't run whole suites: the after-landing check does.
 - Before you investigate a failure on `main`, run `coax/remote/after.sh
@@ -280,6 +382,7 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`) |
 | The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
 | Releases from `main-green` | `coax/web/release.sh` |
+| The pre-push check (#13265) | `coax/remote/hooks/pre-push`, `coax/web/prepush.coax` |
 | Shared settings | `coax/remote/pipeline-lib.sh` |
 
 `remote.sh run --commit REV --out DIR` runs a check on a commit's own files

@@ -1,0 +1,836 @@
+// The pre-push check (GitHub #13265; audit docs/audits/2026-11-11-everglade-aethyr-aaa-audit.md, G12;
+// docs/verse/green-main-pipeline.md, "The pre-push check"). Git runs it before every push through
+// coax/remote/hooks/pre-push (core.hooksPath, set once per clone). For each ref pushed to main:
+//   1. stale snapshot   refuse a commit whose tree undoes newer work on main: it deletes a file,
+//                       or puts back a file's older version wholesale, that another agent's commit
+//                       of the last 24 hours made (the clobbers 7cdf01e725 and bc5c6a5845), unless
+//                       the commit message names the file, its folder/ or the commit it undoes;
+//                       refuse a push that is not a fast-forward of main
+//   2. Agent: line      refuse a commit with no "Agent: ID" line (a person writes "Agent: human-NAME",
+//                       or pushes with OA_PREPUSH_HUMAN=1)
+//   3. checks           tools-check, everglade-parity, wire-check and layer-check (--base the push's
+//                       merge base), and `coax test` of the suites the push changed, on a build host
+//                       when one has a free slot; all of it under OA_PREPUSH_SECONDS (default 120):
+//                       what is still running then is stopped and named as skipped
+// Emergency bypass: OA_PREPUSH_BYPASS="why" git push ...  skips every rule and appends a line to
+// ~/.openagents/prepush-bypass.log.
+//   coax/web/tool.sh prepush --remote NAME [-- LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA ...]
+//   coax/web/tool.sh prepush --replay COMMIT     rules 1 and 2 for one commit, as if pushed on its parent
+//   coax/web/tool.sh prepush --replay-check      the historical clobbers are refused, their fixes pass
+//   coax/bin/coax test coax/web/prepush.coax --library
+//
+// Why "since the merge base" is the commit's parent here. git push to main must be a fast-forward,
+// so a pushed commit always sits on main's tip: the merge base is the tip, and nothing changed
+// upstream since it. Both clobbers were like that: 7cdf01e725's parent is f3480dd580 and
+// bc5c6a5845's is 0d81202ed9, yet their trees were written from snapshots older than those
+// parents, so they undid the commits just before them. The rule therefore asks, for each file a
+// pushed commit changes, whether its new content (or its absence) equals the content that file had
+// before one of its recent changes on main. A stale snapshot can only produce that; a real edit
+// almost never does. Excused: changes the pushed commit's own Agent made, commits earlier in the
+// same push, a file moved (git's rename detection), and a file the message names.
+// Exits 0 to let the push go, 3 to refuse it (1 from --replay and --replay-check), 2 when it can't
+// tell; the hook lets the push go on anything but 3, so a tool that fails to build stops nobody.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+PP_BUF :: 16777216;        // git log --raw over 24 hours (about 0.3 MB on 2026-11-11), diffs
+PP_PATHS :: 65536;         // files one commit changes
+PP_WINDOW_S :: 86400;      // how far back a change counts as newer work: 24 hours
+PP_SHOW :: 12;             // findings printed per commit
+PP_PUSH :: 512;            // commits judged per push
+PP_JOBS :: 8;
+PP_HOW :: "docs/verse/green-main-pipeline.md, \"The pre-push check\"";
+PP_REFUSE :: 3;
+PP_ZERO :: "0000000000000000000000000000000000000000";
+
+// What a finding does to its file.
+PP_DELETES :: 1; PP_READDS :: 2; PP_RESTORES :: 3;
+
+// The files one commit changes, and what main's recent history says about each.
+PpState :: struct {
+  n: int; sorted: bool;
+  path: [PP_PATHS] string;     // the file
+  was: [PP_PATHS] string;      // its blob at the parent (PP_ZERO: absent)
+  now: [PP_PATHS] string;      // its blob in the commit (PP_ZERO: deleted)
+  moved: [PP_PATHS] bool;      // the deleted side of a rename
+  done: [PP_PATHS] bool;       // an older change it undoes was found, or it can't undo one
+  undoes: [PP_PATHS] bool;     // its new content is an older one's
+  seen: [PP_PATHS] int;        // recent changes to it, newest first, up to the one it undoes
+  other: [PP_PATHS] string;    // the newest of those not by this commit's agent nor in this push
+  other_agent: [PP_PATHS] string;
+  others: [PP_PATHS] int;
+  hash_named: [PP_PATHS] bool; // the message names one of the commits it undoes
+}
+// The git output a judgment's state points into, kept by the caller.
+PpBufs :: struct { diff: [PP_BUF] u8; hist: [PP_BUF] u8; }
+PpFinding :: struct { path: string; kind: int; commit: string; agent: string; count: int; }
+PpRaw :: struct { ok: bool; before: string; after: string; status: u8; path: string; }
+
+// ---- text
+
+pp_starts :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[0..<p.count] == p; }
+pp_has :: (s: string, p: string) -> bool {
+  if p.count == 0 || p.count > s.count { return false; }
+  for k: 0..<s.count - p.count + 1 { if s[k] == p[0] && cast(string) s[k..<k + p.count] == p { return true; } }
+  return false;
+}
+pp_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+pp_cmp :: (a: string, b: string) -> int {
+  n := ifx a.count < b.count then a.count else b.count;
+  for k: 0..<n { if a[k] != b[k] { return cast(int) a[k] - cast(int) b[k]; } }
+  return a.count - b.count;
+}
+// parts joined into out.
+pp_cat :: (out: [] u8, parts: [] string) -> string {
+  n := 0;
+  for p: parts { for c: p { if n < out.count { out[n] = c; n += 1; } } }
+  return cast(string) out[0..<n];
+}
+pp_itoa :: (v: int, out: [] u8) -> string {
+  tmp: [24] u8; k := 0; neg := v < 0; x := ifx neg then -v else v;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0;
+  if neg { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n] = tmp[k - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+pp_atoi :: (s: string) -> int {
+  v := 0;
+  for c: pp_trim(s) { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return ifx pp_trim(s).count == 0 then -1 else v;
+}
+// Line k of text (0-based), or "" past the end.
+pp_line :: (text: string, k: int) -> string {
+  i := 0; n := 0;
+  while i <= text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if n == k { return cast(string) text[i..<j]; }
+    if j >= text.count { break; }
+    i = j + 1; n += 1;
+  }
+  return "";
+}
+// Whether a newline-separated list has the line s.
+pp_listed :: (list: string, s: string) -> bool {
+  i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    if cast(string) list[i..<j] == s { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+
+// ---- commit messages
+
+// The value of the message's last "Agent:" line, trimmed ("" when there is none or it is empty).
+pp_agent :: (msg: string) -> string {
+  found := ""; i := 0;
+  while i < msg.count {
+    j := i;
+    while j < msg.count && msg[j] != '\n' { j += 1; }
+    line := pp_trim(cast(string) msg[i..<j]); i = j + 1;
+    if pp_starts(line, "Agent:") { v := pp_trim(cast(string) line[6..<line.count]); if v.count > 0 { found = v; } }
+  }
+  return found;
+}
+// Whether c can be part of a path.
+pp_path_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '/'; }
+// Whether msg has p as a whole word of a path: not inside a longer path ("aethyr/net/" does not
+// name itself inside "aethyr/net/transport.coax"). A trailing '.' or ',' ends a sentence.
+pp_has_word :: (msg: string, p: string) -> bool {
+  if p.count == 0 || p.count > msg.count { return false; }
+  for k: 0..<msg.count - p.count + 1 {
+    if msg[k] != p[0] || cast(string) msg[k..<k + p.count] != p { continue; }
+    if k > 0 && pp_path_char(msg[k - 1]) { continue; }
+    e := k + p.count;
+    if e < msg.count && pp_path_char(msg[e]) {
+      // "PATH." or "PATH," at a sentence's end
+      if !((msg[e] == '.' || msg[e] == ',') && (e + 1 >= msg.count || !pp_path_char(msg[e + 1]))) { continue; }
+    }
+    return true;
+  }
+  return false;
+}
+// Whether the message names path: the path, its file name ("Zeron.metal is gone"), or one of its
+// folders of two or more levels written with its slash ("coax/web/room/ goes"), each as a word of
+// its own.
+pp_names :: (msg: string, path: string) -> bool {
+  if pp_has_word(msg, path) { return true; }
+  b := path.count;
+  while b > 0 && path[b - 1] != '/' { b -= 1; }
+  if b > 0 && pp_has_word(msg, cast(string) path[b..<path.count]) { return true; }
+  depth := 0;
+  for k: 0..<path.count {
+    if path[k] != '/' { continue; }
+    depth += 1;
+    if depth >= 2 && pp_has_word(msg, cast(string) path[0..<k + 1]) { return true; }
+  }
+  return false;
+}
+
+// ---- git's raw lines
+
+// ":100644 100644 OLD NEW M\tPATH" (git diff-tree / git log --raw, --no-renames --no-abbrev).
+pp_raw :: (line: string) -> PpRaw {
+  r: PpRaw;
+  if line.count < 2 || line[0] != ':' { return r; }
+  tab := 0;
+  while tab < line.count && line[tab] != '\t' { tab += 1; }
+  if tab >= line.count - 1 { return r; }
+  words: [5] string; w := 0; i := 1;
+  while i < tab && w < 5 {
+    j := i;
+    while j < tab && line[j] != ' ' { j += 1; }
+    words[w] = cast(string) line[i..<j]; w += 1; i = j + 1;
+  }
+  if w < 5 || words[2].count < 7 || words[3].count < 7 || words[4].count == 0 { return r; }
+  r.ok = true; r.before = words[2]; r.after = words[3]; r.status = words[4][0]; r.path = cast(string) line[tab + 1..<line.count];
+  return r;
+}
+// The index of path among the commit's files, or -1.
+pp_find :: (st: [] PpState, path: string) -> int {
+  if st[0].sorted {
+    lo := 0; hi := st[0].n;
+    while lo < hi {
+      mid := (lo + hi) / 2;
+      c := pp_cmp(st[0].path[mid], path);
+      if c == 0 { return mid; }
+      if c < 0 { lo = mid + 1; } else { hi = mid; }
+    }
+    return -1;
+  }
+  for k: 0..<st[0].n { if st[0].path[k] == path { return k; } }
+  return -1;
+}
+// The commit's files from `git diff-tree -r --raw --no-renames --no-abbrev PARENT COMMIT`. False
+// when there are more than PP_PATHS.
+pp_load :: (st: [] PpState, diff: string) -> bool {
+  st[0].n = 0; st[0].sorted = true;
+  i := 0;
+  while i < diff.count {
+    j := i;
+    while j < diff.count && diff[j] != '\n' { j += 1; }
+    r := pp_raw(cast(string) diff[i..<j]); i = j + 1;
+    if !r.ok { continue; }
+    if st[0].n >= PP_PATHS { return false; }
+    k := st[0].n; st[0].n += 1;
+    st[0].path[k] = r.path; st[0].was[k] = r.before; st[0].now[k] = r.after;
+    st[0].moved[k] = false; st[0].undoes[k] = false; st[0].hash_named[k] = false;
+    st[0].seen[k] = 0; st[0].others[k] = 0; st[0].other[k] = ""; st[0].other_agent[k] = "";
+    // a mode change alone leaves the content as it was
+    st[0].done[k] = r.before == r.after;
+    if k > 0 && pp_cmp(st[0].path[k - 1], r.path) >= 0 { st[0].sorted = false; }
+  }
+  return true;
+}
+// Marks the deleted side of each rename in `git diff-tree -r -M --diff-filter=R --name-status`
+// output ("R087\tOLD\tNEW"): a moved file is not a deletion.
+pp_moves :: (st: [] PpState, names: string) {
+  i := 0;
+  while i < names.count {
+    j := i;
+    while j < names.count && names[j] != '\n' { j += 1; }
+    line := cast(string) names[i..<j]; i = j + 1;
+    if line.count < 3 || line[0] != 'R' { continue; }
+    a := 0;
+    while a < line.count && line[a] != '\t' { a += 1; }
+    b := a + 1;
+    while b < line.count && line[b] != '\t' { b += 1; }
+    if b >= line.count { continue; }
+    k := pp_find(st, cast(string) line[a + 1..<b]);
+    if k >= 0 && st[0].now[k] == PP_ZERO { st[0].moved[k] = true; st[0].done[k] = true; }
+  }
+}
+// Walks main's history before the commit, newest first (git log --raw --no-renames --no-merges
+// --no-abbrev --format="@HASH AGENT"): for each of the commit's files, the recent changes to it
+// up to the newest one whose old content is the commit's new content. agent is the commit's
+// Agent; push lists the hashes of the commits in this push, one a line.
+pp_scan :: (st: [] PpState, hist: string, msg: string, agent: string, push: string) {
+  cur := ""; cur_agent := ""; cur_own := false; cur_named := false;
+  i := 0;
+  while i < hist.count {
+    j := i;
+    while j < hist.count && hist[j] != '\n' { j += 1; }
+    line := cast(string) hist[i..<j]; i = j + 1;
+    if line.count > 1 && line[0] == '@' {
+      e := 1;
+      while e < line.count && line[e] != ' ' { e += 1; }
+      cur = cast(string) line[1..<e];
+      cur_agent = ifx e < line.count then pp_trim(cast(string) line[e + 1..<line.count]) else "";
+      cur_own = (agent.count > 0 && cur_agent == agent) || pp_listed(push, cur);
+      cur_named = cur.count >= 7 && pp_has(msg, cast(string) cur[0..<7]);
+      continue;
+    }
+    r := pp_raw(line);
+    if !r.ok { continue; }
+    k := pp_find(st, r.path);
+    if k < 0 || st[0].done[k] { continue; }
+    st[0].seen[k] += 1;
+    if !cur_own {
+      if st[0].others[k] == 0 { st[0].other[k] = cur; st[0].other_agent[k] = cur_agent; }
+      st[0].others[k] += 1;
+    }
+    if cur_named { st[0].hash_named[k] = true; }
+    if r.before == st[0].now[k] { st[0].undoes[k] = true; st[0].done[k] = true; }
+  }
+}
+// The files that undo another agent's recent work and that the message doesn't name, into out
+// (up to out.count); how many there are.
+pp_findings :: (st: [] PpState, msg: string, out: [] PpFinding) -> int {
+  n := 0;
+  for k: 0..<st[0].n {
+    if !st[0].undoes[k] || st[0].moved[k] || st[0].others[k] == 0 { continue; }
+    if st[0].hash_named[k] || pp_names(msg, st[0].path[k]) { continue; }
+    if n < out.count {
+      f: PpFinding;
+      f.path = st[0].path[k]; f.commit = st[0].other[k]; f.agent = st[0].other_agent[k]; f.count = st[0].seen[k];
+      f.kind = ifx st[0].now[k] == PP_ZERO then PP_DELETES else ifx st[0].was[k] == PP_ZERO then PP_READDS else PP_RESTORES;
+      out[n] = f;
+    }
+    n += 1;
+  }
+  return n;
+}
+pp_say_finding :: (f: PpFinding) {
+  short := ifx f.commit.count > 10 then cast(string) f.commit[0..<10] else f.commit;
+  who := ifx f.agent.count > 0 then f.agent else "no Agent line";
+  more := ifx f.count > 1 then " and the newer changes to it" else "";
+  if f.kind == PP_DELETES { print("    deletes %, which % made (%)%\n", f.path, short, who, more); }
+  else if f.kind == PP_READDS { print("    brings back %, which % deleted (%)%\n", f.path, short, who, more); }
+  else { print("    puts back % as it was before % (%)%\n", f.path, short, who, more); }
+}
+
+// ---- git
+
+PpGit :: struct { ok: bool; text: string; status: int; }
+pp_git :: (argv: [] string, out: [] u8) -> PpGit {
+  g: PpGit; err: [4096] u8;
+  r := proc_run(argv, 60000, out, err[..]);
+  g.status = r.status; g.ok = r.started == 0 && r.status == 0 && !r.cut && !r.timed_out;
+  g.text = cast(string) out[0..<r.out_n];
+  return g;
+}
+// Whether rev names a commit here.
+pp_is_commit :: (rev: string) -> bool {
+  spec: [256] u8; out: [256] u8;
+  parts := [2] string.[rev, "^{commit}"];
+  argv := [5] string.["git", "rev-parse", "--verify", "--quiet", pp_cat(spec[..], parts[..])];
+  return pp_git(argv[..], out[..]).ok;
+}
+
+// The verdict of rules 1 and 2 on one commit.
+PpVerdict :: struct { ok: bool; clobbers: int; no_agent: bool; merge: bool; }
+
+// Rules 1 and 2 for commit c on its first parent. push lists the commits of this push, one a line.
+// Prints what it refuses unless quiet.
+pp_judge :: (c: string, push: string, st: [] PpState, bufs: [] PpBufs, quiet: bool, human: bool) -> PpVerdict {
+  v: PpVerdict;
+  msg_buf: [262144] u8; small: [4096] u8; names_buf: [1048576] u8;
+  ab: [128] u8; cb: [128] u8;
+  // its parents and its message
+  pa := [5] string.["git", "rev-list", "--parents", "-n1", c];
+  par := pp_git(pa[..], small[..]);
+  if !par.ok { return v; }
+  words := 0;
+  for x: par.text { if x == ' ' { words += 1; } }
+  p := pp_trim(pp_line(par.text, 0));
+  first_sp := 0;
+  while first_sp < p.count && p[first_sp] != ' ' { first_sp += 1; }
+  rest := ifx first_sp < p.count then cast(string) p[first_sp + 1..<p.count] else "";
+  e := 0;
+  while e < rest.count && rest[e] != ' ' { e += 1; }
+  parent := cast(string) rest[0..<e];
+  ma := [5] string.["git", "log", "-1", "--format=%B", c];
+  m := pp_git(ma[..], msg_buf[..]);
+  if !m.ok { return v; }
+  msg := m.text;
+  v.ok = true;
+  agent := pp_agent(msg);
+  if agent.count == 0 && !human {
+    v.no_agent = true;
+    if !quiet { print("  % has no \"Agent: ID\" line. Fix: git commit --amend, and end the message with \"Agent: <your agent ID>\" (a person: \"Agent: human-NAME\", or OA_PREPUSH_HUMAN=1)\n", cast(string) c[0..<ifx c.count > 10 then 10 else c.count]); }
+  }
+  if words >= 2 { v.merge = true; return v; }   // a merge: rebase instead (the rule reads one parent)
+  if parent.count == 0 { return v; }             // the first commit
+  // the files it changes, and which of them moved
+  da := [8] string.["git", "-c", "core.quotePath=false", "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev"];
+  dargv: [10] string; for k: 0..<8 { dargv[k] = da[k]; } dargv[8] = parent; dargv[9] = c;
+  d := pp_git(dargv[..], bufs[0].diff[..]);
+  if !d.ok || !pp_load(st, d.text) { v.ok = false; return v; }
+  ra := [8] string.["git", "-c", "core.quotePath=false", "diff-tree", "-r", "-M", "--diff-filter=R", "--name-status"];
+  rargv: [10] string; for k: 0..<8 { rargv[k] = ra[k]; } rargv[8] = parent; rargv[9] = c;
+  rn := pp_git(rargv[..], names_buf[..]);
+  if rn.ok { pp_moves(st, rn.text); }
+  // main's history before it: the window ends at its parent's commit time
+  ta := [5] string.["git", "log", "-1", "--format=%ct", parent];
+  t := pp_git(ta[..], small[..]);
+  when := ifx t.ok then pp_atoi(pp_line(t.text, 0)) else -1;
+  if when < 0 { v.ok = false; return v; }
+  age_parts := [2] string.["--max-age=", pp_itoa(when - PP_WINDOW_S, cb[..])];
+  ha := [10] string.["git", "-c", "core.quotePath=false", "log", "--raw", "--no-renames", "--no-merges", "--no-abbrev", "--format=@%H %(trailers:key=Agent,valueonly,separator=%x2C)", pp_cat(ab[..], age_parts[..])];
+  hargv: [11] string; for k: 0..<10 { hargv[k] = ha[k]; } hargv[10] = parent;
+  h := pp_git(hargv[..], bufs[0].hist[..]);
+  if !h.ok { v.ok = false; return v; }
+  pp_scan(st, h.text, msg, agent, push);
+  found: [PP_SHOW] PpFinding;
+  v.clobbers = pp_findings(st, msg, found[..]);
+  if v.clobbers > 0 && !quiet {
+    subject := pp_line(msg, 0);
+    print("  % (\"%\") undoes newer work on main in % file%, as a commit written from a stale snapshot does:\n", cast(string) c[0..<10], subject, v.clobbers, ifx v.clobbers == 1 then "" else "s");
+    for k: 0..<ifx v.clobbers < PP_SHOW then v.clobbers else PP_SHOW { pp_say_finding(found[k]); }
+    if v.clobbers > PP_SHOW { print("    and % more\n", v.clobbers - PP_SHOW); }
+  }
+  return v;
+}
+
+// ---- running the checks side by side
+
+PpJob :: struct {
+  name: string; h: int = -1; started: bool; running: bool; status: int = -1; timed_out: bool;
+  out: [262144] u8; n: int; t0: int; ms: int;
+}
+pp_start :: (j: [] PpJob, name: string, argv: [] string, env: [] string) -> bool {
+  j[0].name = name; j[0].n = 0; j[0].status = -1; j[0].timed_out = false;
+  h := proc_new();
+  if h < 0 { return false; }
+  ok := true;
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  ok = ok && proc_err_to_out(h);
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return false; }
+  j[0].h = h; j[0].started = true; j[0].running = true; j[0].t0 = proc_now_ms();
+  return true;
+}
+// Reads what a running job wrote so far; ends it when its output ends.
+pp_poll :: (j: [] PpJob) {
+  if !j[0].running { return; }
+  line: [65536] u8;
+  while true {
+    n := proc_line(j[0].h, 0, line[..]);
+    if n == PROC_TIMEOUT { return; }
+    if n == PROC_TOO_LONG { continue; }
+    if n < 0 {
+      j[0].status = proc_wait(j[0].h, 5000);
+      if j[0].status == PROC_RUNNING { k := proc_kill(j[0].h, PROC_SIGKILL); j[0].status = proc_wait(j[0].h, 2000); }
+      r := proc_release(j[0].h); j[0].running = false; j[0].ms = proc_now_ms() - j[0].t0;
+      return;
+    }
+    for i: 0..<n { if j[0].n < j[0].out.count { j[0].out[j[0].n] = line[i]; j[0].n += 1; } }
+    if j[0].n < j[0].out.count { j[0].out[j[0].n] = '\n'; j[0].n += 1; }
+  }
+}
+// Stops a job at the time limit: TERM (remote.sh cleans up its scratch), then KILL.
+pp_stop :: (j: [] PpJob) {
+  if !j[0].running { return; }
+  k := proc_kill(j[0].h, PROC_SIGTERM);
+  s := proc_wait(j[0].h, 3000);
+  if s == PROC_RUNNING { k = proc_kill(j[0].h, PROC_SIGKILL); s = proc_wait(j[0].h, 2000); }
+  r := proc_release(j[0].h);
+  j[0].running = false; j[0].timed_out = true; j[0].ms = proc_now_ms() - j[0].t0;
+}
+pp_text :: (j: [] PpJob) -> string { return cast(string) j[0].out[0..<j[0].n]; }
+// The last lines of a job's output, indented, at most `lines` of them.
+pp_tail :: (text: string, lines: int) {
+  n := 0;
+  for c: text { if c == '\n' { n += 1; } }
+  from := n - lines; k := 0; i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if k >= from && j > i { print("      %\n", cast(string) text[i..<j]); }
+    i = j + 1; k += 1;
+  }
+}
+// Whether remote.sh status names a running host with a free slot.
+pp_free_host :: (status: string) -> bool {
+  i := 0;
+  while i < status.count {
+    j := i;
+    while j < status.count && status[j] != '\n' { j += 1; }
+    line := cast(string) status[i..<j]; i = j + 1;
+    if !pp_has(line, " RUNNING ") { continue; }
+    mark := "free slots: ";
+    for k: 0..<line.count {
+      if k + mark.count < line.count && cast(string) line[k..<k + mark.count] == mark {
+        c := line[k + mark.count];
+        if c >= '1' && c <= '9' { return true; }
+      }
+    }
+  }
+  return false;
+}
+// The suites of `tool.sh suites --since BASE --list` output ("PATH  BUDGET ...") that the push
+// changed itself, joined with commas into out.
+pp_touched_suites :: (list: string, changed: string, out: [] u8) -> string {
+  n := 0; i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    line := cast(string) list[i..<j]; i = j + 1;
+    e := 0;
+    while e < line.count && line[e] != ' ' { e += 1; }
+    path := cast(string) line[0..<e];
+    if path.count == 0 || !pp_listed(changed, path) || pp_has(line, "(skipped here") { continue; }
+    if n + path.count + 1 > out.count { break; }
+    if n > 0 { out[n] = ','; n += 1; }
+    for c: path { out[n] = c; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+// Whether every changed path is a document (Markdown or under docs/).
+pp_only_docs :: (changed: string) -> bool {
+  i := 0;
+  while i < changed.count {
+    j := i;
+    while j < changed.count && changed[j] != '\n' { j += 1; }
+    p := cast(string) changed[i..<j]; i = j + 1;
+    if p.count == 0 { continue; }
+    md := p.count >= 3 && cast(string) p[p.count - 3..<p.count] == ".md";
+    if !md && !pp_starts(p, "docs/") { return false; }
+  }
+  return true;
+}
+
+// The checks for a push whose merge base with main is base and whose changes are `changed`;
+// 1 when one failed, 0 otherwise (a check cut off by the time limit or with no host is named).
+pp_checks :: (base: string, changed: string, seconds: int, red: string) -> int {
+  t0 := proc_now_ms();
+  deadline := t0 + seconds * 1000;
+  jobs: [PP_JOBS] PpJob;
+  none_b: [1] string; none := none_b[0..<0];
+  docs := pp_only_docs(changed);
+  if docs { print("prepush: the push changes only documents; no checks to run\n"); return 0; }
+  tc := [2] string.["coax/web/tool.sh", "tools-check"];
+  ep := [2] string.["coax/web/tool.sh", "everglade-parity"];
+  wc := [4] string.["coax/web/tool.sh", "wire-check", "--base", base];
+  lc := [4] string.["coax/web/tool.sh", "layer-check", "--base", base];
+  sl := [5] string.["coax/web/tool.sh", "suites", "--since", base, "--list"];
+  rs := [2] string.["coax/remote/remote.sh", "status"];
+  ok := pp_start(jobs[0..<1], "tools-check", tc[..], none);
+  ok = pp_start(jobs[1..<2], "everglade-parity", ep[..], none) && ok;
+  ok = pp_start(jobs[2..<3], "wire-check", wc[..], none) && ok;
+  ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
+  tests := true;
+  hb: [64] u8;
+  if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
+  if tests {
+    ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;
+    ok = pp_start(jobs[5..<6], "remote.sh status", rs[..], none) && ok;
+  }
+  if !ok { print("prepush: note: a check could not start\n"); }
+  suites_buf: [65536] u8; suites := "";
+  remote_started := false; remote_skip := "";
+  while proc_now_ms() < deadline {
+    busy := false;
+    for k: 0..<PP_JOBS { pp_poll(jobs[k..<k + 1]); busy = busy || jobs[k].running; }
+    // the touched suites go to a host once the list and the host status are in
+    if tests && !remote_started && remote_skip.count == 0 && jobs[4].started && !jobs[4].running && jobs[5].started && !jobs[5].running {
+      if jobs[4].status != 0 { remote_skip = "the suite list failed"; }
+      else {
+        suites = pp_touched_suites(pp_text(jobs[4..<4 + 1]), changed, suites_buf[..]);
+        if suites.count == 0 { remote_skip = "the push changes no suite"; }
+        else if !pp_free_host(pp_text(jobs[5..<5 + 1])) { remote_skip = "no build host has a free slot (coax/remote/remote.sh status)"; }
+        else {
+          ra := [7] string.["coax/remote/remote.sh", "run", "--no-fallback", "--", "coax/web/tool.sh", "suites", "--only"];
+          rargv: [8] string; for q: 0..<7 { rargv[q] = ra[q]; } rargv[7] = suites;
+          env := [1] string.["OA_REMOTE_WAIT=15"];
+          remote_started = pp_start(jobs[6..<7], "coax test", rargv[..], env[..]);
+          if !remote_started { remote_skip = "remote.sh did not start"; }
+          busy = busy || remote_started;
+        }
+      }
+    }
+    if !busy { break; }
+    proc_sleep(25);
+  }
+  for k: 0..<PP_JOBS { pp_stop(jobs[k..<k + 1]); }
+  // the verdicts
+  failed := 0;
+  for k: 0..<PP_JOBS {
+    if !jobs[k].started || k == 5 { continue; }
+    name := jobs[k].name; s := jobs[k].status;
+    secs := (jobs[k].ms + 500) / 1000;
+    if jobs[k].timed_out { print("prepush: % skipped: still running at the % s limit (OA_PREPUSH_SECONDS); the after-landing check runs it\n", name, seconds); continue; }
+    if k == 4 { if s != 0 { print("prepush: suites --list failed (status %); coax test skipped\n", s); } continue; }
+    if k == 6 && s == 97 { print("prepush: coax test skipped: no build host could take it (% s)\n", secs); continue; }
+    if s == 0 { print("prepush: % passed (% s)\n", name, secs); continue; }
+    excused := red.count > 0 && pp_has(red, name);
+    if k == 6 { excused = false; }
+    if s == 1 && !excused {
+      print("prepush: % FAILED (% s):\n", name, secs); pp_tail(pp_text(jobs[k..<k + 1]), 12); failed += 1;
+    } else if s == 1 {
+      print("prepush: % fails, and is on main's red list already (coax/remote/after.sh state): not this push's\n", name);
+    } else {
+      print("prepush: % could not run (status %); not counted:\n", name, s); pp_tail(pp_text(jobs[k..<k + 1]), 4);
+    }
+  }
+  if tests && remote_skip.count > 0 { print("prepush: coax test skipped: %\n", remote_skip); }
+  if tests && remote_started && suites.count > 0 { print("prepush: coax test ran %\n", suites); }
+  print("prepush: checks took % s\n", (proc_now_ms() - t0 + 500) / 1000);
+  return ifx failed == 0 then 0 else 1;
+}
+
+// ---- the bypass
+
+pp_bypass :: (why: string, refs: string) -> int {
+  home_b: [4096] u8; path_b: [4200] u8; line_b: [16384] u8; when_b: [128] u8; cwd_b: [4096] u8; err: [256] u8;
+  home := proc_getenv("HOME", home_b[..]);
+  dir_parts := [2] string.[home, "/.openagents"];
+  dir := pp_cat(path_b[..], dir_parts[..]);
+  made := fs_mkdir(dir);
+  log_parts := [2] string.[dir, "/prepush-bypass.log"];
+  logb: [4300] u8;
+  logp := pp_cat(logb[..], log_parts[..]);
+  da := [3] string.["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"];
+  d := proc_run(da[..], 10000, when_b[..], err[..]);
+  when := ifx d.started == 0 && d.status == 0 then pp_trim(cast(string) when_b[0..<d.out_n]) else "unknown-time";
+  cwd := fs_cwd(cwd_b[..]);
+  parts := [8] string.[when, "\t", cwd, "\t", refs, "\t", why, "\n"];
+  line := pp_cat(line_b[..], parts[0..<7]);
+  if !fs_append(logp, line) { print("prepush: OA_PREPUSH_BYPASS is set, and % could not be written\n", logp); }
+  print("prepush: BYPASSED (OA_PREPUSH_BYPASS=\"%\"): no rule ran; logged in %\n", why, logp);
+  return 0;
+}
+
+// ---- the replay check (rules 1 and 2 on the historical clobbers)
+
+PP_REPLAY_REFUSED :: [2] string.["7cdf01e725", "bc5c6a5845"];
+// Their fixes, which name the commits they undo; an ordinary feature; a move of a file another
+// agent wrote that day; and a deletion of another agent's new file that its message names
+// ("Zeron.metal is gone").
+PP_REPLAY_PASSES :: [5] string.["ed4754f5f5", "75cdc077b5", "51a282ab2f", "a566a4fc73", "fb45a6170d"];
+
+pp_replay_check :: (st: [] PpState, bufs: [] PpBufs) -> int {
+  bad := 0;
+  for c: PP_REPLAY_REFUSED {
+    if !pp_is_commit(c) { print("prepush --replay-check: % is not in this clone (a shallow clone?); not judged\n", c); continue; }
+    v := pp_judge(c, "", st, bufs, true, true);
+    if !v.ok { print("FAIL replay: % could not be judged\n", c); bad += 1; continue; }
+    if v.clobbers == 0 { print("FAIL replay: % undid newer work on main and the stale-snapshot rule let it through\n", c); bad += 1; }
+    else { print("replay: % refused: % file% of newer work undone\n", c, v.clobbers, ifx v.clobbers == 1 then "" else "s"); }
+  }
+  for c: PP_REPLAY_PASSES {
+    if !pp_is_commit(c) { print("prepush --replay-check: % is not in this clone; not judged\n", c); continue; }
+    v := pp_judge(c, "", st, bufs, true, true);
+    if !v.ok { print("FAIL replay: % could not be judged\n", c); bad += 1; continue; }
+    if v.clobbers > 0 { print("FAIL replay: % is an ordinary commit (or names what it undoes) and was refused for % file%\n", c, v.clobbers, ifx v.clobbers == 1 then "" else "s"); bad += 1; }
+    else { print("replay: % passes\n", c); }
+  }
+  print("prepush --replay-check: % failed\n", bad);
+  return ifx bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh prepush [--remote NAME] [-- LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA ...] | --replay COMMIT | --replay-check"); return 2; }
+  st: [1] PpState; bufs: [1] PpBufs;
+  hb: [256] u8;
+  human := proc_getenv("OA_PREPUSH_HUMAN", hb[..]) == "1";
+  if args_has(args[..], "--replay-check") { return pp_replay_check(st[..], bufs[..]); }
+  replay := args_value(args[..], "--replay", "");
+  if replay.count > 0 {
+    if !pp_is_commit(replay) { print("prepush: % is not a commit here\n", replay); return 2; }
+    v := pp_judge(replay, "", st[..], bufs[..], false, human);
+    if !v.ok { print("prepush: % could not be judged\n", replay); return 2; }
+    if v.merge { print("prepush: % is a merge; the stale-snapshot rule reads one parent\n", replay); }
+    refused := v.clobbers > 0 || v.no_agent;
+    print("prepush --replay %: %\n", replay, ifx refused then "refused" else "passes");
+    return ifx refused then 1 else 0;
+  }
+  // the refs git is pushing, after "--": four words each
+  dash := args_find(args[..], "--");
+  refs_b: [65536] u8; rn := 0;
+  if dash >= 0 { for q: dash + 1..<args_count(args[..]) { for c: args_at(args[..], q) { if rn < refs_b.count - 1 { refs_b[rn] = c; rn += 1; } } refs_b[rn] = ' '; rn += 1; } }
+  refs := pp_trim(cast(string) refs_b[0..<rn]);
+  why_b: [4096] u8;
+  why := proc_getenv("OA_PREPUSH_BYPASS", why_b[..]);
+  if why.count > 0 { return pp_bypass(why, refs); }
+  if dash < 0 { print("prepush: no refs given (git passes them on stdin to the hook); nothing to check\n"); return 0; }
+  seconds_b: [64] u8;
+  seconds := pp_atoi(proc_getenv("OA_PREPUSH_SECONDS", seconds_b[..]));
+  if seconds < 0 { seconds = 120; }
+  t0 := proc_now_ms();
+  head_b: [256] u8;
+  ha := [3] string.["git", "rev-parse", "HEAD"];
+  hg := pp_git(ha[..], head_b[..]);
+  head := ifx hg.ok then pp_trim(hg.text) else "";
+  refused := 0; checks := 0;
+  push_b: [PP_PUSH * 42] u8; base_b: [128] u8; changed_b: [4194304] u8; red_b: [262144] u8;
+  q := dash + 1;
+  while q + 3 < args_count(args[..]) {
+    local_ref := args_at(args[..], q); local := args_at(args[..], q + 1); remote_ref := args_at(args[..], q + 2); remote := args_at(args[..], q + 3);
+    q += 4;
+    if remote_ref != "refs/heads/main" { continue; }
+    if local == PP_ZERO { print("prepush: REFUSED: this push deletes main\n"); refused += 1; continue; }
+    if remote == PP_ZERO { continue; }
+    if !pp_is_commit(remote) { print("prepush: main's tip % isn't here, so this push can't be a fast-forward; git fetch, then rebase on origin/main\n", cast(string) remote[0..<10]); continue; }
+    // a push to main must keep main: it is a fast-forward
+    anc := [5] string.["git", "merge-base", "--is-ancestor", remote, local];
+    o: [64] u8;
+    if !pp_git(anc[..], o[..]).ok {
+      print("prepush: REFUSED: pushing % to main would drop the commits on main after % (not a fast-forward). Fix: git fetch origin && git rebase origin/main\n", local_ref, cast(string) remote[0..<10]);
+      refused += 1; continue;
+    }
+    // the commits this push adds, oldest first
+    rangeb: [256] u8;
+    rparts := [3] string.[remote, "..", local];
+    la := [4] string.["git", "rev-list", "--reverse", pp_cat(rangeb[..], rparts[..])];
+    lg := pp_git(la[..], push_b[..]);
+    if !lg.ok { print("prepush: git rev-list failed; the rules were not applied\n"); return 2; }
+    push := lg.text;
+    count := 0;
+    for c: push { if c == '\n' { count += 1; } }
+    if push.count > 0 && push[push.count - 1] != '\n' { count += 1; }
+    if count > PP_PUSH { print("prepush: % commits in one push (more than %); the rules read the newest %\n", count, PP_PUSH, PP_PUSH); }
+    clobbered := 0; unsigned := 0;
+    for k: 0..<count {
+      c := pp_line(push, k);
+      if c.count == 0 { continue; }
+      v := pp_judge(c, push, st[..], bufs[..], false, human);
+      if !v.ok { print("prepush: % could not be judged; the rules were not applied\n", cast(string) c[0..<10]); return 2; }
+      if v.merge { print("prepush: note: % is a merge; the stale-snapshot rule reads one parent, so rebase instead of merging\n", cast(string) c[0..<10]); }
+      if v.clobbers > 0 { clobbered += 1; }
+      if v.no_agent { unsigned += 1; }
+    }
+    if clobbered > 0 {
+      print("prepush: REFUSED: % commit% newer work on main. Fix: git fetch origin && git rebase origin/main, then check `git show --stat` lists only your files (restore others with git checkout origin/main -- PATH). If you mean it, name each file, its folder/ or the commit it undoes in the message (git commit --amend) and push again (%).\n", clobbered, ifx clobbered == 1 then " undoes" else "s undo", PP_HOW);
+      refused += 1;
+    }
+    if unsigned > 0 { print("prepush: REFUSED: % commit% with no \"Agent:\" line (%)\n", unsigned, ifx unsigned == 1 then "" else "s", PP_HOW); refused += 1; }
+    if refused > 0 { continue; }
+    print("prepush: % commit% to main: stale-snapshot and Agent rules passed (% ms)\n", count, ifx count == 1 then "" else "s", proc_now_ms() - t0);
+    // the checks run on the checkout, so only for a push of its HEAD
+    if local != head { print("prepush: checks skipped: % is not this checkout's HEAD\n", local_ref); continue; }
+    mb := [4] string.["git", "merge-base", remote, local];
+    m := pp_git(mb[..], base_b[..]);
+    if !m.ok { print("prepush: checks skipped: no merge base\n"); continue; }
+    base := pp_trim(m.text);
+    ca := [5] string.["git", "diff", "--name-only", base, local];
+    cg := pp_git(ca[..], changed_b[..]);
+    if !cg.ok { print("prepush: checks skipped: git diff failed\n"); continue; }
+    da := [4] string.["git", "status", "--porcelain", "-uno"];
+    dirty_b: [4096] u8;
+    dg := pp_git(da[..], dirty_b[..]);
+    if dg.ok && pp_trim(dg.text).count > 0 { print("prepush: note: the checkout has uncommitted changes, and the checks see them\n"); }
+    // checks already failing on main (the green-main pipeline's red list) aren't this push's
+    home_b: [4096] u8; rp_b: [4300] u8;
+    rparts2 := [2] string.[proc_getenv("HOME", home_b[..]), "/.openagents/pipeline/releases/after/red.json"];
+    ja := [4] string.["jq", "-r", ".[] | select(.status == \"open\") | .check", pp_cat(rp_b[..], rparts2[..])];
+    rg := pp_git(ja[..], red_b[..]);
+    red := ifx rg.ok then rg.text else "";
+    left := seconds - (proc_now_ms() - t0) / 1000;
+    if left < 10 { left = 10; }
+    checks += pp_checks(base, cg.text, left, red);
+  }
+  total := (proc_now_ms() - t0 + 500) / 1000;
+  if refused > 0 { print("prepush: push refused. Emergency bypass: OA_PREPUSH_BYPASS=\"why\" git push ... (logged)\n"); return PP_REFUSE; }
+  if checks > 0 { print("prepush: push refused: a check failed (% s). Emergency bypass: OA_PREPUSH_BYPASS=\"why\" git push ... (logged)\n", total); return PP_REFUSE; }
+  print("prepush: ok (% s)\n", total);
+  return 0;
+}
+
+// ---------------------------------------------------------------- checks
+
+PP_T_A :: "1111111111111111111111111111111111111111";
+PP_T_B :: "2222222222222222222222222222222222222222";
+PP_T_C :: "3333333333333333333333333333333333333333";
+
+#test "messages: the Agent line and what a message names" {
+  #assert pp_agent("Fix it (#1)\n\nAgent: aaa-p0-8\nCo-Authored-By: x\n") == "aaa-p0-8";
+  #assert pp_agent("x\nAgent:   \n") == "" && pp_agent("x\n") == "" && pp_agent("x\nAgent: a\nAgent: b\n") == "b";
+  #assert pp_agent("x\n  Agent: in-body \n") == "in-body" && pp_agent("Agentic: no\n") == "";
+  #assert pp_names("Deletes docs/old/a.md, superseded", "docs/old/a.md") && pp_names("Drop coax/web/room/ wholesale", "coax/web/room/x.coax");
+  #assert !pp_names("Drop docs/ wholesale", "docs/old/a.md") && pp_names("a.md is gone", "docs/old/a.md") && !pp_names("data.md", "docs/old/a.md") && !pp_names("", "a");
+  #assert !pp_names("adds aethyr/net/transport.coax", "aethyr/net/budget.coax") && pp_names("aethyr/net/: gone", "aethyr/net/budget.coax");
+  #assert pp_names("Removes docs/old/a.md.", "docs/old/a.md") && !pp_names("docs/old/a.md.bak", "docs/old/a.md") && !pp_names("x/docs/old/a.md", "docs/old/a.md");
+}
+#test "raw lines from git diff-tree and git log" {
+  r := pp_raw(":100644 000000 1111111111111111111111111111111111111111 0000000000000000000000000000000000000000 D\tdocs/a b.md");
+  #assert r.ok && r.before == PP_T_A && r.after == PP_ZERO && r.status == 'D' && r.path == "docs/a b.md";
+  #assert !pp_raw("@abc agent").ok && !pp_raw(":100644 100644 11 22 M\tx").ok && !pp_raw(":100644 100644 1111111 2222222 M").ok && !pp_raw("").ok;
+  b: [24] u8;
+  #assert pp_itoa(0, b[..]) == "0" && pp_itoa(-42, b[..]) == "-42" && pp_atoi(" 1762905600\n") == 1762905600 && pp_atoi("x") == -1 && pp_atoi("") == -1;
+  #assert pp_line("a\nb\nc", 1) == "b" && pp_line("a\nb\nc", 2) == "c" && pp_line("a\n", 5) == "";
+}
+
+// A commit that changes three files: deletes d.md, changes m.coax to an older content, adds n.coax.
+PP_T_DIFF :: ":100644 000000 1111111111111111111111111111111111111111 0000000000000000000000000000000000000000 D\tdocs/d.md\n:100644 100644 3333333333333333333333333333333333333333 2222222222222222222222222222222222222222 M\tm.coax\n:000000 100644 0000000000000000000000000000000000000000 3333333333333333333333333333333333333333 A\tn.coax\n";
+// main's history before it, newest first: another agent added d.md and changed m.coax 2 -> 3.
+PP_T_HIST :: "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa other-agent\n\n:000000 100644 0000000000000000000000000000000000000000 1111111111111111111111111111111111111111 A\tdocs/d.md\n:100644 100644 2222222222222222222222222222222222222222 3333333333333333333333333333333333333333 M\tm.coax\n@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb me\n\n:000000 100644 0000000000000000000000000000000000000000 2222222222222222222222222222222222222222 A\tm.coax\n";
+
+#test "a stale snapshot: deleting and putting back another agent's new work is refused" {
+  st: [1] PpState; out: [8] PpFinding;
+  #assert pp_load(st[..], PP_T_DIFF) && st[0].n == 3 && st[0].sorted;
+  pp_scan(st[..], PP_T_HIST, "Feature (#1)\n\nAgent: me\n", "me", "");
+  #assert pp_findings(st[..], "Feature (#1)\n\nAgent: me\n", out[..]) == 2;
+  #assert out[0].path == "docs/d.md" && out[0].kind == PP_DELETES && out[0].agent == "other-agent" && out[0].count == 1;
+  #assert out[1].path == "m.coax" && out[1].kind == PP_RESTORES && cast(string) out[1].commit[0..<4] == "aaaa";
+}
+#test "a rebased commit, its own work, a move and a named file pass" {
+  st: [1] PpState; out: [8] PpFinding;
+  // the same diff on top of history that never had these contents: a normal edit
+  #assert pp_load(st[..], PP_T_DIFF);
+  pp_scan(st[..], "@cccccccccccccccccccccccccccccccccccccccc x\n:100644 100644 4444444444444444444444444444444444444444 1111111111111111111111111111111111111111 M\tdocs/d.md\n", "m", "me", "");
+  #assert pp_findings(st[..], "m", out[..]) == 0;
+  // the work it undoes is its own agent's
+  #assert pp_load(st[..], PP_T_DIFF);
+  pp_scan(st[..], PP_T_HIST, "m", "other-agent", "");
+  #assert pp_findings(st[..], "m", out[..]) == 0;
+  // or an earlier commit of this push
+  #assert pp_load(st[..], PP_T_DIFF);
+  pp_scan(st[..], PP_T_HIST, "m", "me", "9999\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+  #assert pp_findings(st[..], "m", out[..]) == 0;
+  // the message names the file, or the commit it undoes
+  #assert pp_load(st[..], PP_T_DIFF);
+  msg := "Remove docs/d.md; m.coax goes back to the old table (undoes aaaaaaa)\n";
+  pp_scan(st[..], PP_T_HIST, msg, "me", "");
+  #assert pp_findings(st[..], msg, out[..]) == 0;
+  // only the file it names
+  #assert pp_load(st[..], PP_T_DIFF);
+  pp_scan(st[..], PP_T_HIST, "Remove docs/d.md", "me", "");
+  #assert pp_findings(st[..], "Remove docs/d.md", out[..]) == 1 && out[0].path == "m.coax";
+  // a deleted file that moved is not a deletion
+  #assert pp_load(st[..], PP_T_DIFF);
+  pp_moves(st[..], "R091\tdocs/d.md\tdocs/new/d.md\n");
+  pp_scan(st[..], PP_T_HIST, "m", "me", "");
+  #assert st[0].moved[0] && pp_findings(st[..], "m", out[..]) == 1 && out[0].path == "m.coax";
+}
+#test "an older content further back, a file brought back, and the newest change named" {
+  st: [1] PpState; out: [4] PpFinding;
+  // m.coax goes back two changes: both are counted, the newest other agent's is named
+  diff := ":100644 100644 3333333333333333333333333333333333333333 1111111111111111111111111111111111111111 M\tm.coax\n";
+  hist := "@dddddddddddddddddddddddddddddddddddddddd b\n:100644 100644 2222222222222222222222222222222222222222 3333333333333333333333333333333333333333 M\tm.coax\n@eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee a\n:100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 M\tm.coax\n";
+  #assert pp_load(st[..], diff);
+  pp_scan(st[..], hist, "x", "me", "");
+  #assert pp_findings(st[..], "x", out[..]) == 1 && out[0].count == 2 && out[0].agent == "b";
+  // a file someone deleted, brought back as it was
+  back := ":000000 100644 0000000000000000000000000000000000000000 1111111111111111111111111111111111111111 A\tgone.coax\n";
+  del := "@ffffffffffffffffffffffffffffffffffffffff b\n:100644 000000 1111111111111111111111111111111111111111 0000000000000000000000000000000000000000 D\tgone.coax\n";
+  #assert pp_load(st[..], back);
+  pp_scan(st[..], del, "x", "me", "");
+  #assert pp_findings(st[..], "x", out[..]) == 1 && out[0].kind == PP_READDS;
+  // a mode change alone is nothing
+  #assert pp_load(st[..], ":100644 100755 1111111111111111111111111111111111111111 1111111111111111111111111111111111111111 M\tx.sh\n") && st[0].done[0];
+  // unsorted input still finds its files
+  #assert pp_load(st[..], ":100644 100644 1111111 2222222 M\tz\n:100644 100644 1111111 2222222 M\ta\n") && !st[0].sorted && pp_find(st[..], "a") == 1 && pp_find(st[..], "q") == -1;
+}
+#test "the checks' inputs: free hosts, touched suites, documents" {
+  #assert pp_free_host("oa-build-1 us-central1-a RUNNING 10.0.0.1 free slots: 2\n") && !pp_free_host("oa-build-1 us-central1-a RUNNING 10.0.0.1 free slots: 0\noa-build-2 us-central1-a TERMINATED - free slots: -\n");
+  #assert !pp_free_host("") && !pp_free_host("about $3 over the last 24 hours\n");
+  out: [256] u8;
+  list := "coax/web/layer-check.coax  default --library\napps/a.coax  default --library --native-link b.coax  (skipped here: loads x, not in the tree)\nverse/b.coax  default\n";
+  #assert pp_touched_suites(list, "AGENTS.md\ncoax/web/layer-check.coax\napps/a.coax\nverse/b.coax\n", out[..]) == "coax/web/layer-check.coax,verse/b.coax";
+  #assert pp_touched_suites(list, "AGENTS.md\n", out[..]) == "";
+  #assert pp_only_docs("AGENTS.md\ndocs/x/y.png\n") && !pp_only_docs("AGENTS.md\ncoax/web/x.coax\n") && pp_only_docs("");
+  #assert pp_listed("a\nb\n", "b") && !pp_listed("ab\n", "a") && pp_has("xx aaaaaaa yy", "aaaaaaa") && !pp_has("", "a");
+}

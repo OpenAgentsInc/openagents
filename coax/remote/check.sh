@@ -26,7 +26,7 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, test-remote.sh, everglade-parity, wire-check, layer-check, the committed
+#   coax/remote/check.sh reports          tools-check, test-remote.sh, everglade-parity, wire-check, layer-check, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
 #   coax/remote/check.sh visuals          check-visuals alone (the web build's first stop:
@@ -207,6 +207,7 @@ reports() {
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   step wire-check coax/web/tool.sh wire-check || status=1
   step layer-check coax/web/tool.sh layer-check || status=1
+  step prepush-replay coax/web/tool.sh prepush --replay-check || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
   visuals
   generated
@@ -248,6 +249,8 @@ reports_since() {
     # no load up the layers (aethyr/README.md "Layers", #13264); the allowlist against the base's copy
     step layer-check coax/web/tool.sh layer-check --base "$arg" || status=1
   fi
+  # the pre-push check still refuses the historical clobbers and passes their fixes (#13265)
+  if grep -Eq '^coax/(web/prepush\.coax|remote/hooks/)' "$out/changed"; then step prepush-replay coax/web/tool.sh prepush --replay-check || status=1; fi
   if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then
     step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
     visuals

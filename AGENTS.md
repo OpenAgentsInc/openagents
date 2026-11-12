@@ -161,6 +161,7 @@ coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/open
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
 coax/web/tool.sh components-check           # the component system's layers, no looks in a component, one Markdown parser (components/spec.md, #13153)
 coax/web/tool.sh layer-check                # no load from aethyr/ up into verse/, apps/, everglade/ or coax/web/, none from everglade/ into apps/, no product load of tests/; the allowlist only shrinks (aethyr/README.md "Layers", #13264)
+coax/web/tool.sh prepush --replay COMMIT    # would the pre-push check refuse COMMIT? (--replay-check: the historical clobbers, #13265)
 coax/web/tool.sh wire-check                 # every wire shape is in proto/registry.json with one codec; the allowlist only shrinks (proto/README.md, #13236)
 coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/verse/fast-shots.md)
 coax/web/tool.sh shot --compare A.png B.png  # how much two pictures differ
@@ -246,6 +247,18 @@ tests for what you touched, not everything.
   wrote them, and an `Agent: <id>` line with your agent ID (the one your
   brief gives you), so a failure on `main` reaches the agent that caused it
   ([docs/verse/green-main-pipeline.md](docs/verse/green-main-pipeline.md)).
+- A pre-push check runs on every push to `main` (it is not a queue: about
+  10 to 20 seconds, never more than two minutes). It refuses a commit that
+  undoes another agent's work of the last 24 hours (a tree written from a
+  stale snapshot), a commit with no `Agent:` line, and a failing
+  `tools-check`, `everglade-parity`, `wire-check`, `layer-check` or touched
+  suite. The hooks are tracked in `coax/remote/hooks/`; a clone turns them on
+  once with `git config core.hooksPath coax/remote/hooks` (this Mac's clone
+  has it, so every worktree gets it). When a refusal is right, fix the
+  commit; when you mean to delete or restore another agent's file, name the
+  file (or its folder/, or the commit you undo) in the message. Emergency
+  only: `OA_PREPUSH_BYPASS="why" git push ...`, which is logged. Never use
+  `--no-verify` ([the pre-push check](docs/verse/green-main-pipeline.md#the-pre-push-check)).
 - `coax/remote/after.sh state` shows whether `main` is green: `main`,
   `main-green` (the newest head that passed the after-landing check), the last
   runs and the red list. When `main-green` is behind and you need a base that

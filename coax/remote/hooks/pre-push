@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Firm reason: 5 (a thin wrapper: git-lfs's pre-push, then the Coax pre-push check through
+# coax/web/tool.sh; every rule lives in coax/web/prepush.coax).
+# Installed once per clone: git config core.hooksPath coax/remote/hooks
+# (docs/verse/green-main-pipeline.md, "The pre-push check", #13265).
+# Emergency bypass, logged in ~/.openagents/prepush-bypass.log: OA_PREPUSH_BYPASS="why" git push ...
+# prepush.coax exits 3 to refuse; any other failure (it couldn't build or run) lets the push go
+# with a warning, so a broken tool never stops every agent.
+refs="$(cat)"
+if command -v git-lfs > /dev/null 2>&1; then
+  printf '%s' "${refs:+$refs$'\n'}" | git lfs pre-push "$@" || exit $?
+fi
+[[ -x coax/web/tool.sh ]] || { echo "prepush: no coax/web/tool.sh in this checkout (a sparse one); no check" >&2; exit 0; }
+# A fresh worktree has no compiler until coax/build.sh: use the newest one this machine keeps.
+[[ -x "${COAX:-coax/bin/coax}" ]] || export COAX="$(ls -t "$HOME"/.cache/coax-release/*/coax 2> /dev/null | head -n 1)"
+[[ -x "${COAX:-coax/bin/coax}" ]] || { echo "prepush: no Coax compiler (run coax/build.sh); no check" >&2; exit 0; }
+limit=(); ! command -v timeout > /dev/null 2>&1 || limit=(timeout 300)
+# shellcheck disable=SC2086 # the refs are words: LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA per line
+"${limit[@]}" coax/web/tool.sh prepush --remote "$1" -- $refs >&2
+status=$?
+[[ $status != 3 ]] || exit 1
+[[ $status == 0 ]] || echo "prepush: WARNING: the check could not run (status $status); the push goes on unchecked" >&2
+exit 0

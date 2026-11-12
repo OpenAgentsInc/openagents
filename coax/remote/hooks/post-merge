@@ -1,0 +1,6 @@
+#!/bin/sh
+# Firm reason: 5 (a thin wrapper around git-lfs, as git lfs install writes it; a clone with no
+# git-lfs skips it, since no tracked file uses LFS). The repository's hooks live here, set once
+# per clone with: git config core.hooksPath coax/remote/hooks (docs/verse/green-main-pipeline.md).
+command -v git-lfs > /dev/null 2>&1 || exit 0
+git lfs post-merge "$@"
