@@ -1,0 +1,679 @@
+// Microcoder's second tool host (docs/repos/2026-11-11-indexed-repos.md, "How
+// agents use it", GitHub #13326): a pending action's commands and views run
+// against one snapshot of an indexed repo through coax/lib/repo (rp_call), with
+// no shell, no working directory and no clone. The action schema, the prompt
+// and the step log are the local host's (tools.coax); only where the answers
+// come from changes.
+//
+//   commands  a fixed set of command forms, written the way a model writes
+//             them, parsed here (mrt_parse) into one RpRequest each:
+//               ls PATH                 tree, depth 1
+//               find GLOB               find (also: find DIR -name GLOB [-type f])
+//               cat PATH                read
+//               head [-n N] PATH        read, lines 1..N
+//               tail [-n N] PATH        read, the last N lines (tail -n +K: from K)
+//               sed -n FROM,TOp PATH    read, a range (also Np and FROM,$p)
+//               wc -l PATH              read, answered "N PATH"
+//               grep [-i] [-E] [-n] [-r] [-l] [-C N] PATTERN [PATH...]   search
+//               git log [-n N] [--oneline] [PATH]                         log
+//               git show COMMIT                                           show
+//               git blame PATH -L FROM,TO                                 blame
+//             git diff, symbols NAME and check NAME are later phases and say so.
+//             A pipe, a redirect, &&, ||, ;, a backtick or $( outside quotes
+//             refuses the whole command; anything else gets the list of forms.
+//   view      read
+//   edits     phase 2 (change_edit): each is reported as not applied.
+//
+// What a path, glob, pattern or commit may be is rules.coax's, never decided
+// here: words go to the library as they are, and it refuses what it must.
+// Output keeps the local host's head and tail (McOutput, MC_KEEP_HEAD/TAIL).
+//   coax/bin/coax test coax/lib/microcoder/repo-tools.coax
+//   coax/web/tool.sh coax/lib/microcoder/repo-tools-selftest.coax
+
+#load "tools.coax";
+#load "../repo/repo.coax";
+
+MRT_WORDS :: 64;                 // words in one command, at most
+MRT_BYTES :: 8192;               // their bytes, with the joined paths
+
+MRT_FORMS :: "not a command this repository takes; these are: ls PATH | find GLOB | cat PATH | head [-n N] PATH | tail [-n N] PATH | sed -n FROM,TOp PATH | wc -l PATH | grep [-i] [-E] [-n] [-r] [-l] [-C N] PATTERN [PATH...] | git log [-n N] [--oneline] [PATH] | git show COMMIT | git blame PATH -L FROM,TO";
+MRT_ONE_THING :: "refused: a pipe, a redirect, &&, ||, ;, a backtick or $( is not run here; ask for one thing at a time, a command each";
+MRT_QUOTE :: "refused: a quote is not closed";
+MRT_LONG :: "refused: the command is too long";
+MRT_BREAK :: "refused: a path holds a line break";
+MRT_NO_EDITS :: "not applied: editing isn't available yet in an indexed repo; describe the change in your reply";
+
+// ---------------------------------------------------------------- words
+
+// A command's words, unquoted, in buf.
+MrtWords :: struct { buf: [MRT_BYTES] u8; nb: int; at: [MRT_WORDS] int; len: [MRT_WORDS] int; n: int; }
+MRT_SPLIT_OK :: 0; MRT_SPLIT_CHAIN :: 1; MRT_SPLIT_QUOTE :: 2; MRT_SPLIT_LONG :: 3;
+
+mrt_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+mrt_put :: (w: [] MrtWords, c: u8) -> bool {
+  if w[0].nb >= MRT_BYTES { return false; }
+  w[0].buf[w[0].nb] = c; w[0].nb += 1;
+  return true;
+}
+mrt_close :: (w: [] MrtWords) { w[0].len[w[0].n] = w[0].nb - w[0].at[w[0].n]; w[0].n += 1; }
+
+// Splits s into words the way sh reads them: single quotes keep everything, double quotes keep all
+// but \" \\ \$ \`, a backslash outside quotes keeps the next byte, and # starting a word ends the
+// command. A byte that would make sh run more than one thing (| > < ; & ` or $( outside quotes)
+// refuses the whole command: MRT_SPLIT_CHAIN.
+mrt_split :: (s: string, w: [] MrtWords) -> int {
+  w[0].nb = 0; w[0].n = 0;
+  open := false; i := 0;
+  while i < s.count {
+    c := s[i];
+    if mrt_space(c) {
+      if open { mrt_close(w); open = false; }
+      i += 1; continue;
+    }
+    if c == '|' || c == '>' || c == '<' || c == ';' || c == '&' || c == '`' { return MRT_SPLIT_CHAIN; }
+    if c == '$' && i + 1 < s.count && s[i + 1] == '(' { return MRT_SPLIT_CHAIN; }
+    if !open {
+      if c == '#' { break; }
+      if w[0].n >= MRT_WORDS { return MRT_SPLIT_LONG; }
+      w[0].at[w[0].n] = w[0].nb; open = true;
+    }
+    ok := true;
+    if c == '\'' {
+      j := i + 1;
+      while j < s.count && s[j] != '\'' { ok = ok && mrt_put(w, s[j]); j += 1; }
+      if j >= s.count { return MRT_SPLIT_QUOTE; }
+      i = j + 1;
+    } else if c == '"' {
+      j := i + 1;
+      while j < s.count && s[j] != '"' {
+        if s[j] == '\\' && j + 1 < s.count && (s[j + 1] == '"' || s[j + 1] == '\\' || s[j + 1] == '$' || s[j + 1] == '`') { j += 1; }
+        ok = ok && mrt_put(w, s[j]); j += 1;
+      }
+      if j >= s.count { return MRT_SPLIT_QUOTE; }
+      i = j + 1;
+    } else if c == '\\' && i + 1 < s.count {
+      ok = mrt_put(w, s[i + 1]); i += 2;
+    } else {
+      ok = mrt_put(w, c); i += 1;
+    }
+    if !ok { return MRT_SPLIT_LONG; }
+  }
+  if open { mrt_close(w); }
+  return MRT_SPLIT_OK;
+}
+mrt_word :: (w: [] MrtWords, k: int) -> string { return cast(string) w[0].buf[w[0].at[k]..<w[0].at[k] + w[0].len[k]]; }
+
+// A shell path as the repository names it: "." (and "./") is the top, "" here; a leading "./" goes.
+// Whether what is left may be read is rules.coax's.
+mrt_path :: (p: string) -> string {
+  if p == "." || p == "./" { return ""; }
+  if p.count > 2 && p[0] == '.' && p[1] == '/' { return cast(string) p[2..<p.count]; }
+  return p;
+}
+mrt_has_break :: (s: string) -> bool {
+  for c: s { if c == '\n' { return true; } }
+  return false;
+}
+// Bytes into the words' buffer after the words: a string that lives as long as w. "" when it doesn't fit.
+mrt_keep :: (w: [] MrtWords, parts: [] string) -> string {
+  at := w[0].nb;
+  for p: parts { for c: p { if !mrt_put(w, c) { w[0].nb = at; return ""; } } }
+  return cast(string) w[0].buf[at..<w[0].nb];
+}
+// Words from..<to as paths, a line each (RpRequest.path). top: a "." among them means the whole
+// repository (""); else a "." is left out. ok false when a path holds a line break or they don't fit.
+MrtJoin :: struct { ok: bool; path: string; }
+mrt_join :: (w: [] MrtWords, from: int, to: int, top: bool) -> MrtJoin {
+  at := w[0].nb; first := true;
+  for k: from..<to {
+    p := mrt_path(mrt_word(w, k));
+    if mrt_has_break(p) { w[0].nb = at; return MrtJoin.{}; }
+    if p.count == 0 { if top { w[0].nb = at; return MrtJoin.{ok = true}; } continue; }
+    if !first && !mrt_put(w, '\n') { w[0].nb = at; return MrtJoin.{}; }
+    for c: p { if !mrt_put(w, c) { w[0].nb = at; return MrtJoin.{}; } }
+    first = false;
+  }
+  return MrtJoin.{ok = true, path = cast(string) w[0].buf[at..<w[0].nb]};
+}
+
+// ---------------------------------------------------------------- commands
+
+MRT_PLAIN :: 0;                  // the answer as it is
+MRT_TAIL :: 1;                   // read the line count first, then the last `lines`
+MRT_WC :: 2;                     // read the line count, answer "N PATH"
+MRT_LIST :: 3;                   // a search's paths, each once
+
+// One command, parsed: a request to make, or a line to answer with (say).
+MrtCmd :: struct { say: string; exit: int; q: RpRequest; post: int; lines: int; }
+mrt_say :: (line: string, exit: int) -> MrtCmd { return MrtCmd.{say = line, exit = exit}; }
+mrt_forms :: () -> MrtCmd { return mrt_say(MRT_FORMS, 2); }
+mrt_ask :: (q: RpRequest) -> MrtCmd { return MrtCmd.{q = q}; }
+
+// A positive count: "12". -1 when not.
+mrt_count :: (s: string) -> int {
+  v := rp_number(s);
+  return ifx v >= 1 then v else -1;
+}
+// "-5": a count written as an option. -1 when not.
+mrt_dash_count :: (s: string) -> int {
+  if s.count < 2 || s[0] != '-' { return -1; }
+  return mrt_count(cast(string) s[1..<s.count]);
+}
+// A line range: "A,B", "A,+K", "A,$" (to 0, the end) or "A" (when one may stand alone).
+MrtRange :: struct { ok: bool; from: int; to: int; }
+mrt_range :: (s: string, alone: bool) -> MrtRange {
+  comma := -1;
+  for c, i: s { if c == ',' && comma < 0 { comma = i; } }
+  if comma < 0 {
+    a := mrt_count(s);
+    return ifx alone && a > 0 then MrtRange.{ok = true, from = a, to = a} else MrtRange.{};
+  }
+  a := mrt_count(cast(string) s[0..<comma]);
+  rest := cast(string) s[comma + 1..<s.count];
+  if a < 0 || rest.count == 0 { return MrtRange.{}; }
+  if rest == "$" { return MrtRange.{ok = true, from = a, to = 0}; }
+  if rest[0] == '+' {
+    k := mrt_count(cast(string) rest[1..<rest.count]);
+    return ifx k > 0 then MrtRange.{ok = true, from = a, to = a + k - 1} else MrtRange.{};
+  }
+  b := mrt_count(rest);
+  if b < 0 { return MrtRange.{}; }
+  return MrtRange.{ok = true, from = a, to = ifx b < a then a else b};
+}
+// sed's script: "Ap", "A,Bp", "A,$p".
+mrt_sed :: (s: string) -> MrtRange {
+  if s.count < 2 || s[s.count - 1] != 'p' { return MrtRange.{}; }
+  return mrt_range(cast(string) s[0..<s.count - 1], true);
+}
+
+// head's and tail's line count: none (10), "-n N", "-nN", "-N"; tail also "-n +K" and "+K" (from K on).
+// Where the path is (the word after them), or -1 when they don't read.
+MrtLines :: struct { next: int; lines: int; from: int; }
+mrt_lines :: (w: [] MrtWords) -> MrtLines {
+  r := MrtLines.{next = 1, lines = 10};
+  if w[0].n < 2 { return MrtLines.{next = -1}; }
+  a := mrt_word(w, 1);
+  value := ""; used := 1;
+  if a == "-n" { if w[0].n < 3 { return MrtLines.{next = -1}; } value = mrt_word(w, 2); used = 2; }
+  else if a.count > 2 && a[0] == '-' && a[1] == 'n' { value = cast(string) a[2..<a.count]; }
+  else if a.count > 1 && (a[0] == '-' || a[0] == '+') { value = a; }
+  else { return r; }
+  r.next = 1 + used;
+  if value.count > 1 && value[0] == '+' {
+    k := mrt_count(cast(string) value[1..<value.count]);
+    if k < 0 { return MrtLines.{next = -1}; }
+    r.from = k; return r;
+  }
+  if value.count > 1 && value[0] == '-' { value = cast(string) value[1..<value.count]; }
+  r.lines = mrt_count(value);
+  if r.lines < 0 { return MrtLines.{next = -1}; }
+  return r;
+}
+
+mrt_later :: (name: string) -> MrtCmd {
+  if name == "git diff" { return mrt_say("git diff isn't available yet in an indexed repo: read a commit's changes with git show COMMIT", 1); }
+  if name == "symbols" { return mrt_say("symbols isn't available yet in an indexed repo: find a name with grep -n NAME", 1); }
+  return mrt_say("check isn't available yet in an indexed repo", 1);
+}
+
+mrt_grep :: (w: [] MrtWords) -> MrtCmd {
+  q := RpRequest.{op = RP_SEARCH};
+  post := MRT_PLAIN; k := 1; pattern_set := false;
+  while k < w[0].n {
+    a := mrt_word(w, k);
+    if a == "--" { k += 1; break; }
+    if a.count < 2 || a[0] != '-' { break; }
+    if a == "-e" {
+      if k + 1 >= w[0].n { return mrt_forms(); }
+      q.pattern = mrt_word(w, k + 1); pattern_set = true; k += 2; break;
+    }
+    if a == "-C" {
+      if k + 1 >= w[0].n || rp_number(mrt_word(w, k + 1)) < 0 { return mrt_forms(); }
+      q.context = rp_number(mrt_word(w, k + 1)); k += 2; continue;
+    }
+    if a.count > 2 && a[1] == 'C' {
+      v := rp_number(cast(string) a[2..<a.count]);
+      if v < 0 { return mrt_forms(); }
+      q.context = v; k += 1; continue;
+    }
+    for i: 1..<a.count {
+      c := a[i];
+      if c == 'i' { q.fold = true; }
+      else if c == 'E' { q.regex = true; }
+      else if c == 'l' { post = MRT_LIST; }
+      else if c != 'n' && c != 'r' { return mrt_forms(); }
+    }
+    k += 1;
+  }
+  if !pattern_set {
+    if k >= w[0].n { return mrt_forms(); }
+    q.pattern = mrt_word(w, k); k += 1;
+  }
+  j := mrt_join(w, k, w[0].n, true);
+  if !j.ok { return mrt_say(MRT_BREAK, 2); }
+  q.path = j.path;
+  if post == MRT_LIST { q.context = 0; }
+  c := mrt_ask(q); c.post = post;
+  return c;
+}
+
+mrt_git :: (w: [] MrtWords) -> MrtCmd {
+  n := w[0].n;
+  if n < 2 { return mrt_forms(); }
+  sub := mrt_word(w, 1);
+  if sub == "diff" { return mrt_later("git diff"); }
+  if sub == "show" {
+    if n > 3 { return mrt_forms(); }
+    other := ifx n == 3 then mrt_word(w, 2) else "";
+    // HEAD is the snapshot here, never the mirror's own HEAD
+    if other == "HEAD" { other = ""; }
+    return mrt_ask(RpRequest.{op = RP_SHOW, other = other});
+  }
+  if sub == "log" {
+    q := RpRequest.{op = RP_LOG};
+    k := 2; paths := 0;
+    while k < n {
+      a := mrt_word(w, k);
+      if a == "--oneline" { k += 1; continue; }
+      if a == "--" { k += 1; continue; }
+      if a == "-n" {
+        if k + 1 >= n || mrt_count(mrt_word(w, k + 1)) < 0 { return mrt_forms(); }
+        q.n = mrt_count(mrt_word(w, k + 1)); k += 2; continue;
+      }
+      if mrt_dash_count(a) > 0 { q.n = mrt_dash_count(a); k += 1; continue; }
+      if a.count > 2 && a[0] == '-' && a[1] == 'n' && mrt_count(cast(string) a[2..<a.count]) > 0 { q.n = mrt_count(cast(string) a[2..<a.count]); k += 1; continue; }
+      if a.count > 1 && a[0] == '-' { return mrt_forms(); }
+      paths += 1;
+      q.path = mrt_path(a); k += 1;
+    }
+    if paths > 1 { return mrt_forms(); }
+    return mrt_ask(q);
+  }
+  if sub == "blame" {
+    q := RpRequest.{op = RP_BLAME};
+    k := 2; paths := 0; ranged := false;
+    while k < n {
+      a := mrt_word(w, k);
+      spec := "";
+      if a == "-L" { if k + 1 >= n { return mrt_forms(); } spec = mrt_word(w, k + 1); k += 2; }
+      else if a.count > 2 && a[0] == '-' && a[1] == 'L' { spec = cast(string) a[2..<a.count]; k += 1; }
+      else if a == "--" { k += 1; continue; }
+      else { paths += 1; q.path = mrt_path(a); k += 1; continue; }
+      r := mrt_range(spec, false);
+      if !r.ok || ranged { return mrt_forms(); }
+      q.from = r.from; q.to = r.to; ranged = true;
+    }
+    if paths != 1 { return mrt_forms(); }
+    return mrt_ask(q);
+  }
+  return mrt_forms();
+}
+
+// One command as a model writes it, into a request or a line to answer with.
+mrt_parse :: (command: string, w: [] MrtWords) -> MrtCmd {
+  split := mrt_split(command, w);
+  if split == MRT_SPLIT_CHAIN { return mrt_say(MRT_ONE_THING, 2); }
+  if split == MRT_SPLIT_QUOTE { return mrt_say(MRT_QUOTE, 2); }
+  if split == MRT_SPLIT_LONG { return mrt_say(MRT_LONG, 2); }
+  n := w[0].n;
+  if n == 0 { return mrt_forms(); }
+  name := mrt_word(w, 0);
+  if name == "git" { return mrt_git(w); }
+  if name == "grep" { return mrt_grep(w); }
+  if name == "symbols" || name == "check" { return mrt_later(name); }
+  if name == "ls" {
+    q := RpRequest.{op = RP_TREE, depth = 1}; paths := 0;
+    for k: 1..<n {
+      a := mrt_word(w, k);
+      if a.count > 1 && a[0] == '-' {
+        // -l -a -1 and their clusters change nothing: the tree gives kinds and sizes
+        for i: 1..<a.count { if a[i] != 'l' && a[i] != 'a' && a[i] != '1' { return mrt_forms(); } }
+        continue;
+      }
+      paths += 1; q.path = mrt_path(a);
+    }
+    if paths > 1 { return mrt_forms(); }
+    return mrt_ask(q);
+  }
+  if name == "find" {
+    if n == 2 {
+      g := mrt_word(w, 1);
+      return mrt_ask(RpRequest.{op = RP_FIND, path = ifx mrt_path(g).count == 0 then "**" else mrt_path(g)});
+    }
+    // find DIR -name GLOB [-type f]: the glob under DIR (find lists files, so -type f changes nothing)
+    if (n == 4 || n == 6) && mrt_word(w, 2) == "-name" && (n == 4 || (mrt_word(w, 4) == "-type" && mrt_word(w, 5) == "f")) {
+      dir := mrt_path(mrt_word(w, 1)); g := mrt_word(w, 3);
+      if dir.count == 0 { return mrt_ask(RpRequest.{op = RP_FIND, path = g}); }
+      slash := ifx dir[dir.count - 1] == '/' then "" else "/";
+      parts := [4] string.[dir, slash, "**/", g];
+      return mrt_ask(RpRequest.{op = RP_FIND, path = mrt_keep(w, parts[..])});
+    }
+    return mrt_forms();
+  }
+  if name == "cat" {
+    from := 1;
+    if n > 1 && mrt_word(w, 1) == "-n" { from = 2; }   // the read numbers its lines anyway
+    if n <= from { return mrt_forms(); }
+    j := mrt_join(w, from, n, false);
+    if !j.ok { return mrt_say(MRT_BREAK, 2); }
+    return mrt_ask(RpRequest.{op = RP_READ, path = j.path});
+  }
+  if name == "head" || name == "tail" {
+    l := mrt_lines(w);
+    if l.next < 0 || l.next != n - 1 { return mrt_forms(); }
+    if name == "head" && l.from > 0 { return mrt_forms(); }
+    path := mrt_path(mrt_word(w, l.next));
+    if mrt_has_break(path) { return mrt_say(MRT_BREAK, 2); }
+    if name == "head" { return mrt_ask(RpRequest.{op = RP_READ, path = path, from = 1, to = l.lines}); }
+    if l.from > 0 { return mrt_ask(RpRequest.{op = RP_READ, path = path, from = l.from}); }
+    c := mrt_ask(RpRequest.{op = RP_READ, path = path, from = 1, to = 1});
+    c.post = MRT_TAIL; c.lines = l.lines;
+    return c;
+  }
+  if name == "sed" {
+    if n != 4 || mrt_word(w, 1) != "-n" { return mrt_forms(); }
+    r := mrt_sed(mrt_word(w, 2));
+    if !r.ok { return mrt_forms(); }
+    path := mrt_path(mrt_word(w, 3));
+    if mrt_has_break(path) { return mrt_say(MRT_BREAK, 2); }
+    return mrt_ask(RpRequest.{op = RP_READ, path = path, from = r.from, to = r.to});
+  }
+  if name == "wc" {
+    if n != 3 || mrt_word(w, 1) != "-l" { return mrt_forms(); }
+    path := mrt_path(mrt_word(w, 2));
+    if mrt_has_break(path) { return mrt_say(MRT_BREAK, 2); }
+    c := mrt_ask(RpRequest.{op = RP_READ, path = path, from = 1, to = 1});
+    c.post = MRT_WC;
+    return c;
+  }
+  return mrt_forms();
+}
+
+// ---------------------------------------------------------------- answers
+
+// The line count a read's header gives for path ("== PATH  (N lines, B bytes)"), or -1 when the
+// read named the file instead of reading it (missing, a directory, binary, too large).
+mrt_header_lines :: (text: string, path: string) -> int {
+  head := 3 + path.count + 3;
+  if text.count <= head || cast(string) text[0..<3] != "== " || cast(string) text[3..<3 + path.count] != path || cast(string) text[3 + path.count..<head] != "  (" { return -1; }
+  e := head;
+  while e < text.count && text[e] >= '0' && text[e] <= '9' { e += 1; }
+  if e == head || e >= text.count || text[e] != ' ' { return -1; }
+  return rp_number(cast(string) text[head..<e]);
+}
+// What a read said instead of a file's text: the part after "== PATH: ", without its newline.
+mrt_named :: (text: string, path: string) -> string {
+  head := 3 + path.count + 2;
+  if text.count < head || cast(string) text[3 + path.count..<head] != ": " { return "it could not be read"; }
+  e := head;
+  while e < text.count && text[e] != '\n' { e += 1; }
+  return cast(string) text[head..<e];
+}
+// A search's "path:N:text" lines as their paths, each once (git greps file by file, so a path's
+// lines are together). Notes the search adds ("(no line matches)", "[... not shown ...]") are kept.
+mrt_list :: (text: string, out: [] u8) -> int {
+  n := 0; at := 0; last_at := 0; last_n := -1;
+  while at < text.count {
+    e := at;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if line.count == 0 { continue; }
+    if line[0] == '(' || (line[0] == '[' && line[line.count - 1] == ']') { n = rp_put(out, n, line); n = rp_put(out, n, "\n"); continue; }
+    // the path ends at the first ":DIGITS:"
+    k := -1; i := 0;
+    while i < line.count && k < 0 {
+      if line[i] == ':' {
+        j := i + 1;
+        while j < line.count && line[j] >= '0' && line[j] <= '9' { j += 1; }
+        if j > i + 1 && j < line.count && line[j] == ':' { k = i; }
+      }
+      i += 1;
+    }
+    if k <= 0 { continue; }
+    path := cast(string) line[0..<k];
+    if last_n == k && cast(string) out[last_at..<last_at + k] == path { continue; }
+    last_at = n; last_n = k;
+    n = rp_put(out, n, path); n = rp_put(out, n, "\n");
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- the tool host
+
+McRepoBuffers :: struct {
+  out: [1] McOutput;
+  words: [1] MrtWords;
+  work: [RP_FILE_MOST] u8;       // git's output (rp_call)
+  answer: [RP_ANSWER] u8;
+  extra: [RP_ANSWER] u8;         // grep -l's paths, wc's line, a view's note
+}
+
+mrt_output :: (b: [] McRepoBuffers, text: string) -> string {
+  o := b[0].out[..];
+  o[0].nh = 0; o[0].nt = 0; o[0].at = 0; o[0].dropped = 0;
+  for c: text { mc_output_byte(o, c); }
+  return mc_output_text(o);
+}
+
+// One command against the snapshot: its exit (0, 1 when the repository could not answer it,
+// 2 when it is not one this host takes) and its output, kept as the local host keeps it.
+mrt_run_command :: (m: RpMirror, snapshot: string, command: string, b: [] McRepoBuffers) -> McCommandResult {
+  c := mrt_parse(command, b[0].words[..]);
+  if c.say.count > 0 { return McCommandResult.{exit = c.exit, output = mrt_output(b, c.say)}; }
+  q := c.q; q.at = snapshot;
+  a := rp_call(m, q, b[0].work[..], b[0].answer[..]);
+  if !a.ok { return McCommandResult.{exit = 1, output = mrt_output(b, a.error)}; }
+  text := cast(string) b[0].answer[0..<a.n];
+  if q.op == RP_READ && !mrt_has_break(q.path) {
+    lines := mrt_header_lines(text, q.path);
+    if lines < 0 { return McCommandResult.{exit = 1, output = mrt_output(b, text)}; }
+    if c.post == MRT_WC {
+      k := rp_put_int(b[0].extra[..], 0, lines); k = rp_put(b[0].extra[..], k, " "); k = rp_put(b[0].extra[..], k, q.path); k = rp_put(b[0].extra[..], k, "\n");
+      return McCommandResult.{output = mrt_output(b, cast(string) b[0].extra[0..<k])};
+    }
+    if c.post == MRT_TAIL {
+      q.from = ifx lines - c.lines + 1 < 1 then 1 else lines - c.lines + 1;
+      q.to = ifx lines < 1 then 1 else lines;
+      a = rp_call(m, q, b[0].work[..], b[0].answer[..]);
+      if !a.ok { return McCommandResult.{exit = 1, output = mrt_output(b, a.error)}; }
+      text = cast(string) b[0].answer[0..<a.n];
+    }
+  }
+  if c.post == MRT_LIST {
+    k := mrt_list(text, b[0].extra[..]);
+    text = cast(string) b[0].extra[0..<k];
+  }
+  return McCommandResult.{output = mrt_output(b, text)};
+}
+
+// One view: the file read at the snapshot, numbered, or why it isn't shown.
+mrt_run_view :: (m: RpMirror, snapshot: string, view: string, b: [] McRepoBuffers) -> McViewResult {
+  path := mrt_path(view);
+  if mrt_has_break(path) { return McViewResult.{content = "not shown: the path holds a line break"}; }
+  a := rp_call(m, RpRequest.{op = RP_READ, at = snapshot, path = path}, b[0].work[..], b[0].answer[..]);
+  why := "";
+  if !a.ok { why = a.error; }
+  else {
+    text := cast(string) b[0].answer[0..<a.n];
+    if mrt_header_lines(text, path) >= 0 { return McViewResult.{found = true, content = text}; }
+    why = mrt_named(text, path);
+  }
+  k := rp_put(b[0].extra[..], 0, "not shown: "); k = rp_put(b[0].extra[..], k, why);
+  return McViewResult.{content = cast(string) b[0].extra[0..<k]};
+}
+
+// Runs the pending action against snapshot (a commit id) of the mirror, into the loop, in the local
+// host's order (edits, commands, views); then mc_tools_done. Edits are phase 2 and are not applied.
+mc_run_repo_tools :: (l: [] McLoop, m: RpMirror, snapshot: string, b: [] McRepoBuffers) -> int {
+  a := mc_pending(l);
+  for i: 0..<a.ne { mc_edited(l, a.edits[i].path, false, MRT_NO_EDITS); }
+  for i: 0..<a.nc {
+    r := mrt_run_command(m, snapshot, a.commands[i], b);
+    mc_command(l, a.commands[i], r.exit, r.timed_out, r.output);
+  }
+  for i: 0..<a.nv {
+    v := mrt_run_view(m, snapshot, a.view[i], b);
+    mc_view(l, a.view[i], v.found, v.content);
+  }
+  return mc_tools_done(l);
+}
+
+// ---------------------------------------------------------------- checks
+
+MrtTest :: struct { w: [1] MrtWords; }
+mrt_p :: (t: [] MrtTest, command: string) -> MrtCmd { return mrt_parse(command, t[0].w[..]); }
+
+#test "words split as sh splits them: quotes, escapes, a comment" {
+  t: [1] MrtTest; w := t[0].w[..];
+  #assert mrt_split("grep  -n 'a b'  \"c \\\"d\\\"\" e\\ f", w) == MRT_SPLIT_OK && w[0].n == 5;
+  #assert mrt_word(w, 0) == "grep" && mrt_word(w, 1) == "-n" && mrt_word(w, 2) == "a b" && mrt_word(w, 3) == "c \"d\"" && mrt_word(w, 4) == "e f";
+  #assert mrt_split("cat 'a|b' \"x;y\" 'p>q' \"$(no)\" '`t`' a&&b", w) == MRT_SPLIT_CHAIN;
+  #assert mrt_split("cat 'a|b' \"x;y\" 'p>q' \"$(no)\" '`t`'", w) == MRT_SPLIT_OK && w[0].n == 6 && mrt_word(w, 1) == "a|b" && mrt_word(w, 4) == "$(no)";
+  #assert mrt_split("ls '' x", w) == MRT_SPLIT_OK && w[0].n == 3 && mrt_word(w, 1) == "";
+  #assert mrt_split("ls docs # what is there", w) == MRT_SPLIT_OK && w[0].n == 2 && mrt_split("ls a#b", w) == MRT_SPLIT_OK && mrt_word(w, 1) == "a#b";
+  #assert mrt_split("cat \"a\\b\" a\\\\b", w) == MRT_SPLIT_OK && mrt_word(w, 1) == "a\\b" && mrt_word(w, 2) == "a\\b";
+  #assert mrt_split("cat 'open", w) == MRT_SPLIT_QUOTE && mrt_split("cat \"open", w) == MRT_SPLIT_QUOTE;
+  #assert mrt_split("", w) == MRT_SPLIT_OK && w[0].n == 0 && mrt_split("  \t ", w) == MRT_SPLIT_OK && w[0].n == 0;
+}
+
+#test "a pipe, a redirect, &&, ||, ;, a backtick or $( outside quotes refuses the whole command" {
+  t: [1] MrtTest;
+  bad := [10] string.["cat a | wc -l", "cat a > b", "cat < a", "ls && rm -rf x", "ls || true", "ls; ls", "cat `x`", "cat $(x)", "grep x a 2>&1", "sleep 9 &"];
+  for s: bad { c := mrt_p(t[..], s); #assert c.say == MRT_ONE_THING && c.exit == 2; }
+  #assert mrt_p(t[..], "grep 'a|b' x").say.count == 0 && mrt_p(t[..], "grep \"a;b\" x").q.pattern == "a;b";
+  #assert mrt_p(t[..], "cat 'x").say == MRT_QUOTE && mrt_p(t[..], "cat $HOME").q.path == "$HOME";
+}
+
+#test "anything that isn't one of the forms is answered with the forms" {
+  t: [1] MrtTest;
+  other := [16] string.["", "rm -rf /", "python3 x.py", "ls a b", "ls -R", "head a b", "head -n x a", "head -n 0 a", "tail -c 5 a", "sed -n 2,3 a", "sed 2,3p a", "wc a", "wc -c a", "git push", "git status", "git show --stat x y"];
+  for s: other { c := mrt_p(t[..], s); #assert c.say == MRT_FORMS && c.exit == 2; }
+  more := [9] string.["grep", "grep -n", "grep -w x", "grep -C x y", "grep -e", "git", "git log -n", "git blame", "git blame a b -L 1,2"];
+  for s: more { #assert mrt_p(t[..], s).say == MRT_FORMS; }
+  #assert mrt_p(t[..], "find").say == MRT_FORMS && mrt_p(t[..], "find . -type d").say == MRT_FORMS && mrt_p(t[..], "cat").say == MRT_FORMS && mrt_p(t[..], "git blame -L 1,x a").say == MRT_FORMS;
+}
+
+#test "the later phases say so: git diff, symbols and check" {
+  t: [1] MrtTest;
+  #assert mrt_p(t[..], "git diff").say == "git diff isn't available yet in an indexed repo: read a commit's changes with git show COMMIT" && mrt_p(t[..], "git diff main -- a").exit == 1;
+  #assert mrt_p(t[..], "symbols mc_take").say == "symbols isn't available yet in an indexed repo: find a name with grep -n NAME";
+  #assert mrt_p(t[..], "check coax-tests").say == "check isn't available yet in an indexed repo";
+}
+
+#test "ls is a tree of depth 1, find a glob" {
+  t: [1] MrtTest;
+  c := mrt_p(t[..], "ls docs/deep");
+  #assert c.say.count == 0 && c.q.op == RP_TREE && c.q.depth == 1 && c.q.path == "docs/deep" && c.post == MRT_PLAIN;
+  #assert mrt_p(t[..], "ls").q.path == "" && mrt_p(t[..], "ls .").q.path == "" && mrt_p(t[..], "ls -la ./coax").q.path == "coax" && mrt_p(t[..], "ls -1 a").q.op == RP_TREE;
+  c = mrt_p(t[..], "find '*.coax'");
+  #assert c.q.op == RP_FIND && c.q.path == "*.coax";
+  #assert mrt_p(t[..], "find coax/**/*.md").q.path == "coax/**/*.md" && mrt_p(t[..], "find .").q.path == "**";
+  #assert mrt_p(t[..], "find . -name \"*.md\"").q.path == "*.md" && mrt_p(t[..], "find docs -name '*.md' -type f").q.path == "docs/**/*.md" && mrt_p(t[..], "find docs/ -name x").q.path == "docs/**/x";
+}
+
+#test "cat, head, tail, sed -n and wc -l are each a read, with a range where the form gives one" {
+  t: [1] MrtTest;
+  c := mrt_p(t[..], "cat docs/a.md");
+  #assert c.q.op == RP_READ && c.q.path == "docs/a.md" && c.q.from == 0 && c.q.to == 0 && c.post == MRT_PLAIN;
+  #assert mrt_p(t[..], "cat a.md ./b/c.md").q.path == "a.md\nb/c.md" && mrt_p(t[..], "cat -n a").q.path == "a";
+  c = mrt_p(t[..], "head README.md");
+  #assert c.q.op == RP_READ && c.q.from == 1 && c.q.to == 10;
+  #assert mrt_p(t[..], "head -n 3 a").q.to == 3 && mrt_p(t[..], "head -n3 a").q.to == 3 && mrt_p(t[..], "head -25 a").q.to == 25;
+  c = mrt_p(t[..], "tail -n 4 a");
+  #assert c.q.op == RP_READ && c.post == MRT_TAIL && c.lines == 4 && c.q.from == 1 && c.q.to == 1;
+  #assert mrt_p(t[..], "tail a").lines == 10 && mrt_p(t[..], "tail -7 a").lines == 7;
+  c = mrt_p(t[..], "tail -n +20 a");
+  #assert c.post == MRT_PLAIN && c.q.from == 20 && c.q.to == 0 && mrt_p(t[..], "head -n +2 a").say == MRT_FORMS;
+  c = mrt_p(t[..], "sed -n '120,160p' coax/x.coax");
+  #assert c.q.op == RP_READ && c.q.from == 120 && c.q.to == 160 && c.q.path == "coax/x.coax";
+  #assert mrt_p(t[..], "sed -n 7p a").q.from == 7 && mrt_p(t[..], "sed -n 7p a").q.to == 7 && mrt_p(t[..], "sed -n '5,$p' a").q.to == 0 && mrt_p(t[..], "sed -n 9,3p a").q.to == 9;
+  c = mrt_p(t[..], "wc -l docs/a.md");
+  #assert c.q.op == RP_READ && c.post == MRT_WC && c.q.path == "docs/a.md";
+}
+
+#test "grep is a search: its options, a pattern that looks like an option, and paths" {
+  t: [1] MrtTest;
+  c := mrt_p(t[..], "grep -rn needle .");
+  #assert c.q.op == RP_SEARCH && c.q.pattern == "needle" && c.q.path == "" && !c.q.regex && !c.q.fold && c.post == MRT_PLAIN;
+  c = mrt_p(t[..], "grep -i -E -C 2 '^(a|b)$' docs README.md");
+  #assert c.q.fold && c.q.regex && c.q.context == 2 && c.q.pattern == "^(a|b)$" && c.q.path == "docs\nREADME.md";
+  c = mrt_p(t[..], "grep -rliE x src");
+  #assert c.post == MRT_LIST && c.q.fold && c.q.regex && c.q.path == "src";
+  #assert mrt_p(t[..], "grep -l -C 3 x").q.context == 0 && mrt_p(t[..], "grep -C3 x").q.context == 3;
+  c = mrt_p(t[..], "grep -e -e");
+  #assert c.say.count == 0 && c.q.pattern == "-e" && c.q.path == "";
+  c = mrt_p(t[..], "grep -n -e --foo a");
+  #assert c.q.pattern == "--foo" && c.q.path == "a";
+  c = mrt_p(t[..], "grep -- -x a b");
+  #assert c.q.pattern == "-x" && c.q.path == "a\nb";
+  #assert mrt_p(t[..], "grep x . docs").q.path == "" && mrt_p(t[..], "grep - a").q.pattern == "-";
+}
+
+#test "git log, git show and git blame" {
+  t: [1] MrtTest;
+  c := mrt_p(t[..], "git log");
+  #assert c.q.op == RP_LOG && c.q.n == 0 && c.q.path == "";
+  c = mrt_p(t[..], "git log -n 5 --oneline docs/a.md");
+  #assert c.q.op == RP_LOG && c.q.n == 5 && c.q.path == "docs/a.md";
+  #assert mrt_p(t[..], "git log -3").q.n == 3 && mrt_p(t[..], "git log -n2 -- a").q.n == 2 && mrt_p(t[..], "git log -- a").q.path == "a" && mrt_p(t[..], "git log a b").say == MRT_FORMS && mrt_p(t[..], "git log --stat").say == MRT_FORMS;
+  c = mrt_p(t[..], "git show 0123456789abcdef0123456789abcdef01234567");
+  #assert c.q.op == RP_SHOW && c.q.other == "0123456789abcdef0123456789abcdef01234567";
+  #assert mrt_p(t[..], "git show").q.other == "" && mrt_p(t[..], "git show HEAD").q.other == "" && mrt_p(t[..], "git show v1").q.other == "v1";
+  c = mrt_p(t[..], "git blame docs/a.md -L 3,9");
+  #assert c.q.op == RP_BLAME && c.q.path == "docs/a.md" && c.q.from == 3 && c.q.to == 9;
+  c = mrt_p(t[..], "git blame -L 4,+3 a");
+  #assert c.q.path == "a" && c.q.from == 4 && c.q.to == 6;
+  #assert mrt_p(t[..], "git blame -L5,6 a").q.from == 5 && mrt_p(t[..], "git blame a").q.from == 0 && mrt_p(t[..], "git blame -L 1,2 -L 3,4 a").say == MRT_FORMS;
+}
+
+#test "the parser passes paths and refs to the library: it is rules.coax that refuses them" {
+  t: [1] MrtTest;
+  c := mrt_p(t[..], "cat ../etc/passwd");
+  #assert c.say.count == 0 && c.q.path == "../etc/passwd" && !rp_path_ok(c.q.path, false);
+  c = mrt_p(t[..], "cat /etc/passwd");
+  #assert c.say.count == 0 && !rp_path_ok(c.q.path, false);
+  c = mrt_p(t[..], "git show 'main~1'");
+  #assert c.say.count == 0 && c.q.other == "main~1" && !rp_at_ok(c.q.other);
+  c = mrt_p(t[..], "ls -- ");
+  #assert c.say == MRT_FORMS;
+  c = mrt_p(t[..], "find -x");
+  #assert c.say.count == 0 && !rp_glob_ok(c.q.path);
+  #assert mrt_p(t[..], "cat 'a\nb'").say == MRT_BREAK && mrt_p(t[..], "grep x 'a\nb'").say == MRT_BREAK && mrt_p(t[..], "cat \"a\nb\" c").say == MRT_BREAK;
+}
+
+#test "ranges and counts" {
+  #assert mrt_range("3,9", false).ok && mrt_range("3,9", false).to == 9 && mrt_range("3,+2", false).to == 4 && mrt_range("3,$", false).to == 0;
+  #assert !mrt_range("3", false).ok && mrt_range("3", true).to == 3 && !mrt_range("0,4", false).ok && !mrt_range(",4", false).ok && !mrt_range("4,", false).ok && !mrt_range("4,+0", false).ok && !mrt_range("a,b", false).ok;
+  #assert mrt_sed("4,5p").from == 4 && !mrt_sed("4,5").ok && !mrt_sed("p").ok;
+  #assert mrt_count("7") == 7 && mrt_count("0") == -1 && mrt_count("") == -1 && mrt_dash_count("-4") == 4 && mrt_dash_count("4") == -1 && mrt_dash_count("-") == -1;
+  #assert mrt_path(".") == "" && mrt_path("./") == "" && mrt_path("./a/b") == "a/b" && mrt_path("a") == "a" && mrt_path(".github") == ".github" && mrt_path("..") == "..";
+}
+
+#test "a read's header gives the line count; a named file says why" {
+  #assert mrt_header_lines("== docs/a.md  (4 lines, 23 bytes)\n     1\talpha\n", "docs/a.md") == 4;
+  #assert mrt_header_lines("== a  (1 line, 2 bytes)\n", "a") == 1 && mrt_header_lines("== a  (0 lines, 0 bytes)\n", "a") == 0;
+  #assert mrt_header_lines("== a: no such file at this commit\n", "a") == -1 && mrt_header_lines("== b  (4 lines", "a") == -1 && mrt_header_lines("", "a") == -1 && mrt_header_lines("== a  (x lines", "a") == -1;
+  #assert mrt_named("== a: no such file at this commit\n", "a") == "no such file at this commit" && mrt_named("== docs: a directory (ask for its tree)\n", "docs") == "a directory (ask for its tree)";
+  #assert mrt_named("junk", "a") == "it could not be read";
+}
+
+#test "grep -l lists each matching path once, keeping the search's notes" {
+  out: [256] u8;
+  n := mrt_list("a/b.md:1:x\na/b.md:7:y:z\nc:d.md:2:q\nREADME.md:4:a:1:b\n", out[..]);
+  #assert cast(string) out[0..<n] == "a/b.md\nc:d.md\nREADME.md\n";
+  n = mrt_list("(no line matches)\n", out[..]);
+  #assert cast(string) out[0..<n] == "(no line matches)\n";
+  n = mrt_list("a:1:x\n[3 more lines not shown: narrow it]\n", out[..]);
+  #assert cast(string) out[0..<n] == "a\n[3 more lines not shown: narrow it]\n";
+  n = mrt_list("--\nab:1:x\nabc:2:y\nab:3:z\n", out[..]);
+  #assert cast(string) out[0..<n] == "ab\nabc\nab\n";
+}
+
+#forall "every form parses to its operation" i: 0..<12 {
+  t: [1] MrtTest;
+  forms := [12] string.["ls a", "find '*.md'", "cat a", "head -n 2 a", "tail -n 2 a", "sed -n 1,2p a", "wc -l a", "grep -i -E -n -r -C 1 x a b", "git log -n 2 --oneline a", "git show v1", "git blame a -L 1,2", "grep -l x"];
+  ops := [12] int.[RP_TREE, RP_FIND, RP_READ, RP_READ, RP_READ, RP_READ, RP_READ, RP_SEARCH, RP_LOG, RP_SHOW, RP_BLAME, RP_SEARCH];
+  c := mrt_p(t[..], forms[i]);
+  #assert c.say.count == 0 && c.q.op == ops[i] && c.q.at == "";
+}

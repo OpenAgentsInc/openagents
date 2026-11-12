@@ -1,0 +1,158 @@
+// The native check of Microcoder's repo tool host (repo-tools.coax, GitHub
+// #13326): it builds a small repository with git in a temporary directory,
+// mirrors it, and drives the tool host through the loop with actions that
+// hold an edit, many commands and views, then reads the step log the loop
+// wrote. `coax test` cannot reach these effects, so this program does, and
+// prints "repo tools selftest: ok".
+//   coax/web/tool.sh coax/lib/microcoder/repo-tools-selftest.coax
+#import "Basic";
+#load "repo-tools.coax";
+#load "../sys/tool.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+has :: (s: string, part: string) -> bool {
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+// git in the seed repository's working tree.
+seed :: (dir: string, a: [] string) -> bool {
+  argv: [16] string; n := 0;
+  fixed := [11] string.["git", "-C", dir, "-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"];
+  for f: fixed { argv[n] = f; n += 1; }
+  for x: a { argv[n] = x; n += 1; }
+  out: [4096] u8; err: [1024] u8;
+  r := proc_run(argv[0..<n], 20000, out[..], err[..]);
+  return r.started == 0 && r.status == 0;
+}
+
+SelfState :: struct {
+  b: [1] McRepoBuffers;
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  log: [262144] u8; arena: [262144] u8;
+  big: [300000] u8;
+}
+
+// The loop's step log after a step, and a field of one result in it.
+step_log :: (st: [] SelfState) -> string { return mc_state_json(st[0].l[0].st[..], st[0].log[..]); }
+field :: (st: [] SelfState, j: string, path: string) -> string {
+  ar: [1] ClArena; ar[0] = ClArena.{buf = st[0].arena[..]};
+  return cl_str(ar[..], j, path);
+}
+exit_of :: (j: string, path: string) -> int { v := cl_int(j, path); return ifx v.ok then v.value else -99; }
+// The path of result k of action i.
+at :: (buf: [] u8, i: int, k: int, name: string) -> string {
+  n := rp_put(buf, 0, "actions."); n = rp_put_int(buf, n, i); n = rp_put(buf, n, ".results."); n = rp_put_int(buf, n, k);
+  n = rp_put(buf, n, "."); n = rp_put(buf, n, name);
+  return cast(string) buf[0..<n];
+}
+
+// The output and the exit of the first step's result k.
+res :: (st: [] SelfState, j: string, k: int) -> string { pb: [128] u8; return field(st, j, at(pb[..], 0, k, "output")); }
+rex :: (j: string, k: int) -> int { pb: [128] u8; return exit_of(j, at(pb[..], 0, k, "exit")); }
+
+ACTION_ONE :: "{\"rationale\":\"look around\",\"edits\":[{\"path\":\"docs/a.md\",\"old\":\"alpha\",\"new\":\"ALPHA\"}],\"commands\":[\"ls docs\",\"cat docs/a.md\",\"head -n 2 docs/a.md\",\"tail -n 2 docs/a.md\",\"sed -n 2,3p docs/a.md\",\"wc -l docs/a.md\",\"grep -rn eedle .\",\"grep -il 'beta' docs\",\"find '*.md'\",\"git log -n 1 --oneline\",\"git show HEAD\",\"git blame docs/a.md -L 1,2\",\"cat docs/a.md | wc -l\",\"git diff\",\"rm -rf docs\",\"cat ../secret\",\"cat missing.md\",\"grep -e -e docs\"],\"view\":[\"docs/a.md\",\"missing.md\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+ACTION_TWO :: "{\"rationale\":\"the long file\",\"edits\":[],\"commands\":[\"cat long.txt\",\"wc -l long.txt\",\"tail -n 1 long.txt\"],\"view\":[\"long.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+ACTION_OLD :: "{\"rationale\":\"as it was\",\"edits\":[],\"commands\":[\"cat docs/a.md\",\"cat long.txt\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+
+tool_main :: () -> int #export_c #effects(all) {
+  bad := 0;
+  tmp: [1024] u8; p: [1024] u8; p2: [1024] u8; p3: [1024] u8; pb: [128] u8;
+  dir := fs_temp("coax-repo-tools-", tmp[..]);
+  src := fs_join(dir, "seed", p[..]);
+  ok := fs_mkdir(fs_join(src, "docs/deep", p2[..]));
+  init := [2] string.["init", "--quiet"];
+  ok = ok && seed(src, init[..]);
+  ok = ok && fs_write(fs_join(src, "README.md", p2[..]), "# Seed\n\nThe first line.\nNeedle here.\n");
+  ok = ok && fs_write(fs_join(src, "docs/a.md", p2[..]), "alpha\nbeta\ngamma\n");
+  ok = ok && fs_write(fs_join(src, "docs/deep/b.coax", p2[..]), "main :: () { needle := 1; }\n");
+  add := [2] string.["add", "-A"];
+  ok = ok && seed(src, add[..]);
+  one := [4] string.["commit", "--quiet", "-m", "one: the seed"];
+  ok = ok && seed(src, one[..]);
+  ok = ok && fs_write(fs_join(src, "docs/a.md", p2[..]), "alpha\nBETA\ngamma\ndelta\n");
+  ok = ok && seed(src, add[..]);
+  two := [4] string.["commit", "--quiet", "-m", "two: beta shouts"];
+  ok = ok && seed(src, two[..]);
+  bad += check(ok, "a seed repository with two commits");
+
+  st: [1] SelfState; s := st[..];
+  b := s[0].b[..];
+  m := RpMirror.{git = "git", dir = fs_join(dir, "mirror.git", p3[..])};
+  bad += check(rp_mirror_make(m, src) && rp_mirror_fetch(m), "the mirror is made and fetched");
+  a := rp_call(m, RpRequest.{op = RP_RESOLVE, at = "main"}, b[0].work[..], b[0].answer[..]);
+  head: [40] u8; for i: 0..<40 { head[i] = a.commit[i]; }
+  hc := cast(string) head[..];
+  a = rp_call(m, RpRequest.{op = RP_LOG, at = hc, path = "README.md"}, b[0].work[..], b[0].answer[..]);
+  first: [40] u8; for i: 0..<40 { first[i] = b[0].answer[i]; }
+  fc := cast(string) first[..];
+  bad += check(rp_commit_ok(hc) && rp_commit_ok(fc) && hc != fc, "the snapshot: main's commit, and the one before it");
+
+  // one step: an edit, eighteen commands and two views, against main's commit
+  l := s[0].l[..];
+  mc_init(l, s[0].sb[..], s[0].lb[..], "{}", "what is in docs/a.md, and who changed it", "{\"local_work\":0.9}", 0.9);
+  x := mc_request(l);
+  bad += check(mc_take(l, ACTION_ONE) == MC_TOOLS && mc_run_repo_tools(l, m, hc, b) == MC_AGAIN, "an action with an edit, commands and views runs and the loop goes on");
+  j := step_log(s);
+  bad += check(json_valid(j), "the step log is JSON");
+  bad += check(field(s, j, at(pb[..], 0, 0, "edit")) == "docs/a.md" && field(s, j, at(pb[..], 0, 0, "failed")) == MRT_NO_EDITS, "an edit is reported not applied, in a failed edit's shape");
+  bad += check(field(s, j, at(pb[..], 0, 1, "command")) == "ls docs" && res(s, j, 1) == "f  23  docs/a.md\nd  docs/deep/\n" && rex(j, 1) == 0, "ls: the directory's entries");
+  bad += check(res(s, j, 2) == "== docs/a.md  (4 lines, 23 bytes)\n     1\talpha\n     2\tBETA\n     3\tgamma\n     4\tdelta\n" && rex(j, 2) == 0, "cat: the file, numbered");
+  bad += check(has(res(s, j, 3), "     1\talpha\n     2\tBETA\n") && !has(res(s, j, 3), "gamma"), "head -n 2: the first two lines");
+  bad += check(has(res(s, j, 4), "     3\tgamma\n     4\tdelta\n") && !has(res(s, j, 4), "BETA") && !has(res(s, j, 4), "alpha"), "tail -n 2: the last two lines");
+  bad += check(has(res(s, j, 5), "     2\tBETA\n     3\tgamma\n") && !has(res(s, j, 5), "alpha") && !has(res(s, j, 5), "delta"), "sed -n 2,3p: a range");
+  bad += check(res(s, j, 6) == "4 docs/a.md\n" && rex(j, 6) == 0, "wc -l: N PATH, as wc says it");
+  bad += check(res(s, j, 7) == "README.md:4:Needle here.\ndocs/deep/b.coax:1:main :: () { needle := 1; }\n", "grep -rn PATTERN .: every match, as path:line:text");
+  bad += check(res(s, j, 8) == "docs/a.md\n", "grep -il: the matching paths only, ignoring case, under a path");
+  bad += check(res(s, j, 9) == "README.md\ndocs/a.md\n", "find GLOB: the paths that match");
+  bad += check(has(res(s, j, 10), "two: beta shouts") && !has(res(s, j, 10), "one: the seed") && has(res(s, j, 10), hc), "git log -n 1: the newest commit");
+  bad += check(has(res(s, j, 11), "two: beta shouts") && has(res(s, j, 11), "-beta\n+BETA\n"), "git show HEAD: the snapshot's commit, not the mirror's HEAD");
+  bad += check(has(res(s, j, 12), "alpha") && has(res(s, j, 12), "BETA") && !has(res(s, j, 12), "gamma") && has(res(s, j, 12), "Ada"), "git blame PATH -L 1,2: who changed those lines");
+  bad += check(res(s, j, 13) == MRT_ONE_THING && rex(j, 13) == 2, "a pipe refuses the whole command");
+  bad += check(has(res(s, j, 14), "git diff isn't available yet") && rex(j, 14) == 1, "git diff says it is a later phase");
+  bad += check(res(s, j, 15) == MRT_FORMS && rex(j, 15) == 2, "rm -rf is answered with the forms");
+  bad += check(has(res(s, j, 16), "inside the repository") && rex(j, 16) == 1, "cat ../secret: the library refuses the path");
+  bad += check(res(s, j, 17) == "== missing.md: no such file at this commit\n" && rex(j, 17) == 1, "cat of a missing file fails and says why");
+  bad += check(res(s, j, 18) == "(no line matches)\n" && rex(j, 18) == 0, "grep -e -e: a pattern that looks like an option is only a pattern");
+  bad += check(field(s, j, at(pb[..], 0, 19, "view")) == "docs/a.md" && has(field(s, j, at(pb[..], 0, 19, "content")), "     4\tdelta\n"), "a view is the file, read at the snapshot");
+  bad += check(field(s, j, at(pb[..], 0, 20, "missing")) == "not shown: no such file at this commit", "a missing view is reported missing");
+
+  // a long file: the command's output keeps a head and a tail; a view is cut at 64 KB and says where
+  n := 0; line := 0;
+  while n + 40 < s[0].big.count { n = rp_put(s[0].big[..], n, "a line of thirty-one characters\n"); line += 1; }
+  ok = fs_write(fs_join(src, "long.txt", p2[..]), cast(string) s[0].big[0..<n]) && seed(src, add[..]);
+  three := [4] string.["commit", "--quiet", "-m", "three: a long file"];
+  ok = ok && seed(src, three[..]) && rp_mirror_fetch(m);
+  a = rp_call(m, RpRequest.{op = RP_RESOLVE, at = "main"}, b[0].work[..], b[0].answer[..]);
+  newer: [40] u8; for i: 0..<40 { newer[i] = a.commit[i]; }
+  nc := cast(string) newer[..];
+  bad += check(ok && rp_commit_ok(nc) && nc != hc, "a third commit, fetched");
+  x = mc_request(l);
+  bad += check(mc_take(l, ACTION_TWO) == MC_TOOLS && mc_run_repo_tools(l, m, nc, b) == MC_AGAIN, "a second step at the new commit");
+  j = step_log(s);
+  o0 := field(s, j, at(pb[..], 1, 0, "output"));
+  bad += check(has(o0, " bytes left out ...]") && o0.count < 12000 && has(o0, "== long.txt  ("), "cat of a long file keeps the local host's head and tail");
+  wc: [64] u8; k := rp_put_int(wc[..], 0, line); k = rp_put(wc[..], k, " long.txt\n");
+  bad += check(field(s, j, at(pb[..], 1, 1, "output")) == cast(string) wc[0..<k], "wc -l of the long file counts every line");
+  tl: [64] u8; k = rp_put_int(tl[..], 0, line); k = rp_put(tl[..], k, "\ta line of thirty-one characters\n");
+  o2 := field(s, j, at(pb[..], 1, 2, "output"));
+  bad += check(has(o2, cast(string) tl[0..<k]) && o2.count < 200, "tail -n 1 of the long file is its last line");
+  v := field(s, j, at(pb[..], 1, 3, "content"));
+  bad += check(v.count > 0 && v.count <= MC_VIEW_BYTES && has(v, "[cut before line ") && has(v, ": read long.txt from line "), "a view of the long file is cut and says where to go on");
+
+  // the older snapshot reads as it was, whatever main is now
+  x = mc_request(l);
+  bad += check(mc_take(l, ACTION_OLD) == MC_TOOLS && mc_run_repo_tools(l, m, fc, b) == MC_AGAIN, "a step at the first commit");
+  j = step_log(s);
+  bad += check(has(field(s, j, at(pb[..], 2, 0, "output")), "     2\tbeta\n") && has(field(s, j, at(pb[..], 2, 1, "output")), "no such file at this commit"), "the first commit's file as it was, and no long file yet");
+
+  done := fs_remove(dir);
+  if bad == 0 { print("repo tools selftest: ok\n"); return 0; }
+  print("repo tools selftest: % failed\n", bad);
+  print("%\n", j);
+  return 1;
+}
