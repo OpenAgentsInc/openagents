@@ -155,8 +155,7 @@ dv_key_in :: (s: [] Dv, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == -15 {
     order: [DH_HITS] int; n := dv_order(s, order[..]);
     if n == 0 { return false; }
-    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
-    s[0].focus = ifx k >= n then order[0] else order[(k + 1) % n]; return true;   // nothing focused yet: the first control
+    s[0].focus = lg_tab(order[..], n, s[0].focus); return true;
   }
   return false;
 }

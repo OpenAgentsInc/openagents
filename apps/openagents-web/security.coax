@@ -535,8 +535,7 @@ sc_key_in :: (s: [] Sc, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == -15 {
     order: [SH_HITS] int; n := sc_order(s, order[..]);
     if n == 0 { return false; }
-    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
-    s[0].focus = order[(k + 1) % n]; return true;
+    s[0].focus = lg_tab(order[..], n, s[0].focus); return true;
   }
   return false;
 }
@@ -1128,6 +1127,14 @@ SC_T_CH :: "challenge AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\nrp_id openage
   #assert t[0].screen == SC_STEP && t[0].todo == DO_ADD_PK;
   // a notice of a copied passkey is named
   #assert sc_notice_said("passkey.clone") == "A passkey may have been copied" && sc_notice_said("link.passkey") == "A passkey was added" && sc_notice_said("x") == "A security notice";
+}
+#test "security: the first Tab with nothing focused lands on the first control and walks the whole order" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS)); sc_reply(s[..], 2, "200\n");
+  order: [SH_HITS] int; n := sc_order(s[..], order[..]);
+  #assert n > 1 && s[0].focus == -1 && order[0] == SH_STEP;
+  for i: 0..<n { #assert sc_key_in(s[..], -15, 0) && s[0].focus == order[i]; }
+  #assert sc_key_in(s[..], -15, 0) && s[0].focus == order[0];   // wraps back
 }
 #test "security: passkey rows and the name being typed fit the panel, on a phone and a desktop" #steps 900000000 {
   cb: [2048] u8;

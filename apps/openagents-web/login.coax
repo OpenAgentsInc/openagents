@@ -538,6 +538,13 @@ lg_press :: (s: [] Lg, h: int) {
   }
   if (sc == LG_ELSEWHERE || sc == LG_LINK_FAILED) && h == H_MAIN { lg_go(s, "/login"); }
 }
+// Next control in Tab order: the first when nothing (or nothing shown) is focused, else the next, wrapping.
+lg_tab :: (order: [] int, n: int, focus: int) -> int {
+  if n <= 0 { return -1; }
+  if focus < 0 { return order[0]; }
+  k := 0; while k < n && order[k] != focus { k += 1; }
+  return ifx k >= n then order[0] else order[(k + 1) % n];
+}
 lg_key_in :: (s: [] Lg, key: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if key == -3 && s[0].focus == H_FIELD {   // Backspace
@@ -551,8 +558,7 @@ lg_key_in :: (s: [] Lg, key: int) -> bool #export_c #effects(all) {
   if key == -15 {   // Tab: through what this screen shows
     order: [8] int; n := lg_order(s, order[..]);
     if n == 0 { return false; }
-    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
-    s[0].focus = order[(k + 1) % n]; return true;
+    s[0].focus = lg_tab(order[..], n, s[0].focus); return true;
   }
   if key == -1 && s[0].screen == LG_CODE && s[0].req == REQ_NONE { lg_press(s, H_OTHER); return true; }   // Escape
   return false;
@@ -1160,13 +1166,23 @@ lg_error_of :: (s: [] Lg) -> string { return cast(string) s[0].error[0..<s[0].er
 }
 #test "Tab moves through the screen's controls and Enter presses the focused one" {
   s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
-  #assert s[0].focus == H_FIELD;
+  #assert s[0].focus == H_FIELD;   // the email field starts focused on LG_EMAIL
   _ = lg_key_in(s[..], -15); #assert s[0].focus == H_MAIN;
   _ = lg_key_in(s[..], -15); #assert s[0].focus == H_PASSKEY;
   _ = lg_key_in(s[..], -15); #assert s[0].focus == H_KEY;
   _ = lg_key_in(s[..], -15); #assert s[0].focus == H_LIMITS;
+  _ = lg_key_in(s[..], -15); #assert s[0].focus == H_HOME;
+  _ = lg_key_in(s[..], -15); #assert s[0].focus == H_FIELD;   // and wraps back
+  s[0].focus = -1; _ = lg_key_in(s[..], -15); #assert s[0].focus == H_FIELD;   // nothing focused: first control
+  _ = lg_key_in(s[..], -15); _ = lg_key_in(s[..], -15); _ = lg_key_in(s[..], -15); _ = lg_key_in(s[..], -15);
+  #assert s[0].focus == H_LIMITS;
   _ = lg_key_in(s[..], -2); #assert lg_out(s[..]) == "/docs/limits";
   lg_type(s[..], "x"); #assert s[0].email_n == 0;   // typing lands only in a focused field
+  // screens that open with focus == -1 land on order[0] on the first Tab
+  t: [1] Lg; lg_new(t[..], LG_PAGE_LOGIN); lg_reply(t[..], 0, "200\nlogged_in 1\n");
+  #assert t[0].screen == LG_IN && t[0].focus == -1;
+  #assert lg_key_in(t[..], -15) && t[0].focus == H_MAIN;
+  #assert lg_key_in(t[..], -15) && t[0].focus == H_LIGHTNING;
 }
 #test "the page draws every screen within its vertex budget" #steps 900000000 {
   out: [LG_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;

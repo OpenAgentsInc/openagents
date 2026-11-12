@@ -251,8 +251,7 @@ lf_key_in :: (s: [] Lf, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == -15 {
     order: [LH_HITS] int; n := lf_order(s, order[..]);
     if n == 0 { return false; }
-    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
-    s[0].focus = order[(k + 1) % n]; return true;
+    s[0].focus = lg_tab(order[..], n, s[0].focus); return true;
   }
   return false;
 }
@@ -634,6 +633,16 @@ LF_T_DELETING :: "200\nfrozen delete\npurge_ms 1796592000000\nnow_ms 17940000000
   #assert lf_error_of(s[..]) == "That account has a key. Prove it with the key, not its email.";
   lf_press(s[..], LH_BACK);
   #assert s[0].screen == LF_MAIN && s[0].merge == 0;
+}
+#test "life: the first Tab with nothing focused lands on the first control on /settings/data and /settings/delete" {
+  for page: 0..<2 {
+    s: [1] Lf; lf_new(s[..], ifx page == 0 then "https://openagents.com/settings/data" else "https://openagents.com/settings/delete");
+    lf_reply(s[..], 1, LF_T_LIFE);
+    order: [LH_HITS] int; n := lf_order(s[..], order[..]);
+    #assert n > 1 && s[0].focus == -1 && order[0] == (ifx page == 0 then LH_FREEZE else LH_DELETE);
+    for i: 0..<n { #assert lf_key_in(s[..], -15, 0) && s[0].focus == order[i]; }
+    #assert lf_key_in(s[..], -15, 0) && s[0].focus == order[0];   // wraps back
+  }
 }
 #test "life: every shown control has a box inside the panel, on a phone and a desktop, and the page draws within its vertex budget" #steps 900000000 {
   out: [LF_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
