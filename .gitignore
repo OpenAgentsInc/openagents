@@ -85,3 +85,4 @@ aethyr/lab/.cache/
 
 # libsodium for the Ed25519 differential test (ed25519_libsodium.py); never committed or shipped.
 coax/tests/auth/.cache/
+build/pipeline/
