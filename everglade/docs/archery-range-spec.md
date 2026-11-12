@@ -188,7 +188,7 @@ in the range. The range's module is an Everglade zone with the range on it.
 | The horse and the red dragon, and the rider's keys | [`everglade/mounts.coax`](../mounts.coax) | Game |
 | The mounts standing in a zone: E, the saddle, the prompt | [`everglade/zone-mounts.coax`](../zone-mounts.coax) | Game |
 | The scene: the meadow, your Ranger, the mounts drawn | `everglade/scene/charactercreator.coax` | App directory (section 9) |
-| The Ranger's bar and the Longbow's rules | `everglade/zone-combat.coax`, `class-kit.coax`, `aethyr/rules/srd/` | App directory (section 9) |
+| The Ranger's bar and the Longbow's rules | `everglade/zone-combat.coax`, `class-kit.coax`, `rules/srd/` | App directory (section 9) |
 | Where things are | [`everglade/range/layout.coax`](../range/layout.coax) | The range |
 | Ring points and the tally | [`everglade/range/score.coax`](../range/score.coax) | The range |
 | The pieces' meshes and colliders | [`everglade/range/place.coax`](../range/place.coax) | The range |

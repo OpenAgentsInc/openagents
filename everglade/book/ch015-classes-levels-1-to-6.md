@@ -2,10 +2,10 @@
 
 > **Status: partly implemented.** The twelve class presets are the
 > constructors `rs_barbarian` to `rs_wizard` in
-> [`aethyr/rules/srd/engine.coax`](../../aethyr/rules/srd/engine.coax). Their
+> [`rules/srd/engine.coax`](../../rules/srd/engine.coax). Their
 > features through level 6 are listed in
-> [`aethyr/rules/srd/class-features.coax`](../../aethyr/rules/srd/class-features.coax)
-> and checked one class at a time in `aethyr/rules/srd/class-<class>-checks.coax`
+> [`rules/srd/class-features.coax`](../../rules/srd/class-features.coax)
+> and checked one class at a time in `rules/srd/class-<class>-checks.coax`
 > (#13044). Each class's bar in Everglade II is built by `xk_entry_at` in
 > [`everglade/shared/class-kit.coax`](../shared/class-kit.coax).
 > Other agents are extending these files now, so this chapter names functions
@@ -81,7 +81,7 @@ The class rules don't change. Two declared deviations in the world profile
 - **Unlimited presses** (`RS_DEV_FREE_PRESS`). In Everglade's world profile,
   each press refills slots, uses, Focus, Rage and the turn's Action budget
   first (`rs_press_prepare` in
-  [`aethyr/rules/srd/press-budget.coax`](../../aethyr/rules/srd/press-budget.coax)).
+  [`rules/srd/press-budget.coax`](../../rules/srd/press-budget.coax)).
   The bar's own cooldown paces how often you press. A press doesn't refresh
   your Reaction or movement, and a refused press rolls everything back.
 
@@ -113,15 +113,15 @@ the wire, so the room knows exactly which feature you pressed.
 
 ## The checks
 
-- `aethyr/rules/srd/class-features.coax`, `#test "the slice's feature table:
+- `rules/srd/class-features.coax`, `#test "the slice's feature table:
   each done class's features are on its preset from their level, not before"`.
   It builds each of the twelve presets at levels 1 to 6 and checks every row.
-- `aethyr/rules/srd/class-fighter-checks.coax`, `#test "Second Wind p.48: a
+- `rules/srd/class-fighter-checks.coax`, `#test "Second Wind p.48: a
   Bonus Action, 1d10 + Fighter level; two uses, three at 4; one back on a Short
   Rest, all on a Long Rest"`, `#test "Action Surge p.48: from level 2, one more
   action this turn, once until a rest"` and `#test "Extra Attack p.48: from
   level 5, two attacks with the Attack action"`.
-- `aethyr/rules/srd/timing-checks.coax`, `#test "only the declared action
+- `rules/srd/timing-checks.coax`, `#test "only the declared action
   profile recharges spent resources on the existing cooldown"`.
 - `everglade/shared/class-kit.coax`, `#test "class kits: a slot names one
   ability at every level; a level's bar holds only its own"`.
@@ -134,8 +134,8 @@ the wire, so the room knows exactly which feature you pressed.
 There are 127 class checks across the twelve `class-<class>-checks.coax` files.
 
 ```sh
-coax/bin/coax test --library aethyr/rules/srd/class-features.coax
-coax/bin/coax test --library aethyr/rules/srd/class-fighter-checks.coax
+coax/bin/coax test --library rules/srd/class-features.coax
+coax/bin/coax test --library rules/srd/class-fighter-checks.coax
 ```
 
 ## Mistakes

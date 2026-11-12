@@ -1,0 +1,103 @@
+// The cantrips the twelve class kits show at levels 1-6 (#13043; manifest:
+// everglade/client/class-kit-spells-checks.coax), each resolved through the
+// shared battle against its SRD 5.2.1 text with fixed dice (every die lands on
+// half its faces: d6 3, d8 4, d10 5, d20 10), so each number is read off the page.
+//   coax/bin/coax test --library rules/srd/kit-cantrips-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "kit-spell-cases.coax";
+
+
+#test "Fire Bolt p.132: a ranged spell attack, 1d10 Fire on a hit, nothing on a miss, 2d10 from level 5, 120 feet" {
+  for level: [2] int.[1,5] { for hit: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,level),SP_FIRE_BOLT,10,10);
+    b[0].c[1].ac = kc_ac(b[..],hit == 1);
+    #assert rs_cast(b[..],0,SP_FIRE_BOLT,0,0,0,1) && b[0].turn.action;
+    #assert 200 - b[0].c[1].hp == (ifx hit == 1 then 5 * (ifx level >= 5 then 2 else 1) else 0);
+  } }
+  far: [1] RsBattle; kc_case(far[..],rs_sorcerer("Sorcerer",0,1),SP_FIRE_BOLT,26,10);   // 125 feet
+  #assert !rs_cast(far[..],0,SP_FIRE_BOLT,0,0,0,1) && !far[0].turn.action && far[0].c[1].hp == 200;
+}
+
+#test "Chill Touch p.115: a melee spell attack within reach, 1d10 Necrotic, and no healing until the end of the caster's next turn" {
+  for hit: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,1),SP_CHILL_TOUCH,2,10);
+    b[0].c[1].ac = kc_ac(b[..],hit == 1);
+    #assert rs_cast(b[..],0,SP_CHILL_TOUCH,0,0,0,1);
+    #assert 200 - b[0].c[1].hp == (ifx hit == 1 then 5 else 0) && rs_effect(b[0].c[1],EF_NOHEAL) == (hit == 1);
+    h: [1] RsCreature; h[0] = b[0].c[1];
+    #assert rs_heal(h[..],10) == (ifx hit == 1 then 0 else 10);
+    if hit == 1 {
+      // the chill lasts past the caster's next turn start, and no longer than its end
+      for e: b[0].c[1].eff { if e.kind == EF_NOHEAL { #assert e.until > b[0].c[0].turn_at && e.until == rs_after_next_turn(b[..],0); } }
+    }
+  }
+  b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,1),SP_CHILL_TOUCH,3,10);   // 10 feet: out of reach
+  #assert !rs_cast(b[..],0,SP_CHILL_TOUCH,0,0,0,1) && !b[0].turn.action;
+}
+
+#test "Eldritch Blast p.127: 1d10 Force a beam, one beam at level 1 and two from level 5, each its own attack roll" {
+  for level: [2] int.[1,5] {
+    b: [1] RsBattle; kc_case(b[..],rs_warlock("Warlock",0,level,SP_ELDRITCH_BLAST),SP_ELDRITCH_BLAST,10,10);
+    b[0].c[0].agonizing = -1; b[0].c[1].ac = kc_ac(b[..],true);
+    rolls := b[0].dice[0].rolled;
+    #assert rs_cast(b[..],0,SP_ELDRITCH_BLAST,0,0,0,1);
+    beams := ifx level >= 5 then 2 else 1;
+    #assert 200 - b[0].c[1].hp == 5 * beams && b[0].dice[0].rolled - rolls == 2 * beams;   // a d20 and a d10 a beam
+  }
+  // Two beams split between two targets, as chosen.
+  b: [1] RsBattle; b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..],rs_warlock("Warlock",0,5,SP_ELDRITCH_BLAST),1,1); t := kc_target(b[..],10,1,10); u := kc_target(b[..],10,3,10);
+  kc_learn(b[..],a,SP_ELDRITCH_BLAST); b[0].c[a].agonizing = -1; rs_start_turn(b[..],a);
+  b[0].c[t].ac = 1; b[0].c[u].ac = 1; picks := [2] int.[t,u];
+  #assert rs_cast_creatures(b[..],a,SP_ELDRITCH_BLAST,0,picks[..],false) && b[0].c[t].hp == 195 && b[0].c[u].hp == 195;
+}
+
+#test "Starry Wisp p.165: a ranged spell attack, 1d8 Radiant, and the target glows and can't be Invisible until the end of the caster's next turn" {
+  for hit: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,1),SP_STARRY_WISP,10,10);
+    b[0].c[1].ac = kc_ac(b[..],hit == 1); b[0].c[1].cond |= RS_INVISIBLE;
+    #assert rs_cast(b[..],0,SP_STARRY_WISP,0,0,0,1);
+    #assert 200 - b[0].c[1].hp == (ifx hit == 1 then 4 else 0);
+    #assert (b[0].c[1].wisp_until > b[0].clock) == (hit == 1) && rs_has(b[0].c[1],RS_INVISIBLE) == (hit == 0);
+    if hit == 1 { #assert b[0].c[1].wisp_until == b[0].c[0].turn_at + rs_beat(b[..]); }
+  }
+  b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,5),SP_STARRY_WISP,10,10); b[0].c[1].ac = 1;
+  #assert rs_cast(b[..],0,SP_STARRY_WISP,0,0,0,1) && b[0].c[1].hp == 192;   // 2d8 at level 5
+}
+
+#test "Produce Flame p.156: a Bonus Action flame in hand, then a Magic action hurl, a ranged attack for 1d8 Fire within 60 feet" {
+  b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,1),SP_PRODUCE_FLAME,10,10); b[0].c[1].ac = kc_ac(b[..],true);
+  // no flame yet: nothing to hurl
+  #assert !rs_cast(b[..],0,SP_FLAME_HURL,0,0,0,1) && !b[0].turn.action;
+  #assert rs_cast(b[..],0,SP_PRODUCE_FLAME,0,0,0,0) && b[0].turn.bonus && !b[0].turn.action;
+  #assert b[0].c[0].flame_until == b[0].clock + 600;   // 10 minutes
+  #assert rs_cast(b[..],0,SP_FLAME_HURL,0,0,0,1) && b[0].turn.action && b[0].c[1].hp == 196;
+  // a level 5 Druid hurls 2d8; 65 feet is out of range
+  c: [1] RsBattle; kc_case(c[..],rs_druid("Druid",0,5),SP_PRODUCE_FLAME,10,10); c[0].c[1].ac = 1;
+  #assert rs_cast(c[..],0,SP_PRODUCE_FLAME,0,0,0,0) && rs_cast(c[..],0,SP_FLAME_HURL,0,0,0,1) && c[0].c[1].hp == 192;
+  d: [1] RsBattle; kc_case(d[..],rs_druid("Druid",0,1),SP_PRODUCE_FLAME,14,10);
+  #assert rs_cast(d[..],0,SP_PRODUCE_FLAME,0,0,0,0) && !rs_cast(d[..],0,SP_FLAME_HURL,0,0,0,1) && d[0].c[1].hp == 200;
+}
+
+#test "Vicious Mockery p.171: a Wisdom save or 1d6 Psychic and Disadvantage on its next attack roll; nothing on a success" {
+  for level: [2] int.[1,5] { for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_bard("Bard",0,level),SP_VICIOUS_MOCKERY,10,ifx strong == 1 then 30 else 1);
+    #assert rs_cast(b[..],0,SP_VICIOUS_MOCKERY,0,0,0,1);
+    dice := ifx level >= 5 then 2 else 1;
+    #assert 200 - b[0].c[1].hp == (ifx strong == 1 then 0 else 3 * dice) && rs_effect(b[0].c[1],EF_WEAK) == (strong == 0);
+    if strong == 0 { for e: b[0].c[1].eff { if e.kind == EF_WEAK { #assert e.until == rs_own_turn_end(b[..],1); } } }
+  } }
+}
+
+#test "Sacred Flame p.159: a Dexterity save or 1d8 Radiant, nothing on a success, 2d8 from level 5" {
+  for level: [2] int.[1,5] { for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_cleric("Cleric",0,level),SP_SACRED_FLAME,10,ifx strong == 1 then 30 else 1);
+    #assert rs_cast(b[..],0,SP_SACRED_FLAME,0,0,0,1);
+    #assert 200 - b[0].c[1].hp == (ifx strong == 1 then 0 else 4 * (ifx level >= 5 then 2 else 1));
+  } }
+  // The battle grants no cover bonus to saves, so "no benefit from Half or Three-Quarters Cover" holds.
+}

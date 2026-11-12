@@ -1,4 +1,4 @@
-#load "../../aethyr/rules/srd/battle.coax";
+#load "../../rules/srd/battle.coax";
 
 #load "../../everglade/shared/fivebar.coax";
 #test "a saved-seat Shield retires at the actual next start despite an already advanced schedule" {

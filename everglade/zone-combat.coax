@@ -2,7 +2,7 @@
 // against the Bestiary monsters that hunt you (verse/experimental-hostiles.coax), and CLASSES, a
 // column under the ANIMATIONS browser that sets your class and reloads the bar.
 //
-// Every roll is the SRD 5e engine's (aethyr/rules/srd/), through the hotbar layer Everglade 5E
+// Every roll is the SRD 5e engine's (rules/srd/), through the hotbar layer Everglade 5E
 // plays on (fivebar.coax: fb_cl_hero, fb_cl_ability, fb_seat_use). You are creature 0, the engine's
 // selected-level hero of your class; the village and dungeon bodies map to creatures 1 through
 // XC_FOES by stable index. The page
@@ -32,7 +32,7 @@
 // A monster at 0 Hit Points dies: it stops, a puff of dust rises, and it sinks into the ground over
 // XC_SINK seconds (charactercreator.coax scene).
 //
-// The monsters are SRD 5.2.1 stat blocks (aethyr/rules/srd/monsters.coax, #13034), under the
+// The monsters are SRD 5.2.1 stat blocks (rules/srd/monsters.coax, #13034), under the
 // Bestiary's names: the imp is an Imp, the gremlin (the Puglin) a Goblin Warrior, the Puglin Brute
 // an Ogre, the Imp Fiend a Quasit and the Puglin Warlord a Hill Giant. A body's contact is its
 // block's attack Action (stat-multiattack.coax): the Hill Giant's two attacks, the Goblin's Shortbow,
@@ -46,7 +46,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "shared/fivebar.coax";
 #load "../aethyr/walk-substep-policy.coax" as xtravel;
-#load "../aethyr/rules/srd/press-budget.coax";
+#load "../rules/srd/press-budget.coax";
 #load "shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "client/class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
 #load "client/class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
@@ -1240,7 +1240,7 @@ xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
   if facing_cube { ty = XC_MID + 3; }
   else if foe >= 0 { tx = b[0].c[1 + foe].x; ty = b[0].c[1 + foe].y; }
   else if aim.kind == XC_AIM_AREA { tx = XC_MID + cast(int) floor(aim.fx * aim.reach / f32(XC_SQ) + 0.5); ty = XC_MID + cast(int) floor(aim.fz * aim.reach / f32(XC_SQ) + 0.5); }
-  // the walls as cover facts for this press only (aethyr/rules/srd/cover.coax): a monster on the grid
+  // the walls as cover facts for this press only (rules/srd/cover.coax): a monster on the grid
   // with no line to you is behind Total Cover; with none seeing you, you are behind it from all (Hide)
   rs_cover_clear(b); unseen := true;
   for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && hostile.hostile_sees(h[0].enemies[i], px, pz) { unseen = false; } }
@@ -1281,7 +1281,7 @@ xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
     if ok && r.passed && foe >= 0 { if rs_max(a.opt, 0) == 1 { x[0].studied[foe] = true; } else { x[0].calm[foe] = true; } }
   } else if a.kind == FB_BREATH && x[0].dr.on { ok = xd_breathe(s); }
   else {
-    up := ifx x[0].releasing then rs_release_stand(b, 0) else RsReleased.{};   // released before you fell, it lands (aethyr/rules/srd/released.coax)
+    up := ifx x[0].releasing then rs_release_stand(b, 0) else RsReleased.{};   // released before you fell, it lands (rules/srd/released.coax)
     ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, ifx corpse>=0 then 1+corpse else 0);
     rs_release_fall(b, 0, up);
   }

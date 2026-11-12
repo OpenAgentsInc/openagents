@@ -1,6 +1,6 @@
 // Bow combat (docs/verse/bow-combat.md): a draw you hold and release, and arrows that fly as
 // real projectiles. Nothing here rolls: a realm's ruleset decides whether an arrow that reaches a
-// creature hits (Experimental: aethyr/rules/srd/ rs_shoot). This module owns
+// creature hits (Experimental: rules/srd/ rs_shoot). This module owns
 //
 //   the draw (BowDraw): held, it builds strength along one curve (bow_strength) and brings the aim
 //   in, smoothly both ways (bow_step, bow_aim): the crosshair, the over-the-shoulder camera, the

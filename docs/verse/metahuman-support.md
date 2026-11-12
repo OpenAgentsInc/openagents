@@ -1018,7 +1018,7 @@ the pre-Nuke robe limit, and the costume phase fixes it.
 ### Animation states and the battle's events
 
 The SRD engine already reports every change as a typed event
-(`aethyr/rules/srd/engine.coax`). The animation graph reads those events.
+(`rules/srd/engine.coax`). The animation graph reads those events.
 It never reads text, and it never changes battle state.
 
 | State or beat | Trigger | Clip or procedure |

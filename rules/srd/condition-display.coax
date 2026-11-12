@@ -1,0 +1,104 @@
+// How a game shows the SRD 5.2.1 conditions (#13082): their words, their icons over a creature, the
+// spell effects a condition word carries past the fifteen conditions, and the clock of an effect a
+// page counts down. The conditions themselves are engine.coax's (RS_*, RS_CONDITION); this file
+// only shows them, so every zone shows them the same way and wires this in.
+//
+// A condition word: bit (1 << i) is RS_CONDITION[i] (Blinded 1 ... Unconscious 16384). Past them, a
+// world's room may set the effect bits below (CD_EFFECT_BIT); a creature's word is the two ORed.
+//   coax/bin/coax test --library rules/srd/condition-display.coax
+#load "battle.coax";   // engine.coax's RS_* conditions, with what they need
+
+// ---- words
+
+// The spell effects a condition word carries past the conditions, as the rooms send them (Command's
+// Halt, Ray of Frost's slow, Earthbind, Bane, Ray of Enfeeblement, Hex, Bless, Shield of Faith).
+CD_HALTED :: 131072; CD_SLOWED :: 65536; CD_BOUND :: 8388608; CD_BANED :: 262144;
+CD_ENFEEBLED :: 2097152; CD_HEXED :: 4194304; CD_BLESSED :: 524288; CD_FAITH :: 1048576;
+CD_EFFECTS :: 8;
+CD_EFFECT_BIT :: [8] int.[CD_HALTED, CD_SLOWED, CD_BOUND, CD_BANED, CD_ENFEEBLED, CD_HEXED, CD_BLESSED, CD_FAITH];
+CD_EFFECT :: [8] string.["Halted", "Slowed", "Earthbound", "Baned", "Enfeebled", "Hexed", "Blessed", "Shield of Faith"];
+CD_SEP :: " · ";
+CD_TEXT :: 320;   // bytes: every condition and effect at once, in capitals with separators, fits
+
+// word into out at n, in capitals when caps; the new end (stops at out's end).
+cd_put :: (out: [] u8, at: int, word: string, caps: bool) -> int {
+  n := at;
+  for i: 0..<word.count {
+    if n >= out.count { return n; }
+    c := word[i];
+    if caps && c >= 'a' && c <= 'z' { c = c - 32; }
+    out[n] = c; n += 1;
+  }
+  return n;
+}
+// The words for what holds a creature, appended to out at n: each condition in cond, in the SRD's
+// order, then each effect, each after CD_SEP; a bit in skip is left out (one the caller says
+// another way, as Unconscious at 0 Hit Points). Capitals when caps. The new end.
+cd_held_text :: (out: [] u8, at: int, cond: int, skip: int, caps: bool) -> int {
+  n := at;
+  for i: 0..<RS_CONDITIONS {
+    b := 1 << i;
+    if (cond & b) == 0 || (skip & b) != 0 { continue; }
+    n = cd_put(out, n, CD_SEP, false); n = cd_put(out, n, RS_CONDITION[i], caps);
+  }
+  for i: 0..<CD_EFFECTS {
+    b := CD_EFFECT_BIT[i];
+    if (cond & b) == 0 || (skip & b) != 0 { continue; }
+    n = cd_put(out, n, CD_SEP, false); n = cd_put(out, n, CD_EFFECT[i], caps);
+  }
+  return n;
+}
+
+// ---- icons over a creature
+
+// The marks over a creature (aethyr/fx/abilities.coax fxp_status: these are its FXS_* bits) that its
+// conditions show: Poisoned's bubbles, Stunned's and Paralyzed's stars, Frightened's and Charmed's.
+CD_ICON_POISONED :: 1; CD_ICON_STUNNED :: 2; CD_ICON_FRIGHTENED :: 4; CD_ICON_CHARMED :: 8;
+cd_icons :: (cond: int) -> int {
+  f := 0;
+  if (cond & RS_POISONED) != 0 { f = f | CD_ICON_POISONED; }
+  if (cond & (RS_STUNNED | RS_PARALYZED)) != 0 { f = f | CD_ICON_STUNNED; }
+  if (cond & RS_FRIGHTENED) != 0 { f = f | CD_ICON_FRIGHTENED; }
+  if (cond & RS_CHARMED) != 0 { f = f | CD_ICON_CHARMED; }
+  return f;
+}
+
+// ---- an effect's clock
+
+// What a page counts an effect down from: its seconds left as last heard, the tick it started and
+// how many ticks it lasts. cd_clock_note hears its seconds left at tick (hz ticks a second): a new
+// one, or one laid again (more left than last heard), starts at tick and lasts what is left.
+CdClock :: struct { left: f32; t0: int; dur: int; }
+cd_clock_note :: (c: [] CdClock, left: f32, tick: int, hz: int) {
+  if c.count < 1 { return; }
+  was := c[0].left;
+  if left > 0 && (was <= 0 || left > was + 0.1) { c[0].t0 = tick; c[0].dur = cast(int) floor(left * f32(hz) + 0.5); }
+  c[0].left = ifx left > 0 then left else 0;
+}
+
+#test "the SRD's condition names, in bit order, with the effects past them" {
+  #assert RS_CONDITIONS == 15 && RS_CONDITION[3] == "Exhaustion" && (1 << 3) == RS_EXHAUSTION && (1 << 14) == RS_UNCONSCIOUS;
+  every := 0;
+  for i: 0..<CD_EFFECTS { #assert (CD_EFFECT_BIT[i] & ((1 << RS_CONDITIONS) - 1)) == 0 && (every & CD_EFFECT_BIT[i]) == 0; every = every | CD_EFFECT_BIT[i]; }
+  b: [CD_TEXT] u8;
+  n := cd_held_text(b[..], 0, RS_POISONED | RS_PRONE | CD_BLESSED, 0, true);
+  #assert cast(string) b[0..<n] == " · POISONED · PRONE · BLESSED";
+  n = cd_held_text(b[..], 0, RS_UNCONSCIOUS | RS_EXHAUSTION, RS_UNCONSCIOUS, false);
+  #assert cast(string) b[0..<n] == " · Exhaustion";
+  n = cd_held_text(b[..], 0, ((1 << RS_CONDITIONS) - 1) | every, 0, true);
+  #assert n < CD_TEXT && cast(string) b[n - 19..<n] == " · SHIELD OF FAITH";
+  #assert cd_held_text(b[..], 0, 0, 0, true) == 0;
+  small: [4] u8; #assert cd_held_text(small[..], 0, RS_BLINDED, 0, true) == 4;
+}
+#test "a condition's icons" {
+  #assert cd_icons(RS_POISONED) == CD_ICON_POISONED && cd_icons(RS_PARALYZED) == CD_ICON_STUNNED && cd_icons(RS_STUNNED | RS_CHARMED) == CD_ICON_STUNNED | CD_ICON_CHARMED;
+  #assert cd_icons(RS_FRIGHTENED) == CD_ICON_FRIGHTENED && cd_icons(RS_PRONE | RS_BLINDED) == 0 && cd_icons(0) == 0;
+}
+#test "an effect's clock starts when it lands and again when it is laid again" {
+  c: [1] CdClock;
+  cd_clock_note(c[..], 3.0, 10, 20); #assert c[0].t0 == 10 && c[0].dur == 60 && c[0].left == 3.0;
+  cd_clock_note(c[..], 2.95, 11, 20); #assert c[0].t0 == 10 && c[0].dur == 60;
+  cd_clock_note(c[..], 4.0, 12, 20); #assert c[0].t0 == 12 && c[0].dur == 80;
+  cd_clock_note(c[..], 0, 13, 20); #assert c[0].left == 0 && c[0].t0 == 12;
+  cd_clock_note(c[..], 1.0, 14, 20); #assert c[0].t0 == 14 && c[0].dur == 20;
+}

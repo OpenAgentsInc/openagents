@@ -1,0 +1,68 @@
+// The Wizard's Memorize Spell (SRD 5.2.1 p. 79): from level 5, whenever it finishes a Short Rest,
+// it can swap one prepared level 1+ Wizard spell for another level 1+ spell in its spellbook; the
+// swap goes with finishing the rest, so it happens once a rest.
+//   coax/bin/coax test --library rules/srd/class-wizard-checks.coax
+#authority;
+
+rs_wizard_key_bit :: (c: RsCreature, words: [6] u64, key: int) -> bool #effects(all) {
+  return key >= 0 && key < RS_SPELL_KEYS.count && (words[key / 64] & (cast(u64) 1 << (key % 64))) != 0;
+}
+// Can c, finishing a Short Rest, trade prepared `drop` for spellbook `add` (spell keys)?
+rs_memorize_admits :: (c: RsCreature, drop: int, add: int) -> bool #effects(all) {
+  if c.klass != RS_WIZARD || !c.memorize || drop == add { return false; }
+  if !rs_wizard_key_bit(c, c.spells.selected, drop) || !rs_wizard_key_bit(c, c.spells.known, drop) || RS_SPELL_KEYS[drop].level == 0 { return false; }
+  return rs_wizard_key_bit(c, c.spells.known, add) && !rs_wizard_key_bit(c, c.spells.selected, add) && RS_SPELL_KEYS[add].level > 0 && rs_key_eligible(c, add);
+}
+// i finishes its Short Rest and, with Memorize Spell, prepares `add` in place of `drop`. Refused,
+// with the rest unfinished, when the swap isn't admitted.
+rs_finish_short_rest_memorizing :: (b: [] RsBattle, i: int, drop: int, add: int) -> bool #effects(all) {
+  if i < 0 || i >= b[0].c.count || !rs_memorize_admits(b[0].c[i], drop, add) { return false; }
+  if !rs_short_rest_finish(b, i) { return false; }
+  b[0].c[i].spells.selected[drop / 64] -= cast(u64) 1 << (drop % 64);   // a set bit (admitted)
+  b[0].c[i].spells.selected[add / 64] |= cast(u64) 1 << (add % 64);
+  rs_say_ft(b, RS_EV_FEAT, i, i, add, RS_FT_MEMORIZE, " memorizes a spell from its spellbook");
+  return true;
+}
+#test "Memorize Spell swaps one prepared level 1+ spell for an unprepared one in the book, as a level 5 Wizard finishes a Short Rest" {
+  w := rs_wizard("W", 0, 5);
+  drop := RS_EXEC_SOURCE[SP_FALSE_LIFE]; add := RS_EXEC_SOURCE[SP_MAGIC_MISSILE];   // keys 114 and 198
+  cantrip := RS_EXEC_SOURCE[SP_FIRE_BOLT]; unknown := RS_EXEC_SOURCE[SP_HEALING_WORD]; splash := RS_EXEC_SOURCE[SP_ACID_SPLASH];
+  #assert drop == 114 && add == 198 && rs_wizard_key_bit(w, w.spells.selected, drop) && rs_wizard_key_bit(w, w.spells.known, add) && !rs_wizard_key_bit(w, w.spells.selected, add);
+  #assert rs_wizard_key_bit(w, w.spells.selected, cantrip) && !rs_wizard_key_bit(w, w.spells.selected, splash);
+  for mode: 0..<12 {
+    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1);
+    b[0].clock = 7; b[0].rest_clock.ticks = 7000000;
+    if mode != 9 { #assert rs_short_rest_begin(b[..], 0); }
+    b[0].clock = 3607; b[0].rest_clock.ticks = 3607000000;
+    d := drop; a := add;
+    if mode == 1 { b[0].c[0].memorize = false; } else if mode == 2 { b[0].c[0].klass = RS_SORCERER; } else if mode == 3 { a = d; }
+    else if mode == 4 { d = cantrip; } else if mode == 5 { a = cantrip; } else if mode == 6 { a = unknown; } else if mode == 7 { a = RS_EXEC_SOURCE[SP_CHILL_TOUCH]; d = add; }
+    else if mode == 8 { d = -1; } else if mode == 10 { b[0].c[0].spells.known[1] -= cast(u64) 1 << 50; }   // prepared, yet out of the book
+    else if mode == 11 { b[0].c[0].spells.known[splash / 64] |= cast(u64) 1 << (splash % 64); a = splash; }   // a cantrip in the book
+    before := b[0].c[0].spells.selected;
+    ok := mode == 0;
+    #assert rs_finish_short_rest_memorizing(b[..], 0, d, a) == ok && (b[0].c[0].rest.phase == 2) == ok;
+    after := b[0].c[0].spells.selected;
+    if ok {
+      #assert after[1] == before[1] - (cast(u64) 1 << 50) && after[3] == before[3] + (cast(u64) 1 << 6) && after[0] == before[0] && after[2] == before[2] && after[4] == before[4] && after[5] == before[5];
+      e := rs_recent(b[0].book[0], 0); #assert e.feat == RS_FT_MEMORIZE && e.kind == RS_EV_FEAT && e.amount == add && e.by == 0;
+    } else { for k: 0..<6 { #assert after[k] == before[k]; } }
+  }
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1); b[0].c[1] = b[0].c[0];
+  #assert !rs_finish_short_rest_memorizing(b[..], -1, drop, add) && !rs_finish_short_rest_memorizing(b[..], 1, drop, add);
+  #assert !rs_memorize_admits(w, drop, RS_SPELL_KEYS.count);
+  // Mage Armor (key 194, word 3) for Flaming Sphere (key 128, word 2), put in the book
+  m: [1] RsBattle; m[0].w = 12; m[0].h = 6; _ = rs_add(m[..], rs_wizard("Wiz", 0, 5), 1, 1);
+  m[0].clock = 7; m[0].rest_clock.ticks = 7000000; #assert rs_short_rest_begin(m[..], 0);
+  m[0].clock = 3607; m[0].rest_clock.ticks = 3607000000;
+  armor := 194; m[0].c[0].spells.known[2] |= 1;
+  #assert rs_wizard_key_bit(m[0].c[0], m[0].c[0].spells.selected, armor) && !rs_wizard_key_bit(m[0].c[0], m[0].c[0].spells.selected, 128);
+  mb := m[0].c[0].spells.selected;
+  #assert rs_finish_short_rest_memorizing(m[..], 0, armor, 128);
+  ma := m[0].c[0].spells.selected;
+  #assert ma[3] == mb[3] - (cast(u64) 1 << 2) && ma[2] == mb[2] + 1 && ma[0] == mb[0] && ma[1] == mb[1] && ma[4] == mb[4] && ma[5] == mb[5];
+  #assert !rs_finish_short_rest_memorizing(m[..], m[0].c.count, drop, add);
+  // the bit reader: keys 0, 64 and past the last
+  v := [6] u64.[1, 1, 2, 0, 0, cast(u64) 1 << (RS_SPELL_KEYS.count % 64)];
+  #assert rs_wizard_key_bit(w, v, 0) && rs_wizard_key_bit(w, v, 64) && !rs_wizard_key_bit(w, v, 1) && !rs_wizard_key_bit(w, v, 65) && rs_wizard_key_bit(w, v, 129) && !rs_wizard_key_bit(w, v, 128) && !rs_wizard_key_bit(w, v, -1) && !rs_wizard_key_bit(w, v, RS_SPELL_KEYS.count);
+}

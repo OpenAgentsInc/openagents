@@ -2,13 +2,13 @@
 
 Implemented for #13045, 2026-11-08. This is the engine's current typed
 timing boundary, not the complete world-profile format proposed in README.md.
-The timing policy lives in `aethyr/rules/srd/timing-profile.coax`. No public
+The timing policy lives in `rules/srd/timing-profile.coax`. No public
 wire format is introduced.
 
 ## One declaration per world
 
 A world selects its whole rules profile with one `rs_set_world` call before
-play (`aethyr/rules/srd/world-profile.coax`). The profile carries the timing,
+play (`rules/srd/world-profile.coax`). The profile carries the timing,
 area-origin, press-budget and walking choices below; it applies all four or
 none, the clock seals it, and `rs_reset` restores strict. Shared rules read the
 battle's applied fields. No world passes a literal profile any more.
@@ -137,7 +137,7 @@ See [physical locomotion evidence](../verification/srd-physical-scale-2026-11-08
 
 ## Area origin profile
 
-`aethyr/rules/srd/area-origin.coax` is a second declared profile with the same
+`rules/srd/area-origin.coax` is a second declared profile with the same
 contract (default strict, chosen before the clock is sealed, reset restores
 strict). `RS_STRICT_AREAS` follows the SRD: a Cube or Line originating from
 the caster leaves it out; an area at a point includes it. `RS_SPARE_CASTER_AREAS`

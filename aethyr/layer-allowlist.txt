@@ -2,7 +2,7 @@
 # coax/web/tool.sh layer-check reads this file. It only shrinks: take a line out when its
 # load goes. A new line fails unless it ends with a reason and an issue number
 # ("# why (#1234)"), and a line that excuses nothing now fails. Lines:
-#   aethyr-up FROM -> TO      an engine file loads from verse/, apps/, everglade/ or coax/web/
+#   aethyr-up FROM -> TO      an engine or rules file loads from verse/, apps/, everglade/ or coax/web/
 #   everglade-up FROM -> TO   a game file loads from apps/
 #   tests FROM -> TO          an engine, game, API or room file that is not support code loads a tests/ file
 #   context FROM -> TO        a file in one bounded context loads another not in its contexts.txt "may load" list
@@ -39,8 +39,8 @@ aethyr-up aethyr/render/carriers/watchtower.coax -> apps/openagents-web/watchtow
 aethyr-up aethyr/render/carriers/waterlab.coax -> apps/openagents-web/waterlab.coax
 aethyr-up aethyr/render/character.coax -> verse/valley/echo-materials.coax
 aethyr-up aethyr/render/character.coax -> verse/valley/slay-lights.coax
-aethyr-up aethyr/rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax
-aethyr-up aethyr/rules/srd/hostile-permission-probes.coax -> verse/experimental-hostiles.coax
+aethyr-up rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
+aethyr-up rules/srd/hostile-permission-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
 aethyr-up aethyr/state/fixture.coax -> apps/openagents-web/save.coax
 aethyr-up aethyr/ui/draw.coax -> verse/hud/frame.coax
 aethyr-up aethyr/world/day.coax -> verse/style-preset.coax
@@ -186,8 +186,8 @@ context aethyr/anim/document.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context aethyr/anim/json.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context aethyr/audio/host-convolution.coax -> psionic/lib/spectral.coax  # seeded (#13317)
 context aethyr/decision-trace.coax -> psionic/lib/game/decision.coax  # seeded (#13317)
-context aethyr/fx/battle.coax -> aethyr/rules/srd/battle.coax  # seeded (#13317)
-context aethyr/fx/spell-light.coax -> aethyr/rules/srd/battle.coax  # seeded (#13317)
+context aethyr/fx/battle.coax -> rules/srd/battle.coax  # seeded (#13317)
+context aethyr/fx/spell-light.coax -> rules/srd/battle.coax  # seeded (#13317)
 context aethyr/host/http-target.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context aethyr/host/lifecycle.coax -> aethyr/session/lifecycle.coax  # seeded (#13317)
 context aethyr/host/pack-stream.coax -> aethyr/forge/pack.coax  # seeded (#13317)
@@ -232,6 +232,6 @@ context coax/web/project/landing-nostr.coax -> psionic/lib/pylon/beacon.coax  # 
 context coax/web/room/room-write.coax -> coax/lib/nostr/hex.coax  # seeded (#13317)
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/event_sign.coax  # seeded (#13317)
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/nip44-key.coax  # seeded (#13317)
-context everglade/client/class-feel.coax -> aethyr/rules/srd/condition-bearing.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
-context everglade/client/client.coax -> aethyr/rules/srd/condition-display.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
+context everglade/client/class-feel.coax -> rules/srd/condition-bearing.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
+context everglade/client/client.coax -> rules/srd/condition-display.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
 context coax/lib/media/media.coax -> aethyr/ui/font.coax  # the stroke font moved from apps/openagents-web/ to the engine's UI, beside draw.coax; the load is as old (#13268)

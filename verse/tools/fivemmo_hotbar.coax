@@ -15,7 +15,7 @@
 //   apps/openagents-web/realms/5e-mmo/hotbar/NAME-card-Sx.jpg  its card at S device px a CSS px
 //   apps/openagents-web/fivemmo-hotbar.coax                    their names and sizes, for the page
 //
-// A spell's card is its SRD 5.2.1 text (aethyr/rules/srd/spells.coax), cut to its first
+// A spell's card is its SRD 5.2.1 text (rules/srd/spells.coax), cut to its first
 // sentences; a feature's is the SRD 5.2.1 feature's own sentence. The icons' credits are in
 // assets/verse/icons/game-icons/CREDITS.md.
 //
@@ -32,7 +32,7 @@
 
 FM_OUT :: "apps/openagents-web/realms/5e-mmo/hotbar";
 FM_TABLE :: "apps/openagents-web/fivemmo-hotbar.coax";
-FM_SRD :: "aethyr/rules/srd/spells.coax";
+FM_SRD :: "rules/srd/spells.coax";
 // A spent ability comes back this long after (fivemmo-battle.coax ACTION_RECHARGE).
 FM_BACK :: "Back 9 s after it is spent";
 

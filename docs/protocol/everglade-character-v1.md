@@ -33,7 +33,7 @@ A JSON object with exactly these 11 keys, written in this order:
 
 The level is never stored. It is `srd_level_from(xp, floor, 6)`
 (`char_level`), from the rules' one table in
-`aethyr/rules/srd/advancement.coax`, for every level Everglade II has (1 to 6).
+`rules/srd/advancement.coax`, for every level Everglade II has (1 to 6).
 The class kit's own abilities follow from class and level and are not stored.
 
 A reader refuses a body that breaks any rule: a missing or extra key, a

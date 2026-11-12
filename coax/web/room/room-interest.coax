@@ -41,7 +41,7 @@ IM_ROOM :: 1;                   // flag: room-wide, picked at any distance
 IM_HIDDEN :: 2;                 // flag: hidden from others until revealed
 IM_FULL :: 1; IM_HEALTH :: 2;   // the channels: every field, or HP and MAX only
 IM_PRIO_OWN :: 4.0; IM_PRIO_ROOM :: 2.0; IM_PRIO_PARTY :: 0.25;
-IM_WIRE_COND_INVISIBLE :: 128;  // COND's RS_INVISIBLE bit (aethyr/rules/srd/engine.coax)
+IM_WIRE_COND_INVISIBLE :: 128;  // COND's RS_INVISIBLE bit (rules/srd/engine.coax)
 
 ImEnt :: struct {
   on: bool; id: int; tag: int = -1; x: f32; z: f32; of: int = -1; flags: int;   // tag: the caller's, handed back in each pick

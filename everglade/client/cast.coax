@@ -119,7 +119,7 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
   return started;
 }
 
-// Your bearing: the SRD conditions on the room's row of you (aethyr/rules/srd/condition-bearing.coax).
+// Your bearing: the SRD conditions on the room's row of you (rules/srd/condition-bearing.coax).
 // Before the room has said, nothing holds you back: the room is still the one that decides.
 e2k_bearing :: (s: [] E2) -> DeedBearing {
   row := e2n_vitals(s[0].net[..]);
@@ -143,7 +143,7 @@ e2k_lock_step :: (s: [] E2) {
   k[0].locked = locked;
 }
 // The plain line while you are down: centred over the bar, the Death Saving Throws as the room rolls
-// them (aethyr/rules/srd/death-save-line.coax).
+// them (rules/srd/death-save-line.coax).
 e2k_down_line :: (s: [] E2, out: [] f32, at: int) -> int {
   if !e2k_on(s) { return at; }
   row := e2n_vitals(s[0].net[..]);
@@ -539,7 +539,7 @@ e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
 }
 
 // The latest server health, independent of movement-input acknowledgements: your Hit Points, your
-// rest, then what holds you in the shared condition display's words (aethyr/rules/srd/condition-display.coax).
+// rest, then what holds you in the shared condition display's words (rules/srd/condition-display.coax).
 e2k_vitals_text :: (s:[] E2,out:[] u8)->int {
   row:=e2n_vitals(s[0].net[..]); if row.id<0 { return 0; }
   n:=e2k_put(out,0,"HP "); n=e2k_int(out,n,row.hp); n=e2k_put(out,n,"/"); n=e2k_int(out,n,row.max);

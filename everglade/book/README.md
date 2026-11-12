@@ -275,7 +275,7 @@ Everglade's code is currently spread across the repository:
 | The page's C face, which builds `build/everglade2.wasm` | `apps/openagents-web/everglade2-face.c` |
 | The asset pack | `verse/tools/assets/everglade2_pack.coax` |
 | Experimental's combat and hostiles | `apps/openagents-web/experimental-*.coax`, `verse/experimental-*.coax` |
-| SRD rules | `aethyr/rules/srd/` |
+| SRD rules | `rules/srd/` |
 | The domain's pages | `apps/openagents-web/realms/everglade2/domain/` |
 
 Everglade's own code moves into this folder, so the book and the game live
@@ -293,9 +293,11 @@ everglade/
 
 The line between the engine and the game:
 
-- **Stays in Aethyr:** anything another realm can reuse, such as the SRD rules,
+- **Stays in Aethyr:** anything another realm can reuse, such as
   the bow system, NPC patrol and aggro, layered animation, the mouse-look
   camera, collision and terrain tiles.
+- **The SRD rules are neither:** they are their own context at root
+  `rules/srd/`, used by more than one world (#13270).
 - **Moves here:** what belongs only to Everglade, such as its land, planting,
   places, NPCs and tuning.
 

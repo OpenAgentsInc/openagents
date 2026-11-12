@@ -39,7 +39,7 @@ EGS_STRIDE :: 0.8;          // metres a footfall walking
 EGS_STRIDE_RUN :: 1.25;     // and running (aethyr/skin.coax: a run starts at 5 m/s)
 EGS_VOLUME :: 70;           // percent, until this browser keeps another
 EGS_STONES :: 3;            // stone sounds a frame plays at most (a collapse brings down many pieces at once)
-// a weapon's damage on the wire (e hit KIND: the SRD engine's, aethyr/rules/srd/engine.coax RS_*)
+// a weapon's damage on the wire (e hit KIND: the SRD engine's, rules/srd/engine.coax RS_*)
 EGS_RS_BLUDGEONING :: 2; EGS_RS_PIERCING :: 8; EGS_RS_SLASHING :: 12;
 
 // Each sound's level when it plays (thousandths): every effect leaves the synthesizer normalised to

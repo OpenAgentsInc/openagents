@@ -181,7 +181,7 @@ and `verse/home.coax`. None is Everglade's.
 | Presence and room chat JSON (`/api/playtest/presence`, `chat`, `inbox`) | `coax/web/api/room.c` | Older realms | `verse/presence/v1alpha1`, unused | Wave 2: decide with the room servers' reach; don't build on the unused proto before then |
 | Player, world, progress, seats and packs routes | `player.c`, `seats.c`, `verse_packs.c` | Pages | none | Wave 2 (E11) |
 | Zone geometry and logic | `everglade/zone.coax`, `everglade/world/` | Compiled in | — | Keep. Code, not a wire. The `P` frame's content pin covers it |
-| SRD rules data | `aethyr/rules/srd/data/*.coax`, generated from the pinned PDF | Compiled in; only indices travel | — | Keep. The `P` frame's rules pin covers it |
+| SRD rules data | `rules/srd/data/*.coax`, generated from the pinned PDF | Compiled in; only indices travel | — | Keep. The `P` frame's rules pin covers it |
 | Haunted House save and scene | `verse/haunt.coax` | Generated codec | `metareal/haunt/v1alpha1` | Compliant |
 | `engine/v1` (scene, agent, control, state, assets), `verse/presence`, `verse/common`, `host/v1`, `reach/v1` | `proto/openagents/` | Tests and tools only. `hud.proto` is not in this row: `verse/home.coax` writes its `HudInvocation` | published | Keep frozen. Marked `no-consumer` in the registry and in `proto/README.md` |
 

@@ -6473,7 +6473,7 @@ the v5 ticket's EXT (`c=srd-fighter,l=5`; `aethyr/session/seat-class.coax`).
 The room never takes a hello's level for a ticketed seat. It takes the hello's
 class only when the ticket names none. A re-hello, and Change character for a
 non-admin, never changes class or level and never refills Hit Points or slots.
-Level rises only as XP crosses the one table (`aethyr/rules/srd/advancement.coax`,
+Level rises only as XP crosses the one table (`rules/srd/advancement.coax`,
 the only XP-per-level table). The page decides only for an admin's ticket (ACCT
 2), the dev stand-in's admin, and a room with no ticket keys. A v2/v3/v4 ticket
 seats at its XP's level with its first hello's class, and is never refused for
@@ -6742,7 +6742,7 @@ and no memory growth across the glade, the path and the seam walks).
 
 ## Shared combat rolls retain owners without multiplying named benefits
 
-`aethyr/rules/srd/effect-rolls.coax` supplies one Bless d4 and one Bane d4 per
+`rules/srd/effect-rolls.coax` supplies one Bless d4 and one Bane d4 per
 attack/save, in that order, regardless of independent retained record count.
 Each record keeps its caster and deadline; retiring one leaves other owners.
 A next attack consumes all weakness and Guiding Bolt riders and all Vex riders
@@ -6750,14 +6750,14 @@ for that target, even on a miss or when Advantage and Disadvantage cancel.
 Other-target Vex remains pending. The existing battle lifecycle retires timed
 records; the roll policy does not invent a second expiry clock.
 
-Checks: `aethyr/rules/srd/effect-roll-checks.coax`, the hotbar regression in
+Checks: `rules/srd/effect-roll-checks.coax`, the hotbar regression in
 `apps/openagents-web/fivebar-test.coax`, and the scoped zero-survivor authority
 gate. Exact native/evaluator scope and remaining #13039 requirements are in
 `docs/verification/srd-effect-rolls-2026-11-08/README.md`.
 
 ## Damage and healing preserve the zero-HP lifecycle and condition owners
 
-`aethyr/rules/srd/hit-points.coax` owns HP loss, healing and death saves.
+`rules/srd/hit-points.coax` owns HP loss, healing and death saves.
 Temporary HP absorb HP loss but do not prevent death-save failures from taking
 damage at zero HP. Stabilization resets both save counts. A natural 20 reports
 recovery only if its attempted healing restores HP; blocked healing leaves the
@@ -6769,7 +6769,7 @@ Ordinary healing never restores temporary HP and saturates without addition
 overflow. The battle turn report describes actual HP recovery, including cases
 where another Unconscious source still prevents acting.
 
-Checks: `aethyr/rules/srd/hit-point-checks.coax`, its scoped HP/storage authority
+Checks: `rules/srd/hit-point-checks.coax`, its scoped HP/storage authority
 gates and the Healing Word hotbar regression. Exact source, native scope and
 remaining #13039 work: `docs/verification/srd-hit-points-2026-11-08/README.md`.
 
@@ -6792,7 +6792,7 @@ world controls/timing/movement requirements are in
 
 ## Condition roll consequences share one admitted save result
 
-`aethyr/rules/srd/condition-rolls.coax` owns range-independent condition attack
+`rules/srd/condition-rolls.coax` owns range-independent condition attack
 sources, five-foot Paralyzed/Unconscious hit criticals, automatic Strength and
 Dexterity save failures and damage defenses. Petrified grants attack Advantage,
 automatically fails those two saves and resists all damage. Immunity applies
@@ -6876,7 +6876,7 @@ Scope and outstanding #13045 acceptance:
 
 ## A world declares all of its rules deviations in one profile
 
-`aethyr/rules/srd/world-profile.coax` (`#authority`) is the one place a world
+`rules/srd/world-profile.coax` (`#authority`) is the one place a world
 says how its combat departs from SRD 5.2.1: `RsWorldProfile` carries the timing
 profile, area origin, press budget and continuous walking mode, and
 `rs_world_deviations` names each departure. Worlds call `rs_set_world` once,
@@ -7114,7 +7114,7 @@ Unconscious owners and Prone stay. A creature immune to Unconscious, or with no
 free effect record, takes the damage as dealt. `rs_healers_kit` spends the Action
 and one use to stabilize an Unconscious creature at 0 HP with no check.
 Condition owners (which record or state owns each of the 15 conditions) are listed
-and checked in `aethyr/rules/srd/hp-interaction-checks.coax`. Scope:
+and checked in `rules/srd/hp-interaction-checks.coax`. Scope:
 `docs/verification/srd-knockout-conditions-2026-11-08/README.md`.
 
 ## Experimental physical contacts resolve through shared NPC turns and hero HP
@@ -7422,7 +7422,7 @@ causal producers remain required. See
 
 A Magic Missile target without Shield up is offered the existing Shield Reaction
 once, before its first dart; a target with Shield up takes no damage from any
-dart (SRD 5.2.1 p.161). The decision is `aethyr/rules/srd/magic-missile-ward.coax`
+dart (SRD 5.2.1 p.161). The decision is `rules/srd/magic-missile-ward.coax`
 (`#authority`); slot/Reaction admission stays in `rs_shield`. Inflict Wounds,
 Acid Splash, Magic Missile and Mass Healing Word execute through the existing
 closed step set. Checks naming "the first unassigned spell ID" use
@@ -7433,7 +7433,7 @@ closed step set. Checks naming "the first unassigned spell ID" use
 Strict battles include a caster standing inside its own Sphere, Cylinder or
 Cube at a point (SRD 5.2.1 Areas of Effect; Fireball p.131) and leave it out
 of a Cube or Line originating from it. The decision and the declared house
-profile `RS_SPARE_CASTER_AREAS` are `aethyr/rules/srd/area-origin.coax`
+profile `RS_SPARE_CASTER_AREAS` are `rules/srd/area-origin.coax`
 (`#authority`), consulted by both the cast loop and the effect-room preflight.
 New battles are strict; the profile is chosen before the clock is sealed and
 `rs_reset` restores strict. Worlds that use action timing declare the house
@@ -7459,7 +7459,7 @@ Initiative hooks and world activation/persistence remain required. Evidence:
 
 ## A spell's save rider is one more Disadvantage source, never an override
 
-A SAVE step's `c` field names its rider (`aethyr/rules/srd/save-riders.coax`,
+A SAVE step's `c` field names its rider (`rules/srd/save-riders.coax`,
 `#authority`); Shatter's Construct rider adds one Disadvantage source that
 joins the target's other Advantage and Disadvantage sources before they cancel.
 `rs_saving_throw` and `rs_save_edge` keep their meaning as zero-rider wrappers.
@@ -7570,7 +7570,7 @@ profile. Evidence: `docs/verification/srd-e2-levels-2026-11-08/README.md`.
 ## A carried rest earns nothing offline and keeps the Long Rest gate
 
 Character checkpoint profile 3 carries a seat's rest as 19 bounded integers
-(`aethyr/rules/srd/rest-carry.coax`, `docs/protocol/character-checkpoint-v3.md`).
+(`rules/srd/rest-carry.coax`, `docs/protocol/character-checkpoint-v3.md`).
 `rs_carry_in` lays it on all or none: a field out of range, two rests in
 progress, a mode without an open journal, a completion age without a
 completion, parts that exceed the elapsed time, more Hit Dice than the body has,

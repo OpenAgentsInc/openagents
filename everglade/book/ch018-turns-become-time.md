@@ -2,11 +2,11 @@
 
 > **Status: partly implemented.** A world declares its whole rules profile in
 > one call, `rs_set_world`, in
-> [`aethyr/rules/srd/world-profile.coax`](../../aethyr/rules/srd/world-profile.coax)
+> [`rules/srd/world-profile.coax`](../../rules/srd/world-profile.coax)
 > (#13045). The timing profiles are
-> [`aethyr/rules/srd/timing-profile.coax`](../../aethyr/rules/srd/timing-profile.coax),
+> [`rules/srd/timing-profile.coax`](../../rules/srd/timing-profile.coax),
 > and continuous walking is
-> [`aethyr/rules/srd/walk-budget.coax`](../../aethyr/rules/srd/walk-budget.coax).
+> [`rules/srd/walk-budget.coax`](../../rules/srd/walk-budget.coax).
 > The design note is [`docs/dnd/timing-profiles.md`](../../docs/dnd/timing-profiles.md).
 > Other agents are extending these files now, so this chapter names functions
 > and has no source listings.
@@ -115,7 +115,7 @@ save comes 12 seconds after the first.
 
 ## The checks
 
-In `aethyr/rules/srd/world-profile.coax`:
+In `rules/srd/world-profile.coax`:
 
 - `#test "world admission accepts exactly declared fields and only before the
   clock is sealed"`.
@@ -123,8 +123,8 @@ In `aethyr/rules/srd/world-profile.coax`:
 - `#test "a world applies all or nothing, the clock seals it and reset restores
   strict"`.
 
-In `aethyr/rules/srd/timing-profile.coax` and
-`aethyr/rules/srd/timing-checks.coax`:
+In `rules/srd/timing-profile.coax` and
+`rules/srd/timing-checks.coax`:
 
 - `#test "profile timing declares beat cooldown and movement without changing
   strict defaults"`. It checks `rs_timing_move` against an independent table
@@ -134,14 +134,14 @@ In `aethyr/rules/srd/timing-profile.coax` and
 - `#test "only the declared action profile recharges spent resources on the
   existing cooldown"`.
 
-In `aethyr/rules/srd/world-timing-checks.coax`:
+In `rules/srd/world-timing-checks.coax`:
 
 - `#test "removing the world profile gives strict beats, grants, recovery,
   areas, presses and walking"`.
 - `#test "declared action timing pays its quarter-round grant; the Everglade
   world walks unpaid"`.
 
-In `aethyr/rules/srd/turn-order-checks.coax`:
+In `rules/srd/turn-order-checks.coax`:
 
 - `#test "a one-minute effect lasts ten rounds of turns in both profiles and an
   hour runs on the same clock"`.
@@ -152,9 +152,9 @@ The evidence is in
 [`docs/verification/srd-timing-2026-11-08/`](../../docs/verification/srd-timing-2026-11-08/README.md).
 
 ```sh
-coax/bin/coax test --library aethyr/rules/srd/world-profile.coax
-coax/bin/coax test --library aethyr/rules/srd/timing-checks.coax
-coax/bin/coax test --library aethyr/rules/srd/world-timing-checks.coax
+coax/bin/coax test --library rules/srd/world-profile.coax
+coax/bin/coax test --library rules/srd/timing-checks.coax
+coax/bin/coax test --library rules/srd/world-timing-checks.coax
 ```
 
 ## Mistakes

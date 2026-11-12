@@ -197,7 +197,7 @@ ec_layer :: (c: [] Cdp, shot: string) -> bool {
   return ec_check(ec_probe(p, 82) >= sent + 2, "page 0 cast on the run and standing, and sent both to the room");
 }
 // The rest controls (#13046): their codes and requests as the room and the rules have them
-// (everglade-wire.coax WIRE_REST_*, aethyr/rules/srd/rest-control.coax RS_REST_*).
+// (everglade-wire.coax WIRE_REST_*, rules/srd/rest-control.coax RS_REST_*).
 EC_NONE :: 0; EC_SHORT :: 1; EC_SLEEP :: 3; EC_WATCH :: 4; EC_BROKEN :: 6;
 EC_R_SHORT :: 1; EC_R_SLEEP :: 2; EC_R_WATCH :: 3; EC_R_END :: 4;
 // The room's rest code once it is one of want or other (-2 for none), within ms.

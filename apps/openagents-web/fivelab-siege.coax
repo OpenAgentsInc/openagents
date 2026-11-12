@@ -1,7 +1,7 @@
 // The Siege in the 5E Lab (fivelab.coax loads this file): a cult marches on a town. The cult is a
 // level 17 Fiend Warlock and its swarm of Cultists, Cultist Fanatics and Warlocks of levels 1 to 5;
 // the town watch is Guards, Warrior Veterans, Knights, Scouts, Priests and Mages. Every stat block
-// and both armies' mix are the engine's (aethyr/rules/srd/npcs.coax rs_siege_defender,
+// and both armies' mix are the engine's (rules/srd/npcs.coax rs_siege_defender,
 // rs_siege_attacker, rs_siege_arch), so a world that runs the siege on its own server builds the
 // same armies. This file is where they stand and how each decides; the rules and every roll are
 // the engine's, and each roll goes to the log.
@@ -33,7 +33,7 @@
 SIEGE_TOWN :: 50; SIEGE_CULT :: 50;   // the default armies: 50 of the watch, 50 of the cult and its leader
 SIEGE_CULT_MAX :: 16383;               // SKELETONS_MAX less the leader: the room the lab gives its battle (LAB_MAX)
 SIEGE_TEAM_NAME :: [3] string.["THE TOWN WATCH", "THE CULT", ""];
-SIEGE_ARCH_NAME :: RS_ARCH_NAME;   // Darian Odiodei (aethyr/rules/srd/npcs.coax)
+SIEGE_ARCH_NAME :: RS_ARCH_NAME;   // Darian Odiodei (rules/srd/npcs.coax)
 // Player mode's picker in the Siege: who you can play, by stat block or role.
 SIEGE_PICKS :: 10;
 SIEGE_PICK :: [10] int.[RS_NPC_ARCH, RS_NPC_WARLOCK, RS_NPC_FANATIC, RS_NPC_CULTIST,

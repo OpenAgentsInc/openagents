@@ -1,10 +1,10 @@
 # 16. Spells and slots
 
 > **Status: partly implemented.** The SRD's 339 spell descriptions are imported
-> into [`aethyr/rules/srd/data/`](../../aethyr/rules/srd/data/README.md). The
+> into [`rules/srd/data/`](../../rules/srd/data/README.md). The
 > spells that Everglade's levels 1 to 6 use, cantrips through 3rd level, run
 > as effect programs in the shared rules, and
-> [`aethyr/rules/srd/spell-coverage.coax`](../../aethyr/rules/srd/spell-coverage.coax)
+> [`rules/srd/spell-coverage.coax`](../../rules/srd/spell-coverage.coax)
 > counts which ones. Casting under latency shares its reach, sight and refusal
 > words between the room and the page in
 > [`everglade/shared/cast-limits.coax`](../../everglade/shared/cast-limits.coax);
@@ -33,14 +33,14 @@ game tells you which, with a reason icon over the bar.
 
 | Rule | Where |
 | --- | --- |
-| The spell text, pinned to the SRD PDF | `aethyr/rules/srd/data/spells.coax`, `aethyr/rules/srd/data/class-lists.coax` |
-| Which spells have an effect program | `aethyr/rules/srd/spell-coverage.coax` |
-| Spells prepared per class and level | `RS_PREP_*` in [`aethyr/rules/srd/spell-limits.coax`](../../aethyr/rules/srd/spell-limits.coax) |
-| Verbal, Somatic and Material components | [`aethyr/rules/srd/cast-components.coax`](../../aethyr/rules/srd/cast-components.coax) |
-| Concentration | [`aethyr/rules/srd/concentration.coax`](../../aethyr/rules/srd/concentration.coax); its damage DC in `aethyr/rules/srd/hit-points.coax` |
-| Rituals | [`aethyr/rules/srd/ritual.coax`](../../aethyr/rules/srd/ritual.coax) |
-| Whether an area includes its caster | [`aethyr/rules/srd/area-origin.coax`](../../aethyr/rules/srd/area-origin.coax) |
-| A spell's attack bonus and save DC | `rs_spell_attack` and `rs_spell_dc` in `aethyr/rules/srd/engine.coax` |
+| The spell text, pinned to the SRD PDF | `rules/srd/data/spells.coax`, `rules/srd/data/class-lists.coax` |
+| Which spells have an effect program | `rules/srd/spell-coverage.coax` |
+| Spells prepared per class and level | `RS_PREP_*` in [`rules/srd/spell-limits.coax`](../../rules/srd/spell-limits.coax) |
+| Verbal, Somatic and Material components | [`rules/srd/cast-components.coax`](../../rules/srd/cast-components.coax) |
+| Concentration | [`rules/srd/concentration.coax`](../../rules/srd/concentration.coax); its damage DC in `rules/srd/hit-points.coax` |
+| Rituals | [`rules/srd/ritual.coax`](../../rules/srd/ritual.coax) |
+| Whether an area includes its caster | [`rules/srd/area-origin.coax`](../../rules/srd/area-origin.coax) |
+| A spell's attack bonus and save DC | `rs_spell_attack` and `rs_spell_dc` in `rules/srd/engine.coax` |
 
 The data folder holds the full text of every spell, with its page, school,
 range, components and duration. An imported spell is text until an effect
@@ -139,22 +139,22 @@ and makes the save too. Under Everglade's world profile, the Wizard is spared.
 
 ## The checks
 
-- `aethyr/rules/srd/kit-spells-high-checks.coax`, `#test "Fireball p.131: a
+- `rules/srd/kit-spells-high-checks.coax`, `#test "Fireball p.131: a
   20-foot-radius Sphere at a point within 150 feet, a Dex save for half of 8d6
   Fire, 1d6 more a slot level"`.
-- `aethyr/rules/srd/shared-damage-checks.coax`, `#test "Fireball shares one
+- `rules/srd/shared-damage-checks.coax`, `#test "Fireball shares one
   damage roll while each recipient makes its own save"`.
-- `aethyr/rules/srd/area-origin.coax`, `#test "strict areas leave out only a
+- `rules/srd/area-origin.coax`, `#test "strict areas leave out only a
   caster at an origin or named 'other than you'; the declared house rule spares
   it everywhere"`.
-- `aethyr/rules/srd/component-checks.coax`, `#test "a gagged caster cannot cast
+- `rules/srd/component-checks.coax`, `#test "a gagged caster cannot cast
   Healing Word and refusal preserves every resource"`.
-- `aethyr/rules/srd/concentration-checks.coax`, `#test "a retained Stunned
+- `rules/srd/concentration-checks.coax`, `#test "a retained Stunned
   effect ends the target's concentration and releases only its owned benefits
   immediately"`.
-- `aethyr/rules/srd/spell-coverage.coax`, `#test "a source entry has an
+- `rules/srd/spell-coverage.coax`, `#test "a source entry has an
   executor only when a canonical effect program maps to it"`.
-- `aethyr/rules/srd/turn-order-checks.coax`, `#test "every executable spell's
+- `rules/srd/turn-order-checks.coax`, `#test "every executable spell's
   timed duration and Concentration match the pinned source"`.
 - `everglade/client/client.coax`, `#test "Everglade II shows a matching
   cast refusal over the hotbar and retires it after four seconds"` and `#test
@@ -162,8 +162,8 @@ and makes the save too. Under Everglade's world profile, the Wizard is spared.
   older cast's refusal changes nothing (#13046)"`.
 
 ```sh
-coax/bin/coax test --library aethyr/rules/srd/kit-spells-high-checks.coax
-coax/bin/coax test --library aethyr/rules/srd/shared-damage-checks.coax
+coax/bin/coax test --library rules/srd/kit-spells-high-checks.coax
+coax/bin/coax test --library rules/srd/shared-damage-checks.coax
 ```
 
 ## Mistakes

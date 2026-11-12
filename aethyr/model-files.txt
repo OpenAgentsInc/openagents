@@ -4,5 +4,5 @@ aethyr/session/ledger.coax
 aethyr/session/party.coax
 aethyr/session/control.coax
 aethyr/session/travel.coax
-aethyr/rules/srd/world-profile.coax
-aethyr/rules/srd/timing-profile.coax
+rules/srd/world-profile.coax
+rules/srd/timing-profile.coax

@@ -11,7 +11,7 @@
 //   xp       0 to CHAR_XP_MAX; only rises (char_accept refuses a write that lowers it).
 //   floor    the level the server grants without the XP (a realm's starting level, an admin's choice).
 //            The level is never stored: it is srd_level_from(xp, floor, CHAR_LEVEL_TOP), the rules'
-//            one table (aethyr/rules/srd/advancement.coax), for every level the game has.
+//            one table (rules/srd/advancement.coax), for every level the game has.
 //   known    abilities learned past the class kit, by content ID (P3.3, #13286), ascending, no repeats.
 //            The kit's own abilities come from class and level and are not stored.
 //   bag, inv the item IDs the character holds and the ledger's inventory version (aethyr/session/ledger.coax,
@@ -27,7 +27,7 @@
 #authority;
 #load "../../coax/lib/json/json.coax";
 #load "../../aethyr/ids.coax";
-#load "../../aethyr/rules/srd/advancement.coax";
+#load "../../rules/srd/advancement.coax";
 #load "character-checks.coax";   // the checks' fixture and helpers
 
 CHAR_VERSION :: 1;

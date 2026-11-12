@@ -2,11 +2,11 @@
 
 > **Status: partly implemented.** The SRD 5.2.1's conditions are bits on a
 > creature (`RS_BLINDED` to `RS_UNCONSCIOUS` in
-> [`aethyr/rules/srd/engine.coax`](../../aethyr/rules/srd/engine.coax)). What
+> [`rules/srd/engine.coax`](../../rules/srd/engine.coax)). What
 > each one permits is
-> [`aethyr/rules/srd/condition-permissions.coax`](../../aethyr/rules/srd/condition-permissions.coax),
+> [`rules/srd/condition-permissions.coax`](../../rules/srd/condition-permissions.coax),
 > and what it does to rolls is
-> [`aethyr/rules/srd/condition-rolls.coax`](../../aethyr/rules/srd/condition-rolls.coax).
+> [`rules/srd/condition-rolls.coax`](../../rules/srd/condition-rolls.coax).
 > Exhaustion and Prone have their own files. The Everglade room shows
 > conditions through
 > [`apps/openagents-web/everglade-status.coax`](../../apps/openagents-web/everglade-status.coax).
@@ -35,8 +35,8 @@ your Hit Points.
 | The conditions, one bit each: Blinded, Charmed, Deafened, Exhaustion, Frightened, Grappled, Incapacitated, Invisible, Paralyzed, Petrified, Poisoned, Prone, Restrained, Stunned, Unconscious | `RS_CONDITION` in `engine.coax` |
 | What you may do: move, take actions, take Reactions | `condition-permissions.coax` |
 | Attack edges, automatic failures, critical hits and damage defenses | `condition-rolls.coax` |
-| Exhaustion's six levels | [`aethyr/rules/srd/exhaustion.coax`](../../aethyr/rules/srd/exhaustion.coax) |
-| Standing up and crawling | [`aethyr/rules/srd/prone-movement.coax`](../../aethyr/rules/srd/prone-movement.coax) |
+| Exhaustion's six levels | [`rules/srd/exhaustion.coax`](../../rules/srd/exhaustion.coax) |
+| Standing up and crawling | [`rules/srd/prone-movement.coax`](../../rules/srd/prone-movement.coax) |
 | What the page draws and says about a condition | `st_fill` and `st_draw_on` in `everglade-status.coax`, `st_draw` in `apps/openagents-web/everglade-storm.coax` |
 
 ## What follows the SRD exactly
@@ -111,27 +111,27 @@ turn that has 10, and you couldn't stand at all.
 
 ## The checks
 
-- `aethyr/rules/srd/condition-permission-checks.coax`, `#test "accepted
+- `rules/srd/condition-permission-checks.coax`, `#test "accepted
   Stunned ends concentration and Dodge but allows walking and standing without
   actions"`.
-- `aethyr/rules/srd/condition-roll-checks.coax`, `#test "a nearby ranged weapon
+- `rules/srd/condition-roll-checks.coax`, `#test "a nearby ranged weapon
   hit on Paralyzed or Unconscious is critical and a more distant hit is
   ordinary"` and `#test "damage defenses apply immunity once resistance once
   then vulnerability for all thirteen damage types"`.
-- `aethyr/rules/srd/exhaustion-checks.coax`, `#test "Exhaustion accumulates to
+- `rules/srd/exhaustion-checks.coax`, `#test "Exhaustion accumulates to
   six, kills without damage and interrupts owned effects"`.
-- `aethyr/rules/srd/timing-checks.coax`, `#test "strict and action standing
+- `rules/srd/timing-checks.coax`, `#test "strict and action standing
   share a policy with an explicitly different movement price"`: the worked
   example.
-- `aethyr/rules/srd/timing-checks.coax`, `#test "short action turns renew
+- `rules/srd/timing-checks.coax`, `#test "short action turns renew
   reactions but death saves and repeat saves remain six-second events"`.
 - `apps/openagents-web/everglade-status.coax`, `#test "status: one word over a
   head while a condition lasts, the strongest: DOWN, HELD, STUNNED, ROOTED,
   RESTRAINED, PRONE, FRIGHTENED (#12862)"`.
 
 ```sh
-coax/bin/coax test --library aethyr/rules/srd/condition-roll-checks.coax
-coax/bin/coax test --library aethyr/rules/srd/timing-checks.coax
+coax/bin/coax test --library rules/srd/condition-roll-checks.coax
+coax/bin/coax test --library rules/srd/timing-checks.coax
 ```
 
 ## Mistakes

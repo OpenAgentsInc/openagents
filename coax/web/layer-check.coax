@@ -10,9 +10,9 @@
 //   coax/bin/coax test coax/web/layer-check.coax --library
 //
 // The rules, for a loading file that is not support code (below):
-//   aethyr-up     a file under aethyr/ loads from verse/, apps/, everglade/ or coax/web/
+//   aethyr-up     a file under aethyr/ or rules/ (the SRD rules, out of the engine since #13270) loads from verse/, apps/, everglade/ or coax/web/
 //   everglade-up  a file under everglade/ loads from apps/
-//   tests         a file under aethyr/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or test/ folder
+//   tests         a file under aethyr/, rules/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or test/ folder
 //   context       a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
 //   model-effects a model file listed in aethyr/model-files.txt declares #effects(all) (#13314)
 // And one gate with no allowlist (#13267 step 7, #13346): the room server's load closure (every file
@@ -319,9 +319,9 @@ lc_context_allows :: (m: LcCtxMap, a: int, b: int) -> bool {
 }
 // The fixed layer rule a load from `from` (not support code) to `to` breaks, or 0.
 lc_rule :: (from: string, to: string) -> int {
-  if lc_starts(from, "aethyr/") && (lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
+  if (lc_starts(from, "aethyr/") || lc_starts(from, "rules/")) && (lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
   if lc_starts(from, "everglade/") && lc_starts(to, "apps/") { return LC_UP_EVERGLADE; }
-  if (lc_starts(from, "aethyr/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/") || lc_starts(from, "pay/")) && lc_in_tests(to) { return LC_TESTS; }
+  if (lc_starts(from, "aethyr/") || lc_starts(from, "rules/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/") || lc_starts(from, "pay/")) && lc_in_tests(to) { return LC_TESTS; }
   return 0;
 }
 // Including contexts.txt: fixed rules take precedence; otherwise cross-context disallowed loads return LC_CONTEXT.
@@ -471,7 +471,7 @@ lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: Lc
     if !l.ok { continue; }
     if l.from != last {
       last = l.from;
-      in_fixed := lc_starts(l.from, "aethyr/") || lc_starts(l.from, "everglade/") || lc_starts(l.from, "coax/web/api/") || lc_starts(l.from, "coax/web/room/") || lc_starts(l.from, "pay/");
+      in_fixed := lc_starts(l.from, "aethyr/") || lc_starts(l.from, "rules/") || lc_starts(l.from, "everglade/") || lc_starts(l.from, "coax/web/api/") || lc_starts(l.from, "coax/web/room/") || lc_starts(l.from, "pay/");
       last_judged = in_fixed || (ctxs.n > 0 && lc_context_of(ctxs, l.from) >= 0);
       last_support = ifx last_judged then lc_support(l.from, tools) else false;
     }
@@ -713,6 +713,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   #assert lc_rule("everglade/zone.coax", "apps/openagents-web/hud.coax") == LC_UP_EVERGLADE && lc_rule("everglade/zone.coax", "verse/everglade/a.coax") == 0 && lc_rule("everglade/zone.coax", "aethyr/a.coax") == 0;
   #assert lc_rule("aethyr/walk.coax", "aethyr/tests/walk-fixture.coax") == LC_TESTS && lc_rule("everglade/a.coax", "coax/lib/tests/x.coax") == LC_TESTS && lc_rule("coax/web/api/a.coax", "coax/web/api/tests/x.coax") == LC_TESTS && lc_rule("coax/web/room/a.coax", "coax/web/room/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/lib/x.coax") == 0;
   // the other trees are not judged here
+  #assert lc_rule("rules/srd/a-probes.coax", "verse/experimental-hostiles.coax") == LC_UP_AETHYR && lc_rule("rules/srd/a.coax", "aethyr/tests/x.coax") == LC_TESTS && lc_rule("rules/srd/a.coax", "aethyr/core/math.coax") == 0;
   #assert lc_rule("verse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
 }
 #test "the seeded allowlist passes; a new upward load fails" {

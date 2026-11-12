@@ -78,7 +78,7 @@ shapes on the ground: a Sphere's circle, a Cube's square or box, a Cone and a
 Line; placing one within range; its outline and guides; which creatures it
 holds), `class-kit.coax` (`XC_AIM_AREA`, `xc_aim_for`, `xc_aim_point`, and
 `xk_spell_area`, `xk_area`, `xk_zone_area`: the area each ability or battle
-zone opens) and `aethyr/rules/srd/area-origin.coax` (whether an area includes
+zone opens) and `rules/srd/area-origin.coax` (whether an area includes
 its caster).
 
 | Zone | Where |
@@ -89,8 +89,8 @@ its caster).
 
 ### Conditions
 
-The SRD conditions are shared: `aethyr/rules/srd/` (`RS_CONDITIONS`
-engine.coax:124, `rs_has`), and so is showing them: `aethyr/rules/srd/condition-display.coax`
+The SRD conditions are shared: `rules/srd/` (`RS_CONDITIONS`
+engine.coax:124, `rs_has`), and so is showing them: `rules/srd/condition-display.coax`
 (#13082) has their words (`cd_held_text`), their icons over a creature (`cd_icons`) and the
 clock of an effect a page counts down (`CdClock`).
 
@@ -137,7 +137,7 @@ The shared modules are `class-kit.coax` (`xk_bar_at`, `xk_entry_at`) and
 
 ### Dash
 
-The shared module is `aethyr/rules/srd/dash.coax` (`rs_dash_speed`), reached
+The shared module is `rules/srd/dash.coax` (`rs_dash_speed`), reached
 through `battle.coax` (`rs_dash`, `rs_cunning_dash`) and `fivebar.coax`
 (`FB_DASH`).
 
@@ -310,7 +310,7 @@ No zone-local copies: the held kit moved to `everglade/held-kit.coax`.
 ### Conditions (#13082)
 
 15 zone-local copies, all in the frozen Everglade v1. Everglade II and Experimental wire
-`aethyr/rules/srd/condition-display.coax`.
+`rules/srd/condition-display.coax`.
 
 - Everglade v1: `ab_rules_cond` everglade-abilities.coax:745, `net_cond` everglade-net.coax:1043, `StEffect` everglade-status.coax:22, `st_add` everglade-status.coax:26, `st_cond` everglade-status.coax:79, `st_word` everglade-status.coax:102, `st_tags_draw` everglade-status.coax:209, `st_bodies_draw` everglade-status.coax:248, `st_draw_on` everglade-status.coax:261, `everglade_room_folk_cond` everglade-watch.coax:1000, `everglade_room_cond_left` everglade-watch.coax:1457, `everglade_room_cond` everglade-watch.coax:1463, `WC_SLOWED` everglade-wire.coax:139, `WC_BOUND` everglade-wire.coax:140, `WC_HALTED` everglade-wire.coax:142.
 

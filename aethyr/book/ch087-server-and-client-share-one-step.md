@@ -4,7 +4,7 @@
 > movement step on the same input
 > ([everglade-step.coax](../../everglade/shared/everglade-step.coax),
 > #12706), the same SRD rules
-> ([battle.coax](../../aethyr/rules/srd/battle.coax); the room's battle over them is
+> ([battle.coax](../../rules/srd/battle.coax); the room's battle over them is
 > [everglade/server/battle.coax](../../everglade/server/battle.coax)),
 > and, since commit 5f7d50e2d1, load the same world document, `everglade`, in
 > every setup (#12773). Talking, doors and boats now run through room intents

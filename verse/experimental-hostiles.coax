@@ -132,7 +132,7 @@ hostile_bodies :: (s:[]Hostiles,x:f32,z:f32,out:[]f32)->int {
  if !s[0].ready {return 0;}n:=0;ground:=terrain.exp_height(x,z);for i:0..<HS_N {e:=s[0].enemies[i];if e.dead || abs(e.x-x)>8 || abs(e.z-z)>8 {continue;}if n*7+7>out.count {break;}o:=n*7;y:=terrain.exp_height(e.x,e.z)-ground;out[o]=e.x;out[o+1]=y+0.25*e.scale;out[o+2]=e.z;out[o+3]=e.x;out[o+4]=y+1.25*e.scale;out[o+5]=e.z;out[o+6]=0.35*e.scale;n+=1;}return n;
 }
 // Monster i's kind: the village's three imps and three gremlins, then the dungeon's (DG_SPAWN).
-// Each kind is an SRD 5.2.1 stat block (aethyr/rules/srd/monsters.coax): the imp an Imp, the
+// Each kind is an SRD 5.2.1 stat block (rules/srd/monsters.coax): the imp an Imp, the
 // gremlin a Goblin Warrior, the brute an Ogre, the fiend a Quasit and the boss a Hill Giant.
 hostile_kind :: (i:int)->int {if i<6 {return ifx i<3 then dungeon.DG_KIND_IMP else dungeon.DG_KIND_GREMLIN;}return cast(int)dungeon.DG_SPAWN[i-6][2];}
 // What a kind's blow is when no shared battle runs (the body's own fixtures): its block's first

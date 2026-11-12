@@ -79,7 +79,7 @@ toward it immediately before the hit, the target takes an extra 5 (2d4)
 Bludgeoning damage and has the Prone condition.
 
 Both stat blocks are already in the engine
-(`aethyr/rules/srd/monsters.coax`, `MON_RIDING_HORSE` and `MON_WARHORSE`).
+(`rules/srd/monsters.coax`, `MON_RIDING_HORSE` and `MON_WARHORSE`).
 
 ### Find Steed (pp. 130-131)
 
@@ -220,7 +220,7 @@ there. Only how it moves is different.
   the cone runs from its jaws along its heading, tipped down as far as you
   look down. The dragon joins the battle as its own creature and breathes on
   its own turn, through the SRD's dragon actions
-  (`aethyr/rules/srd/dragon-actions.coax`: `rs_breath_ready`,
+  (`rules/srd/dragon-actions.coax`: `rs_breath_ready`,
   `rs_in_cone3`, `rs_fire_breath_on`). The breath recharges on the SRD's
   Recharge 5-6, rolled at the start of the dragon's turn.
 - **One pipeline.** Mounting, getting off, the breath and shots from the

@@ -1,0 +1,49 @@
+// The Warlock's Magical Cunning (SRD 5.2.1 p. 72): at the end of a 1-minute rite it regains
+// expended Pact Magic slots, no more than half its maximum (rounded up), once a Long Rest. The
+// world keeps the minute; this is the rite's end. Mystic Arcanum slots (level 6+) aren't Pact Magic.
+//   coax/bin/coax test --library rules/srd/class-warlock-checks.coax
+#authority;
+
+// The level of c's Pact Magic slots (1-5), or 0.
+rs_pact_level :: (c: RsCreature) -> int #effects(all) {
+  for l: 1..<6 { if c.slots_max[l] > 0 { return l; } }
+  return 0;
+}
+rs_magical_cunning :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if i < 0 || i >= b[0].n || b[0].c[i].klass != RS_WARLOCK || !b[0].c[i].cunning_rite || b[0].c[i].uses[RS_USE_CUNNING] <= 0 || !rs_capable(b[0].c[i]) { return false; }
+  l := rs_pact_level(b[0].c[i]); top := b[0].c[i].slots_max[l];
+  back := rs_min((top + 1) / 2, top - b[0].c[i].slots[l]);
+  if l == 0 || back <= 0 { return false; }
+  b[0].c[i].slots[l] += back; b[0].c[i].uses[RS_USE_CUNNING] -= 1;
+  rs_say_ft(b, RS_EV_FEAT, i, i, back, RS_FT_MAGICAL_CUNNING, " ends a rite of Magical Cunning: Pact Magic slots back");
+  return true;
+}
+
+#test "Magical Cunning: half the Pact Magic slots (rounded up) back, once a Long Rest, only when some are spent" {
+  for mode: 0..<9 {
+    b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+    level := ifx mode == 7 then 2 else 5;
+    _ := rs_add(b[..], rs_warlock("Kel", 0, level, SP_ELDRITCH_BLAST), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1);
+    b[0].c[0].slots[rs_pact_level(b[0].c[0])] = 0;
+    if mode == 1 { b[0].c[0].cunning_rite = false; } else if mode == 2 { b[0].c[0].uses[RS_USE_CUNNING] = 0; } else if mode == 3 { b[0].c[0].klass = RS_SORCERER; }
+    else if mode == 4 { b[0].c[0].cond = RS_STUNNED; } else if mode == 5 { b[0].c[0].slots[3] = 2; } else if mode == 6 { b[0].c[0].slots[3] = 1; }
+    else if mode == 8 { b[0].c[0].uses[RS_USE_CUNNING] = 2; }
+    l := rs_pact_level(b[0].c[0]); was := b[0].c[0].slots[l]; uses := b[0].c[0].uses[RS_USE_CUNNING];
+    ok := mode == 0 || mode == 6 || mode == 7 || mode == 8;
+    #assert rs_magical_cunning(b[..], 0) == ok && b[0].c[0].uses[RS_USE_CUNNING] == (ifx ok then uses - 1 else uses);
+    want := ifx !ok then was else ifx mode == 6 then 2 else 1;   // two slots: one back (half, rounded up); one spent: one
+    #assert b[0].c[0].slots[l] == want;
+    if ok { e := rs_recent(b[0].book[0], 0); #assert e.feat == RS_FT_MAGICAL_CUNNING && e.kind == RS_EV_FEAT && e.amount == want - was && e.by == 0; }
+  }
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), 1, 1);
+  b[0].c[0].slots[3] = 0; b[0].c[1] = b[0].c[0];
+  #assert !rs_magical_cunning(b[..], -1) && !rs_magical_cunning(b[..], 1) && b[0].c[1].slots[3] == 0;
+  n: [1] RsBattle; n[0].w = 12; n[0].h = 6; _ = rs_add(n[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), 1, 1);
+  for l: 0..<10 { n[0].c[0].slots_max[l] = 0; n[0].c[0].slots[l] = 0; }
+  #assert rs_pact_level(n[0].c[0]) == 0 && !rs_magical_cunning(n[..], 0);
+  n[0].c[0].slots_max[6] = 1; #assert rs_pact_level(n[0].c[0]) == 0;   // a Mystic Arcanum slot alone
+  n[0].c[0].slots_max[1] = 1; #assert rs_pact_level(n[0].c[0]) == 1 && rs_pact_level(rs_warlock("Kel", 0, 1, SP_ELDRITCH_BLAST)) == 1;   // one slot
+  // three slots (level 11): two back
+  t: [1] RsBattle; t[0].w = 12; t[0].h = 6; _ = rs_add(t[..], rs_warlock("Kel", 0, 11, SP_ELDRITCH_BLAST), 1, 1);
+  t[0].c[0].slots[5] = 0; #assert rs_pact_level(t[0].c[0]) == 5 && rs_magical_cunning(t[..], 0) && t[0].c[0].slots[5] == 2 && t[0].c[0].slots[6] == 1;
+}

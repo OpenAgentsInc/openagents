@@ -182,7 +182,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
   `aethyr/action/bow.coax:24`, `aethyr/action/bow.coax:65`,
   `docs/verse/bow-combat.md`). The arrow is a real projectile, and the SRD
   Longbow Attack decides the hit, with Disadvantage past 150 feet
-  (`aethyr/rules/srd/battle.coax:1589`).
+  (`rules/srd/battle.coax:1589`).
 - **The pose.** An IK draw pose blended by draw strength
   (`aethyr/action/bow-pose.coax`).
 - **The Ranger's bar.** Hunter's Mark in slot 1
@@ -190,7 +190,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
   (`class-kit.coax:42`), then Dash from the level kit (`fivebar.coax:113`).
   The Ranger holds a Shortsword and a Longbow with the Slow and Vex masteries;
   it has Archery at 2, Colossus Slayer at 3 and Extra Attack at 5
-  (`aethyr/rules/srd/engine.coax:802-821`).
+  (`rules/srd/engine.coax:802-821`).
 - **One shared cooldown.** One second between any two presses
   (`class-kit.coax:20`), shown as a dimming sweep over every slot
   (`experimental-combat.coax:1845`). Nothing runs out: the Everglade world
@@ -213,7 +213,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
   (`experimental-combat.coax:489-510`).
 - **Advantage.** The SRD's Advantage sources, Vex, Sneak Attack's ally rule, and
   Disadvantage on a ranged attack with a hostile within 5 feet
-  (`aethyr/rules/srd/battle.coax:254`, `battle.coax:882`, `battle.coax:1646`,
+  (`rules/srd/battle.coax:254`, `battle.coax:882`, `battle.coax:1646`,
   `battle.coax:1736`).
 
 ## Mechanic-by-mechanic comparison
@@ -265,7 +265,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
    or Step of the Wind) or Action. Show what it spent as a small "stamina" pip.
    No free i-frames: the SRD decides through Disadvantage and no Opportunity
    Attack. Files: `apps/openagents-web/experimental-combat.coax` (next to Dash
-   at line 1524), `aethyr/rules/srd/disengage.coax`, `aethyr/rules/srd/dodge.coax`,
+   at line 1524), `rules/srd/disengage.coax`, `rules/srd/dodge.coax`,
    `apps/openagents-web/fivebar.coax`.
 4. **Reticle that reads range and allegiance (small).** Red over a hostile in
    range of the active weapon, grey when out of range, blue over a friend. Grey
@@ -282,7 +282,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
    spells and features: 9 s under `RS_DEV_RECHARGE`), each with its own sweep.
    Files: `apps/openagents-web/class-kit.coax` (`XC_COOL`),
    `apps/openagents-web/experimental-combat.coax`,
-   `aethyr/rules/srd/world-profile.coax`. This changes the Everglade world's
+   `rules/srd/world-profile.coax`. This changes the Everglade world's
    `RS_DEV_FREE_PRESS` deviation, so update chapter 18 and its tests in the
    same change.
 7. **Extra Attack as a two-shot volley (small).** At level 5, one Attack press
@@ -304,7 +304,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
 11. **A Ranger stealth beat (large, later).** Neverwinter's 5-second stealth
     daily has an SRD path: Hide, then attack from hiding with Advantage. Make
     Hide readable (a fade and a "hidden" mark) before adding more. Files:
-    `aethyr/rules/srd/hide.coax`, `apps/openagents-web/experimental-combat.coax`.
+    `rules/srd/hide.coax`, `apps/openagents-web/experimental-combat.coax`.
 
 ## What not to take
 

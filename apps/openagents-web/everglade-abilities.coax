@@ -1358,7 +1358,7 @@ ab_thunder :: (s: [] Everglade) {
 }
 // Whether (x, y, z) is in the 15-foot cube that starts at your feet and runs the way f points. Whoever
 // stands at your shoulder is in it (a body's width back from your middle, #12930), as the rules' cube
-// from you holds your own square (aethyr/rules/srd/battle.coax rs_area).
+// from you holds your own square (rules/srd/battle.coax rs_area).
 AB_TW_BACK :: 0.6;
 ab_in_cube :: (you: Point, f: Point, x: f32, z: f32, y: f32) -> bool {
   dx := x - you.x; dz := z - you.z;
@@ -1386,7 +1386,7 @@ ab_frame_more :: (s: [] Everglade, dt: f32) {
     a[0].gust_t += dt;
     if a[0].gust_t >= f32(AB_GUST_LIFE) { a[0].gust_on = false; return; }
     // the line blasts from where you stand now and points the way it was cast, as the rules' Line does
-    // (aethyr/rules/srd/battle.coax rs_turn_saves: turning it is a Bonus Action they don't model, #12888)
+    // (rules/srd/battle.coax rs_turn_saves: turning it is a Bonus Action they don't model, #12888)
     a[0].gust_at = ab_you(s);
     _ := ab_gust_people(s);
     for i: 0..<SP_PUFFS {

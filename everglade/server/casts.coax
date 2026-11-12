@@ -81,7 +81,7 @@ e2_cast_sight :: (v: [] RmServer, k: int, me: EgPose, ax: f32, az: f32) -> bool 
   return true;
 }
 // Revivify's creature: the nearest dead player within Touch whom neither seat has blocked. The
-// shared rules judge the death's timing, reach and cover (aethyr/rules/srd/revivify.coax).
+// shared rules judge the death's timing, reach and cover (rules/srd/revivify.coax).
 eg_e2_corpse :: (v: [] RmServer, k: int, s: int) -> int {
   room:=v[0].eg[k..<k+1]; rules:=room[0].rules[..]; b:=rules[0].b[..];
   best:=1.524f32*1.524f32*2; target:=-1;

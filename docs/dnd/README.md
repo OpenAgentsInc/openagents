@@ -77,11 +77,11 @@ Five layers. Only the first three are shared code; the last two belong to
 each world.
 
 ```
-  SRD content (data)        aethyr/rules/srd/data/   generated from the PDF, checked in
+  SRD content (data)        rules/srd/data/   generated from the PDF, checked in
         │
-  Rules engine (pure)       aethyr/rules/srd/        dice, checks, combat, spells, conditions, rests
+  Rules engine (pure)       rules/srd/        dice, checks, combat, spells, conditions, rests
         │
-  Time adapter              aethyr/rules/srd/time    turns ⇄ real time
+  Time adapter              rules/srd/time    turns ⇄ real time
         │
   ┌─────┴──────────────┐
   World tweaks          Presentation               per world: house rules, art, sound, UI
@@ -90,8 +90,8 @@ each world.
 ### 1. SRD content: data, not code
 
 Every spell, class, monster and item is a **record** in a Coax table under
-`aethyr/rules/srd/data/`, generated from the PDF by an import tool
-(`aethyr/rules/srd/import.coax`, a Coax tool per `coax/tools-in-coax.md`)
+`rules/srd/data/`, generated from the PDF by an import tool
+(`rules/srd/import.coax`, a Coax tool per `coax/tools-in-coax.md`)
 and checked in. A world never hand-writes an SRD spell's numbers again, as
 Everglade's 43 bar spells do today.
 
@@ -144,7 +144,7 @@ voice host for Speak with Animals.
 
 ### 2. The rules engine: pure and deterministic
 
-`aethyr/rules/srd/` executes the rules. It draws nothing and knows no world.
+`rules/srd/` executes the rules. It draws nothing and knows no world.
 It is deterministic: the same seed and the same inputs give the same rolls
 and results. That's what lets a shared world replay, an agent predict, and a
 test pin an answer.
@@ -293,9 +293,9 @@ source coverage. The ledger is the current gap inventory.
 
 | Where | What | Keep, move, replace |
 |---|---|---|
-| `aethyr/rules/srd/engine.coax`, `battle.coax`, `npcs.coax` | Shared deterministic combat, selected class/subclass features and stat blocks, real-time turn clocks | Complete rules and progression; qualify each mechanical clause |
-| `aethyr/rules/srd/spells.coax`, `more.coax`, `house.coax` | 78 assigned SRD-marked spell/effect records including helpers, plus four house records; several effects are approximate or empty | Import canonical source content and complete typed programs; count parent spells separately from helpers |
-| `aethyr/rules/srd/import.coax`, `catalog.coax`, `data/` | Pinned-source pipeline: 339 spell descriptions and 875 entries from eight independently parsed class tables, with nine preserved source differences | Expand to the other catalogs; interpret/qualify mechanics and migrate executable consumers |
+| `rules/srd/engine.coax`, `battle.coax`, `npcs.coax` | Shared deterministic combat, selected class/subclass features and stat blocks, real-time turn clocks | Complete rules and progression; qualify each mechanical clause |
+| `rules/srd/spells.coax`, `more.coax`, `house.coax` | 78 assigned SRD-marked spell/effect records including helpers, plus four house records; several effects are approximate or empty | Import canonical source content and complete typed programs; count parent spells separately from helpers |
+| `rules/srd/import.coax`, `catalog.coax`, `data/` | Pinned-source pipeline: 339 spell descriptions and 875 entries from eight independently parsed class tables, with nine preserved source differences | Expand to the other catalogs; interpret/qualify mechanics and migrate executable consumers |
 | `verse/rules/srd5*.coax` | Older dice, object and combat implementation still used by consumers including Hold the Stair | Migrate consumers and remove duplicated rule ownership |
 | Everglade (`everglade5e-rules.coax`, room rules and `fivebar.coax`), 5E Lab | Shared engine consumers with world adapters, hotbars and effects | Centralize declared profiles; retain presentation and world physics |
 | Hold the Stair (`stair.coax`, `stair-tables.coax`) | Own class tables and older combat dependency | Use canonical class/spell data and shared execution |
@@ -303,12 +303,12 @@ source coverage. The ledger is the current gap inventory.
 
 The Druid's base table is now source-reconciled at 124 entries. Earlier bar counts
 were not compliance measurements. Use the ledger's runtime inventory for current
-executable record presence and the [canonical source inventory](../../aethyr/rules/srd/data/README.md)
+executable record presence and the [canonical source inventory](../../rules/srd/data/README.md)
 for imported spell/list data. Source presence and executable coverage remain separate.
 
 ## Work, in order
 
-1. **Engine home:** move `verse/rules/srd5*.coax` to `aethyr/rules/srd/`,
+1. **Engine home:** move `verse/rules/srd5*.coax` to `rules/srd/`,
    with Everglade and Hold the Stair loading the new path. No behaviour
    change; their tests pass as before.
 2. **Import:** the PDF-to-records tool and the generated data for spells and

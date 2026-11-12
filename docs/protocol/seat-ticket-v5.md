@@ -76,7 +76,7 @@ optional or required.
 | Item | Value |
 | --- | --- |
 | `c` | The class the API keeps for the character (`verse.room_vitals.character_class`, migration 0160): `srd-` and 3 to 12 lowercase letters, such as `srd-fighter`. Left out when the API keeps none yet. |
-| `l` | The character's level, one digit 1 to 6: the level its stored XP gives through the one table (`aethyr/rules/srd/advancement.coax`), at least the realm's starting level (`OA_ROOM_START_LEVEL`, 1 to 6, default 1). |
+| `l` | The character's level, one digit 1 to 6: the level its stored XP gives through the one table (`rules/srd/advancement.coax`), at least the realm's starting level (`OA_ROOM_START_LEVEL`, 1 to 6, default 1). |
 
 The API writes them with `seat_ticket_v5_class_ext`
 (`aethyr/session/seat-class.coax`, through `stk_class_ext_c`). An Everglade II

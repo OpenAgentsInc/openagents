@@ -4,7 +4,7 @@ Profile 3 is profile 2 (`character-checkpoint-v2.md`) plus the character's rest,
 so a restarted or drained Everglade II room resumes a Short or Long Rest where
 it was (#13046). Schema: `proto/verse/character-checkpoint-v3.schema.json`.
 Codec: `aethyr/session/character-checkpoint.coax`. Rest fields:
-`aethyr/rules/srd/rest-carry.coax`.
+`rules/srd/rest-carry.coax`.
 
 ## Body
 

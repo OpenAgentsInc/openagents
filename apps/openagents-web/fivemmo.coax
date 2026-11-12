@@ -3,7 +3,7 @@
 // and its people. On the green in the city's south-east corner a grid of 5-foot squares holds a
 // small fight: you and three casters against waves of six Skeletons, every one of them one of
 // Everglade's skinned people, dressed for their class. fivemmo-battle.coax runs the fight on the
-// SRD 5e engine (aethyr/rules/srd/); this file draws it: the bodies and their clips (idle, walk,
+// SRD 5e engine (rules/srd/); this file draws it: the bodies and their clips (idle, walk,
 // cast, slash, die), the weapons, the names and hit points over heads, and the HUD. The face
 // (fivemmo-face.c) walks you with aethyr/player.coax and hands this file the battle's numbers.
 // How your walking maps onto squares: realms/5e-mmo/index.md.
@@ -24,7 +24,7 @@ MM_X0 :: 25.0; MM_Z0 :: -50.0;  // the grid's corner (square 0, 0), in Everglade
 MM_N :: 10;                     // creatures: you, three casters, six Skeletons
 MM_ACTOR_FLOATS :: 12; MM_EV_FLOATS :: 8;   // as fivemmo-battle.coax writes them
 MM_NAME :: 24;
-// the engine's numbers the view reads (aethyr/rules/srd/engine.coax, spells.coax), kept to these
+// the engine's numbers the view reads (rules/srd/engine.coax, spells.coax), kept to these
 MM_DRUID :: 0; MM_WIZARD :: 1; MM_WARLOCK :: 2; MM_BARBARIAN :: 3; MM_MONK :: 4; MM_MONSTER :: 5;
 MM_BARD :: 6; MM_CLERIC :: 7; MM_FIGHTER :: 8; MM_PALADIN :: 9; MM_RANGER :: 10; MM_ROGUE :: 11; MM_SORCERER :: 12;
 MM_CLASS :: [13] string.["DRUID", "WIZARD", "WARLOCK", "BARBARIAN", "MONK", "SKELETON",

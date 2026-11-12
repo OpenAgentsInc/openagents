@@ -3,7 +3,7 @@
 // Experimental plays them against its monsters (everglade/zone-combat.coax), Everglade II through its
 // room (everglade/client/cast.coax), and the room takes Everglade II's casts by them
 // (coax/web/room/room-everglade.coax eg_e2_cast). Nothing here rolls or draws: the SRD 5e engine
-// (aethyr/rules/srd/, through fivebar.coax) says what each ability is.
+// (rules/srd/, through fivebar.coax) says what each ability is.
 //
 // On the wire (everglade-wire.coax C and e cast) slot i of class c's bar is XK_SLOT0 + c * XK_PER +
 // i, the bar in its own order (xc_bar_level), never the order a page has arranged it in.
@@ -13,10 +13,10 @@
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-#load "../../aethyr/rules/srd/battle.coax";
+#load "../../rules/srd/battle.coax";
 #load "../../aethyr/action/area-aim.coax" as aa;   // the areas abilities open, placed, outlined and resolved (#13081)
 #load "fivebar.coax";
-#load "../../aethyr/rules/srd/death-save-line.coax";   // at 0 Hit Points: the Death Saving Throws on a row and the plain line, every realm
+#load "../../rules/srd/death-save-line.coax";   // at 0 Hit Points: the Death Saving Throws on a row and the plain line, every realm
 
 XC_SLOTS :: 24;
 XC_COOL :: 1.0;                // seconds between presses

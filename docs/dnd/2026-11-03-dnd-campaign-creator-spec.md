@@ -61,7 +61,7 @@ and "Session recap", never "event", "authority", "replay" or "seed".
 
 | Piece | Where | What the campaign creator uses it for |
 |---|---|---|
-| SRD 5e rules engine | `aethyr/rules/srd/engine.coax`, `spells.coax`, `battle.coax` | Dice (a deterministic SplitMix64 stream), checks, saves, attacks, hit points, death saves, conditions, spells and their effect steps, the battle grid of 5-foot squares, initiative |
+| SRD 5e rules engine | `rules/srd/engine.coax`, `spells.coax`, `battle.coax` | Dice (a deterministic SplitMix64 stream), checks, saves, attacks, hit points, death saves, conditions, spells and their effect steps, the battle grid of 5-foot squares, initiative |
 | The 12 classes to level 6 | `battle.coax`, one SRD subclass each (Land Druid, Evoker, Fiend Warlock, Draconic Sorcerer, Lore Bard, Life Cleric, Champion, Devotion Paladin, Hunter, Thief, Berserker, Open Hand) | Character sheets and player turns for levels 1 to 6 |
 | The time adapter | [README.md, "The time adapter"](README.md#3-the-time-adapter-one-rule-set-two-clocks) | **SRD rounds** for the Table, **action combat** for a live 3D fight or a persistent world |
 | 5E Lab | `apps/openagents-web/fivelab.coax`, [realms/5e-lab/index.md](../../apps/openagents-web/realms/5e-lab/index.md) | The two views of a fight (the flat grid and the 3D glade), the CHARACTERS panel, condition marks on figures, the dice log, Player mode and its class hotbar on keys 1 to 9 |

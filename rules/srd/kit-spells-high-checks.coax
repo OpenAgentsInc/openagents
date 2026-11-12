@@ -1,0 +1,189 @@
+// The 2nd- and 3rd-level spells the twelve class kits show at levels 1-6 (#13043;
+// manifest: everglade/client/class-kit-spells-checks.coax), each resolved
+// through the shared battle against its SRD 5.2.1 text with fixed dice (d6 3,
+// d8 4, d10 5, d20 10), so each number is read off the page.
+//   coax/bin/coax test --library rules/srd/kit-spells-high-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "kit-spell-cases.coax";
+
+kh_cond_save :: (c: RsCreature, cond: int) -> int {
+  for e: c.eff { if e.kind == EF_COND && (e.cond & cond) != 0 { return e.save; } }
+  return -2;
+}
+
+#test "Blindness/Deafness p.113: a Con save or Blinded for a minute, the save repeated at the end of each of its turns; one more target a slot level" {
+  for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_wizard("Wizard",0,3),SP_BLINDNESS,10,ifx strong == 1 then 30 else 1);
+    #assert rs_cast(b[..],0,SP_BLINDNESS,2,0,0,1) && b[0].c[0].conc != SP_BLINDNESS;   // not Concentration
+    #assert rs_has(b[0].c[1],RS_BLINDED) == (strong == 0);
+    if strong == 0 {
+      #assert kh_cond_save(b[0].c[1],RS_BLINDED) == RS_CON;
+      rs_end_turn(b[..],0); rs_start_turn(b[..],1); b[0].c[1].score[RS_CON] = 30; rs_end_turn(b[..],1);
+      #assert !rs_has(b[0].c[1],RS_BLINDED);
+    }
+  }
+  b: [1] RsBattle; kc_case(b[..],rs_wizard("Wizard",0,5),SP_BLINDNESS,10,1); u := kc_target(b[..],10,3,1);
+  picks := [2] int.[1,u];
+  #assert rs_cast_creatures(b[..],0,SP_BLINDNESS,3,picks[..],false) && rs_has(b[0].c[1],RS_BLINDED) && rs_has(b[0].c[u],RS_BLINDED);
+  three := [3] int.[1,u,0];
+  c: [1] RsBattle; kc_case(c[..],rs_wizard("Wizard",0,5),SP_BLINDNESS,10,1); _ := kc_target(c[..],10,3,1);
+  #assert !rs_cast_creatures(c[..],0,SP_BLINDNESS,2,picks[..],false) && !rs_cast_creatures(c[..],0,SP_BLINDNESS,3,three[..],false);
+}
+
+#test "Hold Person p.141: a Humanoid, a Wis save or Paralyzed, the save repeated at the end of each of its turns; one more Humanoid a slot level" {
+  for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),SP_HOLD_PERSON,10,ifx strong == 1 then 30 else 1);
+    #assert rs_cast(b[..],0,SP_HOLD_PERSON,2,0,0,1) && rs_has(b[0].c[1],RS_PARALYZED) == (strong == 0);
+    // a successful save leaves nothing to hold
+    #assert (b[0].c[0].conc == SP_HOLD_PERSON) == (strong == 0);
+    if strong == 0 {
+      #assert kh_cond_save(b[0].c[1],RS_PARALYZED) == RS_WIS;
+      rs_end_turn(b[..],0); rs_start_turn(b[..],1); b[0].c[1].score[RS_WIS] = 30; rs_end_turn(b[..],1);
+      #assert !rs_has(b[0].c[1],RS_PARALYZED);
+    }
+  }
+  // A creature that is not a Humanoid is unaffected; the slot is still spent (p.106).
+  b: [1] RsBattle; kc_case(b[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),SP_HOLD_PERSON,10,1); b[0].c[1].humanoid = false;
+  slots := b[0].c[0].slots[2];
+  #assert rs_cast(b[..],0,SP_HOLD_PERSON,2,0,0,1) && !rs_has(b[0].c[1],RS_PARALYZED) && b[0].c[0].slots[2] == slots - 1;
+  c: [1] RsBattle; kc_case(c[..],rs_wizard("Wizard",0,5),SP_HOLD_PERSON,10,1); u := kc_target(c[..],10,3,1);
+  picks := [2] int.[1,u];
+  #assert rs_cast_creatures(c[..],0,SP_HOLD_PERSON,3,picks[..],false) && rs_has(c[0].c[1],RS_PARALYZED) && rs_has(c[0].c[u],RS_PARALYZED);
+}
+
+#test "Scorching Ray p.159: three rays of 2d6 Fire, each its own ranged attack, one more ray a slot level" {
+  for slot: [2] int.[2,3] {
+    b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,5),SP_SCORCHING_RAY,10,10); b[0].c[1].ac = 1;
+    rolls := b[0].dice[0].rolled;
+    #assert rs_cast(b[..],0,SP_SCORCHING_RAY,slot,0,0,1);
+    rays := 3 + slot - 2;
+    #assert 200 - b[0].c[1].hp == 6 * rays && b[0].dice[0].rolled - rolls == 3 * rays;   // a d20 and 2d6 a ray
+  }
+  // Rays split between targets, and a missed ray deals nothing.
+  b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,5),SP_SCORCHING_RAY,10,10); u := kc_target(b[..],10,3,10);
+  b[0].c[1].ac = 1; b[0].c[u].ac = 30; picks := [3] int.[1,1,u];
+  #assert rs_cast_creatures(b[..],0,SP_SCORCHING_RAY,2,picks[..],false) && b[0].c[1].hp == 188 && b[0].c[u].hp == 200;
+}
+
+#test "Fireball p.131: a 20-foot-radius Sphere at a point within 150 feet, a Dex save for half of 8d6 Fire, 1d6 more a slot level" {
+  for slot: [2] int.[3,4] { for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_wizard("Wizard",0,5),SP_FIREBALL,20,ifx strong == 1 then 30 else 1);
+    edge := kc_target(b[..],24,1,1); out := kc_target(b[..],25,1,1);   // 20 and 25 feet from the point
+    b[0].c[0].slots_max[4] = 1; b[0].c[0].slots[4] = 1;
+    #assert rs_cast(b[..],0,SP_FIREBALL,slot,20,1,-1);
+    full := 3 * (8 + slot - 3);
+    #assert 200 - b[0].c[1].hp == (ifx strong == 1 then full / 2 else full) && 200 - b[0].c[edge].hp == full && b[0].c[out].hp == 200;
+  } }
+  far: [1] RsBattle; kc_case(far[..],rs_wizard("Wizard",0,5),SP_FIREBALL,33,1);   // 160 feet
+  #assert !rs_cast(far[..],0,SP_FIREBALL,3,33,1,-1) && far[0].c[1].hp == 200 && !far[0].turn.action;
+}
+
+#test "Spirit Guardians p.164: a 15-foot Emanation, a Wis save once a turn on entering or ending a turn in it, 3d8 Radiant or half, Speed halved, allies spared" {
+  for slot: [2] int.[3,4] { for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_cleric("Cleric",0,5),SP_SPIRIT_GUARDIANS,6,ifx strong == 1 then 30 else 1);
+    ally := rs_add(b[..],rs_druid("Ally",0,3),2,1); b[0].c[ally].hp = 20; b[0].c[ally].hp_max = 20;
+    b[0].c[0].slots_max[4] = 1; b[0].c[0].slots[4] = 1;
+    #assert rs_cast(b[..],0,SP_SPIRIT_GUARDIANS,slot,0,0,0) && b[0].c[0].conc == SP_SPIRIT_GUARDIANS;
+    #assert b[0].c[1].hp == 200 && !rs_guarded(b[..],1);   // 25 feet away: outside
+    rs_end_turn(b[..],0); rs_start_turn(b[..],1);
+    full := 4 * (3 + slot - 3);
+    dealt := ifx strong == 1 then full / 2 else full;
+    // it walks in: one save as it enters, and none again when it ends that turn there
+    #assert rs_step_to(b[..],1,5,1) && b[0].c[1].hp == 200 && rs_step_to(b[..],1,4,1);
+    #assert 200 - b[0].c[1].hp == dealt && rs_guarded(b[..],1) && rs_walk_speed(b[..],1) == b[0].c[1].speed / 2;
+    rs_end_turn(b[..],1); #assert 200 - b[0].c[1].hp == dealt;
+    // its next turn ends in the Emanation: another save
+    rs_start_turn(b[..],1); rs_end_turn(b[..],1); #assert 200 - b[0].c[1].hp == 2 * dealt;
+    #assert b[0].c[ally].hp == 20 && !rs_guarded(b[..],ally);
+  } }
+}
+
+#test "Call Lightning p.114: a 3d10 Lightning bolt within 5 feet of a point, a Dex save for half, and a Magic action for another bolt without a slot" {
+  for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,5),SP_CALL_LIGHTNING,10,ifx strong == 1 then 30 else 1);
+    near := kc_target(b[..],11,1,1); out := kc_target(b[..],12,1,1);
+    #assert rs_cast(b[..],0,SP_CALL_LIGHTNING,3,10,1,-1) && b[0].c[0].conc == SP_CALL_LIGHTNING;
+    #assert 200 - b[0].c[1].hp == (ifx strong == 1 then 7 else 15) && b[0].c[near].hp == 185 && b[0].c[out].hp == 200;
+    slots := b[0].c[0].slots[3];
+    rs_end_turn(b[..],0); rs_start_turn(b[..],0);
+    #assert rs_cast(b[..],0,SP_CALL_BOLT,0,12,1,-1) && b[0].turn.action && b[0].c[0].slots[3] == slots;
+    #assert b[0].c[out].hp == 185 && b[0].c[1].hp == (ifx strong == 1 then 193 else 185);
+  }
+  // no cloud, no bolt
+  b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,5),SP_CALL_LIGHTNING,10,1);
+  #assert !rs_cast(b[..],0,SP_CALL_BOLT,0,10,1,-1) && b[0].c[1].hp == 200;
+}
+
+#test "Hypnotic Pattern p.141: a 30-foot Cube, a Wis save or Charmed, Incapacitated and Speed 0 for those who see it, ending on damage or a shake" {
+  b: [1] RsBattle; kc_case(b[..],rs_wizard("Wizard",0,5),SP_HYPNOTIC_PATTERN,10,1);
+  t2 := kc_target(b[..],10,3,1); blind := kc_target(b[..],11,1,1); strong := kc_target(b[..],12,1,30);
+  shaker := kc_target(b[..],11,3,30);
+  b[0].c[blind].cond |= RS_BLINDED;
+  #assert rs_cast(b[..],0,SP_HYPNOTIC_PATTERN,3,10,1,-1) && b[0].c[0].conc == SP_HYPNOTIC_PATTERN;
+  for j: [2] int.[1,t2] { #assert rs_has(b[0].c[j],RS_CHARMED) && rs_has(b[0].c[j],RS_INCAPACITATED) && !rs_can_move(b[0].c[j]); }
+  #assert !rs_has(b[0].c[blind],RS_CHARMED);
+  #assert rs_can_move(b[0].c[blind]);
+  #assert !rs_has(b[0].c[strong],RS_CHARMED) && rs_can_move(b[0].c[strong]);
+  #assert !rs_has(b[0].c[shaker],RS_CHARMED) && rs_can_move(b[0].c[shaker]);
+  // any damage ends it for that creature
+  rs_damage(b[..],strong,1,1,RS_FIRE,false,-1);
+  #assert !rs_has(b[0].c[1],RS_CHARMED) && rs_can_move(b[0].c[1]) && rs_has(b[0].c[t2],RS_CHARMED);
+  // someone else's action shakes it out (within reach), once
+  rs_end_turn(b[..],0); rs_start_turn(b[..],shaker);
+  #assert !rs_shake(b[..],shaker,strong) && !rs_shake(b[..],shaker,shaker);
+  #assert rs_shake(b[..],shaker,t2) && b[0].turn.action && !rs_has(b[0].c[t2],RS_CHARMED) && !rs_shake(b[..],shaker,t2);
+  far: [1] RsBattle; kc_case(far[..],rs_wizard("Wizard",0,5),SP_HYPNOTIC_PATTERN,10,1); helper := kc_target(far[..],14,1,30);
+  #assert rs_cast(far[..],0,SP_HYPNOTIC_PATTERN,3,10,1,-1) && rs_has(far[0].c[1],RS_CHARMED);
+  rs_end_turn(far[..],0); rs_start_turn(far[..],helper);
+  #assert !rs_shake(far[..],helper,1) && !far[0].turn.action;   // 20 feet away
+}
+
+#test "a creature an area leaves out needs no effect room: Entangle's caster, and a Blinded creature in Hypnotic Pattern" {
+  for full: 0..<2 {
+    // Entangle centred on its own caster, whose effect records are all in use
+    b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,1),SP_ENTANGLE,2,1);
+    if full == 1 { for k: 0..<RS_EFFECTS { b[0].c[0].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; } }
+    #assert rs_cast(b[..],0,SP_ENTANGLE,1,1,1,-1) && rs_has(b[0].c[1],RS_RESTRAINED);
+    // a Blinded creature with no free record in the Pattern's Cube
+    c: [1] RsBattle; kc_case(c[..],rs_wizard("Wizard",0,5),SP_HYPNOTIC_PATTERN,10,1); blind := kc_target(c[..],11,1,1);
+    c[0].c[blind].cond |= RS_BLINDED;
+    if full == 1 { for k: 0..<RS_EFFECTS { c[0].c[blind].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; } }
+    #assert rs_cast(c[..],0,SP_HYPNOTIC_PATTERN,3,10,1,-1) && rs_has(c[0].c[1],RS_CHARMED) && !rs_has(c[0].c[blind],RS_CHARMED);
+  }
+}
+#test "a single-target spell asks one effect record of its target, and a creature saves against Spirit Guardians on the battle's first turn" {
+  b: [1] RsBattle; kc_case(b[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),SP_HOLD_PERSON,10,1);
+  for k: 1..<RS_EFFECTS { b[0].c[1].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }   // one free record
+  #assert rs_cast(b[..],0,SP_HOLD_PERSON,2,0,0,1) && rs_has(b[0].c[1],RS_PARALYZED);
+  // turn 0: no creature has saved yet
+  c: [1] RsBattle; c[0].w = 20; c[0].h = 8; c[0].dice[0].fixed = true;
+  g := rs_add(c[..],rs_cleric("Cleric",0,5),1,1); t := kc_target(c[..],3,1,1);
+  kc_learn(c[..],g,SP_SPIRIT_GUARDIANS); c[0].who = g; c[0].turn = RsTurn.{};
+  #assert c[0].turn_no == 0 && rs_cast(c[..],g,SP_SPIRIT_GUARDIANS,3,0,0,g);
+  rs_guardians(c[..],t); #assert c[0].c[t].hp == 188;
+}
+#test "kit spells respect damage and condition immunity, and their concentration's end ends what they hold" {
+  // Fire Bolt at a creature immune to Fire (the SRD's Imp) deals nothing; Starry Wisp at one resistant to Radiant, half
+  b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,1),SP_FIRE_BOLT,10,10); b[0].c[1].ac = 1; b[0].c[1].immune = 1 << RS_FIRE;
+  #assert rs_cast(b[..],0,SP_FIRE_BOLT,0,0,0,1) && b[0].c[1].hp == 200;
+  w: [1] RsBattle; kc_case(w[..],rs_druid("Druid",0,5),SP_STARRY_WISP,10,10); w[0].c[1].ac = 1; w[0].c[1].resist = 1 << RS_RADIANT;
+  #assert rs_cast(w[..],0,SP_STARRY_WISP,0,0,0,1) && w[0].c[1].hp == 196;
+  // Hold Person on a creature immune to Paralyzed, Hypnotic Pattern on one immune to Charmed: nothing held
+  h: [1] RsBattle; kc_case(h[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),SP_HOLD_PERSON,10,1); h[0].c[1].immune_cond = RS_PARALYZED;
+  #assert rs_cast(h[..],0,SP_HOLD_PERSON,2,0,0,1) && !rs_has(h[0].c[1],RS_PARALYZED);
+  p: [1] RsBattle; kc_case(p[..],rs_wizard("Wizard",0,5),SP_HYPNOTIC_PATTERN,10,1); u := kc_target(p[..],10,3,1);
+  p[0].c[u].immune_cond = RS_CHARMED;
+  #assert rs_cast(p[..],0,SP_HYPNOTIC_PATTERN,3,10,1,-1) && rs_has(p[0].c[1],RS_CHARMED) && !rs_has(p[0].c[u],RS_CHARMED);
+  // the caster's concentration ends: the stupor, the hold and the plants let go
+  rs_end_concentration(p[..],0,""); #assert !rs_has(p[0].c[1],RS_CHARMED) && rs_can_move(p[0].c[1]);
+  q: [1] RsBattle; kc_case(q[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),SP_HOLD_PERSON,10,1);
+  #assert rs_cast(q[..],0,SP_HOLD_PERSON,2,0,0,1) && rs_has(q[0].c[1],RS_PARALYZED);
+  rs_end_concentration(q[..],0,""); #assert !rs_has(q[0].c[1],RS_PARALYZED);
+  e: [1] RsBattle; kc_case(e[..],rs_druid("Druid",0,1),SP_ENTANGLE,2,1);
+  #assert rs_cast(e[..],0,SP_ENTANGLE,1,1,1,-1) && rs_has(e[0].c[1],RS_RESTRAINED);
+  rs_end_concentration(e[..],0,""); #assert !rs_has(e[0].c[1],RS_RESTRAINED) && !rs_difficult(e[..],2,1);
+}

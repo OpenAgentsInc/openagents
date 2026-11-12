@@ -1,5 +1,5 @@
 // One-Shot's C face for the browser (coax/web/host.js): scalar Wasm exports over oneshot.coax,
-// which holds the Table (oneshot-table.coax, on the SRD engine in aethyr/rules/srd/) and its
+// which holds the Table (oneshot-table.coax, on the SRD engine in rules/srd/) and its
 // drawing. It decides nothing. It carries the page's socket commands (socket.coax's pipe) to the
 // host after each call, as stair-face.c does. No scene: gpu/oneshot.coax reuses 5E Lab's bg_fs
 // for the 3D glade and the strokes os_frame writes.

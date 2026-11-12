@@ -1,0 +1,6 @@
+#load "hostile-permission-probes.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  if !hostile_permission_probe() { tool_errln("FAIL HOSTILE-PERMISSIONS"); return 1; }
+  tool_errln("PASS HOSTILE-PERMISSIONS"); return 0;
+}

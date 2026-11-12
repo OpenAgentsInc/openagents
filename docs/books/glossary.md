@@ -51,7 +51,7 @@ that already touches the file (#13267 to #13269, #13280).
 | World event | A scheduled in-world happening, such as a raid | Everglade | `verse.room_events` and `room-events.coax` |
 | Session (login) | An authenticated browser or app session (`auth.sessions`) | Identity | Six SQL tables named `sessions` (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`), plus `aethyr/session/` and `openagents.session.v1` |
 | Transcript log | Coder's JSONL log, id `openagents.session.v1` | Coder | Clashes with NIP-SESS (compliance plan C1) and login/room sessions |
-| Engine (Coder) | What runs a Coder task | Coder | Shares "engine" with Aethyr and SRD `aethyr/rules/srd/engine.coax` |
+| Engine (Coder) | What runs a Coder task | Coder | Shares "engine" with Aethyr and SRD `rules/srd/engine.coax` |
 | Golem | A Coder agent session, shown in the Everglade desktop | Golemancy (ACL over Coder) | |
 | Everglade | The game. Today Everglade II | Everglade | Legacy v1 (`everglade.wasm`, until #13269), `everglade2`, `.e2`, `everglade-ii` (#13267–#13269), and web domain `everglade.world` |
 

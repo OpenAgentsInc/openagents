@@ -1,0 +1,6 @@
+#load "contact-health-probes.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  if !contact_health_probe() { tool_errln("FAIL CONTACT-HEALTH"); return 1; }
+  tool_errln("PASS CONTACT-HEALTH"); return 0;
+}

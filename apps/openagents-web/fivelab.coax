@@ -1,6 +1,6 @@
 // 5E Lab, openagents.com/worlds/5e-lab (unlisted): a bare grid of 5-foot squares where
 // characters play the SRD 5e rules against each other, so the shared engine
-// (aethyr/rules/srd/, docs/dnd/README.md) can be watched at work. Two sides, each
+// (rules/srd/, docs/dnd/README.md) can be watched at work. Two sides, each
 // with two of every one of the twelve SRD 5e classes at level 6 (LEVEL), and an army of
 // Skeletons fight on the real-time clock: every creature's turn comes round on
 // the beat, staggered by initiative, and the log shows each roll. Each class
@@ -33,8 +33,8 @@
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as xdungeon;
 #load "../../aethyr/loop.coax";
-#load "../../aethyr/rules/srd/battle.coax";
-#load "../../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
+#load "../../rules/srd/battle.coax";
+#load "../../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
 #load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
 #load "../../aethyr/space.coax" as asp;
 #load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
@@ -408,7 +408,7 @@ lab_effect :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
 // What lasts on a creature, as the glade draws it (aethyr/fx/abilities.coax fxp_status): its
 // conditions, concentration, Rage, Sacred Weapon, Innate Sorcery, a flame in hand and a Fiend's
 // Temporary Hit Points from Dark One's Blessing.
-// Its conditions' marks are the shared condition display's (aethyr/rules/srd/condition-display.coax).
+// Its conditions' marks are the shared condition display's (rules/srd/condition-display.coax).
 fx_marks :: (s: [] Lab, i: int) -> int {
   b := bt(s);
   if b[0].c[i].dead || b[0].c[i].hp == 0 { return 0; }
@@ -4025,7 +4025,7 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
 }
 
 // The reaction's #transaction snapshots the whole battle, so this check's cost grows with RsCreature;
-// the default budget ran out after Shapechange's fields (aethyr/rules/srd/shapechange.coax).
+// the default budget ran out after Shapechange's fields (rules/srd/shapechange.coax).
 #test "experimental combat opportunity attacks precede the player's grid departure" #steps 40000000 {
   s:[1]Lab; b:=bt(s[..]); b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
   _:=rs_add(b,rs_fighter("Reactor",1,3),3,3); _=rs_add(b,rs_guard("Mover",0),4,3); rs_start_turn(b,1);

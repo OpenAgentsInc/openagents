@@ -469,7 +469,7 @@ problems.
   late yes (audit #13157).
 - Effects as state and events as cues (chapter 94).
 - SRD rules as effect programs with conditions as typed bits
-  (`aethyr/rules/srd/`: `effect-lifecycle.coax`, `effect-admission.coax`,
+  (`rules/srd/`: `effect-lifecycle.coax`, `effect-admission.coax`,
   `condition-permission*.coax`).
 
 **The gap.** The request number is a prediction key in all but name, but it

@@ -113,7 +113,7 @@ You fight the monsters with your class's level 1 kit
   - Self and area abilities (Second Wind, Rage, Thunderwave, Entangle) work from where you stand,
     with the area set the way you face.
 - A heal adds to your Hit Points. One second passes between uses.
-- The SRD 5e engine (`aethyr/rules/srd/`, through `fivebar.coax`) rolls every attack, save, and
+- The SRD 5e engine (`rules/srd/`, through `fivebar.coax`) rolls every attack, save, and
   damage roll offline. The Imp has AC 13 and 10 Hit Points. The Gremlin has AC 12 and 13 Hit
   Points. Each monster shows its name and Hit Points, and damage numbers rise off it.
 - A monster at 0 Hit Points dies. It stops, a puff of dust rises, and it sinks into the ground

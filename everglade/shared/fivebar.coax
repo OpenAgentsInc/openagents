@@ -1,5 +1,5 @@
 // The hotbar on the SRD 5e engine (fivebar): one layer between a world's hotbar and
-// aethyr/rules/srd/, shared by Everglade 5E (everglade5e-rules.coax) and 5E MMO
+// rules/srd/, shared by Everglade 5E (everglade5e-rules.coax) and 5E MMO
 // (fivemmo-battle.coax). A slot is an entry: what kind of thing it is (a spell or a class feature),
 // the spell record and the slot level it is cast at, how it is aimed, its name, and its picture's
 // name in the world's hotbar art (`art`: realms/everglade/hotbar/ for Everglade's bar, the spell's
@@ -31,15 +31,15 @@ FB_WIND :: 7; FB_WHOLE :: 8; FB_SECOND :: 9; FB_SURGE :: 10; FB_LAY :: 11; FB_SA
 FB_AIM :: 14; FB_INNATE :: 15; FB_INSPIRE :: 16; FB_TURN :: 17; FB_PRESERVE :: 18; FB_LANDS :: 19;
 FB_RESURGE :: 20;   // Wild Resurgence: a slot for a use of Wild Shape, taken at once
 FB_WORLD :: 21;     // the world's own (Rebuild, the phone's row switcher): no rules
-FB_WILD :: 22;      // Wild Shape (aethyr/rules/srd/wild-shape.coax): into the best Beast form known, or back
-// the actions every creature has (#13040, aethyr/rules/srd/ hide, grapple, ready): Hide (p.183) where
+FB_WILD :: 22;      // Wild Shape (rules/srd/wild-shape.coax): into the best Beast form known, or back
+// the actions every creature has (#13040, rules/srd/ hide, grapple, ready): Hide (p.183) where
 // the world admits cover; an Unarmed Strike's Grapple or Shove (Prone) at your target; Ready an attack
 FB_HIDE :: 23; FB_GRAPPLE :: 24; FB_SHOVE :: 25; FB_READY :: 26;
 // Search, Study and Influence (p.176) on one slot, its option the action; a Ritual (pp.104-105) of
 // the ritual spell the creature may cast so (fb_ritual_spell): begun, kept going, then cast
 FB_SKILL :: 27; FB_RITUAL :: 28;
 FB_SHOOT :: 30;     // the Attack action with your ranged weapon (rs_shoot): a bow's arrow on the creature it reached (docs/verse/bow-combat.md)
-// Shapechange (aethyr/rules/srd/shapechange.coax): into the stat block `opt` (MON_*) with a 9th-level slot, or
+// Shapechange (rules/srd/shapechange.coax): into the stat block `opt` (MON_*) with a 9th-level slot, or
 // back; and a dragon's own actions in that form (dragon-actions.coax): Fire Breath at the square (tx, ty)'s
 // way, Tail Sweep, Wing Buffet and Frightful Roar
 FB_SHAPECHANGE :: 31; FB_BREATH :: 32; FB_TAIL :: 33; FB_BUFFET :: 34; FB_ROAR :: 35;
@@ -228,7 +228,7 @@ fb_warlock_bar :: (out: [] FbAb) -> int {
   out[8] = fb_spell(SP_HEX, 1, FB_FOE); out[8].delay = 0.3;
   return FB_WL_SLOTS;
 }
-// The SRD 5.2.1 Warlock at level 17 (aethyr/rules/srd/engine.coax rs_warlock): the Fiend Patron, Agonizing
+// The SRD 5.2.1 Warlock at level 17 (rules/srd/engine.coax rs_warlock): the Fiend Patron, Agonizing
 // and Repelling Blast on Eldritch Blast, Armor of Shadows (AC 13 + Dex), and Hellish Rebuke prepared
 // (its Reaction to damage, rs_hellish_rebuke).
 FB_WL_LEVEL :: 17;
@@ -237,7 +237,7 @@ fb_warlock_hero :: (name: string, team: int) -> RsCreature { c := rs_warlock(nam
 // ---- Character Create's classes (#13024): the twelve SRD 5.2.1 classes at level 1
 
 // A character made in Character Create plays the class it chose there: the SRD 5.2.1 class at level
-// 1, built by the engine (aethyr/rules/srd/engine.coax rs_barbarian to rs_wizard), with one ability on
+// 1, built by the engine (rules/srd/engine.coax rs_barbarian to rs_wizard), with one ability on
 // its bar. A caster has a cantrip from its class's list; a class with no cantrip at level 1 has its
 // signature level 1 action. On the wire the ability is slot FB_CL0 + class.
 FB_CL0 :: 96;

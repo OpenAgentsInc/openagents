@@ -174,7 +174,7 @@ EgSeat :: struct {
   place_due: int;                                     // a place line (room-control.coax "place"): beside rowboat place_due - 1 on the next tick (0 none)
   back_hp: int = -1; back_dead: bool;                 // the Hit Points it came back with until its hello built it (rv_join; -1 none)
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
-  fx: [WE_WATCH] CdClock;                             // its watch effects (WE_*): the shared display's clocks (aethyr/rules/srd/condition-display.coax)
+  fx: [WE_WATCH] CdClock;                             // its watch effects (WE_*): the shared display's clocks (rules/srd/condition-display.coax)
   step_at: int; ack_at: int; ack_told: int;           // when the input stepped last and the one ACK names were heard (room-stats.coax rm_st_ack)
   ack_sent_told:int; // exact final-D queue observation, independent of the legacy estimate
   ends: [EG_ENDS] EgEnd; ends_n: int;                 // ends (E) waiting for the inputs sent before them (eg_ends_due)

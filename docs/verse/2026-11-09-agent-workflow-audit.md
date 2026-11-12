@@ -211,7 +211,7 @@ Commits that touched each file in the last 7 days, out of 1,819:
 | `INVARIANTS.md` | 330 | Append-only ledger |
 | `apps/openagents-web/fivelab.coax` | 121 | One large unit |
 | `apps/openagents-web/wasm-budgets.txt` | 120 | One line per module |
-| `aethyr/rules/srd/battle.coax` | 117 | One large unit |
+| `rules/srd/battle.coax` | 117 | One large unit |
 | `coax/web/room/room-everglade.coax` | 113 | One large unit |
 | `docs/dnd/srd-compliance-ledger.md` | 108 | Append-only ledger |
 | `bitcoin/book/chapters.json`, `SUMMARY.md`, `PLAN.md`, `examples.json` | 85 to 90 each | Indexes |

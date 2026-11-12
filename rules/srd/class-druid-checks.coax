@@ -1,0 +1,100 @@
+// The Druid's levels 1-6 features (#13044; class-features.coax lists them), each resolved through
+// the shared battle against its SRD 5.2.1 text (p. 41-46), with fixed dice (d6 3, d20 10). The
+// preset is a Circle of the Land (polar) Druid, a Warden, in leather with a shield, Wisdom 16.
+//   coax/bin/coax test --library rules/srd/class-druid-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "class-features.coax";
+
+#test "Spellcasting p.41: Wisdom, DC 8 + proficiency + Wisdom; the Druid table's slots and cantrips" {
+  ones := [7] int.[0, 2, 3, 4, 4, 4, 4]; twos := [7] int.[0, 0, 0, 2, 3, 3, 3]; threes := [7] int.[0, 0, 0, 0, 0, 2, 3];
+  for level: 1..<7 {
+    c := rs_druid("D", 0, level);
+    #assert c.spell_ability == RS_WIS && c.slots_max[1] == ones[level] && c.slots_max[2] == twos[level] && c.slots_max[3] == threes[level];
+    #assert rs_spell_dc(c) == 8 + rs_proficiency(level) + rs_mod(c.score[RS_WIS]) && c.spells.cantrips == (ifx level >= 4 then 3 else 2);
+  }
+}
+
+#test "Druidic p.42: Speak with Animals always prepared" {
+  for level: 1..<7 { c := rs_druid("D", 0, level); #assert rs_class_spell_granted(c, SP_SPEAK_WITH_ANIMALS) && rs_spell_ready(c, SP_SPEAK_WITH_ANIMALS); }
+}
+
+#test "Primal Order p.42: Warden" {
+  #assert rs_druid("D", 0, 1).order == RS_ORDER_WARDEN;
+}
+
+#test "Wild Shape p.42: from level 2, two uses (three at 6), a Bonus Action into a known Beast, Temporary Hit Points of its level" {
+  for level: 1..<7 { #assert rs_druid("D", 0, level).uses_max[RS_USE_WILD] == (ifx level >= 6 then 3 else ifx level >= 2 then 2 else 0); }
+  b: [1] RsBattle; cf_field(b[..], rs_druid("Rowan", 0, 2), 10);
+  #assert rs_wild_shape(b[..], 0, MON_WOLF) && b[0].turn.bonus && b[0].c[0].temp == 2 && b[0].c[0].ac == 12 && b[0].c[0].uses[RS_USE_WILD] == 1;
+  #assert !rs_cast(b[..], 0, SP_THUNDERWAVE, 1, 2, 1, -1);   // no spellcasting
+  #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp == 200 - (3 + 2) && rs_has(b[0].c[1], RS_PRONE);   // the Wolf's Bite
+  b[0].c[0].uses[RS_USE_WILD] = 0; rs_short_rest_resources(b[0].c[0..<1]); #assert b[0].c[0].uses[RS_USE_WILD] == 1;   // one back on a Short Rest
+  #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_WILD] == 2;
+  one: [1] RsBattle; cf_field(one[..], rs_druid("Rowan", 0, 1), 10); #assert !rs_wild_shape(one[..], 0, MON_WOLF);
+}
+
+#test "Wild Shape p.42: four known forms of CR 1/4 at level 2, six of CR 1/2 at 4" {
+  for level: [2] int.[3, 4] {
+    c := rs_druid("D", 0, level); n := 0;
+    for m: 1..<MON_N { if rs_wild_knows(c, m) { n += 1; #assert rs_monster_block(m).beast && rs_monster_block(m).xp <= (ifx level >= 4 then 100 else 50); } }
+    #assert n == (ifx level >= 4 then 6 else 4);
+  }
+}
+
+#test "Wild Companion p.43: the feature is granted from level 2" {
+  #assert !rs_druid("D", 0, 1).companion && rs_druid("D", 0, 2).companion;
+}
+
+#test "Circle of the Land Spells p.46: polar, Fog Cloud, Hold Person and Ray of Frost from level 3, Sleet Storm from 5" {
+  for level: 2..<7 {
+    c := rs_druid("D", 0, level);
+    #assert rs_class_spell_granted(c, SP_HOLD_PERSON) == (level >= 3) && rs_class_spell_granted(c, SP_FOG_CLOUD) == (level >= 3);
+    #assert rs_class_spell_granted(c, SP_RAY_OF_FROST) == (level >= 3) && rs_class_spell_granted(c, SP_SLEET_STORM) == (level >= 5);
+  }
+}
+
+#test "Land's Aid p.46: from level 3, a Magic action and a Wild Shape use; 2d6 Necrotic to a foe that fails its Con save" {
+  #assert !rs_druid("D", 0, 2).lands_aid;
+  b: [1] RsBattle; cf_field(b[..], rs_druid("Rowan", 0, 3), 10); b[0].c[1].score[RS_CON] = 1;
+  #assert rs_lands_aid(b[..], 0, 2, 1, -1) && b[0].turn.action && b[0].c[0].uses[RS_USE_WILD] == 1 && b[0].c[1].hp == 200 - 2 * 3;
+}
+
+#test "Ability Score Improvement p.43: Wisdom 16 to 18 at level 4" {
+  #assert rs_druid("D", 0, 3).score[RS_WIS] == 16 && rs_druid("D", 0, 4).score[RS_WIS] == 18;
+}
+
+#test "Wild Resurgence p.43: from level 5, a slot for a Wild Shape use when none is left, once a turn" {
+  for level: [2] int.[4, 5] {
+    b: [1] RsBattle; cf_field(b[..], rs_druid("Rowan", 0, level), 10); b[0].c[0].uses[RS_USE_WILD] = 0;
+    #assert rs_wild_resurgence(b[..], 0) == (level == 5) && b[0].c[0].uses[RS_USE_WILD] == (ifx level == 5 then 1 else 0);
+  }
+}
+
+#test "Natural Recovery p.46: from level 6, Hold Person once without a slot, and a Short Rest's slots of half its level" {
+  #assert !rs_druid("D", 0, 5).natural_recovery && rs_rest_slot_budget(rs_druid("D", 0, 5), false) == 0;
+  c := rs_druid("D", 0, 6); #assert c.natural_recovery && c.free_spell == SP_HOLD_PERSON && rs_rest_slot_budget(c, false) == 3;
+}
+
+#test "Wild Shape trades one known form after a completed Long Rest" {
+  b:[1]RsBattle; cf_field(b[..],rs_druid("Rowan",0,4),10);
+  c:=b[0].c[0..<1];
+  #assert !rs_wild_knows(c[0],MON_CAT) && rs_wild_knows(c[0],MON_WOLF);
+  #assert !rs_wild_swap(c,MON_WOLF,MON_CAT) && !rs_long_rest_apply(b[..],0);
+  c[0].long_rest.phase=3;
+  #assert rs_long_rest_apply(b[..],0);
+  #assert !rs_wild_swap(c,MON_CAT,MON_WOLF) && !rs_wild_swap(c,MON_WOLF,MON_OGRE);
+  #assert !rs_wild_swap(c,MON_WOLF,MON_RAT);
+  #assert rs_wild_swap(c,MON_WOLF,MON_CAT);
+  #assert !rs_wild_knows(c[0],MON_WOLF) && rs_wild_knows(c[0],MON_CAT);
+  #assert !rs_wild_swap(c,MON_CAT,MON_WOLF) && !rs_long_rest_apply(b[..],0);
+  rs_fresh(b[..],0);
+  #assert rs_wild_shape(b[..],0,MON_CAT) && c[0].ac==12 && c[0].climb==40 && rs_jump_score(c[0])==15;
+  rs_fresh(b[..],0);
+  #assert rs_wild_shape_leave(b[..],0) && !c[0].jumper && c[0].climb==0;
+  c[0].long_rest.phase=3;
+  #assert rs_long_rest_apply(b[..],0) && rs_wild_swap(c,MON_CAT,MON_WOLF);
+}

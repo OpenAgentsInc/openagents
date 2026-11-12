@@ -1,0 +1,7 @@
+// Focused native printed-attack witness, not whole-SRD qualification.
+#load "stat-attack-checks.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  if !sa_native() { tool_errln("FAIL STAT-ATTACK"); return 1; }
+  tool_errln("PASS STAT-ATTACK"); return 0;
+}

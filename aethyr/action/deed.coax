@@ -6,7 +6,7 @@
 //
 // A bearing (DeedBearing) is what a body's conditions let it do and how it holds itself: one pose for
 // the body, one set of locks for the input and the bar. A ruleset maps its conditions onto it once
-// (the SRD's: aethyr/rules/srd/condition-bearing.coax rs_bearing).
+// (the SRD's: rules/srd/condition-bearing.coax rs_bearing).
 //
 // A feel (DeedFeel) is the presentation contract: every usable action declares its animation, its
 // effect, its sound and how the body moves. deed_feel_missing names what one lacks; a game's check

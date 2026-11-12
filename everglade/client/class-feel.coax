@@ -12,7 +12,7 @@
 // load it; zones only wire it in.
 //   coax/bin/coax test everglade/client/class-feel.coax
 #load "class-look.coax";
-#load "../../aethyr/rules/srd/condition-bearing.coax";
+#load "../../rules/srd/condition-bearing.coax";
 
 // The animation roles.
 XF_ANIM_BLOW :: 0;     // a weapon blow, a fist, a touch spell

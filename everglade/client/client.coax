@@ -19,7 +19,7 @@
 #load "../hud/class-resource.coax";   // Everglade's class resource bar: Rages, Focus (#13084)
 #load "../hud/create.coax";    // Everglade's Character Create panel and the world's menu (#13083)
 #load "sight.coax";   // ... from this zone's land, trunks, rocks and camp
-#load "../../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
+#load "../../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
 #load "cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "guard.coax";  // the path's guard, as the room walks him
 #load "creatures.coax";   // the wolves and the goblins, as the room moves them
@@ -388,7 +388,7 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   dm := e2d_move_in(s); if dm.ok && h == 0 { return dm.in; }   // an agent's walk-to, face or use (everglade/client/drive.coax)
   // asleep, as the room's rules hold you: your keys move nothing until you wake (WATCH, END)
   if e2n_asleep(s[0].net[..]) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
-  // down, or held by a condition (your bearing, aethyr/rules/srd/condition-bearing.coax): your keys move nothing, as the room steps you
+  // down, or held by a condition (your bearing, rules/srd/condition-bearing.coax): your keys move nothing, as the room steps you
   if !deed_can_move(e2k_bearing(s)) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
                    theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
@@ -1886,7 +1886,7 @@ e2_body_of :: (s: [] E2, c: cc.Creator, fig: figs.BdAnim, at: E2Drawn, any: bool
   for i: from..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
   return E2Drawn.{rec = rec, n = n, sn = sn};
 }
-// A body down (its bearing's pose, aethyr/rules/srd/condition-bearing.coax: Unconscious or dead): it
+// A body down (its bearing's pose, rules/srd/condition-bearing.coax: Unconscious or dead): it
 // falls (the rig's fall, once, then held) and lies Prone until the rules have it up again, when it
 // stands back into its gait.
 e2_fall :: (a: [] figs.BdAnim, b: DeedBearing, now: f32) {

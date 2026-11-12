@@ -134,7 +134,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 
 | Slug | Context | Owned folders |
 | --- | --- | --- |
-| `combat-rules` | Combat rules (SRD) | `rules/srd/`, `aethyr/rules/srd/` |
+| `combat-rules` | Combat rules (SRD) | `rules/srd/`, `rules/srd/` |
 | `characters` | Characters and progression | `everglade/model/` |
 | `world` | World and zones | `everglade/world/`, `everglade/server/`, `everglade/client/` |
 | `creatures` | Creatures and encounters | `everglade/model/`, `everglade/server/` |

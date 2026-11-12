@@ -1,0 +1,31 @@
+#load "long-rest-resources-checks.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1; c[0].exhaustion=1; c[0].cond=RS_EXHAUSTION;
+  // Start between whole seconds, then execute every real 64 Hz battle tick.
+  rs_tick(b[..],1.0/64);
+  if b[0].rest_clock.ticks!=15625 || !rs_long_rest_start_owned(b[..],0,1,true) { return 1; }
+  if !rs_sleeping(c[0]) || c[0].long_rest.rate!=1000000 { return 2; }
+  for frame:0..<1843199 { rs_tick(b[..],1.0/64); }
+  if rs_long_rest_sync_owned(b[..],0).ready { return 3; }
+  rs_tick(b[..],1.0/64);
+  if !rs_long_rest_sync_owned(b[..],0).ready { return 4; }
+  if !rs_long_rest_apply(b[..],0) || c[0].long_rest.finished!=28800015625 { return 5; }
+  if c[0].hp!=c[0].hp_max || c[0].exhaustion!=0 || rs_sleeping(c[0]) { return 6; }
+  rs_tick(b[..],57600.0-1.0/64);
+  if rs_long_rest_start_owned(b[..],0,1,true) { return 7; }
+  rs_tick(b[..],1.0/64);
+  if !rs_long_rest_start_owned(b[..],0,1,true) { return 8; }
+  clock:[1]RsRestClock; clock[0].ticks=9223372036854775807; clock[0].fraction=0.5;
+  if rs_rest_clock_step(clock[..],0.0000005) || clock[0].ticks!=9223372036854775807 || clock[0].fraction!=0.5 { return 9; }
+  rs_reset(b[..]); c[0]=rs_wizard("Watcher",0,3); b[0].n=1; b[0].who = -1;
+  if !rs_long_rest_start_owned(b[..],0,2,true) { return 10; }
+  rs_tick(b[..],7201);
+  change:=rs_long_rest_activity_owned(b[..],0,1);
+  if change.admitted || !change.boundary.abandoned || rs_sleeping(c[0]) || c[0].long_rest.sleep!=0 { return 11; }
+  if !rs_long_rest_start_owned(b[..],0,1,true) { return 12; }
+  rs_tick(b[..],28800);
+  if !rs_long_rest_sync_owned(b[..],0).ready || !rs_long_rest_apply(b[..],0) || c[0].long_rest.finished!=36001000000 { return 13; }
+  tool_errln("PASS REST-CLOCK-OWNED (1843200 rest frames, precise admission and late-watch rejection)"); return 0;
+}

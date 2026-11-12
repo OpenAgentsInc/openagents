@@ -454,7 +454,7 @@ wc_known_owner :: (owner: string) -> bool {
     || owner == "protocol" || owner == "toolchain" || owner == "ops";
 }
 wc_owner_has :: (owner: string, codec: string) -> bool {
-  if owner == "combat-rules" { return wc_under(codec, "rules/srd/") || wc_under(codec, "aethyr/rules/srd/"); }
+  if owner == "combat-rules" { return wc_under(codec, "rules/srd/"); }
   if owner == "characters" { return wc_under(codec, "everglade/model/"); }
   if owner == "world" { return wc_under(codec, "everglade/world/") || wc_under(codec, "everglade/server/") || wc_under(codec, "everglade/client/"); }
   if owner == "creatures" { return wc_under(codec, "everglade/model/") || wc_under(codec, "everglade/server/"); }
@@ -469,7 +469,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "projects" { return wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c"); }
   if owner == "nostr" { return wc_under(codec, "nostr/") || wc_under(codec, "coax/lib/nostr/"); }
   if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c"); }
-  if owner == "engine" { return wc_under(codec, "aethyr/") && !wc_under(codec, "aethyr/rules/") && !wc_under(codec, "aethyr/session/") && !wc_under(codec, "aethyr/net/") && !wc_under(codec, "aethyr/forge/"); }
+  if owner == "engine" { return wc_under(codec, "aethyr/") && !wc_under(codec, "aethyr/session/") && !wc_under(codec, "aethyr/net/") && !wc_under(codec, "aethyr/forge/"); }
   if owner == "protocol" { return wc_under(codec, "proto/"); }
   if owner == "toolchain" {
     return wc_under(codec, "coax/") && !wc_under(codec, "coax/lib/agent/") && !wc_under(codec, "coax/lib/microcoder/")
@@ -817,7 +817,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert wc_owner_has("coder", "coax/lib/repo/wire.coax") && wc_owner_has("coder", "coax/web/agent/chat.coax") && !wc_owner_has("toolchain", "coax/lib/repo/wire.coax") && wc_owner_has("coder", "coder/tui/acp.coax") && wc_owner_has("coder", "coax/lib/agent/claude/") && !wc_owner_has("coder", "coax/lib/nostr/");
   #assert wc_owner_has("room-session", "aethyr/session/relay.coax") && !wc_owner_has("room-session", "aethyr/session/ledger.coax") && wc_owner_has("items", "aethyr/session/ledger.coax");
   #assert wc_owner_has("toolchain", "coax/web/wire-check.coax") && !wc_owner_has("toolchain", "coax/lib/nostr/") && !wc_owner_has("toolchain", "coax/web/api/auth.c");
-  #assert wc_owner_has("engine", "aethyr/render/x.coax") && !wc_owner_has("engine", "aethyr/rules/srd/x.coax") && !wc_owner_has("engine", "aethyr/forge/x.coax");
+  #assert wc_owner_has("engine", "aethyr/render/x.coax") && !wc_owner_has("engine", "rules/srd/x.coax") && !wc_owner_has("engine", "aethyr/forge/x.coax");
   // wc_judge_owners fails on missing owner and on codec outside owner's folders unless allowlisted
   reg_nodes: [64] JvNode; reg_jv: [1] Jv; reg_used: [4] bool;
   bad_owner := "{\"shapes\":[{\"id\":\"x.v1\",\"kind\":\"local\",\"codec\":\"coax/web/wire-check.coax\",\"step\":\"S1\"}]}";

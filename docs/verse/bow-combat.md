@@ -10,7 +10,7 @@ with a bow.
 
 The Ranger starts with a Longbow. Its SRD 5.2.1 starting gear includes a Longbow
 and a quiver, and its Weapon Mastery covers the Longbow's Slow
-(`aethyr/rules/srd/engine.coax` `rs_ranger`: `ranged = W_LONGBOW`). In
+(`rules/srd/engine.coax` `rs_ranger`: `ranged = W_LONGBOW`). In
 Experimental it holds Quaternius' `Bow_Wooden` (`quaternius/ultimate-rpg/bow-wooden`,
 packed as `glade/weapon4` without its string) in its left hand. The string is packed
 on its own as `glade/weapon5`, and an `Arrow` as `glade/weapon6`. The Fighter keeps

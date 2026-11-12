@@ -149,7 +149,7 @@ WE_BIT :: [WE_WATCH] int.[WC_PARALYZED, WC_BOUND, WC_SLOWED];   // the WC_* bit 
 WIRE_TGT_SEAT :: 1000;     // an OWNER that is a seat's player: 1000 + SS
 // a player's G bits
 WG_GROUND :: 1; WG_SWIM :: 2; WG_BOAT :: 4; WG_DEAD :: 8; WG_AWAY :: 16;   // AWAY: nothing heard from that seat's page for WIRE_AWAY_MS
-// a player's COND bits: the SRD's conditions (aethyr/rules/srd/engine.coax RS_*: 256 Paralyzed is Hold
+// a player's COND bits: the SRD's conditions (rules/srd/engine.coax RS_*: 256 Paralyzed is Hold
 // Person's hold), and Everglade's own past them
 WC_PARALYZED :: 256; WC_PETRIFIED :: 512; WC_PRONE :: 2048; WC_RESTRAINED :: 4096; WC_STUNNED :: 8192; WC_UNCONSCIOUS :: 16384;
 WC_SLOWED :: 65536;        // Ray of Frost's slow (the watch's casters)
@@ -293,7 +293,7 @@ wire_put_rebuild :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out
 // L SEQ: a Long Rest, in a room only between raids and out of combat (coax/web/room/room-everglade.coax eg_heard_rest).
 wire_put_rest :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "L"), seq); }
 // Z SEQ REQ: an Everglade II rest request (#13046, everglade/server/rest.coax): REQ 1 Short Rest,
-// 2 sleep, 3 watch, 4 spend one Hit Die, 5 end (aethyr/rules/srd/rest-control.coax RS_REST_*). The room
+// 2 sleep, 3 watch, 4 spend one Hit Die, 5 end (rules/srd/rest-control.coax RS_REST_*). The room
 // decides from the body it steps; the page's word that it stands still is never asked for.
 WireRestAsk :: struct { seq: int; req: int; }
 wire_put_rest_ask :: (out: [] u8, at: int, a: WireRestAsk) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "Z"), a.seq), a.req); }

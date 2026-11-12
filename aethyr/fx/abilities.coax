@@ -3,7 +3,7 @@
 // same rule as the rest: a puff's place, size and light are a pure function of the cause's seed,
 // the puff's number and the cause's age.
 //
-// Each look follows what the feature does in the SRD (aethyr/rules/srd/battle.coax):
+// Each look follows what the feature does in the SRD (rules/srd/battle.coax):
 //   Action Surge         a golden burst, streaks of light rushing up round the Fighter
 //   Second Wind          a breath of pale light drawn in, then rising off the Fighter in two strands
 //   Sneak Attack         a dark slash across the target, a violet flash and sparks

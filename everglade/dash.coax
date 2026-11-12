@@ -1,6 +1,6 @@
 // Everglade's Dash, for every zone (Experimental, Everglade II and its room): the SRD 5.2.1 Dash, Cunning Action's
 // Dash and Step of the Wind each spend what the ruleset says (the bar's press: fivebar.coax
-// fb_seat_use, aethyr/rules/srd rs_dash) and give extra movement equal to your Speed this turn. Their
+// fb_seat_use, rules/srd rs_dash) and give extra movement equal to your Speed this turn. Their
 // feel moves `dash` (class-feel.coax xf_moves); a zone starts the sprint from the pipeline's yes.
 // Everglade spends that movement at once, as the engine's sprint (aethyr/action/sprint.coax): the
 // extra is your Speed in feet as metres (0.3048 m a foot), over Everglade's run, 7.5 m/s at Speed

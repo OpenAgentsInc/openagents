@@ -1,5 +1,5 @@
 // Everglade II's path guard: one guard of the room's battle (the SRD 5.2.1 Fighter at level 10,
-// aethyr/rules/srd/npcs.coax rs_path_guard: AC 19, HP 84, two Longsword attacks at +8 for 1d8 + 4, Second
+// rules/srd/npcs.coax rs_path_guard: AC 19, HP 84, two Longsword attacks at +8 for 1d8 + 4, Second
 // Wind and Action Surge) who walks the forest path from the glade to the clearing and back.
 // The room walks him on its own tick, so every page sees him where the room has him; the rules' turn
 // strikes (everglade5e-room-rules.coax egb_patrol_turn) once the room has brought him within reach of the
@@ -140,7 +140,7 @@ e2g_move :: (v: [] RmServer, k: int, g: [] E2Guard, tx: f32, tz: f32, speed: f32
 }
 
 // His foe leaving his reach since last tick (measured from where he stands, as the rules measure it):
-// his Opportunity Attack with his Longsword, the shared rules' (aethyr/rules/srd/opportunity-attack.coax),
+// his Opportunity Attack with his Longsword, the shared rules' (rules/srd/opportunity-attack.coax),
 // when he still has his Reaction and sees them.
 e2g_opportunity :: (v: [] RmServer, k: int, g: [] E2Guard, foe: int) {
   st := v[0].eg[k].seat[foe]; b := v[0].eg[k].rules[0].b[..]; i := EGB_BEAST0 + g[0].q; me := EGB_SEAT + foe;

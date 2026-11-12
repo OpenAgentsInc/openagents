@@ -1,10 +1,10 @@
 // An SRD 5e battle's events as effects (book chapter 72, #13086): which recipe each event in a
 // battle's log starts (puff.coax, abilities.coax, warlock.coax), from where to where, and in which
-// light (spell-light.coax). A zone that plays aethyr/rules/srd/battle.coax on a grid hands each event
+// light (spell-light.coax). A zone that plays rules/srd/battle.coax on a grid hands each event
 // here with where its grid lies in the world; the 5E Lab's glade, its Siege and its Warlock start
 // every effect this way, and the flat view draws the same causes from above (flat.coax).
 //   coax/bin/coax test --library aethyr/fx/battle.coax
-#load "../rules/srd/battle.coax";
+#load "../../rules/srd/battle.coax";
 #load "puff.coax";
 #load "spell-light.coax";
 

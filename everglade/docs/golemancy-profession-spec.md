@@ -23,7 +23,7 @@ have actions taken inside the game world or outside of the game world."
 
 Golemancy is Everglade's own invention. It isn't SRD content, and every record
 it adds would be marked `srd: false`, as the house spells in
-[`aethyr/rules/srd/house.coax`](../../aethyr/rules/srd/house.coax) are. The
+[`rules/srd/house.coax`](../../rules/srd/house.coax) are. The
 proposal builds it from SRD 5.2.1 rules wherever they apply: tool proficiency,
 ability checks, crafting time and cost, Help, Find Familiar, Unseen Servant and
 the Homunculus.
@@ -98,12 +98,12 @@ Two SRD lessons shape the proposal:
   (section 4.4).
 
 **Exists today.** Tool proficiency and checks are in
-[`aethyr/rules/srd/check-training.coax`](../../aethyr/rules/srd/check-training.coax)
+[`rules/srd/check-training.coax`](../../rules/srd/check-training.coax)
 (37 SRD tools as bits, `rs_tool_bit`) and
-[`ability-checks.coax`](../../aethyr/rules/srd/ability-checks.coax), with the
+[`ability-checks.coax`](../../rules/srd/ability-checks.coax), with the
 tool-plus-skill Advantage rule. Help is in
-[`help.coax`](../../aethyr/rules/srd/help.coax). Find Familiar runs as a shared
-actor in [`familiar.coax`](../../aethyr/rules/srd/familiar.coax) and its
+[`help.coax`](../../rules/srd/help.coax). Find Familiar runs as a shared
+actor in [`familiar.coax`](../../rules/srd/familiar.coax) and its
 senses and touch files. Equipment crafting is **missing**: the
 [compliance ledger](../../docs/dnd/srd-compliance-ledger.md) lists
 CONTENT-EQUIPMENT as partial, with crafting not modeled.
@@ -507,7 +507,7 @@ Each phase would ship whole, with its checks, before the next.
 **Phase 1: the bench and in-world timed tasks.** Golemancer's Tools as a house
 tool bit; `RS_DEV_WORKDAY` and `RS_DEV_TRAINING`; hearth golems and
 homunculi, orders, standing orders, reports and letters; ranks 1 and 2.
-New `aethyr/rules/srd/golemancy.coax` (`#authority`, zero mutation survivors),
+New `rules/srd/golemancy.coax` (`#authority`, zero mutation survivors),
 `golemancy-checks.coax` and `crafting.coax` (the SRD's nonmagical crafting,
 which the ledger's CONTENT-EQUIPMENT row also needs); `docs/protocol/golemancy-*-v1.md`.
 Tests: crafting math matches the SRD's examples; proficiency and Arcana
@@ -552,7 +552,7 @@ Tools and Tool Proficiency, p. 93; Artisan's Tools, pp. 93-94; Hirelings,
 p. 102; Crafting Nonmagical Items, p. 103; Crafting Magic Items, pp. 206-207;
 Find Familiar, p. 130; Unseen Servant, p. 171; Animate Objects, pp. 108-109;
 Homunculus, p. 299; Skilled, p. 87; Travel Pace, pp. 12 and 192. Spell text
-is also in [`aethyr/rules/srd/data/spells.coax`](../../aethyr/rules/srd/data/spells.coax).
+is also in [`rules/srd/data/spells.coax`](../../rules/srd/data/spells.coax).
 
 MMOs (summarized in our own words; fan wikis are marked):
 

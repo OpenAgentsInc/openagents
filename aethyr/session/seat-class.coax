@@ -4,7 +4,7 @@
 // EXT as "c=CLASS,l=LEVEL" (seat_ticket_v5_class_ext). The room seats a ticketed player as the ticket
 // says: the hello's level is never taken, and its class only when the ticket names none (the first seat).
 // A re-hello changes nothing. Past the seat, the level only rises, as the seat's XP crosses a level of
-// the one table (aethyr/rules/srd/advancement.coax). The page decides class and level only where it is
+// the one table (rules/srd/advancement.coax). The page decides class and level only where it is
 // the only party: a room with no ticket keys (the page's own worker room, the checks), the local API
 // stand-in's admin (room-dev.coax), and a ticket the API signed for one of the realm's admins (ACCT 2:
 // the admin CLASSES and LEVEL menus, Change character), which the room tells apart (room-everglade.coax
@@ -12,7 +12,7 @@
 //   coax/bin/coax test aethyr/session/seat-class.coax --library
 //   coax/bin/coax mutate aethyr/session/seat-class.coax --library
 #authority;
-#load "../rules/srd/advancement.coax";
+#load "../../rules/srd/advancement.coax";
 
 SEAT_LEVEL_TOP :: 6;      // Everglade II's highest level: its class kits go to 6 (class-kit.coax XK_LEVELS)
 SEAT_CLASS_TEXT :: 16;    // "srd-" and a class's name: "srd-barbarian" is the longest

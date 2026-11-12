@@ -181,7 +181,7 @@ Woodfire and the Fantasy Props stall, crates, barrel and bench) and the guard's 
 them as `glade/monster0..31`, `glade/gremlin0..39` and `glade/weapon1`; the camp stands in the glade's
 environment where `verse/everglade2/camp.coax` puts it.
 
-The path's guard is the SRD Fighter at level 10 (`rs_path_guard` in `aethyr/rules/srd/npcs.coax`):
+The path's guard is the SRD Fighter at level 10 (`rs_path_guard` in `rules/srd/npcs.coax`):
 AC 19 (Chain Mail, a Shield and the Defense style), 84 Hit Points, Str 18, Proficiency +4, and two
 Longsword attacks a turn at +8 for 1d8 + 4, with Second Wind and Action Surge. He never strikes first.
 Once you strike him, he fights until you drop, leave his 28 m leash, or stop fighting for 15 s. You

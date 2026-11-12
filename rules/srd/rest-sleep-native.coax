@@ -1,0 +1,17 @@
+#load "long-rest-resources-checks.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
+    b:[1]RsBattle; rt_field(b[..],klass,level);
+    b[0].c[0].focus_held=true; b[0].c[0].conc=SP_BLESS; b[0].c[0].conc_until=90000;
+    if !rs_sleep_begin(b[..],0) || rs_can_act(b[0].c[0]) || rs_can_move(b[0].c[0]) { return 1; }
+    if b[0].c[0].conc != -1 || b[0].c[0].focus_held { return 2; }
+    rs_tick(b[..],30000);
+    if !rs_sleeping(b[0].c[0]) || !rs_has(b[0].c[0],RS_UNCONSCIOUS) { return 3; }
+    b[0].c[0].hp=0;
+    if rs_heal(b[0].c[0..<1],1)!=1 || !rs_has(b[0].c[0],RS_UNCONSCIOUS) { return 4; }
+    rs_sleep_end(b[0].c[0..<1]);
+    if rs_sleeping(b[0].c[0]) || rs_has(b[0].c[0],RS_UNCONSCIOUS) || !rs_has(b[0].c[0],RS_PRONE) { return 5; }
+  } }
+  tool_errln("PASS REST-SLEEP (72 class/level scenarios)"); return 0;
+}

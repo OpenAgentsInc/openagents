@@ -7,7 +7,7 @@
 // The room decides every request. docs/verse/hud-styles.md.
 
 // What the menus offer: only what the room has said. rest holds the rest requests (RS_REST_*,
-// aethyr/rules/srd/rest-control.coax) the room allows now.
+// rules/srd/rest-control.coax) the room allows now.
 EgBarFacts :: struct {
   kit: bool; aid_left: int = -1;                 // Healer's Kit, and its uses left (-1 not said)
   pet: bool; wizard: bool; druid: bool;          // a companion or familiar to call, and whose

@@ -4,7 +4,7 @@
 // (everglade/server/guard.coax), never another seat or the caster's own team. The room owns the
 // class/slot and real creature/turn state.
 #load "class-kit.coax";
-#load "../../aethyr/rules/srd/press-budget.coax";
+#load "../../rules/srd/press-budget.coax";
 #authority;
 
 E2rPoint :: struct { x:int; y:int; }

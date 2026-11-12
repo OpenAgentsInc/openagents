@@ -2,7 +2,7 @@
 // A page asks (Z SEQ REQ: Short Rest, sleep, watch, one Hit Die, end; everglade-wire.coax); the room
 // admits a start only when its own last step of that seat showed it grounded and still with its keys
 // released and nothing of its input is still queued, then calls the shared rest control
-// (aethyr/rules/srd/rest-control.coax rs_rest_control). Each accepted step reports the walking and
+// (rules/srd/rest-control.coax rs_rest_control). Each accepted step reports the walking and
 // jumping it actually moved (rs_rest_observe_motion), so moving interrupts a Short Rest and turns a
 // Long Rest's watch into exertion; stopping returns it to watch, never to sleep. Time is the rules'
 // clock (rm_eg_rules: egb_step), so recovery comes once, at the rules' boundary, never from a page.

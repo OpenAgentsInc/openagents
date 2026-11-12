@@ -1,0 +1,79 @@
+// Focused milestone 1 regression command. No expected-failure suppression by
+// default: every FAIL contributes to exit 1. Exit 0 means only these witnesses
+// passed. `--active` runs and prints the same witnesses but leaves the probes
+// compliance-policy.coax declares parked (outside the active slice) out of its
+// exit status, so a new failure in active work is not hidden behind a known one.
+// Usage: coax/web/tool.sh rules/srd/compliance-check.coax
+//        coax/web/tool.sh rules/srd/compliance-check.coax --active
+//        coax/web/tool.sh rules/srd/compliance-check.coax --inventory
+#load "compliance-probes.coax";
+#load "compliance-policy.coax";
+#load "../../coax/lib/sys/tool.coax";
+
+sc_print_int :: (n: int) { buf: [32] u8; used := rs_put_int(buf[..], 0, n); tool_err(cast(string) buf[0..<used]); }
+ScTally :: struct { measured: int; failed: int; parked: int; parked_failed: int; }
+sc_report :: (t: [] ScTally, id: string, passed: bool) {
+  parked := sc_parked(id);
+  t[0].measured += 1;
+  if parked { t[0].parked += 1; }
+  if !passed { t[0].failed += 1; if parked { t[0].parked_failed += 1; } }
+  tool_err(ifx passed then "PASS\t" else "FAIL\t"); tool_err(id);
+  tool_errln(ifx parked then "\tparked" else "");
+}
+sc_inventory :: () {
+  tool_errln("record_id\tparent_id\tkind\ttext_present\tpage\teffect_steps");
+  canonical := 0; helper := 0; house := 0;
+  for i: 0..<RS_HOUSE_END {
+    // Unassigned IDs RS_MORE_END..99 are not content and must not enter the inventory.
+    if i >= RS_MORE_END && i < RS_HOUSE { continue; }
+    s := rs_spell(i);
+    tool_err(s.id); tool_err("\t");
+    if s.part_of >= 0 { tool_err(rs_spell(s.part_of).id); }
+    tool_err("\t");
+    if !s.srd { tool_err("house"); house += 1; }
+    else if s.part_of >= 0 { tool_err("helper"); helper += 1; }
+    else { tool_err("canonical-candidate"); canonical += 1; }
+    tool_err(ifx s.text.count > 0 then "\tyes\t" else "\tno\t");
+    sc_print_int(s.page); tool_err("\t"); sc_print_int(s.step_n); tool_err("\n");
+  }
+  tool_err("# canonical-candidates="); sc_print_int(canonical);
+  tool_err(" helpers="); sc_print_int(helper); tool_err(" house="); sc_print_int(house);
+  tool_errln("; source inventory unreconciled; no count is a compliance denominator");
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { return 2; }
+  if args[0].n == 1 && args_at(args[..], 0) == "--inventory" { sc_inventory(); return 0; }
+  active := args[0].n == 1 && args_at(args[..], 0) == "--active";
+  if args[0].n != 0 && !active { tool_errln("usage: compliance-check [--active | --inventory]"); return 2; }
+  tool_errln("Focused SRD regression witnesses; NOT whole-SRD qualification");
+  tally: [1] ScTally;
+  t := tally[..];
+  sc_report(t, "CAST-ACTOR", sc_admission_actor());
+  sc_report(t, "CAST-SLOT", sc_admission_slot());
+  sc_report(t, "CAST-REACTION-SLOT", sc_reaction_slot());
+  sc_report(t, "CAST-CHOSEN-TARGETS", sc_chosen_recipients());
+  sc_report(t, "SPELL-OPTIONS", sc_spell_options());
+  sc_report(t, "COMMAND-HALT-TURN", sc_halt_turn());
+  sc_report(t, "CONDITION-PRONE", sc_prone());
+  sc_report(t, "TIMING-PROFILE", sc_timing());
+  sc_report(t, "CAST-COMPONENTS", sc_components());
+  sc_report(t, "CONCENTRATION-LIFECYCLE", sc_concentration());
+  sc_report(t, "CAST-TARGET-INDEX", sc_admission_target());
+  sc_report(t, "CAST-RANGE", sc_admission_range());
+  sc_report(t, "CAST-CLASS", sc_admission_class());
+  sc_report(t, "CAST-PREPARED", sc_admission_prepared());
+  sc_report(t, "CAST-SELF", sc_admission_self());
+  sc_report(t, "CAST-INVALID-TARGET", sc_invalid_target_spends());
+  sc_report(t, "SPELL-POLYMORPH", sc_polymorph());
+  sc_report(t, "CAP-EFFECT", sc_effect_capacity());
+  sc_report(t, "CAP-ZONE", sc_zone_capacity());
+  c := tally[0];
+  tool_err("measured="); sc_print_int(c.measured);
+  tool_err(" failed="); sc_print_int(c.failed);
+  tool_err(" parked="); sc_print_int(c.parked);
+  tool_err(" parked_failed="); sc_print_int(c.parked_failed);
+  tool_errln("; complete SRD content and rules remain unmeasured");
+  if active { return sc_active_exit(c.measured, c.parked, c.failed - c.parked_failed); }
+  return sc_check_exit(c.measured, c.failed);
+}

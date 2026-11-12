@@ -113,7 +113,7 @@ at the individual-source-entry level until milestone 2 reconciles the PDF.
 
 ## Milestone 2 Build the canonical data pipeline
 
-Implement the PDF-to-records tool in Coax (`aethyr/rules/srd/import.coax`) and
+Implement the PDF-to-records tool in Coax (`rules/srd/import.coax`) and
 check in generated `data/` tables. Expand schemas for stable IDs, full text,
 source references, school/class lists, structured casting times, rituals,
 components/costs/consumption, targets, areas and durations. Import spells and
@@ -241,7 +241,7 @@ and core combat. Full class catalog work is parked. Milestone 1 established the
 baseline ledger and strict witnesses. Milestone 2
 now has a Coax importer and canonical source catalog for all 339 spell
 descriptions and the eight base class tables (875 memberships), with nine
-preserved source discrepancies. See [the data pipeline](../../aethyr/rules/srd/data/README.md)
+preserved source discrepancies. See [the data pipeline](../../rules/srd/data/README.md)
 and [the ledger](srd-compliance-ledger.md). Other content catalogs, mechanical
 target/area interpretation and executable effect completion remain open; imported
 metadata does not close milestones 3-8.

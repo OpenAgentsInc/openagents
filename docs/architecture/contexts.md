@@ -19,7 +19,7 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 
 | Context | Folder owned (target) | Where it lives today | Class | What it may depend on | Notes |
 | --- | --- | --- | --- | --- | --- |
-| **Combat rules (SRD)** | `rules/srd/` (today `aethyr/rules/srd/`) | `aethyr/rules/srd/` (27,889 lines of `.coax`) | Core | Engine core (`aethyr/` value types and math), `coax/lib/` | Everglade's pitch is "the SRD's rules decide the outcome" (`everglade/README.md`). Shared across Everglade II, Experimental and 5E Lab; language tied to SRD 5.2.1 ([compliance ledger](../dnd/srd-compliance-ledger.md)). |
+| **Combat rules (SRD)** | `rules/srd/` (moved out of `aethyr/rules/srd/`, #13270) | `rules/srd/` (27,889 lines of `.coax`) | Core | Engine core (`aethyr/` value types and math), `coax/lib/` | Everglade's pitch is "the SRD's rules decide the outcome" (`everglade/README.md`). Shared across Everglade II, Experimental and 5E Lab; language tied to SRD 5.2.1 ([compliance ledger](../dnd/srd-compliance-ledger.md)). |
 | **Characters and progression** | `everglade/model/` | The aggregate and its rules: `everglade/model/character.coax` (profile `everglade-character-v1`, #13290); its live fields still scattered: room seat state, `aethyr/session/character-checkpoint.coax`, `coax/web/room/room-checkpoint.coax`, `coax/web/room/room-events.coax`, SQL `verse.character_*` | Core | Combat rules, Items (by ID only), Engine, Protocol (`proto/`) | Workstream P4 ("a character worth keeping", #13290). Rooted at `CharacterId` with one `#authority` owner of level-from-XP and slot limits. |
 | **World and zones** | `everglade/world/` (plus `everglade/server/`, `everglade/client/`) | `verse/everglade2/`, `everglade/world/`, `aethyr/world/` | Core | Engine, Realm authoring (`aethyr/forge/`), Room session, `components/` | The place the player is in (#13280). |
 | **Creatures and encounters** | `everglade/model/` and `everglade/server/` | `everglade/server/creatures.coax`, `everglade/server/guard.coax`, `coax/web/room/room-events.coax`, `aethyr/actors/` | Core | Combat rules, World and zones, Engine | Creature templates and encounter logic (#13293). |
@@ -34,7 +34,7 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 | **Projects** | `coax/web/api/` (`private.c`, `drops.c`) | `coax/web/api/private.c`, `coax/web/api/drops.c`, SQL `projects.*`, `drops.*` | Supporting | Identity, Payments, `coax/lib/` | Private project pages and drops. |
 | **Nostr** | `nostr/`, `coax/lib/nostr/` | `coax/lib/nostr/`, `nostr/` | Generic | `coax/lib/` (crypto, net, TLS) | External protocol implementation and OpenAgents NIPs (`nostr/nips/`). |
 | **Psionic and inference** | `psionic/`, `coax/lib/systemone/`, `coax/web/api/inference.c` | Same, plus SQL `inference.*`, `mesh.*` | Core (separate product) | `coax/lib/`, Nostr (Pylon announcements), Protocol (`proto/`) | Tensors, decision models, `/v1/systemone`, Pylon and Mesh serving (`psionic/`). |
-| **Engine (Aethyr)** | `aethyr/` (minus `aethyr/rules/`) | `aethyr/` minus `aethyr/rules/` | Supporting kernel | `coax/lib/` only (strictly downward; zero loads into `verse/`, `everglade/`, `apps/` or `coax/web/` once #13270 burns down `aethyr/layer-allowlist.txt`) | Frame loop, ECS world, rendering, physics and deterministic replay shared by every realm. |
+| **Engine (Aethyr)** | `aethyr/` | `aethyr/` | Supporting kernel | `coax/lib/` only (strictly downward; zero loads into `verse/`, `everglade/`, `apps/` or `coax/web/` once #13270 burns down `aethyr/layer-allowlist.txt`) | Frame loop, ECS world, rendering, physics and deterministic replay shared by every realm. |
 | **Protocol (published language)** | `proto/` | `proto/` (`proto/registry.json`, `.proto` schemas, wire profiles) | Supporting (published language) | None (schemas and catalogue; codecs live in their owning contexts, DDD.5) | Canonical protobuf schemas and wire shape registry ([`proto/README.md`](../../proto/README.md)), gated by `coax/web/tool.sh wire-check`. |
 | **Coax toolchain** | `coax/` | `coax/` (`coax/bin/`, `coax/lib/`, `coax/web/`) | Supporting | Host C11 toolchain | Compiler, standard libraries, mutation tester, compat checker and Coaxial web runtime. |
 | **Analytics, email, jobs, access** | `coax/web/api/` (`analytics.c`, `email.c`, `jobs.c`, `access.c`) | Same, plus SQL `analytics.*`, `email.*`, `jobs.*`, `access.*` | Generic | `coax/lib/`, Identity (where route access applies) | Operational plumbing routes and background queues. |
@@ -147,6 +147,8 @@ AAA layout (#13257) lands:
 
 1. **Are SRD rules their own root context at `rules/srd/`, or owned by
    Everglade?**
+   - *Decided (#13270):* a root context. The rules moved from
+     `aethyr/rules/srd/` to `rules/srd/`.
    - *Audit recommendation:* a separate root context at `rules/srd/` (#13270,
      D7), because Experimental and 5E Lab also use the SRD engine and the
      rules are not part of the rendering/simulation engine (`aethyr/`).

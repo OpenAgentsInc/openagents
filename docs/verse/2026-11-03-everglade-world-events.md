@@ -31,7 +31,7 @@ Related reading:
   (section 3), persistence (section 7) and admin edits (section 6.8).
 - The playable level 17 Warlock (#12734), whose spells the raid's leader casts.
 - The 5E Lab Siege (`apps/openagents-web/fivelab-siege.coax`,
-  `aethyr/rules/srd/npcs.coax`): the cult's stat blocks and its mix, which the raid reuses.
+  `rules/srd/npcs.coax`): the cult's stat blocks and its mix, which the raid reuses.
 
 ## Contents
 
@@ -138,7 +138,7 @@ the palisade and the stables outside it can burn. A siege ends in one of two way
 
 ### 4.1 The cult
 
-The cult reuses the 5E Lab Siege's stat blocks and mix (`aethyr/rules/srd/npcs.coax`,
+The cult reuses the 5E Lab Siege's stat blocks and mix (`rules/srd/npcs.coax`,
 `rs_siege_attacker`), so the Lab and Everglade field the same armies. The cult is drawn from its
 mix, scaled by the admin's dials:
 

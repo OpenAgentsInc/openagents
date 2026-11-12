@@ -79,7 +79,7 @@ Interpolated drawing never senses.
   that can act.
 - **Everglade v1** (`everglade-spells.coax sp_cast`): in a room, the cast bar and its sparks start
   on the room's `e cast` for your seat (`sp_taken`), never on the press.
-- The SRD mapping is `aethyr/rules/srd/condition-bearing.coax`. Everglade's feel for every class
+- The SRD mapping is `rules/srd/condition-bearing.coax`. Everglade's feel for every class
   ability and monster action is `everglade/client/class-feel.coax`.
 
 ```sh

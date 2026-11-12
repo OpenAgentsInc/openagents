@@ -2,7 +2,7 @@
 // campaign a Game Master (GM) writes, the live session the GM runs from the GM Screen, and the
 // frames that carry what the table may see to the Table Display and to each player's My Character.
 // It draws nothing. Every roll, hit, save and hit point comes from the SRD engine
-// (aethyr/rules/srd/); this file only decides whose turn it is, what the log keeps and who sees it.
+// (rules/srd/); this file only decides whose turn it is, what the log keeps and who sees it.
 //
 //   - A campaign: a title, a starting level and up to OS_SCENES scenes, each with its read-aloud
 //     text, a handout, its art (a title card or the 3D glade) and its encounter, a number of the
@@ -22,7 +22,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax test apps/openagents-web/oneshot-table.coax
 
-#load "../../aethyr/rules/srd/battle.coax";
+#load "../../rules/srd/battle.coax";
 
 OS_SCENES :: 4;
 OS_TITLE :: 48; OS_NAME :: 40; OS_TEXT :: 640; OS_HANDOUT :: 360;

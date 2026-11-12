@@ -1,6 +1,6 @@
 // World geometry for editor NPCs, using the existing town and dynamic fences.
 #load "everglade-raid-tactics.coax";
-#load "../../aethyr/rules/srd/npc-kinds.coax";
+#load "../../rules/srd/npc-kinds.coax";
 #test "forge NPC movement uses live crate fences and melee damages actual building pieces" #steps 3000000000 {
   s:[1]Everglade;dm:[1]DemoWorld;everglade_room_spells_start(s[..],dm[..],"");
   everglade_world(s[..],"200\n{\"doc\":{\"everglade\":1,\"edits\":\"eg-edit 1\\nt 0 600 -1050 0 100 1\\n\"},\"version\":1}");

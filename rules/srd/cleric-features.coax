@@ -1,0 +1,105 @@
+// The Cleric's Channel Divinity option Divine Spark (SRD 5.2.1 p. 37): a Magic action and a use of
+// Channel Divinity; another creature it can see within 30 feet either regains 1d8 + its Wisdom
+// modifier Hit Points or makes a Constitution save against its spell save DC, taking that much
+// Necrotic or Radiant damage on a failure and half (rounded down) on a success. A d8 more at Cleric
+// levels 7, 13 and 18.
+//   coax/bin/coax test --library rules/srd/class-cleric-checks.coax
+#authority;
+
+// i's Divine Spark at j: `heal`, or damage of `kind` (Necrotic or Radiant).
+rs_divine_spark :: (b: [] RsBattle, i: int, j: int, heal: bool, kind: int) -> bool #effects(all) {
+  if !rs_action_free(b, i) || b[0].c[i].klass != RS_CLERIC || b[0].c[i].level < 2 || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
+  if j < 0 || j >= b[0].n || j == i || b[0].c[j].dead || rs_feet_to(b, i, j) / 5 > 6 ||   // 30 feet: 6 squares
+      !rs_basic_attack_sight(b[0].c[i], b[0].c[j]).actor_sees { return false; }
+  if !heal && kind != RS_RADIANT && kind != RS_NECROTIC { return false; }
+  b[0].turn.action = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
+  level := b[0].c[i].level;
+  dice := 1 + (ifx level >= 7 then 1 else 0) + (ifx level >= 13 then 1 else 0) + (ifx level >= 18 then 1 else 0);
+  total := rs_sum(b[0].dice[..], dice, 8) + rs_mod(b[0].c[i].score[RS_WIS]);
+  rs_say_ft(b, RS_EV_CAST, i, j, total, RS_FT_DIVINE_SPARK, " sends a Divine Spark");
+  if heal { _ := rs_feature_heal(b, i, j, total, "Divine Spark", RS_FT_DIVINE_SPARK); return true; }
+  st := rs_saving_throw_magic(b, j, RS_CON, rs_dc(b, i), 0);
+  amount := rs_resisted(b, j, ifx st.passed then total / 2 else total, kind);
+  l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount); rs_add_text(l[..], " (Divine Spark)");
+  rs_tell_ft(b, RS_EV_DAMAGE, -1, i, j, amount, kind, RS_FT_DIVINE_SPARK, l[..]);
+  rs_damage(b, i, j, amount, kind, false, -1);
+  return true;
+}
+
+#test "Divine Spark admits the acting level 2 Cleric's Magic action and a use, at another living creature it sees within 30 feet" {
+  for mode: 0..<14 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+    _ := rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_fighter("Foe", 1, 1), 7, 1); rs_fresh(b[..], 0);
+    b[0].c[1].hp = 5;
+    j := 1; heal := mode != 11; kind := RS_RADIANT;
+    if mode == 1 { b[0].who = 1; } else if mode == 2 { b[0].turn.action = true; } else if mode == 3 { b[0].c[0].uses[RS_USE_CHANNEL] = 0; }
+    else if mode == 4 { b[0].c[0].level = 1; } else if mode == 5 { b[0].c[0].klass = RS_PALADIN; } else if mode == 6 { j = 0; }
+    else if mode == 7 { b[0].c[1].dead = true; } else if mode == 8 { b[0].c[1].x = 8; } else if mode == 9 { b[0].c[0].cond = RS_BLINDED; }
+    else if mode == 10 { j = -1; } else if mode == 11 { kind = RS_FIRE; } else if mode == 12 { b[0].c[0].uses[RS_USE_CHANNEL] = 1; }
+    else if mode == 13 { j = 2; b[0].c[2] = b[0].c[1]; }
+    uses := b[0].c[0].uses[RS_USE_CHANNEL]; ok := mode == 0 || mode == 12;
+    #assert rs_divine_spark(b[..], 0, j, heal, kind) == ok && b[0].turn.action == (ok || mode == 2) && b[0].c[0].uses[RS_USE_CHANNEL] == (ifx ok then uses - 1 else uses);
+    if ok {
+      #assert b[0].c[1].hp == 5 + 4 + 3;   // 1d8 + Wisdom
+      told := rs_recent(b[0].book[0], 1); heal_ev := rs_recent(b[0].book[0], 0);
+      #assert told.kind == RS_EV_CAST && told.feat == RS_FT_DIVINE_SPARK && told.amount == 7 && told.by == 0 && told.to == 1;
+      #assert heal_ev.kind == RS_EV_HEAL && heal_ev.feat == RS_FT_DIVINE_SPARK;
+    } else { #assert b[0].c[1].hp == 5 || mode == 7; }
+  }
+}
+#test "Divine Spark's harm: a Constitution save, the total on a failure and half on a success, Necrotic or Radiant, resisted" {
+  for mode: 0..<4 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+    _ := rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 7, 1); rs_fresh(b[..], 0);
+    b[0].c[1].hp = 100; b[0].c[1].hp_max = 100;
+    kind := ifx mode == 1 then RS_NECROTIC else RS_RADIANT;
+    if mode == 2 { b[0].c[1].score[RS_CON] = 20; }   // 10 + 5 passes DC 13
+    if mode == 3 { b[0].c[1].resist = 1 << RS_RADIANT; }
+    #assert rs_divine_spark(b[..], 0, 1, false, kind);
+    want := ifx mode == 2 then 3 else ifx mode == 3 then 3 else 7;   // 10 + 1 fails DC 13: 7; half: 3
+    #assert b[0].c[1].hp == 100 - want;
+    found := false;
+    for k: 0..<4 { f := rs_recent(b[0].book[0], k); if f.kind == RS_EV_DAMAGE && f.feat == RS_FT_DIVINE_SPARK { found = f.amount == want && f.damage == kind && f.by == 0 && f.to == 1; } }
+    #assert found;
+  }
+}
+#test "Divine Spark rolls a d8 more at Cleric levels 7, 13 and 18" {
+  for level: [7] int.[6, 7, 12, 13, 17, 18, 20] {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+    _ := rs_add(b[..], rs_cleric("Ama", 0, level), 1, 1); _ = rs_add(b[..], rs_fighter("Ally", 0, 1), 2, 1); rs_fresh(b[..], 0);
+    b[0].c[1].hp = 1; b[0].c[1].hp_max = 100;
+    #assert rs_divine_spark(b[..], 0, 1, true, 0);
+    dice := ifx level >= 18 then 4 else ifx level >= 13 then 3 else ifx level >= 7 then 2 else 1;
+    #assert b[0].c[1].hp == 1 + 4 * dice + rs_mod(b[0].c[0].score[RS_WIS]);
+  }
+}
+#test "Divine Spark: a target first in the battle; a d8, not more; a Constitution save that Disadvantage would change" {
+  f: [1] RsBattle; f[0].w = 20; f[0].h = 6; f[0].dice[0].fixed = true;
+  _ := rs_add(f[..], rs_fighter("Ally", 0, 1), 2, 1); _ = rs_add(f[..], rs_cleric("Ama", 0, 2), 1, 1); f[0].c[0].hp = 1; rs_fresh(f[..], 1);
+  #assert rs_divine_spark(f[..], 1, 0, true, 0) && f[0].c[0].hp == 1 + 4 + 3;
+  // dice state 15 rolls an 8 on a d8 (a 9 on a d9); 313 rolls a 6, then 16 and 2 on d20s
+  h: [1] RsBattle; h[0].w = 20; h[0].h = 6;
+  _ = rs_add(h[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(h[..], rs_fighter("Ally", 0, 1), 2, 1); rs_fresh(h[..], 0);
+  h[0].c[1].hp = 1; h[0].c[1].hp_max = 100; h[0].dice[0].state = 15;
+  #assert rs_divine_spark(h[..], 0, 1, true, 0) && h[0].c[1].hp == 1 + 8 + 3;
+  seed: u64 = 313;
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 6;
+  _ = rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 7, 1); rs_fresh(b[..], 0);
+  b[0].c[1].hp = 100; b[0].c[1].hp_max = 100; b[0].dice[0].state = seed; seq := b[0].book[0].seq;
+  #assert rs_divine_spark(b[..], 0, 1, false, RS_RADIANT) && b[0].c[1].hp == 100 - (6 + 3) / 2;
+  #assert rs_saw(b[..], seq, "  Foe takes 4 (Divine Spark)");
+  found := false;
+  for k: 0..<4 { e := rs_recent(b[0].book[0], k); if e.kind == RS_EV_DAMAGE && e.feat == RS_FT_DIVINE_SPARK { found = e.spell == -1; } }
+  #assert found;
+}
+#test "Divine Spark's damage is no Critical Hit and no spell's: a dying creature fails one death save, and its fall is the Cleric's" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_fighter("Ally", 0, 1), 2, 1); rs_fresh(b[..], 0);
+  b[0].c[1].hp = 1; seq := b[0].book[0].seq;
+  #assert rs_divine_spark(b[..], 0, 1, false, RS_RADIANT) && b[0].c[1].hp == 0 && !b[0].c[1].dead;
+  down := false;
+  for k: 0..<6 { e := rs_recent(b[0].book[0], k); if e.kind == RS_EV_DOWN && e.to == 1 { down = e.spell == -1 && e.by == 0; } }
+  #assert down && b[0].c[1].death_fail == 0;
+  rs_fresh(b[..], 0);
+  #assert rs_divine_spark(b[..], 0, 1, false, RS_RADIANT) && b[0].c[1].death_fail == 1 && !b[0].c[1].dead;
+}

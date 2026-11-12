@@ -1,5 +1,5 @@
 // Everglade 5E's rules, openagents.com/worlds/everglade-5e (unlisted): Everglade's spell bar on the
-// SRD 5e engine (aethyr/rules/srd/), through the hotbar layer it shares with 5E MMO (fivebar.coax).
+// SRD 5e engine (rules/srd/), through the hotbar layer it shares with 5E MMO (fivebar.coax).
 // The page's copy is only your caster (fb_everglade_hero: a 9th-level Druid, AC 15, 57 Hit Points,
 // spell save DC 15, +7 to hit; or the Warlock), for the bar: what each slot can do now and its card.
 // Every cast and every harm is the room's (everglade5e-room-rules.coax; offline the local host's,
@@ -15,7 +15,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-#load "../../aethyr/rules/srd/battle.coax";
+#load "../../rules/srd/battle.coax";
 #load "../../everglade/shared/fivebar.coax";
 #load "everglade5e-beasts.coax";   // what a spell summons, the room's rules too: Finger of Death's Zombies
 

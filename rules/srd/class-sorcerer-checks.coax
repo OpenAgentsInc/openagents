@@ -1,0 +1,74 @@
+// The Sorcerer's levels 1-6 features (#13044; class-features.coax lists them), each resolved through
+// the shared battle against its SRD 5.2.1 text (p. 64-70), with fixed dice (d10 5, d20 10). The
+// preset is a Draconic (Fire) Sorcerer, Charisma 16, Dexterity 14, with Quickened and Seeking Spell.
+//   coax/bin/coax test --library rules/srd/class-sorcerer-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "class-features.coax";
+
+#test "Spellcasting p.64: Charisma, DC 8 + proficiency + Charisma; the Sorcerer table's slots" {
+  ones := [7] int.[0, 2, 3, 4, 4, 4, 4]; twos := [7] int.[0, 0, 0, 2, 3, 3, 3]; threes := [7] int.[0, 0, 0, 0, 0, 2, 3];
+  for level: 1..<7 {
+    c := rs_sorcerer("S", 0, level);
+    #assert c.spell_ability == RS_CHA && c.slots_max[1] == ones[level] && c.slots_max[2] == twos[level] && c.slots_max[3] == threes[level];
+    #assert rs_spell_dc(c) == 8 + rs_proficiency(level) + rs_mod(c.score[RS_CHA]);
+  }
+}
+
+#test "Innate Sorcery p.65: twice a Long Rest, a Bonus Action; for a minute its spell save DC is 1 higher" {
+  b: [1] RsBattle; cf_field(b[..], rs_sorcerer("Sel", 0, 1), 10);
+  dc := rs_dc(b[..], 0);
+  #assert b[0].c[0].uses_max[RS_USE_INNATE] == 2 && rs_innate_sorcery(b[..], 0) && b[0].turn.bonus && b[0].c[0].uses[RS_USE_INNATE] == 1 && rs_dc(b[..], 0) == dc + 1;
+  rs_tick(b[..], 61); #assert rs_dc(b[..], 0) == dc;
+  b[0].c[0].uses[RS_USE_INNATE] = 0; #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_INNATE] == 2;
+}
+
+#test "Font of Magic p.66: from level 2, Sorcery Points equal to its level, slots for points and points for slots" {
+  for level: 1..<7 { #assert rs_sorcerer("S", 0, level).uses_max[RS_USE_SORCERY] == (ifx level >= 2 then level else 0); }
+  b: [1] RsBattle; cf_field(b[..], rs_sorcerer("Sel", 0, 3), 10); b[0].c[0].uses[RS_USE_SORCERY] = 0;
+  #assert rs_slot_to_points(b[..], 0, 2) && b[0].c[0].uses[RS_USE_SORCERY] == 2 && b[0].c[0].slots[2] == 1;
+  #assert rs_create_slot(b[..], 0, 1) && b[0].c[0].slots[1] == 5 && b[0].c[0].created_slots[1] == 1 && b[0].c[0].uses[RS_USE_SORCERY] == 0;
+  #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].slots[1] == 4 && b[0].c[0].created_slots[1] == 0 && b[0].c[0].uses[RS_USE_SORCERY] == 3;   // the made slot vanishes
+  one: [1] RsBattle; cf_field(one[..], rs_sorcerer("Sel", 0, 1), 10); #assert !rs_slot_to_points(one[..], 0, 1);
+}
+
+#test "Metamagic p.66: from level 2, Quickened Spell and Seeking Spell" {
+  #assert !rs_sorcerer("S", 0, 1).quickened && !rs_sorcerer("S", 0, 1).seeking && rs_sorcerer("S", 0, 2).quickened && rs_sorcerer("S", 0, 2).seeking;
+}
+
+#test "Draconic Resilience p.69: from level 3, 3 more Hit Points and 1 a level after, AC 10 + Dexterity + Charisma unarmored" {
+  for level: 2..<7 {
+    c := rs_sorcerer("S", 0, level);
+    #assert c.ac == 10 + 2 + (ifx level >= 3 then rs_mod(c.score[RS_CHA]) else 0);
+    #assert c.hp_max == 6 + 1 + (level - 1) * (4 + 1) + (ifx level >= 3 then level else 0);
+  }
+}
+
+#test "Draconic Spells p.70: Command always prepared from level 3" {
+  #assert !rs_class_spell_granted(rs_sorcerer("S", 0, 2), SP_COMMAND) && rs_class_spell_granted(rs_sorcerer("S", 0, 3), SP_COMMAND);
+}
+
+#test "Ability Score Improvement p.66: Charisma 16 to 18 at level 4" {
+  #assert rs_sorcerer("S", 0, 3).score[RS_CHA] == 16 && rs_sorcerer("S", 0, 4).score[RS_CHA] == 18;
+}
+
+#test "Sorcerous Restoration p.66: from level 5, a Short Rest regains up to half its level in Sorcery Points, once a Long Rest" {
+  for level: [2] int.[4, 5] {
+    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_sorcerer("Sel", 0, level), 1, 1); b[0].c[0].uses[RS_USE_SORCERY] = 0;
+    b[0].clock = 7; b[0].rest_clock.ticks = 7000000; #assert rs_short_rest_begin(b[..], 0);
+    b[0].clock = 3607; b[0].rest_clock.ticks = 3607000000; #assert rs_short_rest_finish(b[..], 0);
+    #assert !rs_short_rest_sorcery(b[..], 0, 3) && rs_short_rest_sorcery(b[..], 0, 2) == (level == 5) && b[0].c[0].uses[RS_USE_SORCERY] == (ifx level == 5 then 2 else 0);
+    #assert !rs_short_rest_sorcery(b[..], 0, 1);
+  }
+}
+
+#test "Elemental Affinity p.70: from level 6, Fire Resistance and its Charisma modifier on a Fire spell's damage roll" {
+  for level: [2] int.[5, 6] {
+    b: [1] RsBattle; cf_field(b[..], rs_sorcerer("Sel", 0, level), 10);
+    #assert rs_resisted(b[..], 0, 10, RS_FIRE) == (ifx level == 6 then 5 else 10);
+    #assert rs_cast(b[..], 0, SP_FIRE_BOLT, 0, 0, 0, 1) && b[0].c[1].hp == 200 - 2 * 5 - (ifx level == 6 then 4 else 0);   // 2d10 at 5
+  }
+}

@@ -1,0 +1,128 @@
+// Spells cast at objects through the shared battle (SRD 5.2.1 pp.177-178 Breaking Objects, p.178
+// Burning, p.180 Damage Threshold; Eldritch Blast, Fire Bolt, Produce Flame and Starry Wisp). Its decisions
+// are object-target.coax's (mutation-gated through this entry):
+//   coax/bin/coax test rules/srd/cast-object-checks.coax --library
+//   coax/bin/coax mutate rules/srd/cast-object-checks.coax --library --unit rules/srd/object-target.coax
+#load "battle.coax";
+#load "object-cast.coax";
+#load "catalog.coax";
+#load "executable-source-ids.coax";
+
+// A caster at (1, 1) with these spells selected, on its turn, with fixed dice.
+oc_caster :: (b: [] RsBattle, c: RsCreature, one: int, two: int) -> int {
+  b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b, c, 1, 1);
+  keys := [2] int.[RS_EXEC_SOURCE[one], RS_EXEC_SOURCE[rs_max(two, 0)]];
+  #assert rs_set_spells(b[0].c[a..<a+1], keys[0..<ifx two >= 0 then 2 else 1]);
+  rs_start_turn(b, a);
+  return a;
+}
+oc_same :: (b: [] RsBattle, a: int, was: RsCreature, rolled: int, seq: int, o: RsObject, kept: RsObject) -> bool {
+  for k: 0..<10 { if b[0].c[a].slots[k] != was.slots[k] { return false; } }
+  return !b[0].turn.action && !b[0].turn.bonus && b[0].dice[0].rolled == rolled && b[0].book[0].seq == seq && o.hp == kept.hp && o.burning == kept.burning;
+}
+oc_has :: (text: string, word: string) -> bool {
+  if word.count == 0 || text.count < word.count { return word.count == 0; }
+  for k: 0..<text.count - word.count + 1 { if text[k..<k + word.count] == word { return true; } }
+  return false;
+}
+oc_joined :: (text: string, out: [] u8) -> string {
+  n := 0;
+  for k: 0..<text.count {
+    ch := text[k];
+    if ch == 10 { if n > 0 && out[n - 1] == 45 { n -= 1; continue; } ch = 32; }
+    if n < out.count { out[n] = ch; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "Fire Bolt hits a wooden barrel at its AC, sets it burning, and the burning wears it down" #steps 200000000 {
+  b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
+  barrel := [1] RsObject.[rs_object("barrel", 5, 1, RS_OBJ_WOOD, RS_MEDIUM, true)];
+  #assert barrel[0].hp == 18 && barrel[0].flammable && rs_object_ac(barrel[0].material) == 15;
+  #assert rs_spell_attack(b[0].c[a]) + 10 >= 15;   // fixed dice roll 10
+  #assert rs_cast_object(b[..], a, SP_FIRE_BOLT, barrel[..]);
+  // level 5: 2d10, fixed at 5 each
+  #assert barrel[0].hp == 8 && barrel[0].burning && !barrel[0].destroyed && b[0].turn.action;
+  #assert rs_object_burn(b[..], barrel[..]) == 2 && barrel[0].hp == 6;
+  for k: 0..<3 { _ := rs_object_burn(b[..], barrel[..]); }
+  #assert barrel[0].hp == 0 && barrel[0].destroyed && !barrel[0].burning && rs_object_burn(b[..], barrel[..]) == 0;
+}
+#test "a carried or stone object doesn't catch, a threshold stops a small hit, and a fragile one breaks" #steps 200000000 {
+  for pass: 0..<3 {
+    b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
+    o := [1] RsObject.[rs_object("cloak", 3, 1, RS_OBJ_CLOTH, RS_SMALL, true)];
+    if pass == 0 { o[0].attended = true; }
+    if pass == 1 { o[0] = rs_object("door", 3, 1, RS_OBJ_STONE, RS_LARGE, true); o[0].threshold = 11; }
+    if pass == 2 { o[0] = rs_object("bottle", 3, 1, RS_OBJ_GLASS, RS_TINY, false); }
+    hp := o[0].hp;
+    #assert rs_cast_object(b[..], a, SP_FIRE_BOLT, o[..]) && b[0].turn.action && !o[0].burning;
+    if pass == 0 { #assert o[0].hp == hp - 10; }
+    if pass == 1 { #assert o[0].hp == hp && hp == 27 && !o[0].flammable; }
+    if pass == 2 { #assert o[0].hp == 0 && o[0].destroyed; }
+  }
+}
+#test "Eldritch Blast's beams each roll at the object, Agonizing Blast adding to each, and stop once it breaks" #steps 200000000 {
+  b: [1] RsBattle; a := oc_caster(b[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), SP_ELDRITCH_BLAST, -1);
+  b[0].c[a].agonizing = SP_ELDRITCH_BLAST;
+  cha := rs_mod(b[0].c[a].score[RS_CHA]);
+  chest := [1] RsObject.[rs_object("chest", 3, 1, RS_OBJ_WOOD, RS_SMALL, true)];
+  chest[0].hp = 100;
+  seq := b[0].book[0].seq;
+  #assert rs_cast_object(b[..], a, SP_ELDRITCH_BLAST, chest[..]) && chest[0].hp == 100 - 2 * (5 + cha) && !chest[0].burning;
+  // cast, two attacks, two damage lines
+  #assert b[0].book[0].seq == seq + 5;
+  rs_start_turn(b[..], a);
+  chest[0].hp = 3; seq = b[0].book[0].seq;
+  #assert rs_cast_object(b[..], a, SP_ELDRITCH_BLAST, chest[..]) && chest[0].destroyed && b[0].book[0].seq == seq + 3;
+}
+#test "Starry Wisp lights an object it hits and Produce Flame hurls only once in hand" #steps 200000000 {
+  b: [1] RsBattle; a := oc_caster(b[..], rs_druid("Dru", 0, 3), SP_STARRY_WISP, SP_PRODUCE_FLAME);
+  lamp := [1] RsObject.[rs_object("lamp", 3, 1, RS_OBJ_GLASS, RS_SMALL, true)];
+  #assert rs_cast_object(b[..], a, SP_STARRY_WISP, lamp[..]) && lamp[0].glow_until > b[0].clock && lamp[0].hp == 6;
+  rs_start_turn(b[..], a);
+  was := b[0].c[a]; rolled := b[0].dice[0].rolled; seq := b[0].book[0].seq; kept := lamp[0];
+  #assert !rs_cast_object(b[..], a, SP_FLAME_HURL, lamp[..]) && oc_same(b[..], a, was, rolled, seq, lamp[0], kept);
+  #assert rs_cast(b[..], a, SP_PRODUCE_FLAME, 0, 0, 0, a) && b[0].turn.bonus && !b[0].turn.action;
+  #assert rs_cast_object(b[..], a, SP_FLAME_HURL, lamp[..]) && lamp[0].hp == 2 && !lamp[0].burning;
+}
+#test "a spell that can't take an object, a broken or distant one, a spent action or no components refuses with nothing spent" #steps 200000000 {
+  for why: 0..<6 {
+    b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, SP_RAY_OF_SICKNESS);
+    o := [1] RsObject.[rs_object("crate", 3, 1, RS_OBJ_WOOD, RS_MEDIUM, true)];
+    sp := SP_FIRE_BOLT;
+    if why == 0 { sp = SP_RAY_OF_SICKNESS; }
+    if why == 1 { o[0].destroyed = true; }
+    if why == 2 { o[0].x = 1 + 25; }   // 125 feet: past Fire Bolt's 120
+    if why == 3 { b[0].turn.action = true; }
+    if why == 4 { b[0].c[a].speech_blocked = true; }
+    if why == 5 { sp = SP_HOLD_PERSON; }
+    was := b[0].c[a]; rolled := b[0].dice[0].rolled; seq := b[0].book[0].seq; kept := o[0];
+    #assert !rs_cast_object(b[..], a, sp, o[..]);
+    if why == 3 { b[0].turn.action = false; }
+    #assert oc_same(b[..], a, was, rolled, seq, o[0], kept);
+  }
+  // 120 feet is in range
+  b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
+  o := [1] RsObject.[rs_object("crate", 25, 1, RS_OBJ_WOOD, RS_MEDIUM, true)];
+  #assert rs_cast_object(b[..], a, SP_FIRE_BOLT, o[..]);
+}
+#test "the reviewed object list matches every executable description that targets a creature or an object" #steps 400000000 {
+  // Reviewed: Faerie Fire outlines objects in its area, Levitate, Telekinesis and Reverse Gravity
+  // move them and Wall of Stone can't share their space; none makes an attack at an object, which this engine's object cast covers. Produce Flame's own
+  // casting is the flame in hand; its hurl (SP_FLAME_HURL) takes the object.
+  reviewed := [6] string.["faerie-fire", "levitate", "telekinesis", "produce-flame", "reverse-gravity", "wall-of-stone"];
+  buf: [8192] u8;
+  found := 0;
+  for sp: 0..<RS_MORE_END {
+    src := srd_source_lookup(RS_EXECUTABLE_SOURCE_IDS[sp]);
+    text := oc_joined(src.text, buf[..]);
+    names := oc_has(text, "creature or object") || oc_has(text, "creature or an object");
+    if rs_object_spell(sp) { #assert names; found += 1; continue; }
+    if !names { continue; }
+    excused := false; for id: reviewed { if id == src.id { excused = true; } }
+    #assert excused;
+  }
+  #assert found == RS_OBJECT_SPELLS.count;   // the hurl reads Produce Flame's description
+  #assert rs_spell(SP_FLAME_HURL).part_of == SP_PRODUCE_FLAME && rs_object_spell(SP_FLAME_HURL);
+}

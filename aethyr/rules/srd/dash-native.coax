@@ -1,7 +1,0 @@
-// Focused native Dash witness. Not whole-SRD qualification.
-#load "dash-checks.coax";
-#load "../../../coax/lib/sys/tool.coax";
-tool_main :: () -> int #export_c #effects(all) {
-  if !dh_native() { tool_errln("FAIL DASH-MOVEMENT"); return 1; }
-  tool_errln("PASS DASH-MOVEMENT"); return 0;
-}

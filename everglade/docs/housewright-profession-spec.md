@@ -17,7 +17,7 @@ This spec defines:
 Housewright is Everglade's own system. The SRD 5.2.1 has no gathering,
 professions or house building, so every record this spec adds is marked
 `srd: false`, like the house rules in
-[`aethyr/rules/srd/house.coax`](../../aethyr/rules/srd/house.coax). Where
+[`rules/srd/house.coax`](../../rules/srd/house.coax). Where
 the SRD has a rule, it applies as written: tool proficiency, ability checks,
 the Utilize and Help actions, crafting time, and the object AC table.
 
@@ -102,8 +102,8 @@ good house:
 
 **Exists today.**
 
-- Tool proficiency and checks: [`check-training.coax`](../../aethyr/rules/srd/check-training.coax) (37 SRD tools as bits) and [`ability-checks.coax`](../../aethyr/rules/srd/ability-checks.coax).
-- Help: [`help.coax`](../../aethyr/rules/srd/help.coax).
+- Tool proficiency and checks: [`check-training.coax`](../../rules/srd/check-training.coax) (37 SRD tools as bits) and [`ability-checks.coax`](../../rules/srd/ability-checks.coax).
+- Help: [`help.coax`](../../rules/srd/help.coax).
 - A placed house with walls, a doorway and monster pathing: [`aethyr/world/building.coax`](../../aethyr/world/building.coax) and [`everglade/world/home.coax`](../world/home.coax) (`78d99e4c24`).
 - Spots you stand at to use something: [`aethyr/world/interact.coax`](../../aethyr/world/interact.coax).
 - Long rest: [docs/dnd/long-rest-implementation.md](../../docs/dnd/long-rest-implementation.md).

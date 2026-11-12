@@ -1,11 +1,11 @@
 # 14. Ability scores, proficiency and the d20
 
 > **Status: partly implemented.** The core roll is in Aethyr's shared SRD rules,
-> [`aethyr/rules/srd/engine.coax`](../../aethyr/rules/srd/engine.coax)
+> [`rules/srd/engine.coax`](../../rules/srd/engine.coax)
 > (`rs_roll`, `rs_d20`, `rs_edge`, `rs_mod`, `rs_proficiency`), with checks in
-> [`aethyr/rules/srd/ability-check-math.coax`](../../aethyr/rules/srd/ability-check-math.coax)
+> [`rules/srd/ability-check-math.coax`](../../rules/srd/ability-check-math.coax)
 > and saving throws in
-> [`aethyr/rules/srd/condition-rolls.coax`](../../aethyr/rules/srd/condition-rolls.coax).
+> [`rules/srd/condition-rolls.coax`](../../rules/srd/condition-rolls.coax).
 > Other agents are extending these files now, so this chapter names functions
 > and has no source listings. The SRD's coverage is tracked in the
 > [compliance ledger](../../docs/dnd/srd-compliance-ledger.md).
@@ -89,7 +89,7 @@ attack bonus, level 1                    = +3 + 2     = +5
 attack bonus, level 2 with Archery (+2)  = +5 + 2     = +7
 ```
 
-Against a Goblin Warrior's Armor Class of 15 (`aethyr/rules/srd/monsters.coax`, SRD p.290), a level 1 Ranger hits on a d20 roll of 10
+Against a Goblin Warrior's Armor Class of 15 (`rules/srd/monsters.coax`, SRD p.290), a level 1 Ranger hits on a d20 roll of 10
 or more:
 
 ```text
@@ -103,25 +103,25 @@ A hit deals 1d8 + 3 piercing damage, 7.5 on average. The 150-foot range is
 
 ## The checks
 
-- `aethyr/rules/srd/class-ranger-checks.coax`, `#test "Fighting Style p.59:
+- `rules/srd/class-ranger-checks.coax`, `#test "Fighting Style p.59:
   from level 2, Archery's +2 on ranged weapon attack rolls, not melee"`: the
   +5 and +7 above.
-- `aethyr/rules/srd/condition-roll-checks.coax`, `#test "normal saving throws
+- `rules/srd/condition-roll-checks.coax`, `#test "normal saving throws
   pass on an exact DC and fail one below it without inventing a rescue"`.
-- `aethyr/rules/srd/exhaustion-checks.coax`, `#test "each Exhaustion level
+- `rules/srd/exhaustion-checks.coax`, `#test "each Exhaustion level
   penalizes attack and saving throw totals without changing natural
   criticals"`.
-- `aethyr/rules/srd/ability-check-tests.coax`, `#test "sight and hearing
+- `rules/srd/ability-check-tests.coax`, `#test "sight and hearing
   dependent checks automatically fail only for their corresponding missing
   sense"` and `#test "Entangle escape doubles the proficiency bonus for the
   preset Rogues chosen Athletics Expertise"`.
-- `aethyr/rules/srd/condition-permission-checks.coax`, `#test "initiative
+- `rules/srd/condition-permission-checks.coax`, `#test "initiative
   chooses the source-required lower or higher face and rolls only once after
   cancellation"`.
 
 ```sh
-coax/bin/coax test --library aethyr/rules/srd/class-ranger-checks.coax
-coax/bin/coax test --library aethyr/rules/srd/condition-roll-checks.coax
+coax/bin/coax test --library rules/srd/class-ranger-checks.coax
+coax/bin/coax test --library rules/srd/condition-roll-checks.coax
 ```
 
 ## Mistakes

@@ -1,4 +1,4 @@
-#load "../aethyr/rules/srd/object-cast.coax";
+#load "../rules/srd/object-cast.coax";
 
 #load "../verse/experimental-object-mesh.coax";
 XcObject :: struct { rules:[1]RsObject; burn_at:int; }

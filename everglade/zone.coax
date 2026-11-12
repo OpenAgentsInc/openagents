@@ -21,8 +21,8 @@
 #load "../verse/experimental-dungeon.coax" as xdungeon;
 #load "../aethyr/loop.coax";
 #load "../aethyr/quality-page.coax";   // the graphics governor, wired as every realm wires it (zone_quality_frame, #13147)
-#load "../aethyr/rules/srd/battle.coax";
-#load "../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
+#load "../rules/srd/battle.coax";
+#load "../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
 #load "../aethyr/space.coax" as asp;
 #load "../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
 #load "../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)

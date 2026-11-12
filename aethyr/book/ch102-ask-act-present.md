@@ -3,7 +3,7 @@
 > **Status: partly implemented.** The pipeline is
 > [aethyr/action/deed.coax](../action/deed.coax) (#13072). The SRD mapping
 > from conditions to a bearing is
-> [aethyr/rules/srd/condition-bearing.coax](../rules/srd/condition-bearing.coax),
+> [rules/srd/condition-bearing.coax](../../rules/srd/condition-bearing.coax),
 > and Everglade's feel table is
 > [everglade/client/class-feel.coax](../../everglade/client/class-feel.coax).
 > Everglade II, Everglade Experimental and Everglade v1's aimed spells wire
@@ -141,7 +141,7 @@ slot greys and nothing plays.
 | Layer | Path | What |
 | --- | --- | --- |
 | Engine | `aethyr/action/deed.coax` | The bar, the ask and the answer, the bearing type, the feel contract and the show |
-| Rules | `aethyr/rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
+| Rules | `rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
 | Game | `everglade/client/class-feel.coax` | Everglade's feel for every class ability and monster action |
 | Zone | `everglade/client/cast.coax`, `everglade/zone-combat.coax`, `everglade-spells.coax` | Each zone wires its press, its authority's answer and its bar to the pipeline |
 
@@ -153,7 +153,7 @@ modules, never in one zone.
 
 ```shell
 coax/bin/coax test aethyr/action/deed.coax --library
-coax/bin/coax test aethyr/rules/srd/condition-bearing-checks.coax --library
+coax/bin/coax test rules/srd/condition-bearing-checks.coax --library
 coax/bin/coax test everglade/client/class-feel.coax --library
 ```
 

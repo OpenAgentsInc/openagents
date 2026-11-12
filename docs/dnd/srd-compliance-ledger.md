@@ -58,7 +58,7 @@ never enter the SRD denominator. Clause IDs extend those IDs after source review
 ## Requirements inventory
 
 Paths below are repository-relative. `engine`, `battle`, `spells`, `more` and
-`npcs` mean the corresponding files under `aethyr/rules/srd/`. M2 through M8
+`npcs` mean the corresponding files under `rules/srd/`. M2 through M8
 refer to the roadmap milestones. Source sections are normative; code tests
 named below are selected evidence only, not exhaustive qualification.
 
@@ -110,11 +110,11 @@ named below are selected evidence only, not exhaustive qualification.
 Run from the repository root:
 
 ```sh
-coax/bin/coax test --library aethyr/rules/srd/compliance-probes.coax
-coax/bin/coax mutate --library aethyr/rules/srd/compliance-policy.coax
-coax/web/tool.sh aethyr/rules/srd/compliance-check.coax
-coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --active
-coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --inventory
+coax/bin/coax test --library rules/srd/compliance-probes.coax
+coax/bin/coax mutate --library rules/srd/compliance-policy.coax
+coax/web/tool.sh rules/srd/compliance-check.coax
+coax/web/tool.sh rules/srd/compliance-check.coax --active
+coax/web/tool.sh rules/srd/compliance-check.coax --inventory
 ```
 
 The third command is intentionally strict: it currently exits **1** because
@@ -127,7 +127,7 @@ It refuses (exit 2) when every probe is parked. Parking is not completion and
 The measured count is tallied from the reports, so adding a probe needs only its
 `sc_report` line.
 
-For the active spell slice (#13043), `coax/web/tool.sh aethyr/rules/srd/spell-coverage.coax`
+For the active spell slice (#13043), `coax/web/tool.sh rules/srd/spell-coverage.coax`
 counts, per base class table, the cantrips and 1st-3rd level spells that have
 an executable effect program mapped to their canonical entry (`--list` prints
 one row per spell; `--max-level N` widens it). Baseline when the report landed: 43 of
@@ -322,13 +322,13 @@ condition and recovery work and ordinary Dodge player controls remain open.
 
 ## Canonical source inventory
 
-[data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry
+[data/inventory.tsv](../../rules/srd/data/inventory.tsv) is the source-entry
 ledger: one stable `spell/<id>` row per spell, with page span and unqualified
-mechanics status. [Class rows](../../aethyr/rules/srd/data/class-lists.tsv) preserve
-all eight base tables. [Discrepancies](../../aethyr/rules/srd/data/discrepancies.tsv)
+mechanics status. [Class rows](../../rules/srd/data/class-lists.tsv) preserve
+all eight base tables. [Discrepancies](../../rules/srd/data/discrepancies.tsv)
 preserve nine differing assertions across Flaming Sphere, Mind Spike, Phantasmal
 Force and True Strike. They are exact pinned-source exceptions, not mutant
-exemptions or silent corrections. [The pipeline guide](../../aethyr/rules/srd/data/README.md)
+exemptions or silent corrections. [The pipeline guide](../../rules/srd/data/README.md)
 describes reproduction, schema, text fidelity limits and access from Coax.
 
 Class-table counts: Bard 129, Cleric 109, Druid 124, Paladin 38, Ranger 48,
@@ -597,7 +597,7 @@ records the implementation sequence. No issue closes on this layer.
 
 ### Class and subclass features, levels 1–6 (#13044)
 
-`aethyr/rules/srd/class-features.coax` lists every class-table and subclass
+`rules/srd/class-features.coax` lists every class-table and subclass
 feature the twelve presets gain at levels 1–6, with its printed page, and holds
 each to the built preset at every level: present from its level, absent before.
 Each feature then resolves against its text with fixed dice in
@@ -1096,7 +1096,7 @@ creature (not Undead, Challenge Rating no higher than its level) and keeps its
 own mind, Hit Points and saves. It gains the form's numbers and the form's Hit
 Points as Temporary Hit Points. A Magic action changes the form without new
 Temporary Hit Points. Ending Concentration or Return to Form gives everything
-back (`aethyr/rules/srd/shapechange.coax`). The engine's Druid has its full
+back (`rules/srd/shapechange.coax`). The engine's Druid has its full
 slot table to level 20. The Adult Red Dragon is a monster block
 (`monsters.coax`, AC 19, 256 HP, Fly 80, Fire immunity). Its Fire Breath is a
 60-foot cone, DC 21 Dexterity, 17d6 Fire with half on a success, Recharge 5–6

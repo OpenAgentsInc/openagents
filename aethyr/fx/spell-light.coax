@@ -2,7 +2,7 @@
 // on the ground are drawn in, in every zone. class-look.coax picks a kit cast's recipe with it, and
 // battle.coax a battle event's (#13086).
 //   coax/bin/coax test --library aethyr/fx/spell-light.coax
-#load "../rules/srd/battle.coax";   // the spells (spells.coax loads only through it)
+#load "../../rules/srd/battle.coax";   // the spells (spells.coax loads only through it)
 #load "puff.coax";
 
 fxl_rgb :: (r: f32, g: f32, b: f32) -> FxV { return fxp_v(r, g, b); }

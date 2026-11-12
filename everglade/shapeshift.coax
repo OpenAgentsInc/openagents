@@ -1,5 +1,5 @@
 // Everglade's shapeshifting: a druid's Wild Shape and Shapechange as the player sees them, shared by
-// every Everglade zone. The rules are the SRD engine's (aethyr/rules/srd/wild-shape.coax,
+// every Everglade zone. The rules are the SRD engine's (rules/srd/wild-shape.coax,
 // shapechange.coax, dragon-actions.coax); this is the body, the change and the dragon's moves:
 //   - the change: a rune circle and a vortex of leaves, the druid spinning faster as it dissolves, a
 //     flash and a shockwave at SH_FLASH_S when the body swaps, then the new body growing in with an
@@ -22,7 +22,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #module "everglade.shapeshift";
-#load "../aethyr/rules/srd/battle.coax";
+#load "../rules/srd/battle.coax";
 #load "../aethyr/action/flight.coax";
 #load "dragon-clips.coax";
 

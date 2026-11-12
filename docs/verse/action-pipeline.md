@@ -53,7 +53,7 @@ bearing, so a knocked-out hero lies down, can't move and can't cast, all at
 once.
 
 The SRD 5.2.1 mapping is `rs_bearing` in
-`aethyr/rules/srd/condition-bearing.coax`. It agrees with the rules' own
+`rules/srd/condition-bearing.coax`. It agrees with the rules' own
 `rs_can_act` and `rs_can_move`, and a check holds them together:
 
 | SRD condition | Pose | Locks |
@@ -85,7 +85,7 @@ every level from 1 to 6, and every monster action Everglade fields.
 | Layer | Path | What |
 | --- | --- | --- |
 | Engine | `aethyr/action/deed.coax` | The bar, the ask and answer, the bearing type, the feel contract, the show |
-| Engine (SRD rules) | `aethyr/rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
+| Engine (SRD rules) | `rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
 | Game | `everglade/client/class-feel.coax` | Everglade's feel for every class ability and monster action |
 | Zone | `everglade/client/cast.coax`, `everglade/zone-combat.coax`, `everglade-spells.coax` | Each realm wires its press, its authority's answer and its bar to the pipeline |
 
@@ -112,6 +112,6 @@ icon.
 
 ```sh
 coax/bin/coax test aethyr/action/deed.coax --library
-coax/bin/coax test aethyr/rules/srd/condition-bearing-checks.coax --library
+coax/bin/coax test rules/srd/condition-bearing-checks.coax --library
 coax/bin/coax test everglade/client/class-feel.coax --library
 ```

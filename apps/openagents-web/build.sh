@@ -359,7 +359,7 @@ painted=$!
 # /worlds/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
 timed watchtower "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
-# /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (aethyr/rules/srd, docs/dnd).
+# /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (rules/srd, docs/dnd).
 # Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (aethyr/sticks.coax).
 timed fivelab "$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &

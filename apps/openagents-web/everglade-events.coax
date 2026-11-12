@@ -20,7 +20,7 @@
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "events:"
 
 #load "everglade-raid-scale.coax";   // the raid's waves for the players present, as the server builds them
-#load "../../aethyr/rules/srd/advancement.coax";   // each level's XP: the one table, the room's too (#13259)
+#load "../../rules/srd/advancement.coax";   // each level's XP: the one table, the room's too (#13259)
 EGE_DEMO_FLAG :: 64;        // room-events.coax EV_DEMO_FLAG
 EGE_IDLE :: 0; EGE_ANNOUNCE :: 1; EGE_END :: 5; EGE_AFTER :: 6; EGE_SIEGE :: 7; EGE_STAND :: 8;
 EGE_HELD :: 1; EGE_OFF :: 3;   // HELD: the camp fell to the town

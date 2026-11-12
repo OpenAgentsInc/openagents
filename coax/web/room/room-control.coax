@@ -17,7 +17,7 @@
 //     rowboat BOAT (0 to 2, the Lantern, Thinking and Fern ponds' boats; river.coax), once a STAMP:
 //     the boat check's two seats at a pond (GitHub #12861). Only a local room takes it, as the dice.
 //   - dice: "dice fixed" (or "dice random"), every everglade room's rules rolling each die on half its
-//     faces from now on (aethyr/rules/srd/engine.coax RsDice.fixed), and the rooms made after it too:
+//     faces from now on (rules/srd/engine.coax RsDice.fixed), and the rooms made after it too:
 //     the drift check's two rooms roll alike whatever order their rolls come in (GitHub #12887). Only
 //     a local room takes it: oa-room under --dev, and the browser's local host (rm_control_local).
 //     Production's answer never says it, and production's rooms never take it.

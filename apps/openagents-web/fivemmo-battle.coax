@@ -2,7 +2,7 @@
 // 5-foot squares laid over Everglade's south-east green. You and three AI casters hold against
 // waves of six Skeletons, on the engine's real-time clock (action combat: a turn every 1.5
 // seconds, spent slots and uses back 9 seconds later). The rules are all the engine's
-// (aethyr/rules/srd/); each class decides with 5E Lab's routines, copied here, and your turn walks
+// (rules/srd/); each class decides with 5E Lab's routines, copied here, and your turn walks
 // to the square your body stands on and uses the slot you queued (else Attack). This is its own C
 // unit (fivemmo-face.c calls its mb_ exports), so its names stay apart from Everglade's.
 //   coax/bin/coax test apps/openagents-web/fivemmo-battle.coax
@@ -12,7 +12,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-#load "../../aethyr/rules/srd/battle.coax";
+#load "../../rules/srd/battle.coax";
 #load "../../everglade/shared/fivebar.coax";   // the hotbar on the engine, shared with Everglade 5E
 
 COLS :: 12; ROWS :: 12;

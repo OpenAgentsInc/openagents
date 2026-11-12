@@ -1,0 +1,38 @@
+#load "long-rest-resources-checks.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
+    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+    c[0]=rt_class(klass,level); c[1]=rs_wizard("Unrelated",0,3);
+    c[0].rages=0; c[0].focus=0; c[0].reacted=true;
+    for u:0..<RS_USES { c[0].uses[u]=0; }
+    for sl:1..<10 { c[0].slots[sl]=0; }
+    if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 1; }
+    if !rs_long_rest_start_owned(b[..],1,2,true) { return 2; }
+    rs_tick(b[..],3600); b[0].dice[0].fixed=true;
+    b[0].turn.action=true; b[0].turn.bonus=true;
+    if !rs_roll_initiative(b[..],0) { return 3; }
+    if c[0].long_rest.phase!=2 || c[0].long_rest.interruptions!=1 || c[0].rest.phase!=0 || c[0].rest.dice!=level { return 4; }
+    // Champion's Athlete Advantage cancels the sleeper's Disadvantage.
+    expected_rolls:=ifx c[0].athlete then 1 else 2;
+    if !rs_sleeping(c[0]) || !rs_has(c[0],RS_UNCONSCIOUS) || !c[0].reacted || b[0].dice[0].rolled!=expected_rolls { return 5; }
+    if c[1].long_rest.phase!=1 || !b[0].turn.action || !b[0].turn.bonus || b[0].who != -1 { return 6; }
+    if klass==RS_WARLOCK { for sl:1..<6 { if c[0].slots[sl]!=c[0].slots_max[sl] { return 7; } } }
+    if klass==RS_MONK && c[0].focus!=c[0].focus_max { return 8; }
+    if klass==RS_BARBARIAN && c[0].rages!=1 { return 9; }
+    c[0].exhaustion=5; c[0].temp=8;
+    if !rs_gain_exhaustion(b[..],0) || !c[0].dead || c[0].hp!=0 || c[0].temp!=8 { return 10; }
+    if c[0].long_rest.phase!=0 || c[0].long_rest.short_due || rs_sleeping(c[0]) || c[0].rest.dice!=level { return 11; }
+    rs_tick(b[..],1);
+    if b[0].rest_clock.ticks!=3601000000 || c[1].long_rest.light!=3601000000 { return 12; }
+  } }
+  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  a:=rs_add(b[..],rs_barbarian("Original",0,3),1,1); b[0].who = -1; b[0].c[a].rages=0;
+  if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],a,1,true) { return 13; }
+  rs_tick(b[..],3600);
+  j:=rs_add(b[..],b[0].c[a],3,1);
+  if j!=1 || b[0].c[j].long_rest.phase!=2 || b[0].c[j].rages!=1 || !rs_sleeping(b[0].c[j]) { return 14; }
+  if b[0].c[a].long_rest.phase!=1 || b[0].c[a].rages!=0 { return 15; }
+  tool_errln("PASS REST-EVENTS (72 class/level Initiative/death transactions and actor-local admission)");
+  return 0;
+}

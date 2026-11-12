@@ -21,7 +21,7 @@ zone_mount_key :: (s: [] EgZone) -> bool {
   }
   return k.r != egm.EG_PRESS_NONE;
 }
-// Your bearing from your SRD conditions (aethyr/rules/srd/condition-bearing.coax); none before the
+// Your bearing from your SRD conditions (rules/srd/condition-bearing.coax); none before the
 // rules have you.
 zone_bearing :: (s: [] EgZone) -> DeedBearing {
   b := s[0].xc[0].b[..];
@@ -61,7 +61,7 @@ zone_dragon_join :: (s: [] EgZone) -> int {
 }
 // F (or the bar's Fire Breath) on the dragon: its breath ahead, on the ground or in the air. You ask
 // with your bearing (everglade/mounts.coax eg_breath_ask); the SRD's 60-foot cone
-// (aethyr/rules/srd/dragon-actions.coax rs_in_cone3) runs from its jaws along its heading, tipped
+// (rules/srd/dragon-actions.coax rs_in_cone3) runs from its jaws along its heading, tipped
 // down as far as you look down (in the air, down to the ground), and picks the monsters in it; the
 // SRD's breath acts on them on the dragon's own turn (rs_fire_breath_on: Dex save DC 21, 17d6 fire,
 // half on a success, Burning on a failure). Only a yes shows the torrent and its roar; each monster

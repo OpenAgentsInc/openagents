@@ -6,8 +6,8 @@
 > into the glade's pack. Its clips are
 > [`everglade/dragon-clips.coax`](../../everglade/dragon-clips.coax). Flight is
 > [`aethyr/action/flight.coax`](../../aethyr/action/flight.coax). The rules are
-> [`aethyr/rules/srd/shapechange.coax`](../../aethyr/rules/srd/shapechange.coax)
-> and [`aethyr/rules/srd/dragon-actions.coax`](../../aethyr/rules/srd/dragon-actions.coax).
+> [`rules/srd/shapechange.coax`](../../rules/srd/shapechange.coax)
+> and [`rules/srd/dragon-actions.coax`](../../rules/srd/dragon-actions.coax).
 > The body's change, flight and breath are
 > [`everglade/shapeshift.coax`](../../everglade/shapeshift.coax), and the
 > field at `/druid` is
@@ -148,7 +148,7 @@ saving throw and takes 17d6 Fire damage on a failure, half on a success. A
 cone's width at any distance equals that distance, so a point is inside when
 it is no further to the side than half the distance along the aim:
 
-<!-- source: aethyr/rules/srd/dragon-actions.coax breath-cone -->
+<!-- source: rules/srd/dragon-actions.coax breath-cone -->
 ```jai
 // Whether point (dx, dy) from a cone's origin is inside a cone of `length` aimed along (fx, fy),
 // any units so long as they're the same: no further than length along the aim, and no further to
@@ -173,7 +173,7 @@ rule: a creature that fails the save burns for 1d4 Fire at the start of each of
 its turns for three rounds. Both run from the engine's turn start, so any world
 that steps turns gets them:
 
-<!-- source: aethyr/rules/srd/dragon-actions.coax recharge-burning -->
+<!-- source: rules/srd/dragon-actions.coax recharge-burning -->
 ```jai
 // The start of i's turn: Burning, then the Recharge roll.
 rs_dragon_turn_start :: (b: [] RsBattle, i: int) #effects(all) {
@@ -194,7 +194,7 @@ Shapechange is a 9th-level spell, so the druid is level 17. Casting it takes an
 Action, the 9th-level slot, Concentration and a jade circlet. The form must not
 be Undead, and its Challenge Rating must be no higher than your level:
 
-<!-- source: aethyr/rules/srd/shapechange.coax shapechange -->
+<!-- source: rules/srd/shapechange.coax shapechange -->
 ```jai
 // The acting i casts Shapechange with a 9th-level slot and takes block m's form (its Action, the slot,
 // Concentration). A Wild Shape form ends first.
@@ -220,7 +220,7 @@ creature. Only the few creatures that cast Shapechange need them, and a battle
 holds `RS_SHAPE_KEEPS` (4) at once. A fifth caster's Shapechange is refused
 before it spends a slot:
 
-- `aethyr/rules/srd/shapechange.coax`, `#test "Shapechange keeps the caster's
+- `rules/srd/shapechange.coax`, `#test "Shapechange keeps the caster's
   own numbers in the battle's side table, and refuses when the table is full"`.
 
 The zone doesn't decide which body to draw. It reads the engine's creature and
@@ -256,14 +256,14 @@ has the SRD's mounted-combat rules that the mounts follow.
   glide and dive: a held jump climbs, letting go glides down, a dive drops
   faster and speeds up"` and `#test "it lands: gliding or pressing land reaches
   the ground, settles, then walks"`.
-- `aethyr/rules/srd/battle.coax` runs `dragon-actions.coax`'s `#test "the cone:
+- `rules/srd/battle.coax` runs `dragon-actions.coax`'s `#test "the cone:
   60 feet long, a half-angle of atan(1/2); in front and inside, never behind or
   wide"`, `#test "Fire Breath: DC 21 Dexterity, 17d6 Fire to each foe in the
   cone, half on a success; then it's spent"`, `#test "Recharge 5–6: a 5 or a 6
   at the start of its turn brings Fire Breath back"` and `#test "Burning: 1d4
   Fire at the start of each turn for three rounds; an action Prone puts it
   out"`.
-- `aethyr/rules/srd/battle.coax` runs `shapechange.coax`'s `#test "Shapechange:
+- `rules/srd/battle.coax` runs `shapechange.coax`'s `#test "Shapechange:
   a level 17 Druid becomes an Adult Red Dragon with its 9th-level slot, Action
   and Concentration"` and `#test "Shapechange ends with Concentration and gives
   everything back; its Temporary Hit Points go"`.
@@ -278,7 +278,7 @@ has the SRD's mounted-combat rules that the mounts follow.
 
 ```sh
 coax/bin/coax test --library aethyr/action/flight.coax
-coax/bin/coax test --library aethyr/rules/srd/battle.coax --only "Shapechange"
+coax/bin/coax test --library rules/srd/battle.coax --only "Shapechange"
 coax/bin/coax test --library everglade/shapeshift.coax
 coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "druid"
 ```

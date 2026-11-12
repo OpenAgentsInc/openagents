@@ -1,0 +1,90 @@
+// The Bard's levels 1-6 features (#13044; class-features.coax lists them), each resolved through
+// the shared battle against its SRD 5.2.1 text (p. 31-35), with fixed dice (d6 3, d8 4, d20 10).
+// The preset is a College of Lore Bard in Leather Armor with a Dagger, Charisma 16, Dexterity 14.
+//   coax/bin/coax test --library rules/srd/class-bard-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "class-features.coax";
+
+// A Bard at (1, 1), an ally beside it and a foe at 60 feet, fixed dice, the Bard's turn open.
+cb_field :: (b: [] RsBattle, level: int) {
+  b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b, rs_bard("Lark", 0, level), 1, 1); _ = rs_add(b, rs_fighter("Ally", 0, 3), 2, 1); _ = rs_add(b, rs_fighter("Foe", 1, 3), 13, 1);
+  rs_fresh(b, 0);
+}
+
+#test "Bardic Inspiration p.31: Charisma-modifier uses of a d6; a Bonus Action gives another creature within 60 feet a die for a failed D20 Test" {
+  b: [1] RsBattle; cb_field(b[..], 1);
+  #assert b[0].c[0].uses_max[RS_USE_INSPIRE] == 3 && b[0].c[0].insp_die == 6;
+  #assert !rs_inspire(b[..], 0, 0) && rs_inspire(b[..], 0, 1) && b[0].turn.bonus && b[0].c[0].uses[RS_USE_INSPIRE] == 2 && b[0].c[1].inspired == 6;
+  #assert rs_inspired_roll(b[..], 1, 12, 12) == 0 && b[0].c[1].inspired == 6;   // a success keeps it
+  #assert rs_inspired_roll(b[..], 1, 10, 12) == 3 && b[0].c[1].inspired == 0;   // a failure spends it
+  b[0].c[0].uses[RS_USE_INSPIRE] = 0; #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_INSPIRE] == 3;
+}
+
+#test "Spellcasting p.32: Charisma, DC 8 + proficiency + Charisma; the Bard table's slots" {
+  ones := [7] int.[0, 2, 3, 4, 4, 4, 4]; twos := [7] int.[0, 0, 0, 2, 3, 3, 3]; threes := [7] int.[0, 0, 0, 0, 0, 2, 3];
+  for level: 1..<7 {
+    c := rs_bard("L", 0, level);
+    #assert c.spell_ability == RS_CHA && c.slots_max[1] == ones[level] && c.slots_max[2] == twos[level] && c.slots_max[3] == threes[level];
+    #assert rs_spell_dc(c) == 8 + rs_proficiency(level) + rs_mod(c.score[RS_CHA]);
+  }
+}
+
+#test "Expertise p.32: from level 2, Performance and Persuasion with twice the Proficiency Bonus" {
+  for level: [2] int.[1, 2] {
+    p := rs_check_plan(rs_bard("L", 0, level), RsAbilityRequest.{ability = RS_CHA, skill = SK_PERSUASION});
+    #assert p.accepted && p.bonus == 3 + 2 * (ifx level == 2 then 2 else 1);
+  }
+}
+
+#test "Jack of All Trades p.32: from level 2, half the Proficiency Bonus on a skill check without proficiency" {
+  for level: [2] int.[1, 2] {
+    p := rs_check_plan(rs_bard("L", 0, level), RsAbilityRequest.{ability = RS_STR, skill = SK_ATHLETICS});
+    #assert p.accepted && p.bonus == -1 + (ifx level == 2 then 1 else 0);
+  }
+}
+
+#test "Bonus Proficiencies p.35: from level 3, three more skills (Arcana, History, Insight)" {
+  for level: [2] int.[2, 3] {
+    s := rs_bard("L", 0, level).checks.skills; want := (1 << SK_ARCANA) | (1 << SK_HISTORY) | (1 << SK_INSIGHT);
+    #assert (s & want) == (ifx level == 3 then want else 0);
+  }
+}
+
+#test "Cutting Words p.35: from level 3, a Reaction and a use take the Bard's die off an enemy's roll within 60 feet" {
+  for level: [2] int.[2, 3] {
+    b: [1] RsBattle; cb_field(b[..], level); b[0].who = 2;
+    cut := rs_cutting_words(b[..], 2, 2);
+    #assert cut == (ifx level == 3 then 3 else 0) && b[0].c[0].reacted == (level == 3) && b[0].c[0].uses[RS_USE_INSPIRE] == (ifx level == 3 then 2 else 3);
+  }
+  far: [1] RsBattle; cb_field(far[..], 3); far[0].c[2].x = 14; #assert rs_cutting_words(far[..], 2, 2) == 0;   // 65 feet
+}
+
+#test "Ability Score Improvement p.32: Charisma 16 to 18 at level 4, a fourth Bardic Inspiration use" {
+  #assert rs_bard("L", 0, 3).score[RS_CHA] == 16 && rs_bard("L", 0, 4).score[RS_CHA] == 18 && rs_bard("L", 0, 4).uses_max[RS_USE_INSPIRE] == 4;
+}
+
+#test "Font of Inspiration p.32: from level 5, a Short Rest restores every use, and a spell slot buys one back" {
+  for level: [2] int.[4, 5] {
+    c: [1] RsCreature; c[0] = rs_bard("L", 0, level); c[0].uses[RS_USE_INSPIRE] = 0;
+    rs_short_rest_resources(c[..]); #assert c[0].uses[RS_USE_INSPIRE] == (ifx level == 5 then 4 else 0);   // before Font, a Long Rest only (p. 31)
+  }
+  b: [1] RsBattle; cb_field(b[..], 5); b[0].c[0].uses[RS_USE_INSPIRE] = 3;
+  #assert rs_font(b[..], 0) && b[0].c[0].uses[RS_USE_INSPIRE] == 4 && b[0].c[0].slots[1] == 3 && !b[0].turn.bonus && !b[0].turn.action;
+  #assert !rs_font(b[..], 0);   // full
+  four: [1] RsBattle; cb_field(four[..], 4); four[0].c[0].uses[RS_USE_INSPIRE] = 0; #assert !rs_font(four[..], 0);
+}
+
+#test "Bardic Inspiration p.31: a d8 from level 5" {
+  #assert rs_bard("L", 0, 4).insp_die == 6 && rs_bard("L", 0, 5).insp_die == 8 && rs_bard("L", 0, 6).insp_die == 8;
+}
+
+#test "Magical Discoveries p.35: from level 6, two spells of any class always prepared, Fireball and Spirit Guardians" {
+  #assert !rs_class_spell_granted(rs_bard("L", 0, 5), SP_FIREBALL) && rs_bard("L", 0, 5).discoveries[0] == -1;
+  c := rs_bard("L", 0, 6);
+  #assert c.discoveries[0] == SP_FIREBALL && c.discoveries[1] == SP_SPIRIT_GUARDIANS && rs_class_spell_granted(c, SP_FIREBALL) && rs_class_spell_granted(c, SP_SPIRIT_GUARDIANS);
+}

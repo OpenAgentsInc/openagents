@@ -14,7 +14,7 @@
 // The GM's page holds the table (oneshot-table.coax). Players join by link or code over the room
 // server's relay (coax/web/room/room-relay.coax: four seats a room, the GM's and three more); with
 // no relay, everyone plays on the GM's page, the tabs as seats. Every rule is the SRD engine's
-// (aethyr/rules/srd/), the 3D scene 5E Lab's shader (everglade/scene/gpu/fivelab.coax).
+// (rules/srd/), the 3D scene 5E Lab's shader (everglade/scene/gpu/fivelab.coax).
 //   coax test apps/openagents-web/oneshot.coax
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
