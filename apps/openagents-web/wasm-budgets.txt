@@ -27,7 +27,11 @@ changelog 180000
 characters 100000
 # /chat's Theme (#13230) carries every skin (components/skin/all.coax, the terminal in pixels): 246,393 bytes measured 2026-11-11; about 5% room.
 chat 260000
+# /chat on the frames set drawn by the browser (chat-web.coax, components/backend/dom.coax): 98,103 bytes measured 2026-11-11 on a Linux build host; about 10% room.
+chat-web 110000
 components 210000
+# /kit, the control kit's page (kit.coax): 80,287 bytes measured 2026-11-11 on a Linux build host; about 10% room.
+kit 90000
 agents 120000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)
 connect-pylon 86000
