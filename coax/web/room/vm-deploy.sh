@@ -102,7 +102,15 @@ secret() {
     else on_vm "sudo rm -f /etc/oa-room/s$k-write.env"
     fi
   done
-  echo "room-vm: the room keys are on $vm (/etc/oa-room/secret.env and sK-write.env, root only)"
+  # The staging unit is shard 1 (staging.env OA_ROOM_SHARD=1) reporting to the staging API, which holds
+  # the same write master, so its key is shard 1's. Without it, once oa-room-ticket-key is gone the
+  # staging API refuses every write from staging (401).
+  if has oa-room-write-key-s1; then
+    { printf OA_ROOM_WRITE_KEY=; g secrets versions access latest --secret oa-room-write-key-s1; echo; } |
+      on_vm "sudo sh -c 'umask 077; cat > /etc/oa-room/staging-write.env.new && mv /etc/oa-room/staging-write.env.new /etc/oa-room/staging-write.env'"
+  else on_vm "sudo rm -f /etc/oa-room/staging-write.env"
+  fi
+  echo "room-vm: the room keys are on $vm (/etc/oa-room/secret.env, sK-write.env and staging-write.env, root only)"
 }
 
 setup() {   # the VM's packages, unit, env files and Caddy (vm/setup.sh); a running unit keeps its env until restarted

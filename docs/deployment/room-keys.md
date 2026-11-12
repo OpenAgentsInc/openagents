@@ -25,8 +25,10 @@ secret only when it exists:
 Two more secrets hold a key between steps and no deploy reads them:
 `oa-room-ticket-signing-key-next` and `oa-room-write-master-next`.
 
-Production ran steps 1 to 4 on 2026-11-12 (API `oa-api-00130-jgk`, rooms
-`71e8c86ac6`). Step 5 waits for the owner.
+Production ran all five steps on 2026-11-12 (API `oa-api-00132-j2q`, rooms
+`71e8c86ac6`); `oa-room-ticket-key` is deleted. The staging room unit is
+shard 1 against the staging API, so `vm-deploy.sh secret` gives it shard 1's
+write key (`/etc/oa-room/staging-write.env`).
 
 The commands below run from the `openagents` checkout, with the owner's
 `gcloud` login or the automation account
