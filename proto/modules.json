@@ -187,6 +187,10 @@
     ],
     "agent-managed": [
       "openagents/agent/managed/v1alpha1/session.proto"
+    ],
+    "api-routes": [
+      "openagents/api/v1alpha1/error.proto",
+      "openagents/ops/service/v1alpha1/service.proto"
     ]
   },
   "profile_namespaces": {
@@ -339,6 +343,11 @@
     ],
     "agent-managed": [
       "openagents.agent.managed.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "api-routes": [
+      "openagents.api.v1alpha1",
+      "openagents.ops.service.v1alpha1",
       "openagents.options.v1alpha1"
     ]
   }

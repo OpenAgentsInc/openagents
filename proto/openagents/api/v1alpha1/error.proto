@@ -1,0 +1,26 @@
+syntax = "proto3";
+package openagents.api.v1alpha1;
+import "openagents/options/v1alpha1/json.proto";
+
+// What the HTTP API's routes answer when they refuse or fail, as it ships
+// (compliance plan step E11, GitHub #13250): one compact JSON object with
+// one member, the reason in words, under the HTTP status that classifies it.
+//
+//   {"error":"no database"}
+//
+// The spec's openagents.api.v1 (section 10: a typed error object, pages,
+// idempotency) is planned and has another shape; a route moves to it with a
+// new version, never by changing these bytes.
+//
+// The one writer is coax/web/api/api-wire.coax (aw_error). A route file's
+// own codec loads it (coax/web/api/service-wire.coax, seat-wire.coax) and
+// the C route calls that codec's export. Goldens:
+// proto/verse/service-health-v1alpha1.json and
+// proto/verse/realm-seats-v1alpha1.json, each checked through the codec and
+// through the JSON mapper.
+message ErrorReply {
+  option (openagents.options.v1alpha1.json) = "";
+  // Printable words. A quote, a backslash or a control byte is escaped as
+  // JSON.stringify escapes it.
+  string error = 1 [json_name = "error"];
+}

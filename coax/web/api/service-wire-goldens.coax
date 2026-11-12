@@ -1,0 +1,184 @@
+// The service levels' goldens (Protocol E11, GitHub #13250): proto/verse/service-health-v1alpha1.json
+// holds the bodies service.c wrote before service-wire.coax, byte for byte. For each one this check
+//   - writes it through service-wire.coax from its values, and requires the same bytes;
+//   - holds its keys, nested ones too, to the json_names of its message in
+//     proto/descriptors/api-routes.pb, each field once and in field order;
+//   - reads the body back (a health body, a job result, a refusal) and writes it again through
+//     the codec from what it read, for the same bytes; a refusal also goes through the JSON mapper.
+// With --read KIND FILE it does the last two for a body a running API answered (KIND: health, watch
+// or error): coax/web/api/test_jobs.py hands it GET /api/playtest/service-health's body and the
+// service-watch job's result, so the route and the codec cannot drift.
+//
+//   coax/web/tool.sh coax/web/api/service-wire-goldens.coax [proto/verse/service-health-v1alpha1.json]
+//   coax/web/tool.sh coax/web/api/service-wire-goldens.coax --read health|watch|error FILE
+#import "Basic";
+#import_proto "../../../proto/descriptors/api-routes.pb" as AR;
+#load "service-wire.coax";
+#load "../../lib/proto/json.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+SG_FIXTURE :: "proto/verse/service-health-v1alpha1.json";
+SG_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
+SG_BODY :: 262144;
+SG_N :: 4;
+SG_WRITERS :: [SG_N] string.["error", "wanted", "watch", "health"];
+SG_MESSAGES :: [SG_N] string.[".openagents.api.v1alpha1.ErrorReply", ".openagents.ops.service.v1alpha1.Wanted",
+                              ".openagents.ops.service.v1alpha1.WatchResult", ".openagents.ops.service.v1alpha1.Health"];
+
+SgText :: struct { b: [SG_BODY] u8; n: int; }
+sg_s :: (d: Jv, at: int, key: string, t: [] SgText) -> string {
+  t[0].n = jv_str(d, jv_get(d, at, key), t[0].b[..]);
+  return ifx t[0].n < 0 then "" else cast(string) t[0].b[0..<t[0].n];
+}
+sg_i :: (d: Jv, at: int, key: string) -> int { return jv_int(d, jv_get(d, at, key), -999999); }
+
+// A golden written from its values (the writers' arguments): its length in out, or -1.
+sg_write :: (writer: string, d: Jv, v: int, out: [] u8) -> int {
+  a: [1] SgText; b: [1] SgText; c: [1] SgText; e: [1] SgText;
+  if writer == "error" { return svw_error_write(sg_s(d, v, "text", a[..]), out); }
+  if writer == "wanted" {
+    list := jv_get(d, v, "alerts"); n := 0;
+    for i: 0..<jv_len(d, list) {
+      w := jv_at(d, list, i);
+      n = svw_wanted_write(sg_s(d, w, "key", a[..]), sg_i(d, w, "shard"), sg_s(d, w, "what", b[..]), sg_s(d, w, "todo", c[..]), n, out);
+      if n < 0 { return -1; }
+    }
+    return svw_wanted_end(n, out);
+  }
+  if writer == "watch" { return svw_watch_write(sg_i(d, v, "changes"), sg_i(d, v, "mailed"), sg_s(d, v, "sync", a[..]), out); }
+  if writer == "health" {
+    n := svw_health_open(sg_s(d, v, "env", a[..]), sg_i(d, v, "now_ms"), sg_i(d, v, "days"), out);
+    levels := jv_get(d, v, "levels");
+    for i: 0..<jv_len(d, levels) {
+      l := jv_at(d, levels, i);
+      if n < 0 { return -1; }
+      n = svw_level_write(i != 0, sg_i(d, l, "which"), sg_s(d, l, "name", a[..]), sg_i(d, l, "target"), sg_i(d, l, "objective_ppm"), sg_i(d, l, "good"),
+                          sg_i(d, l, "total"), sg_i(d, l, "share_ppm"), sg_i(d, l, "met"), sg_s(d, l, "worst", b[..]), sg_s(d, l, "daily", c[..]), n, out);
+    }
+    if n < 0 { return -1; }
+    return svw_health_close(sg_s(d, v, "alerts", a[..]), sg_s(d, v, "resolved_day", e[..]), n, out);
+  }
+  return -1;
+}
+
+// A body read back and written again through the codec from what was read: its length, or -1
+// (kind wanted is not read back: it never leaves the API, and its title folds the shard in).
+sg_rewrite :: (kind: string, body: string, nodes: [] JvNode, out: [] u8) -> int {
+  j: [1] Jv;
+  if !jv_parse(j[..], body, nodes) || jv_kind(j[0], 0) != JV_OBJECT { return -1; }
+  d := j[0];
+  a: [1] SgText; b: [1] SgText;
+  if kind == "error" { return svw_error_write(sg_s(d, 0, "error", a[..]), out); }
+  if kind == "watch" { return svw_watch_write(sg_i(d, 0, "changes"), sg_i(d, 0, "mailed"), jv_raw(d, jv_get(d, 0, "sync")), out); }
+  if kind == "health" {
+    n := svw_health_open(sg_s(d, 0, "env", a[..]), sg_i(d, 0, "now_ms"), sg_i(d, 0, "days"), out);
+    levels := jv_get(d, 0, "levels");
+    for i: 0..<jv_len(d, levels) {
+      l := jv_at(d, levels, i);
+      if n < 0 { return -1; }
+      // the levels come in their order (0 tick time, 1 join time, 2 checkpoint age), and each one's unit is its own
+      if sg_s(d, l, "unit", b[..]) != svw_unit(i) { return -1; }
+      worst := jv_get(d, l, "worst");
+      n = svw_level_write(i != 0, i, sg_s(d, l, "name", a[..]), sg_i(d, l, "target"), sg_i(d, l, "objective_ppm"), sg_i(d, l, "good"), sg_i(d, l, "total"),
+                          sg_i(d, l, "share_ppm"), sg_i(d, l, "met"), ifx jv_kind(d, worst) == JV_NULL then "" else jv_raw(d, worst),
+                          jv_raw(d, jv_get(d, l, "daily")), n, out);
+    }
+    if n < 0 { return -1; }
+    return svw_health_close(jv_raw(d, jv_get(d, 0, "alerts")), jv_raw(d, jv_get(d, 0, "resolved_day")), n, out);
+  }
+  return -1;
+}
+// Whether the JSON mapper reads a refusal and writes it back byte for byte. Run only by the
+// tool: the mapper's alias check does not run at compile time, where #test runs.
+sg_mapper :: (body: string) -> bool {
+  nodes: [512] JvNode; wire: [4096] u8; out: [4096] u8;
+  m := AR_ErrorReply_from_json(body, nodes[..], wire[..]); if m.error != 0 { return false; }
+  v := AR_ErrorReply_to_json(m, out[..]); return v.error == 0 && cast(string) v.wire == body;
+}
+sg_message :: (kind: string) -> string {
+  writers := SG_WRITERS; messages := SG_MESSAGES;
+  for k: 0..<SG_N { if writers[k] == kind { return messages[k]; } }
+  return "";
+}
+// A body's faults against the descriptor and the codec: "" when it holds.
+sg_body :: (st: [] D_State, kind: string, body: string, nodes: [] JvNode, out: [] u8) -> string {
+  why := pk_text_keys(st, sg_message(kind), body, true, kind == "wanted", nodes);
+  if why != "" { return why; }
+  if kind == "wanted" { return ""; }
+  n := sg_rewrite(kind, body, nodes, out);
+  if n < 0 || cast(string) out[0..<n] != body { return "read back and written through the codec, it is not the same bytes"; }
+  if kind == "error" && !sg_mapper(body) { return "the JSON mapper does not write it back byte for byte"; }
+  return "";
+}
+
+SgWork :: struct { nodes: [65536] JvNode; body_nodes: [65536] JvNode; name: [256] u8; writer: [64] u8; body: [SG_BODY] u8; out: [SG_BODY] u8; back: [SG_BODY] u8; }
+sg_check :: (text: string, st: [] D_State, w: [] SgWork) -> int {
+  j: [1] Jv;
+  if !jv_parse(j[..], text, w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0];
+  goldens := jv_get(d, 0, "goldens");
+  if jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 { print("FAIL  no goldens\n"); return 1; }
+  writers := SG_WRITERS; seen: [SG_N] bool; bad := 0;
+  for i: 0..<jv_len(d, goldens) {
+    item := jv_at(d, goldens, i);
+    name := cast(string) w[0].name[0..<jv_str(d, jv_get(d, item, "name"), w[0].name[..])];
+    writer := cast(string) w[0].writer[0..<jv_str(d, jv_get(d, item, "writer"), w[0].writer[..])];
+    bn := jv_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    want := ifx bn < 0 then "" else cast(string) w[0].body[0..<bn];
+    k := -1;
+    for q: 0..<SG_N { if writers[q] == writer { k = q; } }
+    if k < 0 { print("FAIL  % : no writer %\n", name, writer); bad += 1; continue; }
+    seen[k] = true;
+    n := sg_write(writer, d, jv_get(d, item, "values"), w[0].out[..]);
+    got := ifx n < 0 then "" else cast(string) w[0].out[0..<n];
+    if n < 0 || got != want { print("FAIL  % (%):\n  want: %\n  got:  %\n", name, writer, want, got); bad += 1; continue; }
+    why := sg_body(st, writer, want, w[0].body_nodes[..], w[0].back[..]);
+    if why != "" { print("FAIL  % (%): %\n", name, writer, why); bad += 1; } else { print("ok    % (%)\n", name, writer); }
+  }
+  for q: 0..<SG_N { if !seen[q] { print("FAIL  writer % has no golden\n", writers[q]); bad += 1; } }
+  print("%\n", ifx bad == 0 then "service goldens hold" else "service goldens fail");
+  return ifx bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  pb: [65536] u8;
+  pn := fs_read(SG_DESCRIPTOR, pb[..]);
+  if pn <= 0 { tool_errln("service-wire-goldens: cannot read the descriptor"); return 2; }
+  g: [1] PkDescriptor;
+  err := pk_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  w: [1] SgWork;
+  // the checks bite: a key the message lacks, a member missing, members out of order, a nested
+  // key, a body the codec would write otherwise
+  if sg_body(st, "error", "{\"eror\":\"x\"}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     sg_body(st, "error", "{\"error\": \"x\"}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     sg_body(st, "watch", "{\"changes\":0,\"sync\":{\"open\": 0, \"opened\": [], \"resolved\": []}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     sg_body(st, "watch", "{\"mailed\":0,\"changes\":0,\"sync\":{\"open\": 0, \"opened\": [], \"resolved\": []}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     sg_body(st, "watch", "{\"changes\":0,\"mailed\":0,\"sync\":{\"open\": 0, \"opened\": [{\"id\": 1, \"key\": \"k\", \"todo\": \"\", \"titel\": \"t\", \"opened_ms\": 1}], \"resolved\": []}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     sg_body(st, "health", "{\"env\":\"staging\",\"now_ms\":1,\"days\":30,\"levels\":[{\"name\":\"tick time\",\"target\":10000,\"unit\":\"ms\",\"objective_ppm\":999000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]}],\"alerts\":[],\"resolved_day\":[]}", w[0].body_nodes[..], w[0].back[..]) == "" {
+    print("FAIL  the check takes a body it should refuse\n"); return 1;
+  }
+  if loaded && args_has(args[..], "--read") {
+    at := args_find(args[..], "--read");
+    kind := args_at(args[..], at + 1); path := args_at(args[..], at + 2);
+    if sg_message(kind) == "" || kind == "wanted" || path == "" { tool_errln("usage: service-wire-goldens --read health|watch|error FILE"); return 2; }
+    n := fs_read(path, w[0].body[..]);
+    if n <= 0 { tool_errln("service-wire-goldens: cannot read the body"); return 2; }
+    why := sg_body(st, kind, cast(string) w[0].body[0..<n], w[0].body_nodes[..], w[0].back[..]);
+    if why != "" { print("FAIL  % body: %\n", kind, why); return 1; }
+    print("ok    % body: its keys are the message's and the codec writes it back byte for byte\n", kind);
+    return 0;
+  }
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else SG_FIXTURE;
+  buf: [262144] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("service-wire-goldens: cannot read the fixture"); return 2; }
+  return sg_check(cast(string) buf[0..<n], st, w[..]);
+}

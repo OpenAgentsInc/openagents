@@ -208,6 +208,18 @@ Wave 2 steps done:
 | E10 | Realm save | `proto/verse/realm-save-aesv-v1.json` holds golden AESV containers (made with zlib's CRC-32, not the codec), a version 1 container, malformed ones, the browser's record of two saves step by step, the bare-hex record from before containers, and the post bodies. `apps/openagents-web/save-profile.coax` runs `save_pack`, `save_open`, `save_read`, `save_record`, `save_pick` and `save_post_rev` on them. `test_player.py` posts every container to `/api/playtest/progress`: the API's `container_ok` keeps each golden and refuses each malformed one the profile says it refuses. It checks less than the page (no world, schema or lengths), and the profile names which containers only the page refuses. Row `realm-save-aesv-v1`; the codec stays in `apps/openagents-web/` with a `codec` line |
 | City edits | Everglade city edits | `proto/verse/everglade-edits-v1.json` holds the published list (version 21), a list with rows, lifts, colours, hidden buildings and people taken away, lists the reader corrects with the text they are written back as, malformed lists, the publish body and the API's answers. `verse/everglade/edits-profile.coax` runs `eg_edits_text`, `eg_edits_read`, `eg_edits_body` and `eg_edits_answer` on them. Every reader and writer in the product calls `edits.coax`; the room does not parse the list. Row `everglade-edits-v1`; the codec stays in `verse/everglade/` with a `codec` line |
 
+E11 goes one route file at a time ([#13250](https://github.com/OpenAgentsInc/openagents/issues/13250)).
+The envelope it lands on is what ships: `openagents.api.v1alpha1.ErrorReply`,
+`{"error":"WORDS"}`, written by `coax/web/api/api-wire.coax`. The spec's
+`openagents.api.v1` (typed errors, pages, idempotency) is a new version, not
+a change to these bytes. Each route file gets its own codec, which loads
+`api-wire.coax`, and the C route calls it through its generated unit.
+
+| Route file | State |
+| --- | --- |
+| `coax/web/api/service.c` | Done. `proto/openagents/ops/service/v1alpha1/service.proto` (profile `api-routes`); `coax/web/api/service-wire.coax` writes the health body, the service-watch job's result, the alerts handed to `verse.service_sync` and the refusals, and `service.c` holds no body text. `proto/verse/service-health-v1alpha1.json` holds the bytes the C wrote before; `service-wire-goldens.coax` writes each through the codec, holds its keys to the descriptor (each field once, in order), reads it back and writes it again, and sends refusals through the JSON mapper. `test_jobs.py` runs the same check on a running API's health body, job result and refusal. Rows `service-health-v1alpha1` and `api-error-v1alpha1`; no allowlist line |
+| `realms.c`, `seats.c`, `verse_packs.c`, `player.c` | Not yet |
+
 ## Golden tests
 
 A golden pins exact bytes. These shapes need one before any codec change,

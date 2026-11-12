@@ -1,0 +1,108 @@
+syntax = "proto3";
+package openagents.ops.service.v1alpha1;
+
+// Service levels and alerts on the wire (compliance plan step E11, GitHub
+// #13250; the feature is #13297, docs/deployment/service-levels.md): the
+// body of GET /api/playtest/service-health, the result of the every-minute
+// job POST /api/jobs/service-watch, and the list of alerts the job hands
+// SQL (verse.service_sync). coax/web/api/service.c moves the facts;
+// coax/web/api/service-policy.coax decides them.
+//
+// One codec writes all three: coax/web/api/service-wire.coax, which
+// service.c calls through its generated C. The JSON is written by hand, not
+// by the JSON mapper: `worst` is null when nothing was counted, `daily` is
+// an array of arrays, and the alert lists are jsonb's text as PostgreSQL
+// prints it (a space after each colon and comma), carried as it came.
+// Goldens: proto/verse/service-health-v1alpha1.json, checked through the
+// codec by coax/web/api/service-wire-goldens.coax; coax/web/api/test_jobs.py
+// reads the route's and the job's real bodies through the same tool.
+//
+// Each json_name is the key on the wire. Members are written in
+// field-number order, every one always. Refusals are
+// openagents.api.v1alpha1.ErrorReply.
+
+// GET /api/playtest/service-health, 200.
+message Health {
+  // "production" or "staging".
+  string env = 1 [json_name = "env"];
+  // The API's clock, Unix ms.
+  int64 now_ms = 2 [json_name = "now_ms"];
+  // The days the levels are counted over.
+  int64 days = 3 [json_name = "days"];
+  // Tick time, join time, checkpoint age, in that order.
+  repeated Level levels = 4 [json_name = "levels"];
+  // The open alerts, newest first: jsonb's text, built by service.c's query
+  // over verse.service_alerts.
+  repeated Alert alerts = 5 [json_name = "alerts"];
+  // The alerts resolved in the last 24 hours, the latest first.
+  repeated Alert resolved_day = 6 [json_name = "resolved_day"];
+}
+
+message Level {
+  // "tick time", "join time" or "checkpoint age".
+  string name = 1 [json_name = "name"];
+  // What a good minute or join stays at or under, in `unit`.
+  int64 target = 2 [json_name = "target"];
+  // "us" or "ms".
+  string unit = 3 [json_name = "unit"];
+  // The share that must be good, in millionths.
+  int64 objective_ppm = 4 [json_name = "objective_ppm"];
+  int64 good = 5 [json_name = "good"];
+  int64 total = 6 [json_name = "total"];
+  // good / total in millionths.
+  int64 share_ppm = 7 [json_name = "share_ppm"];
+  // 1 met, 0 missed, -1 nothing counted.
+  int64 met = 8 [json_name = "met"];
+  // The worst value counted; null on the wire when nothing was.
+  optional int64 worst = 9 [json_name = "worst"];
+  // Raw: a JSON array of [DAY, GOOD, TOTAL], one for each Chicago day
+  // (YYYY-MM-DD) with a count, oldest first; jsonb's text from
+  // verse.service_levels.
+  string daily = 10 [json_name = "daily"];
+}
+
+// One alert as the health body shows it. jsonb orders an object's keys by
+// length, then by bytes.
+message Alert {
+  // The alert's kind, with ":SHARD" for a shard's.
+  string key = 1 [json_name = "key"];
+  string title = 2 [json_name = "title"];
+  int64 opened_ms = 3 [json_name = "opened_ms"];
+  // null on the wire while the alert is open.
+  optional int64 resolved_ms = 4 [json_name = "resolved_ms"];
+}
+
+// One alert that holds now, as the job hands it to verse.service_sync in a
+// JSON array.
+message Wanted {
+  string key = 1 [json_name = "key"];
+  string title = 2 [json_name = "title"];
+  // The runbook line.
+  string todo = 3 [json_name = "do"];
+}
+
+// The job's result, inside jobs.c's {"job","state","result"}.
+message WatchResult {
+  // The alerts opened or resolved by this run.
+  int32 changes = 1 [json_name = "changes"];
+  // How many of them were mailed.
+  int32 mailed = 2 [json_name = "mailed"];
+  // verse.service_sync's answer, jsonb's text.
+  Sync sync = 3 [json_name = "sync"];
+}
+
+message Sync {
+  // The alerts open after the run.
+  int64 open = 1 [json_name = "open"];
+  repeated Change opened = 2 [json_name = "opened"];
+  repeated Change resolved = 3 [json_name = "resolved"];
+}
+
+// An alert's row as verse.service_sync returns it (to_jsonb of the row).
+message Change {
+  int64 id = 1 [json_name = "id"];
+  string key = 2 [json_name = "key"];
+  string todo = 3 [json_name = "todo"];
+  string title = 4 [json_name = "title"];
+  int64 opened_ms = 5 [json_name = "opened_ms"];
+}

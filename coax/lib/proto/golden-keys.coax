@@ -1,0 +1,58 @@
+// Holding a JSON golden's keys to a descriptor: every key of an object is a json_name of its
+// message, nested messages and lists of them too. For the golden checks of JSON shapes written
+// by a hand codec (proto/README.md, "Register a wire shape"), where the JSON mapper cannot be the
+// reader. The caller loads coax/lib/json/json.coax and coax/lib/proto/importer.coax first.
+//   g: [1] PkDescriptor; why := pk_load(g[..], descriptor_bytes);          "" when it parsed
+//   why = pk_text_keys(g[0].state[..], ".pkg.v1.Message", json, true);     "" when the keys hold
+PkDescriptor :: struct {
+  types: [256] D_Type; enums: [64] D_Type; fields: [2048] D_Field; values: [1024] D_Value; groups: [4096] string;
+  files: [64] string; deps: [256] string; arena: [4194304] u8; output: [1] u8; symbols: [8192] string;
+  state: [1] D_State;
+}
+pk_load :: (g: [] PkDescriptor, raw: string) -> string {
+  g[0].state[0] = D_State.{types = g[0].types[..], enums = g[0].enums[..], fields = g[0].fields[..], values = g[0].values[..], groups = g[0].groups[..],
+    files = g[0].files[..], deps = g[0].deps[..], arena = g[0].arena[..], output = g[0].output[..], symbols = g[0].symbols[..]};
+  D_parse(g[0].state[..], raw, "PK");
+  return g[0].state[0].error;
+}
+// The message named full (".package.Message"), or -1.
+pk_type :: (st: [] D_State, full: string) -> int {
+  for i: 0..<st[0].nt { if st[0].types[i].full == full { return i; } }
+  return -1;
+}
+// Whether the object at `at` keeps message m's keys, into message fields and lists of messages:
+// "" when it does, else what is wrong. exact: the object has every field of the message, once
+// each, in field order (a codec that writes every member always), and so does every nested one.
+pk_keys :: (st: [] D_State, m: int, d: Jv, at: int, exact: bool, depth: int) -> string {
+  if depth > 8 { return "too deep"; }
+  if jv_kind(d, at) != JV_OBJECT { return "not a JSON object"; }
+  t := st[0].types[m];
+  if exact && jv_len(d, at) != t.count { return "the object does not have each field of the message once"; }
+  for i: 0..<jv_len(d, at) {
+    v := jv_at(d, at, i); k := jv_key(d, v);
+    f := -1;
+    for j: t.first..<t.first + t.count { if st[0].fields[j].json == k { f = j; } }
+    if f < 0 { return "a key is no json_name of the message"; }
+    if exact && f != t.first + i { return "the keys are not in the message's field order"; }
+    sub := pk_type(st, st[0].fields[f].type_name);
+    if sub >= 0 && jv_kind(d, v) == JV_OBJECT {
+      why := pk_keys(st, sub, d, v, exact, depth + 1); if why != "" { return why; }
+    } else if sub >= 0 && jv_kind(d, v) == JV_ARRAY {
+      for e: 0..<jv_len(d, v) {
+        why := pk_keys(st, sub, d, jv_at(d, v, e), exact, depth + 1); if why != "" { return why; }
+      }
+    } else if sub >= 0 && jv_kind(d, v) != JV_NULL { return "a message field holds something else"; }
+  }
+  return "";
+}
+// The same for a JSON text: one object of the message, or with list an array of them.
+pk_text_keys :: (st: [] D_State, full: string, text: string, exact: bool, list: bool, nodes: [] JvNode) -> string {
+  m := pk_type(st, full);
+  if m < 0 { return "the descriptor has no such message"; }
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) { return "not JSON"; }
+  if !list { return pk_keys(st, m, d[0], 0, exact, 0); }
+  if jv_kind(d[0], 0) != JV_ARRAY { return "not a JSON array"; }
+  for e: 0..<jv_len(d[0], 0) { why := pk_keys(st, m, d[0], jv_at(d[0], 0, e), exact, 0); if why != "" { return why; } }
+  return "";
+}

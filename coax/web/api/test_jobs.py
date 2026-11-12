@@ -104,6 +104,33 @@ if "mail_seen" in globals():
           len(mail) == 1 and mail[0].get("to") == ["owner@example.com"] and mail[0]["subject"].startswith("[production] ") and "vm-deploy.sh status" in mail[0].get("text", ""), mail)
 s, b, _ = call("GET", "/api/playtest/service-health")
 h = json.loads(b) if s == 200 else {}
+# Every body service.c sends is service-wire.coax's (Protocol E11, #13250): the route's real health body,
+# the job's real result and a refusal read through the codec's golden check (service-wire-goldens.coax
+# --read), which holds their keys to proto/openagents/ops/service/v1alpha1/service.proto and writes each
+# back through the codec for the same bytes.
+import tempfile
+SV_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+def service_wire(kind, raw):
+    f = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    f.write(raw)
+    f.close()
+    r = subprocess.run([os.path.join(SV_REPO, "coax", "web", "tool.sh"), "coax/web/api/service-wire-goldens.coax", "--read", kind, f.name],
+                       cwd=SV_REPO, capture_output=True, text=True, timeout=1200)
+    os.unlink(f.name)
+    return r.returncode == 0, (raw[-600:], r.stdout[-800:], r.stderr[-800:])
+
+
+ok, why = service_wire("health", b)
+check("service-health: the body, with shard 97's alerts open and its minute counted, is the codec's bytes and the proto's keys", s == 200 and ok, why)
+ws, wb, _ = call("POST", "/api/jobs/service-watch", b"", {"Authorization": "Bearer good.token"})
+wpre = b'{"job":"service-watch","state":"ran","result":'
+ok, why = service_wire("watch", wb[len(wpre):-1]) if ws == 200 and wb.startswith(wpre) else (False, wb)
+check("service-watch: the job's result is the codec's bytes and the proto's keys", ok, why)
+es, eb, _ = call("POST", "/api/playtest/service-health", b"")
+ok, why = service_wire("error", eb)
+check("service-health: a refusal is the codec's ErrorReply", es == 405 and eb == b'{"error":"GET the service health"}' and ok, why)
 check("service-health: the three service levels and the open alerts, for anyone",
       s == 200 and [l["name"] for l in h.get("levels", [])] == ["tick time", "join time", "checkpoint age"]
       and h["levels"][0]["target"] == 10000 and h["levels"][1]["objective_ppm"] == 950000

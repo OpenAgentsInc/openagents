@@ -1,0 +1,31 @@
+// The API's refusal body, one writer (Protocol E11, GitHub #13250):
+// proto/openagents/api/v1alpha1/error.proto's ErrorReply, {"error":"WORDS"}, as the routes have
+// always answered a refusal or a failure. A route file's own codec loads this file
+// (service-wire.coax, seat-wire.coax) and exports the writer its C calls; no C file builds the
+// body itself. Goldens: proto/verse/service-health-v1alpha1.json ("errors"), checked by
+// service-wire-goldens.coax through here and through the JSON mapper.
+#load "../../lib/json/json.coax";
+
+// A writer over out that goes on at byte `at` (0: from the start).
+aw_at :: (o: [] Jo, out: [] u8, at: int) #effects(all) {
+  jo_start(o, out);
+  if at < 0 || at > out.count { o[0].bad = true; } else { o[0].n = at; }
+}
+// What was written: its end in the buffer, or -1 when it did not fit.
+aw_len :: (o: [] Jo) -> int #effects(all) { return ifx o[0].bad then -1 else o[0].n; }
+// {"error":"TEXT"}
+aw_error :: (o: [] Jo, text: string) #effects(all) {
+  jo_put(o, "{\"error\":"); jo_quoted(o, text); jo_put(o, "}");
+}
+
+#test "the refusal body: one member, escaped as JSON; too small a buffer is -1" {
+  b: [64] u8; o: [1] Jo;
+  aw_at(o[..], b[..], 0); aw_error(o[..], "no database");
+  #assert aw_len(o[..]) == 23 && jo_text(o[..]) == "{\"error\":\"no database\"}";
+  aw_at(o[..], b[..], 0); aw_error(o[..], "a \"b\" \\ c");
+  #assert jo_text(o[..]) == "{\"error\":\"a \\\"b\\\" \\\\ c\"}";
+  aw_at(o[..], b[0..<22], 0); aw_error(o[..], "no database"); #assert aw_len(o[..]) == -1;
+  aw_at(o[..], b[..], 65); #assert aw_len(o[..]) == -1;
+  aw_at(o[..], b[..], -1); #assert aw_len(o[..]) == -1;
+  aw_at(o[..], b[..], 3); jo_put(o[..], "x"); #assert aw_len(o[..]) == 4 && b[3] == 'x';
+}

@@ -1,0 +1,204 @@
+{
+  "profile": "api-routes",
+  "packages": [
+    "openagents.ops.service.v1alpha1",
+    "openagents.api.v1alpha1"
+  ],
+  "description": "Golden bodies of the service levels and alerts (E11, #13250; the feature is #13297): GET /api/playtest/service-health, the service-watch job's result, the alerts the job hands verse.service_sync, and the route's refusals. Each body is what coax/web/api/service.c wrote with its own snprintf before coax/web/api/service-wire.coax, byte for byte: the members C wrote are compact, and what PostgreSQL built (daily, alerts, resolved_day, sync) is jsonb's text, with a space after each colon and comma. values are the writer's arguments; a raw JSON argument is a string here. coax/web/api/service-wire-goldens.coax writes each through the codec, holds its keys to the descriptor, reads it back and writes it again; coax/web/api/test_jobs.py does the same for a running API's bodies.",
+  "check": "coax/web/tool.sh coax/web/api/service-wire-goldens.coax proto/verse/service-health-v1alpha1.json",
+  "messages": {
+    "error": "openagents.api.v1alpha1.ErrorReply",
+    "wanted": "openagents.ops.service.v1alpha1.Wanted (a JSON array of them)",
+    "watch": "openagents.ops.service.v1alpha1.WatchResult",
+    "health": "openagents.ops.service.v1alpha1.Health"
+  },
+  "goldens": [
+    {
+      "name": "error-method",
+      "writer": "error",
+      "values": {
+        "text": "GET the service health"
+      },
+      "body": "{\"error\":\"GET the service health\"}"
+    },
+    {
+      "name": "error-no-database",
+      "writer": "error",
+      "values": {
+        "text": "no database"
+      },
+      "body": "{\"error\":\"no database\"}"
+    },
+    {
+      "name": "error-no-levels",
+      "writer": "error",
+      "values": {
+        "text": "no service levels"
+      },
+      "body": "{\"error\":\"no service levels\"}"
+    },
+    {
+      "name": "error-memory",
+      "writer": "error",
+      "values": {
+        "text": "out of memory"
+      },
+      "body": "{\"error\":\"out of memory\"}"
+    },
+    {
+      "name": "wanted-none",
+      "writer": "wanted",
+      "values": {
+        "alerts": []
+      },
+      "body": "[]"
+    },
+    {
+      "name": "wanted-shard-and-database",
+      "writer": "wanted",
+      "values": {
+        "alerts": [
+          {
+            "key": "silent",
+            "shard": 97,
+            "what": "stopped reporting for 45 s",
+            "todo": "coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run"
+          },
+          {
+            "key": "tick",
+            "shard": 97,
+            "what": "tick p95 over 10 ms twice in 2 minutes",
+            "todo": "/admin/rooms: which workload grew; roll back the room (vm-deploy.sh rollback) if a release did it"
+          },
+          {
+            "key": "db-connections",
+            "shard": 0,
+            "what": "80% or more of the database's connections in use",
+            "todo": "Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances"
+          }
+        ]
+      },
+      "body": "[{\"key\":\"silent:97\",\"title\":\"shard 97: stopped reporting for 45 s\",\"do\":\"coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run\"},{\"key\":\"tick:97\",\"title\":\"shard 97: tick p95 over 10 ms twice in 2 minutes\",\"do\":\"/admin/rooms: which workload grew; roll back the room (vm-deploy.sh rollback) if a release did it\"},{\"key\":\"db-connections\",\"title\":\"80% or more of the database's connections in use\",\"do\":\"Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances\"}]"
+    },
+    {
+      "name": "watch-nothing",
+      "writer": "watch",
+      "values": {
+        "changes": 0,
+        "mailed": 0,
+        "sync": "{\"open\": 0, \"opened\": [], \"resolved\": []}"
+      },
+      "body": "{\"changes\":0,\"mailed\":0,\"sync\":{\"open\": 0, \"opened\": [], \"resolved\": []}}"
+    },
+    {
+      "name": "watch-opened-and-resolved",
+      "writer": "watch",
+      "values": {
+        "changes": 3,
+        "mailed": 2,
+        "sync": "{\"open\": 2, \"opened\": [{\"id\": 41, \"key\": \"silent:97\", \"todo\": \"coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run\", \"title\": \"shard 97: stopped reporting for 45 s\", \"opened_ms\": 1762970040000}, {\"id\": 42, \"key\": \"tick:97\", \"todo\": \"\", \"title\": \"shard 97: tick p95 over 10 ms twice in 2 minutes\", \"opened_ms\": 1762970040000}], \"resolved\": [{\"id\": 40, \"key\": \"db-connections\", \"todo\": \"Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances\", \"title\": \"80% or more of the database's connections in use\", \"opened_ms\": 1762960000000}]}"
+      },
+      "body": "{\"changes\":3,\"mailed\":2,\"sync\":{\"open\": 2, \"opened\": [{\"id\": 41, \"key\": \"silent:97\", \"todo\": \"coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run\", \"title\": \"shard 97: stopped reporting for 45 s\", \"opened_ms\": 1762970040000}, {\"id\": 42, \"key\": \"tick:97\", \"todo\": \"\", \"title\": \"shard 97: tick p95 over 10 ms twice in 2 minutes\", \"opened_ms\": 1762970040000}], \"resolved\": [{\"id\": 40, \"key\": \"db-connections\", \"todo\": \"Cloud SQL openagents-production-pg: who holds the connections (pg_stat_activity); oa-api's instances\", \"title\": \"80% or more of the database's connections in use\", \"opened_ms\": 1762960000000}]}}"
+    },
+    {
+      "name": "health-nothing-counted",
+      "writer": "health",
+      "values": {
+        "env": "staging",
+        "now_ms": 1762970000123,
+        "days": 30,
+        "levels": [
+          {
+            "which": 0,
+            "name": "tick time",
+            "target": 10000,
+            "objective_ppm": 999000,
+            "good": 0,
+            "total": 0,
+            "share_ppm": 0,
+            "met": -1,
+            "worst": "",
+            "daily": "[]"
+          },
+          {
+            "which": 1,
+            "name": "join time",
+            "target": 5000,
+            "objective_ppm": 950000,
+            "good": 0,
+            "total": 0,
+            "share_ppm": 0,
+            "met": -1,
+            "worst": "",
+            "daily": "[]"
+          },
+          {
+            "which": 2,
+            "name": "checkpoint age",
+            "target": 15000,
+            "objective_ppm": 999000,
+            "good": 0,
+            "total": 0,
+            "share_ppm": 0,
+            "met": -1,
+            "worst": "",
+            "daily": "[]"
+          }
+        ],
+        "alerts": "[]",
+        "resolved_day": "[]"
+      },
+      "body": "{\"env\":\"staging\",\"now_ms\":1762970000123,\"days\":30,\"levels\":[{\"name\":\"tick time\",\"target\":10000,\"unit\":\"us\",\"objective_ppm\":999000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]},{\"name\":\"join time\",\"target\":5000,\"unit\":\"ms\",\"objective_ppm\":950000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]},{\"name\":\"checkpoint age\",\"target\":15000,\"unit\":\"ms\",\"objective_ppm\":999000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]}],\"alerts\":[],\"resolved_day\":[]}"
+    },
+    {
+      "name": "health-counted-with-alerts",
+      "writer": "health",
+      "values": {
+        "env": "production",
+        "now_ms": 1762970100456,
+        "days": 30,
+        "levels": [
+          {
+            "which": 0,
+            "name": "tick time",
+            "target": 10000,
+            "objective_ppm": 999000,
+            "good": 2878,
+            "total": 2880,
+            "share_ppm": 999305,
+            "met": 1,
+            "worst": "12500",
+            "daily": "[[\"2026-11-11\", 1439, 1440], [\"2026-11-12\", 1439, 1440]]"
+          },
+          {
+            "which": 1,
+            "name": "join time",
+            "target": 5000,
+            "objective_ppm": 950000,
+            "good": 18,
+            "total": 20,
+            "share_ppm": 900000,
+            "met": 0,
+            "worst": "9120",
+            "daily": "[[\"2026-11-12\", 18, 20]]"
+          },
+          {
+            "which": 2,
+            "name": "checkpoint age",
+            "target": 15000,
+            "objective_ppm": 999000,
+            "good": 2880,
+            "total": 2880,
+            "share_ppm": 1000000,
+            "met": 1,
+            "worst": "6000",
+            "daily": "[[\"2026-11-11\", 1440, 1440], [\"2026-11-12\", 1440, 1440]]"
+          }
+        ],
+        "alerts": "[{\"key\": \"silent:97\", \"title\": \"shard 97: stopped reporting for 45 s\", \"opened_ms\": 1762970040000, \"resolved_ms\": null}]",
+        "resolved_day": "[{\"key\": \"db-connections\", \"title\": \"80% or more of the database's connections in use\", \"opened_ms\": 1762960000000, \"resolved_ms\": 1762960120000}]"
+      },
+      "body": "{\"env\":\"production\",\"now_ms\":1762970100456,\"days\":30,\"levels\":[{\"name\":\"tick time\",\"target\":10000,\"unit\":\"us\",\"objective_ppm\":999000,\"good\":2878,\"total\":2880,\"share_ppm\":999305,\"met\":1,\"worst\":12500,\"daily\":[[\"2026-11-11\", 1439, 1440], [\"2026-11-12\", 1439, 1440]]},{\"name\":\"join time\",\"target\":5000,\"unit\":\"ms\",\"objective_ppm\":950000,\"good\":18,\"total\":20,\"share_ppm\":900000,\"met\":0,\"worst\":9120,\"daily\":[[\"2026-11-12\", 18, 20]]},{\"name\":\"checkpoint age\",\"target\":15000,\"unit\":\"ms\",\"objective_ppm\":999000,\"good\":2880,\"total\":2880,\"share_ppm\":1000000,\"met\":1,\"worst\":6000,\"daily\":[[\"2026-11-11\", 1440, 1440], [\"2026-11-12\", 1440, 1440]]}],\"alerts\":[{\"key\": \"silent:97\", \"title\": \"shard 97: stopped reporting for 45 s\", \"opened_ms\": 1762970040000, \"resolved_ms\": null}],\"resolved_day\":[{\"key\": \"db-connections\", \"title\": \"80% or more of the database's connections in use\", \"opened_ms\": 1762960000000, \"resolved_ms\": 1762960120000}]}"
+    }
+  ]
+}

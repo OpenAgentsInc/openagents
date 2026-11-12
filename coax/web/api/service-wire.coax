@@ -1,0 +1,113 @@
+// Service levels and alerts on the wire, one codec (Protocol E11, GitHub #13250; the feature is
+// #13297): proto/openagents/ops/service/v1alpha1/service.proto (profile api-routes) names the
+// members. service.c calls the #export_c writers below through service-wire.generated.c
+// (deploy.sh, test.sh, realm-gate.sh) and builds no body of its own:
+//   svw_wanted_write, svw_wanted_end   the alerts that hold now, a JSON array for verse.service_sync
+//   svw_watch_write                    the every-minute job's result (POST /api/jobs/service-watch)
+//   svw_health_open, svw_level_write,  GET /api/playtest/service-health, 200
+//   svw_health_close
+//   svw_error_write                    a refusal (api-wire.coax, ErrorReply)
+// The bytes are the ones service.c wrote before this file: proto/verse/service-health-v1alpha1.json
+// holds them and service-wire-goldens.coax writes each one through here. What SQL built (a level's
+// worst and daily, the alert lists, verse.service_sync's answer) is JSON carried as it came.
+// A writer goes on at byte `at` of out and returns the new end, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/service-wire.coax --library
+#load "api-wire.coax";
+
+// A level's unit: tick time is in microseconds, join time and checkpoint age in milliseconds.
+svw_unit :: (which: int) -> string #effects(all) { return ifx which == 0 then "us" else "ms"; }
+// A policy string's bytes inside a JSON string: its words hold no quote, backslash or control
+// byte, and any is dropped (not escaped), as service.c always wrote them.
+svw_plain :: (o: [] Jo, s: string) #effects(all) {
+  for c: s { if c != '"' && c != '\\' && c >= 32 { jo_byte(o, c); } }
+}
+
+// One alert that holds: {"key":"KEY","title":"WHAT","do":"TODO"}, or for a shard's (shard > 0)
+// {"key":"KEY:SHARD","title":"shard SHARD: WHAT","do":"TODO"}. at 0 opens the array; later ones
+// follow a comma.
+svw_wanted :: (o: [] Jo, key: string, shard: int, what: string, todo: string) #effects(all) {
+  jo_put(o, ifx o[0].n == 0 then "[" else ",");
+  jo_put(o, "{\"key\":\""); jo_put(o, key);
+  if shard > 0 { jo_put(o, ":"); jo_int(o, shard); jo_put(o, "\",\"title\":\"shard "); jo_int(o, shard); jo_put(o, ": "); }
+  else { jo_put(o, "\",\"title\":\""); }
+  svw_plain(o, what);
+  jo_put(o, "\",\"do\":\""); svw_plain(o, todo); jo_put(o, "\"}");
+}
+svw_wanted_write :: (key: string, shard: int, what: string, todo: string, at: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); svw_wanted(o[..], key, shard, what, todo); return aw_len(o[..]);
+}
+// The array's end: "]" after its alerts, or "[]" when there were none (at 0).
+svw_wanted_end :: (at: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], ifx at == 0 then "[]" else "]"); return aw_len(o[..]);
+}
+// {"changes":N,"mailed":N,"sync":SYNC}: sync is verse.service_sync's answer as it came.
+svw_watch_write :: (changes: int, mailed: int, sync: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"changes\":"); jo_int(o[..], changes); jo_put(o[..], ",\"mailed\":"); jo_int(o[..], mailed);
+  jo_put(o[..], ",\"sync\":"); jo_put(o[..], sync); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"env":"ENV","now_ms":N,"days":N,"levels":[
+svw_health_open :: (env: string, now_ms: int, days: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"env\":\""); jo_put(o[..], env); jo_put(o[..], "\",\"now_ms\":"); jo_int(o[..], now_ms);
+  jo_put(o[..], ",\"days\":"); jo_int(o[..], days); jo_put(o[..], ",\"levels\":[");
+  return aw_len(o[..]);
+}
+// One level; comma: it is not the first. worst "" is written null; worst and daily are SQL's text.
+svw_level_write :: (comma: bool, which: int, name: string, target: int, objective_ppm: int, good: int, total: int, share_ppm: int, met: int,
+                    worst: string, daily: string, at: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  if comma { jo_put(o[..], ","); }
+  jo_put(o[..], "{\"name\":\""); svw_plain(o[..], name);
+  jo_put(o[..], "\",\"target\":"); jo_int(o[..], target);
+  jo_put(o[..], ",\"unit\":\""); jo_put(o[..], svw_unit(which));
+  jo_put(o[..], "\",\"objective_ppm\":"); jo_int(o[..], objective_ppm);
+  jo_put(o[..], ",\"good\":"); jo_int(o[..], good);
+  jo_put(o[..], ",\"total\":"); jo_int(o[..], total);
+  jo_put(o[..], ",\"share_ppm\":"); jo_int(o[..], share_ppm);
+  jo_put(o[..], ",\"met\":"); jo_int(o[..], met);
+  jo_put(o[..], ",\"worst\":"); jo_put(o[..], ifx worst.count == 0 then "null" else worst);
+  jo_put(o[..], ",\"daily\":"); jo_put(o[..], daily); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// ],"alerts":ALERTS,"resolved_day":RESOLVED}: both lists are jsonb's text.
+svw_health_close :: (alerts: string, resolved_day: string, at: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "],\"alerts\":"); jo_put(o[..], alerts); jo_put(o[..], ",\"resolved_day\":"); jo_put(o[..], resolved_day); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+svw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], text); return aw_len(o[..]);
+}
+
+#test "the alerts that hold: a shard's, the database's, none" {
+  b: [512] u8;
+  n := svw_wanted_write("silent", 97, "stopped reporting for 45 s", "run vm-deploy.sh status", 0, b[..]);
+  n = svw_wanted_write("db-connections", 0, "80% of the database's connections are in use", "look", n, b[..]);
+  n = svw_wanted_end(n, b[..]);
+  #assert cast(string) b[0..<n] == "[{\"key\":\"silent:97\",\"title\":\"shard 97: stopped reporting for 45 s\",\"do\":\"run vm-deploy.sh status\"},{\"key\":\"db-connections\",\"title\":\"80% of the database's connections are in use\",\"do\":\"look\"}]";
+  n = svw_wanted_end(0, b[..]); #assert cast(string) b[0..<n] == "[]";
+  // a quote, a backslash and a control byte in the policy's words are dropped
+  n = svw_wanted_end(svw_wanted_write("k", 0, "a\"b\\c\nd", "e\"f", 0, b[..]), b[..]);
+  #assert cast(string) b[0..<n] == "[{\"key\":\"k\",\"title\":\"abcd\",\"do\":\"ef\"}]";
+  #assert svw_wanted_write("k", 0, "what", "todo", 0, b[0..<10]) == -1 && svw_wanted_end(0, b[0..<1]) == -1 && svw_wanted_end(-1, b[..]) == -1;
+}
+#test "the job's result and a refusal" {
+  b: [256] u8;
+  n := svw_watch_write(2, 1, "{\"open\": 2, \"opened\": [], \"resolved\": []}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"changes\":2,\"mailed\":1,\"sync\":{\"open\": 2, \"opened\": [], \"resolved\": []}}";
+  #assert svw_watch_write(0, 0, "{}", b[0..<30]) == -1;
+  n = svw_error_write("no service levels", b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"no service levels\"}";
+}
+#test "the health body: its head, each level, its alerts" {
+  b: [1024] u8;
+  n := svw_health_open("staging", 1762970000123, 30, b[..]);
+  n = svw_level_write(false, 0, "tick time", 10000, 999000, 5, 6, 833333, 0, "12500", "[[\"2026-11-12\", 5, 6]]", n, b[..]);
+  n = svw_level_write(true, 1, "join time", 5000, 950000, 0, 0, 0, -1, "", "[]", n, b[..]);
+  n = svw_health_close("[]", "[]", n, b[..]);
+  #assert cast(string) b[0..<n] == "{\"env\":\"staging\",\"now_ms\":1762970000123,\"days\":30,\"levels\":[{\"name\":\"tick time\",\"target\":10000,\"unit\":\"us\",\"objective_ppm\":999000,\"good\":5,\"total\":6,\"share_ppm\":833333,\"met\":0,\"worst\":12500,\"daily\":[[\"2026-11-12\", 5, 6]]},{\"name\":\"join time\",\"target\":5000,\"unit\":\"ms\",\"objective_ppm\":950000,\"good\":0,\"total\":0,\"share_ppm\":0,\"met\":-1,\"worst\":null,\"daily\":[]}],\"alerts\":[],\"resolved_day\":[]}";
+  #assert svw_unit(0) == "us" && svw_unit(1) == "ms" && svw_unit(2) == "ms";
+  #assert svw_health_open("production", 1, 30, b[0..<20]) == -1 && svw_health_close("[]", "[]", 1020, b[..]) == -1;
+  #assert svw_level_write(false, 2, "checkpoint age", 15000, 999000, 0, 0, 0, -1, "", "[]", 900, b[..]) == -1;
+}
