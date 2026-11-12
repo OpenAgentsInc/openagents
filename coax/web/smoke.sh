@@ -232,8 +232,10 @@ check(s5 == 200 and b'data-app="private"' in b5 and b'data-page="3"' in b5 and b
 (s4, h4, b4), = fetch(["/api/auth/viewer"])
 check(s4 == 200 and b4 == b"" and "no-store" in h4.get("cache-control", ""), f"/api/auth/viewer signed out is 200 and empty ({s4})")
 # /chat (docs/chat.md): the page, and its API refuses anyone signed out like the dashboard's.
+# The page is the browser-drawn chat-web since #13309 (the earlier one moved to /chat-gpu); a site
+# released before that still has "chat".
 (s1, h1, b1), (s2, h2, b2) = fetch(["/chat", "/api/chat/state"])
-check(s1 == 200 and b'data-app="chat"' in b1, f"/chat is the chat page ({s1})")
+check(s1 == 200 and (b'data-app="chat-web"' in b1 or b'data-app="chat"' in b1), f"/chat is the chat page ({s1})")
 check(s2 == 401, f"/api/chat/state signed out is 401 ({s2})")
 print(f"smoke {base}{' via ' + via if via else ''}: " + ("passed" if not failed else f"{len(failed)} failed"))
 sys.exit(1 if failed else 0)
