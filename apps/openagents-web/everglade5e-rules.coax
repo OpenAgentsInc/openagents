@@ -185,10 +185,10 @@ e5r_hero :: (r: [] E5r, out: [] f32) -> int #export_c #effects(reads, writes, tr
   out[0] = f32(c.hp); out[1] = f32(c.hp_max); out[2] = f32(c.temp); out[3] = f32(c.ac);
   out[4] = f32(c.conc);
   out[5] = ifx t.action then 1.0f32 else 0.0f32; out[6] = ifx t.bonus then 1.0f32 else 0.0f32; out[7] = ifx t.slot_spent then 1.0f32 else 0.0f32;
-  out[8] = hi_r(fb_seat_next(b, r[0].seat[..]) - b[0].clock, 0);
+  out[8] = hi_r(rs_ticks_s(fb_seat_next(b, r[0].seat[..]) - b[0].clock), 0);
   out[9] = f32(rs_spell_dc(c)); out[10] = f32(rs_spell_attack(c)); out[11] = f32(c.cond);
   for l: 1..<10 { out[11 + l] = f32(c.slots[l]); out[20 + l] = f32(c.slots_max[l]); }
-  out[30] = b[0].clock;
+  out[30] = rs_clock_s(b);
   out[31] = ifx r[0].seat[0].open then 1.0f32 else 0.0f32;
   return E5R_HERO_FLOATS;
 }

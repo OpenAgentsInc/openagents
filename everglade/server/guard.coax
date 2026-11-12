@@ -63,7 +63,7 @@ E2Guard :: struct {
   beast: int = -1;           // the monster's creature he fights for a player near him (everglade/server/creatures.coax), -1 none
   down_at: int = -1;         // the tick he fell (-1 standing)
   hp: int; foe_hp: int;      // his Hit Points last tick, and his foe's before the rules' step
-  swing: f32 = -100; swing_tick: int = -1;
+  swing: int = EGB_NEVER; swing_tick: int = -1;
   seq: int;                  // the battle's log read to (its seq): his attacks are told from it
   blows: int;                // the attacks of his last turn that struck at someone
   dealt: [4] int;            // and the damage of each (0 a miss)
@@ -117,7 +117,7 @@ e2g_spawn :: (v: [] RmServer, k: int) -> bool {
   if q < 0 { return false; }
   i := EGB_BEAST0 + q;
   c := rs_path_guard("Guard", 1);
-  c.x = egb_sq(x); c.y = egb_z_cell(r, z); c.turn_at = b[0].clock + 0.1; c.round_at = b[0].clock;
+  c.x = egb_sq(x); c.y = egb_z_cell(r, z); c.turn_at = b[0].clock + 100000; c.round_at = b[0].clock;
   b[0].c[i] = c;
   id := r[0].next_id; r[0].next_id += 1;
   yaw := e2_heading(e2_road_x(z + dir * f32(E2G_AHEAD)) - x, dir * f32(E2G_AHEAD));
@@ -215,7 +215,7 @@ e2g_walk :: (v: [] RmServer, k: int, dt: f32) {
 e2g_fight :: (v: [] RmServer, k: int, g: [] E2Guard, on: int, tx: f32, tz: f32, tyaw: f32, dt: f32) {
   a := g[0].nav[..]; t := E2G_NAV;
   bt := v[0].eg[k].rules[0].beasts[g[0].q]; clock := v[0].eg[k].rules[0].b[0].clock;
-  t.speed = f32(E2G_CHASE) * eg_dash_rate(clock - bt.dash_at, f32(v[0].eg[k].rules[0].b[0].c[EGB_BEAST0 + g[0].q].speed));
+  t.speed = f32(E2G_CHASE) * eg_dash_rate(rs_ticks_s(clock - bt.dash_at), f32(v[0].eg[k].rules[0].b[0].c[EGB_BEAST0 + g[0].q].speed));
   if g[0].nav_on != on {
     a[0] = nav_agent(g[0].x, g[0].z, g[0].life * 31 + on);
     a[0].face_x = sin(g[0].yaw); a[0].face_z = cos(g[0].yaw);
@@ -313,7 +313,7 @@ e2_guard_after :: (v: [] RmServer, k: int) {
   if bt.patrol && bt.id == g[0].id && bt.swing != g[0].swing {
     g[0].swing = bt.swing; g[0].swing_tick = v[0].eg[k].tick; g[0].calm = 0;
   }
-  if bt.patrol && bt.id == g[0].id && bt.shot_at > -50 && bt.shot_at >= b[0].clock - 0.001 { g[0].calm = 0; }   // a shot of his keeps the fight on, as a blow does
+  if bt.patrol && bt.id == g[0].id && bt.shot_at > EGB_NEVER && bt.shot_at >= b[0].clock { g[0].calm = 0; }   // a shot of his keeps the fight on, as a blow does
   e2g_blows(v, k, i);
   hp := ifx bt.id == g[0].id then b[0].c[i].hp else 0;
   if hp < g[0].hp { e2g_tell(v, k, 1, g[0].foe, g[0].hp - hp); }
@@ -331,7 +331,7 @@ e2g_blows :: (v: [] RmServer, k: int, i: int) {
   if fresh <= 0 { return; }
   n := 0; to := -1; amount := 0; crit := false;
   // his turn's attacks this step were his Longbow's when he shot this step (egb_patrol_turn)
-  bt := v[0].eg[k].rules[0].beasts[g[0].q]; shot := bt.shot_at > -50 && bt.shot_at >= b[0].clock - 0.001;
+  bt := v[0].eg[k].rules[0].beasts[g[0].q]; shot := bt.shot_at > EGB_NEVER && bt.shot_at >= b[0].clock;
   for e: 0..<fresh + 1 {
     // the last pass tells the attack still open
     kind := 0; by := -1; at := -1; dealt := 0; kind_of := 0;

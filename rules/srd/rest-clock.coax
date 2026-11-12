@@ -1,6 +1,6 @@
 // A rest timeline measured in microseconds. Fractional carry retains frame
 // time below one microsecond; the exposed integer clock is the admitted
-// simulation quantum. It is independent of f32 spell/display deadlines.
+// simulation quantum. The battle clock (RsBattle.clock) counts the same ticks.
 #authority;
 RsRestClock :: struct { ticks:int; fraction:f64; }
 
@@ -39,19 +39,21 @@ RsRestClock :: struct { ticks:int; fraction:f64; }
 #test "actual battle ticks advance and reset the rest clock and refuse poisoned deltas atomically" {
   b:[1]RsBattle; b[0].who = -1;
   for frame:0..<64 { rs_tick(b[..],1.0/64); }
-  #assert b[0].rest_clock.ticks==1000000 && b[0].rest_clock.fraction==0 && b[0].clock==1;
+  #assert b[0].rest_clock.ticks==1000000 && b[0].rest_clock.fraction==0 && b[0].clock==1000000;
   #assert rs_tick_admit(b[..],0) && b[0].rest_clock.ticks==1000000;
+  // admission moves the rest clock alone: the battle's own tick is the caller's
+  #assert rs_tick_admit(b[..],0.5) && b[0].rest_clock.ticks==1500000 && b[0].clock==1000000;
+  b[0].rest_clock.ticks=1000000;
   zero:f32=0;
   for bad:[3]f32.[-1,zero/zero,1/zero] {
     #assert !rs_tick_admit(b[..],bad) && b[0].rest_clock.ticks==1000000;
     rs_tick(b[..],bad);
-    #assert b[0].clock==1 && b[0].rest_clock.ticks==1000000;
+    #assert b[0].clock==1000000 && b[0].rest_clock.ticks==1000000;
   }
   b[0].rest_clock.fraction=1;
   #assert !rs_tick_admit(b[..],1);
   b[0].rest_clock.fraction=0; b[0].clock = -1;
   #assert !rs_tick_admit(b[..],1);
-  b[0].clock=zero/zero; #assert !rs_tick_admit(b[..],1);
   rs_reset(b[..]);
   #assert b[0].clock==0 && b[0].rest_clock.ticks==0 && b[0].rest_clock.fraction==0;
 }

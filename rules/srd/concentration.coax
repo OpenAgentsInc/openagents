@@ -17,11 +17,11 @@
 #test "concentration interruption distinguishes incapacitating conditions from movement and action restrictions" {
   for condition: [13] int.[0,RS_BLINDED,RS_CHARMED,RS_DEAFENED,RS_FRIGHTENED,RS_PRONE,RS_GRAPPLED,RS_RESTRAINED,RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
     b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
-    b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=60; b[0].c[a].cond=condition;
+    b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=rs_secs(60); b[0].c[a].cond=condition;
     lost := condition==RS_INCAPACITATED || condition==RS_PARALYZED || condition==RS_PETRIFIED || condition==RS_STUNNED || condition==RS_UNCONSCIOUS;
     #assert rs_sync_concentration(b[..],a)==lost;
     #assert b[0].c[a].conc==(ifx lost then -1 else SP_ENTANGLE);
-    #assert b[0].c[a].conc_until==(ifx lost then 0.0f32 else 60.0f32);
+    #assert b[0].c[a].conc_until==(ifx lost then 0 else rs_secs(60));
     seq := b[0].book[0].seq;
     #assert !rs_sync_concentration(b[..],a) && b[0].book[0].seq==seq;
   }

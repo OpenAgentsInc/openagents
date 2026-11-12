@@ -23,13 +23,13 @@
   #assert rs_cast(b[..],a,sp,2,8,1,-1);
   #assert c[a].slots[2]==slots-1 && c[a].conc<0 && b[0].turn.action;
   z:=b[0].zone[0];
-  #assert z.on && z.spell==sp && z.until==600 && z.r_ft==15;
+  #assert z.on && z.spell==sp && z.until==rs_secs(600) && z.r_ft==15;
   #assert b[0].dice[0].rolled==rolls;
   rs_start_turn(b[..],far);
   #assert b[0].dice[0].rolled==rolls;
   rs_start_turn(b[..],j);
   #assert b[0].dice[0].rolled==rolls+1;
-  b[0].clock=599; rs_tick_raw(b[..],1);
+  b[0].clock=rs_secs(599); rs_tick_raw(b[..],rs_secs(1));
   #assert !b[0].zone[0].on;
 }
 
@@ -140,10 +140,10 @@
   for k:1..<4 { #assert c[k].hp==20 && c[k].hp_max==30 && c[k].temp==0; }
   #assert c[a].hp==c[a].hp_max && b[0].turn.action && b[0].turn.slot_spent;
   c[1].hp-=3;
-  b[0].clock=28799;
-  rs_tick_raw(b[..],0.5);
+  b[0].clock=rs_secs(28799);
+  rs_tick_raw(b[..],500000);
   #assert c[1].hp==17 && c[1].hp_max==30;
-  rs_tick_raw(b[..],0.5);
+  rs_tick_raw(b[..],500000);
   #assert c[1].hp==7 && c[1].hp_max==20;
   for k:2..<4 { #assert c[k].hp==10 && c[k].hp_max==20; }
 }
@@ -480,7 +480,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   ally:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
   living:=rs_add(b[..],rs_fighter("Living",0,1),1,2);
   rs_damage(b[..],-1,ally,c[ally].hp+c[ally].hp_max,RS_SLASHING,false,-1);
-  b[0].clock=61;
+  b[0].clock=rs_secs(60)+1;
   rs_start_turn(b[..],healer);
   c[healer].materials[0]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_REVIVIFY],count=1};
   slots:=c[healer].slots[3];

@@ -177,7 +177,7 @@ e2mo_spawn :: (v: [] RmServer, k: int, m: int) -> bool {
   h := e2mo_home(m); kind := e2mo_kind(m);
   i := EGB_BEAST0 + q;
   c := e2mo_rules_creature(kind);
-  c.x = egb_sq(h[0]); c.y = egb_z_cell(r, h[1]); c.turn_at = b[0].clock + 0.1; c.round_at = b[0].clock;
+  c.x = egb_sq(h[0]); c.y = egb_z_cell(r, h[1]); c.turn_at = b[0].clock + 100000; c.round_at = b[0].clock;
   b[0].c[i] = c;
   id := r[0].next_id; r[0].next_id += 1;
   r[0].beasts[q] = EgBeast.{id = id, tag = id, by = -1, spell = -1, form = E2M_FORM, wild = true, x = h[0], z = h[1], yaw = h[2], goal_x = h[0], goal_z = h[1]};
@@ -304,7 +304,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
       if gap <= f32(E2M_REACH) + 0.6 { e2mo_blow(v, k, m, foe); }
       else { e2mo_tell(v, k, 1, m, foe, 0, mo[0].x, mo[0].z); }   // it swung at where you were
     } else { e2mo_loose(v, k, m, foe); }
-    mo[0].act = 0; mo[0].ready = t + e2mo_hz(rs_beat(b));
+    mo[0].act = 0; mo[0].ready = t + e2mo_hz(rs_ticks_s(rs_beat(b)));
     return;
   }
   if mo[0].state == E2M_ESCAPE {

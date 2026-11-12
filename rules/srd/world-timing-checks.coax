@@ -10,7 +10,7 @@
     a := rs_add(b[..],rs_rogue("Runner",0,3),1,1);
     b[0].c[a].slots_max[1] = 2; b[0].c[a].slots[1] = 0;
     rs_start_turn(b[..],a);
-    #assert rs_beat(b[..]) == (ifx world == 1 then 1.5f32 else 6.0f32);
+    #assert rs_beat(b[..]) == (ifx world == 1 then 1500000 else 6000000);
     #assert rs_movement_left(b[..],a) == (ifx world == 1 then 10 else 30);
     #assert rs_area_spares_caster(RS_A_SPHERE,false,b[0].areas) == (world == 1);
     t: [1] RsTurn; t[0] = b[0].turn;
@@ -126,4 +126,73 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
   to = rs_walk_take(b[..],0,4,7,8,7);
   #assert to.x == 4 && to.z == 7 && to.metres == 0;
   #assert rs_walk_scale(b[..],0) == 0;
+}
+
+// ---- a battle's age (#13287): the clock counts whole ticks, so a month of uptime changes no duration
+WT_MONTH :: 30 * 86400 * RS_TICKS;   // 30 days of ticks
+WT_MARKS :: 64;
+// One fight from a battle already `age` ticks old, stepped at 30 frames a second in whole ticks: a
+// caster and a foe in action timing. What it measures, each as ticks since the fight began, in order:
+// the caster's first twelve turns, the tick a one-minute condition went, the tick an effect that
+// lasts until the end of the caster's next turn went, the tick a spent slot came back, the tick a
+// ten-minute rite's hour of concentration would end, and how many of the caster's turns began a round.
+wt_aged_fight :: (age: int, out: [] int) -> int {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].fixed = true;
+  #assert rs_set_world(b[..],RS_ACTION_WORLD);
+  rs_reset_timing(b[..]); #assert rs_set_world(b[..],RS_ACTION_WORLD);
+  b[0].clock = age; b[0].rest_clock.ticks = age;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1); t := rs_add(b[..],rs_guard("Foe",1),6,6);
+  b[0].c[a].initiative = 20; b[0].c[t].initiative = 1;
+  rs_begin(b[..]);
+  start := b[0].clock; n := 0; turns := 0; rounds := 0;
+  #assert rs_effect_add(b[0].c[t..<t+1],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=-1,until=start+rs_secs(60)});
+  b[0].c[a].slots[1] = b[0].c[a].slots_max[1] - 1;
+  blind := true; exposed := false; laid := false; slot := false;
+  for frame: 0..<2400 {
+    step := (frame + 1) * RS_TICKS / 30 - frame * RS_TICKS / 30;
+    rs_tick_ticks(b[..],step);
+    for who: [2] int.[a, t] {
+      if b[0].c[who].turn_at > b[0].clock { continue; }
+      rs_start_turn(b[..],who);
+      if who == a {
+        if turns < 12 { out[n] = b[0].c[a].turn_at - start; n += 1; }
+        turns += 1; if b[0].turn.new_round { rounds += 1; }
+        if !laid { laid = true; exposed = true; #assert rs_effect_add(b[0].c[t..<t+1],rs_turn_effect(RsEffect.{kind=EF_EXPOSED,by=a,spell=-1,save=-1},a,rs_next_turn_tick(b[..],a))); }
+      }
+      rs_end_turn(b[..],who);
+      if exposed && !rs_effect(b[0].c[t],EF_EXPOSED) { exposed = false; out[n] = b[0].clock - start; n += 1; }
+    }
+    if blind && !rs_has(b[0].c[t],RS_BLINDED) { blind = false; out[n] = b[0].clock - start; n += 1; }
+    if !slot && b[0].c[a].slots[1] == b[0].c[a].slots_max[1] { slot = true; out[n] = b[0].clock - start; n += 1; }
+  }
+  out[n] = b[0].clock - start; n += 1;
+  out[n] = turns; n += 1; out[n] = rounds; n += 1;
+  out[n] = rs_secs(rs_spell(SP_BLESS).duration_s); n += 1;
+  #assert !blind && !exposed && laid && slot;
+  return n;
+}
+#test "a battle 30 days old measures every turn, duration, recharge and round exactly as a new one" #steps 400000000 {
+  fresh: [WT_MARKS] int; aged: [WT_MARKS] int;
+  n := wt_aged_fight(0,fresh[..]); m := wt_aged_fight(WT_MONTH,aged[..]);
+  #assert n == m && n == 19;
+  for k: 0..<n { #assert fresh[k] == aged[k]; }
+  // and the measures are the declared ones, to the tick: the first turn 0.4 s in, a beat of 1.5 s
+  #assert fresh[0] == 400000 && fresh[1] == 1900000 && fresh[3] == 3400000;
+  // what lasts until the end of the caster's next turn goes with that turn, in the frame that takes it
+  #assert fresh[2] == 1900000;
+  // the last four: the whole run (80 s), the caster's turns and rounds in it, and Bless's minute
+  #assert fresh[n - 4] == rs_secs(80) && fresh[n - 3] == 54 && fresh[n - 2] == 14 && fresh[n - 1] == rs_secs(60);
+  #assert WT_MONTH == 2592000000000;
+}
+#test "a host's float frames carry no error into an old battle: 30 days on, a second of frames is a second" {
+  for age: [2] int.[0, WT_MONTH] {
+    b: [1] RsBattle; b[0].who = -1; b[0].clock = age; b[0].rest_clock.ticks = age;
+    for frame: 0..<64 { rs_tick(b[..],1.0/64); }
+    #assert b[0].clock == age + RS_TICKS && b[0].rest_clock.ticks == age + RS_TICKS;
+    for frame: 0..<30 { rs_tick(b[..],1.0/30); }
+    // a thirtieth is not a whole count of ticks: the part left over is kept, never lost or doubled
+    #assert b[0].clock - age - RS_TICKS == 1000000 && b[0].rest_clock.fraction < 1;
+    rs_tick_ticks(b[..],7); #assert b[0].clock - age == 2 * RS_TICKS + 7;
+    #assert !rs_rest_tick_ticks(b[..],-1) && b[0].clock - age == 2 * RS_TICKS + 7;
+  }
 }

@@ -11,7 +11,7 @@
 // calls rs_cast (slot 0) then, choosing targets as for any cast. The decisions
 // are here; ritual-cast.coax applies them to a battle.
 #authority;
-RS_RITE_SECONDS :: 600.0;
+RS_RITE_SECONDS :: 600;
 
 #test "rite admission requires the Ritual tag, preparation or Ritual Adept spellbook access, and a free Magic action" {
   for tag: 0..<2 { for ready: 0..<2 { for book: 0..<2 { for adept: 0..<2 { for action: 0..<2 { for quick: 0..<2 {
@@ -30,18 +30,18 @@ RS_RITE_SECONDS :: 600.0;
 }
 #test "a rite is due only for its own spell on an owed turn at or after its ten extra minutes" {
   #assert RS_RITE_SECONDS == 600;
-  until := 600.0f32; edge := until - 0.01;
+  until := rs_secs(600); edge := until;
   for sp: -1..<2 { for rite: -1..<2 { for owed: 0..<2 {
     expected := rite == sp && owed == 1;
     #assert rs_rite_due(rite, owed == 1, until, sp, edge) == expected;
     #assert rs_rite_due(rite, owed == 1, until, sp, until + 9) == expected;
-    #assert !rs_rite_due(rite, owed == 1, until, sp, edge - 0.01);
+    #assert !rs_rite_due(rite, owed == 1, until, sp, edge - 1);
   } } }
 }
 #test "a rite continues only while owed, before its end, with the action, no Quickened spell and its components" {
-  until := 600.0f32; edge := until - 0.01;
+  until := rs_secs(600); edge := until;
   for owed: 0..<2 { for late: 0..<3 { for action: 0..<2 { for quick: 0..<2 { for parts: 0..<2 {
-    clock := ifx late == 0 then edge - 0.01 else ifx late == 1 then edge else until;
+    clock := ifx late == 0 then edge - 1 else ifx late == 1 then edge else until + 1;
     expected := owed == 1 && late == 0 && action == 0 && quick == 0 && parts == 1;
     #assert rs_rite_continues(owed == 1, until, clock, action == 1, quick == 1, parts == 1) == expected;
   } } } } }
@@ -53,9 +53,9 @@ rs_rite_admits :: (tagged: bool, ready: bool, in_book: bool, adept: bool, action
 rs_rite_book_has :: (known: [6] u64, key: int) -> bool #effects(all) {
   return (known[key / 64] & (cast(u64) 1 << (key % 64))) != 0;
 }
-rs_rite_due :: (rite: int, owed: bool, until: f32, sp: int, clock: f32) -> bool #effects(all) {
-  return rite == sp && owed && clock >= until - 0.01;
+rs_rite_due :: (rite: int, owed: bool, until: int, sp: int, clock: int) -> bool #effects(all) {
+  return rite == sp && owed && clock >= until;
 }
-rs_rite_continues :: (owed: bool, until: f32, clock: f32, action_used: bool, quickened: bool, components: bool) -> bool #effects(all) {
-  return owed && clock < until - 0.01 && !action_used && !quickened && components;
+rs_rite_continues :: (owed: bool, until: int, clock: int, action_used: bool, quickened: bool, components: bool) -> bool #effects(all) {
+  return owed && clock < until && !action_used && !quickened && components;
 }

@@ -17,7 +17,7 @@ rs_divine_sense :: (b: [] RsBattle, i: int) -> bool #effects(all) {
   if !rs_bonus_free(b, i) || b[0].c[i].klass != RS_PALADIN || b[0].c[i].level < 3 || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
   if rs_sense_at(b[0].c[i]) >= 0 || rs_effect_free(b[0].c[i]) == 0 { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  _ := rs_put_effect(b, i, RsEffect.{kind = EF_SENSE, by = i, spell = -1, until = b[0].clock + 600, save = -1});
+  _ := rs_put_effect(b, i, RsEffect.{kind = EF_SENSE, by = i, spell = -1, until = b[0].clock + rs_secs(600), save = -1});
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_DIVINE_SENSE, " opens a Divine Sense");
   return true;
 }
@@ -45,7 +45,7 @@ rs_divine_sensed :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) {
     #assert rs_divine_sense(b[..], 0) == ok && b[0].c[0].uses[RS_USE_CHANNEL] == (ifx ok then uses - 1 else uses);
     #assert b[0].turn.bonus == (ok || mode == 2) && !b[0].turn.action && (rs_sense_at(b[0].c[0]) >= 0) == ok;
     if ok {
-      e := b[0].c[0].eff[rs_sense_at(b[0].c[0])]; #assert e.until == b[0].clock + 600 && e.by == 0 && e.cond == 0 && e.spell == -1 && e.save == -1;
+      e := b[0].c[0].eff[rs_sense_at(b[0].c[0])]; #assert e.until == b[0].clock + rs_secs(600) && e.by == 0 && e.cond == 0 && e.spell == -1 && e.save == -1;
       told := rs_recent(b[0].book[0], 0); #assert told.feat == RS_FT_DIVINE_SENSE && told.by == 0 && told.kind == RS_EV_CONDITION && told.amount == 0;
       rs_fresh(b[..], 0); #assert !rs_divine_sense(b[..], 0) && b[0].c[0].uses[RS_USE_CHANNEL] == uses - 1;   // already open
     }
@@ -67,7 +67,7 @@ rs_divine_sensed :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) {
   b[0].c[0].fiend = true; #assert !rs_divine_sensed(b[..], 0, 0);
   // Incapacitated: it ends, and stays ended once the condition goes
   #assert rs_sense_at(b[0].c[0]) >= 0;
-  #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, spell = -1, until = b[0].clock + 6, save = -1});
+  #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, spell = -1, until = b[0].clock + rs_secs(6), save = -1});
   #assert rs_sense_at(b[0].c[0]) < 0;
   b[0].c[0].cond = 0; #assert !rs_divine_sensed(b[..], 0, 1);
   // the 10 minutes run out with the effect

@@ -36,13 +36,13 @@ rs_first_aid :: (b: [] RsBattle, i: int, j: int, q: RsFirstAidContext) -> RsAbil
 }
 
 #test "a Healer's Kit spends a Utilize action and one use to stabilize with no check" {
-  b: [1] RsBattle; c: [2] RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who=1; b[0].dice[0].fixed=true; b[0].clock=10;
+  b: [1] RsBattle; c: [2] RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who=1; b[0].dice[0].fixed=true; b[0].clock=rs_secs(10);
   c[1]=rs_druid("Healer",0,3); c[1].healer_kit=10; c[1].score[RS_WIS]=1;
-  c[0]=rs_druid("Patient",0,3); c[0].hp=0; c[0].cond=RS_UNCONSCIOUS|RS_PRONE; c[0].death_ok=1; c[0].death_fail=2; c[0].stable_due=5;
+  c[0]=rs_druid("Patient",0,3); c[0].hp=0; c[0].cond=RS_UNCONSCIOUS|RS_PRONE; c[0].death_ok=1; c[0].death_fail=2; c[0].stable_due=rs_secs(5);
   #assert !rs_healers_kit(b[..],1,0,false) && c[1].healer_kit==10 && !b[0].turn.action;
   #assert rs_healers_kit(b[..],1,0,true);
   #assert c[1].healer_kit==9 && b[0].turn.action && c[0].stable && c[0].hp==0 && c[0].death_ok==0 && c[0].death_fail==0;
-  #assert rs_has(c[0],RS_UNCONSCIOUS) && c[0].stable_due==7210 && b[0].dice[0].rolled==1;   // the d4 recovery only: no check
+  #assert rs_has(c[0],RS_UNCONSCIOUS) && c[0].stable_due==rs_secs(7210) && b[0].dice[0].rolled==1;   // the d4 recovery only: no check
   e:=rs_recent_at(b[0].book[..],0);
   #assert e.kind==RS_EV_STABLE && e.amount==9 && e.spell == -1 && e.damage==0 && e.by==1 && e.to==0;
   #assert cast(string)e.text[0..<e.text_n]=="Healer uses a Healer's Kit on Patient: Stable";
@@ -76,7 +76,7 @@ rs_healers_kit :: (b: [] RsBattle, i: int, j: int, contact: bool) -> bool #effec
 // create stable state without a battle clock must arm when admitting it here.
 rs_stable_arm :: (b: [] RsBattle, j: int) -> bool #effects(all) {
   if j<0 || j>=b[0].n || !b[0].c[j].stable || b[0].c[j].dead || b[0].c[j].hp!=0 || b[0].c[j].stable_due>0 { return false; }
-  b[0].c[j].stable_due=b[0].clock+f32(rs_roll(b[0].dice[..],4))*3600;
+  b[0].c[j].stable_due=b[0].clock+rs_secs(rs_roll(b[0].dice[..],4)*3600);
   return true;
 }
 
@@ -96,7 +96,7 @@ rs_stable_recover :: (b: [] RsBattle, j: int) -> bool #effects(all) {
   c[0].hp=1; c[0].score[RS_WIS]=10; c[1].hp_max=12; c[1].cond=RS_UNCONSCIOUS;
   b[0].dice[0].fixed=true;
   #assert rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true}).passed;
-  #assert c[1].stable_due==7200 && !rs_stable_arm(b[..],1);
-  b[0].clock=7200;
+  #assert c[1].stable_due==rs_secs(7200) && !rs_stable_arm(b[..],1);
+  b[0].clock=rs_secs(7200);
   #assert rs_stable_recover(b[..],1) && c[1].hp==1;
 }

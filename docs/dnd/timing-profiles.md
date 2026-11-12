@@ -36,13 +36,44 @@ the Speed-proportional rate described below; that is the declared deviation.
 No current world drives a paid physical walker; the actual walker is checked
 against a strict turn in `walk-budget-walker-checks.coax`.
 
+## The battle clock counts whole ticks
+
+GitHub #13287. `RsBattle.clock` is an integer count of ticks, `RS_TICKS`
+(1,000,000) a second: a microsecond each, the unit the rest clock already
+used. Every deadline and duration in the rules is a count of ticks
+(`rs_secs(60)` is a minute). No time in the rules is a float, so a battle a
+month old measures a turn, a duration and a recharge exactly as a new one
+does. Before this the clock was an `f32` of seconds, whose step grows past
+0.01 s after about a day and a half of uptime.
+
+- A world steps the battle with `rs_tick_ticks(b, ticks)`. Everglade's room
+  passes `tick * RS_TICKS / EG_HZ`, whole numbers. `rs_tick(b, seconds)` is
+  still there for a host that has a float frame time: it admits the frame to
+  whole ticks and keeps the part of a tick left over (`rest-clock.coax`).
+- `rs_clock_s`, `rs_ticks_s` and `rs_s_ticks` convert for a world that
+  draws. The rules never read a float time back.
+- A turn boundary is one tick, with no slack on either side. An effect that
+  ends before a turn has that turn's tick as its deadline: the tick that
+  reaches it drops it before the turn is taken. An effect that lasts until
+  the end of a creature's turn carries that creature in `RsEffect.turn_end`:
+  the turn's end drops it (`rs_end_turn`), so it holds through that turn
+  however long a world's frame is, and is gone before any later turn. The
+  clock drops it only when that turn can't come: its owner is dead or gone,
+  has already passed that tick, or is a whole beat overdue. The old
+  deadlines were 0.01 s before and 0.05 s after the boundary, which a frame
+  longer than 0.05 s broke.
+- Check: `world-timing-checks.coax`, "a battle 30 days old measures every
+  turn, duration, recharge and round exactly as a new one". It runs the same
+  fight from tick 0 and from tick 2,592,000,000,000 and compares every
+  measure.
+
 ## Turn boundaries and durations
 
 Turns are instants on the clock. Start-of-turn triggers (Dodge and Shield end,
 the Reaction returns, death saves on a new round) fire only at the creature's
 own turn start; repeated saves are end-of-turn rolls. "Until the end of your
 next turn" holds through that turn and ends before any later creature's turn.
-Durations are world-clock seconds in both profiles: a one-minute effect lasts
+Durations are counts of the world clock's ticks in both profiles: a one-minute effect lasts
 ten rounds of the creature's turns (40 action beats), an hour 3,600 seconds,
 and every executable spell's timed duration and Concentration match the pinned
 source. SRD p.187 lets the turn's owner order simultaneous effects; the engine

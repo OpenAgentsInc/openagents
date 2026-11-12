@@ -1,18 +1,18 @@
 // SRD 5.2.1 p187: at least one uninterrupted hour. Rest timing uses the
-// owned integer-microsecond timeline, never a display/spell f32 deadline.
+// owned integer-microsecond timeline, the battle clock's own ticks.
 #authority;
 
 #test "display clock assignments cannot complete Short Rest or replace its owned timeline" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_monk("Patient",0,3); c[0].focus=0;
   #assert rs_short_rest_begin(b[..],0);
-  b[0].clock=3600;
+  b[0].clock=rs_secs(3600);
   #assert !rs_short_rest_finish(b[..],0) && c[0].rest.phase==1 && c[0].focus==0;
 }
 #test "Short Rest does not finish early at large display epochs and completes at its own exact hour" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_monk("Patient",0,3); c[0].focus=0;
-  b[0].clock=16777216; b[0].rest_clock.ticks=16777216000000;
+  b[0].clock=rs_secs(16777216); b[0].rest_clock.ticks=16777216000000;
   #assert rs_short_rest_begin(b[..],0);
   rs_tick(b[..],3599);
   #assert c[0].rest.phase==1 && c[0].focus==0;
@@ -26,7 +26,7 @@
   rs_tick(b[..],4000);
   #assert c[0].rest.phase==2 && c[0].rages==1 && c[0].long_rest.quiet==400000000;
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_END && e.at==3600;
+  #assert e.kind==RS_EV_END && e.at==rs_secs(3600);
 }
 
 rs_short_rest_deadline :: (started:int)->int #effects(all) {
@@ -97,8 +97,8 @@ rs_short_rest_schedule_valid :: (b:[]RsBattle)->bool #effects(all) {
   #assert !b[0].rest_auto;
   rs_tick(b[..],4000);
   #assert c[0].rest.phase==2 && c[0].focus==3 && c[0].long_rest.elapsed==0;
-  e:=rs_recent_at(b[0].book[..],0); #assert e.at==3600 && e.kind==RS_EV_END;
-  #assert b[0].rest_clock.ticks==4000000000 && b[0].clock==4000;
+  e:=rs_recent_at(b[0].book[..],0); #assert e.at==rs_secs(3600) && e.kind==RS_EV_END;
+  #assert b[0].rest_clock.ticks==4000000000 && b[0].clock==rs_secs(4000);
 }
 #test "overdue Short Rest and fractional boundary ticks progress once without a rewind or duplicate grant" {
   for overdue:0..<2 {
@@ -122,5 +122,5 @@ rs_short_rest_schedule_valid :: (b:[]RsBattle)->bool #effects(all) {
   #assert c[0].rest.phase==2 && c[0].focus==3;
   #assert b[0].rest_clock.ticks==3600000000 && b[0].rest_clock.fraction==0.45367431640625;
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_END && e.at==f32(0.0000005);
+  #assert e.kind==RS_EV_END && e.at==1;
 }

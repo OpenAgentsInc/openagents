@@ -113,7 +113,7 @@ RS_MAX :: 216;
 // grid larger than the room scans its creatures.
 RS_SQUARES :: 8192;
 RS_ZONES :: 8;
-RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; truth_dc: int;
+RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: int; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; truth_dc: int;
                   line: bool; dx: f32; dy: f32; half: f32; }   // a Line: from (cx, cy) along (dx, dy), a unit, r_ft long, half (squares) each side
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
@@ -130,7 +130,8 @@ RsBattle :: struct {
   truth_zones:int;
   dice: [1] RsDice;
   book: [1] RsLog;
-  clock: f32; rest_clock:RsRestClock; rest_auto:bool;
+  clock: int;   // whole ticks (RS_TICKS a second, engine.coax)
+  rest_clock:RsRestClock; rest_auto:bool;
   w: int; h: int;             // the grid, squares
   turn_no: int;               // turns begun, for what happens once a turn
   guards: int;                // Spirit Guardians cast and not yet ended
@@ -175,7 +176,12 @@ rs_use :: (b: [] RsBattle, c: [] RsCreature, occ: [] int) {
 }
 // The most creatures the battle can hold.
 rs_room_for :: (b: [] RsBattle) -> int { rs_room(b); return b[0].c.count; }
-rs_beat :: (b: [] RsBattle) -> f32 { return rs_timing_beat(b[0].timing); }
+// For a world that draws or steps in seconds: ticks as seconds, and seconds as the nearest whole
+// ticks. The rules never read a float time back.
+rs_ticks_s :: (ticks: int) -> f32 { return f32(ticks) / f32(RS_TICKS); }
+rs_clock_s :: (b: [] RsBattle) -> f32 { return rs_ticks_s(b[0].clock); }
+rs_s_ticks :: (seconds: f32) -> int { return cast(int) floor(seconds * f32(RS_TICKS) + 0.5); }
+rs_beat :: (b: [] RsBattle) -> int { return rs_timing_beat(b[0].timing); }
 
 rs_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
 rs_sign :: (v: int) -> int { if v > 0 { return 1; } if v < 0 { return -1; } return 0; }
@@ -377,10 +383,11 @@ rs_begin :: (b: [] RsBattle) {
   for i: 0..<b[0].n {
     q := rs_init_slot(b[0].c[i].initiative);
     rank := higher[q] + seen[q]; seen[q] += 1;
-    b[0].c[i].turn_at = b[0].clock + 0.4 + f32(rank) * rs_beat(b) / f32(rs_max(b[0].n, 1));
+    b[0].c[i].turn_at = b[0].clock + RS_FIRST_TURN + rank * rs_beat(b) / rs_max(b[0].n, 1);
     b[0].c[i].round_at = b[0].c[i].turn_at;
   }
 }
+RS_FIRST_TURN :: 400000;   // ticks from the battle's start to its first turn (0.4 s)
 // Initiatives counted by slot: -64 to 191 (a d20 and a modifier fall well inside).
 RS_INIT_SPAN :: 256;
 rs_init_slot :: (v: int) -> int { return rs_max(0, rs_min(RS_INIT_SPAN - 1, v + 64)); }
@@ -400,8 +407,19 @@ rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
   b[0].c[j] = c[0];
 }
 // When the caster's next turn ends, and when it starts (its turns are instants on the clock).
-rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return rs_feature_next_turn_at(b,i) + 0.05; }
-rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return rs_feature_next_turn_at(b,i) - 0.01; }
+// Both are the tick of that turn exactly; no slack either side (#13287). What ends before the turn
+// is an effect or field the clock ends at that tick: the tick that reaches it drops it before the
+// turn is taken. What ends after the turn is an effect its owner's turn end drops (rs_turn_effect).
+rs_next_turn_tick :: (b: [] RsBattle, i: int) -> int { return rs_feature_next_turn_at(b,i); }
+// An effect that lasts until the end of creature `whose`'s turn at tick `until`.
+rs_turn_effect :: (e: RsEffect, whose: int, until: int) -> RsEffect { o := e; o.until = until; o.turn_end = whose + 1; return o; }
+// Creature i's turn at tick `at` has ended: what lasted until its end is gone, on every creature.
+rs_turn_effects_end :: (b: [] RsBattle, i: int, at: int) {
+  for j: 0..<b[0].n { for k: 0..<RS_EFFECTS {
+    e := b[0].c[j].eff[k];
+    if rs_effect_turn_ended(e.kind, e.turn_end - 1, e.until, i, at) { rs_drop_effect(b, j, k); }
+  } }
+}
 
 // What follows a creature dropping to 0: a Hex on it can move on a later turn, and a Fiend
 // Warlock who dropped it, or stands within 10 feet of it, has Dark One's Blessing.
@@ -647,7 +665,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     else if !rite && !(sp == SP_FALSE_LIFE && b[0].c[i].vigor) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
   }
   if smite { b[0].turn.last_hit = 0; }
-  if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + s.duration_s; }
+  if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + rs_secs(s.duration_s); }
   l: [1] RsLine;
   rs_add_name(l[..], b, i);
   rs_add_text(l[..], ifx s.part_of >= 0 then " hurls Produce Flame" else " casts ");
@@ -665,7 +683,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   if s.area != RS_A_NONE {
     area = rs_area(b, i, s, tx, ty);
     area.spell = sp;
-    area.until = b[0].clock + s.duration_s;
+    area.until = b[0].clock + rs_secs(s.duration_s);
     if sp==SP_ZONE_OF_TRUTH { area.truth_dc=rs_dc(b,i); }
     for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TERRAIN { area.difficult = true; } }
     if zone_required {
@@ -676,7 +694,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     k := rs_emit(b[0].book[..], e);
   }
   if sp==SP_ZONE_OF_TRUTH { return true; }
-  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + s.duration_s; } }
+  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + rs_secs(s.duration_s); } }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
   if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
   damage_scope: [1] RsDamageScope;
@@ -1075,7 +1093,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     } else if st.kind == RS_S_RESTORE {
       if rs_lesser_restore(b[0].c[j..<j+1],st.a) { rs_say(b,RS_EV_CONDITION,i,j,sp," ends a condition"); }
     } else if st.kind == RS_S_AID {
-      if rs_put_effect(b,j,RsEffect.{kind=EF_AID,cond=st.a*(slot-1),by=i,spell=sp,until=b[0].clock+s.duration_s,save=-1}) {
+      if rs_put_effect(b,j,RsEffect.{kind=EF_AID,cond=st.a*(slot-1),by=i,spell=sp,until=b[0].clock+rs_secs(s.duration_s),save=-1}) {
         rs_say(b,RS_EV_CONDITION,i,j,sp," increases current and maximum Hit Points");
       }
     } else if st.kind == RS_S_CONDITION {
@@ -1088,7 +1106,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       rs_tell(b, RS_EV_CONDITION, sp, i, j, st.a, 0, l[..]);
       if st.a != RS_PRONE {
         _ := rs_put_effect(b,j,RsEffect.{kind=ifx st.a == RS_RESTRAINED && zone_at >= 0 then EF_ZONE_RESTRAIN else EF_COND,
-          cond=ifx st.a == RS_RESTRAINED && zone_at >= 0 then zone_at else st.a,by=i,spell=sp,until=b[0].clock+s.duration_s,save=-1,dc=rs_dc(b,i)});
+          cond=ifx st.a == RS_RESTRAINED && zone_at >= 0 then zone_at else st.a,by=i,spell=sp,until=b[0].clock+rs_secs(s.duration_s),save=-1,dc=rs_dc(b,i)});
       }
     } else if st.kind == RS_S_PUSH {
       if ran_save && saved { continue; }
@@ -1122,13 +1140,13 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " gains "); rs_add_int(l[..], amount); rs_add_text(l[..], " Temporary Hit Points");
       rs_tell(b, RS_EV_HEAL, sp, i, j, amount, 0, l[..]);
     } else if st.kind == RS_S_NOHEAL {
-      _ := rs_put_effect(b, j, RsEffect.{kind = EF_NOHEAL, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0});
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_NOHEAL, by = i, spell = sp, until = rs_next_turn_tick(b, i), turn_end = i + 1, save = -1, dc = 0});
     } else if st.kind == RS_S_TIMED {
       // saved: a one-target concentration spell has nothing to hold, and ends
       if ran_save && saved { if !keep_concentration && s.concentration && s.area == RS_A_NONE && b[0].c[i].conc == sp { b[0].c[i].conc = -1; } continue; }
       if rs_effect_condition_mask(b[0].c[j],st.a) == 0 { continue; }
-      e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0};
-      if st.b == 2 { e.until = b[0].clock + s.duration_s; e.save = st.c; e.dc = rs_dc(b, i); }
+      e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_next_turn_tick(b, i), turn_end = i + 1, save = -1, dc = 0};
+      if st.b == 2 { e.until = b[0].clock + rs_secs(s.duration_s); e.turn_end = 0; e.save = st.c; e.dc = rs_dc(b, i); }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is "); rs_add_text(l[..], rs_condition_name(st.a));
       rs_add_text(l[..], ifx st.b == 1 then " until the end of " else " for up to a minute");
@@ -1139,12 +1157,12 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j);
       if saved {
-        _ := rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = sp, until = rs_before_next_turn(b, i), save = -1, dc = 0});
+        _ := rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = sp, until = rs_next_turn_tick(b, i), save = -1, dc = 0});
         rs_add_text(l[..], " shrugs it off: Disadvantage on its next attack roll");
         // nothing to hold: the spell ends
         if !keep_concentration && b[0].c[i].conc == sp { b[0].c[i].conc = -1; }
       } else {
-        _ := rs_put_effect(b, j, RsEffect.{kind = EF_ENFEEBLED, by = i, spell = sp, until = b[0].clock + s.duration_s, save = RS_CON, dc = rs_dc(b, i)});
+        _ := rs_put_effect(b, j, RsEffect.{kind = EF_ENFEEBLED, by = i, spell = sp, until = b[0].clock + rs_secs(s.duration_s), save = RS_CON, dc = rs_dc(b, i)});
         rs_add_text(l[..], " is enfeebled: 1d8 off its damage, Disadvantage on Strength");
       }
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
@@ -1159,13 +1177,13 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       b[0].c[j].wisp_until = b[0].c[i].turn_at + rs_beat(b);
       b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
     } else if st.kind == RS_S_EXPOSE {
-      _ := rs_put_effect(b, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0});
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = sp, until = rs_next_turn_tick(b, i), turn_end = i + 1, save = -1, dc = 0});
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " glimmers: the next attack roll against it has Advantage");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_MOCK {
       if ran_save && saved { continue; }
-      _ := rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = sp, until = rs_own_turn_end(b, j), save = -1, dc = 0});
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = sp, until = rs_own_turn_end(b, j), turn_end = j + 1, save = -1, dc = 0});
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " has Disadvantage on its next attack roll");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
@@ -1185,7 +1203,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     } else if st.kind == RS_S_BOON {
       if ran_save && saved { continue; }
       // one of the caster's while it concentrates on the spell
-      _ := rs_put_effect(b, j, RsEffect.{kind = st.a, cond = st.b, by = i, spell = sp, until = ifx s.concentration then b[0].c[i].conc_until else b[0].clock + s.duration_s, save = -1, dc = ifx st.a==EF_GUIDANCE then b[0].book[0].seq else 0});
+      _ := rs_put_effect(b, j, RsEffect.{kind = st.a, cond = st.b, by = i, spell = sp, until = ifx s.concentration then b[0].c[i].conc_until else b[0].clock + rs_secs(s.duration_s), save = -1, dc = ifx st.a==EF_GUIDANCE then b[0].book[0].seq else 0});
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j);
       rs_add_text(l[..], ifx st.a == EF_BLESS then " is blessed: 1d4 more on its attack rolls and saves" else ifx st.a == EF_BANE then " is baned: 1d4 less on its attack rolls and saves" else ifx st.a==EF_GUIDANCE then " is guided: 1d4 more on checks with the chosen skill" else ifx st.a==EF_PROTECTION then " is protected from Evil and Good" else " has +2 AC");
@@ -1383,8 +1401,8 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].turn_no += 1;
   feet := rs_timing_move(b[0].timing,speed);
   b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = feet/5, move_feet=feet%5, move_basis=feet, move_tracked=true};
-  b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
-  if b[0].turn.new_round { b[0].c[i].round_at += f32(RS_ROUND); }
+  b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at;
+  if b[0].turn.new_round { b[0].c[i].round_at += RS_ROUND_TICKS; }
   b[0].c[i].reacted = false;
   rs_truth_start(b,i);
   rs_rite_turn(b,i);
@@ -1463,15 +1481,19 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   }
   if b[0].turn.new_round { b[0].c[i].struck_round = false; }
   rs_halt_finish(b[0].c[i..<i+1]);
+  rs_turn_effects_end(b, i, b[0].c[i].turn_at);
   b[0].c[i].turn_at += rs_beat(b);
   rs_disengage_end(b,i);
   if b[0].who == i { b[0].who = -1; }
 }
 // The clock moves on: what lasts for a time ends when it runs out.
+// rs_tick takes a host's frame in seconds and admits it to whole ticks (rest-clock.coax keeps the
+// part of a tick left over); rs_tick_ticks takes whole ticks. Inside, time is ticks only.
 rs_tick :: (b: [] RsBattle, dt: f32) { admitted:=rs_rest_tick(b,dt); }
-rs_tick_raw :: (b: [] RsBattle, dt: f32) {
+rs_tick_ticks :: (b: [] RsBattle, ticks: int) { admitted:=rs_rest_tick_ticks(b,ticks); }
+rs_tick_raw :: (b: [] RsBattle, ticks: int) {
   rs_seal_timing(b);
-  b[0].clock += dt;
+  b[0].clock += ticks;
   t := b[0].clock;
   for i: 0..<b[0].n {
     concentration_lost := rs_sync_concentration(b,i);
@@ -1479,7 +1501,7 @@ rs_tick_raw :: (b: [] RsBattle, dt: f32) {
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
     if b[0].c[i].wild_form != 0 { rs_wild_shape_lapse(b, i); }
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
-    for k: 0..<RS_EFFECTS { if rs_effect_uses_clock(b[0].c[i].eff[k].kind) && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
+    for k: 0..<RS_EFFECTS { e := b[0].c[i].eff[k]; if rs_effect_clock_ended(e.kind, e.turn_end - 1, e.until, t, rs_effect_owner_turn(b, e.turn_end - 1), rs_beat(b)) { rs_drop_effect(b, i, k); } }
     _ := rs_stable_recover(b,i);
     rest_finished := rs_short_rest_finish(b,i);
     // the action adapter: spent slots and uses come back on a cooldown, one at a time
@@ -1566,8 +1588,12 @@ rs_curse_damage :: (b: [] RsBattle, i: int, j: int, crit: bool) {
   }
 }
 // The end of creature j's own next turn: the one running, or the one coming.
-rs_own_turn_end :: (b: [] RsBattle, j: int) -> f32 {
-  return ifx rs_turn_owner(b) == j then b[0].c[j].turn_at + rs_beat(b) + 0.05 else b[0].c[j].turn_at + 0.05;
+rs_own_turn_end :: (b: [] RsBattle, j: int) -> int {
+  return ifx rs_turn_owner(b) == j then b[0].c[j].turn_at + rs_beat(b) else b[0].c[j].turn_at;
+}
+// The tick of creature j's next turn still to end (-1: no such creature, or it takes no more turns).
+rs_effect_owner_turn :: (b: [] RsBattle, j: int) -> int {
+  return ifx j >= 0 && j < b[0].n && !b[0].c[j].dead then b[0].c[j].turn_at else -1;
 }
 // Whether i can use weapon w's mastery property m (Weapon Mastery).
 rs_mastery :: (b: [] RsBattle, i: int, w: int, m: int) -> bool { return rs_weapon(w).mastery == m && (b[0].c[i].masteries & (1 << m)) != 0; }
@@ -1738,12 +1764,12 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   // the end of its next turn), Slow (10 feet less Speed until the start of the attacker's next turn)
   if !b[0].c[j].dead && b[0].c[j].hp > 0 {
     if rs_mastery(b, i, w, M_SAP) {
-      _ := rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = -1, until = rs_before_next_turn(b, i), save = -1, dc = 0});
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = -1, until = rs_next_turn_tick(b, i), save = -1, dc = 0});
     }
     if rs_mastery(b, i, w, M_VEX) && dealt > 0 {
-      _ := rs_put_effect(b, i, RsEffect.{kind = EF_VEX, cond = j, by = i, spell = -1, until = rs_after_next_turn(b, i), save = -1, dc = 0});
+      _ := rs_put_effect(b, i, RsEffect.{kind = EF_VEX, cond = j, by = i, spell = -1, until = rs_next_turn_tick(b, i), turn_end = i + 1, save = -1, dc = 0});
     }
-    if rs_mastery(b, i, w, M_SLOW) && dealt > 0 { b[0].c[j].slowed_until = rs_before_next_turn(b, i) + 0.01; _ := rs_dodge_live(b,j); }
+    if rs_mastery(b, i, w, M_SLOW) && dealt > 0 { b[0].c[j].slowed_until = rs_next_turn_tick(b, i); _ := rs_dodge_live(b,j); }
   }
   // all damage cut away: the Monk may spend a Focus Point to send the force back at a melee attacker
   if cut > 0 && amount - cut <= 0 && b[0].c[j].focus > 0 && rs_up(b[0].c[j]) && rs_up(b[0].c[i]) {
@@ -1780,7 +1806,7 @@ rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) ->
   b[0].turn.action = true;
   w := b[0].c[i].weapon;
   if reckless && b[0].c[i].level >= 2 && b[0].c[i].klass == RS_BARBARIAN && b[0].c[i].reckless_until <= b[0].clock {
-    b[0].c[i].reckless_until = rs_before_next_turn(b, i) + 0.01;
+    b[0].c[i].reckless_until = rs_next_turn_tick(b, i);
     l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " attacks recklessly");
     rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
   }
@@ -1831,7 +1857,7 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   dc := rs_focus_dc(me);
   saving := rs_saving_throw(b,j,RS_CON,dc);
   total := saving.total; ok := saving.passed;
-  until := rs_before_next_turn(b, i) + 0.01;
+  until := rs_next_turn_tick(b, i);
   l: [1] RsLine;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on a Stunning Strike: "); rs_add_name(l[..], b, j);
   rs_add_text(l[..], " CON save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
@@ -1879,7 +1905,7 @@ rs_cunning_effect :: (b: [] RsBattle, i: int, j: int, plan: int) {
   rs_tell(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, l[..]);
   if ok { return; }
   if plan == CS_TRIP { b[0].c[j].cond = b[0].c[j].cond | RS_PRONE; }
-  else { _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_POISONED, by = i, spell = -1, until = b[0].clock + 60, save = RS_CON, dc = dc}); }
+  else { _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_POISONED, by = i, spell = -1, until = b[0].clock + rs_secs(60), save = RS_CON, dc = dc}); }
 }
 // A foe standing within 5 feet of i, or -1.
 rs_beside :: (b: [] RsBattle, i: int) -> int {
@@ -2070,7 +2096,7 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
       rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_RADIANT, sl[..]);
       rs_damage(b, i, j, amount, RS_RADIANT, false, -1);
     }
-    if !ok && !b[0].c[j].dead { _ := rs_put_effect(b, j, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = i, spell = -1, until = b[0].clock + 60, save = -1, dc = 0}); }
+    if !ok && !b[0].c[j].dead { _ := rs_put_effect(b, j, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = i, spell = -1, until = b[0].clock + rs_secs(60), save = -1, dc = 0}); }
   }
   return true;
 }
@@ -2141,7 +2167,7 @@ rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool {
   if !rs_action_free(b, i) || b[0].c[i].klass != RS_PALADIN || b[0].c[i].level < 3 || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
   if b[0].c[i].sacred_until > b[0].clock { return false; }
   b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  b[0].c[i].sacred_until = b[0].clock + 600;
+  b[0].c[i].sacred_until = b[0].clock + rs_secs(600);
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_SACRED_WEAPON, " raises a Sacred Weapon: +Cha to hit, Radiant on a hit");
   return true;
 }
@@ -2165,7 +2191,7 @@ rs_steady_aim :: (b: [] RsBattle, i: int) -> bool {
 rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_INNATE] <= 0 || b[0].c[i].innate_until > b[0].clock { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_INNATE] -= 1;
-  b[0].c[i].innate_until = b[0].clock + 60;
+  b[0].c[i].innate_until = b[0].clock + rs_secs(60);
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_INNATE_SORCERY, " unleashes Innate Sorcery");
   return true;
 }
@@ -2351,7 +2377,11 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   c: [1] RsCreature; c[0] = b[0].c[t];
   #assert rs_heal(c[..], 5) == 0;
   rs_end_turn(b[..], a);
+  // it holds through the caster's next turn, however late the frame, and goes when that turn ends
   rs_tick(b[..], f32(RS_ROUND) + 0.1);
+  #assert rs_effect(b[0].c[t], EF_NOHEAL);
+  rs_start_turn(b[..], a); #assert rs_effect(b[0].c[t], EF_NOHEAL);
+  rs_end_turn(b[..], a);
   #assert !rs_effect(b[0].c[t], EF_NOHEAL);
 }
 #test "Ray of Sickness poisons until the end of the caster's next turn; a Poisoned attacker has Disadvantage" {
@@ -2368,9 +2398,11 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   }
   #assert got;
   // still Poisoned until the caster's next turn has ended
-  rs_tick(b[..], b[0].c[a].turn_at - 0.5 - b[0].clock);
+  rs_tick_ticks(b[..], b[0].c[a].turn_at - 500000 - b[0].clock);
   #assert rs_has(b[0].c[t], RS_POISONED);
   rs_tick(b[..], 0.7);
+  rs_start_turn(b[..], a); #assert rs_has(b[0].c[t], RS_POISONED);
+  rs_end_turn(b[..], a);
   #assert !rs_has(b[0].c[t], RS_POISONED);
 }
 #test "False Life: 2d4 + 4 Temporary Hit Points, 5 more a slot level above 1" {
@@ -2459,7 +2491,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   u := rs_add(b[..], rs_druid("Fern", 0, 3), 10, 6);
   rs_start_turn(b[..], a);
   #assert rs_cast(b[..], a, SP_HEX, 2, 0, 0, t) && b[0].c[a].conc == SP_HEX && b[0].c[a].slots[2] == 1;
-  #assert b[0].c[a].conc_until == 14400 && b[0].c[t].eff[0].until == 14400;
+  #assert b[0].c[a].conc_until == rs_secs(14400) && b[0].c[t].eff[0].until == rs_secs(14400);
   #assert !rs_cast(b[..], a, SP_HOLD_PERSON, 2, 0, 0, u);   // one slot a turn
   #assert rs_effect(b[0].c[t], EF_HEX);
   extra := false;
@@ -2477,7 +2509,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   #assert b[0].c[t].hp == 0 && b[0].c[a].hex_free;
   #assert !rs_hex_move(b[..], a, u);
   rs_end_turn(b[..], a);
-  rs_tick(b[..], b[0].c[a].turn_at - b[0].clock);
+  rs_tick_ticks(b[..], b[0].c[a].turn_at - b[0].clock);
   rs_start_turn(b[..], a);
   #assert rs_hex_move(b[..], a, u) && rs_effect(b[0].c[u], EF_HEX) && !rs_effect(b[0].c[t], EF_HEX) && b[0].c[a].slots[2] == 1;
 }
@@ -2584,7 +2616,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   #assert frenzy;
   rs_end_turn(b[..], a);
   // gone at the start of its next turn
-  rs_tick(b[..], b[0].c[a].turn_at - b[0].clock);
+  rs_tick_ticks(b[..], b[0].c[a].turn_at - b[0].clock);
   #assert b[0].c[a].reckless_until <= b[0].clock;
 }
 #test "Cleave: a Greataxe hit carries into a second foe beside the first, without the Strength modifier" {
@@ -2642,7 +2674,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   #assert rs_patient_defense(b[..], m) && b[0].c[m].focus == 2;
   #assert rs_attack_edge(b[..], a, m, true, true) == -1 && rs_save_edge(b[..], m, RS_DEX) == 1;
   rs_end_turn(b[..], m);
-  rs_tick(b[..], b[0].c[m].turn_at - b[0].clock);
+  rs_tick_ticks(b[..], b[0].c[m].turn_at - b[0].clock);
   #assert rs_attack_edge(b[..], a, m, true, true) == -1;
   rs_start_turn(b[..], m);
   #assert rs_attack_edge(b[..], a, m, true, true) == 0;
@@ -2654,12 +2686,12 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 9, 3);
   rs_begin(b[..]);
   first := b[0].c[a].turn_at;
-  rs_tick(b[..], first - b[0].clock);
+  rs_tick_ticks(b[..], first - b[0].clock);
   rs_start_turn(b[..], a);
   #assert b[0].turn.new_round && b[0].turn.move_left == 2;   // 30 feet a round: 7.5 feet a beat, 2 squares
   #assert rs_cast(b[..], a, SP_SCORCHING_RAY, 2, 0, 0, t) && b[0].c[a].slots[2] == 1;
   rs_end_turn(b[..], a);
-  #assert b[0].c[a].turn_at == first + 1.5;
+  #assert b[0].c[a].turn_at == first + 1500000;
   rs_tick(b[..], 1.5);
   rs_start_turn(b[..], a);
   #assert !b[0].turn.new_round;
@@ -2992,7 +3024,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
     if rs_saw(b[..], seq, "casts Shield") { shielded = true; break; }
   }
   #assert shielded && b[0].c[w].reacted && b[0].c[w].slots[1] == 2 && rs_ac(b[..], w) == 20 && b[0].c[w].hp == 17 - 3;   // turned to a miss, but Graze still deals its 3
-  rs_tick(b[..], b[0].c[w].turn_at - b[0].clock);
+  rs_tick_ticks(b[..], b[0].c[w].turn_at - b[0].clock);
   #assert rs_ac(b[..], w) == 20;
   rs_start_turn(b[..],w); #assert rs_ac(b[..], w) == 15;
 }
@@ -3491,7 +3523,7 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
   rs_start_turn(b[..], a);
   #assert rs_cast(b[..], a, SP_FINGER_OF_DEATH, 7, 0, 0, t);
   // at least 30 + 7 (or half of it): a level 3 druid's 24 Hit Points are gone, and its Massive Damage kills it
-  #assert b[0].c[t].hp == 0 && b[0].c[t].rise_by == a && b[0].c[t].rise_at > b[0].clock - 0.01;
+  #assert b[0].c[t].hp == 0 && b[0].c[t].rise_by == a && b[0].c[t].rise_at >= b[0].clock;
   rs_end_turn(b[..], a);
   // not a Humanoid: no Zombie
   b[0].c[a].slots[7] = 1; rs_start_turn(b[..], a);

@@ -71,12 +71,12 @@ e5b_raise :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, i: int, x: f32, 
   k := beast0 + q;
   t := b[0].c[k].turn_at; ro := b[0].c[k].round_at;
   b[0].c[k] = rs_zombie("Zombie", E5RR_BEAST_TEAM);
-  b[0].c[k].turn_at = hi_r(t, b[0].clock); b[0].c[k].round_at = ro;
+  b[0].c[k].turn_at = rs_max(t, b[0].clock); b[0].c[k].round_at = ro;
   b[0].c[k].x = b[0].c[i].x; b[0].c[k].y = b[0].c[i].y;
   f := foe;
   if f >= 0 && (b[0].c[f].dead || b[0].c[f].x == E5R_AWAY) { f = -1; }
   beasts[q] = E5rBeast.{id = id, tag = id, by = seat, spell = SP_FINGER_OF_DEATH, form = E5RR_FORM_ZOMBIE,
-                        x = x, z = z, goal_x = x, goal_z = z, foe = f, bite_at = b[0].clock + rs_beat(b)};
+                        x = x, z = z, goal_x = x, goal_z = z, foe = f, bite_at = rs_clock_s(b) + rs_ticks_s(rs_beat(b))};
   l: [1] RsLine;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " rises as a Zombie");
   rs_tell(b, RS_EV_PUSH, SP_FINGER_OF_DEATH, by, k, 0, 0, l[..]);
@@ -128,8 +128,8 @@ e5b_step :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, folk0: int, folk_
     }
     if d > 0.01 { bt[0].yaw = e5rr_heading(dx, dz); }
     b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z)+z_shift;
-    if foe >= 0 && d <= E5RR_REACH && b[0].clock >= bt[0].bite_at && rs_can_act(b[0].c[i]) {
-      bt[0].bite_at = b[0].clock + rs_beat(b);
+    if foe >= 0 && d <= E5RR_REACH && rs_clock_s(b) >= bt[0].bite_at && rs_can_act(b[0].c[i]) {
+      bt[0].bite_at = rs_clock_s(b) + rs_ticks_s(rs_beat(b));
       if bt[0].form == E5RR_FORM_ZOMBIE { e5b_slam(b, beast0, q, foe); } else { e5b_bite(b, beasts, beast0, q, foe); }
     }
   }

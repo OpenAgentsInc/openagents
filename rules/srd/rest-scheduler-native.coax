@@ -8,7 +8,7 @@ tool_main :: ()->int #export_c #effects(all) {
     c[0].slots[1]=0; c[0].focus=0; c[0].rages=0;
     for u:0..<RS_USES { c[0].uses[u]=0; }
     if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 1; }
-    if !rs_effect_add(c[0..<1],RsEffect.{kind=EF_NOHEAL,until=30000,by=-1,spell=-1}) { return 2; }
+    if !rs_effect_add(c[0..<1],RsEffect.{kind=EF_NOHEAL,until=rs_secs(30000),by=-1,spell=-1}) { return 2; }
     rs_tick(b[..],1.0/64);
     if !rs_long_rest_start_owned(b[..],1,2,true) { return 3; }
     rs_tick(b[..],7200);
@@ -45,7 +45,7 @@ tool_main :: ()->int #export_c #effects(all) {
   journal:[1]RsLongRest; journal[0]=c[0].long_rest;
   if !rs_long_rest_advance(journal[..],28799999999).accepted { return 21; }
   c[0].long_rest=journal[0]; b[0].rest_clock.ticks=28799999999; b[0].rest_clock.fraction=0.5;
-  if !rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=f32(0.00000075),by=-1,spell=-1}) { return 22; }
-  if !rs_rest_tick(b[..],1.0/1048576) || c[0].hp!=1 || c[0].long_rest.finished!=28800000000 || rs_effect(c[0],EF_NOHEAL) { return 23; }
+  if !rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=2,by=-1,spell=-1}) { return 22; }
+  if !rs_rest_tick_ticks(b[..],3) || c[0].hp!=1 || c[0].long_rest.finished!=28800000000 || rs_effect(c[0],EF_NOHEAL) { return 23; }
   tool_errln("PASS REST-SCHEDULER (72 class/level transactions, 1843200 automatic frames, exertion and fractional ordering)"); return 0;
 }

@@ -15,7 +15,7 @@ to_field :: (b: [] RsBattle, profile: int) {
 }
 // Runs creature i's turn at its time on the clock.
 to_turn :: (b: [] RsBattle, i: int) {
-  rs_tick(b,b[0].c[i].turn_at - b[0].clock); rs_start_turn(b,i); rs_end_turn(b,i);
+  rs_tick_ticks(b,b[0].c[i].turn_at - b[0].clock); rs_start_turn(b,i); rs_end_turn(b,i);
 }
 
 #test "every executable spell's timed duration and Concentration match the pinned source" #steps 100000000 {
@@ -23,27 +23,27 @@ to_turn :: (b: [] RsBattle, i: int) {
     s := rs_spell(sp); if s.part_of >= 0 { continue; }
     source := srd_source_spell(RS_EXEC_SOURCE[sp]);
     #assert s.concentration == source.concentration;
-    if source.duration_kind == SRD_DURATION_TIMED { #assert s.duration_s == f32(source.duration_seconds); }
+    if source.duration_kind == SRD_DURATION_TIMED { #assert s.duration_s == source.duration_seconds; }
     if source.duration_kind == SRD_DURATION_INSTANT { #assert !s.concentration; }
   }
-  #assert RS_ROUND == 6 && f32(srd_source_spell(srd_source_index("shield")).duration_seconds) == RS_ROUND;
-  #assert f32(srd_source_spell(srd_source_index("bless")).duration_seconds) == 10*RS_ROUND;
+  #assert RS_ROUND == 6 && RS_ROUND_TICKS == 6000000 && srd_source_spell(srd_source_index("shield")).duration_seconds == RS_ROUND;
+  #assert srd_source_spell(srd_source_index("bless")).duration_seconds == 10*RS_ROUND;
   #assert srd_source_spell(srd_source_index("mage-armor")).duration_seconds == 8*3600;
 }
 
 #test "a one-minute effect lasts ten rounds of turns in both profiles and an hour runs on the same clock" {
   for profile: 0..<2 {
     b: [1] RsBattle; to_field(b[..],profile);
-    #assert rs_effect_add(b[0].c[0..<1],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=-1,until=b[0].clock+60});
-    #assert rs_effect_add(b[0].c[1..<2],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=-1,until=b[0].clock+3600});
+    #assert rs_effect_add(b[0].c[0..<1],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=-1,until=b[0].clock+rs_secs(60)});
+    #assert rs_effect_add(b[0].c[1..<2],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=-1,until=b[0].clock+rs_secs(3600)});
     rounds := 0; turns := 0;
     for k: 0..<60 {
-      rs_tick(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
+      rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
       if rs_effect(b[0].c[0],EF_COND) { turns += 1; if b[0].turn.new_round { rounds += 1; } }
       rs_end_turn(b[..],0);
     }
     #assert rounds == 10 && turns == (ifx profile == 1 then 40 else 10);
-    rs_tick(b[..],3599.5 - b[0].clock); #assert rs_effect(b[0].c[1],EF_COND);
+    rs_tick_ticks(b[..],3599500000 - b[0].clock); #assert rs_effect(b[0].c[1],EF_COND);
     rs_tick(b[..],0.6); #assert !rs_effect(b[0].c[1],EF_COND);
   }
 }
@@ -51,24 +51,26 @@ to_turn :: (b: [] RsBattle, i: int) {
 #test "until the end of your next turn holds through that whole turn and ends before anyone else's" {
   for profile: 0..<2 { for whose: 0..<2 {
     b: [1] RsBattle; to_field(b[..],profile);
-    rs_tick(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
+    rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
     // Guiding Bolt-style: ends at the end of the caster's next turn; Vicious
     // Mockery-style: at the end of the target's own next turn.
-    until := ifx whose == 0 then rs_after_next_turn(b[..],0) else rs_own_turn_end(b[..],1);
-    #assert rs_effect_add(b[0].c[1..<2],RsEffect.{kind=EF_EXPOSED,by=0,spell=-1,save=-1,until=until});
+    until := ifx whose == 0 then rs_next_turn_tick(b[..],0) else rs_own_turn_end(b[..],1);
+    #assert rs_effect_add(b[0].c[1..<2],rs_turn_effect(RsEffect.{kind=EF_EXPOSED,by=0,spell=-1,save=-1},whose,until));
     rs_end_turn(b[..],0);
-    to_turn(b[..],1);
     #assert rs_effect(b[0].c[1],EF_EXPOSED);
+    // a frame however long past the boundary doesn't end it early: only the turn's end does
+    rs_tick_ticks(b[..],b[0].c[1].turn_at - b[0].clock + rs_beat(b[..])/2);
+    #assert rs_effect(b[0].c[1],EF_EXPOSED);
+    rs_start_turn(b[..],1); #assert rs_effect(b[0].c[1],EF_EXPOSED); rs_end_turn(b[..],1);
     if whose == 0 {
-      rs_tick(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
+      #assert rs_effect(b[0].c[1],EF_EXPOSED);
+      rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
       #assert rs_effect(b[0].c[1],EF_EXPOSED);
       rs_end_turn(b[..],0);
-      #assert rs_effect(b[0].c[1],EF_EXPOSED);
-      rs_tick(b[..],b[0].c[1].turn_at - b[0].clock);
+      // the caster's next turn has ended: gone at once, before any later turn
       #assert !rs_effect(b[0].c[1],EF_EXPOSED);
     } else {
-      // the target's current turn was its "next" one: gone before the actor acts again
-      rs_tick(b[..],b[0].c[0].turn_at - b[0].clock);
+      // the target's own next turn has ended: gone at once
       #assert !rs_effect(b[0].c[1],EF_EXPOSED);
     }
   } }
@@ -81,12 +83,12 @@ to_turn :: (b: [] RsBattle, i: int) {
     b[0].c[0].dodging = true; b[0].c[0].reacted = true;
     to_turn(b[..],1);
     #assert b[0].c[0].dodging && b[0].c[0].reacted;
-    rs_tick(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
+    rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
     #assert !b[0].c[0].dodging && !b[0].c[0].reacted;
     rs_end_turn(b[..],0);
     // a death save is a start-of-turn roll, once a round; nothing rolls at the end
     b[0].c[0].hp = 0; b[0].c[0].cond = RS_UNCONSCIOUS|RS_PRONE;
-    for k: 0..<(ifx profile == 1 then 4 else 1) { to_turn(b[..],1); rs_tick(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0); if b[0].turn.new_round { break; } rs_end_turn(b[..],0); }
+    for k: 0..<(ifx profile == 1 then 4 else 1) { to_turn(b[..],1); rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0); if b[0].turn.new_round { break; } rs_end_turn(b[..],0); }
     #assert b[0].turn.new_round && b[0].c[0].death_ok + b[0].c[0].death_fail == 1;
     rolled := b[0].dice[0].rolled; rs_end_turn(b[..],0);
     #assert b[0].dice[0].rolled == rolled;
@@ -96,11 +98,11 @@ to_turn :: (b: [] RsBattle, i: int) {
 #test "a repeated save is an end-of-turn roll, and simultaneous saves resolve the same in either order" {
   for profile: 0..<2 { for order: 0..<2 {
     b: [1] RsBattle; to_field(b[..],profile);
-    hold := RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=RS_WIS,dc=100,until=1000};
-    ends := RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=-1,spell=-1,save=RS_CON,dc=1,until=1000};
+    hold := RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=RS_WIS,dc=100,until=rs_secs(1000)};
+    ends := RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=-1,spell=-1,save=RS_CON,dc=1,until=rs_secs(1000)};
     #assert rs_effect_add(b[0].c[0..<1],ifx order == 0 then hold else ends);
     #assert rs_effect_add(b[0].c[0..<1],ifx order == 0 then ends else hold);
-    rs_tick(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
+    rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
     rolled := b[0].dice[0].rolled;
     #assert rs_has(b[0].c[0],RS_BLINDED) && rs_has(b[0].c[0],RS_DEAFENED);
     rs_end_turn(b[..],0);

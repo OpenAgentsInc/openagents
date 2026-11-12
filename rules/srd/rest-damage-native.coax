@@ -50,7 +50,7 @@ tool_main :: ()->int #export_c #effects(all) {
   rs_tick(b[..],3600); c[0].long_rest.interruptions=9223372036854775807;
   rs_damage(b[..],-1,0,1,RS_FIRE,false,-1); rs_tick(b[..],1);
   if c[0].long_rest.phase!=0 || c[0].rages!=1 || c[0].hp!=5 || b[0].rest_clock.ticks!=3601000000 { return 20; }
-  c[0]=rs_zombie("Concentrating defender",0); c[0].hp=1; c[0].score[RS_CON]=2; c[0].conc=SP_BLESS; c[0].conc_until=b[0].clock+60;
+  c[0]=rs_zombie("Concentrating defender",0); c[0].hp=1; c[0].score[RS_CON]=2; c[0].conc=SP_BLESS; c[0].conc_until=b[0].clock+rs_secs(60);
   b[0].dice[0].fixed=true; b[0].dice[0].rolled=0;
   rs_damage(b[..],-1,0,1,RS_FIRE,false,-1);
   if c[0].hp!=1 || c[0].dead || c[0].conc != -1 || b[0].dice[0].rolled!=2 { return 21; }

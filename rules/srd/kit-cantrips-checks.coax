@@ -32,7 +32,7 @@
     #assert rs_heal(h[..],10) == (ifx hit == 1 then 0 else 10);
     if hit == 1 {
       // the chill lasts past the caster's next turn start, and no longer than its end
-      for e: b[0].c[1].eff { if e.kind == EF_NOHEAL { #assert e.until > b[0].c[0].turn_at && e.until == rs_after_next_turn(b[..],0); } }
+      for e: b[0].c[1].eff { if e.kind == EF_NOHEAL { #assert e.until > b[0].c[0].turn_at && e.until == rs_next_turn_tick(b[..],0) && e.turn_end == 1; } }
     }
   }
   b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,1),SP_CHILL_TOUCH,3,10);   // 10 feet: out of reach
@@ -74,7 +74,7 @@
   // no flame yet: nothing to hurl
   #assert !rs_cast(b[..],0,SP_FLAME_HURL,0,0,0,1) && !b[0].turn.action;
   #assert rs_cast(b[..],0,SP_PRODUCE_FLAME,0,0,0,0) && b[0].turn.bonus && !b[0].turn.action;
-  #assert b[0].c[0].flame_until == b[0].clock + 600;   // 10 minutes
+  #assert b[0].c[0].flame_until == b[0].clock + rs_secs(600);   // 10 minutes
   #assert rs_cast(b[..],0,SP_FLAME_HURL,0,0,0,1) && b[0].turn.action && b[0].c[1].hp == 196;
   // a level 5 Druid hurls 2d8; 65 feet is out of range
   c: [1] RsBattle; kc_case(c[..],rs_druid("Druid",0,5),SP_PRODUCE_FLAME,10,10); c[0].c[1].ac = 1;

@@ -77,7 +77,7 @@ RsSpell :: struct {
   cast_time: int;
   range_ft: int;              // 0 Self, 5 Touch
   components: string;
-  duration: string; duration_s: f32; concentration: bool;
+  duration: string; duration_s: int; concentration: bool;   // duration_s: whole seconds
   area: int; area_ft: int;
   wide_ft: int;               // a Line's width (0: 5 feet)
   turn_save: bool;            // a creature that ends its turn in its lasting area makes its save again (Gust of Wind)

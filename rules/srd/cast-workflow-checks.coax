@@ -19,7 +19,7 @@ rt_druid :: (b: [] RsBattle) -> int {
   return a;
 }
 // The next own turn, one six-second round on.
-rt_turn :: (b: [] RsBattle, a: int) { rs_end_turn(b,a); b[0].clock += 6; rs_start_turn(b,a); }
+rt_turn :: (b: [] RsBattle, a: int) { rs_end_turn(b,a); b[0].clock += RS_ROUND_TICKS; rs_start_turn(b,a); }
 // The caster's slots and free-cast uses are as they were.
 rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   for k: 1..<10 { if b[0].c[a].slots[k] != was.slots[k] { return false; } }

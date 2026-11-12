@@ -276,7 +276,7 @@ OsTable :: struct {
   b: [1] RsBattle;           // the party, and the foes while there is a fight
   combat: bool;
   round: int;
-  start_at: f32;             // the battle clock when the fight began
+  start_at: int;             // the battle clock when the fight began
   seen: int;                 // the engine's events already in the log
   monsters_hidden: bool = true;   // the GM's monster rolls stay behind the screen
   log: [OS_LOG] OsLine; log_n: int; log_seq: int;
@@ -454,8 +454,8 @@ os_next_turn :: (t: [] OsTable) {
   }
   if next < 0 { os_take(t); return; }
   gap := b[0].c[next].turn_at - b[0].clock;
-  if gap > 0 { rs_tick(b, gap); }
-  round := cast(int) ((b[0].c[next].turn_at - t[0].start_at) / f32(RS_ROUND)) + 1;
+  if gap > 0 { rs_tick_ticks(b, gap); }
+  round := (b[0].c[next].turn_at - t[0].start_at) / RS_ROUND_TICKS + 1;
   if round > t[0].round {
     t[0].round = round;
     l: [OS_LINE] u8; n := os_put(l[..], 0, "Round "); n = os_put_int(l[..], n, round);

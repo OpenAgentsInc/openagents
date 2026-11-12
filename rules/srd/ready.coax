@@ -23,7 +23,7 @@ rs_ready :: (b: [] RsBattle, i: int, response: int, trigger: int, sp: int, slot:
   if !rs_action_free(b, i) || response < RD_ATTACK || response > RD_SPELL || trigger < -1 || trigger >= b[0].n || trigger == i { return false; }
   if response==RD_ATTACK && b[0].c[i].familiar_owner>0 { return false; }
   if rs_ready_at(b[0].c[i]) >= 0 || rs_effect_free(b[0].c[i]) == 0 { return false; }
-  e := RsEffect.{kind = EF_READY, cond = response, by = i, spell = -1, until = rs_before_next_turn(b, i), save = -1, dc = trigger};
+  e := RsEffect.{kind = EF_READY, cond = response, by = i, spell = -1, until = rs_next_turn_tick(b, i), save = -1, dc = trigger};
   if response == RD_SPELL {
     if !rs_executable_spell(sp) || rs_spell(sp).cast_time != RS_T_ACTION || !rs_can_cast(b, i, sp, slot) { return false; }
     level := rs_spell(sp).level;
@@ -267,7 +267,7 @@ rs_ready_answers :: (b: [] RsBattle, j: int, prefs: [] const int, out: [] int) -
   h: [1] RsBattle; ready_field(h[..]); h[0].c[1] = rs_warlock("Hexer", 0, 3, SP_ELDRITCH_BLAST); h[0].c[1].x = 2; h[0].c[1].y = 4; rs_fresh(h[..], 1);
   #assert rs_can_cast(h[..], 1, SP_HEX, 2) && !rs_ready(h[..], 1, RD_SPELL, 2, SP_HEX, 2) && !h[0].turn.action;   // a Bonus Action spell
   b: [1] RsBattle; ready_field(b[..]); rs_fresh(b[..], 1);
-  b[0].c[1].conc = SP_HEX; _ := rs_put_effect(b[..], 2, RsEffect.{kind = EF_COND, cond = RS_BLINDED, by = 1, spell = SP_HEX, until = 1e9, save = -1});
+  b[0].c[1].conc = SP_HEX; _ := rs_put_effect(b[..], 2, RsEffect.{kind = EF_COND, cond = RS_BLINDED, by = 1, spell = SP_HEX, until = RS_NO_END, save = -1});
   #assert rs_has(b[0].c[2], RS_BLINDED) && rs_ready(b[..], 1, RD_SPELL, 2, SP_RAY_OF_SICKNESS, 1);
   r := b[0].c[1].eff[rs_ready_at(b[0].c[1])];
   #assert !rs_has(b[0].c[2], RS_BLINDED) && b[0].c[1].conc == SP_RAY_OF_SICKNESS && b[0].c[1].conc_until == r.until;
@@ -278,7 +278,7 @@ rs_ready_answers :: (b: [] RsBattle, j: int, prefs: [] const int, out: [] int) -
 }
 #test "Ready reads only creatures in the battle, and an attack answers while concentrating" {
   b: [1] RsBattle; ready_field(b[..]); p := rs_add(b[..], rs_fighter("Past", 0, 5), 7, 4); b[0].n -= 1;
-  b[0].c[p].eff[0] = RsEffect.{kind = EF_READY, cond = RD_ATTACK, by = p, spell = -1, until = 1e9, save = -1, dc = -1};
+  b[0].c[p].eff[0] = RsEffect.{kind = EF_READY, cond = RD_ATTACK, by = p, spell = -1, until = RS_NO_END, save = -1, dc = -1};
   #assert !rs_ready_triggered(b[..], p, 2);
   rs_ready_start_turn(b[..], p); #assert rs_ready_at(b[0].c[p]) == 0;
   rs_fresh(b[..], 0); #assert rs_ready(b[..], 0, RD_ATTACK, -1, -1, 0) && !rs_ready_triggered(b[..], 0, p) && rs_ready_triggered(b[..], 0, 2);

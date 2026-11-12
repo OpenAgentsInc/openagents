@@ -27,7 +27,7 @@
 
 RS_BREATH_FT :: 60; RS_BREATH_DC :: 21; RS_BREATH_DICE :: 17; RS_BREATH_SIDES :: 6;
 RS_BURN_ROUNDS :: 3; RS_BURN_SIDES :: 4;
-RS_SWEEP_FT :: 15; RS_BUFFET_FT :: 10; RS_BUFFET_PUSH_FT :: 15; RS_ROAR_FT :: 60; RS_ROAR_S :: 6.0;
+RS_SWEEP_FT :: 15; RS_BUFFET_FT :: 10; RS_BUFFET_PUSH_FT :: 15; RS_ROAR_FT :: 60; RS_ROAR_S :: 6;
 
 // book:begin breath-cone
 // Whether point (dx, dy) from a cone's origin is inside a cone of `length` aimed along (fx, fy),
@@ -162,7 +162,7 @@ rs_dragon_roar_on :: (b: [] RsBattle, i: int, picks: [] const int) -> int #effec
   for j: picks {
     if !rs_area_target(b, i, j) { continue; }
     r := rs_saving_throw(b, j, RS_WIS, dc);
-    if !r.passed { _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_FRIGHTENED, by = i, spell = -1, until = b[0].clock + RS_ROAR_S, save = -1, dc = 0}); n += 1; }
+    if !r.passed { _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_FRIGHTENED, by = i, spell = -1, until = b[0].clock + rs_secs(RS_ROAR_S), save = -1, dc = 0}); n += 1; }
   }
   rs_say(b, RS_EV_CONDITION, i, i, n, " roars");
   return n;

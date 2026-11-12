@@ -39,7 +39,7 @@ ck_hero :: (level: int) -> RsCreature { return rs_warlock("Kel", 0, level, SP_EL
   for level: [2] int.[4, 5] {
     b: [1] RsBattle; cf_field(b[..], ck_hero(level), 10);
     b[0].dice[0].fixed = false; b[0].dice[0].state = 7;   // d20s of 1, then 16
-    b[0].c[0].conc = SP_HEX; b[0].c[0].conc_until = 1e9; b[0].c[0].score[RS_CON] = 1;   // -5: only Advantage's 16 holds DC 10
+    b[0].c[0].conc = SP_HEX; b[0].c[0].conc_until = RS_NO_END; b[0].c[0].score[RS_CON] = 1;   // -5: only Advantage's 16 holds DC 10
     rs_damage(b[..], 1, 0, 2, RS_FIRE, false, -1);
     #assert (b[0].c[0].conc == SP_HEX) == (level == 5);
   }

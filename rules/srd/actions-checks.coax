@@ -91,7 +91,7 @@ ac_struck :: (cover: int, ac: int) -> bool {
 #test "a grapple ends when the grappler is Incapacitated or the two are parted" {
   b: [1] RsBattle; grapple_field(b[..]);
   #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE);
-  #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, spell = -1, until = 1e9, save = -1});
+  #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, spell = -1, until = RS_NO_END, save = -1});
   rs_start_turn(b[..], 1);
   #assert b[0].c[0].grappling == -1 && !rs_has(b[0].c[1], RS_GRAPPLED) && rs_can_move(b[0].c[1]);
   p: [1] RsBattle; grapple_field(p[..]);

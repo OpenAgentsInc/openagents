@@ -100,11 +100,11 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 
 #test "the Quasit's Rend poisons until the start of its next turn, and refuses with no room for it" {
   b: [1] RsBattle; j := mc_field(b[..],MON_QUASIT,1);
-  until := rs_before_next_turn(b[..],0); seq := b[0].book[0].seq;
+  until := rs_next_turn_tick(b[..],0); seq := b[0].book[0].seq;
   #assert rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_QUASIT));
   #assert b[0].c[j].hp==95 && rs_has(b[0].c[j],RS_POISONED) && mc_has_text(b[..],seq,"  Target is Poisoned");
   found := false;
-  for e: b[0].c[j].eff { if e.kind==EF_COND && e.cond==RS_POISONED { #assert e.until==until && e.by==0; found=true; } }
+  for e: b[0].c[j].eff { if e.kind==EF_COND && e.cond==RS_POISONED { #assert e.until==until && e.turn_end == 0 && e.by==0; found=true; } }
   #assert found;
   // immune: no record and no line
   c: [1] RsBattle; k := mc_field(c[..],MON_QUASIT,1); c[0].c[k].immune_cond=RS_POISONED; seq=c[0].book[0].seq;
@@ -171,7 +171,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   e: [1] RsBattle; u := mc_field(e[..],MON_HILL_GIANT,8); until := rs_own_turn_end(e[..],u);
   #assert rs_stat_pick(e[..],0,u,a)==1 && rs_stat_multiattack(e[..],0,u,a) && e[0].c[u].hp==70 && rs_has(e[0].c[u],RS_POISONED);
   found := false;
-  for f: e[0].c[u].eff { if f.kind==EF_COND && f.cond==RS_POISONED { #assert f.until==until; found=true; } }
+  for f: e[0].c[u].eff { if f.kind==EF_COND && f.cond==RS_POISONED { #assert f.until==until && f.turn_end==u+1; found=true; } }
   #assert found && !rs_has(e[0].c[u],RS_PRONE);
   // two lobs need two free records
   g: [1] RsBattle; v := mc_field(g[..],MON_HILL_GIANT,8);

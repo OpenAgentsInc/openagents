@@ -24,7 +24,7 @@ rs_hide :: (b: [] RsBattle, i: int, concealed: bool, bonus: bool) -> RsAbilityRe
   if ifx bonus then !b[0].c[i].cunning || b[0].turn.bonus else b[0].turn.action { return r; }
   if bonus { b[0].turn.bonus = true; } else { b[0].turn.action = true; }
   r = rs_ability_check(b, i, RsAbilityRequest.{ability = RS_DEX, skill = SK_STEALTH, dc = RS_HIDE_DC});
-  if r.passed { _ := rs_put_effect(b, i, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = i, spell = RS_HIDE_SPELL, until = 1e9, save = -1, dc = r.total}); }
+  if r.passed { _ := rs_put_effect(b, i, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = i, spell = RS_HIDE_SPELL, until = RS_NO_END, save = -1, dc = r.total}); }
   return r;
 }
 // i stops being hidden (it made an attack roll, cast a spell with a Verbal component or was found).
@@ -75,7 +75,7 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
     r := rs_hide(b[..], 0, true, true);
     #assert r.passed == (dex == 16) && rs_has(b[0].c[0], RS_INVISIBLE) == (dex == 16);
     if dex == 16 {
-      k := rs_hidden_at(b[0].c[0]); e := b[0].c[0].eff[k]; #assert k >= 0 && e.dc == 15 && e.by == 0 && e.cond == RS_INVISIBLE && e.save == -1 && e.kind == EF_COND;
+      k := rs_hidden_at(b[0].c[0]); e := b[0].c[0].eff[k]; #assert k >= 0 && e.dc == 15 && e.by == 0 && e.cond == RS_INVISIBLE && e.save == -1 && e.kind == EF_COND && e.until == RS_NO_END;
       #assert !rs_find_hidden(b[..], 0, 0);
       b[0].c[1].score[RS_WIS] = 18; #assert !rs_find_hidden(b[..], 1, 0) && rs_has(b[0].c[0], RS_INVISIBLE);   // 10 + 4 = 14
       b[0].c[1].checks.skills = 1 << SK_PERCEPTION; #assert rs_find_hidden(b[..], 1, 0) && !rs_has(b[0].c[0], RS_INVISIBLE);   // 16

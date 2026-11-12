@@ -34,7 +34,7 @@ act_field :: (b: [] RsBattle) {
 }
 
 act_hide :: (b: [] RsBattle, k: int, dc: int) {
-  _ := rs_put_effect(b, k, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = k, spell = RS_HIDE_SPELL, until = 1e9, save = -1, dc = dc});
+  _ := rs_put_effect(b, k, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = k, spell = RS_HIDE_SPELL, until = RS_NO_END, save = -1, dc = dc});
 }
 
 // The battle's latest event.
@@ -54,6 +54,6 @@ grapple_past :: (b: [] RsBattle) -> int {
 }
 // Holder i grapples j directly: the record and the hand.
 grapple_hold :: (b: [] RsBattle, i: int, j: int, dc: int) {
-  _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = i, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = dc});
+  _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = i, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = dc});
   b[0].c[i].grappling = j;
 }

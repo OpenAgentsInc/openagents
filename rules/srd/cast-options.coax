@@ -75,7 +75,7 @@ RsCastOptions :: struct {
 }
 #test "Hex source duration follows every slot band including a base free cast" {
   for slot: 0..<10 {
-    seconds := [10] f32.[3600,3600,14400,28800,28800,86400,86400,86400,86400,86400];
+    seconds := [10] int.[3600,3600,14400,28800,28800,86400,86400,86400,86400,86400];
     h := rs_spell_variant(rs_spell(SP_HEX),SP_HEX,slot,RsCastOptions.{});
     #assert h.duration_s == seconds[slot];
   }

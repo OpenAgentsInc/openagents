@@ -6,7 +6,7 @@
 
 IN_HESITANT :: 0; IN_WILLING :: 1; IN_UNWILLING :: 2;
 AT_INDIFFERENT :: 0; AT_FRIENDLY :: 1; AT_HOSTILE :: 2;
-RS_INFLUENCE_WAIT :: 86400.0f32;   // 24 hours before urging it the same way again
+RS_INFLUENCE_WAIT :: 86400 * RS_TICKS;   // 24 hours before urging it the same way again
 
 // Search: a Wisdom check with Insight, Medicine, Perception or Survival against the world's `dc`.
 // With Perception it also finds every hidden enemy whose Hide total the check meets; the check
@@ -140,7 +140,7 @@ rs_utilize :: (b: [] RsBattle, i: int, needs_action: bool) -> bool #effects(all)
   for mode: 0..<4 {
     b: [1] RsBattle; act_field(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 3;
     attitude := ifx mode == 1 then AT_FRIENDLY else ifx mode == 2 then AT_HOSTILE else AT_INDIFFERENT;
-    if mode == 3 { _ := rs_put_effect(b[..], 1, RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = 0, spell = -1, until = 1e9, save = -1}); }
+    if mode == 3 { _ := rs_put_effect(b[..], 1, RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = 0, spell = -1, until = RS_NO_END, save = -1}); }
     r := rs_influence(b[..], 0, 1, SK_INTIMIDATION, IN_HESITANT, attitude, false);
     #assert r.accepted && r.edge == (ifx mode == 1 || mode == 3 then 1 else ifx mode == 2 then -1 else 0);
   }

@@ -10,7 +10,7 @@ rs_revivify_ready :: (b:[]RsBattle,i:int,j:int)->bool #effects(all) {
   if j<0 || j>=b[0].n { return false; }
   c:=b[0].c[j];
   return c.dead && c.hp==0 && c.hp_max>0 && c.combat_death_at>=0 &&
-    c.combat_death_at<=b[0].clock && b[0].clock-c.combat_death_at<=60 &&
+    c.combat_death_at<=b[0].clock && b[0].clock-c.combat_death_at<=rs_secs(60) &&
     c.x>=0 && c.y>=0 && rs_feet_to(b,i,j)/RS_SQUARE<=1 && rs_cover_targetable(b,i,j);
 }
 
@@ -62,5 +62,12 @@ rs_revivify_apply :: (b:[]RsBattle,i:int,j:int) #effects(all) {
     rs_cover_clear(b[..]);
     if mode==8 { _:=rs_cover_put(b[..],i,j,RS_COVER_TOTAL); }
     #assert rs_revivify_ready(b[..],i,j)==(mode==0);
+  }
+  // within the last minute, to the tick (p. 159): counted from the death, not from the battle's start
+  c[j].dead=true; c[j].hp=0; c[j].hp_max=1; rs_place(b[..],j,0,0); rs_cover_clear(b[..]);
+  c[j].combat_death_at=rs_secs(10);
+  for late:0..<3 {
+    b[0].clock=rs_secs(70)-1+late;
+    #assert rs_revivify_ready(b[..],i,j)==(late<2);
   }
 }

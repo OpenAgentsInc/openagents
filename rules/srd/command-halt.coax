@@ -53,9 +53,41 @@ rs_capable :: (c: RsCreature) -> bool #effects(all) {
 rs_effect_uses_clock :: (kind: int) -> bool #effects(all) {
   return kind != EF_NONE && kind != EF_HALT && kind != EF_HALT_PENDING && kind != EF_HELP_CHECK && kind != EF_HELP_ATTACK && kind != EF_REST_SLEEP && kind != EF_KNOCKOUT && kind != EF_READY;
 }
+// Whether the clock at tick `now` ends an effect (#13287). One the clock alone ends (turn_of < 0) goes
+// at its tick. One that lasts until the end of its owner's turn at tick `until` is dropped by that
+// turn's end (rs_effect_turn_ended); the clock drops it only when that turn can't come: the owner is
+// gone (owner_turn < 0), its turn at that tick is already past (owner_turn > until), or it takes no
+// turns (a whole beat overdue).
+rs_effect_clock_ended :: (kind: int, turn_of: int, until: int, now: int, owner_turn: int, beat: int) -> bool #effects(all) {
+  if !rs_effect_uses_clock(kind) || until > now { return false; }
+  if turn_of < 0 { return true; }
+  return owner_turn < 0 || owner_turn > until || until + beat <= now;
+}
+// Whether creature i's turn ending at tick `at` ends an effect.
+rs_effect_turn_ended :: (kind: int, turn_of: int, until: int, i: int, at: int) -> bool #effects(all) {
+  return kind != EF_NONE && turn_of >= 0 && turn_of == i && until <= at;
+}
+#test "an effect the clock ends goes at its tick; one a turn's end ends waits for that turn, or for proof it won't come" {
+  for kind: [3] int.[EF_NONE, EF_HEX, EF_READY] { for until: 9..<12 { for now: 9..<12 {
+    #assert rs_effect_clock_ended(kind,-1,until,now,0,6) == (kind == EF_HEX && until <= now);
+    #assert !rs_effect_turn_ended(kind,-1,until,-1,now) && !rs_effect_turn_ended(kind,-1,until,0,now);
+  } } }
+  // owner 2's turn at tick 10 ends it
+  for now: 8..<18 { for owner_turn: [6] int.[-1, 0, 9, 10, 11, 16] {
+    late := 10 + 6 <= now;
+    want := now >= 10 && (owner_turn < 0 || owner_turn > 10 || late);
+    #assert rs_effect_clock_ended(EF_COND,2,10,now,owner_turn,6) == want;
+    #assert !rs_effect_clock_ended(EF_READY,2,10,now,owner_turn,6);
+  } }
+  for at: 8..<13 { for i: 1..<4 {
+    #assert rs_effect_turn_ended(EF_COND,2,10,i,at) == (i == 2 && at >= 10);
+    #assert !rs_effect_turn_ended(EF_NONE,2,10,i,at);
+  } }
+  #assert rs_effect_turn_ended(EF_COND,0,10,0,10) && !rs_effect_turn_ended(EF_COND,0,10,0,9);
+}
 // until is only the world's estimate for display. The turn-end event retires
 // the active record even when the clock has not reached that estimate.
-rs_halt_begin :: (c: [] RsCreature, until: f32) #effects(all) {
+rs_halt_begin :: (c: [] RsCreature, until: int) #effects(all) {
   for k: 0..<RS_EFFECTS {
     if c[0].eff[k].kind == EF_HALT_PENDING { c[0].eff[k].kind = EF_HALT; c[0].eff[k].until = until; }
   }

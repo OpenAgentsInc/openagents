@@ -31,7 +31,7 @@ fxe_area :: (g: FxeGrid, e: RsEvent, lift: f32) -> FxV { mid := f32(e.amount - 1
 fxe_reach :: (g: FxeGrid, e: RsEvent) -> f32 { return f32(e.amount) * g.sq / 2; }
 // Starts a cause on the battle's clock.
 fxe_cause :: (p: [] FxPuffs, b: [] RsBattle, recipe: int, seed: f32, t0: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
-  slot := fxp_start(p, FxCause.{recipe = recipe, seed = seed, t0 = t0, from = from, to = to, col = col, big = big, reach = reach}, b[0].clock);
+  slot := fxp_start(p, FxCause.{recipe = recipe, seed = seed, t0 = t0, from = from, to = to, col = col, big = big, reach = reach}, rs_clock_s(b));
 }
 // True for a spell that makes an attack roll: its effect flies with each attack, not with the cast.
 fxe_attacks :: (sp: int) -> bool {

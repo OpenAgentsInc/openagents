@@ -48,7 +48,7 @@ RS_MORE_END :: 90;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
-            duration: string, duration_s: f32, conc: bool, area: int, area_ft: int) -> RsSpell {
+            duration: string, duration_s: int, conc: bool, area: int, area_ft: int) -> RsSpell {
   return RsSpell.{id = id, name = name, level = level, school = school, classes = classes, cast_time = time, range_ft = range_ft,
                   components = "", duration = duration, duration_s = duration_s, concentration = conc, area = area, area_ft = area_ft,
                   part_of = -1, page = 0, text = ""};

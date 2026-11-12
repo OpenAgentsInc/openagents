@@ -30,7 +30,14 @@
 #load "cast-components.coax";
 #load "check-training.coax";
 
-RS_ROUND :: 6.0;        // seconds in a round
+RS_ROUND :: 6;          // seconds in a round
+// The battle's clock counts whole ticks (GitHub #13287): a microsecond each, the rest clock's unit
+// (rest-clock.coax). Every deadline and duration in the rules is a count of ticks; no time is a float,
+// so a battle a month old measures a round exactly as a new one does (world-timing-checks.coax).
+RS_TICKS :: 1000000;    // ticks in a second
+RS_ROUND_TICKS :: RS_ROUND * RS_TICKS;
+rs_secs :: (seconds: int) -> int { return seconds * RS_TICKS; }
+RS_NO_END :: 1000000000000000;   // a deadline the clock never reaches (over 31 years of ticks): what ends it is an event
 RS_FOOT :: 0.3048;      // metres in a foot
 RS_SQUARE :: 5;         // feet in a grid square
 
@@ -200,7 +207,11 @@ W_KNIGHT_CROSSBOW :: 15; W_PRIEST_MACE :: 16; W_RADIANT_FLAME :: 17; W_ARCANE_BU
 // mastery properties (p. 90-91)
 M_NONE :: 0; M_CLEAVE :: 1; M_GRAZE :: 2; M_SAP :: 3; M_VEX :: 4; M_SLOW :: 5; M_NICK :: 6;
 RS_EFFECTS :: 6;
-RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save: int; dc: int; }
+// until: the tick it ends at. turn_end: 0 for an effect the clock alone ends; else 1 + the creature
+// whose turn's end at tick `until` ends it ("until the end of your next turn": it holds through that
+// turn's end and is gone before any later turn, however long a world's frame is; command-halt.coax
+// rs_effect_turn_ended). 0 is "none" so an empty record is all zeroes.
+RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: int; save: int; dc: int; turn_end: int; }
 
 RS_NAME :: 24;
 // What Wild Shape replaces with a Beast's stat block (SRD 5.2.1 p. 42) and gives back after.
@@ -241,20 +252,20 @@ RsCreature :: struct {
   cond: int;                // conditions, bits
   // effects that last
   conc: int;                // the spell held by concentration (-1 none)
-  conc_until: f32;          // when it ends, on the world's clock
+  conc_until: int;          // when it ends, on the world's clock
   rite: int = -1;           // the spell it is casting as a Ritual (ritual.coax), -1 none
-  rite_until: f32; rite_owed: bool;   // when its extra minutes end; this turn's Magic action still owed
-  flame_until: f32;         // Produce Flame in hand until (0: none)
-  outlined_until: f32;      // Faerie Fire: attacks against it have Advantage, it can't be Invisible
+  rite_until: int; rite_owed: bool;   // when its extra minutes end; this turn's Magic action still owed
+  flame_until: int;         // Produce Flame in hand until (0: none)
+  outlined_until: int;      // Faerie Fire: attacks against it have Advantage, it can't be Invisible
   outlined_by: int;         // whose spell (a creature index)
-  wisp_until: f32;          // Starry Wisp's Dim Light
+  wisp_until: int;          // Starry Wisp's Dim Light
   restrained_by: int;       // the zone that restrains it (-1 none)
   // Warlock features: the cantrips Agonizing Blast and Repelling Blast were chosen for (-1 none),
   // the Fiend's Dark One's Blessing, and Hex ready to move to a new creature after its target
   // dropped (on the caster's turn after `hex_free_after`)
   agonizing: int; repelling: int;
   dark_blessing: bool;
-  hex_free: bool; hex_free_after: f32;
+  hex_free: bool; hex_free_after: int;
   klass: int;
   humanoid: bool;           // its creature type is Humanoid (Hold Person)
   resist: int; vulnerable: int; immune: int;   // damage types, bits of 1 << RS_* (Resistance, Vulnerability, Immunity)
@@ -272,13 +283,13 @@ RsCreature :: struct {
   dodging: bool;            // Dodge until actual next turn start, or lost to incapacity/Speed zero
   // Barbarian: Rage, Reckless Attack, Danger Sense, the Berserker's Frenzy
   rages: int; rages_max: int; rage_bonus: int; raging: bool; rage_kept: bool; struck_round: bool;
-  reckless_until: f32;
+  reckless_until: int;
   danger_sense: bool; frenzy: bool;
   // Monk: the Martial Arts die, Focus Points, Deflect Attacks, the Open Hand's techniques
   martial_die: int; focus: int; focus_max: int;
   deflect: bool; open_hand: bool;
   // the other classes' limited uses (RS_USE_*), and the spell that RS_USE_FREE casts without a slot
-  uses: [RS_USES] int; uses_max: [RS_USES] int; uses_back: [RS_USES] f32;
+  uses: [RS_USES] int; uses_max: [RS_USES] int; uses_back: [RS_USES] int;
   free_spell: int;
   undead: bool;             // its creature type is Undead (Turn Undead, Divine Smite)
   fiend: bool;              // its creature type is Fiend (Divine Smite)
@@ -322,31 +333,31 @@ RsCreature :: struct {
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
   guard_slot: int; guard_turn: int = -1;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one (-1 none yet)
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
-  metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: f32;
+  metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: int;
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
-  sacred_until: f32; colossus: bool;
+  sacred_until: int; colossus: bool;
   // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
   sneak_dice: int; cunning: bool; steady_aim: bool;
   // Sorcerer: Innate Sorcery until, the Metamagic it knows; Wizard and Sorcerer: Shield; the
   // Evoker's Potent Cantrip; the Circle of the Land's Land's Aid
-  innate_until: f32; quickened: bool; seeking: bool; shield_spell: bool; shield_active: bool;
+  innate_until: int; quickened: bool; seeking: bool; shield_spell: bool; shield_active: bool;
   potent: bool; lands_aid: bool;
-  slowed_until: f32;        // the Slow mastery: 10 feet less Speed until then
+  slowed_until: int;        // the Slow mastery: 10 feet less Speed until then
   // the declared action timing profile: when the next spent slot of each level, Rage or
   // Focus Point comes back, and when its next 6-second round begins
-  slot_back: [10] f32; rage_back: f32; focus_back: f32;
-  round_at: f32;
+  slot_back: [10] int; rage_back: int; focus_back: int;
+  round_at: int;
   // dropping to 0
   death_ok: int; death_fail: int; stable: bool; dead: bool;
-  combat_death_at:f32=-1;
-  stable_due: f32; // active only while living, Stable and at zero HP; logical seconds
+  combat_death_at:int=-1;
+  stable_due: int; // active only while living, Stable and at zero HP; logical seconds
   // where and when: grid squares, and its next turn on the clock
   x: int; y: int;
   initiative: int;
-  turn_at: f32;
+  turn_at: int;
   // Finger of Death (p. 131): a Humanoid it killed rises as a Zombie at the start of its caster's
   // next turn (rise_by the caster, -1 none; rise_at that turn's start). The world raises it.
-  rise_by: int = -1; rise_at: f32;
+  rise_by: int = -1; rise_at: int;
   fortitude: bool;          // Undead Fortitude (the Zombie's): a Con save to drop to 1 Hit Point instead of 0
   npc: int;                 // the stat block it was built from (npcs.coax RS_NPC_*; 0: a class or another monster)
   parry: bool;              // Parry (the Knight's and the Warrior Veteran's Reaction): +2 AC against a melee hit
@@ -356,7 +367,7 @@ RsCreature :: struct {
   wild_known: int;           // zero uses the recommended preset (wild-known.coax)
   wild_swap: bool;           // one replacement after a completed Long Rest
   wild_form: int;           // Wild Shape: the Beast form it is in (monsters.coax MON_*, 0 none), wild-shape.coax
-  wild_until: f32;          // when the form's hours (half its Druid level) are up
+  wild_until: int;          // when the form's hours (half its Druid level) are up
   wild_keep: RsWildKeep;    // its own numbers the form replaced, back when it leaves the form
   shape_form: int;          // Shapechange: the stat block it has become (monsters.coax MON_*, 0 none), shapechange.coax
   fly: int;                 // its Fly Speed in feet (0 none)
@@ -942,7 +953,7 @@ RsEvent :: struct {
   amount: int; damage: int;   // the amount and its damage type (an attack's: 1 a critical hit; a spell's save: 1 a success)
   x: int; y: int;             // a square (an area's corner, a push's end)
   text: [RS_EV_TEXT] u8; text_n: int;
-  at: f32;
+  at: int;                    // the battle's clock when it happened, in ticks
 }
 RsLog :: struct { ev: [RS_EVENTS] RsEvent; head: int; count: int; seq: int; }
 rs_put :: (buf: [] u8, at: int, t: string) -> int {

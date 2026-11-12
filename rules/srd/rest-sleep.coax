@@ -27,9 +27,9 @@
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3); c[0].focus_held=true;
   c[0].conc=SP_BLESS; c[0].conc_until=900;
-  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=f32(k+1)}; }
+  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=k+1}; }
   #assert !rs_sleep_begin(b[..],0) && c[0].conc==SP_BLESS && c[0].focus_held && c[0].cond==0;
-  for k:0..<RS_EFFECTS { #assert c[0].eff[k].kind==EF_HEX && c[0].eff[k].by==k && c[0].eff[k].until==f32(k+1); }
+  for k:0..<RS_EFFECTS { #assert c[0].eff[k].kind==EF_HEX && c[0].eff[k].by==k && c[0].eff[k].until==k+1; }
   c[0].eff[0].kind=EF_NONE;
   c[0].immune_cond=RS_UNCONSCIOUS;
   #assert !rs_sleep_begin(b[..],0) && c[0].conc==SP_BLESS;

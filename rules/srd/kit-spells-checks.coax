@@ -53,7 +53,7 @@
     b[0].c[1].ac = kc_ac(b[..],hit == 1);
     #assert rs_cast(b[..],0,SP_RAY_OF_SICKNESS,slot,0,0,1);
     #assert 200 - b[0].c[1].hp == (ifx hit == 1 then 4 * (2 + slot - 1) else 0) && rs_has(b[0].c[1],RS_POISONED) == (hit == 1);
-    for e: b[0].c[1].eff { if e.kind == EF_COND && e.cond == RS_POISONED { #assert e.until == rs_after_next_turn(b[..],0); } }
+    for e: b[0].c[1].eff { if e.kind == EF_COND && e.cond == RS_POISONED { #assert e.until == rs_next_turn_tick(b[..],0) && e.turn_end == 1; } }
   } }
 }
 
@@ -71,7 +71,7 @@
   keys := [2] int.[RS_EXEC_SOURCE[SP_HEX],RS_EXEC_SOURCE[SP_ELDRITCH_BLAST]]; #assert rs_set_spells(b[0].c[0..<1],keys[..]);
   #assert rs_cast(b[..],0,SP_HEX,1,0,0,1) && b[0].turn.bonus && !b[0].turn.action && b[0].c[0].conc == SP_HEX;
   hexed := false; for e: b[0].c[1].eff { if e.kind == EF_HEX && e.by == 0 && e.cond == RS_STR { hexed = true; } }
-  #assert hexed && b[0].c[0].conc_until == b[0].clock + 3600;
+  #assert hexed && b[0].c[0].conc_until == b[0].clock + rs_secs(3600);
   b[0].c[1].ac = 1; seq := b[0].book[0].seq;
   #assert rs_cast(b[..],0,SP_ELDRITCH_BLAST,0,0,0,1);
   #assert 200 - b[0].c[1].hp == 5 + 3 && ks_dealt(b[..],seq,SP_HEX,RS_NECROTIC) == 3;
@@ -108,7 +108,7 @@
 #test "Hunter's Mark p.141: a Bonus Action mark, 1d6 Force more whenever the caster hits it with an attack roll" {
   b: [1] RsBattle; kc_case(b[..],rs_ranger("Ranger",0,1),SP_HUNTERS_MARK,2,10);
   #assert rs_cast(b[..],0,SP_HUNTERS_MARK,1,0,0,1) && b[0].turn.bonus && rs_effect(b[0].c[1],EF_MARK) && b[0].c[0].conc == SP_HUNTERS_MARK;
-  #assert b[0].c[0].conc_until == b[0].clock + 3600;
+  #assert b[0].c[0].conc_until == b[0].clock + rs_secs(3600);
   b[0].c[1].ac = 1; seq := b[0].book[0].seq;
   #assert rs_attack(b[..],0,1,false,-1) && ks_dealt(b[..],seq,SP_HUNTERS_MARK,RS_FORCE) == 3;
 }

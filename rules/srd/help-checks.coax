@@ -169,7 +169,7 @@
   b[0].turn.action=false; #assert rs_help_attack(b[..],0,2,true);
   b[0].who=3; b[0].turn.action=false;
   #assert rs_help_ability(b[..],3,1,RsHelpRequest.{skill=SK_PERCEPTION,possible=true});
-  #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_HEX,by=0,spell=SP_HEX,until=1000,cond=RS_CHA,save=-1});
+  #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_HEX,by=0,spell=SP_HEX,until=rs_secs(1000),cond=RS_CHA,save=-1});
   rs_tick(b[..],100);
   #assert c[1].eff[0].kind==EF_HELP_CHECK && c[1].eff[1].kind==EF_HELP_CHECK && c[2].eff[0].kind==EF_HELP_ATTACK;
   rs_start_turn(b[..],1);

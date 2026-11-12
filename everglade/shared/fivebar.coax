@@ -434,10 +434,10 @@ fb_left :: (b: [] RsBattle, i: int, a: FbAb) -> int {
   return -1;
 }
 // When the slot an entry spends next comes back on the action clock (0: nothing to wait for).
-fb_back :: (b: [] RsBattle, i: int, a: FbAb) -> f32 {
+fb_back :: (b: [] RsBattle, i: int, a: FbAb) -> int {
   if a.kind != FB_SPELL || a.lvl == 0 { return 0; }
   if fb_free_slot(b, i, a.lvl) > 0 { return 0; }
-  best := 0.0f32;
+  best := 0;
   for l: a.lvl..<10 {
     t := b[0].c[i].slot_back[l];
     if b[0].c[i].slots_max[l] > 0 && t > 0 && (best == 0 || t < best) { best = t; }
@@ -671,7 +671,7 @@ fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
     if sl>0 { b[0].c[i].slots[sl] -= 1; b[0].turn.slot_spent = true; }
     else if !(sp==SP_FALSE_LIFE && b[0].c[i].vigor) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
   }
-  if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + s.duration_s; }
+  if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + rs_secs(s.duration_s); }
   l: [1] RsLine;
   rs_add_name(l[..], b, i); rs_add_text(l[..], " casts "); rs_add_text(l[..], s.name);
   if s.level > 0 { rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[sl]); rs_add_text(l[..], "-level slot)"); }
@@ -758,18 +758,18 @@ fb_seat_can :: (b: [] RsBattle, s: [] FbSeat, a: FbAb) -> bool {
   return !s[0].turn.action;
 }
 // When the seat's next turn opens.
-fb_seat_next :: (b: [] RsBattle, s: [] FbSeat) -> f32 { return ifx s[0].me >= 0 then b[0].c[s[0].me].turn_at else 0.0f32; }
+fb_seat_next :: (b: [] RsBattle, s: [] FbSeat) -> int { return ifx s[0].me >= 0 then b[0].c[s[0].me].turn_at else 0; }
 
 // ---- lasting areas: each round, the part runs on whoever is in the area
 
 FB_ZONES :: 8;
 FB_STORM_BOLTS :: 6;   // Storm of Vengeance's bolts a round (its fourth on)
-FbZone :: struct { on: bool; by: int; spell: int; part: int; slot: int; cx: int; cy: int; r_ft: int; next: f32; }
+FbZone :: struct { on: bool; by: int; spell: int; part: int; slot: int; cx: int; cy: int; r_ft: int; next: int; }   // next: the battle's tick its area next acts
 fb_zone_add :: (z: [] FbZone, b: [] RsBattle, by: int, a: FbAb, slot: int, tx: int, ty: int) {
   if a.again < 0 { return; }
   k := 0;   // the first free, else the first
   for q: 0..<FB_ZONES { if !z[q].on { k = q; break; } }
-  z[k] = FbZone.{on = true, by = by, spell = a.sp, part = a.again, slot = slot, cx = tx, cy = ty, r_ft = rs_max(rs_spell(a.sp).area_ft, 5), next = b[0].clock + f32(RS_ROUND)};
+  z[k] = FbZone.{on = true, by = by, spell = a.sp, part = a.again, slot = slot, cx = tx, cy = ty, r_ft = rs_max(rs_spell(a.sp).area_ft, 5), next = b[0].clock + RS_ROUND_TICKS};
 }
 // A round on: an area whose caster no longer concentrates on its spell is gone; the rest run their
 // part on each creature but the caster's side in them (Storm of Vengeance's bolts on six different
@@ -781,7 +781,7 @@ fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
     by := z[q].by;
     if by < 0 || by >= b[0].n || b[0].c[by].conc != z[q].spell { z[q].on = false; continue; }
     if b[0].clock < z[q].next { continue; }
-    z[q].next += f32(RS_ROUND);
+    z[q].next += RS_ROUND_TICKS;
     scope: [1] RsDamageScope;
     // Storm of Vengeance's bolts: six, each on a different creature under the cloud (the nearest its
     // middle first). Every other part, Call Lightning's bolt among them, on each creature in the area

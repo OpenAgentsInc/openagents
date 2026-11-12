@@ -1942,7 +1942,7 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
     me := x[0].b[0].c[0];
     if (a.kind==FB_RITUAL && me.rite==a.sp) || (a.kind==XC_FAMILIAR && me.rite==SP_FIND_FAMILIAR) {
       seconds:=ifx a.kind!=XC_FAMILIAR then RS_RITE_SECONDS else ifx me.familiar_slot>0 then RS_FIND_FAMILIAR_SECONDS else RS_FIND_FAMILIAR_SECONDS+RS_RITE_SECONDS;
-      done:=1-(me.rite_until-x[0].b[0].clock)/f32(seconds); if done>1 { done=1; }
+      done:=1-rs_ticks_s(me.rite_until-x[0].b[0].clock)/f32(seconds); if done>1 { done=1; }
       n = cc.eg_outline(out, n, r, 2 * k, 1, 0.8, 0.35);
       n = xc_line(out, n, r.x0, r.y1 - 2 * k, r.x0 + (r.x1 - r.x0) * done, r.y1 - 2 * k, 3 * k, 1, 0.8, 0.35);
     }
@@ -2333,7 +2333,7 @@ xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[
   cr[0].clock += 1.1; slots := b[0].c[0].slots;
   #assert xc_press(s[..], rt) && b[0].c[0].rite == SP_SPEAK_WITH_ANIMALS;
   b[0].clock = b[0].c[0].turn_at;
-  for t: 0..<400 { b[0].clock += 1.5; fb_seat_step(b, x[0].seat[..]); xc_rite_step(s[..]); #assert (b[0].c[0].rite == SP_SPEAK_WITH_ANIMALS) == (t < 399); }
+  for t: 0..<400 { b[0].clock += 1500000; fb_seat_step(b, x[0].seat[..]); xc_rite_step(s[..]); #assert (b[0].c[0].rite == SP_SPEAK_WITH_ANIMALS) == (t < 399); }
   #assert b[0].c[0].slots[1] == slots[1];
 
 }
@@ -2946,14 +2946,14 @@ xc_test_killed :: (s: [] EgZone) {
   rolls := b[0].dice[0].rolled;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
   #assert b[0].dice[0].rolled==rolls && h[0].hits==1;
-  b[0].clock=1.5; b[0].c[0].temp=0; b[0].c[0].resist=1<<RS_PIERCING;
+  b[0].clock=1500000; b[0].c[0].temp=0; b[0].c[0].resist=1<<RS_PIERCING;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
   #assert b[0].c[0].hp==11 && h[0].hp==11 && h[0].hits==2;   // 3 Piercing + 6 Poison
-  b[0].clock=3; b[0].c[0].ac=30; rolls=b[0].dice[0].rolled;
+  b[0].clock=3000000; b[0].c[0].ac=30; rolls=b[0].dice[0].rolled;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
   #assert b[0].c[0].hp==11 && b[0].dice[0].rolled==rolls+1 && h[0].hits==2;
   #assert !rs_stat_attack_valid(xc_hostile_attack(-1)) && !rs_stat_attack_valid(xc_hostile_attack(5));
-  b[0].clock=4.5; b[0].c[0].ac=10; b[0].c[0].immune=1<<RS_POISON;
+  b[0].clock=4500000; b[0].c[0].ac=10; b[0].c[0].immune=1<<RS_POISON;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
   #assert b[0].c[0].hp==8 && h[0].hits==3;   // 3 Piercing, no Poison
 }
@@ -3036,7 +3036,7 @@ xc_play_kit :: (c: int) {
   b[0].c[1].turn_at=0; b[0].c[1].round_at=0; b[0].c[1].score[RS_WIS]=30;
   #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_PARALYZED,by=0,spell=-1,until=60,save=RS_WIS,dc=13});
   xc_hostile_contacts(s[..]); #assert rs_has(b[0].c[1],RS_PARALYZED);
-  b[0].clock=1.5; xc_hostile_contacts(s[..]); xc_sync_permissions(s[..]);
+  b[0].clock=1500000; xc_hostile_contacts(s[..]); xc_sync_permissions(s[..]);
   #assert !rs_has(b[0].c[1],RS_PARALYZED) && !s[0].creator[0].hostiles[0].enemies[0].held;
 }
 
@@ -3579,7 +3579,7 @@ xc_side_tap :: (s:[] EgZone,id:int,req:int)->bool {
   cr[0].clock=4; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
   slots:=b[0].c[0].slots[1];
   #assert xc_press(s[..],spell) && b[0].c[0].rite==SP_FIND_FAMILIAR;
-  #assert b[0].c[0].rite_until-b[0].clock==4200 && x[0].familiar_incense==1;
+  #assert b[0].c[0].rite_until-b[0].clock==rs_secs(4200) && x[0].familiar_incense==1;
   b[0].clock=b[0].c[0].turn_at;
   fb_seat_step(b,x[0].seat[..]); xc_rite_step(s[..]);
   #assert b[0].c[0].rite==SP_FIND_FAMILIAR && !b[0].c[0].rite_owed && x[0].seat[0].turn.action;
@@ -3691,7 +3691,7 @@ xc_side_tap :: (s:[] EgZone,id:int,req:int)->bool {
   #assert xc_choose(s[..],k,r.x1-6,r.y1-6);
   cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
   slots:=b[0].c[0].slots[1];
-  #assert xc_press(s[..],k) && b[0].c[0].rite_until-b[0].clock==3600;
+  #assert xc_press(s[..],k) && b[0].c[0].rite_until-b[0].clock==rs_secs(3600);
   #assert b[0].c[0].slots[1]==slots && x[0].familiar_incense==1;
   rs_end_concentration(b,0,"");
   #assert b[0].c[0].slots[1]==slots && x[0].familiar_incense==1;

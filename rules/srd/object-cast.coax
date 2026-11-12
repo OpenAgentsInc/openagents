@@ -13,7 +13,7 @@ RsObject :: struct {
   material: int; size: int = RS_MEDIUM; resilient: bool;
   hp: int; threshold: int;
   flammable: bool; attended: bool;   // attended: worn or carried
-  burning: bool; glow_until: f32; destroyed: bool;
+  burning: bool; glow_until: int; destroyed: bool;
 }
 rs_object :: (name: string, x: int, y: int, material: int, size: int, resilient: bool) -> RsObject {
   o := RsObject.{x = x, y = y, material = material, size = size, resilient = resilient};

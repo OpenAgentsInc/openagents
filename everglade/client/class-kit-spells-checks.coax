@@ -74,7 +74,7 @@ xk_enabled :: (c: int, level: int, seen: [] bool) {
     #assert r.level == src.level && r.page == src.page && r.components == src.components && r.concentration == src.concentration;
     #assert r.range_ft == (ifx src.range_kind == SRD_RANGE_SELF then 0 else ifx src.range_kind == SRD_RANGE_TOUCH then 5 else src.range_value);
     #assert r.cast_time == src.cast_kind || (src.cast_kind == SRD_CAST_SPECIAL && r.cast_time == RS_T_BONUS && src.cast_text[0..<12] == "Bonus Action");
-    #assert (r.duration_s == f32(src.duration_seconds)) || src.duration_seconds <= 0;
+    #assert (r.duration_s == src.duration_seconds) || src.duration_seconds <= 0;
   }
 }
 #test "every manifest spell has its own sound and its own colour" #steps 400000000 {

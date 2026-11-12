@@ -18,18 +18,18 @@ rs_ritual_begin :: (b: [] RsBattle, i: int, sp: int) -> bool {
   if !rs_rite_admits(s.ritual, ready, book, c.ritual, b[0].turn.action, b[0].turn.quickened) { return false; }
   if !rs_cast_components_ready(c, sp) { return false; }
   seconds:=ifx sp==SP_FIND_FAMILIAR then RS_FIND_FAMILIAR_SECONDS+RS_RITE_SECONDS else RS_RITE_SECONDS;
-  rs_rite_open(b,i,sp,f32(seconds),0);
+  rs_rite_open(b,i,sp,seconds,0);
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " begins "); rs_add_text(l[..], s.name); rs_add_text(l[..], " as a Ritual");
   rs_tell(b, RS_EV_TEXT, sp, i, -1, 0, 0, l[..]);
   return true;
 }
 // An admitted ritual or longer casting time uses the same held Concentration.
-rs_rite_open :: (b:[]RsBattle,i:int,sp:int,seconds:f32,slot:int) {
+rs_rite_open :: (b:[]RsBattle,i:int,sp:int,seconds:int,slot:int) {
   s:=rs_spell(sp);
   rs_rest_cast_before(b, i, s.level);
   rs_end_concentration(b, i, "");
-  b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + seconds + 3600;
-  b[0].c[i].rite = sp; b[0].c[i].rite_until = b[0].clock + seconds; b[0].c[i].rite_owed = false;
+  b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + rs_secs(seconds + 3600);
+  b[0].c[i].rite = sp; b[0].c[i].rite_until = b[0].clock + rs_secs(seconds); b[0].c[i].rite_owed = false;
   b[0].c[i].familiar_slot=slot;
   b[0].turn.action = true; b[0].turn.leveled = true;
 }

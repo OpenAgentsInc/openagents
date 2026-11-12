@@ -100,7 +100,7 @@
 
 #test "full effect storage refuses explicitly and retains every record and condition" {
   c: [1] RsCreature;
-  for k: 0..<RS_EFFECTS { #assert rs_effect_add(c[..],RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=f32(10+k)}); }
+  for k: 0..<RS_EFFECTS { #assert rs_effect_add(c[..],RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=10+k}); }
   before := c[0].eff; flags := c[0].cond;
   #assert !rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_POISONED,by=99,until=50});
   #assert !rs_effect_add(c[..],RsEffect.{});

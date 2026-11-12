@@ -83,7 +83,7 @@ RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
   b[0].rest_clock.fraction=0; c[0].hp=0; #assert !rs_long_rest_owner_valid(b[..],0);
   c[0].hp=1; c[0].dead=true; #assert !rs_long_rest_owner_valid(b[..],0);
   c[0].dead=false;
-  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=0,until=90000}; }
+  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=0,until=rs_secs(90000)}; }
   #assert !rs_long_rest_start_owned(b[..],0,1,true) && c[0].long_rest.phase==0;
   #assert rs_long_rest_start_owned(b[..],0,2,true);
   rs_tick(b[..],10);
@@ -105,7 +105,7 @@ RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
   c[0].long_rest.stamp=1;
   #assert !rs_long_rest_resume_owned(b[..],0,1,true);
   c[0].long_rest.stamp=0;
-  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=0,until=90000}; }
+  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=0,until=rs_secs(90000)}; }
   #assert !rs_long_rest_resume_owned(b[..],0,1,true);
   #assert c[0].long_rest.phase==2 && !rs_sleeping(c[0]);
   c[0].eff[0].kind=EF_NONE;

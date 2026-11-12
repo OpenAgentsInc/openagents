@@ -5,8 +5,8 @@
 #test "overlapping Bless and Bane retain their owners but roll one die per spell" {
   b: [1] RsBattle; er_setup(b[..]);
   for owner: 0..<3 {
-    #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BLESS,by=owner,spell=SP_BLESS,until=10+f32(owner)});
-    #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BANE,by=owner,spell=SP_BANE,until=20+f32(owner)});
+    #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BLESS,by=owner,spell=SP_BLESS,until=10+owner});
+    #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BANE,by=owner,spell=SP_BANE,until=20+owner});
   }
   #assert rs_boon_roll(b[..],0) == 0 && b[0].dice[0].rolled == 2;
   for k: 0..<RS_EFFECTS { #assert b[0].c[0].eff[k].kind != EF_NONE; }

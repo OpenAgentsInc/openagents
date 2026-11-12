@@ -160,7 +160,7 @@ zone_breath_slot :: (s: [] EgZone) {
 zone_breath_wait :: (s: [] EgZone) -> f32 {
   x := s[0].xc[0]; i := x.dragon_seat[0].me;
   if i <= 0 || i >= x.b[0].n || !x.b[0].c[i].breath_spent { return 0; }
-  left := (x.b[0].c[i].round_at - x.b[0].clock) / f32(RS_ROUND);
+  left := rs_ticks_s(x.b[0].c[i].round_at - x.b[0].clock) / f32(RS_ROUND);
   return ifx left > 1 then 1.0f32 else ifx left < 0.04 then 0.04f32 else left;
 }
 // X on the dragon in the air: it comes down to land (Space again flies on). False otherwise.

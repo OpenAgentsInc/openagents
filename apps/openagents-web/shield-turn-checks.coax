@@ -5,7 +5,7 @@
   b:[1]RsBattle; b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_wizard("Caster",0,3),2,2);
   seat:[1]FbSeat; seat[0].me=0; fb_seat_step(b[..],seat[..]);
-  #assert b[0].c[0].turn_at==6;
+  #assert b[0].c[0].turn_at==6000000;
   fb_seat_in(b[..],seat[..]); #assert rs_shield(b[..],0); fb_seat_out(b[..],seat[..]);
   #assert rs_ac(b[..],0)==20;
   rs_tick(b[..],6); fb_seat_step(b[..],seat[..]);

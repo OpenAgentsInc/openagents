@@ -9,11 +9,11 @@
   c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
   #assert rs_rest_schedule_enable(b[..]);
   #assert rs_long_rest_start_owned(b[..],0,1,true);
-  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=30000,by=-1,spell=-1});
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=rs_secs(30000),by=-1,spell=-1});
   rs_tick(b[..],40000);
   #assert c[0].long_rest.completed && c[0].long_rest.finished==28800000000;
   #assert c[0].hp==1 && !rs_effect(c[0],EF_NOHEAL) && !rs_sleeping(c[0]);
-  #assert b[0].rest_clock.ticks==40000000000 && b[0].clock==40000;
+  #assert b[0].rest_clock.ticks==40000000000 && b[0].clock==rs_secs(40000);
   c[0]=rs_wizard("Second",0,3); c[0].hp=1;
   #assert rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],30000);
@@ -29,12 +29,12 @@
   #assert rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],1);
   #assert rs_long_rest_start_owned(b[..],1,1,true);
-  #assert rs_effect_add(c[0..<1],RsEffect.{kind=EF_NOHEAL,until=28000,by=-1,spell=-1});
-  #assert rs_effect_add(c[1..<2],RsEffect.{kind=EF_NOHEAL,until=28800.5,by=-1,spell=-1});
+  #assert rs_effect_add(c[0..<1],RsEffect.{kind=EF_NOHEAL,until=28000000000,by=-1,spell=-1});
+  #assert rs_effect_add(c[1..<2],RsEffect.{kind=EF_NOHEAL,until=28800500000,by=-1,spell=-1});
   rs_tick(b[..],40000);
   #assert c[0].long_rest.finished==28800000000 && c[1].long_rest.finished==28801000000;
   #assert c[0].hp==c[0].hp_max && c[1].hp==c[1].hp_max;
-  #assert b[0].rest_clock.ticks==40001000000 && b[0].clock==40001;
+  #assert b[0].rest_clock.ticks==40001000000 && b[0].clock==rs_secs(40001);
 }
 
 #test "scheduled watch can change exactly at the cap and continued watch abandons without crediting sleep" {
@@ -67,7 +67,7 @@
   rs_tick(b[..],3601);
   #assert !c[0].raging && !c[0].rage_kept && b[0].book[0].seq==seq+2;
   event:=b[0].book[0].ev[(b[0].book[0].head+b[0].book[0].count-1)%RS_EVENTS];
-  #assert event.kind==RS_EV_END && event.by==0 && event.to==0 && event.amount==0 && event.at==7200;
+  #assert event.kind==RS_EV_END && event.by==0 && event.to==0 && event.amount==0 && event.at==rs_secs(7200);
   #assert c[0].long_rest.phase==2 && c[0].long_rest.interruptions==1;
   #assert c[0].rages==1 && c[0].hp==1 && c[0].rest.phase==2 && c[0].rest.seeded;
   #assert !c[0].long_rest.short_due;
@@ -154,7 +154,7 @@
   rs_reset(b[..]); #assert rs_rest_schedule_enable(b[..]);
   b[0].rest_clock.fraction=0.5;
   #assert rs_rest_tick(b[..],1.0/1048576);
-  #assert b[0].clock==f32(1.0/1048576) && b[0].rest_clock.fraction==0.45367431640625;
+  #assert b[0].clock==1 && b[0].rest_clock.fraction==0.45367431640625;
 }
 
 #test "fractional completion keeps effects that expire between the boundary and the end of the step" {
@@ -164,8 +164,8 @@
   journal:[1]RsLongRest; journal[0]=c[0].long_rest;
   #assert rs_long_rest_advance(journal[..],28799999999).accepted;
   c[0].long_rest=journal[0]; b[0].rest_clock.ticks=28799999999; b[0].rest_clock.fraction=0.5;
-  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=f32(0.00000075),by=-1,spell=-1});
-  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=2,by=-1,spell=-1});
+  #assert rs_rest_tick_ticks(b[..],3);
   #assert c[0].long_rest.finished==28800000000 && c[0].hp==1 && !rs_effect(c[0],EF_NOHEAL);
 }
 
@@ -186,14 +186,14 @@
 }
 
 #test "pending completion is consumed at current time before even a fractional future effect expiry" {
-  for dt:[2]f32.[0.0000005,1.0/524288] {
+  for dt:[2]int.[1,2] {
     b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
     #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
     rs_rest_schedule_credit(b[..],28800000000,28800000000);
     b[0].rest_clock.ticks=28800000000;
-    #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=f32(0.00000025),by=-1,spell=-1});
-    #assert rs_rest_tick(b[..],dt);
+    #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=1,by=-1,spell=-1});
+    #assert rs_rest_tick_ticks(b[..],dt);
     #assert c[0].long_rest.finished==28800000000 && c[0].hp==1 && !rs_effect(c[0],EF_NOHEAL);
   }
 }
@@ -233,21 +233,10 @@ rs_rest_schedule_next :: (b:[]RsBattle,target:RsRestClock)->RsRestClock #effects
     plan:=rs_long_rest_plan(b[0].c[i].long_rest,target.ticks);
     next=rs_min(next,plan.journal.stamp);
   }
-  event:=false;
-  for i:0..<b[0].n {
-    if b[0].c[i].rest.phase==1 && rs_short_rest_deadline(b[0].c[i].rest.started)<=next { event=true; }
-    if !b[0].rest_auto { continue; }
-    if b[0].c[i].long_rest.phase==3 { event=true; }
-    if b[0].c[i].long_rest.phase!=1 { continue; }
-    plan:=rs_long_rest_plan(b[0].c[i].long_rest,target.ticks);
-    if plan.journal.stamp==next && (plan.journal.phase!=1 || (plan.boundary.light_limit && !b[0].c[i].long_rest.light_reported)) { event=true; }
-  }
-  stop:=target;
-  if next<target.ticks || event {
-    stop.ticks=next;
-    if next==b[0].rest_clock.ticks { stop.fraction=b[0].rest_clock.fraction; }
-    else { stop.fraction=0; }
-  }
+  // A boundary at the target's own tick needs no stop of its own: every deadline in the rules is a
+  // whole tick (#13287), so nothing can fall between that tick and the part of a tick after it.
+  // An earlier stop keeps the target's part of a tick: only whole ticks order events (#13287).
+  stop:=target; stop.ticks=next;   // next is never past the target's tick
   return stop;
 }
 rs_rest_schedule_credit :: (b:[]RsBattle,cursor:int,through:int) #effects(all) {
@@ -268,18 +257,43 @@ rs_rest_schedule_consume :: (b:[]RsBattle) #effects(all) {
 }
 rs_rest_tick :: (b:[]RsBattle,dt:f32)->bool #effects(all) {
   target:[1]RsRestClock; target[0]=b[0].rest_clock;
-  if !rs_rest_clock(b[0].clock) || !rs_rest_clock_step(target[..],f64(dt)) || !rs_short_rest_schedule_valid(b) { return false; }
-  if b[0].rest_auto && !rs_rest_schedule_valid(b,target[0].ticks) { return false; }
+  if !rs_rest_clock(b[0].clock) || !rs_rest_clock_step(target[..],f64(dt)) { return false; }
+  return rs_rest_tick_to(b,target[0]);
+}
+// The same in whole ticks: no part of a tick is kept or made.
+rs_rest_tick_ticks :: (b:[]RsBattle,ticks:int)->bool #effects(all) {
+  if !rs_rest_clock(b[0].clock) || b[0].rest_clock.ticks<0 || ticks<0 || ticks>9223372036854775807-b[0].rest_clock.ticks || ticks>9223372036854775807-b[0].clock { return false; }
+  return rs_rest_tick_to(b,RsRestClock.{ticks=b[0].rest_clock.ticks+ticks,fraction=b[0].rest_clock.fraction});
+}
+rs_rest_tick_to :: (b:[]RsBattle,target:RsRestClock)->bool #effects(all) {
+  if !rs_short_rest_schedule_valid(b) { return false; }
+  if b[0].rest_auto && !rs_rest_schedule_valid(b,target.ticks) { return false; }
   running:=true;
   while running {
-    stop:=rs_rest_schedule_next(b,target[0]);
+    stop:=rs_rest_schedule_next(b,target);
     cursor:=stop.ticks;
-    segment:=f32((f64(stop.ticks-b[0].rest_clock.ticks)+stop.fraction-b[0].rest_clock.fraction)/1000000);
-    if b[0].rest_auto { rs_rest_schedule_credit(b,cursor,target[0].ticks); }
+    segment:=stop.ticks-b[0].rest_clock.ticks;
+    if b[0].rest_auto { rs_rest_schedule_credit(b,cursor,target.ticks); }
     b[0].rest_clock=stop;
     rs_tick_raw(b,segment);
     if b[0].rest_auto { rs_rest_schedule_consume(b); }
-    running=stop.ticks!=target[0].ticks || stop.fraction!=target[0].fraction;
+    running=stop.ticks!=target.ticks || stop.fraction!=target.fraction;
   }
   return true;
+}
+
+#test "whole-tick stepping admits zero and the last tick the clocks hold, and refuses a negative step or an overflow whole" {
+  b:[1]RsBattle; b[0].who = -1;
+  #assert rs_rest_tick_ticks(b[..],0) && b[0].clock==0 && b[0].rest_clock.ticks==0;
+  #assert !rs_rest_tick_ticks(b[..],-1) && b[0].clock==0 && b[0].rest_clock.ticks==0;
+  #assert rs_rest_tick_ticks(b[..],7) && b[0].clock==7 && b[0].rest_clock.ticks==7;
+  top:=9223372036854775807;
+  b[0].rest_clock.ticks=top-5; b[0].clock=3;
+  #assert !rs_rest_tick_ticks(b[..],6) && b[0].rest_clock.ticks==top-5 && b[0].clock==3;
+  #assert rs_rest_tick_ticks(b[..],5) && b[0].rest_clock.ticks==top && b[0].clock==8;
+  b[0].rest_clock.ticks=1; b[0].clock=top-5;
+  #assert !rs_rest_tick_ticks(b[..],6) && b[0].clock==top-5 && b[0].rest_clock.ticks==1;
+  #assert rs_rest_tick_ticks(b[..],5) && b[0].clock==top && b[0].rest_clock.ticks==6;
+  b[0].clock = -1; #assert !rs_rest_tick_ticks(b[..],1) && b[0].rest_clock.ticks==6;
+  b[0].clock = 0; b[0].rest_clock.ticks = -1; #assert !rs_rest_tick_ticks(b[..],1) && b[0].clock==0;
 }

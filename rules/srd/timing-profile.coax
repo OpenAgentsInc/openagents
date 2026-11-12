@@ -21,8 +21,8 @@ RS_ACTION_TIMING :: RsTimingProfile.{kind=RS_TIME_ACTION};
   #assert b[0].timing.kind == RS_TIME_STRICT && !b[0].timing_sealed;
 }
 #test "profile timing declares beat cooldown and movement without changing strict defaults" {
-  #assert rs_timing_beat(RS_STRICT_TIMING) == 6 && rs_timing_beat(RS_ACTION_TIMING) == 1.5;
-  #assert rs_timing_recharge(RS_STRICT_TIMING) == 0 && rs_timing_recharge(RS_ACTION_TIMING) == 9;
+  #assert rs_timing_beat(RS_STRICT_TIMING) == 6000000 && rs_timing_beat(RS_ACTION_TIMING) == 1500000;
+  #assert rs_timing_recharge(RS_STRICT_TIMING) == 0 && rs_timing_recharge(RS_ACTION_TIMING) == 9000000;
   for speed: -1..<101 {
     #assert rs_timing_move(RS_STRICT_TIMING,speed) == (ifx speed>0 then speed else 0);
     expected := 0;
@@ -50,8 +50,8 @@ rs_set_timing :: (b: [] RsBattle, p: RsTimingProfile) -> bool #effects(reads, wr
 }
 rs_seal_timing :: (b: [] RsBattle) #effects(reads, writes, traps) { b[0].timing_sealed = true; }
 rs_reset_timing :: (b: [] RsBattle) #effects(reads, writes, traps) { b[0].timing = RS_STRICT_TIMING; b[0].timing_sealed = false; }
-rs_timing_beat :: (p: RsTimingProfile) -> f32 #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 1.5 else 6; }
-rs_timing_recharge :: (p: RsTimingProfile) -> f32 #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 9 else 0; }
+rs_timing_beat :: (p: RsTimingProfile) -> int #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 1500000 else 6000000; }
+rs_timing_recharge :: (p: RsTimingProfile) -> int #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 9000000 else 0; }
 rs_timing_move :: (p: RsTimingProfile, speed: int) -> int #effects(reads, writes, traps) {
   if speed<=0 { return 0; }
   if p.kind==RS_TIME_STRICT { return speed; }

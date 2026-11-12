@@ -11,19 +11,19 @@
 
 #test "timing selection rejects unknown and live changes atomically and reset restores strict" {
   b: [1] RsBattle;
-  #assert rs_beat(b[..]) == 6 && rs_timing_recharge(b[0].timing) == 0;
+  #assert rs_beat(b[..]) == 6000000 && rs_timing_recharge(b[0].timing) == 0;
   #assert rs_set_timing(b[..],RS_ACTION_TIMING);
   #assert !rs_set_timing(b[..],RsTimingProfile.{kind=2}) && b[0].timing.kind == RS_TIME_ACTION && !b[0].timing_sealed;
   a := rs_add(b[..],rs_fighter("Actor",0,1),1,1);
   rs_begin(b[..]);
   seq := b[0].book[0].seq; rolled := b[0].dice[0].rolled; due := b[0].c[a].turn_at;
-  #assert !rs_set_timing(b[..],RS_STRICT_TIMING) && rs_beat(b[..]) == 1.5;
+  #assert !rs_set_timing(b[..],RS_STRICT_TIMING) && rs_beat(b[..]) == 1500000;
   #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolled && b[0].c[a].turn_at == due;
-  rs_reset(b[..]); #assert rs_beat(b[..]) == 6 && !b[0].timing_sealed;
+  rs_reset(b[..]); #assert rs_beat(b[..]) == 6000000 && !b[0].timing_sealed;
   #assert rs_set_timing(b[..],RS_ACTION_TIMING);
   rs_tick(b[..],0); #assert !rs_set_timing(b[..],RS_STRICT_TIMING);
   rs_reset(b[..]); a = rs_add(b[..],rs_fighter("Actor",0,1),1,1);
-  rs_start_turn(b[..],a); #assert !rs_set_timing(b[..],RS_ACTION_TIMING) && rs_beat(b[..]) == 6;
+  rs_start_turn(b[..],a); #assert !rs_set_timing(b[..],RS_ACTION_TIMING) && rs_beat(b[..]) == 6000000;
 }
 
 #test "only the declared action profile recharges spent resources on the existing cooldown" {
@@ -48,7 +48,7 @@
     baseline := b[0].dice[0].rolled;
     b[0].c[a].hp = 0; b[0].c[a].cond = RS_UNCONSCIOUS|RS_PRONE;
     for beat: 0..<(ifx profile==0 then 2 else 5) {
-      rs_tick(b[..],b[0].c[a].turn_at-b[0].clock);
+      rs_tick_ticks(b[..],b[0].c[a].turn_at-b[0].clock);
       b[0].c[a].reacted = true; rs_start_turn(b[..],a);
       #assert !b[0].c[a].reacted;
       #assert b[0].dice[0].rolled == baseline + (ifx profile==0 then beat+1 else 1+beat/4);
@@ -60,9 +60,9 @@
     a = rs_add(b[..],rs_fighter("Actor",0,1),1,1); rs_begin(b[..]);
     b[0].dice[0].fixed = true;
     baseline = b[0].dice[0].rolled;
-    #assert rs_effect_add(b[0].c[a..<a+1],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=RS_WIS,dc=100,until=100});
+    #assert rs_effect_add(b[0].c[a..<a+1],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=RS_WIS,dc=100,until=rs_secs(100)});
     for beat: 0..<(ifx profile==0 then 2 else 5) {
-      rs_tick(b[..],b[0].c[a].turn_at-b[0].clock); rs_start_turn(b[..],a); rs_end_turn(b[..],a);
+      rs_tick_ticks(b[..],b[0].c[a].turn_at-b[0].clock); rs_start_turn(b[..],a); rs_end_turn(b[..],a);
       #assert b[0].dice[0].rolled == baseline + (ifx profile==0 then beat+1 else 1+beat/4);
     }
   }

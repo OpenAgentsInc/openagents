@@ -26,7 +26,7 @@
   b[0].c[second].hp=400; b[0].c[second].hp_max=400;
   b[0].c[second].resist=1<<RS_FIRE;
   rs_start_turn(b[..],a);
-  e: RsEffect; e.kind=EF_ENFEEBLED; e.by=first; e.until=60.0f32;
+  e: RsEffect; e.kind=EF_ENFEEBLED; e.by=first; e.until=rs_secs(60);
   #assert rs_put_effect(b[..],a,e);
   rolls := b[0].dice[0].rolled;
   #assert rs_cast(b[..],a,SP_FIREBALL,3,10,3,-1);

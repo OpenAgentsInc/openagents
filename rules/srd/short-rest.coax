@@ -18,7 +18,7 @@ RsRestSlots :: struct { levels:[]const int; spellbook:bool; }
   #assert rs_short_rest_sorcery(b[..],1,2) && c[1].uses[RS_USE_SORCERY]==2;
 }
 
-rs_rest_clock :: (t:f32)->bool #effects(all) { return t>=0 && t-t==0; }
+rs_rest_clock :: (t:int)->bool #effects(all) { return t>=0; }
 rs_short_rest_begin :: (b:[]RsBattle,i:int)->bool #effects(all) {
   if !rs_long_rest_owner_valid(b,i) { return false; }
   if b[0].c[i].rest.phase==1 || rs_short_rest_deadline(b[0].rest_clock.ticks) == -1 { return false; }

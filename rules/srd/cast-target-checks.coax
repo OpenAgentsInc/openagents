@@ -82,7 +82,7 @@
   options := [1] RsCastOptions.[RsCastOptions.{blindness=RS_DEAFENED}];
   #assert rs_cast_creatures_with(b[..],a,SP_BLINDNESS,2,picks[..],false,options[..]);
   #assert rs_has(b[0].c[t],RS_DEAFENED) && !rs_has(b[0].c[t],RS_BLINDED);
-  e := b[0].c[t].eff[0]; #assert e.kind == EF_COND && e.cond == RS_DEAFENED && e.until == 60 && e.save == RS_CON && e.dc == rs_dc(b[..],a);
+  e := b[0].c[t].eff[0]; #assert e.kind == EF_COND && e.cond == RS_DEAFENED && e.until == rs_secs(60) && e.save == RS_CON && e.dc == rs_dc(b[..],a);
   rs_tick(b[..],60); #assert !rs_has(b[0].c[t],RS_DEAFENED);
 }
 #test "Hex retains the chosen ability and uses its source upcast concentration duration" {
@@ -95,12 +95,12 @@
     options := [1] RsCastOptions.[RsCastOptions.{hex_ability=ability}];
     #assert rs_cast_creatures_with(b[..],a,SP_HEX,3,picks[..],false,options[..]);
     #assert b[0].c[t].eff[0].kind == EF_HEX && b[0].c[t].eff[0].cond == ability;
-    #assert b[0].c[t].eff[0].until == 28800 && b[0].c[a].conc_until == 28800;
+    #assert b[0].c[t].eff[0].until == rs_secs(28800) && b[0].c[a].conc_until == rs_secs(28800);
     #assert rs_save_edge(b[..],t,ability) == 0 && rs_attack_edge(b[..],t,a,true,true) == 0;
     u := rs_add(b[..],rs_skeleton("New target",1),4,1);
     b[0].c[t].hp = 1; rs_damage(b[..],a,t,1,RS_FORCE,false,SP_ELDRITCH_BLAST);
     rs_end_turn(b[..],a); rs_tick(b[..],6); rs_start_turn(b[..],a);
-    #assert rs_hex_move(b[..],a,u) && b[0].c[u].eff[0].cond == ability && b[0].c[u].eff[0].until == 28800;
+    #assert rs_hex_move(b[..],a,u) && b[0].c[u].eff[0].cond == ability && b[0].c[u].eff[0].until == rs_secs(28800);
   }
 }
 

@@ -129,7 +129,7 @@
   b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
   _ := rs_add(b[..],hp_dying(),1,1); b[0].dice[0].fixed = true;
   for turn: 0..<3 {
-    b[0].clock = f32(turn)*6; rs_start_turn(b[..],0);
+    b[0].clock = rs_secs(turn*6); rs_start_turn(b[..],0);
     #assert b[0].c[0].stable == (turn == 2);
     #assert b[0].c[0].death_ok == (ifx turn == 2 then 0 else turn+1) && b[0].c[0].death_fail == 0;
     rs_end_turn(b[..],0);

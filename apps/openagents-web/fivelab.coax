@@ -192,7 +192,7 @@ Lab :: struct {
   heads: [1] cc.HudPlates;                 // the frame's plates over the figures (lab_heads3: aethyr/ui/hud-plates.coax)
   signs: [1] cc.HudPlates;                 // the housewright showcase's labels on their boards (lab_showcase_titles)
   blk_up: [BLK_MAX * TEAMS] int; blk_w: int; blk_h: int;   // the standing by block and side (blk_count)
-  due_t: [DUE_MAX] f32; due_i: [DUE_MAX] int; due_n: int;   // whose turn comes next (lab_due's heap)
+  due_t: [DUE_MAX] int; due_i: [DUE_MAX] int; due_n: int;   // whose turn comes next (lab_due's heap)
   shown_n: int;   // the creatures the figures showed last frame (the slots past them are clear)
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
@@ -259,7 +259,7 @@ add_line :: (s: [] Lab, t: string, c: Col) {
   s[0].line_n += 1;
 }
 add_num :: (s: [] Lab, f: Num) {
-  g := f; g.t0 = s[0].battle[0].clock;
+  g := f; g.t0 = rs_clock_s(s[0].battle[..]);
   s[0].fx[s[0].fx_at] = g;
   s[0].fx_at = (s[0].fx_at + 1) % FXS;
 }
@@ -276,7 +276,7 @@ take_events :: (s: [] Lab) {
   g: [1] cc.EgFolds; b0 := bt(s);
   for j: 0..<fresh {
     e := rs_recent_at(book, j);
-    if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b0[0].n { cc.eg_fold_add(g[..], e.by, e.spell, e.at, e.amount, f32(b0[0].c[e.to].x), f32(b0[0].c[e.to].y)); }
+    if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b0[0].n { cc.eg_fold_add(g[..], e.by, e.spell, rs_ticks_s(e.at), e.amount, f32(b0[0].c[e.to].x), f32(b0[0].c[e.to].y)); }
   }
   while k >= 0 {
     e := rs_recent_at(book, k);
@@ -291,7 +291,7 @@ take_events :: (s: [] Lab) {
     if e.kind == RS_EV_END || e.kind == RS_EV_STABLE { c = FAINT; }
     if e.text_n > 0 { add_line(s, t, c); }
     f: Num;
-    if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && (e.kind != RS_EV_DAMAGE || cc.eg_fold_rises(g[..], e.by, e.spell, e.at, e.amount, e.to == s[0].me || e.to == s[0].target || e.to == s[0].you_me)) {
+    if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && (e.kind != RS_EV_DAMAGE || cc.eg_fold_rises(g[..], e.by, e.spell, rs_ticks_s(e.at), e.amount, e.to == s[0].me || e.to == s[0].target || e.to == s[0].you_me)) {
       f.kind = FX_TEXT; f.life = 1.2;
       f.col = ifx e.kind == RS_EV_HEAL then GREEN else ifx e.kind == RS_EV_MISS then DIM else RED;
       f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
@@ -301,12 +301,12 @@ take_events :: (s: [] Lab) {
     }
     // the glade's effects: rays and bolts of one cast leave one after another
     if e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS {
-      if e.by == rep_by && e.spell == rep_spell && e.at - rep_t < 0.01 && e.spell >= 0 { rep_n = rs_min(rep_n + 1, 4); } else { rep_n = 0; }
-      rep_by = e.by; rep_spell = e.spell; rep_t = e.at;
+      if e.by == rep_by && e.spell == rep_spell && rs_ticks_s(e.at) - rep_t < 0.01 && e.spell >= 0 { rep_n = rs_min(rep_n + 1, 4); } else { rep_n = 0; }
+      rep_by = e.by; rep_spell = e.spell; rep_t = rs_ticks_s(e.at);
     }
     cue_event(s, e);
     lw_heard(s, e);
-    lab_effect(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, e.at + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
+    lab_effect(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, rs_ticks_s(e.at) + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
   }
   // each fold's total, gold, over the middle of those it hit: "-412 · 14 HIT"
   for q: 0..<g[0].n {
@@ -324,7 +324,7 @@ take_events :: (s: [] Lab) {
 cue_event :: (s: [] Lab, e: RsEvent) {
   b := bt(s);
   if e.by < 0 || e.by >= b[0].n { return; }
-  now := b[0].clock;
+  now := rs_clock_s(b);
   aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
   tx := ifx aimed then wx(s, s[0].dx[e.to]) else 0.0f32; tz := ifx aimed then wz(s, s[0].dy[e.to]) else 0.0f32;
   if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
@@ -361,12 +361,12 @@ put_bodies :: (s: [] Lab) {
     // the second of each class, and every other skeleton, looks a little different
     v := ifx kl == RS_MONSTER then (i * 7 / 3) % 2 else (i / 12) % 2;
     look := ifx b[0].c[i].npc != RS_NPC_NONE then siege_look(b[0].c[i].npc) else look_of(kl);
-    figs.bd_put(s[0].w[0].bodies[..], i, s[0].fresh[i], look, v, wx(s, s[0].dx[i]), wz(s, s[0].dy[i]), state, f32(marks), ifx b[0].c[i].outlined_by >= 0 then 1.0f32 else 0.0f32, b[0].clock);
+    figs.bd_put(s[0].w[0].bodies[..], i, s[0].fresh[i], look, v, wx(s, s[0].dx[i]), wz(s, s[0].dy[i]), state, f32(marks), ifx b[0].c[i].outlined_by >= 0 then 1.0f32 else 0.0f32, rs_clock_s(b));
     s[0].fresh[i] = false;
   }
   s[0].shown_n = b[0].n;
   if s[0].player && me >= 0 && s[0].you_me == me && !b[0].c[me].dead && b[0].c[me].hp > 0 { figs.bd_own(s[0].w[0].bodies[..], me, s[0].w[0].you_y, s[0].w[0].you_face); }
-  figs.bd_frame(s[0].w[0].bodies[..], b[0].clock);
+  figs.bd_frame(s[0].w[0].bodies[..], rs_clock_s(b));
 }
 // Whether creature i is under an effect of `kind` (rs_effect, without copying the creature).
 has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
@@ -433,8 +433,8 @@ flood :: (s: [] Lab) {
   for i: s[0].heroes..<b[0].n {
     if s[0].pool <= 0 { return; }
     if !b[0].c[i].dead { continue; }
-    if s[0].fell[i] == 0 { s[0].fell[i] = b[0].clock; continue; }
-    if b[0].clock - s[0].fell[i] < 1 { continue; }
+    if s[0].fell[i] == 0 { s[0].fell[i] = rs_clock_s(b); continue; }
+    if rs_clock_s(b) - s[0].fell[i] < 1 { continue; }
     for t: 0..<8 {
       e := band_cell(s, 0, 2, rs_min(edge - 1, int(rs_unit(dice(s)) * f32(edge))));
       x := e % s[0].cols; y := e / s[0].cols;
@@ -446,10 +446,10 @@ flood :: (s: [] Lab) {
       b[0].c[i] = rs_skeleton(cast(string) nm[0..<nn], 2);
       b[0].c[i].x = ox; b[0].c[i].y = oy;
       rs_place(b, i, x, y);   // its body's square comes free
-      b[0].c[i].turn_at = b[0].clock + 0.2 + rs_unit(dice(s)) * rs_beat(b);
+      b[0].c[i].turn_at = b[0].clock + 200000 + rs_s_ticks(rs_unit(dice(s)) * rs_ticks_s(rs_beat(b)));
       b[0].c[i].round_at = b[0].c[i].turn_at;
       due_push(s, i);
-      s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = b[0].clock; s[0].fell[i] = 0; s[0].fresh[i] = true;
+      s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = rs_clock_s(b); s[0].fell[i] = 0; s[0].fresh[i] = true;
       break;
     }
   }
@@ -1441,7 +1441,7 @@ druid_turn :: (s: [] Lab, i: int) {
 lab_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   rs_start_turn(b, i);
-  s[0].acted[i] = b[0].clock;
+  s[0].acted[i] = rs_clock_s(b);
   kl := b[0].c[i].klass;
   // a turned Skeleton spends its turn moving away from the Cleric who turned it
   holy := rs_turned_by(b[0].c[i]);
@@ -1888,8 +1888,8 @@ lab_due :: (s: [] Lab) -> int {
 step :: (s: [] Lab, dt: f32) {
   b := bt(s);
   if s[0].over {
-    b[0].clock += dt;
-    if b[0].clock - s[0].over_t > 6 { new_battle(s); }
+    b[0].clock += rs_s_ticks(dt);
+    if rs_clock_s(b) - s[0].over_t > 6 { new_battle(s); }
     return;
   }
   rs_tick(b, dt);
@@ -1911,7 +1911,7 @@ step :: (s: [] Lab, dt: f32) {
   standing := 0; last := -1;
   for t: 0..<TEAMS { if rs_team_up(b, t) > 0 || (t == 2 && s[0].pool > 0) { standing += 1; last = t; } }
   if standing <= 1 && !s[0].over {
-    s[0].over = true; s[0].over_t = b[0].clock; s[0].winner = last;
+    s[0].over = true; s[0].over_t = rs_clock_s(b); s[0].winner = last;
     l: [LINE_CAP] u8;
     n := 0;
     if last >= 0 { s[0].wins[last] += 1; n = put(l[..], 0, team_name(s, last)); n = put(l[..], n, " wins. A new battle in 6 seconds."); }
@@ -2173,7 +2173,7 @@ draw_casts :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; c := s[0].cell;
   pf := s[0].w[0].puffs[..];
   pf[0].out_n = 0;   // the flat view writes no puffs
-  now := s[0].battle[0].clock;
+  now := rs_clock_s(s[0].battle[..]);
   if now < s[0].fx_last { fxp_clear(pf); }   // a new battle: its clock starts again
   s[0].fx_last = now;
   g := lab_grid(s);
@@ -2190,7 +2190,7 @@ draw_casts :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
 // The flat view's numbers floating off the figures.
 draw_nums :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; c := s[0].cell;
-  now := s[0].battle[0].clock;
+  now := rs_clock_s(s[0].battle[..]);
   for i: 0..<FXS {
     f := s[0].fx[i];
     if f.kind != FX_TEXT { continue; }
@@ -2279,7 +2279,7 @@ abs_f :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
 // The glade's effects: the frame's puffs (aethyr/fx/puff.coax) for the host to draw over bg_fs
 // (fivelab-fx.wgsl, host.js particles), the lasting zones' motes with them (aethyr/fx/battle.coax).
 glade_puffs :: (s: [] Lab) {
-  now := s[0].battle[0].clock;
+  now := rs_clock_s(s[0].battle[..]);
   pf := s[0].w[0].puffs[..];
   if now < s[0].fx_last { fxp_clear(pf); }   // a new battle: its clock starts again
   s[0].fx_last = now;
@@ -2300,7 +2300,7 @@ glade_puffs :: (s: [] Lab) {
 // before it.
 draw_nums3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at;
-  now := s[0].battle[0].clock;
+  now := rs_clock_s(s[0].battle[..]);
   px: [FXS] f32; py: [FXS] f32; pw: [FXS] f32; ph: [FXS] f32; np := 0;
   for pass: 0..<2 {
     for i: 0..<FXS {
@@ -2532,7 +2532,7 @@ lab_player_bar :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   // the hotbar: your class's abilities, keys 1 to 9; the picked one gold, a spent one dim, and
   // every slot filling from its foot as your next turn comes round
   ready := 1.0f32;
-  if me >= 0 { ready = lo(1, hi(0, (b[0].clock - s[0].acted[me]) / rs_beat(b))); }
+  if me >= 0 { ready = lo(1, hi(0, (rs_clock_s(b) - s[0].acted[me]) / rs_ticks_s(rs_beat(b)))); }
   list: [SLOTS] Ab; nab := 0;
   if me >= 0 { nab = hero_abilities(s, me, list[..]); }
   for c: 0..<nab {
@@ -2945,7 +2945,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
       fr[o + 1] = ifx s[0].view == VIEW_FLAT then s[0].dy[i] else wz(s, s[0].dy[i]);
       down := 0; if b[0].c[i].hp == 0 { down = 1; }
       fr[o + 2] = f32(1 + b[0].c[i].team + 4 * down);
-      since := b[0].clock - s[0].acted[i];
+      since := rs_clock_s(b) - s[0].acted[i];
       fr[o + 3] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
     }
     gx := cast(int) floor(s[0].dx[i] + 0.5); gy := cast(int) floor(s[0].dy[i] + 0.5);
@@ -3678,7 +3678,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
     b[0].c[e.to].x = 2 + q; b[0].c[e.to].y = 4;   // apart from the caster, but within reach of a blow
     b[0].c[0].x = 1 + q; b[0].c[0].y = 4;
     e.damage = ifx q == 9 then 1 else 0;
-    lab_effect(s[..], e, 1.5 + f32(q), e.at);
+    lab_effect(s[..], e, 1.5 + f32(q), rs_ticks_s(e.at));
     #assert fxp_live(s[0].w[0].puffs[..]) == 1;
     found := -1; big: f32 = 0;
     for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { found = s[0].w[0].puffs[0].live[k].recipe; big = s[0].w[0].puffs[0].live[k].big; } }
@@ -3689,7 +3689,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   b[0].c[0].x = 1; b[0].c[1].x = 20;
   fxp_clear(s[0].w[0].puffs[..]);
   e.kind = RS_EV_ATTACK; e.spell = -1; e.to = 1; e.damage = 0;
-  lab_effect(s[..], e, 3.5, e.at);
+  lab_effect(s[..], e, 3.5, rs_ticks_s(e.at));
   for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { #assert s[0].w[0].puffs[0].live[k].recipe == FXR_ARROW; } }
 }
 
@@ -3712,7 +3712,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   for q: 0..<16 {
     fxp_clear(s[0].w[0].puffs[..]);
     e.kind = kinds[q]; e.feat = feats[q]; e.spell = -1; e.to = ifx q == 2 || q == 6 || q == 10 || q == 13 then 1 else 0;
-    lab_effect(s[..], e, 2.5 + f32(q), e.at);
+    lab_effect(s[..], e, 2.5 + f32(q), rs_ticks_s(e.at));
     found := -1;
     for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { found = s[0].w[0].puffs[0].live[k].recipe; } }
     #assert found == want[q] && fxp_live(s[0].w[0].puffs[..]) == 1;
@@ -3720,7 +3720,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   // a feature's own healing draws nothing more: its cast showed it
   fxp_clear(s[0].w[0].puffs[..]);
   e.kind = RS_EV_HEAL; e.feat = RS_FT_SECOND_WIND; e.to = 0;
-  lab_effect(s[..], e, 1.5, e.at);
+  lab_effect(s[..], e, 1.5, rs_ticks_s(e.at));
   #assert fxp_live(s[0].w[0].puffs[..]) == 0;
   // the spells that had no look of their own
   e.feat = RS_FT_NONE; e.kind = RS_EV_CAST; e.to = 1;
@@ -3729,7 +3729,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   for q: 0..<5 {
     fxp_clear(s[0].w[0].puffs[..]);
     e.spell = spells[q]; e.amount = 3;
-    lab_effect(s[..], e, 4.5 + f32(q), e.at);
+    lab_effect(s[..], e, 4.5 + f32(q), rs_ticks_s(e.at));
     for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { #assert s[0].w[0].puffs[0].live[k].recipe == looks[q]; if q == 4 { #assert s[0].w[0].puffs[0].live[k].big > 1.5; } } }
   }
   // a creature poisoned and concentrating carries its lasting looks
@@ -3852,7 +3852,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
     #assert s[0].cols == cols && s[0].rows == rows;
   }
   // the battle ran its turns, or ended and the next began at the same size
-  #assert bt(s[..])[0].clock > 4 * 24 * f32(STEP) * 0.99 || s[0].round > r0;
+  #assert rs_clock_s(bt(s[..])) > 4 * 24 * f32(STEP) * 0.99 || s[0].round > r0;
 }
 
 #test "the Siege: H plays it after the Armies; 50 of the watch on their line, 50 of the cult 60 feet off, its leader on the far edge" #steps 2000000000 #traversal 1073741824 {
@@ -3961,7 +3961,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   s: [1] Lab; s[0].siege = true; s[0].horde = false; s[0].town = 12; s[0].cult = 14; s[0].mode = MODE_ACTION;
   lab_start(s[..]);
   b := bt(s[..]);
-  #assert rs_beat(b) == ACTION_BEAT && b[0].n == 27;
+  #assert rs_ticks_s(rs_beat(b)) == ACTION_BEAT && b[0].n == 27;
   t0 := b[0].turn_no;
   for f: 0..<600 { step(s[..], f32(STEP)); }
   #assert b[0].turn_no > t0 + 20;

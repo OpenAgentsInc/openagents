@@ -51,7 +51,7 @@ rs_unarmed_resolve :: (b: [] RsBattle, i: int, j: int, opt: int) #effects(all) {
   if saved { return; }
   if opt == UO_GRAPPLE {
     // admission left room for the record
-    if rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = i, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = dc}) { b[0].c[i].grappling = j; }
+    if rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = i, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = dc}) { b[0].c[i].grappling = j; }
   } else if opt == UO_PRONE {
     if rs_effect_condition_mask(b[0].c[j], RS_PRONE) != 0 { b[0].c[j].cond |= RS_PRONE; }
   } else {
@@ -164,7 +164,7 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   b: [1] RsBattle; grapple_field(b[..]);   // d20 10 + 0 vs DC 14: fails
   #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].turn.action;
   k := rs_grapple_at(b[0].c[1], 0); e := b[0].c[1].eff[k];
-  #assert k >= 0 && e.dc == 14 && e.cond == RS_GRAPPLED && e.save == -1 && b[0].c[0].grappling == 1 && rs_has(b[0].c[1], RS_GRAPPLED) && !rs_can_move(b[0].c[1]);
+  #assert k >= 0 && e.dc == 14 && e.cond == RS_GRAPPLED && e.save == -1 && e.until == RS_NO_END && b[0].c[0].grappling == 1 && rs_has(b[0].c[1], RS_GRAPPLED) && !rs_can_move(b[0].c[1]);
   #assert rs_grapple_down(b[0].c[1], 2) && !rs_grapple_down(b[0].c[1], 0);
   #assert !rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE);   // the action is spent
   s: [1] RsBattle; grapple_field(s[..]); s[0].c[1].score[RS_STR] = 18;   // 10 + 4 = 14: succeeds
@@ -336,31 +336,31 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   grapple_hold(b[..], 1, 0, 12); rs_place(b[..], 1, 6, 2); rs_grapple_lapse(b[..], 1); #assert b[0].c[1].grappling == -1 && rs_grapple_at(b[0].c[0], 1) < 0;
   rs_place(b[..], 1, 3, 2);
   // holding the creature past the count: released, its record untouched
-  b[0].c[0].grappling = p; b[0].c[p].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = 14};
+  b[0].c[0].grappling = p; b[0].c[p].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 14};
   rs_grapple_release(b[..], 0); #assert b[0].c[0].grappling == -1 && rs_grapple_at(b[0].c[p], 0) >= 0;
   b[0].c[0].grappling = p; rs_grapple_lapse(b[..], 0); #assert b[0].c[0].grappling == -1;
   // a record by the creature past the count lapses and leaves that creature's hand alone
-  b[0].c[p].grappling = 0; _ := rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = p, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = 14});
+  b[0].c[p].grappling = 0; _ := rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = p, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 14});
   rs_grapple_lapse(b[..], 0); #assert rs_grapple_at(b[0].c[0], p) < 0 && b[0].c[p].grappling == 0;
   // the creature past the count is never read: its own lapsed record stays
   rs_grapple_lapse(b[..], p); #assert rs_grapple_at(b[0].c[p], 0) >= 0;
 }
 #test "escape uses the first grapple record, the better skill, tells its result, and frees only that grappler" {
   b: [1] RsBattle; grapple_field(b[..]); p := grapple_past(b[..]); rs_fresh(b[..], 1);
-  b[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_BLINDED, by = 0, spell = 5, until = 1e9, save = -1, dc = 1};
-  b[0].c[1].eff[1] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = 30};
-  b[0].c[1].eff[2] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = p, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = 1};
-  b[0].c[1].eff[3] = RsEffect.{kind = EF_BLESS, by = 0, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = 1};
+  b[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_BLINDED, by = 0, spell = 5, until = RS_NO_END, save = -1, dc = 1};
+  b[0].c[1].eff[1] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 30};
+  b[0].c[1].eff[2] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = p, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
+  b[0].c[1].eff[3] = RsEffect.{kind = EF_BLESS, by = 0, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
   b[0].c[1].score[RS_STR] = 14; b[0].c[1].checks.skills = 1 << SK_ATHLETICS;
   r := rs_grapple_escape(b[..], 1); e := act_last(b[..]);
   #assert r.accepted && !r.passed && r.total == 14 && b[0].c[1].eff[0].kind == EF_COND && b[0].c[1].eff[1].kind == EF_COND && b[0].c[1].eff[2].kind == EF_COND;
   #assert act_said(b[..], "Held fails to escape the grapple") && e.kind == RS_EV_CONDITION && e.by == 1 && e.to == 1 && e.amount == 14;
   // a success by the creature past the count, and by one whose hand holds another, frees no hand
   s: [1] RsBattle; grapple_field(s[..]); q := grapple_past(s[..]); rs_fresh(s[..], 1);
-  s[0].c[q].grappling = 1; s[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = q, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = 1};
+  s[0].c[q].grappling = 1; s[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = q, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
   r = rs_grapple_escape(s[..], 1); #assert r.passed && s[0].c[1].eff[0].kind == EF_NONE && s[0].c[q].grappling == 1 && act_said(s[..], "Held escapes the grapple");
   t: [1] RsBattle; grapple_field(t[..]); rs_fresh(t[..], 1);
-  t[0].c[0].grappling = 7; t[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = 1};
+  t[0].c[0].grappling = 7; t[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
   r = rs_grapple_escape(t[..], 1); #assert r.passed && t[0].c[0].grappling == 7;
   // a tie between Strength and Dexterity is Strength: a raging creature rolls with Advantage
   g: [1] RsBattle; grapple_field(g[..]); rs_fresh(g[..], 1); grapple_hold(g[..], 0, 1, 30); g[0].c[1].raging = true; g[0].c[1].score[RS_DEX] = 10;

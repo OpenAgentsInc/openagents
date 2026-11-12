@@ -113,7 +113,7 @@ next_wave :: (s: [] Mb) {
     for t: 0..<6 { if rs_at(b, x, y) < 0 { break; } x = (x + 1) % COLS; }
     b[0].c[i] = rs_skeleton(cast(string) nm[0..<nn], 2);
     b[0].c[i].x = x; b[0].c[i].y = y;
-    b[0].c[i].turn_at = b[0].clock + 0.3 + rs_unit(dice(s)) * rs_beat(b);
+    b[0].c[i].turn_at = b[0].clock + 300000 + rs_s_ticks(rs_unit(dice(s)) * rs_ticks_s(rs_beat(b)));
     b[0].c[i].round_at = b[0].c[i].turn_at;
   }
   if s[0].target >= PARTY { s[0].target = -1; }
@@ -875,8 +875,8 @@ take_events :: (s: [] Mb) {
 mb_step :: (s: [] Mb, dt: f32) #export_c #effects(all) {
   b := bt(s);
   if s[0].over {
-    b[0].clock += dt;
-    if b[0].clock - s[0].over_t > OVER_WAIT { mb_new(s, s[0].pick, cast(int) s[0].seed + 1); }
+    b[0].clock += rs_s_ticks(dt);
+    if rs_clock_s(b) - s[0].over_t > OVER_WAIT { mb_new(s, s[0].pick, cast(int) s[0].seed + 1); }
     return;
   }
   rs_tick(b, dt);
@@ -885,17 +885,17 @@ mb_step :: (s: [] Mb, dt: f32) #export_c #effects(all) {
   while due >= 0 && guard < 8 { mb_turn(s, due); guard += 1; due = rs_due(b); }
   take_events(s);
   if rs_team_up(b, 2) == 0 {
-    if s[0].wave_t == 0 { s[0].wave_t = b[0].clock; }
-    if b[0].clock - s[0].wave_t > WAVE_WAIT { next_wave(s); s[0].wave_t = 0; }
+    if s[0].wave_t == 0 { s[0].wave_t = rs_clock_s(b); }
+    if rs_clock_s(b) - s[0].wave_t > WAVE_WAIT { next_wave(s); s[0].wave_t = 0; }
   }
-  if rs_team_up(b, 0) == 0 { s[0].over = true; s[0].over_t = b[0].clock; }
+  if rs_team_up(b, 0) == 0 { s[0].over = true; s[0].over_t = rs_clock_s(b); }
 }
 
 // ---- what the face reads
 
 mb_count :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].battle[0].n; }
-mb_clock :: (s: [] Mb) -> f32 #export_c #effects(all) { return s[0].battle[0].clock; }
-mb_beat :: (s: [] Mb) -> f32 #export_c #effects(all) { return rs_beat(bt(s)); }
+mb_clock :: (s: [] Mb) -> f32 #export_c #effects(all) { return rs_clock_s(s[0].battle[..]); }
+mb_beat :: (s: [] Mb) -> f32 #export_c #effects(all) { return rs_ticks_s(rs_beat(bt(s))); }
 mb_wave :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].wave; }
 mb_kills :: (s: [] Mb) -> int #export_c #effects(all) { return s[0].kills; }
 mb_over :: (s: [] Mb) -> bool #export_c #effects(all) { return s[0].over; }
@@ -923,7 +923,7 @@ mb_actors :: (s: [] Mb, out: [] f32) -> int #export_c #effects(all) {
     if i == s[0].target { fl += 16; }
     if c[0].ranged >= 0 { fl += 32; }
     out[o + 7] = f32(fl);
-    out[o + 8] = c[0].turn_at; out[o + 9] = f32(c[0].conc);
+    out[o + 8] = rs_ticks_s(c[0].turn_at); out[o + 9] = f32(c[0].conc);
     slow := 0; if c[0].slowed_until > b[0].clock { slow = 10; }
     feet := ifx rs_can_move(c[0]) then c[0].speed - slow else 0;
     out[o + 10] = f32(feet); out[o + 11] = f32(c[0].ac);
@@ -988,7 +988,7 @@ mb_queue :: (s: [] Mb, slot: int) -> bool #export_c #effects(all) {
   if slot < 0 || slot >= n || !rs_up(b[0].c[me]) { return false; }
   if s[0].act == slot { s[0].act = -1; return true; }
   if !ab_ready(s, me, list[slot]) { return false; }
-  s[0].act = slot; s[0].act_at = b[0].clock;
+  s[0].act = slot; s[0].act_at = rs_clock_s(b);
   return true;
 }
 // Your hotbar, MB_SLOT_FLOATS each: the kind (AB_*), the spell (-1), its level, ready (1 or 0),
@@ -1043,7 +1043,7 @@ mb_class_of :: (pick: int) -> int #export_c #effects(all) { return ROSTER[rs_max
 #test "5E MMO: a party of four and a wave of six, on the action clock" #steps 400000000 {
   m: [1] Mb;
   mb_new(m[..], 6, 3);
-  #assert m[0].battle[0].n == ACTORS && rs_beat(m[0].battle[..]) == ACTION_BEAT;
+  #assert m[0].battle[0].n == ACTORS && rs_ticks_s(rs_beat(m[0].battle[..])) == ACTION_BEAT;
   #assert m[0].battle[0].c[0].klass == RS_FIGHTER && m[0].battle[0].c[1].klass == RS_WIZARD && m[0].battle[0].c[3].klass == RS_WARLOCK;
   for q: 0..<WAVE { #assert m[0].battle[0].c[PARTY + q].team == 2; }
   // picking the Wizard puts the Druid in its place among the friends

@@ -4,7 +4,7 @@
 #test "Frenzy requires the actual own turn and Stunning Strike requires an unused Focus choice" {
   for mode:0..<7 {
     c:RsCreature; c.frenzy=true; c.raging=true; c.reckless_until=10;
-    own:=true; strength:=true; used:=false; clock:f32=0;
+    own:=true; strength:=true; used:=false; clock:int=0;
     if mode==1 { c.frenzy=false; } else if mode==2 { c.raging=false; }
     else if mode==3 { strength=false; } else if mode==4 { clock=10; }
     else if mode==5 { own=false; } else if mode==6 { used=true; }
@@ -23,7 +23,7 @@
   for w:-1..<20 { #assert rs_stun_weapon(w)==(w>=0 && w<19 && expected[w]); }
 }
 
-rs_frenzy_turn :: (c:RsCreature,strength:bool,clock:f32,own:bool,used:bool)->bool #effects(all) {
+rs_frenzy_turn :: (c:RsCreature,strength:bool,clock:int,own:bool,used:bool)->bool #effects(all) {
   return own && c.frenzy && c.raging && strength && c.reckless_until>clock && !used;
 }
 rs_stun_ready :: (c:RsCreature,used:bool)->bool #effects(all) {
