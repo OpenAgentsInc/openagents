@@ -77,6 +77,12 @@ static qconn *peer(void) {
   return c;
 }
 
+/* wt_flush frees a connection once it is dead, so the pointer here may be gone after any step */
+static bool conn_live(const qconn *c) {
+  for (int i = 0; i < srv->nconns; i++) if (srv->conns[i] == c) return true;
+  return false;
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t n) {
   if (n > 65536) return 0;
   qconn *c = peer();
@@ -110,7 +116,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t n) {
     case 5: if (!broken && !closed[k] && q_stop_sending(c->conn, id, word, c, NULL)) broken = true; break;
     case 6: {
       /* only what was sent: ngtcp2 never acknowledges past it */
-      wt_strm *t = strm_get(c, id, false);
+      wt_strm *t = broken ? NULL : strm_get(c, id, false);
       if (!broken && t && t->kind == K_WT && t->sent > t->acked && q_acked(c->conn, id, t->acked, (word % (t->sent - t->acked)) + 1, c, NULL)) broken = true;
       break;
     }
@@ -131,7 +137,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t n) {
     }
     }
     free(b);
-    if (c->dead) broken = true;   /* closed for an error: ngtcp2 hands it nothing more */
+    if (c && !conn_live(c)) { c = NULL; broken = true; }   /* freed by wt_flush: only the host's calls go on */
+    if (c && c->dead) broken = true;   /* closed for an error: ngtcp2 hands it nothing more */
   }
   /* every connection goes: each of its sessions ends once */
   while (srv->nconns) conn_free(srv, srv->conns[--srv->nconns]);
