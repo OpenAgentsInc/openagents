@@ -393,7 +393,7 @@ of thousands of reads and writes: under $2 a month in all.
 | Stop | itself, after 15 idle minutes (no slot held); spot preemption stops it too; 12 hours of running is the backstop |
 
 `remote.sh` uses a running host with a free slot. With none, it starts a
-stopped host, or creates the next one up to `OA_REMOTE_MAX_HOSTS` (16). A new
+stopped host, or creates the next one up to `OA_REMOTE_MAX_HOSTS` (6, cut from 16 by the owner on 2026-11-12 to keep GCP under $1,500 a month). A new
 host's first boot installs Nix, Bun and a blob-less clone (about 4 minutes);
 a stopped host starts in about a minute. Jobs on a full host wait for a slot
 there.
@@ -462,7 +462,7 @@ List prices, us-central1, from the Cloud Billing catalog on 2026-11-09:
 wall time on the Mac at the host's whole price, each start plus its 15 idle
 minutes, and each creation as 15 minutes of setup. Concurrent jobs are each
 counted at the whole price, so the estimate errs high. `remote.sh cost`
-sums it. The default cap is $50 over 24 hours (raised from $15 by the owner on 2026-11-09) (`OA_REMOTE_DAILY_USD`); at
+sums it. The default cap is $25 over 24 hours (raised from $15 by the owner on 2026-11-09, set to $25 with the pool cut to 6 hosts on 2026-11-12) (`OA_REMOTE_DAILY_USD`); at
 the cap no host starts and jobs run on the Mac.
 
 Expected: with eight agents at 10 heavy jobs a day each, about 10 host-hours a
