@@ -1,0 +1,356 @@
+// Everglade's room: seats and their lifecycle, a seat's text, its room, joining, holding and leaving,
+// and a seat's class and level. Moved from coax/web/room/room-everglade.coax (#13267), which loads it.
+// ---- text
+
+eg_n :: (b: [] u8, at: int, v: int) -> int {
+  n := put(b, at, " ");
+  if v < 0 { n = put(b, n, "-"); return put_int(b, n, -v); }
+  return put_int(b, n, v);
+}
+eg_round :: (v: f32) -> int {
+  if !(v == v) || v > 1.0e9 || v < -1.0e9 { return 0; }
+  return cast(int) floor(v + 0.5);
+}
+eg_hash :: (t: string) -> int {
+  h := 2166136261;
+  for c: t { h = ((h ^ cast(int) c) * 16777619) & 4294967295; }
+  return ifx h == 0 then 1 else h;
+}
+eg_fields :: (t: string) -> int {
+  if t.count == 0 { return 0; }
+  n := 1;
+  for c: t { if c == ' ' { n += 1; } }
+  return n;
+}
+eg_clamp :: (v: int, a: int, b: int) -> int { return ifx v < a then a else (ifx v > b then b else v); }
+// A word for a frame: letters, digits, '.', '-' and '_' only.
+eg_word :: (t: string, out: [] u8) -> int {
+  n := 0;
+  for c: t {
+    if n >= out.count { break; }
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
+    if ok { out[n] = c; n += 1; }
+  }
+  return n;
+}
+
+// ---- rooms
+
+// Whether a room's code is one of Everglade II's instances (#13053): the realm's own (everglade2-N, a
+// fork's everglade2-SLUG-N) or a check's (pair-e2-...). Their world is Everglade II's.
+EG_E2_REALM :: "everglade2";
+eg_e2_code :: (code: string) -> bool {
+  if code.count > EG_E2_REALM.count && code[0..<EG_E2_REALM.count] == EG_E2_REALM && code[EG_E2_REALM.count] == '-' { return true; }
+  return code.count > 8 && code[0..<8] == "pair-e2-";
+}
+#test "Everglade II's rooms are its realm's instances and its checks'" {
+  #assert eg_e2_code("everglade2-1") && eg_e2_code("everglade2-12") && eg_e2_code("pair-e2-ab12");
+  #assert !eg_e2_code("everglade-1") && !eg_e2_code("everglade2") && !eg_e2_code("everglade20-1") && !eg_e2_code("pair-drift-x") && !eg_e2_code("pair-e2-");
+}
+// Room k runs Everglade II's world (the host steps its seats on world2_*, room-tick.c).
+rm_eg_e2 :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return rm_eg_live(v, k) && v[0].eg[k].e2; }
+
+eg_room_at :: (v: [] RmServer, r: int) -> int {
+  for k: 0..<EG_ROOMS { if v[0].eg[k].live && v[0].eg[k].relay == r { return k; } }
+  return -1;
+}
+// The simulation of relay room r, made when its first seat sits: its index, or -1 (all taken).
+eg_room_of :: (v: [] RmServer, r: int) -> int {
+  k := eg_room_at(v, r);
+  if k >= 0 { return k; }
+  for q: 0..<EG_ROOMS {
+    if v[0].eg[q].live { continue; }
+    v[0].eg[q].initialized=false;v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
+    v[0].eg[q].e2 = r >= 0 && r < RELAYS && v[0].relays[r].live && eg_e2_code(cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n]);
+    v[0].eg[q].work[0]=WorkBudget.{};
+    v[0].eg[q].effect_known=false;v[0].eg[q].house_free=0;for s:0..<EG_SEATS{v[0].eg[q].effect_free[s]=0;}
+    for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
+    for t: 0..<WIRE_SLOTS { v[0].eg[q].fight_t[t] = 0; }
+    v[0].eg[q].combat_n = 0;
+    im_clear(v[0].eg[q].im[..]);   // its interest from nothing: a slot's last room's entities and picks are not this one's (#13178)
+    // its entities' lives numbered its own (a restart, or this slot's last room, never repeats one: #12835)
+    wire_hist_scope(v[0].eg[q].hist[..], v[0].wall_ms + r * 7919);
+    for a: 0..<EG_SEATS * RA_ABS { v[0].eg[q].ab_slot[a] = 0; }
+    // the cosmetic seed (weather, cast looks): it goes to every seat in W and casts derive from it,
+    // so the rules' dice never do (they come from the host's OS random key: rm_dice_draw, #13258)
+    v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
+    for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
+    for c: 0..<EG_CASTS { v[0].eg[q].casts[c].on = false; }
+    v[0].eg[q].cast_order = 0; v[0].eg[q].hurts[0] = HbBatch.{};
+    v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
+    // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
+    v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } for b: 0..<EG_BOATS { v[0].eg[q].boat_on[b] = false; } v[0].eg[q].place_stamp = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
+    for t: 0..<WIRE_TREES { v[0].eg[q].tree_on[t] = false; }
+    v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
+    for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
+    for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; v[0].eg[q].folk_save[j] = 0; }
+    for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
+    for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
+    e5rr_start(v[0].eg[q].rules[..], 1);
+    v[0].eg[q].rules[0].b[0].dice[0].state = rm_dice_draw(v);   // never from the seed above (#13258)
+    v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
+    if v[0].eg[q].e2 {
+      rules:=v[0].eg[q].rules[..];
+      rules[0].z_shift=E5RR_E2_Z_SHIFT;
+      rules[0].b[0].h=E5R_SIDE+E5RR_E2_Z_SHIFT;
+      e2_rest_start(v,q); e5rr_enable_familiars(rules);
+      v[0].eg[q].guard[0] = E2Guard.{};
+      v[0].eg[q].monsters[0] = E2Monsters.{};
+      v[0].eg[q].arrows[0] = E2Arrows.{};
+    }   // Everglade II's rests are the shared rules' (everglade/server/rest.coax)
+    ra_fresh(v, q);   // its abilities (room-abilities.coax)
+    ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
+    v[0].eg[q].initialized=true;
+    return q;
+  }
+  return -1;
+}
+// A seat sat down in everglade relay room r: it hears the world's header (after the relay's y), and
+// its first D is a snapshot. The host puts it in the world (rm_eg_unplaced, rm_eg_moved) first.
+eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_id.value;
+  k := eg_room_of(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  if v[0].eg[k].seat_life[seat]==EV_SEAT_GENERATION_MAX {return;}
+  v[0].eg[k].seat_life[seat]=add_sat(v[0].eg[k].seat_life[seat],1);
+  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, born = true, gen = v[0].conns[conn].gen, joined_ms = v[0].mono_ms};
+  v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
+  v[0].eg[k].wanted[seat] = 0;
+  e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
+  if v[0].eg[k].e2 { v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].healer_kit = 10; }
+  rv_join(v, k, seat_id);   // the HP its player left with (room-vitals.coax, #12715)
+  rv_back(v, k, seat_id);   // and where they stood in this room, if lately
+  ev_join(v, k, seat_id);   // its XP and its character's level (room-events.coax, #12739)
+  v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;   // the realm's pvp row (room-control.coax, #12714)
+  v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
+  b: [128] u8;
+  // the day and the weather: the server's (room-sky.coax)
+  w := eg_sky_world(v, k); v[0].eg[k].sky = w.weather;
+  n := wire_put_world(b[..], 0, w);
+  rl_queue(v, r, conn, -1, cast(string) b[0..<n], "");
+  for s: 0..<EG_SEATS { v[0].eg[k].seat[s].heard_n[seat] = 0; }
+  v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
+  im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
+}
+// How long a closed socket's character waits for its player (#12792): standing, AWAY once
+// WIRE_AWAY_MS passes, still in the rules and the world. Their rejoin within it takes the same seat.
+EG_GRACE_MS :: LIFECYCLE_HOLD_MS;   // the session lifecycle's hold (aethyr/session/lifecycle.coax)
+// Seat s of room k's player rejoined on socket conn within the grace, or their silent socket gave way
+// to this one (room-relay.coax rl_take_back): the character, its conditions, effects, cooldowns, XP
+// and place are kept; what the server knows of the page is not. Its next D is a snapshot, its inputs
+// count from the new page's first, and it hears the world's header again. The others never saw it go.
+eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_id.value;
+  k := eg_room_at(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live { return; }
+  o := v[0].eg[k].seat[seat];
+  n := EgSeat.{live = true, conn = conn, full = true, gen = v[0].conns[conn].gen};
+  v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
+  n.sat_ms = o.sat_ms; n.earned = o.earned; n.bank = o.bank; n.late = o.late;
+  n.pose = o.pose; n.placed = o.placed;
+  n.back = o.back; n.back_x = o.back_x; n.back_y = o.back_y; n.back_z = o.back_z; n.back_yaw = o.back_yaw; n.back_at = o.back_at;
+  n.hello = o.hello; n.joined_ms = o.joined_ms;
+  n.look = o.look; n.look_n = o.look_n; n.klass = o.klass; n.klass_n = o.klass_n; n.flags = o.flags; n.name = o.name; n.name_n = o.name_n;
+  n.sat_class = o.sat_class; n.class_report = o.class_report;
+  n.last_cast = o.last_cast; n.repaired = o.repaired;
+  n.checkpoint_hello = o.checkpoint_hello;
+  n.want_seed = o.want_seed; n.hold_due = o.hold_due; n.back_hp = o.back_hp; n.back_dead = o.back_dead;
+  n.wcond = o.wcond; n.fx = o.fx;
+  n.heard_ms = v[0].mono_ms;
+  v[0].eg[k].seat[seat] = n;
+  v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;
+  b: [128] u8;
+  w := eg_sky_world(v, k); v[0].eg[k].sky = w.weather;
+  m := wire_put_world(b[..], 0, w);
+  rl_queue(v, r, conn, -1, cast(string) b[0..<m], "");
+  v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
+  im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
+}
+// Seat s's socket closed with a ticket naming its player: the seat waits for them EG_GRACE_MS. Its
+// HP and place are noted and posted now, as a leave's are, so a crash in the grace loses no more; a
+// cast still waiting for inputs that will never come goes, and its queued inputs are stepped.
+eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  v[0].eg[k].seat[s].conn = -1; v[0].eg[k].seat[s].held = true; v[0].eg[k].seat[s].held_at = v[0].mono_ms;
+  v[0].eg[k].seat[s].ends_n = 0;
+  if v[0].eg[k].seat[s].familiar.active>0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s].rite==SP_FIND_FAMILIAR { rs_rite_fail(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s," (disconnected)"); }
+  v[0].eg[k].seat[s].familiar=E2Familiar.{};
+  v[0].eg[k].seat[s].familiar_hash=0;
+  v[0].eg[k].seat[s].familiar_sense_sent=0;
+  ck_capture(v, k, s_id); rv_note_seat(v, k, s_id); v[0].vit.flush = true;
+  for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
+  v[0].st.held += 1;
+}
+// Whether seat s's ticket names player pid.
+eg_held_for :: (v: [] RmServer, k: int, s_id: SeatId, pid: string) -> bool { s := s_id.value;
+  tk := v[0].eg[k].tk[s..<s + 1];
+  return tk[0].ok && cast(string) tk[0].pid[0..<tk[0].pid_n] == pid;
+}
+eg_held :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value; return v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn < 0 && v[0].eg[k].seat[s].held; }
+// The held seats whose grace ran out leave as a closed socket's did before the grace: everyone hears
+// "l SEAT", and a room nobody is in or waits for closes.
+eg_grace_ends :: (v: [] RmServer, k: int) {
+  r := v[0].eg[k].relay;
+  out := false;
+  for s: 0..<EG_SEATS {
+    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, SeatId.{value = s}) || net_session_holds(EG_GRACE_MS,v[0].eg[k].seat[s].held_at,v[0].mono_ms) { continue; }
+    h: [16] u8;
+    rl_queue(v, r, -1, -1, rl_head(h[..], 'l', SeatId.{value = s}, false), "");
+    eg_left(v, r, SeatId.{value = s});
+    v[0].st.held_out += 1; out = true;
+  }
+  if out && r >= 0 && r < RELAYS && rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+}
+eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
+  k := eg_room_at(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  ck_capture(v, k, seat_id); rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
+  v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
+  rc_left(v, k, seat_id);   // publish the old lifetime's stops before invalidating it
+  v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
+  e5rr_leave(v[0].eg[k].rules[..], seat);
+  v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
+  any := false;
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { any = true; } }
+  if !any { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
+}
+eg_refuse :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, why: string) { seat := seat_id.value;
+  if v[0].eg[k].seat[seat].conn < 0 { return; }   // (held: no socket to tell)
+  b: [64] u8;
+  n := wire_put_refused(b[..], 0, seq, why);
+  rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[seat].conn, -1, cast(string) b[0..<n], "");
+}
+// The events every room's ticks had no room for since the last ask (room-host.c's minute report), then 0.
+rm_eg_dropped :: (v: [] RmServer) -> int #export_c #effects(all) {
+  n := 0;
+  for k: 0..<EG_ROOMS { n += v[0].eg[k].ev_dropped; v[0].eg[k].ev_dropped = 0; }
+  return n;
+}
+// Whether e entry t is an outcome (everglade-wire.coax WIRE_OUTCOMES), not a cue.
+eg_ev_outcome :: (t: string) -> bool { return wire_outcome(t); }
+// An event since the last D, heard within EG_VIEW of (x, z), or by everyone (all).
+eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) { eg_event_who(v, k, text, x, z, all, 0); }
+// The same, telling of the seats in `who` too (a raider's cast aimed at a seat): one bit a seat.
+eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool, who: int) {
+  e := v[0].eg[k].ev_n;
+  out := eg_ev_outcome(text);
+  keep := out || who != 0;   // (one aimed at a seat has the outcomes' room too: it is on that player)
+  if e >= EG_EVENTS + (ifx keep then EG_EV_KEEP else 0) || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES + (ifx keep then EG_EV_KEEP_BYTES else 0) {
+    v[0].eg[k].ev_dropped += 1;
+    if out { v[0].st.ev_lost += 1; }   // past even the outcomes' own room: counted apart, for the vitals
+    return;
+  }
+  v[0].eg[k].ev_out[e] = out;
+  a := v[0].eg[k].ev_bytes;
+  for i: 0..<text.count { v[0].eg[k].ev[a + i] = text[i]; }
+  v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all; v[0].eg[k].ev_who[e] = who;
+  v[0].eg[k].ev_bytes += text.count; v[0].eg[k].ev_n = e + 1;
+}
+
+
+// ---- a seat's class and level are the server's (#13259, aethyr/session/seat-class.coax)
+
+// A room holding the API's v5 public key (the checks' TK5_TEST_PUB), and a join with a v5 ticket the
+// checks' key signs for pid in room, its XP and EXT as given (ACCT acct): its seat, or -1.
+eg_test_v5_room :: (v: [] RmServer) {
+  rm_init(v); rm_clock(v, 0, 1762190000000);
+  #assert rm_ticket_pubkeys(v, TK5_TEST_PUB, true);
+}
+eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: string, xp: int, ext: string) -> int {
+  t: [TK5_TEXT] u8; r: [TK5_TEXT + 256] u8;
+  s := tk5_test_sign(TK5_TEST_SECRET, pid, acct, "", room, 1, 1762190000000 + 600000, -1, xp, 0, 0, ext, 1, "", t[..]);
+  #assert s.count > 0;
+  return rm_join(v, conn, tk_test_ask_in(r[..], t[..], s.count, room));
+}
+#test "seat class: Everglade II's top level is its class kits' (#13259)" {
+  #assert SEAT_LEVEL_TOP == XK_LEVELS && SEAT_LEVEL_TOP == FB_CL_LEVELS;
+  for c: 0..<FB_CL_N { #assert seat_class_ok(FB_CL_KIND[c]); }
+}
+#test "seat class: a level 1 character's ticket and a hello that says level 6 (or 20) sit at level 1; a hello or Change character again changes nothing and fills nothing (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]);
+  #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc01", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 0;
+  #assert eg_test_v5_join(v[..], 1, "p-00112233aabbcc02", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert v[0].eg[k].e2;
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-20 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := E5RR_SEAT;
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 1 && b[0].c[me + 1].level == 1 && r[0].klass[1] == E5R_CL0 + FB_CL_FIGHTER;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter" && !v[0].eg[k].seat[0].class_report;
+  // hurt, and Second Wind spent: a hello again (another level, another class), and Change character, change nothing
+  b[0].c[me].hp = 3; hp_max := b[0].c[me].hp_max; b[0].c[me].uses[RS_USE_WIND] = 0;
+  for line: [4] string.["H 5 ranger.0.0.0 srd-fighter-6 0 -", "H 5 ranger.0.0.0 srd-wizard-5 0 -", "H 5 ranger.0.0.0 srd-fighter-20 0 -", "V ranger.1.2.3 srd-fighter-6"] { rm_heard(v[..], 0, line); }
+  eg_test_tick(v[..], k);
+  #assert b[0].c[me].level == 1 && r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].hp == 3 && b[0].c[me].hp_max == hp_max && b[0].c[me].uses[RS_USE_WIND] == 0;
+  // the look is the page's: Change character took it
+  #assert cast(string) v[0].eg[k].seat[0].look[0..<v[0].eg[k].seat[0].look_n] == "ranger.1.2.3";
+}
+#test "seat class: a ticket's l=5 sits at 5 whatever the hello says; a ticket with no class takes the first hello's, once, and reports it (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]);
+  #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc03", 1, "pair-e2-lv5", 0, "c=srd-fighter,l=5") == 0;
+  #assert eg_test_v5_join(v[..], 1, "p-00112233aabbcc04", 0, "pair-e2-lv5", 0, "l=1") == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");     // the ticket's Fighter, at its 5
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-wizard-6 0 -");   // no class signed: the hello's Wizard, at the ticket's 1
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := E5RR_SEAT;
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 5 && b[0].c[me].extra_attack > 0;
+  #assert r[0].klass[1] == E5R_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
+  #assert !v[0].eg[k].seat[0].class_report && v[0].eg[k].seat[1].class_report;
+  // once: a later hello's class is not taken
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-6 0 -"); eg_test_tick(v[..], k);
+  #assert r[0].klass[1] == E5R_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
+}
+#test "seat class: XP crossing a level raises an Everglade II seat through the one table, and its player hears it (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]); box: [1] EgInbox;
+  #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc05", 1, "pair-e2-xp", 250, "c=srd-fighter,l=1") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  b := v[0].eg[k].rules[0].b[..]; me := E5RR_SEAT;
+  #assert v[0].ev[k].xp[0] == 250 && b[0].c[me].level == 1;
+  b[0].c[me].hp = b[0].c[me].hp_max - 2; was_max := b[0].c[me].hp_max;
+  eg_test_drain(v[..], box[..]);
+  ev_award(v[..], k, SeatId.{value = 0}, 49);   // 299: still level 1
+  #assert b[0].c[me].level == 1;
+  ev_award(v[..], k, SeatId.{value = 0}, 1);    // 300: level 2, its Hit Points added
+  #assert srd_xp_at(2) == 300 && v[0].ev[k].xp[0] == 300 && b[0].c[me].level == 2 && b[0].c[me].hp_max > was_max && b[0].c[me].hp == b[0].c[me].hp_max - 2;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-2";
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "e level 0 2");
+  ev_award(v[..], k, SeatId.{value = 0}, 6200);  // 6500: level 5
+  #assert b[0].c[me].level == 5;
+  ev_award(v[..], k, SeatId.{value = 0}, 100000);   // past 14000: 6, the top
+  #assert b[0].c[me].level == 6 && cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-6";
+}
+#test "seat class: a v2 or v3 ticket's seat (the shared key, until the room keys roll out) sits at its XP's level, never the hello's; an admin's v5 ticket at the hello's (#13259)" #steps 12000000000 {
+  v: [1] RmServer; eg_test_v5_room(v[..]);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; now := 1762190000000;
+  n := tk_sign_owner(key, "p-00112233aabbcc06", true, "", "pair-e2-old", 0, now + 600000, -1, 0, 0, 0, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-old")) == 0;
+  n = tk_sign_owner(key, "p-00112233aabbcc07", true, "", "pair-e2-old", 1, now + 600000, -1, 6500, 0, 0, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-old")) == 1;
+  #assert eg_test_v5_join(v[..], 2, "p-00112233aabbcc08", 2, "pair-e2-old", 0, "c=srd-fighter,l=1") == 2;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-cleric-6 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-cleric-6 0 -");
+  rm_heard(v[..], 2, "H 5 ranger.0.0.0 srd-rogue-4 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  rr := v[0].eg[k].rules[..]; b := rr[0].b[..]; me := E5RR_SEAT;
+  #assert rr[0].klass[0] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1 && v[0].eg[k].seat[0].class_report;
+  #assert rr[0].klass[1] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me + 1].level == 5;
+  // the admin's (ACCT 2: the admin CLASSES and LEVEL menus): the hello's class and level, and Change character's
+  #assert rr[0].klass[2] == E5R_CL0 + FB_CL_ROGUE && b[0].c[me + 2].level == 4 && !v[0].eg[k].seat[2].class_report;
+  rm_heard(v[..], 2, "V ranger.0.0.0 srd-bard-2"); eg_test_tick(v[..], k);
+  #assert rr[0].klass[2] == E5R_CL0 + FB_CL_BARD && b[0].c[me + 2].level == 2;
+  // and nobody else's Change character sits them again
+  rm_heard(v[..], 0, "V ranger.0.0.0 srd-bard-2"); eg_test_tick(v[..], k);
+  #assert rr[0].klass[0] == E5R_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1;
+  // the vitals post carries the classes the hellos chose, to keep (the first: verse.room_class_once)
+  #assert rm_vitals_due(v[..]) > 0;
+  post := cast(string) v[0].vit.out[0..<v[0].vit.out_n];
+  #assert eg_test_has(post, "p-00112233aabbcc06 ") && eg_test_has(post, " c=srd-cleric\n") && !eg_test_has(post, "c=srd-rogue") && !eg_test_has(post, "c=srd-bard");
+  one := 0; for i: 0..<post.count - 2 { if post[i..<i + 3] == " c=" { one += 1; } }
+  #assert one == 2;   // the two old tickets' seats; not the admin's
+}

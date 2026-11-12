@@ -1,0 +1,263 @@
+// Everglade's room: the tick the host runs for each live room.
+// Moved from coax/web/room/room-everglade.coax (#13267), which loads it.
+// ---- the tick. The host, EG_HZ times a second for each live room: rm_eg_begin; for each seat
+// rm_eg_unplaced (then rm_eg_moved with seq 0 at the gate) and while rm_eg_input, the shared
+// step and rm_eg_moved; then rm_eg_end, and the queue out.
+
+// Room k's tick begins: each seat is owed the steps of time the server's clock has run since its last
+// tick (EG_BANK at most), however late this tick is. False: no such room.
+rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
+  if !net_world_steps(v[0].eg[k].initialized,v[0].eg[k].live,false) {return false;}
+  eg_grace_ends(v, k);   // held seats whose player did not come back in time leave (#12792)
+  if !v[0].eg[k].live { return false; }
+  if rm_checkpoint_paused(v,k) { ck_pause(v,k); return false; }
+  if !rm_work_begin(v,k){return false;}
+  v[0].eg[k].tick += 1;
+  now := v[0].mono_ms;
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    if !st[0].live { continue; }
+    st[0].took = 0;
+    // its first tick earns its first step; each 1/EG_HZ s of the clock after it, one more (to the nearest)
+    credit:=net_credit_step(eg_credit_profile(),NetCredit.{since=st[0].sat_ms,earned=st[0].earned,bank=st[0].bank},now);
+    st[0].sat_ms=credit.since;st[0].earned=credit.earned;st[0].bank=credit.bank;
+    // input past what it is owed and EG_KEEP ticks more is a page sending faster than the clock (a
+    // skewed clock, or a cheat): the oldest of it goes, so no seat's input stands more than EG_KEEP
+    // ticks behind its time; the page's re-run takes the server's word for the step that went
+    over := net_credit_excess(eg_credit_profile(),st[0].q_n,st[0].bank);
+    if over > 0 {
+      for i: over..<st[0].q_n { st[0].q[i - over] = st[0].q[i]; }
+      st[0].q_n -= over; st[0].late += over;
+    }
+  }
+  return true;
+}
+// Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
+// none is queued, none owed, or EG_TICK_STEPS were stepped this tick.
+rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c #effects(all) { s := s_id.value;
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  if !st[0].live || !st[0].placed || st[0].q_n == 0 || !net_credit_can_step(eg_credit_profile(),st[0].bank,st[0].took) { return false; }
+  if eg_waits(v, k, s_id, st[0].q[0].seq) { return false; }
+  i := st[0].q[0];
+  for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
+  st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
+  st[0].step_at = i.at;
+  // Everglade II: a body the rules hold still (asleep, held) takes no walk or jump from its keys
+  if v[0].eg[k].e2 && v[0].eg[k].rules[0].live[s] && rs_locomotion_scale(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s) <= 0 { i.kx = 0; i.ky = 0; i.px = 0; i.py = 0; i.b = i.b & (255 - WB_JUMP); }
+  st[0].step_kx = i.kx; st[0].step_ky = i.ky; st[0].step_px = i.px; st[0].step_py = i.py; st[0].step_b = i.b;
+  out[0] = i.seq; out[1] = i.kx; out[2] = i.ky; out[3] = i.px; out[4] = i.py; out[5] = i.theta; out[6] = i.b;
+  return true;
+}
+// Where seat s stands after the step of input seq (0: just placed), as the step left it.
+rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c #effects(all) { s := s_id.value;
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  was := st[0].pose; was_placed := st[0].placed;
+  st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
+  if v[0].eg[k].e2 { e2_rest_step(v, k, s_id, seq, was, was_placed); }
+  accepted:=net_accepted_result(st[0].ack,seq);
+  if accepted.advanced { st[0].ack=accepted.seq;st[0].ack_at=st[0].step_at; }
+  first := !st[0].placed && st[0].checkpoint_hello;
+  st[0].placed = true;
+  if first { ck_capture(v, k, s_id); }   // its first capture, which its gameplay waits on (#13184)
+  r:=v[0].eg[k].rules[..];
+  e5rr_place(r,s,x,z);
+  if v[0].eg[k].e2 && was_placed && r[0].b[0].truth_zones!=0 {
+    rs_truth_enter(r[0].b[..],E5RR_SEAT+s,e5r_sq(was.x),e5rr_z_cell(r,was.z));
+  }
+}
+// Whether seat s sits and is still to be put in the world. An Everglade II seat waits for its hello
+// (EG_E2_HELLO_MS at most), which its page's A comes just before (#13057).
+rm_eg_unplaced :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
+  if !(k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k, s_id).schema!=2)) { return false; }
+  st := v[0].eg[k].seat[s];
+  return !v[0].eg[k].e2 || st.hello || v[0].mono_ms - st.joined_ms >= EG_E2_HELLO_MS;
+}
+// Where seat s of Everglade II's room k is first put (#13057), into out (x, z, facing): where its page
+// says it stands (A) when it may stand there and is no farther from where the room last had it (back:
+// its checkpoint, or this server's note) than the run covers in the time since, plus EG_E2_SLACK m;
+// else where the room last had it. False: neither, so the spawn. A restarted room's players come back
+// where they were, not at the spawn, and no page can put itself farther than it could have run.
+EG_E2_HELLO_MS :: 1000;
+EG_E2_SLACK :: 2.0;
+EG_E2_CLAIM_MS :: 120000;   // the most time the reach counts (two minutes of running)
+// (x, z), or when it is just past the walkable land's edge the first place on it drawn toward (tx, tz),
+// 5 cm at a time and half a metre at most; (x, z) itself when none is.
+e2_stand_near :: (x: f32, z: f32, tx: f32, tz: f32) -> E2Spot {
+  if e2_may_stand(x, z) { return E2Spot.{x = x, z = z}; }
+  ex := tx - x; ez := tz - z; el := sqrt(ex * ex + ez * ez);
+  if el < 0.001 { return E2Spot.{x = x, z = z}; }
+  for q: 1..<11 { cx := x + ex / el * 0.05 * f32(q); cz := z + ez / el * 0.05 * f32(q); if e2_may_stand(cx, cz) { return E2Spot.{x = cx, z = cz}; } }
+  return E2Spot.{x = x, z = z};
+}
+rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #export_c #effects(all) { s := s_id.value;
+  if !rm_eg_live(v, k) || s < 0 || s >= EG_SEATS || out.count < 3 || !v[0].eg[k].seat[s].live { return false; }
+  st := v[0].eg[k].seat[s];
+  // a local --dev room (room-dev.coax) takes the page's own place as it is: a capture's or a check's
+  // ?at= start down the path (everglade2.coax e2_query_local); production never does
+  if v[0].dev.on && st.claim && e2_may_stand(st.claim_x, st.claim_z) { out[0] = st.claim_x; out[1] = st.claim_z; out[2] = st.claim_yaw; return true; }
+  if !st.back { return false; }
+  // a place pressed against the walkable land's edge, which the wire's and the save's rounding put
+  // just past it, is drawn back onto it (e2_stand_near); one farther out goes toward the spawn
+  back := e2_stand_near(st.back_x, st.back_z, f32(E2_SPAWN_X), f32(E2_SPAWN_Z));
+  if !e2_may_stand(back.x, back.z) { back = e2m_keep(st.back_x, st.back_z, f32(E2_SPAWN_X), f32(E2_SPAWN_Z)); }
+  out[0] = back.x; out[1] = back.z; out[2] = st.back_yaw;
+  if st.claim {
+    c := e2_stand_near(st.claim_x, st.claim_z, st.back_x, st.back_z);
+    since := eg_clamp(v[0].wall_ms - st.back_at, 0, EG_E2_CLAIM_MS);
+    reach := f32(E2_RUN_SPEED) * f32(since) / 1000 + f32(EG_E2_SLACK);
+    dx := c.x - st.back_x; dz := c.z - st.back_z;
+    if e2_may_stand(c.x, c.z) && dx * dx + dz * dz <= reach * reach { out[0] = c.x; out[1] = c.z; out[2] = st.claim_yaw; }
+  }
+  return true;
+}
+#test "an Everglade II room puts a restarted room's player where their page stands, within what they could have run" #steps 4000000000 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 50000, 1800000060000);
+  v[0].eg[0].live = true; v[0].eg[0].e2 = true; st := v[0].eg[0].seat[0..<1]; st[0].live = true; out: [3] f32;
+  #assert !rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]);   // nowhere saved: the spawn
+  // saved 4 s ago at the path's start; the page says it ran 15 m on: 4.25 m/s x 4 s + 2 m reaches it
+  st[0].back = true; st[0].back_x = 0; st[0].back_z = -10; st[0].back_yaw = 3.1; st[0].back_at = 1800000056000;
+  #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[0] == 0 && out[1] == -10;
+  st[0].claim = true; st[0].claim_x = 0; st[0].claim_z = -25; st[0].claim_yaw = 3.0;
+  #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[1] == -25 && out[2] == 3.0;
+  // farther than it could have run: where the room had it
+  st[0].claim_z = -40; #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[1] == -10;
+  // a local --dev room takes the page's place as it is (a capture's ?at=)
+  v[0].dev.on = true; #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[1] == -40; v[0].dev.on = false;
+  // a centimetre past the glade's edge (east): drawn back onto it, within 5 cm
+  // a centimetre past the glade's edge (its east, where the woods are thick): drawn back onto it
+  edge := f32(E2_GLADE_WALK); e := edge + 0.01; while e2_may_stand(e, 0) { e += 0.01; }
+  st[0].back_x = edge - 3; st[0].back_z = 0; st[0].claim_x = e; st[0].claim_z = 0;
+  #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[0] > e - 0.06 && out[0] < e && e2_may_stand(out[0], out[1]);
+  // and a saved place there, with no claim: the same, not the spawn's way
+  st[0].claim = false; st[0].back_x = e;
+  #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[0] > e - 0.06 && out[1] == 0;
+  // the seat waits for its hello to be placed, a second at most
+  st[0].joined_ms = 49500; #assert !rm_eg_unplaced(v[..], 0, SeatId.{value = 0});
+  st[0].hello = true; #assert rm_eg_unplaced(v[..], 0, SeatId.{value = 0});
+  st[0].hello = false; rm_clock(v[..], 50600, 1800000060600); #assert rm_eg_unplaced(v[..], 0, SeatId.{value = 0});
+  v[0].eg[0].e2 = false; st[0].joined_ms = 50600; #assert rm_eg_unplaced(v[..], 0, SeatId.{value = 0});   // Everglade's rooms never wait
+}
+RM_GLADE_FLAG :: 128;   // verse/everglade/glade-zone.coax EZ_GLADE_FLAG (the room server doesn't load the plan: keep them alike)
+// A seat whose hello came from Character Create (FLAGS EZ_GLADE_FLAG, apps/openagents-web/everglade-create.coax):
+// it is seated at the glade's clearing south of the gate, where that page stands you (room-tick.c everglade_place).
+rm_eg_glade :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
+  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live && (v[0].eg[k].seat[s].flags & RM_GLADE_FLAG) != 0;
+}
+rm_eg_rooms :: () -> int #export_c #effects(all) { return EG_ROOMS; }
+rm_eg_seats :: () -> int #export_c #effects(all) { return EG_SEATS; }
+rm_eg_hz :: () -> int #export_c #effects(all) { return EG_HZ; }
+rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return k >= 0 && k < EG_ROOMS && v[0].eg[k].live; }
+rm_eg_seat_live :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value; return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
+// Summoned creatures: how many places, where q stands (x, z) when it is on, and the ground's height
+// under it, which the host's world knows (before rm_eg_end: a new one is heard once it has it).
+rm_eg_beasts :: () -> int #export_c #effects(all) { return E5RR_BEASTS; }
+rm_eg_beast_at :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_c #effects(all) {
+  if !rm_eg_live(v, k) || q < 0 || q >= E5RR_BEASTS || out.count < 2 { return false; }
+  bt := v[0].eg[k].rules[0].beasts[q];
+  if bt.id == 0 { return false; }
+  out[0] = bt.x; out[1] = bt.z;
+  return true;
+}
+rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c #effects(all) { if rm_eg_live(v, k) { e5rr_beast_ground(v[0].eg[k].rules[..], q, y); } }
+
+// Room k's tick ends: the casts that strike now are rolled, the engine's clock moves on, its events
+// are heard (rm_eg_rules), and every EG_SEND ticks (each tick) each seat gets its state (rm_eg_send).
+// The host calls the two apart, to time the rules and the writing of the frames (room-stats.h).
+rm_eg_end :: (v: [] RmServer, k: int) #export_c #effects(all) { rm_eg_rules(v, k); rm_eg_send(v, k); }
+rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
+  t := v[0].eg[k].tick;
+  // the casts in the tick's order (room-casts.coax): starts, heals, the world's harm; the rules' step
+  // (the creatures' turns); then stops, releases and harm
+  eg_ends_due(v, k);
+  rc_tick_first(v, k);
+  fg_sync(v,k);
+  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); e2_arrows_tick(v,k); }
+  e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
+  if v[0].eg[k].e2 { e2_admin_after(v,k); }
+  e2_guard_after(v,k); e2_monsters_after(v,k);
+  if v[0].eg[k].e2 { e2_rest_tell_all(v, k); e2_kit_tell_all(v, k); }
+  fg_hits(v,k);
+  rc_tick_last(v, k);
+  eg_engine_events(v, k);
+  eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
+  ev_tick(v, k);       // its world event (room-events.coax)
+}
+rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
+  for s:0..<EG_SEATS {
+    if !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed || v[0].eg[k].seat[s].conn<0 { continue; }
+    // a restored seat waiting for its first receipt is held: no world yet, while the others play on (#13185)
+    if !ck_can_play(v,k,SeatId.{value=s}) { continue; }
+    eg_send(v,k,SeatId.{value=s});
+    if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); e2_guard_snapshot(v,k,s); e2_monsters_snapshot(v,k,s); }
+  }
+  v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
+}
+// Where a TGT code is now (a seat's place, a summoned creature's), else (x, z).
+eg_where :: (v: [] RmServer, k: int, tgt: int, x: f32, z: f32) -> EgPose {
+  if tgt >= EG_TGT_SEAT && tgt < EG_TGT_SEAT + EG_SEATS { return v[0].eg[k].seat[tgt - EG_TGT_SEAT].pose; }
+  if tgt > E5RR_TGT_BEAST {
+    i := e5rr_beast_of_tgt(v[0].eg[k].rules[..], tgt);
+    if i >= 0 { bt := v[0].eg[k].rules[0].beasts[i - E5RR_BEAST0]; return EgPose.{x = bt.x, y = bt.y, z = bt.z}; }
+  }
+  return EgPose.{x = x, z = z};
+}
+eg_engine_events :: (v: [] RmServer, k: int) {
+  ev: [64 * E5RR_EV_FLOATS] f32;
+  n := e5rr_events(v[0].eg[k].rules[..], ev[..]);
+  for q: 0..<n {
+    o := q * E5RR_EV_FLOATS;
+    kind := cast(int) ev[o]; by := cast(int) ev[o + 2]; who := cast(int) ev[o + 3];
+    at := eg_where(v, k, who, ev[o + 6], ev[o + 7]);
+    b: [96] u8; m := 0;
+    if kind == RS_EV_DAMAGE { eg_crime(v, k, by, who, at.x, at.z); }
+    if kind == RS_EV_SAVE { eg_folk_saved(v, k, cast(int) ev[o + 1], by, who, ev[o + 5] > 0.5); }
+    ev_engine(v, k, kind, by, who, cast(int) ev[o + 4]);   // a raider's harm, the XP's, the siege's help (room-events.coax)
+    if kind == RS_EV_DAMAGE { m = wire_put_hit(b[..], 0, WireHit.{who = who, by = by, amt = cast(int) ev[o + 4], kind = cast(int) ev[o + 5]}); }
+    else if kind == RS_EV_HEAL { m = wire_put_heal(b[..], 0, who, cast(int) ev[o + 4]); }
+    else if kind == RS_EV_DEATH { m = wire_put_die(b[..], 0, who); }
+    if m > 0 { eg_event(v, k, cast(string) b[0..<m], at.x, at.z, false); }
+  }
+}
+
+// The rules rolled townsperson `who`'s save against spell `sp` of seat `by` (a TGT code): where it is
+// an ability the world runs too (Thunderwave's push, Gust of Wind's), the world's copy takes this save
+// (rm_eg_folk_save) rather than rolling a second one of its own (#12874).
+eg_folk_saved :: (v: [] RmServer, k: int, sp: int, by: int, who: int, saved: bool) {
+  if who < 0 || who >= E5R_FOLK || sp < 0 || by < EG_TGT_SEAT || by >= EG_TGT_SEAT + EG_SEATS { return; }
+  r := v[0].eg[k].rules[..];
+  for slot: EG_SP_SLOTS..<FB_EG_SLOTS {
+    if r[0].bar[slot].kind != FB_SPELL || r[0].bar[slot].sp != sp || !ra_world_slot(slot) { continue; }
+    v[0].eg[k].folk_save[who] = eg_save_code(slot - EG_SP_SLOTS, SeatId.{value = by - EG_TGT_SEAT}, saved);
+    return;
+  }
+}
+// A save's code: 1 + (ability * EG_SEATS + seat) * 2 + 1 if it succeeded (0: none).
+eg_save_code :: (ab: int, seat_id: SeatId, saved: bool) -> int { seat := seat_id.value; return 1 + (ab * EG_SEATS + seat) * 2 + (ifx saved then 1 else 0); }
+// Person j's save the rules rolled since the world last heard: its ABILITY SEAT SAVED (1 a success),
+// once (it is heard as it is read). Whether there was one.
+rm_eg_folk_save :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c #effects(all) {
+  if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || out.count < 3 || v[0].eg[k].folk_save[j] == 0 { return false; }
+  c := v[0].eg[k].folk_save[j] - 1;
+  v[0].eg[k].folk_save[j] = 0;
+  out[0] = f32(c / 2 / EG_SEATS); out[1] = f32(c / 2 % EG_SEATS); out[2] = f32(c % 2);
+  return true;
+}
+
+// Seat harm (by a seat, or a creature a seat summoned) to a townsperson `who` is a crime the world hears.
+eg_crime :: (v: [] RmServer, k: int, by: int, who: int, x: f32, z: f32) {
+  if who < 0 || who >= E5R_FOLK { return; }
+  seat := -1;
+  if by >= EG_TGT_SEAT && by < EG_TGT_SEAT + EG_SEATS { seat = by - EG_TGT_SEAT; }
+  else if by > E5RR_TGT_BEAST {
+    i := e5rr_beast_of_tgt(v[0].eg[k].rules[..], by);
+    if i >= 0 { seat = v[0].eg[k].rules[0].beasts[i - E5RR_BEAST0].by; }
+  }
+  if seat < 0 || seat >= EG_SEATS { return; }
+  v[0].eg[k].folk_by[who] = seat;
+  if v[0].eg[k].crime_n < EG_CRIMES { v[0].eg[k].crimes[v[0].eg[k].crime_n] = EgCrime.{by = seat, x = x, z = z}; v[0].eg[k].crime_n += 1; }
+}

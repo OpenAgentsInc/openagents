@@ -1,0 +1,96 @@
+// Everglade's room: a seat's casts, taken or refused, their sight and their targets.
+// Moved from coax/web/room/room-everglade.coax (#13267), which loads it.
+// Everglade II's casts (#13058). Its world has no monsters and players can't harm each other: a cast
+// uses shared self effects and harmless empty offensive casts. The room takes one when the slot is on the seat's class's kit
+// (class-kit.coax: XK_SLOT0 + class * XK_PER + i, the class its hello said, srd-*), it comes at least
+// EG_E2_GAP ticks after the seat's last (its page waits XC_COOL), and its aim is a number within the
+// ability's reach of where the room has the seat (EG_E2_CAST_SLACK m more, for the steps not yet stepped).
+// Shared execution must commit before every page within EG_VIEW hears e cast SS SLOT AX AY AZ SEED, the caster's too,
+// at once (the casts' own queue is v1's: its rules roll against the town and the seats).
+EG_E2_GAP :: 15;      // ticks (0.5 s at EG_HZ 30): half the page's XC_COOL of 1 s, so a cast held up on the way and the next on time
+                      // are both taken (at 0.8 s a late arrow then an on-time one was refused: a bow drawn and no arrow)
+EG_E2_CAST_SLACK :: 3.0;   // m
+eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  e := xk_entry_at(v[0].eg[k].rules[0].klass[seat] - E5R_CL0, v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level, wc.slot);   // its level's bar (#13046)
+  if !e.ok { eg_refuse(v, k, seat_id, wc.seq, "slot"); return; }
+  if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) || abs(wc.ay) > 1000 { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_AIM)); return; }
+  t := v[0].eg[k].tick;
+  if t - st[0].last_cast < EG_E2_GAP { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_COOLDOWN)); return; }
+  me := st[0].pose; dx := wc.ax - me.x; dz := wc.az - me.z;
+  reach := ifx e.aim.kind == XC_AIM_SELF then 0.0f32 else e.aim.reach;
+  if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
+  r:=v[0].eg[k].rules[..];
+  // a bow's Attack with its launch said: an arrow the room flies; its Attack is rolled when it reaches
+  // a body or the ground (everglade/server/arrows.coax). The cast is told now, as any: the archer's loose.
+  if e.ab.kind == FB_ATTACK && xc_kit(r[0].klass[seat] - E5R_CL0) == XC_KIT_BOW && st[0].loose.ok {
+    kept := st[0].loose.seq == wc.seq && rs_can_act(r[0].b[0].c[E5RR_SEAT + seat]);
+    if !kept { st[0].loose = NetLoose.{}; }
+    if kept && e2_arrow_loose(v, k, seat_id, wc.slot, wc.seq) {
+      st[0].last_cast = t; v[0].eg[k].e2_casts += 1;
+      ev: [128] u8;
+      en := wire_put_cast_e(ev[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
+      eg_event(v, k, cast(string) ev[0..<en], me.x, me.z, false);
+      return;
+    }
+  }
+  revive:=e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY;
+  // its line of sight (#13262): v1's rule (room-casts.coax rm_eg_sights), a cast on yourself needs none
+  if e.ab.tg != FB_SELF && !revive && !e2_cast_sight(v, k, me, wc.ax, wc.az) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_SIGHT)); return; }
+  // aimed at the path's guard or a monster, a harmful cast is at it (everglade/server/guard.coax,
+  // everglade/server/creatures.coax): the shared rules' strike
+  gfoe := ifx revive || e5rr_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
+  foe := ifx gfoe >= 0 || revive || e5rr_helps(e.ab) then gfoe else e2_monster_target(v, k, wc.ax, wc.az);
+  foe_hp := ifx foe >= 0 then r[0].b[0].c[foe].hp else 0;
+  done:=ifx revive then e2r_use_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,eg_e2_corpse(v,k,seat))
+    else e2r_use_at_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,e5r_sq(wc.ax),e5rr_z_cell(r,wc.az),foe);
+  if !done { eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return; }
+  if gfoe >= 0 { e2_guard_struck(v, k, seat, foe_hp); }
+  else if foe >= 0 { e2_monster_struck(v, k, seat, foe, foe_hp); }
+  if e.ab.kind==FB_SPELL && e.ab.sp==SP_PROTECTION_GOOD_EVIL { st[0].protection_water_used=true; }
+  if revive { st[0].revivify_diamond_used=true; }
+  st[0].last_cast = t;
+  v[0].eg[k].e2_casts += 1;
+  e2_kit_tell(v, k, seat_id, false);   // what the cast spent, at once
+  b: [128] u8;
+  n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
+  eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
+}
+// Whether a caster with feet at `me` sees the aim (ax, az) (#13262): v1's line (everglade-cast-sight.coax
+// cr_sight) from CR_EYE over the caster's land to EG_E2_SIGHT_UP over the aim's, ending CR_SHORT short,
+// and an aim within CR_NEAR always seen. What blocks it is what stops an arrow (#13166): the trunks and
+// rocks the walker meets (everglade2-archery.coax e2ar_in), from the room's planting. A piece lower
+// than CR_LOW where the line meets it (a low rock) doesn't block, nor does the land (a bolt clears a rise).
+EG_E2_SIGHT_UP :: 1.0;     // m over the aim's land the line ends: a body's chest (the page's aim is its own y + 1)
+EG_E2_SIGHT_STEP :: 0.05;  // m between the points asked along the line: under a trunk's radius
+e2_cast_sight :: (v: [] RmServer, k: int, me: EgPose, ax: f32, az: f32) -> bool {
+  dx := ax - me.x; dz := az - me.z; flat := sqrt(dx * dx + dz * dz);
+  if !(flat == flat) || flat <= f32(CR_NEAR) { return true; }
+  ey := e2_height(me.x, me.z) + f32(CR_EYE); ty := e2_height(ax, az) + f32(EG_E2_SIGHT_UP);
+  span := sqrt(flat * flat + (ty - ey) * (ty - ey));
+  far := span - f32(CR_SHORT);
+  if far <= 0 { return true; }
+  land := e2a_land(v); near := v[0].eg[k].arrows[0].near[..];
+  n := cast(int) (far / f32(EG_E2_SIGHT_STEP));
+  for i: 1..<n + 2 {
+    t := ifx i > n then far / span else f32(i) * f32(EG_E2_SIGHT_STEP) / span;
+    x := me.x + dx * t; y := ey + (ty - ey) * t; z := me.z + dz * t;
+    if e2ar_in(land, near, x, y, z) != E2AR_WOOD { continue; }
+    if e2ar_in(land, near, x, e2_height(x, z) + f32(CR_LOW), z) == E2AR_WOOD { return false; }
+  }
+  return true;
+}
+// Revivify's creature: the nearest dead player within Touch whom neither seat has blocked. The
+// shared rules judge the death's timing, reach and cover (aethyr/rules/srd/revivify.coax).
+eg_e2_corpse :: (v: [] RmServer, k: int, s: int) -> int {
+  room:=v[0].eg[k..<k+1]; rules:=room[0].rules[..]; b:=rules[0].b[..];
+  best:=1.524f32*1.524f32*2; target:=-1;
+  for j:0..<EG_SEATS {
+    if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
+    if (room[0].im[0].blocks[s] & (1 << j))!=0 || (room[0].im[0].blocks[j] & (1 << s))!=0 { continue; }
+    if !b[0].c[E5RR_SEAT+j].dead { continue; }
+    d:=e2_aid_distance(room[0].seat[s].pose,room[0].seat[j].pose);
+    if d<=best && (target<0 || d<best) { best=d; target=j; }
+  }
+  return ifx target<0 then -1 else E5RR_SEAT+target;
+}

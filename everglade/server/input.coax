@@ -1,0 +1,426 @@
+// Everglade's room: what a seat says, its intents (hello, inputs, casts, uses, rests).
+// Moved from coax/web/room/room-everglade.coax (#13267), which loads it.
+// ---- intents
+
+// A seat's frame (past the relay's rate limits and pings).
+eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  k := eg_room_at(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4") || wire_is(text,"M5") || wire_is(text,"M6") || wire_is(text,"M7"))) { return; }
+  v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
+  c := text[0];
+  // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
+  if (c == 'I' || c == 'J' || c == 'C' || c == 'F' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (everglade/server/admin.coax)
+  if c=='M' { if v[0].eg[k].e2 { e2_familiar_ask(v,k,seat_id,text); } return; }
+  if c == 'U' { if v[0].eg[k].e2 { e2_aid_ask(v,k,seat_id,text); } return; }
+  if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
+  if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
+  if c == 'F' { if v[0].eg[k].e2 { e2_arrow_heard(v, k, seat_id, text); } return; }   // an arrow's launch, before its Attack's C (everglade/server/arrows.coax)
+  if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
+  if c == 'P' {   // the page's build, for its hello's admission (#12839)
+    rp: [1] WireRd; rp[0] = wire_rd(text, 1);
+    pins := wire_read_pins(text, rp[..]);
+    if rp[0].ok && eg_fields(text) == 4 { v[0].eg[k].seat[seat].pins = pins; v[0].eg[k].seat[seat].pinned = true; }
+    return;
+  }
+  if c == 'H' { eg_heard_hello(v, k, seat_id, text); v[0].eg[k].seat[seat].hello = true; return; }
+  if c == 'V' { eg_heard_change(v, k, seat_id, text); return; }   // Change character (Everglade II)
+  if c == 'A' {   // where an Everglade II page stands as it sits again (#13057): heard before its first place only
+    ra: [1] WireRd; ra[0] = wire_rd(text, 1);
+    at := wire_read_at(text, ra[..]);
+    st := v[0].eg[k].seat[seat..<seat + 1];
+    if ra[0].ok && eg_fields(text) == 5 && v[0].eg[k].e2 && !st[0].placed && at.x == at.x && at.z == at.z && at.yaw == at.yaw {
+      st[0].claim = true; st[0].claim_x = at.x; st[0].claim_z = at.z; st[0].claim_yaw = at.yaw;
+    }
+    return;
+  }
+  if c == 'K' { im_heard_blocks(v, k, seat_id, text); return; }   // who it blocks (room-interest.coax, #12789)
+  if c == 'O' { eg_heard_missed(v, k, seat_id); return; }   // it missed an outcome (#12902)
+  if c == 'E' {
+    rd: [1] WireRd; rd[0] = wire_rd(text, 1);
+    u := wire_read_use(text, rd[..]);
+    if !rd[0].ok || eg_fields(text) != 4 { return; }
+    // a door: the world opens or shuts it for every seat, its collider with it; a talk: the townsperson
+    // stops and faces that seat on every page (-1 lets them go). The world checks the reach (rm_eg_use_asks).
+    // a rowboat (#12861): the world seats it in boat ID (its float, -1 the nearest) when free and in
+    // reach, or takes it out of the one it rows
+    if u.kind == WE_DOOR || u.kind == WE_TALK || u.kind == WE_BOAT {
+      if u.kind == WE_DOOR && (u.id < 0 || u.id >= WIRE_DOOR_WORD * WIRE_DOOR_WORDS) { return; }
+      if u.kind == WE_BOAT && (u.id < -1 || u.id >= 999) { return; }
+      if u.kind == WE_TALK && (u.id < -1 || u.id >= 999) { return; }
+      uses:=0;releases:=0;for q:0..<v[0].eg[k].use_ask_n{code:=v[0].eg[k].use_ask[q];if code/1000%1000!=seat{continue;}if code%1000==0{releases+=1;}else{uses+=1;}}
+      if !ef_use_admit(u.id== -1,uses,releases)||v[0].eg[k].use_ask_n>=EG_USE_ASKS{eg_refuse(v,k, seat_id,u.seq,"busy");return;}
+      v[0].eg[k].use_ask[v[0].eg[k].use_ask_n]=eg_use_code(u.kind, seat_id,u.id);v[0].eg[k].use_ask_n+=1;
+      return;
+    }
+    // the quest board is the page's (its own quest stages): only ending a slot is
+    if u.kind != WE_END { eg_refuse(v, k, seat_id, u.seq, "unbuilt"); return; }
+    // an end takes its place among the seat's inputs, as a cast does (rc_ready): with inputs sent
+    // before it still queued, it waits for them (eg_ends_due), and the inputs after it wait for it
+    st := v[0].eg[k].seat[seat..<seat + 1];
+    if st[0].q_n > 0 && st[0].q[0].seq < u.seq {
+      if st[0].ends_n>=EG_ENDS{eg_refuse(v,k, seat_id,u.seq,"busy");return;}
+      st[0].ends[st[0].ends_n] = EgEnd.{seq = u.seq, slot = u.id}; st[0].ends_n += 1;
+      return;
+    }
+    eg_end_now(v, k, seat_id, u.seq, u.id);
+    return;
+  }
+  if c == 'L' { if v[0].eg[k].e2 { e2_heard_old_rest(v, k, seat_id, text); return; } eg_heard_rest(v, k, seat_id, text); return; }
+  if c == 'Z' { if v[0].eg[k].e2 { e2_heard_rest(v, k, seat_id, text); } return; }   // an Everglade II rest (everglade/server/rest.coax)   // a Long Rest (room-events.coax ev_rest_ok)
+  if c == 'R' {
+    // a room's town is rebuilt by the room (the aftermath's ev_rebuild) or by an admin, never a player's R (#12801)
+    if !eg_ticket(v, k, seat_id).admin { rr0: [1] WireRd; rr0[0] = wire_rd(text, 1); eg_refuse(v, k, seat_id, wire_num(text, rr0[..]), "admin"); return; }
+    // the world stands its pieces and people up (rm_eg_rebuild), the rules the people, every page hears it:
+    // if no spell struck the town in the last EG_REBUILD_QUIET s, and at most once every EG_REBUILD_EVERY s (spec 6.6)
+    rr: [1] WireRd; rr[0] = wire_rd(text, 1);
+    seq := wire_num(text, rr[..]);
+    now := v[0].eg[k].tick;
+    if now - v[0].eg[k].broke_at < EG_REBUILD_QUIET * EG_HZ { eg_refuse(v, k, seat_id, seq, "breaking"); return; }
+    if now - v[0].eg[k].rebuilt_at < EG_REBUILD_EVERY * EG_HZ { eg_refuse(v, k, seat_id, seq, "cooldown"); return; }
+    v[0].eg[k].rebuilt_at = now;
+    v[0].eg[k].rebuild = true;
+    e5rr_folk_restore(v[0].eg[k].rules[..]);
+    e5rr_zombies_clear(v[0].eg[k].rules[..]);   // the Warlock's Zombies fall with it
+    e5rd_wall_whole(v[0].eg[k].rules[..]);      // the palisade whole: the raid's breaches shut
+    for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
+    for q: 0..<CR_PLACED_MAX { v[0].eg[k].placed_burn[q] = false; v[0].eg[k].placed_gone[q] = false; }
+    p := v[0].eg[k].seat[seat].pose;
+    b: [32] u8;
+    eg_event(v, k, cast(string) b[0..<wire_put_rebuilt(b[..], 0)], p.x, p.z, true);
+    return;
+  }
+}
+// Seat seat's page heard tick `heard` whole: what went out that tick is its page's (rows, n and w
+// entries), and its snapshots end once it is one of them.
+eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  if st[0].full && st[0].full_t > 0 && heard >= st[0].full_t { st[0].full = false; }
+  if st[0].full || heard <= st[0].rep[0].heard { return; }
+  wire_seat_ack(st[0].rep[..], v[0].eg[k].hist[..], heard);
+  if st[0].rep[0].heard != heard { return; }
+  bit := 1 << (heard % WIRE_ACKS);
+  for q: 0..<EG_SEATS {
+    if (st[0].n_bits[q] & bit) != 0 && heard >= st[0].n_t[q] - WIRE_ACKS + 1 { st[0].n_ok[q] = true; }
+    if (st[0].w_bits[q] & bit) != 0 && heard >= st[0].w_t[q] - WIRE_ACKS + 1 { st[0].w_ok[q] = true; }
+  }
+}
+// E SEQ 5 SLOT, ending what bar slot SLOT holds up: the world's (room-abilities.coax), and the rules'
+// concentration; nothing held up, refused.
+#test "overload: a full ordered end queue refuses before ending an ability ahead of its inputs (#12841)" #steps 2000000000 {
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-end-budget",2,false);b:[128]u8;
+  slot:=RA_REVERSE+EG_SP_SLOTS;v[0].ab[k].live[RA_REVERSE].on=true;
+  rm_heard(v[..],0,"I 1 100 0 0 0 0 0 0");
+  for i:0..<EG_ENDS+1{n:=wire_put_use(b[..],0,WireUse.{seq=i+2,kind=WE_END,id=slot});rm_heard(v[..],0,cast(string)b[0..<n]);}
+  #assert v[0].eg[k].seat[0].ends_n==EG_ENDS&&v[0].ab[k].q_n==0;
+  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 6 busy");
+  v[0].eg[k].seat[0].q_n=0;eg_ends_due(v[..],k);#assert v[0].eg[k].seat[0].ends_n==0&&v[0].ab[k].q_n==EG_ENDS;
+}
+#test "overload: one seat cannot consume another seat's door talk or boat work (#12841)" #steps 2000000000 {
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-use-budget",2,false);b:[128]u8;
+  for i:0..<EG_USE_ASKS{n:=wire_put_use(b[..],0,WireUse.{seq=i+1,kind=WE_DOOR,id=i});rm_heard(v[..],0,cast(string)b[0..<n]);}
+  n:=wire_put_use(b[..],0,WireUse.{seq=99,kind=WE_TALK,id=0});rm_heard(v[..],1,cast(string)b[0..<n]);
+  #assert v[0].eg[k].use_ask_n==2;
+  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 2 busy");
+  n=wire_put_use(b[..],0,WireUse.{seq=100,kind=WE_TALK,id= -1});rm_heard(v[..],0,cast(string)b[0..<n]);
+  #assert v[0].eg[k].use_ask_n==3&&rm_eg_use_ask(v[..],k,2)==eg_use_code(WE_TALK, SeatId.{value = 0},-1);
+  n=wire_put_use(b[..],0,WireUse.{seq=101,kind=WE_BOAT,id= -1});rm_heard(v[..],0,cast(string)b[0..<n]);
+  #assert v[0].eg[k].use_ask_n==3;
+  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 101 busy");
+}
+
+#test "overload: refused world starts keep cooldown and resources and refused ends keep concentration (#12841)" #steps 2000000000 {
+  v:[1]RmServer;box:[1]EgInbox;k:=rc_test_room(v[..],"pair-effect-refuse",2,false);
+  for q:0..<EF_STARTS{#assert ra_queue(v[..],k,RaCast.{by=0,on=true});}
+  before:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT];cast_at:=v[0].eg[k].seat[0].last_cast;
+  rm_heard(v[..],0,"C 99 5 0 0 200 -1");rc_test_tick(v[..],k,true);
+  #assert v[0].eg[k].seat[0].last_cast==cast_at;
+  for i:0..<10{#assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].slots[i]==before.slots[i];}
+  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 99 busy");
+  rm_ra_heard(v[..],k);for q:0..<EF_ENDS{#assert ra_queue(v[..],k,RaCast.{by=0,on=false});}
+  spell:=e5rr_entry(v[0].eg[k].rules[..],5).sp;
+  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].conc=spell;v[0].ab[k].live[1].on=true;
+  eg_end_now(v[..],k, SeatId.{value = 0},100,5);#assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].conc==spell&&v[0].ab[k].q_n==EF_ENDS;
+  eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 100 busy");
+}
+
+eg_end_now :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, slot: int) { seat := seat_id.value;
+  if ra_world_slot(slot)&&v[0].ab[k].live[seat*RA_ABS+slot-EG_SP_SLOTS].on&&!ra_may_queue(v,k, seat_id,false){eg_refuse(v,k, seat_id,seq,"busy");return;}
+  world := ra_end(v, k, seat_id, slot);
+  if ra_whole(slot) { return; }
+  if !e5rr_end(v[0].eg[k].rules[..], seat, slot) && !world { eg_refuse(v, k, seat_id, seq, "nothing"); }
+}
+// The ends that waited for the inputs before them (eg_heard): each once those are stepped.
+eg_ends_due :: (v: [] RmServer, k: int) {
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    while st[0].ends_n > 0 && (!st[0].live || st[0].q_n == 0 || st[0].q[0].seq > st[0].ends[0].seq) {
+      e := st[0].ends[0];
+      for i: 1..<st[0].ends_n { st[0].ends[i - 1] = st[0].ends[i]; }
+      st[0].ends_n -= 1;
+      if st[0].live { eg_end_now(v, k, SeatId.{value = s}, e.seq, e.slot); }
+    }
+  }
+}
+// Whether seat s's next input, seq, waits this tick: a cast or an end sent before it hasn't started
+// yet (room-casts.coax rc_ready, eg_ends_due). The cast starts at the tick's end, once the inputs
+// before it are stepped, and its world takes it before the next tick's steps (room-tick.c), so the
+// server steps the inputs after a cast with what it holds up, as the page that pressed it did.
+eg_waits :: (v: [] RmServer, k: int, s_id: SeatId, seq: int) -> bool { s := s_id.value;
+  st := v[0].eg[k].seat[s];
+  if st.ends_n > 0 && st.ends[0].seq < seq { return true; }
+  for q: 0..<EG_CASTS {
+    c := v[0].eg[k].casts[q];
+    if c.on && c.seat == s && c.phase == RC_WAIT && c.seq < seq { return true; }
+  }
+  return false;
+}
+// book:begin intent-queue
+// I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
+// heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
+eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  r: [1] WireRd; link:=wire_is(text,"J1");
+  r[0] = wire_rd(text,ifx link then 2 else 1);
+  w := wire_read_in(text, r[..]);
+  if !r[0].ok || eg_fields(text) != 9 || (link && !wire_link_input_ok(w.b)) { return; }
+  eg_seat_heard(v, k, seat_id, w.heard);
+  if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
+  if w.theta == w.theta { v[0].eg[k].seat[seat].cam = w.theta; v[0].eg[k].seat[seat].cam_on = true; }   // where it looks: its rows' view (#13178)
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  seq := w.seq;
+  n := st[0].q_n;
+  if !life_room_takes(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }   // old or repeated (aethyr/session/lifecycle.coax)
+  if n >= EG_INPUTS {
+    for i: 1..<EG_INPUTS { st[0].q[i - 1] = st[0].q[i]; }
+    n = EG_INPUTS - 1;
+  }
+  st[0].q[n] = EgIn.{seq = seq, kx = eg_clamp(w.kx, -100, 100), ky = eg_clamp(w.ky, -100, 100),
+                     px = eg_clamp(w.px, -100, 100), py = eg_clamp(w.py, -100, 100),
+                     theta = eg_clamp(eg_round(w.theta * f32(WIRE_FINE)), -40000, 40000), b = eg_clamp(w.b, 0, ifx link then 511 else 31), at = v[0].mono_ms};
+  st[0].q_n = n + 1;
+}
+// book:end intent-queue
+// H 3 LOOK CLASS FLAGS NAME
+eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  h := wire_read_hello_value(text, r[..]);
+  if !r[0].ok { return; }
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  // a page of another wire or build (#12788, #12839): its engine, rules, world, wire or saved data
+  // not this room's (eg_admit): told "version", and its socket closed (the host closes a kicked one)
+  // so the page reloads into the build that is out, and counted by why.
+  // a draining room seats nobody new (#12797): told why, and its socket closed; the page sits elsewhere
+  if v[0].drain {
+    eg_refuse(v, k, seat_id, 0, WIRE_REFUSE_RESTARTING);
+    if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
+    return;
+  }
+  why := eg_admit(v, k, seat_id, h.version);
+  if why != CP_OK {
+    eg_refuse(v, k, seat_id, 0, WIRE_REFUSE_VERSION);
+    if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
+    v[0].eg[k].stale_n += 1;
+    _ := st_refuse(v, st_compat(why));
+    return;
+  }
+  tk := eg_ticket(v, k, seat_id);
+  if tk.schema == 2 {
+    if st[0].checkpoint_hello { return; }
+    cap := tk.capture;
+    if cap.ok && compat_admit(eg_server(), CompatPins.{engine=cap.n[6],rules=cap.n[7],content=cap.n[8],wire=h.version,schema=2}) != CP_OK {
+      eg_refuse(v,k, seat_id,0,WIRE_REFUSE_VERSION);
+      if st[0].conn>=0 && st[0].conn<CONNS { v[0].conns[st[0].conn].kicked=true; }
+      return;
+    }
+  }
+  st[0].look_n = eg_word(cast(string)h.look[0..<h.look_n], st[0].look[..]);
+  kind := cast(string)h.kind[0..<h.kind_n];
+  // a capture's class bit says Everglade's druid or Warlock; a Character Create class (srd-*, #13024)
+  // comes with the ticket, else with the first hello (eg_hello_class)
+  if tk.schema == 2 && tk.capture.ok && fb_cl_of_kind(kind) < 0 { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
+  eg_hello_class(v, k, seat_id, tk, kind);
+  st[0].flags = eg_clamp(h.flags, 0, 255);
+  st[0].rep[0].packed = (st[0].flags & WIRE_HELLO_PACKED) != 0;   // its rows go bit-packed (everglade-wire.coax, #13165)
+  if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
+  ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
+  // Character Create's hello (RM_GLADE_FLAG) can come after the seat's first tick put it at the
+  // spawn: it is put again, at the glade's clearing (room-tick.c everglade_place)
+  if (st[0].flags & RM_GLADE_FLAG) != 0 { st[0].placed = false; }
+  rv_hp_back(v, k, seat_id); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
+  trv_carry(v, k, seat_id);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
+  ck_restore(v,k, seat_id);
+  if tk.schema == 2 { if !st[0].checkpoint_hello { ck_hello(v, k, seat_id); } st[0].checkpoint_hello=true; ck_capture(v, k, seat_id); }   // captured now if already placed (#13184)
+  // the name: letters, digits, spaces, '-' and '_' ("-" none)
+  m := 0;
+  for ch: h.name[0..<h.name_n] {
+    if m >= EG_NAME { break; }
+    ok := (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || (ch == ' ' && m > 0) || ch == '-' || ch == '_';
+    if ok { st[0].name[m] = ch; m += 1; }
+  }
+  while m > 0 && st[0].name[m - 1] == ' ' { m -= 1; }
+  st[0].name_n = ifx m == 1 && st[0].name[0] == '-' then 0 else m;
+  // a seat ticket's name and account bit outrank the hello's (room-ticket.coax, #12712)
+  if tk.ok {
+    st[0].flags = (st[0].flags & 253) | (ifx tk.account then 2 else 0);
+    // only the ticket's name, which the API filtered (verse.name_ok, #12714); none: "-"
+    for i: 0..<tk.name_n { st[0].name[i] = tk.name[i]; }
+    st[0].name_n = tk.name_n;
+  }
+}
+// Sessions pinned to a build (#12839, aethyr/session/compat.coax). The room is one server of the
+// profile: its engine, rules and world (WIRE_PINS), the wires WIRE_MIN..WIRE_VERSION, and the newest
+// saved-data schema it reads (RV_SCHEMA). A seat's pins are its page's P (a page from before P is
+// WIRE_PINS_FIRST's build), its hello's wire, and the schema of the data its ticket brings back.
+eg_server :: () -> CompatServer {
+  p := WirePins.{};
+  return CompatServer.{pins = CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = WIRE_VERSION, schema = RV_SCHEMA},
+                       wire_min = WIRE_MIN, up = true, ready = true, room = 1};
+}
+eg_pins :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> CompatPins { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat];
+  p := ifx st.pinned then st.pins else WIRE_PINS_FIRST;
+  return CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = wire, schema = eg_ticket(v, k, seat_id).schema};
+}
+// Whether seat s's hello on wire `wire` may play in this room: CP_OK, else why not (CP_*).
+eg_admit :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> int { seat := seat_id.value; return net_session_admit(eg_server(),eg_pins(v,k,seat_id,wire),v[0].eg[k].initialized); }
+// The seat's ticket (ok false: none, in a room that needs none).
+eg_ticket :: (v: [] RmServer, k: int, seat_id: SeatId) -> Ticket { seat := seat_id.value;
+  c := v[0].eg[k].seat[seat].conn;
+  if !v[0].eg[k].seat[seat].live { return Ticket.{}; }
+  if c < 0 || c >= CONNS || !v[0].conns[c].live { return v[0].eg[k].tk[seat]; }   // held, or its socket closing (eg_left): the one it sat with
+  return v[0].conns[c].ticket;
+}
+// Whether seat seat_id's page decides its class and level (#13259, aethyr/session/seat-class.coax): it
+// is the only party there. A seat with a ticket: the API signed it for one of the realm's admins (ACCT 2:
+// the admin CLASSES and LEVEL menus), or the local API stand-in's admin seats it (room-dev.coax: --dev,
+// on unless OA_ROOM_DEV_ADMIN=0). A seat without: the room holds no ticket key (its checks, and the
+// browser's own offline room, room-worker.c, whose rm_control_local says so too). Everywhere else
+// (production's rooms) the ticket's class and level, and the seat's XP, decide.
+eg_page_decides :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool {
+  if v[0].dev.on && v[0].dev.admin { return true; }
+  tk := eg_ticket(v, k, seat_id);
+  if tk.ok { return tk.admin; }
+  return v[0].ctl.local || (v[0].tkey_n == 0 && v[0].tkeys.n == 0);
+}
+// A hello's class (kind: its CLASS word, srd-CLASS or srd-CLASS-L, druid or warlock) for seat seat_id:
+// once an Everglade II seat sits, a hello changes neither class nor level (seat_class_source). Its first hello sits
+// it as its ticket's class (Everglade II's, c=), else the hello's, at its ticket's level (l=) or its
+// XP's, whichever is more, never the hello's; where the page decides (eg_page_decides), as the hello
+// says. A class the hello chose in a ticketed seat is reported to the API, which keeps it (class_report).
+eg_hello_class :: (v: [] RmServer, k: int, seat_id: SeatId, ticket: Ticket, kind: string) { seat := seat_id.value;
+  tk := ticket;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  page := eg_page_decides(v, k, seat_id);
+  ext := cast(string) tk.ext[0..<tk.ext_n];
+  given := ifx v[0].eg[k].e2 then tk5_ext(ext, "c") else "";   // the API keeps Everglade II's class
+  // Everglade's own rooms take each hello's class, as its CHARACTER picker sends it (everglade-classes.coax
+  // cl_set), at its levels switch's level; Everglade II's seat sits once
+  from := seat_class_source(page, st[0].sat_class && v[0].eg[k].e2, seat_class_ok(given) && fb_cl_of_kind(given) >= 0);
+  if from == SEAT_CLASS_KEEP { return; }
+  st[0].sat_class = true;
+  word := ifx from == SEAT_CLASS_TICKET then given else kind;
+  c := fb_cl_of_kind(word);
+  if c < 0 { eg_seat_kind(v, k, seat_id, word); return; }   // Everglade's own druid or Warlock: its levels switch builds them (room-events.coax)
+  lv := seat_level_start(page, fb_cl_level_of_kind(word), seat_level_word(tk5_ext(ext, "l")), ev_xp_of(v, k, seat_id));
+  b: [EG_NAME] u8; n := fb_cl_kind_at(c, lv, b[..]);
+  eg_seat_kind(v, k, seat_id, cast(string) b[0..<n]);
+  st[0].class_report = from == SEAT_CLASS_HELLO && !page && tk.ok && v[0].eg[k].e2;
+}
+// Seat seat_id's XP rose (room-events.coax ev_award): an Everglade II class's level rises with it
+// through the one table (seat_level_up), never falls; a level gained adds its Hit Points, as
+// Everglade's own levels do (ev_build). True when it rose.
+eg_level_up :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  word := cast(string) st[0].klass[0..<st[0].klass_n];
+  c := fb_cl_of_kind(word);
+  if !v[0].eg[k].e2 || c < 0 { return false; }
+  now := fb_cl_level_of_kind(word);
+  due := seat_level_up(now, ev_xp_of(v, k, seat_id));
+  if due == now { return false; }
+  me := E5RR_SEAT + seat; b := v[0].eg[k].rules[0].b[..];
+  was := b[0].c[me];
+  w: [EG_NAME] u8; n := fb_cl_kind_at(c, due, w[..]);
+  eg_seat_kind(v, k, seat_id, cast(string) w[0..<n]);
+  if was.dead || was.hp <= 0 { b[0].c[me].hp = 0; b[0].c[me].dead = was.dead; }
+  else if was.hp < was.hp_max { b[0].c[me].hp = rs_max(1, rs_min(was.hp + b[0].c[me].hp_max - was.hp_max, b[0].c[me].hp_max)); }
+  return true;
+}
+// V LOOK KIND: Everglade II's Change character (everglade2-net.coax e2n_change: the Esc menu's, through
+// Character Create, and the admin CLASSES and LEVEL menus): a seated player's look, and, where the page
+// decides (eg_page_decides), its SRD class and level as a hello says them. Not while they
+// are down or dead or the guard fights them, and the new character comes in no less hurt than the
+// old: its Hit Points the same share of its most.
+eg_heard_change :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  if !v[0].eg[k].e2 || eg_fields(text) != 3 { return; }
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  look := wire_word(text, r[..]); kind := wire_word(text, r[..]);
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  if !r[0].ok || !st[0].hello || look.count == 0 || look.count > EG_LOOK || e5rr_klass_of(kind) < E5R_CL0 { return; }
+  me := E5RR_SEAT + seat; b := v[0].eg[k].rules[0].b[..];
+  if b[0].c[me].dead || b[0].c[me].hp <= 0 || v[0].eg[k].guard[0].foe == seat { return; }
+  hp := b[0].c[me].hp; most := rs_max(b[0].c[me].hp_max, 1);
+  st[0].look_n = eg_word(look, st[0].look[..]);
+  // the look always; the class and level only where the page decides them (#13259): elsewhere the
+  // ticket's stand, and nothing a page sends sits it again (nor fills its Hit Points and slots)
+  if !eg_page_decides(v, k, seat_id) { return; }
+  st[0].sat_class = true;
+  eg_seat_kind(v, k, seat_id, kind);
+  b[0].c[me].hp = rs_max(1, rs_min(b[0].c[me].hp_max, (hp * b[0].c[me].hp_max + most - 1) / most));
+}
+// Seat seat_id's class and level as a hello's CLASS word says them (the word eg_hello_class and
+// eg_level_up decided, Change character's where the page decides, or a local admin's "X class",
+// everglade/server/admin.coax): its rules seat sits again as that class at its level when either changed.
+eg_seat_kind :: (v: [] RmServer, k: int, seat_id: SeatId, kind: string) { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  st[0].klass_n = eg_word(kind, st[0].klass[..]);
+  // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero); srd-*: that
+  // SRD class at level 1, srd-*-L at level L (fb_cl_hero, #13046); else the druid
+  wl := e5rr_klass_of(cast(string) st[0].klass[0..<st[0].klass_n]);
+  lv := fb_cl_level_of_kind(cast(string) st[0].klass[0..<st[0].klass_n]);
+  if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= E5R_CL0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level != lv) {
+    c:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat..<E5RR_SEAT + seat + 1];
+    kit:=c[0].healer_kit;
+    st[0].familiar=E2Familiar.{last=st[0].familiar.last};
+    e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
+    if v[0].eg[k].e2 {
+      c[0].healer_kit=kit;
+      if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,ifx st[0].familiar_incense_used then 0 else 1); }
+      if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,st[0].protection_water_used); }
+      if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,st[0].revivify_diamond_used); }
+    }
+    ev_class(v, k, seat_id);
+  }
+}
+// C SEQ SLOT AX AY AZ TGT: a cast at the aim. The checks that need no place here (the slot, the class,
+// the level); the rest at its start, once the inputs before it are stepped (room-casts.coax).
+eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  wc := wire_read_cast(text, r[..]);
+  nf := eg_fields(text);
+  if !r[0].ok || (nf != 7 && nf != 8) { return; }   // (a mode last, or none)
+  if v[0].eg[k].e2 { eg_e2_cast(v, k, seat_id, wc); return; }   // Everglade II: shared rules under its harmless social profile
+  seq := wc.seq;
+  mode := eg_clamp(wc.mode, 0, RA_MODES);
+  slot := wc.slot;
+  // the druid's bar, the Warlock's (FB_WL0 on) for a Warlock's seat, a Character Create class's one slot
+  if !e5r_slot_of(v[0].eg[k].rules[0].klass[seat], slot) { eg_refuse(v, k, seat_id, seq, "slot"); return; }
+  a := e5rr_entry(v[0].eg[k].rules[..], slot);
+  if a.kind == FB_WORLD && !cr_repair(slot) { eg_refuse(v, k, seat_id, seq, "slot"); return; }   // R is Repair (everglade-repair.coax)
+  if !ev_may_cast(v, k, seat_id, slot, a) { eg_refuse(v, k, seat_id, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
+  if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) { eg_refuse(v, k, seat_id, seq, cr_word(CR_AIM)); return; }
+  if !rm_work_admit(v,k){eg_refuse(v,k, seat_id,seq,"busy");return;}
+  if !rc_hear(v, k, seat_id, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat_id, seq, "busy"); return; }
+  if !cr_repair(slot) { ev_fought(v, k, seat_id); }   // casting is fighting (a Repair isn't): no Long Rest for EV_CALM_S
+}
+// L SEQ: a Long Rest. Between raids and out of combat only (room-events.coax ev_rest_ok); then the seat
+// is whole again and hears e rest SEAT, its page its own rest (everglade-rest.coax).
+eg_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  seq := wire_num(text, r[..]);
+  if !r[0].ok { return; }
+  if !ev_rest_ok(v, k, seat_id) { eg_refuse(v, k, seat_id, seq, ifx v[0].ev[k].phase != EV_IDLE && v[0].ev[k].phase != EV_AFTER then "raid" else "combat"); return; }
+  ev_long_rest(v, k, seat_id);
+  b: [32] u8;
+  p := v[0].eg[k].seat[seat].pose;
+  eg_event(v, k, cast(string) b[0..<wire_put_rested(b[..], 0, seat)], p.x, p.z, false);
+}

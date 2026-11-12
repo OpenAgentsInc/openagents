@@ -82,7 +82,7 @@ shape realm-edit-operations  # the save body in aethyr/forge/edit.coax and the u
 shape engine-pin-manifest  # aethyr-engine 1, hashed, in Coax and SQL with a fixture pair; needs its row and check, E6 (#13249)
 shape realm-save-aesv  # E10, wave 2: CRC-32, stored in IndexedDB and verse.progress; a golden (#13250)
 shape everglade-city-edits  # wave 2: eg-edit 1 in verse/everglade/edits.coax (#13250)
-room coax/web/room/room-everglade.coax  # hand-builds e mend, e pgone, e pburn, e break, e burn, e wm, w; hand-parses L, R, V; E3 (#13246)
+room everglade/server/input.coax  # hand-parses L, R, V (v1's town, everglade/server/legacy/town.coax, hand-builds e mend, e pgone, e pburn, e break, e burn, e wm, w until P1.3); E3 (#13246)
 room coax/web/room/room-events.coax  # g, v, e xp, e level, e rc: not in the codec or the profile; E3 (#13246)
 room coax/web/room/room-relay.coax  # y j l m, the t pong and the rooms JSON; E2 (#13245)
 room everglade/server/familiar.coax  # reads M1 M3-M7, writes m1-m8; the page has a second codec; E2 (#13245)
