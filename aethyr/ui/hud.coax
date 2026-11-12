@@ -3,7 +3,8 @@
 // This is a component-library foundation, not chapter 15's complete UI tree.
 // coax/bin/coax test aethyr/ui/hud.coax --library
 
-#load "../../components/core/arwes/box.coax";   // HudBox and HudCoord, shared with the ARWES ports
+HudBox :: struct { x:f32; y:f32; width:f32; height:f32; }
+HudCoord :: struct { x:f32; y:f32; }
 HudControl :: struct { box:HudBox; action:int; label:string; enabled:bool; }
 
 #test "a drawn rectangle owns its top and left edges only" {

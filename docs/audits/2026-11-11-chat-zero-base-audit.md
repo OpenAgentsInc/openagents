@@ -911,7 +911,7 @@ How state is shown without colour:
 | Row | Underline when active | A conversation in the list; a menu item |
 | Header | Header | The page title and the conversation's title |
 | Menu | Corners | The model list, over the page |
-| Background | none | Grid lines 40 px apart with one dot where they cross, as ARWES has them, faint and still, as one SVG tile |
+| Background | none | Grid lines and dots, faint and still, as one SVG pattern |
 
 Frames not used: Nero, Nefrex, Kranox and Circle. They stay in the port for
 realms.
@@ -951,38 +951,6 @@ realms.
   while the page is idle except a running turn's decoration.
 - The driver's agent clock steps these animations, since Coax computes them
   from supplied time. `clock settle` waits for them.
-
-### What is built (2026-11-11, later the same day)
-
-- **The port is under `components/core/arwes/`** (`frames`, `motion`, `fx`,
-  and `box` for the two shared types). The old paths in `aethyr/ui/` load
-  the new ones.
-- **The node tree** (`components/core/tree.coax`) and **the browser
-  backend** (`components/backend/dom.coax`): the tree compared by id with
-  what was last sent, and the changes written as commands. A framed node's
-  size comes from the host, and the frame's points go back as runs the host
-  draws as SVG paths. The points are sent as numbers, so no path writer in
-  Coax was needed.
-- **The host**, `coax/web/dom-host.js`, 170 lines, with no logic. It needs
-  no WebGPU and draws only when asked.
-- **The `mono` skin** (`components/skin/mono.coax`): the tokens above and
-  the whole stylesheet, written from Coax. A check holds every colour in it
-  to a grey.
-- **The set** (`components/kit/frames.coax`): frame, text, button, link,
-  field, composer, the person's message, the agent's message from Markdown,
-  meta line, tool call, code block, notice, row, header, menu. Entrance,
-  stagger and the typed label run on supplied time; reduced motion enters
-  everything at once.
-- **`/components`** shows every one of them, working
-  (`components/gallery/web.coax`). The earlier page is `/components-gpu`.
-- **`/chat`** is the composer alone (`apps/openagents-web/chat-web.coax`).
-  It sends nothing yet. The earlier page is `/chat-gpu`.
-
-Not built: the first screen as HTML at build time (the page is empty until
-the module loads); exits (a node that goes is removed at once); the element
-table for the driver, so `coax drive` can't name these nodes yet; a windowed
-transcript; a route per conversation; tools for agents. Driven headless in
-Chrome only, not in Safari or Firefox, and not on a phone.
 
 ### Work this needs that isn't UI
 

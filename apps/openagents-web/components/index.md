@@ -1,34 +1,34 @@
 # Components
 
-The components the OpenAgents chat is being rebuilt from. It is a small set, and each one is a frame around content, in black, white and the greys between. The browser draws them, so the text on the page is real text: you can select it, search it, zoom it and have it read aloud. The page needs no WebGPU.
+The OpenAgents component library. One set of UI components, written once in Coax, used by every OpenAgents and Verse app. This page shows every component in every skin, drawn by the library itself.
 
 ## What is on the page
 
-Every component, working:
+Four cards, one for each skin:
 
-- **Button**: an octagon and a label. The primary action is the inverse (white, black text). A disabled one is dashed.
-- **Field and composer**: real text fields. Enter sends; Shift and Enter makes a line.
-- **Conversation**: your message in a dim frame, a tool call as a row that opens onto what was sent and what came back, and the agent's answer as plain Markdown with no frame.
-- **Code block**: its language and Copy in a strip, then the code.
-- **Notice**: an error, or a request for approval with Allow and Deny.
-- **Row**: a conversation in a list. The current one is bright over an underline.
-- **Menu**: rows in a panel.
-- **Header and text**: the title types in.
+- **zeron**: Zeron Dark, the look of [chat](/chat/index.md) and OpenAgents for desktop.
+- **everglade**: iron and gold, for Everglade and the Golemancers' Workshop.
+- **verse**: the Verse's instrument look, grey lines and a cyan accent.
+- **terminal**: the same components in a terminal's cells.
 
-**Replay the entrance** enters everything again. If your system asks for reduced motion, nothing animates.
+Each card holds the same components from the same calls: a panel, buttons, toggles, a slider, a bar, tabs, a list with a section, and Markdown (a paragraph, a list with task boxes, a quote, a code block and a table). They work: buttons light under the pointer, toggles flip, sliders drag, tabs and rows pick.
 
 ## How it is built
 
-The components are written in Coax (`components/kit/frames.coax`). A component builds nodes in a tree (`components/core/tree.coax`): each node has a stable id, a tag, its text or children, and the frame behind it. The browser backend (`components/backend/dom.coax`) compares each tree with the last one it sent and writes only the changes. A small host (`coax/web/dom-host.js`) applies them and holds no logic. A page that is still sends nothing and does no work.
+A component doesn't know where it is drawn or how it looks.
 
-The look is one skin, `mono` (`components/skin/mono.coax`). It writes the page's whole stylesheet from Coax. There is no colour in it: state is shown by brightness, fill, line style and words.
+- **Core** holds state and rules. Markdown is parsed in one file for every surface.
+- **Layout** measures text through one interface: pixels on a pixel target, cells in a terminal.
+- **Paint** is a display list of primitives, not vertices.
+- **Skin** is tokens and frames: colours, type, spacing, and how a panel or a button is built.
+- **Backend** turns the display list into GPU vertices with one shader, or into a terminal's rows.
 
-## The frames
+The terminal card is laid out in cells and drawn by the terminal backend into a grid; the page then shows the grid.
 
-The frames and their motion are [ARWES](https://github.com/arwes/arwes/tree/bdbaa0324900ee978d42036d1304a053c1fe54b5), copyright 2014–2024 Romel Perez, under the [MIT license](https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/LICENSE), ported to Coax (`components/core/arwes/`). A frame is an SVG behind its content, with three layers: the ground, the lines and the decorations. The page reports each framed node's size, Coax computes the frame's points for that size, and the browser draws them as paths. A frame assembles when its node first appears: the ground fades in, the lines draw, the decorations arrive.
+## ARWES
 
-## The earlier components
+Below the cards, every ARWES port in the Verse skin: the nine frames, four backgrounds, the illuminator, text sequence and decipher, all 31 easings, the animator's child timing, flicker, the three styles, theme token scales, the bleeps' cue model and keyed timers, 25 specimens in all, each labelled. They enter with the ported motion; the controls replay them, exit and enter again, and step the easing, the animator's manager, the seed, the dots, the frames' assembly and the cue model. The cue model shows its state and never plays a sound.
 
-The components drawn on the GPU, in four skins, are at [/components-gpu](/components-gpu/index.md). OpenAgents for desktop still uses them.
+The specimens are painted once (`aethyr/ui/arwes-paint.coax`) and drawn here by the component shader; the HUD laboratory draws the same paint as its own records. ARWES is [arwes/arwes](https://github.com/arwes/arwes/tree/bdbaa0324900ee978d42036d1304a053c1fe54b5), copyright 2014–2024 Romel Perez, under the [MIT license](https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/LICENSE).
 
-The source is in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents) under `components/`. The reasons for this set are in `docs/audits/2026-11-11-chat-zero-base-audit.md`, sections 10 and 11.
+The source is in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents) under `components/`. The plan is `components/spec.md`.

@@ -433,10 +433,11 @@ mkdir -p "$here/build/zeron"
 cp "$here/../../components/zeron/fonts/"*.ttf "$here/../../components/zeron/fonts/Geist-OFL.txt" "$here/build/zeron/"
 python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.join(d,f)).read() for f in sorted(os.listdir(d)) if f.endswith(".svg")}, open(sys.argv[2],"w"))' \
   "$here/../../components/zeron/icons" "$here/build/zeron/icons.json"
-# /components-gpu: the earlier component library's page (components/spec.md, #13153): every component in
+# /components: the component library's page (components/spec.md, #13153): every component in
 # every skin, drawn by the library (components/gallery/page.coax) with the atlas assets above.
 timed components "$here/../../coax/web/wasm.sh" "$here/components.coax" "$here/components-face.c" "$here/build/components.wasm" &
 components_page=$!
+<<<<<<< 43b3d06e25ee73090f8916d5e7481d6c5a2a9fdd
 # /components: the frames set in the mono skin, drawn by the browser through the browser backend
 # (components/gallery/web.coax, coax/web/dom-host.js; docs/audits/2026-11-11-chat-zero-base-audit.md,
 # sections 10 and 11). The page above is now /components-gpu.
@@ -449,6 +450,8 @@ cp "$here/../../components/icons/apps-sdk/"*.svg "$here/../../components/icons/N
 # host and components). The page before it, chat.coax, is now /chat-gpu.
 timed chat-web "$here/../../coax/web/wasm.sh" "$here/chat-web.coax" "$here/chat-web-face.c" "$here/build/chat-web.wasm" &
 chat_web=$!
+=======
+>>>>>>> c4040e643dba7610e09b4afa78b506b398ccb0ef^
 # /settings/agents: an owner's agents and grants (#13211), the same components, atlas and shader.
 timed agents "$here/../../coax/web/wasm.sh" "$here/agents.coax" "$here/agents-face.c" "$here/build/agents.wasm" &
 agents_page=$!
@@ -461,8 +464,6 @@ wait "$realmlist"
 wait "$memorial"
 wait "$chat"
 wait "$components_page"
-wait "$kit_page"
-wait "$chat_web"
 wait "$agents_page"
 wait "$nip01"
 wait "$nip_guide"

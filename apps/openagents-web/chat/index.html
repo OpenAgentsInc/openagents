@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Chat · OpenAgents</title>
-<meta name="description" content="The OpenAgents chat, being rebuilt.">
+<meta name="description" content="A direct chat with the OpenAgents agent. Admins only.">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#0d0d0d">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/chat/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
+<<<<<<< 43b3d06e25ee73090f8916d5e7481d6c5a2a9fdd
 html,body{margin:0;background:#000;color:#f2f2f2}
 body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.6}
 </style>
@@ -17,5 +19,25 @@ body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;fon
 <body>
 <main id="coaxial-root"></main>
 <script type="module" src="/coaxial/dom-host.js" data-app="chat-web" data-root="coaxial-root"></script>
+=======
+html,body{margin:0;height:100%;background:#0d0d0d;color:#ededed}
+body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=text]{cursor:text}
+main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
+html:not(.gpu) body{overflow:auto}
+a{color:#ff8c1f}
+.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>Chat</h1>
+<p><a href="/chat/index.md">Chat</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="chat" data-assets="font:/build/zeron/Geist.ttf font:/build/zeron/Geist-Medium.ttf font:/build/zeron/Geist-SemiBold.ttf font:/build/zeron/GeistMono.ttf icons:/build/zeron/icons.json licence:/build/zeron/Geist-OFL.txt"></script>
+>>>>>>> c4040e643dba7610e09b4afa78b506b398ccb0ef^
 </body>
 </html>
