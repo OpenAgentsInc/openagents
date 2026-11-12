@@ -1,6 +1,6 @@
 // BFRES 10.4 decoding for private Ocarina assets. Primary layouts:
 // BfresLibrary e2c5debc; Watertoon/Awn c3c090bb extended curves.
-#load "../../verse/valley/scan.coax";
+#load "../render/geometry/scan.coax";
 #load "../anim/pose.coax";
 #load "../render/reference-half.coax";
 

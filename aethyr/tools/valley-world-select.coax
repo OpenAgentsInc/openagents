@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../../coax/lib/text/ph_num.coax";
 ws_has :: (s:string,part:string)->bool {if s.count<part.count {return false;}for at:0..<s.count-part.count+1 {same:=true;for k:0..<part.count {if s[at+k]!=part[k] {same=false;break;}}if same {return true;}}return false;}
 #test "Source cut retains original detailed cells and all nearby original placements" {#assert ws_keep("_L0_","/Game/Pebble",100000,100000);#assert ws_keep("_L3_","/Game/Pebble",0,0);#assert !ws_keep("_L3_","/Geometry/LightBlockers/Box",0,0);#assert ws_keep("_L4_","/Geometry/MASS/Ground",-15541,-13653) && ws_keep("_L4_","/Geometry/MASS/Ground",14058,15946);#assert ws_keep("_L4_","/Geometry/MASS/Ground",24058,25946);#assert !ws_keep("_L4_","/Game/Pebble",14059,0);}
 ws_keep :: (actor:string,mesh:string,x:f64,y:f64)->bool {return ws_has(actor,"_L0_") || (!ws_has(mesh,"/LightBlockers/") && ((x>= -15541 && x<=14058 && y>= -13653 && y<=15946) || (ws_has(mesh,"/Geometry/") && x>= -25541 && x<=24058 && y>= -23653 && y<=25946)));}

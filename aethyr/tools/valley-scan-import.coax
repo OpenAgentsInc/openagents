@@ -6,7 +6,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json-f64.coax";
 #load "../../coax/lib/image/jpeg.coax";
-#load "../../verse/valley/scan.coax";
+#load "../render/geometry/scan.coax";
 VIView :: struct {ok:bool;offset:int;count:int;components:int;bytes:int;}
 #test "scan import quaternion rotates centimetre source into metre Y up" {
   p:=vi_rotate(v3(1,2,3),v3(0.70710678,0,0),0.70710678);#assert abs(p.x-1)<0.00001 && abs(p.y+3)<0.00001 && abs(p.z-2)<0.00001;

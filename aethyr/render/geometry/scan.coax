@@ -1,8 +1,8 @@
 // Private scan payload v1: VSM1, vertex/index counts, version=1; p,n,RGB f32 then u32 indices.
 // The caller pins SHA-256 before any decode. Failed decode never alters the live mesh.
-#load "../../aethyr/render/geometry/indexed.coax";
-#load "../../aethyr/core/assets.coax";
-#load "../../aethyr/core/binary-words.coax";
+#load "indexed.coax";
+#load "../../core/assets.coax";
+#load "../../core/binary-words.coax";
 #authority;
 SCAN_VERTICES :: 8192;
 SCAN_INDICES :: 32766;

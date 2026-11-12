@@ -5,7 +5,7 @@
 #import "Basic";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../humans/ph_gltf.coax";
-#load "../humans/ph_num.coax";
+#load "../../../coax/lib/text/ph_num.coax";
 
 VC_MAX :: 30000;
 VcPart :: struct {group:int;name:string;m:[12]f32;ok:bool;}

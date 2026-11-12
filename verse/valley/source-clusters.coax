@@ -1,5 +1,5 @@
 // Borrowed-output source-order clusters for large indexed meshes. Geometry is never simplified.
-#load "scan.coax";
+#load "../../aethyr/render/geometry/scan.coax";
 SourceCluster :: struct {first:int;count:int;left:int= -1;right:int= -1;height:int;vertices:int;low:Point;high:Point;}
 #test "large source clusters retain repeated corners and exact source ownership" {
  v:[36*66]u8;i:[69*4]u8;for k:0..<66 {scan_write_point(v[..],k*36,v3(cast(f32)k,-cast(f32)k,2));}

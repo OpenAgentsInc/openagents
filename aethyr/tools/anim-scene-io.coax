@@ -3,7 +3,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../verse/animlab/project.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../../coax/lib/text/ph_num.coax";
 #load "../../aethyr/anim/write.coax";
 ap_file :: (file:string,out:[]u8)->int {
  // An explicitly published local edit head shadows its immutable source.

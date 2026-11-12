@@ -6,7 +6,7 @@
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/json/json.coax";
 #load "../../../coax/lib/crypto/sha256-kernel.coax";
-#load "../humans/ph_num.coax";
+#load "../../../coax/lib/text/ph_num.coax";
 
 #test "registry IDs are stable names, not paths or runtime content IDs" {
   b:[256]u8;

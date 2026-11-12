@@ -1,5 +1,5 @@
 // Immutable scenery/collision trailer after Echo's original rig, covered by the whole pack identity.
-#load "scan.coax";
+#load "../../aethyr/render/geometry/scan.coax";
 #authority;
 VW_GRID :: 257;
 VW_POINTS :: VW_GRID*VW_GRID;

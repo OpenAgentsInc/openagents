@@ -8,7 +8,7 @@
 #load "../../aethyr/core/loop.coax" as clock;
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/ui/font.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../../coax/lib/text/ph_num.coax";
 #load "direct.coax";
 AlState :: struct {
  director:AlDirector;

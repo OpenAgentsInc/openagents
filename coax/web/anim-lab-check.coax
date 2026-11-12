@@ -2,7 +2,7 @@
 // Captures and raw reports go to the caller's private directory.
 #load "valley-capture.coax";
 #load "anim-frame-report.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../lib/text/ph_num.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {print("usage: anim-lab-check URL PRIVATE_DIR desktop|phone --record|--compare RECEIPT\n");return 2;}phone:=args_at(a[..],2)=="phone";missing:=args_at(a[..],2)=="missing";c:[1]Cdp;if !cdp_launch_background(c[..],1280,800,"animation-lab-check-") {return 1;}defer {cdp_close(c[..]);}
  _:=cdp_call(c[..],"Page.enable","",30000);metrics:=ifx phone then "{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}" else "{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}";_=cdp_call(c[..],"Emulation.setDeviceMetricsOverride",metrics,30000);

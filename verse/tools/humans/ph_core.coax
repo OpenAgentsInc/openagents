@@ -4,7 +4,7 @@
 // a neighbour set iterates in CPython's hash table order for small ints (setobject.c: hash i,
 // linear probes of 9, perturbed steps, resized to 4x its use at three fifths full), so sums over
 // them add in the same order and the packs come out the same, byte for byte.
-#load "ph_num.coax";
+#load "../../../coax/lib/text/ph_num.coax";
 
 exit :: (code: s32) #foreign #effects(all);
 atan2 :: (y: f64, x: f64) -> f64 #foreign #effects(all);

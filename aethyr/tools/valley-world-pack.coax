@@ -11,7 +11,7 @@
 #load "../../coax/lib/image/image.coax";
 #load "../../coax/lib/image/pillow.coax";
 #load "../../coax/lib/crypto/sha256.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../../coax/lib/text/ph_num.coax";
 ceil :: (x:f64)->f64 #foreign #effects(all);
 WpJson :: struct {text:[33554432]u8;nodes:[1048576]JvNode;d:[1]Jv;}
 WpMesh :: struct {first:int;count:int;low:Point;high:Point;material:int;}

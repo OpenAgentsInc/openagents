@@ -4,9 +4,9 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../verse/valley/scan.coax";
+#load "../render/geometry/scan.coax";
 #load "../anim/pose.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../../coax/lib/text/ph_num.coax";
 EP_JOINTS :: 334;
 EP_VERTICES :: 400000;
 EP_RECORD :: 96;

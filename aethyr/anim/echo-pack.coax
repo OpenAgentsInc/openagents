@@ -1,5 +1,5 @@
 // ECH1 source-local poses. Kept byte-for-byte for Valley playback.
-#load "../../verse/valley/scan.coax";
+#load "../render/geometry/scan.coax";
 #authority;
 ECHO_RIG_CAP :: 12582912;
 ECHO_JOINTS :: 334;

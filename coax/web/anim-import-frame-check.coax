@@ -1,6 +1,6 @@
 // Imported ALB1 -> actual A1 clip station -> held GPU frames, without a visible browser.
 #load "valley-capture.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../lib/text/ph_num.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {print("usage: anim-import-frame-check URL PRIVATE_CAPTURE_DIR PRIVATE_REPORT.json\n");return 2;}c:[1]Cdp;if !cdp_launch_background(c[..],1280,800,"anim-import-check-") {return 1;}defer {cdp_close(c[..]);}_:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}",30000);
  setup:="globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.faceErrors=[];globalThis.faceHashes=[];globalThis.importFrames=[];globalThis.importTimes=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)};const originalFetch=fetch;globalThis.fetch=(...a)=>{const u=new URL(typeof a[0]==='string'?a[0]:a[0].url,location.href),source=new URLSearchParams(location.search).get('import-bundle');if(u.pathname==='/private/animation-lab.bundle'&&source&&/^[a-z0-9-]+$/.test(source))return originalFetch('/private/'+source+'.bundle',a[1]);if(u.pathname==='/private/animation-lab.performance.json'||u.pathname==='/private/animation-lab.contact.clip.json')return Promise.resolve(new Response('',{status:404}));return originalFetch(...a)};";

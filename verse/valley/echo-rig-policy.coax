@@ -1,5 +1,5 @@
 // Structural admission for the private Echo local-pose stream, after the whole-pack SHA gate.
-#load "scan.coax";
+#load "../../aethyr/render/geometry/scan.coax";
 #load "../../aethyr/anim/face-pack.coax";
 #load "slay-shot.coax";
 #authority;

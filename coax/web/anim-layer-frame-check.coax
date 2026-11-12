@@ -2,7 +2,7 @@
 // Captures and raw reports go to the caller's private directory.
 #load "valley-capture.coax";
 #load "anim-frame-report.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../lib/text/ph_num.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {print("usage: anim-layer-frame-check URL PRIVATE_DIR desktop|phone --record|--compare RECEIPT\n");return 2;}
 phone:=args_at(a[..],2)=="phone";c:[1]Cdp;if !cdp_launch_background(c[..],1280,800,"animation-layers-check-") {return 1;}defer {cdp_close(c[..]);}

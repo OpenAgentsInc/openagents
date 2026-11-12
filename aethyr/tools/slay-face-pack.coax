@@ -4,8 +4,8 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../verse/valley/scan.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../render/geometry/scan.coax";
+#load "../../coax/lib/text/ph_num.coax";
 #load "../anim/face-pack.coax";
 #load "echo-gltf.coax";
 #test "Slay bindings resolve case independently of the SDK FName pool" {a:=[2]SfName.[sf_name("FACIAL_C_Jaw"),sf_name("jawOpen")];#assert sf_find(a[..],"facial_c_jaw")==0 && sf_find(a[..],"JAWOPEN")==1 && sf_find(a[..],"unknown")== -1;}

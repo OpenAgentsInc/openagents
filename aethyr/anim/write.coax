@@ -1,7 +1,7 @@
 // Writers for admitted records. Re-admit the complete output before publishing.
 #load "inspect-mesh.coax";
 #load "performance-document.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../../coax/lib/text/ph_num.coax";
 #load "write-checks.coax";
 AwRigParts :: struct {rest:AnimPart;bind:AnimPart;bytes:int= -1;}
 AwPack :: struct {count:int;source:[512]AnimPart;output:[512]AnimPart;at:int;}

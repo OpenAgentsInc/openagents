@@ -1,6 +1,6 @@
 // Headless original fixture admission and actual GPU frame smoke check.
 #load "valley-capture.coax";
-#load "../../verse/tools/humans/ph_num.coax";
+#load "../lib/text/ph_num.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}c:[1]Cdp;if !cdp_launch_background(c[..],640,360,"anim-scene-probe-") {return 1;}defer {cdp_close(c[..]);}
  _:=cdp_call(c[..],"Page.enable","",30000);b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],"globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.faceErrors=[];globalThis.faceHashes=[];addEventListener('error',e=>faceErrors.push(e.message));const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");jo_end(o[..]);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),30000);jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);_=cdp_call(c[..],"Page.navigate",jo_text(o[..]),30000);

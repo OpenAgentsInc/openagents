@@ -8,7 +8,7 @@
 #load "../../verse/valley/rock-parent.coax";
 #load "../../verse/valley/rock-grid.coax";
 #load "../../verse/valley/field.coax";
-#load "../../verse/valley/scan.coax";
+#load "../../aethyr/render/geometry/scan.coax";
 #load "../../aethyr/render/geometry/hierarchy.coax";
 #load "../../aethyr/render/geometry/fan.coax";
 #load "../../aethyr/render/geometry/cut.coax";
