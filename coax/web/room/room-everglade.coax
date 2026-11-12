@@ -939,6 +939,8 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
     }
   }
   revive:=e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY;
+  // its line of sight (#13262): v1's rule (room-casts.coax rm_eg_sights), a cast on yourself needs none
+  if e.ab.tg != FB_SELF && !revive && !e2_cast_sight(v, k, me, wc.ax, wc.az) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_SIGHT)); return; }
   // aimed at the path's guard or a monster, a harmful cast is at it (room-e2-guard.coax,
   // room-e2-monsters.coax): the shared rules' strike
   gfoe := ifx revive || e5rr_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
@@ -957,6 +959,30 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   b: [128] u8;
   n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
   eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
+}
+// Whether a caster with feet at `me` sees the aim (ax, az) (#13262): v1's line (everglade-cast-sight.coax
+// cr_sight) from CR_EYE over the caster's land to EG_E2_SIGHT_UP over the aim's, ending CR_SHORT short,
+// and an aim within CR_NEAR always seen. What blocks it is what stops an arrow (#13166): the trunks and
+// rocks the walker meets (everglade2-archery.coax e2ar_in), from the room's planting. A piece lower
+// than CR_LOW where the line meets it (a low rock) doesn't block, nor does the land (a bolt clears a rise).
+EG_E2_SIGHT_UP :: 1.0;     // m over the aim's land the line ends: a body's chest (the page's aim is its own y + 1)
+EG_E2_SIGHT_STEP :: 0.05;  // m between the points asked along the line: under a trunk's radius
+e2_cast_sight :: (v: [] RmServer, k: int, me: EgPose, ax: f32, az: f32) -> bool {
+  dx := ax - me.x; dz := az - me.z; flat := sqrt(dx * dx + dz * dz);
+  if !(flat == flat) || flat <= f32(CR_NEAR) { return true; }
+  ey := e2_height(me.x, me.z) + f32(CR_EYE); ty := e2_height(ax, az) + f32(EG_E2_SIGHT_UP);
+  span := sqrt(flat * flat + (ty - ey) * (ty - ey));
+  far := span - f32(CR_SHORT);
+  if far <= 0 { return true; }
+  land := e2a_land(v); near := v[0].eg[k].arrows[0].near[..];
+  n := cast(int) (far / f32(EG_E2_SIGHT_STEP));
+  for i: 1..<n + 2 {
+    t := ifx i > n then far / span else f32(i) * f32(EG_E2_SIGHT_STEP) / span;
+    x := me.x + dx * t; y := ey + (ty - ey) * t; z := me.z + dz * t;
+    if e2ar_in(land, near, x, y, z) != E2AR_WOOD { continue; }
+    if e2ar_in(land, near, x, e2_height(x, z) + f32(CR_LOW), z) == E2AR_WOOD { return false; }
+  }
+  return true;
 }
 // Revivify's creature: the nearest dead player within Touch whom neither seat has blocked. The
 // shared rules judge the death's timing, reach and cover (aethyr/rules/srd/revivify.coax).
@@ -2676,6 +2702,47 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   eg_test_drain(v[..], box[..]);
   s: [64] u8; sn := wire_put_cast_e(s[..], 0, WireCastE.{ss = 1, slot = sword, ax = 1, ay = 0, az = 2}) - 2;
   #assert eg_test_has(eg_test_of(box[..], 0), cast(string) s[0..<sn]) && v[0].eg[k].e2_casts == 3;
+}
+#test "everglade II room: a cast through a trunk is refused sight, the same cast with clear sight is taken, and a cast on yourself behind the trunk needs none (#13262)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-e2-sight HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  eg_test_drain(v[..], box[..]);
+  // the glade's first kept tree, as the walker and the arrows have it (everglade2-archery.coax)
+  tree := -1;
+  for i: 0..<CG_ITEMS { gt := cg_item(i); if e2_glade_kept(gt) && gt.kind <= 1 && tree < 0 { tree = i; } }
+  #assert tree >= 0;
+  tg := cg_item(tree); tv := ifx tg.variant < 0 then 0 else ifx tg.variant > 4 then 4 else tg.variant;
+  tk := e2_trunk(tv + 5 * tg.kind, tg.x, tg.z, tg.yaw, tg.scale);
+  // the Wizard 8 m west of the trunk, the Fighter 1.5 m east of it
+  v[0].eg[k].seat[0].pose.x = tk[0] - 8; v[0].eg[k].seat[0].pose.z = tk[1];
+  v[0].eg[k].seat[1].pose.x = tk[0] + tk[2] + 1.5; v[0].eg[k].seat[1].pose.z = tk[1];
+  v[0].eg[k].rules[0].b[0].c[1].hp = 1;   // Second Wind has damage to heal
+  bolt := xk_slot(FB_CL_WIZARD, 0); wind := xk_slot(FB_CL_FIGHTER, 0);
+  b: [128] u8;
+  // Fire Bolt at 8 m past the trunk: refused sight, nothing spent or told
+  rm_heard(v[..], 0, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 1, slot = bolt, ax = tk[0] + 8, ay = 1, az = tk[1]})]);
+  // Second Wind on the Fighter, the trunk between the Wizard and him: taken
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 2, slot = wind, ax = tk[0] + tk[2] + 1.5, ay = 0, az = tk[1]})]);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "r 1 sight") && !eg_test_has(eg_test_of(box[..], 1), "r 2");
+  #assert v[0].eg[k].e2_casts == 1 && v[0].eg[k].seat[0].last_cast < v[0].eg[k].seat[1].last_cast;
+  // the same Fire Bolt, the same 16 m, west from the Wizard with nothing in the way: taken
+  #assert e2_cast_sight(v[..], k, v[0].eg[k].seat[0].pose, tk[0] - 24, tk[1]);
+  rm_heard(v[..], 0, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 3, slot = bolt, ax = tk[0] - 24, ay = 1, az = tk[1]})]);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 0), "r 3") && v[0].eg[k].e2_casts == 2;
+  // an aim within CR_NEAR is always seen, even into the trunk
+  #assert e2_cast_sight(v[..], k, EgPose.{x = tk[0] - 2, z = tk[1]}, tk[0], tk[1]);
 }
 #test "Everglade II Protection spends holy water and a new preset cannot refill it" #steps 4000000000 {
   v:[1]RmServer;

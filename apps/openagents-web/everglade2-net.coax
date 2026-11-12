@@ -545,7 +545,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     if r[0].ok && why.count>0 && seq > 0 && seq == n[0].rest_seq { n[0].rest_refused += 1; n[0].rest_refused_at = n[0].mono; return; }
     if r[0].ok && why.count>0 && seq > 0 && seq == n[0].cast_seq {
       n[0].cast_refused += 1; n[0].cast_said=e2n_cast_reason(why); n[0].cast_said_at=n[0].mono;
-    }   // your last cast, turned down (slot, cooldown, range, aim)
+    }   // your last cast, turned down (slot, cooldown, range, sight, aim)
     return;
   }
 }
@@ -1264,6 +1264,7 @@ e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1
 e2n_cast_reason :: (why:string)->string {
   if why=="cooldown" { return "CAST NOT READY"; }
   if why=="range" { return "OUT OF RANGE"; }
+  if why=="sight" { return "NOT IN SIGHT"; }   // a trunk or rock in the way (#13262)
   if why=="slot" { return "ABILITY UNAVAILABLE"; }
   if why=="aim" { return "CANNOT AIM THERE"; }
   return "CAST NOT ALLOWED";
@@ -1290,7 +1291,7 @@ e2n_cast_message :: (n:[] E2Net)->string {
   n[0].mono=4000; #assert e2n_cast_message(n[..]).count==0;
   #assert e2n_cast(n[..],xk_slot(FB_CL_WIZARD,0),0,1,20);
   #assert n[0].cast_said.count==0;
-  #assert e2n_cast_reason("cooldown")=="CAST NOT READY" && e2n_cast_reason("range")=="OUT OF RANGE";
+  #assert e2n_cast_reason("cooldown")=="CAST NOT READY" && e2n_cast_reason("range")=="OUT OF RANGE" && e2n_cast_reason("sight")=="NOT IN SIGHT";
   #assert e2n_cast_reason("slot")=="ABILITY UNAVAILABLE" && e2n_cast_reason("aim")=="CANNOT AIM THERE";
 }
 
