@@ -1,6 +1,0 @@
-// Actual-source candidate grounding probes at the requested village landmarks.
-#import "Basic";
-#load "../../coax/lib/sys/tool.coax";
-#load "../../coax/lib/sys/fs.coax";
-#load "../../verse/ocarina/kokiri-grid.coax";
-tool_main :: ()->int #export_c #effects(all) {args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}data:[134217728]u8;n:=fs_read(args_at(args[..],0),data[..]);#assert n>0;b:=data[0..<n];for pos:[3]Point.[v3(-44.68,0,15.64),v3(-45.6,0,-9.74),v3(-3.6,0,-15.44)] {for below:[6]f32.[110,111,115,116.8,125,200] {q:=kokiri_encoded_floor(b,pos.x,pos.z,below);print("x=% z=% below=% hit=% y=% gx=% gz=% triangle=%\n",pos.x,pos.z,below,q.hit,q.y,q.gx,q.gz,q.triangle);}}return 0;}

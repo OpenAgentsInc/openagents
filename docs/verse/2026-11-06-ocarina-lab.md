@@ -17,7 +17,7 @@ The source model has 110,515 vertices, 72,778 triangles, 309 bones, eight skin
 influences, UV0/UV1, tangents and colors. Eight original clips retain translation,
 quaternion rotation, nonuniform scale and per-clip Maya SSC flags. Sampling uses
 an explicit 30 source frames/second assumption, not a measured game clock.
-See `aethyr/tools/ocarina-source-format.txt` for the binary schema and source
+See `verse/tools/ocarina-source-format.txt` for the binary schema and source
 references. The earlier character-only private pack was 49,448,496 bytes with SHA-256
 `fad738db36516efd185a81b11ce00538096d4cbb4a7b824fc8d2d02d3fb585c7`.
 
@@ -50,22 +50,22 @@ are siblings. No NUP download is required to rebuild from that prepared source.
 src="$HOME/.openagents/verse/private-build/ocarina/source"
 out="$HOME/.openagents/verse/private-build/ocarina/streams"
 tex="$HOME/.openagents/verse/private-build/ocarina/textures"
-coax/web/tool.sh aethyr/tools/ocarina-source-pack.coax \
+coax/web/tool.sh verse/tools/ocarina-source-pack.coax \
   "$src/Player_Child.Player_Child.bfres" \
   "$src/Player_Child_01_Animation.anim.bfres" \
   "$src/Player_Child_02_Animation.anim.bfres" \
   "$src/Player_Child_03_Animation.anim.bfres" \
   "$src/Player_Child_04_Animation.anim.bfres" \
   "$src/Player_Child.anim.bfres" "$out"
-cc -O2 aethyr/tools/ocarina-bc-reference.c -lm -o /tmp/ocarina-bc-reference
-coax/web/tool.sh aethyr/tools/ocarina-texture.coax \
+cc -O2 verse/tools/ocarina-bc-reference.c -lm -o /tmp/ocarina-bc-reference
+coax/web/tool.sh verse/tools/ocarina-texture.coax \
   "$src" "$tex" /path/to/astcenc /tmp/ocarina-bc-reference
-coax/web/tool.sh aethyr/tools/ocarina-material-pack.coax \
+coax/web/tool.sh verse/tools/ocarina-material-pack.coax \
   "$src/Player_Child.Player_Child.bfres" "$src/ExternalBinaryString.bfres" \
   "$src/UnifyTex.Product.100.byml" "$tex" "$out"
 k="$HOME/.openagents/verse/private-build/kokiri"
 # Prepared Kokiri inputs: see OpenAgentsInc/ore/docs/ocarina-of-time/kokiri-extraction.md.
-coax/web/tool.sh aethyr/tools/kokiri-bundle.coax "$out" "$k/scene-v4" \
+coax/web/tool.sh verse/tools/kokiri-bundle.coax "$out" "$k/scene-v4" \
   "$k/scene-model" "$k/atlas-final" "$tex" "$k/terrain-decoded/world-collision.kcg" \
   "$HOME/.openagents/verse/private-build/web/ocarina-lab.pack" "$k/atlas-final"
 coax/web/wasm.sh apps/openagents-web/ocarinalab.coax \
@@ -124,7 +124,7 @@ scales with actual collision-resolved distance each paid step; landing plays the
 original 0.2-second landing clip before returning to locomotion.
 
 `coax test verse/ocarina/play.coax` passes all 434 loaded checks. The real-asset
-`aethyr/tools/ocarina-motion-check.coax` checks eight seconds each of walk, run
+`verse/tools/ocarina-motion-check.coax` checks eight seconds each of walk, run
 and dash: five, nine and ten loop boundaries, with zero planar carrier residual
 and strictly forward pelvis motion. The headless browser's `--motion` path holds
 forward across multiple run loops and checks the same pelvis placement used by
@@ -209,11 +209,11 @@ observed candidate work is 8,774 tests per frame. Original planar carrier
 transport remains removed in play and preserved in inspection.
 
 ```sh
-coax/web/tool.sh aethyr/tools/kokiri-lab-runtime-check.coax \
+coax/web/tool.sh verse/tools/kokiri-lab-runtime-check.coax \
   "$HOME/.openagents/verse/private-build/kokiri/atlas-final/scene.catalog"
 ```
 
-See `aethyr/tools/kokiri-collision-format.txt` for source layouts, exact geometry
+See `verse/tools/kokiri-collision-format.txt` for source layouts, exact geometry
 matches, index schema and regeneration commands. These native checks do not
 claim original-game physics or final browser visual parity; browser verification
 belongs to the assembled current pack and renderer.

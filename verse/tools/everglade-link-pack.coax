@@ -1,0 +1,47 @@
+// Private experiment: original Everglade plus original Link geometry, eight weights and OCL2 poses.
+// Original source texture maps and FMAT records; no vertex-colour baking.
+// CLI BASE_PACK RAID_STREAMS CHARACTER_STREAMS PNG_DIR OUTPUT_PACK
+// tool.sh: stack-gib 2
+#load "ocarina-texture-core.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/text/base64.coax";
+#load "../../aethyr/forge/pack.coax";
+#load "../ocarina/motion.coax";
+#test "Link raid pack keeps each source influence without narrowing joint indices" {
+ b:[128]u8;scan_put(b[..],36,308|(17<<16));b[52]=190;b[53]=65;
+ #assert (scan_u32(b[..],36)&65535)==308 && (scan_u32(b[..],36)>>16)==17 && cast(int)b[52]+cast(int)b[53]==255;
+}
+el_append :: (out:[]u8,at:int,b:[]u8,entry:int,kind:int,name:string,lic:int)->int {p:=32+entry*48;scan_put(out,p,cast(u32)(kind|(lic<<8)));scan_put(out,p+4,cast(u32)at);scan_put(out,p+8,cast(u32)b.count);for c,k:name {if k<31 {out[p+16+k]=c;}}for c,k:b {out[at+k]=c;}return (at+b.count+3)/4*4;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {return 2;}
+ base:[67108864]u8;out:[134217728]u8;vertices:[33554432]u8;indices:[16777216]u8;catalog:[16777216]u8;rig:[12582912]u8;mat:[6432]u8;list:[65536]u8;path:[4096]u8;
+ n:=fs_read(args_at(a[..],0),base[..]);#assert n>32 && scan_u32(base[..],0)==0x314b5056;entries:=cast(int)scan_u32(base[..],4);#assert entries>=3 && entries<128;
+ cp:=cast(int)scan_u32(base[..],36);cn:=cast(int)scan_u32(base[..],40);vp:=cast(int)scan_u32(base[..],84);vn:=cast(int)scan_u32(base[..],88);ip:=cast(int)scan_u32(base[..],132);in:=cast(int)scan_u32(base[..],136);#assert vn%4==0;
+ for k:0..<vn {vertices[k]=base[vp+k];}for k:0..<in {indices[k]=base[ip+k];}
+ v:=fs_read(fs_join(args_at(a[..],1),"link.vertices",path[..]),vertices[vn+32..<vertices.count]);ix:=fs_read(fs_join(args_at(a[..],1),"link.indices",path[..]),indices[in..<indices.count]);rn:=fs_read(fs_join(args_at(a[..],1),"link.rig",path[..]),rig[..]);#assert v==110515*128 && ix==218334*4 && rn>0 && scan_u32(rig[..],0)==0x324c434f;
+ #assert fs_read(fs_join(args_at(a[..],2),"link.materials",path[..]),mat[..])==6432;ln:=fs_read(fs_join(args_at(a[..],2),"link.textures",path[..]),list[..]);#assert ln>0;names:[60]string;start:=0;ni:=0;for k:0..<ln {if list[k]=='\n' {#assert ni<60;names[ni]=cast(string)list[start..<k];ni+=1;start=k+1;}}#assert ni==60;
+ // Header precedes the unchanged original vertex records. Materials follow them.
+ layers:=entries-3;#assert layers==38;sourceLicence:=6;
+ scan_put(vertices[..],vn,cast(u32)((vn+32)/4));scan_put(vertices[..],vn+4,cast(u32)((vn+32+v+32)/4));
+ for m:0..<25 {for slot:0..<8 {p:=32+m*256+slot*4;id:=scan_u32(mat[..],p);if id>0 {scan_put(mat[..],p,id+cast(u32)layers);}}p:=32+m*256+60*4;id:=scan_u32(mat[..],p);if id>0 {scan_put(mat[..],p,id+cast(u32)layers);}}
+ for k:0..<mat.count {vertices[vn+32+v+k]=mat[k];}vertexBytes:=vn+32+v+mat.count;
+ input:[16777216]u8;
+ at:=0;for c:"budget 134217728\nbytes " {catalog[at]=c;at+=1;}bytesAt:=at;for c:"00000000\n" {catalog[at]=c;at+=1;}
+ start=0;for k:0..<cn {if base[cp+k]=='\n' {line:=cast(string)base[cp+start..<cp+k];if !(line.count>=7 && line[0..<7]=="budget ") && !(line.count>=6 && line[0..<6]=="bytes ") {for c:base[cp+start..<cp+k+1] {catalog[at]=c;at+=1;}}start=k+1;}}
+ for c:"L 6 Original Link source|Proprietary owner-local extraction|owner-local\n" {catalog[at]=c;at+=1;}
+ text:[256]u8;j:[1]Jo;
+ for layer:0..<60 {jo_start(j[..],text[..]);jo_put(j[..],"T ");jo_int(j[..],layers+layer);jo_put(j[..]," ");jo_put(j[..],names[layer]);jo_put(j[..]," 6\n");for c:jo_text(j[..]) {catalog[at]=c;at+=1;}}
+ for c:"Y link-materials-v1 1536 25 60\n" {catalog[at]=c;at+=1;}
+ for c:"Z " {catalog[at]=c;at+=1;}encoded:=b64_encode(cast(string)rig[0..<rn],catalog[at..<catalog.count]);#assert encoded>0;at+=encoded;catalog[at]='\n';at+=1;
+ jo_start(j[..],text[..]);jo_int(j[..],in/4);first:=jo_text(j[..]);for c:"X link-v2 " {catalog[at]=c;at+=1;}for c:first {catalog[at]=c;at+=1;}for c:" 218334 " {catalog[at]=c;at+=1;}jo_start(j[..],text[..]);jo_int(j[..],vn/4);for c:jo_text(j[..]) {catalog[at]=c;at+=1;}catalog[at]='\n';at+=1;cn=at;
+ newEntries:=entries+60;total:=32+newEntries*48+pack_pad(cn)+pack_pad(vertexBytes)+pack_pad(in+ix);for k:3..<entries {total+=pack_pad(cast(int)scan_u32(base[..],32+k*48+8));}for layer:0..<60 {pn:=fs_read(fs_join(args_at(a[..],3),names[layer],path[..]),input[..]);#assert pn>0;total+=pack_pad(pn);}#assert total>=10000000 && total<67108864;digits:=total;for k:0..<8 {catalog[bytesAt+7-k]=cast(u8)(48+digits%10);digits/=10;}
+ at=32+newEntries*48;at=el_append(out[..],at,catalog[0..<cn],0,1,"catalog",255);at=el_append(out[..],at,vertices[0..<vertexBytes],1,2,"vertices",255);at=el_append(out[..],at,indices[0..<in+ix],2,3,"indices",255);
+ for k:3..<entries {p:=32+k*48;from:=cast(int)scan_u32(base[..],p+4);size:=cast(int)scan_u32(base[..],p+8);name_end:=p+16;while name_end<p+48 && base[name_end]!=0 {name_end+=1;}at=el_append(out[..],at,base[from..<from+size],k,cast(int)base[p],cast(string)base[p+16..<name_end],cast(int)base[p+1]);}
+ for layer:0..<60 {pn:=fs_read(fs_join(args_at(a[..],3),names[layer],path[..]),input[..]);#assert pn>0;at=el_append(out[..],at,input[0..<pn],entries+layer,4,names[layer],sourceLicence);}
+ scan_put(out[..],0,0x324b5056);scan_put(out[..],4,cast(u32)newEntries);scan_put(out[..],8,cast(u32)at);scan_put(out[..],12,134217728);scan_put(out[..],16,32);scan_put(out[..],20,cast(u32)(32+newEntries*48));print("LINK_PROFILE walk_bits=% run_bits=%\n",f32_bits(ocl_source_speed(rig[0..<rn],1)),f32_bits(ocl_source_speed(rig[0..<rn],2)));read:[1]PackRead;if !pack_read(cast(string)out[0..<at],read[..]) {print("PACK_REFUSED %\n",read[0].why);return 9;}#assert fs_write(args_at(a[..],4),cast(string)out[0..<at]);print("LINK_RAID_PACK bytes=% rig=% vertices=%\n",at,rn,v);return 0;
+}
+
+#test "Link pack writes original per-entry licenses and aligned spans" {
+ out:[256]u8;payload:=[3]u8.[1,2,3];end:=el_append(out[..],224,payload[..],3,4,"leaf",2);
+ #assert end==228 && out[32+3*48]==4 && out[33+3*48]==2 && scan_u32(out[..],36+3*48)==224 && out[226]==3 && out[227]==0;
+}

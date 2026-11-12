@@ -59,7 +59,7 @@ The same materials as block formats, at the same sizes (the audit's projection):
   ASTC 4x4 and 6x6 (one partition, LDR, binary ranges; colour, colour with alpha, and
   dual-plane normals with X in `.r` and Y in `.a`). `aethyr/tools/texture-encode.coax`
   runs it offline (`encode`) and checks it (`check`) against the independent decoders
-  `aethyr/tools/ocarina-texture-core.coax` already uses: the pinned bcdec runner and ARM
+  `verse/tools/ocarina-texture-core.coax` already uses: the pinned bcdec runner and ARM
   astcenc 5.7.1.
 
 ## Encoder quality

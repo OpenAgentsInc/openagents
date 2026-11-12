@@ -107,7 +107,7 @@ The source and generated art use the repository's Apache-2.0 licence.
 | 32 | 6,534 | 12,288 | 304,296 |
 
 Generate the identical native assets and import-style provenance report with
-`coax/web/tool.sh aethyr/tools/valley-rock.coax OUTPUT_DIRECTORY`.
+`coax/web/tool.sh verse/tools/valley-rock.coax OUTPUT_DIRECTORY`.
 Browser tests compare all three hashes to the native writer and check actual
 GPU readback differences between inspection views. Test/build records and
 pictures are in the [rock slice receipt](../verification/valley-lab-rock-2026-11-05/README.md).
@@ -162,7 +162,7 @@ compare the decoded lit reference patch with the original path and inspect
 cluster-ID pixels on desktop/phone viewports.
 
 Run the native builder/report with
-`coax/web/tool.sh aethyr/tools/valley-clusters.coax`.
+`coax/web/tool.sh verse/tools/valley-clusters.coax`.
 Evidence is in the [cluster slice receipt](../verification/valley-lab-clusters-2026-11-05/README.md).
 
 ## Landed: ownership hierarchy and boundary-preserving fixtures
@@ -204,7 +204,7 @@ preserve the three original rock hashes. Actual hardware WebGPU checks cover
 parent colors/counts, both patch resolutions/errors, keyboard and phone touch,
 and the existing reference-pixel and controller regressions. Evidence is in
 the [hierarchy receipt](../verification/valley-lab-hierarchy-2026-11-05/README.md).
-Run `coax/web/tool.sh aethyr/tools/valley-hierarchy.coax` for the native report.
+Run `coax/web/tool.sh verse/tools/valley-hierarchy.coax` for the native report.
 
 This slice does not simplify the rock, choose levels by screen error, stream
 pages or qualify a shared/native renderer. It establishes the ownership and

@@ -171,7 +171,7 @@ def main():
         expected_indices=[x[0]+504367 for x in struct.iter_unpack('<I',ib)]
         assert pack[index_offset+11999940:index_offset+17881212]==struct.pack('<1470318I',*expected_indices)
         assert pack[index_offset+17881212:index_offset+29710980]==struct.pack('<2957442I',*range(1000000,3957442))
-        maps=re.search(r'EB_MAPS :: \[30\]string\.\[(.*?)\];',(repository/'aethyr/tools/valley-echo-bundle.coax').read_text(),re.S).group(1)
+        maps=re.search(r'EB_MAPS :: \[30\]string\.\[(.*?)\];',(repository/'verse/tools/valley-echo-bundle.coax').read_text(),re.S).group(1)
         maps=['Albedo.png','Roughness.png']+re.findall(r'"([^"]+)"',maps)
         for i,name in enumerate(maps):
             directory=args.cache/'unreal-export/Saved/section-source' if i<2 else source

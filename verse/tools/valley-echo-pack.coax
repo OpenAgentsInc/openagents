@@ -1,0 +1,66 @@
+// Source glTF -> lossless eight-influence Echo streams and local-pose clips. Licensed bytes stay private.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/render/geometry/scan.coax";
+#load "../../aethyr/anim/pose.coax";
+#load "../../coax/lib/text/ph_num.coax";
+EP_JOINTS :: 334;
+EP_VERTICES :: 400000;
+EP_RECORD :: 96;
+#load "../../aethyr/anim/echo-source-names.coax";
+#load "../../aethyr/tools/echo-gltf.coax";
+EpBone :: struct {name:[96]u8;n:int;parent:int= -1;rest:SkinLocal;bind:[12]f32;}
+EpRig :: struct {bone:[EP_JOINTS]EpBone;count:int;}
+#test "Echo accessors retain all eight exact joint and weight bytes" {b:=[8]u8.[0,1,127,133,3,7,66,200];out:[8]u8;for k:0..<2 {scan_put(out[..],k*4,scan_u32(b[..],k*4));}for k:0..<8 {#assert out[k]==b[k];}}
+#test "Echo clip interpolation uses local poses and keeps quaternion length" {a:=SkinLocal.{q=Quat.{}};b:=SkinLocal.{t=v3(2,4,6),q=Quat.{y=1,w=0}};p:=pose_blend(a,b,0.5);#assert p.t.x==1 && p.t.y==2 && p.t.z==3 && abs(quat_dot(p.q,p.q)-1)<0.000001;}
+ep_skeleton :: (g:[]EpJson,rig:[]EpRig,hair:bool) {
+ skin:=ep_top(g,"skins",0);joints:=ep_get(g,skin,"joints");count:=ep_len(g,joints);#assert count==(ifx hair then 200 else 134);base:=rig[0].count;node_to_bone:[2048]int;for k:0..<2048 {node_to_bone[k]= -1;}
+ for k:0..<count {id:=jv_int(g[0].d[0],ep_item(g,joints,k),-1);#assert id>=0 && id<2048;node_to_bone[id]=base+k;}
+ parent:[2048]int;for k:0..<2048 {parent[k]= -1;}nodes:=ep_get(g,0,"nodes");#assert ep_len(g,nodes)<=2048;
+ for k:0..<ep_len(g,nodes) {children:=ep_get(g,ep_item(g,nodes,k),"children");for c:0..<ep_len(g,children) {id:=jv_int(g[0].d[0],ep_item(g,children,c),-1);#assert id>=0 && id<2048;parent[id]=k;}}
+ raw:[EP_JOINTS*64]u8;acc:=ep_read(g,ep_int(g,skin,"inverseBindMatrices",-1),raw[..]);#assert acc.count==count && acc.component==5126 && acc.components==16;
+ for k:0..<count {id:=jv_int(g[0].d[0],ep_item(g,joints,k),-1);node:=ep_item(g,nodes,id);name:=ep_text(g,node,"name");#assert name.count>0 && name.count<96;b:=EpBone.{};b.n=name.count;for c,i:name {b.name[i]=c;}p:=parent[id];b.parent=ifx p>=0 then node_to_bone[p] else -1;
+  b.rest=SkinLocal.{t=v3(ep_float(g,node,"translation",0,0),ep_float(g,node,"translation",1,0),ep_float(g,node,"translation",2,0)),q=Quat.{x=ep_float(g,node,"rotation",0,0),y=ep_float(g,node,"rotation",1,0),z=ep_float(g,node,"rotation",2,0),w=ep_float(g,node,"rotation",3,1)}};
+  for axis:0..<3 {#assert abs(ep_float(g,node,"scale",axis,1)-1)<0.0001;}for row:0..<3 {for col:0..<4 {b.bind[row*4+col]=f32_from_bits(scan_u32(raw[..],k*64+(col*4+row)*4));}}
+  if hair {for main:0..<134 {if cast(string)rig[0].bone[main].name[0..<rig[0].bone[main].n]==name {b.parent=main;b.rest=SkinLocal.{};break;}}}
+  #assert b.parent<base+k;rig[0].bone[base+k]=b;
+ }rig[0].count+=count;
+}
+ep_mesh :: (g:[]EpJson,rig:EpRig,hair:bool,vertices:[]u8,indices:[]u8,counts:[]int) {
+ prs:=ep_get(g,ep_top(g,"meshes",0),"primitives");slots:=[21]int.[0,1,2,3,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,23];#assert ep_len(g,prs)==(ifx hair then 2 else 21);raw:[4194304]u8;
+ for pi:0..<ep_len(g,prs) {pr:=ep_item(g,prs,pi);attr:=ep_get(g,pr,"attributes");base:=counts[0];nv:=0;
+  for field:0..<9 {names:=[9]string.["POSITION","NORMAL","TEXCOORD_0","TANGENT","JOINTS_0","JOINTS_1","WEIGHTS_0","WEIGHTS_1","COLOR_0"];a:=ep_get(g,attr,names[field]);if a<0 {#assert field==8;continue;}ac:=ep_read(g,jv_int(g[0].d[0],a,-1),raw[..]);if field==0 {nv=ac.count;#assert nv>0 && base+nv<=EP_VERTICES;}
+   #assert ac.count==nv;word:=[9]int.[0,3,6,15,9,11,13,14,19][field];
+   if field<4 {#assert ac.component==5126 && ac.components==[4]int.[3,3,2,4][field];for k:0..<nv {for c:0..<ac.components {value:=scan_u32(raw[..],(k*ac.components+c)*4);#assert (value&0x7f800000)!=0x7f800000;scan_put(vertices,(base+k)*96+(word+c)*4,value);}}}
+   else if field<8 {#assert ac.component==5121 && ac.components==4;for k:0..<nv {if field<6 {for pair:0..<2 {lo:=cast(u32)raw[k*4+pair*2]+cast(u32)(ifx hair then 134 else 0);hi:=cast(u32)raw[k*4+pair*2+1]+cast(u32)(ifx hair then 134 else 0);#assert lo<334 && hi<334;scan_put(vertices,(base+k)*96+(word+pair)*4,lo|(hi<<16));}}else {scan_put(vertices,(base+k)*96+word*4,scan_u32(raw[..],k*4));}}}
+  }
+  for k:0..<nv {scan_put(vertices,(base+k)*96+8*4,cast(u32)(ifx hair then 24+pi else slots[pi]));}
+  ac:=ep_read(g,ep_int(g,pr,"indices",-1),raw[..]);#assert ac.components==1 && (ac.component==5125 || ac.component==5123 || ac.component==5121) && ac.count%3==0 && (counts[1]+ac.count)*4<=indices.count;
+  for k:0..<ac.count {id:=ifx ac.component==5125 then cast(int)scan_u32(raw[..],k*4) else ifx ac.component==5123 then cast(int)raw[k*2]|(cast(int)raw[k*2+1]<<8) else cast(int)raw[k];#assert id>=0 && id<nv;scan_put(indices,(counts[1]+k)*4,cast(u32)(base+id));}counts[0]+=nv;counts[1]+=ac.count;
+ }
+}
+ep_pose_write :: (bytes:[]u8,at:int,p:SkinLocal) {values:=[7]f32.[p.t.x,p.t.y,p.t.z,p.q.x,p.q.y,p.q.z,p.q.w];for k:0..<7 {scan_put(bytes,at+k*4,f32_bits(values[k]));}}
+ep_clips :: (g:[]EpJson,rig:EpRig,root:string,out:[]u8)->int {
+ bones:=rig;
+ // Header, parents, inverse binds and reference locals; clip table is fixed at byte 32.
+ scan_put(out,0,0x31484345);scan_put(out,4,1);scan_put(out,8,cast(u32)rig.count);scan_put(out,12,24);scan_put(out,24,134);at:=32+24*16;scan_put(out,16,cast(u32)at);
+ for k:0..<rig.count {scan_put(out,at,cast(u32)(rig.bone[k].parent+1));at+=4;for f:0..<12 {scan_put(out,at,f32_bits(rig.bone[k].bind[f]));at+=4;}ep_pose_write(out,at,rig.bone[k].rest);at+=28;}
+ for clip:0..<24 {file:[128]u8;n:=EP_CLIPS[clip].count;for c,k:EP_CLIPS[clip] {file[k]=c;}for c,k:".gltf" {file[n+k]=c;}ep_load(g,root,cast(string)file[0..<n+5]);
+  anim:=ep_top(g,"animations",0);samplers:=ep_get(g,anim,"samplers");channels:=ep_get(g,anim,"channels");times:[1048576]u8;values:[4194304]u8;poses:[1000*134]SkinLocal;frames:=0;duration:f32=0;
+  for c:0..<ep_len(g,channels) {ch:=ep_item(g,channels,c);target:=ep_get(g,ch,"target");node:=ep_top(g,"nodes",ep_int(g,target,"node",-1));name:=ep_text(g,node,"name");joint:= -1;for k:0..<134 {if cast(string)bones.bone[k].name[0..<bones.bone[k].n]==name {joint=k;break;}}#assert joint>=0;
+   sampler:=ep_item(g,samplers,ep_int(g,ch,"sampler",-1));ta:=ep_read(g,ep_int(g,sampler,"input",-1),times[..]);va:=ep_read(g,ep_int(g,sampler,"output",-1),values[..]);#assert ta.component==5126 && ta.components==1 && ta.count==va.count && ta.count<=1000 && va.component==5126;
+   if frames==0 {frames=ta.count;duration=f32_from_bits(scan_u32(times[..],(frames-1)*4));#assert duration>0;for f:0..<frames {#assert abs(f32_from_bits(scan_u32(times[..],f*4))-cast(f32)f/30)<0.0001;for k:0..<134 {poses[f*134+k]=rig.bone[k].rest;}}}#assert ta.count==frames;
+   kind:=ep_text(g,target,"path");for f:0..<frames {p:=poses[f*134+joint];if kind=="translation" {#assert va.components==3;p.t=scan_point(values[..],f*12);}else if kind=="rotation" {#assert va.components==4;p.q=Quat.{x=f32_from_bits(scan_u32(values[..],f*16)),y=f32_from_bits(scan_u32(values[..],f*16+4)),z=f32_from_bits(scan_u32(values[..],f*16+8)),w=f32_from_bits(scan_u32(values[..],f*16+12))};}else {#assert kind=="scale" && va.components==3;v:=scan_point(values[..],f*12);#assert abs(v.x-1)<0.0001 && abs(v.y-1)<0.0001 && abs(v.z-1)<0.0001;}poses[f*134+joint]=p;}
+  }
+  #assert frames>1 && at+frames*134*28<=out.count;entry:=32+clip*16;scan_put(out,entry,cast(u32)at);scan_put(out,entry+4,cast(u32)frames);scan_put(out,entry+8,f32_bits(duration));scan_put(out,entry+12,f32_bits(ifx clip==1 || clip==5 || clip==6 then 1.47f32 else ifx clip==2 || clip==7 || clip==8 then 4.27f32 else 0.0f32));
+  for f:0..<frames {for k:0..<134 {ep_pose_write(out,at,poses[f*134+k]);at+=28;}}print("Echo clip % frames=% seconds=%\n",EP_CLIPS[clip],frames,duration);
+ }scan_put(out,20,cast(u32)at);return at;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}root:=args_at(args[..],0);dest:=args_at(args[..],1);g:[1]EpJson;rig:[1]EpRig;vertices:[EP_VERTICES*96]u8;indices:[3000000*4]u8;counts:[2]int;path:[4096]u8;
+ ep_load(g[..],root,"Echo.gltf");ep_skeleton(g[..],rig[..],false);ep_mesh(g[..],rig[0],false,vertices[..],indices[..],counts[..]);ep_load(g[..],root,"Echo_Hair.gltf");ep_skeleton(g[..],rig[..],true);ep_mesh(g[..],rig[0],true,vertices[..],indices[..],counts[..]);#assert rig[0].count==334;
+ poses:[16777216]u8;n:=ep_clips(g[..],rig[0],root,poses[..]);#assert fs_write(ep_path(dest,"echo.rig",path[..]),cast(string)poses[0..<n]);#assert fs_write(ep_path(dest,"echo.vertices",path[..]),cast(string)vertices[0..<counts[0]*96]);#assert fs_write(ep_path(dest,"echo.indices",path[..]),cast(string)indices[0..<counts[1]*4]);print("Echo vertices=% indices=% triangles=% rig_bytes=%\n",counts[0],counts[1],counts[1]/3,n);return 0;
+}

@@ -456,7 +456,7 @@ wc_known_owner :: (owner: string) -> bool {
     || owner == "items" || owner == "quests" || owner == "room-session" || owner == "realm-authoring"
     || owner == "identity" || owner == "payments" || owner == "coder" || owner == "chat"
     || owner == "projects" || owner == "nostr" || owner == "psionic" || owner == "engine"
-    || owner == "protocol" || owner == "toolchain" || owner == "ops";
+    || owner == "protocol" || owner == "toolchain" || owner == "ops" || owner == "realm-tools";
 }
 wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "combat-rules" { return wc_under(codec, "rules/srd/"); }
@@ -475,6 +475,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "nostr" { return wc_under(codec, "nostr/") || wc_under(codec, "coax/lib/nostr/"); }
   if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c"); }
   if owner == "engine" { return wc_under(codec, "aethyr/") && !wc_under(codec, "aethyr/session/") && !wc_under(codec, "aethyr/net/") && !wc_under(codec, "aethyr/forge/"); }
+  if owner == "realm-tools" { return wc_under(codec, "verse/tools/"); }
   if owner == "protocol" { return wc_under(codec, "proto/"); }
   if owner == "toolchain" {
     return wc_under(codec, "coax/") && !wc_under(codec, "coax/lib/agent/") && !wc_under(codec, "coax/lib/microcoder/")
@@ -911,6 +912,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert wc_owner_has("room-session", "aethyr/session/relay.coax") && !wc_owner_has("room-session", "aethyr/session/ledger.coax") && wc_owner_has("items", "aethyr/session/ledger.coax");
   #assert wc_owner_has("toolchain", "coax/web/wire-check.coax") && !wc_owner_has("toolchain", "coax/lib/nostr/") && !wc_owner_has("toolchain", "coax/web/api/auth.c");
   #assert wc_owner_has("engine", "aethyr/render/x.coax") && !wc_owner_has("engine", "rules/srd/x.coax") && !wc_owner_has("engine", "aethyr/forge/x.coax");
+  #assert wc_known_owner("realm-tools") && wc_owner_has("realm-tools", "verse/tools/") && wc_owner_has("realm-tools", "verse/tools/valley-profile.coax") && !wc_owner_has("realm-tools", "aethyr/tools/x.coax") && !wc_owner_has("engine", "verse/tools/x.coax") && !wc_owner_has("realm-tools", "verse/valley/x.coax");
   // wc_judge_owners fails on missing owner and on codec outside owner's folders unless allowlisted
   reg_nodes: [64] JvNode; reg_jv: [1] Jv; reg_used: [4] bool;
   bad_owner := "{\"shapes\":[{\"id\":\"x.v1\",\"kind\":\"local\",\"codec\":\"coax/web/wire-check.coax\",\"step\":\"S1\"}]}";

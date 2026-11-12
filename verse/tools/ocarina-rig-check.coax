@@ -1,0 +1,15 @@
+// Inspect an admitted private OCL1 rig without loading meshes or executing a game.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../ocarina/rig-policy.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}b:[OCL_RIG_CAP]u8;n:=fs_read(args_at(args[..],0),b[..]);if n<0 || !ocarina_rig_valid(b[0..<n]) {print("OCL1 refused\n");return 3;}
+ hash:[64]u8;#assert asset_hex(asset_id(cast(string)b[0..<n]),hash[..]);print("OCL1 admitted joints=% clips=% bytes=% sha256=%\n",OCL_JOINTS,8,n,cast(string)hash[..]);
+ for clip:0..<8 {c:=ocr_clip(b[0..<n],32+clip*32);low:f32=1000;high:f32=0;ssc:=0;parentLow:f32=1000;
+  for joint:0..<OCL_JOINTS {flags:=scan_u32(b[..],c.flags+joint*4);if (flags&0x800000)!=0 {ssc+=1;}p:=cast(int)scan_u32(b[..],OCL_RIG_BASE+joint*80)-1;
+   for frame:0..<c.frames {for lane:0..<3 {s:=scan_float(b[..],c.scale+(frame*OCL_JOINTS+joint)*12+lane*4);if s<low {low=s;}if s>high {high=s;}
+    if (flags&0x800000)!=0 && p>=0 {ps:=scan_float(b[..],c.scale+(frame*OCL_JOINTS+p)*12+lane*4);if ps<parentLow {parentLow=ps;}}}}
+  }print("clip=% frames=% scale_min=% scale_max=% SSC_joints=% smallest_SSC_parent_scale=%\n",clip,c.frames,low,high,ssc,parentLow);
+ }return 0;
+}

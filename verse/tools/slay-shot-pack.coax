@@ -1,0 +1,115 @@
+// Read-only SDK body/camera/attachment samples -> private SHS1 scene-shot stream.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../aethyr/render/geometry/scan.coax";
+#load "../../coax/lib/text/ph_num.coax";
+#load "../valley/slay-shot.coax";
+#load "../../aethyr/tools/echo-gltf.coax";
+#load "slay-source.coax";
+#load "slay-camera.coax";
+#load "../valley/slay-lights.coax";
+#test "the static TF0290 kick direction is the source rotation through the pack's own axes" {
+ a:=ss_camera_axes(SLAY_KICK_ROLL,SLAY_KICK_PITCH,SLAY_KICK_YAW);
+ #assert abs(a[0].x+SLAY_KICK_X)<0.000002 && abs(a[0].y+SLAY_KICK_Y)<0.000002 && abs(a[0].z+SLAY_KICK_Z)<0.000002;
+}
+ss_camera_value :: (g:[]EpJson,node:int)->f64 {
+ value:=pn_parse(jv_raw(g[0].d[0],node));#assert value.ok && value.v> -1000000000 && value.v<1000000000;return value.v;
+}
+ss_camera_template :: (g:[]EpJson,camera:[]f32) {
+ #assert camera.count==200*9 && ep_int(g,0,"source_first",0)==1001 && ep_int(g,0,"frames",0)==200 && ep_int(g,0,"blend_type",0)==8;
+ names:=[9]string.["Location.X","Location.Y","Location.Z","Rotation.X","Rotation.Y","Rotation.Z","Scale.X","Scale.Y","Scale.Z"];
+ channels:=ep_get(g,0,"channels");#assert ep_len(g,channels)==9;
+ found:[9]bool;origin:[9]f64;samples:[200*9]f64;
+ for k:0..<9 {row:=ep_item(g,channels,k);name:=ep_text(g,row,"name");id:= -1;for n:0..<9 {if name==names[n] {id=n;}}#assert id>=0 && !found[id];found[id]=true;
+  origin[id]=ss_camera_value(g,ep_get(g,row,"base"));values:=ep_get(g,row,"values");#assert ep_len(g,values)==200;node:=g[0].nodes[values].first;
+  for frame:0..<200 {samples[frame*9+id]=ss_camera_value(g,node);node=g[0].nodes[node].next;}
+ }
+ scales:=ep_get(g,0,"scales");#assert ep_len(g,scales)==2;scale:[400]f64;seen:[2]bool;
+ for k:0..<2 {row:=ep_item(g,scales,k);kind:=ep_text(g,row,"type");id:=ifx kind=="TransformPropertyLocationOnly" then 0 else ifx kind=="TransformPropertyRotationOnly" then 1 else -1;
+  #assert id>=0 && !seen[id] && ep_text(g,row,"property")=="Transform";seen[id]=true;values:=ep_get(g,row,"values");#assert ep_len(g,values)==200;node:=g[0].nodes[values].first;
+  for frame:0..<200 {scale[id*200+frame]=ss_camera_value(g,node);node=g[0].nodes[node].next;}
+ }
+ for frame:0..<200 {
+  // This source shot scales location and rotation equally. Refuse a changed
+  // source profile rather than silently applying one property's scale to both.
+  #assert scale[frame]==scale[200+frame];composed:=ss_camera_shaken(camera[frame*9..<frame*9+9],samples[frame*9..<frame*9+9],origin[..],scale[frame]);
+  for k:0..<9 {camera[frame*9+k]=composed[k];}
+ }
+}
+ss_light_channel :: (g:[]EpJson,binding:string,parent_name:string,track:string,channel:string,out:[]f32,stride:int,field:int) {
+ bindings:=ep_get(g,0,"bindings");if bindings<0 {bindings=0;}found:=false;
+ for k:0..<ep_len(g,bindings) {row:=ep_item(g,bindings,k);if ep_text(g,row,"name")!=binding || (parent_name.count>0 && ep_text(g,row,"parent")!=parent_name) {continue;}tracks:=ep_get(g,row,"tracks");
+  for t:0..<ep_len(g,tracks) {tr:=ep_item(g,tracks,t);if ep_text(g,tr,"name")!=track {continue;}sections:=ep_get(g,tr,"sections");
+   for section:0..<ep_len(g,sections) {channels:=ep_get(g,ep_item(g,sections,section),"channels");for c:0..<ep_len(g,channels) {ch:=ep_item(g,channels,c);if ep_text(g,ch,"name")!=channel {continue;}#assert !found;found=true;values:=ep_get(g,ch,"values");#assert ep_len(g,values)==200;node:=g[0].nodes[values].first;for frame:0..<200 {out[frame*stride+field]=sf_value(g,node);node=g[0].nodes[node].next;}}}
+  }
+ }#assert found;
+}
+ss_channel :: (g:[]EpJson,binding:string,track:string,channel:string,out:[]f32,stride:int,field:int) {ss_light_channel(g,binding,"",track,channel,out,stride,field);}
+// TF0290's head key swings about 4 degrees to her left and back over source frames 1070 to 1076
+// (the neck stays smooth), a twitch Unreal plays too. The pack replaces those frames with an eased
+// turn from 1069's rotation to 1077's.
+SLAY_HEAD_BRIDGE_FROM :: 68;
+SLAY_HEAD_BRIDGE_TO :: 76;
+slay_shot_quat :: (out:[]u8,at:int)->Quat {return Quat.{x=face_float(out,at+12),y=face_float(out,at+16),z=face_float(out,at+20),w=face_float(out,at+24)};}
+slay_bridge_head :: (out:[]u8,data:int,stride:int,head:int) {
+ a:=slay_shot_quat(out,data+SLAY_HEAD_BRIDGE_FROM*stride+head*28);b:=slay_shot_quat(out,data+SLAY_HEAD_BRIDGE_TO*stride+head*28);
+ for frame:SLAY_HEAD_BRIDGE_FROM+1..<SLAY_HEAD_BRIDGE_TO {t:=cast(f32)(frame-SLAY_HEAD_BRIDGE_FROM)/cast(f32)(SLAY_HEAD_BRIDGE_TO-SLAY_HEAD_BRIDGE_FROM);q:=slerp(a,b,t*t*(3-2*t));at:=data+frame*stride+head*28;
+  face_put(out,at+12,f32_bits(q.x));face_put(out,at+16,f32_bits(q.y));face_put(out,at+20,f32_bits(q.z));face_put(out,at+24,f32_bits(q.w));}
+}
+#test "The head bridge eases from the first frame's rotation to the last's" {
+ out:[80*28]u8;a:=Quat.{x=0,y=0,z=0,w=1};b:=Quat.{x=0,y=0.0871557,z=0,w=0.9961947};
+ for frame:0..<80 {q:=ifx frame<=SLAY_HEAD_BRIDGE_FROM then a else ifx frame>=SLAY_HEAD_BRIDGE_TO then b else Quat.{x=0.5,y=0,z=0,w=0.8660254};face_put(out[..],frame*28+12,f32_bits(q.x));face_put(out[..],frame*28+16,f32_bits(q.y));face_put(out[..],frame*28+20,f32_bits(q.z));face_put(out[..],frame*28+24,f32_bits(q.w));}
+ slay_bridge_head(out[..],0,28,0);mid:=slay_shot_quat(out[..],72*28);
+ #assert abs(mid.x)<0.00001 && mid.y>0.04 && mid.y<0.05 && slay_shot_quat(out[..],SLAY_HEAD_BRIDGE_TO*28).y==b.y;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=3 && args_count(args[..])!=4) {return 2;}source:=args_at(args[..],0);sdk:=args_at(args[..],1);dest:=args_at(args[..],2);camera_sdk:=ifx args_count(args[..])==4 then args_at(args[..],3) else sdk;
+ g:[1]EpJson;j:[1]EpJson;names:[135]SfName;parent:[135]int;node_parent:[2048]int;node_bone:[2048]int;
+ ep_load(g[..],source,"Echo.gltf");nodes:=ep_get(g[..],0,"nodes");joints:=ep_get(g[..],ep_top(g[..],"skins",0),"joints");#assert ep_len(g[..],joints)==134;
+ for k:0..<2048 {node_parent[k]= -1;node_bone[k]= -1;}
+ for k:0..<134 {id:=jv_int(g[0].d[0],ep_item(g[..],joints,k),-1);node_bone[id]=k;names[k]=sf_name(ep_text(g[..],ep_item(g[..],nodes,id),"name"));}
+ for k:0..<ep_len(g[..],nodes) {children:=ep_get(g[..],ep_item(g[..],nodes,k),"children");for c:0..<ep_len(g[..],children) {id:=jv_int(g[0].d[0],ep_item(g[..],children,c),-1);node_parent[id]=k;}}
+ for k:0..<134 {id:=jv_int(g[0].d[0],ep_item(g[..],joints,k),-1);p:=node_parent[id];parent[k]=ifx p>=0 then node_bone[p] else -1;#assert parent[k]<k;}
+ names[134]=sf_name("groom.prop_01");parent[134]= -1;
+ out:[SLAY_SHOT_CAP]u8;frames:=200;data:=64+135*68;stride:=135*28+SLAY_SHOT_META*4;total:=data+frames*stride;
+ header:=[13]u32.[0x31534853,3,cast(u32)total,200,135,f32_bits(24.0f32),64,cast(u32)data,cast(u32)stride,1001,16,1121,1159];for x,k:header {face_put(out[..],k*4,x);}
+ for k:0..<135 {sf_write_name(out[..],64+k*68,names[k]);face_put(out[..],64+k*68+64,cast(u32)(ifx k==134 then 135 else k));}
+ sf_json(j[..],sdk,"TF0290_Echo.samples.json");#assert ep_int(j[..],0,"frames",0)==200;tracks:=ep_get(j[..],0,"bones");found:[135]bool;
+ for k:0..<ep_len(j[..],tracks) {row:=ep_item(j[..],tracks,k);bone_name:=ep_text(j[..],row,"name");id:=sf_find(names[0..<134],bone_name);if bone_name=="prop_01" {id=134;}if id<0 {continue;}#assert !found[id];found[id]=true;values:=ep_get(j[..],row,"values");#assert ep_len(j[..],values)==2000;node:=j[0].nodes[values].first;
+  for frame:0..<frames {raw:[10]f32;for v:0..<10 {raw[v]=sf_value(j[..],node);node=j[0].nodes[node].next;}local:=sf_local(raw);for v:0..<7 {face_put(out[..],data+frame*stride+id*28+v*4,f32_bits(local[v]));}}
+ }for k:0..<134 {#assert found[k];}#assert found[134];
+ slay_bridge_head(out[..],data,stride,sf_find(names[0..<134],"head"));
+ sf_json(j[..],sdk,"tf0290-shot-samples.json");camera:[200*9]f32;offset:[200*3]f32;focal:[200]f32;focus:[200]f32;
+ channels:=[9]string.["Location.X","Location.Y","Location.Z","Rotation.X","Rotation.Y","Rotation.Z","Scale.X","Scale.Y","Scale.Z"];
+ for k:0..<9 {ss_channel(j[..],"TF0290_01_Camera","Transform",channels[k],camera[..],9,k);}
+ for k:0..<3 {ss_channel(j[..],"BP Mote Base","Transform",channels[k],offset[..],3,k);}
+ ss_channel(j[..],"CameraComponent","Current Focal Length","None",focal[..],1,0);ss_channel(j[..],"CameraComponent","Manual Focus Distance (Focus Settings)","None",focus[..],1,0);
+ sf_json(j[..],camera_sdk,"tf0290-camera-template.json");ss_camera_template(j[..],camera[..]);
+ sf_json(j[..],sdk,"tf0290-light-samples.json");key_actor:[200*9]f32;key_local:[200*9]f32;fill_actor:[200*9]f32;wrap_actor:[200*9]f32;wrap_power:[200]f32;key_rgb:[200*3]f32;key_power:[200]f32;fill_power:[200]f32;
+ for k:0..<9 {ss_channel(j[..],"Echo_Key","Transform",channels[k],key_actor[..],9,k);ss_light_channel(j[..],"Key","Echo_Key","Transform",channels[k],key_local[..],9,k);ss_channel(j[..],"Echo_Fill","Transform",channels[k],fill_actor[..],9,k);ss_channel(j[..],"EchoKeyWrap","Transform",channels[k],wrap_actor[..],9,k);}
+ for k:0..<3 {ss_light_channel(j[..],"Key","Echo_Key","Light Color",[3]string.["Color.R","Color.G","Color.B"][k],key_rgb[..],3,k);}
+ ss_light_channel(j[..],"Key","EchoKeyWrap","Intensity","None",wrap_power[..],1,0);
+ ss_light_channel(j[..],"Key","Echo_Key","Intensity","None",key_power[..],1,0);
+ rect_actor:[200*9]f32;rect_rgb:[200*3]f32;rect_power:[200]f32;rect_radius:[200]f32;
+ for k:0..<9 {ss_channel(j[..],"Rect Light","Transform",channels[k],rect_actor[..],9,k);}
+ for k:0..<3 {ss_light_channel(j[..],"LightComponent0","Rect Light","Light Color",[3]string.["Color.R","Color.G","Color.B"][k],rect_rgb[..],3,k);}
+ ss_light_channel(j[..],"LightComponent0","Rect Light","Intensity","None",rect_power[..],1,0);ss_light_channel(j[..],"LightComponent0","Rect Light","Attenuation Radius","None",rect_radius[..],1,0);ss_light_channel(j[..],"Key","Echo_Fill","Intensity","None",fill_power[..],1,0);
+ hand:=sf_find(names[..],"hand_l");head:=sf_find(names[..],"head");#assert hand>=0 && head>=0;
+ for frame:0..<frames {at:=data+frame*stride;gq:[135]Quat;gt:[135]Point;
+  for k:0..<135 {p:=at+k*28;local:=SkinLocal.{t=scan_point(out[..],p),q=Quat.{x=face_float(out[..],p+12),y=face_float(out[..],p+16),z=face_float(out[..],p+20),w=face_float(out[..],p+24)}};pose_chain(gq[..],gt[..],parent[k],k,local);}
+  eye:=v3(camera[frame*9]*0.01,camera[frame*9+2]*0.01,camera[frame*9+1]*0.01);axes:=ss_camera_axes(camera[frame*9+3],camera[frame*9+4],camera[frame*9+5]);orb:=add(gt[hand],quat_rotate(gq[hand],v3(offset[frame*3]*0.01,offset[frame*3+2]*0.01,offset[frame*3+1]*0.01)));
+  actor_axes:=ss_camera_axes(key_actor[frame*9+3],key_actor[frame*9+4],key_actor[frame*9+5]);local_axes:=ss_camera_axes(key_local[frame*9+3],key_local[frame*9+4],key_local[frame*9+5]);local_forward:=local_axes[0];key:=times(add(add(times(actor_axes[0],local_forward.x),times(actor_axes[1],local_forward.z)),times(actor_axes[2],local_forward.y)),-1);fill_axes:=ss_camera_axes(fill_actor[frame*9+3],fill_actor[frame*9+4],fill_actor[frame*9+5]);meta:[SLAY_SHOT_META]f32;
+  wrap_axes:=ss_camera_axes(wrap_actor[frame*9+3],wrap_actor[frame*9+4],wrap_actor[frame*9+5]);meta[14]= -wrap_axes[0].x;meta[15]= -wrap_axes[0].y;meta[16]= -wrap_axes[0].z;meta[18]=wrap_power[frame];
+  meta[39]= -fill_axes[0].x;meta[40]= -fill_axes[0].y;meta[41]= -fill_axes[0].z;meta[42]=key_power[frame];meta[43]=fill_power[frame];
+  // The orb Rect Light: candela intensity folded into its linear colour, and its unit aim (forward).
+  meta[44]=rect_actor[frame*9]*0.01;meta[45]=rect_actor[frame*9+2]*0.01;meta[46]=rect_actor[frame*9+1]*0.01;for k:0..<3 {meta[47+k]=rect_rgb[frame*3+k]*rect_power[frame];}meta[50]=rect_radius[frame]*0.01;rect_axes:=ss_camera_axes(rect_actor[frame*9+3],rect_actor[frame*9+4],rect_actor[frame*9+5]);meta[51]=rect_axes[0].x;meta[52]=rect_axes[0].y;meta[53]=rect_axes[0].z;
+  for axis:0..<3 {vectors:=[7]Point.[eye,axes[1],axes[2],axes[0],orb,key,gt[head]];starts:=[7]int.[0,3,6,9,19,24,36];for v:0..<7 {meta[starts[v]+axis]=ifx axis==0 then vectors[v].x else ifx axis==1 then vectors[v].y else vectors[v].z;}}
+  meta[12]=2*focal[frame]/24.889999f32;meta[13]=2.4;meta[17]=1;meta[22]=0.0375;meta[23]=30;meta[27]=key_rgb[frame*3];meta[28]=key_rgb[frame*3+1];meta[29]=key_rgb[frame*3+2];meta[30]=gq[hand].x;meta[31]=gq[hand].y;meta[32]=gq[hand].z;meta[33]=gq[hand].w;meta[34]=focus[frame]*0.01;meta[35]=4;
+  for k:0..<SLAY_SHOT_META {face_put(out[..],at+135*28+k*4,f32_bits(meta[k]));}
+ }
+ face:[FACE_PACK_CAP]u8;path:[4096]u8;n:=fs_read(ep_path(dest,"echo.face",path[..]),face[..]);#assert n>0 && face_valid(face[0..<n]);f:=face_info(face[..]);#assert shot_valid(out[0..<total],face[f.rig_names..<f.rig_names+f.joints*64],f.joints,f.clips);
+ #assert fs_write(ep_path(dest,"echo.shot",path[..]),cast(string)out[0..<total]);print("TF0290 shot frames=% bones=135 bytes=% source_start=1001 face_start=1121 face_clip=16\n",frames,total);return 0;
+}

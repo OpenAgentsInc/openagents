@@ -1,0 +1,29 @@
+// Inspect actual OCL1 carrier motion and qualify controller-relative playback.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../ocarina/play.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+ b:[OCL_RIG_CAP]u8;n:=fs_read(args_at(args[..],0),b[..]);s:[1]OcarinaLab;
+ if n<=0 || !ocl_admit(s[..],b[0..<n]) {return 3;}
+ for clip:0..<8 {c:=ocr_clip(b[0..<n],32+clip*32);print("clip=% frames=% duration=%\n",clip,c.frames,scan_float(b[..],32+clip*32+8));
+  for joint:0..<OCL_JOINTS {first:=ocl_pose_at(b[..],c.start+joint*28);last:=ocl_pose_at(b[..],c.start+((c.frames-1)*OCL_JOINTS+joint)*28);delta:=sub(last.t,first.t);
+   if joint<5 || length(delta)>0.2 {print(" joint=% parent=% first=(%,%,%) delta=(%,%,%)\n",joint,s[0].parents[joint],first.t.x,first.t.y,first.t.z,delta.x,delta.y,delta.z);}
+  }
+ }
+ for clip:1..<4 {
+  duration:=scan_float(b[..],32+clip*32+8);speed:=s[0].source_speeds[clip];#assert speed>0;
+  s[0].clip=clip;s[0].inspect=0;s[0].age=1;s[0].time=0;ocl_present(s[..]);previous:=s[0].world[3*12+11];max_step:f32=0;min_step:f32=1000;wraps:=0;last_cycle:=0;
+  for sample:1..<513 {
+   t:=cast(f32)sample/64;s[0].time=t;ocl_present(s[..]);
+   #assert length(sub(s[0].pose[0].t,s[0].rest[0].t))<0.000001;
+   visible:=t*speed+s[0].world[3*12+11];delta:=visible-previous;previous=visible;
+   if delta>max_step {max_step=delta;}if delta<min_step {min_step=delta;}
+   cycle:=cast(int)floor(t/duration);if cycle>last_cycle {wraps+=1;}last_cycle=cycle;
+  }
+  #assert wraps>=5 && min_step> -0.005 && max_step<0.1;
+  print("PASS source clip=% speed=% wraps=% min_pelvis_step=% max_pelvis_step=% carrier_residual=0\n",clip,speed,wraps,min_step,max_step);
+ }
+ return 0;
+}

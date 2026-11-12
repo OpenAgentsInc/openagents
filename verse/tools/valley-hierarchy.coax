@@ -1,0 +1,20 @@
+// Native deterministic hierarchy and constrained simplification report.
+// coax/web/tool.sh verse/tools/valley-hierarchy.coax
+#import "Basic";
+#load "../valley/rock.coax";
+#load "../../aethyr/render/geometry/hierarchy.coax";
+#load "../../aethyr/render/geometry/fan.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  r:[1]Rock;c:[1]Clusters;h:[1]GeometryHierarchy;
+  for detail:[3]int.[8,16,32] {
+    if !rock_build(r[..],detail,12609) || !clusters_build(c[..],r[0].p[0..<r[0].vertices],r[0].i[0..<r[0].indices],CLUSTER_LEAVES) || !hierarchy_build(h[..],c[0].leaf[0..<c[0].count],HIERARCHY_NODES) {return 1;}
+    root:=h[0].node[h[0].root];print("identity-hierarchy-v1 divisions=% leaves=% nodes=% height=% triangles=% error=0 sha256=%\n",detail,h[0].leaves,h[0].count,root.height,root.triangles,cast(string)r[0].hash[..]);
+    for level:0..<root.height+1 {groups:=0;triangles:=0;leaves:=0;
+      for k:0..<h[0].leaves {id:=hierarchy_owner(h[..],k,level);a:=h[0].node[id];if a.first==k {groups+=1;triangles+=a.triangles;leaves+=a.leaves;}}
+      if triangles!=r[0].indices/3 || leaves!=c[0].count {return 1;}
+      print("  level=% groups=% triangles=% leaves=%\n",level,groups,triangles,leaves);
+    }
+  }
+  for height:[2]f32.[0,0.75] {for simplified:[2]bool.[false,true] {p:=fan_patch(height,simplified);print("square-fan-v1 height=% coarse=% vertices=% triangles=% exact_error_metres=%\n",height,simplified,p.vertices,p.indices/3,p.error);}}
+  return 0;
+}

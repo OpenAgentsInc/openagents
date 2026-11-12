@@ -1,0 +1,34 @@
+#module "aethyr.tools.slaycamera";
+#load "../../aethyr/core/points.coax";
+
+#test "source camera axes retain Unreal forward/right/up through the axis reflection" {
+ a:=ss_camera_axes(0,0,0);#assert a[0].x==1 && a[0].y==0 && a[1].z==1 && a[2].y==1;
+ a=ss_camera_axes(0,0,90);#assert abs(a[0].z-1)<0.000001 && abs(a[1].x+1)<0.000001;
+ // Independent Rz(yaw) * Ry(-pitch) * Rx(-roll) double-precision matrix.
+ a=ss_camera_axes(30,20,40);expected:=[3]Point.[v3(0.7198463104,0.3420201433,0.6040227736),v3(-0.4256690841,-0.4698463104,0.7733371034),v3(-0.5482947385,0.8137976813,0.1926297318)];
+ for k:0..<3 {#assert abs(a[k].x-expected[k].x)<0.000001 && abs(a[k].y-expected[k].y)<0.000001 && abs(a[k].z-expected[k].z)<0.000001;}
+}
+ss_camera_axes :: (roll:f32,pitch:f32,yaw:f32)->[3]Point #effects(all) {
+ p:=pitch*0.017453292519943295f32;y:=yaw*0.017453292519943295f32;r:=roll*0.017453292519943295f32;cp:=cos(p);sp:=sin(p);cy:=cos(y);sy:=sin(y);cr:=cos(r);sr:=sin(r);
+ return [3]Point.[v3(cp*cy,sp,cp*sy),v3(sr*sp*cy-cr*sy,-sr*cp,sr*sp*sy+cr*cy),v3(-(cr*sp*cy+sr*sy),cr*cp,cy*sr-cr*sp*sy)];
+}
+#test "source camera shake subtracts its authored base before property scaling" {
+ base:=[9]f32.[100,200,300,10,20,30,2,3,4];
+ origin:=[9]f64.[0,0,0,-90,0,-90,1,1,1];sample:=origin;
+ sample[0]=2;sample[1]= -4;sample[3]= -88;sample[4]=4;sample[5]= -84;sample[6]=9;
+ result:=ss_camera_shaken(base[..],sample[..],origin[..],0.5);
+ #assert result[0]==101 && result[1]==198 && result[2]==300;
+ #assert result[3]==11 && result[4]==22 && result[5]==33;
+ #assert result[6]==2 && result[7]==3 && result[8]==4;
+ zero:=ss_camera_shaken(base[..],sample[..],origin[..],0);
+ neutral:=ss_camera_shaken(base[..],origin[..],origin[..],0.4);
+ for k:0..<9 {#assert zero[k]==base[k] && neutral[k]==base[k];}
+ base[3]=0;sample=origin;sample[3]= -89.999999;
+ tiny:=ss_camera_shaken(base[..],sample[..],origin[..],0.4);
+ #assert tiny[3]>0.00000039 && tiny[3]<0.00000041;
+}
+ss_camera_shaken :: (base:[]f32,sample:[]f64,origin:[]f64,scale:f64)->[9]f32 #effects(all) {
+ // The source template uses AdditiveFromBase; only location and rotation
+ // have property scales. Its authored -90-degree camera rest is not a delta.
+ out:[9]f32;for k:0..<9 {out[k]=base[k];if k<6 {out[k]=cast(f32)(cast(f64)base[k]+(sample[k]-origin[k])*scale);}}return out;
+}

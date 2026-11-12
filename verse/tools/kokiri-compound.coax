@@ -1,0 +1,25 @@
+// Source SDKV20250200 compound instances -> original world-space collision cores.
+// Section identity and unsupported shape counts remain explicit; no collider-layer guess.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-phive.coax";
+#load "../../aethyr/anim/pose.coax";
+KcTransform :: struct {q:Quat;t:Point;s:Point;}
+KcStats :: struct {triangles:int;instances:int;unsupported:[256]int;low:Point=Point.{x=1000000,y=1000000,z=1000000};high:Point=Point.{x= -1000000,y= -1000000,z= -1000000};}
+kc_apply :: (p:Point,chain:[]KcTransform)->Point {v:=p;for k:0..<chain.count {t:=chain[chain.count-1-k];v=add(quat_rotate(t.q,v3(v.x*t.s.x,v.y*t.s.y,v.z*t.s.z)),t.t);}return v;}
+kc_emit :: (out:[]u8,stats:[]KcStats,chain:[]KcTransform,a:Point,b:Point,c:Point) {n:=stats[0].triangles;#assert kokiri_span(out.count,n*36,36);for p,k:[3]Point.[a,b,c] {v:=kc_apply(p,chain);#assert (f32_bits(v.x)&0x7f800000)!=0x7f800000 && (f32_bits(v.y)&0x7f800000)!=0x7f800000 && (f32_bits(v.z)&0x7f800000)!=0x7f800000;scan_write_point(out,n*36+k*12,v);l:=stats[0].low;h:=stats[0].high;stats[0].low=v3(lo(l.x,v.x),lo(l.y,v.y),lo(l.z,v.z));stats[0].high=v3(hi(h.x,v.x),hi(h.y,v.y),hi(h.z,v.z));}stats[0].triangles+=1;}
+kc_shape :: (b:[]u8,root:int,end:int,chain:[]KcTransform,depth:int,out:[]u8,stats:[]KcStats) {
+ #assert depth<=8 && kokiri_span(end,root,48);kind:=cast(int)b[root+24];
+ if kind==9 {#assert kokiri_span(end,root,80) && scan_u32(b,root+60)==0;instances:=root+56+kokiri_s32(scan_u32(b,root+56));n:=cast(int)scan_u32(b,root+64);#assert n<=100000 && kokiri_span(end,instances,n*64);
+  for k:0..<n {p:=instances+k*64;#assert scan_u32(b,p+52)==0;shape:=p+48+kokiri_s32(scan_u32(b,p+48));t:=KcTransform.{q=Quat.{x=scan_float(b,p),y=scan_float(b,p+4),z=scan_float(b,p+8),w=scan_float(b,p+12)},t=scan_point(b,p+16),s=scan_point(b,p+32)};#assert abs(quat_dot(t.q,t.q)-1)<0.001;next:[9]KcTransform;for v,j:chain {next[j]=v;}next[chain.count]=t;stats[0].instances+=1;kc_shape(b,shape,end,next[0..<chain.count+1],depth+1,out,stats);}
+ }else if kind==7 {m:=kokiri_mesh_root(b,root,end);#assert m.ok;for section:0..<m.count {p:=m.sections+section*64;pr:=kokiri_rel_array(b,p+8,4);n:=cast(int)scan_u32(b,p+12);#assert pr>=0 && kokiri_span(end,pr,n*4);for k:0..<n {v:[4]Point;for lane:0..<4 {v[lane]=kokiri_phive_vertex(b,m,section,cast(int)b[pr+k*4+lane]);}kc_emit(out,stats,chain,v[0],v[1],v[2]);if b[pr+k*4+2]!=b[pr+k*4+3] {kc_emit(out,stats,chain,v[0],v[2],v[3]);}}}
+ }else if kind==0 || kind==5 {#assert kokiri_span(end,root,96);vertices:=kokiri_rel_array(b,root+56,12);nv:=cast(int)scan_u32(b,root+60);faces:=kokiri_rel_array(b,root+72,4);nf:=cast(int)scan_u32(b,root+76);ids:=kokiri_rel_array(b,root+80,1);ni:=cast(int)scan_u32(b,root+84);#assert vertices>=0 && faces>=0 && ids>=0 && kokiri_span(end,vertices,nv*12) && kokiri_span(end,faces,nf*4) && kokiri_span(end,ids,ni);
+  for f:0..<nf {p:=faces+f*4;start:=kokiri_u16(b,p);n:=cast(int)b[p+2];#assert n>=3 && kokiri_span(ni,start,n);a:=cast(int)b[ids+start];#assert a<nv;for j:1..<n-1 {ib:=cast(int)b[ids+start+j];ic:=cast(int)b[ids+start+j+1];#assert ib<nv && ic<nv;kc_emit(out,stats,chain,scan_point(b,vertices+a*12),scan_point(b,vertices+ib*12),scan_point(b,vertices+ic*12));}}
+ }else {stats[0].unsupported[kind]+=1;}
+}
+#test "Kokiri compound nested transforms retain nonuniform scale before each rotation" {
+ chain:=[2]KcTransform.[KcTransform.{q=Quat.{z=0.70710678,w=0.70710678},s=v3(2,1,1),t=v3(10,20,30)},KcTransform.{s=v3(1,3,1),t=v3(1,0,0)}];
+ p:=kc_apply(v3(1,1,0),chain[..]);#assert abs(p.x-7)<0.00001 && abs(p.y-24)<0.00001 && p.z==30;
+}

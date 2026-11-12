@@ -1,0 +1,53 @@
+// Native narrow glTF baseline importer. Data only: never executes source project code.
+// CLI GLTF BIN BASECOLOR_JPEG OUTPUT_VSM [OUTPUT_HEX]; one mesh/node, uniform positive scale, quaternion.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json-f64.coax";
+#load "../../coax/lib/image/jpeg.coax";
+#load "../../aethyr/render/geometry/scan.coax";
+VIView :: struct {ok:bool;offset:int;count:int;components:int;bytes:int;}
+#test "scan import quaternion rotates centimetre source into metre Y up" {
+  p:=vi_rotate(v3(1,2,3),v3(0.70710678,0,0),0.70710678);#assert abs(p.x-1)<0.00001 && abs(p.y+3)<0.00001 && abs(p.z-2)<0.00001;
+  #assert vi_wrap(-0.25)==0.75 && vi_wrap(1.25)==0.25 && vi_wrap(1)==0;
+}
+vi_rotate :: (p:Point,q:Point,w:f32)->Point {t:=times(cross(q,p),2);return add(p,add(times(t,w),cross(q,t)));}
+vi_wrap :: (x:f32)->f32 {return x-floor(x);}
+vi_num :: (d:Jv,a:int,k:int)->f32 {r:=json_f64(jv_raw(d,jv_at(d,a,k)));#assert r.ok;return cast(f32)r.value;}
+vi_view :: (d:Jv,id:int,kind:string,component:int,available:int)->VIView {
+  a:=jv_at(d,jv_get(d,0,"accessors"),id);v:=jv_at(d,jv_get(d,0,"bufferViews"),jv_int(d,jv_get(d,a,"bufferView"),-1));
+  if a<0 || v<0 || jv_raw(d,jv_get(d,a,"type"))!=kind || jv_int(d,jv_get(d,a,"componentType"),0)!=component || jv_get(d,a,"sparse")>=0 || jv_get(d,v,"byteStride")>=0 || jv_int(d,jv_get(d,v,"buffer"),-1)!=0 {return VIView.{};}
+  n:=jv_int(d,jv_get(d,a,"count"),0);offset:=jv_int(d,jv_get(d,a,"byteOffset"),0);base:=jv_int(d,jv_get(d,v,"byteOffset"),0);span:=jv_int(d,jv_get(d,v,"byteLength"),0);
+  components:=ifx kind=="VEC3" then 3 else ifx kind=="VEC2" then 2 else 1;bytes:=ifx component==5123 then 2 else 4;
+  if n<=0 || n>SCAN_INDICES || offset<0 || base<0 || span<0 || base>available || span>available-base || n*components*bytes>span-offset {return VIView.{};}
+  return VIView.{ok=true,offset=base+offset,count=n,components=components,bytes=bytes};
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || (args_count(args[..])<4 || args_count(args[..])>5) {return 2;}
+  text:[65536]u8;bin:[4194304]u8;jpeg:[4194304]u8;work:[4194304]u8;rgba:[4194304]u8;encoded:[SCAN_BYTES]u8;s:[1]Scan;
+  nt:=fs_read(args_at(args[..],0),text[..]);nb:=fs_read(args_at(args[..],1),bin[..]);nj:=fs_read(args_at(args[..],2),jpeg[..]);if nt<0 || nb<0 || nj<0 {return 3;}
+  d:[1]Jv;nodes:[2048]JvNode;if !jv_parse(d[..],cast(string)text[0..<nt],nodes[..]) {return 4;}doc:=d[0];
+  if jv_len(doc,jv_get(doc,0,"meshes"))!=1 || jv_len(doc,jv_get(doc,0,"nodes"))!=1 || jv_len(doc,jv_get(doc,0,"buffers"))!=1 {return 5;}
+  node:=jv_at(doc,jv_get(doc,0,"nodes"),0);mesh:=jv_at(doc,jv_get(doc,0,"meshes"),0);prims:=jv_get(doc,mesh,"primitives");prim:=jv_at(doc,prims,0);
+  if jv_get(doc,node,"matrix")>=0 || jv_get(doc,node,"translation")>=0 || jv_get(doc,node,"children")>=0 || jv_int(doc,jv_get(doc,node,"mesh"),-1)!=0 || jv_len(doc,prims)!=1 || jv_int(doc,jv_get(doc,prim,"mode"),4)!=4 || jv_get(doc,prim,"extensions")>=0 {return 6;}
+  attrs:=jv_get(doc,prim,"attributes");p:=vi_view(doc,jv_int(doc,jv_get(doc,attrs,"POSITION"),-1),"VEC3",5126,nb);n:=vi_view(doc,jv_int(doc,jv_get(doc,attrs,"NORMAL"),-1),"VEC3",5126,nb);uv:=vi_view(doc,jv_int(doc,jv_get(doc,attrs,"TEXCOORD_0"),-1),"VEC2",5126,nb);ind:=vi_view(doc,jv_int(doc,jv_get(doc,prim,"indices"),-1),"SCALAR",5123,nb);
+  if !p.ok || !n.ok || !uv.ok || !ind.ok || p.count>SCAN_VERTICES || n.count!=p.count || uv.count!=p.count || ind.count%3!=0 {return 7;}
+  rot:=jv_get(doc,node,"rotation");scale:=jv_get(doc,node,"scale");if jv_len(doc,rot)!=4 || jv_len(doc,scale)!=3 {return 8;}
+  q:=v3(vi_num(doc,rot,0),vi_num(doc,rot,1),vi_num(doc,rot,2));qw:=vi_num(doc,rot,3);sc:=vi_num(doc,scale,0);ql:=sqrt(dot(q,q)+qw*qw);
+  if !(sc>0) || sc!=vi_num(doc,scale,1) || sc!=vi_num(doc,scale,2) || !(ql>0) {return 8;}q=times(q,1/ql);qw/=ql;
+  info:=jpg_info(jpeg[0..<nj]);if info.status!=JPG_OK || info.w*info.h*4>rgba.count || info.work>work.count {print("JPEG refused %\n",info.status);return 9;}if jpg_decode(jpeg[0..<nj],work[..],rgba[..])!=JPG_OK {return 9;}
+  s[0].vertices=p.count;s[0].indices=ind.count;low:=v3(100000,100000,100000);high:=times(low,-1);
+  for k:0..<p.count {pos:=times(vi_rotate(scan_point(bin[..],p.offset+k*12),q,qw),sc);s[0].p[k]=pos;s[0].n[k]=unit_or(vi_rotate(scan_point(bin[..],n.offset+k*12),q,qw),v3(0,1,0));
+    low=v3(ifx pos.x<low.x then pos.x else low.x,ifx pos.y<low.y then pos.y else low.y,ifx pos.z<low.z then pos.z else low.z);high=v3(ifx pos.x>high.x then pos.x else high.x,ifx pos.y>high.y then pos.y else high.y,ifx pos.z>high.z then pos.z else high.z);
+    u:=vi_wrap(scan_float(bin[..],uv.offset+k*8));v:=vi_wrap(scan_float(bin[..],uv.offset+k*8+4));at:=(cast(int)(v*cast(f32)info.h)*info.w+cast(int)(u*cast(f32)info.w))*4;
+    s[0].c[k]=v3(cast(f32)rgba[at]/255,cast(f32)rgba[at+1]/255,cast(f32)rgba[at+2]/255);
+  }
+  centre:=v3((low.x+high.x)*0.5,low.y,(low.z+high.z)*0.5);for k:0..<p.count {s[0].p[k]=sub(s[0].p[k],centre);}
+  for k:0..<ind.count {at:=ind.offset+k*2;s[0].i[k]=cast(u32)bin[at] | (cast(u32)bin[at+1]<<8);}
+  measured:=indexed_read(s[0].p[0..<p.count],s[0].n[0..<p.count],s[0].i[0..<ind.count],SCAN_BYTES,"Fab exact Quixel ID","Fab Standard");if measured.status!=IndexedStatus.ok {print("mesh refused %\n",cast(int)measured.status);return 10;}
+  scan_put(encoded[..],0,0x314d5356);scan_put(encoded[..],4,cast(u32)p.count);scan_put(encoded[..],8,cast(u32)ind.count);scan_put(encoded[..],12,1);
+  for k:0..<p.count {scan_write_point(encoded[..],16+k*36,s[0].p[k]);scan_write_point(encoded[..],28+k*36,s[0].n[k]);scan_write_point(encoded[..],40+k*36,s[0].c[k]);}for k:0..<ind.count {scan_put(encoded[..],16+p.count*36+k*4,s[0].i[k]);}
+  bytes:=16+p.count*36+ind.count*4;if !fs_write(args_at(args[..],3),cast(string)encoded[0..<bytes]) {return 11;}if args_count(args[..])==5 {hex:[SCAN_BYTES*2]u8;for k:0..<bytes {hex[k*2]=ASSET_HEX_DIGITS[cast(int)(encoded[k]>>4)];hex[k*2+1]=ASSET_HEX_DIGITS[cast(int)(encoded[k]&15)];}if !fs_write(args_at(args[..],4),cast(string)hex[0..<bytes*2]) {return 11;}}
+  hash:[64]u8;#assert asset_hex(asset_id(cast(string)encoded[0..<bytes]),hash[..]);print("vertices=% triangles=% bytes=% sha256=%\n",p.count,ind.count/3,bytes,cast(string)hash[..]);return 0;
+}

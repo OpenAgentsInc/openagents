@@ -1,0 +1,18 @@
+// Author the two original content-checked page files served by Valley Lab.
+// coax/web/tool.sh verse/tools/valley-pages.coax OUTPUT_DIRECTORY
+#import "Basic";
+#load "../valley/parents.coax";
+#load "../../aethyr/render/geometry/pages.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+  for k:0..<2 {
+    source:=parent_source(ifx k==0 then 0.0f32 else 0.75f32);m:[1]ParentMesh;
+    if !parent_reduce(m[..],source.p[0..<source.vertices],source.i[0..<source.indices],0) {return 1;}
+    p:=geometry_page(m[0]);hex:[GEOMETRY_PAGE_BYTES*2]u8;id:[64]u8;
+    for v,j:p.data[0..<p.bytes] {hex[j*2]="0123456789abcdef"[cast(int)v>>4];hex[j*2+1]="0123456789abcdef"[cast(int)v&15];}
+    _:=asset_hex(p.key,id[..]);print("parent-%: source_triangles=% coarse_triangles=% error=% bytes=% resident_cost=% sha256=%\n",k,source.indices/3,m[0].indices/3,m[0].error,p.bytes,p.bytes+m[0].vertices*12+m[0].indices*4,cast(string)id[..]);
+    path:[4096]u8;if !fs_write(fs_join(args_at(args[..],0),ifx k==0 then "parent-0.vgp.hex" else "parent-1.vgp.hex",path[..]),cast(string)hex[0..<p.bytes*2]) {return 1;}
+  }return 0;
+}

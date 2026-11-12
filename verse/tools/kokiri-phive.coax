@@ -1,0 +1,75 @@
+// Bounds-checked Phive containers, independent of the Havok geometry version.
+// Layout: https://epd.zeldamods.org/wiki/Common_Phive (2024-04-06).
+#load "../../aethyr/render/geometry/scan.coax";
+KokiriPhive :: struct {ok:bool;kind:int;count:int;offset:[256]int;size:[256]int;}
+#test "Kokiri Phive header checks complete dynamic sections and terminal size" {
+ b:[80]u8;name:="Phive";for c,k:name {b[k]=c;}b[8]=0xff;b[9]=0xfe;b[10]=2;b[11]=4;
+ scan_put(b[..],12,48);scan_put(b[..],16,64);scan_put(b[..],20,0);scan_put(b[..],24,80);
+ scan_put(b[..],28,16);scan_put(b[..],32,16);
+ h:=kokiri_phive(b[..]);#assert h.ok && h.kind==2 && h.count==4 && h.offset[0]==48 && h.size[1]==16;
+ #assert !kokiri_phive(b[0..<79]).ok;b[11]=255;#assert !kokiri_phive(b[..]).ok;b[11]=4;
+ scan_put(b[..],32,17);#assert !kokiri_phive(b[..]).ok;scan_put(b[..],32,16);
+ scan_put(b[..],12,40);#assert !kokiri_phive(b[..]).ok;
+}
+#test "Kokiri relative arrays require the entire signed offset and payload" {
+ b:[40]u8;scan_put(b[..],8,16);scan_put(b[..],12,2);
+ #assert kokiri_rel_array(b[..],8,8)==24;
+ #assert kokiri_rel_array(b[..],8,9)== -1;
+ scan_put(b[..],8,0xfffffff8);#assert kokiri_rel_array(b[..],8,4)==0;
+ scan_put(b[..],8,0xfffffff7);#assert kokiri_rel_array(b[..],8,4)== -1;
+}
+kokiri_span :: (total:int,at:int,n:int)->bool {return at>=0 && n>=0 && at<=total && n<=total-at;}
+kokiri_u16 :: (b:[]u8,p:int)->int {#assert kokiri_span(b.count,p,2);return cast(int)b[p]|(cast(int)b[p+1]<<8);}
+kokiri_s32 :: (w:u32)->int {n:=cast(int)w;return ifx n>=2147483648 then n-4294967296 else n;}
+kokiri_rel_array :: (b:[]u8,p:int,stride:int)->int {
+ if !kokiri_span(b.count,p,8) || stride<1 {return -1;}
+ offset:=kokiri_s32(scan_u32(b,p));count:=cast(int)scan_u32(b,p+4);base:=p+offset;
+ if count> b.count/stride || !kokiri_span(b.count,base,count*stride) {return -1;}return base;
+}
+kokiri_phive :: (b:[]u8)->KokiriPhive {
+ out:=KokiriPhive.{};if b.count<16 {return out;}
+ name:="Phive";for c,k:name {if b[k]!=c {return out;}}
+ if b[5]!=0 || kokiri_u16(b,8)!=0xfeff || b[10]>3 {return out;}
+ n:=cast(int)b[11];if n<2 || n>255 {return out;}header:=(12+n*8+15)/16*16;
+ if !kokiri_span(b.count,0,header) {return out;}
+ last:= -1;for k:0..<n {p:=cast(int)scan_u32(b,12+k*4);size:=cast(int)scan_u32(b,12+n*4+k*4);
+  if p!=0 {last=k;}if (p==0 && size!=0) || (p!=0 && p<header) || !kokiri_span(b.count,p,size) {return out;}
+  out.offset[k]=p;out.size[k]=size;
+ }
+ if last<0 || out.offset[last]!=b.count || out.size[last]!=0 {return KokiriPhive.{};}
+ out.ok=true;out.kind=cast(int)b[10];out.count=n;return out;
+}
+
+// OoT's SDKV20250200 mesh root has the conversion utility at +0x40,
+// geometry sections at +0x88. Section records remain 0x40 bytes.
+KokiriPhiveMesh :: struct {ok:bool;root:int;sections:int;count:int;data_end:int;}
+kokiri_be32 :: (b:[]u8,p:int)->int {#assert kokiri_span(b.count,p,4);return (cast(int)b[p]<<24)|(cast(int)b[p+1]<<16)|(cast(int)b[p+2]<<8)|cast(int)b[p+3];}
+kokiri_phive_mesh :: (b:[]u8)->KokiriPhiveMesh {
+ h:=kokiri_phive(b);if !h.ok || h.kind!=0 || h.size[0]<32 {return KokiriPhiveMesh.{};}p:=h.offset[0];
+ if scan_u32(b,p+4)!=0x30474154 || scan_u32(b,p+12)!=0x564b4453 || cast(string)b[p+16..<p+24]!="20250200" || scan_u32(b,p+28)!=0x41544144 {return KokiriPhiveMesh.{};}
+ size:=kokiri_be32(b,p+24)&0x3fffffff;root:=p+32;
+ if size<8+0x98 || !kokiri_span(p+h.size[0],p+24,size) || !kokiri_span(b.count,root,0x98) || b[root+0x18]!=7 || b[root+0x19]!=2 {return KokiriPhiveMesh.{};}
+ at:=kokiri_rel_array(b,root+0x88,64);n:=cast(int)scan_u32(b,root+0x8c);if at<root || n<1 || !kokiri_span(p+24+size,at,n*64) {return KokiriPhiveMesh.{};}
+ for lane:0..<3 {bits:=scan_u32(b,root+0x50+lane*4);if (bits&0x7f800000)==0x7f800000 || scan_float(b,root+0x50+lane*4)<=0 {return KokiriPhiveMesh.{};}}
+ return KokiriPhiveMesh.{ok=true,root=root,sections=at,count=n,data_end=p+24+size};
+}
+kokiri_phive_vertex :: (b:[]u8,m:KokiriPhiveMesh,section:int,index:int)->Point {
+ #assert m.ok && section>=0 && section<m.count && index>=0 && index<256;p:=m.sections+section*64;
+ offset:=kokiri_rel_array(b,p+16,1);bytes:=cast(int)scan_u32(b,p+20);#assert offset>=0 && index*6+6<=bytes && kokiri_span(m.data_end,offset,bytes);
+ v:[3]f32;for lane:0..<3 {code:=kokiri_u16(b,offset+index*6+lane*2);origin:=kokiri_s32(scan_u32(b,p+32+lane*4));v[lane]=cast(f32)(origin+code)*scan_float(b,m.root+0x50+lane*4);}return v3(v[0],v[1],v[2]);
+}
+kokiri_mesh_root :: (b:[]u8,root:int,end:int)->KokiriPhiveMesh {
+ if !kokiri_span(end,root,0x98) || b[root+24]!=7 || b[root+25]!=2 {return KokiriPhiveMesh.{};}
+ at:=kokiri_rel_array(b,root+0x88,64);n:=cast(int)scan_u32(b,root+0x8c);if at<root || n<1 || !kokiri_span(end,at,n*64) {return KokiriPhiveMesh.{};}
+ for lane:0..<3 {w:=scan_u32(b,root+0x50+lane*4);if (w&0x7f800000)==0x7f800000 || scan_float(b,root+0x50+lane*4)<=0 {return KokiriPhiveMesh.{};}}
+ return KokiriPhiveMesh.{ok=true,root=root,sections=at,count=n,data_end=end};
+}
+#test "Kokiri 2025 mesh vertices retain signed section origin and byte padding" {
+ b:[512]u8;b[24]=7;b[25]=2;scan_put(b[..],0x88,24);scan_put(b[..],0x8c,1);
+ for lane:0..<3 {scan_put(b[..],0x50+lane*4,f32_bits(0.5));}
+ scan_put(b[..],176,144);scan_put(b[..],180,8);scan_put(b[..],192,0xfffffffc);scan_put(b[..],196,6);scan_put(b[..],200,0);
+ b[320]=10;b[322]=2;b[324]=8;b[326]=0xab;b[327]=0xcd;
+ m:=kokiri_mesh_root(b[..],0,512);#assert m.ok && m.sections==160 && m.count==1;
+ v:=kokiri_phive_vertex(b[..],m,0,0);#assert v.x==3 && v.y==4 && v.z==4;
+ b[24]=9;#assert !kokiri_mesh_root(b[..],0,512).ok;b[24]=7;scan_put(b[..],0x8c,100);#assert !kokiri_mesh_root(b[..],0,512).ok;
+}

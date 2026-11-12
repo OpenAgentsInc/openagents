@@ -110,7 +110,7 @@ carries tiers, and the runtime streams the tier the camera needs:
 - **Groom levels.** Strand LODs already exist (the share rule). Add a cards
   tier, built by the packer from the same curves, for far views and phones.
 - The packer is a Coax tool that reads the existing Valley exports
-  (`aethyr/tools/valley-echo-bundle.coax` and `slay-shot-pack.coax` are the
+  (`verse/tools/valley-echo-bundle.coax` and `slay-shot-pack.coax` are the
   starting point). Rules from [private assets](private-assets.md) apply:
   packs stay out of git, and manifests in the repository name no private
   digest or placement.

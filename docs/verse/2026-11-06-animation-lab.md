@@ -42,7 +42,7 @@ Draconia, The Guardian").
 | Cameras | `aethyr/cam/cinematic.coax`, `aethyr/cam/shot.coax` | Authored camera flights with keys, easing and cuts; orbit and dive shots |
 | Determinism | `aethyr/core/replay.coax` | Record and replay of inputs, so the same inputs give the same frames |
 | Speaking | `aethyr/audio/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
-| Echo port | `verse/valley/echo*.coax`, `aethyr/tools/valley-echo-*`, `aethyr/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
+| Echo port | `verse/valley/echo*.coax`, `verse/tools/valley-echo-*`, `aethyr/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
 | Slay face | `verse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
 | Anime director | `verse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
 | Labs CLI | `apps/openagents-cli/labs.coax`, `docs/cli/2026-11-01-openagents-labs.md` | `labs shot`, `clip`, `frames`, `cut`, `compare`, `anime` |

@@ -1,0 +1,12 @@
+// Pin the native field's version, seed and f32 words for the browser parity check.
+#import "Basic";
+#load "../valley/field.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+  record:=valley_field(12609);buffer:[4096]u8;j:[1]Jo;jo_start(j[..],buffer[..]);jo_obj(j[..]);jo_key(j[..],"version");jo_int(j[..],1);jo_key(j[..],"seed");jo_int(j[..],12609);jo_key(j[..],"words");jo_arr(j[..]);
+  for r:record {for v:[5]f32.[r.pos.x,r.pos.y,r.pos.z,r.yaw,r.scale] {jo_int(j[..],cast(int)f32_bits(v));}}jo_end(j[..]);jo_end(j[..]);
+  if !fs_write(args_at(args[..],0),jo_text(j[..])) {return 1;}print("%\n",jo_text(j[..]));return 0;
+}

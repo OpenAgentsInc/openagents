@@ -1,0 +1,16 @@
+// Actual KOC1/KOC2 source through the same Ocarina gameplay owner as the browser.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../ocarina/play.coax";
+klr_root :: (s:[]OcarinaLab) {#assert abs(s[0].pose[0].t.x-s[0].rest[0].t.x)<0.000001 && abs(s[0].pose[0].t.z-s[0].rest[0].t.z)<0.000001;#assert kokiri_finite(s[0].you.pos.x) && kokiri_finite(s[0].you.pos.y) && kokiri_finite(s[0].you.pos.z);}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}data:[KOC_CAP]u8;n:=fs_read(args_at(a[..],0),data[..]);#assert n>0;s:[1]OcarinaLab;#assert ocl_catalog_admit(s[..],data[0..<n]);#assert s[0].catalog_ready && s[0].world_source.count==54804852;print("CATALOG_PASS bytes=% vertices=% indices=% layers=% materials=%\n",n,s[0].expected_vertex_bytes,s[0].expected_indices,s[0].expected_layers,s[0].expected_materials);resident:=ocl_measured_bytes(s[..],2880,1800);#assert resident<=OCL_BUDGET.bytes;print("RESIDENCY_PASS high_dpr_bytes=% budget_bytes=%\n",resident,OCL_BUDGET.bytes);
+ spawn_floor:=kokiri_encoded_floor(s[0].world_source,s[0].you.pos.x,s[0].you.pos.z,s[0].you.pos.y+0.001);#assert spawn_floor.hit && abs(s[0].you.pos.y-spawn_floor.y)<0.001;_:=ocl_hold(s[..],87,true);ocl_step(s[..],0.125,false);p:=s[0].you;klr_root(s[..]);#assert s[0].frame_steps==8 && p.clock.ticks==8;
+ #assert ocl_key(s[..],82);_=ocl_hold(s[..],87,true);for k:0..<8 {ocl_step(s[..],1.0/64.0,false);klr_root(s[..]);}#assert abs(p.pos.x-s[0].you.pos.x)<0.00001 && abs(p.pos.y-s[0].you.pos.y)<0.00001 && abs(p.pos.z-s[0].you.pos.z)<0.00001 && abs(p.prev_pos.z-s[0].you.prev_pos.z)<0.00001;
+ _=ocl_hold(s[..],87,false);_=ocl_hold(s[..],32,true);_=ocl_hold(s[..],32,false);before:=s[0].you.pos.y;peak:=before;landed:=false;for k:0..<120 {ocl_step(s[..],1.0/64.0,false);klr_root(s[..]);peak=hi(peak,s[0].you.pos.y);if k>10 && s[0].you.on_ground {landed=true;}}#assert peak>before+0.1 && landed;
+ max_tests:=0;for location:[2]Point.[v3(-45.6,116.50062,-9.74),v3(-3.6,110.6042,-15.44)] {s[0].spawn=location;#assert ocl_key(s[..],82);for leg:0..<4 {s[0].keys=[4]int.[1,8,2,4][leg];for tick:0..<16 {ocl_step(s[..],1.0/64.0,false);klr_root(s[..]);max_tests=ifx s[0].collision_tests>max_tests then s[0].collision_tests else max_tests;#assert s[0].collision_tests<=100000;if s[0].you.on_ground {q:=kokiri_encoded_floor(s[0].world_source,s[0].you.pos.x,s[0].you.pos.z,s[0].you.pos.y+0.001);#assert q.hit && abs(q.y-s[0].you.pos.y)<0.002;}}}}
+ s[0].keys=0;for clip:[3]int.[0,2,7] {s[0].clip=clip;s[0].age=1;duration:=ocl_duration(s[..]);for sample:0..<120 {s[0].time=duration*cast(f32)sample/40;s[0].inspect=0;ocl_present(s[..]);klr_root(s[..]);s[0].inspect=1;ocl_present(s[..]);#assert kokiri_point_finite(s[0].pose[0].t);}}
+ s[0].inspect=0;ocl_present(s[..]);klr_root(s[..]);print("RUNTIME_PASS paid8_equivalent jump_peak=% bridge_and_shop_steps=128 original_clip_samples=360 max_frame_candidate_tests=%\n",peak-before,max_tests);return 0;
+}

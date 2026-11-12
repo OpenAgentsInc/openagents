@@ -1,7 +1,7 @@
 // The offline texture block encoder (GitHub #13014, part of #12998), and its check against
 // independent decoders. The encoders are aethyr/render/texture-encode.coax's: BC7 (mode 6), BC5,
 // and ASTC 4x4 and 6x6 for colour and for normals. The block files are the ones
-// aethyr/tools/ocarina-texture-core.coax hands its reference runners: ASTC's .astc (magic
+// verse/tools/ocarina-texture-core.coax hands its reference runners: ASTC's .astc (magic
 // 0x5CA1AB13, block size, then the image size in three 24-bit fields) for ARM astcenc 5.7.1, and a
 // 16-byte BCX1 header (magic, BNTX channel format 0x20 BC7 or 0x1e BC5, width, height) for
 // ocarina-bc-reference.c, the pinned bcdec runner.

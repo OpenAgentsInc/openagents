@@ -1,0 +1,89 @@
+// BFRES10.4 static geometry in the same 128-byte vertex layout as private Link.
+// Source layouts: BfresLibrary e2c5debc; verified Ocarina FVTX/FSHP/FMАТ records.
+#load "ocarina-bfres.coax";
+#load "kokiri-meshlet.coax";
+#load "../../aethyr/anim/scaled-pose.coax";
+KmAttribute :: struct {exists:bool;format:int;offset:int;buffer:int;}
+KmBuffer :: struct {offset:int;size:int;stride:int;}
+KmCounts :: struct {vertices:int;indices:int;shapes:int;materials:int;unsupported:int;}
+ KM_VERTEX_CAP :: 2097152; KM_INDEX_CAP :: 12582912; KM_BONE_CAP :: 1024;
+#test "Kokiri authored static transforms preserve source units and inverse transpose normals" {
+ m:=[12]f32.[0,-3,0,10,2,0,0,20,0,0,4,30];p:=km_point(m[..],v3(1,2,3));#assert p.x==4 && p.y==22 && p.z==42;
+ n:=km_normal(m[..],v3(1,1,0));#assert abs(n.x+0.554700196)<0.00001 && abs(n.y-0.832050294)<0.00001 && n.z==0;
+ a:=km_affine(v3(1,2,3),v3(0,0,0),v3(2,3,4));#assert a[0]==2 && a[5]==3 && a[10]==4 && a[3]==1 && a[7]==2 && a[11]==3;
+}
+#test "Kokiri vertex attributes decode exact packed SNORM UNORM and half data" {
+ b:[32]u8;scan_put(b[..],0,0x1ff00200);b[4]=255;b[5]=128;scan_put(b[..],8,0x40003c00);buf:=KmBuffer.{size=32,stride=16};
+ #assert km_attr_value(b[..],KmAttribute.{exists=true,format=0x0e02},buf,0,0)== -1;
+ #assert km_attr_value(b[..],KmAttribute.{exists=true,format=0x0901,offset=4},buf,0,0)==1;
+ #assert km_attr_value(b[..],KmAttribute.{exists=true,format=0x1205,offset=8},buf,0,1)==2;
+ scan_put(b[..],16,f32_bits(0.125));scan_put(b[..],20,f32_bits(-7.25));#assert km_attr_value(b[..],KmAttribute.{exists=true,format=0x1705},KmBuffer.{offset=16,size=16,stride=16},0,1)== -7.25;
+}
+km_affine :: (t:Point,r:Point,s:Point)->[12]f32 {m:[12]f32;pose_affine_local(t,ob_euler(r),s,m[..]);return m;}
+km_point :: (m:[]f32,p:Point)->Point {return v3(m[0]*p.x+m[1]*p.y+m[2]*p.z+m[3],m[4]*p.x+m[5]*p.y+m[6]*p.z+m[7],m[8]*p.x+m[9]*p.y+m[10]*p.z+m[11]);}
+km_vector :: (m:[]f32,p:Point)->Point {return v3(m[0]*p.x+m[1]*p.y+m[2]*p.z,m[4]*p.x+m[5]*p.y+m[6]*p.z,m[8]*p.x+m[9]*p.y+m[10]*p.z);}
+km_normal :: (m:[]f32,n:Point)->Point {x:=v3(m[0],m[4],m[8]);y:=v3(m[1],m[5],m[9]);z:=v3(m[2],m[6],m[10]);cofactor:=add(add(times(cross(y,z),n.x),times(cross(z,x),n.y)),times(cross(x,y),n.z));det:=dot(x,cross(y,z));#assert abs(det)>0.000000000001;return unit_or(times(cofactor,1/det),v3(0,1,0));}
+km_attr_components :: (f:int)->int {if f==0x1805 {return 3;}if f==0x1905 || f==0x1505 || f==0x1503 || f==0x0b03 || f==0x0b01 || f==0x0e02 || f==0x0b02 {return 4;}if f==0x1705 || f==0x1205 || f==0x1201 || f==0x1202 || f==0x0903 || f==0x0901 {return 2;}if !(f==0x1605 || f==0x0a03 || f==0x0203 || f==0x0201) {print("Kokiri unsupported attribute format=%\n",f);}#assert f==0x1605 || f==0x0a03 || f==0x0203 || f==0x0201;return 1;}
+km_attr_value :: (b:[]u8,a:KmAttribute,buf:KmBuffer,vertex:int,lane:int)->f32 {
+ #assert a.exists && vertex>=0 && lane>=0 && lane<km_attr_components(a.format);base:=buf.offset+vertex*buf.stride+a.offset;fmt:=a.format;
+ width:=ifx fmt==0x1905 then 16 else ifx fmt==0x1805 then 12 else ifx fmt==0x1705 || fmt==0x1505 || fmt==0x1503 then 8 else ifx fmt==0x0a03 || fmt==0x0903 || fmt==0x0901 then 2 else ifx fmt==0x0203 || fmt==0x0201 then 1 else 4;
+ #assert a.offset+width<=buf.stride && vertex*buf.stride+a.offset+width<=buf.size;
+ if fmt==0x1805 || fmt==0x1705 || fmt==0x1905 || fmt==0x1605 {return ob_float(b,base+lane*4);}if fmt==0x1505 || fmt==0x1205 {x:=rh_half_decode(cast(u32)ob_u16(b,base+lane*2));#assert x.ok;return x.value;}
+ if fmt==0x1201 {return cast(f32)ob_u16(b,base+lane*2)/65535;}if fmt==0x1202 {return ob_max(cast(f32)ob_s16(b,base+lane*2)/32767,-1);}
+ if fmt==0x0e02 {raw:=ob_word(b,base);if lane<3 {return ob_snorm10(raw>>cast(u32)(lane*10));}return ifx ((raw>>30)&3)==3 then -1 else 1;}
+ if fmt==0x1503 {return cast(f32)ob_u16(b,base+lane*2);}if fmt==0x0a03 {return cast(f32)ob_u16(b,base);}
+ #assert ob_span(b.count,base+lane,1);value:=cast(int)b[base+lane];if fmt==0x0b02 {return ob_max(cast(f32)(ifx value>=128 then value-256 else value)/127,-1);}return ifx fmt==0x0b01 || fmt==0x0901 || fmt==0x0201 then cast(f32)value/255 else cast(f32)value;
+}
+km_attribute :: (b:[]u8,vertex:int,name:string)->KmAttribute {count:=cast(int)b[vertex+76];array:=ob_ptr(b,vertex+8);found:=KmAttribute.{};for k:0..<count {p:=array+k*16;if ob_name(b,p)==name {#assert !found.exists;found=KmAttribute.{exists=true,format=ob_int(b,p+8),offset=ob_u16(b,p+12),buffer=cast(int)b[p+14]};}}return found;}
+km_attr_point :: (b:[]u8,a:KmAttribute,buffers:[]KmBuffer,k:int)->Point {#assert a.buffer>=0 && a.buffer<buffers.count;buf:=buffers[a.buffer];return v3(km_attr_value(b,a,buf,k,0),km_attr_value(b,a,buf,k,1),km_attr_value(b,a,buf,k,2));}
+km_rgba :: (b:[]u8,at:int,c:[4]f32) {for j:0..<4 {b[at+j]=cast(u8)(ob_min(ob_max(c[j],0),1)*255+0.5);}}
+km_decode :: (b:[]u8,transform:[]f32,vertices:[]u8,indices:[]u8,ranges:[]u8,counts:[]KmCounts) {
+ #assert b.count>=240 && ob_word(b,0)==0x53455246 && ob_word(b,8)==0x000a0400 && ob_u16(b,12)==0xfeff;
+ models:=ob_u16(b,0xdc);#assert models==1;model:=ob_ptr(b,40);#assert ob_word(b,model)==0x4c444d46;
+ pool:=ob_ptr(b,176);gpu:=ob_ptr(b,pool+8);poolSize:=ob_int(b,pool+4);#assert ob_span(b.count,gpu,poolSize);
+ shapes:=ob_u16(b,model+106);materials:=ob_u16(b,model+108);array:=ob_ptr(b,model+40);materialBase:=counts[0].materials;
+ sk:=ob_ptr(b,model+24);nbones:=ob_u16(b,sk+56);#assert nbones<=KM_BONE_CAP;boneArray:=ob_ptr(b,sk+16);smooth:=ob_u16(b,sk+58);paletteCount:=smooth+ob_u16(b,sk+60);palette:=ob_ptr(b,sk+24);
+ world:[KM_BONE_CAP*12]f32;basis:[KM_BONE_CAP*12]f32;scales:[KM_BONE_CAP]Point;
+ for k:0..<nbones {p:=boneArray+k*88;scales[k]=scan_point(b,p+48);flags:=ob_word(b,p+44);mode:=(flags>>12)&7;#assert mode==0 || mode==1;q:=ifx mode==1 then ob_euler(scan_point(b,p+60)) else Quat.{x=ob_float(b,p+60),y=ob_float(b,p+64),z=ob_float(b,p+68),w=ob_float(b,p+72)};pose_affine_chain(world[..],basis[..],scales[..],ob_s16(b,p+34),k,SkinLocal.{t=scan_point(b,p+76),q=q},(flags&0x800000)!=0);}
+ for shape:0..<shapes {
+  s:=array+shape*96;#assert ob_word(b,s)==0x50485346;if (ob_word(b,s+4)&16)!=0 {bone:=ob_u16(b,s+84);#assert bone<nbones;km_decode_meshlet(b,s,shape,world[bone*12..<bone*12+12],transform,vertices,indices,ranges,counts,materialBase,materials);continue;}v:=ob_ptr(b,s+16);#assert ob_word(b,v)==0x58545646;nv:=ob_int(b,v+80);nb:=cast(int)b[v+77];#assert nv>0 && nv<=KM_VERTEX_CAP && nb>0 && nb<=8;
+  buffers:[8]KmBuffer;cur:=gpu+ob_int(b,v+72);alignment:=ob_u16(b,v+86);#assert alignment>0 && (alignment&(alignment-1))==0;
+  for j:0..<nb {cur=((cur+alignment-1)/alignment)*alignment;size:=ob_int(b,ob_ptr(b,v+48)+j*16);stride:=ob_int(b,ob_ptr(b,v+56)+j*16);#assert stride>0 && cur>=gpu && ob_span(poolSize,cur-gpu,size);buffers[j]=KmBuffer.{offset=cur,size=size,stride=stride};cur+=size;}
+  attrs:[15]KmAttribute;names:=[15]string.["_p0","_n0","_u0","_t0","_c0","_u1","_u2","_u3","_c1","_i0","_i1","_w0","_w1","_u4","_i2"];
+  for j:0..<15 {attrs[j]=km_attribute(b,v,names[j]);if attrs[j].exists {#assert attrs[j].buffer<nb;}}
+  if !attrs[0].exists || !attrs[1].exists || attrs[13].exists || attrs[14].exists {print("Kokiri source shape=% name=% material=% vertices=%\n",shape,ob_name(b,s+8),ob_u16(b,s+82),nv);ac:=cast(int)b[v+76];aa:=ob_ptr(b,v+8);for j:0..<ac {p:=aa+j*16;print("Kokiri unusual attribute shape=% name=% format=%\n",shape,ob_name(b,p),ob_int(b,p+8));}}
+  #assert attrs[0].exists && !attrs[13].exists && !attrs[14].exists;
+  wc:=cast(int)b[s+90];#assert wc<=8;base:=counts[0].vertices;material:=ob_u16(b,s+82);#assert material<materials;baseBone:=ob_u16(b,s+84);
+  mesh:=ob_ptr(b,s+24);#assert ob_word(b,mesh+36)==3;fmt:=ob_int(b,mesh+40);#assert fmt<=2;n:=ob_int(b,mesh+44);#assert n>0 && n%3==0 && counts[0].indices+n<=KM_INDEX_CAP;start:=gpu+ob_int(b,mesh+32);width:=ifx fmt==0 then 1 else ifx fmt==1 then 2 else 4;#assert ob_span(poolSize,start-gpu,n*width);bias:=ob_int(b,mesh+48);
+  remap:[KM_VERTEX_CAP]int;for k:0..<nv {remap[k]= -1;}referenced:=0;
+  for j:0..<n {i:=ifx fmt==0 then cast(int)b[start+j] else ifx fmt==1 then ob_u16(b,start+j*2) else ob_int(b,start+j*4);i+=bias;#assert i>=0 && i<nv;if remap[i]<0 {remap[i]=referenced;referenced+=1;}scan_put(indices,(counts[0].indices+j)*4,cast(u32)(base+remap[i]));}
+  #assert counts[0].vertices+referenced<=KM_VERTEX_CAP;for k:0..<nv {
+   if remap[k]<0 {continue;}p:=km_attr_point(b,attrs[0],buffers[0..<nb],k);normal:=ifx attrs[1].exists then km_attr_point(b,attrs[1],buffers[0..<nb],k) else v3(0,0,0);tangent:=v3(1,0,0);tw:f32=1;if attrs[3].exists {tangent=km_attr_point(b,attrs[3],buffers[0..<nb],k);tw=km_attr_value(b,attrs[3],buffers[attrs[3].buffer],k,3);}
+   if wc<=1 {bone:=baseBone;if wc==1 {a:=attrs[9];#assert a.exists;pi:=cast(int)km_attr_value(b,a,buffers[a.buffer],k,0);#assert pi<paletteCount;bone=ob_u16(b,palette+pi*2);}#assert bone<nbones;p=km_point(world[bone*12..<bone*12+12],p);normal=km_normal(world[bone*12..<bone*12+12],normal);tangent=km_vector(world[bone*12..<bone*12+12],tangent);}
+   p=km_point(transform,p);normal=km_normal(transform,normal);tangent=km_vector(transform,tangent);at:=(base+remap[k])*128;#assert ob_span(vertices.count,at,128);for j:0..<128 {vertices[at+j]=0;}
+   scan_write_point(vertices,at,p);scan_write_point(vertices,at+12,normal);scan_put(vertices,at+32,cast(u32)(materialBase+material));vertices[at+52]=255;scan_write_point(vertices,at+60,unit_or(tangent,v3(1,0,0)));scan_put(vertices,at+72,f32_bits(tw));
+   for uv:0..<4 {a:=attrs[[4]int.[2,5,6,7][uv]];if a.exists {dest:=ifx uv==0 then at+24 else at+80+(uv-1)*8;scan_put(vertices,dest,f32_bits(km_attr_value(b,a,buffers[a.buffer],k,0)));scan_put(vertices,dest+4,f32_bits(km_attr_value(b,a,buffers[a.buffer],k,1)));}}
+   bake:=km_attribute(b,v,"_u254");if bake.exists {scan_put(vertices,at+116,f32_bits(km_attr_value(b,bake,buffers[bake.buffer],k,0)));scan_put(vertices,at+120,f32_bits(km_attr_value(b,bake,buffers[bake.buffer],k,1)));}
+   for color:0..<2 {a:=attrs[ifx color==0 then 4 else 8];rgba:=[4]f32.[1,1,1,1];if a.exists {for lane:0..<4 {rgba[lane]=km_attr_value(b,a,buffers[a.buffer],k,lane);}}km_rgba(vertices,at+(ifx color==0 then 76 else 104),rgba);}
+  }
+  if !attrs[1].exists {km_face_normals(vertices,indices,base,referenced,counts[0].indices,n);}
+  r:=counts[0].shapes*32;#assert ob_span(ranges.count,r,32);values:=[8]int.[base,referenced,counts[0].indices,n,materialBase+material,shape,(ifx attrs[1].exists then 0 else 1),nv];for j:0..<8 {scan_put(ranges,r+j*4,cast(u32)values[j]);}
+  counts[0].vertices+=referenced;counts[0].indices+=n;counts[0].shapes+=1;
+ }
+ counts[0].materials+=materials;
+}
+km_decode_meshlet :: (b:[]u8,s:int,shape:int,bone:[]f32,transform:[]f32,vertices:[]u8,indices:[]u8,ranges:[]u8,counts:[]KmCounts,materialBase:int,materials:int) {
+ #assert b[s+90]==0;m:=ob_ptr(b,s+24);#assert b[m+68]==1;info:=ob_ptr(b,m+16);offsets:=ob_ptr(b,m+24);gpu:=ob_ptr(b,ob_ptr(b,176)+8);start:=gpu+ob_int(b,offsets);size:=ob_int(b,info);#assert ob_span(b.count,start,size);packed:=b[start..<start+size];layout:=ob_word(packed,16);n:=ob_int(packed,20);material:=ob_u16(b,s+82);#assert material<materials;firstVertex:=counts[0].vertices;firstIndex:=counts[0].indices;
+ for cluster:0..<n {c:=kml_cluster(packed,cluster);actualBits:=kml_vertex_bits(packed,c);if actualBits!=c.stride {print("Kokiri meshlet bit budget shape=% cluster=% layout=% computed=% source=%\n",shape,cluster,layout,actualBits,c.stride);}#assert actualBits==c.stride && c.vertices<=vertices.count/128-counts[0].vertices && c.triangles*3<=indices.count/4-counts[0].indices;base:=counts[0].vertices;
+  for vertex:0..<c.vertices {at:=(base+vertex)*128;for k:0..<128 {vertices[at+k]=0;}p:=km_point(transform,km_point(bone,kml_position(packed,c,vertex)));normal:=v3(0,1,0);if (layout&0x20)!=0 {normal=km_normal(transform,km_normal(bone,kml_normal(packed,c,vertex)));}scan_write_point(vertices,at,p);scan_write_point(vertices,at+12,normal);scan_put(vertices,at+32,cast(u32)(materialBase+material));vertices[at+52]=255;
+   tangent:=v3(1,0,0);tw:f32=1;if (layout&0x40)!=0 {ts:=c.vertexBit+vertex*c.stride+c.px+c.py+c.pz;if (layout&0x20)!=0 {ts+=c.normalBits*2;}tw=ifx kml_bits(packed,ts,1)!=0 then -1.0f32 else 1.0f32;tangent=kml_oct(packed,ts+1,kml_tangent_bits(packed,c));}scan_write_point(vertices,at+60,unit_or(km_vector(transform,km_vector(bone,tangent)),v3(1,0,0)));scan_put(vertices,at+72,f32_bits(tw));
+   for uv:0..<5 {if (layout&(cast(u32)1<<cast(u32)(12+uv)))!=0 {value:=kml_uv(packed,c,vertex,uv);dest:=ifx uv==0 then at+24 else ifx uv==4 then at+116 else at+80+(uv-1)*8;scan_put(vertices,dest,f32_bits(value.x));scan_put(vertices,dest+4,f32_bits(value.y));}}
+   for color:0..<2 {km_rgba(vertices,at+(ifx color==0 then 76 else 104),kml_color(packed,c,vertex,color));}scan_put(vertices,at+124,layout);
+  }
+  for index:0..<c.triangles*3 {value:=cast(int)kml_bits(packed,c.indexBit+index*c.indexWidth,c.indexWidth);#assert value<c.vertices;scan_put(indices,(counts[0].indices+index)*4,cast(u32)(base+value));}
+  if (layout&0x20)==0 {km_face_normals(vertices,indices,base,c.vertices,counts[0].indices,c.triangles*3);}counts[0].vertices+=c.vertices;counts[0].indices+=c.triangles*3;
+ }
+ r:=counts[0].shapes*32;values:=[8]int.[firstVertex,counts[0].vertices-firstVertex,firstIndex,counts[0].indices-firstIndex,materialBase+material,shape,2,counts[0].vertices-firstVertex];for k:0..<8 {scan_put(ranges,r+k*4,cast(u32)values[k]);}counts[0].shapes+=1;print("Kokiri meshlet decoded shape=% clusters=% layout=% vertices=% triangles=%\n",shape,n,layout,counts[0].vertices-firstVertex,(counts[0].indices-firstIndex)/3);
+}
+#test "Kokiri missing source normals derive from original triangle winding" {v:[384]u8;i:[12]u8;scan_write_point(v[..],128,v3(1,0,0));scan_write_point(v[..],256,v3(0,0,1));scan_put(i[..],4,1);scan_put(i[..],8,2);km_face_normals(v[..],i[..],0,3,0,3);for k:0..<3 {n:=scan_point(v[..],k*128+12);#assert n.x==0 && n.y== -1 && n.z==0;}}
+km_face_normals :: (v:[]u8,indices:[]u8,base:int,nv:int,start:int,ni:int) {for k:0..<nv {scan_write_point(v,(base+k)*128+12,v3(0,0,0));}for tri:0..<ni/3 {a:=cast(int)scan_u32(indices,(start+tri*3)*4);b:=cast(int)scan_u32(indices,(start+tri*3+1)*4);c:=cast(int)scan_u32(indices,(start+tri*3+2)*4);normal:=cross(sub(scan_point(v,b*128),scan_point(v,a*128)),sub(scan_point(v,c*128),scan_point(v,a*128)));ids:=[3]int.[a,b,c];for id:ids {scan_write_point(v,id*128+12,add(scan_point(v,id*128+12),normal));}}for k:0..<nv {at:=(base+k)*128+12;scan_write_point(v,at,unit_or(scan_point(v,at),v3(0,1,0)));}}

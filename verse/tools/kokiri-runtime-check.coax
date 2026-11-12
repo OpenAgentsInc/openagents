@@ -1,0 +1,11 @@
+// Regression receipts from the verified original child village collision bundle.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../ocarina/kokiri-grid.coax";
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}data:[67108864]u8;n:=fs_read(args_at(a[..],0),data[..]);#assert n==54804852;b:=data[0..<n];g:=kokiri_encoded_grid(b);#assert g.nx==301 && g.nz==301 && scan_u32(b,8)==1238100 && scan_u32(b,52)==1536;
+ house:=kokiri_encoded_floor(b,-44.68,15.64,115);bridge:=kokiri_encoded_floor(b,-45.6,-9.74,115);roof:=kokiri_encoded_floor(b,-44.68,15.64,200);
+ #assert house.hit && abs(house.y-112.98219)<0.0001 && bridge.hit && abs(bridge.y-114.86463)<0.0001 && roof.hit && roof.y>house.y+10;
+ max_tested:=0;contacts:=0;admitted:=0;for sample:0..<400 {x:= -54.68+cast(f32)(sample%20);z:=5.64+cast(f32)(sample/20);q:=kokiri_encoded_floor(b,x,z,115);if !q.hit {continue;}admitted+=1;p:=v3(x,q.y,z);r:=kokiri_encoded_lateral(b,p,add(p,v3(0.1,0,0.1)),0.23,1.17);#assert kokiri_point_finite(r.feet) && r.feet.y==p.y && r.tested<=20000;max_tested=ifx r.tested>max_tested then r.tested else max_tested;contacts+=r.contacts;}
+ #assert admitted>0 && contacts>0;print("SOURCE_COLLISION_PASS triangles=1238100 sampled=400 floor_hits=% max_candidate_tests=% contacts=% house_y=% bridge_y=%\n",admitted,max_tested,contacts,house.y,bridge.y);return 0;
+}

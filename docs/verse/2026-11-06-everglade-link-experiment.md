@@ -77,14 +77,14 @@ source/texture extraction documented in `2026-11-06-ocarina-lab.md`. Then:
 ```sh
 src="$HOME/.openagents/verse/private-build/ocarina/source"
 raid="$HOME/.openagents/verse/private-build/everglade-link/streams"
-coax/web/tool.sh aethyr/tools/ocarina-source-pack.coax \
+coax/web/tool.sh verse/tools/ocarina-source-pack.coax \
   "$src/Player_Child.Player_Child.bfres" \
   "$src/Player_Child_01_Animation.anim.bfres" \
   "$src/Player_Child_02_Animation.anim.bfres" \
   "$src/Player_Child_03_Animation.anim.bfres" \
   "$src/Player_Child_04_Animation.anim.bfres" \
   "$src/Player_Child.anim.bfres" "$raid" --raid
-coax/web/tool.sh aethyr/tools/everglade-link-pack.coax \
+coax/web/tool.sh verse/tools/everglade-link-pack.coax \
   /path/to/everglade.pack "$raid" \
   "$HOME/.openagents/verse/private-build/ocarina/streams" \
   "$HOME/.openagents/verse/private-build/ocarina/textures" \
