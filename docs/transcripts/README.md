@@ -1,7 +1,7 @@
 # OpenAgents video archive: index, history, and themes
 
-This guide covers the committed transcript archive as of 2026-10-30:
-**290 numbered episode files covering every number from 001 through 290**. The unreleased 288 [preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and [draft script](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-draft.md) are no longer in the tree; those links go to their last committed versions.
+This guide covers the committed transcript archive as of 2026-11-11:
+**294 numbered episode files covering every number from 001 through 294**. The unreleased 288 [preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and [draft script](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-draft.md) are no longer in the tree; those links go to their last committed versions.
 The archive follows OpenAgents from document chat and its first coding agent
 to agent markets, operator workrooms, the Coder product suite, and measured
 System One coding-agent experiments.
@@ -24,8 +24,8 @@ feature survived every reset or exists in today's repository.
 ## Archive coverage and source limits
 
 The episode titles and video links for 001–287 follow the owner’s definitive
-catalog supplied on 2026-09-26. Episodes 288 and 289 are the newer recordings
-transcribed in this archive. The session recorded as 288 was not released
+catalog supplied on 2026-09-26. Episodes 288 through 294 are the newer recordings,
+scripts and posts added to this archive. The session recorded as 288 was not released
 under that number, and neither was the unrecorded **Test-Time Capabilities**
 draft script. 288 is **[Three DevDays Later](288.md)**, the launch-preview
 recording. The earlier [288 preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and
@@ -53,6 +53,10 @@ the recording or publication date.
 | [288](288.md) | **Three DevDays Later.** 02:58.57 launch-preview recording, cut from 03:22 of `recording-20260930-132914.mp4`: OpenAI's developer marketplace and its zero revenue share, permissionless protocols on Nostr, and the OpenAgents 1.0.0 announcement. |
 | [289](289.md) | **OpenAgents.** 04:40.13 overview of the composable general agent, plugin and eval creation, Lightning micropayments, open protocols, and the version 1.0 rollout. |
 | [290](290.md) | **Enter the Verse.** A 34:22 live talk at a Pleb Lab-sponsored event: OpenAgents.com as a playtest, the Pylons compute network relaunched for gamers, Bitcoin wallets for people and agents, the Coax and Psionic books, the web-first Verse engine, and three audience-pitched games (Orbit League, Belt 2200, Hold the Stair) specified live. |
+| [291](291.md) | **Accelerate.** A short dated post with its video link, not a transcript. It answers a member of Congress who called for a pause on advanced AI development; the political claims are the speaker's. |
+| [292](292.md) | **The Penultimate Frontier.** A script transcribed from a handwritten notebook page dated November 3, 2026, to be read verbatim on camera. A script is not a record of what was recorded. |
+| [293](293.md) | **Everglade.** 03:49, edited from two iPhone takes, with the episode's post at the top. Announces Everglade, an MMORPG on the D&D fifth edition SRD, as the first game built with the OpenAgents engine and creation tools. |
+| [294](294.md) | **Bitcoin From Scratch.** 01:52, cut 1 of `episode-294-cut1.mp4`, not necessarily the published edit. Explains the decision to build a Bitcoin implementation in Coax and reads the book's rules. The [talk outline](294-show-notes.md) written beforehand is longer and differs. |
 
 The summaries use *plans*, *proposes*, *announces*, *demonstrates*, and
 *reports* deliberately. An announcement can establish historical intent;
@@ -86,6 +90,7 @@ to solve. These are changes in emphasis, not clean replacement boundaries.
 | [260](260.md)–[274](274.md) | Sarah/Omega, Bitcoin-security work, Immortal, Nostr markets, BEAM continuity, and Agent Forge. | Explores resilient ownership of both infrastructure and product operation. Scripts, demos, security hypotheses, and announcements coexist. |
 | [275](275.md)–[284](284.md) | Coder terminal/cloud, provider-neutral delegation, Linux, mobile sync, the right to develop AI, and game-like operator design. | Pulls earlier capabilities toward one product suite while keeping advanced work visible and controllable. |
 | [285](285.md)–[288 prep](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) | Bendcoder, TypeSafe/System One design, Coder One, Jev probes, Terminal-Bench, Microluna, Gym, reusable pattern components, and Fire Loop. | Shifts attention from wrapping strong agents to removing unnecessary model work and proving which improvements generalize. |
+| [288](288.md)–[294](294.md) | The 1.0 announcement, the composable general agent, the Verse, the Coax language and its books, Everglade, and from-scratch Bitcoin and Nostr libraries. | Turns from coding agents toward open 3D worlds where people and agents play, trade and earn, built on a language, engine and libraries written in the repository. Announcements, scripts and a talk coexist; none establishes what is live. |
 
 ## What changes across the history
 
@@ -367,7 +372,7 @@ the intervening implementation work.
 | What does the archive teach about demand? | [100](100.md) → [103](103.md) → [138](138.md) → [174](174.md) → [213](213.md) → [226](226.md) → [239](239.md) → [247](247.md) |
 | Where do compute and training fit? | [145](145.md) → [174](174.md) → [201](201.md) → [203](203.md) → [216](216.md) → [224](224.md) → [232](232.md) → [236](236.md) → [238](238.md) |
 | How did the operator interface become Coder? | [111](111.md) → [170](170.md) → [189](189.md) → [196](196.md) → [249](249.md) → [251](251.md) → [262](262.md) → [275](275.md) → [281](281.md) |
-| What does the game-like direction mean? | [116](116.md) → [176](176.md) → [189](189.md) → [240](240.md) → [249](249.md) → [283](283.md) → [284](284.md) |
+| What does the game-like direction mean? | [116](116.md) → [176](176.md) → [189](189.md) → [240](240.md) → [249](249.md) → [283](283.md) → [284](284.md) → [290](290.md) → [292](292.md) → [293](293.md) |
 | How did mobile and voice develop? | [139](139.md) → [145](145.md) → [151](151.md) → [152](152.md) → [187](187.md) → [191](191.md) → [193](193.md) → [270](270.md) → [281](281.md) |
 | What changed in the latest algorithm work? | [285](285.md) → [286](286.md) → [287](287.md) → [288 prep](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md), then the [current results](../terminal-bench/README.md) and [Coder design index](../coder/design/README.md) |
 
@@ -778,6 +783,21 @@ documents, production runbooks, and external commentary are excluded.
 | [`287` Building a System One Coding Agent](287.md) | [Watch](https://x.com/OpenAgentsInc/status/2102773483109335209) | Builds Coder One and measures Jev probes, briefings, delegates, and tunable components on Terminal-Bench; distinguishes observed trials from a hypothetical best-choice router. |
 | [`288-prep` Coder Gym (unreleased, removed)](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) | Not released | Incomplete Gym session recorded as 288 and reassigned: trace inspection, ranked findings, Microluna, failed acceptance loops, corrected performance claims, design-time fitting, reusable pattern components, independent checks, and the first Fire Loop experiment. |
 | [`288` Three DevDays Later](288.md) | Not yet linked | Three years after DevDay 2023, OpenAI has shared zero revenue with developers; its new plugin marketplace still answers no one's questions about charging. Argues for permissionless, open protocols on Nostr, points developers at the OpenAgents NIPs, and announces OpenAgents 1.0.0 for desktop and mobile. |
+
+### 289–294: OpenAgents 1.0, the Verse, Everglade, and from-scratch Bitcoin
+
+Titles for 289–294 follow the local files. The owner's catalog of 2026-09-26
+ends at 287, so a missing link here means only that none is recorded in the
+file.
+
+| Episode and transcript | Video | Summary |
+| --- | --- | --- |
+| [`289` OpenAgents](289.md) | Not yet linked | Gives an overview of the composable general agent: plugin and eval creation, Lightning micropayments, open protocols ("signed JSON over WebSockets"), and the version 1.0 rollout. |
+| [`290` Enter the Verse](290.md) | [Watch](https://x.com/OpenAgentsInc/status/2116731414846529819) | A live talk presenting OpenAgents.com as a playtest: Pylons relaunched for gamers, Bitcoin wallets for people and agents, the Coax and Psionic books, the web-first Verse engine, and three audience-pitched games specified live. |
+| [`291` Accelerate](291.md) | [Watch](https://x.com/OpenAgentsInc/status/2118182733071401368) | A post answering a call in Congress to pause advanced AI development; states that open builders will continue. The retained file is the post's text, not a transcript. |
+| [`292` The Penultimate Frontier](292.md) | Not yet linked | A script that argues people's connected computers are their power, and proposes meeting in virtual worlds, named the Verse. |
+| [`293` Everglade](293.md) | Not yet linked | Announces Everglade, an old-school MMORPG on the D&D fifth edition SRD and the flagship game of the Verse, built in the open with the OpenAgents engine; it starts as an empty glade that players build up through the Housewright profession. |
+| [`294` Bitcoin From Scratch](294.md) | Not yet linked | Explains why OpenAgents builds its own Bitcoin implementation in Coax after its own engine, language, ML and Nostr libraries; reads the book's rules, plans small 3D worlds and bug bounties, and warns others not to put money in it. |
 
 ## Archive corrections and scope
 
