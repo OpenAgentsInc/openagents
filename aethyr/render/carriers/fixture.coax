@@ -1,3 +1,0 @@
-// One physical source graph owns the producer and renderer facade.
-#load "../../../apps/openagents-web/fixture.coax";
-#load "../native-host.coax";

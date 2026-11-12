@@ -10,9 +10,6 @@
 # issue lands the adoption or the module is deleted. A module nobody adopts by the end of the
 # program is deleted; git keeps it.
 
-# Built by name
-built aethyr/render/carriers/ coax/web/wasm.sh  # each page's renderer carrier, linked beside its module
-
 # P2: one world
 adopt aethyr/world/ #13280  # cells, owners, resource manifests and the streaming walk become the one world's cells and paged packs
 adopt aethyr/physics/sim/ #13279  # the scene, broad and narrow phase and batched rigid bodies go behind query_*; the legacy rigid and contact modules retire onto them

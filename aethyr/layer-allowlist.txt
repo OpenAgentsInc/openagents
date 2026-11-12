@@ -14,29 +14,6 @@ aethyr-up aethyr/anim/write.coax -> verse/tools/humans/ph_num.coax
 aethyr-up aethyr/character/character-appearance.coax -> everglade/scene/charactercreator-parts.coax  # its target moved from apps/openagents-web/ to everglade/scene/; the load itself is as old (#13268)
 aethyr-up aethyr/fx/gpu-puff.coax -> verse/everglade/gpu-fx.coax
 aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
-aethyr-up aethyr/render/carriers/belt.coax -> apps/openagents-web/belt.coax
-aethyr-up aethyr/render/carriers/deadgears.coax -> apps/openagents-web/deadgears.coax
-aethyr-up aethyr/render/carriers/droprealm.coax -> apps/openagents-web/droprealm.coax
-aethyr-up aethyr/render/carriers/everglade.coax -> everglade/shared/everglade-step.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
-aethyr-up aethyr/render/carriers/everglade.coax -> apps/openagents-web/everglade.coax
-aethyr-up aethyr/render/carriers/everglade.coax -> verse/everglade/guard-guide-policy.coax
-aethyr-up aethyr/render/carriers/everglade5e.coax -> everglade/shared/everglade-step.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
-aethyr-up aethyr/render/carriers/everglade5e.coax -> apps/openagents-web/everglade5e.coax
-aethyr-up aethyr/render/carriers/everglade5e.coax -> verse/everglade/guard-guide-policy.coax
-aethyr-up aethyr/render/carriers/fairy.coax -> apps/openagents-web/fairy.coax
-aethyr-up aethyr/render/carriers/fixture.coax -> apps/openagents-web/fixture.coax
-aethyr-up aethyr/render/carriers/garden.coax -> apps/openagents-web/garden.coax
-aethyr-up aethyr/render/carriers/icecream.coax -> apps/openagents-web/icecream.coax
-aethyr-up aethyr/render/carriers/landing-browser.coax -> coax/web/project/landing-browser.coax
-aethyr-up aethyr/render/carriers/myrealm.coax -> apps/openagents-web/myrealm.coax
-aethyr-up aethyr/render/carriers/myrealm.coax -> verse/edit/computer-wire.coax
-aethyr-up aethyr/render/carriers/orbitleague.coax -> apps/openagents-web/orbitleague.coax
-aethyr-up aethyr/render/carriers/realm.coax -> apps/openagents-web/realm.coax
-aethyr-up aethyr/render/carriers/stair.coax -> apps/openagents-web/stair.coax
-aethyr-up aethyr/render/carriers/verse.coax -> apps/openagents-web/verse.coax
-aethyr-up aethyr/render/carriers/villa.coax -> apps/openagents-web/villa.coax
-aethyr-up aethyr/render/carriers/watchtower.coax -> apps/openagents-web/watchtower.coax
-aethyr-up aethyr/render/carriers/waterlab.coax -> apps/openagents-web/waterlab.coax
 aethyr-up aethyr/render/character.coax -> verse/valley/echo-materials.coax
 aethyr-up aethyr/render/character.coax -> verse/valley/slay-lights.coax
 aethyr-up rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)

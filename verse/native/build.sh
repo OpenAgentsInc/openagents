@@ -71,7 +71,7 @@ if [[ -x "$coax" ]]; then
   fi
   source_app="$app"
   if [[ -n "$render_profile" && "$realm" != newland ]]; then
-    source_app="$root/aethyr/render/carriers/$realm.coax"
+    source_app="$root/apps/openagents-web/carriers/$realm.coax"
     [[ -f "$source_app" ]] || { echo "build.sh: no renderer source carrier for $realm" >&2; exit 2; }
   fi
   generated=()
@@ -84,7 +84,7 @@ if [[ -x "$coax" ]]; then
     base="$(basename "$unit" .coax)"
     source_unit="$unit"
     if [[ -n "$render_profile" && "$realm" == newland && "$base" == landing-browser ]]; then
-      source_unit="$root/aethyr/render/carriers/landing-browser.coax"
+      source_unit="$root/apps/openagents-web/carriers/landing-browser.coax"
     fi
     (cd "$root" && "$coax" c "$(relative "$source_unit")" --library --header "$out/$base.h" ${emit_args[@]+"${emit_args[@]}"}) > "$out/$base.c" & generated+=($!)
   done

@@ -21,7 +21,7 @@ grid_stack_bytes=4194304
 work="$(mktemp -d)";trap 'rm -rf "$work"' EXIT
 # Each unit below is its own C library: an #export_c procedure two of them load would be
 # defined twice at the link (#12661). wasm-size names the symbol and both units first.
-browser_unit=coax/web/project/landing-browser.coax; [[ "$render" != 1 ]] || browser_unit=aethyr/render/carriers/landing-browser.coax
+browser_unit=coax/web/project/landing-browser.coax; [[ "$render" != 1 ]] || browser_unit=apps/openagents-web/carriers/landing-browser.coax
 (cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports apps/openagents-web/newland.coax "$browser_unit" \
   coax/web/project/landing-fold.coax verse/gridwalk.coax) || { echo "build-home.sh: the same #export_c symbol in two units" >&2; exit 1; }
 # The units' C side by side, then every object side by side (#13154): one after another
@@ -32,7 +32,7 @@ for unit in newland landing-browser landing-fold; do
   directory=coax/web/project; [[ "$unit" != newland ]] || directory=apps/openagents-web
   # By repo-relative path, so the module's bytes don't depend on the checkout (wasm.sh).
   source_unit="$directory/$unit.coax"
-  if [[ "$render" == 1 && "$unit" == landing-browser ]]; then source_unit=aethyr/render/carriers/landing-browser.coax; fi
+  if [[ "$render" == 1 && "$unit" == landing-browser ]]; then source_unit=apps/openagents-web/carriers/landing-browser.coax; fi
   (cd "$repo" && "$coax_driver" c "$source_unit" --library --header "$work/$unit.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$unit.c" & jobs+=($!)
   units+=("$unit")
 done

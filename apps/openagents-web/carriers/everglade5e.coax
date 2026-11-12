@@ -1,8 +1,8 @@
 // One physical source graph owns the 5E producer and shared renderer facade.
 // The production page selects its host; this carrier also supports complete
 // captured-frame replay through the existing browser conformance observer.
-#load "../../../apps/openagents-web/everglade5e.coax";
-#load "../native-host.coax";
+#load "../everglade5e.coax";
+#load "../../../aethyr/render/native-host.coax";
 
 #load "../../../verse/everglade/guard-guide-policy.coax" as guard_policy;
 #load "../../../everglade/shared/everglade-step.coax" as movement;

@@ -1,3 +1,0 @@
-// One physical source graph owns the producer and renderer facade.
-#load "../../../apps/openagents-web/watchtower.coax";
-#load "../native-host.coax";

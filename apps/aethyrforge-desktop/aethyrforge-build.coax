@@ -68,7 +68,7 @@ af_stack_stamp :: (root: string, deadline: int) -> int {
   path: [4096] u8; script := fs_join(root, "coax/web/tool.sh", path[..]);
   argv := [11] string.[script, "wasm-size", "sources", "coax/web/room/room.coax", "apps/openagents-web/everglade5e.coax",
     "everglade/shared/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax",
-    "verse/everglade/guard-guide-policy.coax", "apps/openagents-web/everglade5e-rules.coax", "aethyr/render/carriers/everglade.coax"];
+    "verse/everglade/guard-guide-policy.coax", "apps/openagents-web/everglade5e-rules.coax", "apps/openagents-web/carriers/everglade.coax"];
   h := proc_new(); if h < 0 { return -1; }
   ok := proc_cwd(h, root); for a: argv { ok = ok && proc_arg(h, a); }
   if !ok || proc_start(h) != 0 { released := proc_release(h); return -1; }

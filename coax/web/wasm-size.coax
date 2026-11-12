@@ -255,7 +255,7 @@ ws_exports :: (a: [] Args) -> int {
     twice += 1;
     tool_err("wasm-size: "); tool_err(ws_ex_name(e[..], i)); tool_err(" is #export_c in "); tool_err(ws_ex_file(e[..], i));
     tool_err(", which units "); tool_err(ws_path(units[..], e[0].unit[j])); tool_err(" and "); tool_err(ws_path(units[..], e[0].unit[i]));
-    tool_errln(" both load: wasm-ld would find it twice. Load it in one unit (a carrier that #loads the other, as aethyr/render/carriers/ do).");
+    tool_errln(" both load: wasm-ld would find it twice. Load it in one unit (a carrier that #loads the other, as apps/openagents-web/carriers/ do).");
   }
   return ifx twice > 0 then 1 else 0;
 }

@@ -42,7 +42,7 @@ name="$(basename "$coax_file" .coax)"
 # artifact used by legacy diagnostics. Auto-selection never substitutes a
 # different source with the same basename.
 render="${COAXIAL_RENDER:-auto}"
-carrier="aethyr/render/carriers/$name.coax"
+carrier="apps/openagents-web/carriers/$name.coax"
 # A library the carrier itself #loads is part of the carrier's load graph, so
 # with the carrier it is not a second unit: one graph owns every #export_c the
 # two share (S_hash and S_hex, #12661), and the library's header is the
@@ -133,7 +133,7 @@ units=("$coax_file:$name"); gen=()
 if [[ "$render" == 1 ]]; then
   # One physical load graph owns shared exported kernels. The facade is not
   # emitted as a second library with duplicate S_hash/S_hex C definitions.
-  carrier="aethyr/render/carriers/$name.coax"
+  carrier="apps/openagents-web/carriers/$name.coax"
   if [[ ! -f "$repo/$carrier" ]]; then echo "no renderer source carrier for $name" >&2; exit 1; fi
   units=("$carrier:$name")
 fi

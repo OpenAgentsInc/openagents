@@ -1,6 +1,6 @@
 // One physical source graph owns the producer and renderer facade.
-#load "../../../apps/openagents-web/everglade.coax";
-#load "../native-host.coax";
+#load "../everglade.coax";
+#load "../../../aethyr/render/native-host.coax";
 
 #load "../../../verse/everglade/guard-guide-policy.coax" as guard_policy;
 #load "../../../everglade/shared/everglade-step.coax" as movement;
