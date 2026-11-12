@@ -328,6 +328,21 @@ travel_recover :: (w: [] TravelWorld, r: int) -> int #effects(reads, writes, tra
   #assert travel_owners(w[..], 0) == 1 && travel_bodies(w[..], 0) == 2 && !travel_one_owner(w[..], 0);
   w[0].rooms[1].bodies[0].here = false; w[0].rooms[0].bodies[0].here = false;
   #assert travel_owners(w[..], 0) == 0 && travel_bodies(w[..], 0) == 0 && !travel_one_owner(w[..], 0);
+  b := TravelBody.{hp = 70, effect = 2, effect_until = 900, cooldown = 40, xp = 15, group = 8, last_cmd = 1};
+  #assert to_profile_kept(b);
+  m := b; m.hp = 69; #assert !to_profile_kept(m);
+  m = b; m.effect = 1; #assert !to_profile_kept(m);
+  m = b; m.effect_until = 899; #assert !to_profile_kept(m);
+  m = b; m.cooldown = 39; #assert !to_profile_kept(m);
+  m = b; m.xp = 14; #assert !to_profile_kept(m);
+  m = b; m.group = 7; #assert !to_profile_kept(m);
+  m = b; m.last_cmd = 0; #assert !to_profile_kept(m);
+  w[0].rooms[0].used = 1;
+  #assert to_places_free(w[..], 0);
+  w[0].rooms[0].reserved = 1; #assert !to_places_free(w[..], 0); w[0].rooms[0].reserved = 0;
+  w[0].rooms[1].reserved = 1; #assert !to_places_free(w[..], 0); w[0].rooms[1].reserved = 0;
+  w[0].rooms[0].used = 2; #assert !to_places_free(w[..], 0); w[0].rooms[0].used = 1;
+  w[0].rooms[1].used = 1; #assert !to_places_free(w[..], 0);
 }
 
 #test "travel: a crash or lost answer at every step ends in one owner, one body and the right route" {
